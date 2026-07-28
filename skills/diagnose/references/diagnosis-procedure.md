@@ -36,7 +36,7 @@
 
 ## 步骤 3：两阶段加载 Tier 2
 
-**阶段一（索引）**：对每个命中 namespace，只读每条 case 的 `id/title/symptoms/quickly_check/category/confidence`（~70 token/条）。跑 `quickly_check`：
+**阶段一（索引）**：对每个命中 namespace，只读每条 case 的 `id/title/symptoms/quickly_check/category/confidence`（~70 token/条）。用 `quickly_check` **对照已提供的信息**：
 - 先 primary（精确）
 - primary 不匹配 → 跑 fallback（更模糊）
 - primary 不匹配但 fallback 匹配 → 仍进阶段二，标 `low_confidence`
