@@ -31,51 +31,15 @@ npx skills@latest add pillumina/ascend-sleuth -g -a pi -a claude-code \
 
 ## 包含的 Skills
 
-### diagnose
+| Skill | 作用 | 何时用 | 触发 |
+|---|---|---|---|
+| `diagnose` | 核心诊断循环：症状路由 → 匹配 case → 给 fix（高危根因提示先停服务）或转深度排查；全程写 trace | 训练/推理出现中断、精度、性能问题 | 显式 `/skill:diagnose` |
+| `to-postmortem` | 把一次定位沉淀成知识；任意来源（本地 session / Kimi 对话 / 手工笔记）汇入，过语义校验 + 脱敏 | 定位完，无论在哪查的都来这沉淀 | 可自动触发 |
+| `knowledge-groom` | 周期维护：升格、校验引用、去重、重算置信度、软退休 | 领域 owner 每周 | 显式 `/skill:knowledge-groom` |
+| `emergency-triage` | 生产中断紧急排查，给带风险标注的经验清单（不改配置、不记录） | 客户说生产中断/紧急，没时间走完整诊断 | 显式 `/skill:emergency-triage` |
+| `resume-diagnosis` | 续接被打断的诊断，读状态文件 + trace 复述现场 | 诊断被会议/上下文压缩打断；多人交接 | 显式 `/skill:resume-diagnosis` |
 
-核心诊断循环。收集症状，按 triage-tree 路由到命名空间，两阶段加载并验证知识库中的 case，命中给出修复建议（高危根因改为提示先停服务），未命中转入深度排查。全程写过程日志用于误诊归因。
-
-**适用场景：**
-
-- 训练或推理出现 hang / crash / OOM / 精度异常 / 性能退化
-- 你在能执行命令的 agent 中（Claude Code、Codex、pi）
-- 想按团队已验证的经验快速定位根因
-
-### to-postmortem
-
-把一次问题定位沉淀成知识。输入可以是 Claude Code/Codex 的对话、Kimi/DeepSeek 网页版对话，或纯手工排查笔记。自动提取症状和根因，给出命名空间建议，人确认后生成结构化 YAML，过语义校验和脱敏。这是整个体系中唯一对所有人开放的环节——无论问题在哪定位的，都能在这里沉淀。
-
-**适用场景：**
-
-- 一次定位结束后，把过程变成可复用的 case
-- 团队成员用了不同的 agent 或纯手工排查，需要统一沉淀入口
-
-### knowledge-groom
-
-知识库的周期性维护引擎。扫描新增的定位记录（含 agent 自动起草的候选 case），结构化升格到知识库，校验引用完整性，检测重复，重算置信度，软退休过期 case，重新生成人读速查表。建议每周运行。
-
-**适用场景：**
-
-- 领域 owner 每周维护知识库质量
-- 知识库增长后需要去重、拆分、退休
-
-### emergency-triage
-
-生产中断时的紧急排查。跳过完整诊断流程，直接给出带风险标注的人类可读排查清单，不改配置、不记录。事后用 to-postmortem 补。
-
-**适用场景：**
-
-- 客户明确说生产中断、需要先恢复服务
-- 没有时间走 15 到 30 分钟的完整诊断
-
-### resume-diagnosis
-
-续接一个被打断的诊断 session。读取状态文件和过程日志，复述上次停在哪一步、排除了哪些 case，等人贴回命令输出后继续。
-
-**适用场景：**
-
-- 诊断被会议或上下文压缩打断
-- 多人协作同一个问题，需要交接现场
+各 skill 的完整细节（severity 闸门、trace 规则、语义校验等）见对应 `skills/<name>/SKILL.md`。诊断类 skill 设为 user-only——诊断决策要人触发，不让模型自动跑；`to-postmortem` 可自动触发，鼓励沉淀。
 
 ## 工作原理
 
