@@ -1,0 +1,57 @@
+# Canonical sample case —— 演示完整 schema（5 轮设计全字段）
+# 新建 case 时照此模板，按需删可选字段。
+
+cases:
+  - id: MSLLM-EP-HANG-001
+    title: "HCCL buffer undersize for large-scale EP dispatch"
+
+    # 轴 2（§5.1）：什么性质的问题。驱动 quickly_check 形态 + 默认工具 + CHEATSHEET 分组
+    category: interrupt                  # interrupt | precision | performance
+    tags: [hang, ep, hccl]               # sub-type；收敛问题用 precision.convergence
+
+    platforms: ["A5-910C", "A3-910B"]    # 平台差异在 platforms/*.md
+    compat:                              # 非单调版本区间（§5.5）
+      - framework: mindspeed-llm
+        ranges: [">=2.4.0,<2.7.0", ">=2.8.0"]   # 2.7 因重构失效，2.8 恢复
+
+    confidence:                          # groom 计算，非人设定（§5.5）
+      hits: 18
+      misdiagnoses: 1
+      score: 0.86                        # hits/(hits+misdiagnoses)，按 last_hit 衰减
+      last_hit: "2026-W28"
+
+    symptoms:
+      - "all_to_all_single hangs at step usually after 1000+"
+      - "world_size >= 64"
+
+    # 可选：指向 common/ 权威记录。root cause 被确认多框架共用时才填（§5.3）
+    references: common/hccl/buffer_config.yaml#ASCEND-HCCL-BUFFER-001
+
+    # 阶段一加载（两阶段加载，§6）：过滤用，约 70 token/条
+    quickly_check:
+      primary:                           # 精确但易因日志格式变化失效
+        command_template: "grep -c 'all_to_all' {{log_path}}"
+        rank_selector: coordinator       # 只查协调者 rank；分布式不能只查 rank 0
+        expected: "regex:^[1-9]"
+      fallback:                          # 更模糊但更鲁棒
+        command_template: "grep -ci 'timeout|hang|stuck' {{log_path}}"
+        rank_selector: all_failed        # 查所有失败 rank
+        expected: "regex:^[1-9]"
+      # primary 不匹配但 fallback 匹配 → 仍进 diagnosis，标 low_confidence
+
+    # 阶段二加载：仅候选 case，按 confidence.score 降序验证
+    diagnosis:
+      - step: 1
+        command_template: "env | grep HCCL_BUFFSIZE"
+        rank_selector: coordinator
+        expected: ">= 4194304"
+        fix_on_mismatch: "export HCCL_BUFFSIZE=4194304"
+        rollback: "unset HCCL_BUFFSIZE  # 恢复默认"
+
+    severity: service-affecting          # benign | service-affecting | data-loss-risk（§9.2 闸门）
+    fix_side_effects: [requires-restart] # 应用此 fix 的代价；agent 要提示人协调重启窗口
+
+    next_on_fail: "MSLLM-EP-HANG-003"    # 可选：本 case 没解决时下一个试哪个
+
+    root_cause: "HCCL internal buffer insufficient for EP all-to-all at large world_size"
+    fix: "export HCCL_BUFFSIZE=4194304 before training launch (then restart)"

@@ -1,0 +1,24 @@
+# diagnosis_state.yaml —— 诊断状态文件 + 过程 trace 模板
+# /diagnose 每个 step 后更新；/resume-diagnosis 读取续接；误诊归因读 trace（§9.2 第四层）
+
+session_id: "2026-07-09-ep-hang-a5"
+status: in_progress                    # in_progress | resolved | escalated
+current_step: 3
+detected_framework: mindspeed-llm
+detected_platform: A5-910C
+detected_category: interrupt           # triage 路由到的 category
+
+excluded_cases: [ASCEND-EP-HANG-001, ASCEND-EP-HANG-002]
+active_case: MSLLM-EP-HANG-001
+last_action: "等待用户执行 env | grep HCCL_BUFFSIZE 并贴回输出"
+
+# trace 是原则 7 的硬要求——误诊归因、路由准确率、trace 完整性指标全靠它
+trace:
+  - {step: 1, action: triage, branch: training_interrupt, category: interrupt, routed: [training/mindspeed-llm/, common/]}
+  - {step: 2, action: load_index, namespaces: [training/mindspeed-llm/, common/], n_cases: 34}
+  - {step: 3, action: quickly_check, case: MSLLM-EP-HANG-001, primary: pass}
+  - {step: 3, action: quickly_check, case: MSLLM-EP-HANG-007, primary: fail, fallback: pass, marked: low_confidence}
+  - {step: 3, action: load_full, candidates: [MSLLM-EP-HANG-001, MSLLM-EP-HANG-007], order: by_confidence_score}
+
+# 生命周期：case 标 resolved/escalated 后，整个文件移入 postmortems/history/
+# trace 历史不删——它是路由准确率 + 执行保真度指标的数据源

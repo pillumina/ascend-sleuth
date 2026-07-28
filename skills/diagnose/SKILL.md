@@ -1,0 +1,80 @@
+---
+name: diagnose
+description: >
+  昇腾训练/推理问题的核心诊断循环：收集症状、按 triage-tree 路由、两阶段加载
+  并验证 Tier 2 case、命中给 fix（高危 root cause 改提示 halt）或转深度排查。
+  Tier-2 未命中但最终解决时起草候选 case。全程写 trace。
+  仅在能执行命令的 agent（Claude Code / Codex / pi）中可用。
+  路径 B（网页版/手工）请改用 CHEATSHEET.md。
+disable-model-invocation: true
+---
+
+# Diagnose
+
+昇腾问题的核心诊断循环。你是辅助定位工具——**fix 是你给的建议，由人手动应用到客户环境，你不自动改生产**。
+
+## 何时用
+
+出现训练或推理问题（中断 / 精度 / 性能），且你在能执行 bash 的 agent 中。
+客户说"生产中断/紧急"→ 改用 `/skill:emergency-triage`。被打断后续接 → `/skill:resume-diagnosis`。
+
+## 流程（核心循环详见 references/diagnosis-procedure.md）
+
+1. **收集症状 + 检测框架**
+   - 错误信息、`HCCL_*`/`ASCEND_*`/`NPU_*` 环境变量、框架版本、硬件平台
+   - `pip list | grep -i 'mindspeed|vllm|sglang|verl'` 检测框架
+   - **主动裁剪日志**：只贴失败 rank + 报错栈尾。绝不灌全量 profiler——诊断 session 的 context 八成是日志，全量灌进来会滑出 smart zone（~120K token 推理最锐利），推理质量暴跌
+
+2. **分类 → 加载 `triage-tree.yaml`（Tier 1）**
+   - 症状匹配分支 → 路由到 namespace（先 `training|inference/<framework>/`，再 `common/`）
+   - **triage 决策记进 trace**（命中哪个分支、路由到哪些 namespace、category）
+   - triage 多分支弱匹配/置信度低 → **优雅退化**：加载所有 namespace 索引让 quickly_check 筛（索引便宜，退化成本可控）
+   - 框架未检测到 → 只搜 `common/`；无法分类 → 直接 Tier 3
+
+3. **两阶段加载 Tier 2**
+   - **阶段一**：加载命中 namespace 的索引（`id/title/symptoms/quickly_check/category/confidence`），跑 `quickly_check`（primary→fallback）过滤候选 ≤5
+   - primary 不匹配但 fallback 匹配 → 仍进验证，标记 `low_confidence`
+   - **category 决定 quickly_check 形态**：interrupt 用 grep 错误签名、precision 用数值阈值（`loss>1e3`、`has_nan`）、performance 用 profiler 指标（`comm_ratio>0.4`）——别混用
+   - **阶段二**：全量加载候选，按 `confidence.score` **降序**进入验证
+
+4. **验证 diagnosis checks**
+   - 顺序执行候选 case 的 `diagnosis` 步骤，**不跳步**；mismatch 且有 `fix_on_mismatch` → 提示 fix（**先看 severity**，见下）
+   - 命中 → 输出 root cause + fix，进入步骤 6
+   - 所有候选未命中 → 深度排查（步骤 5）
+
+5. **深度排查（Tier 2 未命中）**
+   - 按 category 选默认 Script（见 references/script-integration.md）：interrupt→日志/core dump、precision→`mem-analyze`、performance→`ascend-profile-analyze`/`bench-run`
+   - Tier 3 关键词检索 `postmortems/`（`rg -l '<keyword>' postmortems/`，top-3）
+   - 人 + agent 联合分析
+
+6. **产出**
+   - `resolution: resolved | escalated | unknown`
+   - **Tier-2 命中**：常规 postmortem 草稿
+   - **Tier-2 未命中但最终解决**：postmortem 含一段你起草的**候选 case**（quickly_check + diagnosis + confidence 低），交 `/skill:knowledge-groom` 验证
+   - 完整 trace 随 `diagnosis_state.yaml` 留存（模板见 `diagnosis_state.yaml.example`）
+
+## severity 闸门（命中后先看这个）
+
+读候选 case 的 `severity` 字段，决定输出策略：
+
+- `benign` → 直接给 fix
+- `service-affecting` → 给 fix，但标注 `fix_side_effects`（如 requires-restart），让人协调窗口
+- `data-loss-risk`（如"checkpoint 可能被污染"）→ **不直接给 fix**，输出"先停训练、保留现场、通知 owner"。高危 root cause 的正确动作是 halt 不是 patch
+
+每个 `fix_on_mismatch` 都带 `rollback`——人应用失败时能回退。
+
+## 每步必写 trace（硬要求）
+
+每个 step 后往 `diagnosis_state.yaml` 的 `trace` 数组追加一条：
+```yaml
+- {step: N, action: triage|load_index|quickly_check|load_full|run_check|hit|miss, ...}
+```
+trace 是误诊归因的唯一依据（见 references/diagnosis-procedure.md 末段"误诊归因"）：误诊时先读 trace 判断是 **case 错**（改库）还是**执行错**（改 skill）。不写 trace = 无法归因 = 可能改坏正确的 case。
+
+## 不要做
+
+- 不要替人决定 root cause——给结构化清单，人执行后贴回结果
+- 不要连续尝试第三个 case——两次未解决即转人工（误诊保护的串联保护，见 references/diagnosis-procedure.md）
+- 不要把全量 profiler 灌进 context——裁剪到相关 rank + 栈尾
+- 不要用 interrupt 的 grep 思路建 precision 的 quickly_check（category 形态不同）
+- 紧急 → `/skill:emergency-triage`；被打断 → `/skill:resume-diagnosis`

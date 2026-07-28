@@ -1,0 +1,71 @@
+# Tier 1: 症状 → namespace 路由
+#
+# 两个正交轴（别混，§5.1）：
+#   轴 1（在哪查）= 训推 × 框架 → search_namespaces 指向的目录
+#   轴 2（什么性质）= category → 决定诊断路径 + quickly_check 形态 + 默认工具
+#
+# <detected_framework> 由 /diagnose 步骤 1 的 pip list 检测结果填充。
+# 分支数 ≤ 30。框架检测失败时只用 common/。
+
+branches:
+  - id: training_interrupt
+    category: interrupt
+    symptoms:
+      - "timeout" | "hang" | "stuck at step"
+      - "NCCL.*timeout" | "HCCL.*timeout" | "all_to_all.*timeout"
+      - "OOM" | "out of memory" | "killed"
+      - "core dumped" | "segmentation fault"
+    search_namespaces:            # 按顺序搜索，最多加载 3 个
+      - training/<detected_framework>/
+      - common/
+    fallback: Tier 3
+
+  - id: training_precision
+    category: precision
+    symptoms:
+      - "nan" | "loss.*nan" | "inf"
+      - "fp8.*precision" | "overflow" | "underflow"
+      - "bf16.*mismatch" | "allreduce.*round"
+      - "diverg" | "not converg"        # 收敛问题走 precision.convergence 子类型
+    search_namespaces:
+      - training/<detected_framework>/
+      - common/
+    fallback: Tier 3
+
+  - id: training_performance
+    category: performance
+    symptoms:
+      - "throughput.*drop" | "throughput.*low"
+      - "step.*time.*slow" | "step.*time.*波动"
+      - "comm.*ratio.*high" | "communication.*overhead"
+      - "tflops.*low" | "idle" | "util.*low"
+    search_namespaces:
+      - training/<detected_framework>/
+      - common/
+    fallback: Tier 3
+
+  - id: inference_interrupt
+    category: interrupt
+    symptoms:
+      - "kv.*cache.*full" | "out of memory"
+      - "serving.*crash" | "engine.*error"
+    search_namespaces:
+      - inference/<detected_framework>/
+      - common/
+    fallback: Tier 3
+
+  - id: inference_performance
+    category: performance
+    symptoms:
+      - "latency.*high" | "p99.*slo" | "qps.*low"
+      - "cold.*start.*slow" | "first.*token.*slow"
+    search_namespaces:
+      - inference/<detected_framework>/
+      - common/
+    fallback: Tier 3
+
+  - id: uncategorized
+    category: null
+    symptoms: []
+    search_namespaces: [common/]
+    fallback: Tier 3
