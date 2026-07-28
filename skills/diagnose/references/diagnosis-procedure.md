@@ -97,7 +97,7 @@ rg -l '<症状关键词>' postmortems/    # top-3，读片段
 - **Tier-2 命中**：常规 postmortem 草稿
 - **Tier-2 未命中但最终解决**：postmortem 含一段 agent 起草的候选 case（标 `confidence.score` 初始低值），交 groom 验证。人的角色从“结构化”上移到“验证草案”。
 - **结果反馈闭环（闭合学习环，关键）**：给完 fix 后，**等工程师应用并回来报告结果**——问“应用后解决了吗？（解决 / 没解决 / 部分解决）”。解决 → 该 case `hits += 1`；没解决 → `misdiagnoses += 1`、更新 `last_hit`。不问这步，confidence 永远是初始值、学习机制空转。
-- **解决后主动建议沉淀**：尤其 Tier-2 未命中的新问题——主动问“要把这次沉淀成 case 吗？”并建议 `/skill:to-postmortem`。
+- **沉淀已含在本步骤**：命中=常规 postmortem、未命中=含候选 case 的 postmortem，已生成。只有非 /diagnose 定位的（Kimi/手工、或没配 session-end hook 导致没生成）才需 `/skill:to-postmortem` 手动沉淀。
 
 ## 误诊归因（每次误诊必做）
 

@@ -16,7 +16,7 @@ postmortems/**
 !postmortems/.gitkeep
 
 # 真实诊断状态文件（含客户 trace）；.example 是模板，保留
-diagnosis_state.yaml
+diagnosis_state*.yaml
 
 # ============================================================
 # 通用

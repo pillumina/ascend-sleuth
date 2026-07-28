@@ -4,7 +4,7 @@
 #   轴 1（在哪查）= 训推 × 框架 → search_namespaces 指向的目录
 #   轴 2（什么性质）= category → 决定诊断路径 + quickly_check 形态 + 默认工具
 #
-# <detected_framework> 由 /diagnose 步骤 1 的 pip list 检测结果填充。
+# <detected_framework>：工程师提供的框架（/diagnose 从客户提供的信息/报错判断，不跑 pip list）。
 # 分支数 ≤ 30。框架检测失败时只用 common/。
 
 branches:

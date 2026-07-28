@@ -42,16 +42,16 @@ npx skills@latest add pillumina/ascend-sleuth -g -a pi -a claude-code \
 
 ## 用法示例
 
-**`diagnose`** — 描述症状 + 指向日志，agent 自动路由匹配：
+**`diagnose`** — 把客户提供的症状、框架、日志片段告诉 agent（agent 不访问客户环境，信息都你来提供）：
 
 ```
 /skill:diagnose
 
-A5 (910C) 训练在 step ~3000 hang，all_to_all timeout，world_size=128。
-框架 mindspeed-llm 2.5.0。日志在 ~/cases/custA/，profiler 在 prof/。
+客户 A5 (910C) 训练在 step ~3000 hang，all_to_all timeout，world_size=128。
+框架 mindspeed-llm 2.5.0。报错栈尾：[粘贴相关 rank 的日志片段]
 ```
 
-agent 自动检测框架 → 路由到 `training/mindspeed-llm/` → 匹配 case → 给 fix（附 severity + rollback）或转深度排查。全程写 trace。
+agent 路由到 `training/mindspeed-llm/` → 匹配 case → 给结构化结果（CASE-ID + confidence + fix + rollback）或转深度排查。信息不够时主动问你需要向客户要什么。全程写 trace。
 
 **`to-postmortem`** — 沉淀一次定位，输入方式灵活（粘贴 / 文件 / 多文件 / 目录）：
 
@@ -71,7 +71,7 @@ agent 提取症状/根因 → 给命名空间建议（`[1] training/mindspeed-ll
 /skill:resume-diagnosis
 ```
 
-读 `diagnosis_state.yaml`，复述上次停在哪步、排除了哪些 case、当前 active case，等你贴回命令输出后继续。
+读活跃的 `diagnosis_state-*.yaml`（每个并发诊断一个文件；多个时列出让选），复述上次停在哪步、排除了哪些 case、当前 active case，等你贴回命令输出后继续。
 
 **`knowledge-groom`** — 领域 owner 每周维护知识库：
 
@@ -79,7 +79,7 @@ agent 提取症状/根因 → 给命名空间建议（`[1] training/mindspeed-ll
 /skill:knowledge-groom
 ```
 
-扫 `postmortems/` 新增记录 → 升格、校验 references、去重、重算置信度、软退休 → 产出 PR 交 owner 审。
+扫 `postmortems/` 新增记录 → 升格、校验 references、去重、重算置信度、软退休 → 产出变更摘要交 owner 审（提交由 owner 自己来，不自动开 PR）。
 
 ## 工作原理
 
