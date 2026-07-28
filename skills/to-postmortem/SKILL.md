@@ -38,7 +38,7 @@ agent 读取文件，后续流程同内联。
 /skill:to-postmortem ~/cases/wiki-export/
 ```
 
-扫描目录下 `.md`/`.txt`，每个文件各成一条。大文件逐个处理，不全量载入 context。目录模式等价于 v1.5 的批量导入（`/bootstrap-from-corpus`）——用它即可，不再需要单独的批量导入 skill。
+扫描目录下 `.md`/`.txt`，每个文件各成一条。大文件逐个处理，不全量载入 context。目录模式就是批量导入历史案例的入口——不需要单独的批量导入 skill。
 
 ## 流程
 

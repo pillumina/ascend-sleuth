@@ -141,7 +141,7 @@ postmortems/                 Tier 3 原始记录
 
 **v1（已实现）**：trace 与误诊归因、学出的置信度、语义校验、分布式命令参数化、triage 优雅退化、severity 字段。
 
-**v1.5**：非单调版本兼容、agent 自起草候选 case、批量导入历史案例（`/bootstrap-from-corpus`）。
+**v1.5**：非单调版本兼容、agent 自起草候选 case。
 
 **v2**：从 trace 挖掘结构改进分类器、可信自动晋升、跨团队联邦。
 
