@@ -41,6 +41,53 @@ npx skills@latest add pillumina/ascend-sleuth -g -a pi -a claude-code \
 
 各 skill 的完整细节（severity 闸门、trace 规则、语义校验等）见对应 `skills/<name>/SKILL.md`。诊断类 skill 设为 user-only——诊断决策要人触发，不让模型自动跑；`to-postmortem` 可自动触发，鼓励沉淀。
 
+## 用法示例
+
+**`diagnose`** — 描述症状 + 指向日志，agent 自动路由匹配：
+
+```
+/skill:diagnose
+
+A5 (910C) 训练在 step ~3000 hang，all_to_all timeout，world_size=128。
+框架 mindspeed-llm 2.5.0。日志在 ~/cases/custA/，profiler 在 prof/。
+```
+
+agent 自动检测框架 → 路由到 `training/mindspeed-llm/` → 匹配 case → 给 fix（附 severity + rollback）或转深度排查。全程写 trace。
+
+**`to-postmortem`** — 粘贴任意来源的定位过程，沉淀成结构化 case：
+
+```
+/skill:to-postmortem "[把 Kimi/DeepSeek 对话、或手工排查笔记粘进来]"
+```
+
+agent 提取症状/根因 → 给命名空间建议（`[1] training/mindspeed-llm` / `[2] common`），你输入数字确认（5 秒）→ 生成 YAML + 脱敏。
+也可以不显式调用：`/diagnose` 结束后直接说“沉淀一下这次”，agent 自动触发——这是它和诊断类 skill 的区别（诊断要人显式触发，沉淀鼓励自动）。
+
+**`emergency-triage`** — 生产中断，跳过诊断要快速恢复：
+
+```
+/skill:emergency-triage
+（或直接说“生产挂了，先恢复”）
+```
+
+输出带风险标注（safe / caution）的经验清单：查最近变更 → 基础链路（`npu-smi`/`hccl top`）→ 日志栈尾 → 能否降级恢复。不改配置、不记录，事后用 `to-postmortem` 补。
+
+**`resume-diagnosis`** — 诊断被打断后续接：
+
+```
+/skill:resume-diagnosis
+```
+
+读 `diagnosis_state.yaml`，复述上次停在哪步、排除了哪些 case、当前 active case，等你贴回命令输出后继续。
+
+**`knowledge-groom`** — 领域 owner 每周维护知识库：
+
+```
+/skill:knowledge-groom
+```
+
+扫 `postmortems/` 新增记录 → 升格、校验 references、去重、重算置信度、软退休 → 产出 PR 交 owner 审。
+
 ## 工作原理
 
 知识分三个层次，按需加载，控制上下文消耗：
