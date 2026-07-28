@@ -105,7 +105,6 @@ knowledge/
 └── platforms/{a2,a3,a5}.md  平台背景知识
 triage-tree.yaml             Tier 1 路由
 postmortems/                 Tier 3 原始记录
-CHEATSHEET.md                人读速查表（路径 B 主入口，groom 重生成）
 ```
 
 **公私分离**：`skills/`、`references/`、`examples/` 是方法论，可以公开。`knowledge/` 和 `postmortems/` 的真实内容含客户日志和集群信息，必须私有。本仓库只含方法论和空脚手架，真实案例应放团队私有仓库。`.gitignore` 已配置好这条边界——即使把真实 case 写进 `knowledge/`，也不会被推到这个公开仓库。
@@ -115,10 +114,9 @@ CHEATSHEET.md                人读速查表（路径 B 主入口，groom 重生
 ```
 接到问题
   ├─ 紧急（生产中断）→ /skill:emergency-triage
-  └─ 否
-       ├─ 能跑命令 → /skill:diagnose（路径 A，自动诊断 + 知识匹配）
-       └─ 不能      → 查 CHEATSHEET.md（路径 B，手动排查）
-定位完 → /skill:to-postmortem（两条路径都到这里沉淀）
+  └─ 否 → /skill:diagnose（本地 agent 诊断 + 知识匹配）
+定位完 → /skill:to-postmortem 沉淀
+  （无论这次是 /diagnose 诊断的、还是之前用 Kimi/手工查的，都从这里汇入）
 被打断 → /skill:resume-diagnosis
 领域 owner 每周 → /skill:knowledge-groom
 ```

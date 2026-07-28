@@ -3,7 +3,7 @@ name: knowledge-groom
 description: >
   昇腾知识库的周期性维护引擎。扫 postmortems/ 新增记录（含 agent 自起草的候选 case），
   结构化升格到 Tier 2、校验 references 完整性、检测值重复、重算 confidence_score、
-  软退休过期 case、重生成 CHEATSHEET.md。建议每周运行。产出 PR 交领域 owner 审。
+  软退休过期 case。建议每周运行。产出 PR 交领域 owner 审。
 disable-model-invocation: true
 ---
 
@@ -28,7 +28,6 @@ disable-model-invocation: true
    - 检查 `_archive/` 中 case 是否因新 `compat` 区间该复活（2.7 退休、2.8 恢复）
 6. **namespace 拆分建议**：某 namespace 超 30 条 → 报告内容分布 + 拆分建议（首选拆分轴是 **category**——interrupt/precision/performance）。人确认后才建子目录。
 7. **同 namespace 合并建议**：相似 case 对自动提示。
-8. **CHEATSHEET 重生成**：按 `namespace × category` 分段（如 `## training/mindspeed-llm / interrupt`）——遇到精度问题直接翻 precision 段。
 
 ## PR 里的高风险变更标记（强制深审，不走 30 秒快通道）
 
@@ -53,5 +52,5 @@ disable-model-invocation: true
 
 ## v2 职责（路线图，v1 不做）
 
-9. **结构挖掘**：挖 trace 语料，报告低判别力 `quickly_check`、噪声 triage 分支、高验证耗时 case。让库学结构，不只 bump 分数。
-10. **trusted auto-promotion 审计**：近重复 + quickly_check 通过 + 连续 N 次兄弟命中未误诊的新 case 可 auto-promote，标 `auto_promoted: true`，进月度抽审。
+8. **结构挖掘**：挖 trace 语料，报告低判别力 `quickly_check`、噪声 triage 分支、高验证耗时 case。让库学结构，不只 bump 分数。
+9. **trusted auto-promotion 审计**：近重复 + quickly_check 通过 + 连续 N 次兄弟命中未误诊的新 case 可 auto-promote，标 `auto_promoted: true`，进月度抽审。

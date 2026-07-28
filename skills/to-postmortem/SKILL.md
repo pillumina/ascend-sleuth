@@ -3,7 +3,7 @@ name: to-postmortem
 description: >
   把一次昇腾问题定位沉淀成知识。输入可以是 Claude Code/Codex 的对话、Kimi/DeepSeek 网页版对话、
   或纯手工排查笔记。提取症状/命令/root_cause/fix，检测框架给命名空间建议，人确认（5秒），
-  输出结构化 YAML 草稿 + postmortem.md，过语义校验和脱敏。这是路径 A/B 唯一对等的环节。
+  输出结构化 YAML 草稿 + postmortem.md，过语义校验和脱敏。无论知识产自哪里（本地 agent session / Kimi 网页对话 / 手工笔记），都从这里汇入——这是异构知识来源的统一入口。
 ---
 
 # To Postmortem
