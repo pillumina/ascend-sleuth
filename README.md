@@ -1,6 +1,6 @@
 # ascend-sleuth
 
-[![skills.sh](https://skills.sh/b/pillumina/ascend-sleuth)](https://skills.sh/pillumina/ascend-sleuth)
+[![platform: Ascend NPU](https://img.shields.io/badge/platform-Ascend%20NPU-CC0000?logo=huawei&logoColor=white)](https://www.hiascend.com/)
 
 昇腾（Ascend）训练与推理支持的诊断 skill 套件。把问题定位从个人经验沉淀为团队可复用、可持续演进的知识资产。
 
