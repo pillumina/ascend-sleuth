@@ -36,7 +36,6 @@ npx skills@latest add pillumina/ascend-sleuth -g -a pi -a claude-code \
 | `diagnose` | 核心诊断循环：症状路由 → 匹配 case → 给 fix（高危根因提示先停服务）或转深度排查；全程写 trace | 训练/推理出现中断、精度、性能问题 | 显式 `/skill:diagnose` |
 | `to-postmortem` | 把一次定位沉淀成知识；任意来源（本地 session / Kimi 对话 / 手工笔记）汇入，过语义校验 + 脱敏 | 定位完，无论在哪查的都来这沉淀 | 可自动触发 |
 | `knowledge-groom` | 周期维护：升格、校验引用、去重、重算置信度、软退休 | 领域 owner 每周 | 显式 `/skill:knowledge-groom` |
-| `emergency-triage` | 生产中断紧急排查，给带风险标注的经验清单（不改配置、不记录） | 客户说生产中断/紧急，没时间走完整诊断 | 显式 `/skill:emergency-triage` |
 | `resume-diagnosis` | 续接被打断的诊断，读状态文件 + trace 复述现场 | 诊断被会议/上下文压缩打断；多人交接 | 显式 `/skill:resume-diagnosis` |
 
 各 skill 的完整细节（severity 闸门、trace 规则、语义校验等）见对应 `skills/<name>/SKILL.md`。诊断类 skill 设为 user-only——诊断决策要人触发，不让模型自动跑；`to-postmortem` 可自动触发，鼓励沉淀。
@@ -65,15 +64,6 @@ agent 自动检测框架 → 路由到 `training/mindspeed-llm/` → 匹配 case
 
 agent 提取症状/根因 → 给命名空间建议（`[1] training/mindspeed-llm` / `[2] common`），你确认 → 生成 YAML + 脱敏。多文件/目录时批量确认命名空间（一次过），语义校验逐个跑。
 也可以不显式调用：`/diagnose` 结束后直接说“沉淀一下这次”，agent 自动触发。
-
-**`emergency-triage`** — 生产中断，跳过诊断要快速恢复：
-
-```
-/skill:emergency-triage
-（或直接说“生产挂了，先恢复”）
-```
-
-输出带风险标注（safe / caution）的经验清单：查最近变更 → 基础链路（`npu-smi`/`hccl top`）→ 日志栈尾 → 能否降级恢复。不改配置、不记录，事后用 `to-postmortem` 补。
 
 **`resume-diagnosis`** — 诊断被打断后续接：
 
@@ -126,9 +116,8 @@ postmortems/                 Tier 3 原始记录
 ## 日常工作流
 
 ```
-接到问题
-  ├─ 紧急（生产中断）→ /skill:emergency-triage
-  └─ 否 → /skill:diagnose（本地 agent 诊断 + 知识匹配）
+接到问题 → /skill:diagnose（本地 agent 诊断 + 知识匹配）
+  紧急时告诉 agent“这是紧急情况”→ 它先给 stabilize 建议、不钻深度排查
 定位完 → /skill:to-postmortem 沉淀
   （无论这次是 /diagnose 诊断的、还是之前用 Kimi/手工查的，都从这里汇入）
 被打断 → /skill:resume-diagnosis

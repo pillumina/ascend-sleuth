@@ -14,8 +14,19 @@ disable-model-invocation: true
 
 ## 何时用
 
-出现训练或推理问题（中断 / 精度 / 性能），且你在能执行 bash 的 agent 中。
-客户说"生产中断/紧急"→ 改用 `/skill:emergency-triage`。被打断后续接 → `/skill:resume-diagnosis`。
+出现训练或推理问题（中断 / 精度 / 性能），且你在能执行 bash 的 agent 中。被打断后续接 → `/skill:resume-diagnosis`。
+
+## 紧急情况（生产中断）
+
+客户说“紧急 / 生产挂了 / 先恢复”时，诊断目标从“查根因”变成“**先 stabilize**”：
+
+1. **还是先查知识库**——如果有匹配的 case（比如已知的安全回滚），直接给，这最快。知识库里的具体解药永远优于通用急救口诀。
+2. **没有快速匹配时**，根据客户已提供的信息，一步步给 stabilize 建议：
+   - 问客户最近 24-48h 改过什么（脚本/配置、框架版本、驱动/固件/CANN、数据、模型代码）——事故多半源于最近的改动
+   - 基础健康检查：`npu-smi info`（卡活着吗）、`hccl top`（通信拓扑正常吗）
+   - 看日志栈尾，定位哪层炸的
+   - 能否先恢复：回滚上个 checkpoint 重启 / 降配（关 EP、降 batch）/ 重启 daemon
+3. **不钻深度排查、不写 postmortem**——事后用 `/skill:to-postmortem` 补。
 
 ## 流程（核心循环详见 references/diagnosis-procedure.md）
 
@@ -76,4 +87,4 @@ trace 是误诊归因的唯一依据（见 references/diagnosis-procedure.md 末
 - 不要连续尝试第三个 case——两次未解决即转人工（误诊保护的串联保护，见 references/diagnosis-procedure.md）
 - 不要把全量 profiler 灌进 context——裁剪到相关 rank + 栈尾
 - 不要用 interrupt 的 grep 思路建 precision 的 quickly_check（category 形态不同）
-- 紧急 → `/skill:emergency-triage`；被打断 → `/skill:resume-diagnosis`
+- 被打断 → `/skill:resume-diagnosis`
