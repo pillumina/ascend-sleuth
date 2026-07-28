@@ -1,22 +1,44 @@
 ---
 name: to-postmortem
 description: >
-  把一次昇腾问题定位沉淀成知识。输入可以是 Claude Code/Codex 的对话、Kimi/DeepSeek 网页版对话、
-  或纯手工排查笔记。提取症状/命令/root_cause/fix，检测框架给命名空间建议，人确认（5秒），
-  输出结构化 YAML 草稿 + postmortem.md，过语义校验和脱敏。无论知识产自哪里（本地 agent session / Kimi 网页对话 / 手工笔记），都从这里汇入——这是异构知识来源的统一入口。
+  把一次或多次昇腾问题定位沉淀成知识。输入支持内联粘贴、单个/多个文件路径、或整个目录（批量导入历史案例）。提取症状/命令/root_cause/fix，检测框架给命名空间建议（批量模式一次确认），人确认，输出结构化 YAML 草稿 + postmortem.md，过语义校验和脱敏。无论知识产自哪里（本地 agent session / Kimi 网页对话 / 手工笔记 / wiki 导出），都从这里汇入——这是异构知识来源的统一入口。
 ---
 
 # To Postmortem
 
 知识注入入口与诊断工具**解耦**——无论问题在哪儿定位的，都能在这里沉淀。这是 ascend-sleuth 体系里最重要的动作：不沉淀，团队下次还得重新踩坑。
 
-## 用法
+## 输入方式
+
+接受四种输入：
+
+**1. 内联粘贴**（单条，最常用）：
 
 ```
-/skill:to-postmortem "[粘贴 Kimi/DeepSeek 的完整对话]
-
-[或粘贴纯手工排查笔记]"
+/skill:to-postmortem "[把 Kimi/DeepSeek 对话、或手工排查笔记粘进来]"
 ```
+
+**2. 单个文件路径**（大文档，免复制粘贴）：
+
+```
+/skill:to-postmortem ~/cases/custA/notes.md
+```
+
+agent 读取文件，后续流程同内联。
+
+**3. 多个文件**（一次沉淀几条相关 case，各自独立成文）：
+
+```
+/skill:to-postmortem ~/cases/custA/notes.md ~/cases/custB/hang.md
+```
+
+**4. 目录**（批量导入历史案例，如内网 wiki 导出）：
+
+```
+/skill:to-postmortem ~/cases/wiki-export/
+```
+
+扫描目录下 `.md`/`.txt`，每个文件各成一条。大文件逐个处理，不全量载入 context。目录模式等价于 v1.5 的批量导入（`/bootstrap-from-corpus`）——用它即可，不再需要单独的批量导入 skill。
 
 ## 流程
 
@@ -29,7 +51,8 @@ description: >
    ```
    - 完全没涉及框架（纯硬件/CANN/驱动报错）→ 选项变为 `[1] common/`，人按回车
    - 检测到多个框架 → 按置信度排序，第一项标 `(most likely)`
-   - 这个确认本身就是质量检查：人在 `mindspeed-llm` 和 `common` 间选，本质在自问"这问题是框架特有的还是通用的"
+   - 这个确认本身就是质量检查：人在 `mindspeed-llm` 和 `common` 间选，本质在自问“这问题是框架特有的还是通用的”
+   - **批量模式**（多个文件/目录输入时）：命名空间确认改为一次批量——agent 按检测到的框架分组报告（如“12 个 mindspeed-llm、5 个 verl、3 个 common”），人一次确认或调整。语义校验仍逐个跑，失败的标 `needs-structurer-review`。批量模式不逐个 30 秒确认，改成抽审。
 3. **输出结构化 YAML 草稿 + postmortem.md**：
    - 标 `confidence: high | medium | low`
    - 标 `novelty: new_pattern | variant | covered`

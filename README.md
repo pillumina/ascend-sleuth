@@ -54,14 +54,17 @@ A5 (910C) 训练在 step ~3000 hang，all_to_all timeout，world_size=128。
 
 agent 自动检测框架 → 路由到 `training/mindspeed-llm/` → 匹配 case → 给 fix（附 severity + rollback）或转深度排查。全程写 trace。
 
-**`to-postmortem`** — 粘贴任意来源的定位过程，沉淀成结构化 case：
+**`to-postmortem`** — 沉淀一次定位，输入方式灵活（粘贴 / 文件 / 多文件 / 目录）：
 
 ```
-/skill:to-postmortem "[把 Kimi/DeepSeek 对话、或手工排查笔记粘进来]"
+/skill:to-postmortem "[粘贴对话或笔记]"                       # 内联
+/skill:to-postmortem ~/cases/custA/notes.md                    # 单个文件
+/skill:to-postmortem ~/cases/custA/ ~/cases/custB/hang.md      # 多文件
+/skill:to-postmortem ~/cases/wiki-export/                      # 目录（批量导入）
 ```
 
-agent 提取症状/根因 → 给命名空间建议（`[1] training/mindspeed-llm` / `[2] common`），你输入数字确认（5 秒）→ 生成 YAML + 脱敏。
-也可以不显式调用：`/diagnose` 结束后直接说“沉淀一下这次”，agent 自动触发——这是它和诊断类 skill 的区别（诊断要人显式触发，沉淀鼓励自动）。
+agent 提取症状/根因 → 给命名空间建议（`[1] training/mindspeed-llm` / `[2] common`），你确认 → 生成 YAML + 脱敏。多文件/目录时批量确认命名空间（一次过），语义校验逐个跑。
+也可以不显式调用：`/diagnose` 结束后直接说“沉淀一下这次”，agent 自动触发。
 
 **`emergency-triage`** — 生产中断，跳过诊断要快速恢复：
 
