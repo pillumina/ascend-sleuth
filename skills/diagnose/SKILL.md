@@ -43,6 +43,7 @@ disable-model-invocation: true
 
 3. **两阶段加载 Tier 2**
    - **阶段一**：加载命中 namespace 的索引（`id/title/symptoms/quickly_check/category/confidence`），跑 `quickly_check`（primary→fallback）过滤候选 ≤5
+   - **空库提示（冷启动）**：若命中 namespace 为空（还没 case），**不要静默退化**——告诉用户“当前 `knowledge/<ns>/` 还没有验证过的 case，你可以：①继续深度排查（步骤 5）②诊断完跑 `/skill:to-postmortem` 沉淀成第一条 case ③转人工”。别让空库的体感是“这玩意啥也不会”。
    - primary 不匹配但 fallback 匹配 → 仍进验证，标记 `low_confidence`
    - **category 决定 quickly_check 形态**：interrupt 用 grep 错误签名、precision 用数值阈值（`loss>1e3`、`has_nan`）、performance 用 profiler 指标（`comm_ratio>0.4`）——别混用
    - **阶段二**：全量加载候选，按 `confidence.score` **降序**进入验证
@@ -62,6 +63,7 @@ disable-model-invocation: true
    - **Tier-2 命中**：常规 postmortem 草稿
    - **Tier-2 未命中但最终解决**：postmortem 含一段你起草的**候选 case**（quickly_check + diagnosis + confidence 低），交 `/skill:knowledge-groom` 验证
    - 完整 trace 随 `diagnosis_state.yaml` 留存（模板见 `diagnosis_state.yaml.example`）
+   - **解决后主动建议沉淀**：尤其 Tier-2 未命中的新问题——主动问“要把这次沉淀成 case 吗？”并建议 `/skill:to-postmortem`。这是知识库增长的主要来源，别让工程师忘了沉淀。
 
 ## severity 闸门（命中后先看这个）
 

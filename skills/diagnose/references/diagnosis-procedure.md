@@ -41,6 +41,8 @@
 - primary 不匹配但 fallback 匹配 → 仍进阶段二，标 `low_confidence`
 - 都不匹配 → 跳过该 case
 
+**空库提示（冷启动）**：若命中 namespace 为空（还没 case），**不要静默退化**——告诉用户“当前 `knowledge/<ns>/` 还没有验证过的 case，你可以：①继续深度排查（步骤 5）②诊断完跑 `/skill:to-postmortem` 沉淀成第一条 case ③转人工”。空库的体感不该是“啥也不会”。
+
 **category 决定 quickly_check 形态**（最容易踩的坑）：
 - interrupt → grep 错误签名/栈
 - precision → 数值阈值断言（`loss>1e3`、`has_nan`、`loss_slope`）
@@ -93,7 +95,8 @@ rg -l '<症状关键词>' postmortems/    # top-3，读片段
 - `resolution: resolved | escalated | unknown`
 - 写 `diagnosis_state.yaml`（含完整 trace），case resolved/escalated 后移入 `postmortems/history/`
 - **Tier-2 命中**：常规 postmortem 草稿
-- **Tier-2 未命中但最终解决**：postmortem 含一段 agent 起草的候选 case（标 `confidence.score` 初始低值），交 groom 验证。人的角色从"结构化"上移到"验证草案"。
+- **Tier-2 未命中但最终解决**：postmortem 含一段 agent 起草的候选 case（标 `confidence.score` 初始低值），交 groom 验证。人的角色从“结构化”上移到“验证草案”。
+- **解决后主动建议沉淀**：尤其 Tier-2 未命中的新问题——主动问“要把这次沉淀成 case 吗？”并建议 `/skill:to-postmortem`。这是知识库增长的主要来源，别让工程师忘了沉淀。
 
 ## 误诊归因（每次误诊必做）
 
