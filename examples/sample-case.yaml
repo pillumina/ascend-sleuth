@@ -10,9 +10,12 @@ cases:
     tags: [hang, ep, hccl]               # sub-type；收敛问题用 precision.convergence
 
     platforms: ["A5-910C", "A3-910B"]    # 平台差异在 platforms/*.md
-    compat:                              # 非单调版本区间（§5.5）
+    compat:                              # 版本兼容（§5.5）——多维度，每维可选，只填真判别的
       - framework: mindspeed-llm
-        ranges: [">=2.4.0,<2.7.0", ">=2.8.0"]   # 2.7 因重构失效，2.8 恢复
+        ranges: [">=2.4.0,<2.7.0", ">=2.8.0"]   # 引擎版本，非单调（2.7 失效、2.8 恢复）
+        cann: [">=8.0"]                          # 可选：CANN 版本，仅当影响这条 case 时填
+        hdk: [">=23.0"]                          # 可选：HDK/固件版本
+    # 匹配软判：客户版本不在区间 → version_mismatch 降权，不硬排除（§5.5）
 
     confidence:                          # groom 计算，非人设定（§5.5）
       hits: 18

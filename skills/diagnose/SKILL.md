@@ -35,8 +35,8 @@ disable-model-invocation: true
 > **续接**：若存在未完成的 `diagnosis_state-*.yaml`（每个并发诊断一个文件），先问“有未完成的诊断，要 `/skill:resume-diagnosis` 续接吗？”——别让工程师自己记着跑 resume。
 
 1. **收集症状 + 确认框架**（全部来自工程师提供的信息）
-   - 错误信息、`HCCL_*`/`ASCEND_*`/`NPU_*` 环境变量值、框架版本、硬件平台（A2/A3/A5）——都从客户那要来
-   - **信息不全就主动问**：若工程师没说清，主动问三项——①症状（什么报错/什么时候挂）②客户跑的框架 ③日志/profiler 在哪（贴相关 rank + 栈尾）。别干等
+   - 错误信息、`HCCL_*`/`ASCEND_*`/`NPU_*` 环境变量值、**版本组合**（引擎版本 + CANN + HDK/驱动 + 架构 A2/A3/A5）——都从客户那要来
+   - **信息不全就主动问**：若没说清，主动问——①症状（什么报错/什么时候挂）②客户的版本组合（引擎/CANN/HDK/架构）③日志/profiler 在哪（贴相关 rank + 栈尾）。别干等
    - **框架从提供的信息/报错判断**（日志里 mindspeed/vllm 字样等）；判断不了就直接问工程师“客户跑的什么框架”，**不要跑 `pip list`**（那是你本地环境，跟客户无关）
    - **主动裁剪日志**：让工程师只贴失败 rank + 报错栈尾，绝不灌全量 profiler——诊断 session 的 context 八成是日志，全量灌进来会滑出 smart zone（~120K token 推理最锐利），推理质量暴跌
 
@@ -55,6 +55,7 @@ disable-model-invocation: true
 
 4. **验证 diagnosis checks**
    - 顺序验证候选 case 的 `diagnosis` 检查项（**对照已提供的信息**，不跳步）；某步缺信息 → 提示工程师向客户要（或让客户跑该 command 贴回输出）；mismatch 且有 `fix_on_mismatch` → 提示 fix（**先看 severity**，见下）
+   - **版本软匹配**：把候选 case 的 `compat`（framework/cann/hdk，**填了的维度**）逐维对照客户的版本组合——任一维不匹配 → 标 `version_mismatch`、confidence 临时下调，**case 仍是候选**（不硬排除）；没填的维度跳过
    - 命中 → 输出 root cause + fix，进入步骤 6
    - 所有候选未命中 → 深度排查（步骤 5）
 
@@ -77,6 +78,7 @@ disable-model-invocation: true
 
 ```
 命中 <CASE-ID>（confidence <score>，历史命中 <hits> 次 / 误诊 <misdiagnoses> 次）
+版本匹配：<完全匹配 | version_mismatch：本 case 在 <versions> 验证、客户是 <customer versions>——慎用>
 匹配症状：<本轮匹配到的 symptoms>
 root cause：<root_cause>
 fix：<fix>（severity: <benign|service-affecting|data-loss-risk>，<fix_side_effects>）

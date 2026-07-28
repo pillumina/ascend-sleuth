@@ -7,7 +7,8 @@
 > 你不访问任何环境。所有信息（日志、版本、报错、环境变量值）由工程师从客户那提供。信息不够时，明确提示需要向客户要什么。case 里的 `command` 是“要确认的检查”——对照已提供信息判断，或让客户跑后贴回，不是你执行 pip/env/grep。
 
 ```
-必收（都从客户那要来）：错误信息、HCCL_*/ASCEND_*/NPU_* 环境变量的值、框架版本、硬件平台（A2/A3/A5）
+必收（都从客户那要来）：错误信息、HCCL_*/ASCEND_*/NPU_* 环境变量的值、版本组合
+  （引擎版本 + CANN 版本 + HDK/驱动版本 + 架构 A2/A3/A5）
 框架：从提供的信息/报错判断（日志里 mindspeed/vllm 字样等）；判断不了就问工程师
   “客户跑的什么框架”——不要跑 pip list（那是你本地环境，跟客户无关）
 ```
@@ -67,6 +68,7 @@ trace 记：
 - 比对 `expected`
 - mismatch 且有 `fix_on_mismatch` → 提示 fix（**先看 severity**）
 - mismatch 且无 `fix_on_mismatch` → 该 case 不匹配，标 `excluded_cases`，试下一个
+- **版本软匹配**：把候选 case 的 `compat`（framework/cann/hdk，**填了的维度**）逐维对照客户版本组合——任一维不匹配 → 标 `version_mismatch`、confidence 临时下调，**case 仍是候选**（不硬排除）；没填的维度跳过
 
 **severity 闸门**（命中后）：
 - `benign` → 给 fix
