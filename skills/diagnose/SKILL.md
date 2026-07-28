@@ -30,10 +30,14 @@ disable-model-invocation: true
 
 ## 流程（核心循环详见 references/diagnosis-procedure.md）
 
-1. **收集症状 + 检测框架**
-   - 错误信息、`HCCL_*`/`ASCEND_*`/`NPU_*` 环境变量、框架版本、硬件平台
-   - `pip list | grep -i 'mindspeed|vllm|sglang|verl'` 检测框架
-   - **主动裁剪日志**：只贴失败 rank + 报错栈尾。绝不灌全量 profiler——诊断 session 的 context 八成是日志，全量灌进来会滑出 smart zone（~120K token 推理最锐利），推理质量暴跌
+> **执行模型**：你不访问任何环境。所有信息——日志、版本、报错、环境变量——都由工程师从客户那提供（粘贴进来）。你的主动角色是**信息不够时，明确提示工程师需要向客户要什么**。case 里的 `command` 是“要确认的检查”：对照已提供的信息判断，或让客户跑后把输出贴回来——不是你直接执行 `pip`/`env`/`grep`。
+>
+> **续接**：若存在未完成的 `diagnosis_state.yaml`，先问“上次有个诊断没做完，要 `/skill:resume-diagnosis` 续接吗？”——别让工程师自己记着跑 resume。
+
+1. **收集症状 + 确认框架**（全部来自工程师提供的信息）
+   - 错误信息、`HCCL_*`/`ASCEND_*`/`NPU_*` 环境变量值、框架版本、硬件平台（A2/A3/A5）——都从客户那要来
+   - **框架从提供的信息/报错判断**（日志里 mindspeed/vllm 字样等）；判断不了就直接问工程师“客户跑的什么框架”，**不要跑 `pip list`**（那是你本地环境，跟客户无关）
+   - **主动裁剪日志**：让工程师只贴失败 rank + 报错栈尾，绝不灌全量 profiler——诊断 session 的 context 八成是日志，全量灌进来会滑出 smart zone（~120K token 推理最锐利），推理质量暴跌
 
 2. **分类 → 加载 `triage-tree.yaml`（Tier 1）**
    - 症状匹配分支 → 路由到 namespace（先 `training|inference/<framework>/`，再 `common/`）
@@ -42,14 +46,14 @@ disable-model-invocation: true
    - 框架未检测到 → 只搜 `common/`；无法分类 → 直接 Tier 3
 
 3. **两阶段加载 Tier 2**
-   - **阶段一**：加载命中 namespace 的索引（`id/title/symptoms/quickly_check/category/confidence`），跑 `quickly_check`（primary→fallback）过滤候选 ≤5
+   - **阶段一**：加载命中 namespace 的索引（`id/title/symptoms/quickly_check/category/confidence`），用 `quickly_check`（primary→fallback）**对照已提供的信息**过滤候选 ≤5；检查项缺信息时，记下要向客户补要什么
    - **空库提示（冷启动）**：若命中 namespace 为空（还没 case），**不要静默退化**——告诉用户“当前 `knowledge/<ns>/` 还没有验证过的 case，你可以：①继续深度排查（步骤 5）②诊断完跑 `/skill:to-postmortem` 沉淀成第一条 case ③转人工”。别让空库的体感是“这玩意啥也不会”。
    - primary 不匹配但 fallback 匹配 → 仍进验证，标记 `low_confidence`
    - **category 决定 quickly_check 形态**：interrupt 用 grep 错误签名、precision 用数值阈值（`loss>1e3`、`has_nan`）、performance 用 profiler 指标（`comm_ratio>0.4`）——别混用
    - **阶段二**：全量加载候选，按 `confidence.score` **降序**进入验证
 
 4. **验证 diagnosis checks**
-   - 顺序执行候选 case 的 `diagnosis` 步骤，**不跳步**；mismatch 且有 `fix_on_mismatch` → 提示 fix（**先看 severity**，见下）
+   - 顺序验证候选 case 的 `diagnosis` 检查项（**对照已提供的信息**，不跳步）；某步缺信息 → 提示工程师向客户要（或让客户跑该 command 贴回输出）；mismatch 且有 `fix_on_mismatch` → 提示 fix（**先看 severity**，见下）
    - 命中 → 输出 root cause + fix，进入步骤 6
    - 所有候选未命中 → 深度排查（步骤 5）
 

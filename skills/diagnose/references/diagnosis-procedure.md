@@ -2,13 +2,14 @@
 
 `/diagnose` 的 SKILL.md 写主干，这里展开每步的判断细节。agent 在执行复杂分支时按需加载本文件。
 
-## 步骤 1：收集症状 + 检测框架
+## 步骤 1：收集症状 + 确认框架（全部来自工程师提供的信息）
+
+> 你不访问任何环境。所有信息（日志、版本、报错、环境变量值）由工程师从客户那提供。信息不够时，明确提示需要向客户要什么。case 里的 `command` 是“要确认的检查”——对照已提供信息判断，或让客户跑后贴回，不是你执行 pip/env/grep。
 
 ```
-必收：错误信息、HCCL_*/ASCEND_*/NPU_* 环境变量、框架版本、硬件平台（A2/A3/A5）
-框架检测：
-  pip list | grep -i 'mindspeed|vllm|sglang|verl'
-  env | grep -i 'MINDSPEED|VLLM|SGLANG'
+必收（都从客户那要来）：错误信息、HCCL_*/ASCEND_*/NPU_* 环境变量的值、框架版本、硬件平台（A2/A3/A5）
+框架：从提供的信息/报错判断（日志里 mindspeed/vllm 字样等）；判断不了就问工程师
+  “客户跑的什么框架”——不要跑 pip list（那是你本地环境，跟客户无关）
 ```
 
 **日志裁剪（硬要求）**：诊断 session 的 context 八成是日志/profiler，不是 KB。一份 128 卡全量 profiler 灌进来直接滑出 smart zone（~120K token 推理最锐利），推理质量暴跌。裁剪规则：
@@ -61,8 +62,8 @@ trace 记：
 
 ## 步骤 4：验证 diagnosis checks
 
-顺序执行候选 case 的 `diagnosis` 步骤，**不跳步**。每步：
-- 跑 `command_template`（按 `rank_selector` 展开）
+顺序验证候选 case 的 `diagnosis` 检查项（**对照已提供的信息**，不跳步）。每步：
+- 把 `command_template`（按 `rank_selector` 指的 rank）当作“要确认的检查”——在已提供的日志/输出里找；没有就让客户跑这条 command 并贴回输出
 - 比对 `expected`
 - mismatch 且有 `fix_on_mismatch` → 提示 fix（**先看 severity**）
 - mismatch 且无 `fix_on_mismatch` → 该 case 不匹配，标 `excluded_cases`，试下一个

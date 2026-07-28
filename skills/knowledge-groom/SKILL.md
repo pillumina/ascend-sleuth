@@ -3,7 +3,7 @@ name: knowledge-groom
 description: >
   昇腾知识库的周期性维护引擎。扫 postmortems/ 新增记录（含 agent 自起草的候选 case），
   结构化升格到 Tier 2、校验 references 完整性、检测值重复、重算 confidence_score、
-  软退休过期 case。建议每周运行。产出 PR 交领域 owner 审。
+  软退休过期 case。建议每周运行。产出**变更摘要 + 待审项**交领域 owner 审；提交由 owner 自己来（不自动开 PR）。
 disable-model-invocation: true
 ---
 
@@ -15,10 +15,10 @@ disable-model-invocation: true
 
 手动运行，建议每周一次（连续四周无新 postmortem 则自动切双周）。
 
-## 流程（一次 groom 产出一个 PR）
+## 流程（一次 groom 产出一个变更摘要）
 
 1. **升格**：扫 `postmortems/` 未处理记录（含 agent 自起草的候选 case），结构化 + 语义校验 → YAML → 追加 `knowledge/<ns>/`。语义校验失败标 `needs-structurer-review`，语义不明标 `needs-human-review`。
-2. **引用完整性校验**：扫所有 case 的 `references`，检查指向真实存在的文件和锚点。悬挂引用进 PR 报告（自演化系统的"坏账"，不校验会静默累积）。
+2. **引用完整性校验**:扫所有 case 的 `references`,检查指向真实存在的文件和锚点。悬挂引用进变更摘要（自演化系统的“坏账”，不校验会静默累积）。
 3. **值重复检测**：框架 case 的 `expected`/`fix_on_mismatch` 是否硬编码了 `common/` 权威记录拥有的值？是 → 标 must-fix，要求改成引用。
 4. **置信度重算**：从 `hits`/`misdiagnoses`/`last_hit` 重算每条 case 的 `confidence.score`（按时间衰减）。
 5. **软退休**：区分两种"未命中"——
@@ -29,7 +29,7 @@ disable-model-invocation: true
 6. **namespace 拆分建议**：某 namespace 超 30 条 → 报告内容分布 + 拆分建议（首选拆分轴是 **category**——interrupt/precision/performance）。人确认后才建子目录。
 7. **同 namespace 合并建议**：相似 case 对自动提示。
 
-## PR 里的高风险变更标记（强制深审，不走 30 秒快通道）
+## 变更摘要里的高风险变更标记（强制深审，不走 30 秒快通道）
 
 - 新建 `common/` 权威记录
 - 改 `expected` 值
@@ -37,7 +37,7 @@ disable-model-invocation: true
 - 改 `compat` 区间
 - `confidence.score` 被手动覆盖
 
-高风险变更要求两个 owner 签字（领域 owner + 体系维护人）。PR 在 session 内**随机排序**审，对抗疲劳——一个 session 审 30 条 PR，第 30 条得到的 scrutiny 远少于第 1 条，随机化缓解这个偏差。
+高风险变更要求两个 owner 签字（领域 owner + 体系维护人）。变更在 session 内**随机排序**审，对抗疲劳——一个 session 审 30 条变更，第 30 条得到的 scrutiny 远少于第 1 条，随机化缓解这个偏差。
 
 ## 信号 → 动作（演化信号表）
 

@@ -71,6 +71,8 @@ agent 读取文件，后续流程同内联。
 - `postmortem.md` → `postmortems/YYYY-QN/`
 - YAML 草稿 → 随 postmortem 一起，等 `/skill:knowledge-groom` 升格到 `knowledge/<ns>/`
 
+**生成后明确告诉用户存哪了**——报出具体路径（如 `postmortems/2026-Q4/custA-ep-hang.md`）和 YAML 草稿位置，别让工程师去找自己的产出。
+
 ## 为什么是这个体系的核心
 
 团队不能统一 agent 时，知识注入入口必须与诊断工具解耦。`/to-postmortem` 是这个解耦的实现——任何工具的对话都能沉淀。别期望团队成员额外写文档，agent 提取、人审批，成本从 20 分钟降到 30 秒。
