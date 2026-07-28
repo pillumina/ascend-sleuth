@@ -53,6 +53,7 @@ cases:
 
     severity: service-affecting          # benign | service-affecting | data-loss-risk（§9.2 闸门）
     fix_side_effects: [requires-restart] # 应用此 fix 的代价；agent 要提示人协调重启窗口
+    fix_type: env-var                   # env-var | config-change | code-patch | pending-investigation
 
     next_on_fail: "MSLLM-EP-HANG-003"    # 可选：本 case 没解决时下一个试哪个
 

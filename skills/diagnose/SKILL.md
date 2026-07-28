@@ -81,7 +81,8 @@ disable-model-invocation: true
 版本匹配：<完全匹配 | version_mismatch：本 case 在 <versions> 验证、客户是 <customer versions>——慎用>
 匹配症状：<本轮匹配到的 symptoms>
 root cause：<root_cause>
-fix：<fix>（severity: <benign|service-affecting|data-loss-risk>，<fix_side_effects>）
+fix：<fix>（fix_type: <env-var|config-change|code-patch|pending-investigation>，severity: <benign|service-affecting|data-loss-risk>，<fix_side_effects>）
+  → fix_type 决定呈现：env-var/config-change 直接给可执行命令；code-patch 给改动文件+diff 要点（不可直接执行）；pending-investigation 给排查建议
 rollback：<rollback>
 应用后检查：<怎么验证 fix 生效>
 ```
