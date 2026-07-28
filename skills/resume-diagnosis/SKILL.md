@@ -1,7 +1,7 @@
 ---
 name: resume-diagnosis
 description: >
-  续接一个被打断的昇腾诊断 session。读 diagnosis_state.yaml（含 trace），
+  续接一个被打断的昇腾诊断 session。读活跃的 diagnosis_state-*.yaml（每个并发诊断一个文件，含 trace），
   复述上次停在哪一步、排除了哪些 case、当前 active case，等人贴回命令输出后继续。
   诊断被会议/上下文 compact 打断后恢复用。
 disable-model-invocation: true
@@ -13,7 +13,7 @@ disable-model-invocation: true
 
 ## 流程
 
-1. 读 `diagnosis_state.yaml`（模板见 `diagnosis_state.yaml.example`，含 `trace` 数组）
+1. 读活跃的 `diagnosis_state-*.yaml`（每个并发诊断一个文件；模板见 `diagnosis_state.yaml.example`，含 `trace` 数组）。**多个时列出让工程师选续接哪个**
 2. 复述：
    - session_id、status、current_step
    - 已排除的 case（`excluded_cases`）

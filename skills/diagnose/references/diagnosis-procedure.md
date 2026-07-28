@@ -51,7 +51,7 @@
 
 拿 interrupt 的 grep 思路建 precision case，匹配不上。
 
-**阶段二（全量）**：候选 ≤5 条，全量加载 body，按 `confidence.score` **降序**验证（最可靠的先试）。
+**阶段二（全量）**：候选 ≤5 条，全量加载 body，按 `confidence.score` **降序**验证（最可靠的先试）。**多条候选时明示**：“匹配到 N 条，先验证最可能的 `<id>`（confidence `<score>`）”，工程师可说“跳过这条试下一条”。
 
 trace 记：
 ```yaml
@@ -75,29 +75,29 @@ trace 记：
 
 **串联保护**（误诊保护）：连续两个 case 都 fix 了但没解决 → 强制转人工，不试第三个。
 
-命中 → 步骤 5。所有候选未命中 → 深度排查。
+**命中时的输出**（结构化、可追溯，别只甩 fix）：报出 `<CASE-ID>` + confidence（含 hits/misdiagnoses）+ 匹配的症状 + root cause + fix（severity + side_effects）+ rollback + 应用后检查。confidence 校准：`>0.8` 高可信直接应用、`0.5–0.8` 中（备 plan B）、`<0.5` 仅提示。
+
+命中 → 步骤 6（产出）。所有候选未命中 → 步骤 5（深度排查）。
 
 ## 步骤 5：深度排查（Tier 2 未命中）
 
-按 category 选默认 Script（见 script-integration.md）：
-- interrupt → 日志分析 / core dump
-- precision → `mem-analyze`（tensor 对比基线）
-- performance → `ascend-profile-analyze` / `bench-run`
+**若 Script 工具已接入**（见 script-integration.md），按 category 用：interrupt→日志/core dump、precision→`mem-analyze`、performance→`ascend-profile-analyze`/`bench-run`。**当前骨架阶段多半还没接**——别假装能调，诚实告诉工程师。
 
-Tier 3 关键词检索：
+Tier 3 关键词检索（骨架阶段真正能用的兜底）：
 ```bash
 rg -l '<症状关键词>' postmortems/    # top-3，读片段
 ```
 
-人 + agent 联合分析。
+都没有 → 诚实说“知识库没覆盖，需手动排查；定位完用 `/skill:to-postmortem` 沉淀”。人 + agent 联合分析。
 
 ## 步骤 6：产出
 
 - `resolution: resolved | escalated | unknown`
-- 写 `diagnosis_state.yaml`（含完整 trace），case resolved/escalated 后移入 `postmortems/history/`
+- 写 `diagnosis_state-<session_id>.yaml`（每并发诊断一文件，含完整 trace），case resolved/escalated 后移入 `postmortems/history/`
 - **Tier-2 命中**：常规 postmortem 草稿
 - **Tier-2 未命中但最终解决**：postmortem 含一段 agent 起草的候选 case（标 `confidence.score` 初始低值），交 groom 验证。人的角色从“结构化”上移到“验证草案”。
-- **解决后主动建议沉淀**：尤其 Tier-2 未命中的新问题——主动问“要把这次沉淀成 case 吗？”并建议 `/skill:to-postmortem`。这是知识库增长的主要来源，别让工程师忘了沉淀。
+- **结果反馈闭环（闭合学习环，关键）**：给完 fix 后，**等工程师应用并回来报告结果**——问“应用后解决了吗？（解决 / 没解决 / 部分解决）”。解决 → 该 case `hits += 1`；没解决 → `misdiagnoses += 1`、更新 `last_hit`。不问这步，confidence 永远是初始值、学习机制空转。
+- **解决后主动建议沉淀**：尤其 Tier-2 未命中的新问题——主动问“要把这次沉淀成 case 吗？”并建议 `/skill:to-postmortem`。
 
 ## 误诊归因（每次误诊必做）
 

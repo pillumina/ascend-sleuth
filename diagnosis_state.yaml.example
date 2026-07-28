@@ -1,4 +1,5 @@
 # diagnosis_state.yaml —— 诊断状态文件 + 过程 trace 模板
+# 实际文件按 session 命名：diagnosis_state-<session_id>.yaml（每个并发诊断一个）
 # /diagnose 每个 step 后更新；/resume-diagnosis 读取续接；误诊归因读 trace（§9.2 第四层）
 
 session_id: "2026-07-09-ep-hang-a5"

@@ -17,7 +17,7 @@ cases:
     confidence:                          # groom 计算，非人设定（§5.5）
       hits: 18
       misdiagnoses: 1
-      score: 0.86                        # hits/(hits+misdiagnoses)，按 last_hit 衰减
+      score: 0.86                        # hits/(hits+misdiagnoses)，按 last_hit 衰减；校准：>0.8 高、0.5-0.8 中、<0.5 仅提示
       last_hit: "2026-W28"
 
     symptoms:

@@ -32,10 +32,11 @@ disable-model-invocation: true
 
 > **执行模型**：你不访问任何环境。所有信息——日志、版本、报错、环境变量——都由工程师从客户那提供（粘贴进来）。你的主动角色是**信息不够时，明确提示工程师需要向客户要什么**。case 里的 `command` 是“要确认的检查”：对照已提供的信息判断，或让客户跑后把输出贴回来——不是你直接执行 `pip`/`env`/`grep`。
 >
-> **续接**：若存在未完成的 `diagnosis_state.yaml`，先问“上次有个诊断没做完，要 `/skill:resume-diagnosis` 续接吗？”——别让工程师自己记着跑 resume。
+> **续接**：若存在未完成的 `diagnosis_state-*.yaml`（每个并发诊断一个文件），先问“有未完成的诊断，要 `/skill:resume-diagnosis` 续接吗？”——别让工程师自己记着跑 resume。
 
 1. **收集症状 + 确认框架**（全部来自工程师提供的信息）
    - 错误信息、`HCCL_*`/`ASCEND_*`/`NPU_*` 环境变量值、框架版本、硬件平台（A2/A3/A5）——都从客户那要来
+   - **信息不全就主动问**：若工程师没说清，主动问三项——①症状（什么报错/什么时候挂）②客户跑的框架 ③日志/profiler 在哪（贴相关 rank + 栈尾）。别干等
    - **框架从提供的信息/报错判断**（日志里 mindspeed/vllm 字样等）；判断不了就直接问工程师“客户跑的什么框架”，**不要跑 `pip list`**（那是你本地环境，跟客户无关）
    - **主动裁剪日志**：让工程师只贴失败 rank + 报错栈尾，绝不灌全量 profiler——诊断 session 的 context 八成是日志，全量灌进来会滑出 smart zone（~120K token 推理最锐利），推理质量暴跌
 
@@ -50,7 +51,7 @@ disable-model-invocation: true
    - **空库提示（冷启动）**：若命中 namespace 为空（还没 case），**不要静默退化**——告诉用户“当前 `knowledge/<ns>/` 还没有验证过的 case，你可以：①继续深度排查（步骤 5）②诊断完跑 `/skill:to-postmortem` 沉淀成第一条 case ③转人工”。别让空库的体感是“这玩意啥也不会”。
    - primary 不匹配但 fallback 匹配 → 仍进验证，标记 `low_confidence`
    - **category 决定 quickly_check 形态**：interrupt 用 grep 错误签名、precision 用数值阈值（`loss>1e3`、`has_nan`）、performance 用 profiler 指标（`comm_ratio>0.4`）——别混用
-   - **阶段二**：全量加载候选，按 `confidence.score` **降序**进入验证
+   - **阶段二**：全量加载候选，按 `confidence.score` **降序**进入验证。**多条候选时明示**：“匹配到 N 条候选，先验证最可能的 `<id>`（confidence `<score>`）”，让工程师有数；工程师可说“跳过这条试下一条”
 
 4. **验证 diagnosis checks**
    - 顺序验证候选 case 的 `diagnosis` 检查项（**对照已提供的信息**，不跳步）；某步缺信息 → 提示工程师向客户要（或让客户跑该 command 贴回输出）；mismatch 且有 `fix_on_mismatch` → 提示 fix（**先看 severity**，见下）
@@ -58,16 +59,32 @@ disable-model-invocation: true
    - 所有候选未命中 → 深度排查（步骤 5）
 
 5. **深度排查（Tier 2 未命中）**
-   - 按 category 选默认 Script（见 references/script-integration.md）：interrupt→日志/core dump、precision→`mem-analyze`、performance→`ascend-profile-analyze`/`bench-run`
-   - Tier 3 关键词检索 `postmortems/`（`rg -l '<keyword>' postmortems/`，top-3）
-   - 人 + agent 联合分析
+   - **若 Script 工具已接入**（见 references/script-integration.md），按 category 用：interrupt→日志/core dump、precision→`mem-analyze`、performance→`ascend-profile-analyze`/`bench-run`。**当前骨架阶段这些 Script 多半还没接**——别假装能调，诚实告诉工程师。
+   - Tier 3 关键词检索 `postmortems/`（`rg -l '<keyword>' postmortems/`，top-3 读片段）——这是骨架阶段真正能用的兜底
+   - 都没有 → 诚实说“知识库没覆盖这个问题，需手动排查；定位完用 `/skill:to-postmortem` 沉淀，下次就能命中”。人 + agent 联合分析
 
 6. **产出**
    - `resolution: resolved | escalated | unknown`
    - **Tier-2 命中**：常规 postmortem 草稿
    - **Tier-2 未命中但最终解决**：postmortem 含一段你起草的**候选 case**（quickly_check + diagnosis + confidence 低），交 `/skill:knowledge-groom` 验证
-   - 完整 trace 随 `diagnosis_state.yaml` 留存（模板见 `diagnosis_state.yaml.example`）
-   - **解决后主动建议沉淀**：尤其 Tier-2 未命中的新问题——主动问“要把这次沉淀成 case 吗？”并建议 `/skill:to-postmortem`。这是知识库增长的主要来源，别让工程师忘了沉淀。
+   - 完整 trace 随 `diagnosis_state-<session_id>.yaml` 留存（每并发诊断一文件；模板见 `diagnosis_state.yaml.example`）
+   - **结果反馈闭环（闭合学习环，关键）**：给完 fix 后，**等工程师应用并回来报告结果**——问“应用后解决了吗？（解决 / 没解决 / 部分解决）”。结果回写该 case 的 confidence：解决 → `hits += 1`；没解决 → `misdiagnoses += 1`、更新 `last_hit`。**不问这步，confidence/误诊率永远是初始值，整个学习机制空转。**
+   - **解决后主动建议沉淀**：尤其 Tier-2 未命中的新问题——主动问“要把这次沉淀成 case 吗？”并建议 `/skill:to-postmortem`。
+
+## 命中时的输出格式
+
+命中一条 case 后，给工程师**结构化、可追溯**的输出（别只甩一句 fix）：
+
+```
+命中 <CASE-ID>（confidence <score>，历史命中 <hits> 次 / 误诊 <misdiagnoses> 次）
+匹配症状：<本轮匹配到的 symptoms>
+root cause：<root_cause>
+fix：<fix>（severity: <benign|service-affecting|data-loss-risk>，<fix_side_effects>）
+rollback：<rollback>
+应用后检查：<怎么验证 fix 生效>
+```
+
+**confidence 校准**（给工程师判断该多信）：`>0.8` 高可信，直接应用；`0.5–0.8` 中可信，应用同时准备 plan B；`<0.5` 仅作提示，重点靠手动排查。把标尺讲出来，别让工程师猜 0.86 是高还是中等。
 
 ## severity 闸门（命中后先看这个）
 
@@ -81,7 +98,7 @@ disable-model-invocation: true
 
 ## 每步必写 trace（硬要求）
 
-每个 step 后往 `diagnosis_state.yaml` 的 `trace` 数组追加一条：
+每个 step 后往 `diagnosis_state-<session_id>.yaml`（每个并发诊断一个独立文件，按 session_id 区分）的 `trace` 数组追加一条：
 ```yaml
 - {step: N, action: triage|load_index|quickly_check|load_full|run_check|hit|miss, ...}
 ```
