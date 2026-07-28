@@ -1,0 +1,24 @@
+# eval/golden/example.fixture.yaml
+# 构造的示例 fixture（公开仓用——演示格式，不含真实客户数据）
+# 真实 fixture 从已解决 postmortem 衍生（脱敏后），放团队私有仓的 eval/golden/
+#
+# 用法：改 skill 前/后各跑一遍 /diagnose（replay 模式：喂 input、不交互），
+# 对照 expected。不能让原来 pass 的变 fail = 回归。详见 docs/eval.md
+
+case_id: MSLLM-EP-HANG-001          # 对应 knowledge/ 里的 case
+
+input:
+  symptoms: "all_to_all_single hangs at step ~3000; logs show all_to_all timeout"
+  framework: mindspeed-llm
+  platform: A5-910C
+  world_size: 128
+  log_snippet: |
+    [构造示例——真实 fixture 这里放脱敏后的报错栈尾]
+    step 3012: all_to_all_single op timed out
+    HCCL: all_to_all timeout, world_size=128
+
+expected:
+  namespace: training/mindspeed-llm/
+  case_id: MSLLM-EP-HANG-001
+  root_cause_contains: "HCCL buffer"
+  fix_contains: "HCCL_BUFFSIZE=4194304"
