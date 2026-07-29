@@ -42,7 +42,10 @@ agent 读取文件，后续流程同内联。
 
 ## 流程
 
-1. **提取**：从输入中抽出症状、执行的命令和输出、排除的假设、root cause、fix
+1. **提取**：从输入中抽出——
+   - 症状、执行的命令和输出、排除的假设、root cause、fix
+   - **级联噪声**：文档中标注了“次级现象”“不需要单独分析”“误导”的症状——提取为 case 的忽略项（diagnosis 里加一条“忽略 X 级联报错，都是根因后的 noise”）。昇腾调试里极常见——一个根因级联出几十条 secondary error
+   - **code-patch 的 file:line**：如果 fix 涉及代码改动，提取精确的 file:line（如 `conn.py:31-41`）。code-patch 的 file:line = env-var fix 的 `export X=Y`——是 fix 的可执行部分
 2. **命名空间建议**：agent 检测或推断框架，给选项，人输入数字确认（约 5 秒）：
    ```
    [1] training/mindspeed-llm/   （检测到 mindspeed-llm）
@@ -54,6 +57,7 @@ agent 读取文件，后续流程同内联。
    - 这个确认本身就是质量检查：人在 `mindspeed-llm` 和 `common` 间选，本质在自问“这问题是框架特有的还是通用的”
    - **批量模式**（多个文件/目录输入时）：命名空间确认改为一次批量——agent 按检测到的框架分组报告（如“12 个 mindspeed-llm、5 个 verl、3 个 common”），人一次确认或调整。语义校验仍逐个跑，失败的标 `needs-structurer-review`。批量模式不逐个 30 秒确认，改成抽审。
 3. **输出结构化 YAML 草稿 + postmortem.md**：
+   - **postmortem 策略**：源是混乱对话/手工笔记 → 写完整 postmortem.md（提炼+结构化）；**源已经是结构化文档**（调查报告/issue/wiki）→ postmortem.md 只写指针（`# 原文见：<source-url/path>`），不重写。YAML case 草稿两种情况都照常产出。
    - 标 `confidence: high | medium | low`
    - 标 `novelty: new_pattern | variant | covered`
    - 标 `category: interrupt | precision | performance`（按症状判断——interrupt 是 hang/crash/OOM、precision 是 NaN/数值发散、performance 是吞吐/延迟）
@@ -68,8 +72,8 @@ agent 读取文件，后续流程同内联。
 
 ## 产出落点
 
-- `postmortem.md` → `postmortems/YYYY-QN/`
-- YAML 草稿 → 随 postmortem 一起，等 `/skill:knowledge-groom` 升格到 `knowledge/<ns>/`
+- `postmortems/YYYY-QN/<case-id>.md`（postmortem 或指针）
+- `postmortems/YYYY-QN/<case-id>.case.yaml`（YAML 草稿，groom 升格时移到 `knowledge/<ns>/`）
 
 **生成后明确告诉用户存哪了**——报出具体路径（如 `postmortems/2026-Q4/custA-ep-hang.md`）和 YAML 草稿位置，别让工程师去找自己的产出。
 

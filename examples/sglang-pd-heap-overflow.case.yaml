@@ -21,7 +21,7 @@ cases:
     confidence:                          # groom 计算，非人设定（§5.5）
       hits: 0
       misdiagnoses: 0
-      score: 0.0                         # 新 case，初始低值；校准：>0.8 高、0.5-0.8 中、<0.5 仅提示
+      score: 0.6                         # 初始值由 groom 按 confidence=high 设（5 天详查）；校准：>0.8 高、0.5-0.8 中、<0.5 仅提示
       last_hit: ""
 
     symptoms:
@@ -55,6 +55,10 @@ cases:
       - step: 3
         check: "排除硬件：HCCL all-to-all + ascend-dmi P2P 通过？"
         expected: "都通过→不是硬件故障"
+      - step: 4
+        check: "忽略 rtMemcpy ErrCode=107030 级联报错"
+        note: "所有 rtMemcpy 都是根因后的次级现象——根因在 halShmemCreateHandle 的 heap 校验，
+               不是传输层。不要追 rtMemcpy 的调用链"
 
     severity: service-affecting          # benign | service-affecting | data-loss-risk（§9.2 闸门）
     fix_side_effects: [requires-code-change, non-deterministic-trigger]
@@ -68,7 +72,7 @@ cases:
 
     fix: >
       三个选项：
-      (1) 规避（SGLang 侧）：conn.py 拆 batch_register <=4 层/批，~5 行 Python。
-      (2) 修复1（memfabric，推荐）：去掉 CombineMemories，~3 行——前提驱动允许 overlap。
-      (3) 修复2（memfabric）：合并后超 MAX_SHM_SIZE(4GB) 沿 2MB 边界拆分，~20 行 C++。
+      (1) 规避（SGLang 侧）：conn.py:31-41 拆 batch_register <=4 层/批，~5 行 Python。
+      (2) 修复1（memfabric，推荐）：smem_trans_entry.cpp:394-435 去掉 CombineMemories 调用，~3 行——前提驱动允许 overlap。
+      (3) 修复2（memfabric）：smem_trans_entry.cpp:394-435 合并后超 MAX_SHM_SIZE(4GB) 沿 2MB 边界拆分，~20 行 C++。
     rollback: "revert conn.py / smem_trans_entry.cpp"
