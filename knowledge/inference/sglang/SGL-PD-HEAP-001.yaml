@@ -1,0 +1,78 @@
+# SGL-PD-HEAP-001 —— PD 分离偶发失败：CombineMemories 合并 K+V 超过 heap_size
+# 来源：https://github.com/pillumina/issue-investigation/.../2026-07-28_sglang_pd_sdma_npu4_ipc_open_failure.md
+# fix 跟踪：gitcode:Ascend/memfabric_hybrid/issues/347
+# 手工播种（§12 方案一），跳过 groom 草稿阶段直接进 Tier 2
+
+cases:
+  - id: SGL-PD-HEAP-001
+    title: "PD 分离偶发失败：CombineMemories 合并 K+V 超过 heap_size 致 halShmemCreateHandle 拒绝"
+
+    category: interrupt
+    tags: [pd-separation, kv-cache-transfer, sdma, combinememories, heap-overflow, non-deterministic]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: sglang
+        ranges: ["<=0.5.10"]
+      - framework: memfabric_hybrid
+        ranges: ["<=1.0.5"]
+
+    investigation_quality: high         # to-postmortem 标的调查质量，groom 据此设初始 score
+    confidence:                          # groom 维护
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                         # 初始值（groom 按 investigation_quality=high 设）；校准：>0.8 高、0.5-0.8 中、<0.5 仅提示
+      last_hit: ""
+
+    symptoms:
+      - "PD 分离 --disaggregation-transfer-backend ascend，KV cache 跨 NPU 传输偶发失败"
+      - "decode 侧日志：halShmemCreateHandle → 'Size is bad' → size > heap_size → Create_para_check fail"
+      - "大模型(GLM W8A8 ~17GB KV)偶发失败、小模型(Qwen3-4B)成功"
+      - "非必现：page_num ±1（torch.npu.mem_get_info 整数除法精度）决定 K end 是否等于 V base"
+
+    references:
+      - "gitcode:Ascend/memfabric_hybrid/issues/347"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'Size is bad.*heap_size' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*Size is bad.*heap_size"
+      fallback:
+        command_template: "grep -E 'halShmemCreateHandle.*Create_para_check fail|rtIpcOpenMemory.*ErrCode=507899' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(Create_para_check|ErrCode=507899)"
+
+    diagnosis:
+      - step: 1
+        check: "客户的模型 KV cache 多大？"
+        expected: "大模型（~15GB+），如 GLM W8A8"
+        note: "小模型合并后远未触及 heap 上限→不触发"
+      - step: 2
+        check: "是否偶发（有时成功有时失败）？"
+        expected: "偶发——page_num ±1 导致 K end 是否等于 V base"
+        note: "非必现是本 case 的特征"
+      - step: 3
+        check: "排除硬件：HCCL all-to-all + ascend-dmi P2P 通过？"
+        expected: "都通过→不是硬件故障"
+      - step: 4
+        check: "忽略 rtMemcpy ErrCode=107030 级联报错"
+        note: "所有 rtMemcpy 都是根因后的次级现象——根因在 halShmemCreateHandle 的 heap 校验，
+               不是传输层。不要追 rtMemcpy 的调用链"
+
+    severity: service-affecting
+    fix_side_effects: [requires-code-change, non-deterministic-trigger]
+    fix_type: code-patch
+
+    root_cause: >
+      CombineMemories 将物理相邻的 K 半区和 V 半区合并为单块。当 K end 恰好等于 V base
+      （由 page_num ±1 控制，源于 torch.npu.mem_get_info 整数除法的浮点精度）时，
+      合并触发。合并后 size(19.13 GiB) 超过 K 段所属 heap_size(17.0 GiB)，
+      驱动 halShmemCreateHandle 校验拒绝，decode 进程崩溃。
+
+    fix: >
+      三个选项：
+      (1) 规避（SGLang 侧）：conn.py:31-41 拆 batch_register <=4 层/批，~5 行 Python。
+      (2) 修复1（memfabric，推荐）：smem_trans_entry.cpp:394-435 去掉 CombineMemories 调用，~3 行——前提驱动允许 overlap。
+      (3) 修复2（memfabric）：smem_trans_entry.cpp:394-435 合并后超 MAX_SHM_SIZE(4GB) 沿 2MB 边界拆分，~20 行 C++。
+    rollback: "revert conn.py / smem_trans_entry.cpp"

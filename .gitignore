@@ -1,22 +1,14 @@
 # ============================================================
-# 客户数据红线（公私分离，README §部署）
-# 这个仓库是【方法论 + 脚手架】，可公开。
-# knowledge/ 和 postmortems/ 的【真实内容】含客户日志/集群信息，绝不进公开仓库。
-# 真实案例应放团队私有 repo。
+# 运行时状态文件（含 trace，可能含客户信息）
 # ============================================================
-
-# 真实诊断 case（.yaml）。保留 platforms/*.md 通用背景和 .gitkeep 目录占位。
-knowledge/training/**/*.yaml
-knowledge/inference/**/*.yaml
-knowledge/common/**/*.yaml
-knowledge/_archive/**/*.yaml
-
-# 真实 postmortem 记录（保留 .gitkeep）
-postmortems/**
-!postmortems/.gitkeep
-
-# 真实诊断状态文件（含客户 trace）；.example 是模板，保留
 diagnosis_state*.yaml
+
+# ============================================================
+# 注意：knowledge/ 和 postmortems/ 的 case 现在跟踪进仓库。
+# 新 case 进 KB 前必须脱敏（to-postmortem 的 redact 步骤）。
+# 如果某条 case 含不可公开的客户数据，用 scope: internal_only 标记
+# 并单独移到团队私有 repo。
+# ============================================================
 
 # ============================================================
 # 通用
