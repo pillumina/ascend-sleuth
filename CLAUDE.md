@@ -46,7 +46,7 @@ Version matching is **soft**: compat mismatch downgrades confidence but never ha
 
 ### Platform dispatch
 
-A2 (910A), A3 (910B), A5 (910C) differences are **field-level** within cases, not separate cases. A single case can have multiple `diagnosis` blocks keyed by `platforms`. Platform background knowledge in `knowledge/platforms/*.md`.
+A2 (910B), A3 (910C), A5 (950) differences are **field-level** within cases, not separate cases. A single case can have multiple `diagnosis` blocks keyed by `platforms`. Platform background knowledge in `knowledge/platforms/*.md`.
 
 Key platform facts:
 - A2: No `HCCL_BUFFSIZE`, no FP8 support. HCCL behavior radically different from A3/A5.

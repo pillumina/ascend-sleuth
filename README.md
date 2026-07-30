@@ -47,7 +47,7 @@ npx skills@latest add pillumina/ascend-sleuth -g -a pi -a claude-code \
 ```
 /skill:diagnose
 
-客户 A5 (910C) 训练在 step ~3000 hang，all_to_all timeout，world_size=128。
+客户 A5 (950) 训练在 step ~3000 hang，all_to_all timeout，world_size=128。
 框架 mindspeed-llm 2.5.0。报错栈尾：[粘贴相关 rank 的日志片段]
 ```
 

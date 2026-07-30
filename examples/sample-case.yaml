@@ -9,7 +9,7 @@ cases:
     category: interrupt                  # interrupt | precision | performance
     tags: [hang, ep, hccl]               # sub-type；收敛问题用 precision.convergence
 
-    platforms: ["A5-910C", "A3-910B"]    # 平台差异在 platforms/*.md
+    platforms: ["A5-950", "A3-910C"]    # 平台差异在 platforms/*.md
     compat:                              # 版本兼容（§5.5）——多维度，每维可选，只填真判别的
       - framework: mindspeed-llm
         ranges: [">=2.4.0,<2.7.0", ">=2.8.0"]   # 引擎版本，非单调（2.7 失效、2.8 恢复）

@@ -10,7 +10,7 @@ case_id: MSLLM-EP-HANG-001          # 对应 knowledge/ 里的 case
 input:
   symptoms: "all_to_all_single hangs at step ~3000; logs show all_to_all timeout"
   framework: mindspeed-llm
-  platform: A5-910C
+  platform: A5-950
   world_size: 128
   log_snippet: |
     [构造示例——真实 fixture 这里放脱敏后的报错栈尾]

@@ -8,14 +8,14 @@ agent 在加载 Tier 2 候选时，同时加载匹配平台的 `knowledge/platfo
 
 ```yaml
 diagnosis:
-  - platforms: ["A5-910C", "A3-910B"]
+  - platforms: ["A5-950", "A3-910C"]
     steps:
       - command_template: "env | grep HCCL_BUFFSIZE"
         expected: ">= 4194304"
         fix_on_mismatch: "export HCCL_BUFFSIZE=4194304"
         rollback: "unset HCCL_BUFFSIZE"
 
-  - platforms: ["A2-910A"]
+  - platforms: ["A2-910B"]
     steps:
       - command_template: "cat /proc/driver/npu/version"
         expected: ">= 23.0"
@@ -26,14 +26,14 @@ diagnosis:
 
 | 平台 | 芯片 | 关键差异 |
 |---|---|---|
-| A2 | 910A | HCCL 行为与 A3/A5 完全不同；无 `HCCL_BUFFSIZE`；FP8 不支持 |
-| A3 | 910B | HCCL 与 A5 近似；BF16 主力 |
-| A5 | 910C | FP8 精度问题只在 A5 出现；大规模 EP 通信瓶颈 |
+| A2 | 910B | HCCL 行为与 A3/A5 完全不同；无 `HCCL_BUFFSIZE`；FP8 不支持 |
+| A3 | 910C | HCCL 与 A5 近似；BF16 主力 |
+| A5 | 950 | FP8 精度问题只在 A5 出现；大规模 EP 通信瓶颈 |
 
 ## 检测当前平台
 
 ```bash
-npu-smi info | grep -i '910'    # 910A / 910B / 910C
+npu-smi info | grep -i '910\|950'    # 910B / 910C / 950
 ```
 
 检测结果填入 case 的 `platforms` 匹配逻辑。无平台字段的 case 视为全平台通用。
