@@ -81,6 +81,9 @@ agent 提取症状/根因 → 给命名空间建议（`[1] training/mindspeed-ll
 
 扫 `postmortems/` 新增记录 → 升格、校验 references、去重、重算置信度、软退休 → 产出变更摘要交 owner 审（提交由 owner 自己来，不自动开 PR）。
 
+![Architecture](docs/diagrams/ascend-sleuth.png)
+> 架构总览：诊断流水线、三层知识结构、平台分发矩阵、学习闭环。动画版见 [ascend-sleuth.gif](docs/diagrams/ascend-sleuth.gif)。
+
 ## 工作原理
 
 知识分三个层次，按需加载，控制上下文消耗：
