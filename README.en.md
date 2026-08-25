@@ -12,7 +12,7 @@ Pick the entry point for your role; consult the rest as needed:
 
 - **Support engineer (running diagnoses)**: read *Installation* and *Usage examples* — about ten minutes to your first run. If you want to know why the matching is trustworthy, follow with *How it works* and *Core design principles*.
 - **Knowledge base maintainer (weekly grooming)**: add *Daily workflow* and *Deployment modes*, then [docs/git-workflow.md](docs/git-workflow.md).
-- **Framework developer / evaluator**: read this document through, then [docs/evolution.md](docs/evolution.md) (the self-evolution design — how the system improves with use and why it does not corrupt), then [docs/roadmap.md](docs/roadmap.md) → the [ADRs](docs/adr/0001-soft-version-matching.md) for evolution plans and design decisions, and finally the `skills/<name>/SKILL.md` files for operational detail.
+- **Framework developer / evaluator**: read this document through, then [docs/design-principles.md](docs/design-principles.md) (the normative foundation constraining all design, implementation, and evolution), then [docs/evolution.md](docs/evolution.md) (the self-evolution design — how the system improves with use and why it does not corrupt), then [docs/roadmap.md](docs/roadmap.md) → the [ADRs](docs/adr/0001-soft-version-matching.md), and finally the `skills/<name>/SKILL.md` files for operational detail.
 
 Canonical definitions of the terminology (case, postmortem, namespace, groom, trace, ...) live in [CONTEXT.md](CONTEXT.md).
 
@@ -122,6 +122,8 @@ Two loops drive the system. The diagram below is the full panorama; the mechanis
 
 ## Core design principles
 
+The following is the user-facing summary; the normative original that constrains all design, implementation, and evolution is [docs/design-principles.md](docs/design-principles.md) (Chinese).
+
 **Carry rules in structure, not in discipline.** Whatever can be fixed by file structure is not left to the model's compliance: phase-1 loading is pinned to reading the generated index, feedback tracking lives in a state-file marker, index freshness is hard-checked by a script. Rules written into structure do not fluctuate with execution quality.
 
 **Retrieval nominates; verification gates.** Symptom matching only produces candidates. Fix suggestions are emitted only after diagnosis checks verify against real information from the customer environment, and root causes marked data-loss-risk yield halt-and-preserve instructions only. One extra round of questions costs far less than a single misdiagnosis.
@@ -156,6 +158,7 @@ CONTEXT.md                   domain glossary (English terms with Chinese referen
 scripts/                     build_index.py (index build/freshness check), trace_metrics.py (trace→metrics)
 eval/golden/                 regression fixtures (real fixtures enter after redaction; non-redactable ones stay private)
 docs/eval.md                 skill-change evaluation procedure
+docs/design-principles.md    design principles (normative foundation; Chinese)
 docs/evolution.md            self-evolution design (mechanisms, guardrails, data loop)
 docs/git-workflow.md         git gating/review/merge closure (labels, CODEOWNERS, CI, dual sign-off)
 docs/roadmap.md              gate-driven roadmap (five-dimension items, acceptance criteria, entry gates, checkpoints)

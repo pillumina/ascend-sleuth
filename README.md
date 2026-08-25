@@ -12,7 +12,7 @@
 
 - **支持工程师（用诊断）**：读「安装」和「用法示例」即可上手，约十分钟。想了解匹配为什么可信，再看「工作原理」与「核心设计原则」。
 - **知识库维护者（每周例行维护）**：在上述基础上读「日常工作流」「部署模式」，然后是 [docs/git-workflow.md](docs/git-workflow.md)。
-- **框架开发者 / 评估者**：通读本文档后，读 [docs/evolution.md](docs/evolution.md)（自演进设计——系统如何随使用改进、为什么不会改坏），再看 [docs/roadmap.md](docs/roadmap.md) 与 [ADR](docs/adr/0001-soft-version-matching.md) 了解演进计划与设计决策，最后读 `skills/<name>/SKILL.md`（各 skill 的操作细节）。
+- **框架开发者 / 评估者**：通读本文档后，读 [docs/design-principles.md](docs/design-principles.md)（设计原则——约束一切设计、实现与演进的规范性基础），再看 [docs/evolution.md](docs/evolution.md)（自演进设计——系统如何随使用改进、为什么不会改坏），然后是 [docs/roadmap.md](docs/roadmap.md) 与 [ADR](docs/adr/0001-soft-version-matching.md)，最后读 `skills/<name>/SKILL.md`（各 skill 的操作细节）。
 
 文中术语（case、postmortem、namespace、groom、trace 等）的规范定义见 [CONTEXT.md](CONTEXT.md)。
 
@@ -124,6 +124,8 @@ agent 提取症状与根因，给出命名空间建议供你确认，然后生�
 
 ## 核心设计原则
 
+以下是用户侧摘要，约束全部设计、实现与演进的规范性原文见 [docs/design-principles.md](docs/design-principles.md)。
+
 **用结构承载规则，不依赖执行自觉。** 凡是能写进文件结构的约定，就不放在 prompt 里靠模型遵守：阶段一加载固定为读生成的索引文件，反馈追踪落在状态文件的标记位上，索引新鲜度由脚本硬校验。写进结构的规则不会随执行质量波动。
 
 **检索只负责提名，验证决定放行。** 症状匹配只产生候选，诊断检查项对照客户环境的真实信息验证通过后，才输出修复建议；标记为 data-loss-risk 的根因只输出停机保现场的指令。多问一轮的代价，远低于一次误诊。
@@ -158,6 +160,7 @@ CONTEXT.md                   领域术语表（中英对照）
 scripts/                     build_index.py（索引生成/新鲜度校验）、trace_metrics.py（trace→指标）
 eval/golden/                 回归测试夹具（真实 fixture 脱敏后入库；无法脱敏的放私有仓）
 docs/eval.md                 skill 改动评估流程
+docs/design-principles.md    设计原则（规范性基础，约束全部设计与演进）
 docs/evolution.md            自演进设计（演化机制、护栏、数据回路）
 docs/git-workflow.md         git 门控/审核/合入闭环（标签集、CODEOWNERS、CI、双签）
 docs/roadmap.md              闸门驱动路线图（五维度事项、验收标准、入口闸门、检查点）

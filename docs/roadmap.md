@@ -1,6 +1,6 @@
 # ascend-sleuth Roadmap
 
-> Roadmap 采用闸门驱动而非日期驱动：每个事项定义入口条件（数据或事件触发）与验收标准，解锁与否由 metrics 和 trace 数据判定，不按日历排期。这与 [ADR-0002](adr/0002-retrieval-no-rag-lightweight-index.md) 的原则一致：升级由数据触发，而非由技术趋势触发。
+> Roadmap 采用闸门驱动而非日期驱动：每个事项定义入口条件（数据或事件触发）与验收标准，解锁与否由 metrics 和 trace 数据判定，不按日历排期。这与 [ADR-0002](adr/0002-retrieval-no-rag-lightweight-index.md) 的原则一致：升级由数据触发，而非由技术趋势触发。全部事项的立项依据与闸门设计派生自[设计原则](design-principles.md)第七、十条。
 >
 > 阅读方式：五个维度回答"哪类改进"（架构 / 可演进性 / 可维护性 / 可观测性 / 流程合理性），阶段视图回答"何时做"（Phase 0 → 1 → 2，由闸门衔接）。事项 ID 稳定，供 groom 报告和 issue 引用。
 
