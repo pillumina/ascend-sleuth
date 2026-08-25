@@ -12,7 +12,7 @@ Pick the entry point for your role; consult the rest as needed:
 
 - **Support engineer (running diagnoses)**: read *Installation* and *Usage examples* — about ten minutes to your first run. If you want to know why the matching is trustworthy, follow with *How it works* and *Core design principles*.
 - **Knowledge base maintainer (weekly grooming)**: add *Daily workflow* and *Deployment modes*, then [docs/git-workflow.md](docs/git-workflow.md).
-- **Framework developer / evaluator**: read this document through, then [docs/design-principles.md](docs/design-principles.md) (the normative foundation constraining all design, implementation, and evolution), then [docs/evolution.md](docs/evolution.md) (the self-evolution design — how the system improves with use and why it does not corrupt), then [docs/roadmap.md](docs/roadmap.md) → the [ADRs](docs/adr/0001-soft-version-matching.md), and finally the `skills/<name>/SKILL.md` files for operational detail.
+- **Framework developer / evaluator**: read this document through, then [docs/design-theory.md](docs/design-theory.md) (the formal kernel — four axioms deriving all design principles), then [docs/design-principles.md](docs/design-principles.md) (the normative articles), then [docs/evolution.md](docs/evolution.md), [docs/roadmap.md](docs/roadmap.md) → the [ADRs](docs/adr/0001-soft-version-matching.md), and finally the `skills/<name>/SKILL.md` files for operational detail.
 
 Canonical definitions of the terminology (case, postmortem, namespace, groom, trace, ...) live in [CONTEXT.md](CONTEXT.md).
 
@@ -158,7 +158,8 @@ CONTEXT.md                   domain glossary (English terms with Chinese referen
 scripts/                     build_index.py (index build/freshness check), trace_metrics.py (trace→metrics)
 eval/golden/                 regression fixtures (real fixtures enter after redaction; non-redactable ones stay private)
 docs/eval.md                 skill-change evaluation procedure
-docs/design-principles.md    design principles (normative foundation; Chinese)
+docs/design-theory.md        design theory (four axioms + Bayesian decision kernel; Chinese)
+docs/design-principles.md    design principles (normative articles; Chinese)
 docs/evolution.md            self-evolution design (mechanisms, guardrails, data loop)
 docs/git-workflow.md         git gating/review/merge closure (labels, CODEOWNERS, CI, dual sign-off)
 docs/roadmap.md              gate-driven roadmap (five-dimension items, acceptance criteria, entry gates, checkpoints)

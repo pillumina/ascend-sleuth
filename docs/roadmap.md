@@ -126,3 +126,12 @@
 ### 不再做
 
 （暂无）
+
+### 待定（理论预言、未达立项条件）
+
+由 [设计理论](design-theory.md) §7 生成、当前不立项的设计标准（依设计原则修订门槛，需先有使用检验）：
+
+- **VPI 序提问**：信息不全时按期望信息价值/成本比排序提问
+- **校准度量**：confidence 的 reliability 式校准指标进 metrics
+- **先验超参显式化**：investigation_quality → 初始 score 作为 Beta 超参管理
+- **多样性审计**：triage/quickly_check 判别力对照症状空间的定期审计

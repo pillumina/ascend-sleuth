@@ -12,7 +12,7 @@
 
 - **支持工程师（用诊断）**：读「安装」和「用法示例」即可上手，约十分钟。想了解匹配为什么可信，再看「工作原理」与「核心设计原则」。
 - **知识库维护者（每周例行维护）**：在上述基础上读「日常工作流」「部署模式」，然后是 [docs/git-workflow.md](docs/git-workflow.md)。
-- **框架开发者 / 评估者**：通读本文档后，读 [docs/design-principles.md](docs/design-principles.md)（设计原则——约束一切设计、实现与演进的规范性基础），再看 [docs/evolution.md](docs/evolution.md)（自演进设计——系统如何随使用改进、为什么不会改坏），然后是 [docs/roadmap.md](docs/roadmap.md) 与 [ADR](docs/adr/0001-soft-version-matching.md)，最后读 `skills/<name>/SKILL.md`（各 skill 的操作细节）。
+- **框架开发者 / 评估者**：通读本文档后，读 [docs/design-theory.md](docs/design-theory.md)（设计理论——四公理推导出全部设计原则的形式化内核），再读 [docs/design-principles.md](docs/design-principles.md)（设计原则——规范性条文），然后是 [docs/evolution.md](docs/evolution.md)（自演进设计）、[docs/roadmap.md](docs/roadmap.md) 与 [ADR](docs/adr/0001-soft-version-matching.md)，最后读 `skills/<name>/SKILL.md`（各 skill 的操作细节）。
 
 文中术语（case、postmortem、namespace、groom、trace 等）的规范定义见 [CONTEXT.md](CONTEXT.md)。
 
@@ -160,7 +160,8 @@ CONTEXT.md                   领域术语表（中英对照）
 scripts/                     build_index.py（索引生成/新鲜度校验）、trace_metrics.py（trace→指标）
 eval/golden/                 回归测试夹具（真实 fixture 脱敏后入库；无法脱敏的放私有仓）
 docs/eval.md                 skill 改动评估流程
-docs/design-principles.md    设计原则（规范性基础，约束全部设计与演进）
+docs/design-theory.md        设计理论（四公理 + 贝叶斯决策内核，推导全部原则）
+docs/design-principles.md    设计原则（规范性条文，约束全部设计与演进）
 docs/evolution.md            自演进设计（演化机制、护栏、数据回路）
 docs/git-workflow.md         git 门控/审核/合入闭环（标签集、CODEOWNERS、CI、双签）
 docs/roadmap.md              闸门驱动路线图（五维度事项、验收标准、入口闸门、检查点）
