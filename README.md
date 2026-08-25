@@ -146,6 +146,7 @@ scripts/                     build_index.py（索引生成/新鲜度校验）、
 eval/golden/                 回归测试夹具（公开仓放构造示例；真实 fixture 放私有仓）
 docs/eval.md                 skill 改动评估流程
 docs/git-workflow.md         git 门控/审核/合入闭环（标签集、CODEOWNERS、CI、双签）
+docs/roadmap.md              闸门驱动路线图（五维度事项、验收标准、入口闸门、检查点）
 docs/adr/                    设计决策记录（0002：检索为何不上 RAG、容量论证）
 CODEOWNERS.example           owner 落实后启用（配合分支保护做硬门控）
 .github/workflows/           kb-checks CI（索引新鲜度 + YAML 语法）
@@ -181,13 +182,14 @@ fix 应用后 → 回报结果（diagnose/resume 启动时会主动追问）→ 
 
 ## 路线图
 
-**v1（已实现）**：trace 与误诊归因、基于反馈的置信度、语义校验、分布式命令参数化、triage 优雅退化、severity 字段、生成式 Tier 2 索引、intake 待审队列与三分类批处理、结构化反馈捕获、trace 到指标的自动统计。
+Roadmap 采用闸门驱动：每个事项定义入口条件（数据或事件触发）与验收标准，不按日期排期。
 
-**v1.5**：router 从 trace 错例自动建议修订、fixture replay 半自动化、非单调版本兼容、agent 自起草候选 case。
+- **v1（已实现）**：三层检索与生成索引、intake 队列与 groom 批处理、trace 与反馈闭环、git 门控与 CI。
+- **v1.5（按闸门解锁）**：router 从 trace 错例演进、fixture replay 半自动化、agent 自起草候选 case、指标分账与容量预测。
+- **v2**：trace 结构挖掘、可信自动晋升。
+- **明确不做**：向量检索/RAG、ANN、跨组织联邦（论证见 [ADR-0002](docs/adr/0002-retrieval-no-rag-lightweight-index.md)）。
 
-**v2**：从 trace 挖掘结构以改进分类器、可信自动晋升。
-
-**明确不做**（论证见 [ADR-0002](docs/adr/0002-retrieval-no-rag-lightweight-index.md)）：向量检索/RAG 基础设施、ANN 索引、跨组织联邦协议。embedding 字段化（用于 intake 语义去重）属于推迟而非否决，重评触发条件写在 ADR 中，升级由数据触发。
+各事项按架构、可演进性、可维护性、可观测性、流程合理性五维度组织，需求、验收标准、入口闸门与常设检查点见 [docs/roadmap.md](docs/roadmap.md)。
 
 ## 状态
 

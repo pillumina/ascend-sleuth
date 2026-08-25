@@ -146,6 +146,7 @@ scripts/                     build_index.py (index build/freshness check), trace
 eval/golden/                 regression fixtures (constructed examples in the public repo; real fixtures stay private)
 docs/eval.md                 skill-change evaluation procedure
 docs/git-workflow.md         git gating/review/merge closure (labels, CODEOWNERS, CI, dual sign-off)
+docs/roadmap.md              gate-driven roadmap (five-dimension items, acceptance criteria, entry gates, checkpoints)
 docs/adr/                    architecture decision records (0002: why no RAG, capacity math)
 CODEOWNERS.example           enable once owners are named (hard gating with branch protection)
 .github/workflows/           kb-checks CI (index freshness + YAML syntax)
@@ -181,13 +182,14 @@ Fixes the agent delivers are suggestions; humans apply them to customer environm
 
 ## Roadmap
 
-**v1 (implemented)**: traces and misdiagnosis attribution, feedback-driven confidence, semantic validation, distributed command parameterization, triage graceful degradation, severity fields, generated Tier-2 index, intake review queue with triage batching, structured feedback capture, trace-to-metrics automation.
+The roadmap is gate-driven: every item defines an entry condition (data- or event-triggered) and acceptance criteria, rather than a calendar date.
 
-**v1.5**: router revision proposals from trace misroutes, semi-automated fixture replay, non-monotonic version compatibility, agent-drafted candidate cases.
+- **v1 (implemented)**: three-tier retrieval with generated index, intake queue with groom batching, trace and feedback loop, git gating and CI.
+- **v1.5 (unlocked by gates)**: router evolution from trace misroutes, semi-automated fixture replay, agent-drafted candidate cases, per-team metrics and capacity forecasting.
+- **v2**: trace structure mining, trusted auto-promotion.
+- **Explicitly not doing**: vector retrieval/RAG, ANN, cross-organization federation (argument in [ADR-0002](docs/adr/0002-retrieval-no-rag-lightweight-index.md)).
 
-**v2**: mining traces for structural classifier improvements, trusted auto-promotion.
-
-**Explicitly not doing** (argument in [ADR-0002](docs/adr/0002-retrieval-no-rag-lightweight-index.md)): vector retrieval / RAG infrastructure, ANN indexes, cross-organization federation protocols. Embedding-as-a-field (for intake semantic dedup) is deferred, not rejected; re-evaluation triggers are recorded in the ADR, and upgrades are data-driven.
+Items are organized along five dimensions — architecture, evolvability, maintainability, observability, and process soundness; requirements, acceptance criteria, entry gates, and standing checkpoints are in [docs/roadmap.md](docs/roadmap.md).
 
 ## Status
 
