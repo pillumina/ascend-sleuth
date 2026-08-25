@@ -1,0 +1,25 @@
+# eval/golden/SGL-PD-HEAP-001.fixture.yaml
+# 首条可运行 fixture：源自已解决 postmortem（postmortems/2026-Q3/SGL-PD-HEAP-001.md）。
+# 日志片段为构造——错误签名取自该 case 的 quickly_check，无真实客户数据。
+# 注意：当前 KB 仅 1 条 case，本条主要验证 replay 流程与输出断言本身；
+# 路由/匹配的判别力要等播种批（roadmap Phase 0）到达后才有意义。
+# 用法与判定标准见 docs/eval.md。
+
+case_id: SGL-PD-HEAP-001          # 对应 knowledge/inference/sglang/ 里的 case
+
+input:
+  symptoms: "PD 分离部署（--disaggregation-transfer-backend ascend），KV cache 跨 NPU 传输偶发失败，decode 进程崩溃；同一配置有时成功有时失败"
+  framework: sglang
+  framework_version: 0.5.10
+  platform: A3-910C
+  log_snippet: |
+    decode: halShmemCreateHandle check failed: Size is bad (size 19.13GiB > heap_size 17.0GiB)
+    Create_para_check fail
+    rtIpcOpenMemory ErrCode=507899
+    rtMemcpy ErrCode=107030        # 级联噪声：正确诊断应忽略此行（case diagnosis step 4）
+
+expected:
+  namespace: inference/sglang/
+  case_id: SGL-PD-HEAP-001
+  root_cause_contains: "CombineMemories"
+  fix_contains: "smem_trans_entry.cpp"

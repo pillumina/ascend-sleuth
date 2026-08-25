@@ -1,6 +1,8 @@
 # eval/golden/example.fixture.yaml
-# 构造的示例 fixture（公开仓用——演示格式，不含真实客户数据）
-# 真实 fixture 从已解决 postmortem 衍生（脱敏后可入本仓；无法充分脱敏的放团队私有仓）
+# 构造的示例 fixture（演示格式，不含真实客户数据）
+# 注意：MSLLM-EP-HANG-001 未播种进 knowledge/，本条当前不可作为可运行回归
+# （replay 会因 training/mindspeed-llm/ 空库而失败）。可运行回归从
+# SGL-PD-HEAP-001.fixture.yaml 开始；本条待该 case 播种后自动变为可运行。
 #
 # 用法：改 skill 前/后各跑一遍 /diagnose（replay 模式：喂 input、不交互），
 # 对照 expected。不能让原来 pass 的变 fail = 回归。详见 docs/eval.md
