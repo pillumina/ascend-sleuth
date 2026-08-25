@@ -1,33 +1,33 @@
-# Retrieval: lightweight generated index, no vector RAG
+# 检索：生成式轻量索引，不引入向量 RAG
 
-知识检索采用"生成式轻量索引"（`knowledge/_index.yaml`），不引入向量检索 / RAG 基础设施。embedding 字段化（intake 语义去重）**推迟而非否决**，重评触发条件见文末。
+知识检索使用生成式轻量索引（`knowledge/_index.yaml`），不引入向量检索或 RAG 基础设施。embedding 字段化（用于 intake 语义去重）属于推迟而非否决，重评触发条件见文末。
 
-## Context（需求参数）
+## Context
 
-- 增速：**200~400 篇 postmortem/年**（含重复，入库需人审）→ Tier 2 稳态预估 300~600 条（3 年，按 category 拆分后 ~15 个 namespace × 30 上限 ≈ 450 容量，大体匹配、边缘紧张）
-- **过滤率 / 退休率当前未知，不作为前置输入**——第一年由 `scripts/trace_metrics.py` 实测替代，届时重算本 ADR 的容量推演
-- 团队：训练 / 推理两个团队共用一个 repo（非跨组织联邦）
-- 运行形态：工程师笔记本上的 agent（pi / Claude Code / Codex），repo 即数据库
+- 增速：预计 200~400 篇 postmortem 每年（含重复，入库需人审）。按此推算，Tier 2 在三年内的稳态规模为 300~600 条；按 category 拆分后约 15 个命名空间 × 每命名空间 30 条上限 ≈ 450 条容量，与需求大体匹配，边缘偏紧。
+- 过滤率与退休率目前未知，不作为前置假设。第一年以 `scripts/trace_metrics.py` 的实测数据替代，届时重算本 ADR 的容量推演。
+- 团队：训练与推理两个团队共用一个仓库，不涉及跨组织联邦。
+- 运行形态：工程师笔记本上的 agent（pi / Claude Code / Codex），仓库即数据库。
 
 ## Decision
 
-1. **不上向量检索 / RAG。** 四重错配：
-   - 检索信号是**词法的**（错误签名、错误码、数值阈值），embedding 对精确串匹配是降质不是增强；
-   - **agent 本身就是语义层**（能 grep、换关键词、读片段再下探），经典 RAG"哑检索器服务不能行动的模型"的前提在这里不成立；
-   - **repo 即数据库 = 知识变更可 diff、可审、可回滚**；向量库是不可 diff 的二进制产物，破坏 groom 的审计链；
-   - 零服务、零依赖、可进隔离环境，是 skill 可扩散的前提。
-2. **Tier 2 阶段一改为读生成索引** `knowledge/_index.yaml`：把"只加载索引字段"从 prompt 纪律变成**结构保证**。索引由 `scripts/build_index.py` 生成、提交进 git、`--check` 校验新鲜度（groom 每次跑，可挂 CI）。30/namespace 上限是**承重设计**：它保证全量索引 ~30K token 一次加载、暴力过滤永远成立——cap 使"永不购买检索基础设施"成为合法选型。
-3. **intake 队列**：新沉淀进 `postmortems/inbox/`，groom 周批处理三分类（new_pattern / variant_of / covered_by），**预分诊给建议 + 证据，人做最终判定**。预分诊当前由 agent（LLM 判断）完成，不引入 embedding。covered ≠ 丢弃：postmortem 照样转正 Tier 3 语料。
+1. 不引入向量检索或 RAG。理由有四：
+   - 诊断的检索信号是词法的——错误签名、错误码、数值阈值。对精确串匹配而言，embedding 是降质而非增强；
+   - agent 本身就是语义层：它能 grep、更换关键词、读取片段后决定下一步。经典 RAG 的前提是"哑检索器服务一个不能行动的模型"，这一前提在这里不成立；
+   - 仓库即数据库，意味着知识变更可 diff、可审、可回滚；向量库是不可 diff 的二进制产物，会破坏 groom 依赖的审计链；
+   - 零服务、零依赖、可进入隔离环境，是这套 skill 能在支持团队中扩散的前提。
+2. Tier 2 阶段一读取生成索引 `knowledge/_index.yaml`，把"只加载索引字段"从 prompt 纪律变为结构保证。索引由 `scripts/build_index.py` 生成、随仓库提交，`--check` 校验新鲜度（groom 每轮运行，可接入 CI）。每命名空间 30 条的上限是承重设计而非卫生习惯：它保证全量索引（约 30K token）可以单次加载、暴力过滤永远成立。正是这个上限，使"不购买检索基础设施"成为长期合法的选型。
+3. 新沉淀进入 `postmortems/inbox/` 待审队列，groom 每周批处理，按 new_pattern / variant_of / covered_by 三分类预分诊。预分诊只产出建议与证据，最终判定由人完成；预分诊当前由 agent（LLM 判断）执行，不引入 embedding。判定为 covered 的条目不是丢弃：postmortem 照样转正为 Tier 3 语料。
 
 ## Rejected / Deferred
 
-- **向量库 + ANN**（否决）：为 10⁴ 量级召回设计，本库 cap 在 ~600，物理上用不到；且不可 diff。
-- **embedding sidecar**（推迟，主动选择）：单条 case 加 `semantics.text_hash` + `.embeddings/*.vec` sidecar 的设计已论证（模型版本字段、hash 锁一致性、人审文件 diff 保持干净），但当前周 4-8 篇的量能下，一致性管理成本 > 收益。触发条件满足时按此设计落地，不需要重新论证。
+- 向量库与 ANN 索引（否决）：为 10⁴ 量级的召回问题设计，而本库容量上限约 600 条，物理上用不到；且产物不可 diff。
+- embedding sidecar（推迟，主动选择）：在 case 中增加 `semantics.text_hash` 与 `model` 字段、向量存于 `.embeddings/` sidecar 的设计已经论证（模型版本显式记录、hash 锁一致性、人审文件的 diff 保持干净）。在当前每周 4~8 篇的量能下，一致性管理成本高于收益。触发条件满足时按既定设计落地，无需重新论证。
 
-## 重评触发条件（数据驱动，不时尚驱动）
+## 重评触发条件
 
-以下任一出现才重开本决策，否则不进路线图：
+出现以下任一情况时重开本决策，否则不进入路线图：
 
-- 单 namespace 拆分后仍 >100 条，且路由准确率持续下降（看 `trace_metrics.py`）；
-- Tier 3 语料 >5K 篇，且 grep 兜底挽救率可测地不足；
-- 真出现多组织联邦（当前两团队一 repo 不算）。
+- 单个命名空间在拆分后仍超过 100 条，且路由准确率持续下降（以 `trace_metrics.py` 数据为准）；
+- Tier 3 语料超过 5000 篇，且 grep 兜底的挽救率可度量地不足；
+- 出现真实的多组织联邦需求（当前两团队共用一仓不算）。

@@ -143,7 +143,7 @@ postmortems/                 Tier 3 原始记录
 └── inbox/                   待审知识队列（groom 周批处理三分类后转正/升格）
 examples/sample-case.yaml    canonical 样例（全 schema 演示）
 scripts/                     build_index.py（索引生成/新鲜度校验）、trace_metrics.py（trace→指标）
-eval/golden/                 回归测试夹具（公开仓放构造示例；真实 fixture 放私有仓）
+eval/golden/                 回归测试夹具（真实 fixture 脱敏后入库；无法脱敏的放私有仓）
 docs/eval.md                 skill 改动评估流程
 docs/git-workflow.md         git 门控/审核/合入闭环（标签集、CODEOWNERS、CI、双签）
 docs/roadmap.md              闸门驱动路线图（五维度事项、验收标准、入口闸门、检查点）

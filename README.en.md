@@ -143,7 +143,7 @@ postmortems/                 Tier-3 raw records
 └── inbox/                   knowledge review queue (weekly groom triage)
 examples/sample-case.yaml    canonical sample (full schema demo)
 scripts/                     build_index.py (index build/freshness check), trace_metrics.py (trace→metrics)
-eval/golden/                 regression fixtures (constructed examples in the public repo; real fixtures stay private)
+eval/golden/                 regression fixtures (real fixtures enter after redaction; non-redactable ones stay private)
 docs/eval.md                 skill-change evaluation procedure
 docs/git-workflow.md         git gating/review/merge closure (labels, CODEOWNERS, CI, dual sign-off)
 docs/roadmap.md              gate-driven roadmap (five-dimension items, acceptance criteria, entry gates, checkpoints)
