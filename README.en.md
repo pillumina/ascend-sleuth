@@ -122,7 +122,7 @@ Two loops drive the system. The diagram below is the full panorama; the mechanis
 
 ## Core design principles
 
-The following is the user-facing summary; the normative original that constrains all design, implementation, and evolution is [docs/design-principles.md](docs/design-principles.md) (Chinese).
+The following is an abridged, user-facing selection; the full normative original (eleven principles, each with derivation and forbidden violations) is [docs/design-principles.md](docs/design-principles.md) (Chinese).
 
 **Carry rules in structure, not in discipline.** Whatever can be fixed by file structure is not left to the model's compliance: phase-1 loading is pinned to reading the generated index, feedback tracking lives in a state-file marker, index freshness is hard-checked by a script. Rules written into structure do not fluctuate with execution quality.
 
