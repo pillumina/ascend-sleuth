@@ -1,7 +1,7 @@
-# Soft version matching: downgrade confidence, never hard-exclude
+# 软版本匹配：降置信度，不硬排除
 
-Case `compat` ranges (framework/CANN/HDK versions) are checked against the customer's environment, but mismatches only downgrade confidence — they never hard-exclude a case from the candidate set.
+case 的 `compat` 版本区间（框架/CANN/HDK）会与客户环境对照，但不匹配只下调该 case 的置信度，绝不把它从候选集中排除。
 
-**Why:** Ascend platform differences are field-level within cases, not case-level. A case validated on A3+910C often applies to A5+950 with the same root cause. Hard-excluding on version mismatch would cause catastrophic false negatives during cold start when the case base is sparse — if the only relevant case was validated on a slightly different version, it would be invisible. Cases with known platform-specific behavior already encode that explicitly in per-platform `diagnosis` branches; soft matching handles the rest.
+**为什么**：昇腾的平台差异是 case 内的字段级差异，不是 case 级差异。在 A3（910C）上验证过的 case，往往以同一 root cause 适用于 A5（950）。若按版本不匹配硬排除，冷启动阶段（case 稀疏时）会造成灾难性漏判——唯一相关的 case 若是在相近版本上验证的，就会变得不可见。已知平台特有行为的 case 本来就以按平台的 `diagnosis` 分支显式编码；其余情况由软匹配兜住。
 
-**Rejected alternative:** Hard version gating. Simpler to reason about but would require exact version coverage for every case before it becomes discoverable — impractical given the combinatorial explosion of Ascend platform × framework × CANN × HDK versions and the cold-start reality.
+**被否决的替代方案**：硬版本门控。推理上更简单，但要求每条 case 在可被发现之前就有精确的版本覆盖——考虑到 昇腾平台 × 框架 × CANN × HDK 的组合爆炸与冷启动现实，这不切实际。

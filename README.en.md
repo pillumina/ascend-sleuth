@@ -6,6 +6,16 @@
 
 A diagnostic skill suite for Ascend training and inference support. It turns problem-locating experience into a structured, searchable, and evolvable team knowledge asset. Built to the [Agent Skills](https://agentskills.io/) standard, it runs in any compliant agent such as pi, Claude Code, or Codex.
 
+## How to read this documentation
+
+Pick the entry point for your role; consult the rest as needed:
+
+- **Support engineer (running diagnoses)**: read *Installation* and *Usage examples* — about ten minutes to your first run. If you want to know why the matching is trustworthy, follow with *How it works* and *Core design principles*.
+- **Knowledge base maintainer (weekly grooming)**: add *Daily workflow* and *Deployment modes*, then [docs/git-workflow.md](docs/git-workflow.md).
+- **Framework developer / evaluator**: read this document through, then [docs/roadmap.md](docs/roadmap.md) → the [ADRs](docs/adr/0001-soft-version-matching.md) for evolution plans and design decisions, and finally the `skills/<name>/SKILL.md` files for operational detail.
+
+Canonical definitions of the terminology (case, postmortem, namespace, groom, trace, ...) live in [CONTEXT.md](CONTEXT.md).
+
 ## Why it exists
 
 Ascend support engineers deal with three classes of problems every day: training or inference interrupts (hangs, crashes, OOM), precision anomalies (loss divergence, FP8 decay), and performance regressions (throughput drops, high communication overhead). Root causes repeat heavily, yet the knowledge lives scattered across personal notes, IM threads, and wikis. New cases arrive weekly, A2/A3/A5 platform differences keep widening, and any scheme that depends on one person's manual upkeep decays within weeks.
@@ -31,9 +41,9 @@ Once loaded, invoke with `/skill:<name>` in your agent.
 
 | Skill | Purpose | When to use | Invocation |
 |---|---|---|---|
-| `diagnose` | Core diagnostic loop: route by symptoms, match and verify cases, deliver fixes (halting first for high-risk root causes); marks `feedback_pending` after fix delivery and awaits the outcome; records a trace throughout | Training or inference problems of the interrupt / precision / performance classes | Explicit `/skill:diagnose` |
-| `to-postmortem` | Distill an investigation into knowledge; accepts any source (local session, Kimi chat, hand-written notes), runs semantic validation and redaction, outputs into the review queue | After a problem is located, wherever it was located | Auto-triggerable |
-| `knowledge-groom` | Periodic maintenance: batch-process the review queue (new/variant/covered pre-triage), promote, validate references, deduplicate, recompute confidence, soft-retire, rebuild the index, forecast capacity | Domain owner, weekly | Explicit `/skill:knowledge-groom` |
+| `diagnose` | Core diagnostic loop: route by symptoms, match and verify cases, deliver fixes or fall back to deep investigation; records a trace throughout | Training or inference problems of the interrupt / precision / performance classes | Explicit `/skill:diagnose` |
+| `to-postmortem` | Distill an investigation into knowledge; accepts any source, runs validation and redaction, outputs into the review queue | After a problem is located, wherever it was located | Auto-triggerable |
+| `knowledge-groom` | Periodic maintenance: batch-process the review queue, promote, deduplicate, recompute confidence, soft-retire, rebuild the index | Domain owner, weekly | Explicit `/skill:knowledge-groom` |
 | `resume-diagnosis` | Resume an interrupted diagnosis: reads the state file and trace, restates the situation, then continues | Diagnosis interrupted by meetings or context compaction | Explicit `/skill:resume-diagnosis` |
 
 Full details for each skill (severity gates, trace rules, semantic validation) live in the corresponding `skills/<name>/SKILL.md`. The three diagnostic skills are user-only — diagnostic decisions are human-triggered. `to-postmortem` may auto-trigger, lowering the barrier to capturing knowledge.
@@ -80,7 +90,7 @@ Problems decompose along two orthogonal dimensions. **Where to look** is decided
 
 Every diagnostic step is traced: which namespaces were loaded, which checks ran in what order. Traces exist for post-hoc attribution. A misdiagnosis is either a wrong case in the knowledge base or a deviation in the agent's execution — the two demand entirely different fixes, and confusing them corrupts cases that were correct.
 
-Two loops drive the system:
+Two loops drive the system. The diagram below is the full panorama; the mechanisms it references are developed later in this document and in the specialized docs — skip it on first read and come back when needed.
 
 ```
 [Diagnosis loop · per incident · minutes]
@@ -142,6 +152,7 @@ triage-tree.yaml             Tier-1 routing
 postmortems/                 Tier-3 raw records
 └── inbox/                   knowledge review queue (weekly groom triage)
 examples/sample-case.yaml    canonical sample (full schema demo)
+CONTEXT.md                   domain glossary (English terms with Chinese reference)
 scripts/                     build_index.py (index build/freshness check), trace_metrics.py (trace→metrics)
 eval/golden/                 regression fixtures (real fixtures enter after redaction; non-redactable ones stay private)
 docs/eval.md                 skill-change evaluation procedure

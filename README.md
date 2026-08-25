@@ -6,6 +6,16 @@
 
 面向昇腾（Ascend）训练与推理支持的诊断 skill 套件，把问题定位经验沉淀为结构化、可检索、可演化的团队知识资产。遵循 [Agent Skills](https://agentskills.io/) 标准，可在 pi、Claude Code、Codex 等任意支持该标准的 agent 中使用。
 
+## 如何使用本文档
+
+按角色选择入口，其余章节按需查阅：
+
+- **支持工程师（用诊断）**：读「安装」和「用法示例」即可上手，约十分钟。想了解匹配为什么可信，再看「工作原理」与「核心设计原则」。
+- **知识库维护者（每周例行维护）**：在上述基础上读「日常工作流」「部署模式」，然后是 [docs/git-workflow.md](docs/git-workflow.md)。
+- **框架开发者 / 评估者**：通读本文档后，按 [docs/roadmap.md](docs/roadmap.md) → [ADR](docs/adr/0001-soft-version-matching.md) 的顺序看演进计划与设计决策，最后读 `skills/<name>/SKILL.md`（各 skill 的操作细节）。
+
+文中术语（case、postmortem、namespace、groom、trace 等）的规范定义见 [CONTEXT.md](CONTEXT.md)。
+
 ## 为什么需要它
 
 昇腾支持工程师日常面对三类问题：训练或推理中断（hang、crash、OOM）、精度异常（loss 发散、FP8 衰减）、性能退化（吞吐下降、通信占比过高）。这些问题的根因高度重复，相关知识却分散在个人笔记、IM 聊天和各处 wiki 里。新 case 每周都在出现，A2/A3/A5 平台差异还在扩大，任何依赖个人手工维护的方案都难以长期维持。
@@ -31,9 +41,9 @@ npx skills@latest add pillumina/ascend-sleuth -g -a pi -a claude-code \
 
 | Skill | 作用 | 何时使用 | 触发方式 |
 |---|---|---|---|
-| `diagnose` | 核心诊断循环：按症状路由，匹配并验证 case 后给出修复建议，高危根因先提示停机；修复交付后标记 `feedback_pending` 等待结果回报；全程记录 trace | 训练或推理出现中断、精度、性能问题 | 显式 `/skill:diagnose` |
-| `to-postmortem` | 将一次定位沉淀为知识，支持任意来源（本地 session、Kimi 对话、手工笔记），经语义校验和脱敏后产出到待审队列 | 问题定位结束之后，无论在哪里定位的 | 可自动触发 |
-| `knowledge-groom` | 周期维护：批处理待审队列（new/variant/covered 三分类预分诊）、升格、引用校验、去重、置信度重算、软退休、索引重建、容量预告 | 领域 owner 每周 | 显式 `/skill:knowledge-groom` |
+| `diagnose` | 核心诊断循环：按症状路由，匹配并验证 case，给出修复建议或转深度排查，全程记录 trace | 训练或推理出现中断、精度、性能问题 | 显式 `/skill:diagnose` |
+| `to-postmortem` | 把一次定位沉淀为知识，任意来源均可汇入，经校验和脱敏进入待审队列 | 问题定位结束之后，无论在哪里定位的 | 可自动触发 |
+| `knowledge-groom` | 周期维护：批处理待审队列、升格、去重、置信度重算、软退休、索引重建 | 领域 owner 每周 | 显式 `/skill:knowledge-groom` |
 | `resume-diagnosis` | 续接被打断的诊断：读取状态文件与 trace，复述现场后继续 | 诊断被会议或上下文压缩打断 | 显式 `/skill:resume-diagnosis` |
 
 各 skill 的完整细节（severity 闸门、trace 规则、语义校验等）见对应 `skills/<name>/SKILL.md`。三个诊断类 skill 均设为 user-only，诊断决策由人触发；`to-postmortem` 允许自动触发，以降低沉淀门槛。
@@ -80,7 +90,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，然后生�
 
 诊断过程全程记录 trace：加载了哪些命名空间、按什么顺序执行了哪些检查。trace 用于事后归因。一次误诊究竟是知识库里的 case 写错了，还是 agent 执行流程走偏了，两者的修复路径完全不同，混在一起会改坏本来正确的东西。
 
-两个循环驱动整个系统：
+两个循环驱动整个系统。下图是完整全景，涉及的机制在后文与各专项文档中展开，初次阅读不必逐行理解，需要时再回来对照。
 
 ```
 【诊断循环 · 每次问题 · 分钟级】
@@ -142,6 +152,7 @@ triage-tree.yaml             Tier 1 路由
 postmortems/                 Tier 3 原始记录
 └── inbox/                   待审知识队列（groom 周批处理三分类后转正/升格）
 examples/sample-case.yaml    canonical 样例（全 schema 演示）
+CONTEXT.md                   领域术语表（中英对照）
 scripts/                     build_index.py（索引生成/新鲜度校验）、trace_metrics.py（trace→指标）
 eval/golden/                 回归测试夹具（真实 fixture 脱敏后入库；无法脱敏的放私有仓）
 docs/eval.md                 skill 改动评估流程
