@@ -72,10 +72,11 @@ agent 读取文件，后续流程同内联。
 
 ## 产出落点
 
-- `postmortems/YYYY-QN/<case-id>.md`（postmortem 或指针）
-- `postmortems/YYYY-QN/<case-id>.case.yaml`（YAML 草稿，groom 升格时移到 `knowledge/<ns>/`）
+- `postmortems/inbox/<case-id>.md`（postmortem 或指针）
+- `postmortems/inbox/<case-id>.case.yaml`（YAML 草稿）
+- inbox 是**待审队列**（见 `postmortems/inbox/README.md`）：每周 `/skill:knowledge-groom` 批处理三分类（new_pattern / variant_of / covered_by）后人审。审完：postmortem 转正 `../YYYY-QN/`（covered 也转正——Tier 3 语料，不是丢弃）、new 的草稿升格 `knowledge/<ns>/`
 
-**生成后明确告诉用户存哪了**——报出具体路径（如 `postmortems/2026-Q4/custA-ep-hang.md`）和 YAML 草稿位置，别让工程师去找自己的产出。
+**生成后明确告诉用户存哪了**——报出具体路径（如 `postmortems/inbox/custA-ep-hang.md`）和 YAML 草稿位置，说明"周审后转正"，别让工程师去找自己的产出。
 
 ## 为什么是这个体系的核心
 

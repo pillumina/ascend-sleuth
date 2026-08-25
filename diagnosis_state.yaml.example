@@ -6,12 +6,16 @@ session_id: "2026-07-09-ep-hang-a5"
 status: in_progress                    # in_progress | resolved | escalated
 current_step: 3
 detected_framework: mindspeed-llm
-detected_platform: A5-910C
+detected_platform: A5-950
 detected_category: interrupt           # triage 路由到的 category
 
 excluded_cases: [ASCEND-EP-HANG-001, ASCEND-EP-HANG-002]
 active_case: MSLLM-EP-HANG-001
 last_action: "等待用户执行 env | grep HCCL_BUFFSIZE 并贴回输出"
+
+# 反馈捕获结构化：给了 fix、还没回报结果时写入；任何 diagnose/resume 启动先扫它、
+# 追问结果、回写 confidence（trace 记 {action: feedback, case, outcome}）后清除
+# feedback_pending: MSLLM-EP-HANG-001
 
 # trace 是原则 7 的硬要求——误诊归因、路由准确率、trace 完整性指标全靠它
 trace:

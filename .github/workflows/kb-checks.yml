@@ -1,0 +1,20 @@
+name: kb-checks
+
+on:
+  push:
+    paths: ["knowledge/**", "triage-tree.yaml", "scripts/build_index.py"]
+  pull_request:
+    paths: ["knowledge/**", "triage-tree.yaml", "scripts/build_index.py"]
+
+jobs:
+  index-freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      # 两道检查合一：build_index 会解析全部 case YAML（语法错即红），
+      # --check 校验 _index.yaml 与文件 hash 一致（改了 case 忘重建即红）。
+      - run: python3 scripts/build_index.py --check

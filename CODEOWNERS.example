@@ -1,0 +1,22 @@
+# CODEOWNERS.example —— owner 落实后复制为 .github/CODEOWNERS 并填入真实账号
+#
+# 作用：受保护分支上，命中路径的变更必须由对应 owner 批（配合分支保护 required review）。
+# owner 未定前保持 TODO 占位——CI 与标签流程先跑通，机制先行、权限后紧。
+# 详见 docs/git-workflow.md
+
+# ---- 共享资产：高风险双签（两组各至少一人批）----
+/triage-tree.yaml      @todo-domain-owner @todo-system-maintainer
+/knowledge/common/     @todo-domain-owner @todo-system-maintainer
+
+# ---- 方法论框架：体系维护人 ----
+/skills/               @todo-system-maintainer
+/scripts/              @todo-system-maintainer
+/docs/                 @todo-system-maintainer
+/eval/                 @todo-system-maintainer
+/knowledge/platforms/  @todo-system-maintainer
+
+# ---- 训练 namespace：训练 owner ----
+/knowledge/training/   @todo-training-owner
+
+# ---- 推理 namespace：推理 owner ----
+/knowledge/inference/  @todo-inference-owner

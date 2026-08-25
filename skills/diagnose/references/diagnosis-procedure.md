@@ -37,7 +37,7 @@
 
 ## 步骤 3：两阶段加载 Tier 2
 
-**阶段一（索引）**：对每个命中 namespace，只读每条 case 的 `id/title/symptoms/quickly_check/category/confidence`（~70 token/条）。用 `quickly_check` **对照已提供的信息**：
+**阶段一（索引）**：读 `knowledge/_index.yaml`（`scripts/build_index.py` 生成的结构化索引，已含每条 case 的 `id/title/symptoms/quickly_check/category/confidence` + `file` 定位，~70 token/条），取命中 namespace 的条目——两阶段加载由**结构**保证，不靠逐文件打开的自觉。索引缺失或 `build_index.py --check` 报过期 → 兜底：逐文件只读上述索引字段，并提醒重建索引。用 `quickly_check` **对照已提供的信息**：
 - 先 primary（精确）
 - primary 不匹配 → 跑 fallback（更模糊）
 - primary 不匹配但 fallback 匹配 → 仍进阶段二，标 `low_confidence`
@@ -87,8 +87,10 @@ trace 记：
 
 Tier 3 关键词检索（骨架阶段真正能用的兜底）：
 ```bash
-rg -l '<症状关键词>' postmortems/    # top-3，读片段
+rg -l '<症状关键词>' postmortems/    # top-3，读片段；含 inbox/ 未审草稿（标注未经人审）
 ```
+
+trace 记 `{action: tier3, keyword: <kw>, files_read: [...]}`——Tier 3 挽救率（docs/metrics.md）靠这条统计。
 
 都没有 → 诚实说“知识库没覆盖，需手动排查；定位完用 `/skill:to-postmortem` 沉淀”。人 + agent 联合分析。
 
@@ -99,6 +101,7 @@ rg -l '<症状关键词>' postmortems/    # top-3，读片段
 - **Tier-2 命中**：常规 postmortem 草稿
 - **Tier-2 未命中但最终解决**：postmortem 含一段 agent 起草的候选 case（标 `confidence.score` 初始低值），交 groom 验证。人的角色从“结构化”上移到“验证草案”。
 - **结果反馈闭环（闭合学习环，关键）**：给完 fix 后，**等工程师应用并回来报告结果**——问“应用后解决了吗？（解决 / 没解决 / 部分解决）”。解决 → 该 case `hits += 1`；没解决 → `misdiagnoses += 1`、更新 `last_hit`。不问这步，confidence 永远是初始值、学习机制空转。
+- **反馈捕获结构化**：给完 fix、session 收尾前往 state 文件写 `feedback_pending: <case-id>`；**任何 diagnose/resume 启动先扫活跃 state 的该标记**，有就先追问结果——回写 confidence、trace 记 `{action: feedback, case, outcome: resolved|not_resolved|partial}`、清标记。反馈捕获是学习环的吞吐上限，靠文件标记而非记性。
 - **沉淀已含在本步骤**：命中=常规 postmortem、未命中=含候选 case 的 postmortem，已生成。只有非 /diagnose 定位的（Kimi/手工、或没配 session-end hook 导致没生成）才需 `/skill:to-postmortem` 手动沉淀。
 
 ## 误诊归因（每次误诊必做）

@@ -1,6 +1,6 @@
 # ascend-sleuth Metrics
 
-> 两周一次手工追加。有数字比没有重要得多。季度回顾时用真实数据校准 §8.3 的阈值。
+> 多数指标可半自动计算：`python3 scripts/trace_metrics.py` 从 trace 生成 markdown 表，人复核后追加到本文件。小样本时比例波动大，解读先看分母。季度回顾时用真实数据校准阈值。
 
 ## 指标定义
 
@@ -14,6 +14,8 @@
 | 置信度分布 | 低置信 case 占比、低置信高命中 case 数 |
 | 自起草采纳率 | groom 验证通过的草案 / agent 起草总数 |
 | trace 完整性 | 有 trace 记录的 step / 实际执行 step |
+| Tier 3 挽救率 | 走了 Tier 3 兜底检索且最终 resolved 的比例（trace `tier3` action） |
+| 反馈捕获率 | 回报 fix 结果的 session / 给出 fix 的 session（学习环的吞吐上限，trace `feedback` action） |
 
 ---
 

@@ -13,6 +13,8 @@ disable-model-invocation: true
 
 ## 流程
 
+**先清反馈债**：扫到的 state 文件里若有 `feedback_pending: <case-id>`（上次给了 fix 还没回报结果），先追问“上次 <case-id> 的 fix 应用后解决了吗？（解决 / 没解决 / 部分解决）”——按结果回写该 case 的 confidence（hits/misdiagnoses/last_hit）、trace 记 `{action: feedback, case, outcome}`、清掉标记，再进入续接。
+
 1. 读活跃的 `diagnosis_state-*.yaml`（每个并发诊断一个文件；模板见 `diagnosis_state.yaml.example`，含 `trace` 数组）。**多个时列出让工程师选续接哪个**
 2. 复述：
    - session_id、status、current_step

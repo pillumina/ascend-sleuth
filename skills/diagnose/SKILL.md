@@ -47,7 +47,7 @@ disable-model-invocation: true
    - 框架未检测到 → 只搜 `common/`；无法分类 → 直接 Tier 3
 
 3. **两阶段加载 Tier 2**
-   - **阶段一**：加载命中 namespace 的索引（`id/title/symptoms/quickly_check/category/confidence`），用 `quickly_check`（primary→fallback）**对照已提供的信息**过滤候选 ≤5；检查项缺信息时，记下要向客户补要什么
+   - **阶段一**：读 `knowledge/_index.yaml`（`scripts/build_index.py` 生成的一次性索引，含全部 `id/title/symptoms/quickly_check/category/confidence` + `file` 定位），取命中 namespace 的条目，用 `quickly_check`（primary→fallback）**对照已提供的信息**过滤候选 ≤5；检查项缺信息时，记下要向客户补要什么。索引缺失或 `--check` 报过期 → 兜底：逐文件只读上述索引字段，并提醒跑 `scripts/build_index.py` 重建
    - **空库提示（冷启动）**：若命中 namespace 为空（还没 case），**不要静默退化**——告诉用户“当前 `knowledge/<ns>/` 还没有验证过的 case，你可以：①继续深度排查（步骤 5）②诊断完跑 `/skill:to-postmortem` 沉淀成第一条 case ③转人工”。别让空库的体感是“这玩意啥也不会”。
    - primary 不匹配但 fallback 匹配 → 仍进验证，标记 `low_confidence`
    - **category 决定 quickly_check 形态**：interrupt 用 grep 错误签名、precision 用数值阈值（`loss>1e3`、`has_nan`）、performance 用 profiler 指标（`comm_ratio>0.4`）——别混用
@@ -61,7 +61,7 @@ disable-model-invocation: true
 
 5. **深度排查（Tier 2 未命中）**
    - **若 Script 工具已接入**（见 references/script-integration.md），按 category 用：interrupt→日志/core dump、precision→`mem-analyze`、performance→`ascend-profile-analyze`/`bench-run`。**当前骨架阶段这些 Script 多半还没接**——别假装能调，诚实告诉工程师。
-   - Tier 3 关键词检索 `postmortems/`（`rg -l '<keyword>' postmortems/`，top-3 读片段）——这是骨架阶段真正能用的兜底
+   - Tier 3 关键词检索 `postmortems/`（`rg -l '<keyword>' postmortems/`，top-3 读片段；含 `postmortems/inbox/` 未审草稿——可用但标注未经人审）。trace 记 `{action: tier3, keyword, files_read}`——Tier 3 挽救率指标（docs/metrics.md）靠这条统计。这是骨架阶段真正能用的兜底
    - 都没有 → 诚实说“知识库没覆盖这个问题，需手动排查；定位完用 `/skill:to-postmortem` 沉淀，下次就能命中”。人 + agent 联合分析
 
 6. **产出**
@@ -70,6 +70,7 @@ disable-model-invocation: true
    - **Tier-2 未命中但最终解决**：postmortem 含一段你起草的**候选 case**（quickly_check + diagnosis + confidence 低），交 `/skill:knowledge-groom` 验证
    - 完整 trace 随 `diagnosis_state-<session_id>.yaml` 留存（每并发诊断一文件；模板见 `diagnosis_state.yaml.example`）
    - **结果反馈闭环（闭合学习环，关键）**：给完 fix 后，**等工程师应用并回来报告结果**——问“应用后解决了吗？（解决 / 没解决 / 部分解决）”。结果回写该 case 的 confidence：解决 → `hits += 1`；没解决 → `misdiagnoses += 1`、更新 `last_hit`。**不问这步，confidence/误诊率永远是初始值，整个学习机制空转。**
+   - **反馈捕获结构化（不靠记性）**：给完 fix、session 收尾前，往 state 文件写 `feedback_pending: <case-id>`。**每次 `/skill:diagnose` 或 `/skill:resume-diagnosis` 启动时先扫活跃 state 文件**——发现该标记就先追问"上次 <case-id> 的 fix 应用后解决了吗？"，按答复回写 confidence（上条规则）、trace 记 `{action: feedback, case, outcome: resolved|not_resolved|partial}`、清掉标记。反馈捕获是整条学习环的吞吐上限——标记写在文件里，就不依赖任何人的记性
    - **沉淀已含在本步骤**：命中=常规 postmortem、未命中=含候选 case 的 postmortem，本步骤已生成。**只有当本次不是经 /diagnose 定位的**（如用 Kimi/手工查的、或没配 session-end hook 导致 postmortem 没生成），才需 `/skill:to-postmortem` 手动沉淀。
 
 ## 命中时的输出格式
@@ -103,7 +104,7 @@ rollback：<rollback>
 
 每个 step 后往 `diagnosis_state-<session_id>.yaml`（每个并发诊断一个独立文件，按 session_id 区分）的 `trace` 数组追加一条：
 ```yaml
-- {step: N, action: triage|load_index|quickly_check|load_full|run_check|hit|miss, ...}
+- {step: N, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback, ...}
 ```
 trace 是误诊归因的唯一依据（见 references/diagnosis-procedure.md 末段"误诊归因"）：误诊时先读 trace 判断是 **case 错**（改库）还是**执行错**（改 skill）。不写 trace = 无法归因 = 可能改坏正确的 case。
 
