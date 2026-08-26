@@ -135,6 +135,7 @@
 - **校准度量**：confidence 的 reliability 式校准指标进 metrics
 - **先验超参显式化**：investigation_quality → 初始 score 作为 Beta 超参管理
 - **多样性审计**：triage/quickly_check 判别力对照症状空间的定期审计
+- **参数治理**：设计常数（串联保护 n=2、批审 30 秒上限、每 ns 30 条 cap）按理论 §7 的限定属参数估计——纳入 metrics 实测复核，数据足够时重校（n=2 可由误诊级联率复核，30 秒由批审实际耗时复核）
 
 由 [设计理论](design-theory.md) §10（选型与规模推演）生成的工程预备项（带触发闸门）：
 

@@ -15,6 +15,13 @@ from pathlib import Path
 
 import yaml
 
+# trace action 固定词表（与 skills/diagnose/SKILL.md「每步必写 trace」一致）
+# 词表外 action = 诊断纪律违规，写入时靠 SKILL.md 约束，此处确定性检出
+KNOWN_ACTIONS = {
+    "triage", "load_index", "quickly_check", "load_full",
+    "run_check", "hit", "miss", "tier3", "feedback",
+}
+
 
 def load_states(root: Path):
     files = list(root.glob("diagnosis_state-*.yaml"))
@@ -63,10 +70,17 @@ def main():
     fb = {"resolved": 0, "not_resolved": 0, "partial": 0}
     tier3_used = tier3_saved = 0
     complete = 0
+    vocab_total = 0
+    vocab_bad = []
 
     for st in states:
         trace = st.get("trace") or []
         actions = [t.get("action") for t in trace]
+        for t in trace:
+            a = t.get("action")
+            vocab_total += 1
+            if a not in KNOWN_ACTIONS:
+                vocab_bad.append(f"{st.get('session_id', '?')}: {a!r}")
         if "triage" in actions and (
             "quickly_check" in actions or "load_full" in actions or "hit" in actions
         ):
@@ -108,6 +122,8 @@ def main():
         f"| 结果反馈捕获 | {sum(fb.values())}/{tier2_hit}"
         f"（resolved {fb['resolved']} / not_resolved {fb['not_resolved']} / partial {fb['partial']}）",
         f"| trace 完整性（proxy：含 triage + 过滤步） | {complete}/{n} ({complete / n:.0%})",
+        f"| trace 词表合规（词表外 action） | {vocab_total - len(vocab_bad)}/{vocab_total}"
+        + (f"（违规：{'、'.join(vocab_bad[:5])}{'…' if len(vocab_bad) > 5 else ''}）" if vocab_bad else ""),
         f"| Tier 3 兜底使用 / 其中挽救（resolved 且无 Tier 2 命中） | {tier3_used} / {tier3_saved} |",
     ]
     print("\n".join(rows))

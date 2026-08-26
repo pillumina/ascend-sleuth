@@ -27,7 +27,7 @@ disable-model-invocation: true
    - **建议与决定分离**：预分诊只排序注意力，accept / adjust / reject 由人
 2. **引用完整性校验**:扫所有 case 的 `references`,检查指向真实存在的文件和锚点。悬挂引用进变更摘要（自演化系统的“坏账”，不校验会静默累积）。
 3. **值重复检测**：框架 case 的 `expected`/`fix_on_mismatch` 是否硬编码了 `common/` 权威记录拥有的值？是 → 标 must-fix，要求改成引用。
-4. **置信度重算**：从 `hits`/`misdiagnoses`/`last_hit` 重算每条 case 的 `confidence.score`（按时间衰减）。**新升格的 case 初始 score 不设 0**——按 to-postmortem 标的 `confidence`（人的调查质量判断）设初始值：high→0.6、medium→0.3、low→0.1。score=0 意味着新 case 永远排候选最后，对 5 天详查的高质量 case 不合理。
+4. **置信度重算**：从 `hits`/`misdiagnoses`/`last_hit` 重算每条 case 的 `confidence.score`（按时间衰减）。**新升格的 case 初始 score 不设 0**——按 to-postmortem 标的 `confidence`（人的调查质量判断）设初始值：high→0.6、medium→0.3、low→0.1。这组映射是 Beta 先验超参 $(\alpha,\beta)$ 的实例化（理论依据 docs/design-theory.md §4.1），显式化管理在 roadmap 待定池。score=0 意味着新 case 永远排候选最后，对 5 天详查的高质量 case 不合理。
 5. **软退休**：区分两种"未命中"——
    - **cold**（从未被 quickly_check 选中）→ **不退**（正确但罕见的 case 占索引成本极低，误删是静默损失）
    - **tried-and-failed**（被选中但近 12 周未解决）且 `score` 低 → 移入 `_archive/`

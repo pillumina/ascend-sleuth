@@ -63,6 +63,7 @@ Golden-case regression suite in `eval/golden/`. Public repo contains only constr
 
 ## Key constraints
 
+- **Normative foundation:** all design/implementation/evolution changes must be traceable to `docs/design-principles.md` (the normative articles); the derivation chain lives in `docs/design-theory.md` (four axioms → formulas → principles). An untraceable rule is suspect; an unexplainable real-world choice indicts the theory.
 - **Diagnose does not access customer environments.** All info (logs, versions, errors) comes from the engineer pasting it. The agent's role is to ask for what's missing when information is insufficient.
 - **Agent never applies fixes to production.** Fixes are suggestions for the human to apply.
 - **Cold start:** The repo is in v1 skeleton state. `knowledge/` directories exist but are mostly empty (one seeded case: `SGL-PD-HEAP-001`). The canonical sample is `examples/sample-case.yaml`.
