@@ -1,0 +1,36 @@
+# eval/golden/VLLM-ASC-14320.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #14320（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=Y rank=2 path=primary
+
+case_id: VLLM-ASC-14320
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    | Item | Value |
+    | :--- | :--- |
+    | PyTorch | 2.5.1 (torch_npu) |
+    | Python | 3.11.15 |
+    | vllm-ascend | branch `releases/v0.26.0rc`, HEAD `baaf1809c417` (running via PYTHONPATH dist symlink → source repo HEAD; dist dir name `e8156772` is stale, actual code is HEAD) |
+    | vllm | commit `d02df748bf9e` |
+    | OS | openEuler 24.03 (LTS), container |
+    | CANN | 9.1.0 |
+    | Hardware | Ascend 910A3 (HPU910a3) × 16 cards/pod, 4 pods (2P+2D) same supernode |
+    
+    ### 🐛 Describe the bug
+    
+    ## Describe the Bug
+    
+    PD-separation (2P + 2D) serving GLM-5.2-w4a8 with **DCP** (`decode-context-parallel-size=8`) + MTP speculative decoding crashes the decode EngineCore under sustained load with `EZ9999 aicore exception: MTE accesses an invalid GM address` in the **LightningIndexerQuant** op.
+    
+    Root cause (confirmed by instrumented debug prints): the DCP `_build_block_table_replicated_view` produces a **replicated block_table whose block ids exceed the k_cache capacity**, and LightningIndexerQuant indexes k_cache with these out-of-range block ids → MTE invalid GM address.
+    
+    The same config on v0.23 (theta release) does **not** crash. The regression was introduced by the v0.26 PCP-removal refac
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/
+  case_id: VLLM-ASC-14320
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）

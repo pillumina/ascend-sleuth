@@ -1,0 +1,47 @@
+# eval/golden/VLLM-ASC-13964.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #13964（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=N rank=None path=miss
+
+case_id: VLLM-ASC-13964
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    <details>
+    <summary>The output of `python collect_env.py`</summary>
+    
+    ```text
+    Collecting environment information...
+    PyTorch version: 2.10.0+cpu
+    Is debug build: False
+    
+    OS: openEuler 24.03 (LTS-SP3) (aarch64)
+    GCC version: (GCC) 12.3.1 (openEuler 12.3.1-105.oe2403sp3)
+    Clang version: 17.0.6 ( 17.0.6-63.oe2403sp3)
+    CMake version: version 4.4.0
+    Libc version: glibc-2.38
+    
+    Python version: 3.12.13 (main, Jul  7 2026, 21:19:47) [GCC 12.3.1 (openEuler 12.3.1-105.oe2403sp3)] (64-bit runtime)
+    Python platform: Linux-5.10.0-182.0.0.95.r1941_123.hce2.aarch64-aarch64-with-glibc2.38
+    
+    CPU:
+    Architecture:                         aarch64
+    CPU op-mode(s):                       64-bit
+    Byte Order:                           Little Endian
+    CPU(s):                               320
+    On-line CPU(s) list:                  0-319
+    Vendor ID:                            HiSilicon
+    BIOS Vendor ID:                       HiSilicon
+    Model name:                           Kunpeng 920 7285Z To be filled by O.E.M. CPU @ 3.0GHz
+    BIOS Model name:                      Kunpeng 920 7285Z To be filled by O.E.M. CPU @ 3.0GHz
+    BIOS CPU family:                      280
+    Model:                                0
+    Threa
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/
+  case_id: VLLM-ASC-13964
+  assertion: top-3-or-miss-documented   # LLM 非确定性口径（docs/eval.md）

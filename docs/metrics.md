@@ -34,4 +34,20 @@
 - groom backlog: 6（绿）
 - 平均诊断时间: ~45min
 
+---
+
+## 2026-W35（首批真实数据：vllm-ascend 批量导入评估，回放模式）
+
+> 数据来自 docs/eval-reports/0001（21 例措辞差+交叉回放）。回放非活诊断，指标口径见该报告 §二；小样本（n=21）波动大。
+
+- 语义校验通过率: 21/21 (100%)——真实日志 regex 实测（首次大规模验证）
+- 预分诊: new 19 / variant 2 / covered 0；variant 判定待人核（抽审）
+- 路由准确率: 19/21 (90%)；2 例经 uncategorized 优雅退化救回
+- 候选召回: 16/21 (76%)；miss 5 例全部归因"签名在跟帖不在首帖"
+- rank1: 13 / top3: 16（rank2 两例为同分并列，印证 top-3 口径）
+- 交叉回放（variant 并入验证）: 2/2 rank1 命中主 case
+- 按类命中: precision 3/3 / interrupt 7/10 / other 2/2 / performance 0/1（metric 形态与 regex 回放不匹配——机制性，见报告 §四.4）
+- golden 套件: 2 → 23（真实 fixture，解锁 M2 闸门）
+- 库容量: inference/vllm-ascend 19/30 (63%)，低于 80% 拆分闸门
+
 <!-- 季度回顾固定动作：核对命中率/误诊率/路由准确率趋势，校准 roadmap 闸门数值，确认学习闭环在数据上成立 -->

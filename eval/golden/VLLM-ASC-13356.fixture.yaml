@@ -1,0 +1,51 @@
+# eval/golden/VLLM-ASC-13356.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #13356（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=Y rank=1 path=primary
+
+case_id: VLLM-ASC-13356
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    <details>
+    <summary>The output of `python collect_env.py`</summary>
+    
+    ```text
+    root@A3-03:/data/v23.0rc1_dsv4_pro# python collect_env.py 
+    Collecting environment information...
+    PyTorch version: 2.10.0+cpu
+    Is debug build: False
+    
+    OS: Ubuntu 22.04.5 LTS (aarch64)
+    GCC version: (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+    Clang version: 15.0.7
+    CMake version: version 4.4.0
+    Libc version: glibc-2.35
+    
+    Python version: 3.12.13 (main, Jul  7 2026, 19:40:26) [GCC 11.4.0] (64-bit runtime)
+    Python platform: Linux-5.10.0-216.0.0.115.oe2203sp4.aarch64-aarch64-with-glibc2.35
+    
+    CPU:
+    Architecture:                       aarch64
+    CPU op-mode(s):                     64-bit
+    Byte Order:                         Little Endian
+    CPU(s):                             640
+    On-line CPU(s) list:                0-639
+    Vendor ID:                          HiSilicon
+    BIOS Vendor ID:                     HiSilicon
+    BIOS Model name:                    Kunpeng 920 7286Z
+    Model:                              0
+    Thread(s) per core:                 2
+    Core(s) per socket:                 80
+    Socket(s):                          4
+    Stepping:                           0x0
+    Frequency boost:                    disabled
+    CPU max
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/
+  case_id: VLLM-ASC-13356
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）

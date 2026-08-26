@@ -1,0 +1,61 @@
+# eval/golden/VLLM-ASC-12642.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #12642（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=Y rank=1 path=fallback
+
+case_id: VLLM-ASC-12642
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    <details>
+    <summary>The output of `python collect_env.py`</summary>
+    
+    ```text
+    Collecting environment information...
+    PyTorch version: 2.10.0+cpu
+    Is debug build: False
+    
+    OS: Ubuntu 22.04.5 LTS (x86_64)
+    GCC version: (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+    Clang version: 15.0.7
+    CMake version: version 4.4.0
+    Libc version: glibc-2.35
+    
+    Python version: 3.12.13 (main, May 15 2026, 01:35:39) [GCC 11.4.0] (64-bit runtime)
+    Python platform: Linux-6.8.0-124-generic-x86_64-with-glibc2.35
+    
+    CPU:
+    Architecture:        x86_64
+    CPU(s):              256
+    Vendor ID:           AuthenticAMD
+    Model name:          AMD EPYC 9575F 64-Core Processor
+    Thread(s) per core:  2
+    Core(s) per socket:  64
+    Socket(s):           2
+    NUMA node(s):        2
+    
+    Versions of relevant libraries:
+    [pip3] numpy==1.26.4
+    [pip3] pyzmq==27.1.0
+    [pip3] torch==2.10.0+cpu
+    [pip3] torch_npu==2.10.0
+    [pip3] torchaudio==2.10.0+cpu
+    [pip3] torchvision==0.25.0+cpu
+    [pip3] transformers==5.5.4
+    [conda] Could not collect
+    
+    vLLM Version: 0.21.0
+    vLLM Ascend Version: 0.21.0rc2.dev0+g80610e443.d20260721
+    (git sha: 80610e443, date: 20260721)
+    
+    ENV Variables:
+    ASCEND_TOOLKIT_HOME=/usr/local/Ascend/cann-9.0.0
+    ASCEND_TOOLKIT_LATEST_HOME=/usr/loca
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/
+  case_id: VLLM-ASC-12642
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）

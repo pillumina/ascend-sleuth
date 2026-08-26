@@ -1,0 +1,32 @@
+# eval/golden/VLLM-ASC-14467.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #14467（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=Y rank=1 path=primary
+
+case_id: VLLM-ASC-12685
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    Docker image: quay.io/ascend/vllm-ascend:qwen3.8-a5
+    Hardware: Ascend 950PR, single card
+    vLLM: 0.23.0 / vLLM Ascend: 0.23.0
+    Model: Qwen/Qwen3.8-27B-FP8 (official native FP8 checkpoint, local copy)
+    
+    (EngineCore pid=122161) INFO 08-18 10:30:53 [model_runner_v1.py:3718] Starting to load model /workspace/user_data/Qwen3.8-27B-FP8...
+    (EngineCore pid=122161) INFO 08-18 10:30:53 [fp8_config.py:57] Using the vLLM Ascend fp8 Quantization now!
+    (EngineCore pid=122161) ERROR 08-18 10:30:54 [core.py:1195] EngineCore failed to start.
+    (EngineCore pid=122161) ERROR 08-18 10:30:54 [core.py:1195] Traceback (most recent call last):
+    ...
+    (EngineCore pid=122161) ERROR 08-18 10:30:54 [core.py:1195]   File "/vllm-workspace/vllm/vllm/model_executor/models/qwen3_5.py", line 578, in __init__
+    (EngineCore pid=122161) ERROR 08-18 10:30:54 [core.py:1195]     self.visual = Qwen3_VisionTransformer(
+    (EngineCore pid=122161) ERROR 08-18 10:30:54 [core.py:1195]   File "/vllm-workspace/vllm/vllm/model_executor/models/qwen3_vl.py", line 581, in __init__
+    (EngineCore pid=122161) ERROR 08-18 10:30:54 [core.py:1195]     self.merger = Qwen3_VisionPatchMerger(
+    (EngineCore pid=122161) ERROR 08-18 1
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/
+  case_id: VLLM-ASC-12685
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）

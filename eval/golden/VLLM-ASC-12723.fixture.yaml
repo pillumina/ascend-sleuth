@@ -1,0 +1,44 @@
+# eval/golden/VLLM-ASC-12723.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #12723（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=Y rank=1 path=primary
+
+case_id: VLLM-ASC-12723
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    <details>
+    <summary>Environment (collected inside the serving container; the container is offline so collect_env.py could not be downloaded)</summary>
+    
+    ```text
+    Ascend A3 (16 dies), driver 25.5.1
+    Image: quay.io/ascend/vllm-ascend:nightly-releases-v0.23.0-a3
+    
+    Python 3.12.13
+    torch 2.10.0+cpu   (standard Ascend arrangement: CPU torch build, NPU backend via torch_npu)
+    torch_npu 2.10.0.post2
+    vllm 0.23.0
+    vllm_ascend: source tree bundled in the image at /vllm-workspace/vllm-ascend (no __version__ attribute)
+    triton 3.2.0
+    CANN: as bundled in the image
+    
+    vllm_ascend/ops/rotary_embedding.py: HAS_TRITON = True
+    -> rope_forward_oot routes into rope_forward_triton (vllm_ascend/ops/triton/rope.py),
+       not torch_npu._npu_rotary_embedding, for this stack.
+    ```
+    
+    </details>
+    
+    ### 🐛 Describe the bug
+    
+    ## Summary
+    
+    While bringing up GLM-5.2 DSpark speculative decoding on Ascend A3 (16 dies, DP2/TP8/EP, eager), we found that the **platform-dispatched rotary embedding path returns non-norm-preserving Q/K** for the DSpark draft attention shape (bf16, NeoX-style, `head_dim = rotary_dim = 192`). Calling `forward_native()` on the **same rotary object, same worker, same inputs** produces
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/
+  case_id: VLLM-ASC-12723
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）

@@ -1,0 +1,38 @@
+# eval/golden/VLLM-ASC-13934.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #13934（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=Y rank=2 path=fallback
+
+case_id: VLLM-ASC-13934
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    | 项目 | 值 |
+    | :--- | :--- |
+    | PyTorch 版本 | 2.10.0+cpu |
+    | torch_npu 版本 | 2.10.0.post2 |
+    | Python 版本 | 3.11.15 |
+    | vllm 版本 | 0.23.1rc1.dev1291+g568afb3a1 (branch: releases/v0.26.0, commit: 568afb3a1, 2026-07-26) |
+    | vllm-ascend 版本 | 0.19.1rc2.dev1317+ge8156772d (branch: releases/v0.26.0rc, commit: e8156772d, 2026-08-07) |
+    | OS | openEuler 24.03 (LTS)（容器环境） |
+    | CANN 版本 | 9.0.1 |
+    | 硬件 | Ascend 910 × 16 cards (2 pods × 8 NPU, each NPU 2 chips) |
+    
+    ### 🐛 Describe the bug
+    
+    ## Describe the Bug
+    
+    When running GLM-5.2 (w4a8) under **PD-disaggregated** serving with **DCP (Decode Context Parallel, size=8) + MTP speculative decoding (num_speculative_tokens=5)** on vllm-ascend v0.26.0rc, the decode worker crashes with `IndexError: list index out of range` in `mooncake_connector.py:_get_kv_split_metadata` during KV transfer loading.
+    
+    **This is a different bug from the previously reported issue #13710** (which was a `RuntimeError: shape 256 vs 260` in `block_table.py:272` on v0.23). The v0.23 crash was in the PCP/MTP slot mapping path; this v0.26 crash is in the Mooncake connector's KV split metadata path.
+    
+    **PD 分离配置**:
+    - Prefill (P): 2 × A3 nodes (16 cards each, TP=8, 
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/
+  case_id: VLLM-ASC-13934
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）

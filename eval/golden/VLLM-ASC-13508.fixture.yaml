@@ -1,0 +1,54 @@
+# eval/golden/VLLM-ASC-13508.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #13508（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=Y rank=1 path=primary
+
+case_id: VLLM-ASC-13508
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    Relevant environment at the time of failure:
+    
+    ```text
+    CPU architecture: x86_64
+    Device: Ascend A2 / 910B
+    Python: 3.12.13
+    vLLM source: main2main development build (package metadata: 0.26.0+empty)
+    vLLM Ascend: main2main development build
+    torch: 2.10.0+cpu
+    torch-npu: 2.10.0.post2
+    triton-ascend: 3.2.1
+    triton: 3.2.0
+    VLLM_VERSION: 1.0.0.dev
+    ```
+    
+    ### 🐛 Describe the bug
+    
+    On x86_64 A2 environments, current vLLM `main` can fail during startup with:
+    
+    ```text
+    File "vllm/triton_utils/__init__.py", line 15, in <module>
+        from triton.experimental import gluon
+    ModuleNotFoundError: No module named 'triton.experimental'
+    ```
+    
+    vLLM now imports Gluon unconditionally when `HAS_TRITON` is true:
+    
+    https://github.com/vllm-project/vllm/blob/7c40d61eaf6bdd80bb493cf94032efbbe0ed0ee4/vllm/triton_utils/__init__.py#L11-L17
+    
+    vLLM Ascend already has a main2main compatibility stub, but it only inserts the two leaf modules into `sys.modules`:
+    
+    - `triton.experimental.gluon`
+    - `triton.experimental.gluon.language`
+    
+    https://github.com/vllm-project/vllm-ascend/blob/b80d4e621a303d1a4077db5e4d80586d2446fb8f/vllm_ascend/__init__.py#L24-L38
+    
+    It does not create or load the parent module `triton.e
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/
+  case_id: VLLM-ASC-13508
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）

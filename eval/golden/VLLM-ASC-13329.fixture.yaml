@@ -1,0 +1,62 @@
+# eval/golden/VLLM-ASC-13329.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #13329（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=Y rank=2 path=primary
+
+case_id: VLLM-ASC-13329
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    <details>
+    <summary>The output of `python collect_env.py`</summary>
+    
+    ```text
+    
+    ```
+    
+    </details>
+    
+    
+    ### 🐛 Describe the bug
+    
+    A2机器一台。启动脚本：
+    
+    启动脚本
+    ```
+    docker run -dit \
+      --name model-DeepSeek-V4-Flash-0731-w8a8-5756 \
+      --shm-size 16g \
+      --privileged \
+      -w /vllm-workspace/vllm \
+      --device /dev/davinci_manager \
+      --device /dev/devmm_svm \
+      --device /dev/hisi_hdc \
+      -v /usr/local/dcmi:/usr/local/dcmi \
+      -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
+      -v /usr/local/Ascend/driver/lib64/:/usr/local/Ascend/driver/lib64/ \
+      -v /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info \
+      -v /etc/ascend_install.info:/etc/ascend_install.info \
+      -v /Model:/root/.cache \
+      -v /root/.cache/vllm:/root/.cache/vllm \
+      -p 8000:8000 \
+      -e ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 \
+      -e TZ=Asia/Shanghai \
+      -e PYTORCH_NPU_ALLOC_CONF=expandable_segments:True \
+      -e HCCL_OP_EXPANSION_MODE=AIV \
+      -e OMP_NUM_THREADS=1 \
+      -e HCCL_BUFFSIZE=1024 \
+      -e TASK_QUEUE_ENABLE=10 \
+      -e VLLM_USE_SIMPLE_KV_OFFLOAD=1 \
+      -e VLLM_ASCEND_ENABLE_FLASHCOMM1=1 \
+      -e TASK_QUEUE_ENABLE=1 \
+      -e OMP_PROC_BIND=false \
+      -e VLLM_ENABLE_MULTITHREAD_LOAD=true \
+      quay
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/
+  case_id: VLLM-ASC-13329
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）
