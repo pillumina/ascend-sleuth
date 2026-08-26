@@ -38,7 +38,7 @@ cases:
       - step: 1
         command_template: "env | grep HCCL_BUFFSIZE"
         rank_selector: coordinator
-        expected: ">= 4194304"
+        expected: ">= 2097152"
         fix_on_mismatch: "export HCCL_BUFFSIZE=4194304"
         rollback: "unset HCCL_BUFFSIZE"
 

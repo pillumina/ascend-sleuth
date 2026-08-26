@@ -62,4 +62,4 @@ namespaces:
         command: grep -ci 'timeout|hang|stuck' {{log_path}}
         expected: regex:^[1-9]
     file: knowledge/training/mindspeed-llm/DEMO-EP-HANG-001.yaml
-    hash: b240209ce646
+    hash: 405085e35ab7
