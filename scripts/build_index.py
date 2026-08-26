@@ -132,6 +132,7 @@ def stale_entries(root: Path, namespaces):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="只校验新鲜度，不写文件")
+    ap.add_argument("--json", action="store_true", help="以 JSON 输出索引摘要（机器可读，供工具链消费）")
     ap.add_argument("--root", default=None, help="仓库根目录（默认：脚本上两级）")
     args = ap.parse_args()
     root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[1]
@@ -152,7 +153,11 @@ def main():
 
     out = root / "knowledge" / "_index.yaml"
     out.write_text(render(ns), encoding="utf-8")
-    print(f"已生成 {out}（{len(ns)} 个 namespace / {sum(len(v) for v in ns.values())} 条 case）")
+    if args.json:
+        import json as _json
+        print(_json.dumps({k: [c["id"] for c in v] for k, v in ns.items()}, ensure_ascii=False))
+    else:
+        print(f"已生成 {out}（{len(ns)} 个 namespace / {sum(len(v) for v in ns.values())} 条 case）")
 
 
 if __name__ == "__main__":
