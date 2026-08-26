@@ -18,3 +18,6 @@ jobs:
       # 两道检查合一：build_index 会解析全部 case YAML（语法错即红），
       # --check 校验 _index.yaml 与文件 hash 一致（改了 case 忘重建即红）。
       - run: python3 scripts/build_index.py --check
+      # triage-tree 语法检查：曾因 pipe-or 写法长期不可解析而无人发现（原则二教训），
+      # 结构化工具化（路由统计/学习型路由）前必须堵住。
+      - run: python3 -c "import yaml; yaml.safe_load(open('triage-tree.yaml')); print('triage-tree ok')"
