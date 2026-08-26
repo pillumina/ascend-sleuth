@@ -20,7 +20,7 @@
 
 fork 模式下的目录归属：
 
-- 上游（方法论）：`skills/ scripts/ docs/ examples/ eval/ README.md CLAUDE.md CONTEXT.md triage-tree.yaml`。triage-tree 是共享资产，修改它属于高风险变更。
+- 上游（方法论）：`skills/ scripts/ docs/ examples/ eval/ .github/ README.md CLAUDE.md CONTEXT.md triage-tree.yaml`。triage-tree 是共享资产，修改它属于高风险变更；`.github/` 含 CI 与 PR 模板，随方法论同步。
 - fork 自有（知识）：`knowledge/ postmortems/`（含 `inbox/`），不参与上游合并，因此不存在冲突面。
 
 同步方式为 `git fetch upstream && git merge upstream/main`。对框架的改进以 PR 形式反提上游；知识内容不回流，脱敏后的构造示例除外。
@@ -52,6 +52,10 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 | 高风险双签 | `kb/high-risk` 标签 + CODEOWNERS 双组路径（每组至少一人批） | 半硬（"恰好两个 approval"需人核验，见下） |
 | 脱敏 / severity 纪律 | to-postmortem 流程 + groom 周批审抽查 | 约定 |
 | eval 回归（改 skill 时） | 按 [eval.md](eval.md) 手动 replay，M2 脚本化后并入 CI | 约定 → 半硬 |
+
+## PR 模板
+
+`.github/PULL_REQUEST_TEMPLATE/` 下按变更对象分四类（创建 PR 时选择，或 `?template=` 直链）：**knowledge_intake**（新知识升格：预分诊+证据+脱敏自查）、**knowledge_modification**（改 expected/fix/compat 等高风险字段：触发条款+依据+双签）、**methodology**（skill/脚本/文档：原则追溯+golden 回归对照）、**structure**（triage-tree/namespace：数据依据+迁移完整性检查单）。模板里的"机器可填"字段当前手工填写，自动生成在 roadmap 待定池（PR 描述机器层生成）。模板目录属上游方法论，随 fork 同步。
 
 ## 高风险双签
 

@@ -168,7 +168,7 @@ docs/git-workflow.md         git 门控/审核/合入闭环（标签集、CODEOW
 docs/roadmap.md              闸门驱动路线图（五维度事项、验收标准、入口闸门、检查点）
 docs/adr/                    设计决策记录（0002：检索为何不上 RAG、容量论证）
 CODEOWNERS.example           owner 落实后启用（配合分支保护做硬门控）
-.github/workflows/           kb-checks CI（索引新鲜度 + YAML 语法）
+.github/                     kb-checks CI + 分场景 PR 模板（intake/修改/方法论/结构）
 ```
 
 修改 skill 本身之前，先按 [docs/eval.md](docs/eval.md) 跑一遍 golden 回归套件，确认原本能正确命中的场景没有被改坏。
