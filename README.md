@@ -160,6 +160,7 @@ CONTEXT.md                   领域术语表（中英对照）
 scripts/                     build_index.py（索引生成/新鲜度校验）、trace_metrics.py（trace→指标）
 eval/golden/                 回归测试夹具（真实 fixture 脱敏后入库；无法脱敏的放私有仓）
 docs/eval.md                 skill 改动评估流程
+docs/demo.md                 演示讲稿（intake→周审→门控→闭环的全流程演示，可回放 PR #1）
 docs/design-theory.md        设计理论（四公理 + 贝叶斯决策内核，推导全部原则）
 docs/design-principles.md    设计原则（规范性条文，约束全部设计与演进）
 docs/evolution.md            自演进设计（演化机制、护栏、数据回路）
