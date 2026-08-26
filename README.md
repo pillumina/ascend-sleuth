@@ -166,7 +166,7 @@ docs/design-principles.md    设计原则（规范性条文，约束全部设计
 docs/evolution.md            自演进设计（演化机制、护栏、数据回路）
 docs/git-workflow.md         git 门控/审核/合入闭环（标签集、CODEOWNERS、CI、双签）
 docs/roadmap.md              闸门驱动路线图（五维度事项、验收标准、入口闸门、检查点）
-docs/adr/                    设计决策记录（0002：检索为何不上 RAG、容量论证）
+docs/adr/                    设计决策记录（0002：不上 RAG；0003：平台可移植性与迁移预案）
 CODEOWNERS.example           owner 落实后启用（配合分支保护做硬门控）
 .github/                     kb-checks CI + 分场景 PR 模板（intake/修改/方法论/结构）
 ```
