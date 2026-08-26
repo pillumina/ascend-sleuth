@@ -1,0 +1,50 @@
+# DEMO-EP-HANG-001 —— 演示用 case（仅存于本 PR 分支，不合并入 main）
+# 构造样例，镜像自 examples/sample-case.yaml；用于演示 intake → groom → git 门控全流程。
+# 正式新建 case 请照 examples/sample-case.yaml 模板，勿以本文件的 DEMO 前缀命名。
+
+cases:
+  - id: DEMO-EP-HANG-001
+    title: "HCCL buffer undersize for large-scale EP dispatch"
+
+    category: interrupt
+    tags: [hang, ep, hccl]
+
+    platforms: ["A5-950"]
+    compat:
+      - framework: mindspeed-llm
+        ranges: [">=2.4.0,<2.7.0"]
+
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3                        # 初始值按 investigation_quality=medium（Beta 先验，理论 §4.1）
+      last_hit: ""
+
+    symptoms:
+      - "all_to_all_single hangs at step usually after 1000+"
+      - "world_size >= 64"
+
+    quickly_check:
+      primary:
+        command_template: "grep -c 'all_to_all' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+      fallback:
+        command_template: "grep -ci 'timeout|hang|stuck' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        command_template: "env | grep HCCL_BUFFSIZE"
+        rank_selector: coordinator
+        expected: ">= 4194304"
+        fix_on_mismatch: "export HCCL_BUFFSIZE=4194304"
+        rollback: "unset HCCL_BUFFSIZE"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: env-var
+
+    root_cause: "HCCL internal buffer insufficient for EP all-to-all at large world_size"
+    fix: "export HCCL_BUFFSIZE=4194304 before training launch (then restart)"
