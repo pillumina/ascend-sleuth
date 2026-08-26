@@ -23,6 +23,7 @@ branches:
   - id: training_precision
     category: precision
     symptoms:
+      - ["fp8.*衰减", "fp8.*decay"]
       - [nan, "loss.*nan", inf]
       - ["fp8.*precision", overflow, underflow]
       - ["bf16.*mismatch", "allreduce.*round"]
