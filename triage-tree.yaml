@@ -11,9 +11,9 @@ branches:
   - id: training_interrupt
     category: interrupt
     symptoms:
-      - [timeout, hang, "stuck at step"]
+      - ['\btimeout\b', '\bhang\b', "stuck at step"]
       - ["NCCL.*timeout", "HCCL.*timeout", "all_to_all.*timeout"]
-      - [OOM, "out of memory", killed]
+      - ['\bOOM\b', "out of memory", '\bkilled\b']
       - ["core dumped", "segmentation fault"]
     search_namespaces:            # 按顺序搜索，最多加载 3 个
       - training/<detected_framework>/
@@ -23,10 +23,10 @@ branches:
   - id: training_precision
     category: precision
     symptoms:
-      - [nan, "loss.*nan", inf]
-      - ["fp8.*precision", overflow, underflow]
+      - ['\bnan\b', "loss.*nan", '\binf\b']
+      - ["fp8.*precision", '\boverflow\b', '\bunderflow\b']
       - ["bf16.*mismatch", "allreduce.*round"]
-      - [diverg, "not converg"]        # 收敛问题走 precision.convergence 子类型
+      - ['\bdiverg', "not converg"]        # 收敛问题走 precision.convergence 子类型
     search_namespaces:
       - training/<detected_framework>/
       - common/
@@ -38,7 +38,7 @@ branches:
       - ["throughput.*drop", "throughput.*low"]
       - ["step.*time.*slow", "step.*time.*波动"]
       - ["comm.*ratio.*high", "communication.*overhead"]
-      - ["tflops.*low", idle, "util.*low"]
+      - ["tflops.*low", '\bidle\b', "util.*low"]
     search_namespaces:
       - training/<detected_framework>/
       - common/
@@ -49,6 +49,8 @@ branches:
     symptoms:
       - ["kv.*cache.*full", "out of memory"]
       - ["serving.*crash", "engine.*error"]
+      - ['ErrCode=\d+', 'EE9999', 'rtStream\w*.*fail', 'aclrt\w+.*fail']   # 错误码型签名（评估 0001 §四.2：12983 型靠退化兜底的缺口）
+      - ['internal error', '\babort\b', '\bcrash\b', '\bdied\b']
     search_namespaces:
       - inference/<detected_framework>/
       - common/
