@@ -1,0 +1,77 @@
+# VLLM-ASC-12723 —— Ascend Triton rope 路径 sin 缓存偏移用 pad 后 rotary dim，非 2 的幂 rope_dim 下 RoPE 退化
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12723
+# fix 跟踪：PR #12963（vllm_ascend/ops/triton/rope.py，3 行 diff + 回归测试）
+# investigation_quality: high（maintainer 代码级根因 + 3 行修复 + 回归测试；Q/K 范数实测 0.73）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（batch 1，2026-08）
+
+cases:
+  - id: VLLM-ASC-12723
+    title: "Triton rope 的 sin 缓存偏移用了 pad 后的 rotary dim（rope_dim=192→pad 256，起点错位 32 元素）致 RoPE 退化为 out=in*cos，Q/K 范数 ~0.73，DSpark 投机接受率 5.6→3.0"
+
+    category: precision
+    tags: [triton-rope, rotary-embedding, non-power-of-two, dspark, spec-decode]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.23.0"]        # 受影响为含 Triton rope 路径的 0.23.0 nightly；PR #12963 在 main，是否回传 0.23.x 需验证
+
+    investigation_quality: high     # to-postmortem 标的调查质量，groom 据此设初始 score
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                    # 初始值（groom 按 investigation_quality=high 设）
+      last_hit: ""
+
+    symptoms:
+      - "GLM-5.2 DSpark 投机解码（bf16, NeoX, head_dim=rotary_dim=192）在线 accept_len 从 ~5.6 崩到 ~3.0"
+      - "同一 rope 对象/worker/输入调 forward_native() 后 accept_len 恢复 5.4~5.5"
+      - "Q/K post-RoPE 范数比 ~0.73（离线参考 1.000）"
+      - "仅 rope_dim 非 2 的幂（192→pad 256）触发；128/256 等 2 的幂形状无影响"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12723"
+      - "https://github.com/vllm-project/vllm-ascend/pull/12963"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'accept_len|Acceptance rate' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:accept_len|Acceptance rate"
+      fallback:
+        command_template: "grep -iE 'accept_len|norm ratio' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*(accept_len|norm ratio)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：是否是 spec-decode 场景 accept_len 明显劣化（如 DSpark draft k=7 时 ~5.6 → 3.0），且 Q/K post-RoPE 范数比约 0.73（正常 1.0）？"
+        expected: "是——数值错误在 dispatched rotary 执行路径本身"
+        note: "不是 checkpoint/config/acceptance-logic 问题（#12262 的 Markov logits/anchor sampling/QuaRot 是不同根因）"
+      - step: 2
+        check: "判别路径：vllm_ascend/ops/rotary_embedding.py 的 HAS_TRITON 是否为 True（走 rope_forward_triton 而非 torch_npu._npu_rotary_embedding）？rope_dim 是否非 2 的幂（如 192）？"
+        expected: "HAS_TRITON=True 且 rope_dim=192（pad 到 256）——本 case 触发条件"
+      - step: 3
+        check: "代码级验证：vllm_ascend/ops/triton/rope.py 中 sin_offsets 是否为 tl.arange(pad_rope_dim // 2, pad_rope_dim)？"
+        expected: "是——sin 段实际起点 rope_dim/2=96，代码从 pad_rope_dim/2=128 开始，错位 32 元素且尾部越界读到垃圾，sin≈0 → RoPE 退化为 out=in*cos"
+        note: "cos_offsets 虽同有 pad 偏移，但起点为 0 且被 cos_mask 过滤，无影响"
+      - step: 4
+        check: "忽略项：不要追 checkpoint 加载/投机接受逻辑/权重——用同一对象调 forward_native() 结果正确即确认是 dispatched Triton 路径的数值错误"
+        note: "PR #12963 修复：sin_offsets = cos_offsets + (rope_dim // 2)，3 行 diff；2 的幂形状行为不变"
+
+    severity: service-affecting
+    fix_side_effects: [requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      vllm_ascend/ops/triton/rope.py 的 _triton_rope/_triton_rope_siso 用 padding 后的 rotary dim
+      计算 sin 缓存偏移：sin_offsets = tl.arange(pad_rope_dim // 2, pad_rope_dim)。rope_dim=192
+      （非 2 的幂，pad 到 256）时 sin 段实际起点是 rope_dim/2=96，代码却从 pad_rope_dim/2=128
+      开始，错位 32 元素且尾部越过缓存行边界读到垃圾，sin 行退化为 ~0，RoPE 塌缩为 out=in*cos，
+      Q/K 范数降到 ~0.73（√0.5≈0.707），attention logits 被整体缩小，DSpark 投机 accept_len 从
+      5.6 崩到 3.0。
+
+    fix: >
+      升级到包含 PR #12963 的版本，或直接修改 vllm_ascend/ops/triton/rope.py 两处：
+      sin_offsets = cos_offsets + (rope_dim // 2)（锚定真实 rope_dim/2，mask 仍覆盖尾部）。
+    rollback: "revert PR #12963 / 回退到修复前版本"

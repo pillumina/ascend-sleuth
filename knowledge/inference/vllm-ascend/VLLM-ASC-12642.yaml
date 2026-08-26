@@ -1,0 +1,76 @@
+# VLLM-ASC-12642 —— triton-ascend 3.2.1 后端对 split_qkv_rmsnorm_mrope 的 K 归约路径生成错误设备代码，variance=0
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12642
+# fix 跟踪：无 PR，官方确认升级 triton-ascend 3.2.2 修复（3.2.2+dev20260711140232 验证通过）
+# investigation_quality: high（最小可复现 kernel + 逐步拆表达式定位 0 的产生点 + 官方确认修复版本）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（batch 1，2026-08）
+
+cases:
+  - id: VLLM-ASC-12642
+    title: "triton-ascend 3.2.1 对 [4,256] K 做 head reduction 后接 extract_slice+cos 广播的布局/归约路径生成错误设备代码，square_sums 被算成 0 → K RMSNorm variance=0 → K 放大 1000 倍"
+
+    category: precision
+    tags: [triton-ascend, fused-op, rmsnorm, mrope, codegen]
+
+    platforms: ["A5-950"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.21.0"]        # 受影响为 0.21.0rc2.dev（含 triton split_qkv_rmsnorm_mrope 融合算子）
+      - framework: triton-ascend
+        ranges: ["<3.2.2"]          # 3.2.1 有 codegen bug；3.2.2 修复
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "Ascend 950PR (A5) 上 Qwen3.5-4B (bf16, partial RoPE: rope_dim=64 < head_size=256) 输出错误"
+      - "triton_split_qkv_rmsnorm_mrope 融合算子把 K 的 variance 算成 [0,0,0,0]（正确 ~1.05~1.19）→ reciprocal_std=1/sqrt(0+1e-6)=1000，K 被异常放大 ~1000 倍"
+      - "最小复现：kernel 中加入 orig_qk * cos_tensor 这条后续计算后，编译器为 K RMSNorm 生成另一套设备代码，square_sums 变为 0"
+      - "triton-ascend 3.2.2 上同代码验证通过（官方确认与 triton-ascend 版本相关）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12642"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'triton_split_qkv_rmsnorm_mrope' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*triton_split_qkv_rmsnorm_mrope"
+      fallback:
+        command_template: "grep -iE 'rmsnorm|variance|reciprocal_std' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(?i).*(rmsnorm|variance|reciprocal_std)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：是否 A5(950PR) + partial RoPE（rope_dim < head_size）模型输出明显错误？K 的 RMSNorm variance 是否被算成 0？"
+        expected: "是——[0,0,0,0]（正确 ~1.05~1.19），K 被放大 1000 倍"
+      - step: 2
+        check: "根因确认：检查 triton-ascend 版本是否为 3.2.1"
+        expected: "是——squares=in_k*in_k → tl.sum(squares, axis=1)/head_size 的归约路径在加入 extract_slice + cos 广播的后续 RoPE 计算后，编译器生成另一套布局/归约设备代码，square_sums 恒 0"
+        note: "表达式本身（squares → sum/head_size）没有错；拆开表达式后 square_sums 仍为 0——不是数值精度问题"
+      - step: 3
+        check: "修复验证：升级 triton-ascend 到 >=3.2.2 后重跑同形状 kernel，variance 是否恢复非 0？"
+        expected: "恢复（官方用 3.2.2+dev20260711140232 验证通过）"
+      - step: 4
+        check: "忽略项：不要在 vllm-ascend 侧改 RMSNorm 数学或调 eps——根因在 triton-ascend/CANN 后端的设备代码生成路径"
+        note: "触发形状：num_q_heads=16, num_kv_heads=4, head_size=256, rope_dim=64"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      triton-ascend 3.2.1 的 CANN 后端设备代码生成缺陷：对 [4,256] 的 K 张量做 head reduction
+      （tl.sum(squares, axis=1) → [4]）后，又对该归约结果所在路径加入 extract_slice（取前 64 维）
+      与 cos 张量广播相乘的 RoPE 计算时，编译器为前面的 K RMSNorm 生成另一套布局/归约代码，把
+      非恒等标量缩放后的平方和 square_sums 错误生成 0。variance=0 → reciprocal_std=1/sqrt(1e-6)=1000
+      → K 被放大约 1000 倍 → 模型输出错误。触发条件为 partial RoPE 形状（rope_dim=64 < head_size=256）
+      与后续 RoPE 计算的耦合，属 triton-ascend/CANN 后端问题，升级 3.2.2 修复。
+
+    fix: >
+      升级 triton-ascend 到 3.2.2 及以上（3.2.2+dev20260711140232 验证通过），服务重启生效。
+    rollback: "回退 triton-ascend 到 3.2.1（问题复现）"

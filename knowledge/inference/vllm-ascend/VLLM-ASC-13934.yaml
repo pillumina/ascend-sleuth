@@ -1,0 +1,83 @@
+# VLLM-ASC-13934 —— v0.26 AscendSFAIndexerCacheSpec 拆 KV cache group 为 2 个 Mooncake transfer group，
+#   vllm 侧 remote_block_ids 仍按 1 组索引 → _get_kv_split_metadata 越界
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/13934
+# fix 跟踪：PR #13968（releases/v0.26.0 backport）+ PR #13965（main）；评论#11 验证 'Verified fixed in the latest v0.26rc commit'
+# investigation_quality: high（maintainer 确认根因 + 报告方 6 轮修复尝试穷举 + 压测复现 306/1000 + 修复后验证）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（batch 1，2026-08）
+# 脱敏：未引入线程中的内网 IP（10.x）与主机名
+
+cases:
+  - id: VLLM-ASC-13934
+    title: "v0.26 新增 AscendSFAIndexerCacheSpec 使 1 个 KV cache group 拆成 2 个 Mooncake transfer group，而 vllm 侧 remote_block_ids 仍按 1 组索引，D 侧 _get_kv_split_metadata 访问 remote_block_ids[1] 越界崩溃"
+
+    category: interrupt
+    tags: [pd-separation, mooncake, kv-transfer, dcp, mtp]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.26.0"]         # 受影响为 v0.26.0rc（含 SFA spec 拆分）；修复 #13968 回传 v0.26.0
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "v0.26.0rc PD 分离 + DCP=8 + MTP(num_speculative_tokens=5) 下 decode worker 崩溃：IndexError: list index out of range，栈在 mooncake_connector.py:_get_kv_split_metadata → meta.remote_block_ids[group_idx]"
+      - "日志确认：Split KV cache manager group 0 into 2 Mooncake transfer groups by KV spec: [('AscendSFAIndexerCacheSpec', 1, 1), ('AscendMLAAttentionSpec', 1, 1)]"
+      - "GLM-5.2 w4a8，20k-40k 长 prompt 压测 ~30%（306/1000）稳定复现；崩溃时 kv_cache_usage=0.01 非 OOM"
+      - "v0.23 同配置不崩（无 AscendSFAIndexerCacheSpec；两版本 mooncake_connector.py 3784 行 0 diff）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/13934"
+      - "https://github.com/vllm-project/vllm-ascend/pull/13968"
+      - "https://github.com/vllm-project/vllm-ascend/pull/13965"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'Split KV cache manager group' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*Split KV cache manager group \\d+ into \\d+ Mooncake transfer groups"
+      fallback:
+        command_template: "grep -E '_get_kv_split_metadata|IndexError: list index out of range' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(_get_kv_split_metadata|IndexError: list index out of range)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：崩溃栈是否指向 mooncake_connector.py _get_kv_split_metadata 的 remote_block_ids[group_idx]？版本是否 v0.26+（含 SFA spec 拆分）？"
+        expected: "是——PD 分离 + DCP + MTP 下长 prompt 压测中段崩溃，KV 命中（connector_prefix_cache_stats hits=26262）非资源不足"
+      - step: 2
+        check: "根因确认：日志是否出现 'Split KV cache manager group ... by KV spec'？"
+        expected: "出现——1 个 kv_cache_group 被 _build_kv_group2layeridx 按 spec 拆成 2 个 transfer group，而 vllm 侧 remote_block_ids 只有 1 组 → group_idx=1 越界"
+      - step: 3
+        check: "警告：不要用'跳过 group 或所有 group 共用 remote_block_ids[0]'绕过"
+        expected: "SFA(scale=8) 与 MLA(scale=1) block 布局不同，共用 block_ids 必然乱码（线程 6 轮修复尝试全部验证失败：输出 0/1 交替、585858、乱码等）"
+        note: "v3 版本还因 group_spec 是 int 而非 dict 抛 AttributeError——解包错误"
+      - step: 4
+        check: "修复验证：应用 PR #13968（v0.26.0 backport）/ #13965（main）后 IndexError 消失；若随后出现 HcclBatchGet ErrorNo:103900 + 乱码"
+        expected: "是 SFA/MLA 共用物理 metadata slot 的残留问题（MLA 误用 SFA scale 把 block id 扩 8 倍 → 未注册地址）——需使用更新后的 #13968/#13965（隔离 normal KV / MTP / SFA 布局）"
+        note: "乱码从首次 HcclBatchGet ret=-1 开始，传输失败次数随时间恶化不自愈（D0 25 万+ 次）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      v0.26 vllm-ascend 新增 AscendSFAIndexerCacheSpec（vllm_ascend/core/kv_cache_interface.py:98），
+      GLM-5.2 的 KV cache 层注册 2 种 spec（SFA indexer 层 / MLA attention 层）。mooncake_connector.py
+      的 _build_kv_group2layeridx 按 spec 把 1 个 kv_cache_group 拆成 2 个 Mooncake transfer group，
+      而 vllm 侧 remote_block_ids/local_block_ids 仍按 kv_cache_groups（1 组）索引，D 侧
+      _get_kv_split_metadata 遍历 2 个 transfer group 时 remote_block_ids[group_idx=1] 越界崩溃。
+      修复后残留问题：SFA(scale=8) 与 MLA(scale=1) 共用同一物理 metadata slot，MLA 错误使用 SFA
+      的 scale 把 block id 扩 8 倍产生未注册的 Mooncake/HCCL 地址 → 传输失败与乱码；需按 spec 隔离
+      metadata 布局并保持不同 scale 的 expanded block id 分离。
+
+    fix: >
+      升级到包含 PR #13968（releases/v0.26.0 backport）或 #13965（main）的版本：修正 transfer-group
+      与 logical KV cache group 的索引映射（_get_kv_cache_group_id），并隔离 normal KV / MTP / SFA
+      metadata 布局、保留不同 scale 的独立 expanded block id。
+    rollback: "revert #13968 / #13965；或回退到 v0.23（无 SFA spec 拆分，不触发）"

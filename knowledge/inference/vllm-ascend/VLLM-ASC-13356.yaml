@@ -1,0 +1,72 @@
+# VLLM-ASC-13356 —— PD 分离开启 memcache 性能劣化：lookup 与本地 prefix cache 完全重叠 → 零边际收益仍付 RPC 开销
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/13356
+# fix 跟踪：PR #12783（https://github.com/vllm-project/vllm-ascend/pull/12783 ）及后续优化；用户未回测，stale 关闭
+# investigation_quality: medium（assessment.jsonl #13356）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（Phase B）
+# 定性局限：本 case 是 performance 类但线程无 profiler 数值（仅截图+代码条件），quickly_check 用代码条件作检索信号
+
+cases:
+  - id: VLLM-ASC-13356
+    title: "PD 分离开启 memcache 性能劣化：lookup 与本地 prefix cache 完全重叠（num_external_hit_tokens <= num_computed_tokens）"
+
+    category: performance
+    tags: [memcache, pd-separation, prefix-cache, kv-cache-pool, throughput]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.23.0rc1"]     # 实测 0.23.0rc1；优化 PR #12783 及后续已合入 23.0 分支
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3                    # 初始值（investigation_quality=medium → 0.3）
+
+    symptoms:
+      - "PD 分离下开启 memcache（AscendStoreConnector/MultiConnector，backend=memcache）性能劣化：128K 输入序列时 lookup 与本地 prefix cache 重叠"
+      - "每请求 lookup() 经常命中但 connector 随后 load 了 0 个 token"
+      - "memcache 命中与本地 prefix cache 完全重叠（num_external_hit_tokens <= num_computed_tokens）时 pool_scheduler 算出 need_to_allocate = 0 并返回 (0, False)"
+      - "前缀复用 workload 下 memcache 零边际收益、仍付每请求 lookup RPC 开销，吞吐相对'仅本地 prefix cache / 仅 Mooncake'基线回退"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/13356"
+      - "https://github.com/vllm-project/vllm-ascend/pull/12783"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'num_external_hit_tokens <= num_computed_tokens' {{log_path}}"
+        rank_selector: coordinator   # PD 分离的 P 节点（prefill/lookup 侧）
+        expected: "regex:.*num_external_hit_tokens <= num_computed_tokens"
+        note: "定性局限：线程无 profiler 数值，此信号来自代码条件（pool_scheduler need_to_allocate=0）；实际日志可能需开启 memcache 详细日志才能出现"
+      fallback:
+        command_template: "grep -E 'need_to_allocate = 0|memcache.*lookup.*0' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*(need_to_allocate = 0|lookup.*0)"
+
+    diagnosis:
+      - step: 1
+        check: "是否开启 memcache（MultiConnector 的 AscendStoreConnector，backend=memcache）？"
+        expected: "是"
+      - step: 2
+        check: "workload 是否前缀复用（共享前缀早已驻留本地 prefix cache）？"
+        expected: "是——这是 memcache 零边际收益的触发条件（如 128K 长输入重复前缀）"
+      - step: 3
+        check: "lookup 命中是否与本地 prefix cache 完全重叠（num_external_hit_tokens <= num_computed_tokens → need_to_allocate = 0）？"
+        expected: "是 → 什么都不 load，仍付 lookup RPC 开销"
+      - step: 4
+        check: "对比基线：关闭 memcache 或仅用本地 prefix cache / 仅 Mooncake，吞吐是否恢复？"
+        expected: "回退消失 → 确认是本 case 的优化点（官方定性 optimization, not a bug，上游 vLLM 同行为）"
+
+    severity: benign                 # 性能优化点而非故障，配置取舍即可解
+    fix_side_effects: [requires-restart]
+    fix_type: config-change
+
+    root_cause: >
+      memcache lookup 命中与 vLLM 本地 prefix cache 完全重叠（num_external_hit_tokens <= num_computed_tokens）
+      时，pool_scheduler.py 算出 need_to_allocate = 0 并返回 (0, False)、load 0 token；
+      前缀复用 workload 下 memcache 零边际收益却仍付每请求 lookup RPC 开销，吞吐相对基线回退。
+      官方确认是优化点而非 bug，PR #12783 及后续 PR 已在 23.0 分支优化。
+
+    fix: "前缀复用 workload 下关闭 memcache（用仅本地 prefix cache 或仅 Mooncake）；或升级到 23.0 分支最新 commit 验证 PR #12783 的优化效果"
+    rollback: "重新开启 memcache 即回到原行为（回退可验证因果）"

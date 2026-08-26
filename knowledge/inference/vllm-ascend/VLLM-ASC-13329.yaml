@@ -1,0 +1,69 @@
+# VLLM-ASC-13329 —— DSV4-Flash-0731 是 DSpark 模型无 MTP head：mtp 模式启动报 KeyError 'mtp.0.head.weight'
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/13329
+# fix 跟踪：无 PR；作者自证改用 dspark speculative method 正常加速
+# investigation_quality: low（assessment.jsonl #13329）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（Phase B）
+# 本对同根因：VLLM-ASC-13379 已并入本 case（variant，groom 判定 2026-08 批 0001）——见 symptoms/compat/fix 的并入标注
+
+cases:
+  - id: VLLM-ASC-13329
+    title: "DSV4-Flash-0731 是 DSpark 模型无 MTP head：mtp 模式启动报 KeyError 'mtp.0.head.weight'，应改用 dspark"
+
+    category: other
+    tags: [deepseek-v4, dspark, mtp, speculative-decode, model-version]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.25.1rc", ">=0.25.1rc"]      # 全区间：<0.25.1rc 无 dspark 可用须先升级（#13379 场景，0.22.rc1 实测）；>=0.25.1rc 直接改 dspark（#13329 场景）
+
+    investigation_quality: low
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.1                    # 初始值（investigation_quality=low → 0.1）
+
+    symptoms:
+      - "nightly-releases-v0.25.1rc-openeuler 版本启动 DeepSeek-V4-Flash-0731-w8a8 的 mtp 模式报错（A2 机器）"
+      - "KeyError: 'mtp.0.head.weight'（vllm_ascend/quantization/modelslim_config.py get_linear_quant_type 处）"
+      - "去掉 --speculative-config '{\"method\": \"mtp\", ...}' 可以正常启动"
+      - "改用 '{\"method\": \"dspark\", \"num_speculative_tokens\": 7, ...}' 可以正常加速（接受率 10%~80% 不平均）"
+      # ↓ 并入自 VLLM-ASC-13379（0.22.rc1 场景；保留英文原措辞——交叉回放锚点）
+      - "older release (v0.22.rc1): 'Is there an issue with the downloaded model weights?' — same KeyError on MTP load; dspark method requires >=0.25.1rc, so upgrade first, then switch"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/13329"
+
+    quickly_check:
+      primary:
+        command_template: "grep \"KeyError: 'mtp\\.0\\.head\\.weight'\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*KeyError: 'mtp\\.0\\.head\\.weight'"
+      fallback:
+        command_template: "grep -E 'mtp\\.0\\.head\\.weight|speculative-config' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(mtp\\.0\\.head\\.weight|speculative-config)"
+
+    diagnosis:
+      - step: 1
+        check: "模型是否为 DeepSeek-V4-Flash-0731（w8a8）？"
+        expected: "是——该版本是 DSpark 模型，权重不含 MTP head"
+      - step: 2
+        check: "启动是否用了 --speculative-config '{\"method\": \"mtp\", ...}'？"
+        expected: "是 → 模型加载按 mtp.0.head.weight 查量化描述抛 KeyError"
+      - step: 3
+        check: "改用 dspark speculative method 是否正常？"
+        expected: "是（--speculative-config '{\"method\": \"dspark\", \"num_speculative_tokens\": 7, \"enforce_eager\": true}'）"
+        note: "接受率 10%~80% 波动属 dspark 正常现象，不是问题"
+
+    severity: benign                 # 模型/版本兼容提示，改配置即解，无数据风险
+    fix_side_effects: [requires-restart]
+    fix_type: config-change
+
+    root_cause: >
+      DeepSeek-V4-Flash-0731（w8a8）是 DSpark 模型、权重中不含 MTP head；
+      用 mtp speculative method 启动时模型加载按 mtp.0.head.weight 查量化描述抛 KeyError，
+      服务无法拉起。该版本应改用 dspark speculative method（已支持）。
+
+    fix: "版本分支：<0.25.1rc 先升级到 >=0.25.1rc（旧版无 dspark 支持，改参数无效——#13379 场景）；>=0.25.1rc 直接将 --speculative-config 改为 '{\"method\": \"dspark\", \"num_speculative_tokens\": 7, \"enforce_eager\": true}' 后重启"
+    rollback: "无——仅启动参数调整；如需回到 mtp 需换用含 MTP head 的模型版本（如 DeepSeek-V4-Flash-w8a8-mtp）"

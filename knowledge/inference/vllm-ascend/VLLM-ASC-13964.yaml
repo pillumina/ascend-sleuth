@@ -1,0 +1,82 @@
+# VLLM-ASC-13964 —— Decode DP rank 静默停滞：async scheduling 下 SWA/chunked-local KV block 提前剪枝复用
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/13964
+# fix 跟踪：https://github.com/vllm-project/vllm-ascend/pull/13518（作者确认 "Closing as resolved by #13518"）
+# investigation_quality: high（assessment.jsonl #13964）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（Phase B，第 2 批）
+# 脱敏：扫描 body/comments 未发现内网 IP/token/密码，无需替换
+
+cases:
+  - id: VLLM-ASC-13964
+    title: "Decode DP rank 静默停滞：async scheduling 下 num_computed_tokens 计入未处理输出，SWA/chunked-local KV block 被提前剪枝复用"
+
+    category: interrupt
+    tags: [silent-hang, decode-liveness, swa, chunked-local-kv, async-scheduling, pd-disaggregation, mooncake, mtp]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.23.0rc1"]        # PR #13518 修复（0.23 分支合入后不再复现）
+      - framework: torch-npu
+        ranges: ["<=2.10.0.post2"]     # 线程实测版本
+
+    investigation_quality: high        # to-postmortem 标的调查质量，groom 据此设初始 score
+    confidence:                        # groom 维护
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                       # high → 初始 0.6
+      last_hit: ""
+
+    symptoms:
+      - "DeepSeek-V4-Flash W8A8 + one-token MTP + Mooncake P/D 分离 + async-scheduling + FULL_DECODE_ONLY（decode DP=16/TP=1/EP）"
+      - "decode 各 DP rank 静默停滞：vllm:num_requests_running 保持 >0，而 generation_tokens_total / request 完成数停止增长，健康检查仍 200"
+      - "无 EngineDeadError / traceback / HCCL timeout；router 存活但把新请求逐渐全部路由到唯一存活的 rank"
+      - "部分 rank 数小时后自愈（DP5 约 2.5h、DP14 约 3h），其余持续停滞；同配置曾与 #12725/#13648/#13826 混淆"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/13964"
+      - "https://github.com/vllm-project/vllm-ascend/pull/13518"
+
+    quickly_check:
+      # 本 case 是静默 hang，无错误签名——用 per-engine Prometheus 计数作判别信号
+      primary:
+        command_template: "grep -E 'num_requests_running|generation_tokens_total|request_generation_tokens_count' {{metrics_path}}"
+        rank_selector: all_failed       # 逐个 decode engine 标签核对
+        expected: "regex:vllm:num_requests_running"
+        note: "命中后还需核对：running>0 的同时 generation/completed 计数冻结"
+      fallback:
+        command_template: "grep -Ei 'silent|liveness|stall' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:silent liveness failure"
+
+    diagnosis:
+      - step: 1
+        check: "是否 DP rank 静默停滞——running>0 但 generation 与 completed 计数冻结、无任何异常栈？"
+        expected: "是（本 case 无 ERROR/traceback，健康检查仍 200）"
+        note: "静默是本 case 特征，区别于显式崩溃类 hang"
+      - step: 2
+        check: "部署形态是否 DSV4-Flash W8A8 + MTP + Mooncake P/D 分离 + async-scheduling？"
+        expected: "是（本 case 复现配置；DP/EP + FULL_DECODE_ONLY）"
+      - step: 3
+        check: "当前版本是否已含 PR #13518（按已处理 token 剪枝、in-flight 计数结算）？"
+        expected: "未包含 → 需要合入/升级"
+        note: "#13518 修正 num_computed_tokens 生命周期记账——剪枝基于 processed tokens 而非乐观的 scheduled-token 计数"
+      - step: 4
+        check: "忽略以下次级现象/被排除假设"
+        note: "MQ RuntimeError('cancelled') 与级联 EngineDeadError 是停滞数小时后的 worker-exit 现象，非根因；
+               #12725 的 MTP sampling NaN 理论、#13648 dummy-batch、#13826 ACLGraph 模式同步均被作者排除"
+
+    severity: service-affecting         # 静默 hang，服务半死不活
+    fix_side_effects: [requires-restart, requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      async scheduling 下 num_computed_tokens 可能包含已调度但输出尚未被处理的批次 token，
+      导致 SWA/chunked-local KV block 按这个乐观计数被提前剪枝并复用，而 in-flight attention step
+      仍引用这些 block（vllm-ascend SWA/chunked-local KV 生命周期与 Mooncake PD 传输路径）。
+      decode 各 DP rank 因此静默停滞：请求永远 running 但不产出 token。PR #13518 修复生命周期记账：
+      跟踪每请求已调度未处理 token、按 processed token 剪枝、阻止 in-flight step 期间复用 block、
+      并在调度退出路径结算 in-flight 计数。
+
+    fix: >
+      合入/升级到包含 PR #13518 的版本（0.23 分支 backport 或更高版本）。
+    rollback: "revert PR #13518（注意：#13518 引入更保守的 admission 容量收缩，回归见 #14678，不主张 revert，只作背景）"

@@ -1,0 +1,73 @@
+# VLLM-ASC-12461 —— 多节点 EP + FusedMoE MC2 通信算子在 ROCE 网络触发 aicore exception → SUSPECT REMOTE ERROR 507057
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12461
+# fix 跟踪：无代码修复（用户自证：ROCE 网络对 MC2 算子支持异常，HCCS 网络可跑通）
+# investigation_quality: high（用户消融排除 speculative 路径 + plog aicore 定位 MTE DDR 越界 + fault kernel 名 + 环境对照）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（batch 1，2026-08）
+
+cases:
+  - id: VLLM-ASC-12461
+    title: "多节点 EP + GLM-5.2 w8a8 的 FusedMoE MC2 通信算子（MoeDistributeDispatchV2）在 ROCE 网络触发 aicore exception（MTE DDR 越界）→ SUSPECT REMOTE ERROR 507057 启动失败；HCCS 网络可跑通"
+
+    category: interrupt
+    tags: [multi-node, ep, mc2, roce, fusedmoe]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.21.0"]        # 受影响为 0.21.0（glm5.2-a3 镜像）；无代码修复，属网络环境对 MC2 支持问题
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "2×A3 多节点 + EP + MTP(num_speculative_tokens=4) 启动即失败：RuntimeError: SUSPECT REMOTE ERROR, error code is 507057（synchronize stream with timeout failed）"
+      - "plog：aicore exception，MTE 指令 DDR 地址越界（errCode 0x800000, subErrType 4），fault kernel_name=MoeDistributeDispatchV2"
+      - "单节点 TP16+PP2（不跨节点 EP）可跑通；多节点 EP 在 MLAPO 与 GEMM 路径均失败（FusedMoE kernel 内）"
+      - "关闭 speculative decode 同样报错（同栈）——非 MTP/dummy_run 问题"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12461"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'SUSPECT REMOTE ERROR' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*SUSPECT REMOTE ERROR.*507057"
+      fallback:
+        command_template: "grep -iE '507057|aicore exception|MoeDistributeDispatchV2' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(507057|aicore exception|MoeDistributeDispatchV2)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：是否多节点 EP 场景（≥2 节点 + --enable-expert-parallel）？错误是否出现在 MoE forward / dummy_run 编译期 synchronize？"
+        expected: "是——栈在 model_runner profile_run → _dummy_run → MoE forward 的 torch.npu.synchronize()"
+      - step: 2
+        check: "判别：单节点 TP16+PP2 能跑、多节点 EP 必现 → 跨节点 EP 通信路径问题"
+        expected: "日志 'MoE comm method selected: soc=AscendDeviceType.A3, method=MoECommType.MC2' 确认走 MC2 通信算子；fault kernel=MoeDistributeDispatchV2"
+      - step: 3
+        check: "workaround 验证：改用 HCCS 网络部署是否可跑通？"
+        expected: "可跑通（线程用户自证：常规 ROCE 网络对 MC2 算子支持异常，HCCS 正常）；保证 ROCE 对 MC2 支持或走 ALLTOALL 路径"
+      - step: 4
+        check: "忽略项：关闭 speculative decode 后同栈报错（评论#1）→ 不是 MTP/dummy_run 的问题；QuantBatchMatmulV3 launch failed (361001) 是 MC2 失败后的次级报错，不要追它的调用链"
+        note: "官方未出代码修复，issue 由用户自解关闭"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change
+
+    root_cause: >
+      多节点（跨服务器）EP 下，vllm_ascend FusedMoE 的 MC2 通信算子（MoeDistributeDispatchV2，
+      Ascend 特有 MoECommType.MC2）在常规 ROCE 网络上触发 aicore exception：MTE 指令 DDR 地址
+      越界（errCode 0x800000），NPU 侧异常上抛为 'SUSPECT REMOTE ERROR, error code is 507057'
+      （synchronize stream with timeout failed），多节点 EP 启动/编译失败。属网络环境对 MC2
+      算子支持问题而非 vllm-ascend 代码 bug：HCCS 网络可正常跑通，官方未出修复。
+
+    fix: >
+      多节点 EP 部署改用 HCCS 网络（线程用户验证可跑通）；或退避为单节点内 EP（TP16+PP2）。
+      无官方代码修复。
+    rollback: "恢复 ROCE 网络配置（若其 MC2 支持异常则问题复现）"
