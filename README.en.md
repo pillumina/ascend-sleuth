@@ -151,6 +151,8 @@ A user-facing selection; the complete normative original (eleven principles, eac
 
 ### Repository layout
 
+The knowledge base itself (`knowledge/`) is organized by framework and category:
+
 ```
 knowledge/
 ├── _index.yaml              Tier-2 generated index (scripts/build_index.py; read in phase 1, rebuilt on change; score only)
@@ -161,40 +163,35 @@ knowledge/
 ├── common/                  authoritative cross-framework records (promoted by groom)
 ├── _archive/                soft-retired stale cases
 └── platforms/{a2,a3,a5}.md  platform background
-triage-tree.yaml             Tier-1 routing
-postmortems/                 Tier-3 raw records
-└── inbox/                   knowledge review queue (weekly groom triage)
+```
+
+Key files and directories outside `knowledge/`:
+
+```
+triage-tree.yaml             Tier-1 routing (symptom → namespace)
+postmortems/                 Tier-3 raw records; inbox/ is the review queue
 examples/sample-case.yaml    canonical sample (full schema demo)
 CONTEXT.md                   domain glossary
 scripts/                     build_index.py, trace_metrics.py, replay_prep.py
-eval/golden/                 regression fixtures (real fixtures enter after redaction; non-redactable ones stay private)
-docs/eval.md                 skill-change evaluation procedure
-docs/eval-reports/           batch plans and reports (0001: first vllm-ascend measurement)
-docs/demo.md                 full-flow walkthrough
-docs/demo/                   concrete demo records (live-diagnosis-12723: first live closed loop)
-docs/design-theory.md        design theory (four axioms + Bayesian decision kernel)
-docs/design-principles.md    design principles (normative articles)
-docs/evolution.md            self-evolution design (mechanisms, guardrails, data loop, feedback flow)
-docs/git-workflow.md         git gating/review/merge closure (labels, CODEOWNERS, CI, dual sign-off, skill self-containment)
-docs/roadmap.md              gate-driven roadmap (items, acceptance criteria, entry gates, checkpoints)
-docs/adr/                    decision records (0001 soft match / 0002 no RAG / 0003 portability / 0004 capacity / 0005 knowledge split)
-CODEOWNERS.example           enable once owners are named (hard gating with branch protection)
-.github/                     kb-checks CI + scenario PR templates (intake/modification/methodology/structure)
+eval/golden/                 regression fixtures
+docs/                        documentation system (see Documentation index above)
+CODEOWNERS.example           enable once owners are named
+.github/                     kb-checks CI + scenario PR templates
 ```
 
 Before changing a skill itself, run the golden regression suite per [docs/eval.md](docs/eval.md) and confirm that scenarios which previously matched still do.
 
 ## Where knowledge comes from
 
-Once the skills are installed, the knowledge base takes one of three forms — pick by how you work:
+Once the skills are installed, the knowledge base takes one of three forms — pick by how you work. The install-command difference is `-g` (git mode) vs `-s` (skill selection):
 
-| Form | How to get it | Best for |
-|---|---|---|
-| **Accumulate your own** (skills only) | `npx skills add -s diagnose` installs methodology only; `knowledge/` stays empty. Diagnose → `/skill:to-postmortem` → your own knowledge base | New teams, different problem domains, private knowledge |
-| **Consume existing** (full repo) | Install with the repo (including `knowledge/`), use upstream-verified cases directly, keep accumulating | Existing corpus, overlapping problem domain, want reuse |
-| **Tailored surface** (sparse checkout) | `git sparse-checkout` with a directory whitelist (e.g. only the `vllm-ascend` cells + `common/`) | Once the corpus grows, bandwidth/storage-constrained, only your framework's knowledge |
+| Form | Install command | Result | Best for |
+|---|---|---|---|
+| **Accumulate your own** (skills only) | `npx skills add -s diagnose -s to-postmortem -s knowledge-groom` | Installs `skills/` methodology only; `knowledge/` stays empty | New teams, different problem domains, private knowledge |
+| **Consume existing** (full repo) | `npx skills add -g pillumina/ascend-sleuth` (git mode pulls the whole repo, including `knowledge/`) | Use upstream-verified cases directly, keep accumulating | Existing corpus, overlapping problem domain, want reuse |
+| **Tailored surface** (sparse checkout) | `git clone` or `-g` first, then `git sparse-checkout` with a directory whitelist | Keep only the parts you need (e.g. `vllm-ascend` cells + `common/`) | Once the corpus grows, bandwidth/storage-constrained, only your framework's knowledge |
 
-All three share the same skills and machinery, and they compose: an accumulating team can optionally feed sanitized cases back upstream, thickening the public corpus (see [Deployment modes](#deployment-modes), framework fork).
+All three share the same skills and machinery, and they compose: an accumulating team can optionally feed sanitized cases back upstream, thickening the public corpus (see [Deployment modes](#deployment-modes), framework fork). Exact `-g`/`-s` behavior may differ across installer versions — `npx skills add --help` is authoritative.
 
 **Sparse checkout caveat**: `_index.yaml` is a generated artifact covering the full corpus. After a sparse checkout, rerun `python3 scripts/build_index.py` to rebuild the index — it indexes only the cells you pulled, and retrieval stays within your knowledge surface. `common/` is mandatory (triage fallback depends on it) and must not be dropped from the whitelist. Design rationale in [ADR-0005](docs/adr/0005-knowledge-consumption-split.md).
 
