@@ -177,12 +177,26 @@ docs/design-principles.md    设计原则（规范性条文，约束全部设计
 docs/evolution.md            自演进设计（演化机制、护栏、数据回路、feedback 闭环数据流）
 docs/git-workflow.md         git 门控/审核/合入闭环（标签集、CODEOWNERS、CI、双签、skill 自包含边界）
 docs/roadmap.md              闸门驱动路线图（五维度事项、验收标准、入口闸门、检查点）
-docs/adr/                    设计决策记录（0001 软匹配 / 0002 不上 RAG / 0003 平台可移植 / 0004 容量治理）
+docs/adr/                    设计决策记录（0001 软匹配 / 0002 不上 RAG / 0003 平台可移植 / 0004 容量治理 / 0005 知识分层拉取）
 CODEOWNERS.example           owner 落实后启用（配合分支保护做硬门控）
 .github/                     kb-checks CI + 分场景 PR 模板（intake/修改/方法论/结构）
 ```
 
 修改 skill 本身之前，先按 [docs/eval.md](docs/eval.md) 跑一遍 golden 回归套件，确认原本能正确命中的场景没有被改坏。
+
+## 知识从哪来
+
+装完 skill 之后，知识库有三种形态——按你的使用方式选：
+
+| 形态 | 怎么得到 | 适合谁 |
+|---|---|---|
+| **自积累**（只装 skill） | `npx skills add -s diagnose` 只装方法论，`knowledge/` 为空。自己诊断 → `/skill:to-postmortem` 沉淀 → 自己的知识库 | 新团队、问题域不同、知识要私有 |
+| **消费现成**（拉仓库） | 安装时带上仓库（含 `knowledge/`），直接用上游验证过的 case，也可继续沉淀 | 已有沉淀、问题域重叠、想复用 |
+| **定制知识面**（稀疏拉取） | `git sparse-checkout` 按目录白名单只拉需要的部分（如只要 `vllm-ascend` 的格子 + `common/`） | 知识库长大后、带宽/存储受限、只要自己框架的知识 |
+
+三种形态共用同一套 skill 与机制，且可递进：自积累的团队脱敏后可选回馈上游，让公开库渐厚（见 [部署模式](#部署模式) 的框架式）。
+
+**稀疏拉取注意**：`_index.yaml` 是生成物、对应全量知识。稀疏拉取后需重跑 `python3 scripts/build_index.py` 重建索引——它只索引你拉到的格子，检索也只在你的知识面内进行。`common/` 是必拉项（triage 兜底依赖它），不可从白名单省略。设计论证见 [ADR-0005](docs/adr/0005-knowledge-consumption-split.md)。
 
 ## 部署模式
 
