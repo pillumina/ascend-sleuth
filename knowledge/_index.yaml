@@ -24,8 +24,6 @@ namespaces:
       compat: sglang <=0.5.10; memfabric_hybrid <=1.0.5
       confidence:
         score: 0.6
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - PD 分离 --disaggregation-transfer-backend ascend，KV cache 跨 NPU 传输偶发失败
       - decode 侧日志：halShmemCreateHandle → 'Size is bad' → size > heap_size → Create_para_check fail
@@ -58,8 +56,6 @@ namespaces:
       compat: vllm-ascend <=0.21.0
       confidence:
         score: 0.6
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - '2×A3 多节点 + EP + MTP(num_speculative_tokens=4) 启动即失败：RuntimeError: SUSPECT REMOTE ERROR, error
         code is 507057（synchronize stream with timeout failed）'
@@ -92,8 +88,6 @@ namespaces:
       compat: vllm-ascend <=0.23.0rc1; torch-npu <=2.10.0.post2
       confidence:
         score: 0.6
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - v0.23.0rc1 拉起 MiniMax-M2.7（BF16 非量化权重）服务启动失败，多 worker 同时 'WorkerProc failed to start'
       - 'AttributeError: ''MiniMaxM2Config'' object has no attribute ''o_groups''（vllm_ascend/quantization/methods/fp8.py:45
@@ -128,8 +122,6 @@ namespaces:
       compat: vllm-ascend <0.23.0rc1-a3
       confidence:
         score: 0.3
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - A3 上按 GLM5.2 1M 文档、用 vllm-ascend:v0.22.1rc1-a3 镜像启动 glm5.2 w4a8c8 报错，服务拉起失败
       - 'KeyError: ''model.layers.3.self_attn.indexer.wq_b.weight''（vllm_ascend/quantization/modelslim_config.py
@@ -160,8 +152,6 @@ namespaces:
       compat: vllm-ascend <=0.23.0rc1; torch-npu <=2.10.0.post2; cann 9.1.0-beta.1
       confidence:
         score: 0.3
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - Atlas 300I DUO（310P3）+ vllm-ascend v0.23.0rc1-310p 镜像，Qwen3-14B-W8A8SC TP2 启动失败；同命令 TP1 正常
       - FULL_DECODE_ONLY + cudagraph_capture_sizes [1,2,4,8,16] 捕获进行到第 5 张（80%）时崩溃
@@ -192,8 +182,6 @@ namespaces:
       compat: vllm-ascend <0.23.0
       confidence:
         score: 0.6
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - 310P 双芯（300I Duo）+ Qwen3.6-35B-A3B-w8a8，TP=2 服务启动成功，第一条推理请求即崩溃
       - plog：aicpu exception, kernelName=IndexPut, errorCode=0x2a, runtime result=507018, stream phase=SCHEDULE
@@ -225,8 +213,6 @@ namespaces:
       compat: vllm-ascend 0.26.0.dev; triton 3.2.0
       confidence:
         score: 0.6
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - 'x86_64 + A2(910B) main2main 开发版，vLLM 启动导入即失败：ModuleNotFoundError: No module named ''triton.experimental''（vllm/triton_utils/__init__.py
         在 HAS_TRITON 时无条件 from triton.experimental import gluon）'
@@ -260,8 +246,6 @@ namespaces:
       compat: vllm-ascend <0.26.0
       confidence:
         score: 0.6
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - 'PD 分离 + DCP=8 + MTP(num_speculative_tokens=5) 下 decode worker 崩溃：RuntimeError: The expanded size
         of the tensor (256) must match the existing size (260)'
@@ -293,8 +277,6 @@ namespaces:
       compat: vllm-ascend <0.26.0
       confidence:
         score: 0.6
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - 'v0.26.0rc PD 分离 + DCP=8 + MTP(num_speculative_tokens=5) 下 decode worker 崩溃：IndexError: list index
         out of range，栈在 mooncake_connector.py:_get_kv_split_metadata → meta.remote_block_ids[group_idx]'
@@ -329,8 +311,6 @@ namespaces:
       compat: vllm-ascend <=0.23.0rc1; torch-npu <=2.10.0.post2
       confidence:
         score: 0.6
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - DeepSeek-V4-Flash W8A8 + one-token MTP + Mooncake P/D 分离 + async-scheduling + FULL_DECODE_ONLY（decode
         DP=16/TP=1/EP）
@@ -362,8 +342,6 @@ namespaces:
       compat: torch-npu <2.10.0.post4
       confidence:
         score: 0.1
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - A5 950DT 启动 deepseek v4 flash 0731 报 MoeInitRoutingV3 算子错误，profile_run 阶段崩溃
       - Cannot find binary for op MoeInitRoutingV3 / launch failed for MoeInitRoutingV3, errno:561000（Execution_Error
@@ -396,8 +374,6 @@ namespaces:
       compat: vllm-ascend 0.26.0rc; torch-npu <=2.5.1
       confidence:
         score: 0.6
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - PD 分离（2P+2D）GLM-5.2-w4a8 + DCP(decode-context-parallel-size=8) + MTP 投机，持续压测下 decode EngineCore
         崩溃
@@ -429,8 +405,6 @@ namespaces:
       compat: vllm-ascend =0.23.0rc1-310p-openeuler
       confidence:
         score: 0.3
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - v0.23.0rc1-310p-openeuler 镜像 310P 上 MTP 与图模式无法同时开启，启动报错（Qwen3.6-27B qwen3_5_mtp）
       - 'RuntimeError: NPUModelRunner init failed ... copy_between_host_and_device_opapi ... aclrtMemcpy,
@@ -461,8 +435,6 @@ namespaces:
       compat: vllm-ascend <=0.14.0rc1
       confidence:
         score: 0.1
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - vllm-ascend 0.14.0rc1 启动报不支持 950 芯片（A5），服务无法拉起
       - 'AssertionError: Current device type: AscendDeviceType.A5 does not match the installed version''s
@@ -492,8 +464,6 @@ namespaces:
       compat: vllm-ascend <0.25.1rc,>=0.25.1rc
       confidence:
         score: 0.1
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - nightly-releases-v0.25.1rc-openeuler 版本启动 DeepSeek-V4-Flash-0731-w8a8 的 mtp 模式报错（A2 机器）
       - 'KeyError: ''mtp.0.head.weight''（vllm_ascend/quantization/modelslim_config.py get_linear_quant_type
@@ -526,8 +496,6 @@ namespaces:
       compat: vllm-ascend <=0.23.0rc1
       confidence:
         score: 0.3
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - PD 分离下开启 memcache（AscendStoreConnector/MultiConnector，backend=memcache）性能劣化：128K 输入序列时 lookup
         与本地 prefix cache 重叠
@@ -561,8 +529,6 @@ namespaces:
       compat: vllm-ascend 0.26.0rc; torch-npu <=2.10.0.post2
       confidence:
         score: 0.6
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - GLM-5.2 w4a8 PD 分离 P 节点（kv_role=kv_producer），v0.23→v0.26 相同 DCP=8/TP=8/EP=32 拓扑下 prefill 吞吐 38811→29911
         tok/s
@@ -596,8 +562,6 @@ namespaces:
       compat: vllm-ascend <=0.21.0; triton-ascend <3.2.2
       confidence:
         score: 0.6
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - 'Ascend 950PR (A5) 上 Qwen3.5-4B (bf16, partial RoPE: rope_dim=64 < head_size=256) 输出错误'
       - triton_split_qkv_rmsnorm_mrope 融合算子把 K 的 variance 算成 [0,0,0,0]（正确 ~1.05~1.19）→ reciprocal_std=1/sqrt(0+1e-6)=1000，K
@@ -628,8 +592,6 @@ namespaces:
       compat: vllm-ascend <=0.23.0
       confidence:
         score: 0.6
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - GLM-5.2 DSpark 投机解码（bf16, NeoX, head_dim=rotary_dim=192）在线 accept_len 从 ~5.6 崩到 ~3.0
       - 同一 rope 对象/worker/输入调 forward_native() 后 accept_len 恢复 5.4~5.5
@@ -659,8 +621,6 @@ namespaces:
       compat: vllm-ascend <=0.20.2
       confidence:
         score: 0.6
-        hits: 0
-        misdiagnoses: 0
       symptoms:
       - PD 分离（use_ascend_direct=true RDMA/ADXL）+ PP=4 + DP=8 decode 下，服务拉起后首个请求输出与 prompt 无关的随机乱码
       - 先发普通请求再发 badcase 不乱码；短 prompt（如 1+1）正常；P 节点改 DP=4（无 PP）不乱码

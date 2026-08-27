@@ -95,8 +95,10 @@ def collect(root: Path):
                 "platforms": case.get("platforms", []),
                 "compat": compat_summary(case.get("compat")),
                 "confidence": {
-                    k: (case.get("confidence") or {}).get(k)
-                    for k in ("score", "hits", "misdiagnoses")
+                    # ADR-0004 修正：索引只保留排序所需的 score；
+                    # hits/misdiagnoses 是学习环动态字段（Beta 后验），留在 case 本体，
+                    # 由 groom 置信度重算读取，不进入检索视图（避免学习环每次更新全量重建索引）。
+                    "score": (case.get("confidence") or {}).get("score"),
                 },
                 "symptoms": case.get("symptoms", []),
                 "quickly_check": quickly_check_summary(case.get("quickly_check")),
