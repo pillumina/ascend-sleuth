@@ -73,7 +73,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 三种形态共用同一套 skill 与机制，且可递进：自积累的团队脱敏后可选回馈上游，让公开库渐厚（见 [部署模式](#部署模式) 的框架式）。`-g` 与 `-s` 的确切行为以 `npx skills add --help` 为准——不同版本的安装器对"仓库整体 vs 指定 skill"的粒度有差异。
 
-**稀疏拉取注意**：`_index.yaml` 是生成物、对应全量知识。稀疏拉取后需重跑 `python3 scripts/build_index.py` 重建索引——它只索引你拉到的格子，检索也只在你的知识面内进行。`common/` 是必拉项（triage 兜底依赖它），不可从白名单省略。设计论证见 [ADR-0005](docs/adr/0005-knowledge-consumption-split.md)。
+**稀疏拉取注意**：`_index.yaml` 是生成物、对应全量知识。稀疏拉取后需重跑 `python3 scripts/build_index.py` 重建索引——它只索引你拉到的格子，检索也只在你的知识面内进行。`common/` 设计上是必拉项（triage 兜底命名空间 + 跨框架权威记录的归宿，ADR-0005）；**当前 `common/` 为空**（仅 `.gitkeep`，待 groom 从多 namespace 同根因 case 中提炼）——sparse-checkout 仍应保留 `common/` 目录占位，避免未来内容长出来后改白名单。设计论证见 [ADR-0005](docs/adr/0005-knowledge-consumption-split.md)。
 
 ## 四个 skill
 
