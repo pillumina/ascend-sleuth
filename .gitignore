@@ -19,3 +19,6 @@ diagnosis_state*.yaml
 *~
 .idea/
 .vscode/
+
+# Python 缓存
+__pycache__/
