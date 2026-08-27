@@ -26,11 +26,11 @@ ascend-sleuth structures this experience into a knowledge base. At diagnosis tim
 npx skills@latest add pillumina/ascend-sleuth
 ```
 
-Pick the skills to install and the target agent, or manually add the `skills/` directory to the search path in pi or Claude Code. Core only:
+Pick the skills to install and the target agent, or manually add the `skills/` directory to the search path in pi or Claude Code. All four (recommended — `resume-diagnosis` is part of the feedback loop, see below):
 
 ```bash
 npx skills@latest add pillumina/ascend-sleuth -g -a pi -a claude-code \
-  -s diagnose -s to-postmortem -s knowledge-groom
+  -s diagnose -s to-postmortem -s knowledge-groom -s resume-diagnosis
 ```
 
 Once loaded, invoke with `/skill:<name>` in your agent.
@@ -67,7 +67,7 @@ Once the skills are installed, the knowledge base takes one of three forms — p
 
 | Form | Install command | Result | Best for |
 |---|---|---|---|
-| **Accumulate your own** (skills only) | `npx skills add -s diagnose -s to-postmortem -s knowledge-groom` | Installs `skills/` methodology only; `knowledge/` stays empty | New teams, different problem domains, private knowledge |
+| **Accumulate your own** (skills only) | `npx skills add -s diagnose -s to-postmortem -s knowledge-groom -s resume-diagnosis` | Installs `skills/` methodology only; `knowledge/` stays empty | New teams, different problem domains, private knowledge |
 | **Consume existing** (full repo) | `npx skills add -g pillumina/ascend-sleuth` (git mode pulls the whole repo, including `knowledge/`) | Use upstream-verified cases directly, keep accumulating | Existing corpus, overlapping problem domain, want reuse |
 | **Tailored surface** (sparse checkout) | `git clone` or `-g` first, then `git sparse-checkout` with a directory whitelist | Keep only the parts you need (e.g. `vllm-ascend` cells + `common/`) | Once the corpus grows, bandwidth/storage-constrained, only your framework's knowledge |
 

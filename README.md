@@ -26,11 +26,11 @@ ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路
 npx skills@latest add pillumina/ascend-sleuth
 ```
 
-选择要安装的 skill 和目标 agent。也可以在 pi 或 Claude Code 中手动把 `skills/` 目录加入搜索路径。只装核心的三个：
+选择要安装的 skill 和目标 agent。也可以在 pi 或 Claude Code 中手动把 `skills/` 目录加入搜索路径。装齐四个（推荐——`resume-diagnosis` 是反馈闭环的一部分，见下）：
 
 ```bash
 npx skills@latest add pillumina/ascend-sleuth -g -a pi -a claude-code \
-  -s diagnose -s to-postmortem -s knowledge-groom
+  -s diagnose -s to-postmortem -s knowledge-groom -s resume-diagnosis
 ```
 
 加载后在 agent 里以 `/skill:<name>` 调用。
@@ -67,7 +67,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 | 形态 | 安装命令 | 结果 | 适合谁 |
 |---|---|---|---|
-| **自积累**（只装 skill） | `npx skills add -s diagnose -s to-postmortem -s knowledge-groom` | 只装 `skills/` 方法论，`knowledge/` 不装（为空） | 新团队、问题域不同、知识要私有 |
+| **自积累**（只装 skill） | `npx skills add -s diagnose -s to-postmortem -s knowledge-groom -s resume-diagnosis` | 只装 `skills/` 方法论，`knowledge/` 不装（为空） | 新团队、问题域不同、知识要私有 |
 | **消费现成**（带知识库） | `npx skills add -g pillumina/ascend-sleuth`（git 模式拉整个仓库，含 `knowledge/`） | 直接用上游验证过的 case，也可继续沉淀 | 已有沉淀、问题域重叠、想复用 |
 | **定制知识面**（稀疏拉取） | 先 `git clone` 或 `-g` 拉取，再 `git sparse-checkout` 按目录白名单收窄 | 只保留需要的部分（如 `vllm-ascend` 格子 + `common/`） | 知识库长大后、带宽/存储受限、只要自己框架的知识 |
 
