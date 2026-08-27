@@ -162,7 +162,6 @@ A user-facing selection; the complete normative original (eleven principles, eac
 - **[Roadmap](docs/roadmap.md)** — the gate-driven evolution plan; entry conditions and acceptance criteria per item
 - **[Git workflow](docs/git-workflow.md)** — how review, gating, and merge land in practice (labels, CODEOWNERS, CI, dual sign-off)
 - **[Evaluation](docs/eval.md)** — before/after regression checks for skill changes; [eval report 0001](docs/eval-reports/0001-vllm-ascend-batch.md) records the first real-data measurement
-- **[Demo](docs/demo.md)** — a walkthrough of the full flow, replayable against the demo PRs in this repository
 - **[Glossary](CONTEXT.md)** — canonical definitions of case, postmortem, groom, trace, and the rest
 
 ### Repository layout
