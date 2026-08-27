@@ -187,7 +187,7 @@ triage-tree.yaml             Tier 1 路由（症状 → namespace）
 postmortems/                 Tier 3 原始记录；inbox/ 是待审队列（groom 周批处理）
 examples/sample-case.yaml    canonical 样例（全 schema 演示）
 CONTEXT.md                   领域术语表（中英对照）
-scripts/                     build_index.py、trace_metrics.py、replay_prep.py
+scripts/                     build_index.py、trace_metrics.py、replay_prep.py、issue_filter.py
 eval/golden/                 回归测试夹具
 docs/                        文档体系（见上方「文档」索引）
 CODEOWNERS.example           owner 落实后启用
