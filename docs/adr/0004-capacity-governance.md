@@ -56,6 +56,10 @@ knowledge/inference/vllm-ascend/
 - **立即把 other 并入 interrupt**：其他格子的 case 语义上是"版本/模型兼容知识"而非中断——并入会污染 category 判别（评估 0001 已证明其可检索性）。保留，观察
 - **cap 全动态无上限**：信道物理约束是硬性的（hard_cap），不可为"可调"牺牲。动态调节发生在 soft_cap 与健康指标层，hard_cap 恒定
 
+## 索引字段拆分（本 ADR 的延续，PR #8）
+
+`_index.yaml` 条目只保留 `confidence.score`（阶段一排序所需）；hits/misdiagnoses 是学习环动态字段（Beta 后验），留在 case 本体，由 groom 置信度重算读取，不入检索视图。理由：动态字段进静态索引 → 每次反馈全量重建 + diff 噪音 + `--check` 把"索引过期"与"置信度未同步"混淆。索引是生成物，只读，不手改。
+
 ## 参数治理（本 ADR 的参数归属）
 
 soft_cap=30、健康指标阈值、hard_cap=60 均为初始估计，服从 roadmap"参数治理"条目：metrics 实测（候选溢出率来自回放 harness/trace、维护时长来自 groom 报告）后按理论 §4.4 复核。首个复核点：评估 0001 的回放数据即可给出候选溢出率基线（当前 21 例溢出 0 次——格子健康，支持 30 起步）。
