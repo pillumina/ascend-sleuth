@@ -26,6 +26,39 @@ postmortem ─────────► inbox 待审队列 → groom 三分类
 
 case 的 confidence 不是人工设定而是在使用中习得：fix 被应用并确认解决，hits 加一；确认未解决，misdiagnoses 加一；score 随 last_hit 时间衰减。score 决定候选 case 的验证顺序——被反复验证的知识排到前面，被证伪的沉下去。结果捕获是结构化的：`feedback_pending` 标记写在状态文件里，任何一次 diagnose 或 resume 启动都会先追问未回报的结果，不依赖任何人的记性。
 
+**feedback 闭环的完整数据流**（三个写入点，git 归属刻意不同）：
+
+```
+【诊断时】                            【反馈时】                      【周维护时】
+工程师贴输入                         工程师回报"已解决/没解决"        groom 重算
+   │                                     │                            │
+   ▼                                     ▼                            ▼
+state 文件（写 trace +                state 文件（trace 记             case 文件
+feedback_pending: CASE-ID）           feedback action + 清             （读 hits/mis）
+   │        │                        feedback_pending）               │
+   │        └──下次 diagnose/resume ──► case 文件（更新                 ▼
+   │            启动先扫它、追问结果     confidence: hits+1 /      build_index.py
+   │                                   mis+1、score 重算、            重建索引
+   │                                   last_hit）                    （score 同步）
+   │                                    │
+   │                                    ▼
+   │                              trace_metrics.py（算指标）
+   │                                    │
+   │                                    ▼
+   │                              metrics.md（人复核后追加）
+```
+
+各写入点归属：
+
+| 写入点 | 内容 | 进 git? | 原因 |
+|---|---|---|---|
+| `diagnosis_state-*.yaml` | trace + feedback_pending | 否（gitignored） | 含客户现场信息；运行时状态，session 结束移 `postmortems/history/` 留本地 |
+| case 文件 `confidence` | hits/mis/score/last_hit | 是（走 knowledge_modification PR） | 学习环的持久知识——hits+1 必须入库才能改变下次候选排序 |
+| `_index.yaml` | score（仅 score，ADR-0004） | 是（生成物） | case 变 → 重建 → 随同一 PR；CI `--check` 强制同步 |
+| `metrics.md` | 指标汇总 | 是 | **周节奏、人复核**——trace_metrics 产出表，人看分母后追加，非每次反馈自动写 |
+
+要点：**每次反馈直接写的是 case 文件（confidence）**——那是学习环的持久状态；metrics.md 是周期性的观测汇总，不是反馈的即时回写。反馈回写 case 后应作为变更提交（groom 批次或独立小 PR），演示可随 commit，正式使用走门控。
+
 ### 2. 知识注入（每次定位后）
 
 to-postmortem 接受任意来源的调查记录（本地 session、外部对话、手工笔记、wiki 导出），提取症状、根因、修复，脱敏后进入 `postmortems/inbox/` 待审队列。groom 每周批处理：预分诊为 new_pattern / variant_of / covered_by 三类并附证据，人审后分别升格为新 case、并入已有 case（扩展版本区间）、或仅转正为 Tier 3 语料。判定为已覆盖的记录不丢弃——它仍是检索语料和未来 fixture 的来源。

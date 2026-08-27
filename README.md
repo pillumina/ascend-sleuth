@@ -146,9 +146,11 @@ agent 提取症状与根因，给出命名空间建议供你确认，然后生�
 
 ```
 knowledge/
-├── _index.yaml              Tier 2 生成索引（scripts/build_index.py 生成；阶段一直读，变更后重建）
+├── _index.yaml              Tier 2 生成索引（scripts/build_index.py 生成；阶段一直读，变更后重建；仅含 score 排序字段）
 ├── training/{mindspeed-llm,mindspeed-mm,verl}/
 ├── inference/{vllm-ascend,sglang}/
+│   └── vllm-ascend/         （framework × category 格子分层，ADR-0004）
+│       ├── interrupt/  ├── precision/  ├── performance/  └── other/
 ├── common/                  多框架共用的权威记录（由 groom 提升）
 ├── _archive/                软退休的过期 case
 └── platforms/{a2,a3,a5}.md  平台背景知识
@@ -157,16 +159,18 @@ postmortems/                 Tier 3 原始记录
 └── inbox/                   待审知识队列（groom 周批处理三分类后转正/升格）
 examples/sample-case.yaml    canonical 样例（全 schema 演示）
 CONTEXT.md                   领域术语表（中英对照）
-scripts/                     build_index.py（索引生成/新鲜度校验）、trace_metrics.py（trace→指标）
+scripts/                     build_index.py（索引生成/新鲜度校验）、trace_metrics.py（trace→指标）、replay_prep.py（回放输入生成）
 eval/golden/                 回归测试夹具（真实 fixture 脱敏后入库；无法脱敏的放私有仓）
 docs/eval.md                 skill 改动评估流程
-docs/demo.md                 演示讲稿（intake→周审→门控→闭环的全流程演示，可回放 PR #1）
+docs/eval-reports/           评估批次计划与报告（0001：vllm-ascend 首次实测）
+docs/demo.md                 演示讲稿（intake→周审→门控→闭环的全流程演示）
+docs/demo/                   具体演示记录（live-diagnosis-12723：首条真实诊断闭环）
 docs/design-theory.md        设计理论（四公理 + 贝叶斯决策内核，推导全部原则）
 docs/design-principles.md    设计原则（规范性条文，约束全部设计与演进）
-docs/evolution.md            自演进设计（演化机制、护栏、数据回路）
-docs/git-workflow.md         git 门控/审核/合入闭环（标签集、CODEOWNERS、CI、双签）
+docs/evolution.md            自演进设计（演化机制、护栏、数据回路、feedback 闭环数据流）
+docs/git-workflow.md         git 门控/审核/合入闭环（标签集、CODEOWNERS、CI、双签、skill 自包含边界）
 docs/roadmap.md              闸门驱动路线图（五维度事项、验收标准、入口闸门、检查点）
-docs/adr/                    设计决策记录（0002：不上 RAG；0003：平台可移植性与迁移预案）
+docs/adr/                    设计决策记录（0001 软匹配 / 0002 不上 RAG / 0003 平台可移植 / 0004 容量治理）
 CODEOWNERS.example           owner 落实后启用（配合分支保护做硬门控）
 .github/                     kb-checks CI + 分场景 PR 模板（intake/修改/方法论/结构）
 ```
@@ -212,6 +216,8 @@ Roadmap 采用闸门驱动：每个事项定义入口条件（数据或事件触
 
 ## 状态
 
-当前是 v1 骨架加首条播种 case（`knowledge/inference/sglang/SGL-PD-HEAP-001.yaml`，已进入 `_index.yaml`）。结构、schema、triage-tree、待审队列、生成索引和两个维护脚本均已就绪。
+当前知识库已有 **20 条真实 case**（inference/vllm-ascend 19 条 + inference/sglang 1 条，来自真实闭环 issue 批量导入），并完成首次框架实测（[评估报告 0001](docs/eval-reports/0001-vllm-ascend-batch.md)：候选召回 76%、语义校验 21/21、golden 套件 2→23）。运行性闭环已点亮——首条真实诊断 trace 走通 反馈→confidence→指标 全流程。
 
-下一步是照样例模板播种 10-30 条高频 case（覆盖三类问题），或批量导入内网 wiki 历史案例（`/skill:to-postmortem <dir>` 会进入 inbox 队列）。第一批知识灌入并跑过一轮真实的 to-postmortem 与 knowledge-groom 之后，用 `scripts/trace_metrics.py` 的实测数据（过滤率、退休率、路由准确率）重算 [ADR-0002](docs/adr/0002-retrieval-no-rag-lightweight-index.md) 的容量推演，再决定 v1.5 各机制的上线顺序。
+架构与机制（三层检索、格子容量治理、生成索引、intake 队列、PR 门控、自演进设计）全部就绪。**待办**：owner 人名落实（激活 CODEOWNERS 硬门）、真实诊断使用积累数据、按 roadmap 闸门推进 v1.5。
+
+下一步：持续用 vllm-ascend 等框架的闭环 issue 增量播种（按 ADR-0004 格子容量），让真实 diagnose 使用累积 trace——用 `scripts/trace_metrics.py` 的实测数据（过滤率、退休率、路由准确率）复核 [ADR-0002](docs/adr/0002-retrieval-no-rag-lightweight-index.md) 容量推演，再决定 v1.5 各机制的上线顺序。
