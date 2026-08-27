@@ -1,0 +1,72 @@
+# VLLM-ASC-11169 —— A2 双机 GLM-5.2 w8a8 推理乱码：与外部 kv connector（UCMConnector/mooncake）KV 传输路径相关，
+#   root cause 未确认（仅 workaround），issue 以 stale 关闭
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/11169
+# fix 跟踪：无 PR；closed 为 stale（2026-08-07）；workaround 多人验证：export VLLM_ASCEND_ENABLE_FLASHCOMM1=1 或关闭 external kv connector
+# investigation_quality: low（无根因定位、无 plog；仅 workaround 经验验证，issue 被 stale 关闭）
+# 批量导入：批次 2 组 2（2026-08）
+
+cases:
+  - id: VLLM-ASC-11169
+    title: "A2 双机拉起 GLM-5.2 w8a8（DP=2 双节点 + UCMConnector external kv connector）发送中文请求返回乱码；root cause 未确认，workaround：VLLM_ASCEND_ENABLE_FLASHCOMM1=1 或关闭 external kv connector"
+
+    category: other
+    tags: [glm5, garbled-output, kv-transfer, flashcomm1, workaround-only]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        # 无修复版本（root cause 未确认、无 PR）；测试环境：vllm-ascend nightly 20260616 + CANN 9.0.0
+
+    investigation_quality: low
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.1
+
+    symptoms:
+      - "A2 双机（DP=2 双节点）GLM-5.2 w8a8 + UCMConnector external kv connector 拉起推理，发送中文请求返回乱码"
+      - "export VLLM_ASCEND_ENABLE_FLASHCOMM1=1（切换到 flashcomm1 通信路径）后不改连接配置即可正常推理"
+      - "关闭 external kv connector 也可规避（prefix caching 仍可用）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/11169"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E '乱码|garbled' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:返回结果为乱码"
+      fallback:
+        command_template: "grep -E 'VLLM_ASCEND_ENABLE_FLASHCOMM1|UCMConnector|kv_connector' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:VLLM_ASCEND_ENABLE_FLASHCOMM1=1"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：A2 多节点 DP + external kv connector（如 UCMConnector）下推理输出乱码？"
+        expected: "是——问题与昇腾 KV 传输/通信路径相关，与模型权重/量化无关"
+      - step: 2
+        check: "workaround 验证①：启动前 export VLLM_ASCEND_ENABLE_FLASHCOMM1=1，重启服务后发同样中文请求"
+        expected: "恢复正确输出（评论#3 多人验证，无需关闭 external kv connector）"
+      - step: 3
+        check: "workaround 验证②：关闭 external kv connector（去掉 --kv-transfer-config 中的 connector）"
+        expected: "也可规避；prefix caching 不受影响（评论#2）"
+      - step: 4
+        check: "注意：root cause 未确认（线程无 plog、无代码级定位，维护者要求关闭，issue 最终以 stale 关闭）——此 case 是 workaround 型，不是根因结论"
+        expected: "接受——pending investigation，不要把 workaround 当根因"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change
+
+    root_cause: >
+      root cause 未确认（pending investigation）：A2 双机 GLM-5.2 推理乱码与外部 kv connector
+      （UCMConnector/mooncake）的 KV 传输路径相关，具体传输层缺陷未定位（无 plog、无代码级调查，
+      issue 被 stale 关闭）。已知事实：切换通信路径（VLLM_ASCEND_ENABLE_FLASHCOMM1=1）或关闭
+      external kv connector 可恢复正确输出，指向外部 kv connector 传输路径上的数据损坏/错序。
+
+    fix: >
+      workaround（多人验证）：启动前 export VLLM_ASCEND_ENABLE_FLASHCOMM1=1（切换到 flashcomm1
+      通信路径，无需关闭 external kv connector）；或关闭 external kv connector。
+      根因修复待官方定位，勿把 workaround 当作最终结论。
+    rollback: "unset VLLM_ASCEND_ENABLE_FLASHCOMM1 / 恢复 external kv connector 配置"

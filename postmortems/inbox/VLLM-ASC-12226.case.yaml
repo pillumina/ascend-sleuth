@@ -1,0 +1,73 @@
+# VLLM-ASC-12226 —— sleep mode wake_up 对 MoE 专家权重多 transpose 一次，纯推理 wake_up 后维度错位
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12226
+# fix 跟踪：无合并修复 PR——维护者（yjyang62）确认根因并给出 workaround；官方计划将 sleep/wakeup 与布局转换解耦（未落地）；issue 以 completed 关闭
+# investigation_quality: high（AI 辅助代码级根因 + 维护者确认 + 与 vllm 主仓 CuMemAllocator 设计对照）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（batch 2，组 1）
+
+cases:
+  - id: VLLM-ASC-12226
+    title: "camem sleep/wake 是字节级 memcpy（恢复后权重已是 forward READY 方向），NPUWorker.wake_up 又对 MoE w13/w2 transpose(1,2) 一次构成双重转置，纯推理 wake_up 后 K 维错位（3072 vs 2048）→ npu_grouped_matmul 161002/EZ1001"
+
+    category: interrupt
+    tags: [sleep-mode, wake-up, moe, double-transpose, grouped-matmul]
+
+    platforms: ["A2-910B"]            # npu-smi 显示 Ascend910 ×16，Qwen3.5-122B-A10B，CANN 8.5.0
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.18.0"]          # releases/v0.18.0 实测（0.1.dev100+g45068b082）；修复未发布（维护者解耦设计进行中），>0.18 是否修复需验证
+
+    investigation_quality: high       # to-postmortem 标的调查质量，groom 据此设初始 score
+    confidence:                       # groom 维护
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                      # high → 初始 0.6
+      last_hit: ""
+
+    symptoms:
+      - "vllm serve --enable-sleep-mode 下 sleep(level=1) 后 wake_up，纯推理 MoE 模型（如 Qwen3.5-122B-A10B）再次请求报 500"
+      - "wake_up 后推理栈报 aclnnGroupedMatmulV5 failed, error code is 161002，EZ1001: Dim 1 value of x[0] should be equal with dim 1 value of weight[0]，3072 vs 2048"
+      - "仅 MoE（w13_weight/w2_weight 命名权重）触发；dense 模型 wake_up 后正常（transpose 循环对 dense 全程 no-op）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12226"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'aclnnGroupedMatmulV5 failed, error code is 161002' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:aclnnGroupedMatmulV5 failed, error code is 161002"
+      fallback:
+        command_template: "grep -E 'EZ1001|wake_up' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:EZ1001"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：--enable-sleep-mode 服务 sleep 后 wake_up，再次推理报 500，栈在 npu_grouped_matmul / grouped_matmul K 维不匹配（EZ1001 161002）？"
+        expected: "是——wake_up 后维度错位（如 3072 vs 2048），报错前服务刚经历 sleep→wake_up"
+      - step: 2
+        check: "场景判别：是否 MoE 模型（权重名含 w13_weight/w2_weight）纯推理恢复（非 RL 权重更新流程）？dense 模型是否正常？"
+        expected: "是——只有 MoE 纯推理触发；dense 模型权重名不匹配 transpose 循环，wake_up 后正常"
+      - step: 3
+        check: "根因确认：camem 恢复后权重已是 process_weights_after_loading 后的 forward READY 方向，vllm_ascend/worker/worker.py:208-236 wake_up 的 transpose 循环再次 transpose(1,2) 命中 w13/w2 → 双重转置转回 RAW？"
+        expected: "是——该循环是为 RL 权重更新把权重转回 HF/checkpoint 方向，纯推理恢复时多余"
+      - step: 4
+        check: "处置：改用维护者确认的调用序列 wake_up(weights) → load_weights() → process_weights_after_loading() 后再恢复推理；或等待官方 sleep/wakeup 与布局转换解耦版本"
+        note: "官方修复未合入 PR；此 workaround 需要改调用序列并重启服务"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: pending-investigation    # 官方代码修复（解耦设计）进行中，现行为维护者确认的调用序列 workaround
+
+    root_cause: >
+      camem 的 sleep/wake（vllm_ascend/device_allocator/camem.py:177-223）是字节级
+      ACL_MEMCPY 整块备份/恢复，不改张量 shape/stride，wake_up 后权重方向 = sleep 前方向 =
+      process_weights_after_loading 后的 forward READY 方向；而 NPUWorker.wake_up
+      （vllm_ascend/worker/worker.py:208-236）又对 MoE w13/w2 transpose(1,2) 一次——该循环本意是
+      为 RL 权重更新把权重转回 HF/checkpoint-facing 布局——对纯推理构成双重转置，权重被转回 RAW，
+      forward 时 grouped_matmul K 维不匹配（3072 vs 2048），报 aclnnGroupedMatmulV5 161002/EZ1001。
+
+    fix: >
+      升级到含官方 sleep/wakeup 与布局转换解耦的版本（跟踪中，未发布）；现行为维护者确认的 workaround：
+      wake_up(weights) → load_weights() → process_weights_after_loading() 后再恢复推理。
+    rollback: "workaround 仅改调用序列可随时还原；或回退到不使用 --enable-sleep-mode 的常规服务"

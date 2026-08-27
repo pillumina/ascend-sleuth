@@ -1,0 +1,71 @@
+# VLLM-ASC-11824 —— Ascend NPU 算子非确定性执行致 batch invariance 测试输出随 batch 波动；override_envs_for_invariance 开启 use_deterministic_algorithms
+# 来源：https://github.com/vllm-project/vllm-ascend/pull/11824（[Ops][BugFix]，merged 2026-07-13）
+# fix 跟踪：PR #11824 本体——vllm_ascend/batch_invariant.py 的 override_envs_for_invariance() 调用 torch.use_deterministic_algorithms(True, warn_only=True)
+# investigation_quality: medium（assessment #11824；维护者修复 PR + Qwen3-30B/A5 测试验证，但无逐项排查记录）
+# 定性局限：precision/确定性类，signature 弱（无错误签名），quickly_check fallback 用行为词（determinism/batch-invariance）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（batch 2，2026-08）
+
+cases:
+  - id: VLLM-ASC-11824
+    title: "Ascend NPU 上 batch invariance 测试输出随 batch 波动：算子默认非确定性执行，需在 override_envs_for_invariance() 开启 torch.use_deterministic_algorithms(True, warn_only=True)"
+
+    category: precision
+    tags: [determinism, batch-invariance, ci-test, use-deterministic-algorithms]
+
+    platforms: ["A5-950"]        # PR 实测于 A5（Qwen3-30B）；A3 未验证
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.23.0"]      # 修复 PR #11824 合入 main（2026-07-13）；0.23.0 为 PR 标注的 vLLM 版本，vllm-ascend 以含该 PR 的 release 为准
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3                 # investigation_quality=medium → 初始 0.3
+
+    symptoms:
+      - "batch invariance 测试（如 Qwen3-30B）断言同输入、不同 batch 输出一致，在 Ascend NPU 上随 batch 波动、测试失败"
+      - "Ascend NPU 上算子默认非确定性执行（未显式开启 PyTorch 确定性算法）"
+      - "PR #11824 在 override_envs_for_invariance() 中调用 torch.use_deterministic_algorithms(True, warn_only=True) 后测试通过"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/pull/11824"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'use_deterministic_algorithms\\(True, warn_only=True\\)' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:use_deterministic_algorithms\\(True, warn_only=True\\)"
+        note: "PR body/源码中的确定性开关调用；日志若不含此串则 primary 不匹配"
+      fallback:
+        command_template: "grep -iE 'batch[- ]?invariant|deterministic' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*(batch[- ]?invariant|deterministic)"
+        note: "precision 确定性类 signature 弱，fallback 用行为词"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：是否 batch invariance 测试输出随 batch 波动（同输入不同 batch 数值不一致、测试失败）？"
+        expected: "是——Ascend NPU 算子非确定性执行的表现"
+        note: "该测试是 CI 门禁，失败阻塞合入/发布，但不影响线上服务（severity=benign）"
+      - step: 2
+        check: "代码判别：vllm_ascend/batch_invariant.py 的 override_envs_for_invariance() 是否调用 torch.use_deterministic_algorithms(True, warn_only=True)？"
+        expected: "未调用（修复前）→ 算子非确定性执行；已调用 → 已含 PR #11824"
+      - step: 3
+        check: "修复验证：升级到含 PR #11824 的版本后重跑 batch invariance 测试是否通过？"
+        expected: "通过（PR 用 Qwen3-30B 在 A5 验证）→ 确定性执行修复生效"
+        note: "warn_only=True 只告警不抛错——不可确定性算子不会中断测试，仅尽力保证确定化"
+
+    severity: benign                # CI/测试门禁问题，不影响线上服务
+    fix_side_effects: [requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      Ascend NPU 上部分算子（matmul/累加类）默认非确定性执行，batch invariance 测试断言
+      同输入、不同 batch 输出一致时结果随 batch 波动、测试失败。需在 batch invariance 专用的
+      override_envs_for_invariance() 中调用 torch.use_deterministic_algorithms(True, warn_only=True)
+      强制算子确定性执行（能确定化的算子确定化，warn_only 遇不确定算子仅告警）。
+
+    fix: "合并/升级到含 PR #11824 的版本：vllm_ascend/batch_invariant.py 的 override_envs_for_invariance() 中调用 torch.use_deterministic_algorithms(True, warn_only=True)，随后重跑 batch invariance 测试"
+    rollback: "revert PR #11824（移除该调用）——测试恢复随 batch 波动；不影响线上服务行为"

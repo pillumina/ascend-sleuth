@@ -1,0 +1,77 @@
+# VLLM-ASC-11893 —— PCP 短请求在 rank>0 产生零 token 空段，chunk_indices 紧凑段号与含空段的原始 cu_seqlens 错位，AscendC kernel batchTokens uint32 下溢 → MTE 写越界 runtime 507015
+# 来源：https://github.com/vllm-project/vllm-ascend/pull/11893（BugFix PR，v0.23.0 backport of #11807）
+# fix 跟踪：PR #11893 merged 2026-07-14（upstream vllm ee0da84）；修复 = fwd_h/fwd_o 前 _compact_empty_segments 压缩空段并对齐 compact rank
+# investigation_quality: high（PR 自带完整数值推演与 no-op 论证）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（batch 2，组 1）
+
+cases:
+  - id: VLLM-ASC-11893
+    title: "PCP 按 cp_kv_cache_interleave_size(128) 切分 prefill 时短请求在 rank>0 产生零 token 空段；chunk_indices 按紧凑段号索引而 chunk_fwd_o 用含空段的原始 cu_seqlens，二者错位 → batchTokens=0-164 uint32 下溢 → AscendC kernel MTE 写越界 runtime 507015"
+
+    category: interrupt
+    tags: [pcp, prefill-context-parallel, zero-chunk, gdn-kernel, qwen3.5, mte-oob]
+
+    # platforms 未在线程中给出，留空由 groom 补充
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.23.0"]           # 修复随 0.23.0 backport（#11893）与 main（#11807）发布；受影响为 0.22.x 及 0.23.0 早期 nightly
+
+    investigation_quality: high       # to-postmortem 标的调查质量，groom 据此设初始 score
+    confidence:                       # groom 维护
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                      # high → 初始 0.6
+      last_hit: ""
+
+    symptoms:
+      - "Qwen3.5 + PCP（prefill-context-parallel）world_size>1 + 混合长度并发批，运行中崩溃"
+      - "Ascend runtime 507015（MTE write out-of-bounds），崩在 AscendC 自定义 kernel chunk_gated_delta_rule_fwd_h / chunk_fwd_o"
+      - "存在 token 数 < cp_kv_cache_interleave_size（默认 128）的短请求——该请求在 rank>0 产生 0 token 空段时触发；rank0/非 PCP/均匀批次不受影响"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/pull/11893"
+      - "https://github.com/vllm-project/vllm-ascend/pull/11807"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E '507015|MTE write out-of-bounds' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:507015|MTE write out-of-bounds"
+      fallback:
+        command_template: "grep -E 'chunk_fwd_o|chunk_gated_delta_rule|zero chunk' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:chunk_fwd_o|chunk_gated_delta_rule"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：Ascend runtime 507015（MTE write out-of-bounds）且栈在 AscendC chunk_gated_delta_rule_fwd_h/chunk_fwd_o？"
+        expected: "是——kernel 层写越界，非普通 host 层 assert"
+      - step: 2
+        check: "场景判别：Qwen3.5 + PCP world_size>1 + 混合长度并发批，是否存在 token 数 < interleave size（默认 128）的短请求？"
+        expected: "是——短请求在 rank>0 产生 0 token 空段，留在该 rank 的 cu_seqlens 中"
+      - step: 3
+        check: "根因确认：chunk_indices 构建时跳过空段（紧凑段号），chunk_fwd_o 却用含空段的原始 cu_seqlens 按紧凑段号索引 → 段号错位，batchTokens = 空段边界差值（如 gmSeqlen[2]-gmSeqlen[1]=0）再减 chunk size → uint32 下溢成巨值 → MTE 写越界？"
+        expected: "是（例：cu_seqlens=[0,128,128,256]，chunk3 的 tokenOffset=gmSeqlen[1]=128，blockTokens=0-164=-64 下溢）"
+      - step: 4
+        check: "处置：升级到含 PR #11893（v0.23.0 backport of #11807）的版本；kernel 前 _compact_empty_segments 压缩空段并对齐 compact rank，keep-mask 回填 final_state，无空段时 no-op"
+        note: "临时规避：关闭 PCP（--prefill-context-parallel-size 1）或避免短请求混批"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch               # PR #11893 / #11807
+
+    root_cause: >
+      PCP 按 cp_kv_cache_interleave_size（默认 128）把每个请求的 prefill 跨 rank 交错切分，短于
+      interleave 的请求在 rank>0 上产生 0 token 空段并留在该 rank 的 cu_seqlens 中。chunk_indices
+      （gdn_attn_builder._fill_chunk_indices_cpu 构建）跳过空段、携带紧凑段号，而 chunk_fwd_o
+      kernel 用含空段的原始 gmSeqlen 按该紧凑段号索引，段号与原始段边界错位：batchTokens 取到空段
+      边界差值（如 gmSeqlen[2]-gmSeqlen[1]=0），再减 chunk size（164）后 uint32 下溢成巨值 →
+      MTE 写越界 → Ascend runtime 507015。压缩空段后紧凑 rank 与 gmSeqlen 对齐，空段对 GDN 数学
+      贡献为零，数值等价。
+
+    fix: >
+      升级到含 PR #11893 的版本（v0.23.0 起；main 为 #11807，upstream vllm ee0da84）：在 AscendC
+      fwd_h/fwd_o 前调用 _compact_empty_segments 丢弃 cu_seqlens/initial_state 中的零 token 段，
+      使 chunk_indices 的紧凑 rank 与压缩后的 gmSeqlen 对齐，compact 后的 final_state 经 keep-mask
+      回填到原始 [N,H,K,V] 布局；无空段时 no-op。
+    rollback: "回退到修复前版本；或临时关闭 PCP（--prefill-context-parallel-size 1）/ 避免短请求混批"

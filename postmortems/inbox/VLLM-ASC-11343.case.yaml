@@ -1,0 +1,75 @@
+# VLLM-ASC-11343 —— PD 分离 + 多节点 PP，D 侧 mooncake_connector 用 P0 base port 计算全部 PP rank 的 ZMQ 端口，P1 上端口偏移 -1 连到无人监听的 31128
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/11343
+# fix 跟踪：PR #11342（多节点 PP 端口映射修复，维护者 yiz-liu 评审；快照未捕获合并记录，issue 以 completed 关闭）；另官方建议多节点用 Ray 统一配置
+# investigation_quality: high（端口级实证：21 次超时全指向 31128 → 登 P1 查监听 31129-31144 → 代码走读确认偏移 -1）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（batch 2，组 1）
+
+cases:
+  - id: VLLM-ASC-11343
+    title: "PD 分离 + 多节点 PP：D 侧 _get_remote_ranks_for_req 用 P0 的 base kv_port(31112) 计算所有 PP rank 的 ZMQ 端口，P1(31113) 上 PP2+ 端口整体偏移 -1，连到无人监听的 31128 → KV 传输超时、P 节点显存堆积、bench 卡死"
+
+    category: interrupt
+    tags: [pd-disagg, pp, zmq, port-mapping, mooncake, multi-node]
+
+    platforms: ["A3-910C"]            # 两节点 A3，PP=4/DP=1/TP=8，world_size 32（评论#3 Yuli-yx 确认）
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.23.0"]           # 线程未提供版本；2026-07 时段（0.22.x/0.23.0-dev），修复 PR #11342 合入后的发布版本未在快照确认，软匹配降权
+
+    investigation_quality: high       # to-postmortem 标的调查质量，groom 据此设初始 score
+    confidence:                       # groom 维护
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                      # high → 初始 0.6
+      last_hit: ""
+
+    symptoms:
+      - "PD 分离 + 多节点 PP（各 P 节点配置不同 base kv_port，如 P0=31112、P1=31113）部署，单 curl 请求 OK，bench 跑到 100+ 请求后彻底卡死"
+      - "D 节点反复出现 Receive request timeout ... port 31128（共 21 次，全部指向 P1）；登 P1 查 ZMQ 监听范围是 31129-31144，31128 无 worker 监听"
+      - "P 节点 Avg prompt throughput 仅 1k+ tokens/s（正常 3k+），KV cache usage 持续增长到 100%——D 取不走 KV，P 不释放，最终卡死"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/11343"
+      - "https://github.com/vllm-project/vllm-ascend/pull/11342"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'Receive request timeout' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Receive request timeout"
+      fallback:
+        command_template: "grep -E 'port 3112[0-9]|ZMQ' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:port 31128"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：PD 分离多节点 PP，bench 后期卡死 + P 节点 KV cache usage 涨到 100%（D 取不走 cache）？"
+        expected: "是——且单 P 模式/单 curl 正常，怀疑指向 KV 传输层（mooncake/ZMQ）"
+      - step: 2
+        command_template: "grep -E 'Receive request timeout.*port' {{log_path}} | sort | uniq -c"
+        rank_selector: coordinator
+        expected: "超时端口集中在某个 P 节点的监听范围之外（如 31128，而该节点监听 31129-31144）"
+      - step: 3
+        check: "根因确认：D 侧 mooncake_connector._get_remote_ranks_for_req（line ~1744）是否用 P0 的 base kv_port 计算所有 PP rank 的 remote_handshake_port（[tp + pp*prefill_tp_size] + remote_port），未按各节点实际 base port 偏移？"
+        expected: "是——PP2+ 在 P1 上，实际端口应为 31129/31137，算出 31128/31136，整体偏移 -1"
+      - step: 4
+        check: "处置：升级含 PR #11342 的版本；多节点部署推荐改用 Ray 统一配置（vllm serve 仅在 head 节点启动一次，所有 worker 共享同一 kv_port，靠全局 device_index 保证端口唯一）"
+        note: "临时规避：让各 P 节点使用相同 base kv_port，使 D 侧按 P0 偏移的计算与实际一致"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch               # PR #11342（mooncake_connector 端口映射修复）
+
+    root_cause: >
+      D 侧 mooncake_connector._get_remote_ranks_for_req 计算远程 PP rank 的 ZMQ handshake 端口时，
+      所有 stage 都使用 P0 的 base kv_port（31112）依次偏移（[tp + pp*prefill_tp_size] 后再加
+      remote_port），未考虑各 P 节点可配置不同 base port（P1=31113）。PP2/PP3 位于 P1，实际端口
+      31129/31137，计算得到 31128/31136，整体偏移 -1，ZMQ 连到无人监听的端口 → Receive timeout
+      （1s×3 重试）→ KV load failure → D 无法取走 KV，P 节点 KV cache 不释放、显存堆积到 100%，
+      bench 卡死（21/758 请求失败，恰好是访问 PP2 TP1 的部分）。
+
+    fix: >
+      升级到含 PR #11342（多节点 PP 端口映射修复）的版本；多节点部署推荐改用 Ray 统一配置——vllm
+      serve 只在 head 节点启动一次，所有 worker 共享同一 kv_port，用全局 device_index 保证端口唯一。
+    rollback: "临时规避：所有 P 节点配置相同 base kv_port，使 D 侧按 P0 偏移的计算与实际监听一致；或回退到单节点 PD/同节点 PP"
