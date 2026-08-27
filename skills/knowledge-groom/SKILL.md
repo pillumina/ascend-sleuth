@@ -18,7 +18,7 @@ disable-model-invocation: true
 ## 流程（一次 groom 产出一个变更摘要）
 
 1. **intake 队列批处理（升格的前置）**：处理 `postmortems/inbox/`（`/skill:to-postmortem` 的产出 + agent 自起草候选都落这里）：
-   - 逐条**预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象：命中 namespace + `common/` 的现有 case——用 `knowledge/_index.yaml` 按 symptoms/tags 定位候选，全量读比对 root_cause 与 fix
+   - 逐条**预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象：命中 namespace + `common/` 的现有 case——用 `knowledge/_index.yaml` 按 symptoms/tags 定位候选，全量读比对 root_cause 与 fix
    - 产出**批审清单**交 owner 周批处理（像清 PR inbox，~30 秒/条）：
      - `covered_by` → 建议关闭升格；postmortem 转正 `postmortems/YYYY-QN/`（Tier 3 语料，**不是丢弃**）
      - `variant_of` → 建议并入已有 case（扩 compat 区间、补 symptoms）；若要动 `expected`/`fix_on_mismatch` 按高风险变更走双签
@@ -27,13 +27,13 @@ disable-model-invocation: true
    - **建议与决定分离**：预分诊只排序注意力，accept / adjust / reject 由人
 2. **引用完整性校验**:扫所有 case 的 `references`,检查指向真实存在的文件和锚点。悬挂引用进变更摘要（自演化系统的“坏账”，不校验会静默累积）。
 3. **值重复检测**：框架 case 的 `expected`/`fix_on_mismatch` 是否硬编码了 `common/` 权威记录拥有的值？是 → 标 must-fix，要求改成引用。
-4. **置信度重算**：从 `hits`/`misdiagnoses`/`last_hit` 重算每条 case 的 `confidence.score`（按时间衰减）。**新升格的 case 初始 score 不设 0**——按 to-postmortem 标的 `confidence`（人的调查质量判断）设初始值：high→0.6、medium→0.3、low→0.1。这组映射是 Beta 先验超参 $(\alpha,\beta)$ 的实例化（理论依据 docs/design-theory.md §4.1），显式化管理在 roadmap 待定池。score=0 意味着新 case 永远排候选最后，对 5 天详查的高质量 case 不合理。
+4. **置信度重算**：从 `hits`/`misdiagnoses`/`last_hit` 重算每条 case 的 `confidence.score`（按时间衰减）。**新升格的 case 初始 score 不设 0**——按 to-postmortem 标的 `confidence`（人的调查质量判断）设初始值：**high→0.6、medium→0.3、low→0.1**（Beta 先验超参 $(\alpha,\beta)$ 的实例化；参数治理见 roadmap 待定池，理论推导见 docs/design-theory.md §4.1——该文档为可选论证层，本参数为执行值）。score=0 意味着新 case 永远排候选最后，对 5 天详查的高质量 case 不合理。
 5. **软退休**：区分两种"未命中"——
    - **cold**（从未被 quickly_check 选中）→ **不退**（正确但罕见的 case 占索引成本极低，误删是静默损失）
    - **tried-and-failed**（被选中但近 12 周未解决）且 `score` 低 → 移入 `_archive/`
    - `compat` 版本过期 → 移入 `_archive/`（与命中无关）
    - 检查 `_archive/` 中 case 是否因新 `compat` 区间该复活（2.7 退休、2.8 恢复）
-6. **容量治理与拆分建议（ADR-0004）**：cap 按 **(framework × category) 格子**计（soft_cap 30 / hard_cap 60，参数待 metrics 复核）。每次 groom 附**容量表**：各格子条数 / soft_cap、健康指标（候选溢出率、同根因重复率、周维护时长）。任一格子超 soft_cap 即**触发拆分评估**（不是立即拆）：查健康指标——候选溢出率 >20%、重复率连续两轮上升、维护时长 >30 分钟/周，任一恶化 → 报告内容分布 + 拆分建议（首选 category 轴深化或按 platform 轴，见 roadmap A2）；超 hard_cap 无论健康指标**强制拆**。拆分被数据预告，不被卡住才想起（容量论证见 docs/adr/0002，治理设计见 docs/adr/0004）。
+6. **容量治理与拆分建议**：cap 按 **(framework × category) 格子**计，执行参数：**soft_cap=30**（触发拆分评估）、**hard_cap=60**（信道物理上限，强制拆）；健康指标阈值：候选溢出率 >20%、同根因重复率连续两轮上升、维护时长 >30 分钟/周。每次 groom 附**容量表**：各格子条数 / soft_cap、三项健康指标。任一格子超 soft_cap 即**触发拆分评估**（不是立即拆）：查健康指标，任一恶化 → 报告内容分布 + 拆分建议（首选 category 轴深化或按 platform 轴）；超 hard_cap 无论健康指标**强制拆**。拆分被数据预告，不被卡住才想起（论证见 docs/adr/0004——可选论证层，上述数值为执行值，参数待 metrics 复核）。
 7. **同 namespace 合并建议**：相似 case 对自动提示。
 8. **索引维护（收尾必做）**：所有 KB 变更（升格/合并/退休/改 confidence）完成后，运行 `python3 scripts/build_index.py` 重新生成 `knowledge/_index.yaml` 并随变更摘要一起提交。`--check` 报过期 = 变更不完整（忘了重建索引）。软退休的 case 移 `_archive/` 后自动从活跃索引消失。
 
@@ -45,7 +45,7 @@ disable-model-invocation: true
 - 改 `compat` 区间
 - `confidence.score` 被手动覆盖
 
-高风险变更要求两个 owner 签字（领域 owner + 体系维护人）。变更在 session 内**随机排序**审，对抗疲劳——一个 session 审 30 条变更，第 30 条得到的 scrutiny 远少于第 1 条，随机化缓解这个偏差。git 落地：变更走 PR 并打 `kb/high-risk` 标签，`CODEOWNERS` 双组路径强制对应 owner 审批，细节见 `docs/git-workflow.md`（owner 未定前用 `CODEOWNERS.example` 占位，机制先跑）。
+高风险变更要求两个 owner 签字（领域 owner + 体系维护人）。变更在 session 内**随机排序**审，对抗疲劳——一个 session 审 30 条变更，第 30 条得到的 scrutiny 远少于第 1 条，随机化缓解这个偏差。git 落地：变更走 PR 并打 `kb/high-risk` 标签，`CODEOWNERS` 双组路径强制对应 owner 审批（owner 未定前用 `CODEOWNERS.example` 占位，机制先跑；流程细节见 docs/git-workflow.md——可选论证层）。
 
 ## 信号 → 动作（演化信号表）
 

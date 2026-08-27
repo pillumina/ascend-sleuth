@@ -57,6 +57,10 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 
 `.github/PULL_REQUEST_TEMPLATE/` 下按变更对象分四类（创建 PR 时选择，或 `?template=` 直链）：**knowledge_intake**（新知识升格：预分诊+证据+脱敏自查）、**knowledge_modification**（改 expected/fix/compat 等高风险字段：触发条款+依据+双签）、**methodology**（skill/脚本/文档：原则追溯+golden 回归对照）、**structure**（triage-tree/namespace：数据依据+迁移完整性检查单）。模板里的"机器可填"字段当前手工填写，自动生成在 roadmap 待定池（PR 描述机器层生成）。模板目录属上游方法论，随 fork 同步。
 
+## Skill 自包含边界（SKILL.md 与 docs/ 的引用关系）
+
+`skills/<name>/SKILL.md` 必须**自包含到"没有 docs/ 也能正确执行"**：执行必需的决策参数（阈值、cap、映射、检查单）直接内联进 SKILL.md 或其 `references/`；`docs/` 是**可选论证层**——只承载"为什么这样设计"的推导，引用时标注"可选论证层"（如"论证见 docs/adr/0004——可选论证层，上述数值为执行值"）。原因：`docs/` 是仓库根级目录，依赖安装方式（`-g` 模式带全仓库，独立 skill 分发不带）；执行参数若只放在 docs 里，未装 docs 的 agent 无法正确执行。引用三分类：运行时参数 → 内联；背景论证 → docs + 可选标注；指标/产物数据源 → 保留为知识索引（如 metrics.md）。新写 skill 或修改时，不得新增"执行必需的 docs 依赖"。
+
 ## 高风险双签
 
 高风险清单与 `skills/knowledge-groom/SKILL.md` 保持一致：新建 `common/` 权威记录、修改 `expected`、修改 `fix_on_mismatch`、修改 `compat` 区间、手动覆盖 `confidence.score`。
