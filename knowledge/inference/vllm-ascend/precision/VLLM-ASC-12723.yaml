@@ -18,10 +18,10 @@ cases:
 
     investigation_quality: high     # to-postmortem 标的调查质量，groom 据此设初始 score
     confidence:
-      hits: 0
+      hits: 1
       misdiagnoses: 0
-      score: 0.6                    # 初始值（groom 按 investigation_quality=high 设）
-      last_hit: ""
+      score: 0.73                   # 反馈回写：1 次命中后 Beta 后验重算（α 强先验 0.6 起步）
+      last_hit: "2026-W35"          # 首次真实命中
 
     symptoms:
       - "GLM-5.2 DSpark 投机解码（bf16, NeoX, head_dim=rotary_dim=192）在线 accept_len 从 ~5.6 崩到 ~3.0"

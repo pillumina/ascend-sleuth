@@ -591,7 +591,7 @@ namespaces:
       - A3-910C
       compat: vllm-ascend <=0.23.0
       confidence:
-        score: 0.6
+        score: 0.73
       symptoms:
       - GLM-5.2 DSpark 投机解码（bf16, NeoX, head_dim=rotary_dim=192）在线 accept_len 从 ~5.6 崩到 ~3.0
       - 同一 rope 对象/worker/输入调 forward_native() 后 accept_len 恢复 5.4~5.5
@@ -605,7 +605,7 @@ namespaces:
           command: grep -iE 'accept_len|norm ratio' {{log_path}}
           expected: regex:.*(accept_len|norm ratio)
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12723.yaml
-      hash: 0634780f2fe7
+      hash: e25a0b1a86c5
     - id: VLLM-ASC-12957
       title: PD 分离 P 侧 sfa_v1.py 的 k_pe 经 kv_ag_handle.wait() 后未同步 NPU 流，D 侧 RDMA pull 读到未落盘陈旧 k_pe，PP4
         首请求乱码

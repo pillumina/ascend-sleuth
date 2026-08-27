@@ -41,9 +41,11 @@ def ns_map_from_index(root: Path) -> dict:
     idx = root / "knowledge" / "_index.yaml"
     if idx.exists():
         doc = yaml.safe_load(idx.read_text(encoding="utf-8")) or {}
-        for ns, cases in (doc.get("namespaces") or {}).items():
-            for c in cases:
-                m[c.get("id")] = ns
+        for ns, cells in (doc.get("namespaces") or {}).items():
+            # ADR-0004 格子结构：ns → category → [entries]
+            for cases in cells.values():
+                for c in cases:
+                    m[c.get("id")] = ns
         return m
     kdir = root / "knowledge"
     for f in kdir.rglob("*.yaml"):
