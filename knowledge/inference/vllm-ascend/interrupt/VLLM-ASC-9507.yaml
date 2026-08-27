@@ -1,0 +1,69 @@
+# VLLM-ASC-9507 —— minimax2.7 + PCP 开启 curl 报错：FULL 图模式不支持 PCP（官方确认限制，workaround 型）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9507
+# fix 跟踪：无代码修复——官方确认功能限制（FULL 图模式不支持 PCP，仅 FULL_DECODE_ONLY）；workaround 用户验证有效
+# investigation_quality: medium（维护者一句话确认限制 + 用户切换成功；后续乱码问题未闭环）
+# 批量导入：批次 2 组 4（2026-08）
+
+cases:
+  - id: VLLM-ASC-9507
+    title: "minimax2.7 TP4 + --prefill-context-parallel-size 2 开启 PCP 时 curl 报 AttributeError: 'NoneType' object has no attribute 'num_computed_tokens_of_pcp_dcp'；FULL 图模式不支持 PCP，切 FULL_DECODE_ONLY 解决"
+
+    category: interrupt
+    tags: [pcp, context-parallel, aclgraph, full-graph, workaround-only]
+
+    platforms: ["A2-910B"]          # 910B3（npu-smi 25.5.2）
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.19.1"]        # 线程环境 v0.19.1rc1；官方确认功能限制，未提修复版本
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3                    # medium
+
+    symptoms:
+      - "minimax2.7-w8a8 TP4 + --prefill-context-parallel-size 2（PCP=2）启动后 curl 调用报错，Worker 抛 AttributeError: 'NoneType' object has no attribute 'num_computed_tokens_of_pcp_dcp'"
+      - "报错栈在 vllm_ascend/attention/context_parallel/attention_cp.py:324 update_graph_params（acl_graph.py:233 update_full_graph_params 图参数更新路径）"
+      - "维护者 lilinsiman 确认：FULL 图模式不支持 PCP，仅 FULL_DECODE_ONLY 支持；切 --compilation-config '{\"cudagraph_mode\":\"FULL_DECODE_ONLY\"}' 后 curl 成功"
+      - "切换后仍有输出乱码（重复思考 token），官方建议 --no-async-scheduling（未获用户确认，独立问题）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9507"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E \"AttributeError: 'NoneType' object has no attribute 'num_computed_tokens_of_pcp_dcp'\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:AttributeError: 'NoneType' object has no attribute 'num_computed_tokens"
+      fallback:
+        command_template: "grep -E 'attention_cp\\.py.*update_graph_params|prefill-context-parallel-size' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:attention_cp\\.py.*update_graph_params"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：开启 PCP（--prefill-context-parallel-size > 1）且默认 FULL 图模式下，推理/curl 报 num_computed_tokens_of_pcp_dcp AttributeError？"
+        expected: "是——FULL 图模式 PCP 更新图参数时 attn_metadata.decode_meta 为 None"
+      - step: 2
+        check: "workaround：--compilation-config '{\"cudagraph_mode\": \"FULL_DECODE_ONLY\"}' 后重启服务"
+        expected: "curl 调用成功（nie-linfeng 验证）——官方确认 PCP 仅 FULL_DECODE_ONLY 支持"
+      - step: 3
+        check: "忽略项：切 FULL_DECODE_ONLY 后若仍输出乱码，是独立问题（官方建议 --no-async-scheduling，未确认），不要与 PCP 崩溃混为同一根因"
+        note: "本 case 是功能限制（workaround 型）而非可修复缺陷，fix 是配置切换"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]      # 改 compilation-config 需重启
+    fix_type: config-change                   # cudagraph_mode=FULL_DECODE_ONLY（官方确认限制的 workaround）
+
+    root_cause: >
+      vllm-ascend 的 PCP（prefill context parallel）实现依赖 NPU 图模式；FULL 图模式下 decode 阶段
+      更新图参数时 attn_metadata.decode_meta 为 None，attention_cp.py:324 访问
+      .num_computed_tokens_of_pcp_dcp 抛 AttributeError。官方确认 FULL 图模式不支持 PCP，仅
+      FULL_DECODE_ONLY 支持——这是平台功能限制而非可修复缺陷。
+
+    fix: >
+      workaround：--compilation-config '{\"cudagraph_mode\": \"FULL_DECODE_ONLY\"}'（维护者 lilinsiman
+      确认、用户 nie-linfeng 验证 curl 成功）；若切换后仍有输出乱码另建议 --no-async-scheduling（未确认）。
+    rollback: "移除该 compilation-config 恢复默认 FULL 图模式即复现崩溃"

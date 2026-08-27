@@ -1,0 +1,73 @@
+# VLLM-ASC-11208 —— 双机 A2 按官方教程部署 GLM5.2 报 ModuleNotFoundError：v0.22.1rc 未适配 GLM5.2（缺 fused_moe.expert_map_manager）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/11208
+# fix 跟踪：无独立 PR——vLLM v0.23.0 + 含 PR #10441 的 vllm-ascend main（参考 PR #11065、issue #10610）
+# investigation_quality: medium（assessment #11208；官方确认版本组合，用户未回测闭环，stale 关闭）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（batch 2，2026-08）
+
+cases:
+  - id: VLLM-ASC-11208
+    title: "双机 A2 按官方教程部署 GLM5.2 启动报 ModuleNotFoundError: No module named 'vllm.model_executor.layers.fused_moe.expert_map_manager'（v0.22.1rc 未适配 GLM5.2）"
+
+    category: interrupt
+    tags: [glm5, fused-moe, module-not-found, version-mismatch, a2]
+
+    platforms: ["A2-910B"]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.23.0"]        # 修复版本 v0.23.0 → ["<X"]；0.22.1rc 及更早失败。GLM5.2 还需 vllm-ascend main（至少含 PR #10441），仅 v0.23.0 release 不一定够
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3                   # investigation_quality=medium → 初始 0.3
+
+    symptoms:
+      - "双机 A2 按官方 GLM5.2 教程（docs.vllm.ai/projects/vllm-ascend-cn）部署，镜像正确仍报 ModuleNotFoundError，服务启动失败"
+      - "ModuleNotFoundError: No module named 'vllm.model_executor.layers.fused_moe.expert_map_manager'（import 阶段）"
+      - "切到 v0.22.1rc 镜像后 ModuleNotFoundError 消失，但出现模型键值错误（版本错配次级现象）"
+      - "需 vLLM v0.23.0 + vllm-ascend main（至少含 PR #10441）才能正常启动 GLM5.2"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/11208"
+      - "https://github.com/vllm-project/vllm-ascend/pull/10441"
+      - "https://github.com/vllm-project/vllm-ascend/pull/11065"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E \"ModuleNotFoundError: No module named 'vllm\\.model_executor\\.layers\\.fused_moe\\.expert_map_manager'\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:ModuleNotFoundError: No module named 'vllm\\.model_executor\\.layers\\.fused_moe\\.expert_map_manager'"
+      fallback:
+        command_template: "grep -iE 'fused_moe|glm5\\.2|键值错误' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(fused_moe|glm5\\.2|键值错误)"
+
+    diagnosis:
+      - step: 1
+        check: "启动错误是否为 ModuleNotFoundError: No module named '...fused_moe.expert_map_manager'？"
+        expected: "是——GLM5.2 适配缺模块的典型签名（vLLM 0.23.0 才引入 expert_map_manager）"
+      - step: 2
+        check: "版本判别：pip show vllm（或镜像标签）是否为 0.22.1rc 或更早？"
+        expected: "是（如 v0.22.1rc 镜像）→ 未适配 GLM5.2，需升 vLLM v0.23.0"
+        note: "vllm-ascend 侧还需 main 分支（至少含 PR #10441）；quay.io/ascend/vllm-ascend:glm5.2 标签镜像不保证含该 PR，需确认构建 commit"
+      - step: 3
+        check: "忽略项：切 v0.22.1rc 后出现的'模型键值错误'是版本错配下的次级现象，不要在此版本上排查——直接换 v0.23.0 + main 组合"
+        expected: "是——正确组合下 GLM5.2 正常启动"
+      - step: 4
+        check: "修复验证：vLLM v0.23.0 + vllm-ascend main（含 PR #10441）重新构建/换镜像后启动是否成功？"
+        expected: "成功 → 版本适配差异，非用户配置问题（依赖冲突时仅升级 FastAPI，其余包不动）"
+
+    severity: service-affecting          # 服务启动失败（crash 于 import 阶段）
+    fix_side_effects: [requires-restart]
+    fix_type: config-change             # 版本升级型
+
+    root_cause: >
+      v0.22.1rc 及更早的 vllm-ascend 未适配 GLM5.2：模型加载 import 阶段引用的
+      vllm.model_executor.layers.fused_moe.expert_map_manager 模块（vLLM 0.23.0 引入）
+      不存在，抛 ModuleNotFoundError、服务启动失败。GLM5.2 支持需 vLLM v0.23.0 +
+      至少含 PR #10441 的 vllm-ascend main（expert_map_manager 相关适配由该 PR 合入）。
+
+    fix: "升级到 vLLM v0.23.0，并用含 PR #10441 的 vllm-ascend main 源码/镜像重新构建（依赖冲突时仅升级 FastAPI，其余包保持）；或使用确认含 PR #10441 的官方镜像"
+    rollback: "无业务级回滚——旧版本（0.22.1rc 及更早）无法启动 GLM5.2；若必须回退需同时回退模型到适配版本"

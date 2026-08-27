@@ -1,0 +1,74 @@
+# VLLM-ASC-11459 —— MooncakeBackend lazy_init 时 _setup_store() 在 KV 传输线程调无参 get_global_rank()，
+#   读不到主线程 process-global vllm config 抛 AssertionError: Current vLLM config is not set，store 永不初始化
+# 来源：https://github.com/vllm-project/vllm-ascend/pull/11459（PR 即 issue，[BugFix][KV Pool]）
+# fix 跟踪：PR #11459（merged 2026-07-06；上游 PR #9731）；文件 vllm_ascend/distributed/kv_transfer/kv_pool/ascend_store/backend/mooncake_backend.py
+# investigation_quality: high（before/after 复现 + 根因链完整 + 已合并）
+# 批量导入：批次 2 组 2（2026-08）
+
+cases:
+  - id: VLLM-ASC-11459
+    title: "MooncakeBackend lazy_init=True 时 _setup_store() 被推迟到首次 put()（KV 传输发送线程），无参 get_global_rank() 读 process-global vllm config 为 None 抛 AssertionError: Current vLLM config is not set（x43），store 永不初始化、每次 put() 失败"
+
+    category: interrupt
+    tags: [kv-pool, mooncake, lazy-init, thread-safety, pd-separation]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.23.0"]        # PR 目标版本 v0.23.0（merged 2026-07-06，main）
+    # 平台：线程未声明；Ascend fabric memory 卸载路径（ASCEND_ENABLE_USE_FABRIC_MEM=1）触发
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+
+    symptoms:
+      - "DSV4-Flash-w8a8-mtp 双节点 PD 分离（data-parallel 4 × tensor-parallel 4，kv_role=kv_producer）+ ASCEND_ENABLE_USE_FABRIC_MEM=1 + enable_multithread_load=true + Mooncake store（enable_ssd_offload=true）时，KV 传输线程报 AssertionError: Current vLLM config is not set（实测 x43）"
+      - "MooncakeBackend 以 lazy_init=True 创建时 store 永不初始化，此后每次 put() 都失败"
+      - "仅 KV 传输发送线程（KVCacheStoreLayerSendingThread）触发；主 worker 线程正常"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/pull/11459"
+      - "https://github.com/vllm-project/vllm-ascend/pull/9731"
+
+    quickly_check:
+      primary:
+        command_template: "grep -F 'Current vLLM config is not set' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:AssertionError: Current vLLM config is not set"
+      fallback:
+        command_template: "grep -E 'ASCEND_ENABLE_USE_FABRIC_MEM=1|MooncakeBackend' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:ASCEND_ENABLE_USE_FABRIC_MEM=1|MooncakeBackend"
+
+    diagnosis:
+      - step: 1
+        check: "错误签名：日志是否反复出现 'AssertionError: Current vLLM config is not set'（KV 传输线程）？"
+        expected: "是——本 case 命中"
+      - step: 2
+        check: "场景判别：是否为 DSV4 压缩模型 + ASCEND_ENABLE_USE_FABRIC_MEM=1 触发 MooncakeBackend lazy_init=True，且启用 enable_multithread_load=true（store setup 落在 KV 传输线程）？"
+        expected: "是——lazy_init 把 _setup_store() 从 __init__ 推迟到首次 put()，运行在 KVCacheStoreLayerSendingThread"
+      - step: 3
+        check: "代码级：_setup_store() 是否调无参 get_global_rank()（无参形式回退到 get_current_vllm_config().parallel_config，传输线程上 process-global 为 None）？"
+        expected: "是——根因；fix 为 __init__ 缓存 parallel_config 并显式传 get_global_rank(self.parallel_config)"
+      - step: 4
+        check: "修复：升级到含 PR #11459 的版本，重启后验证"
+        expected: "升级后 AssertionError 0 次，store 正常初始化"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      MooncakeBackend 以 lazy_init=True 创建（DSV4 压缩模型 + ASCEND_ENABLE_USE_FABRIC_MEM=1）
+      时，_setup_store() 被推迟到首次 put()，运行在 KV 传输发送线程而非主 worker 线程。
+      _setup_store() 调无参 get_global_rank()，无参形式回退读主线程 set_current_vllm_config()
+      设置的 process-global _current_vllm_config，传输线程上为 None → get_current_vllm_config()
+      抛 AssertionError: Current vLLM config is not set，store 永不初始化，后续每次 put() 都失败。
+      由 per-DP-rank SSD 子目录改动在 _setup_store() 里引入 get_global_rank() 调用导致。
+
+    fix: >
+      升级到含 PR #11459 的版本：__init__ 时把 parallel_config 缓存到 self，_setup_store()
+      显式调用 get_global_rank(self.parallel_config)，不再依赖线程本地 process-global config。
+    rollback: "回退 PR #11459（恢复无参 get_global_rank()）"

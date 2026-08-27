@@ -1,0 +1,74 @@
+# VLLM-ASC-11924 —— 未启用 FlashComm1/SP 时 AllGather EP 的 MXFP4(W4A4) MoE dispatch 无预量化 scale，
+#   token dispatcher 仍按 dispatch 时量化把 BF16 激活推断成 FP4 packed 形状 → MoeInitRoutingV3 tiling 错误
+# 来源：https://github.com/vllm-project/vllm-ascend/pull/11924（PR 即 issue，[Ascend950][Bugfix]）
+# fix 跟踪：PR #11924（merged 2026-07-14，main；cherry-pick 到 releases/v0.23.0 两次失败——0.23.x 是否含修复需验证）
+# investigation_quality: high（PR 给 root cause + 逐路径 fix 语义 + 3 组单测覆盖）
+# 批量导入：批次 2 组 2（2026-08）
+
+cases:
+  - id: VLLM-ASC-11924
+    title: "Ascend950 未启用 FlashComm1/SP 时 AllGather EP 的 MXFP4 W4A4 MoE：prepare 路径不预量化/不产 pertoken_scale，token dispatcher 仍按 dispatch 时量化把 BF16 激活推断 FP4 packed 形状，触发 MoeInitRoutingV3 tiling 错误（expanded_x dim1 should be 7168, current is 14336）"
+
+    category: interrupt
+    tags: [moe, mxfp4, allgather-ep, tiling, ascend950]
+
+    platforms: ["A5-950"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.23.0"]        # PR 目标版本 v0.23.0（main）；cherry-pick 到 releases/v0.23.0 两次失败，0.23.x 是否含修复需验证
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+
+    symptoms:
+      - "Ascend950 上 MoE W4A4/MXFP4 量化 + AllGather EP、未启用 FlashComm1/SP 时，推理报 MoeInitRoutingV3 tiling 错误：expanded_x dim1 should be 7168, current is 14336（期望 FP4 packed 形状，实际按未量化 BF16 推断成 2 倍）"
+      - "AllGather prepare 路径不预量化 hidden_states、不产 pertoken_scale 时，token dispatcher 仍把 MXFP4 当 dispatch 时量化处理，把 dtype 信息传给 npu_moe_init_routing_v2"
+      - "启用 FlashComm1/SP（有 prepare 阶段 pertoken_scale）的预量化路径不触发"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/pull/11924"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'expanded_x dim1 should be' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:expanded_x dim1 should be \\d+, current is \\d+"
+      fallback:
+        command_template: "grep -iE 'MoeInitRoutingV3|npu_moe_init_routing_v2' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:[Mm]oeInitRoutingV3|npu_moe_init_routing_v2"
+
+    diagnosis:
+      - step: 1
+        check: "错误签名：日志是否含 'expanded_x dim1 should be <N>, current is <M>'（期望 FP4 packed 形状，实际按未量化 BF16/FP16 推断成 2 倍）？"
+        expected: "是——MoeInitRoutingV3 tiling 形状错误，本 case 命中"
+      - step: 2
+        check: "路径判别：是否 W4A4/MXFP4 量化 + MoE AllGather EP + 未启用 FlashComm1/SP（无 prepare 阶段 pertoken_scale）？"
+        expected: "是——AllGather prepare 不预量化 hidden_states/不产 pertoken_scale 的路径"
+        note: "启用 FlashComm1/SP（有 pertoken_scale）走预量化路径，不触发"
+      - step: 3
+        check: "代码级：token dispatcher 在无 prepare-stage scale 时应保持 MXFP4 未量化 dispatch，量化推迟到 MLP 路径（激活与 scale 一起生成）；pre-quantized 路径在 pertoken_scale 可用时保留，并兼容新旧 quant-type 枚举名"
+        expected: "是——PR #11924 的 fix 语义"
+      - step: 4
+        check: "修复：升级到含 PR #11924 的版本，或按 PR 修改 AllGather token dispatch 逻辑后重启验证"
+        expected: "升级/应用补丁后 tiling 错误消失"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      未启用 FlashComm1/SP 时，AllGather prepare 路径不预量化 hidden_states、不产
+      pertoken_scale；但 token dispatcher 仍把 W4A4/MXFP4 当 dispatch 时量化处理，
+      将 MXFP4 dtype 信息传给 npu_moe_init_routing_v2。路由 op 于是从未量化 BF16/FP16
+      张量推断 FP4 packed 激活形状（形状差 2 倍），触发 MoeInitRoutingV3 tiling 错误
+      （expanded_x dim1 should be 7168, current is 14336）。
+
+    fix: >
+      升级到含 PR #11924 的版本：无 prepare-stage pertoken_scale 时 dispatch 保持
+      MXFP4 未量化，量化推迟到 MLP 路径（激活与 scale 一起生成）；有 pertoken_scale
+      （如 FlashComm1/SP 路径）时保留预量化路径；并兼容新旧 MXFP4 quant-type 枚举名。
+    rollback: "回退到修复前版本（恢复 dispatch 时量化路径）"

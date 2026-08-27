@@ -1,0 +1,72 @@
+# VLLM-ASC-12030 —— GLM5 流式 tool-call 响应单词最后 1 个字符重复（glm4_moe_tool_parser.py 解析缺陷）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12030
+# fix 跟踪：无独立 PR；修复随 v0.23.0 发布（glm4_moe_tool_parser.py 更新）；workaround 为评论#3 附件修复版脚本
+# investigation_quality: medium（必现 curl + 修复脚本 + 0.23.0 同 curl 复测闭环；未给代码级 diff 定位）
+# 批量导入：批次 2 组 2（2026-08）
+
+cases:
+  - id: VLLM-ASC-12030
+    title: "vllm-ascend 0.20 + GLM-5.1 w8a8 910C PD 分离：特定请求（function-calling）流式响应经常出现单词最后 1 个字符重复，非流式正常——GLM5 流式 tool-call 解析器 glm4_moe_tool_parser.py 解析缺陷，0.23.0 已修复"
+
+    category: other
+    tags: [glm5, streaming, tool-call, glm4_moe_tool_parser, pd-separation]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.23.0"]        # 0.20 复现；评论#8 用同一 curl 在 0.23.0 复测已解决
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3
+
+    symptoms:
+      - "vllm-ascend 0.20 + GLM-5.1 w8a8 910C PD 分离，特定请求（tools + tool_choice=auto）流式响应经常出现单词最后 1 个字符重复"
+      - "同一请求非流式响应正常"
+      - "带 tools/tool_choice 参数的 curl 可必现（评论#3 提供复现请求）"
+      - "0.23.0 用同一 curl 复测：问题消失"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12030"
+      # 无独立 fix PR；修复随 v0.23.0 发布（glm4_moe_tool_parser.py 更新），workaround 为评论#3 附件脚本
+
+    quickly_check:
+      primary:
+        command_template: "grep -E '单词最后1个字符重复|字符重复' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:单词最后1个字符重复"
+      fallback:
+        command_template: "grep -E 'glm4_moe_tool_parser' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:glm4_moe_tool_parser\\.py"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：流式响应单词最后 1 个字符重复、非流式正常、GLM5/GLM5.x w8a8 场景？"
+        expected: "是——问题收敛到 GLM5 流式输出/解析路径，而非权重/采样/量化"
+      - step: 2
+        check: "复现：用评论#3 的 curl（stream=true + tools + tool_choice=auto，如 '请把任务 1 的状态更新为已完成'）多试几次是否必现重复字符？"
+        expected: "能——特定请求必现，与 tool-call 解析场景相关"
+      - step: 3
+        check: "定位：GLM5 流式响应经 glm4_moe_tool_parser.py（vllm-ascend 特有 GLM5 适配）解析，parser 解析逻辑缺陷导致单词末字符重复；非流式不经此 parser 故正常"
+        expected: "是——替换为评论#3 修复版 glm4_moe_tool_parser.py 可验证"
+      - step: 4
+        check: "修复：升级到 vllm-ascend 0.23.0+（已修复），或临时替换修复版 glm4_moe_tool_parser.py"
+        expected: "0.23.0 同 curl 复测通过（评论#8）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      GLM5 的流式 tool-call 响应由 vllm-ascend 特有的 glm4_moe_tool_parser.py 解析器处理，
+      其解析逻辑存在缺陷：特定请求（function-calling）的流式响应中单词最后 1 个字符被重复；
+      非流式响应路径不经此 parser，表现正常。修复随 v0.23.0 发布（parser 更新），线程未定位到
+      独立 fix PR，仅提供修复版脚本附件与 0.23.0 复测闭环。
+
+    fix: >
+      升级到 vllm-ascend 0.23.0+（评论#8 用同一 curl 复测确认已解决）；临时 workaround：
+      用评论#3 附件的修复版 glm4_moe_tool_parser.py 替换部署中同路径脚本后重启。
+    rollback: "恢复旧版 glm4_moe_tool_parser.py / 回退到 0.20 版本"

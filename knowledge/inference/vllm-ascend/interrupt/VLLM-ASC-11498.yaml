@@ -1,0 +1,73 @@
+# VLLM-ASC-11498 —— dsv4-flash W4A8_MXFP4 allgatherEP 路径把 topk_weights 强转 float8 与 bool mask 相乘，启动即抛 Float8×Bool promotion 不支持
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/11498
+# fix 跟踪：PR #11663（[Ascend950][Bugfix]Fix allgatherEP MXFPW4A8 quantization，merged 2026-07-10）；评论#2 确认 'PR #11663 fixed'；issue 由 stale bot 以 not_planned 关闭（非未修复）
+# investigation_quality: high（精确栈定位到 token_dispatcher.py:393 + fix PR 直接合入）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（batch 2，组 1）
+
+cases:
+  - id: VLLM-ASC-11498
+    title: "Ascend950(A5) allgatherEP W4A8_MXFP4 路径把 topk_weights 误强转为 float8，与 bool mask 相乘触发 Float8×Bool promotion 不支持，profile_run 阶段启动即崩"
+
+    category: interrupt
+    tags: [a5, mxfp4, float8, fused-moe, topk-weights, allgather-ep]
+
+    platforms: ["A5-950"]             # Ascend950PR ×8（npu-smi），DeepSeek-V4-Flash + dsv4-flash
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.23.0"]           # 修复 PR #11663 merged 2026-07-10 进 0.23.0；受影响为 0.23.0 发布前 nightly 及更早版本（issue 在 release/v0.23.0 实测）
+
+    investigation_quality: high       # to-postmortem 标的调查质量，groom 据此设初始 score
+    confidence:                       # groom 维护
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                      # high → 初始 0.6
+      last_hit: ""
+
+    symptoms:
+      - "Ascend950（A5）+ DeepSeek-V4-Flash + dsv4-flash + --enable-expert-parallel（allgatherEP）且启用 W4A8_MXFP4 量化，服务启动 profile_run 阶段即崩溃"
+      - "RuntimeError: Promotion for Float8 Types is not supported, attempted to promote Float8_e4m3fn and Bool"
+      - "栈底在 vllm_ascend/ops/fused_moe/token_dispatcher.py token_dispatch：topk_weights = topk_weights * mask（topk_weights 已被强转 float8，mask 为 bool）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/11498"
+      - "https://github.com/vllm-project/vllm-ascend/pull/11663"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'Promotion for Float8 Types is not supported' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Promotion for Float8 Types is not supported"
+      fallback:
+        command_template: "grep -E 'Float8_e4m3fn and Bool|topk_weights \\* mask' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Float8_e4m3fn and Bool"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：A5 + W4A8_MXFP4 量化（dsv4-flash）+ allgatherEP，启动/首请求报 Promotion for Float8 Types is not supported（Float8_e4m3fn and Bool）？"
+        expected: "是——profile_run 阶段即崩（启动即失败，非运行期偶发）"
+      - step: 2
+        check: "栈定位：是否在 vllm_ascend/ops/fused_moe/token_dispatcher.py token_dispatch 的 topk_weights = topk_weights * mask（topk_weights 已 float8、mask 是 bool）？"
+        expected: "是——PyTorch 不支持 Float8×Bool 类型提升"
+      - step: 3
+        check: "根因确认：allgatherEP 的 W4A8_MXFP4 量化适配是否对 topk_weights 执行了 float8 强转？"
+        expected: "是——MXFP 模式下 topk_weights 不应转 float8，应与 bf16 路径一致直接与 bool mask 相乘"
+      - step: 4
+        check: "处置：升级到含 PR #11663 的版本（0.23.0）；MXFP 模式跳过 topk_weights 的 float8 cast，启用 bf16 兼容 MXFP"
+        note: "issue 以 not_planned 被 stale bot 自动关闭不代表未修复——修复实际已合入，勿被 closed reason 误导"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch               # PR #11663（vllm_ascend/ops/fused_moe/token_dispatcher.py w4a8_mxfp4 适配）
+
+    root_cause: >
+      allgatherEP 的 W4A8_MXFP4 量化路径把 topk_weights 误强转为 float8，随后与 bool 类型 mask 相乘
+      （token_dispatcher.py:393 topk_weights = topk_weights * mask），PyTorch 不支持 Float8×Bool 的
+      类型提升，profile_run 阶段即抛 RuntimeError: Promotion for Float8 Types is not supported,
+      attempted to promote Float8_e4m3fn and Bool。MXFP 模式下 topk_weights 应保持 bf16 与 mask 相乘，
+      float8 只用于专家权重本身。
+
+    fix: >
+      升级到含 PR #11663 的版本（vllm_ascend/ops/fused_moe/token_dispatcher.py 的 w4a8_mxfp4 适配）：
+      allgatherEP MXFP 路径跳过 topk_weights 的 float8 cast，启用 bf16 兼容 MXFP 模式。
+    rollback: "回退到修复前版本；或临时关闭 allgatherEP（不使用 --enable-expert-parallel）/ 关闭 MXFP 量化"

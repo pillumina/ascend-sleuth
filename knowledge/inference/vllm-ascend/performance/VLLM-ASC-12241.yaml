@@ -1,0 +1,74 @@
+# VLLM-ASC-12241 —— v0.23.0 图模式（cudagraph）+ MTP 开启下 profiling 采不到 kernel 信息（无 kernel_details.csv）；CANN 9.0.0 与图模式交互 bug，升级 9.1.0 恢复
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12241
+# fix 跟踪：无代码修复 PR——官方建议升级 CANN 9.1.0 复测，用户评论#6 确认"现在可以采集了"；workaround：--enforce-eager 关闭图模式
+# investigation_quality: low（assessment #12241；无复现日志/采集目录，结论依赖官方建议 + 用户一句确认）
+# 定性局限：performance 类 + CANN 版本差异，quickly_check 用版本断言形态（primary）+ 行为词 grep（fallback），不依赖错误签名
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（batch 2，2026-08）
+
+cases:
+  - id: VLLM-ASC-12241
+    title: "v0.23.0 图模式（cudagraph）+ MTP 开启下 profiling 解析无 kernel_details.csv；CANN 9.0.0 与 NPU 图模式交互 bug，升级 CANN 9.1.0 恢复"
+
+    category: performance
+    tags: [profiling, cudagraph, mtp, cann-version, kernel-details]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.23.0"]       # 线程实测版本（releases/v0.23.0 分支）
+        cann: ["<9.1.0"]         # 修复版本 CANN 9.1.0 → ["<X"]；9.0.0 命中
+
+    investigation_quality: low
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.1                 # investigation_quality=low → 初始 0.1
+
+    symptoms:
+      - "v0.23.0 图模式（cudagraph）+ MTP/投机推理开启下，混部脚本采集 profiling 解析后无 kernel_details.csv"
+      - "PD 分离场景单独对 P 节点采集 profiling 正常，仅混部（图模式+投机）采集不到"
+      - "关闭投机推理和图模式（--enforce-eager）后可正常采集"
+      - "CANN 9.0.0 + v0.23.0 开 cudagraph 必现；升级 CANN 9.1.0 后恢复采集"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12241"
+
+    quickly_check:
+      primary:
+        command_template: "cat /usr/local/Ascend/ascend-toolkit/latest/version.cfg | grep -iE 'version|cann'"
+        rank_selector: coordinator
+        expected: "CANN 9.0.x（<9.1.0）——版本断言命中本 case"
+        note: "performance 类版本差异：primary 用 CANN 版本断言形态，不 grep 错误签名"
+      fallback:
+        command_template: "grep -iE 'kernel_details\\.csv|enforce-eager|cudagraph' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*(kernel_details\\.csv|enforce-eager|cudagraph)"
+        note: "无 kernel_details.csv 为缺失型签名，用行为词（图模式开关/采集产物名）作检索信号"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：profiling 解析后是否无 kernel_details.csv，且 --enforce-eager（关图模式）后可采集、开 cudagraph 必现？"
+        expected: "是——命中本 case（CANN profiling 与 NPU 图模式交互问题）"
+        note: "忽略'采集窗口内无 NPU 算子下发'假说（weiguihua2 提出、用户反驳）：关图模式即可采，非负载窗口问题"
+      - step: 2
+        check: "版本判别：CANN 版本是否为 9.0.0（<9.1.0），且 vllm-ascend v0.23.0 + 图模式（cudagraph/MTP）？"
+        expected: "是——本 case 触发条件（CANN 9.0.0 下开 cudagraph 必现）"
+      - step: 3
+        check: "对照消融：同一混部脚本分别开/关图模式与投机推理，确认只有两者同时（或图模式）开启时采不到？"
+        expected: "是 → 差异收敛到图模式执行路径，与 profiling 流程本身无关"
+      - step: 4
+        check: "修复验证：升级 CANN 至 9.1.0 后复测是否恢复采集？"
+        expected: "恢复（用户评论#6 确认'现在可以采集了'）→ CANN 版本差异，非框架/配置问题"
+        note: "临时规避：--enforce-eager 关闭图模式（损失图模式性能）后再采集"
+
+    severity: benign                # profiling 观测能力缺失，服务本身正常，非故障
+    fix_side_effects: [requires-restart]
+    fix_type: config-change         # 版本升级型（CANN 升级）
+
+    root_cause: >
+      CANN 9.0.0 下开启 NPU 图模式（cudagraph/npugraph，本 case 为图模式 + MTP 投机推理组合）后，
+      torch profiler 采集不到 kernel 信息，解析目录中无 kernel_details.csv；关闭图模式（--enforce-eager）
+      即可采集。根因在 CANN profiling 与图模式执行的交互（纯昇腾软件栈），非 vllm-ascend 框架特性；
+      升级 CANN 9.1.0 后恢复。
+
+    fix: "升级 CANN 至 9.1.0 后重启并复测 profiling；临时规避：采集窗口用 --enforce-eager 关闭图模式（或关闭 MTP/投机推理），采集完成后恢复"
+    rollback: "降回 CANN 9.0.0 即复现（可验证因果）；移除 --enforce-eager workaround 即回到原行为"

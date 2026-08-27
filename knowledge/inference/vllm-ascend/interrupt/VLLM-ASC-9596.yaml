@@ -1,0 +1,73 @@
+# VLLM-ASC-9596 —— Qwen3-4B TP=8 默认 PIECEWISE graph capture 失败（昇腾 stream/SQ-CQ 资源预算限制）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9596
+# fix 跟踪：无合入修复；大规模重构 #9691 进行中；workaround 用户三组对照实验验证（FULL_DECODE_ONLY + 缩小 capture sizes / enforce-eager）
+# investigation_quality: high（维护者确认为 Ascend stream 预算限制 + 官方文档/博客出处 + 用户对照实验）
+# 批量导入：批次 2 组 4（2026-08）
+
+cases:
+  - id: VLLM-ASC-9596
+    title: "Qwen3-4B TP=8 默认 PIECEWISE（mixed prefill-decode）graph capture 失败：rtStreamWaitEvent resource alloc fail（207005/507903），昇腾 NPU stream/SQ-CQ 资源预算不足"
+
+    category: interrupt
+    tags: [aclgraph, piecewise, graph-capture, stream-budget, tp8]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.19.1"]        # 线程环境 v0.19.1rc1；修复 #9691 重构进行中未合入
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                    # high
+
+    symptoms:
+      - "Qwen3-4B TP=8 默认 vllm serve 在 PIECEWISE graph capture 12/15 左右失败，报 rtStreamWaitEvent execution failed, reason=driver error:resource alloc fail / stream wait event failed, runtime result = 207005"
+      - "伴随 [SqCqManage]Alloc sq cq fail, stream_id=1984, retCode=0x7020023，capture_end 阶段 error code is 507903（ERR00100）"
+      - "三组对照：同配置 --enforce-eager 正常；cudagraph_mode=FULL_DECODE_ONLY + cudagraph_capture_sizes=[1,8,16,32,60] 正常；TP=1 正常"
+      - "维护者 yiz-liu 确认为 Ascend stream 资源预算限制（官方 ACL_Graph 文档 stream-budget 章节 + 博客），大规模重构 #9691 进行中"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9596"
+      - "https://github.com/vllm-project/vllm-ascend/pull/9691"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'rtStreamWaitEvent execution failed, reason=driver error:resource alloc fail' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:rtStreamWaitEvent execution failed, reason=driver error:resource alloc fail"
+      fallback:
+        command_template: "grep -E 'error code is 507903|Alloc sq cq fail' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:error code is 507903|Alloc sq cq fail"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：TP>=8 + 默认 PIECEWISE（mixed prefill-decode）graph capture 报 stream/SQ-CQ 资源分配失败（Alloc sq cq fail / resource alloc fail / 507903）？"
+        expected: "是——图捕获所需 capture stream/event/SQ-CQ 超出昇腾 NPU stream 预算"
+      - step: 2
+        check: "workaround 验证①：--compilation-config '{\"cudagraph_mode\":\"FULL_DECODE_ONLY\",\"cudagraph_capture_sizes\":[1,8,16,32,60]}'"
+        expected: "正常启动（用户验证）；FULL_DECODE_ONLY 只需 decode 捕获，资源需求小"
+      - step: 3
+        check: "workaround 验证②：--enforce-eager（单算子模式）或降低 TP（如 TP=1）"
+        expected: "均正常（用户三组对照实验）——排除模型/算子问题，锁定 PIECEWISE 捕获资源消耗"
+      - step: 4
+        check: "确认平台限制：查阅官方 ACL_Graph 文档 'stream-budget constrains capture breadth' 章节；官方重构 #9691 进行中"
+        expected: "stream 预算限制为昇腾平台硬性约束，非配置笔误"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]      # 改 compilation-config 需重启服务
+    fix_type: config-change                   # FULL_DECODE_ONLY + 缩小 capture sizes / enforce-eager；官方 #9691 重构进行中
+
+    root_cause: >
+      昇腾 NPU 的 stream/SQ-CQ 资源有硬性预算（官方 ACL_Graph 文档 stream-budget 章节）。
+      TP=8 下默认 PIECEWISE（mixed prefill-decode）图捕获需同时为 prefill 与 decode 建立多条
+      capture stream/event/SQ-CQ，超出驱动资源预算（[SqCqManage]Alloc sq cq fail 0x7020023 →
+      rtStreamWaitEvent resource alloc fail 207005 → capture_end 507903），捕获序列被 invalidated
+      导致启动失败。TP=1 或 FULL_DECODE_ONLY（仅 decode 捕获）资源需求小不触发。官方 #9691 正在
+      做大规模重构。
+
+    fix: >
+      workaround：--compilation-config '{\"cudagraph_mode\":\"FULL_DECODE_ONLY\",\"cudagraph_capture_sizes\":[1,8,16,32,60]}'
+      或 --enforce-eager（用户三组对照实验验证）；官方修复跟踪 #9691（重构进行中）。
+    rollback: "移除 compilation-config 即回到默认 PIECEWISE（复现）；改回 FULL_DECODE_ONLY 无副作用"

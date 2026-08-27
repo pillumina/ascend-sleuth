@@ -3,9 +3,9 @@
 # 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-08-27    case 总数：20
+# 生成日期：2026-08-27    case 总数：38
 #   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=11/30, other=3/30, performance=2/30, precision=3/30
+#   容量(inference/vllm-ascend): interrupt=25/30, other=5/30, performance=3/30, precision=4/30
 namespaces:
   inference/sglang:
     interrupt:
@@ -41,6 +41,308 @@ namespaces:
       hash: 3576617fec9c
   inference/vllm-ascend:
     interrupt:
+    - id: VLLM-ASC-10610
+      title: 'GLM-5.2-w8a8（--quantization ascend）拉起服务加载权重即报 KeyError: ''model.layers.N.self_attn.indexer.wq_b.weight''，modelslim
+        量化描述未覆盖 GLM-5.2 新增 indexer 结构'
+      category: interrupt
+      tags:
+      - glm5
+      - w8a8
+      - modelslim
+      - quantization
+      - keyerror
+      platforms:
+      - A2-910B
+      compat: vllm-ascend <0.23.0
+      confidence:
+        score: 0.6
+      symptoms:
+      - 'GLM-5.2-w8a8 + --quantization ascend 拉起 vllm serve，模型加载阶段抛 KeyError: ''model.layers.N.self_attn.indexer.wq_b.weight''，服务无法启动'
+      - vllm-ascend v0.21.0rc2 与 releases/v0.22.1rc 均复现（Dbgsaoge/211840040/xw1216 多用户），910b2 同现
+      - 报错栈定位到 vllm_ascend/quantization/modelslim_config.py get_linear_quant_type → quant_description[prefix
+        + '.weight']
+      quickly_check:
+        primary:
+          command: 'grep -E "KeyError: ''model\.layers\.[0-9]+\.self_attn\.indexer\.wq_b\.weight''" {{log_path}}'
+          expected: 'regex:KeyError: ''model\.layers\.[0-9]+\.self_attn\.indexer\.wq_b\.weight'''
+        fallback:
+          command: grep -E 'modelslim_config\.py.*get_linear_quant_type' {{log_path}}
+          expected: regex:modelslim_config\.py.*get_linear_quant_type
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10610.yaml
+      hash: 1a4a46442258
+    - id: VLLM-ASC-10784
+      title: Kimi-k2.5 PD 分离 2P1D 压测中 decode 侧 OOM：请求竞争触发 recompute，_moe_forward_shared 展开 61GB、npu_grouped_matmul_gmm2
+        输入 batch 1024→508648
+      category: interrupt
+      tags:
+      - oom
+      - pd-separate
+      - recompute
+      - moe
+      - grouped-matmul
+      platforms: []
+      compat: vllm-ascend <=0.18.0
+      confidence:
+        score: 0.6
+      symptoms:
+      - v0.18.0 Kimi-k2.5 PD 分离（2P1D）压测运行中 decode 侧 OOM；OOM_SNAPSHOT_ENABLE=1 快照显示 _moe_forward_shared
+        在最后一次 segment_map 前展开至 61GB
+      - 随后 torch_npu.npu_grouped_matmul（npu_grouped_matmul_gmm2）请求 3.4GB + 112MB（workspace）显存分配失败触发 OOM
+      - npu_grouped_matmul_gmm2 输入 shape 由 1024 突增至 508648；recompute 分支打印确认请求竞争触发 preemption→recompute
+      - 官方（Dawn952）确认 known issue：recompute may cause memory anomalies，建议升级最新版本（未指明版本/PR）
+      quickly_check:
+        primary:
+          command: grep -E 'npu_grouped_matmul_gmm2|npu_grouped_matmul' {{log_path}}
+          expected: regex:npu_grouped_matmul_gmm2|npu_grouped_matmul
+        fallback:
+          command: grep -E '_moe_forward_shared|OOM|OutOfMemory' {{log_path}}
+          expected: regex:_moe_forward_shared|OOM|OutOfMemory
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10784.yaml
+      hash: 74203b02519b
+    - id: VLLM-ASC-10944
+      title: GLM-5/5.1/5.2 w8a8 开启 --enable-expert-parallel 拉起报 call aclnnMoeDistributeDispatchV4 failed,
+        error code is 561000（HCCL QP 资源耗尽 EI0007），关闭 EP 可规避
+      category: interrupt
+      tags:
+      - glm5
+      - moe
+      - expert-parallel
+      - hccl
+      - qp-resource
+      platforms:
+      - A2-910B
+      compat: vllm-ascend <=0.21.0 (cann:>=9.0.0)
+      confidence:
+        score: 0.3
+      symptoms:
+      - 'GLM-5/5.1/5.2 w8a8 + --enable-expert-parallel 拉起服务报 NPU function error: call aclnnMoeDistributeDispatchV4
+        failed, error code is 561000'
+      - '伴随 Resource_Error(EI0007): Failed to allocate resource qp ... sendCqDepth:32768. Reason: Resources
+        are exhausted（HcclAllocComResourceByTiling 失败 ret=4）'
+      - 去掉 --enable-expert-parallel 后正常部署（Bu1bul 实测 GLM5/5.1/5.2 通吃，linyu09-oss 确认）
+      quickly_check:
+        primary:
+          command: grep -E 'aclnnMoeDistributeDispatchV4 failed, error code is 561000' {{log_path}}
+          expected: regex:aclnnMoeDistributeDispatchV4 failed, error code is 561000
+        fallback:
+          command: grep -E 'Resource_Error\(EI0007\)|Resources are exhausted' {{log_path}}
+          expected: regex:Resource_Error\(EI0007\)|Resources are exhausted
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10944.yaml
+      hash: 68a3086a99ee
+    - id: VLLM-ASC-11208
+      title: '双机 A2 按官方教程部署 GLM5.2 启动报 ModuleNotFoundError: No module named ''vllm.model_executor.layers.fused_moe.expert_map_manager''（v0.22.1rc
+        未适配 GLM5.2）'
+      category: interrupt
+      tags:
+      - glm5
+      - fused-moe
+      - module-not-found
+      - version-mismatch
+      - a2
+      platforms:
+      - A2-910B
+      compat: vllm-ascend <0.23.0
+      confidence:
+        score: 0.3
+      symptoms:
+      - 双机 A2 按官方 GLM5.2 教程（docs.vllm.ai/projects/vllm-ascend-cn）部署，镜像正确仍报 ModuleNotFoundError，服务启动失败
+      - 'ModuleNotFoundError: No module named ''vllm.model_executor.layers.fused_moe.expert_map_manager''（import
+        阶段）'
+      - 切到 v0.22.1rc 镜像后 ModuleNotFoundError 消失，但出现模型键值错误（版本错配次级现象）
+      - '需 vLLM v0.23.0 + vllm-ascend main（至少含 PR #10441）才能正常启动 GLM5.2'
+      quickly_check:
+        primary:
+          command: 'grep -E "ModuleNotFoundError: No module named ''vllm\.model_executor\.layers\.fused_moe\.expert_map_manager''"
+            {{log_path}}'
+          expected: 'regex:ModuleNotFoundError: No module named ''vllm\.model_executor\.layers\.fused_moe\.expert_map_manager'''
+        fallback:
+          command: grep -iE 'fused_moe|glm5\.2|键值错误' {{log_path}}
+          expected: regex:.*(fused_moe|glm5\.2|键值错误)
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-11208.yaml
+      hash: 2bb856d21af4
+    - id: VLLM-ASC-11343
+      title: PD 分离 + 多节点 PP：D 侧 _get_remote_ranks_for_req 用 P0 的 base kv_port(31112) 计算所有 PP rank 的 ZMQ
+        端口，P1(31113) 上 PP2+ 端口整体偏移 -1，连到无人监听的 31128 → KV 传输超时、P 节点显存堆积、bench 卡死
+      category: interrupt
+      tags:
+      - pd-disagg
+      - pp
+      - zmq
+      - port-mapping
+      - mooncake
+      - multi-node
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <0.23.0
+      confidence:
+        score: 0.6
+      symptoms:
+      - PD 分离 + 多节点 PP（各 P 节点配置不同 base kv_port，如 P0=31112、P1=31113）部署，单 curl 请求 OK，bench 跑到 100+ 请求后彻底卡死
+      - D 节点反复出现 Receive request timeout ... port 31128（共 21 次，全部指向 P1）；登 P1 查 ZMQ 监听范围是 31129-31144，31128
+        无 worker 监听
+      - P 节点 Avg prompt throughput 仅 1k+ tokens/s（正常 3k+），KV cache usage 持续增长到 100%——D 取不走 KV，P 不释放，最终卡死
+      quickly_check:
+        primary:
+          command: grep 'Receive request timeout' {{log_path}}
+          expected: regex:Receive request timeout
+        fallback:
+          command: grep -E 'port 3112[0-9]|ZMQ' {{log_path}}
+          expected: regex:port 31128
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-11343.yaml
+      hash: f3179899ce8e
+    - id: VLLM-ASC-11459
+      title: 'MooncakeBackend lazy_init=True 时 _setup_store() 被推迟到首次 put()（KV 传输发送线程），无参 get_global_rank()
+        读 process-global vllm config 为 None 抛 AssertionError: Current vLLM config is not set（x43），store
+        永不初始化、每次 put() 失败'
+      category: interrupt
+      tags:
+      - kv-pool
+      - mooncake
+      - lazy-init
+      - thread-safety
+      - pd-separation
+      platforms: []
+      compat: vllm-ascend <0.23.0
+      confidence:
+        score: 0.6
+      symptoms:
+      - 'DSV4-Flash-w8a8-mtp 双节点 PD 分离（data-parallel 4 × tensor-parallel 4，kv_role=kv_producer）+ ASCEND_ENABLE_USE_FABRIC_MEM=1
+        + enable_multithread_load=true + Mooncake store（enable_ssd_offload=true）时，KV 传输线程报 AssertionError:
+        Current vLLM config is not set（实测 x43）'
+      - MooncakeBackend 以 lazy_init=True 创建时 store 永不初始化，此后每次 put() 都失败
+      - 仅 KV 传输发送线程（KVCacheStoreLayerSendingThread）触发；主 worker 线程正常
+      quickly_check:
+        primary:
+          command: grep -F 'Current vLLM config is not set' {{log_path}}
+          expected: 'regex:AssertionError: Current vLLM config is not set'
+        fallback:
+          command: grep -E 'ASCEND_ENABLE_USE_FABRIC_MEM=1|MooncakeBackend' {{log_path}}
+          expected: regex:ASCEND_ENABLE_USE_FABRIC_MEM=1|MooncakeBackend
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-11459.yaml
+      hash: fc732d05285f
+    - id: VLLM-ASC-11498
+      title: Ascend950(A5) allgatherEP W4A8_MXFP4 路径把 topk_weights 误强转为 float8，与 bool mask 相乘触发 Float8×Bool
+        promotion 不支持，profile_run 阶段启动即崩
+      category: interrupt
+      tags:
+      - a5
+      - mxfp4
+      - float8
+      - fused-moe
+      - topk-weights
+      - allgather-ep
+      platforms:
+      - A5-950
+      compat: vllm-ascend <0.23.0
+      confidence:
+        score: 0.6
+      symptoms:
+      - Ascend950（A5）+ DeepSeek-V4-Flash + dsv4-flash + --enable-expert-parallel（allgatherEP）且启用 W4A8_MXFP4
+        量化，服务启动 profile_run 阶段即崩溃
+      - 'RuntimeError: Promotion for Float8 Types is not supported, attempted to promote Float8_e4m3fn
+        and Bool'
+      - 栈底在 vllm_ascend/ops/fused_moe/token_dispatcher.py token_dispatch：topk_weights = topk_weights *
+        mask（topk_weights 已被强转 float8，mask 为 bool）
+      quickly_check:
+        primary:
+          command: grep 'Promotion for Float8 Types is not supported' {{log_path}}
+          expected: regex:Promotion for Float8 Types is not supported
+        fallback:
+          command: grep -E 'Float8_e4m3fn and Bool|topk_weights \* mask' {{log_path}}
+          expected: regex:Float8_e4m3fn and Bool
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-11498.yaml
+      hash: d85d8fb576a2
+    - id: VLLM-ASC-11893
+      title: PCP 按 cp_kv_cache_interleave_size(128) 切分 prefill 时短请求在 rank>0 产生零 token 空段；chunk_indices
+        按紧凑段号索引而 chunk_fwd_o 用含空段的原始 cu_seqlens，二者错位 → batchTokens=0-164 uint32 下溢 → AscendC kernel MTE
+        写越界 runtime 507015
+      category: interrupt
+      tags:
+      - pcp
+      - prefill-context-parallel
+      - zero-chunk
+      - gdn-kernel
+      - qwen3.5
+      - mte-oob
+      platforms: []
+      compat: vllm-ascend <0.23.0
+      confidence:
+        score: 0.6
+      symptoms:
+      - Qwen3.5 + PCP（prefill-context-parallel）world_size>1 + 混合长度并发批，运行中崩溃
+      - Ascend runtime 507015（MTE write out-of-bounds），崩在 AscendC 自定义 kernel chunk_gated_delta_rule_fwd_h
+        / chunk_fwd_o
+      - 存在 token 数 < cp_kv_cache_interleave_size（默认 128）的短请求——该请求在 rank>0 产生 0 token 空段时触发；rank0/非 PCP/均匀批次不受影响
+      quickly_check:
+        primary:
+          command: grep -E '507015|MTE write out-of-bounds' {{log_path}}
+          expected: regex:507015|MTE write out-of-bounds
+        fallback:
+          command: grep -E 'chunk_fwd_o|chunk_gated_delta_rule|zero chunk' {{log_path}}
+          expected: regex:chunk_fwd_o|chunk_gated_delta_rule
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-11893.yaml
+      hash: 7db4f7b69d62
+    - id: VLLM-ASC-11924
+      title: Ascend950 未启用 FlashComm1/SP 时 AllGather EP 的 MXFP4 W4A4 MoE：prepare 路径不预量化/不产 pertoken_scale，token
+        dispatcher 仍按 dispatch 时量化把 BF16 激活推断 FP4 packed 形状，触发 MoeInitRoutingV3 tiling 错误（expanded_x dim1
+        should be 7168, current is 14336）
+      category: interrupt
+      tags:
+      - moe
+      - mxfp4
+      - allgather-ep
+      - tiling
+      - ascend950
+      platforms:
+      - A5-950
+      compat: vllm-ascend <0.23.0
+      confidence:
+        score: 0.6
+      symptoms:
+      - Ascend950 上 MoE W4A4/MXFP4 量化 + AllGather EP、未启用 FlashComm1/SP 时，推理报 MoeInitRoutingV3 tiling 错误：expanded_x
+        dim1 should be 7168, current is 14336（期望 FP4 packed 形状，实际按未量化 BF16 推断成 2 倍）
+      - AllGather prepare 路径不预量化 hidden_states、不产 pertoken_scale 时，token dispatcher 仍把 MXFP4 当 dispatch
+        时量化处理，把 dtype 信息传给 npu_moe_init_routing_v2
+      - 启用 FlashComm1/SP（有 prepare 阶段 pertoken_scale）的预量化路径不触发
+      quickly_check:
+        primary:
+          command: grep -E 'expanded_x dim1 should be' {{log_path}}
+          expected: regex:expanded_x dim1 should be \d+, current is \d+
+        fallback:
+          command: grep -iE 'MoeInitRoutingV3|npu_moe_init_routing_v2' {{log_path}}
+          expected: regex:[Mm]oeInitRoutingV3|npu_moe_init_routing_v2
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-11924.yaml
+      hash: 9e407dcdbc7a
+    - id: VLLM-ASC-12226
+      title: camem sleep/wake 是字节级 memcpy（恢复后权重已是 forward READY 方向），NPUWorker.wake_up 又对 MoE w13/w2 transpose(1,2)
+        一次构成双重转置，纯推理 wake_up 后 K 维错位（3072 vs 2048）→ npu_grouped_matmul 161002/EZ1001
+      category: interrupt
+      tags:
+      - sleep-mode
+      - wake-up
+      - moe
+      - double-transpose
+      - grouped-matmul
+      platforms:
+      - A2-910B
+      compat: vllm-ascend <=0.18.0
+      confidence:
+        score: 0.6
+      symptoms:
+      - vllm serve --enable-sleep-mode 下 sleep(level=1) 后 wake_up，纯推理 MoE 模型（如 Qwen3.5-122B-A10B）再次请求报
+        500
+      - 'wake_up 后推理栈报 aclnnGroupedMatmulV5 failed, error code is 161002，EZ1001: Dim 1 value of x[0] should
+        be equal with dim 1 value of weight[0]，3072 vs 2048'
+      - 仅 MoE（w13_weight/w2_weight 命名权重）触发；dense 模型 wake_up 后正常（transpose 循环对 dense 全程 no-op）
+      quickly_check:
+        primary:
+          command: grep 'aclnnGroupedMatmulV5 failed, error code is 161002' {{log_path}}
+          expected: regex:aclnnGroupedMatmulV5 failed, error code is 161002
+        fallback:
+          command: grep -E 'EZ1001|wake_up' {{log_path}}
+          expected: regex:EZ1001
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12226.yaml
+      hash: 51b5f68379b7
     - id: VLLM-ASC-12461
       title: 多节点 EP + GLM-5.2 w8a8 的 FusedMoE MC2 通信算子（MoeDistributeDispatchV2）在 ROCE 网络触发 aicore exception（MTE
         DDR 越界）→ SUSPECT REMOTE ERROR 507057 启动失败；HCCS 网络可跑通
@@ -390,7 +692,191 @@ namespaces:
           expected: regex:LightningIndexerQuant
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-14320.yaml
       hash: a42377592e77
+    - id: VLLM-ASC-9167
+      title: 'GLM5.1-w4a8 拉起报 AssertionError: FlashAttnPrefillBackend requires flash_attn_varlen_func（vLLM
+        0.20.1 下 MLA prefill backend patch 分支不匹配）'
+      category: interrupt
+      tags:
+      - glm5
+      - mla
+      - prefill-backend
+      - patch-layer
+      - version-mismatch
+      platforms: []
+      compat: vllm-ascend <=0.20.1
+      confidence:
+        score: 0.3
+      symptoms:
+      - 'GLM5.1-w4a8 拉起服务失败，Worker 报 AssertionError: FlashAttnPrefillBackend requires flash_attn_varlen_func.
+        Ensure FlashAttnPrefillBackend.is_available() is checked first'
+      - vLLM 0.20.1 + vllm-ascend 0.19.1rc2.dev45+g8486a744f（20260514）复现；报错栈到 vllm/v1/attention/backends/mla/prefill/flash_attn.py:60
+      - 初步分析指向 vllm_ascend/patch/platform/patch_mla_prefill_backend.py 的版本分支（if not vllm_version_is("0.20.1")）
+      - '官方确认 main 由 PR #9835 修复；0.20.1 可用 PR #9231 workaround；zhaomingyu13 确认最新 release/rc 已解决'
+      quickly_check:
+        primary:
+          command: 'grep -E ''AssertionError: FlashAttnPrefillBackend requires flash_attn_varlen_func''
+            {{log_path}}'
+          expected: 'regex:AssertionError: FlashAttnPrefillBackend requires flash_attn_varlen_func'
+        fallback:
+          command: grep -E 'patch_mla_prefill_backend|MLA.*prefill.*backend' {{log_path}}
+          expected: regex:patch_mla_prefill_backend
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9167.yaml
+      hash: 4ea2eb13cf26
+    - id: VLLM-ASC-9186
+      title: 'GLM5.1-w4a8 拉起报 RuntimeError: _C_ascend::dispatch_ffn_combine() Expected a value of type
+        ''Optional[List[Tensor]]'' for argument ''bias1'' but instead found type ''Parameter'''
+      category: interrupt
+      tags:
+      - glm5
+      - w4a8
+      - fused-moe
+      - custom-op
+      - pybind
+      platforms: []
+      compat: vllm-ascend <=0.20.1
+      confidence:
+        score: 0.6
+      symptoms:
+      - 'GLM5.1-w4a8（--quantization ascend）拉起服务报 RuntimeError: _C_ascend::dispatch_ffn_combine() Expected
+        a value of type ''Optional[List[Tensor]]'' for argument ''bias1'' but instead found type ''Parameter'''
+      - 报错在 fused MoE 路径 torch.ops._C_ascend.dispatch_ffn_combine（昇腾自定义算子 pybind 调用）
+      - '中间方案 PR #9231（ACLNN 算子适配 w4a8）遭遇 segfault（aclTensorList::operator[]），不可用'
+      - '官方最终用 megamoe 算子整体替换 dispatch_ffn_combine（PR #11701，merged）'
+      quickly_check:
+        primary:
+          command: grep -E "dispatch_ffn_combine\\(\\) Expected a value of type 'Optional\\[List\\[Tensor\\]\\]'"
+            {{log_path}}
+          expected: regex:dispatch_ffn_combine\(\).*Optional\[List\[Tensor\]\]
+        fallback:
+          command: grep -E "Expected a value of type 'Optional\\[List\\[Tensor\\]\\]' for argument 'bias1'"
+            {{log_path}}
+          expected: regex:Expected a value of type 'Optional\[List\[Tensor\]\]' for argument 'bias1'
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9186.yaml
+      hash: f21b54a4f808
+    - id: VLLM-ASC-9507
+      title: 'minimax2.7 TP4 + --prefill-context-parallel-size 2 开启 PCP 时 curl 报 AttributeError: ''NoneType''
+        object has no attribute ''num_computed_tokens_of_pcp_dcp''；FULL 图模式不支持 PCP，切 FULL_DECODE_ONLY
+        解决'
+      category: interrupt
+      tags:
+      - pcp
+      - context-parallel
+      - aclgraph
+      - full-graph
+      - workaround-only
+      platforms:
+      - A2-910B
+      compat: vllm-ascend <=0.19.1
+      confidence:
+        score: 0.3
+      symptoms:
+      - 'minimax2.7-w8a8 TP4 + --prefill-context-parallel-size 2（PCP=2）启动后 curl 调用报错，Worker 抛 AttributeError:
+        ''NoneType'' object has no attribute ''num_computed_tokens_of_pcp_dcp'''
+      - 报错栈在 vllm_ascend/attention/context_parallel/attention_cp.py:324 update_graph_params（acl_graph.py:233
+        update_full_graph_params 图参数更新路径）
+      - 维护者 lilinsiman 确认：FULL 图模式不支持 PCP，仅 FULL_DECODE_ONLY 支持；切 --compilation-config '{"cudagraph_mode":"FULL_DECODE_ONLY"}'
+        后 curl 成功
+      - 切换后仍有输出乱码（重复思考 token），官方建议 --no-async-scheduling（未获用户确认，独立问题）
+      quickly_check:
+        primary:
+          command: 'grep -E "AttributeError: ''NoneType'' object has no attribute ''num_computed_tokens_of_pcp_dcp''"
+            {{log_path}}'
+          expected: 'regex:AttributeError: ''NoneType'' object has no attribute ''num_computed_tokens'
+        fallback:
+          command: grep -E 'attention_cp\.py.*update_graph_params|prefill-context-parallel-size' {{log_path}}
+          expected: regex:attention_cp\.py.*update_graph_params
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9507.yaml
+      hash: abcf885db436
+    - id: VLLM-ASC-9596
+      title: Qwen3-4B TP=8 默认 PIECEWISE（mixed prefill-decode）graph capture 失败：rtStreamWaitEvent resource
+        alloc fail（207005/507903），昇腾 NPU stream/SQ-CQ 资源预算不足
+      category: interrupt
+      tags:
+      - aclgraph
+      - piecewise
+      - graph-capture
+      - stream-budget
+      - tp8
+      platforms: []
+      compat: vllm-ascend <=0.19.1
+      confidence:
+        score: 0.6
+      symptoms:
+      - Qwen3-4B TP=8 默认 vllm serve 在 PIECEWISE graph capture 12/15 左右失败，报 rtStreamWaitEvent execution
+        failed, reason=driver error:resource alloc fail / stream wait event failed, runtime result = 207005
+      - 伴随 [SqCqManage]Alloc sq cq fail, stream_id=1984, retCode=0x7020023，capture_end 阶段 error code is
+        507903（ERR00100）
+      - 三组对照：同配置 --enforce-eager 正常；cudagraph_mode=FULL_DECODE_ONLY + cudagraph_capture_sizes=[1,8,16,32,60]
+        正常；TP=1 正常
+      - '维护者 yiz-liu 确认为 Ascend stream 资源预算限制（官方 ACL_Graph 文档 stream-budget 章节 + 博客），大规模重构 #9691 进行中'
+      quickly_check:
+        primary:
+          command: grep -E 'rtStreamWaitEvent execution failed, reason=driver error:resource alloc fail'
+            {{log_path}}
+          expected: regex:rtStreamWaitEvent execution failed, reason=driver error:resource alloc fail
+        fallback:
+          command: grep -E 'error code is 507903|Alloc sq cq fail' {{log_path}}
+          expected: regex:error code is 507903|Alloc sq cq fail
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9596.yaml
+      hash: dd3da3724540
     other:
+    - id: VLLM-ASC-11169
+      title: A2 双机拉起 GLM-5.2 w8a8（DP=2 双节点 + UCMConnector external kv connector）发送中文请求返回乱码；root cause
+        未确认，workaround：VLLM_ASCEND_ENABLE_FLASHCOMM1=1 或关闭 external kv connector
+      category: other
+      tags:
+      - glm5
+      - garbled-output
+      - kv-transfer
+      - flashcomm1
+      - workaround-only
+      platforms:
+      - A2-910B
+      compat: vllm-ascend
+      confidence:
+        score: 0.1
+      symptoms:
+      - A2 双机（DP=2 双节点）GLM-5.2 w8a8 + UCMConnector external kv connector 拉起推理，发送中文请求返回乱码
+      - export VLLM_ASCEND_ENABLE_FLASHCOMM1=1（切换到 flashcomm1 通信路径）后不改连接配置即可正常推理
+      - 关闭 external kv connector 也可规避（prefix caching 仍可用）
+      quickly_check:
+        primary:
+          command: grep -E '乱码|garbled' {{log_path}}
+          expected: regex:返回结果为乱码
+        fallback:
+          command: grep -E 'VLLM_ASCEND_ENABLE_FLASHCOMM1|UCMConnector|kv_connector' {{log_path}}
+          expected: regex:VLLM_ASCEND_ENABLE_FLASHCOMM1=1
+      file: knowledge/inference/vllm-ascend/other/VLLM-ASC-11169.yaml
+      hash: f89f7d19c8a3
+    - id: VLLM-ASC-12030
+      title: vllm-ascend 0.20 + GLM-5.1 w8a8 910C PD 分离：特定请求（function-calling）流式响应经常出现单词最后 1 个字符重复，非流式正常——GLM5
+        流式 tool-call 解析器 glm4_moe_tool_parser.py 解析缺陷，0.23.0 已修复
+      category: other
+      tags:
+      - glm5
+      - streaming
+      - tool-call
+      - glm4_moe_tool_parser
+      - pd-separation
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <0.23.0
+      confidence:
+        score: 0.3
+      symptoms:
+      - vllm-ascend 0.20 + GLM-5.1 w8a8 910C PD 分离，特定请求（tools + tool_choice=auto）流式响应经常出现单词最后 1 个字符重复
+      - 同一请求非流式响应正常
+      - 带 tools/tool_choice 参数的 curl 可必现（评论#3 提供复现请求）
+      - 0.23.0 用同一 curl 复测：问题消失
+      quickly_check:
+        primary:
+          command: grep -E '单词最后1个字符重复|字符重复' {{log_path}}
+          expected: regex:单词最后1个字符重复
+        fallback:
+          command: grep -E 'glm4_moe_tool_parser' {{log_path}}
+          expected: regex:glm4_moe_tool_parser\.py
+      file: knowledge/inference/vllm-ascend/other/VLLM-ASC-12030.yaml
+      hash: 84ead4d8ea9b
     - id: VLLM-ASC-12983
       title: 310P MTP 与图模式无法同时开启：镜像缺 free-mask 算子，pageattention-splitfuse 变化 shape mask 不入图
       category: other
@@ -482,6 +968,34 @@ namespaces:
       file: knowledge/inference/vllm-ascend/other/VLLM-ASC-13329.yaml
       hash: 070d9aeb2d31
     performance:
+    - id: VLLM-ASC-12241
+      title: v0.23.0 图模式（cudagraph）+ MTP 开启下 profiling 解析无 kernel_details.csv；CANN 9.0.0 与 NPU 图模式交互 bug，升级
+        CANN 9.1.0 恢复
+      category: performance
+      tags:
+      - profiling
+      - cudagraph
+      - mtp
+      - cann-version
+      - kernel-details
+      platforms: []
+      compat: vllm-ascend 0.23.0 (cann:<9.1.0)
+      confidence:
+        score: 0.1
+      symptoms:
+      - v0.23.0 图模式（cudagraph）+ MTP/投机推理开启下，混部脚本采集 profiling 解析后无 kernel_details.csv
+      - PD 分离场景单独对 P 节点采集 profiling 正常，仅混部（图模式+投机）采集不到
+      - 关闭投机推理和图模式（--enforce-eager）后可正常采集
+      - CANN 9.0.0 + v0.23.0 开 cudagraph 必现；升级 CANN 9.1.0 后恢复采集
+      quickly_check:
+        primary:
+          command: cat /usr/local/Ascend/ascend-toolkit/latest/version.cfg | grep -iE 'version|cann'
+          expected: CANN 9.0.x（<9.1.0）——版本断言命中本 case
+        fallback:
+          command: grep -iE 'kernel_details\.csv|enforce-eager|cudagraph' {{log_path}}
+          expected: regex:.*(kernel_details\.csv|enforce-eager|cudagraph)
+      file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-12241.yaml
+      hash: 107d9f0ab5e5
     - id: VLLM-ASC-13356
       title: PD 分离开启 memcache 性能劣化：lookup 与本地 prefix cache 完全重叠（num_external_hit_tokens <= num_computed_tokens）
       category: performance
@@ -547,6 +1061,34 @@ namespaces:
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-13973.yaml
       hash: fe7f57f11ae2
     precision:
+    - id: VLLM-ASC-11824
+      title: Ascend NPU 上 batch invariance 测试输出随 batch 波动：算子默认非确定性执行，需在 override_envs_for_invariance()
+        开启 torch.use_deterministic_algorithms(True, warn_only=True)
+      category: precision
+      tags:
+      - determinism
+      - batch-invariance
+      - ci-test
+      - use-deterministic-algorithms
+      platforms:
+      - A5-950
+      compat: vllm-ascend <0.23.0
+      confidence:
+        score: 0.3
+      symptoms:
+      - batch invariance 测试（如 Qwen3-30B）断言同输入、不同 batch 输出一致，在 Ascend NPU 上随 batch 波动、测试失败
+      - Ascend NPU 上算子默认非确定性执行（未显式开启 PyTorch 确定性算法）
+      - 'PR #11824 在 override_envs_for_invariance() 中调用 torch.use_deterministic_algorithms(True, warn_only=True)
+        后测试通过'
+      quickly_check:
+        primary:
+          command: grep -E 'use_deterministic_algorithms\(True, warn_only=True\)' {{log_path}}
+          expected: regex:use_deterministic_algorithms\(True, warn_only=True\)
+        fallback:
+          command: grep -iE 'batch[- ]?invariant|deterministic' {{log_path}}
+          expected: regex:.*(batch[- ]?invariant|deterministic)
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11824.yaml
+      hash: 507939192bd6
     - id: VLLM-ASC-12642
       title: triton-ascend 3.2.1 对 [4,256] K 做 head reduction 后接 extract_slice+cos 广播的布局/归约路径生成错误设备代码，square_sums
         被算成 0 → K RMSNorm variance=0 → K 放大 1000 倍
