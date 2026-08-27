@@ -89,7 +89,7 @@
   <!-- 知识沉淀 -->
   <rect x="624" y="116" width="502" height="54" rx="8" fill="#ffffff"/>
   <rect x="624" y="116" width="502" height="54" rx="8" fill="#eff6ff" stroke="#2563eb" stroke-width="1.4"/>
-  <text x="875" y="138" fill="#0f172a" font-size="11" font-weight="600" text-anchor="middle">知识沉淀</text>
+  <text x="875" y="138" fill="#0f172a" font-size="11" font-weight="600" text-anchor="middle">知识沉淀（to-postmortem）</text>
   <text x="875" y="154" fill="#64748b" font-size="9" text-anchor="middle">任意来源：诊断会话 / 手工记录 / 历史案例 → 提取 → 校验 → 脱敏</text>
 
   <!-- 待审队列 -->
@@ -101,7 +101,7 @@
   <!-- 例行审核 -->
   <rect x="624" y="280" width="502" height="74" rx="8" fill="#ffffff"/>
   <rect x="624" y="280" width="502" height="74" rx="8" fill="#ecfdf5" stroke="#059669" stroke-width="1.4"/>
-  <text x="875" y="302" fill="#0f172a" font-size="11" font-weight="600" text-anchor="middle">每周例行知识审核</text>
+  <text x="875" y="302" fill="#0f172a" font-size="11" font-weight="600" text-anchor="middle">每周例行知识审核（knowledge-groom）</text>
   <text x="875" y="320" fill="#64748b" font-size="9" text-anchor="middle">自动预分类：新问题 / 同类变体 / 已被覆盖</text>
   <text x="875" y="336" fill="#64748b" font-size="9" text-anchor="middle">人工确认 · 高风险变更需双重审批</text>
 
