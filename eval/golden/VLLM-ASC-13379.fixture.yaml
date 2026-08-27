@@ -1,0 +1,44 @@
+# eval/golden/VLLM-ASC-13379.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #13379（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=Y rank=1 path=primary
+
+case_id: VLLM-ASC-13329
+
+input:
+  symptoms: |
+    ### 📚 The doc issue
+    
+    Hello, I’d like to ask for some advice. I followed the instructions here: https://docs.vllm.ai/projects/ascend/en/latest/tutorials/models/DeepSeek-V4-Flash.html#51-single-node-online-deployment.
+    When deploying with version 0.22.rc1, I get a `KeyError: 'mtp.0.head.weight'`. Is there an issue with the downloaded model weights?
+    ```
+    export OMP_PROC_BIND=false
+    export OMP_NUM_THREADS=10
+    export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+    export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libjemalloc.so.2:$LD_PRELOAD
+    export HCCL_BUFFSIZE=1024
+    export VLLM_ASCEND_ENABLE_FLASHCOMM1=1
+    export TASK_QUEUE_ENABLE=1
+    export HCCL_OP_EXPANSION_MODE="AIV"
+    
+    vllm serve /root/.cache/modelscope/hub/models/vllm-ascend/DeepSeek-V4-Flash-w8a8-mtp \
+        --max-model-len 133120 \
+        --max-num-batched-tokens 8192 \
+        --served-model-name dsv4 \
+        --gpu-memory-utilization 0.9 \
+        --max-num-seqs 32 \
+        --data-parallel-size 1 \
+        --tensor-parallel-size 8 \
+        --enable-expert-parallel \
+        --tokenizer-mode deepseek_v4 \
+        --tool-call-parser deepseek_v4 \
+        --enable-auto-tool-choice \
+        --reasoning-parser deepseek_v4 \
+        --safetensors-load-strategy 'prefetch' \
+        --no-enable-pr
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/other/
+  case_id: VLLM-ASC-13329
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）

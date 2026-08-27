@@ -1,0 +1,71 @@
+# VLLM-ASC-12983 —— 310P MTP 与图模式无法同时开启：镜像缺 free-mask 算子，依赖后续 CANN/torch-npu
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12983
+# fix 跟踪：无 PR；官方确认修复依赖后续发布的 CANN 和 torch-npu（当前镜像缺 free-mask 算子）
+# investigation_quality: medium（assessment.jsonl #12983）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（Phase B）
+
+cases:
+  - id: VLLM-ASC-12983
+    title: "310P MTP 与图模式无法同时开启：镜像缺 free-mask 算子，pageattention-splitfuse 变化 shape mask 不入图"
+
+    category: other
+    tags: [310p, mtp, cudagraph, free-mask, cann-version]
+
+    platforms: ["310P"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["=0.23.0rc1-310p-openeuler"]   # 实测镜像；修复依赖后续 CANN/torch-npu 版本（发布后升级）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3                    # 初始值（investigation_quality=medium → 0.3）
+
+    symptoms:
+      - "v0.23.0rc1-310p-openeuler 镜像 310P 上 MTP 与图模式无法同时开启，启动报错（Qwen3.6-27B qwen3_5_mtp）"
+      - "RuntimeError: NPUModelRunner init failed ... copy_between_host_and_device_opapi ... aclrtMemcpy, error code is 107030"
+      - "Not allow to synchronize captured-stream, stream_id=12 / rtStreamSynchronize execution failed, reason=stream is captured（107027）"
+      - "去掉 MTP 相关参数可以成功启动，但速度只有 20 token/s 左右"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12983"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'NPU function error: aclrtMemcpy, error code is 107030' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*NPU function error: aclrtMemcpy, error code is 107030"
+      fallback:
+        command_template: "grep -E 'synchronize captured-stream|stream is captured' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(synchronize captured-stream|stream is captured)"
+
+    diagnosis:
+      - step: 1
+        check: "平台是否为 310P（Atlas 300I Duo 等）？"
+        expected: "是（镜像 v0.23.0rc1-310p-openeuler）"
+      - step: 2
+        check: "是否同时开启 MTP speculative method 与图模式（FULL_DECODE_ONLY cudagraph）？"
+        expected: "是 → 图捕获阶段报 107030/107027"
+      - step: 3
+        check: "确认根因：310P 镜像缺 free-mask 算子，MTP 所需 pageattention-splitfuse 传入变化 shape 的 mask，图模式不允许"
+        expected: "是（官方确认）→ 图捕获失败，与用户配置无关"
+      - step: 4
+        check: "去掉 MTP 参数（或关图模式）能否启动？"
+        expected: "能（性能下降 ~20 token/s）→ 当前版本二选一，根治依赖后续 CANN/torch-npu"
+
+    severity: benign                 # 版本/能力兼容提示，有可用规避
+    fix_side_effects: [requires-restart]
+    fix_type: pending-investigation  # 根治依赖后续 CANN/torch-npu（官方确认）；当前仅规避
+
+    root_cause: >
+      310P 的 v0.23.0rc1-310p-openeuler 镜像缺 free-mask 算子：MTP 所需的 pageattention-splitfuse
+      需向图模式传入变化 shape 的 mask，图捕获不允许 → 图捕获阶段在 captured stream 上同步被拒
+      （aclrtMemcpy 107030 / synchronize captured-stream 107027），启动失败。
+      MTP 叠加图模式需要依赖后续发布的 CANN 和 torch-npu 版本。
+
+    fix: >
+      当前版本 MTP 与图模式不可同时开启：(1) 临时规避——关 MTP 或关图模式（cudagraph_mode 改 eager 类）；
+      (2) 提速——用 W8A8 量化权重（官方建议）；(3) 根治——等待新 CANN/torch-npu 发布后升级镜像再同开。
+    rollback: "恢复原启动参数即可（无代码改动）"

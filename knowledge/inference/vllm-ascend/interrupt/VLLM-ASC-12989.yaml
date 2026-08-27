@@ -1,0 +1,82 @@
+# VLLM-ASC-12989 —— 310P event 资源上限：FULL_DECODE_ONLY 多尺寸 cudagraph 捕获 Insufficient_Event_Resources(EL0008)/507903
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12989
+# fix 跟踪：官方确认修复依赖未来驱动版本（"这个问题需要依赖未来驱动版本的发布"）；workaround = --enforce-eager / 减少捕获
+# investigation_quality: medium（assessment.jsonl #12989）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（Phase B，第 2 批）
+# 脱敏：扫描 body/comments 未发现内网 IP/token/密码，无需替换
+
+cases:
+  - id: VLLM-ASC-12989
+    title: "310P 硬件 event 资源有限：FULL_DECODE_ONLY 多尺寸 cudagraph 捕获超上限 → Insufficient_Event_Resources(EL0008)/507903，TP2 启动失败"
+
+    category: interrupt
+    tags: [310p, cudagraph, event-resource, graph-capture, startup-failure, hardware-limit]
+
+    platforms: ["310P"]                # Atlas 300I DUO，npu-smi 显示 310P3
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.23.0rc1"]        # v0.23.0rc1-310p 镜像实测
+      - framework: torch-npu
+        ranges: ["<=2.10.0.post2"]     # 线程实测版本
+      - framework: cann
+        ranges: ["9.1.0-beta.1"]       # 线程实测版本
+
+    investigation_quality: medium      # to-postmortem 标的调查质量，groom 据此设初始 score
+    confidence:                        # groom 维护
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3                       # medium → 初始 0.3
+      last_hit: ""
+
+    symptoms:
+      - "Atlas 300I DUO（310P3）+ vllm-ascend v0.23.0rc1-310p 镜像，Qwen3-14B-W8A8SC TP2 启动失败；同命令 TP1 正常"
+      - "FULL_DECODE_ONLY + cudagraph_capture_sizes [1,2,4,8,16] 捕获进行到第 5 张（80%）时崩溃"
+      - "Insufficient_Event_Resources(EL0008): The event resources are insufficient / Create capture event failed（error=117571609 / runtime result 207007）→ capture_end error code is 507903"
+      - "--enforce-eager 后 TP2 正常启动（含 --enforce-eager 的启动命令可复现成功）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12989"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'Insufficient_Event_Resources' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Insufficient_Event_Resources\\(EL0008\\)"
+      fallback:
+        command_template: "grep -E '507903|capture event failed|no event resource' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:507903"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：310P 平台 + 图捕获阶段 Insufficient_Event_Resources(EL0008) / 507903？"
+        expected: "是（捕获 event 失败：Create capture event failed, event_id=-1, error=117571609）"
+      - step: 2
+        check: "环境判别：TP>=2 + FULL_DECODE_ONLY 多尺寸 capture sizes？TP1 或 --enforce-eager 正常？"
+        expected: "是（捕获张数/尺寸越多越易触顶——310P 硬件 event 资源有限）"
+      - step: 3
+        command_template: "grep -E 'enforce-eager|cudagraph_capture_sizes' {{launch_cmd}}"
+        rank_selector: coordinator
+        expected: "未用 enforce-eager 且 capture sizes 为多尺寸列表"
+        fix_on_mismatch: "加 --enforce-eager，或缩小 cudagraph_capture_sizes（减少捕获数量）"
+        rollback: "移除 --enforce-eager（恢复图模式，注意图模式性能收益在 310P 上仍受 event 资源约束）"
+        note: "官方确认是硬件资源限制，修复依赖后续驱动版本"
+      - step: 4
+        check: "忽略误导性栈：报错栈浮现在 all_reduce（patch_distributed.py）与 'NPUModelRunner failed' 包装处"
+        note: "异步算子报错的浮出点不等于根因位置；根因是 capture event 资源耗尽，不是通信或模型代码问题"
+
+    severity: service-affecting         # 服务无法启动
+    fix_side_effects: [requires-restart]
+    fix_type: config-change             # 短期 config 规避；长期修复依赖驱动版本
+
+    root_cause: >
+      310P（Atlas 300I DUO）硬件/驱动的 event 资源有限。FULL_DECODE_ONLY 下按多个尺寸
+      （cudagraph_capture_sizes [1,2,4,8,16]）捕获 CUDA graph，每张图需要一组 event 资源，
+      捕获数量超出上限 → Create capture event failed（driver error: no event resource，
+      runtime result 207007）→ capture_end 失败（507903）→ EngineCore 崩溃。maintainer 确认是
+      硬件资源限制导致图捕获数量有限，修复依赖未来驱动版本发布。
+
+    fix: >
+      短期：--enforce-eager 或减小 cudagraph_capture_sizes（少捕获图）规避；
+      长期：等待驱动版本更新（官方确认依赖未来驱动发布）。
+    rollback: "恢复 cudagraph 配置 / 回退 workaround（enforce-eager 以图模式性能为代价）"

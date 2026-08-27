@@ -23,7 +23,7 @@
 | ID | 事项 | 需求 / 验收标准 | 入口闸门 | 阶段 |
 |---|---|---|---|---|
 | A1 | Tier 3 postmortem frontmatter 结构化 | `postmortems/**/*.md` 加 frontmatter（framework / category / platform / case-id / keywords）；诊断 Tier 3 检索先按字段过滤再 grep；to-postmortem 产出自动带 frontmatter；存量文件一次性补齐 | Tier 3 语料 >300 篇，或 tier3 检索频繁但挽救率指标偏低 | v1.5 |
-| A2 | namespace 按 category 拆分落地 | groom 产出拆分建议 → 人确认；目录迁移、triage-tree `search_namespaces` 更新、`_index.yaml` 重建、golden fixture 的 namespace 断言同步，**同一 PR 完成** | 任一 namespace ≥24/30（80%） | 按闸门 |
+| A2 | 格子容量治理与拆分（ADR-0004 已落地 category 分层） | cap 按 (framework×category) 格子计：soft_cap 30 触发评估 + 健康指标（候选溢出/重复率/维护时长）；hard_cap 60 强制拆。拆分建议 → 人确认；目录迁移、`_index.yaml` 重建、fixture namespace 断言同步，**同一 PR 完成** | 格子超 soft_cap 且健康指标恶化 / 超 hard_cap | 按闸门 |
 | A3 | 第二拆分轴（platform）ADR | 若 category 拆分后仍超限，写 ADR-0003 论证 platform 轴或索引分片的取舍 | category 拆分后单 namespace 仍 >100 条 | v2 前置 |
 | A4 | 非单调版本兼容实测 | 真实非单调 case（如 2.7 失效、2.8 恢复）出现时，groom 的 `_archive/` 复活检查跑通全流程，结论记录进 ADR | 首个真实非单调 case 被 groom 处理 | 按事件 |
 | A5 | 容量推演重算 | 用实测过滤率、退休率、增速重算 ADR-0002 的稳态规模与容量结论；确认或修订"不上 RAG"决策及触发条件 | 第 6 个月，或 metrics 首次给出完整过滤/退休数据 | 常设检查点 |
@@ -137,6 +137,14 @@
 - **多样性审计**：triage/quickly_check 判别力对照症状空间的定期审计
 - **参数治理**：设计常数（串联保护 n=2、批审 30 秒上限、每 ns 30 条 cap）按理论 §7 的限定属参数估计——纳入 metrics 实测复核，数据足够时重校（n=2 可由误诊级联率复核，30 秒由批审实际耗时复核）
 - **PR 描述机器层生成**：to-postmortem / groom 直接产出符合 `.github/PULL_REQUEST_TEMPLATE/` 的 PR body 草稿（预分诊、证据、CI 链接、置信变化由系统数据自动填充，人只补脱敏自查与动机）——把 template 从约定提升为结构（原则二）。与 E1（agent 自起草候选 case）同源，闸门：E1 落地后或团队 PR 量周均 ≥3
+
+由[评估报告 0001](eval-reports/0001-vllm-ascend-batch.md) §四 产出的工程项（按收益排序）：
+
+- **triage 词边界匹配**：`hang`⊂`changed`、`inf`⊂`INFO` 等子串误配浪费候选预算——修复为 `\b` 词边界，低成本高收益
+- **inference_interrupt 补错误码型症状**：107030 等 error-code 型无分支命中，靠优雅退化兜底
+- **fallback regex 收紧**：related-issue 提及、启动命令词、通用 token 三类候选污染源
+- **回放 harness 的 metric-form 分支**：performance 类 metric 断言需数值提取比对，regex 回放测不了
+- **variant 签名追加进主 case fallback**：防签名微变（交叉回放改进项）
 
 由 [设计理论](design-theory.md) §10（选型与规模推演）生成的工程预备项（带触发闸门）：
 

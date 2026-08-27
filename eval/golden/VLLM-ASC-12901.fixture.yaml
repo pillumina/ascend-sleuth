@@ -1,0 +1,42 @@
+# eval/golden/VLLM-ASC-12901.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #12901（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=Y rank=1 path=primary
+
+case_id: VLLM-ASC-12901
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    <details>
+    <summary>The output of `python collect_env.py`</summary>
+    
+    ```text
+    Your output of above commands here
+    ```
+    
+    </details>
+    
+    
+    ### 🐛 Describe the bug
+    
+    根据指导：
+    https://docs.vllm.ai/projects/vllm-ascend-cn/zh-cn/latest/tutorials/models/GLM5.2.html#1m
+    
+    镜像版本：vllm-ascend:v0.22.1rc1-a3
+    
+    <img width="2082" height="794" alt="Image" src="https://github.com/user-attachments/assets/ba5e4e10-49b4-438e-891d-2e78e7faeff9" />
+    
+    (Worker_DP0_TP0_EP0 pid=4061) ERROR 07-27 01:56:08 [multiproc_executor.py:870]   File "/vllm-workspace/vllm/vllm/v1/executor/multiproc_executor.py", line 837, in worker_main
+    (Worker_DP0_TP0_EP0 pid=4061) ERROR 07-27 01:56:08 [multiproc_executor.py:870]     worker = WorkerProc(*args, **kwargs)
+    (Worker_DP0_TP0_EP0 pid=4061) ERROR 07-27 01:56:08 [multiproc_executor.py:870]              ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    (Worker_DP0_TP0_EP0 pid=4061) ERROR 07-27 01:56:08 [multiproc_executor.py:870]   File "/vllm-workspace/vllm/vllm/tracing/otel.py", line 178, in sync_wrapper
+    (Worker_DP0_TP0_EP0 pid=4061) ERROR 07-27 01:56:08 [multiproc_executor.py:870]     return func(*args, **kwargs)
+    (Worker_DP0_TP0_EP0 pid=4061) ERROR 07-27 01:56:08 [multiproc_executor.p
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/interrupt/
+  case_id: VLLM-ASC-12901
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）

@@ -1,0 +1,73 @@
+# VLLM-ASC-13050 —— 310P 推理触发 IndexPut aicpu exception（0x2a / 507018），0.23.0 正式版修复
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/13050
+# fix 跟踪：确认版本 v0.23.0 正式版（用户评论#8 '0.23.0正式版上述问题全部解决'）；驱动 24.x→25.x 亦可
+# investigation_quality: high（多用户复现 + POC 镜像对照 + workaround 验证 + 官方确认修复版本）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（batch 1，2026-08）
+
+cases:
+  - id: VLLM-ASC-13050
+    title: "310P 上推理请求触发 IndexPut aicpu exception（errorCode=0x2a, runtime 507018, stream phase=SCHEDULE），0.23.0 rc 镜像复现、POC 镜像正常、0.23.0 正式版修复"
+
+    category: interrupt
+    tags: [310p, aicpu, indexput, driver, crash]
+
+    platforms: ["310P"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.23.0"]         # 受影响为 nightly-v0.23.0-310p-openeuler / v0.22.1rc1-310p；0.23.0 正式版确认修复
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "310P 双芯（300I Duo）+ Qwen3.6-35B-A3B-w8a8，TP=2 服务启动成功，第一条推理请求即崩溃"
+      - "plog：aicpu exception, kernelName=IndexPut, errorCode=0x2a, runtime result=507018, stream phase=SCHEDULE"
+      - "POC 镜像（dev-26.0.0.poc）同参数可正常启动推理；nightly-releases-v0.23.0-310p-openeuler / v0.22.1rc1-310p 复现"
+      - "部分用户修改 vllm_ascend/_310p/ops/fla/gdn_310.py 后纯文本请求可恢复（图片/超长输入仍可能报错，未官方验证）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/13050"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'kernelName=IndexPut' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*kernelName=IndexPut, errorCode=0x2a"
+      fallback:
+        command_template: "grep -iE 'aicpu exception|507018|E39999' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(aicpu exception|507018|E39999)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：是否 310P + 首请求崩溃？plog 是否含 IndexPut aicpu exception（errorCode=0x2a / runtime 507018）？"
+        expected: "是——服务可启动、第一条推理请求即崩（多组启动参数均如此）"
+      - step: 2
+        check: "判别：同参数 POC 镜像（dev-26.0.0.poc）是否可正常推理？"
+        expected: "可——指向 0.23.0 rc/夜间镜像的 _310p 路径（gdn_310.py 多模态 embedding 写入）与驱动的兼容性；maintainer 定性为驱动问题（24.x 驱动下多发，升 25.x 可解）"
+      - step: 3
+        check: "修复：升级到 vllm-ascend 0.23.0 正式版；或升级驱动 24.x→25.x"
+        expected: "0.23.0 正式版确认修复（用户验证'上述问题全部解决'）；驱动 25.2 用户仍复现 → 版本升级优先"
+      - step: 4
+        check: "workaround（未官方验证）：修改 vllm_ascend/_310p/ops/fla/gdn_310.py（用户自改两行后稳定，但图片/超长输入仍可能报错）"
+        note: "忽略项：日志先出现的 CopyKernelOpApi.cpp E39999 Warning 是同一 aicpu 异常的伴随输出，不必单独排查"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      310P 上 Qwen3.6-35B-A3B-w8a8 的推理请求触发 aicpu kernel IndexPut 执行异常
+      （errorCode=0x2a，runtime result=507018，stream phase=SCHEDULE），服务崩溃。根因位于
+      310P 的 aicpu 内核与 vllm_ascend/_310p 路径（gdn_310.py 多模态 embedding 写入）的兼容性：
+      0.23.0 rc/夜间镜像复现、POC 镜像正常、0.23.0 正式版修复；maintainer 倾向驱动兼容问题
+      （24.x 驱动下多发，升级 25.x 可解），另有用户侧 gdn_310.py 修改的 workaround。
+
+    fix: >
+      升级到 vllm-ascend 0.23.0 正式版（官方确认修复）；或升级驱动 24.x→25.x；
+      临时 workaround：修改 vllm_ascend/_310p/ops/fla/gdn_310.py（用户自改，图片/超长输入仍可能复现）。
+    rollback: "回退到 0.23.0 rc 版本（问题复现）"

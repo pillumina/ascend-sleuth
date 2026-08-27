@@ -1,0 +1,78 @@
+# VLLM-ASC-14320 —— DCP block_table block id 越出单 rank k_cache 容量 → LightningIndexerQuant MTE invalid GM address
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/14320
+# fix 跟踪：最新 v0.26rc commit（作者验证 "Verified fixed in the latest v0.26rc commit"）
+# investigation_quality: high（assessment.jsonl #14320）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（Phase B，第 2 批）
+# 脱敏：扫描 body/comments 未发现内网 IP/token/密码，无需替换
+
+cases:
+  - id: VLLM-ASC-14320
+    title: "DCP replicated block_table 越界：v0.26 PCP 移除(#12592)改 total_cp_size 后 block id 超单 rank k_cache 容量，LightningIndexerQuant MTE 越界崩溃"
+
+    category: interrupt
+    tags: [dcp, block-table, k-cache-capacity, lightning-indexer, mte, aicore-exception, glm5, pd-disaggregation]
+
+    platforms: ["A3-910C"]             # 线程 Hardware 列：Ascend 910A3 (HPU910a3)
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.26.0rc"]           # 回归由 v0.26 引入（v0.23 同配置不复现），最新 v0.26rc 已修复
+      - framework: torch-npu
+        ranges: ["<=2.5.1"]            # 线程实测版本（torch 2.5.1 + torch_npu）
+
+    investigation_quality: high        # to-postmortem 标的调查质量，groom 据此设初始 score
+    confidence:                        # groom 维护
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                       # high → 初始 0.6
+      last_hit: ""
+
+    symptoms:
+      - "PD 分离（2P+2D）GLM-5.2-w4a8 + DCP(decode-context-parallel-size=8) + MTP 投机，持续压测下 decode EngineCore 崩溃"
+      - "EZ9999 aicore exception：MTE accesses an invalid GM address（errcode 0x800000 / error code 507015 / retCode=0x26），plog fault kernel=LightningIndexerQuant"
+      - "8 个 decode worker 在 5ms 窗口内同时报 EZ9999（collective 同步点）；D0 head 侧级联 glibc heap corruption / EngineDeadError"
+      - "负载相关：num=4/300 不复现，num=1000 cc=64 rr=1.8 在 ~400-532 请求崩溃；v0.23 同配置不复现"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/14320"
+      - "https://github.com/vllm-project/vllm-ascend/pull/12592"   # 引入回归的 PCP-removal 重构
+
+    quickly_check:
+      primary:
+        command_template: "grep 'MTE accesses an invalid GM address' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:MTE accesses an invalid GM address"
+      fallback:
+        command_template: "grep -E 'LightningIndexerQuant|507015|EZ9999' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:LightningIndexerQuant"
+
+    diagnosis:
+      - step: 1
+        check: "是否 EZ9999 + MTE invalid GM address，且 fault kernel 为 LightningIndexerQuant？"
+        expected: "是 → 进入本 case"
+      - step: 2
+        check: "部署形态是否 GLM-5.2-w4a8 + DCP=8 + MTP + PD 分离 + v0.26.0rc，且 v0.23 同配置不复现？"
+        expected: "是（回归指纹：v0.26 PCP 移除 #12592 引入）"
+      - step: 3
+        check: "验证越界（可选，instrumented）：打印 LIQ 入参确认 bt_max_idx >= k_cache_cap（OVERFLOW=True）"
+        expected: "bt_max_idx（如 21759）>= k_cache_cap（如 21120）→ block_table 有越界 id"
+        note: "线程在 sfa_v1.py / device_op.py 加 MRL_DEBUG_LIQ=1 调试打印复现；_build_block_table_replicated_view 的 total_cp_size 从 pcp*dcp 被 #12592 改成 dcp"
+      - step: 4
+        check: "忽略以下被排除项/级联"
+        note: "seq_lens 负值假设（aseq_q/aseq_k has_neg=False 已排除）；PR #14114/#14177 覆盖的是另一条 MTE OOB 路径（叠加后仍复现，证明独立根因）；
+               D0 侧 glibc heap corruption 与 EngineDeadError 是崩溃后的级联后果"
+
+    severity: service-affecting         # EngineCore 崩溃
+    fix_side_effects: [requires-restart, requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      v0.26 PCP-removal 重构（PR #12592）把 _build_block_table_replicated_view 的 total_cp_size
+      从 pcp_size*dcp_size 改为 dcp_size，破坏了 DCP replicated block_table 与单 rank k_cache 容量之间的
+      不变量：replicated block_table 的 block id 域超过单 rank k_cache 的 num_blocks。
+      LightningIndexerQuant 用越界 block id 索引 k_cache（物理 block 池），DDR 地址落到池外 →
+      MTE invalid GM address / SMMU fault → aicore EZ9999（error code 507015），decode EngineCore 崩溃。
+
+    fix: >
+      升级到最新 v0.26rc（修复已合入，作者验证 "Verified fixed in the latest v0.26rc commit"）。
+    rollback: "回退到 v0.23（同配置无此崩溃），或回退到未含该回归的 v0.26rc commit"

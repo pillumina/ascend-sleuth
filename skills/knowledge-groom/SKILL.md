@@ -33,7 +33,7 @@ disable-model-invocation: true
    - **tried-and-failed**（被选中但近 12 周未解决）且 `score` 低 → 移入 `_archive/`
    - `compat` 版本过期 → 移入 `_archive/`（与命中无关）
    - 检查 `_archive/` 中 case 是否因新 `compat` 区间该复活（2.7 退休、2.8 恢复）
-6. **namespace 拆分建议**：某 namespace 超 30 条 → 报告内容分布 + 拆分建议（首选拆分轴是 **category**——interrupt/precision/performance）。人确认后才建子目录。每次 groom 附**容量表**：各 namespace 条数 / 30 上限百分比、近 4 周增速（从 inbox 转正记录算）——达 80%（24/30）即**预告**拆分，不等超限。拆分被数据预告，不被卡住才想起（容量论证见 docs/adr/0002）。
+6. **容量治理与拆分建议（ADR-0004）**：cap 按 **(framework × category) 格子**计（soft_cap 30 / hard_cap 60，参数待 metrics 复核）。每次 groom 附**容量表**：各格子条数 / soft_cap、健康指标（候选溢出率、同根因重复率、周维护时长）。任一格子超 soft_cap 即**触发拆分评估**（不是立即拆）：查健康指标——候选溢出率 >20%、重复率连续两轮上升、维护时长 >30 分钟/周，任一恶化 → 报告内容分布 + 拆分建议（首选 category 轴深化或按 platform 轴，见 roadmap A2）；超 hard_cap 无论健康指标**强制拆**。拆分被数据预告，不被卡住才想起（容量论证见 docs/adr/0002，治理设计见 docs/adr/0004）。
 7. **同 namespace 合并建议**：相似 case 对自动提示。
 8. **索引维护（收尾必做）**：所有 KB 变更（升格/合并/退休/改 confidence）完成后，运行 `python3 scripts/build_index.py` 重新生成 `knowledge/_index.yaml` 并随变更摘要一起提交。`--check` 报过期 = 变更不完整（忘了重建索引）。软退休的 case 移 `_archive/` 后自动从活跃索引消失。
 
@@ -58,7 +58,8 @@ disable-model-invocation: true
 | 某 case `score` 低仍被加载 | 标待复审；命中一次失败即转人工 |
 | 某案例 `needs-structurer-review` 超 14 天 | 提醒领域 owner |
 | inbox 条目停留 >2 周 | 变更摘要标红，提醒 owner（队列不是档案） |
-| 某 namespace 达容量 80%（24/30） | 预告 category 拆分建议，不等超限 |
+| 某 (framework×category) 格子超 soft_cap（30）且健康指标恶化 | 触发拆分评估（category 深化或 platform 轴），不等撞线 |
+| 某格子超 hard_cap（60） | 强制拆分（信道物理上限） |
 
 ## v2 职责（路线图，v1 不做）
 

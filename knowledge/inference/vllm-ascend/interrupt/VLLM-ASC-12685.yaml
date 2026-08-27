@@ -1,0 +1,82 @@
+# VLLM-ASC-12685 —— AscendFp8Config.get_quant_method 对所有 LinearBase 硬编码 ds_linear scheme → 非 DS 模型读 o_groups 崩溃
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12685
+# fix 跟踪：https://github.com/vllm-project/vllm-ascend/pull/12826（用户确认 "修改过后已成功拉起服务"）
+# investigation_quality: high（assessment.jsonl #12685）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（Phase B，第 2 批）
+# 脱敏：扫描 body/comments 未发现内网 IP/token/密码，无需替换
+
+cases:
+  - id: VLLM-ASC-12685
+    title: "非量化模型被自动路由进 AscendFp8Config：fp8_config.py get_quant_method 硬编码 ds_linear scheme，MiniMax-M2.7 启动即 AttributeError 'o_groups'"
+
+    category: interrupt
+    tags: [fp8, quantization, ds_linear, startup-failure, minimax, attributeerror, gqa-model]
+
+    # 线程未写明芯片型号（aarch64 Kunpeng 920 环境）→ 不填 platforms；#14467 并入补充 A5 场景（原生 FP8 checkpoint）
+    platforms: ["A5-950"]               # 并入自 VLLM-ASC-14467（其线程明确 A5；主线程未标型号，软匹配不硬排除）
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.23.0rc1"]        # 主线程：PR #12826 修复；#14467 场景修复在 PR #14852（其后版本）
+      - framework: torch-npu
+        ranges: ["<=2.10.0.post2"]     # 线程实测版本
+
+    investigation_quality: high        # to-postmortem 标的调查质量，groom 据此设初始 score
+    confidence:                        # groom 维护
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                       # high → 初始 0.6
+      last_hit: ""
+
+    symptoms:
+      - "v0.23.0rc1 拉起 MiniMax-M2.7（BF16 非量化权重）服务启动失败，多 worker 同时 'WorkerProc failed to start'"
+      - "AttributeError: 'MiniMaxM2Config' object has no attribute 'o_groups'（vllm_ascend/quantization/methods/fp8.py:45 self.n_groups = hf_config.o_groups）"
+      - "崩溃前日志 'Using the vLLM Ascend fp8 Quantization now!'——fp8 量化被自动触发（模型 config.json 带 quantization_config.quant_method==\"fp8\" 时 detect_quantization_method 返回 FP8_METHOD）"
+      - "调用链：AscendLinearBase.__init__ → quant_config.get_quant_method → create_scheme_for_layer(...,\"ds_linear\",...) → AscendW8A8MXFP8DSDynamicLinearMethod.__init__ 读 o_groups/o_lora_rank"
+      # ↓ 并入自 VLLM-ASC-14467（原生 FP8 checkpoint 场景；保留英文原措辞——同签名第二症状面）
+      - "native-FP8 checkpoint (Qwen3.5): same AttributeError 'o_groups' at startup; second symptom face: ignored_layers handling, fixed by PR #14852"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12685"
+      - "https://github.com/vllm-project/vllm-ascend/pull/12826"
+      - "https://github.com/vllm-project/vllm-ascend/issues/14467"    # 并入来源
+      - "https://github.com/vllm-project/vllm-ascend/pull/14852"      # 并入来源的修复
+
+    quickly_check:
+      primary:
+        command_template: "grep \"has no attribute 'o_groups'\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:has no attribute 'o_groups'"
+      fallback:
+        command_template: "grep -E 'Using the vLLM Ascend fp8 Quantization now|create_scheme_for_layer.*ds_linear' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Using the vLLM Ascend fp8 Quantization now"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：是否 AttributeError: '<非DS模型>Config' object has no attribute 'o_groups'，且模型非 DeepSeek V4 系列？"
+        expected: "是（MiniMax-M2.7 / Qwen3.5 等非 DS 模型均会踩中）"
+      - step: 2
+        check: "环境判别：vllm-ascend <=0.23.0rc1，且模型 config.json 含 quantization_config.quant_method==\"fp8\"（自动触发）？"
+        expected: "是 → 本 case 命中；注意权重本身可以是 BF16 未量化，字段存在即触发"
+      - step: 3
+        check: "修复检查：当前版本是否已含 PR #12826？"
+        expected: "未包含 → 升级/合入后服务可拉起"
+      - step: 4
+        check: "弯路提示：先怀疑模型 config.json 误标 fp8 或 --quantization None 规避"
+        note: "--quantization None 只是临时规避；根因是 fp8_config.py get_quant_method（L115-120）对 LinearBase 无条件
+               create_scheme_for_layer(\"ds_linear\")，ds scheme 假设 DSV4 专有字段 o_groups/o_lora_rank（methods/fp8.py L39-47）"
+
+    severity: service-affecting         # 服务无法启动
+    fix_side_effects: [requires-restart, requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      AscendFp8Config.get_quant_method（vllm_ascend/quantization/fp8_config.py L115-120）对所有 LinearBase
+      层无条件 create_scheme_for_layer(..., "ds_linear", ...)；AscendW8A8MXFP8DSDynamicLinearMethod.__init__
+      （methods/fp8.py L39-47）读取 hf_config.o_groups / o_lora_rank（DeepSeek V4 专有字段）。
+      模型目录 config.json 只要声明 quantization_config.quant_method=="fp8"（即使权重是 BF16）就被自动路由进
+      AscendFp8Config，MiniMax-M2.7 的 MiniMaxM2Config 无这些字段 → AttributeError，WorkerProc 启动失败。
+
+    fix: >
+      合入 PR #12826（官方修复；用户验证后成功拉起服务）；临时规避可用 --quantization None。
+    rollback: "revert PR #12826，或去掉 --quantization None"

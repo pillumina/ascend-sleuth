@@ -1,0 +1,37 @@
+# eval/golden/VLLM-ASC-13710.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #13710（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=Y rank=1 path=primary
+
+case_id: VLLM-ASC-13710
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    | 项目 | 值 |
+    | :--- | :--- |
+    | PyTorch 版本 | 2.10.0+cpu |
+    | torch_npu 版本 | 2.10.0.post2 |
+    | Python 版本 | 3.11.15 |
+    | vllm 版本 | 0.23.1.dev30+gfe30dc0a8 |
+    | vllm-ascend 版本 | 0.1.dev100+g1c87c58a1 |
+    | OS | openEuler 24.03 (LTS)（容器环境） |
+    | CANN 版本 | 9.0.1 |
+    | 硬件 | Ascend 910 × 16 cards (2 pods × 8 NPU, each NPU 2 chips) |
+    
+    ### 🐛 Describe the bug
+    
+    ## Describe the Bug
+    
+    When running GLM-5.2 (w4a8) under **PD-disaggregated** serving with **DCP (Decode Context Parallel, size=8) + MTP speculative decoding (num_speculative_tokens=5)** enabled, the decode worker crashes mid-bench with a tensor shape mismatch in `_compute_pcp_dcp_slot_mapping`. The crash is triggered by long prompts (~26k tokens, num_prompt_blocks 200-220) under high concurrency (cc=102); shorter prompts (~20k tokens, 195 blocks) at cc=96 do NOT trigger it.
+    
+    **PD 分离配置**:
+    - Prefill (P): 2 × A3 nodes (16 cards each, TP=8, DP=4 via DP_LOCAL=2 × 2 nodes, PP=1), `--enforce-eager`, speculative MTP num_speculative_tokens=1, DCP=8, kv_role=kv_producer
+    - Decode (D): 2 × A3 nodes (16 cards each, TP=8, DP=4 via DP_LOCAL=2 × 2 nodes, DCP=8), cudagraph FULL_DECODE_ONLY, speculative MTP num_speculative_tokens=5, kv_r
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/interrupt/
+  case_id: VLLM-ASC-13710
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）

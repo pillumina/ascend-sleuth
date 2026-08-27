@@ -1,0 +1,75 @@
+# VLLM-ASC-12957 —— PD 分离 P 侧 k_pe 经 kv_ag_handle.wait() 后未同步 NPU 流，D 侧 RDMA pull 读到陈旧 k_pe
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12957
+# fix 跟踪：PR #14269（vllm_ascend/attention/sfa_v1.py 加 torch.npu.current_stream().synchronize()）
+# investigation_quality: high（kvcache 数值比对定位 PP stage 边界突变 + 代码级根因 + 官方落地修复）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（batch 1，2026-08）
+
+cases:
+  - id: VLLM-ASC-12957
+    title: "PD 分离 P 侧 sfa_v1.py 的 k_pe 经 kv_ag_handle.wait() 后未同步 NPU 流，D 侧 RDMA pull 读到未落盘陈旧 k_pe，PP4 首请求乱码"
+
+    category: precision
+    tags: [pd-separation, ascend-direct, rdma, kv-transfer, stream-sync]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.20.2"]        # 受影响为 0.20.2（含 ascend_direct RDMA 的 PP>1 路径）；fix PR #14269 在后续版本
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "PD 分离（use_ascend_direct=true RDMA/ADXL）+ PP=4 + DP=8 decode 下，服务拉起后首个请求输出与 prompt 无关的随机乱码"
+      - "先发普通请求再发 badcase 不乱码；短 prompt（如 1+1）正常；P 节点改 DP=4（无 PP）不乱码"
+      - "kvcache 数值比对：V cache 在 PP stage 边界（layer 21/41/61，PREFILL_PP_LAYER_PARTITION=20,20,20,18）突变甚至正负翻转"
+      - "关闭 MTP / prefix cache / reasoning parser / 图模式、kvcache 清零、slot mapping=-1 等消融均无法消除"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12957"
+      - "https://github.com/vllm-project/vllm-ascend/pull/14269"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E '乱码|garbled|badcase' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(乱码|garbled|badcase)"
+      fallback:
+        command_template: "grep -iE 'garbled|rdma|adxl' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(garbled|rdma|adxl)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：乱码是否满足 PP 时序特征——首请求 badcase 乱码、P 节点改 DP=4（无 PP）不乱码、服务先发普通请求再发 badcase 不乱码？"
+        expected: "是——指向 PP 跨 stage 的 KV 传输时序问题"
+      - step: 2
+        check: "代码级验证：vllm_ascend/attention/sfa_v1.py 的 attn.forward() 中，enable_dsa_cp 分支 kv_ag_handle.wait() 之后是否有 torch.npu.current_stream().synchronize()？"
+        expected: "缺同步——NPU 异步写对跨 engine 的 RDMA pull 不可见 → stale k_pe；加同步后首请求恢复（实测通过，78 次/prefill，仅 P 侧生效）"
+      - step: 3
+        check: "辅助证据：kvcache 打印比对可见 V cache 在 PP stage 边界（layer 21/41/61）数值突变——每个 stage 边界引入一次偏差"
+        expected: "badcase 下 V cache 突变、simple case 下三种 cache 向量全部匹配"
+      - step: 4
+        check: "忽略项：关闭 MTP/prefix cache/reasoning parser/图模式、kvcache 清零、slot mapping=-1（含 drafter）等消融均不能消除乱码——这些不是根因方向"
+        note: "根因是跨引擎 RDMA pull 与 NPU 流的同步缺失，不是任何功能开关"
+
+    severity: service-affecting
+    fix_side_effects: [requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      PD 分离 + PP4 下，P 侧 prefill 每层把 k_pe 写入 kv_cache[1]（V cache）后经
+      kv_ag_handle.wait() 等待 all-gather 完成，但未同步 NPU 当前流；D 侧 ascend_direct RDMA
+      pull 在 prefill forward 返回后立即读取 k_pe，读到尚未落盘/对跨 engine 不可见的陈旧值。
+      每个 PP stage 边界（layer 20→21、40→41、60→61）引入一次偏差，首请求（PP 时序冷启动 +
+      特定 content）输出乱码。修复：vllm_ascend/attention/sfa_v1.py 在 kv_ag_handle.wait()
+      后加 torch.npu.current_stream().synchronize()（PR #14269）。
+
+    fix: >
+      升级到包含 PR #14269 的版本；或本地在 vllm_ascend/attention/sfa_v1.py 的 enable_dsa_cp
+      分支 kv_ag_handle.wait() 后追加 torch.npu.current_stream().synchronize()（每层一次，仅 P 侧生效）。
+    rollback: "revert PR #14269 / 回退到修复前版本"

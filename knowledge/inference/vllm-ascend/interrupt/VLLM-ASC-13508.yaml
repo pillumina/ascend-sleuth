@@ -1,0 +1,82 @@
+# VLLM-ASC-13508 —— Gluon 兼容 stub 只注册叶子模块、未创建 triton.experimental 父模块 → x86_64 导入 ModuleNotFoundError
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/13508
+# fix 跟踪：maintainer 确认跟进并关闭为 completed（修复已落地 main，无独立 PR 号）
+# investigation_quality: high（assessment.jsonl #13508）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（Phase B，第 2 批）
+# 脱敏：扫描 body/comments 未发现内网 IP/token/密码，无需替换
+
+cases:
+  - id: VLLM-ASC-13508
+    title: "main2main Gluon 兼容 stub 只把 triton.experimental.gluon 叶子模块塞入 sys.modules，父模块 triton.experimental 缺失，x86_64 导入即 ModuleNotFoundError"
+
+    category: interrupt
+    tags: [import-failure, gluon, triton, x86_64, sys-modules-stub, startup-failure, packaging]
+
+    platforms: ["A2-910B"]             # 线程 Device：Ascend A2 / 910B，x86_64 CPU
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.26.0.dev"]         # main2main 开发期（vLLM 0.26.0+empty）；修复已落地 main
+      - framework: triton
+        ranges: ["3.2.0"]              # x86_64 上 triton-ascend 3.2.1 依赖 triton==3.2.0（无 triton.experimental）；arm 用 3.5.0 含真实包
+
+    investigation_quality: high        # to-postmortem 标的调查质量，groom 据此设初始 score
+    confidence:                        # groom 维护
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                       # high → 初始 0.6
+      last_hit: ""
+
+    symptoms:
+      - "x86_64 + A2(910B) main2main 开发版，vLLM 启动导入即失败：ModuleNotFoundError: No module named 'triton.experimental'（vllm/triton_utils/__init__.py 在 HAS_TRITON 时无条件 from triton.experimental import gluon）"
+      - "架构相关：aarch64 不报错——triton-ascend 3.2.1 按架构生成依赖（x86_64 → triton==3.2.0 无 experimental 包；arm → triton==3.5.0 含真实 Gluon），掩盖了 stub 不完整"
+      - "最小复现：import vllm_ascend 后 'triton.experimental' in sys.modules == False 而 'triton.experimental.gluon' == True；from triton.experimental import gluon 仍抛 ModuleNotFoundError"
+      - "vllm_ascend/__init__.py（L24-38）兼容 stub 已执行（问题不是插件没加载）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/13508"
+
+    quickly_check:
+      primary:
+        command_template: "grep \"No module named 'triton.experimental'\" {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:No module named 'triton\\.experimental'"
+      fallback:
+        command_template: "grep -Ei 'triton.experimental|gluon' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:triton\\.experimental"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：启动导入期 ModuleNotFoundError: No module named 'triton.experimental'？"
+        expected: "是（vllm/triton_utils/__init__.py 的 from triton.experimental import gluon 失败）"
+      - step: 2
+        check: "环境判别：x86_64 + triton-ascend 3.2.1（依赖 triton 3.2.0）+ vllm-ascend main 分支？"
+        expected: "是（arm 上 triton 3.5.0 自带 experimental，不会触发）"
+      - step: 3
+        check: "根因（代码级）：vllm_ascend/__init__.py（L24-38）Gluon 兼容 stub 的注册方式"
+        expected: "stub 只向 sys.modules 插入 triton.experimental.gluon 与 triton.experimental.gluon.language 两个叶子模块，
+                   未创建/加载父模块 triton.experimental——Python import 机制先解析父模块，故仍然失败"
+        note: "正确做法：优先导入真实 triton.experimental.gluon 层级；仅当缺失时才创建完整 parent-child 层级"
+      - step: 4
+        check: "忽略易混项"
+        note: "不是 vllm_ascend/__init__.py 未被执行（stub 确实跑了，是层级不完整）；与 #7359/#6737
+               （标准 triton 安装覆盖/禁用 Ascend 后端）是不同问题；不要 swallow 真实 Gluon 包内部抛出的无关 ModuleNotFoundError"
+
+    severity: service-affecting         # 服务无法启动
+    fix_side_effects: [requires-restart, requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      vllm_ascend/__init__.py 的 main2main Gluon 兼容 stub 只把 triton.experimental.gluon 与
+      triton.experimental.gluon.language 两个叶子模块塞进 sys.modules，未创建父模块 triton.experimental；
+      Python 解析 from triton.experimental import gluon 时先解析父模块，因此仍抛 ModuleNotFoundError。
+      架构相关：triton-ascend 3.2.1 在 x86_64 依赖 triton==3.2.0（无 triton.experimental 包），arm 依赖
+      triton==3.5.0（含真实 experimental/Gluon）掩盖了 stub 的不完整；CI 又只有 aarch64 NPU runner
+      + amd64 CPU-only runner，未做导入冒烟，故未被发现。
+
+    fix: >
+      修复 vllm_ascend/__init__.py 兼容 stub：优先导入真实 triton.experimental.gluon 层级，仅当目标模块
+      确实缺失时创建完整 parent-child 层级（triton.experimental / triton.experimental.gluon /
+      triton.experimental.gluon.language）；建议在 amd64 CPU runner 加 import 冒烟（import vllm_ascend
+      后 from triton.experimental import gluon）。修复已落地 main。
+    rollback: "无独立 rollback（修复为代码改动，回退需 revert 对应 commit）"

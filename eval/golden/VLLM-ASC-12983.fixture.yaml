@@ -1,0 +1,59 @@
+# eval/golden/VLLM-ASC-12983.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #12983（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=Y rank=1 path=primary
+
+case_id: VLLM-ASC-12983
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    <details>
+    
+    
+    ```text
+    # 启动命令如下
+    export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+    export HCCL_BUFFSIZE=512
+    export OMP_PROC_BIND=false
+    export OMP_NUM_THREADS=1
+    export TASK_QUEUE_ENABLE=1
+    
+    nohup vllm serve /root/.cache/huggingface/Qwen3.6-27B \
+      --host 0.0.0.0 \
+      --port 8000 \
+      --tensor-parallel-size 8 \
+      --seed 1024 \
+      --dtype float16 \
+      --served-model-name qwen3.6-27B \
+      --max-num-seqs 1 \
+      --max-model-len 49152 \
+      --trust-remote-code \
+      --gpu-memory-utilization 0.70 \
+      --no-enable-prefix-caching \
+      --max-num-batched-tokens 2048 \
+      --speculative_config '{"method": "qwen3_5_mtp", "num_speculative_tokens": 3, "enforce_eager": false}' \
+      --additional-config '{"enable_cpu_binding":true}' \
+      --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY", "cudagraph_capture_sizes": [1,2,4]}' \
+      --enable-auto-tool-choice \
+      --tool-call-parser qwen3_coder \
+      --reasoning-parser qwen3 \
+      --async-scheduling > ./vllm.log 2>&1 &
+    
+    
+    ```
+    
+    </details>
+    
+    
+    ### 🐛 Describe the bug
+    
+    #报错部分信息如下 
+    RuntimeError: NPUModelRunner init failed, error is NPUModelRunner failed, error is copy_between_host_and_device_opapi:../torch_npu/csrc/aten/ops/op_api/CopyKernelOpApi
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/other/
+  case_id: VLLM-ASC-12983
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）

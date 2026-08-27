@@ -1,0 +1,49 @@
+# eval/golden/VLLM-ASC-13050.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #13050（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=Y rank=1 path=primary
+
+case_id: VLLM-ASC-13050
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    quay.io/ascend/vllm-ascend:nightly-releases-v0.23.0-310p-openeuler 
+    
+    Qwen3.6-35B-A3B-w8a8
+    
+    ### docker 启动参数
+    export IMAGE=quay.io/ascend/vllm-ascend:nightly-releases-v0.23.0-310p-openeuler
+    export MODEL_DIR=/home/jss/ascend-models/Qwen3.6-35B-A3B-w8a8/Qwen3.6-35B-A3B-w8a8
+    
+    docker run --rm --name vllm-qwen -it \
+      --shm-size=128g \
+      --device /dev/davinci0 --device /dev/davinci1 \
+      --device /dev/davinci_manager --device /dev/devmm_svm --device /dev/hisi_hdc \
+      -v /usr/local/dcmi:/usr/local/dcmi \
+      -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi \
+      -v /usr/local/Ascend/driver/lib64/:/usr/local/Ascend/driver/lib64/ \
+      -v /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info \
+      -v /etc/ascend_install.info:/etc/ascend_install.info \
+      -v /root/.cache:/root/.cache \
+      -v ${MODEL_DIR}:/models \
+      -e HF_HUB_OFFLINE=1 -e TRANSFORMERS_OFFLINE=1 \
+      -p 8080:8080 \
+      $IMAGE bash
+    
+    ### vllm 服务启动参数
+    export VLLM_PLUGINS=ascend
+    export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+    export HCCL_BUFFSIZE=512
+    export OMP_PROC_BIND=false
+    export ACL_OP_INIT_MODE=1
+    export USE_MULTI_GROUPS_KV_CACHE=1
+    export USE_MULTI_BLOCK_POOL=1
+    export OMP_NUM_THREADS
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/interrupt/
+  case_id: VLLM-ASC-13050
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）

@@ -1,0 +1,45 @@
+# eval/golden/VLLM-ASC-13973.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #13973（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=N rank=None path=semantic-obs
+
+case_id: VLLM-ASC-13973
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    | 项目 | 值 |
+    | :--- | :--- |
+    | PyTorch 版本 | 2.10.0+cpu |
+    | torch_npu 版本 | 2.10.0.post2 |
+    | Python 版本 | 3.11.15 |
+    | vllm 版本 | 0.23.1rc1.dev1291+g568afb3a1 (branch: releases/v0.26.0, commit: 568afb3a1, 2026-07-26) |
+    | vllm-ascend 版本 | 0.19.1rc2.dev1317+ge8156772d (branch: releases/v0.26.0rc, commit: e8156772d, 2026-08-07) |
+    | OS | openEuler 24.03 (LTS)（容器环境） |
+    | CANN 版本 | 9.0.1 |
+    | 硬件 | Ascend 910 × 16 cards (2 pods × 8 NPU, each NPU 2 chips) |
+    
+    **Baseline (v0.23) environment used for comparison**:
+    
+    | 项目 | 值 |
+    | :--- | :--- |
+    | vllm 版本 | 0.23.1.dev30+gfe30dc0a8 |
+    | vllm-ascend 版本 | 0.23.0rc2.dev6+g5e1467062 (local branch `v0.23.0`, commit 5e1467062) |
+    | CANN 版本 | 9.0.0 |
+    | torch_npu 版本 | 2.10.0 |
+    | 硬件 | Ascend 910 × 16 cards (same pod topology) |
+    
+    Both versions run with **identical parallel topology** (verified via `profiler_metadata.json` `parallel_group_info`): TP=8, DCP=8, EP=32, mc2=32, `dcp_comm_backend=ag_rs`. So the regression is **not** attributable to a parallel-config difference. `enable_sparse_sfa_c8=false` in **both** versions.
+    
+    ---
+    
+    ### 🐛 Describe the bug
+    
+    On vllm-ascend v0.26.0rc, the GLM-5.2 (w4a8) **P-node (prefill, `kv_role=kv_producer`)**
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/performance/
+  case_id: VLLM-ASC-13973
+  assertion: top-3-or-miss-documented   # LLM 非确定性口径（docs/eval.md）

@@ -1,0 +1,65 @@
+# VLLM-ASC-12901 —— A3 启动 GLM5.2 w4a8c8：v0.22.1rc1-a3 镜像 modelslim 量化描述缺 indexer.wq_b.weight
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12901
+# fix 跟踪：无 PR；版本差异，用户实测升级 vllm-ascend:v0.23.0rc1-a3 镜像后启动成功
+# investigation_quality: medium（assessment.jsonl #12901）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（Phase B）
+
+cases:
+  - id: VLLM-ASC-12901
+    title: "A3 启动 GLM5.2 w4a8c8 报 KeyError：v0.22.1rc1-a3 镜像 modelslim 量化描述缺 indexer.wq_b.weight（升级镜像修复）"
+
+    category: interrupt
+    tags: [glm5, w4a8c8, modelslim-quant, keyerror, image-version]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.23.0rc1-a3"]   # 实测：v0.22.1rc1-a3 失败（KeyError）；v0.23.0rc1-a3 成功
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3                    # 初始值（investigation_quality=medium → 0.3）
+
+    symptoms:
+      - "A3 上按 GLM5.2 1M 文档、用 vllm-ascend:v0.22.1rc1-a3 镜像启动 glm5.2 w4a8c8 报错，服务拉起失败"
+      - "KeyError: 'model.layers.3.self_attn.indexer.wq_b.weight'（vllm_ascend/quantization/modelslim_config.py get_linear_quant_type 按 prefix 查量化描述）"
+      - "切换镜像版本为 vllm-ascend:v0.23.0rc1-a3 后启动成功"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12901"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E \"KeyError: 'model\\.layers\\.[0-9]+\\.self_attn\\.indexer\\.wq_b\\.weight'\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*KeyError: 'model\\.layers\\.[0-9]+\\.self_attn\\.indexer\\.wq_b\\.weight'"
+      fallback:
+        command_template: "grep -E 'wq_b\\.weight|modelslim_config' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(wq_b\\.weight|modelslim_config)"
+
+    diagnosis:
+      - step: 1
+        check: "错误签名是否为 KeyError: 'model.layers.<N>.self_attn.indexer.wq_b.weight'？"
+        expected: "是（modelslim_config.get_linear_quant_type 查 quant_description[prefix + '.weight'] 失败）"
+        note: "错误栈很长，直接抓最后一行 KeyError"
+      - step: 2
+        check: "镜像版本是否为 v0.22.1rc1-a3 或更早？"
+        expected: "是——该镜像的量化权重描述表缺少 indexer.wq_b.weight 条目"
+      - step: 3
+        check: "升级到 vllm-ascend:v0.23.0rc1-a3（或更新）后是否启动成功？"
+        expected: "是（用户实测确认）→ 版本差异，非用户配置问题"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change         # 版本升级型
+
+    root_cause: >
+      v0.22.1rc1-a3 镜像中 vllm_ascend/quantization/modelslim_config.py 的量化权重描述表
+      缺少 GLM5.2 w4a8c8 的 indexer.wq_b.weight 条目，模型加载时按 prefix 查表抛 KeyError，
+      服务启动失败；v0.23.0rc1-a3 镜像已补齐该条目，属版本相关的镜像打包差异。
+
+    fix: "升级 vllm-ascend 镜像到 v0.23.0rc1-a3（或更新）后重新启动（vllm serve 命令不变）"
+    rollback: "无业务级回滚——旧镜像无法完成本模型启动；如必须回退需先确认模型权重与镜像量化描述匹配"

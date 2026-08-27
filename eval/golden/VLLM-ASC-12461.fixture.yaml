@@ -1,0 +1,58 @@
+# eval/golden/VLLM-ASC-12461.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #12461（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=N rank=None path=miss
+
+case_id: VLLM-ASC-12461
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    镜像：quay.io/ascend/vllm-ascend:glm5.2-a3
+    
+    export VLLM_ASCEND_BALANCE_SCHEDULING=0
+    export VLLM_ASCEND_ENABLE_MLAPO=1
+    export VLLM_ENGINE_READY_TIMEOUT_S=3600
+    export VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=3000
+    export VLLM_RPC_TIMEOUT=360000
+    export VLLM_VERSION=0.21.0
+    export GLOO_SOCKET_IFNAME=eth0
+    export HCCL_BUFFSIZE=2048
+    export HCCL_CONNECT_TIMEOUT=1200
+    export HCCL_EXEC_TIMEOUT=2000
+    export HCCL_OP_EXPANSION_MODE=AIV
+    export HCCL_SOCKET_IFNAME=eth0
+    export HCCL_IF_IP=$local_ip
+    
+    启动命令：
+    Node1：
+    ```
+    vllm serve /tmp/GLM5.2-w8a8
+      --served-model-name default_model \
+      --trust-remote-code \
+      --tensor-parallel-size 16 \
+      --data-parallel-size-local 1 \
+      --data-parallel-size 2 \
+      --data-parallel-address $master_node_ip \
+      --data-parallel-rpc-port $master_node_port \
+      --api-server-count 1 \
+      --max-model-len 1024000 \
+      --max-num-seqs 4 \
+      --enable-auto-tool-choice \
+      --gpu-memory-utilization 0.93 \
+      --tool-call-parser glm47 \
+      --reasoning-parser glm45 \
+      --enable-chunked-prefill \
+      --max-num-batched-tokens 16384 \
+      --enable-prefix-caching \
+      --quantization ascend \
+      --enable-expert-parallel \
+      '--compilation-config={"cudagraph_mode":"FULL_DECODE_ONLY"}' \
+    
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/interrupt/
+  case_id: VLLM-ASC-12461
+  assertion: top-3-or-miss-documented   # LLM 非确定性口径（docs/eval.md）

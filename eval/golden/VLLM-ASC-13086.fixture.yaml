@@ -1,0 +1,40 @@
+# eval/golden/VLLM-ASC-13086.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #13086（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=Y rank=1 path=primary
+
+case_id: VLLM-ASC-13086
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    <details>
+    <summary>The output of `python collect_env.py`</summary>
+    
+    ```text
+    Your output of above commands here
+    ```
+    
+    </details>
+    
+    
+    ### 🐛 Describe the bug
+    
+    报错1
+    tor_id=abff2de5c16d2c3bfff97ab101000000, repr=<verl.single_controller.ray.base.WorkerDict object at 0xffcf876e9190>)
+    ^[[36m(TaskRunner pid=1466329)^[[0m            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ^[[36m(TaskRunner pid=1466329)^[[0m            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ^[[36m(TaskRunner pid=1466329)^[[0m   File "/home/ETP_daily/code/rl_qwen3_235b_32b_v0.2.0/llm_rl/qwen3/verl/single_controller/ray/base.py", line 700, in func
+    ^[[36m(TaskRunner pid=1466329)^[[0m     return getattr(self.worker_dict[key], name)(*args, **kwargs)
+    ^[[36m(TaskRunner pid=1466329)^[[0m            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ^[[36m(TaskRunner pid=1466329)^[[0m   File "/home/ETP_daily/code/rl_qwen3_235b_32b_v0.2.0/llm_rl/qwen3/verl/single_controller/base/decorator.py", line 433, in inner
+    ^[[36m(TaskRunner pid=1466329)^[[0m     return func(*args, **kwargs)
+    ^[[36m(TaskRunner pid=1466329)^[[0m            ^^^^^^^^^^^^^^^^^^^^^
+    ^[[36m(TaskRunner pid=1466329)^[[0m   File "/home/ETP_daily/code/rl_qw
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/other/
+  case_id: VLLM-ASC-13086
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）

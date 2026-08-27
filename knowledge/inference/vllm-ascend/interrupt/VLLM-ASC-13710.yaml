@@ -1,0 +1,77 @@
+# VLLM-ASC-13710 —— DCP+MTP decode 的 pcp_utils.generate_pcp_mtp_input 切分空段漏加 draft，
+#   req_indices_mtp(256) 与 positions_mtp(260) 不一致 → slot_mapping 赋值 shape 不匹配崩溃
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/13710
+# fix 跟踪：PR #14025（pcp_utils→dcp_utils 重构 + 空段保护）；评论#4 验证 'Verified fixed in the latest v0.26rc commit'
+# investigation_quality: high（长/短 prompt 边界对照 + 崩溃状态 dump 排除 OOM + 根因级分析 + 修复验证）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（batch 1，2026-08）
+# 关联：#13934（同一部署拓扑下 v0.26 的另一条崩溃路径，本 case 为 v0.23 的 slot mapping 路径）
+
+cases:
+  - id: VLLM-ASC-13710
+    title: "pcp_utils.generate_pcp_mtp_input 用 np.array_split 按 cu_num_tokens 切分请求时出现空段，某请求漏加 MTP draft 追加，req_indices_mtp(256) 与 positions_mtp(260) 长度不一致 → block_table.py:272 slot_mapping 赋值 shape 不匹配崩溃"
+
+    category: interrupt
+    tags: [dcp, mtp, pcp-utils, slot-mapping, shape-mismatch]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.26.0"]         # 受影响为 v0.23 及之后（DCP+MTP slot mapping 路径）；PR #14025 修复，v0.26rc 验证
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "PD 分离 + DCP=8 + MTP(num_speculative_tokens=5) 下 decode worker 崩溃：RuntimeError: The expanded size of the tensor (256) must match the existing size (260)"
+      - "触发条件：长 prompt（~26k tokens, num_prompt_blocks 200-220）+ 高并发（cc=102）；短 prompt（~20k, 195 blocks, cc=96）不触发"
+      - "栈在 block_table.py:272 compute_slot_mapping_draft（由 generate_pcp_mtp_input 的 req_indices_mtp 传入）"
+      - "崩溃时 KV cache usage 6.7%、num_running_reqs=26（未超 max_num_seqs=32）——非 OOM"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/13710"
+      - "https://github.com/vllm-project/vllm-ascend/pull/14025"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'expanded size of the tensor' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*The expanded size of the tensor \\(256\\) must match the existing size \\(260\\)"
+      fallback:
+        command_template: "grep -E '256.*260|generate_pcp_mtp_input|slot_mapping_draft' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(256.*260|generate_pcp_mtp_input|slot_mapping_draft)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：崩溃是否在 DCP+MTP decode 的 slot mapping 构造路径，且为长 prompt 高并发触发？"
+        expected: "是——RuntimeError 256 vs 260，差 4 = 一个请求的 MTP draft 追加量（decode_threshold=1+num_speculative_tokens=6 → 追加 decode_threshold-2=4）"
+      - step: 2
+        check: "根因确认：检查 vllm_ascend/worker/pcp_utils.py:generate_pcp_mtp_input 的切分逻辑"
+        expected: "np.array_split 按 cu_num_tokens 切分出现空段（某请求 ori_req_indice[-1] 为空），req_indices_split[i] 未执行 draft 追加而 positions_split[i] 追加了 → 两数组长度不一致 → block_table.py:272 self.slot_mapping.cpu[:256] 被赋形状 260 的 torch.where 结果"
+      - step: 3
+        check: "忽略项：'corrupted size vs. prev_size' 是否出现在崩溃之后？"
+        expected: "是——worker 异常退出后 glibc 检测到的堆损坏症状，不是根因；KV usage 6.7% / running=26 未超限 → 不是 OOM 或并发上限问题"
+      - step: 4
+        check: "修复验证：应用 PR #14025（pcp_utils→dcp_utils 重构 + 'if req_indices_split[req_idx].size == 0: continue' 空段保护）"
+        expected: "v0.26rc 验证通过（'Verified fixed in the latest v0.26rc commit'）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      vllm_ascend/worker/pcp_utils.py 的 generate_pcp_mtp_input 用 np.array_split 按 cu_num_tokens
+      把请求切分到各 DCP 分段时，特定 token 分布下产生空段：空段请求的 req_indices_split[i] 没有
+      执行 MTP draft 追加（每个请求追加 decode_threshold-2=4 个 draft 元素），而 positions_split[i]
+      追加了 → req_indices_mtp(256) 与 positions_mtp(260) 长度不一致（差 4 = 一个请求的 draft 追加量）。
+      长度更短的 req_indices_mtp 传入 block_table.compute_slot_mapping_draft，
+      self.slot_mapping.cpu[:256] 被赋 torch.where(mask, slot_mapping, -1)（形状 260）→ RuntimeError。
+      修复：PR #14025 在切分时跳过空段（size==0 continue）并重构 pcp_utils → dcp_utils。
+
+    fix: >
+      升级到包含 PR #14025 的版本（v0.26rc 验证通过）。
+    rollback: "revert PR #14025 / 回退版本"

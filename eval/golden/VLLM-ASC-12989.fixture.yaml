@@ -1,0 +1,50 @@
+# eval/golden/VLLM-ASC-12989.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #12989（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=N rank=None path=miss
+
+case_id: VLLM-ASC-12989
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    <details>
+    <summary>The output of `python collect_env.py`</summary>
+    
+    ```text
+    PyTorch version: 2.10.0+cpu
+    Is debug build: False
+    
+    OS: Ubuntu 22.04.5 LTS (aarch64)
+    GCC version: (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+    Clang version: Could not collect
+    CMake version: version 4.4.0
+    Libc version: glibc-2.35
+    
+    Python version: 3.12.13 (main, May 27 2026, 03:14:40) [GCC 11.4.0] (64-bit runtime)
+    Python platform: Linux-5.10.0-308.0.0.211.oe2203sp4.aarch64-aarch64-with-glibc2.35
+    
+    CPU:
+    Architecture:                       aarch64
+    CPU op-mode(s):                     64-bit
+    Byte Order:                         Little Endian
+    CPU(s):                             128
+    On-line CPU(s) list:                0-127
+    Vendor ID:                          HiSilicon
+    BIOS Vendor ID:                     HiSilicon
+    Model name:                         Kunpeng-920
+    BIOS Model name:                    HUAWEI Kunpeng 920 7260
+    Model:                              0
+    Thread(s) per core:                 1
+    Core(s) per socket:                 64
+    Socket(s):                          2
+    Stepping:                           0x1
+    Frequency boost:                    disabled
+    CPU max MHz:                        260
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/interrupt/
+  case_id: VLLM-ASC-12989
+  assertion: top-3-or-miss-documented   # LLM 非确定性口径（docs/eval.md）

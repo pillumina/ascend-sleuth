@@ -1,0 +1,68 @@
+# VLLM-ASC-13086 —— vllm-ascend 0.14.0rc1 不支持 A5(950)：check_ascend_device_type 断言失败
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/13086
+# fix 跟踪：无 PR；官方确认"早期版本不支持 Ascend 950，请使用最新版本或 rc 版本"，issue 标 wontfix
+# investigation_quality: low（assessment.jsonl #13086）
+# 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（Phase B）
+
+cases:
+  - id: VLLM-ASC-13086
+    title: "vllm-ascend 0.14.0rc1 不支持 A5(950) 芯片：check_ascend_device_type 断言失败，需升级最新/rc 版本"
+
+    category: other
+    tags: [a5, platform-support, version-matrix, check-device-type, wontfix]
+
+    platforms: ["A5-950"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.14.0rc1"]     # 实测 0.14.0rc1 不支持 A5；支持版本见官方 releases（需升级最新版或 rc 版本）
+
+    investigation_quality: low
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.1                    # 初始值（investigation_quality=low → 0.1）
+
+    symptoms:
+      - "vllm-ascend 0.14.0rc1 启动报不支持 950 芯片（A5），服务无法拉起"
+      - "AssertionError: Current device type: AscendDeviceType.A5 does not match the installed version's device type: AscendDeviceType.A3（check_ascend_device_type）"
+      - "另一处报 ValueError: Unsupported soc_version: AscendDeviceType.A5"
+      - "官方确认：早期版本不支持 Ascend 950，请使用最新版本或 rc 版本"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/13086"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'Unsupported soc_version: AscendDeviceType.A5' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*Unsupported soc_version: AscendDeviceType\\.A5"
+      fallback:
+        command_template: "grep -E 'Current device type: AscendDeviceType\\.A5 does not match' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*Current device type: AscendDeviceType\\.A5 does not match"
+
+    diagnosis:
+      - step: 1
+        check: "平台是否为 A5（950）？"
+        expected: "是（npu-smi 显示 950 芯片）"
+      - step: 2
+        check: "vllm-ascend 版本是否为早期版本（如 0.14.0rc1）？"
+        expected: "是——早期版本不支持 A5，check_ascend_device_type 断言 A5 != A3 失败"
+      - step: 3
+        check: "错误签名是否为 Unsupported soc_version: AscendDeviceType.A5 / Current device type: AscendDeviceType.A5 does not match？"
+        expected: "是（同一根因的两个出口，均可 grep）"
+      - step: 4
+        check: "升级到最新版本或 rc 版本后是否正常？"
+        expected: "是（官方确认的解法）"
+
+    severity: benign                 # 版本支持差异提示，升级即解
+    fix_side_effects: [requires-restart]
+    fix_type: config-change         # 版本升级型
+
+    root_cause: >
+      vllm-ascend 早期版本（实测 0.14.0rc1）未适配 A5(950) 芯片：
+      worker 初始化时 check_ascend_device_type 断言当前设备类型 A5 与安装包声明类型 A3 不匹配而失败
+      （另一出口为 Unsupported soc_version ValueError）。A5 支持自后续版本/rc 起，属版本支持矩阵差异。
+
+    fix: "升级 vllm-ascend 到支持 A5 的最新版本或 rc 版本（见官方 releases），重新部署"
+    rollback: "无——旧版本无法在 A5 上启动；如必须回退需更换平台或等待适配版本"

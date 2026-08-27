@@ -1,0 +1,57 @@
+# eval/golden/VLLM-ASC-12957.fixture.yaml
+# 真实 fixture：源自 vllm-ascend issue #12957（docs/eval-reports/0001）
+# 输入 = 用户首帖（措辞差隔离：case symptoms 提炼自全线程）
+# 本条回放结果：candidates=Y rank=1 path=primary
+
+case_id: VLLM-ASC-12957
+
+input:
+  symptoms: |
+    ### Your current environment
+    
+    <details>
+    <summary>The output of `python collect_env.py`</summary>
+    
+    ```text
+    Your output of above commands here
+    ```
+    
+    </details>
+    
+    vllm：0.20.2
+    vllm-ascend：0.20.2
+    模型:glm-5.1-w8a8
+    硬件:4 台 a3 16 卡 pod
+    
+    ### 🐛 Describe the bug
+    
+     **启动脚本与配置**
+    
+      - 脚本:
+      
+    start_d.sh
+    start_p.sh
+    
+      - Prefill:PP=4, TP=8, DP=1,PREFILL_PP_LAYER_PARTITION="20,20,20,18"
+      - Decode:DP=8, TP=4
+      - use_ascend_direct=true(ascend_direct RDMA / ADXL)
+      - 未开kvpool也可复现
+      - kv_role:prefill=kv_producer,decode=kv_consumer
+     
+    **复现方式**
+    
+      4 台同超节点 pod 拉起 PD-sep 后,第一个请求即发 badcase:
+     `curl --location "http://<proxy>:7001/v1/chat/completions" \
+        --header 'Content-type: application/json' \
+        --data '{
+          "model": "auto",
+          "messages": [
+            {
+              "role": "user",
+              "content": "人工智能（AI）是计算机科学的一个分支，旨在创建能够执行通常需要人类智能的任务的系统。自20世纪50年代诞生以来，AI经历了多次起伏，如今得益于大数据、强大算力和先进算法，迎来了蓬勃发展。机器学习作为AI的核心，让计算机通过数据学习规律，而不需要显式编程。深度学习更是通过多层神经网络，在图像识别、语音识别和自然语言处理等领域取得了突破性进展。在实际应用中，AI已广泛用于医疗影像诊断、自动驾驶汽车、智能客服、金融风险预测和个性化推荐等场景，极大提升了效率和便利性。然而，AI的快速发展也带来诸多挑战，如数据隐私、算法偏见、就业替代和武器化风险，引发了社会各界的广泛讨论。为了确保AI的安全可控，研究者们提出了可解释AI、联邦学习、对抗训练等技术，政府和国际组织也纷纷制定伦理准则和法律法规。展望未来，AI有望与脑科学、量子计算等前沿领域融合，创造出更强大的通用人工智能，但也必须警惕潜在的超智能风险。我们应当在发展技
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/precision/
+  case_id: VLLM-ASC-12957
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）
