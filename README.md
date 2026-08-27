@@ -130,6 +130,8 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
                               └──► 下次诊断直接命中 —— 学习闭环
 ```
 
+![ascend-sleuth 架构](docs/diagrams/ascend-sleuth-architecture.png)
+
 系统如何随使用自我改进、每个演化机制配什么护栏防止越学越错，完整设计见 [docs/evolution.md](docs/evolution.md)。
 
 ## 核心设计原则

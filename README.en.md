@@ -130,6 +130,8 @@ Two loops drive the system. The diagram below is the full panorama; the specific
                               └──► next diagnosis hits directly — the learning loop
 ```
 
+![ascend-sleuth architecture](docs/diagrams/ascend-sleuth-architecture.png)
+
 How the system improves itself with use, and what guardrails keep each mechanism from degrading the knowledge base, is fully designed in [docs/evolution.md](docs/evolution.md).
 
 ## Core design principles
