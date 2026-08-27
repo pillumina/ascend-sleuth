@@ -1,0 +1,71 @@
+# VLLM-ASC-10944 —— GLM-5/5.1/5.2 w8a8 + expert parallel 拉起报 aclnnMoeDistributeDispatchV4 561000（HCCL QP 资源耗尽）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10944
+# fix 跟踪：官方在 #11394 跟踪 GLM 系列 EP 修复（未合入）；workaround（去掉 --enable-expert-parallel）多用户实测有效
+# investigation_quality: medium（维护者确认 workaround 与资源层错误码；修复未落地）
+# 批量导入：批次 2 组 4（2026-08）
+
+cases:
+  - id: VLLM-ASC-10944
+    title: "GLM-5/5.1/5.2 w8a8 开启 --enable-expert-parallel 拉起报 call aclnnMoeDistributeDispatchV4 failed, error code is 561000（HCCL QP 资源耗尽 EI0007），关闭 EP 可规避"
+
+    category: interrupt
+    tags: [glm5, moe, expert-parallel, hccl, qp-resource]
+
+    platforms: ["A2-910B"]          # 910B2C × 16 卡单机
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.21.0"]        # 0.21.0rc1 确认触发；修复在 #11394 跟踪中未合入，回填待 groom 跟进
+        cann: [">=9.0.0"]           # 线程环境 CANN 9.0.0
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3                    # medium
+
+    symptoms:
+      - "GLM-5/5.1/5.2 w8a8 + --enable-expert-parallel 拉起服务报 NPU function error: call aclnnMoeDistributeDispatchV4 failed, error code is 561000"
+      - "伴随 Resource_Error(EI0007): Failed to allocate resource qp ... sendCqDepth:32768. Reason: Resources are exhausted（HcclAllocComResourceByTiling 失败 ret=4）"
+      - "去掉 --enable-expert-parallel 后正常部署（Bu1bul 实测 GLM5/5.1/5.2 通吃，linyu09-oss 确认）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10944"
+      - "https://github.com/vllm-project/vllm-ascend/issues/11394"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'aclnnMoeDistributeDispatchV4 failed, error code is 561000' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:aclnnMoeDistributeDispatchV4 failed, error code is 561000"
+      fallback:
+        command_template: "grep -E 'Resource_Error\\(EI0007\\)|Resources are exhausted' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Resource_Error\\(EI0007\\)|Resources are exhausted"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：GLM 系列 w8a8 开启 EP 启动报 561000 + EI0007（Failed to allocate resource qp / Resources are exhausted）？"
+        expected: "是——MoE dispatch 算子申请 HCCL 通信 QP 资源超出预算，与模型权重/量化无关"
+      - step: 2
+        check: "workaround 验证：去掉 --enable-expert-parallel 后重启服务"
+        expected: "正常拉起（Bu1bul 实测 GLM5/5.1/5.2 通用）"
+      - step: 3
+        check: "确认官方修复状态：查询 #11394（GLM 系列 EP 修复跟踪）是否已合入"
+        expected: "未合入则维持 workaround；合入后回填 compat ranges"
+        note: "勿继续排查 tiling/权重；561000+EI0007 三连签名即 QP 资源分配问题"
+
+    severity: service-affecting
+    fix_type: config-change           # workaround：去掉 --enable-expert-parallel；官方修复 #11394 跟踪中
+
+    root_cause: >
+      GLM 系列 w8a8 开启 expert parallel 时，MoE dispatch（aclnnMoeDistributeDispatchV4）在
+      tiling 阶段调用 HcclAllocComResourceByTiling 为通信关系申请 HCCL QP 资源（sendCqDepth 32768），
+      16 卡 EP 场景下超出 NPU HCCL 通信资源预算（EI0007 Resources are exhausted, ret=4），算子调用
+      失败（561000）导致服务无法拉起。官方在 issue #11394 跟踪 GLM 系列 EP 修复，合入前 EP 场景只能
+      靠关闭 EP 规避。
+
+    fix: >
+      当前 workaround：部署命令去掉 --enable-expert-parallel（Bu1bul 实测 GLM5/5.1/5.2 均有效）；
+      官方修复在 https://github.com/vllm-project/vllm-ascend/issues/11394 跟踪。
+    rollback: "重新加回 --enable-expert-parallel 即复现（纯部署参数调整，无其他副作用）"

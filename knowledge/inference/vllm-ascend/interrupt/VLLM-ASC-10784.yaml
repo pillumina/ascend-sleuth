@@ -1,0 +1,67 @@
+# VLLM-ASC-10784 —— Kimi-k2.5 PD 分离 2P1D decode 侧 OOM（请求竞争触发 recompute，MoE shared expert 展开内存爆炸）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10784
+# fix 跟踪：无 PR；官方确认 known issue（recompute may cause memory anomalies, use the latest version），未指明版本/PR
+# investigation_quality: high（用户 OOM 快照 + recompute 分支打印 + 输入 shape 打印完成机制确认；官方确认 known issue）
+# 批量导入：批次 2 组 4（2026-08）
+
+cases:
+  - id: VLLM-ASC-10784
+    title: "Kimi-k2.5 PD 分离 2P1D 压测中 decode 侧 OOM：请求竞争触发 recompute，_moe_forward_shared 展开 61GB、npu_grouped_matmul_gmm2 输入 batch 1024→508648"
+
+    category: interrupt
+    tags: [oom, pd-separate, recompute, moe, grouped-matmul]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.18.0"]        # 线程环境 v0.18.0（g747cfcb07）；官方 known issue 未指明修复版本，groom 需回填
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                    # high
+
+    symptoms:
+      - "v0.18.0 Kimi-k2.5 PD 分离（2P1D）压测运行中 decode 侧 OOM；OOM_SNAPSHOT_ENABLE=1 快照显示 _moe_forward_shared 在最后一次 segment_map 前展开至 61GB"
+      - "随后 torch_npu.npu_grouped_matmul（npu_grouped_matmul_gmm2）请求 3.4GB + 112MB（workspace）显存分配失败触发 OOM"
+      - "npu_grouped_matmul_gmm2 输入 shape 由 1024 突增至 508648；recompute 分支打印确认请求竞争触发 preemption→recompute"
+      - "官方（Dawn952）确认 known issue：recompute may cause memory anomalies，建议升级最新版本（未指明版本/PR）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10784"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'npu_grouped_matmul_gmm2|npu_grouped_matmul' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:npu_grouped_matmul_gmm2|npu_grouped_matmul"
+      fallback:
+        command_template: "grep -E '_moe_forward_shared|OOM|OutOfMemory' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:_moe_forward_shared|OOM|OutOfMemory"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：PD 分离 decode 侧运行中 OOM，OOM 快照显示 _moe_forward_shared（MoE shared expert 展开）异常膨胀？"
+        expected: "是——与 MoE 展开中间激活相关，非单纯 KV cache 占用超限"
+      - step: 2
+        check: "机制确认：给 npu_grouped_matmul_gmm2 加输入 shape 打印 + recompute 分支打印，观察 batch 是否从 ~1024 突增到 ~50 万"
+        expected: "1024→508648 且 recompute 分支被触发（竞争→preemption→recompute）——本 case 触发机制确认"
+      - step: 3
+        check: "规避：降低请求竞争（调低 max-num-seqs/并发），避免 preemption 触发 recompute"
+        expected: "可缓解但不根治；官方 known issue，需升级新版验证"
+        note: "官方答复 'use the latest version' 无版本号/PR，groom 跟进新版修复落点后回填 compat"
+
+    severity: service-affecting
+    fix_type: pending-investigation   # 官方 known issue，无 PR/版本号；规避为运维侧缓解
+
+    root_cause: >
+      Kimi-k2.5 PD 分离 decode 侧高并发下请求竞争触发 preemption 与 recompute；recompute 分支中
+      昇腾 MoE shared expert 展开（_moe_forward_shared）与 torch_npu.npu_grouped_matmul 的 batch
+      维度异常放大（输入 1024→508648），中间激活内存膨胀至 61GB 级导致显存不足 OOM。官方确认为
+      known issue（recompute 引起内存异常），修复未指明版本与 PR。
+
+    fix: >
+      官方建议升级最新版本解决（未指明版本号/PR，需实测验证）；当前规避：调低 max-num-seqs/并发，
+      减少 preemption 触发 recompute 的概率。
+    rollback: "规避手段为部署参数调整，随时可恢复（无回滚风险）；恢复高并发即可能复现"

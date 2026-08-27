@@ -1,0 +1,72 @@
+# VLLM-ASC-10610 —— GLM-5.2-w8a8 拉起 KeyError：modelslim 量化描述缺 indexer 层权重 key
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10610
+# fix 跟踪：PR #10441（合入 main）；vLLM v0.23.0 + 含 #10441 的 vllm-ascend main 编译解决（xw1216/Dbgsaoge 确认）
+# investigation_quality: high（多用户复现 + 完整报错栈 + 社区验证修复组合）
+# 批量导入：批次 2 组 4（2026-08）
+
+cases:
+  - id: VLLM-ASC-10610
+    title: "GLM-5.2-w8a8（--quantization ascend）拉起服务加载权重即报 KeyError: 'model.layers.N.self_attn.indexer.wq_b.weight'，modelslim 量化描述未覆盖 GLM-5.2 新增 indexer 结构"
+
+    category: interrupt
+    tags: [glm5, w8a8, modelslim, quantization, keyerror]
+
+    platforms: ["A2-910B"]          # 910b2（xw1216 同复现）
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.23.0"]         # 修复版本 v0.23.0（含 PR #10441 的 main）；0.21.0rc2 / 0.22.1rc 均触发
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                    # high
+
+    symptoms:
+      - "GLM-5.2-w8a8 + --quantization ascend 拉起 vllm serve，模型加载阶段抛 KeyError: 'model.layers.N.self_attn.indexer.wq_b.weight'，服务无法启动"
+      - "vllm-ascend v0.21.0rc2 与 releases/v0.22.1rc 均复现（Dbgsaoge/211840040/xw1216 多用户），910b2 同现"
+      - "报错栈定位到 vllm_ascend/quantization/modelslim_config.py get_linear_quant_type → quant_description[prefix + '.weight']"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10610"
+      - "https://github.com/vllm-project/vllm-ascend/pull/10441"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E \"KeyError: 'model\\.layers\\.[0-9]+\\.self_attn\\.indexer\\.wq_b\\.weight'\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:KeyError: 'model\\.layers\\.[0-9]+\\.self_attn\\.indexer\\.wq_b\\.weight'"
+      fallback:
+        command_template: "grep -E 'modelslim_config\\.py.*get_linear_quant_type' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:modelslim_config\\.py.*get_linear_quant_type"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：GLM-5.2 w8a8（--quantization ascend）加载权重时报 KeyError，key 含 self_attn.indexer.*？"
+        expected: "是——GLM-5.2 新增 indexer 注意力结构，modelslim 量化描述未覆盖其权重 key"
+        note: "不是模型文件损坏或 --quantization 用法错误；indexer 层结构是 GLM-5.2 相对 5.1 的新增"
+      - step: 2
+        check: "版本判别：vllm-ascend 是否已含 PR #10441（vllm < 0.23.0 且非 main 源码构建则不含）？"
+        expected: "未含——旧版本（含 0.21.0rc2、0.22.1rc）加载即 KeyError"
+      - step: 3
+        check: "修复：升级至 vLLM v0.23.0 + 含 PR #10441 的 vllm-ascend main 源码编译（官方镜像 glm5.2 标签不保证含该 commit）"
+        expected: "模型加载通过、服务正常拉起（xw1216/Dbgsaoge 验证）"
+        note: "依赖冲突时只升级 FastAPI；若 vLLM 合入 PR 45895 该 patch 需相应更新"
+
+    severity: service-affecting
+    fix_side_effects: [requires-code-change]   # 需升级/重新编译，无法仅靠 env-var 规避
+    fix_type: code-patch                        # PR #10441（vllm_ascend/quantization/modelslim_config.py 侧适配）
+
+    root_cause: >
+      GLM-5.2 引入 indexer 注意力结构（model.layers.N.self_attn.indexer.wq_b 等权重），而
+      vllm_ascend/quantization/modelslim_config.py 的 get_linear_quant_type 直接索引
+      quant_description[prefix + ".weight"] 取量化类型；modelslim 量化描述（quant_description）
+      未包含 indexer 层权重 key，旧版本加载即抛 KeyError，w8a8 服务无法启动。修复在 PR #10441
+      （合入 main），vLLM v0.23.0 + 含该 PR 的 vllm-ascend 可正常加载。
+
+    fix: >
+      升级至 vLLM v0.23.0 + 包含 PR #10441 的 vllm-ascend main 源码重新编译（或使用含该 commit 的
+      官方镜像）；不要修改模型文件或 --quantization 参数。
+    rollback: "回退到旧版本即复现 KeyError；升级前建议确认镜像构建 commit 含 PR #10441"

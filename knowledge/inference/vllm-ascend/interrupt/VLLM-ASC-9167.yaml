@@ -1,0 +1,72 @@
+# VLLM-ASC-9167 —— GLM5.1-w4a8 拉起 AssertionError：FlashAttnPrefillBackend requires flash_attn_varlen_func
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9167
+# fix 跟踪：PR #9835（main 修复，merged）；vLLM 0.20.1 用 PR #9231 workaround；issue completed 关闭
+# investigation_quality: medium（官方确认修复 PR + workaround，闭环完整；根因在 patch 层版本分支判断）
+# 批量导入：批次 2 组 4（2026-08）
+
+cases:
+  - id: VLLM-ASC-9167
+    title: "GLM5.1-w4a8 拉起报 AssertionError: FlashAttnPrefillBackend requires flash_attn_varlen_func（vLLM 0.20.1 下 MLA prefill backend patch 分支不匹配）"
+
+    category: interrupt
+    tags: [glm5, mla, prefill-backend, patch-layer, version-mismatch]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.20.1"]        # 线程失败环境 vllm-ascend 0.19.1rc2.dev45 + vLLM 0.20.1；main 由 PR #9835 修复
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3                    # medium
+
+    symptoms:
+      - "GLM5.1-w4a8 拉起服务失败，Worker 报 AssertionError: FlashAttnPrefillBackend requires flash_attn_varlen_func. Ensure FlashAttnPrefillBackend.is_available() is checked first"
+      - "vLLM 0.20.1 + vllm-ascend 0.19.1rc2.dev45+g8486a744f（20260514）复现；报错栈到 vllm/v1/attention/backends/mla/prefill/flash_attn.py:60"
+      - "初步分析指向 vllm_ascend/patch/platform/patch_mla_prefill_backend.py 的版本分支（if not vllm_version_is(\"0.20.1\")）"
+      - "官方确认 main 由 PR #9835 修复；0.20.1 可用 PR #9231 workaround；zhaomingyu13 确认最新 release/rc 已解决"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9167"
+      - "https://github.com/vllm-project/vllm-ascend/pull/9835"
+      - "https://github.com/vllm-project/vllm-ascend/pull/9231"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'AssertionError: FlashAttnPrefillBackend requires flash_attn_varlen_func' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:AssertionError: FlashAttnPrefillBackend requires flash_attn_varlen_func"
+      fallback:
+        command_template: "grep -E 'patch_mla_prefill_backend|MLA.*prefill.*backend' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:patch_mla_prefill_backend"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：GLM 系列 MLA 模型（w4a8/w8a8）在 vLLM 0.20.1 拉起报 FlashAttnPrefillBackend requires flash_attn_varlen_func 断言？"
+        expected: "是——MLA prefill backend 被选成需要 flash_attn 的默认后端，昇腾环境无 flash_attn"
+      - step: 2
+        check: "版本判别：vllm_ascend/patch/platform/patch_mla_prefill_backend.py 对 vLLM 0.20.1 的版本分支判断是否生效"
+        expected: "0.20.1 分支不匹配——未替换成昇腾 MLA prefill backend，上游默认选中 FlashAttnPrefillBackend 且未先查 is_available()"
+      - step: 3
+        check: "修复：升级到含 PR #9835 的版本（main 修复）；若锁定 vLLM 0.20.1 则应用 PR #9231 workaround"
+        expected: "服务正常拉起（ZhangwenTaoHW 确认 main 已修复，zhaomingyu13 确认最新 release/rc 已解决）"
+      - step: 4
+        check: "忽略项：WorkerProc failed to start → EngineCore init failed → APIServer 退出是一串级联，根因只在断言行（flash_attn.py:60）"
+        note: "同一报错只出现在 vLLM 0.20.1 + 该 vllm-ascend 版本的组合，排查先对版本组合"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch                        # PR #9835（main 修复）；0.20.1 用 PR #9231 workaround
+
+    root_cause: >
+      vllm_ascend/patch/platform/patch_mla_prefill_backend.py 用版本分支选择 MLA prefill backend：
+      对 vLLM 0.20.1 的判断分支不匹配，未把上游默认 backend 替换成昇腾 MLA prefill backend；上游
+      默认选中 FlashAttnPrefillBackend，而昇腾环境无 flash_attn 且调用方未先查 is_available()，
+      在 flash_attn.py:60 直接断言失败，服务无法启动。main 由 PR #9835 修复，0.20.1 用 #9231 过渡。
+
+    fix: >
+      升级到包含 PR #9835 的版本（main/最新 release/rc）；vLLM 0.20.1 环境使用 PR #9231 workaround
+      适配 MLA prefill backend。
+    rollback: "回退到旧版本组合即复现；#9231 为 0.20.1 专属补丁，升级后应移除"

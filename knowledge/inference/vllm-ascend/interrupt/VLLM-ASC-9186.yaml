@@ -1,0 +1,71 @@
+# VLLM-ASC-9186 —— GLM5.1-w4a8 拉起 RuntimeError：_C_ascend::dispatch_ffn_combine() bias1 类型不匹配
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9186
+# fix 跟踪：PR #11701（merged，megamoe 替换 dispatch_ffn_combine）；中间方案 PR #9231（ACLNN 适配，用户实测 segfault，弃用）
+# investigation_quality: high（维护者定位 pybind 签名 + megamoe 替换闭环）
+# 批量导入：批次 2 组 4（2026-08）
+
+cases:
+  - id: VLLM-ASC-9186
+    title: "GLM5.1-w4a8 拉起报 RuntimeError: _C_ascend::dispatch_ffn_combine() Expected a value of type 'Optional[List[Tensor]]' for argument 'bias1' but instead found type 'Parameter'"
+
+    category: interrupt
+    tags: [glm5, w4a8, fused-moe, custom-op, pybind]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.20.1"]        # 线程失败环境 0.19.1rc2.dev45 + vLLM 0.20.1；PR #11701 在 main（2026-08），回传版本未验证
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                    # high
+
+    symptoms:
+      - "GLM5.1-w4a8（--quantization ascend）拉起服务报 RuntimeError: _C_ascend::dispatch_ffn_combine() Expected a value of type 'Optional[List[Tensor]]' for argument 'bias1' but instead found type 'Parameter'"
+      - "报错在 fused MoE 路径 torch.ops._C_ascend.dispatch_ffn_combine（昇腾自定义算子 pybind 调用）"
+      - "中间方案 PR #9231（ACLNN 算子适配 w4a8）遭遇 segfault（aclTensorList::operator[]），不可用"
+      - "官方最终用 megamoe 算子整体替换 dispatch_ffn_combine（PR #11701，merged）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9186"
+      - "https://github.com/vllm-project/vllm-ascend/pull/11701"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E \"dispatch_ffn_combine\\\\(\\\\) Expected a value of type 'Optional\\\\[List\\\\[Tensor\\\\]\\\\]'\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:dispatch_ffn_combine\\(\\).*Optional\\[List\\[Tensor\\]\\]"
+      fallback:
+        command_template: "grep -E \"Expected a value of type 'Optional\\\\[List\\\\[Tensor\\\\]\\\\]' for argument 'bias1'\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Expected a value of type 'Optional\\[List\\[Tensor\\]\\]' for argument 'bias1'"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：w4a8 fused MoE 路径报 _C_ascend::dispatch_ffn_combine() 的 bias1 类型断言（Optional[List[Tensor]] vs Parameter）？"
+        expected: "是——昇腾自定义算子 pybind 类型绑定不匹配，与模型权重/量化数值无关"
+      - step: 2
+        check: "版本判别：vllm-ascend 是否含 PR #11701（megamoe 替换 dispatch_ffn_combine）？"
+        expected: "未含则触发本 case（用户环境 0.19.1rc2.dev45/vLLM 0.20.1 触发）"
+      - step: 3
+        check: "修复：升级到包含 PR #11701 的版本（megamoe 已替换该算子）"
+        expected: "服务正常拉起（ZT-AIA 2026-08-08 确认已替换）"
+      - step: 4
+        check: "忽略项：不要采用 PR #9231 的 ACLNN 适配方案（MarinaMiao 实测 segfault）；WorkerProc/EngineCore 一串级联报错是根因的 noise，只认 bias1 断言行"
+        note: "test_dispatch_ffn_combine_w4a8.py 中 bias1 应传 list[torch.Tensor]，可作为类型预期参考"
+
+    severity: service-affecting
+    fix_side_effects: [requires-code-change]   # 需升级含 PR #11701 的版本
+    fix_type: code-patch                        # PR #11701（megamoe 替换 vllm_ascend fused MoE 路径）
+
+    root_cause: >
+      昇腾自定义算子 _C_ascend::dispatch_ffn_combine 的 pybind 签名要求 bias1 为
+      Optional[List[Tensor]]，而 vllm-ascend fused MoE w4a8 路径调用时传入的是 torch.nn.Parameter，
+      pybind 类型绑定不匹配抛 RuntimeError，服务启动失败。官方未修绑定而是用 megamoe 算子整体替换
+      dispatch_ffn_combine（PR #11701）。
+
+    fix: >
+      升级到包含 PR #11701 的 vllm-ascend 版本（megamoe 替换 dispatch_ffn_combine，2026-08 merged
+      于 main）；不要使用 PR #9231 的 ACLNN 适配（segfault）。
+    rollback: "回退到旧版本即复现；升级后如遇 megamoe 行为差异可回退并反馈官方"
