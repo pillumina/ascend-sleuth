@@ -40,6 +40,6 @@ input:
   framework: vllm-ascend
 
 expected:
-  namespace: inference/vllm-ascend/
+  namespace: inference/vllm-ascend/performance/
   case_id: VLLM-ASC-13973
   assertion: top-3-or-miss-documented   # LLM 非确定性口径（docs/eval.md）

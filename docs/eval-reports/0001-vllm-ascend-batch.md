@@ -9,7 +9,7 @@
 | 门槛筛选 | 64 → 21（33% 通过；43 条排除原因留痕） |
 | 语义校验（to-postmortem） | **21/21 pass**——primary regex 全部在真实线程原文 re.search 实测，零编造，零 needs-structurer-review |
 | 预分诊（groom） | new_pattern 19 / variant_of 2 / covered_by 0；两对 variant 判定高置信度 |
-| 入库 | `inference/vllm-ascend/` 19/30（63%），低于 80% 拆分闸门；inbox 清零 |
+| 入库 | `inference/vllm-ascend/` 按 (framework×category) 格子：interrupt 11/30、precision 3/30、performance 2/30、other 3/30（ADR-0004 容量治理落地，soft_cap 30 均未触发）；inbox 清零 |
 | 回放（措辞差 + 交叉） | **候选命中 16/21（76%）；rank1 13；top3 16** |
 | 交叉回放（variant 并入验证） | **#13379→13329 rank1；#14467→12685 rank1**——并入机制闭环验证 |
 | golden fixture | 21 个真实 fixture（总 23），断言口径 top-3 |

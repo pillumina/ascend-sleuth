@@ -48,6 +48,6 @@
 - 交叉回放（variant 并入验证）: 2/2 rank1 命中主 case
 - 按类命中: precision 3/3 / interrupt 7/10 / other 2/2 / performance 0/1（metric 形态与 regex 回放不匹配——机制性，见报告 §四.4）
 - golden 套件: 2 → 23（真实 fixture，解锁 M2 闸门）
-- 库容量: inference/vllm-ascend 19/30 (63%)，低于 80% 拆分闸门
+- 库容量: inference/vllm-ascend 格子：interrupt 11/30 / precision 3/30 / performance 2/30 / other 3/30（ADR-0004 格子口径，均低于 soft_cap）
 
 <!-- 季度回顾固定动作：核对命中率/误诊率/路由准确率趋势，校准 roadmap 闸门数值，确认学习闭环在数据上成立 -->

@@ -57,6 +57,6 @@ input:
   framework: vllm-ascend
 
 expected:
-  namespace: inference/vllm-ascend/
+  namespace: inference/vllm-ascend/other/
   case_id: VLLM-ASC-13329
   assertion: top-3   # LLM 非确定性口径（docs/eval.md）

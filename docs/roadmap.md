@@ -23,7 +23,7 @@
 | ID | 事项 | 需求 / 验收标准 | 入口闸门 | 阶段 |
 |---|---|---|---|---|
 | A1 | Tier 3 postmortem frontmatter 结构化 | `postmortems/**/*.md` 加 frontmatter（framework / category / platform / case-id / keywords）；诊断 Tier 3 检索先按字段过滤再 grep；to-postmortem 产出自动带 frontmatter；存量文件一次性补齐 | Tier 3 语料 >300 篇，或 tier3 检索频繁但挽救率指标偏低 | v1.5 |
-| A2 | namespace 按 category 拆分落地 | groom 产出拆分建议 → 人确认；目录迁移、triage-tree `search_namespaces` 更新、`_index.yaml` 重建、golden fixture 的 namespace 断言同步，**同一 PR 完成** | 任一 namespace ≥24/30（80%） | 按闸门 |
+| A2 | 格子容量治理与拆分（ADR-0004 已落地 category 分层） | cap 按 (framework×category) 格子计：soft_cap 30 触发评估 + 健康指标（候选溢出/重复率/维护时长）；hard_cap 60 强制拆。拆分建议 → 人确认；目录迁移、`_index.yaml` 重建、fixture namespace 断言同步，**同一 PR 完成** | 格子超 soft_cap 且健康指标恶化 / 超 hard_cap | 按闸门 |
 | A3 | 第二拆分轴（platform）ADR | 若 category 拆分后仍超限，写 ADR-0003 论证 platform 轴或索引分片的取舍 | category 拆分后单 namespace 仍 >100 条 | v2 前置 |
 | A4 | 非单调版本兼容实测 | 真实非单调 case（如 2.7 失效、2.8 恢复）出现时，groom 的 `_archive/` 复活检查跑通全流程，结论记录进 ADR | 首个真实非单调 case 被 groom 处理 | 按事件 |
 | A5 | 容量推演重算 | 用实测过滤率、退休率、增速重算 ADR-0002 的稳态规模与容量结论；确认或修订"不上 RAG"决策及触发条件 | 第 6 个月，或 metrics 首次给出完整过滤/退休数据 | 常设检查点 |

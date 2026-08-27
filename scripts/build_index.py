@@ -24,6 +24,11 @@ try:
 except ImportError:
     sys.exit("需要 PyYAML：pip install pyyaml")
 
+# ADR-0004 容量治理：soft_cap 触发拆分评估，hard_cap 强制拆分。
+# 均为初始估计，服从 roadmap「参数治理」——metrics 实测后按理论 §4.4 复核。
+SOFT_CAP = 30
+HARD_CAP = 60
+
 
 def case_hash(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
@@ -64,7 +69,9 @@ def quickly_check_summary(qc) -> dict:
 
 
 def collect(root: Path):
-    """扫 knowledge/**/*.yaml → {namespace: [索引条目, ...]}"""
+    """扫 knowledge/**/*.yaml → {namespace: {category: [索引条目, ...]}}
+    ADR-0004：目录按 (framework × category) 分层；索引按格子分组，
+    格子是阶段一实际被扫的单元，cap 语义精确到格子。"""
     namespaces = {}
     kdir = root / "knowledge"
     for path in sorted(kdir.rglob("*.yaml")):
@@ -72,12 +79,18 @@ def collect(root: Path):
         if rel.parts[0] == "_archive" or path.name == "_index.yaml":
             continue
         ns = str(Path(*rel.parts[:-1]))
+        # ADR-0004：目录按 (framework × category) 分层，但 ns 停在工作负载层
+        # （triage 路由到框架，category 是正交轴的格子维度，从 case 字段取）
+        parts = rel.parts
+        if len(parts) >= 3 and parts[0] == "inference" and parts[2] != "platforms":
+            ns = str(Path(parts[0], parts[1]))
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for case in doc.get("cases", []):
-            namespaces.setdefault(ns, []).append({
+            category = case.get("category", "")
+            namespaces.setdefault(ns, {}).setdefault(category, []).append({
                 "id": case.get("id", ""),
                 "title": case.get("title", ""),
-                "category": case.get("category", ""),
+                "category": category,
                 "tags": case.get("tags", []),
                 "platforms": case.get("platforms", []),
                 "compat": compat_summary(case.get("compat")),
@@ -94,12 +107,23 @@ def collect(root: Path):
 
 
 def render(namespaces) -> str:
-    n = sum(len(v) for v in namespaces.values())
+    n = sum(len(c) for cells in namespaces.values() for c in cells.values())
+    cell_counts = {
+        ns: {cat: len(c) for cat, c in cells.items()}
+        for ns, cells in sorted(namespaces.items())
+    }
+    cap_lines = "\n".join(
+        f"#   容量({ns}): {', '.join(f'{cat}={cnt}/{SOFT_CAP}' for cat, cnt in cells.items())}"
+        for ns, cells in cell_counts.items()
+    )
     header = "\n".join([
         "# GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。",
         "# case 变更后重新生成并提交；`build_index.py --check` 校验新鲜度（groom/CI）。",
         "# 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。",
+        "# 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，",
+        "# 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。",
         f"# 生成日期：{date.today().isoformat()}    case 总数：{n}",
+        cap_lines,
         "",
     ])
     body = yaml.safe_dump(
@@ -116,15 +140,17 @@ def stale_entries(root: Path, namespaces):
         return None
     idx = yaml.safe_load(idx_path.read_text(encoding="utf-8")) or {}
     recorded = {}
-    for cases in (idx.get("namespaces") or {}).values():
-        for c in cases:
-            recorded[c.get("id")] = c.get("hash")
+    for cells in (idx.get("namespaces") or {}).values():
+        for cases in cells.values():
+            for c in cases:
+                recorded[c.get("id")] = c.get("hash")
     stale = []
-    for ns, cases in namespaces.items():
-        for c in cases:
-            if recorded.get(c["id"]) != c["hash"]:
-                stale.append((ns, c["id"], c["file"]))
-    for cid in set(recorded) - {c["id"] for cases in namespaces.values() for c in cases}:
+    for ns, cells in namespaces.items():
+        for cases in cells.values():
+            for c in cases:
+                if recorded.get(c["id"]) != c["hash"]:
+                    stale.append((ns, c["id"], c["file"]))
+    for cid in set(recorded) - {c["id"] for cells in namespaces.values() for cases in cells.values() for c in cases}:
         stale.append(("-", cid, "(索引里有、库里没有)"))
     return stale
 

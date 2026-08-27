@@ -1,666 +1,677 @@
 # GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。
 # case 变更后重新生成并提交；`build_index.py --check` 校验新鲜度（groom/CI）。
 # 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。
-# 生成日期：2026-08-26    case 总数：20
+# 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
+# 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
+# 生成日期：2026-08-27    case 总数：20
+#   容量(inference/sglang): interrupt=1/30
+#   容量(inference/vllm-ascend): interrupt=11/30, other=3/30, performance=2/30, precision=3/30
 namespaces:
   inference/sglang:
-  - id: SGL-PD-HEAP-001
-    title: PD 分离偶发失败：CombineMemories 合并 K+V 超过 heap_size 致 halShmemCreateHandle 拒绝
-    category: interrupt
-    tags:
-    - pd-separation
-    - kv-cache-transfer
-    - sdma
-    - combinememories
-    - heap-overflow
-    - non-deterministic
-    platforms:
-    - A3-910C
-    compat: sglang <=0.5.10; memfabric_hybrid <=1.0.5
-    confidence:
-      score: 0.6
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - PD 分离 --disaggregation-transfer-backend ascend，KV cache 跨 NPU 传输偶发失败
-    - decode 侧日志：halShmemCreateHandle → 'Size is bad' → size > heap_size → Create_para_check fail
-    - 大模型(GLM W8A8 ~17GB KV)偶发失败、小模型(Qwen3-4B)成功
-    - 非必现：page_num ±1（torch.npu.mem_get_info 整数除法精度）决定 K end 是否等于 V base
-    quickly_check:
-      primary:
-        command: grep 'Size is bad.*heap_size' {{log_path}}
-        expected: regex:.*Size is bad.*heap_size
-      fallback:
-        command: grep -E 'halShmemCreateHandle.*Create_para_check fail|rtIpcOpenMemory.*ErrCode=507899'
-          {{log_path}}
-        expected: regex:.*(Create_para_check|ErrCode=507899)
-    file: knowledge/inference/sglang/SGL-PD-HEAP-001.yaml
-    hash: 3576617fec9c
+    interrupt:
+    - id: SGL-PD-HEAP-001
+      title: PD 分离偶发失败：CombineMemories 合并 K+V 超过 heap_size 致 halShmemCreateHandle 拒绝
+      category: interrupt
+      tags:
+      - pd-separation
+      - kv-cache-transfer
+      - sdma
+      - combinememories
+      - heap-overflow
+      - non-deterministic
+      platforms:
+      - A3-910C
+      compat: sglang <=0.5.10; memfabric_hybrid <=1.0.5
+      confidence:
+        score: 0.6
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - PD 分离 --disaggregation-transfer-backend ascend，KV cache 跨 NPU 传输偶发失败
+      - decode 侧日志：halShmemCreateHandle → 'Size is bad' → size > heap_size → Create_para_check fail
+      - 大模型(GLM W8A8 ~17GB KV)偶发失败、小模型(Qwen3-4B)成功
+      - 非必现：page_num ±1（torch.npu.mem_get_info 整数除法精度）决定 K end 是否等于 V base
+      quickly_check:
+        primary:
+          command: grep 'Size is bad.*heap_size' {{log_path}}
+          expected: regex:.*Size is bad.*heap_size
+        fallback:
+          command: grep -E 'halShmemCreateHandle.*Create_para_check fail|rtIpcOpenMemory.*ErrCode=507899'
+            {{log_path}}
+          expected: regex:.*(Create_para_check|ErrCode=507899)
+      file: knowledge/inference/sglang/SGL-PD-HEAP-001.yaml
+      hash: 3576617fec9c
   inference/vllm-ascend:
-  - id: VLLM-ASC-12461
-    title: 多节点 EP + GLM-5.2 w8a8 的 FusedMoE MC2 通信算子（MoeDistributeDispatchV2）在 ROCE 网络触发 aicore exception（MTE
-      DDR 越界）→ SUSPECT REMOTE ERROR 507057 启动失败；HCCS 网络可跑通
-    category: interrupt
-    tags:
-    - multi-node
-    - ep
-    - mc2
-    - roce
-    - fusedmoe
-    platforms:
-    - A3-910C
-    compat: vllm-ascend <=0.21.0
-    confidence:
-      score: 0.6
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - '2×A3 多节点 + EP + MTP(num_speculative_tokens=4) 启动即失败：RuntimeError: SUSPECT REMOTE ERROR, error code
-      is 507057（synchronize stream with timeout failed）'
-    - plog：aicore exception，MTE 指令 DDR 地址越界（errCode 0x800000, subErrType 4），fault kernel_name=MoeDistributeDispatchV2
-    - 单节点 TP16+PP2（不跨节点 EP）可跑通；多节点 EP 在 MLAPO 与 GEMM 路径均失败（FusedMoE kernel 内）
-    - 关闭 speculative decode 同样报错（同栈）——非 MTP/dummy_run 问题
-    quickly_check:
-      primary:
-        command: grep 'SUSPECT REMOTE ERROR' {{log_path}}
-        expected: regex:.*SUSPECT REMOTE ERROR.*507057
-      fallback:
-        command: grep -iE '507057|aicore exception|MoeDistributeDispatchV2' {{log_path}}
-        expected: regex:.*(507057|aicore exception|MoeDistributeDispatchV2)
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-12461.yaml
-    hash: 3def249a3acc
-  - id: VLLM-ASC-12642
-    title: triton-ascend 3.2.1 对 [4,256] K 做 head reduction 后接 extract_slice+cos 广播的布局/归约路径生成错误设备代码，square_sums
-      被算成 0 → K RMSNorm variance=0 → K 放大 1000 倍
-    category: precision
-    tags:
-    - triton-ascend
-    - fused-op
-    - rmsnorm
-    - mrope
-    - codegen
-    platforms:
-    - A5-950
-    compat: vllm-ascend <=0.21.0; triton-ascend <3.2.2
-    confidence:
-      score: 0.6
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - 'Ascend 950PR (A5) 上 Qwen3.5-4B (bf16, partial RoPE: rope_dim=64 < head_size=256) 输出错误'
-    - triton_split_qkv_rmsnorm_mrope 融合算子把 K 的 variance 算成 [0,0,0,0]（正确 ~1.05~1.19）→ reciprocal_std=1/sqrt(0+1e-6)=1000，K
-      被异常放大 ~1000 倍
-    - 最小复现：kernel 中加入 orig_qk * cos_tensor 这条后续计算后，编译器为 K RMSNorm 生成另一套设备代码，square_sums 变为 0
-    - triton-ascend 3.2.2 上同代码验证通过（官方确认与 triton-ascend 版本相关）
-    quickly_check:
-      primary:
-        command: grep 'triton_split_qkv_rmsnorm_mrope' {{log_path}}
-        expected: regex:.*triton_split_qkv_rmsnorm_mrope
-      fallback:
-        command: grep -iE 'rmsnorm|variance|reciprocal_std' {{log_path}}
-        expected: regex:(?i).*(rmsnorm|variance|reciprocal_std)
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-12642.yaml
-    hash: 61fc4e029c9f
-  - id: VLLM-ASC-12685
-    title: 非量化模型被自动路由进 AscendFp8Config：fp8_config.py get_quant_method 硬编码 ds_linear scheme，MiniMax-M2.7
-      启动即 AttributeError 'o_groups'
-    category: interrupt
-    tags:
-    - fp8
-    - quantization
-    - ds_linear
-    - startup-failure
-    - minimax
-    - attributeerror
-    - gqa-model
-    platforms:
-    - A5-950
-    compat: vllm-ascend <=0.23.0rc1; torch-npu <=2.10.0.post2
-    confidence:
-      score: 0.6
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - v0.23.0rc1 拉起 MiniMax-M2.7（BF16 非量化权重）服务启动失败，多 worker 同时 'WorkerProc failed to start'
-    - 'AttributeError: ''MiniMaxM2Config'' object has no attribute ''o_groups''（vllm_ascend/quantization/methods/fp8.py:45
-      self.n_groups = hf_config.o_groups）'
-    - 崩溃前日志 'Using the vLLM Ascend fp8 Quantization now!'——fp8 量化被自动触发（模型 config.json 带 quantization_config.quant_method=="fp8"
-      时 detect_quantization_method 返回 FP8_METHOD）
-    - 调用链：AscendLinearBase.__init__ → quant_config.get_quant_method → create_scheme_for_layer(...,"ds_linear",...)
-      → AscendW8A8MXFP8DSDynamicLinearMethod.__init__ 读 o_groups/o_lora_rank
-    - 'native-FP8 checkpoint (Qwen3.5): same AttributeError ''o_groups'' at startup; second symptom face:
-      ignored_layers handling, fixed by PR #14852'
-    quickly_check:
-      primary:
-        command: grep "has no attribute 'o_groups'" {{log_path}}
-        expected: regex:has no attribute 'o_groups'
-      fallback:
-        command: grep -E 'Using the vLLM Ascend fp8 Quantization now|create_scheme_for_layer.*ds_linear'
-          {{log_path}}
-        expected: regex:Using the vLLM Ascend fp8 Quantization now
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-12685.yaml
-    hash: f46b7ae72a71
-  - id: VLLM-ASC-12723
-    title: Triton rope 的 sin 缓存偏移用了 pad 后的 rotary dim（rope_dim=192→pad 256，起点错位 32 元素）致 RoPE 退化为 out=in*cos，Q/K
-      范数 ~0.73，DSpark 投机接受率 5.6→3.0
-    category: precision
-    tags:
-    - triton-rope
-    - rotary-embedding
-    - non-power-of-two
-    - dspark
-    - spec-decode
-    platforms:
-    - A3-910C
-    compat: vllm-ascend <=0.23.0
-    confidence:
-      score: 0.6
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - GLM-5.2 DSpark 投机解码（bf16, NeoX, head_dim=rotary_dim=192）在线 accept_len 从 ~5.6 崩到 ~3.0
-    - 同一 rope 对象/worker/输入调 forward_native() 后 accept_len 恢复 5.4~5.5
-    - Q/K post-RoPE 范数比 ~0.73（离线参考 1.000）
-    - 仅 rope_dim 非 2 的幂（192→pad 256）触发；128/256 等 2 的幂形状无影响
-    quickly_check:
-      primary:
-        command: grep -E 'accept_len|Acceptance rate' {{log_path}}
-        expected: regex:accept_len|Acceptance rate
-      fallback:
-        command: grep -iE 'accept_len|norm ratio' {{log_path}}
-        expected: regex:.*(accept_len|norm ratio)
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-12723.yaml
-    hash: 0634780f2fe7
-  - id: VLLM-ASC-12901
-    title: A3 启动 GLM5.2 w4a8c8 报 KeyError：v0.22.1rc1-a3 镜像 modelslim 量化描述缺 indexer.wq_b.weight（升级镜像修复）
-    category: interrupt
-    tags:
-    - glm5
-    - w4a8c8
-    - modelslim-quant
-    - keyerror
-    - image-version
-    platforms:
-    - A3-910C
-    compat: vllm-ascend <0.23.0rc1-a3
-    confidence:
-      score: 0.3
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - A3 上按 GLM5.2 1M 文档、用 vllm-ascend:v0.22.1rc1-a3 镜像启动 glm5.2 w4a8c8 报错，服务拉起失败
-    - 'KeyError: ''model.layers.3.self_attn.indexer.wq_b.weight''（vllm_ascend/quantization/modelslim_config.py
-      get_linear_quant_type 按 prefix 查量化描述）'
-    - 切换镜像版本为 vllm-ascend:v0.23.0rc1-a3 后启动成功
-    quickly_check:
-      primary:
-        command: 'grep -E "KeyError: ''model\.layers\.[0-9]+\.self_attn\.indexer\.wq_b\.weight''" {{log_path}}'
-        expected: 'regex:.*KeyError: ''model\.layers\.[0-9]+\.self_attn\.indexer\.wq_b\.weight'''
-      fallback:
-        command: grep -E 'wq_b\.weight|modelslim_config' {{log_path}}
-        expected: regex:.*(wq_b\.weight|modelslim_config)
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-12901.yaml
-    hash: 4034f8f01e25
-  - id: VLLM-ASC-12957
-    title: PD 分离 P 侧 sfa_v1.py 的 k_pe 经 kv_ag_handle.wait() 后未同步 NPU 流，D 侧 RDMA pull 读到未落盘陈旧 k_pe，PP4
-      首请求乱码
-    category: precision
-    tags:
-    - pd-separation
-    - ascend-direct
-    - rdma
-    - kv-transfer
-    - stream-sync
-    platforms:
-    - A3-910C
-    compat: vllm-ascend <=0.20.2
-    confidence:
-      score: 0.6
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - PD 分离（use_ascend_direct=true RDMA/ADXL）+ PP=4 + DP=8 decode 下，服务拉起后首个请求输出与 prompt 无关的随机乱码
-    - 先发普通请求再发 badcase 不乱码；短 prompt（如 1+1）正常；P 节点改 DP=4（无 PP）不乱码
-    - kvcache 数值比对：V cache 在 PP stage 边界（layer 21/41/61，PREFILL_PP_LAYER_PARTITION=20,20,20,18）突变甚至正负翻转
-    - 关闭 MTP / prefix cache / reasoning parser / 图模式、kvcache 清零、slot mapping=-1 等消融均无法消除
-    quickly_check:
-      primary:
-        command: grep -E '乱码|garbled|badcase' {{log_path}}
-        expected: regex:.*(乱码|garbled|badcase)
-      fallback:
-        command: grep -iE 'garbled|rdma|adxl' {{log_path}}
-        expected: regex:.*(garbled|rdma|adxl)
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-12957.yaml
-    hash: 32b5c983c820
-  - id: VLLM-ASC-12983
-    title: 310P MTP 与图模式无法同时开启：镜像缺 free-mask 算子，pageattention-splitfuse 变化 shape mask 不入图
-    category: other
-    tags:
-    - 310p
-    - mtp
-    - cudagraph
-    - free-mask
-    - cann-version
-    platforms:
-    - 310P
-    compat: vllm-ascend =0.23.0rc1-310p-openeuler
-    confidence:
-      score: 0.3
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - v0.23.0rc1-310p-openeuler 镜像 310P 上 MTP 与图模式无法同时开启，启动报错（Qwen3.6-27B qwen3_5_mtp）
-    - 'RuntimeError: NPUModelRunner init failed ... copy_between_host_and_device_opapi ... aclrtMemcpy,
-      error code is 107030'
-    - Not allow to synchronize captured-stream, stream_id=12 / rtStreamSynchronize execution failed, reason=stream
-      is captured（107027）
-    - 去掉 MTP 相关参数可以成功启动，但速度只有 20 token/s 左右
-    quickly_check:
-      primary:
-        command: 'grep ''NPU function error: aclrtMemcpy, error code is 107030'' {{log_path}}'
-        expected: 'regex:.*NPU function error: aclrtMemcpy, error code is 107030'
-      fallback:
-        command: grep -E 'synchronize captured-stream|stream is captured' {{log_path}}
-        expected: regex:.*(synchronize captured-stream|stream is captured)
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-12983.yaml
-    hash: 48f4f1a206fa
-  - id: VLLM-ASC-12989
-    title: 310P 硬件 event 资源有限：FULL_DECODE_ONLY 多尺寸 cudagraph 捕获超上限 → Insufficient_Event_Resources(EL0008)/507903，TP2
-      启动失败
-    category: interrupt
-    tags:
-    - 310p
-    - cudagraph
-    - event-resource
-    - graph-capture
-    - startup-failure
-    - hardware-limit
-    platforms:
-    - 310P
-    compat: vllm-ascend <=0.23.0rc1; torch-npu <=2.10.0.post2; cann 9.1.0-beta.1
-    confidence:
-      score: 0.3
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - Atlas 300I DUO（310P3）+ vllm-ascend v0.23.0rc1-310p 镜像，Qwen3-14B-W8A8SC TP2 启动失败；同命令 TP1 正常
-    - FULL_DECODE_ONLY + cudagraph_capture_sizes [1,2,4,8,16] 捕获进行到第 5 张（80%）时崩溃
-    - 'Insufficient_Event_Resources(EL0008): The event resources are insufficient / Create capture event
-      failed（error=117571609 / runtime result 207007）→ capture_end error code is 507903'
-    - --enforce-eager 后 TP2 正常启动（含 --enforce-eager 的启动命令可复现成功）
-    quickly_check:
-      primary:
-        command: grep 'Insufficient_Event_Resources' {{log_path}}
-        expected: regex:Insufficient_Event_Resources\(EL0008\)
-      fallback:
-        command: grep -E '507903|capture event failed|no event resource' {{log_path}}
-        expected: regex:507903
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-12989.yaml
-    hash: 288000ac4682
-  - id: VLLM-ASC-13050
-    title: 310P 上推理请求触发 IndexPut aicpu exception（errorCode=0x2a, runtime 507018, stream phase=SCHEDULE），0.23.0
-      rc 镜像复现、POC 镜像正常、0.23.0 正式版修复
-    category: interrupt
-    tags:
-    - 310p
-    - aicpu
-    - indexput
-    - driver
-    - crash
-    platforms:
-    - 310P
-    compat: vllm-ascend <0.23.0
-    confidence:
-      score: 0.6
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - 310P 双芯（300I Duo）+ Qwen3.6-35B-A3B-w8a8，TP=2 服务启动成功，第一条推理请求即崩溃
-    - plog：aicpu exception, kernelName=IndexPut, errorCode=0x2a, runtime result=507018, stream phase=SCHEDULE
-    - POC 镜像（dev-26.0.0.poc）同参数可正常启动推理；nightly-releases-v0.23.0-310p-openeuler / v0.22.1rc1-310p 复现
-    - 部分用户修改 vllm_ascend/_310p/ops/fla/gdn_310.py 后纯文本请求可恢复（图片/超长输入仍可能报错，未官方验证）
-    quickly_check:
-      primary:
-        command: grep 'kernelName=IndexPut' {{log_path}}
-        expected: regex:.*kernelName=IndexPut, errorCode=0x2a
-      fallback:
-        command: grep -iE 'aicpu exception|507018|E39999' {{log_path}}
-        expected: regex:.*(aicpu exception|507018|E39999)
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-13050.yaml
-    hash: 6f8671d70468
-  - id: VLLM-ASC-13086
-    title: vllm-ascend 0.14.0rc1 不支持 A5(950) 芯片：check_ascend_device_type 断言失败，需升级最新/rc 版本
-    category: other
-    tags:
-    - a5
-    - platform-support
-    - version-matrix
-    - check-device-type
-    - wontfix
-    platforms:
-    - A5-950
-    compat: vllm-ascend <=0.14.0rc1
-    confidence:
-      score: 0.1
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - vllm-ascend 0.14.0rc1 启动报不支持 950 芯片（A5），服务无法拉起
-    - 'AssertionError: Current device type: AscendDeviceType.A5 does not match the installed version''s
-      device type: AscendDeviceType.A3（check_ascend_device_type）'
-    - '另一处报 ValueError: Unsupported soc_version: AscendDeviceType.A5'
-    - 官方确认：早期版本不支持 Ascend 950，请使用最新版本或 rc 版本
-    quickly_check:
-      primary:
-        command: 'grep ''Unsupported soc_version: AscendDeviceType.A5'' {{log_path}}'
-        expected: 'regex:.*Unsupported soc_version: AscendDeviceType\.A5'
-      fallback:
-        command: 'grep -E ''Current device type: AscendDeviceType\.A5 does not match'' {{log_path}}'
-        expected: 'regex:.*Current device type: AscendDeviceType\.A5 does not match'
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-13086.yaml
-    hash: cacc029318a7
-  - id: VLLM-ASC-13329
-    title: DSV4-Flash-0731 是 DSpark 模型无 MTP head：mtp 模式启动报 KeyError 'mtp.0.head.weight'，应改用 dspark
-    category: other
-    tags:
-    - deepseek-v4
-    - dspark
-    - mtp
-    - speculative-decode
-    - model-version
-    platforms:
-    - A2-910B
-    compat: vllm-ascend <0.25.1rc,>=0.25.1rc
-    confidence:
-      score: 0.1
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - nightly-releases-v0.25.1rc-openeuler 版本启动 DeepSeek-V4-Flash-0731-w8a8 的 mtp 模式报错（A2 机器）
-    - 'KeyError: ''mtp.0.head.weight''（vllm_ascend/quantization/modelslim_config.py get_linear_quant_type
-      处）'
-    - '去掉 --speculative-config ''{"method": "mtp", ...}'' 可以正常启动'
-    - '改用 ''{"method": "dspark", "num_speculative_tokens": 7, ...}'' 可以正常加速（接受率 10%~80% 不平均）'
-    - 'older release (v0.22.rc1): ''Is there an issue with the downloaded model weights?'' — same KeyError
-      on MTP load; dspark method requires >=0.25.1rc, so upgrade first, then switch'
-    quickly_check:
-      primary:
-        command: 'grep "KeyError: ''mtp\.0\.head\.weight''" {{log_path}}'
-        expected: 'regex:.*KeyError: ''mtp\.0\.head\.weight'''
-      fallback:
-        command: grep -E 'mtp\.0\.head\.weight|speculative-config' {{log_path}}
-        expected: regex:.*(mtp\.0\.head\.weight|speculative-config)
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-13329.yaml
-    hash: 070d9aeb2d31
-  - id: VLLM-ASC-13356
-    title: PD 分离开启 memcache 性能劣化：lookup 与本地 prefix cache 完全重叠（num_external_hit_tokens <= num_computed_tokens）
-    category: performance
-    tags:
-    - memcache
-    - pd-separation
-    - prefix-cache
-    - kv-cache-pool
-    - throughput
-    platforms:
-    - A3-910C
-    compat: vllm-ascend <=0.23.0rc1
-    confidence:
-      score: 0.3
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - PD 分离下开启 memcache（AscendStoreConnector/MultiConnector，backend=memcache）性能劣化：128K 输入序列时 lookup 与本地
-      prefix cache 重叠
-    - 每请求 lookup() 经常命中但 connector 随后 load 了 0 个 token
-    - memcache 命中与本地 prefix cache 完全重叠（num_external_hit_tokens <= num_computed_tokens）时 pool_scheduler
-      算出 need_to_allocate = 0 并返回 (0, False)
-    - 前缀复用 workload 下 memcache 零边际收益、仍付每请求 lookup RPC 开销，吞吐相对'仅本地 prefix cache / 仅 Mooncake'基线回退
-    quickly_check:
-      primary:
-        command: grep 'num_external_hit_tokens <= num_computed_tokens' {{log_path}}
-        expected: regex:.*num_external_hit_tokens <= num_computed_tokens
-      fallback:
-        command: grep -E 'need_to_allocate = 0|memcache.*lookup.*0' {{log_path}}
-        expected: regex:.*(need_to_allocate = 0|lookup.*0)
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-13356.yaml
-    hash: 84f8ab7be324
-  - id: VLLM-ASC-13508
-    title: main2main Gluon 兼容 stub 只把 triton.experimental.gluon 叶子模块塞入 sys.modules，父模块 triton.experimental
-      缺失，x86_64 导入即 ModuleNotFoundError
-    category: interrupt
-    tags:
-    - import-failure
-    - gluon
-    - triton
-    - x86_64
-    - sys-modules-stub
-    - startup-failure
-    - packaging
-    platforms:
-    - A2-910B
-    compat: vllm-ascend 0.26.0.dev; triton 3.2.0
-    confidence:
-      score: 0.6
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - 'x86_64 + A2(910B) main2main 开发版，vLLM 启动导入即失败：ModuleNotFoundError: No module named ''triton.experimental''（vllm/triton_utils/__init__.py
-      在 HAS_TRITON 时无条件 from triton.experimental import gluon）'
-    - 架构相关：aarch64 不报错——triton-ascend 3.2.1 按架构生成依赖（x86_64 → triton==3.2.0 无 experimental 包；arm → triton==3.5.0
-      含真实 Gluon），掩盖了 stub 不完整
-    - 最小复现：import vllm_ascend 后 'triton.experimental' in sys.modules == False 而 'triton.experimental.gluon'
-      == True；from triton.experimental import gluon 仍抛 ModuleNotFoundError
-    - vllm_ascend/__init__.py（L24-38）兼容 stub 已执行（问题不是插件没加载）
-    quickly_check:
-      primary:
-        command: grep "No module named 'triton.experimental'" {{log_path}}
-        expected: regex:No module named 'triton\.experimental'
-      fallback:
-        command: grep -Ei 'triton.experimental|gluon' {{log_path}}
-        expected: regex:triton\.experimental
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-13508.yaml
-    hash: f3a13b0c90f2
-  - id: VLLM-ASC-13710
-    title: pcp_utils.generate_pcp_mtp_input 用 np.array_split 按 cu_num_tokens 切分请求时出现空段，某请求漏加 MTP draft
-      追加，req_indices_mtp(256) 与 positions_mtp(260) 长度不一致 → block_table.py:272 slot_mapping 赋值 shape 不匹配崩溃
-    category: interrupt
-    tags:
-    - dcp
-    - mtp
-    - pcp-utils
-    - slot-mapping
-    - shape-mismatch
-    platforms:
-    - A3-910C
-    compat: vllm-ascend <0.26.0
-    confidence:
-      score: 0.6
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - 'PD 分离 + DCP=8 + MTP(num_speculative_tokens=5) 下 decode worker 崩溃：RuntimeError: The expanded size
-      of the tensor (256) must match the existing size (260)'
-    - 触发条件：长 prompt（~26k tokens, num_prompt_blocks 200-220）+ 高并发（cc=102）；短 prompt（~20k, 195 blocks, cc=96）不触发
-    - 栈在 block_table.py:272 compute_slot_mapping_draft（由 generate_pcp_mtp_input 的 req_indices_mtp 传入）
-    - 崩溃时 KV cache usage 6.7%、num_running_reqs=26（未超 max_num_seqs=32）——非 OOM
-    quickly_check:
-      primary:
-        command: grep 'expanded size of the tensor' {{log_path}}
-        expected: regex:.*The expanded size of the tensor \(256\) must match the existing size \(260\)
-      fallback:
-        command: grep -E '256.*260|generate_pcp_mtp_input|slot_mapping_draft' {{log_path}}
-        expected: regex:.*(256.*260|generate_pcp_mtp_input|slot_mapping_draft)
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-13710.yaml
-    hash: f38754c65a70
-  - id: VLLM-ASC-13934
-    title: v0.26 新增 AscendSFAIndexerCacheSpec 使 1 个 KV cache group 拆成 2 个 Mooncake transfer group，而 vllm
-      侧 remote_block_ids 仍按 1 组索引，D 侧 _get_kv_split_metadata 访问 remote_block_ids[1] 越界崩溃
-    category: interrupt
-    tags:
-    - pd-separation
-    - mooncake
-    - kv-transfer
-    - dcp
-    - mtp
-    platforms:
-    - A3-910C
-    compat: vllm-ascend <0.26.0
-    confidence:
-      score: 0.6
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - 'v0.26.0rc PD 分离 + DCP=8 + MTP(num_speculative_tokens=5) 下 decode worker 崩溃：IndexError: list index
-      out of range，栈在 mooncake_connector.py:_get_kv_split_metadata → meta.remote_block_ids[group_idx]'
-    - '日志确认：Split KV cache manager group 0 into 2 Mooncake transfer groups by KV spec: [(''AscendSFAIndexerCacheSpec'',
-      1, 1), (''AscendMLAAttentionSpec'', 1, 1)]'
-    - GLM-5.2 w4a8，20k-40k 长 prompt 压测 ~30%（306/1000）稳定复现；崩溃时 kv_cache_usage=0.01 非 OOM
-    - v0.23 同配置不崩（无 AscendSFAIndexerCacheSpec；两版本 mooncake_connector.py 3784 行 0 diff）
-    quickly_check:
-      primary:
-        command: grep 'Split KV cache manager group' {{log_path}}
-        expected: regex:.*Split KV cache manager group \d+ into \d+ Mooncake transfer groups
-      fallback:
-        command: 'grep -E ''_get_kv_split_metadata|IndexError: list index out of range'' {{log_path}}'
-        expected: 'regex:.*(_get_kv_split_metadata|IndexError: list index out of range)'
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-13934.yaml
-    hash: 8ce19bafedb3
-  - id: VLLM-ASC-13964
-    title: Decode DP rank 静默停滞：async scheduling 下 num_computed_tokens 计入未处理输出，SWA/chunked-local KV block
-      被提前剪枝复用
-    category: interrupt
-    tags:
-    - silent-hang
-    - decode-liveness
-    - swa
-    - chunked-local-kv
-    - async-scheduling
-    - pd-disaggregation
-    - mooncake
-    - mtp
-    platforms:
-    - A3-910C
-    compat: vllm-ascend <=0.23.0rc1; torch-npu <=2.10.0.post2
-    confidence:
-      score: 0.6
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - DeepSeek-V4-Flash W8A8 + one-token MTP + Mooncake P/D 分离 + async-scheduling + FULL_DECODE_ONLY（decode
-      DP=16/TP=1/EP）
-    - decode 各 DP rank 静默停滞：vllm:num_requests_running 保持 >0，而 generation_tokens_total / request 完成数停止增长，健康检查仍
-      200
-    - 无 EngineDeadError / traceback / HCCL timeout；router 存活但把新请求逐渐全部路由到唯一存活的 rank
-    - '部分 rank 数小时后自愈（DP5 约 2.5h、DP14 约 3h），其余持续停滞；同配置曾与 #12725/#13648/#13826 混淆'
-    quickly_check:
-      primary:
-        command: grep -E 'num_requests_running|generation_tokens_total|request_generation_tokens_count'
-          {{metrics_path}}
-        expected: regex:vllm:num_requests_running
-      fallback:
-        command: grep -Ei 'silent|liveness|stall' {{log_path}}
-        expected: regex:silent liveness failure
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-13964.yaml
-    hash: 8a482cb83a10
-  - id: VLLM-ASC-13973
-    title: v0.26 P 节点 prefill 回归：dsa-cp 与共享专家 DP 解耦致共享专家走 fc1 额外两次通信 + SFA DCP block table 宽度用错致 kv_gather_ids
-      冲高（TTFT 7.1x）
-    category: performance
-    tags:
-    - prefill
-    - regression
-    - dcp
-    - sfa
-    - block-table
-    - shared-expert
-    - ttft
-    - glm5
-    platforms: []
-    compat: vllm-ascend 0.26.0rc; torch-npu <=2.10.0.post2
-    confidence:
-      score: 0.6
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - GLM-5.2 w4a8 PD 分离 P 节点（kv_role=kv_producer），v0.23→v0.26 相同 DCP=8/TP=8/EP=32 拓扑下 prefill 吞吐 38811→29911
-      tok/s
-    - TTFT P50 7617ms→54296ms（~7.1x 劣化），QPS 1.69→1.14
-    - profiler（同 P 节点 rank0）：DCP collective 通信量 ~5-6x，step time 非重叠通信占比 1.58%→8.19%；DispatchFFNCombineW4A8
-      单算子 15.2ms→22.6ms ×78 层
-    - 开启 prefix cache 时 SFA DCP replicated/gather metadata 扫宽表，kv_gather_ids 周期性冲高（unique()/host 侧同步成本放大）
-    quickly_check:
-      primary:
-        command: grep -E 'TTFT.*P50|prompt.*tok/s' {{bench_report_path}}
-        expected: 'metric:TTFT P50 <= 20000ms 且 P0 prompt throughput >= 35000 tok/s（v0.23: 7617ms / 38811
-          tok/s；v0.26 回归: 54296ms / 29911 tok/s）'
-      fallback:
-        command: grep -E 'communication|comm' {{profiler_step_trace_csv}}
-        expected: 'metric:step 内非重叠通信占比 < 3%（v0.23: 1.58%；v0.26 回归: 8.19%）'
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-13973.yaml
-    hash: fe7f57f11ae2
-  - id: VLLM-ASC-14166
-    title: A5 950DT 启动 DeepSeek-V4-Flash-0731 报 MoeInitRoutingV3 找不到二进制（torch-npu 需 >=2.10.0.post4）
-    category: interrupt
-    tags:
-    - a5
-    - torch-npu
-    - moe
-    - missing-operator
-    - version-compat
-    platforms:
-    - A5-950
-    compat: torch-npu <2.10.0.post4
-    confidence:
-      score: 0.1
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - A5 950DT 启动 deepseek v4 flash 0731 报 MoeInitRoutingV3 算子错误，profile_run 阶段崩溃
-    - Cannot find binary for op MoeInitRoutingV3 / launch failed for MoeInitRoutingV3, errno:561000（Execution_Error
-      EZ1009）
-    - 安装 torch-npu 2.10.0.post4 后，已经不报 aclnnMoeInitRoutingV3 算子的错误
-    quickly_check:
-      primary:
-        command: grep 'Cannot find binary for op MoeInitRoutingV3' {{log_path}}
-        expected: regex:.*Cannot find binary for op MoeInitRoutingV3
-      fallback:
-        command: grep -E 'MoeInitRoutingV3.*561000|errno:561000' {{log_path}}
-        expected: regex:.*(MoeInitRoutingV3|561000)
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-14166.yaml
-    hash: 0d7b68a9ab57
-  - id: VLLM-ASC-14320
-    title: DCP replicated block_table 越界：v0.26 PCP 移除(#12592)改 total_cp_size 后 block id 超单 rank k_cache
-      容量，LightningIndexerQuant MTE 越界崩溃
-    category: interrupt
-    tags:
-    - dcp
-    - block-table
-    - k-cache-capacity
-    - lightning-indexer
-    - mte
-    - aicore-exception
-    - glm5
-    - pd-disaggregation
-    platforms:
-    - A3-910C
-    compat: vllm-ascend 0.26.0rc; torch-npu <=2.5.1
-    confidence:
-      score: 0.6
-      hits: 0
-      misdiagnoses: 0
-    symptoms:
-    - PD 分离（2P+2D）GLM-5.2-w4a8 + DCP(decode-context-parallel-size=8) + MTP 投机，持续压测下 decode EngineCore
-      崩溃
-    - EZ9999 aicore exception：MTE accesses an invalid GM address（errcode 0x800000 / error code 507015
-      / retCode=0x26），plog fault kernel=LightningIndexerQuant
-    - 8 个 decode worker 在 5ms 窗口内同时报 EZ9999（collective 同步点）；D0 head 侧级联 glibc heap corruption / EngineDeadError
-    - 负载相关：num=4/300 不复现，num=1000 cc=64 rr=1.8 在 ~400-532 请求崩溃；v0.23 同配置不复现
-    quickly_check:
-      primary:
-        command: grep 'MTE accesses an invalid GM address' {{log_path}}
-        expected: regex:MTE accesses an invalid GM address
-      fallback:
-        command: grep -E 'LightningIndexerQuant|507015|EZ9999' {{log_path}}
-        expected: regex:LightningIndexerQuant
-    file: knowledge/inference/vllm-ascend/VLLM-ASC-14320.yaml
-    hash: a42377592e77
+    interrupt:
+    - id: VLLM-ASC-12461
+      title: 多节点 EP + GLM-5.2 w8a8 的 FusedMoE MC2 通信算子（MoeDistributeDispatchV2）在 ROCE 网络触发 aicore exception（MTE
+        DDR 越界）→ SUSPECT REMOTE ERROR 507057 启动失败；HCCS 网络可跑通
+      category: interrupt
+      tags:
+      - multi-node
+      - ep
+      - mc2
+      - roce
+      - fusedmoe
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <=0.21.0
+      confidence:
+        score: 0.6
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - '2×A3 多节点 + EP + MTP(num_speculative_tokens=4) 启动即失败：RuntimeError: SUSPECT REMOTE ERROR, error
+        code is 507057（synchronize stream with timeout failed）'
+      - plog：aicore exception，MTE 指令 DDR 地址越界（errCode 0x800000, subErrType 4），fault kernel_name=MoeDistributeDispatchV2
+      - 单节点 TP16+PP2（不跨节点 EP）可跑通；多节点 EP 在 MLAPO 与 GEMM 路径均失败（FusedMoE kernel 内）
+      - 关闭 speculative decode 同样报错（同栈）——非 MTP/dummy_run 问题
+      quickly_check:
+        primary:
+          command: grep 'SUSPECT REMOTE ERROR' {{log_path}}
+          expected: regex:.*SUSPECT REMOTE ERROR.*507057
+        fallback:
+          command: grep -iE '507057|aicore exception|MoeDistributeDispatchV2' {{log_path}}
+          expected: regex:.*(507057|aicore exception|MoeDistributeDispatchV2)
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12461.yaml
+      hash: 3def249a3acc
+    - id: VLLM-ASC-12685
+      title: 非量化模型被自动路由进 AscendFp8Config：fp8_config.py get_quant_method 硬编码 ds_linear scheme，MiniMax-M2.7
+        启动即 AttributeError 'o_groups'
+      category: interrupt
+      tags:
+      - fp8
+      - quantization
+      - ds_linear
+      - startup-failure
+      - minimax
+      - attributeerror
+      - gqa-model
+      platforms:
+      - A5-950
+      compat: vllm-ascend <=0.23.0rc1; torch-npu <=2.10.0.post2
+      confidence:
+        score: 0.6
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - v0.23.0rc1 拉起 MiniMax-M2.7（BF16 非量化权重）服务启动失败，多 worker 同时 'WorkerProc failed to start'
+      - 'AttributeError: ''MiniMaxM2Config'' object has no attribute ''o_groups''（vllm_ascend/quantization/methods/fp8.py:45
+        self.n_groups = hf_config.o_groups）'
+      - 崩溃前日志 'Using the vLLM Ascend fp8 Quantization now!'——fp8 量化被自动触发（模型 config.json 带 quantization_config.quant_method=="fp8"
+        时 detect_quantization_method 返回 FP8_METHOD）
+      - 调用链：AscendLinearBase.__init__ → quant_config.get_quant_method → create_scheme_for_layer(...,"ds_linear",...)
+        → AscendW8A8MXFP8DSDynamicLinearMethod.__init__ 读 o_groups/o_lora_rank
+      - 'native-FP8 checkpoint (Qwen3.5): same AttributeError ''o_groups'' at startup; second symptom
+        face: ignored_layers handling, fixed by PR #14852'
+      quickly_check:
+        primary:
+          command: grep "has no attribute 'o_groups'" {{log_path}}
+          expected: regex:has no attribute 'o_groups'
+        fallback:
+          command: grep -E 'Using the vLLM Ascend fp8 Quantization now|create_scheme_for_layer.*ds_linear'
+            {{log_path}}
+          expected: regex:Using the vLLM Ascend fp8 Quantization now
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12685.yaml
+      hash: f46b7ae72a71
+    - id: VLLM-ASC-12901
+      title: A3 启动 GLM5.2 w4a8c8 报 KeyError：v0.22.1rc1-a3 镜像 modelslim 量化描述缺 indexer.wq_b.weight（升级镜像修复）
+      category: interrupt
+      tags:
+      - glm5
+      - w4a8c8
+      - modelslim-quant
+      - keyerror
+      - image-version
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <0.23.0rc1-a3
+      confidence:
+        score: 0.3
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - A3 上按 GLM5.2 1M 文档、用 vllm-ascend:v0.22.1rc1-a3 镜像启动 glm5.2 w4a8c8 报错，服务拉起失败
+      - 'KeyError: ''model.layers.3.self_attn.indexer.wq_b.weight''（vllm_ascend/quantization/modelslim_config.py
+        get_linear_quant_type 按 prefix 查量化描述）'
+      - 切换镜像版本为 vllm-ascend:v0.23.0rc1-a3 后启动成功
+      quickly_check:
+        primary:
+          command: 'grep -E "KeyError: ''model\.layers\.[0-9]+\.self_attn\.indexer\.wq_b\.weight''" {{log_path}}'
+          expected: 'regex:.*KeyError: ''model\.layers\.[0-9]+\.self_attn\.indexer\.wq_b\.weight'''
+        fallback:
+          command: grep -E 'wq_b\.weight|modelslim_config' {{log_path}}
+          expected: regex:.*(wq_b\.weight|modelslim_config)
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12901.yaml
+      hash: 4034f8f01e25
+    - id: VLLM-ASC-12989
+      title: 310P 硬件 event 资源有限：FULL_DECODE_ONLY 多尺寸 cudagraph 捕获超上限 → Insufficient_Event_Resources(EL0008)/507903，TP2
+        启动失败
+      category: interrupt
+      tags:
+      - 310p
+      - cudagraph
+      - event-resource
+      - graph-capture
+      - startup-failure
+      - hardware-limit
+      platforms:
+      - 310P
+      compat: vllm-ascend <=0.23.0rc1; torch-npu <=2.10.0.post2; cann 9.1.0-beta.1
+      confidence:
+        score: 0.3
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - Atlas 300I DUO（310P3）+ vllm-ascend v0.23.0rc1-310p 镜像，Qwen3-14B-W8A8SC TP2 启动失败；同命令 TP1 正常
+      - FULL_DECODE_ONLY + cudagraph_capture_sizes [1,2,4,8,16] 捕获进行到第 5 张（80%）时崩溃
+      - 'Insufficient_Event_Resources(EL0008): The event resources are insufficient / Create capture event
+        failed（error=117571609 / runtime result 207007）→ capture_end error code is 507903'
+      - --enforce-eager 后 TP2 正常启动（含 --enforce-eager 的启动命令可复现成功）
+      quickly_check:
+        primary:
+          command: grep 'Insufficient_Event_Resources' {{log_path}}
+          expected: regex:Insufficient_Event_Resources\(EL0008\)
+        fallback:
+          command: grep -E '507903|capture event failed|no event resource' {{log_path}}
+          expected: regex:507903
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12989.yaml
+      hash: 288000ac4682
+    - id: VLLM-ASC-13050
+      title: 310P 上推理请求触发 IndexPut aicpu exception（errorCode=0x2a, runtime 507018, stream phase=SCHEDULE），0.23.0
+        rc 镜像复现、POC 镜像正常、0.23.0 正式版修复
+      category: interrupt
+      tags:
+      - 310p
+      - aicpu
+      - indexput
+      - driver
+      - crash
+      platforms:
+      - 310P
+      compat: vllm-ascend <0.23.0
+      confidence:
+        score: 0.6
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - 310P 双芯（300I Duo）+ Qwen3.6-35B-A3B-w8a8，TP=2 服务启动成功，第一条推理请求即崩溃
+      - plog：aicpu exception, kernelName=IndexPut, errorCode=0x2a, runtime result=507018, stream phase=SCHEDULE
+      - POC 镜像（dev-26.0.0.poc）同参数可正常启动推理；nightly-releases-v0.23.0-310p-openeuler / v0.22.1rc1-310p 复现
+      - 部分用户修改 vllm_ascend/_310p/ops/fla/gdn_310.py 后纯文本请求可恢复（图片/超长输入仍可能报错，未官方验证）
+      quickly_check:
+        primary:
+          command: grep 'kernelName=IndexPut' {{log_path}}
+          expected: regex:.*kernelName=IndexPut, errorCode=0x2a
+        fallback:
+          command: grep -iE 'aicpu exception|507018|E39999' {{log_path}}
+          expected: regex:.*(aicpu exception|507018|E39999)
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13050.yaml
+      hash: 6f8671d70468
+    - id: VLLM-ASC-13508
+      title: main2main Gluon 兼容 stub 只把 triton.experimental.gluon 叶子模块塞入 sys.modules，父模块 triton.experimental
+        缺失，x86_64 导入即 ModuleNotFoundError
+      category: interrupt
+      tags:
+      - import-failure
+      - gluon
+      - triton
+      - x86_64
+      - sys-modules-stub
+      - startup-failure
+      - packaging
+      platforms:
+      - A2-910B
+      compat: vllm-ascend 0.26.0.dev; triton 3.2.0
+      confidence:
+        score: 0.6
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - 'x86_64 + A2(910B) main2main 开发版，vLLM 启动导入即失败：ModuleNotFoundError: No module named ''triton.experimental''（vllm/triton_utils/__init__.py
+        在 HAS_TRITON 时无条件 from triton.experimental import gluon）'
+      - 架构相关：aarch64 不报错——triton-ascend 3.2.1 按架构生成依赖（x86_64 → triton==3.2.0 无 experimental 包；arm → triton==3.5.0
+        含真实 Gluon），掩盖了 stub 不完整
+      - 最小复现：import vllm_ascend 后 'triton.experimental' in sys.modules == False 而 'triton.experimental.gluon'
+        == True；from triton.experimental import gluon 仍抛 ModuleNotFoundError
+      - vllm_ascend/__init__.py（L24-38）兼容 stub 已执行（问题不是插件没加载）
+      quickly_check:
+        primary:
+          command: grep "No module named 'triton.experimental'" {{log_path}}
+          expected: regex:No module named 'triton\.experimental'
+        fallback:
+          command: grep -Ei 'triton.experimental|gluon' {{log_path}}
+          expected: regex:triton\.experimental
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13508.yaml
+      hash: f3a13b0c90f2
+    - id: VLLM-ASC-13710
+      title: pcp_utils.generate_pcp_mtp_input 用 np.array_split 按 cu_num_tokens 切分请求时出现空段，某请求漏加 MTP draft
+        追加，req_indices_mtp(256) 与 positions_mtp(260) 长度不一致 → block_table.py:272 slot_mapping 赋值 shape
+        不匹配崩溃
+      category: interrupt
+      tags:
+      - dcp
+      - mtp
+      - pcp-utils
+      - slot-mapping
+      - shape-mismatch
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <0.26.0
+      confidence:
+        score: 0.6
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - 'PD 分离 + DCP=8 + MTP(num_speculative_tokens=5) 下 decode worker 崩溃：RuntimeError: The expanded size
+        of the tensor (256) must match the existing size (260)'
+      - 触发条件：长 prompt（~26k tokens, num_prompt_blocks 200-220）+ 高并发（cc=102）；短 prompt（~20k, 195 blocks,
+        cc=96）不触发
+      - 栈在 block_table.py:272 compute_slot_mapping_draft（由 generate_pcp_mtp_input 的 req_indices_mtp 传入）
+      - 崩溃时 KV cache usage 6.7%、num_running_reqs=26（未超 max_num_seqs=32）——非 OOM
+      quickly_check:
+        primary:
+          command: grep 'expanded size of the tensor' {{log_path}}
+          expected: regex:.*The expanded size of the tensor \(256\) must match the existing size \(260\)
+        fallback:
+          command: grep -E '256.*260|generate_pcp_mtp_input|slot_mapping_draft' {{log_path}}
+          expected: regex:.*(256.*260|generate_pcp_mtp_input|slot_mapping_draft)
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13710.yaml
+      hash: f38754c65a70
+    - id: VLLM-ASC-13934
+      title: v0.26 新增 AscendSFAIndexerCacheSpec 使 1 个 KV cache group 拆成 2 个 Mooncake transfer group，而
+        vllm 侧 remote_block_ids 仍按 1 组索引，D 侧 _get_kv_split_metadata 访问 remote_block_ids[1] 越界崩溃
+      category: interrupt
+      tags:
+      - pd-separation
+      - mooncake
+      - kv-transfer
+      - dcp
+      - mtp
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <0.26.0
+      confidence:
+        score: 0.6
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - 'v0.26.0rc PD 分离 + DCP=8 + MTP(num_speculative_tokens=5) 下 decode worker 崩溃：IndexError: list index
+        out of range，栈在 mooncake_connector.py:_get_kv_split_metadata → meta.remote_block_ids[group_idx]'
+      - '日志确认：Split KV cache manager group 0 into 2 Mooncake transfer groups by KV spec: [(''AscendSFAIndexerCacheSpec'',
+        1, 1), (''AscendMLAAttentionSpec'', 1, 1)]'
+      - GLM-5.2 w4a8，20k-40k 长 prompt 压测 ~30%（306/1000）稳定复现；崩溃时 kv_cache_usage=0.01 非 OOM
+      - v0.23 同配置不崩（无 AscendSFAIndexerCacheSpec；两版本 mooncake_connector.py 3784 行 0 diff）
+      quickly_check:
+        primary:
+          command: grep 'Split KV cache manager group' {{log_path}}
+          expected: regex:.*Split KV cache manager group \d+ into \d+ Mooncake transfer groups
+        fallback:
+          command: 'grep -E ''_get_kv_split_metadata|IndexError: list index out of range'' {{log_path}}'
+          expected: 'regex:.*(_get_kv_split_metadata|IndexError: list index out of range)'
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13934.yaml
+      hash: 8ce19bafedb3
+    - id: VLLM-ASC-13964
+      title: Decode DP rank 静默停滞：async scheduling 下 num_computed_tokens 计入未处理输出，SWA/chunked-local KV block
+        被提前剪枝复用
+      category: interrupt
+      tags:
+      - silent-hang
+      - decode-liveness
+      - swa
+      - chunked-local-kv
+      - async-scheduling
+      - pd-disaggregation
+      - mooncake
+      - mtp
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <=0.23.0rc1; torch-npu <=2.10.0.post2
+      confidence:
+        score: 0.6
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - DeepSeek-V4-Flash W8A8 + one-token MTP + Mooncake P/D 分离 + async-scheduling + FULL_DECODE_ONLY（decode
+        DP=16/TP=1/EP）
+      - decode 各 DP rank 静默停滞：vllm:num_requests_running 保持 >0，而 generation_tokens_total / request 完成数停止增长，健康检查仍
+        200
+      - 无 EngineDeadError / traceback / HCCL timeout；router 存活但把新请求逐渐全部路由到唯一存活的 rank
+      - '部分 rank 数小时后自愈（DP5 约 2.5h、DP14 约 3h），其余持续停滞；同配置曾与 #12725/#13648/#13826 混淆'
+      quickly_check:
+        primary:
+          command: grep -E 'num_requests_running|generation_tokens_total|request_generation_tokens_count'
+            {{metrics_path}}
+          expected: regex:vllm:num_requests_running
+        fallback:
+          command: grep -Ei 'silent|liveness|stall' {{log_path}}
+          expected: regex:silent liveness failure
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13964.yaml
+      hash: 8a482cb83a10
+    - id: VLLM-ASC-14166
+      title: A5 950DT 启动 DeepSeek-V4-Flash-0731 报 MoeInitRoutingV3 找不到二进制（torch-npu 需 >=2.10.0.post4）
+      category: interrupt
+      tags:
+      - a5
+      - torch-npu
+      - moe
+      - missing-operator
+      - version-compat
+      platforms:
+      - A5-950
+      compat: torch-npu <2.10.0.post4
+      confidence:
+        score: 0.1
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - A5 950DT 启动 deepseek v4 flash 0731 报 MoeInitRoutingV3 算子错误，profile_run 阶段崩溃
+      - Cannot find binary for op MoeInitRoutingV3 / launch failed for MoeInitRoutingV3, errno:561000（Execution_Error
+        EZ1009）
+      - 安装 torch-npu 2.10.0.post4 后，已经不报 aclnnMoeInitRoutingV3 算子的错误
+      quickly_check:
+        primary:
+          command: grep 'Cannot find binary for op MoeInitRoutingV3' {{log_path}}
+          expected: regex:.*Cannot find binary for op MoeInitRoutingV3
+        fallback:
+          command: grep -E 'MoeInitRoutingV3.*561000|errno:561000' {{log_path}}
+          expected: regex:.*(MoeInitRoutingV3|561000)
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-14166.yaml
+      hash: 0d7b68a9ab57
+    - id: VLLM-ASC-14320
+      title: DCP replicated block_table 越界：v0.26 PCP 移除(#12592)改 total_cp_size 后 block id 超单 rank k_cache
+        容量，LightningIndexerQuant MTE 越界崩溃
+      category: interrupt
+      tags:
+      - dcp
+      - block-table
+      - k-cache-capacity
+      - lightning-indexer
+      - mte
+      - aicore-exception
+      - glm5
+      - pd-disaggregation
+      platforms:
+      - A3-910C
+      compat: vllm-ascend 0.26.0rc; torch-npu <=2.5.1
+      confidence:
+        score: 0.6
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - PD 分离（2P+2D）GLM-5.2-w4a8 + DCP(decode-context-parallel-size=8) + MTP 投机，持续压测下 decode EngineCore
+        崩溃
+      - EZ9999 aicore exception：MTE accesses an invalid GM address（errcode 0x800000 / error code 507015
+        / retCode=0x26），plog fault kernel=LightningIndexerQuant
+      - 8 个 decode worker 在 5ms 窗口内同时报 EZ9999（collective 同步点）；D0 head 侧级联 glibc heap corruption / EngineDeadError
+      - 负载相关：num=4/300 不复现，num=1000 cc=64 rr=1.8 在 ~400-532 请求崩溃；v0.23 同配置不复现
+      quickly_check:
+        primary:
+          command: grep 'MTE accesses an invalid GM address' {{log_path}}
+          expected: regex:MTE accesses an invalid GM address
+        fallback:
+          command: grep -E 'LightningIndexerQuant|507015|EZ9999' {{log_path}}
+          expected: regex:LightningIndexerQuant
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-14320.yaml
+      hash: a42377592e77
+    other:
+    - id: VLLM-ASC-12983
+      title: 310P MTP 与图模式无法同时开启：镜像缺 free-mask 算子，pageattention-splitfuse 变化 shape mask 不入图
+      category: other
+      tags:
+      - 310p
+      - mtp
+      - cudagraph
+      - free-mask
+      - cann-version
+      platforms:
+      - 310P
+      compat: vllm-ascend =0.23.0rc1-310p-openeuler
+      confidence:
+        score: 0.3
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - v0.23.0rc1-310p-openeuler 镜像 310P 上 MTP 与图模式无法同时开启，启动报错（Qwen3.6-27B qwen3_5_mtp）
+      - 'RuntimeError: NPUModelRunner init failed ... copy_between_host_and_device_opapi ... aclrtMemcpy,
+        error code is 107030'
+      - Not allow to synchronize captured-stream, stream_id=12 / rtStreamSynchronize execution failed,
+        reason=stream is captured（107027）
+      - 去掉 MTP 相关参数可以成功启动，但速度只有 20 token/s 左右
+      quickly_check:
+        primary:
+          command: 'grep ''NPU function error: aclrtMemcpy, error code is 107030'' {{log_path}}'
+          expected: 'regex:.*NPU function error: aclrtMemcpy, error code is 107030'
+        fallback:
+          command: grep -E 'synchronize captured-stream|stream is captured' {{log_path}}
+          expected: regex:.*(synchronize captured-stream|stream is captured)
+      file: knowledge/inference/vllm-ascend/other/VLLM-ASC-12983.yaml
+      hash: 48f4f1a206fa
+    - id: VLLM-ASC-13086
+      title: vllm-ascend 0.14.0rc1 不支持 A5(950) 芯片：check_ascend_device_type 断言失败，需升级最新/rc 版本
+      category: other
+      tags:
+      - a5
+      - platform-support
+      - version-matrix
+      - check-device-type
+      - wontfix
+      platforms:
+      - A5-950
+      compat: vllm-ascend <=0.14.0rc1
+      confidence:
+        score: 0.1
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - vllm-ascend 0.14.0rc1 启动报不支持 950 芯片（A5），服务无法拉起
+      - 'AssertionError: Current device type: AscendDeviceType.A5 does not match the installed version''s
+        device type: AscendDeviceType.A3（check_ascend_device_type）'
+      - '另一处报 ValueError: Unsupported soc_version: AscendDeviceType.A5'
+      - 官方确认：早期版本不支持 Ascend 950，请使用最新版本或 rc 版本
+      quickly_check:
+        primary:
+          command: 'grep ''Unsupported soc_version: AscendDeviceType.A5'' {{log_path}}'
+          expected: 'regex:.*Unsupported soc_version: AscendDeviceType\.A5'
+        fallback:
+          command: 'grep -E ''Current device type: AscendDeviceType\.A5 does not match'' {{log_path}}'
+          expected: 'regex:.*Current device type: AscendDeviceType\.A5 does not match'
+      file: knowledge/inference/vllm-ascend/other/VLLM-ASC-13086.yaml
+      hash: cacc029318a7
+    - id: VLLM-ASC-13329
+      title: DSV4-Flash-0731 是 DSpark 模型无 MTP head：mtp 模式启动报 KeyError 'mtp.0.head.weight'，应改用 dspark
+      category: other
+      tags:
+      - deepseek-v4
+      - dspark
+      - mtp
+      - speculative-decode
+      - model-version
+      platforms:
+      - A2-910B
+      compat: vllm-ascend <0.25.1rc,>=0.25.1rc
+      confidence:
+        score: 0.1
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - nightly-releases-v0.25.1rc-openeuler 版本启动 DeepSeek-V4-Flash-0731-w8a8 的 mtp 模式报错（A2 机器）
+      - 'KeyError: ''mtp.0.head.weight''（vllm_ascend/quantization/modelslim_config.py get_linear_quant_type
+        处）'
+      - '去掉 --speculative-config ''{"method": "mtp", ...}'' 可以正常启动'
+      - '改用 ''{"method": "dspark", "num_speculative_tokens": 7, ...}'' 可以正常加速（接受率 10%~80% 不平均）'
+      - 'older release (v0.22.rc1): ''Is there an issue with the downloaded model weights?'' — same KeyError
+        on MTP load; dspark method requires >=0.25.1rc, so upgrade first, then switch'
+      quickly_check:
+        primary:
+          command: 'grep "KeyError: ''mtp\.0\.head\.weight''" {{log_path}}'
+          expected: 'regex:.*KeyError: ''mtp\.0\.head\.weight'''
+        fallback:
+          command: grep -E 'mtp\.0\.head\.weight|speculative-config' {{log_path}}
+          expected: regex:.*(mtp\.0\.head\.weight|speculative-config)
+      file: knowledge/inference/vllm-ascend/other/VLLM-ASC-13329.yaml
+      hash: 070d9aeb2d31
+    performance:
+    - id: VLLM-ASC-13356
+      title: PD 分离开启 memcache 性能劣化：lookup 与本地 prefix cache 完全重叠（num_external_hit_tokens <= num_computed_tokens）
+      category: performance
+      tags:
+      - memcache
+      - pd-separation
+      - prefix-cache
+      - kv-cache-pool
+      - throughput
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <=0.23.0rc1
+      confidence:
+        score: 0.3
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - PD 分离下开启 memcache（AscendStoreConnector/MultiConnector，backend=memcache）性能劣化：128K 输入序列时 lookup
+        与本地 prefix cache 重叠
+      - 每请求 lookup() 经常命中但 connector 随后 load 了 0 个 token
+      - memcache 命中与本地 prefix cache 完全重叠（num_external_hit_tokens <= num_computed_tokens）时 pool_scheduler
+        算出 need_to_allocate = 0 并返回 (0, False)
+      - 前缀复用 workload 下 memcache 零边际收益、仍付每请求 lookup RPC 开销，吞吐相对'仅本地 prefix cache / 仅 Mooncake'基线回退
+      quickly_check:
+        primary:
+          command: grep 'num_external_hit_tokens <= num_computed_tokens' {{log_path}}
+          expected: regex:.*num_external_hit_tokens <= num_computed_tokens
+        fallback:
+          command: grep -E 'need_to_allocate = 0|memcache.*lookup.*0' {{log_path}}
+          expected: regex:.*(need_to_allocate = 0|lookup.*0)
+      file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-13356.yaml
+      hash: 84f8ab7be324
+    - id: VLLM-ASC-13973
+      title: v0.26 P 节点 prefill 回归：dsa-cp 与共享专家 DP 解耦致共享专家走 fc1 额外两次通信 + SFA DCP block table 宽度用错致 kv_gather_ids
+        冲高（TTFT 7.1x）
+      category: performance
+      tags:
+      - prefill
+      - regression
+      - dcp
+      - sfa
+      - block-table
+      - shared-expert
+      - ttft
+      - glm5
+      platforms: []
+      compat: vllm-ascend 0.26.0rc; torch-npu <=2.10.0.post2
+      confidence:
+        score: 0.6
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - GLM-5.2 w4a8 PD 分离 P 节点（kv_role=kv_producer），v0.23→v0.26 相同 DCP=8/TP=8/EP=32 拓扑下 prefill 吞吐 38811→29911
+        tok/s
+      - TTFT P50 7617ms→54296ms（~7.1x 劣化），QPS 1.69→1.14
+      - profiler（同 P 节点 rank0）：DCP collective 通信量 ~5-6x，step time 非重叠通信占比 1.58%→8.19%；DispatchFFNCombineW4A8
+        单算子 15.2ms→22.6ms ×78 层
+      - 开启 prefix cache 时 SFA DCP replicated/gather metadata 扫宽表，kv_gather_ids 周期性冲高（unique()/host 侧同步成本放大）
+      quickly_check:
+        primary:
+          command: grep -E 'TTFT.*P50|prompt.*tok/s' {{bench_report_path}}
+          expected: 'metric:TTFT P50 <= 20000ms 且 P0 prompt throughput >= 35000 tok/s（v0.23: 7617ms /
+            38811 tok/s；v0.26 回归: 54296ms / 29911 tok/s）'
+        fallback:
+          command: grep -E 'communication|comm' {{profiler_step_trace_csv}}
+          expected: 'metric:step 内非重叠通信占比 < 3%（v0.23: 1.58%；v0.26 回归: 8.19%）'
+      file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-13973.yaml
+      hash: fe7f57f11ae2
+    precision:
+    - id: VLLM-ASC-12642
+      title: triton-ascend 3.2.1 对 [4,256] K 做 head reduction 后接 extract_slice+cos 广播的布局/归约路径生成错误设备代码，square_sums
+        被算成 0 → K RMSNorm variance=0 → K 放大 1000 倍
+      category: precision
+      tags:
+      - triton-ascend
+      - fused-op
+      - rmsnorm
+      - mrope
+      - codegen
+      platforms:
+      - A5-950
+      compat: vllm-ascend <=0.21.0; triton-ascend <3.2.2
+      confidence:
+        score: 0.6
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - 'Ascend 950PR (A5) 上 Qwen3.5-4B (bf16, partial RoPE: rope_dim=64 < head_size=256) 输出错误'
+      - triton_split_qkv_rmsnorm_mrope 融合算子把 K 的 variance 算成 [0,0,0,0]（正确 ~1.05~1.19）→ reciprocal_std=1/sqrt(0+1e-6)=1000，K
+        被异常放大 ~1000 倍
+      - 最小复现：kernel 中加入 orig_qk * cos_tensor 这条后续计算后，编译器为 K RMSNorm 生成另一套设备代码，square_sums 变为 0
+      - triton-ascend 3.2.2 上同代码验证通过（官方确认与 triton-ascend 版本相关）
+      quickly_check:
+        primary:
+          command: grep 'triton_split_qkv_rmsnorm_mrope' {{log_path}}
+          expected: regex:.*triton_split_qkv_rmsnorm_mrope
+        fallback:
+          command: grep -iE 'rmsnorm|variance|reciprocal_std' {{log_path}}
+          expected: regex:(?i).*(rmsnorm|variance|reciprocal_std)
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12642.yaml
+      hash: 61fc4e029c9f
+    - id: VLLM-ASC-12723
+      title: Triton rope 的 sin 缓存偏移用了 pad 后的 rotary dim（rope_dim=192→pad 256，起点错位 32 元素）致 RoPE 退化为 out=in*cos，Q/K
+        范数 ~0.73，DSpark 投机接受率 5.6→3.0
+      category: precision
+      tags:
+      - triton-rope
+      - rotary-embedding
+      - non-power-of-two
+      - dspark
+      - spec-decode
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <=0.23.0
+      confidence:
+        score: 0.6
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - GLM-5.2 DSpark 投机解码（bf16, NeoX, head_dim=rotary_dim=192）在线 accept_len 从 ~5.6 崩到 ~3.0
+      - 同一 rope 对象/worker/输入调 forward_native() 后 accept_len 恢复 5.4~5.5
+      - Q/K post-RoPE 范数比 ~0.73（离线参考 1.000）
+      - 仅 rope_dim 非 2 的幂（192→pad 256）触发；128/256 等 2 的幂形状无影响
+      quickly_check:
+        primary:
+          command: grep -E 'accept_len|Acceptance rate' {{log_path}}
+          expected: regex:accept_len|Acceptance rate
+        fallback:
+          command: grep -iE 'accept_len|norm ratio' {{log_path}}
+          expected: regex:.*(accept_len|norm ratio)
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12723.yaml
+      hash: 0634780f2fe7
+    - id: VLLM-ASC-12957
+      title: PD 分离 P 侧 sfa_v1.py 的 k_pe 经 kv_ag_handle.wait() 后未同步 NPU 流，D 侧 RDMA pull 读到未落盘陈旧 k_pe，PP4
+        首请求乱码
+      category: precision
+      tags:
+      - pd-separation
+      - ascend-direct
+      - rdma
+      - kv-transfer
+      - stream-sync
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <=0.20.2
+      confidence:
+        score: 0.6
+        hits: 0
+        misdiagnoses: 0
+      symptoms:
+      - PD 分离（use_ascend_direct=true RDMA/ADXL）+ PP=4 + DP=8 decode 下，服务拉起后首个请求输出与 prompt 无关的随机乱码
+      - 先发普通请求再发 badcase 不乱码；短 prompt（如 1+1）正常；P 节点改 DP=4（无 PP）不乱码
+      - kvcache 数值比对：V cache 在 PP stage 边界（layer 21/41/61，PREFILL_PP_LAYER_PARTITION=20,20,20,18）突变甚至正负翻转
+      - 关闭 MTP / prefix cache / reasoning parser / 图模式、kvcache 清零、slot mapping=-1 等消融均无法消除
+      quickly_check:
+        primary:
+          command: grep -E '乱码|garbled|badcase' {{log_path}}
+          expected: regex:.*(乱码|garbled|badcase)
+        fallback:
+          command: grep -iE 'garbled|rdma|adxl' {{log_path}}
+          expected: regex:.*(garbled|rdma|adxl)
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12957.yaml
+      hash: 32b5c983c820
