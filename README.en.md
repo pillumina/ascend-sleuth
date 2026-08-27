@@ -61,6 +61,20 @@ Any source — a local agent session, a Kimi chat, hand-written notes, a wiki ex
 
 The agent extracts symptoms and root cause, proposes a namespace for confirmation, produces a YAML draft and postmortem with redaction applied, and lands them in the review queue. You can also just say "capture this one" after a `/skill:diagnose` finishes — the agent triggers it automatically.
 
+## Knowledge acquisition
+
+Once the skills are installed, the knowledge base takes one of three forms — pick by how you work. The install-command difference is `-g` (git mode) vs `-s` (skill selection):
+
+| Form | Install command | Result | Best for |
+|---|---|---|---|
+| **Accumulate your own** (skills only) | `npx skills add -s diagnose -s to-postmortem -s knowledge-groom` | Installs `skills/` methodology only; `knowledge/` stays empty | New teams, different problem domains, private knowledge |
+| **Consume existing** (full repo) | `npx skills add -g pillumina/ascend-sleuth` (git mode pulls the whole repo, including `knowledge/`) | Use upstream-verified cases directly, keep accumulating | Existing corpus, overlapping problem domain, want reuse |
+| **Tailored surface** (sparse checkout) | `git clone` or `-g` first, then `git sparse-checkout` with a directory whitelist | Keep only the parts you need (e.g. `vllm-ascend` cells + `common/`) | Once the corpus grows, bandwidth/storage-constrained, only your framework's knowledge |
+
+All three share the same skills and machinery, and they compose: an accumulating team can optionally feed sanitized cases back upstream, thickening the public corpus (see [Deployment modes](#deployment-modes), framework fork). Exact `-g`/`-s` behavior may differ across installer versions — `npx skills add --help` is authoritative.
+
+**Sparse checkout caveat**: `_index.yaml` is a generated artifact covering the full corpus. After a sparse checkout, rerun `python3 scripts/build_index.py` to rebuild the index — it indexes only the cells you pulled, and retrieval stays within your knowledge surface. `common/` is mandatory (triage fallback depends on it) and must not be dropped from the whitelist. Design rationale in [ADR-0005](docs/adr/0005-knowledge-consumption-split.md).
+
 ## The four skills
 
 | Skill | Purpose | When to use | Invocation |
@@ -180,20 +194,6 @@ CODEOWNERS.example           enable once owners are named
 ```
 
 Before changing a skill itself, run the golden regression suite per [docs/eval.md](docs/eval.md) and confirm that scenarios which previously matched still do.
-
-## Where knowledge comes from
-
-Once the skills are installed, the knowledge base takes one of three forms — pick by how you work. The install-command difference is `-g` (git mode) vs `-s` (skill selection):
-
-| Form | Install command | Result | Best for |
-|---|---|---|---|
-| **Accumulate your own** (skills only) | `npx skills add -s diagnose -s to-postmortem -s knowledge-groom` | Installs `skills/` methodology only; `knowledge/` stays empty | New teams, different problem domains, private knowledge |
-| **Consume existing** (full repo) | `npx skills add -g pillumina/ascend-sleuth` (git mode pulls the whole repo, including `knowledge/`) | Use upstream-verified cases directly, keep accumulating | Existing corpus, overlapping problem domain, want reuse |
-| **Tailored surface** (sparse checkout) | `git clone` or `-g` first, then `git sparse-checkout` with a directory whitelist | Keep only the parts you need (e.g. `vllm-ascend` cells + `common/`) | Once the corpus grows, bandwidth/storage-constrained, only your framework's knowledge |
-
-All three share the same skills and machinery, and they compose: an accumulating team can optionally feed sanitized cases back upstream, thickening the public corpus (see [Deployment modes](#deployment-modes), framework fork). Exact `-g`/`-s` behavior may differ across installer versions — `npx skills add --help` is authoritative.
-
-**Sparse checkout caveat**: `_index.yaml` is a generated artifact covering the full corpus. After a sparse checkout, rerun `python3 scripts/build_index.py` to rebuild the index — it indexes only the cells you pulled, and retrieval stays within your knowledge surface. `common/` is mandatory (triage fallback depends on it) and must not be dropped from the whitelist. Design rationale in [ADR-0005](docs/adr/0005-knowledge-consumption-split.md).
 
 ## Deployment modes
 

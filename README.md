@@ -61,6 +61,20 @@ agent 路由到 `training/mindspeed-llm/` 并匹配 case。命中时给出结构
 
 agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML 草稿与 postmortem 并完成脱敏，产出到待审队列。也可以在一次 `/skill:diagnose` 结束后直接说"沉淀一下这次"，agent 会自动触发。
 
+## 知识获取
+
+装完 skill 之后，知识库有三种形态——按你的使用方式选。安装命令的差异在 `-g`（git 模式）和 `-s`（skill 选择）：
+
+| 形态 | 安装命令 | 结果 | 适合谁 |
+|---|---|---|---|
+| **自积累**（只装 skill） | `npx skills add -s diagnose -s to-postmortem -s knowledge-groom` | 只装 `skills/` 方法论，`knowledge/` 不装（为空） | 新团队、问题域不同、知识要私有 |
+| **消费现成**（带知识库） | `npx skills add -g pillumina/ascend-sleuth`（git 模式拉整个仓库，含 `knowledge/`） | 直接用上游验证过的 case，也可继续沉淀 | 已有沉淀、问题域重叠、想复用 |
+| **定制知识面**（稀疏拉取） | 先 `git clone` 或 `-g` 拉取，再 `git sparse-checkout` 按目录白名单收窄 | 只保留需要的部分（如 `vllm-ascend` 格子 + `common/`） | 知识库长大后、带宽/存储受限、只要自己框架的知识 |
+
+三种形态共用同一套 skill 与机制，且可递进：自积累的团队脱敏后可选回馈上游，让公开库渐厚（见 [部署模式](#部署模式) 的框架式）。`-g` 与 `-s` 的确切行为以 `npx skills add --help` 为准——不同版本的安装器对"仓库整体 vs 指定 skill"的粒度有差异。
+
+**稀疏拉取注意**：`_index.yaml` 是生成物、对应全量知识。稀疏拉取后需重跑 `python3 scripts/build_index.py` 重建索引——它只索引你拉到的格子，检索也只在你的知识面内进行。`common/` 是必拉项（triage 兜底依赖它），不可从白名单省略。设计论证见 [ADR-0005](docs/adr/0005-knowledge-consumption-split.md)。
+
 ## 四个 skill
 
 | Skill | 作用 | 何时使用 | 触发方式 |
@@ -180,20 +194,6 @@ CODEOWNERS.example           owner 落实后启用
 ```
 
 修改 skill 本身之前，先按 [docs/eval.md](docs/eval.md) 跑一遍 golden 回归套件，确认原本能正确命中的场景没有被改坏。
-
-## 知识从哪来
-
-装完 skill 之后，知识库有三种形态——按你的使用方式选。安装命令的差异在 `-g`（git 模式）和 `-s`（skill 选择）：
-
-| 形态 | 安装命令 | 结果 | 适合谁 |
-|---|---|---|---|
-| **自积累**（只装 skill） | `npx skills add -s diagnose -s to-postmortem -s knowledge-groom` | 只装 `skills/` 方法论，`knowledge/` 不装（为空） | 新团队、问题域不同、知识要私有 |
-| **消费现成**（带知识库） | `npx skills add -g pillumina/ascend-sleuth`（git 模式拉整个仓库，含 `knowledge/`） | 直接用上游验证过的 case，也可继续沉淀 | 已有沉淀、问题域重叠、想复用 |
-| **定制知识面**（稀疏拉取） | 先 `git clone` 或 `-g` 拉取，再 `git sparse-checkout` 按目录白名单收窄 | 只保留需要的部分（如 `vllm-ascend` 格子 + `common/`） | 知识库长大后、带宽/存储受限、只要自己框架的知识 |
-
-三种形态共用同一套 skill 与机制，且可递进：自积累的团队脱敏后可选回馈上游，让公开库渐厚（见 [部署模式](#部署模式) 的框架式）。`-g` 与 `-s` 的确切行为以 `npx skills add --help` 为准——不同版本的安装器对"仓库整体 vs 指定 skill"的粒度有差异。
-
-**稀疏拉取注意**：`_index.yaml` 是生成物、对应全量知识。稀疏拉取后需重跑 `python3 scripts/build_index.py` 重建索引——它只索引你拉到的格子，检索也只在你的知识面内进行。`common/` 是必拉项（triage 兜底依赖它），不可从白名单省略。设计论证见 [ADR-0005](docs/adr/0005-knowledge-consumption-split.md)。
 
 ## 部署模式
 
