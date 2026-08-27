@@ -24,11 +24,13 @@ diagnosis:
 
 ## 平台速记（详见各 platforms/*.md）
 
+> ⚠️ **以下三条均标记 `[unverified]`**——`knowledge/platforms/{a2,a3,a5}.md` 没有引用任何外部源（白皮书 / 官方手册 / issue 验证），全部为作者声明。agent 在诊断输出中引用这些事实时，**必须保留 unverified 标记或改写为假设**，不允许以中性陈述方式复述。验证通道（ADR-0007）是 open work item。
+
 | 平台 | 芯片 | 关键差异 |
 |---|---|---|
-| A2 | 910B | HCCL 行为与 A3/A5 完全不同；无 `HCCL_BUFFSIZE`；FP8 不支持 |
-| A3 | 910C | HCCL 与 A5 近似；BF16 主力 |
-| A5 | 950 | FP8 精度问题只在 A5 出现；大规模 EP 通信瓶颈 |
+| A2 | 910B | `[unverified]` HCCL 行为与 A3/A5 完全不同；无 `HCCL_BUFFSIZE`；FP8 不支持 |
+| A3 | 910C | `[unverified]` HCCL 与 A5 近似；BF16 主力 |
+| A5 | 950 | `[unverified]` FP8 精度问题只在 A5 出现；大规模 EP 通信瓶颈 |
 
 ## 检测当前平台
 

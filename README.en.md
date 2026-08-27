@@ -73,7 +73,7 @@ Once the skills are installed, the knowledge base takes one of three forms — p
 
 All three share the same skills and machinery, and they compose: an accumulating team can optionally feed sanitized cases back upstream, thickening the public corpus (see [Deployment modes](#deployment-modes), framework fork). Exact `-g`/`-s` behavior may differ across installer versions — `npx skills add --help` is authoritative.
 
-**Sparse checkout caveat**: `_index.yaml` is a generated artifact covering the full corpus. After a sparse checkout, rerun `python3 scripts/build_index.py` to rebuild the index — it indexes only the cells you pulled, and retrieval stays within your knowledge surface. `common/` is mandatory (triage fallback depends on it) and must not be dropped from the whitelist. Design rationale in [ADR-0005](docs/adr/0005-knowledge-consumption-split.md).
+**Sparse checkout caveat**: `_index.yaml` is a generated artifact covering the full corpus. After a sparse checkout, rerun `python3 scripts/build_index.py` to rebuild the index — it indexes only the cells you pulled, and retrieval stays within your knowledge surface. `common/` is **mandatory by design** (triage fallback namespace + cross-framework authoritative records, per ADR-0005); **it is currently empty** (only `.gitkeep` — awaiting groom-extracted cross-framework records). Sparse-checkout should still keep the `common/` directory placeholder so future content does not require a whitelist change. Design rationale in [ADR-0005](docs/adr/0005-knowledge-consumption-split.md).
 
 ## The four skills
 

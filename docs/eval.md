@@ -14,7 +14,7 @@
 
 ## 怎么跑（v1 手动）
 
-**当前覆盖**：套件共 2 条 fixture——`SGL-PD-HEAP-001`（可运行，源自真实 case）与 `example`（格式演示，目标 case 未播种，暂不可运行）。当前规模主要验证 replay 流程与输出断言；路由与匹配的判别力随播种批和 M3（fixture 自动生成）到来。本机制在 git 门控中的强度是"约定"：CI 不执行 replay，依赖改动人自觉执行（见 [git-workflow.md](git-workflow.md) 门控映射表；脚本化并入 CI 是 roadmap 事项 M2）。
+**当前覆盖**：套件规模按周 append 在 `docs/metrics.md`（搜 "golden 套件"）；本节只讲结构与机制——fixture 形态两类：①**真实 case 投影**（可运行，来自已解决 postmortem，脱敏后入仓；多数真实 fixture 是这种），②**构造示例**（`example.fixture.yaml` 等，演示格式 + 困难路径，按需保留）。本机制在 git 门控中的强度是"约定"：CI 不执行 replay，依赖改动人自觉执行（见 [git-workflow.md](git-workflow.md) 门控映射表；脚本化并入 CI 是 roadmap 事项 M2）。路由与匹配的判别力随真实 fixture 规模扩展。
 
 1. 改动 skill 之前，跑一遍 `eval/golden/*.yaml`，记录基线：哪些条目通过；
 2. 实施改动；

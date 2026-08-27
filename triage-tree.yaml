@@ -6,6 +6,12 @@
 #
 # <detected_framework>：工程师提供的框架（/diagnose 从客户提供的信息/报错判断，不跑 pip list）。
 # 分支数 ≤ 30。框架检测失败时只用 common/。
+#
+# ⚠️ common/ 当前实际状态：仅 .gitkeep，无任何 case 文件（跨框架权威记录待 groom 从多
+# namespace 同根因 case 中提炼，触发条件见 skills/knowledge-groom/SKILL.md）。
+# 因此 search_namespaces 中的 common/ 这一项目前等价于"no-op + 走 Tier 3 fallback"；
+# README + ADR-0005 的"common/ 必拉"措辞指的是**设计承诺**，**不是当前可消费的资产**。
+# agent 在路由到 common/ 后应当直接进入 Tier 3，不要假装该 namespace 有内容可检索。
 
 branches:
   - id: training_interrupt
