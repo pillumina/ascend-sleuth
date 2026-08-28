@@ -1,0 +1,21 @@
+id: a5-ai-subsystem-compute-spec
+type: platform-fact
+title: A5 AI 子系统数量与算力规格（Cube/Vector 数量 + TFLOPS 表）
+summary: 昇腾950 共 36 个 AI 子系统（各 1 Cube + 2 Vector）；Cube 数量 950PR 32/28、950DT 36/32/28；算力随精度格式分级
+
+sources:
+  - type: official-doc
+    url: "昇腾950 NPU 架构白皮书（华为技术有限公司），本地归档 ~/ascend/昇腾950 NPU架构白皮书.pdf"
+    version: "2026-06-04（PDF metadata creationDate）"
+    fetched_at: 2026-08-28
+# 提取自 PDF p.13-14 表 3-1（pymupdf 直接提取核验）
+
+applies_to:
+  platforms: [A5-950]
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  claim: "昇腾950PR/950DT 均含 36 个基于第三代 DaVinci 架构的 AI 子系统（每个 AI 子系统 = 1 个 Cube Core + 2 个 Vector Core）；Cube Core 数量 950PR 为 32/28、950DT 为 36/32/28（不同衍生规格）；Vector Core 数量 950PR 为 64/56、950DT 为 72/64/56。Cube+Vector 总算力（TFLOPS）：MXFP4 950PR 1784/1561、950DT 2007/1784/1561；HiF8/MXFP8/FP8 950PR 919/804、950DT 1034/919/804；INT8（TOPS）同 FP8 档；BF16/FP16 950PR 486/425、950DT 547/486/425；TF32 950PR 243/212、950DT 273/243/212。Vector 单核算力 FP16/BF16 54/47（PR）vs 60/54/47（DT），FP32 27/23 vs 30/27/23。"
+  evidence: "白皮书 §3 表 3-1 规格表（PDF p.13-14）：『36 个基于第三代Davinci 架构的AI 子系统，每个AI 子系统包括1 个Cube Core 和2 个Vector Core』及各档算力数值。已对 PDF 原文核验。"
