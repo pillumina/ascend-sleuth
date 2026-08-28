@@ -27,6 +27,7 @@ disable-model-invocation: true
      - `new_pattern` → 结构化 + 语义校验 → 升格 `knowledge/<ns>/`。校验失败标 `needs-structurer-review`，语义不明标 `needs-human-review`
    - inbox 停留 >2 周的条目在摘要里标红（队列不是档案）
    - **建议与决定分离**：预分诊只排序注意力，accept / adjust / reject 由人
+1.5. **case 分类校验（三分类强制，废弃 other）**：审核/升格 case 时校验 `category` ∈ {interrupt, precision, performance}——**不存在 other**。发现 other 的 case → 重新分类（按症状性质归入三分类：启动失败/崩溃/资源→interrupt，输出错误/乱码/数值异常→precision，吞吐/延迟→performance）；分不进去 → 标 `needs-human-review`，由 owner 定夺，不静默保留 other。reason：other 是分类残余，实践表明残余全部可归入三分类（2026-08 重分类 5 条验证）；保留 other 会让路由层永远无法到达这些 case（triage-tree 无 other 分支）。
 2. **引用完整性校验**:扫所有 case 的 `references`,检查指向真实存在的文件和锚点。悬挂引用进变更摘要（自演化系统的“坏账”，不校验会静默累积）。
 3. **值重复检测**：框架 case 的 `expected`/`fix_on_mismatch` 是否硬编码了 `common/` 权威记录拥有的值？是 → 标 must-fix，要求改成引用。
 4. **置信度重算**：从 `hits`/`misdiagnoses`/`last_hit` 重算每条 case 的 `confidence.score`（按时间衰减）。**新升格的 case 初始 score 不设 0**——按 to-postmortem 标的 `confidence`（人的调查质量判断）设初始值：**high→0.6、medium→0.3、low→0.1**（Beta 先验超参 $(\alpha,\beta)$ 的实例化；参数治理见 roadmap 待定池，理论推导见 docs/design-theory.md §4.1——该文档为可选论证层，本参数为执行值）。score=0 意味着新 case 永远排候选最后，对 5 天详查的高质量 case 不合理。

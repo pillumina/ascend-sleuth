@@ -57,6 +57,21 @@ branches:
       - ["serving.*crash", "engine.*error"]
       - ['ErrCode=\d+', 'EE9999', 'rtStream\w*.*fail', 'aclrt\w+.*fail']   # 错误码型签名（评估 0001 §四.2：12983 型靠退化兜底的缺口）
       - ['internal error', '\babort\b', '\bcrash\b', '\bdied\b']
+      - ["failed to start", "cannot start", "unable to start", "启动失败", "service.*start.*fail"]   # 启动失败类（10610/11208/13508/9167 等）
+      - ["ModuleNotFoundError", "ImportError", "KeyError", "AttributeError", "RuntimeError", "AssertionError"]   # 启动期异常类
+    search_namespaces:
+      - inference/<detected_framework>/
+      - common/
+    fallback: Tier 3
+
+  - id: inference_precision
+    category: precision
+    symptoms:
+      - ["garbled", "乱码", "output.*wrong", "输出错误", "输出异常"]
+      - ["字符重复", "character.*repeat", "重复输出"]
+      - ["accept.*rate.*drop", "accept_len.*下降", "speculative.*wrong"]
+      - ["batch.*invariant", "deterministic", "非确定"]
+      - ['\bNAN\b', '\bNaN\b', "loss.*nan", '\binf\b']      # 推理侧精度（输出含 NaN/Inf）
     search_namespaces:
       - inference/<detected_framework>/
       - common/

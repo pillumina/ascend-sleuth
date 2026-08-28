@@ -36,7 +36,7 @@ Five skills in `skills/<name>/SKILL.md`, following the [Agent Skills](https://ag
 
 ### Reference layer (prior knowledge)
 
-`references/` holds prior knowledge (facts + methodologies independent of any specific incident), parallel to cases:
+`references/` holds prior knowledge (facts + methodologies independent of any specific incident), parallel to cases. **Layer position: reference is the 2.5-th layer — auxiliary lookup after a case candidate hits, NOT a fourth retrieval tier** (never participates in candidate routing/filtering; diagnose phase 2.5 loads it on demand):
 
 - **Two organization forms** (organization unit = verification unit): dataset tables (error-code — one family per file, e.g. `errors/cann-runtime.yaml` holds the 507xxx series) vs independent entries (platform-fact / tool / command-side-effect / methodology).
 - **Lifecycle**: `status: draft` → PR review → `active`. Diagnose phase 2.5 loads **active only** — unreviewed content never enters diagnostic context. Revision of active content is `kb/high-risk` (dual sign-off); degradation signals (low resolve-rate, stale `last_verified`, dead sources) come from observability + groom.

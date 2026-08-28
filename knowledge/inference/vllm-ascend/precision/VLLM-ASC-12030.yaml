@@ -8,7 +8,7 @@ cases:
   - id: VLLM-ASC-12030
     title: "vllm-ascend 0.20 + GLM-5.1 w8a8 910C PD 分离：特定请求（function-calling）流式响应经常出现单词最后 1 个字符重复，非流式正常——GLM5 流式 tool-call 解析器 glm4_moe_tool_parser.py 解析缺陷，0.23.0 已修复"
 
-    category: other
+    category: precision
     tags: [glm5, streaming, tool-call, glm4_moe_tool_parser, pd-separation]
 
     platforms: ["A3-910C"]
