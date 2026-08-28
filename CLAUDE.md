@@ -38,7 +38,7 @@ Five skills in `skills/<name>/SKILL.md`, following the [Agent Skills](https://ag
 
 `references/` holds prior knowledge (facts + methodologies independent of any specific incident), parallel to cases. **Layer position: reference is the 2.5-th layer — auxiliary lookup after a case candidate hits, NOT a fourth retrieval tier** (never participates in candidate routing/filtering; diagnose phase 2.5 loads it on demand):
 
-- **Two organization forms** (organization unit = verification unit): dataset tables (error-code — one family per file, e.g. `errors/cann-runtime.yaml` holds the 507xxx series) vs independent entries (platform-fact / tool / command-side-effect / methodology).
+- **Two organization forms** (organization unit = verification unit): dataset tables (error-code / fault-pattern / env-var-table — one family/domain/module per file, e.g. `errors/ge.yaml` holds the E1xxxx family) vs independent entries (fact: platform-fact / software-fact / tool / command-side-effect; flow: methodology).
 - **Lifecycle**: `status: draft` → PR review → `active`. Diagnose phase 2.5 loads **active only** — unreviewed content never enters diagnostic context. Revision of active content is `kb/high-risk` (dual sign-off); degradation signals (low resolve-rate, stale `last_verified`, dead sources) come from observability + groom.
 - **Clustering rules**: family division follows source; append-don't-create (new error code goes into the existing family table); relate-don't-merge (theme aggregation via `tags`/`related_references`, not file merging).
 - **No graph store** — relations are light single-hop, lexically expressible; graph algorithms (if ever needed for v2 trace mining) stay in offline tooling memory.
@@ -59,7 +59,7 @@ Version matching is **soft**: compat mismatch downgrades confidence but never ha
 
 ### Platform dispatch
 
-Platform differences are **field-level** within cases, not separate cases. A single case can have multiple `diagnosis` blocks keyed by `platforms` (e.g. `A2-910B`, `A3-910C`, `A5-950`); a case with no `platforms` field is treated as cross-platform. Platform background docs were abolished (agent-generated, zero external sources) — platform facts belong in the reference layer (`references/platform-facts/`, populated via to-reference with real sources). Until that layer has content, **no platform prior is injected into diagnostic context**: each case carries its own platform evidence in its `platforms`-keyed diagnosis branches.
+Platform differences are **field-level** within cases, not separate cases. A single case can have multiple `diagnosis` blocks keyed by `platforms` (e.g. `A2-910B`, `A3-910C`, `A5-950`); a case with no `platforms` field is treated as cross-platform. Platform background docs were abolished (agent-generated, zero external sources) — platform facts live in the reference layer (`references/platform-facts/`, populated via to-reference with real sources). Diagnose phase 2.5 injects platform background summary (summary layer) for matched platforms; unmatched platforms get no platform prior (each case still carries its own platform evidence in its `platforms`-keyed diagnosis branches).
 
 ### Trace and misdiagnosis attribution
 

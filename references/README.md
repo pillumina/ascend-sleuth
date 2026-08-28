@@ -42,9 +42,15 @@ status: draft | active | pending-review | deprecated
 | `engineer-input` | 0.3 | 标准双签 |
 | `case-derived` | 0.3–0.6 | 深审（+ methodology 需 ≥3 条 case 引用才可 active） |
 
-## 当前状态
+## 核验约定
 
-**76 条词条（2026-08-29 批量转正，全部 `status: active`）**：白皮书批次 26（A5 platform-fact + cann-runtime 错误码 + GLM 方法论 + 310P）+ 官方文档批次 50（日志收集 7、故障处理工具与专题 8、错误码 17 族 306 码、故障案例 14 域 99 条、模块字典与码结构 2、env-var 2 表）。**核验约定**：白皮书批次 `cross-checked-source`（pymupdf 提取 PDF 原文逐字核验）；官方文档批次同为 `cross-checked-source`——对官方 markdown 转录逐字核验、未逐字核对原始 HTML 页面，reviewer 可抽查。平台背景知识文档（`knowledge/platforms/*.md`）已按 ADR-0008 废弃且**未转化**入库。
+词条 `verification` 的两种声明（ADR-0008 §4.2）：
+- `cross-checked-source`：agent 已对源逐字核验——白皮书批次用 pymupdf 提取 PDF 原文逐字核验；官方文档批次对官方 markdown 转录逐字核验、未逐字核对原始 HTML 页面，reviewer 可抽查；
+- `auto-extracted`：模型从源材料抽取、未对源逐字核验，reviewer 必须 spot-check 语义是否被扭曲。
+
+平台背景知识文档（`knowledge/platforms/*.md`）已按 ADR-0008 废弃且**未转化**入库（内容为 agent 生成、零外部源）——reference 词条从第一天带权威来源。
+
+**词条数量是运行时状态**，不写进本 README（会随导入/转正腐烂）——用 `python3 scripts/verify_references.py` 实时查。
 
 ## 校验
 

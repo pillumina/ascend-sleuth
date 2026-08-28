@@ -2,8 +2,6 @@
 
 [![platform: Ascend NPU](https://img.shields.io/badge/platform-Ascend%20NPU-CC0000?logo=huawei&logoColor=white)](https://www.hiascend.com/)
 
-中文 · [English](README.en.md)
-
 昇腾训练与推理支持的诊断工具套件。把每次问题定位沉淀成可复用的知识，让下一次同类问题直接命中答案。
 
 遵循 [Agent Skills](https://agentskills.io/) 标准，可在 pi、Claude Code、Codex 等任意支持该标准的 agent 中使用。
@@ -164,7 +162,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 - **[自演进设计](docs/evolution.md)** — 系统如何随使用变准、每个机制配什么护栏
 - **[路线图](docs/roadmap.md)** — 闸门驱动的演进计划，每个事项的触发条件与验收标准
 - **[Git 工作流](docs/git-workflow.md)** — 审核、门控、合入的落地（标签集、CODEOWNERS、CI、双签）
-- **[评估](docs/eval.md)** — skill 改动前后的回归检查；[评估报告](docs/eval-reports/0001-vllm-ascend-batch.md) 记录了首次真实数据实测
+- **[评估](docs/eval.md)** — skill 改动前后的回归检查（golden 套件与真实 fixture）
 - **[推广就绪度评估](docs/rollout-assessment.md)** — 对照十一条原则的四层就绪度评估与推广动作清单
 - **[术语表](CONTEXT.md)** — case、postmortem、groom、trace 等术语的规范定义
 
@@ -178,7 +176,7 @@ knowledge/
 ├── training/{mindspeed-llm,mindspeed-mm,verl}/
 ├── inference/{vllm-ascend,sglang}/
 │   └── vllm-ascend/         （framework × category 格子分层，ADR-0004）
-│       ├── interrupt/  ├── precision/  ├── performance/  └── other/
+│       ├── interrupt/  ├── precision/  └── performance/
 ├── common/                  多框架共用的权威记录（由 groom 提升）
 └── _archive/                软退休的过期 case
 ```
@@ -188,7 +186,7 @@ knowledge/ 之外的关键文件与目录：
 ```
 triage-tree.yaml             Tier 1 路由（症状 → namespace）
 postmortems/                 Tier 3 原始记录；inbox/ 是待审队列（groom 周批处理）
-references/                 先验知识层（ADR-0008）：独立事实 + 方法论，空货架待填充
+references/                 先验知识层（ADR-0008）：独立事实 + 方法论，从官方文档/案例沉淀（表形态与独立词条，导航见 references/README.md）
 examples/sample-case.yaml    canonical 样例（全 schema 演示）
 CONTEXT.md                   领域术语表（中英对照）
 scripts/                     build_index.py、trace_metrics.py、replay_prep.py、issue_filter.py、verify_references.py

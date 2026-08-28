@@ -45,7 +45,7 @@ _避免_：priority、weight、优先级
 _避免_：log、transcript、历史
 
 **Skill（技能）**:
-遵循 Agent Skills 规范、由 `SKILL.md` 定义的 agent 可调用工作流。本体系共四个：diagnose、to-postmortem、knowledge-groom、resume-diagnosis。
+遵循 Agent Skills 规范、由 `SKILL.md` 定义的 agent 可调用工作流。本体系共五个：diagnose、to-postmortem、to-reference、knowledge-groom、resume-diagnosis。
 _避免_：command、plugin、tool
 
 **Severity（严重度闸门）**:
@@ -57,7 +57,7 @@ _避免_：priority、urgency、影响
 _避免_：strict match、精确匹配
 
 **Reference（先验知识词条）**:
-存储在 `references/`（ADR-0008）的独立事实或通用方法论，**独立于任何具体事故**。区别于 case（事故定位闭环）。type：error-code / tool / platform-fact / command-side-effect / methodology；来源类型：official-doc / engineer-input / case-derived（决定初始置信度与审核深度）；状态：draft / active / pending-review / deprecated。
+存储在 `references/`（ADR-0008）的独立事实或通用方法论，**独立于任何具体事故**。区别于 case（事故定位闭环）。两种组织形态（组织单元 = 验证单元）：**表形态**（一个族/域/模块一个文件——error-code / fault-pattern / env-var-table）与**独立词条**（fact：tool / platform-fact / software-fact / command-side-effect；flow：methodology）。来源类型：official-doc / engineer-input / case-derived（决定初始置信度与审核深度）；状态：draft / active / pending-review / deprecated。
 _避免_：entry、wiki 段落、先验条目
 
 **ref_knowledge（case 侧知识引用）**:
