@@ -13,6 +13,7 @@ Adopted（2026-08-27 合入后随使用修订，见下"修订记录"）
 | 修订 | 日期 | 内容 |
 |---|---|---|
 | 1 | 2026-08-28 | 组织形态校准（基于 38 条 case 提炼测试 + PR review）：①去掉 `references/_inbox/` 中间态——草稿以 `status: draft` 直接进正式目录，PR review 即审核闸门（postmortems/inbox 的高频队列逻辑不适用于低频的 reference 沉淀，且 draft 状态已承担"未审内容不进诊断上下文"的隔离）；②引入**组织单元 = 验证单元**第一性原理——错误码等结构化数据集按族成表（`error-code` 类型从单条改为表形态），不再一码一文件平铺 |
+| 2 | 2026-08-28 | 演化机制校准（基于知识聚类/追加/检索的 review）：①**聚类规则**——族划分跟随来源（官方错误码参考怎么分章，errors/ 就怎么建文件）、追加不新建（新错误码先查族归属再追加到现有表，仅族文件不存在才新建）、关联不合并（独立词条不动态聚类成新文件，主题聚合由 tags + related_references 承担，聚合是检索层职责非文件层职责）；②**检索渐进**——目录+grep 现状，触发条件（文件数 >50 或 diagnose trace 显示 reference 检索退化）时生成 `references/_index.yaml`（`build_references_index.py`，与 case 层同构）；③明确**不引入图存储**——知识关联是轻量单跳、词法可表达（字段/标签/ref id），图的多跳遍历是 v2 离线分析工具的内存算法，永不成为持久存储形态（原则三 + ADR-0002 同一逻辑） |
 
 ## Deciders
 
@@ -104,6 +105,20 @@ reference 是先验知识的**统一载体**，与 case 并列：
 **反模式**（本修订纠正）：一码一文件平铺。错误码天然成族（Runtime/HCCL/aicpu/Driver 各成体系），每个码与族共享来源、版本、验证与排查语境——切成单文件既降低信息密度（元信息逐条重复）、又割裂族上下文、还使检索退化为扫几百个文件（违反原则九资源显式预算）。
 
 **组织单元与验证单元的映射**：官方错误码参考整表同源同验证 → 表级 sources/status/verification；case 提炼的条目逐条验证 → 条目可带可选 `source_cases` 标明证据。验证粒度随来源落在正确层级，不做一刀切。
+
+### 1.6 聚类规则与关联机制（修订 2 引入）
+
+知识库动态生长时，聚类必须由规则约束而非 agent 自觉（原则二）：
+
+**聚类三规则**：
+
+| 规则 | 内容 | 机制 |
+|---|---|---|
+| **族划分跟随来源** | 族的划分不由我们发明，**跟随官方来源的组织方式**——CANN 错误码参考怎么分章（Runtime/HCCL/aicpu/Driver），`errors/` 就怎么建文件 | 导入官方文档时按章节建表；to-reference 分族时参考来源章节 |
+| **追加不新建** | 提炼到某族的新错误码 → **先查 `errors/` 现有文件判定组件归属 → 追加到现有表的 `errors` 列表**（标新 `source_cases`）；**仅该族文件不存在才新建** | to-reference 显式步骤（见 §9）；PR review 抽查归属（归属判定是语义判断，CI 不硬判） |
+| **关联不合并** | 独立词条**不动态聚类成新文件**——独立性（各自验证/生命周期）是价值，强行合并破坏它。主题聚合由 `tags`（主题标签）+ `related_references`（互链）承担；聚合是**检索层的职责，不是文件层的职责** | `tags` / `related_references` 可选字段；diagnose 检索按标签聚合 |
+
+**不引入图存储（明确否决）**：知识关联（错误码→族、case→reference、同主题互链）都是**轻量单跳、词法可表达**的（字段/标签/ref id），YAML + 词法检索完全承载。图的价值在多跳遍历（A→B→C 传导），而诊断是线性确认 + 辅助定位，不需要多跳。图的形态（语义存储）失去 git 审计链——与 ADR-0002 否决向量检索的同一逻辑。**v2 的 trace 结构挖掘若需图算法，作为离线分析工具的内存数据，永不成为持久存储形态。**
 
 ### 2. reference 仓库结构（修订 1 更新）
 
@@ -418,13 +433,15 @@ cases:
 四阶段流程（修订 1：草稿直接进正式目录，无 _inbox 中间态）：
 1. 输入（用户粘贴 / 文件 / URL / case 集合）；
 2. **grill 阶段**（如果是工程师输入或 case 归纳）—— agent 反复追问"你指的是不是这个意思"，确保产物符合用户意图；
-3. 草稿以 `status: draft` 落入正式 type 目录（`references/<type-dir>/`）；
-4. maintainer 通过 **PR review 审核** → accept（合并时或合并后翻 active）/ adjust / reject / defer。
+3. **聚类归属判定（修订 2：追加不新建）**——数据集类（error-code）先查 `references/errors/` 现有文件，按组件归属判定：归属已有族 → **追加到该表 `errors` 列表**（标新 `source_cases`）；仅无对应族文件才新建文件。独立词条类：查 `tags`/`related_references` 是否可关联现有词条，不合并；
+4. 草稿以 `status: draft` 落入正式 type 目录（`references/<type-dir>/`）；
+5. maintainer 通过 **PR review 审核** → accept（合并时或合并后翻 active）/ adjust / reject / defer。
 
 **关键设计原则**：
 - **PR review 即审核闸门**（修订 1：去 _inbox 后，审核由 PR review 承担——草稿以 draft 进正式目录，draft 状态保证不进诊断上下文，review 通过翻 active 即生效）；
 - **grill 阶段去噪**——避免一切材料堆到 maintainer ；
-- **来源类型决定审核深度**——maintainer 审时按 source type 决定 spot-check 深度（整表审核 vs 逐条审核：官方错误码参考整表同源 → 表级审；case 提炼条目带 source_cases → 逐条抽审）。
+- **来源类型决定审核深度**——maintainer 审时按 source type 决定 spot-check 深度（整表审核 vs 逐条审核：官方错误码参考整表同源 → 表级审；case 提炼条目带 source_cases → 逐条抽审）；
+- **聚类归属抽查**（修订 2）——reviewer 检查新错误码是否进对族（归属判定是语义判断，CI 不硬判，PR review 承担）。
 
 to-reference skill 设计与 to-postmortem 对称——to-postmortem 产出 case，to-reference 产出 reference。
 
@@ -510,15 +527,24 @@ to-reference skill 设计与 to-postmortem 对称——to-postmortem 产出 case
 
 **否决理由**：你之前的判断"信噪比高是因为人审"——自动升格会绕过人审。reference 的入口门槛必须由人守。
 
+### F. 引入图存储（知识图谱）承载关联（修订 2 否决）
+
+**否决理由**：知识关联（错误码→族、case→reference、同主题互链）都是轻量单跳、词法可表达的（字段/标签/ref id），YAML + 词法检索完全承载，不需要图的多跳遍历。图 = 语义形态存储，失去 git 审计链（不可 diff/回滚），与 ADR-0002 否决向量检索的同一逻辑。v2 trace 结构挖掘若需图算法，作为离线分析工具的内存数据，不成为持久形态（见 §1.6）。
+
 ---
 
 ## Open Questions
 
-### Q1. `_index.yaml` 是否需要？
+### Q1. `_index.yaml` 是否需要？（修订 2：渐进式，已定义触发条件与路径）
 
-reference 量小时（< 50 条），grep 全目录可能比维护索引更轻量。但量上来后（数百条），全量索引能加速 agent 检索。
+**渐进式设计**（原则十一数据触发演进 + 奥卡姆剃刀——不为不存在的规模购置基础设施）：
 
-**当前倾向**：暂不生成 `_index.yaml`，靠物理目录 + grep 检索；reference 量超过 50 条时再生成。这是参数治理事项。
+| 阶段 | 条件 | 检索方式 |
+|---|---|---|
+| 现在 | 文件数 <50 | 目录 + grep：错误码按族表内 grep code 一次命中；platform-fact 按平台匹配少数文件。**不需要 index** |
+| 触发后 | 文件数 >50，**或** diagnose trace 显示 reference 检索耗时上升 / 漏检增多 | 生成 `references/_index.yaml`（新增 `build_references_index.py`，与 `build_index.py` 同构）：每文件一条 `id/type/title/summary/applies_to + file` 定位——阶段 2.5 平台匹配从"扫目录读 summary"变"读一个索引文件"（与 case 层同构，原则二：阶段一固定读索引） |
+
+**index 结构**（触发后）：按 type 分节 + 平台索引 + 主题标签索引——阶段 2.5 按"平台 + 标签"一次过滤。触发条件的判定由 groom 每次运行检查（文件数 / trace 指标），达到即提建议，**不自动生成**（建议与决定分离）。
 
 ### Q2. methodology 深审的"3 条 case 印证"是否要按 type 细分？
 
