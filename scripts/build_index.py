@@ -87,6 +87,13 @@ def collect(root: Path):
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for case in doc.get("cases", []):
             category = case.get("category", "")
+            # 三分类强制（废弃 other）：非法 category 直接红——路由层依赖 category 分发，
+            # other 会变成不可达格子（2026-08 重分类 5 条 other 的教训）
+            if category not in ("interrupt", "precision", "performance"):
+                raise ValueError(
+                    f"{path}: case {case.get('id', '?')} category {category!r} 非法"
+                    "（三分类强制：interrupt / precision / performance，无 other）"
+                )
             namespaces.setdefault(ns, {}).setdefault(category, []).append({
                 "id": case.get("id", ""),
                 "title": case.get("title", ""),
@@ -175,12 +182,14 @@ def main():
                 print(f"STALE: {s[0]} / {s[1]} ({s[2]})")
             print(f"\n{len(stale)} 条过期。运行 `python3 scripts/build_index.py` 重新生成后提交。")
             sys.exit(1)
-        print(f"索引新鲜，与 knowledge/ 一致（{sum(len(v) for v in ns.values())} 条 case）。")
+        n_cases = sum(len(cases) for cells in ns.values() for cases in cells.values())
+        print(f"索引新鲜，与 knowledge/ 一致（{n_cases} 条 case）。")
         return
 
     out = root / "knowledge" / "_index.yaml"
     out.write_text(render(ns), encoding="utf-8")
-    print(f"已生成 {out}（{len(ns)} 个 namespace / {sum(len(v) for v in ns.values())} 条 case）")
+    n_cases = sum(len(cases) for cells in ns.values() for cases in cells.values())
+    print(f"已生成 {out}（{len(ns)} 个 namespace / {n_cases} 条 case）")
 
 
 if __name__ == "__main__":
