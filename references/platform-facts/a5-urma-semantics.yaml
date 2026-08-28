@@ -5,17 +5,17 @@ summary: URMA 异步语义：Write/Read/Send/Atomic（FetchAdd、CAS）；RTP �
 
 sources:
   - type: official-doc
-    url: "昇腾950 NPU 架构白皮书（华为技术有限公司），本地归档 ~/ascend/昇腾950 NPU架构白皮书.pdf"
+    url: "昇腾950 NPU 架构白皮书（华为技术有限公司）"
     version: "2026-06-04（PDF metadata creationDate）"
     fetched_at: 2026-08-28
-# 提取自 PDF p.30-31 §4.6.1（pymupdf 直接提取核验）
+    verification: cross-checked-source
 
 applies_to:
   platforms: [A5-950]
 
-status: draft
+status: active
 last_verified: 2026-08-28
 
 content:
   claim: "昇腾950 提供基于 URMA 的异步通信语义：Core（AI Core / AI CPU / STARS）通过 Doorbell 机制调用 URMA 的 Jetty 队列进行内存搬运，UMMU 提供 VA 到 PA 地址转换与权限控制。支持操作：Write、Write with ImmediateData、Write with Notify、Read、Send、Send with ImmediateData、Atomic FetchAdd、Atomic CompareAndSwap。两种传输层：RTP mode（可靠传输，支持端到端可靠重传，可支持 4 个 Port 的可靠性传输带宽，多 Transport Channel 多路径）与 CTP mode（简易传输，不支持端到端可靠重传，可支持 9 个 Port 带宽）。"
-  evidence: "白皮书 §4.6.1 URMA（PDF p.30-31）：『URMA 异步通信以Jetty 队列作为入口』『RTP mode：提供可靠传输服务』『CTP mode：提供简易传输服务』。已对 PDF 原文核验。"
+  evidence: "白皮书 §4.6.1 URMA（PDF p.30-31）：『URMA 异步通信以Jetty 队列作为入口』『RTP mode：提供可靠传输服务』『CTP mode：提供简易传输服务』"

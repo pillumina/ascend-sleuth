@@ -5,16 +5,17 @@ summary: 昇腾950PR 单芯片最高 128GB / 1.6TB/s 高速片上内存，面向
 
 sources:
   - type: official-doc
-    url: "昇腾950 NPU 架构白皮书（华为技术有限公司），本地归档 ~/ascend/昇腾950 NPU架构白皮书.pdf"
+    url: "昇腾950 NPU 架构白皮书（华为技术有限公司）"
     version: "2026-06-04（PDF metadata creationDate）"
     fetched_at: 2026-08-28
+    verification: cross-checked-source
 
 applies_to:
   platforms: [A5-950PR]
 
-status: draft
+status: active
 last_verified: 2026-08-28
 
 content:
   claim: "昇腾950PR 单芯片提供最高 128GB 容量、1.6TB/s 带宽的高速片上内存（衍生规格 112GB / 1.4TB/s）；主要面向高性能推荐系统、LLM Prefill（预填充）阶段及多模态推理场景，兼顾高吞吐与低延迟。"
-  evidence: "白皮书 §2 引言（p.8）、§3 架构概述（p.10）与表 3-1 规格表（p.13-14）：『昇腾950PR：配备128GB、1.6TB/s 高速片上内存』『Memory 容量（GB）128/112，带宽 1.6/1.4』。已对 PDF 第 8-14 页原文核验。"
+  evidence: "白皮书 §2 引言（p.8）、§3 架构概述（p.10）与表 3-1 规格表（p.13-14）：『昇腾950PR：配备128GB、1.6TB/s 高速片上内存』『Memory 容量（GB）128/112，带宽 1.6/1.4』"

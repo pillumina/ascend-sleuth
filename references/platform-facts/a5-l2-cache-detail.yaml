@@ -5,17 +5,17 @@ summary: A5 L2 Cache 512B Cache Line + 128B Sector，2 Die UMA 跨 Die 访问，
 
 sources:
   - type: official-doc
-    url: "昇腾950 NPU 架构白皮书（华为技术有限公司），本地归档 ~/ascend/昇腾950 NPU架构白皮书.pdf"
+    url: "昇腾950 NPU 架构白皮书（华为技术有限公司）"
     version: "2026-06-04（PDF metadata creationDate）"
     fetched_at: 2026-08-28
-# 提取自 PDF p.26-27 §4.3.2（pymupdf 直接提取核验）
+    verification: cross-checked-source
 
 applies_to:
   platforms: [A5-950]
 
-status: draft
+status: active
 last_verified: 2026-08-28
 
 content:
   claim: "昇腾950 L2 Cache 微架构与管理：Chiplet 2 Die UMA 架构、整芯片统一地址空间，可跨 Die 访问 L2（具局部亲和性），硬件维护 2 Die 间一致性；多 Bank 分布式架构、512B 低位交织（高位异或交织）；Cache Line 粒度 512B，支持 128B Sector Cache（128B/256B 访问更高效）；每个 Bank 支持同时读写。Cache 管理：L2 hint 策略（programmer 配置 allocate/victim，如 non-allocate hint 让中间数据直接写 Global Memory）；SDMA 的 Cache Maintenance Operation（CMO）支持预取 Prefetch、预写回 Writeback、无效化 Invalid、冲刷 Flush。"
-  evidence: "白皮书 §4.3.2 L2 Cache 特性（PDF p.26-27）：『Cache Line 粒度512B，新增支持128B Sector Cache 特性』『L2 hint 策略』『CMO，包括预取（Prefetch）、预写回（Writeback）、无效化（Invalid）、冲刷（Flush）』。已对 PDF 原文核验。"
+  evidence: "白皮书 §4.3.2 L2 Cache 特性（PDF p.26-27）：『Cache Line 粒度512B，新增支持128B Sector Cache 特性』『L2 hint 策略』『CMO，包括预取（Prefetch）、预写回（Writeback）、无效化（Invalid）、冲刷（Flush）』"

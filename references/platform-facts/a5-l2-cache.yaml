@@ -5,16 +5,17 @@ summary: 昇腾950 提供 128MB 统一访问 L2 Cache，支持按 Way Cache Lock
 
 sources:
   - type: official-doc
-    url: "昇腾950 NPU 架构白皮书（华为技术有限公司），本地归档 ~/ascend/昇腾950 NPU架构白皮书.pdf"
+    url: "昇腾950 NPU 架构白皮书（华为技术有限公司）"
     version: "2026-06-04（PDF metadata creationDate）"
     fetched_at: 2026-08-28
+    verification: cross-checked-source
 
 applies_to:
   platforms: [A5-950]
 
-status: draft
+status: active
 last_verified: 2026-08-28
 
 content:
   claim: "昇腾950 提供 128MB 全局统一访问的 L2 Cache；采用 Chiplet UMA 统一内存架构，支持算子可控的 Cache Hint 管理；支持按 Way 的 Cache Lock 与驻留策略，管理粒度精细至 128Byte Sector；在离散小包访问和随机访存场景下，同带宽条件下性能较上一代提升 2 倍以上。"
-  evidence: "白皮书 §3 存储体系（p.11-12）：『128MB 全局L2 Cache』『128MB 统一访问的L2 Cache』；§4.3.2（p.22）。已对 PDF 第 8-14 页原文核验。"
+  evidence: "白皮书 §3 存储体系（p.11-12）：『128MB 全局L2 Cache』『128MB 统一访问的L2 Cache』；§4.3.2（p.22）"
