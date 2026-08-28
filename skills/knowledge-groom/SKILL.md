@@ -62,7 +62,7 @@ disable-model-invocation: true
 - 无修订 PR 但已标降级 → 提示"待修订"，owner 决定：小修直接改 YAML + PR，大修用 `/skill:to-reference --update <ref-id>`；
 - 修订走 PR 时按 **kb/high-risk** 处理（改 active 内容 = 修改已生效知识，双签）。
 
-**R6. reference 可观测性回写（ADR-0008 观测性，原则八）**：跑 `python3 scripts/trace_metrics.py` 提取 reference 指标（hits / 引用后 resolve 率 / 平台分布），把结果带进变更摘要：
+**R6. reference 可观测性回写**：跑 `python3 scripts/trace_metrics.py` 提取 reference 指标（hits / 引用后 resolve 率 / 平台分布），把结果带进变更摘要：
 - **有数据才回写**：某 ref 被引用（hits ≥1）→ 更新其 `hits`/`last_hit` 字段（trace 数据积累后才有）；引用后 resolve 率异常低 → 触发降级信号（见信号表）；
 - **无数据如实显示**：reference 刚建立时 trace 无 `reference_lookup` 事件 → 如实报 0，不编造指标（诚实退化）。
 

@@ -47,7 +47,7 @@ disable-model-invocation: true
    - 框架未检测到 → 只搜 `common/`；无法分类 → 直接 Tier 3
 
 3. **两阶段加载 Tier 2**
-   - **阶段一**：读 `knowledge/_index.yaml`（`scripts/build_index.py` 生成的一次性索引，含 `id/title/symptoms/quickly_check/category/confidence.score` + `file` 定位——hits/misdiagnoses 不在索引里，它们是学习环动态字段留在 case 本体，见 ADR-0004），取命中 namespace 的条目，用 `quickly_check`（primary→fallback）**对照已提供的信息**过滤候选 ≤5；检查项缺信息时，记下要向客户补要什么。索引缺失或 `--check` 报过期 → 兜底：逐文件只读上述索引字段，并提醒跑 `scripts/build_index.py` 重建
+   - **阶段一**：读 `knowledge/_index.yaml`（`scripts/build_index.py` 生成的一次性索引，含 `id/title/symptoms/quickly_check/category/confidence.score` + `file` 定位——hits/misdiagnoses 不在索引里，它们是学习环动态字段留在 case 本体），取命中 namespace 的条目，用 `quickly_check`（primary→fallback）**对照已提供的信息**过滤候选 ≤5；检查项缺信息时，记下要向客户补要什么。索引缺失或 `--check` 报过期 → 兜底：逐文件只读上述索引字段，并提醒跑 `scripts/build_index.py` 重建
    - **空库提示（冷启动）**：若命中 namespace 为空（还没 case），**不要静默退化**——告诉用户“当前 `knowledge/<ns>/` 还没有验证过的 case，你可以：①继续深度排查（步骤 5）②诊断完跑 `/skill:to-postmortem` 沉淀成第一条 case ③转人工”。别让空库的体感是“这玩意啥也不会”。
    - primary 不匹配但 fallback 匹配 → 仍进验证，标记 `low_confidence`
    - **category 决定 quickly_check 形态**：interrupt 用 grep 错误签名、precision 用数值阈值（`loss>1e3`、`has_nan`）、performance 用 profiler 指标（`comm_ratio>0.4`）——别混用
@@ -58,8 +58,9 @@ disable-model-invocation: true
 按需取先验知识辅助诊断，**只读 `status: active` 的词条**（draft / pending-review / deprecated 一律不加载——未验证知识不进上下文）：
 
 - **① 候选 case 显式引用**：候选 case 有 `ref_knowledge` 字段 → 加载其引用的 reference 词条全文（最精准；当前 case 尚无该字段，此路为未来路径）；
-- **② 平台匹配的 summary 层**：从症状收集阶段确认的客户平台，扫 `references/<type-dir>/*.yaml` 中 `applies_to.platforms` 匹配该平台且 `status: active` 的词条，**只读 `summary` + `applies_to` 字段**（每条一行，低 token；A5 全量 platform-fact summary 约 700 token 内）作平台背景提示，**不读全文**；
-- **③ 按需全文**：验证某条具体事实需要细节时（如对照 A5 950DT 内存规格、HiF8 指数范围），再读对应词条全文；
+- **② 平台匹配的 summary 层**：从症状收集阶段确认的客户平台，扫 `references/<type-dir>/*.yaml` 中 `applies_to.platforms` 匹配该平台且 `status: active` 的词条，**只读 `summary` + `applies_to` 字段**（每条一行，低 token；A5 全量 platform-fact summary 约 700 token 内）作平台背景提示，**不读全文**。**匹配语义**：`applies_to.platforms` 含客户平台标识、或含 `cross`（跨平台成立，匹配所有平台）、或词条未填 platforms（视为跨平台）即命中；平台标识开放（如 `Atlas 200I/500 A2`），按客户实际报告的平台匹配，不限定型号清单；
+- **③ 签名类检索（error-code / fault-pattern，不走 summary 层——签名是检索键不是摘要）**：症状里出现**错误码**（E1xxxx/EIxxxx/507xxx 等）→ 查 `ascend-error-code-structure` 的 `module_files` 前缀映射定位族文件（`references/errors/<族>.yaml`），族内 grep code 读 meaning/solution；症状含**可 grep 的故障签名**（如 "0x800000"、fault kernel_name、"I2C WRITER DATA error"、event_id）→ 按主题域定位 `references/fault-patterns/<域>.yaml`，域内 grep symptoms 命中读 cause/fix；
+- **④ 按需全文**：验证某条具体事实需要细节时（如对照 A5 950DT 内存规格、日志路径表、方法论流程步骤），再读对应词条全文；
 - **token 纪律**：reference 查询只在命中候选后发生，不是每次诊断都读；summary 层先于全文层；平台不匹配的词条不加载（当前仅 A5 有词条，A2/A3 场景自然跳过）；
 - **trace 必记**：每次查询记 `{action: reference_lookup, ref_id, platform, purpose: signature|fix|background}`——这是 reference 命中统计（hits/last_hit）的数据源，不记则先验知识层的学习环空转。
 
