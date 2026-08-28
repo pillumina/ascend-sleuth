@@ -1,0 +1,40 @@
+id: amct-env
+type: env-var-table
+title: AMCT 模型压缩环境变量
+summary: CANN 环境变量参考（envref 系列）：AMCT 模型压缩，4 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas 350 加速卡
+  - Atlas A2 训练系列产品
+  - Atlas A2 推理系列产品
+  - Atlas A3 训练系列产品
+  - Atlas A3 推理系列产品
+  - Atlas 200I/500 A2 推理产品
+  - Atlas 训练系列产品
+  - Atlas 推理系列产品
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: AMCT_LOG_DUMP
+    description: 控制训练后量化过程中日志落盘等信息的环境变量。该环境变量仅适用于调用aclgrphCalibration接口进行的量化。 取值为： - 1：（默认值）日志落盘到当前路径的“amct_log_{timestamp}/amct_acl.log”文件中，不保存量化因子record文件和graph文件。 - 2：日志落盘到当前路径的“amct_log_{timestamp}/amct_acl.log”文件中，同时在“amct_log_{timestamp}”目录下保存量化因子record文件。 - 3：日志落盘到当前路径的“amct_log_{timestamp}/amct_acl.log”文件中，同时在“amct_log_{timestamp}”目录下保存量化因子record文件和包含量化过程中各阶段图描述信息的graph文件。
+    example: export AMCT_LOG_DUMP=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0112.html
+  - name: AMCT_LOG_FILE_LEVEL
+    description: 控制日志文件（PyTorch框架：amct_pytorch.log；Caffe框架：amct_caffe.log；ONNX：amct_onnx.log）的信息级别以及生成精度仿真模型时，对应量化层生成的日志文件信息级别。 取值为： - DEBUG：输出DEBUG/INFO/WARNING/ERROR级别的运行信息。包括详细的流程信息、量化层及对应的处理阶段（融合，参数量化或者数据量化等）。 - INFO：（默认值）输出INFO/WARNING/ERROR级别的运行信息。概要的量化处理信息，包含量化的阶段等信息。 - WARNING：输出WARNING/ERROR级别的运行信息。量化处理过程中的警告信息。 - ERROR：输出ERROR级别的运行信息。量化处理过程中的错误信息。
+    example: export AMCT_LOG_FILE_LEVEL=INFO
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0109.html
+  - name: AMCT_LOG_LEVEL
+    description: 控制屏幕输出的信息级别。该环境变量仅适用于PyTorch框架、Caffe框架、ONNX网络模型的量化。 取值为： - DEBUG：输出DEBUG/INFO/WARNING/ERROR级别的运行信息。详细的流程信息，包括量化层及对应的处理阶段（融合，参数量化或者数据量化等）。 - INFO：（默认值）输出INFO/WARNING/ERROR级别的运行信息。概要的量化处理信息，包含量化的阶段等信息。 - WARNING：输出WARNING/ERROR级别的运行信息。量化处理过程中的警告信息。 - ERROR：输出ERROR级别的运行信息。量化处理过程中的错误信息。
+    example: export AMCT_LOG_LEVEL=INFO
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0110.html
+  - name: DUMP_AMCT_RECORD
+    description: 控制是否生成权重和数据的量化因子。该环境变量仅适用于MindSpore框架的模型压缩。 取值为： - 1：生成量化因子文件。 - 0：（默认值）不生成。 量化感知训练场景此环境变量必须配置。
+    example: export DUMP_AMCT_RECORD=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0111.html

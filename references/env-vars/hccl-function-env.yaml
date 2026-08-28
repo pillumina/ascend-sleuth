@@ -1,0 +1,84 @@
+id: hccl-function-env
+type: env-var-table
+title: HCCL 功能相关环境变量
+summary: CANN 环境变量参考（envref 系列）：HCCL 功能相关，10 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas 350 加速卡
+  - Atlas A3 训练系列产品 /
+  - Atlas A3 推理系列产品
+  - Atlas A2 训练系列产品 /
+  - Atlas A2 推理系列产品
+  - Atlas 训练系列产品 父主题： 功能相关
+  - Atlas A2 推理系列产品 （针对
+  - Atlas A2 推理系列产品 ，仅支持
+  - Atlas 800T A2 训练服务器、
+  - Atlas 900 A2 PoD 集群基础单元、
+  - Atlas 200T A2 Box16 异构子框。）
+  - Atlas 训练系列产品
+  - Atlas 推理系列产品 （针对
+  - Atlas 推理系列产品 ，仅支持
+  - Atlas 300I Duo 推理卡。） 父主题： 功能相关
+  - Atlas A3 训练系列产品
+  - Atlas A2 训练系列产品
+  - Atlas A2 推理系列产品（针对
+  - Atlas A2 推理系列产品，仅支持
+  - Atlas 推理系列产品（针对
+  - Atlas 推理系列产品，仅支持
+  - Atlas 300I Duo 推理卡。）
+  - Atlas A3 推理系列产品 父主题： 功能相关
+  - Atlas 训练系列产品：仅支持此处理器型号下的
+  - Atlas 300T Pro 训练卡。
+  - Atlas A2 推理系列产品：仅支持此处理器型号下的
+  - Atlas 200T A2 Box16 异构子框。
+  - Atlas A3 推理系列产品：仅在使用LLM-DataDist作为集群管理组件的场景下生效。
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: HCCL_ALGO
+    description: 此环境变量用于配置集合通信Server间通信算法以及超节点间通信算法，支持全局配置算法类型与按算子配置算法类型两种配置方式。 本节仅对支持配置的算法功能进行了简要介绍，如需详细了解，可参见集合通信算法介绍。 - HCCL提供自适应算法选择功能，默认会根据产品形态、数据量和Server个数选择合适的算法，一般情况下用户无需手工指定。若通过此环境变量指定了Server间或超节点间通信算法，则自适应算法选择功能不再生效。 - 在某些通信算子中，当使用特定类型的AI处理器且数据量较小时，通信算法会由HCCL自适应选择，不受此环境变量的控制。 - 本节所列出的算法为HCCL支持配置的全量通信算法，不同产品下支持的Server间通信算法与超节点间通信算法可参见Server间通信算法支持度列表与超节点间通信算法支持度列表。 - 全局配置算法类型，配置方式如下： export HCCL_ALGO="lev
+    example: '- 全局配置算法类型  export HCCL_ALGO="level0:NA;level1:NHR"  - 按算子配置算法类型  # AllReduce算子使用Ring算法，AllGather算子使用RHD算法，其他算子根据产品形态、节点数以及数据量自动选择通信算法。 export HCCL_ALGO="allreduce=level0:NA;level1:ring/allgather=level0:NA;level1:H-D_R"'
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0079.html
+  - name: HCCL_BUFFSIZE
+    description: 此环境变量用于控制通信域所使用的共享数据缓存区大小。需要配置为整数，取值大于等于1，默认值为200，单位MB。 集合通信中，每个通信域都会占用HCCL_BUFFSIZE大小的缓存区。若集群中存在较多的通信域，整体缓存占用会增加，可能影响模型数据的正常存储。此种场景下，可通过调小该环境变量的值以降低通信域占用的缓存空间；若业务的模型数据量较小，但通信数据量较大，可适当调大该环境变量的值以增大通信域占用的缓存空间，以提升数据通信效率。 大语言模型中的建议配置值如下： (MicrobatchSize * SequenceLength * hiddenSize * sizeof (DataType) )/(1024*1024)，向上取整。 此环境变量一般用于以下场景： - 动态shape网络场景。 - 开发人员调用集合通信库HCCL的C语言接口进行框架对接的场景。 需要注意： - 该环境变量申请的
+    example: export HCCL_BUFFSIZE=200
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0080.html
+  - name: HCCL_CONNECT_TIMEOUT
+    description: 分布式训练或推理场景下，用于限制不同设备之间socket建链过程的超时等待时间。不同设备进程在集合通信初始化之前由于其他因素会导致执行不同步。该环境变量控制设备间的建链超时等待时间，在该配置时间内各设备进程等待其他设备建链同步。 该环境变量需要配置为整数，取值范围[120,7200]，默认值为120，单位s。 需要注意的是：实际的建链超时等待时间是该环境变量的值加上20秒。例如，如果该环境变量设置为150秒，则实际的超时等待时间为170秒。额外的20秒用于通知各个节点通信域初始化失败的原因。 此环境变量的值会影响链路故障场景的异常上报时间。
+    example: export HCCL_CONNECT_TIMEOUT=200
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0077.html
+  - name: HCCL_DETERMINISTIC
+    description: 此环境变量用于配置是否开启归约类通信算子的确定性计算或保序功能，其中归约类通信算子包括AllReduce、ReduceScatter、ReduceScatterV、Reduce，归约保序是指严格的确定性计算，在确定性的基础上保证归约顺序一致。 开启归约算子的确定性计算或保序功能后，算子在相同的硬件和输入下，多次执行将产生相同的输出。 HCCL_DETERMINISTIC支持的取值如下： - false：默认值，关闭确定性计算。 - true：开启归约类通信算子的确定性计算。 针对 Atlas A2 训练系列产品 / Atlas A2 推理系列产品 ，支持通信算子AllReduce、ReduceScatter、ReduceScatterV、Reduce。 - 针对 Atlas A3 训练系列产品 / Atlas A3 推理系列产品 ，若通信算子的展开模式为AI CPU，所有归约类算子都为确定
+    example: export HCCL_DETERMINISTIC=true
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0099.html
+  - name: HCCL_EXEC_TIMEOUT
+    description: 不同设备进程在分布式训练或推理过程中存在卡间执行任务不一致的场景（如仅特定进程会保存checkpoint数据），通过该环境变量可控制设备间执行时同步等待的时间，在该配置时间内各设备进程等待其他设备执行通信同步。 - 针对Atlas 350 加速卡：单位为s，取值范围为：[0, 2147483647]，默认值为1836，支持整数秒配置。当配置为0时代表永不超时。 - 针对 Atlas A3 训练系列产品 / Atlas A3 推理系列产品 ： “AI_CPU”与“AICPU_CacheDisable”模式下（参见HCCL_OP_EXPANSION_MODE）：单位为s，取值范围为：[0, 2147483647]，默认值为1836，支持十毫秒级精度配置（例如，需要50毫秒超时，则配置为0.05）。当配置为0时代表永不超时。 - “AIV”模式下：单位为s，取值范围为[0, 1091]，默认值为
+    example: export HCCL_EXEC_TIMEOUT=1800
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0078.html
+  - name: HCCL_INTER_HCCS_DISABLE
+    description: 此环境变量用于配置超节点模式组网中超节点内的通信链路类型，支持如下取值： - TRUE：代表超节点内的AI节点间使用RoCE进行RDMA通信。 - FALSE：代表超节点内的AI节点间使用HCCS通信链路进行SDMA通信。 默认值为“FALSE”。
+    example: export HCCL_INTER_HCCS_DISABLE=FALSE
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0083.html
+  - name: HCCL_INTRA_PCIE_ENABLE
+    description: 用于配置Server内是否使用PCIe链路进行通信。 该环境变量默认值为1，可以单独配置，也可以与环境变量HCCL_INTRA_ROCE_ENABLE同时使用。支持的配置组合，以及不同组合下Server内使用的通信链路如下表所示： | HCCL_INTRA_PCIE_ENABLE | HCCL_INTRA_ROCE_ENABLE | Server内通信链路 | |---|---|---| | 1 | 不配置 | PCIe | | 1 | 0 | PCIe | | 0 | 1 | RoCE | | 不配置 | 1 | RoCE | | 0 | 0 | PCIe | | 不配置 | 不配置 | PCIe | - 不支持HCCL_INTRA_PCIE_ENABLE和HCCL_INTRA_ROCE_ENABLE同时配置为1。 - 不支持HCCL_INTRA_PCIE_ENABLE配置为0，HCCL
+    example: export HCCL_INTRA_PCIE_ENABLE=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0081.html
+  - name: HCCL_INTRA_ROCE_ENABLE
+    description: 用于配置Server内或超节点内是否使用RoCE链路进行通信。 - 针对Atlas 训练系列产品与Atlas A2 训练系列产品/Atlas A2 推理系列产品，该环境变量用于配置Server内是否使用RoCE链路进行通信，默认值0，可以单独配置，也可以与环境变量HCCL_INTRA_PCIE_ENABLE同时使用。支持的配置组合，以及不同组合下Server内使用的通信链路如下表所示： | HCCL_INTRA_PCIE_ENABLE | HCCL_INTRA_ROCE_ENABLE | Server内通信链路 | |---|---|---| | 1 | 不配置 | PCIe | | 1 | 0 | PCIe | | 0 | 1 | RoCE | | 不配置 | 1 | RoCE | | 0 | 0 | PCIe | | 不配置 | 不配置 | PCIe | 不支持HCCL_INTRA_P
+    example: export HCCL_INTRA_ROCE_ENABLE=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0082.html
+  - name: HCCL_LOGIC_SUPERPOD_ID
+    description: 针对Atlas A3 训练系列产品/Atlas A3 推理系列产品的超节点模式组网，若不使用rank table文件配置集群资源信息，可通过此环境变量指定当前节点运行进程所属的超节点ID，实现将一个物理超节点划分为多个逻辑超节点的功能。 该环境变量取值为string类型，长度需要小于128个字符，默认值为空字符串。 若不配置此环境变量，会获取环境中“Super Pod ID”的值作为超节点ID，“Super Pod ID”的取值可通过“npu-smi info -t spod-info -i id -c chip_id”命令查看。
+    example: export HCCL_LOGIC_SUPERPOD_ID=super_pod_id_1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0100.html
+  - name: HCCL_OP_EXPANSION_MODE
+    description: 该环境变量用于配置通信算子的展开模式。 下面分别列出不同型号的产品支持的配置以及相关场景说明，未列出的产品不支持此环境变量设置，若设置了不支持的环境变量，会使用默认值。 - 针对Atlas 350 加速卡：默认采用自适应展开模式，会根据组网、数据量等情况自动选择合适的模式。若配置此环境变量，支持的配置如下： AI_CPU：代表通信算子在AI CPU展开，Device侧根据硬件型号自动选择相应的调度器。 该配置项支持Broadcast、Reduce、AllReduce、Scatter、ReduceScatter、AllGather、AlltoAll、AlltoAllV、AlltoAllVC、Send、Recv、BatchSendRecv算子。 注意： 图模式（Ascend IR）或者图捕获（aclgraph）场景，当通信算法采用AI CPU模式时，单卡上的并发图数量不能超过6个，否则可能会因
+    example: export HCCL_OP_EXPANSION_MODE="HOST"
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0096.html

@@ -1,0 +1,40 @@
+id: hccl-performance-env
+type: env-var-table
+title: HCCL 性能相关环境变量
+summary: CANN 环境变量参考（envref 系列）：HCCL 性能相关，4 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas A2 训练系列产品
+  - Atlas A2 推理系列产品（针对
+  - Atlas A2 推理系列产品，仅支持
+  - Atlas 800T A2 训练服务器、
+  - Atlas 900 A2 PoD 集群基础单元、
+  - Atlas 200T A2 Box16 异构子框。）
+  - Atlas A3 训练系列产品
+  - Atlas A3 推理系列产品
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: HCCL_MULTI_QP_THRESHOLD
+    description: rank间RDMA通信使用多QP通信的场景下，开发者可通过本环境变量设置每个QP分担数据量的最小阈值。 该环境变量需要配置为整数，取值范围：[1,8192]，默认值：512，单位：KB。 - 如果“(rank间单次通信数据量 / HCCL_RDMA_QPS_PER_CONNECTION的值) 可通过环境变量HCCL_RDMA_QPS_PER_CONNECTION或HCCL_RDMA_QP_PORT_CONFIG_PATH开启多QP通信。
+    example: export HCCL_MULTI_QP_THRESHOLD=512
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0095.html
+  - name: HCCL_RDMA_PCIE_DIRECT_POST_NOSTRICT
+    description: 多机通信且Host操作系统小页内存页表大小非4KB的场景，当通信算子下发性能Host Bound时，开发者可设置此环境变量，通过PCIe Direct的方式提交RDMA任务，提升通信算子下发性能。 此环境变量支持如下取值： - TRUE：代表通过PCIe Direct（Host与Device之间的高速通信接口）的方式提交RDMA任务。 - FALSE（默认值）：代表通过HDC（Host Device Communication，主机设备通信）的方式提交RDMA任务。 此环境变量仅对Host侧小页内存页表大小非4KB的场景生效，若Host侧小页内存页表大小是4KB，无论此环境变量取值如何，都采用PCIe Direct的方式提交RDMA任务。 - 此环境变量设置为TRUE时，会额外消耗Device侧的大页内存（每个通信链路会额外多占用1MB的大页内存）。 - 如果开发者既想通过此环境变量提升通
+    example: export HCCL_RDMA_PCIE_DIRECT_POST_NOSTRICT=TRUE
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0093.html
+  - name: HCCL_RDMA_QPS_PER_CONNECTION
+    description: 两个rank之间RDMA通信时会默认创建1个QP（Queue Pair）进行数据传输，若开发者想让两个rank之间的RDMA通信使用多个QP，可通过此环境变量实现。 此环境变量代表两个rank间需要使用的QP个数，需要配置为整数，取值范围：[1,32]，建议配置范围：[1,8]，QP个数超过8时无法确保性能收益，还可能会造成由于内存占用过多导致业务运行失败的情况。默认值：1。 假设HCCL_RDMA_QPS_PER_CONNECTION环境变量配置为N1，则会在每两个rank之间创建N1个QP，两个rank之间通过RDMA传递的业务数据会平均分配到N1个QP上并行收发。 开启多QP传输的功能后，开发者可通过环境变量HCCL_MULTI_QP_THRESHOLD设置每个QP分担数据量的最小阈值；若开发者想指定每个QP使用的源端口号，可通过环境变量HCCL_RDMA_QP_PORT_CONFI
+    example: export HCCL_RDMA_QPS_PER_CONNECTION=4
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0094.html
+  - name: HCCL_RDMA_QP_PORT_CONFIG_PATH
+    description: 两个rank之间RDMA通信时会默认创建1个QP（Queue Pair）进行数据传输，若开发者想让两个rank之间的RDMA通信使用多个QP，并指定多QP通信时使用的源端口号，可通过此环境变量实现。 开发者可通过此环境变量指定与端口映射关系配置文件的存储路径。当配置多个端口号时，系统将开启多QP通信，且所配置的端口号即为每个QP使用的源端口。 该环境变量配置示例如下： ``` export HCCL_RDMA_QP_PORT_CONFIG_PATH=/home/tmp ``` 其中“/home/tmp”为与端口映射关系配置文件“MultiQpSrcPort.cfg”的存储路径，支持配置为绝对路径或相对路径，该路径最大长度需要小于等于4096个字符。 “MultiQpSrcPort.cfg”文件需要用户自定义（注意文件命名需要保持为“MultiQpSrcPort.cfg”），配置格式如下：
+    example: export HCCL_RDMA_QP_PORT_CONFIG_PATH=/home/tmp
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0141.html

@@ -1,0 +1,38 @@
+id: aoe-env
+type: env-var-table
+title: AOE 调优环境变量
+summary: CANN 环境变量参考（envref 系列）：AOE 调优，3 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas 训练系列产品
+  - Atlas 推理系列产品（AOE_MODE取值仅支持1和2）
+  - Atlas A2 训练系列产品
+  - Atlas A2 推理系列产品（AOE_MODE取值仅支持2和4）
+  - Atlas A3 训练系列产品
+  - Atlas A3 推理系列产品（AOE_MODE取值仅支持2）
+  - Atlas 推理系列产品
+  - Atlas A2 推理系列产品
+  - Atlas 200I/500 A2 推理产品
+  - Atlas A3 推理系列产品
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: AOE_MODE
+    description: 在线推理与训练场景下，可通过此环境变量指定AOE调优模式，支持如下取值： - 1：子图调优 - 2：算子调优 - 4：梯度切分调优
+    example: export AOE_MODE=2
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0106.html
+  - name: REPEAT_TUNE
+    description: 是否重新发起调优，此环境变量在开启子图调优或算子调优的场景下生效。 如果知识库（内置或者自定义）中已经存在网络模型中的调优case（针对某shape的调优策略），则会跳过此case的调优流程，若想重新发起调优，可设置此环境变量为True。例如某些算子进行了逻辑的变更，如GEMM算子新增了支持ND的输入，该情况下需要设置此环境变量后，重新发起调优。 取值范围： - True - False 默认值为“False”。
+    example: export REPEAT_TUNE=False
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0105.html
+  - name: TUNE_BANK_PATH
+    description: 可通过此环境变量指定调优后自定义知识库的存储路径。 设置的存储路径必须为绝对路径或相对于执行AOE调优引擎所在路径的相对路径，配置的路径需要为已存在的目录，且执行用户具有读、写、执行权限。若配置的TUNE_BANK_PATH路径不存在或用户无权限，则调优进程会报错并退出。 - 子图自定义知识库若不配置此环境变量，请使用env命令查询ASCEND_CACHE_PATH是否存在，若存在，自定义知识库存储在：${ASCEND_CACHE_PATH}/aoe_data；若不存在，自定义知识库默认存储在：${HOME}/Ascend/latest/data/aoe/custom/graph/${soc_version}。 - 若配置了此环境变量，自定义知识库存储在该环境变量路径下。 - 算子自定义知识库若不配置此环境变量，请使用env命令查询ASCEND_CACHE_PATH是否存在，若存在，自定义
+    example: export TUNE_BANK_PATH=/home/HwHiAiUser/custom_tune_bank  调优前设置该环境变量，作用是指定自定义的知识库存储路径。设置后，会在TUNE_BANK_PATH指定的目录下，生成如下结构的目录和文件。 调优后设置该环境变量，作用是使用已有的自定义知识库，请确保TUNE_BANK_PATH指定的目录结构如下。  ├──Ascendxxx //表示soc_version，以实际生成的名字为准。该文件夹下存放的是算子知识库。 │ ├── cube │ │ ├── op1.bin //op1，op2，op3表示生成的算子知识库名称，以实际生成的文件名为准。 │ │ ├── op1.json │ │ ├── op2.bin │ │ └── op2.json │ └── unified_bank │ └── op3.json └──
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0104.html

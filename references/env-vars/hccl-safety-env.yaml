@@ -1,0 +1,37 @@
+id: hccl-safety-env
+type: env-var-table
+title: HCCL 安全相关环境变量
+summary: CANN 环境变量参考（envref 系列）：HCCL 安全相关，2 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas 350 加速卡
+  - Atlas A3 训练系列产品
+  - Atlas A3 推理系列产品
+  - Atlas A2 训练系列产品
+  - Atlas A2 推理系列产品（针对
+  - Atlas A2 推理系列产品，仅支持
+  - Atlas 800T A2 训练服务器、
+  - Atlas 900 A2 PoD 集群基础单元、
+  - Atlas 200T A2 Box16 异构子框。）
+  - Atlas 训练系列产品
+  - Atlas 推理系列产品（针对
+  - Atlas 推理系列产品，仅支持
+  - Atlas 300I Duo 推理卡。）
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: HCCL_WHITELIST_DISABLE
+    description: 配置在使用HCCL时是否开启通信白名单。 - 0：开启白名单，校验HCCL通信白名单，只有在通信白名单中的IP地址才允许进行集合通信。 - 1：关闭白名单，无需校验HCCL通信白名单。 缺省值为1，默认关闭白名单。如果开启了白名单校验，需要通过HCCL_WHITELIST_FILE指定白名单配置文件路径。
+    example: export HCCL_WHITELIST_DISABLE=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0156.html
+  - name: HCCL_WHITELIST_FILE
+    description: '当通过HCCL_WHITELIST_DISABLE开启了通信白名单校验功能时，需要通过此环境变量配置指向HCCL通信白名单配置文件的路径，只有在通信白名单中的IP地址才允许进行集合通信。 HCCL通信白名单配置文件格式为： ``` { "host_ip": ["ip1", "ip2"], "device_ip": ["ip1", "ip2"] } ``` 其中： - device_ip为预留字段，当前版本暂不支持。 - IP地址格式为点分十进制。 白名单IP需要指定为集群通信使用的有效IP。'
+    example: export HCCL_WHITELIST_FILE=/home/test/whitelist
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0157.html

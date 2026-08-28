@@ -1,0 +1,30 @@
+id: deprecated-env
+type: env-var-table
+title: 后续版本废弃环境变量
+summary: CANN 环境变量参考（envref 系列）：后续版本废弃，2 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas 训练系列产品
+  - Atlas 推理系列产品
+  - Atlas A2 训练系列产品
+  - Atlas A2 推理系列产品
+  - Atlas A3 训练系列产品
+  - Atlas A3 推理系列产品
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: ENABLE_ACLNN
+    description: 该环境变量在后续版本会废弃。 图编译时，通过设置该环境变量，可以决定在图执行时是否调用算子注册的host执行函数来实现host执行逻辑及kernel下发。取值如下： - true：图执行时调用算子注册的host执行函数实现host执行逻辑以及kernel下发。 - false：图执行时仍旧使用GE执行器做算子的kernel下发。 算子支持情况如下： - 若算子仅支持host侧单算子执行调用接口（信息库中aclnnSupport取值配置为aclnn_only），配置该环境变量不生效，始终调用host执行函数实现host执行逻辑以及kernel下发。 - 若算子不支持host侧单算子执行调用接口（信息库中未配置aclnnSupport字段），则保持原有使用GE执行器做算子的kernel下发。 - 若算子两种方式都支持，则只有环境变量取值为true+信息库标记aclnnSupport（信息库中a
+    example: export ENABLE_ACLNN=true
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0139.html
+  - name: GE_USE_STATIC_MEMORY
+    description: 网络运行时使用的内存分配方式，支持以下取值： - 0（默认值）：动态分配内存，即按照实际大小动态分配。 - 2：静态shape支持内存动态扩展。网络运行时，可以通过此取值实现同一session中多张图之间的内存复用，即以最大图所需内存进行分配。例如，假设当前执行图所需内存超过前一张图的内存时，直接释放前一张图的内存，按照当前图所需内存重新分配。 - 3：动态shape支持内存动态扩展，解决内存动态分配时的碎片问题，降低动态shape网络内存占用。 - 4：静态shape和动态shape同时支持内存动态扩展。 默认值是0。 - 该环境变量在后续版本会废弃。 - 多张图并发执行时，不支持配置为“2”和“4”。 - 为兼容历史版本配置，配置为“1”的场景下，系统会按照“2”的方式进行处理。 - 配置为“3”和“4”的场景下，将带来内存收益，但可能导致性能损失。 - 针对TensorFlow训练场
+    example: export GE_USE_STATIC_MEMORY=2
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0138.html

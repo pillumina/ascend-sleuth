@@ -1,0 +1,42 @@
+id: resource-config-env
+type: env-var-table
+title: 资源配置环境变量
+summary: CANN 环境变量参考（envref 系列）：资源配置，4 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas 350 加速卡
+  - Atlas A3 训练系列产品
+  - Atlas A3 推理系列产品
+  - Atlas A2 训练系列产品
+  - Atlas A2 推理系列产品
+  - Atlas 200I/500 A2 推理产品
+  - Atlas 推理系列产品
+  - Atlas 训练系列产品
+  - Atlas A2 训练系列产品 /
+  - Atlas A2 推理系列产品 父主题： 资源配置
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: ASCEND_DEVICE_ID
+    description: 指定当前进程所用的AI处理器的逻辑ID。 取值范围[0,N-1]，默认为0。其中N为当前物理机/虚拟机/容器内的设备总数。 该环境变量使用场景： TensorFlow框架网络在昇腾平台执行训练或在线推理的场景。 推理场景下使用AOE工具进行调优的场景。 训练场景下使用AOE工具进行调优的场景。
+    example: export ASCEND_DEVICE_ID=0
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0027.html
+  - name: ASCEND_RT_VISIBLE_DEVICES
+    description: 指定哪些Device对当前进程可见，支持一次指定一个或多个Device ID。通过该环境变量，可实现不修改应用程序即可调整所用Device的功能。 其中Device ID为AI处理器的逻辑ID，例如可用Device数量为8，Device ID分别为：0、1、2、3、4、5、6、7，使用场景说明如下： - 设置“export ASCEND_RT_VISIBLE_DEVICES=1”，则表示当前进程仅可使用Device ID为1的Device，获取到的Device数量为1，此时Device的索引值为0，后续在指定Device计算设备时，需使用该索引值。 - 设置“export ASCEND_RT_VISIBLE_DEVICES=1,2,3”，则表示当前进程仅可使用Device ID为1、2、3的三个Device，获取到的Device数量为3，此时各Device的索引值分别为0、1、2，后续在指
+    example: '- 指定一个Device ID：  export ASCEND_RT_VISIBLE_DEVICES=1  - 指定多个Device ID：  export ASCEND_RT_VISIBLE_DEVICES=1,2,3'
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0028.html
+  - name: AUTO_USE_UC_MEMORY
+    description: 控制系统是否允许算子搬移数据不经过L2 Cache的功能。 取值为： - 0或其他值：否，表示所有算子搬移数据都必须经过L2 Cache。 - 1：是，表示允许算子搬移数据可以不经过L2 Cache，具体是否经过L2 Cache，由算子Kernel代码中的逻辑决定。默认值为1。配置为1后，部分算子性能可得到提升，但可能存在AI Core Error风险。 本环境变量为试验特性，后续版本可能会存在变更，不支持应用于商用产品中。
+    example: export AUTO_USE_UC_MEMORY=0
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0029.html
+  - name: RESOURCE_CONFIG_PATH
+    description: 用于设置配置异构资源描述信息文件的存储路径。 异构资源描述信息文件是JSON文件，包含单节点以及集群的描述信息，配置示例以及字段含义可参见《DataFlow开发》手册中的“numa_config.json配置”章节。
+    example: export RESOURCE_CONFIG_PATH=/home/test/numa_config.json
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0133.html

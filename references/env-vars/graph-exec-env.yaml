@@ -1,0 +1,32 @@
+id: graph-exec-env
+type: env-var-table
+title: 图执行环境变量
+summary: CANN 环境变量参考（envref 系列）：图执行，2 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas 350 加速卡
+  - Atlas 训练系列产品
+  - Atlas 推理系列产品
+  - Atlas A2 训练系列产品
+  - Atlas A2 推理系列产品
+  - Atlas A3 训练系列产品
+  - Atlas A3 推理系列产品
+  - Atlas 200I/500 A2 推理产品
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: ENABLE_DYNAMIC_SHAPE_MULTI_STREAM
+    description: 计算图执行时，开启多流并发执行功能在一定场景下可提升网络性能。当前多流并发执行功能默认关闭，动态shape图模式场景下，若开发者想开启多流并发执行功能，可通过此环境变量开启。 - 0：关闭多流并发执行功能，默认值。 - 1：开启多流并发执行功能。
+    example: 多流并发执行功能默认关闭，如果需要开启，请设置此环境变量的值为“1”。  export ENABLE_DYNAMIC_SHAPE_MULTI_STREAM=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0033.html
+  - name: MAX_RUNTIME_CORE_NUMBER
+    description: 训练与在线推理场景下，针对动态shape图模式执行的网络，可通过设置此环境变量开启图执行器（Host侧）的多线程任务调度。 该环境变量需要配置为整数，当取值大于等于2时，表示Host侧图执行调度任务开启多线程，多线程数量与此环境变量取值相同。 若使用该环境变量，建议配置为3，以获得较优性能。
+    example: export MAX_RUNTIME_CORE_NUMBER=3
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0034.html

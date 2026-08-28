@@ -1,0 +1,25 @@
+id: hccl-reliability-env
+type: env-var-table
+title: HCCL 可靠性相关环境变量
+summary: CANN 环境变量参考（envref 系列）：HCCL 可靠性相关，2 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas A3 训练系列产品 /
+  - Atlas A3 推理系列产品 父主题： 可靠性相关
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: HCCL_OP_RETRY_ENABLE
+    description: 此环境变量用于配置是否开启HCCL算子的重执行特性。HCCL算子重执行以通信域为粒度，当通信算子执行报 SDMA 或者RDMA CQE类型的错误时，HCCL会尝试重新执行此通信算子。 在集群环境中，可能会存在硬件闪断的情况，此时通信算子会执行报错，通过此环境变量开启HCCL的重执行特性，可以更好地避免由于硬件闪断造成的通信中断，提升通信稳定性。HCCL算子重执行实际就是提供一个软件层面的尽力而为的故障恢复手段，执行示意图如下所示： 图1 重执行流程示意图 主要步骤有如下三步： - 故障发现：AI CPU检测到故障信号，通知Host开始准备进入重执行流程。 - 集群管理：Host通过Host Socket进行信息交互，并判断当前故障算子是否满足一系列重执行条件，详细可参见重执行使用须知。 - 重新下发：通知AI CPU Kernel重新下发SQE、WQE，进行HCCL算子重执行。
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0085.html
+  - name: HCCL_OP_RETRY_PARAMS
+    description: 当开发者通过环境变量HCCL_OP_RETRY_ENABLE开启了HCCL的算子重执行特性时，可通过本环境变量配置第一次重执行的等待时间、最大重执行的次数以及两次重执行的间隔时间。 配置方法如下： export HCCL_OP_RETRY_PARAMS="MaxCnt:3,HoldTime:5000,IntervalTime:1000" - MaxCnt：最大重传次数，uint32类型，取值范围为[1,10]，默认值为1，单位次。 - HoldTime：从检测到通信算子执行失败到开始第一次重新执行的等待时间，uint32类型，取值范围[0,60000]，默认值为5000，单位ms。 - IntervalTime：同一个通信算子两次重执行的间隔时间，uint32类型，取值范围[0,60000]，默认值为1000，单位ms。
+    example: export HCCL_OP_RETRY_PARAMS="MaxCnt:5,HoldTime:5000,IntervalTime:5000"
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0086.html

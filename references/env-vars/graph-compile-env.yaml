@@ -1,0 +1,63 @@
+id: graph-compile-env
+type: env-var-table
+title: 图编译环境变量
+summary: CANN 环境变量参考（envref 系列）：图编译，9 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas 训练系列产品
+  - Atlas 推理系列产品
+  - Atlas A2 训练系列产品
+  - Atlas A2 推理系列产品
+  - Atlas A3 训练系列产品
+  - Atlas A3 推理系列产品
+  - Atlas 350 加速卡
+  - Atlas 200I/500 A2 推理产品
+  - Atlas A2 训练系列产品 /
+  - Atlas A3 训练系列产品 /
+  - Atlas 200I/500 A2 推理产品 父主题： 图编译
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: ASCEND_ENGINE_PATH
+    description: 单算子JSON文件转换成离线模型场景，如果希望模型转换时只使用TBE算子（不查找AI CPU算子，找不到TBE算子则报错），则需要使用该环境变量。 设置该环境变量后，如果用户想要执行其他操作，需要删除上述环境变量：执行unset ASCEND_ENGINE_PATH命令，使其失效。
+    example: export ASCEND_ENGINE_PATH=${INSTALL_DIR}/lib64/plugin/opskernel/libfe.so:${INSTALL_DIR}/lib64/plugin/opskernel/libge_local_engine.so:${INSTALL_DIR}/lib64/plugin/opskernel/librts_engine.so  其中${INSTALL_DIR}请替换为CANN软件安装后文件存储路径。以root用户安装为例，安装后文件默认存储路径为：/usr/local/Ascend/cann。
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0015.html
+  - name: DUMP_GE_GRAPH
+    description: 把整个流程中各个阶段的图描述信息打印到文件中，此环境变量控制dump图的内容多少。 支持的取值包括： - 1：包含连边关系和数据信息的完整版dump。 - 2：不含有权重等数据的基本版dump。 - 3：只显示节点关系的精简版dump。 设置该环境变量后，在当前路径会生成如下文件： - ge_onnx*.pbtxt：基于ONNX的模型描述结构，可以使用Netron等可视化软件打开。 - ge_proto*.txt：protobuf格式存储的文本文件，该文件可以转成JSON格式文件方便用户定位问题。该文件与ge_onnx*.pbtxt一般成对出现，但是ge_proto*.txt比ge_onnx*.pbtxt文件会多string类型的属性信息，因此ge_proto*.txt显示得更完整，用户选择其中一种文件打开。由于ge_proto*.txt文件结构相比ge_onnx*.pbtxt已经做了文件
+    example: export DUMP_GE_GRAPH=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0011.html
+  - name: DUMP_GRAPH_FORMAT
+    description: 控制需要生成的dump文件类型。 支持的取值包括： - onnx：基于ONNX的模型描述结构，可以使用Netron等可视化软件打开，生成文件名为ge_onnx*.pbtxt。 - ge_proto：protobuf格式存储的文本文件，生成文件名为ge_proto*.txt。 - readable：类似Dynamo fx图风格的高可读性文本文件，生成文件名为ge_readable*.txt。文件内容解析请参见readable文件解析。 使用方式： 配置按照“|”分隔的字符串，类型全部为小写，支持组合配置，例如“ge_proto|onnx|readable”，表示dump全量类型的文件；也支持单独配置，例如“ge_proto”，表示只dump ge_proto类型的文件ge_proto*.txt。 DUMP_GRAPH_FORMAT环境变量只有在DUMP_GE_GRAPH开启时才生效，默认为“
+    example: export DUMP_GRAPH_FORMAT="ge_proto|onnx"
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0155.html
+  - name: DUMP_GRAPH_LEVEL
+    description: 把整个图编译流程中各个阶段的图描述信息打印到文件中。 此环境变量支持如下两种配置方式，两种方式均是控制图落盘的个数，用户可以按需使用，注意两种配置方式不支持混合使用： - 配置数值，取值如下： 1：dump所有阶段的图。 - 2：dump白名单阶段的图。具体白名单图请参见表1中的“是否白名单”列。 - 3：dump最后的生成图，即经过GE（Graph Engine，图引擎）优化、编译后的图。 - 4：dump最早的生成图，即经过GE解析映射算子后，给到软件栈的编译入口图，此时图结构尚未经过GE的编译优化。 - 配置按照“|”分隔的字符串，配置如下： 例如配置为"aa|bb"，则表示dump出名称包含aa和bb的图，aa和bb需要指定为图编译流程中的合法字符串，合法字符串的获取可以从全量的dump图得到。 DUMP_GRAPH_LEVEL环境变量只有在DUMP_GE_GRAPH开启时才生效，
+    example: '- 配置为数值：  export DUMP_GRAPH_LEVEL=1  - 配置为按照|分隔的字符串：  export DUMP_GRAPH_LEVEL="PreRunBegin|AfterInfershape"'
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0012.html
+  - name: DUMP_GRAPH_PATH
+    description: 指定DUMP图文件的保存路径，可配置为绝对路径或脚本执行目录的相对路径。 指定的路径支持大小写字母（a-z，A-Z）、数字（0-9）、下划线（_）、中划线（-）、句点（.）、中文字符，执行用户需具有读、写、执行权限。 - 如果指定的路径不存在，则会自动创建相应目录。 - 如果指定的路径执行用户权限不足，则会在当前执行目录下生成DUMP图文件。 - 设置“DUMP_GRAPH_PATH”环境变量的场景下，程序会在指定路径下创建“pid_${pid}_deviceid_${deviceid}”子文件夹，存储DUMP图文件。其中${pid}为进程ID，${deviceid}为设备ID。 - 若不设置“DUMP_GRAPH_PATH”环境变量，DUMP图文件直接存储在当前脚本执行路径，不会创建“pid_${pid}_deviceid_${deviceid}”子文件夹。 DUMP图文件存储路径优先级
+    example: export DUMP_GRAPH_PATH=/home/dumpgraph  则DUMP图文件存储在/home/dumpgraph/pid_${pid}_deviceid_${deviceid}路径下，例如/home/dumpgraph/pid_53343_deviceid_0。
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0013.html
+  - name: ENABLE_NETWORK_ANALYSIS_DEBUG
+    description: TensorFlow训练场景下，计算图编译失败时默认会终止训练流程，不会继续向Device下发剩余的图。若开发者希望图编译失败时，不终止训练流程，允许TF Adapter持续向Device下发计算图，可通过设置该环境变量实现。 当前版本该环境变量取值无限制，只要环境中存在该环境变量，图编译失败时就不会终止训练流程。
+    example: export ENABLE_NETWORK_ANALYSIS_DEBUG=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0018.html
+  - name: MAX_COMPILE_CORE_NUMBER
+    description: 此环境变量用于指定图编译时可用的CPU核数。 该环境变量需要配置为整数，表示图编译时开启多线程，多线程数量与配置的CPU核数相同。 取值范围：1~CPU核数，默认为1，不开启多线程；取值小于等于0时，按照默认值1处理。 建议此环境变量取值不超过当前环境的CPU核数，否则会造成性能劣化。
+    example: export MAX_COMPILE_CORE_NUMBER=5
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0016.html
+  - name: MULTI_THREAD_COMPILE
+    description: 此环境变量用于控制模型转换时是否使用单线程编译。 - 0：开启单线程编译 - 1：（默认值）开启多线程编译
+    example: export MULTI_THREAD_COMPILE=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0017.html
+  - name: OP_NO_REUSE_MEM
+    description: 计算图在昇腾平台编译的过程中默认采用内存复用形式，在问题定位场景中，如果开发者怀疑是内存复用错误导致计算结果异常，可通过此环境变量指定为某算子单独分配内存。 该环境变量可配置为网络节点的名称或者算子的类型（可混合配置），支持一个或多个的配置，配置多个节点时，中间通过英文逗号隔开。
+    example: '- 基于节点名称配置节点名称需要配置为转换为CANN平台网络后的节点名称，节点名称可以通过设置DUMP_GE_GRAPH环境变量，然后在导出的ge_onnx_xxx_Build.pbtxt最终图中查看“name”字段获取。  export OP_NO_REUSE_MEM=gradients/logits/semantic/kernel/Regularizer/l2_regularizer_grad/Mul_1,resnet_v1_50/conv1_1/BatchNorm/AssignMovingAvg2  - 基于算子类型配置  export OP_NO_REUSE_MEM=FusedMulAddN,BatchNorm  - 混合配置  export OP_NO_REUSE_MEM=FusedMulAddN,resnet_v1_50/conv1_1/Batch'
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0014.html

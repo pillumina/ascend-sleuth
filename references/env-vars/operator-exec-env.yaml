@@ -1,0 +1,27 @@
+id: operator-exec-env
+type: env-var-table
+title: 算子执行环境变量
+summary: CANN 环境变量参考（envref 系列）：算子执行，1 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas 推理系列产品
+  - Atlas 训练系列产品
+  - Atlas A2 训练系列产品
+  - Atlas A2 推理系列产品
+  - Atlas A3 训练系列产品
+  - Atlas A3 推理系列产品
+  - Atlas 350 加速卡
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: ACLNN_CACHE_LIMIT
+    description: 此环境变量用于配置aclnn API在Host侧缓存的算子信息条目个数。缓存的算子信息包含workspace大小、算子计算的执行器、Tiling信息等。 单位：个，取值范围：[1,10000000]，默认值为10000。 一般不建议设置ACLNN_CACHE_LIMIT环境变量，保持默认值即可。针对动态shape场景，若算子的shape范围较大，开发者可结合业务需求适当增加此环境变量取值，以增加算子缓存条目，从而提升调度性能。但需要注意，增加算子信息缓存条目会增加Host内存开销，具体请参见使用约束。
+    example: export ACLNN_CACHE_LIMIT=10000
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0031.html
