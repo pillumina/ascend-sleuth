@@ -20,11 +20,14 @@ description: >
 /skill:to-reference "在 A2 上排查通信问题，别查 HCCL_BUFFSIZE，查 NPU 驱动版本：cat /proc/driver/npu/version，期望 >= 23.0"
 ```
 
-**2. 单个文件路径**（笔记 / 内部文档，`engineer-input`）：
+**2. 单个文件路径**（来源类型由 `--source` 指定，不默认绑定）：
 
 ```
-/skill:to-reference --file ~/notes/npu-smi-fields.md
+/skill:to-reference --file ~/notes/npu-smi-fields.md --source engineer-input
+/skill:to-reference --file ~/ascend/昇腾950_NPU架构白皮书.md --source official-doc
 ```
+
+`--source` 是**必填判断项**（engineer-input / official-doc）：来源类型由**内容权威性**决定，不由输入通道决定——同一份文件可能是工程师笔记（engineer-input）也可能是官方文档（official-doc）。本地 PDF 也可处理：用工具提取文本（如 `pymupdf`）后再走本模式，`verification` 状态见 §1。
 
 **3. URL 爬取**（官方文档，`official-doc`）：
 
@@ -44,16 +47,19 @@ description: >
 
 | 输入 | 来源类型 | grill 强度 | 审核深度 |
 |---|---|---|---|
-| URL 爬取 | `official-doc` | 弱（来源明确；标注 auto-extracted 交 reviewer spot-check） | 标准双签 |
-| 内联 / 文件 | `engineer-input` | **强**（必须反复确认意图） | 标准双签 |
+| URL 爬取 | `official-doc` | 弱（来源明确；标注 `verification` 交 reviewer） | 标准双签 |
+| `--file --source official-doc` | `official-doc` | 弱（本地官方文档，来源明确） | 标准双签 |
+| `--file --source engineer-input` / 内联 | `engineer-input` | **强**（必须反复确认意图） | 标准双签 |
 | case 归纳 | `case-derived` | **强**（必须确认归纳不失真） | 深审 |
 
 ### 1. 提取（按来源类型）
 
-**URL 爬取（official-doc）**：
-- 抓取页面正文（只抓目标章节，不全量载入——日志裁剪原则的翻版）；
-- 抽取为 reference 草稿，**保留原文出处**：`url` + `version`（文档版本 / CANN 版本，从页面元数据或内容推断，拿不准就标 unknown）+ `fetched_at`；
-- 标注 `verification: auto-extracted`——**这是模型抽取，不是人核**，reviewer 必须 spot-check 语义是否被扭曲。
+**official-doc（URL 爬取 / 本地官方文档文件）**：
+- 抓取/读取目标章节（只读相关部分，不全量载入——日志裁剪原则的翻版；本地 PDF 用工具提取文本如 `pymupdf`）；
+- 抽取为 reference 草稿，**保留原文出处**：`url`（来源定位符——公开 URL 优先；本地文档无公开 URL 时用**可移植文档引用**如"昇腾950 NPU 架构白皮书（华为技术有限公司）"，**禁止写 `~/` 或绝对路径**，ADR-0008 §4.2，CI 会红）+ `version`（文档版本 / CANN 版本，从页面元数据或内容推断，拿不准就标 unknown）+ `fetched_at`；
+- **必须标注 `sources[].verification`，二选一**（ADR-0008 §4.2）：
+  - `auto-extracted`——模型从源材料抽取、**未经 agent 对源逐字核验**（如一次 URL 抓取后直接归纳），reviewer 必须 spot-check 语义是否被扭曲；
+  - `cross-checked-source`——agent 已直接对源原文（如 PDF 文本提取）逐字核验，reviewer 抽查即可。**只有当你真的逐字对照过源才标这个**；拿不准一律标 `auto-extracted`（诚实退化，宁低估不高估）。
 
 **内联 / 文件（engineer-input）**：
 - 从工程师描述中抽取事实/方法论，判断 type（见 §2）；
@@ -95,15 +101,17 @@ description: >
 2. **差异确认**："这三条里有没有哪条是特例（根因不同但现象相似）？"——有特例就剔出，避免把偶然共性当规律；
 3. **覆盖确认**："这个归纳覆盖了你要沉淀的东西吗？还是你心里还有第 4 种场景？"
 
-**URL 爬取**：不逐项 grill（来源明确），但**必须**在报告里显式告诉用户"这是模型抽取的摘要，建议打开原文核对语义"，并把 `verification: auto-extracted` 写进草稿。
+**official-doc**：不逐项 grill（来源明确），但**必须在报告里显式告诉用户验证状态**——`auto-extracted` 要说明"这是模型抽取的摘要，建议打开原文核对语义"；`cross-checked-source` 要说明"已对源原文核验，可抽查"。把 `verification` 写进草稿 `sources[]`。
 
 grill 是**人审的第一道过滤**——确认过程中用户放弃/否认的条目，直接丢弃，不进 inbox。宁可少而准，不要多而疑。
 
 ### 4. 去重检查（进 inbox 前）
 
-扫 `references/` 现有词条（含 `_inbox/`）：
-- 有完全覆盖的现有词条 → **不产草稿**，告诉用户"这条已被 `<ref-id>` 覆盖"，列出比对；
-- 是变体（同主题不同平台/版本）→ 提示用户："现有 `<ref-id>` 覆盖 A3，你这条是 A5 场景——是要并进现有词条的 applies_to，还是独立词条？"按用户回答处理；
+扫 `references/` 现有词条（含 `_inbox/`），分三种关系：
+
+- **完全覆盖**（现有词条已含本条全部内容）→ **不产草稿**，告诉用户"这条已被 `<ref-id>` 覆盖"，列出比对；
+- **变体**（同主题不同平台/版本）→ 提示用户："现有 `<ref-id>` 覆盖 A3，你这条是 A5 场景——是要并进现有词条的 applies_to，还是独立词条？"按用户回答处理；
+- **层级**（现有词条是总览、本条是细节，或反之——如现有 `a5-l2-cache` 总览 vs 本条 `a5-l2-cache-detail`）→ 提示用户："现有 `<ref-id>` 是总览，你这条是同一主题的细节——建议独立词条并在两边 `related_references` 互指；或并进现有词条。哪种？"按用户回答处理。层级关系本身是**合法结构**（不是重复），但要显式互链，避免检索时只见其一；
 - 查不到 → 新词条，继续。
 
 ### 5. 产出草稿 → `references/_inbox/`
@@ -118,9 +126,11 @@ summary: <one-liner>
 
 sources:
   - type: <official-doc | engineer-input | case-derived>
-    # official-doc: url + version + fetched_at
+    # official-doc: url + version + fetched_at [+ verification]
     # engineer-input: engineer + input_session + confirmed_at
     # case-derived: cases + extracted_at
+    # verification（official-doc 必填，其余可选）:
+    #   auto-extracted | cross-checked-source（ADR-0008 §4.2）
 
 applies_to:                        # 能确定就填，确定不了留待 grill 后补
   platforms: [...]                 # A2-910B | A3-910C | A5-950 | cross

@@ -50,5 +50,5 @@ status: draft | active | pending-review | deprecated
 - 基础元信息强校验（id/type/title/summary/sources/last_verified/status）；
 - type 必须已登记（`_types.yaml`）；
 - 按 type 强校验 `schema_required` 字段；
-- 按来源类型强校验子字段；
+- 按来源类型强校验子字段；`sources[].verification`（可选）填了必须合法（`auto-extracted` / `cross-checked-source`，ADR-0008 §4.2）；
 - 深审：case-derived + methodology 从全库 case 的 `ref_knowledge` 派生计数，<3 不允许 `status: active`。

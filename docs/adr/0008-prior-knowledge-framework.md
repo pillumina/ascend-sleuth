@@ -205,6 +205,17 @@ sources:
     extraction_method: to-reference --ingest-cases
 ```
 
+**每条 source 可带可选字段 `verification`**（判定审核深度，不填则按 source type 默认）：
+
+| verification | 含义 | 默认适用 |
+|---|---|---|
+| `auto-extracted` | 模型从源材料抽取，**未经 agent 对源逐字核验**——reviewer 必须 spot-check 语义 | URL 爬取等一次性抓取 |
+| `cross-checked-source` | agent 已直接对源原文（如 PDF 文本提取）逐字核验——reviewer 抽查即可 | 本地文档在手、agent 直接读原文的场景 |
+
+skill 的 official-doc 路径必须显式声明二者之一：拿不准标 `auto-extracted`（诚实退化——宁低估不高估）。`verify_references.py` 对已填的 verification 做合法性校验，未填不报错。
+
+**`official-doc.url` 语义：来源定位符，不一定是字面 URL**。公开 URL 优先；无公开 URL 时（如内部白皮书 PDF）用**可移植的文档引用**（标题 + 出品方 + 版本，版本放 `version` 字段）。**禁止机器特定路径**（`~/`、绝对路径、盘符）——仓库读者没有该路径，且违反 ADR-0003 知识随仓库迁移的可移植性；`verify_references.py` 对机器路径报错。
+
 #### 4.3 type-specific content 字段
 
 ```yaml
