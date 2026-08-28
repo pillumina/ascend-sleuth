@@ -55,6 +55,14 @@ cases:
     fix_side_effects: [requires-restart] # 应用此 fix 的代价；agent 要提示人协调重启窗口
     fix_type: env-var                   # env-var | config-change | code-patch | pending-investigation
 
+    # ref_knowledge（可选，ADR-0008 §7）：结构化引用先验知识词条。
+    # ref 必须存在于 references/（CI 校验悬挂引用）；role 限定三种。
+    # 本 canonical sample 是构造示例，引用的 ref 尚未入库——启用前先建词条，
+    # 否则 verify_references.py 会红。示意如下：
+    # ref_knowledge:
+    #   - ref: hccl-buffsize-restart-effect   # reference 词条 ID（references/command-side-effects/）
+    #     role: fix-methodology               # signature-source | fix-methodology | root-cause-context
+
     next_on_fail: "MSLLM-EP-HANG-003"    # 可选：本 case 没解决时下一个试哪个
 
     root_cause: "HCCL internal buffer insufficient for EP all-to-all at large world_size"

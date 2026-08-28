@@ -37,6 +37,8 @@ Five skills in `skills/<name>/SKILL.md`, following the [Agent Skills](https://ag
 
 Each case file has: `id`, `title`, `category` (interrupt|precision|performance), `tags`, `platforms`, `compat` (multi-dimensional: framework/CANN/HDK version ranges), `confidence` (hits/misdiagnoses/score managed by groom), `symptoms`, `quickly_check` (primary + fallback regex), `diagnosis` steps with `command_template`/`expected`/`fix_on_mismatch`/`rollback`, `severity` (benign|service-affecting|data-loss-risk), `fix_type` (env-var|config-change|code-patch|pending-investigation), `root_cause`, `fix`.
 
+Optional field — `ref_knowledge` (ADR-0008 §7): structured linkage to prior-knowledge entries in `references/`. Each entry is `ref: <reference-id>` + `role: signature-source | fix-methodology | root-cause-context`. `ref` must exist in `references/` and `role` must be legal — enforced by `scripts/verify_references.py` (dangling refs and illegal roles fail CI). The reverse view (which cases reference a given entry) is derived by that script, never stored on the reference side — one relation, stored once. Not required on existing cases; add as needed.
+
 Version matching is **soft**: compat mismatch downgrades confidence but never hard-excludes a case. Undefined dimensions are skipped.
 
 ### Severity gate
