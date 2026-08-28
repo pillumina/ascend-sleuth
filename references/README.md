@@ -42,7 +42,7 @@ status: draft | active | pending-review | deprecated
 
 ## 当前状态
 
-**23 条 A5 950 platform-fact 已入库（全部 `status: active`，2026-08-28）**：来源为《昇腾950 NPU 架构白皮书》（华为）。**核验约定**：本批发出的词条均以 `verification: cross-checked-source` 声明——即 agent 已用 pymupdf 直接提取 PDF 原文、逐字核验过（每条的 evidence 只保留独特的章节/页码引用，核验方式不再逐条重复）；reviewer 抽查即可。inbox 队列当前为空。平台背景知识文档（`knowledge/platforms/*.md`）已按 ADR-0008 废弃且**未转化**入库（内容为 agent 生成、零外部源）——本批词条与旧 platform doc 不同：从第一天就带权威来源、已对 PDF 原文核验。后续填充优先级：plog 错误码表 / CANN 兼容矩阵（见 ADR-0008 §Consequences 2）。
+**26 条词条已入库（全部 `status: active`，2026-08-28）**：23 条 A5 platform-fact（来源《昇腾950 NPU 架构白皮书》，华为）+ error-code 表（`cann-runtime`，7 码）+ methodology（GLM 量化启动排查）+ 310P platform-fact。**核验约定**：本批发出的词条均以 `verification: cross-checked-source` 声明——即 agent 已用 pymupdf 直接提取 PDF 原文、逐字核验过（每条的 evidence 只保留独特的章节/页码引用，核验方式不再逐条重复）；reviewer 抽查即可。inbox 队列当前为空。平台背景知识文档（`knowledge/platforms/*.md`）已按 ADR-0008 废弃且**未转化**入库（内容为 agent 生成、零外部源）——本批词条与旧 platform doc 不同：从第一天就带权威来源、已对 PDF 原文核验。后续填充优先级：plog 错误码表 / CANN 兼容矩阵（见 ADR-0008 §Consequences 2）。
 
 ## 校验
 
@@ -51,7 +51,7 @@ status: draft | active | pending-review | deprecated
 - type 必须已登记（`_types.yaml`）；
 - 按 type 强校验 `schema_required` 字段；
 - 按来源类型强校验子字段；`sources[].verification`（可选）填了必须合法（`auto-extracted` / `cross-checked-source`，ADR-0008 §4.2）；
-- 深审：case-derived + methodology 从全库 case 的 `ref_knowledge` 派生计数，<3 不允许 `status: active`。
+- 深审：case-derived + methodology 的提炼来源 case 数（`sources[].cases` 长度）<3 不允许 `status: active`。
 
 **修订走 PR**（ADR-0008 §1.7）：内容修订 active 词条 = 修改已生效知识 → **methodology 模板 + `kb/high-risk` 双签**（小修直接改 YAML + PR；大修用 `/skill:to-reference --update <ref-id>`）。
 
