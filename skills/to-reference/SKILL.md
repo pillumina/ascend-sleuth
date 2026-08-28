@@ -116,6 +116,8 @@ grill 是**人审的第一道过滤**——确认过程中用户放弃/否认的
 
 ### 5. 产出草稿 → `references/_inbox/`
 
+> ⚠️ **词条零注释（硬规则）**：下面模板中的 `#` 注释是**给作者看的写作指引**，产出 YAML 时必须**删除全部注释行**——词条是给 agent 消费的数据，不是带元说明的文档；重复注释是 token 浪费（23 条 × 同一注释的教训）。语义解释（url 定位符规则、verification 含义、status 规则、字段含义）只存在于 ADR-0008 / SKILL.md / references/README.md 文档层，**不进词条**。值自解释就不加注释。
+
 按 ADR-0008 schema 产出完整 YAML（基础元信息 + content 全部填齐，CI 对 inbox 同样校验——草稿也必须 schema 完整，这是与 to-postmortem 草稿可残缺的差异）：
 
 ```yaml
@@ -147,7 +149,8 @@ content:
 
 - `status` **永远写 `draft`**——没有任何途径在本 skill 里产出 active（active 需要 maintainer 审核 + 深审条件，见 ADR-0008 §6）；
 - 初始 confidence 按来源类型（写进草稿注释，供审核参考）：`official-doc` 0.6 / `engineer-input` 0.3 / `case-derived` 0.3–0.6（case 数与一致性越高越靠近 0.6）；
-- `last_verified` 填今天——grill 阶段用户认可即视为一次人工确认，但**这不替代 maintainer 审核**。
+- `last_verified` 填今天——grill 阶段用户认可即视为一次人工确认，但**这不替代 maintainer 审核**；
+- **产出前检查：词条文件里不得有任何 `#` 注释行**（上模板中的注释全部删掉）——`grep -c "#" <file>` 应为 0。
 
 ### 6. 报告落点（生成后必须明确告知）
 
