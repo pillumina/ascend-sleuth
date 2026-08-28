@@ -1,0 +1,20 @@
+id: a5-supernode-scale
+type: platform-fact
+title: A5 超节点规模（8K 卡）与集群规模（128K+ 卡）
+summary: 昇腾超节点从上一代 384 卡提升至 8K 卡，整体集群支持超 128K 卡，nD-Mesh/Clos 灵活组网
+
+sources:
+  - type: official-doc
+    url: "昇腾950 NPU 架构白皮书（华为技术有限公司），本地归档 ~/ascend/昇腾950 NPU架构白皮书.pdf"
+    version: "2026-06-04（PDF metadata creationDate）"
+    fetched_at: 2026-08-28
+
+applies_to:
+  platforms: [A5-950]
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  claim: "昇腾950 系列支持 nD-Mesh、Clos 等多种灵活组网；超节点（Super Node）规模从上一代 384 卡提升至 8K（8192）卡，整体集群支持规模超过 128K 卡。该规模能力与通信类诊断（HCCL 拓扑、多节点 EP/PD 的通信瓶颈）直接相关——单集群卡片数上限远超 A2/A3。"
+  evidence: "白皮书 §3 灵活组网与超大规模扩展（p.12）与 §4.7 超节点能力（p.32-34）：『规模突破：超节点（Super Node）规模从上一代的384 卡提升至8K（8192）卡，整体集群支持规模超过128K 卡』。已对 PDF 第 8-14 页原文核验。"
