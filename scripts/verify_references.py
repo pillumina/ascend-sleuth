@@ -29,6 +29,7 @@ except ImportError:
 VALID_STATUSES = {"draft", "active", "pending-review", "deprecated"}
 VALID_SOURCE_TYPES = {"official-doc", "engineer-input", "case-derived"}
 VALID_ROLES = {"signature-source", "fix-methodology", "root-cause-context"}  # ADR-0008 §7
+VALID_VERIFICATIONS = {"auto-extracted", "cross-checked-source"}  # ADR-0008 §4.2（可选字段）
 
 SOURCE_REQUIRED = {
     "official-doc": ["url", "version", "fetched_at"],
@@ -146,6 +147,23 @@ def check_reference(path: Path, refs_dir: Path, types_registry: dict, case_ref_c
             for req in SOURCE_REQUIRED[stype]:
                 if not src.get(req):
                     errors.append(f"{rel}: sources[{i}]（{stype}）缺少 {req}")
+            # official-doc url 语义是"来源定位符"（ADR-0008 §4.2）：公开 URL 优先，
+            # 无公开 URL 时用可移植文档引用（标题+出品方+版本）。
+            # 机器特定路径（~/ 或绝对路径）禁止入仓——违反可移植性，且对仓库读者无效。
+            if stype == "official-doc":
+                u = src.get("url") or ""
+                if u.startswith(("~/", "/", "C:\\", "D:\\", "E:\\")):
+                    errors.append(
+                        f"{rel}: sources[{i}].url 是机器特定路径（'{u}'）——"
+                        f"用可移植文档引用（标题+出品方+版本），禁止本地路径（ADR-0008 §4.2）"
+                    )
+            # verification 是可选字段（ADR-0008 §4.2）：填了必须合法，不填不报错
+            verification = src.get("verification")
+            if verification is not None and verification not in VALID_VERIFICATIONS:
+                errors.append(
+                    f"{rel}: sources[{i}].verification '{verification}' 非法"
+                    f"（合法: {', '.join(sorted(VALID_VERIFICATIONS))}）"
+                )
 
     # ---- 按 type 的 content 强校验（schema_required）----
     if rtype and rtype in types_registry:
