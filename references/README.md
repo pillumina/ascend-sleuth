@@ -53,4 +53,6 @@ status: draft | active | pending-review | deprecated
 - 按来源类型强校验子字段；`sources[].verification`（可选）填了必须合法（`auto-extracted` / `cross-checked-source`，ADR-0008 §4.2）；
 - 深审：case-derived + methodology 从全库 case 的 `ref_knowledge` 派生计数，<3 不允许 `status: active`。
 
+**修订走 PR**（ADR-0008 §1.7）：内容修订 active 词条 = 修改已生效知识 → **methodology 模板 + `kb/high-risk` 双签**（小修直接改 YAML + PR；大修用 `/skill:to-reference --update <ref-id>`）。
+
 **维护约定——词条零注释**：词条 YAML 是给 agent 消费的数据，**不得含任何 `#` 注释行**（语义解释只在本 README / ADR-0008 / SKILL.md 文档层）。新增词条后 `grep -c "#" <file>` 应为 0。

@@ -115,7 +115,7 @@ rollback：<rollback>
 
 每个 step 后往 `diagnosis_state-<session_id>.yaml`（每个并发诊断一个独立文件，按 session_id 区分）的 `trace` 数组追加一条：
 ```yaml
-- {step: N, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback, ...}
+- {step: N, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback|reference_lookup, ...}
 ```
 trace 是误诊归因的唯一依据（见 references/diagnosis-procedure.md 末段"误诊归因"）：误诊时先读 trace 判断是 **case 错**（改库）还是**执行错**（改 skill）。不写 trace = 无法归因 = 可能改坏正确的 case。
 
