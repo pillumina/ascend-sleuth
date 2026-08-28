@@ -14,6 +14,7 @@ Adopted（2026-08-27 合入后随使用修订，见下"修订记录"）
 |---|---|---|
 | 1 | 2026-08-28 | 组织形态校准（基于 38 条 case 提炼测试 + PR review）：①去掉 `references/_inbox/` 中间态——草稿以 `status: draft` 直接进正式目录，PR review 即审核闸门（postmortems/inbox 的高频队列逻辑不适用于低频的 reference 沉淀，且 draft 状态已承担"未审内容不进诊断上下文"的隔离）；②引入**组织单元 = 验证单元**第一性原理——错误码等结构化数据集按族成表（`error-code` 类型从单条改为表形态），不再一码一文件平铺 |
 | 2 | 2026-08-28 | 演化机制校准（基于知识聚类/追加/检索的 review）：①**聚类规则**——族划分跟随来源（官方错误码参考怎么分章，errors/ 就怎么建文件）、追加不新建（新错误码先查族归属再追加到现有表，仅族文件不存在才新建）、关联不合并（独立词条不动态聚类成新文件，主题聚合由 tags + related_references 承担，聚合是检索层职责非文件层职责）；②**检索渐进**——目录+grep 现状，触发条件（文件数 >50 或 diagnose trace 显示 reference 检索退化）时生成 `references/_index.yaml`（`build_references_index.py`，与 case 层同构）；③明确**不引入图存储**——知识关联是轻量单跳、词法可表达（字段/标签/ref id），图的多跳遍历是 v2 离线分析工具的内存算法，永不成为持久存储形态（原则三 + ADR-0002 同一逻辑） |
+| 3 | 2026-08-28 | 修订机制校准（基于"沉淀的 reference 有误如何更新"的 review）：补全 reference 生命周期缺失的一环——**内容修订**。新增 §1.7：发现（观测性 resolve 率低 / groom 信号 / maintainer 复查）→ 降级（pending-review/draft）→ 修订（维护者直接改 YAML + PR，或 `to-reference --update` agent 辅助）→ 验证（CI + review）→ 回 active。**修订 active 内容 = 修改已生效知识 → kb/high-risk 双签**（对齐 case 层 knowledge_modification 逻辑）；修订中 status 保持降级态，diagnose 只读 active 天然隔离修订中的词条 |
 
 ## Deciders
 
@@ -119,6 +120,24 @@ reference 是先验知识的**统一载体**，与 case 并列：
 | **关联不合并** | 独立词条**不动态聚类成新文件**——独立性（各自验证/生命周期）是价值，强行合并破坏它。主题聚合由 `tags`（主题标签）+ `related_references`（互链）承担；聚合是**检索层的职责，不是文件层的职责** | `tags` / `related_references` 可选字段；diagnose 检索按标签聚合 |
 
 **不引入图存储（明确否决）**：知识关联（错误码→族、case→reference、同主题互链）都是**轻量单跳、词法可表达**的（字段/标签/ref id），YAML + 词法检索完全承载。图的价值在多跳遍历（A→B→C 传导），而诊断是线性确认 + 辅助定位，不需要多跳。图的形态（语义存储）失去 git 审计链——与 ADR-0002 否决向量检索的同一逻辑。**v2 的 trace 结构挖掘若需图算法，作为离线分析工具的内存数据，永不成为持久存储形态。**
+
+### 1.7 reference 修订机制（修订 3 引入）
+
+reference 内容有误/过时/不完整时的更新路径——补全生命周期缺失的一环（新增有 to-reference、状态降级有 groom 信号，内容修订此前无机制）：
+
+**完整闭环**：发现 → 降级 → 修订 → 验证 → 回 active
+
+| 环 | 机制 |
+|---|---|
+| **发现** | 引用后 resolve 率低（trace_metrics 观测）、engineer 反馈失败、sources 失效、last_verified 超 90 天、maintainer 复查——观测与信号表驱动，不靠人翻 |
+| **降级** | active → `pending-review`（普通）/ `draft` + 禁用 30 天（methodology）——groom 信号表已有 |
+| **修订** | 两条路径：**A. 维护者直接改 YAML + PR**（小修：错别字/补一句/改一个错误码含义）——git diff 可追溯、review 即审核；**B. `to-reference --update <ref-id>`**（大修：methodology 流程重写/错误码表按新官方文档整体更新）——agent 读现有 + 新材料产修订 diff 建议，人确认 |
+| **验证** | 修订走 PR + `verify_references.py` CI + review |
+| **回 active** | review 通过后回 active（methodology 需重新实测 `verified_by_testing`） |
+
+**风险分级（对齐 case 层 knowledge_modification）**：新增 draft 从未生效 → 单审足够；**修订 active 内容 = 修改已生效的诊断事实 → `kb/high-risk` 双签**。修订期间 status 保持降级态——diagnose 只读 active 天然隔离修订中的词条（status 机制的额外价值）。
+
+**误伤防护**：引用后 resolve 率低可能是 ref 错（该修），也可能是 case 匹配错（不该修 ref）——**先 trace 归因**（原则八：引用后验证环节失败 vs 引用本身误导），归因清楚再动，观测性不能变成"冤案制造机"。
 
 ### 2. reference 仓库结构（修订 1 更新）
 

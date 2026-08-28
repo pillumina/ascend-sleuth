@@ -8,6 +8,8 @@
 
 遵循 [Agent Skills](https://agentskills.io/) 标准，可在 pi、Claude Code、Codex 等任意支持该标准的 agent 中使用。
 
+> ⚠️ **agent 执行差异**：不同 agent 对 SKILL.md 的执行质量有差异（prompt 纪律是概率性的，设计原则二明确承认）。诊断结果与 trace 质量可能因 agent 而异——**团队内建议统一 agent**，并在跨 agent 对比结果时先归因执行差异，不急于归因知识错误。
+
 **快速跳转**：[为什么需要](#为什么需要它) · [快速开始](#快速开始) · [五个 skill](#五个-skill) · [工作原理](#工作原理) · [文档](#文档)
 
 ---

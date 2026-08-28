@@ -41,6 +41,17 @@ description: >
 /skill:to-reference --ingest-cases "[VLLM-ASC-9596, VLLM-ASC-12989, VLLM-ASC-9507]"
 ```
 
+**5. 修订已有 reference**（`--update <ref-id>`——内容有误/过时/不完整时更新，**不是新增**）：
+
+```
+/skill:to-reference --update cann-runtime-error-codes --ingest <新来源 url>
+```
+
+- agent 读现有词条 + 新材料，产出**修订 diff 建议**（改了什么/为什么），人确认后落 PR；
+- 修订 active 内容 = 修改已生效知识 → **kb/high-risk 双签**（对齐 case 层 knowledge_modification）；
+- 修订前先确认该 ref 已被标 `pending-review` 或 `draft`（降级中修订；diagnose 只读 active 天然隔离）；
+- 小修（错别字/补一句/改一个错误码含义）→ 不启动 --update，维护者直接改 YAML + PR 更轻（git diff 可追溯）；--update 留给大修（methodology 流程重写/错误码表按新官方文档整体更新）。
+
 ## 流程
 
 ### 0. 识别来源类型（决定流程分支）
@@ -84,7 +95,7 @@ description: >
 | 命令/环境变量的副作用与回滚 | `command-side-effect` |
 | 多步骤诊断/调优流程 | `methodology` |
 
-**error-code 表形态（ADR-0008 §1.5 组织单元 = 验证单元）**：错误码天然成族（CANN Runtime 507xxx / HCCL / aicpu / Driver），同族同源同验证——**一个族一个文件**（如 `references/errors/cann-runtime.yaml` 承载 507903/507018/507057...），表级共享 sources/status/applies_to，不逐码建文件。case 提炼的条目逐条验证 → 条目带可选 `source_cases`。检索时 agent 按族定位文件，表内 grep code 一次命中。
+**error-code 表形态（组织单元 = 验证单元）**：错误码天然成族（CANN Runtime 507xxx / HCCL / aicpu / Driver），同族同源同验证——**一个族一个文件**（如 `references/errors/cann-runtime.yaml` 承载 507903/507018/507057...），表级共享 sources/status/applies_to，不逐码建文件。case 提炼的条目逐条验证 → 条目带可选 `source_cases`。检索时 agent 按族定位文件，表内 grep code 一次命中。
 
 拿不准 type → 按最贴近的登记 type 落草稿，并在草稿里标注 `type_uncertain: true` 交 maintainer 定夺。**不要自行发明未登记 type**（CI 会红；登记是 maintainer 的动作，见 `_types.yaml`）。
 
@@ -105,6 +116,14 @@ description: >
 
 **official-doc**：不逐项 grill（来源明确），但**必须在报告里显式告诉用户验证状态**——`auto-extracted` 要说明"这是模型抽取的摘要，建议打开原文核对语义"；`cross-checked-source` 要说明"已对源原文核验，可抽查"。把 `verification` 写进草稿 `sources[]`。
 
+**grill 分级（体验瘦身——反复对齐是置信度增加过程，但按需分级，不是无差别多轮）**：
+
+- **高置信（默认）**：来源明确（official-doc）、内容自包含、无歧义 → **单次确认**——一次复述"我理解你说的是：……，对吗？"，用户认可即过，不逐项追问；
+- **中置信**：工程师输入但表述清晰 → 确认意图 + 出处，边界/反例顺带一问；
+- **低置信**（必须多轮）：表述含糊、来源不明、边界不清 → 完整四轮（意图/边界/出处/反例）逐项确认。
+
+判据：**agent 自评置信度决定 grill 深度**——高置信单次、低置信多轮；拿不准往高一档走（宁可多确认一次，不因省事产出歧义词条）。
+
 grill 是**人审的第一道过滤**——确认过程中用户放弃/否认的条目，直接丢弃，不进 inbox。宁可少而准，不要多而疑。
 
 ### 4. 去重与聚类归属检查（进正式目录前）
@@ -116,7 +135,7 @@ grill 是**人审的第一道过滤**——确认过程中用户放弃/否认的
 - **层级**（现有词条是总览、本条是细节，或反之——如现有 `a5-l2-cache` 总览 vs 本条 `a5-l2-cache-detail`）→ 提示用户："现有 `<ref-id>` 是总览，你这条是同一主题的细节——建议独立词条并在两边 `related_references` 互指；或并进现有词条。哪种？"按用户回答处理。层级关系本身是**合法结构**（不是重复），但要显式互链，避免检索时只见其一；
 - 查不到 → 新词条，继续。
 
-**聚类归属（ADR-0008 §1.6 修订 2：追加不新建）**——数据集类（error-code）在去重之外还要判定族归属：
+**聚类归属（追加不新建）**——数据集类（error-code）在去重之外还要判定族归属：
 
 - 提炼到错误码 → **先查 `references/errors/` 现有文件**，按组件判定归属（族划分跟随来源——CANN 错误码参考怎么分章，文件就怎么建）；
 - 归属已有族（如 507xxx 进 `cann-runtime.yaml`）→ **追加到该表 `errors` 列表**，标新 `source_cases`——**不新建文件**；
