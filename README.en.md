@@ -176,8 +176,7 @@ knowledge/
 │   └── vllm-ascend/         (framework × category cells, ADR-0004)
 │       ├── interrupt/  ├── precision/  ├── performance/  └── other/
 ├── common/                  authoritative cross-framework records (promoted by groom)
-├── _archive/                soft-retired stale cases
-└── platforms/{a2,a3,a5}.md  platform background
+└── _archive/                soft-retired stale cases
 ```
 
 Key files and directories outside `knowledge/`:

@@ -176,8 +176,7 @@ knowledge/
 │   └── vllm-ascend/         （framework × category 格子分层，ADR-0004）
 │       ├── interrupt/  ├── precision/  ├── performance/  └── other/
 ├── common/                  多框架共用的权威记录（由 groom 提升）
-├── _archive/                软退休的过期 case
-└── platforms/{a2,a3,a5}.md  平台背景知识
+└── _archive/                软退休的过期 case
 ```
 
 knowledge/ 之外的关键文件与目录：
