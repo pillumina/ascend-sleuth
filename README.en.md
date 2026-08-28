@@ -8,7 +8,7 @@ A diagnostic tool suite for Ascend training and inference support. It turns each
 
 Built to the [Agent Skills](https://agentskills.io/) standard, it runs in any compliant agent such as pi, Claude Code, or Codex.
 
-**Jump to**: [Why](#why-it-exists) · [Quick start](#quick-start) · [The four skills](#the-four-skills) · [How it works](#how-it-works) · [Documentation](#documentation)
+**Jump to**: [Why](#why-it-exists) · [Quick start](#quick-start) · [The five skills](#the-five-skills) · [How it works](#how-it-works) · [Documentation](#documentation)
 
 ---
 
@@ -26,11 +26,11 @@ ascend-sleuth structures this experience into a knowledge base. At diagnosis tim
 npx skills@latest add pillumina/ascend-sleuth
 ```
 
-Pick the skills to install and the target agent, or manually add the `skills/` directory to the search path in pi or Claude Code. All four (recommended — `resume-diagnosis` is part of the feedback loop, see below):
+Pick the skills to install and the target agent, or manually add the `skills/` directory to the search path in pi or Claude Code. All five (`to-reference` is the prior-knowledge entry, parallel to case capture `to-postmortem`; `resume-diagnosis` is part of the feedback loop, see below):
 
 ```bash
 npx skills@latest add pillumina/ascend-sleuth -g -a pi -a claude-code \
-  -s diagnose -s to-postmortem -s knowledge-groom -s resume-diagnosis
+  -s diagnose -s to-postmortem -s to-reference -s knowledge-groom -s resume-diagnosis
 ```
 
 Once loaded, invoke with `/skill:<name>` in your agent.
@@ -67,7 +67,7 @@ Once the skills are installed, the knowledge base takes one of three forms — p
 
 | Form | Install command | Result | Best for |
 |---|---|---|---|
-| **Accumulate your own** (skills only) | `npx skills add -s diagnose -s to-postmortem -s knowledge-groom -s resume-diagnosis` | Installs `skills/` methodology only; `knowledge/` stays empty | New teams, different problem domains, private knowledge |
+| **Accumulate your own** (skills only) | `npx skills add -s diagnose -s to-postmortem -s to-reference -s knowledge-groom -s resume-diagnosis` | Installs `skills/` methodology only; `knowledge/` stays empty | New teams, different problem domains, private knowledge |
 | **Consume existing** (full repo) | `npx skills add -g pillumina/ascend-sleuth` (git mode pulls the whole repo, including `knowledge/`) | Use upstream-verified cases directly, keep accumulating | Existing corpus, overlapping problem domain, want reuse |
 | **Tailored surface** (sparse checkout) | `git clone` or `-g` first, then `git sparse-checkout` with a directory whitelist | Keep only the parts you need (e.g. `vllm-ascend` cells + `common/`) | Once the corpus grows, bandwidth/storage-constrained, only your framework's knowledge |
 
@@ -75,16 +75,17 @@ All three share the same skills and machinery, and they compose: an accumulating
 
 **Sparse checkout caveat**: `_index.yaml` is a generated artifact covering the full corpus. After a sparse checkout, rerun `python3 scripts/build_index.py` to rebuild the index — it indexes only the cells you pulled, and retrieval stays within your knowledge surface. `common/` is **mandatory by design** (triage fallback namespace + cross-framework authoritative records, per ADR-0005); **it is currently empty** (only `.gitkeep` — awaiting groom-extracted cross-framework records). Sparse-checkout should still keep the `common/` directory placeholder so future content does not require a whitelist change. Design rationale in [ADR-0005](docs/adr/0005-knowledge-consumption-split.md).
 
-## The four skills
+## The five skills
 
 | Skill | Purpose | When to use | Invocation |
 |---|---|---|---|
 | `diagnose` | Core diagnostic loop: route by symptoms, match and verify cases, deliver fixes or fall back to deep investigation; records a trace throughout | Training or inference problems of the interrupt / precision / performance classes | Explicit `/skill:diagnose` |
-| `to-postmortem` | Distill an investigation into knowledge; accepts any source, runs validation and redaction, outputs into the review queue | After a problem is located, wherever it was located | Auto-triggerable |
+| `to-postmortem` | Distill an investigation into case knowledge; accepts any source, runs validation and redaction, outputs into the review queue | After a problem is located, wherever it was located | Auto-triggerable |
+| `to-reference` | Distill prior knowledge (facts/methodologies, ADR-0008) into reference entries: inline / file / official-doc crawl / case-set generalization, grill-confirmed, then queued for review | When an engineer wants to sink general experience, or generalize common patterns from case sets | Explicit `/skill:to-reference` |
 | `knowledge-groom` | Periodic maintenance: batch-process the review queue, promote, deduplicate, recompute confidence, soft-retire, rebuild the index | Domain owner, weekly | Explicit `/skill:knowledge-groom` |
 | `resume-diagnosis` | Resume an interrupted diagnosis: reads the state file and trace, restates the situation, then continues | Diagnosis interrupted by meetings or context compaction | Explicit `/skill:resume-diagnosis` |
 
-Full operational detail (severity gates, trace rules, semantic validation) lives in each `skills/<name>/SKILL.md`. The three diagnostic skills are user-only — diagnostic decisions are human-triggered. `to-postmortem` may auto-trigger, lowering the barrier to capturing knowledge.
+Full operational detail (severity gates, trace rules, semantic validation) lives in each `skills/<name>/SKILL.md`. The three diagnostic skills are user-only — diagnostic decisions are human-triggered. `to-postmortem` and `to-reference` may auto-trigger, lowering the barrier to capturing knowledge.
 
 ## How it works
 
