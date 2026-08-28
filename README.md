@@ -163,6 +163,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 - **[路线图](docs/roadmap.md)** — 闸门驱动的演进计划，每个事项的触发条件与验收标准
 - **[Git 工作流](docs/git-workflow.md)** — 审核、门控、合入的落地（标签集、CODEOWNERS、CI、双签）
 - **[评估](docs/eval.md)** — skill 改动前后的回归检查；[评估报告](docs/eval-reports/0001-vllm-ascend-batch.md) 记录了首次真实数据实测
+- **[推广就绪度评估](docs/rollout-assessment.md)** — 对照十一条原则的四层就绪度评估与推广动作清单
 - **[术语表](CONTEXT.md)** — case、postmortem、groom、trace 等术语的规范定义
 
 ### 知识库结构
