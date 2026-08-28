@@ -1,0 +1,38 @@
+# reference type 注册表（ADR-0008）
+#
+# 渐进登记：新 type 由 maintainer 在本文件登记，schema_required 决定
+# scripts/verify_references.py 的强校验字段。type 字段是 open vocabulary——
+# 但未登记的 type 在 CI 中报错（防止临时标签混入正式词条）。
+#
+# kind 是元分类：fact = 平铺字段；flow = 嵌套结构（content.flow[].step/action/check）。
+
+types:
+  error-code:
+    kind: fact
+    description: 错误码 / 异常代码的含义解读（如 plog 507903 = capture event failed）
+    schema_required: [code, meaning]
+    schema_optional: [related_signatures, applies_to_versions]
+
+  tool:
+    kind: fact
+    description: 工具 / 命令的使用方法与输出解读（如 npu-smi info 字段含义）
+    schema_required: [tool_name, invocation]
+    schema_optional: [output_meaning, pitfalls]
+
+  platform-fact:
+    kind: fact
+    description: 平台硬事实（可独立验证的客观事实，如 "A2 不支持 FP8"）
+    schema_required: [claim, evidence]
+    schema_optional: [applies_to_platforms]
+
+  command-side-effect:
+    kind: fact
+    description: 命令 / 环境变量的副作用与回滚方式（如 "导出 HCCL_BUFFSIZE 需重启生效"）
+    schema_required: [command, side_effects]
+    schema_optional: [rollback, version_dependent]
+
+  methodology:
+    kind: flow
+    description: 流程 / 方法论（多步骤诊断或调优）；深审类型——case-derived 来源需 ≥3 条 case 引用才可 active
+    schema_required: [flow]
+    schema_optional: [verified_by_testing, test_scenarios]

@@ -184,9 +184,10 @@ Key files and directories outside `knowledge/`:
 ```
 triage-tree.yaml             Tier-1 routing (symptom → namespace)
 postmortems/                 Tier-3 raw records; inbox/ is the review queue
+references/                  prior-knowledge layer (ADR-0008): facts + methodologies, empty shelf awaiting content
 examples/sample-case.yaml    canonical sample (full schema demo)
 CONTEXT.md                   domain glossary
-scripts/                     build_index.py, trace_metrics.py, replay_prep.py, issue_filter.py
+scripts/                     build_index.py, trace_metrics.py, replay_prep.py, issue_filter.py, verify_references.py
 eval/golden/                 regression fixtures
 docs/                        documentation system (see Documentation index above)
 CODEOWNERS.example           enable once owners are named

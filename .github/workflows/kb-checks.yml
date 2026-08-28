@@ -2,9 +2,9 @@ name: kb-checks
 
 on:
   push:
-    paths: ["knowledge/**", "triage-tree.yaml", "scripts/build_index.py"]
+    paths: ["knowledge/**", "references/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py"]
   pull_request:
-    paths: ["knowledge/**", "triage-tree.yaml", "scripts/build_index.py"]
+    paths: ["knowledge/**", "references/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py"]
 
 jobs:
   index-freshness:
@@ -21,3 +21,16 @@ jobs:
       # triage-tree 语法检查：曾因 pipe-or 写法长期不可解析而无人发现（原则二教训），
       # 结构化工具化（路由统计/学习型路由）前必须堵住。
       - run: python3 -c "import yaml; yaml.safe_load(open('triage-tree.yaml')); print('triage-tree ok')"
+
+  reference-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      # reference 层入口门槛比 case 更严（ADR-0008 §8）：
+      # 基础元信息 + 已登记 type + 按来源类型子字段 + 深审（case-derived methodology
+      # 派生引用数 <3 不允许 active）。脚本解析全部 case YAML 计算派生计数，语法错即红。
+      - run: python3 scripts/verify_references.py --check
