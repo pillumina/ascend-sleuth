@@ -1,0 +1,61 @@
+id: ascend-log-troubleshooting
+type: methodology
+title: 日志异常排查（不落盘 / 时间戳不对 / 多余打屏）
+summary: 日志故障按现象分流：不落盘按部署形态分支排查（EP/RC/Control CPU × 应用/系统：系统日志报错 → df -h 磁盘 → ldd 动态库 → ps 查 slogd → 重启日志进程）；时间戳不对是 AI 任务启动后改系统时区所致（重启任务或 timedatectl 改回）；多余打屏是日志模块与 slogd 建 Socket 失败降级打屏（fd 超限用 ulimit -n 调大）
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0024.html"
+    version: "CANN 商用版 9.0.0（日志参考 logreference_0024/0025/0026）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+  categories: [interrupt]
+
+related_references: [ascend-restart-slogd, ascend-slog-conf]
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  flow:
+    - step: 1
+      name: 识别故障现象
+      action: 按现象分流——日志文件缺失或为空（不落盘）/ 日志时间戳与系统时间不一致 / 未设置打印环境变量但屏幕仍有日志（多余打屏）
+      check: 现象归类三选一
+      when_to_use: 日志收集阶段发现日志异常
+    - step: 2
+      name: 不落盘——Ascend EP 应用类日志
+      action: 查 Host 侧系统日志报错（aarch64 看 /var/log/messages，x86_64 看 /var/log/syslog）；再 df -h 查日志落盘路径（$HOME/ascend/log）所在磁盘是否满；仍不行用 msnpureport 导出 Device 侧系统日志查错误；最后获取日志联系技术支持
+      check: "cat /var/log/messages 或 cat /var/log/syslog；df -h"
+      when_to_use: EP 形态 $HOME/ascend/log 下 plog 日志或 device-id 日志未落盘
+    - step: 3
+      name: 不落盘——msnpureport 导出失败
+      action: 查看 msnpureport 命令打印的提示信息定位问题；再 df -h 查运行 msnpureport 所在路径的磁盘空间是否已满；仍失败联系技术支持
+      check: "df -h"
+      when_to_use: EP 形态 msnpureport 导出 Device 侧系统日志失败
+    - step: 4
+      name: 不落盘——RC / Control CPU 开放形态应用类日志
+      action: ldd <应用进程> 查应用进程依赖的动态库是否正确；df -h 查 /var/log/npu/slog 所在磁盘是否满；ps -elf | grep slogd 确认 slogd 进程存在（Atlas 200I/500 A2 若进程不存在联系技术支持）；以上无问题则重启日志进程
+      check: "ldd <进程>；df -h；ps -elf | grep slogd"
+      when_to_use: RC 或 Control CPU 开放形态 /var/log/npu/slog 下应用类日志未落盘
+    - step: 5
+      name: 不落盘——RC / Control CPU 开放形态系统类日志
+      action: ps -elf | grep log 查 slogd、sklogd 进程是否存在（Atlas 200I/500 A2 若进程不存在联系技术支持）；df -h 查 /var/log/npu/slog 所在磁盘是否满；以上无问题则重启日志进程
+      check: "ps -elf | grep log；df -h"
+      when_to_use: RC 或 Control CPU 开放形态系统类日志未落盘
+    - step: 6
+      name: 日志时间戳与系统时间不一致
+      action: 根因是启动 AI 任务后修改了系统环境时区；处理方式一：重新启动 AI 任务；方式二：修改系统时区（timedatectl 查看当前时区，sudo timedatectl set-timezone Asia/Shanghai 设置新时区）
+      check: "timedatectl；sudo timedatectl set-timezone <时区>"
+      when_to_use: 日志打印信息中的时间戳与系统环境时间不一致
+    - step: 7
+      name: 未设打印变量但屏幕仍有日志
+      action: 根因是日志模块创建与 slogd 的 Socket 失败时降级把日志打印到屏幕，通常因执行用例时打开文件数超过系统默认最大值；ulimit -a 查看 open files 限制、lsof | wc -l 查看当前已打开文件数，超限用 ulimit -n 调大
+      check: "ulimit -a；lsof | wc -l；ulimit -n <n>"
+      when_to_use: 未 export ASCEND_SLOG_PRINT_TO_STDOUT=1 但屏幕仍有日志显示
+  verified_by_testing: false

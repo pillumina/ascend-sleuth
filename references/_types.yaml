@@ -28,6 +28,12 @@ types:
     schema_required: [claim, evidence]
     schema_optional: [applies_to_platforms]
 
+  software-fact:
+    kind: fact
+    description: 软件栈 / 运行时系统的硬事实（可独立验证，如日志路径与格式、机制、进程行为），不绑定具体硬件平台——平台/芯片规格走 platform-fact
+    schema_required: [claim, evidence]
+    schema_optional: [applies_to_platforms]
+
   command-side-effect:
     kind: fact
     description: 命令 / 环境变量的副作用与回滚方式（如 "导出 HCCL_BUFFSIZE 需重启生效"）

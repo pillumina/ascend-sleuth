@@ -1,0 +1,23 @@
+id: ascend-log-classification
+type: software-fact
+title: 昇腾日志分类与统一格式
+summary: 昇腾日志分系统类（Device 侧）/ 应用类（Host+Device）/ trace（内存记录、出错或退出才落盘）三类；统一格式 [Level] ModuleName(PID,PName):DateTimeMS [FileName:LineNumber]LogContent；文件名中 id=Device ID、pid=业务进程 ID、*=创建时间戳
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0001.html"
+    version: "CANN 商用版 9.0.0（日志参考 logreference_0001）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  claim: "昇腾日志分三类：系统类日志在 Device 侧产生——Control CPU 上的内核态与系统进程用户态日志反映 AI 处理器整体运行情况，非 Control CPU（低功耗、Task Scheduler、ISP 等）日志反映组件运行情况；应用类日志由 AI 应用程序产生——Host 侧 AscendCL、GE、Runtime、HCCL 等组件日志，以及 Device 侧 AI CPU 进程日志；trace 日志将软件栈维测信息记录在内存中，程序运行出错或进程结束时才落盘（独立机制，避免频繁写日志影响性能）。统一日志格式为 [Level] ModuleName(PID,PName):DateTimeMS [FileName:LineNumber]LogContent，Level 取 ERROR/WARNING/INFO/DEBUG。"
+  evidence: "日志参考 logreference_0001『日志分类』『日志记录格式』：系统类（Control CPU 内核态+系统进程用户态 / 非 Control CPU 低功耗、Task Scheduler、ISP 等）、应用类（Host AscendCL、GE、Runtime、HCCL / Device AI CPU 进程）、trace（内存记录、出错或进程结束落盘）三类；格式 [Level] ModuleName(PID,PName):DateTimeMS [FileName:LineNumber]LogContent；id 和 pid 分别代表 Device ID 和业务进程 ID，* 表示文件创建时间戳"

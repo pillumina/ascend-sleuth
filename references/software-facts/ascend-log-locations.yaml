@@ -1,0 +1,37 @@
+id: ascend-log-locations
+type: software-fact
+title: 昇腾日志存储路径（EP / RC / Control CPU 开放形态）
+summary: 应用类日志 Ascend EP 默认在 $HOME/ascend/log、Ascend RC 与 Control CPU 开放形态在 /var/log/npu/slog 按 debug/run/security 分目录；EP 无 Device 登录权限、系统类日志须用 msnpureport 导出；日志支持老化自动删除
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0002.html"
+    version: "CANN 商用版 9.0.0（日志参考 logreference_0002/0003/0004）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  claim: "日志存储路径按部署形态区分：Ascend EP 应用类日志默认在 $HOME/ascend/log（容器内或物理机内均可查看），系统类日志因无 Device 侧登录权限须用 msnpureport 工具导出到 Host 查看；Ascend RC 与 Control CPU 开放形态的系统类和应用类日志均在 /var/log/npu/slog 下按 debug/run/security 分目录（device-os 系统进程 / device-app-pid 应用进程 / event 事件 / device-id 非 Control CPU，另有 slogd/slogdlog 维测日志 1MB 滚动备份）。所有日志支持老化：超过配置的存储限制自动删除最早的日志目录或文件；Control CPU 开放形态默认每类型存 24 个 device-app-pid 目录、15 秒扫描一次、最多 24 个应用进程并发（超过可能导致日志丢失）。容器内查看需将日志工具动态库 libascendalog.so 及其依赖 libc_sec.so 所在路径映射进容器。"
+  evidence: "日志参考 logreference_0002（EP：$HOME/ascend/log 应用日志、${INSTALL_DIR}/compiler/lib64/libascendalog.so 与 ${INSTALL_DIR}/driver/lib64/common/libc_sec.so 容器映射、msnpureport 导出系统日志）、0003（RC：/var/log/npu/slog/{debug,run,security}/device-os|device-app-pid、run/event、device-id、slogd/slogdlog 达 1MB 变 slogdlog.old）、0004（Control CPU 开放形态：每类型 24 个 device-app-pid 目录/15 秒扫描/24 并发上限、device-os 与 event 需 msnpureport 导出）"
+  locations:
+    ep:
+      app: "$HOME/ascend/log/{debug,run,security}/（含 plog 与 device-id 日志，Device 侧日志自动回传 Host，默认 2000ms 延时）"
+      system: "无 Device 登录权限，用 msnpureport 工具导出到 Host 查看"
+      container: "需映射 ${INSTALL_DIR}/compiler/lib64/libascendalog.so 与 ${INSTALL_DIR}/driver/lib64/common/libc_sec.so"
+    rc:
+      system: "/var/log/npu/slog/{debug,run,security}/device-os/、run/event/、debug/device-id/"
+      app: "/var/log/npu/slog/{debug,run,security}/device-app-pid/"
+      diag: "/var/log/npu/slog/slogd/slogdlog（维测日志，达 1MB 变 slogdlog.old 备份）"
+    control_cpu:
+      app: "/var/log/npu/slog/{debug,run,security}/device-app-pid/"
+      system: "/var/log/npu/slog/{debug,run,security}/device-os/、run/event/（需 msnpureport 导出）"
+      diag: "/var/log/npu/slog/slogd/slogdlog"
+      aging: "默认每类型 24 个 device-app-pid 目录、15 秒扫描、最多 24 并发进程（超过可能导致日志丢失）"

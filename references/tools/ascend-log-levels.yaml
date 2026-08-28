@@ -1,0 +1,34 @@
+id: ascend-log-levels
+type: tool
+title: 设置日志级别（应用类环境变量 / 系统类 msnpureport 或 slog.conf）
+summary: 日志级别序 0 DEBUG < 1 INFO < 2 WARNING < 3 ERROR < 4 NULL 不输出；调试日志默认 ERROR 可调、安全日志默认 DEBUG 不可调、运行日志默认 INFO 不可调；应用类用 ASCEND_GLOBAL_LOG_LEVEL 等环境变量，系统类 EP 用 msnpureport、RC 改 slog.conf 后重启 slogd
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0008.html"
+    version: "CANN 商用版 9.0.0（日志参考 logreference_0008）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+related_references: [ascend-slog-conf]
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  tool_name: "日志级别设置（ASCEND_GLOBAL_LOG_LEVEL / msnpureport / slog.conf）"
+  invocation: "应用类日志级别通过环境变量设置：ASCEND_GLOBAL_LOG_LEVEL 设全局级别、ASCEND_MODULE_LOG_LEVEL 设模块级（如 TDT=0:DRV=0）、ASCEND_GLOBAL_EVENT_ENABLE 控制是否开启 Event 日志；系统类日志级别 Ascend EP 形态用 msnpureport 工具设置、Ascend RC 形态修改 Device 侧 /etc/slog.conf 后重启 slogd（见 ascend-slog-conf）"
+  level_definitions:
+    "0": "DEBUG 调试级别，记录调试信息，便于开发/维护人员定位问题"
+    "1": "INFO 正常级别，记录系统正常运行的信息"
+    "2": "WARNING 警告级别，记录与预期不一致但不影响系统运行的信息"
+    "3": "ERROR 一般错误级别，记录非预期数据或事件、模块内可处理错误、影响其他模块的轻微错误等"
+    "4": "NULL 级别，不输出日志"
+  pitfalls:
+    - 调试日志默认 ERROR、可调；安全日志默认 DEBUG、不可调；运行日志默认 INFO、不可调
+    - slog.conf 中模块级别 5 表示跟随全局级别（见 ascend-slog-conf），不是合法日志级别

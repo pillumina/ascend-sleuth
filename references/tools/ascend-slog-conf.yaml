@@ -1,0 +1,37 @@
+id: ascend-slog-conf
+type: tool
+title: Device 侧日志配置文件 /etc/slog.conf
+summary: RC 与 Control CPU 开放形态 Device 侧系统日志配置在 /etc/slog.conf：global_level、enableEvent、模块级别（5=跟随全局）、滚动规格、logAgentFileDir（≤255 字节）、permission_for_all；改后必须重启 slogd 生效；Ascend EP 形态无此文件且无修改权限
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0017.html"
+    version: "CANN 商用版 9.0.0（日志参考 logreference_0017/0012）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+related_references: [ascend-log-levels, ascend-restart-slogd]
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  tool_name: "/etc/slog.conf（Device 侧日志配置文件，记录系统类日志的级别/路径/数量/大小）"
+  invocation: "Ascend RC 形态（如 Atlas 200I/500 A2 推理产品）与 Control CPU 开放形态可修改 Device 侧 /etc/slog.conf 管理系统类日志；修改后必须重启 slogd 进程使配置生效；多用户场景仅日志进程的运行用户可改；Ascend EP 标准形态 Host 侧没有日志配置文件、无 Device 侧登录和修改权限，一般无需修改"
+  config_items:
+    global_level: "全局日志级别，仅支持调试日志：0 DEBUG / 1 INFO / 2 WARNING / 3 ERROR / 4 NULL 不输出，其他值非法"
+    enableEvent: "1 开启 Event 日志 / 0 不开启"
+    module_level: "SLOG、IDEDD、DVPP 等 Control CPU 模块与 TS、TSDUMP 等非 Control CPU 模块的级别；5=跟随全局（全局为 4 则模块不打印；全局非法则模块取 ERROR；模块取 4 则不打印）"
+    rollover: "DeviceOsMaxFileNum/Size（debug/device-os 数量与单文件大小）、DeviceOsNdebugMaxFileNum/Size（run/security 的 device-os）、DeviceMaxFileNum/Size（device-id）、DeviceAppDirNums（device-app-pid 目录数）、DeviceAppMaxFileNum/Size（每目录文件数量与单文件大小）——超数量滚动覆盖最早日志，单文件小于 1MB 默认按 1MB"
+    buffers: "SysLogBufSize（系统日志缓冲区）、AppLogBufSize（应用类日志缓冲区）"
+    logAgentFileDir: "日志文件路径，最长 255 字节、超长自动截断；需确保运行日志进程的用户对该路径有读写权限"
+    permission_for_all: "0 仅支持 slogd 运行用户启动 APP 写日志 / 1 支持不同属组用户启动 APP 写日志"
+  pitfalls:
+    - 配置项须按建议值或取值范围设置，不按配置要求可能导致系统异常
+    - 手动修改配置文件后必须重启 slogd 进程才生效
+    - Ascend EP 标准形态无此文件，无需修改
