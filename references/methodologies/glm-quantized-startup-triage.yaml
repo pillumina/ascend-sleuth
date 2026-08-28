@@ -1,0 +1,46 @@
+id: glm-quantized-startup-triage
+type: methodology
+title: GLM 系模型量化加载启动失败排查（按报错形态分类）
+summary: GLM 系模型（GLM-5/5.1/5.2）w8a8/w4a8/w4a8c8 量化权重拉起 vllm serve 启动失败时，先按报错形态分类定位——modelslim 描述缺失 / 版本错配 / 算子绑定 / 量化路由，各类修法不同
+
+sources:
+  - type: case-derived
+    cases: [VLLM-ASC-10610, VLLM-ASC-12901, VLLM-ASC-11208, VLLM-ASC-13329, VLLM-ASC-9186, VLLM-ASC-9167, VLLM-ASC-12685]
+    extracted_at: 2026-08-28
+    extraction_method: to-reference --ingest-cases
+
+applies_to:
+  frameworks: [vllm-ascend]
+  categories: [interrupt]
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  flow:
+    - step: 1
+      name: 识别报错形态
+      action: 按报错类型分流——KeyError（modelslim 量化描述查表）/ ModuleNotFoundError（import 阶段）/ RuntimeError（pybind 算子绑定）/ AttributeError（量化配置路由）
+      check: grep 报错栈首行定位异常类型
+      when_to_use: GLM 系量化模型拉起 vllm serve 启动失败
+    - step: 2
+      name: KeyError 分支——modelslim 量化描述缺失
+      action: 报错含 model.layers.N.self_attn.indexer.wq_b.weight 等 KeyError → vllm_ascend/quantization/modelslim_config.py 的量化描述表缺 GLM5.2 新增 indexer 结构条目，或模型结构本身不匹配（如 DSV4 MTP 报 mtp.0.head.weight）
+      check: 对照 modelslim 量化描述表是否含报错权重前缀
+      when_to_use: 报错栈含 modelslim_config / get_linear_quant_type
+    - step: 3
+      name: ModuleNotFoundError 分支——版本错配
+      action: import 阶段缺 vllm.model_executor 模块（如 fused_moe.expert_map_manager）→ vllm-ascend 版本未适配该 GLM 版本
+      check: 升级 vLLM + vllm-ascend 到适配版本（如 GLM5.2 需 vLLM 0.23.0 + PR #10441）
+      when_to_use: 报错含 No module named
+    - step: 4
+      name: RuntimeError 分支——算子绑定/后端路径
+      action: pybind 类型不匹配（dispatch_ffn_combine bias1）或 MLA prefill backend patch 版本分支不匹配（FlashAttnPrefillBackend requires flash_attn）——升级到含修复 PR 的版本
+      check: "报错含 _C_ascend:: / FlashAttnPrefillBackend"
+      when_to_use: 报错含 RuntimeError / AssertionError 指向算子或 backend
+    - step: 5
+      name: AttributeError 分支——量化配置误路由
+      action: 非量化/原生 FP8 checkpoint 被自动路由进 AscendFp8Config（o_groups 等 DSV4 专有字段缺失）→ 升级含修复 PR，临时可 --quantization None
+      check: 报错含 o_groups / AscendFp8Config / ds_linear
+      when_to_use: 报错含 AttributeError
+  verified_by_testing: false

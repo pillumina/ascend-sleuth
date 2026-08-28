@@ -1,0 +1,49 @@
+id: cann-runtime-error-codes
+type: error-code
+title: CANN Runtime 错误码（507xxx / 算子执行 / 拷贝类）
+summary: 从 vllm-ascend case 提炼的昇腾运行时错误码：507903（cudagraph event 资源）、507018（aicpu 异常）、507057（MTE 越界）、561000（算子缺二进制/执行失败）、107030（拷贝失败）、161002（matmul dim 不匹配）
+
+sources:
+  - type: case-derived
+    cases: [VLLM-ASC-12989, VLLM-ASC-9596, VLLM-ASC-13050, VLLM-ASC-12461, VLLM-ASC-14166, VLLM-ASC-10944, VLLM-ASC-12983, VLLM-ASC-12226]
+    extracted_at: 2026-08-28
+    extraction_method: to-reference --ingest-cases
+
+applies_to:
+  platforms: [A2-910B, A3-910C, A5-950, 310P]
+  frameworks: [vllm-ascend]
+  categories: [interrupt]
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  errors:
+    - code: "507903"
+      meaning: "Insufficient_Event_Resources——cudagraph 图模式捕获阶段 event/SQ-CQ 资源超硬件预算（Create capture event failed / capture_end error）。规避：--enforce-eager 或缩小 cudagraph_capture_sizes；310P 硬件 event 资源尤其有限。"
+      related_signatures: ["Insufficient_Event_Resources", "Create capture event failed", "error code is 507903"]
+      source_cases: [VLLM-ASC-12989, VLLM-ASC-9596]
+    - code: "207005"
+      meaning: "rtStreamWaitEvent execution failed, reason=driver error:resource alloc fail——stream/SQ-CQ 资源不足（与 507903 同族，PIECEWISE 混合捕获时先于 507903 出现）。"
+      related_signatures: ["rtStreamWaitEvent execution failed", "resource alloc fail", "Alloc sq cq fail"]
+      source_cases: [VLLM-ASC-9596]
+    - code: "507018"
+      meaning: "aicpu kernel 执行异常（errorCode=0x2a, stream phase=SCHEDULE）——310P 上 aicpu 内核与 vllm_ascend/_310p 路径兼容问题（如 IndexPut）。0.23.0 正式版或驱动 25.x 修复。"
+      related_signatures: ["aicpu exception", "IndexPut", "507018"]
+      source_cases: [VLLM-ASC-13050]
+    - code: "507057"
+      meaning: "SUSPECT REMOTE ERROR / synchronize stream with timeout failed——远端节点 MTE 地址越界等 aicore exception（如 FusedMoE MC2 通信算子在 ROCE 网络触发）。"
+      related_signatures: ["SUSPECT REMOTE ERROR", "507057", "aicore exception", "MTE"]
+      source_cases: [VLLM-ASC-12461]
+    - code: "561000"
+      meaning: "算子执行/加载失败——两型：①Cannot find binary for op（如 MoeInitRoutingV3，torch-npu <2.10.0.post4 缺算子二进制）；②aclnnMoeDistributeDispatchV4 failed（HCCL QP 资源耗尽 EI0007，EP 场景）。两型根因不同，分别按版本升级 / 关 EP 处理。"
+      related_signatures: ["561000", "Cannot find binary for op", "aclnnMoeDistributeDispatchV4 failed"]
+      source_cases: [VLLM-ASC-14166, VLLM-ASC-10944]
+    - code: "107030"
+      meaning: "aclrtMemcpy 失败——图模式下 copy_between_host_and_device_opapi 复制失败（310P MTP 与图模式冲突时出现，与 free-mask 算子缺失相关）。"
+      related_signatures: ["aclrtMemcpy", "107030", "synchronize captured-stream"]
+      source_cases: [VLLM-ASC-12983]
+    - code: "161002"
+      meaning: "aclnnGroupedMatmulV5 dim 不匹配（EZ1001）——wake_up 后 MoE 权重双重转置导致 K 维错位（3072 vs 2048）。"
+      related_signatures: ["aclnnGroupedMatmulV5 failed", "161002", "EZ1001"]
+      source_cases: [VLLM-ASC-12226]

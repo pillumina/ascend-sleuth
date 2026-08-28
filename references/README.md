@@ -9,8 +9,8 @@
 ```
 references/
 ├── _types.yaml               # type 注册表（渐进登记；CI 强校验的 schema 依据）
-├── _inbox/                   # to-reference 产出待审（maintainer 审核后落正式目录）
-├── errors/                   # type: error-code
+
+├── errors/                   # type: error-code（表形态，按组件分族：cann-runtime/hccl/aicpu/driver）
 ├── tools/                    # type: tool
 ├── platform-facts/           # type: platform-fact
 ├── command-side-effects/     # type: command-side-effect

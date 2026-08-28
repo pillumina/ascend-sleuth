@@ -183,6 +183,27 @@ def check_reference(path: Path, refs_dir: Path, types_registry: dict, case_ref_c
                     errors.append(f"{rel}: content.flow 必须是非空步骤列表（methodology）")
                 if not doc.get("applies_to", {}).get("categories"):
                     errors.append(f"{rel}: applies_to.categories 缺失（methodology 必须声明适用问题类别）")
+            # error-code 表形态（ADR-0008 §1.5 / §4.3，kind: table）：
+            # errors 非空列表，每个条目必填 code+meaning，表内 code 唯一
+            if rtype == "error-code":
+                entries = content.get("errors")
+                if not isinstance(entries, list) or len(entries) == 0:
+                    errors.append(f"{rel}: content.errors 必须是非空列表（error-code 表形态，按组件分族）")
+                else:
+                    seen_codes = set()
+                    for j, e in enumerate(entries):
+                        if not isinstance(e, dict):
+                            errors.append(f"{rel}: content.errors[{j}] 不是 mapping")
+                            continue
+                        code = e.get("code")
+                        if not code:
+                            errors.append(f"{rel}: content.errors[{j}] 缺少 code")
+                        else:
+                            if code in seen_codes:
+                                errors.append(f"{rel}: content.errors[{j}].code '{code}' 表内重复")
+                            seen_codes.add(code)
+                        if not e.get("meaning"):
+                            errors.append(f"{rel}: content.errors[{j}]（{code or '?'}）缺少 meaning")
 
     # ---- 深审：case-derived + methodology ----
     if rtype == "methodology" and status == "active":

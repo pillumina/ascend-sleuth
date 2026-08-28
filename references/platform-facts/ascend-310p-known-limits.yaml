@@ -1,0 +1,22 @@
+id: ascend-310p-known-limits
+type: platform-fact
+title: 310P（Atlas 300I Duo）平台已知限制
+summary: 310P 平台特有限制：event 资源有限（cudagraph 捕获超限）、aicpu IndexPut 异常（驱动版本相关）、MTP 与图模式不可同时开启（缺 free-mask 算子）
+
+sources:
+  - type: case-derived
+    cases: [VLLM-ASC-12989, VLLM-ASC-13050, VLLM-ASC-12983]
+    extracted_at: 2026-08-28
+    extraction_method: to-reference --ingest-cases
+
+applies_to:
+  platforms: [310P]
+  frameworks: [vllm-ascend]
+  categories: [interrupt]
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  claim: "310P（Atlas 300I Duo）是独立于 A2/A3/A5 的平台，vllm-ascend 下有已知限制：①event 资源有限——FULL_DECODE_ONLY 多尺寸 cudagraph 捕获超上限报 507903（VLLM-ASC-12989）；②aicpu kernel IndexPut 执行异常（errorCode=0x2a, runtime 507018），0.23.0 正式版或驱动 25.x 修复（VLLM-ASC-13050）；③MTP 与图模式不可同时开启——镜像缺 free-mask 算子（VLLM-ASC-12983）。排查 310P 问题时应先考虑这些平台特有限制，再查通用路径。"
+  evidence: "三条 vllm-ascend case（12989/13050/12983）的 root_cause 均指向 310P 平台特有限制，非通用路径；case platforms 字段均为 310P。"
