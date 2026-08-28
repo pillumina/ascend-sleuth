@@ -1,0 +1,75 @@
+id: ascend-log-modules
+type: software-fact
+title: 昇腾日志模块名字典（ModuleName 解码）
+summary: 日志行 [Level] ModuleName(PID,PName):... 中 ModuleName 对照：Device 侧 SLOG/IDEDD/DVPP/TS/TSDUMP/LP/AICPU，Host 侧 GE/ASCENDCL/DRV/RUNTIME/TBE/TDT/HCCL/TEFUSION/ATC/PLOG；权威全集在 CANN 安装 include/base/log_types.h
+
+sources:
+  - type: official-doc
+    url: "CANN 商用版 9.0.0 日志参考/错误码参考/环境变量参考各页汇总（module_dict.md）；权威全集在 CANN 安装目录 include/base/log_types.h"
+    version: "CANN 商用版 9.0.0"
+    fetched_at: 2026-08-28
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  claim: "昇腾日志行统一格式 [Level] ModuleName(PID,PName):DateTimeMS 中 ModuleName 是日志来源模块标识：Device 侧模块有 SLOG（日志服务自身）、IDEDD（IDE Daemon 工具联调守护）、DVPP（数字视觉预处理）、TS（Task Scheduler）、TSDUMP（TS 信息转储）、LP（低功耗模块）、AICPU（AI CPU 算子进程）；Host 侧模块有 GE（Graph Engine 图引擎）、ASCENDCL（Ascend Computing Language）、DRV（Driver 驱动，Host+Device）、RUNTIME（运行时 RTS）、TBE（Tensor Boost Engine 算子编译）、TDT（Data Transmission 数据传输）、HCCL（集合通信库）、TEFUSION（融合算子 Python 层）、PLOG（Host 侧应用日志文件前缀）、ATC（模型转换工具进程名）。模块名可用作 ASCEND_MODULE_LOG_LEVEL / slog.conf 的模块级日志级别配置项。"
+  evidence: "module_dict.md（由 9.0.0 文档各处汇总，权威全集在 CANN 安装目录 include/base/log_types.h）：SLOG/IDEDD/DVPP/TS/TSDUMP/LP（slog.conf 与日志参考 0003）、GE（E1xxxx 错误码）、ASCENDCL/DRV/RUNTIME/TBE/TDT/HCCL/TEFUSION/AICPU/PLOG/ATC（环境变量示例与错误码前缀、plog 目录）"
+  modules:
+    - name: SLOG
+      full_name: 日志服务自身
+      side: Device
+    - name: IDEDD
+      full_name: IDE Daemon（工具联调守护）
+      side: Device
+    - name: DVPP
+      full_name: 数字视觉预处理
+      side: Device
+    - name: TS
+      full_name: Task Scheduler
+      side: Device（非 Control CPU）
+    - name: TSDUMP
+      full_name: TS 信息转储
+      side: Device（非 Control CPU）
+    - name: LP
+      full_name: 低功耗模块
+      side: Device（非 Control CPU）
+    - name: AICPU
+      full_name: AI CPU 算子进程
+      side: Device
+    - name: GE
+      full_name: Graph Engine 图引擎
+      side: Host
+    - name: ASCENDCL
+      full_name: Ascend Computing Language（ACL）
+      side: Host
+    - name: DRV
+      full_name: Driver 驱动
+      side: Host+Device
+    - name: RUNTIME
+      full_name: 运行时（RTS）
+      side: Host
+    - name: TBE
+      full_name: Tensor Boost Engine 算子编译
+      side: Host
+    - name: TDT
+      full_name: Data Transmission 数据传输
+      side: Host
+    - name: HCCL
+      full_name: 集合通信库
+      side: Host
+    - name: TEFUSION
+      full_name: 融合算子 Python 层
+      side: Host
+    - name: PLOG
+      full_name: Host 侧应用日志文件前缀
+      side: Host
+    - name: ATC
+      full_name: 模型转换工具（进程名）
+      side: Host
