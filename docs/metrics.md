@@ -51,3 +51,12 @@
 - 库容量: inference/vllm-ascend 格子：interrupt 11/30 / precision 3/30 / performance 2/30 / other 3/30（ADR-0004 格子口径，均低于 soft_cap）
 
 <!-- 季度回顾固定动作：核对命中率/误诊率/路由准确率趋势，校准 roadmap 闸门数值，确认学习闭环在数据上成立 -->
+
+## 指标口径补充：reference 层（ADR-0008 观测性，2026-08-28 起）
+
+> `scripts/trace_metrics.py` 现产出 reference 指标（与 case 指标同源——同一 diagnosis_state trace 管道，不新增采集动作）。口径：
+
+- **reference 引用次数（hits）**：trace `reference_lookup` 事件计数（diagnose 阶段 2.5 实际发生的查询，非每次诊断必查）；
+- **引用后 resolve 率**：引用某 ref 的诊断 session 中 `status: resolved` 占比——outcome 从 session 最终状态**派生**，不新增回报动作；
+- **平台分布**：`reference_lookup` 事件的 platform 字段聚合——覆盖矩阵（哪些平台缺 ref）的依据；
+- **无数据如实显示**：reference 刚建立时 hits=0 是现状，不是 bug——等 trace 积累 ≥2-3 期后再按实测设参考线（原则十一：假设换成实测，不拍脑袋）。

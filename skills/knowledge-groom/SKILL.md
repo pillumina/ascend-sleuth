@@ -56,6 +56,14 @@ disable-model-invocation: true
 
 **R5. 校验**：改动 reference 后运行 `python3 scripts/verify_references.py --check`（与 build_index 并列，CI 同样强制）。
 
+**R6. reference 可观测性回写（ADR-0008 观测性，原则八）**：跑 `python3 scripts/trace_metrics.py` 提取 reference 指标（hits / 引用后 resolve 率 / 平台分布），把结果带进变更摘要：
+- **有数据才回写**：某 ref 被引用（hits ≥1）→ 更新其 `hits`/`last_hit` 字段（trace 数据积累后才有）；引用后 resolve 率异常低 → 触发降级信号（见信号表）；
+- **无数据如实显示**：reference 刚建立时 trace 无 `reference_lookup` 事件 → 如实报 0，不编造指标（诚实退化）。
+
+**R7. reference 索引触发检测（修订 2 渐进式）**：每次 groom 检查——
+- `references/` 下文件数 >50，**或** metrics 显示 reference 检索退化（漏检增多 / 平台匹配耗时长）；
+- 达到 → 变更摘要**建议**生成 `references/_index.yaml`（`build_references_index.py`，与 case 层 `build_index.py` 同构）——**只建议不自动生成**（建议与决定分离）；未达到 → 不提及（目录 + grep 足够，不为不存在的规模购置基础设施）。
+
 ## 变更摘要里的高风险变更标记（强制深审，不走 30 秒快通道）
 
 - 新建 `common/` 权威记录
