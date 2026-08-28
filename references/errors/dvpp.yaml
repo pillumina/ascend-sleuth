@@ -1,0 +1,81 @@
+id: dvpp-error-codes
+type: error-code
+title: DVPP（数字视觉预处理） 错误码（EN，17 条）
+summary: CANN 商用版 9.0.0《错误码参考》DVPP（数字视觉预处理）族 17 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+sources:
+- type: official-doc
+  url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
+  version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
+  fetched_at: '2026-08-28'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - cross
+  versions:
+    cann: 9.0.0
+related_references:
+- ascend-error-code-structure
+status: draft
+last_verified: '2026-08-28'
+content:
+  errors:
+  - code: EN0001
+    meaning: 'Invalid_Argument：Value %s for %s is invalid. Reason: %s.'
+    module: DVPP Errors
+  - code: EN0002
+    meaning: Invalid_Argument：Some arguments are invalid. For details, see the description of API %s in the API Reference, the slog of device will display detailed errors.
+    module: DVPP Errors
+  - code: EN0003
+    meaning: Invalid_Argument_Null_Pointer：Parameter %s is null.
+    solution: Try again with a correct pointer parameter.
+    module: DVPP Errors
+  - code: EN0004
+    meaning: 'Not_Supported：The operation is not supported. Reason: %s.'
+    module: DVPP Errors
+  - code: EN0005
+    meaning: 'Invalid_Argument_Channel_ID：An error occurred on channel resource %s. Reason: %s.'
+    solution: Check the input channel ID or the number of created channels.
+    module: DVPP Errors
+  - code: EN0006
+    meaning: Invalid_Argument_Memory_Address：The passed memory address is incorrect.
+    solution: Use the hi_mpi_dvpp_malloc API to allocate memory.
+    module: DVPP Errors
+  - code: EN0007
+    meaning: 'Execution_Error_DVPP_Operator_Timeout：%s times out. Reason: %s.'
+    solution: Set the timeout interval to a proper value.
+    module: DVPP Errors
+  - code: EN0008
+    meaning: 'Not_Supported_File_Type：The input JPEG picture is not supported. Reason: %s.'
+    module: DVPP Errors
+  - code: EN0009
+    meaning: 'Not_Supported_File_Type：The input PNG picture is not supported. Reason: %s.'
+    module: DVPP Errors
+  - code: EN0010
+    meaning: Resource_Error_Insufficient_Host_Memory：Failed to allocate %s host memory for DVPP.
+    solution: Stop unnecessary processes and ensure that the required memory is avaliable.
+    module: DVPP Errors
+  - code: EN0011
+    meaning: Resource_Error_Insufficient_Host_Memory：Failed to allocate host memory by std::make_shared.
+    solution: Stop unnecessary processes and ensure that the required memory is avaliable.
+    module: DVPP Errors
+  - code: EN0012
+    meaning: Resource_Error_Insufficient_Device_Memory：Failed to allocate %s device memory for DVPP.
+    solution: Stop unnecessary processes and ensure that the required memory is avaliable.
+    module: DVPP Errors
+  - code: EN0013
+    meaning: 'Resource_Error_Busy：The channel resources are busy. Reason: %s.'
+    module: DVPP Errors
+  - code: EN0014
+    meaning: Resource_Error_Insufficient_Channel：The channel resources are insufficient. The maximum number of channels is %s.
+    solution: Close channels that are not in use.
+    module: DVPP Errors
+  - code: EN0015
+    meaning: Resource_Error：The %s has not been initialized. Call %s to initialize the resource first.
+    module: DVPP Errors
+  - code: EN0016
+    meaning: 'File_Operation_Error_Open：Failed to open file %s. Reason: %s.'
+    solution: 1. Configure the file path correctly. 2. Configure the file permissions correctly. 3. Reinstall the package.
+    module: DVPP Errors
+  - code: EN0017
+    meaning: 'Invalid_Argument_API_Call_Sequence：Call the following APIs in order: %s and %s.'
+    module: DVPP Errors

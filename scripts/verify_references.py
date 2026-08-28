@@ -224,6 +224,29 @@ def check_reference(path: Path, refs_dir: Path, types_registry: dict, case_ref_c
                             seen_codes.add(code)
                         if not e.get("meaning"):
                             errors.append(f"{rel}: content.errors[{j}]（{code or '?'}）缺少 meaning")
+            # fault-pattern 表形态（kind: table）：patterns 非空、条目 pattern+symptoms 必填、
+            # 表内 pattern 唯一、cause 或 fix 至少一个
+            if rtype == "fault-pattern":
+                entries = content.get("patterns")
+                if not isinstance(entries, list) or len(entries) == 0:
+                    errors.append(f"{rel}: content.patterns 必须是非空列表（fault-pattern 表形态，按主题域成表）")
+                else:
+                    seen_patterns = set()
+                    for j, e in enumerate(entries):
+                        if not isinstance(e, dict):
+                            errors.append(f"{rel}: content.patterns[{j}] 不是 mapping")
+                            continue
+                        pattern = e.get("pattern")
+                        if not pattern:
+                            errors.append(f"{rel}: content.patterns[{j}] 缺少 pattern")
+                        else:
+                            if pattern in seen_patterns:
+                                errors.append(f"{rel}: content.patterns[{j}].pattern '{pattern}' 表内重复")
+                            seen_patterns.add(pattern)
+                        if not e.get("symptoms"):
+                            errors.append(f"{rel}: content.patterns[{j}]（{pattern or '?'}）缺少 symptoms（日志 grep 签名）")
+                        if not (e.get("cause") or e.get("fix")):
+                            errors.append(f"{rel}: content.patterns[{j}]（{pattern or '?'}）缺少 cause 或 fix（至少一个）")
 
     # ---- 深审：case-derived + methodology ----
     # 门槛计数 = 提炼来源 case 数（sources[].cases 长度），不是 ref_knowledge 派生——

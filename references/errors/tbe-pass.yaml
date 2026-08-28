@@ -1,0 +1,44 @@
+id: tbe-pass-error-codes
+type: error-code
+title: TBE Pass 编译工具 错误码（EB，6 条）
+summary: CANN 商用版 9.0.0《错误码参考》TBE Pass 编译工具族 6 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+sources:
+- type: official-doc
+  url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
+  version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
+  fetched_at: '2026-08-28'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - cross
+  versions:
+    cann: 9.0.0
+related_references:
+- ascend-error-code-structure
+status: draft
+last_verified: '2026-08-28'
+content:
+  errors:
+  - code: EB0000
+    meaning: Compilation_Error：Failed to compile the operator. Reason:%s, %s
+    solution: Check that the Compute and Schedule APIs are used correctly. For details, see the TBE Custom Operator Developer Guide. If the error persists, contact Huawei technical support.
+    module: TBE Pass Compiler Errors
+  - code: EB0500
+    meaning: 'Compilation_Error：Compiler Error check failed. Reason: %s'
+    solution: Please modify the configuration according to the ErrMessage.
+    module: TBE Pass Compiler Errors
+  - code: EB1000
+    meaning: 'Compilation_Error_Invalid_Primitives：Primitives check failed. Reason: %s'
+    solution: Check the schedule and compute statements to ensure that the schedule is correct.
+    module: TBE Pass Compiler Errors
+  - code: EB3000
+    meaning: 'Compilation_Error：Memory allocation check failed. Reason: %s'
+    solution: Check whether the size of the specified memory is incorrectly calculated.
+    module: TBE Pass Compiler Errors
+  - code: EB4000
+    meaning: 'Compilation_Error_Invalid_Emit_Insn：Insn check failed. Reason: %s'
+    solution: Check whether the offset address of the instruction map is aligned and whether the correct instruction is selected.
+    module: TBE Pass Compiler Errors
+  - code: EB9000
+    meaning: 'Compilation_Error：Compiler Error check failed. Reason: %s'
+    module: TBE Pass Compiler Errors

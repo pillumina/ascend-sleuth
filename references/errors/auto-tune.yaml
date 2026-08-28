@@ -1,0 +1,72 @@
+id: auto-tune-error-codes
+type: error-code
+title: Auto Tune（自动调优） 错误码（EC，14 条）
+summary: CANN 商用版 9.0.0《错误码参考》Auto Tune（自动调优）族 14 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+sources:
+- type: official-doc
+  url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
+  version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
+  fetched_at: '2026-08-28'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - cross
+  versions:
+    cann: 9.0.0
+related_references:
+- ascend-error-code-structure
+status: draft
+last_verified: '2026-08-28'
+content:
+  errors:
+  - code: EC0000
+    meaning: 'Communication_Error：Failed to connect the remote device IP: %s, port: %s.'
+    solution: '- Check the IP and port values in the config.json file in the ${install_path}/python/site-packages/auto_tune/estimate/python/ directory. - Check whether the remote device is normal.'
+    module: Auto Tune Errors
+  - code: EC0001
+    meaning: Permission_Error：User %s failed to log in to the remote device.
+    solution: Check the username or password in the config.json file in the ${install_path}/python/site-packages/auto_tune/estimate/python/ directory.
+    module: Auto Tune Errors
+  - code: EC0002
+    meaning: Directory_Operation_Error：Remote mount path %s does not exist.
+    solution: Try again with a valid NFS mount path.
+    module: Auto Tune Errors
+  - code: EC0003
+    meaning: File_Operation_Error_File_Not_Exist：File tss/bin/kernel_perf_comm does not exist in remote mount path %s.
+    module: Auto Tune Errors
+  - code: EC0004
+    meaning: Permission_Error：The permissions for tss/bin or tss/bin/kernel_perf_comm in the remote mount path %s are insufficient.
+    solution: '- Check that the current user has the "rwx" permissions for tss/bin and tss/bin/kernel_perf_comm. - Check that the current user is the root user.'
+    module: Auto Tune Errors
+  - code: EC0005
+    meaning: Invalid_Argument：Value for parameter --soc_version is invalid or the config.json is not set correctly.
+    module: Auto Tune Errors
+  - code: EC0006
+    meaning: 'Directory_Operation_Error：Directory operation failed. Reason: %s.'
+    module: Auto Tune Errors
+  - code: EC0007
+    meaning: Config_Error_Invalid_Environment_Variable：The environment variable argument is invalid. Value %s for environment variable %s must be less than %s.
+    module: Auto Tune Errors
+  - code: EC0008
+    meaning: Config_Error_Invalid_Environment_Variable：Environment variable %s is not set. Use bash command env to check whether the environment variable is missing, and then use the export command to set it correctly.
+    module: Auto Tune Errors
+  - code: EC0009
+    meaning: 'Resource_Error：Computing resources are insufficient. Reason: %s.'
+    solution: '- Check whether the memory usage reaches the upper limit. - Check whether the file handle usage reaches the system limit.'
+    module: Auto Tune Errors
+  - code: EC0010
+    meaning: Environment_Error_Import_Python_Module_Failed：Failed to import Python module %s.
+    solution: Check that all required components are properly installed and the specified Python path matches the Python installation directory. If the path does not match the directory, run set_env.sh in the installation package.
+    module: Auto Tune Errors
+  - code: EC0011
+    meaning: Permission_Error_User_Denied：The permissions for current user in the custom strategy path %s are insufficient.
+    solution: Check that the current user has the \"rwx\" permissions in the custom strategy file path or check that the current user is the root user.
+    module: Auto Tune Errors
+  - code: EC0012
+    meaning: Config_Error_Invalid_Environment_Variable：Value %s for environment variable %s is invalid.
+    solution: Reset the environment variable by referring to the product documentation.
+    module: Auto Tune Errors
+  - code: EC0013
+    meaning: 'File_Operation_Error：File operation failed under %s. Reason: %s.'
+    solution: NA
+    module: Auto Tune Errors

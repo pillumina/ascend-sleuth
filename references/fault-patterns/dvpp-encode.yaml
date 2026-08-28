@@ -1,0 +1,54 @@
+id: dvpp-encode-fault-patterns
+type: fault-pattern
+title: DVPP JPEGE 图片编码 / VENC 视频编码问题（8 条）
+summary: JPEGE/VENC 编码故障：内存申请接口错误/大小传值错误/提前释放花屏/创建通道失败（通道 ID 越界）/送帧失败（参数非法/格式不支持）/buf_size 不合理/编码无输出（看门狗）/码流亮暗与原始 YUV 不一致（full_range）
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0196.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0196-0203）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  patterns:
+    - pattern: 调用错误的内存申请接口，导致内存地址校验出错
+      symptoms: ["内存地址校验出错"]
+      cause: 未使用指定的 DVPP 内存申请接口
+      fix: 使用 acldvppMalloc（V1）或 hi_mpi_dvpp_malloc（V2）申请 JPEGE/VENC 输入输出内存
+    - pattern: 使用正确的内存申请接口，但内存大小传值错误
+      symptoms: ["结束地址校验出错"]
+      cause: 传入的 buffer size 太大，超出实际申请的 buffer 范围
+      fix: dvpp 内存申请接口增加地址及长度日志，检查 hi_mpi_venc_send_frame/hi_mpi_venc_send_jpege_frame/aclvencSendFrame/acldvppJpegEncodeAsync 传入 buffer 长度是否一致
+    - pattern: 内存被提前释放，导致 VENC 编码数据花屏
+      symptoms: ["VENC 编码数据花屏"]
+      cause: VENC 输入内存（YUV 图片数据）被踩或被提前释放
+      fix: 在 DVPP 内存释放接口与 hi_mpi_venc_get_stream/aclvencCallback/acldvppJpegEncodeAsync 处打印内存大小与地址，确认输入内存在编码完成前是否被提前释放
+    - pattern: VENC 创建通道失败
+      symptoms: ["hi_mpi_venc_create_chn 失败"]
+      cause: 用户传入的通道 ID 超出合法范围（VENC 通道 ID 在 [0,255] 共 256 个）
+      fix: 确定 hi_mpi_venc_create_chn 失败返回的错误码，检查通道 ID 在合法范围内
+    - pattern: VENC 送入待编码图像帧失败
+      symptoms: ["0xa0088003", "0xa0088008", "H.265 don't support format"]
+      cause: 用户传入的图像帧参数不在合理范围内或设置了暂不支持的参数（如 YUV 格式不正确：H.265 只支持 NV12/NV21）；入参结构体未 memset 初始化导致参数为随机值
+      fix: 进一步查看内核日志定位具体参数（如 YUV 格式）；入参结构体先 memset 初始化再设置参数
+    - pattern: buf_size 参数设置不合理导致视频编码异常
+      symptoms: ["视频编码异常（buf_size）"]
+      cause: 创建编码通道时 buf_size 参数设置不合理
+      fix: 按 hi_venc_attr 结构体 buf_size 成员说明合理设置
+    - pattern: VENC 编码无输出
+      symptoms: ["chnl_watch_dog_timer_isr", "venc watchdog fail enter blackbox", "find VEDU_0 down"]
+      cause: 用户传入的图像帧内存不是用 DVPP 内存申请接口（hi_mpi_dvpp_malloc）申请的
+      fix: 查看日志是否有看门狗打印（出现基本确认内存使用问题）；用 hi_mpi_dvpp_malloc 申请图像帧内存
+    - pattern: 播放 VENC 编码的码流，亮暗与原始 YUV 不一致
+      symptoms: ["码流亮暗与原始 YUV 不一致"]
+      cause: 播放器目标像素值域范围与 VENC 编码时的 video_full_range_flag 标志位不一致，播放器做像素值域映射（VENC 默认值：Atlas 推理系列 H.264/H.265 均 0=limited_range；Atlas 200I/500 A2 上 H.265 为 0、H.264 为 1=full_range）
+      fix: 不建议用播放器验收亮暗；将 VENC 码流解码为 YUV 文件与原始 YUV 对比，并确保编码/解码 video_full_range_flag 一致；需改默认值用 hi_mpi_venc_set_h264_vui/hi_mpi_venc_set_h265_vui

@@ -1,0 +1,34 @@
+id: hdmi-fault-patterns
+type: fault-pattern
+title: HDMI 显示数据问题（3 条）
+summary: HDMI 送显故障：OPEN 失败（未先 init）/ 与 VO 多进程报错（must work in the same pid）/ 接口无显示（未 start 或参数/分辨率不符）；适用 Atlas 200I/500 A2 推理产品 EP/RC
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0215.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0215-0217）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [Atlas 200I/500 A2]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  patterns:
+    - pattern: HDMI OPEN 失败
+      symptoms: ["HDMI device not init", "mpi_hdmi_com_open"]
+      cause: 调用 hi_mpi_hdmi_open 接口前没有调用 hi_mpi_hdmi_init 接口
+      fix: 检查用例中 hi_mpi_hdmi_open 与 hi_mpi_hdmi_init 的调用顺序并修正
+    - pattern: HDMI 与 VO 模块多进程时报错
+      symptoms: ["VO functions must work in the same pid", "HDMI functions must work in the same pid", "open HDMI err"]
+      cause: VO/HDMI 模块不支持多进程使用——多个进程同时操作 VO/HDMI 驱动
+      fix: 确保 VO/HDMI 相关操作在同一进程内完成，避免多进程并发调用
+    - pattern: HDMI 接口无显示
+      symptoms: ["无报错日志", "HDMI 接口不显示"]
+      cause: 用例最后未调用 hi_mpi_hdmi_start 或开启错误；hdmi 属性/信息帧参数错误（avi infoframe video_format、hi_hdmi_attr timing_mode/pix_clk 与前级 VO 输出不符）；显示器不支持当前分辨率
+      fix: 检查 hi_mpi_hdmi_start 调用；排查信息帧时序与属性参数是否与前级 VO 输出一致；读显示器 edid 确认支持的分辨率，不支持则换显示器

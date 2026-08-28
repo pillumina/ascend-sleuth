@@ -1,0 +1,66 @@
+id: operator-exec-fault-patterns
+type: fault-pattern
+title: 算子执行问题（11 条）
+summary: 算子执行故障：插件/原型未注册、AI Core 算子执行报错（0x800000）、AI CPU 算子执行报错/超 8 维/超时/标量输入、单算子匹配失败、coredump 重复释放、opp 版本不匹配、Moe 通信算子网络问题
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0148.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0148-0157/0492/0537）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  patterns:
+    - pattern: 算子插件未注册报错
+      symptoms: ["Check op type failed, it is not supported", "frameworkop"]
+      cause: 算子插件 so 未加载成功，或算子未注册映射关系/未编译到算子插件 so 中
+      fix: 确认算子插件 so 加载成功（日志含 plugin load ...success）；加载失败告警含 dlopen failed, plugin name
+    - pattern: 算子原型未注册报错
+      symptoms: ["have no ir factory", "IR for op is not registered"]
+      cause: 算子原型 so 未加载成功，或算子未定义注册该类型算子并编译到原型 so 中
+      fix: 确认算子原型 so 加载成功，检查算子原型注册
+    - pattern: AI Core 算子执行报错
+      symptoms: ["aicore error", "error code = 0x800000", "fault kernel_name", "The DDR address of the MTE instruction is out of range"]
+      cause: AI Core 算子执行失败——算子本身代码问题：数据输入不匹配、访问越界、计算溢出等
+      fix: 查阅 plog 日志，按 fault kernel_name 和 func_name 获取报错算子名称与函数，排查算子输入数据/越界/溢出
+    - pattern: AI CPU 算子 Kernel 执行报错
+      symptoms: ["aicpu exception", "ErrCode=507018", "Aicpu kernel execute failed", "ProcessAicpuErrorInfo"]
+      cause: AI CPU 算子执行失败——数据输入不匹配（数据格式/广播维度）、访问越界、AI CPU 线程挂死、执行超时（默认不超 30 秒）；TensorFlow 系算子广播轴合并后维度要求 <6
+      fix: 查阅 AI CPU 日志（EP：$HOME/ascend/log/[run|debug]/device-id、RC：device-app-pid）定位具体报错（如 Unique 需 1D 向量、广播维度超限）
+    - pattern: AI CPU 算子维度超过 8 维报错
+      symptoms: ["errno[561000]", "shape dim num should be less than 8", "aclnnGatherV2"]
+      cause: AI CPU 算子输入/输出参数维度超过最大维度限制（8 维）
+      fix: 修改算子参数输入/输出维度，确保不超过 8 维
+    - pattern: AI CPU 算子执行超时报错
+      symptoms: ["aicpu timeout", "ErrCode=507017", "HandleTaskTimeout"]
+      cause: 算子输入/输出 shape 太大导致执行缓慢，或硬件性能不足无法支持大量复杂算子计算
+      fix: 用 aclrtSetOpExecuteTimeOut(timeout) 适当调大算子执行超时时间（单位秒）
+    - pattern: 单算子匹配失败
+      symptoms: ["failed to match model", "MatchOpModel fail from static map or dynamic map", "Has not been compiled or loaded"]
+      cause: 离线场景算子 om 文件未出现在 aclSetModelDir 指定路径；在线场景特殊匹配规则未适配
+      fix: 离线重新编译缺失算子并复制到 aclSetModelDir 路径；在线检查前后两次编译的 opType/dataType/format 等是否一致
+    - pattern: 执行单算子产生 coredump 的定位处理
+      symptoms: ["double free or corruption(!prev)"]
+      cause: 代码中出现重复释放内存的操作
+      fix: gdb 挂载可执行文件、查看调用栈定位重复释放；非用户代码问题联系技术支持
+    - pattern: 算子库包版本问题导致加载单算子失败
+      symptoms: ["The opp version of the model does not match the current opp run package", "E19999"]
+      cause: 动态 shape 或虚拟化实例场景下，加载环境 opp 包版本（Ascend-cann-toolkit）与 om 编译环境版本不一致
+      fix: 保持加载环境与编译环境 opp 版本一致：更换加载环境 opp 包，或更换编译环境 opp 包后重新转换模型
+    - pattern: AI CPU 算子输入标量执行报错
+      symptoms: ["Shape must be at least rank [1] but is rank [0]", "GetInputAndCheck failed"]
+      cause: 部分 AI CPU 算子输入不支持零维 Tensor（标量）
+      fix: 将算子输入的标量按 1 维 Tensor 创建
+    - pattern: 网络问题导致 Moe Dispatch_Combine 算子执行报错
+      symptoms: ["MoeDistributeDispatchV2", "MoeDistributeCombineV2", "error code = 0x800000", "The DDR address of the MTE instruction is out of range", "suspect remote error"]
+      cause: A3 训练/推理系列：①EP 域 Rank 跨越超节点（MTE 依赖 HCCS 链路，通信域必须在同一超节点内）；②网络交换机故障（闪断/光链路/超时代答，灵渠超时代答使跨卡通信报 0x800000 MTE out of range）；③EP 域其他卡远端进程异常退出导致本端访问远端地址报 0x800000；④多卡全报错时按时间找首报错
+      fix: 收集所有 Rank 的 plog；grep fault_kernel_name 确认报错卡；EP 域跨 Server 用 msnpureport 收集 Device 系统日志 grep app exit begin 按时间排序找首报错 Rank；首报错为 Moe 算子且 MTE out of range 时检查网络交换机故障，否则查首报错进程退出原因（Host CoreDump）

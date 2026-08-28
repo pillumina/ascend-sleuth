@@ -1,0 +1,42 @@
+id: lxfusion-error-codes
+type: error-code
+title: LxFusion&AutoDeploy 错误码（EF，6 条）
+summary: CANN 商用版 9.0.0《错误码参考》LxFusion&AutoDeploy族 6 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+sources:
+- type: official-doc
+  url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
+  version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
+  fetched_at: '2026-08-28'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - cross
+  versions:
+    cann: 9.0.0
+related_references:
+- ascend-error-code-structure
+status: draft
+last_verified: '2026-08-28'
+content:
+  errors:
+  - code: EF0000
+    meaning: Directory_Operation_Error_Open_Failed：Failed to open the directory where repository file %s is located with read, write and execute permissions.
+    solution: Check the existence and permissions of the directory. If the directory does not exist, create one with read, write and execute permissions.
+    module: LxFusion Errors
+  - code: EF0001
+    meaning: Invalid_Argument_SOC_Version：soc_version %s is invalid. AOE SGAT is not supported on current platform.
+    module: LxFusion Errors
+  - code: EF0003
+    meaning: Config_Error_Invalid_Environment_Variable：The environment variable argument is invalid. Value %s for environment variable %s must be %s.
+    module: LxFusion Errors
+  - code: WF0000
+    meaning: File_Operation_Error：Failed to open config file [%s].
+    solution: Check whether the config file exists according to the file path, whether the file is in Json format, and whether the user has the read permission.
+    module: LxFusion Errors
+  - code: WF0001
+    meaning: Invalid_Config_Value：Value [%s] for key [%s] is invalid. The value must be in the range of [%s].
+    module: LxFusion Errors
+  - code: WF0002
+    meaning: Model_Performance_Not_Optimal：Model performance may not be optimal due to changes in UB fusion.
+    solution: Re-tune the subgraphs with AOE SGAT.
+    module: LxFusion Errors

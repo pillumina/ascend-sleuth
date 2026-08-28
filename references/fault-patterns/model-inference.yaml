@@ -1,0 +1,42 @@
+id: model-inference-fault-patterns
+type: fault-pattern
+title: 模型推理问题（5 条）
+summary: 模型推理故障：dump 未获取结果（模型名不匹配）/ 动态 shape 申请内存失败（size=0）/ 注册算子数超规格（507032）/ 动态 shape 输出 buffer 不匹配 / 动态 shape 输入大小校验失败
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0124.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0124-0128）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  patterns:
+    - pattern: 使用 dump 功能未获取 dump 结果
+      symptoms: ["HandleDumpConfig end", "set HandleDumpConfig success"]
+      cause: Dump 配置的模型名与实际的模型名不匹配
+      fix: 检查 Dump 配置文件 acl.json 合法性与 model_name 配置
+    - pattern: 动态 shape 推理申请内存失败
+      symptoms: ["malloc size must be greater than zero", "start to execute aclrtMalloc, size = 0"]
+      cause: 动态 shape 模型输出 shape 含 -1，aclmdlGetOutputSizeByIndex 取到 size=0，申请 0 大小内存失败
+      fix: aclmdlGetOutputSizeByIndex 取到 size=0 时，预估一块较大的内存
+    - pattern: 注册算子数超过最大规格
+      symptoms: ["Program register failed, program out of 40000000", "ErrCode=507032", "program register num out of use"]
+      cause: 一个进程内算子等资源注册超过最大规格
+      fix: 简化模型或降低动态 batch 档次；model 太大建议一个进程 open 一个 device；避免同一算子在不同模型反复注册
+    - pattern: 动态 shape 模型用户输入和模型推导结果不匹配
+      symptoms: ["mem size out of range", "Expected size: 128, but given input size: 2", "Output Size mismatch"]
+      cause: 用户分配的 output_buffer 大小与模型 infershape 推导出的输出大小不匹配（模型执行或单算子执行场景）
+      fix: 按模型 infershape 推导结果分配 output_buffer 大小
+    - pattern: 动态 shape 模型输入大小校验失败
+      symptoms: ["tensor size mismatches", "expected: 768032, but given 32"]
+      cause: 动态 shape 场景每个 node 执行时对 shape 推导，算子 shape 校验不合法（推导链中某节点 shape 不合理）
+      fix: 开启 DEBUG 日志（export ASCEND_GLOBAL_LOG_LEVEL=0）重跑，搜 before_infershape/after_infershape 查看推导前后 shape，从报错节点沿输入链排查不合理的 shape 推导；调试后恢复 ASCEND_GLOBAL_LOG_LEVEL=3

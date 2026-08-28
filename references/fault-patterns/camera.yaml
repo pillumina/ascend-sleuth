@@ -1,0 +1,38 @@
+id: camera-fault-patterns
+type: fault-pattern
+title: Camera 处理图片问题（4 条）
+summary: Camera 出图故障：找不到设备（0xa01c8040 isp ko 未插入）/ 不出图（sensor I2C 错误）/ 一直丢帧（pipe depth 不足）/ 出图花图（pixel format 不匹配）；适用 Atlas 200I/500 A2 推理产品 EP/RC
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0205.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0205-0208）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [Atlas 200I/500 A2]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  patterns:
+    - pattern: Camera 找不到设备
+      symptoms: ["open ISP device error", "0xa01c8040"]
+      cause: 没有插入 isp ko
+      fix: lsmod 检查 ko 插入情况，insmod /var/davinci/driver/drv_isp.ko 后重跑 Camera 业务
+    - pattern: Camera 不出图
+      symptoms: ["I2C WRITER DATA error", "imx477_sensor_ctl"]
+      cause: sensor 没有安装好，或 sensor 型号与预期设置不匹配
+      fix: 插拔 sensor 或检查相应配置，仍无法解决则替换新 sensor 设备
+    - pattern: Camera 一直丢帧，无图片 dump 出来
+      symptoms: ["get buffer fail", "hi_size"]
+      cause: 申请的 pipe depth 小于等于 dump raw depth，导致无多余 buffer 送给后端 chn
+      fix: 调整 depth 使 pipe depth + chn attr depth - dump attr depth 大于零后重启 Camera
+    - pattern: Camera 出图效果不对（花图）
+      symptoms: ["dump 图片花图"]
+      cause: pixel format 和看图工具不一致，或分辨率大小不一致
+      fix: 检查 pixel format（如 YUV420 选对应 420 格式）与分辨率，设置后重启 Camera

@@ -1,0 +1,493 @@
+id: ge-error-codes
+type: error-code
+title: GE（Graph Engine 图引擎） 错误码（E1，120 条）
+summary: CANN 商用版 9.0.0《错误码参考》GE（Graph Engine 图引擎）族 120 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+sources:
+- type: official-doc
+  url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
+  version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
+  fetched_at: '2026-08-28'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - cross
+  versions:
+    cann: 9.0.0
+related_references:
+- ascend-error-code-structure
+status: draft
+last_verified: '2026-08-28'
+content:
+  errors:
+  - code: E10001
+    meaning: 'Invalid_Argument：Value %s for parameter %s is invalid. Reason: %s'
+    module: GE Errors
+  - code: E10002
+    meaning: 'Invalid_Argument_Tensor_Input_Shape：Value %s for parameter --input_shape is invalid. Reason: %s. The value must be formatted as %s.'
+    solution: The valid format is input_name1:n1,c1,h1,w1;input_name2:n2,c2,h2,w2. Replace input_name with node names. Ensure that the shape values are integers.
+    module: GE Errors
+  - code: E10003
+    meaning: 'Invalid_Argument：Value %s for parameter --%s is invalid. Reason: %s'
+    module: GE Errors
+  - code: E10004
+    meaning: Invalid_Argument：Value for --%s is empty.
+    solution: Set a valid parameter value.
+    module: GE Errors
+  - code: E10005
+    meaning: Invalid_Argument：Value %s for parameter --%s is invalid. The value must be either true or false.
+    solution: Set a valid parameter value. The parameter value can only be true or false.
+    module: GE Errors
+  - code: E10006
+    meaning: Invalid_Argument：Value %s for parameter --%s is invalid. The value must be either 1 or 0.
+    solution: Set a valid parameter value. The parameter value can only be 1 or 0.
+    module: GE Errors
+  - code: E10007
+    meaning: Invalid_Argument：--%s is required. The value must be %s.
+    solution: Set a valid parameter value.
+    module: GE Errors
+  - code: E10008
+    meaning: Invalid_Argument：--weight must not be empty when --framework is set to 0 (Caffe).
+    solution: '- If the source model framework is Caffe, try again with a valid --weight argument. - If the source model framework is not Caffe, try again with a valid --framework argument.'
+    module: GE Errors
+  - code: E10009
+    meaning: Invalid_Argument_Tensor_Dynamic_Shape：--dynamic_batch_size, --dynamic_image_size, --input_shape_range, and --dynamic_dims are mutually exclusive.
+    solution: '- In dynamic shape scenarios, include only one of these options in your command line. - In static shape scenarios, remove these options from your command line.'
+    module: GE Errors
+  - code: E10010
+    meaning: Invalid_Argument：Value %s for parameter --log is invalid.
+    solution: Select the value from debug, info, warning, error, and null.
+    module: GE Errors
+  - code: E10011
+    meaning: Invalid_Argument_Tensor_Input_Shape：Value %s for parameter --input_shape is invalid. Shape values must be positive integers. The error value in the shape is %s.
+    solution: '- In static shape scenarios, set the shape values in --input_shape to positive integers. - In dynamic shape scenarios, add the related dynamic-input option in your command line, such as --dynamic_batch_size, --dynamic_image_size, or --dynamic_dims.'
+    module: GE Errors
+  - code: E10012
+    meaning: Invalid_Argument_Tensor_Input_Shape：--dynamic_batch_size is included, but the dimension count of the dynamic-shape input configured in --input_shape is less than 1.
+    solution: '- In static shape scenarios, remove the --dynamic_batch_size option from your command line. - In dynamic shape scenarios, set the corresponding axis of the dynamic-shape input in --input_shape to -1.'
+    module: GE Errors
+  - code: E10013
+    meaning: Invalid_Argument：Value %s for --%s is out of range.
+    solution: Run the "atc -h" command to view the usage. For details, see ATC Instructions.
+    module: GE Errors
+  - code: E10014
+    meaning: Invalid_Argument：Value %s for parameter --%s is invalid.
+    solution: Run the "atc -h" command to view the usage. For details, see ATC Instructions.
+    module: GE Errors
+  - code: E10016
+    meaning: Invalid_Argument_Operator_Name：Opname %s specified in --%s is not found in the model. Confirm whether this node name exists, or the node is not split with the specified delimiter ';'.
+    solution: Specify the name of an existing node in the graph.
+    module: GE Errors
+  - code: E10017
+    meaning: Invalid_Argument：Input Op %s specified in --%s is invalid. The Op type must be Data.
+    module: GE Errors
+  - code: E10018
+    meaning: Invalid_Argument_Tensor_Dynamic_Shape：Value %s for shape %s is invalid. When --dynamic_batch_size is included, only batch size N can be -1 in --input_shape.
+    solution: Try again with a valid --input_shape argument. Make sure that non-batch size axes are not -1.
+    module: GE Errors
+  - code: E10019
+    meaning: Invalid_Argument_Tensor_Input_Shape：When --dynamic_image_size is included, only the height and width axes can be -1 in --input_shape.
+    solution: Try again with a valid --input_shape argument. Make sure that axes other than height and width are not -1.
+    module: GE Errors
+  - code: E10020
+    meaning: Invalid_Argument：Value %s for parameter --dynamic_image_size is invalid.
+    solution: The value must be formatted as "imagesize1_height,imagesize1_width;imagesize2_height,imagesize2_width". Make sure that each profile has two dimensions.
+    module: GE Errors
+  - code: E10021
+    meaning: Invalid_Argument：Path for parameter --%s is too long. Keep the length within %s.
+    solution: The path name exceeds the maximum length. Specify a valid path name.
+    module: GE Errors
+  - code: E10022
+    meaning: Invalid_Argument：Path %s for parameter --%s does not include the file name.
+    solution: Add the file name to the path.
+    module: GE Errors
+  - code: E10023
+    meaning: Invalid_Argument：Value %s for parameter --singleop is invalid.
+    solution: Check whether the input file exists.
+    module: GE Errors
+  - code: E10024
+    meaning: Invalid_Argument：Failed to open file %s specified by --singleop.
+    solution: Check the owner group and permission settings and ensure that the user who runs the ATC command has enough permission to open the file.
+    module: GE Errors
+  - code: E10025
+    meaning: 'Invalid_Argument：File %s specified by --singleop is not a valid JSON file. Reason: %s.'
+    solution: Check that the file is in valid JSON format.
+    module: GE Errors
+  - code: E10026
+    meaning: Invalid_Argument：The Op name is empty in the file specified by --singleop.
+    solution: Check that the Op name is not empty in the file.
+    module: GE Errors
+  - code: E10027
+    meaning: Invalid_Argument：Attribute %s of %s tensor %s for Op %s is invalid when --singleop is specified.
+    solution: Try again with a valid tensor dtype and format.
+    module: GE Errors
+  - code: E10029
+    meaning: Invalid_Argument：Attribute name of Op %s is empty in the file specified by --singleop.
+    solution: Check that the Op attribute name is not empty in the file.
+    module: GE Errors
+  - code: E10030
+    meaning: Invalid_Argument：There is an invalid value for attribute name %s of Op %s in the file specified by --singleop.
+    solution: Check that the Op attribute value is valid in the file.
+    module: GE Errors
+  - code: E10031
+    meaning: Invalid_Argument_Tensor_Input_Shape：--dynamic_batch_size is included, but none of the nodes specified in --input_shape has a batch size equaling -1.
+    solution: '- In static shape scenarios, remove the --dynamic_batch_size option from your command line. - In dynamic shape scenarios, set the corresponding axis of the dynamic-shape input in --input_shape to -1.'
+    module: GE Errors
+  - code: E10032
+    meaning: 'File_Operation_Error_Parse：Parse json file %s failed. Reason: %s.'
+    solution: Check whether the json file is valid.
+    module: GE Errors
+  - code: E10034
+    meaning: Invalid_Argument：Nodes (for example, %s) connected to AIPP must not be of type fp16.
+    solution: '- To enable AIPP, remove the nodes connected to AIPP from the --input_fp16_nodes argument. - If AIPP is not required, remove the --insert_op_conf option from your ATC command line.'
+    module: GE Errors
+  - code: E10035
+    meaning: Invalid_Argument_Tensor_Dynamic_Shape：--dynamic_batch_size, --dynamic_image_size, or --dynamic_dims has %s profiles, which is less than the minimum %s.
+    solution: Ensure that the number of profiles configured in --dynamic_batch_size, --dynamic_image_size, or --dynamic_dims is at least the minimum.
+    module: GE Errors
+  - code: E10036
+    meaning: Invalid_Argument_Tensor_Dynamic_Shape：--dynamic_batch_size, --dynamic_image_size, or --dynamic_dims has %s profiles, which is greater than the maximum %s.
+    solution: Ensure that the number of profiles configured in --dynamic_batch_size, --dynamic_image_size, or --dynamic_dims is at most the maximum.
+    module: GE Errors
+  - code: E10037
+    meaning: Invalid_Argument_Tensor_Dynamic_Shape：The profiles configured in --dynamic_batch_size, --dynamic_image_size, or --dynamic_dims have inconsistent dimension counts. A profile has %s dimensions while another has %s dimensions.
+    solution: Ensure that the profiles configured in --dynamic_batch_size, --dynamic_image_size, or --dynamic_dims have the same dimension count.
+    module: GE Errors
+  - code: E10038
+    meaning: Invalid_Argument_Tensor_Dynamic_Shape：Dimension size %s is invalid. The value must be greater than 0.
+    solution: Set the shape values of each profile to positive in --dynamic_batch_size, --dynamic_image_size, or --dynamic_dims.
+    module: GE Errors
+  - code: E10039
+    meaning: Invalid_Argument_Tensor_Dynamic_Shape：The --dynamic_batch_size, --dynamic_image_size, or --dynamic_dims argument have duplicate profiles.
+    solution: Check that the profiles configured in --dynamic_batch_size, --dynamic_image_size, or --dynamic_dims are unique.
+    module: GE Errors
+  - code: E10040
+    meaning: Invalid_Argument_Tensor_Input_Shape：As the --dynamic_batch_size, --dynamic_image_size, or --dynamic_dims argument is included, the corresponding nodes specified in --input_shape must have -1 axes and cannot have '~'.
+    solution: '- In static shape scenarios, remove the --dynamic_batch_size, --dynamic_image_size or --dynamic_dims option from your command line. - In dynamic multi-batch scenarios, set the corresponding axis of the dynamic-shape input in --input_shape to -1. - In dynamic shape scenarios, remove the --dynamic_batch_size, --dynamic_image_size or --dynamic_dims option from your command line and set --input_shape to -1 or n1~n2.'
+    module: GE Errors
+  - code: E10041
+    meaning: Invalid_Argument_Model：Failed to load the model from %s.
+    solution: '- Check that the model file is valid. - Check that the weight file or path is valid when the model is more than 2 GB. - Check that the --framework argument matches the actual framework of the model file.'
+    module: GE Errors
+  - code: E10045
+    meaning: Invalid_Argument_Tensor_Dynamic_Shape：The number of -1 axes in the --input_shape argument exceeds the dimension count per profile in --dynamic_dims.
+    solution: Ensure that the number of -1 axes in the --input_shape argument matches the dimension count per profile in --dynamic_dims.
+    module: GE Errors
+  - code: E10046
+    meaning: Invalid_Argument_Tensor_Dynamic_Shape：The total number of -1 axes in the --input_shape argument is greater than the dimension count per profile in --dynamic_dims.
+    solution: Ensure that the total number of -1 axes in the --input_shape argument is less than the dimension count per profile in --dynamic_dims.
+    module: GE Errors
+  - code: E10047
+    meaning: Invalid_Argument：--%s and --%s are mutually exclusive.
+    solution: Remove either of them and try again.
+    module: GE Errors
+  - code: E10048
+    meaning: 'Invalid_Argument：Value %s for parameter --input_shape_range or dynamic_inputs_shape_range is invalid. Reason: %s. The value must be formatted as %s.'
+    solution: Try again with a valid argument.
+    module: GE Errors
+  - code: E10049
+    meaning: Invalid_Argument_Tensor_Input_Shape：Dimension count %s configured in --input_shape does not match dimension count %s of the node.
+    solution: Set the dimension count in --input_shape according to the dimension count of the node.
+    module: GE Errors
+  - code: E10050
+    meaning: Invalid_Argument_Tensor_Input_Shape_Range：Current dimension size %s is not in the range of %s–%s specified by --input_shape.
+    solution: Set the dimension size according to --input_shape.
+    module: GE Errors
+  - code: E10051
+    meaning: Invalid_Argument：Value %s for parameter --job_id exceeds the allowed maximum %s.
+    solution: Try again with a valid argument.
+    module: GE Errors
+  - code: E10052
+    meaning: 'Invalid_Argument：AIPP configuration is invalid. Reason: %s.'
+    module: GE Errors
+  - code: E10054
+    meaning: Invalid_Argument：The required parameter %s for ATC is empty. Another possible reason is that the values of some parameters are not enclosed by quotation marks (\"\").
+    solution: Check whether the command line parameter format is correct.
+    module: GE Errors
+  - code: E10055
+    meaning: 'Not_Supported：The operation is not supported. Reason: %s.'
+    solution: Check whether the configured parameter or used function is supported.
+    module: GE Errors
+  - code: E10056
+    meaning: Invalid_Argument：Cannot configure both parameters %s and %s simultaneously.
+    solution: The two parameters cannot be set at the same time. View the parameter descriptions by referring to the documentation.
+    module: GE Errors
+  - code: E10057
+    meaning: Invalid_Argument：--%s and --%s can only be used together
+    solution: If the value of --mode is 6, it only needs to be used with --om. Please check and try again.
+    module: GE Errors
+  - code: E10058
+    meaning: Invalid_Argument：Parameter %s is not configured or is empty.
+    module: GE Errors
+  - code: E10059
+    meaning: 'Invalid_Argument：%s failed. Reason: %s.'
+    module: GE Errors
+  - code: E10060
+    meaning: 'Invalid_Argument：Parameter is invalid. Reason: %s.'
+    module: GE Errors
+  - code: E10061
+    meaning: 'Invalid_Argument：Value %s for parameter %s is invalid. Expected value: %s.'
+    module: GE Errors
+  - code: E10401
+    meaning: Invalid_Argument_Operator_Input_Count：The number of operator inputs %s exceeds the allowed maximum %s.
+    solution: Try again with a valid number of inputs.
+    module: GE Errors
+  - code: E10402
+    meaning: Invalid_Argument_Operator_Input_Buffer：Input indexed %s requires a %s buffer, but %s aligned buffer is allocated.
+    solution: Check whether the data type, dimensions, and shape are correctly set. For details, see the aclGetTensorDescSize API description in API Reference.
+    module: GE Errors
+  - code: E10403
+    meaning: Invalid_Argument_Operator_Output_Count：The number of operator outputs %s exceeds the allowed maximum %s.
+    solution: Check whether the number of elements in numoutputs is correctly set. The aclopCompile, aclopExecuteV2, and aclopCompileAndExecute APIs may be involved. For details, see API Reference.
+    module: GE Errors
+  - code: E10404
+    meaning: Invalid_Argument_Operator_Output_Buffer：Output indexed %s requires a %s buffer, but %s aligned buffer is allocated.
+    solution: Check whether the data type, dimensions, and shape are correctly set. For details, see the aclGetTensorDescSize API description in API Reference.
+    module: GE Errors
+  - code: E10405
+    meaning: Invalid_Argument：The number of input buffers is %s, which does not match the number of input tensors %s.
+    solution: Check whether the number of elements in inputDesc and inputs of the operator is correctly set. The aclopExecuteV2 and aclopCompileAndExecute APIs may be involved. For details, see API Reference.
+    module: GE Errors
+  - code: E10406
+    meaning: Invalid_Argument：The number of output buffers is %s, which does not match the number of output tensors %s.
+    solution: Check whether the number of elements in outputDesc and outputs of the operator is correctly set. The aclopExecuteV2 and aclopCompileAndExecute APIs may be involved. For details, see API Reference.
+    module: GE Errors
+  - code: E10410
+    meaning: File_Operation_Error_File_Not_Exist：File %s does not exist.
+    solution: Try again with a valid file directory.
+    module: GE Errors
+  - code: E10501
+    meaning: Not_Supported_Operator：IR for Op %s with optype %s is not registered.
+    solution: '- Check whether ASCEND_OPP_PATH is correctly set. - Check whether the operator prototype has been registered. For details, see the operator developer guide.'
+    module: GE Errors
+  - code: E11001
+    meaning: Invalid_Argument_Caffe_Model_Data：input_dim and input_shape are mutually exclusive in NetParameter for Caffe model conversion.
+    solution: Remove either --input_dim or --input_shape from your atc command line.
+    module: GE Errors
+  - code: E11003
+    meaning: Invalid_Argument_Caffe_Model_Data：The number of input_dim fields in the model is %s, which is not 4x the input count %s.
+    solution: Modify your Caffe model and try again.
+    module: GE Errors
+  - code: E11004
+    meaning: Invalid_Argument_Caffe_Model_Data：The number of input shapes is %s, which does not match the number of inputs %s.
+    solution: Modify your Caffe model and try again.
+    module: GE Errors
+  - code: E11005
+    meaning: Invalid_Argument_Tensor_Input_Shape：The shape is not defined by using --input_shape for input %s.
+    solution: Modify your Caffe model, or add the input shape to the --input_shape argument in your atc command line.
+    module: GE Errors
+  - code: E11008
+    meaning: Invalid_Argument_Caffe_Model_Data：Optype DetectionOutput is unsupported.
+    solution: Modify your Caffe model and replace DetectionOutput operators with FSRDetectionOutput or SSDDetectionOutput.
+    module: GE Errors
+  - code: E11009
+    meaning: Not_Supported_Operator：No Caffe parser is registered for Op %s with optype %s.
+    solution: Check whether the Caffe plugin of the operator has been registered.
+    module: GE Errors
+  - code: E11012
+    meaning: Invalid_Argument_Caffe_Model_Data：Unknown bottom blob %s at layer %s. The bottom blob is indexed %s.
+    solution: Modify your Caffe model and try again.
+    module: GE Errors
+  - code: E11014
+    meaning: Invalid_Argument_Caffe_Model_Data：Failed to find the top blob for layer %s.
+    solution: Modify your Caffe model and try again.
+    module: GE Errors
+  - code: E11015
+    meaning: Invalid_Argument_Caffe_Model_Data：Failed to find the bottom blob for layer %s.
+    solution: Modify your Caffe model and try again.
+    module: GE Errors
+  - code: E11016
+    meaning: Invalid_Argument：Failed to add Op %s to NetOutput. Op output index %s is not less than %s. NetOutput input_index %s is not less than %s.
+    solution: Try again with a valid --out_nodes argument.
+    module: GE Errors
+  - code: E11017
+    meaning: Invalid_Argument：Failed to find node %s specified by --out_nodes.
+    solution: Try again with a valid --out_nodes argument.
+    module: GE Errors
+  - code: E11018
+    meaning: Invalid_Argument_Caffe_Model_Data：Op name %s contains invalid characters.
+    solution: 'Allowed characters include: letters, digits, hyphens (-), periods (.), underscores (_), and slashes (/). Modify the Op name and try again.'
+    module: GE Errors
+  - code: E11021
+    meaning: Invalid_Argument_Caffe_Model_Data：Model file %s contains "layers" structures, which have been deprecated in Caffe and unsupported by ATC.
+    solution: Replace layers with layer.
+    module: GE Errors
+  - code: E11022
+    meaning: Invalid_Argument_Caffe_Model_Data：Invalid prototxt file.
+    solution: Invalid Caffe model. Modify the Caffe model and add the layer field.
+    module: GE Errors
+  - code: E11023
+    meaning: Invalid_Argument_Caffe_Model_Data：Weight file contains "layers" structures, which have been deprecated in Caffe and unsupported by ATC."
+    solution: Replace layers with layer.
+    module: GE Errors
+  - code: E11024
+    meaning: Invalid_Argument_Caffe_Model_Data：Invalid Caffe weight file.
+    solution: Invalid Caffe weight file. Modify the Caffe weight file and add the layer field.
+    module: GE Errors
+  - code: E11027
+    meaning: Invalid_Argument_Caffe_Model_Data：Op %s with optype %s in the Caffe model has an input node with shape size 0.
+    solution: Invalid Caffe model. Modify the input shape of the node.
+    module: GE Errors
+  - code: E11029
+    meaning: Invalid_Argument_Caffe_Model_Data：Op %s exists in model file but not found in weight file.
+    solution: Try again with a valid Caffe model or weight file. Ensure that the two files match with each other.
+    module: GE Errors
+  - code: E11032
+    meaning: 'Invalid_Argument_Caffe_Model_Data：Failed to parse message %s. The error field is %s. Reason: %s.'
+    solution: Check whether the Caffe model supports the field.
+    module: GE Errors
+  - code: E11033
+    meaning: 'Invalid_Argument_Caffe_Model_Weight：Failed to convert the weight file. Blob %s of size %s is invalid. Reason: %s.'
+    solution: Try again with a valid Caffe model or weight file. Ensure that the two files match with each other.
+    module: GE Errors
+  - code: E11035
+    meaning: Invalid_Argument_Caffe_Model_Data：The top size of data node %s is not 1 but %s.
+    solution: Invalid Caffe model. Change the number of outputs for the data node to 1.
+    module: GE Errors
+  - code: E11036
+    meaning: Invalid_Argument_Caffe_Model_Data：Data nodes have duplicate top blobs %s.
+    solution: Invalid Caffe model. Make sure the data node has a unique output name.
+    module: GE Errors
+  - code: E11037
+    meaning: Invalid_Argument_Caffe_Model_Data：Op %s has zero outputs.
+    solution: Nodes in the Caffe model must have at least one output.
+    module: GE Errors
+  - code: E12004
+    meaning: Invalid_Argument_Operator_Input_Index：Failed to register the prototype of Op %s. If input index is less than 0, then input index –%s (absolute value) must be less than the input count %s
+    solution: When the Const input is converted to an attribute, check whether the input index is correctly set.
+    module: GE Errors
+  - code: E12009
+    meaning: Invalid_Argument_TensorFlow_Model_Data：Input %s for Op %s is not found in graph_def.
+    solution: Try again with a valid TensorFlow model.
+    module: GE Errors
+  - code: E12013
+    meaning: Invalid_Argument_TensorFlow_Model_Data：Failed to find a subgraph by the name %s.
+    solution: '- To use function subgraphs to convert a TensorFlow model, place the subgraph .proto description file in the same directory as the model file and name it graph_def_library.pbtxt. - Run the func2graph.py script in the ATC installation directory to save the subgraphs to graph_def_library.pbtxt.'
+    module: GE Errors
+  - code: E12029
+    meaning: Invalid_Argument_TensorFlow_Model_Data：Failed to find the subgraph library.
+    solution: '- To use function subgraphs to convert a TensorFlow model, place the subgraph .proto description file in the same directory as the model file and name it graph_def_library.pbtxt. - Run the func2graph.py script in the ATC installation directory to save the subgraphs to graph_def_library.pbtxt.'
+    module: GE Errors
+  - code: E13000
+    meaning: 'File_Operation_Error_Invalid_Path：Path %s is empty. Reason: %s.'
+    solution: Try again with a valid directory.
+    module: GE Errors
+  - code: E13001
+    meaning: 'File_Operation_Error_Open：Failed to open file %s. Reason: %s.'
+    solution: Fix the error according to the error message.
+    module: GE Errors
+  - code: E13002
+    meaning: Directory_Operation_Error_Name_Too_Long：Directory %s is too long. Keep the length within %s characters.
+    solution: Try again with a valid file directory.
+    module: GE Errors
+  - code: E13003
+    meaning: 'File_Operation_Error_Read：Failed to read file %s. Reason: %s.'
+    solution: Fix the error according to the error message.
+    module: GE Errors
+  - code: E13004
+    meaning: 'File_Operation_Error_Write：Failed to write file %s. Reason: %s.'
+    solution: NA
+    module: GE Errors
+  - code: E13005
+    meaning: File_Operation_Error_Parse：Failed to parse file %s.
+    solution: Check that a matched Protobuf version is installed and try again with a valid file. For details, see section "--framework" in ATC Instructions.
+    module: GE Errors
+  - code: E13006
+    meaning: 'File_Operation_Error_Parse：Type %s of file %s is incorrect. Expected type: %s.'
+    solution: NA
+    module: GE Errors
+  - code: E13009
+    meaning: Invalid_Argument_Operator_Name：Operator %s already exists in the graph. Ensure that operator names are unique.
+    solution: Ensure that the operators in the graph have unique names.
+    module: GE Errors
+  - code: E13010
+    meaning: 'Not_Supported_Operator：No operator plugin is registered for Op: %s, optype: %s.'
+    solution: '- If the operator is a custom operator, register related deliverables. - If the operator is a built-in operator, install the package that supports this operator version.'
+    module: GE Errors
+  - code: E13014
+    meaning: 'Invalid_Argument：Value %s of parameter %s for Op %s is invalid. Reason: %s.'
+    solution: NA
+    module: GE Errors
+  - code: E13015
+    meaning: File_Operation_Error_Invalid_File_Size：File %s has a size of %s, which is out of valid range (0, %s].
+    solution: NA
+    module: GE Errors
+  - code: E13018
+    meaning: File_Operation_Error_Parse：Failed to parse file %s through google::protobuf::TextFormat::Parse.
+    solution: Check whether the Protobuf file is valid.
+    module: GE Errors
+  - code: E13023
+    meaning: Invalid_Argument_OM_Model_Size：Model %s has a size of %s bytes, which exceeds system limit of %s bytes.
+    solution: Reduce the model size.
+    module: GE Errors
+  - code: E13024
+    meaning: 'Config_Error_Invalid_Environment_Variable：Value %s for environment variable %s is invalid. Reason: %s.'
+    solution: Reset the environment variable by referring to the setup guide.
+    module: GE Errors
+  - code: E13025
+    meaning: 'Invalid_Argument：Input tensor is invalid. Reason: %s.'
+    solution: NA
+    module: GE Errors
+  - code: E13026
+    meaning: 'File_Operation_Error_Invalid_Path：Input path %s is invalid. Reason: %s'
+    solution: NA
+    module: GE Errors
+  - code: E13027
+    meaning: Invalid_Argument_Network_Connection：Failed to connect to the peer address %s.
+    solution: Check ipaddr, port or token in the configuration file, ensure that the configuration is correct.
+    module: GE Errors
+  - code: E13028
+    meaning: 'Compilation_Error_Execute_Custom_Fusion_Pass：Failed to run custom fusion pass %s. Return code: %s. Reason: %s.'
+    solution: Check the error log for details and verify whether the fusion logic is correct.
+    module: GE Errors
+  - code: E13029
+    meaning: 'Compilation_Error_Load_Custom_Fusion_Pass：Failed to load custom fusion pass lib %s. Reason: %s.'
+    solution: 'Analyze the failure reason mentioned above. Below are some typical solutions for common dlopen failures: - Verify that the library path is correct and the file exists. - Ensure the library and its dependencies have the correct permissions. - Check that all dependencies are available using the ''ldd'' command.'
+    module: GE Errors
+  - code: E13030
+    meaning: 'Initialization_Error_Register_Custom_Fusion_Pass：Failed to get custom fusion pass func %s. Reason: %s.'
+    solution: Check that custom pass registration is valid.
+    module: GE Errors
+  - code: E13031
+    meaning: 'Invalid_Argument：Output tensor is invalid. Reason: %s.'
+    solution: NA
+    module: GE Errors
+  - code: E14001
+    meaning: 'Invalid_Argument_Operator_Compilation_Parameter：Argument %s for Op %s with optype %s is invalid. Reason: %s.'
+    solution: Check whether the type, input, and output of the operator match the configured parameters.
+    module: GE Errors
+  - code: E14002
+    meaning: 'Invalid_Argument_Tensor_Attribute：In the current process, the attribute of %s must be obtained successfully. Reason: %s.'
+    solution: The attribute in the error message must be set for the operator.
+    module: GE Errors
+  - code: E16001
+    meaning: Invalid_Argument_ONNX_Model_Data：The model has no %s node.
+    solution: Check whether the ONNX model contains the input node.
+    module: GE Errors
+  - code: E16002
+    meaning: Invalid_Argument_ONNX_Model_Data：No ONNX parser is registered for optype %s.
+    solution: Check the version of the installation package and reinstall the package. For details, see the installation reference.
+    module: GE Errors
+  - code: E16004
+    meaning: Invalid_Argument_ONNX_Model_Data：ONNX model has no graph.
+    solution: Invalid ONNX model. Modify the ONNX model and add the graph information.
+    module: GE Errors
+  - code: E16005
+    meaning: Invalid_Argument_ONNX_Model_Data：The model has %s --domain_version fields, but only one is allowed.
+    solution: Invalid ONNX model. Modify the ONNX model. If no domain is specified on the operator node, only one domain can be specified on the model.
+    module: GE Errors
+  - code: E19999
+    meaning: Inner_Error：Unknown error occurred. Please check the log.
+    solution: In this scenario, collect the logs generated when the fault occurs and locate the fault based on the logs.
+    module: GE Errors
+  - code: W11001
+    meaning: Performance_Not_Optimal_Operator：Op %s does not hit the high-priority operator information library, which might result in compromised performance.
+    solution: Submit an issue to request for support at https://gitcode.com/cann.
+    module: GE Errors
+  - code: W11002
+    meaning: 'Config_Error_Weight_Configuration：In the compression weight configuration file %s, some nodes do not exist in graph: %s.'
+    solution: Check whether the weight file matches the model file.
+    module: GE Errors
+  - code: W11003
+    meaning: Config_Error_Operator_Missing_Implementation：Operator %s lacks required %s implementation.
+    solution: Ensure all operator required implementations(e.g., tiling) are provided. See acl API Reference for details.
+    module: GE Errors

@@ -16,6 +16,12 @@ types:
     schema_required: [errors]
     schema_optional: [title, summary]
 
+  fault-pattern:
+    kind: table
+    description: 故障模式对照表（现象→根因→处理），按主题域成表（如 dvpp-decode.yaml 承载 VDEC/JPEGD 解码故障）；组织单元=验证单元，一个域一个文件
+    schema_required: [patterns]
+    schema_optional: [title, summary]
+
   tool:
     kind: fact
     description: 工具 / 命令的使用方法与输出解读（如 npu-smi info 字段含义）

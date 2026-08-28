@@ -1,0 +1,40 @@
+id: process-interrupt-fault-patterns
+type: fault-pattern
+title: 进程中断典型案例（4 条）
+summary: 进程中断专题典型案例：SetDevice 错误无可用 Context（107002）/ rtMemcpyAsync 异步参数校验（107000）/ 算子执行中 D2D 拷贝 SDMA ECC（000Ah）/ 环境变量访问冲突多次 coredump
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0065.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0065-0068）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+related_references: [ascend-process-interrupt-triage]
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  patterns:
+    - pattern: 调用 SetDevice 接口错误导致无可用 Context
+      symptoms: ["ctx is NULL", "context pointer null", "ErrCode=107002", "rtCtxGetSysParamOpt"]
+      cause: SetDevice 相关接口（aclrtSetDevice / rtSetDevice/rtSetDeviceEx）调用异常导致无可用 Context——运行环境 Device 异常无法创建 Context、多线程只对主线程 SetDevice 子线程无 Context、报错后才调用 SetDevice
+      fix: export ASCEND_GLOBAL_LOG_LEVEL=1 重跑，plog grep SetDevice 排查三类场景（Device 异常 / 子线程未 SetDevice / 报错后才调用）并优化代码逻辑
+    - pattern: rtMemcpyAsync 异步参数校验报错
+      symptoms: ["Memory async failed", "kind=1 is invalid", "rtMemcpyAsync", "ErrCode=107000"]
+      cause: rtMemcpyAsync 参数校验失败：kind（0 Host 内 / 1 Host→Device / 2 Device→Host）与 loc type（1 Host / 2 Device / 3 SVM / 4 DVPP）组合非法
+      fix: 检查 aclrtMemcpyAsync/rtMemcpyAsync 的 kind 与源目的 loc type 参数是否在合法组合内
+    - pattern: 算子执行过程中 D2D 拷贝出错
+      symptoms: ["sdma error", "ProcessStarsSdmaErrorInfo", "cqeStatus"]
+      cause: SDMA（D2D 拷贝）任务执行报错，cqeStatus>>1 得错误码 000Ah=COMPDATAERR（数据异常访问 HBM 返回 error），大概率 HBM 比特 ECC 故障
+      fix: Device slog 日志（slog/dev-os-id/run/event/event_*.log）搜 event_id 查《健康管理故障定义》对应版本手册
+    - pattern: 环境变量访问冲突导致应用异常终止
+      symptoms: ["多次 core dump", "getenv"]
+      cause: 训练脚本动态写环境变量（os.environ 实际调 putenv）与算子编译读 getenv 冲突，导致应用异常终止
+      fix: 删除代码中动态设置环境变量的逻辑，改为执行程序前设置；物理机 ulimit -c unlimited 生成 coredump、Docker 加 --ulimit core=-1，用 gdb 定位

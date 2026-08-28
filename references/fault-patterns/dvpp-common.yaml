@@ -1,0 +1,30 @@
+id: dvpp-common-fault-patterns
+type: fault-pattern
+title: DVPP 通用问题（2 条）
+summary: DVPP 通用故障：驱动引擎异常返回码（-512 等待解码异常中断）/ 两个版本 DVPP 接口混用导致应用报错退出
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0159.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0159/0161）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  patterns:
+    - pattern: DVPP 驱动引擎异常返回码
+      symptoms: ["-512", "VPC 引擎返回异常码"]
+      cause: VPC 引擎返回 -512 表示等待视频解码异常中断——用户态进程退出导致等待解码时被异常中断
+      fix: 查看 Host 侧日志，检查用户态进程异常退出原因
+    - pattern: 两个版本的 DVPP 接口混用导致应用程序报错退出
+      symptoms: ["V1/V2 接口混用", "应用程序报错退出"]
+      cause: 媒体数据处理 V1 版（acldvpp* 接口）与 V2 版（hi_mpi_* 接口）混用导致应用程序报错退出
+      fix: 统一使用同一版本的 DVPP 接口，避免 V1/V2 混用

@@ -10,7 +10,7 @@ sources:
     fetched_at: 2026-08-28
     verification: cross-checked-source
 
-related_references: [atlas-error-code-reference]
+related_references: [ge-error-codes, hccl-error-codes, dvpp-error-codes, rts-error-codes, driver-error-codes, ai-cpu-error-codes, auto-tune-error-codes, tefusion-error-codes, operator-error-codes, aoe-error-codes, fe-error-codes, profiling-error-codes, amct-error-codes, tbe-pass-error-codes, lxfusion-error-codes, acl-error-codes, misc-error-codes]
 
 applies_to:
   platforms: [cross]
@@ -23,3 +23,67 @@ last_verified: 2026-08-28
 content:
   claim: "昇腾错误码以 6 位字符形式体现（如 E10035）：第 1 位表示级别（E 错误 / W 告警 / I 提示）；第 2 位表示模块——1 GE、2 FE、3 AI CPU、4 TE Fusion、7 Vector 算子插件、8 Vector 算子、B TBE Pass 编译工具、C Auto Tune、D RLTune、E Runtime、F LxFusion&AutoDeploy、G AOE、H ACL、I HCCL、J HCCP、K Profiling、L Driver、M 队列调度、N DVPP、O AMCT、P Dump、Z 算子公共错误码和算子 API 执行接口错误码（如 aclnn 类算子 API）；剩下 4 位 0000~8999 为用户类错误、9000~9999 为内部错误码。异步任务执行（连续下发多个算子）可能包含多个算子报错，需从首报错算子开始排查；E*9*** 为系统内部错误码，需联系华为排查。屏显报错已展示错误码相关的可能原因与解决方案。"
   evidence: "错误码参考使用说明（troubleshooting_0225）：6 位结构、级别位（E/W/I）、模块位 22 项映射、0000-8999 用户类 / 9000-9999 内部码、E*9*** 内部错误码联系华为、异步多算子从首报错排查、[%s] 占位符说明"
+  module_files:
+    - prefix: E1
+      module: GE
+      file: references/errors/ge.yaml
+    - prefix: E2
+      module: FE
+      file: references/errors/fe.yaml
+    - prefix: E3
+      module: AI CPU
+      file: references/errors/ai-cpu.yaml
+    - prefix: E4
+      module: TEFusion
+      file: references/errors/tefusion.yaml
+    - prefix: E7
+      module: Vector 算子插件
+      file: references/errors/operator.yaml
+    - prefix: E8
+      module: Vector 算子
+      file: references/errors/operator.yaml
+    - prefix: EB
+      module: TBE Pass 编译工具
+      file: references/errors/tbe-pass.yaml
+    - prefix: EC
+      module: Auto Tune
+      file: references/errors/auto-tune.yaml
+    - prefix: ED
+      module: RLTune
+      file: references/errors/misc.yaml
+    - prefix: EE
+      module: Runtime
+      file: references/errors/rts.yaml
+    - prefix: EF
+      module: LxFusion&AutoDeploy
+      file: references/errors/lxfusion.yaml
+    - prefix: EG
+      module: AOE
+      file: references/errors/aoe.yaml
+    - prefix: EH
+      module: ACL
+      file: references/errors/acl.yaml
+    - prefix: EI
+      module: HCCL
+      file: references/errors/hccl.yaml
+    - prefix: EK
+      module: Profiling
+      file: references/errors/profiling.yaml
+    - prefix: EL
+      module: Driver
+      file: references/errors/driver.yaml
+    - prefix: EM
+      module: 队列调度
+      file: references/errors/misc.yaml
+    - prefix: EN
+      module: DVPP
+      file: references/errors/dvpp.yaml
+    - prefix: EO
+      module: AMCT
+      file: references/errors/amct.yaml
+    - prefix: EP
+      module: Dump
+      file: references/errors/misc.yaml
+    - prefix: EZ
+      module: 公共算子/算子 API
+      file: references/errors/operator.yaml

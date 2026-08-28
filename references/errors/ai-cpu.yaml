@@ -1,0 +1,81 @@
+id: ai-cpu-error-codes
+type: error-code
+title: AI CPU 错误码（E3，15 条）
+summary: CANN 商用版 9.0.0《错误码参考》AI CPU族 15 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+sources:
+- type: official-doc
+  url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
+  version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
+  fetched_at: '2026-08-28'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - cross
+  versions:
+    cann: 9.0.0
+related_references:
+- ascend-error-code-structure
+status: draft
+last_verified: '2026-08-28'
+content:
+  errors:
+  - code: E30003
+    meaning: Not_Supported_Specification：The number of started NN processes exceeds the limit.
+    solution: Try again 10 seconds after the last training job exits.
+    module: AI CPU Errors
+  - code: E30004
+    meaning: NN_Process_Bin_Error（已废弃）：The binary file of the NN process is damaged.
+    solution: Obtain the device log, check whether ECC errors are reported, and contact technical support at https://www.hiascend.com/support.
+    module: AI CPU Errors
+  - code: E30005
+    meaning: Device_Connection_Failure（已废弃）：Failed to connect the device.
+    solution: '- Obtain the device log and contact technical support at https://www.hiascend.com/support. - Restart the device.'
+    module: AI CPU Errors
+  - code: E30006
+    meaning: Package_Error_Verify_OPP：Failed to verify the OPP.
+    solution: '- Install the correct OPP. - Obtain the device log, check whether ECC errors are reported, and contact technical support at https://www.hiascend.com/support.'
+    module: AI CPU Errors
+  - code: E30007
+    meaning: Cgroup_Add_Failure（已废弃）：Failed to add the AI CPU scheduler to the Cgroup.
+    solution: Obtain the device log and contact technical support at https://www.hiascend.com/support.
+    module: AI CPU Errors
+  - code: E30008
+    meaning: Execution_Error_AICPU_Operator_Timeout：AI CPU operator execution timed out.
+    solution: '- For a GetNext operator, check its preprocessing or use the aclrtSetOpExecuteTimeOut interface to adjust the timeout. - For a custom operator, ensure that the logic design is proper or modify the shape. - If the input and output shapes are too large, modify the shape or use the aclrtSetOpExecuteTimeOut interface to adjust the timeout.'
+    module: AI CPU Errors
+  - code: E39001
+    meaning: Invalid_Argument（已废弃）：The argument is invalid.
+    solution: View the host log and check the argument in the error log.
+    module: AI CPU Errors
+  - code: E39002
+    meaning: Inner_Error_Driver_API_Call_Failed：Failed to obtain the number of devices and the device list.
+    solution: Obtain the device log and contact technical support at https://www.hiascend.com/support.
+    module: AI CPU Errors
+  - code: E39004
+    meaning: Inner_Error_AICPU_Scheduler_Init_Failed：The AI CPU scheduler process initialization is abnormal.
+    solution: Obtain the device log and contact technical support at https://www.hiascend.com/support.
+    module: AI CPU Errors
+  - code: E39005
+    meaning: Inner_Error_TSDaemon_Process_Abnormal：The TSDaemon process initialization is abnormal.
+    solution: Obtain the device log and contact technical support at https://www.hiascend.com/support.
+    module: AI CPU Errors
+  - code: E39006
+    meaning: Inner_Error_Failed_Send_OPP_To_Device：Failed to send the OPP to the device.
+    solution: Obtain the device log and contact technical support at https://www.hiascend.com/support.
+    module: AI CPU Errors
+  - code: E39007
+    meaning: Inner_Error_Device_Subprocess_Startup_Timeout：Starting a subprocess on the device timed out.
+    solution: Obtain the device log and contact technical support at https://www.hiascend.com/support.
+    module: AI CPU Errors
+  - code: E39008
+    meaning: Inner_Error_Verify_NN_Process_Binary：The binary file of the NN process is damaged.
+    solution: Obtain the device log, check whether ECC errors are reported, and contact technical support at https://www.hiascend.com/support.
+    module: AI CPU Errors
+  - code: E39009
+    meaning: Inner_Error_Device_Status_Abnormal：Failed to connect the device.
+    solution: '- Obtain the device log and contact technical support at https://www.hiascend.com/support. - Restart the device.'
+    module: AI CPU Errors
+  - code: E39010
+    meaning: Inner_Error_Cgroup_Add_Failed：Failed to add the AI CPU scheduler to the Cgroup.
+    solution: Obtain the device log and contact technical support at https://www.hiascend.com/support.
+    module: AI CPU Errors

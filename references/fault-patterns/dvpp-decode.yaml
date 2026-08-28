@@ -1,0 +1,114 @@
+id: dvpp-decode-fault-patterns
+type: fault-pattern
+title: DVPP JPEGD 解码 / VDEC 视频解码问题（23 条）
+summary: JPEGD/VDEC 解码故障：内存申请/释放时序、花屏（坏帧/提前释放）、丢帧丢包（缺帧）、解码失败（码流格式/annex-B/0x31/类型不一致/多帧一帧）、回调不触发/无结果、卡死/OOM/卡住、通道创建失败（虚拟化模板/上限）、性能问题
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0172.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0172-0194）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  patterns:
+    - pattern: 调用错误的内存申请接口，导致内存地址校验出错
+      symptoms: ["内存地址校验出错"]
+      cause: 未使用指定的 DVPP 内存申请接口（V1 acldvppMalloc / V2 hi_mpi_dvpp_malloc），或接口传入的 buffer size 小于实际申请的内存大小
+      fix: 检查代码，使用 acldvppMalloc（V1）或 hi_mpi_dvpp_malloc（V2）申请 JPEGD/VDEC 输入输出内存，核对 buffer size
+    - pattern: 内存被提前释放，导致解码数据花屏
+      symptoms: ["解码数据花屏"]
+      cause: 输出内存被别人复用/被踩或提前释放；或解码需要的输出内存比实际申请的大（如 VDEC 输出预期 RGB 仍按 YUV420sp 申请）
+      fix: 在 DVPP 内存申请/释放接口与 hi_mpi_vdec_get_frame/aclvdecCallback/acldvppJpegDecodeAsync 处打印内存大小与地址，检查申请大小与使用是否一致、内存是否解码完成前提前释放
+    - pattern: JPEGD 图像解码进程超时退出
+      symptoms: ["解码进程超时退出"]
+      cause: 多路并发解码 JPEG 且每路含带旋转信息的大分辨率图片（3840*2160 及以上）时解码时间过长导致用户进程超时退出
+      fix: 用 JPEG 码流分析工具（如 JPEGsnoop）解析确认 Orientation 信息（1 表示不旋转）；带旋转的大图先调用第三方库（如 OpenCV）解码
+    - pattern: JPEGD 图片解码失败
+      symptoms: ["JPEGD 解码失败"]
+      cause: "JPEGD 只支持 huffman 编码（colorspace: yuv, subsample 444/422/420/400），不支持算术编码/渐进编码/jpeg2000 格式；或图像数据不完整"
+      fix: 超规格图像格式用第三方软件解码；检查图像数据完整性
+    - pattern: VDEC 视频解码丢帧、丢包
+      symptoms: ["丢帧", "丢包"]
+      cause: H264/H265 码流缺少 IDR 帧/I 帧/P 帧/B 帧
+      fix: 检查码流关键帧完整性，补充缺失帧类型
+    - pattern: VDEC 视频解码花屏
+      symptoms: ["解码花屏"]
+      cause: 输入的码流中某些帧数据不完整、存在坏帧，硬件解码产生花屏
+      fix: 用第三方工具（如 eseye u）解码源码流确认是否花屏；正常则用 fwrite 保存送 VDEC 的码流检查是否传输中被破坏；用对应版本 sample 解码验证码流/VDEC 格式，sample 正常则优化自身代码逻辑
+    - pattern: VDEC 视频解码性能问题
+      symptoms: ["解码卡顿", "性能下降"]
+      cause: 视频解码回调函数中耗时过长；输入码流 I 帧比例过大（解码 I 帧耗时比 P 帧长）；输入码流存在异常帧
+      fix: 优化回调函数耗时，控制 I 帧比例，排查异常帧
+    - pattern: 输入码流不符合要求导致 VDEC 视频解码失败
+      symptoms: ["VDEC 解码失败（码流规格）"]
+      cause: 输入码流规格不符合软硬件约束（码流类型、宽高等）
+      fix: 按 VDEC 功能约束文档，用第三方工具（如 eseye u）检查码流类型/宽高，不满足则替换码流
+    - pattern: VDEC 视频帧解码失败不触发回调函数
+      symptoms: ["解码失败不触发回调"]
+      cause: 码流中某些帧是坏帧，语法解析不出帧含义或解码失败，不调用回调函数
+      fix: 查是否有 VDEC 丢帧/丢包日志（有则异常帧解码失败）；调整 DVPP 或全局日志为 info，对比回调打印次数与输入帧数
+    - pattern: VDEC 视频解码异常导致进程卡死，无法退出
+      symptoms: ["进程卡死，无法退出"]
+      cause: Device 内存不足，AI CPU 无法处理 VDEC 解码任务导致任务超时
+      fix: 按 VDEC 内存消耗计算公式预估 Device 内存并合理规划；增加异常处理机制（aclrtSetExceptionInfoCallback 设异常回调，获取 Device/Stream/Task ID 判断异常强制退出进程）
+    - pattern: retCode 返回值设置错误，导致 VDEC 视频解码异常
+      symptoms: ["acldvppGetPicDescRetCode 返回非 0"]
+      cause: 前一帧码流解码失败 retCode 被置 2，复用 output 图片描述信息时 retCode 继承失败状态，后续帧一直判断解码失败
+      fix: 复用 output 图片描述信息前先调用 acldvppSetPicDescRetCode 设置为 0
+    - pattern: VDEC 视频解码无报错，但无解码结果数据、CPU 占用率高
+      symptoms: ["无解码结果", "CPU 占用率高", "aclrtProcessReport failed, ret = 107012"]
+      cause: aclvdecSendFrame 调用正常但未触发回调——未调用 aclvdecSetChannelDescThreadId 绑定用户线程，导致无法触发 aclrtProcessReport 进而触发回调（107012=线程未订阅或重复订阅）
+      fix: 创建独立线程调用 aclrtProcessReport；调用 aclvdecSetChannelDescThreadId 绑定用户线程；在线程内配置超时等待触发回调获取解码结果
+    - pattern: 复用输出图片描述类型，VDEC 解码报错提示有不支持的图片格式
+      symptoms: ["不支持的图片格式"]
+      cause: 复用 acldvppPicDesc 时未重设 format/width/height/widthStride/heightStride——前一帧解码失败后参数变默认值 0，format=0 表示 YUV400，VDEC 不支持该格式解码输出
+      fix: 复用 acldvppPicDesc 时在下一次解码前重新设置 format、width、height、widthStride、heightStride
+    - pattern: 异常码流导致 VDEC 视频解码失败
+      symptoms: ["frame_flag = 1 解码失败"]
+      cause: 输入码流存在异常，或网络不稳定播包丢帧导致码流异常
+      fix: 调用 hi_mpi_vdec_send_stream 成功后写文件保存输入码流（EP 形态先 aclrtMemcpy HOST_TO_DEVICE），用第三方工具检查码流是否异常（花屏/报错）
+    - pattern: 非 annex-B 格式的码流导致 VDEC 视频解码失败
+      symptoms: ["VDEC 解码失败（码流格式）"]
+      cause: VDEC 只支持 annex-B 格式裸码流，不支持其它格式（如 AVCC）
+      fix: 用第三方工具以 16 进制查看码流，确认固定以 0x00000001 起始的 annex-B 格式
+    - pattern: 不支持的协议字段 0x31 导致 JPEGD 图片解码结果异常
+      symptoms: ["协议字段 0x31", "解码结果异常"]
+      cause: JPEGD 不支持的协议字段 0x31，硬解软解都失败，无输出解码数据（内存中数据都是默认值 0）
+      fix: 用第三方工具检查码流标记，存在 0x31 则更换图片重新解码
+    - pattern: 码流大小校验失败导致 VDEC 视频解码失败
+      symptoms: ["stream len can't be zero!"]
+      cause: stream->len 为 0，被 VDEC 代码参数校验拦截
+      fix: 检查代码中 stream->len 参数赋值逻辑
+    - pattern: 实际码流类型与接口中设置的解码器类型不一致导致 VDEC 解码失败
+      symptoms: ["VDEC 解码失败（类型不一致）"]
+      cause: 创建 VDEC 通道时设置的解码协议类型（HI_PT_H264/HI_PT_H265）与实际码流类型不一致
+      fix: 检查 hi_mpi_vdec_create_chn 入参 attr->type 与码流实际类型是否一致
+    - pattern: 多帧码流当一帧送入解码导致 VDEC 视频解码异常
+      symptoms: ["除第一帧外其余帧被丢弃", "多帧当一帧"]
+      cause: VDEC 仅支持按帧发送模式，一次送入多帧数据时只解第一帧其余丢弃
+      fix: 检查 hi_mpi_vdec_send_stream 的 stream->addr 是否一次读入多帧，调整代码逐帧送入
+    - pattern: 送帧太快，VDEC 视频解码发生 OOM
+      symptoms: ["VDEC OOM"]
+      cause: 每送一帧申请一个输出 buffer，送帧间隔太短远超解码帧率时申请大量 buffer 占用大量内存导致 OOM
+      fix: 按 VDEC 性能指标数据调整送帧间隔
+    - pattern: 解码器帧存大小以及参考帧个数设置过小，VDEC 视频解码卡住
+      symptoms: ["VDEC 解码卡住"]
+      cause: 创建通道时设置的帧存大小*帧存个数小于解码器实际需要的帧存大小*帧存个数
+      fix: 调整 hi_mpi_vdec_create_chn 的 attr->frame_buf_size、attr->frame_buf_cnt，或直接设为 0 由解码器内部自适应
+    - pattern: 昇腾虚拟化实例场景使用不含 DVPP 的算力模板时，创建 VDEC 通道失败
+      symptoms: ["最大通道数为 0", "创建 VDEC 通道失败"]
+      cause: 算力模板不含 DVPP（该算力下无 DVPP 能力），属于正常报错
+      fix: 查算力模板 DVPP 资源（EP 用 msnpureport -a 导出看 module_info\dev-os-0\dvpp\dvpp_proc.log，RC 用 cat /proc/umap/sys）；需 DVPP 能力则使用含 DVPP 的算力模板（如 vir04_4c_dvpp，vir04_3c_ndvpp 无 DVPP）
+    - pattern: 昇腾虚拟化实例场景下 VDEC 通道数量达到上限，无法创建通道
+      symptoms: ["VDEC 通道数量达到上限"]
+      cause: 不同算力模板有不同总通道数上限，超过上限无法继续创建
+      fix: 查所用算力模板 VDEC 资源；解码通道总数上限=(JPEGD + VDEC) / (16 + 12) * 256（如 vir01 模板上限 27）

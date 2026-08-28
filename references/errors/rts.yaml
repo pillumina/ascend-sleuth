@@ -1,0 +1,85 @@
+id: rts-error-codes
+type: error-code
+title: RTS（Runtime 运行时） 错误码（EE，16 条）
+summary: CANN 商用版 9.0.0《错误码参考》RTS（Runtime 运行时）族 16 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+sources:
+- type: official-doc
+  url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
+  version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
+  fetched_at: '2026-08-28'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - cross
+  versions:
+    cann: 9.0.0
+related_references:
+- ascend-error-code-structure
+status: draft
+last_verified: '2026-08-28'
+content:
+  errors:
+  - code: EE1001
+    meaning: 'Invalid_Argument：The argument is invalid.Reason: %s'
+    solution: '- Check the input parameter range of the function. - Check the function invocation relationship.'
+    module: RTS Errors
+  - code: EE1002
+    meaning: Execution_Error_Stream_Synchronize_Timeout：Stream synchronize timeout. %s
+    solution: '- Check whether the timeout interval is properly set. - Check whether the network is normal.'
+    module: RTS Errors
+  - code: EE1003
+    meaning: 'Invalid_Argument：%s failed because value %s for parameter %s is invalid. Expected value: %s.'
+    solution: '- Check the input parameter range of the function. - Check the function invocation relationship.'
+    module: RTS Errors
+  - code: EE1004
+    meaning: Invalid_Argument_Null_Pointer：%s failed because %s cannot be a NULL pointer.
+    solution: Try again with a correct pointer argument.
+    module: RTS Errors
+  - code: EE1005
+    meaning: Not_Supported：The current system or device does not support %s.
+    solution: NA
+    module: RTS Errors
+  - code: EE1006
+    meaning: Not_Supported：%s execution failed because %s is not supported.
+    solution: NA
+    module: RTS Errors
+  - code: EE1007
+    meaning: 'Resource_Error_Bind_Stream：Failed to bind stream with ID %s. Reason: %s.'
+    solution: Unbind the stream from the already bound model and then rebind it to the current model.
+    module: RTS Errors
+  - code: EE1008
+    meaning: 'Execution_Error_Load_OP_Kernel：OP kernel loading failed. Reason: %s.'
+    solution: NA
+    module: RTS Errors
+  - code: EE1009
+    meaning: 'Execution_Error_Model：Failed to execute model with ID %s. Reason: %s.'
+    solution: NA
+    module: RTS Errors
+  - code: EE1010
+    meaning: Execution_Error_Invalid_Context：%s execution failed because %s does not belong to the current context.
+    solution: NA
+    module: RTS Errors
+  - code: EE1011
+    meaning: 'Invalid_Argument：%s failed. Value %s for parameter %s is invalid. Reason: %s.'
+    solution: '- Check the input parameter range of the function. - Check the function invocation relationship.'
+    module: RTS Errors
+  - code: EE1015
+    meaning: 'Package_Error_Incorrect_Driver_Version：%s failed. Reason: The driver version capacity is insufficient. %s'
+    solution: Upgrade the driver software version.
+    module: RTS Errors
+  - code: EE2002
+    meaning: 'Config_Error_Invalid_Environment_Variable：Value %s for environment variable %s is invalid. Expected value: %s.'
+    solution: NA
+    module: RTS Errors
+  - code: EE4001
+    meaning: Model_Binding_Errors：Failed to bind the stream to the model. %s
+    solution: Remove the repeated binding operation on the stream from the code.
+    module: RTS Errors
+  - code: EE4002
+    meaning: Model_Unbinding_Errors：Failed to unbind the stream to the model. %s
+    solution: '- Check the code to ensure that the stream to be unbound is bound to the model. - Ensure that the model is not running.'
+    module: RTS Errors
+  - code: EE4004
+    meaning: Profiling_Enable_Errors：Failed to enable profiling. %s
+    solution: Do not enable profiling repeatedly.
+    module: RTS Errors
