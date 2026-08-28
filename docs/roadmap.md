@@ -138,7 +138,7 @@
 - **参数治理**：设计常数（串联保护 n=2、批审 30 秒上限、每 ns 30 条 cap）按理论 §7 的限定属参数估计——纳入 metrics 实测复核，数据足够时重校（n=2 可由误诊级联率复核，30 秒由批审实际耗时复核）
 - **PR 描述机器层生成**：to-postmortem / groom 直接产出符合 `.github/PULL_REQUEST_TEMPLATE/` 的 PR body 草稿（预分诊、证据、CI 链接、置信变化由系统数据自动填充，人只补脱敏自查与动机）——把 template 从约定提升为结构（原则二）。与 E1（agent 自起草候选 case）同源，闸门：E1 落地后或团队 PR 量周均 ≥3
 
-由[评估报告 0001](eval-reports/0001-vllm-ascend-batch.md) §四 产出的工程项（按收益排序）：
+由首次真实数据评估（eval-reports/0001，git 历史可查）产出的工程项（按收益排序）：
 
 - **triage 词边界匹配**：`hang`⊂`changed`、`inf`⊂`INFO` 等子串误配浪费候选预算——修复为 `\b` 词边界，低成本高收益
 - **inference_interrupt 补错误码型症状**：107030 等 error-code 型无分支命中，靠优雅退化兜底

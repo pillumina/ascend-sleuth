@@ -1,14 +1,14 @@
 # 推广就绪度评估（Rollout Assessment）
 
-> 评估日期：2026-08-28。评估基线：main HEAD（ADR-0008 全阶段 + 修订 1 形态校准 + 修订 2 演化机制 + reference 可观测性已合入）。
+> 评估日期：2026-08-29（第二次重估）。评估基线：main HEAD（四章官方材料导入完成、93 reference 全 active、token 成本修复）。上次评估：2026-08-28。
 > 方法：对照 `docs/design-principles.md` 十一条原则逐条核对实现证据；按"机制 / 内容 / 数据 / 运维"四层评估。
 > 本文是向团队交付前的依据文档，不是一次性报告——每次重大演进后应重估（原则十一：数据触发演进）。
 
 ## 结论（TL;DR）
 
-**机制层：满足推广要求。内容/数据/运维层：不满足——需要第一个团队作为种子用户跑起来。**
+**机制层：满足推广要求。内容层：reference 层已填充（此前最大缺口关闭）、case 层 training 仍空。数据/运维层：不满足——需要第一个团队作为种子用户跑起来。**
 
-这套系统可以交付给第一个团队开始使用，但它交付的是"机制完备 + 少量已验证内容"，不是"开箱即用的知识库"。第一个团队的诊断会大量触发诚实退化路径（空库提示、Tier 3 兜底）——这正是设计预期，但要接受它。
+系统可以交付给第一个团队开始使用，交付的是"机制完备 + reference 先验知识已就位 + 少量已验证 case"，不是"开箱即用的全场景知识库"。training 场景的诊断仍会触发诚实退化路径（空库提示、Tier 3 兜底）——这是设计预期。
 
 ## 一、逐条对照十一条原则
 
@@ -41,31 +41,31 @@
 | git 门控（4 类 PR 模板 / kb/high-risk / 双签） | ✅ 模板齐全，双签机制待 owner 落实 |
 | ADR 体系（1-8） | ✅ 决策可追溯（含 0008 修订 1/2 记录） |
 
-### 内容层（未就绪 ⚠️，但缺口在收窄）
+### 内容层（reference 层已填充 ✅，case 层仍缺 ⚠️）
 
-| 资产 | 现状 | 推广需求 |
+| 资产 | 现状 | 剩余缺口 |
 |---|---|---|
-| knowledge/ | 38 条 vllm-ascend inference；**training（mindspeed-llm/mm/verl）全空**；common/ 空 | 团队诊断的第一个问题可能落在空 namespace |
-| references/ | 23 条 active A5 platform-fact + error-code 表（cann-runtime 7 码，draft）+ methodology（GLM 分类树，draft）+ 310P platform-fact（draft）——**error-code/tool/methodology 从全空到首批填充**；**tool 仍空**、A2/A3 platform-fact 仍缺 | 错误码表按官方分族补齐、tool 类（npu-smi/hccn_tool）填充 |
-| 覆盖矩阵 | (namespace × category × platform) 仍大面积空缺 | 覆盖报告（roadmap O4）尚未产出 |
+| knowledge/ | 38 条 vllm-ascend inference；**training（mindspeed-llm/mm/verl）全空**；common/ 空 | 团队 training 诊断可能落在空 namespace |
+| references/ | **93 条全 active**：错误码 17 族 306 码（#38 分族导入，验证"追加不新建"）、tool 7（asys/msaicerr/日志操作/堆栈）、fault-pattern 14 域 99 条、env-var 19 表 99 变量、方法论 6、日志收集 7、模块字典与码结构 2、A5 platform-fact 26 | A2/A3 platform-fact 仍缺（可后续按需补） |
+| 覆盖矩阵 | (namespace × category × platform) 大面积空缺 | 覆盖报告（roadmap O4）尚未产出 |
 
 ### 数据层（未就绪 ⚠️，管道已通）
 
 | 项 | 现状 |
 |---|---|
-| metrics.md | 仅 W35 一期（vllm-ascend 批量回放），之后未更新 |
+| metrics.md | 有 W28 示例 + reference 口径约定；真实 trace 数据仍缺（38 条 case 仅 12723 有 hits=1，其余初始值） |
 | golden 套件 | 23 条 fixture，**无自动 replay**（docs/eval.md 自承依赖人手动） |
 | 闸门数值 | 路由准确率/命中率/过滤率仍是假设值（诚实标注"待 metrics 复核"） |
-| reference 命中统计 | **观测管道已通**（trace_metrics 支持 reference_lookup，groom R6 回写），数据待 trace 积累（当前如实 0） |
+| reference 命中统计 | 观测管道已通（trace_metrics 支持 reference_lookup，groom R6 回写），数据待 trace 积累（当前如实接近 0） |
 
 ### 运维层（未就绪 ⚠️）
 
 | 项 | 现状 |
 |---|---|
-| groom 周批 | 机制完整（R1-R7），**无任何实际运行记录** |
+| groom 周批 | 机制完整（R1-R7），跑过首轮（draft 转正 3 条），无持续周批记录 |
 | 双签 owner | CODEOWNERS.example 占位，领域 owner / 体系维护人角色未落实 |
-| 反馈闭环 | 机制在，但 38 条 case confidence 全是初始值——**没人回报过 fix 结果**；reference hits 如实 0 |
-| to-reference 使用 | 仅 dogfood 一次（提炼测试），无真实工程师使用 |
+| 反馈闭环 | 机制在，但 case confidence 几乎全是初始值——**没人回报过 fix 结果** |
+| to-reference 使用 | 已实际执行 4 批导入（日志/故障处理/错误码/envvar，PR #35-#40），经真实导入验证 |
 
 ## 三、推广最小动作清单（按依赖排序）
 
@@ -74,7 +74,7 @@
 | P0 | 定 owner + 启用 CODEOWNERS | 运维（决策权落实） |
 | P0 | groom 实际跑 2-3 轮（含 reference draft 审核 R1 + 指标回写 R6），产出 metrics 二期 | 数据 + 运维（机制首次通电） |
 | P1 | 补一个 training namespace 种子（mindspeed-llm 或 verl，10-20 条） | 内容（否则 training 团队无法使用） |
-| P1 | **错误码表按官方分族补齐**（cann-runtime 已有 7 码草稿 → 导入官方错误码参考分族扩展，验证聚类"追加不新建"）+ tool 类（npu-smi/hccn_tool）填充 | 内容（最常用先验知识） |
+| P1 | **错误码表按官方分族补齐 + tool 类填充**（已完成，#38/#36）| ✅ 已闭环（验证聚类"追加不新建"真实成立）|
 | P1 | golden replay 半自动化（roadmap M2） | 数据（回归防护缺实证） |
 | P2 | 覆盖矩阵报告（groom 输出 O4） | 内容可观测性 |
 | P2 | 3 阶段推广路径（种子库 → 小队试运行 → 全面推广） | 组织路径 |
@@ -83,15 +83,14 @@
 
 向团队交付时表述建议：
 
-> 机制已就绪：这套系统把"理论（四公理）→ 原则（十一）→ 实现（skill + CI + 校验）"的链走通了。内容待积累：当前 38 条 vllm-ascend case + 23 条 A5 平台事实只够证明机制能用、够支撑 vllm-ascend inference 场景的部分诊断，不够支撑全场景日常诊断。第一个团队的诊断会频繁触发"空库提示 / Tier 3 兜底"——这是设计预期，每次兜底后沉淀（`/skill:to-postmortem`、`/skill:to-reference`），知识库随使用变厚。
+> 机制已就绪：这套系统把"理论（四公理）→ 原则（十一）→ 实现（skill + CI + 校验）"的链走通了。先验知识已就位：93 条 reference（错误码/故障模式/工具/方法论/环境变量）支撑诊断的"日志在哪、码什么意思、故障怎么定位"前置层。case 层待积累：当前 38 条 vllm-ascend case 够支撑 inference 场景的部分诊断，training 场景尚未覆盖——第一个团队的 training 诊断会触发"空库提示 / Tier 3 兜底"，这是设计预期，每次兜底后沉淀（`/skill:to-postmortem`、`/skill:to-reference`），知识库随使用变厚。
 
 ## 重估条件
 
-以下任一发生时重新执行本评估：
+以下任一发生时重新执行本评估（2026-08-29 已因"tool 类型首次填充 + 错误码按官方分族扩展"触发重估一次）：
 
 - groom 连续运行 ≥4 周且 metrics 积累 ≥3 期；
 - 任一 training namespace 首次填充；
-- reference 层 **tool 类型首次填充**，或 error-code 表首次按官方参考分族扩展（验证聚类"追加不新建"在真实导入下成立）；
 - reference 观测数据积累 ≥2-3 期（可按实测设 hits/resolve 率参考线）；
 - CODEOWNERS 实际启用且双签机制生效；
 - 覆盖矩阵报告（O4）首次产出。
