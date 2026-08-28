@@ -1,0 +1,47 @@
+id: ascend-process-interrupt-triage
+type: methodology
+title: 进程中断问题定位（首报错 → 接口错误 → 任务执行错误 → 心跳丢失 → 资源未释放）
+summary: 进程异常退出按五层排查：①plog 首报错有错误码（非 E*9***）查错误码参考；②acl***/rt*** 接口报错（对外接口查 API 参考，内部接口联系技术支持）；③fault kernel_name 算子执行报错 / Task run failed 内部任务报错（ascend-dmi 压测）；④Device lost heartbeat+HEARTBEAT EXCEPTION 或 fatal panic 心跳丢失；⑤RESOURCE_ALLOC_FAIL 资源未释放
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0061.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0061/0062/0063）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [interrupt]
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  flow:
+    - step: 1
+      name: 识别进程中断并定位首报错
+      action: 在 Host 应用类日志 ${HOME}/err_log_info/log/[run|debug]/plog/plog-pid_*.log 执行 grep -rn ERROR，取首报错；首报错存在错误码且非 E*9*** 类（E*9*** 为系统内部错误码）→ 查错误码参考解决方法；无错误码继续后续排查
+      check: "grep -rn \"ERROR\" plog-pid_*.log"
+      when_to_use: 进程异常退出、应用中断
+    - step: 2
+      name: 排查接口使用类错误
+      action: 检查首报错附近是否有 acl***、[drv api]、rt*** 等接口报错；对外发布接口（一般 acl 开头）→ 按 API 参考检查接口使用与参数说明；内部接口报错 → 联系技术支持（典型案例：SetDevice 错误无可用 Context、rtMemcpyAsync 异步参数校验）
+      check: "grep acl|drv api|rt***"
+      when_to_use: 日志含接口调用报错
+    - step: 3
+      name: 排查任务执行错误
+      action: 先查算子执行类任务报错：grep fault kernel_name 或 kernelName，命中则取报错 kernel 名称联系技术支持；再查其它任务执行：grep Task run failed 表示 CANN 内部组件任务报错，用 ascend-dmi 故障诊断压测并提供压测报告与报错日志（sqe_type=notify wait 时先区分是否模型算子报错，再搜 fault kernel_name 定位算子）
+      check: "grep fault kernel_name|kernelName；grep \"Task run failed\"；ascend-dmi 压测"
+      when_to_use: 无接口类报错或已排除
+    - step: 4
+      name: 排查心跳丢失问题
+      action: Host plog 有 Device lost heartbeat 且黑匣子 history.log（${HOME}/err_log_info/report/*/hisi_logs 目录）有 HEARTBEAT EXCEPTION → TaskScheduler CPU 心跳丢失；Device syslog（report/*/message）有 fatal panic → Control CPU 心跳丢失；均联系技术支持
+      check: "grep \"Device lost heartbeat\"；grep HEARTBEAT EXCEPTION；grep \"fatal panic\""
+      when_to_use: 任务执行错误已排除
+    - step: 5
+      name: 排查资源未释放
+      action: plog 有 RESOURCE_ALLOC_FAIL → 存在资源未释放，检查应用代码逻辑，内存等资源使用完成后及时释放
+      check: "grep RESOURCE_ALLOC_FAIL"
+      when_to_use: 以上均未命中
+  verified_by_testing: false

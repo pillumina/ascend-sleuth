@@ -1,0 +1,43 @@
+id: ascend-asys
+type: tool
+title: asys 故障信息收集与解析工具（仅 Ascend EP 形态）
+summary: asys 一键式收集故障信息并解析 plog 伴侣文件：collect/launch 收集（含业务复跑）、info 状态展示、health 健康检查、diagnose 压测检测（stress/hbm/cpu）、analyze 解析（trace/coredump/stackcore/coretrace/ub/aicore_error）、profiling 性能采集、实时堆栈导出；仅支持 Ascend EP 形态
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0096.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0096/0097/0501-0517/0538）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+related_references: [ascend-trace-logs, ascend-msaicerr]
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  tool_name: "asys（故障信息收集工具，一键式收集并解析故障信息）"
+  invocation: "仅支持 Ascend EP 形态；用于收集软硬件信息/日志（不复跑或复跑后收集）、展示 Device 状态、健康检查、压力检测、解析 trace/coredump/stackcore/coretrace/UB/AI Core Error 文件、采集 AI Core 性能数据、导出实时堆栈。trace 日志的 .bin 与 stackcore 文件解析走此工具（见 ascend-trace-logs）"
+  commands:
+    collect: "asys collect --task_dir=<path> --tar=True --output=<path>（故障信息收集，产物含 software_info/hardware_info/status_info/health_result.txt 与 dfx 目录）"
+    launch: "asys launch --task=\"sh app_run.sh\" --tar=True --output=<path>（业务复跑+故障信息收集）"
+    info: "asys info -r=status -d=<deviceId>（软硬件、Device 状态展示：芯片型号/功率/温度/利用率）"
+    health: "asys health -d=<deviceId>（健康检查，不健康时展示报错信息）"
+    diagnose: "asys diagnose -r={stress_detect|hbm_detect|cpu_detect|component} -d=<deviceId> --output=<path>（AI Core 压力/HBM/CPU/组件检测；stress 耗时可能较长）"
+    analyze: "asys analyze -r={trace|coredump|stackcore|coretrace|ub|aicore_error} --file=<path> --symbol_path=<path1,path2> --output=<path>（文件解析；coredump 需 --exe_file+--core_file；stackcore/coretrace 支持 --path 目录；aicore_error 用 --path 指定信息目录）"
+    profiling: "asys profiling -r=aicore -p=<time> -d=<deviceId> --output=./ --aic_metrics=PipeUtilization（AI Core 性能数据采集，底层调 msprof）"
+    stacktrace: "asys collect -r=stacktrace --remote=<pid> --all（实时堆栈导出，向目标进程发信号 35；ASCEND_COREDUMP_SIGNAL=none 时进程会被杀掉）"
+    config: "asys config -d=<deviceId> --get/--restore --stress_detect（压测相关配置查询与恢复）"
+  output_meaning:
+    - "collect 产物：software_info.txt（安装包版本/环境变量/依赖/系统信息）、hardware_info.txt（host+device 硬件信息）、status_info.txt（芯片型号/CPU 与 AI Core 利用率）、health_result.txt（故障码与故障信息）、dfx/"
+    - "stackcore/coretrace 解析输出进程崩溃原因、pid/tid、栈帧与符号地址"
+    - "ub 解析把 ubnl_dfx_statistic.bin 等转换为文本"
+  pitfalls:
+    - "ctrl+z 中止业务复跑任务会残留任务进程（可能仍在重定向写文件），与后续 asys 复跑冲突——复跑前先查询并手工 kill 相关推理/训练进程"
+    - "实时堆栈导出超时报 Generating the stackcore bin file timeout：初始化未完成（plog 搜 attr init success）、ASCEND_COREDUMP_SIGNAL=none 关闭信号集（plog 搜 close the signal capture function）、或业务已结束资源释放（plog 搜 unregister all signal handlers）"
+    - "仅 Ascend EP 形态支持，RC/Control CPU 开放形态不可用"
