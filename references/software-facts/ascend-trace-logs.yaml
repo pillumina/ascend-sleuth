@@ -1,0 +1,23 @@
+id: ascend-trace-logs
+type: software-fact
+title: trace 日志机制与落盘路径（仅 Ascend EP 标准形态）
+summary: trace 将软件栈维测信息记内存、运行出错或进程结束时才落盘，仅 Ascend EP 标准形态支持；根目录 $HOME/ascend/atrace（ASCEND_WORK_PATH 可重定向），事件三类 schedule/stackcore/exit；stackcore 与 *.bin 轨迹需 asys 工具解析，目录持续增长需定期清理
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0022.html"
+    version: "CANN 商用版 9.0.0（日志参考 logreference_0022）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  claim: "trace 日志是独立维测机制：程序运行过程中将软件栈维测信息记录在内存，程序运行出错或进程结束时落盘到文件（避免运行中频繁产生日志影响性能），仅 Ascend EP 标准形态支持。落盘根目录默认 $HOME/ascend/atrace/，可由环境变量 ASCEND_WORK_PATH 重定向；子目录结构为 trace_{进程组pid}_{首次加载trace动态库的进程pid}_{首次加载trace动态库的时间戳}/{event_name}_event_{当前进程pid}_{目录生成时的时间戳}/，其中 event_name 取 schedule（业务流程异常，如算子执行报错等）/ stackcore（进程崩溃或收到异常信号）/ exit（进程正常退出析构）。schedule_tracer_ts_{device_id}.txt 在 AI Core Error、notify wait 超时时回传寄存器/硬件 buffer/bitmap；stackcore_tracer_* 轻量 core 与 schedule_tracer_*.bin（AICPU 轨迹）需 asys 工具解析。目录被容器或物理机内所有应用共用、持续增长，需定期清理（可用 logrotate 切分），否则磁盘占满影响业务。"
+  evidence: "日志参考 logreference_0022『查看trace日志』：机制（内存记录→出错或结束落盘、仅 EP 标准形态支持）、根目录 $HOME/ascend/atrace/ 与 ASCEND_WORK_PATH 重定向、子目录 trace_{进程组pid}_{pid}_{时间戳}/{event}_event_{pid}_{时间戳}/、事件三类（schedule/stackcore/exit）、文件说明（schedule_tracer_ts_* 寄存器/硬件 buffer/bitmap、stackcore_tracer_* 轻量 core 需 asys、schedule_tracer_*.bin AICPU 轨迹需 asys）、ASCEND_LOG_DEVICE_FLUSH_TIMEOUT 控制 Device 日志回传延时、ASCEND_TRACE_RECORD_NUM 控制老化、logrotate 清理建议"

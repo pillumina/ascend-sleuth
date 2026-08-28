@@ -1,0 +1,31 @@
+id: ascend-restart-slogd
+type: tool
+title: 重启 Device 侧日志进程 slogd
+summary: 修改日志配置或日志进程异常后重启 slogd：kill -15 <pid> 让其清理共享内存后自动拉起（反复失败才用 -9），ps -elf | grep log 确认；重启后系统类日志续写未满旧文件、应用类写全新文件；需 Device 侧登录权限，EP 形态无此权限
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/logreference/logreference_0012.html"
+    version: "CANN 商用版 9.0.0（日志参考 logreference_0012/0024）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+related_references: [ascend-slog-conf]
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  tool_name: "slogd 日志进程重启"
+  invocation: "修改 Device 侧日志配置文件后必须重启日志进程使配置生效；执行 kill -15 <slogd pid>（让 slogd 清理共享内存），进程会自动拉起，用 ps -elf | grep log 确认进程存在；反复重启失败才用 kill -9；/var 磁盘空间 100% 会导致日志进程启动失败；用户需有登录 Device 侧的权限（Ascend EP 形态无此权限，无法重启）"
+  restart_behavior:
+    system: "系统类日志：进程重启后判断上一个日志文件容量，未达上限则新日志继续写入上一个日志文件"
+    app: "应用类日志：进程重启后写入全新的日志文件（即使之前文件未达上限）"
+  pitfalls:
+    - 勿直接 kill -9——优先 kill -15 让 slogd 清理共享内存，反复失败才用 -9
+    - Ascend EP 形态无 Device 侧登录权限，无法重启日志进程

@@ -12,7 +12,8 @@ references/
 
 ├── errors/                   # type: error-code（表形态，按组件分族：cann-runtime/hccl/aicpu/driver）
 ├── tools/                    # type: tool
-├── platform-facts/           # type: platform-fact
+├── platform-facts/           # type: platform-fact（硬件平台/芯片规格）
+├── software-facts/           # type: software-fact（软件栈/运行时系统事实，不绑定硬件平台）
 ├── command-side-effects/     # type: command-side-effect
 ├── methodologies/            # type: methodology（深审）
 └── _archive/                 # deprecated 保留（版本 obsolete 不删除）
