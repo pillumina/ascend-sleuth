@@ -25,10 +25,11 @@ This is a **knowledge/skills repo** — there is no build, no lint, no test suit
 
 ### Skills
 
-Four skills in `skills/<name>/SKILL.md`, following the [Agent Skills](https://agentskills.io/) spec:
+Five skills in `skills/<name>/SKILL.md`, following the [Agent Skills](https://agentskills.io/) spec:
 
 - **`diagnose`** — Core diagnostic loop: symptom collection → triage-tree routing → two-phase Tier 2 loading → verify diagnosis checks → output fix or fall back to deep investigation. Writes trace to `diagnosis_state-<session_id>.yaml` on every step. On fix delivery writes `feedback_pending`; any diagnose/resume startup nags for the outcome and updates case confidence. `disable-model-invocation: true` (user-triggered only).
-- **`to-postmortem`** — Knowledge injection entry. Accepts inline paste, single file, multiple files, or directory. Extracts symptoms/root cause/fix, suggests namespace, runs semantic validation + redaction, outputs YAML draft + postmortem.md into `postmortems/inbox/` (weekly review queue). Decoupled from diagnose — any investigation source can feed it.
+- **`to-postmortem`** — Case-knowledge injection entry. Accepts inline paste, single file, multiple files, or directory. Extracts symptoms/root cause/fix, suggests namespace, runs semantic validation + redaction, outputs YAML draft + postmortem.md into `postmortems/inbox/` (weekly review queue). Decoupled from diagnose — any investigation source can feed it.
+- **`to-reference`** — Prior-knowledge injection entry (ADR-0008). Accepts inline paste, file, URL crawl (`--ingest`), or case-set generalization (`--ingest-cases`). Extracts facts/methodologies, classifies by `references/_types.yaml`, runs a grill phase (repeated intent confirmation for engineer-input and case-derived), outputs schema-complete YAML draft into `references/_inbox/` (maintainer-reviewed queue). Never produces `status: active` — drafts only. Decoupled from diagnose, parallel to to-postmortem.
 - **`knowledge-groom`** — Weekly maintenance: batch-process the inbox queue (pre-triage new_pattern / variant_of / covered_by, human accepts), promote postmortems to Tier 2, validate references, detect value duplication, recalculate confidence scores with time decay, soft-retire stale cases, report namespace capacity, rebuild `knowledge/_index.yaml`. `disable-model-invocation: true`.
 - **`resume-diagnosis`** — Reads `diagnosis_state-*.yaml` to resume an interrupted diagnosis session. `disable-model-invocation: true`.
 
