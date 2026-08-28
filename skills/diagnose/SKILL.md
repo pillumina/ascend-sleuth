@@ -53,15 +53,15 @@ disable-model-invocation: true
    - **category 决定 quickly_check 形态**：interrupt 用 grep 错误签名、precision 用数值阈值（`loss>1e3`、`has_nan`）、performance 用 profiler 指标（`comm_ratio>0.4`）——别混用
    - **阶段二**：全量加载候选，按 `confidence.score` **降序**进入验证。**多条候选时明示**：“匹配到 N 条候选，先验证最可能的 `<id>`（confidence `<score>`）”，让工程师有数；工程师可说“跳过这条试下一条”
 
-### 2.5 reference 辅助查询（先验知识层，ADR-0008）——候选加载后、验证前
+### 2.5 reference 辅助查询（先验知识层）——候选加载后、验证前
 
-按需取先验知识辅助诊断，**只读 `status: active` 的词条**（draft / pending-review / deprecated 一律不加载——未验证知识不进上下文，见 ADR-0008 §6）：
+按需取先验知识辅助诊断，**只读 `status: active` 的词条**（draft / pending-review / deprecated 一律不加载——未验证知识不进上下文）：
 
 - **① 候选 case 显式引用**：候选 case 有 `ref_knowledge` 字段 → 加载其引用的 reference 词条全文（最精准；当前 case 尚无该字段，此路为未来路径）；
 - **② 平台匹配的 summary 层**：从症状收集阶段确认的客户平台，扫 `references/<type-dir>/*.yaml` 中 `applies_to.platforms` 匹配该平台且 `status: active` 的词条，**只读 `summary` + `applies_to` 字段**（每条一行，低 token；A5 全量 platform-fact summary 约 700 token 内）作平台背景提示，**不读全文**；
 - **③ 按需全文**：验证某条具体事实需要细节时（如对照 A5 950DT 内存规格、HiF8 指数范围），再读对应词条全文；
 - **token 纪律**：reference 查询只在命中候选后发生，不是每次诊断都读；summary 层先于全文层；平台不匹配的词条不加载（当前仅 A5 有词条，A2/A3 场景自然跳过）；
-- **trace 必记**：每次查询记 `{action: reference_lookup, ref_id, platform, purpose: signature|fix|background}`——这是 ADR-0008 reference 命中统计（hits/last_hit）的数据源，不记则先验知识层的学习环空转。
+- **trace 必记**：每次查询记 `{action: reference_lookup, ref_id, platform, purpose: signature|fix|background}`——这是 reference 命中统计（hits/last_hit）的数据源，不记则先验知识层的学习环空转。
 
 4. **验证 diagnosis checks**
    - 顺序验证候选 case 的 `diagnosis` 检查项（**对照已提供的信息**，不跳步）；某步缺信息 → 提示工程师向客户要（或让客户跑该 command 贴回输出）；mismatch 且有 `fix_on_mismatch` → 提示 fix（**先看 severity**，见下）

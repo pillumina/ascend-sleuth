@@ -1,7 +1,7 @@
 ---
 name: to-reference
 description: >
-  把昇腾先验知识沉淀成 reference 词条（ADR-0008）。输入支持内联粘贴、单个文件、URL 爬取、或从已有 case 集合归纳共性。提取事实/方法论，按 references/_types.yaml 归类（error-code / tool / platform-fact / command-side-effect / methodology），标来源类型（official-doc / engineer-input / case-derived）与验证状态，经 grill 阶段与用户反复确认意图后，产出结构化 YAML 草稿到 references/_inbox/ 待审队列。这是先验知识的统一入口——与 to-postmortem（案例）并列，先验知识从这里汇入，不从 diagnose 自动生成。
+  把昇腾先验知识沉淀成 reference 词条。输入支持内联粘贴、单个文件、URL 爬取、或从已有 case 集合归纳共性。提取事实/方法论，按 references/_types.yaml 归类（error-code / tool / platform-fact / command-side-effect / methodology），标来源类型（official-doc / engineer-input / case-derived）与验证状态，经 grill 阶段与用户反复确认意图后，产出结构化 YAML 草稿到 references/_inbox/ 待审队列。这是先验知识的统一入口——与 to-postmortem（案例）并列，先验知识从这里汇入，不从 diagnose 自动生成。
 ---
 
 # To Reference
@@ -56,8 +56,8 @@ description: >
 
 **official-doc（URL 爬取 / 本地官方文档文件）**：
 - 抓取/读取目标章节（只读相关部分，不全量载入——日志裁剪原则的翻版；本地 PDF 用工具提取文本如 `pymupdf`）；
-- 抽取为 reference 草稿，**保留原文出处**：`url`（来源定位符——公开 URL 优先；本地文档无公开 URL 时用**可移植文档引用**如"昇腾950 NPU 架构白皮书（华为技术有限公司）"，**禁止写 `~/` 或绝对路径**，ADR-0008 §4.2，CI 会红）+ `version`（文档版本 / CANN 版本，从页面元数据或内容推断，拿不准就标 unknown）+ `fetched_at`；
-- **必须标注 `sources[].verification`，二选一**（ADR-0008 §4.2）：
+- 抽取为 reference 草稿，**保留原文出处**：`url`（来源定位符——公开 URL 优先；本地文档无公开 URL 时用**可移植文档引用**如"昇腾950 NPU 架构白皮书（华为技术有限公司）"，**禁止写 `~/` 或绝对路径**，CI 会红）+ `version`（文档版本 / CANN 版本，从页面元数据或内容推断，拿不准就标 unknown）+ `fetched_at`；
+- **必须标注 `sources[].verification`，二选一**：
   - `auto-extracted`——模型从源材料抽取、**未经 agent 对源逐字核验**（如一次 URL 抓取后直接归纳），reviewer 必须 spot-check 语义是否被扭曲；
   - `cross-checked-source`——agent 已直接对源原文（如 PDF 文本提取）逐字核验，reviewer 抽查即可。**只有当你真的逐字对照过源才标这个**；拿不准一律标 `auto-extracted`（诚实退化，宁低估不高估）。
 
@@ -116,9 +116,9 @@ grill 是**人审的第一道过滤**——确认过程中用户放弃/否认的
 
 ### 5. 产出草稿 → `references/_inbox/`
 
-> ⚠️ **词条零注释（硬规则）**：下面模板中的 `#` 注释是**给作者看的写作指引**，产出 YAML 时必须**删除全部注释行**——词条是给 agent 消费的数据，不是带元说明的文档；重复注释是 token 浪费（23 条 × 同一注释的教训）。语义解释（url 定位符规则、verification 含义、status 规则、字段含义）只存在于 ADR-0008 / SKILL.md / references/README.md 文档层，**不进词条**。值自解释就不加注释。
+> ⚠️ **词条零注释（硬规则）**：下面模板中的 `#` 注释是**给作者看的写作指引**，产出 YAML 时必须**删除全部注释行**——词条是给 agent 消费的数据，不是带元说明的文档；重复注释是 token 浪费（23 条 × 同一注释的教训）。语义解释（url 定位符规则、verification 含义、status 规则、字段含义）只存在于 SKILL.md / references/README.md 文档层，**不进词条**。值自解释就不加注释。
 
-按 ADR-0008 schema 产出完整 YAML（基础元信息 + content 全部填齐，CI 对 inbox 同样校验——草稿也必须 schema 完整，这是与 to-postmortem 草稿可残缺的差异）：
+按 reference schema 产出完整 YAML（字段定义见 `references/_types.yaml` 与 `references/README.md`；基础元信息 + content 全部填齐，CI 对 inbox 同样校验——草稿也必须 schema 完整，这是与 to-postmortem 草稿可残缺的差异）：
 
 ```yaml
 id: <kebab-case-slug>              # 唯一；如 plog-error-507903、a3-hccl-buffsize-check
@@ -132,7 +132,7 @@ sources:
     # engineer-input: engineer + input_session + confirmed_at
     # case-derived: cases + extracted_at
     # verification（official-doc 必填，其余可选）:
-    #   auto-extracted | cross-checked-source（ADR-0008 §4.2）
+    #   auto-extracted | cross-checked-source
 
 applies_to:                        # 能确定就填，确定不了留待 grill 后补
   platforms: [...]                 # A2-910B | A3-910C | A5-950 | cross
@@ -147,7 +147,7 @@ content:
   # 按 type 的 schema_required 字段（见 _types.yaml / references/README.md）
 ```
 
-- `status` **永远写 `draft`**——没有任何途径在本 skill 里产出 active（active 需要 maintainer 审核 + 深审条件，见 ADR-0008 §6）；
+- `status` **永远写 `draft`**——没有任何途径在本 skill 里产出 active（active 需要 maintainer 审核 + 深审条件）；
 - 初始 confidence 按来源类型（写进草稿注释，供审核参考）：`official-doc` 0.6 / `engineer-input` 0.3 / `case-derived` 0.3–0.6（case 数与一致性越高越靠近 0.6）；
 - `last_verified` 填今天——grill 阶段用户认可即视为一次人工确认，但**这不替代 maintainer 审核**；
 - **产出前检查：词条文件里不得有任何 `#` 注释行**（上模板中的注释全部删掉）——`grep -c "#" <file>` 应为 0。
