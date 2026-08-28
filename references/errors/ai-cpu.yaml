@@ -15,7 +15,7 @@ applies_to:
     cann: 9.0.0
 related_references:
 - ascend-error-code-structure
-status: draft
+status: active
 last_verified: '2026-08-28'
 content:
   errors:

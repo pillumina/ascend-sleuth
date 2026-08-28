@@ -44,7 +44,7 @@ status: draft | active | pending-review | deprecated
 
 ## 当前状态
 
-**76 条词条（2026-08-29）**：active 27 + draft 49。draft 均为 to-reference 导入待审（审核走 PR/groom，转正前不进诊断上下文）：日志收集 7（批 A）、故障处理工具与专题 8（批 B1-B3）、错误码 17 族 306 码（批 C，族划分跟随官方模块，小族合并 operator/misc）、故障案例 14 域 99 条（批 B4，fault-pattern 表）、模块字典与码结构 2（批 C）、env-var 2 表（批 D 先行）。**核验约定**：白皮书批次（26 active）以 `verification: cross-checked-source` 声明——agent 已用 pymupdf 直接提取 PDF 原文逐字核验；官方文档批次（日志/故障处理/错误码）同为 cross-checked-source——对官方 markdown 转录逐字核验、未逐字核对原始 HTML 页面，reviewer 抽查。平台背景知识文档（`knowledge/platforms/*.md`）已按 ADR-0008 废弃且**未转化**入库。
+**76 条词条（2026-08-29 批量转正，全部 `status: active`）**：白皮书批次 26（A5 platform-fact + cann-runtime 错误码 + GLM 方法论 + 310P）+ 官方文档批次 50（日志收集 7、故障处理工具与专题 8、错误码 17 族 306 码、故障案例 14 域 99 条、模块字典与码结构 2、env-var 2 表）。**核验约定**：白皮书批次 `cross-checked-source`（pymupdf 提取 PDF 原文逐字核验）；官方文档批次同为 `cross-checked-source`——对官方 markdown 转录逐字核验、未逐字核对原始 HTML 页面，reviewer 可抽查。平台背景知识文档（`knowledge/platforms/*.md`）已按 ADR-0008 废弃且**未转化**入库。
 
 ## 校验
 
