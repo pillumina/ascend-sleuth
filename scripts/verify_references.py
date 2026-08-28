@@ -1,0 +1,200 @@
+#!/usr/bin/env python3
+# verify_references.py —— 校验 references/ 先验知识层（ADR-0008）
+#
+# 设计决策见 docs/adr/0008-prior-knowledge-framework.md §8：
+#   - 强校验基础元信息（id/type/title/summary/sources/last_verified/status）
+#   - type 必须已登记在 references/_types.yaml（schema_required 决定强校验字段）
+#   - 按来源类型强校验子字段（official-doc / engineer-input / case-derived）
+#   - 深审：case-derived + methodology 从全库 case 的 ref_knowledge 派生计数，
+#     < 3 条引用时不允许 status: active（引用数不存储于 reference 本体）
+#   - reference 层入口门槛比 case 更严（ADR-0008：reference 比 case 更宝贵）
+#
+# 用法：
+#   python3 scripts/verify_references.py            # 校验并报告
+#   python3 scripts/verify_references.py --check    # 同（CI 模式，对称 build_index）
+#
+# 依赖：PyYAML（pip install pyyaml）
+
+import argparse
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except ImportError:
+    sys.exit("需要 PyYAML：pip install pyyaml")
+
+VALID_STATUSES = {"draft", "active", "pending-review", "deprecated"}
+VALID_SOURCE_TYPES = {"official-doc", "engineer-input", "case-derived"}
+
+SOURCE_REQUIRED = {
+    "official-doc": ["url", "version", "fetched_at"],
+    "engineer-input": ["engineer", "input_session", "confirmed_at"],
+    "case-derived": ["cases", "extracted_at"],
+}
+
+# methodology 深审：case-derived 来源需 ≥3 条 case 引用（派生计数）才可 active
+METHODOLOGY_MIN_CASE_REFS = 3
+
+
+def load_yaml(path: Path):
+    try:
+        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except yaml.YAMLError as e:
+        return {"__yaml_error__": str(e)}
+
+
+def derive_case_ref_counts(root: Path):
+    """从 knowledge/**/*.yaml 的 case.ref_knowledge 派生每个 reference 被引用次数。
+    ADR-0008 §7：一条关系只存一处（case 侧），反向视图是派生的，不存储。"""
+    counts = {}
+    kdir = root / "knowledge"
+    for path in sorted(kdir.rglob("*.yaml")):
+        if path.name == "_index.yaml":
+            continue
+        doc = load_yaml(path)
+        if isinstance(doc, dict) and not doc.get("__yaml_error__"):
+            for case in doc.get("cases", []) or []:
+                for ref in case.get("ref_knowledge", []) or []:
+                    rid = ref.get("ref") if isinstance(ref, dict) else None
+                    if rid:
+                        counts[rid] = counts.get(rid, 0) + 1
+    return counts
+
+
+def check_reference(path: Path, refs_dir: Path, types_registry: dict, case_ref_counts: dict, errors: list):
+    rel = str(path.relative_to(refs_dir))
+    doc = load_yaml(path)
+    if isinstance(doc, dict) and doc.get("__yaml_error__"):
+        errors.append(f"{rel}: YAML 解析失败: {doc['__yaml_error__']}")
+        return
+    if not isinstance(doc, dict) or not doc:
+        errors.append(f"{rel}: 文件为空或不是 mapping")
+        return
+
+    rid = doc.get("id")
+    if not rid:
+        errors.append(f"{rel}: 缺少 id")
+
+    rtype = doc.get("type")
+    if not rtype:
+        errors.append(f"{rel}: 缺少 type")
+    elif rtype not in types_registry:
+        errors.append(f"{rel}: type '{rtype}' 未登记于 references/_types.yaml")
+
+    for field in ("title", "summary"):
+        if not doc.get(field):
+            errors.append(f"{rel}: 缺少 {field}")
+
+    if not doc.get("last_verified"):
+        errors.append(f"{rel}: 缺少 last_verified（人审日期，不可自动戳）")
+
+    status = doc.get("status")
+    if not status:
+        errors.append(f"{rel}: 缺少 status")
+    elif status not in VALID_STATUSES:
+        errors.append(f"{rel}: status '{status}' 非法（合法: {', '.join(sorted(VALID_STATUSES))}）")
+
+    # ---- sources ----
+    sources = doc.get("sources")
+    if not sources:
+        errors.append(f"{rel}: 缺少 sources（reference 必须有出处，孤立词条不入库）")
+    elif not isinstance(sources, list):
+        errors.append(f"{rel}: sources 必须是列表")
+    else:
+        for i, src in enumerate(sources):
+            if not isinstance(src, dict):
+                errors.append(f"{rel}: sources[{i}] 不是 mapping")
+                continue
+            stype = src.get("type")
+            if not stype:
+                errors.append(f"{rel}: sources[{i}] 缺少 type")
+                continue
+            if stype not in VALID_SOURCE_TYPES:
+                errors.append(f"{rel}: sources[{i}].type '{stype}' 非法")
+                continue
+            for req in SOURCE_REQUIRED[stype]:
+                if not src.get(req):
+                    errors.append(f"{rel}: sources[{i}]（{stype}）缺少 {req}")
+
+    # ---- 按 type 的 content 强校验（schema_required）----
+    if rtype and rtype in types_registry:
+        required = types_registry[rtype].get("schema_required", [])
+        content = doc.get("content")
+        if not isinstance(content, dict):
+            errors.append(f"{rel}: 缺少 content（type '{rtype}' 必须有内容字段）")
+        else:
+            for key in required:
+                val = content.get(key)
+                if val is None or val == "" or val == []:
+                    errors.append(f"{rel}: content.{key} 缺失（type '{rtype}' 必填）")
+            # methodology 特殊：flow 必须 ≥1 步
+            if rtype == "methodology":
+                flow = content.get("flow")
+                if not isinstance(flow, list) or len(flow) == 0:
+                    errors.append(f"{rel}: content.flow 必须是非空步骤列表（methodology）")
+                if not doc.get("applies_to", {}).get("categories"):
+                    errors.append(f"{rel}: applies_to.categories 缺失（methodology 必须声明适用问题类别）")
+
+    # ---- 深审：case-derived + methodology ----
+    if rtype == "methodology" and status == "active":
+        has_case_derived = any(
+            isinstance(s, dict) and s.get("type") == "case-derived" for s in (sources or [])
+        )
+        if has_case_derived:
+            ref_count = case_ref_counts.get(rid, 0)
+            if ref_count < METHODOLOGY_MIN_CASE_REFS:
+                errors.append(
+                    f"{rel}: case-derived methodology 被 {ref_count} 条 case 引用"
+                    f"（需 ≥{METHODOLOGY_MIN_CASE_REFS} 才可 active，引用数为派生计算）"
+                )
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--check", action="store_true", help="CI 模式（与默认行为一致，对称 build_index）")
+    ap.add_argument("--root", default=None, help="仓库根目录（默认：脚本上两级）")
+    args = ap.parse_args()
+
+    root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[1]
+    refs_dir = root / "references"
+    if not refs_dir.exists():
+        print(f"references/ 不存在 —— 阶段 2 骨架未落地？")
+        sys.exit(1)
+
+    types_path = refs_dir / "_types.yaml"
+    types_doc = load_yaml(types_path)
+    types_registry = types_doc.get("types", {}) if isinstance(types_doc, dict) else {}
+    if not types_registry:
+        print(f"FATAL: references/_types.yaml 无法解析或 types 为空")
+        sys.exit(1)
+
+    case_ref_counts = derive_case_ref_counts(root)
+
+    errors = []
+    seen_ids = {}
+    for path in sorted(refs_dir.rglob("*.yaml")):
+        if path.name == "_types.yaml":
+            continue
+        rel = str(path.relative_to(refs_dir))
+        doc = load_yaml(path)
+        rid = doc.get("id") if isinstance(doc, dict) else None
+        if rid:
+            if rid in seen_ids:
+                errors.append(f"{rel}: id '{rid}' 与 {seen_ids[rid]} 重复")
+            else:
+                seen_ids[rid] = rel
+        check_reference(path, refs_dir, types_registry, case_ref_counts, errors)
+
+    if errors:
+        print(f"references 校验失败（{len(errors)} 处）：")
+        for e in errors:
+            print(f"  - {e}")
+        sys.exit(1)
+
+    n = len([p for p in refs_dir.rglob("*.yaml") if p.name != "_types.yaml"])
+    print(f"references 校验通过（{n} 个词条，id 全部唯一）")
+
+
+if __name__ == "__main__":
+    main()

@@ -56,6 +56,14 @@ _避免_：priority、urgency、影响
 版本兼容的判定方式：case 的 `compat` 区间与客户环境对照，不匹配只下调置信度、不把 case 排除出候选集。这是刻意设计——在 A5 上验证过的 case 可能同样适用于 A3。
 _避免_：strict match、精确匹配
 
+**Reference（先验知识词条）**:
+存储在 `references/`（ADR-0008）的独立事实或通用方法论，**独立于任何具体事故**。区别于 case（事故定位闭环）。type：error-code / tool / platform-fact / command-side-effect / methodology；来源类型：official-doc / engineer-input / case-derived（决定初始置信度与审核深度）；状态：draft / active / pending-review / deprecated。
+_避免_：entry、wiki 段落、先验条目
+
+**ref_knowledge（case 侧知识引用）**:
+case YAML 的可选字段，结构化引用 reference 词条（`ref: <reference-id>` + `role: signature-source / fix-methodology / root-cause-context`）。反向视图（哪些 case 引用了某 reference）是派生的、不存储——一条关系只存一处（ADR-0008 §7）。
+_避免_：references（那是 case 的事故溯源 URL 列表，两回事）
+
 ## 理论术语（design-theory.md 用词标准）
 
 理论文档的中文学术用词以此为准：正文用中文标准译名，首次出现括注英文。同物异名在此处统一。
