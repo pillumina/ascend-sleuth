@@ -1,0 +1,25 @@
+id: ascend-error-code-structure
+type: software-fact
+title: 昇腾 6 位错误码结构（级别位 + 模块位 + 内部码规则）
+summary: 错误码 6 位：第 1 位 E/W/I（错误/告警/提示）；第 2 位模块（E1=GE、E2=FE、E3=AI CPU、E4=TEFusion、E7=Vector 算子插件、E8=Vector 算子、EB=TBE Pass、EC=Auto Tune、ED=RLTune、EE=Runtime、EF=LxFusion&AutoDeploy、EG=AOE、EH=ACL、EI=HCCL、EJ=HCCP、EK=Profiling、EL=Driver、EM=队列调度、EN=DVPP、EO=AMCT、EP=Dump、EZ=公共算子+算子 API）；后 4 位 0000-8999 用户类 / 9000-9999 内部错误码（E*9*** 联系华为）；异步多算子报错从首报错排查
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0225.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0225 错误码参考使用说明）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+related_references: [atlas-error-code-reference]
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  claim: "昇腾错误码以 6 位字符形式体现（如 E10035）：第 1 位表示级别（E 错误 / W 告警 / I 提示）；第 2 位表示模块——1 GE、2 FE、3 AI CPU、4 TE Fusion、7 Vector 算子插件、8 Vector 算子、B TBE Pass 编译工具、C Auto Tune、D RLTune、E Runtime、F LxFusion&AutoDeploy、G AOE、H ACL、I HCCL、J HCCP、K Profiling、L Driver、M 队列调度、N DVPP、O AMCT、P Dump、Z 算子公共错误码和算子 API 执行接口错误码（如 aclnn 类算子 API）；剩下 4 位 0000~8999 为用户类错误、9000~9999 为内部错误码。异步任务执行（连续下发多个算子）可能包含多个算子报错，需从首报错算子开始排查；E*9*** 为系统内部错误码，需联系华为排查。屏显报错已展示错误码相关的可能原因与解决方案。"
+  evidence: "错误码参考使用说明（troubleshooting_0225）：6 位结构、级别位（E/W/I）、模块位 22 项映射、0000-8999 用户类 / 9000-9999 内部码、E*9*** 内部错误码联系华为、异步多算子从首报错排查、[%s] 占位符说明"
