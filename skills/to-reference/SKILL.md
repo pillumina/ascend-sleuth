@@ -1,12 +1,12 @@
 ---
 name: to-reference
 description: >
-  把昇腾先验知识沉淀成 reference 词条。输入支持内联粘贴、单个文件、URL 爬取、或从已有 case 集合归纳共性。提取事实/方法论，按 references/_types.yaml 归类（error-code / tool / platform-fact / command-side-effect / methodology），标来源类型（official-doc / engineer-input / case-derived）与验证状态，经 grill 阶段与用户反复确认意图后，产出结构化 YAML 草稿到 references/_inbox/ 待审队列。这是先验知识的统一入口——与 to-postmortem（案例）并列，先验知识从这里汇入，不从 diagnose 自动生成。
+  把昇腾先验知识沉淀成 reference 词条。输入支持内联粘贴、单个文件、URL 爬取、或从已有 case 集合归纳共性。提取事实/方法论，按 references/_types.yaml 归类（error-code / tool / platform-fact / command-side-effect / methodology），标来源类型（official-doc / engineer-input / case-derived）与验证状态，经 grill 阶段与用户反复确认意图后，产出结构化 YAML 草稿（status: draft 直进正式 type 目录，PR review 即审核闸门）。这是先验知识的统一入口——与 to-postmortem（案例）并列，先验知识从这里汇入，不从 diagnose 自动生成。
 ---
 
 # To Reference
 
-先验知识注入入口，与案例知识（`/skill:to-postmortem`）并列。**reference 是独立于任何具体事故的领域事实与方法论**——不是 case，不携带 symptoms/diagnosis/fix 闭环。本 skill 的产物落在 `references/_inbox/` 待审队列，由 maintainer 审核后才转正。
+先验知识注入入口，与案例知识（`/skill:to-postmortem`）并列。**reference 是独立于任何具体事故的领域事实与方法论**——不是 case，不携带 symptoms/diagnosis/fix 闭环。本 skill 的产物以 `status: draft` 直接落入正式 type 目录（`references/<type-dir>/`），PR review 即审核闸门——review 通过翻 active 才生效；draft 状态保证未审内容不进诊断上下文。
 
 > ⚠️ **质量原则（比 case 更严）**：reference 是知识库的浓缩资产，一旦错误，污染的是所有引用它的诊断。**本 skill 的产出不是"录进去"，是"提交审核"**——先与用户反复确认意图（grill），再进 inbox，最后由 maintainer 审核。三个环节缺一不可。
 
@@ -78,11 +78,13 @@ description: >
 
 | 信号 | type |
 |---|---|
-| 错误码/异常代码的含义 | `error-code` |
+| 错误码/异常代码的含义 | `error-code`（**表形态**——按组件分族成表，一个族一个文件；多个码合入同一表，不逐码建文件） |
 | 工具/命令的用法与输出解读 | `tool` |
 | 平台硬事实（可独立验证的客观事实） | `platform-fact` |
 | 命令/环境变量的副作用与回滚 | `command-side-effect` |
 | 多步骤诊断/调优流程 | `methodology` |
+
+**error-code 表形态（ADR-0008 §1.5 组织单元 = 验证单元）**：错误码天然成族（CANN Runtime 507xxx / HCCL / aicpu / Driver），同族同源同验证——**一个族一个文件**（如 `references/errors/cann-runtime.yaml` 承载 507903/507018/507057...），表级共享 sources/status/applies_to，不逐码建文件。case 提炼的条目逐条验证 → 条目带可选 `source_cases`。检索时 agent 按族定位文件，表内 grep code 一次命中。
 
 拿不准 type → 按最贴近的登记 type 落草稿，并在草稿里标注 `type_uncertain: true` 交 maintainer 定夺。**不要自行发明未登记 type**（CI 会红；登记是 maintainer 的动作，见 `_types.yaml`）。
 
@@ -107,14 +109,14 @@ grill 是**人审的第一道过滤**——确认过程中用户放弃/否认的
 
 ### 4. 去重检查（进 inbox 前）
 
-扫 `references/` 现有词条（含 `_inbox/`），分三种关系：
+扫 `references/` 现有词条，分三种关系：
 
 - **完全覆盖**（现有词条已含本条全部内容）→ **不产草稿**，告诉用户"这条已被 `<ref-id>` 覆盖"，列出比对；
 - **变体**（同主题不同平台/版本）→ 提示用户："现有 `<ref-id>` 覆盖 A3，你这条是 A5 场景——是要并进现有词条的 applies_to，还是独立词条？"按用户回答处理；
 - **层级**（现有词条是总览、本条是细节，或反之——如现有 `a5-l2-cache` 总览 vs 本条 `a5-l2-cache-detail`）→ 提示用户："现有 `<ref-id>` 是总览，你这条是同一主题的细节——建议独立词条并在两边 `related_references` 互指；或并进现有词条。哪种？"按用户回答处理。层级关系本身是**合法结构**（不是重复），但要显式互链，避免检索时只见其一；
 - 查不到 → 新词条，继续。
 
-### 5. 产出草稿 → `references/_inbox/`
+### 5. 产出草稿 → `references/<type-dir>/`（draft，无 _inbox）
 
 > ⚠️ **词条零注释（硬规则）**：下面模板中的 `#` 注释是**给作者看的写作指引**，产出 YAML 时必须**删除全部注释行**——词条是给 agent 消费的数据，不是带元说明的文档；重复注释是 token 浪费（23 条 × 同一注释的教训）。语义解释（url 定位符规则、verification 含义、status 规则、字段含义）只存在于 SKILL.md / references/README.md 文档层，**不进词条**。值自解释就不加注释。
 
@@ -145,6 +147,12 @@ last_verified: <今天>              # 人确认的日期（grill 认可即视�
 
 content:
   # 按 type 的 schema_required 字段（见 _types.yaml / references/README.md）
+  # error-code 是表形态：content.errors 列表，一个族一个文件，不逐码建文件
+  #   errors:
+  #     - code: "507903"
+  #       meaning: "..."
+  #       related_signatures: [...]
+  #       source_cases: [<case-id>]   # case 提炼的证据（可选）
 ```
 
 - `status` **永远写 `draft`**——没有任何途径在本 skill 里产出 active（active 需要 maintainer 审核 + 深审条件）；
@@ -155,7 +163,7 @@ content:
 ### 6. 报告落点（生成后必须明确告知）
 
 ```
-草稿 → references/_inbox/<ref-id>.yaml
+草稿 → references/<type-dir>/<ref-id>.yaml（status: draft）
 来源类型：<engineer-input | official-doc | case-derived>
 状态：draft（待 maintainer 审核转正；case-derived + methodology 需 ≥3 条 case 引用才可 active）
 审核建议：<按来源类型的审核深度提示>
@@ -165,7 +173,7 @@ content:
 
 ## 产出落点
 
-- `references/_inbox/<ref-id>.yaml`——草稿（待审队列，见 `references/_inbox/README.md`）
+- `references/<type-dir>/<ref-id>.yaml`——草稿（status: draft；PR review 即审核闸门，accept 后翻 active）
 - maintainer 审核（`/skill:knowledge-groom` 或独立 review）后：accept → 移入 `references/<type-dir>/`、按需改 status；reject → 归档说明原因；defer → 留在 inbox
 
 **与 to-postmortem 的分工**：案例（事故闭环）→ `/skill:to-postmortem` → `knowledge/`；先验知识（独立事实/方法论）→ `/skill:to-reference` → `references/`。两条入口不互相覆盖——to-postmortem 不自动产 reference，to-reference 不反向产 case。

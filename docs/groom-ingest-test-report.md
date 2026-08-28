@@ -1,18 +1,18 @@
 # groom 提炼 reference 测试报告
 
-> 测试日期：2026-08-28。方法：对 `knowledge/` 现有 38 条 case 运行 to-reference 的 case 归纳路径（`--ingest-cases`），提炼共性为 reference 草稿，评估提炼质量与 skill 能力。
+> 测试日期：2026-08-28。方法：对 `knowledge/` 现有 38 条 case 运行 to-reference 的 case 归纳路径（`--ingest-cases`），提炼共性为 reference，评估提炼质量与 skill 能力。
 > 工具链：`skills/to-reference/SKILL.md`（case-derived 流程）+ `scripts/verify_references.py`（schema 校验）。
+> **修订 1 后版本**：应用 ADR-0008 组织形态校准（组织单元 = 验证单元）——错误码按族成表，草稿无 _inbox 直进正式目录（draft）。
 
-## 一、提炼结果（4 条草稿 → `references/_inbox/`）
+## 一、提炼结果（3 个文件，全部 `status: draft` 直进正式目录）
 
-| 词条 | type | case 证据 | 共性 |
+| 文件 | type | case 证据 | 共性 |
 |---|---|---|---|
-| `glm-quantized-startup-triage` | methodology | 7 条（10610/12901/11208/13329/9186/9167/12685） | GLM 系量化模型启动失败，按报错形态分类定位 |
-| `ascend-cudagraph-event-resource` | error-code | 2 条（12989/9596） | cudagraph 捕获阶段 event/SQ-CQ 资源不足（507903） |
-| `ascend-310p-known-limits` | platform-fact | 3 条（12989/13050/12983） | 310P 平台特有限制（event 资源/aicpu/MTP 图模式） |
-| `moe-init-routing-missing-binary` | error-code | 1 条（14166） | MoeInitRoutingV3 缺二进制 = torch-npu 版本不足 |
+| `references/errors/cann-runtime.yaml` | error-code（**表**） | 8 条 case | 7 个运行时错误码（507903/207005/507018/507057/561000/107030/161002） |
+| `references/methodologies/glm-quantized-startup-triage.yaml` | methodology | 7 条 | GLM 系量化模型启动失败，按报错形态分类定位 |
+| `references/platform-facts/ascend-310p-known-limits.yaml` | platform-fact | 3 条 | 310P 平台特有限制 |
 
-全部 `status: draft`（case-derived 起点），`verify_references.py` 通过（27 词条 id 唯一），零注释行。
+**组织形态对比（修订 1 验证）**：旧形态 2 个 error-code 文件各 1 条 + 重复元信息；新形态 **1 个表文件承载 7 条错误码**，表级共享 sources/status/applies_to，条目级带 `source_cases` 证据——信息密度、族上下文、检索（按族定位 + 表内 grep）三者同时改善。
 
 ## 二、提炼质量评估（四维）
 

@@ -1,12 +1,18 @@
-# ADR-0008: 先验知识框架——reference 类型与审核机制
+# ADR-0008: 先验知识框架——reference 类型、组织形态与审核机制
 
 ## Status
 
-Proposed
+Adopted（2026-08-27 合入后随使用修订，见下"修订记录"）
 
 ## Date
 
-2026-08-27
+2026-08-27（首次）；2026-08-28（修订 1：组织形态校准）
+
+## 修订记录
+
+| 修订 | 日期 | 内容 |
+|---|---|---|
+| 1 | 2026-08-28 | 组织形态校准（基于 38 条 case 提炼测试 + PR review）：①去掉 `references/_inbox/` 中间态——草稿以 `status: draft` 直接进正式目录，PR review 即审核闸门（postmortems/inbox 的高频队列逻辑不适用于低频的 reference 沉淀，且 draft 状态已承担"未审内容不进诊断上下文"的隔离）；②引入**组织单元 = 验证单元**第一性原理——错误码等结构化数据集按族成表（`error-code` 类型从单条改为表形态），不再一码一文件平铺 |
 
 ## Deciders
 
@@ -14,7 +20,7 @@ Proposed
 
 ## Tags
 
-knowledge-substrate, reference, prior-knowledge, verification, schema, meta-process
+knowledge-substrate, reference, prior-knowledge, verification, schema, meta-process, organization-form
 
 ## Replaces
 
@@ -86,43 +92,61 @@ reference 是先验知识的**统一载体**，与 case 并列：
 - reference 是 case 诊断时的**辅助查询**（agent 在 phase-two 检索 reference 词条）；
 - 单向检索关系，不形成自动升格机制。
 
-### 2. reference 仓库结构
+### 1.5 组织形态的第一性原理：组织单元 = 验证单元（修订 1 引入）
+
+先验知识的组织粒度**不由文件粒度习惯决定，而由"什么一起被验证、一起被引用、一起过时"决定**。据此分两种形态：
+
+| 形态 | 判据 | 例子 | 组织方式 |
+|---|---|---|---|
+| **数据集（表）** | 高数量、强族关系、同源同验证同生命周期 | 错误码表（CANN Runtime 507xxx 系列同源同版同验证）、环境变量参考、版本兼容矩阵 | **一个族一个文件**，元信息（sources/status/applies_to）表级共享，族内条目共享验证 |
+| **独立词条** | 低数量、高单条价值、各自独立验证与生命周期 | 平台事实（A5 内存规格）、方法论（GLM 排查流程）、工具用法 | 单文件，独立验证 |
+
+**反模式**（本修订纠正）：一码一文件平铺。错误码天然成族（Runtime/HCCL/aicpu/Driver 各成体系），每个码与族共享来源、版本、验证与排查语境——切成单文件既降低信息密度（元信息逐条重复）、又割裂族上下文、还使检索退化为扫几百个文件（违反原则九资源显式预算）。
+
+**组织单元与验证单元的映射**：官方错误码参考整表同源同验证 → 表级 sources/status/verification；case 提炼的条目逐条验证 → 条目可带可选 `source_cases` 标明证据。验证粒度随来源落在正确层级，不做一刀切。
+
+### 2. reference 仓库结构（修订 1 更新）
 
 ```
 references/
 ├── _types.yaml                       # type 注册表（渐进登记）
 ├── _index.yaml                       # 检索索引（按 type + 字段，可选——见 Open Questions）
-├── _inbox/                           # to-reference 产出待审
-├── errors/                           # type: error-code
-├── tools/                            # type: tool
-├── platform-facts/                   # type: platform-fact
-├── command-side-effects/             # type: command-side-effect
-├── methodologies/                    # type: methodology
+├── errors/                           # type: error-code（表形态，按组件分族）
+│   ├── cann-runtime.yaml             #   CANN Runtime 错误码（507xxx 系列）
+│   ├── hccl.yaml                     #   HCCL 错误码
+│   ├── aicpu.yaml                    #   aicpu errorCode
+│   └── driver.yaml                   #   驱动错误码
+├── tools/                            # type: tool（独立词条）
+├── platform-facts/                   # type: platform-fact（独立词条）
+├── command-side-effects/             # type: command-side-effect（独立词条）
+├── methodologies/                    # type: methodology（独立词条）
 └── _archive/                         # deprecated 保留
 ```
 
 物理按 type 分目录——agent 按 type 过滤时直接进入对应子目录。type 之间无 namespace 维度（reference 的检索是**按 type + 内容字段**的组合，不是 framework × category）。
 
-### 3. reference type 清单
+**无 `_inbox/` 目录（修订 1 移除）**：草稿以 `status: draft` **直接进正式 type 目录**，PR review 即审核闸门（原则五：建议与决定分离由 PR review 承担，不需要持久中间目录）。`status: draft` 已承担"未审内容不进诊断上下文"的隔离（diagnose 阶段 2.5 只读 active）——目录隔离是冗余。postmortems/inbox 保留（高频事故沉淀需要集中批审，其队列逻辑在本层不成立）。
 
-5 种 type，各有不同的 content 字段集合：
+### 3. reference type 清单（修订 1 更新）
 
-| type | 含义 | 典型例子 |
-|---|---|---|
-| `error-code` | 错误码 / 异常代码的含义解读 | plog 507903 = capture event failed |
-| `tool` | 工具 / 命令的使用方法与输出解读 | `npu-smi info` 字段含义、`cat /proc/driver/npu/version` 期望值 |
-| `platform-fact` | 平台硬事实（可独立验证的客观事实） | "A2 不支持 FP8"、"A5 HBM 64GB" |
-| `command-side-effect` | 命令 / 环境变量的副作用与回滚方式 | "导出 HCCL_BUFFSIZE 需重启训练进程" |
-| `methodology` | 流程 / 方法论（多步骤诊断或调优） | "AMP 配置错误排查步骤" |
+5 种 type，各有不同的 content 字段集合。**error-code 是数据集形态（表），其余四种是独立词条**（见 §1.5 两分法）：
+
+| type | 形态 | 含义 | 典型例子 |
+|---|---|---|---|
+| `error-code` | **表**（errors 列表） | 错误码 / 异常代码的含义解读，**按组件分族成表** | `cann-runtime.yaml` 承载 507xxx 系列（507903/507018/507057...） |
+| `tool` | 词条 | 工具 / 命令的使用方法与输出解读 | `npu-smi info` 字段含义 |
+| `platform-fact` | 词条 | 平台硬事实（可独立验证的客观事实） | "A5 HBM 64GB" |
+| `command-side-effect` | 词条 | 命令 / 环境变量的副作用与回滚方式 | "导出 HCCL_BUFFSIZE 需重启" |
+| `methodology` | 词条 | 流程 / 方法论（多步骤诊断或调优） | "GLM 量化启动失败排查" |
 
 **type 注册表**（`_types.yaml`）：
 
 ```yaml
 types:
   error-code:
-    kind: fact
-    schema_required: [code, meaning]
-    schema_optional: [related_signatures, applies_to_versions]
+    kind: table                      # 数据集形态：errors 列表，族内共享表级元信息
+    schema_required: [errors]
+    schema_optional: [title, summary]
   tool:
     kind: fact
     schema_required: [tool_name, invocation]
@@ -141,9 +165,8 @@ types:
     schema_optional: [verified_by_testing, test_scenarios]
 ```
 
-- `kind: fact` 是平铺字段；`kind: flow` 是嵌套结构（`content.flow[].step/action/check`）；
-- `kind` 是元分类，避免加新 type 时重复决定；
-- type 字段是 open vocabulary——后续可扩展（`retired` 状态迁移到新 type）。
+- `kind: fact` 平铺字段、`kind: flow` 嵌套流程、`kind: table` 列表数据集——三种元分类，避免加新 type 时重复决定；
+- type 字段是 open vocabulary——后续可扩展（如环境变量表 `env-var-table`、版本矩阵 `compat-matrix` 复用 table 形态，`retired` 状态迁移到新 type）。
 
 ### 4. reference schema（完整版）
 
@@ -219,14 +242,16 @@ skill 的 official-doc 路径必须显式声明二者之一：拿不准标 `auto
 #### 4.3 type-specific content 字段
 
 ```yaml
-# type: error-code
+# type: error-code（表形态，修订 1：按组件分族成表，一码不再一文件）
 content:
-  code: <string>                      # 错误码本身
-  meaning: <string>                   # 含义解释
-  related_signatures: [<string>]      # 相关日志签名（grep 用）
-  applies_to_versions:                # 错误码可能在不同版本下含义不同
-    - version: <string>
-      meaning: <string>
+  errors:
+    - code: <string>                    # 错误码（表内唯一）
+      meaning: <string>                 # 含义解释
+      related_signatures: [<string>]    # 相关日志签名（grep 用）
+      applies_to_versions:              # 该码在不同版本含义不同（可选）
+        - version: <string>
+          meaning: <string>
+      source_cases: [<case-id>]         # case 提炼的证据（可选——逐条验证粒度，见 §1.5）
 
 # type: tool
 content:
@@ -358,7 +383,7 @@ cases:
 
 | type | 必填字段 |
 |---|---|
-| `error-code` | `content.code`, `content.meaning` |
+| `error-code` | `content.errors`（非空列表，表内 `code` 唯一） |
 | `tool` | `content.tool_name`, `content.invocation` |
 | `platform-fact` | `content.claim`, `content.evidence` |
 | `command-side-effect` | `content.command`, `content.side_effects` |
@@ -390,16 +415,16 @@ cases:
 /skill:to-reference --ingest-cases "[case-ids]"    # 从 case 集合归纳
 ```
 
-四阶段流程：
+四阶段流程（修订 1：草稿直接进正式目录，无 _inbox 中间态）：
 1. 输入（用户粘贴 / 文件 / URL / case 集合）；
 2. **grill 阶段**（如果是工程师输入或 case 归纳）—— agent 反复追问"你指的是不是这个意思"，确保产物符合用户意图；
-3. 草稿落入 `references/_inbox/`；
-4. maintainer 审 → accept 落正式目录 / adjust / reject / defer。
+3. 草稿以 `status: draft` 落入正式 type 目录（`references/<type-dir>/`）；
+4. maintainer 通过 **PR review 审核** → accept（合并时或合并后翻 active）/ adjust / reject / defer。
 
 **关键设计原则**：
-- **入口与入库解耦**——to-reference 产出在 inbox，maintainer 审核后才正式入库；
+- **PR review 即审核闸门**（修订 1：去 _inbox 后，审核由 PR review 承担——草稿以 draft 进正式目录，draft 状态保证不进诊断上下文，review 通过翻 active 即生效）；
 - **grill 阶段去噪**——避免一切材料堆到 maintainer ；
-- **来源类型决定审核深度**——maintainer 审 inbox 时按 source type 决定 spot-check 深度。
+- **来源类型决定审核深度**——maintainer 审时按 source type 决定 spot-check 深度（整表审核 vs 逐条审核：官方错误码参考整表同源 → 表级审；case 提炼条目带 source_cases → 逐条抽审）。
 
 to-reference skill 设计与 to-postmortem 对称——to-postmortem 产出 case，to-reference 产出 reference。
 
@@ -410,7 +435,7 @@ to-reference skill 设计与 to-postmortem 对称——to-postmortem 产出 case
 ### 1. 短期（合并本 ADR 后立即生效）
 
 - 删除 `knowledge/platforms/a2-910b.md`、`a3-910c.md`、`a5-950.md`（PR #11 引入的 `[unverified]` 标注随之移除，PR #11 body 需更新说明）；
-- 建立 `references/` 目录结构（5 个 type 子目录 + `_inbox/` + `_archive/` + `.gitkeep` 占位）；
+- 建立 `references/` 目录结构（5 个 type 子目录 + `_archive/` + `.gitkeep` 占位；修订 1：无 `_inbox/`）；
 - 创建 `references/_types.yaml` 注册表（5 个 type）；
 - 创建 `scripts/verify_references.py` 校验脚本；
 - 集成进 `.github/workflows/kb-checks.yml`。
@@ -448,7 +473,7 @@ to-reference skill 设计与 to-postmortem 对称——to-postmortem 产出 case
 | ADR-0002（不引入向量 RAG） | reference 检索走词法（grep + 字段过滤），不引入向量——本 ADR 一致 |
 | ADR-0003（平台可移植性） | reference 词条与 case 同样在仓库内，迁移时随仓库走 |
 | ADR-0004（容量治理） | reference 不受 `(framework × category)` 30 条/格子 约束——reference 的检索维度不同 |
-| ADR-0005（知识消费 split） | reference 目录对 sparse-checkout 用户透明——`_inbox/` 与正式目录都跟随仓库 |
+| ADR-0005（知识消费 split） | reference 目录对 sparse-checkout 用户透明——正式目录随仓库 |
 | ADR-0006（知识 ingest dedup） | to-reference skill 与 to-postmortem 共享 grill 阶段的去重逻辑（去重原则同源） |
 
 ### 6. 风险与缓解
@@ -547,8 +572,8 @@ PR 走 methodology 模板——principle 追溯到原则一（用结构承载规
 
 ### 阶段 2：reference 目录骨架（独立 PR）
 
-1. 建立 `references/` 目录结构（5 个 type 子目录 + `_inbox/` + `_archive/`，每个含 `.gitkeep`）；
-2. 创建 `references/_types.yaml` 注册表（5 个 type）；
+1. 建立 `references/` 目录结构（5 个 type 子目录 + `_archive/`，每个含 `.gitkeep`；修订 1 后无 `_inbox/`）；
+2. 创建 `references/_types.yaml` 注册表（5 个 type，error-code 为表形态）；
 3. 创建 `scripts/verify_references.py` 校验脚本；
 4. 集成进 `.github/workflows/kb-checks.yml`。
 

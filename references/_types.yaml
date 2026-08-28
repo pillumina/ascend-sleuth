@@ -4,14 +4,17 @@
 # scripts/verify_references.py 的强校验字段。type 字段是 open vocabulary——
 # 但未登记的 type 在 CI 中报错（防止临时标签混入正式词条）。
 #
-# kind 是元分类：fact = 平铺字段；flow = 嵌套结构（content.flow[].step/action/check）。
+# kind 是元分类（ADR-0008 §1.5 组织形态）：
+#   fact  = 平铺字段（独立词条——独立验证、独立生命周期）
+#   flow  = 嵌套流程（content.flow[].step/action/check，独立词条）
+#   table = 列表数据集（一个族一个文件，族内共享表级元信息与验证）
 
 types:
   error-code:
-    kind: fact
-    description: 错误码 / 异常代码的含义解读（如 plog 507903 = capture event failed）
-    schema_required: [code, meaning]
-    schema_optional: [related_signatures, applies_to_versions]
+    kind: table
+    description: 错误码 / 异常代码含义解读，按组件分族成表（如 cann-runtime.yaml 承载 507xxx 系列）
+    schema_required: [errors]
+    schema_optional: [title, summary]
 
   tool:
     kind: fact
@@ -21,7 +24,7 @@ types:
 
   platform-fact:
     kind: fact
-    description: 平台硬事实（可独立验证的客观事实，如 "A2 不支持 FP8"）
+    description: 平台硬事实（可独立验证的客观事实，如 "A5 HBM 64GB"）
     schema_required: [claim, evidence]
     schema_optional: [applies_to_platforms]
 
