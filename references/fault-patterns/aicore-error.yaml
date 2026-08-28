@@ -1,0 +1,72 @@
+id: aicore-error-fault-patterns
+type: fault-pattern
+title: AI Core Error 典型问题案例（12 条）
+summary: AI Core Error 典型案例：HBM 比特 ECC / icache 校验 / AI Core 硬件故障 / 索引越界 / 系统环境硬件 / 单算子运行报错 / atomic 溢出 / 地址异常 / args 不一致 / Dump 失败 / args 错误 / AI Core 超时
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0009.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0009-0019/0500）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+related_references: [ascend-aicore-error-triage, ascend-msaicerr]
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  patterns:
+    - pattern: HBM 比特 ECC 故障
+      symptoms: ["event_id=0x80E01809", "event_id=0x80E01801", "Hardware Error", "memory error", "multi-bit ECC"]
+      cause: "HBM 内存颗粒多 bit ECC 错误（黑匣子 Hardware Error section_type: memory error, error_type: multi-bit ECC）导致 AI Core Error"
+      fix: 查《健康管理故障定义》对应版本手册（HBM 内存颗粒巡检多 bit ECC 错误处理）
+    - pattern: icache 数据校验故障
+      symptoms: ["event_id=0x80C98000", "stars_print_error_pc_icache_and_hbm_info", "check_error_pc_icache_and_hbm_info", "compare_fail_num"]
+      cause: icache 数据与 GM 校验不一致（icache 数据跳变或 GM 数据被改写）——compare_fail_num 值不等于 0 即 icache 内存跳变硬件故障
+      fix: 查《健康管理故障定义》AICORE 指令数据校验失败（0x80C98000）：AI 任务退出重执行或重新发起推理；异常则复位 SOC，持续故障返厂送修
+    - pattern: AI Core 硬件故障
+      symptoms: ["A 2-bit ECC error occurs in the data-cache data-ram", "EMERGENCY_WARN", "ascend-dmi"]
+      cause: ascend-dmi 压测 AI Core 异常提示 EMERGENCY_WARN——AI Core 硬件故障
+      fix: ascend-dmi --dg -i aicore 压测确认，联系技术支持更换硬件
+    - pattern: 索引类算子索引越界
+      symptoms: ["error code = 0x800000", "GatherV2", "Scatter", "GatherElements", "index", "indices"]
+      cause: 索引类算子（GatherV2=index_select、Scatter=scatter_update、GatherElements=gather）因性能原因自身无法做索引越界检查，索引越界时报 0x800000
+      fix: 用 python 打印 input 的 shape、dim、index 值确认索引越界，查 index 来源修正
+    - pattern: 系统环境/硬件问题（msaicerr 标杆算子失败）
+      symptoms: ["Failed to execute the built-in sample operator. Check the environment.", "Root cause conclusion"]
+      cause: msaicerr 分析时标杆算子（GM↔UB 搬运+vector+cube 最小流程）运行失败——系统环境/硬件功能异常，一般为网络中第一个算子报 AI Core error
+      fix: 用 MindCluster ToolBox 检查系统环境/硬件；无法排除则用 asys 收集故障信息 + msaicerr 分析结果提交 issue（gitee.com/ascend）
+    - pattern: 单算子运行报错或 pass 异常
+      symptoms: ["Failed to execute the single-operator test case. The operator logic may be incorrect."]
+      cause: 算子自身逻辑错误（读写未分配地址）、编译器错误（逻辑正确但编译成错误汇编）、输入数据错误（错误索引导致非法访问）、tilingdata 数据计算/选择问题
+      fix: 单算子复现定位——执行 msaicerr.py 同级目录生成的 test_single_op.py 复现 AI Core error，结合 info.txt 的 Basic information / AICERROR code / 报错 cce 行号定位
+    - pattern: atomic add 精度溢出
+      symptoms: ["Atomic add has a precision overflow", "error code = 0x800000", "Vm fault failed"]
+      cause: 算子运算中极端数据遇 atomic 累加指令，累加溢出报 0x800000；slog 无 Vm fault failed 关键字则确定是 atomic 溢出（非内存越界）；Atlas A2 系列硬件优化不会出现
+      fix: 精度调优（推理参考应用开发精度/性能优化；训练按 TensorFlow/PyTorch 精度调优指南）
+    - pattern: 算子输入输出数据地址异常
+      symptoms: ["The input/output memory address of the operator is abnormal", "input[1] is out of range", "cannot find alloc log"]
+      cause: input/output 地址不在 Device 内存申请-释放差集范围内（地址非法），框架或应用分配错误
+      fix: 查框架或应用的内存分配逻辑
+    - pattern: 算子输入 args 下发前后不一致
+      symptoms: ["If the arguments are inconsistent before and after operator execution", "args before execute", "args after execute"]
+      cause: args（kernel 入参：输入/输出/workspace/tiling_gm 地址）下发前后不一致，args 错误导致 AI Core error
+      fix: 打开算子踩内存检测开关，用 asys 复跑业务收集故障信息提交 issue（gitee.com/ascend）
+    - pattern: Dump 数据失败
+      symptoms: ["Failed to get dump data of error op", "The input/output memory address of the operator is abnormal"]
+      cause: AI Core Error 后框架尝试 dump 输入/输出数据失败——算子的输入/输出地址本身有错误，AI Core 无法读取该地址
+      fix: 查看 info.txt 输入/输出地址；推理首算子则查用户推理脚本是否分配足够地址空间，非首算子联系技术支持分析错误地址来源
+    - pattern: 算子输入 args 错误
+      symptoms: ["args(0 to 9) after execute", "Aicore kernel execute failed", "fault kernel_name"]
+      cause: args after execute 地址不合理（Atlas 训练系列非 0x1240 开头的地址是 Host 内存地址而非 Device 地址），如 cpu_tensor/npu_tensor 混用导致 AI Core 读取错误
+      fix: 排查训练脚本，将 cpu_tensor/npu_tensor 都改为 Device 内存地址（Atlas A2 系列相反：非 0x1240 开头正常、0x1240 开头异常）
+    - pattern: AI Core 超时故障
+      symptoms: ["timeout or trap error", "event_id=0x80C98001", "event_id=0x80CB8001", "a timeout error occurred"]
+      cause: AI Core 超时（ascend-dmi 压测报 a timeout error occurred）
+      fix: 下电重启后重新用 ascend-dmi 压测（ascend-dmi --dg -i aicore -s -q），仍 timeout 则判断硬件故障联系技术支持更换硬件

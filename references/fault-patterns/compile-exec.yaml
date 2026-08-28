@@ -1,0 +1,38 @@
+id: compile-exec-fault-patterns
+type: fault-pattern
+title: 编译 / 执行 AI 应用问题（4 条）
+summary: 应用编译与执行故障：找不到头文件/库文件（DDK_PATH/NPU_HOST_LIB 配置错）/ 权限不足 acl 初始化失败（507008）/ acl 接口无输出无报错（stub so 或未流同步）/ dvpp 接口编译失败（未链接 libacl_dvpp.so）
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0219.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0219/0221/0222/0223）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  patterns:
+    - pattern: 编译运行应用样例报错，提示找不到头文件或库文件
+      symptoms: ["cannot find -lascendcl", "ld returned 1 exit status"]
+      cause: 编译依赖的 DDK_PATH / NPU_HOST_LIB 环境变量配置不正确（编译脚本按 {DDK_PATH}/runtime/include/acl 找头文件、按 {NPU_HOST_LIB} 找库文件）
+      fix: echo 检查两个环境变量；确认头文件 acl.h 与库文件 libascendcl.so 路径存在；同架构 export DDK_PATH=${INSTALL_DIR}、NPU_HOST_LIB=$DDK_PATH/runtime/lib64/stub，交叉编译时 DDK_PATH 指向 arm64-linux 软件包目录
+    - pattern: 执行应用程序的权限不足导致 acl 接口初始化报错
+      symptoms: ["halGetDeviceInfo failed", "init soc version failed, ret = 507008", "aclInit failed"]
+      cause: Device 状态异常未正常启动，或执行应用程序的用户权限不足无法查询 Device 信息
+      fix: cat /etc/ascend_install.info 查 Driver 安装路径确认 Device 正常启动，检查执行用户权限
+    - pattern: acl 接口执行无输出无报错
+      symptoms: ["无输出无报错"]
+      cause: 执行 acl 接口过程中链接到了 stub 中的 so；或异步场景下拷贝输出数据时没有做流同步
+      fix: ldd 查看可执行文件链接的 so 确保链接有效 so；异步接口（如拷贝）需显式调用 aclrtSynchronizeStream 阻塞等待任务完成，否则可能业务异常/Device 断链掉卡
+    - pattern: APP 使用 dvpp 接口编译失败
+      symptoms: ["dvpp 接口编译失败"]
+      cause: DVPP 相关接口打包在 libacl_dvpp.so 中，测试用例使用了 DVPP 接口但未链接 libacl_dvpp.so
+      fix: 在编译文件（CmakeLists target_link_libraries）中链接 acl_dvpp

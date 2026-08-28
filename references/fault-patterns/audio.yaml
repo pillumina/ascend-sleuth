@@ -1,0 +1,38 @@
+id: audio-fault-patterns
+type: fault-pattern
+title: Audio 处理声音问题（4 条）
+summary: 播音故障：无法正常播音（0xa0168009 ao ko 未插入）/ 属性设置无效（0xa0168003 参数越界）/ 音调语速不对（pcm 格式与参数不一致）/ 音量调节失效（超 0-127 或误用接口）；适用 Atlas 200I/500 A2 推理产品 EP/RC
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0210.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0210-0213）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [Atlas 200I/500 A2]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  patterns:
+    - pattern: 无法正常播音
+      symptoms: ["hi_mpi_ao_set_pub_attr(2) failed", "0xa0168009"]
+      cause: 没有插入播音相关的 ko
+      fix: lsmod 检查 ko，insmod /var/davinci/driver/drv_ao.ko 后重跑播音命令
+    - pattern: 播音属性设置无效
+      symptoms: ["hi_mpi_ao_set_pub_attr failed", "0xa0168003", "0xa016800c"]
+      cause: 播音涉及的参数设置有误（位宽、采样率、声道数等超出取值范围）
+      fix: 检查 Audio 接口各输入参数是否在有效范围内并修正，重跑播音命令
+    - pattern: 播音音调、语速不对
+      symptoms: ["播放速度变快/变慢", "音调变高/变低", "pcm"]
+      cause: 播音参数设置与 pcm 音频文件格式不一致——pcm 是 raw 数据不带文件头，无法从数据判断声道/位宽/采样率；如单声道文件按双声道读取，播放速度为正常两倍、音调变高
+      fix: 按 pcm 文件实际格式（声道、位宽、采样率）设置播音参数
+    - pattern: 音量调节失效
+      symptoms: ["HI_ACODEC_SET_ADCL_VOLUME failed"]
+      cause: 音量调节超出范围（音量参数 0-127），或播音误用录音音量调节接口（反之亦然）
+      fix: 检查音量调节范围配置正确；播音用 DAC 相关接口、录音用 ADC 相关接口

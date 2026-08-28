@@ -1,0 +1,62 @@
+id: runtime-resource-fault-patterns
+type: fault-pattern
+title: 运行时资源异常问题（10 条）
+summary: 运行时资源故障：内存泄漏（申请不释放）/ Event 超上限（207007）/ 异常退出后重启失败（资源释放未完成）/ unbind model stream failed / 休眠唤醒失败（hwts busy）/ OOM（207001）/ 异步拷贝查询时序（507899）/ 低版本内核 asan / 析构调用 aclFinalize coredump
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0110.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0110-0122）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  patterns:
+    - pattern: 内存未释放导致内存泄漏
+      symptoms: ["内存持续增长"]
+      cause: 系统存在只申请内存不释放的问题，内存申请与释放必须成对出现
+      fix: 排查所有内存申请与释放并保证一一对应（aclrtMalloc/aclrtFree、aclrtMallocHost/aclrtFreeHost、aclrtCreateStream/aclrtDestroyStream 等）
+    - pattern: Event 数量超过上限导致 aclrtRecordEvent 接口返回失败
+      symptoms: ["Event id alloc error", "ErrCode=207007", "driver error:no event resource", "eventRecord failed"]
+      cause: Event ID 的数量超过上限
+      fix: 多 Stream 同步等待场景下复用 Event ID——aclrtRecordEvent+aclrtStreamWaitEvent 后若 Event 已完成及时调 aclrtResetEvent 释放
+    - pattern: 进程异常退出后重新执行任务失败
+      symptoms: ["进程异常退出后新任务失败"]
+      cause: 进程异常退出时系统检测到程序退出后才释放资源，释放最长需一分钟，未完成前执行新任务会失败
+      fix: 进程异常退出后等待一分钟再重新执行任务
+    - pattern: 进程异常，下一次执行任务报错 unbind model stream failed
+      symptoms: ["unbind model stream failed", "stream is running"]
+      cause: 进程异常时 Host 内核态驱动会自动检测并发起 Device 侧资源释放，用户主动捕获并处理异常信号会干扰系统资源释放流程
+      fix: 用户无需关注进程异常退出信号，不要对异常退出信号做处理
+    - pattern: 用户进程异常退出后重启进程失败
+      symptoms: ["aclrtProcessReport failed, ret = 107012", "halResourceIdAlloc streamid failed", "ErrCode=207008", "driver error:no stream resource"]
+      cause: public taskid / stream id / eventid 等资源申请不到——资源被其他进程占用完，或上一进程退出时未完全释放
+      fix: 等待一分钟保证上一进程资源释放完成；停止其他进程或等其他进程完成后启动；仍失败检查是否超资源上限，未超上限则重启环境强行释放资源
+    - pattern: AI 应用进程未退出，导致休眠唤醒失败
+      symptoms: ["suspend pre check fail, hwts is busy", "ts suspend ack ret=1"]
+      cause: 休眠前 AI 应用进程必须先退出、硬件资源处于 idle 态才允许休眠；AI 进程未退出时检测到 hwts busy 导致休眠失败
+      fix: 确保 AI 应用进程运行结束或优雅退出（推荐 kill -2 <pid>）
+    - pattern: 内存申请失败，出现 OOM
+      symptoms: ["Heap_alloc_managed out of memory", "halMemAlloc failed", "drvRetCode=6"]
+      cause: 网络并行运行导致内存不足，或网络运行需要内存过大导致申请失败
+      fix: 查看运行网络是否存在并行情况；查询网络运行内存大小或减少 batchsize
+    - pattern: 异步拷贝调用查询接口报错
+      symptoms: ["Set free error", "Devmm_iotcl_free failed", "ErrCode=507899", "rtFreeHost"]
+      cause: 异步拷贝任务后下发 event record，aclrtQueryEventStatus 查询到的是 Device 执行完任务未透传 Host，此时未先销毁 Event 直接 aclrtFreeHost 有时序问题
+      fix: 方案一用 aclrtSynchronizeStream 判断任务完成；方案二用 aclrtQueryEventStatus 时先调 aclrtDestroyEvent 再调 aclrtFreeHost
+    - pattern: 低版本内核使用 asan 导致算子执行失败
+      symptoms: ["Task run failed", "The MPU address access is invalid", "vector core exception"]
+      cause: 用户程序编译选项启动地址消毒（-lasan），但低版本内核（5.10 以下）不支持 asan，执行算子时拷贝输出数据异常
+      fix: uname -r 查内核版本；升级内核到 5.10 或更高，或在编译选项中去掉 -lasan
+    - pattern: 析构函数中调用去初始化接口 aclFinalize 导致应用进程 coredump
+      symptoms: ["aclFinalize", "Segmentation fault", "SIGSEGV"]
+      cause: 在析构函数（单例/全局变量析构）中调用 aclFinalize——进程退出时单例/全局析构与依赖 so 卸载顺序无法控制，aclFinalize 访问的资源所在 so 可能已卸载
+      fix: 不在析构函数中调用 aclFinalize；在 main 函数内业务处理完成后显式调用 aclFinalize

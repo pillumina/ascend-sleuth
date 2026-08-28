@@ -1,0 +1,54 @@
+id: dvpp-vpc-fault-patterns
+type: fault-pattern
+title: DVPP VPC 图片处理问题（8 条）
+summary: VPC 图片处理故障：内存申请接口错误/内存大小传值错误/读写地址无效中断/调用失败（4 类参数）/参数校验失败（4 类）/创建通道失败（通道号重复）/获取结果失败（task id 非法）/输出花屏绿边（对齐数据）
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0163.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0163-0170）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  patterns:
+    - pattern: 调用错误的内存申请接口，导致内存地址校验出错
+      symptoms: ["内存地址校验出错"]
+      cause: 未使用指定的接口申请 VPC 输入/输出内存（V1 用 acldvppMalloc、V2 用 hi_mpi_dvpp_malloc）
+      fix: 检查代码，用 acldvppMalloc（V1）或 hi_mpi_dvpp_malloc（V2）申请 VPC 输入/输出数据内存
+    - pattern: 使用正确的内存申请接口，但内存大小传值错误
+      symptoms: ["结束地址非法", "buffer size 校验失败"]
+      cause: 申请的内存大小小于该格式所需的输入/输出内存大小，或任务接口传入的 buffer size 与实际申请长度不一致
+      fix: 按文档检查对应格式的内存大小要求；增加打印内存长度日志，对比 buffer size 与实际申请长度
+    - pattern: 读/写内存地址无效，导致异常中断
+      symptoms: ["cvdr_axi_rd_resp_err", "cvdr_axi_wr_resp_err"]
+      cause: cvdr_axi_rd_resp_err=读地址越界（输入内存太小或无效），cvdr_axi_wr_resp_err=写地址越界（输出内存太小或无效）
+      fix: 在申请 DVPP 内存接口处与 VPC 异常任务接口处打印日志对比申请/使用大小；在释放接口处打印，检查 VPC 任务完成前内存是否被提前释放
+    - pattern: VPC 调用失败
+      symptoms: ["VPC 调用失败日志"]
+      cause: ①抠图区域右偏移坐标需是奇数（如 1918 偶数不符）；②输出内存大小需 ≥ 宽stride*高stride*3/2；③输入图片宽 stride 必须 16 倍数且最小值 32（如 300 不满足）；④VPC 输入内存需用 acldvppMalloc 申请
+      fix: 按四种原因分别修正：坐标奇偶、输出内存大小、宽 stride 对齐（对齐后设置对齐值）、内存申请接口
+    - pattern: VPC 参数校验失败
+      symptoms: ["VPC 参数校验失败"]
+      cause: ①VPC 缩放宽大于输出宽；②VPC 抠图宽大于输入宽；③输入的缩放算法不正确；④图片内存大小不够
+      fix: 按四种原因分别修正缩放参数/抠图参数/缩放算法/内存大小
+    - pattern: VPC 创建通道失败
+      symptoms: ["hi_mpi_vpc_create_chn 失败"]
+      cause: 通道号重复——该通道号已存在
+      fix: 规划通道号，hi_mpi_vpc_create_chn 创建时传入未被使用的通道号
+    - pattern: VPC 获取结果失败
+      symptoms: ["hi_mpi_vpc_get_process_result 失败"]
+      cause: 传入非法的 task id
+      fix: 将功能接口中传出的 task id 传入 hi_mpi_vpc_get_process_result
+    - pattern: VPC 输出图片存在花屏、绿边等
+      symptoms: ["花屏", "绿边"]
+      cause: VPC 对输出图片宽/高有对齐要求（不同版本硬件对齐要求不同），不满足对齐时多余的对齐数据显示为绿边（如宽 100 需 16 对齐则配 128，多出 28 为无效对齐数据）；抠图缩放贴图大小与输出图片不一致时底图为输出内存随机值导致花屏
+      fix: 检查输出图片宽与对齐后宽，绿边为对齐数据时按输出宽逐行写文件剔除对齐数据；抠图缩放贴图不一致时检查输出内存是否提前 memset_s 去除随机值
