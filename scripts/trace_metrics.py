@@ -162,7 +162,7 @@ def main():
     else:
         rows.append("| reference 引用 | 0——先验知识层刚建立（ADR-0008），trace 尚未积累 reference_lookup 事件 |")
     print("\n".join(rows))
-    print("\n<!-- 复核后把上表追加进 docs/metrics.md；小样本比例波动大，解读先看分母 -->")
+    print("\n<!-- metrics 由 owner 在 groom 周批时集中汇总 append 进 docs/metrics.md（每期一条，团队共享）；工程师不需要提交 metrics——他们只做诊断（本地 trace）+ 反馈（case confidence 走 PR）。小样本比例波动大，解读先看分母 -->")
 
 
 if __name__ == "__main__":
