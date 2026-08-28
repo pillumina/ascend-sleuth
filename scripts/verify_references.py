@@ -253,17 +253,26 @@ def check_reference(path: Path, refs_dir: Path, types_registry: dict, case_ref_c
     # 后者是"case 主动引用 reference"（正向关系），前者才是"reference 由几条 case 提炼印证"
     # （提炼来源）。用 ref_knowledge 计数会让所有 case-derived methodology 恒为 0（0 条 case
     # 填过 ref_knowledge），门槛形同虚设/永远不达标（2026-08 转正时发现）。
+    # 门槛只约束 case-derived 来源的方法论——official-doc（手册/文档提炼）方法论不适用
+    # （2026-08 批量转正官方方法论时误报 5 条修复）。
     if rtype == "methodology" and status == "active":
-        case_derived_total = sum(
-            len(s.get("cases") or [])
+        has_case_derived = any(
+            isinstance(s, dict) and s.get("type") == "case-derived"
             for s in (sources or [])
-            if isinstance(s, dict) and s.get("type") == "case-derived"
         )
-        if case_derived_total < METHODOLOGY_MIN_CASE_REFS:
-            errors.append(
-                f"{rel}: case-derived methodology 提炼来源 {case_derived_total} 条 case"
-                f"（需 ≥{METHODOLOGY_MIN_CASE_REFS} 才可 active，计数为 sources[].cases 长度）"
+        if not has_case_derived:
+            pass
+        else:
+            case_derived_total = sum(
+                len(s.get("cases") or [])
+                for s in (sources or [])
+                if isinstance(s, dict) and s.get("type") == "case-derived"
             )
+            if case_derived_total < METHODOLOGY_MIN_CASE_REFS:
+                errors.append(
+                    f"{rel}: case-derived methodology 提炼来源 {case_derived_total} 条 case"
+                    f"（需 ≥{METHODOLOGY_MIN_CASE_REFS} 才可 active，计数为 sources[].cases 长度）"
+                )
 
 
 def main():

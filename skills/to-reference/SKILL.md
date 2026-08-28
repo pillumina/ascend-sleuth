@@ -94,10 +94,13 @@ description: >
 | 工具/命令的用法与输出解读 | `tool` |
 | 平台硬事实（可独立验证的客观事实） | `platform-fact` |
 | 软件栈/运行时系统硬事实（日志路径与格式、机制、进程行为；不绑定硬件平台） | `software-fact` |
+| 故障模式对照（现象→根因→处理，按主题域成表） | `fault-pattern`（**表形态**——一个域一个文件，条目 `pattern/symptoms/cause/fix`） |
 | 命令/环境变量的副作用与回滚 | `command-side-effect` |
 | 多步骤诊断/调优流程 | `methodology` |
 
 区分 `platform-fact` 与 `software-fact`：绑定具体硬件平台/芯片规格（如 "A5 HBM 64GB"）→ `platform-fact`；CANN 软件栈或运行时系统的可验证事实（如日志路径、格式、机制，跨平台成立）→ `software-fact`。
+
+**fault-pattern 表形态（组织单元 = 验证单元）**：官方手册的"现象→根因→处理"排障条目（非多步流程、非事故闭环）→ 按主题域成表（如 `references/fault-patterns/dvpp-decode.yaml` 承载 VDEC/JPEGD 解码故障）。`symptoms` 是可直接 grep 的日志签名/错误码（诊断时按签名命中根因），`cause`/`fix` 提炼自来源。
 
 **error-code 表形态（组织单元 = 验证单元）**：错误码天然成族（CANN Runtime 507xxx / HCCL / aicpu / Driver），同族同源同验证——**一个族一个文件**（如 `references/errors/cann-runtime.yaml` 承载 507903/507018/507057...），表级共享 sources/status/applies_to，不逐码建文件。case 提炼的条目逐条验证 → 条目带可选 `source_cases`。检索时 agent 按族定位文件，表内 grep code 一次命中。**数据集类的 `applies_to` 平台/版本应从来源的结构化字段映射（如官方文档的 models/support 字段），不靠 agent 猜测**——来源没声明的平台不写。
 

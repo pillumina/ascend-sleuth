@@ -11,6 +11,7 @@ references/
 ├── _types.yaml               # type 注册表（渐进登记；CI 强校验的 schema 依据）
 
 ├── errors/                   # type: error-code（表形态，按组件分族：cann-runtime/hccl/aicpu/driver）
+├── fault-patterns/           # type: fault-pattern（表形态，按主题域成表：现象→根因→处理）
 ├── tools/                    # type: tool
 ├── platform-facts/           # type: platform-fact（硬件平台/芯片规格）
 ├── software-facts/           # type: software-fact（软件栈/运行时系统事实，不绑定硬件平台）
@@ -43,7 +44,7 @@ status: draft | active | pending-review | deprecated
 
 ## 当前状态
 
-**26 条词条已入库（全部 `status: active`，2026-08-28）**：23 条 A5 platform-fact（来源《昇腾950 NPU 架构白皮书》，华为）+ error-code 表（`cann-runtime`，7 码）+ methodology（GLM 量化启动排查）+ 310P platform-fact。**核验约定**：本批发出的词条均以 `verification: cross-checked-source` 声明——即 agent 已用 pymupdf 直接提取 PDF 原文、逐字核验过（每条的 evidence 只保留独特的章节/页码引用，核验方式不再逐条重复）；reviewer 抽查即可。inbox 队列当前为空。平台背景知识文档（`knowledge/platforms/*.md`）已按 ADR-0008 废弃且**未转化**入库（内容为 agent 生成、零外部源）——本批词条与旧 platform doc 不同：从第一天就带权威来源、已对 PDF 原文核验。后续填充优先级：plog 错误码表 / CANN 兼容矩阵（见 ADR-0008 §Consequences 2）。
+**76 条词条（2026-08-29 批量转正，全部 `status: active`）**：白皮书批次 26（A5 platform-fact + cann-runtime 错误码 + GLM 方法论 + 310P）+ 官方文档批次 50（日志收集 7、故障处理工具与专题 8、错误码 17 族 306 码、故障案例 14 域 99 条、模块字典与码结构 2、env-var 2 表）。**核验约定**：白皮书批次 `cross-checked-source`（pymupdf 提取 PDF 原文逐字核验）；官方文档批次同为 `cross-checked-source`——对官方 markdown 转录逐字核验、未逐字核对原始 HTML 页面，reviewer 可抽查。平台背景知识文档（`knowledge/platforms/*.md`）已按 ADR-0008 废弃且**未转化**入库。
 
 ## 校验
 
