@@ -54,9 +54,9 @@
 
 **阶段二（全量）**：候选 ≤5 条，全量加载 body，按 `confidence.score` **降序**验证（最可靠的先试）。**多条候选时明示**：“匹配到 N 条，先验证最可能的 `<id>`（confidence `<score>`）”，工程师可说“跳过这条试下一条”。
 
-**阶段二.5：reference 辅助查询（先验知识层，ADR-0008）**——候选加载后、验证前，按需取先验知识辅助诊断：
+**阶段二.5：reference 辅助查询（先验知识层）**——候选加载后、验证前，按需取先验知识辅助诊断：
 
-- **只读 `status: active` 词条**——draft / pending-review / deprecated 一律不加载（未验证知识不进上下文，ADR-0008 §6；这是"agent 不引用错误先验"的机制化，不是自觉）；
+- **只读 `status: active` 词条**——draft / pending-review / deprecated 一律不加载（未验证知识不进上下文——这是"agent 不引用错误先验"的机制化，不是自觉）；
 - **两条加载路径**：
   1. 候选 case 有 `ref_knowledge` → 加载引用的 reference 全文（最精准；当前 case 尚无此字段，未来路径）；
   2. 否则/同时：按客户平台扫 `references/<type-dir>/*.yaml` 中 `applies_to.platforms` 匹配且 active 的词条，**只读 `summary` + `applies_to`**（每条一行；A5 全量 ~700 token 内）；

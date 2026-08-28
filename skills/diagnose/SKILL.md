@@ -38,7 +38,7 @@ disable-model-invocation: true
    - 错误信息、`HCCL_*`/`ASCEND_*`/`NPU_*` 环境变量值、**版本组合**（引擎版本 + CANN + HDK/驱动 + 架构 A2/A3/A5）——都从客户那要来
    - **信息不全就主动问**：若没说清，主动问——①症状（什么报错/什么时候挂）②客户的版本组合（引擎/CANN/HDK/架构）③日志/profiler 在哪（贴相关 rank + 栈尾）。别干等
    - **框架从提供的信息/报错判断**（日志里 mindspeed/vllm 字样等）；判断不了就直接问工程师“客户跑的什么框架”，**不要跑 `pip list`**（那是你本地环境，跟客户无关）
-   - **主动裁剪日志**：让工程师只贴失败 rank + 报错栈尾，绝不灌全量 profiler——诊断 session 的 context 八成是日志，全量灌进来会滑出 smart zone（~120K token 推理最锐利），推理质量暴跌
+   - **主动裁剪日志**：让工程师只贴失败 rank + 报错栈尾，绝不灌全量 profiler——诊断 session 的 context 八成是日志，全量灌进来会滑出 smart zone（~120K token 推理最锐利），推理质量暴跌。**若工程师已贴全文：agent 自行裁剪进 context（保留失败 rank + 栈尾 + 相关段），不要求工程师重贴**——裁剪是 agent 的职责，不是让工程师反复操作
 
 2. **分类 → 加载 `triage-tree.yaml`（Tier 1）**
    - 症状匹配分支 → 路由到 namespace（先 `training|inference/<framework>/`，再 `common/`）
@@ -81,6 +81,7 @@ disable-model-invocation: true
    - 完整 trace 随 `diagnosis_state-<session_id>.yaml` 留存（每并发诊断一文件；模板见 `diagnosis_state.yaml.example`）
    - **结果反馈闭环（闭合学习环，关键）**：给完 fix 后，**等工程师应用并回来报告结果**——问“应用后解决了吗？（解决 / 没解决 / 部分解决）”。结果回写该 case 的 confidence：解决 → `hits += 1`；没解决 → `misdiagnoses += 1`、更新 `last_hit`。**不问这步，confidence/误诊率永远是初始值，整个学习机制空转。**
    - **反馈捕获结构化（不靠记性）**：给完 fix、session 收尾前，往 state 文件写 `feedback_pending: <case-id>`。**每次 `/skill:diagnose` 或 `/skill:resume-diagnosis` 启动时先扫活跃 state 文件**——发现该标记就先追问"上次 <case-id> 的 fix 应用后解决了吗？"，按答复回写 confidence（上条规则）、trace 记 `{action: feedback, case, outcome: resolved|not_resolved|partial}`、清掉标记。反馈捕获是整条学习环的吞吐上限——标记写在文件里，就不依赖任何人的记性
+   - **反馈追问降级（体验，防骚扰）**：同一 `feedback_pending` 标记**追问 2 次未获回应 → 停止追问**，标 `feedback_stale: true`（保留标记供 trace_metrics 统计"反馈缺失"），不再每次启动骚扰工程师。工程师之后主动回报仍可回写——追问是礼貌提醒，不是逼迫
    - **沉淀已含在本步骤**：命中=常规 postmortem、未命中=含候选 case 的 postmortem，本步骤已生成。**只有当本次不是经 /diagnose 定位的**（如用 Kimi/手工查的、或没配 session-end hook 导致 postmortem 没生成），才需 `/skill:to-postmortem` 手动沉淀。
 
 ## 命中时的输出格式

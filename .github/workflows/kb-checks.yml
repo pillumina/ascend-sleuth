@@ -2,9 +2,9 @@ name: kb-checks
 
 on:
   push:
-    paths: ["knowledge/**", "references/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py"]
 
 jobs:
   index-freshness:
@@ -30,7 +30,23 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install pyyaml
-      # reference 层入口门槛比 case 更严（ADR-0008 §8）：
+      # reference 层入口门槛比 case 更严（先验知识框架 ADR §8）：
       # 基础元信息 + 已登记 type + 按来源类型子字段 + 深审（case-derived methodology
       # 派生引用数 <3 不允许 active）。脚本解析全部 case YAML 计算派生计数，语法错即红。
       - run: python3 scripts/verify_references.py --check
+
+  skill-self-contained:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # skill 自包含（卫生检查）：skill 文件不得引用 ADR 编号——ADR 会被修订/吸收，
+      # 编号锚定让 skill 行为看起来由外部文档间接定义；行为规则必须内联。
+      # 准入判据（可机械判定 + 易复发 + 确定性后果）：属文档卫生类，一行 grep 足够。
+      - run: |
+          hits=$(grep -rn 'ADR-[0-9][0-9][0-9][0-9]' skills/ | grep -v '\.py' || true)
+          if [ -n "$hits" ]; then
+            echo "skill 文件含 ADR 编号锚定（skill 必须自包含，行为规则内联）："
+            echo "$hits"
+            exit 1
+          fi
+          echo "skill 自包含 OK（零 ADR 编号引用）"
