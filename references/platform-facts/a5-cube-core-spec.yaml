@@ -5,17 +5,17 @@ summary: 第三代 Cube：FP8/MXFP8/HiF8 提供 2 倍 FP16 TFLOPS、MXFP4 提供
 
 sources:
   - type: official-doc
-    url: "昇腾950 NPU 架构白皮书（华为技术有限公司），本地归档 ~/ascend/昇腾950 NPU架构白皮书.pdf"
+    url: "昇腾950 NPU 架构白皮书（华为技术有限公司）"
     version: "2026-06-04（PDF metadata creationDate）"
     fetched_at: 2026-08-28
-# 提取自 PDF p.17-18 §4.1.1（pymupdf 直接提取核验）
+    verification: cross-checked-source
 
 applies_to:
   platforms: [A5-950]
 
-status: draft
+status: active
 last_verified: 2026-08-28
 
 content:
   claim: "昇腾950 第三代 Cube Core：新增 MXFP8、HiF8 及 MXFP4 低比特浮点张量计算；相同频率下 HiF8/MXFP8/FP8 提供 2 倍 FP16 浮点张量 TFLOPS、MXFP4 提供 4 倍 TFLOPS（张量浮点峰值算力较上一代提升至 4 倍）；更大的 L0C Buffer 提供更灵活 Tiling 与更高数据复用率；支持按需张量结果即时格式转换，回写 Unified Buffer 阶段直接完成数据量化（FP32 到 BF16/FP16/FP8）与排布转换（NZ 到 ND/DN）；支持 L0C Buffer→Unified Buffer 随路量化（FP32/INT32 量化到 BF16/FP16/FP8/INT8）。"
-  evidence: "白皮书 §4.1.1 CUBE CORE（PDF p.17-18）：『HiF8/MXFP8/FP8 能够提供2 倍的FP16 浮点张量计算TFLOPS，MXFP4 数据类型能提供4 倍TFLOPS』『更大的L0C Buffer』『回写Unified Buffer 阶段直接完成数据量化与排布转换』。已对 PDF 原文核验。"
+  evidence: "白皮书 §4.1.1 CUBE CORE（PDF p.17-18）：『HiF8/MXFP8/FP8 能够提供2 倍的FP16 浮点张量计算TFLOPS，MXFP4 数据类型能提供4 倍TFLOPS』『更大的L0C Buffer』『回写Unified Buffer 阶段直接完成数据量化与排布转换』"

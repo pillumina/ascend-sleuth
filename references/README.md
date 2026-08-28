@@ -42,7 +42,7 @@ status: draft | active | pending-review | deprecated
 
 ## 当前状态
 
-**首批已填充（8 条 platform-fact，2026-08-28）**：A5 950 硬件规格词条，来源为《昇腾950 NPU 架构白皮书》（华为），`status: draft` 待 maintainer 审核后转 active（PR 即审核闸门）。平台背景知识文档（`knowledge/platforms/*.md`）已按 ADR-0008 废弃且**未转化**入库（内容为 agent 生成、零外部源）——本批发出的词条与旧 platform doc 不同：从第一天就带权威来源、已对 PDF 原文核验。后续填充优先级：plog 错误码表 / CANN 兼容矩阵（见 ADR-0008 §Consequences 2）。
+**23 条 A5 950 platform-fact 已入库（全部 `status: active`，2026-08-28）**：来源为《昇腾950 NPU 架构白皮书》（华为）。**核验约定**：本批发出的词条均以 `verification: cross-checked-source` 声明——即 agent 已用 pymupdf 直接提取 PDF 原文、逐字核验过（每条的 evidence 只保留独特的章节/页码引用，核验方式不再逐条重复）；reviewer 抽查即可。inbox 队列当前为空。平台背景知识文档（`knowledge/platforms/*.md`）已按 ADR-0008 废弃且**未转化**入库（内容为 agent 生成、零外部源）——本批词条与旧 platform doc 不同：从第一天就带权威来源、已对 PDF 原文核验。后续填充优先级：plog 错误码表 / CANN 兼容矩阵（见 ADR-0008 §Consequences 2）。
 
 ## 校验
 

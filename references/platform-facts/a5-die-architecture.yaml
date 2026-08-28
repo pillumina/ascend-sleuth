@@ -5,16 +5,17 @@ summary: 昇腾950 为 Chiplet 合封：2 AI Die + 2 IO Die + 8(PR)/4(DT) 片上
 
 sources:
   - type: official-doc
-    url: "昇腾950 NPU 架构白皮书（华为技术有限公司），本地归档 ~/ascend/昇腾950 NPU架构白皮书.pdf"
+    url: "昇腾950 NPU 架构白皮书（华为技术有限公司）"
     version: "2026-06-04（PDF metadata creationDate）"
     fetched_at: 2026-08-28
+    verification: cross-checked-source
 
 applies_to:
   platforms: [A5-950]
 
-status: draft
+status: active
 last_verified: 2026-08-28
 
 content:
   claim: "昇腾950 芯片是多 Die 合封芯片：整芯片合封 2 个 AI Die、2 个 IO Die 和 8 个（950PR）或 4 个（950DT）高速片上内存模块；各 Die 与片上内存模块通过高速 D2D Clink 与 Memory Interface 连接，整个 Chiplet 构成内存统一访问（UMA）的整体。"
-  evidence: "白皮书 §3（p.12）：『昇腾950 芯片是一个多Die 合封的芯片，整芯片里合封了2 个AI Die、2 个IO Die 和8 个（昇腾950PR）或者4 个（昇腾950DT）高速片上内存模块』。已对 PDF 第 8-14 页原文核验。"
+  evidence: "白皮书 §3（p.12）：『昇腾950 芯片是一个多Die 合封的芯片，整芯片里合封了2 个AI Die、2 个IO Die 和8 个（昇腾950PR）或者4 个（昇腾950DT）高速片上内存模块』"

@@ -5,16 +5,17 @@ summary: 昇腾950DT 单芯片最高 144GB / 4TB/s 高速片上内存，覆盖�
 
 sources:
   - type: official-doc
-    url: "昇腾950 NPU 架构白皮书（华为技术有限公司），本地归档 ~/ascend/昇腾950 NPU架构白皮书.pdf"
+    url: "昇腾950 NPU 架构白皮书（华为技术有限公司）"
     version: "2026-06-04（PDF metadata creationDate）"
     fetched_at: 2026-08-28
+    verification: cross-checked-source
 
 applies_to:
   platforms: [A5-950DT]
 
-status: draft
+status: active
 last_verified: 2026-08-28
 
 content:
   claim: "昇腾950DT 单芯片提供最高 144GB 容量、4TB/s 带宽的高速片上内存（衍生规格 96GB）；专为大模型全生命周期（预训练、后训练、推理含 Decode 与 Prefill）打造，突破内存墙瓶颈。"
-  evidence: "白皮书 §2 引言（p.8）、§3 架构概述（p.10）与表 3-1（p.13-14）：『昇腾950DT 则聚焦大模型全量训练与复杂推理，配备144GB、4TB/s 高速片上内存』『Memory 容量（GB）144/96，带宽 4』。已对 PDF 第 8-14 页原文核验。"
+  evidence: "白皮书 §2 引言（p.8）、§3 架构概述（p.10）与表 3-1（p.13-14）：『昇腾950DT 则聚焦大模型全量训练与复杂推理，配备144GB、4TB/s 高速片上内存』『Memory 容量（GB）144/96，带宽 4』"
