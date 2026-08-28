@@ -3,7 +3,9 @@ name: knowledge-groom
 description: >
   昇腾知识库的周期性维护引擎。批处理 postmortems/inbox/ 待审队列（预分诊 new/variant/covered 三分类），
   结构化升格到 Tier 2、校验 references 完整性、检测值重复、重算 confidence_score、
-  软退休过期 case、重建生成索引。建议每周运行。产出**变更摘要 + 待审项**交领域 owner 审；提交由 owner 自己来（不自动开 PR）。
+  软退休过期 case、重建生成索引；并行维护先验知识层（references/）——
+  批处理 references/_inbox/ 草稿、校验引用、失效降级信号、引用发现建议。建议每周运行。
+  产出**变更摘要 + 待审项**交领域 owner 审；提交由 owner 自己来（不自动开 PR）。
 disable-model-invocation: true
 ---
 
@@ -37,6 +39,23 @@ disable-model-invocation: true
 7. **同 namespace 合并建议**：相似 case 对自动提示。
 8. **索引维护（收尾必做）**：所有 KB 变更（升格/合并/退休/改 confidence）完成后，运行 `python3 scripts/build_index.py` 重新生成 `knowledge/_index.yaml` 并随变更摘要一起提交。`--check` 报过期 = 变更不完整（忘了重建索引）。软退休的 case 移 `_archive/` 后自动从活跃索引消失。
 
+## reference 维护（先验知识层——与 case 流程并行）
+
+先验知识层（`references/`）是独立资产，维护动作与 case 平行：
+
+**R1. references/_inbox/ 批处理**（`/skill:to-reference` 的产出，与 postmortems/inbox 并列的第二待审队列）：
+- 逐条审：accept → 移入 `references/<type-dir>/`；adjust / reject / defer；
+- **深审门槛**：case-derived + methodology 词条需 ≥3 条 case 引用（派生计数，`verify_references.py` 强制）才可 `active`，否则留 `draft`；
+- inbox 停留 >2 周标红（队列不是档案）。
+
+**R2. 引用完整性校验**：case 的 `ref_knowledge.ref` 必须真实存在于 `references/`（`verify_references.py` 已强校验悬挂引用与非法 role——groom 把结果带进变更摘要，不重复计算）。
+
+**R3. 引用发现（可选建议，不强制——case 不"应该"连 reference）**：扫描 case 的 `diagnosis`/`fix` 内容，发现**隐式依赖**某 active reference（如 fix 提到"HCCL_BUFFSIZE 需重启生效"而该事实是独立词条）但未填 `ref_knowledge` → 变更摘要建议"该 case 可补 ref_knowledge"，由 owner 决定。**大多数 case 是自包含闭环（quickly_check/diagnosis/fix 都在体内），不需要连**——只有依赖命令副作用 / 平台硬事实 / 错误码含义等独立先验事实的少数 case 值得连；强制连接只会增加维护负担和脆弱引用。
+
+**R4. 失效与降级信号**：见下方信号表新增行。
+
+**R5. 校验**：改动 reference 后运行 `python3 scripts/verify_references.py --check`（与 build_index 并列，CI 同样强制）。
+
 ## 变更摘要里的高风险变更标记（强制深审，不走 30 秒快通道）
 
 - 新建 `common/` 权威记录
@@ -60,6 +79,12 @@ disable-model-invocation: true
 | inbox 条目停留 >2 周 | 变更摘要标红，提醒 owner（队列不是档案） |
 | 某 (framework×category) 格子超 soft_cap（30）且健康指标恶化 | 触发拆分评估（category 深化或 platform 轴），不等撞线 |
 | 某格子超 hard_cap（60） | 强制拆分（信道物理上限） |
+| `references/_inbox/` 有草稿 | 批处理 R1：accept 移正式目录；case-derived methodology 未达 ≥3 引用禁止 active |
+| 某 reference `last_verified` 超 90 天未刷新 | 标 `needs-review`，owner 季度审 |
+| case-derived methodology 被引用数 < 3（派生计数） | 不允许 active（verify_references 强制；已 active 的降 draft） |
+| 工程师反馈某 reference 引用后诊断失败（trace `outcome_after_use` 恶化） | methodology → `draft` + 禁用 30 天；普通 → `pending-review` |
+| 某 case 的 `diagnosis`/`fix` 隐式依赖 active reference 但未填 `ref_knowledge` | **建议**补 ref_knowledge（R3，可选——case 不强制连 reference，owner 决定） |
+| 某 reference sources 链接失效（spot-check 发现） | 立即标 `pending-review` |
 
 ## v2 职责（路线图，v1 不做）
 
