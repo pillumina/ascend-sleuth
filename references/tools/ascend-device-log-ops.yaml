@@ -1,0 +1,30 @@
+id: ascend-device-log-ops
+type: tool
+title: Device 日志排查操作（RAS 故障 ID / 资源占用 / 进程拉起与结束时间）
+summary: 三组常用 Device 日志操作：①msnpureport -f 导出后在 event_*.log 搜 event_id 查 RAS 故障码（npu-smi info -t health 兜底查最近 8 次故障）；②Device 日志 SYSMONITOR 看 fd usage（阈值 90%）与僵尸进程（阈值 5）；③导出后 device-os 日志 grep ringbuffer 确认进程拉起（create_ringbuffer）与结束（delete_ringbuffer）时间
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0103.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0103/0104/0105）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  tool_name: "Device 日志排查操作（msnpureport 导出 + 关键字解读）"
+  invocation: "RAS 硬件故障排查、资源占用查看、进程生命周期确认均基于 Device 侧日志：EP 形态先 msnpureport -f 导出（默认输出 /var/log/npu/report，需在有读写执行权限的目录执行），再在导出目录按关键字 grep；RC 形态直接查板端 /var/log/npu/slog"
+  commands:
+    ras_fault_id: "msnpureport -f 导出后，在 slog/dev-os-id/run/event/event_*.log 搜 event_id 获取 RAS 硬件故障码，查《健康管理故障定义》对应版本手册；event 日志被覆盖时 npu-smi info -t health -i <id> -c <chip_id> 可查最近 8 次故障；黑匣子 hisi_logs/device-id/*/bbox 搜 Hardware Error 确认硬件故障"
+    resource_usage: "Device 日志 SYSMONITOR 记录：fd usage alarm（文件句柄使用率超 90% 阈值告警，含 top 进程 pid+fd 数）与 fd usage stat（一小时周期统计）；zombie process count alarm（僵尸进程数超 5 阈值）与 zombie process count stat"
+    process_lifetime: "EP：msnpureport -f 导出后，在 /var/log/npu/report/*/slog/device-os-0/[run|debug]/device-0 下 grep -rn ringbuffer；RC：直接 /var/log/npu/slog/[run|debug]/device-0 下 grep -rn ringbuffer。create_ringbuffer 表示进程拉起（含 ringbuffer_addr 关键字的日志时间=拉起时间），delete_ringbuffer 表示进程结束（最后一次=结束时间）"
+  pitfalls:
+    - "event 日志距问题时间较远时可能已被覆盖/清理，导致搜不到 event_id——用 npu-smi health 兜底"
+    - "每次创建 ringbuffer 前都会先删除（日志含 delete_ringbuffer+create_ringbuffer 对），同进程多次 create 时取含 ringbuffer_addr 的那条"

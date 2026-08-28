@@ -1,0 +1,54 @@
+id: ascend-aicore-error-triage
+type: methodology
+title: AI Core Error 问题定位（RAS → NPU 硬件 → 软件 → msaicerr 分析）
+summary: AI Core Error 按四层分流：①event 日志搜 event_id 查 RAS 硬件故障（npu-smi health 兜底）→ ②plog 搜 ECC/同 chipId 多次报错，ascend-dmi 压测核验 NPU 硬件 → ③索引类算子 0x800000 报错查软件越界 → ④msaicerr 输出分析报告；收集阶段框架业务免复跑、非框架业务复跑+设 NPU_COLLECT_PATH
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0004.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0004/0005/0006/0007/0021/0228）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+related_references: [ascend-msaicerr, ascend-asys]
+
+applies_to:
+  platforms: [cross]
+  categories: [interrupt]
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  flow:
+    - step: 1
+      name: 识别 AI Core Error
+      action: 报错含 Ascend Error Message / EZ9999 / there is an xx aicore（或 aivec）error / Aicore kernel execute failed / fault kernel_name 即命中；解读字段：chipId/dieId（判定是否固定芯片）、core id（是否同核）、errcode+errorStr（错误码与描述）、fault kernel_name（报错算子）；异步多算子报错从首报错算子开始排查
+      check: "grep aicore error|fault kernel_name|EZ9999"
+      when_to_use: 训练/推理运行日志报 AI Core Error、算子执行硬件级报错
+    - step: 2
+      name: 收集故障信息
+      action: 收集应用类日志（plog）、trace 日志、算子 exception dump 文件、异常算子编译信息（*.o 和 *.json）、Device 侧系统类日志（slog/syslog/黑匣子）；依赖 PyTorch/MindSpore/TensorFlow 框架的业务无需复跑（系统默认记录），不依赖框架的业务（离线推理/单算子/构图）需复跑，收集 exception dump 前先设 NPU_COLLECT_PATH（会导致业务变慢，定位后及时关闭）
+      check: 信息类别五件套齐；非框架业务设 export NPU_COLLECT_PATH=<path>
+      when_to_use: 准备阶段，日志距问题时间远（可能被覆盖）时需复跑
+    - step: 3
+      name: 排查 RAS 硬件故障
+      action: 在 slog/dev-os-id/run/event/event_*.log 中找问题附近时间对应 Device 的日志，搜 event_id 关键字；存在则取 event_id 值（RAS 硬件故障码），查《健康管理故障定义》对应版本手册解决（典型案例：HBM 比特 ECC、icache 数据校验、AI Core 超时）；event 日志被覆盖时可 npu-smi info -t health -i <id> -c <chip_id> 查最近 8 次故障 event id
+      check: "grep event_id；npu-smi info -t health"
+      when_to_use: 有 Device 系统日志可查
+    - step: 4
+      name: 排查 NPU 硬件故障
+      action: 在应用类日志 log/[run|debug]/plog/plog-pid_*.log 中搜 ECC 相关报错（ECC / ECC error）或同一 chipId 多次报错；命中则用 ascend-dmi --dg -i aicore -s 压测 AI Core（报 GENERAL_WARN/EMERGENCY_WARN 表示可能 AI Core 问题）：压测异常→已知硬件故障换硬件；压测正常→程序指定其它 Device 复现，不复现→可能硬件故障换硬件
+      check: "grep ECC|ECC error；ascend-dmi --dg -i aicore -s"
+      when_to_use: 应用类日志有 ECC 或固定 chipId 报错
+    - step: 5
+      name: 排查软件故障（索引类算子）
+      action: 在应用类日志中搜索引类算子 0x800000 报错；命中则排查算子输入数据问题（典型索引类算子：GatherV2、Scatter、GatherElements），参考索引越界案例
+      check: "grep 0x800000"
+      when_to_use: 报错含索引类算子 error code = 0x800000
+    - step: 6
+      name: msaicerr 工具分析
+      action: 用 msaicerr 分析收集的信息，输出分析报告（info.txt）；将结果（AI Core Error 最小集信息、分析报告）提供给技术支持进一步定位
+      check: "python3 msaicerr.py -p <path> -out <path> -dev <deviceId>"
+      when_to_use: 以上步骤未定位，需提交技术支持
+  verified_by_testing: false

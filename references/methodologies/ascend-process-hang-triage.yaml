@@ -1,0 +1,44 @@
+id: ascend-process-hang-triage
+type: methodology
+title: 进程卡住问题定位（调用栈定位下发/执行阶段 → 卡住任务 → 编译耗时）
+summary: 进程卡住先用 asys collect -r=stacktrace 取调用栈：栈无 CANN 内部函数→任务未下发查客户脚本；有 SendTask→卡在任务下发；有 Synchronize→卡在任务执行，用 trace 日志 stream_id+head/pos 定位卡住任务；plog 有 watchdog timeout 或算子停留 Compile process status/init disk cache→算子在线编译卡住
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0071.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0071/0072/0073）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+related_references: [ascend-asys]
+
+applies_to:
+  platforms: [cross]
+  categories: [interrupt]
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  flow:
+    - step: 1
+      name: 收集日志并获取卡住进程调用栈
+      action: 收集 CANN 日志（目录以 ${HOME}/err_log_info/ 为例）；用 asys collect -r=stacktrace --remote=<pid> --all --quiet 获取卡住进程调用栈（终端提示 stackcore file path 为结果文件；也可用 gdb）；结合 plog 排查
+      check: "asys collect -r=stacktrace --remote=<pid> --all --quiet"
+      when_to_use: 进程卡住、无响应
+    - step: 2
+      name: 按调用栈定位卡住阶段
+      action: 栈中无任何 CANN 内部关键函数（CANN 库默认 /usr/local/Ascend）→ 任务未下发到 CANN，定位客户脚本任务下发问题；栈含 SendTask → 卡在 CANN 任务下发阶段，联系技术支持定位下发代码逻辑；栈含 Synchronize → 卡在任务执行阶段，跳转追溯卡住任务
+      check: 调用栈函数名分类（无 CANN 函数 / SendTask / Synchronize）
+      when_to_use: 已拿到调用栈
+    - step: 3
+      name: 追溯卡住任务
+      action: 在 trace 日志 schedule_tracer_*.txt 中查 ERROR 报错处流信息（stars_wait_sqe_is_timeout / wait task timeout 定位超时流与 task_id）；grep stream_id 找到 dump 出的流信息：sq_en=1 流激活，head 为当前执行任务索引，pos[head] 即卡住的任务
+      check: "grep -rn \"stream_id=<n>\" schedule_tracer_*.txt"
+      when_to_use: 卡在任务执行阶段（Synchronize）
+    - step: 4
+      name: 排查算子在线编译卡住
+      action: plog 有 watchdog timeout → 可能算子在线编译时间长导致卡住；用 trace 日志确认：schedule_tracer_FE_Global_Trace.txt 搜 Compile process status（编译中）/ Finish subgraph compile（编译结束）；算子停留 init disk cache 状态 → 编译卡住，进入 reuse task cache / dispatch online compile / reuse binary 则正常；schedule_tracer_FE_Statistics_Trace.txt 看缓存/编译统计
+      check: "find -name schedule_tracer_FE_Global_Trace.txt|FE_CompileTd_*.txt|FE_Statistics_Trace.txt；grep watchdog timeout"
+      when_to_use: 疑似算子编译耗时长
+  verified_by_testing: false

@@ -1,0 +1,30 @@
+id: ascend-stack-view
+type: tool
+title: 查看 Python / C&C++ 应用程序堆栈（py-spy / gdb）
+summary: 卡住进程取堆栈：Python 用 py-spy dump -p <pid> > pyspy.log（不中断进程）；C/C++ 用 gdb -p <pid> 后 bt 查看调用栈（需安装 gdb）；进程中断/卡住定位的宿主侧配合手段
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0106.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0106）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+related_references: [ascend-process-hang-triage]
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  tool_name: "py-spy / gdb（查看 Python、C&C++ 应用堆栈）"
+  invocation: "进程卡住或中断定位时查看宿主侧调用栈：Python 应用用 py-spy dump 导出堆栈到文件；C/C++ 应用用 gdb attach 后 bt 打印调用栈"
+  commands:
+    python: "py-spy dump -p <pid> > pyspy.log（将指定进程堆栈导出到文件）"
+    cpp: "gdb -p <pid> 后执行 bt 查看调用栈（环境未装 gdb 时用包管理安装：apt-get install gdb / yum install gdb）"
+  pitfalls:
+    - "py-spy 导出时若进程在等待锁（如 multiprocessing pool join），堆栈会显示 poll/wait/join 等阻塞帧——配合业务代码定位"

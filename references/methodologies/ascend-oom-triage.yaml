@@ -1,0 +1,47 @@
+id: ascend-oom-triage
+type: methodology
+title: 内存 OOM 问题定位（C 接口 → CANN Host 内存 → CANN Device 内存 → 业务进程异常）
+summary: OOM 按申请方分流：C 标准接口 malloc/memset 申请 Host 内存→asan 检测；CANN 接口 aclrtMallocHost 申请 Host 内存→日志搜 mem_stats 看组件统计；aclrtMalloc/aclrtMallocPhysical/hi_mpi_dvpp_malloc 申请 Device 内存→mem_stats；其它报错→搜 DEV_PROC_MEM 看业务进程统计；各统计不符合预期联系技术支持
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0050.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0050/0051/0052/0054/0055/0056）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [interrupt]
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  flow:
+    - step: 1
+      name: 识别 OOM
+      action: 报错含 ErrCode=207001 desc=[driver error:out of memory]、rtMalloc/rtMallocPhysical/aclrtMalloc 系列接口失败即命中；Device 侧系统内存不足时，从 Device 导出的 syslog（{导出目录}/{时间戳}/message/dev-os-{id}/messages.*）中存在 oom 关键字（kbox catch oom event）
+      check: "grep 207001|out of memory|rtMalloc；syslog grep oom"
+      when_to_use: 训练/推理报内存申请失败、OOM
+    - step: 2
+      name: 排查 C 原生接口问题
+      action: 检查应用是否用 C 标准接口 malloc/memset 等申请 Host 内存；命中则用第三方 asan 工具检测内存错误并优化代码逻辑
+      check: 代码审查 malloc/memset；asan 检测
+      when_to_use: 应用使用 C 标准接口申请 Host 内存
+    - step: 3
+      name: 排查 CANN Host 内存申请问题
+      action: 在 Host 应用类日志 ${HOME}/err_log_info/log/[run|debug]/plog/plog-pid_*.log 中找 OOM 附近时间日志，根据报错接口判断；报错处使用 aclrtMallocHost 申请 Host 内存 → Host 内存问题，日志搜 mem_stats 关键字查看各组件申请内存统计；统计不符合预期联系技术支持
+      check: "grep aclrtMallocHost；grep mem_stats"
+      when_to_use: 报错接口为 aclrtMallocHost
+    - step: 4
+      name: 排查 CANN Device 内存申请问题
+      action: 报错处使用 aclrtMalloc、aclrtMallocPhysical、hi_mpi_dvpp_malloc 等接口申请 Device 内存 → Device 内存问题；日志搜 mem_stats 关键字查看各组件或框架申请内存统计；统计不符合预期联系技术支持
+      check: "grep aclrtMalloc|aclrtMallocPhysical|hi_mpi_dvpp_malloc；grep mem_stats"
+      when_to_use: 报错接口为 Device 内存申请接口
+    - step: 5
+      name: 排查 Device 业务进程异常
+      action: 其它报错提示信息一般为 Device 业务进程异常导致 OOM；日志搜 DEV_PROC_MEM 关键字查看各业务进程内存统计；业务进程占用不符合预期联系技术支持
+      check: "grep DEV_PROC_MEM"
+      when_to_use: 报错非 aclrtMallocHost 也非 Device 内存申请接口
+  verified_by_testing: false

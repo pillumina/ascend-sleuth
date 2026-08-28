@@ -1,0 +1,32 @@
+id: ascend-msaicerr
+type: tool
+title: msaicerr AI Core Error 专项分析工具
+summary: msaicerr 分析 AI Core Error 问题（输出 info.txt 分析报告）、解析 Dump 文件、转换 Dump 数据类型、检查环境；不支持 MatmulAllReduce 类算子（7 个）的 AI Core Error 分析
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/troubleshooting_0099.html"
+    version: "CANN 商用版 9.0.0（troubleshooting 章 0099/0531-0535）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+related_references: [ascend-asys]
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0"
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  tool_name: "msaicerr（AI Core Error 专项分析工具）"
+  invocation: "AI Core Error 问题定位中，对收集的 exception dump/日志信息执行分析，输出分析报告（info.txt）供定位或提交技术支持；也可单独解析 Dump 文件与转换 Dump 数据类型（bin→npy）、检查环境（-e 用 golden op 自检）"
+  commands:
+    analyze: "python3 msaicerr.py -p <path1> -out <path2> -dev <deviceId>（分析 AI Core Error 问题，适用于报错 there is an xx aicore/aivec error）"
+    dump_parse: "python3 msaicerr.py -d <path1> -out <path2>（解析 Dump 文件，输出到指定目录）"
+    dump_convert: "python3 msaicerr.py -d <path1> -out <path2> -dtype <int8 等>（转换 Dump 文件数据类型，bin→npy）"
+    env_check: "python3 msaicerr.py -e [-dev <deviceId>]（检查环境：设备有效性、soc_version、golden op 测试）"
+  pitfalls:
+    - "暂不支持分析以下算子的 AI Core Error：MatmulAllReduceAddRmsNorm、MatmulAllReduceInplaceAddRmsNorm、AllGatherMatmul、MatmulReduceScatter、GroupedMatmulAllReduce、MemSet、NonMaxSuppressionBucketize"
