@@ -19,7 +19,7 @@ applies_to:
   - Atlas 350 加速卡
   - Atlas 200I/500 A2 推理产品
 related_references: [ascend-log-levels, ascend-slog-conf, ascend-trace-logs]
-status: draft
+status: active
 last_verified: '2026-08-29'
 content:
   variables:

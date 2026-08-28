@@ -38,7 +38,7 @@ applies_to:
   - Atlas A2 推理系列产品：仅支持此处理器型号下的
   - Atlas 200T A2 Box16 异构子框。
   - Atlas A3 推理系列产品：仅在使用LLM-DataDist作为集群管理组件的场景下生效。
-status: draft
+status: active
 last_verified: '2026-08-29'
 content:
   variables:
