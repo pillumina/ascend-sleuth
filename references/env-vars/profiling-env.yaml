@@ -1,0 +1,31 @@
+id: profiling-env
+type: env-var-table
+title: 性能数据采集环境变量
+summary: CANN 环境变量参考（envref 系列）：性能数据采集，2 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas 训练系列产品
+  - Atlas 推理系列产品
+  - Atlas A2 训练系列产品
+  - Atlas A2 推理系列产品
+  - Atlas A3 训练系列产品
+  - Atlas A3 推理系列产品
+  - Atlas 350 加速卡
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: PROFILING_MODE
+    description: 是否开启Profiling采集功能。 - true：开启Profiling功能，从PROFILING_OPTIONS读取Profiling的采集选项。 - false或者不配置：关闭Profiling功能。 - dynamic：动态采集性能数据时（attach方式），需在训练任务执行前配置该参数。
+    example: export PROFILING_MODE=true
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0115.html
+  - name: PROFILING_OPTIONS
+    description: 训练或在线推理场景下，开发者可通过PROFILING_OPTIONS环境变量配置Profiling配置选项。 - output：Profiling采集结果文件保存路径。支持配置绝对路径或相对路径（相对执行命令行时的当前路径）。路径中不能包含特殊字符："\n"、"\f"、"\r"、"\b"、"\t"、"\v"、"\u007F"。绝对路径配置以“/”开头，例如：/home/output。 - 相对路径配置直接以目录名开始，例如：output。 - 该参数优先级高于ASCEND_WORK_PATH。 - 该路径无需用户提前创建，采集过程中会自动创建。 - storage_limit：指定落盘目录允许存放的最大文件容量。当Profiling数据文件在磁盘中即将占满本参数设置的最大存储空间或剩余磁盘总空间即将被占满时（总空间剩余 当训练profiling mode开启即采集训练Profiling数据
+    example: export PROFILING_OPTIONS='{"output":"/tmp/profiling","training_trace":"on","task_trace":"on","fp_point":"","bp_point":"","aic_metrics":"PipeUtilization"}'
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0116.html

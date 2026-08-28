@@ -1,0 +1,43 @@
+id: install-config-env
+type: env-var-table
+title: 安装配置环境变量
+summary: CANN 环境变量参考（envref 系列）：安装配置，4 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas 训练系列产品
+  - Atlas 推理系列产品
+  - Atlas A2 训练系列产品 /
+  - Atlas A2 推理系列产品
+  - Atlas A3 训练系列产品 /
+  - Atlas A3 推理系列产品
+  - Atlas 350 加速卡
+  - Atlas 200I/500 A2 推理产品 父主题： 安装配置相关
+  - Atlas A2 训练系列产品
+  - Atlas A3 训练系列产品
+  - Atlas 200I/500 A2 推理产品
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: ASCEND_CACHE_PATH
+    description: 若开发者期望编译运行过程中产生的文件落盘到统一路径，可通过此环境变量设置共享文件的存储路径，各组件编译运行过程中产生的可共享文件会存储到此环境变量定义的路径中。 - 路径支持大小写字母（a-z，A-Z）、数字（0-9）、下划线（_）、中划线（-）、句点（.）、中文字符。 - 需要确保指定的路径存在且有效，执行用户具有读、写、执行权限。 ${ASCEND_CACHE_PATH}路径下的文件如下表所示。 | 落盘文件 | 文件内容 | 优先级说明 | |---|---|---| | ${ASCEND_CACHE_PATH}/aoe_data | AOE调优知识库文件。 支持多机共享。 | TUNE_BANK_PATH> ASCEND_CACHE_PATH> 默认知识库路径 关于默认知识库路径的说明，请参见TUNE_BANK_PATH中说明。 | | ${ASCEND_CACHE_PATH}/k
+    example: export ASCEND_CACHE_PATH=/repo/task001/cache
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0006.html
+  - name: ASCEND_CUSTOM_OPP_PATH
+    description: 用户自定义算子安装路径。配置该路径后，算子入图场景下，GE框架在图编译和执行时根据该环境变量搜索算子二进制并使用。支持配置多个路径，以英文冒号分隔。 支持的自定义算子编译方式及路径配置： - 自定义算子包：编译成自定义算子包，且算子包安装到指定路径下（默认路径无需配置该环境变量），配置该环境变量为算子包的安装路径。 - 动态库：编译成动态库时，需配置动态库的安装路径。此时也可以通过动态库链接的方式使用动态库，动态库链接优先级高于环境变量配置的方式。 动态库编译和自定义算子包编译功能同时使用时，前者生成的动态库优先级更高。
+    example: '如下示例中，和为开发者指定的算子包安装目录，和是动态库编译产物的存放目录，编译产物的优先级为2>4>1>3。  export ASCEND_CUSTOM_OPP_PATH= /vendors/vendor_name1:/op_api/lib/:/vendors/vendor_name3:/op_api/lib/  #### 使用约束 无'
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0147.html
+  - name: ASCEND_WORK_PATH
+    description: 若开发者期望编译运行过程中产生的文件落盘到归一路径，可通过此环境变量设置单机独享文件的存储路径，各组件编译运行过程中产生的单机独享文件会存储到此环境变量定义的路径中。 - 路径支持大小写字母（a-z，A-Z）、数字（0-9）、下划线（_）、中划线（-）、句点（.）、中文字符。 - 若指定的路径存在且有效，请确保执行用户具有读、写、执行权限；若指定的路径不存在，软件会自动创建。 ${ASCEND_WORK_PATH}路径下的文件如下表所示。 | 落盘文件 | 文件内容 | 优先级说明 | |---|---|---| | ${ASCEND_WORK_PATH}/aoe_data/ | 记录AOE调优过程中的相关信息，包括调优任务名称、调优耗时、调优前后的模型执行时间/算子执行时间、知识库命中信息等。 | ASCEND_WORK_PATH > AOE默认调优工作目录 AOE默认调优工作目录为：
+    example: export ASCEND_WORK_PATH=/repo/task001/172.16.1.12_01_03  配置的路径需要为已存在目录，且执行用户具有读、写、执行权限，该路径的最后一段字段需要可唯一标识当前机器。 建议此唯一标识通过machineID、vmID与dockerID拼接组成，如：“machineID_vmID_dockerID”。 - machineID：当前机器的IP地址。 - vmID：虚拟机ID。 - dockerID：Docker容器ID。 如果您是物理机环境，仅通过IP地址标识即可。
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0007.html
+  - name: CANN_KNOWLEDGE_BANK_PROCESS_NUM
+    description: CANN_KNOWLEDGE_BANK_PROCESS_NUM用于设置知识库管理模块查询知识库的进程数。 取值范围[0, 8]。默认值8（即在算子编译阶段，默认会启动8个进程查询知识库）。 启动的进程数越多，消耗的host内存越多，编译越快。 启动的进程数越少，消耗的host内存越少，编译越慢。 当CANN_KNOWLEDGE_BANK_PROCESS_NUM=0时，表示不启动知识库管理模块，不查询知识库。
+    example: export CANN_KNOWLEDGE_BANK_PROCESS_NUM=5
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0148.html

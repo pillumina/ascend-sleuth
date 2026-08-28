@@ -1,0 +1,65 @@
+id: ascend-log-env
+type: env-var-table
+title: 日志（ASCEND_LOG/ASCEND_GLOBAL/ASCEND_SLOG 系列）环境变量
+summary: CANN 环境变量参考（envref 系列）：日志（ASCEND_LOG/ASCEND_GLOBAL/ASCEND_SLOG 系列），10 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas 训练系列产品
+  - Atlas 推理系列产品
+  - Atlas A2 训练系列产品
+  - Atlas A2 推理系列产品
+  - Atlas A3 训练系列产品
+  - Atlas A3 推理系列产品
+  - Atlas 350 加速卡
+  - Atlas 200I/500 A2 推理产品
+related_references: [ascend-log-levels, ascend-slog-conf, ascend-trace-logs]
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: ASCEND_COREDUMP_SIGNAL
+    description: 设置trace处理的core dump信号量。 取值如下： - none：关闭表1中的信号集。 - 非none的其他值：打开表1中的信号集。 trace默认开启堆栈功能，进程触发以下异常场景（信号）时，将栈信息记录在stackcore_tracer_*.txt文件中。 | 信号 | 信号值 | |---|---| | SIGINT | 2 | | SIGQUIT | 3 | | SIGILL | 4 | | SIGTRAP | 5 | | SIGABRT | 6 | | SIGBUS | 7 | | SIGFPE | 8 | | SIGSEGV | 11 | | SIGTERM | 15 | | SIGXCPU | 24 | | SIGXFSZ | 25 | | SIGSYS | 31 | | SIGRTMIN+1 | 35 | 若业务部署时，使用到了与表1中的信号注册有冲突的功能（比如J
+    example: export ASCEND_COREDUMP_SIGNAL=none
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0127.html
+  - name: ASCEND_GLOBAL_EVENT_ENABLE
+    description: 设置应用类日志是否开启Event日志。 取值为： - 0：关闭Event日志。 - 1：开启Event日志，默认值为1。 - 其他值为非法值。 - 通过执行echo $ASCEND_GLOBAL_EVENT_ENABLE命令可以查看环境变量设置的值。 - 若环境变量未配置/配置为非法值/配置为空，采用默认值。
+    example: export ASCEND_GLOBAL_EVENT_ENABLE=0
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0124.html
+  - name: ASCEND_GLOBAL_LOG_LEVEL
+    description: 设置应用类日志的日志级别及各模块日志级别，仅支持调试日志。 取值为： - 0：对应DEBUG级别。 - 1：对应INFO级别。 - 2：对应WARNING级别。 - 3：对应ERROR级别，默认为ERROR级别。 - 4：对应NULL级别，不输出日志。 - 其他值为非法值。 - 通过执行echo $ASCEND_GLOBAL_LOG_LEVEL命令可以查看环境变量设置的日志级别。 - 若环境变量未配置/配置为非法值/配置为空，采用默认日志级别。 - 设置为DEBUG级别后，可能会因为日志流量过大影响业务性能。
+    example: export ASCEND_GLOBAL_LOG_LEVEL=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0122.html
+  - name: ASCEND_HOST_LOG_FILE_NUM
+    description: Ascend EP场景下，设置应用类日志目录（plog和device-id）下存储每个进程日志文件的数量。 环境变量取值范围为[1, 1000]，默认值为10。 - 通过执行echo $ASCEND_HOST_LOG_FILE_NUM命令可以查看环境变量设置的值。 - 若环境变量未配置/配置为非法值/配置为空，表示采用日志默认值。 - 如果plog和device-id日志目录下存储的单个进程的日志文件数量超过设置的值，将会自动删除最早的日志。另外每个plog-pid_*.log或device-pid_*.log日志文件的大小最大固定为20MB。如果超过该值，会生成新的日志文件。
+    example: export ASCEND_HOST_LOG_FILE_NUM=20
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0126.html
+  - name: ASCEND_LOG_DEVICE_FLUSH_TIMEOUT
+    description: 指定Device侧应用类日志回传到Host侧的延时时间。 业务进程退出前，系统有2000ms的默认延时将Device侧应用类日志回传到Host侧，超时后业务进程退出。未回传到Host侧的日志直接在Device侧落盘（路径为/var/log/npu/slog）。通过该环境变量可以修改该延时时间，取值范围为[0, 180000]，单位为ms，默认值为2000。 - 通过执行echo $ASCEND_LOG_DEVICE_FLUSH_TIMEOUT命令可以查看环境变量设置的值。 - 若环境变量未配置/配置为非法值/配置为空，表示采用日志默认值。 - 如果业务进程不需要等待所有Device侧应用类日志回传到Host侧，可将环境变量设置为0。 - 针对业务进程退出后仍然有Device侧应用类日志未回传到Host侧这种情况，建议设置更大的延时时间，具体调节的大小可以根据device-app-pid的日
+    example: export ASCEND_LOG_DEVICE_FLUSH_TIMEOUT=5000
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0125.html
+  - name: ASCEND_LOG_SYNC_SAVE
+    description: 指定日志拥塞处理方式。 - 0：默认处理方式，在日志拥塞或IO访问性能差的情况下，为保证业务性能不劣化，系统可能会丢失日志。 - 1：在日志拥塞或IO访问性能差的情况下，不丢失日志。该方式下，为便于问题定位，建议配置为1。 如果用户通过ASCEND_GLOBAL_LOG_LEVEL、ASCEND_MODULE_LOG_LEVEL调整了日志级别，则系统按照不丢失日志处理
+    example: export ASCEND_LOG_SYNC_SAVE=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0128.html
+  - name: ASCEND_MODULE_LOG_LEVEL
+    description: 设置应用类日志的各模块日志级别，仅支持调试日志。 格式为：export ASCEND_MODULE_LOG_LEVEL=module_name=module_level - module_name：为模块名，支持设置为GE、ASCENDCL、DRV、RUNTIME等，详细请参见CANN软件安装目录/include/base/log_types.h。 - module_level：为对应模块的日志级别，支持设置为如下值。0：对应DEBUG级别。 - 1：对应INFO级别。 - 2：对应WARNING级别。 - 3：对应ERROR级别。 - 4：对应NULL级别，不输出日志。 - 其他值为非法值。 - 等号前后无空格，冒号为英文格式且前后无空格；如果同时设置多个模块日志级别，模块间使用冒号间隔。如果命令行格式错误（如存在除等号和冒号以外其他符号）、包括了不支持的模块名称，则命令行整体不生效。
+    example: export ASCEND_MODULE_LOG_LEVEL=TBE=0:RUNTIME=0
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0123.html
+  - name: ASCEND_PROCESS_LOG_PATH
+    description: 设置日志落盘路径。 日志存储时如果不存在该目录，会自动创建该目录；如果存在则直接存储。 - 通过执行echo $ASCEND_PROCESS_LOG_PATH命令可以查看环境变量设置的路径。 - 日志落盘优先级为：ASCEND_PROCESS_LOG_PATH > ASCEND_WORK_PATH > 日志默认存储路径（$HOME/ascend/log）
+    example: export ASCEND_PROCESS_LOG_PATH=$HOME/log/  可指定日志落盘路径为任意有读写权限的目录。
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0120.html
+  - name: ASCEND_SLOG_PRINT_TO_STDOUT
+    description: 是否开启日志打印。开启后，日志将不会保存在log文件中，而是将产生的日志直接打印显示。 取值为： - 0：关闭日志打印，即日志采用默认输出方式，将日志保存在log文件中。 - 1：开启日志打印。 - 其他值为非法值。 - 通过执行echo $ASCEND_SLOG_PRINT_TO_STDOUT命令可以查看环境变量设置的值。 - 若环境变量未配置/配置为非法值/配置为空，表示采用日志默认输出方式。
+    example: export ASCEND_SLOG_PRINT_TO_STDOUT=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0121.html
+  - name: ASCEND_TRACE_RECORD_NUM
+    description: 设置trace日志文件的老化规格，取值范围[10, 1000]。 具体指$HOME/ascend/atrace/trace_{进程组pid}_{首次加载trace动态库的进程pid}_{首次加载trace动态库的时间戳}/目录下“schedule_event_{当前进程pid}_{目录生成时的时间戳}”子目录的老化规格。Host侧的trace日志文件和Device侧的trace日志文件分开计数，配置后将分别控制Host和Device的目录数量。
+    example: export ASCEND_TRACE_RECORD_NUM=15  表示$HOME/ascend/atrace/trace_{进程组pid}_{首次加载trace动态库的进程pid}_{首次加载trace动态库的时间戳}/下最多生成15个名称为“schedule_event_{当前进程pid}_{目录生成时的时间戳}”的目录。超过该目录数量后，会自动删除时间戳较老的目录。
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0140.html

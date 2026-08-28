@@ -1,0 +1,37 @@
+id: fault-collect-env
+type: env-var-table
+title: 故障信息收集环境变量
+summary: CANN 环境变量参考（envref 系列）：故障信息收集，3 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas 350 加速卡
+  - Atlas A3 训练系列产品
+  - Atlas A3 推理系列产品
+  - Atlas A2 训练系列产品
+  - Atlas A2 推理系列产品
+  - Atlas 200I/500 A2 推理产品
+  - Atlas 推理系列产品
+  - Atlas 训练系列产品 MC62CM12A AI处理器
+  - Atlas 训练系列产品
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: ASCEND_DUMP_PATH
+    description: 指定异常算子Dump信息的存储路径，可配置为绝对路径或执行程序的相对路径。指定的路径支持大小写字母（a-z，A-Z）、数字（0-9）、下划线（_）、中划线（-）、句点（.）、中文字符，执行用户需具有读、写、执行权限，若路径不存在，系统会自动创建该路径中的目录。不指定路径时，异常算子Dump信息默认存放在应用程序的当前执行目录。 使用该环境变量需关注以下事项： - 通过ASCEND_DUMP_SCENE环境变量开启异常算子Dump时，优先级从高到低依次为：ASCEND_DUMP_PATH环境变量 > ASCEND_WORK_PATH环境变量 > 默认路径（应用程序的当前执行目录）。 - 通过配置文件（aclInit接口、aclmdlSetDump接口）开启异常算子Dump时，优先级从高到低依次为：ASCEND_DUMP_PATH环境变量 > ASCEND_WORK_PATH环境变量 > 配置
+    example: export ASCEND_DUMP_PATH=/repo/task001
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0130.html
+  - name: ASCEND_DUMP_SCENE
+    description: 在复现问题场景时，使用该环境变量开启异常算子Dump，导出异常算子的输入输出数据、workspace信息和Tiling信息。 支持如下取值： - aic_err_brief_dump：表示轻量化exception dump，用于导出AI Core错误算子的输入&输出、workspace数据。 - aic_err_norm_dump：表示普通exception dump，在轻量化exception dump基础上，还会导出Shape、Data Type、Format以及属性信息。 - aic_err_detail_dump：在轻量化exception dump基础上，还会导出AI Core的内部存储、寄存器以及调用栈信息。配置该选项时，有以下注意事项： 该选项仅支持以下型号：Atlas A2 训练系列产品/Atlas A2 推理系列产品 Atlas A3 训练系列产品/Atlas A3 推理
+    example: export ASCEND_DUMP_SCENE=aic_err_brief_dump
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0164.html
+  - name: NPU_COLLECT_PATH
+    description: 在复现问题场景下，使用该环境变量指定故障信息（包括dump图、AI Core算子异常数据、算子编译信息等）的保存路径，可配置为绝对路径或相对路径（此处是相对执行程序或命令的路径），执行用户需对该路径具有读、写、可执行权限，若路径不存在，系统会自动创建该路径中的目录。 注意，使用该环境变量需关注以下事项： - 设置该环境变量，默认自动开启异常算子dump数据采集功能。如果算子输入或输出包含用户的敏感信息，则存在信息泄露风险。 - 设置该环境变量之后转换模型，在编译om模型时会增加调试信息，导致om模型文件增大，若关注内存规划或内存资源有限时，则在调试完成后及时删除该环境变量。 - 设置该环境变量，仅收集L1 exception dump信息，不收集模型Dump信息、单算子Dump信息、溢出算子Dump信息、L0 exception dump信息。L1 exception dump信息存放目录
+    example: export NPU_COLLECT_PATH=$HOME/demo/
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0163.html

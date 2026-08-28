@@ -1,0 +1,99 @@
+id: tf-adapter-env
+type: env-var-table
+title: TF Adapter（TF 模型迁移适配）环境变量
+summary: CANN 环境变量参考（envref 系列）：TF Adapter（TF 模型迁移适配），19 个变量；description 为官方原文，platforms 取自官方 models 声明
+sources:
+- type: official-doc
+  url: CANN 环境变量参考（华为，hiascend.com maintenref/envvar）
+  version: CANN 9.0（envref 系列）
+  fetched_at: '2026-08-29'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - Atlas 训练系列产品
+  - Atlas A2 训练系列产品
+  - Atlas A2 推理系列产品
+  - Atlas 350 加速卡
+  - Atlas A3 训练系列产品
+  - Atlas A3 推理系列产品
+  - Atlas 300I Duo 推理卡
+status: draft
+last_verified: '2026-08-29'
+content:
+  variables:
+  - name: CM_CHIEF_DEVICE
+    description: TensorFlow分布式训练或推理场景下，用户可以选择不使用rank table文件，通过组合使用环境变量CM_CHIEF_IP、CM_CHIEF_PORT、CM_CHIEF_DEVICE、CM_WORKER_SIZE、CM_WORKER_IP的方式自动生成资源信息，完成集合通信组件初始化。 本环境变量“CM_CHIEF_DEVICE”用于指定Master节点中统计Server端集群信息的Device逻辑ID。 该环境变量需要配置为整数，取值范围：[0, Server内的最大Device数量-1]。
+    example: export CM_CHIEF_DEVICE=0
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0052.html
+  - name: CM_CHIEF_IP
+    description: TensorFlow分布式训练或推理场景下，用户可以选择不使用rank table文件，通过组合使用环境变量CM_CHIEF_IP、CM_CHIEF_PORT、CM_CHIEF_DEVICE、CM_WORKER_SIZE、CM_WORKER_IP的方式自动生成资源信息，完成集合通信组件初始化。 本环境变量“CM_CHIEF_IP”用于配置Master节点的监听Host IP。 格式为字符串，要求为常规IPv4或IPv6格式。
+    example: export CM_CHIEF_IP=192.168.1.1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0050.html
+  - name: CM_CHIEF_PORT
+    description: TensorFlow分布式训练或推理场景下，用户可以选择不使用rank table文件，通过组合使用环境变量CM_CHIEF_IP、CM_CHIEF_PORT、CM_CHIEF_DEVICE、CM_WORKER_SIZE、CM_WORKER_IP的方式自动生成资源信息，完成集合通信组件初始化。 本环境变量“CM_CHIEF_PORT”用于配置Master节点的监听端口。 该环境变量需要配置为整数，取值范围“0~65520”，请确保端口未被其他进程占用。
+    example: export CM_CHIEF_PORT=6000
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0051.html
+  - name: CM_WORKER_IP
+    description: TensorFlow分布式训练或推理场景下，用户可以选择不使用rank table文件，通过组合使用环境变量CM_CHIEF_IP、CM_CHIEF_PORT、CM_CHIEF_DEVICE、CM_WORKER_SIZE、CM_WORKER_IP的方式自动生成资源信息，完成集合通信组件初始化。 本环境变量“CM_WORKER_IP”，用于配置当前Device和Master节点进行信息交换时所用的网卡IP。 格式为字符串，要求为常规IPv4或IPv6格式。
+    example: export CM_WORKER_IP=192.168.0.1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0054.html
+  - name: CM_WORKER_SIZE
+    description: TensorFlow分布式训练或推理场景下，用户可以选择不使用rank table文件，通过组合使用环境变量CM_CHIEF_IP、CM_CHIEF_PORT、CM_CHIEF_DEVICE、CM_WORKER_SIZE、CM_WORKER_IP的方式自动生成资源信息，完成集合通信组件初始化。 本环境变量“CM_WORKER_SIZE”用于配置本次业务通信域内Device的总数量。 该环境变量需要配置为整数，取值范围“0~32768”。
+    example: export CM_WORKER_SIZE=8
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0053.html
+  - name: ENABLE_FORCE_V2_CONTROL
+    description: TensorFlow 1.15训练场景下，如果输入是动态shape，由于tf.case/tf.cond/tf.while_loop这些API对应TensorFlow V1版本的控制流算子（例如Switch、Merge、Enter、LoopCond、NextIteration、Exit、ControlTrigger等）不支持动态shape，仅TensorFlow V2版本的控制流算子（例如If、Case、While、For、PartitionedCall等）支持动态shape，因此，如果用户的训练脚本中使用了这些API，需要将V1版本的控制流算子转换为V2版本，用于支持动态shape功能。另外，如果网络中的分支结构较多，采用V1版本的控制流算子可能导致流数超限，此时也需要将V1版本的控制流算子转换成V2版本算子解决。 此环境变量设置为“1”时，代表开启V1版本的控制流算子转换成V2版本算子的
+    example: export ENABLE_FORCE_V2_CONTROL=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0037.html
+  - name: ENABLE_HF32_EXECUTION
+    description: 针对TensorFlow 1.15网络，是否启用HF32自动代替FP32数据类型的功能，当前版本此环境变量仅针对Conv类算子与Matmul类算子生效。 - "1"：启用FP32数据类型自动转换为HF32数据类型的功能。 - "0"：关闭FP32数据类型自动转换为HF32数据类型的功能。 - 若不配置此环境变量，针对Conv类算子，默认使能FP32转换为HF32，针对Matmul类算子，默认不使能FP32转换为HF32。 HF32是昇腾推出的专门用于算子内部计算的单精度浮点类型，与其他常用数据类型的比较如下图所示。可见，HF32与FP32支持相同的数值范围，但尾数位精度（11位）却接近FP16（10位）。通过降低精度让HF32单精度数据类型代替原有的FP32单精度数据类型，可大大降低数据所占空间大小，实现性能的提升。图1 HF32与其他数据类型比较
+    example: export ENABLE_HF32_EXECUTION=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0038.html
+  - name: JOB_ID
+    description: TensorFlow训练与在线推理场景下，可通过此环境变量自定义任务ID。 建议配置的字符串中仅包含大小写字母、数字、中划线或下划线，不建议使用以0开头的纯数字作为JOB_ID。
+    example: export JOB_ID=10087
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0036.html
+  - name: LOSS_NOW
+    description: TensorFlow 1.15训练场景下，若通过“experimental_accelerate_train_mode”参数或者“accelerate_train_mode”参数触发了训练加速功能，可通过此环境变量设置NPU上当前迭代的loss值。 - 若训练脚本中使用session配置，关于该环境变量使用场景的详细介绍可参见《TF Adapter接口 (1.x)》中“session配置 > session配置参数说明 > 试验参数”中的“experimental_accelerate_train_mode”参数的介绍。 - 若训练脚本中使用NPURunConfig配置，关于该环境变量使用场景的详细介绍可参见《TF Adapter接口 (1.x)》中“npu_bridge.estimator.npu.npu_config > ExperimentalConfig构造函数”中的“accele
+    example: export LOSS_NOW=7.0
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0045.html
+  - name: NPU_DEBUG
+    description: TensorFlow 2.6.5训练与在线推理场景下，用于开启TF Adapter的Debug级别执行日志。 - "1"或"true"：开启Debug级别执行日志 - "0"或"false"：关闭Debug级别执行日志
+    example: export NPU_DEBUG=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0039.html
+  - name: NPU_DUMP_GRAPH
+    description: TensorFlow 2.6.5训练与在线推理场景下，用于开启TF Adapter图Dump功能。 - "1"或"true"：开启图Dump功能 - "0"或"false"：关闭图Dump功能
+    example: export NPU_DUMP_GRAPH=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0040.html
+  - name: NPU_ENABLE_PERF
+    description: TensorFlow 2.6.5训练与在线推理场景下，用于开启TF Adapter图耗时打印功能。 - "1"或"true"：开启图耗时打印功能 - "0"或"false"：关闭图耗时打印功能 开启TF Adapter图耗时打印功能后，开发者可搜索日志中的“Graph engine run”与“cost”关键字查询相关耗时，例如： ``` Graph engine run 1 times for graph 0 cost 11257 ms ```
+    example: export NPU_ENABLE_PERF=1
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0041.html
+  - name: NPU_LOOP_SIZE
+    description: TensorFlow 2.6.5训练与在线推理场景下，用于设置NPU上循环下沉的次数。
+    example: export NPU_LOOP_SIZE=32
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0042.html
+  - name: RANK_ID
+    description: TensorFlow分布式训练或推理场景下，通过此环境变量指定当前进程在集合通信进程组中对应的rank标识。
+    example: export RANK_ID=0
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0048.html
+  - name: RANK_SIZE
+    description: TensorFlow分布式训练或推理场景下，通过此环境变量指定当前训练进程对应的Device数量。
+    example: export RANK_SIZE=2
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0049.html
+  - name: RANK_TABLE_FILE
+    description: TensorFlow分布式训练或推理场景下，通过此环境变量指定参与集合通信的AI处理器的rank table资源配置文件，包含rank table文件路径和文件名。 关于rank table配置文件的说明可参见《HCCL集合通信库》中的“相关参考 > 集群信息配置”章节。
+    example: export RANK_TABLE_FILE=/home/test/ranktable.json
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0047.html
+  - name: STEP_NOW
+    description: TensorFlow 1.15训练场景下，若通过“experimental_accelerate_train_mode”参数或者“accelerate_train_mode”参数触发了训练加速功能，可通过此环境变量设置NPU上当前的执行步数。 - 若训练脚本中使用session配置，关于该环境变量使用场景的详细介绍可参见《TF Adapter接口 (1.x)》中“session配置 > session配置参数说明 > 试验参数”中的“experimental_accelerate_train_mode”参数的介绍。 - 若训练脚本中使用NPURunConfig配置，关于该环境变量使用场景的详细介绍可参见《TF Adapter接口 (1.x)》中“npu_bridge.estimator.npu.npu_config > ExperimentalConfig构造函数”中的“accelerat
+    example: export STEP_NOW=100
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0043.html
+  - name: TARGET_LOSS
+    description: TensorFlow 1.15训练场景下，若通过“experimental_accelerate_train_mode”参数或者“accelerate_train_mode”参数触发了训练加速功能，可通过此环境变量设置NPU上的目标训练loss值。 - 若训练脚本中使用session配置，关于该环境变量使用场景的详细介绍可参见《TF Adapter接口 (1.x)》中“session配置 > session配置参数说明 > 试验参数”中的“experimental_accelerate_train_mode”参数的介绍。 - 若训练脚本中使用NPURunConfig配置，关于该环境变量使用场景的详细介绍可参见《TF Adapter接口 (1.x)》中“npu_bridge.estimator.npu.npu_config > ExperimentalConfig构造函数”中的“accele
+    example: export TARGET_LOSS=3.0
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0046.html
+  - name: TOTAL_STEP
+    description: TensorFlow 1.15训练场景下，若通过“experimental_accelerate_train_mode”参数或者“accelerate_train_mode”参数触发了训练加速功能，可通过此环境变量设置NPU上总训练步数。 - 若训练脚本中使用session配置，关于该环境变量使用场景的详细介绍可参见《TF Adapter接口 (1.x)》中“session配置 > session配置参数说明 > 试验参数”中的“experimental_accelerate_train_mode”参数的介绍。 - 若训练脚本中使用NPURunConfig配置，关于该环境变量使用场景的详细介绍可参见《TF Adapter接口 (1.x)》中“npu_bridge.estimator.npu.npu_config > ExperimentalConfig构造函数”中的“accelerate_
+    example: export TOTAL_STEP=10000
+    url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/envvar/envref_07_0044.html
