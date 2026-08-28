@@ -1,0 +1,93 @@
+id: hccl-error-codes
+type: error-code
+title: HCCL（集合通信） 错误码（EI，20 条）
+summary: CANN 商用版 9.0.0《错误码参考》HCCL（集合通信）族 20 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+sources:
+- type: official-doc
+  url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
+  version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
+  fetched_at: '2026-08-28'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - cross
+  versions:
+    cann: 9.0.0
+related_references:
+- ascend-error-code-structure
+status: draft
+last_verified: '2026-08-28'
+content:
+  errors:
+  - code: EI0001
+    meaning: 'Config_Error_Invalid_Environment_Variable：Value %s for environment variable [%s] is invalid. Expected value: %s.'
+    module: HCCL Errors
+  - code: EI0002
+    meaning: 'Communication_Error_Timeout：An timeout occurs when the Notify register waits for execution. Waiting peer end: %s; task information: %s; communication operator information: %s; communicator: %s.'
+    solution: 1. If this error is reported on part of these ranks, check other ranks to see whether other errors have been reported earlier. 2. If this error is reported for all ranks, check whether the error reporting time is consistent (the maximum difference must not exceed 1800s). If not, locate the cause or set the HCCL_EXEC_TIMEOUT environment variable to a larger value. 3. Ensure that the number of training samples of each NPU is consistent. 4. Check whether the completion queue element (CQE) of the error exists in the plog(grep -rn 'error cqe'). If so, check the network connection status. For details about the troubleshooting method, search for the keyword \"EI0002\" on https://www.hiascend.com/en/document/.
+    module: HCCL Errors
+  - code: EI0003
+    meaning: Invalid_Argument_Collective_Communication_Operator：Failed to verify parameters of operator %s (operator name). Value %s for parameter %s is invalid. The expected value is %s.
+    module: HCCL Errors
+  - code: EI0004
+    meaning: 'File_Operation_Error_Parse：Failed to parse the ranktable file %s. Reason: %s'
+    module: HCCL Errors
+  - code: EI0005
+    meaning: Invalid_Argument：The arguments for collective communication are inconsistent between ranks, ccl_op %s, group %s, parameter %s, local end %s, remote end %s.
+    module: HCCL Errors
+  - code: EI0006
+    meaning: 'Communication_Error_Get_Socket：Getting socket times out. Reason: %s'
+    module: HCCL Errors
+  - code: EI0007
+    meaning: 'Resource_Error：Failed to allocate resource %s with info %s. Reason: Resources are exhausted.'
+    module: HCCL Errors
+  - code: EI0008
+    meaning: Package_Error_Incorrect_HCCL_Version：The HCCL versions are inconsistent. The local version is %s, while the remote version is %s.
+    solution: Install the same HCCL version.
+    module: HCCL Errors
+  - code: EI0009
+    meaning: 'Communication_Error_Initialize_Transport：Device %s transport init error. Reason: %s.'
+    solution: 'Use the following hccn_tool commands to check whether the port link is down. (The scope of i represents the number of NPUs of each node. 8 is used as an example.) 1. for i in {0..7}; do hccn_tool -i $i -optical -g; done | grep present: Check whether the optical module is in position. 2. for i in {0..7}; do hccn_tool -i $i -ip -g; done. Check whether the IP address is configured. 3. for i in {0..7}; do hccn_tool -i $i -lldp -g: Check whether the switch is connected.'
+    module: HCCL Errors
+  - code: EI0010
+    meaning: 'Communication_Error_P2P：P2P communication failed. Reason: %s'
+    solution: Ensure that the NPU card is normal and entering environment variables 'export HCCL_INTRA_ROCE_ENABLE=1'.
+    module: HCCL Errors
+  - code: EI0011
+    meaning: Resource_Error_Insufficient_Device_Memory：Failed to allocate [%s] bytes of NPU memory.
+    solution: Stop unnecessary processes and ensure the required memory is available.
+    module: HCCL Errors
+  - code: EI0012
+    meaning: 'Execution_Error_SDMA：SDMA memory copy task exception occurred. Remote rank: [%s]. Base information: [%s]. Task information: [%s]. Communicator information: [%s].'
+    solution: 1. Check whether the network link is abnormal during the execution. 2. Check whether a process in the cluster exits before an error is reported. If yes, locate the cause of the process exit. 3. Check whether the size of the input/output memory passed to the communication operator meets the expectation, and whether the input/output memory or communicator is freed or destroyed before the operator execution is complete.
+    module: HCCL Errors
+  - code: EI0013
+    meaning: 'Execution_Error_ROCE_CQE：An error CQE occurred during operator execution. Local information: server %s, device ID %s, device IP %s. Peer information: server %s, device ID %s, device IP %s.'
+    solution: 1. Check whether the network devices between the two ends are abnormal. 2. Check whether the peer process exits first. If yes, check the cause of the process exit.
+    module: HCCL Errors
+  - code: EI0014
+    meaning: 'Config_Error_Ranktable：Value %s for ranktable variable %s is invalid. Expected value: %s.'
+    solution: Try again with a valid cluster configuration in the ranktable file. Ensure that the configuration matches the operating environment.
+    module: HCCL Errors
+  - code: EI0015
+    meaning: 'Communication_Error_Ranktable_Detect：Failed to collect cluster information of the communicator based on rootInfo detection. Reason: %s.'
+    solution: 1. Check whether all ranks in the communicator have delivered the communicator creation interface. 2. Check the connectivity between the host networks of all nodes and the server node. 3. Check whether the HCCL_SOCKET_IFNAME environment variable of all nodes is correctly configured. 4. Increase the timeout by configuring the HCCL_CONNECT_TIMEOUT environment variable.
+    module: HCCL Errors
+  - code: EI0016
+    meaning: 'Config_Error：Value %s for config %s is invalid. Expected value: %s.'
+    module: HCCL Errors
+  - code: EI0017
+    meaning: Config_Error_Ranktable：Config %s is missing in the ranktable file.
+    module: HCCL Errors
+  - code: EI0018
+    meaning: 'Execution_Error_UB_CQE：An error CQE occurred during operator execution. Local information: server %s, device ID %s, device IP %s. Peer information: server %s, device ID %s, device IP %s.'
+    solution: 1. Check whether the network devices between the two ends are abnormal. Generally, packet loss occurs due to intermittent disconnection of the port. If the ping test fails, check whether the port is linkdown or the network configuration is incorrect. 2. Check whether the peer process exits first. If yes, check the reason why the process exit. 3.Use the RAS fault check mechanism to check whether the hardware of the HBM or UB chip processing module of either device is abnormal.If the hardware is abnormal, contact Huawei technical support.
+    module: HCCL Errors
+  - code: EI0019
+    meaning: 'Communication_Error_Bind_IP_Port：Failed to enable listening for the host network adapter socket. Reason: %s'
+    solution: 1. Check whether this port has been occupied by another process. If yes, you can make adjustment using the environment variable HCCL_IF_BASE_PORT and use sysctl -w net.ipv4.ip_local_reserved_ports=****-**** to adjust the scope of reserved ports. 2. Check whether the service process is started multiple times on a device during this service.
+    module: HCCL Errors
+  - code: EI0020
+    meaning: 'Communication_Error_Bind_IP_Port：Failed to enable listening for the host network adapter socket. Reason: %s'
+    solution: Check whether the single-card multi-process scenario is used. If yes, configure the port number using the environment variable HCCL_NPU_SOCKET_PORT_RANGE.
+    module: HCCL Errors

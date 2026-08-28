@@ -1,0 +1,49 @@
+id: amct-error-codes
+type: error-code
+title: AMCT（模型压缩） 错误码（EO，7 条）
+summary: CANN 商用版 9.0.0《错误码参考》AMCT（模型压缩）族 7 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+sources:
+- type: official-doc
+  url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
+  version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
+  fetched_at: '2026-08-28'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - cross
+  versions:
+    cann: 9.0.0
+related_references:
+- ascend-error-code-structure
+status: draft
+last_verified: '2026-08-28'
+content:
+  errors:
+  - code: EO0001
+    meaning: 'Config_Error：Value %s for configuration item %s in configuration file %s is invalid. Expected value: %s'
+    solution: Check and rectify the error based on the error message. For details, see the documentation on the official website.
+    module: AMCT Errors
+  - code: EO0002
+    meaning: 'Invalid_Argument：Invalid quantization configuration. Reason: %s'
+    solution: Check and rectify the error based on the error message. For details, see the documentation on the official website.
+    module: AMCT Errors
+  - code: EO0003
+    meaning: 'Invalid_Model：Invalid model. Reason: %s'
+    solution: Check and rectify the error based on the error message. For details, see the documentation on the official website.
+    module: AMCT Errors
+  - code: EO0004
+    meaning: 'Config_Error：The content of configuration item %s in configuration file %s is invalid. Reason: %s'
+    solution: Check and rectify the error based on the error message. For details, see the documentation on the official website.
+    module: AMCT Errors
+  - code: EO0005
+    meaning: 'Config_Error：The content of configuration file %s abnormal. Reason: %s'
+    solution: Check and rectify the error based on the error message. For details, see the documentation on the official website.
+    module: AMCT Errors
+  - code: EO0006
+    meaning: 'Config_Error：Value %s for configuration item %s in configuration file %s is invalid. Reason: %s'
+    solution: Check and rectify the error based on the error message. For details, see the documentation on the official website.
+    module: AMCT Errors
+  - code: EO9999
+    meaning: Inner_Error：An unknown error occurred. Check logs.
+    solution: Check and rectify the error based on the error message. For details, see the documentation on the official website.
+    module: AMCT Errors

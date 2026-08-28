@@ -1,0 +1,85 @@
+id: operator-error-codes
+type: error-code
+title: 算子公共错误码与算子 API（EZ） 错误码（EZ，16 条）
+summary: CANN 商用版 9.0.0《错误码参考》算子公共错误码与算子 API（EZ）族 16 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+sources:
+- type: official-doc
+  url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
+  version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
+  fetched_at: '2026-08-28'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - cross
+  versions:
+    cann: 9.0.0
+related_references:
+- ascend-error-code-structure
+status: draft
+last_verified: '2026-08-28'
+content:
+  errors:
+  - code: E76002
+    meaning: ONNX_Model_Data_Error：No ONNX parser is registered for optype [%s].
+    solution: Submit an issue to request for support at https://gitee.com/ascend, or remove this type of operators from your model.
+    module: Vector Operator Plugin Errors
+  - code: E80001
+    meaning: Invalid_Config_Value：The %s information is missing in the %s configuration file of OPP package
+    solution: Try to reinstall the OPP package.
+    module: Vector Operator Errors
+  - code: EZ0001
+    meaning: 'Invalid_Input_Shape：OP[%s] %sth input has incorrect shape[: %s], it should be[: %s].'
+    solution: '- Check whether the input shape is correct. - Dump GE Graph, find error node in graph and check the shape. 如何获取GE Graph以及GE Graph的详细介绍，请参见《ATC离线模型编译工具》中的“参考 > dump图详细信息”章节。 父主题： Public Operator Errors'
+    module: Public Operator Errors
+  - code: EZ0002
+    meaning: 'Invalid_Attr：OP[%s] attr[: %s], has incorrect value[: %s], it should be[: %s].'
+    solution: Check the value of the attribute in this api.
+    module: Public Operator Errors
+  - code: EZ0003
+    meaning: 'Invalid_Attr_Size：OP[%s] attr[: %s], has incorrect size[: %s], it should be[: %s].'
+    solution: Check the size of the attribute in this api.
+    module: Public Operator Errors
+  - code: EZ0004
+    meaning: Invalid_Input：OP[%s] get [%s] failed.
+    solution: '- Check the input information of the operator. - Dump GE Graph and check the input in graph. 如何获取GE Graph以及GE Graph的详细介绍，请参见《ATC离线模型编译工具》中的“参考 > dump图详细信息”章节。 父主题： Public Operator Errors'
+    module: Public Operator Errors
+  - code: EZ0005
+    meaning: 'Invalid_Input_ShapeSize：OP[%s] %sth input has incorrect shape size[: %s], it should be[: %s].'
+    solution: '- Check input dimensions. - Dump GE Graph, find error node in graph and check input dimension. 如何获取GE Graph以及GE Graph的详细介绍，请参见《ATC离线模型编译工具》中的“参考 > dump图详细信息”章节。 父主题： Public Operator Errors'
+    module: Public Operator Errors
+  - code: EZ0006
+    meaning: 'Invalid_Input_Format：OP[%s] %s has incorrect format[: %s], it should be %s.'
+    solution: '- Check input format. - Dump GE Graph, find error node in graph and check input format. 如何获取GE Graph以及GE Graph的详细介绍，请参见《ATC离线模型编译工具》中的“参考 > dump图详细信息”章节。 父主题： Public Operator Errors'
+    module: Public Operator Errors
+  - code: EZ0007
+    meaning: 'Invalid_Input_Dtype：OP[%s] %s has incorrect dtype[: %s], it should be %s.'
+    solution: '- Check input dtype. - Dump GE Graph, find error node in graph and check input dtype. 如何获取GE Graph以及GE Graph的详细介绍，请参见《ATC离线模型编译工具》中的“参考 > dump图详细信息”章节。 父主题： Public Operator Errors'
+    module: Public Operator Errors
+  - code: EZ0501
+    meaning: Unsupported_Operator：IR for Op [%s, optype [%s]], is not registered.
+    solution: Submit an issue to request for support at https://gitee.com/ascend, or remove this type of operators from your model.
+    module: Public Operator Errors
+  - code: EZ1001
+    meaning: AclNN_Parameter_Error：Parameter validation failed. Please check the log.
+    solution: Check whether the aclnn input param is correct.
+    module: AclNN Errors
+  - code: EZ3002
+    meaning: 'Unsupported_Operator：Optype [%s] of Ops kernel [%s] is unsupported. Reason: %s.'
+    solution: Submit an issue to request for support at https://gitee.com/ascend, or remove this type of operators from your model.
+    module: Public Operator Errors
+  - code: EZ3003
+    meaning: Unsupported_Operator：No supported Ops kernel and engine are found for [%s], optype [%s].
+    solution: '- Check that the OPP component is installed properly. - Submit an issue to request for the support of this operator type.'
+    module: Public Operator Errors
+  - code: EZ9010
+    meaning: Unsupported_Operator：No parser is registered for Op [%s, optype [%s]].
+    solution: Submit an issue to request for support at https://www.hiascend.com/support.
+    module: Public Operator Errors
+  - code: EZ9903
+    meaning: AclNN_Runtime_Error：The error information is not fixed. Check the error information according to the specific prompt.
+    solution: In this scenario, collect the plog when the fault occurs and locate the fault based on the plog.
+    module: AclNN Errors
+  - code: EZ9999
+    meaning: AclNN_Inner_Error：The error information is not fixed. Check the error information according to the specific prompt.
+    solution: '- Check whether the CANN package is correct. - Check whether the environment variable is correct.'
+    module: AclNN Errors

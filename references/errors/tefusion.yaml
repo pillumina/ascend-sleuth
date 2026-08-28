@@ -1,0 +1,65 @@
+id: tefusion-error-codes
+type: error-code
+title: TEFusion（融合算子） 错误码（E4，11 条）
+summary: CANN 商用版 9.0.0《错误码参考》TEFusion（融合算子）族 11 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+sources:
+- type: official-doc
+  url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
+  version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
+  fetched_at: '2026-08-28'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - cross
+  versions:
+    cann: 9.0.0
+related_references:
+- ascend-error-code-structure
+status: draft
+last_verified: '2026-08-28'
+content:
+  errors:
+  - code: E40001
+    meaning: 'Config_Error_Invalid_Environment_Variable：Value %s for environment variable %s is invalid when %s. Reason: %s.'
+    solution: Reset the environment variable by referring to the installation guide.
+    module: TEFusion Errors
+  - code: E40002
+    meaning: 'Environment_Error_Incorrect_Python_Version：Unsupported Python version: %s. Expected: %s or later.'
+    solution: Update Python to a supported version.
+    module: TEFusion Errors
+  - code: E40003
+    meaning: 'File_Operation_Error_Open：Failed to open the JSON file: %s.'
+    solution: Run your program again in a single-user environment, that is, ensure that no other user accesses the file.
+    module: TEFusion Errors
+  - code: E40020
+    meaning: 'Environment_Error_Import_Python_Module_Failed：Failed to import Python module %s. Reason: %s.'
+    solution: Check that all required components are properly installed and the specified Python path matches the Python installation directory. If the path does not match the directory, run set_env.sh in the installation package.
+    module: TEFusion Errors
+  - code: E40021
+    meaning: Compilation_Error：Failed to compile Op %s. oppath is %s and optype is %s.
+    solution: See the host log for details, and then check the Python stack where the error log is reported.
+    module: TEFusion Errors
+  - code: E40022
+    meaning: Invalid_Argument：Value %s for parameter %s is invalid. The value must be in the range of %s.
+    solution: NA
+    module: TEFusion Errors
+  - code: E40023
+    meaning: 'File_Operation_Error_Invalid_Path：Path %s for %s is invalid. Result: %s. Reason: %s.'
+    solution: NA
+    module: TEFusion Errors
+  - code: E40024
+    meaning: 'Environment_Error_Call_Python_Function_Failed：Failed to call Python Method %s. Reason: %s.'
+    solution: '- Check that the called function is correct or the Python dependency library is installed. - Check the CANN environment variable settings. - Reinstall the CANN package.'
+    module: TEFusion Errors
+  - code: W40010
+    meaning: 'Config_Error_Invalid_Environment_Variable：Value %s for environment variable %s is invalid. Result: %s. Reason: %s.'
+    solution: NA
+    module: TEFusion Errors
+  - code: W40011
+    meaning: 'Directory_Operation_Error_Create_Failed：Failed to create disk cache directory %s. Result: %s. Reason: %s.'
+    solution: Modify the permission or directory name and try again.
+    module: TEFusion Errors
+  - code: W40012
+    meaning: Invalid_Argument：Value %s for parameter %s is invalid. The value must be in the range of %s and defaults to %s.
+    solution: Modify the parameter according to the effective value range.
+    module: TEFusion Errors

@@ -1,0 +1,56 @@
+id: aoe-error-codes
+type: error-code
+title: AOE（图编译调优） 错误码（EG，11 条）
+summary: CANN 商用版 9.0.0《错误码参考》AOE（图编译调优）族 11 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+sources:
+- type: official-doc
+  url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
+  version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
+  fetched_at: '2026-08-28'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - cross
+  versions:
+    cann: 9.0.0
+related_references:
+- ascend-error-code-structure
+status: draft
+last_verified: '2026-08-28'
+content:
+  errors:
+  - code: EG0000
+    meaning: 'Invalid_Argument_Command：The command line argument is invalid. Reason: %s.'
+    solution: Run the aoe -h command to view the usage. For more details, refer to AOE Tool User Guide.
+    module: AOE Errors
+  - code: EG0001
+    meaning: 'Config_Error：The configuration argument is invalid. Reason: %s.'
+    module: AOE Errors
+  - code: EG0002
+    meaning: 'Config_Error_Invalid_Environment_Variable：The environment variable argument is invalid. Reason: %s.'
+    module: AOE Errors
+  - code: EG0004
+    meaning: 'Invalid_Argument_Command：The command line argument is invalid. Reason: %s.'
+    solution: For more details, refer to "AOE Tool User Guide".
+    module: AOE Errors
+  - code: EG0010
+    meaning: 'Directory_Operation_Error：Directory operation failed. Reason: %s.'
+    module: AOE Errors
+  - code: EG0011
+    meaning: 'File_Operation_Error：File operation failed. Reason: %s.'
+    module: AOE Errors
+  - code: EG0012
+    meaning: 'Environment_Error：Component loading failed. Reason: %s.'
+    module: AOE Errors
+  - code: EG0013
+    meaning: 'Invalid_Argument_Device_ID：Device operation failed. Reason: %s.'
+    module: AOE Errors
+  - code: EG2000
+    meaning: 'Communication_Error：Network communication failed. Reason: %s.'
+    module: AOE Errors
+  - code: EG2001
+    meaning: 'Permission_Error_Private_Key_Certificate_Verify_Failed：Verification of the private key or certificates failed. Reason: %s.'
+    module: AOE Errors
+  - code: WG0000
+    meaning: 'Resource_Error_Insufficient_Host_Memory：Memory check failed. Reason: %s.'
+    module: AOE Errors

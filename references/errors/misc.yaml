@@ -1,0 +1,51 @@
+id: misc-error-codes
+type: error-code
+title: Dump / RLTune / 队列调度（极小族合并） 错误码（EP/ED/EM，9 条）
+summary: CANN 商用版 9.0.0《错误码参考》Dump / RLTune / 队列调度（极小族合并）族 9 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+sources:
+- type: official-doc
+  url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
+  version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
+  fetched_at: '2026-08-28'
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - cross
+  versions:
+    cann: 9.0.0
+related_references:
+- ascend-error-code-structure
+status: draft
+last_verified: '2026-08-28'
+content:
+  errors:
+  - code: ED0000
+    meaning: Communication_Error：Failed to obtain the basic information about the remote device.
+    solution: Check that the device is operating normally.
+    module: RLTune Errors
+  - code: ED0001
+    meaning: 'Invalid_Argument：Value %s for parameter --soc_version is invalid. Reason: The SoC version does not match device %s.'
+    module: RLTune Errors
+  - code: ED0002
+    meaning: Config_Error_Invalid_Environment_Variable：The environment variable argument is invalid. Value %s for environment variable %s must be less than %s.
+    module: RLTune Errors
+  - code: EM9001
+    meaning: Inner_Error_Group_Attach_Failed：Failed to attach the queue_schedule process to the shared memory group.
+    solution: Obtain the device log and contact technical support at https://www.hiascend.com/support.
+    module: Queue Schedule Errors
+  - code: EM9002
+    meaning: Inner_Error_Queue_Scheduler_Init_Failed：Failed to initialize the queue_schedule process.
+    solution: Obtain the device log and contact technical support at https://www.hiascend.com/support.
+    module: Queue Schedule Errors
+  - code: EP0001
+    meaning: 'Config_Error：The content of configuration item %s in configuration file %s is invalid. Reason: %s.'
+    module: DUMP Errors
+  - code: EP0002
+    meaning: 'Config_Error：Value %s for configuration item %s in configuration file %s is invalid. Expected value: %s.'
+    module: DUMP Errors
+  - code: EP0003
+    meaning: 'Config_Error：Value %s for configuration item %s in configuration file %s is invalid. Reason: %s.'
+    module: DUMP Errors
+  - code: EP0004
+    meaning: 'File_Operation_Error_Parse：Failed to parse file %s. Reason: %s.'
+    module: DUMP Errors
