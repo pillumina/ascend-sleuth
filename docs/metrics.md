@@ -54,7 +54,9 @@
 
 ## 指标口径补充：reference 层（ADR-0008 观测性，2026-08-28 起）
 
-> `scripts/trace_metrics.py` 现产出 reference 指标（与 case 指标同源——同一 diagnosis_state trace 管道，不新增采集动作）。口径：
+> `scripts/trace_metrics.py` 现产出 reference 指标（与 case 指标同源——同一 diagnosis_state trace 管道，不新增采集动作）。
+> **汇总职责：metrics 由 owner 在 groom 周批时集中生成并 append（每期一条，团队共享）。工程师不提交 metrics——诊断 trace 留在本地（.gitignore），反馈走 case confidence PR；中心化指标（命中/误诊/confidence 分布）直接从仓库 case 统计，无需工程师动作。**
+> 口径：
 
 - **reference 引用次数（hits）**：trace `reference_lookup` 事件计数（diagnose 阶段 2.5 实际发生的查询，非每次诊断必查）；
 - **引用后 resolve 率**：引用某 ref 的诊断 session 中 `status: resolved` 占比——outcome 从 session 最终状态**派生**，不新增回报动作；

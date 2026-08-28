@@ -8,7 +8,7 @@ cases:
   - id: VLLM-ASC-13086
     title: "vllm-ascend 0.14.0rc1 不支持 A5(950) 芯片：check_ascend_device_type 断言失败，需升级最新/rc 版本"
 
-    category: other
+    category: interrupt
     tags: [a5, platform-support, version-matrix, check-device-type, wontfix]
 
     platforms: ["A5-950"]

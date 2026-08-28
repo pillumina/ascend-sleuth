@@ -3,9 +3,9 @@
 # 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-08-27    case 总数：38
+# 生成日期：2026-08-28    case 总数：38
 #   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=25/30, other=5/30, performance=3/30, precision=4/30
+#   容量(inference/vllm-ascend): interrupt=28/30, performance=3/30, precision=6/30
 namespaces:
   inference/sglang:
     interrupt:
@@ -438,6 +438,36 @@ namespaces:
           expected: regex:.*(wq_b\.weight|modelslim_config)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12901.yaml
       hash: 4034f8f01e25
+    - id: VLLM-ASC-12983
+      title: 310P MTP 与图模式无法同时开启：镜像缺 free-mask 算子，pageattention-splitfuse 变化 shape mask 不入图
+      category: interrupt
+      tags:
+      - 310p
+      - mtp
+      - cudagraph
+      - free-mask
+      - cann-version
+      platforms:
+      - 310P
+      compat: vllm-ascend =0.23.0rc1-310p-openeuler
+      confidence:
+        score: 0.3
+      symptoms:
+      - v0.23.0rc1-310p-openeuler 镜像 310P 上 MTP 与图模式无法同时开启，启动报错（Qwen3.6-27B qwen3_5_mtp）
+      - 'RuntimeError: NPUModelRunner init failed ... copy_between_host_and_device_opapi ... aclrtMemcpy,
+        error code is 107030'
+      - Not allow to synchronize captured-stream, stream_id=12 / rtStreamSynchronize execution failed,
+        reason=stream is captured（107027）
+      - 去掉 MTP 相关参数可以成功启动，但速度只有 20 token/s 左右
+      quickly_check:
+        primary:
+          command: 'grep ''NPU function error: aclrtMemcpy, error code is 107030'' {{log_path}}'
+          expected: 'regex:.*NPU function error: aclrtMemcpy, error code is 107030'
+        fallback:
+          command: grep -E 'synchronize captured-stream|stream is captured' {{log_path}}
+          expected: regex:.*(synchronize captured-stream|stream is captured)
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12983.yaml
+      hash: e44033cbe983
     - id: VLLM-ASC-12989
       title: 310P 硬件 event 资源有限：FULL_DECODE_ONLY 多尺寸 cudagraph 捕获超上限 → Insufficient_Event_Resources(EL0008)/507903，TP2
         启动失败
@@ -498,6 +528,66 @@ namespaces:
           expected: regex:.*(aicpu exception|507018|E39999)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13050.yaml
       hash: 6f8671d70468
+    - id: VLLM-ASC-13086
+      title: vllm-ascend 0.14.0rc1 不支持 A5(950) 芯片：check_ascend_device_type 断言失败，需升级最新/rc 版本
+      category: interrupt
+      tags:
+      - a5
+      - platform-support
+      - version-matrix
+      - check-device-type
+      - wontfix
+      platforms:
+      - A5-950
+      compat: vllm-ascend <=0.14.0rc1
+      confidence:
+        score: 0.1
+      symptoms:
+      - vllm-ascend 0.14.0rc1 启动报不支持 950 芯片（A5），服务无法拉起
+      - 'AssertionError: Current device type: AscendDeviceType.A5 does not match the installed version''s
+        device type: AscendDeviceType.A3（check_ascend_device_type）'
+      - '另一处报 ValueError: Unsupported soc_version: AscendDeviceType.A5'
+      - 官方确认：早期版本不支持 Ascend 950，请使用最新版本或 rc 版本
+      quickly_check:
+        primary:
+          command: 'grep ''Unsupported soc_version: AscendDeviceType.A5'' {{log_path}}'
+          expected: 'regex:.*Unsupported soc_version: AscendDeviceType\.A5'
+        fallback:
+          command: 'grep -E ''Current device type: AscendDeviceType\.A5 does not match'' {{log_path}}'
+          expected: 'regex:.*Current device type: AscendDeviceType\.A5 does not match'
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13086.yaml
+      hash: dece46eca929
+    - id: VLLM-ASC-13329
+      title: DSV4-Flash-0731 是 DSpark 模型无 MTP head：mtp 模式启动报 KeyError 'mtp.0.head.weight'，应改用 dspark
+      category: interrupt
+      tags:
+      - deepseek-v4
+      - dspark
+      - mtp
+      - speculative-decode
+      - model-version
+      platforms:
+      - A2-910B
+      compat: vllm-ascend <0.25.1rc,>=0.25.1rc
+      confidence:
+        score: 0.1
+      symptoms:
+      - nightly-releases-v0.25.1rc-openeuler 版本启动 DeepSeek-V4-Flash-0731-w8a8 的 mtp 模式报错（A2 机器）
+      - 'KeyError: ''mtp.0.head.weight''（vllm_ascend/quantization/modelslim_config.py get_linear_quant_type
+        处）'
+      - '去掉 --speculative-config ''{"method": "mtp", ...}'' 可以正常启动'
+      - '改用 ''{"method": "dspark", "num_speculative_tokens": 7, ...}'' 可以正常加速（接受率 10%~80% 不平均）'
+      - 'older release (v0.22.rc1): ''Is there an issue with the downloaded model weights?'' — same KeyError
+        on MTP load; dspark method requires >=0.25.1rc, so upgrade first, then switch'
+      quickly_check:
+        primary:
+          command: 'grep "KeyError: ''mtp\.0\.head\.weight''" {{log_path}}'
+          expected: 'regex:.*KeyError: ''mtp\.0\.head\.weight'''
+        fallback:
+          command: grep -E 'mtp\.0\.head\.weight|speculative-config' {{log_path}}
+          expected: regex:.*(mtp\.0\.head\.weight|speculative-config)
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13329.yaml
+      hash: 1178273f27a9
     - id: VLLM-ASC-13508
       title: main2main Gluon 兼容 stub 只把 triton.experimental.gluon 叶子模块塞入 sys.modules，父模块 triton.experimental
         缺失，x86_64 导入即 ModuleNotFoundError
@@ -819,154 +909,6 @@ namespaces:
           expected: regex:error code is 507903|Alloc sq cq fail
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9596.yaml
       hash: dd3da3724540
-    other:
-    - id: VLLM-ASC-11169
-      title: A2 双机拉起 GLM-5.2 w8a8（DP=2 双节点 + UCMConnector external kv connector）发送中文请求返回乱码；root cause
-        未确认，workaround：VLLM_ASCEND_ENABLE_FLASHCOMM1=1 或关闭 external kv connector
-      category: other
-      tags:
-      - glm5
-      - garbled-output
-      - kv-transfer
-      - flashcomm1
-      - workaround-only
-      platforms:
-      - A2-910B
-      compat: vllm-ascend
-      confidence:
-        score: 0.1
-      symptoms:
-      - A2 双机（DP=2 双节点）GLM-5.2 w8a8 + UCMConnector external kv connector 拉起推理，发送中文请求返回乱码
-      - export VLLM_ASCEND_ENABLE_FLASHCOMM1=1（切换到 flashcomm1 通信路径）后不改连接配置即可正常推理
-      - 关闭 external kv connector 也可规避（prefix caching 仍可用）
-      quickly_check:
-        primary:
-          command: grep -E '乱码|garbled' {{log_path}}
-          expected: regex:返回结果为乱码
-        fallback:
-          command: grep -E 'VLLM_ASCEND_ENABLE_FLASHCOMM1|UCMConnector|kv_connector' {{log_path}}
-          expected: regex:VLLM_ASCEND_ENABLE_FLASHCOMM1=1
-      file: knowledge/inference/vllm-ascend/other/VLLM-ASC-11169.yaml
-      hash: f89f7d19c8a3
-    - id: VLLM-ASC-12030
-      title: vllm-ascend 0.20 + GLM-5.1 w8a8 910C PD 分离：特定请求（function-calling）流式响应经常出现单词最后 1 个字符重复，非流式正常——GLM5
-        流式 tool-call 解析器 glm4_moe_tool_parser.py 解析缺陷，0.23.0 已修复
-      category: other
-      tags:
-      - glm5
-      - streaming
-      - tool-call
-      - glm4_moe_tool_parser
-      - pd-separation
-      platforms:
-      - A3-910C
-      compat: vllm-ascend <0.23.0
-      confidence:
-        score: 0.3
-      symptoms:
-      - vllm-ascend 0.20 + GLM-5.1 w8a8 910C PD 分离，特定请求（tools + tool_choice=auto）流式响应经常出现单词最后 1 个字符重复
-      - 同一请求非流式响应正常
-      - 带 tools/tool_choice 参数的 curl 可必现（评论#3 提供复现请求）
-      - 0.23.0 用同一 curl 复测：问题消失
-      quickly_check:
-        primary:
-          command: grep -E '单词最后1个字符重复|字符重复' {{log_path}}
-          expected: regex:单词最后1个字符重复
-        fallback:
-          command: grep -E 'glm4_moe_tool_parser' {{log_path}}
-          expected: regex:glm4_moe_tool_parser\.py
-      file: knowledge/inference/vllm-ascend/other/VLLM-ASC-12030.yaml
-      hash: 84ead4d8ea9b
-    - id: VLLM-ASC-12983
-      title: 310P MTP 与图模式无法同时开启：镜像缺 free-mask 算子，pageattention-splitfuse 变化 shape mask 不入图
-      category: other
-      tags:
-      - 310p
-      - mtp
-      - cudagraph
-      - free-mask
-      - cann-version
-      platforms:
-      - 310P
-      compat: vllm-ascend =0.23.0rc1-310p-openeuler
-      confidence:
-        score: 0.3
-      symptoms:
-      - v0.23.0rc1-310p-openeuler 镜像 310P 上 MTP 与图模式无法同时开启，启动报错（Qwen3.6-27B qwen3_5_mtp）
-      - 'RuntimeError: NPUModelRunner init failed ... copy_between_host_and_device_opapi ... aclrtMemcpy,
-        error code is 107030'
-      - Not allow to synchronize captured-stream, stream_id=12 / rtStreamSynchronize execution failed,
-        reason=stream is captured（107027）
-      - 去掉 MTP 相关参数可以成功启动，但速度只有 20 token/s 左右
-      quickly_check:
-        primary:
-          command: 'grep ''NPU function error: aclrtMemcpy, error code is 107030'' {{log_path}}'
-          expected: 'regex:.*NPU function error: aclrtMemcpy, error code is 107030'
-        fallback:
-          command: grep -E 'synchronize captured-stream|stream is captured' {{log_path}}
-          expected: regex:.*(synchronize captured-stream|stream is captured)
-      file: knowledge/inference/vllm-ascend/other/VLLM-ASC-12983.yaml
-      hash: 48f4f1a206fa
-    - id: VLLM-ASC-13086
-      title: vllm-ascend 0.14.0rc1 不支持 A5(950) 芯片：check_ascend_device_type 断言失败，需升级最新/rc 版本
-      category: other
-      tags:
-      - a5
-      - platform-support
-      - version-matrix
-      - check-device-type
-      - wontfix
-      platforms:
-      - A5-950
-      compat: vllm-ascend <=0.14.0rc1
-      confidence:
-        score: 0.1
-      symptoms:
-      - vllm-ascend 0.14.0rc1 启动报不支持 950 芯片（A5），服务无法拉起
-      - 'AssertionError: Current device type: AscendDeviceType.A5 does not match the installed version''s
-        device type: AscendDeviceType.A3（check_ascend_device_type）'
-      - '另一处报 ValueError: Unsupported soc_version: AscendDeviceType.A5'
-      - 官方确认：早期版本不支持 Ascend 950，请使用最新版本或 rc 版本
-      quickly_check:
-        primary:
-          command: 'grep ''Unsupported soc_version: AscendDeviceType.A5'' {{log_path}}'
-          expected: 'regex:.*Unsupported soc_version: AscendDeviceType\.A5'
-        fallback:
-          command: 'grep -E ''Current device type: AscendDeviceType\.A5 does not match'' {{log_path}}'
-          expected: 'regex:.*Current device type: AscendDeviceType\.A5 does not match'
-      file: knowledge/inference/vllm-ascend/other/VLLM-ASC-13086.yaml
-      hash: cacc029318a7
-    - id: VLLM-ASC-13329
-      title: DSV4-Flash-0731 是 DSpark 模型无 MTP head：mtp 模式启动报 KeyError 'mtp.0.head.weight'，应改用 dspark
-      category: other
-      tags:
-      - deepseek-v4
-      - dspark
-      - mtp
-      - speculative-decode
-      - model-version
-      platforms:
-      - A2-910B
-      compat: vllm-ascend <0.25.1rc,>=0.25.1rc
-      confidence:
-        score: 0.1
-      symptoms:
-      - nightly-releases-v0.25.1rc-openeuler 版本启动 DeepSeek-V4-Flash-0731-w8a8 的 mtp 模式报错（A2 机器）
-      - 'KeyError: ''mtp.0.head.weight''（vllm_ascend/quantization/modelslim_config.py get_linear_quant_type
-        处）'
-      - '去掉 --speculative-config ''{"method": "mtp", ...}'' 可以正常启动'
-      - '改用 ''{"method": "dspark", "num_speculative_tokens": 7, ...}'' 可以正常加速（接受率 10%~80% 不平均）'
-      - 'older release (v0.22.rc1): ''Is there an issue with the downloaded model weights?'' — same KeyError
-        on MTP load; dspark method requires >=0.25.1rc, so upgrade first, then switch'
-      quickly_check:
-        primary:
-          command: 'grep "KeyError: ''mtp\.0\.head\.weight''" {{log_path}}'
-          expected: 'regex:.*KeyError: ''mtp\.0\.head\.weight'''
-        fallback:
-          command: grep -E 'mtp\.0\.head\.weight|speculative-config' {{log_path}}
-          expected: regex:.*(mtp\.0\.head\.weight|speculative-config)
-      file: knowledge/inference/vllm-ascend/other/VLLM-ASC-13329.yaml
-      hash: 070d9aeb2d31
     performance:
     - id: VLLM-ASC-12241
       title: v0.23.0 图模式（cudagraph）+ MTP 开启下 profiling 解析无 kernel_details.csv；CANN 9.0.0 与 NPU 图模式交互 bug，升级
@@ -1061,6 +1003,34 @@ namespaces:
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-13973.yaml
       hash: fe7f57f11ae2
     precision:
+    - id: VLLM-ASC-11169
+      title: A2 双机拉起 GLM-5.2 w8a8（DP=2 双节点 + UCMConnector external kv connector）发送中文请求返回乱码；root cause
+        未确认，workaround：VLLM_ASCEND_ENABLE_FLASHCOMM1=1 或关闭 external kv connector
+      category: precision
+      tags:
+      - glm5
+      - garbled-output
+      - kv-transfer
+      - flashcomm1
+      - workaround-only
+      platforms:
+      - A2-910B
+      compat: vllm-ascend
+      confidence:
+        score: 0.1
+      symptoms:
+      - A2 双机（DP=2 双节点）GLM-5.2 w8a8 + UCMConnector external kv connector 拉起推理，发送中文请求返回乱码
+      - export VLLM_ASCEND_ENABLE_FLASHCOMM1=1（切换到 flashcomm1 通信路径）后不改连接配置即可正常推理
+      - 关闭 external kv connector 也可规避（prefix caching 仍可用）
+      quickly_check:
+        primary:
+          command: grep -E '乱码|garbled' {{log_path}}
+          expected: regex:返回结果为乱码
+        fallback:
+          command: grep -E 'VLLM_ASCEND_ENABLE_FLASHCOMM1|UCMConnector|kv_connector' {{log_path}}
+          expected: regex:VLLM_ASCEND_ENABLE_FLASHCOMM1=1
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11169.yaml
+      hash: 04365997a3e4
     - id: VLLM-ASC-11824
       title: Ascend NPU 上 batch invariance 测试输出随 batch 波动：算子默认非确定性执行，需在 override_envs_for_invariance()
         开启 torch.use_deterministic_algorithms(True, warn_only=True)
@@ -1089,6 +1059,35 @@ namespaces:
           expected: regex:.*(batch[- ]?invariant|deterministic)
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11824.yaml
       hash: 507939192bd6
+    - id: VLLM-ASC-12030
+      title: vllm-ascend 0.20 + GLM-5.1 w8a8 910C PD 分离：特定请求（function-calling）流式响应经常出现单词最后 1 个字符重复，非流式正常——GLM5
+        流式 tool-call 解析器 glm4_moe_tool_parser.py 解析缺陷，0.23.0 已修复
+      category: precision
+      tags:
+      - glm5
+      - streaming
+      - tool-call
+      - glm4_moe_tool_parser
+      - pd-separation
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <0.23.0
+      confidence:
+        score: 0.3
+      symptoms:
+      - vllm-ascend 0.20 + GLM-5.1 w8a8 910C PD 分离，特定请求（tools + tool_choice=auto）流式响应经常出现单词最后 1 个字符重复
+      - 同一请求非流式响应正常
+      - 带 tools/tool_choice 参数的 curl 可必现（评论#3 提供复现请求）
+      - 0.23.0 用同一 curl 复测：问题消失
+      quickly_check:
+        primary:
+          command: grep -E '单词最后1个字符重复|字符重复' {{log_path}}
+          expected: regex:单词最后1个字符重复
+        fallback:
+          command: grep -E 'glm4_moe_tool_parser' {{log_path}}
+          expected: regex:glm4_moe_tool_parser\.py
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12030.yaml
+      hash: 140594c9c270
     - id: VLLM-ASC-12642
       title: triton-ascend 3.2.1 对 [4,256] K 做 head reduction 后接 extract_slice+cos 广播的布局/归约路径生成错误设备代码，square_sums
         被算成 0 → K RMSNorm variance=0 → K 放大 1000 倍

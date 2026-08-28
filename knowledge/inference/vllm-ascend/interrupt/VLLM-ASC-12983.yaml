@@ -8,7 +8,7 @@ cases:
   - id: VLLM-ASC-12983
     title: "310P MTP 与图模式无法同时开启：镜像缺 free-mask 算子，pageattention-splitfuse 变化 shape mask 不入图"
 
-    category: other
+    category: interrupt
     tags: [310p, mtp, cudagraph, free-mask, cann-version]
 
     platforms: ["310P"]

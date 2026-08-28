@@ -60,7 +60,7 @@ agent 读取文件，后续流程同内联。
    - **postmortem 策略**：源是混乱对话/手工笔记 → 写完整 postmortem.md（提炼+结构化）；**源已经是结构化文档**（调查报告/issue/wiki）→ postmortem.md 只写指针（`# 原文见：<source-url/path>`），不重写。YAML case 草稿两种情况都照常产出。
    - 标 `confidence: high | medium | low`
    - 标 `novelty: new_pattern | variant | covered`
-   - 标 `category: interrupt | precision | performance`（按症状判断——interrupt 是 hang/crash/OOM、precision 是 NaN/数值发散、performance 是吞吐/延迟）
+   - 标 `category: interrupt | precision | performance` **三选一，无 other**（按症状判断——interrupt 是 hang/crash/OOM/启动失败、precision 是 NaN/数值发散/输出错误/乱码、performance 是吞吐/延迟）。分不进去 → 由人确认归入最接近的分类，不设 other
    - 标 `tags`（sub-type，如 `oom`、`kv-cache`、`precision.convergence`）
 4. **语义校验**（关键，区别于格式校验）：
    - regex 在输入附的真实日志片段上能否匹配

@@ -9,7 +9,7 @@ cases:
   - id: VLLM-ASC-11169
     title: "A2 双机拉起 GLM-5.2 w8a8（DP=2 双节点 + UCMConnector external kv connector）发送中文请求返回乱码；root cause 未确认，workaround：VLLM_ASCEND_ENABLE_FLASHCOMM1=1 或关闭 external kv connector"
 
-    category: other
+    category: precision
     tags: [glm5, garbled-output, kv-transfer, flashcomm1, workaround-only]
 
     platforms: ["A2-910B"]
