@@ -1,0 +1,51 @@
+id: hccl-network-env
+type: env-var-table
+title: HCCL 网络相关环境变量
+summary: HCCL 建链网络：网卡选择、RDMA 配置、端口范围（10 个变量）
+
+sources:
+  - type: official-doc
+    url: "CANN 环境变量参考（华为，hiascend.com maintenref/envvar）"
+    version: "CANN 9.0（envref 系列）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A3-910C, A5-950]
+  categories: [interrupt, precision, performance]
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  variables:
+    - name: "HCCL_HOST_SOCKET_PORT_RANGE"
+      description: "当通信域的创建方式为“基于root节点信息创建”时，开发者可通过此环境变量配置HCCL在Host侧使用的通信端口。 该环境变量支持配置为具体的端口、端口范围或者字符串“auto”。 - 若指定具体的端口号或端口范围，规划的端口数量建议不小于单个NPU上的HCCL进程数，端口号取值范围为[1,65535]，且需要确保指定的端口未被其他进程占用。需要注意，[1,1023]为系统保留端口，应避免使用这些端口。 具体的端口号与端口范围可以组合使用，中间使用英文“,”分隔，但逗号之间的端口号/端口范围不能存在范围重叠，配置方式可参见配置示例。 - 若指定为字符串“auto”，代表HCCL使用的Host通信端口由操作系统动态分配。"
+      example: "| 1 2 3 4 5 6 7 8 | # 方式一：配置为端口范围。 HCCL_HOST_SOCKET_PORT_RANGE='60000-60050' # 方式二：具体的端口号与端口范围配合使用，使用英文“,”分隔。 HCCL_HOST_SOCKET_PORT_RANGE='60000,60050-60100,60150-60160' # 方式三：指定具体的端口号，使用英文“,”分隔。 HCCL_HOST_SOCKET_PORT_RANGE='56000,56005,56007,56008,56100,56105,56107,56108' # 方式四：操作系统动态分配端口号 HCCL_HOST_SOCKET_PORT_RANGE='auto' | |---|---|"
+    - name: "HCCL_IF_BASE_PORT"
+      description: "当通信域的创建方式为“基于root节点信息创建”时，可以通过该环境变量指定Host网卡起始端口号，配置后系统默认占用以该端口起始的32个端口进行集群信息收集。 该环境变量需要配置为整数，取值范围为[1024,65520]，请确保分配的端口未被占用。"
+      example: "HCCL_IF_BASE_PORT=50000"
+    - name: "HCCL_IF_IP"
+      description: "当通信域的创建方式为“基于root节点信息创建”时，可通过此环境变量配置HCCL初始化时Host使用的通信IP地址。此IP地址用于与root节点通信，以完成通信域的创建。 格式为字符串，要求为常规IPv4或IPv6格式，目前只支持Host网卡，且只能配置一个IP地址。 HCCL按照如下优先级顺序选择Host通信网卡： 环境变量HCCL_IF_IP > 环境变量HCCL_SOCKET_IFNAME > docker/lo以外网卡（网卡名字典序升序） > docker网卡 > lo网卡。 如果不配置HCCL_IF_IP或HCCL_SOCKET_IFNAME，系统将按照优先级自动选择网卡。若当前节点选择的网卡与root节点选择的网卡链路不通，将导致HCCL建链失败。"
+      example: "HCCL_IF_IP=10.10.10.1"
+    - name: "HCCL_NPU_SOCKET_PORT_RANGE"
+      description: "当通信域的创建方式为“基于root节点信息创建”时，开发者可通过此环境变量配置HCCL在NPU侧使用的通信端口。 该环境变量支持配置为具体的端口、端口范围或者字符串“auto”。 - 若指定具体的端口号或端口范围，规划的端口数量建议不小于单个NPU上的HCCL进程数，端口号取值范围为[1,65535]，且需要确保指定的端口未被其他进程占用。需要注意，[1,1023]为系统保留端口，应避免使用这些端口。 具体端口号与端口范围可以组合使用，中间使用英文“,”分隔，但逗号之间的端口号/端口范围不能存在范围交叉，配置方式可参见配置示例。 - 若指定为字符串“auto”，代表HCCL使用的NPU端口号由操作系统动态分配。 - 若不配置该环境变量，HCCL在NPU侧使用的通信端口默认为16666。"
+      example: "| 1 2 3 4 5 6 7 8 | //方式一：配置为端口范围。 HCCL_NPU_SOCKET_PORT_RANGE='61000-61050' //方式二：具体的端口号与端口范围配合使用，使用英文“,”分隔。 HCCL_NPU_SOCKET_PORT_RANGE='61000,61050-61100,61200-61210' //方式三：指定具体的端口号，使用英文“,”分隔。 HCCL_NPU_SOCKET_PORT_RANGE='57000,57005,57007,58008,58100,58105,58107,58108' //方式四：操作系统动态分配端口号 HCCL_NPU_SOCKET_PORT_RANGE='auto' | |---|---|"
+    - name: "HCCL_RDMA_RETRY_CNT"
+      description: "用于配置RDMA网卡的重传次数，需要配置为整数，取值范围为[1,7]，默认值为7。"
+      example: "#重传次数配置为5 HCCL_RDMA_RETRY_CNT=5"
+    - name: "HCCL_RDMA_SL"
+      description: "用于配置RDMA网卡的service level，该值需要和网卡配置的PFC优先级保持一致，若配置不一致可能导致性能劣化。 该环境变量需要配置为整数，取值范围：[0,7]，默认值：4。"
+      example: "# 优先级配置为3 HCCL_RDMA_SL=3"
+    - name: "HCCL_RDMA_TC"
+      description: "用于配置RDMA网卡的traffic class。 该环境变量的取值范围为[0,255]，且需要配置为4的整数倍，默认值为132。 在RoCE V2协议中，该值对应IP报文头中ToS（Type of Service）域。共8个bit，其中，bit[0,1]固定为0，bit[2,7]为DSCP，因此，该值除以4即为DSCP的值。"
+      example: "# 该环境变量配置为25*4 = 100，则DSCP为25 HCCL_RDMA_TC=100"
+    - name: "HCCL_RDMA_TIMEOUT"
+      description: "用于配置RDMA网卡重传超时时间的系数timeout。 RDMA网卡重传超时时间最小值的计算公式为：4.096μs * 2^timeout，其中timeout为该环境变量配置值，且实际重传超时时间与用户网络状况有关。 - 针对Atlas 350 加速卡，该环境变量配置为整数，取值范围为[5,24]，默认值为20。 - 针对Atlas A3 训练系列产品/Atlas A3 推理系列产品，该环境变量配置为整数，取值范围为[5,20]，默认值为20。 - 针对Atlas A2 训练系列产品/Atlas A2 推理系列产品，该环境变量配置为整数，取值范围为[5,20]，默认值为20。 - 针对Atlas 训练系列产品，该环境变量配置为整数，取值范围为[5,24]，默认值为20。 - 针对Atlas 推理系列产品，该环境变量配置为整数，取值范围是[5,24]，默认值为20。"
+      example: "# RDMA网卡重传超时时间的系数配置为6，则网卡启用RDMA功能时，重传超时时间最小值为：4.096μs * 2^6 HCCL_RDMA_TIMEOUT=6"
+    - name: "HCCL_SOCKET_FAMILY"
+      description: "该环境变量指定通信网卡使用的IP协议，支持如下两种配置： - AF_INET：代表使用IPv4协议。 - AF_INET6：代表使用IPv6协议 缺省使用IPv4协议。 该环境变量有以下两种使用场景： - 配置HCCL初始化时，Host侧通信网卡使用的IP协议版本。此场景下，该环境变量需要与HCCL_SOCKET_IFNAME同时使用，当HCCL通过指定网卡名获取Host IP时，通过该环境变量指定使用网卡的socket通信IP协议。 - 配置HCCL初始化时，Device侧通信网卡使用的IP协议版本。此场景下，如果该环境变量指定的IP协议与实际获取到的网卡信息不匹配，则以实际环境上的网卡信息为准。 例如，该环境变量指定为IPv6协议，但Device侧只存在IPv4协议的网卡，则实际会使用IPv4协议的网卡。"
+      example: "HCCL_SOCKET_FAMILY=AF_INET #IPv4 HCCL_SOCKET_FAMILY=AF_INET6 #IPv6"
+    - name: "HCCL_SOCKET_IFNAME"
+      description: "配置HCCL初始化时Host使用的通信网卡名，HCCL将通过该网卡名获取Host IP，与root节点通信，以完成通信域的创建。 开发者可以选取以下规则中的一种进行配置： - eth：使用所有以eth为前缀的网卡。若指定多个网卡前缀，多个网卡前缀间用英文逗号分隔。 例如：export HCCL_SOCKET_IFNAME=eth,enp，表示使用所有以eth或enp为前缀的网卡。 - ^eth：不使用以eth为前缀的网卡。若指定多个网卡前缀，多个网卡前缀间用英文逗号分隔。 例如：export HCCL_SOCKET_IFNAME=^eth,enp，表示不使用任何以eth或enp为前缀的网卡。 - =eth0：使用指定的eth0网卡。若指定多个网卡，多个网卡间用英文逗号分隔。 例如：export HCCL_SOCKET_IFNAME==eth0,enp0，表示使用eth0网卡或enp0网卡。"
+      example: "# 使用eth0或endvnic的网卡 HCCL_SOCKET_IFNAME==eth0,endvnic"

@@ -185,6 +185,26 @@ def check_reference(path: Path, refs_dir: Path, types_registry: dict, case_ref_c
                     errors.append(f"{rel}: applies_to.categories 缺失（methodology 必须声明适用问题类别）")
             # error-code 表形态（ADR-0008 §1.5 / §4.3，kind: table）：
             # errors 非空列表，每个条目必填 code+meaning，表内 code 唯一
+            # env-var-table 表形态（kind: table）：variables 非空、条目 name+description、表内 name 唯一
+            if rtype == "env-var-table":
+                entries = content.get("variables")
+                if not isinstance(entries, list) or len(entries) == 0:
+                    errors.append(f"{rel}: content.variables 必须是非空列表（env-var-table 表形态，按模块成表）")
+                else:
+                    seen_names = set()
+                    for j, e in enumerate(entries):
+                        if not isinstance(e, dict):
+                            errors.append(f"{rel}: content.variables[{j}] 不是 mapping")
+                            continue
+                        name = e.get("name")
+                        if not name:
+                            errors.append(f"{rel}: content.variables[{j}] 缺少 name")
+                        else:
+                            if name in seen_names:
+                                errors.append(f"{rel}: content.variables[{j}].name '{name}' 表内重复")
+                            seen_names.add(name)
+                        if not e.get("description"):
+                            errors.append(f"{rel}: content.variables[{j}]（{name or '?'}）缺少 description")
             if rtype == "error-code":
                 entries = content.get("errors")
                 if not isinstance(entries, list) or len(entries) == 0:

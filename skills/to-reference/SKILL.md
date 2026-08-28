@@ -67,6 +67,7 @@ description: >
 
 **official-doc（URL 爬取 / 本地官方文档文件）**：
 - 抓取/读取目标章节（只读相关部分，不全量载入——日志裁剪原则的翻版；本地 PDF 用工具提取文本如 `pymupdf`）；
+- **长字段（description/meaning）不硬截断**——截断到字符数会产生不完整句子（"在第一…"式残缺），语义完整性优先于体积；需要精简时提炼要点而非截断原文；
 - 抽取为 reference 草稿，**保留原文出处**：`url`（来源定位符——公开 URL 优先；本地文档无公开 URL 时用**可移植文档引用**如"昇腾950 NPU 架构白皮书（华为技术有限公司）"，**禁止写 `~/` 或绝对路径**，CI 会红）+ `version`（文档版本 / CANN 版本，从页面元数据或内容推断，拿不准就标 unknown）+ `fetched_at`；
 - **必须标注 `sources[].verification`，二选一**：
   - `auto-extracted`——模型从源材料抽取、**未经 agent 对源逐字核验**（如一次 URL 抓取后直接归纳），reviewer 必须 spot-check 语义是否被扭曲；
@@ -98,7 +99,7 @@ description: >
 
 区分 `platform-fact` 与 `software-fact`：绑定具体硬件平台/芯片规格（如 "A5 HBM 64GB"）→ `platform-fact`；CANN 软件栈或运行时系统的可验证事实（如日志路径、格式、机制，跨平台成立）→ `software-fact`。
 
-**error-code 表形态（组织单元 = 验证单元）**：错误码天然成族（CANN Runtime 507xxx / HCCL / aicpu / Driver），同族同源同验证——**一个族一个文件**（如 `references/errors/cann-runtime.yaml` 承载 507903/507018/507057...），表级共享 sources/status/applies_to，不逐码建文件。case 提炼的条目逐条验证 → 条目带可选 `source_cases`。检索时 agent 按族定位文件，表内 grep code 一次命中。
+**error-code 表形态（组织单元 = 验证单元）**：错误码天然成族（CANN Runtime 507xxx / HCCL / aicpu / Driver），同族同源同验证——**一个族一个文件**（如 `references/errors/cann-runtime.yaml` 承载 507903/507018/507057...），表级共享 sources/status/applies_to，不逐码建文件。case 提炼的条目逐条验证 → 条目带可选 `source_cases`。检索时 agent 按族定位文件，表内 grep code 一次命中。**数据集类的 `applies_to` 平台/版本应从来源的结构化字段映射（如官方文档的 models/support 字段），不靠 agent 猜测**——来源没声明的平台不写。
 
 拿不准 type → 按最贴近的登记 type 落草稿，并在草稿里标注 `type_uncertain: true` 交 maintainer 定夺。**不要自行发明未登记 type**（CI 会红；登记是 maintainer 的动作，见 `_types.yaml`）。
 

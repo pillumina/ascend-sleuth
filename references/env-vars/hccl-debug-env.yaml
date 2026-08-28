@@ -1,0 +1,33 @@
+id: hccl-debug-env
+type: env-var-table
+title: HCCL 调试相关环境变量
+summary: HCCL 集合通信调试：诊断日志、故障检测开关、实时调用日志（4 个变量）
+
+sources:
+  - type: official-doc
+    url: "CANN 环境变量参考（华为，hiascend.com maintenref/envvar）"
+    version: "CANN 9.0（envref 系列）"
+    fetched_at: 2026-08-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A3-910C, A5-950]
+  categories: [interrupt, precision, performance]
+
+status: draft
+last_verified: 2026-08-28
+
+content:
+  variables:
+    - name: "HCCL_DEBUG_CONFIG"
+      description: "启用此环境变量后，运行日志（即“$HOME/ascend/log/run”目录下的日志）将包含HCCL特定子模块的详细运行信息。目前支持ALG或alg（算法编排模块）、TASK或task（任务编排模块）、RESOURCE或resource（资源管理模块，包括资源的申请和释放操作）几个配置项。 该环境变量支持如下两种形式的配置： - 正向配置：支持配置1个或多个模块，各模块间使用英文逗号分隔，其中TASK（或task）、ALG（或alg）、RESOURCE（或resource）不区分大小写。 ``` # 运行日志中记录task模块的运行信息。 export HCCL_DEBUG_CONFIG='TASK' # 运行日志中记录alg、task、resource模块的运行信息。 export HCCL_DEBUG_CONFIG='alg,task,resource' ``` - 反向配置：在第一"
+      example: "HCCL_DEBUG_CONFIG='ALG,TASK,RESOURCE'"
+    - name: "HCCL_DFS_CONFIG"
+      description: "HCCL提供了多种故障检测功能的开关设置，包括建链故障探测时间配置、集群心跳监测开关以及进程卡死检测开关等。这些检测功能开启后，能够在业务出现异常时快速定位并显示故障信息，有助于问题及时排查处理。 该环境变量支持以下配置项： - connection_fault_detection_time：建链故障探测时间。HCCL会在建链超时时启动建链失败根节点定位能力，并将失败根节点信息传播。整个过程耗时为：“connection_fault_detection_time”参数取值 + 10s的根节点信息传播时间。 “connection_fault_detection_time”参数支持的取值：0，[20, 7200]。单位s，默认为20。 该参数配置为“0”时，代表关闭建链故障探测功能，即建链失败时无额外等待时间，建链进程立即退出。 - cluster_heartbeat：集群心跳监测开关，用于"
+      example: "HCCL_DFS_CONFIG='connection_fault_detection_time:30,cluster_heartbeat:on,stuck_detection:on,inconsistent_check:off,task_monitor_interval:0'"
+    - name: "HCCL_DIAGNOSE_ENABLE"
+      description: "此环境变量用于配置集合通信是否缓存部分任务的详细信息，以便任务执行失败时，打印详细日志，用于问题定位。 支持如下取值： - 1：代表开启集合通信缓存。 - 0：代表不开启集合通信缓存。 默认值为“0”。 需要注意，此环境变量开启后会对性能产生影响。"
+      example: "HCCL_DIAGNOSE_ENABLE=1"
+    - name: "HCCL_ENTRY_LOG_ENABLE"
+      description: "此环境变量用于控制是否实时打印通信算子的调用行为日志。 - 1：代表实时打印通信算子的调用行为日志，即调用一次通信算子，打印一条运行日志。 - 0：代表不打印通信算子的调用行为日志。 默认值为“0”。 HCCL的默认运行日志存储路径为：$HOME/ascend/log/run/plog/plog-pid_*.log，关于日志的详细说明可参见《日志参考》。"
+      example: "HCCL_ENTRY_LOG_ENABLE=1"

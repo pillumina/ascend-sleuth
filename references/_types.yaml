@@ -40,6 +40,12 @@ types:
     schema_required: [command, side_effects]
     schema_optional: [rollback, version_dependent]
 
+  env-var-table:
+    kind: table
+    description: 环境变量参考，按模块成表（如 hccl-debug-env.yaml 承载 HCCL 调试类变量）
+    schema_required: [variables]
+    schema_optional: [title, summary]
+
   methodology:
     kind: flow
     description: 流程 / 方法论（多步骤诊断或调优）；深审类型——case-derived 来源需 ≥3 条 case 引用才可 active
