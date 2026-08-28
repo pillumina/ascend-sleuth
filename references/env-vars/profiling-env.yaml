@@ -17,7 +17,7 @@ applies_to:
   - Atlas A3 训练系列产品
   - Atlas A3 推理系列产品
   - Atlas 350 加速卡
-status: draft
+status: active
 last_verified: '2026-08-29'
 content:
   variables:

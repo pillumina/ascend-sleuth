@@ -23,7 +23,7 @@ applies_to:
   - Atlas 推理系列产品（针对
   - Atlas 推理系列产品，仅支持
   - Atlas 300I Duo 推理卡。）
-status: draft
+status: active
 last_verified: '2026-08-29'
 content:
   variables:
