@@ -101,39 +101,9 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 诊断过程全程记录 trace：加载了哪些命名空间、按什么顺序执行了哪些检查。trace 用于事后归因。一次误诊，究竟是知识库里的 case 写错了，还是 agent 执行流程走偏了，两者的修复路径完全不同——混在一起会把本来正确的东西改坏。
 
-两个循环驱动整个系统。下图是完整全景，涉及的具体机制在后面展开，初次阅读不必逐行理解，需要时回来对照：
-
-```
-【诊断循环 · 每次问题 · 分钟级】
-
- 工程师（客户症状 / 日志栈尾 / 版本组合）
-   └► /skill:diagnose
-        ├► Tier 1  triage-tree.yaml 症状路由
-        ├► Tier 2  _index.yaml 阶段一过滤 → 候选 ≤5 全量验证
-        │           ├─ 命中 → severity 闸门 → fix（data-loss-risk 只给 halt）
-        │           │          └► feedback_pending 标记 → 工程师回报
-        │           │                → confidence 回写（hits/misdiagnoses）
-        │           └─ 未命中 → Tier 3 postmortems/ 检索 → 人 + agent 深度排查
-        └► 全程 trace → diagnosis_state-<session_id>.yaml
-
-【演化循环 · 每周 · git 门控】
-
- /skill:to-postmortem（任意来源：session / Kimi / 手工 / wiki）
-   └► postmortems/inbox/（待审队列，脱敏后入库）
-        └► /skill:knowledge-groom 周批审
-             ├ 预分诊 new_pattern / variant_of / covered_by（建议 + 证据）
-             ├ 人审 accept / adjust / reject（约 30 秒/条）
-             ├ 高风险变更 → kb/high-risk → 双 owner 签字
-             └ 变更 PR（受保护分支 + CODEOWNERS + CI: build_index --check）→ merge
-                  ├ new     → 升格 knowledge/<ns>/ + 重建 _index.yaml
-                  ├ variant → 并入已有 case（扩 compat 区间）
-                  └ covered → postmortem 转正 Tier 3（不丢弃）
-                              └──► 下次诊断直接命中 —— 学习闭环
-```
+两个循环驱动整个系统：**诊断循环**（每次问题，分钟级——诊断 → 命中或兜底 → 沉淀）与**演化循环**（每周，git 门控——待审队列 → groom 批审 → 升格 → 下次诊断直接命中）。完整全景见架构图；每个演化机制配什么护栏防止越学越错，见 [docs/evolution.md](docs/evolution.md)：
 
 ![ascend-sleuth 架构](docs/diagrams/ascend-sleuth-architecture.png)
-
-系统如何随使用自我改进、每个演化机制配什么护栏防止越学越错，完整设计见 [docs/evolution.md](docs/evolution.md)。
 
 ## 核心设计原则
 
