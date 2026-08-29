@@ -83,7 +83,13 @@ agent 先做**症状归一**——把原始报错提炼成可检索的签名，�
      → 请向客户补：cat /usr/local/Ascend/ascend-toolkit/latest/version.cfg
 ```
 
-拿到版本后，agent 综合 case 的 fix 与 reference 的 solution 输出结论：
+**用户回应**（agent 追问后，工程师向客户要到版本）：
+
+```
+版本确认了：9.1.0.beta1（客户回填 cat /usr/local/Ascend/ascend-toolkit/latest/version.cfg）
+```
+
+agent 综合 case 的 fix 与 reference 的 solution 输出结论：
 
 ```
 [示例输出] 版本 9.1.0.beta1 → 命中修复判定（< beta2）：
@@ -111,6 +117,8 @@ aclnnScatterNdUpdate error 507011
 ③ reference：507011 未收录错误码表 → 先验不足，进深度排查
 ④ 判断疑似源码层：scatter + graph 指向 KV cache 写入源码路径 → 进入源码分析
    （会拉对应版本源码，可以吗？也可以说"跳过"）
+
+用户回应：可以，继续（客户确认愿意等源码分析）
 ⑤ 版本 v0.22.1rc1 → src-code/ 无 → git clone -b v0.22.1rc1
 ⑥ grep 定位：vllm_ascend/device/device_op.py:528  dsa_kv_compress_scatter
    → npu_scatter_nd_update_v2(cache, slot_mapping, x)
