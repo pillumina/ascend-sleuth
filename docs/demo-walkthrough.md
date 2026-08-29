@@ -94,14 +94,28 @@ fix: 升级 CANN ≥9.1.0.beta2（QuantBatchMatMulV3 修复合入 beta2），同
 [trace] 已记录 diagnosis_state-*.yaml（路由/候选/reference_lookup/追问/验证每一步）
 ```
 
-**如果候选未命中**，agent 不会硬套——走 Tier 3 + 人联合分析：
+**如果候选未命中**，agent 不会硬套——走 Tier 3 检索，**问题疑似源码层时进入源码分析**（常见场景：报错签名指向框架代码/算子）：
 
 ```
 [示例输出] 候选全部未命中 → 深度排查：
-  检索 postmortems/ 关键词兜底（Tier 3）→ 无覆盖
-  → 诚实说明：知识库没覆盖这个问题，需手动排查；
-     定位完用 /skill:to-postmortem 沉淀，下次就能命中
+  检索 postmortems/（Tier 3）→ 无覆盖
+  判断：报错 KeyError: 'model.layers.N.self_attn.indexer.wq_b.weight'，
+        指向量化描述表（modelslim_config）→ 疑似源码层，进入源码分析
+  ① 确认版本：vllm-ascend 0.21.0rc2（需要向客户确认，不猜）
+  ② 按需取对应版本源码：gh api repos/vllm-project/vllm-ascend/contents/
+       vllm_ascend/quantization/modelslim_config.py?ref=<0.21.0rc2 对应 commit>
+     （只拉这一个文件，不 clone 全仓、不落库）
+  ③ 读码定位：get_linear_quant_type → quant_description[prefix + '.weight']
+     → GLM-5.2 新增 indexer 注意力层的权重 key 未在量化描述表中覆盖 → KeyError
+  ④ 追问验证：请客户确认该版本 modelslim 描述表是否含 indexer 权重 → 确认缺失
+  ⑤ 根因定位 → 沉淀 case（/skill:to-postmortem，
+     source_ref: vllm_ascend/quantization/modelslim_config.py:<commit>）
+
+  边界：源码分析可能耗时（token/时间）——agent 先判断"疑似源码层"才走；
+  客户可随时说"跳过源码分析"；拿不准根因不硬下结论，转技术支持。
 ```
+
+**读到这里你会看到**：未命中不是终点——agent 会按需取源码、读代码定位、再追问验证，最后把定位沉淀成 case（带 source_ref 代码指针）。这正是"知识随使用变厚"的来源：**很多问题都要基于源码看为什么，看懂了就变成 case，下次同类直接命中**。
 
 **读到这里你会看到**：诊断是「词法检索提名 + agent 语义判断放行」——路由/候选/签名 grep 是结构化的，但症状归一、候选比对、缺信息追问、验证逐条、fix 综合、未命中转深度排查，全部是 agent 的理解与判断。**它是一个会追问、会解释、会承认不知道的排查协作者，不是查表器。**
 
