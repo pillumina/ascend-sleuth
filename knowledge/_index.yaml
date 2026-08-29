@@ -3,9 +3,9 @@
 # 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-08-28    case 总数：38
+# 生成日期：2026-08-29    case 总数：39
 #   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=28/30, performance=3/30, precision=6/30
+#   容量(inference/vllm-ascend): interrupt=29/30, performance=3/30, precision=6/30
 namespaces:
   inference/sglang:
     interrupt:
@@ -41,6 +41,36 @@ namespaces:
       hash: 3576617fec9c
   inference/vllm-ascend:
     interrupt:
+    - id: VLLM-ASC-10122
+      title: 310P（Qwen3.6-27B-W8A8 serve）推理报 507015 aicore exception：fault kernel_name=QuantBatchMatMulV3
+        量化算子在该 CANN 版本有 bug，升级到 ≥9.1.0.beta2 修复
+      category: interrupt
+      tags:
+      - qwen3.6
+      - w8a8
+      - quantization
+      - 507015
+      - aicore
+      platforms:
+      - 310P
+      compat: vllm-ascend (cann:<,9,.,1,.,0,.,b,e,t,a,2)
+      confidence:
+        score: 0.4
+      symptoms:
+      - 310P 上 vllm serve 跑 Qwen3.6-27B-W8A8，推理报 ERR00100 PTA call acl api failed，error code is 507015
+      - 'AclNN_Runtime_Error(EZ9903)：aclrtLaunchKernelWithHostArgs failed: 507015，Kernel task happen error,
+        retCode=0x26, [aicore exception]'
+      - 报错定位到 fault kernel_name=QuantBatchMatMulV3_NZ_NZ_int8_int8_fp16_high_performance_21（量化 matmul
+        算子），error code=0x26
+      quickly_check:
+        primary:
+          command: grep -E "QuantBatchMatMulV3|507015" {{log_path}}
+          expected: regex:QuantBatchMatMulV3|507015
+        fallback:
+          command: grep -E 'aicore exception|AclNN_Runtime_Error' {{log_path}}
+          expected: regex:aicore exception|AclNN_Runtime_Error
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10122.yaml
+      hash: a5aa33b4980b
     - id: VLLM-ASC-10610
       title: 'GLM-5.2-w8a8（--quantization ascend）拉起服务加载权重即报 KeyError: ''model.layers.N.self_attn.indexer.wq_b.weight''，modelslim
         量化描述未覆盖 GLM-5.2 新增 indexer 结构'
@@ -344,8 +374,8 @@ namespaces:
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12226.yaml
       hash: 51b5f68379b7
     - id: VLLM-ASC-12461
-      title: 多节点 EP + GLM-5.2 w8a8 的 FusedMoE MC2 通信算子（MoeDistributeDispatchV2）在 ROCE 网络触发 aicore exception（MTE
-        DDR 越界）→ SUSPECT REMOTE ERROR 507057 启动失败；HCCS 网络可跑通
+      title: 多节点 EP + FusedMoE MC2 通信算子（MoeDistributeDispatchV2）在 ROCE 网络触发 aicore exception（MTE DDR 越界）→
+        SUSPECT REMOTE ERROR 507057 启动失败；HCCS 可跑通，升级 0.20.2rc1+ 修复
       category: interrupt
       tags:
       - multi-node
@@ -355,7 +385,7 @@ namespaces:
       - fusedmoe
       platforms:
       - A3-910C
-      compat: vllm-ascend <=0.21.0
+      compat: vllm-ascend <0.20.2rc1
       confidence:
         score: 0.6
       symptoms:
@@ -364,6 +394,8 @@ namespaces:
       - plog：aicore exception，MTE 指令 DDR 地址越界（errCode 0x800000, subErrType 4），fault kernel_name=MoeDistributeDispatchV2
       - 单节点 TP16+PP2（不跨节点 EP）可跑通；多节点 EP 在 MLAPO 与 GEMM 路径均失败（FusedMoE kernel 内）
       - 关闭 speculative decode 同样报错（同栈）——非 MTP/dummy_run 问题
+      - 变体 9503：GLM-5.1-w8a8 双机（0.19.1rc1）报 MoeDistributeDispatchV2 算子错误——维护者确认 RoCE 组网已知兼容性问题，升级 0.20.2rc1+
+        解决
       quickly_check:
         primary:
           command: grep 'SUSPECT REMOTE ERROR' {{log_path}}
@@ -372,7 +404,7 @@ namespaces:
           command: grep -iE '507057|aicore exception|MoeDistributeDispatchV2' {{log_path}}
           expected: regex:.*(507057|aicore exception|MoeDistributeDispatchV2)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12461.yaml
-      hash: 3def249a3acc
+      hash: 06f123d92dab
     - id: VLLM-ASC-12685
       title: 非量化模型被自动路由进 AscendFp8Config：fp8_config.py get_quant_method 硬编码 ds_linear scheme，MiniMax-M2.7
         启动即 AttributeError 'o_groups'
