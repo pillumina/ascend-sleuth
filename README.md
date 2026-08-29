@@ -8,7 +8,7 @@
 
 遵循 [Agent Skills](https://agentskills.io/) 标准，可在 pi、Claude Code、Codex 等任意支持该标准的 agent 中使用。
 
-> ⚠️ **agent 执行差异**：不同 agent 对 SKILL.md 的执行质量有差异（prompt 纪律本质是概率性的）。诊断结果与 trace 质量可能因 agent 而异——**团队内建议统一 agent**；跨 agent 对比时先归因执行差异，别急着归因知识错误。
+> **agent 执行差异**：不同 agent 对 SKILL.md 的执行质量有差异（prompt 纪律本质是概率性的）。诊断结果与 trace 质量可能因 agent 而异——**团队内建议统一 agent**；跨 agent 对比时先归因执行差异，别急着归因知识错误。
 
 **快速跳转**：[为什么需要](#为什么需要它) · [快速开始](#快速开始) · [六个 skill](#六个-skill) · [工作原理](#工作原理) · [文档](#文档)
 
@@ -24,11 +24,11 @@ ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路
 
 ### 安装（使能 skills）
 
-**主路径——仓库即 workspace，skills 随仓使能**：clone 本仓，把 agent 的**项目级 skills 目录指向 `<clone>/skills/`**（skills/ 是单一事实源，git 版本管理；更新 = git pull，**热刷新即时生效**，不是重装）。装齐六个：`diagnose` / `to-postmortem` / `to-reference` / `issue-ingest` / `knowledge-groom` / `resume-diagnosis`。
+**主路径：仓库即 workspace，skills 随仓使能**。clone 本仓后，把 agent 的项目级 skills 目录指向 `<clone>/skills/`。skills/ 是单一事实源，git 管理版本，更新走 git pull，热刷新即时生效，无需重装。装齐六个：`diagnose` / `to-postmortem` / `to-reference` / `issue-ingest` / `knowledge-groom` / `resume-diagnosis`。
 
-**零配置（DSH，团队主力）**：仓库已跟踪 `.dsh/skills → ../skills` 相对 symlink——**clone 后自动还原，DSH 项目 root 自动发现 + watch 热刷新**（git pull 更新 SKILL.md 即时生效，无需任何配置）。
+**零配置（DSH，团队主力）**。仓库已跟踪 `.dsh/skills → ../skills` 相对 symlink，clone 后自动还原，DSH 项目 root 自动发现并热刷新：git pull 更新 SKILL.md 即时生效，无需任何配置。
 
-**其他 agent 按需建**（仓库不携带额外 symlink，保持根目录干净）：
+**其他 agent 按需建**（仓库不携带额外 symlink，根目录干净）：
 
 ```bash
 bash scripts/enable-agent-skills.sh    # 检测已安装 agent，建项目级 skills symlink（幂等，可重跑）
@@ -87,19 +87,19 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 ## 知识获取
 
-**仓库即 workspace**：诊断（读 knowledge/references/triage-tree）与沉淀（写 postmortems/inbox/、references/、ingest-state.json）都在**同一个仓库 clone** 里进行——SKILL 的知识路径相对仓根。三种起步形态如下：
+**仓库即 workspace**。诊断（读 knowledge/references/triage-tree）与沉淀（写 postmortems/inbox/、references/、ingest-state.json）都在同一个仓库 clone 里进行，SKILL 的知识路径相对仓根。三种起步形态如下：
 
 | 形态 | 起步方式 | 结果 | 适合谁 |
 |---|---|---|---|
 | **自积累**（空仓起步） | `git clone` 本仓（或 fork）后清空 `knowledge/` | 结构完整（skills/ + knowledge/ 空 + 队列/状态就位），从零沉淀 | 新团队、问题域不同、知识要私有 |
 | **消费现成**（带知识库） | `git clone` 整个仓库（含 `knowledge/` 与 `references/`）| 直接用上游验证过的 case/reference，也可继续沉淀 | 已有沉淀、问题域重叠、想复用 |
-| **定制知识面**（稀疏拉取） | `git clone` 后用 `git sparse-checkout` 收窄白名单 | **只收窄 case 数据**（`knowledge/` 子集）；方法论/工具/索引**全量**（见下）| 知识库长大后、带宽/存储受限、只要自己框架的知识 |
+| **定制知识面**（稀疏拉取） | `git clone` 后用 `git sparse-checkout` 收窄白名单 | 只收窄 case 数据（`knowledge/` 子集）；方法论/工具/索引全量（见下）| 知识库长大后、带宽/存储受限、只要自己框架的知识 |
 
-> ⚠️ **`-s` 只装 skill 不构成可用形态**——SKILL 的知识路径（postmortems/inbox/、references/、ingest-state.json）相对仓根，没有知识仓结构（knowledge/references/postmortems/ + 队列/状态文件）的"裸 skill"无法沉淀。`-s` 仅适合**在已有仓库里临时试用诊断方法论**（不沉淀回本仓），或把 `skills/` 合并进自己已有结构的仓库。
+> **`-s` 只装 skill 不构成可用形态**——SKILL 的知识路径（postmortems/inbox/、references/、ingest-state.json）相对仓根，没有知识仓结构（knowledge/references/postmortems/ + 队列/状态文件）的"裸 skill"无法沉淀。`-s` 只适合在已有仓库里临时试用诊断方法论（不沉淀回本仓），或把 `skills/` 合并进自己已有结构的仓库。
 
 三种形态共用同一套 skill 与机制，且可递进：自积累的团队脱敏后可选回馈上游，让公开库渐厚（见 [部署模式](#部署模式) 的框架式）。`-g` 与 `-s` 的确切行为以 `npx skills add --help` 为准——不同版本的安装器对"仓库整体 vs 指定 skill"的粒度有差异。
 
-**稀疏拉取注意**：sparse-checkout **只收窄 case 数据**——白名单必含方法论/工具全量（`skills/` `scripts/` `references/` `triage-tree.yaml` `postmortems/` `ingest-state.json` `.dsh/` 等，否则 agent 无 skill 可用），`knowledge/` 按需收窄（如 `vllm-ascend/` + `common/`）。`_index.yaml` 是全量生成物，收窄后重跑 `scripts/build_index.py` 重建；`common/` 必留占位（ADR-0005）。当前规模用全量 clone，稀疏拉取是知识库长大后的带宽优化。
+**稀疏拉取注意**：sparse-checkout 只收窄 case 数据，白名单必含方法论/工具全量（`skills/` `scripts/` `references/` `triage-tree.yaml` `postmortems/` `ingest-state.json` `.dsh/` 等，否则 agent 无 skill 可用），`knowledge/` 按需收窄（如 `vllm-ascend/` + `common/`）。`_index.yaml` 是全量生成物，收窄后重跑 `scripts/build_index.py` 重建；`common/` 必留占位（ADR-0005）。当前规模用全量 clone，稀疏拉取是知识库长大后的带宽优化。
 
 ## 六个 skill
 
@@ -124,11 +124,13 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 | Tier 2 | `knowledge/` 下结构化的 case 规则 | 症状匹配后两阶段加载：先读生成索引 `knowledge/_index.yaml` 过滤候选，再加载全量验证 |
 | Tier 3 | `postmortems/` 下的原始定位记录 | 前两层未命中时关键词检索兜底 |
 
-问题沿两个正交维度展开。**在哪查**由训练/推理与框架决定，对应加载哪个命名空间（如 `training/mindspeed-llm/`），这是知识库的目录结构。**什么性质**由问题类型决定：中断、精度、性能三类各有独立的匹配形态和默认排查思路——中断用错误签名 grep，精度用数值阈值断言，性能用 profiler 指标比对，三者不混用。
+问题沿两个正交维度展开。在哪查由训练/推理与框架决定，对应加载哪个命名空间（如 `training/mindspeed-llm/`），这是知识库的目录结构。什么性质由问题类型决定：中断、精度、性能三类各有独立的匹配形态和默认排查思路——中断用错误签名 grep，精度用数值阈值断言，性能用 profiler 指标比对，三者不混用。
 
 诊断过程全程记录 trace：加载了哪些命名空间、按什么顺序执行了哪些检查。trace 用于事后归因。一次误诊，究竟是知识库里的 case 写错了，还是 agent 执行流程走偏了，两者的修复路径完全不同——混在一起会把本来正确的东西改坏。
 
-两个循环驱动整个系统：**诊断循环**（每次问题，分钟级——诊断 → 命中或兜底 → 沉淀）与**演化循环**（每周，git 门控——待审队列 → groom 批审 → 升格 → 下次诊断直接命中）。完整全景见[交互架构图（light，支持主题切换与 PNG 导出）](docs/diagrams/ascend-sleuth-architecture.html?theme=light)；每个演化机制配什么护栏防止越学越错，见 [docs/evolution.md](docs/evolution.md)。
+两个循环驱动整个系统：**诊断循环**（每次问题，分钟级——诊断 → 命中或兜底 → 沉淀）与**演化循环**（每周，git 门控——待审队列 → groom 批审 → 升格 → 下次诊断直接命中）。完整全景见下方架构图（[交互版](docs/diagrams/ascend-sleuth-architecture.html?theme=light)，支持主题切换与 PNG 导出）；每个演化机制配什么护栏防止越学越错，见 [docs/evolution.md](docs/evolution.md)。
+
+![ascend-sleuth 架构](docs/diagrams/ascend-sleuth-architecture.svg)
 
 ## 核心设计原则
 
@@ -177,7 +179,7 @@ knowledge/
 └── _archive/                软退休的过期 case
 ```
 
-knowledge/ 之外的关键文件与目录：
+knowledge/ 之外的其他文件与目录：
 
 ```
 triage-tree.yaml             Tier 1 路由（症状 → namespace）
