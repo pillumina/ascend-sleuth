@@ -83,3 +83,7 @@ content:
     meaning: Profiling_Enable_Errors：Failed to enable profiling. %s
     solution: Do not enable profiling repeatedly.
     module: RTS Errors
+
+  - code: "507011"
+    meaning: "model stream execute failed（the model stream execute failed / model execute task failed）——Runtime 层模型执行失败的上抛码。常见触发：底层算子/驱动执行异常（如 NPU Graph capture 中执行 KV scatter 写入触发 rtMemcpy 不被 graph 支持，报 aclnnScatterNdUpdate 507011）。"
+    related_signatures: ["507011", "model stream execute failed", "Model synchronize execute failed"]

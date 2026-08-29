@@ -83,7 +83,13 @@ agent 先做**症状归一**——把原始报错提炼成可检索的签名，�
      → 请向客户补：cat /usr/local/Ascend/ascend-toolkit/latest/version.cfg
 ```
 
-拿到版本后，agent 综合 case 的 fix 与 reference 的 solution 输出结论：
+**用户回应**（agent 追问后，工程师向客户要到版本）：
+
+```
+版本确认了：9.1.0.beta1（客户回填 cat /usr/local/Ascend/ascend-toolkit/latest/version.cfg）
+```
+
+agent 综合 case 的 fix 与 reference 的 solution 输出结论：
 
 ```
 [示例输出] 版本 9.1.0.beta1 → 命中修复判定（< beta2）：
@@ -97,29 +103,45 @@ fix: 升级 CANN ≥9.1.0.beta2（QuantBatchMatMulV3 修复合入 beta2），同
 **如果候选未命中**，agent 不会硬套——走 Tier 3 检索，**问题疑似源码层时进入源码分析**（常见场景：报错签名指向框架代码/算子）：
 
 ```
-[示例输出] 候选全部未命中 → 深度排查：
-  检索 postmortems/（Tier 3）→ 无覆盖
-  判断：报错 KeyError: 'model.layers.N.self_attn.indexer.wq_b.weight'，
-        指向量化描述表（modelslim_config）→ 疑似源码层，进入源码分析
-  ① 确认版本：vllm-ascend 0.21.0rc2（需要向客户确认，不猜）
-  ② 获取源码（本地优先）：
-     "本地是否已有 vllm-ascend 源码？（默认我查 src-code/vllm-project/vllm-ascend/，也可以告诉我路径）"
-     - 客户本地已有 → 直接用它，git log 核对版本（不符则切对应 tag）
-     - 本地没有 → git clone（公开仓库无需认证）：
-       git clone https://github.com/vllm-project/vllm-ascend.git -b <0.21.0rc2 tag>
-       （或只取单文件：gh api contents/vllm_ascend/quantization/modelslim_config.py?ref=<commit>；
-       Gitee/GitCode/内网 → git clone 对应 URL，内网 URL 由客户提供）
-  ③ 读码定位：get_linear_quant_type → quant_description[prefix + '.weight']
-     → GLM-5.2 新增 indexer 注意力层的权重 key 未在量化描述表中覆盖 → KeyError
-  ④ 追问验证：请客户确认该版本 modelslim 描述表是否含 indexer 权重 → 确认缺失
-  ⑤ 根因定位 → 沉淀 case（/skill:to-postmortem，
-     source_ref: vllm_ascend/quantization/modelslim_config.py:<commit>）
+/skill:diagnose（续）
+客户：8×Ascend，vllm-ascend 0.22.1rc1，NPU Graph 开启（默认）。
+32 并发请求（~39K token 上下文）时 EngineCore 崩溃，全 8 rank 同时报：
+aclnnScatterNdUpdate error 507011
+[补] --enforce-eager（关 Graph）后 32 并发稳定（3200/3200 成功）
 
-  边界：源码分析可能耗时（token/时间）——agent 先判断"疑似源码层"才走；
-  客户可随时说"跳过源码分析"；拿不准根因不硬下结论，转技术支持。
+[示例输出] ① 症状归一：
+  报错签名：aclnnScatterNdUpdate（KV cache 写入算子）+ 507011
+  关键线索：只在 NPU Graph 开启时崩溃、--enforce-eager 后稳定 → 问题在 Graph
+  capture 路径，不是算子本身
+② 路由 → 候选：interrupt；knowledge grep "ScatterNdUpdate|507011|graph" → 无命中
+③ reference：507011 未收录错误码表 → 先验不足，进深度排查
+④ 判断疑似源码层：scatter + graph 指向 KV cache 写入源码路径 → 进入源码分析
+   （会拉对应版本源码，可以吗？也可以说"跳过"）
+
+用户回应：可以，继续（客户确认愿意等源码分析）
+⑤ 版本 v0.22.1rc1 → src-code/ 无 → git clone -b v0.22.1rc1
+⑥ grep 定位：vllm_ascend/device/device_op.py:528  dsa_kv_compress_scatter
+   → npu_scatter_nd_update_v2(cache, slot_mapping, x)
+   读码：SWA/Compressor 的 KV 压缩写入路径——长上下文（39K）触发 compressor
+   scatter 写回 cache，graph capture 模式下内部调用 rtMemcpy（graph 不支持
+   memcpy）→ 底层 aclnnScatterNdUpdate 报 507011 → EngineCore 崩溃
+⑦ 追问验证：--enforce-eager 稳定是否复现？是否只在长上下文时触发？→ 确认
+⑧ follow-up（按序）：
+   a. 查知识库是否已覆盖 → grep 无（507011 刚补录为错误码表条目，但无完整 case）
+   b. 上游修复检查：gh search issues/prs "ScatterNdUpdate graph" → 未查到已合入
+      修复 → 结论：上游未修复，给根因 + workaround（--enforce-eager，牺牲性能
+      需权衡）+ 建议提交/跟踪上游
+⑨ 结论 + source_ref：
+   root cause: NPU Graph capture 下执行 KV scatter 写入（dsa_kv_compress_scatter），
+     graph 不支持内部 rtMemcpy → 507011 崩溃
+   mitigation: --enforce-eager（当前）
+   source_ref: vllm-project/vllm-ascend@5f6faa0c: vllm_ascend/device/device_op.py:528
+   trace: {action: source_analysis, repo, ref, files_read, followup: unfixed}
 ```
 
-**读到这里你会看到**：未命中不是终点——agent 会按需取源码、读代码定位、再追问验证，最后把定位沉淀成 case（带 source_ref 代码指针）。这正是"知识随使用变厚"的来源：**很多问题都要基于源码看为什么，看懂了就变成 case，下次同类直接命中**。
+**多层级**：根因不在 vllm-ascend 时，agent 会继续往下看——torch-npu 等底层开源仓用同样流程分析（`source_ref` 指向该仓）；CANN 未开源则**承认局限**，给根因方向 + 建议联系华为。
+
+**读到这里你会看到**：未命中不是终点——agent 按需取源码、读码定位、追问验证、**follow-up 检查知识库与上游是否已覆盖/修复**，最后把定位沉淀成 case（带 source_ref 代码指针）。这正是"知识随使用变厚"的来源：**很多问题都要基于源码看为什么，看懂了就变成 case，下次同类直接命中**。**读到这里你会看到**：未命中不是终点——agent 会按需取源码、读代码定位、再追问验证，最后把定位沉淀成 case（带 source_ref 代码指针）。这正是"知识随使用变厚"的来源：**很多问题都要基于源码看为什么，看懂了就变成 case，下次同类直接命中**。
 
 **读到这里你会看到**：诊断是「词法检索提名 + agent 语义判断放行」——路由/候选/签名 grep 是结构化的，但症状归一、候选比对、缺信息追问、验证逐条、fix 综合、未命中转深度排查，全部是 agent 的理解与判断。**它是一个会追问、会解释、会承认不知道的排查协作者，不是查表器。**
 
@@ -175,6 +197,14 @@ postmortems/inbox/VLLM-ASC-10122.md         # 原始记录（指针式）
     证据：同算子（MoeDistributeDispatchV2）× 同网络（ROCE）高度重叠；
     增量 = 维护者确认 0.20.2rc1+ 修复（修正 12461 过时的"无官方修复"结论）
   → 建议并入 12461（扩 compat、补 fix），⚠️ 改 active case 的 compat → kb/high-risk 双签
+```
+
+**维护者确认**（人决定，30 秒/条）：
+
+```
+[示例输出] 维护者：accept 10122（new_pattern，证据成立）→ 升格 knowledge/
+         accept 9503（variant_of 12461，同算子×同网络）→ 并入 12461（扩 compat、补 fix）
+         12461 改动涉 compat → 双签：owner1 ✓ owner2 ✓
 ```
 
 转正的知识走 PR，门控由 CI 强制：
