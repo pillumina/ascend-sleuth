@@ -84,7 +84,12 @@ disable-model-invocation: true
         **不维护多版本、不落库**——只拉当前分析需要的文件或 checkout 到对应版本；
      3. **grep 定位**：搜报错签名/算子名/函数名（如 `grep -rn "QuantBatchMatMulV3" vllm_ascend/`）→ 读相关文件片段 → 分析根因（为什么这么实现、什么版本引入了什么行为）；
      4. **追问用户验证**：让用户对照预期/复现/补环境信息，验证根因假设；
-     5. **定位清楚 → 沉淀 case**（`/skill:to-postmortem`，记 `source_ref: {repo, ref, file, line}`——ref 用分析所用版本）。trace 记 `{action: source_analysis, repo, ref, files_read}`。
+     5. **follow-up（定位根因后，按序做）**：
+        a. **查知识库是否已覆盖**——grep `knowledge/` 与 `references/` 是否已有该根因：有 → 标注"已覆盖（复用 `<case-id>`/`<ref-id>`）"，不重复沉淀；
+        b. **上游修复检查**（环境可访问 issue/PR 时，如 gh 已登录）——`gh search issues "<报错签名或根因关键词>" --repo <repo>` 与 `gh search prs`：是否已有修复、合入到哪个版本（tag/commit/PR 号）→ 更新结论：已修复 → fix = 升级到修复版本（compat 标注触发/修复区间）；未修复 → 根因 + workaround + 建议提交/跟踪；
+        c. **环境不可访问上游**（内网等）→ 诚实说明"无法查证上游是否已修复"，给根因 + workaround，建议联系技术支持或手动查上游；
+    6. **多层级**——根因不在本仓时：报错指向更底层开源仓（如 torch-npu）→ 用同样流程分析其源码（`source_ref` 指向该仓）；CANN 等未开源仓 → **承认局限**（无法源码分析），给根因方向 + 建议联系华为；
+    7. **沉淀 case**（根因定位清楚且知识库未覆盖时）：`/skill:to-postmortem`，记 `source_ref: {repo, ref, file, line}`（ref 用分析所用版本）。trace 记 `{action: source_analysis, repo, ref, files_read, followup: fixed|unfixed|unknown}`。
      **边界**：源码分析可能耗时（token/时间）——先判断"疑似源码层"再走（不是每个未命中都 clone）；用户可随时终止（"跳过源码分析"）；拿不准根因不要硬下结论，联系技术支持。
    - 都没有 → 诚实说“知识库没覆盖这个问题，需手动排查；定位完用 `/skill:to-postmortem` 沉淀，下次就能命中”。人 + agent 联合分析
 
