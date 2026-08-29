@@ -1,0 +1,64 @@
+# VLLM-ASC-9503 —— A3 双机 GLM-5.1-w8a8 报 MoeDistributeDispatchV2 算子错误：RoCE 组网已知兼容性问题，升级 0.20.2rc1+
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9503
+# 社区确认：MoeDistributeDispatchV2 在 RoCE 组网下存在已知兼容性问题，升级到 0.20.2rc1+ 可解决（ZYang6263 确认）
+# investigation_quality: medium（维护者确认根因 + 升级验证方向，用户未回执验证）
+# 导入管道：issue-ingest skill（2026-08，triaged 池）；与 VLLM-ASC-12461（507057 MTE 越界 MoE 通信）同域，根因不同，groom 预分诊确认
+
+cases:
+  - id: VLLM-ASC-9503
+    title: "A3 双机 GLM-5.1-w8a8 部署报 MoeDistributeDispatchV2 算子错误——RoCE 组网下已知兼容性问题，升级到 0.20.2rc1+ 解决"
+
+    category: interrupt
+    tags: [glm5, w8a8, moe, roce, moadistribute]
+
+    platforms: ["A3-910C"]
+
+    compat:
+      - framework: vllm-ascend
+        versions: ["<0.20.2rc1"]    # 触发版本；0.20.2rc1+ 修复（ZYang6263 确认）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.4                # medium（维护者确认，用户未回执验证）
+
+    symptoms:
+      - "A3 双机部署 GLM-5.1-w8a8（0.19.1rc1），报 MoeDistributeDispatchV2 算子错误"
+      - "RoCE 组网场景下触发（MoeDistributeDispatchV2 在 RoCE 组网存在已知兼容性问题）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9503"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E \"MoeDistributeDispatchV2\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:MoeDistributeDispatchV2"
+      fallback:
+        command_template: "grep -E 'MoeDistributeDispatch|RoCE' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:MoeDistributeDispatch|RoCE"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：报错含 MoeDistributeDispatchV2（MoE 分布式路由/聚合算子）？"
+        expected: "是——MoeDistributeDispatchV2 算子执行错误"
+        note: "与 VLLM-ASC-12461（507057 MTE 越界）同域（MoE 通信算子）但根因不同——本条是 RoCE 组网兼容性"
+      - step: 2
+        check: "环境判别：RoCE 组网 + vllm-ascend 版本 <0.20.2rc1？"
+        expected: "是——MoeDistributeDispatchV2 在 RoCE 组网存在已知兼容性问题（维护者确认）"
+      - step: 3
+        check: "修复：升级 vllm-ascend 到 0.20.2rc1 或更新版本"
+        expected: "算子错误解决（ZYang6263 确认新版本可解决）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change                  # 版本升级
+
+    root_cause: >
+      MoeDistributeDispatchV2 算子（MoE 路由/聚合）在 RoCE 组网下存在已知兼容性问题，
+      旧版本（<0.20.2rc1）触发算子错误。修复在 0.20.2rc1+（维护者确认）。
+
+    fix: >
+      升级 vllm-ascend 到 0.20.2rc1 或更新版本（ZYang6263 确认新版本可解决）。

@@ -85,8 +85,9 @@ python3 scripts/issue_filter.py --cached /tmp/issues-<repo>.json \
 
 ### 3. 评估（~1-2K token/条，只花在候选上）
 
-对候选逐条：`gh api repos/<repo>/issues/<n>` 取 body（只读当前这条），判断：
-- **可否沉淀**：症状→根因→fix 是否闭环、是否昇腾相关、是否与现有 case 重复（对照 `knowledge/` 与 `postmortems/`）；
+对候选逐条：`gh api repos/<repo>/issues/<n>` 取 **body + 评论**（issue 的 body 多为环境信息+现象，**根因和 fix 通常沉淀在评论里**——至少读最后 2-3 条评论，结论常在尾部；body 只读现象段落），判断：
+- **可否沉淀**：症状→根因→fix 是否闭环（根因有定论、fix 有方向即可，不必等社区验证）、是否昇腾相关、是否与现有 case 重复（对照 `knowledge/` 与 `postmortems/`）；
+- 评论数多的不等于可沉淀（可能多问题未定论）——以"根因是否定论 + fix 是否明确"为判据，不只看评论热度；
 - 不可沉淀（feature/讨论/无结论）→ 跳过，但记录到 `ingest-state.json` 的 `processed`（`--mark-imported` 一并标记，防反复评估）。
 
 `--mode confirm`：先展示候选列表（编号/标题/评论数）给用户确认取舍，再评估。
