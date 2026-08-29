@@ -62,3 +62,11 @@
 - **引用后 resolve 率**：引用某 ref 的诊断 session 中 `status: resolved` 占比——outcome 从 session 最终状态**派生**，不新增回报动作；
 - **平台分布**：`reference_lookup` 事件的 platform 字段聚合——覆盖矩阵（哪些平台缺 ref）的依据；
 - **无数据如实显示**：reference 刚建立时 hits=0 是现状，不是 bug——等 trace 积累 ≥2-3 期后再按实测设参考线（原则十一：假设换成实测，不拍脑袋）。
+
+## 2026-W35 容量更新（1.0.0 打 tag 时点，2026-08-29）
+
+> 1.0.0 release 前的容量快照（ADR-0004 格子口径，`scripts/build_index.py` 头注实时值）。
+
+- 库容量: inference/vllm-ascend：interrupt **32/30（已超 soft_cap）** / performance 3/30 / precision 6/30；inference/sglang interrupt 1/30
+- 触发评估：interrupt 格子超 soft_cap（roadmap A2 入口闸门）——健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 60 才强制拆分；当前先记录，拆分建议由下一轮 groom 数据判定
+- case 总数: 42（全 active）；reference 总数: 95（全 active）
