@@ -48,6 +48,8 @@ Six skills in `skills/<name>/SKILL.md`, following the [Agent Skills](https://age
 
 Each case file has: `id`, `title`, `category` (interrupt|precision|performance), `tags`, `platforms`, `compat` (multi-dimensional: framework/CANN/HDK version ranges), `confidence` (hits/misdiagnoses/score managed by groom), `symptoms`, `quickly_check` (primary + fallback regex), `diagnosis` steps with `command_template`/`expected`/`fix_on_mismatch`/`rollback`, `severity` (benign|service-affecting|data-loss-risk), `fix_type` (env-var|config-change|code-patch|pending-investigation), `root_cause`, `fix`.
 
+Optional field — `source_ref`: {repo, ref, file, line} — 根因定位到源码时的代码位置（如 `vllm_ascend/quantization/modelslim_config.py`）。诊断时 agent 按需取该版本源码片段作为证据链，**源码不落库**（上游 repo 维护各自版本，知识库只记结论 + 代码指针）。ref 用触发版本对应的 commit/tag；`line` 可选。
+
 Optional field — `ref_knowledge`: structured linkage to prior-knowledge entries in `references/`. Each entry is `ref: <reference-id>` + `role: signature-source | fix-methodology | root-cause-context`. `ref` must exist in `references/` and `role` must be legal — enforced by `scripts/verify_references.py` (dangling refs and illegal roles fail CI). The reverse view (which cases reference a given entry) is derived by that script, never stored on the reference side — one relation, stored once. Not required on existing cases; add as needed.
 
 Version matching is **soft**: compat mismatch downgrades confidence but never hard-excludes a case. Undefined dimensions are skipped.

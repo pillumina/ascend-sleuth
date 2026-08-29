@@ -99,7 +99,7 @@ namespaces:
           command: grep -E 'modelslim_config\.py.*get_linear_quant_type' {{log_path}}
           expected: regex:modelslim_config\.py.*get_linear_quant_type
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10610.yaml
-      hash: 1a4a46442258
+      hash: a3710855776d
     - id: VLLM-ASC-10784
       title: Kimi-k2.5 PD 分离 2P1D 压测中 decode 侧 OOM：请求竞争触发 recompute，_moe_forward_shared 展开 61GB、npu_grouped_matmul_gmm2
         输入 batch 1024→508648

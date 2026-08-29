@@ -32,6 +32,12 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/10610"
       - "https://github.com/vllm-project/vllm-ascend/pull/10441"
 
+    source_ref:
+      repo: vllm-project/vllm-ascend
+      ref: c5ae281d9bfc60390e93cdbf3a9784c2f8096249
+      file: vllm_ascend/quantization/modelslim_config.py
+      line: 192
+
     quickly_check:
       primary:
         command_template: "grep -E \"KeyError: 'model\\.layers\\.[0-9]+\\.self_attn\\.indexer\\.wq_b\\.weight'\" {{log_path}}"
