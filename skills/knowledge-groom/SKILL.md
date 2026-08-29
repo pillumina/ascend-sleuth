@@ -19,9 +19,10 @@ disable-model-invocation: true
 
 ## 流程（一次 groom 产出一个变更摘要）
 
-1. **intake 队列批处理（升格的前置）**：处理 `postmortems/inbox/`（`/skill:to-postmortem` 的产出 + agent 自起草候选都落这里）：
-   - 逐条**预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象：命中 namespace + `common/` 的现有 case——用 `knowledge/_index.yaml` 按 symptoms/tags 定位候选，全量读比对 root_cause 与 fix
-   - 产出**批审清单**交 owner 周批处理（像清 PR inbox，~30 秒/条）：
+1. **intake 队列处理（升格的前置）**：处理 `postmortems/inbox/`（`/skill:to-postmortem` / `/skill:issue-ingest` 的产出都落这里）：
+   - **节律**：单仓集中可周批；**分布式（成员本地 inbox，远程仓不存）在提交主仓时处理**——产出时已做 pre-triage（见下），groom 复核确认而非重判；
+   - 逐条**预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象：命中 namespace + `common/` 的现有 case——用 `knowledge/_index.yaml` 按 symptoms/tags 定位候选，全量读比对 root_cause 与 fix。**draft 头注释已带 to-postmortem/issue-ingest 产出的分诊建议 → 复核证据是否成立，不重判**（建议与决定分离：判断在产出时做，groom 是审核者）；
+   - 产出**批审清单**交 owner 处理（像清 PR inbox，~30 秒/条）：
      - `covered_by` → 建议关闭升格；postmortem 转正 `postmortems/YYYY-QN/`（Tier 3 语料，**不是丢弃**）
      - `variant_of` → 建议并入已有 case（扩 compat 区间、补 symptoms）；若要动 `expected`/`fix_on_mismatch` 按高风险变更走双签
      - `new_pattern` → 结构化 + 语义校验 → 升格 `knowledge/<ns>/`。校验失败标 `needs-structurer-review`，语义不明标 `needs-human-review`
