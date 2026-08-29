@@ -1,0 +1,46 @@
+id: ascend-moe-comm-triage
+type: methodology
+title: MoE 通信/路由算子故障排查（MoeDistributeDispatch / MoeInitRouting / QuantBatchMatMul）
+summary: MoE 相关算子（aclnnMoeDistributeDispatchV2/V4、MoeInitRoutingV3、QuantBatchMatMulV3）执行报错按形态分流：507057 SUSPECT REMOTE ERROR + MTE 越界 → ROCE 组网兼容性（升级 0.20.2rc1+ / HCCS 退避）；561000 Cannot find binary → torch-npu 缺算子二进制（升级）；561000 aclnnMoeDistributeDispatchV4 + EI0007 → HCCL QP 资源耗尽（关 EP）；507015 QuantBatchMatMulV3 → 量化算子 CANN bug（升级 ≥9.1.0.beta2）
+
+sources:
+  - type: case-derived
+    cases: [VLLM-ASC-12461, VLLM-ASC-14166, VLLM-ASC-10944, VLLM-ASC-10122]
+    extracted_at: 2026-08-29
+    extraction_method: to-reference --ingest-cases
+
+applies_to:
+  frameworks: [vllm-ascend]
+  categories: [interrupt]
+
+status: draft
+last_verified: 2026-08-29
+
+content:
+  flow:
+    - step: 1
+      name: 识别 MoE 相关算子故障
+      action: 报错含 MoE 通信/路由/量化算子（aclnnMoeDistributeDispatchV2/V4、MoeInitRoutingV3、MoeDistributeCombine、QuantBatchMatMulV3）+ aicore exception 或错误码即命中
+      check: "grep -E 'MoeDistributeDispatch|MoeInitRouting|QuantBatchMatMul' {{log_path}}"
+      when_to_use: MoE 模型（GLM/Qwen/DSV4）开启 expert parallel 或 w8a8 量化推理报算子错误
+    - step: 2
+      name: 形态 A——MoeDistributeDispatchV2 + ROCE（507057 MTE 越界）
+      action: 多节点 EP + ROCE 组网，报 SUSPECT REMOTE ERROR 507057 / MTE DDR 越界（errCode 0x800000）→ ROCE 对 MC2 算子兼容性问题：优先升级 vllm-ascend 0.20.2rc1+（已修复）；不能升级退避 HCCS 网络或单节点内 EP
+      check: "grep SUSPECT REMOTE ERROR|507057；grep MoeDistributeDispatchV2"
+      when_to_use: 多节点 EP 场景（≥2 节点 + --enable-expert-parallel）
+    - step: 3
+      name: 形态 B——MoeInitRoutingV3 缺二进制（561000）
+      action: 报 Cannot find binary for op（MoeInitRoutingV3）→ torch-npu 版本缺算子二进制实现 → 升级 torch-npu ≥2.10.0.post4 重启
+      check: "grep 'Cannot find binary for op'|MoeInitRoutingV3"
+      when_to_use: A5 + DSV4-Flash 等走 MoE 路由的模型启动报 kernel 缺二进制
+    - step: 4
+      name: 形态 C——MoeDistributeDispatchV4 + EI0007（HCCL QP 资源耗尽）
+      action: 报 aclnnMoeDistributeDispatchV4 failed + EI0007 Resources are exhausted（EP 场景 tiling 阶段申请 HCCL QP 资源超预算）→ 关闭 expert parallel 规避或调通信资源预算
+      check: "grep aclnnMoeDistributeDispatchV4|EI0007"
+      when_to_use: GLM 系列 w8a8 + --enable-expert-parallel，16 卡 EP 场景
+    - step: 5
+      name: 形态 D——QuantBatchMatMulV3（507015）
+      action: 量化 matmul 算子（QuantBatchMatMulV3）报 507015 aicore exception → 该 CANN 版本量化算子 bug → 升级 CANN ≥9.1.0.beta2
+      check: "grep QuantBatchMatMulV3|507015"
+      when_to_use: 310P + w8a8 量化模型推理报 QuantBatchMatMulV3 算子 aicore exception
+  verified_by_testing: false

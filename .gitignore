@@ -29,3 +29,13 @@ __pycache__/
 # ============================================================
 postmortems/inbox/*
 !postmortems/inbox/README.md
+
+# ============================================================
+# agent 项目级 skills symlink（相对链接，git 跟踪——clone 自动还原，各 agent 项目目录自动扫描）
+.dsh/*
+!.dsh/skills
+.claude/
+.cursor/
+.trae/
+.codebuddy/
+.codex/

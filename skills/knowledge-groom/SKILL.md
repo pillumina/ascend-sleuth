@@ -71,6 +71,8 @@ disable-model-invocation: true
 - `references/` 下文件数 >50，**或** metrics 显示 reference 检索退化（漏检增多 / 平台匹配耗时长）；
 - 达到 → 变更摘要**建议**生成 `references/_index.yaml`（`build_references_index.py`，与 case 层 `build_index.py` 同构）——**只建议不自动生成**（建议与决定分离）；未达到 → 不提及（目录 + grep 足够，不为不存在的规模购置基础设施）。
 
+**R8. case 共性提炼候选（case-derived reference 触发信号）**：每次 groom 扫 `knowledge/_index.yaml` 的 tags——**同 tag 的 case ≥3 条** → 变更摘要列出该组（case id + tag + root_cause 摘要），**建议**走 `/skill:to-reference --ingest-cases "[id1, id2...]"` 提炼共性（methodology / error-code 表追加）——只建议不自动提炼（建议与决定分离；同 tag 是弱信号，是否提炼由 owner 定）。理由：共性识别靠人工不可持续（2026-08 从 42 条 case 人工发现 MoE 通信算子族，4 条同 tag）；tag 聚类是零 token 的机械信号，先把候选端到人眼前。
+
 ## 变更摘要里的高风险变更标记（强制深审，不走 30 秒快通道）
 
 - 新建 `common/` 权威记录

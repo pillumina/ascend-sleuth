@@ -20,20 +20,42 @@ ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路
 
 ## 快速开始
 
-### 安装
+### 安装（使能 skills）
+
+**主路径——仓库即 workspace，skills 随仓使能**：clone 本仓，把 agent 的**项目级 skills 目录指向 `<clone>/skills/`**（skills/ 是单一事实源，git 版本管理；更新 = git pull，**热刷新即时生效**，不是重装）。装齐六个：`diagnose` / `to-postmortem` / `to-reference` / `issue-ingest` / `knowledge-groom` / `resume-diagnosis`。
+
+**零配置（DSH，团队主力）**：仓库已跟踪 `.dsh/skills → ../skills` 相对 symlink——**clone 后自动还原，DSH 项目 root 自动发现 + watch 热刷新**（git pull 更新 SKILL.md 即时生效，无需任何配置）。
+
+**其他 agent 按需建**（仓库不携带额外 symlink，保持根目录干净）：
 
 ```bash
-npx skills@latest add pillumina/ascend-sleuth
+bash scripts/enable-agent-skills.sh    # 检测已安装 agent，建项目级 skills symlink（幂等，可重跑）
 ```
 
-选择要安装的 skill 和目标 agent。也可以在 pi 或 Claude Code 中手动把 `skills/` 目录加入搜索路径。装齐六个（`to-reference` 是先验知识的入口，与案例沉淀 `to-postmortem` 并列；`issue-ingest` 是上游 issue 的批量导入入口；`resume-diagnosis` 是反馈闭环的一部分，见下）：
+各 agent 的项目级 skills 目录（脚本自动建 symlink，也可手动）：
 
-```bash
-npx skills@latest add pillumina/ascend-sleuth -g -a pi -a claude-code \
-  -s diagnose -s to-postmortem -s to-reference -s issue-ingest -s knowledge-groom -s resume-diagnosis
-```
+| Agent | 项目级 skills 目录 |
+|---|---|
+| Claude Code | `.claude/skills` |
+| Cursor | `.cursor/skills`（官方确认自动发现）|
+| Trae | `.trae/skills` |
+| CodeBuddy / WorkBuddy | `.codebuddy/skills` |
+| Codex（OpenAI）| `.codex/skills` |
+| DSH | `.dsh/skills`（仓库已跟踪，无需脚本）|
+
+> `.agents/skills` 未使用：仅 DSH 支持（已被 `.dsh/skills` 覆盖），无其他 agent 以其为项目级 skills 目录。
+
+**Windows**：若 git 未开 `core.symlinks=true`，clone 不还原 symlink——跑一次 `enable-agent-skills.sh` 补建。
 
 加载后在 agent 里以 `/skill:<name>` 调用。
+
+**分发路径——把方法论装进别的项目试用**（不沉淀回本仓）：
+
+```bash
+npx skills@latest add pillumina/ascend-sleuth -s diagnose -s to-postmortem -s to-reference -s issue-ingest -s knowledge-groom -s resume-diagnosis
+```
+
+`npx skills` 装的是 skills/ 副本（更新需重装），适合"别的项目里临时试用诊断方法论"；本仓团队使用走主路径（仓库即 workspace）。
 
 ### 一个诊断
 
@@ -63,17 +85,19 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 ## 知识获取
 
-装完 skill 之后，知识库有三种形态——按你的使用方式选。安装命令的差异在 `-g`（git 模式）和 `-s`（skill 选择）：
+**仓库即 workspace**：诊断（读 knowledge/references/triage-tree）与沉淀（写 postmortems/inbox/、references/、ingest-state.json）都在**同一个仓库 clone** 里进行——SKILL 的知识路径相对仓根。三种起步形态如下，安装命令的差异在 `-g`（git 模式）和 `-s`（skill 选择）：
 
-| 形态 | 安装命令 | 结果 | 适合谁 |
+| 形态 | 起步方式 | 结果 | 适合谁 |
 |---|---|---|---|
-| **自积累**（只装 skill） | `npx skills add -s diagnose -s to-postmortem -s to-reference -s issue-ingest -s knowledge-groom -s resume-diagnosis` | 只装 `skills/` 方法论，`knowledge/` 不装（为空） | 新团队、问题域不同、知识要私有 |
-| **消费现成**（带知识库） | `npx skills add -g pillumina/ascend-sleuth`（git 模式拉整个仓库，含 `knowledge/`） | 直接用上游验证过的 case，也可继续沉淀 | 已有沉淀、问题域重叠、想复用 |
-| **定制知识面**（稀疏拉取） | 先 `git clone` 或 `-g` 拉取，再 `git sparse-checkout` 按目录白名单收窄 | 只保留需要的部分（如 `vllm-ascend` 格子 + `common/`） | 知识库长大后、带宽/存储受限、只要自己框架的知识 |
+| **自积累**（空仓起步） | `git clone` 本仓（或 fork）后清空 `knowledge/` | 结构完整（skills/ + knowledge/ 空 + 队列/状态就位），从零沉淀 | 新团队、问题域不同、知识要私有 |
+| **消费现成**（带知识库） | `git clone` 整个仓库（含 `knowledge/` 与 `references/`）| 直接用上游验证过的 case/reference，也可继续沉淀 | 已有沉淀、问题域重叠、想复用 |
+| **定制知识面**（稀疏拉取） | `git clone` 后用 `git sparse-checkout` 收窄白名单 | **只收窄 case 数据**（`knowledge/` 子集）；方法论/工具/索引**全量**（见下）| 知识库长大后、带宽/存储受限、只要自己框架的知识 |
+
+> ⚠️ **`-s` 只装 skill 不构成可用形态**——SKILL 的知识路径（postmortems/inbox/、references/、ingest-state.json）相对仓根，没有知识仓结构（knowledge/references/postmortems/ + 队列/状态文件）的"裸 skill"无法沉淀。`-s` 仅适合**在已有仓库里临时试用诊断方法论**（不沉淀回本仓），或把 `skills/` 合并进自己已有结构的仓库。
 
 三种形态共用同一套 skill 与机制，且可递进：自积累的团队脱敏后可选回馈上游，让公开库渐厚（见 [部署模式](#部署模式) 的框架式）。`-g` 与 `-s` 的确切行为以 `npx skills add --help` 为准——不同版本的安装器对"仓库整体 vs 指定 skill"的粒度有差异。
 
-**稀疏拉取注意**：`_index.yaml` 是生成物、对应全量知识。稀疏拉取后需重跑 `python3 scripts/build_index.py` 重建索引——它只索引你拉到的格子，检索也只在你的知识面内进行。`common/` 设计上是必拉项（triage 兜底命名空间 + 跨框架权威记录的归宿，ADR-0005）；**当前 `common/` 为空**（仅 `.gitkeep`，待 groom 从多 namespace 同根因 case 中提炼）——sparse-checkout 仍应保留 `common/` 目录占位，避免未来内容长出来后改白名单。设计论证见 [ADR-0005](docs/adr/0005-knowledge-consumption-split.md)。
+**稀疏拉取注意**：sparse-checkout **只收窄 case 数据**——白名单必含方法论/工具全量（`skills/` `scripts/` `references/` `triage-tree.yaml` `postmortems/` `ingest-state.json` `.dsh/` 等，否则 agent 无 skill 可用），`knowledge/` 按需收窄（如 `vllm-ascend/` + `common/`）。`_index.yaml` 是全量生成物，收窄后重跑 `scripts/build_index.py` 重建；`common/` 必留占位（ADR-0005）。当前规模用全量 clone，稀疏拉取是知识库长大后的带宽优化。
 
 ## 六个 skill
 
