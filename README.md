@@ -22,12 +22,19 @@ ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路
 
 ### 安装（使能 skills）
 
-**主路径——仓库即 workspace，skills 随仓使能**：clone 本仓，把 agent 的**项目级 skills 目录指向 `<clone>/skills/`**（skills/ 是单一事实源，git 版本管理；更新 = git pull，不是重装）。装齐六个：`diagnose` / `to-postmortem` / `to-reference` / `issue-ingest` / `knowledge-groom` / `resume-diagnosis`。
+**主路径——仓库即 workspace，skills 随仓使能**：clone 本仓，把 agent 的**项目级 skills 目录指向 `<clone>/skills/`**（skills/ 是单一事实源，git 版本管理；更新 = git pull，**热刷新即时生效**，不是重装）。装齐六个：`diagnose` / `to-postmortem` / `to-reference` / `issue-ingest` / `knowledge-groom` / `resume-diagnosis`。
 
-各 agent 的项目级 skills 配置（语法因 agent 而异，详以其文档为准）：
-- **Claude Code**：项目根放 `.claude/settings.json` 声明 skills 路径，或 `skills/` 目录本身作为项目 skills；
-- **Codex / 其他 Agent Skills 兼容 agent**：项目级 skills 目录配置指向 `<clone>/skills/`；
-- **DeepSeek Harness（DSH）**：在 harness 侧注册 `<clone>/skills/` 为 skill 源（团队统一配置一次，成员 clone 即用）。
+**一键配置**（检测当前 agent 并写入对应配置，幂等可重跑）：
+
+```bash
+bash scripts/enable-agent-skills.sh
+```
+
+各 agent 的配置方式（脚本做的事，也可手动）：
+
+- **DeepSeek Harness（DSH）**：把 `<clone>/skills` 加入 DSH 配置的 **`customSkillDirs`**（`~/.dsh/settings.yaml`，或 DSH 环境配置）；DSH 的 `watch`（skill catalog 热刷新）会观察该目录——**git pull 更新 SKILL.md 后 catalog 自动刷新，即时生效**，无需重启/重装。DSH 默认项目 roots（`<project>/.dsh/skills`、`.agents/skills`）不含仓库根 `skills/`，故需 customSkillDirs（或建 symlink 到 `.dsh/skills`）；
+- **Claude Code**：项目级 skills 目录为 `<clone>/.claude/skills/`——脚本建 symlink 指向 `../skills`（git 不跟踪，clone 后跑一次脚本即用）；或在 `.claude/settings.json` 声明；
+- **Codex / Cursor / Trae 等**：项目级 skills 目录（`.cursor/skills`、`.trae/skills` 等）同理 symlink 或配置指向 `<clone>/skills`。
 
 加载后在 agent 里以 `/skill:<name>` 调用。
 

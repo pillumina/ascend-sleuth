@@ -29,3 +29,12 @@ __pycache__/
 # ============================================================
 postmortems/inbox/*
 !postmortems/inbox/README.md
+
+# ============================================================
+# agent 项目级 skills symlink（enable-agent-skills.sh 生成，
+# clone 后跑一次脚本即建；不入版本库，避免跨平台 symlink 差异）
+# ============================================================
+.dsh/
+.claude/
+.cursor/
+.trae/
