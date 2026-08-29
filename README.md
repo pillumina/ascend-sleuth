@@ -97,7 +97,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 三种形态共用同一套 skill 与机制，且可递进：自积累的团队脱敏后可选回馈上游，让公开库渐厚（见 [部署模式](#部署模式) 的框架式）。`-g` 与 `-s` 的确切行为以 `npx skills add --help` 为准——不同版本的安装器对"仓库整体 vs 指定 skill"的粒度有差异。
 
-**稀疏拉取注意**：sparse-checkout 只**收窄 case 数据**——白名单**必须全量包含方法论与工具**：`skills/` `scripts/` `references/` `triage-tree.yaml` `postmortems/` `ingest-state.json` `.dsh/`（DSH 使能 symlink）`docs/` 等；否则 agent 无 skill/索引可用、DSH 发现不了 skills。只对 `knowledge/` 收窄（如 `knowledge/inference/vllm-ascend/` + `knowledge/common/`）。`_index.yaml` 是生成物、对应全量知识——收窄后需重跑 `python3 scripts/build_index.py` 重建索引（只索引拉到的格子，检索在知识面内）。`common/` 是必拉项（triage 兜底命名空间 + 跨框架权威记录，ADR-0005），**当前为空**（仅 `.gitkeep`）——仍应保留目录占位。稀疏拉取是"知识库长大后"的带宽/存储优化，当前规模（42 case）用全量 clone 即可。
+**稀疏拉取注意**：sparse-checkout **只收窄 case 数据**——白名单必含方法论/工具全量（`skills/` `scripts/` `references/` `triage-tree.yaml` `postmortems/` `ingest-state.json` `.dsh/` 等，否则 agent 无 skill 可用），`knowledge/` 按需收窄（如 `vllm-ascend/` + `common/`）。`_index.yaml` 是全量生成物，收窄后重跑 `scripts/build_index.py` 重建；`common/` 必留占位（ADR-0005）。当前规模用全量 clone，稀疏拉取是知识库长大后的带宽优化。
 
 ## 六个 skill
 
