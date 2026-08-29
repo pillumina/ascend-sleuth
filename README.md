@@ -32,6 +32,9 @@ ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路
 | Claude Code | `.claude/skills → ../skills` | 项目级 skills 目录 |
 | Cursor | `.cursor/skills → ../skills` | 项目级 skills 目录 |
 | Trae | `.trae/skills → ../skills` | 项目级 skills 目录 |
+| CodeBuddy / WorkBuddy | `.codebuddy/skills → ../skills` | 项目级 skills 目录 |
+
+> `.agents/skills` 未建 symlink：仅 DSH 支持（已被 `.dsh/skills` 覆盖），无其他 agent 以其为项目级 skills 目录。
 
 **Windows / 手动场景**（若 git 未开 `core.symlinks=true`，clone 不还原 symlink）：
 
