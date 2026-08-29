@@ -199,6 +199,14 @@ postmortems/inbox/VLLM-ASC-10122.md         # 原始记录（指针式）
   → 建议并入 12461（扩 compat、补 fix），⚠️ 改 active case 的 compat → kb/high-risk 双签
 ```
 
+**维护者确认**（人决定，30 秒/条）：
+
+```
+[示例输出] 维护者：accept 10122（new_pattern，证据成立）→ 升格 knowledge/
+         accept 9503（variant_of 12461，同算子×同网络）→ 并入 12461（扩 compat、补 fix）
+         12461 改动涉 compat → 双签：owner1 ✓ owner2 ✓
+```
+
 转正的知识走 PR，门控由 CI 强制：
 
 ```
