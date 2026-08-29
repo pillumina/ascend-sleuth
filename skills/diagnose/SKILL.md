@@ -73,6 +73,19 @@ disable-model-invocation: true
 5. **深度排查（Tier 2 未命中）**
    - **若 Script 工具已接入**（见 references/script-integration.md），按 category 用：interrupt→日志/core dump、precision→`mem-analyze`、performance→`ascend-profile-analyze`/`bench-run`。**当前骨架阶段这些 Script 多半还没接**——别假装能调，诚实告诉工程师。
    - Tier 3 关键词检索 `postmortems/`（`rg -l '<keyword>' postmortems/`，top-3 读片段；含 `postmortems/inbox/` 未审草稿——可用但标注未经人审）。trace 记 `{action: tier3, keyword, files_read}`——Tier 3 挽救率指标（docs/metrics.md）靠这条统计。这是骨架阶段真正能用的兜底
+   - **源码分析（问题疑似框架/算子层时，常见且高价值）**——报错签名指向框架代码/算子名/量化描述表等（如 `fault kernel_name=QuantBatchMatMulV3`、`modelslim_config.py` 相关 KeyError）且 Tier 3 未覆盖时：
+     1. **向用户确认版本**（vllm-ascend / CANN / torch-npu——源码分析依赖对应版本，不要猜）；
+     2. **获取源码（本地优先，按平台选工具）**：
+        a. **先查本地**——问用户一句"本地是否已有 <repo> 源码？"（默认先查约定位置 `<repo根>/src-code/<org>/<repo>/`，用户也可给任意路径）。本地已有 → 直接用，并用 `git -C <path> log -1` 或版本文件**核对版本与客户环境 compat 匹配**；版本不符 → 提示切到对应 tag 或按需拉对应版本（不假设本地副本就是对的）；
+        b. **本地没有 → 按需拉取（统一 git clone，公开仓库无需认证）**：
+           - `git clone <url> -b <tag/commit>`——URL 按平台：GitHub `https://github.com/<org>/<repo>.git`、Gitee `https://gitee.com/...`、GitCode `https://gitcode.com/...`；git 协议通用，公开仓库直接 clone；
+           - 公司内网（CodeHub 等）/私有仓库：**用户提供 URL**（其环境已配置凭据则直接 `git clone`）——agent 不碰内网认证/凭据；
+           - **只取单文件**（不想拉全仓）时：GitHub 用 `gh api repos/<repo>/contents/<file>?ref=<commit>`（已登录 gh），其他平台用其 API 或 raw 链接；
+        **不维护多版本、不落库**——只拉当前分析需要的文件或 checkout 到对应版本；
+     3. **grep 定位**：搜报错签名/算子名/函数名（如 `grep -rn "QuantBatchMatMulV3" vllm_ascend/`）→ 读相关文件片段 → 分析根因（为什么这么实现、什么版本引入了什么行为）；
+     4. **追问用户验证**：让用户对照预期/复现/补环境信息，验证根因假设；
+     5. **定位清楚 → 沉淀 case**（`/skill:to-postmortem`，记 `source_ref: {repo, ref, file, line}`——ref 用分析所用版本）。trace 记 `{action: source_analysis, repo, ref, files_read}`。
+     **边界**：源码分析可能耗时（token/时间）——先判断"疑似源码层"再走（不是每个未命中都 clone）；用户可随时终止（"跳过源码分析"）；拿不准根因不要硬下结论，联系技术支持。
    - 都没有 → 诚实说“知识库没覆盖这个问题，需手动排查；定位完用 `/skill:to-postmortem` 沉淀，下次就能命中”。人 + agent 联合分析
 
 6. **产出**
