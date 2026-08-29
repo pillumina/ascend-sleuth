@@ -24,11 +24,15 @@ ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路
 
 **主路径——仓库即 workspace，skills 随仓使能**：clone 本仓，把 agent 的**项目级 skills 目录指向 `<clone>/skills/`**（skills/ 是单一事实源，git 版本管理；更新 = git pull，**热刷新即时生效**，不是重装）。装齐六个：`diagnose` / `to-postmortem` / `to-reference` / `issue-ingest` / `knowledge-groom` / `resume-diagnosis`。
 
-**一键配置**（检测当前 agent 并写入对应配置，幂等可重跑）：
+**零配置（团队主力 DSH）**：仓库已跟踪 `.dsh/skills → ../skills` 相对 symlink——**clone 后 DSH 项目 root 自动发现 + watch 热刷新，无需任何配置**，git pull 更新 SKILL.md 即时生效。
+
+**其他 agent / 手动场景**（Claude Code / Cursor / Trae / Windows）：
 
 ```bash
-bash scripts/enable-agent-skills.sh
+bash scripts/enable-agent-skills.sh    # 为已安装的 agent 建项目级 skills symlink（幂等）
 ```
+
+Windows 注意：若 git 未开启 `core.symlinks=true`，clone 不还原 symlink——用脚本或手动建。
 
 各 agent 的配置方式（脚本做的事，也可手动）：
 
