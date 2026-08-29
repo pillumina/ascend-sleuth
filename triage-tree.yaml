@@ -53,6 +53,7 @@ branches:
   - id: inference_interrupt
     category: interrupt
     symptoms:
+      - ["\\btimeout\\b", "超时", "synchronize.*timeout", "广播.*超时"]   # 推理侧通信/同步超时
       - ["kv.*cache.*full", "out of memory"]
       - ["serving.*crash", "engine.*error"]
       - ['ErrCode=\d+', 'EE9999', 'rtStream\w*.*fail', 'aclrt\w+.*fail']   # 错误码型签名（评估 0001 §四.2：12983 型靠退化兜底的缺口）
