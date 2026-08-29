@@ -24,30 +24,28 @@ ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路
 
 **主路径——仓库即 workspace，skills 随仓使能**：clone 本仓，把 agent 的**项目级 skills 目录指向 `<clone>/skills/`**（skills/ 是单一事实源，git 版本管理；更新 = git pull，**热刷新即时生效**，不是重装）。装齐六个：`diagnose` / `to-postmortem` / `to-reference` / `issue-ingest` / `knowledge-groom` / `resume-diagnosis`。
 
-**全部 agent clone 即用（Unix）**：仓库已跟踪各 agent 项目级 skills 的相对 symlink——**clone 后自动还原，各 agent 自动发现，零配置**：
+**零配置（DSH，团队主力）**：仓库已跟踪 `.dsh/skills → ../skills` 相对 symlink——**clone 后自动还原，DSH 项目 root 自动发现 + watch 热刷新**（git pull 更新 SKILL.md 即时生效，无需任何配置）。
 
-| Agent | 仓库内 symlink | 自动发现机制 |
-|---|---|---|
-| DeepSeek Harness | `.dsh/skills → ../skills` | 项目 root 扫描 + watch 热刷新（git pull 更新 SKILL.md 即时生效）|
-| Claude Code | `.claude/skills → ../skills` | 项目级 skills 目录 |
-| Cursor | `.cursor/skills → ../skills` | 项目级 skills 目录 |
-| Trae | `.trae/skills → ../skills` | 项目级 skills 目录 |
-| CodeBuddy / WorkBuddy | `.codebuddy/skills → ../skills` | 项目级 skills 目录 |
-| Codex（OpenAI）| `.codex/skills → ../skills` | 项目级 skills 目录 |
-
-> `.agents/skills` 未建 symlink：仅 DSH 支持（已被 `.dsh/skills` 覆盖），无其他 agent 以其为项目级 skills 目录。
-
-**Windows / 手动场景**（若 git 未开 `core.symlinks=true`，clone 不还原 symlink）：
+**其他 agent 按需建**（仓库不携带额外 symlink，保持根目录干净）：
 
 ```bash
-bash scripts/enable-agent-skills.sh    # 为已安装的 agent 建项目级 skills symlink（幂等）
+bash scripts/enable-agent-skills.sh    # 检测已安装 agent，建项目级 skills symlink（幂等，可重跑）
 ```
 
-各 agent 的配置方式（脚本做的事，也可手动）：
+各 agent 的项目级 skills 目录（脚本自动建 symlink，也可手动）：
 
-- **DeepSeek Harness（DSH）**：把 `<clone>/skills` 加入 DSH 配置的 **`customSkillDirs`**（`~/.dsh/settings.yaml`，或 DSH 环境配置）；DSH 的 `watch`（skill catalog 热刷新）会观察该目录——**git pull 更新 SKILL.md 后 catalog 自动刷新，即时生效**，无需重启/重装。DSH 默认项目 roots（`<project>/.dsh/skills`、`.agents/skills`）不含仓库根 `skills/`，故需 customSkillDirs（或建 symlink 到 `.dsh/skills`）；
-- **Claude Code**：项目级 skills 目录为 `<clone>/.claude/skills/`——脚本建 symlink 指向 `../skills`（git 不跟踪，clone 后跑一次脚本即用）；或在 `.claude/settings.json` 声明；
-- **Codex / Cursor / Trae 等**：项目级 skills 目录（`.cursor/skills`、`.trae/skills` 等）同理 symlink 或配置指向 `<clone>/skills`。
+| Agent | 项目级 skills 目录 |
+|---|---|
+| Claude Code | `.claude/skills` |
+| Cursor | `.cursor/skills`（官方确认自动发现）|
+| Trae | `.trae/skills` |
+| CodeBuddy / WorkBuddy | `.codebuddy/skills` |
+| Codex（OpenAI）| `.codex/skills` |
+| DSH | `.dsh/skills`（仓库已跟踪，无需脚本）|
+
+> `.agents/skills` 未使用：仅 DSH 支持（已被 `.dsh/skills` 覆盖），无其他 agent 以其为项目级 skills 目录。
+
+**Windows**：若 git 未开 `core.symlinks=true`，clone 不还原 symlink——跑一次 `enable-agent-skills.sh` 补建。
 
 加载后在 agent 里以 `/skill:<name>` 调用。
 
@@ -92,14 +90,14 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 | 形态 | 起步方式 | 结果 | 适合谁 |
 |---|---|---|---|
 | **自积累**（空仓起步） | `git clone` 本仓（或 fork）后清空 `knowledge/` | 结构完整（skills/ + knowledge/ 空 + 队列/状态就位），从零沉淀 | 新团队、问题域不同、知识要私有 |
-| **消费现成**（带知识库） | `npx skills add -g pillumina/ascend-sleuth`（git 模式拉整个仓库，含 `knowledge/`） | 直接用上游验证过的 case，也可继续沉淀 | 已有沉淀、问题域重叠、想复用 |
-| **定制知识面**（稀疏拉取） | 先 `git clone` 或 `-g` 拉取，再 `git sparse-checkout` 按目录白名单收窄 | 只保留需要的部分（如 `vllm-ascend` 格子 + `common/`）| 知识库长大后、带宽/存储受限、只要自己框架的知识 |
+| **消费现成**（带知识库） | `git clone` 整个仓库（含 `knowledge/` 与 `references/`）| 直接用上游验证过的 case/reference，也可继续沉淀 | 已有沉淀、问题域重叠、想复用 |
+| **定制知识面**（稀疏拉取） | `git clone` 后用 `git sparse-checkout` 收窄白名单 | **只收窄 case 数据**（`knowledge/` 子集）；方法论/工具/索引**全量**（见下）| 知识库长大后、带宽/存储受限、只要自己框架的知识 |
 
 > ⚠️ **`-s` 只装 skill 不构成可用形态**——SKILL 的知识路径（postmortems/inbox/、references/、ingest-state.json）相对仓根，没有知识仓结构（knowledge/references/postmortems/ + 队列/状态文件）的"裸 skill"无法沉淀。`-s` 仅适合**在已有仓库里临时试用诊断方法论**（不沉淀回本仓），或把 `skills/` 合并进自己已有结构的仓库。
 
 三种形态共用同一套 skill 与机制，且可递进：自积累的团队脱敏后可选回馈上游，让公开库渐厚（见 [部署模式](#部署模式) 的框架式）。`-g` 与 `-s` 的确切行为以 `npx skills add --help` 为准——不同版本的安装器对"仓库整体 vs 指定 skill"的粒度有差异。
 
-**稀疏拉取注意**：`_index.yaml` 是生成物、对应全量知识。稀疏拉取后需重跑 `python3 scripts/build_index.py` 重建索引——它只索引你拉到的格子，检索也只在你的知识面内进行。`common/` 设计上是必拉项（triage 兜底命名空间 + 跨框架权威记录的归宿，ADR-0005）；**当前 `common/` 为空**（仅 `.gitkeep`，待 groom 从多 namespace 同根因 case 中提炼）——sparse-checkout 仍应保留 `common/` 目录占位，避免未来内容长出来后改白名单。设计论证见 [ADR-0005](docs/adr/0005-knowledge-consumption-split.md)。
+**稀疏拉取注意**：sparse-checkout 只**收窄 case 数据**——白名单**必须全量包含方法论与工具**：`skills/` `scripts/` `references/` `triage-tree.yaml` `postmortems/` `ingest-state.json` `.dsh/`（DSH 使能 symlink）`docs/` 等；否则 agent 无 skill/索引可用、DSH 发现不了 skills。只对 `knowledge/` 收窄（如 `knowledge/inference/vllm-ascend/` + `knowledge/common/`）。`_index.yaml` 是生成物、对应全量知识——收窄后需重跑 `python3 scripts/build_index.py` 重建索引（只索引拉到的格子，检索在知识面内）。`common/` 是必拉项（triage 兜底命名空间 + 跨框架权威记录，ADR-0005），**当前为空**（仅 `.gitkeep`）——仍应保留目录占位。稀疏拉取是"知识库长大后"的带宽/存储优化，当前规模（42 case）用全量 clone 即可。
 
 ## 六个 skill
 
