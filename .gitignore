@@ -22,3 +22,10 @@ diagnosis_state*.yaml
 
 # Python 缓存
 __pycache__/
+
+# ============================================================
+# inbox 是本地待审队列（groom 周批消费），草稿不进 git——
+# 转正（升格 knowledge/ 或 postmortems/ 正式目录）才走 PR 进仓库
+# ============================================================
+postmortems/inbox/*
+!postmortems/inbox/README.md
