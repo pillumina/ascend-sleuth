@@ -45,7 +45,7 @@ _避免_：priority、weight、优先级
 _避免_：log、transcript、历史
 
 **Skill（技能）**:
-遵循 Agent Skills 规范、由 `SKILL.md` 定义的 agent 可调用工作流。本体系共五个：diagnose、to-postmortem、to-reference、knowledge-groom、resume-diagnosis。
+遵循 Agent Skills 规范、由 `SKILL.md` 定义的 agent 可调用工作流。本体系共六个：diagnose、to-postmortem、to-reference、issue-ingest、knowledge-groom、resume-diagnosis。
 _避免_：command、plugin、tool
 
 **Severity（严重度闸门）**:

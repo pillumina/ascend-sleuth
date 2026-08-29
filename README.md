@@ -8,7 +8,7 @@
 
 > ⚠️ **agent 执行差异**：不同 agent 对 SKILL.md 的执行质量有差异（prompt 纪律是概率性的，设计原则二明确承认）。诊断结果与 trace 质量可能因 agent 而异——**团队内建议统一 agent**，并在跨 agent 对比结果时先归因执行差异，不急于归因知识错误。
 
-**快速跳转**：[为什么需要](#为什么需要它) · [快速开始](#快速开始) · [五个 skill](#五个-skill) · [工作原理](#工作原理) · [文档](#文档)
+**快速跳转**：[为什么需要](#为什么需要它) · [快速开始](#快速开始) · [六个 skill](#六个-skill) · [工作原理](#工作原理) · [文档](#文档)
 
 ---
 
@@ -26,11 +26,11 @@ ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路
 npx skills@latest add pillumina/ascend-sleuth
 ```
 
-选择要安装的 skill 和目标 agent。也可以在 pi 或 Claude Code 中手动把 `skills/` 目录加入搜索路径。装齐五个（`to-reference` 是先验知识的入口，与案例沉淀 `to-postmortem` 并列；`resume-diagnosis` 是反馈闭环的一部分，见下）：
+选择要安装的 skill 和目标 agent。也可以在 pi 或 Claude Code 中手动把 `skills/` 目录加入搜索路径。装齐六个（`to-reference` 是先验知识的入口，与案例沉淀 `to-postmortem` 并列；`issue-ingest` 是上游 issue 的批量导入入口；`resume-diagnosis` 是反馈闭环的一部分，见下）：
 
 ```bash
 npx skills@latest add pillumina/ascend-sleuth -g -a pi -a claude-code \
-  -s diagnose -s to-postmortem -s to-reference -s knowledge-groom -s resume-diagnosis
+  -s diagnose -s to-postmortem -s to-reference -s issue-ingest -s knowledge-groom -s resume-diagnosis
 ```
 
 加载后在 agent 里以 `/skill:<name>` 调用。
@@ -67,7 +67,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 | 形态 | 安装命令 | 结果 | 适合谁 |
 |---|---|---|---|
-| **自积累**（只装 skill） | `npx skills add -s diagnose -s to-postmortem -s to-reference -s knowledge-groom -s resume-diagnosis` | 只装 `skills/` 方法论，`knowledge/` 不装（为空） | 新团队、问题域不同、知识要私有 |
+| **自积累**（只装 skill） | `npx skills add -s diagnose -s to-postmortem -s to-reference -s issue-ingest -s knowledge-groom -s resume-diagnosis` | 只装 `skills/` 方法论，`knowledge/` 不装（为空） | 新团队、问题域不同、知识要私有 |
 | **消费现成**（带知识库） | `npx skills add -g pillumina/ascend-sleuth`（git 模式拉整个仓库，含 `knowledge/`） | 直接用上游验证过的 case，也可继续沉淀 | 已有沉淀、问题域重叠、想复用 |
 | **定制知识面**（稀疏拉取） | 先 `git clone` 或 `-g` 拉取，再 `git sparse-checkout` 按目录白名单收窄 | 只保留需要的部分（如 `vllm-ascend` 格子 + `common/`） | 知识库长大后、带宽/存储受限、只要自己框架的知识 |
 
@@ -75,17 +75,18 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 **稀疏拉取注意**：`_index.yaml` 是生成物、对应全量知识。稀疏拉取后需重跑 `python3 scripts/build_index.py` 重建索引——它只索引你拉到的格子，检索也只在你的知识面内进行。`common/` 设计上是必拉项（triage 兜底命名空间 + 跨框架权威记录的归宿，ADR-0005）；**当前 `common/` 为空**（仅 `.gitkeep`，待 groom 从多 namespace 同根因 case 中提炼）——sparse-checkout 仍应保留 `common/` 目录占位，避免未来内容长出来后改白名单。设计论证见 [ADR-0005](docs/adr/0005-knowledge-consumption-split.md)。
 
-## 五个 skill
+## 六个 skill
 
 | Skill | 作用 | 何时使用 | 触发方式 |
 |---|---|---|---|
 | `diagnose` | 核心诊断循环：按症状路由，匹配并验证 case，给出修复建议或转深度排查，全程记录 trace | 训练或推理出现中断、精度、性能问题 | 显式 `/skill:diagnose` |
 | `to-postmortem` | 把一次定位沉淀为案例知识，任意来源均可汇入，经校验和脱敏进入待审队列 | 问题定位结束之后，无论在哪里定位的 | 可自动触发 |
-| `to-reference` | 把先验知识（事实/方法论，ADR-0008）沉淀为 reference 词条：内联/文件/官方文档爬取/从案例归纳，经 grill 确认后进入待审队列 | 工程师想沉淀通用经验、或从案例集合提炼共性时 | 显式 `/skill:to-reference` |
+| `to-reference` | 把先验知识（事实/方法论）沉淀为 reference 词条：内联/文件/官方文档爬取/从案例归纳，经 grill 确认后进入待审队列 | 工程师想沉淀通用经验、或从案例集合提炼共性时 | 显式 `/skill:to-reference` |
+| `issue-ingest` | 从上游 issue（GitHub 等）批量导入案例：拉取精简元数据 → 硬过滤+启发式排序 → 评估 → 经 to-postmortem 沉淀草稿 → 标记已导入（幂等）| 想吸收某框架 issue 里的排障知识 | 显式 `/skill:issue-ingest` |
 | `knowledge-groom` | 周期维护：批处理待审队列、升格、去重、置信度重算、软退休、索引重建 | 领域 owner 每周 | 显式 `/skill:knowledge-groom` |
 | `resume-diagnosis` | 续接被打断的诊断：读取状态文件与 trace，复述现场后继续 | 诊断被会议或上下文压缩打断 | 显式 `/skill:resume-diagnosis` |
 
-完整的操作细节（severity 闸门、trace 规则、语义校验等）在各自 `skills/<name>/SKILL.md`。三个诊断类 skill 为 user-only——诊断决策由人触发；`to-postmortem` 与 `to-reference` 允许自动触发，降低沉淀门槛。
+完整的操作细节（severity 闸门、trace 规则、语义校验等）在各自 `skills/<name>/SKILL.md`。三个诊断类 skill 为 user-only——诊断决策由人触发；`to-postmortem` / `to-reference` / `issue-ingest` 允许自动触发，降低沉淀门槛（issue-ingest 的自动止步于草稿，转正留人）。
 
 ## 工作原理
 
