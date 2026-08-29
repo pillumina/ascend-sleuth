@@ -130,7 +130,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 两个循环驱动整个系统：**诊断循环**（每次问题，分钟级——诊断 → 命中或兜底 → 沉淀）与**演化循环**（每周，git 门控——待审队列 → groom 批审 → 升格 → 下次诊断直接命中）。完整全景见下方架构图（[交互版](docs/diagrams/ascend-sleuth-architecture.html?theme=light)，支持主题切换与 PNG 导出）；每个演化机制配什么护栏防止越学越错，见 [docs/evolution.md](docs/evolution.md)。
 
-![ascend-sleuth 架构](docs/diagrams/ascend-sleuth-architecture.svg)
+![ascend-sleuth 架构](docs/diagrams/ascend-sleuth-architecture.png)
 
 ## 核心设计原则
 
