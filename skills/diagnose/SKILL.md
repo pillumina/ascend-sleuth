@@ -45,6 +45,7 @@ disable-model-invocation: true
    - **triage 决策记进 trace**（命中哪个分支、路由到哪些 namespace、category）
    - triage 多分支弱匹配/置信度低 → **优雅退化**：加载所有 namespace 索引让 quickly_check 筛（索引便宜，退化成本可控）
    - 框架未检测到 → 只搜 `common/`；无法分类 → 直接 Tier 3
+   - **triage 未命中（无分支匹配）→ agent 语义路由兜底，不直接 Tier 3**：报错/症状里没有 triage 正则能识别的信号时，agent 用自己的语义理解判断 namespace 与 category（如"训练卡住"→ `training/<framework>/` interrupt、"投机接受率下降"→ `inference/<framework>/` performance），记进 trace `{action: triage_semantic, namespace, category, rationale}`——语义路由结果可审计、可成为 groom 学习路由错例的数据源；语义也分不出 → 才 Tier 3
 
 3. **两阶段加载 Tier 2**
    - **阶段一**：读 `knowledge/_index.yaml`（`scripts/build_index.py` 生成的一次性索引，含 `id/title/symptoms/quickly_check/category/confidence.score` + `file` 定位——hits/misdiagnoses 不在索引里，它们是学习环动态字段留在 case 本体），取命中 namespace 的条目，用 `quickly_check`（primary→fallback）**对照已提供的信息**过滤候选 ≤5；检查项缺信息时，记下要向客户补要什么。索引缺失或 `--check` 报过期 → 兜底：逐文件只读上述索引字段，并提醒跑 `scripts/build_index.py` 重建

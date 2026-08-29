@@ -63,6 +63,9 @@ agent 读取文件，后续流程同内联。
    - 标 `category: interrupt | precision | performance` **三选一，无 other**（按症状判断——interrupt 是 hang/crash/OOM/启动失败、precision 是 NaN/数值发散/输出错误/乱码、performance 是吞吐/延迟）。分不进去 → 由人确认归入最接近的分类，不设 other
    - 标 `tags`（sub-type，如 `oom`、`kv-cache`、`precision.convergence`）
    - 根因定位到源码时（如 vllm-ascend 某文件某行），标 `source_ref: {repo, ref, file, line}`——`ref` 用触发版本对应的 commit/tag，`line` 可选。源码不落库，只记代码指针（诊断按需取该版本片段）
+3.5. **triage 路由同步（知识增长自动补全路由）**：产出 case 草稿后，检查该 case 的 `symptoms` 关键词能否被 `triage-tree.yaml` 正则路由到正确 namespace：
+   - 能 → 无需动作（路由已覆盖）；
+   - 不能（新形态 OOD，正则没识别）→ 在产出报告里给出**路由症状建议**（新正则追加到对应分支的 `symptoms`，如 "过度思考" → inference_precision），随 case PR 一并提交（structure 部分，人审确认）——**triage 随知识入库增长，不靠手工补**；拿不准放哪个分支 → 建议标 `needs-review`，groom 定夺。
 4. **语义校验**（关键，区别于格式校验）：
    - regex 在输入附的真实日志片段上能否匹配
    - `expected` 值类型/数量级合理性
