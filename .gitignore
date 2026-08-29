@@ -40,3 +40,5 @@ postmortems/inbox/*
 !.cursor/skills
 .trae/*
 !.trae/skills
+.codebuddy/*
+!.codebuddy/skills
