@@ -78,7 +78,7 @@ disable-model-invocation: true
      2. **获取源码（本地优先，按平台选工具）**：
         a. **先查本地**——问用户一句"本地是否已有 <repo> 源码？"（默认先查约定位置 `<repo根>/src-code/<org>/<repo>/`，用户也可给任意路径）。本地已有 → 直接用，并用 `git -C <path> log -1` 或版本文件**核对版本与客户环境 compat 匹配**；版本不符 → 提示切到对应 tag 或按需拉对应版本（不假设本地副本就是对的）；
         b. **本地没有 → 按需拉取（统一 git clone，公开仓库无需认证）**：
-           - `git clone <url> -b <tag/commit>`——URL 按平台：GitHub `https://github.com/<org>/<repo>.git`、Gitee `https://gitee.com/...`、GitCode `https://gitcode.com/...`；git 协议通用，公开仓库直接 clone；
+           - `git clone <url> -b <tag/commit>`——URL 按平台：GitHub `https://github.com/<org>/<repo>.git`、Gitee `https://gitee.com/...`、GitCode `https://gitcode.com/...`；git 协议通用，公开仓库直接 clone；**`-b <tag>` 拉取失败（tag 不存在）时，先 `git ls-remote --tags <url>` 查真实 tag 再试**（不同版本库 tag 命名不同，如 v0.21.0rc2 实际可能是 v0.21.0rc1 或 releases/ 前缀）；
            - 公司内网（CodeHub 等）/私有仓库：**用户提供 URL**（其环境已配置凭据则直接 `git clone`）——agent 不碰内网认证/凭据；
            - **只取单文件**（不想拉全仓）时：GitHub 用 `gh api repos/<repo>/contents/<file>?ref=<commit>`（已登录 gh），其他平台用其 API 或 raw 链接；
         **不维护多版本、不落库**——只拉当前分析需要的文件或 checkout 到对应版本；
