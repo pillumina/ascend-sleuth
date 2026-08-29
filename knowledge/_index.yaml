@@ -3,9 +3,9 @@
 # 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-08-29    case 总数：39
+# 生成日期：2026-08-29    case 总数：42
 #   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=29/30, performance=3/30, precision=6/30
+#   容量(inference/vllm-ascend): interrupt=32/30, performance=3/30, precision=6/30
 namespaces:
   inference/sglang:
     interrupt:
@@ -159,6 +159,31 @@ namespaces:
           expected: regex:Resource_Error\(EI0007\)|Resources are exhausted
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10944.yaml
       hash: 68a3086a99ee
+    - id: VLLM-ASC-10954
+      title: GLM-5.2 工具调用传参类型错误——工具幻视导致 json 格式不清晰（GPU 同版本 vllm 同现），升级 vllm 0.24+ 修复 parse 逻辑
+      category: interrupt
+      tags:
+      - glm5
+      - tool-call
+      - hallucination
+      - json
+      platforms:
+      - A3-910C
+      compat: vllm-ascend
+      confidence:
+        score: 0.4
+      symptoms:
+      - A3 4 机部署 GLM-5.2-W8A8，出现工具调用传参类型错误
+      - 根因：工具幻视导致 json 格式不清晰——GPU 在相同版本 vllm 下也有相同问题（非昇腾特有）
+      quickly_check:
+        primary:
+          command: grep -E 'tool call|工具调用|request_tool' {{log_path}}
+          expected: regex:tool call|工具调用|request_tool
+        fallback:
+          command: grep -iE 'json|parse|tool' {{log_path}}
+          expected: regex:json|parse|tool
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10954.yaml
+      hash: cdafe444a7c5
     - id: VLLM-ASC-11208
       title: '双机 A2 按官方教程部署 GLM5.2 启动报 ModuleNotFoundError: No module named ''vllm.model_executor.layers.fused_moe.expert_map_manager''（v0.22.1rc
         未适配 GLM5.2）'
@@ -814,6 +839,57 @@ namespaces:
           expected: regex:LightningIndexerQuant
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-14320.yaml
       hash: a42377592e77
+    - id: VLLM-ASC-6774
+      title: qwen3.5 A2 双机启动失败——启动脚本与 vllm/vllm-ascend 同目录导致，改脚本路径解决
+      category: interrupt
+      tags:
+      - qwen3.5
+      - a2
+      - startup
+      - script-path
+      platforms:
+      - A2-910B
+      compat: vllm-ascend
+      confidence:
+        score: 0.4
+      symptoms:
+      - qwen3.5 A2 双机启动失败
+      - 启动脚本与 vllm / vllm-ascend 位于同一目录
+      quickly_check:
+        primary:
+          command: grep -E '启动失败|startup failed' {{log_path}}
+          expected: regex:启动失败|startup failed
+        fallback:
+          command: grep -iE 'same directory|startup script' {{log_path}}
+          expected: regex:same directory|startup script
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-6774.yaml
+      hash: ce5ec516e208
+    - id: VLLM-ASC-8938
+      title: '1P2 + KV Pool 场景 P0/P1 服务极短时间内同时拉起时，P1 报 ZMQError: Address already in use（ZMQ 端口绑定无重试、端口抢占）——配置
+        kv_port 解决'
+      category: interrupt
+      tags:
+      - pd-disaggregation
+      - kv-pool
+      - zmq
+      - port
+      platforms:
+      - cross
+      compat: vllm-ascend
+      confidence:
+        score: 0.4
+      symptoms:
+      - '1P2 + KV Pool：P0 服务拉起成功后，偶现 P1 服务拉起失败，报错 ZMQError: Address already in use'
+      - P0、P1 服务在极短时间内同时拉起时，ZMQ 端口绑定无重试机制，存在端口抢占现象
+      quickly_check:
+        primary:
+          command: grep -E 'ZMQError|Address already in use' {{log_path}}
+          expected: regex:ZMQError|Address already in use
+        fallback:
+          command: grep -iE 'kv_port|kv-pool|ZMQ' {{log_path}}
+          expected: regex:kv_port|kv-pool|ZMQ
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-8938.yaml
+      hash: 626be281ad27
     - id: VLLM-ASC-9167
       title: 'GLM5.1-w4a8 拉起报 AssertionError: FlashAttnPrefillBackend requires flash_attn_varlen_func（vLLM
         0.20.1 下 MLA prefill backend patch 分支不匹配）'
