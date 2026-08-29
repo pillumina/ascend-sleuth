@@ -33,9 +33,11 @@ cases:
       - "FULL_DECODE_ONLY + cudagraph_capture_sizes [1,2,4,8,16] 捕获进行到第 5 张（80%）时崩溃"
       - "Insufficient_Event_Resources(EL0008): The event resources are insufficient / Create capture event failed（error=117571609 / runtime result 207007）→ capture_end error code is 507903"
       - "--enforce-eager 后 TP2 正常启动（含 --enforce-eager 的启动命令可复现成功）"
+      - "同族变体（#13154）：TP2 服务启动成功但推理阶段崩溃——采样路径异步浮出 Insufficient_Event_Resources(EL0008)/no event resource（207007），栈浮出在 HcclAllGather 或 sample 算子处（勿误判为通信故障）"
 
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/12989"
+      - "https://github.com/vllm-project/vllm-ascend/issues/13154"
 
     quickly_check:
       primary:
@@ -62,8 +64,8 @@ cases:
         rollback: "移除 --enforce-eager（恢复图模式，注意图模式性能收益在 310P 上仍受 event 资源约束）"
         note: "官方确认是硬件资源限制，修复依赖后续驱动版本"
       - step: 4
-        check: "忽略误导性栈：报错栈浮现在 all_reduce（patch_distributed.py）与 'NPUModelRunner failed' 包装处"
-        note: "异步算子报错的浮出点不等于根因位置；根因是 capture event 资源耗尽，不是通信或模型代码问题"
+        check: "忽略误导性栈：报错栈浮现在 all_reduce（patch_distributed.py）、HcclAllGather、'NPUModelRunner failed' 或 sample 采样路径（如 _310p/sample/sampler.py 的 torch.empty_like().cpu()）"
+        note: "异步算子报错的浮出点不等于根因位置；根因是 capture event 资源耗尽，不是通信或模型代码问题。#13154 变体即推理阶段采样路径浮出 EL0008，maintainer 曾误判为卡间通信问题——先按 event 资源处理，勿改通信配置"
 
     severity: service-affecting         # 服务无法启动
     fix_side_effects: [requires-restart]
@@ -75,6 +77,8 @@ cases:
       捕获数量超出上限 → Create capture event failed（driver error: no event resource，
       runtime result 207007）→ capture_end 失败（507903）→ EngineCore 崩溃。maintainer 确认是
       硬件资源限制导致图捕获数量有限，修复依赖未来驱动版本发布。
+      同族变体（#13154）：捕获阶段未必当场失败，event 资源耗尽可在推理阶段采样/通信算子
+      异步浮出（EL0008），浮出点随执行路径漂移——根因仍是捕获资源超预算。
 
     fix: >
       短期：--enforce-eager 或减小 cudagraph_capture_sizes（少捕获图）规避；
