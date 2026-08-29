@@ -55,7 +55,7 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 
 ## PR 模板
 
-`.github/PULL_REQUEST_TEMPLATE/` 下按变更对象分四类（创建 PR 时选择，或 `?template=` 直链）：**knowledge_intake**（新知识升格：预分诊+证据+脱敏自查）、**knowledge_modification**（改 expected/fix/compat 等高风险字段：触发条款+依据+双签）、**methodology**（skill/脚本/文档：原则追溯+golden 回归对照）、**structure**（triage-tree/namespace：数据依据+迁移完整性检查单）。模板里的"机器可填"字段当前手工填写，自动生成在 roadmap 待定池（PR 描述机器层生成）。模板目录属上游方法论，随 fork 同步。
+`.github/PULL_REQUEST_TEMPLATE/` 下按变更对象分五类（创建 PR 时选择，或 `?template=` 直链）：**knowledge_intake**（新知识升格：预分诊+证据+脱敏自查）、**knowledge_modification**（改 expected/fix/compat 等高风险字段：触发条款+依据+双签）、**reference**（references/ 词条：导入/转正/修订，含聚类检查与 verification 声明）、**methodology**（skill/脚本/文档：原则追溯+golden 回归对照）、**structure**（triage-tree/namespace：数据依据+迁移完整性检查单）。模板里的"机器可填"字段当前手工填写，自动生成在 roadmap 待定池（PR 描述机器层生成）。模板目录属上游方法论，随 fork 同步。
 
 ## Skill 自包含边界（SKILL.md 与 docs/ 的引用关系）
 
