@@ -20,20 +20,24 @@ ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路
 
 ## 快速开始
 
-### 安装
+### 安装（使能 skills）
 
-```bash
-npx skills@latest add pillumina/ascend-sleuth
-```
+**主路径——仓库即 workspace，skills 随仓使能**：clone 本仓，把 agent 的**项目级 skills 目录指向 `<clone>/skills/`**（skills/ 是单一事实源，git 版本管理；更新 = git pull，不是重装）。装齐六个：`diagnose` / `to-postmortem` / `to-reference` / `issue-ingest` / `knowledge-groom` / `resume-diagnosis`。
 
-选择要安装的 skill 和目标 agent。也可以在 pi 或 Claude Code 中手动把 `skills/` 目录加入搜索路径。装齐六个（`to-reference` 是先验知识的入口，与案例沉淀 `to-postmortem` 并列；`issue-ingest` 是上游 issue 的批量导入入口；`resume-diagnosis` 是反馈闭环的一部分，见下）：
-
-```bash
-npx skills@latest add pillumina/ascend-sleuth -g -a pi -a claude-code \
-  -s diagnose -s to-postmortem -s to-reference -s issue-ingest -s knowledge-groom -s resume-diagnosis
-```
+各 agent 的项目级 skills 配置（语法因 agent 而异，详以其文档为准）：
+- **Claude Code**：项目根放 `.claude/settings.json` 声明 skills 路径，或 `skills/` 目录本身作为项目 skills；
+- **Codex / 其他 Agent Skills 兼容 agent**：项目级 skills 目录配置指向 `<clone>/skills/`；
+- **DeepSeek Harness（DSH）**：在 harness 侧注册 `<clone>/skills/` 为 skill 源（团队统一配置一次，成员 clone 即用）。
 
 加载后在 agent 里以 `/skill:<name>` 调用。
+
+**分发路径——把方法论装进别的项目试用**（不沉淀回本仓）：
+
+```bash
+npx skills@latest add pillumina/ascend-sleuth -s diagnose -s to-postmortem -s to-reference -s issue-ingest -s knowledge-groom -s resume-diagnosis
+```
+
+`npx skills` 装的是 skills/ 副本（更新需重装），适合"别的项目里临时试用诊断方法论"；本仓团队使用走主路径（仓库即 workspace）。
 
 ### 一个诊断
 
