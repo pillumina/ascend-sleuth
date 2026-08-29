@@ -105,9 +105,10 @@ fix: 升级 CANN ≥9.1.0.beta2（QuantBatchMatMulV3 修复合入 beta2），同
   ② 获取源码（本地优先）：
      "本地是否已有 vllm-ascend 源码？（默认我查 ~/src/vllm-project/vllm-ascend/，也可以告诉我路径）"
      - 客户本地已有 → 直接用它，git log 核对版本（不符则切对应 tag）
-     - 本地没有 → 按平台拉取：GitHub 用 gh api 取单文件
-       （vllm_ascend/quantization/modelslim_config.py?ref=<0.21.0rc2 commit>）；
-       Gitee/GitCode/内网（CodeHub）→ git clone 对应 URL（内网由客户提供 URL）
+     - 本地没有 → git clone（公开仓库无需认证）：
+       git clone https://github.com/vllm-project/vllm-ascend.git -b <0.21.0rc2 tag>
+       （或只取单文件：gh api contents/vllm_ascend/quantization/modelslim_config.py?ref=<commit>；
+       Gitee/GitCode/内网 → git clone 对应 URL，内网 URL 由客户提供）
   ③ 读码定位：get_linear_quant_type → quant_description[prefix + '.weight']
      → GLM-5.2 新增 indexer 注意力层的权重 key 未在量化描述表中覆盖 → KeyError
   ④ 追问验证：请客户确认该版本 modelslim 描述表是否含 indexer 权重 → 确认缺失

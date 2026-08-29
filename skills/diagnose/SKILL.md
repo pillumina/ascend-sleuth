@@ -77,11 +77,10 @@ disable-model-invocation: true
      1. **向用户确认版本**（vllm-ascend / CANN / torch-npu——源码分析依赖对应版本，不要猜）；
      2. **获取源码（本地优先，按平台选工具）**：
         a. **先查本地**——问用户一句"本地是否已有 <repo> 源码？"（默认先查约定位置 `~/src/<org>/<repo>/`，用户也可给任意路径）。本地已有 → 直接用，并用 `git -C <path> log -1` 或版本文件**核对版本与客户环境 compat 匹配**；版本不符 → 提示切到对应 tag 或按需拉对应版本（不假设本地副本就是对的）；
-        b. **本地没有 → 按需拉取**（按仓库平台选工具）：
-           - GitHub：`gh repo clone --branch <tag/commit>`（已登录 gh），或单文件 `gh api repos/<repo>/contents/<file>?ref=<commit>`；
-           - Gitee：`git clone https://gitee.com/<org>/<repo>.git`（git CLI，无需额外认证）；
-           - GitCode：`git clone https://gitcode.com/<org>/<repo>.git`；
-           - 公司内网（CodeHub 等）：**让用户提供内网 URL 或确认本地路径**——agent 不碰内网认证/凭据，用户已配置的环境直接用 `git clone <url>`；
+        b. **本地没有 → 按需拉取（统一 git clone，公开仓库无需认证）**：
+           - `git clone <url> -b <tag/commit>`——URL 按平台：GitHub `https://github.com/<org>/<repo>.git`、Gitee `https://gitee.com/...`、GitCode `https://gitcode.com/...`；git 协议通用，公开仓库直接 clone；
+           - 公司内网（CodeHub 等）/私有仓库：**用户提供 URL**（其环境已配置凭据则直接 `git clone`）——agent 不碰内网认证/凭据；
+           - **只取单文件**（不想拉全仓）时：GitHub 用 `gh api repos/<repo>/contents/<file>?ref=<commit>`（已登录 gh），其他平台用其 API 或 raw 链接；
         **不维护多版本、不落库**——只拉当前分析需要的文件或 checkout 到对应版本；
      3. **grep 定位**：搜报错签名/算子名/函数名（如 `grep -rn "QuantBatchMatMulV3" vllm_ascend/`）→ 读相关文件片段 → 分析根因（为什么这么实现、什么版本引入了什么行为）；
      4. **追问用户验证**：让用户对照预期/复现/补环境信息，验证根因假设；
