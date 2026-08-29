@@ -35,7 +35,7 @@
 - 顶层 `sources`，每源一条：`github/vllm-project/vllm-ascend`、`gitee/...`、`gitcode/...`
 - 每源记录：`processed`（已评估/已沉淀的编号——含全部评估过的，不只入选的）、`selected`（沉淀数）、`last_fetch_*_closed`（游标参考）
 - **processed 在拉取时排除**（避免重复拉取浪费 API）；评估后放弃的单独记 `skipped`（待扩展）
-- 进 git：审计价值（谁处理过什么可追溯），与 metrics.md 同级
+- 进 git：审计价值（谁处理过什么可追溯），与 `metrics/timeline.yaml` 同级
 
 **四、增量口径**
 

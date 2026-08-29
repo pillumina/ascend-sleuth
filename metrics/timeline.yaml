@@ -1,63 +1,46 @@
+# metrics/timeline.yaml —— 指标时序数据（机器可读，CI 校验，append-only）
+#
+# 每个快照 = 一个 period 条目，字段集合由 scripts/trace_metrics.py 固定生成，
+# 人复核后追加。字段合法性由 scripts/verify_metrics.py --check 校验（CI 强制），
+# 防格式漂移（曾发生 W28/W35 字段完全不同、跨期不可比的教训）。
+#
+# kind: live（活诊断周期快照）| replay（回放评估）| example（示例，展示格式用）
+# 只有 live 参与趋势对比；replay/example 供参考，不参与跨期趋势。
+#
+# 机制说明、指标定义、汇总职责见 docs/metrics.md（稳定文档层，机制变才变）。
+
 periods:
-- period: 2026-W35
-  kind: replay
-  title: 首批真实数据：vllm-ascend 批量导入评估（回放模式）
-  recorded_at: '2026-08-28'
-  source: eval-reports/0001（21 例措辞差+交叉回放，git 历史可查）；回放非活诊断，小样本 n=21 波动大
-  metrics:
-    semantic_validation_rate:
-      ok: 21
-      total: 21
-    pre_triage:
-      new: 19
-      variant: 2
-      covered: 0
-    routed_accuracy:
-      ok: 19
-      total: 21
-    candidate_recall:
-      ok: 16
-      total: 21
-    rank_distribution:
-      rank1: 13
-      top3: 16
-    cross_replay_rank1:
-      ok: 2
-      total: 2
-    by_category_hit:
-      precision: 3/3
-      interrupt: 7/10
-      other: 2/2
-      performance: 0/1
-    golden_suite:
-      before: 2
-      after: 23
-  notes: '- 路由 miss 5 例全部归因"签名在跟帖不在首帖"（机制性，非路由缺陷）
+  - period: "2026-W35"
+    kind: replay
+    title: "首批真实数据：vllm-ascend 批量导入评估（回放模式）"
+    recorded_at: "2026-08-28"
+    source: "eval-reports/0001（21 例措辞差+交叉回放，git 历史可查）；回放非活诊断，小样本 n=21 波动大"
+    metrics:
+      semantic_validation_rate: {ok: 21, total: 21}
+      pre_triage: {new: 19, variant: 2, covered: 0}
+      routed_accuracy: {ok: 19, total: 21}
+      candidate_recall: {ok: 16, total: 21}
+      rank_distribution: {rank1: 13, top3: 16}
+      cross_replay_rank1: {ok: 2, total: 2}
+      by_category_hit: {precision: "3/3", interrupt: "7/10", other: "2/2", performance: "0/1"}
+      golden_suite: {before: 2, after: 23}
+    notes: |
+      - 路由 miss 5 例全部归因"签名在跟帖不在首帖"（机制性，非路由缺陷）
+      - 2 例经 uncategorized 优雅退化救回
+      - performance 0/1：metric 形态与 regex 回放不匹配（机制性）
+      - 库容量（当时）：interrupt 11/30 / precision 3/30 / performance 2/30 / other 3/30
 
-    - 2 例经 uncategorized 优雅退化救回
-
-    - performance 0/1：metric 形态与 regex 回放不匹配（机制性）
-
-    - 库容量（当时）：interrupt 11/30 / precision 3/30 / performance 2/30 / other 3/30
-
-    '
-- period: 2026-W35-capacity
-  kind: replay
-  title: 1.0.0 打 tag 时点容量快照
-  recorded_at: '2026-08-29'
-  source: scripts/build_index.py 头注实时值（ADR-0004 格子口径）
-  metrics:
-    capacity_by_ns:
-      inference/vllm-ascend:
-        interrupt: 32/30
-        performance: 3/30
-        precision: 6/30
-      inference/sglang:
-        interrupt: 1/30
-    case_total: 42
-    reference_total: 95
-  notes: '- inference/vllm-ascend interrupt 32/30 已超 soft_cap（roadmap A2 入口闸门）
-
-    - 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 60 才强制拆分；当前先记录
-
-    '
+  - period: "2026-W35-capacity"
+    kind: replay
+    title: "1.0.0 打 tag 时点容量快照"
+    recorded_at: "2026-08-29"
+    source: "scripts/build_index.py 头注实时值（ADR-0004 格子口径）"
+    metrics:
+      capacity_by_ns:
+        inference/vllm-ascend: {interrupt: "32/30", performance: "3/30", precision: "6/30"}
+        inference/sglang: {interrupt: "1/30"}
+      case_total: 42
+      reference_total: 95
+    notes: |
+      - inference/vllm-ascend interrupt 32/30 已超 soft_cap（roadmap A2 入口闸门）
+      - 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 60 才强制拆分；当前先记录
