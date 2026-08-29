@@ -101,6 +101,7 @@ disable-model-invocation: true
    - 完整 trace 随 `diagnosis_state-<session_id>.yaml` 留存（每并发诊断一文件；模板见 `diagnosis_state.yaml.example`）
    - **结果反馈闭环（闭合学习环，关键）**：给完 fix 后，**等工程师应用并回来报告结果**——问“应用后解决了吗？（解决 / 没解决 / 部分解决）”。结果回写该 case 的 confidence：解决 → `hits += 1`；没解决 → `misdiagnoses += 1`、更新 `last_hit`。**不问这步，confidence/误诊率永远是初始值，整个学习机制空转。**
    - **反馈捕获结构化（不靠记性）**：给完 fix、session 收尾前，往 state 文件写 `feedback_pending: <case-id>`。**每次 `/skill:diagnose` 或 `/skill:resume-diagnosis` 启动时先扫活跃 state 文件**——发现该标记就先追问"上次 <case-id> 的 fix 应用后解决了吗？"，按答复回写 confidence（上条规则）、trace 记 `{action: feedback, case, outcome: resolved|not_resolved|partial}`、清掉标记。反馈捕获是整条学习环的吞吐上限——标记写在文件里，就不依赖任何人的记性
+   - **误诊归因（反馈 not_resolved/partial 时必做，不靠用户提）**：答复为**没解决/部分解决**时，**当场读本 session 的 trace 归因**——判断是 **case 错**（quickly_check 按序执行、check 结果对，但 root cause 判断错 → 改库）还是**执行错**（跳过 fallback、加载错 namespace、漏标低置信 → 改 skill 流程），trace 记 `{action: attribution, verdict: case_error|execution_error, evidence: <trace 证据摘要>}`——归因结论结构化落点，是「执行-误诊归因比」指标与 E2/E5 自演进的数据源。归因结论由你在本次 session 输出给工程师（"这属于 case 错/执行错，建议改哪"），实际修改走 PR（knowledge_modification / structure 模板），**人确认后合入，你不直接改库**。没解决但 trace 缺失 → 如实说明"无法归因（无 trace）"，不猜
    - **反馈追问降级（体验，防骚扰）**：同一 `feedback_pending` 标记**追问 2 次未获回应 → 停止追问**，标 `feedback_stale: true`（保留标记供 trace_metrics 统计"反馈缺失"），不再每次启动骚扰工程师。工程师之后主动回报仍可回写——追问是礼貌提醒，不是逼迫
    - **沉淀已含在本步骤**：命中=常规 postmortem、未命中=含候选 case 的 postmortem，本步骤已生成。**只有当本次不是经 /diagnose 定位的**（如用 Kimi/手工查的、或没配 session-end hook 导致 postmortem 没生成），才需 `/skill:to-postmortem` 手动沉淀。
 
@@ -135,9 +136,9 @@ rollback：<rollback>
 
 每个 step 后往 `diagnosis_state-<session_id>.yaml`（每个并发诊断一个独立文件，按 session_id 区分）的 `trace` 数组追加一条：
 ```yaml
-- {step: N, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback|reference_lookup, ...}
+- {step: N, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback|reference_lookup|triage_semantic|source_analysis|attribution, ...}
 ```
-trace 是误诊归因的唯一依据（见 references/diagnosis-procedure.md 末段"误诊归因"）：误诊时先读 trace 判断是 **case 错**（改库）还是**执行错**（改 skill）。不写 trace = 无法归因 = 可能改坏正确的 case。
+trace 是误诊归因的唯一依据（见 references/diagnosis-procedure.md 末段"误诊归因"）：误诊时先读 trace 判断是 **case 错**（改库）还是**执行错**（改 skill）。不写 trace = 无法归因 = 可能改坏正确的 case。词表与 `scripts/trace_metrics.py` 的 `KNOWN_ACTIONS` 保持一致（词表外 action 会被指标脚本报为纪律违规）；新增 action 必须两处同步。
 
 ## 不要做
 
