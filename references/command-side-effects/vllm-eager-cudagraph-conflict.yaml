@@ -1,0 +1,27 @@
+id: vllm-eager-cudagraph-conflict
+type: command-side-effect
+title: vllm serve --enforce-eager 与 --compilation-config cudagraph 互斥（图模式配置静默失效）
+summary: --enforce-eager 强制禁用 torch.compile 与 CUDAGraph，与 --compilation-config 里的 cudagraph_mode/cudagraph_capture_sizes 冲突——cudagraph 配置被静默忽略（日志 "Cudagraph is disabled under eager mode"），且两者混用易掩盖真实报错、误导排查
+
+sources:
+  - type: official-doc
+    url: "https://github.com/vllm-project/vllm-ascend/issues/12015"
+    version: "vllm-ascend issue #12015（310P 部署 Qwen3 报错，maintainer 指出 enforce-eager 与图模式冲突）"
+    fetched_at: 2026-08-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [vllm-ascend]
+
+status: draft
+last_verified: 2026-08-29
+
+content:
+  command: "vllm serve <model> --enforce-eager --compilation-config '{\"cudagraph_mode\": \"FULL_DECODE_ONLY\", \"cudagraph_capture_sizes\": [1,2,4,8]}'"
+  side_effects:
+    - "--enforce-eager 会禁用 torch.compile 与 CUDAGraphs（日志：Enforce eager set, disabling torch.compile and CUDAGraphs / Cudagraph is disabled under eager mode），compilation-config 里的 cudagraph 配置被静默忽略，不生效"
+    - "两个互斥配置同时出现是配置错误信号：期望图模式就移除 --enforce-eager；期望 eager 就移除 compilation-config 里的 cudagraph 项"
+    - "混用时不代表问题归因于 cudagraph——报错需按实际生效的 eager 路径排查"
+  rollback: "二选一：去掉 --enforce-eager（恢复图模式），或去掉 --compilation-config 的 cudagraph_mode/cudagraph_capture_sizes（保持 eager）"
+  version_dependent: true

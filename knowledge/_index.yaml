@@ -547,6 +547,8 @@ namespaces:
       - 'Insufficient_Event_Resources(EL0008): The event resources are insufficient / Create capture event
         failed（error=117571609 / runtime result 207007）→ capture_end error code is 507903'
       - --enforce-eager 后 TP2 正常启动（含 --enforce-eager 的启动命令可复现成功）
+      - 同族变体（#13154）：TP2 服务启动成功但推理阶段崩溃——采样路径异步浮出 Insufficient_Event_Resources(EL0008)/no event resource（207007），栈浮出在
+        HcclAllGather 或 sample 算子处（勿误判为通信故障）
       quickly_check:
         primary:
           command: grep 'Insufficient_Event_Resources' {{log_path}}
@@ -555,7 +557,7 @@ namespaces:
           command: grep -E '507903|capture event failed|no event resource' {{log_path}}
           expected: regex:507903
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12989.yaml
-      hash: 288000ac4682
+      hash: adc0ce81a56b
     - id: VLLM-ASC-13050
       title: 310P 上推理请求触发 IndexPut aicpu exception（errorCode=0x2a, runtime 507018, stream phase=SCHEDULE），0.23.0
         rc 镜像复现、POC 镜像正常、0.23.0 正式版修复
