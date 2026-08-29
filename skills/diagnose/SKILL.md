@@ -76,7 +76,7 @@ disable-model-invocation: true
    - **源码分析（问题疑似框架/算子层时，常见且高价值）**——报错签名指向框架代码/算子名/量化描述表等（如 `fault kernel_name=QuantBatchMatMulV3`、`modelslim_config.py` 相关 KeyError）且 Tier 3 未覆盖时：
      1. **向用户确认版本**（vllm-ascend / CANN / torch-npu——源码分析依赖对应版本，不要猜）；
      2. **获取源码（本地优先，按平台选工具）**：
-        a. **先查本地**——问用户一句"本地是否已有 <repo> 源码？"（默认先查约定位置 `~/src/<org>/<repo>/`，用户也可给任意路径）。本地已有 → 直接用，并用 `git -C <path> log -1` 或版本文件**核对版本与客户环境 compat 匹配**；版本不符 → 提示切到对应 tag 或按需拉对应版本（不假设本地副本就是对的）；
+        a. **先查本地**——问用户一句"本地是否已有 <repo> 源码？"（默认先查约定位置 `<repo根>/src-code/<org>/<repo>/`，用户也可给任意路径）。本地已有 → 直接用，并用 `git -C <path> log -1` 或版本文件**核对版本与客户环境 compat 匹配**；版本不符 → 提示切到对应 tag 或按需拉对应版本（不假设本地副本就是对的）；
         b. **本地没有 → 按需拉取（统一 git clone，公开仓库无需认证）**：
            - `git clone <url> -b <tag/commit>`——URL 按平台：GitHub `https://github.com/<org>/<repo>.git`、Gitee `https://gitee.com/...`、GitCode `https://gitcode.com/...`；git 协议通用，公开仓库直接 clone；
            - 公司内网（CodeHub 等）/私有仓库：**用户提供 URL**（其环境已配置凭据则直接 `git clone`）——agent 不碰内网认证/凭据；

@@ -103,7 +103,7 @@ fix: 升级 CANN ≥9.1.0.beta2（QuantBatchMatMulV3 修复合入 beta2），同
         指向量化描述表（modelslim_config）→ 疑似源码层，进入源码分析
   ① 确认版本：vllm-ascend 0.21.0rc2（需要向客户确认，不猜）
   ② 获取源码（本地优先）：
-     "本地是否已有 vllm-ascend 源码？（默认我查 ~/src/vllm-project/vllm-ascend/，也可以告诉我路径）"
+     "本地是否已有 vllm-ascend 源码？（默认我查 src-code/vllm-project/vllm-ascend/，也可以告诉我路径）"
      - 客户本地已有 → 直接用它，git log 核对版本（不符则切对应 tag）
      - 本地没有 → git clone（公开仓库无需认证）：
        git clone https://github.com/vllm-project/vllm-ascend.git -b <0.21.0rc2 tag>
