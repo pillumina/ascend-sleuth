@@ -68,6 +68,12 @@ def ns_map_from_index(root: Path) -> dict:
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser(description="从 diagnosis_state-*.yaml 计算 metrics")
+    ap.add_argument("--emit-yaml", action="store_true",
+                    help="额外输出 YAML 快照骨架（人复核后 append 进 metrics/timeline.yaml）")
+    args = ap.parse_args()
+
     root = Path(__file__).resolve().parents[1]
     by_case = ns_map_from_index(root)
     states = load_states(root)
@@ -175,16 +181,33 @@ def main():
     # 置信度分布（metrics.md 定义）：低置信（score < 0.5）case 占比，从索引统计（无需 trace）
     scores = [v[2] for v in by_case.values() if isinstance(v, tuple) and v[2] is not None]
     n_low = sum(1 for s in scores if s < 0.5)
-    conf_row = (
-        f"| 置信度分布 | {n_low}/{len(scores)} 低置信（score<0.5）；"
-        f"中高置信 {len(scores) - n_low}" if scores else "| 置信度分布 | 索引无 score 数据（未生成或全空） |"
-    )
+
+    # ---- 统一指标 dict（单一数据源：markdown 概览与 YAML 快照同源）----
+    m = {
+        "sessions_total": n,
+        "tier2_hit": tier2_hit,
+        "routed_accuracy": {"ok": routed_ok, "total": routed_total} if routed_total else None,
+        "misdiagnosis_rate": {"ok": misdiagnosed, "total": tier2_hit} if tier2_hit else None,
+        "by_category_hit": {c: {"hit": cat_hit.get(c, 0), "total": cat_total[c]}
+                            for c in sorted(cat_total)} or None,
+        "attribution_ratio": {"case_error": attr["case_error"],
+                              "execution_error": attr["execution_error"]},
+        "confidence_distribution": {"low": n_low, "total": len(scores)} if scores else None,
+        "feedback_capture": {"resolved": fb["resolved"], "not_resolved": fb["not_resolved"],
+                             "partial": fb["partial"]},
+        "trace_completeness": {"ok": complete, "total": n},
+        "vocab_compliance": {"ok": vocab_total - len(vocab_bad), "total": vocab_total},
+        "tier3": {"used": tier3_used, "saved": tier3_saved},
+        "reference": {"hits": sum(ref_hits.values()), "refs": len(ref_hits)} if ref_hits else None,
+        "reference_detail": {rid: {"hits": h, "resolved": ref_resolved.get(rid, 0)}
+                             for rid, h in sorted(ref_hits.items(), key=lambda x: -x[1])} or None,
+    }
 
     rows = [
         "| 指标 | 值 |",
         "|---|---|",
-        f"| 诊断 session 数 | {n}（活跃 + 历史） |",
-        f"| Tier 2 命中 session | {tier2_hit} |",
+        f"| 诊断 session 数 | {m['sessions_total']}（活跃 + 历史） |",
+        f"| Tier 2 命中 session | {m['tier2_hit']} |",
         f"| 误诊率（命中但反馈 not_resolved/partial） | "
         + (f"{misdiagnosed}/{tier2_hit} ({misdiagnosed / tier2_hit:.0%})" if tier2_hit
            else "无可算样本（需 hit + feedback outcome）"),
@@ -194,7 +217,8 @@ def main():
         f"| 执行-误诊归因比（case 错 / 执行错） | "
         + (f"case {attr['case_error']} / execution {attr['execution_error']}"
            if sum(attr.values()) else "无归因落点（反馈 not_resolved 后 diagnose 应记 attribution 事件）"),
-        conf_row,
+        (f"| 置信度分布 | {n_low}/{len(scores)} 低置信（score<0.5）；"
+         f"中高置信 {len(scores) - n_low}" if scores else "| 置信度分布 | 索引无 score 数据（未生成或全空） |"),
         f"| 路由准确率 | "
         + (f"{routed_ok}/{routed_total} ({routed_ok / routed_total:.0%})" if routed_total
            else "无可算样本（需 trace 含 triage.routed + hit.case）"),
@@ -221,7 +245,21 @@ def main():
     else:
         rows.append("| reference 引用 | 0——先验知识层刚建立（ADR-0008），trace 尚未积累 reference_lookup 事件 |")
     print("\n".join(rows))
-    print("\n<!-- metrics 由 owner 在 groom 周批时集中汇总 append 进 docs/metrics.md（每期一条，团队共享）；工程师不需要提交 metrics——他们只做诊断（本地 trace）+ 反馈（case confidence 走 PR）。小样本比例波动大，解读先看分母 -->")
+    print("\n<!-- metrics 由 owner 在 groom 周批时集中汇总：人复核后 append 进 metrics/timeline.yaml（每期一条，团队共享）；工程师不需要提交 metrics——他们只做诊断（本地 trace）+ 反馈（case confidence 走 PR）。小样本比例波动大，解读先看分母。机器可读快照：python3 scripts/trace_metrics.py --emit-yaml -->")
+
+    if args.emit_yaml:
+        print("\n--- metrics yaml 快照（复核后 append 进 metrics/timeline.yaml）---")
+        import datetime
+        snapshot = {
+            "period": "YYYY-WNN",  # TODO: 填本期（如 2026-W36）；W 周期 ISO 8601
+            "kind": "live",        # live | replay | example（只有 live 参与趋势对比）
+            "title": "本期诊断指标（trace_metrics.py 自动生成，人复核）",
+            "recorded_at": datetime.date.today().isoformat(),
+            "source": "trace_metrics.py 从 diagnosis_state-*.yaml 自动生成",
+            "metrics": {k: v for k, v in m.items() if v is not None},
+        }
+        yaml.safe_dump({"periods": [snapshot]}, sys.stdout, allow_unicode=True,
+                       sort_keys=False, default_flow_style=False)
 
 
 if __name__ == "__main__":

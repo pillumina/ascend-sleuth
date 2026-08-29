@@ -45,7 +45,8 @@ feedback_pending: CASE-ID）           feedback action + 清             （读 
    │                              trace_metrics.py（算指标）
    │                                    │
    │                                    ▼
-   │                              metrics.md（人复核后追加）
+   │                    metrics/timeline.yaml（数据，人复核后 append）
+   │                    docs/metrics.md（机制文档，机制变才变）
 ```
 
 各写入点归属：
@@ -55,9 +56,10 @@ feedback_pending: CASE-ID）           feedback action + 清             （读 
 | `diagnosis_state-*.yaml` | trace + feedback_pending | 否（gitignored） | 含客户现场信息；运行时状态，session 结束移 `postmortems/history/` 留本地 |
 | case 文件 `confidence` | hits/mis/score/last_hit | 是（走 knowledge_modification PR） | 学习环的持久知识——hits+1 必须入库才能改变下次候选排序 |
 | `_index.yaml` | score（仅 score，ADR-0004） | 是（生成物） | case 变 → 重建 → 随同一 PR；CI `--check` 强制同步 |
-| `metrics.md` | 指标汇总 | 是 | **周节奏、人复核**——trace_metrics 产出表，人看分母后追加，非每次反馈自动写 |
+| `metrics/timeline.yaml` | 指标时序数据（每期一条） | 是 | **周节奏、人复核**——trace_metrics 产出 YAML 骨架，人看分母后 append，非每次反馈自动写；结构由 `verify_metrics.py --check`（CI）校验 |
+| `docs/metrics.md` | metrics 机制文档（定义/口径/流程） | 是 | **稳定层**——只承载机制解释（人读理解），不随每期数据变动 |
 
-要点：**每次反馈直接写的是 case 文件（confidence）**——那是学习环的持久状态；metrics.md 是周期性的观测汇总，不是反馈的即时回写。反馈回写 case 后应作为变更提交（groom 批次或独立小 PR），演示可随 commit，正式使用走门控。
+要点：**每次反馈直接写的是 case 文件（confidence）**——那是学习环的持久状态；metrics 数据是周期性的观测汇总，不是反馈的即时回写。反馈回写 case 后应作为变更提交（groom 批次或独立小 PR），演示可随 commit，正式使用走门控。
 
 ### 2. 知识注入（每次定位后）
 
@@ -97,7 +99,7 @@ to-postmortem 接受任意来源的调查记录（本地 session、外部对话�
 
 ## 数据回路：trace → metrics → 闸门
 
-演化的节奏由数据决定。trace 汇入 `scripts/trace_metrics.py`，计算路由准确率、反馈捕获率、Tier 3 挽救率等指标（见 [metrics.md](metrics.md)）。指标驱动两类决策：运营层面——路由准确率低则修 triage-tree，路由准但未命中高则补 case；架构层面——ADR 的重评触发条件是否命中、roadmap 闸门是否解锁。trace 历史永不删除，它是这套系统全部自我认知的数据来源。
+演化的节奏由数据决定。trace 汇入 `scripts/trace_metrics.py`，计算路由准确率、反馈捕获率、Tier 3 挽救率等指标（数据落 `metrics/timeline.yaml`，定义见 [metrics.md](metrics.md)）。指标驱动两类决策：运营层面——路由准确率低则修 triage-tree，路由准但未命中高则补 case；架构层面——ADR 的重评触发条件是否命中、roadmap 闸门是否解锁。trace 历史永不删除，它是这套系统全部自我认知的数据来源。
 
 ## 当前状态
 

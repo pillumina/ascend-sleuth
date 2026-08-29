@@ -2,9 +2,9 @@ name: kb-checks
 
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py"]
 
 jobs:
   index-freshness:
@@ -34,6 +34,18 @@ jobs:
       # 基础元信息 + 已登记 type + 按来源类型子字段 + 深审（case-derived methodology
       # 派生引用数 <3 不允许 active）。脚本解析全部 case YAML 计算派生计数，语法错即红。
       - run: python3 scripts/verify_references.py --check
+
+  metrics-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      # metrics 时序数据结构校验（教训：W28/W35 字段格式漂移导致跨期不可比、趋势不可算）：
+      # period 唯一 / kind 合法 / recorded_at 必填 / 比例字段 ok,total 合法。结构由 CI 兜底。
+      - run: python3 scripts/verify_metrics.py --check
 
   skill-self-contained:
     runs-on: ubuntu-latest

@@ -11,7 +11,7 @@
 | 架构 | 三层检索、生成索引 `_index.yaml`、triage-tree 路由、字段级平台分发、软版本匹配、双部署模式 |
 | 可演进性 | confidence 反馈闭环（`feedback_pending` 结构化捕获）、intake 队列、三分类预分诊 |
 | 可维护性 | groom 周批处理、git 门控（标签/CODEOWNERS/双签）、kb-checks CI、golden eval 框架 |
-| 可观测性 | trace 词表、`trace_metrics.py`、`docs/metrics.md` 指标定义、容量表 |
+| 可观测性 | trace 词表、`trace_metrics.py`、`metrics/timeline.yaml` 数据、`docs/metrics.md` 指标定义、容量表 |
 | 流程 | severity 闸门、串联保护（两次未解决转人工）、日志裁剪、脱敏、随机审序 |
 
 ---
@@ -57,7 +57,7 @@
 
 | ID | 事项 | 需求 / 验收标准 | 入口闸门 | 阶段 |
 |---|---|---|---|---|
-| O1 | 指标常态化 | 每两周 `trace_metrics.py` 输出经人复核追加 `docs/metrics.md`；所有比例必须带分母；小样本（分母 <10）显式标注 | Phase 0 出口后即常态 | 常设 |
+| O1 | 指标常态化 | 每两周 `trace_metrics.py` 输出经人复核 append `metrics/timeline.yaml`（数据）；所有比例必须带分母；小样本（分母 <10）显式标注 | Phase 0 出口后即常态 | 常设 |
 | O2 | 指标按团队分账 | state 文件记 workload（training/inference）；`trace_metrics.py` 按组输出命中率与误诊率，两组各自复盘 | 首次真实使用后的小改动 | v1.5 |
 | O3 | 反馈捕获率监测 | feedback 捕获率（回报 session / 给出 fix 的 session）进 metrics；连续两期 <50% 触发流程检查（追问话术、nag 时机） | O1 常态化后 | 常设 + 阈值 |
 | O4 | eval 覆盖报告 | groom 每轮输出覆盖矩阵：有 case 的 `(namespace × category × platform)` 格子 vs 有 fixture 的格子，缺口列表（"inference/sglang 0 条"、"precision 类偏弱"） | M2 完成后并入 groom | v1.5+ |
@@ -100,11 +100,11 @@
 | 频率 | 动作 | 载体 |
 |---|---|---|
 | 每周 | 容量表 + inbox 标红 + groom-report | groom 变更摘要 / issue |
-| 每两周 | trace → 指标，人复核追加 | `trace_metrics.py` → `docs/metrics.md` |
+| 每两周 | trace → 指标，人复核追加 | `trace_metrics.py` → `metrics/timeline.yaml` |
 | 每月 | `needs-structurer-review` 超 14 天提醒；inbox >2 周催办 | groom-report |
 | 第 6 个月 | 容量推演重算（A5） | ADR-0002 修订或确认 |
 | 持续 | ADR-0002 三条重评触发条件监控（namespace >100 且路由劣化 / Tier 3 >5K 篇且挽救率不足 / 真联邦出现） | metrics + groom |
-| 季度 | 用 metrics 校准本 roadmap 的闸门数值；回顾"三层架构是否真的在变好用" | 本文件 + metrics.md |
+| 季度 | 用 metrics 校准本 roadmap 的闸门数值；回顾"三层架构是否真的在变好用" | 本文件 + `metrics/timeline.yaml` |
 
 ## 明确不做
 
