@@ -1,6 +1,8 @@
 # ascend-sleuth
 
 [![platform: Ascend NPU](https://img.shields.io/badge/platform-Ascend%20NPU-CC0000?logo=huawei&logoColor=white)](https://www.hiascend.com/)
+[![Agent Skills](https://img.shields.io/badge/Agent%20Skills-compliant-8B5CF6.svg)](https://agentskills.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 昇腾训练与推理支持的诊断工具套件。把每次问题定位沉淀成可复用的知识，让下一次同类问题直接命中答案。
 
@@ -126,9 +128,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 诊断过程全程记录 trace：加载了哪些命名空间、按什么顺序执行了哪些检查。trace 用于事后归因。一次误诊，究竟是知识库里的 case 写错了，还是 agent 执行流程走偏了，两者的修复路径完全不同——混在一起会把本来正确的东西改坏。
 
-两个循环驱动整个系统：**诊断循环**（每次问题，分钟级——诊断 → 命中或兜底 → 沉淀）与**演化循环**（每周，git 门控——待审队列 → groom 批审 → 升格 → 下次诊断直接命中）。完整全景见架构图；每个演化机制配什么护栏防止越学越错，见 [docs/evolution.md](docs/evolution.md)：
-
-![ascend-sleuth 架构](docs/diagrams/ascend-sleuth-architecture.png)
+两个循环驱动整个系统：**诊断循环**（每次问题，分钟级——诊断 → 命中或兜底 → 沉淀）与**演化循环**（每周，git 门控——待审队列 → groom 批审 → 升格 → 下次诊断直接命中）。完整全景见[交互架构图（light，支持主题切换与 PNG 导出）](docs/diagrams/ascend-sleuth-architecture.html?theme=light)；每个演化机制配什么护栏防止越学越错，见 [docs/evolution.md](docs/evolution.md)。
 
 ## 核心设计原则
 
