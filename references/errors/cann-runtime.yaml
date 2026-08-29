@@ -47,3 +47,7 @@ content:
       meaning: "aclnnGroupedMatmulV5 dim 不匹配（EZ1001）——wake_up 后 MoE 权重双重转置导致 K 维错位（3072 vs 2048）。"
       related_signatures: ["aclnnGroupedMatmulV5 failed", "161002", "EZ1001"]
       source_cases: [VLLM-ASC-12226]
+    - code: "507015"
+      meaning: "aicore execution 异常（AclNN_Runtime_Error EZ9903，aclrtLaunchKernelWithHostArgs failed，error code 0x26）——量化 matmul 算子（QuantBatchMatMulV3）在该 CANN 版本 bug 触发（310P w8a8 推理，QuantBatchMatMulV3_NZ_NZ_int8_int8_fp16）；升级 CANN ≥9.1.0.beta2 修复。"
+      related_signatures: ["507015", "QuantBatchMatMulV3", "The aicore execution is abnormal"]
+      source_cases: [VLLM-ASC-10122]

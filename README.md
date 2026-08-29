@@ -63,13 +63,15 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 ## 知识获取
 
-装完 skill 之后，知识库有三种形态——按你的使用方式选。安装命令的差异在 `-g`（git 模式）和 `-s`（skill 选择）：
+**仓库即 workspace**：诊断（读 knowledge/references/triage-tree）与沉淀（写 postmortems/inbox/、references/、ingest-state.json）都在**同一个仓库 clone** 里进行——SKILL 的知识路径相对仓根。三种起步形态如下，安装命令的差异在 `-g`（git 模式）和 `-s`（skill 选择）：
 
-| 形态 | 安装命令 | 结果 | 适合谁 |
+| 形态 | 起步方式 | 结果 | 适合谁 |
 |---|---|---|---|
-| **自积累**（只装 skill） | `npx skills add -s diagnose -s to-postmortem -s to-reference -s issue-ingest -s knowledge-groom -s resume-diagnosis` | 只装 `skills/` 方法论，`knowledge/` 不装（为空） | 新团队、问题域不同、知识要私有 |
+| **自积累**（空仓起步） | `git clone` 本仓（或 fork）后清空 `knowledge/` | 结构完整（skills/ + knowledge/ 空 + 队列/状态就位），从零沉淀 | 新团队、问题域不同、知识要私有 |
 | **消费现成**（带知识库） | `npx skills add -g pillumina/ascend-sleuth`（git 模式拉整个仓库，含 `knowledge/`） | 直接用上游验证过的 case，也可继续沉淀 | 已有沉淀、问题域重叠、想复用 |
-| **定制知识面**（稀疏拉取） | 先 `git clone` 或 `-g` 拉取，再 `git sparse-checkout` 按目录白名单收窄 | 只保留需要的部分（如 `vllm-ascend` 格子 + `common/`） | 知识库长大后、带宽/存储受限、只要自己框架的知识 |
+| **定制知识面**（稀疏拉取） | 先 `git clone` 或 `-g` 拉取，再 `git sparse-checkout` 按目录白名单收窄 | 只保留需要的部分（如 `vllm-ascend` 格子 + `common/`）| 知识库长大后、带宽/存储受限、只要自己框架的知识 |
+
+> ⚠️ **`-s` 只装 skill 不构成可用形态**——SKILL 的知识路径（postmortems/inbox/、references/、ingest-state.json）相对仓根，没有知识仓结构（knowledge/references/postmortems/ + 队列/状态文件）的"裸 skill"无法沉淀。`-s` 仅适合**在已有仓库里临时试用诊断方法论**（不沉淀回本仓），或把 `skills/` 合并进自己已有结构的仓库。
 
 三种形态共用同一套 skill 与机制，且可递进：自积累的团队脱敏后可选回馈上游，让公开库渐厚（见 [部署模式](#部署模式) 的框架式）。`-g` 与 `-s` 的确切行为以 `npx skills add --help` 为准——不同版本的安装器对"仓库整体 vs 指定 skill"的粒度有差异。
 
