@@ -1,0 +1,65 @@
+# VLLM-ASC-10954 —— GLM-5.2 工具调用传参类型错误：工具幻视导致 json 格式不清晰，vllm 0.24+ parse 逻辑修复
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10954
+# pre-triage: new_pattern（工具调用/工具幻视类，与现有 case 无重叠；GPU 同版本 vllm 同现——跨框架问题）
+# 社区确认：工具幻视导致 json 格式不清晰，GPU 相同版本 vllm 也有；0.24+ vllm 修改 parse 逻辑删除不存在 request_tool 内的工具调用
+# investigation_quality: medium（维护者定位 + GPU 对照验证 + 修复版本确认）
+# 导入管道：issue-ingest skill 第二轮（triaged 池）
+
+cases:
+  - id: VLLM-ASC-10954
+    title: "GLM-5.2 工具调用传参类型错误——工具幻视导致 json 格式不清晰（GPU 同版本 vllm 同现），升级 vllm 0.24+ 修复 parse 逻辑"
+
+    category: interrupt
+    tags: [glm5, tool-call, hallucination, json]
+
+    platforms: ["A3-910C"]
+
+    compat:
+      - framework: vllm-ascend
+        versions: ["<0.24"]    # 触发 <0.24；0.24+ vllm 修改 parse 逻辑（删除不存在 request_tool 内的工具调用）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.4                # medium（维护者定位 + GPU 对照 + 修复版本确认）
+
+    symptoms:
+      - "A3 4 机部署 GLM-5.2-W8A8，出现工具调用传参类型错误"
+      - "根因：工具幻视导致 json 格式不清晰——GPU 在相同版本 vllm 下也有相同问题（非昇腾特有）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10954"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'tool call|工具调用|request_tool' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:tool call|工具调用|request_tool"
+      fallback:
+        command_template: "grep -iE 'json|parse|tool' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:json|parse|tool"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：GLM-5.2 工具调用传参类型错误？"
+        expected: "是"
+      - step: 2
+        check: "根因判别：工具幻视导致 json 格式不清晰（GPU 相同版本 vllm 同现——非昇腾特有）？"
+        expected: "是——vllm parse 逻辑对不存在 request_tool 内的工具调用处理导致"
+      - step: 3
+        check: "修复：升级 vllm 到 0.24 或更新（parse 逻辑已修改，删除不存在的工具调用）"
+        expected: "0.24+ 验证该问题可关闭"
+
+    severity: benign
+    fix_side_effects: [requires-restart]
+    fix_type: config-change
+
+    root_cause: >
+      工具幻视导致 json 格式不清晰，工具调用传参类型错误——GPU 在相同版本 vllm 下也有相同
+      问题（非昇腾特有）。vllm 0.24 之后修改了 parse 逻辑，对不存在 request_tool 内的
+      工具调用会直接删除。
+
+    fix: >
+      升级 vllm 到 0.24 或更新版本（parse 逻辑修复，验证该问题可关闭）。

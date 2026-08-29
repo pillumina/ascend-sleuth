@@ -1,0 +1,63 @@
+# VLLM-ASC-6774 —— qwen3.5 A2 双机启动失败：启动脚本与 vllm/vllm-ascend 同目录
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/6774
+# pre-triage: new_pattern（启动脚本路径环境类，与现有 case 无重叠）
+# 社区确认：启动脚本不能与 vllm 和 vllm-ascend 同目录，换路径解决（PR #7265 参考）
+# investigation_quality: medium（维护者给出路径约束 + PR 佐证）
+# 导入管道：issue-ingest skill 第二轮（triaged 池）
+
+cases:
+  - id: VLLM-ASC-6774
+    title: "qwen3.5 A2 双机启动失败——启动脚本与 vllm/vllm-ascend 同目录导致，改脚本路径解决"
+
+    category: interrupt
+    tags: [qwen3.5, a2, startup, script-path]
+
+    platforms: ["A2-910B"]
+
+    compat:
+      - framework: vllm-ascend
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.4                # medium（维护者给出约束 + PR 佐证）
+
+    symptoms:
+      - "qwen3.5 A2 双机启动失败"
+      - "启动脚本与 vllm / vllm-ascend 位于同一目录"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/6774"
+      - "https://github.com/vllm-project/vllm-ascend/pull/7265"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E '启动失败|startup failed' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:启动失败|startup failed"
+      fallback:
+        command_template: "grep -iE 'same directory|startup script' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:same directory|startup script"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：A2 双机启动失败？"
+        expected: "是"
+      - step: 2
+        check: "环境判别：启动脚本是否与 vllm / vllm-ascend 位于同一目录？"
+        expected: "是——启动脚本不能与 vllm 和 vllm-ascend 同目录（维护者确认）"
+      - step: 3
+        check: "修复：更换启动脚本路径（如放到 /home 下独立目录）"
+        expected: "换路径后启动正常（PR #7265 参考）"
+
+    severity: benign
+    fix_side_effects: []
+    fix_type: config-change
+
+    root_cause: >
+      启动脚本与 vllm / vllm-ascend 位于同一目录导致 qwen3.5 A2 双机启动失败。
+
+    fix: >
+      更换启动脚本路径，不与 vllm / vllm-ascend 同目录（如独立目录运行）。

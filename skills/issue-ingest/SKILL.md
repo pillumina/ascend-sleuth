@@ -83,6 +83,8 @@ python3 scripts/issue_filter.py --cached /tmp/issues-<repo>.json \
 
 已处理编号排除（幂等）、label 池、评论数、标题规则；候选按 label 优先级（triaged>bug）/ 已解决 / 评论数排序。读候选列表。
 
+**增量缓存同样走本步统一过滤**——`--since` 拉出的新缓存也过 `issue_filter.py`（标题规则/评论数/已处理排除都要应用），**勿直接读增量文件跳过过滤**（增量里的 `[Doc]`/`[Feature]` 等标题规则条目会被滤掉，直接读会混进评估）。
+
 ### 3. 评估（~1-2K token/条，只花在候选上）
 
 对候选逐条：`gh api repos/<repo>/issues/<n>` 取 **body + 评论**（issue 的 body 多为环境信息+现象，**根因和 fix 通常沉淀在评论里**——至少读最后 2-3 条评论，结论常在尾部；body 只读现象段落），判断：
