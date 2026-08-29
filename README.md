@@ -161,6 +161,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 - **[Git 工作流](docs/git-workflow.md)** — 审核、门控、合入的落地（标签集、CODEOWNERS、CI、双签）
 - **[Issue 导入管道](docs/issue-ingest-pipeline.md)** — issue → case 半自动管道（拉取/过滤/评估/沉淀/幂等）
 - **[评估](docs/eval.md)** — skill 改动前后的回归检查（golden 套件与真实 fixture）
+- **[全流程演示](docs/demo-walkthrough.md)** — 从一次诊断到知识演化的可读 walkthrough（含交互输出示例）
 - **[推广就绪度评估](docs/rollout-assessment.md)** — 对照十一条原则的四层就绪度评估与推广动作清单
 - **[术语表](CONTEXT.md)** — case、postmortem、groom、trace 等术语的规范定义
 
