@@ -29,9 +29,19 @@
 
 ## 幂等与可重复
 
-- `ingest-state.json`：`processed` 记录已导入编号（硬排除，重复跑不重导）；`last_fetch_*_closed` 是拉取游标（增量参考）
+- `ingest-state.json`：`processed` 记录已导入编号（硬排除，重复跑不重导）；`last_fetch_*_closed` 是拉取游标（增量参考）；**`config` 固化用户确认过的源配置**（labels/min_comments/limit——同一仓库下次不重问）
 - `--mark-imported`：沉淀完成后自动追加 processed（脚本化，不靠手工）
 - 拉取无状态、过滤纯本地——管道可重复执行，结果稳定
+
+## 交互分级（skill 实践）
+
+| 用户给到什么 | agent 行为 |
+|---|---|
+| 完整参数 | 直接执行（不打扰）|
+| 框架名/仓库 | 查 config 复用；无 config 调查（label 体系/规模）→ 建议 → 确认 → 固化 config |
+| 不明确 | 引导问框架 → 走半明确路径 |
+
+**config 固化**：首次确认过的源配置写入 `ingest-state.json` 的 `sources.<source>.config`，同一仓库下次不再问同样的问题（与 case/先验沉淀同一哲学）。
 
 ## 定时任务设计（未落地，方案）
 

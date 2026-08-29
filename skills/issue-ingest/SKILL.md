@@ -16,30 +16,55 @@ description: >
 2. **gh 登录**：`gh auth status` 检查；未登录 → 引导用户 `gh auth login`（选 GitHub.com → HTTPS → **Login with a web browser**，用户浏览器完成授权）——不要替用户输入凭据，等 auth status 通过；
 3. 其他源（GitCode 等）：确认对应 CLI（如 `gitcode-cli`）已装已登录，本 skill 流程以 GitHub 为例，其他源换 CLI 命令即可（缓存格式保持一致：number/title/comments/closed_at/labels/state_reason）。
 
-## 输入方式
+## 输入方式（按需交互：给得越全，问得越少）
 
 ```
 /skill:issue-ingest --repo vllm-project/vllm-ascend --labels triaged [--since <ISO时间>] [--min-comments 3] [--limit 20] [--mode auto|confirm]
+/skill:issue-ingest vllm-ascend                        # 半明确：调查后给建议
+/skill:issue-ingest "我想导入些昇腾训练框架的 issue"    # 不明确：引导问框架，再走半明确
 ```
 
-- `--repo`：上游仓库（必填）
-- `--labels`：issue 池（默认按下表映射；可覆盖）
+| 用户给到什么 | agent 行为 |
+|---|---|
+| 完整参数（`--repo --labels ...`）| 直接执行（不打扰）|
+| 半明确（框架名或仓库）| 查 `ingest-state.json` 该源有无 config → 有则复用（显示给用户，可改）；无则**调查 + 建议 + 确认**（见步骤 0）|
+| 不明确 | 引导问框架 → 走半明确路径 |
+
+- `--repo`：上游仓库（必填；半明确时 agent 从框架名映射，映射不了就问）
+- `--labels`：issue 池（可覆盖 config / 映射表；默认按下表）
 - `--since`：增量游标（从 `ingest-state.json` 的 `last_fetch_oldest_closed` 续拉，或用户指定）
 - `--min-comments`：最少评论数（默认 3，有排查过程的信号）
 - `--limit`：候选上限（默认 20）
 - `--mode`：`auto`（默认，批量自动评估沉淀）| `confirm`（候选列表给用户过目后再评估）
 
-## 框架 label 映射（默认；用户 --labels 可覆盖）
+## 源配置固化（ingest-state.json 的 sources.<source>.config）
+
+**交互中确认过的配置固化下来，同一仓库下次不再问同样的问题**——与 case/先验沉淀同一哲学。
+
+- **生命周期**：首次导入某仓库 → 调查（label 体系/规模）→ 给建议 → 用户确认 → **写入 `config`**（labels / min_comments / limit / strategy 说明）；再次导入同仓库 → 读 `config` 直接执行（显示配置，用户可改）；用户改参数 → 覆盖 `config`
+- **config 位置**：`ingest-state.json` → `sources.<source>.config`（与 processed/游标同处）
+- **更新**：仓库 label 体系演进或策略变化 → 用户主动改参数时覆盖；无需显式清理
+
+## 框架 label 映射（初始猜测；半明确路径先查 config，无 config 再调查确认）
 
 | 框架 | 主池 | 说明 |
 |---|---|---|
 | vllm-ascend | `triaged` | 维护者确认过，信噪比最高；不够再扩 `bug` |
 | vllm（上游）| `bug` | 无 triaged 体系时用 bug |
-| 其他框架 | 用户指定 | 先 `gh api repos/<repo>/labels` 看实际 label 体系再定 |
+| 其他框架 | 调查后确认 | 先 `gh api repos/<repo>/labels` 看实际 label 体系再定，**不猜** |
 
 ## 流程
 
-### 1. 拉取（≈0 token）
+### 0. 配置（仅半明确/不明确路径；有 config 或无参数冲突时跳过）
+
+```bash
+# 查实际 label 体系（零 token）
+gh api repos/<repo>/labels --jq '.[].name'
+# 数候选池规模（可选，按 label 逐个数）
+gh api "search/issues?q=repo:<repo>+is:issue+is:closed+label:<候选label>&per_page=1" --jq '.total_count'
+```
+
+给用户建议（主池 label、min_comments、limit、预计候选数），用户确认或调整 → **写入 `config`**；用户给了完整参数 → 跳过本步，直接执行（并把参数记入 config 供下次复用）。
 
 ```bash
 python3 scripts/fetch_issues.py --repo <repo> --state closed --labels <labels> \
@@ -95,7 +120,7 @@ python3 scripts/issue_filter.py --state ingest-state.json \
 
 ## 幂等与可重复
 
-- `ingest-state.json`：`processed`（已处理编号，硬排除）+ `last_fetch_*_closed`（游标）——重复运行不重导、不重评估；
+- `ingest-state.json`：`processed`（已处理编号，硬排除）+ `last_fetch_*_closed`（游标）+ `config`（用户确认过的源配置）——重复运行不重导、不重评估、不重问配置；
 - 拉取无状态、过滤纯本地——管道可重复执行，结果稳定。
 
 ## 为什么需要专门入口
