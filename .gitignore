@@ -31,11 +31,12 @@ postmortems/inbox/*
 !postmortems/inbox/README.md
 
 # ============================================================
-# agent 项目级 skills symlink（enable-agent-skills.sh 生成，
-# clone 后跑一次脚本即建；不入版本库，避免跨平台 symlink 差异）
-# ============================================================
+# agent 项目级 skills symlink（相对链接，git 跟踪——clone 自动还原，各 agent 项目目录自动扫描）
 .dsh/*
 !.dsh/skills
-.claude/
-.cursor/
-.trae/
+.claude/*
+!.claude/skills
+.cursor/*
+!.cursor/skills
+.trae/*
+!.trae/skills
