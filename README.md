@@ -4,11 +4,11 @@
 [![Agent Skills](https://img.shields.io/badge/Agent%20Skills-compliant-8B5CF6.svg)](https://agentskills.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-昇腾训练与推理支持的诊断工具套件。把每次问题定位沉淀成可复用的知识，让下一次同类问题直接命中答案。
+昇腾 NPU 训练与推理的诊断工具套件。把每次问题定位沉淀为可复用知识，让同类问题下次直接命中。
 
 遵循 [Agent Skills](https://agentskills.io/) 标准，可在 pi、Claude Code、Codex 等任意支持该标准的 agent 中使用。
 
-> ⚠️ **agent 执行差异**：不同 agent 对 SKILL.md 的执行质量有差异（prompt 纪律是概率性的，设计原则二明确承认）。诊断结果与 trace 质量可能因 agent 而异——**团队内建议统一 agent**，并在跨 agent 对比结果时先归因执行差异，不急于归因知识错误。
+> ⚠️ **agent 执行差异**：不同 agent 对 SKILL.md 的执行质量有差异（prompt 纪律本质是概率性的）。诊断结果与 trace 质量可能因 agent 而异——**团队内建议统一 agent**；跨 agent 对比时先归因执行差异，别急着归因知识错误。
 
 **快速跳转**：[为什么需要](#为什么需要它) · [快速开始](#快速开始) · [六个 skill](#六个-skill) · [工作原理](#工作原理) · [文档](#文档)
 
@@ -87,7 +87,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 ## 知识获取
 
-**仓库即 workspace**：诊断（读 knowledge/references/triage-tree）与沉淀（写 postmortems/inbox/、references/、ingest-state.json）都在**同一个仓库 clone** 里进行——SKILL 的知识路径相对仓根。三种起步形态如下，安装命令的差异在 `-g`（git 模式）和 `-s`（skill 选择）：
+**仓库即 workspace**：诊断（读 knowledge/references/triage-tree）与沉淀（写 postmortems/inbox/、references/、ingest-state.json）都在**同一个仓库 clone** 里进行——SKILL 的知识路径相对仓根。三种起步形态如下：
 
 | 形态 | 起步方式 | 结果 | 适合谁 |
 |---|---|---|---|
@@ -220,7 +220,7 @@ fix 应用后 → 回报结果（diagnose/resume 启动时会主动追问）→ 
 
 ## 路线图
 
-Roadmap 采用闸门驱动：每个事项定义入口条件（数据或事件触发）与验收标准，不按日期排期。
+路线图采用闸门驱动：每个事项定义入口条件（数据或事件触发）与验收标准，不按日期排期。
 
 - **v1（已实现）**：三层检索与生成索引、intake 队列与 groom 批处理、trace 与反馈闭环、git 门控与 CI。
 - **v1.5（按闸门解锁）**：router 从 trace 错例演进、fixture replay 半自动化、agent 自起草候选 case、指标分账与容量预测。
