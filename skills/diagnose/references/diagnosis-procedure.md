@@ -122,3 +122,5 @@ trace 记 `{action: tier3, keyword: <kw>, files_read: [...]}`——Tier 3 挽救
 - trace 显示 agent 跳过 fallback、加载错 namespace、没标 low_confidence → **执行错**，改 skill body 或本文件
 
 混在一起会让 groom 改一个本来正确的 case——主动污染 KB。trace 是堵这个洞的唯一手段。
+
+**归因的结构化落点**：归因结论记入 trace `{action: attribution, verdict: case_error|execution_error, evidence: <trace 证据摘要>}`——与 SKILL.md 反馈闭环的误诊归因要求一致。该事件是「执行-误诊归因比」指标（metrics.md）与 roadmap E2（router 从 trace 错例演进）、E5（trace 结构挖掘）的数据源。**触发不依赖用户主动报告"这个 case 不对"**——反馈闭环中答复 not_resolved/partial 即自动进入归因（SKILL.md 已内联该步骤）。

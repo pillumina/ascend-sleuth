@@ -177,6 +177,9 @@ applies_to:                        # 能确定就填，确定不了留待 grill 
 
 status: draft                      # 永远从 draft 起步——active 是审核后的状态
 last_verified: <今天>              # 人确认的日期（grill 认可即视为一次人核）
+# 观测字段（可选；产出时**不填**，由 groom 在 reference 观测回写时有数据才填）：
+#   hits: <int>                    # 被引用次数（trace.reference_lookup 计数）
+#   last_hit: <date>               # 最后引用时间
 
 content:
   # 按 type 的 schema_required 字段（见 _types.yaml / references/README.md）

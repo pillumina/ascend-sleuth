@@ -4,18 +4,18 @@
 
 ## 指标定义
 
-| 指标 | 含义 |
-|---|---|
-| 命中率 | Tier 2 直接匹配并解决的比例 |
-| 误诊率 | 命中了但 fix 没有解决问题的比例 |
-| 路由准确率 | 最终 root cause 所在 namespace 是否在被加载集合内 |
-| 执行-误诊归因比 | 误诊中 case 错与执行错的比例 |
-| 按类命中 | interrupt / precision / performance 各自的命中率 |
-| 置信度分布 | 低置信 case 占比、低置信高命中 case 数 |
-| 自起草采纳率 | groom 验证通过的草案 / agent 起草总数 |
-| trace 完整性 | 有 trace 记录的 step / 实际执行 step |
-| Tier 3 挽救率 | 走 Tier 3 兜底检索且最终 resolved 的比例（trace `tier3` action） |
-| 反馈捕获率 | 回报 fix 结果的 session / 给出 fix 的 session，反映学习环的实际吞吐（trace `feedback` action） |
+| 指标 | 含义 | 实现 |
+|---|---|---|
+| 命中率 | Tier 2 直接匹配并解决的比例 | `trace_metrics.py`（Tier 2 命中 session 数） |
+| 误诊率 | 命中了但 fix 没有解决问题的比例 | `trace_metrics.py`（hit + feedback not_resolved/partial） |
+| 路由准确率 | 最终 root cause 所在 namespace 是否在被加载集合内 | `trace_metrics.py`（triage.routed vs hit.case） |
+| 执行-误诊归因比 | 误诊中 case 错与执行错的比例 | `trace_metrics.py`（trace `attribution` 事件 verdict，由 diagnose 反馈 not_resolved 后自动归因） |
+| 按类命中 | interrupt / precision / performance 各自的命中率 | `trace_metrics.py`（trace triage/triage_semantic 的 category vs hit） |
+| 置信度分布 | 低置信 case 占比、低置信高命中 case 数 | `trace_metrics.py`（索引 score 统计） |
+| 自起草采纳率 | groom 验证通过的草案 / agent 起草总数 | 无实现（E1 agent 自起草未落地，无数据源——E1 落地后补） |
+| trace 完整性 | 有 trace 记录的 step / 实际执行 step | `trace_metrics.py`（proxy：含 triage + 过滤步） |
+| Tier 3 挽救率 | 走 Tier 3 兜底检索且最终 resolved 的比例（trace `tier3` action） | `trace_metrics.py` |
+| 反馈捕获率 | 回报 fix 结果的 session / 给出 fix 的 session，反映学习环的实际吞吐（trace `feedback` action） | `trace_metrics.py` |
 
 ---
 
