@@ -21,7 +21,7 @@
 | 五 建议与决定分离 | 预分诊三分类 + 人审、高风险双签 + 随机审序、to-reference grill→draft 直进→**PR review 即审核闸门** | ✅ 完整 |
 | 六 闸门硬度匹配 | compat 软匹配（ADR-0001）、severity 硬闸、CI 硬门、语义闸门保持约定强度 | ✅ 完整 |
 | 七 变更可逆 | fix 带 rollback、`_archive/` 可复活、索引可重建 | ⚠️ case 层完整；自动变更可逆性在 roadmap v2 未实现 |
-| 八 可观测先于改进 | trace 硬要求 + 固定词表（含 reference_lookup）、`trace_metrics.py`（case + reference 指标）、`docs/metrics.md` | ⚠️ **机制完整（reference 观测管道已通）但数据只有 W35 一期** |
+| 八 可观测先于改进 | trace 硬要求 + 固定词表（含 reference_lookup）、`trace_metrics.py`（case + reference 指标）、`metrics/timeline.yaml` 数据 + `docs/metrics.md` 机制文档 | ⚠️ **机制完整（reference 观测管道已通）但数据只有 W35 一期** |
 | 九 稀缺资源显式预算 | 三层加载 + 日志裁剪、inbox 批处理 30 秒/条、reference summary 层先于全文、词条零注释、skill 去 ADR 锚定 | ✅ 完整且精细 |
 | 十 诚实退化 | 空库提示三出路、Script 未接明说、机制强度如实标注、reference 只读 active、verification 状态、来源链诚实、无数据如实显示 | ✅ **体系最强项** |
 | 十一 数据触发演进 | roadmap 闸门驱动、8 个 ADR 留痕、索引触发检测（groom R7）、参考线留待实测 | ⚠️ 机制完整，**实测数据不足以支撑闸门** |
@@ -53,7 +53,7 @@
 
 | 项 | 现状 |
 |---|---|
-| metrics.md | 有 W28 示例 + reference 口径约定；真实 trace 数据仍缺（38 条 case 仅 12723 有 hits=1，其余初始值） |
+| metrics 数据 | `metrics/timeline.yaml` 有 2 期 replay 快照（迁移自原 metrics.md）；**真实 live trace 数据仍缺**（38 条 case 仅 12723 有 hits=1，其余初始值）；机制文档见 docs/metrics.md |
 | golden 套件 | 23 条 fixture，**无自动 replay**（docs/eval.md 自承依赖人手动） |
 | 闸门数值 | 路由准确率/命中率/过滤率仍是假设值（诚实标注"待 metrics 复核"） |
 | reference 命中统计 | 观测管道已通（trace_metrics 支持 reference_lookup，groom R6 回写），数据待 trace 积累（当前如实接近 0） |

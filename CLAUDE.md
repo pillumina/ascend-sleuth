@@ -77,7 +77,7 @@ Golden-case regression suite in `eval/golden/`. Public repo contains only constr
 - **Normative foundation:** all design/implementation/evolution changes must be traceable to `docs/design-principles.md` (the normative articles); the derivation chain lives in `docs/design-theory.md` (four axioms → formulas → principles). An untraceable rule is suspect; an unexplainable real-world choice indicts the theory.
 - **Diagnose does not access customer environments.** All info (logs, versions, errors) comes from the engineer pasting it. The agent's role is to ask for what's missing when information is insufficient.
 - **Agent never applies fixes to production.** Fixes are suggestions for the human to apply.
-- **知识库当前结构性状态**：实时数字用 `python3 scripts/build_index.py`（生成 `knowledge/_index.yaml` 头部注释）；按周 append 的指标快照见 `docs/metrics.md` 末尾节。CLAUDE.md 只保留**结构性信号**（不随每周批量腐烂）：
+- **知识库当前结构性状态**：实时数字用 `python3 scripts/build_index.py`（生成 `knowledge/_index.yaml` 头部注释）；按周 append 的指标时序数据在 `metrics/timeline.yaml`（结构由 `verify_metrics.py --check` 校验），机制定义见 `docs/metrics.md`。CLAUDE.md 只保留**结构性信号**（不随每周批量腐烂）：
   - `training/{mindspeed-llm,mindspeed-mm,verl}/` 与 `common/` 当前为空——agent 路由到这些 namespace 应直接走 Tier 3 fallback，不假装有内容可检（与 `triage-tree.yaml` 头部注释同源）
   - `inference/vllm-ascend/interrupt` 格子历史上接近 soft_cap=30（容量治理上限），触发过容量治理评估；agent 加载阶段一索引后若候选 ≥5，应留意 soft_cap 信号
   - canonical sample 仍是 `examples/sample-case.yaml`
