@@ -38,7 +38,15 @@ Kernel task happen error, retCode=0x26, [aicore exception]
 fault kernel_name=QuantBatchMatMulV3_NZ_NZ_int8_int8_fp16_high_performance_21
 ```
 
-agent 分四步处理，每步都有明确输出：
+agent 先做**症状归一**——把原始报错提炼成可检索的签名，同时留意缺什么信息：
+
+```
+[示例输出] 症状理解：
+  - 报错签名：507015（aicore execution 异常）+ QuantBatchMatMulV3（量化 matmul 算子）
+    + retCode=0x26（aicore exception）——interrupt 类
+  - 已给信息：平台 310P、框架 vllm serve、模型 Qwen3.6-27B-W8A8、w8a8 量化
+  - 缺信息：CANN 版本（修复判定的关键）——先按已有信息走，验证阶段会问
+```
 
 **① Tier 1 路由**——triage-tree 把症状映射到命名空间：
 
@@ -47,38 +55,55 @@ agent 分四步处理，每步都有明确输出：
 → namespace: inference/vllm-ascend/interrupt
 ```
 
-**② Tier 2 候选**——读 `_index.yaml` 过滤候选（≤5），按 confidence 排序：
+**② Tier 2 候选**——读 `_index.yaml` 过滤候选（≤5），按 confidence 排序。agent 比对 quickly_check 与已提供信息，排除不匹配的：
 
 ```
-[示例输出] 匹配到 1 条候选：
-VLLM-ASC-10122  confidence 0.4
-  310P + w8a8 推理 507015 aicore exception：QuantBatchMatMulV3 量化算子 CANN 版本 bug
+[示例输出] 候选比对（_index.yaml 19 条 interrupt）：
+  VLLM-ASC-10122  confidence 0.4  ← 症状签名命中（507015 / QuantBatchMatMulV3）
+  其余候选：错误码/算子不匹配（507018 aicpu、507057 MTE、561000 缺二进制…）→ 排除
+匹配到 1 条候选：VLLM-ASC-10122
 ```
 
-**③ 2.5 层 reference 辅助**——报错里的错误码走签名检索，命中先验知识：
+**③ 2.5 层 reference 辅助**——报错里的错误码走签名检索，命中先验知识（agent 判断这条先验是否相关、怎么辅助）：
 
 ```
 [示例输出] 错误码 507015 → references/errors/cann-runtime.yaml：
   507015：aicore execution 异常（QuantBatchMatMulV3 量化算子在该 CANN 版本 bug，
   310P w8a8 推理触发；升级 CANN ≥9.1.0.beta2 修复）
+  → 与候选 case 的根因方向一致，先验佐证：量化算子版本问题，不是用户用法错误
 ```
 
-**④ 验证 → 输出**——diagnosis checks 对照客户信息，过 severity 闸门后给 fix：
+**④ 验证 → 输出**——diagnosis checks 逐条对照客户信息。**缺信息时 agent 会停下问你**，不跳步：
 
 ```
 [示例输出] 验证：
-  1. 症状判别：QuantBatchMatMulV3 + 507015？ → 是
-  2. 版本判别：CANN < 9.1.0.beta2？ → 需要客户确认
-  3. 修复：升级 CANN ≥9.1.0.beta2（修复合入 beta2 分支）
-
-severity: service-affecting（推理中断，升级需重启）
-fix: 升级 CANN 到含 QuantBatchMatMulV3 修复的版本（≥9.1.0.beta2），同步升级 vllm-ascend 镜像
-⚠️ fix 是建议，由人应用到客户环境；agent 不自动改生产
-
-[trace] 已记录 diagnosis_state-*.yaml（路由/候选/reference_lookup/验证每一步）
+  1. 症状判别：QuantBatchMatMulV3 + 507015？ → 是（报错栈已确认）
+  2. 版本判别：需要确认——客户当前 CANN 版本是多少？
+     （升级修复判定依赖它：<9.1.0.beta2 触发，≥9.1.0.beta2 修复）
+     → 请向客户补：cat /usr/local/Ascend/ascend-toolkit/latest/version.cfg
 ```
 
-**读到这里你会看到**：诊断是「词法检索 + 语义判断」的组合——路由/候选是结构化的，参考命中是签名 grep，语义归一和验证由 agent 完成。
+拿到版本后，agent 综合 case 的 fix 与 reference 的 solution 输出结论：
+
+```
+[示例输出] 版本 9.1.0.beta1 → 命中修复判定（< beta2）：
+severity: service-affecting（推理中断，升级需重启）
+fix: 升级 CANN ≥9.1.0.beta2（QuantBatchMatMulV3 修复合入 beta2），同步升级 vllm-ascend 镜像
+⚠️ fix 是建议，由人应用到客户环境；agent 不自动改生产
+
+[trace] 已记录 diagnosis_state-*.yaml（路由/候选/reference_lookup/追问/验证每一步）
+```
+
+**如果候选未命中**，agent 不会硬套——走 Tier 3 + 人联合分析：
+
+```
+[示例输出] 候选全部未命中 → 深度排查：
+  检索 postmortems/ 关键词兜底（Tier 3）→ 无覆盖
+  → 诚实说明：知识库没覆盖这个问题，需手动排查；
+     定位完用 /skill:to-postmortem 沉淀，下次就能命中
+```
+
+**读到这里你会看到**：诊断是「词法检索提名 + agent 语义判断放行」——路由/候选/签名 grep 是结构化的，但症状归一、候选比对、缺信息追问、验证逐条、fix 综合、未命中转深度排查，全部是 agent 的理解与判断。**它是一个会追问、会解释、会承认不知道的排查协作者，不是查表器。**
 
 ---
 
