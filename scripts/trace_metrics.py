@@ -141,6 +141,12 @@ def main():
             a = t.get("action")
             if a == "triage":
                 routed += [str(r).rstrip("/") for r in (t.get("routed") or [])]
+            elif a == "triage_semantic":
+                # 语义路由兜底也是路由决策（E2 学习数据源）——计入路由准确率，
+                # 否则语义路由错例不可见（路由准确率只覆盖 triage 会漏掉兜底路径）
+                ns = t.get("namespace")
+                if ns:
+                    routed.append(str(ns).rstrip("/"))
             elif a == "hit":
                 hit_case = t.get("case") or hit_case
             elif a == "feedback":
