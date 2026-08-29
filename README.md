@@ -33,6 +33,7 @@ ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路
 | Cursor | `.cursor/skills → ../skills` | 项目级 skills 目录 |
 | Trae | `.trae/skills → ../skills` | 项目级 skills 目录 |
 | CodeBuddy / WorkBuddy | `.codebuddy/skills → ../skills` | 项目级 skills 目录 |
+| Codex（OpenAI）| `.codex/skills → ../skills` | 项目级 skills 目录 |
 
 > `.agents/skills` 未建 symlink：仅 DSH 支持（已被 `.dsh/skills` 覆盖），无其他 agent 以其为项目级 skills 目录。
 
