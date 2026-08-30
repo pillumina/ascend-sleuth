@@ -97,7 +97,7 @@ severity: service-affecting（推理中断，升级需重启）
 fix: 升级 CANN ≥9.1.0.beta2（QuantBatchMatMulV3 修复合入 beta2），同步升级 vllm-ascend 镜像
 ⚠️ fix 是建议，由人应用到客户环境；agent 不自动改生产
 
-[trace] 已记录 diagnosis_state-*.yaml（路由/候选/reference_lookup/追问/验证每一步）
+[trace] 已记录 traces/*.yaml（路由/候选/reference_lookup/追问/验证每一步）
 ```
 
 **如果候选未命中**，agent 不会硬套——走 Tier 3 检索，**问题疑似源码层时进入源码分析**（常见场景：报错签名指向框架代码/算子）：

@@ -32,7 +32,7 @@ disable-model-invocation: true
 
 > **执行模型**：你不访问任何环境。所有信息——日志、版本、报错、环境变量——都由工程师从客户那提供（粘贴进来）。你的主动角色是**信息不够时，明确提示工程师需要向客户要什么**。case 里的 `command` 是“要确认的检查”：对照已提供的信息判断，或让客户跑后把输出贴回来——不是你直接执行 `pip`/`env`/`grep`。
 >
-> **续接**：若存在未完成的 `diagnosis_state-*.yaml`（每个并发诊断一个文件），先问“有未完成的诊断，要 `/skill:resume-diagnosis` 续接吗？”——别让工程师自己记着跑 resume。
+> **续接**：若存在未完成的 `traces/*.yaml`（每个并发诊断一个文件），先问“有未完成的诊断，要 `/skill:resume-diagnosis` 续接吗？”——别让工程师自己记着跑 resume。
 
 1. **收集症状 + 确认框架**（全部来自工程师提供的信息）
    - 错误信息、`HCCL_*`/`ASCEND_*`/`NPU_*` 环境变量值、**版本组合**（引擎版本 + CANN + HDK/驱动 + 架构 A2/A3/A5）——都从客户那要来
@@ -98,7 +98,7 @@ disable-model-invocation: true
    - `resolution: resolved | escalated | unknown`
    - **Tier-2 命中**：常规 postmortem 草稿
    - **Tier-2 未命中但最终解决**：postmortem 含一段你起草的**候选 case**（quickly_check + diagnosis + confidence 低），交 `/skill:knowledge-groom` 验证
-   - 完整 trace 随 `diagnosis_state-<session_id>.yaml` 留存（每并发诊断一文件；模板见 `diagnosis_state.yaml.example`）
+   - 完整 trace 随 `traces/<session_id>.yaml` 留存（每并发诊断一文件；模板见 `diagnosis_state.yaml.example`）
    - **结果反馈闭环（闭合学习环，关键）**：给完 fix 后，**等工程师应用并回来报告结果**——问“应用后解决了吗？（解决 / 没解决 / 部分解决）”。结果回写该 case 的 confidence：解决 → `hits += 1`；没解决 → `misdiagnoses += 1`、更新 `last_hit`。**不问这步，confidence/误诊率永远是初始值，整个学习机制空转。**
    - **反馈捕获结构化（不靠记性）**：给完 fix、session 收尾前，往 state 文件写 `feedback_pending: <case-id>`。**每次 `/skill:diagnose` 或 `/skill:resume-diagnosis` 启动时先扫活跃 state 文件**——发现该标记就先追问"上次 <case-id> 的 fix 应用后解决了吗？"，按答复回写 confidence（上条规则）、trace 记 `{action: feedback, case, outcome: resolved|not_resolved|partial}`、清掉标记。反馈捕获是整条学习环的吞吐上限——标记写在文件里，就不依赖任何人的记性
    - **误诊归因（反馈 not_resolved/partial 时必做，不靠用户提）**：答复为**没解决/部分解决**时，**当场读本 session 的 trace 归因**——判断是 **case 错**（quickly_check 按序执行、check 结果对，但 root cause 判断错 → 改库）还是**执行错**（跳过 fallback、加载错 namespace、漏标低置信 → 改 skill 流程），trace 记 `{action: attribution, verdict: case_error|execution_error, evidence: <trace 证据摘要>}`——归因结论结构化落点，是「执行-误诊归因比」指标与 E2/E5 自演进的数据源。归因结论由你在本次 session 输出给工程师（"这属于 case 错/执行错，建议改哪"），实际修改走 PR（knowledge_modification / structure 模板），**人确认后合入，你不直接改库**。没解决但 trace 缺失 → 如实说明"无法归因（无 trace）"，不猜
@@ -107,18 +107,29 @@ disable-model-invocation: true
 
 ## 命中时的输出格式
 
-命中一条 case 后，给工程师**结构化、可追溯**的输出（别只甩一句 fix）：
+命中一条 case 后，给工程师**结构化、可追溯**的输出（别只甩一句 fix）——**透明性（C）**：不只给结论，给"为什么是这条"的完整推理链，让工程师能验证而不是盲信：
 
 ```
 命中 <CASE-ID>（confidence <score>，历史命中 <hits> 次 / 误诊 <misdiagnoses> 次）
-版本匹配：<完全匹配 | version_mismatch：本 case 在 <versions> 验证、客户是 <customer versions>——慎用>
-匹配症状：<本轮匹配到的 symptoms>
+
+为什么是这条（推理链，各点标强度）：
+├─ 路由依据（已验证）：症状命中 triage 分支 <branch> → <category>（trace step <N>）
+├─ 排除链（已验证）：<N 条候选被 quickly_check 排除>——<case-id> 主检查 <pass/fail>、备检查 <pass/fail>（trace step <N>）
+├─ 匹配症状（已验证）：<本轮匹配到的 symptoms>——对应 case 的 quickly_check 主/备
+├─ 版本匹配（推测/已验证）：<完全匹配 | version_mismatch：本 case 在 <versions> 验证、客户是 <customer versions>——慎用>
+└─ 历史表现（数据）：hits <hits> / misdiagnoses <misdiagnoses>（feedback 闭环积累）
+
 root cause：<root_cause>
 fix：<fix>（fix_type: <env-var|config-change|code-patch|pending-investigation>，severity: <benign|service-affecting|data-loss-risk>，<fix_side_effects>）
   → fix_type 决定呈现：env-var/config-change 直接给可执行命令；code-patch 给改动文件+diff 要点（不可直接执行）；pending-investigation 给排查建议
 rollback：<rollback>
 应用后检查：<怎么验证 fix 生效>
 ```
+
+**强度标注纪律**（诚实退化，别让工程师把推测当已验证）：
+- `已验证` = 本轮 trace 实际执行过（run_check match / quickly_check 结果）
+- `推测` = 依赖推断（版本软匹配降级、根因类比未直接验证）——必须标出来
+- `数据` = 历史积累（confidence/hits，非本轮判断）
 
 **confidence 校准**（给工程师判断该多信）：`>0.8` 高可信，直接应用；`0.5–0.8` 中可信，应用同时准备 plan B；`<0.5` 仅作提示，重点靠手动排查。把标尺讲出来，别让工程师猜 0.86 是高还是中等。
 
@@ -134,11 +145,21 @@ rollback：<rollback>
 
 ## 每步必写 trace（硬要求）
 
-每个 step 后往 `diagnosis_state-<session_id>.yaml`（每个并发诊断一个独立文件，按 session_id 区分）的 `trace` 数组追加一条：
+每个 step 后往 `traces/<session_id>.yaml`（每个并发诊断一个独立文件；模板见 `diagnosis_state.yaml.example`）的 `trace` 数组追加一条。**trace 是完整交互轨迹（trajectory）**——统一 `{role, ...}` 结构：
+
 ```yaml
-- {step: N, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback|reference_lookup|triage_semantic|source_analysis|attribution, ...}
+# agent 决策事件（机器标签 action + 给用户的内容 output）
+- {role: agent, step: N, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback|reference_lookup|triage_semantic|source_analysis|attribution, output: <给用户的内容>, ...}
+# user 输入事件（症状/日志/回答原文——回放与 fixture 的输入源，必须有）
+- {role: user, step: N, content: <用户输入原文>}
 ```
-trace 是误诊归因的唯一依据（见 references/diagnosis-procedure.md 末段"误诊归因"）：误诊时先读 trace 判断是 **case 错**（改库）还是**执行错**（改 skill）。不写 trace = 无法归因 = 可能改坏正确的 case。词表与 `scripts/trace_metrics.py` 的 `KNOWN_ACTIONS` 保持一致（词表外 action 会被指标脚本报为纪律违规）；新增 action 必须两处同步。
+
+- **user 事件必记**：每次用户贴输入（症状、日志、回答追问），记 `{role: user, step, content}`——这是 `scripts/replay_trace.py` 提取 fixture 输入的唯一来源，不记则无法从该 session 生成 fixture（回放弱断言也缺输入）
+- **agent 事件带 output**：关键决策（triage 路由、hit 命中、miss 未命中）的 `output` 记你给用户的内容——透明性（C）的推理链来源
+- **反馈闭环**：反馈确认后，顶层 `feedback: {case, outcome, confirmed_at}` 要填——`status=resolved 且 feedback.outcome=resolved` 是该 trace 升格为 fixture（强断言基准）的资格条件
+- 词表与 `scripts/trace_metrics.py` 的 `KNOWN_ACTIONS` 保持一致（词表外 action 会被指标脚本报为纪律违规）；新增 action 必须两处同步。user 事件无 action，不参与词表检查
+
+trace 是误诊归因的唯一依据（见 references/diagnosis-procedure.md 末段"误诊归因"）：误诊时先读 trace 判断是 **case 错**（改库）还是**执行错**（改 skill）。不写 trace = 无法归因 = 可能改坏正确的 case。
 
 ## 不要做
 

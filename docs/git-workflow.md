@@ -77,7 +77,7 @@ owner 尚未确定时，`CODEOWNERS.example` 保留 TODO 占位，CI 与标签�
 
 - 周 groom 摘要：写入变更 PR 的描述（@ 对应 owner，即时触达），同时开一个打 `kb/groom-report` 标签的 issue 留档，避免重复打扰；
 - inbox 积压：groom 摘要中标红；停留超过两周的条目可以开 `kb/stale` issue 催办；
-- `feedback_pending` 不走 git：它记录在 `diagnosis_state-*.yaml` 中，可能包含客户信息，已被 `.gitignore` 挡在仓库之外，通知依靠任何一次 diagnose 或 resume 启动时的扫描。这是刻意设计，不要把它搬进 issue。
+- `feedback_pending` 不走 git：它记录在 `traces/*.yaml` 中，可能包含客户信息，已被 `.gitignore` 挡在仓库之外，通知依靠任何一次 diagnose 或 resume 启动时的扫描。这是刻意设计，不要把它搬进 issue。
 
 ## CI
 

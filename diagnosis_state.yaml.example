@@ -1,29 +1,45 @@
-# diagnosis_state.yaml —— 诊断状态文件 + 过程 trace 模板
-# 实际文件按 session 命名：diagnosis_state-<session_id>.yaml（每个并发诊断一个）
-# /diagnose 每个 step 后更新；/resume-diagnosis 读取续接；误诊归因读 trace（§9.2 第四层）
+# diagnosis_state.yaml —— 诊断状态 + 完整过程轨迹（trajectory）模板
+# 实际文件按 session 命名：traces/<session_id>.yaml（每个并发诊断一个）
+# /diagnose 每个 step 后更新；/resume-diagnosis 读取续接；误诊归因读 trace；
+# 回放回归（scripts/replay_trace.py）与 fixture 生成（M3）以此为数据源。
+#
+# 结构说明：
+# - 顶层字段：会话元信息（状态/路由结果/反馈闭环）
+# - trace[]：完整交互轨迹——每条含 role（user|agent）+ 内容 + 机器标签（action 等）
+#   * user 事件：记录用户输入原文（症状、日志、回答）——回放/fixture 的输入源
+#   * agent 事件：记录 agent 决策（action）+ 输出给用户的内容（output）
+# - feedback 确认的 resolved session 是 fixture 的合格来源（强断言基准）
 
 session_id: "2026-07-09-ep-hang-a5"
-status: in_progress                    # in_progress | resolved | escalated
+status: in_progress                    # in_progress | resolved | escalated | unknown
 current_step: 3
 detected_framework: mindspeed-llm
 detected_platform: A5-950
 detected_category: interrupt           # triage 路由到的 category
+resolved_at: ""                        # status=resolved 时填 ISO 日期
+feedback:                             # 反馈闭环结果（fixture 资格判定用）
+  case: ""                            # 命中的 case id（或 pending-investigation）
+  outcome: ""                         # resolved | not_resolved | partial | pending
+  confirmed_at: ""                    # 反馈确认日期
 
 excluded_cases: [ASCEND-EP-HANG-001, ASCEND-EP-HANG-002]
 active_case: MSLLM-EP-HANG-001
 last_action: "等待用户执行 env | grep HCCL_BUFFSIZE 并贴回输出"
 
-# 反馈捕获结构化：给了 fix、还没回报结果时写入；任何 diagnose/resume 启动先扫它、
-# 追问结果、回写 confidence（trace 记 {action: feedback, case, outcome}）后清除
-# feedback_pending: MSLLM-EP-HANG-001
-
-# trace 是原则 7 的硬要求——误诊归因、路由准确率、trace 完整性指标全靠它
+# trace = 完整交互轨迹（trajectory）。每条统一 {role, step, ...}：
+#   user:  {role: user, step: N, content: <用户输入原文>}
+#   agent: {role: agent, step: N, action: <机器标签>, output: <给用户的内容>, ...动作字段}
+# action 词表见 SKILL.md「每步必写 trace」（triage|load_index|quickly_check|...）
+# 词表外 action 会被 trace_metrics.py 报为纪律违规；新增 action 必须两处同步。
 trace:
-  - {step: 1, action: triage, branch: training_interrupt, category: interrupt, routed: [training/mindspeed-llm/, common/]}
-  - {step: 2, action: load_index, namespaces: [training/mindspeed-llm/, common/], n_cases: 34}
-  - {step: 3, action: quickly_check, case: MSLLM-EP-HANG-001, primary: pass}
-  - {step: 3, action: quickly_check, case: MSLLM-EP-HANG-007, primary: fail, fallback: pass, marked: low_confidence}
-  - {step: 3, action: load_full, candidates: [MSLLM-EP-HANG-001, MSLLM-EP-HANG-007], order: by_confidence_score}
+  - {role: user, step: 1, content: "训练挂了，日志在 <paste>，HCCL 相关报错"}
+  - {role: agent, step: 2, action: triage, branch: training_interrupt, category: interrupt, routed: [training/mindspeed-llm/, common/], output: "判断为训练中断类，加载 training/mindspeed-llm 与 common 候选"}
+  - {role: agent, step: 3, action: load_index, namespaces: [training/mindspeed-llm/, common/], n_cases: 34}
+  - {role: agent, step: 4, action: quickly_check, case: MSLLM-EP-HANG-001, primary: pass, output: "候选 1 命中主检查"}
+  - {role: agent, step: 4, action: quickly_check, case: MSLLM-EP-HANG-007, primary: fail, fallback: pass, marked: low_confidence}
+  - {role: agent, step: 4, action: load_full, candidates: [MSLLM-EP-HANG-001, MSLLM-EP-HANG-007], order: by_confidence_score}
+  - {role: agent, step: 5, action: hit, case: MSLLM-EP-HANG-001, confidence: 0.6, output: "命中 MSLLM-EP-HANG-001，root cause: HCCL 通信超时..."}
+  - {role: user, step: 6, content: "应用了 fix，问题解决了"}
 
-# 生命周期：case 标 resolved/escalated 后，整个文件移入 postmortems/history/
-# trace 历史不删——它是路由准确率 + 执行保真度指标的数据源
+# 生命周期：status 终态后文件留在 traces/（gitignored，含客户现场信息）；
+# 脱敏后可投影为 eval/golden/*.fixture.yaml（M3 自动生成，人确认入仓）。
