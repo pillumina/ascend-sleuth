@@ -55,7 +55,9 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 
 ## PR 模板
 
-`.github/PULL_REQUEST_TEMPLATE/` 下按变更对象分五类（创建 PR 时选择，或 `?template=` 直链）：**knowledge_intake**（新知识升格：预分诊+证据+脱敏自查）、**knowledge_modification**（改 expected/fix/compat 等高风险字段：触发条款+依据+双签）、**reference**（references/ 词条：导入/转正/修订，含聚类检查与 verification 声明）、**methodology**（skill/脚本/文档：原则追溯+golden 回归对照）、**structure**（triage-tree/namespace：数据依据+迁移完整性检查单）。模板里的"机器可填"字段当前手工填写，自动生成在 roadmap 待定池（PR 描述机器层生成）。模板目录属上游方法论，随 fork 同步。
+`.github/PULL_REQUEST_TEMPLATE/` 下按变更对象分五类（创建 PR 时选择，或 `?template=` 直链）：**knowledge_intake**（新知识升格：预分诊+证据+脱敏自查）、**knowledge_modification**（改 expected/fix/compat 等高风险字段：触发条款+依据+双签）、**reference**（references/ 词条：导入/转正/修订，含聚类检查与 verification 声明）、**methodology**（skill/脚本/文档：原则追溯+golden 回归对照）、**structure**（triage-tree/namespace：数据依据+迁移完整性检查单）。模板目录属上游方法论，随 fork 同步。
+
+**模板选择与结构约束**：agent 提交 PR 时模板选择由产出流程决定（to-postmortem/groom/to-reference 产出物自带对应模板类型），不靠提交时自觉选。`pr-template` CI（每次 PR 都跑）校验"用了正确模板 + 关键结构区块在"——缺失即红（如 knowledge 类缺脱敏自查、高风险类缺双签）。**Agent 预核意见区块是可选增值，CI 不校验是否填写**——agent 提交链路未打通的内网/手动提交者可留空，不被硬卡；有则给 reviewer 提供基于事实的独立意见供对齐判断（不替代人审）。模板里的"机器可填"字段当前部分自动生成（fixture 候选的 agent_review、预分诊结论），完整自动生成在 roadmap 待定池（PR 描述机器层生成）。
 
 ## Skill 自包含边界（SKILL.md 与 docs/ 的引用关系）
 

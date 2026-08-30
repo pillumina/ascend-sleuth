@@ -23,6 +23,14 @@ labels: []
 - `verification`：`cross-checked-source`（说明核验范围）/ `auto-extracted`（reviewer 需 spot-check）
 - 词条间 `related_references` 互链情况（关联不合并）
 
+## Agent 预核意见（机器可填，可选——非 agent 链路提交可留空）
+
+<!-- 基于事实的独立意见，供 reviewer 对齐判断——不替代人审 -->
+
+- 事实依据（来源类型 / 引用数据 / 与现有词条的聚类比对）：
+- 期望正确性（来源可信度：official-doc 高 / engineer-input 中 / case-derived 视案例数）：
+- 风险标注（需 spot-check 项 / 修订场景的高风险点）：
+
 ## 聚类检查（机器可填）
 
 - [ ] 去重：无现有词条完全覆盖本次内容

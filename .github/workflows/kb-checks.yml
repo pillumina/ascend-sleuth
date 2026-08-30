@@ -62,3 +62,4 @@ jobs:
             exit 1
           fi
           echo "skill 自包含 OK（零 ADR 编号引用）"
+

@@ -1,0 +1,19 @@
+name: pr-template
+
+on:
+  pull_request:
+
+jobs:
+  verify-template:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # PR 模板结构校验（agent 提交 PR 时的模板约束）：
+      # 只校验"用了正确模板 + 关键结构字段在"（流程完整性），
+      # **不拦截 Agent 预核意见缺失**——内网平台/手动提交链路不被硬卡（体验约束）。
+      # 无 paths 过滤：每个 PR 都跑（模板校验与改了什么无关）。
+      - name: Verify PR template structure
+        run: echo '${{ github.event.pull_request.body }}' | python3 scripts/verify_pr_body.py

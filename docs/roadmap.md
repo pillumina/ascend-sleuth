@@ -138,7 +138,7 @@
 - **先验超参显式化**：investigation_quality → 初始 score 作为 Beta 超参管理
 - **多样性审计**：triage/quickly_check 判别力对照症状空间的定期审计
 - **参数治理**：设计常数（串联保护 n=2、批审 30 秒上限、每 ns 30 条 cap）按理论 §7 的限定属参数估计——纳入 metrics 实测复核，数据足够时重校（n=2 可由误诊级联率复核，30 秒由批审实际耗时复核）
-- **PR 描述机器层生成**：to-postmortem / groom 直接产出符合 `.github/PULL_REQUEST_TEMPLATE/` 的 PR body 草稿（预分诊、证据、CI 链接、置信变化由系统数据自动填充，人只补脱敏自查与动机）——把 template 从约定提升为结构（原则二）。与 E1（agent 自起草候选 case）同源，闸门：E1 落地后或团队 PR 量周均 ≥3
+- **PR 描述机器层生成**（**部分落地 2026-08-30**）：to-postmortem / groom 直接产出符合 `.github/PULL_REQUEST_TEMPLATE/` 的 PR body 草稿（预分诊、证据、CI 链接、置信变化由系统数据自动填充，人只补脱敏自查与动机）。**已落地**：5 模板加"Agent 预核意见（可选）"区块、`pr-template` CI 校验模板结构与关键区块（不拦 agent 意见缺失——内网/手动链路体验约束）。**剩余**：各 skill 产出时自动填充预分诊/证据/置信字段的完整 body 草稿。闸门：E1 落地后或团队 PR 量周均 ≥3
 
 由首次真实数据评估（eval-reports/0001，git 历史可查）产出的工程项（按收益排序）：
 

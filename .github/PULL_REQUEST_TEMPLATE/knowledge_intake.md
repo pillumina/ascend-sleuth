@@ -12,6 +12,14 @@ labels: []
 - 证据：
 - 建议处置：升格 Tier 2 / 并入已有 case（扩 compat）/ 仅 postmortem 转正
 
+## Agent 预核意见（机器可填，可选——agent 提交链路未打通时人工填写或留空）
+
+<!-- 基于事实的独立意见，供 reviewer 对齐判断——不替代人审；非 agent 链路提交可留空 -->
+
+- 事实依据（trace 摘录 / 反馈记录 / metrics 引用）：
+- 期望正确性（命中 case 与证据一致：trustworthy / uncertain / misdiagnosed）：
+- 风险标注（high-risk 项 / 需 spot-check 项）：
+
 ## 知识来源
 
 - 来源类型：diagnose session / 外部对话 / 手工笔记 / wiki 导入
