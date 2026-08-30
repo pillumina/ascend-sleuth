@@ -45,11 +45,19 @@ def load_traces(root: Path):
 
 
 def extract_input(doc: dict):
-    """提取 fixture 输入：首个 user 事件的 content（用户原始输入 = 症状/日志原文）。"""
+    """提取 fixture 输入：合并**所有** user 事件的 content——真实诊断是问答式，
+    首轮症状常模糊，判别信号（错误码/签名）在后续追问的回答里。只取首轮会
+    丢失关键信号（曾实测：TP2 崩溃 → 第 4 轮才给出 EL0008），replay 无法命中。
+    多轮折叠为完整症状描述（按轮次顺序拼接，标注轮次）。"""
+    parts = []
     for t in doc.get("trace") or []:
         if t.get("role") == "user" and t.get("content"):
-            return t["content"]
-    return None
+            parts.append(str(t["content"]).strip())
+    if not parts:
+        return None
+    if len(parts) == 1:
+        return parts[0]
+    return "\n\n".join(f"[第 {i + 1} 轮用户输入]\n{p}" for i, p in enumerate(parts))
 
 
 def extract_route(doc: dict):
@@ -137,12 +145,25 @@ def main():
             print("无合格来源：需要 status=resolved 且 feedback.outcome=resolved 的 trace")
             print("（反馈闭环未确认的 trace 只能做弱断言，不能作 fixture 正确性基准）")
             return
+        # 覆盖去重：读已有 golden fixture 的 case_id 集合（饱和策略——覆盖优先，
+        # 已覆盖的格子不再重复供给，避免 10 条 interrupt 重复却漏 precision）
+        existing = set()
+        for f in (root / "eval" / "golden").glob("*.fixture.yaml"):
+            try:
+                d = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+                if d.get("case_id"):
+                    existing.add(d["case_id"])
+            except Exception:
+                pass
         for doc in eligible:
             sid = doc.get("session_id", "?")
             routed, hit_case = extract_route(doc)
             inp = extract_input(doc)
             if not hit_case or not inp:
                 print(f"  - {sid}: 缺 hit case 或 user 输入，跳过 fixture 候选")
+                continue
+            if hit_case in existing:
+                print(f"  - {sid}: 命中 {hit_case} 已有 fixture（覆盖已满足）——跳过，防重复")
                 continue
             fixture = {
                 "case_id": hit_case,
@@ -152,11 +173,14 @@ def main():
                 "expected": {"namespace": ns_of_case(root, hit_case) or "",
                              "case_id": hit_case,
                              "assertion": "top-3"},
+                "_candidate": True,   # 候选标记：期望待人工核定（eval.md：期望由人核定）
                 "source": f"traces/{sid}.yaml（resolved + feedback 确认）",
             }
             print(f"\n--- {sid} → eval/golden/{hit_case}.fixture.yaml 候选 ---")
             print(yaml.safe_dump(fixture, allow_unicode=True, sort_keys=False,
                                  default_flow_style=False).rstrip())
+            print("  # 人确认要点：①期望 case_id 是否正确根因（agent 命中≠ground truth）"
+                  " ②输入是否足以支撑路由 ③脱敏——确认后移除 _candidate 标记入库")
 
     # ---- 内容缺口（D）：miss/tier3 高频症状聚合 ----
     if args.gap_report:
