@@ -7,7 +7,8 @@
 #      适用全部 trace（含未 resolve 的）。
 #   2. 强断言 fixture 供给：仅 status=resolved 且 feedback.outcome=resolved 的 trace
 #      是 fixture 合格来源——期望 = 实际命中（有反馈闭环确认的正确性基准）。
-#      输出 fixture 候选（YAML 骨架），人确认后入 eval/golden/。
+#      输出 fixture 候选（YAML 骨架，带 _candidate + agent_review 占位），
+#      groom R9 做语义预核（期望正确性/输入充分性/脱敏），人确认后入 eval/golden/。
 #
 # 输入源：traces/*.yaml（gitignored，含客户现场信息；本脚本只读不写原文）
 # 断言口径：LLM 非确定性 → top-3 命中（docs/eval.md），不要求必须第一。
@@ -174,6 +175,12 @@ def main():
                              "case_id": hit_case,
                              "assertion": "top-3"},
                 "_candidate": True,   # 候选标记：期望待人工核定（eval.md：期望由人核定）
+                "agent_review": {     # 语义预核占位：由 groom R9 填（建议与决定分离——意见供人核，不替代人）
+                    "expectation": "",   # trustworthy | uncertain | misdiagnosed（命中 case 与 trace 证据一致性）
+                    "input_sufficient": "",  # true | false（判别信号是否齐全）
+                    "redaction_notes": "",   # 脱敏检查（原文含客户敏感信息则必填）
+                    "reviewed_by": "",       # 执行预核的 session/agent
+                },
                 "source": f"traces/{sid}.yaml（resolved + feedback 确认）",
             }
             print(f"\n--- {sid} → eval/golden/{hit_case}.fixture.yaml 候选 ---")
