@@ -73,6 +73,12 @@ disable-model-invocation: true
 
 **R8. case 共性提炼候选（case-derived reference 触发信号）**：每次 groom 扫 `knowledge/_index.yaml` 的 tags——**同 tag 的 case ≥3 条** → 变更摘要列出该组（case id + tag + root_cause 摘要），**建议**走 `/skill:to-reference --ingest-cases "[id1, id2...]"` 提炼共性（methodology / error-code 表追加）——只建议不自动提炼（建议与决定分离；同 tag 是弱信号，是否提炼由 owner 定）。理由：共性识别靠人工不可持续（2026-08 从 42 条 case 人工发现 MoE 通信算子族，4 条同 tag）；tag 聚类是零 token 的机械信号，先把候选端到人眼前。
 
+**R9. fixture 候选语义预核（agent 预核 → 人确认，A 的语义侧）**：跑 `python3 scripts/replay_trace.py --emit-fixtures` 产出 fixture 候选（`_candidate: true`，期望=实际命中 case，输入=多轮 user 原文折叠，已按覆盖去重）。**对每个候选做三项语义判断，填 `agent_review` 字段**（建议与决定分离——意见供人核，不替代人）：
+- `expectation`：核对命中 case 的 `root_cause`/`fix` 与该 trace 的证据是否一致——`trustworthy`（证据一致，可信）/ `uncertain`（证据不足，需人重点核）/ `misdiagnosed`（命中 case 与证据矛盾，**建议不入 fixture**，并触发误诊归因）；
+- `input_sufficient`：`true` / `false`——输入是否含判别信号（版本/错误码/配置），缺什么在 `redaction_notes` 旁补一句；
+- `redaction_notes`：检查输入原文是否含客户敏感信息（内网 IP/路径/账号），含则标注需脱敏。
+预核意见随候选交 owner，owner 确认后移除 `_candidate` 与 `agent_review` 字段入库 `eval/golden/`；`misdiagnosed` 的候选转误诊归因流程（trace 归因→case 错改库/执行错改 skill），不入 fixture。理由：脚本（确定性）只能保证结构正确，期望正确性与输入充分性是语义判断——agent 预核把人的核对负担从"从零核"降到"对齐意见判断"，与 E1（agent 自起草候选 case）同构。
+
 ## 变更摘要里的高风险变更标记（强制深审，不走 30 秒快通道）
 
 - 新建 `common/` 权威记录

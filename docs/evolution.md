@@ -53,7 +53,7 @@ feedback_pending: CASE-ID）           feedback action + 清             （读 
 
 | 写入点 | 内容 | 进 git? | 原因 |
 |---|---|---|---|
-| `diagnosis_state-*.yaml` | trace + feedback_pending | 否（gitignored） | 含客户现场信息；运行时状态，session 结束移 `postmortems/history/` 留本地 |
+| `traces/*.yaml` | trace + feedback_pending | 否（gitignored） | 含客户现场信息；运行时状态，终态后留在 traces/（本地） |
 | case 文件 `confidence` | hits/mis/score/last_hit | 是（走 knowledge_modification PR） | 学习环的持久知识——hits+1 必须入库才能改变下次候选排序 |
 | `_index.yaml` | score（仅 score，ADR-0004） | 是（生成物） | case 变 → 重建 → 随同一 PR；CI `--check` 强制同步 |
 | `metrics/timeline.yaml` | 指标时序数据（每期一条） | 是 | **周节奏、人复核**——trace_metrics 产出 YAML 骨架，人看分母后 append，非每次反馈自动写；结构由 `verify_metrics.py --check`（CI）校验 |

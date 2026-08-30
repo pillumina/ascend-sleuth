@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# trace_metrics.py —— 从 diagnosis_state-*.yaml 的 trace 计算 docs/metrics.md 的指标
+# trace_metrics.py —— 从 traces/*.yaml 的 trace 计算指标（metrics/timeline.yaml 数据 + docs/metrics.md 机制）
 #
 # 目的（ADR-0002）：过滤率/退休率/命中率/路由准确率从"假设"变"实测"。
-# 数据源：仓库根的活跃 diagnosis_state-*.yaml + postmortems/history/ 里的历史。
+# 数据源：traces/ 目录（gitignored，活跃 + 历史都归此）。
 # 输出：markdown 指标表（stdout），人复核后追加进 docs/metrics.md。
 #
 # 依赖的 trace action（词表见 skills/diagnose/SKILL.md「每步必写 trace」）：
@@ -33,8 +33,8 @@ KNOWN_ACTIONS = {
 
 
 def load_states(root: Path):
-    files = list(root.glob("diagnosis_state-*.yaml"))
-    files += list((root / "postmortems" / "history").rglob("diagnosis_state-*.yaml"))
+    # traces/ 是诊断状态目录（gitignored，含客户信息）——活跃 + 历史都归此
+    files = list((root / "traces").glob("*.yaml"))
     states = []
     for f in files:
         try:
@@ -69,7 +69,7 @@ def ns_map_from_index(root: Path) -> dict:
 
 def main():
     import argparse
-    ap = argparse.ArgumentParser(description="从 diagnosis_state-*.yaml 计算 metrics")
+    ap = argparse.ArgumentParser(description="从 traces/*.yaml 计算 metrics")
     ap.add_argument("--emit-yaml", action="store_true",
                     help="额外输出 YAML 快照骨架（人复核后 append 进 metrics/timeline.yaml）")
     args = ap.parse_args()
@@ -78,7 +78,7 @@ def main():
     by_case = ns_map_from_index(root)
     states = load_states(root)
     if not states:
-        print("未找到任何 diagnosis_state-*.yaml（活跃或历史）。先跑 /skill:diagnose 产生 trace。")
+        print("未找到任何 traces/*.yaml。先跑 /skill:diagnose 产生 trace。")
         return
 
     n = len(states)
@@ -108,7 +108,9 @@ def main():
 
     for st in states:
         trace = st.get("trace") or []
-        actions = [t.get("action") for t in trace]
+        # trajectory 统一 {role, ...}：agent 事件带 action，user 事件只带 content（无 action）
+        # 词表只约束 agent 决策事件；user 输入事件是回放/fixture 的输入源，不参与词表检查
+        actions = [t.get("action") for t in trace if t.get("action")]
         resolved = st.get("status") == "resolved"
         # category 归属：首个 triage / triage_semantic 事件的 category（该 session 路由结果）
         cat = next(
@@ -120,6 +122,8 @@ def main():
             cat_total[cat] = cat_total.get(cat, 0) + 1
         for t in trace:
             a = t.get("action")
+            if not a:                       # user 事件（role=user）：无 action，跳过
+                continue
             vocab_total += 1
             if a not in KNOWN_ACTIONS:
                 vocab_bad.append(f"{st.get('session_id', '?')}: {a!r}")
@@ -255,7 +259,7 @@ def main():
             "kind": "live",        # live | replay | example（只有 live 参与趋势对比）
             "title": "本期诊断指标（trace_metrics.py 自动生成，人复核）",
             "recorded_at": datetime.date.today().isoformat(),
-            "source": "trace_metrics.py 从 diagnosis_state-*.yaml 自动生成",
+            "source": "trace_metrics.py 从 traces/*.yaml 自动生成",
             "metrics": {k: v for k, v in m.items() if v is not None},
         }
         yaml.safe_dump({"periods": [snapshot]}, sys.stdout, allow_unicode=True,

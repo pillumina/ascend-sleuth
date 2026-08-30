@@ -29,7 +29,7 @@
 | 构造的边缘 case | 补充覆盖真实数据没有触发的路径：优雅退化、框架歧义、precision 与 interrupt 的混淆、空库 |
 | 构造示例 | 公开仓库中的格式演示（`example.fixture.yaml`） |
 
-真实夹具不需要手工编造：它是已解决 postmortem 的投影，症状、日志片段、root cause、fix 都已经在 postmortem 里，由 groom 半自动衍生（roadmap 事项 M3），脱敏复用 to-postmortem 的同一步骤。真实夹具的存放遵循与 case 相同的入库策略：脱敏后可进本仓库；无法充分脱敏的条目移入团队私有仓库。
+真实夹具不需要手工编造：`traces/`（完整交互轨迹）是主要来源——`scripts/replay_trace.py --emit-fixtures` 从 **status=resolved 且 feedback.outcome=resolved** 的 trace 自动派生 fixture 候选（输入=user 事件原文，期望=实际命中 case），人确认后入 `eval/golden/`。**断言分层**：只有反馈闭环确认的 trace 能作正确性基准（强断言）；未确认的只能做弱断言（行为差异回归）。postmortem 是次级来源（含未走 diagnose 的调查）。脱敏复用 to-postmortem 的同一步骤；无法充分脱敏的条目移入团队私有仓库。
 
 ## 套件如何演化
 
@@ -65,7 +65,7 @@
 ## 与 roadmap 的衔接
 
 - M2（fixture replay 半自动化）：脚本编排 replay 与期望比对，产出改前/改后报告；
-- M3（fixture 自动生成）：groom 从已解决 postmortem 衍生真实夹具；
+- M3（fixture 自动生成）：groom 从 resolved+feedback 确认的 trace 派生真实夹具（`replay_trace.py --emit-fixtures` 产出候选，人确认入仓）；
 - O4（eval 覆盖报告）：覆盖矩阵进入 groom 例行产出。
 
 详见 [roadmap.md](roadmap.md)。

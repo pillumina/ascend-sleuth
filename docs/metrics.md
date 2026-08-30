@@ -41,7 +41,7 @@ periods:
     kind: live                      # live（活诊断周期快照）| replay（回放评估）| example（示例）
     title: "本期诊断指标"
     recorded_at: "2026-08-29"       # 人复核日期（不可自动戳）
-    source: "trace_metrics.py 从 diagnosis_state-*.yaml 自动生成"
+    source: "trace_metrics.py 从 traces/*.yaml 自动生成"
     metrics:
       sessions_total: 3
       tier2_hit: 3
