@@ -1,0 +1,73 @@
+# MSLLM-1805 —— master 分支 --ai-framework mindspore 启动失败：ModuleNotFoundError: No module named 'mindspeed_llm.tasks.checkpoint.models'（上游删除 ckpt-v1 未同步 MindSpore 侧，代码漂移）
+# 来源：https://gitcode.com/Ascend/MindSpeed-LLM/issues/1805（2 评论；triaged，用户已定位根因 + 源码验证）
+# pre-triage: new_pattern —— knowledge/training/mindspeed-llm/ 无代码漂移/删除未同步形态；与 MSLLM-1554/1555 签名同族（import 失败）但根因面不同（代码删除 vs 版本/安装）；dogfood 2026-08-31 诊断发现（#1805，源码验证）
+# 转正：knowledge-groom 2026-08-31（interrupt；dogfood #1805 诊断沉淀，预分诊复核通过：new_pattern——与 1554/1555 同 import 族但根因面不同，独立保留）
+
+cases:
+  - id: MSLLM-1805
+    title: "master 分支 --ai-framework mindspore 启动失败：ModuleNotFoundError: No module named 'mindspeed_llm.tasks.checkpoint.models'——上游 commit f107818 删除 ckpt-v1 但 MindSpore 侧未同步迁移（代码漂移），同步迁移或移除旧引用修复"
+
+    category: interrupt
+    tags: [mindspore, code-drift, deleted-module, import-error, startup-fail, ckpt-v1]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: mindspeed-llm
+        ranges: ["master@c77308a1"]   # 触发版本；根因=代码漂移，非版本配置问题
+
+    investigation_quality: high       # 用户定位到 commit + 本次 dogfood 源码验证（clone master 核对 4 处悬挂引用）
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "master 分支用 --ai-framework mindspore 启动（pretrain_gpt.py）稳定失败：ModuleNotFoundError: No module named 'mindspeed_llm.tasks.checkpoint.models'，双 rank 均复现"
+      - "栈：pretrain_gpt.py → mindspeed_llm/__init__.py → megatron_adaptor_v2.py:114 FeatureAdaptor.execute() → ms_patch_feature.py → mindspore_adaptor_v2.py:157 _patch_optimizer_and_training → from mindspeed_llm.mindspore.tasks.checkpoint.models import register_functions → 其 line 11: from mindspeed_llm.tasks.checkpoint.models import ModelBase → ModuleNotFoundError"
+      - "直接加载 mindspeed_llm/mindspore/tasks/checkpoint/models.py 也触发相同错误"
+
+    references:
+      - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1805"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E \"No module named 'mindspeed_llm.tasks.checkpoint.models'\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*No module named 'mindspeed_llm.tasks.checkpoint.models'"
+      fallback:
+        command_template: "grep -E 'mindspore_adaptor_v2|tasks.checkpoint.models' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(mindspore_adaptor_v2|tasks.checkpoint.models)"
+
+    diagnosis:
+      - step: 1
+        check: "报错含 ModuleNotFoundError: No module named 'mindspeed_llm.tasks.checkpoint.models' 且用 --ai-framework mindspore 启动？"
+        expected: "是 → MindSpore 侧引用了已删除的 checkpoint-v1 模块（代码漂移）"
+      - step: 2
+        check: "源码核对：master 上 mindspeed_llm/tasks/checkpoint/models.py 是否已不存在、mindspore/tasks/checkpoint/models.py:11 是否仍引用？"
+        expected: "是（commit f107818 'delete ckpt-v1' 删除但 MindSpore 侧未同步，共 4 处悬挂引用）→ 确认代码漂移"
+        fix_on_mismatch: "源码中 models.py 仍存在 → 非漂移，回 Tier 3 核对安装/版本（见 MSLLM-1554/1555 版本面判别）"
+        rollback: "保留旧引用（错误复现）"
+      - step: 3
+        check: "修复：MindSpore backend 同步迁移到 checkpoint-v2，或移除 mindspore_adaptor_v2.py 中旧导入/路径？"
+        expected: "是（代码改动，由维护者合入；用户侧 workaround=用 pytorch 后端或等待修复版本）"
+        fix_on_mismatch: "非代码问题 → 回 Tier 3：核对 MindSpore/MSAdapter 版本配套"
+
+    severity: service-affecting
+    fix_side_effects: []
+    fix_type: code-patch             # 仓库代码迁移/移除旧引用
+
+    root_cause: >
+      master 的 mindspeed_llm/mindspore/tasks/checkpoint/models.py 仍包含
+      from mindspeed_llm.tasks.checkpoint.models import ModelBase，但该模块已在
+      commit f107818346ca7dda5a2ce21e11e1a0065002e7a（refactor(pytorch): delete
+      ckpt-v1，2026-08-03）中随 checkpoint-v1 删除，MindSpore 侧兼容文件未同步迁移。
+      mindspore_adaptor_v2.py:157-161 另有 3 处引用同一旧模块——共 4 处悬挂引用，
+      ModuleNotFoundError 必然触发。属仓库代码漂移，非版本/环境问题。
+
+    fix: >
+      MindSpore backend 同步迁移到 checkpoint-v2（models.py 的 ModelBase 迁移到新路径），
+      或若 MindSpore 后端已不再维护则移除 mindspore_adaptor_v2.py 中的旧导入和相关路径。
+      用户侧 workaround：改用 pytorch 后端，或等待含修复的版本。
+    rollback: "保留旧引用（错误复现）"

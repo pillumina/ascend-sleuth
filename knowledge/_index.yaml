@@ -3,10 +3,10 @@
 # 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-08-31    case 总数：65
+# 生成日期：2026-08-31    case 总数：66
 #   容量(inference/sglang): interrupt=1/30
 #   容量(inference/vllm-ascend): interrupt=36/30, performance=3/30, precision=6/30
-#   容量(training/mindspeed-llm/interrupt): interrupt=10/30
+#   容量(training/mindspeed-llm/interrupt): interrupt=11/30
 #   容量(training/mindspeed-llm/precision): precision=3/30
 #   容量(training/verl/interrupt): interrupt=6/30
 namespaces:
@@ -1704,6 +1704,39 @@ namespaces:
           expected: regex:.*(npu_moe_distribute_dispatch|npu_ops_transformer|cann_ops_transformer|npu_mhc)
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1707.yaml
       hash: 10b59c974b6e
+    - id: MSLLM-1805
+      title: 'master 分支 --ai-framework mindspore 启动失败：ModuleNotFoundError: No module named ''mindspeed_llm.tasks.checkpoint.models''——上游
+        commit f107818 删除 ckpt-v1 但 MindSpore 侧未同步迁移（代码漂移），同步迁移或移除旧引用修复'
+      category: interrupt
+      tags:
+      - mindspore
+      - code-drift
+      - deleted-module
+      - import-error
+      - startup-fail
+      - ckpt-v1
+      platforms:
+      - A2-910B
+      compat: mindspeed-llm master@c77308a1
+      confidence:
+        score: 0.6
+      symptoms:
+      - 'master 分支用 --ai-framework mindspore 启动（pretrain_gpt.py）稳定失败：ModuleNotFoundError: No module named
+        ''mindspeed_llm.tasks.checkpoint.models''，双 rank 均复现'
+      - '栈：pretrain_gpt.py → mindspeed_llm/__init__.py → megatron_adaptor_v2.py:114 FeatureAdaptor.execute()
+        → ms_patch_feature.py → mindspore_adaptor_v2.py:157 _patch_optimizer_and_training → from mindspeed_llm.mindspore.tasks.checkpoint.models
+        import register_functions → 其 line 11: from mindspeed_llm.tasks.checkpoint.models import ModelBase
+        → ModuleNotFoundError'
+      - 直接加载 mindspeed_llm/mindspore/tasks/checkpoint/models.py 也触发相同错误
+      quickly_check:
+        primary:
+          command: grep -E "No module named 'mindspeed_llm.tasks.checkpoint.models'" {{log_path}}
+          expected: regex:.*No module named 'mindspeed_llm.tasks.checkpoint.models'
+        fallback:
+          command: grep -E 'mindspore_adaptor_v2|tasks.checkpoint.models' {{log_path}}
+          expected: regex:.*(mindspore_adaptor_v2|tasks.checkpoint.models)
+      file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1805.yaml
+      hash: 766ced4a7873
   training/mindspeed-llm/precision:
     precision:
     - id: MSLLM-1437
