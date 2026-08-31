@@ -15,6 +15,7 @@ Adopted（2026-08-27 合入后随使用修订，见下"修订记录"）
 | 1 | 2026-08-28 | 组织形态校准（基于 38 条 case 提炼测试 + PR review）：①去掉 `references/_inbox/` 中间态——草稿以 `status: draft` 直接进正式目录，PR review 即审核闸门（postmortems/inbox 的高频队列逻辑不适用于低频的 reference 沉淀，且 draft 状态已承担"未审内容不进诊断上下文"的隔离）；②引入**组织单元 = 验证单元**第一性原理——错误码等结构化数据集按族成表（`error-code` 类型从单条改为表形态），不再一码一文件平铺 |
 | 2 | 2026-08-28 | 演化机制校准（基于知识聚类/追加/检索的 review）：①**聚类规则**——族划分跟随来源（官方错误码参考怎么分章，errors/ 就怎么建文件）、追加不新建（新错误码先查族归属再追加到现有表，仅族文件不存在才新建）、关联不合并（独立词条不动态聚类成新文件，主题聚合由 tags + related_references 承担，聚合是检索层职责非文件层职责）；②**检索渐进**——目录+grep 现状，触发条件（文件数 >50 或 diagnose trace 显示 reference 检索退化）时生成 `references/_index.yaml`（`build_references_index.py`，与 case 层同构）；③明确**不引入图存储**——知识关联是轻量单跳、词法可表达（字段/标签/ref id），图的多跳遍历是 v2 离线分析工具的内存算法，永不成为持久存储形态（原则三 + ADR-0002 同一逻辑） |
 | 3 | 2026-08-28 | 修订机制校准（基于"沉淀的 reference 有误如何更新"的 review）：补全 reference 生命周期缺失的一环——**内容修订**。新增 §1.7：发现（观测性 resolve 率低 / groom 信号 / maintainer 复查）→ 降级（pending-review/draft）→ 修订（维护者直接改 YAML + PR，或 `to-reference --update` agent 辅助）→ 验证（CI + review）→ 回 active。**修订 active 内容 = 修改已生效知识 → kb/high-risk 双签**（对齐 case 层 knowledge_modification 逻辑）；修订中 status 保持降级态，diagnose 只读 active 天然隔离修订中的词条 |
+| 4 | 2026-08-29 | 源码知识边界校准（基于"开源仓库源码是否应沉淀进 reference"的 review）：新增 §1.8——**源码是证据源，不是独立输入通道**（不新增 source type；源码知识经三条现有通道进入，源码作为证据升级器）；按"版本稳定性 × 事故独立性 × 验证成本"把源码知识拆成四形态（稳定结构事实 / 易腐行为事实 / 事故绑定知识 / 诊断方法论），各自落点不同；稳定结构事实（仓库架构/文件布局/框架自定义 env var/版本兼容矩阵）是唯一值得主动沉淀的形态，定位为**导航辅助**（不参与路由、不解决冷启动——冷启动是 case 问题，issue-ingest 已部分覆盖）；源码提炼的验证故事是"版本 pin + verification 词表"而非 grill；结构事实从真实使用进入（diagnose 源码分析步骤顺手沉淀，演进由数据触发） |
 
 ## Deciders
 
@@ -138,6 +139,33 @@ reference 内容有误/过时/不完整时的更新路径——补全生命周�
 **风险分级（对齐 case 层 knowledge_modification）**：新增 draft 从未生效 → 单审足够；**修订 active 内容 = 修改已生效的诊断事实 → `kb/high-risk` 双签**。修订期间 status 保持降级态——diagnose 只读 active 天然隔离修订中的词条（status 机制的额外价值）。
 
 **误伤防护**：引用后 resolve 率低可能是 ref 错（该修），也可能是 case 匹配错（不该修 ref）——**先 trace 归因**（原则八：引用后验证环节失败 vs 引用本身误导），归因清楚再动，观测性不能变成"冤案制造机"。
+
+### 1.8 源码知识边界：证据源，不是独立输入通道（修订 4 引入）
+
+客户常用昇腾开源仓库（vllm-ascend / mindspeed-llm / verl / torch-npu 等）的源码是诊断的重要材料。**源码知识不构成第四条输入通道**（trust ladder 保持三源：official-doc / engineer-input / case-derived），而是作为**证据升级器**经三条现有通道进入：
+
+| 通道 | 源码扮演的角色 |
+|---|---|
+| case（to-postmortem） | `source_ref: {repo, ref, file, line}`——事故绑定知识的代码证据链（源码不落库，只记指针，CLAUDE.md 同源） |
+| case-derived reference（--ingest-cases） | 归纳时以 `source_cases` + 代码指针佐证共性（≥3 条 case 才能 active） |
+| engineer-input / official-doc reference | 结构事实草稿的 evidence 字段可引 `repo + ref + file + line`（grill 确认意图 + 版本 pin） |
+
+**源码知识按"版本稳定性 × 事故独立性 × 验证成本"拆成四形态，落点不同**：
+
+| 形态 | 稳定性 | 事故独立性 | 落点 | 条件 |
+|---|---|---|---|---|
+| **稳定结构事实**（仓库架构/文件布局/框架自定义 env var/版本兼容矩阵） | 高 | 高 | reference（software-fact / env-var-table；版本矩阵复用 table 形态） | 版本 pin 到 major 粒度；`verification` 如实标注 |
+| **易腐行为事实**（"vllm-ascend 0.21.x 的 async engine 会先编译"） | 低 | 高 | 谨慎进 reference | 必须 `applies_to.versions` 精确标注，否则腐烂；或等 case 共现走 case-derived |
+| **事故绑定知识**（"这个报错是这个 bug，升到 X 修复"） | 低 | 低 | **case**（带 `source_ref`），不进 reference 独立词条 | 现有设计已覆盖 |
+| **诊断方法论**（"vllm-ascend 量化报错按什么顺序查哪些文件"） | 中 | 高 | reference（methodology） | 只能 case-derived 且 ≥3 条 case 引用（§8.4 深审） |
+
+**三个性质判定**：
+
+1. **稳定结构事实是唯一值得主动沉淀的形态，定位是"导航辅助"不是"诊断能力"**——reference 是 2.5 层、不参与候选路由（见 diagnose SKILL 阶段 2.5），主动源码 reference 只压缩"已决定走源码分析的诊断"的定位时间，**不解决空 namespace 冷启动**（冷启动是 case 问题，issue-ingest 从上游 issue 导入 case 已部分覆盖）。反模式：全量提炼源码行为 → 一堆无症状接线的词条，诊断时永不触发，违反信噪比守恒（原则三）。
+2. **源码提炼的验证故事是"版本 pin + verification 词表"，不是 grill**——`repo + ref + file + line` 是完整的自验证证据指针（比 engineer-input 强），但 agent 读代码可能读错、可能把单版本行为推断成跨版本成立；所以验证靠 pin 到 commit/tag + 现有 `auto-extracted` / `cross-checked-source` 声明（ADR-0008 §4.2），不新增 grill 档位。
+3. **结构事实从真实使用进入，演进由数据触发（原则十一）**——diagnose 源码分析步骤（SKILL 5.7）在定位到稳定结构事实时**顺手**走 to-reference，而不是预先纯挖掘：结构事实在 ≥3 次诊断中被反复 grep 到，才是它进 reference 的数据闸门。反模式：为"提前备好"对三个仓库做一轮全量源码梳理——产出大量永不触发的词条，groom 的 `last_verified` 退化信号变成每周报警。
+
+**填充优先级**（对齐 §Consequences 2 的价值密度排序）：版本兼容矩阵按**传导链分层**（§1.8 的 compat-matrix 形态）——base（昇腾底座 CANN↔HDK/驱动，来源昇腾官方兼容页）/ adapter（torch-npu↔CANN+torch，来源 Ascend/pytorch 官方 COMPATIBILITY.en.md，官方本就维护此表）/ framework（vllm-ascend、verl 等上层框架↔torch-npu+torch，来源各仓库 pyproject.toml）；每层独立验证、独立腐化节奏、层间 related_references 互链，**上层不重复声明底层内容**（vllm-ascend 的 CANN 兼容由 adapter 层传导）。试点从 adapter（torch-npu-cann）+ framework（vllm-ascend-torch-npu）两层开始，均为 draft。
 
 ### 2. reference 仓库结构（修订 1 更新）
 
