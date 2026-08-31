@@ -10,7 +10,7 @@
 
 > **agent 执行差异**：不同 agent 对 SKILL.md 的执行质量有差异（prompt 纪律本质是概率性的）。诊断结果与 trace 质量可能因 agent 而异——**团队内建议统一 agent**；跨 agent 对比时先归因执行差异，别急着归因知识错误。
 
-**快速跳转**：[为什么需要](#为什么需要它) · [快速开始](#快速开始) · [六个 skill](#六个-skill) · [工作原理](#工作原理) · [文档](#文档)
+**快速跳转**：[为什么需要](#为什么需要它) · [快速开始](#快速开始) · [六个 skill](#六个-skill) · [诊断面板](#诊断面板dsh-可选) · [工作原理](#工作原理) · [文档](#文档)
 
 ---
 
@@ -58,6 +58,17 @@ npx skills@latest add pillumina/ascend-sleuth -s diagnose -s to-postmortem -s to
 ```
 
 `npx skills` 装的是 skills/ 副本（更新需重装），适合"别的项目里临时试用诊断方法论"；本仓团队使用走主路径（仓库即 workspace）。
+
+### 诊断面板（DSH 可选）
+
+DSH 会话可加载可视化面板——会话列表/轨迹展开/证据文件打开/指标视图。在对话中粘贴：
+
+```
+请加载 ascend-sleuth 诊断面板：读 dsh-plugins/ascend-panel/panel-host.js 作为 code.host、
+panel-client.js 作为 code.client，用 cordis_define（kind: new）创建动态 Cordis 插件并 cordis_run 激活。
+```
+
+面板是可选增强，不改变任何 skill 行为。加载说明见 [dsh-plugins/ascend-panel/README.md](dsh-plugins/ascend-panel/README.md)。
 
 ### 一个诊断
 
@@ -189,6 +200,7 @@ references/                 先验知识层（ADR-0008）：独立事实 + 方�
 examples/sample-case.yaml    canonical 样例（全 schema 演示）
 CONTEXT.md                   领域术语表（中英对照）
 scripts/                     build_index.py、trace_metrics.py、replay_prep.py、issue_filter.py、fetch_issues.py、verify_references.py
+dsh-plugins/ascend-panel/    DSH 诊断面板插件（可选，动态 Cordis 插件；加载见其 README）
 eval/golden/                 回归测试夹具
 docs/                        文档体系（见上方「文档」索引）
 CODEOWNERS.example           owner 落实后启用
