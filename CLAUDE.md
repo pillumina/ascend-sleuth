@@ -56,9 +56,13 @@ Version matching is **soft**: compat mismatch downgrades confidence but never ha
 
 ### Severity gate
 
+诊断输出的安全语义——不是通知机制（P1 已移除，见 roadmap）：诊断系统只输出建议，不接管通知行为。
+
 - `benign` → give fix directly
 - `service-affecting` → give fix but flag `fix_side_effects` (e.g., requires-restart)
 - `data-loss-risk` → **do not give fix**; output "halt training, preserve state, notify owner"
+
+**为什么需要 data-loss-risk 档**：诊断输出是给工程师的执行建议。若根因是"checkpoint 可能被污染"（数据损坏风险），给 fix 让工程师继续跑 = 可能加速损坏——高危场景的正确动作是**停**不是**补丁**（诚实退化的延伸：不确定就承认、高危就停）。"通知 owner"是给工程师的一句话建议，不是系统对接 on-call/IM 的链路。
 
 ### Platform dispatch
 

@@ -72,10 +72,11 @@
 
 | ID | 事项 | 需求 / 验收标准 | 入口闸门 | 阶段 |
 |---|---|---|---|---|
-| P1 | data-loss-risk 通知链路落地 | halt 输出模板中的"通知 owner"落到具体链路（on-call / IM），写进 diagnose SKILL.md 与 git-workflow.md | owner 确定 | Phase 0 |
 | P2 | 双签核验自查单 | `kb/high-risk` PR 模板带核验清单（两组各至少一人批），merge 前勾选；groom-report 汇总本期高风险项及签署情况 | M1 完成后 | Phase 1 初 |
 | P3 | fork 模式同步演练 | 首个团队 fork 时 dry-run 上游同步：方法论目录 merge 无冲突、知识目录零触碰，产出简短记录 | 首个 fork 发生 | 按事件 |
 | P4 | 紧急路径实测复盘 | 首个真实紧急 session 走完 stabilize 路径后，复盘 stabilize ↔ 深度排查的切换点是否清晰，必要时修订 SKILL.md 紧急节 | 首个真实紧急事件 | 按事件 |
+
+> **P1 已移除（2026-08-30）**：原"data-loss-risk 通知链路落地"是过度设计——诊断系统只输出建议（severity 三档 + halt 语义），**不接管通知行为**（对接 on-call/IM 是把诊断工具扩张成事故响应系统）。severity 三档（benign / service-affecting / data-loss-risk）是输出策略（SKILL.md 一行），保留；"通知 owner"是给工程师的一句话建议，不是系统链路。
 
 ---
 
@@ -83,13 +84,12 @@
 
 **Phase 0 · 冷启动（当前）** — 目标是让所有机制吃进第一批真实知识。
 
-事项：播种 10–30 条高频 case（或 wiki 批量导入进 inbox）、M1、P1、O1 启动。
+事项：播种 10–30 条高频 case（或 wiki 批量导入进 inbox）、M1、O1 启动。
 
 出口条件（全部满足）：
 - [ ] 在库 case ≥20 条
 - [ ] 完成 ≥1 轮真实 to-postmortem + knowledge-groom 全流程
 - [ ] 分支保护与 CODEOWNERS 硬门生效（M1）
-- [ ] data-loss-risk 通知链路落地（P1）
 - [ ] 指标双周节奏建立（O1）
 
 **Phase 1 · v1.5 池** — 各事项由自身闸门独立解锁，无统一开始时间：E1（事件）、E2（trace ≥20）、M2（fixture ≥5）、O2、A1、A2、A4、M3、M4、O4、O5、P2。建议顺序：先 E1/M2（学习与安全网），后 A2（容量到了才拆）。
@@ -118,7 +118,6 @@
 1. 部署模式确认：集中式 or 框架式 fork（机制已兼容两者，确认后 P3 才有演练对象）
 2. 领域 owner 人名（每 namespace 一人，groom 批审收件人）
 3. 体系维护人（高风险变更第二签）
-4. data-loss-risk 通知链路（P1 的输入）
 
 ## 本 roadmap 自身的演化
 
