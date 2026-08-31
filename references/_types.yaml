@@ -52,6 +52,12 @@ types:
     schema_required: [variables]
     schema_optional: [title, summary]
 
+  compat-matrix:
+    kind: table
+    description: 版本兼容矩阵，按"传导链分层"成表——每层只声明与相邻层的兼容，不重复更底层内容；三层：base（昇腾底座 CANN↔HDK/驱动，来源昇腾官方兼容页）/ adapter（torch-npu↔CANN+torch，来源 Ascend/pytorch 官方 COMPATIBILITY）+ framework（vllm-ascend/verl 等上层框架↔torch-npu+torch，来源各仓库 pyproject.toml）；表级必填 layer + component（主组件名），条目 version（主组件版本，表内唯一）+ 各依赖组件版本字段；层间用 related_references 互链
+    schema_required: [matrix, layer, component]
+    schema_optional: [title, summary]
+
   methodology:
     kind: flow
     description: 流程 / 方法论（多步骤诊断或调优）；深审类型——case-derived 来源需 ≥3 条 case 引用才可 active

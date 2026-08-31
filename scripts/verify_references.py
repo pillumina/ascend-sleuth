@@ -205,6 +205,34 @@ def check_reference(path: Path, refs_dir: Path, types_registry: dict, case_ref_c
                             seen_names.add(name)
                         if not e.get("description"):
                             errors.append(f"{rel}: content.variables[{j}]（{name or '?'}）缺少 description")
+            # compat-matrix 表形态（kind: table）：分层成表——表级 layer（base/adapter/framework）
+            # + component（主组件名）必填；matrix 非空、条目含 version（主组件版本，表内唯一）+
+            # 至少一个依赖组件版本字段（torch_npu/torch/cann/hdk 等）
+            if rtype == "compat-matrix":
+                layer = content.get("layer")
+                if layer not in ("base", "adapter", "framework"):
+                    errors.append(f"{rel}: content.layer 必须为 base/adapter/framework（分层成表，不重复声明更底层内容）")
+                if not content.get("component"):
+                    errors.append(f"{rel}: content.component 缺失（主组件名，如 torch-npu / vllm-ascend）")
+                entries = content.get("matrix")
+                if not isinstance(entries, list) or len(entries) == 0:
+                    errors.append(f"{rel}: content.matrix 必须是非空列表（compat-matrix 表形态，分层成表）")
+                else:
+                    seen_versions = set()
+                    dep_fields = ("torch_npu", "torch", "cann", "hdk", "python")
+                    for j, e in enumerate(entries):
+                        if not isinstance(e, dict):
+                            errors.append(f"{rel}: content.matrix[{j}] 不是 mapping")
+                            continue
+                        version = e.get("version")
+                        if not version:
+                            errors.append(f"{rel}: content.matrix[{j}] 缺少 version（主组件版本）")
+                        else:
+                            if version in seen_versions:
+                                errors.append(f"{rel}: content.matrix[{j}].version '{version}' 表内重复")
+                            seen_versions.add(version)
+                        if not any(e.get(f) for f in dep_fields):
+                            errors.append(f"{rel}: content.matrix[{j}]（{version or '?'}）缺少依赖组件版本字段（torch_npu/torch/cann/hdk/python）")
             if rtype == "error-code":
                 entries = content.get("errors")
                 if not isinstance(entries, list) or len(entries) == 0:
