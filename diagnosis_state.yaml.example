@@ -13,6 +13,9 @@
 session_id: "2026-07-09-ep-hang-a5"
 status: in_progress                    # in_progress | resolved | escalated | unknown
 current_step: 3
+summary: "用户报告训练挂起（HCCL 相关）。环境 mindspeed-llm/A5。关键报错 HCCL timeout。已定位：待确认"  # 问题背景段（agent 整合，面板直接显示）
+created_at: "2026-07-09T09:15:00+08:00"  # 诊断开始时间（ISO 8601）——面板排序/显示用
+updated_at: "2026-07-09T10:22:00+08:00"  # 最近一次写 trace 时间（resume 续接会刷新）——最新活动置顶依据
 detected_framework: mindspeed-llm
 detected_platform: A5-950
 detected_category: interrupt           # triage 路由到的 category
@@ -32,13 +35,14 @@ last_action: "等待用户执行 env | grep HCCL_BUFFSIZE 并贴回输出"
 # action 词表见 SKILL.md「每步必写 trace」（triage|load_index|quickly_check|...）
 # 词表外 action 会被 trace_metrics.py 报为纪律违规；新增 action 必须两处同步。
 trace:
-  - {role: user, step: 1, content: "训练挂了，日志在 <paste>，HCCL 相关报错"}
-  - {role: agent, step: 2, action: triage, branch: training_interrupt, category: interrupt, routed: [training/mindspeed-llm/, common/], output: "判断为训练中断类，加载 training/mindspeed-llm 与 common 候选"}
+  - {role: user, step: 1, content: "训练挂了，日志在 <paste>，HCCL 相关报错",
+     evidence: {inline: "rank3: HCCL timeout ...\nrank1: [ERROR] 507057 ...", files: ["traces/evidence/2026-07-09-ep-hang-a5/train.log"], sources: ["https://github.com/.../issue/1"], missing: "缺 CANN 版本"}}
+  - {role: agent, step: 2, action: triage, branch: training_interrupt, category: interrupt, routed: [training/mindspeed-llm/, common/], output: "判断为训练中断类，加载 training/mindspeed-llm 与 common 候选", reason: "症状'训练挂 + HCCL'无 inference 特征且含 HCCL 通信关键词 → training_interrupt；同域候选可能跨 framework → 带 common"}
   - {role: agent, step: 3, action: load_index, namespaces: [training/mindspeed-llm/, common/], n_cases: 34}
-  - {role: agent, step: 4, action: quickly_check, case: MSLLM-EP-HANG-001, primary: pass, output: "候选 1 命中主检查"}
-  - {role: agent, step: 4, action: quickly_check, case: MSLLM-EP-HANG-007, primary: fail, fallback: pass, marked: low_confidence}
+  - {role: agent, step: 4, action: quickly_check, case: MSLLM-EP-HANG-001, primary: pass, output: "候选 1 命中主检查", reason: "日志 grep 'HCCL' 命中该 case primary 正则且版本兼容"}
+  - {role: agent, step: 4, action: quickly_check, case: MSLLM-EP-HANG-007, primary: fail, fallback: pass, marked: low_confidence, reason: "primary 未命中（无该 case 的特定码），fallback 宽匹配通过但置信低"}
   - {role: agent, step: 4, action: load_full, candidates: [MSLLM-EP-HANG-001, MSLLM-EP-HANG-007], order: by_confidence_score}
-  - {role: agent, step: 5, action: hit, case: MSLLM-EP-HANG-001, confidence: 0.6, output: "命中 MSLLM-EP-HANG-001，root cause: HCCL 通信超时..."}
+  - {role: agent, step: 5, action: hit, case: MSLLM-EP-HANG-001, confidence: 0.6, output: "命中 MSLLM-EP-HANG-001，root cause: HCCL 通信超时...", reason: "run_check 两步 match（stream/rank 检查），且 007 为低置信排除——证据指向 001"}
   - {role: user, step: 6, content: "应用了 fix，问题解决了"}
 
 # 生命周期：status 终态后文件留在 traces/（gitignored，含客户现场信息）；

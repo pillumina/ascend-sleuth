@@ -70,7 +70,16 @@ Platform differences are **field-level** within cases, not separate cases. A sin
 
 ### Trace and misdiagnosis attribution
 
-Every diagnose step writes to `traces/<session_id>.yaml` trace array. On misdiagnosis, read the trace to determine: **case error** (fix the knowledge YAML) vs **execution error** (fix the skill body). Without trace, misdiagnosis attribution is impossible and you risk corrupting correct cases.
+Every diagnose step writes to `traces/<session_id>.yaml` trace array (trajectory: `{role, ...}` events). On misdiagnosis, read the trace to determine: **case error** (fix the knowledge YAML) vs **execution error** (fix the skill body). Without trace, misdiagnosis attribution is impossible and you risk corrupting correct cases.
+
+**Trace schema 关键字段**（诊断面板 + 跨 agent/session resume 的数据源）：
+- `summary`：agent 诊断收尾整合的问题背景段（什么问题/环境/关键报错/定位结果）——面板展开直接显示，人不必逐个打开证据
+- user 事件 `content`（摘要）+ `evidence`（完整证据：`inline` 原文 / `files` 相对路径 / `sources` URL / `missing` 缺口）——**跨 agent/session 自包含的关键**（平台 memory 不可跨，新 agent 靠 trace 证据重建）；大文件落 `traces/evidence/<session_id>/`
+- agent 事件 `output`（给用户）+ `reason`（决策依据，关键决策必写）——回放/归因/沉淀的证据
+- `created_at`/`updated_at`：诊断面板按 `updated_at` 排序（resume 续接刷新 → 置顶）
+- `resume` action：续接事件（resume skill 必写 + 刷新 updated_at）
+
+**诊断面板**（DSH 插件）展示：会话列表（状态/时间/计数徽章）→ 展开轨迹（summary/evidence/reason/reference 参与标注）→ 证据文件可点击打开。
 
 ### Eval
 

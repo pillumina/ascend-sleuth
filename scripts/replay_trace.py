@@ -46,13 +46,18 @@ def load_traces(root: Path):
 
 
 def extract_input(doc: dict):
-    """提取 fixture 输入：合并**所有** user 事件的 content——真实诊断是问答式，
-    首轮症状常模糊，判别信号（错误码/签名）在后续追问的回答里。只取首轮会
-    丢失关键信号（曾实测：TP2 崩溃 → 第 4 轮才给出 EL0008），replay 无法命中。
-    多轮折叠为完整症状描述（按轮次顺序拼接，标注轮次）。"""
+    """提取 fixture 输入：合并所有 user 事件的完整证据——优先 evidence.inline（完整原文），
+    无则回退 content（摘要）。真实诊断是问答式，首轮症状常模糊，判别信号（错误码/签名）
+    在后续追问的回答里；fixture 输入必须含完整证据（签名原文），摘要不足以让 replay 命中
+    （曾实测：TP2 崩溃 → 第 4 轮才给出 EL0008）。多轮折叠为完整症状描述。"""
     parts = []
     for t in doc.get("trace") or []:
-        if t.get("role") == "user" and t.get("content"):
+        if t.get("role") != "user":
+            continue
+        ev = t.get("evidence")
+        if isinstance(ev, dict) and ev.get("inline"):
+            parts.append(str(ev["inline"]).strip())
+        elif t.get("content"):
             parts.append(str(t["content"]).strip())
     if not parts:
         return None

@@ -28,7 +28,7 @@ import yaml
 KNOWN_ACTIONS = {
     "triage", "load_index", "quickly_check", "load_full",
     "run_check", "hit", "miss", "tier3", "feedback", "reference_lookup",
-    "triage_semantic", "source_analysis", "attribution",
+    "triage_semantic", "source_analysis", "attribution", "resume",
 }
 
 

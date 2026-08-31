@@ -96,6 +96,7 @@ disable-model-invocation: true
 
 6. **产出**
    - `resolution: resolved | escalated | unknown`
+   - **写顶层 `summary`（问题背景段，人一眼看懂，不必逐个打开证据）**：整合多轮用户输入 + 环境 + 关键报错为 1-3 句连贯描述——"用户报告 <什么问题>。环境 <框架/平台/配置>。关键报错 <签名>。已定位 <结果>/待定位"。面板展开时直接显示；跨 agent/session 时新 agent 靠它快速重建背景（不必重读全部证据）
    - **Tier-2 命中**：常规 postmortem 草稿
    - **Tier-2 未命中但最终解决**：postmortem 含一段你起草的**候选 case**（quickly_check + diagnosis + confidence 低），交 `/skill:knowledge-groom` 验证
    - 完整 trace 随 `traces/<session_id>.yaml` 留存（每并发诊断一文件；模板见 `diagnosis_state.yaml.example`）
@@ -148,14 +149,25 @@ rollback：<rollback>
 每个 step 后往 `traces/<session_id>.yaml`（每个并发诊断一个独立文件；模板见 `diagnosis_state.yaml.example`）的 `trace` 数组追加一条。**trace 是完整交互轨迹（trajectory）**——统一 `{role, ...}` 结构：
 
 ```yaml
-# agent 决策事件（机器标签 action + 给用户的内容 output）
-- {role: agent, step: N, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback|reference_lookup|triage_semantic|source_analysis|attribution, output: <给用户的内容>, ...}
-# user 输入事件（症状/日志/回答原文——回放与 fixture 的输入源，必须有）
-- {role: user, step: N, content: <用户输入原文>}
+# agent 决策事件（机器标签 action + 给用户的内容 output + 决策依据 reason）
+- {role: agent, step: N, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback|reference_lookup|triage_semantic|source_analysis|attribution|resume, output: <给用户的内容>, reason: <决策依据/推理过程>, ...}
+# user 输入事件（content 摘要 + evidence 完整证据——跨 agent/session 自包含的关键）
+- {role: user, step: N, content: <用户输入摘要（短，供面板快速浏览）>,
+   evidence: {inline: <完整原文>, files: [<相对路径>], sources: [<URL>], missing: <已知缺口>}}
 ```
 
-- **user 事件必记**：每次用户贴输入（症状、日志、回答追问），记 `{role: user, step, content}`——这是 `scripts/replay_trace.py` 提取 fixture 输入的唯一来源，不记则无法从该 session 生成 fixture（回放弱断言也缺输入）
-- **agent 事件带 output**：关键决策（triage 路由、hit 命中、miss 未命中）的 `output` 记你给用户的内容——透明性（C）的推理链来源
+- **时间戳（必写，供面板排序/显示）**：建 session 时写顶层 `created_at: <ISO 时间>`；**每次写 trace 更新顶层 `updated_at: <ISO 时间>`**（含 resume 续接——续接刷新 `updated_at` 使该 session 在诊断面板置顶）。面板按 `updated_at` 倒序排列、显示"更新 X 前"。缺时间戳的历史文件回退用 session_id 日期前缀（天粒度）
+- **user 事件必记（content 摘要 + evidence 完整证据，缺一不可）**：每次用户贴输入（症状、日志、回答追问），记 `{role: user, step, content, evidence}`——
+  - `content`：**摘要**（短，供面板列表/快速浏览，token 纪律）
+  - `evidence`：**完整证据**（跨 agent/session 自包含的唯一载体——跨 agent 时平台 memory 不可用，新 agent 只能靠 trace 里的证据重建）：
+    - `inline`：完整原文（报错栈/命令/环境表，<2K 字符直接内联）
+    - `files`：附件/日志文件（大文件，**相对仓库路径**，下载到 `traces/evidence/<session_id>/` 再引用——跨 agent 同一工作区可直接读）
+    - `sources`：外部来源 URL（issue/文档链接）
+    - `missing`：已知缺失但诊断需要的证据（诚实标注，跨 agent 时新 agent 知道还缺什么）
+  - **写入纪律：用户贴的日志/报错/命令不得只写摘要**——短的内联 `inline`、长的落文件进 `files`。这是 fixture 输入（`replay_trace.py` 取 `evidence.inline`）与跨 agent resume 的基础
+- **agent 事件分两层（output 给用户 / reason 记决策依据，缺一不可）**：
+  - `output`：给用户看的内容（可精简）——透明性（C）的呈现层
+  - `reason`：**决策依据/推理过程**（回放、误诊归因、知识沉淀的证据）——**关键决策必写**：triage 路由（为什么命中此分支）、quickly_check 排除（比对了哪些候选、为何排除）、hit/miss（证据链、比对结果）、reference 甄别（为何部分适用/不适用）、根因判断（证据→结论）。**output 和 reason 分开**：结论简洁，推理要完整（如 #13688 的最小复现矩阵是 miss 的最有力证据，必须进 reason）
 - **反馈闭环**：反馈确认后，顶层 `feedback: {case, outcome, confirmed_at}` 要填——`status=resolved 且 feedback.outcome=resolved` 是该 trace 升格为 fixture（强断言基准）的资格条件
 - 词表与 `scripts/trace_metrics.py` 的 `KNOWN_ACTIONS` 保持一致（词表外 action 会被指标脚本报为纪律违规）；新增 action 必须两处同步。user 事件无 action，不参与词表检查
 
