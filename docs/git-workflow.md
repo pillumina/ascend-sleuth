@@ -9,6 +9,24 @@
 - `main` 受保护、禁止直接 push：所有知识库变更（包括 groom 的周批次）都走 PR。
 - 冷启动或单人阶段可以先不开分支保护，机制先行、权限后收紧；kb-checks CI 从第一天就启用，它是唯一不依赖人的硬门。
 
+## 多 agent / 多 session 并行（worktree 约束）
+
+多个 agent/session 并发在同一仓库工作时，**共享检出目录是冲突根源**：未提交改动会随 `git checkout` 流动到其他分支；`ingest-state.json`、`metrics/timeline.yaml`、`knowledge/_index.yaml`、`postmortems/inbox/` 等共享状态会被互相覆盖或误删。git 提供 `worktree` 做工作区级隔离，**每个 agent/session 必须使用独立 worktree**：
+
+```bash
+# 每个 session 分配独立 worktree（检出自己的 kb/* 分支），不要在共享检出目录里干活
+git worktree add ../ascend-sleuth-s<session> <自己的 kb/* 分支>
+# 工作合入后清理
+git worktree remove ../ascend-sleuth-s<session>
+```
+
+约束（机制边界 + 协作约定）：
+
+1. **工作区隔离**：worktree 隔离工作区文件 / index / HEAD / 未提交改动——各 session 在自己 worktree 内任意修改，不污染他人检出（`git checkout` 携带未提交改动的问题从根上消失）。
+2. **共享面（worktree 不隔离）**：`.git` 对象库与 refs 全局共享——分支名 `kb/<用途>` 必须全局唯一；共享状态文件（ingest-state.json 的 processed、metrics/timeline.yaml、knowledge/_index.yaml、postmortems/inbox/）在各 worktree 是各自分支的副本，合流时**显式解决 merge 冲突**：processed 数组合并、索引以最新重建为准、inbox 清空先确认无他人草稿。
+3. **串行操作**：涉及 ingest-state.json 的 fetch / `--mark-imported` / 游标更新必须串行（read-modify-write 无锁，并发写互相覆盖）；groom 清空 inbox 前先确认无其他 session 未提交草稿。
+4. **开工纪律**：`git fetch origin` 确认最新 → 确认自己在自己的 worktree 与分支 → 收工前提交或 stash 清空工作区，避免未提交改动滞留共享检出。
+
 ## 部署形态
 
 两种形态都支持，inbox、groom、索引与 CI 机制在两种形态下的工作方式相同：
