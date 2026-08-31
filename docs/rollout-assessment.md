@@ -1,6 +1,6 @@
 # 推广就绪度评估（Rollout Assessment）
 
-> 评估日期：2026-08-29（第二次重估）。评估基线：main HEAD（四章官方材料导入完成、93 reference 全 active、token 成本修复）。上次评估：2026-08-28。
+> 评估基线：main HEAD（四章官方材料导入完成、reference 全 active、token 成本修复）。实时词条数以 `verify_references.py` 为准，不在此硬编码。
 > 方法：对照 `docs/design-principles.md` 十一条原则逐条核对实现证据；按"机制 / 内容 / 数据 / 运维"四层评估。
 > 本文是向团队交付前的依据文档，不是一次性报告——每次重大演进后应重估（原则十一：数据触发演进）。
 
@@ -83,7 +83,7 @@
 
 向团队交付时表述建议：
 
-> 机制已就绪：这套系统把"理论（四公理）→ 原则（十一）→ 实现（skill + CI + 校验）"的链走通了。先验知识已就位：93 条 reference（错误码/故障模式/工具/方法论/环境变量）支撑诊断的"日志在哪、码什么意思、故障怎么定位"前置层。case 层待积累：当前 38 条 vllm-ascend case 够支撑 inference 场景的部分诊断，training 场景尚未覆盖——第一个团队的 training 诊断会触发"空库提示 / Tier 3 兜底"，这是设计预期，每次兜底后沉淀（`/skill:to-postmortem`、`/skill:to-reference`），知识库随使用变厚。
+> 机制已就绪：这套系统把"理论（四公理）→ 原则（十一）→ 实现（skill + CI + 校验）"的链走通了。先验知识（错误码/故障模式/工具/方法论/环境变量）支撑诊断的"日志在哪、码什么意思、故障怎么定位"前置层。case 层待积累（实时条数以 `knowledge/_index.yaml` 头注为准）：当前以 inference 场景为主，training 场景尚未完全覆盖——第一个团队的 training 诊断会触发"空库提示 / Tier 3 兜底"，这是设计预期，每次兜底后沉淀（`/skill:to-postmortem`、`/skill:to-reference`），知识库随使用变厚。
 
 ## 重估条件
 

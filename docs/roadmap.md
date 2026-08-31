@@ -23,7 +23,7 @@
 | ID | 事项 | 需求 / 验收标准 | 入口闸门 | 阶段 |
 |---|---|---|---|---|
 | A1 | Tier 3 postmortem frontmatter 结构化 | `postmortems/**/*.md` 加 frontmatter（framework / category / platform / case-id / keywords）；诊断 Tier 3 检索先按字段过滤再 grep；to-postmortem 产出自动带 frontmatter；存量文件一次性补齐 | Tier 3 语料 >300 篇，或 tier3 检索频繁但挽救率指标偏低 | v1.5 |
-| A2 | 格子容量治理与拆分（ADR-0004 已落地 category 分层） | cap 按 (framework×category) 格子计：soft_cap 30 触发评估 + 健康指标（候选溢出/重复率/维护时长）；hard_cap 60 强制拆。拆分建议 → 人确认；目录迁移、`_index.yaml` 重建、fixture namespace 断言同步，**同一 PR 完成**。**当前触发实例（2026-08-31 groom）**：inference/vllm-ascend interrupt 35/30 超 soft_cap——已出容量表 + 拆分建议（error-code 家族 507018 跨平台：310P IndexPut / A3-910C unique_consecutive，候选 platform 轴），健康指标待 metrics 实测；**soft_cap/hard_cap 阈值与拆分轴是执行参数（待 metrics 复核，见 docs/metrics.md），数据齐后 owner 确认固化，不自动执行** | 格子超 soft_cap 且健康指标恶化 / 超 hard_cap | 按闸门 |
+| A2 | 格子容量治理与拆分（ADR-0004 已落地 category 分层） | cap 按 (framework×category) 格子计：soft_cap 30 触发评估 + 健康指标（候选溢出/重复率/维护时长）；hard_cap 60 强制拆。拆分建议 → 人确认；目录迁移、`_index.yaml` 重建、fixture namespace 断言同步，**同一 PR 完成**。**当前触发实例**：inference/vllm-ascend interrupt 35/30 超 soft_cap——已出容量表 + 拆分建议（error-code 家族 507018 跨平台：310P IndexPut / A3-910C unique_consecutive，候选 platform 轴），健康指标待 metrics 实测；**soft_cap/hard_cap 阈值与拆分轴是执行参数（待 metrics 复核，见 docs/metrics.md），数据齐后 owner 确认固化，不自动执行** | 格子超 soft_cap 且健康指标恶化 / 超 hard_cap | 按闸门 |
 | A3 | 第二拆分轴（platform）ADR | 若 category 拆分后仍超限，写 ADR-0003 论证 platform 轴或索引分片的取舍 | category 拆分后单 namespace 仍 >100 条 | v2 前置 |
 | A4 | 非单调版本兼容实测 | 真实非单调 case（如 2.7 失效、2.8 恢复）出现时，groom 的 `_archive/` 复活检查跑通全流程，结论记录进 ADR | 首个真实非单调 case 被 groom 处理 | 按事件 |
 | A5 | 容量推演重算 | 用实测过滤率、退休率、增速重算 ADR-0002 的稳态规模与容量结论；确认或修订"不上 RAG"决策及触发条件 | 第 6 个月，或 metrics 首次给出完整过滤/退休数据 | 常设检查点 |
@@ -50,7 +50,7 @@
 | M2 | fixture replay 半自动化 | 脚本以 replay 模式喂 `eval/golden/*.yaml` 给 /skill:diagnose，比对 expected（top-3 命中断言，容忍 LLM 非确定性），产出改前/改后报告；报告随变更摘要交 owner | 真实 golden fixture ≥5 条 | v1.5 |
 | M3 | fixture 自动生成 | `replay_trace.py --emit-fixtures` 从 resolved+feedback 确认的 trace 派生 fixture 候选（输入=user 原文，期望=实际命中）；groom 人确认入库；覆盖报告同步更新（见 O4）。断言分层：未确认 trace 只做弱断言回归，不作正确性基准 | 首个 resolved+feedback 确认的 trace | v1.5+ |
 | M4 | groom 报告留档规范 | 每周 groom-report issue 固定模板：变更摘要 / 高风险项 / 容量表 / 标红项；季度回顾可直接回溯 | 首轮真实 groom 完成后固化模板 | Phase 1 初 |
-| M5 | groom token 预算（结构性减负） | 现状 groom 每次全量扫 knowledge（~47K）与 references（~82K），随库线性涨——职责重、token 大（2026-08-30 实测核算）。修法：①确定性环节脚本化（引用校验/值重复/置信度重算/容量统计由脚本算完，agent 只读 diff 摘要，不读全量）②按信号触发（R3/R8 可选建议不全量默认扫）③references 维护按触发而非每轮全跑。验收：groom 单次 token 降至可读摘要量级（目标 <30K），且功能不缺失 | 实测单次 groom >150K token，或库规模到 60 case | v1.5 |
+| M5 | groom token 预算（结构性减负） | 现状 groom 每次全量扫 knowledge（~47K）与 references（~82K），随库线性涨——职责重、token 大（实测核算）。修法：①确定性环节脚本化（引用校验/值重复/置信度重算/容量统计由脚本算完，agent 只读 diff 摘要，不读全量）②按信号触发（R3/R8 可选建议不全量默认扫）③references 维护按触发而非每轮全跑。验收：groom 单次 token 降至可读摘要量级（目标 <30K），且功能不缺失 | 实测单次 groom >150K token，或库规模到 60 case | v1.5 |
 
 ## 四、可观测性
 
@@ -63,7 +63,7 @@
 | O3 | 反馈捕获率监测 | feedback 捕获率（回报 session / 给出 fix 的 session）进 metrics；连续两期 <50% 触发流程检查（追问话术、nag 时机） | O1 常态化后 | 常设 + 阈值 |
 | O4 | eval 覆盖报告 | groom 每轮输出覆盖矩阵：有 case 的 `(namespace × category × platform)` 格子 vs 有 fixture 的格子，缺口列表（"inference/sglang 0 条"、"precision 类偏弱"） | M2 完成后并入 groom | v1.5+ |
 | O5 | 容量趋势预测 | 容量表增加近 4 周增速与"预计达 80% 日期"，拆分预告由数据给出而非事后发现 | A2 首次触发前后 | v1.5 |
-| O6 | 诊断报告（trace 派生视图） | diagnose 收尾渲染人读报告：症状→路由→候选→验证→根因→fix 的推理叙事 + 证据回溯（每判断指回 trace step）+ 强度标注（已验证/推测/未知）。trace 为唯一数据源、零数据模型改动；默认本地留档，分享前脱敏；1-2 分钟读完（证据链折叠可展开）。质量基准见讨论（2026-08-29） | 首次真实诊断后 | v1.5 |
+| O6 | 诊断报告（trace 派生视图） | diagnose 收尾渲染人读报告：症状→路由→候选→验证→根因→fix 的推理叙事 + 证据回溯（每判断指回 trace step）+ 强度标注（已验证/推测/未知）。trace 为唯一数据源、零数据模型改动；默认本地留档，分享前脱敏；1-2 分钟读完（证据链折叠可展开）。质量基准见历史讨论 | 首次真实诊断后 | v1.5 |
 | O7 | 健康报表（groom R10 标准产出） | groom 产出自包含 HTML 数据报表（离线生成，`health_report.py` 脚本 + 必要时 agent 美化样式，数据不变）：①知识库结构视图（容量/覆盖/缺口，git 数据——本地=中心一致；知识结构图可用 archify）②系统运作视图（命中/误诊/趋势，traces 汇总——头部诚实标注〔中心全量 N sessions〕或〔本地视角 M sessions〕）。**只读聚合数据**（timeline.yaml + _index 头注 + trace_metrics/replay 脚本输出），不读 case 全文（token 预算，呼应 M5）。**职责划分**：本地 groom 也产（个人视角），中心 owner groom 产全量——同一指令，数据范围不同诚实标注。服务"改进知识库/改进系统流程"的决策（原则八决策端） | 任一 live 指标期积累后 | v1.5 |
 
 ## 五、流程合理性
@@ -76,7 +76,7 @@
 | P3 | fork 模式同步演练 | 首个团队 fork 时 dry-run 上游同步：方法论目录 merge 无冲突、知识目录零触碰，产出简短记录 | 首个 fork 发生 | 按事件 |
 | P4 | 紧急路径实测复盘 | 首个真实紧急 session 走完 stabilize 路径后，复盘 stabilize ↔ 深度排查的切换点是否清晰，必要时修订 SKILL.md 紧急节 | 首个真实紧急事件 | 按事件 |
 
-> **P1 已移除（2026-08-30）**：原"data-loss-risk 通知链路落地"是过度设计——诊断系统只输出建议（severity 三档 + halt 语义），**不接管通知行为**（对接 on-call/IM 是把诊断工具扩张成事故响应系统）。severity 三档（benign / service-affecting / data-loss-risk）是输出策略（SKILL.md 一行），保留；"通知 owner"是给工程师的一句话建议，不是系统链路。
+> **P1 已移除**：原"data-loss-risk 通知链路落地"是过度设计——诊断系统只输出建议（severity 三档 + halt 语义），**不接管通知行为**（对接 on-call/IM 是把诊断工具扩张成事故响应系统）。severity 三档（benign / service-affecting / data-loss-risk）是输出策略（SKILL.md 一行），保留；"通知 owner"是给工程师的一句话建议，不是系统链路。
 
 ---
 
@@ -138,7 +138,7 @@
 - **先验超参显式化**：investigation_quality → 初始 score 作为 Beta 超参管理
 - **多样性审计**：triage/quickly_check 判别力对照症状空间的定期审计
 - **参数治理**：设计常数（串联保护 n=2、批审 30 秒上限、每 ns 30 条 cap）按理论 §7 的限定属参数估计——纳入 metrics 实测复核，数据足够时重校（n=2 可由误诊级联率复核，30 秒由批审实际耗时复核）
-- **PR 描述机器层生成**（**部分落地 2026-08-30**）：to-postmortem / groom 直接产出符合 `.github/PULL_REQUEST_TEMPLATE/` 的 PR body 草稿（预分诊、证据、CI 链接、置信变化由系统数据自动填充，人只补脱敏自查与动机）。**已落地**：5 模板加"Agent 预核意见（可选）"区块、`pr-template` CI 校验模板结构与关键区块（不拦 agent 意见缺失——内网/手动链路体验约束）。**剩余**：各 skill 产出时自动填充预分诊/证据/置信字段的完整 body 草稿。闸门：E1 落地后或团队 PR 量周均 ≥3
+- **PR 描述机器层生成**（**部分落地**）：to-postmortem / groom 直接产出符合 `.github/PULL_REQUEST_TEMPLATE/` 的 PR body 草稿（预分诊、证据、CI 链接、置信变化由系统数据自动填充，人只补脱敏自查与动机）。**已落地**：5 模板加"Agent 预核意见（可选）"区块、`pr-template` CI 校验模板结构与关键区块（不拦 agent 意见缺失——内网/手动链路体验约束）。**剩余**：各 skill 产出时自动填充预分诊/证据/置信字段的完整 body 草稿。闸门：E1 落地后或团队 PR 量周均 ≥3
 
 由首次真实数据评估（eval-reports/0001，git 历史可查）产出的工程项（按收益排序）：
 
@@ -154,7 +154,7 @@
 - **分层 triage**：两级路由（category → framework），路由容量 30×30。闸门：单级分支触及 30 上限且路由准确率开始下降（配合 E2 错例数据）
 - **动态闸门收紧**：成熟区域（区域命中率持续高）的软匹配收紧为区间内匹配。闸门：metrics 首次产出按区域的命中率分布（依赖 O2 分账）
 
-### 明确不做（2026-08-29 设计讨论结论，防过度设计）
+### 明确不做（设计讨论结论，防过度设计）
 
 **使用/协作/KPI 类观测指标——不设计、不采集**。讨论结论（指标消费方三问 + 部署模式约束）：
 
