@@ -1,0 +1,55 @@
+id: verl-npu
+type: compat-matrix
+title: verl ↔ 昇腾训推后端组合配套矩阵（framework 层）
+summary: verl 官方昇腾安装指南（install_guidance.rst，2026-08-13 更新）声明的引擎组合配套：vLLM 组合（vLLM/vLLM-Ascend 0.23.0 + torch 2.10.0 + torch_npu 2.10.0.post4 + CANN 9.1.0 + HDK 26.0.rc1）与 SGLang 组合（SGLang v0.5.10 + torch 2.8.0 + torch_npu 2.8.0.post2 + CANN ≥8.5.0 + HDK 25.5.0）；历史演进 0.13.0→0.18.0→0.23.0；诊断 verl 训练问题（引擎启动/版本不匹配）时对照本表判断组合是否越界；CANN/HDK 兼容由下层（torch-npu-cann / cann-hdk）传导，不在此重复
+
+sources:
+  - type: official-doc
+    url: https://github.com/verl-project/verl/blob/main/docs/ascend_tutorial/zh/get_start/install_guidance.rst
+    version: verl main（install_guidance.rst 2026-08-13 更新；关键更新记录含 2025-05-13 / 2026-08-03 演进）
+    fetched_at: 2026-08-31
+    verification: cross-checked-source
+
+applies_to:
+  frameworks: [verl]
+  platforms: [A2-910B, A3-910C, A5-950]
+  versions:
+    cann: "8.5.0 – 9.1.0"
+    torch_npu: "2.8.0.post2 – 2.10.0.post4"
+
+related_references: [torch-npu-cann, vllm-ascend-torch-npu]
+
+status: draft
+last_verified: 2026-08-31
+
+content:
+  layer: framework
+  component: verl
+  matrix:
+    - version: vllm-0.23.0
+      vllm: 0.23.0
+      vllm_ascend: 0.23.0
+      torch: 2.10.0
+      torch_npu: 2.10.0.post4
+      cann: 9.1.0
+      hdk: 26.0.rc1
+      transformers: 5.10.4
+      triton_ascend: 3.2.2
+    - version: sglang-0.5.10
+      sglang: v0.5.10
+      torch: 2.8.0
+      torch_npu: 2.8.0.post2
+      cann: ">=8.5.0"
+      hdk: 25.5.0
+      transformers: 5.3.0
+      triton_ascend: 3.2.1
+    - version: vllm-0.18.0
+      vllm: 0.18.0
+      vllm_ascend: 0.18.0
+      torch: 2.9.0
+      torch_npu: 2.9.0.post2
+    - version: vllm-0.13.0
+      vllm: 0.13.0
+      vllm_ascend: 0.13.0
+      torch: 2.9.0
+      torch_npu: 2.9.0.post2

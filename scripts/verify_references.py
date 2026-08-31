@@ -219,7 +219,7 @@ def check_reference(path: Path, refs_dir: Path, types_registry: dict, case_ref_c
                     errors.append(f"{rel}: content.matrix 必须是非空列表（compat-matrix 表形态，分层成表）")
                 else:
                     seen_versions = set()
-                    dep_fields = ("torch_npu", "torch", "cann", "hdk", "python")
+                    dep_fields = ("torch_npu", "torch", "cann", "hdk", "python", "vllm", "vllm_ascend", "sglang", "transformers", "triton_ascend")
                     for j, e in enumerate(entries):
                         if not isinstance(e, dict):
                             errors.append(f"{rel}: content.matrix[{j}] 不是 mapping")
@@ -232,7 +232,7 @@ def check_reference(path: Path, refs_dir: Path, types_registry: dict, case_ref_c
                                 errors.append(f"{rel}: content.matrix[{j}].version '{version}' 表内重复")
                             seen_versions.add(version)
                         if not any(e.get(f) for f in dep_fields):
-                            errors.append(f"{rel}: content.matrix[{j}]（{version or '?'}）缺少依赖组件版本字段（torch_npu/torch/cann/hdk/python）")
+                            errors.append(f"{rel}: content.matrix[{j}]（{version or '?'}）缺少依赖组件版本字段（torch_npu/torch/cann/hdk/python/vllm/vllm_ascend/sglang/transformers/triton_ascend）")
                         # 依赖组件版本字段：允许字符串（单个版本）或列表（一对多，如一个 CANN 配多个 HDK）
                         for f in dep_fields:
                             v = e.get(f)

@@ -54,7 +54,7 @@ types:
 
   compat-matrix:
     kind: table
-    description: 版本兼容矩阵，按"传导链分层"成表——每层只声明与相邻层的兼容，不重复更底层内容；三层：base（昇腾底座 CANN↔HDK/驱动，来源昇腾官方兼容页）/ adapter（torch-npu↔CANN+torch，来源 Ascend/pytorch 官方 COMPATIBILITY）+ framework（vllm-ascend/verl 等上层框架↔torch-npu+torch，来源各仓库 pyproject.toml）；表级必填 layer + component（主组件名），条目 version（主组件版本，表内唯一）+ 各依赖组件版本字段（字符串或列表，列表=一对多）；可选 compat：Y/N 兼容矩阵（行=主组件系列、列=依赖系列，含"不兼容"信号）；层间用 related_references 互链
+    description: 版本兼容矩阵，按"传导链分层"成表——每层只声明与相邻层的兼容，不重复更底层内容；三层：base（昇腾底座 CANN↔HDK/驱动，来源昇腾官方兼容页）/ adapter（torch-npu↔CANN+torch，来源 Ascend/pytorch 官方 COMPATIBILITY）+ framework（vllm-ascend/verl 等上层框架↔torch-npu+torch，来源各仓库 pyproject.toml）；表级必填 layer + component（主组件名），条目 version（主组件版本，表内唯一）+ 各依赖组件版本字段（字符串或列表，列表=一对多）；framework 层按"引擎组合"声明时（如 verl 的 vLLM 组合 vs SGLang 组合），version 承载组合标识（如 vllm-0.23.0），依赖字段覆盖完整配套栈（torch_npu/torch/cann/hdk/vllm/vllm_ascend/sglang/transformers/triton_ascend 等）；可选 compat：Y/N 兼容矩阵（行=主组件系列、列=依赖系列，含"不兼容"信号）；层间用 related_references 互链
     schema_required: [matrix, layer, component]
     schema_optional: [title, summary, compat]
 
