@@ -20,6 +20,10 @@ detected_framework: mindspeed-llm
 detected_platform: A5-950
 detected_category: interrupt           # triage 路由到的 category
 resolved_at: ""                        # status=resolved 时填 ISO 日期
+sedimented:                           # 沉淀状态（零推断：动作发生时写；拒绝不记录）
+  state: none                         # none → submitted（to-postmortem 产出草稿时）→ knowledge（升 Tier 2）/ archived（仅 Tier 3）
+  case_id: ""                         # 已沉淀的 case id（state=knowledge/archived 时）
+  inbox_path: ""                      # 草稿路径（state=submitted 时）
 feedback:                             # 反馈闭环结果（fixture 资格判定用）
   case: ""                            # 命中的 case id（或 pending-investigation）
   outcome: ""                         # resolved | not_resolved | partial | pending

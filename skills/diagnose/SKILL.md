@@ -97,6 +97,11 @@ disable-model-invocation: true
 6. **产出**
    - `resolution: resolved | escalated | unknown`
    - **写顶层 `summary`（问题背景段，人一眼看懂，不必逐个打开证据）**：整合多轮用户输入 + 环境 + 关键报错为 1-3 句连贯描述——"用户报告 <什么问题>。环境 <框架/平台/配置>。关键报错 <签名>。已定位 <结果>/待定位"。面板展开时直接显示；跨 agent/session 时新 agent 靠它快速重建背景（不必重读全部证据）
+   - **沉淀状态（`sedimented` 字段，零推断写入）**：顶层记录沉淀状态，**所有状态在"动作发生时"写入，不靠反查 inbox 推断**：
+     - `state: none`（默认，未沉淀）→ `submitted`（执行过 to-postmortem，草稿在 inbox）→ `knowledge`（已升 Tier 2 active case）/ `archived`（仅转正 Tier 3 语料，非 active case）
+     - **`submitted` 由 to-postmortem 产出草稿时写**；**`knowledge`/`archived` 由用户在面板"标记已转正"（或对话确认）时写**——转正是用户/owner 的动作，动作发生时写，不推断
+     - **`knowledge` vs `archived` 必须区分**（诚实退化）：knowledge=下次诊断可命中；archived=仅 Tier 3 语料（grep 兜底），**不把 Tier 3 当 active case 卖**
+     - **拒绝不记录**：用户拒绝沉淀是会话内交互决策，不持久进 trace——面板无标记，用户随时可重新沉淀
    - **Tier-2 命中**：常规 postmortem 草稿
    - **Tier-2 未命中但最终解决**：postmortem 含一段你起草的**候选 case**（quickly_check + diagnosis + confidence 低），交 `/skill:knowledge-groom` 验证
    - 完整 trace 随 `traces/<session_id>.yaml` 留存（每并发诊断一文件；模板见 `diagnosis_state.yaml.example`）
