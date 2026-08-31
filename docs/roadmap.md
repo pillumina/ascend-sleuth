@@ -50,6 +50,7 @@
 | M2 | fixture replay 半自动化 | 脚本以 replay 模式喂 `eval/golden/*.yaml` 给 /skill:diagnose，比对 expected（top-3 命中断言，容忍 LLM 非确定性），产出改前/改后报告；报告随变更摘要交 owner | 真实 golden fixture ≥5 条 | v1.5 |
 | M3 | fixture 自动生成 | `replay_trace.py --emit-fixtures` 从 resolved+feedback 确认的 trace 派生 fixture 候选（输入=user 原文，期望=实际命中）；groom 人确认入库；覆盖报告同步更新（见 O4）。断言分层：未确认 trace 只做弱断言回归，不作正确性基准 | 首个 resolved+feedback 确认的 trace | v1.5+ |
 | M4 | groom 报告留档规范 | 每周 groom-report issue 固定模板：变更摘要 / 高风险项 / 容量表 / 标红项；季度回顾可直接回溯 | 首轮真实 groom 完成后固化模板 | Phase 1 初 |
+| M5 | groom token 预算（结构性减负） | 现状 groom 每次全量扫 knowledge（~47K）与 references（~82K），随库线性涨——职责重、token 大（2026-08-30 实测核算）。修法：①确定性环节脚本化（引用校验/值重复/置信度重算/容量统计由脚本算完，agent 只读 diff 摘要，不读全量）②按信号触发（R3/R8 可选建议不全量默认扫）③references 维护按触发而非每轮全跑。验收：groom 单次 token 降至可读摘要量级（目标 <30K），且功能不缺失 | 实测单次 groom >150K token，或库规模到 60 case | v1.5 |
 
 ## 四、可观测性
 
@@ -63,7 +64,7 @@
 | O4 | eval 覆盖报告 | groom 每轮输出覆盖矩阵：有 case 的 `(namespace × category × platform)` 格子 vs 有 fixture 的格子，缺口列表（"inference/sglang 0 条"、"precision 类偏弱"） | M2 完成后并入 groom | v1.5+ |
 | O5 | 容量趋势预测 | 容量表增加近 4 周增速与"预计达 80% 日期"，拆分预告由数据给出而非事后发现 | A2 首次触发前后 | v1.5 |
 | O6 | 诊断报告（trace 派生视图） | diagnose 收尾渲染人读报告：症状→路由→候选→验证→根因→fix 的推理叙事 + 证据回溯（每判断指回 trace step）+ 强度标注（已验证/推测/未知）。trace 为唯一数据源、零数据模型改动；默认本地留档，分享前脱敏；1-2 分钟读完（证据链折叠可展开）。质量基准见讨论（2026-08-29） | 首次真实诊断后 | v1.5 |
-| O7 | 可视化体检单 | groom 时渲染知识库健康视图（离线生成 HTML/PNG，复用 archify）：①知识结构图（case 相似/引用/namespace 分布→补 case、拆 ns 依据）②指标趋势图（timeline.yaml→路由/命中趋势）③容量热力图（soft_cap/hard_cap 逼近→拆分预告）④缺口清单（高频无覆盖症状→补 case 候选）。一图一决策、异常醒目、数据源单一绑定（不产生新数据） | 任一 live 指标期积累后 | v1.5 |
+| O7 | 健康报表（groom R10 标准产出） | groom 产出自包含 HTML 数据报表（离线生成，`health_report.py` 脚本 + 必要时 agent 美化样式，数据不变）：①知识库结构视图（容量/覆盖/缺口，git 数据——本地=中心一致；知识结构图可用 archify）②系统运作视图（命中/误诊/趋势，traces 汇总——头部诚实标注〔中心全量 N sessions〕或〔本地视角 M sessions〕）。**只读聚合数据**（timeline.yaml + _index 头注 + trace_metrics/replay 脚本输出），不读 case 全文（token 预算，呼应 M5）。**职责划分**：本地 groom 也产（个人视角），中心 owner groom 产全量——同一指令，数据范围不同诚实标注。服务"改进知识库/改进系统流程"的决策（原则八决策端） | 任一 live 指标期积累后 | v1.5 |
 
 ## 五、流程合理性
 
