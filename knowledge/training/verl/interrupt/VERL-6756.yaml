@@ -1,0 +1,71 @@
+# VERL-6756 —— verl get_npu_versions() 硬编码 NPU device ID（v0.7.1）→ NPU 检测失败；PR #6043 修复
+# 来源：https://github.com/verl-project/verl/issues/6756（源码级 bug，PR #6043）
+# pre-triage: new_pattern —— training/verl/ 空；设备检测源码 bug 无重叠
+# 关联：VERL-6751（同 bug 硬编码 device ID "7"，本 case 硬编码 "1"）——同一根因不同取值，6751 并入本 case
+# 命名空间建议：training/verl/interrupt
+# 转正：knowledge-groom 2026-08-31（new_pattern；training/verl/ 种子批次，跨池无重叠）
+
+cases:
+  - id: VERL-6756
+    title: "verl v0.7.1 get_npu_versions() 硬编码 NPU device ID 为 \"1\"（6751 同 bug 硬编码 \"7\"）→ 多 NPU/异 chip ID 机器上版本检测失败——PR #6043 修复"
+
+    category: interrupt
+    tags: [device-detection, npu-versions, startup, version-upgrade]
+
+    platforms: ["A2-910B"]           # npu-smi 显示 910B3（chip 0）
+    compat:
+      - framework: verl
+        ranges: ["0.7.1"]            # 实测触发版本；PR #6043 合入后修复
+
+    investigation_quality: high      # 源码级定位（device.py 硬编码 device id），PR #6043 修复
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "verl v0.7.1 在 NPU device ID 非 1 的机器（如 chip ID 0 或 7）上 get_npu_versions() 检测失败/返回错误版本"
+      - "NPU 版本检测硬编码 device ID：6756=1、6751=7——不同机器暴露不同取值，同一源码 bug"
+      - "多 NPU、可配置部署场景受影响"
+
+    references:
+      - "https://github.com/verl-project/verl/issues/6756"
+      - "https://github.com/verl-project/verl/issues/6751"
+      - "https://github.com/verl-project/verl/pull/6043"
+
+    quickly_check:
+      primary:
+        command_template: "grep -rn 'get_npu_versions' verl/ --include='*.py'"
+        rank_selector: coordinator
+        expected: "regex:.*get_npu_versions.*(device|dev_id|npu_id).*[0-9]"
+      fallback:
+        command_template: "grep -E 'get_npu_versions|npu version' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(get_npu_versions|npu version)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：v0.7.1 部署在非标准 NPU device ID 机器上，版本检测/NPU 初始化失败？"
+        expected: "是——且同环境其他流程（如 npu-smi）正常，指向 verl 内部检测逻辑"
+      - step: 2
+        check: "源码判别：verl 的 get_npu_versions()（PR #6043 中 device.py）是否硬编码 device ID？"
+        expected: "是——硬编码 \"1\"（6756）或 \"7\"（6751），与实际 chip ID 不符"
+      - step: 3
+        check: "修复：升级 verl 至含 PR #6043 的版本？"
+        expected: "是（PR #6043 merged，合入 v0.7.1 后续版本）"
+        fix_on_mismatch: "升级后仍失败 → 检查是否其他硬编码路径（回到 Tier 3）"
+        rollback: "临时规避：设 NPU device ID 与硬编码值一致（不推荐）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch             # verl 上游 PR #6043
+
+    root_cause: >
+      verl v0.7.1 的 get_npu_versions()（device.py）硬编码 NPU device ID（6756 为 "1"，
+      6751 为 "7"），在 chip ID 不同的机器上版本检测失败 → NPU 初始化/版本判断错误。
+      PR #6043 修复（device.py 改用实际 device ID）。6751 与 6756 为同一 bug 的不同取值暴露。
+
+    fix: >
+      升级 verl 至包含 PR #6043（verl-project/verl#6043，device.py 修复）的版本。
+    rollback: "临时规避：将 NPU device ID 配置为硬编码值（不推荐）"

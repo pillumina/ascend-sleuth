@@ -213,6 +213,31 @@
         "limit": 20,
         "strategy": "triaged 主池（维护者确认过，信噪比最高）；候选按评论数启发式排序；limit 20 只评估 top 若干条按需"
       }
+    },
+    "github/verl-project/verl": {
+      "config": {
+        "labels": [
+          "Ascend"
+        ],
+        "min_comments": 1,
+        "limit": 20,
+        "strategy": "Ascend 标签全量（44 条 closed issue；含 PR 已由 fetch 排除）；min_comments=1（verl Ascend 池评论普遍少，≥2 仅 4 条，3 会杀光池子）；候选按已解决/评论数排序"
+      },
+      "last_fetch_latest_closed": "2026-08-03T02:40:57Z",
+      "last_fetch_oldest_closed": "2025-12-19T03:38:56Z",
+      "processed": [
+        5074,
+        6608,
+        6707,
+        6741,
+        6742,
+        6747,
+        6751,
+        6755,
+        6756,
+        6760,
+        6885
+      ]
     }
   }
 }

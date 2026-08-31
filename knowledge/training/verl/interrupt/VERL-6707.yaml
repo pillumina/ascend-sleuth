@@ -1,0 +1,75 @@
+# VERL-6707 —— verl Qwen3-MoE NPU patch 与 Transformers 5.x 不兼容（verl/models/transformers/npu_patch.py）
+# 来源：https://github.com/verl-project/verl/issues/6707（maintainer 复现 + PR #6708 修复）
+# pre-triage: new_pattern —— training/verl/ 空；MoE 模型 patch 版本兼容问题无重叠（vllm-ascend 侧 MoE 为算子错误码类）
+# 命名空间建议：training/verl/interrupt
+# 转正：knowledge-groom 2026-08-31（new_pattern；training/verl/ 种子批次，跨池无重叠）
+# 关联：VERL-6756（同 repo 另一源码 bug）不同根因面
+
+cases:
+  - id: VERL-6707
+    title: "verl Qwen3-MoE NPU patch 失败：verl/models/transformers/npu_patch.py 按 Transformers 4.57 编写，Transformers 5.x 下 Qwen3MoeSparseMoeBlock 接口不兼容（gate 变 router module）→ PR #6708 修复"
+
+    category: interrupt
+    tags: [moe, qwen3-moe, npu-patch, transformers-version, grpo]
+
+    platforms: ["A2-910B"]           # issue System Info: Ascend 910B
+    compat:
+      - framework: verl
+        ranges: ["0.8.0.dev"]        # 实测触发
+      - framework: transformers
+        ranges: [">=5.0"]            # 4.57 的 patch 与 5.x 不兼容
+
+    investigation_quality: high      # 根因定位到源码文件+接口差异（issue 给出 4.x/5.x 对比），PR #6708 修复
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                     # high → 初始 0.6
+      last_hit: ""
+
+    symptoms:
+      - "verl 0.8.0.dev 跑 Qwen3-MoE GRPO（910B）：npu fused kernel for Qwen3-MoE patch failed"
+      - "Transformers 5.x 环境下 Qwen3 MoE forward 路由行为错误或运行失败（patch 与上游模型实现不兼容）"
+      - "patch 位于 verl/models/transformers/npu_patch.py"
+
+    references:
+      - "https://github.com/verl-project/verl/issues/6707"
+      - "https://github.com/verl-project/verl/pull/6708"
+
+    quickly_check:
+      primary:
+        command_template: "grep -iE 'Qwen3.?Moe.*patch|npu_patch|fused kernel' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(Qwen3Moe|npu_patch|fused kernel).*(patch|fail)"
+      fallback:
+        command_template: "python3 -c 'import transformers; print(transformers.__version__)'"
+        rank_selector: coordinator
+        expected: ">= 5.0 时需确认 verl npu_patch 兼容性"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：Qwen3-MoE 模型 NPU patch 失败或 MoE 路由行为异常？"
+        expected: "是——且 verl 版本 ≤0.8.0.dev"
+      - step: 2
+        check: "根因判别：transformers 是否为 5.x（Qwen3MoeSparseMoeBlock 的 gate 从 nn.Linear 变为 router module，返回 (router_logits, routing_weights, selected_experts)）？"
+        expected: "是——4.57 风格 patch 与 5.x 上游实现不兼容"
+        note: "4.x 风格：gate 是 nn.Linear、forward 返回 (final_hidden_states, router_logits)；5.x 风格：gate 是 router module、应复用 routing_weights/selected_experts、只返回 final_hidden_states"
+      - step: 3
+        check: "修复：升级 verl 至含 PR #6708（兼容两种 transformers 风格）的版本？"
+        expected: "是（PR #6708 merged，2026-06-16）"
+        fix_on_mismatch: "仍失败 → 检查是否自改模型代码绕过 patch（回到 Tier 3）"
+        rollback: "降级 transformers 至 4.57.x（临时规避，非首选）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch             # verl 上游 PR #6708
+
+    root_cause: >
+      verl/models/transformers/npu_patch.py 中 Qwen3-MoE patch 按 Transformers 4.57.x 的
+      Qwen3MoeSparseMoeBlock 编写（gate 为 nn.Linear，forward 返回 (final_hidden_states, router_logits)）。
+      Transformers 5.x 下 gate 变为 router module（返回 (router_logits, routing_weights, selected_experts)），
+      patch 与上游实现不兼容 → 路由行为错误或运行时失败。PR #6708 使 patch 兼容两种风格。
+
+    fix: >
+      升级 verl 至包含 PR #6708（verl-project/verl#6708）的版本；
+      临时规避：降级 transformers 至 4.57.x。
+    rollback: "降级 transformers 版本"

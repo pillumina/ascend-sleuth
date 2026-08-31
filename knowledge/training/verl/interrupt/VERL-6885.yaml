@@ -1,0 +1,72 @@
+# VERL-6885 —— verl GRPO vision（Qwen3-VL, vLLM rollout, FSDP）反向崩溃：aclnnConvolutionBackwardGetWorkspaceSize
+# 来源：https://github.com/verl-project/verl/issues/6885（评论验证 9.0.0 镜像修复）
+# pre-triage: new_pattern —— training/verl/ 空；vision GRPO 反向算子崩溃无重叠；与 vllm-ascend aicpu 崩溃类（507018 等）签名不同
+# 命名空间建议：training/verl/interrupt
+# 转正：knowledge-groom 2026-08-31（new_pattern；training/verl/ 种子批次，跨池无重叠）
+
+cases:
+  - id: VERL-6885
+    title: "verl GRPO vision（Qwen3-VL + vLLM rollout + FSDP）训练反向崩溃：aclnnConvolutionBackwardGetWorkspaceSize——升级至 verl 9.0.0（CANN 9.0）镜像修复"
+
+    category: interrupt
+    tags: [vision, grpo, convolution-backward, aclnn, crash, version-upgrade]
+
+    platforms: []                    # issue 未标硬件型号；修复镜像为 a3 系列（quay.io/ascend/verl:verl-9.0.0-a3-...）
+    compat:
+      - framework: verl
+        ranges: ["0.8.0.dev0"]       # 实测触发版本
+      - framework: cann
+        ranges: ["8.5.0"]            # 实测触发 CANN；9.0.0 镜像验证修复
+
+    investigation_quality: medium    # 修复经镜像验证（未深入算子层根因），根因为版本组合级
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3
+      last_hit: ""
+
+    symptoms:
+      - "verl 0.8.0.dev0 + vllm-ascend 0.18.1 + CANN 8.5.0 跑 Qwen3-VL GRPO（vision, vLLM rollout, FSDP）反向阶段崩溃：aclnnConvolutionBackwardGetWorkspaceSize"
+      - "崩溃落在 WorkerDict 的 torch::autograd::Engine::thread_main 反向传播路径"
+      - "卷积层 backward 无法完成，进程 crash"
+
+    references:
+      - "https://github.com/verl-project/verl/issues/6885"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'aclnnConvolutionBackwardGetWorkspaceSize' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*aclnnConvolutionBackwardGetWorkspaceSize.*"
+      fallback:
+        command_template: "grep -iE 'ConvolutionBackward|convolution backward' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(ConvolutionBackward|convolution backward)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：vision 模型（Qwen3-VL 等）GRPO 反向阶段崩溃，签名 aclnnConvolutionBackwardGetWorkspaceSize？"
+        expected: "是——反向传播卷积层 workspace size 获取崩溃"
+      - step: 2
+        check: "版本判别：verl ≤0.8.0.dev0 + CANN 8.5.0 组合？"
+        expected: "是（或接近的旧版本组合）——根因为版本组合级，非用户脚本"
+      - step: 3
+        check: "修复：换用 quay.io/ascend/verl:verl-9.0.0-a3-ubuntu22.04-py3.11-latest（CANN 9.0.0）镜像重跑是否稳定？"
+        expected: "是（评论验证：同一脚本无报错、训练稳定）"
+        fix_on_mismatch: "升级镜像仍崩溃 → 回到 Tier 3 深挖算子层（补全模型/切分/复现最小集）"
+        rollback: "回退旧镜像（崩溃复现）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change          # 镜像/版本升级
+
+    root_cause: >
+      verl 0.8.0.dev0 + vllm-ascend 0.18.1 + CANN 8.5.0 组合下，vision 模型反向传播的
+      aclnnConvolutionBackwardGetWorkspaceSize 崩溃（版本组合级根因，未深挖算子层）。
+      升级到 verl 9.0.0 / CANN 9.0.0 的官方镜像（quay.io/ascend/verl:verl-9.0.0-a3-...）后
+      同一脚本稳定运行。
+
+    fix: >
+      升级运行镜像至 quay.io/ascend/verl:verl-9.0.0-a3-ubuntu22.04-py3.11-latest
+      （对应 verl 9.0.0 + CANN 9.0.0 组合）。
+    rollback: "回退旧镜像版本"

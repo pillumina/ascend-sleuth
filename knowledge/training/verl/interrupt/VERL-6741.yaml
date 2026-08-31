@@ -1,0 +1,66 @@
+# VERL-6741 —— verl+Ray 训练 Ray actor 被识别为 CPU-only（PlatformNPU registered but not available）→ NPU 未生效
+# 来源：https://github.com/verl-project/verl/issues/6741（maintainer 建议 trainer.device='npu'）
+# pre-triage: new_pattern —— training/verl/ 空；设备注册/CPU fallback 类无重叠
+# 注意：根因未代码级定论（maintainer 判断为版本/配置），investigation_quality=low → 初始 score 0.1
+# 命名空间建议：training/verl/interrupt
+# 转正：knowledge-groom 2026-08-31（new_pattern；training/verl/ 种子批次，跨池无重叠）
+
+cases:
+  - id: VERL-6741
+    title: "verl+Ray+昇腾：训练启动 warning \"Platform 'huawei' (PlatformNPU) is registered but not available...CPU-only actor\"——NPU 未启用，配置 trainer.device='npu'"
+
+    category: interrupt
+    tags: [ray, device-detection, cpu-fallback, grpo]
+
+    platforms: []                    # issue 未标型号（Ascend NPU 通用）
+    compat:
+      - framework: verl
+        ranges: ["0.7.1"]            # 实测版本；版本不正确疑似诱因
+
+    investigation_quality: low       # 根因未代码级定论（maintainer 猜测版本/配置），fix 方向明确
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.1                     # low → 初始 0.1
+      last_hit: ""
+
+    symptoms:
+      - "VERL + Ray + Ascend NPU 训练启动后 warning：Platform 'huawei' (PlatformNPU) is registered but not available. This may be due to this ray actor being a CPU-only actor."
+      - "NPU worker 未正确启用，存在 fallback 到 CPU 的可能"
+      - "训练能启动但设备异常（慢/未用 NPU）"
+
+    references:
+      - "https://github.com/verl-project/verl/issues/6741"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E \"Platform 'huawei'.*not available|CPU-only actor\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(Platform 'huawei'.*not available|CPU-only actor)"
+      fallback:
+        command_template: "grep -iE 'registered but not available|huawei.*platform' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*registered but not available"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：训练日志出现 Platform 'huawei' (PlatformNPU) registered but not available / CPU-only actor warning？"
+        expected: "是——Ray actor 未正确绑定 NPU 平台"
+      - step: 2
+        check: "修复尝试：脚本显式配置 trainer.device='npu'（且确认 verl 版本正确）后是否生效？"
+        expected: "是（maintainer 建议；warning 消失、NPU 启用）"
+        fix_on_mismatch: "仍 CPU-only → 检查 verl 版本与 runtime_env（版本不正确是疑似诱因）"
+        rollback: "无（纯配置变更）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change
+
+    root_cause: >
+      verl 版本不正确或未显式配置设备时，Ray actor 被识别为 CPU-only：PlatformNPU 注册但
+      not available → NPU 未生效、可能 fallback CPU。显式配置 trainer.device='npu'
+      （并修正 verl 版本）可启用 NPU。根因未代码级定论（疑似版本/配置组合）。
+
+    fix: >
+      在训练脚本显式配置 trainer.device='npu'，并确认 verl 版本与镜像匹配。
+    rollback: "无（配置回退即恢复原状）"
