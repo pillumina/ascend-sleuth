@@ -3,11 +3,11 @@
 # 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-08-31    case 总数：63
+# 生成日期：2026-08-31    case 总数：65
 #   容量(inference/sglang): interrupt=1/30
 #   容量(inference/vllm-ascend): interrupt=36/30, performance=3/30, precision=6/30
-#   容量(training/mindspeed-llm/interrupt): interrupt=9/30
-#   容量(training/mindspeed-llm/precision): precision=2/30
+#   容量(training/mindspeed-llm/interrupt): interrupt=10/30
+#   容量(training/mindspeed-llm/precision): precision=3/30
 #   容量(training/verl/interrupt): interrupt=6/30
 namespaces:
   inference/sglang:
@@ -1608,6 +1608,39 @@ namespaces:
           expected: regex:.*cannot import name
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1555.yaml
       hash: dd38678c027e
+    - id: MSLLM-1655
+      title: 'gemma-2-9b 预训练启动报 RuntimeError: Cannot infer model type from architectures of Huggingface
+        config.json ''{arch_row}'': CKPT_LOAD_DIR 传入 HF 权重触发权重在线加载（train_from_hf）功能，该功能未全面支持 gemma2，先转
+        HF→Megatron 权重再训练'
+      category: interrupt
+      tags:
+      - checkpoint-load
+      - weight-online-load
+      - train-from-hf
+      - model-type-infer
+      - startup-fail
+      - gemma2
+      platforms:
+      - A5-950
+      compat: mindspeed-llm 26.1.0
+      confidence:
+        score: 0.3
+      symptoms:
+      - '预训练 gemma-2-9b 时框架无法识别 architectures: Gemma2ForCausalLM，报 RuntimeError: Cannot infer model type
+        from architectures of Huggingface config.json ''{arch_row}''. Please specify --model-type-hf explicitly'
+      - 栈：pretrain_gpt.py → validate_features_args → convert_checkpoint.py:158 validate_args → infer_model_type_from_hf_config
+        抛错
+      - 上下文日志含 'When context_parallel is not activated, kv_head_repeat_before_uly_alltoall would be set
+        to False'（训练启动正常，卡在 checkpoint 参数校验）
+      quickly_check:
+        primary:
+          command: grep -E "Cannot infer model type from architectures" {{log_path}}
+          expected: regex:.*Cannot infer model type from architectures
+        fallback:
+          command: grep -E 'infer_model_type_from_hf_config|model_type_hf' {{log_path}}
+          expected: regex:.*(infer_model_type_from_hf_config|model_type_hf)
+      file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1655.yaml
+      hash: 561b6c40341b
     - id: MSLLM-1667
       title: A2 上跑 fsdp2 gpt-oss-20b 训练在模型加载阶段报错：A2（910B）不支持 FP8 训练，gpt-oss-20b 默认权重为 FP8，改用 BF16 权重修复
       category: interrupt
@@ -1728,6 +1761,35 @@ namespaces:
           expected: regex:.*(linear_qkv|qkv_type)
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1532.yaml
       hash: 5369fe164de7
+    - id: MSLLM-1780
+      title: FSDP2 断点续训后第一步日志异常：lm loss 被错误除以 global_step（0.247×31=7.66 与相邻步一致）、elapsed/tokens/s 同步失真：trainer.py
+        续训时 _last_logged_step 从 _global_step_last_logged（常为 0）恢复，纯日志统计 bug，训练本身正确
+      category: precision
+      tags:
+      - fsdp2
+      - checkpoint-resume
+      - log-statistics
+      - loss-display
+      - trainer-bug
+      platforms:
+      - A2-910B
+      compat: mindspeed-llm master@c8f3cada
+      confidence:
+        score: 0.6
+      symptoms:
+      - FSDP2 断点续训（resume_from_checkpoint）后第一步日志三项指标同时异常：lm loss 显示 0.247（×31 还原 = 7.66 与相邻步 7.74 一致）、elapsed
+        time 34.55ms（正常 90.11）、tokens/s 560（正常 6747）——三个互不相关指标同时除以恢复后的 global_step
+      - consumed tokens/samples 从 0 重新计数而非从 checkpoint 恢复累计值
+      - 用 checkpoint 权重离线重放 step 31 实际 batch，真实 loss≈6.94 与相邻 batch 同档——训练本身（模型/optimizer/lr/数据位置/真实 loss）完全正确，仅日志统计失真
+      quickly_check:
+        primary:
+          command: 'grep -E ''lm loss: [0-9]\.[0-9]+E-[0-9]'' {{log_path}}'
+          expected: 'regex:.*lm loss: [0-9]\.[0-9]+E-[0-9]'
+        fallback:
+          command: grep -E 'resume_from_checkpoint|global_step_30' {{config_path}}
+          expected: regex:.*(resume_from_checkpoint|global_step_)
+      file: knowledge/training/mindspeed-llm/precision/MSLLM-1780.yaml
+      hash: d15bdfaf3021
   training/verl/interrupt:
     interrupt:
     - id: VERL-5074
