@@ -1,0 +1,72 @@
+id: torch-npu-cann
+type: compat-matrix
+title: torch-npu ↔ CANN / torch 版本兼容矩阵（adapter 层）
+summary: torch-npu 官方维护的版本对应表（COMPATIBILITY.en.md）：torch-npu 安装包版本 ↔ GitCode 分支 ↔ PyTorch ↔ CANN；当前活跃线以 CANN 9.1.0（26.1.0 分支）/ 9.0.0（26.0.0）为主，旧线对应 CANN 8.5.0 及以下；诊断 torch-npu 相关运行时报错时对照本表判断 CANN 是否越界；上层框架（vllm-ascend 等）的 CANN 兼容由本层传导
+
+sources:
+  - type: official-doc
+    url: https://github.com/Ascend/pytorch/blob/master/COMPATIBILITY.en.md
+    version: master（2026-08-29 抓取）
+    fetched_at: 2026-08-29
+    verification: cross-checked-source
+
+applies_to:
+  frameworks: [torch-npu]
+  versions:
+    cann: "8.0.0 – 9.1.0"
+    torch_npu: "2.6.0 – 2.12.0"
+
+related_references: [vllm-ascend-torch-npu]
+
+status: draft
+last_verified: 2026-08-29
+
+content:
+  layer: adapter
+  component: torch-npu
+  matrix:
+    - version: 2.12.0
+      torch: 2.12.0
+      cann: 9.1.0
+    - version: 2.11.0
+      torch: 2.11.0
+      cann: 9.1.0
+    - version: 2.10.0.post4
+      torch: 2.10.0
+      cann: 9.1.0
+    - version: 2.9.0.post6
+      torch: 2.9.0
+      cann: 9.1.0
+    - version: 2.7.1.post8
+      torch: 2.7.1
+      cann: 9.1.0
+    - version: 2.9.0.post2
+      torch: 2.9.0
+      cann: 9.0.0
+    - version: 2.8.0.post4
+      torch: 2.8.0
+      cann: 9.0.0
+    - version: 2.7.1.post4
+      torch: 2.7.1
+      cann: 9.0.0
+    - version: 2.9.0
+      torch: 2.9.0
+      cann: 8.5.0
+    - version: 2.8.0.post2
+      torch: 2.8.0
+      cann: 8.5.0
+    - version: 2.7.1.post2
+      torch: 2.7.1
+      cann: 8.5.0
+    - version: 2.6.0.post5
+      torch: 2.6.0
+      cann: 8.5.0
+    - version: 2.8.0
+      torch: 2.8.0
+      cann: 8.3.RC1
+    - version: 2.7.1
+      torch: 2.7.1
+      cann: 8.3.RC1
+    - version: 2.6.0.post3
+      torch: 2.6.0
+      cann: 8.3.RC1

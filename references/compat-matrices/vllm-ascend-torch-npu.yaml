@@ -1,0 +1,53 @@
+id: vllm-ascend-torch-npu
+type: compat-matrix
+title: vllm-ascend ↔ torch-npu / torch 版本兼容矩阵（framework 层）
+summary: vllm-ascend 各 release 声明的 torch-npu / torch 依赖版本（pyproject.toml 逐 tag 核验）：v0.18–v0.19 配 torch-npu 2.9.0；v0.20–v0.22 配 2.10.0；v0.23 起进入 2.10.0.post 系列（post4/post2 有回退）；诊断版本不匹配时对照本表判断客户版本组合是否越界；CANN 兼容性由 adapter 层（torch-npu-cann）传导，不在此重复
+
+sources:
+  - type: official-doc
+    url: https://github.com/vllm-project/vllm-ascend/blob/main/pyproject.toml
+    version: v0.18.0 / v0.19.1rc1 / v0.20.2rc1 / v0.21.0rc1 / v0.22.1rc1 / v0.23.0 / v0.24.0rc1 / v0.25.1rc1 / main
+    fetched_at: 2026-08-29
+    verification: cross-checked-source
+
+applies_to:
+  frameworks: [vllm-ascend]
+  versions:
+    torch_npu: "2.9.0 – 2.10.0.post4"
+
+related_references: [torch-npu-cann]
+
+status: draft
+last_verified: 2026-08-29
+
+content:
+  layer: framework
+  component: vllm-ascend
+  matrix:
+    - version: v0.18.0
+      torch: 2.9.0
+      torch_npu: 2.9.0
+    - version: v0.19.1rc1
+      torch: 2.9.0
+      torch_npu: 2.9.0
+    - version: v0.20.2rc1
+      torch: 2.10.0
+      torch_npu: 2.10.0
+    - version: v0.21.0rc1
+      torch: 2.10.0
+      torch_npu: 2.10.0
+    - version: v0.22.1rc1
+      torch: 2.10.0
+      torch_npu: 2.10.0
+    - version: v0.23.0
+      torch: 2.10.0
+      torch_npu: 2.10.0.post4
+    - version: v0.24.0rc1
+      torch: 2.10.0
+      torch_npu: 2.10.0.post2
+    - version: v0.25.1rc1
+      torch: 2.10.0
+      torch_npu: 2.10.0.post2
+    - version: main
+      torch: 2.10.0
+      torch_npu: 2.10.0.post4
