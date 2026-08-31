@@ -241,6 +241,47 @@ groom 的 R8 信号让共性提炼不靠人肉发现：
 
 ---
 
+## 4.5 DSH 面板：诊断全流程的可视化操作台（2026-08-31 实践）
+
+在 DSH 中可通过动态 Cordis 插件把诊断面板挂进会话视图环（`conversation.view` 加"诊断"tab），将上面第 1-4 节的所有环节变成**可视化、可操作**的界面——这是本系统在 DSH 中的载体形态。
+
+**面板提供的能力（与流程各环节对应）：**
+
+| 面板能力 | 对应流程环节 | 说明 |
+|---|---|---|
+| 会话列表（状态徽章/更新时间/计数） | 诊断入口 | 按 `updated_at` 倒序，resume 续接后置顶 |
+| 轨迹展开（summary/evidence/reason） | 诊断过程可视化 | summary=问题背景段；evidence=完整证据（inline 原文/文件引用/缺口）；reason=决策依据 |
+| 参考层标注 | 2.5 层先验知识 | `reference_lookup` 步骤带紫色"参考层"徽章 + 使用统计 |
+| 继续诊断（指令 copy → 对话触发） | resume | 未解决会话的续接入口，与 resume skill 闭环 |
+| 沉淀此案例（指令 copy → 对话触发） | 沉淀（第 2 节） | 已解决未沉淀会话触发 to-postmortem |
+| 沉淀状态（submitted/knowledge/archived） | groom 转正跟踪 | 零推断：动作发生时写，不反查 inbox |
+| 证据文件点击打开 | 跨 agent 自包含 | `traces/evidence/<session_id>/` 本地文件 |
+
+**trace 自包含化**（面板 + 跨 agent/session resume 的数据基础）——user 事件升级为 `content`（摘要）+ `evidence`（完整证据）：
+
+```yaml
+# traces/<session_id>.yaml 顶层
+summary: "用户报告 <什么问题>。环境 <框架/平台/配置>。关键报错 <签名>。已定位 <结果>"
+sedimented: {state: submitted}   # none→submitted→knowledge/archived（零推断写入）
+
+# trace 数组（user 事件）
+- {role: user, step: 1, content: <摘要>, evidence: {inline: <原文>, files: [<相对路径>], sources: [<URL>], missing: <缺口>}}
+
+# agent 事件：output（给用户）+ reason（决策依据，关键决策必写）
+```
+
+**为什么自包含**：跨 agent/session 续接时平台 memory 不可用，新 agent 只能靠 trace 重建——`summary`（背景）+ `evidence`（原始证据）+ `reason`（推理）三者齐备，新 agent 才能继续诊断而不丢上下文。证据大文件落 `traces/evidence/<session_id>/`（gitignored，跨 agent 同工作区可读）。
+
+**沉淀状态语义**（区分三层，诚实退化）：
+- `submitted`：执行过 to-postmortem，草稿在 inbox 待审
+- `knowledge`：已升 Tier 2 active case——**下次诊断可命中**
+- `archived`：仅转正 Tier 3 语料（covered/语料）——**grep 兜底，非 active case**
+- **拒绝不记录**：用户拒绝沉淀是交互决策，不持久进 trace，随时可重新沉淀
+
+**交互原则**：面板只生成指令（copy → 粘贴对话 → agent 执行），**最终交互始终在 agent 与用户之间**——面板是"指令生成器"，不做决策。沉淀/续接都要用户确认。
+
+---
+
 ## 收尾：回到架构图
 
 打开交互架构图，你已经走完了上面两个循环的每一环：
@@ -248,8 +289,9 @@ groom 的 R8 信号让共性提炼不靠人肉发现：
 - **诊断循环**：第 1 节（diagnose → 路由 → 候选 → 2.5 参考 → 验证 → trace）
 - **演化循环**：第 2-3 节（沉淀 → inbox → groom 预分诊 → PR 门控 → 转正）
 - **连接**：第 4 节（转正的 case/reference 回到诊断，R8 提炼共性）
+- **DSH 载体**：第 4.5 节（面板可视化操作台——诊断/resume/沉淀/证据全流程可视可操作，trace 自包含支撑跨 agent 续接）
 
-系统的核心设计：**检索只负责提名，验证决定放行**；**建议与决定分离**（agent 产出建议，人审转正）；**知识随使用变厚**（每次兜底后沉淀，下次命中）。
+系统的核心设计：**检索只负责提名，验证决定放行**；**建议与决定分离**（agent 产出建议，人审转正）；**知识随使用变厚**（每次兜底后沉淀，下次命中）；**trace 自包含**（跨 agent/session 不依赖平台 memory，证据/推理完整可重建）。
 
 ---
 
@@ -262,3 +304,4 @@ groom 的 R8 信号让共性提炼不靠人肉发现：
 | 提炼示例（MoE 方法论）| `references/methodologies/ascend-moe-comm-triage.yaml` |
 | issue-ingest 输出格式 | `docs/issue-ingest-pipeline.md` |
 | 交互架构图 | `docs/diagrams/ascend-sleuth-architecture.html` |
+| DSH 面板（诊断/resume/沉淀/证据）| 动态 Cordis 插件（`conversation.view`"诊断"tab）——traces/ 为数据源；trace schema 见 `diagnosis_state.yaml.example` |
