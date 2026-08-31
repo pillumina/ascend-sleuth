@@ -54,7 +54,7 @@ branches:
     category: interrupt
     symptoms:
       - ["\\btimeout\\b", "超时", "synchronize.*timeout", "广播.*超时"]   # 推理侧通信/同步超时
-      - ["kv.*cache.*full", "out of memory"]
+      - ["kv.*cache.*full", "out of memory", "\\bOOM\\b", "内存泄漏", "memory leak", "内存.*持续增长"]   # 长跑内存泄漏/OOM（#12345：CANN host buffer 不驱逐，中文/大写 OOM 补录）
       - ["serving.*crash", "engine.*error"]
       - ['ErrCode=\d+', 'EE9999', 'rtStream\w*.*fail', 'aclrt\w+.*fail']   # 错误码型签名（评估 0001 §四.2：12983 型靠退化兜底的缺口）
       - ['internal error', '\babort\b', '\bcrash\b', '\bdied\b']
