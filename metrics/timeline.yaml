@@ -44,3 +44,26 @@ periods:
     notes: |
       - inference/vllm-ascend interrupt 32/30 已超 soft_cap（roadmap A2 入口闸门）
       - 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 60 才强制拆分；当前先记录
+
+  - period: "2026-W35-live1"
+    kind: live
+    title: "首批活诊断快照（7 session：EL0008/源码分析/reference 甄别/LoRA variant/precision 追问）"
+    recorded_at: "2026-08-31"
+    source: "trace_metrics.py 从 traces/ 计算（7 个诊断 session，含 5 resolved + 2 in_progress）"
+    metrics:
+      sessions_total: 7
+      tier2_hit: 3
+      misdiagnosis_rate: {ok: 0, total: 3}
+      by_category_hit: {interrupt: {hit: 3, total: 6}, precision: {hit: 0, total: 1}}
+      routed_accuracy: {ok: 3, total: 3}
+      feedback_capture: {resolved: 0, not_resolved: 0, partial: 0}
+      trace_completeness: {ok: 4, total: 7}
+      vocab_compliance: {ok: 26, total: 26}
+      reference_hits: {total: 1, refs: 1}
+      confidence_distribution: {low: 19, total: 42}
+    notes: |
+      - 7 个真实诊断（#10521/#10626/#13688/#15086/#15357 + 2 demo）——首条 live 快照，n=7 小样本
+      - interrupt 3/6 命中（12989×2、13050 variant）；precision 0/1（15357 信息不足追问中）
+      - 路由准确率 3/3（triage + triage_semantic 计入）；reference 1 次命中（cann-runtime-error-codes 507903）
+      - feedback 0/3：全部 feedback pending（未回报）——反馈捕获是学习环吞吐上限，待用户回报
+      - trace 完整性 4/7：部分 demo trace 未走完整 diagnose 流程（构造/演示）
