@@ -6,9 +6,8 @@
 # 生成日期：2026-08-31    case 总数：66
 #   容量(inference/sglang): interrupt=1/30
 #   容量(inference/vllm-ascend): interrupt=36/30, performance=3/30, precision=6/30
-#   容量(training/mindspeed-llm/interrupt): interrupt=11/30
-#   容量(training/mindspeed-llm/precision): precision=3/30
-#   容量(training/verl/interrupt): interrupt=6/30
+#   容量(training/mindspeed-llm): interrupt=11/30, precision=3/30
+#   容量(training/verl): interrupt=6/30
 namespaces:
   inference/sglang:
     interrupt:

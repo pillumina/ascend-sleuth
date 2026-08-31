@@ -6,103 +6,212 @@
 #
 # kind: live（活诊断周期快照）| replay（回放评估）| example（示例，展示格式用）
 # 只有 live 参与趋势对比；replay/example 供参考，不参与跨期趋势。
-#
-# 机制说明、指标定义、汇总职责见 docs/metrics.md（稳定文档层，机制变才变）。
+# 机制定义见 docs/metrics.md（可选论证层，参数为执行值）。
 
 periods:
-  - period: "2026-W35"
-    kind: replay
-    title: "首批真实数据：vllm-ascend 批量导入评估（回放模式）"
-    recorded_at: "2026-08-28"
-    source: "eval-reports/0001（21 例措辞差+交叉回放，git 历史可查）；回放非活诊断，小样本 n=21 波动大"
-    metrics:
-      semantic_validation_rate: {ok: 21, total: 21}
-      pre_triage: {new: 19, variant: 2, covered: 0}
-      routed_accuracy: {ok: 19, total: 21}
-      candidate_recall: {ok: 16, total: 21}
-      rank_distribution: {rank1: 13, top3: 16}
-      cross_replay_rank1: {ok: 2, total: 2}
-      by_category_hit: {precision: "3/3", interrupt: "7/10", other: "2/2", performance: "0/1"}
-      golden_suite: {before: 2, after: 23}
-    notes: |
-      - 路由 miss 5 例全部归因"签名在跟帖不在首帖"（机制性，非路由缺陷）
-      - 2 例经 uncategorized 优雅退化救回
-      - performance 0/1：metric 形态与 regex 回放不匹配（机制性）
-      - 库容量（当时）：interrupt 11/30 / precision 3/30 / performance 2/30 / other 3/30
+- period: 2026-W35
+  kind: replay
+  title: 首批真实数据：vllm-ascend 批量导入评估（回放模式）
+  recorded_at: '2026-08-28'
+  source: eval-reports/0001（21 例措辞差+交叉回放，git 历史可查）；回放非活诊断，小样本 n=21 波动大
+  metrics:
+    semantic_validation_rate:
+      ok: 21
+      total: 21
+    pre_triage:
+      new: 19
+      variant: 2
+      covered: 0
+    routed_accuracy:
+      ok: 19
+      total: 21
+    candidate_recall:
+      ok: 16
+      total: 21
+    rank_distribution:
+      rank1: 13
+      top3: 16
+    cross_replay_rank1:
+      ok: 2
+      total: 2
+    by_category_hit:
+      precision: 3/3
+      interrupt: 7/10
+      other: 2/2
+      performance: 0/1
+    golden_suite:
+      before: 2
+      after: 23
+  notes: '- 路由 miss 5 例全部归因"签名在跟帖不在首帖"（机制性，非路由缺陷）
 
-  - period: "2026-W35-capacity"
-    kind: replay
-    title: "1.0.0 打 tag 时点容量快照"
-    recorded_at: "2026-08-29"
-    source: "scripts/build_index.py 头注实时值（ADR-0004 格子口径）"
-    metrics:
-      capacity_by_ns:
-        inference/vllm-ascend: {interrupt: "32/30", performance: "3/30", precision: "6/30"}
-        inference/sglang: {interrupt: "1/30"}
-      case_total: 42
-      reference_total: 95
-    notes: |
-      - inference/vllm-ascend interrupt 32/30 已超 soft_cap（roadmap A2 入口闸门）
-      - 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 60 才强制拆分；当前先记录
+    - 2 例经 uncategorized 优雅退化救回
 
-  - period: "2026-W36-capacity"
-    kind: replay
-    title: "W36 容量快照（#12345 转正后）"
-    recorded_at: "2026-08-31"
-    source: "scripts/build_index.py 头注实时值（ADR-0004 格子口径）"
-    metrics:
-      capacity_by_ns:
-        inference/vllm-ascend: {interrupt: "36/30", performance: "3/30", precision: "6/30"}
-        inference/sglang: {interrupt: "1/30"}
-      case_total: 46
-      reference_total: 95
-    notes: |
-      - inference/vllm-ascend interrupt 36/30 连续两轮超 soft_cap（W35 32/30 → W36 36/30）
-      - 健康指标：候选溢出率=25%（4 拉取→1 候选，低）；同根因重复率：host 泄漏/device OOM 无重复；
-        维护时长 <30 分钟/周 → 三项健康指标未恶化，触发拆分评估（非强制拆）
-      - 拆分建议（platform 轴分布）：A3-910C 11 / A2-910B 8 / 跨平台 7 / A5-950 5 / 310P 4 /
-        A3+A5 1 ——platform 轴拆分需先定平台归属口径（跨平台 7 条归属模糊）；category 轴已用尽
-        （interrupt 内 poly 化 oom/通信/图捕获/启动失败子簇），待 owner 定夺
+    - performance 0/1：metric 形态与 regex 回放不匹配（机制性）
 
+    - 库容量（当时）：interrupt 11/30 / precision 3/30 / performance 2/30 / other 3/30
 
-  - period: "2026-W35-live1"
-    kind: live
-    title: "首批活诊断快照（7 session：EL0008/源码分析/reference 甄别/LoRA variant/precision 追问）"
-    recorded_at: "2026-08-31"
-    source: "trace_metrics.py 从 traces/ 计算（7 个诊断 session，含 5 resolved + 2 in_progress）"
-    metrics:
-      sessions_total: 7
-      tier2_hit: 3
-      misdiagnosis_rate: {ok: 0, total: 3}
-      by_category_hit: {interrupt: {hit: 3, total: 6}, precision: {hit: 0, total: 1}}
-      routed_accuracy: {ok: 3, total: 3}
-      feedback_capture: {resolved: 0, not_resolved: 0, partial: 0}
-      trace_completeness: {ok: 4, total: 7}
-      vocab_compliance: {ok: 26, total: 26}
-      reference: {hits: 1, refs: 1}
-      confidence_distribution: {low: 19, total: 42}
-    notes: |
-      - 7 个真实诊断（#10521/#10626/#13688/#15086/#15357 + 2 demo）——首条 live 快照，n=7 小样本
-      - interrupt 3/6 命中（12989×2、13050 variant）；precision 0/1（15357 信息不足追问中）
-      - 路由准确率 3/3（triage + triage_semantic 计入）；reference 1 次命中（cann-runtime-error-codes 507903）
-      - feedback 0/3：全部 feedback pending（未回报）——反馈捕获是学习环吞吐上限，待用户回报
-      - trace 完整性 4/7：部分 demo trace 未走完整 diagnose 流程（构造/演示）
+    '
+- period: 2026-W35-capacity
+  kind: replay
+  title: 1.0.0 打 tag 时点容量快照
+  recorded_at: '2026-08-29'
+  source: scripts/build_index.py 头注实时值（ADR-0004 格子口径）
+  metrics:
+    capacity_by_ns:
+      inference/vllm-ascend:
+        interrupt: 32/30
+        performance: 3/30
+        precision: 6/30
+      inference/sglang:
+        interrupt: 1/30
+    case_total: 42
+    reference_total: 95
+  notes: '- inference/vllm-ascend interrupt 32/30 已超 soft_cap（roadmap A2 入口闸门）
 
-  - period: "2026-W36-verl"
-    kind: replay
-    title: "W36 verl 种子批次快照（issue-ingest → groom 转正）"
-    recorded_at: "2026-08-31"
-    source: "scripts/build_index.py 头注实时值（ADR-0004 格子口径）"
-    metrics:
-      capacity_by_ns:
-        inference/vllm-ascend: {interrupt: "36/30", performance: "3/30", precision: "6/30"}
-        inference/sglang: {interrupt: "1/30"}
-        training/verl: {interrupt: "6/30"}
-      case_total: 52
-      reference_total: 95
-    notes: |
-      - training/verl/interrupt 种子批次 6 条（VERL-5074/6608/6885/6707/6756/6741）——该格子从 0 起步，
-        soft_cap 30 余量充足
-      - 同批次 triage-tree training_interrupt 补 4 行正则（HCCL init 错误/aclnn/CPU-only actor/
-        训练期异常）——6/6 路由覆盖，既有 NCCL timeout/OOM 签名无回归
-      - inference/vllm-ascend interrupt 36/30 连续两轮超 soft_cap（拆分评估见 W36-capacity 快照）
+    - 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 60 才强制拆分；当前先记录
+
+    '
+- period: 2026-W36-capacity
+  kind: replay
+  title: W36 容量快照（#12345 转正后）
+  recorded_at: '2026-08-31'
+  source: scripts/build_index.py 头注实时值（ADR-0004 格子口径）
+  metrics:
+    capacity_by_ns:
+      inference/vllm-ascend:
+        interrupt: 36/30
+        performance: 3/30
+        precision: 6/30
+      inference/sglang:
+        interrupt: 1/30
+    case_total: 46
+    reference_total: 95
+  notes: "- inference/vllm-ascend interrupt 36/30 连续两轮超 soft_cap（W35 32/30 → W36 36/30）\n\
+    - 健康指标：候选溢出率=25%（4 拉取→1 候选，低）；同根因重复率：host 泄漏/device OOM 无重复；\n  维护时长 <30 分钟/周\
+    \ → 三项健康指标未恶化，触发拆分评估（非强制拆）\n- 拆分建议（platform 轴分布）：A3-910C 11 / A2-910B 8 / 跨平台\
+    \ 7 / A5-950 5 / 310P 4 /\n  A3+A5 1 ——platform 轴拆分需先定平台归属口径（跨平台 7 条归属模糊）；category\
+    \ 轴已用尽\n  （interrupt 内 poly 化 oom/通信/图捕获/启动失败子簇），待 owner 定夺\n"
+- period: 2026-W35-live1
+  kind: live
+  title: 首批活诊断快照（7 session：EL0008/源码分析/reference 甄别/LoRA variant/precision 追问）
+  recorded_at: '2026-08-31'
+  source: trace_metrics.py 从 traces/ 计算（7 个诊断 session，含 5 resolved + 2 in_progress）
+  metrics:
+    sessions_total: 7
+    tier2_hit: 3
+    misdiagnosis_rate:
+      ok: 0
+      total: 3
+    by_category_hit:
+      interrupt:
+        hit: 3
+        total: 6
+      precision:
+        hit: 0
+        total: 1
+    routed_accuracy:
+      ok: 3
+      total: 3
+    feedback_capture:
+      resolved: 0
+      not_resolved: 0
+      partial: 0
+    trace_completeness:
+      ok: 4
+      total: 7
+    vocab_compliance:
+      ok: 26
+      total: 26
+    reference:
+      hits: 1
+      refs: 1
+    confidence_distribution:
+      low: 19
+      total: 42
+  notes: '- 7 个真实诊断（#10521/#10626/#13688/#15086/#15357 + 2 demo）——首条 live 快照，n=7 小样本
+
+    - interrupt 3/6 命中（12989×2、13050 variant）；precision 0/1（15357 信息不足追问中）
+
+    - 路由准确率 3/3（triage + triage_semantic 计入）；reference 1 次命中（cann-runtime-error-codes
+    507903）
+
+    - feedback 0/3：全部 feedback pending（未回报）——反馈捕获是学习环吞吐上限，待用户回报
+
+    - trace 完整性 4/7：部分 demo trace 未走完整 diagnose 流程（构造/演示）
+
+    '
+- period: 2026-W36-verl
+  kind: replay
+  title: W36 verl 种子批次快照（issue-ingest → groom 转正）
+  recorded_at: '2026-08-31'
+  source: scripts/build_index.py 头注实时值（ADR-0004 格子口径）
+  metrics:
+    capacity_by_ns:
+      inference/vllm-ascend:
+        interrupt: 36/30
+        performance: 3/30
+        precision: 6/30
+      inference/sglang:
+        interrupt: 1/30
+      training/verl:
+        interrupt: 6/30
+    case_total: 52
+    reference_total: 95
+  notes: "- training/verl/interrupt 种子批次 6 条（VERL-5074/6608/6885/6707/6756/6741）——该格子从\
+    \ 0 起步，\n  soft_cap 30 余量充足\n- 同批次 triage-tree training_interrupt 补 4 行正则（HCCL\
+    \ init 错误/aclnn/CPU-only actor/\n  训练期异常）——6/6 路由覆盖，既有 NCCL timeout/OOM 签名无回归\n\
+    - inference/vllm-ascend interrupt 36/30 连续两轮超 soft_cap（拆分评估见 W36-capacity 快照）\n"
+- period: 2026-W36-live2
+  kind: live
+  title: W36 完整 live 快照（含 mindspeed-llm dogfood 4 session + 置信度学习环）
+  recorded_at: '2026-08-31'
+  source: trace_metrics.py 从 traces/*.yaml 自动生成
+  metrics:
+    sessions_total: 11
+    tier2_hit: 3
+    routed_accuracy:
+      ok: 3
+      total: 3
+    misdiagnosis_rate:
+      ok: 0
+      total: 3
+    by_category_hit:
+      interrupt:
+        hit: 3
+        total: 6
+      precision:
+        hit: 0
+        total: 1
+    attribution_ratio:
+      case_error: 0
+      execution_error: 0
+    confidence_distribution:
+      low: 29
+      total: 66
+    feedback_capture:
+      resolved: 0
+      not_resolved: 0
+      partial: 0
+    trace_completeness:
+      ok: 7
+      total: 11
+    vocab_compliance:
+      ok: 46
+      total: 46
+    tier3:
+      used: 2
+      saved: 2
+    reference:
+      hits: 3
+      refs: 2
+    reference_detail:
+      msllm-startup-version-env-triage:
+        hits: 2
+        resolved: 2
+      cann-runtime-error-codes:
+        hits: 1
+        resolved: 1
+  notes: 2026-08-31 完整 live：11 sessions（7 历史 + 4 mindspeed-llm dogfood：1655/1780/1801/1805）。Tier2
+    命中 3/6 interrupt；precision 0/1。reference 3 次命中 2 ref（msllm-startup-version-env-triage
+    x2、cann-runtime-error-codes x1）引用后全 resolved。feedback 0/3（全部 pending 未回报——置信度学习环等真实反馈）。capacity
+    头注已按工作负载层折叠（面板展示修复）。

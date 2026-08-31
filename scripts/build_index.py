@@ -121,9 +121,21 @@ def render(namespaces) -> str:
         ns: {cat: len(c) for cat, c in cells.items()}
         for ns, cells in sorted(namespaces.items())
     }
+    # 容量行按"工作负载层"折叠展示（与 collect() 的 inference 折叠对称，2026-08-31 修复）：
+    #   - inference/vllm-ascend/interrupt → 容量(inference/vllm-ascend): interrupt=N/30, ...
+    #   - training/mindspeed-llm/interrupt → 容量(training/mindspeed-llm): interrupt=N/30, precision=M/30
+    # 原因：头注是给人/面板看的展示层，namespace 里重复 category（.../interrupt: interrupt=11/30）
+    # 会让面板渲染出重复标签；索引 body 的 ns 保持三级（diagnose 路由需要），只折叠头注。
+    workload_counts = {}
+    for ns, cells in cell_counts.items():
+        parts = ns.split("/")
+        wl = "/".join(parts[:2]) if (parts[0] == "training" and len(parts) >= 3) else ns
+        merged = workload_counts.setdefault(wl, {})
+        for cat, cnt in cells.items():
+            merged[cat] = merged.get(cat, 0) + cnt
     cap_lines = "\n".join(
         f"#   容量({ns}): {', '.join(f'{cat}={cnt}/{SOFT_CAP}' for cat, cnt in cells.items())}"
-        for ns, cells in cell_counts.items()
+        for ns, cells in sorted(workload_counts.items())
     )
     header = "\n".join([
         "# GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。",
