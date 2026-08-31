@@ -59,7 +59,7 @@ periods:
       feedback_capture: {resolved: 0, not_resolved: 0, partial: 0}
       trace_completeness: {ok: 4, total: 7}
       vocab_compliance: {ok: 26, total: 26}
-      reference_hits: {total: 1, refs: 1}
+      reference: {hits: 1, refs: 1}
       confidence_distribution: {low: 19, total: 42}
     notes: |
       - 7 个真实诊断（#10521/#10626/#13688/#15086/#15357 + 2 demo）——首条 live 快照，n=7 小样本

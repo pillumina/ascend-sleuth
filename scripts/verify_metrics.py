@@ -29,6 +29,16 @@ def load_yaml(path: Path):
         return {"__yaml_error__": str(e)}
 
 
+# live 快照字段白名单（trace_metrics.py --emit-yaml 固定输出，见 docs/metrics.md 快照 schema）
+# 增删字段 = 改 trace_metrics.py 与本文同步（单一数据源纪律）；白名单外字段 = 跨期不可比
+LIVE_FIELDS = {
+    "sessions_total", "tier2_hit", "routed_accuracy", "misdiagnosis_rate",
+    "by_category_hit", "attribution_ratio", "confidence_distribution",
+    "feedback_capture", "trace_completeness", "vocab_compliance", "tier3",
+    "reference", "reference_detail",
+}
+
+
 def check_ratio(rel: str, period: str, field: str, val, errors: list):
     """校验 {ok, total} 形比例字段：total 为正整数、ok 非负且不越界。"""
     if not isinstance(val, dict):
@@ -104,6 +114,18 @@ def main():
                           "cross_replay_rank1"):
                 if field in metrics:
                     check_ratio(rel, pid, field, metrics[field], errors)
+            # live 字段白名单（防字段漂移——W28/W35 教训的 live 侧）
+            # live 快照字段集合由 trace_metrics.py 固定生成（单一数据源），
+            # 人复核只能增删"值"不能发明"新字段名"（字段名漂移 = 跨期不可比）。
+            # 允许字段缺失（诚实退化：无数据如实不写），但不允许白名单外字段。
+            if kind == "live":
+                unknown = sorted(set(metrics.keys()) - LIVE_FIELDS)
+                if unknown:
+                    errors.append(
+                        f"{rel} [{pid}]: live 字段超出白名单 {unknown}"
+                        f"（合法字段: {', '.join(sorted(LIVE_FIELDS))}；字段名漂移=跨期不可比，"
+                        f"W28/W35 教训）"
+                    )
 
     if errors:
         print(f"metrics/timeline.yaml 校验失败（{len(errors)} 处）：")
