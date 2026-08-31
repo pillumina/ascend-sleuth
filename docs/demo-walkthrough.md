@@ -2,7 +2,7 @@
 
 这份文档带你把系统完整走一遍：一次真实诊断开始，到知识沉淀、批量导入、门控审核，最后知识反哺诊断。**读者视角**——你不需要操作，跟着每一步的输入与输出理解系统做什么、为什么。
 
-> 示例输出基于真实知识库（42 条 case、94 条 reference）构造，标注「示例输出」；实际运行结果因输入而异。交互式架构图可随时打开对照：[ascend-sleuth-architecture.html](diagrams/ascend-sleuth-architecture.html)。
+> 示例输出基于真实知识库构造，标注「示例输出」；实际运行结果因输入而异（实时 case/reference 条数以 `knowledge/_index.yaml` 头注与 `verify_references.py` 为准，不在此硬编码）。交互式架构图可随时打开对照：[ascend-sleuth-architecture.html](diagrams/ascend-sleuth-architecture.html)。
 
 ---
 
@@ -58,7 +58,7 @@ agent 先做**症状归一**——把原始报错提炼成可检索的签名，�
 **② Tier 2 候选**——读 `_index.yaml` 过滤候选（≤5），按 confidence 排序。agent 比对 quickly_check 与已提供信息，排除不匹配的：
 
 ```
-[示例输出] 候选比对（_index.yaml 19 条 interrupt）：
+[示例输出] 候选比对（_index.yaml 命中 namespace 的 interrupt 条目）：
   VLLM-ASC-10122  confidence 0.4  ← 症状签名命中（507015 / QuantBatchMatMulV3）
   其余候选：错误码/算子不匹配（507018 aicpu、507057 MTE、561000 缺二进制…）→ 排除
 匹配到 1 条候选：VLLM-ASC-10122
@@ -159,7 +159,7 @@ postmortems/inbox/VLLM-ASC-10122.md         # 原始记录（指针式）
   pre-triage: new_pattern（507015 新错误码 + QuantBatchMatMulV3，与现有 case 无重叠）
 ```
 
-先验知识（独立于事故的事实/方法论）走 `to-reference`：
+先验知识（独立于事故的事实/方法论）走 `to-reference`——**与 case 沉淀不同，reference 产出即 `status: active`，PR review 即审核闸门，合入即生效**（无 draft 中间态：未合入的 PR 分支不 main，天然不进诊断上下文；深审门槛如 case-derived methodology ≥3 条 case 引用在产出时即由 CI 把关）：
 
 ```
 /skill:to-reference --ingest-cases "[VLLM-ASC-12461, VLLM-ASC-14166, VLLM-ASC-10944, VLLM-ASC-10122]"
@@ -167,22 +167,25 @@ postmortems/inbox/VLLM-ASC-10122.md         # 原始记录（指针式）
 [示例输出] 识别共性：MoE 通信/路由/量化算子故障族（4 条 case 同 tag: moe）
 → 提炼 methodology：ascend-moe-comm-triage（4 形态分流排查）
 → active 直进 references/methodologies/（status: active，PR review 即审核闸门——合入即生效）
+→ 深审门槛已满足：case-derived 4 条 case ≥ 3 ✓
 ```
 
-批量吸收上游 issue 走 `issue-ingest`：
+批量吸收上游 issue 走 `issue-ingest`——**支持多源**（GitHub `gh` / GitCode `gitcode` CLI，缓存格式统一，框架差异参数化）：
 
 ```
 /skill:issue-ingest --repo vllm-project/vllm-ascend --labels triaged
 
-[示例输出] 拉取 555 条 triaged issue（精简元数据，≈0 token）
+[示例输出] 拉取 500+ 条 triaged issue（精简元数据，≈0 token）
 [示例输出] 硬过滤：已处理 191 / 评论少 138 / 标题规则 45 → 20 条候选
 [示例输出] 按评论数启发式排序，top 候选：
   #8938 [13评论][kv-cache-pool] P0/P1 同时拉起 ZMQ 端口抢占
   #6774 [13评论] qwen3.5 A2 双机启动失败（启动脚本路径）
   #10954 [12评论] GLM-5.2 工具调用传参错误（工具幻视）
-[示例输出] 评估 3 条 → 沉淀 3 条 draft（new_pattern）→ 标记已导入（processed 196）
+[示例输出] 评估 3 条 → 沉淀 3 条 case 草稿（进 inbox 待 groom 转正）→ 标记已导入
   同一仓库下次不再问配置（config 已固化：triaged 主池）
 ```
+
+> GitCode 源差异（实测 mindspeed-llm）：不返回 `closed_at`（游标用 `updated_at` 近似）、无 `state_reason`（`resolved` label 映射为 completed）、`number` 为字符串需转 int——`fetch_issues.py` 以 GitHub 为例，其他源换 CLI 命令，缓存格式保持一致。
 
 ---
 
@@ -215,7 +218,7 @@ postmortems/inbox/VLLM-ASC-10122.md         # 原始记录（指针式）
   kb-checks 三检查绿 → merge → 索引重建 → case 进入 Tier 2
 ```
 
-**关键**：`inbox` 是本地待审队列（草稿不进 git/PR）；**转正才走 PR**——PR 审核看的是已分诊的变更，不是裸草稿。
+**关键**：`inbox` 是本地待审队列（草稿不进 git/PR）；**转正才走 PR**——PR 审核看的是已分诊的变更，不是裸草稿。groom 周批先跑反馈结算（`settle_trace_feedback.py` 把上一周期用户反馈累积进 case 置信度），再做预分诊与转正——置信度重算的输入来自真实反馈，不是初始值（见第 4 节学习环）。
 
 ---
 
@@ -239,9 +242,27 @@ groom 的 R8 信号让共性提炼不靠人肉发现：
 
 观测回写（groom R6）：reference 命中统计来自 trace 的 `reference_lookup` 事件——没有数据如实显示 0，等使用积累。
 
+**置信度学习环（case 层，与 R6 对称）**——case 的 `confidence.hits/misdiagnoses` 来自**用户可信反馈**，不是系统命中：
+
+```
+[示例输出] 诊断后用户反馈（一次问答）：
+  agent：升级 CANN 后应用了，解决了吗？
+  用户：解决了 ✓（trace 记 {action: feedback, case: VLLM-ASC-10122, outcome: resolved}）
+
+[示例输出] groom 周批结算（scripts/settle_trace_feedback.py）：
+  结算：VLLM-ASC-10122 hits 0→1（resolved 才 +1；命中本身不计入——
+    命中是系统检索行为，不代表 case 有效，可信反馈才是置信度信号）
+  not_resolved / partial → misdiagnoses += 1
+  幂等：按 session+事件序列 hash 记录在 ingest-state.json，重复跑不重复累积
+  产出 diff → knowledge_modification PR（confidence 字段变更，走审核）
+  → groom §4 再按 hits/misdiagnoses/last_hit 重算 score（时间衰减）
+```
+
+**为什么 resolved 才 +1**：命中是检索行为（可能碰巧加载、也可能候选未用），只有用户确认"这个诊断解决了我问题"才证明 case 真实有效。置信度从"初始先验"（新 case 按调查质量设 0.6/0.3/0.1）走向"实测后验"（反馈累积校准）——这正是 Beta 先验的意义：冷启动公平起点由先验，长期校准靠数据。
+
 ---
 
-## 4.5 DSH 面板：诊断全流程的可视化操作台（2026-08-31 实践）
+## 4.5 DSH 面板：诊断全流程的可视化操作台
 
 在 DSH 中可通过动态 Cordis 插件把诊断面板挂进会话视图环（`conversation.view` 加"诊断"tab），将上面第 1-4 节的所有环节变成**可视化、可操作**的界面——这是本系统在 DSH 中的载体形态。
 
@@ -290,10 +311,10 @@ sedimented: {state: submitted}   # none→submitted→knowledge/archived（零�
 
 - **诊断循环**：第 1 节（diagnose → 路由 → 候选 → 2.5 参考 → 验证 → trace）
 - **演化循环**：第 2-3 节（沉淀 → inbox → groom 预分诊 → PR 门控 → 转正）
-- **连接**：第 4 节（转正的 case/reference 回到诊断，R8 提炼共性）
+- **连接**：第 4 节（转正的 case/reference 回到诊断，R8 提炼共性，置信度学习环结算反馈）
 - **DSH 载体**：第 4.5 节（面板可视化操作台——诊断/resume/沉淀/证据全流程可视可操作，trace 自包含支撑跨 agent 续接）
 
-系统的核心设计：**检索只负责提名，验证决定放行**；**建议与决定分离**（agent 产出建议，人审转正）；**知识随使用变厚**（每次兜底后沉淀，下次命中）；**trace 自包含**（跨 agent/session 不依赖平台 memory，证据/推理完整可重建）。
+系统的核心设计：**检索只负责提名，验证决定放行**；**建议与决定分离**（agent 产出建议，人审转正）；**知识随使用变厚**（每次兜底后沉淀，下次命中）；**置信度来自可信反馈**（resolved 才 +1，系统命中不计数）；**trace 自包含**（跨 agent/session 不依赖平台 memory，证据/推理完整可重建）。
 
 ---
 
@@ -304,6 +325,7 @@ sedimented: {state: submitted}   # none→submitted→knowledge/archived（零�
 | 诊断场景（507015 / QuantBatchMatMulV3）| `knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10122.yaml` + `references/errors/cann-runtime.yaml` 507015 |
 | 预分诊 variant 示例（9503 并入 12461）| PR #45 |
 | 提炼示例（MoE 方法论）| `references/methodologies/ascend-moe-comm-triage.yaml` |
-| issue-ingest 输出格式 | `docs/issue-ingest-pipeline.md` |
+| 置信度学习环（反馈结算）| `scripts/settle_trace_feedback.py`（groom §3.5 结算 → §4 重算 score）|
+| issue-ingest 输出格式 | `docs/issue-ingest-pipeline.md`（GitCode 源差异见 skill 文档）|
 | 交互架构图 | `docs/diagrams/ascend-sleuth-architecture.html` |
 | DSH 面板（诊断/resume/沉淀/证据）| 动态 Cordis 插件（`conversation.view`"诊断"tab）——traces/ 为数据源；trace schema 见 `diagnosis_state.yaml.example` |
