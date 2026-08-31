@@ -1,0 +1,67 @@
+# MSLLM-1437 —— qwen3-14b-64k LoRA 微调开启 uniform 重计算后 grad norm 恒 0、loss 不收敛：LoRA+uniform 重计算组合仓库未支持，关闭重计算/用官方脚本修复
+# 来源：https://gitcode.com/Ascend/MindSpeed-LLM/issues/1437（3 评论；维护者定论根因，resolved）
+# pre-triage: new_pattern —— knowledge/training/mindspeed-llm/ 为空；全库无 LoRA+重计算组合 / grad norm 0 / 收敛问题类 case
+# 转正：knowledge-groom 2026-08-31（precision；issue-ingest 预分诊复核通过：MSLLM-1437 为种子批次，跨池无重复）
+
+cases:
+  - id: MSLLM-1437
+    title: "qwen3-14b-64k-lora 微调开启 uniform 重计算时 grad norm 恒为 0、loss 不收敛：LoRA 微调与 uniform 重计算组合仓库未支持/未验证，关闭重计算或改用官方脚本修复"
+
+    category: precision
+    tags: [lora, recompute, grad-norm-zero, convergence, feature-gap, qwen3]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: mindspeed-llm
+        ranges: ["26.0.0"]
+      - framework: cann
+        ranges: ["8.5.2"]
+
+    investigation_quality: high      # 维护者定论根因（不支持组合）+ resolved
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "qwen3-14b-64k-lora 微调开启 uniform 重计算时，grad norm 恒为 0、loss 不收敛（lm loss 停滞在 ~1.22e1 附近），num zeros/nan 均为 0 但训练无进展"
+      - "环境：A3、cann_8.5.2、mindspeed-llm 26.0.0"
+
+    references:
+      - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1437"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'grad norm.*0|grad_norm.*0\\b' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*grad.?norm.*0"
+      fallback:
+        command_template: "grep -E 'lm loss.*1\\.2[0-9]e1|loss.*不收敛' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*loss"
+
+    diagnosis:
+      - step: 1
+        check: "LoRA 微调 + uniform 重计算组合开启，grad norm 恒 0、loss 停滞不收敛？"
+        expected: "是 → 命中仓库未支持的组合"
+      - step: 2
+        check: "是否非数据/超参问题（num zeros/nan 为 0，仅梯度不更新）？"
+        expected: "是 → 指向重计算路径下 LoRA 梯度计算异常"
+      - step: 3
+        check: "修复：关闭重计算特性（LoRA 显存占用不高）或改用官方已验证脚本 examples/mcore/qwen3/tune_qwen3_14b_4K_lora_ptd.sh？"
+        expected: "是（维护者方案）"
+        fix_on_mismatch: "关闭重计算仍不收敛 → 回 Tier 3：查 LoRA target modules/学习率/数据"
+
+    severity: service-affecting
+    fix_side_effects: []
+    fix_type: config-change          # 关闭重计算特性
+
+    root_cause: >
+      当前仓库尚不支持该测试 case：LoRA 微调与 uniform 重计算组合未获支持/未经验证，
+      重计算路径下 LoRA 梯度计算异常导致 grad norm 恒为 0（非数据/超参问题）。
+
+    fix: >
+      LoRA 微调显存占用不高，关闭重计算特性进行训练；或改用仓库已验证脚本参数
+      （examples/mcore/qwen3/tune_qwen3_14b_4K_lora_ptd.sh）训练。
+    rollback: "保留重计算开启（问题复现）"

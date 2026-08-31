@@ -1,0 +1,67 @@
+# MSLLM-1525 —— mindspeed-llm 开启 config.batch_p2p_comm（batch p2p 通信优化）后 dsv4 训练崩在 recv_forward：特性在 MindSpeed 仓库尚未适配，升级最新 PTA 修复
+# 来源：https://gitcode.com/Ascend/MindSpeed-LLM/issues/1525（4 评论；维护者定论 + 作者验证）
+# pre-triage: new_pattern —— knowledge/training/mindspeed-llm/ 为空；全库无 batch_p2p_comm / p2p 通信特性未适配类 case
+# 转正：knowledge-groom 2026-08-31（interrupt；issue-ingest 预分诊复核通过：MSLLM-1525 为种子批次，跨池无重复）
+
+cases:
+  - id: MSLLM-1525
+    title: "mindspeed-llm 开启 config.batch_p2p_comm 后 DeepSeek-V4 整网训练崩在 pipeline parallel recv_forward：batch_p2p_comm 特性在 MindSpeed 仓库尚未适配，升级最新 PTA 修复"
+
+    category: interrupt
+    tags: [pipeline-parallel, p2p-comm, feature-gap, version-mismatch, pta, deepseek]
+
+    platforms: []                    # issue 未标型号（p2p 通信与型号无关）
+    compat:
+      - framework: mindspeed-llm
+        ranges: ["*"]                # 特性缺口，未绑定具体版本；触发于开启 batch_p2p_comm 的 dsv4+流水线并行
+
+    investigation_quality: high      # 维护者定论根因 + 作者升级验证
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "DeepSeek-V4 整网训练开启 config.batch_p2p_comm（mindspeed/core/pipeline_parallel/optimize_p2p_comm/adaptor.py）后 rank 报错崩溃，栈崩在 megatron core pipeline parallel schedules 的 recv_forward（p2p_communication.recv_forward）接收前向张量路径"
+      - "关闭 batch_p2p_comm 配置后训练可继续"
+
+    references:
+      - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1525"
+
+    quickly_check:
+      primary:
+        command_template: "grep -n 'batch_p2[op]_comm' {{config_path}}"
+        rank_selector: coordinator
+        expected: "regex:batch_p2[op]_comm"
+      fallback:
+        command_template: "grep -E 'recv_forward|p2p_communication' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(recv_forward|p2p_communication)"
+
+    diagnosis:
+      - step: 1
+        check: "训练配置开启了 config.batch_p2p_comm（batch p2p 通信优化）？"
+        expected: "是 → 该特性在 MindSpeed 仓库尚未适配，dsv4+流水线并行下必现崩溃"
+      - step: 2
+        check: "是否 dsv4 且 pipeline parallel（并行度>1）？"
+        expected: "是 → 命中特性未适配场景"
+      - step: 3
+        check: "修复：升级到最新 PTA（昇腾 PyTorch Adapter）后重跑？"
+        expected: "是（作者验证最新 PTA 已解决）；在适配版本可用前不建议开启 batch_p2p_comm"
+        fix_on_mismatch: "升级 PTA 无效 → 关闭 batch_p2p_comm 配置绕行；仍异常回 Tier 3 查 MindSpeed 仓库对应 issue"
+        rollback: "恢复旧 PTA 版本（错误可能复现）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change          # 版本升级 + 关闭特性配置
+
+    root_cause: >
+      config.batch_p2p_comm（batch p2p 通信优化）特性在 MindSpeed 仓库尚未适配（版本功能缺口）。
+      在 dsv4 + 流水线并行场景下开启即导致 pipeline parallel 通信路径崩溃（rank 崩在
+      p2p_communication.recv_forward）。issue 按"特性未适配"关闭，相关事宜指引到 MindSpeed 仓库。
+
+    fix: >
+      升级到最新 PTA（昇腾 PyTorch Adapter）——作者确认最新 PTA 已解决该问题；
+      在适配版本可用前，不建议开启 config.batch_p2p_comm 配置。
+    rollback: "恢复旧 PTA 版本（错误可能复现）"

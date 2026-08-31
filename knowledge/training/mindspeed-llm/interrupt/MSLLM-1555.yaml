@@ -1,0 +1,68 @@
+# MSLLM-1555 —— dsv4 训练拉起报 ImportError: cannot import name 'HcclOpModeSetFeature' from 'mindspeed.features_manager'：镜像预装 mindspeed 残留旧版，卸载重装修复
+# 来源：https://gitcode.com/Ascend/MindSpeed-LLM/issues/1555（4 评论；维护者定论根因，resolved）
+# pre-triage: variant_of MSLLM-1554 —— 同签名族（mindspeed.features_manager 缺符号 + 版本不配套），本 case=镜像预装残留缺 HcclOpModeSetFeature；1554=master+旧 mindspeed 0.12.1（版本过旧）。增量=镜像预装+重装未覆盖场景
+# 转正：knowledge-groom 2026-08-31（interrupt；issue-ingest 预分诊复核通过：MSLLM-1555 为种子批次，跨池无重复）
+
+cases:
+  - id: MSLLM-1555
+    title: "dsv4 训练拉起报 ImportError: cannot import name 'HcclOpModeSetFeature' from 'mindspeed.features_manager'：镜像预装 mindspeed 与手动重装未覆盖，卸载重装配套版本修复"
+
+    category: interrupt
+    tags: [version-mismatch, import-error, features-manager, install, startup-fail, deepseek, dsv4]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: mindspeed-llm
+        ranges: ["master"]
+      - framework: mindspeed
+        ranges: ["*"]                # 触发于镜像预装版本残留
+
+    investigation_quality: medium    # 维护者定论根因，用户未回验
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3
+      last_hit: ""
+
+    symptoms:
+      - "A3 节点 Atlas A3 训练镜像上按 install_guide.md 手动安装 MindSpeed(Master)+MindSpeed-LLM+Megatron core_v0.12.1 后，拉起 dsv4 训练（pretrain_deepseek4.py）报 ImportError: cannot import name 'HcclOpModeSetFeature' from 'mindspeed.features_manager'，训练拉起失败"
+
+    references:
+      - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1555"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'cannot import name.*features_manager' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*cannot import name.*from 'mindspeed.features_manager'"
+      fallback:
+        command_template: "grep -E 'cannot import name' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*cannot import name"
+
+    diagnosis:
+      - step: 1
+        check: "启动报 ImportError: cannot import name 'X' from 'mindspeed.features_manager'？"
+        expected: "是 → mindspeed 版本缺符号或残留旧包"
+      - step: 2
+        check: "镜像是否预装 mindspeed，且用户又对其执行过 pip install -e .（同版本重装不覆盖）？"
+        expected: "是 → 镜像预装版本残留，缺 MindSpeed-LLM master 依赖的 HcclOpModeSetFeature"
+      - step: 3
+        check: "修复：pip uninstall mindspeed 卸载镜像预装版本后，按安装指导重装配套版本？"
+        expected: "是（维护者方案；用户未回验）"
+        fix_on_mismatch: "重装后仍报 → 回 Tier 3：核对版本配套矩阵与多版本残留（见 MSLLM-1550）"
+        rollback: "保留残留版本（错误复现）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change          # 卸载重装
+
+    root_cause: >
+      镜像已预装 mindspeed，用户按文档对其重新执行 pip install -e . 安装相同版本时
+      python 包未被覆盖（残留旧版 mindspeed），旧包缺少 MindSpeed-LLM master 所依赖的
+      HcclOpModeSetFeature API，版本不配套导致 import 失败。
+
+    fix: >
+      先 pip uninstall mindspeed 卸载镜像预装版本，再按安装指导重新安装与 MindSpeed-LLM
+      配套版本的 mindspeed。
+    rollback: "保留残留版本（错误复现）"

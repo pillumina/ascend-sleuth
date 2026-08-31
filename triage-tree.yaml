@@ -25,6 +25,11 @@ branches:
       - ["aclnn\\w+"]                                               # aclnn 算子调用错误（VERL-6885 ConvolutionBackward）
       - ["CPU-only actor", "registered but not available"]          # 设备平台注册失败（VERL-6741 Ray actor CPU-only）
       - ["RuntimeError", "AssertionError", "patch.*fail"]           # 训练期异常（VERL-6707 npu_patch / VERL-6756 设备检测兜底）
+      - ["ImportError", "ModuleNotFoundError", "FileNotFoundError"]  # 启动期 import/文件错误（MSLLM-1554/1555 features_manager 缺符号 / MSLLM-1465 数据预处理路径）
+      - ["cannot start", "启动失败", "failed to start", "训练无法启动", "训练无法拉起", "启动即失败"]   # 训练启动失败类（MSLLM-1459/1667 等）
+      - ["重复注册", "register.*multiple times"]                     # 算子重复注册（MSLLM-1550 GMMOpBuilder / MSLLM-1707 npu_moe 算子）
+      - ["build_train_valid_test_data"]                              # 数据集构建阶段（MSLLM-1526 helpers_cpp 缓存）
+      - ["recv_forward", "p2p_communication"]                        # p2p 通信路径（MSLLM-1525 batch_p2p_comm）
     search_namespaces:            # 按顺序搜索，最多加载 3 个
       - training/<detected_framework>/
       - common/
@@ -37,6 +42,7 @@ branches:
       - ["fp8.*precision", '\boverflow\b', '\bunderflow\b']
       - ["bf16.*mismatch", "allreduce.*round"]
       - ['\bdiverg', "not converg"]        # 收敛问题走 precision.convergence 子类型
+      - ["乱码", "garbled", "weight.*mismatch", "权重.*错位"]   # 权重错位/输出乱码（MSLLM-1532 mg2hf GQA 拆分 / MSLLM-1437 grad norm 0）
     search_namespaces:
       - training/<detected_framework>/
       - common/

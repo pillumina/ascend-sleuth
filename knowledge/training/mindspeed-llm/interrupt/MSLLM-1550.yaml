@@ -1,0 +1,69 @@
+# MSLLM-1550 —— 8 卡 910B4 跑 Qwen3-8B 预训练报 GMMOpBuilder 重复注册操作符：环境中安装多个 mindspeed 版本导致算子重复编译注册，清理多版本修复
+# 来源：https://gitcode.com/Ascend/MindSpeed-LLM/issues/1550（3 评论；维护者根因假设，低置信度）
+# pre-triage: new_pattern —— knowledge/training/mindspeed-llm/ 为空；全库无 GMMOpBuilder / 算子重复注册类 case（与 MSLLM-1707 签名不同：1707=torch 侧算子注册冲突+CANN 版本；本 case=多版本 mindspeed 编译注册）
+# 转正：knowledge-groom 2026-08-31（interrupt；issue-ingest 预分诊复核通过：MSLLM-1550 为种子批次，跨池无重复）
+
+cases:
+  - id: MSLLM-1550
+    title: "8 卡 910B4 跑 Qwen3-8B 预训练环境校验通过但启动报 GMMOpBuilder 重复注册操作符：很可能安装多个 mindspeed 版本致算子重复编译注册，清理多版本修复"
+
+    category: interrupt
+    tags: [operator-registration, multi-version, install, environment, startup-fail, qwen3]
+
+    platforms: ["A2-910B"]            # 910B4
+    compat:
+      - framework: mindspeed-llm
+        ranges: ["master"]
+      - framework: cann
+        ranges: ["8.5.0"]
+
+    investigation_quality: low       # 维护者根因假设（"很有可能"），用户未确认，stale 关闭
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.1
+      last_hit: ""
+
+    symptoms:
+      - "8 卡 910B4（openEuler，CANN 8.5.0，master 分支）运行 Qwen3-8B 预训练脚本，环境校验（torch_npu/torchair 导入、8 卡 NPU 可用）均正常通过"
+      - "启动后算子编译/加载阶段报 GMMOpBuilder 重复注册操作符，训练无法继续"
+
+    references:
+      - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1550"
+
+    quickly_check:
+      primary:
+        command_template: "grep -iE 'GMMOpBuilder.*register|重复注册' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*GMMOpBuilder"
+      fallback:
+        command_template: "pip list | grep -i mindspeed"
+        rank_selector: coordinator
+        expected: "regex:.*mindspeed"   # 命中多条 = 多版本嫌疑
+
+    diagnosis:
+      - step: 1
+        check: "启动报 GMMOpBuilder 重复注册操作符，但环境校验（torch_npu/torchair/NPU 可用）正常？"
+        expected: "是 → 指向算子编译注册冲突，非设备/环境基础问题"
+      - step: 2
+        check: "pip list / 安装路径中是否存在多个 mindspeed 版本？"
+        expected: "是（很可能）→ 同一算子被编译多次、重复注册"
+        fix_on_mismatch: "仅一个版本仍报 → 回 Tier 3：查算子缓存/编译目录残留"
+        rollback: "保留多版本（错误复现）"
+      - step: 3
+        check: "修复：卸载多余 mindspeed 版本、仅保留单一版本后重跑？"
+        expected: "是（维护者排查方向；用户未回验）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change          # 清理多版本
+
+    root_cause: >
+      维护者定位：环境中很可能安装了多个版本的 mindspeed，导致同一算子被编译多次、
+      重复注册，触发 GMMOpBuilder 重复注册报错。属维护者假设（低置信度），用户未
+      进一步反馈确认，issue 被 stale 自动关闭。
+
+    fix: >
+      检查环境中是否存在多个 mindspeed 版本（如 pip list / 不同安装路径），卸载多余
+      版本、仅保留单一版本后重跑训练脚本。
+    rollback: "保留多版本（错误复现）"

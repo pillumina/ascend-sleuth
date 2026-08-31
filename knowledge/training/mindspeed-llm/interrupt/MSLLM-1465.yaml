@@ -1,0 +1,68 @@
+# MSLLM-1465 —— Qwen3 数据预处理报 FileNotFoundError: Couldn't find any data file：--input 指向的 parquet 文件名写错，核实路径/指向目录修复
+# 来源：https://gitcode.com/Ascend/MindSpeed-LLM/issues/1465（3 评论；闭环明确，resolved）
+# pre-triage: new_pattern —— knowledge/training/mindspeed-llm/ 为空；全库无数据预处理路径配置类 case
+# 转正：knowledge-groom 2026-08-31（interrupt；issue-ingest 预分诊复核通过：MSLLM-1465 为种子批次，跨池无重复）
+
+cases:
+  - id: MSLLM-1465
+    title: "Qwen3 预训练数据预处理报 FileNotFoundError: Couldn't find any data file at /data/dataset/xxx.parquet：--input 文件名写错，ls 核实后改真实路径或指向目录修复"
+
+    category: interrupt
+    tags: [dataset, data-preprocess, path-config, file-not-found, qwen3]
+
+    platforms: []
+    compat:
+      - framework: mindspeed-llm
+        ranges: ["*"]
+
+    investigation_quality: high      # 根因明确（配置错误）+ 修复明确
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "执行 examples/mcore/qwen3/data_convert_qwen3_pretrain.sh 做 Qwen3 预训练数据预处理时，preprocess_data.py 报 FileNotFoundError: Couldn't find any data file at /data/dataset/train-00000-of-00042-d964455e17e96d5a.parquet"
+      - "日志中夹杂 bitsandbytes/DeprecationWarning 等干扰项，关键报错是这一行"
+
+    references:
+      - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1465"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E \"Couldn't find any data file\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*Couldn't find any data file"
+      fallback:
+        command_template: "grep -n 'input' {{script_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*--input"
+
+    diagnosis:
+      - step: 1
+        check: "报 FileNotFoundError: Couldn't find any data file at <path>？"
+        expected: "是 → --input 指向的文件不存在"
+      - step: 2
+        check: "ls 核实 --input 指向的实际文件（可能存在文件名差异，如 train-00000-of-00001-xxx.parquet vs 写错的 train-00000-of-00042-xxx.parquet）？"
+        expected: "存在差异 → 修改 --input 为真实路径，或直接指向整个数据目录（自动处理目录下所有文件）"
+        fix_on_mismatch: "路径正确仍报 → 回 Tier 3：查数据目录权限/挂载/文件损坏"
+        rollback: "保留错误路径（错误复现）"
+      - step: 3
+        check: "修复：改脚本 --input 后重新执行 data_convert_qwen3_pretrain.sh？"
+        expected: "是（修复明确）"
+
+    severity: benign
+    fix_side_effects: []
+    fix_type: config-change          # 脚本路径参数
+
+    root_cause: >
+      --input 参数指向的 parquet 文件在 /data/dataset/ 下不存在——文件名写错（实际存在
+      的文件是 train-00000-of-00001-a09b74b3ef9c3b56.parquet），属路径/文件名配置错误，
+      非框架 bug。
+
+    fix: >
+      先 ls /data/dataset/ 核实实际文件名，修改 data_convert_qwen3_pretrain.sh 中的
+      --input 为真实文件路径，或直接 --input /data/dataset/ 指向整个目录（自动处理目录
+      下所有文件），再重新执行 bash examples/mcore/qwen3/data_convert_qwen3_pretrain.sh。
+    rollback: "保留错误路径（错误复现）"
