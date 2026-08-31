@@ -11,6 +11,8 @@ disable-model-invocation: true
 
 # Knowledge Groom
 
+> **本地执行说明**：本 skill 标记 `disable-model-invocation`（防 agent 自发启动批量改库）——skill 工具加载会报 "not available for model invocation"，这是预期。用户明确要求 groom 时，agent 直接 `read` 本文件手动遵循流程即可，流程完整性不受影响；或用户输入 `/skill:knowledge-groom` 直接触发。
+
 体系的演化引擎。不加控制的增长会摧毁检索效率——这个 skill 是知识库的"免疫系统 + 清道夫"。
 
 ## 触发
