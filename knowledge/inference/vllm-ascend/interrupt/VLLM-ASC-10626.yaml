@@ -1,0 +1,69 @@
+# VLLM-ASC-10626 —— Qwen2VL --enable-lora 启动失败（507018 aicpu exception，unique_consecutive 路径）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10626（真实诊断 trace：2026-08-30-10626-lora-507018）
+# 转正：knowledge-groom 2026-08-31（variant 关系：同 507018 家族的独立变体——勿并入 13050，fix 语义冲突）
+# variant_of: VLLM-ASC-13050（同 507018 aicpu 签名；但 13050=310P IndexPut 升级修复，本 case=A3-910C 多模态 LoRA 待上游适配，强行并入会污染 fix）
+
+cases:
+  - id: VLLM-ASC-10626
+    title: "Qwen2VL --enable-lora 启动失败：aclnnUniqueConsecutive failed, error code 507018 (aicpu exception)——多模态 LoRA adapter 激活路径"
+
+    category: interrupt
+    tags: [lora, multimodal, aicpu, 507018, startup-failure, adapter]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.19.1rc1"]          # 实测触发版本
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3                        # medium → 初始 0.3
+      last_hit: ""
+
+    symptoms:
+      - "v0.19.1rc1 部署 Qwen2VL，--enable-lora 启动失败：aclnnUniqueConsecutive failed, error code 507018 (aicpu exception)"
+      - "调用链 profile_run → set_active_adapters → compute_meta → torch.unique_consecutive"
+      - "场景 B 加 tower-connector-lora 报 507057（vector core, DDR out of range）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10626"
+      - "https://github.com/vllm-project/vllm-ascend/issues/13050"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'UniqueConsecutive' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(UniqueConsecutive|unique_consecutive).*"
+      fallback:
+        command_template: "grep -E '507018|aicpu exception' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(507018|aicpu exception)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：--enable-lora 启动失败 + 507018 aicpu exception？"
+        expected: "是（aclnnUniqueConsecutive failed, error code 507018）"
+      - step: 2
+        check: "判别：与 VLLM-ASC-13050（310P IndexPut aicpu）是否同算子/同平台？"
+        expected: "否——本案例 A3-910C + unique_consecutive（多模态 LoRA compute_meta），13050 是 310P IndexPut → variant 非完全命中"
+      - step: 3
+        check: "修复路径：13050 的 '0.23.0 修复' 是否适用？"
+        expected: "不直接套用——多模态 LoRA 是独立算子适配问题（set_active_adapters/compute_meta 路径），需上游适配；勿把 13050 版本升级当作本案例 fix"
+        note: "同签名（507018 aicpu）≠ 同根因：报错浮出在 LoRA adapter 计算（unique_consecutive），非 13050 的 IndexPut 推理路径。509057 变体（tower-connector-lora, vector core DDR out of range）同族，勿单独拆"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: pending-investigation     # 待上游多模态 LoRA 算子适配
+
+    root_cause: >
+      Qwen2VL --enable-lora 启动时 adapter 激活路径（profile_run → set_active_adapters →
+      compute_meta）触发 aclnnUniqueConsecutive aicpu 异常（507018），A3-910C 上
+      多模态 LoRA 算子适配问题。与 VLLM-ASC-13050（310P IndexPut aicpu 507018）签名相同
+      但算子/平台/触发路径不同——是 507018 家族的独立变体，不是 13050 的版本问题。
+
+    fix: >
+      待上游 vllm-ascend 多模态 LoRA 算子适配（set_active_adapters/compute_meta 路径）；
+      当前无成熟 workaround，勿套用 13050 的版本升级 fix。
+    rollback: "不启用 --enable-lora（或拆分 tower-connector-lora）规避"
