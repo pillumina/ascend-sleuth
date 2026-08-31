@@ -48,10 +48,10 @@ disable-model-invocation: true
 
 先验知识层（`references/`）是独立资产，维护动作与 case 平行：
 
-**R1. reference 草稿审核**（`/skill:to-reference` 的产出以 draft 直进正式目录——无 _inbox，PR review 即审核闸门）：
-- 逐条审：accept → 移入 `references/<type-dir>/`；adjust / reject / defer；
-- **深审门槛**：case-derived + methodology 词条需 ≥3 条 case 引用（派生计数，`verify_references.py` 强制）才可 `active`，否则留 `draft`；
-- draft 词条停留 >2 周标红提醒（队列不是档案）。
+**R1. reference 词条审核（修订 3：to-reference 产出即 active，PR review 即审核闸门——合入即生效，无常规 draft→active 翻牌流程）**：
+- 新词条不再由 groom 翻牌：to-reference 产出 `status: active` 随 PR 提交，深审门槛（case-derived methodology ≥3 条 case 引用）由 PR CI 强制把关——产出时不达标直接红，不会以 active 合入未达门槛词条；
+- groom 只处理**遗留 draft**（修订 3 前历史产出）：逐条审 accept → 改 `active` / adjust / reject / defer；停留 >2 周标红提醒（队列不是档案）；无遗留则跳过；
+- **深审门槛**：case-derived + methodology 词条需 ≥3 条 case 引用（派生计数，`verify_references.py` 强制）才可 `active`——对遗留 draft 审核与 CI 一致。
 
 **R2. 引用完整性校验**：case 的 `ref_knowledge.ref` 必须真实存在于 `references/`（`verify_references.py` 已强校验悬挂引用与非法 role——groom 把结果带进变更摘要，不重复计算）。
 
@@ -61,7 +61,7 @@ disable-model-invocation: true
 
 **R5. 校验**：改动 reference 后运行 `python3 scripts/verify_references.py --check`（与 build_index 并列，CI 同样强制）。
 
-**R5.5. 修订中的 reference（内容修订机制）**：`pending-review` / `draft` 词条在变更摘要里列出并标注**修订中/待修订**，提示 owner 安排：
+**R5.5. 修订中的 reference（内容修订机制）**：`pending-review` / 遗留 `draft` 词条在变更摘要里列出并标注**修订中/待修订**，提示 owner 安排：
 - 有修订 PR 在走 → 摘要注明"修订中"（status 保持降级态，diagnose 不加载）；
 - 无修订 PR 但已标降级 → 提示"待修订"，owner 决定：小修直接改 YAML + PR，大修用 `/skill:to-reference --update <ref-id>`；
 - 修订走 PR 时按 **kb/high-risk** 处理（改 active 内容 = 修改已生效知识，双签）。
@@ -105,7 +105,7 @@ disable-model-invocation: true
 | inbox 条目停留 >2 周 | 变更摘要标红，提醒 owner（队列不是档案） |
 | 某 (framework×category) 格子超 soft_cap（30）且健康指标恶化 | 触发拆分评估（category 深化或 platform 轴），不等撞线 |
 | 某格子超 hard_cap（60） | 强制拆分（信道物理上限） |
-| `references/` 有 draft 草稿 | 审核 R1：accept 翻 active；case-derived methodology 未达 ≥3 引用禁止 active |
+| `references/` 有遗留 draft 草稿 | 审核 R1（修订 3 前历史产出）：accept 改 active / adjust / reject；case-derived methodology 未达 ≥3 引用禁止 active；新产出走 to-reference 即 active + PR 合入，不再产生新 draft |
 | 某 reference `last_verified` 超 90 天未刷新 | 标 `needs-review`，owner 季度审 |
 | case-derived methodology 被引用数 < 3（派生计数） | 不允许 active（verify_references 强制；已 active 的降 draft） |
 | 工程师反馈某 reference 引用后诊断失败（trace `outcome_after_use` 恶化） | methodology → `draft` + 禁用 30 天；普通 → `pending-review` |

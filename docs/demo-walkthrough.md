@@ -166,7 +166,7 @@ postmortems/inbox/VLLM-ASC-10122.md         # 原始记录（指针式）
 
 [示例输出] 识别共性：MoE 通信/路由/量化算子故障族（4 条 case 同 tag: moe）
 → 提炼 methodology：ascend-moe-comm-triage（4 形态分流排查）
-→ draft 直进 references/methodologies/（status: draft，PR review 即审核闸门）
+→ active 直进 references/methodologies/（status: active，PR review 即审核闸门——合入即生效）
 ```
 
 批量吸收上游 issue 走 `issue-ingest`：

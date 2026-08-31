@@ -1,14 +1,14 @@
 ---
 name: to-reference
 description: >
-  把昇腾先验知识沉淀成 reference 词条。输入支持内联粘贴、单个文件、URL 爬取、或从已有 case 集合归纳共性。提取事实/方法论，按 references/_types.yaml 归类（error-code / tool / platform-fact / command-side-effect / methodology），标来源类型（official-doc / engineer-input / case-derived）与验证状态，经 grill 阶段与用户反复确认意图后，产出结构化 YAML 草稿（status: draft 直进正式 type 目录，PR review 即审核闸门）。这是先验知识的统一入口——与 to-postmortem（案例）并列，先验知识从这里汇入，不从 diagnose 自动生成。
+  把昇腾先验知识沉淀成 reference 词条。输入支持内联粘贴、单个文件、URL 爬取、或从已有 case 集合归纳共性。提取事实/方法论，按 references/_types.yaml 归类（error-code / tool / platform-fact / command-side-effect / methodology），标来源类型（official-doc / engineer-input / case-derived）与验证状态，经 grill 阶段与用户反复确认意图后，产出结构化 YAML 词条（status: active 直进正式 type 目录，PR review 即审核闸门——合入即生效）。这是先验知识的统一入口——与 to-postmortem（案例）并列，先验知识从这里汇入，不从 diagnose 自动生成。
 ---
 
 # To Reference
 
-先验知识注入入口，与案例知识（`/skill:to-postmortem`）并列。**reference 是独立于任何具体事故的领域事实与方法论**——不是 case，不携带 symptoms/diagnosis/fix 闭环。本 skill 的产物以 `status: draft` 直接落入正式 type 目录（`references/<type-dir>/`），PR review 即审核闸门——review 通过翻 active 才生效；draft 状态保证未审内容不进诊断上下文。
+先验知识注入入口，与案例知识（`/skill:to-postmortem`）并列。**reference 是独立于任何具体事故的领域事实与方法论**——不是 case，不携带 symptoms/diagnosis/fix 闭环。本 skill 的产物以 `status: active` 直接落入正式 type 目录（`references/<type-dir>/`），**PR review 即审核闸门——合入即生效**：词条随 PR 提交，review 通过合入 = active 进入诊断上下文。未合入的 PR 分支不 main，天然不进诊断上下文——安全性语义由"合入动作"承担，不再需要 draft 中间态隔离。
 
-> ⚠️ **质量原则（比 case 更严）**：reference 是知识库的浓缩资产，一旦错误，污染的是所有引用它的诊断。**本 skill 的产出不是"录进去"，是"提交审核"**——先与用户反复确认意图（grill），再进 inbox，最后由 maintainer 审核。三个环节缺一不可。
+> ⚠️ **质量原则（比 case 更严）**：reference 是知识库的浓缩资产，一旦错误，污染的是所有引用它的诊断。**本 skill 的产出不是"录进去"，是"提交审核"**——先与用户反复确认意图（grill），再产出 active 词条随 PR 提交，由 maintainer 在 PR review 审核。环节缺一不可。
 
 ## 输入方式
 
@@ -149,11 +149,11 @@ grill 是**人审的第一道过滤**——确认过程中用户放弃/否认的
 - 仅无对应族文件时才新建（如第一个 HCCL 错误码 → 建 `references/errors/hccl.yaml`）；
 - 独立词条类：查 `tags` / `related_references` 是否可关联现有词条，**不合并**（关联不合并——主题聚合由标签承担，不是文件合并）。
 
-### 5. 产出草稿 → `references/<type-dir>/`（draft，无 _inbox）
+### 5. 产出词条 → `references/<type-dir>/`（active，无 _inbox）
 
 > ⚠️ **词条零注释（硬规则）**：下面模板中的 `#` 注释是**给作者看的写作指引**，产出 YAML 时必须**删除全部注释行**——词条是给 agent 消费的数据，不是带元说明的文档；重复注释是 token 浪费（23 条 × 同一注释的教训）。语义解释（url 定位符规则、verification 含义、status 规则、字段含义）只存在于 SKILL.md / references/README.md 文档层，**不进词条**。值自解释就不加注释。
 
-按 reference schema 产出完整 YAML（字段定义见 `references/_types.yaml` 与 `references/README.md`；基础元信息 + content 全部填齐，CI 对 inbox 同样校验——草稿也必须 schema 完整，这是与 to-postmortem 草稿可残缺的差异）：
+按 reference schema 产出完整 YAML（字段定义见 `references/_types.yaml` 与 `references/README.md`；基础元信息 + content 全部填齐，CI 强校验——词条必须 schema 完整，这是与 to-postmortem 草稿可残缺的差异）：
 
 ```yaml
 id: <kebab-case-slug>              # 唯一；如 plog-error-507903、a3-hccl-buffsize-check
@@ -175,7 +175,7 @@ applies_to:                        # 能确定就填，确定不了留待 grill 
   versions: {...}
   categories: [...]                # methodology 必填
 
-status: draft                      # 永远从 draft 起步——active 是审核后的状态
+status: active                      # 产出即 active——PR review 即审核闸门，合入即生效
 last_verified: <今天>              # 人确认的日期（grill 认可即视为一次人核）
 # 观测字段（可选；产出时**不填**，由 groom 在 reference 观测回写时有数据才填）：
 #   hits: <int>                    # 被引用次数（trace.reference_lookup 计数）
@@ -191,29 +191,30 @@ content:
   #       source_cases: [<case-id>]   # case 提炼的证据（可选）
 ```
 
-- `status` **永远写 `draft`**——没有任何途径在本 skill 里产出 active（active 需要 maintainer 审核 + 深审条件）；
-- 初始 confidence 按来源类型（写进草稿注释，供审核参考）：`official-doc` 0.6 / `engineer-input` 0.3 / `case-derived` 0.3–0.6（case 数与一致性越高越靠近 0.6）；
+- `status` **写 `active`**——产出即 active，PR review 即审核闸门，合入即生效；**深审条件在产出时就满足**（case-derived + methodology 需 ≥3 条 case 引用，CI 强校验，产出时不达标 PR 直接红——不允许以 active 提交未达深审门槛的词条）。未合入的 PR 分支不 main，天然不进诊断上下文；合入动作即审核通过；
+- 初始 confidence 按来源类型（写进词条注释，供审核参考）：`official-doc` 0.6 / `engineer-input` 0.3 / `case-derived` 0.3–0.6（case 数与一致性越高越靠近 0.6）；
 - `last_verified` 填今天——grill 阶段用户认可即视为一次人工确认，但**这不替代 maintainer 审核**；
 - **产出前检查：词条文件里不得有任何 `#` 注释行**（上模板中的注释全部删掉）——`grep -c "#" <file>` 应为 0。
 
 ### 6. 报告落点（生成后必须明确告知）
 
 ```
-草稿 → references/<type-dir>/<ref-id>.yaml（status: draft）
+词条 → references/<type-dir>/<ref-id>.yaml（status: active）
 来源类型：<engineer-input | official-doc | case-derived>
-状态：draft（待 maintainer 审核转正；case-derived + methodology 需 ≥3 条 case 引用才可 active）
+状态：active（PR review 即审核闸门——本词条随 PR 提交，合入即进入诊断上下文；case-derived + methodology 已按 ≥3 条 case 引用满足深审门槛）
 审核建议：<按来源类型的审核深度提示>
 ```
 
-别让用户去找自己的产出——报出具体路径，说明"maintainer 审后转正，审核走 PR"。
+别让用户去找自己的产出——报出具体路径，说明"随 PR 提交，review 合入即生效"。
 
 ## 产出落点
 
-- `references/<type-dir>/<ref-id>.yaml`——草稿（status: draft；PR review 即审核闸门，accept 后翻 active）
-- maintainer 审核（`/skill:knowledge-groom` 或独立 review）后：accept → 移入 `references/<type-dir>/`、按需改 status；reject → 归档说明原因；defer → 留在 inbox
+- `references/<type-dir>/<ref-id>.yaml`——词条（status: active；PR review 即审核闸门，合入即生效，无中间 draft 态）
+- PR review：reject → 不合并（分支废弃，词条不进 main）；request changes → 修改后重新提交；approve + 合入 → active 生效
+- 遗留 draft（历史旧态，修订 3 前产出）：由 `/skill:knowledge-groom` R1 按需清理或补审
 
 **与 to-postmortem 的分工**：案例（事故闭环）→ `/skill:to-postmortem` → `knowledge/`；先验知识（独立事实/方法论）→ `/skill:to-reference` → `references/`。两条入口不互相覆盖——to-postmortem 不自动产 reference，to-reference 不反向产 case。
 
 ## 为什么先验知识要专门入口
 
-案例沉淀（to-postmortem）解决"同类问题下次直接命中"；但工程师的**通用经验**（怎么查 plog、哪个命令看什么、这个错误码意味着什么）不绑定任何具体事故，散在个人脑子里，每次诊断都重新摸索。没有专门入口，这些知识永远进不了仓库——因为工程师不会为了沉淀"我知道怎么查设备日志"去写一份 postmortem。to-reference 把这个门槛降下来：**工程师随口一句话，agent 提取 + grill 确认，30 秒进待审队列**。
+案例沉淀（to-postmortem）解决"同类问题下次直接命中"；但工程师的**通用经验**（怎么查 plog、哪个命令看什么、这个错误码意味着什么）不绑定任何具体事故，散在个人脑子里，每次诊断都重新摸索。没有专门入口，这些知识永远进不了仓库——因为工程师不会为了沉淀"我知道怎么查设备日志"去写一份 postmortem。to-reference 把这个门槛降下来：**工程师随口一句话，agent 提取 + grill 确认，30 秒产出可提交词条**。

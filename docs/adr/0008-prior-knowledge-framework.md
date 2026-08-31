@@ -16,6 +16,7 @@ Adopted（2026-08-27 合入后随使用修订，见下"修订记录"）
 | 2 | 2026-08-28 | 演化机制校准（基于知识聚类/追加/检索的 review）：①**聚类规则**——族划分跟随来源（官方错误码参考怎么分章，errors/ 就怎么建文件）、追加不新建（新错误码先查族归属再追加到现有表，仅族文件不存在才新建）、关联不合并（独立词条不动态聚类成新文件，主题聚合由 tags + related_references 承担，聚合是检索层职责非文件层职责）；②**检索渐进**——目录+grep 现状，触发条件（文件数 >50 或 diagnose trace 显示 reference 检索退化）时生成 `references/_index.yaml`（`build_references_index.py`，与 case 层同构）；③明确**不引入图存储**——知识关联是轻量单跳、词法可表达（字段/标签/ref id），图的多跳遍历是 v2 离线分析工具的内存算法，永不成为持久存储形态（原则三 + ADR-0002 同一逻辑） |
 | 3 | 2026-08-28 | 修订机制校准（基于"沉淀的 reference 有误如何更新"的 review）：补全 reference 生命周期缺失的一环——**内容修订**。新增 §1.7：发现（观测性 resolve 率低 / groom 信号 / maintainer 复查）→ 降级（pending-review/draft）→ 修订（维护者直接改 YAML + PR，或 `to-reference --update` agent 辅助）→ 验证（CI + review）→ 回 active。**修订 active 内容 = 修改已生效知识 → kb/high-risk 双签**（对齐 case 层 knowledge_modification 逻辑）；修订中 status 保持降级态，diagnose 只读 active 天然隔离修订中的词条 |
 | 4 | 2026-08-29 | 源码知识边界校准（基于"开源仓库源码是否应沉淀进 reference"的 review）：新增 §1.8——**源码是证据源，不是独立输入通道**（不新增 source type；源码知识经三条现有通道进入，源码作为证据升级器）；按"版本稳定性 × 事故独立性 × 验证成本"把源码知识拆成四形态（稳定结构事实 / 易腐行为事实 / 事故绑定知识 / 诊断方法论），各自落点不同；稳定结构事实（仓库架构/文件布局/框架自定义 env var/版本兼容矩阵）是唯一值得主动沉淀的形态，定位为**导航辅助**（不参与路由、不解决冷启动——冷启动是 case 问题，issue-ingest 已部分覆盖）；源码提炼的验证故事是"版本 pin + verification 词表"而非 grill；结构事实从真实使用进入（diagnose 源码分析步骤顺手沉淀，演进由数据触发） |
+| 5 | 2026-08-31 | 激活机制简化（基于"PR 合入即生效、不再二次翻牌"的 review）：**to-reference 产出即 `status: active`**，PR review 即审核闸门——approve + 合入即进入诊断上下文，无 draft 中间态（未合入的 PR 分支不 main，天然隔离未审内容，隔离语义从 draft 状态迁移到合入动作）；深审门槛（case-derived methodology ≥3 条 case 引用）前置到产出时，由 PR CI 强制把关（产出时不达标直接红，不以 active 合入未达门槛词条）；遗留 draft（修订 5 前产出）由 groom R1 按需清理；修订 active 内容仍为 kb/high-risk 双签（§1.7 不变） |
 
 ## Deciders
 
@@ -136,7 +137,7 @@ reference 内容有误/过时/不完整时的更新路径——补全生命周�
 | **验证** | 修订走 PR + `verify_references.py` CI + review |
 | **回 active** | review 通过后回 active（methodology 需重新实测 `verified_by_testing`） |
 
-**风险分级（对齐 case 层 knowledge_modification）**：新增 draft 从未生效 → 单审足够；**修订 active 内容 = 修改已生效的诊断事实 → `kb/high-risk` 双签**。修订期间 status 保持降级态——diagnose 只读 active 天然隔离修订中的词条（status 机制的额外价值）。
+**风险分级（对齐 case 层 knowledge_modification）**：修订 5 后新增词条产出即 active、未合入前不生效（PR 分支不 main）→ 首次合入由 PR review 承担，单审足够；**修订已生效的 active 内容 = 修改已生效的诊断事实 → `kb/high-risk` 双签**。修订期间 status 保持降级态——diagnose 只读 active 天然隔离修订中的词条（status 机制的额外价值）。
 
 **误伤防护**：引用后 resolve 率低可能是 ref 错（该修），也可能是 case 匹配错（不该修 ref）——**先 trace 归因**（原则八：引用后验证环节失败 vs 引用本身误导），归因清楚再动，观测性不能变成"冤案制造机"。
 
@@ -187,7 +188,7 @@ references/
 
 物理按 type 分目录——agent 按 type 过滤时直接进入对应子目录。type 之间无 namespace 维度（reference 的检索是**按 type + 内容字段**的组合，不是 framework × category）。
 
-**无 `_inbox/` 目录（修订 1 移除）**：草稿以 `status: draft` **直接进正式 type 目录**，PR review 即审核闸门（原则五：建议与决定分离由 PR review 承担，不需要持久中间目录）。`status: draft` 已承担"未审内容不进诊断上下文"的隔离（diagnose 阶段 2.5 只读 active）——目录隔离是冗余。postmortems/inbox 保留（高频事故沉淀需要集中批审，其队列逻辑在本层不成立）。
+**无 `_inbox/` 目录（修订 1 移除）**：词条直接进正式 type 目录，PR review 即审核闸门（原则五：建议与决定分离由 PR review 承担，不需要持久中间目录）。**修订 3（产出即 active）**：to-reference 产出 `status: active`，PR review 通过合入即生效——"未审内容不进诊断上下文"的隔离由**合入动作**承担（未合入的 PR 分支不 main，diagnose 阶段 2.5 只读 main 上的 active），不再需要 draft 中间态。深审门槛（case-derived methodology ≥3 条 case 引用）前置到产出时，由 CI 强制把关。postmortems/inbox 保留（高频事故沉淀需要集中批审，其队列逻辑在本层不成立）。
 
 ### 3. reference type 清单（修订 1 更新）
 
@@ -477,15 +478,15 @@ cases:
 /skill:to-reference --ingest-cases "[case-ids]"    # 从 case 集合归纳
 ```
 
-四阶段流程（修订 1：草稿直接进正式目录，无 _inbox 中间态）：
+四阶段流程（修订 1：草稿直接进正式目录，无 _inbox 中间态；修订 3：产出即 active，PR 合入即生效，无 draft 中间态）：
 1. 输入（用户粘贴 / 文件 / URL / case 集合）；
 2. **grill 阶段**（如果是工程师输入或 case 归纳）—— agent 反复追问"你指的是不是这个意思"，确保产物符合用户意图；
 3. **聚类归属判定（修订 2：追加不新建）**——数据集类（error-code）先查 `references/errors/` 现有文件，按组件归属判定：归属已有族 → **追加到该表 `errors` 列表**（标新 `source_cases`）；仅无对应族文件才新建文件。独立词条类：查 `tags`/`related_references` 是否可关联现有词条，不合并；
-4. 草稿以 `status: draft` 落入正式 type 目录（`references/<type-dir>/`）；
-5. maintainer 通过 **PR review 审核** → accept（合并时或合并后翻 active）/ adjust / reject / defer。
+4. 词条以 `status: active` 落入正式 type 目录（`references/<type-dir>/`）——深审门槛（case-derived methodology ≥3 条 case 引用）在产出时即满足，PR CI 强制把关；
+5. maintainer 通过 **PR review 审核** → approve + 合入即生效（进入诊断上下文）/ request changes / reject。
 
 **关键设计原则**：
-- **PR review 即审核闸门**（修订 1：去 _inbox 后，审核由 PR review 承担——草稿以 draft 进正式目录，draft 状态保证不进诊断上下文，review 通过翻 active 即生效）；
+- **PR review 即审核闸门（修订 1：去 _inbox 后，审核由 PR review 承担；修订 5：产出即 active，合入动作即审核通过——未合入的 PR 分支不 main，天然不进诊断上下文，不再需要 draft 状态隔离未审内容）**；
 - **grill 阶段去噪**——避免一切材料堆到 maintainer ；
 - **来源类型决定审核深度**——maintainer 审时按 source type 决定 spot-check 深度（整表审核 vs 逐条审核：官方错误码参考整表同源 → 表级审；case 提炼条目带 source_cases → 逐条抽审）；
 - **聚类归属抽查**（修订 2）——reviewer 检查新错误码是否进对族（归属判定是语义判断，CI 不硬判，PR review 承担）。
