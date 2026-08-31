@@ -43,6 +43,7 @@ branches:
       - ["bf16.*mismatch", "allreduce.*round"]
       - ['\bdiverg', "not converg"]        # 收敛问题走 precision.convergence 子类型
       - ["乱码", "garbled", "weight.*mismatch", "权重.*错位"]   # 权重错位/输出乱码（MSLLM-1532 mg2hf GQA 拆分 / MSLLM-1437 grad norm 0）
+      - ["日志.*异常", "统计失真", "被错误除以", "除以.*global_step", "日志失真"]   # 日志统计/数值呈现异常（MSLLM-1780 FSDP2 续训首步 lm loss 被除 global_step）
     search_namespaces:
       - training/<detected_framework>/
       - common/

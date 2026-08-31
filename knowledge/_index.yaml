@@ -1637,7 +1637,8 @@ namespaces:
       hash: f9d12d679bd8
     - id: MSLLM-1707
       title: 'deepseek-v4-flash LoRA 微调启动报 RuntimeError: Tried to register an operator (npu_moe_distribute_dispatch_v2)
-        multiple times：CANN 9.0.0 过旧，升级 9.1.0B120 及以上修复'
+        multiple times 或 ModuleNotFoundError: No module named ''cann_ops_transformer''：CANN 9.0.0 过旧，升级
+        9.1.0B120 及以上修复'
       category: interrupt
       tags:
       - moe
@@ -1646,6 +1647,7 @@ namespaces:
       - version-mismatch
       - lora
       - startup-fail
+      - module-not-found
       platforms:
       - A3-910C
       compat: mindspeed-llm 26.0.0; cann 9.0.0
@@ -1656,15 +1658,19 @@ namespaces:
         launch）启动即失败
       - 'RuntimeError: Tried to register an operator (npu_ops_transformer::npu_moe_distribute_dispatch_v2(...))
         with the same name and overload name multiple times，Duplicate registration at /dev/null:241'
+      - '变体（#1801）：同 CANN 9.0.0 族（9.0.0-beta.2）+ deepseekv4-flash lora，启动报 ModuleNotFoundError: No module
+        named ''cann_ops_transformer''（mindspeed_llm/ops/npu_mhc.py 导入失败）——CANN 过旧导致算子组件缺失，升级后新 CANN 自带该包'
       quickly_check:
         primary:
-          command: grep -E 'Tried to register an operator|Duplicate registration' {{log_path}}
-          expected: regex:.*(Tried to register an operator|Duplicate registration)
+          command: grep -E 'Tried to register an operator|Duplicate registration|No module named.*cann_ops_transformer'
+            {{log_path}}
+          expected: regex:.*(Tried to register an operator|Duplicate registration|No module named.*cann_ops_transformer)
         fallback:
-          command: grep -E 'npu_moe_distribute_dispatch|npu_ops_transformer' {{log_path}}
-          expected: regex:.*(npu_moe_distribute_dispatch|npu_ops_transformer)
+          command: grep -E 'npu_moe_distribute_dispatch|npu_ops_transformer|cann_ops_transformer|npu_mhc'
+            {{log_path}}
+          expected: regex:.*(npu_moe_distribute_dispatch|npu_ops_transformer|cann_ops_transformer|npu_mhc)
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1707.yaml
-      hash: 56ae92e9ea0e
+      hash: 10b59c974b6e
   training/mindspeed-llm/precision:
     precision:
     - id: MSLLM-1437

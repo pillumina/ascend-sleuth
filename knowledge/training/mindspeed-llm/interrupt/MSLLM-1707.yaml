@@ -1,21 +1,22 @@
-# MSLLM-1707 —— deepseek-v4-flash LoRA 微调启动报 npu_moe_distribute_dispatch_v2 算子重复注册：CANN 9.0.0 版本过旧，升级 9.1.0B120+ 修复
-# 来源：https://gitcode.com/Ascend/MindSpeed-LLM/issues/1707（3 评论；维护者定论，resolved）
+# MSLLM-1707 —— deepseek-v4-flash LoRA 微调启动报算子重复注册 / cann_ops_transformer 包缺失：CANN 9.0.0 版本过旧，升级 9.1.0B120+ 修复
+# 来源：https://gitcode.com/Ascend/MindSpeed-LLM/issues/1707（3 评论；维护者定论，resolved）+ 变体 #1801（cann_ops_transformer ModuleNotFoundError，dogfood 2026-08-31 诊断发现）
 # pre-triage: new_pattern —— knowledge/training/mindspeed-llm/ 为空；全库无 npu_moe_distribute_dispatch / 算子重复注册 / CANN 版本过旧类 case
 # 转正：knowledge-groom 2026-08-31（interrupt；issue-ingest 预分诊复核通过：MSLLM-1707 为种子批次，跨池无重复）
+# 修订：2026-08-31 扩签名——补 #1801 变体（同根因面：CANN 9.0.0 过旧→dsv4 微调启动失败；症状形态不同：算子重复注册 vs cann_ops_transformer 包缺失）
 
 cases:
   - id: MSLLM-1707
-    title: "deepseek-v4-flash LoRA 微调启动报 RuntimeError: Tried to register an operator (npu_moe_distribute_dispatch_v2) multiple times：CANN 9.0.0 过旧，升级 9.1.0B120 及以上修复"
+    title: "deepseek-v4-flash LoRA 微调启动报 RuntimeError: Tried to register an operator (npu_moe_distribute_dispatch_v2) multiple times 或 ModuleNotFoundError: No module named 'cann_ops_transformer'：CANN 9.0.0 过旧，升级 9.1.0B120 及以上修复"
 
     category: interrupt
-    tags: [moe, operator-registration, cann-version, version-mismatch, lora, startup-fail]
+    tags: [moe, operator-registration, cann-version, version-mismatch, lora, startup-fail, module-not-found]
 
     platforms: ["A3-910C"]            # Atlas 800I A3
     compat:
       - framework: mindspeed-llm
         ranges: ["26.0.0"]            # issue 中镜像内版本
       - framework: cann
-        ranges: ["9.0.0"]             # 触发版本；9.1.0B120+ 验证修复
+        ranges: ["9.0.0"]             # 触发版本；9.1.0B120+ 验证修复（含 9.0.0-beta.2，见变体 #1801）
 
     investigation_quality: high       # 维护者定论根因 + resolved
     confidence:
@@ -27,31 +28,33 @@ cases:
     symptoms:
       - "Atlas 800I A3 + CANN 9.0.0 + MindSpeed-LLM 26.0.0 镜像内源码安装最新版，deepseek-v4-flash 做 LoRA 微调（posttrain_gpt.py launch）启动即失败"
       - "RuntimeError: Tried to register an operator (npu_ops_transformer::npu_moe_distribute_dispatch_v2(...)) with the same name and overload name multiple times，Duplicate registration at /dev/null:241"
+      - "变体（#1801）：同 CANN 9.0.0 族（9.0.0-beta.2）+ deepseekv4-flash lora，启动报 ModuleNotFoundError: No module named 'cann_ops_transformer'（mindspeed_llm/ops/npu_mhc.py 导入失败）——CANN 过旧导致算子组件缺失，升级后新 CANN 自带该包"
 
     references:
       - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1707"
+      - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1801"
 
     quickly_check:
       primary:
-        command_template: "grep -E 'Tried to register an operator|Duplicate registration' {{log_path}}"
+        command_template: "grep -E 'Tried to register an operator|Duplicate registration|No module named.*cann_ops_transformer' {{log_path}}"
         rank_selector: all_failed
-        expected: "regex:.*(Tried to register an operator|Duplicate registration)"
+        expected: "regex:.*(Tried to register an operator|Duplicate registration|No module named.*cann_ops_transformer)"
       fallback:
-        command_template: "grep -E 'npu_moe_distribute_dispatch|npu_ops_transformer' {{log_path}}"
+        command_template: "grep -E 'npu_moe_distribute_dispatch|npu_ops_transformer|cann_ops_transformer|npu_mhc' {{log_path}}"
         rank_selector: all_failed
-        expected: "regex:.*(npu_moe_distribute_dispatch|npu_ops_transformer)"
+        expected: "regex:.*(npu_moe_distribute_dispatch|npu_ops_transformer|cann_ops_transformer|npu_mhc)"
 
     diagnosis:
       - step: 1
-        check: "启动报错签名含 'Tried to register an operator ... same name and overload name multiple times'？"
-        expected: "是 → 算子重复注册，指向环境/版本而非框架代码"
+        check: "启动报错签名含 'Tried to register an operator ... multiple times' 或 'No module named ... cann_ops_transformer'？"
+        expected: "是 → 算子/组件与 CANN 版本配套问题，指向环境/版本而非框架代码"
       - step: 2
-        check: "报错算子是否 npu_moe_distribute_dispatch_v2（MoE 分发算子）且模型为 deepseek-v4-flash？"
-        expected: "是 → MoE 结构加载触发 torch 侧算子注册冲突"
+        check: "报错算子/包是否 MoE 相关（npu_moe_distribute_dispatch_v2 / cann_ops_transformer via npu_mhc.py）且模型为 deepseek-v4-flash？"
+        expected: "是 → dsv4 MoE 结构加载触发 torch 侧算子注册冲突或包缺失"
       - step: 3
-        check: "CANN 版本是否 9.0.0 或更旧？"
-        expected: "是 → 升级 CANN 至 9.1.0B120 及以上（维护者建议）后重试"
-        fix_on_mismatch: "升级 CANN 无效 → 回 Tier 3：核对 MindSpeed-LLM 与 CANN 配套矩阵"
+        check: "CANN 版本是否 9.0.0 或更旧（含 beta，如 9.0.0-beta.2）？"
+        expected: "是 → 升级 CANN 至 9.1.0B120 及以上（维护者建议；新 CANN 自带 cann_ops_transformer 包）后重试"
+        fix_on_mismatch: "升级 CANN 无效 → 回 Tier 3：核对 MindSpeed-LLM 与 CANN 配套矩阵；若升级后仍报包缺失 → 检查镜像内多版本残留（见 MSLLM-1550）"
         rollback: "保留旧 CANN（错误复现）"
 
     severity: service-affecting
@@ -61,9 +64,11 @@ cases:
     root_cause: >
       CANN 版本过旧（9.0.0）：该版本下 npu_ops_transformer 的 MoE 算子
       npu_moe_distribute_dispatch_v2 在 torch 侧被重复注册（same name and overload name
-      multiple times），deepseek-v4-flash 的 MoE 结构加载时触发。维护者定位为 CANN 版本
-      兼容问题而非框架代码缺陷。
+      multiple times），或 cann_ops_transformer 算子包缺失（No module named，变体 #1801，
+      新版 CANN 自带该包），deepseek-v4-flash 的 MoE 结构加载时触发。维护者定位为 CANN
+      版本兼容问题而非框架代码缺陷。
 
     fix: >
-      升级 CANN 至 9.1.0B120 及以上版本（维护者建议；版本升级后算子注册冲突消除）。
+      升级 CANN 至 9.1.0B120 及以上版本（维护者建议；版本升级后算子注册冲突消除、
+      cann_ops_transformer 包自带）。
     rollback: "保留旧 CANN（错误复现）"
