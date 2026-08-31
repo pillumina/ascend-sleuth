@@ -3,9 +3,9 @@
 # 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-08-31    case 总数：45
+# 生成日期：2026-08-31    case 总数：46
 #   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=35/30, performance=3/30, precision=6/30
+#   容量(inference/vllm-ascend): interrupt=36/30, performance=3/30, precision=6/30
 namespaces:
   inference/sglang:
     interrupt:
@@ -428,6 +428,37 @@ namespaces:
           expected: regex:EZ1001
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12226.yaml
       hash: 51b5f68379b7
+    - id: VLLM-ASC-12345
+      title: DeepSeek V4 Pro 部署 A3/A5 长跑 host 内存持续增长→OOM：CANN-nnopbase 为 sas_metadata kernel（AICPU）按 TilingKey
+        分配 host buffer 不驱逐
+      category: interrupt
+      tags:
+      - oom
+      - host-memory-leak
+      - cann
+      - aicpu
+      - deepseek-v4
+      - long-running
+      platforms:
+      - A3-910C
+      - A5-950
+      compat: cann <9.1.0
+      confidence:
+        score: 0.3
+      symptoms:
+      - DeepSeek V4 Pro 部署 Ascend A3/A5，PD 分离 与 prefill/decode 合部 两种模式均出现内存持续增长
+      - 请求完成后内存不释放，长跑后 OOM 或服务不稳定；Prefill 与 Decode 节点同时增长
+      - 泄漏面为 host 内存（maintainer 确认）：进程 RSS 单调上涨，npu-smi 显存可能平稳
+      - q_lens × kv_lens 组合数越多，host 内存消耗越快
+      quickly_check:
+        primary:
+          command: grep -iE 'Cannot allocate memory|std::bad_alloc' {{log_path}}
+          expected: regex:.*(Cannot allocate memory|std::bad_alloc)
+        fallback:
+          command: npu-smi info && ps -o pid,rss,cmd -p $(pgrep -f 'vllm serve')
+          expected: 显存平稳 + 进程 RSS 随时间单调增长（host 泄漏特征，区别于 device OOM）
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12345.yaml
+      hash: bc4f8f36c025
     - id: VLLM-ASC-12461
       title: 多节点 EP + FusedMoE MC2 通信算子（MoeDistributeDispatchV2）在 ROCE 网络触发 aicore exception（MTE DDR 越界）→
         SUSPECT REMOTE ERROR 507057 启动失败；HCCS 可跑通，升级 0.20.2rc1+ 修复

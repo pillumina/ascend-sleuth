@@ -1,0 +1,73 @@
+# VLLM-ASC-12345 —— DeepSeek V4 Pro 部署 A3/A5 长跑 host 内存持续增长→OOM（CANN-nnopbase sas_metadata AICPU kernel host buffer 不驱逐）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12345（triaged；maintainer @linfeng-yuan 定位根因，CANN-9.1.0 修复）
+# 转正：knowledge-groom 2026-08-31（new_pattern：host 内存泄漏 + CANN AICPU TilingKey host buffer 缓存不驱逐，与 13688/12989/11343 等 device OOM 根因无重叠）
+# 路由补录：inference_interrupt 分支补 OOM/内存泄漏/内存持续增长 正则（随本批 PR #65 一并提交，先例 3bb14d9）
+cases:
+  - id: VLLM-ASC-12345
+    title: "DeepSeek V4 Pro 部署 A3/A5 长跑 host 内存持续增长→OOM：CANN-nnopbase 为 sas_metadata kernel（AICPU）按 TilingKey 分配 host buffer 不驱逐"
+
+    category: interrupt
+    tags: [oom, host-memory-leak, cann, aicpu, deepseek-v4, long-running]
+
+    platforms: ["A3-910C", "A5-950"]
+    compat:
+      - framework: cann
+        ranges: ["<9.1.0"]            # 9.1.0 修复；触发面为 9.1.0 之前的 CANN（报告方未给具体版本）
+
+    investigation_quality: medium      # maintainer 定位根因明确（组件级，非源码行）；报告方未回验升级修复
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3                        # medium → 初始 0.3
+      last_hit: ""
+
+    symptoms:
+      - "DeepSeek V4 Pro 部署 Ascend A3/A5，PD 分离 与 prefill/decode 合部 两种模式均出现内存持续增长"
+      - "请求完成后内存不释放，长跑后 OOM 或服务不稳定；Prefill 与 Decode 节点同时增长"
+      - "泄漏面为 host 内存（maintainer 确认）：进程 RSS 单调上涨，npu-smi 显存可能平稳"
+      - "q_lens × kv_lens 组合数越多，host 内存消耗越快"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12345"
+
+    quickly_check:
+      primary:
+        command_template: "grep -iE 'Cannot allocate memory|std::bad_alloc' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(Cannot allocate memory|std::bad_alloc)"
+      fallback:
+        command_template: "npu-smi info && ps -o pid,rss,cmd -p $(pgrep -f 'vllm serve')"
+        rank_selector: all_failed
+        expected: "显存平稳 + 进程 RSS 随时间单调增长（host 泄漏特征，区别于 device OOM）"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：长跑内存持续增长→OOM/服务不稳定，PD 分离与合部均复现，P/D 节点同涨？"
+        expected: "是——且为单调增长曲线而非瞬时峰值"
+      - step: 2
+        check: "泄漏面判别（关键分叉）：device 显存还是 host 内存？"
+        expected: "host 内存——npu-smi 显存平稳 + 进程 RSS 增长 + 日志出现 host 侧分配失败（Cannot allocate memory/std::bad_alloc），而非 device OOM error code"
+        note: "勿误判为 device OOM 类 case（13688 recompute 展开、12989 资源不足、11343 KV cache 堆积）——泄漏面不同，fix 完全不同"
+      - step: 3
+        check: "根因判别：CANN 版本 < 9.1.0，且泄漏随 q_lens/kv_lens 组合增长？"
+        expected: "是——CANN-nnopbase 为 sas_metadata kernel（AICPU）按 TilingKey 分配 host buffer 不驱逐，组合数增长→host 内存持续消耗"
+      - step: 4
+        check: "修复：升级 CANN ≥ 9.1.0 后泄漏是否消失？"
+        expected: "是（CANN-9.1.0 修复该 bug）"
+        fix_on_mismatch: "升级后仍泄漏 → 非本 case，回到 Tier 3 深挖（可能为其他 host 泄漏面）"
+        rollback: "临时缓解：定期重启服务释放 host 内存（治标不治本）；勿降级 CANN"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change           # 版本升级（CANN ≥ 9.1.0），沿用 15086 的 fix_type 约定
+
+    root_cause: >
+      CANN-nnopbase 为每个 TilingKey 为 sas_metadata kernel 分配 host 内存 buffer 且不驱逐
+      （仅发生在 AICPU kernel 路径）。q_lens 与 kv_lens 的组合数随请求持续增长 → host 内存
+      持续消耗不释放，长跑后 OOM/服务不稳定。CANN-9.1.0 修复（maintainer @linfeng-yuan 定位）。
+      与 device 显存 OOM 类 case 根因不同面——泄漏面在 host，不在 NPU 显存。
+
+    fix: >
+      升级 CANN 至 9.1.0 及以上（该 host 内存泄漏在 CANN-9.1.0 修复）；
+      升级前临时缓解：定期重启推理服务释放 host 内存。
+    rollback: "恢复旧 CANN 版本（不推荐——泄漏复现）；临时缓解为重启服务"

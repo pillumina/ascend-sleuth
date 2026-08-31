@@ -45,6 +45,26 @@ periods:
       - inference/vllm-ascend interrupt 32/30 已超 soft_cap（roadmap A2 入口闸门）
       - 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 60 才强制拆分；当前先记录
 
+  - period: "2026-W36-capacity"
+    kind: replay
+    title: "W36 容量快照（#12345 转正后）"
+    recorded_at: "2026-08-31"
+    source: "scripts/build_index.py 头注实时值（ADR-0004 格子口径）"
+    metrics:
+      capacity_by_ns:
+        inference/vllm-ascend: {interrupt: "36/30", performance: "3/30", precision: "6/30"}
+        inference/sglang: {interrupt: "1/30"}
+      case_total: 46
+      reference_total: 95
+    notes: |
+      - inference/vllm-ascend interrupt 36/30 连续两轮超 soft_cap（W35 32/30 → W36 36/30）
+      - 健康指标：候选溢出率=25%（4 拉取→1 候选，低）；同根因重复率：host 泄漏/device OOM 无重复；
+        维护时长 <30 分钟/周 → 三项健康指标未恶化，触发拆分评估（非强制拆）
+      - 拆分建议（platform 轴分布）：A3-910C 11 / A2-910B 8 / 跨平台 7 / A5-950 5 / 310P 4 /
+        A3+A5 1 ——platform 轴拆分需先定平台归属口径（跨平台 7 条归属模糊）；category 轴已用尽
+        （interrupt 内 poly 化 oom/通信/图捕获/启动失败子簇），待 owner 定夺
+
+
   - period: "2026-W35-live1"
     kind: live
     title: "首批活诊断快照（7 session：EL0008/源码分析/reference 甄别/LoRA variant/precision 追问）"
