@@ -87,3 +87,22 @@ periods:
       - 路由准确率 3/3（triage + triage_semantic 计入）；reference 1 次命中（cann-runtime-error-codes 507903）
       - feedback 0/3：全部 feedback pending（未回报）——反馈捕获是学习环吞吐上限，待用户回报
       - trace 完整性 4/7：部分 demo trace 未走完整 diagnose 流程（构造/演示）
+
+  - period: "2026-W36-verl"
+    kind: replay
+    title: "W36 verl 种子批次快照（issue-ingest → groom 转正）"
+    recorded_at: "2026-08-31"
+    source: "scripts/build_index.py 头注实时值（ADR-0004 格子口径）"
+    metrics:
+      capacity_by_ns:
+        inference/vllm-ascend: {interrupt: "36/30", performance: "3/30", precision: "6/30"}
+        inference/sglang: {interrupt: "1/30"}
+        training/verl: {interrupt: "6/30"}
+      case_total: 52
+      reference_total: 95
+    notes: |
+      - training/verl/interrupt 种子批次 6 条（VERL-5074/6608/6885/6707/6756/6741）——该格子从 0 起步，
+        soft_cap 30 余量充足
+      - 同批次 triage-tree training_interrupt 补 4 行正则（HCCL init 错误/aclnn/CPU-only actor/
+        训练期异常）——6/6 路由覆盖，既有 NCCL timeout/OOM 签名无回归
+      - inference/vllm-ascend interrupt 36/30 连续两轮超 soft_cap（拆分评估见 W36-capacity 快照）

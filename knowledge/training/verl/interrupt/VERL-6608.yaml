@@ -1,0 +1,73 @@
+# VERL-6608 —— verl GRPO TP2 多卡报 HCCL error code 7（hcclCommInitRootInfoConfig）：HDK 版本与镜像组合不兼容
+# 来源：https://github.com/verl-project/verl/issues/6608（3 评论；HDK 25.5.1 验证修复）
+# pre-triage: new_pattern —— 与 VERL-5074（error code 5，runtime_env 配置）签名同族但根因不同：本 case=HDK 版本组合，
+#   error code 7 vs 5 区分；vllm-ascend 池无 HCCL comm init 错误码 case
+# 命名空间建议：training/verl/interrupt
+# 转正：knowledge-groom 2026-08-31（new_pattern；training/verl/ 种子批次，跨池无重叠）
+
+cases:
+  - id: VERL-6608
+    title: "verl GRPO TP2（npu 上 qwen 4B VL）报 HCCL error code 7（hcclCommInitRootInfoConfig）：HDK 版本与 verl 镜像组合不兼容，换 HDK 25.5.1 修复"
+
+    category: interrupt
+    tags: [hccl, comm-init, hdk, tp, version-mismatch, grpo]
+
+    platforms: []                    # issue 未标型号（npu 通用）；HDK 组合问题是跨型号环境问题
+    compat:
+      - framework: verl
+        ranges: ["0.8.0"]            # 实测触发版本
+      - framework: hdk
+        ranges: ["26.0.rc1"]         # 官方镜像推荐但触发；25.5.1 验证可跑
+
+    investigation_quality: medium    # 用户自验证修复（HDK 换版），无 maintainer 代码级定位
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3
+      last_hit: ""
+
+    symptoms:
+      - "verl GRPO + vllm-ascend rollout，TP2/N_GPUS_PER_NODE=2 训练 qwen 4B VL：vLLMHttpServer WorkerProc 崩溃，RuntimeError: create_config:...HCCL function error: hcclCommInitRootInfoConfig(...), error code is 7"
+      - "多 TP 必现，单卡不报"
+      - "官方 verl 0.8.0 镜像推荐 Ascend HDK 26.0.rc1，但 26.0.rc1 触发、25.5.1 可跑"
+
+    references:
+      - "https://github.com/verl-project/verl/issues/6608"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'hcclCommInitRootInfoConfig' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*hcclCommInitRootInfoConfig.*error code is 7"
+      fallback:
+        command_template: "grep -E 'HCCL function error|hcclCommInit' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(HCCL function error|hcclCommInit)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：TP≥2 多卡拉起 vLLM worker 报 hcclCommInitRootInfoConfig error code 7？"
+        expected: "是——单卡正常、多 TP 必现，指向环境级 HCCL 初始化"
+      - step: 2
+        check: "判别 error code：5（runtime_env 配置，见 VERL-5074）还是 7（HDK 版本组合）？"
+        expected: "7 → HDK/驱动版本组合问题；5 → 先查 runtime_env.yaml 端口 range 配置"
+        note: "同函数不同错误码 = 不同根因面：5=verl 侧配置，7=环境 HDK 版本"
+      - step: 3
+        check: "修复：升级/更换 HDK 到验证兼容版本（如 25.5.1）后是否恢复？"
+        expected: "是（评论 #2 CarulaJaeger 验证：25.5.1 下 GRPO 正常）"
+        fix_on_mismatch: "换 HDK 无效 → 回到 Tier 3：查 torch_npu/verl 版本组合与 HCCL 日志（镜像不含 HDK，可自选安装，见官方 install_guidance.rst）"
+        rollback: "换回 26.0.rc1（不推荐——错误复现）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change          # HDK 版本更换
+
+    root_cause: >
+      verl 官方 0.8.0 镜像推荐 Ascend HDK 26.0.rc1，但该 HDK 与镜像内 torch_npu/verl 组合在
+      TP≥2 多卡 HCCL 初始化时 hcclCommInitRootInfoConfig 返回 error code 7 → vLLM Worker 崩溃。
+      HDK 25.5.1 下同一 GRPO 训练正常。镜像本身不含 HDK，用户自选兼容 HDK 安装。
+
+    fix: >
+      更换 Ascend HDK 至与镜像兼容的版本（实测 25.5.1 可跑；参考
+      verl/docs/ascend_tutorial/get_start/install_guidance.rst 自选安装）。
+    rollback: "恢复原 HDK 版本（错误复现）"

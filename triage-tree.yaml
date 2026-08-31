@@ -21,6 +21,10 @@ branches:
       - ["NCCL.*timeout", "HCCL.*timeout", "all_to_all.*timeout"]
       - ['\bOOM\b', "out of memory", '\bkilled\b']
       - ["core dumped", "segmentation fault"]
+      - ["HCCL.*(error|fail)", "hcclCommInit"]                      # HCCL 通信初始化错误（VERL-5074 error code 5 / VERL-6608 error code 7）
+      - ["aclnn\\w+"]                                               # aclnn 算子调用错误（VERL-6885 ConvolutionBackward）
+      - ["CPU-only actor", "registered but not available"]          # 设备平台注册失败（VERL-6741 Ray actor CPU-only）
+      - ["RuntimeError", "AssertionError", "patch.*fail"]           # 训练期异常（VERL-6707 npu_patch / VERL-6756 设备检测兜底）
     search_namespaces:            # 按顺序搜索，最多加载 3 个
       - training/<detected_framework>/
       - common/

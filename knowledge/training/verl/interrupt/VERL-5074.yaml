@@ -1,0 +1,71 @@
+# VERL-5074 —— verl GRPO 启动 A2 报 HCCL error code 5（hcclCommInitRootInfoConfig）：runtime_env.yaml 的 HCCL 端口 range "auto" 不兼容
+# 来源：https://github.com/verl-project/verl/issues/5074（8 评论，多人验证修复）
+# pre-triage: new_pattern —— training/verl/ 当前为空（首条种子）；跨池对照 vllm-ascend HCCL 类 case 均为
+#   aicpu 错误码（507xxx/561000）或 EP/QP 资源，与 hcclCommInitRootInfoConfig error 5 无重叠
+# 命名空间建议：training/verl/interrupt
+# 转正：knowledge-groom 2026-08-31（new_pattern；training/verl/ 种子批次，跨池无重叠）
+
+cases:
+  - id: VERL-5074
+    title: "verl GRPO 启动 A2 报 HCCL error code 5（hcclCommInitRootInfoConfig, RuntimeError: create_config）：runtime_env.yaml 的 HCCL_HOST_SOCKET_PORT_RANGE/HCCL_NPU_SOCKET_PORT_RANGE=\"auto\" 不兼容"
+
+    category: interrupt
+    tags: [hccl, comm-init, runtime-env, a2, grpo, port-range]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: verl
+        ranges: ["<=0.7.x"]           # ef6eaa05d 触发；回退 f31df344 或删配置行修复
+
+    investigation_quality: medium      # 多用户验证修复（删行/回退 commit），根因为配置而非代码
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3                       # medium → 初始 0.3
+      last_hit: ""
+
+    symptoms:
+      - "A2 上按 verl ascend_quick_start 跑 GRPO 启动即失败：RuntimeError: create_config:...HCCL function error: hcclCommInitRootInfoConfig(numRanks, &rootInfo, rank, config, ...), error code is 5"
+      - "同环境跑 vllm-ascend 推理正常——问题在 verl 侧拉起（ray/WorkerDict）"
+      - "verl/trainer/runtime_env.yaml 含 HCCL_HOST_SOCKET_PORT_RANGE: \"auto\" 与 HCCL_NPU_SOCKET_PORT_RANGE: \"auto\""
+
+    references:
+      - "https://github.com/verl-project/verl/issues/5074"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'hcclCommInitRootInfoConfig' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*hcclCommInitRootInfoConfig.*error code is 5"
+      fallback:
+        command_template: "grep -n 'HCCL_HOST_SOCKET_PORT_RANGE\\|HCCL_NPU_SOCKET_PORT_RANGE' verl/trainer/runtime_env.yaml"
+        rank_selector: coordinator
+        expected: "regex:HCCL_.*SOCKET_PORT_RANGE.*auto"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：verl GRPO 启动（ray 拉起 WorkerDict/ref_init_model）报 hcclCommInitRootInfoConfig error code 5，A2 平台？"
+        expected: "是——同环境 vllm 推理正常，指向 verl 侧 HCCL 初始化配置"
+      - step: 2
+        check: "配置判别：verl/trainer/runtime_env.yaml 是否含 HCCL_HOST_SOCKET_PORT_RANGE / HCCL_NPU_SOCKET_PORT_RANGE 设为 \"auto\"？"
+        expected: "是——\"auto\" 端口 range 在 A2 上不兼容，导致 comm init 失败"
+      - step: 3
+        check: "修复：删除这两行后重跑是否通过？"
+        expected: "是（评论 #7 leetakhing 验证；多人确认）"
+        fix_on_mismatch: "删行无效 → 回退 verl commit f31df34471584cc4f02432873280c4963841eb81（评论 #2/#4 验证可行，但可能引入其他报错——作备选非首选）"
+        rollback: "恢复 runtime_env.yaml 原配置行（不推荐——泄漏复现）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change
+
+    root_cause: >
+      verl/trainer/runtime_env.yaml 默认将 HCCL_HOST_SOCKET_PORT_RANGE 与 HCCL_NPU_SOCKET_PORT_RANGE
+      设为 "auto"，在 A2（Atlas 800I A2，CANN 8.3.RC1 实测）上与 torch_npu 的 HCCL 初始化不兼容，
+      hcclCommInitRootInfoConfig 返回 error code 5 → ray WorkerDict 拉起即崩溃。
+      删除两行配置（用默认端口 range）或回退 verl commit f31df344 均可规避。
+
+    fix: >
+      删除 verl/trainer/runtime_env.yaml 中的 HCCL_HOST_SOCKET_PORT_RANGE 与 HCCL_NPU_SOCKET_PORT_RANGE
+      两行（或改为显式端口段）；备选：回退 verl 至 commit f31df344（可能引入其他问题）。
+    rollback: "恢复配置行；或升级到已修复该默认配置的 verl 版本"
