@@ -1,0 +1,71 @@
+# MSLLM-1780 —— FSDP2 断点续训后第一步日志异常：lm loss 被错误除以 global_step（trainer.py _last_logged_step 恢复错误）：纯日志统计 bug，训练本身正确，升级修复版本
+# 来源：https://gitcode.com/Ascend/MindSpeed-LLM/issues/1780（5 评论；contributor 源码级定位 + 修复 PR !4987）
+# pre-triage: new_pattern —— knowledge/training/mindspeed-llm/ 无 FSDP2 续训/日志统计类 case；dogfood 2026-08-31 诊断发现（#1780）
+# 转正：knowledge-groom 2026-08-31（precision；dogfood 2026-08-31 诊断沉淀，预分诊复核通过：new_pattern 种子补充）
+
+cases:
+  - id: MSLLM-1780
+    title: "FSDP2 断点续训后第一步日志异常：lm loss 被错误除以 global_step（0.247×31=7.66 与相邻步一致）、elapsed/tokens/s 同步失真：trainer.py 续训时 _last_logged_step 从 _global_step_last_logged（常为 0）恢复，纯日志统计 bug，训练本身正确"
+
+    category: precision
+    tags: [fsdp2, checkpoint-resume, log-statistics, loss-display, trainer-bug]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: mindspeed-llm
+        ranges: ["master@c8f3cada"]    # 触发版本；修复 PR !4987
+
+    investigation_quality: high       # contributor 源码级定位 + 离线重放验证 + 修复 PR 过 UT/smoke
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "FSDP2 断点续训（resume_from_checkpoint）后第一步日志三项指标同时异常：lm loss 显示 0.247（×31 还原 = 7.66 与相邻步 7.74 一致）、elapsed time 34.55ms（正常 90.11）、tokens/s 560（正常 6747）——三个互不相关指标同时除以恢复后的 global_step"
+      - "consumed tokens/samples 从 0 重新计数而非从 checkpoint 恢复累计值"
+      - "用 checkpoint 权重离线重放 step 31 实际 batch，真实 loss≈6.94 与相邻 batch 同档——训练本身（模型/optimizer/lr/数据位置/真实 loss）完全正确，仅日志统计失真"
+
+    references:
+      - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1780"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'lm loss: [0-9]\\.[0-9]+E-[0-9]' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*lm loss: [0-9]\\.[0-9]+E-[0-9]"   # 续训首步 loss 数量级异常（0.2x E-01 而非 7.x E+00）
+      fallback:
+        command_template: "grep -E 'resume_from_checkpoint|global_step_30' {{config_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*(resume_from_checkpoint|global_step_)"
+
+    diagnosis:
+      - step: 1
+        check: "FSDP2 断点续训后第一步日志 lm loss/elapsed/tokens/s 三个独立指标同时异常，且 ×global_step 还原后与相邻步一致？"
+        expected: "是 → 日志统计 bug（global_step 误作除数），非训练问题"
+      - step: 2
+        check: "离线重放/继续训练验证真实 loss 是否正常（与相邻 batch 同档）？"
+        expected: "是 → 确认训练本身正确，仅日志层失真"
+      - step: 3
+        check: "修复：升级到含 PR !4987 的版本（trainer.py _last_logged_step 恢复逻辑修正）？"
+        expected: "是（修复已过 NPU UT + smoke）"
+        fix_on_mismatch: "升级后仍异常 → 回 Tier 3：核对 FSDPTurbo 与 MindSpeed 版本配套"
+        rollback: "保留旧版本（首步日志失真复现，不影响训练正确性）"
+
+    severity: benign
+    fix_side_effects: []
+    fix_type: config-change          # 升级修复版本
+
+    root_cause: >
+      mindspeed_llm/fsdp2/train/trainer.py 断点续训时把 _last_logged_step 错误地从
+      _global_step_last_logged（常为 0）恢复，导致续训后首步日志用 global_step 做除数，
+      三个互不相关的指标（lm loss / elapsed / tokens/s）同时被错误缩放。属纯日志统计
+      bug——训练本身（模型、optimizer、lr、数据位置、真实 loss）完全正确，由离线重放
+      验证。contributor 确认非配置/环境问题，修复 PR !4987 已提交。
+
+    fix: >
+      升级到含修复 PR !4987 的 MindSpeed-LLM 版本（trainer.py 断点续训
+      _last_logged_step 恢复逻辑修正）；修复前续训后首步日志失真不影响训练正确性，
+      可忽略或按 global_step 还原读数。
+    rollback: "保留旧版本（日志失真复现，训练不受影响）"

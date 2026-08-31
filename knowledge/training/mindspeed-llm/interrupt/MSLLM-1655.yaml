@@ -1,0 +1,71 @@
+# MSLLM-1655 —— gemma-2-9b 预训练启动报 RuntimeError: Cannot infer model type from architectures（权重在线加载 train_from_hf 未全面支持）：CKPT_LOAD_DIR 传 HF 权重触发在线加载，先转 HF→Megatron 权重再训练
+# 来源：https://gitcode.com/Ascend/MindSpeed-LLM/issues/1655（2 评论；维护者定论根因，resolved/stale）
+# pre-triage: new_pattern —— knowledge/training/mindspeed-llm/ 无 checkpoint 在线加载类 case；dogfood 2026-08-31 诊断发现（#1655）
+# 转正：knowledge-groom 2026-08-31（interrupt；dogfood 2026-08-31 诊断沉淀，预分诊复核通过：new_pattern 种子补充）
+
+cases:
+  - id: MSLLM-1655
+    title: "gemma-2-9b 预训练启动报 RuntimeError: Cannot infer model type from architectures of Huggingface config.json '{arch_row}': CKPT_LOAD_DIR 传入 HF 权重触发权重在线加载（train_from_hf）功能，该功能未全面支持 gemma2，先转 HF→Megatron 权重再训练"
+
+    category: interrupt
+    tags: [checkpoint-load, weight-online-load, train-from-hf, model-type-infer, startup-fail, gemma2]
+
+    platforms: ["A5-950"]
+    compat:
+      - framework: mindspeed-llm
+        ranges: ["26.1.0"]
+
+    investigation_quality: medium    # 维护者定论根因（功能未支持），无用户回验
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3
+      last_hit: ""
+
+    symptoms:
+      - "预训练 gemma-2-9b 时框架无法识别 architectures: Gemma2ForCausalLM，报 RuntimeError: Cannot infer model type from architectures of Huggingface config.json '{arch_row}'. Please specify --model-type-hf explicitly"
+      - "栈：pretrain_gpt.py → validate_features_args → convert_checkpoint.py:158 validate_args → infer_model_type_from_hf_config 抛错"
+      - "上下文日志含 'When context_parallel is not activated, kv_head_repeat_before_uly_alltoall would be set to False'（训练启动正常，卡在 checkpoint 参数校验）"
+
+    references:
+      - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1655"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E \"Cannot infer model type from architectures\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*Cannot infer model type from architectures"
+      fallback:
+        command_template: "grep -E 'infer_model_type_from_hf_config|model_type_hf' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(infer_model_type_from_hf_config|model_type_hf)"
+
+    diagnosis:
+      - step: 1
+        check: "报错签名含 'Cannot infer model type from architectures of Huggingface config.json'？"
+        expected: "是 → CKPT_LOAD_DIR 传入了 HF 格式权重，触发权重在线加载（train_from_hf）"
+      - step: 2
+        check: "CKPT_LOAD_DIR 指向的是 HF 格式权重（而非转换后的 Megatron 格式）？"
+        expected: "是 → 权重在线加载功能未全面支持仓上所有模型（如 gemma2），infer_model_type_from_hf_config 无法识别 architectures"
+      - step: 3
+        check: "修复：先将 HF 权重转换为 Megatron 后端格式再加载训练？"
+        expected: "是（维护者方案）——参考 checkpoint_convert_hf_mcore_large_params.md 权重转换文档 + pretrain.md 预训练文档"
+        fix_on_mismatch: "已用转换后权重仍报 → 回 Tier 3：核对权重转换脚本参数与模型架构支持列表"
+        rollback: "保留 HF 直接加载（错误复现）"
+
+    severity: service-affecting
+    fix_side_effects: []
+    fix_type: config-change          # 加载路径/权重格式选择
+
+    root_cause: >
+      用户在 CKPT_LOAD_DIR 传入了 HF 格式权重，因此启用了权重在线加载（train_from_hf）
+      功能；该功能尚未全面支持仓上所有模型（gemma2 的 Gemma2ForCausalLM architectures
+      无法被 infer_model_type_from_hf_config 识别），导致启动时
+      convert_checkpoint.py 参数校验抛 RuntimeError。属功能覆盖缺口，非框架代码缺陷。
+
+    fix: >
+      训练前先将 HF 格式权重转换为 Megatron 后端格式的权重再加载训练（参考
+      docs/zh/pytorch/tools/checkpoint_convert_hf_mcore_large_params.md 权重转换 +
+      docs/zh/pytorch/training/pretrain/mcore/pretrain.md 预训练文档）；避免在
+      CKPT_LOAD_DIR 直接传 HF 权重触发未全面支持的在线加载。
+    rollback: "保留 HF 直接加载（错误复现）"
