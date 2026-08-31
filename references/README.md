@@ -31,8 +31,16 @@ sources:                       # 至少 1 条，带来源类型
   - type: official-doc | engineer-input | case-derived
     # ... 按来源类型的必填子字段
 last_verified: <YYYY-MM-DD>    # 人审日期
-status: draft | active | pending-review | deprecated
+status: active | pending-review | deprecated | draft   # 新产出即 active（PR review 即审核闸门，合入即生效）；draft 仅遗留旧态（修订 3 前产出），由 groom R1 清理
 ```
+
+## 生命周期（修订 3：产出即 active，PR 合入即生效）
+
+- to-reference 产出 `status: active` 词条 → 随 PR 提交 → **PR review 即审核闸门，合入即生效**（进入诊断上下文）；
+- 未合入的 PR 分支不 main，天然不进诊断上下文——安全性由"合入动作"承担，无 draft 中间态；
+- **深审门槛在产出时满足**：case-derived + methodology 需 ≥3 条 case 引用（`verify_references.py` 强制，CI 把关，产出时不达标 PR 直接红）；
+- 遗留 draft（修订 3 前产出）：`/skill:knowledge-groom` R1 按需清理（accept 改 active / adjust / reject）；
+- 修订 active 词条 = 修改已生效知识 → **kb/high-risk 双签**。
 
 ## 来源类型（trust ladder）
 
@@ -40,7 +48,7 @@ status: draft | active | pending-review | deprecated
 |---|---|---|
 | `official-doc` | 0.6 | 标准双签 |
 | `engineer-input` | 0.3 | 标准双签 |
-| `case-derived` | 0.3–0.6 | 深审（+ methodology 需 ≥3 条 case 引用才可 active） |
+| `case-derived` | 0.3–0.6 | 深审（+ methodology 需 ≥3 条 case 引用才可 active，产出时 CI 把关） |
 
 ## 核验约定
 

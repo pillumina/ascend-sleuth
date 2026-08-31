@@ -6,15 +6,15 @@ labels: []
 
 ## 变更类型
 
-- [ ] **导入**：to-reference 产出的新草稿（`status: draft` 直进正式 type 目录）→ 本 PR 审核后转 active
-- [ ] **转正**：已有 draft → active（审核通过，无内容改动）
+- [ ] **导入**：to-reference 产出的新词条（`status: active` 直进正式 type 目录）→ 本 PR review 通过合入即生效
+- [ ] **遗留 draft 转正**：历史 draft → active（修订 3 前产出；审核通过，无内容改动）
 - [ ] **修订**：修改 active 词条内容（= 修改已生效知识 → **kb/high-risk 双签**，见下）
 
 ## 词条清单（机器可填）
 
 | id | type | 内容 | 状态变更 |
 |---|---|---|---|
-| `ascend-xxx` | software-fact | 一句话摘要 | draft → active |
+| `ascend-xxx` | software-fact | 一句话摘要 | 导入（active，合入即生效） |
 | ... | | | |
 
 ## 来源与验证状态
@@ -39,10 +39,10 @@ labels: []
 
 ## 完整性（机器校验）
 
-- [ ] CI 绿：`verify_references.py --check`（id 唯一、schema 强校验、深审门槛）
+- [ ] CI 绿：`verify_references.py --check`（id 唯一、schema 强校验、深审门槛——active 词条产出时即达标）
 - [ ] 词条零注释行（`grep -c "#"` = 0）
-- [ ] 转正/修订后 `status` 与生命周期规则一致
+- [ ] `status` 与生命周期规则一致（导入即 active；遗留 draft 转正除外）
 
 ## 高风险检查（修订场景必填）
 
-修订 active 词条内容 → 按知识修改规则 **kb/high-risk 双签**（methodology 模板 + 双 owner 签署）；仅转正（draft→active）不触发。小修（错别字/补一句）可直接改 YAML + 本 PR，大修用 `/skill:to-reference --update <ref-id>`。
+修订 active 词条内容 → 按知识修改规则 **kb/high-risk 双签**（methodology 模板 + 双 owner 签署）；仅导入（新词条即 active）与遗留 draft 转正不触发。小修（错别字/补一句）可直接改 YAML + 本 PR，大修用 `/skill:to-reference --update <ref-id>`。

@@ -18,7 +18,7 @@
 | 二 不变量写进结构 | `build_index.py --check` CI、`verify_references.py` 强校验（含 error-code 表形态：非空/码唯一/逐条必填）、`feedback_pending` 标记、机器路径 CI 挡、词条零注释 | ✅ 完整 |
 | 三 底座保持词法 | 无向量检索（ADR-0002）、YAML/git 底座、quickly_check 双 regex、**不引入图存储（ADR-0008 §1.6 明确否决）** | ✅ 完整 |
 | 四 知识库有界 | soft_cap 30 / hard_cap 60 + 容量表、`_archive/` 软退休复活、方法论/资产分目录、聚类规则（追加不新建、关联不合并） | ⚠️ case 层完整；**reference 层容量治理参数仍是开放项**（ADR-0008 Open Question） |
-| 五 建议与决定分离 | 预分诊三分类 + 人审、高风险双签 + 随机审序、to-reference grill→draft 直进→**PR review 即审核闸门** | ✅ 完整 |
+| 五 建议与决定分离 | 预分诊三分类 + 人审、高风险双签 + 随机审序、to-reference grill→active 直进→**PR review 即审核闸门（合入即生效）** | ✅ 完整 |
 | 六 闸门硬度匹配 | compat 软匹配（ADR-0001）、severity 硬闸、CI 硬门、语义闸门保持约定强度 | ✅ 完整 |
 | 七 变更可逆 | fix 带 rollback、`_archive/` 可复活、索引可重建 | ⚠️ case 层完整；自动变更可逆性在 roadmap v2 未实现 |
 | 八 可观测先于改进 | trace 硬要求 + 固定词表（含 reference_lookup）、`trace_metrics.py`（case + reference 指标）、`metrics/timeline.yaml` 数据 + `docs/metrics.md` 机制文档 | ⚠️ **机制完整（reference 观测管道已通）但数据只有 W35 一期** |
