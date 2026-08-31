@@ -15,5 +15,11 @@ jobs:
       # 只校验"用了正确模板 + 关键结构字段在"（流程完整性），
       # **不拦截 Agent 预核意见缺失**——内网平台/手动提交链路不被硬卡（体验约束）。
       # 无 paths 过滤：每个 PR 都跑（模板校验与改了什么无关）。
+      # body 传递用带引号 heredoc（<<'EOF'）而非 echo '${{...}}'——后者会被 body 中的
+      # 反引号/单引号破坏 shell 命令（2026-08-31 #71 实测：反引号变命令替换导致
+      # "command not found"、python3 未执行）；引号 heredoc 禁止一切 shell 展开，多行 body 安全。
       - name: Verify PR template structure
-        run: echo '${{ github.event.pull_request.body }}' | python3 scripts/verify_pr_body.py
+        run: |
+          python3 scripts/verify_pr_body.py <<'PR_BODY_EOF_7f3a9'
+          ${{ github.event.pull_request.body }}
+          PR_BODY_EOF_7f3a9
