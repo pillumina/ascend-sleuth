@@ -233,6 +233,31 @@ def check_reference(path: Path, refs_dir: Path, types_registry: dict, case_ref_c
                             seen_versions.add(version)
                         if not any(e.get(f) for f in dep_fields):
                             errors.append(f"{rel}: content.matrix[{j}]（{version or '?'}）缺少依赖组件版本字段（torch_npu/torch/cann/hdk/python）")
+                        # 依赖组件版本字段：允许字符串（单个版本）或列表（一对多，如一个 CANN 配多个 HDK）
+                        for f in dep_fields:
+                            v = e.get(f)
+                            if v is not None and not isinstance(v, (str, list)):
+                                errors.append(f"{rel}: content.matrix[{j}].{f} 必须是字符串或字符串列表（一对多依赖）")
+                            elif isinstance(v, list) and not all(isinstance(x, str) for x in v):
+                                errors.append(f"{rel}: content.matrix[{j}].{f} 列表元素必须是字符串")
+                # 可选 compat：Y/N 兼容矩阵（行=主组件系列、列=依赖系列）
+                compat = content.get("compat")
+                if compat is not None:
+                    if not isinstance(compat, list) or len(compat) == 0:
+                        errors.append(f"{rel}: content.compat 必须是非空列表（Y/N 兼容矩阵，行=主组件系列）")
+                    else:
+                        for j, row in enumerate(compat):
+                            if not isinstance(row, dict):
+                                errors.append(f"{rel}: content.compat[{j}] 不是 mapping")
+                                continue
+                            if not row.get("component"):
+                                errors.append(f"{rel}: content.compat[{j}] 缺少 component（主组件系列）")
+                            values = {k: v for k, v in row.items() if k != "component"}
+                            if not values:
+                                errors.append(f"{rel}: content.compat[{j}] 缺少依赖系列列")
+                            for k, v in values.items():
+                                if v not in ("Y", "N"):
+                                    errors.append(f"{rel}: content.compat[{j}].{k} 必须是 Y/N")
             if rtype == "error-code":
                 entries = content.get("errors")
                 if not isinstance(entries, list) or len(entries) == 0:
