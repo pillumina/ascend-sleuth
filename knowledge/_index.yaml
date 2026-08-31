@@ -1409,7 +1409,7 @@ namespaces:
           expected: regex:.*(garbled|rdma|adxl)
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12957.yaml
       hash: 32b5c983c820
-  training/mindspeed-llm/interrupt:
+  training/mindspeed-llm:
     interrupt:
     - id: MSLLM-1459
       title: '昇腾环境执行 MindSpeed-LLM 训练脚本启动报 /opt/conda/.../bitsandbytes/libbitsandbytes_cpu.so: cannot
@@ -1736,7 +1736,6 @@ namespaces:
           expected: regex:.*(mindspore_adaptor_v2|tasks.checkpoint.models)
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1805.yaml
       hash: 766ced4a7873
-  training/mindspeed-llm/precision:
     precision:
     - id: MSLLM-1437
       title: qwen3-14b-64k-lora 微调开启 uniform 重计算时 grad norm 恒为 0、loss 不收敛：LoRA 微调与 uniform 重计算组合仓库未支持/未验证，关闭重计算或改用官方脚本修复
@@ -1822,7 +1821,7 @@ namespaces:
           expected: regex:.*(resume_from_checkpoint|global_step_)
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1780.yaml
       hash: d15bdfaf3021
-  training/verl/interrupt:
+  training/verl:
     interrupt:
     - id: VERL-5074
       title: 'verl GRPO 启动 A2 报 HCCL error code 5（hcclCommInitRootInfoConfig, RuntimeError: create_config）：runtime_env.yaml

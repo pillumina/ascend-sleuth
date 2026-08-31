@@ -81,8 +81,10 @@ def collect(root: Path):
         ns = str(Path(*rel.parts[:-1]))
         # ADR-0004：目录按 (framework × category) 分层，但 ns 停在工作负载层
         # （triage 路由到框架，category 是正交轴的格子维度，从 case 字段取）
+        # inference 与 training 对称折叠（2026-08-31 修复：此前只折叠 inference，
+        # training 保留三级导致面板渲染出重复 category 标签）
         parts = rel.parts
-        if len(parts) >= 3 and parts[0] == "inference" and parts[2] != "platforms":
+        if len(parts) >= 3 and parts[0] in ("inference", "training") and parts[2] != "platforms":
             ns = str(Path(parts[0], parts[1]))
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for case in doc.get("cases", []):
