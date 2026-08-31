@@ -1,0 +1,71 @@
+# VLLM-ASC-13688 —— AIV + RIC graph_task_group 组合冲突（首请求死锁）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/13688（真实诊断 trace：2026-08-30-13688-aiv-ric）
+# 转正：knowledge-groom 2026-08-31（new_pattern，最小复现矩阵证明组合冲突）
+
+cases:
+  - id: VLLM-ASC-13688
+    title: "AIV 模式下 torch.npu.graph_task_group_begin 包 HCCL all_reduce 导致 graph capture 失败 + 首请求死锁（507009/507903，AIV+RIC task_group 组合冲突）"
+
+    category: interrupt
+    tags: [aiv, ric, graph-capture, task-group, hccl, deadlock, graph-capture-fail]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.22.1rc1-a3"]       # 实测版本
+      - framework: cann
+        ranges: ["9.0.0"]
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                        # high → 初始 0.6
+      last_hit: ""
+
+    symptoms:
+      - "AIV 模式下 torch.npu.graph_task_group_begin + HCCL all_reduce 导致 graph capture 失败：rtEventRecord task not supported, runtime result=507009, capture_end 507903"
+      - "vllm serve GLM-4.6V TP8+EP8 首请求挂在 Replaying aclgraph，AIVector 8-16% / AICore 0% 死锁，5min 后 EngineCore shm_broadcast timeout"
+      - "最小复现矩阵：baseline✅ / tg_no_hccl✅ / tg_allreduce❌ / allreduce_tg✅——唯一失败组合是 task_group 包 allreduce + AIV"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/13688"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'rtEventRecord task not supported|507009' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(rtEventRecord task not supported|507009)"
+      fallback:
+        command_template: "grep -E 'graph_task_group|Replaying aclgraph|AIVector' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(graph_task_group|Replaying aclgraph)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：AIV 模式 + graph capture 失败（rtEventRecord 507009 / capture_end 507903）？"
+        expected: "是（AIV 下 task_group 包 HCCL all_reduce）"
+      - step: 2
+        check: "根因判别：是否 AIV+RIC task_group 组合冲突（对照 12989/9596 的资源不足形态）？"
+        expected: "是——最小复现矩阵证明唯一失败组合是 task_group 包 allreduce + AIV；分离操作通过 → 非资源不足"
+        note: "勿误判为 event 资源不足（12989/9596）或通信故障：507903 reference 只提供签名解释（event 资源不足语义部分适用），根因是 AIV+RIC 组合冲突"
+      - step: 3
+        check: "修复：禁用 AIV 或回退 RIC？"
+        expected: "是（二者互斥使用；AIV 模式 + task_group 包 HCCL 不兼容）"
+        fix_on_mismatch: "禁用 AIV（回退非 AIV 图模式）或回退 RIC（不用 graph_task_group 包 all_reduce）"
+        rollback: "恢复 AIV/RIC 组合（仅在不触发 task_group+allreduce 的路径上）"
+
+    severity: service-affecting         # 首请求死锁 + 5min 超时，服务不可用
+    fix_side_effects: [requires-restart]
+    fix_type: config-change             # 禁 AIV 或回退 RIC
+
+    root_cause: >
+      AIV（Ascend Intelligent Vectorization）模式下，torch.npu.graph_task_group_begin 包住
+      HCCL all_reduce 的组合与 RIC 图捕获冲突：rtEventRecord task not supported（507009）→
+      capture_end 失败（507903）→ 首请求挂在 Replaying aclgraph 死锁（AIVector 8-16% 而
+      AICore 0%）。最小复现矩阵（baseline✅/tg_no_hccl✅/tg_allreduce❌/allreduce_tg✅）证明
+      唯一失败组合是 task_group 包 allreduce + AIV——组合冲突，非资源不足、非通信故障。
+
+    fix: >
+      禁用 AIV，或回退 RIC（不用 graph_task_group 包 HCCL all_reduce）；二者互斥使用。
+    rollback: "恢复 AIV/RIC 组合（不触发 task_group+allreduce 时）"

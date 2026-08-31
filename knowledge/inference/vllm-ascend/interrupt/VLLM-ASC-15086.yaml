@@ -1,0 +1,73 @@
+# VLLM-ASC-15086 —— KIMI K3 模型架构 not supported：版本错位（源码分析定位）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/15086（真实诊断 trace：2026-08-30-15086-kimik3）
+# 转正：knowledge-groom 2026-08-31（new_pattern："架构 not supported → 查 registry 版本差异"诊断模式）
+# 配套：triage-tree inference_interrupt 已补 'not supported for now' 正则（PR #60）
+
+cases:
+  - id: VLLM-ASC-15086
+    title: "KIMI K3 部署报 'Model architectures [KimiK3ForConditionalGeneration] are not supported for now'——版本错位（支持在 0.23.0 之后合入上游 registry）"
+
+    category: interrupt
+    tags: [model-arch-not-supported, version-mismatch, startup-failure, source-analysis]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.23.0"]            # K3 架构支持 0.23.0 之后合入 vllm main（registry）
+
+    investigation_quality: high        # 源码 registry diff（v0.23.0 vs main）确凿定位
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                        # high → 初始 0.6
+      last_hit: ""
+    source_ref:                        # 源码分析路径：比对 vllm registry 定位
+      repo: vllm
+      ref: v0.23.0
+      file: vllm/models/registry.py
+
+    symptoms:
+      - "vllm-ascend 23.0 正式版 A3 560T 部署 KIMI-K3 W4A8 报错：Model architectures ['KimiK3ForConditionalGeneration'] are not supported for now"
+      - "社区文档写 23.0 支持 kimi k3，实际启动报 not supported（版本错位）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/15086"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'are not supported for now|not supported for now' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*not supported for now"
+      fallback:
+        command_template: "grep -E 'Model architectures|KimiK3' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(Model architectures|KimiK3)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：启动报 'Model architectures [...] are not supported for now'？"
+        expected: "是（KimiK3ForConditionalGeneration）"
+      - step: 2
+        check: "根因判别：查上游 registry 版本差异——当前版本是否早于架构支持合入点？"
+        expected: "比对 vllm registry：v0.23.0 无 KimiK3（只有 KimiK25），main 已加（vllm.models.kimi_k3）→ 支持在 0.23.0 之后合入，用户版本太旧"
+        note: "模型架构 not supported 不一定是架构缺失，常是版本错位——先查上游 registry 合入版本，勿当架构未实现处理"
+      - step: 3
+        check: "修复：升级 vllm-ascend 到含该架构支持的版本？"
+        expected: "是（升级到 K3 支持合入后的版本）"
+        fix_on_mismatch: "升级 vllm-ascend 到含 KimiK3 支持的版本（0.23.0 之后）；或换用文档标注的对应版本"
+        rollback: "回退版本（问题复现，确认错位）"
+
+    severity: service-affecting         # 服务无法启动
+    fix_side_effects: [requires-restart]
+    fix_type: config-change             # 版本升级
+
+    root_cause: >
+      KIMI K3 架构（KimiK3ForConditionalGeneration）的支持在 vllm-ascend 0.23.0 之后才合入
+      上游 vllm registry（v0.23.0 只有 KimiK25，main 已加 vllm.models.kimi_k3）。用户部署的
+      23.0 正式版早于支持合入点 → 启动报 not supported。社区文档表述与发布版本存在时差，
+      属版本错位而非架构缺失。
+
+    fix: >
+      升级 vllm-ascend 到含 KIMI K3 架构支持的版本（0.23.0 之后）；部署前先比对
+      文档标注版本与 registry 实际合入版本。
+    rollback: "回退到旧版本（问题复现）"
