@@ -20,17 +20,17 @@ last_verified: 2026-08-28
 content:
   errors:
     - code: "507903"
-      meaning: "Insufficient_Event_Resources——cudagraph 图模式捕获阶段 event/SQ-CQ 资源超硬件预算（Create capture event failed / capture_end error）。规避：--enforce-eager 或缩小 cudagraph_capture_sizes；310P 硬件 event 资源尤其有限。"
+      meaning: "Insufficient_Event_Resources——cudagraph 图模式捕获阶段 event/SQ-CQ 资源超硬件预算（Create capture event failed / capture_end error）。规避：--enforce-eager 或缩小 cudagraph_capture_sizes；310P 硬件 event 资源尤其有限。注意：AIV+RIC 组合冲突（task_group 包 HCCL all_reduce，A3-910C）也以 capture_end 507903 表现——先判别资源不足 vs 组合冲突，勿一律按资源不足处理（13688 最小复现矩阵证明）。"
       related_signatures: ["Insufficient_Event_Resources", "Create capture event failed", "error code is 507903"]
-      source_cases: [VLLM-ASC-12989, VLLM-ASC-9596]
+      source_cases: [VLLM-ASC-12989, VLLM-ASC-9596, VLLM-ASC-13688]
     - code: "207005"
       meaning: "rtStreamWaitEvent execution failed, reason=driver error:resource alloc fail——stream/SQ-CQ 资源不足（与 507903 同族，PIECEWISE 混合捕获时先于 507903 出现）。"
       related_signatures: ["rtStreamWaitEvent execution failed", "resource alloc fail", "Alloc sq cq fail"]
       source_cases: [VLLM-ASC-9596]
     - code: "507018"
-      meaning: "aicpu kernel 执行异常（errorCode=0x2a, stream phase=SCHEDULE）——310P 上 aicpu 内核与 vllm_ascend/_310p 路径兼容问题（如 IndexPut）。0.23.0 正式版或驱动 25.x 修复。"
-      related_signatures: ["aicpu exception", "IndexPut", "507018"]
-      source_cases: [VLLM-ASC-13050]
+      meaning: "aicpu kernel 执行异常（errorCode=0x2a）——两型：①310P 上 aicpu 内核与 vllm_ascend/_310p 路径兼容问题（如 IndexPut），0.23.0 正式版或驱动 25.x 修复；②A3-910C 多模态 LoRA adapter 激活路径（unique_consecutive，--enable-lora 启动），待上游算子适配。同码不同根因，勿套用另一型的修复。"
+      related_signatures: ["aicpu exception", "IndexPut", "507018", "UniqueConsecutive"]
+      source_cases: [VLLM-ASC-13050, VLLM-ASC-10626]
     - code: "507057"
       meaning: "SUSPECT REMOTE ERROR / synchronize stream with timeout failed——远端节点 MTE 地址越界等 aicore exception（如 FusedMoE MC2 通信算子在 ROCE 网络触发）。"
       related_signatures: ["SUSPECT REMOTE ERROR", "507057", "aicore exception", "MTE"]
@@ -47,6 +47,10 @@ content:
       meaning: "aclnnGroupedMatmulV5 dim 不匹配（EZ1001）——wake_up 后 MoE 权重双重转置导致 K 维错位（3072 vs 2048）。"
       related_signatures: ["aclnnGroupedMatmulV5 failed", "161002", "EZ1001"]
       source_cases: [VLLM-ASC-12226]
+    - code: "507009"
+      meaning: "rtEventRecord task not supported——AIV 模式下 torch.npu.graph_task_group_begin 包 HCCL all_reduce 时图捕获失败（组合冲突，非资源不足）；与 507903（capture_end）同现。规避：禁用 AIV 或回退 RIC。"
+      related_signatures: ["rtEventRecord task not supported", "507009", "graph_task_group"]
+      source_cases: [VLLM-ASC-13688]
     - code: "507015"
       meaning: "aicore execution 异常（AclNN_Runtime_Error EZ9903，aclrtLaunchKernelWithHostArgs failed，error code 0x26）——量化 matmul 算子（QuantBatchMatMulV3）在该 CANN 版本 bug 触发（310P w8a8 推理，QuantBatchMatMulV3_NZ_NZ_int8_int8_fp16）；升级 CANN ≥9.1.0.beta2 修复。"
       related_signatures: ["507015", "QuantBatchMatMulV3", "The aicore execution is abnormal"]
