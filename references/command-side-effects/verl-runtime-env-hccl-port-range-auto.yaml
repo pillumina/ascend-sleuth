@@ -1,0 +1,23 @@
+id: verl-runtime-env-hccl-port-range-auto
+type: command-side-effect
+title: verl runtime_env.yaml HCCL_HOST/NPU_SOCKET_PORT_RANGE auto 在昇腾上的副作用
+summary: verl/trainer/runtime_env.yaml 默认的 HCCL_HOST_SOCKET_PORT_RANGE/HCCL_NPU_SOCKET_PORT_RANGE auto 在昇腾（A2 实测）可致 hcclCommInitRootInfoConfig error code 5 启动即崩——删两行或改显式端口段规避
+sources:
+- type: case-derived
+  cases: [VERL-5074]
+  extracted_at: '2026-08-31'
+  extraction_method: to-reference --ingest-cases
+applies_to:
+  frameworks: [verl]
+  platforms: [A2-910B]
+related_references: [verl-official-image-no-hdk]
+status: draft
+last_verified: '2026-08-31'
+content:
+  command: "verl/trainer/runtime_env.yaml 中 HCCL_HOST_SOCKET_PORT_RANGE: auto 与 HCCL_NPU_SOCKET_PORT_RANGE: auto"
+  side_effects:
+    - "auto 端口 range 在昇腾 A2（CANN 8.3.RC1 实测）上与 torch_npu HCCL 初始化不兼容：ray 拉起 WorkerDict/ref_init_model 时 hcclCommInitRootInfoConfig 返回 error code 5，训练启动即崩溃（同环境 vllm 推理正常，问题在 verl 侧配置）"
+    - "删除两行（用默认端口 range）或改显式端口段即可规避，多人验证（VERL-5074 评论链）"
+    - "备选 workaround：回退 verl commit f31df344（有效但可能引入其他报错，非首选）"
+  rollback: "恢复 runtime_env.yaml 原配置行（错误复现）；或升级到已修复默认配置的 verl 版本"
+  version_dependent: true

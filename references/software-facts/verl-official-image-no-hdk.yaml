@@ -1,0 +1,18 @@
+id: verl-official-image-no-hdk
+type: software-fact
+title: verl 官方昇腾 Docker 镜像不含 HDK
+summary: verl 官方昇腾镜像（quay.io/ascend/verl:*）不含 HDK，需按 install_guidance.rst 自选安装——HDK 版本与镜像组合不兼容是 verl+昇腾故障的常见根因面
+sources:
+- type: case-derived
+  cases: [VERL-6608]
+  extracted_at: '2026-08-31'
+  extraction_method: to-reference --ingest-cases
+applies_to:
+  frameworks: [verl]
+  platforms: [cross]
+related_references: [verl-runtime-env-hccl-port-range-auto]
+status: draft
+last_verified: '2026-08-31'
+content:
+  claim: "verl 官方昇腾 Docker 镜像（如 quay.io/ascend/verl:verl-8.5.0-910b-ubuntu22.04-py3.11-v0.7.1、verl-9.0.0-a3-ubuntu22.04-py3.11-latest）不包含 HDK，HDK 需用户按 verl/docs/ascend_tutorial/get_start/install_guidance.rst 自选安装。因此 HDK 版本与镜像内 torch_npu/verl 的组合兼容性由用户负责——HDK 版本不匹配（如官方镜像推荐 26.0.rc1 而实际触发 HCCL 初始化错误）是 verl+昇腾故障的常见根因面，更换兼容 HDK（实测 25.5.1 可跑）即可修复。"
+  evidence: "VERL-6608 评论：官方 verl 0.8.0 镜像推荐 Ascend HDK 26.0.rc1，但 TP2 训练报 hcclCommInitRootInfoConfig error code 7；用户换 HDK 25.5.1 后 GRPO 正常；maintainer 确认镜像里没有 hdk 版本，hdk 版本可自行选择合适的安装"
