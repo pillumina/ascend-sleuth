@@ -233,6 +233,13 @@ def check_reference(path: Path, refs_dir: Path, types_registry: dict, case_ref_c
                             seen_versions.add(version)
                         if not any(e.get(f) for f in dep_fields):
                             errors.append(f"{rel}: content.matrix[{j}]（{version or '?'}）缺少依赖组件版本字段（torch_npu/torch/cann/hdk/python）")
+                        # 依赖组件版本字段：允许字符串（单个版本）或列表（一对多，如一个 CANN 配多个 HDK）
+                        for f in dep_fields:
+                            v = e.get(f)
+                            if v is not None and not isinstance(v, (str, list)):
+                                errors.append(f"{rel}: content.matrix[{j}].{f} 必须是字符串或字符串列表（一对多依赖）")
+                            elif isinstance(v, list) and not all(isinstance(x, str) for x in v):
+                                errors.append(f"{rel}: content.matrix[{j}].{f} 列表元素必须是字符串")
             if rtype == "error-code":
                 entries = content.get("errors")
                 if not isinstance(entries, list) or len(entries) == 0:

@@ -1,0 +1,37 @@
+id: cann-hdk
+type: compat-matrix
+title: CANN ↔ Ascend HDK（驱动/固件）版本配套矩阵（base 层）
+summary: CANN 官方版本说明声明的配套 Ascend HDK 版本（多版本 release-note 核验）：HDK 26.0.RC1 从 CANN 8.5.2 起全线配套；CANN 9.0.0 另配 25.7.RC1；9.1.0-beta.1 主配 26.0.RC1/25.5.2/25.5.1；9.2.0-beta.1 仅配 26.0.RC1——诊断驱动/固件类报错时对照本表判断 HDK 是否越界；上层的 CANN 兼容由 adapter 层（torch-npu-cann）传导，不在此重复
+
+sources:
+  - type: official-doc
+    url: https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/releasenote/9.0.0/release-note.md
+    version: CANN 8.5.0 / 8.5.2 / 9.0.0 / 9.1.0-beta.1 / 9.2.0-beta.1 release-note 各页
+    fetched_at: 2026-08-31
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "8.5.0 – 9.2.0-beta.1"
+    hdk: "25.0.X – 26.0.RC1"
+
+related_references: [torch-npu-cann]
+
+status: draft
+last_verified: 2026-08-31
+
+content:
+  layer: base
+  component: cann
+  matrix:
+    - version: 9.2.0-beta.1
+      hdk: [26.0.RC1]
+    - version: 9.1.0-beta.1
+      hdk: [26.0.RC1, 25.5.2, 25.5.1]
+    - version: 9.0.0
+      hdk: [26.0.RC1, 25.7.RC1, 25.5.X, 25.3.X, 25.2.X, 25.0.X]
+    - version: 8.5.2
+      hdk: [26.0.RC1, 25.5.X, 25.3.X, 25.2.X, 25.0.X]
+    - version: 8.5.0
+      hdk: [25.5.X, 25.3.X, 25.2.X, 25.0.X]
