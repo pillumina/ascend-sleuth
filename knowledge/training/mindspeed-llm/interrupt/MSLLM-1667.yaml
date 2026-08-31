@@ -1,0 +1,66 @@
+# MSLLM-1667 —— A2 上跑 fsdp2 gpt-oss-20b 训练启动失败：A2 不支持 FP8 训练，gpt-oss-20b 默认权重为 FP8，改用 BF16 权重修复
+# 来源：https://gitcode.com/Ascend/MindSpeed-LLM/issues/1667（3 评论；维护者定论根因，resolved）
+# pre-triage: new_pattern —— knowledge/training/mindspeed-llm/ 为空；全库无 A2 FP8 不支持 / 权重精度不兼容类 case
+# 转正：knowledge-groom 2026-08-31（interrupt；issue-ingest 预分诊复核通过：MSLLM-1667 为种子批次，跨池无重复）
+
+cases:
+  - id: MSLLM-1667
+    title: "A2 上跑 fsdp2 gpt-oss-20b 训练在模型加载阶段报错：A2（910B）不支持 FP8 训练，gpt-oss-20b 默认权重为 FP8，改用 BF16 权重修复"
+
+    category: interrupt
+    tags: [fp8, precision-unsupported, weight-format, fsdp2, startup-fail, gpt-oss]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: mindspeed-llm
+        ranges: ["26.1.0"]
+      - framework: transformers
+        ranges: ["5.2.0"]
+
+    investigation_quality: high      # 维护者定论根因 + resolved
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "A2 上运行 fsdp2 训练减层版 gpt-oss-20b（mindspeed-llm 26.1.0 + transformers 5.2.0），在模型构建/加载阶段（ModelFactory.create → model_loader.create_model → _create_on_cpu）报错退出，训练无法启动"
+
+    references:
+      - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1667"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E '_create_on_cpu|ModelFactory.create|model_loader' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(_create_on_cpu|ModelFactory.create|model_loader)"
+      fallback:
+        command_template: "grep -iE 'fp8|BF16|精度|weight' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(fp8|BF16|精度|weight)"
+
+    diagnosis:
+      - step: 1
+        check: "硬件是否为 A2（910B）且模型为 gpt-oss-20b？"
+        expected: "是 → A2 不支持低精度（FP8）训练"
+      - step: 2
+        check: "加载的权重是否为默认 FP8 格式（gpt-oss-20b 默认下载权重为 FP8）？"
+        expected: "是 → 权重精度与硬件能力不兼容"
+      - step: 3
+        check: "修复：改用 modelscope 的 gpt-oss-20b-BF16（BF16 精度）权重训练？"
+        expected: "是（维护者方案，框架侧同步改下载链接）"
+        fix_on_mismatch: "仍失败 → 回 Tier 3：核对权重文件实际精度与 transformers 版本"
+
+    severity: service-affecting
+    fix_side_effects: []
+    fix_type: config-change          # 换 BF16 权重
+
+    root_cause: >
+      A2（910B）不支持低精度（FP8）训练，而 gpt-oss-20b 默认下载的权重为 FP8 低精度
+      格式，加载/训练不兼容导致启动失败（维护者确认）。
+
+    fix: >
+      改用 modelscope 的 gpt-oss-20b-BF16（BF16 精度）权重进行训练；框架侧同步修改
+      下载链接并补充精度兼容性说明。
+    rollback: "保留 FP8 权重（错误复现）"

@@ -1,0 +1,68 @@
+# MSLLM-1459 —— 昇腾环境启动训练报 bitsandbytes libbitsandbytes_cpu.so 加载失败：bitsandbytes 是 CUDA 依赖包、NPU 环境不支持，清理/换昇腾原生镜像修复
+# 来源：https://gitcode.com/Ascend/MindSpeed-LLM/issues/1459（4 评论；维护者定论根因，resolved）
+# pre-triage: new_pattern —— knowledge/training/mindspeed-llm/ 为空；全库无 bitsandbytes / CUDA 组件混入昇腾环境类 case
+# 转正：knowledge-groom 2026-08-31（interrupt；issue-ingest 预分诊复核通过：MSLLM-1459 为种子批次，跨池无重复）
+
+cases:
+  - id: MSLLM-1459
+    title: "昇腾环境执行 MindSpeed-LLM 训练脚本启动报 /opt/conda/.../bitsandbytes/libbitsandbytes_cpu.so: cannot open shared object file：bitsandbytes 为 CUDA 依赖、NPU 环境不支持，清理环境/用昇腾原生镜像修复"
+
+    category: interrupt
+    tags: [environment, bitsandbytes, cuda-mixin, startup-fail, install]
+
+    platforms: []
+    compat:
+      - framework: mindspeed-llm
+        ranges: ["*"]
+
+    investigation_quality: high      # 维护者定论根因 + resolved
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "昇腾环境执行训练脚本 examples/mcore/qwen3/pretrain_qwen3_8b_4K_ptd.sh 启动即失败"
+      - "/opt/conda/lib/python3.11/site-packages/bitsandbytes/libbitsandbytes_cpu.so: cannot open shared object file: No such file or directory（bitsandbytes 动态库缺失/加载失败），训练无法拉起"
+
+    references:
+      - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1459"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'libbitsandbytes_cpu.so|cannot open shared object file' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(libbitsandbytes_cpu.so|cannot open shared object file)"
+      fallback:
+        command_template: "grep -iE 'bitsandbytes|environment' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(bitsandbytes|environment)"   # 命中说明环境中混入 CUDA 组件
+
+    diagnosis:
+      - step: 1
+        check: "报错是否 bitsandbytes 相关（libbitsandbytes_cpu.so 加载失败）？"
+        expected: "是 → 环境混入 CUDA 依赖包，昇腾 NPU 不支持也不需要 bitsandbytes"
+      - step: 2
+        check: "环境是否 conda/自定义安装（/opt/conda 下）而非仓库昇腾原生镜像？"
+        expected: "是 → 大概率混入 CUDA 组件或安装不完整"
+      - step: 3
+        check: "修复：检查/清理环境依赖（NPU 侧 torch_npu/CANN 完整），或直接用 MindSpeed-LLM 仓库昇腾原生镜像运行？"
+        expected: "是（维护者方案）"
+        fix_on_mismatch: "清理后仍报 → 回 Tier 3：检查 pip 依赖树与 import 路径污染"
+        rollback: "保留混入环境（错误复现）"
+
+    severity: service-affecting
+    fix_side_effects: []
+    fix_type: config-change          # 环境清理/换镜像
+
+    root_cause: >
+      bitsandbytes 是 CUDA 依赖包，昇腾 NPU 不支持也不需要该库；用户环境（conda
+      /opt/conda 下）混入了 CUDA 组件或安装不完整，导致训练脚本加载路径命中不存在的
+      bitsandbytes .so。属环境问题，非框架代码缺陷。
+
+    fix: >
+      检查环境安装是否正确，确认 NPU 侧依赖（torch_npu/CANN 等）完整；推荐直接使用
+      MindSpeed-LLM 仓库原生昇腾镜像运行，避免在混入 bitsandbytes 等 CUDA 组件的环境
+      启动训练。
+    rollback: "保留混入环境（错误复现）"

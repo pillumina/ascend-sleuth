@@ -14,7 +14,7 @@ applies_to:
   platforms: [cross]
   frameworks: [vllm-ascend]
 
-status: draft
+status: active
 last_verified: 2026-08-29
 
 content:

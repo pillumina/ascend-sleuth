@@ -238,6 +238,40 @@
         6760,
         6885
       ]
+    },
+    "gitcode/Ascend/MindSpeed-LLM": {
+      "config": {
+        "labels": [
+          "bug"
+        ],
+        "min_comments": 2,
+        "limit": 20,
+        "strategy": "bug 主池（closed bug 108 条，105 条带 resolved=已解决，维护者确认过+已修复，信噪比最高；triaged 仅 7 条不成体系）；min_comments=2（bug 池评论中位数 1，≥2 有 37 条，3 会杀光池子）；GitCode 无 state_reason，resolved label 映射为 completed"
+      },
+      "processed": [
+        1437,
+        1446,
+        1459,
+        1465,
+        1468,
+        1522,
+        1525,
+        1526,
+        1532,
+        1533,
+        1550,
+        1553,
+        1554,
+        1555,
+        1630,
+        1667,
+        1707,
+        1772,
+        1774,
+        1807
+      ],
+      "last_fetch_latest_closed": "2026-08-31T03:29:20Z",
+      "last_fetch_oldest_closed": "2026-05-28T08:40:30Z"
     }
   }
 }

@@ -11,7 +11,7 @@ applies_to:
   frameworks: [verl]
   platforms: [A2-910B]
 related_references: [verl-official-image-no-hdk]
-status: draft
+status: active
 last_verified: '2026-08-31'
 content:
   command: "verl/trainer/runtime_env.yaml 中 HCCL_HOST_SOCKET_PORT_RANGE: auto 与 HCCL_NPU_SOCKET_PORT_RANGE: auto"

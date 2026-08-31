@@ -3,9 +3,11 @@
 # 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-08-31    case 总数：52
+# 生成日期：2026-08-31    case 总数：63
 #   容量(inference/sglang): interrupt=1/30
 #   容量(inference/vllm-ascend): interrupt=36/30, performance=3/30, precision=6/30
+#   容量(training/mindspeed-llm/interrupt): interrupt=9/30
+#   容量(training/mindspeed-llm/precision): precision=2/30
 #   容量(training/verl/interrupt): interrupt=6/30
 namespaces:
   inference/sglang:
@@ -1408,6 +1410,318 @@ namespaces:
           expected: regex:.*(garbled|rdma|adxl)
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12957.yaml
       hash: 32b5c983c820
+  training/mindspeed-llm/interrupt:
+    interrupt:
+    - id: MSLLM-1459
+      title: '昇腾环境执行 MindSpeed-LLM 训练脚本启动报 /opt/conda/.../bitsandbytes/libbitsandbytes_cpu.so: cannot
+        open shared object file：bitsandbytes 为 CUDA 依赖、NPU 环境不支持，清理环境/用昇腾原生镜像修复'
+      category: interrupt
+      tags:
+      - environment
+      - bitsandbytes
+      - cuda-mixin
+      - startup-fail
+      - install
+      platforms: []
+      compat: mindspeed-llm *
+      confidence:
+        score: 0.6
+      symptoms:
+      - 昇腾环境执行训练脚本 examples/mcore/qwen3/pretrain_qwen3_8b_4K_ptd.sh 启动即失败
+      - '/opt/conda/lib/python3.11/site-packages/bitsandbytes/libbitsandbytes_cpu.so: cannot open shared
+        object file: No such file or directory（bitsandbytes 动态库缺失/加载失败），训练无法拉起'
+      quickly_check:
+        primary:
+          command: grep -E 'libbitsandbytes_cpu.so|cannot open shared object file' {{log_path}}
+          expected: regex:.*(libbitsandbytes_cpu.so|cannot open shared object file)
+        fallback:
+          command: grep -iE 'bitsandbytes|environment' {{log_path}}
+          expected: regex:.*(bitsandbytes|environment)
+      file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1459.yaml
+      hash: d981f62dc9cc
+    - id: MSLLM-1465
+      title: 'Qwen3 预训练数据预处理报 FileNotFoundError: Couldn''t find any data file at /data/dataset/xxx.parquet：--input
+        文件名写错，ls 核实后改真实路径或指向目录修复'
+      category: interrupt
+      tags:
+      - dataset
+      - data-preprocess
+      - path-config
+      - file-not-found
+      - qwen3
+      platforms: []
+      compat: mindspeed-llm *
+      confidence:
+        score: 0.6
+      symptoms:
+      - '执行 examples/mcore/qwen3/data_convert_qwen3_pretrain.sh 做 Qwen3 预训练数据预处理时，preprocess_data.py 报
+        FileNotFoundError: Couldn''t find any data file at /data/dataset/train-00000-of-00042-d964455e17e96d5a.parquet'
+      - 日志中夹杂 bitsandbytes/DeprecationWarning 等干扰项，关键报错是这一行
+      quickly_check:
+        primary:
+          command: grep -E "Couldn't find any data file" {{log_path}}
+          expected: regex:.*Couldn't find any data file
+        fallback:
+          command: grep -n 'input' {{script_path}}
+          expected: regex:.*--input
+      file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1465.yaml
+      hash: de791f10939c
+    - id: MSLLM-1525
+      title: mindspeed-llm 开启 config.batch_p2p_comm 后 DeepSeek-V4 整网训练崩在 pipeline parallel recv_forward：batch_p2p_comm
+        特性在 MindSpeed 仓库尚未适配，升级最新 PTA 修复
+      category: interrupt
+      tags:
+      - pipeline-parallel
+      - p2p-comm
+      - feature-gap
+      - version-mismatch
+      - pta
+      - deepseek
+      platforms: []
+      compat: mindspeed-llm *
+      confidence:
+        score: 0.6
+      symptoms:
+      - DeepSeek-V4 整网训练开启 config.batch_p2p_comm（mindspeed/core/pipeline_parallel/optimize_p2p_comm/adaptor.py）后
+        rank 报错崩溃，栈崩在 megatron core pipeline parallel schedules 的 recv_forward（p2p_communication.recv_forward）接收前向张量路径
+      - 关闭 batch_p2p_comm 配置后训练可继续
+      quickly_check:
+        primary:
+          command: grep -n 'batch_p2[op]_comm' {{config_path}}
+          expected: regex:batch_p2[op]_comm
+        fallback:
+          command: grep -E 'recv_forward|p2p_communication' {{log_path}}
+          expected: regex:.*(recv_forward|p2p_communication)
+      file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1525.yaml
+      hash: 960521d9f70e
+    - id: MSLLM-1526
+      title: dsv4 整网训练将 step 从 2000 改成 20000 后启动报数据集构建失败：数据总量变化后旧 helpers_cpp 编译缓存未删除，删除后重新 make 修复
+      category: interrupt
+      tags:
+      - dataset
+      - build-cache
+      - cpp-compile
+      - config-change
+      - startup-fail
+      - dsv4
+      platforms: []
+      compat: mindspeed-llm *
+      confidence:
+        score: 0.6
+      symptoms:
+      - dsv4 整网训练将 step 从 2000 改为 20000（数据总量变化）后启动训练报错
+      - rank41 在 build_train_valid_test_data_iterators → build_train_valid_test_data_loaders 数据集构建/加载阶段抛异常，训练无法拉起
+      quickly_check:
+        primary:
+          command: grep -E 'build_train_valid_test_data_iterators|build_train_valid_test_data_loaders'
+            {{log_path}}
+          expected: regex:.*build_train_valid_test_data_(iterators|loaders)
+        fallback:
+          command: ls {{repo_path}}/mindspeed_llm/core/datasets/helpers_cpp*
+          expected: regex:.*helpers_cpp
+      file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1526.yaml
+      hash: 3e9eb98453de
+    - id: MSLLM-1550
+      title: 8 卡 910B4 跑 Qwen3-8B 预训练环境校验通过但启动报 GMMOpBuilder 重复注册操作符：很可能安装多个 mindspeed 版本致算子重复编译注册，清理多版本修复
+      category: interrupt
+      tags:
+      - operator-registration
+      - multi-version
+      - install
+      - environment
+      - startup-fail
+      - qwen3
+      platforms:
+      - A2-910B
+      compat: mindspeed-llm master; cann 8.5.0
+      confidence:
+        score: 0.1
+      symptoms:
+      - 8 卡 910B4（openEuler，CANN 8.5.0，master 分支）运行 Qwen3-8B 预训练脚本，环境校验（torch_npu/torchair 导入、8 卡 NPU
+        可用）均正常通过
+      - 启动后算子编译/加载阶段报 GMMOpBuilder 重复注册操作符，训练无法继续
+      quickly_check:
+        primary:
+          command: grep -iE 'GMMOpBuilder.*register|重复注册' {{log_path}}
+          expected: regex:.*GMMOpBuilder
+        fallback:
+          command: pip list | grep -i mindspeed
+          expected: regex:.*mindspeed
+      file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1550.yaml
+      hash: a56c4d0369c2
+    - id: MSLLM-1554
+      title: 'dsv4 训练拉起报 ImportError: cannot import name ''PipelineModelParallelLayoutFeature'' from ''mindspeed.features_manager''：mindspeed
+        与 MindSpeed-LLM 版本不配套，对齐配套版本修复'
+      category: interrupt
+      tags:
+      - version-mismatch
+      - import-error
+      - features-manager
+      - startup-fail
+      - deepseek
+      - dsv4
+      platforms:
+      - A3-910C
+      compat: mindspeed-llm master; mindspeed 0.12.1
+      confidence:
+        score: 0.3
+      symptoms:
+      - 'A3 节点按指导文档用 MindSpeed-LLM master + mindspeed 0.12.1 拉起 dsv4 训练（pretrain_deepseek4.py → import
+        mindspeed_llm → megatron_adaptor_v2 初始化）即报 ImportError: cannot import name ''PipelineModelParallelLayoutFeature''
+        from ''mindspeed.features_manager''，ERR99999 UNKNOWN application exception，训练进程无法启动'
+      quickly_check:
+        primary:
+          command: grep -E 'cannot import name.*features_manager' {{log_path}}
+          expected: regex:.*cannot import name.*from 'mindspeed.features_manager'
+        fallback:
+          command: grep -E 'ERR99999|UNKNOWN application exception' {{log_path}}
+          expected: regex:.*(ERR99999|UNKNOWN application exception)
+      file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1554.yaml
+      hash: 859d068dc7e4
+    - id: MSLLM-1555
+      title: 'dsv4 训练拉起报 ImportError: cannot import name ''HcclOpModeSetFeature'' from ''mindspeed.features_manager''：镜像预装
+        mindspeed 与手动重装未覆盖，卸载重装配套版本修复'
+      category: interrupt
+      tags:
+      - version-mismatch
+      - import-error
+      - features-manager
+      - install
+      - startup-fail
+      - deepseek
+      - dsv4
+      platforms:
+      - A3-910C
+      compat: mindspeed-llm master; mindspeed *
+      confidence:
+        score: 0.3
+      symptoms:
+      - 'A3 节点 Atlas A3 训练镜像上按 install_guide.md 手动安装 MindSpeed(Master)+MindSpeed-LLM+Megatron core_v0.12.1
+        后，拉起 dsv4 训练（pretrain_deepseek4.py）报 ImportError: cannot import name ''HcclOpModeSetFeature''
+        from ''mindspeed.features_manager''，训练拉起失败'
+      quickly_check:
+        primary:
+          command: grep -E 'cannot import name.*features_manager' {{log_path}}
+          expected: regex:.*cannot import name.*from 'mindspeed.features_manager'
+        fallback:
+          command: grep -E 'cannot import name' {{log_path}}
+          expected: regex:.*cannot import name
+      file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1555.yaml
+      hash: dd38678c027e
+    - id: MSLLM-1667
+      title: A2 上跑 fsdp2 gpt-oss-20b 训练在模型加载阶段报错：A2（910B）不支持 FP8 训练，gpt-oss-20b 默认权重为 FP8，改用 BF16 权重修复
+      category: interrupt
+      tags:
+      - fp8
+      - precision-unsupported
+      - weight-format
+      - fsdp2
+      - startup-fail
+      - gpt-oss
+      platforms:
+      - A2-910B
+      compat: mindspeed-llm 26.1.0; transformers 5.2.0
+      confidence:
+        score: 0.6
+      symptoms:
+      - A2 上运行 fsdp2 训练减层版 gpt-oss-20b（mindspeed-llm 26.1.0 + transformers 5.2.0），在模型构建/加载阶段（ModelFactory.create
+        → model_loader.create_model → _create_on_cpu）报错退出，训练无法启动
+      quickly_check:
+        primary:
+          command: grep -E '_create_on_cpu|ModelFactory.create|model_loader' {{log_path}}
+          expected: regex:.*(_create_on_cpu|ModelFactory.create|model_loader)
+        fallback:
+          command: grep -iE 'fp8|BF16|精度|weight' {{log_path}}
+          expected: regex:.*(fp8|BF16|精度|weight)
+      file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1667.yaml
+      hash: f9d12d679bd8
+    - id: MSLLM-1707
+      title: 'deepseek-v4-flash LoRA 微调启动报 RuntimeError: Tried to register an operator (npu_moe_distribute_dispatch_v2)
+        multiple times：CANN 9.0.0 过旧，升级 9.1.0B120 及以上修复'
+      category: interrupt
+      tags:
+      - moe
+      - operator-registration
+      - cann-version
+      - version-mismatch
+      - lora
+      - startup-fail
+      platforms:
+      - A3-910C
+      compat: mindspeed-llm 26.0.0; cann 9.0.0
+      confidence:
+        score: 0.6
+      symptoms:
+      - Atlas 800I A3 + CANN 9.0.0 + MindSpeed-LLM 26.0.0 镜像内源码安装最新版，deepseek-v4-flash 做 LoRA 微调（posttrain_gpt.py
+        launch）启动即失败
+      - 'RuntimeError: Tried to register an operator (npu_ops_transformer::npu_moe_distribute_dispatch_v2(...))
+        with the same name and overload name multiple times，Duplicate registration at /dev/null:241'
+      quickly_check:
+        primary:
+          command: grep -E 'Tried to register an operator|Duplicate registration' {{log_path}}
+          expected: regex:.*(Tried to register an operator|Duplicate registration)
+        fallback:
+          command: grep -E 'npu_moe_distribute_dispatch|npu_ops_transformer' {{log_path}}
+          expected: regex:.*(npu_moe_distribute_dispatch|npu_ops_transformer)
+      file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1707.yaml
+      hash: 56ae92e9ea0e
+  training/mindspeed-llm/precision:
+    precision:
+    - id: MSLLM-1437
+      title: qwen3-14b-64k-lora 微调开启 uniform 重计算时 grad norm 恒为 0、loss 不收敛：LoRA 微调与 uniform 重计算组合仓库未支持/未验证，关闭重计算或改用官方脚本修复
+      category: precision
+      tags:
+      - lora
+      - recompute
+      - grad-norm-zero
+      - convergence
+      - feature-gap
+      - qwen3
+      platforms:
+      - A3-910C
+      compat: mindspeed-llm 26.0.0; cann 8.5.2
+      confidence:
+        score: 0.6
+      symptoms:
+      - qwen3-14b-64k-lora 微调开启 uniform 重计算时，grad norm 恒为 0、loss 不收敛（lm loss 停滞在 ~1.22e1 附近），num zeros/nan
+        均为 0 但训练无进展
+      - 环境：A3、cann_8.5.2、mindspeed-llm 26.0.0
+      quickly_check:
+        primary:
+          command: grep -E 'grad norm.*0|grad_norm.*0\b' {{log_path}}
+          expected: regex:.*grad.?norm.*0
+        fallback:
+          command: grep -E 'lm loss.*1\.2[0-9]e1|loss.*不收敛' {{log_path}}
+          expected: regex:.*loss
+      file: knowledge/training/mindspeed-llm/precision/MSLLM-1437.yaml
+      hash: 16ffa1512f22
+    - id: MSLLM-1532
+      title: 'Qwen3（GQA）用 convert_ckpt_v2.py 做 HF→MCore→HF 转换后导出权重 q_proj/k_proj/v_proj 错位、生成乱码：convert_mg2hf
+        按 plain [Q,K,V] 而非 grouped layout 拆分 linear_qkv（PR #4545 回归）'
+      category: precision
+      tags:
+      - checkpoint-convert
+      - gqa
+      - weight-mismatch
+      - garbled-output
+      - code-bug
+      - qwen3
+      platforms: []
+      compat: mindspeed-llm *
+      confidence:
+        score: 0.6
+      symptoms:
+      - Qwen3-0.6B 用 convert_ckpt_v2.py 做 HF→MCore→HF 无训练 round-trip 转换，导出的 HF 模型生成乱码碎片（如 'aseñaGLISHATUREATURE...'）
+      - 逐 tensor 对比仅 q_proj/k_proj/v_proj 权重与原始不一致（mean_abs≈0.03），其余 embed/lm_head/norm/mlp 权重完全一致
+      quickly_check:
+        primary:
+          command: grep -E 'garbled|乱码|aseña|GLISH' {{log_path}}
+          expected: regex:.*(garbled|乱码)
+        fallback:
+          command: grep -n 'qkv_type.*unpack\|linear_qkv' {{convert_script_path}}
+          expected: regex:.*(linear_qkv|qkv_type)
+      file: knowledge/training/mindspeed-llm/precision/MSLLM-1532.yaml
+      hash: 5369fe164de7
   training/verl/interrupt:
     interrupt:
     - id: VERL-5074

@@ -1,0 +1,69 @@
+# MSLLM-1554 —— dsv4 训练拉起报 ImportError: cannot import name 'PipelineModelParallelLayoutFeature' from 'mindspeed.features_manager'：mindspeed 与 MindSpeed-LLM 版本不配套
+# 来源：https://gitcode.com/Ascend/MindSpeed-LLM/issues/1554（5 评论；维护者定论根因，resolved）
+# pre-triage: new_pattern —— knowledge/training/mindspeed-llm/ 为空；全库无 mindspeed.features_manager 缺符号 / 版本不配套类 case。同族 MSLLM-1555（镜像预装残留缺 HcclOpModeSetFeature）独立成 case：本 case=master+旧 mindspeed 0.12.1（版本过旧），1555=镜像预装+重装未覆盖（残留），根因路径与 fix 不同
+# 转正：knowledge-groom 2026-08-31（interrupt；issue-ingest 预分诊复核通过：MSLLM-1554 为种子批次，跨池无重复）
+
+cases:
+  - id: MSLLM-1554
+    title: "dsv4 训练拉起报 ImportError: cannot import name 'PipelineModelParallelLayoutFeature' from 'mindspeed.features_manager'：mindspeed 与 MindSpeed-LLM 版本不配套，对齐配套版本修复"
+
+    category: interrupt
+    tags: [version-mismatch, import-error, features-manager, startup-fail, deepseek, dsv4]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: mindspeed-llm
+        ranges: ["master"]
+      - framework: mindspeed
+        ranges: ["0.12.1"]           # 触发版本（过旧，缺新符号）
+
+    investigation_quality: medium    # 维护者定论根因，用户未回验
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3
+      last_hit: ""
+
+    symptoms:
+      - "A3 节点按指导文档用 MindSpeed-LLM master + mindspeed 0.12.1 拉起 dsv4 训练（pretrain_deepseek4.py → import mindspeed_llm → megatron_adaptor_v2 初始化）即报 ImportError: cannot import name 'PipelineModelParallelLayoutFeature' from 'mindspeed.features_manager'，ERR99999 UNKNOWN application exception，训练进程无法启动"
+
+    references:
+      - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1554"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'cannot import name.*features_manager' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*cannot import name.*from 'mindspeed.features_manager'"
+      fallback:
+        command_template: "grep -E 'ERR99999|UNKNOWN application exception' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(ERR99999|UNKNOWN application exception)"
+
+    diagnosis:
+      - step: 1
+        check: "启动报 ImportError: cannot import name 'X' from 'mindspeed.features_manager'？"
+        expected: "是 → mindspeed 版本缺 MindSpeed-LLM 依赖的 feature 符号"
+      - step: 2
+        check: "核对 mindspeed 与 MindSpeed-LLM 版本/分支是否配套（MindSpeed-LLM master 需要新版 mindspeed）？"
+        expected: "不配套（如 mindspeed 0.12.1 过旧）→ 升级 mindspeed 到含该符号的配套版本"
+        fix_on_mismatch: "版本已配套仍报 → 回 Tier 3：查 mindspeed 安装是否残留多版本（见 MSLLM-1555/1550）"
+        rollback: "保留旧 mindspeed（错误复现）"
+      - step: 3
+        check: "修复：升级 mindspeed 到与 MindSpeed-LLM master 配套的版本后重跑？"
+        expected: "是（方向明确；用户未回验）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change          # 版本对齐
+
+    root_cause: >
+      MindSpeed-LLM master 的 mindspeed_llm/features_manager/__init__.py 导入新版 mindspeed
+      才有的 PipelineModelParallelLayoutFeature，而安装的 mindspeed 0.12.1 无此符号
+      （版本过旧/分支不匹配），import 阶段即失败。属版本不配套，非框架代码缺陷。
+
+    fix: >
+      检查并对齐 mindspeed 与 MindSpeed-LLM 的版本/分支：升级 mindspeed 到含
+      PipelineModelParallelLayoutFeature 的配套版本（或按 MindSpeed-LLM 发布要求安装
+      对应 mindspeed 版本），避免 master 与旧版 mindspeed 混用。
+    rollback: "保留旧 mindspeed（错误复现）"

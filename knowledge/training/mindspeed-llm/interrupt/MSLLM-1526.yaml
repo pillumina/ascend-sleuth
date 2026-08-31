@@ -1,0 +1,66 @@
+# MSLLM-1526 —— dsv4 整网 step 从 2000 改 20000 后启动报数据集构建失败：数据总量变化后旧 helpers_cpp 编译缓存未删除，删除后重新 make 修复
+# 来源：https://gitcode.com/Ascend/MindSpeed-LLM/issues/1526（3 评论；维护者定论根因，resolved）
+# pre-triage: new_pattern —— knowledge/training/mindspeed-llm/ 为空；全库无 helpers_cpp / 编译缓存 / 数据集构建类 case
+# 转正：knowledge-groom 2026-08-31（interrupt；issue-ingest 预分诊复核通过：MSLLM-1526 为种子批次，跨池无重复）
+
+cases:
+  - id: MSLLM-1526
+    title: "dsv4 整网训练将 step 从 2000 改成 20000 后启动报数据集构建失败：数据总量变化后旧 helpers_cpp 编译缓存未删除，删除后重新 make 修复"
+
+    category: interrupt
+    tags: [dataset, build-cache, cpp-compile, config-change, startup-fail, dsv4]
+
+    platforms: []
+    compat:
+      - framework: mindspeed-llm
+        ranges: ["*"]
+
+    investigation_quality: high      # 维护者定论根因 + 明确修复步骤
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "dsv4 整网训练将 step 从 2000 改为 20000（数据总量变化）后启动训练报错"
+      - "rank41 在 build_train_valid_test_data_iterators → build_train_valid_test_data_loaders 数据集构建/加载阶段抛异常，训练无法拉起"
+
+    references:
+      - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1526"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'build_train_valid_test_data_iterators|build_train_valid_test_data_loaders' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*build_train_valid_test_data_(iterators|loaders)"
+      fallback:
+        command_template: "ls {{repo_path}}/mindspeed_llm/core/datasets/helpers_cpp*"
+        rank_selector: coordinator
+        expected: "regex:.*helpers_cpp"   # 存在旧编译产物 = 命中
+
+    diagnosis:
+      - step: 1
+        check: "训练 step/数据总量配置变更后启动报数据集构建阶段异常？"
+        expected: "是 → 指向 datasets 构建路径"
+      - step: 2
+        check: "mindspeed_llm/core/datasets 下是否存在旧的 helpers_cpp 编译缓存？"
+        expected: "是 → 旧缓存与新数据配置不匹配"
+        fix_on_mismatch: "无 helpers_cpp → 回 Tier 3：查数据文件路径/格式与预处理器"
+        rollback: "保留旧缓存（错误复现）"
+      - step: 3
+        check: "修复：删除 helpers_cpp 后在同一目录执行 make 重新编译？"
+        expected: "是（维护者定位，修复步骤明确）"
+
+    severity: service-affecting
+    fix_side_effects: []
+    fix_type: config-change          # 删除编译缓存重新 make
+
+    root_cause: >
+      数据总量变化后，mindspeed_llm/core/datasets 下旧的 helpers_cpp 编译缓存未删除，
+      旧缓存与新数据配置不匹配，导致数据集构建阶段报错（维护者定位）。
+
+    fix: >
+      删除 mindspeed_llm/core/datasets 目录下的 helpers_cpp 文件（旧编译产物/缓存），
+      然后在同一目录执行 make 重新编译即可。
+    rollback: "保留旧缓存（错误复现）"

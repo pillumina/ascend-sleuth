@@ -19,7 +19,7 @@ applies_to:
 
 related_references: [torch-npu-cann, vllm-ascend-torch-npu]
 
-status: draft
+status: active
 last_verified: 2026-08-31
 
 content:

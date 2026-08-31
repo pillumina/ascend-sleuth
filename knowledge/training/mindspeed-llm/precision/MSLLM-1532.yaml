@@ -1,0 +1,75 @@
+# MSLLM-1532 —— Qwen3 MCore→HF 转换后 q_proj/k_proj/v_proj 权重错位致生成乱码：convert_mg2hf 按 plain 而非 grouped GQA layout 拆分 linear_qkv，PR #4545 引入回归
+# 来源：https://gitcode.com/Ascend/MindSpeed-LLM/issues/1532（7 评论；维护者确认根因 + issue 附已验证修复实现）
+# pre-triage: new_pattern —— knowledge/training/mindspeed-llm/ 为空；全库无 checkpoint 转换 / GQA layout / 权重错位类 case
+# 转正：knowledge-groom 2026-08-31（precision；issue-ingest 预分诊复核通过：MSLLM-1532 为种子批次，跨池无重复）
+
+cases:
+  - id: MSLLM-1532
+    title: "Qwen3（GQA）用 convert_ckpt_v2.py 做 HF→MCore→HF 转换后导出权重 q_proj/k_proj/v_proj 错位、生成乱码：convert_mg2hf 按 plain [Q,K,V] 而非 grouped layout 拆分 linear_qkv（PR #4545 回归）"
+
+    category: precision
+    tags: [checkpoint-convert, gqa, weight-mismatch, garbled-output, code-bug, qwen3]
+
+    platforms: []
+    compat:
+      - framework: mindspeed-llm
+        ranges: ["*"]                # PR #4545 引入回归后触发；该 PR 之前的代码无此问题
+
+    investigation_quality: high      # 维护者确认根因 + issue 附已验证修复代码
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "Qwen3-0.6B 用 convert_ckpt_v2.py 做 HF→MCore→HF 无训练 round-trip 转换，导出的 HF 模型生成乱码碎片（如 'aseñaGLISHATUREATURE...'）"
+      - "逐 tensor 对比仅 q_proj/k_proj/v_proj 权重与原始不一致（mean_abs≈0.03），其余 embed/lm_head/norm/mlp 权重完全一致"
+
+    references:
+      - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1532"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'garbled|乱码|aseña|GLISH' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*(garbled|乱码)"
+      fallback:
+        command_template: "grep -n 'qkv_type.*unpack\\|linear_qkv' {{convert_script_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*(linear_qkv|qkv_type)"
+
+    diagnosis:
+      - step: 1
+        check: "症状：convert_ckpt_v2.py round-trip 转换后导出模型生成乱码，且逐 tensor 对比仅 QKV 权重不一致？"
+        expected: "是 → 指向 mg2hf 的 QKV 拆分逻辑"
+      - step: 2
+        check: "模型是否 GQA 结构（nh//ng > 1，如 Qwen3）？"
+        expected: "是 → MCore checkpoint 对 GQA 按 grouped layout 存储，plain 切片必然错位"
+      - step: 3
+        check: "源码 mindspeed_llm/tasks/checkpoint/convert_mg2hf.py 的 Mg2HfConvert.set_model_layer_attn() 是否在 qkv_type=='unpack' 分支按 plain [all Q, all K, all V] 连续切片？"
+        expected: "是 → 确认 bug（PR #4545 引入回归）；需按 grouped GQA layout 拆分"
+        fix_on_mismatch: "源码已按 grouped 拆分 → 升级到修复版本或核对转换脚本参数"
+        rollback: "暂不转换，先用 PR #4545 之前的代码版本规避"
+      - step: 4
+        check: "修复：按 grouped GQA layout 拆分 linear_qkv.weight/bias（ng 分组，每组 repeats=nh//ng 个 Q head + 1 K + 1 V，cat 拼接成 HF q/k/v_proj）后重转？"
+        expected: "是（issue 提供的 _split_grouped_qkv_weight/_split_grouped_qkv_bias 已验证）"
+        fix_on_mismatch: "仍错位 → 拉取含修复的版本或核对 repeats 计算"
+
+    severity: service-affecting
+    fix_side_effects: []
+    fix_type: code-patch             # convert_mg2hf.py 拆分逻辑修改
+
+    root_cause: >
+      mindspeed_llm/tasks/checkpoint/convert_mg2hf.py 的 Mg2HfConvert.set_model_layer_attn()
+      中 qkv_type=='unpack' 分支把 fused linear_qkv.weight 按 plain [all Q, all K, all V]
+      连续切片，而 MCore checkpoint 对 Qwen3/GQA 实际按 grouped layout
+      （[Q-group0,K0,V0,Q-group1,K1,V1,...]）存储，导致导出 HF 的 QKV 权重全部错位。
+      维护者确认该 mg2hf 拆分错误由 PR #4545 引入回归。
+
+    fix: >
+      MCore→HF 时按 grouped GQA layout 拆分 linear_qkv.weight/bias：以 ng 为分组，
+      每组内取 repeats=nh//ng 个 Q head、1 个 K、1 个 V，再分别 cat 拼接成 HF 的
+      q_proj/k_proj/v_proj（issue 提供已验证的 _split_grouped_qkv_weight/
+      _split_grouped_qkv_bias 实现）；或拉取 PR #4545 之前的代码版本规避回归。
+    rollback: "保留错误转换结果（乱码模型不可用）"
