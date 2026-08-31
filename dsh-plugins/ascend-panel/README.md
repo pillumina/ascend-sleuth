@@ -6,7 +6,19 @@
 
 本插件是**动态 Cordis 插件**（会话级，定义不持久——DSH 重启后需重新定义，这是平台特性）。
 
-**在任意 session 重新加载：**
+### 新用户快速开始（推荐）
+
+在 DSH 对话中粘贴下面这句话即可（agent 会自动读本目录文件 → `cordis_define` → `cordis_run`，无需手动复制代码）：
+
+```
+请加载 ascend-sleuth 诊断面板：读 dsh-plugins/ascend-panel/panel-host.js 作为 code.host、
+panel-client.js 作为 code.client，用 cordis_define（kind: new）创建动态 Cordis 插件并 cordis_run 激活。
+完成后对话视图应出现「诊断」「指标」两个 tab。
+```
+
+> 要求 agent 处于 DSH 会话（具备 `cordis_define`/`cordis_run` 工具能力）。工作区应为 ascend-sleuth 仓库（面板读 `traces/`、`knowledge/`、`references/`、`metrics/`）。
+
+### 手动加载（理解原理时）
 
 1. 用 `cordis_define`（kind: new，idPrefix 随意如 `sleu`）创建插件：
    - `code.host` ← 粘贴 [panel-host.js](panel-host.js) 全文
