@@ -91,13 +91,3 @@ content:
     meaning: 'Communication_Error_Bind_IP_Port：Failed to enable listening for the host network adapter socket. Reason: %s'
     solution: Check whether the single-card multi-process scenario is used. If yes, configure the port number using the environment variable HCCL_NPU_SOCKET_PORT_RANGE.
     module: HCCL Errors
-  - code: create_config error code 5 (hcclCommInitRootInfoConfig)
-    meaning: 'torch_npu create_config 路径 HCCL 初始化失败（RuntimeError: create_config:...HCCL function error: hcclCommInitRootInfoConfig...error code is 5）——verl runtime_env.yaml 的 HCCL_HOST_SOCKET_PORT_RANGE/HCCL_NPU_SOCKET_PORT_RANGE="auto" 与 A2 不兼容（verl 侧配置问题，非 HDK）'
-    solution: 删除 verl/trainer/runtime_env.yaml 中两行 "auto" 端口 range（或改显式端口段）；备选回退 verl commit f31df344（可能引入其他报错）
-    module: torch_npu create_config (HCCL init)
-    source_cases: [VERL-5074]
-  - code: create_config error code 7 (hcclCommInitRootInfoConfig)
-    meaning: 'torch_npu create_config 路径 HCCL 初始化失败（...error code is 7）——HDK 版本与 verl 镜像组合不兼容（官方推荐 26.0.rc1 触发，25.5.1 验证可跑）'
-    solution: 更换 Ascend HDK 至兼容版本（镜像不含 HDK，参考 verl install_guidance.rst 自选安装）
-    module: torch_npu create_config (HCCL init)
-    source_cases: [VERL-6608]

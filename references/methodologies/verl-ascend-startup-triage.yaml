@@ -11,7 +11,7 @@ applies_to:
   frameworks: [verl]
   categories: [interrupt]
 related_references:
-- hccl-error-codes
+- verl-ascend-startup-fault-patterns
 status: draft
 last_verified: '2026-08-31'
 content:
@@ -25,7 +25,7 @@ content:
     name: HCCL 初始化错误码判别
     action: hcclCommInitRootInfoConfig error code 5 = verl runtime_env.yaml 端口 range "auto" 配置问题（删行或改显式端口段）；error code 7 = HDK 版本组合不兼容（更换兼容 HDK）
     check: "grep 'error code is [57]' {{log_path}}"
-    when_to_use: ray 拉起阶段（WorkerDict/vLLMWorker）报 create_config 错误；两码同函数不同根因面，见 hccl-error-codes 表
+    when_to_use: ray 拉起阶段（WorkerDict/vLLMWorker）报 create_config 错误；两码同函数不同根因面，见 verl-ascend-startup-fault-patterns 表
   - step: 3
     name: 算子崩溃转 CANN/镜像版本判别
     action: aclnn 算子崩溃（如 ConvolutionBackwardGetWorkspaceSize）多为 CANN/镜像版本组合问题——升级更新官方镜像（如 verl 9.0.0 / CANN 9.0）验证
