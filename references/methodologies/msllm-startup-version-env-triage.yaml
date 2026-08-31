@@ -1,0 +1,46 @@
+id: msllm-startup-version-env-triage
+type: methodology
+title: mindspeed-llm 训练启动失败排查（版本/环境配套面）
+summary: mindspeed-llm 训练启动即失败的常见根因集中在"版本/环境配套"面：mindspeed.features_manager 缺符号（mindspeed 与 MindSpeed-LLM 版本不配套：升级 vs 镜像预装残留卸载重装）、算子重复注册（CANN 版本过旧 vs 多版本 mindspeed）、特性未适配（batch_p2p_comm 等需升级 PTA 或关闭）。按报错签名分流，避免在代码层空转。
+
+sources:
+  - type: case-derived
+    cases: [MSLLM-1525, MSLLM-1554, MSLLM-1555, MSLLM-1707, MSLLM-1550]
+    extracted_at: 2026-08-31
+    extraction_method: to-reference --ingest-cases
+
+applies_to:
+  frameworks: [mindspeed-llm]
+  categories: [interrupt]
+
+status: active
+last_verified: 2026-08-31
+
+content:
+  flow:
+    - step: 1
+      name: 识别启动失败面
+      action: 训练拉起阶段（import mindspeed_llm / megatron_adaptor_v2 初始化 / 模型构建 / 算子编译加载）即报错退出、无法进入训练循环，即命中本方法论
+      check: "grep -E 'cannot import name|Tried to register|重复注册|batch_p2p_comm|UNKNOWN application exception' {{log_path}}"
+      when_to_use: mindspeed-llm 训练启动即失败，环境校验（torch_npu/CANN/卡可用）可能已通过
+    - step: 2
+      name: 形态 A——mindspeed.features_manager 缺符号（版本不配套）
+      action: "报 ImportError: cannot import name 'X' from 'mindspeed.features_manager'（如 PipelineModelParallelLayoutFeature / HcclOpModeSetFeature）→ MindSpeed-LLM master 依赖新版 mindspeed 才有的符号。先 pip show mindspeed 核对版本，再分两种：mindspeed 版本过旧 → 升级到配套版本；镜像预装 + 同版本重装未覆盖 → pip uninstall mindspeed 后重装"
+      check: "grep \"cannot import name .* from 'mindspeed.features_manager'\" {{log_path}}"
+      when_to_use: dsv4/DeepSeek 系列按指导文档安装后拉起报 features_manager import 错误
+    - step: 3
+      name: 形态 B——算子重复注册（CANN 过旧 vs 多版本 mindspeed）
+      action: 报算子重复注册（Tried to register an operator ... multiple times 如 npu_moe_distribute_dispatch_v2；或 GMMOpBuilder 重复注册）→ 先查 CANN 版本（过旧如 9.0.0 → 升级 9.1.0B120+），再查 pip list 是否多个 mindspeed 版本（是 → 卸载多余版本仅留单一版本）
+      check: "grep -E 'Tried to register an operator|GMMOpBuilder|重复注册' {{log_path}}"
+      when_to_use: LoRA 微调（deepseek-v4-flash）或 Qwen3 预训练启动时算子编译/加载阶段报重复注册
+    - step: 4
+      name: 形态 C——特性未适配（需升级 PTA 或关闭特性）
+      action: 开启某优化特性后训练崩在特定通信/计算路径（如 batch_p2p_comm 崩在 pipeline parallel recv_forward）→ 特性在 MindSpeed 仓库尚未适配（版本功能缺口）→ 升级最新 PTA（昇腾 PyTorch Adapter）或关闭该特性配置
+      check: "grep -E 'recv_forward|p2p_communication|batch_p2p_comm' {{log_path}}"
+      when_to_use: 开启 config.batch_p2p_comm 等优化特性后 dsv4 + 流水线并行训练崩溃
+    - step: 5
+      name: 非版本/环境面排除
+      action: 以上形态均不命中（报错为数据/路径/转换/精度类，如 FileNotFoundError、helpers_cpp 缓存、QKV 权重错位、grad norm 0）→ 转向对应 case（MSLLM-1465/1526/1532/1437）或 Tier 3 兜底，勿在版本面继续排查
+      check: "grep -E \"Couldn't find any data file|helpers_cpp|grad.?norm.*0\" {{log_path}}"
+      when_to_use: 启动失败但无版本/环境配套特征时
+  verified_by_testing: false
