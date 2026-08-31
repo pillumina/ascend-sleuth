@@ -81,8 +81,10 @@ def collect(root: Path):
         ns = str(Path(*rel.parts[:-1]))
         # ADR-0004：目录按 (framework × category) 分层，但 ns 停在工作负载层
         # （triage 路由到框架，category 是正交轴的格子维度，从 case 字段取）
+        # inference 与 training 对称折叠（2026-08-31 修复：此前只折叠 inference，
+        # training 保留三级导致面板渲染出重复 category 标签）
         parts = rel.parts
-        if len(parts) >= 3 and parts[0] == "inference" and parts[2] != "platforms":
+        if len(parts) >= 3 and parts[0] in ("inference", "training") and parts[2] != "platforms":
             ns = str(Path(parts[0], parts[1]))
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for case in doc.get("cases", []):
@@ -121,9 +123,21 @@ def render(namespaces) -> str:
         ns: {cat: len(c) for cat, c in cells.items()}
         for ns, cells in sorted(namespaces.items())
     }
+    # 容量行按"工作负载层"折叠展示（与 collect() 的 inference 折叠对称，2026-08-31 修复）：
+    #   - inference/vllm-ascend/interrupt → 容量(inference/vllm-ascend): interrupt=N/30, ...
+    #   - training/mindspeed-llm/interrupt → 容量(training/mindspeed-llm): interrupt=N/30, precision=M/30
+    # 原因：头注是给人/面板看的展示层，namespace 里重复 category（.../interrupt: interrupt=11/30）
+    # 会让面板渲染出重复标签；索引 body 的 ns 保持三级（diagnose 路由需要），只折叠头注。
+    workload_counts = {}
+    for ns, cells in cell_counts.items():
+        parts = ns.split("/")
+        wl = "/".join(parts[:2]) if (parts[0] == "training" and len(parts) >= 3) else ns
+        merged = workload_counts.setdefault(wl, {})
+        for cat, cnt in cells.items():
+            merged[cat] = merged.get(cat, 0) + cnt
     cap_lines = "\n".join(
         f"#   容量({ns}): {', '.join(f'{cat}={cnt}/{SOFT_CAP}' for cat, cnt in cells.items())}"
-        for ns, cells in cell_counts.items()
+        for ns, cells in sorted(workload_counts.items())
     )
     header = "\n".join([
         "# GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。",
