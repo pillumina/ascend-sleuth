@@ -10,7 +10,7 @@
 
 > **agent 执行差异**：不同 agent 对 SKILL.md 的执行质量有差异（prompt 纪律本质是概率性的）。诊断结果与 trace 质量可能因 agent 而异——**团队内建议统一 agent**；跨 agent 对比时先归因执行差异，别急着归因知识错误。
 
-**快速跳转**：[为什么需要](#为什么需要它) · [快速开始](#快速开始) · [六个 skill](#六个-skill) · [诊断面板](#诊断面板dsh-可选) · [工作原理](#工作原理) · [文档](#文档)
+**快速跳转**：[为什么需要](#为什么需要它) · [快速开始](#快速开始) · [七个 skill](#七个-skill) · [诊断面板](#诊断面板dsh-可选) · [工作原理](#工作原理) · [文档](#文档)
 
 ---
 
@@ -24,7 +24,7 @@ ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路
 
 ### 安装（使能 skills）
 
-**主路径：仓库即 workspace，skills 随仓使能**。clone 本仓后，把 agent 的项目级 skills 目录指向 `<clone>/skills/`。skills/ 是单一事实源，git 管理版本，更新走 git pull，热刷新即时生效，无需重装。装齐六个：`diagnose` / `to-postmortem` / `to-reference` / `issue-ingest` / `knowledge-groom` / `resume-diagnosis`。
+**主路径：仓库即 workspace，skills 随仓使能**。clone 本仓后，把 agent 的项目级 skills 目录指向 `<clone>/skills/`。skills/ 是单一事实源，git 管理版本，更新走 git pull，热刷新即时生效，无需重装。装齐七个：`diagnose` / `to-postmortem` / `to-reference` / `issue-ingest` / `knowledge-groom` / `resume-diagnosis`。
 
 **零配置（DSH，团队主力）**。仓库已跟踪 `.dsh/skills → ../skills` 相对 symlink，clone 后自动还原，DSH 项目 root 自动发现并热刷新：git pull 更新 SKILL.md 即时生效，无需任何配置。
 
@@ -112,7 +112,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 **稀疏拉取注意**：sparse-checkout 只收窄 case 数据，白名单必含方法论/工具全量（`skills/` `scripts/` `references/` `triage-tree.yaml` `postmortems/` `ingest-state.json` `.dsh/` 等，否则 agent 无 skill 可用），`knowledge/` 按需收窄（如 `vllm-ascend/` + `common/`）。`_index.yaml` 是全量生成物，收窄后重跑 `scripts/build_index.py` 重建；`common/` 必留占位（ADR-0005）。当前规模用全量 clone，稀疏拉取是知识库长大后的带宽优化。
 
-## 六个 skill
+## 七个 skill
 
 | Skill | 作用 | 何时使用 | 触发方式 |
 |---|---|---|---|
@@ -122,6 +122,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 | `issue-ingest` | 从上游 issue（GitHub 等）批量导入案例：拉取精简元数据 → 硬过滤+启发式排序 → 评估 → 经 to-postmortem 沉淀草稿 → 标记已导入（幂等）| 想吸收某框架 issue 里的排障知识 | 显式 `/skill:issue-ingest` |
 | `knowledge-groom` | 周期维护：批处理待审队列、升格、去重、置信度重算、软退休、索引重建 | 领域 owner 每周 | 显式 `/skill:knowledge-groom` |
 | `resume-diagnosis` | 续接被打断的诊断：读取状态文件与 trace，复述现场后继续 | 诊断被会议或上下文压缩打断 | 显式 `/skill:resume-diagnosis` |
+| `preload-panel` | 在 DSH 会话中热加载诊断面板插件（`cordis_define` + `cordis_run` 激活「诊断」「指标」tab） | 新 DSH 会话需要面板时 | 显式 `/skill:preload-panel`（仅 DSH） |
 
 完整的操作细节（severity 闸门、trace 规则、语义校验等）在各自 `skills/<name>/SKILL.md`。三个诊断类 skill 为 user-only——诊断决策由人触发；`to-postmortem` / `to-reference` / `issue-ingest` 允许自动触发，降低沉淀门槛（issue-ingest 的自动止步于草稿，转正留人）。
 

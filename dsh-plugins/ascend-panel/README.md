@@ -11,7 +11,7 @@
 
 ### 快速开始
 
-在 DSH 对话中粘贴：
+在 DSH 对话中粘贴（或直接 `/skill:preload-panel`）：
 
 ```
 请加载 ascend-sleuth 诊断面板：读 dsh-plugins/ascend-panel/panel-host.js 作为 code.host、
@@ -19,7 +19,7 @@ panel-client.js 作为 code.client，用 cordis_define（kind: new）创建动�
 完成后对话视图应出现「诊断」「指标」两个 tab。
 ```
 
-agent 读本目录文件 → `cordis_define` → `cordis_run` 激活，无需手动复制代码。
+agent 读本目录文件 → `cordis_define` → `cordis_run` 激活，无需手动复制代码。`/skill:preload-panel` 是同一流程的 skill 封装（仅 DSH）。
 
 前置条件：agent 具备 `cordis_define` / `cordis_run` 工具；工作区为 ascend-sleuth 仓库（面板读 `traces/`、`knowledge/`、`references/`、`metrics/`）。
 
