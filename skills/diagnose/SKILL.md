@@ -5,7 +5,6 @@ description: >
   并验证 Tier 2 case、命中给 fix（高危 root cause 改提示 halt）或转深度排查。
   Tier-2 未命中但最终解决时起草候选 case。全程写 trace。
   仅在能执行命令的 agent（Claude Code / Codex / pi）中可用。
-disable-model-invocation: true
 ---
 
 # Diagnose

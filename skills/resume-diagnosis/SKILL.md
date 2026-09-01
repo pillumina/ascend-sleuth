@@ -4,7 +4,6 @@ description: >
   续接一个被打断的昇腾诊断 session。读活跃的 traces/*.yaml（每个并发诊断一个文件，含 trace），
   复述上次停在哪一步、排除了哪些 case、当前 active case，等人贴回命令输出后继续。
   诊断被会议/上下文 compact 打断后恢复用。
-disable-model-invocation: true
 ---
 
 # Resume Diagnosis

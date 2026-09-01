@@ -7,7 +7,6 @@ description: >
   对话视图出现「诊断」「指标」两个 tab。
   仅 DSH 可用——依赖 DSH 的 cordis_define / cordis_run 工具
   与 conversation.view 插槽；其他 agent（Claude Code / Codex / pi）无此机制。
-disable-model-invocation: true
 ---
 
 # Preload Panel
