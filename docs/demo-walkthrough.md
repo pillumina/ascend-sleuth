@@ -383,7 +383,7 @@ sedimented: {state: submitted}   # none→submitted→knowledge/archived（零�
 
 **面板界面演示**：下面是真实诊断 session 在 DSH 对话视图 + 诊断面板上的完整回放（本仓库 `traces/2026-09-01-10562-lora-hidden.yaml` 的真实轨迹驱动）：对话中逐条 append 工具调用与诊断结论（新卡片居中登场），随后切到「诊断」tab 展开会话卡片，逐条回放 9 步诊断轨迹（路由 → 候选过滤 → Tier 3 兜底 → 源码分析 → 结论）。
 
-![DSH 诊断面板演示回放](demo-assets/ascend-replay-hd.gif)
+<img src="demo-assets/ascend-replay-hd.gif" alt="DSH 诊断面板演示回放" width="480" />
 
 ---
 
