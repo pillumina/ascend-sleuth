@@ -50,26 +50,43 @@ cd ascend-sleuth
 
 ## 1. 一次诊断（诊断循环）
 
-工程师把客户症状交给 agent：
+工程师丢来一段客户报错，只有报错本身，没带环境信息：
 
 ```
 /skill:diagnose
 
-客户 310P 推理机，vllm serve 跑 Qwen3.6-27B-W8A8，推理时报错：
+客户推理时报错：
 ERR00100 PTA call acl api failed, error code is 507015
 AclNN_Runtime_Error(EZ9903): aclrtLaunchKernelWithHostArgs failed: 507015
 Kernel task happen error, retCode=0x26, [aicore exception]
 fault kernel_name=QuantBatchMatMulV3_NZ_NZ_int8_int8_fp16_high_performance_21
 ```
 
-agent 先做**症状归一**：把原始报错提炼成可检索的签名，同时留意缺什么信息。
+agent 不干等，缺什么先问清。信息不全时主动问，是诊断循环的第一步：
+
+```
+[示例输出] 信息还不够，需要补三样：
+  ① 症状：什么操作触发？推理服务还是单算子？什么时候挂？
+  ② 版本组合：引擎 + CANN + HDK/驱动 + 架构（A2/A3/A5）各是什么？
+  ③ 日志：贴失败 rank + 报错栈尾，profiler 全量不用贴
+```
+
+工程师补齐：
+
+```
+客户 310P 推理机，vllm serve 跑 Qwen3.6-27B-W8A8（w8a8 量化），首请求即挂。
+版本组合：vllm-ascend 0.22.1 / CANN 待查（客户回填中）/ HDK 待查。
+日志就是上面那段报错栈。
+```
+
+agent 收到后做**症状归一**：把原始报错提炼成可检索的签名，同时留意还缺什么。
 
 ```
 [示例输出] 症状理解：
   - 报错签名：507015（aicore execution 异常）+ QuantBatchMatMulV3（量化 matmul 算子）
     + retCode=0x26（aicore exception）——interrupt 类
   - 已给信息：平台 310P、框架 vllm serve、模型 Qwen3.6-27B-W8A8、w8a8 量化
-  - 缺信息：CANN 版本（修复判定的关键）——先按已有信息走，验证阶段会问
+  - 还缺：CANN 版本（修复判定的关键）——先按已有信息走，验证阶段会问
 ```
 
 **① Tier 1 路由**：triage-tree 把症状映射到命名空间。
@@ -122,6 +139,17 @@ fix: 升级 CANN ≥9.1.0.beta2（QuantBatchMatMulV3 修复合入 beta2），同
 ⚠️ fix 是建议，由人应用到客户环境；agent 不自动改生产
 
 [trace] 已记录 traces/*.yaml（路由/候选/reference_lookup/追问/验证每一步）
+```
+
+severity 还有第三档，它的动作是停，不给 fix：
+
+```
+/skill:diagnose（续）
+客户：FSDP2 断点续训后 checkpoint 文件大小异常，怀疑部分权重没写进去。
+
+[示例输出] 候选命中（severity: data-loss-risk——checkpoint 可能被污染）：
+  不直接给 fix——先停训练、保留现场、通知 owner
+  检查：核对 checkpoint 完整性（文件大小 / 权重数与预期是否一致），确认后再谈修复
 ```
 
 以上是命中路径。候选未命中时 agent 不会硬套，走 Tier 3 检索；若报错签名指向框架代码或算子，进入源码分析。下面是未命中的例子：
@@ -191,6 +219,21 @@ postmortems/inbox/VLLM-ASC-10122.md         # 原始记录（指针式）
 → active 直进 references/methodologies/（status: active，PR review 即审核闸门——合入即生效）
 → 深审门槛已满足：case-derived 4 条 case ≥ 3 ✓
 ```
+
+人工输入的经验走 grill，产出前先对齐意图。用户放弃或否认的条目直接丢弃，不进 inbox：
+
+```
+/skill:to-reference --file moe-comm-note.md（工程师笔记：MoE 双机通信慢的排查经验）
+
+[示例输出] 我理解你说的是：MoE 场景双机通信慢，优先查 HCCL 拓扑与 EP 配置，
+对吗？
+工程师：对，不过主要是 EP 配置，拓扑一般没问题。
+→ 边界：适用平台？A3？跨平台也成立吗？
+→ 出处：这条经验哪来的？客户案例还是内部文档？
+→ 反例：什么情况下不成立？比如单机、非 MoE 模型？
+```
+
+grill 按置信度分级，不无差别多轮：来源明确、内容自包含（如官方文档）→ 单次复述确认即过；工程师输入但表述含糊 → 完整问意图/边界/出处/反例。
 
 批量吸收上游 issue 走 `issue-ingest`，支持多源（GitHub `gh` / GitCode `gitcode` CLI，缓存格式统一，框架差异参数化）：
 
@@ -270,7 +313,20 @@ groom 的 R8 信号让共性提炼不靠人肉发现：
 [示例输出] 诊断后用户反馈（一次问答）：
   agent：升级 CANN 后应用了，解决了吗？
   用户：解决了 ✓（trace 记 {action: feedback, case: VLLM-ASC-10122, outcome: resolved}）
+```
 
+没解决时当场归因，动手改库之前先分清楚改哪：
+
+```
+[示例输出] 用户：没解决，还报 507015 ✗（trace 记 {action: feedback, case: VLLM-ASC-10122, outcome: not_resolved}）
+agent 读本 session trace 归因：
+  case 错：检查按序跑、结果对，但 root cause 判断错 → 改 case 文件
+  execution 错：跳过 fallback / 加载错 namespace / 漏标低置信 → 改 skill 流程
+结论给工程师（"这属于 case 错，建议改 X"），实际修改走 PR，人确认后合入
+trace 记 {action: attribution, verdict: case_error|execution_error, evidence}
+```
+
+```
 [示例输出] groom 周批结算（scripts/settle_trace_feedback.py）：
   结算：VLLM-ASC-10122 hits 0→1（resolved 才 +1；命中本身不计入——
     命中是系统检索行为，不代表 case 有效，可信反馈才是置信度信号）
