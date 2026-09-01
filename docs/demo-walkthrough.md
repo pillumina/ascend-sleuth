@@ -385,8 +385,6 @@ sedimented: {state: submitted}   # none→submitted→knowledge/archived（零�
 
 ![DSH 诊断面板演示回放](demo-assets/ascend-replay-hd.gif)
 
-> 演示动画由 Remotion 渲染（`video-try` 项目），画面复刻 DSH 对话视图与 ascend-panel 诊断 tab；竖版 1080×1600，约 50 秒循环。原项目位于 `mvp/video-try`，可调整时间轴/文案后重新渲染。
-
 ---
 
 ## 收尾：回到架构图
