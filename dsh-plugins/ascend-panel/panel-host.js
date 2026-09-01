@@ -114,7 +114,7 @@ return {
           const lastOutput = last && last.output ? String(last.output).slice(0, 120) : null
           const createdAt = doc.created_at ? String(doc.created_at) : null
           const updatedAt = doc.updated_at ? String(doc.updated_at) : null
-          const activeCase = doc.active_case ? String(doc.active_case) : null
+          const activeCase = doc.active_case && doc.active_case !== 'null' ? String(doc.active_case) : null
           out.push({
             sessionId: doc.session_id ? String(doc.session_id) : ent.name.replace(/\.yaml$/, ''),
             file: ent.name,
@@ -528,6 +528,7 @@ return {
           additionalProperties: false,
           properties: {
             sessionCount: { type: 'number' },
+            error: { type: 'string' },
             sessions: {
               type: 'array',
               items: {
@@ -562,15 +563,21 @@ return {
         },
       },
       execute: async (args) => {
-        const cwd = args && args.cwd ? String(args.cwd) : undefined
+        let cwd = args && args.cwd ? String(args.cwd) : undefined
+        if (!cwd && sessions) {
+          const all = sessions.list()
+          for (const s of all) {
+            if (s && s.header && s.header.cwd) { cwd = s.header.cwd; break }
+          }
+        }
         const r = await listTraces(cwd)
         if (!r.ok) return { error: r.error }
         return {
           sessionCount: r.sessions.length,
           sessions: r.sessions.map(s => ({
             sessionId: s.sessionId, status: s.status, framework: s.framework,
-            category: s.category, activeCase: s.activeCase,
-            feedbackPending: s.feedbackPending, userSteps: s.userSteps, agentSteps: s.agentSteps,
+            category: s.category, activeCase: s.activeCase || '',
+            feedbackPending: s.feedbackPending || '', userSteps: s.userSteps, agentSteps: s.agentSteps,
           })),
         }
       },
