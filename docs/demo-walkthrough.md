@@ -381,6 +381,10 @@ sedimented: {state: submitted}   # none→submitted→knowledge/archived（零�
 
 **交互原则**：面板只生成指令（copy → 粘贴对话 → agent 执行），最终交互始终在 agent 与用户之间。面板是"指令生成器"，不做决策。沉淀/续接都要用户确认。
 
+**面板界面演示**：下面是真实诊断 session 在 DSH 对话视图 + 诊断面板上的完整回放（本仓库 `traces/2026-09-01-10562-lora-hidden.yaml` 的真实轨迹驱动）：对话中逐条 append 工具调用与诊断结论（新卡片居中登场），随后切到「诊断」tab 展开会话卡片，逐条回放 9 步诊断轨迹（路由 → 候选过滤 → Tier 3 兜底 → 源码分析 → 结论）。
+
+<img src="demo-assets/ascend-replay-hd.gif" alt="DSH 诊断面板演示回放" width="480" />
+
 ---
 
 ## 收尾：回到架构图
@@ -407,3 +411,4 @@ sedimented: {state: submitted}   # none→submitted→knowledge/archived（零�
 | issue-ingest 输出格式 | `docs/issue-ingest-pipeline.md`（GitCode 源差异见 skill 文档）|
 | 交互架构图 | `docs/diagrams/ascend-sleuth-architecture.html` |
 | DSH 面板（诊断/resume/沉淀/证据）| 动态 Cordis 插件（`conversation.view`"诊断"tab）。traces/ 为数据源；trace schema 见 `diagnosis_state.yaml.example` |
+| 面板界面演示（对话+轨迹回放动画）| `docs/demo-assets/ascend-replay-hd.gif`（§4.5，基于 `traces/2026-09-01-10562-lora-hidden.yaml`）|
