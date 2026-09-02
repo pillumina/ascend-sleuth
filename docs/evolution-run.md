@@ -85,7 +85,13 @@ orchestration §1 的会话是**单轮**（意图→计划→执行→报告→�
 | 卡流转 | 每卡状态机（candidate→…→validated/rolled_back/superseded）+ decisions 链 + 实验结论 | proposals/ideas/ |
 | 指标 | 四层指标（execution §6）+ 回滚率 + 每 validated 卡 token | timeline + 台账 |
 
-载体两档：**DSH 面板扩展**（仓库已有 ascend-panel 先例，诊断/指标 tab 加"自演进"tab）或**HTML 报告**（health_report 同款，离线生成）。诚实标注同 O7：〔中心全量〕或〔本地视角〕。agent 的操作序列与决策 reason 已随 trace 记录，渲染即"看到系统在自演进"。
+载体三档，按落地成本排序：
+
+1. **dsh-agent-teams 插件活动面板**（[NanmiCoder/dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)，已装 0.1.14）：自带成员树 + 任务 DAG + 实时状态 + 会话跟随 + 历史归档——覆盖"会话直播"与"任务总览"的大部分；**作为渲染层第一版，不必从零写**。局限：它展示的是 team 运行态，不含本设计的卡状态机（candidate→validated）与 token 账本，这两层仍需自建视图或报告补充；
+2. **DSH 面板扩展**（仓库已有 ascend-panel 先例，诊断/指标 tab 加"自演进"tab）：补插件面板缺失的卡流转与指标视图，与 trace/decisions 数据直连；
+3. **HTML 报告**（health_report 同款，离线生成）：无 DSH 环境或需分享时的兜底。
+
+诚实标注同 O7：〔中心全量〕或〔本地视角〕。agent 的操作序列与决策 reason 已随 trace 记录，渲染即"看到系统在自演进"。
 
 ## 7. 停止条件汇总（"跑到什么样停止"）
 

@@ -147,14 +147,15 @@ E. 抽审人 / reviewer / 体系维护人：6.3 级别人闸 + 6.6 季度自评
 
 共享状态（ingest-state / timeline / component-tally / ideas 队列）**串行**操作，遵守 git-workflow「多 agent 并行」节：每 agent 独立 worktree，分支名全局唯一，合流显式 merge。
 
-**执行载体选项（DSH 环境）**——机制与载体解耦，角色 A–E 不绑定具体实现。DSH 提供两种多 agent 机制，落地时二选一：
+**执行载体选项（DSH 环境）**——机制与载体解耦，角色 A–E 不绑定具体实现。DSH 提供三种多 agent 载体，落地时按需选用：
 
 | 载体 | 能力 | 启用条件 | 适用 |
 |---|---|---|---|
 | **continuable subagent**（当前会话所用：subagent/subagent_fork/list_agents/send_message） | 后台子 agent、可续对话、可 fork 继承上下文 | 默认可用 | 观测/起草/实验 agent 的轻量编排 |
-| **Agent Teams**（experimental：`ctx.agentTeams` + spawn_teammate / team_task_create/get/list/update / 持久 mailbox / 共享任务 DAG，含 blockedBy 依赖与 writeScopes 提示性路径前缀） | 具名持久 teammate、peer mailbox、共享任务板 | **dsh-base 默认禁用**，需 profile patch 启用；启用后禁用旧 continuable-child 同名控制工具 | 任务板 + 依赖 DAG 适合长期任务的轮间调度（run.md §2） |
+| **Agent Teams**（内置 experimental：`ctx.agentTeams` + spawn_teammate / team_task_create/get/list/update / 持久 mailbox / 共享任务 DAG，含 blockedBy 依赖与 writeScopes 提示性路径前缀） | 具名持久 teammate、peer mailbox、共享任务板 | **dsh-base 默认禁用**，需 profile patch 启用；启用后禁用旧 continuable-child 同名控制工具 | 任务板 + 依赖 DAG 适合长期任务的轮间调度（run.md §2） |
+| **dsh-agent-teams 插件**（[NanmiCoder/dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)，独立第三方实现，不依赖内置 experimental） | 11 个 `agent_teams_*` 工具（create/add_member/create_task/claim/update/send_message/status/resume…）+ 质量门（requirements→implementation→verification→review→integration 结构化任务合同，attempt_id 拒绝迟到写入）+ **自带 Web UI 活动面板**（成员树 + 任务 DAG + 实时状态，shell overlay） | `dsh plugin --profile <name> add @nanmicoder/dsh-agent-teams@<版本>`；**版本须匹配宿主**（0.1.14 ↔ harness 0.1.0-rc.8；0.1.15 ↔ 0.1.2-alpha.2） | 队长制自然语言协作 + 现成可视化面板（run.md §6 的可视化可先复用其活动面板，不必从零写）；质量门语义与本仓库 execution §5 follow-up 验证同构 |
 
-共享状态串行纪律在两种载体下同样适用——team 的 `writeScopes` 是提示性路径前缀不是锁（agent-team 文档原话），不能替代"唯一读写共享状态者"的执行约束。
+共享状态串行纪律在三种载体下同样适用——team 的 `writeScopes` 是提示性路径前缀不是锁（内置 agent-team 文档原话），不能替代"唯一读写共享状态者"的执行约束；dsh-agent-teams 的质量任务合同（verdict=pass 才 completed、failed 不解锁下游、自动 repair/review 链）与本设计"实验失败不推进 / review 级授权 / 自动修复"同构，可直接映射为授权级别的执行层实现。
 
 ## 7. Idea 卡 schema（v2）与状态机
 
