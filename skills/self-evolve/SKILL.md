@@ -40,6 +40,25 @@ disable-model-invocation: true
 - `proposals/ideas/` 现有卡（避免重复/冲突，§5.2 冲突检测）
 产出本轮的信号清单（每个信号带出处，无数据不产候选——诚实退化）。
 
+### 0.5 自动采集与测试（全自动 evolving 的数据摄入环节）
+让系统自己找新数据并测试，不等人喂。按序执行：
+1. **自动拉取上游 issue**：`python3 scripts/auto_fetch.py`——增量拉全部已配源的新
+   closed issue（读 ingest-state 游标，排除已处理，更新游标）；候选在
+   `.auto-fetch/`。
+2. **扩 S2 校准集**：`python3 scripts/s2_calibration.py --repo <slug> --output
+   eval/s2/<slug>.yaml --incremental`——只补真新增（跳过已收录 + 排除
+   not_planned）。
+3. **自动 replay 测试**：`python3 scripts/s2_replay.py --prepare`（产输入）→
+   `--todo`（列待测）→ **对每条 high/medium 置信条目按 diagnose 流程诊断**，
+   结论写 `.s2-replay/<issue>.result.yaml` → `--collect`（对照评分）。
+   **测试的意义**：用已闭环 issue（resolution 已知）验证诊断系统"从现象能否
+   定位根因"——命中 = 检索/根因正确；miss = 覆盖缺口（进候选）。
+4. **官方文档源**：有新增/变更的文档类别时 `python3 scripts/fetch_docs.py
+   --fetch-all`（清单 config/doc-sources.yaml）→ 草稿供 to-reference 提炼。
+   动态页正文提取用 agent-browser 渲染（curl 只取到导航框架时）。
+5. **观测结果并入信号清单**：把 replay 的 miss 项、容量、台账信号汇总为
+   本轮候选依据（step 0 的信号清单 + 本节采集结果一起驱动产卡）。
+
 ### 1. 产候选 idea 卡
 信号 → 卡（每卡一个文件 `proposals/ideas/EV-<YYYY>-<NNN>.yaml`）：
 - **先 `python3 scripts/ev_proposal.py --list`** 看现有卡（查重/冲突，§5.2 纪律）
@@ -96,8 +115,10 @@ disable-model-invocation: true
 |---|---|
 | `scripts/ev_proposal.py` | 产卡辅助：新卡号分配 / 卡骨架生成 / 现有卡概览（步骤 1 必用） |
 | `scripts/verify_proposals.py` | idea 卡 schema 校验（每轮必跑） |
+| `scripts/auto_fetch.py` | 自动增量拉取上游 issue（步骤 0.5：数据摄入） |
+| `scripts/s2_calibration.py` | 构建 S2 issue-replay 校准集（--incremental 只补新增） |
+| `scripts/s2_replay.py` | S2 replay 记录/对照评分/待测清单（--todo，步骤 0.5 测试） |
+| `scripts/fetch_docs.py` | 官方文档源抓取（config/doc-sources.yaml，动态页用 agent-browser） |
 | `scripts/component_tally.py` | 组件失败台账（观测信号源） |
-| `scripts/s2_calibration.py` | 构建 S2 issue-replay 校准集（验证门数据源） |
-| `scripts/s2_replay.py` | S2 校准集 replay 记录与对照评分（验证门执行） |
 | `scripts/replay_golden.py` | golden 套件 replay 编排（M2 雏形，即时判定类验证） |
 | `proposals/ideas/` | 卡资产（入 git，随 PR 进出） |
