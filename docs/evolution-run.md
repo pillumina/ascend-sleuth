@@ -5,20 +5,22 @@
 
 ## 1. 从一条指令到持续自演进（愿景总览）
 
-用户的典型指令（示例）：
+**自演进是隐形执行策略**：用户不需要说"要记录观测数据、走 feedback loop、按 self-evolving 制定计划"——这些是系统的默认行为，就像让"跑一次诊断"不需要复述三层加载流程。用户指令的典型形态是一句话目标：
 
-> "持续基于 vllm-ascend 仓库的 closed 高质量 issue 与 open 高质量 issue（先拉 200 个），对当前系统与知识库做沉淀和迭代；之后持续分批拉取，按 self-evolving 机制制定计划与角色任务；每次 diagnose 或调用其他 skill 都记录数据/trace/metrics，供 feedback loop 与 proposal → action → eval 闭环；我能看到 agent 的操作、执行、决策，并看到系统在自演进。"
+> "持续改进 vllm-ascend 的诊断命中率" / "这周有哪些值得沉淀的 verl issue？" / "自演进最近变贵了，查一下"
 
-系统把它翻译成四件事：
+系统在入口做四件事（对齐协议见 orchestration §1.2）：
 
-1. **建评测与沉淀源**（第 3 节）：拉取 issue → 分成"评测样本 + 沉淀素材 + 覆盖信号"三类用途；
-2. **开一个长期任务**（第 2 节）：goal + scope + 预算策略 + 每轮循环（拉取 → 评测 → 沉淀 → 候选 → 实验 → 合入 → 报告）；
-3. **全程留痕**（第 4/5 节）：每次 skill 调用记录执行数据，proposal 可替换可回滚；
-4. **可观察**（第 6 节）：agent 操作/决策/状态流转渲染给人看。
+1. **装载默认策略**（隐形）：观测信号集、S2 评测、feedback loop、proposal→action→eval、授权分级、停止条件、预算分层——全部自动带出，用户零复述；
+2. **对齐目标**：回显理解 + 澄清歧义（范围哪层？数据前提够不够？目标是否冲突？），**没对齐不执行**；
+3. **开一个长期任务**（第 2 节）：goal + scope + 预算策略 + 每轮循环（拉取 → 评测 → 沉淀 → 候选 → 实验 → 合入 → 报告）；
+4. **全程留痕 + 可观察**（第 4/5/6 节）：每次 skill 调用记录执行数据；任务/卡/指标渲染给人看。
+
+> 反例（不要把机制塞进指令）："持续基于 vllm-ascend 的 closed 与 open issue（先拉 200 个）做沉淀迭代，之后持续分批拉取，按 self-evolving 制定计划与角色任务，每次调用 skill 都记录 trace/metrics 供 feedback loop 与 proposal→action→eval 闭环……"——这段里除了"vllm-ascend + 持续改进"是目标，其余全是实现细节，应由默认策略承接。要求用户说这些 = 把系统内部机制暴露成用户负担。
 
 ## 2. 长期任务层（机制 A）：多轮循环，不是单轮会话
 
-orchestration §1 的会话是**单轮**（意图→计划→执行→报告→停）。用户的指令是一个**长期任务**——一轮做完不结束，而是按数据增量继续下一轮。
+orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对齐 → 计划 → 确认 → 执行/报告 → 停）。用户的指令是一个**长期任务**——一轮做完不结束，而是按数据增量继续下一轮。
 
 ```
 长期任务（goal_id + scope + issue 源配置 + 预算策略 + 停止条件）
@@ -107,7 +109,7 @@ orchestration §1 的会话是**单轮**（意图→计划→执行→报告→�
 
 | 层 | 工程形态 | 载体 | 对应用例 |
 |---|---|---|---|
-| **流程协议** | 新的 skill（如 `self-evolve`） | `skills/self-evolve/SKILL.md` | 描述"跑一轮自演进"的会话协议（orchestration §1）：意图收集 → 计划 → 观察窗执行 → 报告。**skill = agent 可加载的执行协议**，类似 knowledge-groom 的地位，但触发语义同 groom（disable-model-invocation，人显式触发，防自发批量改库） |
+| **流程协议** | 新的 skill（如 `self-evolve`） | `skills/self-evolve/SKILL.md` | 描述"跑一轮自演进"的会话协议（orchestration §1.2）：目标 → 默认策略装载 → 对齐 → 计划 → 观察窗执行 → 报告。**skill = agent 可加载的执行协议**，类似 knowledge-groom 的地位，但触发语义同 groom（disable-model-invocation，人显式触发，防自发批量改库） |
 | **确定性逻辑** | 一批脚本 | `scripts/` | S2 评测打分（issue→replay→对照）、component-tally 累积、token 记账、执行日志汇总——凡机械可判的环节脚本化，agent 只读聚合输出（原则二/九） |
 | **领域状态** | 数据文件 | `proposals/`（tasks/ideas/reviews/experiments）+ `metrics/component-tally.yaml` | 卡/task/台账是 git 可 diff 的词法数据（原则三），CI 校验 schema |
 | **可视化** | DSH Cordis 插件 | `dsh-plugins/self-evolve-panel/`（host/client）+ 加载 skill（preload-panel 先例） | run §6 领域视图（任务总览/卡流转/指标）——**不是** dsh-agent-teams 的活动面板（那只是 agent 协作态视图） |
