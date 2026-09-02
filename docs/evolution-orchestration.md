@@ -89,12 +89,12 @@ pipeline/execution 定义了"一轮里每一步怎么走"，但没有定义"一�
 
 ### 3.2 卡的成本侧字段（G6：predicted_effect 只有质量，没有成本）
 
-execution §2 的契约加两个成本字段（schema 扩展）：
+成本字段已并入 **pipeline.md §7 v3 schema**（唯一事实源），此处只重申语义：
 
 ```yaml
-predicted_effect: ...
-estimated_cost: {tokens: 8000, note: "改 triage 分支 + S2 复测 20 条"}
-actual_cost: {tokens: 9500}        # 合入/回测后写回，缺失即审计缺口
+predicted_effect: {metric: "...", from: X, to: Y}   # 质量预期（execution §2）
+estimated_cost: {tokens: 8000}                      # 预计 token（起草时填）
+actual_cost: {tokens: 9500}                         # 合入/回测后写回，缺失即审计缺口
 ```
 
 `actual_cost` 随 decisions 一起写回，进 timeline——**没有实际成本记录的 proposal 是不可审计的**（与"无实验证据不合入"同一纪律强度）。
@@ -193,4 +193,4 @@ proposals/session-context.yaml（每会话开头由观测 agent 生成，~2K tok
 | 目标函数/停止 = 轮的判据 | §6.6 季度自评 = 多轮判据 | §5 follow-up = 单卡判据 |
 | token 预算 = 轮的资源 | §6.2 流程总览（无预算维度） | 卡 schema 加成本字段 |
 
-**三层嵌套关系**：会话（本文）包含多卡（execution），多轮会话构成季度自评（pipeline §6.6）。落地顺序：execution 的 schema 扩展（含成本字段）→ 会话协议试点一轮（人手动跑，含计划确认与停止条件）→ token 指标进 timeline → 稳态降频与冲突检测随试点数据校准。
+**三层嵌套关系**：会话（本文）包含多卡（execution），多轮会话构成季度自评（pipeline §6.6）。**整体落地总纲见 pipeline.md §11**（Phase A–E），本文所述会话协议/预算/治理随 §11 Phase D 试点落地，不另立落地计划。

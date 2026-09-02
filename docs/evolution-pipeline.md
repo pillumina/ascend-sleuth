@@ -163,15 +163,22 @@ E. 抽审人 / reviewer / 体系维护人：6.3 级别人闸 + 6.6 季度自评
 id: EV-2026-001
 layer: L2                        # L1 | L2 | L3（本卡示例：流程层）
 title: triage 分支 vllm-ascend 启动参数族执行错率 0.6 → 修订该分支
-status: candidate                # candidate → proposed → in_experiment → adopted | rejected
+status: candidate                # 完整词表（v3，与 execution §5.1 一致）：
+                                 #   candidate → proposed → in_experiment → adopted
+                                 #   adopted → validated | rolled_back | superseded（观察窗终态）
+                                 #   in_experiment 实验失败 → rejected；回测不达标 → re-iterate（回 proposed）
+                                 #   沉淀类另有 awaiting_validation（观察窗未结束，见 execution §4.3）
 authorization: review            # auto | review | dual（6.3 分级；candidate 时由风险+证据预判）
 dimension: evolvability          # architecture | evolvability | maintainability | observability | process
+supersedes: []                   # 本卡替代的旧卡 id 列表（run §5：新 idea 替换旧实现时填）
+superseded_by: null              # 被哪张卡替代（旧卡被替代后标 superseded，非 rejected）
 created_at: 2026-09-01
 source_signals:
   - signal: component_error      # 来自组件台账（metrics/component-tally.yaml）
     evidence: "组件 triage:vllm-ascend-startup mis=6/hit=4，score 0.4"
     trajectory: ["metrics/component-tally.yaml 2026-W37", "traces/2026-08-30-xxxx.yaml#attribution"]
 hypothesis: 修订该分支的症状匹配逻辑后，执行错率降至 <0.3
+predicted_effect: {metric: "组件执行错率", from: 0.6, to: "<0.3"}   # 可测预期（execution §2 follow-up 判定基准）
 validation:
   method: golden_replay          # golden_replay | tally_recheck | metrics_compare | issue_replay（S2 校准）
   baseline: 现 triage-tree + 现有 golden 套件
@@ -180,20 +187,25 @@ validation:
 gate:
   condition: "该组件 mis ≥5 且 最近 2 期无下降"
 risk: high                       # high → dual；中 → review；低且可逆 → auto
+estimated_cost: {tokens: 8000}   # 成本侧（orchestration §3.2：预计 token，起草时填）
+actual_cost: null                # 合入/回测后写回 actual_cost.tokens（缺失即审计缺口）
 principle_refs: [五, 六, 八, 十一]
-decisions: []                    # 审计链：谁在何时依据哪份证据决定什么
+decisions: []                    # 审计链：谁在何时依据哪份证据决定什么（只追加不修改）
 ```
 
-状态机（v1 基础上加授权维度；否决 = 终态，留理由，不删除）：
+状态机（v3：与 execution §5.1 follow-up 观察窗一致；否决/回滚 = 终态态，留理由，不删除；`adopted` 是待回测的合入，不是完成）：
 
 ```
-candidate ──分级授权──► proposed ──实验启动──► in_experiment ──数据通过──► adopted ──► 合入（auto/review/dual）──► 回测
-    │                          │                   │                         （实验失败 → rejected，留结论）        │
-    │                          │                   └──数据不通过/回滚──► rejected                                  ▼
-    └──否决────────────────────┴───────────────────────────────────────────────────── 回测不达标 → 回滚 + 再迭代卡 / rejected
+candidate ──分级授权──► proposed ──实验启动──► in_experiment
+    │                          │                   ├─ 数据通过 → adopted（合入，进入观察窗）
+    │                          │                   │      ├─ 观察窗达标 → validated（闭环终态：效果入 metrics、台账记 hit）
+    │                          │                   │      ├─ 未达标无退化 → re-iterate（回 proposed）
+    │                          │                   │      └─ 退化/有害 → rolled_back（回滚 + 教训入台账）
+    │                          │                   └─ 实验失败 → rejected（留结论）
+    └──否决────────────────────┴───────────────────────────────────► rejected（留理由）
 ```
 
-规则：`status`/`authorization` 由机制推进不靠自觉（落地时 schema 校验可机械执行则进 CI，准入判据三条件）；`decisions` 只追加不修改。
+规则：`status`/`authorization` 由机制推进不靠自觉（落地时 schema 校验可机械执行则进 CI，准入判据三条件）；`decisions` 只追加不修改；`supersedes/superseded_by` 构成替换追溯链（run §5），回滚粒度 = 被替代版本的合入点。
 
 ## 8. 自动化边界（v2）
 
@@ -243,6 +255,19 @@ candidate ──分级授权──► proposed ──实验启动──► in_ex
 | 常设 | 季度自评（6.6） | 自 D 起每季度 |
 
 与 roadmap 现有事项的关系：本文是机制层文档；roadmap 的 A2/E2/E5/O3/O4/M2/M5 是流水线的下游执行项，闸门不变。若采纳，建议 roadmap「常设检查点」加一行「自演进季度自评」（载体 proposals/reviews/）。
+
+**落地顺序的主从关系（防多源冲突）**：**本文 §11 是唯一权威落地总纲**。execution §10 与 run §9 是各自维度的落地细化，不是平行计划——落地时以本表 Phase 推进，execution/run 的表只回答"本层内部先做什么"：
+
+| 其他文档的落地项 | 归属本表哪一 Phase |
+|---|---|
+| execution §10：proposal schema v3 落模板 | Phase A（与归因字段设计同批） |
+| execution §10：沉淀效果字段（predicted_value/first_hit） | Phase B（台账跑通后，随首批沉淀） |
+| execution §10：follow-up 观察窗常态化 | Phase C（依赖 M2/S2 的即时判定） |
+| execution §10：回滚率等机制指标进 timeline | Phase D 试点 ≥1 轮后 |
+| run §9：统一执行记录（机制 C） | Phase A–B 之间（记录 schema 定稿即接） |
+| run §9：supersede 字段 + 回滚语义 | Phase D（出现首个替代场景时，schema 已含字段） |
+| run §9：长期任务层试点 | Phase D（试点即含轮间调度） |
+| run §9：可视化 | Phase E 后 / 常设（任务层跑通 ≥1 轮） |
 
 ## 12. 外部参考：与 SkillOpt 的关系（借鉴什么、不取什么）
 

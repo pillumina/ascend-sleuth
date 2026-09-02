@@ -73,7 +73,7 @@ v2 机制把"观测 → 候选 → 授权 → 合入"串起来了，但执行时
 
 ## 5. Follow-up 验证链路：proposal 改动后的合理性
 
-### 5.1 状态机扩展（在 pipeline.md §7 状态机基础上）
+### 5.1 状态机：follow-up 观察窗（权威定义在 pipeline.md §7 v3，此处只重复关键语义）
 
 ```
 in_experiment ──合入──► adopted（合入态，进入观察窗）
@@ -82,7 +82,7 @@ in_experiment ──合入──► adopted（合入态，进入观察窗）
                             └─ 退化 / 有害 ──► rolled_back（回滚 + rejected + 教训入台账）
 ```
 
-`adopted` 不再自动等于"完成"——它是**待回测的合入**。只有 `validated` 才是闭环终态。
+`adopted` 不再自动等于"完成"——它是**待回测的合入**。只有 `validated` 才是闭环终态。**状态词表与 schema 的唯一事实源是 pipeline.md §7（v3）**：status 完整词表（candidate/proposed/in_experiment/adopted/validated/rolled_back/superseded/rejected/re-iterate + 沉淀类 awaiting_validation）、supersedes/superseded_by 替换链、estimated/actual_cost 成本字段都在那边定义，本文不重复定义只引用——防两处状态机再次漂移。
 
 ### 5.2 观察窗按变更类分（不是所有验证都等现场反馈）
 
@@ -150,11 +150,11 @@ in_experiment ──合入──► adopted（合入态，进入观察窗）
 | 脱敏纪律（引用不含原文） | 十 | 信息完整与隐私冲突时诚实降级 |
 | 回滚率指标 | 六、十一 | 合入闸门质量可度量，校准授权级别 |
 
-## 10. 落地顺序（与 pipeline.md §11 衔接）
+## 10. 落地顺序（执行契约维度；**整体落地总纲见 pipeline.md §11**，本表是本文所述契约的落地细化，不平行于 §11）
 
 | 步骤 | 内容 | 入口闸门 |
 |---|---|---|
-| 1 | 本文采纳 + proposal schema v3 落 `proposals/ideas/` 模板 | owner 确认 |
+| 1 | proposal schema v3 落 `proposals/ideas/` 模板（随 §11 Phase A 同批） | owner 确认 |
 | 2 | 沉淀效果字段（predicted_value/first_hit/expected_window）落 case schema + groom 观察窗结算 | 首次真实沉淀批量存在 |
 | 3 | follow-up 观察窗常态化 | M2 或 S2 校准集可用（即时判定类） |
 | 4 | 回滚率/采纳率等机制健康指标进 timeline | 自演进执行流程试点 ≥1 轮 |
