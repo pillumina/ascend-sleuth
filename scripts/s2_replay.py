@@ -119,9 +119,38 @@ def collect(root: Path, report_path: Path):
     print(f"s2_replay: 报告已写 {report_path}")
 
 
+def todo(root: Path):
+    """列出未 replay 的校准集条目（供 agent 驱动批量测试），按 confidence 优先。"""
+    conf_order = {"high": 0, "medium": 1, "pending": 2}
+    rows = []
+    for f in sorted((root / S2_DIR).glob("*.yaml")):
+        doc = load_yaml(f)
+        if not isinstance(doc, dict):
+            continue
+        for e in doc.get("calibration", []):
+            issue = e.get("issue")
+            res_file = root / REPLAY_DIR / f"{issue}.result.yaml"
+            if res_file.exists():
+                continue
+            rows.append((
+                conf_order.get(e.get("expected", {}).get("confidence", "pending"), 3),
+                issue, f.stem, e.get("title", ""), e.get("expected", {}).get("confidence", "?"),
+            ))
+    rows.sort(key=lambda r: r[0])
+    if not rows:
+        print("s2_replay: 校准集全部已 replay（无待测）")
+        return
+    print(f"s2_replay: {len(rows)} 条待 replay（按 confidence 优先）：\n")
+    print("对每条：读 .s2-replay/<issue>.md（现象）→ 按 diagnose 流程诊断 → 结论写 .s2-replay/<issue>.result.yaml")
+    print("（result 结构: namespace/category/hit_case/root_cause/evidence_gap/replayed_at）\n")
+    for _, issue, repo, title, conf in rows:
+        print(f"  #{issue} [{conf}] ({repo}) {title[:60]}")
+
+
 def main():
     ap = argparse.ArgumentParser(description="S2 校准集 replay 记录与对照评分")
     ap.add_argument("--prepare", action="store_true")
+    ap.add_argument("--todo", action="store_true", help="列未 replay 条目（驱动批量测试）")
     ap.add_argument("--collect", action="store_true")
     ap.add_argument("--report", type=Path, default=Path(".s2-replay-report.md"))
     ap.add_argument("--root", type=Path, default=Path("."))
@@ -129,6 +158,8 @@ def main():
     root = args.root.resolve()
     if args.prepare:
         prepare(root)
+    elif args.todo:
+        todo(root)
     elif args.collect:
         collect(root, args.report)
     else:
