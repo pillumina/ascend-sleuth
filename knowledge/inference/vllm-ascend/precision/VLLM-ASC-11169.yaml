@@ -31,6 +31,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/11169"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #11169'
+
     quickly_check:
       primary:
         command_template: "grep -E '乱码|garbled' {{log_path}}"

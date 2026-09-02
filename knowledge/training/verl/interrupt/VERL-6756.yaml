@@ -34,6 +34,13 @@ cases:
       - "https://github.com/verl-project/verl/issues/6751"
       - "https://github.com/verl-project/verl/pull/6043"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #6043'
+
     quickly_check:
       primary:
         command_template: "grep -rn 'get_npu_versions' verl/ --include='*.py'"

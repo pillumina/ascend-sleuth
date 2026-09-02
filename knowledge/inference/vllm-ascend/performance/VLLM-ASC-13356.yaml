@@ -33,6 +33,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/13356"
       - "https://github.com/vllm-project/vllm-ascend/pull/12783"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #12783'
+
     quickly_check:
       primary:
         command_template: "grep 'num_external_hit_tokens <= num_computed_tokens' {{log_path}}"

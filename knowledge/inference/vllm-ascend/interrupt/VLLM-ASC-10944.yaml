@@ -33,6 +33,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/10944"
       - "https://github.com/vllm-project/vllm-ascend/issues/11394"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #10944'
+
     quickly_check:
       primary:
         command_template: "grep -E 'aclnnMoeDistributeDispatchV4 failed, error code is 561000' {{log_path}}"

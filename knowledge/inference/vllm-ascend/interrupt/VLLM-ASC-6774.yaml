@@ -31,6 +31,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/6774"
       - "https://github.com/vllm-project/vllm-ascend/pull/7265"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #7265'
+
     quickly_check:
       primary:
         command_template: "grep -E '启动失败|startup failed' {{log_path}}"

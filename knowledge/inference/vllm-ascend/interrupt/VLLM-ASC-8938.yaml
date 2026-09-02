@@ -30,6 +30,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/8938"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #8938'
+
     quickly_check:
       primary:
         command_template: "grep -E 'ZMQError|Address already in use' {{log_path}}"

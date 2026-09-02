@@ -32,6 +32,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/pull/9835"
       - "https://github.com/vllm-project/vllm-ascend/pull/9231"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #9835'
+
     quickly_check:
       primary:
         command_template: "grep -E 'AssertionError: FlashAttnPrefillBackend requires flash_attn_varlen_func' {{log_path}}"

@@ -30,6 +30,13 @@ cases:
     references:
       - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1667"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #1667'
+
     quickly_check:
       primary:
         command_template: "grep -E '_create_on_cpu|ModelFactory.create|model_loader' {{log_path}}"

@@ -31,6 +31,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/9186"
       - "https://github.com/vllm-project/vllm-ascend/pull/11701"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #11701'
+
     quickly_check:
       primary:
         command_template: "grep -E \"dispatch_ffn_combine\\\\(\\\\) Expected a value of type 'Optional\\\\[List\\\\[Tensor\\\\]\\\\]'\" {{log_path}}"

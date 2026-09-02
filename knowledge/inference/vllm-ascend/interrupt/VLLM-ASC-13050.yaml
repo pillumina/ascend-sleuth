@@ -32,6 +32,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/13050"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #13050'
+
     quickly_check:
       primary:
         command_template: "grep 'kernelName=IndexPut' {{log_path}}"

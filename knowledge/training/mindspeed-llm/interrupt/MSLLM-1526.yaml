@@ -29,6 +29,13 @@ cases:
     references:
       - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1526"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #1526'
+
     quickly_check:
       primary:
         command_template: "grep -E 'build_train_valid_test_data_iterators|build_train_valid_test_data_loaders' {{log_path}}"

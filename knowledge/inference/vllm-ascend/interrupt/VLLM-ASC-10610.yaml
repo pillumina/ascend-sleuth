@@ -32,6 +32,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/10610"
       - "https://github.com/vllm-project/vllm-ascend/pull/10441"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #10441'
+
     source_ref:
       repo: vllm-project/vllm-ascend
       ref: c5ae281d9bfc60390e93cdbf3a9784c2f8096249

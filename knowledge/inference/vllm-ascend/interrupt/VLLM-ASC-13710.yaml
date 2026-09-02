@@ -35,6 +35,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/13710"
       - "https://github.com/vllm-project/vllm-ascend/pull/14025"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #14025'
+
     quickly_check:
       primary:
         command_template: "grep 'expanded size of the tensor' {{log_path}}"

@@ -31,6 +31,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/12226"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #12226'
+
     quickly_check:
       primary:
         command_template: "grep 'aclnnGroupedMatmulV5 failed, error code is 161002' {{log_path}}"

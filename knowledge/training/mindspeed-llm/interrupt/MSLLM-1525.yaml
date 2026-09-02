@@ -29,6 +29,13 @@ cases:
     references:
       - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1525"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #1525'
+
     quickly_check:
       primary:
         command_template: "grep -n 'batch_p2[op]_comm' {{config_path}}"

@@ -31,6 +31,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/10626"
       - "https://github.com/vllm-project/vllm-ascend/issues/13050"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #10626'
+
     quickly_check:
       primary:
         command_template: "grep 'UniqueConsecutive' {{log_path}}"

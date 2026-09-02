@@ -30,6 +30,14 @@ cases:
     # 可选：指向 common/ 权威记录。root cause 被确认多框架共用时才填（§5.3）
     references: common/hccl/buffer_config.yaml#ASCEND-HCCL-BUFFER-001
 
+    # 可选：来源验证状态（to-postmortem 产出时标；区别于 investigation_quality——
+    # quality=人的调查判断，verification=外部证据强度）。档位见 skills/to-postmortem：
+    #   upstream-fix-merged | upstream-maintainer-confirmed | investigation | engineer-report
+    # 决定初始 confidence.score 先验（groom 置信度重算规则表）；无外部验证不填。
+    verification:
+      source: investigation
+      detail: "本地源码分析定位（见 source_ref）"
+
     # 阶段一加载（两阶段加载，§6）：过滤用，约 70 token/条
     quickly_check:
       primary:                           # 精确但易因日志格式变化失效

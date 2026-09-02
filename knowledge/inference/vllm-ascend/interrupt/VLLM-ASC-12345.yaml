@@ -30,6 +30,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/12345"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #12345'
+
     quickly_check:
       primary:
         command_template: "grep -iE 'Cannot allocate memory|std::bad_alloc' {{log_path}}"

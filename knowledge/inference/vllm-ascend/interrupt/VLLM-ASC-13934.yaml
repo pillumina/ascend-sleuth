@@ -36,6 +36,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/pull/13968"
       - "https://github.com/vllm-project/vllm-ascend/pull/13965"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #13968'
+
     quickly_check:
       primary:
         command_template: "grep 'Split KV cache manager group' {{log_path}}"

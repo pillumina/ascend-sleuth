@@ -32,6 +32,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/12241"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #12241'
+
     quickly_check:
       primary:
         command_template: "cat /usr/local/Ascend/ascend-toolkit/latest/version.cfg | grep -iE 'version|cann'"

@@ -3,7 +3,7 @@
 # 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-08-31    case 总数：66
+# 生成日期：2026-09-02    case 总数：66
 #   容量(inference/sglang): interrupt=1/30
 #   容量(inference/vllm-ascend): interrupt=36/30, performance=3/30, precision=6/30
 #   容量(training/mindspeed-llm): interrupt=11/30, precision=3/30
@@ -72,7 +72,7 @@ namespaces:
           command: grep -E 'aicore exception|AclNN_Runtime_Error' {{log_path}}
           expected: regex:aicore exception|AclNN_Runtime_Error
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10122.yaml
-      hash: a5aa33b4980b
+      hash: b98f3eee5c5a
     - id: VLLM-ASC-10610
       title: 'GLM-5.2-w8a8（--quantization ascend）拉起服务加载权重即报 KeyError: ''model.layers.N.self_attn.indexer.wq_b.weight''，modelslim
         量化描述未覆盖 GLM-5.2 新增 indexer 结构'
@@ -101,7 +101,7 @@ namespaces:
           command: grep -E 'modelslim_config\.py.*get_linear_quant_type' {{log_path}}
           expected: regex:modelslim_config\.py.*get_linear_quant_type
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10610.yaml
-      hash: a3710855776d
+      hash: 50a9b15c7fea
     - id: VLLM-ASC-10626
       title: Qwen2VL --enable-lora 启动失败：aclnnUniqueConsecutive failed, error code 507018 (aicpu exception)——多模态
         LoRA adapter 激活路径
@@ -131,7 +131,7 @@ namespaces:
           command: grep -E '507018|aicpu exception' {{log_path}}
           expected: regex:.*(507018|aicpu exception)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10626.yaml
-      hash: 291ab170d5e6
+      hash: 248e109d1118
     - id: VLLM-ASC-10784
       title: Kimi-k2.5 PD 分离 2P1D 压测中 decode 侧 OOM：请求竞争触发 recompute，_moe_forward_shared 展开 61GB、npu_grouped_matmul_gmm2
         输入 batch 1024→508648
@@ -160,7 +160,7 @@ namespaces:
           command: grep -E '_moe_forward_shared|OOM|OutOfMemory' {{log_path}}
           expected: regex:_moe_forward_shared|OOM|OutOfMemory
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10784.yaml
-      hash: 74203b02519b
+      hash: 908c79ff0baa
     - id: VLLM-ASC-10944
       title: GLM-5/5.1/5.2 w8a8 开启 --enable-expert-parallel 拉起报 call aclnnMoeDistributeDispatchV4 failed,
         error code is 561000（HCCL QP 资源耗尽 EI0007），关闭 EP 可规避
@@ -190,7 +190,7 @@ namespaces:
           command: grep -E 'Resource_Error\(EI0007\)|Resources are exhausted' {{log_path}}
           expected: regex:Resource_Error\(EI0007\)|Resources are exhausted
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10944.yaml
-      hash: 68a3086a99ee
+      hash: 47121c7e6891
     - id: VLLM-ASC-10954
       title: GLM-5.2 工具调用传参类型错误——工具幻视导致 json 格式不清晰（GPU 同版本 vllm 同现），升级 vllm 0.24+ 修复 parse 逻辑
       category: interrupt
@@ -215,7 +215,7 @@ namespaces:
           command: grep -iE 'json|parse|tool' {{log_path}}
           expected: regex:json|parse|tool
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10954.yaml
-      hash: cdafe444a7c5
+      hash: f745a39c7edb
     - id: VLLM-ASC-11208
       title: '双机 A2 按官方教程部署 GLM5.2 启动报 ModuleNotFoundError: No module named ''vllm.model_executor.layers.fused_moe.expert_map_manager''（v0.22.1rc
         未适配 GLM5.2）'
@@ -246,7 +246,7 @@ namespaces:
           command: grep -iE 'fused_moe|glm5\.2|键值错误' {{log_path}}
           expected: regex:.*(fused_moe|glm5\.2|键值错误)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-11208.yaml
-      hash: 2bb856d21af4
+      hash: cdf7ed248e34
     - id: VLLM-ASC-11343
       title: PD 分离 + 多节点 PP：D 侧 _get_remote_ranks_for_req 用 P0 的 base kv_port(31112) 计算所有 PP rank 的 ZMQ
         端口，P1(31113) 上 PP2+ 端口整体偏移 -1，连到无人监听的 31128 → KV 传输超时、P 节点显存堆积、bench 卡死
@@ -276,7 +276,7 @@ namespaces:
           command: grep -E 'port 3112[0-9]|ZMQ' {{log_path}}
           expected: regex:port 31128
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-11343.yaml
-      hash: f3179899ce8e
+      hash: 539cda5838d0
     - id: VLLM-ASC-11459
       title: 'MooncakeBackend lazy_init=True 时 _setup_store() 被推迟到首次 put()（KV 传输发送线程），无参 get_global_rank()
         读 process-global vllm config 为 None 抛 AssertionError: Current vLLM config is not set（x43），store
@@ -306,7 +306,7 @@ namespaces:
           command: grep -E 'ASCEND_ENABLE_USE_FABRIC_MEM=1|MooncakeBackend' {{log_path}}
           expected: regex:ASCEND_ENABLE_USE_FABRIC_MEM=1|MooncakeBackend
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-11459.yaml
-      hash: fc732d05285f
+      hash: abdcc9c66995
     - id: VLLM-ASC-11498
       title: Ascend950(A5) allgatherEP W4A8_MXFP4 路径把 topk_weights 误强转为 float8，与 bool mask 相乘触发 Float8×Bool
         promotion 不支持，profile_run 阶段启动即崩
@@ -338,7 +338,7 @@ namespaces:
           command: grep -E 'Float8_e4m3fn and Bool|topk_weights \* mask' {{log_path}}
           expected: regex:Float8_e4m3fn and Bool
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-11498.yaml
-      hash: d85d8fb576a2
+      hash: fc6e271d964f
     - id: VLLM-ASC-11893
       title: PCP 按 cp_kv_cache_interleave_size(128) 切分 prefill 时短请求在 rank>0 产生零 token 空段；chunk_indices
         按紧凑段号索引而 chunk_fwd_o 用含空段的原始 cu_seqlens，二者错位 → batchTokens=0-164 uint32 下溢 → AscendC kernel MTE
@@ -368,7 +368,7 @@ namespaces:
           command: grep -E 'chunk_fwd_o|chunk_gated_delta_rule|zero chunk' {{log_path}}
           expected: regex:chunk_fwd_o|chunk_gated_delta_rule
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-11893.yaml
-      hash: 7db4f7b69d62
+      hash: 2cde9815d64e
     - id: VLLM-ASC-11924
       title: Ascend950 未启用 FlashComm1/SP 时 AllGather EP 的 MXFP4 W4A4 MoE：prepare 路径不预量化/不产 pertoken_scale，token
         dispatcher 仍按 dispatch 时量化把 BF16 激活推断 FP4 packed 形状，触发 MoeInitRoutingV3 tiling 错误（expanded_x dim1
@@ -399,7 +399,7 @@ namespaces:
           command: grep -iE 'MoeInitRoutingV3|npu_moe_init_routing_v2' {{log_path}}
           expected: regex:[Mm]oeInitRoutingV3|npu_moe_init_routing_v2
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-11924.yaml
-      hash: 9e407dcdbc7a
+      hash: 2643f04bfe54
     - id: VLLM-ASC-12226
       title: camem sleep/wake 是字节级 memcpy（恢复后权重已是 forward READY 方向），NPUWorker.wake_up 又对 MoE w13/w2 transpose(1,2)
         一次构成双重转置，纯推理 wake_up 后 K 维错位（3072 vs 2048）→ npu_grouped_matmul 161002/EZ1001
@@ -429,7 +429,7 @@ namespaces:
           command: grep -E 'EZ1001|wake_up' {{log_path}}
           expected: regex:EZ1001
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12226.yaml
-      hash: 51b5f68379b7
+      hash: 050906c9fbba
     - id: VLLM-ASC-12345
       title: DeepSeek V4 Pro 部署 A3/A5 长跑 host 内存持续增长→OOM：CANN-nnopbase 为 sas_metadata kernel（AICPU）按 TilingKey
         分配 host buffer 不驱逐
@@ -460,7 +460,7 @@ namespaces:
           command: npu-smi info && ps -o pid,rss,cmd -p $(pgrep -f 'vllm serve')
           expected: 显存平稳 + 进程 RSS 随时间单调增长（host 泄漏特征，区别于 device OOM）
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12345.yaml
-      hash: bc4f8f36c025
+      hash: fc913ca8fac6
     - id: VLLM-ASC-12461
       title: 多节点 EP + FusedMoE MC2 通信算子（MoeDistributeDispatchV2）在 ROCE 网络触发 aicore exception（MTE DDR 越界）→
         SUSPECT REMOTE ERROR 507057 启动失败；HCCS 可跑通，升级 0.20.2rc1+ 修复
@@ -492,7 +492,7 @@ namespaces:
           command: grep -iE '507057|aicore exception|MoeDistributeDispatchV2' {{log_path}}
           expected: regex:.*(507057|aicore exception|MoeDistributeDispatchV2)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12461.yaml
-      hash: 06f123d92dab
+      hash: 506d36246b1f
     - id: VLLM-ASC-12685
       title: 非量化模型被自动路由进 AscendFp8Config：fp8_config.py get_quant_method 硬编码 ds_linear scheme，MiniMax-M2.7
         启动即 AttributeError 'o_groups'
@@ -529,7 +529,7 @@ namespaces:
             {{log_path}}
           expected: regex:Using the vLLM Ascend fp8 Quantization now
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12685.yaml
-      hash: f46b7ae72a71
+      hash: cd1f2e88d61f
     - id: VLLM-ASC-12901
       title: A3 启动 GLM5.2 w4a8c8 报 KeyError：v0.22.1rc1-a3 镜像 modelslim 量化描述缺 indexer.wq_b.weight（升级镜像修复）
       category: interrupt
@@ -557,7 +557,7 @@ namespaces:
           command: grep -E 'wq_b\.weight|modelslim_config' {{log_path}}
           expected: regex:.*(wq_b\.weight|modelslim_config)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12901.yaml
-      hash: 4034f8f01e25
+      hash: 9cb393fd26da
     - id: VLLM-ASC-12983
       title: 310P MTP 与图模式无法同时开启：镜像缺 free-mask 算子，pageattention-splitfuse 变化 shape mask 不入图
       category: interrupt
@@ -587,7 +587,7 @@ namespaces:
           command: grep -E 'synchronize captured-stream|stream is captured' {{log_path}}
           expected: regex:.*(synchronize captured-stream|stream is captured)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12983.yaml
-      hash: e44033cbe983
+      hash: dde1adfdd1fd
     - id: VLLM-ASC-12989
       title: 310P 硬件 event 资源有限：FULL_DECODE_ONLY 多尺寸 cudagraph 捕获超上限 → Insufficient_Event_Resources(EL0008)/507903，TP2
         启动失败
@@ -620,7 +620,7 @@ namespaces:
           command: grep -E '507903|capture event failed|no event resource' {{log_path}}
           expected: regex:507903
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12989.yaml
-      hash: adc0ce81a56b
+      hash: b42bfd9fb09f
     - id: VLLM-ASC-13050
       title: 310P 上推理请求触发 IndexPut aicpu exception（errorCode=0x2a, runtime 507018, stream phase=SCHEDULE），0.23.0
         rc 镜像复现、POC 镜像正常、0.23.0 正式版修复
@@ -649,7 +649,7 @@ namespaces:
           command: grep -iE 'aicpu exception|507018|E39999' {{log_path}}
           expected: regex:.*(aicpu exception|507018|E39999)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13050.yaml
-      hash: 6f8671d70468
+      hash: 7c4784597989
     - id: VLLM-ASC-13086
       title: vllm-ascend 0.14.0rc1 不支持 A5(950) 芯片：check_ascend_device_type 断言失败，需升级最新/rc 版本
       category: interrupt
@@ -678,7 +678,7 @@ namespaces:
           command: 'grep -E ''Current device type: AscendDeviceType\.A5 does not match'' {{log_path}}'
           expected: 'regex:.*Current device type: AscendDeviceType\.A5 does not match'
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13086.yaml
-      hash: dece46eca929
+      hash: eb19ba996b33
     - id: VLLM-ASC-13329
       title: DSV4-Flash-0731 是 DSpark 模型无 MTP head：mtp 模式启动报 KeyError 'mtp.0.head.weight'，应改用 dspark
       category: interrupt
@@ -709,7 +709,7 @@ namespaces:
           command: grep -E 'mtp\.0\.head\.weight|speculative-config' {{log_path}}
           expected: regex:.*(mtp\.0\.head\.weight|speculative-config)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13329.yaml
-      hash: 1178273f27a9
+      hash: 05afcdd66439
     - id: VLLM-ASC-13508
       title: main2main Gluon 兼容 stub 只把 triton.experimental.gluon 叶子模块塞入 sys.modules，父模块 triton.experimental
         缺失，x86_64 导入即 ModuleNotFoundError
@@ -743,7 +743,7 @@ namespaces:
           command: grep -Ei 'triton.experimental|gluon' {{log_path}}
           expected: regex:triton\.experimental
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13508.yaml
-      hash: f3a13b0c90f2
+      hash: 945222e075d3
     - id: VLLM-ASC-13688
       title: AIV 模式下 torch.npu.graph_task_group_begin 包 HCCL all_reduce 导致 graph capture 失败 + 首请求死锁（507009/507903，AIV+RIC
         task_group 组合冲突）
@@ -776,7 +776,7 @@ namespaces:
           command: grep -E 'graph_task_group|Replaying aclgraph|AIVector' {{log_path}}
           expected: regex:(graph_task_group|Replaying aclgraph)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13688.yaml
-      hash: 5697bb5d2765
+      hash: 15c7b48dd026
     - id: VLLM-ASC-13710
       title: pcp_utils.generate_pcp_mtp_input 用 np.array_split 按 cu_num_tokens 切分请求时出现空段，某请求漏加 MTP draft
         追加，req_indices_mtp(256) 与 positions_mtp(260) 长度不一致 → block_table.py:272 slot_mapping 赋值 shape
@@ -808,7 +808,7 @@ namespaces:
           command: grep -E '256.*260|generate_pcp_mtp_input|slot_mapping_draft' {{log_path}}
           expected: regex:.*(256.*260|generate_pcp_mtp_input|slot_mapping_draft)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13710.yaml
-      hash: f38754c65a70
+      hash: 931166fa5549
     - id: VLLM-ASC-13934
       title: v0.26 新增 AscendSFAIndexerCacheSpec 使 1 个 KV cache group 拆成 2 个 Mooncake transfer group，而
         vllm 侧 remote_block_ids 仍按 1 组索引，D 侧 _get_kv_split_metadata 访问 remote_block_ids[1] 越界崩溃
@@ -839,7 +839,7 @@ namespaces:
           command: 'grep -E ''_get_kv_split_metadata|IndexError: list index out of range'' {{log_path}}'
           expected: 'regex:.*(_get_kv_split_metadata|IndexError: list index out of range)'
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13934.yaml
-      hash: 8ce19bafedb3
+      hash: 43ee119f1ecd
     - id: VLLM-ASC-13964
       title: Decode DP rank 静默停滞：async scheduling 下 num_computed_tokens 计入未处理输出，SWA/chunked-local KV block
         被提前剪枝复用
@@ -874,7 +874,7 @@ namespaces:
           command: grep -Ei 'silent|liveness|stall' {{log_path}}
           expected: regex:silent liveness failure
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13964.yaml
-      hash: 8a482cb83a10
+      hash: 61e608cfcdcf
     - id: VLLM-ASC-14166
       title: A5 950DT 启动 DeepSeek-V4-Flash-0731 报 MoeInitRoutingV3 找不到二进制（torch-npu 需 >=2.10.0.post4）
       category: interrupt
@@ -902,7 +902,7 @@ namespaces:
           command: grep -E 'MoeInitRoutingV3.*561000|errno:561000' {{log_path}}
           expected: regex:.*(MoeInitRoutingV3|561000)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-14166.yaml
-      hash: 0d7b68a9ab57
+      hash: 3deee3596648
     - id: VLLM-ASC-14320
       title: DCP replicated block_table 越界：v0.26 PCP 移除(#12592)改 total_cp_size 后 block id 超单 rank k_cache
         容量，LightningIndexerQuant MTE 越界崩溃
@@ -936,7 +936,7 @@ namespaces:
           command: grep -E 'LightningIndexerQuant|507015|EZ9999' {{log_path}}
           expected: regex:LightningIndexerQuant
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-14320.yaml
-      hash: a42377592e77
+      hash: dcd7a96a408d
     - id: VLLM-ASC-15086
       title: KIMI K3 部署报 'Model architectures [KimiK3ForConditionalGeneration] are not supported for now'——版本错位（支持在
         0.23.0 之后合入上游 registry）
@@ -963,7 +963,7 @@ namespaces:
           command: grep -E 'Model architectures|KimiK3' {{log_path}}
           expected: regex:.*(Model architectures|KimiK3)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-15086.yaml
-      hash: c2c512c5e5b2
+      hash: 65ee9aaeeb24
     - id: VLLM-ASC-6774
       title: qwen3.5 A2 双机启动失败——启动脚本与 vllm/vllm-ascend 同目录导致，改脚本路径解决
       category: interrupt
@@ -988,7 +988,7 @@ namespaces:
           command: grep -iE 'same directory|startup script' {{log_path}}
           expected: regex:same directory|startup script
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-6774.yaml
-      hash: ce5ec516e208
+      hash: 04770c19a186
     - id: VLLM-ASC-8938
       title: '1P2 + KV Pool 场景 P0/P1 服务极短时间内同时拉起时，P1 报 ZMQError: Address already in use（ZMQ 端口绑定无重试、端口抢占）——配置
         kv_port 解决'
@@ -1014,7 +1014,7 @@ namespaces:
           command: grep -iE 'kv_port|kv-pool|ZMQ' {{log_path}}
           expected: regex:kv_port|kv-pool|ZMQ
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-8938.yaml
-      hash: 626be281ad27
+      hash: 3ac3df1016a4
     - id: VLLM-ASC-9167
       title: 'GLM5.1-w4a8 拉起报 AssertionError: FlashAttnPrefillBackend requires flash_attn_varlen_func（vLLM
         0.20.1 下 MLA prefill backend patch 分支不匹配）'
@@ -1044,7 +1044,7 @@ namespaces:
           command: grep -E 'patch_mla_prefill_backend|MLA.*prefill.*backend' {{log_path}}
           expected: regex:patch_mla_prefill_backend
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9167.yaml
-      hash: 4ea2eb13cf26
+      hash: eee36121cea4
     - id: VLLM-ASC-9186
       title: 'GLM5.1-w4a8 拉起报 RuntimeError: _C_ascend::dispatch_ffn_combine() Expected a value of type
         ''Optional[List[Tensor]]'' for argument ''bias1'' but instead found type ''Parameter'''
@@ -1075,7 +1075,7 @@ namespaces:
             {{log_path}}
           expected: regex:Expected a value of type 'Optional\[List\[Tensor\]\]' for argument 'bias1'
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9186.yaml
-      hash: f21b54a4f808
+      hash: 4a905314505e
     - id: VLLM-ASC-9507
       title: 'minimax2.7 TP4 + --prefill-context-parallel-size 2 开启 PCP 时 curl 报 AttributeError: ''NoneType''
         object has no attribute ''num_computed_tokens_of_pcp_dcp''；FULL 图模式不支持 PCP，切 FULL_DECODE_ONLY
@@ -1109,7 +1109,7 @@ namespaces:
           command: grep -E 'attention_cp\.py.*update_graph_params|prefill-context-parallel-size' {{log_path}}
           expected: regex:attention_cp\.py.*update_graph_params
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9507.yaml
-      hash: abcf885db436
+      hash: d420ba4a4785
     - id: VLLM-ASC-9596
       title: Qwen3-4B TP=8 默认 PIECEWISE（mixed prefill-decode）graph capture 失败：rtStreamWaitEvent resource
         alloc fail（207005/507903），昇腾 NPU stream/SQ-CQ 资源预算不足
@@ -1141,7 +1141,7 @@ namespaces:
           command: grep -E 'error code is 507903|Alloc sq cq fail' {{log_path}}
           expected: regex:error code is 507903|Alloc sq cq fail
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9596.yaml
-      hash: dd3da3724540
+      hash: 47a544055128
     performance:
     - id: VLLM-ASC-12241
       title: v0.23.0 图模式（cudagraph）+ MTP 开启下 profiling 解析无 kernel_details.csv；CANN 9.0.0 与 NPU 图模式交互 bug，升级
@@ -1170,7 +1170,7 @@ namespaces:
           command: grep -iE 'kernel_details\.csv|enforce-eager|cudagraph' {{log_path}}
           expected: regex:.*(kernel_details\.csv|enforce-eager|cudagraph)
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-12241.yaml
-      hash: 107d9f0ab5e5
+      hash: 6a568de79e5a
     - id: VLLM-ASC-13356
       title: PD 分离开启 memcache 性能劣化：lookup 与本地 prefix cache 完全重叠（num_external_hit_tokens <= num_computed_tokens）
       category: performance
@@ -1200,7 +1200,7 @@ namespaces:
           command: grep -E 'need_to_allocate = 0|memcache.*lookup.*0' {{log_path}}
           expected: regex:.*(need_to_allocate = 0|lookup.*0)
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-13356.yaml
-      hash: 84f8ab7be324
+      hash: 2089b748e083
     - id: VLLM-ASC-13973
       title: v0.26 P 节点 prefill 回归：dsa-cp 与共享专家 DP 解耦致共享专家走 fc1 额外两次通信 + SFA DCP block table 宽度用错致 kv_gather_ids
         冲高（TTFT 7.1x）
@@ -1234,7 +1234,7 @@ namespaces:
           command: grep -E 'communication|comm' {{profiler_step_trace_csv}}
           expected: 'metric:step 内非重叠通信占比 < 3%（v0.23: 1.58%；v0.26 回归: 8.19%）'
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-13973.yaml
-      hash: fe7f57f11ae2
+      hash: e97c7b884f57
     precision:
     - id: VLLM-ASC-11169
       title: A2 双机拉起 GLM-5.2 w8a8（DP=2 双节点 + UCMConnector external kv connector）发送中文请求返回乱码；root cause
@@ -1263,7 +1263,7 @@ namespaces:
           command: grep -E 'VLLM_ASCEND_ENABLE_FLASHCOMM1|UCMConnector|kv_connector' {{log_path}}
           expected: regex:VLLM_ASCEND_ENABLE_FLASHCOMM1=1
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11169.yaml
-      hash: 04365997a3e4
+      hash: 743b756ecca3
     - id: VLLM-ASC-11824
       title: Ascend NPU 上 batch invariance 测试输出随 batch 波动：算子默认非确定性执行，需在 override_envs_for_invariance()
         开启 torch.use_deterministic_algorithms(True, warn_only=True)
@@ -1291,7 +1291,7 @@ namespaces:
           command: grep -iE 'batch[- ]?invariant|deterministic' {{log_path}}
           expected: regex:.*(batch[- ]?invariant|deterministic)
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11824.yaml
-      hash: 507939192bd6
+      hash: 50c83692e0ad
     - id: VLLM-ASC-12030
       title: vllm-ascend 0.20 + GLM-5.1 w8a8 910C PD 分离：特定请求（function-calling）流式响应经常出现单词最后 1 个字符重复，非流式正常——GLM5
         流式 tool-call 解析器 glm4_moe_tool_parser.py 解析缺陷，0.23.0 已修复
@@ -1320,7 +1320,7 @@ namespaces:
           command: grep -E 'glm4_moe_tool_parser' {{log_path}}
           expected: regex:glm4_moe_tool_parser\.py
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12030.yaml
-      hash: 140594c9c270
+      hash: 20f3331624ac
     - id: VLLM-ASC-12642
       title: triton-ascend 3.2.1 对 [4,256] K 做 head reduction 后接 extract_slice+cos 广播的布局/归约路径生成错误设备代码，square_sums
         被算成 0 → K RMSNorm variance=0 → K 放大 1000 倍
@@ -1350,7 +1350,7 @@ namespaces:
           command: grep -iE 'rmsnorm|variance|reciprocal_std' {{log_path}}
           expected: regex:(?i).*(rmsnorm|variance|reciprocal_std)
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12642.yaml
-      hash: 61fc4e029c9f
+      hash: f3a58a52d7df
     - id: VLLM-ASC-12723
       title: Triton rope 的 sin 缓存偏移用了 pad 后的 rotary dim（rope_dim=192→pad 256，起点错位 32 元素）致 RoPE 退化为 out=in*cos，Q/K
         范数 ~0.73，DSpark 投机接受率 5.6→3.0
@@ -1379,7 +1379,7 @@ namespaces:
           command: grep -iE 'accept_len|norm ratio' {{log_path}}
           expected: regex:.*(accept_len|norm ratio)
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12723.yaml
-      hash: e25a0b1a86c5
+      hash: da449e293210
     - id: VLLM-ASC-12957
       title: PD 分离 P 侧 sfa_v1.py 的 k_pe 经 kv_ag_handle.wait() 后未同步 NPU 流，D 侧 RDMA pull 读到未落盘陈旧 k_pe，PP4
         首请求乱码
@@ -1408,7 +1408,7 @@ namespaces:
           command: grep -iE 'garbled|rdma|adxl' {{log_path}}
           expected: regex:.*(garbled|rdma|adxl)
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12957.yaml
-      hash: 32b5c983c820
+      hash: 9f1ec0ef14f7
   training/mindspeed-llm:
     interrupt:
     - id: MSLLM-1459
@@ -1437,7 +1437,7 @@ namespaces:
           command: grep -iE 'bitsandbytes|environment' {{log_path}}
           expected: regex:.*(bitsandbytes|environment)
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1459.yaml
-      hash: d981f62dc9cc
+      hash: 07419a3511b3
     - id: MSLLM-1465
       title: 'Qwen3 预训练数据预处理报 FileNotFoundError: Couldn''t find any data file at /data/dataset/xxx.parquet：--input
         文件名写错，ls 核实后改真实路径或指向目录修复'
@@ -1464,7 +1464,7 @@ namespaces:
           command: grep -n 'input' {{script_path}}
           expected: regex:.*--input
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1465.yaml
-      hash: de791f10939c
+      hash: 36cf3046a188
     - id: MSLLM-1525
       title: mindspeed-llm 开启 config.batch_p2p_comm 后 DeepSeek-V4 整网训练崩在 pipeline parallel recv_forward：batch_p2p_comm
         特性在 MindSpeed 仓库尚未适配，升级最新 PTA 修复
@@ -1492,7 +1492,7 @@ namespaces:
           command: grep -E 'recv_forward|p2p_communication' {{log_path}}
           expected: regex:.*(recv_forward|p2p_communication)
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1525.yaml
-      hash: 960521d9f70e
+      hash: 2ff53140990d
     - id: MSLLM-1526
       title: dsv4 整网训练将 step 从 2000 改成 20000 后启动报数据集构建失败：数据总量变化后旧 helpers_cpp 编译缓存未删除，删除后重新 make 修复
       category: interrupt
@@ -1519,7 +1519,7 @@ namespaces:
           command: ls {{repo_path}}/mindspeed_llm/core/datasets/helpers_cpp*
           expected: regex:.*helpers_cpp
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1526.yaml
-      hash: 3e9eb98453de
+      hash: b39513bc1f8e
     - id: MSLLM-1550
       title: 8 卡 910B4 跑 Qwen3-8B 预训练环境校验通过但启动报 GMMOpBuilder 重复注册操作符：很可能安装多个 mindspeed 版本致算子重复编译注册，清理多版本修复
       category: interrupt
@@ -1547,7 +1547,7 @@ namespaces:
           command: pip list | grep -i mindspeed
           expected: regex:.*mindspeed
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1550.yaml
-      hash: a56c4d0369c2
+      hash: 7949f4309125
     - id: MSLLM-1554
       title: 'dsv4 训练拉起报 ImportError: cannot import name ''PipelineModelParallelLayoutFeature'' from ''mindspeed.features_manager''：mindspeed
         与 MindSpeed-LLM 版本不配套，对齐配套版本修复'
@@ -1576,7 +1576,7 @@ namespaces:
           command: grep -E 'ERR99999|UNKNOWN application exception' {{log_path}}
           expected: regex:.*(ERR99999|UNKNOWN application exception)
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1554.yaml
-      hash: 859d068dc7e4
+      hash: 86962dcf4c75
     - id: MSLLM-1555
       title: 'dsv4 训练拉起报 ImportError: cannot import name ''HcclOpModeSetFeature'' from ''mindspeed.features_manager''：镜像预装
         mindspeed 与手动重装未覆盖，卸载重装配套版本修复'
@@ -1606,7 +1606,7 @@ namespaces:
           command: grep -E 'cannot import name' {{log_path}}
           expected: regex:.*cannot import name
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1555.yaml
-      hash: dd38678c027e
+      hash: 1041be3ee2ad
     - id: MSLLM-1655
       title: 'gemma-2-9b 预训练启动报 RuntimeError: Cannot infer model type from architectures of Huggingface
         config.json ''{arch_row}'': CKPT_LOAD_DIR 传入 HF 权重触发权重在线加载（train_from_hf）功能，该功能未全面支持 gemma2，先转
@@ -1639,7 +1639,7 @@ namespaces:
           command: grep -E 'infer_model_type_from_hf_config|model_type_hf' {{log_path}}
           expected: regex:.*(infer_model_type_from_hf_config|model_type_hf)
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1655.yaml
-      hash: 561b6c40341b
+      hash: bf99997b3bc8
     - id: MSLLM-1667
       title: A2 上跑 fsdp2 gpt-oss-20b 训练在模型加载阶段报错：A2（910B）不支持 FP8 训练，gpt-oss-20b 默认权重为 FP8，改用 BF16 权重修复
       category: interrupt
@@ -1666,7 +1666,7 @@ namespaces:
           command: grep -iE 'fp8|BF16|精度|weight' {{log_path}}
           expected: regex:.*(fp8|BF16|精度|weight)
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1667.yaml
-      hash: f9d12d679bd8
+      hash: ead8cc1692df
     - id: MSLLM-1707
       title: 'deepseek-v4-flash LoRA 微调启动报 RuntimeError: Tried to register an operator (npu_moe_distribute_dispatch_v2)
         multiple times 或 ModuleNotFoundError: No module named ''cann_ops_transformer''：CANN 9.0.0 过旧，升级
@@ -1702,7 +1702,7 @@ namespaces:
             {{log_path}}
           expected: regex:.*(npu_moe_distribute_dispatch|npu_ops_transformer|cann_ops_transformer|npu_mhc)
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1707.yaml
-      hash: 10b59c974b6e
+      hash: 896e5d831ba7
     - id: MSLLM-1805
       title: 'master 分支 --ai-framework mindspore 启动失败：ModuleNotFoundError: No module named ''mindspeed_llm.tasks.checkpoint.models''——上游
         commit f107818 删除 ckpt-v1 但 MindSpore 侧未同步迁移（代码漂移），同步迁移或移除旧引用修复'
@@ -1735,7 +1735,7 @@ namespaces:
           command: grep -E 'mindspore_adaptor_v2|tasks.checkpoint.models' {{log_path}}
           expected: regex:.*(mindspore_adaptor_v2|tasks.checkpoint.models)
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1805.yaml
-      hash: 766ced4a7873
+      hash: ed9449185eda
     precision:
     - id: MSLLM-1437
       title: qwen3-14b-64k-lora 微调开启 uniform 重计算时 grad norm 恒为 0、loss 不收敛：LoRA 微调与 uniform 重计算组合仓库未支持/未验证，关闭重计算或改用官方脚本修复
@@ -1764,7 +1764,7 @@ namespaces:
           command: grep -E 'lm loss.*1\.2[0-9]e1|loss.*不收敛' {{log_path}}
           expected: regex:.*loss
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1437.yaml
-      hash: 16ffa1512f22
+      hash: b30a52d8269f
     - id: MSLLM-1532
       title: 'Qwen3（GQA）用 convert_ckpt_v2.py 做 HF→MCore→HF 转换后导出权重 q_proj/k_proj/v_proj 错位、生成乱码：convert_mg2hf
         按 plain [Q,K,V] 而非 grouped layout 拆分 linear_qkv（PR #4545 回归）'
@@ -1791,7 +1791,7 @@ namespaces:
           command: grep -n 'qkv_type.*unpack\|linear_qkv' {{convert_script_path}}
           expected: regex:.*(linear_qkv|qkv_type)
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1532.yaml
-      hash: 5369fe164de7
+      hash: 6e8f508e1eb7
     - id: MSLLM-1780
       title: FSDP2 断点续训后第一步日志异常：lm loss 被错误除以 global_step（0.247×31=7.66 与相邻步一致）、elapsed/tokens/s 同步失真：trainer.py
         续训时 _last_logged_step 从 _global_step_last_logged（常为 0）恢复，纯日志统计 bug，训练本身正确
@@ -1820,7 +1820,7 @@ namespaces:
           command: grep -E 'resume_from_checkpoint|global_step_30' {{config_path}}
           expected: regex:.*(resume_from_checkpoint|global_step_)
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1780.yaml
-      hash: d15bdfaf3021
+      hash: 544219f96b15
   training/verl:
     interrupt:
     - id: VERL-5074
@@ -1853,7 +1853,7 @@ namespaces:
           command: grep -n 'HCCL_HOST_SOCKET_PORT_RANGE\|HCCL_NPU_SOCKET_PORT_RANGE' verl/trainer/runtime_env.yaml
           expected: regex:HCCL_.*SOCKET_PORT_RANGE.*auto
       file: knowledge/training/verl/interrupt/VERL-5074.yaml
-      hash: f5a948c9940c
+      hash: bde444a7681e
     - id: VERL-6608
       title: verl GRPO TP2（npu 上 qwen 4B VL）报 HCCL error code 7（hcclCommInitRootInfoConfig）：HDK 版本与 verl
         镜像组合不兼容，换 HDK 25.5.1 修复
@@ -1883,7 +1883,7 @@ namespaces:
           command: grep -E 'HCCL function error|hcclCommInit' {{log_path}}
           expected: regex:.*(HCCL function error|hcclCommInit)
       file: knowledge/training/verl/interrupt/VERL-6608.yaml
-      hash: b7848c9ffbf2
+      hash: '750895819031'
     - id: VERL-6707
       title: 'verl Qwen3-MoE NPU patch 失败：verl/models/transformers/npu_patch.py 按 Transformers 4.57 编写，Transformers
         5.x 下 Qwen3MoeSparseMoeBlock 接口不兼容（gate 变 router module）→ PR #6708 修复'
@@ -1911,7 +1911,7 @@ namespaces:
           command: python3 -c 'import transformers; print(transformers.__version__)'
           expected: '>= 5.0 时需确认 verl npu_patch 兼容性'
       file: knowledge/training/verl/interrupt/VERL-6707.yaml
-      hash: 396a252ee473
+      hash: b216286b7389
     - id: VERL-6741
       title: verl+Ray+昇腾：训练启动 warning "Platform 'huawei' (PlatformNPU) is registered but not available...CPU-only
         actor"——NPU 未启用，配置 trainer.device='npu'
@@ -1938,7 +1938,7 @@ namespaces:
           command: grep -iE 'registered but not available|huawei.*platform' {{log_path}}
           expected: regex:.*registered but not available
       file: knowledge/training/verl/interrupt/VERL-6741.yaml
-      hash: 6dc4efe70229
+      hash: fe25a2f1e992
     - id: VERL-6756
       title: 'verl v0.7.1 get_npu_versions() 硬编码 NPU device ID 为 "1"（6751 同 bug 硬编码 "7"）→ 多 NPU/异 chip
         ID 机器上版本检测失败——PR #6043 修复'
@@ -1965,7 +1965,7 @@ namespaces:
           command: grep -E 'get_npu_versions|npu version' {{log_path}}
           expected: regex:.*(get_npu_versions|npu version)
       file: knowledge/training/verl/interrupt/VERL-6756.yaml
-      hash: 17ef4567449c
+      hash: 4785de1f163e
     - id: VERL-6885
       title: verl GRPO vision（Qwen3-VL + vLLM rollout + FSDP）训练反向崩溃：aclnnConvolutionBackwardGetWorkspaceSize——升级至
         verl 9.0.0（CANN 9.0）镜像修复
@@ -1993,4 +1993,4 @@ namespaces:
           command: grep -iE 'ConvolutionBackward|convolution backward' {{log_path}}
           expected: regex:.*(ConvolutionBackward|convolution backward)
       file: knowledge/training/verl/interrupt/VERL-6885.yaml
-      hash: cf1e3123c778
+      hash: 79633be350ad

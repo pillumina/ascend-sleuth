@@ -30,6 +30,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/10784"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #10784'
+
     quickly_check:
       primary:
         command_template: "grep -E 'npu_grouped_matmul_gmm2|npu_grouped_matmul' {{log_path}}"

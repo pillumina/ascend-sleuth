@@ -39,6 +39,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/12989"
       - "https://github.com/vllm-project/vllm-ascend/issues/13154"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #12989'
+
     quickly_check:
       primary:
         command_template: "grep 'Insufficient_Event_Resources' {{log_path}}"

@@ -33,6 +33,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/12723"
       - "https://github.com/vllm-project/vllm-ascend/pull/12963"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #12963'
+
     quickly_check:
       primary:
         command_template: "grep -E 'accept_len|Acceptance rate' {{log_path}}"
