@@ -40,7 +40,7 @@ pipeline/execution 定义了"一轮里每一步怎么走"，但没有定义"一�
 
 **默认策略与用户覆盖的边界**：所有机制参数（观测信号集、S2 池口径、授权分级阈值、预算分层、停止条件）有文档默认值，用户不必说；用户只需覆盖自己关心的（范围、意图、预算上限、特殊约束如"这轮不许动 triage"）。**覆盖是例外不是常态**——绝大多数指令走到 ③ 对齐即可，⑤ 确认一键放行。
 
-会话状态落 `proposals/sessions/<SESSION-ID>.yaml`（session id、参数、计划、每卡进度、已耗 token、停止原因、报告引用），**git 跟踪但只含聚合与引用**（脱敏纪律同 execution §2）。会话可 resume：中断后重新加载 state，未完成的卡继续，已完成的卡不重跑（幂等，同 issue-ingest 的 processed 排除哲学）。
+会话状态落 `proposals/sessions/<SESSION-ID>.yaml`（session id、参数、计划、每卡进度、已耗 token、停止原因、报告引用），**运行时状态，本地留存、gitignore**（对齐仓库 traces/ 与 inbox 草稿的哲学——逐轮变化的进度/账本不进 git，避免噪音与跨机断链）；稳态结果以报告与采纳卡投影入 git。会话可 resume：中断后重新加载 state，未完成的卡继续，已完成的卡不重跑（幂等，同 issue-ingest 的 processed 排除哲学）。
 
 ## 2. 目标函数与停止准则
 
@@ -146,19 +146,22 @@ actual_cost: {tokens: 9500}                         # 合入/回测后写回，�
 
 ### 5.1 全局上下文页（G5：agent 每轮执行前加载什么）
 
-agent 执行自演进前必须加载的**系统运行状态页**（替代每轮从零摸索，也控制重复读取成本）：
+agent 执行自演进前必须加载的**系统运行状态页**（替代每轮从零摸索，也控制重复读取成本）。**两部分生命周期不同，分开存放**：
 
 ```
-proposals/session-context.yaml（每会话开头由观测 agent 生成，~2K token 内）：
-- 当前 KB 规模（_index 头注）与覆盖缺口
-- 处于观察窗/实验期的组件与卡（谁在动、别冲突）
-- 最近 N 轮会话结论（采纳/回滚/稳态标记）
-- 当前授权白名单（哪些类目 auto 可用）
-- 指标快照（四层，最近 2 期）
-- 策略记忆（累积层，见下）
+proposals/sessions/<SESSION-ID>.context.yaml    # 会话级快照（运行时状态，gitignore）
+  每会话开头由观测 agent 生成（~2K token 内）：
+  - 当前 KB 规模（_index 头注）与覆盖缺口
+  - 处于观察窗/实验期的组件与卡（谁在动、别冲突）
+  - 最近 N 轮会话结论（采纳/回滚/稳态标记）
+  - 当前授权白名单（哪些类目 auto 可用）
+  - 指标快照（四层，最近 2 期）
+
+proposals/strategy-memory.yaml                  # 策略记忆（跨会话累积的资产，人确认后入 git）
+  结构级教训的持久层（见下），随季度自评追加，不随会话重生成
 ```
 
-**策略记忆（跨轮结构级教训）**：台账记的是"组件失败"单点教训；结构级教训（"这个 namespace 用 category 轴拆比 platform 轴好""该 issue 池的 workaround 类 resolution 占比高应降权"）需要跨轮累积——否则季度自评的结论随会话结束丢失。规则：季度自评的结构性结论追加进上下文页 `strategy_memory`（每条带日期 + 依据指标引用）；后续会话加载时作为起草/实验的决策上下文（对应 SkillOpt meta-skill 思想，载体是词法文本可 diff 可审）。记忆条目由人确认后写入（季度自评产出），agent 只建议不直写。
+**策略记忆（跨轮结构级教训）**：台账记的是"组件失败"单点教训；结构级教训（"这个 namespace 用 category 轴拆比 platform 轴好""该 issue 池的 workaround 类 resolution 占比高应降权"）需要跨轮累积——否则季度自评的结论随会话结束丢失。规则：季度自评的结构性结论追加进 **`proposals/strategy-memory.yaml`**（每条带日期 + 依据指标引用）；后续会话的 context 快照引用它作决策上下文（对应 SkillOpt meta-skill 思想，载体是词法文本可 diff 可审）。记忆条目由人确认后写入（季度自评产出），agent 只建议不直写。**策略记忆是资产（进 git），会话 context 是快照（gitignore）——两者不混放，避免策略记忆随会话重生成丢失或被运行时状态覆盖。**
 
 生成成本计在"观测"阶段；执行 agent 只读这一页 + 自己卡的证据，不重复全量扫描（token 预算同 groom M5 纪律）。
 

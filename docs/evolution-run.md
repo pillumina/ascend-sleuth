@@ -34,7 +34,7 @@ orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对
   └─ 状态：active → paused（预算/人中断）→ steady（收敛降频）→ stopped（人终止）
 ```
 
-任务状态落 `proposals/tasks/<TASK-ID>.yaml`（goal、scope、来源配置、每轮引用、预算账本、停止原因），**git 跟踪、只含聚合与引用**。任务是容器，会话是任务的一次执行——session state 与 task state 分离（task 记得目标与历史，session 记得本轮进度）。
+任务状态落 `proposals/tasks/<TASK-ID>.yaml`（goal、scope、来源配置、每轮引用、预算账本、停止原因），**运行时状态，本地留存、gitignore**（稳态结果以报告/采纳卡入 git）。任务是容器，会话是任务的一次执行——session state 与 task state 分离（task 记得目标与历史，session 记得本轮进度）。
 
 **DSH 载体映射**：任务轮间调度（拉新批次 → 决定下一轮范围 → 分派轮内角色）可落到 DSH 的 **Agent Teams**（experimental：持久 roster + 共享任务 DAG + 持久 mailbox，含 blockedBy 依赖边——天然表达"回测轮依赖评测轮完成"）；轮内单步用 continuable subagent 即可。载体选项与启用条件见 evolution-pipeline.md §6.7，机制与载体解耦——无 DSH 环境时任务状态文件 + 手动/定时触发同样成立。
 
@@ -125,12 +125,12 @@ orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对
 |---|---|---|---|
 | **流程协议** | 新的 skill（如 `self-evolve`） | `skills/self-evolve/SKILL.md` | 描述"跑一轮自演进"的会话协议（orchestration §1.2）：目标 → 默认策略装载 → 对齐 → 计划 → 观察窗执行 → 报告。**skill = agent 可加载的执行协议**，类似 knowledge-groom 的地位，但触发语义同 groom（disable-model-invocation，人显式触发，防自发批量改库） |
 | **确定性逻辑** | 一批脚本 | `scripts/` | S2 评测打分（issue→replay→对照）、component-tally 累积、token 记账、执行日志汇总——凡机械可判的环节脚本化，agent 只读聚合输出（原则二/九） |
-| **领域状态** | 数据文件 | `proposals/`（tasks/ideas/reviews/experiments）+ `metrics/component-tally.yaml` | 卡/task/台账是 git 可 diff 的词法数据（原则三），CI 校验 schema |
+| **领域状态** | 数据文件 | `proposals/` + `metrics/component-tally.yaml` | **git 归属分层（对齐仓库 .gitignore 哲学：运行时状态不进 git，稳态资产才进）**：`proposals/ideas/` 是资产（卡含最终状态与 decisions，随 PR 进出，同 knowledge/ 纪律，脱敏后入 git）；`proposals/tasks|sessions|reviews|experiments/` 是**运行时状态**（进度、token 账本、逐轮变化，类比 traces/ 与 inbox 草稿）——本地留存、gitignore，稳态结果以报告/采纳项投影入 git。台账是词法数据可 diff（原则三），CI 校验 schema（ideas/ 与台账 schema） |
 | **可视化** | DSH Cordis 插件 | `dsh-plugins/self-evolve-panel/`（host/client）+ 加载 skill（preload-panel 先例） | run §6 领域视图（任务总览/卡流转/指标）——**不是** dsh-agent-teams 的活动面板（那只是 agent 协作态视图） |
 
 **为什么不能只做一个 skill**：skill 定义"agent 怎么做"，但它不承载确定性校验（脚本）、不承载可 diff 状态（数据文件）、不承载运行时渲染（插件）。四类能力在仓库里本就是四种载体，自演进横跨全部四类——单 skill 会把校验/状态/可视化塞进 prompt 协议，违反原则二（不变量写进结构）。dsh-agent-teams 插件属于"执行载体"层（§6.7），不在上述四层内——它提供多 agent 运行底座，可被 self-evolve skill 调用，但不是自演进工程本身。
 
-**落地时先做哪层**：按 §9 顺序——先确定性逻辑（S2 评测脚本）与领域状态（proposals/ 骨架），再流程协议（self-evolve skill 包裹已跑通的脚本与状态机），最后可视化（面板）。skill 是"装配说明书"，把脚本+状态+协议串成可重复执行的一轮；面板让过程可见。
+**落地时先做哪层**：按 pipeline.md §11 总纲（非本表）——先确定性逻辑（S2 评测脚本）与领域状态（proposals/ 骨架，ideas 入 git、运行时状态 gitignore），再流程协议（self-evolve skill 包裹已跑通的脚本与状态机），最后可视化（面板）。skill 是"装配说明书"，把脚本+状态+协议串成可重复执行的一轮；面板让过程可见。
 
 ## 9. 落地顺序（运行层视图；**整体落地总纲见 pipeline.md §11**，本表从"一条用户指令"视角排序，不平行于 §11）
 
