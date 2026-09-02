@@ -1,6 +1,6 @@
 # 执行链路：proposal 契约、follow-up 验证与效果度量
 
-> 本文是 [evolution-pipeline.md](evolution-pipeline.md) 的**执行级规范**：机制总览（三层闭环、分级授权、状态机、落地节奏）在那边；本文回答执行时的问题——**一条 proposal 到底要记录什么信息、改动合入后怎么验证合理性、一次知识沉淀的效果怎么度量、agent 在每个决策点拿到什么。** 把"一轮自演进"作为一个可审计会话来运行（人怎么下指令、目标函数与停止条件、token 预算、自我指涉治理）见 [evolution-orchestration.md](evolution-orchestration.md)；从一条指令到持续运行（长期任务、issue 评测循环、执行记录、可视化）见 [evolution-run.md](evolution-run.md)；面向使用者的指令/报告语言见 [evolution-user-guide.md](evolution-user-guide.md)。
+> 本文是 [evolution-pipeline.md](evolution-pipeline.md) 的**执行级规范**：机制总览（三层闭环、分级授权、状态机、落地节奏）在那边；本文回答执行时的问题——**一条 proposal 到底要记录什么信息、改动的验证如何区分"合入前可判"与"合入后需真实反馈"、一次知识沉淀的效果怎么度量、agent 在每个决策点拿到什么。** 把"一轮自演进"作为一个可审计会话来运行（人怎么下指令、目标函数与停止条件、token 预算、自我指涉治理）见 [evolution-orchestration.md](evolution-orchestration.md)；从一条指令到持续运行（长期任务、issue 评测循环、执行记录、可视化）见 [evolution-run.md](evolution-run.md)；面向使用者的指令/报告语言见 [evolution-user-guide.md](evolution-user-guide.md)。
 > 推导依据：原则一（验证先于交付）、二（不变量写进结构）、五（建议与决定分离）、七（变更可逆）、八（可观测先于改进）、九（资源预算）、十一（数据触发）；理论见 design-theory §4.2–4.4。**本文自身修订 = L3 结构（methodology PR + 体系维护人审）。** 未来落成 skill 时，执行参数须内联进 SKILL.md（skill 自包含纪律），本文退为可选论证层。
 
 ## 1. 为什么需要执行级规范：机制闭环的四个执行空洞
@@ -8,7 +8,7 @@
 v2 机制把"观测 → 候选 → 授权 → 合入"串起来了，但执行时 agent/评审人仍会卡在四个空洞：
 
 1. **proposal 的"可执行性"无契约**——一张卡写"修订 triage 分支 vllm-ascend 启动参数族"，agent 不知道：改哪几行、现状行为是什么、怎么算改完、改完影响谁；
-2. **改动合入后没有 follow-up 验证**——现在只验证到"合入时 golden 通过"，没回答"这条改动在真实使用里真的改善了吗？没改善算谁的责任、何时回滚"；
+2. **真实反馈类改动缺 follow-up**——对依赖真实场景的改动（content/fix），旧机制只验证到"合入时 golden 通过"，没回答"这条改动在真实使用里真的改善了吗？没改善算谁的责任、何时回滚"（即时判定类已在合入前由 S2/golden 验证，不在此列）；
 3. **"每次沉淀效果"没有定义**——知识库整体有命中率，但"这次 to-postmortem/to-reference 沉淀的那条 case 是否有效"无度量：沉淀时没有预期，沉淀后没有跟踪；
 4. **agent 执行时信息供给不足**——决策点只有聚合值，没有执行所需的完整证据与历史先例。
 
@@ -82,16 +82,27 @@ v2 机制把"观测 → 候选 → 授权 → 合入"串起来了，但执行时
 
 ## 5. Follow-up 验证链路：proposal 改动后的合理性
 
-### 5.1 状态机：follow-up 观察窗（权威定义在 pipeline.md §7 v3，此处只重复关键语义）
+### 5.1 状态机：验证与合入的顺序（权威定义在 pipeline.md §7 v3，此处只重复关键语义）
+
+**关键原则：验证不依赖合入——eval 在合入前完成。** 一个 proposal 从执行修改到 eval 检查"改动是否真解决问题"都在合入前做完（§6.5 无实验证据不合入）；合入只是把**已验证的改动**落地。按验证能否在合入前完成分两条路径：
 
 ```
-in_experiment ──合入──► adopted（合入态，进入观察窗）
-                            ├─ 观察窗内达标（predicted_effect 达成）──► validated（终态：效果入 metrics、台账记 hit）
-                            ├─ 未达标但无退化 ──► re-iterate（再迭代卡，回到 proposed）
-                            └─ 退化 / 有害 ──► rolled_back（回滚 + rejected + 教训入台账）
+● 即时判定类（检索/路由/skill 流程/脚本——S2/golden 可即时出结果）：
+   in_experiment ──eval 通过──► validated（目标态：效果入 metrics、台账记 hit）
+        │                              │
+        │                              └──► pending_merge（攒批）──► 批合入（PR 呈现的是已验证改动）
+        └──eval 失败──► re-iterate / rejected（不浪费合入）
+
+● 真实反馈类（content 沉淀 / fix 有效——predicted_value 只能等真实场景/S1）：
+   in_experiment ──实现完成 + S2 佐证──► pending_merge ──批合入──► adopted（合入态）
+        │                                                    ├─ 观察窗内 S1 确认 → validated
+        │                                                    ├─ 未达标无退化 → re-iterate
+        │                                                    ├─ 退化/有害 → rolled_back
+        │                                                    └─ 超时无 S1 → unconfirmed_valid/unconfirmed（§5.1a）
+        └──实验失败──► rejected
 ```
 
-`adopted` 不再自动等于"完成"——它是**待回测的合入**。只有 `validated` 才是闭环终态。**状态词表与 schema 的唯一事实源是 pipeline.md §7（v3）**：EV 卡 status 完整词表（candidate/proposed/in_experiment/pending_merge/adopted/validated/rolled_back/superseded/rejected/re-iterate/unconfirmed_valid/unconfirmed/stale——其中 pending_merge 是批提交模式 §6.3a 的攒批待审态）、supersedes/superseded_by 替换链、estimated/actual_cost 成本字段都在那边定义，本文不重复定义只引用——防两处状态机再次漂移。**注意对象区分**：`awaiting_validation` 是沉淀对象（case）的观察窗状态（§4.3），属 case 的跟踪字段，不是 EV 卡 status——两种对象不混用词表。
+`adopted` 只存在于真实反馈类——它是**待真实反馈的合入**；即时判定类合入时已是 validated，不需要观察窗。**状态词表与 schema 的唯一事实源是 pipeline.md §7（v3）**：EV 卡 status 完整词表（candidate/proposed/in_experiment/pending_merge/adopted/validated/rolled_back/superseded/rejected/re-iterate/unconfirmed_valid/unconfirmed/stale——其中 pending_merge 是批提交模式 §6.3a 的攒批待审态）、supersedes/superseded_by 替换链、estimated/actual_cost 成本字段都在那边定义，本文不重复定义只引用——防两处状态机再次漂移。**注意对象区分**：`awaiting_validation` 是沉淀对象（case）的观察窗状态（§4.3），属 case 的跟踪字段，不是 EV 卡 status——两种对象不混用词表。
 
 ### 5.1a 观察窗超时降级（防 follow-up 空转，方案级关键）
 
