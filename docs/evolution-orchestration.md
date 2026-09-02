@@ -78,11 +78,11 @@ pipeline/execution 定义了"一轮里每一步怎么走"，但没有定义"一�
 | 收敛 | 本轮无新候选或全部卡进 rejected/validated | 数据已榨干 |
 | 人中断 | 人在任一步打断 | 最高优先级 |
 
-### 2.3 稳态降频（G7：收敛区域不再产 proposal）
+### 2.3 稳态降频（蓝图态：scope 真实收敛后才启用，见 pipeline §11.1——此前靠停止条件"收敛"已足够）
 
 某 scope 连续两轮满足"无新信号 + 无 rejected + 无降级态积压（unconfirmed_valid/unconfirmed 卡为 0）+ validated 效果达标" → 该 scope 标记 `steady`，进入降频池（默认停 4 轮再复检）。防止在已收敛区域空转烧 token；**降级态积压不算收敛**（有未决的存疑卡说明该区域仍有待处理项，降频会掩盖）。`steady` 状态记录在 session state / 索引，新信号（新 issue 类型、新 trace 模式）或新降级态出现时自动解除——**稳态是数据触发的暂停，不是永久关闭**（原则十一）。
 
-### 2.4 候选积压治理（防候选池腐烂）
+### 2.4 候选积压治理（蓝图态：候选积压真实发生后才启用，见 pipeline §11.1——此前只需候选批量上限即可）
 
 候选 idea 每天由信号产生，但消化受轮次预算与人审节奏限制——无治理则候选池腐烂（过期候选、重复候选、低质卡堆积）。规则（复用仓库 inbox 纪律：队列不是档案）：
 - **候选水位上限**：每 scope 未处理候选超上限（默认 20，参数落地校准）→ 停产新候选，优先消化积压（信号继续记录但不产卡）；
@@ -177,7 +177,7 @@ proposals/strategy-memory.yaml                  # 策略记忆（跨会话累积
   结构级教训的持久层（见下），随季度自评追加，不随会话重生成
 ```
 
-**策略记忆（跨轮结构级教训）**：台账记的是"组件失败"单点教训；结构级教训（"这个 namespace 用 category 轴拆比 platform 轴好""该 issue 池的 workaround 类 resolution 占比高应降权"）需要跨轮累积——否则季度自评的结论随会话结束丢失。规则：季度自评的结构性结论追加进 **`proposals/strategy-memory.yaml`**（每条带日期 + 依据指标引用）；后续会话的 context 快照引用它作决策上下文（对应 SkillOpt meta-skill 思想，载体是词法文本可 diff 可审）。记忆条目由人确认后写入（季度自评产出），agent 只建议不直写。**策略记忆是资产（进 git），会话 context 是快照（gitignore）——两者不混放，避免策略记忆随会话重生成丢失或被运行时状态覆盖。**
+**策略记忆（蓝图态：季度自评跑通 ≥1 轮后启用，见 pipeline §11.1——此前并入 session context 即可）**：台账记的是"组件失败"单点教训；结构级教训（"这个 namespace 用 category 轴拆比 platform 轴好""该 issue 池的 workaround 类 resolution 占比高应降权"）需要跨轮累积——否则季度自评的结论随会话结束丢失。规则：季度自评的结构性结论追加进 **`proposals/strategy-memory.yaml`**（每条带日期 + 依据指标引用）；后续会话的 context 快照引用它作决策上下文（对应 SkillOpt meta-skill 思想，载体是词法文本可 diff 可审）。记忆条目由人确认后写入（季度自评产出），agent 只建议不直写。**策略记忆是资产（进 git），会话 context 是快照（gitignore）——两者不混放，避免策略记忆随会话重生成丢失或被运行时状态覆盖。**
 
 生成成本计在"观测"阶段；执行 agent 只读这一页 + 自己卡的证据，不重复全量扫描（token 预算同 groom M5 纪律）。
 

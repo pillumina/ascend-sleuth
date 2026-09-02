@@ -104,7 +104,9 @@ v2 机制把"观测 → 候选 → 授权 → 合入"串起来了，但执行时
 
 `adopted` 只存在于真实反馈类——它是**待真实反馈的合入**；即时判定类合入时已是 validated，不需要观察窗。**状态词表与 schema 的唯一事实源是 pipeline.md §7（v3）**：EV 卡 status 完整词表（candidate/proposed/in_experiment/pending_merge/adopted/validated/rolled_back/superseded/rejected/re-iterate/unconfirmed_valid/unconfirmed/stale——其中 pending_merge 是批提交模式 §6.3a 的攒批待审态）、supersedes/superseded_by 替换链、estimated/actual_cost 成本字段都在那边定义，本文不重复定义只引用——防两处状态机再次漂移。**注意对象区分**：`awaiting_validation` 是沉淀对象（case）的观察窗状态（§4.3），属 case 的跟踪字段，不是 EV 卡 status——两种对象不混用词表。
 
-### 5.1a 观察窗超时降级（防 follow-up 空转，方案级关键）
+### 5.1a 观察窗超时降级（蓝图态：触发条件到才启用，见 pipeline §11.1——S1 断供持续 ≥2 期后，此前用"标存疑 + 提醒人"轻量处理）
+
+> 设计保留：以下为完整机制设计。通电阶段（Phase A–D）不实现正式降级态，观察窗到期无反馈时以"存疑标注 + 面板提醒"兜底，人可补反馈或回滚。
 
 content/fix 类观察窗依赖 S1 现场反馈，而反馈可能长期断供（当前捕获率≈0 是现实）——若没有超时降级，沉淀永久 awaiting_validation、proposal 永久 adopted，follow-up 机制在"永远等答案"中空转。超时处理按观察窗长度分级（默认：即时类=无超时、content 类=expected_window ×2、fix 类=最长窗 ×2，参数落地校准）：
 

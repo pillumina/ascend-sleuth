@@ -1,7 +1,8 @@
 # 演进流水线（v2）：三层自演进闭环与自演进执行流程
 
 > 本文回答一个问题：**系统如何闭环地改进自己的三层资产——知识内容、流程/skill、以及工作流本身——并把"人的参与"从逐条执行上移到流程审视。**
-> v1（本文件旧版）只覆盖知识内容层的候选 idea 闭环；v2 扩展为三层模型（L1 知识内容 / L2 流程与 skill / L3 工作流与编排），并新增第 6 节「自演进执行流程」——一个降低人工参与度、但每次改动可追溯、每次合入必须由实验数据驱动的专门流程。**执行级信息契约（proposal 要记录什么、follow-up 怎么验证、沉淀效果怎么度量、agent 拿到什么）见 [evolution-execution.md](evolution-execution.md)；编排与治理层（会话如何启动、目标函数与停止条件、token 预算、自我指涉治理）见 [evolution-orchestration.md](evolution-orchestration.md)；从一条指令到持续运行的运行视图（长期任务、issue 评测循环、执行记录、可视化）见 [evolution-run.md](evolution-run.md)；面向使用者的指令/报告/干预语言见 [evolution-user-guide.md](evolution-user-guide.md)。**
+> v1（本文件旧版）只覆盖知识内容层的候选 idea 闭环；v2 扩展为三层模型（L1 知识内容 / L2 流程与 skill / L3 工作流与编排），并新增第 6 节「自演进执行流程」——一个降低人工参与度、但每次改动可追溯、每次合入必须由实验数据驱动的专门流程。**执行级信息契约（proposal 要记录什么、验证如何区分合入前可判与合入后需真实反馈、沉淀效果怎么度量、agent 拿到什么）见 [evolution-execution.md](evolution-execution.md)；编排与治理层（会话如何启动、目标函数与停止条件、token 预算、自我指涉治理）见 [evolution-orchestration.md](evolution-orchestration.md)；从一条指令到持续运行的运行视图（长期任务、issue 评测循环、执行记录、可视化）见 [evolution-run.md](evolution-run.md)；面向使用者的指令/报告/干预语言见 [evolution-user-guide.md](evolution-user-guide.md)。**
+> **实现分级声明**：本文是**完整设计蓝图**，非全部待办。落地时只实现 §11.1「必需」列的机制；「蓝图」列（超时降级态、stale、策略记忆、稳态降频等）是预测性设计，**触发条件（数据/用户诉求）出现才激活**——不为未发生的问题预建全量机制（防过度设计，仓库原则十一）。
 > 对象层闭环（case 越用越准）已在 [evolution.md](evolution.md) 落地；理论推导见 [design-theory.md](design-theory.md) §4.2–4.4（元层信念、自演进闭环、演化即假设检验）；原则依据见 [design-principles.md](design-principles.md)。**本文自身的修订走 methodology PR + 体系维护人审（它属于 L3 结构，受本文第 5.2 节管辖）。**
 
 ## 1. 三层模型
@@ -225,10 +226,10 @@ status: candidate                # 完整词表（v3，与 execution §5.1 一�
                                  #      default 模式 auto 卡可即时合入跳过此态（→ adopted）
                                  #   pending_merge 批合入 → adopted；批内被打回 → re-iterate 或 rejected
                                  #   adopted → validated | rolled_back | superseded（观察窗终态）
-                                 #   adopted 观察窗超时降级 → unconfirmed_valid（仅 S2 证据，检索有效现场未确认）
-                                 #                        | unconfirmed（无证据，存疑待重审）
                                  #   in_experiment 实验失败 → rejected；回测不达标 → re-iterate（回 proposed）
-                                 #   candidate 长期未采纳 → stale（候选过期，季度清理转 rejected + 理由）
+                                 #   蓝图态（§11.1：触发条件到才启用，通电阶段不实现）：
+                                 #   adopted 观察窗超时降级 → unconfirmed_valid/unconfirmed（S1 断供持续 ≥2 期后）
+                                 #   candidate 长期未采纳 → stale（候选积压真实发生后）
                                  # 注：本卡（EV proposal）status 无 awaiting_validation——
                                  #   那是沉淀对象（case）的观察窗状态（见 execution §4.2/4.3），
                                  #   属 case YAML 扩展字段，不并入 EV 卡词表
@@ -323,6 +324,22 @@ candidate ──分级授权──► proposed ──实验启动──► in_ex
 | 常设 | 季度自评（6.6） | 自 D 起每季度 |
 
 与 roadmap 现有事项的关系：本文是机制层文档；roadmap 的 A2/E2/E5/O3/O4/M2/M5 是流水线的下游执行项，闸门不变。若采纳，建议 roadmap「常设检查点」加一行「自演进季度自评」（载体 proposals/reviews/）。
+
+### 11.1 实现分级：必需 vs 蓝图（防过度设计——机制由数据触发，不为未发生的问题预建全量）
+
+本文及整套 evolution 文档是**完整设计蓝图**，但落地必须分级——仓库 rollout-assessment 结论是"数据/运维层未就绪，需第一个团队跑起来"，在此之上预建全部机制（13 态状态机、9+ 载体、多级降级）即为过度设计。按**触发条件到才实现**原则分级：
+
+| 分级 | 机制 | 何时实现 |
+|---|---|---|
+| **必需（通电先建）** | 会话协议（目标→对齐→计划→执行）、批提交核心（pending_merge + 聚合 PR）、验证先于合入的双路径、S2 issue-replay 校准、授权分级（auto/review/dual）、基础状态机（candidate/proposed/in_experiment/validated/rejected） | Phase A–D 第一批 |
+| **蓝图（触发后实现）** | 观察窗超时降级态（unconfirmed_valid/unconfirmed） | S1 断供真实持续 ≥2 期后（先用"标存疑 + 提醒"轻量处理，不进正式状态机） |
+| **蓝图** | stale 候选过期态 | 候选积压真实发生（>20 在池）后（先用 inbox 式标红） |
+| **蓝图** | 策略记忆独立文件（strategy-memory.yaml） | 季度自评跑通 ≥1 轮后（此前并入 session context） |
+| **蓝图** | reviews/experiments 独立目录 | 有真实归档需求后（此前并入 session state，运行时载体） |
+| **蓝图** | 稳态降频（steady）、候选积压治理水位 | scope 真实收敛或积压出现后 |
+| **蓝图** | 运行模式细化（任务级攒批跨轮） | 用户真实要求"跨多轮攒批"后（默认批边界 = 一轮已够） |
+
+**分级原则**：机制分为"解决已发生问题的必需件"与"解决预测问题的蓝图件"。蓝图件**保留设计但不实现**，触发条件（数据/用户诉求）出现才激活——这正是仓库原则十一（数据触发演进）与 roadmap「明确不做（触发条件到再评估）」的形态。**全套文档是蓝图库，不是全部待办清单**：通电只需"必需"列。
 
 **落地顺序的主从关系（防多源冲突）**：**本文 §11 是唯一权威落地总纲**。execution §10 与 run §9 是各自维度的落地细化，不是平行计划——落地时以本表 Phase 推进，execution/run 的表只回答"本层内部先做什么"：
 
