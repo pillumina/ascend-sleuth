@@ -23,9 +23,11 @@
 orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对齐 → 计划 → 确认 → 执行/报告 → 停）。用户的指令是一个**长期任务**——一轮做完不结束，而是按数据增量继续下一轮。
 
 ```
-长期任务（goal_id + scope + issue 源配置 + 预算策略 + 停止条件）
+长期任务（goal_id + scope + issue 源配置 + 预算策略 + 停止条件 + approval_policy 运行模式）
   ├─ 每轮 = 一次 orchestration 会话（复用 §1 协议）
-  │    拉新批次 → S2 评测 + 沉淀评估 → 候选 → 授权 → 实验 → 合入 → 回测 → 报告
+  │    拉新批次 → S2 评测 + 沉淀评估 → 候选 → 授权 → 实验 → 攒批 → 报告
+  │    运行模式（pipeline §6.3a）：hands-off（默认，全部攒批到任务完成一次 PR）
+  │    或 default（auto 即时 + review/dual 攒批轮末 PR）
   ├─ 轮间调度器决定下一轮范围：
   │    新 closed issue？→ 评测/沉淀轮
   │    待观察窗结算的 adopted？→ 回测轮
