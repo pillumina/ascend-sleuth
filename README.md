@@ -169,6 +169,10 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 - **[设计理论](docs/design-theory.md)** — 四公理推导出全部设计原则的形式化内核，以及它的适用范围
 - **[设计原则](docs/design-principles.md)** — 十一条规范性条文，约束一切设计与演进
 - **[自演进设计](docs/evolution.md)** — 系统如何随使用变准、每个机制配什么护栏
+- **[演进流水线 v2（设计）](docs/evolution-pipeline.md)** — 三层自演进闭环（知识内容 / 流程与 skill / 工作流编排）+ 自演进执行流程（三级授权、可追溯、数据驱动合入、季度自评）
+- **[执行链路（设计）](docs/evolution-execution.md)** — proposal 信息契约、follow-up 验证、沉淀效果度量、metrics 分层、agent 决策点信息供给
+- **[编排与治理（设计）](docs/evolution-orchestration.md)** — 自演进会话协议（人怎么下指令）、目标函数与停止条件、token 预算与效率优化、自我指涉治理
+- **[持续运行（设计）](docs/evolution-run.md)** — 从一条指令到持续自演进：长期任务、issue 三重角色（评测/沉淀/覆盖）、统一执行记录、supersede 替换回滚、可视化
 - **[路线图](docs/roadmap.md)** — 闸门驱动的演进计划，每个事项的触发条件与验收标准
 - **[Git 工作流](docs/git-workflow.md)** — 审核、门控、合入的落地（标签集、CODEOWNERS、CI、双签）
 - **[Issue 导入管道](docs/issue-ingest-pipeline.md)** — issue → case 半自动管道（拉取/过滤/评估/沉淀/幂等）
