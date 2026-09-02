@@ -84,7 +84,7 @@ orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对
   - 旧卡仍 candidate/proposed/in_experiment → 新卡提出即旧卡标 `superseded`（未合入，无回滚负担），`superseded_by` 指向新卡；
   - 旧卡已 adopted（观察窗内）→ 新卡进入实验，**旧卡观察窗继续结算到终点**（若旧卡先 validated 再被新卡 validated 顶替 → 旧卡 superseded；若旧卡先 rolled_back → 新卡自动成为唯一实现）。**避免"新卡还没验证就废弃观察窗中的旧卡"**——观察窗是旧卡效果的唯一证据，中途废弃等于丢失对照；
   - 旧卡已 validated → 新卡 validated 后旧卡 superseded（原表述，最常见路径）。
-- 回滚语义升级：rolled_back 时若该卡 supersedes 某旧卡 → **回滚到被替代版本**（git revert 到旧卡合入点），而不是回滚到空白；
+- 回滚语义升级：rolled_back 时若该卡 supersedes 某旧卡 → **回滚到被替代版本**（git revert 到旧卡合入点），而不是回滚到空白。**链式 supersede 的处理（A→B→C 链回滚 C）**：沿 `superseded_by` 链回溯，回滚到**链上最近一张 validated 的实现**——若 B 已 superseded（在 A 之上被替代、非 validated 终态），则跳过 B 回到 A（或链上更早的 validated 卡）；若链上没有 validated 卡（全是降级态/未验证），回滚到链首的初始实现并标注"链上无 validated 版本"。**回滚目标 = 最近的有效实现，不是机械的紧邻旧卡**——这保证回滚后系统处于"曾被验证过"的状态，而非中间试验态；
 - 追溯链：卡 → supersedes 链 → decisions → 实验记录 → 合入 commit，任何一点可回看"现在的实现是谁、替代了谁、为什么"。**一条不变式：同一时刻每个 target_component 至多一张 validated/在位卡**——supersede 链保证实现可追溯回单一版本。
 
 ## 6. 可视化（机制 E）：让"看到系统自演进"成为可能

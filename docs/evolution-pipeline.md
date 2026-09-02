@@ -125,6 +125,10 @@ roadmap 不做的是 **KPI / 身份 / 使用观测**（对象是人：工程师 
 
 **升级门槛（数据触发）**：某类 review 变更连续 N 次回测通过且抽审零发现 → 可申请降级为 auto（记入 config，可随时撤销）；auto 变更抽审发现 ≥1 错误 → 该类别立即退回 review，并在季度自评里复核（原则六：闸门硬度与实测错误代价匹配）。
 
+**升级门槛的 S1 依赖（防 auto 扩权死锁）**："回测通过"的信号来源决定哪些类能升级：
+- **S2/golden 可即时判定的类**（检索/路由/skill 流程/脚本——观察窗即时，不依赖 S1）→ 回测通过可正常累积，**可升级 auto**；
+- **依赖 S1 的类**（content 沉淀效果 / fix 有效——观察窗要等现场反馈）→ S1 断供时全部走降级态（unconfirmed_valid/unconfirmed，execution §5.1a），**永不"回测通过" → 无法升级 auto**。这不是 bug 而是诚实边界：**没有现场证据就不该给"自动合入知识"的信任**——auto 合入意味着无人逐条审，而 content/fix 的正确性最终只能由现场验证。S1 恢复后（反馈捕获率回升）这类自动恢复升级通道；季度自评应监控"因 S1 断供被锁在 review 的类别"并如实报告（不是流程故障，是数据前提缺失的显式化）。
+
 ### 6.4 可追溯契约（每笔改动可追溯）
 
 - 每个候选 = 一张 idea 卡（`proposals/ideas/<EV-YYYY-NNN>.yaml`）：layer、trajectory（触发信号 + 证据出处）、hypothesis、validation、授权级别、decisions 追加式留痕（谁/何时/依据/结论）；
@@ -189,6 +193,7 @@ status: candidate                # 完整词表（v3，与 execution §5.1 一�
                                  #   adopted 观察窗超时降级 → unconfirmed_valid（仅 S2 证据，检索有效现场未确认）
                                  #                        | unconfirmed（无证据，存疑待重审）
                                  #   in_experiment 实验失败 → rejected；回测不达标 → re-iterate（回 proposed）
+                                 #   candidate 长期未采纳 → stale（候选过期，季度清理转 rejected + 理由）
                                  # 注：本卡（EV proposal）status 无 awaiting_validation——
                                  #   那是沉淀对象（case）的观察窗状态（见 execution §4.2/4.3），
                                  #   属 case YAML 扩展字段，不并入 EV 卡词表
