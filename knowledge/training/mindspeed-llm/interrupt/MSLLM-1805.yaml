@@ -30,6 +30,13 @@ cases:
     references:
       - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1805"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #1805'
+
     quickly_check:
       primary:
         command_template: "grep -E \"No module named 'mindspeed_llm.tasks.checkpoint.models'\" {{log_path}}"

@@ -31,6 +31,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/9596"
       - "https://github.com/vllm-project/vllm-ascend/pull/9691"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #9691'
+
     quickly_check:
       primary:
         command_template: "grep -E 'rtStreamWaitEvent execution failed, reason=driver error:resource alloc fail' {{log_path}}"

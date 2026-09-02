@@ -35,7 +35,16 @@ disable-model-invocation: true
 2. **引用完整性校验**:扫所有 case 的 `references`,检查指向真实存在的文件和锚点。悬挂引用进变更摘要（自演化系统的“坏账”，不校验会静默累积）。
 3. **值重复检测**：框架 case 的 `expected`/`fix_on_mismatch` 是否硬编码了 `common/` 权威记录拥有的值？是 → 标 must-fix，要求改成引用。
 3.5. **反馈结算（confidence 输入，先于重算）**：跑 `python3 scripts/settle_trace_feedback.py --state ingest-state.json` 把 traces/ 里的 `feedback` 事件确定性结算进 case 的 `confidence.hits`/`misdiagnoses`/`last_hit`（幂等——按 session+事件序列 hash 记录在 ingest-state.json，重复跑不重复累积；脚本默认 dry-run，确认 diff 后 `--apply`）。**结算规则（2026-08-31 用户/owner 设计决策）**：只有 `feedback.resolved` 才 `hits += 1`——命中（hit 事件）是系统检索行为，不代表 case 有效；可信反馈（用户确认"诊断解决了问题"）才是置信度信号。`not_resolved`/`partial` → `misdiagnoses += 1`。结算产出的 confidence 变更走 knowledge_modification PR（脚本本身不改 git）。**无 feedback 事件时如实跳过**（反馈闭环未发生=现状，不编造）。
-4. **置信度重算**：从 `hits`/`misdiagnoses`/`last_hit` 重算每条 case 的 `confidence.score`（按时间衰减）。**新升格的 case 初始 score 不设 0**——按 to-postmortem 标的 `confidence`（人的调查质量判断）设初始值：**high→0.6、medium→0.3、low→0.1**（Beta 先验超参 $(\alpha,\beta)$ 的实例化；参数治理见 roadmap 待定池，理论推导见 docs/design-theory.md §4.1——该文档为可选论证层，本参数为执行值）。score=0 意味着新 case 永远排候选最后，对 5 天详查的高质量 case 不合理。
+4. **置信度重算**：从 `hits`/`misdiagnoses`/`last_hit` 重算每条 case 的 `confidence.score`（按时间衰减）。**新升格的 case 初始 score 不设 0**——由 `verification`（来源验证强度）与 `confidence`（调查质量）联合决定（Beta 先验超参 $(\alpha,\beta)$ 的实例化；参数治理见 roadmap 待定池，理论推导见 docs/design-theory.md §4.1——该文档为可选论证层，本参数为执行值）：
+
+   | verification \ confidence | high | medium | low |
+   |---|---|---|---|
+   | `upstream-fix-merged`（fix PR 合入） | **0.75** | 0.6 | 0.5 |
+   | `upstream-maintainer-confirmed` | 0.65 | 0.5 | 0.4 |
+   | `engineer-report`（现场验证） | 0.85 | 0.7 | 0.6 |
+   | `investigation` / 未填 | 0.6 | 0.3 | 0.1 |
+
+   **语义（分层，防误读）**：verification 提升的是"内容正确性"先验——fix PR 合入的 case 根因/修复被外部验证过，**内容可默认高置信**，故即使 confidence(调查判断)=low 也有 0.5 起点（内容对但调查表述简略，仍可信）；`engineer-report` 同时证明现场有效，故最高。**score 仍 calibrate 现场解决率**——verification 只给冷启动先验，不替代 S1 现场校准（fix 在你环境是否适用仍需回报确认；无 S1 时 score 停在该先验并如实标注"内容已验证、现场待确认"）。score=0 意味着新 case 永远排候选最后，对已验证的高质量 case 不合理。
 5. **软退休**：区分两种"未命中"——
    - **cold**（从未被 quickly_check 选中）→ **不退**（正确但罕见的 case 占索引成本极低，误删是静默损失）
    - **tried-and-failed**（被选中但近 12 周未解决）且 `score` 低 → 移入 `_archive/`

@@ -34,6 +34,13 @@ cases:
       - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1707"
       - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1801"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #1707'
+
     quickly_check:
       primary:
         command_template: "grep -E 'Tried to register an operator|Duplicate registration|No module named.*cann_ops_transformer' {{log_path}}"

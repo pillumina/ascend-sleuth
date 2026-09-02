@@ -40,6 +40,7 @@ v2 机制把"观测 → 候选 → 授权 → 合入"串起来了，但执行时
 | `source_evidence` | 来源（issue/trace/postmortem id）+ 现象/日志/根因证据引用 | 证据充分性判定（缺证据的低置信沉淀） |
 | `sediment_form` | 新 case / variant 并入 / reference / Tier3 转正 | 决定验证方式与审批路径 |
 | `evidence_strength` | 症状/根因/fix 三证据各自强度：确证 / 推测 / 缺失 | 初始置信度（investigation_quality 对应物）与诚实标注 |
+| `verification` | 来源验证状态：`upstream-fix-merged`（fix PR 合入）/ `upstream-maintainer-confirmed` / `investigation` / `engineer-report` | **初始 score 先验档位**（与 evidence_strength 区分：strength=调查判断，verification=外部证据强度）——见 groom 置信度重算规则表 |
 | `discriminative_power` | quickly_check 能否区分同 namespace 相似 case（对比候选） | 防重复沉淀、防低判别力污染候选集 |
 | `predicted_value` | **预期命中场景**：这条沉淀预计命中哪类未来问题（可检验的描述，见第 4 节） | 沉淀效果度量的对比基准 |
 | `ref_knowledge` | 关联的 active reference（role 合法，verify_references 校验） | 已有机制，沉淀时一并评估 |
@@ -65,6 +66,8 @@ v2 机制把"观测 → 候选 → 授权 → 合入"串起来了，但执行时
 - 有 S1 确认 → `sediment_value`（高置信沉淀有效）；
 - 仅 S2/golden 命中 → 记"检索有效"但标注 `source: issue-replay`、降置信（诚实标注，execution §4.3）；
 - 无任何命中 → 归因（场景未出现 vs 判别力问题）。
+
+**与 verification 的分层（内容置信 ≠ 现场置信）**：`verification`（来源验证：fix PR 合入等）提高的是**内容正确性先验**——根因/修复被外部验证过，case 内容可默认可信；但 **resolve（现场有效）仍只认 S1**。两者独立：fix-merged case 初始 score 高（内容可信），不等于它在任意客户环境都被验证过——现场确认仍需 S1 回报。verification 只给冷启动先验，不替代 S1 校准（见 groom 置信度重算规则表）。
 此限定防两件事：把"找得到"冒充"用得上"（虚报沉淀价值）、把 S2 检索 miss 当成 case 内容错去改知识（污染正确 case）。
 
 ### 4.2 需要的记录扩展

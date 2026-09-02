@@ -33,6 +33,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/12957"
       - "https://github.com/vllm-project/vllm-ascend/pull/14269"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #14269'
+
     quickly_check:
       primary:
         command_template: "grep -E '乱码|garbled|badcase' {{log_path}}"

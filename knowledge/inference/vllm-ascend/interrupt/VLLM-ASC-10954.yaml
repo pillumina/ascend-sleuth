@@ -31,6 +31,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/10954"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #10954'
+
     quickly_check:
       primary:
         command_template: "grep -E 'tool call|工具调用|request_tool' {{log_path}}"

@@ -32,6 +32,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/pull/11459"
       - "https://github.com/vllm-project/vllm-ascend/pull/9731"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #11459'
+
     quickly_check:
       primary:
         command_template: "grep -F 'Current vLLM config is not set' {{log_path}}"

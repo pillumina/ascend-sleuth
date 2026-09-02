@@ -30,6 +30,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/12901"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #12901'
+
     quickly_check:
       primary:
         command_template: "grep -E \"KeyError: 'model\\.layers\\.[0-9]+\\.self_attn\\.indexer\\.wq_b\\.weight'\" {{log_path}}"

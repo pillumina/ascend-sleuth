@@ -36,6 +36,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/13973"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #13973'
+
     quickly_check:
       # performance 类：数值/指标断言而非错误签名 grep
       primary:

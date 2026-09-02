@@ -32,6 +32,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/pull/11893"
       - "https://github.com/vllm-project/vllm-ascend/pull/11807"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #11893'
+
     quickly_check:
       primary:
         command_template: "grep -E '507015|MTE write out-of-bounds' {{log_path}}"

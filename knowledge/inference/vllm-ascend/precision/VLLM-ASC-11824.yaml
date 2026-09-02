@@ -32,6 +32,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/pull/11824"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #11824'
+
     quickly_check:
       primary:
         command_template: "grep -E 'use_deterministic_algorithms\\(True, warn_only=True\\)' {{log_path}}"

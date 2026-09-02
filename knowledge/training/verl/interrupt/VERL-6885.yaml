@@ -33,6 +33,13 @@ cases:
     references:
       - "https://github.com/verl-project/verl/issues/6885"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #6885'
+
     quickly_check:
       primary:
         command_template: "grep 'aclnnConvolutionBackwardGetWorkspaceSize' {{log_path}}"

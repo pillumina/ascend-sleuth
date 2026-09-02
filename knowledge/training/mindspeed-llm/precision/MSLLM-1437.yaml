@@ -31,6 +31,13 @@ cases:
     references:
       - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1437"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #1437'
+
     quickly_check:
       primary:
         command_template: "grep -E 'grad norm.*0|grad_norm.*0\\b' {{log_path}}"

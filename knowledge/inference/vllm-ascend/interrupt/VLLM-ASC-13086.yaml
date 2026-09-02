@@ -31,6 +31,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/13086"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #13086'
+
     quickly_check:
       primary:
         command_template: "grep 'Unsupported soc_version: AscendDeviceType.A5' {{log_path}}"

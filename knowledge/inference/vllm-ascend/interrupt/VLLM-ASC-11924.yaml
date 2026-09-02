@@ -31,6 +31,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/pull/11924"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #11924'
+
     quickly_check:
       primary:
         command_template: "grep -E 'expanded_x dim1 should be' {{log_path}}"

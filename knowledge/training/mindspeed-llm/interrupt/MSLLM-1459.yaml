@@ -29,6 +29,13 @@ cases:
     references:
       - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1459"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #1459'
+
     quickly_check:
       primary:
         command_template: "grep -E 'libbitsandbytes_cpu.so|cannot open shared object file' {{log_path}}"

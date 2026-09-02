@@ -29,6 +29,13 @@ cases:
     references:
       - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1532"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #1532'
+
     quickly_check:
       primary:
         command_template: "grep -E 'garbled|乱码|aseña|GLISH' {{log_path}}"

@@ -30,6 +30,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/14166"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #14166'
+
     quickly_check:
       primary:
         command_template: "grep 'Cannot find binary for op MoeInitRoutingV3' {{log_path}}"

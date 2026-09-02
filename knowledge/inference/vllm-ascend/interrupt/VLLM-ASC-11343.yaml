@@ -32,6 +32,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/11343"
       - "https://github.com/vllm-project/vllm-ascend/pull/11342"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #11342'
+
     quickly_check:
       primary:
         command_template: "grep 'Receive request timeout' {{log_path}}"

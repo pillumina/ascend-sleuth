@@ -30,6 +30,13 @@ cases:
     references:
       - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1554"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #1554'
+
     quickly_check:
       primary:
         command_template: "grep -E 'cannot import name.*features_manager' {{log_path}}"

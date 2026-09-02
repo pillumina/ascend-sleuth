@@ -35,6 +35,13 @@ cases:
       - "https://github.com/verl-project/verl/issues/6707"
       - "https://github.com/verl-project/verl/pull/6708"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #6708'
+
     quickly_check:
       primary:
         command_template: "grep -iE 'Qwen3.?Moe.*patch|npu_patch|fused kernel' {{log_path}}"

@@ -34,6 +34,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/pull/10441"
       - "https://github.com/vllm-project/vllm-ascend/pull/11065"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #10441'
+
     quickly_check:
       primary:
         command_template: "grep -E \"ModuleNotFoundError: No module named 'vllm\\.model_executor\\.layers\\.fused_moe\\.expert_map_manager'\" {{log_path}}"

@@ -32,6 +32,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/9507"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #9507'
+
     quickly_check:
       primary:
         command_template: "grep -E \"AttributeError: 'NoneType' object has no attribute 'num_computed_tokens_of_pcp_dcp'\" {{log_path}}"

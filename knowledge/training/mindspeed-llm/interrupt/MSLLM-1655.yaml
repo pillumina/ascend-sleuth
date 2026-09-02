@@ -30,6 +30,13 @@ cases:
     references:
       - "https://gitcode.com/Ascend/MindSpeed-LLM/issues/1655"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #1655'
+
     quickly_check:
       primary:
         command_template: "grep -E \"Cannot infer model type from architectures\" {{log_path}}"

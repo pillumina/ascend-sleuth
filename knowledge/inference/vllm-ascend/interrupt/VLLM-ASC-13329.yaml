@@ -34,6 +34,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/13329"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #13329'
+
     quickly_check:
       primary:
         command_template: "grep \"KeyError: 'mtp\\.0\\.head\\.weight'\" {{log_path}}"

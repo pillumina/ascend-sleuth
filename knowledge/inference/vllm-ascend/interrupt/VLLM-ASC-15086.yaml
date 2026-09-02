@@ -33,6 +33,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/15086"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #15086'
+
     quickly_check:
       primary:
         command_template: "grep -E 'are not supported for now|not supported for now' {{log_path}}"

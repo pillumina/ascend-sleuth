@@ -36,6 +36,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/13964"
       - "https://github.com/vllm-project/vllm-ascend/pull/13518"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #13518'
+
     quickly_check:
       # 本 case 是静默 hang，无错误签名——用 per-engine Prometheus 计数作判别信号
       primary:

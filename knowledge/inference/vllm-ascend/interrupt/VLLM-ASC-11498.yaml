@@ -32,6 +32,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/11498"
       - "https://github.com/vllm-project/vllm-ascend/pull/11663"
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #11663'
+
     quickly_check:
       primary:
         command_template: "grep 'Promotion for Float8 Types is not supported' {{log_path}}"

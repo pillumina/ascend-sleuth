@@ -36,6 +36,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/14320"
       - "https://github.com/vllm-project/vllm-ascend/pull/12592"   # 引入回归的 PCP-removal 重构
 
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #12592'
+
     quickly_check:
       primary:
         command_template: "grep 'MTE accesses an invalid GM address' {{log_path}}"

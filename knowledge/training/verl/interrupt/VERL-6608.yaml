@@ -34,6 +34,13 @@ cases:
     references:
       - "https://github.com/verl-project/verl/issues/6608"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #6608'
+
     quickly_check:
       primary:
         command_template: "grep 'hcclCommInitRootInfoConfig' {{log_path}}"

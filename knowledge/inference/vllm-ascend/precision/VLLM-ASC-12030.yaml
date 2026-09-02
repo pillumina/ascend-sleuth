@@ -32,6 +32,13 @@ cases:
       - "https://github.com/vllm-project/vllm-ascend/issues/12030"
       # 无独立 fix PR；修复随 v0.23.0 发布（glm4_moe_tool_parser.py 更新），workaround 为评论#3 附件脚本
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #12030'
+
     quickly_check:
       primary:
         command_template: "grep -E '单词最后1个字符重复|字符重复' {{log_path}}"

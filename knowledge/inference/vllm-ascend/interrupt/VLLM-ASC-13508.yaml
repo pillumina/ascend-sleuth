@@ -35,6 +35,13 @@ cases:
     references:
       - "https://github.com/vllm-project/vllm-ascend/issues/13508"
 
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: 'issue #13508'
+
     quickly_check:
       primary:
         command_template: "grep \"No module named 'triton.experimental'\" {{log_path}}"
