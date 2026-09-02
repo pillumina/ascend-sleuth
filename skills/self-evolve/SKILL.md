@@ -3,8 +3,8 @@ name: self-evolve
 description: >
   自演进执行引擎（目标驱动版）。用户说一个目标（可能模糊），先通过 grill
   对齐"目标态"（要达成什么、scope 哪层/哪个仓、数据源由用户指定），再按目标
-  装载对应能力（拉 issue / 抓官方文档 / S2 replay 测试 / 补 case / reference
-  沉淀 / skill 流程改进——**不是每轮全做**），执行中可沉淀可复用流程、可提议
+  装载对应能力（拉用户指定源的 issue / 按用户给的具体来源做 reference 沉淀 /
+  S2 replay 测试 / 补 case / skill 流程改进——**不是每轮全做**），执行中可沉淀可复用流程、可提议
   改进 skill 本身，产出带轨迹依据的 idea 卡 → 校验 → 攒批 → 聚合 PR 给人审。
   机制设计见 docs/evolution-orchestration.md §1.2（目标→对齐→装载→执行，
   可选论证层）；本文件自包含执行参数。触发语义同 knowledge-groom
@@ -42,7 +42,7 @@ disable-model-invocation: true
 
 | 目标态 | 装载的能力 | 工具/入口 |
 |---|---|---|
-| **reference 沉淀** | 抓官方文档（用户给 URL 或从 doc-sources 选）→ to-reference 提炼草稿 | fetch_docs.py + /skill:to-reference |
+| **reference 沉淀** | 用户给具体来源（URL/文档/案例）→ to-reference 提炼草稿（to-reference 自带 URL 爬取；**不做预置通用文档抓取器**——抓哪个源、抓什么由用户具体要求驱动） | /skill:to-reference |
 | **补 case / 提命中** | 拉指定仓 issue（用户指定源）→ 扩 S2 → replay 测缺口 → 补 case | auto_fetch.py + s2_calibration + s2_replay + /skill:to-postmortem |
 | **覆盖发现（不问源）** | S2 replay 测试已有校准集 → miss = 覆盖缺口 | s2_replay.py --todo |
 | **流程/skill 改进** | 组件台账/归因信号 → skill 改动提议（走验证门）→ 或沉淀新流程 | component_tally.py + 本 skill §四 |
@@ -107,12 +107,11 @@ risk / principle_refs / decisions。**只产建议与证据，不自行合入**�
 | 能力 | 工具/入口 | 何时用（目标驱动） |
 |---|---|---|
 | issue 增量拉取 | `scripts/auto_fetch.py --source <用户指定>` | 目标=补 case/提命中 且用户指定源 |
-| 文档抓取 | `scripts/fetch_docs.py --fetch <用户指定源 id>` | 目标=reference 沉淀 |
 | S2 校准集构建/扩展 | `scripts/s2_calibration.py --incremental` | 需要评测集时 |
 | S2 replay 测试 | `scripts/s2_replay.py --prepare/--todo/--collect` | 用已闭环 issue 验证诊断（提命中/覆盖发现） |
 | 产卡辅助 | `scripts/ev_proposal.py` | 形成候选卡时 |
 | 卡校验 | `scripts/verify_proposals.py` | 产卡后必跑 |
 | 组件台账 | `scripts/component_tally.py` | 流程/skill 改进目标 |
 | golden 回放 | `scripts/replay_golden.py` | skill 改动验证门 |
-| knowledge/reference 沉淀 | /skill:to-postmortem, /skill:to-reference | 补 case / reference 目标 |
+| knowledge/reference 沉淀 | /skill:to-postmortem, /skill:to-reference（URL 爬取走 `--ingest`，无需预置抓取器） | 补 case / reference 目标 |
 | proposals/ideas/ | 卡资产（入 git） | — |

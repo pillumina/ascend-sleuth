@@ -66,3 +66,6 @@ proposals/experiments/*
 # S2 replay 运行时产物（.s2-replay/ 输入与结果，本地留存；评分报告随 PR 投影）
 .s2-replay/
 .s2-replay-report.md
+
+# auto_fetch 候选（运行时产物，本地留存）
+.auto-fetch/

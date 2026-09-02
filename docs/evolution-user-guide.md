@@ -10,7 +10,7 @@
 | 你说 | 系统理解为 | 触发 | 当前可用 |
 |---|---|---|---|
 | "跑一轮自演进" / "看看有什么可改进的" | 目标未定 → 先对齐（给候选目标你选），再按目标执行 | 一轮自演进 | ✅（self-evolve skill） |
-| "我想做 reference 沉淀" | 目标=沉淀先验 → 问清类别/源 → 抓文档/case 归纳 → 草稿待审 | reference 沉淀轮 | ✅（fetch_docs + to-reference） |
+| "我想做 reference 沉淀" | 目标=沉淀先验 → 问清类别/**具体来源（你给 URL/文档，不预置通用抓取器）** → to-reference 提炼 → 草稿待审 | reference 沉淀轮 | ✅（to-reference，URL 走 --ingest） |
 | "从 vllm-ascend 的 closed issue 补 case" | 目标=补覆盖，**数据源=用户指定 vllm-ascend** | 拉指定源 → replay 测缺口 → 补 case | ✅（auto_fetch --source + 链路） |
 | "持续改进 vllm-ascend 的诊断命中率" | 范围=vllm-ascend，目标=提命中 | 拉该仓 issue + S2 replay + 补 case | ⚠️ 一轮可做，长期任务待蓝图 |
 | "这周有哪些值得沉淀的 verl issue？" | 范围=verl，目标=补覆盖，单轮盘点 | 一轮盘点 + 沉淀候选 | ✅（issue-ingest + to-postmortem 链路） |
