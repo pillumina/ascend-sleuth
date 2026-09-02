@@ -55,28 +55,44 @@ evolution.md 五机制 + roadmap A/E 系列已覆盖：confidence 回写、groom
 
 补全四件事，顺序即依赖：
 
-**4.1 归因下沉（前提，见第 2 节）**——没有组件级归因，下面三件事都无数据。
+### 4.1 归因下沉（前提，见第 2 节）
 
-**4.2 流程组件失败台账**：台账浮出反复失败的组件 → 自动生成候选修复 idea（trajectory = 台账条目 + 对应 trace 引用），建议修复方向（改该组件所在 skill 步骤 / triage 分支 / check / script）。**只产出建议与证据，修复方案与合入留人/分级授权**（原则五）。
+没有组件级归因，下面三件事都无数据。
 
-**4.3 skill 变更验证门（强制）**：任何 skill/流程改动合入前必须过 **golden 前后对照**（eval/golden + M2 半自动化；容忍 LLM 非确定性用 top-3 断言）。golden 断供或套件不足以区分时，用 **S2 issue-replay 校准**（2.1）替代或补充：改 skill 前后在同一批已闭环 issue 上跑 diagnose，对照 issue resolution 的命中率是否提升。这是 L2 与 L1 的关键差异：改 case 只影响一条知识，改 skill 影响所有下游——验证门不可省，对应原则六（闸门硬度与错误代价匹配）。
+### 4.2 流程组件失败台账
 
-**4.4 新 skill 沉淀触发（弱信号，防过度设计）**：只有两类信号可触发"可能需要新 skill/reference"的候选：
+台账浮出反复失败的组件 → 自动生成候选修复 idea（trajectory = 台账条目 + 对应 trace 引用），建议修复方向（改该组件所在 skill 步骤 / triage 分支 / check / script）。**只产出建议与证据，修复方案与合入留人/分级授权**（原则五）。
+
+### 4.3 skill 变更验证门（强制）
+
+任何 skill/流程改动合入前必须过 **golden 前后对照**（eval/golden + M2 半自动化；容忍 LLM 非确定性用 top-3 断言）。golden 断供或套件不足以区分时，用 **S2 issue-replay 校准**（2.1）替代或补充：改 skill 前后在同一批已闭环 issue 上跑 diagnose，对照 issue resolution 的命中率是否提升。这是 L2 与 L1 的关键差异：改 case 只影响一条知识，改 skill 影响所有下游——验证门不可省，对应原则六（闸门硬度与错误代价匹配）。
+
+### 4.4 新 skill 沉淀触发（弱信号，防过度设计）
+
+只有两类信号可触发"可能需要新 skill/reference"的候选：
 - 同一执行错类别反复出现且无归属组件（台账里出现"未归因"簇）；
 - 多轮诊断反复走同一 Tier 3 兜底且最终 resolved（说明缺 Tier 2 覆盖，可能补 case 而非新 skill）。
 候选进**待定池**（不自动立项），标注"新 skill 立项 = 高风险结构变更，需 proposal 论证与双签"。不做 embedding 相似度推荐（ADR-0002 锁死）。
 
-**4.5 效果回测（闭环收口）**：L2 变更合入后观测连续 N 期（组件 mis 是否下降、执行错率是否回落、golden 是否保持）；回测不达预期 → 回滚或开再迭代卡。无回测的 L2 变更 = 未闭环，标注"变更已合入、效果待观测"而非假装完成（诚实退化）。
+### 4.5 效果回测（闭环收口）
+
+L2 变更合入后观测连续 N 期（组件 mis 是否下降、执行错率是否回落、golden 是否保持）；回测不达预期 → 回滚或开再迭代卡。无回测的 L2 变更 = 未闭环，标注"变更已合入、效果待观测"而非假装完成（诚实退化）。
 
 ## 5. L3 工作流/编排层（有界闭环）
 
 L3 的闭环不是"流程自动改流程"（递归陷阱），而是**参数级自校准 + 结构级留人**的混合：
 
-**5.1 参数级自校准（半自动）**：流水线自身的执行参数——触发阈值、候选批量、抽审率、授权升级门槛——作为**数据**存配置（如 `evolution/config.yaml`），由季度自评数据校准：某信号长期误报 → 下调触发权重；auto 级抽审发现率高 → 收紧 auto 条件。参数变更是低风险、可逆的（diff 一行），可走快速通道。**参数本身服从原则十一：是假设的量化形态，接受实测修正。**
+### 5.1 参数级自校准（半自动）
 
-**5.2 结构级演进留人**：改变流程结构本身——groom 的 R 轮次增减、本流水线的阶段设计、roadmap 机制部分、skill 骨架——一律 methodology PR + 体系维护人审（kb/high-risk 双签）。理由：结构变更是不可逆性最高的变更（影响全部下游与全部后续轮次），没有数据能预证其正确，只能由人基于使用检验裁决（原则五、六、七）。
+流水线自身的执行参数——触发阈值、候选批量、抽审率、授权升级门槛——作为**数据**存配置（如 `evolution/config.yaml`），由季度自评数据校准：某信号长期误报 → 下调触发权重；auto 级抽审发现率高 → 收紧 auto 条件。参数变更是低风险、可逆的（diff 一行），可走快速通道。**参数本身服从原则十一：是假设的量化形态，接受实测修正。**
 
-**5.3 与「明确不做」的相容性论证**：roadmap 不做的是 **KPI / 身份 / 使用观测**（对象是人：工程师 ID、协作时长、每人产出）；本流水线观测的是**系统自身行为**（组件 mis、信号误报率、idea 生命周期），对象是 trace/台账/卡，不涉人、不引入灌水激励。若未来出现首个集中式多用户部署，再评估是否引入协作维度（roadmap 触发条件不变）。
+### 5.2 结构级演进留人
+
+改变流程结构本身——groom 的 R 轮次增减、本流水线的阶段设计、roadmap 机制部分、skill 骨架——一律 methodology PR + 体系维护人审（kb/high-risk 双签）。理由：结构变更是不可逆性最高的变更（影响全部下游与全部后续轮次），没有数据能预证其正确，只能由人基于使用检验裁决（原则五、六、七）。
+
+### 5.3 与「明确不做」的相容性论证
+
+roadmap 不做的是 **KPI / 身份 / 使用观测**（对象是人：工程师 ID、协作时长、每人产出）；本流水线观测的是**系统自身行为**（组件 mis、信号误报率、idea 生命周期），对象是 trace/台账/卡，不涉人、不引入灌水激励。若未来出现首个集中式多用户部署，再评估是否引入协作维度（roadmap 触发条件不变）。
 
 ## 6. 自演进执行流程（专门流程）
 
@@ -167,7 +183,9 @@ status: candidate                # 完整词表（v3，与 execution §5.1 一�
                                  #   candidate → proposed → in_experiment → adopted
                                  #   adopted → validated | rolled_back | superseded（观察窗终态）
                                  #   in_experiment 实验失败 → rejected；回测不达标 → re-iterate（回 proposed）
-                                 #   沉淀类另有 awaiting_validation（观察窗未结束，见 execution §4.3）
+                                 # 注：本卡（EV proposal）status 无 awaiting_validation——
+                                 #   那是沉淀对象（case）的观察窗状态（见 execution §4.2/4.3），
+                                 #   属 case YAML 扩展字段，不并入 EV 卡词表
 authorization: review            # auto | review | dual（6.3 分级；candidate 时由风险+证据预判）
 dimension: evolvability          # architecture | evolvability | maintainability | observability | process
 supersedes: []                   # 本卡替代的旧卡 id 列表（run §5：新 idea 替换旧实现时填）
@@ -280,6 +298,7 @@ candidate ──分级授权──► proposed ──实验启动──► in_ex
 | reflect 从失败轨迹生成编辑建议 | 与本设计 trace 归因 → 候选 idea 同构 | 已含（第 2、4 节） |
 | reject buffer / slow update（防跨轮遗忘） | 与本设计 rejected 留痕、季度自评跨期对比同构 | 已含（6.4 decisions 追加、6.6 自评） |
 | **held-out 验证需要自动评分集** | 这正是本设计 2.1 的 S2 issue-replay 校准的用武之地：SkillOpt 式 gate 的分数来源 | 已含（2.1、4.3、6.5） |
+| **held-out 防过拟合（selection vs test 分离）** | SkillOpt 在 selection 上做 gate 决策、在 held-out test 上做最终验收，防对校准集过拟合 | 已含：2.1 S2 校准集 selection/test 分离（gate 只看 selection，validated 终判只看 test） |
 | judge 区分 shape ops vs outcome ops（防格式化作弊） | 与我们"避免把约定当硬门"一致 | 校验设计准则参考：凡是可被"形式上满足"的检查不算验收 |
 | harvest 本地 transcript 送 provider | 数据边界冲突（traces 含客户信息） | **不取** |
 | 单文档 best_skill.md 自由文本编辑 | 违反原则三/五/九 + skill 自包含 | **不取** |
