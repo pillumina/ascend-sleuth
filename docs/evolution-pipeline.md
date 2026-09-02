@@ -38,7 +38,9 @@
 
 - **验证门数据**：L2 skill 演进的 golden 验证可换成/补充 S2 对照（改 skill 前后在同一批 issue 上命中率是否提升）；
 - **错例提取**：路由错例、未命中 case 从 S2 的 miss 自动累积（E2/E5 数据源，不等人回报）；
-- **L1 校准**：S2 的 miss 定位"缺 case"或"case 错"，产出候选 idea 卡。
+- **L1 检索层校准**：S2 的 miss 定位**检索/路由/覆盖**问题——产"该现象族未覆盖（缺 case 候选）"或"路由未归位（triage 修订候选）"，**不直接判 case 内容错**。
+
+**S2 miss 的归因边界（关键，防越权）**：一次 S2 miss 有三种可能——(a) 路由错（目标 namespace 没被加载）、(b) 缺 case（库中没有对该 issue 的 case）、(c) case 内容错（有 case 但 symptom 未匹配或 root cause 与 issue resolution 不符）。**S2 无法区分三者**（它只看到"没命中"）。因此：S2 miss 只能产**检索层候选**（查路由 / 查覆盖缺口），**不得据此判定 case 内容错**——case 内容错的判定是 S1 工程师反馈 + trace 归因的职权（反馈 not_resolved → 归因 case 错改知识 / 执行错改流程）。把 S2 的检索 miss 当 case 错去改 case，会污染正确知识——这正是文档「建议与决定分离 + 归因」要防的错误。区分检索有效与解决有效的原则贯穿全文：**S2 命中 = 检索到正确 case（retrieval hit），不等于 case 在现场解决（resolve）**。
 
 **S2 的边界（诚实标注，防过度承诺）**：它以 issue 的 resolution 为基准，校准的是系统**检索与归因**是否正确；现场 fix 有效性（severity 语义、环境特异性）仍只能靠 S1。S2 分数进入指标时标注 `source: issue-replay`，不与 S1 混淆（口径见 docs/metrics.md）。若某 issue 的 resolution 仅是 workaround 而非根因修复，标记后降权或剔除（issue 池筛选规则：优先 state_reason=completed + 维护者 closed + fix commit 可溯的）。
 
@@ -173,6 +175,8 @@ E. 抽审人 / reviewer / 体系维护人：6.3 级别人闸 + 6.6 季度自评
 
 共享状态串行纪律在三种载体下同样适用——team 的 `writeScopes` 是提示性路径前缀不是锁（内置 agent-team 文档原话），不能替代"唯一读写共享状态者"的执行约束；dsh-agent-teams 的质量任务合同（verdict=pass 才 completed、failed 不解锁下游、自动 repair/review 链）与本设计"实验失败不推进 / review 级授权 / 自动修复"同构，可直接映射为授权级别的执行层实现。
 
+**"唯一写者"从纪律变结构（多 agent 并行的写冲突保障）**：纯靠"观测 agent 串行"的纪律在并行成员下会失效（两个成员同时改同一队列）。结构保障：**共享状态文件全部走"单一写入口"**——所有对 ingest-state / timeline / component-tally / ideas 队列 / session state 的写入收敛到一个**持锁的写服务**（本地文件锁或单写者队列），任何 agent（含并行成员）只能通过它写共享状态，成员间通过消息/任务结果间接协作、不直接写共享文件。worktree 隔离照旧（每个成员的实验改动在自己 worktree），但**写共享状态的唯一通道是写服务**——这样"唯一写者"不依赖 agent 自觉，而是架构强制（原则二：不变量写进结构）。落地载体：DSH 的 host 侧单例服务或 git 串行提交约定（一次只有一个 worktree 推共享文件），按执行环境选。
+
 ## 7. Idea 卡 schema（v2）与状态机
 
 ```yaml
@@ -182,6 +186,8 @@ title: triage 分支 vllm-ascend 启动参数族执行错率 0.6 → 修订该�
 status: candidate                # 完整词表（v3，与 execution §5.1 一致）：
                                  #   candidate → proposed → in_experiment → adopted
                                  #   adopted → validated | rolled_back | superseded（观察窗终态）
+                                 #   adopted 观察窗超时降级 → unconfirmed_valid（仅 S2 证据，检索有效现场未确认）
+                                 #                        | unconfirmed（无证据，存疑待重审）
                                  #   in_experiment 实验失败 → rejected；回测不达标 → re-iterate（回 proposed）
                                  # 注：本卡（EV proposal）status 无 awaiting_validation——
                                  #   那是沉淀对象（case）的观察窗状态（见 execution §4.2/4.3），

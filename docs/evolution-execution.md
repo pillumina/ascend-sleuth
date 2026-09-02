@@ -51,17 +51,26 @@ v2 机制把"观测 → 候选 → 授权 → 合入"串起来了，但执行时
 ```
 ① 沉淀时：记 predicted_value（预期命中场景）+ expected_window（观察窗，如 4 周或 N 次同类诊断）
 ② 沉淀后：跟踪该 case 的 first_hit（首次被选中时间）、选中后 resolve、在预期场景类中的选中率
-③ 观察窗结束判定：
-   ├─ 被选中且 resolve      → 沉淀有效（记 metrics: sediment_value）
+③ 观察窗结束判定（resolve 的判定必须区分信号来源，见下）：
+   ├─ 被选中且 resolve（S1 现场确认）  → 沉淀有效（记 metrics: sediment_value，高置信）
+   ├─ 被选中且 retrieval-hit（仅 S2/golden 检索命中）→ 沉淀"检索有效"（低置信，标注 source: issue-replay，
+   │                                    不算现场解决——只证明"找得到"，不证明"用得上"）
    ├─ 从未被选中            → 区分两种归因：
    │                          a. 预期场景没出现（预测偏差，非沉淀之过）
    │                          b. 场景出现了但没选中它（判别力/覆盖问题 → 该 case 需复审）
    └─ 被选中未 resolve      → 沉淀有误 → 走误诊归因（case 错改知识 / 执行错改流程）
 ```
 
+**resolve 数据源限定（方案级关键）**：沉淀判定的 **resolve 只认 S1（工程师现场反馈）**——S2/golden 只能证明"检索命中该 case"（retrieval hit），不能证明"该 case 在现场解决了问题"。理由：case 的核心价值是 fix 在现场有效，检索命中只是必要条件。因此：
+- 有 S1 确认 → `sediment_value`（高置信沉淀有效）；
+- 仅 S2/golden 命中 → 记"检索有效"但标注 `source: issue-replay`、降置信（诚实标注，execution §4.3）；
+- 无任何命中 → 归因（场景未出现 vs 判别力问题）。
+此限定防两件事：把"找得到"冒充"用得上"（虚报沉淀价值）、把 S2 检索 miss 当成 case 内容错去改知识（污染正确 case）。
+
 ### 4.2 需要的记录扩展
 
 - **case YAML 扩展**（相对现有 confidence 字段）：`predicted_value`（沉淀时写，人/groom 可改）、`first_hit`、`expected_window`。`confidence`（hits/mis/score）语义不变——沉淀效果度量复用它做 resolve 侧，新增字段做"预期对照"侧。
+- **first_hit 的数据源限定（防 S2 replay 虚增）**：`first_hit` 指该 case 在**真实诊断**中被选中的首次时间（trace hit 事件，S1 侧）——**S2 replay 的检索命中不计入 first_hit**。若不限定，S2 批量 replay（一天几百条 issue）会让新沉淀 case 的 first_hit 立即触发，把"检索到"冒充"真实诊断选中"。S2 命中只作为"检索有效"旁证（§4.1 降置信路径），不进 first_hit/resolve 统计。区分口径：first_hit/resolve = 真实诊断侧；retrieval-hit = S2/golden 侧，两套计数分开。
 - **groom 职责扩展**：每轮 groom 检查进入观察窗的沉淀（到窗未判定 → 标红提醒）；判定结果写回卡/索引。
 - **反馈到源头**：某 issue 源（如 vllm-ascend 池）的沉淀连续预测不准或从未命中 → 调 `issue_filter.py` 的价值启发式，**而不是继续堆沉淀**——这使"沉淀质量"从 to-postmortem 环节延伸到 issue-ingest 的筛选环节（原则十一：数据回流到假设）。
 
@@ -83,6 +92,30 @@ in_experiment ──合入──► adopted（合入态，进入观察窗）
 ```
 
 `adopted` 不再自动等于"完成"——它是**待回测的合入**。只有 `validated` 才是闭环终态。**状态词表与 schema 的唯一事实源是 pipeline.md §7（v3）**：EV 卡 status 完整词表（candidate/proposed/in_experiment/adopted/validated/rolled_back/superseded/rejected/re-iterate）、supersedes/superseded_by 替换链、estimated/actual_cost 成本字段都在那边定义，本文不重复定义只引用——防两处状态机再次漂移。**注意对象区分**：`awaiting_validation` 是沉淀对象（case）的观察窗状态（§4.3），属 case 的跟踪字段，不是 EV 卡 status——两种对象不混用词表。
+
+### 5.1a 观察窗超时降级（防 follow-up 空转，方案级关键）
+
+content/fix 类观察窗依赖 S1 现场反馈，而反馈可能长期断供（当前捕获率≈0 是现实）——若没有超时降级，沉淀永久 awaiting_validation、proposal 永久 adopted，follow-up 机制在"永远等答案"中空转。超时处理按观察窗长度分级（默认：即时类=无超时、content 类=expected_window ×2、fix 类=最长窗 ×2，参数落地校准）：
+
+```
+观察窗到期未结算（无 S1 反馈）——按对象分列（EV 卡与沉淀 case 状态机不同，不混用）：
+● EV 卡（proposal）侧：
+├─ 有 S2/golden 检索命中证据 → adopted → unconfirmed_valid（检索有效、现场未确认），
+│     效果按 source: issue-replay 入指标，卡不再滞留观察窗
+├─ 无任何命中证据 → adopted → unconfirmed（存疑）：标注"观察窗超时无证据"，
+│     不冒充有效也不无限滞留；触发降权信号（证据不足，重审或回滚候选）
+└─ 有退化证据（S2 miss 增长）→ 正常 rolled_back（不等 S1）
+● 沉淀 case 侧：awaiting_validation 到期 → 按 §4.1 结算——有 S1 → sediment_value；
+  仅 S2/golden 命中 → "检索有效"标注；无命中 → 归因（场景未出现 vs 判别力）
+```
+
+规则：**观察窗不是无限等待**——到期必结算，结算结果如实标注证据强度（有 S1=S1 / 仅 S2=检索有效 / 无证据=存疑）。这使 follow-up 闭环在反馈断供下仍能收敛（收敛到诚实标注的降级态），而不是卡死在 pending。与 §4.3"到窗标红"的关系：标红是提前提醒（人还有机会补反馈），超时降级是最终兜底（人不补就如实降级，不无限等）。
+
+**降级态的后续生命周期（防积压悬空）**：unconfirmed_valid / unconfirmed 不是死胡同——它们可继续参与演进：
+- **可被 supersede**：新卡可在降级态上提出替代（降级态说明原方案证据不足，正是"更好 idea"的适用场景），supersede 规则同 §run §5（含观察窗中断言：降级态卡随时可被替代）；
+- **可 re-iterate**：unconfirmed（无证据存疑）卡可回 proposed 重新设计验证方案（补 S2 证据或改验证设计）；
+- **积压清理**：季度自评统计降级态卡占比——占比高说明 S1 断供或验证设计系统性不足，触发流程改进（追问话术/O3）而非继续堆积；
+- **降级态不计入 validated**（execution §6 的 validated 计数与回滚率口径不含降级态，避免稀释"真验证"统计）。
 
 ### 5.2 观察窗按变更类分（不是所有验证都等现场反馈）
 

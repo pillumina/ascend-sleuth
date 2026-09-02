@@ -44,13 +44,21 @@ orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对
 
 | 角色 | 用途 | 说明 |
 |---|---|---|
-| **评测数据集** | S2 即时对照（pipeline §2.1）：系统输出 vs issue resolution | 每批 closed issue = 一次可自动评分的诊断考试；分数进 feedback loop |
-| **沉淀素材** | to-postmortem / to-reference 的案例来源 | 同一批 issue 在评测后仍是 case/reference 的知识来源（issue-ingest 已做） |
+| **评测数据集** | S2 即时对照（pipeline §2.1）：系统输出 vs issue resolution | 每批 closed issue = 一次可自动评分的诊断考试；分数进 feedback loop。**与沉淀素材解耦：先评测后沉淀**（见下"解耦"段） |
+| **沉淀素材** | to-postmortem / to-reference 的案例来源 | 评测完成后的 issue 才允许沉淀为 case/reference（issue-ingest 已做）；已沉淀 issue 不进 S2 test 半 |
 | **覆盖缺口信号** | open issue：系统对某 open issue 现象无法诊断/无 case 候选 → 缺覆盖 | open issue **无答案，只能作弱信号**（诚实退化：不做"诊断确诊"，只记"未覆盖"） |
 
 **open issue 的正确处理**（替代"延迟对照"）：open 池只做**覆盖探测**——现象喂 diagnose，无命中/低置信 → 记"该现象族未覆盖"候选（进待定池），**不做结论判定**（无 resolution 可对照）。issue 转 closed 后自动进入评测池（增量拉取游标天然捕获 open→closed 转换），从那一刻起才有答案、才参与 S2。
 
 **S2 校准集的 selection/test 分离（审查可补点 1）**：S2 池分两半——`selection`（gate 决策用，改 skill 前后对照打分）与 `test`（validated 终判用，防对校准集过拟合）。规则：**gate 决策只看 selection，validated 终判只看 test**；test 半不参与任何中间对照（对应 SkillOpt 的 held-out test，防系统"记住"校准集）。
+
+**S2 评测集与沉淀来源必须解耦（防自我参照污染，方案级关键）**：S2 评测的 issue 若已被沉淀成 case（issue→to-postmortem→case 是同一循环），系统会"命中自己刚沉淀的答案"——S2 高分只证明"记住了自己写的题"，不证明对**未见现象**的诊断能力。解耦规则：
+
+- **先评测后沉淀**：一批新 closed issue 先全部过 S2 评测（对照 resolution 打分，此时知识库还没有这批 issue 的 case），**评测完才允许沉淀**——评测分数反映"用旧知识解新题"；
+- **沉淀过的 issue 不进 test 半**：test 半只放"从未被本系统沉淀过的历史 issue"（或沉淀前的历史快照期），保证 validated 终判是对未见题的检验；
+- **诚实标注**：若某期 test 半被迫混入已沉淀 issue（池子小），指标标注 `test 含已沉淀源` 并降权，不伪装纯净。
+
+这一条与 selection/test 分离正交：分离防"过拟合校准集"，解耦防"用自己沉淀的答案考自己"——两者都缺则 S2 分数虚高。落地时 S2 池管理（issue-ingest 的 processed 排除）需按此扩展：processed 同时记"已评测"与"已沉淀"，两集合分离。
 
 ## 4. 统一执行记录（机制 C）：每次 diagnose / skill 调用都留数据
 
@@ -72,9 +80,12 @@ orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对
 当前 schema 只有单卡生命周期（rejected = 终态）。用户场景"发现 proposal 没效果、或有了更好的 idea 可回滚之前的"需要**卡间关系**：
 
 - idea 卡加 `supersedes: [EV-xxx]` / `superseded_by: EV-yyy` 字段；
-- 新卡合入且观察窗 validated 后，被替代旧卡若仍在 adopted 态 → 标 `superseded`（不是 rejected——它曾有效，是被更好方案替代，历史保留）；
+- **替代卡可在旧卡任意阶段提出**（包括旧卡还在 adopted 观察窗内——这正是"新 idea 更好"的典型场景），但旧卡状态按其在位阶段流转：
+  - 旧卡仍 candidate/proposed/in_experiment → 新卡提出即旧卡标 `superseded`（未合入，无回滚负担），`superseded_by` 指向新卡；
+  - 旧卡已 adopted（观察窗内）→ 新卡进入实验，**旧卡观察窗继续结算到终点**（若旧卡先 validated 再被新卡 validated 顶替 → 旧卡 superseded；若旧卡先 rolled_back → 新卡自动成为唯一实现）。**避免"新卡还没验证就废弃观察窗中的旧卡"**——观察窗是旧卡效果的唯一证据，中途废弃等于丢失对照；
+  - 旧卡已 validated → 新卡 validated 后旧卡 superseded（原表述，最常见路径）。
 - 回滚语义升级：rolled_back 时若该卡 supersedes 某旧卡 → **回滚到被替代版本**（git revert 到旧卡合入点），而不是回滚到空白；
-- 追溯链：卡 → supersedes 链 → decisions → 实验记录 → 合入 commit，任何一点可回看"现在的实现是谁、替代了谁、为什么"。
+- 追溯链：卡 → supersedes 链 → decisions → 实验记录 → 合入 commit，任何一点可回看"现在的实现是谁、替代了谁、为什么"。**一条不变式：同一时刻每个 target_component 至多一张 validated/在位卡**——supersede 链保证实现可追溯回单一版本。
 
 ## 6. 可视化（机制 E）：让"看到系统自演进"成为可能
 
