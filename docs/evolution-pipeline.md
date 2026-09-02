@@ -22,6 +22,7 @@
 - **组件 = 可寻址的执行单元**：skill 的某个步骤（编号）、triage 的某个分支、某条 quickly_check、某个 script、某段提示词。每个组件有稳定 ID（skill 步骤号 / triage 分支名 / check id / 脚本文件名），台账才能累积。
 - **trace 扩展**：归因事件从 `execution_error` 细化到 `component_error: <组件ID>`；诊断 agent 每次实际执行都记录"命中了哪些组件"（hit 侧），反馈 not_resolved 且归因执行错时记录"哪个组件错"（mis 侧）。**落地依赖（文档先行声明，改动在 PR 合入后执行）**：① diagnose SKILL.md 的 attribution 事件增加可选 `component` 字段（现有 verdict 词表 case_error|execution_error 不变，component 是执行错时的细分定位）；② trace_metrics.py 词表与统计同步识别 component 字段——两处都是对既有 skill/脚本的增量改动，需 golden 回归与 methodology PR（本文不直接改 skill）。
 - **流程组件失败台账（新载体 `metrics/component-tally.yaml`）**：每个组件的 hit/mis/score，语义与 case confidence 相同（只按已回报结果回写、时间衰减、低分浮出）。台账是 L2 的"知识库"——它把"流程执行质量"变成可度量（roadmap「沉淀环观测」已指出产出无观测是盲区，触发条件未到前不记人/不按人；台账观测对象是组件，同样不引入身份/KPI 维度）。
+- **台账 mis 侧双通道（S1 反馈 + S2 路由归因，补 S1 断供空缺）**：①trace attribution 事件（diagnose 在 S1 反馈 not_resolved 后归因 execution_error + component，见 diagnose SKILL）；②**S2 replay 路由 miss 归因**（s2_replay `--collect` 对照人工预标的 `expected.namespace/category`，路由错 + 未命中 → 归因 got 分支 `triage:<分支>` 写 `.s2-replay/attributions.yaml`）——S2 对照的是 issue 外部 ground truth，**不依赖 S1**（对应 §2.1"S2 补 S1 空缺""错例自动累积不等人回报"）；component_tally `--emit` 从两源全量重算（幂等，不累加旧台账），mis 源缺失时如实空转不造假。
 
 **L2/L3 指标（全部从已有 trace/metrics 派生，不新增采集面）**：按组件执行错率、skill 变更前后回测差、idea 采纳率/回测通过率、信号误报率（触发了却被否决的候选占比）。这些是**系统自身行为的观测**，不是对人或协作的观测——与 roadmap「明确不做 KPI/身份/使用观测」的边界相容性见 5.3 与 9 节。
 
