@@ -95,6 +95,14 @@ def main():
 
     fallback_since = (datetime.utcnow() - timedelta(days=args.days)).strftime("%Y-%m-%dT00:00:00Z")
 
+    # 无 --source 时只列可用源，不自动全跑（数据源由用户指定——目标驱动，非死板全拉）
+    if not args.source:
+        print("可用 issue 源（用 --source <名称片段> 指定，如 --source vllm-ascend）：")
+        for key in state.get("sources", {}):
+            print(f"  {key}")
+        print("（未指定源 = 不拉取——数据源由目标/用户决定）")
+        return
+
     for key, src in state.get("sources", {}).items():
         if args.source and args.source not in key:
             continue
