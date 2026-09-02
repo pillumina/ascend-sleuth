@@ -96,6 +96,20 @@ agent 路由到 `training/mindspeed-llm/` 并匹配 case。命中时给出结构
 
 agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML 草稿与 postmortem 并完成脱敏，产出到待审队列。也可以在一次 `/skill:diagnose` 结束后直接说"沉淀一下这次"，agent 会自动触发。
 
+### 跑一轮自演进（系统改进自己）
+
+想让系统自己发现并改进诊断/知识库的问题时，直接说（机制是隐形默认策略，你只说目标）：
+
+```
+"跑一轮自演进"                        # 默认全自动：观测 → 产候选卡 → 校验 → 聚合 PR 给你审
+"看看有什么可改进的"                   # 同上（未指定目标时按数据信号自动选方向）
+"持续改进 vllm-ascend 的命中率"        # 指定范围 + 目标，开长期任务
+```
+
+发生什么：agent 读 `skills/self-evolve/SKILL.md` 执行一轮——①装载上下文（容量/台账/指标等信号）→ ②产候选 idea 卡（`proposals/ideas/EV-*.yaml`，`scripts/ev_proposal.py` 辅助）→ ③`verify_proposals.py` 校验 → ④攒批成一个聚合 PR 给你审（每卡独立 commit，dual 高风险标注）。**改动不会自动合入结构级**——最终 PR 人审是合入闸点。
+
+可随时干预："停一下"（本轮停止出中间报告）/ "这条改动有问题，回滚"（该卡回滚）。设计细节见 [自演进用户指南](docs/evolution-user-guide.md)。
+
 ## 知识获取
 
 **仓库即 workspace**。诊断（读 knowledge/references/triage-tree）与沉淀（写 postmortems/inbox/、references/、ingest-state.json）都在同一个仓库 clone 里进行，SKILL 的知识路径相对仓根。三种起步形态如下：
@@ -206,7 +220,7 @@ postmortems/                 Tier 3 原始记录；inbox/ 是待审队列（groo
 references/                 先验知识层（ADR-0008）：独立事实 + 方法论，从官方文档/案例沉淀（表形态与独立词条，导航见 references/README.md）
 examples/sample-case.yaml    canonical 样例（全 schema 演示）
 CONTEXT.md                   领域术语表（中英对照）
-scripts/                     build_index.py、trace_metrics.py、replay_prep.py、replay_trace.py、replay_golden.py、issue_filter.py、fetch_issues.py、settle_trace_feedback.py、verify_references.py、verify_metrics.py、verify_proposals.py、component_tally.py、s2_calibration.py
+scripts/                     build_index.py、trace_metrics.py、replay_prep.py、replay_trace.py、replay_golden.py、issue_filter.py、fetch_issues.py、settle_trace_feedback.py、verify_references.py、verify_metrics.py、verify_proposals.py、component_tally.py、s2_calibration.py、s2_replay.py、ev_proposal.py
 dsh-plugins/ascend-panel/    DSH 诊断面板插件（可选，动态 Cordis 插件；加载见其 README）
 eval/golden/                 回归测试夹具
 proposals/                   自演进领域状态：ideas/（idea 卡，资产入 git）+ sessions/tasks/ 等运行时（gitignore）；机制见 docs/evolution-pipeline.md
