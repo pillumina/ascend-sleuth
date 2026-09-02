@@ -117,6 +117,15 @@ python3 scripts/issue_filter.py --state ingest-state.json \
 转正：维护者批量审 inbox（/skill:knowledge-groom）
 ```
 
+### 7. 收尾 evolve-check（伴随演进评估，默认执行）
+
+沉淀完成、出最终报告前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
+遵循）：本轮沉淀出 ≥3 条同根因/同族 case（T1 → 归纳 reference 候选）、发现新 issue
+类型/新错误码无覆盖（T5）、或拉取/评估环节有重复手动动作或流程摩擦（T3/T4）时，
+**agent 自动产 idea 卡并自行验证执行**（ev_proposal 产卡 → golden/S2 验证 → 进攒批）；
+无信号则报告加一行"evolve-check：无演进信号"。这是流程默认收尾，**不需要用户另说
+"改进系统"**——演进由数据触发，像人学习。产出与流程报告一并给出。
+
 ## 与既有 skill 的关系
 
 - **to-postmortem**：issue 提炼复用其沉淀逻辑（本 skill 只做"外部源的预过滤与编排"，不重复提炼）；
