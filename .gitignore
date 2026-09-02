@@ -48,3 +48,17 @@ postmortems/inbox/*
 # 源码分析用：按需拉取的上游源码（diagnose 深度排查），不入版本库
 # ============================================================
 src-code/
+
+# ============================================================
+# proposals/ 运行时状态（自演进会话/任务进度、token 账本、实验记录）——
+# 类比 traces/ 与 inbox 草稿：本地留存不进 git；稳态资产（ideas/ 卡、
+# 策略记忆）入 git，随 PR 进出（git-workflow 纪律，见 evolution-run.md §8）
+# ============================================================
+proposals/sessions/*
+proposals/tasks/*
+proposals/reviews/*
+proposals/experiments/*
+!proposals/sessions/.gitkeep
+!proposals/tasks/.gitkeep
+!proposals/reviews/.gitkeep
+!proposals/experiments/.gitkeep
