@@ -25,6 +25,10 @@ import yaml
 # source_analysis（源码分析路径 PR #53）：深度排查走源码定位——沉淀/多层级评估的观测。
 # attribution（误诊归因）：反馈 not_resolved 后读 trace 判定 case 错 / 执行错——归因比指标
 #   的数据源（metrics.md「执行-误诊归因比」），无此落点则该指标无法统计。
+#   注意：attribution 事件的 component 字段（执行错归因下沉，diagnose SKILL 写入）的
+#   聚合统计由 scripts/component_tally.py 承担（组件失败台账 metrics/component-tally.yaml，
+#   evolution-pipeline §2）——本脚本只计 verdict 分布（case_error/execution_error 汇总指标），
+#   不重复统计 component，避免双源口径漂移。component 字段不会被词表检查拦截（非 action）。
 KNOWN_ACTIONS = {
     "triage", "load_index", "quickly_check", "load_full",
     "run_check", "hit", "miss", "tier3", "feedback", "reference_lookup",

@@ -10,7 +10,7 @@
 
 > **agent 执行差异**：不同 agent 对 SKILL.md 的执行质量有差异（prompt 纪律本质是概率性的）。诊断结果与 trace 质量可能因 agent 而异——**团队内建议统一 agent**；跨 agent 对比时先归因执行差异，别急着归因知识错误。
 
-**快速跳转**：[为什么需要](#为什么需要它) · [快速开始](#快速开始) · [七个 skill](#七个-skill) · [诊断面板](#诊断面板dsh-可选) · [工作原理](#工作原理) · [文档](#文档)
+**快速跳转**：[为什么需要](#为什么需要它) · [快速开始](#快速开始) · [八个 skill](#八个-skill) · [诊断面板](#诊断面板dsh-可选) · [工作原理](#工作原理) · [文档](#文档)
 
 ---
 
@@ -24,7 +24,7 @@ ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路
 
 ### 安装（使能 skills）
 
-**主路径：仓库即 workspace，skills 随仓使能**。clone 本仓后，把 agent 的项目级 skills 目录指向 `<clone>/skills/`。skills/ 是单一事实源，git 管理版本，更新走 git pull，热刷新即时生效，无需重装。装齐七个：`diagnose` / `to-postmortem` / `to-reference` / `issue-ingest` / `knowledge-groom` / `resume-diagnosis`。
+**主路径：仓库即 workspace，skills 随仓使能**。clone 本仓后，把 agent 的项目级 skills 目录指向 `<clone>/skills/`。skills/ 是单一事实源，git 管理版本，更新走 git pull，热刷新即时生效，无需重装。装齐主 skill：`diagnose` / `to-postmortem` / `to-reference` / `issue-ingest` / `knowledge-groom` / `resume-diagnosis` / `self-evolve`。
 
 **零配置（DSH，团队主力）**。仓库已跟踪 `.dsh/skills → ../skills` 相对 symlink，clone 后自动还原，DSH 项目 root 自动发现并热刷新：git pull 更新 SKILL.md 即时生效，无需任何配置。
 
@@ -112,7 +112,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 **稀疏拉取注意**：sparse-checkout 只收窄 case 数据，白名单必含方法论/工具全量（`skills/` `scripts/` `references/` `triage-tree.yaml` `postmortems/` `ingest-state.json` `.dsh/` 等，否则 agent 无 skill 可用），`knowledge/` 按需收窄（如 `vllm-ascend/` + `common/`）。`_index.yaml` 是全量生成物，收窄后重跑 `scripts/build_index.py` 重建；`common/` 必留占位（ADR-0005）。当前规模用全量 clone，稀疏拉取是知识库长大后的带宽优化。
 
-## 七个 skill
+## 八个 skill
 
 | Skill | 作用 | 何时使用 | 触发方式 |
 |---|---|---|---|
@@ -123,6 +123,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 | `knowledge-groom` | 周期维护：批处理待审队列、升格、去重、置信度重算、软退休、索引重建 | 领域 owner 每周 | 显式 `/skill:knowledge-groom` |
 | `resume-diagnosis` | 续接被打断的诊断：读取状态文件与 trace，复述现场后继续 | 诊断被会议或上下文压缩打断 | 显式 `/skill:resume-diagnosis` |
 | `preload-panel` | 在 DSH 会话中热加载诊断面板插件（`cordis_define` + `cordis_run` 激活「诊断」「指标」tab） | 新 DSH 会话需要面板时 | 显式 `/skill:preload-panel`（仅 DSH） |
+| `self-evolve` | 自演进执行：观测真实信号 → 产候选 idea 卡 → 校验 → 攒批 → 聚合 PR 给人审 | 想跑一轮"系统改进自己"、持续改进诊断/知识库时 | 显式 `/skill:self-evolve` |
 
 完整的操作细节（severity 闸门、trace 规则、语义校验等）在各自 `skills/<name>/SKILL.md`。三个诊断类 skill 为 user-only——诊断决策由人触发；`to-postmortem` / `to-reference` / `issue-ingest` 允许自动触发，降低沉淀门槛（issue-ingest 的自动止步于草稿，转正留人）。
 
@@ -205,9 +206,10 @@ postmortems/                 Tier 3 原始记录；inbox/ 是待审队列（groo
 references/                 先验知识层（ADR-0008）：独立事实 + 方法论，从官方文档/案例沉淀（表形态与独立词条，导航见 references/README.md）
 examples/sample-case.yaml    canonical 样例（全 schema 演示）
 CONTEXT.md                   领域术语表（中英对照）
-scripts/                     build_index.py、trace_metrics.py、replay_prep.py、issue_filter.py、fetch_issues.py、verify_references.py
+scripts/                     build_index.py、trace_metrics.py、replay_prep.py、replay_trace.py、replay_golden.py、issue_filter.py、fetch_issues.py、settle_trace_feedback.py、verify_references.py、verify_metrics.py、verify_proposals.py、component_tally.py、s2_calibration.py
 dsh-plugins/ascend-panel/    DSH 诊断面板插件（可选，动态 Cordis 插件；加载见其 README）
 eval/golden/                 回归测试夹具
+proposals/                   自演进领域状态：ideas/（idea 卡，资产入 git）+ sessions/tasks/ 等运行时（gitignore）；机制见 docs/evolution-pipeline.md
 docs/                        文档体系（见上方「文档」索引）
 CODEOWNERS.example           owner 落实后启用
 .github/                     kb-checks CI + 分场景 PR 模板

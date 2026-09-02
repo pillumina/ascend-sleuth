@@ -1,0 +1,45 @@
+# ============================================================
+# Idea 卡模板（proposals/ideas/EV-YYYY-NNN.yaml）
+# 自演进候选 idea 的 schema 参考——新建卡时复制本文件改字段。
+# 完整 schema 与状态机定义见 docs/evolution-pipeline.md §7（权威）。
+# 校验：python3 scripts/verify_proposals.py --check
+# 脱敏纪律：只含聚合值与证据引用，不含客户现场原文（同 eval fixture）。
+# ============================================================
+
+id: EV-2026-001                    # 稳定 ID（EV-年-序号）
+layer: L2                          # L1 知识内容 | L2 流程与 skill | L3 工作流编排
+title: triage 分支 vllm-ascend 启动参数族执行错率 0.6 → 修订该分支
+status: candidate                  # 完整词表见 pipeline §7：
+                                   # candidate → proposed → in_experiment → pending_merge
+                                   # pending_merge → adopted → validated | rolled_back | superseded
+                                   # in_experiment 失败 → rejected；回测不达标 → re-iterate
+                                   # （蓝图态：unconfirmed_valid/unconfirmed/stale，触发后启用）
+authorization: review              # auto | review | dual（§6.3 分级；candidate 时按风险预判）
+dimension: evolvability            # architecture | evolvability | maintainability | observability | process
+supersedes: []                     # 本卡替代的旧卡 id 列表（run §5）
+superseded_by: null                # 被哪张卡替代（旧卡被替代后标 superseded）
+created_at: 2026-09-01             # ISO 日期
+source_signals:                    # 触发信号 + trajectory 出处（本卡只记引用，不贴原文）
+  - signal: component_error        # 来自组件台账 metrics/component-tally.yaml
+    evidence: "组件 triage:vllm-ascend-startup mis=6/hit=4，score 0.4"
+    trajectory:
+      - "metrics/component-tally.yaml 2026-W37"
+      - "traces/2026-08-30-xxxx.yaml#attribution"
+hypothesis: 修订该分支的症状匹配逻辑后，执行错率降至 <0.3
+predicted_effect:
+  metric: 组件执行错率
+  from: 0.6
+  to: "<0.3"
+validation:                        # 验证设计（execution §2/§5）
+  method: golden_replay            # golden_replay | tally_recheck | metrics_compare | issue_replay
+  baseline: 现 triage-tree + 现有 golden 套件
+  success_criteria: golden 无回归 且 台账该组件 mis 不再增长
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "该组件 mis ≥5 且 最近 2 期无下降"
+risk: high                         # high → dual；中 → review；低且可逆 → auto
+principle_refs: [五, 六, 八, 十一]
+estimated_cost:
+  tokens: 8000                     # 预计 token（起草时填）
+actual_cost: null                  # 合入/回测后写回（缺失 = 审计缺口）
+decisions: []                      # 审计链：谁/何时/依据/结论（只追加不修改）
