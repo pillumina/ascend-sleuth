@@ -35,4 +35,7 @@ principle_refs: [八, 十一]            # 可观测 / 数据触发（S2 缺口�
 estimated_cost:
   tokens: 3000                       # 沉淀一条 case 的评估成本
 actual_cost: null
-decisions: []
+decisions:
+  - who: self-evolve 试点
+    when: "2026-09-02"
+    conclusion: "已执行候选→沉淀：产出 postmortems/inbox/VLLM-ASC-14363.md 草稿（待 groom 三分类升格）"
