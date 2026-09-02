@@ -87,8 +87,8 @@ orchestration §1 的会话是**单轮**（意图→计划→执行→报告→�
 
 载体三档，按落地成本排序：
 
-1. **dsh-agent-teams 插件活动面板**（[NanmiCoder/dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)，已装 0.1.14）：自带成员树 + 任务 DAG + 实时状态 + 会话跟随 + 历史归档——覆盖"会话直播"与"任务总览"的大部分；**作为渲染层第一版，不必从零写**。局限：它展示的是 team 运行态，不含本设计的卡状态机（candidate→validated）与 token 账本，这两层仍需自建视图或报告补充；
-2. **DSH 面板扩展**（仓库已有 ascend-panel 先例，诊断/指标 tab 加"自演进"tab）：补插件面板缺失的卡流转与指标视图，与 trace/decisions 数据直连；
+1. **dsh-agent-teams 插件活动面板**（[NanmiCoder/dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)，已装 0.1.14）：自带成员树 + 任务 DAG + 实时状态 + 会话跟随 + 历史归档。**覆盖边界要诚实**：它可视化的是 **agent team 的协作运行态**（哪个成员在跑哪个任务、依赖进度、模型标注），数据源是 `<workspace>/.agent-teams/<teamId>/`——**不含**本设计的领域状态：EV 卡状态机、timeline 指标、token 账本、跨轮任务历史（这些在 proposals/tasks|ideas/ + metrics/）。所以它只能覆盖上面"会话直播"视图的 agent 执行部分；"卡流转""指标""任务总览"仍需自建。**结论：它是执行载体的一部分可视化，不是自演进系统可视化本身**——只对"让 agent 协作过程可见"有用；
+2. **DSH 面板扩展**（仓库已有 ascend-panel 先例，诊断/指标 tab 加"自演进"tab）：补领域视图（任务总览/卡流转/指标/token），与 proposals/ + timeline + trace/decisions 数据直连。**这才是"看到系统自演进"的正确载体**；
 3. **HTML 报告**（health_report 同款，离线生成）：无 DSH 环境或需分享时的兜底。
 
 诚实标注同 O7：〔中心全量〕或〔本地视角〕。agent 的操作序列与决策 reason 已随 trace 记录，渲染即"看到系统在自演进"。
@@ -101,16 +101,20 @@ orchestration §1 的会话是**单轮**（意图→计划→执行→报告→�
 
 **长期安全阀**：回滚率或抽审发现率超阈值 → 任务自动降授权级别（auto→review）并通知人（自我指涉治理，orchestration §4）。
 
-## 8. 原则追溯
+## 8. 落地工程形态：不是单个 skill，是四层装配
 
-| 设计元素 | 服务的原则 | 说明 |
-|---|---|---|
-| issue 即带标注评测集、即时对照 | 八（可观测先于改进）、十 | 答案随拉取可得，无需延迟机制；open 只作弱信号不冒充结论 |
-| selection/test 分离 | 一（验证先于交付） | 防对校准集过拟合，validated 终判用未见过的 test |
-| 统一执行记录（对象是 skill 非人） | 八、九 | feedback loop 全链路数据；不碰身份红线 |
-| supersede 关系与回滚到被替代版本 | 七（变更可逆） | 替换可追溯，回滚粒度到"上一个有效实现" |
-| 可视化四层视图 | 八、十 | 让"人在看系统演进"成为可能而非宣称 |
-| 任务级稳态降频与安全阀 | 九、十一 | 持续运行必须有资源与质量边界 |
+回答"最后落地的工程是 skill 吗"——**不是单一 skill**。对照仓库现有载体（skills/ = 流程定义、scripts/ = 确定性逻辑、dsh-plugins/ = DSH 运行时、docs/ = 机制），这套自演进体系按仓库的既有分工落地为四层，每层选对应载体：
+
+| 层 | 工程形态 | 载体 | 对应用例 |
+|---|---|---|---|
+| **流程协议** | 新的 skill（如 `self-evolve`） | `skills/self-evolve/SKILL.md` | 描述"跑一轮自演进"的会话协议（orchestration §1）：意图收集 → 计划 → 观察窗执行 → 报告。**skill = agent 可加载的执行协议**，类似 knowledge-groom 的地位，但触发语义同 groom（disable-model-invocation，人显式触发，防自发批量改库） |
+| **确定性逻辑** | 一批脚本 | `scripts/` | S2 评测打分（issue→replay→对照）、component-tally 累积、token 记账、执行日志汇总——凡机械可判的环节脚本化，agent 只读聚合输出（原则二/九） |
+| **领域状态** | 数据文件 | `proposals/`（tasks/ideas/reviews/experiments）+ `metrics/component-tally.yaml` | 卡/task/台账是 git 可 diff 的词法数据（原则三），CI 校验 schema |
+| **可视化** | DSH Cordis 插件 | `dsh-plugins/self-evolve-panel/`（host/client）+ 加载 skill（preload-panel 先例） | run §6 领域视图（任务总览/卡流转/指标）——**不是** dsh-agent-teams 的活动面板（那只是 agent 协作态视图） |
+
+**为什么不能只做一个 skill**：skill 定义"agent 怎么做"，但它不承载确定性校验（脚本）、不承载可 diff 状态（数据文件）、不承载运行时渲染（插件）。四类能力在仓库里本就是四种载体，自演进横跨全部四类——单 skill 会把校验/状态/可视化塞进 prompt 协议，违反原则二（不变量写进结构）。dsh-agent-teams 插件属于"执行载体"层（§6.7），不在上述四层内——它提供多 agent 运行底座，可被 self-evolve skill 调用，但不是自演进工程本身。
+
+**落地时先做哪层**：按 §9 顺序——先确定性逻辑（S2 评测脚本）与领域状态（proposals/ 骨架），再流程协议（self-evolve skill 包裹已跑通的脚本与状态机），最后可视化（面板）。skill 是"装配说明书"，把脚本+状态+协议串成可重复执行的一轮；面板让过程可见。
 
 ## 9. 落地顺序
 
@@ -123,3 +127,15 @@ orchestration §1 的会话是**单轮**（意图→计划→执行→报告→�
 | 5 | 可视化（DSH 面板扩展或 HTML 报告） | 任务层跑通 ≥1 轮 |
 
 与用户指令的对应：这条指令即第一个长期任务——**先拉 200 个 issue（步骤 1 的扩池），前几轮的真实产出是"通电"（建 S2、接执行日志、跑通任务循环），之后才进入持续的沉淀与演进**。诚实边界不变：内容层（补 case/沉淀）可高度自动，结构层（triage/skill/指标口径）永远人审。
+
+## 10. 原则追溯
+
+| 设计元素 | 服务的原则 | 说明 |
+|---|---|---|
+| issue 即带标注评测集、即时对照 | 八（可观测先于改进）、十 | 答案随拉取可得，无需延迟机制；open 只作弱信号不冒充结论 |
+| selection/test 分离 | 一（验证先于交付） | 防对校准集过拟合，validated 终判用未见过的 test |
+| 统一执行记录（对象是 skill 非人） | 八、九 | feedback loop 全链路数据；不碰身份红线 |
+| supersede 关系与回滚到被替代版本 | 七（变更可逆） | 替换可追溯，回滚粒度到"上一个有效实现" |
+| 可视化四层视图 | 八、十 | 让"人在看系统演进"成为可能而非宣称 |
+| 任务级稳态降频与安全阀 | 九、十一 | 持续运行必须有资源与质量边界 |
+| 四层工程装配（skill/脚本/数据/面板） | 二、三 | 校验进脚本、状态进词法文件、协议进 skill、渲染进插件——单 skill 会违反原则二 |
