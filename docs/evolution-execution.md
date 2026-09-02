@@ -91,7 +91,7 @@ in_experiment ──合入──► adopted（合入态，进入观察窗）
                             └─ 退化 / 有害 ──► rolled_back（回滚 + rejected + 教训入台账）
 ```
 
-`adopted` 不再自动等于"完成"——它是**待回测的合入**。只有 `validated` 才是闭环终态。**状态词表与 schema 的唯一事实源是 pipeline.md §7（v3）**：EV 卡 status 完整词表（candidate/proposed/in_experiment/adopted/validated/rolled_back/superseded/rejected/re-iterate）、supersedes/superseded_by 替换链、estimated/actual_cost 成本字段都在那边定义，本文不重复定义只引用——防两处状态机再次漂移。**注意对象区分**：`awaiting_validation` 是沉淀对象（case）的观察窗状态（§4.3），属 case 的跟踪字段，不是 EV 卡 status——两种对象不混用词表。
+`adopted` 不再自动等于"完成"——它是**待回测的合入**。只有 `validated` 才是闭环终态。**状态词表与 schema 的唯一事实源是 pipeline.md §7（v3）**：EV 卡 status 完整词表（candidate/proposed/in_experiment/pending_merge/adopted/validated/rolled_back/superseded/rejected/re-iterate/unconfirmed_valid/unconfirmed/stale——其中 pending_merge 是批提交模式 §6.3a 的攒批待审态）、supersedes/superseded_by 替换链、estimated/actual_cost 成本字段都在那边定义，本文不重复定义只引用——防两处状态机再次漂移。**注意对象区分**：`awaiting_validation` 是沉淀对象（case）的观察窗状态（§4.3），属 case 的跟踪字段，不是 EV 卡 status——两种对象不混用词表。
 
 ### 5.1a 观察窗超时降级（防 follow-up 空转，方案级关键）
 
