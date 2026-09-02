@@ -1,0 +1,38 @@
+# ============================================================
+# Idea 卡：S2 校准集缺口 #14363 → 补 case 候选
+# 试点第二张真实 EV 卡——锚定 S2 replay 暴露的覆盖缺口
+# ============================================================
+
+id: EV-2026-002
+layer: L1                          # 补 case = 知识内容层
+title: "S2 缺口 #14363：DeepSeek V4 routed expert SwiGLU limit 漏传（精度漂移）→ 补 case 候选"
+status: candidate
+authorization: review              # 补 case 属 content，判断性中风险
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-02
+source_signals:
+  - signal: s2_gap                  # S2 issue-replay 校准暴露的覆盖缺口（eval/s2/vllm-ascend.yaml）
+    evidence: "#14363 diagnose replay 无 case 命中；knowledge 无 swiglu_limit/FusedMoE 覆盖"
+    trajectory:
+      - "eval/s2/vllm-ascend.yaml #14363"
+      - "fix PR #14364（vllm_ascend/models/deepseek_v4.py 补 swiglu_limit）"
+hypothesis: 沉淀 #14363 为 precision case 后，同类 DeepSeek V4 routed-expert 精度问题可被 Tier 2 命中（当前走 Tier 3 兜底或漏检）
+predicted_effect:
+  metric: DeepSeek V4 精度类命中
+  from: "无覆盖（miss）"
+  to: "同类问题 Tier 2 命中"
+validation:
+  method: issue_replay              # S2 校准集对照：沉淀后 #14363 应能命中
+  baseline: 现无该根因 case（replay miss）
+  success_criteria: 沉淀后 S2 replay #14363 命中该 case（top-3）
+  rollback: case 走 knowledge_modification PR，可 revert
+gate:
+  condition: "S2 校准集条目有明确 resolution（PR #14364 已验证）+ 知识库无覆盖"
+risk: low                            # 补 case 低风险
+principle_refs: [八, 十一]            # 可观测 / 数据触发（S2 缺口驱动）
+estimated_cost:
+  tokens: 3000                       # 沉淀一条 case 的评估成本
+actual_cost: null
+decisions: []

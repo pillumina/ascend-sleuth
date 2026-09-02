@@ -96,6 +96,20 @@ agent 路由到 `training/mindspeed-llm/` 并匹配 case。命中时给出结构
 
 agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML 草稿与 postmortem 并完成脱敏，产出到待审队列。也可以在一次 `/skill:diagnose` 结束后直接说"沉淀一下这次"，agent 会自动触发。
 
+### 跑一轮自演进（系统改进自己）
+
+想让系统自己发现并改进诊断/知识库的问题时，直接说（机制是隐形默认策略，你只说目标）：
+
+```
+"跑一轮自演进"                        # 默认全自动：观测 → 产候选卡 → 校验 → 聚合 PR 给你审
+"看看有什么可改进的"                   # 同上（未指定目标时按数据信号自动选方向）
+"持续改进 vllm-ascend 的命中率"        # 指定范围 + 目标，开长期任务
+```
+
+发生什么：agent 读 `skills/self-evolve/SKILL.md` 执行一轮——①装载上下文（容量/台账/指标等信号）→ ②产候选 idea 卡（`proposals/ideas/EV-*.yaml`，`scripts/ev_proposal.py` 辅助）→ ③`verify_proposals.py` 校验 → ④攒批成一个聚合 PR 给你审（每卡独立 commit，dual 高风险标注）。**改动不会自动合入结构级**——最终 PR 人审是合入闸点。
+
+可随时干预："停一下"（本轮停止出中间报告）/ "这条改动有问题，回滚"（该卡回滚）。设计细节见 [自演进用户指南](docs/evolution-user-guide.md)。
+
 ## 知识获取
 
 **仓库即 workspace**。诊断（读 knowledge/references/triage-tree）与沉淀（写 postmortems/inbox/、references/、ingest-state.json）都在同一个仓库 clone 里进行，SKILL 的知识路径相对仓根。三种起步形态如下：

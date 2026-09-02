@@ -42,10 +42,13 @@ disable-model-invocation: true
 
 ### 1. 产候选 idea 卡
 信号 → 卡（每卡一个文件 `proposals/ideas/EV-<YYYY>-<NNN>.yaml`）：
-- 用 `examples/sample-idea.yaml` 为模板
-- 必填：layer / title / status=candidate / authorization / dimension /
-  source_signals（带 trajectory 出处）/ hypothesis / predicted_effect /
-  validation / risk / principle_refs / decisions
+- **先 `python3 scripts/ev_proposal.py --list`** 看现有卡（查重/冲突，§5.2 纪律）
+- **`python3 scripts/ev_proposal.py --new`** 生成新卡骨架（自动分配下一个
+  EV 卡号 + 复制模板）——不要手动数卡号/手写 YAML（格式易错）
+- 骨架按 `examples/sample-idea.yaml` 填：layer / title / status=candidate /
+  authorization / dimension / source_signals（带 trajectory 出处）/
+  hypothesis / predicted_effect / validation / risk / principle_refs /
+  decisions
 - **只产建议与证据，不自行合入**（原则五）
 
 ### 2. 校验
@@ -91,8 +94,10 @@ disable-model-invocation: true
 
 | 工具 | 用途 |
 |---|---|
+| `scripts/ev_proposal.py` | 产卡辅助：新卡号分配 / 卡骨架生成 / 现有卡概览（步骤 1 必用） |
 | `scripts/verify_proposals.py` | idea 卡 schema 校验（每轮必跑） |
 | `scripts/component_tally.py` | 组件失败台账（观测信号源） |
 | `scripts/s2_calibration.py` | 构建 S2 issue-replay 校准集（验证门数据源） |
+| `scripts/s2_replay.py` | S2 校准集 replay 记录与对照评分（验证门执行） |
 | `scripts/replay_golden.py` | golden 套件 replay 编排（M2 雏形，即时判定类验证） |
 | `proposals/ideas/` | 卡资产（入 git，随 PR 进出） |
