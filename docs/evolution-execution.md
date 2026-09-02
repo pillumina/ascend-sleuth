@@ -1,6 +1,6 @@
 # 执行链路：proposal 契约、follow-up 验证与效果度量
 
-> 本文是 [evolution-pipeline.md](evolution-pipeline.md) 的**执行级规范**：机制总览（三层闭环、分级授权、状态机、落地节奏）在那边；本文回答执行时的问题——**一条 proposal 到底要记录什么信息、改动合入后怎么验证合理性、一次知识沉淀的效果怎么度量、agent 在每个决策点拿到什么。** 把"一轮自演进"作为一个可审计会话来运行（人怎么下指令、目标函数与停止条件、token 预算、自我指涉治理）见 [evolution-orchestration.md](evolution-orchestration.md)；从一条指令到持续运行（长期任务、issue 评测循环、执行记录、可视化）见 [evolution-run.md](evolution-run.md)。
+> 本文是 [evolution-pipeline.md](evolution-pipeline.md) 的**执行级规范**：机制总览（三层闭环、分级授权、状态机、落地节奏）在那边；本文回答执行时的问题——**一条 proposal 到底要记录什么信息、改动合入后怎么验证合理性、一次知识沉淀的效果怎么度量、agent 在每个决策点拿到什么。** 把"一轮自演进"作为一个可审计会话来运行（人怎么下指令、目标函数与停止条件、token 预算、自我指涉治理）见 [evolution-orchestration.md](evolution-orchestration.md)；从一条指令到持续运行（长期任务、issue 评测循环、执行记录、可视化）见 [evolution-run.md](evolution-run.md)；面向使用者的指令/报告语言见 [evolution-user-guide.md](evolution-user-guide.md)。
 > 推导依据：原则一（验证先于交付）、二（不变量写进结构）、五（建议与决定分离）、七（变更可逆）、八（可观测先于改进）、九（资源预算）、十一（数据触发）；理论见 design-theory §4.2–4.4。**本文自身修订 = L3 结构（methodology PR + 体系维护人审）。** 未来落成 skill 时，执行参数须内联进 SKILL.md（skill 自包含纪律），本文退为可选论证层。
 
 ## 1. 为什么需要执行级规范：机制闭环的四个执行空洞

@@ -1,6 +1,6 @@
 # 持续运行：长期任务、issue 评测循环、执行记录与可视化
 
-> 四份文档的分工：**[evolution-pipeline.md](evolution-pipeline.md)** 机制总览；**[evolution-execution.md](evolution-execution.md)** 单卡执行契约；**[evolution-orchestration.md](evolution-orchestration.md)** 单轮会话编排；**本文是运行视图**——回答"我下一条指令后，系统作为**持续自演进系统**怎么跑、跑到什么时候停、我怎么看到它在跑"。它把前三份的单轮/单卡机制装配成用户可下指令、可观察、可干预的长期运行形态。
+> 四份文档的分工：**[evolution-pipeline.md](evolution-pipeline.md)** 机制总览；**[evolution-execution.md](evolution-execution.md)** 单卡执行契约；**[evolution-orchestration.md](evolution-orchestration.md)** 单轮会话编排；**本文是运行视图**——回答"我下一条指令后，系统作为**持续自演进系统**怎么跑、跑到什么时候停、我怎么看到它在跑"。它把前三份的单轮/单卡机制装配成用户可下指令、可观察、可干预的长期运行形态。使用者侧的一句话指令/报告/干预语言见 **[evolution-user-guide.md](evolution-user-guide.md)**（UX 规格）。
 > 推导依据：原则一/五/七/八/九/十/十一；理论见 design-theory §4.2–4.4 与 §6。**本文自身修订 = L3 结构（methodology PR + 体系维护人审）。**
 
 ## 1. 从一条指令到持续自演进（愿景总览）
@@ -102,6 +102,20 @@ orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对
 **任务级**（本层新增）：达到稳态（连续两轮无新信号且 validated 效果达标）→ `steady` 降频（第 2.3 节）；人随时 `paused`/`stopped`；预算策略（如每周 token 上限）耗尽 → `paused` 等下一周期。
 
 **长期安全阀**：回滚率或抽审发现率超阈值 → 任务自动降授权级别（auto→review）并通知人（自我指涉治理，orchestration §4）。
+
+### 7.1 报告的用户语言规范（UX 规格见 evolution-user-guide.md §4）
+
+报告**首行回答用户的原始目标**，机制细节折叠——用户下的是"命中率低"，要看到的是"解决了吗、提升多少"，不是内部状态（validated X 卡 / token Y）：
+
+> 目标：提升 vllm-ascend interrupt 命中率。
+> 本轮：新增 case 2 条覆盖此前未命中的启动参数类问题；在 20 条历史 issue 上回测 3/7 → 5/7。
+> 验证依据：真实 issue 对照（非系统自评）。[展开] 卡明细 / token / 待审改动
+
+每条结论标注**证据强度来源**（execution §2.1 分级渲染成用户可读的信任信号）：真实 issue 对照验证（S2，可点开看是哪几条）/ 工程师反馈确认（S1，最高但稀缺）/ 仅回放无回归（S3，下限保障）/ 系统推断（最低）。validated 结论必须可**点开证据**（issue、diff、前后指标）——用户不必只信系统自评。
+
+### 7.2 中途干预的用户话术（UX 规格见 evolution-user-guide.md §5）
+
+三种干预写进用户指南，执行语义在此定义：**"停一下"** = 本轮停止 + 出中间报告 + 状态保留；**"方向不对，改重点看 X"** = 当前方向终止、未完成项保留、按新方向继续（resume 时先对齐新目标，不原样硬跑）；**"这条改动有问题，回滚"** = 该卡 rolled_back（用户侧触发，记录留痕）。需要人的决策点（dual 审批/抽审）**入队为待办并通知人**，不阻塞能自动的部分。
 
 ## 8. 落地工程形态：不是单个 skill，是四层装配
 

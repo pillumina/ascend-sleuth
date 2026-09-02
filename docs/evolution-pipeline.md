@@ -1,7 +1,7 @@
 # 演进流水线（v2）：三层自演进闭环与自演进执行流程
 
 > 本文回答一个问题：**系统如何闭环地改进自己的三层资产——知识内容、流程/skill、以及工作流本身——并把"人的参与"从逐条执行上移到流程审视。**
-> v1（本文件旧版）只覆盖知识内容层的候选 idea 闭环；v2 扩展为三层模型（L1 知识内容 / L2 流程与 skill / L3 工作流与编排），并新增第 6 节「自演进执行流程」——一个降低人工参与度、但每次改动可追溯、每次合入必须由实验数据驱动的专门流程。**执行级信息契约（proposal 要记录什么、follow-up 怎么验证、沉淀效果怎么度量、agent 拿到什么）见 [evolution-execution.md](evolution-execution.md)；编排与治理层（会话如何启动、目标函数与停止条件、token 预算、自我指涉治理）见 [evolution-orchestration.md](evolution-orchestration.md)；从一条指令到持续运行的运行视图（长期任务、issue 评测循环、执行记录、可视化）见 [evolution-run.md](evolution-run.md)。**
+> v1（本文件旧版）只覆盖知识内容层的候选 idea 闭环；v2 扩展为三层模型（L1 知识内容 / L2 流程与 skill / L3 工作流与编排），并新增第 6 节「自演进执行流程」——一个降低人工参与度、但每次改动可追溯、每次合入必须由实验数据驱动的专门流程。**执行级信息契约（proposal 要记录什么、follow-up 怎么验证、沉淀效果怎么度量、agent 拿到什么）见 [evolution-execution.md](evolution-execution.md)；编排与治理层（会话如何启动、目标函数与停止条件、token 预算、自我指涉治理）见 [evolution-orchestration.md](evolution-orchestration.md)；从一条指令到持续运行的运行视图（长期任务、issue 评测循环、执行记录、可视化）见 [evolution-run.md](evolution-run.md)；面向使用者的指令/报告/干预语言见 [evolution-user-guide.md](evolution-user-guide.md)。**
 > 对象层闭环（case 越用越准）已在 [evolution.md](evolution.md) 落地；理论推导见 [design-theory.md](design-theory.md) §4.2–4.4（元层信念、自演进闭环、演化即假设检验）；原则依据见 [design-principles.md](design-principles.md)。**本文自身的修订走 methodology PR + 体系维护人审（它属于 L3 结构，受本文第 5.2 节管辖）。**
 
 ## 1. 三层模型
