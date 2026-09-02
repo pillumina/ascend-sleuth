@@ -1,0 +1,45 @@
+# ============================================================
+# Idea 卡：Mooncake/Ascend KV-transfer 族 ≥9 条 → 归纳分层诊断 methodology reference
+# evolve-check T1 信号（2026-09-02 全自动补 case 轮收尾）——同族 case 达阈值可归纳
+# ============================================================
+
+id: EV-2026-003
+layer: L2                          # methodology reference = 流程/先验知识层
+title: "Mooncake/Ascend KV-transfer 族 9 条 → 归纳分层诊断 methodology（python backend 层 vs native transport 层）"
+status: candidate
+authorization: review              # reference 归纳 = 判断性中风险（case-derived 需 ≥3 case 引用）
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-02
+source_signals:
+  - signal: evolve_check_t1         # evolve-check T1：沉淀 ≥3 同族 case → 归纳 reference
+    evidence: "Mooncake/KV-transfer 族合计 9 条（knowledge 存量 7 + 本轮 inbox 新增 2），呈 python backend 层 vs native transport 层分层定位共性"
+    trajectory:
+      - "knowledge/inference/vllm-ascend/ VLLM-ASC-11459/8938/13964/13934/11343/12957/11169"
+      - "postmortems/inbox/ VLLM-ASC-10532/10524"
+      - "sed-g2 evolve-check 收尾（2026-09-02 全自动轮）"
+hypothesis: >-
+  归纳一条 kv-pool/mooncake 分层诊断 methodology reference：先判故障在 python backend 层
+  （vllm-ascend 自身——连接管理/索引/流同步）还是 native transport 层（Mooncake 库——
+  传输/元数据并发），再按层定位。可让同族问题诊断从逐个翻 case 变成按层路由
+predicted_effect:
+  metric: Mooncake/KV-transfer 族诊断效率
+  from: "逐 case 翻找（9 条分散）"
+  to: "分层 methodology 先路由再定位"
+validation:
+  method: issue_replay               # case-derived reference：词条产出后对 9 条同族 case 回放验证分层路由命中（≥3 case 引用满足 to-reference 深审门槛）
+  baseline: 现无 kv-pool/mooncake 分层 methodology（references/ 无此族）
+  success_criteria: 词条引用 ≥3 个 case 且 review 通过（to-reference 闸门）；后续同族诊断可按层路由
+  rollback: reference 走 methodology PR，可 revert
+gate:
+  condition: "同族 case ≥3（实测 9 条远超）且可归纳出可复用分层判据"
+risk: low                            # reference 归纳低风险（方法论不进诊断上下文直到 active + PR 合入）
+principle_refs: [四, 八, 十一]        # 知识库有界（归纳防重复散 case）/ 可观测 / 数据触发
+estimated_cost:
+  tokens: 5000                       # 归纳 9 条 case 共性 + 产 methodology reference
+actual_cost: null
+decisions:
+  - who: evolve-check（全自动补 case 轮收尾）
+    when: "2026-09-02"
+    conclusion: "T1 信号确认（9 条 ≥3 阈值）；归纳动作走 /skill:to-reference --ingest-cases，产出草稿交 review。agent 自行验证：9 条中 2 条 native transport 层（10532 Mooncake#1624 / 11459 lazy-init）、其余 python backend 层——分层判据可成立"
