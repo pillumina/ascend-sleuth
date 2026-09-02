@@ -90,6 +90,15 @@ agent 读取文件，后续流程同内联。
 
 **回写来源 trace 的沉淀状态（诊断闭环）**：若本次沉淀来源是一个诊断 trace（输入提到 `traces/<session_id>.yaml`，或用户从诊断面板"沉淀此案例"触发），产出草稿落 inbox 后**回写该 trace 的 `sedimented.state: submitted`**（动作发生时写，零推断）——诊断面板据此显示"已提交沉淀待审"，不再重复提示沉淀。转正（`knowledge`/`archived`）由用户在面板/对话确认时更新，本 skill 不写。
 
+## 收尾 evolve-check（伴随演进评估，默认执行）
+
+草稿产出、出最终报告前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
+遵循）：本轮沉淀 ≥3 条同根因/同族 case（T1 → 归纳 reference 候选）、replay/Tier 3
+暴露覆盖缺口（T2）、或提取/校验环节有重复手动动作与流程摩擦（T3/T4）时，**agent
+自动产 idea 卡并自行验证执行**（ev_proposal 产卡 → golden/S2 验证 → 进攒批）；无
+信号则报告加一行"evolve-check：无演进信号"。这是流程默认收尾，**不需要用户另说
+"改进系统"**——演进由数据触发，像人学习。产出与流程报告一并给出。
+
 ## 为什么是这个体系的核心
 
 团队不能统一 agent 时，知识注入入口必须与诊断工具解耦。`/to-postmortem` 是这个解耦的实现——任何工具的对话都能沉淀。别期望团队成员额外写文档，agent 提取、人审批，成本从 20 分钟降到 30 秒。

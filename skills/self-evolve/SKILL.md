@@ -1,103 +1,113 @@
 ---
 name: self-evolve
 description: >
-  自演进执行引擎（第一批落地）。跑一轮"系统改进自己"的闭环：观测真实信号 →
-  产候选 idea 卡 → 校验 → 攒批 → 聚合 PR 给人审。把已落地的确定性工具链
-  （verify_proposals.py / component_tally.py / s2_calibration.py /
-  replay_golden.py + proposals/ideas 卡体系）串成一轮可重复执行的会话。
-  触发语义同 knowledge-groom（disable-model-invocation，人显式触发，防自发
-  批量改库）。机制设计见 docs/evolution-pipeline.md（可选论证层）；本文件
-  自包含执行参数。
+  自演进深度轮（显式触发）+ 攒批聚合器。用户下内容目标（补 case / reference 沉淀 /
+  诊断 / 拉取）时，由对应内容 skill 执行，**收尾自动跑 evolve-check**（/skill:evolve-check，
+  伴随评估：有信号产卡、agent 自验证、进攒批——用户不需要另说"改进系统"）。
+  本 skill 只管两件事：①用户显式说"跑一轮自演进/看看有什么可改进"时的**全库深度
+  观测轮**（跨轮聚合信号：组件台账 / 容量 / S2 校准集 / timeline → 产候选卡）；
+  ②把 evolve-check 与深度轮产出的卡**攒批聚合为一个 PR** 交人审。演进由数据触发
+  （原则十一）——不是用户为"改进"单独立目标，而是系统做事时自动校准。机制见
+  docs/evolution-orchestration.md §1.2（演进 = 隐形执行策略）与 pipeline §6。
 disable-model-invocation: true
 ---
 
-# Self-Evolve
+# Self-Evolve（深度轮 + 攒批聚合）
 
-> **本地执行说明**：本 skill 标记 `disable-model-invocation`（防 agent 自发启动批量改库/批量自演进）——skill 工具加载会报 "not available for model invocation"，这是预期。用户明确要求跑一轮自演进时，agent 直接 `read` 本文件手动遵循流程即可；或用户输入 `/skill:self-evolve` 直接触发。
+> **本地执行说明**：本 skill 标记 `disable-model-invocation`（防 agent 自发启动批量改库/批量自演进）——skill 工具加载会报 "not available for model invocation"，这是预期。用户明确要求时，agent 直接 `read` 本文件手动遵循流程即可；或用户输入 `/skill:self-evolve` 直接触发。**内容流程收尾的伴随评估不经过本文件**——那是 `/skill:evolve-check`（轻量收尾协议，无 disable）。
 
-让系统改进自己：诊断系统的运行数据 → 带轨迹依据的改进 idea → 验证 → 人审合入。一轮 = 一次有状态会话（有停止条件、可 resume、出报告）。
+> **定位修正**：演进不是"另一类用户目标"，而是任何流程执行中自动校准的维度（像人学习）。本文件不再把"流程/skill 改进"列为用户可选目标态——改进由 **evolve-check 伴随产出**（内容流程收尾）+ **本 skill 深度轮**（用户显式要求全库体检时）承载。
 
 ## 触发
 
-手动运行。用户说"跑一轮自演进""看看有什么可改进的""持续改进 X"时触发。产出**候选 idea 卡 + 聚合 PR** 交人审，不自动合入结构级改动。
+1. **深度轮（显式）**：用户说"跑一轮自演进""看看有什么可改进""持续改进 X 的命中率"——全库观测找演进点（不是执行内容任务）；
+2. **攒批聚合**：evolve-check / 深度轮产出攒够批边界（轮末 / 10 卡 / 任务目标完成）→ 聚合 PR 交人审；
+3. **resume**：被打断的深度轮（session state 续跑）。
 
-## 运行模式（先对齐，不猜）
+用户下**内容目标**（"沉淀 vllm-ascend 的 closed issue""做 reference 沉淀"）→ **不触发本 skill**：路由到 issue-ingest / to-reference / to-postmortem 执行，其收尾自动 evolve-check。
 
-执行前与用户确认介入度（一句话即可）：
+## 一、入口分流（先分清用户要什么，再决定跑不跑本 skill）
 
-- **全自动（hands-off）**：改到目标完成，一次性聚合 PR 给人审；每个改动有记录 + 验证 + 独立 commit
-- **关键人审（default）**：自动跑，关键改动攒到轮末一个 PR 给人审
+| 用户说 | 路由 | 演进如何发生 |
+|---|---|---|
+| "沉淀 vllm-ascend 的 closed issue" / "做 reference 沉淀" / "诊断这个" | 内容 skill（issue-ingest / to-reference / to-postmortem / diagnose） | issue-ingest/to-reference/to-postmortem 收尾自动 evolve-check（无需用户另说）；diagnose 有内建 evolving（候选 case 起草/顺手 to-reference），其 L2/L3 缺口由 S2 replay 与深度轮覆盖 |
+| "跑一轮自演进" / "看看有什么可改进" | **本 skill 深度轮** | 全库观测 → 候选卡 |
+| "持续改进 X 命中率"（跨多轮） | 长期任务层（run.md §2）→ 每轮内容执行 + evolve-check | 任务轮内自动伴随 |
 
-用户没说 → 默认 hands-off（设计默认）。若用户表达含糊（范围/目标不清）→ 先澄清再执行，不边跑边猜。
+**grill 只在对齐深度轮/任务时用**（至多 2-3 问、说用户语言）：目标态（要达成什么可判定结果）、scope（哪个 namespace/层）、数据源（用户指定）、运行模式（hands-off / 关键人审）。对齐后回显理解，用户确认才执行。
 
-## 一轮流程
+## 二、深度轮：观测什么（跨轮聚合信号 → 候选）
 
-### 0. 装载上下文（观测）
-读聚合（不读 case 全文——token 预算）：
-- `knowledge/_index.yaml` 头注 → 容量信号（超 soft_cap 的格子）
-- `python3 scripts/component_tally.py` → 组件失败台账（mis 侧；无数据如实跳过）
-- `metrics/timeline.yaml` → 指标趋势
-- `proposals/ideas/` 现有卡（避免重复/冲突，§5.2 冲突检测）
-产出本轮的信号清单（每个信号带出处，无数据不产候选——诚实退化）。
+深度轮不做内容执行，只把**已积累的观测数据**转成候选卡。信号源（先跑脚本读聚合，不读 case 全文——原则九）：
 
-### 1. 产候选 idea 卡
-信号 → 卡（每卡一个文件 `proposals/ideas/EV-<YYYY>-<NNN>.yaml`）：
-- **先 `python3 scripts/ev_proposal.py --list`** 看现有卡（查重/冲突，§5.2 纪律）
-- **`python3 scripts/ev_proposal.py --new`** 生成新卡骨架（自动分配下一个
-  EV 卡号 + 复制模板）——不要手动数卡号/手写 YAML（格式易错）
-- 骨架按 `examples/sample-idea.yaml` 填：layer / title / status=candidate /
-  authorization / dimension / source_signals（带 trajectory 出处）/
-  hypothesis / predicted_effect / validation / risk / principle_refs /
-  decisions
-- **只产建议与证据，不自行合入**（原则五）
+| 信号 | 数据源 | 候选动作 |
+|---|---|---|
+| 容量超 soft_cap / 健康指标恶化 | `knowledge/_index.yaml` 头注（build_index.py 生成） | L1 拆分评估卡（ev_proposal） |
+| 组件台账浮出失败簇（反复执行错） | `scripts/component_tally.py` | L2 修订该组件所在 skill 步骤 / triage 分支 |
+| S2 校准集未测条目 / replay miss | `scripts/s2_replay.py --todo` | L1 补 case 卡（S2 佐证缺口） |
+| 指标漂移（命中率/回滚/token 趋势） | `metrics/timeline.yaml` + trace_metrics | 诊断式候选轮 |
+| 长期任务轮间信号 | task/session state | 下一轮范围决策 |
 
-### 2. 校验
-`python3 scripts/verify_proposals.py` —— 卡必须过 schema 校验（状态词表/
-枚举/交叉引用）。校验失败 → 修卡，不跳过。
+**深度轮不做的事**：不抓新数据、不沉淀内容（那属内容 skill + evolve-check）、不每轮全做——按对齐目标选信号源。
 
-### 3. 攒批与聚合 PR
-- 本轮多张卡（或单卡）改动攒到批边界（一轮结束 / 攒够 10 张 / 用户要求
-  任务级攒批到目标完成）
-- 每卡独立 commit（可逐卡 revert）；聚合 PR body 按卡列 EV id + 验证结果
-  + 授权级别，dual 卡标 kb/high-risk
-- PR 模板按批内最高风险选（structure/methodology/knowledge_modification）
-- 人审 PR 后合入；打回的卡 revert 其 commit，其余照常
+## 三、产卡 + 验证（深度轮与 evolve-check 共用同一条产卡链）
 
-### 4. 报告
-本轮产出汇总：产了几张卡、各卡状态、验证依据、成本（token）、下一步建议。
-报告落 `proposals/reviews/`（运行时，gitignore）。
+1. 查重：`scripts/ev_proposal.py --list`——同 trajectory/同 target 已有在池卡 → 合并；
+2. 产骨架：`scripts/ev_proposal.py --new` → 填字段（layer / title / source_signals 带
+   trajectory / hypothesis / predicted_effect / validation / risk / principle_refs）；
+3. **agent 自行验证执行**：能即时判定的（检索/路由/脚本/补 case）直接跑 golden 前后
+   对照或 S2 replay（replay_golden.py / s2_replay.py），通过才进批；真实反馈类完成
+   实现 + S2 佐证、标"待真实确认"进观察窗（execution §5）；
+4. 验证通过 → proposed → in_experiment → pending_merge；失败 → rejected（留结论）
+   或 re-iterate，**不推进**（§6.5 无实验证据不合入）。
 
-## 验证先于合入（不把验证推迟到合入后）
+## 四、skill 自我演进（L2：被数据信号触发，不是用户目标）
 
-- **即时判定类**（检索/路由/skill 流程）：eval 在合入前完成（S2 replay /
-  golden）——用 `scripts/s2_calibration.py` 建的校准集或 `eval/golden` 回放，
-  通过才进批。PR 呈现的是已验证改动。
-- **真实反馈类**（content/fix）：合入前完成实现 + S2 佐证，合入后观察窗等
-  真实场景（由 diagnose 使用 + 反馈结算）——如实标注"已实现待真实确认"，
-  不冒充已验证。
+skill/流程改进**由信号驱动**，两条来源：
 
-## 停止条件（任一满足即停，出报告）
+1. **evolve-check T4/T7**（内容流程收尾发现：执行错反复无归属 / 可复用链路跑通）→ 产 L2 候选卡：修订指定 skill 步骤 / 沉淀新 skill 候选（pipeline §4.4 弱信号，双签立项）；
+2. **深度轮台账信号**（组件失败簇）→ 同上产卡。
 
-- 预算耗尽（本轮 token 上限，与用户对齐时确认）
-- 产出达标（validated/候选达 N 张，默认 3）
-- 无新信号（信号清单为空或全 rejected）
-- 人中断
+**验证门（改 skill 强制）**：skill 改动合入前必须过 golden 前后对照（eval/golden + S2
+replay 校准）——改 skill 影响所有下游，验证不可省（pipeline §4.3）；结构级（骨架/
+新 skill 立项）走 dual 双签 + kb/high-risk，步骤级小调 review。
+
+## 五、攒批 / 聚合 PR（evolve-check 与深度轮的共同出口）
+
+- **批边界**（任一触发即提聚合 PR，防无限攒批）：深度轮停止条件触发 / 攒够 10 卡 /
+  任务目标完成 / 稳态收敛（pipeline §6.3a）；
+- **聚合 PR**：每卡独立 commit（可逐卡 revert）；PR body 按卡列 EV id + 验证 + 授权
+  级别，dual 标 kb/high-risk；模板按批内最高风险选；
+- 人审可整体合入或按卡打回（打回卡 revert 其 commit，其余照常）。
+
+## 验证先于合入
+
+- **即时判定类**（检索/路由/skill 流程/脚本）：eval 在合入前完成（S2 replay / golden）——通过才进批；
+- **真实反馈类**（content/fix）：合入前实现 + S2 佐证，合入后观察窗等真实场景——如实标注"已实现待真实确认"。
+
+## 停止条件（深度轮，任一满足即停出报告）
+
+预算耗尽（对齐时确认）/ 产出达标（validated/候选达 N，默认 3）/ 目标态达成 /
+无新信号 / 人中断。
+
+## 报告
+
+本轮产出汇总：目标态 → 结果对照、产了几张卡（标注来源：evolve-check 伴随 vs 深度轮）、
+验证依据、成本、下一步建议。报告落 `proposals/reviews/`（运行时 gitignore）。
 
 ## 边界（不做）
 
-- 指标口径只有人能改（agent 不自改评分定义）
-- 不碰客户现场（不执行生产变更）
-- 蓝图态（超时降级 unconfirmed/stale/策略记忆/稳态降频）未实现——触发
-  条件出现才启用（见 docs/evolution-pipeline.md §11.1，可选论证层）
+- 内容目标不进本 skill（路由到内容 skill + evolve-check）；
+- 指标口径只有人能改（agent 不自改评分定义）；
+- 不碰客户现场；蓝图态（长期任务层跨轮自动/超时降级/stale/策略记忆/稳态降频）触发条件出现才启用。
 
-## 依赖的工具链（均已落地）
+## 依赖的能力/工具
 
-| 工具 | 用途 |
-|---|---|
-| `scripts/ev_proposal.py` | 产卡辅助：新卡号分配 / 卡骨架生成 / 现有卡概览（步骤 1 必用） |
-| `scripts/verify_proposals.py` | idea 卡 schema 校验（每轮必跑） |
-| `scripts/component_tally.py` | 组件失败台账（观测信号源） |
-| `scripts/s2_calibration.py` | 构建 S2 issue-replay 校准集（验证门数据源） |
-| `scripts/s2_replay.py` | S2 校准集 replay 记录与对照评分（验证门执行） |
-| `scripts/replay_golden.py` | golden 套件 replay 编排（M2 雏形，即时判定类验证） |
-| `proposals/ideas/` | 卡资产（入 git，随 PR 进出） |
+| 能力 | 工具/入口 | 何时用 |
+|---|---|---|
+| 伴随评估（内容流程收尾） | /skill:evolve-check | 内容 skill 收尾自动（用户下内容目标时隐含） |
+| 观测（深度轮信号） | `scripts/component_tally.py` / `s2_replay.py --todo` / `_index.yaml` 头注 | 深度轮 |
+| 查重/产卡 | `scripts/ev_proposal.py --list / --new` | 产卡时 |
+| 卡校验 | `scripts/verify_proposals.py` | 产卡后必跑 |
+| 验证门 | `scripts/replay_golden.py` / `scripts/s2_replay.py` | skill/case 改动验证 |
+| 内容沉淀（evolve-check 落点） | /skill:to-reference / /skill:to-postmortem | 伴随评估产出指向 |

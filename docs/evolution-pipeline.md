@@ -22,6 +22,7 @@
 - **组件 = 可寻址的执行单元**：skill 的某个步骤（编号）、triage 的某个分支、某条 quickly_check、某个 script、某段提示词。每个组件有稳定 ID（skill 步骤号 / triage 分支名 / check id / 脚本文件名），台账才能累积。
 - **trace 扩展**：归因事件从 `execution_error` 细化到 `component_error: <组件ID>`；诊断 agent 每次实际执行都记录"命中了哪些组件"（hit 侧），反馈 not_resolved 且归因执行错时记录"哪个组件错"（mis 侧）。**落地依赖（文档先行声明，改动在 PR 合入后执行）**：① diagnose SKILL.md 的 attribution 事件增加可选 `component` 字段（现有 verdict 词表 case_error|execution_error 不变，component 是执行错时的细分定位）；② trace_metrics.py 词表与统计同步识别 component 字段——两处都是对既有 skill/脚本的增量改动，需 golden 回归与 methodology PR（本文不直接改 skill）。
 - **流程组件失败台账（新载体 `metrics/component-tally.yaml`）**：每个组件的 hit/mis/score，语义与 case confidence 相同（只按已回报结果回写、时间衰减、低分浮出）。台账是 L2 的"知识库"——它把"流程执行质量"变成可度量（roadmap「沉淀环观测」已指出产出无观测是盲区，触发条件未到前不记人/不按人；台账观测对象是组件，同样不引入身份/KPI 维度）。
+- **台账 mis 侧双通道（S1 反馈 + S2 路由归因，补 S1 断供空缺）**：①trace attribution 事件（diagnose 在 S1 反馈 not_resolved 后归因 execution_error + component，见 diagnose SKILL）；②**S2 replay 路由 miss 归因**（s2_replay `--collect` 对照人工预标的 `expected.namespace/category`，路由错 + 未命中 → 归因 got 分支 `triage:<分支>` 写 `.s2-replay/attributions.yaml`）——S2 对照的是 issue 外部 ground truth，**不依赖 S1**（对应 §2.1"S2 补 S1 空缺""错例自动累积不等人回报"）；component_tally `--emit` 从两源全量重算（幂等，不累加旧台账），mis 源缺失时如实空转不造假。
 
 **L2/L3 指标（全部从已有 trace/metrics 派生，不新增采集面）**：按组件执行错率、skill 变更前后回测差、idea 采纳率/回测通过率、信号误报率（触发了却被否决的候选占比）。这些是**系统自身行为的观测**，不是对人或协作的观测——与 roadmap「明确不做 KPI/身份/使用观测」的边界相容性见 5.3 与 9 节。
 
@@ -75,7 +76,16 @@ evolution.md 五机制 + roadmap A/E 系列已覆盖：confidence 回写、groom
 只有两类信号可触发"可能需要新 skill/reference"的候选：
 - 同一执行错类别反复出现且无归属组件（台账里出现"未归因"簇）；
 - 多轮诊断反复走同一 Tier 3 兜底且最终 resolved（说明缺 Tier 2 覆盖，可能补 case 而非新 skill）。
-候选进**待定池**（不自动立项），标注"新 skill 立项 = 高风险结构变更，需 proposal 论证与双签"。不做 embedding 相似度推荐（ADR-0002 锁死）。
+
+**信号采集内嵌内容流程收尾（evolve-check）**：上述信号 + 更广的伴随信号（沉淀 ≥3 条同
+根因 case → 可归纳 reference；同流程重复手动动作 → 可固化脚本/skill 步骤）由
+`/skill:evolve-check` 在内容流程（issue-ingest / to-reference / to-postmortem /
+knowledge-groom）收尾自动采集——有信号产卡、无信号即止，**不需要用户为"沉淀新 skill"
+单独立目标**（演进 = 内容执行的默认收尾，非独立目标轮）。diagnose 不强制收尾跑
+evolve-check（高频 + 已有内建 evolving），其 L2/L3 缺口信号由 S2 replay 与深度轮台账
+覆盖。候选进**待定池**（不自动立项），
+标注"新 skill 立项 = 高风险结构变更，需 proposal 论证与双签"。不做 embedding 相似度
+推荐（ADR-0002 锁死）。
 
 ### 4.5 效果回测（闭环收口）
 
@@ -101,7 +111,11 @@ roadmap 不做的是 **KPI / 身份 / 使用观测**（对象是人：工程师 
 
 ### 6.1 定位
 
-一个**受约束的自治循环**：周期性把"系统自身的观测数据"转成"系统自身的变更"，每笔变更可追溯、可回滚、由实验数据放行。它不是无人在环——而是**人的角色从逐条执行上移到两级审视**：内容级抽审（抽查已自动合入的变更）+ 元层级季度自评（审视流程本身是否在做对的事）。**触发方式：显式触发为主**（owner 启动一轮，或数据闸门达标后由 owner 批准启动），不设自发 schedule——防自发批量改库（knowledge-groom 保留 disable-model-invocation 的同一纪律）。
+一个**受约束的自治循环**：周期性把"系统自身的观测数据"转成"系统自身的变更"，每笔变更可追溯、可回滚、由实验数据放行。它不是无人在环——而是**人的角色从逐条执行上移到两级审视**：内容级抽审（抽查已自动合入的变更）+ 元层级季度自评（审视流程本身是否在做对的事）。**触发方式：内容流程收尾自动（evolve-check）+ 深度轮显式**——内容流程（issue-ingest /
+to-reference / to-postmortem / knowledge-groom）完成主体目标后，收尾自动执行伴随评估
+（/skill:evolve-check：有信号产卡、agent 自验证、进攒批，无信号即止；diagnose 不强制，
+其缺口由 S2 replay 与深度轮覆盖）；用户说"跑一轮自演进/看看有什么可改进"时启动
+**深度轮**（全库观测：台账/容量/S2 校准集/指标）。两者共用 §6.2 之后的产卡/授权/攒批链，产物同一批池。**防自发批量改库的纪律不变**：evolve-check 只在用户已触发的内容流程收尾运行（不是 agent 自发启动新任务），深度轮保留 disable-model-invocation 语义——评估自动，批量改库仍走攒批 + 人审。
 
 ### 6.2 流程总览
 

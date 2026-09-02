@@ -207,6 +207,15 @@ content:
 
 别让用户去找自己的产出——报出具体路径，说明"随 PR 提交，review 合入即生效"。
 
+### 7. 收尾 evolve-check（伴随演进评估，默认执行）
+
+词条产出、出最终报告前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
+遵循）：本轮发现可跨词条归纳的共性（T1）、新错误码家族首次入表需扩覆盖（T5）、
+或提取/归类环节有流程摩擦（T3/T4）时，**agent 自动产 idea 卡并自行验证执行**
+（ev_proposal 产卡 → 验证 → 进攒批）；无信号则报告加一行"evolve-check：无演进
+信号"。这是流程默认收尾，**不需要用户另说"改进系统"**——演进由数据触发，像人
+学习。产出与流程报告一并给出。
+
 ## 产出落点
 
 - `references/<type-dir>/<ref-id>.yaml`——词条（status: active；PR review 即审核闸门，合入即生效，无中间 draft 态）

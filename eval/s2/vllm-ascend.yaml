@@ -54,6 +54,8 @@ calibration:
       \ that never landed). If it is not available in the paired vLLM, the condition\
       \ should be removed or made defensive until the attribute actually exists."
   expected:
+    namespace: inference/vllm-ascend    # 人工预标：路由正确归属（S2 路由 miss 归因基准）
+    category: interrupt                  # 人工预标：triage 分支判据（crash → interrupt）
     resolution: This issue has been fixed by https://github.com/vllm-project/vllm-ascend/pull/14504
     fix_commit: 'PR #14504'
     confidence: high
@@ -80,6 +82,8 @@ calibration:
       \ `config.swiglu_limit` to the routed `FusedMoE`, matching the shared expert\
       \ and the DeepSeek V4 model contract.\n"
   expected:
+    namespace: inference/vllm-ascend    # 人工预标：路由正确归属
+    category: precision                  # swiglu_limit 精度漂移（EV-2026-002 已判 precision）
     resolution: '[BugFix][v0.25.1][Model] Propagate DeepSeek V4 routed SwiGLU limit'
     fix_commit: 'PR #14364'
     confidence: high
@@ -116,6 +120,8 @@ calibration:
       \ exiting busy loop\n(EngineCore_DP0 pid=36166) [INFO] 08-11 09:17:07.187 [PID:36166]\
       \ core.py:1191 [shutdown] EngineCore: exiting busy loop"
   expected:
+    namespace: inference/vllm-ascend    # 人工预标：路由正确归属
+    category: interrupt                  # 启动报错（PicklingError）→ interrupt
     resolution: 300I DUO 并不支持此模型
     fix_commit: ''
     confidence: medium
@@ -137,6 +143,8 @@ calibration:
       \ > 0\n潜在表现包括：\n- 出现超出正常随机性的异常采样结果，推理乱码；\n- eager 模式高并发场景下精度下降；\n- 相同输入和种子下的可复现性受到影响。\n\
       \n纯贪心采样：temperature = 0 不会进入该 random_sample() 路径。"
   expected:
+    namespace: inference/vllm-ascend    # 人工预标：路由正确归属
+    category: precision                  # 随机采样正确性问题 → precision
     resolution: （待补：维护者结论）
     fix_commit: ''
     confidence: pending
@@ -288,6 +296,8 @@ calibration:
 
       '
   expected:
+    namespace: inference/vllm-ascend    # 人工预标：路由正确归属
+    category: interrupt                  # hangs（fullgraph deadlock）→ interrupt
     resolution: '[BugFix][MRV2] Unify update_stream across main and draft to fix fullgraph
       deadlock'
     fix_commit: 'PR #13600'
@@ -338,6 +348,8 @@ calibration:
       \ (APIServer pid=205) [ERROR] 2026-08-04-10:23:54 (PID:205, Device:-1, RankID:-1)\
       \ ERR99999 UNKNOWN applicaiton exception\n后来参考0.18版本配置将Qwen3VLForSequenceClassification改成Qwen3ForSequenceClassification后启动正常"
   expected:
+    namespace: inference/vllm-ascend    # 人工预标：路由正确归属
+    category: interrupt                  # 启动报错（配置参数启动失败）→ interrupt
     resolution: '[Doc][BugFix] Fix Qwen3-Reranker deploy guide'
     fix_commit: 'PR #13510'
     confidence: high
