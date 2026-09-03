@@ -1,0 +1,76 @@
+# ============================================================
+# Idea 卡：to-reference 归纳 MTP/spec-decode + startup 族 → 补录 EV 元流程
+# 触发：T1 同族 case ≥3 归纳信号（14+20 case）
+# 补录说明：本次归纳先执行后补卡（gap 修正——to-reference 归纳是内容注入
+#   动作，应前置 EV 卡记录 proposal→action→eval→decision，非直接产词条+PR）
+# ============================================================
+
+id: EV-2026-007
+layer: L2                          # methodology reference 归纳 = 先验知识层
+title: "to-reference 归纳：spec-decode/MTP 族 14 case + startup 族 20 case → 两条 methodology（补录 EV 元流程）"
+status: validated
+authorization: review              # reference 归纳 = 判断性中风险（case-derived 需 ≥3 case）
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-03
+source_signals:
+  - signal: evolve_check_t1         # T1：沉淀 ≥3 同族 case → 归纳 reference
+    evidence: "vllm-ascend 沉淀 148 case 后，spec-decode/MTP 族 14 条、startup 族 20 条未覆盖 case 聚类（R8 信号）"
+    trajectory:
+      - "knowledge/_index.yaml（2026-09-03，148 case）"
+      - "knowledge/inference/vllm-ascend/{interrupt,precision,performance}/（多轮沉淀）"
+      - "PR #100（词条已合入——本卡补录其元流程）"
+hypothesis: >-
+  把 14 条 spec-decode/MTP 与 20 条 startup 失败 case 归纳为可复用诊断 methodology
+  （分流流程），让同族问题诊断从逐 case 翻找变成按分流定位（EV-003 mooncake 已验证
+  此路径有效）
+predicted_effect:
+  metric: 同族诊断效率（分流定位 vs 逐 case 翻找）
+  from: "34 case 分散（逐 case 翻找）"
+  to: "2 条 methodology 分流路由（spec-decode 17 步 / startup 9 步）"
+validation:
+  method: issue_replay             # case-derived：词条引用 case 数满足深审门槛 + verify
+  baseline: EV-003 mooncake 归纳先例（9 case → 分层 methodology 有效）
+  success_criteria: 词条引用 ≥3 case（实测 14/20 远超）+ verify_references 通过
+  rollback: methodology 走 PR，可 revert
+gate:
+  condition: "同族 case ≥3（实测 14/20 远超）且可归纳出可复用分流判据"
+risk: low
+principle_refs: [4, 8, 11]        # 知识库有界（归纳防散 case）/ 可观测 / 数据触发
+estimated_cost:
+  tokens: 5000
+actual_cost:
+  tokens: 8000
+  source: estimate                # 2 subagent 逐条读 case + 设计分流 + 产出 + 校验
+decisions:
+  - who: agent（to-reference 归纳执行）
+    when: "2026-09-03"
+    type: proposal
+    conclusion: >-
+      沉淀 148 case 后盘点，spec-decode/MTP 族 14 条与 startup 族 20 条 case 未被任何
+      reference 覆盖（R8 信号），且呈现可归纳的分流共性。提议走 to-reference 归纳两条
+      methodology，复用 EV-003（mooncake）验证过的路径。
+  - who: agent（执行归纳，2 subagent 并行）
+    when: "2026-09-03"
+    type: action
+    conclusion: >-
+      产出两条 methodology：①ascend-vllm-spec-decode-mtp-triage（14 case，17 步分流——
+      启动/首请求/运行期/静默 4 支 × 签名细分 × 叠加组合消融）；②vllm-ascend-startup-triage
+      （20 case，9 步分流——import/版本/量化/patch/平台特化/部署 6 面）。另扩展 mooncake
+      methodology（+7792/9398 + step 5.5 503900 两型）。
+  - who: agent（验证）
+    when: "2026-09-03"
+    type: eval
+    conclusion: >-
+      verify_references 105 词条通过（id 唯一）；case-derived 引用 14/20 远超 ≥3 深审门槛；
+      词条零注释。分流结构每步带 source_cases 全覆盖无遗漏。三型判别（MTP 精度 11127/
+      12723/7854）与 503900 两型（intra-node env vs 跨机版本矩阵）已逐条对照 case 原文。
+  - who: agent（生命周期闭合）
+    when: "2026-09-03"
+    type: decision
+    conclusion: >-
+      采纳。归纳覆盖全部 34 case、深审门槛满足且校验通过，词条随 PR #100 合入（合入即
+      active 进诊断上下文）。**gap 修正**：本次归纳应先产 EV 卡再执行（T1 信号 → 卡 →
+      action → eval → decision）——补录本卡使归纳行为有完整决策链可供人审；后续 to-reference
+      归纳须前置 EV 卡（机制修正见 evolve-check SKILL）。

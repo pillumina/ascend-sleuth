@@ -90,6 +90,13 @@ description: >
   validated 后补 `actual_cost`（成本审计）——缺了 verify_proposals 报审计缺口；
 - 仅"观察到的信号"（数据前提未满足 / 无准备执行的具体方案）**不产卡**——信号记 session
   报告/任务状态，条件到（方案成形/数据齐）才产卡执行（防想法清单污染提案账本）。
+- **改进动作必须先产 EV 卡（前置元流程，防绕过）**：T1 归纳（→ to-reference --ingest-cases）、
+  T5 扩 reference 家族、以及任何"把执行结果固化为会进诊断上下文的资产"的动作——
+  **必须先产卡（proposal）→ 执行（action）→ 验证（eval）→ 判断（decision）→ 才随 PR 合入**。
+  禁止直接调 to-reference/to-postmortem 产出词条后无卡合入（教训：MTP/startup 归纳先执行
+  后补卡——词条已 active 但决策链缺失，人审无据）。内容流程产出草稿进 inbox（待审队列）
+  不在此列；凡 **status: active 直进上下文**的产出（reference 词条、triage 改动）必须有
+  EV 卡决策链。
 
 **第 4 步：出收尾说明**（并入流程报告，不单独打扰用户）：
 
