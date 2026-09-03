@@ -1,0 +1,70 @@
+# ============================================================
+# Idea 卡：vllm-ascend interrupt 76/30 超 hard_cap —— 健康指标评估
+# 触发：容量超 hard_cap（interrupt 76）——ADR-0004 强制拆前先采健康指标
+# 状态：validated（评估完成，数据驱动结论：轻度恶化不触发强制拆）
+# ============================================================
+
+id: EV-2026-006
+layer: L3                          # 容量治理/编排层
+title: "vllm-ascend interrupt 76/30 超 hard_cap：健康指标评估——候选溢出率 25%（轻度恶化，不触发强制拆）"
+status: validated
+authorization: dual                # 若拆分需双签；本卡评估结论=暂不拆（agent 判断）
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-03
+source_signals:
+  - signal: capacity_hard_cap       # interrupt 76 超 hard_cap 60（ADR-0004 强制拆触发条件）
+    evidence: "knowledge/_index.yaml 头注：inference/vllm-ascend interrupt=76/30"
+    trajectory:
+      - "knowledge/_index.yaml（2026-09-03 生成，118 case）"
+      - "docs/roadmap.md A2（interrupt 36→50→76 两轮沉淀记录）"
+hypothesis: >-
+  超 hard_cap 触发"强制拆"前，ADR-0004 要求先看健康指标（候选溢出率 >20% 才恶化）——
+  若溢出率实际健康（多数诊断过滤后候选 ≤5），则 76 条不构成检索退化，不应盲目迁目录
+  （ADR-0004 已拒"目录深度+2"：triage 不改、索引不省）。
+predicted_effect:
+  metric: 候选溢出率（阶段一后候选 >5 的诊断占比）
+  from: "未知（健康指标从未采集）"
+  to: "数据说话：决定拆 or 不拆"
+validation:
+  method: metrics_compare           # 确定性脚本 capacity_health.py
+  baseline: ADR-0004 阈值 20%
+  success_criteria: 溢出率明确高于/低于 20% 阈值 → 决定强制拆 or 保持
+  rollback: 本卡仅评估不迁移，无回滚负担
+gate:
+  condition: "interrupt 超 hard_cap 60（触发评估）"
+risk: high                          # 涉及是否拆分的结构决策
+principle_refs: [8, 11]            # 可观测（健康指标数据说话）/ 数据触发
+estimated_cost:
+  tokens: 2000
+actual_cost:
+  tokens: 1500
+  source: estimate
+decisions:
+  - who: agent（容量治理评估，2026-W36 round3）
+    when: "2026-09-03"
+    type: action
+    conclusion: >-
+      实现确定性健康指标脚本 scripts/capacity_health.py（精确 regex 口径：模拟 diagnose
+      阶段一，用各 case quickly_check.primary/fallback 的实际 grep 模式匹配测试输入症状，
+      命中数即候选数）。测试输入 = eval/golden（23 fixture）+ eval/s2（9 条校准）共 32 条
+      症状。
+  - who: agent（评估执行）
+    when: "2026-09-03"
+    type: eval
+    conclusion: >-
+      实测结果：interrupt 候选溢出率 25%（8/32 输入 >5 候选），略超 20% 恶化阈值；候选数
+      中位数 3（多数诊断健康），尾部 max 12（同族 cluster 场景溢出）。precision/performance
+      溢出率 0%（健康）。数据说明：interrupt 76 条是"轻度恶化"——非"检索崩坏"，也未健康无虞。
+      关键词并集近似（91%）高估，精确 regex 口径（25%）是 diagnose 真实语义。
+  - who: agent（生命周期闭合）
+    when: "2026-09-03"
+    type: decision
+    conclusion: >-
+      暂不强制拆。依据：①精确溢出率 25% 仅略超阈值，中位数 3 表明多数诊断过滤正常；
+      ②ADR-0004 明确拒绝目录深度+2（triage 不改、索引不省——拆目录不解决 token 负担）；
+      ③真正可选项是"诊断阶段一先 grep 预筛 index 子集"（改 skill，非迁目录）或"接受现状 +
+      持续观测"（interrupt 76 的 25K token 对单次诊断可接受）。建议：持续观测溢出率趋势
+      （下轮沉淀后复测），若升破 30% 再评估阶段一加载协议优化；本卡 validated（评估完成，
+      数据驱动结论：暂不拆）。脚本 capacity_health.py 保留供后续复测。
