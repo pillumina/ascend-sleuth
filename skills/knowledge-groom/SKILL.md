@@ -19,6 +19,17 @@ disable-model-invocation: true
 
 手动运行，建议每周一次（连续四周无新 postmortem 则自动切双周）。
 
+**触发场景区分（2026-09 明确）**：
+- **人工使用场景（默认周批）**：人通过 diagnose/to-postmortem 等沉淀的草稿——攒 inbox
+  到周批统一处理，人审 ~30s/条后升格提 PR（人的注意力是稀缺资源，批处理是预算分配，
+  原则九）；
+- **自动化 ingest 场景（可直接升格，不等周批）**：issue-ingest/S2 补 case 等自动化
+  链路产出的草稿——verification 链完整（upstream-fix-merged 等外部验证）+ agent 已过
+  语义校验 + pre-triage 判别完成，质量前提与人工场景不同，**产出后可直接走本流程升格
+  入库提 PR**（同 2026-W36 round2 全自动轮 22 case 升格先例）。前提：owner 已预授权该
+  自动化源（issue-ingest 链路本身即 owner 配置的持续管道，其产出视为预授权）。草稿头
+  注释带完整 pre-triage/verification 证据 → 复核确认而非重判。
+
 ## 流程（一次 groom 产出一个变更摘要）
 
 1. **intake 队列处理（升格的前置）**：处理 `postmortems/inbox/`（`/skill:to-postmortem` / `/skill:issue-ingest` 的产出都落这里）：
