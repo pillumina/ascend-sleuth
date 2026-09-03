@@ -396,7 +396,7 @@ agent 提了个 EV、改了、实验发现不行、不采纳，这是诚实的�
 | execution §10：沉淀效果字段（predicted_value/first_hit） | Phase B（台账跑通后，随首批沉淀） |
 | execution §10：follow-up 观察窗常态化 | Phase C（依赖 M2/S2 的即时判定） |
 | execution §10：回滚率等机制指标进 timeline | Phase D 试点 ≥1 轮后 |
-| run §9：统一执行记录（机制 C） | Phase A–B 之间（记录 schema 定稿即接） |
+| run §9：统一执行记录（机制 C） | 第一批已完成（schema+脚本+3 内容 skill 收尾接入）；diagnose/groom 待接 |
 | run §9：supersede 字段 + 回滚语义 | Phase D（出现首个替代场景时，schema 已含字段） |
 | run §9：长期任务层试点 | Phase D（试点即含轮间调度） |
 | run §9：可视化 | Phase E 后 / 常设（任务层跑通 ≥1 轮） |
