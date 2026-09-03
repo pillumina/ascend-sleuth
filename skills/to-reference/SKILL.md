@@ -209,6 +209,9 @@ content:
 
 ### 7. 收尾 evolve-check（伴随演进评估，默认执行）
 
+**先落执行记录**（evolve-check 读它作现场）：
+`python3 scripts/log_skill_exec.py --skill to-reference --products "<ref-id>(active),..." --reason "<一句话：归纳 N case / 新增家族>" --source <来源> --tokens <估算>`
+
 词条产出、出最终报告前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
 遵循）：本轮发现可跨词条归纳的共性（T1）、新错误码家族首次入表需扩覆盖（T5）、
 或提取/归类环节有流程摩擦（T3/T4）时，**agent 自动产 idea 卡并自行验证执行**

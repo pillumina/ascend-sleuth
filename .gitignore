@@ -72,3 +72,5 @@ proposals/experiments/*
 
 # S2 replay 评分报告（运行时产物，本地留存——复盘结论入 EV 卡/变更摘要，不进 git）
 eval-reports/
+# skill 执行记录（逐次 append 流水，本地留存；聚合值进 timeline）
+metrics/skill-exec-log.yaml
