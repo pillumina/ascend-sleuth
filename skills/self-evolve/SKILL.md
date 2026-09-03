@@ -5,7 +5,7 @@ description: >
   诊断 / 拉取）时，由对应内容 skill 执行，**收尾自动跑 evolve-check**（/skill:evolve-check，
   伴随评估：有信号产卡、agent 自验证并判断采纳——用户不需要另说"改进系统"）。
   本 skill 只管两件事：①用户显式说"跑一轮自演进/看看有什么可改进"时的**全库深度
-  观测轮**（跨轮聚合信号：组件台账 / 容量 / S2 校准集 / timeline → 产候选卡）；
+  观测轮**（跨轮聚合信号：归因事件聚合 / 容量 / S2 校准集 / timeline → 产候选卡）；
   ②把 evolve-check 与深度轮产出的卡**攒批聚合为一个 PR** 供人审。演进由数据触发
   ——不是用户为"改进"单独立目标，而是系统做事时自动校准；本文自包含执行参数。
 disable-model-invocation: true
@@ -42,7 +42,7 @@ disable-model-invocation: true
 | 信号 | 数据源 | 候选动作 |
 |---|---|---|
 | 容量超 soft_cap / 健康指标恶化 | `knowledge/_index.yaml` 头注（build_index.py 生成） | L1 拆分评估卡（ev_proposal） |
-| 组件台账浮出失败簇（反复执行错） | `scripts/component_tally.py` | L2 修订该组件所在 skill 步骤 / triage 分支 |
+| 归因事件聚合浮出失败簇（反复执行错，按需聚合） | `scripts/component_tally.py` | L2 修订该组件所在 skill 步骤 / triage 分支 |
 | S2 校准集未测条目 / replay miss | `scripts/s2_replay.py --todo` | L1 补 case 卡（S2 佐证缺口） |
 | 指标漂移（命中率/回滚/token 趋势） | `metrics/timeline.yaml` + trace_metrics | 诊断式候选轮 |
 | 长期任务轮间信号 | task/session state | 下一轮范围决策 |
@@ -75,7 +75,7 @@ decision 记录 + validated 补 actual_cost。仅信号无方案不产卡（信�
 skill/流程改进**由信号驱动**，两条来源：
 
 1. **evolve-check T4/T7**（内容流程收尾发现：执行错反复无归属 / 可复用链路跑通）→ 产 L2 候选卡：修订指定 skill 步骤 / 沉淀新 skill 候选（弱信号，新 skill 立项走双签）；
-2. **深度轮台账信号**（组件失败簇）→ 同上产卡。
+2. **深度轮归因事件信号**（按需聚合的组件失败簇）→ 同上产卡。
 
 **验证门（改 skill 强制）**：skill 改动合入前必须过 golden 前后对照（eval/golden + S2
 replay 校准）——改 skill 影响所有下游，验证不可省；结构级（骨架/新 skill 立项）走

@@ -116,19 +116,19 @@ return {
       )
     }
 
-    // ============ 台账 / S2 归因 ============
+    // ============ 归因 / S2 反馈 ============
     function TallyView({ tally, s2Attrib }) {
       const hasTally = tally && tally.length
       const hasS2 = s2Attrib && s2Attrib.length
       return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
-        React.createElement(Section, { title: '组件失败台账（mis 侧）' },
+        React.createElement(Section, { title: '归因事件（按需聚合）' },
           hasTally
             ? tally.map(c => React.createElement('div', { key: c.id, style: { display: 'flex', alignItems: 'center', gap: 8, padding: '5px 0', borderBottom: '1px dashed ' + T.border } },
               React.createElement('span', { style: { fontFamily: 'ui-monospace,monospace', fontSize: 11, color: T.text } }, c.id),
               React.createElement('span', { style: { fontSize: 11, color: T.error, fontWeight: 700 } }, 'mis=' + c.misdiagnoses),
               React.createElement('span', { style: { fontSize: 10, color: T.text2, marginLeft: 'auto' } }, (c.source_traces || []).length + ' 来源'),
             ))
-            : React.createElement(EmptyBox, { text: '台账无数据——mis 源待积累（S1 反馈或 S2 replay 路由 miss）' }),
+            : React.createElement(EmptyBox, { text: '归因无数据——待积累（S1 反馈归因或 S2 replay 路由 miss）' }),
         ),
         React.createElement(Section, { title: 'S2 replay 路由归因（S1 无关）' },
           hasS2
@@ -201,7 +201,7 @@ return {
           React.createElement(Section, { title: '知识库容量（_index 头注，soft_cap=30）' },
             React.createElement(CapacityGrid, { capacity: state.data.capacity }),
           ),
-          React.createElement(Section, { title: '流程演进信号（台账 / S2 归因）' },
+          React.createElement(Section, { title: '流程演进信号（归因 / S2 反馈）' },
             React.createElement(TallyView, { tally: state.data.tally, s2Attrib: state.data.s2_attrib }),
           ),
           React.createElement(Section, { title: '指标趋势（timeline）' },

@@ -30,7 +30,7 @@ description: >
 - diagnose：**不强制每次收尾跑本协议**（高频 + 已有内建 evolving：未命中起草候选
   case、源码揭示稳定结构事实顺手走 to-reference、反馈捕获写 feedback_pending）——
   其 L2/L3 视角（反复 miss 同族、流程摩擦）由 S2 replay（`s2_replay.py --todo`）
-  与深度轮台账信号覆盖，见 /skill:self-evolve §二；
+  与深度轮归因事件信号覆盖，见 /skill:self-evolve §二；
 - knowledge-groom：批审产出后。
 
 触发**不需要用户说"跑自演进"**——它是流程的默认收尾步骤（同 diagnose 写 trace 的
@@ -59,7 +59,7 @@ description: >
 | T1 | 沉淀 ≥3 条同根因/同族 case，或发现可跨 case 归纳的共性 | 有 methodology/reference 可提炼 | 产 L2 卡：归纳 reference（走 /skill:to-reference --ingest-cases） |
 | T2 | diagnose/replay miss 某 issue 族，或 Tier 3 兜底反复走同路径 | 覆盖缺口 | 产 L1 卡：补 case（S2 replay 佐证缺口） |
 | T3 | 同一手动动作重复 ≥2 次（如反复拼同一查询、反复等同一命令输出） | 可固化流程/脚本 | 产 L2 卡：沉淀脚本/skill 步骤或 reference |
-| T4 | 执行错反复出现且无归属组件 / 组件台账浮出失败簇 | 流程缺陷 | 产 L2 卡：修订该组件所在 skill 步骤 / triage 分支 |
+| T4 | 执行错反复出现且无归属组件 / 归因事件聚合浮出失败簇 | 流程缺陷 | 产 L2 卡：修订该组件所在 skill 步骤 / triage 分支 |
 | T5 | 新数据源/新 issue 类型/新错误码首次出现且无配置 | 覆盖扩展 | 产 L1/L2 卡：扩配置 / 补 reference 家族 |
 | T6 | 容量超 soft_cap 或健康指标恶化（_index 头注） | 结构治理 | 产 L1 卡：拆分评估（ev_proposal） |
 | T7 | 本轮跑通一个可复用链路（拉取→评测→沉淀→验证全通） | 新流程资产 | 产 L2 卡：沉淀为 skill/脚本候选（弱信号，新 skill 立项走双签） |
@@ -116,8 +116,8 @@ evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ agent �
 | | evolve-check（本协议） | self-evolve（深度轮） |
 |---|---|---|
 | 触发 | 内容流程收尾自动（用户下内容目标即隐含） | 用户显式"跑一轮自演进/看看有什么可改进" |
-| 范围 | 本轮执行现场（一流程一查） | 全库观测（台账/容量/覆盖/指标） |
-| 信号源 | 本次产出的数据 + 摩擦 | 跨轮聚合（组件台账、S2 校准集、timeline） |
+| 范围 | 本轮执行现场（一流程一查） | 全库观测（归因聚合/容量/覆盖/指标） |
+| 信号源 | 本次产出的数据 + 摩擦 | 跨轮聚合（归因事件、S2 校准集、timeline） |
 | 共用 | idea 卡 schema / 验证门 / 攒批聚合 PR | 同左 |
 
 两者产出同一批池（`proposals/ideas/`），攒批聚合 PR 供人审时合并处理，不区分来源。
@@ -145,5 +145,5 @@ evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ agent �
 | 查重/产卡骨架 | `scripts/ev_proposal.py --list / --new` |
 | 卡校验 | `scripts/verify_proposals.py` |
 | 验证门（即时判定） | `scripts/replay_golden.py` / `scripts/s2_replay.py` |
-| 组件台账（T4 信号） | `scripts/component_tally.py` |
+| 归因事件聚合（T4 信号） | `scripts/component_tally.py` |
 | 内容沉淀（T1/T2 落到执行） | /skill:to-reference / /skill:to-postmortem |

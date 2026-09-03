@@ -1,4 +1,4 @@
-// ev-panel host —— 自演进看板数据服务（EV 卡 / 容量 / 台账归因 / timeline）
+// ev-panel host —— 自演进看板数据服务（EV 卡 / 容量 / 归因聚合 / timeline）
 // 用法：cordis_define kind:new → code.host 用本文件全文；code.client 用 panel-client.js 全文。
 // host 侧通过 shell 跑 scripts/ev_board_data.py 汇总 JSON（确定性逻辑在脚本，遵循原则二）。
 return {

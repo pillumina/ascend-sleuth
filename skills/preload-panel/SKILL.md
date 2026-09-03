@@ -5,7 +5,7 @@ description: >
   panel-host.js 与 panel-client.js，用 cordis_define 创建动态 Cordis 插件并
   cordis_run 激活，对话视图出现对应 tab。面板选择：
   - ascend-panel →「诊断」「指标」两个 tab（诊断会话/轨迹/证据 + 知识库健康）
-  - ev-panel →「自演进」tab（EV 卡状态机 / 容量热力 / 台账与 S2 归因 / timeline）
+  - ev-panel →「自演进」tab（EV 卡状态机 / 容量热力 / 归因与 S2 反馈 / timeline）
   仅 DSH 可用——依赖 DSH 的 cordis_define / cordis_run 工具
   与 conversation.view 插槽；其他 agent（Claude Code / Codex / pi）无此机制。
 ---
@@ -24,12 +24,12 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 | 面板 | 目录 | tab id / label | 视图 |
 |---|---|---|---|
 | 诊断面板 | `dsh-plugins/ascend-panel/` | `ascend-diagnose`(20) / `ascend-metrics`(21) | 会话列表/轨迹/证据 + 知识库健康/指标 |
-| 自演进看板 | `dsh-plugins/ev-panel/` | `ascend-evolve`(22) | EV 卡状态机 / 容量热力 / 台账归因 / timeline |
+| 自演进看板 | `dsh-plugins/ev-panel/` | `ascend-evolve`(22) | EV 卡状态机 / 容量热力 / 归因与 S2 反馈 / timeline |
 
 ## 流程
 
 1. **确定要加载的面板**：用户要诊断可视化 → ascend-panel；要自演进状态（EV 卡/
-   容量/台账）→ ev-panel；两者可同时加载（不同 tab id，互不冲突）。
+   容量/归因）→ ev-panel；两者可同时加载（不同 tab id，互不冲突）。
 
 2. **读插件代码**：读 `<面板目录>/panel-host.js`（Host 半）与 `<面板目录>/panel-client.js`
    （Client 半）。文件是 `cordis_define` 需要的函数体形态（`return { apply(ctx) {...} }`），
@@ -47,7 +47,7 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 5. **验证**：确认插件 running 且无 waitingFor（`cordis_inspect_self`）；tab 出现在
    对话视图（conversation.view 插槽，按上表 id 核对）。自演进看板首次打开会调
    `scripts/ev_board_data.py` 汇总数据——确认数据区渲染（EV 卡/容量有真实数据，
-   台账/归因可能显示"数据积累中"，如实）。
+   归因/S2 反馈可能显示"数据积累中"，如实）。
 
 ## 交互原则
 
