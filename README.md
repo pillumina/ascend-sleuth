@@ -8,7 +8,7 @@
 
 遵循 [Agent Skills](https://agentskills.io/) 标准，可在 pi、Claude Code、Codex 等任意支持该标准的 agent 中使用。
 
-> **agent 执行差异**：不同 agent 对 SKILL.md 的执行质量有差异（prompt 纪律本质是概率性的）。诊断结果与 trace 质量可能因 agent 而异——**团队内建议统一 agent**；跨 agent 对比时先归因执行差异，别急着归因知识错误。
+> **agent 执行差异**：不同 agent 对 SKILL.md 的执行质量有差异（prompt 纪律本质是概率性的），诊断结果与 trace 质量可能因 agent 而异。团队内建议统一 agent；跨 agent 对比时，先归因执行差异，再判断是否知识错误。
 
 **快速跳转**：[为什么需要](#为什么需要它) · [快速开始](#快速开始) · [八个 skill](#八个-skill) · [诊断面板](#诊断面板dsh-可选) · [工作原理](#工作原理) · [文档](#文档)
 
@@ -16,15 +16,15 @@
 
 ## 为什么需要它
 
-昇腾支持工程师每天面对三类问题：训练或推理中断（hang、crash、OOM）、精度异常（loss 发散、FP8 衰减）、性能退化（吞吐下降、通信占比过高）。这些问题的根因高度重复，相关知识却分散在个人笔记、IM 聊天和各处 wiki 里。新 case 每周都在出现，A2/A3/A5 平台差异还在扩大，依赖个人手工维护的方案撑不过几周。
+昇腾支持工程师日常处理三类问题：训练或推理中断（hang、crash、OOM）、精度异常（loss 发散、FP8 衰减）、性能退化（吞吐下降、通信占比过高）。这些问题的根因高度重复，相关知识却散在个人笔记、IM 聊天与各处 wiki。新 case 每周都在出现，A2/A3/A5 平台差异还在扩大，靠个人手工维护的方案撑不过几周。
 
-ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路由到已验证的 case；问题定位结束后，新知识进入待审队列，由每周一次的例行维护完成去重、升格与退休。知识随使用不断校准，不依赖某个人的持续投入。
+ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路由到已验证的 case；问题定位结束后，新知识进入待审队列，由例行维护完成去重、升格与退休（人工沉淀按周批处理，自动化导入源可直接升格）。知识随使用不断校准，不依赖某个人的持续投入。
 
 ## 快速开始
 
 ### 安装（使能 skills）
 
-**主路径：仓库即 workspace，skills 随仓使能**。clone 本仓后，把 agent 的项目级 skills 目录指向 `<clone>/skills/`。skills/ 是单一事实源，git 管理版本，更新走 git pull，热刷新即时生效，无需重装。装齐主 skill：`diagnose` / `to-postmortem` / `to-reference` / `issue-ingest` / `knowledge-groom` / `resume-diagnosis` / `self-evolve`。
+**主路径：仓库即 workspace，skills 随仓使能**。clone 本仓后，把 agent 的项目级 skills 目录指向 `<clone>/skills/`。skills/ 是单一事实源，git 管理版本，更新走 git pull，热刷新即时生效，无需重装。装齐主 skill：`diagnose` / `to-postmortem` / `to-reference` / `issue-ingest` / `knowledge-groom` / `resume-diagnosis` / `self-evolve`（另有 `evolve-check` 伴随协议随内容 skill 收尾自动执行，`preload-panel` 供 DSH 面板加载，均无需单独安装）。
 
 **零配置（DSH，团队主力）**。仓库已跟踪 `.dsh/skills → ../skills` 相对 symlink，clone 后自动还原，DSH 项目 root 自动发现并热刷新：git pull 更新 SKILL.md 即时生效，无需任何配置。
 
@@ -96,19 +96,20 @@ agent 路由到 `training/mindspeed-llm/` 并匹配 case。命中时给出结构
 
 agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML 草稿与 postmortem 并完成脱敏，产出到待审队列。也可以在一次 `/skill:diagnose` 结束后直接说"沉淀一下这次"，agent 会自动触发。
 
-### 跑一轮自演进（系统改进自己）
+### 自演进（知识随使用变准）
 
-想让系统自己发现并改进诊断/知识库的问题时，直接说（机制是隐形默认策略，你只说目标）：
+演进不是单独的"跑改进"环节，而是内容流程的默认收尾：你下内容目标（沉淀 / 拉取 issue / 诊断），流程完成后系统自动检查本轮产物里有没有值得改进的信号——有则记改进卡、自行验证、攒批后以 PR 交你审，没有则一行带过。这个伴随检查不需要你额外说明。
+
+显式触发深度轮（全库体检，不只本轮产物）：
 
 ```
-"跑一轮自演进"                        # 默认全自动：观测 → 产候选卡 → 校验 → 聚合 PR 给你审
-"看看有什么可改进的"                   # 同上（未指定目标时按数据信号自动选方向）
-"持续改进 vllm-ascend 的命中率"        # 指定范围 + 目标，开长期任务
+"跑一轮自演进"                        # 全库观测：容量 / 归因聚合 / 指标 / S2 校准集 → 候选卡 → 校验 → 聚合 PR
+"看看有什么可改进的"                   # 同上（未指定方向时按数据信号选）
 ```
 
-发生什么：agent 读 `skills/self-evolve/SKILL.md` 执行一轮——①装载上下文（容量/归因聚合/指标/S2 校准集等信号）→ ②产候选 idea 卡（`proposals/ideas/EV-*.yaml`，`scripts/ev_proposal.py` 辅助）→ ③`verify_proposals.py` 校验 → ④攒批成一个聚合 PR 给你审（每卡独立 commit，dual 高风险标注）。**改动不会自动合入结构级**——最终 PR 人审是合入闸点。
+发生什么：agent 按 `skills/self-evolve/SKILL.md` 跑一轮——读信号 → 产候选 idea 卡（`proposals/ideas/EV-*.yaml`）→ `verify_proposals.py` 校验 → 攒批成聚合 PR 给你审（每卡独立 commit，可单独回滚）。改动的合入始终以 PR 人审为闸点，不自动合入；路由与结构类改动额外双签。
 
-可随时干预："停一下"（本轮停止出中间报告）/ "这条改动有问题，回滚"（该卡回滚）。设计细节见 [自演进用户指南](docs/evolution-user-guide.md)。
+可随时干预："停一下"（本轮停止，出中间报告）/ "这条改动有问题，回滚"（该卡回滚）。机制细节与使用说明见 [自演进用户指南](docs/evolution-user-guide.md)。
 
 ## 知识获取
 
@@ -134,12 +135,12 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 | `to-postmortem` | 把一次定位沉淀为案例知识，任意来源均可汇入，经校验和脱敏进入待审队列 | 问题定位结束之后，无论在哪里定位的 | 可自动触发 |
 | `to-reference` | 把先验知识（事实/方法论）沉淀为 reference 词条：内联/文件/官方文档爬取/从案例归纳，经 grill 确认后进入待审队列 | 工程师想沉淀通用经验、或从案例集合提炼共性时 | 显式 `/skill:to-reference` |
 | `issue-ingest` | 从上游 issue（GitHub 等）批量导入案例：拉取精简元数据 → 硬过滤+启发式排序 → 评估 → 经 to-postmortem 沉淀草稿 → 标记已导入（幂等）| 想吸收某框架 issue 里的排障知识 | 显式 `/skill:issue-ingest` |
-| `knowledge-groom` | 周期维护：批处理待审队列、升格、去重、置信度重算、软退休、索引重建 | 领域 owner 每周 | 显式 `/skill:knowledge-groom` |
+| `knowledge-groom` | 周期维护：批处理待审队列、升格、去重、置信度重算、软退休、索引重建 | owner 例行维护（人工沉淀按周批处理，自动化导入源可即时升格） | 显式 `/skill:knowledge-groom` |
 | `resume-diagnosis` | 续接被打断的诊断：读取状态文件与 trace，复述现场后继续 | 诊断被会议或上下文压缩打断 | 显式 `/skill:resume-diagnosis` |
 | `preload-panel` | 在 DSH 会话中热加载诊断面板插件（`cordis_define` + `cordis_run` 激活「诊断」「指标」tab） | 新 DSH 会话需要面板时 | 显式 `/skill:preload-panel`（仅 DSH） |
-| `self-evolve` | 自演进执行：观测真实信号 → 产候选 idea 卡 → 校验 → 攒批 → 聚合 PR 给人审 | 想跑一轮"系统改进自己"、持续改进诊断/知识库时 | 显式 `/skill:self-evolve` |
+| `self-evolve` | 自演进深度轮：全库观测（容量 / 归因聚合 / 指标 / S2 校准集）→ 候选 idea 卡 → 校验 → 攒批 → 聚合 PR 给人审 | 想对全库做一次体检、或持续改进某方向时 | 显式 `/skill:self-evolve` |
 
-完整的操作细节（severity 闸门、trace 规则、语义校验等）在各自 `skills/<name>/SKILL.md`。三个诊断类 skill 为 user-only——诊断决策由人触发；`to-postmortem` / `to-reference` / `issue-ingest` 允许自动触发，降低沉淀门槛（issue-ingest 的自动止步于草稿，转正留人）。
+完整的操作细节（severity 闸门、trace 规则、语义校验等）在各自 `skills/<name>/SKILL.md`。三个诊断类 skill 为 user-only，诊断决策由人触发；`to-postmortem` / `to-reference` / `issue-ingest` 允许自动触发，降低沉淀门槛。issue-ingest 的升格分场景：默认进 inbox 由 owner 批量审后转正；owner 预授权源（该 skill 本身即配置的持续管道）产出的草稿 verification 链完整，可直接调 groom 升格，不等周批。
 
 ## 工作原理
 
@@ -151,17 +152,15 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 | Tier 2 | `knowledge/` 下结构化的 case 规则 | 症状匹配后两阶段加载：先读生成索引 `knowledge/_index.yaml` 过滤候选，再加载全量验证 |
 | Tier 3 | `postmortems/` 下的原始定位记录 | 前两层未命中时关键词检索兜底 |
 
-问题沿两个正交维度展开。在哪查由训练/推理与框架决定，对应加载哪个命名空间（如 `training/mindspeed-llm/`），这是知识库的目录结构。什么性质由问题类型决定：中断、精度、性能三类各有独立的匹配形态和默认排查思路——中断用错误签名 grep，精度用数值阈值断言，性能用 profiler 指标比对，三者不混用。
+问题沿两个维度拆解。在哪查：按问题发生的环节（训练或推理）与所用框架，对应加载哪个命名空间（如 `training/mindspeed-llm/`），这是知识库的目录结构。什么性质：按问题类型（中断、精度、性能）走各自的匹配形态与默认排查思路——中断用错误签名 grep，精度用数值阈值断言，性能用 profiler 指标比对，三者不混用。
 
 诊断过程全程记录 trace：加载了哪些命名空间、按什么顺序执行了哪些检查。trace 用于事后归因。一次误诊，究竟是知识库里的 case 写错了，还是 agent 执行流程走偏了，两者的修复路径完全不同——混在一起会把本来正确的东西改坏。
 
-两个循环驱动整个系统：**诊断循环**（每次问题，分钟级——诊断 → 命中或兜底 → 沉淀）与**演化循环**（每周，git 门控——待审队列 → groom 批审 → 升格 → 下次诊断直接命中）。完整全景见下方架构图（[交互版](docs/diagrams/ascend-sleuth-architecture.html?theme=light)，支持主题切换与 PNG 导出）；每个演化机制配什么护栏防止越学越错，见 [docs/evolution.md](docs/evolution.md)。
+两个循环驱动整个系统：**诊断循环**（每次问题，分钟级：诊断 → 命中或兜底 → 沉淀）与**演化循环**（git 门控：内容流程收尾自动采信号 → 改进卡 → 验证 → 聚合 PR → 合入 → 下次诊断直接命中；人工沉淀的 inbox 由 owner 按周批处理，自动化 ingest 源的草稿可直接升格）。完整全景见下方架构图（[交互版](docs/diagrams/ascend-sleuth-architecture.html?theme=light)，支持主题切换与 PNG 导出）；每个演化机制配什么护栏防止越学越错，见 [docs/evolution.md](docs/evolution.md)。
 
 ![ascend-sleuth 架构](docs/diagrams/ascend-sleuth-architecture.png)
 
-**自演进机制全流程**（[交互图 HTML](docs/diagrams/self-evolve-flow.html)，通俗版——机制细节见 [evolution-pipeline.md](docs/evolution-pipeline.md)）：
-
-系统不单独"跑改进"，而是每次干活（诊断 / 沉淀 / 拉取 issue）收尾时自动检查有没有改进点；有就记一张改进卡，改完用真实已解决 issue 对照验证，通过后攒一批交人审（PR），合入生效让下次更准。没信号就不动、验证不过就如实记录丢弃、每季度人审一次流程本身。
+**自演进机制全流程**（[交互图 HTML](docs/diagrams/self-evolve-flow.html)；机制细节见 [evolution-pipeline.md](docs/evolution-pipeline.md)）：
 
 ![自演进机制全流程](docs/diagrams/self-evolve-flow.png)
 
@@ -179,7 +178,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 **自动化产出建议，人做决定。** 预分诊、候选 case 起草、置信度重算都只给出建议和依据，采纳、调整或驳回由维护者判定。人的工作从结构化整理上移为快速审批，单条成本从二十分钟降到半分钟以内。
 
-**人工审核按批处理组织。** 持续汇入的场景下，逐条即时审核违背工程师的工作节律。待审内容进入 inbox 队列，owner 每周集中处理一次，停留过久的条目自动标红催办。
+**人工审核按批处理组织。** 持续汇入的场景下，逐条即时审核违背工程师的工作节律。待审内容进入 inbox 队列，owner 按批集中处理（人工沉淀通常每周一批），停留过久的条目自动标红催办。
 
 **先保证可观测，再谈改进。** 误诊归因（该改知识还是改流程）、路由准确率、反馈捕获率，全部来自 trace 记录。没有 trace，这些机制既无法评估，也无从改进。
 
@@ -253,8 +252,10 @@ CODEOWNERS.example           owner 落实后启用
   紧急时告诉 agent"这是紧急情况"→ 它先给 stabilize 建议、不钻深度排查
 定位完 → /skill:to-postmortem 沉淀 → postmortems/inbox/（待审队列）
   （无论这次是 /diagnose 诊断的、还是之前用 Kimi/手工查的，都从这里汇入）
+批量吸收 issue → /skill:issue-ingest（自动拉取 → 过滤 → 评估 → 沉淀草稿）
 被打断 → /skill:resume-diagnosis
-领域 owner 每周 → /skill:knowledge-groom 批处理 inbox
+owner 维护 → /skill:knowledge-groom 处理 inbox（人工沉淀按周批；issue-ingest 等
+  自动化源的草稿 verification 链完整，可直接升格，不等周批）
   → 变更 PR（三分类标签 + 高风险双签 + kb-checks CI）→ merge（索引随批重建）
 fix 应用后 → 回报结果（diagnose/resume 启动时会主动追问）→ confidence 回写
 ```
