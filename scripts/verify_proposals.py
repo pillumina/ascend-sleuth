@@ -10,8 +10,8 @@
 #   2. 必填字段齐全：id/layer/title/status/authorization/dimension/created_at/
 #      hypothesis/validation/risk/principle_refs/decisions
 #   3. id 匹配 EV-YYYY-NNN 且全局唯一
-#   4. status ∈ 合法词表（candidate/in_experiment/validated/rejected/superseded + 蓝图态
-#      stale——EV 卡 = agent 决策档案，不含 git 合入态；v4 词表）
+#   4. status ∈ 合法词表（in_experiment/validated/rejected/superseded——产卡即执行，
+#      无 candidate 待办态；EV 卡 = agent 决策档案，不含 git 合入态；v5 词表）
 #   5. authorization ∈ {auto, review, dual}
 #   6. dimension ∈ {architecture, evolvability, maintainability, observability, process}
 #   7. layer ∈ {L1, L2, L3}
@@ -35,10 +35,8 @@ from pathlib import Path
 import yaml
 
 VALID_STATUS = {
-    "candidate", "in_experiment",
+    "in_experiment",              # 产卡即执行（无 candidate 待办态）
     "validated", "rejected", "superseded",
-    # 蓝图态（pipeline §11.1：触发条件到才启用）
-    "stale",
 }
 VALID_AUTH = {"auto", "review", "dual"}
 VALID_DIM = {"architecture", "evolvability", "maintainability", "observability", "process"}

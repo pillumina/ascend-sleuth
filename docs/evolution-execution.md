@@ -95,21 +95,21 @@ v2 机制把"观测 → 候选 → 授权 → 合入"串起来了，但执行时
 
 ```
 ● 即时判定类（检索/路由/skill 流程/脚本——S2/golden 可即时出结果）：
-   candidate ──► in_experiment（action + eval）──eval solid──► validated（agent 采纳：改动保留）
+   产卡即 in_experiment（action + eval）──eval solid──► validated（agent 采纳：改动保留）
         │                                 └──eval 不成立──► rejected（agent 不采纳：留结论）
         └──发现更好方向──► superseded（新 proposal 替代）
 
 ● 真实反馈类（content 沉淀 / fix 有效——现场有效性只能等真实场景/S1）：
-   candidate ──► in_experiment（实现 + S2 佐证）──agent 判 validated（采纳：已实现 + S2 佐证）
+   产卡即 in_experiment（实现 + S2 佐证）──agent 判 validated（采纳：已实现 + S2 佐证）
         │              └──实验失败──► rejected
    validated 后：现场有效性进入观察窗（流程层跟踪，非卡状态）——S1 确认/退化/超时结果作为
    **追加 decision 记录**到卡（"PR #N 合入"、"观察窗 S1 确认现场有效"、"现场退化已回滚"），
    不改变卡状态（卡状态 = agent 决策的终态；观察窗是效果结算层）。
 ```
 
-**状态词表与 schema 的唯一事实源是 pipeline.md §7（v4）**：EV 卡 status 词表
-（candidate/in_experiment/validated/rejected/superseded + 蓝图态 stale——**不含
-pending_merge/adopted 等 git 合入态**）、supersedes/superseded_by 替换链、
+**状态词表与 schema 的唯一事实源是 pipeline.md §7（v5）**：EV 卡 status 词表
+（in_experiment/validated/rejected/superseded——**不含 candidate 待办态与
+pending_merge/adopted 等 git 合入态**；产卡即执行）、supersedes/superseded_by 替换链、
 estimated/actual_cost 成本字段都在那边定义，本文不重复定义只引用——防两处状态机再次漂移。
 **注意对象区分**：`awaiting_validation` 是沉淀对象（case）的观察窗状态（§4.3），属 case 的
 跟踪字段，不是 EV 卡 status——两种对象不混用词表。

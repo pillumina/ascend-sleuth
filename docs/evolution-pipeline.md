@@ -230,21 +230,24 @@ E. 抽审人 / reviewer / 体系维护人：6.3 级别人闸 + 6.6 季度自评
 ## 7. Idea 卡 schema（v2）与状态机
 
 ```yaml
-id: EV-2026-001
+id: EV-2026-XXX                 # 示例占位（真实卡号由 ev_proposal --new 分配）
 layer: L2                        # L1 | L2 | L3（本卡示例：流程层）
 title: triage 分支 vllm-ascend 启动参数族执行错率 0.6 → 修订该分支
-status: candidate                # EV 卡状态词表（agent 决策档案——无人的合入语义）：
-                                 #   candidate → in_experiment → 终态（agent 决策结果）：
-                                 #     validated   采纳：eval 验证 solid，改动保留（进流程层攒批/PR）
-                                 #     rejected    不采纳：试了不行/评估不成立（诚实记录，改动不保留）
-                                 #     superseded  换方向：被新 proposal 替代（supersede 链指过去）
-                                 #   in_experiment 执行中（action + eval 进行时）
-                                 #   candidate 长期未成 proposal → stale（候选积压真实发生后，蓝图态）
-                                 # 注：EV 卡是 agent 自演进行为的决策档案——识别改进点→提案→执行→
-                                 #   验证→判断采纳/不采纳。**不含 git 协作状态**（攒批/PR/合入是流程层
-                                 #   session 的事，不进卡词表）；人审发生在目标态完成提 PR 时，
-                                 #   审视的是整个自演进过程是否 solid（含 rejected 卡——诚实实验记录）
-authorization: review            # auto | review | dual（6.3 分级；candidate 时由风险+证据预判）
+status: in_experiment             # EV 卡状态词表（agent 决策档案——无人的合入语义）：
+                                  #   产卡即执行：识别信号 + 方案成形 → 产卡（状态 in_experiment，
+                                  #   开始 action + eval）——**没有 candidate 待办态**（agent 自主
+                                  #   决策、全自动推进，方案成形就该做，不做就不产卡）
+                                  #   in_experiment → 终态（agent 决策结果）：
+                                  #     validated   采纳：eval 验证 solid，改动保留（进流程层攒批/PR）
+                                  #     rejected    不采纳：试了不行/评估不成立（诚实记录，改动不保留）
+                                  #     superseded  换方向：被新 proposal 替代（supersede 链指过去）
+                                  # 注：EV 卡是 agent 自演进行为的决策档案——识别改进点→执行→
+                                  #   验证→判断采纳/不采纳。**不含 git 协作状态**（攒批/PR/合入是流程层
+                                  #   session 的事，不进卡词表）；人审发生在目标态完成提 PR 时，
+                                  #   审视的是整个自演进过程是否 solid（含 rejected 卡——诚实实验记录）
+                                  #   信号但数据前提未满足/方案未成形 → 不产卡（记 session 报告，
+                                  #   条件到再产）——信号不是提案，提案是已准备执行的方案
+authorization: review            # auto | review | dual（改动合入的知识层分级，按风险+证据预判）
                                  # ——注意：authorization 指改动合入的知识层分级，EV 决策本身 agent 做
 dimension: evolvability          # architecture | evolvability | maintainability | observability | process
 supersedes: []                   # 本卡替代的旧卡 id 列表（run §5：新 idea 替换旧实现时填）
@@ -278,20 +281,26 @@ decisions: []                    # 审计链：谁在何时依据哪份证据判
 
 **生命周期完整性规则（每张卡是一个 proposal→action→eval→decision 的完整档案，不是想法清单）**：
 
-1. **status 推进随 decisions 走，不靠自觉**：产卡（candidate，记 proposal decision）→ 执行/实验（in_experiment，记 action + eval decision）→ agent 判断（validated 采纳 / rejected 不采纳 / superseded 换方向，记 decision decision）。**执行或验证完成而 status 停在 candidate = 卡不完整**（机制推进，不是靠 agent 记得改状态）。
+1. **产卡即执行（没有 candidate 待办态）**：识别信号 + **方案成形**才产卡——产卡状态
+   in_experiment（记 proposal + action decision）→ 验证（记 eval decision）→ agent 判断
+   （validated 采纳 / rejected 不采纳 / superseded 换方向，记 decision decision）。agent
+   自主决策、全自动推进：方案成形就该做，不做就不产卡。**执行或验证完成而卡停在
+   in_experiment = 卡不完整**（机制推进，不是靠 agent 记得改状态）。
 2. **终态卡必须有 decision 记录**：validated/rejected/superseded 的卡，decisions 中必须有 agent 的对应判断结论（依据哪份 eval 数据）——无结论的终态卡 = 审计缺口（verify_proposals 校验）。
 3. **validated 后 actual_cost 必填**：成本审计（orchestration §3.2：无实际成本记录不可审计）——validated 卡 actual_cost 仍 null = 缺口。
-4. **candidate 池语义**：candidate = 有信号、方案待定/待执行的**真提案**；仅"观察到的信号"（容量超了/族够了但无具体 action 方案）不进正式 ideas/（用 signal 记录在 session 报告，方案成形才产卡）——防想法清单污染提案账本。
+4. **信号 vs 提案的边界**：仅"观察到的信号"（容量超了/族够了/数据前提未满足，但无**准备执行**
+   的具体方案）**不产卡**——信号记 session 报告/任务状态，条件到（方案成形/数据齐）才产卡
+   （防想法清单污染提案账本；跨轮待做的改进点在任务状态里追踪，不是卡状态）。
 
-状态机（v4：EV 卡 = agent 决策档案——不含 git 协作状态；终态是 agent 依据 eval 的判断，非"合入"语义）：
+状态机（v5：EV 卡 = agent 决策档案——不含 git 协作状态与待办态；产卡即执行，终态是 agent 依据 eval 的判断）：
 
 ```
-candidate ──提案成形──► in_experiment（action + eval 执行中）
-    │                        ├─ eval solid → validated（采纳：改动保留，进流程层攒批/PR）
-    │                        ├─ eval 不成立 → rejected（不采纳：试了不行，诚实记录，改动不保留）
-    │                        ├─ 发现更好方向 → superseded（换方向：新 proposal 卡 supersede 指过来）
-    │                        └─ in_experiment 中途发现无价值 → rejected（留结论）
-    └──候选长期未成提案────► stale（蓝图态：候选积压真实发生后启用）
+产卡（方案成形）──► in_experiment（action + eval 执行中）
+    │                ├─ eval solid → validated（采纳：改动保留，进流程层攒批/PR）
+    │                ├─ eval 不成立 → rejected（不采纳：试了不行，诚实记录，改动不保留）
+    │                └─ 发现更好方向 → superseded（换方向：新 proposal 卡 supersede 指过来）
+    │
+    └──（信号但方案未成形/数据未齐 → 不产卡，记报告，条件到再产）
 ```
 
 **EV 卡与 git/PR 的边界（关键，v4 修正）**：卡的终态是 **agent 的判断**（采纳/不采纳/换方向），

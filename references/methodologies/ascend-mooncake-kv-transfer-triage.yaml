@@ -1,0 +1,81 @@
+id: ascend-mooncake-kv-transfer-triage
+type: methodology
+title: Mooncake/Ascend KV-transfer 分层诊断（python backend / native transport / 连接 / 流同步）
+summary: >-
+  PD 分离 + Mooncake KV-pool 部署故障先按报错面路由到层、再按层内形态定位，把同族诊断从逐个翻 case
+  变成分层路由：python traceback 且栈指 vllm_ascend/*.py → python backend 层（vllm-ascend 自身代码，
+  细分 init/线程 config、transfer-group 索引、DCP/MTP 切分长度、调度 KV-block 生命周期）；native
+  segfault（mooncake::/_Hashtable 栈）→ native transport 层（Mooncake 库，修依赖库）；ZMQ/端口/握手
+  错误 → 连接层（kv_port 冲突或 PP 端口映射）；无异常乱码 → 流同步/数据完整性层；静默停滞（计数冻结、
+  无报错面）→ vllm-ascend 调度/KV-block 生命周期。九条同族 case（VLLM-ASC-11459/10532/13934/8938/
+  11343/13964/12957/11169/13710）全部可由该路由命中。
+
+sources:
+  - type: case-derived
+    cases: [VLLM-ASC-11459, VLLM-ASC-10532, VLLM-ASC-13934, VLLM-ASC-8938, VLLM-ASC-11343, VLLM-ASC-13964, VLLM-ASC-12957, VLLM-ASC-11169, VLLM-ASC-13710]
+    extracted_at: 2026-09-03
+    extraction_method: to-reference --ingest-cases
+
+applies_to:
+  platforms: [A2-910B, A3-910C]
+  frameworks: [vllm-ascend]
+  categories: [interrupt, precision]
+
+status: active
+last_verified: 2026-09-03
+
+content:
+  flow:
+    - step: 1
+      name: 前置命中与首层路由
+      action: "命中场景：PD 分离或同机多 P / 多节点 PP（P/D 独立进程或节点、kv_producer/kv_consumer、--kv-transfer-config 含 mooncake/AscendStore、ascend direct/ROCE、ASCEND_ENABLE_USE_FABRIC_MEM=1、UCMConnector external kv connector；常叠加 DCP、MTP、GLM-5.x w8a8、DSV4-Flash 压缩模型）。命中后先按报错面选一路，不逐个翻 case：A python traceback/异常且栈指 vllm_ascend/*.py → python backend 层（steps 2-4，异常串细分型）；B native segfault（native 栈、无 python traceback）→ native transport 层（step 5）；C ZMQ/端口/握手类报错 → 连接层（step 6）；D 无异常报错——输出乱码 → 流同步/数据完整性层（step 7），运行静默停滞/计数冻结 → python backend 调度/KV 生命周期（step 8）。判别维度 = 报错面 + 涉及组件（vllm_ascend 代码 vs Mooncake 库）+ 触发路径（传输/连接/流同步/生命周期）。"
+      check: "grep -E 'vllm_ascend/|AssertionError|IndexError|RuntimeError|segmentation fault|_Hashtable|mooncake::|ZMQError|Address already in use|Receive request timeout|乱码|garbled' {{log_path}}"
+      when_to_use: Mooncake/Ascend KV-transfer 族故障一律先过本路由
+    - step: 2
+      name: python backend 层 · init/线程-config 型
+      action: "报错面 A 且异常串为 'AssertionError: Current vLLM config is not set'，仅 KV 传输发送线程（KVCacheStoreLayerSendingThread）抛、主 worker 正常。触发组合：MooncakeBackend lazy_init=True（DSV4 压缩模型 + ASCEND_ENABLE_USE_FABRIC_MEM=1 + enable_multithread_load=true）。根因：_setup_store() 被 lazy_init 推迟到首次 put()，运行在传输线程调无参 get_global_rank()，读不到主线程 process-global vllm config（None）→ store 永不初始化、每次 put() 失败。fix：升级 vllm-ascend 至含 fix PR 11459 的版本（__init__ 缓存 parallel_config、_setup_store() 显式传 get_global_rank(self.parallel_config)；目标 v0.23.0）。"
+      check: "grep -F 'Current vLLM config is not set' {{log_path}}；grep -E 'ASCEND_ENABLE_USE_FABRIC_MEM=1|MooncakeBackend' {{log_path}}"
+      when_to_use: A 命中 + 异常串含 Current vLLM config is not set + KV 传输线程
+      source_cases: [VLLM-ASC-11459]
+    - step: 3
+      name: python backend 层 · transfer-group/索引映射型
+      action: "报错面 A 且异常为 'IndexError: list index out of range'，栈 mooncake_connector.py:_get_kv_split_metadata → meta.remote_block_ids[group_idx]。日志出现 'Split KV cache manager group ... into N Mooncake transfer groups by KV spec'。根因：v0.26+ 新增 AscendSFAIndexerCacheSpec（kv_cache_interface.py），_build_kv_group2layeridx 按 spec 把 1 个 kv_cache_group 拆成 2 个 Mooncake transfer group，而 vllm 侧 remote_block_ids/local_block_ids 仍按 1 组索引 → group_idx=1 越界（GLM-5.2 w4a8 + DCP=8 + MTP，长 prompt 压测 ~30% 稳定复现，KV usage 0.01 非 OOM）。fix：升级至含 fix PR 13968（v0.26.0 backport）/ PR 13965（main）的版本。勿用'跳过 group 或共用 remote_block_ids[0]'绕过——SFA scale=8 与 MLA scale=1 block 布局不同，共用必然乱码。"
+      check: "grep 'Split KV cache manager group' {{log_path}}；grep -E '_get_kv_split_metadata|IndexError: list index out of range' {{log_path}}"
+      when_to_use: A 命中 + v0.26+ + SFA spec 拆分日志 + DCP/MTP
+      source_cases: [VLLM-ASC-13934]
+    - step: 4
+      name: python backend 层 · DCP/MTP 切分长度型
+      action: "报错面 A 且异常为 'RuntimeError: The expanded size of the tensor (256) must match the existing size (260)'，栈 block_table.py:272 compute_slot_mapping_draft（draft 索引起自 worker/pcp_utils.py generate_pcp_mtp_input）。触发：PD 分离 + DCP=8 + MTP(num_speculative_tokens=5) 长 prompt（约 26k tokens、200-220 blocks）+ 高并发；短 prompt 不触发。根因：np.array_split 按 cu_num_tokens 切分请求产生空段，空段请求漏加 MTP draft 追加 → req_indices_mtp(256) 与 positions_mtp(260) 长度不一致（差 4 = 单请求 draft 追加量 decode_threshold-2）；崩溃时 KV usage 6.7%、running=26 未超 max_num_seqs，非 OOM。fix：升级至含 fix PR 14025 的版本（切分空段 size==0 continue + pcp_utils→dcp_utils 重构）。"
+      check: "grep 'expanded size of the tensor' {{log_path}}；grep -E '256.*260|generate_pcp_mtp_input|slot_mapping_draft' {{log_path}}"
+      when_to_use: A 命中 + DCP/MTP + slot mapping 构造路径（长 prompt 高并发）
+      source_cases: [VLLM-ASC-13710]
+    - step: 5
+      name: native transport 层（Mooncake 库）
+      action: "报错面 B——进程/pod segmentation fault、无 python traceback；native 栈 std::_Hashtable<...>::erase → mooncake::AscendDirectTransport::processSliceList；崩溃前反复出现 transfer timeout to: / transfer failed and disconnect（ROCE 或网络抖动期）。前几请求正常、timeout 后随机崩，增大 TP 只降频不消除。根因：Mooncake v0.3.9 的 AscendDirectTransport 用进程共享 need_update_metadata_segs_（unordered_set）维护需更新 segment 元数据，传输 worker 池与 timeout/failure/disconnect 路径并发 find/erase/emplace 无锁 → 原生数据竞争。fix：升级 Mooncake（kvcache-ai/Mooncake 依赖库，vllm-ascend 侧无代码修复）至含 fix PR 1624 的版本；ASCEND_TRANSFER_TIMEOUT 只降频不减根因。判别要点：native 栈属 mooncake:: → 修依赖库版本，不动 vllm-ascend 代码。"
+      check: "grep -E 'Segfault encountered|mooncake::AscendDirectTransport::processSliceList|_Hashtable<.*>::erase|Transfer timeout to:|transfer failed and disconnect' {{log_path}}"
+      when_to_use: B 命中 + ascend direct/ROCE + K8s 跨节点 + timeout 后随机崩
+      source_cases: [VLLM-ASC-10532]
+    - step: 6
+      name: 连接层（ZMQ 握手 / kv_port 端口）
+      action: "报错面 C——ZMQ 握手/端口层，两形态：①启动失败型：1P2 同机 P0/P1 几乎同时拉起时 P1 报 ZMQError: Address already in use（ZMQ bind 无重试、端口抢占）→ 为 P 节点显式配置 kv_port（如 kv_port=60000）规避；②运行期超时型：多节点 PP + 各 P 节点配置不同 base kv_port（P0=31112、P1=31113）时，D 侧 mooncake_connector._get_remote_ranks_for_req 用 P0 base 端口推全部 PP rank 的 ZMQ handshake 端口 → P1 上 PP2+ 端口整体偏移 -1 连到无人监听的 31128，D 侧反复 Receive request timeout → KV load failure → P 节点 KV cache usage 涨到 100%、bench 卡死。fix：②升级含 fix PR 11342 的版本，或各 P 节点配相同 base kv_port 规避；多节点部署推荐 Ray 统一配置（vllm serve 只在 head 启动一次、全局 device_index 保证端口唯一）。判别：先核对超时端口 vs 对方节点实际监听范围，区分 config 冲突（同机多 P）vs connector 端口映射 bug（多节点 PP 异 base port）。"
+      check: "grep -E 'ZMQError|Address already in use' {{log_path}}；grep 'Receive request timeout' {{log_path}} | sort | uniq -c（核对超时端口是否落在对方监听范围外）"
+      when_to_use: C 命中 + PD 多 P 实例 / 多节点 PP
+      source_cases: [VLLM-ASC-8938, VLLM-ASC-11343]
+    - step: 7
+      name: 流同步/数据完整性层
+      action: "报错面 D1——无异常、推理输出乱码/garbled，指向 KV 数据在跨 engine/PP 路径读到陈旧或损坏值。两形态：①流同步缺失（已确认）：乱码呈 PP 时序特征——首请求 badcase、PP4 才现（P 侧改 DP-only 不乱码）、先发普通请求再发 badcase 不乱码、短 prompt 正常；kvcache 数值比对可见 V cache 在 PP stage 边界（layer 21/41/61）突变甚至正负翻转。根因：P 侧 attention/sfa_v1.py 的 k_pe 经 kv_ag_handle.wait() 后未 torch.npu.current_stream().synchronize()，D 侧 ascend_direct RDMA pull 读到未落盘/跨 engine 不可见的陈旧 k_pe。fix：升级含 fix PR 14269 的版本（wait() 后每层加 stream synchronize，仅 P 侧生效）。关闭 MTP/prefix cache/reasoning parser/图模式、kvcache 清零、slot mapping=-1 等消融均不消除——不是功能开关方向；②数据路径损坏（未确认）：A2 双机 GLM-5.2 w8a8 + UCMConnector external kv connector 乱码，root cause 未定位（无 plog、stale 关闭）→ workaround：export VLLM_ASCEND_ENABLE_FLASHCOMM1=1（切 flashcomm1 通信路径）或关闭 external kv connector；勿把 workaround 当根因结论（pending investigation）。"
+      check: "grep -E '乱码|garbled' {{log_path}}；kvcache 数值比对（PP stage 边界突变验证）；grep -E 'UCMConnector|VLLM_ASCEND_ENABLE_FLASHCOMM1' {{log_path}}"
+      when_to_use: D1 命中（无异常乱码）+ PD/KV-transfer 拓扑
+      source_cases: [VLLM-ASC-12957, VLLM-ASC-11169]
+    - step: 8
+      name: python backend 层 · 调度/KV-block 生命周期型（静默停滞）
+      action: "报错面 D2——静默停滞：无 ERROR/traceback/HCCL timeout、健康检查仍 200，但 decode 各 DP rank 的 vllm:num_requests_running 保持 >0 而 generation_tokens_total/request 完成数停止增长，router 把新请求逐渐全路由到唯一存活 rank；部分 rank 数小时自愈。复现配置：DSV4-Flash W8A8 + one-token MTP + Mooncake P/D 分离 + async-scheduling + FULL_DECODE_ONLY。根因：async scheduling 下 num_computed_tokens 计入已调度未处理 token → SWA/chunked-local KV block 被提前剪枝复用，而 in-flight attention step 仍引用 → 请求永远 running 不产 token。这是 vllm-ascend 调度/KV-block 生命周期记账问题，不是传输层缺陷。fix：升级含 fix PR 13518 的版本（按 processed token 剪枝 + 阻止 in-flight 期间复用 + 退出路径结算计数）。数小时后的 MQ RuntimeError('cancelled')/级联 EngineDeadError 是停滞后的 worker-exit 次生现象，非根因。"
+      check: "无 grep 签名——用 per-engine 指标判别：vllm:num_requests_running > 0 同时 generation/completed 计数冻结（{{metrics_path}}）"
+      when_to_use: D2 命中（静默停滞、计数冻结、无异常栈）
+      source_cases: [VLLM-ASC-13964]
+    - step: 9
+      name: 收尾验证与注意
+      action: "各层命中后的共同收尾：fix 均为升级/配置验证型——python backend 层与连接层映射型升级 vllm-ascend（含对应 fix PR），native transport 层升级 Mooncake 依赖库，连接层冲突型改 kv_port 配置；全部 requires-restart，升级后按原故障场景复测。升级前记录 vllm-ascend tag 与 Mooncake 版本（判别是否含 fix PR 1624），Mooncake 无标准版本号输出时查依赖声明/锁文件。同一部署可在不同版本先后暴露不同层的故障（VLLM-ASC-13934 与 VLLM-ASC-13710 同为 v0.26 DCP+MTP 崩溃路径，报错串不同，需按异常串再分型）；root cause 未确认的形态（VLLM-ASC-11169）只走 workaround + 上报官方，不当作已定论层引用。"
+      check: "核对升级目标 release 是否含对应 fix PR；复测原故障场景（崩溃计数 / 乱码 / 停滞计数）归零"
+      when_to_use: 任意层命中后收尾
+  verified_by_testing: false

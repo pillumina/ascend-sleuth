@@ -9,12 +9,12 @@
 id: EV-2026-001                    # 稳定 ID（EV-年-序号）
 layer: L2                          # L1 知识内容 | L2 流程与 skill | L3 工作流编排
 title: triage 分支 vllm-ascend 启动参数族执行错率 0.6 → 修订该分支
-status: candidate                  # EV 卡 = agent 决策档案（不含 git 合入态），词表见 pipeline §7：
-                                   # candidate → in_experiment → 终态（agent 判断）：
+status: in_experiment             # EV 卡 = agent 决策档案（不含 git 合入态/待办态），词表见 pipeline §7：
+                                   #   产卡即执行（方案成形才产卡，无 candidate 待办态）
+                                   #   in_experiment → 终态（agent 判断）：
                                    #   validated 采纳（eval solid，改动保留进流程层攒批）
                                    #   rejected  不采纳（试了不行/评估不成立，诚实记录）
                                    #   superseded 换方向（被新 proposal 替代）
-                                   # （蓝图态：stale，候选积压真实发生后启用）
 authorization: review              # auto | review | dual（§6.3 分级；candidate 时按风险预判）
 dimension: evolvability            # architecture | evolvability | maintainability | observability | process
 supersedes: []                     # 本卡替代的旧卡 id 列表（run §5）

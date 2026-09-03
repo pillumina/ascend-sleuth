@@ -57,16 +57,18 @@ disable-model-invocation: true
 3. **agent 自行验证执行**：能即时判定的（检索/路由/脚本/补 case）直接跑 golden 前后
    对照或 S2 replay（replay_golden.py / s2_replay.py）；真实反馈类完成实现 + S2 佐证、
    标"待真实确认"（现场有效性进观察窗，事后结算）；
-4. **agent 判断**（EV 卡 = agent 决策档案，不含 git 合入态）：eval solid → validated
-   （采纳）；eval 不成立 → rejected（不采纳，留结论）；发现更好方向 → superseded（新卡
-   替代）。执行/验证完成而 status 停 candidate = 卡不完整。
+4. **agent 判断**（EV 卡 = agent 决策档案，不含 git 合入态/待办态）：产卡即执行（方案成形
+   才产卡，状态 in_experiment）；eval solid → validated（采纳）；eval 不成立 → rejected
+   （不采纳，留结论）；发现更好方向 → superseded（新卡替代）。执行/验证完成而卡仍停
+   in_experiment = 卡不完整。
 
 **生命周期完整性（卡 = proposal→action→eval→decision 的 agent 决策档案）**：每步
 decisions 记 type（proposal/action/eval/decision）；**status 随执行推进不靠自觉**——
-提案 → candidate、执行/验证中 → in_experiment、agent 判断采纳 → validated / 不采纳 →
-rejected / 换方向 → superseded。执行/验证完成而 status 停 candidate = 卡不完整
+方案成形 → 产卡（in_experiment，开始执行）、agent 判断采纳 → validated / 不采纳 →
+rejected / 换方向 → superseded。执行/验证完成而卡停 in_experiment = 卡不完整
 （verify_proposals 报）。终态卡（validated/rejected/superseded）必须有 agent 判断的
-decision 记录 + validated 补 actual_cost。仅信号无方案不产卡（信号记报告，方案成形才产）。
+decision 记录 + validated 补 actual_cost。仅信号无方案不产卡（信号记报告/任务状态，
+方案成形才产）。
 
 ## 四、skill 自我演进（L2：被数据信号触发，不是用户目标）
 

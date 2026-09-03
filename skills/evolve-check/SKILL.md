@@ -71,24 +71,25 @@ description: >
      （`scripts/replay_golden.py` / `scripts/s2_replay.py`），数据通过才算 eval solid；
    - 不能即时判定的（真实反馈类 content/fix）：完成实现 + S2 佐证，如实标注
      "已实现待真实确认"（现场有效性进观察窗，事后结算）；
-4. **agent 判断（EV 卡 = agent 决策档案，不含 git 合入态）**：
+4. **agent 判断（EV 卡 = agent 决策档案，不含 git 合入态/待办态）**：
    - eval solid → `validated`（采纳：改动保留，进流程层攒批/PR 供人审）；
    - eval 不成立 / 实验失败 → `rejected`（不采纳：留结论，改动不保留）；
    - 发现更好方向 → 新卡 supersede 本卡（`superseded`）；
-   - **执行或验证完成而 status 停在 candidate = 卡不完整**（见第 3.5 步）。
+   - **产卡即执行（无 candidate 待办态）**——方案成形才产卡，产卡状态 in_experiment
+     开始执行；执行或验证完成而卡仍停 in_experiment = 卡不完整（见第 3.5 步）。
 
 **第 3.5 步：生命周期完整性（卡 = proposal→action→eval→decision 的 agent 决策档案）**：
 
 - **每步 decisions 记 type**：产卡记 `{type: proposal}`、执行记 `{type: action, conclusion: <做了什么/commit/产物>}`、
   验证记 `{type: eval, conclusion: <验证数据/通过与否>}`、最终判断记 `{type: decision, conclusion: <采纳/不采纳/换方向+依据>}`——
   卡能看出生命周期走到哪、凭什么判断；
-- **status 随执行推进，不靠自觉**：提案 → candidate；执行/验证中 → in_experiment；
+- **status 随执行推进，不靠自觉**：方案成形 → 产卡（in_experiment，开始 action + eval）；
   agent 判断采纳 → validated / 不采纳 → rejected / 换方向 → superseded。**执行或验证完成
-  而 status 停在 candidate = 卡不完整**（verify_proposals 会报，见下）；
+  而卡仍停 in_experiment = 卡不完整**（verify_proposals 会报，见下）；
 - **终态卡必闭合**：validated/rejected/superseded 必须有 agent 判断的 decision 记录；
   validated 后补 `actual_cost`（成本审计）——缺了 verify_proposals 报审计缺口；
-- 仅"观察到的信号"（无具体 action 方案）**不产卡**——信号记 session 报告，方案成形才产
-  candidate（防想法清单污染提案账本）。
+- 仅"观察到的信号"（数据前提未满足 / 无准备执行的具体方案）**不产卡**——信号记 session
+  报告/任务状态，条件到（方案成形/数据齐）才产卡执行（防想法清单污染提案账本）。
 
 **第 4 步：出收尾说明**（并入流程报告，不单独打扰用户）：
 
