@@ -64,7 +64,7 @@ orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对
 
 ## 4. 统一执行记录（机制 C）：每次 diagnose / skill 调用都留数据
 
-现状：**只有 diagnose 写 trace**；to-postmortem / to-reference / issue-ingest / knowledge-groom / 自演进各 agent 动作不落执行数据——feedback loop 的数据源只有诊断一侧。扩展为**统一 skill 执行日志**：
+现状：**diagnose 写 trace**；统一 skill 执行日志已落地第一段——schema 定稿（`metrics/skill-exec-log.yaml`，append-only）+ 脚本（`scripts/log_skill_exec.py` 写 / `scripts/verify_exec_log.py` 校验 seq 唯一与字段）+ 内容 skill（issue-ingest / to-postmortem / to-reference）收尾 evolve-check 前先落一条记录；evolve-check 第 1 步读执行记录替代 agent 记忆。**尚未接入**：diagnose（仍只走 trace，不重复落）、knowledge-groom、长期任务各 agent 动作。完整蓝图如下：
 
 ```
 每次 skill 调用写一条执行记录（traces/ 或 metrics/skill-exec-log.yaml）：
@@ -153,7 +153,7 @@ orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对
 | 步骤 | 内容 | 入口闸门 |
 |---|---|---|
 | 1 | S2 校准集建立 + selection/test 划分（先 20 条验证，再扩 200，对应 §11 Phase C2） | issue 池可批量取（已具备） |
-| 2 | 统一执行记录（先 diagnose + issue-ingest，再扩展到全部 skill，对应 §11 Phase A–B） | 记录 schema 定稿 |
+| 2 | 统一执行记录（先 diagnose + issue-ingest，再扩展到全部 skill，对应 §11 Phase A–B） | 已落地（schema+脚本+3 内容 skill 收尾）；diagnose/groom 待接 |
 | 3 | 长期任务层试点一轮（手动触发，任务状态机 + 轮间调度跑通，对应 §11 Phase D） | 步骤 1–2 有真实数据 |
 | 4 | supersede 字段 + 回滚语义落地（schema 已含字段，出现首个替代场景时激活，对应 §11 Phase D） | 出现首个"新 idea 替代旧实现"场景 |
 | 5 | 可视化（DSH 面板扩展或 HTML 报告，对应 §11 Phase E 后） | 任务层跑通 ≥1 轮 |
