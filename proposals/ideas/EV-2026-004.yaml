@@ -1,0 +1,50 @@
+# ============================================================
+# Idea 卡：S2 replay 评测口径重构——完整诊断能力评测 + 分层归因 + 工具边界约束
+# 来源：2026-W36 全自动轮 S2 replay 复盘（#13446 误标 evidence_gap 暴露评测盲区）
+# ============================================================
+
+id: EV-2026-004
+layer: L3                          # 评测机制/编排层（改 s2_replay 口径 + result schema + diagnose trace）
+title: "S2 replay 从'阉割版检索评测'改为'完整诊断能力评测'——分层归因（检索/推理/工具）+ 缺口三态化 + replay 工具边界"
+status: candidate
+authorization: dual                # 改评测口径 = 改 validated/验证门判定语义（结构级，双签）
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-02
+source_signals:
+  - signal: eval_design_flaw        # 全自动轮 S2 replay 复盘发现评测盲区（#13446）
+    evidence: "#13446 replay root_cause 已推理闭合（config 类错配），但标 evidence_gap='缺 config.json 无法确证'——实际 agent 未走 diagnose §5 工具查证（gh api 可拉该 config），缺口被误标为客观缺失"
+    trajectory:
+      - "eval-reports/0002-vllm-s2-replay.md #13446（rc_match=False 但方向一致）"
+      - ".s2-replay/13446.result.yaml（evidence_gap 记'缺 config.json'）"
+      - "diagnose SKILL §5 深度排查（已定义 gh api/clone/上游检查，但 replay 未触发）"
+hypothesis: >-
+  现 S2 设计"单发无追问"把 agent 工具能力也禁了，评测的是阉割版诊断（纯文本推理 +
+  知识库检索），低估系统真实能力、且把"工具未用足/推理未收尾"误标为"数据缺失"
+  （#13446）。改为：S2 验证完整诊断流程（agent 推理 + 知识库 + 工具），结果**分层
+  归因**（路由对错 / Tier2 命中=检索贡献 / 根因判断=推理贡献 / 工具查证=工具贡献），
+  每层独立记录——总分测真实能力，分解项告诉'该改哪'（补 case vs 改 skill vs 接工具）
+predicted_effect:
+  metric: S2 replay 归因可操作性（错例能否定位到具体层）
+  from: "现状 miss 只标'未命中/缺数据'，无法区分检索/推理/工具贡献"
+  to: "每条 replay 记录含分层字段，miss 可归因到层 → 验证门能指导补 case 或改 skill"
+validation:
+  method: issue_replay               # 用 #13446 复测：允许工具查证后应能 gh api 拉 config.json 闭合（不再是 evidence_gap）
+  baseline: "#13446 replay 标'缺 config.json 无法确证'（rc_match=False）"
+  success_criteria: 同 issue 新口径 replay：agent 触发工具查证（trace 含 tool call）、evidence_gap 归为 C 类（工具未用足）或闭合、root_cause 判定可达 resolution
+  rollback: 评测口径改动集中于 s2_replay.py + result schema，git revert 可回退；历史评分报告保留旧口径标注
+gate:
+  condition: "S2 replay 已跑 ≥1 轮且出现'工具未用足被误标为数据缺失'的真实案例（#13446 已满足）"
+risk: high                            # 改评测口径影响 validated/验证门语义 + diagnose trace schema（结构级）
+principle_refs: [八, 十, 一]          # 可观测（trace 含 agent 完整轨迹）/ 诚实退化（缺口三态如实分）/ 验证先于交付（S2 测真能力）
+estimated_cost:
+  tokens: 8000                       # s2_replay 口径 + result schema + diagnose trace tool-call 记录
+actual_cost: null
+decisions:
+  - who: agent 讨论（与用户，2026-W36 round2 复盘）
+    when: "2026-09-02"
+    conclusion: "确认方向：S2 转完整诊断能力评测（agent+知识+工具），分层归因 + 缺口三态化（A 客观缺失/B 推理未收尾/C 工具未用足）；S3 golden 继续守检索回归（分工清晰不丢覆盖）；replay 工具边界=允许查公开模型/源码/文档、禁止查该 issue 自身讨论/结论/fix PR（防泄题）。"
+  - who: agent（讨论定稿转卡）
+    when: "2026-09-02"
+    conclusion: "设计要点（执行参考）：1) s2_replay 工具边界写死进 prepare 提示——允许 gh api 拉 config.json/clone 源码 grep/查官方文档，禁止查该 issue 自身讨论/评论/结论/fix PR；'无追问'只约束不向用户要信息，不约束 agent 用自己的工具查公开信息。2) result.yaml schema 扩展分层归因：routing_ok/tier2_hit/root_cause_ok/tool_used/evidence_gap_class（A 客观缺失|B 推理未收尾|C 工具未用足）。3) diagnose trace 扩展：agent 事件记 tool_calls（工具/返回摘要/如何用）——评估 #13446 可复核 agent 是否试过 gh api。4) S2 vs S3 分工：S2=完整诊断能力评测，S3 golden=检索回归守卫（fixture 期望=命中 case），S2 转向不丢检索覆盖。5) 历史兼容：旧评分报告保留旧口径标注。"
