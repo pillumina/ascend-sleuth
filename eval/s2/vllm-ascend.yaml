@@ -54,8 +54,8 @@ calibration:
       \ that never landed). If it is not available in the paired vLLM, the condition\
       \ should be removed or made defensive until the attribute actually exists."
   expected:
-    namespace: inference/vllm-ascend    # 人工预标：路由正确归属（S2 路由 miss 归因基准）
-    category: interrupt                  # 人工预标：triage 分支判据（crash → interrupt）
+    namespace: inference/vllm-ascend
+    category: interrupt
     resolution: This issue has been fixed by https://github.com/vllm-project/vllm-ascend/pull/14504
     fix_commit: 'PR #14504'
     confidence: high
@@ -82,8 +82,8 @@ calibration:
       \ `config.swiglu_limit` to the routed `FusedMoE`, matching the shared expert\
       \ and the DeepSeek V4 model contract.\n"
   expected:
-    namespace: inference/vllm-ascend    # 人工预标：路由正确归属
-    category: precision                  # swiglu_limit 精度漂移（EV-2026-002 已判 precision）
+    namespace: inference/vllm-ascend
+    category: precision
     resolution: '[BugFix][v0.25.1][Model] Propagate DeepSeek V4 routed SwiGLU limit'
     fix_commit: 'PR #14364'
     confidence: high
@@ -120,8 +120,8 @@ calibration:
       \ exiting busy loop\n(EngineCore_DP0 pid=36166) [INFO] 08-11 09:17:07.187 [PID:36166]\
       \ core.py:1191 [shutdown] EngineCore: exiting busy loop"
   expected:
-    namespace: inference/vllm-ascend    # 人工预标：路由正确归属
-    category: interrupt                  # 启动报错（PicklingError）→ interrupt
+    namespace: inference/vllm-ascend
+    category: interrupt
     resolution: 300I DUO 并不支持此模型
     fix_commit: ''
     confidence: medium
@@ -143,8 +143,8 @@ calibration:
       \ > 0\n潜在表现包括：\n- 出现超出正常随机性的异常采样结果，推理乱码；\n- eager 模式高并发场景下精度下降；\n- 相同输入和种子下的可复现性受到影响。\n\
       \n纯贪心采样：temperature = 0 不会进入该 random_sample() 路径。"
   expected:
-    namespace: inference/vllm-ascend    # 人工预标：路由正确归属
-    category: precision                  # 随机采样正确性问题 → precision
+    namespace: inference/vllm-ascend
+    category: precision
     resolution: （待补：维护者结论）
     fix_commit: ''
     confidence: pending
@@ -296,8 +296,8 @@ calibration:
 
       '
   expected:
-    namespace: inference/vllm-ascend    # 人工预标：路由正确归属
-    category: interrupt                  # hangs（fullgraph deadlock）→ interrupt
+    namespace: inference/vllm-ascend
+    category: interrupt
     resolution: '[BugFix][MRV2] Unify update_stream across main and draft to fix fullgraph
       deadlock'
     fix_commit: 'PR #13600'
@@ -348,8 +348,8 @@ calibration:
       \ (APIServer pid=205) [ERROR] 2026-08-04-10:23:54 (PID:205, Device:-1, RankID:-1)\
       \ ERR99999 UNKNOWN applicaiton exception\n后来参考0.18版本配置将Qwen3VLForSequenceClassification改成Qwen3ForSequenceClassification后启动正常"
   expected:
-    namespace: inference/vllm-ascend    # 人工预标：路由正确归属
-    category: interrupt                  # 启动报错（配置参数启动失败）→ interrupt
+    namespace: inference/vllm-ascend
+    category: interrupt
     resolution: '[Doc][BugFix] Fix Qwen3-Reranker deploy guide'
     fix_commit: 'PR #13510'
     confidence: high
@@ -358,258 +358,160 @@ calibration:
   split: selection
   title: '[Bug]: model_runner_v1 preprocess_mamba 重复传参致 TypeError（v0.20.2 回归）'
   input:
-    symptoms: |
-      ### Your current environment
-
-      main branch
-
-      ### 🐛 Describe the bug
-
-      ```python
-                      if self.cache_config.mamba_cache_mode == "align":
-                          # preprocess_mamba reads req_state.num_computed_tokens (CPU)
-                          # to decide copy operations, so we must apply deferred
-                          # corrections before it runs.
-                          if deferred_state_corrections_fn:
-                              deferred_state_corrections_fn()
-                              deferred_state_corrections_fn = None
-                          if vllm_version_is("0.20.2"):
-                              mamba_bufs = self._get_mamba_copy_bufs()
-                              preprocess_bufs = mamba_bufs
-                          else:
-                              mamba_bufs = self._get_mamba_bufs()
-                              preprocess_bufs = mamba_bufs.preprocess
-                          mamba_utils.preprocess_mamba(
-                              scheduler_output,
-                              self.kv_cache_config,
-                              self.cache_config,
-                              self.mamba_state_idx,
-                              self.input_batch,
-                              self.requests,
-                              self.compilation_config.static_forward_context,
-                              self.model.get_mamba_state_copy_func(),
-                              self._get_mamba_copy_bufs(),
-                              preprocess_bufs,
-                          )
-      ```
-      in model_runner_v1.py, the last 2 args of mamba_utils.preprocess_mamba is duplicated, `self._get_mamba_copy_bufs(),` should be  removed
-
+    symptoms: "### Your current environment\n\nmain branch\n\n### \U0001F41B Describe\
+      \ the bug\n\n```python\n                if self.cache_config.mamba_cache_mode\
+      \ == \"align\":\n                    # preprocess_mamba reads req_state.num_computed_tokens\
+      \ (CPU)\n                    # to decide copy operations, so we must apply deferred\n\
+      \                    # corrections before it runs.\n                    if deferred_state_corrections_fn:\n\
+      \                        deferred_state_corrections_fn()\n                 \
+      \       deferred_state_corrections_fn = None\n                    if vllm_version_is(\"\
+      0.20.2\"):\n                        mamba_bufs = self._get_mamba_copy_bufs()\n\
+      \                        preprocess_bufs = mamba_bufs\n                    else:\n\
+      \                        mamba_bufs = self._get_mamba_bufs()\n             \
+      \           preprocess_bufs = mamba_bufs.preprocess\n                    mamba_utils.preprocess_mamba(\n\
+      \                        scheduler_output,\n                        self.kv_cache_config,\n\
+      \                        self.cache_config,\n                        self.mamba_state_idx,\n\
+      \                        self.input_batch,\n                        self.requests,\n\
+      \                        self.compilation_config.static_forward_context,\n \
+      \                       self.model.get_mamba_state_copy_func(),\n          \
+      \              self._get_mamba_copy_bufs(),\n                        preprocess_bufs,\n\
+      \                    )\n```\nin model_runner_v1.py, the last 2 args of mamba_utils.preprocess_mamba\
+      \ is duplicated, `self._get_mamba_copy_bufs(),` should be  removed\n"
   expected:
     namespace: inference/vllm-ascend
     category: interrupt
-    resolution: 'preprocess_mamba 被多传 copy_bufs 参数（self._get_mamba_copy_bufs() 重复）致签名不匹配——PR #10188 移除多余参数修复'
+    resolution: 'preprocess_mamba 被多传 copy_bufs 参数（self._get_mamba_copy_bufs() 重复）致签名不匹配——PR
+      #10188 移除多余参数修复'
     fix_commit: 'PR #10188'
     confidence: high
   status: active
-
 - issue: 10998
   split: selection
-  title: '[Bug]: Qwen3.6-27B layerwise PD disagg + kv pool failed to get key（hybrid KV）'
+  title: '[Bug]: Qwen3.6-27B layerwise PD disagg + kv pool failed to get key（hybrid
+    KV）'
   input:
-    symptoms: |
-      ### Your current environment
-
-      image: v0.21.0rc1.tar.gz + PR 10565
-      deploy mode: pd disagg, layerwise connector + mooncake store
-      model: qwen3.6-27b
-      p script:
-      ```
-      unset ftp_proxy
-      unset https_proxy
-      unset http_proxy
-      # this obtained through ifconfig
-      # nic_name is the network interface name corresponding to local_ip of the current node
-      nic_name="eth0"
-      local_ip="xx.xx.xx.xx"
-
-      # [Optional] jemalloc
-      # jemalloc is for better performance, if `libjemalloc.so` is installed on your machine, you can turn it on.
-      # export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libjemalloc.so.2:$LD_PRELOAD
-      export MODEL_PATH=/opt/models/qwen27b
-      export VLLM_ENGINE_READY_TIMEOUT_S=30000
-      export VLLM_NIXL_ABORT_REQUEST_TIMEOUT=30000
-      export IP_ADDRESS=$local_ip
-      export NETWORK_CARD_NAME=$nic_name
-      export HCCL_IF_IP=$IP_ADDRESS
-      export GLOO_SOCKET_IFNAME=$NETWORK_CARD_NAME
-      export TP_SOCKET_IFNAME=$NETWORK_CARD_NAME
-      export HCCL_SOCKET_IFNAME=$NETWORK_CARD_NAME
-      export VLLM_USE_V1=1
-      export HCCL_BUFFSIZE=1536
-      export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages:$LD_LIBRARY_PATH
-      export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
-      export VLLM_TORCH_PROFILER_WITH_STACK=0
-      export TASK_QUEUE_ENABLE=1
-      export HCCL_OP_EXPANSION_MODE="AIV"
-
-      export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-      vllm serve ${MODEL_PATH} \
-        --host ${IP_ADDRESS} \
-        --port 30060 \
-        --data-parallel-address ${IP_ADDRESS} \
-        --max-num-seqs 64 \
-        --data-parallel-rpc-port 6884 \
-        --tensor-parallel-size 4 \
-        --seed 1024 \
-        --distributed-executor-backend mp \
-        --served-model-name qwen3.6 \
-        --max-model-len 163840 \
-        --max-num-batched-tokens 1024 \
-        --trust-remote-code \
-        --enable-prefix-caching \
-        --no-disable-hybrid-kv-cache-manager \
-        --speculative_config '{"method": "qwen3_5_mtp", "num_speculative_tokens": 3, "enforce_eager": true}' \
-        --additional-config '{"recompute_scheduler_enable": true, "enable_cpu_binding": true}' \
-        --gpu-memory-utilization 0.9 \
-        --enforce-eager \
-        --kv-transfer-config \
-          '{
-          "kv_connector": "MultiConnector",
-          "kv_role": "kv_producer",
-          "kv_load_failure_policy": "fail",
-          "kv_connector_extra_config": {
-              "connectors": [
-                  {
-                      "kv_connector": "MooncakeLayerwiseConnector",
-                      "kv_role": "kv_producer",
-                      "kv_port": "20001",
-                      "kv_connector_extra_config": {
-                          "prefill": {
-                              "dp_size": 1,
-                              "tp_size": 4
-                          },
-                          "decode": {
-                              "dp_size": 1,
-                              "tp_size": 4
-                          }
-                      }
-                  },
-                  {
-                      "kv_connector": "AscendStoreConnector",
-                      "kv_role": "kv_producer",
-                      "kv_connector_extra_config": {
-                          "lookup_rpc_port":"0",
-                          "backend": "mooncake"
-                      }
-                  }  
-              ]
-          }
-          }'
-      ```
-      d script:
-      ```
-      unset ftp_proxy
-      unset https_proxy
-      unset http_proxy
-      #!/bin/bash
-      # this obtained through ifconfig
-      # nic_name is the network interface name corresponding to local_ip of the current node
-      nic_name="eth0"
-      local_ip="xx.xx.xx.xx"
-      export MODEL_PATH=/opt/models/qwen27b
-
-      export VLLM_ENGINE_READY_TIMEOUT_S=30000
-      export VLLM_NIXL_ABORT_REQUEST_TIMEOUT=30000
-      export IP_ADDRESS=$local_ip
-      export NETWORK_CARD_NAME=$nic_name
-      export HCCL_IF_IP=$IP_ADDRESS
-      export GLOO_SOCKET_IFNAME=$NETWORK_CARD_NAME
-      export TP_SOCKET_IFNAME=$NETWORK_CARD_NAME
-      export HCCL_SOCKET_IFNAME=$NETWORK_CARD_NAME
-
-      export VLLM_USE_V1=1
-      export HCCL_BUFFSIZE=1536
-      export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages:$LD_LIBRARY_PATH
-      export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
-      export VLLM_TORCH_PROFILER_WITH_STACK=0
-      export TASK_QUEUE_ENABLE=1
-
-      export HCCL_OP_EXPANSION_MODE="AIV"
-      export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
-      vllm serve ${MODEL_PATH} \
-        --host ${IP_ADDRESS} \
-        --port 30050 \
-        --no-enable-prefix-caching \
-        --max-num_seqs 32 \
-        --data-parallel-rpc-port 6884 \
-        --tensor-parallel-size 4 \
-        --seed 1024 \
-        --distributed-executor-backend mp \
-        --served-model-name qwen3.6 \
-        --max-model-len 163840 \
-        --max-num-batched-tokens 128 \
-        --trust-remote-code \
-        --no-disable-hybrid-kv-cache-manager \
-        --speculative_config '{"method": "qwen3_5_mtp", "num_speculative_tokens": 3, "enforce_eager": true}' \
-        --additional-config '{"recompute_scheduler_enable": true, "enable_cpu_binding": true}' \
-        --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' \
-        --gpu-memory-utilization 0.96 \
-        --kv-transfer-config \
-          '{
-          "kv_connector": "MultiConnector",
-          "kv_role": "kv_consumer",
-          "kv_load_failure_policy": "fail",
-          "kv_connector_extra_config": {
-              "connectors": [
-              {
-                      "kv_connector": "MooncakeLayerwiseConnector",
-                      "kv_role": "kv_consumer",
-                      "kv_port": "20002",
-                      "kv_connector_extra_config": {
-                          "prefill": {
-                              "dp_size": 1,
-                              "tp_size": 4
-                          },
-                          "decode": {
-                              "dp_size": 1,
-                              "tp_size": 4
-                          }
-                      }
-                  },
-                  {
-                      "kv_connector": "AscendStoreConnector",
-                      "kv_role": "kv_consumer",
-                      "kv_connector_extra_config": {
-                          "lookup_rpc_port":"0",
-                          "backend": "mooncake"
-                      }
-                  }
-              ]
-          }
-          }'
-      ```
-
-      ### 🐛 Describe the bug
-
-      The service occasionally throws errors during extended stability testing with long sequences. Kv pool failed to get key, and only for keys in group 1 2 3. 
-      ```
-      (Worker_TP1 pid=53994) ERROR 06-24 16:43:17 [mooncake_backend.py:240] [vllm-ascend] [distributed] - Failed to get 3 keys out of 6. error_codes=[-704]. Check key existence and memory state.
-      (Worker_TP1 pid=53994) ERROR 06-24 16:43:17 [mooncake_backend.py:246] [vllm-ascend] [distributed] - Failed to get key details. keys=['Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:0@cache_role:kv@cache_family:default@1027a6b8b93930994b5ca260be2e2e67fd996e9a21f4a033ff95ae534772fd31', 'Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:0@cache_role:kv@cache_family:default@c0f522af2dd228c65e07f3245de02bb5c6325093281eceab8ea0a8be8dfab48b', 'Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:1@cache_role:kv@cache_family:default@c0f522af2dd228c65e07f3245de02bb5c6325093281eceab8ea0a8be8dfab48b', 'Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:2@cache_role:kv@cache_family:default@c0f522af2dd228c65e07f3245de02bb5c6325093281eceab8ea0a8be8dfab48b', 'Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:3@cache_role:kv@cache_family:default@c0f522af2dd228c65e07f3245de02bb5c6325093281eceab8ea0a8be8dfab48b', 'Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:0@cache_role:kv@cache_family:default@2ad3c347c67f31e26bd09baeb9ad2ab0cbd3f8abfb96f2ecdb9388b6f4b449cc'], result=[26738688, 26738688, -704, -704, -704, 26738688]
-      ```
-      plog
-      ```
-      [ERROR] HCCL(35177,):2026-06-23-16:27:56.471.485 [one_sided_service_adapt.cc:484] [35177][TaskExecStage][InvalidArgument] The parameter memHandle[0xfffe63fe5ee0] is invalid.
-      [ERROR] HCCL(35177,):2026-06-23-16:27:56.471.499 [one_sided_service_adapt.cc:526] [35177][HcclDeregisterGlobalMem]call trace: hcclRet -> 1
-      [ERROR] GE(35177,):2026-06-23-16:27:56.471.529 [channel_msg_handler.cc:283]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Call hccl api failed, ret: 0x1
-      [ERROR] GE(35177,):2026-06-23-16:27:56.471.544 [adxl_inner_engine.cc:425]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed to deregister mem
-      [ERROR] GE(35177,):2026-06-23-16:27:56.471.558 [adxl_engine_impl.cc:93]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed to deregister mem
-      [ERROR] GE(35177,):2026-06-23-16:27:56.471.569 [adxl_engine_impl.cc:214]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed to deregister mem, mem_handle:0xfffe63fe5ee0
-      [ERROR] HCCL(35177,):2026-06-23-16:27:56.474.280 [one_sided_service_adapt.cc:484] [35177][TaskExecStage][InvalidArgument] The parameter memHandle[0xfffe63fe5fc0] is invalid.
-      [ERROR] HCCL(35177,):2026-06-23-16:27:56.474.286 [one_sided_service_adapt.cc:526] [35177][HcclDeregisterGlobalMem]call trace: hcclRet -> 1
-      [ERROR] GE(35177,):2026-06-23-16:27:56.474.299 [channel_msg_handler.cc:283]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Call hccl api failed, ret: 0x1
-      [ERROR] GE(35177,):2026-06-23-16:27:56.474.311 [adxl_inner_engine.cc:425]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed to deregister mem
-      [ERROR] GE(35177,):2026-06-23-16:27:56.474.323 [adxl_engine_impl.cc:93]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed to deregister mem
-      [ERROR] GE(35177,):2026-06-23-16:27:56.474.333 [adxl_engine_impl.cc:214]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed to deregister mem, mem_handle:0xfffe63fe5fc0
-      [ERROR] DRV(35177,):2026-06-23-16:27:57.196.361 [drv_share_log.c:238][ascend][curpid:35177,35177][drv][devmm][share_log_read_in_single_module]Set free error. (ref_lock=1; ref_free=0; ref_count=2) Oper address failed. (va=0x12e4c0000000; ref_flag=0x108; ref_lock=0; ref_free:0; ref_count=2; convert=0; async=0)
-      [ERROR] DRV(35177,):2026-06-23-16:27:57.196.375 [devmm_virt_interface.c:340][ascend][curpid:35177,35177][drv][devmm][devmm_virt_heap_free_pages]<errno:16, 13> Devmm_ioctl_free failed. (ptr=0x12e4c0000000; heap_type=4025417729)
-      [ERROR] DRV(35177,):2026-06-23-16:27:57.196.380 [devmm_virt_base_heap.c:311][ascend][curpid:35177,35177][drv][devmm][devmm_free_to_base_heap]<errno:16, 13> Free ptr error. (ptr=0x12e4c0000000)
-      [ERROR] RUNTIME(35177,):2026-06-23-16:27:57.196.390 [npu_driver_mem.cc:772]35177 HostMemFree:[drv api] halMemFree failed: drvRetCode=17, host addr=0x12e4c0000000!
-      [ERROR] RUNTIME(35177,):2026-06-23-16:27:57.196.436 [api_error.cc:1437]35177 HostFree:Free host memory failed, host addr=0x12e4c0000000.
-      [ERROR] RUNTIME(35177,):2026-06-23-16:27:57.196.453 [api_c_memory.cc:157]35177 rtFreeHost:ErrCode=507899, desc=[driver error:internal error], InnerCode=0x7020022
-      [ERROR] RUNTIME(35177,):2026-06-23-16:27:57.196.459 [error_message_manage.cc:65]35177 FuncErrorReason:rtFreeHost execution failed, reason=driver error:internal error
-      [ERROR] ASCENDCL(35177,):2026-06-23-16:27:57.196.726 [memory.cpp:550]35177 aclrtFreeHostImpl:free host memory failed, runtime result = 507899
-      ```
-
+    symptoms: "### Your current environment\n\nimage: v0.21.0rc1.tar.gz + PR 10565\n\
+      deploy mode: pd disagg, layerwise connector + mooncake store\nmodel: qwen3.6-27b\n\
+      p script:\n```\nunset ftp_proxy\nunset https_proxy\nunset http_proxy\n# this\
+      \ obtained through ifconfig\n# nic_name is the network interface name corresponding\
+      \ to local_ip of the current node\nnic_name=\"eth0\"\nlocal_ip=\"xx.xx.xx.xx\"\
+      \n\n# [Optional] jemalloc\n# jemalloc is for better performance, if `libjemalloc.so`\
+      \ is installed on your machine, you can turn it on.\n# export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libjemalloc.so.2:$LD_PRELOAD\n\
+      export MODEL_PATH=/opt/models/qwen27b\nexport VLLM_ENGINE_READY_TIMEOUT_S=30000\n\
+      export VLLM_NIXL_ABORT_REQUEST_TIMEOUT=30000\nexport IP_ADDRESS=$local_ip\n\
+      export NETWORK_CARD_NAME=$nic_name\nexport HCCL_IF_IP=$IP_ADDRESS\nexport GLOO_SOCKET_IFNAME=$NETWORK_CARD_NAME\n\
+      export TP_SOCKET_IFNAME=$NETWORK_CARD_NAME\nexport HCCL_SOCKET_IFNAME=$NETWORK_CARD_NAME\n\
+      export VLLM_USE_V1=1\nexport HCCL_BUFFSIZE=1536\nexport LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages:$LD_LIBRARY_PATH\n\
+      export PYTORCH_NPU_ALLOC_CONF=\"expandable_segments:True\"\nexport VLLM_TORCH_PROFILER_WITH_STACK=0\n\
+      export TASK_QUEUE_ENABLE=1\nexport HCCL_OP_EXPANSION_MODE=\"AIV\"\n\nexport\
+      \ ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\nvllm serve ${MODEL_PATH} \\\n \
+      \ --host ${IP_ADDRESS} \\\n  --port 30060 \\\n  --data-parallel-address ${IP_ADDRESS}\
+      \ \\\n  --max-num-seqs 64 \\\n  --data-parallel-rpc-port 6884 \\\n  --tensor-parallel-size\
+      \ 4 \\\n  --seed 1024 \\\n  --distributed-executor-backend mp \\\n  --served-model-name\
+      \ qwen3.6 \\\n  --max-model-len 163840 \\\n  --max-num-batched-tokens 1024 \\\
+      \n  --trust-remote-code \\\n  --enable-prefix-caching \\\n  --no-disable-hybrid-kv-cache-manager\
+      \ \\\n  --speculative_config '{\"method\": \"qwen3_5_mtp\", \"num_speculative_tokens\"\
+      : 3, \"enforce_eager\": true}' \\\n  --additional-config '{\"recompute_scheduler_enable\"\
+      : true, \"enable_cpu_binding\": true}' \\\n  --gpu-memory-utilization 0.9 \\\
+      \n  --enforce-eager \\\n  --kv-transfer-config \\\n    '{\n    \"kv_connector\"\
+      : \"MultiConnector\",\n    \"kv_role\": \"kv_producer\",\n    \"kv_load_failure_policy\"\
+      : \"fail\",\n    \"kv_connector_extra_config\": {\n        \"connectors\": [\n\
+      \            {\n                \"kv_connector\": \"MooncakeLayerwiseConnector\"\
+      ,\n                \"kv_role\": \"kv_producer\",\n                \"kv_port\"\
+      : \"20001\",\n                \"kv_connector_extra_config\": {\n           \
+      \         \"prefill\": {\n                        \"dp_size\": 1,\n        \
+      \                \"tp_size\": 4\n                    },\n                  \
+      \  \"decode\": {\n                        \"dp_size\": 1,\n                \
+      \        \"tp_size\": 4\n                    }\n                }\n        \
+      \    },\n            {\n                \"kv_connector\": \"AscendStoreConnector\"\
+      ,\n                \"kv_role\": \"kv_producer\",\n                \"kv_connector_extra_config\"\
+      : {\n                    \"lookup_rpc_port\":\"0\",\n                    \"\
+      backend\": \"mooncake\"\n                }\n            }  \n        ]\n   \
+      \ }\n    }'\n```\nd script:\n```\nunset ftp_proxy\nunset https_proxy\nunset\
+      \ http_proxy\n#!/bin/bash\n# this obtained through ifconfig\n# nic_name is the\
+      \ network interface name corresponding to local_ip of the current node\nnic_name=\"\
+      eth0\"\nlocal_ip=\"xx.xx.xx.xx\"\nexport MODEL_PATH=/opt/models/qwen27b\n\n\
+      export VLLM_ENGINE_READY_TIMEOUT_S=30000\nexport VLLM_NIXL_ABORT_REQUEST_TIMEOUT=30000\n\
+      export IP_ADDRESS=$local_ip\nexport NETWORK_CARD_NAME=$nic_name\nexport HCCL_IF_IP=$IP_ADDRESS\n\
+      export GLOO_SOCKET_IFNAME=$NETWORK_CARD_NAME\nexport TP_SOCKET_IFNAME=$NETWORK_CARD_NAME\n\
+      export HCCL_SOCKET_IFNAME=$NETWORK_CARD_NAME\n\nexport VLLM_USE_V1=1\nexport\
+      \ HCCL_BUFFSIZE=1536\nexport LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages:$LD_LIBRARY_PATH\n\
+      export PYTORCH_NPU_ALLOC_CONF=\"expandable_segments:True\"\nexport VLLM_TORCH_PROFILER_WITH_STACK=0\n\
+      export TASK_QUEUE_ENABLE=1\n\nexport HCCL_OP_EXPANSION_MODE=\"AIV\"\nexport\
+      \ ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7\nvllm serve ${MODEL_PATH} \\\n \
+      \ --host ${IP_ADDRESS} \\\n  --port 30050 \\\n  --no-enable-prefix-caching \\\
+      \n  --max-num_seqs 32 \\\n  --data-parallel-rpc-port 6884 \\\n  --tensor-parallel-size\
+      \ 4 \\\n  --seed 1024 \\\n  --distributed-executor-backend mp \\\n  --served-model-name\
+      \ qwen3.6 \\\n  --max-model-len 163840 \\\n  --max-num-batched-tokens 128 \\\
+      \n  --trust-remote-code \\\n  --no-disable-hybrid-kv-cache-manager \\\n  --speculative_config\
+      \ '{\"method\": \"qwen3_5_mtp\", \"num_speculative_tokens\": 3, \"enforce_eager\"\
+      : true}' \\\n  --additional-config '{\"recompute_scheduler_enable\": true, \"\
+      enable_cpu_binding\": true}' \\\n  --compilation-config '{\"cudagraph_mode\"\
+      : \"FULL_DECODE_ONLY\"}' \\\n  --gpu-memory-utilization 0.96 \\\n  --kv-transfer-config\
+      \ \\\n    '{\n    \"kv_connector\": \"MultiConnector\",\n    \"kv_role\": \"\
+      kv_consumer\",\n    \"kv_load_failure_policy\": \"fail\",\n    \"kv_connector_extra_config\"\
+      : {\n        \"connectors\": [\n        {\n                \"kv_connector\"\
+      : \"MooncakeLayerwiseConnector\",\n                \"kv_role\": \"kv_consumer\"\
+      ,\n                \"kv_port\": \"20002\",\n                \"kv_connector_extra_config\"\
+      : {\n                    \"prefill\": {\n                        \"dp_size\"\
+      : 1,\n                        \"tp_size\": 4\n                    },\n     \
+      \               \"decode\": {\n                        \"dp_size\": 1,\n   \
+      \                     \"tp_size\": 4\n                    }\n              \
+      \  }\n            },\n            {\n                \"kv_connector\": \"AscendStoreConnector\"\
+      ,\n                \"kv_role\": \"kv_consumer\",\n                \"kv_connector_extra_config\"\
+      : {\n                    \"lookup_rpc_port\":\"0\",\n                    \"\
+      backend\": \"mooncake\"\n                }\n            }\n        ]\n    }\n\
+      \    }'\n```\n\n### \U0001F41B Describe the bug\n\nThe service occasionally\
+      \ throws errors during extended stability testing with long sequences. Kv pool\
+      \ failed to get key, and only for keys in group 1 2 3. \n```\n(Worker_TP1 pid=53994)\
+      \ ERROR 06-24 16:43:17 [mooncake_backend.py:240] [vllm-ascend] [distributed]\
+      \ - Failed to get 3 keys out of 6. error_codes=[-704]. Check key existence and\
+      \ memory state.\n(Worker_TP1 pid=53994) ERROR 06-24 16:43:17 [mooncake_backend.py:246]\
+      \ [vllm-ascend] [distributed] - Failed to get key details. keys=['Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:0@cache_role:kv@cache_family:default@1027a6b8b93930994b5ca260be2e2e67fd996e9a21f4a033ff95ae534772fd31',\
+      \ 'Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:0@cache_role:kv@cache_family:default@c0f522af2dd228c65e07f3245de02bb5c6325093281eceab8ea0a8be8dfab48b',\
+      \ 'Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:1@cache_role:kv@cache_family:default@c0f522af2dd228c65e07f3245de02bb5c6325093281eceab8ea0a8be8dfab48b',\
+      \ 'Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:2@cache_role:kv@cache_family:default@c0f522af2dd228c65e07f3245de02bb5c6325093281eceab8ea0a8be8dfab48b',\
+      \ 'Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:3@cache_role:kv@cache_family:default@c0f522af2dd228c65e07f3245de02bb5c6325093281eceab8ea0a8be8dfab48b',\
+      \ 'Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:0@cache_role:kv@cache_family:default@2ad3c347c67f31e26bd09baeb9ad2ab0cbd3f8abfb96f2ecdb9388b6f4b449cc'],\
+      \ result=[26738688, 26738688, -704, -704, -704, 26738688]\n```\nplog\n```\n\
+      [ERROR] HCCL(35177,):2026-06-23-16:27:56.471.485 [one_sided_service_adapt.cc:484]\
+      \ [35177][TaskExecStage][InvalidArgument] The parameter memHandle[0xfffe63fe5ee0]\
+      \ is invalid.\n[ERROR] HCCL(35177,):2026-06-23-16:27:56.471.499 [one_sided_service_adapt.cc:526]\
+      \ [35177][HcclDeregisterGlobalMem]call trace: hcclRet -> 1\n[ERROR] GE(35177,):2026-06-23-16:27:56.471.529\
+      \ [channel_msg_handler.cc:283]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Call\
+      \ hccl api failed, ret: 0x1\n[ERROR] GE(35177,):2026-06-23-16:27:56.471.544\
+      \ [adxl_inner_engine.cc:425]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed\
+      \ to deregister mem\n[ERROR] GE(35177,):2026-06-23-16:27:56.471.558 [adxl_engine_impl.cc:93]35177\
+      \ DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed to deregister mem\n[ERROR]\
+      \ GE(35177,):2026-06-23-16:27:56.471.569 [adxl_engine_impl.cc:214]35177 DeregisterMem:\
+      \ ErrorNo: 103900() [GE][MODULE]Failed to deregister mem, mem_handle:0xfffe63fe5ee0\n\
+      [ERROR] HCCL(35177,):2026-06-23-16:27:56.474.280 [one_sided_service_adapt.cc:484]\
+      \ [35177][TaskExecStage][InvalidArgument] The parameter memHandle[0xfffe63fe5fc0]\
+      \ is invalid.\n[ERROR] HCCL(35177,):2026-06-23-16:27:56.474.286 [one_sided_service_adapt.cc:526]\
+      \ [35177][HcclDeregisterGlobalMem]call trace: hcclRet -> 1\n[ERROR] GE(35177,):2026-06-23-16:27:56.474.299\
+      \ [channel_msg_handler.cc:283]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Call\
+      \ hccl api failed, ret: 0x1\n[ERROR] GE(35177,):2026-06-23-16:27:56.474.311\
+      \ [adxl_inner_engine.cc:425]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed\
+      \ to deregister mem\n[ERROR] GE(35177,):2026-06-23-16:27:56.474.323 [adxl_engine_impl.cc:93]35177\
+      \ DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed to deregister mem\n[ERROR]\
+      \ GE(35177,):2026-06-23-16:27:56.474.333 [adxl_engine_impl.cc:214]35177 DeregisterMem:\
+      \ ErrorNo: 103900() [GE][MODULE]Failed to deregister mem, mem_handle:0xfffe63fe5fc0\n\
+      [ERROR] DRV(35177,):2026-06-23-16:27:57.196.361 [drv_share_log.c:238][ascend][curpid:35177,35177][drv][devmm][share_log_read_in_single_module]Set\
+      \ free error. (ref_lock=1; ref_free=0; ref_count=2) Oper address failed. (va=0x12e4c0000000;\
+      \ ref_flag=0x108; ref_lock=0; ref_free:0; ref_count=2; convert=0; async=0)\n\
+      [ERROR] DRV(35177,):2026-06-23-16:27:57.196.375 [devmm_virt_interface.c:340][ascend][curpid:35177,35177][drv][devmm][devmm_virt_heap_free_pages]<errno:16,\
+      \ 13> Devmm_ioctl_free failed. (ptr=0x12e4c0000000; heap_type=4025417729)\n\
+      [ERROR] DRV(35177,):2026-06-23-16:27:57.196.380 [devmm_virt_base_heap.c:311][ascend][curpid:35177,35177][drv][devmm][devmm_free_to_base_heap]<errno:16,\
+      \ 13> Free ptr error. (ptr=0x12e4c0000000)\n[ERROR] RUNTIME(35177,):2026-06-23-16:27:57.196.390\
+      \ [npu_driver_mem.cc:772]35177 HostMemFree:[drv api] halMemFree failed: drvRetCode=17,\
+      \ host addr=0x12e4c0000000!\n[ERROR] RUNTIME(35177,):2026-06-23-16:27:57.196.436\
+      \ [api_error.cc:1437]35177 HostFree:Free host memory failed, host addr=0x12e4c0000000.\n\
+      [ERROR] RUNTIME(35177,):2026-06-23-16:27:57.196.453 [api_c_memory.cc:157]35177\
+      \ rtFreeHost:ErrCode=507899, desc=[driver error:internal error], InnerCode=0x7020022\n\
+      [ERROR] RUNTIME(35177,):2026-06-23-16:27:57.196.459 [error_message_manage.cc:65]35177\
+      \ FuncErrorReason:rtFreeHost execution failed, reason=driver error:internal\
+      \ error\n[ERROR] ASCENDCL(35177,):2026-06-23-16:27:57.196.726 [memory.cpp:550]35177\
+      \ aclrtFreeHostImpl:free host memory failed, runtime result = 507899\n```\n"
   expected:
     namespace: inference/vllm-ascend
     category: interrupt
@@ -617,149 +519,665 @@ calibration:
     fix_commit: 'PR #11131'
     confidence: high
   status: active
-
 - issue: 9769
   split: selection
   title: '[Bug]: 310P 图模式 QuantBatchMatmulV3 收 FRACTAL_NZ 期望 ND（0.19.1 分支）'
   input:
-    symptoms: |
-      ### Your current environment
-
-      <details>
-      <summary>The output of `python collect_env.py`</summary>
-
-      ```text
-      PyTorch version: 2.9.0+cpu
-      Is debug build: False
-
-      OS: Ubuntu 20.04.6 LTS (aarch64)
-      GCC version: (GCC) 15.1.0
-      Clang version: 18.1.8 (https://gh-proxy.com/https://github.com/root-project/llvm-project.git 156e947058a46ecc1785f98aa9abb8cbfaa45aa7)
-      CMake version: version 4.3.2
-      Libc version: glibc-2.31
-
-      Python version: 3.10.20 (main, Mar 11 2026, 17:41:27) [GCC 14.3.0] (64-bit runtime)
-      Python platform: Linux-5.4.0-125-generic-aarch64-with-glibc2.31
-
-      CPU:
-      Architecture:                    aarch64
-      CPU op-mode(s):                  64-bit
-      Byte Order:                      Little Endian
-      CPU(s):                          64
-      On-line CPU(s) list:             0-63
-      Thread(s) per core:              1
-      Core(s) per socket:              32
-      Socket(s):                       2
-      NUMA node(s):                    2
-      Vendor ID:                       0x48
-      Model:                           0
-      Stepping:                        0x1
-      CPU max MHz:                     2600.0000
-      CPU min MHz:                     200.0000
-      BogoMIPS:                        200.00
-      L1d cache:                       4 MiB
-      L1i cache:                       4 MiB
-      L2 cache:                        32 MiB
-      L3 cache:                        64 MiB
-      NUMA node0 CPU(s):               0-31
-      NUMA node1 CPU(s):               32-63
-      Vulnerability Itlb multihit:     Not affected
-      Vulnerability L1tf:              Not affected
-      Vulnerability Mds:               Not affected
-      Vulnerability Meltdown:          Not affected
-      Vulnerability Mmio stale data:   Not affected
-      Vulnerability Spec store bypass: Not affected
-      Vulnerability Spectre v1:        Mitigation; __user pointer sanitization
-      Vulnerability Spectre v2:        Not affected
-      Vulnerability Srbds:             Not affected
-      Vulnerability Tsx async abort:   Not affected
-      Flags:                           fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma dcpop asimddp asimdfhm
-
-      Versions of relevant libraries:
-      [pip3] numpy==1.26.4
-      [pip3] pyzmq==27.1.0
-      [pip3] torch==2.9.0
-      [pip3] torch_npu==2.9.0
-      [pip3] torchaudio==2.9.0
-      [pip3] torchvision==0.24.0
-      [pip3] transformers==5.5.3
-      [pip3] triton-ascend==3.2.0
-      [conda] numpy                     1.26.4                   pypi_0    pypi
-      [conda] pyzmq                     27.1.0                   pypi_0    pypi
-      [conda] torch                     2.9.0                    pypi_0    pypi
-      [conda] torch-npu                 2.9.0                    pypi_0    pypi
-      [conda] torchaudio                2.9.0                    pypi_0    pypi
-      [conda] torchvision               0.24.0                   pypi_0    pypi
-      [conda] transformers              5.5.3                    pypi_0    pypi
-      [conda] triton-ascend             3.2.0                    pypi_0    pypi
-      vLLM Version: 0.19.1
-      vLLM Ascend Version: 0.19.1rc1
-
-      ENV Variables:
-      ATB_OPSRUNNER_KERNEL_CACHE_LOCAL_COUNT=1
-      ATB_STREAM_SYNC_EVERY_RUNNER_ENABLE=0
-      ATB_STREAM_SYNC_EVERY_KERNEL_ENABLE=0
-      ATB_OPSRUNNER_KERNEL_CACHE_GLOABL_COUNT=5
-      ATB_HOME_PATH=/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1
-      ASCEND_TOOLKIT_HOME=/usr/local/Ascend/cann-9.0.0
-      ATB_COMPARE_TILING_EVERY_KERNEL=0
-      ASCEND_OPP_PATH=/usr/local/Ascend/cann-9.0.0/opp
-      LD_LIBRARY_PATH=/usr/local/lib64:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/lib:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/examples:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/tests/atbopstest:/usr/local/Ascend/cann-9.0.0/lib64:/usr/local/Ascend/cann-9.0.0/lib64/plugin/opskernel:/usr/local/Ascend/cann-9.0.0/lib64/plugin/nnengine:/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver
-      ASCEND_AICPU_PATH=/usr/local/Ascend/cann-9.0.0
-      ATB_STREAM_SYNC_EVERY_OPERATION_ENABLE=0
-      ASCEND_HOME_PATH=/usr/local/Ascend/cann-9.0.0
-      ATB_MATMUL_SHUFFLE_K_ENABLE=1
-      ATB_WORKSPACE_MEM_ALLOC_ALG_TYPE=1
-      ATB_SHARE_MEMORY_NAME_SUFFIX=
-      TORCH_DEVICE_BACKEND_AUTOLOAD=1
-      PYTORCH_NVML_BASED_CUDA_CHECK=1
-      TORCHINDUCTOR_COMPILE_THREADS=1
-
-
-      NPU:
-      +--------------------------------------------------------------------------------------------------------+
-      | npu-smi 25.5.2                                   Version: 25.5.2                                       |
-      +-------------------------------+-----------------+------------------------------------------------------+
-      | NPU     Name                  | Health          | Power(W)     Temp(C)           Hugepages-Usage(page) |
-      | Chip    Device                | Bus-Id          | AICore(%)    Memory-Usage(MB)                        |
-      +===============================+=================+======================================================+
-      | 2       310P3                 | OK              | NA           51                13931 / 13931         |
-      | 0       0                     | 0000:01:00.0    | 0            29461/ 44278                            |
-      +-------------------------------+-----------------+------------------------------------------------------+
-      | 2       310P3                 | OK              | NA           49                0     / 0             |
-      | 1       1                     | 0000:01:00.0    | 0            1370 / 43693                            |
-      +===============================+=================+======================================================+
-      +-------------------------------+-----------------+------------------------------------------------------+
-      | NPU     Chip                  | Process id      | Process name             | Process memory(MB)        |
-      +===============================+=================+======================================================+
-      | 2       0                     | 1178536         | VLLMEngineC
-      ...[中段省略]...
-       = self._to_numpy(query_start_loc)[: num_reqs + 1]
-      (EngineCore pid=1174965) ERROR 05-30 17:00:18 [core.py:1110]   File "/root/code/.code/vllm/vllm-ascend/vllm_ascend/_310p/block_table.py", line 76, in _to_numpy
-      (EngineCore pid=1174965) ERROR 05-30 17:00:18 [core.py:1110]     return value.detach().cpu().numpy().astype(np.int64, copy=False)
-      (EngineCore pid=1174965) ERROR 05-30 17:00:18 [core.py:1110] RuntimeError: ACL stream synchronize failed, error code:507015
-      (APIServer pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707] AsyncLLM output_handler failed.
-      (APIServer pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707] Traceback (most recent call last):
-      (APIServer pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707]   File "/root/code/.code/vllm/vllm/vllm/v1/engine/async_llm.py", line 663, in output_handler
-      (APIServer pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707]     outputs = await engine_core.get_output_async()
-      (APIServer pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707]   File "/root/code/.code/vllm/vllm/vllm/v1/engine/core_client.py", line 985, in get_output_async
-      (APIServer pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707]     raise self._format_exception(outputs) from None
-      (APIServer pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707] vllm.v1.engine.exceptions.EngineDeadError: EngineCore encountered an issue. See stack trace (above) for the root cause.
-      (APIServer pid=1174737) INFO:     10.160.26.182:42196 - "POST /v1/chat/completions HTTP/1.1" 500 Internal Server Error
-      (APIServer pid=1174737) INFO:     Shutting down
-      (APIServer pid=1174737) INFO:     Waiting for application shutdown.
-      (APIServer pid=1174737) INFO:     Application shutdown complete.
-      (APIServer pid=1174737) INFO:     Finished server process [1174737]
-      (APIServer pid=1174737) sys:1: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
-      ```
-      ### Expected Results
-
-      The server should return HTTP 200 with valid generated text, as it does when running with `--enforce-eager`.
-
+    symptoms: "### Your current environment\n\n<details>\n<summary>The output of `python\
+      \ collect_env.py`</summary>\n\n```text\nPyTorch version: 2.9.0+cpu\nIs debug\
+      \ build: False\n\nOS: Ubuntu 20.04.6 LTS (aarch64)\nGCC version: (GCC) 15.1.0\n\
+      Clang version: 18.1.8 (https://gh-proxy.com/https://github.com/root-project/llvm-project.git\
+      \ 156e947058a46ecc1785f98aa9abb8cbfaa45aa7)\nCMake version: version 4.3.2\n\
+      Libc version: glibc-2.31\n\nPython version: 3.10.20 (main, Mar 11 2026, 17:41:27)\
+      \ [GCC 14.3.0] (64-bit runtime)\nPython platform: Linux-5.4.0-125-generic-aarch64-with-glibc2.31\n\
+      \nCPU:\nArchitecture:                    aarch64\nCPU op-mode(s):          \
+      \        64-bit\nByte Order:                      Little Endian\nCPU(s):   \
+      \                       64\nOn-line CPU(s) list:             0-63\nThread(s)\
+      \ per core:              1\nCore(s) per socket:              32\nSocket(s):\
+      \                       2\nNUMA node(s):                    2\nVendor ID:  \
+      \                     0x48\nModel:                           0\nStepping:  \
+      \                      0x1\nCPU max MHz:                     2600.0000\nCPU\
+      \ min MHz:                     200.0000\nBogoMIPS:                        200.00\n\
+      L1d cache:                       4 MiB\nL1i cache:                       4 MiB\n\
+      L2 cache:                        32 MiB\nL3 cache:                        64\
+      \ MiB\nNUMA node0 CPU(s):               0-31\nNUMA node1 CPU(s):           \
+      \    32-63\nVulnerability Itlb multihit:     Not affected\nVulnerability L1tf:\
+      \              Not affected\nVulnerability Mds:               Not affected\n\
+      Vulnerability Meltdown:          Not affected\nVulnerability Mmio stale data:\
+      \   Not affected\nVulnerability Spec store bypass: Not affected\nVulnerability\
+      \ Spectre v1:        Mitigation; __user pointer sanitization\nVulnerability\
+      \ Spectre v2:        Not affected\nVulnerability Srbds:             Not affected\n\
+      Vulnerability Tsx async abort:   Not affected\nFlags:                      \
+      \     fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid\
+      \ asimdrdm jscvt fcma dcpop asimddp asimdfhm\n\nVersions of relevant libraries:\n\
+      [pip3] numpy==1.26.4\n[pip3] pyzmq==27.1.0\n[pip3] torch==2.9.0\n[pip3] torch_npu==2.9.0\n\
+      [pip3] torchaudio==2.9.0\n[pip3] torchvision==0.24.0\n[pip3] transformers==5.5.3\n\
+      [pip3] triton-ascend==3.2.0\n[conda] numpy                     1.26.4      \
+      \             pypi_0    pypi\n[conda] pyzmq                     27.1.0     \
+      \              pypi_0    pypi\n[conda] torch                     2.9.0     \
+      \               pypi_0    pypi\n[conda] torch-npu                 2.9.0    \
+      \                pypi_0    pypi\n[conda] torchaudio                2.9.0   \
+      \                 pypi_0    pypi\n[conda] torchvision               0.24.0 \
+      \                  pypi_0    pypi\n[conda] transformers              5.5.3 \
+      \                   pypi_0    pypi\n[conda] triton-ascend             3.2.0\
+      \                    pypi_0    pypi\nvLLM Version: 0.19.1\nvLLM Ascend Version:\
+      \ 0.19.1rc1\n\nENV Variables:\nATB_OPSRUNNER_KERNEL_CACHE_LOCAL_COUNT=1\nATB_STREAM_SYNC_EVERY_RUNNER_ENABLE=0\n\
+      ATB_STREAM_SYNC_EVERY_KERNEL_ENABLE=0\nATB_OPSRUNNER_KERNEL_CACHE_GLOABL_COUNT=5\n\
+      ATB_HOME_PATH=/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1\nASCEND_TOOLKIT_HOME=/usr/local/Ascend/cann-9.0.0\n\
+      ATB_COMPARE_TILING_EVERY_KERNEL=0\nASCEND_OPP_PATH=/usr/local/Ascend/cann-9.0.0/opp\n\
+      LD_LIBRARY_PATH=/usr/local/lib64:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/lib:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/examples:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/tests/atbopstest:/usr/local/Ascend/cann-9.0.0/lib64:/usr/local/Ascend/cann-9.0.0/lib64/plugin/opskernel:/usr/local/Ascend/cann-9.0.0/lib64/plugin/nnengine:/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver\n\
+      ASCEND_AICPU_PATH=/usr/local/Ascend/cann-9.0.0\nATB_STREAM_SYNC_EVERY_OPERATION_ENABLE=0\n\
+      ASCEND_HOME_PATH=/usr/local/Ascend/cann-9.0.0\nATB_MATMUL_SHUFFLE_K_ENABLE=1\n\
+      ATB_WORKSPACE_MEM_ALLOC_ALG_TYPE=1\nATB_SHARE_MEMORY_NAME_SUFFIX=\nTORCH_DEVICE_BACKEND_AUTOLOAD=1\n\
+      PYTORCH_NVML_BASED_CUDA_CHECK=1\nTORCHINDUCTOR_COMPILE_THREADS=1\n\n\nNPU:\n\
+      +--------------------------------------------------------------------------------------------------------+\n\
+      | npu-smi 25.5.2                                   Version: 25.5.2         \
+      \                              |\n+-------------------------------+-----------------+------------------------------------------------------+\n\
+      | NPU     Name                  | Health          | Power(W)     Temp(C)   \
+      \        Hugepages-Usage(page) |\n| Chip    Device                | Bus-Id \
+      \         | AICore(%)    Memory-Usage(MB)                        |\n+===============================+=================+======================================================+\n\
+      | 2       310P3                 | OK              | NA           51        \
+      \        13931 / 13931         |\n| 0       0                     | 0000:01:00.0\
+      \    | 0            29461/ 44278                            |\n+-------------------------------+-----------------+------------------------------------------------------+\n\
+      | 2       310P3                 | OK              | NA           49        \
+      \        0     / 0             |\n| 1       1                     | 0000:01:00.0\
+      \    | 0            1370 / 43693                            |\n+===============================+=================+======================================================+\n\
+      +-------------------------------+-----------------+------------------------------------------------------+\n\
+      | NPU     Chip                  | Process id      | Process name           \
+      \  | Process memory(MB)        |\n+===============================+=================+======================================================+\n\
+      | 2       0                     | 1178536         | VLLMEngineC\n...[中段省略]...\n\
+      \ = self._to_numpy(query_start_loc)[: num_reqs + 1]\n(EngineCore pid=1174965)\
+      \ ERROR 05-30 17:00:18 [core.py:1110]   File \"/root/code/.code/vllm/vllm-ascend/vllm_ascend/_310p/block_table.py\"\
+      , line 76, in _to_numpy\n(EngineCore pid=1174965) ERROR 05-30 17:00:18 [core.py:1110]\
+      \     return value.detach().cpu().numpy().astype(np.int64, copy=False)\n(EngineCore\
+      \ pid=1174965) ERROR 05-30 17:00:18 [core.py:1110] RuntimeError: ACL stream\
+      \ synchronize failed, error code:507015\n(APIServer pid=1174737) ERROR 05-30\
+      \ 17:00:18 [async_llm.py:707] AsyncLLM output_handler failed.\n(APIServer pid=1174737)\
+      \ ERROR 05-30 17:00:18 [async_llm.py:707] Traceback (most recent call last):\n\
+      (APIServer pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707]   File \"/root/code/.code/vllm/vllm/vllm/v1/engine/async_llm.py\"\
+      , line 663, in output_handler\n(APIServer pid=1174737) ERROR 05-30 17:00:18\
+      \ [async_llm.py:707]     outputs = await engine_core.get_output_async()\n(APIServer\
+      \ pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707]   File \"/root/code/.code/vllm/vllm/vllm/v1/engine/core_client.py\"\
+      , line 985, in get_output_async\n(APIServer pid=1174737) ERROR 05-30 17:00:18\
+      \ [async_llm.py:707]     raise self._format_exception(outputs) from None\n(APIServer\
+      \ pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707] vllm.v1.engine.exceptions.EngineDeadError:\
+      \ EngineCore encountered an issue. See stack trace (above) for the root cause.\n\
+      (APIServer pid=1174737) INFO:     10.160.26.182:42196 - \"POST /v1/chat/completions\
+      \ HTTP/1.1\" 500 Internal Server Error\n(APIServer pid=1174737) INFO:     Shutting\
+      \ down\n(APIServer pid=1174737) INFO:     Waiting for application shutdown.\n\
+      (APIServer pid=1174737) INFO:     Application shutdown complete.\n(APIServer\
+      \ pid=1174737) INFO:     Finished server process [1174737]\n(APIServer pid=1174737)\
+      \ sys:1: DeprecationWarning: builtin type swigvarlink has no __module__ attribute\n\
+      ```\n### Expected Results\n\nThe server should return HTTP 200 with valid generated\
+      \ text, as it does when running with `--enforce-eager`.\n"
   expected:
     namespace: inference/vllm-ascend
     category: interrupt
     resolution: '310P 图模式缺 fused ops 支持——cherry-pick PR #9104 或换 POC 镜像'
     fix_commit: 'PR #9104'
     confidence: high
+  status: active
+- issue: 14669
+  split: selection
+  title: '[Bug]: Failed to run Gemma4 multimodal MXFP4 quantized model on Ascend due
+    to missing Vision Tower quantization support'
+  input:
+    symptoms: "### Your current environment\n\n<details>\n<summary>The output of `python\
+      \ collect_env.py`</summary>\n\nINFO 08-20 17:22:03 [__init__.py:52] Available\
+      \ plugins for group vllm.platform_plugins:\nINFO 08-20 17:22:03 [__init__.py:54]\
+      \ - ascend -> vllm_ascend:register\nINFO 08-20 17:22:03 [__init__.py:57] All\
+      \ plugins in this group will be loaded. Set VLLM_PLUGINS to control which plugins\
+      \ to load.\nINFO 08-20 17:22:03 [__init__.py:237] Platform plugin ascend is\
+      \ activated\n\nPyTorch version: 2.10.0+cpu\n\nOS: openEuler 24.03 (LTS-SP4)\
+      \ (x86_64)\n\nPython version: 3.11.10\n\nVersions of relevant libraries:\n[pip3]\
+      \ torch==2.10.0+cpu\n[pip3] torch_npu==2.10.0.post2\n[pip3] transformers==5.14.1\n\
+      \nvLLM Version: 0.26.0\n\nvLLM Ascend Version:\n0.19.1rc2.dev1351+g6278a143e\n\
+      \nNPU:\nAscend950PR\n\nCANN:\npackage_name=Ascend-cann-toolkit\nversion=9.1.0\n\
+      \n</details>\n\n\n### \U0001F41B Describe the bug\n\nWhen running Gemma4 multimodal\
+      \ models with ModelSlim MXFP4 quantization on Ascend NPU, the model fails to\
+      \ load during initialization when loading the quantized Vision Tower weights.\n\
+      \nThe failure occurs in the Vision Tower quantization path. The MXFP4 checkpoint\
+      \ contains quantization parameters such as `weight_scale` for quantized linear\
+      \ layers, but the current vLLM Ascend implementation cannot correctly register\
+      \ and load these quantization parameters.\n\nAs a result, the Gemma4 Vision\
+      \ Tower quantized weights cannot be initialized and the model loading process\
+      \ fails.\n\n### Error log\n\nDuring model loading, the following error occurs:\n\
+      \n```text\nValueError:\nThere is no module or parameter named\n'vision_tower.encoder.layers.0.mlp.down_proj.linear.weight_scale'\n\
+      ```\n\nThe model currently registers:\n\n```text\nvision_tower.encoder.layers.0.mlp.down_proj.linear.weight\n\
+      ```\n\nbut the checkpoint also requires:\n\n```text\nvision_tower.encoder.layers.0.mlp.down_proj.linear.weight_scale\n\
+      ```\n\nTherefore, the MXFP4 quantization scale parameters in the Gemma4 Vision\
+      \ Tower cannot be loaded correctly.\n\n\n### Reproduce\n\nThe issue can be reproduced\
+      \ with a Gemma4 multimodal MXFP4 quantized model where the Vision Tower weights\
+      \ are quantized.\n\nModel path:\n\n```text\n/home/w00845741/gemma-4-26b-a4b-it-mxfp4-vit\n\
+      ```\n\nLaunch command:\n\n```bash\nLD_LIBRARY_PATH=/mnt/data/hsl/miniconda/pkgs/openssl-3.6.0-h26f9b46_0/lib:$LD_LIBRARY_PATH\
+      \ \\\nASCEND_RT_VISIBLE_DEVICES=7 \\\nHCCL_OP_EXPANSION_MODE=AIV \\\nHCCL\n\n\
+      ……（中段裁剪）……\n\na4 \\\n    --reasoning-parser gemma4 \\\n    --enable-prefix-caching\
+      \ \\\n    --limit-mm-per-prompt '{\"image\":2,\"audio\":1,\"video\":1}' \\\n\
+      \    --compilation-config '{\"cudagraph_mode\":\"FULL_DECODE_ONLY\"}'\n```\n\
+      \n### Expected Behavior\n\nGemma4 multimodal models with MXFP4 quantization\
+      \ should load successfully and run inference on Ascend NPU.\n\n\n### Additional\
+      \ Context\n\nThe upstream Gemma4 multimodal implementation supports the model\
+      \ architecture, but additional Ascend-specific quantization adaptation is required\
+      \ for the Vision Tower.\n\nThe current implementation has the following compatibility\
+      \ issues:\n\n1. The Gemma4 Vision Tower MXFP4 linear layers cannot correctly\
+      \ register and load `weight_scale` parameters.\n\n2. The Vision Patch Embedder\
+      \ path casts activation tensors to the quantized weight dtype before dynamic\
+      \ quantization, which causes incorrect FP8/MXFP quantization behavior on Ascend.\n\
+      \n3. The MXFP4 logical dtype metadata is not fully preserved in the MoE GELU\
+      \ fallback path, which can lead to incorrect dtype information being passed\
+      \ to Ascend operators.\n\nFurther investigation and Ascend-specific adaptation\
+      \ are required to support Gemma4 Vision Tower quantization."
+  expected:
+    resolution: '[Feature][Model] Add W4A4 MXFP4 quantization support for Gemma4 multimodal
+      (#14607)'
+    fix_commit: d5a0eec0c3c3
+    confidence: high
+  status: active
+- issue: 14378
+  split: selection
+  title: '[Bug][0.23.0]: Accuracy Fluctuations with GLM-5.2-W4A8C8 on Ascend'
+  input:
+    symptoms: "### Description\n\n  We observed accuracy fluctuations when serving\
+      \ `GLM-5.2-W4A8C8` with Prefill-Decode (PD) disaggregation and enabling Sparse\
+      \ Flash Attention C8:\n\n  ```bash\n  --additional-config '{\"enable_sparse_sfa_c8\"\
+      : true}'\n  ```\n\n  When GPQA is evaluated repeatedly with the same model,\
+      \ dataset, and decoding configuration, the accuracy fluctuates by approximately\
+      \ 2–3 percentage points.\n\n  GLM-5.2-W4A8C8 should currently be considered\
+      \ experimental. Although it reduces memory usage, its accuracy stability may\
+      \ not match GLM-5.2-W8A8C8, particularly in PD deployments with enable_sparse_sfa_c8\
+      \ enabled.\n\n  ### Recommendation for users\n\n  For production and accuracy-sensitive\
+      \ workloads, we recommend using GLM-5.2-W8A8C8 by default.\n\n  Use GLM-5.2-W4A8C8\
+      \ only for experimental or memory-constrained deployments, and validate its\
+      \ accuracy on the target workload before production use. In PD disaggregation,\
+      \ enable_sparse_sfa_c8 should remain disabled unless it is required to meet\
+      \ memory constraints and the resulting accuracy has been carefully evaluated.\n\
+      \n  ### Expected behavior\n\n  Repeated evaluations with the same configuration\
+      \ should produce stable accuracy within normal evaluation variance.\n\n  ###\
+      \ Actual behavior\n\n  With GLM-5.2-W4A8C8 and enable_sparse_sfa_c8 enabled\
+      \ in PD disaggregation, GPQA accuracy varies by approximately 2–3 percentage\
+      \ points across runs."
+  expected:
+    resolution: '[BugFix][SFA] Use DCP-sharded slot mapping in prolog v3 KV write'
+    fix_commit: 'PR #14536'
+    confidence: high
+  status: active
+- issue: 13070
+  split: selection
+  title: '[Bug]: Reasoning tokens is 0 for thinking enabled requests on v0.20'
+  input:
+    symptoms: '### Your current environment
+
+
+      <details>
+
+      <summary>The output of `python collect_env.py`</summary>
+
+
+      ```text
+
+      Your output of above commands here
+
+      ```
+
+
+      </details>
+
+
+
+      ### 🐛 Describe the bug
+
+
+      We deploy GLM-5.1, PD disaggregation deployment on 4*Atlas A3 .
+
+      When we try to make a query with thinking enabled, it returns a success response
+      with reasoning field. However, reasoning_tokens in usage details keep showing
+      0.
+
+
+      Here is the curl request I use:
+
+
+      ```curl http://localhost:8016/v1/chat/completions \
+
+      -H "Content-Type: application/json" \
+
+      -d ''{
+
+      "model": "GLM-5.2-w4a8",
+
+      "messages": [{"role": "user", "content": "你能帮我查一下今天上海的天气吗？"}],
+
+      "tools": [{"type": "function", "function": {"name": "get_weather", "parameters":
+      {"type": "object", "properties": {"location": {"type": "string"}}}}}]
+
+      }''
+
+      }''
+
+      ```
+
+      Here is the response:
+
+      ```
+
+      {"id":"chatcmpl-a5ae6b0c887064e2","object":"chat.completion","created":1782715825,"prompt_routed_experts":null,"model":"GLM-5.2-w4a8","choices":[{"index":0,"message":{"role":"assistant","content":"当然可以！我来帮你查一下上海今天的天气。","refusal":null,"annotations":null,"audio":null,"function_call":null,"tool_calls":[{"id":"chatcmpl-tool-8606560b7808aef2","type":"function","function":{"name":"get_weather","arguments":"{\"location\":
+      \"上海\"}"}}],"reasoning":"The user is asking me to check the weather in Shanghai
+      today. I have a weather function available that takes a location parameter."},"logprobs":null,"finish_reason":"tool_calls","stop_reason":154829,"token_ids":null,"routed_experts":null}],"service_tier":null,"system_fingerprint":"vllm-0.1.dev1+g418bd6273-tp4-dp4-ep-b45f6724","usage":{"prompt_tokens":151,"total_tokens":199,"completion_tokens":48,"prompt_tokens_details":null,"completion_tokens_details":{"reasoning_tokens":0,"audio_tokens":null,"accepted_prediction_tokens":null,"rejected_prediction_tokens":null}},"prompt_logprobs":null,"prompt_token_ids":null,"prompt_text":null,"kv_transfer_params":null}>
+
+      ```
+
+      reasoning_tokens is always 0'
+  expected:
+    resolution: 'Fix is available in #13079.
+
+
+      The patch is limited to `DeepSeekV3ReasoningParser.count_reasoning_tokens()`,
+      covering `deepseek_v3`, `deepseek_v4`, `glm45`, and `holo2`. It handles prompt-supplied
+      openi
+
+
+      ……（中段裁剪）……
+
+
+      hink>` markers, explicit spans, and truncated reasoning while preserving thinking-disabled
+      behavior.'
+    fix_commit: ''
+    confidence: medium
+  status: active
+- issue: 12980
+  split: selection
+  title: '[Bug]: wait'
+  input:
+    symptoms: "### Your current environment\n\nPyTorch version: 2.10.0+cpu\nIs debug\
+      \ build: False\n\nOS: Ubuntu 22.04.5 LTS (aarch64)\nGCC version: (Ubuntu 11.4.0-1ubuntu1~22.04.3)\
+      \ 11.4.0\nClang version: 15.0.7\nCMake version: version 4.3.4\nLibc version:\
+      \ glibc-2.35\n\nPython version: 3.12.13 (main, May 19 2026, 08:33:02) [GCC 11.4.0]\
+      \ (64-bit runtime)\nPython platform: Linux-5.10.0-216.0.0.115.oe2203sp4.aarch64-aarch64-with-glibc2.35\n\
+      \nCPU:\nArchitecture:                       aarch64\nCPU op-mode(s):       \
+      \              64-bit\nByte Order:                         Little Endian\nCPU(s):\
+      \                             640\nOn-line CPU(s) list:                0-639\n\
+      Vendor ID:                          HiSilicon\nBIOS Vendor ID:             \
+      \        HiSilicon\nBIOS Model name:                    Kunpeng 920 7285Z\n\
+      Model:                              0\nThread(s) per core:                 2\n\
+      Core(s) per socket:                 80\nSocket(s):                         \
+      \ 4\nStepping:                           0x0\nFrequency boost:             \
+      \       disabled\nCPU max MHz:                        3000.0000\nCPU min MHz:\
+      \                        400.0000\nBogoMIPS:                           200.00\n\
+      Flags:                              fp asimd evtstrm aes pmull sha1 sha2 crc32\
+      \ atomics fphp asimdhp cpuid asimdrdm jscvt fcma lrcpc dcpop sha3 sm3 sm4 asimddp\
+      \ sha512 sve asimdfhm dit uscat ilrcpc flagm ssbs sb dcpodp flagm2 frint svei8mm\
+      \ svef32mm svef64mm svebf16 i8mm bf16 dgh rng ecv\nL1d cache:              \
+      \            20 MiB (320 instances)\nL1i cache:                          20\
+      \ MiB (320 instances)\nL2 cache:                           400 MiB (320 instances)\n\
+      L3 cache:                           560 MiB (8 instances)\nNUMA node(s):   \
+      \                    4\nNUMA node0 CPU(s):                  0-159\nNUMA node1\
+      \ CPU(s):                  160-319\nNUMA node2 CPU(s):                  320-479\n\
+      NUMA node3 CPU(s):                  480-639\nVulnerability Gather data sampling:\
+      \ Not affected\nVulnerability Itlb multihit:        Not affected\nVulnerability\
+      \ L1tf:                 Not affected\nVulnerability Mds:                  Not\
+      \ affected\nVulnerability Meltdown:             Not affected\nVulnerability\
+      \ Mmio stale data:      Not affected\nVulnerability Retbleed:             Not\
+      \ affected\nVulnerability Spec rstack overflow: Not affected\nVulnerability\
+      \ Spec store bypass:    Mitigation; Specu\n\n……（中段裁剪）……\n\n 1285701       |\
+      \ vLLM-OmniDiff      | 29049                 | NA                      |\n+===========================+===============+======================================================================+\n\
+      | 6       0                 | 1285702       | vLLM-OmniDiff      | 29049   \
+      \              | NA                      |\n| 6       1                 | 1285703\
+      \       | vLLM-OmniDiff      | 29049                 | NA                  \
+      \    |\n+===========================+===============+======================================================================+\n\
+      | 7       0                 | 1285704       | vLLM-OmniDiff      | 29049   \
+      \              | NA                      |\n| 7       1                 | 1285706\
+      \       | vLLM-OmniDiff      | 29049                 | NA                  \
+      \    |\n+===========================+===============+======================================================================+\n\
+      \n\nCANN:\npackage_name=Ascend-cann-toolkit\nversion=9.0.0\ninnerversion=V100R001C10SPC001B250\n\
+      compatible_version=[V100R001C21],[V100R001C22],[V100R001C23],[V100R001C25],[V100R001C10]\n\
+      arch=aarch64\nos=linux\npath=/usr/local/Ascend/cann-9.0.0\n\n\n### \U0001F41B\
+      Describe the bug\n\n"
+  expected:
+    resolution: Please clearly describe your question.
+    fix_commit: ''
+    confidence: medium
+  status: active
+- issue: 12947
+  split: selection
+  title: Gemma4 31B EAGLE3 speculative decoding on Ascend
+  input:
+    symptoms: "# Gemma4 31B EAGLE3 speculative decoding on Ascend\n\nThis issue documents\
+      \ how to run Gemma4 31B with EAGLE3 speculative decoding on vLLM Ascend.\n\n\
+      ## Models\n\n- Target model: Gemma4 31B Instruct\n- Draft model: [RedHatAI/gemma-4-31B-it-speculator.eagle3](https://huggingface.co/RedHatAI/gemma-4-31B-it-speculator.eagle3)\n\
+      \nDownload the draft model before launching the server:\n\n```bash\nhuggingface-cli\
+      \ download RedHatAI/gemma-4-31B-it-speculator.eagle3 \\\n  --local-dir /path/to/gemma-4-31B-it-speculator.eagle3\n\
+      ```\n\n## Required patch\n\nUntil the compatibility fix is merged, cherry-pick\
+      \ this minimal PR:\n\n- https://github.com/vllm-project/vllm-ascend/pull/12948\n\
+      \n```bash\ngit fetch https://github.com/0moyi0-2024/vllm-ascend_tp.git codex/gemma4-eagle3-minimal\n\
+      git cherry-pick 06f12437\n```\n\n## Launch command\n\nUse `PIECEWISE` graph\
+      \ mode for Gemma4 EAGLE3:\n\n```bash\nASCEND_RT_VISIBLE_DEVICES=0,1,2,3 \\\n\
+      HCCL_OP_EXPANSION_MODE=AIV \\\nHCCL_BUFFSIZE=256 \\\nVLLM_WORKER_MULTIPROC_METHOD=spawn\
+      \ \\\nvllm serve /path/to/gemma4-31b-it \\\n  --host 0.0.0.0 \\\n  --port 8000\
+      \ \\\n  --served-model-name gemma4-eagle3 \\\n  --tensor-parallel-size 4 \\\n\
+      \  --max-num-seqs 8 \\\n  --max-model-len 8192 \\\n  --block-size 128 \\\n \
+      \ --speculative-config '{\"model\":\"/path/to/gemma-4-31B-it-speculator.eagle3\"\
+      ,\"method\":\"eagle3\",\"num_speculative_tokens\":3}' \\\n  --compilation-config\
+      \ '{\"cudagraph_mode\":\"PIECEWISE\"}'\n```\n\n## Notes\n\n- `PIECEWISE` is\
+      \ the recommended graph mode for Gemma4 EAGLE3 on Ascend.\n- `--block-size 128`\
+      \ is required by the Ascend backend in this setup.\n- `--max-model-len 8192`\
+      \ avoids excessive memory use from Gemma4's long default context.\n- `num_speculative_tokens=3`\
+      \ is the recommended starting point.\n\n## Validation\n\nThe configuration above\
+      \ was checked with greedy output comparison between target-only and EAGLE3 serving.\
+      \ Outputs matched across the tested prompts, and repeated requests were stable.\n\
+      \n## Acceptance baseline\n\nAcceptance rate with `num_speculative_tokens=3`,\
+      \ natural 128-token output:\n\n| pos0 | pos1 | pos2 | mean acceptance length\
+      \ | avg draft acceptance |\n| --- | --- | --- | --- | --- |\n| ~0.71 | ~0.48\
+      \ | ~0.30 | ~2.5 / 3 | ~50% |\n\n## TODO / known issues\n\n- [ ] Merge the minimal\
+      \ Gemma4 image-token compatibility PR.\n- [ ] Add Gemma4 EAGLE3 usage notes\
+      \ to vLLM Ascend docs after the fix lands.\n- [ ] Re-check the best `num_speculative_tokens`\
+      \ value on newer CANN/vLLM Ascend versions.\n- [ ] Revisit `FULL_DECODE_ONLY`\
+      \ graph mode after backend support for Gemma4 512-dim attention is improved.\n"
+  expected:
+    resolution: '[Feature][SpecDecode] Support Gemma4 image token mapping (#12948)'
+    fix_commit: abeb73b546f7
+    confidence: high
+  status: active
+- issue: 12760
+  split: selection
+  title: '[Bug]: SP特性开启后DEBUG日志显示没有发生模式替换'
+  input:
+    symptoms: "### Your current environment\n\n<details>\n<summary>The output of `python\
+      \ collect_env.py`</summary>\n\nINFO 07-24 10:18:54 [__init__.py:44] Available\
+      \ plugins for group vllm.platform_plugins:\nINFO 07-24 10:18:54 [__init__.py:46]\
+      \ - ascend -> vllm_ascend:register\nINFO 07-24 10:18:54 [__init__.py:49] All\
+      \ plugins in this group will be loaded. Set `VLLM_PLUGINS` to control which\
+      \ plugins to load.\nINFO 07-24 10:18:54 [__init__.py:237] Platform plugin ascend\
+      \ is activated\nINFO 07-24 10:18:54 [platform.py:62] Breakable cudagraph is\
+      \ force disabled on Ascend because DeepSeek V4 PIECEWISE cudagraph is not supported\
+      \ yet.\nCollecting environment information...\nPyTorch version: 2.10.0+cpu\n\
+      Is debug build: False\n\nOS: Ubuntu 22.04.5 LTS (aarch64)\nGCC version: (Ubuntu\
+      \ 11.4.0-1ubuntu1~22.04.3) 11.4.0\nClang version: 15.0.7\nCMake version: version\
+      \ 4.4.0\nLibc version: glibc-2.35\n\nPython version: 3.12.13 (main, Jul  7 2026,\
+      \ 16:29:36) [GCC 11.4.0] (64-bit runtime)\nPython platform: Linux-5.15.0-119-generic-aarch64-with-glibc2.35\n\
+      \nCPU:\nArchitecture:                         aarch64\nCPU op-mode(s):     \
+      \                  64-bit\nByte Order:                           Little Endian\n\
+      CPU(s):                               256\nOn-line CPU(s) list:            \
+      \      0-255\nVendor ID:                            HiSilicon\nModel name: \
+      \                          Kunpeng-920\nModel:                             \
+      \   0\nThread(s) per core:                   1\nCore(s) per socket:        \
+      \           64\nSocket(s):                            4\nStepping:         \
+      \                    0x1\nBogoMIPS:                             200.00\nFlags:\
+      \                                fp asimd evtstrm aes pmull sha1 sha2 crc32\
+      \ atomics fphp asimdhp cpuid asimdrdm jscvt fcma dcpop asimddp asimdfhm ssbs\n\
+      L1d cache:                            16 MiB (256 instances)\nL1i cache:   \
+      \                         16 MiB (256 instances)\nL2 cache:                \
+      \             128 MiB (256 instances)\nL3 cache:                           \
+      \  256 MiB (8 instances)\nNUMA node(s):                         8\nNUMA node0\
+      \ CPU(s):                    0-31\nNUMA node1 CPU(s):                    32-63\n\
+      NUMA node2 CPU(s):                    64-95\nNUMA node3 CPU(s):            \
+      \        96-127\nNUMA node4 CPU(s):                    128-159\nNUMA node5 CPU(s):\
+      \                    160-191\nNUMA node6 CPU(s):                \n\n……（中段裁剪）……\n\
+      \n+===========================+===============+======================================================================+\n\
+      | 6       0                 | 2017276       |                    | 56774   \
+      \              | 44756                   |\n+===========================+===============+======================================================================+\n\
+      | No running processes found in NPU 7                                      \
+      \                                        |\n+===========================+===============+======================================================================+\n\
+      \nCANN:\npackage_name=Ascend-cann-toolkit\nversion=9.0.1\ninnerversion=V100R001C10SPC002B220\n\
+      compatible_version=[V100R001C21],[V100R001C22],[V100R001C23],[V100R001C25],[V100R001C10]\n\
+      arch=aarch64\nos=linux\npath=/usr/local/Ascend/cann-9.0.1\n</details>\n\n\n\
+      ### \U0001F41B Describe the bug\n\n在模型Qwen3-VL-2B下开启SP运行dense及MOE模型均发现sp pass未生效。\n\
+      (Worker_TP0 pid=104637) DEBUG 07-21 19:33:04 [sequence_parallelism.py:223] Replaced\
+      \ 0 patterns\n(Worker_TP1 pid=104638) DEBUG 07-21 19:33:04 [sequence_parallelism_moe.py:192]\
+      \ SequenceParallelismMoePass replaced 0 patterns\ndebug确认代码pattern模式与实际FX.graph模式对不上导致sp特性未生效"
+  expected:
+    resolution: '[Core][BugFix][Test] Fix sequence parallelism for both MoE and dense
+      model'
+    fix_commit: 'PR #12772'
+    confidence: high
+  status: active
+- issue: 12697
+  split: selection
+  title: '[Bug]: 双机A3 pd分离部署deepseek-v4-flash ，vllm_ascend 0.23.rc1版本，发现kvcache传输时长transfer_ms值出现剧烈波动
+    一会儿几百ms 一会儿几分钟了 直接不可用'
+  input:
+    symptoms: "### Your current environment\n\n拉起配置 P节点：\n```\nexport VLLM_RPC_TIMEOUT=3600000\n\
+      export VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=30000\nexport HCCL_EXEC_TIMEOUT=204\n\
+      export HCCL_CONNECT_TIMEOUT=120\nexport OMP_PROC_BIND=false\nexport OMP_NUM_THREADS=10\n\
+      export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True\nexport HCCL_BUFFSIZE=2560\n\
+      export TASK_QUEUE_ENABLE=1\nexport VLLM_ASCEND_ENABLE_FLASHCOMM1=1\nexport VLLM_ASCEND_ENABLE_FLASHCOMM2=1\n\
+      export HCCL_OP_EXPANSION_MODE=\"AIV\"\nexport LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libjemalloc.so.2:$LD_PRELOAD\n\
+      export ASCEND_RT_VISIBLE_DEVICES=$1\n\nvllm serve /data/DSV4/DeepSeek-V4-Flash-w8a8-mtp/\
+      \ \\\n--host 0.0.0.0 \\\n--port $2 \\\n--data-parallel-size $3 \\\n--data-parallel-rank\
+      \ $4 \\\n--data-parallel-address $5 \\\n--data-parallel-rpc-port $6 \\\n--tensor-parallel-size\
+      \ $7 \\\n--enable-expert-parallel \\\n--seed 1024 \\\n--served-model-name DeepSeek-V4-Flash-1P1D\
+      \ \\\n--max-model-len 1048576 \\\n--max-num-batched-tokens 8192 \\\n--max-num-seqs\
+      \ 32 \\\n--enable-prefix-caching \\\n--no-disable-hybrid-kv-cache-manager \\\
+      \n--model-loader-extra-config '{\"enable_multithread_load\": \"true\", \"num_threads\"\
+      : 128}' \\\n--safetensors-load-strategy 'prefetch' \\\n--speculative-config\
+      \ '{\"num_speculative_tokens\": 3,\"method\": \"mtp\",\"enforce_eager\": true}'\
+      \ \\\n--trust-remote-code \\\n--block-size 128 \\\n--tokenizer-mode deepseek_v4\
+      \ \\\n--tool-call-parser deepseek_v4 \\\n--enable-auto-tool-choice \\\n--gpu-memory-utilization\
+      \ 0.9 \\\n--quantization ascend \\\n--enforce-eager \\\n--additional-config\
+      \ '{\"enable_cpu_binding\": true, \"enable_shared_expert_dp\": true, \"enable_dsa_cp\"\
+      : true}' \\\n--kv-transfer-config \\\n'[{\"kv_connector\": \"MooncakeHybridConnector\"\
+      , \\\n\"kv_role\": \"kv_producer\", \\\n\"kv_port\": \"30000\", \\\n\"engine_id\"\
+      : \"0\", \\\n\"kv_connector_extra_config\": { \\\n        \"prefill\": { \\\n\
+      \            \"dp_size\": 4, \\\n            \"tp_size\": 4 \\\n        }, \\\
+      \n        \"decode\": { \\\n            \"dp_size\": 16, \\\n```\nD节点配置：\n```\n\
+      export ASCEND_RT_VISIBLE_DEVICES=$1\n\nvllm serve /data/DSV4/DeepSeek-V4-Flash-w8a8-mtp/\
+      \ \\\n--host 0.0.0.0 \\\n--port $2 \\\n--data-parallel-size $3 \\\n--data-parallel-rank\
+      \ $4 \\\n--data-parallel-address $5 \\\n--data-parallel-rpc-port $6 \\\n--tensor-parallel-size\
+      \ $7 \\\n--enable-expert-parallel \\\n--seed 1024 \\\n--served-model-name DeepSeek-V4-Flash-1P1D\
+      \ \\\n--max-model-len 1048576 \\\n--max-num-batched-tokens 4096 \\\n--max-num-seqs\
+      \ 16 \\\n--async-scheduling \\\n--b\n\n……（中段裁剪）……\n\nO: 10.230.100.30:32836\
+      \ - POST /v1/chat/completions HTTP/1.1 200 OK  \nLB_TIMELINE {\"request_id\"\
+      : \"3bf45f62-eadd-4b5c-85cb-651fc6032956\", \"api\": \"/chat/completions\",\
+      \ \"prefiller\": \"10.230.100.33:7100\", \"decoder\": \"10.230.100.33:7100\"\
+      , \"prefill_ms\": 1852.944, \"transfer_ms\": 200.564, \"decode_ms\": 4408.502,\
+      \ \"end_to_end_ms\": 6462.01, \"retry_count\": 0, \"status\": \"ok\", \"error\"\
+      : null}  \nINFO: 10.230.100.30:32848 - POST /v1/chat/completions HTTP/1.1 200\
+      \ OK  \nINFO: 10.230.100.30:35226 - POST /v1/chat/completions HTTP/1.1 200 OK\
+      \  \nLB_TIMELINE {\"request_id\": \"940818a3-0ead-4f0b-a5b0-4a6373f5f8de\",\
+      \ \"api\": \"/chat/completions\", \"prefiller\": \"10.230.100.33:7100\", \"\
+      decoder\": \"10.230.100.33:7100\", \"prefill_ms\": 5654.565, \"transfer_ms\"\
+      : 482.612, \"decode_ms\": 0.181, \"end_to_end_ms\": 6137.358, \"retry_count\"\
+      : 0, \"status\": \"ok\", \"error\": null}  \nLB_TIMELINE {\"request_id\": \"\
+      d7d51d46-861c-424a-9366-5348f25358\", \"api\": \"/chat/completions\", \"prefiller\"\
+      : \"10.230.100.33:7100\", \"decoder\": \"10.230.100.33:7100\", \"prefill_ms\"\
+      : 6783.617, \"transfer_ms\": 38599.941, \"decode_ms\": 0.52, \"end_to_end_ms\"\
+      : 45384.078, \"retry_count\": 0, \"status\": \"ok\", \"error\": null}\n```\n\
+      最后波动是到45秒，导致客户服务不能正常使用。"
+  expected:
+    resolution: （待补：维护者结论）
+    fix_commit: ''
+    confidence: pending
+  status: active
+- issue: 12640
+  split: selection
+  title: '[Bug]: DSpark V1 crashes when DP pads drafter tokens'
+  input:
+    symptoms: "## Environment\n\n- vLLM-Ascend: `f5b5514afdb9ed53e7382ce8abdefec0bd0e5c62`\
+      \ (latest `main`)\n- vLLM: `54503ecec0f3ac31e5ecfc5f28652e4cc42307b5`\n- CANN:\
+      \ `9.0.1`\n- torch-npu: `2.10.0.post2`\n- Model: `/models/DeepSeek-V4-Flash-DSpark-w4a8`\n\
+      - Topology: TP4 / DP4 / EP on 16 NPUs\n- Model runner: V1\n\n## Reproduction\n\
+      \nStart DSpark with graph capture disabled:\n\n```bash\nVLLM_USE_V2_MODEL_RUNNER=0\
+      \ \\\nASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15 \\\nvllm\
+      \ serve /models/DeepSeek-V4-Flash-DSpark-w4a8 \\\n  --tensor-parallel-size 4\
+      \ \\\n  --data-parallel-size 4 \\\n  --enable-expert-parallel \\\n  --max-model-len\
+      \ 4096 \\\n  --max-num-seqs 4 \\\n  --max-num-batched-tokens 2048 \\\n  --quantization\
+      \ ascend \\\n  --additional-config '{\"enable_fused_mc2\":false}' \\\n  --speculative-config\
+      \ '{\"method\":\"dspark\",\"num_speculative_tokens\":5}' \\\n  --enforce-eager\n\
+      ```\n\nSend 16 heterogeneous prompts with `temperature=0`, `max_tokens=256`,\
+      \ `ignore_eos=true`, and concurrency 4.\n\nObserved on unmodified `main`:\n\n\
+      - completed: 4\n- failed: 12\n- the engine exits when requests finish at different\
+      \ times across DP ranks\n\n```text\nRuntimeError: call aclnnInplacePartialRotaryMul\
+      \ failed\nEZ9999: dim0 must be equal\nCheckInputShapes is failed\n```\n\nThis\
+      \ also reproduces with all graph capture disabled, so it is not an ACLGraph\
+      \ issue. The rotary operator is only the first place that rejects the inconsistent\
+      \ token dimensions.\n\n## Root cause\n\nAfter DP synchronization, `num_input_tokens`\
+      \ can be larger than the current rank's actual drafter token count. The DSpark\
+      \ path does not apply one consistent contract to that padded tail:\n\n1. draft\
+      \ attention metadata is built before `positions` and slot buffers receive padding\
+      \ sentinels;\n2. non-causal DSA metadata keeps the actual decode-token count\
+      \ while positions and hidden states use the DP-padded count;\n3. SWA indices\
+      \ use `repeat_interleave(..., output_size=num_decode_tokens)` even when the\
+      \ repeat counts only cover actual tokens, so padded token rows have no defined\
+      \ metadata.\n\nRelated #12612 changes the `positions` view, but it does not\
+      \ cover the decode-token count or SWA padded-tail sentinels.\n\n## Proposed\
+      \ fix\n\n- pad DSpark token buffers before building draft attention metadata;\n\
+      - pass padded positions and slot mappings with `positions=0` and `slot_mapping=-1`\
+      \ for inactive rows;\n- align non-causal DSA decode-token count with `num_input_tokens`;\n\
+      - generate SWA padded rows with `lens=0` and `slots=-1`.\n\nThe change should\
+      \ remain limited to DSpark/DSA metadata construction; rotary and SAS operator\
+      \ code do not need changes.\n\n## Validation\n\nUsing the same real-weight eager\
+      \ workload:\n\n| Revision | Completed | Failed | Output tokens |\n| --- | ---:\
+      \ | ---: | ---: |\n| latest `main` | 4 | 12 | 813 before engine failure |\n\
+      | proposed metadata fix | 16 | 0 | 4096 |\n\nUnit coverage should include actual\
+      \ token count smaller than DP-padded token count for positions, slot mappings,\
+      \ DSA decode count, and SWA sentinels.\n"
+  expected:
+    resolution: The issue reporter has linked the PR related to resolving this issue.
+    fix_commit: ''
+    confidence: medium
+  status: active
+- issue: 12490
+  split: selection
+  title: '[Misc]: Close cherry-pick PR #12265'
+  input:
+    symptoms: '### Anything you want to discuss about vllm on ascend.
+
+
+      ### What this issue does / why we need it?
+
+
+      PR #12265 is a stale cherry-pick of #12084 to `releases/v0.24.0rc`. It has a
+      merge conflict in `tests/ut/conftest.py` (caused by the revert in #12259) and
+      cannot be auto-merged.
+
+      The same cherry-pick was re-triggered as #12409, which has already been merged.
+
+      Therefore #12265 is a duplicate and should be closed.
+
+
+      ### Action requested
+
+
+      Close #12265.
+
+      Comment on #12265 requesting closure: https://github.com/vllm-project/vllm-ascend/pull/12265#issuecomment-5021720403.
+
+
+      ### Evidence
+
+
+      - #12265: OPEN, CONFLICTING
+
+      - #12409: MERGED'
+  expected:
+    resolution: （待补：维护者结论）
+    fix_commit: ''
+    confidence: pending
+  status: active
+- issue: 12211
+  split: selection
+  title: '[Bug] Anthropic /v1/messages returns 500: _patched_convert_system_message()
+    got unexpected keyword ''merge_inline_system'' (0.21.0rc1)'
+  input:
+    symptoms: "### Your current environment\n\nEnvironment\n\nvllm-ascend: 0.21.0rc1\n\
+      vllm:        v0.21.0   (bundled per release note #9835)\nimage:       <quay.io/ascend/vllm-ascend:v0.21.0rc1-openeuler>\n\
+      device:      910B2 x 8\n\n\n\n### \U0001F41B Describe the bug\n\nDescribe the\
+      \ bug \n\nOn the official 0.21.0rc1 image, every POST /v1/messages request fails\
+      \ with HTTP 500, out of the box, with no modification required:\n```\nERROR\
+      \ api_router.py:72 Error in create_messages:\n_patched_convert_system_message()\
+      \ got an unexpected keyword argument 'merge_inline_system'\n  File \"vllm/entrypoints/anthropic/serving.py\"\
+      , line 161, in _convert_anthropic_to_openai_request\n    cls._convert_system_message(anthropic_request,\
+      \ openai_messages, merge_inline_system=merge_inline_system)\nTypeError: _patched_convert_system_message()\
+      \ got an unexpected keyword argument 'merge_inline_system'\n```\n\n[df2029ade3544321abbc74b5f434a9a5.txt](https://github.com/user-attachments/files/30092107/df2029ade3544321abbc74b5f434a9a5.txt)\n\
+      \n**Root cause**\n```\nvllm_ascend/patch/.../patch_anthropic_system_message.py\
+      \ monkey-patches AnthropicServingMessages._convert_system_message and ._convert_messages\
+      \ with the old two-argument signature (cls, anthropic_request, openai_messages).\n\
+      The bundled upstream vLLM v0.21.0 now calls both methods with a merge_inline_system\
+      \ keyword argument (in _convert_anthropic_to_openai_request), which the patched\
+      \ functions don't accept → TypeError → 500. Both patched methods are affected,\
+      \ not just _convert_system_message.\n```\n\n**Fix (verified locally on 0.21.0rc1,\
+      \ request returns 200 afterwards)**\nMake both patched functions accept and\
+      \ honor merge_inline_system (with **kwargs to guard against future signature\
+      \ additions):\n\n\n#  /vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/patch_anthropic_system_message.py\n\
+      \n\n```python\ndef _patched_convert_system_message(\n    cls,\n    anthropic_request:\
+      \ AnthropicMessagesRequest | AnthropicCountTokensRequest,\n    openai_messages:\
+      \ list[dict[str, Any]],\n    *,\n    merge_inline_system: bool = True,\n   \
+      \ **kwargs: Any,\n) -> None:\n    system_parts: list[str] = []\n\n    if anthropic_request.system:\n\
+      \        _append_system_content(system_parts, anthropic_request.system)\n\n\
+      \    # Only merge inline system messages into the leading block when requested.\n\
+      \    if merge_inline_system:\n        for msg in anthropic_request.messages:\n\
+      \n\n……（中段裁剪）……\n\nHTTP_STATUS:%{http_code}\\n\" -X POST http://0.0.0.0:8000/v1/messages\
+      \ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"model\": \"\
+      dsv4flash\",\n    \"max_tokens\": 32,\n    \"system\": \"You are a helpful assistant.\"\
+      ,\n    \"messages\": [\n      {\"role\": \"user\", \"content\": \"Hi\"},\n \
+      \     {\"role\": \"system\", \"content\": \"Reply only in uppercase.\"},\n \
+      \     {\"role\": \"user\", \"content\": \"how are you?\"}\n    ]\n  }'\n\n\n\
+      {\"id\":\"chatcmpl-bd492107bdafc286\",\"type\":\"message\",\"role\":\"assistant\"\
+      ,\"content\":[{\"type\":\"text\",\"text\":\"Hello.\"}],\"model\":\"dsv4flash\"\
+      ,\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":11,\"output_tokens\"\
+      :3}}\nHTTP_STATUS:200\n\n\n{\"id\":\"chatcmpl-bbc885921627f6cf\",\"type\":\"\
+      message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"\
+      Paris\"}],\"model\":\"dsv4flash\",\"stop_reason\":\"end_turn\",\"usage\":{\"\
+      input_tokens\":23,\"output_tokens\":2}}\nHTTP_STATUS:200\n\n{\"id\":\"chatcmpl-a9e17e14a0440ceb\"\
+      ,\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\"\
+      ,\"text\":\"I AM AN AI ASSISTANT, SO I DON'T HAVE FEELINGS, BUT THANK YOU FOR\
+      \ ASKING. HOW CAN I HELP YOU TODAY?\"}],\"model\":\"dsv4flash\",\"stop_reason\"\
+      :\"max_tokens\",\"usage\":{\"input_tokens\":21,\"output_tokens\":32}}\nHTTP_STATUS:200\n\
+      ```\n"
+  expected:
+    resolution: Thanks for reporting this bug, this patch is already removed in the
+      latest code, plz try with the latest code.
+    fix_commit: ''
+    confidence: medium
+  status: active
+- issue: 12102
+  split: selection
+  title: '[Bug]: v0.23.0 A3单机混部开启DCP服务拉起失败报错：AssertionError: sum_page_size_bytes %
+    current_kv_cache_spec.page_size_bytes == 0'
+  input:
+    symptoms: "### Your current environment\n\n<details>\n<summary>The output of `python\
+      \ collect_env.py`</summary>\n\n```text\nYour output of above commands here\n\
+      ```\n\n</details>\n\n\n### \U0001F41B Describe the bug\n\n# 版本信息：\n\n**vllm**\n\
+      https://github.com/vllm-project/vllm/tree/releases/v0.23.0\t\ncommit 0fc695fc6d1d82e9a5ac6835ac8e4e1c83703665\
+      \ (HEAD -> v0.23.0, tag: v0.23.0, origin/releases/v0.23.0)\nAuthor: avesed <trevor.lijunlin@gmail.com>\n\
+      Date:   Sun Jun 14 13:30:06 2026 -0400\n\n    [Bugfix][Frontend] Cap fastapi\
+      \ < 0.137 to avoid prometheus-fastapi-instrumentator crash on serve startup\n\
+      \n**vllm-ascend**\t\nhttps://github.com/vllm-project/vllm-ascend/tree/releases/v0.23.0/\t\
+      \ncommit a218b5b578d282857dc5b81ffd6568b56014665a (HEAD -> v0.23.0, origin/releases/v0.23.0)\n\
+      Author: yilunh <81902103+yilunh998@users.noreply.github.com>\nDate:   Wed Jul\
+      \ 15 11:31:45 2026 +0800\n\n    [BugFix] Fix static_forward_context cleanup\
+      \ and MTP draft loading (#12022)\n\n# 报错信息\n```\n(EngineCore pid=1547) INFO\
+      \ 2026-07-15 09:50:50.559 [kv_cache_utils.py:1745] Maximum concurrency for 1,024,000\
+      \ tokens per request: 8.50x\n(Worker_TP13_DCP13_EP13 pid=3084) ERROR 2026-07-15\
+      \ 09:50:50.842 [multiproc_executor.py:987] WorkerProc hit an exception.\n(Worker_TP13_DCP13_EP13\
+      \ pid=3084) ERROR 2026-07-15 09:50:50.842 [multiproc_executor.py:987] Traceback\
+      \ (most recent call last):\n(Worker_TP13_DCP13_EP13 pid=3084) ERROR 2026-07-15\
+      \ 09:50:50.842 [multiproc_executor.py:987]   File \"/a3_inference/itask/workdir/mrl02488572/mrl/repo/github2-baseline/vllm-dist-v0.23.0/vllm/v1/executor/multiproc_executor.py\"\
+      , line 982, in worker_busy_loop\n(Worker_TP13_DCP13_EP13 pid=3084) ERROR 2026-07-15\
+      \ 09:50:50.842 [multiproc_executor.py:987]     output = func(*args, **kwargs)\n\
+      (Worker_TP13_DCP13_EP13 pid=3084) ERROR 2026-07-15 09:50:50.842 [multiproc_executor.py:987]\
+      \              ^^^^^^^^^^^^^^^^^^^^^\n(Worker_TP13_DCP13_EP13 pid=3084) ERROR\
+      \ 2026-07-15 09:50:50.842 [multiproc_executor.py:987]   File \"/a3_inference/itask/workdir/mrl02488572/mrl/repo/github2-baseline/vllm-dist-v0.23.0/vllm/v1/worker/worker_base.py\"\
+      , line 319, in initialize_from_config\n(Worker_TP13_DCP13_EP13 pid=3084) ERROR\
+      \ 2026-07-15 09:50:50.842 [multiproc_executor.py:987]     self.worker.initialize_from_config(kv_cache_config)\
+      \  # type: ignore\n(Worker_TP13_DCP13_EP13 pid=3084) ERROR 2026-07-15 09:50:50.842\
+      \ [multiproc_executor.py:987]     ^\n\n……（中段裁剪）……\n\n_QUEUE_ENABLE=1\nexport\
+      \ CPU_AFFINITY_CONF=1\n\necho performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor\n\
+      vllm serve /a3_inference/itask/workdir/shared/models/glm-5.2-w4a8 \\\n    --seed\
+      \ 1024 \\\n    --host 0.0.0.0 \\\n    --port 9000 \\\n    --served-model-name\
+      \ glm-5 \\\n    --max_model_len 1024000 \\\n    --max-num-batched-tokens 2048\
+      \ \\\n    --gpu-memory-utilization 0.93 \\\n    --api-server-count 1 \\\n  \
+      \  --max-num-seqs 4 \\\n    -dp 1 -pp 1 -tp 16 -pcp 1 -dcp 16 \\\n    --cp-kv-cache-interleave-size\
+      \ 128 \\\n    --compilation-config '{\"cudagraph_mode\": \"FULL_DECODE_ONLY\"\
+      , \"cudagraph_capture_sizes\":[4, 16]}' \\\n    --additional-config '{\"enable_dsa_cp\"\
+      : false, \"ascend_compilation_config\":{\"enable_npugraph_ex\": true, \"enable_static_kernel\"\
+      : false},\"fuse_muls_add\":true, \"multistream_overlap_shared_expert\": true,\
+      \ \"enable_mc2_hierarchy_comm\":false, \"enable_sparse_c8\": true, \"enable_cpu_binding\"\
+      :true, \"recompute_scheduler_enable\": false}' \\\n    --speculative-config\
+      \ '{\"num_speculative_tokens\": 3,\"method\": \"deepseek_mtp\"}' \\\n    --quantization\
+      \ ascend \\\n    --enable-expert-parallel \\\n    --safetensors-load-strategy\
+      \ 'prefetch' \\\n    2>&1 | tee logs/mix_dcp.log\n```"
+  expected:
+    resolution: please try https://github.com/vllm-project/vllm-ascend/pull/11981
+    fix_commit: ''
+    confidence: medium
   status: active
