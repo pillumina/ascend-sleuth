@@ -1,0 +1,88 @@
+# VLLM-ASC-13639 —— MRV2 FullGraph 图模式下开启 speculative decoding 请求 hang：main/draft 模型图的
+#   参数更新流（update_stream）未统一 → fullgraph 死锁 → EngineCore 报 "RPC call to sample_tokens timed
+#   out" → executor shutdown 等 worker exit；PR #13600 统一 main/draft 的 update_stream 修复
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/13639（state=COMPLETED）
+# fix 跟踪：PR #13600（[BugFix][MRV2] Unify update_stream across main and draft to fix fullgraph deadlock，merged）
+# investigation_quality: high（上游 fix 合入 + S2 校准集 ground-truth resolution 对照）
+# pre-triage: new_pattern（knowledge 全库无 update_stream / fullgraph / sample_tokens-RPC-timeout 签名；
+#   近邻 14871/13710/9507/11312/7310/13688 的机制与错误签名均不同，root_cause/fix 无重叠）
+# verification: upstream-fix-merged（fix PR #13600 merged；校准集 eval/s2/vllm-ascend.yaml issue 13639 resolution 为证）
+# 导入管道：S2 replay 覆盖缺口（issue 13639 盲测 tier2_hit=false、误判"FULL×spec 不支持组合"
+#   root_cause_ok=false——对照 resolution 证明是 update_stream 未统一的流同步缺陷）→ groom 升格
+# 判别要点（防盲测误判）：FULL×spec 是**受支持组合**（9507 型 PCP×FULL 官方功能限制是另一码事）——
+#   hang 根因在 main/draft update_stream 分歧，不是"组合不支持"
+
+cases:
+  - id: VLLM-ASC-13639
+    title: "MRV2 FullGraph（FULL 全图捕获/回放）模式下开启 speculative decoding 请求 hang：main 与 draft 模型图的参数更新流（update_stream）未统一 → fullgraph 死锁，decode worker 采样步永不返回，EngineCore 经 multiproc executor 报 'TimeoutError: RPC call to sample_tokens timed out'，随后 executor shutdown 等待 worker exit（count=8）——PR #13600 Unify update_stream across main and draft 修复"
+
+    category: interrupt
+    tags: [mrv2, fullgraph, speculative-decode, cudagraph, deadlock, hang, update-stream, stream-sync]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["含 MRV2 main/draft update_stream 未统一、未含 PR #13600 的构建"]   # 具体 release 号待 groom 按 PR #13600 合入版本回填（盲测 fixture 为 vLLM 0.27.1 main2main era）
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.75
+
+    symptoms:
+      - "MRV2（vllm_ascend/worker/v2 Model Runner V2）FullGraph 图模式下开启 speculative decoding，请求到达后 hang（不再出 token/挂起）——非启动失败、非崩溃"
+      - "EngineCore_DP0 侧 multiproc executor 报 TimeoutError: RPC call to sample_tokens timed out（core.py:1332 raise self._exception，_wait_for_response 超时）"
+      - "超时后 executor 进入 shutdown：Executor: waiting for worker exit count=8（Worker parent process exited, terminating worker queues）——worker 侧无主动崩溃栈，是挂起被外层 RPC 超时打断"
+      - "组合判别：fullgraph 图模式与 speculative decoding 同时开启是触发前提（见 title/resolution）；修复 PR #13600 后组合正常工作 → 非'FULL×spec 不支持'功能限制"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/13639"
+      - "https://github.com/vllm-project/vllm-ascend/pull/13600"
+
+    verification:
+      source: upstream-fix-merged
+      detail: 'fix PR #13600（[BugFix][MRV2] Unify update_stream across main and draft to fix fullgraph deadlock，merged；校准集 eval/s2/vllm-ascend.yaml issue 13639 expected.resolution 一致）'
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'RPC call to sample_tokens timed out' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*RPC call to sample_tokens timed out"
+      fallback:
+        command_template: "grep -aE 'TimeoutError.*sample_tokens|waiting for worker exit' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*(TimeoutError.*sample_tokens|waiting for worker exit)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：是否 MRV2 图模式（FullGraph/FULL cudagraph）下开启 speculative decoding 后请求 hang——EngineCore_DP0 日志含 TimeoutError: RPC call to sample_tokens timed out、随后 Executor: waiting for worker exit count=N，而 worker 侧无崩溃栈？"
+        expected: "是——decode worker 采样步挂起（fullgraph 死锁）被外层 sample_tokens RPC 超时打断，非启动失败/非 worker 崩溃/OOM"
+      - step: 2
+        check: "关键判别（防盲测误判）：勿止步于'FULL×spec 可能是不支持组合'——FULL 图模式与 speculative decoding 的组合是**受支持**的（9507 是 PCP×FULL 官方功能限制、11312 是 DCP×spec×图捕获启动 AttributeError、均与本 hang 签名不同）。本 case 真根因是 main/draft 模型图的参数更新流 update_stream 未统一导致的 fullgraph 死锁（可修复代码缺陷，非功能限制）"
+        expected: "是——证据链：分辨率是 PR #13600（Unify update_stream across main and draft）而非'关闭 spec/切模式'的 workaround；盲测曾误判为'FULL×spec 不支持组合'（root_cause_ok=false），根因应钉到 update_stream main/draft 分歧"
+      - step: 3
+        check: "机制确认（升级后回验）：升级到含 PR #13600 的 vllm-ascend 构建（统一 main 与 draft 的 update_stream），保持 FULL 图模式 + speculative decoding 配置复测"
+        expected: "请求正常出 token、无 sample_tokens RPC 超时——组合配置本身有效，死锁随 update_stream 统一消除"
+      - step: 4
+        check: "边界判别：若签名不是 RPC 超时 hang 而是以下错误，属其他 case 勿混判——14871=spec×recompute_scheduler 首请求 AttributeError async_tokens_to_discard（PD 分离 recompute 场景）；13710=DCP+MTP slot_mapping shape 256/260 崩溃（pcp_utils 空段）；13688=AIV+RIC graph_task_group capture 失败+死锁（507009/507903）"
+        expected: "是——各签名/机制不同，本 case 仅覆盖 MRV2 fullgraph × spec 的 update_stream 死锁 hang"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      vllm-ascend MRV2（vllm_ascend/worker/v2 NPUModelRunner V2 + ModelAclGraphManager）FullGraph
+      图模式下开启 speculative decoding 时，main 模型图与 draft 模型图的参数更新流（update_stream）
+      未统一——main/draft 各自的图参数在分歧的流上更新，FULL 全图捕获/回放下二者间的流/事件同步
+      关系不被满足 → fullgraph 死锁：decode worker 采样步永不返回，EngineCore 经 multiproc executor
+      的 sample_tokens RPC 超时（TimeoutError: RPC call to sample_tokens timed out），随后 executor
+      shutdown 等待 worker exit（count=8）。注意：这**不是**"FULL 图模式不支持 speculative decoding"
+      的功能限制（9507 型 PCP×FULL 是官方确认限制、workaround-only），而是可修复的具体流同步代码
+      缺陷——组合本身受支持，修复即 PR #13600 统一 main/draft 的 update_stream。
+
+    fix: >
+      升级到含 PR #13600（[BugFix][MRV2] Unify update_stream across main and draft to fix fullgraph
+      deadlock，merged）的 vllm-ascend 构建/后续版本，重启服务——统一 main 与 draft 模型图的
+      update_stream 后 fullgraph 死锁消除，FULL 图模式 + speculative decoding 组合正常工作。
+    rollback: "revert PR #13600 / 回退版本即复现（流同步缺陷，可 revert 验证）；修复前无参数级 workaround——误判为'组合不支持'只会让人放弃 spec 加速，掩盖真实可修缺陷"

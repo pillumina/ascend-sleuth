@@ -3,9 +3,9 @@
 # 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-09-03    case 总数：118
+# 生成日期：2026-09-03    case 总数：123
 #   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=76/30, performance=6/30, precision=15/30
+#   容量(inference/vllm-ascend): interrupt=81/30, performance=6/30, precision=15/30
 #   容量(training/mindspeed-llm): interrupt=11/30, precision=3/30
 #   容量(training/verl): interrupt=6/30
 namespaces:
@@ -43,6 +43,39 @@ namespaces:
       hash: 3576617fec9c
   inference/vllm-ascend:
     interrupt:
+    - id: VLLM-ASC-10097
+      title: 'model_runner_v1.py Mamba align 模式调用 mamba_utils.preprocess_mamba 重复传参（v0.20.2 分支 preprocess_bufs
+        已 = self._get_mamba_copy_bufs()，调用仍多传一个 self._get_mamba_copy_bufs() 位置实参）→ 实参数超签名 TypeError（v0.20.2
+        回归）；fix PR #10188 移除重复实参'
+      category: interrupt
+      tags:
+      - mamba
+      - align-mode
+      - preprocess-mamba
+      - typeerror
+      - regression
+      - v0.20.2
+      platforms: []
+      compat: vllm-ascend ==0.20.2
+      confidence:
+        score: 0.75
+      symptoms:
+      - 'Mamba 模型 + mamba_cache_mode=align 配置（model_runner_v1.py preprocess_mamba 调用路径）下推理抛 TypeError——issue
+        标题即 ''[Bug]: model_runner_v1 preprocess_mamba 重复传参致 TypeError（v0.20.2 回归）'''
+      - 报错代码特征：preprocess_mamba 调用最后两个实参重复——vllm_version_is('0.20.2') 分支先置 preprocess_bufs = mamba_bufs
+        = self._get_mamba_copy_bufs()，随后调用仍把 self._get_mamba_copy_bufs(), 与 preprocess_bufs, 一并传入（issue
+        原文：'the last 2 args ... is duplicated, self._get_mamba_copy_bufs(), should be removed'）
+      - 回归由 v0.20.2 分支引入（报错代码处于 vllm_version_is('0.20.2') 保护段）；issue 环境标 main branch——携带 0.20.2 分支同段调用代码时同现，报错与
+        Mamba align 模式路径绑定
+      quickly_check:
+        primary:
+          command: 'grep -F ''TypeError: preprocess_mamba'' {{log_path}}'
+          expected: 'regex:TypeError: preprocess_mamba'
+        fallback:
+          command: grep -E 'model_runner_v1.*preprocess_mamba|mamba_cache_mode|_get_mamba_copy_bufs' {{log_path}}
+          expected: regex:(model_runner_v1.*preprocess_mamba|mamba_cache_mode|_get_mamba_copy_bufs)
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10097.yaml
+      hash: 44dd73ddcee0
     - id: VLLM-ASC-10122
       title: 310P（Qwen3.6-27B-W8A8 serve）推理报 507015 aicore exception：fault kernel_name=QuantBatchMatMulV3
         量化算子在该 CANN 版本有 bug，升级到 ≥9.1.0.beta2 修复
@@ -424,6 +457,47 @@ namespaces:
           expected: regex:json|parse|tool
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10954.yaml
       hash: f745a39c7edb
+    - id: VLLM-ASC-10998
+      title: 'Qwen3.6-27B hybrid KV（多 cache group）+ layerwise connector + mooncake store PD disagg 长稳：D
+        侧批量 get 跨组 key 部分失败——group 1/2/3 key 全部 -704（mooncake_backend ''Failed to get 3 keys out of 6
+        … Check key existence and memory state''），同批 group 0 key 全命中；layerwise connector+mooncake store
+        按 cache group 命中集合取块缺陷（PR #11131）'
+      category: interrupt
+      tags:
+      - pd-disaggregation
+      - layerwise-connector
+      - hybrid-kv
+      - mooncake
+      - kv-pool
+      - kv-transfer
+      - get-key-error
+      - stability
+      platforms: []
+      compat: vllm-ascend 0.21.0rc1
+      confidence:
+        score: 0.6
+      symptoms:
+      - 'PD disagg 长稳压测（长序列）：prefill/decode 侧 --kv-transfer-config MultiConnector = MooncakeLayerwiseConnector（kv_producer
+        / kv_consumer）+ AscendStoreConnector（backend=mooncake），模型 qwen3.6-27b 且 --no-disable-hybrid-kv-cache-manager（hybrid
+        KV），触发镜像 v0.21.0rc1 + PR #10565'
+      - vllm worker 日志偶发：'[mooncake_backend.py:240] [vllm-ascend] [distributed] - Failed to get 3 keys
+        out of 6. error_codes=[-704]. Check key existence and memory state.'（get 失败型，-704=key not found；区别于
+        put 失败 -800）
+      - '''Failed to get key details. keys=[...]'' 明细：同批 key 跨 cache group（形如 Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:N@cache_role:kv@cache_family:default@<hash>），result=[OK,
+        OK, -704, -704, -704, OK]——失败恰为 group 1/2/3 的 key，group 0 key 全部命中'
+      - issue 同文贴出 plog：HCCL one_sided_service_adapt DeregisterMem 'The parameter memHandle[...] is invalid'
+        + GE ErrorNo 103900 Failed to deregister mem + rtFreeHost ErrCode=507899（时间戳与 -704 报错不同窗口）——非
+        resolution 所指路径，不作判别主信号
+      quickly_check:
+        primary:
+          command: grep -aE 'Failed to get [0-9]+ keys? out of [0-9]+\. error_codes=\[-704\]' {{log_path}}
+          expected: regex:Failed to get [0-9]+ keys? out of [0-9]+\. error_codes=\[-704\]
+        fallback:
+          command: grep -aE 'Failed to get key details\. keys=.*@group:[0-9]+@cache_role:kv@cache_family'
+            {{log_path}}
+          expected: regex:Failed to get key details\. keys=.*@group:[0-9]+@cache_role:kv@cache_family
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10998.yaml
+      hash: e6cc03755a2f
     - id: VLLM-ASC-11208
       title: '双机 A2 按官方教程部署 GLM5.2 启动报 ModuleNotFoundError: No module named ''vllm.model_executor.layers.fused_moe.expert_map_manager''（v0.22.1rc
         未适配 GLM5.2）'
@@ -986,6 +1060,49 @@ namespaces:
           expected: regex:.*(mtp\.0\.head\.weight|speculative-config)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13329.yaml
       hash: 05afcdd66439
+    - id: VLLM-ASC-13446
+      title: '按 v0.24.0rc 官方 Qwen3-Reranker deploy guide 启动 Qwen3-VL-Reranker-2B（--runner pooling + --hf_overrides
+        ''{"architectures": ["Qwen3VLForSequenceClassification"]}''）报 TypeError: Invalid type of HuggingFace
+        config（Expected Qwen3VLConfig but found Qwen3Config）→ serve 起不来：guide 架构覆盖与模型实际 config 类错配（doc
+        bug，PR #13510 修 guide）；改 Qwen3ForSequenceClassification（0.18 配方）可正常启动'
+      category: interrupt
+      tags:
+      - reranker
+      - qwen3-reranker
+      - qwen3-vl
+      - pooling
+      - hf-overrides
+      - architectures
+      - config-type-mismatch
+      - doc-guide
+      - startup-failure
+      - typeerror
+      platforms: []
+      compat: vllm-ascend
+      confidence:
+        score: 0.75
+      symptoms:
+      - '按官方文档（https://docs.vllm.ai/projects/ascend/en/v0.24.0rc/tutorials/models/Qwen3-Reranker.html）配方启动：vllm
+        serve Qwen/Qwen3-VL-Reranker-2B --served-model-name Qwen/Qwen3-Reranker-0.6B --runner pooling
+        --hf_overrides ''{"architectures": ["Qwen3VLForSequenceClassification"],"classifier_from_token":
+        ["no", "yes"],"is_original_qwen3_reranker": true}'' --port 8000 --max-model-len 1024，serve 启动报错'
+      - '报错签名（issue 原文可匹配）：TypeError: Invalid type of HuggingFace config. Expected type: <class ''transformers.models.qwen3_vl.configuration_qwen3_vl.Qwen3VLConfig''>,
+        but found type: <class ''transformers.models.qwen3.configuration_qwen3.Qwen3Config''>，栈经 vllm/model_executor/models/qwen3_vl.py
+        get_data_parser/get_hf_config → vllm/multimodal/processing/context.py get_hf_config raise TypeError'
+      - 日志尾 [ERROR] ... ERR99999 UNKNOWN applicaiton exception 是启动异常后的级联兜底（同 VLLM-ASC-7823 归类），非独立错误
+      - 对照：把 architectures 覆盖改为 Qwen3ForSequenceClassification（0.18 时代 guide 配方）后服务可正常启动——guide 给的架构名与模型实际
+        config 类不匹配是触发点
+      quickly_check:
+        primary:
+          command: 'grep -aE ''TypeError: Invalid type of HuggingFace config|Expected type:.*Qwen3VLConfig.*but
+            found type:.*Qwen3Config'' {{log_path}}'
+          expected: regex:Invalid type of HuggingFace config
+        fallback:
+          command: grep -aE 'Qwen3VLForSequenceClassification|Qwen3.*Reranker|ERR99999 UNKNOWN applicaiton
+            exception' {{log_path}}
+          expected: regex:(Qwen3VLForSequenceClassification|Qwen3.*Reranker)
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13446.yaml
+      hash: 919ae7f5d4b7
     - id: VLLM-ASC-13508
       title: main2main Gluon 兼容 stub 只把 triton.experimental.gluon 叶子模块塞入 sys.modules，父模块 triton.experimental
         缺失，x86_64 导入即 ModuleNotFoundError
@@ -1020,6 +1137,43 @@ namespaces:
           expected: regex:triton\.experimental
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13508.yaml
       hash: 945222e075d3
+    - id: VLLM-ASC-13639
+      title: 'MRV2 FullGraph（FULL 全图捕获/回放）模式下开启 speculative decoding 请求 hang：main 与 draft 模型图的参数更新流（update_stream）未统一
+        → fullgraph 死锁，decode worker 采样步永不返回，EngineCore 经 multiproc executor 报 ''TimeoutError: RPC call
+        to sample_tokens timed out''，随后 executor shutdown 等待 worker exit（count=8）——PR #13600 Unify update_stream
+        across main and draft 修复'
+      category: interrupt
+      tags:
+      - mrv2
+      - fullgraph
+      - speculative-decode
+      - cudagraph
+      - deadlock
+      - hang
+      - update-stream
+      - stream-sync
+      platforms: []
+      compat: 'vllm-ascend 含 MRV2 main/draft update_stream 未统一、未含 PR #13600 的构建'
+      confidence:
+        score: 0.75
+      symptoms:
+      - MRV2（vllm_ascend/worker/v2 Model Runner V2）FullGraph 图模式下开启 speculative decoding，请求到达后 hang（不再出
+        token/挂起）——非启动失败、非崩溃
+      - 'EngineCore_DP0 侧 multiproc executor 报 TimeoutError: RPC call to sample_tokens timed out（core.py:1332
+        raise self._exception，_wait_for_response 超时）'
+      - '超时后 executor 进入 shutdown：Executor: waiting for worker exit count=8（Worker parent process exited,
+        terminating worker queues）——worker 侧无主动崩溃栈，是挂起被外层 RPC 超时打断'
+      - '组合判别：fullgraph 图模式与 speculative decoding 同时开启是触发前提（见 title/resolution）；修复 PR #13600 后组合正常工作 →
+        非''FULL×spec 不支持''功能限制'
+      quickly_check:
+        primary:
+          command: grep -aE 'RPC call to sample_tokens timed out' {{log_path}}
+          expected: regex:.*RPC call to sample_tokens timed out
+        fallback:
+          command: grep -aE 'TimeoutError.*sample_tokens|waiting for worker exit' {{log_path}}
+          expected: regex:.*(TimeoutError.*sample_tokens|waiting for worker exit)
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13639.yaml
+      hash: 40936453e4cf
     - id: VLLM-ASC-13688
       title: AIV 模式下 torch.npu.graph_task_group_begin 包 HCCL all_reduce 导致 graph capture 失败 + 首请求死锁（507009/507903，AIV+RIC
         task_group 组合冲突）
@@ -2537,6 +2691,44 @@ namespaces:
           expected: regex:out of memory|OOM|weight.*(double|twice)|bf16
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9719.yaml
       hash: c8454996e609
+    - id: VLLM-ASC-9769
+      title: '310P 图模式（vllm-ascend 0.19.1）W8A8 量化模型推理请求崩溃：QuantBatchmatmulV3 收 FRACTAL_NZ 期望 ND（NZ/ND
+        格式期望错位）→ ACL stream synchronize failed 507015 / EngineDeadError 500；--enforce-eager 正常——310P 图模式
+        fused-ops 覆盖缺口（框架侧，cherry-pick PR #9104）'
+      category: interrupt
+      tags:
+      - 310p
+      - w8a8
+      - quantization
+      - quantbatchmatmulv3
+      - graph-mode
+      - cudagraph
+      - fused-ops
+      - nz-format
+      - '507015'
+      - engine-crash
+      platforms:
+      - 310P
+      compat: vllm-ascend 0.19.1
+      confidence:
+        score: 0.6
+      symptoms:
+      - '310P（npu-smi 310P3）上 vllm-ascend 0.19.1 服务 W8A8 量化模型（默认图模式），推理请求触发 EngineCore 崩溃：RuntimeError:
+        ACL stream synchronize failed, error code:507015'
+      - '崩溃栈落 vllm_ascend/_310p/block_table.py:76 _to_numpy（query_start_loc detach→cpu→numpy 的同步点）；APIServer
+        侧 EngineDeadError: EngineCore encountered an issue → POST /v1/chat/completions 500 → 服务自动关闭'
+      - 同配置 --enforce-eager（eager 模式）可正常出文——崩溃仅图模式（cudagraph 捕获/执行）路径触发
+      - 报错面为 310P W8A8 量化 batch matmul：QuantBatchmatmulV3 收到 FRACTAL_NZ 布局、期望 ND（NZ/ND 格式期望不匹配，见 issue
+        标题）
+      quickly_check:
+        primary:
+          command: grep -aE 'QuantBatchMat[Mm]ulV3|FRACTAL_NZ' {{log_path}}
+          expected: regex:QuantBatchMat[Mm]ulV3|FRACTAL_NZ
+        fallback:
+          command: grep -aE 'error code:507015|EngineDeadError' {{log_path}}
+          expected: regex:error code:507015|EngineDeadError
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9769.yaml
+      hash: 2440a4dfc1d0
     - id: VLLM-ASC-9887
       title: GLM-5.1-w8a8 PD 分离 decode（多 DP+EP+MTP+FusedMC2）运行期崩溃 error code 507034：num_batch_tokens(272)
         超 MC2 容量(~104) 致不同 DP 走不同 MoE 分发分支——规避 num_batch_tokens=max_num_seqs*3 且 32 倍数
