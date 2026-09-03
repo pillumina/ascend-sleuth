@@ -6,7 +6,7 @@
 id: EV-2026-003
 layer: L2                          # methodology reference = 流程/先验知识层
 title: "Mooncake/Ascend KV-transfer 族 9 条 → 归纳分层诊断 methodology（python backend 层 vs native transport 层）"
-status: proposed                 # gate 满足（9 条 ≥3 + 分层判据可归纳）；方案定稿待执行（to-reference --ingest-cases）
+status: candidate                # 方案定稿（to-reference --ingest-cases）但未执行——实事求是：gate 满足、未进 in_experiment
 authorization: review              # reference 归纳 = 判断性中风险（case-derived 需 ≥3 case 引用）
 dimension: evolvability
 supersedes: []
@@ -46,4 +46,4 @@ decisions:
   - who: agent（生命周期标记）
     when: "2026-09-03"
     type: decision
-    conclusion: "candidate→proposed：gate 满足（Mooncake/KV-transfer 族 9 条 ≥3，分层判据已验证可归纳：2 条 native transport 层 vs 其余 python backend 层），方案=to-reference --ingest-cases 归纳 methodology reference（review 级）。待执行归纳动作。"
+    conclusion: "gate 满足（族 9 条 ≥3，分层判据可归纳），方案=to-reference --ingest-cases；未执行（未进 in_experiment），保持 candidate。"

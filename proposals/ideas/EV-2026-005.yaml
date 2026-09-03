@@ -7,7 +7,7 @@
 id: EV-2026-005
 layer: L2
 title: "triage inference_interrupt 正则漏 ValueError → 补正则（#7023 暴露缺口，机制测试验证）"
-status: pending_merge             # action 完成（triage 补 ValueError）+ eval 通过（正则命中 #7023 症状）；攒批待合入
+status: validated                # agent 采纳：action 完成（triage 补 ValueError）+ eval 通过（正则命中 #7023 症状）
 authorization: review
 dimension: evolvability
 supersedes: []
@@ -55,4 +55,4 @@ decisions:
   - who: agent（机制测试）
     when: "2026-09-03"
     type: decision
-    conclusion: "candidate→pending_merge：action + eval 完成，随 PR #97 攒批待合入（review 级）。"
+    conclusion: "candidate→validated（agent 采纳：action + eval 完成）。改动随 PR #97 供人审（review 级）。"

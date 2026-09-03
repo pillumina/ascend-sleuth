@@ -6,7 +6,7 @@
 id: EV-2026-004
 layer: L3                          # 评测机制/编排层（改 s2_replay 口径 + result schema + diagnose trace）
 title: "S2 replay 从'阉割版检索评测'改为'完整诊断能力评测'——分层归因（检索/推理/工具）+ 缺口三态化 + replay 工具边界"
-status: pending_merge             # 实施完成 + 全校准集验证通过（2 条 miss→hit + 归因精确化）；攒批待合入（PR #97）
+status: validated                # agent 采纳：实施完成 + 全校准集验证（2 条 miss→hit + 归因精确化）
 authorization: dual                # 改评测口径 = 改 validated/验证门判定语义（结构级，双签）
 dimension: evolvability
 supersedes: []
@@ -60,4 +60,4 @@ decisions:
   - who: agent（生命周期闭合）
     when: "2026-09-03"
     type: decision
-    conclusion: "实施 + 全校准集验证完成（decisions 记 action/eval），status proposed→pending_merge，actual_cost 补记 9000 tok，随 PR #97 攒批待合入。"
+    conclusion: "实施 + 全校准集验证完成（decisions 记 action/eval），status → validated（agent 采纳：实施 + 全校准集验证 solid），actual_cost 补记 9000 tok。改动随 PR #97 供人审。"

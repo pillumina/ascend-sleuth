@@ -15,8 +15,7 @@ description: >
 > **定位**：self-evolve 的伴随形态。self-evolve = 用户显式发起的深度轮（全库观测/
 > 攒批/聚合）；本协议 = **任何内容流程收尾自动执行的轻量检查**——用户说"沉淀
 > vllm-ascend 的 closed issue"，issue-ingest 跑完收尾即触发本协议，不看用户是否
-> 另说"改进系统"。机制推导见 docs/evolution-pipeline.md §4/§6 与
-> docs/evolution-orchestration.md §1.2（演进 = 隐形执行策略的一部分，非用户负担）。
+> 另说"改进系统"。演进是隐形执行策略的一部分；本文自包含执行参数。
 >
 > **本地执行说明**：本 skill 是收尾协议，非独立用户入口。内容流程（issue-ingest /
 > to-reference / to-postmortem / diagnose / knowledge-groom）收尾时，agent
@@ -54,44 +53,47 @@ description: >
 | T1 | 沉淀 ≥3 条同根因/同族 case，或发现可跨 case 归纳的共性 | 有 methodology/reference 可提炼 | 产 L2 卡：归纳 reference（走 /skill:to-reference --ingest-cases） |
 | T2 | diagnose/replay miss 某 issue 族，或 Tier 3 兜底反复走同路径 | 覆盖缺口 | 产 L1 卡：补 case（S2 replay 佐证缺口） |
 | T3 | 同一手动动作重复 ≥2 次（如反复拼同一查询、反复等同一命令输出） | 可固化流程/脚本 | 产 L2 卡：沉淀脚本/skill 步骤或 reference |
-| T4 | 执行错反复出现且无归属组件 / 组件台账浮出失败簇 | 流程缺陷（pipeline §4.2） | 产 L2 卡：修订该组件所在 skill 步骤 / triage 分支 |
+| T4 | 执行错反复出现且无归属组件 / 组件台账浮出失败簇 | 流程缺陷 | 产 L2 卡：修订该组件所在 skill 步骤 / triage 分支 |
 | T5 | 新数据源/新 issue 类型/新错误码首次出现且无配置 | 覆盖扩展 | 产 L1/L2 卡：扩配置 / 补 reference 家族 |
 | T6 | 容量超 soft_cap 或健康指标恶化（_index 头注） | 结构治理 | 产 L1 卡：拆分评估（ev_proposal） |
-| T7 | 本轮跑通一个可复用链路（拉取→评测→沉淀→验证全通） | 新流程资产 | 产 L2 卡：沉淀为 skill/脚本候选（§4.4 弱信号） |
+| T7 | 本轮跑通一个可复用链路（拉取→评测→沉淀→验证全通） | 新流程资产 | 产 L2 卡：沉淀为 skill/脚本候选（弱信号，新 skill 立项走双签） |
 
 **第 3 步：产卡 + 自行验证（有信号时，agent 自动完成，不等用户）**：
 
 1. 查重：`python3 scripts/ev_proposal.py --list`——同 trajectory/同 target 已有在池卡
-   → 合并不新建（orchestration §2.4）；
+   → 合并不新建（候选水位超限时只记信号不产卡）；
 2. 产骨架：`python3 scripts/ev_proposal.py --new` → 填字段（layer / title /
    source_signals 带 trajectory / hypothesis / predicted_effect / validation /
    risk / principle_refs），trajectory 必须指到本轮执行出处（产出文件 id / replay
    结果 / trace）；
 3. **自行验证执行**（评估自动化的核心——agent 自己验证，不把验证推给人）：
    - 能即时判定的（检索/路由/脚本/补 case）：直接跑 golden 前后对照或 S2 replay
-     （`scripts/replay_golden.py` / `scripts/s2_replay.py`），数据通过才进批；
+     （`scripts/replay_golden.py` / `scripts/s2_replay.py`），数据通过才算 eval solid；
    - 不能即时判定的（真实反馈类 content/fix）：完成实现 + S2 佐证，如实标注
-     "已实现待真实确认"，进观察窗（execution §5）；
-4. 验证通过 → 卡进攒批（status → proposed → in_experiment → pending_merge）；
-   验证失败 → 卡 rejected（留结论）或 re-iterate，**不推进**（§6.5 无实验证据不合入）。
+     "已实现待真实确认"（现场有效性进观察窗，事后结算）；
+4. **agent 判断（EV 卡 = agent 决策档案，不含 git 合入态）**：
+   - eval solid → `validated`（采纳：改动保留，进流程层攒批/PR 供人审）；
+   - eval 不成立 / 实验失败 → `rejected`（不采纳：留结论，改动不保留）；
+   - 发现更好方向 → 新卡 supersede 本卡（`superseded`）；
+   - **执行或验证完成而 status 停在 candidate = 卡不完整**（见第 3.5 步）。
 
-**第 3.5 步：生命周期完整性（卡 = proposal→action→eval→decision 的完整档案，pipeline §7）**：
+**第 3.5 步：生命周期完整性（卡 = proposal→action→eval→decision 的 agent 决策档案）**：
 
 - **每步 decisions 记 type**：产卡记 `{type: proposal}`、执行记 `{type: action, conclusion: <做了什么/commit/产物>}`、
-  验证记 `{type: eval, conclusion: <验证数据/通过与否>}`、最终结论记 `{type: decision, conclusion: <采纳/保留/拒绝+依据>}`——
-  卡能看出生命周期走到哪、凭什么推进；
-- **status 随执行推进，不靠自觉**：action 完成 → in_experiment；eval 通过 → pending_merge
-  （攒批待合入）；否决/失败 → rejected（留结论）。**执行或验证完成而 status 停在 candidate =
-  卡不完整**（verify_proposals 会报，见下）；
-- **终态卡必闭合**：adopted/validated/rejected/rolled_back/superseded 必须有 decision 记录；
-  adopted/validated 后补 `actual_cost`（成本审计）——缺了 verify_proposals 报审计缺口；
+  验证记 `{type: eval, conclusion: <验证数据/通过与否>}`、最终判断记 `{type: decision, conclusion: <采纳/不采纳/换方向+依据>}`——
+  卡能看出生命周期走到哪、凭什么判断；
+- **status 随执行推进，不靠自觉**：提案 → candidate；执行/验证中 → in_experiment；
+  agent 判断采纳 → validated / 不采纳 → rejected / 换方向 → superseded。**执行或验证完成
+  而 status 停在 candidate = 卡不完整**（verify_proposals 会报，见下）；
+- **终态卡必闭合**：validated/rejected/superseded 必须有 agent 判断的 decision 记录；
+  validated 后补 `actual_cost`（成本审计）——缺了 verify_proposals 报审计缺口；
 - 仅"观察到的信号"（无具体 action 方案）**不产卡**——信号记 session 报告，方案成形才产
   candidate（防想法清单污染提案账本）。
 
 **第 4 步：出收尾说明**（并入流程报告，不单独打扰用户）：
 
 ```
-evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ 已自行验证 → 进攒批
+evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ agent 判断采纳（validated）
 或：evolve-check：无演进信号（本轮无新增数据/无流程摩擦/无覆盖缺口）
 ```
 
@@ -102,20 +104,23 @@ evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ 已自�
 | 触发 | 内容流程收尾自动（用户下内容目标即隐含） | 用户显式"跑一轮自演进/看看有什么可改进" |
 | 范围 | 本轮执行现场（一流程一查） | 全库观测（台账/容量/覆盖/指标） |
 | 信号源 | 本次产出的数据 + 摩擦 | 跨轮聚合（组件台账、S2 校准集、timeline） |
-| 共用 | idea 卡 schema / 验证门 / 三级授权 / 攒批聚合 PR（pipeline §6） | 同左 |
+| 共用 | idea 卡 schema / 验证门 / 攒批聚合 PR | 同左 |
 
-两者产出同一批池（`proposals/ideas/`），攒批聚合 PR 人审时合并处理，不区分来源。
+两者产出同一批池（`proposals/ideas/`），攒批聚合 PR 供人审时合并处理，不区分来源。
 
-## 授权与合入（沿用 pipeline §6，本协议不另立）
+## 授权边界
 
-- **产卡与验证是 agent 自动的**（本协议第 3 步）；**合入仍走攒批 PR 人审**——
-  内容级 auto（合入后抽审）/ 判断性 review / 结构级 dual 双签，按卡 authorization 字段；
-- 指标口径红线保留：产卡不得改评分/指标定义（系统不改自己考卷，orchestration §4）；
+- **EV 决策是 agent 做的**（产卡 + 自验证 + 判采纳/不采纳——本协议第 3/3.5 步）；
+  卡的 authorization 字段（auto/review/dual）标注的是**改动合入的知识层分级**（改动随 PR
+  合入时按此送审），不是 EV 决策需要人逐卡审批；
+- **人审发生在目标态完成/降级完成时提的聚合 PR**：审整个自演进过程是否 solid（含 rejected
+  卡——agent 提了 EV、实验发现不行、不采纳，这是诚实记录，人审应接受），不是逐卡审批；
+- 指标口径红线保留：产卡不得改评分/指标定义（系统不改自己考卷）；
 - 结构级（triage/skill 骨架/新 skill 立项）走 kb/high-risk 双签，本协议只产候选不直改。
 
 ## 边界（不做）
 
-- 不为产卡而产卡：无信号即止；候选水位超限时只记信号不产卡（orchestration §2.4）；
+- 不为产卡而产卡：无信号即止；候选水位超限时只记信号不产卡；
 - 不代替用户下内容目标：本协议只回答"这次做完能否更好"，不决定"下次做什么"；
 - 不碰客户现场、不做批量改库（那是 self-evolve 深度轮 + 人审的范围）。
 

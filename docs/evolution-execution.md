@@ -85,53 +85,63 @@ v2 机制把"观测 → 候选 → 授权 → 合入"串起来了，但执行时
 
 ## 5. Follow-up 验证链路：proposal 改动后的合理性
 
-### 5.1 状态机：验证与合入的顺序（权威定义在 pipeline.md §7 v3，此处只重复关键语义）
+### 5.1 状态机：EV 卡 = agent 决策档案（权威定义在 pipeline.md §7 v4，此处只重复关键语义）
 
-**关键原则：验证不依赖合入——eval 在合入前完成。** 一个 proposal 从执行修改到 eval 检查"改动是否真解决问题"都在合入前做完（§6.5 无实验证据不合入）；合入只是把**已验证的改动**落地。按验证能否在合入前完成分两条路径：
+**关键原则：EV 卡的终态是 agent 依据 eval 的判断，不是"合入"语义。** 一个 proposal 从执行
+修改到 eval 检查"改动是否真解决问题"都在提 PR 前做完；agent 判断采纳（validated）或不采纳
+（rejected）基于合入前可得的验证（S2/golden/台账复测）。**攒批、提 PR、人审合入是流程层**
+（session/批边界）的事，不进卡状态——人审发生在目标态完成/降级完成时，审视整个自演进过程
+是否 solid（含 rejected 卡——诚实实验记录）。
 
 ```
 ● 即时判定类（检索/路由/skill 流程/脚本——S2/golden 可即时出结果）：
-   in_experiment ──eval 通过──► validated（目标态：效果入 metrics、台账记 hit）
-        │                              │
-        │                              └──► pending_merge（攒批）──► 批合入（PR 呈现的是已验证改动）
-        └──eval 失败──► re-iterate / rejected（不浪费合入）
+   candidate ──► in_experiment（action + eval）──eval solid──► validated（agent 采纳：改动保留）
+        │                                 └──eval 不成立──► rejected（agent 不采纳：留结论）
+        └──发现更好方向──► superseded（新 proposal 替代）
 
-● 真实反馈类（content 沉淀 / fix 有效——predicted_value 只能等真实场景/S1）：
-   in_experiment ──实现完成 + S2 佐证──► pending_merge ──批合入──► adopted（合入态）
-        │                                                    ├─ 观察窗内 S1 确认 → validated
-        │                                                    ├─ 未达标无退化 → re-iterate
-        │                                                    ├─ 退化/有害 → rolled_back
-        │                                                    └─ 超时无 S1 → unconfirmed_valid/unconfirmed（§5.1a）
-        └──实验失败──► rejected
+● 真实反馈类（content 沉淀 / fix 有效——现场有效性只能等真实场景/S1）：
+   candidate ──► in_experiment（实现 + S2 佐证）──agent 判 validated（采纳：已实现 + S2 佐证）
+        │              └──实验失败──► rejected
+   validated 后：现场有效性进入观察窗（流程层跟踪，非卡状态）——S1 确认/退化/超时结果作为
+   **追加 decision 记录**到卡（"PR #N 合入"、"观察窗 S1 确认现场有效"、"现场退化已回滚"），
+   不改变卡状态（卡状态 = agent 决策的终态；观察窗是效果结算层）。
 ```
 
-`adopted` 只存在于真实反馈类——它是**待真实反馈的合入**；即时判定类合入时已是 validated，不需要观察窗。**状态词表与 schema 的唯一事实源是 pipeline.md §7（v3）**：EV 卡 status 完整词表（candidate/proposed/in_experiment/pending_merge/adopted/validated/rolled_back/superseded/rejected/re-iterate/unconfirmed_valid/unconfirmed/stale——其中 pending_merge 是批提交模式 §6.3a 的攒批待审态）、supersedes/superseded_by 替换链、estimated/actual_cost 成本字段都在那边定义，本文不重复定义只引用——防两处状态机再次漂移。**注意对象区分**：`awaiting_validation` 是沉淀对象（case）的观察窗状态（§4.3），属 case 的跟踪字段，不是 EV 卡 status——两种对象不混用词表。
+**状态词表与 schema 的唯一事实源是 pipeline.md §7（v4）**：EV 卡 status 词表
+（candidate/in_experiment/validated/rejected/superseded + 蓝图态 stale——**不含
+pending_merge/adopted 等 git 合入态**）、supersedes/superseded_by 替换链、
+estimated/actual_cost 成本字段都在那边定义，本文不重复定义只引用——防两处状态机再次漂移。
+**注意对象区分**：`awaiting_validation` 是沉淀对象（case）的观察窗状态（§4.3），属 case 的
+跟踪字段，不是 EV 卡 status——两种对象不混用词表。
 
 ### 5.1a 观察窗超时降级（蓝图态：触发条件到才启用，见 pipeline §11.1——S1 断供持续 ≥2 期后，此前用"标存疑 + 提醒人"轻量处理）
 
 > 设计保留：以下为完整机制设计。第一批落地（Phase A–D）不实现正式降级态，观察窗到期无反馈时以"存疑标注 + 面板提醒"兜底，人可补反馈或回滚。
 
-content/fix 类观察窗依赖 S1 现场反馈，而反馈可能长期断供（当前捕获率≈0 是现实）——若没有超时降级，沉淀永久 awaiting_validation、proposal 永久 adopted，follow-up 机制在"永远等答案"中空转。超时处理按观察窗长度分级（默认：即时类=无超时、content 类=expected_window ×2、fix 类=最长窗 ×2，参数落地校准）：
+content/fix 类观察窗依赖 S1 现场反馈，而反馈可能长期断供（当前捕获率≈0 是现实）——若没有超时结算，沉淀永久 awaiting_validation、已采纳改动（validated）的现场有效性永远悬空，follow-up 机制在"永远等答案"中空转。超时处理按观察窗长度分级（默认：即时类=无超时、content 类=expected_window ×2、fix 类=最长窗 ×2，参数落地校准）：
 
 ```
 观察窗到期未结算（无 S1 反馈）——按对象分列（EV 卡与沉淀 case 状态机不同，不混用）：
-● EV 卡（proposal）侧：
-├─ 有 S2/golden 检索命中证据 → adopted → unconfirmed_valid（检索有效、现场未确认），
-│     效果按 source: issue-replay 入指标，卡不再滞留观察窗
-├─ 无任何命中证据 → adopted → unconfirmed（存疑）：标注"观察窗超时无证据"，
-│     不冒充有效也不无限滞留；触发降权信号（证据不足，重审或回滚候选）
-└─ 有退化证据（S2 miss 增长）→ 正常 rolled_back（不等 S1）
+● EV 卡侧（validated 已采纳改动的现场效果结算——追加 decision，不改卡状态）：
+├─ 有 S2/golden 检索命中证据 → 追加 decision"检索有效、现场未确认"（unconfirmed_valid 语义，
+│     效果按 source: issue-replay 入指标，不无限滞留）
+├─ 无任何命中证据 → 追加 decision"观察窗超时无证据"（unconfirmed 语义）：如实标注存疑，
+│     不冒充有效；触发降权信号（证据不足，重审或回滚候选）
+└─ 有退化证据（S2 miss 增长）→ 追加 decision"现场退化，已回滚改动"（rolled_back 语义，不等 S1）
 ● 沉淀 case 侧：awaiting_validation 到期 → 按 §4.1 结算——有 S1 → sediment_value；
   仅 S2/golden 命中 → "检索有效"标注；无命中 → 归因（场景未出现 vs 判别力）
 ```
 
-规则：**观察窗不是无限等待**——到期必结算，结算结果如实标注证据强度（有 S1=S1 / 仅 S2=检索有效 / 无证据=存疑）。这使 follow-up 闭环在反馈断供下仍能收敛（收敛到诚实标注的降级态），而不是卡死在 pending。与 §4.3"到窗标红"的关系：标红是提前提醒（人还有机会补反馈），超时降级是最终兜底（人不补就如实降级，不无限等）。
+规则：**观察窗不是无限等待**——到期必结算，结算结果作为**追加 decision** 记录到 validated 卡
+（如实标注证据强度：有 S1=S1 / 仅 S2=检索有效 / 无证据=存疑），**不改变卡状态**（卡状态 =
+agent 决策终态；观察窗是流程层效果结算）。与 §4.3"到窗标红"的关系：标红是提前提醒（人还有
+机会补反馈），超时结算是最终兜底（人不补就如实标注，不无限等）。
 
-**降级态的后续生命周期（防积压悬空）**：unconfirmed_valid / unconfirmed 不是死胡同——它们可继续参与演进：
-- **可被 supersede**：新卡可在降级态上提出替代（降级态说明原方案证据不足，正是"更好 idea"的适用场景），supersede 规则同 §run §5（含观察窗中断言：降级态卡随时可被替代）；
-- **可 re-iterate**：unconfirmed（无证据存疑）卡可回 proposed 重新设计验证方案（补 S2 证据或改验证设计）；
-- **积压清理**：季度自评统计降级态卡占比——占比高说明 S1 断供或验证设计系统性不足，触发流程改进（追问话术/O3）而非继续堆积；
-- **降级态不计入 validated**（execution §6 的 validated 计数与回滚率口径不含降级态，避免稀释"真验证"统计）。
+**结算后的后续动作（防积压悬空）**：观察窗结算为存疑/未确认的改动不悬空——它们可继续参与演进：
+- **可被 supersede**：新卡可在未确认的改动上提出替代（未确认说明原方案现场证据不足，正是"更好 idea"的适用场景），supersede 规则同 run §5；
+- **可重新验证**：无证据存疑的改动可开新卡重新设计验证方案（补 S2 证据或改验证设计）；
+- **积压清理**：季度自评统计"观察窗未确认"改动占比——占比高说明 S1 断供或验证设计系统性不足，触发流程改进（追问话术/O3）而非继续堆积；
+- **口径纪律**：观察窗未确认（仅 S2 佐证）不计入"现场 validated"统计（execution §6 的 validated 计数与回滚率口径不含未确认项，避免稀释"真验证"统计）。
 
 ### 5.2 观察窗按变更类分（不是所有验证都等现场反馈）
 
@@ -144,9 +154,9 @@ content/fix 类观察窗依赖 S1 现场反馈，而反馈可能长期断供（�
 
 ### 5.3 判定后写回
 
-- 卡：status 更新 + `decisions` 追加（谁、何时、依据哪份回测数据、结论）；
-- 指标：validated → `metrics/timeline.yaml` 记一期效果差（改前基线 vs 改后实测）；rolled_back → 记录并计入回滚率；
-- 台账：validated → 组件记 hit；rolled_back → 组件记 mis + 教训摘要（防同类重复提案——组件台账即决策记忆）。
+- 卡：agent 判断后 status 更新 + `decisions` 追加（谁、何时、依据哪份 eval 数据、采纳/不采纳结论）；观察窗结算追加 decision（不改卡状态）；
+- 指标：validated → `metrics/timeline.yaml` 记一期效果差（改前基线 vs 改后实测）；观察窗结算"现场退化回滚" → 记录并计入回滚率；
+- 台账：validated → 组件记 hit；观察窗结算"退化" → 组件记 mis + 教训摘要（防同类重复提案——组件台账即决策记忆）。
 
 ## 6. Metrics 分层：每个指标回答一个决策问题
 
