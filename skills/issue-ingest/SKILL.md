@@ -119,6 +119,9 @@ python3 scripts/issue_filter.py --state ingest-state.json \
 
 ### 7. 收尾 evolve-check（伴随演进评估，默认执行）
 
+**先落执行记录**（evolve-check 读它作现场，不靠 agent 记忆）：
+`python3 scripts/log_skill_exec.py --skill issue-ingest --products "<本轮产出 case id(submitted),...>" --reason "<一句话：拉取 N/评估 K/沉淀 M>" --source issue-ingest --tokens <估算>`
+
 沉淀完成、出最终报告前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
 遵循）：本轮沉淀出 ≥3 条同根因/同族 case（T1 → 归纳 reference 候选）、发现新 issue
 类型/新错误码无覆盖（T5）、或拉取/评估环节有重复手动动作或流程摩擦（T3/T4）时，

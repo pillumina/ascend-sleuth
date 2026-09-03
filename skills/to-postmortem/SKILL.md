@@ -92,6 +92,9 @@ agent 读取文件，后续流程同内联。
 
 ## 收尾 evolve-check（伴随演进评估，默认执行）
 
+**先落执行记录**（evolve-check 读它作现场）：
+`python3 scripts/log_skill_exec.py --skill to-postmortem --products "<case-id>(submitted),..." --reason "<一句话根因/来源>" --source <来源 skill> --tokens <估算>`
+
 草稿产出、出最终报告前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
 遵循）：本轮沉淀 ≥3 条同根因/同族 case（T1 → 归纳 reference 候选）、replay/Tier 3
 暴露覆盖缺口（T2）、或提取/校验环节有重复手动动作与流程摩擦（T3/T4）时，**agent

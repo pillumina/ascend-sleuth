@@ -41,9 +41,15 @@ description: >
 
 **第 1 步：读本轮执行现场**（不重扫全库、不读 case 全文——token 预算，原则九）：
 
-- 本轮产出了什么（case/reference/卡/草稿的 id 与内容摘要）；
-- 过程中有没有：miss（diagnose 无命中 / replay 未命中）、重复手动动作、
-  流程摩擦（来回确认、缺信息重跑）、执行错、新数据源/新 issue 类型首次出现。
+- **优先读统一执行记录**：内容 skill 收尾时已由 `log_skill_exec.py` 落一条到
+  `metrics/skill-exec-log.yaml`（skill/时间/产出 id/decision_reason）。本步读最近几条：
+  `python3 -c "import yaml;d=yaml.safe_load(open('metrics/skill-exec-log.yaml'));print('\n'.join(f\"{r['seq']} {r['skill']} {r.get('at','')[:16]} {r.get('products','')} {r.get('decision_reason','')[:40]}\" for r in (d.get('records') or [])[-3:]))"`
+  ——拿"本轮做了什么"（替代凭 agent 记忆）：
+- 产出：本轮新增 case/reference/卡 id（从记录 products 提取，不重扫全库）；
+- 过程中有没有：miss（diagnose/replay 未命中）、重复手动动作、流程摩擦、执行错、
+  新数据源/新 issue 类型首次出现——这些在 decision_reason 未提及时由 agent 现场补判断；
+- **无执行记录时**（历史流程/外部动作）：如实标注"无执行记录，基于现场判断"——不假装
+  有数据（诚实退化）；内容 skill 收尾应落记录（见各 skill「收尾」节）。
 
 **第 2 步：对照触发条件表**——命中的信号才继续，无命中直接出报告（加一行
 "evolve-check：无演进信号"），**不为产卡而产卡**（原则四/十）。
