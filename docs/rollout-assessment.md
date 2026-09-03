@@ -3,6 +3,8 @@
 > 评估基线：main HEAD（四章官方材料导入完成、reference 全 active、token 成本修复）。实时词条数以 `verify_references.py` 为准，不在此硬编码。
 > 方法：对照 `docs/design-principles.md` 十一条原则逐条核对实现证据；按"机制 / 内容 / 数据 / 运维"四层评估。
 > 本文是向团队交付前的依据文档，不是一次性报告——每次重大演进后应重估（原则十一：数据触发演进）。
+>
+> **2026-09 状态更新**：本文主体是 2026-08 基线的评估，重估条件已触发（training namespace 已填充、groom 多轮运行、metrics 至 6 期）。自基线以来：knowledge/ 38→123 条 case（含 training/mindspeed-llm 与自动化 ingest 升格 5 条）、S2 校准集建立（20 条）、self-evolve 机制工程面重构（PR #104）落地。数据层"真实 live trace 缺失"依旧（S1 反馈仍 0），是继续推广前的最大前提。完整重估留待首个真实团队使用后执行。
 
 ## 结论（TL;DR）
 
