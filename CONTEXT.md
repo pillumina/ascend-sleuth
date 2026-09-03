@@ -17,7 +17,7 @@ case 与其来源 postmortem 共用的稳定标识（如 `SGL-PD-HEAP-001`）。
 _避免_：工单号、issue 编号
 
 **Groom（例行维护）**:
-每周执行的维护流程（`/skill:knowledge-groom`）：把 postmortem 升格为 case、校验引用、去重、重算置信度、软退休过期 case。
+维护流程（`/skill:knowledge-groom`）：把 postmortem 升格为 case、校验引用、去重、重算置信度、软退休过期 case。人工沉淀的草稿按周批处理；issue-ingest 等自动化源的草稿 verification 链完整，可直接升格，不等周批。
 _避免_：整理、策展、curate
 
 **Triage Tree（分诊树）**:
@@ -45,7 +45,7 @@ _避免_：priority、weight、优先级
 _避免_：log、transcript、历史
 
 **Skill（技能）**:
-遵循 Agent Skills 规范、由 `SKILL.md` 定义的 agent 可调用工作流。本体系共七个：diagnose、to-postmortem、to-reference、issue-ingest、knowledge-groom、resume-diagnosis、self-evolve（另有 DSH 专用 preload-panel）。
+遵循 Agent Skills 规范、由 `SKILL.md` 定义的 agent 可调用工作流。本体系共九个：diagnose、to-postmortem、to-reference、issue-ingest、knowledge-groom、resume-diagnosis、self-evolve、evolve-check（内容流程收尾的伴随协议）、preload-panel（DSH 专用）。
 _避免_：command、plugin、tool
 
 **Severity（严重度闸门）**:
