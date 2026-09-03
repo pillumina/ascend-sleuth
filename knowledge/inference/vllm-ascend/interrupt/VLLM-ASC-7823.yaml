@@ -1,0 +1,83 @@
+# VLLM-ASC-7823 —— vllm serve 启动即崩：MiniMax usage accounting patch 源码改写在上游 vLLM v0.18.0 漂移后定位不到目标块（RuntimeError: Failed to locate expected block）
+# 来源: https://github.com/vllm-project/vllm-ascend/issues/7823
+# fix 跟踪: PR #7835（reimplement MiniMax usage accounting patch，base releases/v0.18.0，merged 2026-03-31）；issue completed 关闭 2026-07-29
+# investigation_quality: medium（官方 fix PR 合入并自述机制 + 用户/maintainer 关闭闭环；根因在 patch 层源码改写对上游源码漂移的脆性）
+# 批量导入：sed-g3（2026-09）
+# pre-triage: variant_of VLLM-ASC-9167（同族=patch 层对上游 vLLM 结构/版本演进假设失效→服务启动崩溃；增量=报错面 _replace_block "Failed to locate expected block" usage accounting 与修复 PR #7835 不同）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-7823
+    title: "vllm serve 启动即崩（任何模型，qwen3.5 亦复现）：patch_minimax_usage_accounting 源码改写补丁在上游 vLLM v0.18.0 源码漂移后定位不到期望块，RuntimeError: Failed to locate expected block while patching OpenAIServingChat usage accounting"
+
+    category: interrupt
+    tags: [patch-layer, version-mismatch, source-drift, usage-accounting, minimax]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.18.0"]        # 崩溃环境 vllm-ascend releases/v0.18.0（0.1.dev1+g90bb1b4b9 = commit 6fbd0049）+ vLLM v0.18.0（commit bcf2be9）；PR #7835 于 2026-03-31 合入 releases/v0.18.0 修复，maintainer 2026-07-29 确认最新 release/rc 已解决（release 命名映射待 groom 按实际 tag 精化）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      # score 草稿期不写，groom 首次评估后计算
+
+    symptoms:
+      - "vllm serve 启动即崩，Traceback 终止于 RuntimeError: Failed to locate expected block while patching OpenAIServingChat usage accounting"
+      - "崩溃栈经 vllm_ascend/platform.py:138 pre_register_and_update → utils.py:381 adapt_patch → patch/platform/patch_minimax_usage_accounting.py:366 _patch_chat_completion_stream_generator → :71 _replace_block"
+      - "与模型无关：qwen3.5 单机启动同样报错（comment 0），崩溃在平台插件 import 期（vLLM CLI arg 解析阶段）"
+      - "vLLM v0.18.0（bcf2be9）+ vllm-ascend releases/v0.18.0（6fbd0049）复现；官方 fix：PR #7835 把 MiniMax usage accounting patch 从源码改写改为 runtime wrapper 实现，merged 2026-03-31"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/7823"
+      - "https://github.com/vllm-project/vllm-ascend/pull/7835"
+
+    verification:
+      source: upstream-fix-merged
+      detail: 'fix PR #7835'
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'Failed to locate expected block while patching OpenAIServingChat usage accounting' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Failed to locate expected block while patching OpenAIServingChat usage accounting"
+      fallback:
+        command_template: "grep -E 'patch_minimax_usage_accounting\\.py|_replace_block|_patch_chat_completion_stream_generator' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:patch_minimax_usage_accounting\\.py|_replace_block"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：vllm serve 启动阶段（CLI arg 解析、EngineCore 之前）即崩，栈在 patch/platform/patch_minimax_usage_accounting.py 的 _replace_block 抛 RuntimeError 'Failed to locate expected block while patching OpenAIServingChat usage accounting'？"
+        expected: "是——崩溃发生在平台插件激活期（platform.py:138 pre_register_and_update → utils.py:381 adapt_patch），与模型/图模式无关（qwen3.5 同样复现）"
+      - step: 2
+        check: "机制判别：MiniMax usage accounting patch 采用源码改写（按精确源码块文本匹配重写上游 OpenAIServingChat 方法），上游 vLLM v0.18.0（commit bcf2be9）源码相对补丁假设已漂移"
+        expected: "是——PR #7835 自述旧实现 'rewrote OpenAIServingChat by matching exact source blocks. That was brittle against vllm source drift'；期望块定位不到即启动崩溃"
+      - step: 3
+        check: "修复：升级/重建到包含 PR #7835 的 vllm-ascend（releases/v0.18.0 2026-03-31 合入后的构建或后续 release/rc）——补丁改为 runtime wrapper（wrap 原 stream/full generator、运行时按输出 token id 统计 usage），不再改写源码"
+        expected: "服务正常拉起（QwertyJack 'Fixed by #7835. PTAL'；zhaomingyu13 2026-07-29 确认最新 release/rc 已解决）"
+      - step: 4
+        check: "忽略项：崩溃后日志尾 ERR99999 UNKNOWN application exception 是同一级联（import 期异常导致 vllm CLI 进程退出），不是独立错误"
+        note: "排查先核对 vllm-ascend 构建是否含 PR #7835（同 VLLM-ASC-9167 族：patch 层对上游 vLLM 版本/结构适配问题）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch                        # PR #7835：源码改写 → runtime wrapper 重写；对使用者=升级到含该 PR 的版本
+
+    root_cause: >
+      vllm_ascend/patch/platform/patch_minimax_usage_accounting.py 用源码改写方式为上游 OpenAIServingChat
+      打 MiniMax usage accounting 补丁：_patch_chat_completion_stream_generator()（:366）调 _replace_block()
+      （:71）按精确的源码块文本匹配重写上游方法；上游 vLLM v0.18.0（commit bcf2be9）的 OpenAIServingChat
+      源码相对补丁编写时假设已漂移，期望块定位不到，在平台插件激活期（platform.py:138 pre_register_and_update
+      → utils.py:381 adapt_patch）直接抛 RuntimeError "Failed to locate expected block while patching
+      OpenAIServingChat usage accounting"，任何模型（含 qwen3.5）的 vllm serve 都无法启动。PR #7835 将补丁
+      改为 runtime wrapper 实现（wrap 原 stream/full generator、运行时按输出 token id 统计 usage；
+      MiniMax </think> 缺失时输出计为 reasoning token），不再改写源码，对上游源码漂移免疫。
+
+    fix: >
+      升级/重建到包含 PR #7835 的 vllm-ascend 版本（fix 于 2026-03-31 合入 releases/v0.18.0；
+      zhaomingyu13 2026-07-29 确认最新 release/rc 已解决）。无配置 workaround——崩溃发生在平台插件
+      import 期（vllm CLI arg 解析阶段），无法绕过，只能升级。
+    rollback: "回退到含旧源码改写 patch 的构建（不含 PR #7835）即复现；升级后无需额外配置"

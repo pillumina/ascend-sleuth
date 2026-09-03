@@ -1,0 +1,86 @@
+# VLLM-ASC-8798 —— Qwen3.5 系 enable_thinking 概率性无限重复输出（思维链死循环）：
+#   模型能力问题（非 vllm-ascend bug）——规避：换 Qwen3.6 / 关 enable_thinking
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/8798
+# fix：无上游 fix PR；用户现场 A/B 验证规避路径（Qwen3.5-27B→Qwen3.6-27B 重复率 80%→3%）
+# pre-triage: new_pattern —— 库内无 Qwen3.5 thinking 重复输出 case；
+#     与 10892（310P MoE gating 算子精度→过度思考）表象相近、根因不同 → 互为判别
+# verification: engineer-report（用户现场 A/B 消融定量验证规避路径；无上游确认/fix）
+# 脱敏：未引用请求内密钥/内网信息
+# 建议命名空间：inference/vllm-ascend/precision/
+# 导入管道：issue-ingest sed-g1 batch 1（2026）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-8798
+    title: "Qwen3.5 系（27B/35B-A3B/397B-A17B）enable_thinking 下概率性 thinking 段无限重复输出——模型能力问题；规避：换 Qwen3.6 或关闭 enable_thinking（PR#8764/关 async-scheduling 已消融排除）"
+
+    category: precision
+    tags: [qwen3.5, thinking, repetition, model-capability, enable_thinking, precision]
+    platforms: ["A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.18.0rc1"]    # 实测镜像版本；结论为模型能力，不限特定版本（用户 0.18.0rc1 实测）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.4
+      last_hit: ""
+
+    symptoms:
+      - "Qwen3.5-27B/35B-A3B/397B-A17B-W4A8（enable_thinking=true，MTP/async-scheduling 可开）请求概率性输出无限自我重复：thinking 段同一句/思路重复直到 max_completion_tokens 耗尽（实样：Wait, I'll output json{...} 类句子重复数百行，reasoning_tokens=0、靠 budget 截断）"
+      - "要求'只输出 JSON/答案'的请求概率性给出大段重复思考而非答案；再次请求可能正常"
+      - "关闭 enable_thinking 后不再出现（GentleKingson 实测）；关 async-scheduling / 应用 PR#8764 仍复现（WillCheny 实测）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/8798"
+
+    verification:
+      source: engineer-report
+      detail: "用户现场 A/B：同评测集 Qwen3.5-27B 语言/代码补全重复率 45%/37% vs Qwen3.6-27B 未出现；用户反馈 case ×30：Qwen3.5 80%/12.5% vs Qwen3.6 3%/0% → 模型能力结论（无上游 fix PR）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -acE \"Wait, I.?ll output|I will output\" {{sampled_completion}}"
+        rank_selector: coordinator
+        expected: "regex:^([3-9]|[1-9][0-9]|[1-9][0-9]{2,})$"   # grep -c 计数 >=3：同一短句重复多次 = 重复循环
+        note: "{{sampled_completion}} 为问题请求的采样输出（enable-log-outputs 或 client 抓包）"
+      fallback:
+        command_template: "grep -aoE '\"completion_tokens\":[0-9]+' {{sampled_completion}}"
+        rank_selector: coordinator
+        expected: "regex:completion_tokens\":(8192|[4-9][0-9]{3,})"   # 打到 max_tokens 上限被 budget 截断
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：Qwen3.5 系 + enable_thinking，输出概率性无限自我重复（同一句/思路反复）直到 max_tokens 耗尽？"
+        expected: "是——thinking 段死循环特征（重复句 + completion_tokens == max + 靠 budget 截断）"
+      - step: 2
+        check: "框架排除：关 --async-scheduling 或应用 PR#8764（num_accepted_tokens 非阻塞拷贝竞态修复）后是否仍复现？"
+        expected: "仍复现（issue 用户实测两种都试）→ 排除该框架竞态"
+        note: "PR#8764 是 0.18.0 async-scheduling 真实竞态修复，但与本重复输出无关"
+      - step: 3
+        check: "模型替换判别：同请求/同数据集换 Qwen3.6-27B 后重复率是否大幅下降？"
+        expected: "是（80%→3%、45%→0）→ 结论：模型能力问题，非昇腾/框架 bug"
+        note: "与 VLLM-ASC-10892 判别：升级修复（310P MoE gating 算子）vs 换模型缓解——两者表象相近根因不同"
+      - step: 4
+        check: "规避落地：换 Qwen3.6 系 或 请求不带 enable_thinking"
+        expected: "二选一可消除/大幅降低重复"
+        note: "勿建议 thinking_token_budget——开源框架不可调（阿里云 Model Studio API 专属特性），线程实测加了反而更啰嗦"
+
+    severity: benign
+    fix_side_effects: [requires-restart]
+    fix_type: config-change
+
+    root_cause: >
+      Qwen3.5 系模型在 enable_thinking 模式下概率性输出无限自我重复/思维链死循环——判定为模型
+      自身生成能力/行为问题（同代换 Qwen3.6 后同任务重复率 80%→3%、数据集 45%→0），非
+      vllm-ascend 框架缺陷：框架侧候选（async-scheduling 竞态 PR#8764、关闭 async-scheduling）
+      消融后均仍复现，排除。
+
+    fix: >
+      规避（无上游修复）：(1) 换用 Qwen3.6 系模型（同任务重复率大幅下降，用户实测）；
+      (2) 请求不开启 enable_thinking（thinking 段不产生即不触发）。注意 thinking_token_budget
+      为阿里云 Model Studio API 专属、开源框架不可调，不要作为 workaround 建议。
+    rollback: "恢复 Qwen3.5 + enable_thinking（复现风险）"

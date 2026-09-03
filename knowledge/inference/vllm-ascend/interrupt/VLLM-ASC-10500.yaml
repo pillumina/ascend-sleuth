@@ -1,0 +1,88 @@
+# VLLM-ASC-10500 —— 含 ViT 的多模态/VL 模型开启 FlashComm1/2 启动崩溃：ViT 层被 FC1/2 dispatch 误路由进 forward_context 依赖算子
+# 来源: https://github.com/vllm-project/vllm-ascend/issues/10500
+# fix 跟踪: PR #10941（[BugFix] Skip FlashComm1/2 For ViT，merged 2026-07-10 main；issue closed 2026-07-25 completed）
+# investigation_quality: medium（issue 作者自定位 + 修复 PR 合入闭环：根因 + 三条 dispatch guard 语义 + TP8 实测，无自动化单测）
+# 批量导入：sed-g3（2026-09）
+# pre-triage: new_pattern（无既有 case 覆盖 ViT×FlashComm dispatch——最近似 VLLM-ASC-11924 是 MoE MXFP4 tiling、VLLM-ASC-10626 是多模态 LoRA 507018、VLLM-ASC-11169 是 GLM5.2 乱码 FlashComm1 workaround，机制/算子/症状全异）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-10500
+    title: "含 ViT 的多模态/VL 模型开启 FlashComm1+FlashComm2 报错：vLLM 在 forward_context 外预计算 inputs_embeds，ViT 层被 FC1/FC2 dispatch 误路由到依赖 forward context 的 SP 线性算子（SequenceRowParallelOp/Flashcomm2OProjRowParallelOp）→ 启动崩溃；PR #10941 加 'vision_model' not in prefix guard 跳过 ViT"
+
+    category: interrupt
+    tags: [vit, multimodal, vlm, flashcomm, forward-context, sequence-parallel, startup-failure]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.23.0"]        # 受影响 = FlashComm1/2 dispatch 覆盖 ViT 的版本至 PR #10941（2026-07-10 merged main）前；
+                                   # PR 在 vLLM v0.23.0/main 验证（issue env 未列 vllm-ascend 具体版本，无下界证据）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "含 ViT 的多模态/VL 模型（如 Step3p7 w8a8，TP=8）开启 FlashComm1（VLLM_ASCEND_ENABLE_FLASHCOMM1=1）+ FlashComm2（VLLM_ASCEND_FLASHCOMM2_PARALLEL_SIZE=1）+ MTP 时启动/初始化崩溃：AssertionError: Forward context is not set. Please use `set_forward_context` to set the forward context."
+      - "报错栈在 vllm_ascend/ops/linear_op.py：SequenceRowParallelOp.apply_impl（torch.ops.vllm.matmul_and_reduce）与 Flashcomm2OProjRowParallelOp.apply_impl（_EXTRA_CTX.pad_size），经 ascend_forward_context.py _ExtraForwardContextProxy.__getattr__ → get_forward_context() 断言"
+      - "decode 阶段伴随 NPU 硬件崩溃：RuntimeError: LaunchCopyTask: aclrtMemcpyAsync, error code is 507035 / The DDR address of the MTE instruction is out of range / Kernel task happen error retCode=0x31 [vector core exception]"
+      - "运行期 fallback 报 RuntimeError: aclnnAddmm failed, error code 161002 / AclNN_Parameter_Error(EZ1001): The k-axis of the two inputs are different"
+      - "官方 fix：PR #10941 对三条 dispatch 路径（SequenceColumnParallelOp/SequenceRowParallelOp/Flashcomm2OProjRowParallelOp）加 'vision_model' not in prefix guard 跳过 ViT，文本模型不受影响"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10500"
+      - "https://github.com/vllm-project/vllm-ascend/pull/10941"
+
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #10941'
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'Forward context is not set' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Forward context is not set"
+      fallback:
+        command_template: "grep -E 'Flashcomm2OProjRowParallelOp|SequenceRowParallelOp|LaunchCopyTask|aclnnAddmm' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Flashcomm2OProjRowParallelOp|SequenceRowParallelOp|LaunchCopyTask"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：首段报错是否为 'Forward context is not set'（get_forward_context 断言）+ 栈在 vllm_ascend/ops/linear_op.py 的 SP/FC 线性算子（SequenceRowParallelOp/Flashcomm2OProjRowParallelOp）？"
+        expected: "是——FC1/FC2 dispatch 把 ViT 层路由到依赖 forward context 的算子，本 case 命中"
+      - step: 2
+        check: "场景判别：模型是否含 ViT（VL/多模态，如 Step3p7）且开启 FlashComm1/FlashComm2（env 查 VLLM_ASCEND_ENABLE_FLASHCOMM1 / VLLM_ASCEND_FLASHCOMM2_PARALLEL_SIZE）？"
+        expected: "是——vLLM 对多模态模型在 forward_context 之外预计算 inputs_embeds，ViT 层被 FC1/FC2 dispatch 误路由；文本-only 模型同配置不触发"
+      - step: 3
+        check: "修复：升级到含 PR #10941 的版本（三条 dispatch 路径加 'vision_model' not in prefix guard）后重启验证"
+        expected: "正常拉起（PR 在 TP=8 + FC1+FC2+MTP、PD 分离与 PD 合部署位通过压力测试）"
+      - step: 4
+        check: "忽略项：decode 阶段 LaunchCopyTask aclrtMemcpyAsync 507035 / retCode=0x31 vector core exception（MTP decode 更早暴露）与 aclnnAddmm 161002(EZ1001) 都是 ViT 误路由损坏 NPU 内存后的级联报错，勿单独追"
+        note: "MTP 投机是放大场景不是根因；先对'含 ViT × 开 FC1/FC2'两个开关判断"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch                # PR #10941（升级到含修复版本）
+
+    root_cause: >
+      vLLM 对多模态（含 ViT）模型在 forward_context 之外预计算 inputs_embeds；vllm-ascend 的
+      FlashComm1/2 dispatch 在 SP column/row-parallel 与 FlashComm2 row-parallel 线性算子路径上
+      未排除 ViT 层（模块 prefix 含 "vision_model"），把 ViT 前向路由到依赖 forward context 的算子
+      （SequenceRowParallelOp.apply_impl → matmul_and_reduce、Flashcomm2OProjRowParallelOp.apply_impl
+      → _EXTRA_CTX.pad_size）。此时 _EXTRA_CTX 为空、FC1/FC2 flags 不可用，get_forward_context()
+      断言失败导致启动崩溃；decode 阶段则表现为 NPU 内存损坏后的 LaunchCopyTask 507035 / vector core
+      exception（MTP 投机下更早暴露）。PR #10941 在三条 dispatch 路径加 "vision_model" not in prefix
+      guard，ViT 层不再进入 FC1/FC2 路由。
+
+    fix: >
+      升级到包含 PR #10941 的版本（merged main 2026-07-10，v0.23.0 验证）——对 SP column-parallel
+      （SequenceColumnParallelOp）、SP row-parallel（SequenceRowParallelOp）、FlashComm2 row-parallel
+      （Flashcomm2OProjRowParallelOp）三条 dispatch 路径加 "vision_model" not in prefix guard，ViT 层
+      跳过 FlashComm1/2 dispatch；文本-only 模型（prefix 不含 vision_model）不受影响。
+    rollback: "回退到未含 PR #10941 的版本即复现（FC1/2 dispatch 覆盖 ViT 层）；文本-only 模型同配置不触发"

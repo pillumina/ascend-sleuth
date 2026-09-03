@@ -1,0 +1,84 @@
+# VLLM-ASC-14871 —— PD 分离 decode 开 recompute_scheduler + speculative decoding（deepseek_mtp/MTP）首请求即崩：recompute_scheduler.py:1088 读 Request.async_tokens_to_discard 报 AttributeError（V1/V2 runner 同崩）
+# 来源: https://github.com/vllm-project/vllm-ascend/issues/14871
+# fix 跟踪: PR #14504（[Misc][Core][P/D] Add main2main 0.27.1 for Recompute scheduler，merged 2026-08-25，merge_commit 07482eb3）
+# investigation_quality: high（报者根因定位到行 + 全仓库唯一引用核查 + V1/V2 双验证 + 去 spec decode 消融；维护者 closed completed，报者确认 #14504 修复）
+# 批量导入：sed-g3（2026-09）
+# pre-triage: variant_of VLLM-ASC-10784（同族=recompute×PD-decode decode 侧组合缺陷；增量=14871 是 #12541 引入读
+#   Request.async_tokens_to_discard 的 main2main 同步缺口、有已合 fix PR #14504，10784 是 recompute 触发 MoE shared-expert
+#   展开内存异常、当时无 PR——两者机制/修复面不同，若上游证实 #14504 亦消除 10784 内存异常可由 groom 合并回填）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-14871
+    title: "PD 分离 decode 开 recompute_scheduler + speculative decoding（deepseek_mtp/MTP）首请求即崩：AttributeError: 'Request' object has no attribute 'async_tokens_to_discard'（vllm_ascend/core/recompute_scheduler.py:1088 update_from_output，V1/V2 同崩）；PR #14504 main2main 0.27.1 修复"
+
+    category: interrupt
+    tags: [recompute, recompute-scheduler, pd-disaggregation, speculative-decode, mtp, code-sync]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["含 #12541、未含 #14504 的构建"]   # 受影响锚点：0.1.dev4715+g6e506867c（main @ dade7da62，配对 vLLM 0.27.1，Atlas 800I A3/nightly-main-a3）；修复=含 PR #14504 的构建/后续版本（merged 2026-08-25）；正式 release 号待 groom 回填
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "PD 分离部署 decode 节点同开 recompute_scheduler_enable 与 speculative decoding（deepseek_mtp/MTP，任意带 MTP head 模型可复现）：健康检查通过后第一个 /v1/chat/completions 请求报错，所有 EngineCore 退出"
+      - "AttributeError: 'Request' object has no attribute 'async_tokens_to_discard'，栈在 vllm_ascend/core/recompute_scheduler.py:1088 update_from_output（and request.async_tokens_to_discard == 0；读取由 PR #12541 引入，全仓库唯一引用点）"
+      - "V1 与 V2 model runner 同栈崩溃（recompute scheduler 是 runner-agnostic core 代码）；去掉 speculative decoding 后同一拓扑正常服务"
+      - "官方（bowgneo）closed as completed；报者（xuchi-0808）确认由 PR #14504（main2main 0.27.1 for Recompute scheduler）修复"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/14871"
+      - "https://github.com/vllm-project/vllm-ascend/pull/14504"
+
+    verification:
+      source: upstream-fix-merged
+      detail: 'fix PR #14504'
+
+    quickly_check:
+      primary:
+        command_template: "grep -E \"AttributeError: 'Request' object has no attribute 'async_tokens_to_discard'\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:AttributeError: 'Request' object has no attribute 'async_tokens_to_discard'"
+      fallback:
+        command_template: "grep -E 'recompute_scheduler\\.py.*update_from_output|async_tokens_to_discard' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(recompute_scheduler\\.py.*update_from_output|async_tokens_to_discard)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：PD 分离 decode 节点开 recompute_scheduler_enable + speculative decoding（deepseek_mtp/MTP），健康检查通过后首请求即崩，各失败 EngineCore/DP rank 日志是否含 AttributeError: 'Request' object has no attribute 'async_tokens_to_discard'，栈在 recompute_scheduler.py:1088 update_from_output？"
+        expected: "是——recompute scheduler + spec decode 组合（含 #12541 的构建）首请求必现崩溃，非 KV/显存/OOM 类"
+      - step: 2
+        check: "机制确认（消融）：去掉 speculative decoding（去掉 --speculative-config）同一拓扑是否恢复正常？V1/V2 runner 是否同栈？"
+        expected: "是——issue 消融：去 spec decode 后正常服务；V1/V2 同栈（runner-agnostic core）→ 非 MTP 实现/算子问题，而是 scheduler core 与配对 vLLM 属性不同步（Request 无 async_tokens_to_discard，#12541 引入读取、仓库内无定义/setattr）"
+      - step: 3
+        check: "fix：升级 vllm-ascend 到含 PR #14504（main2main 0.27.1 for Recompute scheduler，merged 2026-08-25）的构建/后续版本并重启服务"
+        expected: "升级后 recompute_scheduler + MTP 首请求不再崩（issue #14871 closed completed，报者确认 #14504 修复）"
+      - step: 4
+        check: "边界判别：若症状是运行中 OOM（OOM 快照 _moe_forward_shared 展开 61GB / npu_grouped_matmul_gmm2 输入 batch 1024→508648）而非首请求 AttributeError，属另一 recompute 缺陷族 VLLM-ASC-10784（官方 known issue，无 PR/版本）——机制与 fix 不同，勿与本 case 混判"
+        note: "14871 与 10784 同属 recompute×PD-decode decode 侧缺陷族（variant_of VLLM-ASC-10784 标签依据）；但机制/修复面不同——10784=recompute 触发 MoE shared-expert 展开内存异常（无 PR/版本），14871=#12541 引入读 Request.async_tokens_to_discard 的 main2main 同步缺口（#14504 修复）——若上游证实 #14504 亦消除 10784 内存异常，groom 可合并回填 10784 compat；否则两案分列"
+
+    severity: service-affecting
+    fix_side_effects: [requires-code-change]   # 升级到含 PR #14504 的构建（代码级修复，需更新镜像/重启服务）
+    fix_type: code-patch
+
+    root_cause: >
+      vllm-ascend 的 recompute scheduler（PD 分离 decode 用）自 PR #12541 起在
+      recompute_scheduler.py:1088 update_from_output 读 request.async_tokens_to_discard 做
+      spec-decode 相关判断；该属性在配对的上游 vLLM（v0.27.1 及当时 main）Request 类上不存在，
+      仓库内亦无定义/setattr（全仓库唯一读取点）——main2main 同步缺口。spec-decode 请求每个
+      decode step 都填充 scheduled_spec_token_ids，使 and 链必然触达缺失属性 → 首个请求即抛
+      AttributeError，V1/V2 runner 同崩（scheduler core 与 runner 无关）。
+      PR #14504 将 recompute scheduler 同步到配对 vLLM（v0.27.1 / vLLM main ba07e4a48）修复。
+
+    fix: >
+      升级 vllm-ascend 到含 PR #14504（[Misc][Core][P/D] Add main2main 0.27.1 for Recompute
+      scheduler，merged 2026-08-25，merge_commit 07482eb3）的构建/后续版本；issue #14871 已
+      closed completed（报者确认）。未升级前的规避：去掉 speculative decoding（--speculative-config，
+      issue 消融验证同一拓扑正常）或关闭 recompute_scheduler_enable。
+    rollback: "回退到含 #12541、未含 #14504 的构建即复现——升级为代码级修复，无参数回滚"

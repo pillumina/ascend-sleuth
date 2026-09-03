@@ -1,0 +1,91 @@
+# VLLM-ASC-10970 —— DSV4-Flash PD 分离 P 节点加 VLLM_PREFIX_CACHE_RETENTION_INTERVAL 后 prefix 命中归 0：AscendHybridKVCacheCoordinator 未把 use_eagle 传播给 eagle 组 sibling manager（写保留 tail 比读 peek 边界少 1 block → SWA group 不命中 → min-over-groups 坍缩 0%）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10970
+# fix：PR #11107（merged 2026-07-01，patch_kv_cache_coordinator.py verify_and_split_kv_cache_groups 传播 use_eagle 到 eagle 组全部 manager）
+# pre-triage: variant_of VLLM-ASC-13356 —— 同"PD 分离 P 节点 DSV4 prefix cache 收益退化"族；机制不同（13356=memcache lookup 重叠；本条=hybrid cache use_eagle 传播缺失/写读 block 差一），修复不同（PR #11107）
+# verification: upstream-fix-merged（fix PR #11107 merged 2026-07-01）
+# 脱敏：本 case 未引用线程内 token/内网 IP
+# 建议命名空间：inference/vllm-ascend/performance/
+# 导入管道：issue-ingest sed-g2 batch 2（2026）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-10970
+    title: "DSV4-Flash PD 分离 P 节点加 VLLM_PREFIX_CACHE_RETENTION_INTERVAL 后 prefix cache 命中归 0：hybrid cache 管理器 use_eagle 未传播给 eagle 组 sibling manager（写读 block 差一）；修复=PR #11107"
+
+    category: performance
+    tags: [prefix-cache, pd-separation, dsv4, mtp, eagle, retention-interval, hybrid-kv, hit-rate]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.23.0"]            # issue 复现版本（v0.23.0）；fix PR #11107 2026-07-01 合入 main
+    # 平台：issue 为 A2 四机 PD 分离（P 节点，MTP2 + EP）；机制在 hybrid cache 管理器，模型为 DeepSeek-V4-Flash 族
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "PD 分离 P 节点跑 DeepSeek-V4-Flash（MTP/EP），多并发 prefix hit rate 仅 ~10%；设 VLLM_PREFIX_CACHE_RETENTION_INTERVAL 后两条相同请求也不命中（归 0）"
+      - "移除 P 节点 async scheduling 后 retention 变量'似乎起作用'——仅暴露执行路径差异，不是正解"
+      - "特征：开启 MTP/EAGLE（hybrid cache 含 eagle 层组）时 hit 坍缩为 0%；写侧保留的 checkpoint tail 比读侧 eagle peek 边界少一个 block"
+      - "PR #11107 修复后（含该 PR 的版本）DSV4 prefix cache hit rate 恢复"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10970"
+      - "https://github.com/vllm-project/vllm-ascend/pull/11107"
+      - "https://github.com/vllm-project/vllm/pull/43447"
+      - "https://github.com/vllm-project/vllm-ascend/issues/10517"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #11107（merged 2026-07-01，[Performance] DSV4 prefix cache hit rate optimize；issue 提出人 HF-001 提交，含机制 + 单测 test_verify_and_split_propagates_eagle_to_managers）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'VLLM_PREFIX_CACHE_RETENTION_INTERVAL' {{log_path}} | head -1"
+        rank_selector: coordinator     # PD 分离的 P 节点（prefill/prefix lookup 侧）
+        expected: "regex:VLLM_PREFIX_CACHE_RETENTION_INTERVAL=[0-9]+"
+        note: "命中归 0 需看 metrics（prefix_cache_hits_total=0 且 queries>0）或请求级观察——该 env 行只是场景判别入口"
+      fallback:
+        command_template: "grep -E 'use_eagle|drop_eagle_block|eagle_group|num_external_hit_tokens' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:use_eagle|drop_eagle_block|eagle_group"
+
+    diagnosis:
+      - step: 1
+        check: "场景判别：PD 分离 P 节点 + DSV4-Flash + MTP/EAGLE（hybrid cache 含 eagle 层组）+ retention env？"
+        expected: "是"
+      - step: 2
+        check: "现象判别：设 VLLM_PREFIX_CACHE_RETENTION_INTERVAL 后相同请求命中归 0（或 hit rate 坍缩）？"
+        expected: "是——hybrid cache min-over-groups 命中坍缩；不要停在'移除 async scheduling 让变量起作用'的 workaround 上"
+      - step: 3
+        check: "机制（代码级）：AscendHybridKVCacheCoordinator.verify_and_split_kv_cache_groups 是否只按 eagle_group_ids 标记、未把 use_eagle 传播给同 spec 的 sibling manager？"
+        expected: "是（PR #11107 前）——写侧 reachable_block_mask 按 use_eagle 保留 tail、读侧 drop_eagle_block 按合并组，block 差一 → SWA group 永不命中"
+      - step: 4
+        check: "修复：升级到含 PR #11107 的版本（main 2026-07-01 后），复测相同请求 prefix 命中恢复"
+        expected: "升级后 hit rate 恢复（不再归 0）"
+
+    severity: service-affecting          # 前缀缓存失效=性能退化（每请求全量 prefill），服务可用
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      DeepSeek-V4 混合 KV cache（含 EAGLE/MTP 层组）中，写路径 cache_blocks→reachable_block_mask
+      按 manager.use_eagle 保留 checkpoint tail，读路径 find_longest_cache_hit 对合并后的 eagle
+      attention group 应用 drop_eagle_block。vllm-ascend AscendHybridKVCacheCoordinator.
+      verify_and_split_kv_cache_groups 只把 eagle_group_ids 里的单组标记 use_eagle，未传播给
+      attention group 中共享同一 spec 的 sibling manager（上游 _annotate_eagle_groups_deepseek_v4
+      也只标单组）→ 保持默认 use_eagle=False 的 manager 写侧保留 tail 比读侧 eagle peek 边界少一个
+      block → SWA group 永不命中，get_cached_block 需全 group 命中而失败 → min-over-groups 混合命中
+      坍缩为 0%。加 VLLM_PREFIX_CACHE_RETENTION_INTERVAL 只是把该失效暴露得更直接（本就不是 retention
+      变量本身的问题）。
+
+    fix: >
+      升级到含 PR #11107 的版本：verify_and_split_kv_cache_groups 对 eagle 所在 attention group 的
+      每个 manager（含同 spec sibling）置 use_eagle=True，对齐上游 HybridKVCacheCoordinator 语义。
+      不要用"移除 P 节点 async scheduling"作为交付 fix——仅规避观察面。retention interval 后续由
+      上游 vllm #45845 提供（RFC #10517 记录 vllm-ascend 无需额外适配）。
+    rollback: "回退 #11107 前版本即复现 hit 归 0（可验证因果）"

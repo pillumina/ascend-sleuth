@@ -1,0 +1,78 @@
+# VLLM-ASC-14363 —— DeepSeek V4 adapter 构造 routed FusedMoE 时漏传 swiglu_limit
+#   → routed expert 无 SwiGLU clamp → 敏感前缀 next-token logit/ranking 漂移 → 异常中文/特殊 token
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/14363
+# fix 跟踪：PR #14364（merged；修复版本 v0.25.1）
+# investigation_quality: high（维护者定论 + 源码级 diff 验证 + S2 replay rc_match=True）
+# pre-triage: new_pattern（knowledge 无 swiglu_limit/FusedMoE 覆盖——EV-2026-002 S2 缺口驱动）
+# verification: upstream-fix-merged（fix PR #14364 merged）
+# 导入管道：self-evolve EV-2026-002（S2 replay 校准缺口）→ groom 升格（2026-W36 round2）
+
+cases:
+  - id: VLLM-ASC-14363
+    title: "DeepSeek V4 adapter 构造 routed FusedMoE 时漏传 swiglu_limit（config=10.0）→ routed expert 以默认 None 运行、无 SwiGLU clamp → 敏感前缀处 next-token logit/ranking 漂移 → 异常中文/特殊 token（BF16 与量化均受影响，main 与 v0.25.1rc 均存在）"
+
+    category: precision
+    tags: [deepseek-v4, routed-expert, swiglu, fusedmoe, precision, logit-drift]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.25.1"]        # fix PR #14364 merged → v0.25.1
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "DeepSeek V4 部署后输出异常中文/特殊 token（关联 #13615），BF16 与量化 checkpoint 均受影响"
+      - "main 与 v0.25.1rc 分支均存在；由 FusedMoE refactor（#11081）引入——refactor 前 adapter 直接从 hf_config 读 swiglu_limit，refactor 后需显式传参"
+      - "敏感前缀处（system prompt/长上下文前缀）next-token ranking 漂移明显，普通短请求可能不触发"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/14363"
+      - "https://github.com/vllm-project/vllm-ascend/pull/14364"
+
+    verification:
+      source: upstream-fix-merged
+      detail: 'fix PR #14364（给 routed FusedMoE 传 self.swiglu_limit，与 shared expert 及 DeepSeek V4 model contract 一致；修复版本 v0.25.1）'
+
+    quickly_check:
+      primary:
+        command_template: "grep -F 'swiglu_limit' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:swiglu_limit"
+      fallback:
+        command_template: "grep -E 'DeepseekV4MoE|FusedMoE' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:DeepseekV4MoE|FusedMoE"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：DeepSeek V4 部署出现异常中文/特殊 token（非乱码非截断，是特定 token 被错误选中）？"
+        expected: "是——先排除输入/采样问题，怀疑 routed expert 配置缺失"
+      - step: 2
+        check: "版本判别：vllm-ascend 版本 <0.25.1 且由 FusedMoE refactor（#11081）后引入？"
+        expected: "是——refactor 后 routed FusedMoE 需显式传 swiglu_limit"
+      - step: 3
+        command_template: "grep -n 'swiglu_limit' {{src_root}}/vllm_ascend/models/decoder_only/deepseek_v4.py"
+        rank_selector: coordinator
+        expected: "regex:swiglu_limit"
+        note: "检查 routed FusedMoE 构造是否传 swiglu_limit（shared expert 传了、routed 漏传是根因）"
+      - step: 4
+        check: "修复：升级至 v0.25.1+（含 PR #14364）后复测敏感前缀输出"
+        expected: "升级后异常 token 消失"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      vllm_ascend 的 DeepseekV4MoE adapter 构造 routed FusedMoE 时漏传 swiglu_limit
+      （config 声明 10.0；shared expert 传了、routed 没传）——FusedMoE refactor（#11081）
+      后该参数需显式传入，此前 adapter 直接读 hf_config。routed expert 以默认 None 运行、
+      缺少模型要求的 SwiGLU clamp → 敏感前缀处 next-token logit/ranking 漂移。
+
+    fix: >
+      PR #14364：给 routed FusedMoE 传 self.swiglu_limit（与 shared expert 及 DeepSeek V4
+      model contract 一致）。修复版本 v0.25.1。
+    rollback: "退回旧版本即复现（逻辑缺陷，可 revert 验证）"

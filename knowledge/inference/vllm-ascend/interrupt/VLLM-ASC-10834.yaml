@@ -1,0 +1,90 @@
+# VLLM-ASC-10834 —— Qwen3-8B-W4A8 量化权重（group_size=256）启动报 ERR00100/AclNN_Parameter_Error(EZ1001)：antiquantGroupSize should be 128 or 64, but actual [256]——torch_npu 反量化 matmul 算子 int4×FRACTAL_NZ 仅支持 group 64/128
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10834
+# fix：无 fix PR（维护者注明代码将重构）——Solution1 export VLLM_ASCEND_ENABLE_NZ=0（禁转 NZ）；Solution2 按 group_size=128 重新量化
+# pre-triage: new_pattern —— 库内无 int4/antiquantGroupSize/FRACTAL_NZ 算子限制族；最近似 10122(QuantBatchMatMulV3 507015)/10610(modelslim KeyError) 机制均不同
+# verification: upstream-maintainer-confirmed（kunpengW-code 2026-06-23 + 同因 issue #5603；无 fix PR）
+# 脱敏：本 case 未引用线程内 token/内网 IP
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest sed-g2 batch 2（2026）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-10834
+    title: "Qwen3-8B-W4A8 量化权重（group_size=256）启动报 antiquantGroupSize should be 128 or 64, but actual [256]（ERR00100/EZ1001）：torch_npu 反量化 matmul int4×FRACTAL_NZ 仅支持 group 64/128；VLLM_ASCEND_ENABLE_NZ=0 或重量化 group128"
+
+    category: interrupt
+    tags: [quantization, w4a8, int4, group-size, nz, aclnn, startup-failure]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.18.0.rc1"]       # issue 复现版本；同因 #5603 在 v0.13.0 也复现——与版本弱相关，本质是算子格式限制
+    # 平台：atlas800i a2（910B）；同因 #5603 = 910B 单卡。机制为 torch_npu 算子限制，跨版本存在
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "W4A8 量化权重（group_size=256）启动 vllm serve：ERR00100 PTA call acl api failed"
+      - "AclNN_Parameter_Error(EZ1001): when weight's dtype is [int4], weight's format is [FRACTAL_NZ], antiquantGroupSize should be 128 or 64, but actual antiquantGroupSize is [256]"
+      - "同错见于 issue #5603（v0.13.0）与官方发布即 group 256 的 Qwen3-8B-W4A8 权重（modelscope）——非权重发布错误，是算子限制"
+      - "group_size=128/64 的 W4A8 权重可正常启动"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10834"
+      - "https://github.com/vllm-project/vllm-ascend/issues/5603"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "issue#10834 维护者 kunpengW-code（2026-06-23）：'This error is caused by operator restrictions. When group_size is 256, the weight cannot be converted to NZ.' 同因 issue #5603（同评论 + 'this part of code is to be reconstructed recently'，无 fix PR）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'antiquantGroupSize should be 128 or 64, but actual antiquantGroupSize is' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:antiquantGroupSize should be 128 or 64, but actual antiquantGroupSize is \\[256\\]"
+      fallback:
+        command_template: "grep -aE 'ERR00100|AclNN_Parameter_Error|weight.*dtype is \\[int4\\]' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:ERR00100|AclNN_Parameter_Error|weight.*dtype is \\[int4\\]"
+
+    diagnosis:
+      - step: 1
+        check: "错误签名：是否 ERR00100 + AclNN_Parameter_Error(EZ1001) + antiquantGroupSize should be 128 or 64, but actual [256]（int4 × FRACTAL_NZ）？"
+        expected: "是——torch_npu 反量化 matmul 算子限制（group 256 权重无法转 NZ）"
+      - step: 2
+        check: "量化权重判别：确认权重 quant 配置的 group_size（modelscope 官方 Qwen3-8B-W4A8 即 256 → 命中本 case）"
+        command_template: "grep -aoE 'group_size|group-size|quant_method' {{quant_config}}"
+        rank_selector: coordinator
+        expected: "regex:.*"        # 确认量化权重 group_size（256 → 命中本 case）
+        note: "量化配置（modelscope config / 量化工具参数）里确认 group_size"
+      - step: 3
+        check: "workaround A：export VLLM_ASCEND_ENABLE_NZ=0（禁权重转 FRACTAL_NZ）后重启"
+        expected: "启动成功（算子走非 NZ 布局，规避 64/128 限制）"
+        fix_on_mismatch: "换 Solution 2"
+      - step: 4
+        check: "workaround B：按 --group_size 128 重新量化权重（modelscope 官方 group256 权重需自行重量化）"
+        expected: "group128 权重启动正常（满足 antiquantGroupSize 64/128 限制）"
+      - step: 5
+        check: "代码侧：维护者注明相关代码即将重构——若所用版本已含重构，复测是否仍需 workaround"
+        expected: "按版本实测；重构合入前以上述两条 workaround 为准"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: env-var
+
+    root_cause: >
+      torch_npu 反量化 batch matmul（npu_weight_quant_batchmatmul 系列）算子限制：int4 权重在
+      FRACTAL_NZ 布局下的 antiquantGroupSize 只支持 128 或 64。group_size=256 量化的 W4A8 权重
+      （Qwen3-8B-W4A8 官方发布权重即 256）无法完成 NZ 转换 → AclNN_Parameter_Error(EZ1001)/
+      ERR00100，模型启动失败。与部署版本弱相关（v0.13.0 #5603 与 v0.18.0.rc1 均复现），本质是
+      算子格式限制；非权重发布错误。
+
+    fix: >
+      Solution 1（最快）：启动前 export VLLM_ASCEND_ENABLE_NZ=0，禁用权重转 FRACTAL_NZ（算子走非 NZ
+      布局，规避 group 限制）。Solution 2（治本）：按 --group_size 128 重新量化权重（group 256 的
+      modelscope 官方 W4A8 权重需自行重量化）。维护者注明该部分代码即将重构——重构合入版本后建议复测。
+    rollback: "unset VLLM_ASCEND_ENABLE_NZ（恢复默认 NZ 转换，复现报错可验证因果）；group 256 权重换回即复现"

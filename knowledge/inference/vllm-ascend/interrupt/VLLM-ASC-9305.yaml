@@ -1,0 +1,80 @@
+# VLLM-ASC-9305 —— vLLM 0.20.2 + vllm-ascend dev 启动报 ModuleNotFoundError: No module named 'vllm.v1.attention.backends.mla.prefill'——vllm×vllm-ascend 版本错配，按 vllm-main-verified.commit 对齐解决
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9305
+# fix：无 fix PR——按 vllm-ascend/.github/vllm-main-verified.commit（main 线）或 vllm-release-tag.commit（release 线）对齐 vllm/vllm-ascend 版本重建/换镜像（维护者 zhaomingyu13 定论）
+# pre-triage: variant_of VLLM-ASC-11208 —— 同"ModuleNotFoundError at 启动 = vllm×vllm-ascend 版本错配/适配差"族；增量=11208 缺 expert_map_manager（模型适配缺失）、本条缺 vllm.v1.attention.backends.mla.prefill（vllm-ascend 与 vllm 版本错配）
+# verification: upstream-maintainer-confirmed（zhaomingyu13 2026-07-29 明确 resolution，无 fix PR）
+# 脱敏：本 case 未引用线程内 token/内网 IP
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest sed-g2 batch 2（2026）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-9305
+    title: "启动报 ModuleNotFoundError: No module named 'vllm.v1.attention.backends.mla.prefill'：vllm 与 vllm-ascend 版本错配（乱配 commit），按 vllm-main-verified.commit / vllm-release-tag.commit 对齐解决"
+
+    category: interrupt
+    tags: [version-mismatch, module-not-found, mla, startup-failure, vllm-ascend]
+
+    # compat: 触发组合=vllm-ascend dev 构建（0.19.1rc2.dev75+g5385230a8）配 vllm 0.20.2、及官方镜像
+    #         quay.io/ascend/vllm-ascend:v0.20.2rc1 配 Qwen3.5-9B——核心是 vllm/vllm-ascend commit 错配，
+    #         正确组合见 vllm-ascend/.github/vllm-main-verified.commit（main）与 vllm-release-tag.commit（release），故不写死 ranges
+    # 平台：与芯片无关——纯 vllm×vllm-ascend 组合错配（openEuler aarch64 环境），不标 platforms
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "vllm-ascend（dev 构建或官方镜像）与 vllm 版本未对齐时启动报 ModuleNotFoundError: No module named 'vllm.v1.attention.backends.mla.prefill'"
+      - "vllm-ascend 0.19.1rc2.dev75(g5385230a8) + vLLM 0.20.2 复现；quay.io/ascend/vllm-ascend:v0.20.2rc1 + Qwen3.5-9B 同报"
+      - "缺失模块随错配组合变化（mla.prefill / 其他 vllm.v1.* 模块），服务启动失败于 import 阶段"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9305"
+      - "https://github.com/vllm-project/vllm-ascend/blob/main/.github/vllm-main-verified.commit"
+      - "https://github.com/vllm-project/vllm-ascend/blob/main/.github/vllm-release-tag.commit"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "issue#9305 维护者 zhaomingyu13（2026-07-29）：'caused by version mismatch between vllm and vllm-ascend, please rectify version by vllm-main-verified.commit / vllm-release-tag.commit'；用户 commit 对齐后实测解决"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E \"ModuleNotFoundError: No module named 'vllm\\.v1\\.attention\\.backends\\.mla\\.prefill'\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:ModuleNotFoundError: No module named 'vllm\\.v1\\.attention\\.backends\\.mla\\.prefill'"
+      fallback:
+        command_template: "grep -aE \"ModuleNotFoundError: No module named 'vllm\\.\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:ModuleNotFoundError: No module named 'vllm\\."
+
+    diagnosis:
+      - step: 1
+        command_template: "python3 -c \"import vllm, vllm_ascend; print(vllm.__version__, vllm_ascend.__version__)\""
+        rank_selector: coordinator
+        expected: "regex:.*"   # 拿到两侧版本后进入步骤 2 比对
+      - step: 2
+        check: "版本错配判别：vllm 与 vllm-ascend 是否按官方组合？（读取 vllm-ascend/.github/vllm-main-verified.commit 或 vllm-release-tag.commit 比对 vllm commit）"
+        expected: "不匹配 → 版本错配（缺失 vllm.v1.attention.backends.mla.prefill 等模块是错配症状，不是代码 bug）"
+      - step: 3
+        check: "修复：按 vllm-main-verified.commit（main 线）/ vllm-release-tag.commit（release 线）对齐 vllm 版本重建/换官方镜像"
+        expected: "对齐后启动正常，无 ModuleNotFoundError"
+        note: "不要在该错配组合上继续排查缺失模块本身；官方镜像若也报错先确认其内部 vllm/vllm-ascend commit 组合"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change            # 版本对齐型
+
+    root_cause: >
+      vllm 与 vllm-ascend 版本未按官方校验组合对齐（vllm-ascend 针对特定 vLLM commit 构建/适配，
+      错配时引用的 vllm 内部模块如 vllm.v1.attention.backends.mla.prefill 在运行时版本中不存在）→
+      import 阶段 ModuleNotFoundError、服务启动失败。非代码 bug；官方校验组合记录在
+      vllm-ascend/.github/vllm-main-verified.commit（main）与 vllm-release-tag.commit（release）。
+
+    fix: >
+      按 vllm-ascend/.github/vllm-main-verified.commit（main 线）或 vllm-release-tag.commit（release 线）
+      对齐 vllm 与 vllm-ascend 版本：源码构建用对应 commit，镜像用与 vllm-ascend 同标签的官方镜像并
+      确认内部组合一致；不要随意组合两侧 commit。
+    rollback: "无需业务级回滚——对齐版本即恢复；保留旧组合必复现启动失败"

@@ -39,3 +39,6 @@ decisions:
   - who: self-evolve 试点
     when: "2026-09-02"
     conclusion: "已执行候选→沉淀：产出 postmortems/inbox/VLLM-ASC-14363.md 草稿（待 groom 三分类升格）"
+  - who: groom（2026-W36 round2 全自动轮）
+    when: "2026-09-02"
+    conclusion: "执行完成并验证：14363 升格 knowledge/inference/vllm-ascend/precision/（case.yaml 补全）；S2 replay #14363 rc_match=True 佐证根因方向；index 已含该 case（precision 11 条）——'沉淀后应命中'前提成立。卡状态 candidate→proposed 待 review 合入。"

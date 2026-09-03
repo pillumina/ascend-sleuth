@@ -1,0 +1,87 @@
+# VLLM-ASC-10892 —— 310P 上 MoE 模型（Qwen3.6-35B-A3B-w8a8）过度思考/输出劣化：
+#   npu_moe_gating_top_k_softmax 单次 >1024 token 返回无效路由 → 按 1024 切块修复
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10892
+# fix：PR #11391（[BugFix][Ops][310p]: fix the accuracy issue caused by MoEGatingTopkSoftmax，merged 2026-07-04，0dc58f8）
+#     vllm_ascend/_310p/fused_moe/experts_selector.py：router_logits >1024 按 split(1024) 多次调 npu_moe_gating_top_k_softmax 再拼接
+#     main 2026-07-04 合入；tag ancestry 校验含于 v0.23.0rc1（2026-07-19）
+# pre-triage: new_pattern —— 库内无 310P MoE 路由精度 case（310P 存量=interrupt 算子/CANN 崩溃族）；
+#     与同表象 8798（Qwen3.5 thinking 重复，模型能力）根因不同 → 两条均入库、互为判别
+# verification: upstream-fix-merged（fix PR #11391）
+# 脱敏：线程内 Bearer token/内网 IP 未引用
+# 建议命名空间：inference/vllm-ascend/precision/
+# 导入管道：issue-ingest sed-g1 batch 1（2026）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-10892
+    title: "310P（v0.21.0rc1）上 Qwen3.6-35B-A3B-w8a8 长请求过度思考/不按要求输出：npu_moe_gating_top_k_softmax 单次 >1024 token 返回无效路由（_310p/fused_moe），升级含 PR #11391（0.23.0rc1+）修复"
+
+    category: precision
+    tags: [310p, moe, gating, routing, qwen3.6, overthinking, precision, fusedmoe]
+    platforms: ["310P"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.23.0rc1"]     # v0.21.0rc1 实测复现；0dc58f8 含于 v0.23.0rc1；仅 310P 路径受影响
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "310P 上 MoE 模型（Qwen3.6-35B-A3B-w8a8）长请求（~2700 token 等 >1024 路由 token 场景）输出劣化：要求只输出 JSON/答案却输出大段中英混杂逐步分析、thinking 失控（'过度思考'）"
+      - "vllm-ascend v0.21.0rc1（310p 镜像）+ CANN 9.1.0-beta.1 复现；用户对比更大模型后仍异常，非模型能力可比结论"
+      - "非崩溃类：服务正常、无算子报错，仅输出内容错误（精度型）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10892"
+      - "https://github.com/vllm-project/vllm-ascend/pull/11391"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #11391（merged 2026-07-04，0dc58f8；含于 v0.23.0rc1）；维护者在 issue 中定位 MoEGatingTopkSoftmax 精度问题并关联 PR"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE '35B-A3B|35B_A3B' {{launch_log}}"
+        rank_selector: coordinator
+        expected: "regex:35B-?A3B"
+      fallback:
+        command_template: "grep -aE 'vLLM Ascend Version: 0\\.2[01]\\.' {{env_log}}"
+        rank_selector: coordinator
+        expected: "regex:vLLM Ascend Version: 0\\.2[01]\\."
+
+    diagnosis:
+      - step: 1
+        check: "平台/症状判别：310P 芯片 + MoE 模型（A3B 路由类）长请求出现 thinking 失控/过度思考/不按要求输出（服务无崩溃无算子报错）？"
+        expected: "是——310P + MoE + 单批路由 token >1024 的 prefill 场景"
+      - step: 2
+        check: "根因验证（代码级）：vllm_ascend/_310p/fused_moe/experts_selector.py 中 select_experts 是否对 router_logits>1024 直接整批调 npu_moe_gating_top_k_softmax？"
+        expected: "是（<0.23.0rc1 未分块）——310P 该算子单次 >1024 token 返回无效路由 → topk_weights/topk_ids 错乱 → MoE 输出劣化"
+        note: "PR #11391 修复：router_logits.split(1024, dim=0) 分块多次调用再 cat；回归 UT num_tokens=2050 → 切块 [1024,1024,2]"
+      - step: 3
+        check: "与模型能力型重复输出（8798）判别：升级到 0.23.0rc1+（含 PR#11391）后同请求是否恢复正常？"
+        expected: "是 → 本 case（算子级）；升级后仍异常且换模型缓解 → 看 VLLM-ASC-8798（模型能力，Qwen3.5 系）"
+        note: "表象相近（思考段重复/失控），根因不同：本条 310P 算子 bug、升级修复；8798 模型能力、换模型/关 enable_thinking 规避"
+      - step: 4
+        check: "修复：升级 vllm-ascend 到 >=v0.23.0rc1（含 PR#11391）"
+        expected: "路由分块后输出恢复正常"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      310P 上 FusedMoE 选路走 torch_npu.npu_moe_gating_top_k_softmax（vllm_ascend/_310p/fused_moe/
+      experts_selector.py select_experts），该算子单次输入 >1024 token 时返回无效路由结果（疑似
+      内部溢出/边界缺陷，维护者按 'invalid routing results when >1024 tokens' 修复）——router_logits
+      整批调用时路由错乱 → MoE 输出质量劣化：thinking 失控/过度思考、不遵循输出指令（非崩溃）。
+      修复：router_logits.split(1024, dim=0) 分块调用再拼接（PR #11391，仅 _310p 路径）。
+
+    fix: >
+      升级 vllm-ascend 到含 PR #11391 的版本（main 2026-07-04 合入 0dc58f8；>=v0.23.0rc1）。
+      310P + MoE 模型 + 长请求（路由 token >1024）场景用新版本验证输出恢复正常。
+    rollback: "回退 <0.23.0rc1（复现风险）"

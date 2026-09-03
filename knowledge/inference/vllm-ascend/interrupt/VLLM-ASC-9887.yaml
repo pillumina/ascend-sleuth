@@ -1,0 +1,93 @@
+# VLLM-ASC-9887 —— GLM-5.1-w8a8 PD 分离 decode 运行期崩溃（error code 507034 / MoeDistributeDispatchV2）：
+#   MTP 阶段 MC2 容量不足（num_batch_tokens 272 > 容量~104）→ 不同 DP 走不同 MoE 分发分支
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9887
+# fix：无官方 fix PR；规避 = num_batch_tokens = max_num_seqs*3（≤ cudagraph 最大捕获尺寸）且保持 32 倍数
+# pre-triage: variant_of VLLM-ASC-12461 —— 同族多机 MoE 分发 + MTP decode 崩溃（12461=ROCE 兼容 aicore 507057，
+#     0.20.2rc1+ 修复；本条=v0.18 base 内 MC2 容量/分支不一致 507034），机制不同、同一代码路径族
+# verification: investigation（issue closed completed 基于用户根因结论；无 upstream fix PR）
+# 脱敏：内网/数据面 IP 未引用
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest sed-g1 batch 1（2026）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-9887
+    title: "GLM-5.1-w8a8 PD 分离 decode（多 DP+EP+MTP+FusedMC2）运行期崩溃 error code 507034：num_batch_tokens(272) 超 MC2 容量(~104) 致不同 DP 走不同 MoE 分发分支——规避 num_batch_tokens=max_num_seqs*3 且 32 倍数"
+
+    category: interrupt
+    tags: [glm5, pd-separation, mtp, mc2, moe-dispatch, crash, dp, decode]
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.18.0"]         # 客户内仓 base v0.18.0（2026-04-17 commit）；触发与配置相关（num_batch_tokens>MC2 容量）
+      - framework: hdk
+        ranges: ["25.2.1"]         # 实测驱动（社区建议 ≥25.5.2 低代价先试，非本根因）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.4
+      last_hit: ""
+
+    symptoms:
+      - "GLM-5.1-w8a8 PD 分离双机 A3 decode 节点（多 DP + EP + MTP/deepseek_mtp + FusedMC2 + MLAPO + Mooncake）上线后运行期崩溃"
+      - "栈尾：EAGLE/MTP drafter layer78 MoE forward → token_dispatcher._preprocess → torch.repeat_interleave → AllGather → RuntimeError: error code 507034"
+      - "plog：device0 先错 errType=0x1（task exception，MTE DDR 越界+SMMU fault，fault kernel 相关 MoeDistributeDispatchV2 分发路径）；其余设备 errType=0x4（communication timeout）为连锁反应"
+      - "测试阶段未现、上线后现；触发与 max-num-batched-tokens(272) > MC2 单次容量(~104，按 cudagraph 最大捕获 102 推算) 相关"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9887"
+
+    verification:
+      source: investigation
+      detail: "issue #9887（closed completed）；根因与规避为用户收尾分析（MTP 阶段某 DP token 超 MC2 容量走 alltoallv 分支、其余走 MC2 → 分支不一致崩溃），无官方 fix PR"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'error code 507034|507034' {{engine_log}}"
+        rank_selector: all_failed
+        expected: "regex:error code 507034|507034"
+      fallback:
+        command_template: "grep -aiE 'MoeDistributeDispatchV2|repeat_interleave|AllGather|errType=0x1.*MTE' {{engine_log}} {{plog}}"
+        rank_selector: all_failed
+        expected: "regex:.*(MoeDistributeDispatchV2|repeat_interleave|AllGather)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：GLM5-w8a8 PD 分离 decode 运行期（MTP/drafter 阶段）崩溃，栈尾 repeat_interleave→AllGather→507034？"
+        expected: "是——MoE token dispatch 的 MoE 通信路径崩溃"
+      - step: 2
+        check: "级联判别：plog 中其余设备 errType=0x4 communication timeout 是 device0（errType=0x1 MTE DDR 越界）退出后的连锁——不要当独立根因追"
+        expected: "device0 先错、其余超时在后（vllm-server.log + plog-device0-first-error.log 佐证）"
+      - step: 3
+        command_template: "grep -aE 'max-num-batched-tokens|num_batch_tokens|max-num-seqs' {{launch_config}}"
+        rank_selector: coordinator
+        expected: "regex:max-num-batched-tokens=272|num_batch_tokens=272"   # 272 > MC2 容量 ~104 → 触发条件
+        fix_on_mismatch: "num_batch_tokens 设 max_num_seqs*3（≤ cudagraph 最大捕获尺寸）且保持 32 的倍数"
+        note: "MC2 容量按 cudagraph 最大捕获尺寸推算 ≈104（线程用户分析）；token 超容量 → 该 DP 落 alltoallv 分支、其余走 MC2 → 分支不一致"
+      - step: 4
+        check: "低代价先试（社区建议，非本根因确认）：驱动升级 ≥25.5.2，或关闭 EP 并行"
+        expected: "可先试（用户驱动 25.2.1）；核心修复仍是对齐 num_batch_tokens 走同一 MoE 分支"
+      - step: 5
+        check: "修复：应用 num_batch_tokens=max_num_seqs*3 且 32 倍数（如 seqs=32→96 ≤102 且 32 倍数）重启验证"
+        expected: "分支一致后不再触发 MTP 阶段崩溃"
+        note: "若升级到 0.20.2rc1+ 且机制属 ROCE/MC2 兼容族，可同时参考 VLLM-ASC-12461（9503）——先升级再看是否还需本规避"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change
+
+    root_cause: >
+      多 DP + FusedMC2 + MTP 的 GLM-5.1-w8a8 decode 中，max-num-batched-tokens（272）超过按
+      cudagraph 最大捕获尺寸（102）推算的 MC2 单次容量（≈104）：MTP 阶段某 DP 的 token 数超容量后
+      落入 alltoallv 分发分支，其余 DP 走 MC2——不同 DP 走不同 MoE 分发分支 → 分发路径崩溃
+      （device0 MTE DDR 越界 errType=0x1，上抛 RuntimeError error code 507034；他设备 errType=0x4
+      超时为连锁反应）。
+
+    fix: >
+      规避（无官方 fix PR）：num_batch_tokens = max_num_seqs*3（≤ cudagraph 最大捕获尺寸，避免
+      num_input_tokens 超 MC2 容量导致不同 DP 走不同 MoE 分支），且 num_batch_tokens 保持 32 的倍数
+      （避免 fusedmoe 算子 tiling 报错）。低代价先试：驱动 ≥25.5.2 / 关 EP（社区早期建议，非本根因）。
+    rollback: "恢复 num_batch_tokens=272（复现风险）"

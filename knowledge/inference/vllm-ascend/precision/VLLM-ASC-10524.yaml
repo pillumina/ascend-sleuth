@@ -1,0 +1,86 @@
+# VLLM-ASC-10524 —— GLM-5.1-w8a8 PD 分离偶现精度问题（Claude Code/completions 并发）：
+#   dummy/graph-capture run 读未初始化 slot_mapping → 偶发错误输出
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10524
+# fix：PR #11774（[BugFix][Worker] Reset slot_mapping to pad id for dummy graph capture，merged 2026-07-11，b9acec8）
+#     main 2026-07-11 合入；tag ancestry 校验：首个含修复 tag = v0.24.0rc1（v0.23.0/v0.23.0rc1 未含）
+# pre-triage: new_pattern —— PD 偶发精度族（11169 connector/12030 流式 parser/12957 流同步）根因机制均不同；
+#     本条 = graph capture(dummy run) 未初始化 slot_mapping（worker 正确性），无重叠
+# verification: upstream-fix-merged（fix PR #11774）
+# 脱敏：未引用线程内内网 IP/路径
+# 建议命名空间：inference/vllm-ascend/precision/
+# 导入管道：issue-ingest sed-g1 batch 1（2026）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-10524
+    title: "GLM-5.1-w8a8 PD 分离偶现精度问题（Claude Code 多并发长请求）：graph-capture/dummy run 未走 _prepare_inputs() 导致 slot_mapping 读未初始化残留值，需 dummy run 重置 slot_mapping 为 pad id（PR #11774）"
+
+    category: precision
+    tags: [glm5, pd-separation, graph-capture, slot-mapping, mooncake, intermittent, glm5.1]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.24.0rc1"]     # v0.18.0 / v0.20.2 复现（用户实测）；fix b9acec8 首个含修复 tag = v0.24.0rc1（0.23.0/0.23.0rc1 分支未含）
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "GLM-5.1-w8a8 PD 分离（P:TP16/DP2，D:TP4/DP8 FULL_DECODE_ONLY 图模式+MTP，Mooncake KV transfer）+ Claude Code（转 completions 接口）压测偶现精度问题（输出劣化/复读），再次请求恢复"
+      - "触发条件：同一时刻两个 DP 存在一长一短两个请求时大概率出现；服务日志无报错、无 Mooncake transfer 失败"
+      - "v0.18.0 与 v0.20.2 同样复现；精度数据集得分正常（偶现复读，非系统乱码）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10524"
+      - "https://github.com/vllm-project/vllm-ascend/pull/11774"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #11774（Reset slot_mapping to pad id for dummy graph capture，merged 2026-07-11，b9acec8）；用户确认升级含该 PR 版本后问题解决（issue#10524 末评论）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'FULL_DECODE_ONLY|glm4_moe|completions' {{launch_log}}"
+        rank_selector: coordinator
+        expected: "regex:.*FULL_DECODE_ONLY"
+      fallback:
+        command_template: "grep -aiE 'glm5\\.1|w8a8|kv-transfer|Mooncake' {{launch_log}}"
+        rank_selector: coordinator
+        expected: "regex:.*(glm5\\.1|w8a8|Mooncake)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：GLM5.1-w8a8 PD 分离 + 图模式（FULL_DECODE_ONLY）下偶现精度问题——并发一长一短请求大概率触发、重复请求自愈、无任何日志报错？"
+        expected: "是——问题在 decode 侧 worker/图捕获路径，不是权重/量化/传输故障（Mooncake 无 transfer 失败）"
+      - step: 2
+        check: "版本消融：v0.18.0 与 v0.20.2 均复现（issue 已证）→ 与版本小步演进无关，指向 worker 图捕获正确性"
+        expected: "两版本同现"
+      - step: 3
+        check: "代码级根因：dummy/graph-capture run 不调用 _prepare_inputs()，多 kv cache group 的 slot_mapping 未重置为 pad id，图捕获读到上一 run 残留的未初始化值"
+        expected: "是——PR #11774 在 dummy run 对所有 kv cache group 重置 slot_mapping（vllm_ascend/worker/ 图捕获路径）"
+      - step: 4
+        check: "修复：升级到含 PR #11774 的版本（main 2026-07-11；首个含修复 tag v0.24.0rc1）"
+        expected: ">=v0.24.0rc1 后同压测不再现（用户确认解决）"
+        note: "触发区间按 v0.18.0/v0.20.2 实测写 <0.24.0rc1；若用户 0.23.0 场景仍复现会强化该区间，未复测不硬断言"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      GLM-5.1-w8a8 PD 分离 + FULL_DECODE_ONLY 图模式下，dummy/graph-capture run 不走
+      _prepare_inputs()，所有 kv cache group 的 slot_mapping 未被填充；图捕获时读取到上一 run
+      残留的未初始化/陈旧 slot 值（并发长短请求改变 batch 结构后更易命中），捕获进图的 KV 索引
+      含垃圾值 → decode 偶发错误输出（复读等），重发请求自愈。修复：dummy run 把 slot_mapping
+      重置为 pad id（PR #11774，vllm_ascend worker 图捕获路径）。
+
+    fix: >
+      升级到含 PR #11774 的 vllm-ascend（main 2026-07-11 合入 b9acec8；首个含修复 tag v0.24.0rc1；
+      PR 测试 env v0.23.0）。无配置 workaround——线程未给，不建议在旧版本绕行（问题偶发且无日志）。
+    rollback: "回退旧版本（复现风险）"

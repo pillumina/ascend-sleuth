@@ -1,0 +1,84 @@
+# VLLM-ASC-7023 —— Qwen3.5 多模态高并发打流崩溃：patch_multimodal_merge 报 ValueError: Attempted to assign 65 = 65 multimodal tokens to 3905 placeholders（placeholder/embedding 计数不匹配）
+# 来源: https://github.com/vllm-project/vllm-ascend/issues/7023
+# fix 跟踪: PR #7055（closed, merged=false 未合入）；维护者 shaopeng-666 仅指向 PR #7055 待验证，无其他已合修复 PR
+# investigation_quality: medium（复现完整 + 栈到 patch 代码点 + PR 作者机制分析；PR 未合入、无维护者验收，结论为分析级）
+# 批量导入：sed-g3（2026-09）
+# pre-triage: new_pattern —— 全库无 _merge_multimodal_embeddings/placeholder 计数签名；最近似 VLLM-ASC-10626（Qwen2VL-LoRA 启动期 aicpu 507018）与 VLLM-ASC-11893（Qwen3.5 PCP kernel 越界）均不同阶段/机制 → 首条 Qwen3.5 多模态 embedding merge 计数错位 case
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-7023
+    title: "Qwen3.5 多模态高并发打流 Worker 崩溃：patch_multimodal_merge 报 ValueError: Attempted to assign 65 = 65 multimodal tokens to 3905 placeholders（placeholder/embedding 计数不匹配）"
+
+    category: interrupt
+    tags: [qwen3.5, multimodal, placeholder-mismatch, embedding-merge, patch-layer]
+
+    compat:
+      - framework: vllm-ascend
+        # 触发环境：main commit 3cc8bf15 + PR #7021（2026-03），vLLM main 15d76f74，无对应 release 版本号
+        # 修复未合入（PR #7055 closed/merged=false）→ 无修复版本可升；受影响范围待 groom 从后续 issue 回填
+        ranges: ["dev@2026-03"]
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "Qwen3.5/Qwen3-VL 多模态图片请求高并发打流时 Worker 报 ValueError: Attempted to assign 65 = 65 multimodal tokens to 3905 placeholders"
+      - "栈到 vllm_ascend/patch/worker/patch_multimodal_merge.py:48 _merge_multimodal_embeddings raise（vllm qwen3_5.py:690 embed_input_ids → _merge_multimodal_embeddings），V1 executor 多卡（tp/dp/EP）"
+      - "同段日志该 Worker 先报 ERR01001 OPS invalid parameter（伴随/级联，判型以 ValueError 文本为准）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/7023"
+      - "https://github.com/vllm-project/vllm-ascend/pull/7055"
+
+    verification:
+      source: investigation
+      detail: 'issue #7023 线程 + PR #7055 分析；fix PR #7055 未合入（closed, merged=false），维护者 shaopeng-666 仅指向 PR 待验证，无已合修复 PR'
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'Attempted to assign [0-9]+ = [0-9]+ multimodal tokens to [0-9]+ placeholders' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Attempted to assign [0-9]+ = [0-9]+ multimodal tokens to [0-9]+ placeholders"
+      fallback:
+        command_template: "grep -E 'patch_multimodal_merge|_merge_multimodal_embeddings' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:patch_multimodal_merge|_merge_multimodal_embeddings"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：Qwen3.5/Qwen3-VL 多模态请求下 Worker 报 ValueError: Attempted to assign N = N multimodal tokens to M placeholders？"
+        expected: "是——多模态 embedding token 数（本例 65）与 prompt 内 placeholder 数（3905）不匹配，merge 阶段 raise"
+      - step: 2
+        check: "代码点确认：栈是否到 vllm_ascend/patch/worker/patch_multimodal_merge.py:48 _merge_multimodal_embeddings（vllm qwen3_5.py embed_input_ids 调起），V1 + 多模态 + 高并发请求触发？"
+        expected: "是——vllm-ascend patch 层 merge 的计数校验在 embed_input_ids 阶段直接失败，非量化/通信/权重问题"
+      - step: 3
+        check: "级联鉴别：同 Worker 先报的 ERR01001 OPS invalid parameter 是否独立问题？"
+        expected: "同请求则属 merge 错位路径伴随报错，勿单独按 CANN 算子 bug 排查；若仅 ERR01001 无本 ValueError 文本，走通用算子错误通道而非本 case"
+        note: "判型以 ValueError: Attempted to assign ... multimodal tokens to ... placeholders 文本为准"
+      - step: 4
+        check: "修复状态：上游 PR #7055（patch_multimodal_merge.py pre-check 告警 + patch_qwen3_vl.py tokenizer 级 _get_merged_lt_splits/_find_mm_placeholders 修正）closed 且 merged=false，线程无其他已合修复/无 workaround——如何处置？"
+        expected: "规避=手动应用 PR #7055 diff 或等上游重新合入后升级；修复落地前勿宣称已解决（无维护者验收），groom 跟进后续 issue 回填 compat"
+
+    severity: service-affecting
+    fix_type: pending-investigation   # 上游无已合修复（PR #7055 closed/merged=false）；修复方向=code-patch（pre-check + tokenizer 级 placeholder 检测）但未发布
+
+    root_cause: >
+      vllm-ascend 以 patch/worker/patch_multimodal_merge.py 覆写 vLLM 的 _merge_multimodal_embeddings
+      合并 Qwen3.5/Qwen3-VL 多模态 embedding 到 prompt 视觉 placeholder 位置；多模态高并发请求下出现
+      placeholder 计数（3905）≫ 实际多模态 embedding token 数（65）的错位，patch 在
+      patch_multimodal_merge.py:48 计数校验不通过直接 raise ValueError（Attempted to assign 65 = 65
+      multimodal tokens to 3905 placeholders），worker execute_model 崩溃。PR #7055 作者判定为 patch 层
+      多模态 token/placeholder 计数不匹配（mm embedding token 可少于 placeholder → 计数不匹配/index 越界），
+      需 merge 前 pre-check 计数（告警而非崩溃）+ tokenizer 级修正 Qwen3-VL placeholder 检测。PR 未合入，
+      机制结论为作者 + patch 分析级，无上游最终确认。
+
+    fix: >
+      上游无已合修复。PR #7055（closed, merged=false）给出方向：patch_multimodal_merge.py 加 pre-check——
+      embedding token 数与 placeholder 数不匹配时告警而非 raise；新增 patch_qwen3_vl.py tokenizer 级修正
+      Qwen3-VL _get_merged_lt_splits()/_find_mm_placeholders() 的 placeholder 检测。线程无 workaround；
+      当前只能手动应用 PR #7055 diff 或等上游重新合入后升级。
+    rollback: "手动应用 PR diff 属源码级改动，回退 vllm-ascend 版本即可复原；无部署参数性 workaround"

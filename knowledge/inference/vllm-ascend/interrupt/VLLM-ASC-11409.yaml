@@ -1,0 +1,88 @@
+# VLLM-ASC-11409 —— RFork 二次实例启动失败：pre-transfer post-process（量化 processed-layout 传输）在接收端权重仍空时跑 AscendFusedMoE shared-expert 一致性 forward → NaN mismatch（"shared experts split computation does not match ... nan"）abort
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/11409
+# fix：PR #11497（Fixes #11409，未合入，被 #12995 取代合并 2026-08-06）；基础能力 PR #10128（RFork 量化/post-load 传输，merged 2026-06-22）
+# pre-triage: new_pattern —— 库内无 RFork loader 族；issue 用户按 #11497 实测解决（2026-07-08），修复终态 #12995 merged
+# verification: upstream-fix-merged（#11497 未合入但其合并形态 #12995 merged 2026-08-06；issue 用户源码级验证解决）
+# 脱敏：本 case 未引用线程内 token/内网 IP（issue 正文为空）
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest sed-g2 batch 2（2026）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-11409
+    title: "RFork 二次实例启动失败：pre-transfer post-process 在接收端权重仍空时跑 FusedMoE shared-expert 一致性 forward → NaN mismatch abort（quantized processed-layout 传输，GLM-5 W4A8+MTP 等）"
+
+    category: interrupt
+    tags: [rfork, model-loader, fused-moe, shared-expert, quantized-model, nan, startup-failure]
+
+    platforms: ["A2-910B"]
+    # compat: RFork 量化 processed-layout 传输由 PR #10128（main 2026-06-22）引入，修复 #12995（merged 2026-08-06，
+    #          PR 声明目标 vLLM v0.26.0 线）——受影响窗口为两者之间的 main/构建，版本号未在线程明示，故不写 ranges
+    # 平台/触发面：RFork × 量化 DeepSeekV2 族（GLM-5 W4A8 + MTP，multistream_overlap_shared_expert）processed-layout 传输
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "RFork 二次实例启动（量化模型 processed-layout 传输路径）报 FusedMoE shared experts split computation does not match the integrated computation"
+      - "mismatch 详情全为 NaN：max absolute difference:nan、integrated output-sum:nan,norm:nan、split output-sum:nan,norm:nan"
+      - "普通加载正常（SharedFusedMoE shared experts split computation matches ... 是对照日志行）——仅 RFork pre-transfer 触发"
+      - "同 PR #11497 另修 RFork fallback：failed-model 的 process-global 注册残留 → Duplicate layer name"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/11409"
+      - "https://github.com/vllm-project/vllm-ascend/pull/11497"
+      - "https://github.com/vllm-project/vllm-ascend/pull/12995"
+      - "https://github.com/vllm-project/vllm-ascend/pull/10128"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "issue 用户 2026-07-08 按 PR #11497 实测'已经成功解决'；#11497 未合入（2026-07-28 closed, superseded），其合并形态 PR #12995 merged 2026-08-06（consolidate #12173+#11497，含单测）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'shared experts split computation does not match the integrated computation' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:shared experts split computation does not match the integrated computation"
+      fallback:
+        command_template: "grep -E 'max absolute difference:nan|integrated output-sum:nan|Duplicate layer name' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(max absolute difference:nan|integrated output-sum:nan|Duplicate layer name)"
+
+    diagnosis:
+      - step: 1
+        check: "错误签名：是否 'FusedMoE shared experts split computation does not match ... max absolute difference:nan'？"
+        expected: "是——本 case 命中"
+      - step: 2
+        check: "场景判别：是否为 RFork 二次实例加载（量化模型 + processed-layout/post-load 传输，如 GLM-5 W4A8 + MTP）？"
+        expected: "是——pre-transfer post-process 在接收端权重仍空时跑 shared-expert 一致性 forward 所致；普通加载无此校验失败"
+      - step: 3
+        check: "修复：升级到含 PR #12995（合并自 #11497/#12173）的版本；RFork loader pre-transfer 调原始 process_weights_after_loading 跳过该校验"
+        expected: "升级后 RFork 二次实例正常启动（一致性校验不再对空权重跑）"
+      - step: 4
+        check: "fallback 路径：若 RFork 传输失败回退默认 loader 报 Duplicate layer name——同 PR 修复（只清 failed-model 注册项）"
+        expected: "升级后 fallback 重初始化正常"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      RFork 加载器在量化模型 processed-layout 传输（PR #10128 引入 post-load tensor 布局传输）的
+      pre-transfer post-process 阶段调用 process_weights_after_loading，其中 AscendFusedMoE 会对
+      shared experts 跑一次 split-vs-integrated 一致性 forward 校验；此时接收端模型权重仍为空，
+      forward 输出全 NaN → 校验报 "FusedMoE shared experts split computation does not match the
+      integrated computation"（max absolute difference:nan）→ RFork 传输中止、worker 启动失败。
+      正常（非 RFork）加载在校验时权重已就位，故不触发。同 PR 另修 RFork fallback 的
+      process-global 注册残留（Duplicate layer name）。
+
+    fix: >
+      升级到含 PR #12995（merged 2026-08-06，合并自 #12173/#11497）的版本：RFork loader 在
+      pre-transfer layout-processing 调用期间，临时用 functools.wraps 保存的原始
+      process_weights_after_loading（绕过 AscendMoERunner shared-expert 一致性 forward），调用后
+      立即恢复；fallback 路径仅清除 failed-model 自己注册的 process-global 项后重初始化。非 RFork
+      FusedMoE wrapper 路径不受影响。
+    rollback: "回退 #12995/#10128（RFork 量化传输能力）即不复现——但会失去 RFork 量化模型加速加载"
