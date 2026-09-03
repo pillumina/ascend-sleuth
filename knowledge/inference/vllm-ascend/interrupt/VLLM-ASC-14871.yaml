@@ -25,6 +25,12 @@ cases:
       hits: 0
       misdiagnoses: 0
 
+
+    validation_record:  # S2/外部验证累积（settle_s2_feedback 结算；与 confidence 分开：confidence=现场 resolve S1，validation=内容被外部验证）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W36
     symptoms:
       - "PD 分离部署 decode 节点同开 recompute_scheduler_enable 与 speculative decoding（deepseek_mtp/MTP，任意带 MTP head 模型可复现）：健康检查通过后第一个 /v1/chat/completions 请求报错，所有 EngineCore 退出"
       - "AttributeError: 'Request' object has no attribute 'async_tokens_to_discard'，栈在 vllm_ascend/core/recompute_scheduler.py:1088 update_from_output（and request.async_tokens_to_discard == 0；读取由 PR #12541 引入，全仓库唯一引用点）"
@@ -82,3 +88,4 @@ cases:
       closed completed（报者确认）。未升级前的规避：去掉 speculative decoding（--speculative-config，
       issue 消融验证同一拓扑正常）或关闭 recompute_scheduler_enable。
     rollback: "回退到含 #12541、未含 #14504 的构建即复现——升级为代码级修复，无参数回滚"
+

@@ -1246,7 +1246,7 @@ namespaces:
           command: grep -E 'recompute_scheduler\.py.*update_from_output|async_tokens_to_discard' {{log_path}}
           expected: regex:(recompute_scheduler\.py.*update_from_output|async_tokens_to_discard)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-14871.yaml
-      hash: 0490c0e9da43
+      hash: ddfc44695cd4
     - id: VLLM-ASC-15086
       title: KIMI K3 部署报 'Model architectures [KimiK3ForConditionalGeneration] are not supported for now'——版本错位（支持在
         0.23.0 之后合入上游 registry）
@@ -3059,7 +3059,7 @@ namespaces:
           command: grep -E 'DeepseekV4MoE|FusedMoE' {{log_path}}
           expected: regex:DeepseekV4MoE|FusedMoE
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-14363.yaml
-      hash: 5045e5629602
+      hash: '241081616295'
     - id: VLLM-ASC-5725
       title: 'Qwen3-Embedding-0.6B 同串第二次请求向量与首次不一致（Cosine ~0.585，命中缓存后稳定但错）：pooling 模型 attention 路由无条件走
         npu_fusion_attention（不支持 prefix caching）→ 缓存命中路径静默错输出；升级 ≥v0.18.0（PR #7452/#7894）或关 prefix cache
