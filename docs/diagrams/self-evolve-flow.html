@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>自演进机制全流程</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #ffffff; color: #1a1d21;
+  }
+  .wrap { max-width: 1240px; margin: 0 auto; padding: 24px 20px 40px; }
+  h1 { font-size: 22px; margin: 0 0 4px; font-weight: 650; }
+  .sub { color: #444c56; font-size: 13px; margin: 0 0 20px; line-height: 1.5; }
+  svg { width: 100%; height: auto; background: #fff; border: 1px solid #e4e7eb; border-radius: 8px; }
+  .node { fill: #ffffff; stroke: #c9d1da; stroke-width: 1.3; }
+  .n-auto { fill: #f4f8ff; stroke: #8fb0e8; }
+  .n-gate { fill: #fff7f0; stroke: #e0b18a; }
+  .n-ok   { fill: #f2faf5; stroke: #93c9a8; }
+  .n-fail { fill: #fdf2f3; stroke: #df9ba3; }
+  .n-meta { fill: #f6f7f9; stroke: #b9c0ca; stroke-dasharray: 4 3; }
+  .t-main { font-size: 14px; font-weight: 650; fill: #1a1d21; }
+  .t-sub  { font-size: 11px; fill: #57606a; }
+  .edge { stroke: #9aa4b2; stroke-width: 1.4; fill: none; }
+  .edge-main { stroke: #7a9ff0; stroke-width: 1.8; }
+  .edge-back { stroke: #9aa4b2; stroke-width: 1.3; stroke-dasharray: 6 4; }
+  .elabel { font-size: 11px; fill: #3d4550; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; margin-top: 20px; }
+  .card { border: 1px solid #e4e7eb; border-radius: 8px; padding: 14px 16px; background: #fafbfc; }
+  .card h3 { margin: 0 0 8px; font-size: 14px; font-weight: 650; }
+  .card p { margin: 0; font-size: 12.5px; color: #3d4550; line-height: 1.65; }
+  .card p + p { margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>自演进机制全流程</h1>
+  <p class="sub">内容流程（诊断、沉淀、issue 导入）收尾时自动采集改进信号；改进提案经执行验证与人工评审后合入，知识库、流程与路由随使用持续更新。</p>
+
+  <svg viewBox="0 0 1240 850" xmlns="http://www.w3.org/2000/svg">
+    <text x="120" y="30" class="t-sub" fill="#8b949e">自动侧（agent 执行）</text>
+    <text x="620" y="30" class="t-sub" fill="#8b949e">流程主链</text>
+    <text x="960" y="30" class="t-sub" fill="#8b949e">人工闸点 / 分支</text>
+
+    <!-- 主链（垂直，x 中心 400） -->
+    <rect class="node n-auto" x="290" y="40" width="220" height="64" rx="8"/>
+    <text class="t-main" x="400" y="63" text-anchor="middle">诊断与知识沉淀</text>
+    <text class="t-sub" x="400" y="79" text-anchor="middle">diagnose / issue-ingest / to-postmortem</text>
+    <text class="t-sub" x="400" y="93" text-anchor="middle">产出 trace、草稿、执行记录</text>
+
+    <rect class="node n-auto" x="290" y="176" width="220" height="64" rx="8"/>
+    <text class="t-main" x="400" y="199" text-anchor="middle">收尾自检（evolve-check）</text>
+    <text class="t-sub" x="400" y="215" text-anchor="middle">对照信号表核对本轮产物</text>
+    <text class="t-sub" x="400" y="229" text-anchor="middle">覆盖缺口 / 流程缺陷 / 容量</text>
+
+    <rect class="node n-auto" x="290" y="312" width="220" height="64" rx="8"/>
+    <text class="t-main" x="400" y="335" text-anchor="middle">提出改进提案（EV 卡）</text>
+    <text class="t-sub" x="400" y="351" text-anchor="middle">假设 · 预期效果 · 验证方法</text>
+    <text class="t-sub" x="400" y="365" text-anchor="middle">方案成形才立项</text>
+
+    <rect class="node n-auto" x="290" y="448" width="220" height="64" rx="8"/>
+    <text class="t-main" x="400" y="471" text-anchor="middle">执行改动并验证</text>
+    <text class="t-sub" x="400" y="487" text-anchor="middle">S2：对照真实已解决 issue</text>
+    <text class="t-sub" x="400" y="501" text-anchor="middle">golden：历史案例回放</text>
+
+    <rect class="node n-gate" x="290" y="584" width="220" height="64" rx="8"/>
+    <text class="t-main" x="400" y="607" text-anchor="middle">汇总为聚合 PR</text>
+    <text class="t-sub" x="400" y="623" text-anchor="middle">同一批改进一个 PR</text>
+    <text class="t-sub" x="400" y="637" text-anchor="middle">逐卡独立提交，可单独回滚</text>
+
+    <rect class="node n-gate" x="290" y="720" width="220" height="64" rx="8"/>
+    <text class="t-main" x="400" y="743" text-anchor="middle">人工评审与合入</text>
+    <text class="t-sub" x="400" y="759" text-anchor="middle">常规变更：review 评审</text>
+    <text class="t-sub" x="400" y="773" text-anchor="middle">路由 / 结构变更：双签</text>
+
+    <!-- 右侧分支 -->
+    <rect class="node n-ok" x="960" y="176" width="210" height="52" rx="8"/>
+    <text class="t-main" x="1065" y="196" text-anchor="middle">无改进信号</text>
+    <text class="t-sub" x="1065" y="212" text-anchor="middle">本轮无改动</text>
+
+    <rect class="node n-fail" x="960" y="448" width="210" height="52" rx="8"/>
+    <text class="t-main" x="1065" y="468" text-anchor="middle">验证未通过</text>
+    <text class="t-sub" x="1065" y="484" text-anchor="middle">标记 rejected，保留结论</text>
+
+    <rect class="node n-meta" x="960" y="720" width="210" height="64" rx="8"/>
+    <text class="t-main" x="1065" y="743" text-anchor="middle">季度自评（人）</text>
+    <text class="t-sub" x="1065" y="759" text-anchor="middle">信号精度 · 授权边界</text>
+    <text class="t-sub" x="1065" y="773" text-anchor="middle">参数与流程假设复核</text>
+
+    <!-- 主链连线（垂直） -->
+    <path class="edge edge-main" d="M400 104 L400 174"/>
+    <text class="elabel" x="410" y="140">收尾触发</text>
+
+    <path class="edge edge-main" d="M400 240 L400 310"/>
+    <text class="elabel" x="410" y="276">识别到信号，提案成形</text>
+
+    <path class="edge edge-main" d="M400 376 L400 446"/>
+    <text class="elabel" x="410" y="412">执行提案</text>
+
+    <path class="edge edge-main" d="M400 512 L400 582"/>
+    <text class="elabel" x="410" y="548">验证通过</text>
+
+    <path class="edge edge-main" d="M400 648 L400 718"/>
+    <text class="elabel" x="410" y="684">送交评审</text>
+
+    <!-- 分支连线（水平） -->
+    <path class="edge" d="M510 196 L958 196"/>
+    <text class="elabel" x="640" y="188">信号表无命中</text>
+
+    <path class="edge" d="M510 468 L958 468"/>
+    <text class="elabel" x="640" y="460">验证不成立</text>
+
+    <!-- 季度自评回连（虚线，走右侧+底部通道避免穿主链） -->
+    <path class="edge edge-back" d="M960 752 L700 752 L700 344 L512 344"/>
+    <text class="elabel" x="705" y="740">发现流程问题 → 产新提案</text>
+
+    <!-- 回环 -->
+    <path class="edge edge-back" d="M400 784 L400 820 L150 820 L150 72 L288 72"/>
+    <text class="elabel" x="160" y="812">知识库 / 流程 / 路由更新，回到日常使用</text>
+  </svg>
+
+  <div class="cards">
+    <div class="card">
+      <h3>信号来源</h3>
+      <p>改进信号随内容流程收尾自动采集，不单独立项。典型信号：同类问题反复未命中（覆盖缺口）、流程组件反复失败（流程缺陷）、知识库容量接近上限（结构信号）。</p>
+      <p>无信号则本轮无改动，不产出提案。</p>
+    </div>
+    <div class="card">
+      <h3>验证门槛</h3>
+      <p>提案执行前写明可测预期与验证方法。验证优先级：真实已解决 issue 对照（S2）高于历史回放（golden）与归因复测。</p>
+      <p>验证未通过的改动不进入合入流程，如实记录结论（rejected 亦作为实验记录供评审）。</p>
+    </div>
+    <div class="card">
+      <h3>人工闸点</h3>
+      <p>改动以聚合 PR 提交评审，可整体合入或单卡打回。triage 与结构性变更需双签。</p>
+      <p>季度自评复核信号精度、授权边界与参数假设，结论回流至机制配置。</p>
+    </div>
+  </div>
+</div>
+</body>
+</html>

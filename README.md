@@ -159,6 +159,12 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 ![ascend-sleuth 架构](docs/diagrams/ascend-sleuth-architecture.png)
 
+**自演进机制全流程**（[交互图 HTML](docs/diagrams/self-evolve-flow.html)，通俗版——机制细节见 [evolution-pipeline.md](docs/evolution-pipeline.md)）：
+
+系统不单独"跑改进"，而是每次干活（诊断 / 沉淀 / 拉取 issue）收尾时自动检查有没有改进点；有就记一张改进卡，改完用真实已解决 issue 对照验证，通过后攒一批交人审（PR），合入生效让下次更准。没信号就不动、验证不过就如实记录丢弃、每季度人审一次流程本身。
+
+![自演进机制全流程](docs/diagrams/self-evolve-flow.png)
+
 ## 核心设计原则
 
 面向使用者的节选；完整的规范性原文（十一条，各含推导与禁止项）见 [docs/design-principles.md](docs/design-principles.md)。
