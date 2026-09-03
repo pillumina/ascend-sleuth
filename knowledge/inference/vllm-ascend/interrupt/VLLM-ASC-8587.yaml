@@ -1,0 +1,85 @@
+# VLLM-ASC-8587 —— FULL_DECODE_ONLY + MTP + layer_sharding 混用（DS-V3.2-w4a8 双机 DP2×TP8 EP）压测崩：graph replay 内 aclnnKvRmsNormRopeCache 同步 rtMemcpy 107030
+# 来源: https://github.com/vllm-project/vllm-ascend/issues/8587
+# fix 跟踪: 无独立 fix PR；维护者 Nagisa125 判定 layer_sharding 混用问题（旧版无断言），建议 v0.18.0+关 layer_sharding；报者实测解决（completed 2026-06-05）；后续 #10630/#15509
+# investigation_quality: medium（完整崩溃栈 + cc1/2 过 cc4 崩的复现矩阵 + 去 FULL_DECODE_ONLY 消除 + 维护者判定；无代码级定位）
+# 批量导入：r2-sed-g2（2026-09）
+# pre-triage: new_pattern（现库无 layer_sharding×FULL_DECODE_ONLY×MTP case；邻近 12983 为 310P 图模式 107030 不同根因；与 8646 同 rtMemcpy-107030-in-capture 家族但配置组合/规避不同）
+
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-8587
+    title: "DS-V3.2-w4a8（QuaRot）双机 DP2×TP8 EP + FULL_DECODE_ONLY + deepseek_mtp + layer_sharding，压测 cc=4 时 node1 全 8 worker 崩：EE9999 rtMemcpy execution failed（107030，capture 模式不支持）/ DDR MTE 越界，栈经 aclnnKvRmsNormRopeCache——layer_sharding 与 FULL_DECODE_ONLY/MTP 混用不被支持（0.13 无断言），升级 ≥0.18 并去掉 layer_sharding 解决"
+
+    category: interrupt
+    tags: [layer-sharding, full-decode-only, mtp, speculative-decode, deepseek, dsv3.2, w4a8, rtmemcpy, 107030, graph-replay, 910b, multi-node, crash]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.13.0"]        # 0.13.0 复现（旧版未对 layer_sharding×FULL_DECODE_ONLY×MTP 断言）；报者切 v0.18.0 + 关 layer_sharding 解决
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      # score 草稿期不写，groom 首次评估后计算
+
+    symptoms:
+      - "DS-V3.2-w4a8（--quantization ascend）双机 16×910B，DP2×TP8 + EP + FULL_DECODE_ONLY + deepseek_mtp + --additional-config '{\"layer_sharding\":[\"q_b_proj\",\"o_proj\"]}'，vllm bench cc=4（Input=1024 Output=128）node1 全 8 worker 同时崩，之后请求全 HTTP 500；cc=1/2 正常、可完全复现"
+      - "根错：EE9999: rtMemcpy execution failed, reason=the current capture mode does not support this operation / synchronized memcpy failed, kind=1, runtime result=107030 / The DDR address of the MTE instruction is out of range"
+      - "崩溃栈：sample_tokens → propose_draft_token_ids（MTP）→ drafter._propose → deepseek_mtp forward → acl_graph.__call__（replay）→ aclnnKvRmsNormRopeCache → rtMemcpy"
+      - "去掉 --compilation-config '{\"cudagraph_mode\":\"FULL_DECODE_ONLY\"}' 即不崩"
+      - "维护者判定：混合配置下 layer_sharding 引发问题（早期版本未做断言）；升级 v0.18.0 + 去掉 layer_sharding 后不再复现"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/8587"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: 'issue #8587：维护者 Nagisa125 判定 layer_sharding 混用问题（建议 v0.18.0+关闭 layer_sharding），报者 lingxling 实测升级+关闭后不再复现'
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'the current capture mode does not support this operation|rtMemcpy execution failed' {{engine_log}}"
+        rank_selector: all_failed
+        expected: "regex:the current capture mode does not support this operation|rtMemcpy execution failed"
+      fallback:
+        command_template: "grep -aE 'aclnnKvRmsNormRopeCache|runtime result=107030|107030' {{engine_log}}"
+        rank_selector: all_failed
+        expected: "regex:(aclnnKvRmsNormRopeCache|runtime result=107030)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：FULL_DECODE_ONLY 图模式 + MTP 投机解码 + layer_sharding（--additional-config layer_sharding）组合，压测到一定并发（如 cc≥4）node 内全部 worker 同时崩，根错 rtMemcpy 107030 capture 模式不支持 / DDR MTE 越界？"
+        expected: "是——混合配置不被支持（早期版本无断言），勿按单个算子 bug 排查"
+      - step: 2
+        check: "配置核对：启动是否带 --additional-config '{\"layer_sharding\":[...]}' + FULL_DECODE_ONLY + MTP（deepseek_mtp/qwen3_5_mtp 等）三者同开？"
+        expected: "是——layer_sharding 与该图模式+投机组合冲突（维护者判定）"
+      - step: 3
+        check: "修复：升级 vllm-ascend ≥0.18.0（0.18.0 实测）并去掉 layer_sharding 配置后重压"
+        expected: "不再复现（报者实测 bug 消失）"
+      - step: 4
+        check: "仍崩时：降低 gpu-memory-utilization 排除显存容量因素（维护者提示的次因）"
+        expected: "降 util 后稳定 → 容量因素；否则回到配置面排查"
+      - step: 5
+        check: "忽略项：runtime 日志中错误时间戳对应 warmup capture 期、推断期才浮出（延迟上报），是昇腾 runtime 行为非新错误；node1 同崩为 collective 级联"
+        note: "与 VLLM-ASC-8646（同为 rtMemcpy 107030 in capture，GLM-5.1-W4A8 EP 量化分发，规避=moe_comm_type ALLGATHER）区分：本条规避=升级+去 layer_sharding"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change                        # 去掉 layer_sharding + 版本升级（≥0.18.0）；无代码 fix PR
+
+    root_cause: >
+      vllm-ascend 0.13（及早期版本）未对 FULL_DECODE_ONLY（ACL graph）+ MTP 投机解码 +
+      layer_sharding 的混合配置做支持性断言：该组合下 graph replay 内 aclnnKvRmsNormRopeCache
+      发起同步 rtMemcpy，ACL graph capture/replay 模式不允许 → runtime 107030
+      （rtMemcpy execution failed / capture mode does not support this operation）与 107027、
+      MTE DDR 越界，压测到一定并发（cc=4，Input=1024）时 node 内全部 worker 同时崩。维护者
+      判定 layer_sharding 混用为问题源；升级 v0.18.0（含限制/断言）+ 去掉 layer_sharding 解决。
+
+    fix: >
+      升级 vllm-ascend ≥0.18.0（0.18.0 实测）并去掉 --additional-config 的 layer_sharding 项。
+      仍崩再降 gpu-memory-utilization 排除容量因素。无 layer_sharding 时该配置组合正常。
+    rollback: "回退到含 layer_sharding 的 0.13 构建即回到缺陷面"

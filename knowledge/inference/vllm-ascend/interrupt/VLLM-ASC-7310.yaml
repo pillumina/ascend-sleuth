@@ -1,0 +1,85 @@
+# VLLM-ASC-7310 —— Qwen3.5-27B + MTP 投机 + cudagraph FULL_DECODE_ONLY 在 v0.17.0rc1 A2 TP8 拉起崩：call aclnnCausalConv1d failed, Invalid_Argument(EE1003) LaunchKernelV2 blockDim=0, runtime 107000——0.17.0rc1 适配期 bug，≥0.18.0rc1 修复
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/7310
+# fix 跟踪：issue 线程无钉死 merged PR；维护者 yiz-liu 将 #7310 列入 v0.17.1rc1 release checklist（#7467 Bug need Solve）；候选代码级修复 PR #7495（CausalConv1d 重写为 npu_causal_conv1d_custom，merged 2026-03-23 main，时间吻合但未在 issue 引用）；作者实测 v0.18.0rc1+ 正常（2026-05-15 自关）
+# investigation_quality: medium（多用户 + 版本对照定位适配期 bug；代码级归因未展开，fix PR 为时间吻合候选）
+# pre-triage: new_pattern —— 库内 MTP/投机启动崩 case（12983 310P free-mask、13329 KeyError mtp.0.head、14871 PD recompute、8336 balance-scheduling）机制/签名均不同
+# verification: upstream-maintainer-confirmed（无直接关联 merged fix PR；维护者排期 + 作者跨版本实测）
+# 脱敏：无内网 IP/密钥
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest r2-sed-g1（2026-09，postmortems/inbox 草稿，待 groom 分诊转正）
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-7310
+    title: "Qwen3.5-27B（A2 单机 8 卡）+ qwen3_next_mtp 投机（num_speculative_tokens=3）+ cudagraph FULL_DECODE_ONLY，v0.17.0rc1 TP8 拉起报 call aclnnCausalConv1d failed: Invalid_Argument(EE1003) value 0 for parameter blockDim is invalid / runtime 107000——0.17.0rc1 适配期 bug，升级 ≥v0.18.0rc1 修复"
+
+    category: interrupt
+    tags: [qwen3.5, mtp, speculative, startup-crash, causalconv1d, cudagraph, full-decode-only, adaptation-bug, upgrade]
+    platforms: ["A2-910B"]            # A2 单机 8 卡
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["=0.17.0rc1"]        # 0.17.0rc1 实测 TP8 必现；作者实测 ≥v0.18.0rc1（2026-04-01 发布）无此问题；候选 fix commit main 2026-03-23（#7495）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "Qwen3.5-27B + --speculative-config '{\"method\":\"qwen3_next_mtp\",\"num_speculative_tokens\":3}' + --compilation-config '{\"cudagraph_mode\":\"FULL_DECODE_ONLY\"}' 在 v0.17.0rc1 TP8 拉起崩溃：call aclnnCausalConv1d failed, detail: Invalid_Argument(EE1003): LaunchKernelV2 failed because value 0 for parameter blockDim is invalid"
+      - "伴随 rtsLaunchKernelWithHostArgs failed, runtime result = 107000（栈到 vllm-ascend/csrc/torch_binding.cpp）"
+      - "TP8 必现；同环境改 DP2+TP4 可拉起（tutain2005）；多人同报（LostDream11/MooYeh279/dogeeelin）"
+      - "v0.18.0rc1 及之后镜像无此问题（作者 2026-05-15 实测确认）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/7310"
+      - "https://github.com/vllm-project/vllm-ascend/issues/7467"      # v0.17.1rc1 release checklist（#7310 列入 Bug need Solve）
+      - "https://github.com/vllm-project/vllm-ascend/pull/7495"        # 候选修复：CausalConv1d 算子路径重写（merged 2026-03-23）
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "无 issue 线程内钉死的 merged fix PR。维护者 yiz-liu 将 #7310 列入 v0.17.1rc1 release checklist #7467（Bug need Solve，owner ppppeng/shaopeng-666）；作者实测 v0.18.0rc1+ 无问题并关闭（completed）。候选代码级修复 PR #7495（CausalConv1d 由 causal_conv1d_fn 重写为 npu_causal_conv1d_custom，merged 2026-03-23，修复窗口吻合但未在 issue 引用）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'call aclnnCausalConv1d failed' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:call aclnnCausalConv1d failed"
+      fallback:
+        command_template: "grep -aE 'blockDim is invalid|runtime result = 107000|LaunchKernelV2 failed because value 0' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(blockDim is invalid|runtime result = 107000|LaunchKernelV2 failed because value 0)"
+
+    diagnosis:
+      - step: 1
+        check: "签名判别：启动报 call aclnnCausalConv1d failed + EE1003 blockDim=0 / runtime 107000？"
+        expected: "是——MTP 图路径的 CausalConv1d kernel launch 参数非法（blockDim=0）"
+      - step: 2
+        check: "配置判别：qwen3.5 系模型 + MTP 投机（qwen3_next_mtp/qwen3_5_mtp）+ 图模式（FULL_DECODE_ONLY）且 TP 较大（TP8）？"
+        expected: "是——0.17.0rc1 适配期新能力（Qwen3.5+MTP）的启动 bug；TP 越大越易现（DP2+TP4 可跑）"
+        note: "勿按权重/CANN 问题排查；同批 0.17.0rc1 适配期崩溃（#7635 EP dispatch 等）均为新版本回归族"
+      - step: 3
+        check: "修复：升级 vllm-ascend ≥ v0.18.0rc1（或 main，候选修复 #7495 已合入 2026-03-23）"
+        expected: "作者实测 0.18.0rc1+ 同配置正常拉起"
+        fix_on_mismatch: "0.17.0rc1 上确需规避：改小 TP（如 DP2+TP4）或暂缓 Qwen3.5 MTP 投机（有限证据）"
+        rollback: "回退 v0.17.0rc1（复现崩溃，确认版本问题）"
+
+    severity: service-affecting         # 服务无法启动
+    fix_side_effects: [requires-restart]   # 升级重启
+    fix_type: config-change             # 升级修复（适配期 bug；非配置错误）
+
+    root_cause: >
+      Qwen3.5 + MTP（qwen3_next_mtp）投机是 v0.17.x 新引入能力（适配期）：在 TP8 +
+      FULL_DECODE_ONLY 图模式下，MTP 路径的 CausalConv1d 算子以 blockDim=0 发起 kernel
+      launch（aclnnCausalConv1d → EE1003 LaunchKernelV2 value 0 for parameter blockDim
+      is invalid，runtime 107000），EngineCore 启动崩溃；TP 越大越易触发（DP2+TP4 可跑）。
+      后续版本修复该路径（作者实测 ≥v0.18.0rc1 正常；候选代码级修复为 PR #7495 把
+      CausalConv1d 调用重写为 npu_causal_conv1d_custom，merged 2026-03-23）。属适配期
+      版本 bug，非模型/权重/配置错误。
+
+    fix: >
+      升级 vllm-ascend ≥ v0.18.0rc1（或 main）。v0.17.0rc1 期规避（有限证据）：把 TP8 改为
+      DP2+TP4 等较小 TP 组合，或暂缓 Qwen3.5 MTP 投机配置。
+    rollback: "回退 v0.17.0rc1（复现 aclnnCausalConv1d blockDim=0 崩溃）"

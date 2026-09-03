@@ -1,0 +1,87 @@
+# VLLM-ASC-7854 —— Qwen3.5-397B-A17B-w8a8 混部（TP/DP/EP+MTP+FULL_DECODE_ONLY）高并发多模态压测乱码/精度掉点
+# 来源: https://github.com/vllm-project/vllm-ascend/issues/7854
+# fix 跟踪: PR #8560（merged 2026-04-28，Add xmask feature for dispatch_ffn_combine，only for w8a8 branch）；issue completed 关闭 2026-05-28
+# investigation_quality: medium（对照 TP16DP1 正常 + OCRbench 精度量化 + 维护者指认 fix PR；根因由 PR #8560 自述 xmask 机制）
+# 批量导入：r2-sed-g2（2026-09）
+# pre-triage: variant_of VLLM-ASC-9186（同算子 dispatch_ffn_combine 的 w8a8 fused-MoE/EP 路径缺陷；增量=运行期 xmask 精度乱码 vs 9186 启动期 pybind bias1 类型崩溃，修复 PR 8560 vs 11701）
+
+# 建议命名空间：inference/vllm-ascend/precision/
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-7854
+    title: "Qwen3.5-397B-A17B-w8a8 混部部署（TP4×DP4 + EP + qwen3_5_mtp + FULL_DECODE_ONLY + quantization ascend）高并发多模态压测返回乱码/精度掉点（OCRbench 87.9 vs 95.6），TP16DP1 正常——w8a8 fused-MoE dispatch_ffn_combine 缺 xmask（xactivemask）处理，PR #8560 修复"
+
+    category: precision
+    tags: [qwen3.5, 397b, w8a8, moe, expert-parallel, mtp, full-decode-only, xmask, dispatch_ffn_combine, garbled-output, multimodal, hybrid]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.18.0"]        # 0.17.0rc2.dev143（commit f83cb0e6d）+ vLLM 0.18.0 复现；修复=含 PR #8560 的 main（PR 测试基于 vLLM 0.19.0，backport 版本未在 thread 注明）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      # score 草稿期不写，groom 首次评估后计算
+
+    symptoms:
+      - "Qwen3.5-397B-A17B-w8a8（--quantization ascend）混部 TP4×DP4 + --enable-expert-parallel + --speculative-config '{\"method\":\"qwen3_5_mtp\"}' + --compilation-config FULL_DECODE_ONLY + async-scheduling，高并发（1024）多模态（OCRbench）精度测试输出乱码/精度掉点（87.9 vs 95.6）"
+      - "同一权重只改部署策略为 TP16DP1（无 EP 混部）精度正常、无乱回复"
+      - "静默输出错误：服务不崩、引擎无异常栈，仅生成内容错误"
+      - "官方 fix：PR #8560 给 dispatch_ffn_combine 算子（仅 w8a8 分支）加 xactivemask 控制：xactivemask=0 的 token 置为 padding expert（expertNum=tokenPerExpert×EP）放序列尾，各设备只处理前 tokenPerExpert×EP 个 expert"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/7854"
+      - "https://github.com/vllm-project/vllm-ascend/pull/8560"
+
+    verification:
+      source: upstream-fix-merged
+      detail: 'fix PR #8560（vllm-ascend，merged 2026-04-28，维护者 shaopeng-666 指认、leo-pony 关闭）'
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'qwen3_5_mtp|speculative-config.*qwen3_5' {{launch_log}}"
+        rank_selector: coordinator
+        expected: "regex:qwen3_5_mtp"
+      fallback:
+        command_template: "grep -aE 'enable-expert-parallel|FULL_DECODE_ONLY' {{launch_log}}"
+        rank_selector: coordinator
+        expected: "regex:enable-expert-parallel|FULL_DECODE_ONLY"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：w8a8 大 MoE 模型（Qwen3.5-397B-A17B-w8a8 类）混部部署（TP×DP + EP + MTP + FULL_DECODE_ONLY）下，高并发（数百~上千）多模态/长文本精度测试出现乱码回复或精度掉点，服务本身不崩？"
+        expected: "是——静默精度型问题（无异常栈），判型靠部署组合 + 精度评测而非报错文本"
+      - step: 2
+        check: "对照实验：同权重改 TP16DP1（关 EP 混部/改纯 TP）复测是否正常？"
+        expected: "TP16DP1 精度正常、无乱回复（issue 实测）——问题收敛到 EP 混部 + MTP/xmask 路径而非权重/量化本身"
+      - step: 3
+        check: "版本核对：当前 vllm-ascend 是否含 PR #8560（dispatch_ffn_combine 的 xmask/xactivemask 支持）？"
+        expected: "<0.19/main 未含 #8560 的构建即处于缺陷面；需升级验证"
+      - step: 4
+        check: "修复：升级到含 PR #8560 的版本后同评测集复测精度与乱码是否恢复？"
+        expected: "乱码消失、精度回到正常档（issue 关闭时维护者确认 #8560 解决）"
+      - step: 5
+        check: "忽略项：报者曾怀疑 'KV 空间不足' 相关——线程最终归因 PR #8560 xmask，勿以 KV 容量方向排查"
+        note: "与 VLLM-ASC-9186 同族（同 dispatch_ffn_combine 算子路径），但 9186 是启动期 pybind 类型崩溃（interrupt），本条是运行期静默精度（precision），修复 PR 不同"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch                        # PR #8560（dispatch_ffn_combine xmask）；对使用者=升级到含该 PR 的版本
+
+    root_cause: >
+      w8a8 分支的昇腾 fused-MoE 自定义算子 dispatch_ffn_combine 未实现 xmask（xactivemask）控制：
+      EP 混部 + MTP/FULL_DECODE_ONLY 高并发场景下，被 xactivemask=0 屏蔽的 token 没有按预期置为
+      padding expert（expertNum = tokenPerExpert×EP、放序列尾、各设备跳过不处理），仍走真实 expert
+      分发/计算，混部多 DP 下部分 rank 计算路径不一致 → 推理输出乱码、精度评测掉点（OCRbench
+      87.9 vs 95.6），且无任何引擎异常（静默精度错误）。PR #8560 给 dispatch_ffn_combine 加
+      xactivemask 逻辑修复。
+
+    fix: >
+      升级到含 PR #8560 的 vllm-ascend（merged 2026-04-28）。机制：xactivemask=0 时该 token 的
+      expertIdx 置为 expertNum，token 放序列尾，各设备只处理前 tokenPerExpert×EP 个 expert、
+      不处理 padding expert。无配置 workaround——静默精度问题只能升级后复测验证（TP16DP1 仅作
+      归因对照，不是可交付规避）。
+    rollback: "升级后如需回退：回退到不含 PR #8560 的构建即回到缺陷面；无配置层 rollback"

@@ -1,0 +1,86 @@
+# VLLM-ASC-10322 —— DSV4-Flash decode（FULL_DECODE_ONLY cudagraph + DSA 压缩 KV）启动崩溃：aclnnScatterNdUpdateV2 aicore exception 507015——#9865 引入的 pre-KV ACL graph 显存预估在 KV cache 分配前临时 capture 撞 DSA 压缩路径；PR #10369 跳过 DSV4 压缩场景的 pre-KV profiling（merged 2026-06-12）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10322
+# fix 跟踪：PR #10369 "[BugFix][Worker] Skip DSV4 pre-KV graph memory profiling"（base main，merged 2026-06-12T11:02:37Z，merge 49a1fed17e，Fixes #10322）；issue closed 2026-06-12（随 merge）
+# investigation_quality: high（16 DP worker 一致崩溃 + plog aicore 定位 fault kernel（Compressor SuperKernel 含 ScatterNdUpdateV2）+ #9865 变更点归因 + 维护者合并 PR + 1P1D 精度验证）
+# pre-triage: new_pattern —— 库内无 pre-KV ACL graph 显存预估（#9865）相关 case；ScatterNdUpdateV2/507015 签名未覆盖（邻近 11893 同为 MTE 越界 507015 但机制=PCP 空段 batchTokens 下溢，不同）
+# verification: upstream-fix-merged（fix PR #10369，merged 2026-06-12）
+# 脱敏：issue 无内网 IP/密钥
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest r2-sed-g4（2026-09，postmortems/inbox 草稿，待 groom 分诊转正）
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-10322
+    title: "DSV4-Flash decode 服务（FULL_DECODE_ONLY cudagraph + DSA 压缩 KV）启动即崩：profile_cudagraph_memory 阶段 aclnnScatterNdUpdateV2 aicore exception 507015（MTE DDR 越界/SMMU fault）——#9865 pre-KV ACL graph 显存预估在 KV 分配前临时 capture 撞 DSA 压缩路径；PR #10369 跳过该场景 pre-KV profiling"
+
+    category: interrupt
+    tags: [deepseek-v4, cudagraph, full-decode-only, acl-graph, startup-crash, aicore-exception, 507015, scatternd, memory-profiling]
+
+    # 平台：Ascend910（ascend910_9392）×16 单机 decode；vllm 0.21.0 + vllm-ascend main 0a79510a0
+    # 版本边界以 commit/PR 计：#9865（commit 9099b7f，pre-KV profiling）引入触发，#10369（merged 2026-06-12）修复；
+    # 触发组合：cudagraph_mode=FULL_DECODE_ONLY + DSV4 压缩 attention（DSA）+ MTP decode；--enforce-eager 正常
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "DeepSeek-V4-Flash（w8a8-mtp）decode 服务 FULL_DECODE_ONLY cudagraph 模式启动：全部 DP worker 在 profile_cudagraph_memory → _warmup_and_capture → _dummy_run 崩溃；同配置 --enforce-eager 正常"
+      - "Python 侧：RuntimeError: ... current working operator name is aclnnScatterNdUpdateV2（torch.npu.graph context 内 torch.npu.synchronize）"
+      - "plog：aicore exception 507015；硬件错误 'DDR address of the MTE instruction is out of range' + SMMU fault；fault kernel=Compressor_... SuperKernel（含 ScatterNdUpdateV2，来自 vllm_ascend/_cann_ops_custom/custom_transformer）"
+      - "崩溃发生在启动期 cudagraph 显存 profiling（KV cache 分配前），非正常推理期"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10322"
+      - "https://github.com/vllm-project/vllm-ascend/pull/10369"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #10369（merged 2026-06-12，Fixes #10322）：QwertyJack 定位 #9865 的 pre-KV ACL graph memory profiling 在 DSV4 DSA 压缩 attention 下、KV cache 分配前的临时 capture 会 hit ScatterNdUpdateV2/507015；PR 仅对 model_type=deepseek_v4 + compressed attention 跳过 pre-KV profiling，保留 KV 分配后的正常 ACL graph capture/replay；附 1P1D（A3 双节点，300k ctx，GPQA 0.8838）验证"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'aclnnScatterNdUpdateV2|ScatterNdUpdateV2' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:aclnnScatterNdUpdateV2|ScatterNdUpdateV2"
+      fallback:
+        command_template: "grep -aE '507015|profile_cudagraph_memory|DDR address of the MTE instruction is out of range|Compressor_.*ScatterNdUpdateV2' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:507015|profile_cudagraph_memory|DDR address of the MTE instruction is out of range|Compressor_.*ScatterNdUpdateV2"
+        note: "plog（~/ascend/log/debug/plog）与 vllm 日志分别 grep"
+
+    diagnosis:
+      - step: 1
+        check: "签名判别：DSV4-Flash decode（cudagraph_mode=FULL_DECODE_ONLY）启动崩溃，报 aclnnScatterNdUpdateV2 507015 / MTE DDR 越界 + SMMU fault？"
+        expected: "是——启动期图捕获/显存预估阶段（非推理期）"
+      - step: 2
+        check: "阶段判别：崩溃栈是否在 profile_cudagraph_memory → _warmup_and_capture（KV cache 分配前的 pre-KV ACL graph profiling，#9865 引入）？"
+        expected: "是——pre-KV 临时 capture 撞 DSV4 DSA 压缩 KV 路径"
+      - step: 3
+        check: "版本判别：vllm-ascend 是否含 PR #10369（merged 2026-06-12：model_type=deepseek_v4 + compressed attention 时跳过 pre-KV profiling）？"
+        expected: "不含 → 升级/合入"
+      - step: 4
+        check: "临时规避（升级前）：--enforce-eager 或 export VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0（跳过 #9865 预估）"
+        expected: "规避生效；升级含 #10369 后 FULL_DECODE_ONLY 正常（KV 分配后 capture/replay 保留）"
+        note: "勿用关掉 cudagraph 长期规避 decode 性能；也勿与 11893（PCP 空段 batchTokens 下溢）混淆——同 507015 不同机制"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart, requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      #9865（commit 9099b7f）为估图模式显存而在 KV cache 分配之前增加 pre-KV ACL graph memory
+      profiling（临时 capture）。对 DeepSeek-V4 DSA 压缩 attention（compressed KV）场景，该临时
+      capture 在 KV cache 尚不存在时执行，撞上 compress 路径中 fused 进 Compressor SuperKernel 的
+      ScatterNdUpdateV2 自定义算子 → aicore exception（MTE DDR 地址越界 + SMMU fault，错误码 507015），
+      全部 decode DP worker 在 profile_cudagraph_memory/_warmup_and_capture 阶段崩溃。正常 KV-cache
+      分配后的 ACL graph capture/replay 路径本身可用（--enforce-eager 正常印证）。PR #10369 仅对
+      model_type=deepseek_v4 且压缩 attention 的场景跳过 pre-KV profiling，保留 KV 分配后的图捕获。
+
+    fix: >
+      升级 vllm-ascend 至含 PR #10369（merged 2026-06-12）的版本；#10369 对 DSV4 压缩 attention 跳过
+      pre-KV ACL graph 显存预估，cudagraph_mode=FULL_DECODE_ONLY 正常捕获。升级前规避：--enforce-eager
+      或 export VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0（Nagisa125 建议）。
+    rollback: "revert PR #10369 即回到 pre-KV profiling 崩溃（可验证因果）"

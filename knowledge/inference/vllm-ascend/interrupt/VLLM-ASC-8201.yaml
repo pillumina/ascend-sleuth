@@ -1,0 +1,88 @@
+# VLLM-ASC-8201 —— vllm-ascend 0.18.0RC1 patch_minimax_usage_accounting 模块级覆写 vLLM OpenAI protocol 类 → 非 MiniMax 场景 pydantic 校验失败
+# 来源: https://github.com/vllm-project/vllm-ascend/issues/8201
+# fix 跟踪: workaround=注释 patch/platform/__init__.py:32-33 import；main 根治=PR #11050（scope，2026-06-29）→ PR #11384（替换移除，2026-07-17）。家族 wrapper 化 fix=PR #7835（7823 的 fix，merged 2026-03-31）——注意：已核实 releases/v0.18.0 上 #7835 后该文件仍保留 protocol 类覆写（L40-62），0.18.0 正式版同样受影响
+# investigation_quality: medium（报者定位到具体覆写代码 + 回退实测恢复 + 维护者确认全局影响；thread 内未追到根治 commit）
+# 批量导入：r2-sed-g2（2026-09）
+# pre-triage: variant_of VLLM-ASC-7823（同族=同一 patch_minimax_usage_accounting.py 的全局副作用；7823=import 期 _replace_block 崩溃，本条=pydantic 协议类覆写冲突；修复线 #7835 → main #11050/#11384）
+
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-8201
+    title: "vllm-ascend 0.18.0RC1 patch_minimax_usage_accounting 模块级覆写 engine/chat protocol 的 UsageInfo/CompletionTokenUsageInfo → 非 MiniMax 场景（vllm-omni qwen-image-edit 等）Pydantic 校验失败；workaround=注释 patch/platform/__init__.py:32-33 import，根治=升级到覆写被 scope/移除的版本（main #11050/#11384）"
+
+    category: interrupt
+    tags: [patch-layer, usage-accounting, minimax, protocol-override, pydantic, vllm-omni, version-mismatch, startup-failure, global-impact]
+
+    platforms: []
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.18.0rc1"]       # 0.18.0RC1 及同代（0.18 正式版经核实仍含覆写 L40-62）受影响；main ≥ #11050/#11384 才去除全局覆写（#7835 wrapper 化不消除覆写，见头注）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      # score 草稿期不写，groom 首次评估后计算
+
+    symptoms:
+      - "vllm-omni:v0.18.0（基于 quay.io/ascend/vllm-ascend:v0.18.0rc1）跑 qwen-image-edit image-to-image 推理抛 Pydantic 校验错误；MiniMax-M2.5 官方教程部署（0.18 线）同现（评论#6）"
+      - "定位到 vllm_ascend/patch/platform/patch_minimax_usage_accounting.py：子类 UsageInfo(engine_protocol.UsageInfo) 后整体覆写 engine_protocol/chat_protocol/chat_serving 的 UsageInfo 与 CompletionTokenUsageInfo（模块级赋值）"
+      - "workaround：注释 patch/platform/__init__.py:32-33 两个 patch import（patch_minimax_usage_accounting + patch_glm_tool_call_parser 有依赖须同注释）后推理恢复正常"
+      - "报者 04-13 查 main 未见该文件；实际 main 于 2026-07-17（#11384）才最终移除/替换该 backport"
+      - "main 根治线：PR #11050（scope MiniMax usage accounting patch，2026-06-29）→ PR #11384（replace，2026-07-17）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/8201"
+      - "https://github.com/vllm-project/vllm-ascend/pull/7835"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: 'issue #8201：维护者 gcanlin 确认 vllm-ascend patch 全局覆写缺陷并主张移除；报者回退 patch 实测恢复。注：#7835（wrapper 化）在 releases/v0.18.0 仍保留覆写；main 根治=#11050（scope）/ #11384（替换移除），升级需到对应版本'
+
+    quickly_check:
+      primary:
+        command_template: "grep -aiE 'pydantic|validation error|ValidationError' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:pydantic|validation error|ValidationError"
+      fallback:
+        command_template: "grep -aE 'patch_minimax_usage_accounting|CompletionTokenUsageInfo' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:patch_minimax_usage_accounting|CompletionTokenUsageInfo"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：非 MiniMax 场景（vllm-omni/vllm serve 其他模型）在 vllm-ascend 0.18.0RC1 及同代报 Pydantic 校验错误，崩溃/报错在 OpenAI serving 协议层？"
+        expected: "是——怀疑 platform patch 全局覆写 protocol 类"
+      - step: 2
+        check: "代码核对：目标版本 vllm_ascend/patch/platform/patch_minimax_usage_accounting.py 是否存在模块级覆写（UsageInfo 子类 + engine_protocol/chat_protocol/chat_serving 赋值）？"
+        expected: "是（0.18.0RC1/0.18.0 正式版均含，L40-62）——覆写作用于全局，非 MiniMax 模型也中招"
+      - step: 3
+        check: "workaround 验证：注释 patch/platform/__init__.py:32-33 两个 import（须同注释）后重启，重放原请求"
+        expected: "Pydantic 报错消失、推理恢复（报者实测）"
+      - step: 4
+        check: "根治：升级到全局覆写被 scope/移除的版本（main ≥ PR #11050/#11384）或长期回退该 patch（仅影响 MiniMax usage accounting 的 reasoning_tokens 统计，非 MiniMax 场景可安全回退）"
+        expected: "MiniMax 场景保留 usage accounting 且不再全局覆写（main）；非 MiniMax 场景直接升级/回退即可"
+      - step: 5
+        check: "忽略项：与 VLLM-ASC-7823 区分——7823 是 import 期 _replace_block 找不到目标块崩溃（源码改写 patch），本条是覆写仍在但作用到非 MiniMax 场景（pydantic 冲突）；同为 patch_minimax_usage_accounting 全局副作用家族"
+        note: "升级前核实目标版本该文件是否仍含覆写行（0.18.0 正式版仍含，勿以 0.18.0 作为本条修复版本）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch                        # 根治=升级到含 #11050/#11384 的版本；workaround=注释 patch import（代码改动，需重启）
+
+    root_cause: >
+      vllm_ascend/patch/platform/patch_minimax_usage_accounting.py（v0.18.0RC1 及同代）为 MiniMax
+      推理场景加 usage accounting，通过模块级类覆写把自建 UsageInfo(engine_protocol.UsageInfo)
+      子类与 CompletionTokenUsageInfo 整体赋给 engine_protocol/chat_protocol/chat_serving，
+      属全局副作用：非 MiniMax 场景（vllm-omni qwen-image-edit、M2.5 教程部署）与 vLLM 原生
+      pydantic 模型校验冲突抛错。维护者确认应移除。注意 #7835（7823 的 wrapper 化 fix，
+      merged releases/v0.18.0）后该文件仍保留 protocol 类覆写（已核实 L40-62），0.18.0 正式版
+      同样受影响；main 侧经 #11050（scope）→ #11384（替换/移除 backport）才根治全局影响。
+
+    fix: >
+      短期：注释 vllm_ascend/patch/platform/__init__.py:32-33 的两个 patch import（有依赖须同注释）
+      后重启（非 MiniMax 场景可安全回退该 patch；vllm-omni 侧 workaround 见 issue #2777）。
+      根治：升级到全局覆写被 scope/移除的版本（main ≥ PR #11050 scope / #11384 替换移除）。
+    rollback: "回退=恢复被注释的 patch import（回到覆写面）；升级后无配置层 rollback"

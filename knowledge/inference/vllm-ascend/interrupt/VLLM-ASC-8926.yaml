@@ -1,0 +1,95 @@
+# VLLM-ASC-8926 —— DeepSeek-V3.1-w4a8-mtp-QuaRot + PCP2 投机解码 worker 崩溃：async spec 模式下 runner
+#   只填上游 canonical _seq_lens_cpu、Ascend 子类字段 seq_lens_cpu 保持 None，eagle_proposer.set_inputs_first_pass
+#   无守卫直接赋值 cad.seq_lens_cpu[-num_prefill_reqs:] 抛 TypeError: 'NoneType' object does not support item assignment
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/8926
+# fix 跟踪：PR #8749（[Performance] adapter dcp pcp full graph and async schedule spec，merged 2026-05-08 main，
+#   HF-001；eagle_proposer.py：set_inputs_first_pass/prepare_inputs 对 seq_lens_cpu/_seq_lens_cpu 双字段 None 守卫 +
+#   同步，优先上游 canonical 字段）；评论验证 'Verified, it resolves my issue' + 'PR has merged and solved this bug'
+# investigation_quality: high（崩溃栈到行 + fix patch 明确机制（双字段 None 守卫）+ 合入当日双人验证）
+# 批量导入：sed-g3（2026-09）
+# pre-triage: variant_of VLLM-ASC-13710（父 case 已确认存在于 knowledge/inference/vllm-ascend/interrupt/。
+#   同族=上下文并行（PCP/DCP）+ MTP 投机解码 worker 崩溃路径：13710 = DCP 切分空段漏加 draft 致
+#   req_indices_mtp/positions_mtp 长度不一致 → slot_mapping shape mismatch（RuntimeError 256 vs 260，fix #14025）；
+#   8926 = PCP prefill worker async spec 下 cad.seq_lens_cpu=None 无守卫赋值（TypeError NoneType，fix #8749）。
+#   同为 CP×MTP×async spec 适配缺陷，崩溃点/机制/修复不同）
+# 脱敏：issue 启动脚本本地 IP 以变量注入（未展开）；无 token/密码，无替换
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-8926
+    title: "DeepSeek-V3.1-w4a8-mtp-QuaRot A2×2（TP8 + PCP2 + EP + deepseek_mtp num_spec=3，vllm-ascend 0.19.x）投机解码 worker 崩溃：async spec 模式下 model runner 只填上游 canonical _seq_lens_cpu、Ascend 子类字段 seq_lens_cpu 为 None，eagle_proposer.set_inputs_first_pass 无守卫 'cad.seq_lens_cpu[-num_prefill_reqs:] = seq_lens_p' → TypeError: 'NoneType' object does not support item assignment；PR #8749 双字段 None 守卫修复"
+
+    category: interrupt
+    tags: [pcp, mtp, spec-decode, async-scheduling, eagle-proposer, none-guard, worker-crash]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        ranges: [">=0.19.0,<0.19.1"]    # issue 于 0.19.0rc1（标题）/0.19.1rc1 镜像（env）触发；fix PR #8749 merged 2026-05-08 main，需含该 PR 的构建
+      # 触发条件：prefill-context-parallel（PCP/DCP）+ async scheduling + MTP/deepseek_mtp spec decode 同时开启
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+
+    symptoms:
+      - "A2×2（TP8、--prefill-context-parallel-size 2、EP、--async-scheduling、FULL_DECODE_ONLY + --speculative-config '{\"num_speculative_tokens\": 3, \"method\":\"deepseek_mtp\"}'）部署 DeepSeek-V3.1-w4a8-mtp-QuaRot"
+      - "worker 崩溃：'(Worker_PCP0_TP4_EP4) ... model_runner_v1.py:1912 sample_tokens → propose_draft_token_ids → eagle_proposer.py:560 _propose → set_inputs_first_pass' 处 'cad.seq_lens_cpu[-num_prefill_reqs:] = seq_lens_p' 抛 'TypeError: 'NoneType' object does not support item assignment'"
+      - "崩溃发生在请求进入投机采样（first pass，num_prefill_reqs>0）时，服务即起即崩/请求即崩"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/8926"
+      - "https://github.com/vllm-project/vllm-ascend/pull/8749"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #8749（merged 2026-05-08 main）；ActivateAI 'Verified, it resolves my issue'，issue closed completed 2026-05-08"
+
+    quickly_check:
+      primary:
+        command_template: "grep -F \"TypeError: 'NoneType' object does not support item assignment\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:TypeError: 'NoneType' object does not support item assignment"
+        note: "须核对栈：eagle_proposer.py set_inputs_first_pass（cad.seq_lens_cpu[-num_prefill_reqs:] 赋值行），非其他 NoneType 处"
+      fallback:
+        command_template: "grep -E 'eagle_proposer.py.*set_inputs_first_pass|Worker_PCP[0-9]+_' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(eagle_proposer.py.*set_inputs_first_pass|Worker_PCP[0-9]+_)"
+        note: "PCP worker + first-pass 栈的宽松判定（栈被截断时）"
+
+    diagnosis:
+      - step: 1
+        check: "错误签名判别：崩溃栈尾为 'TypeError: 'NoneType' object does not support item assignment'，源码行 cad.seq_lens_cpu[-num_prefill_reqs:] = seq_lens_p（eagle_proposer.py set_inputs_first_pass）？"
+        expected: "是——本 case 命中"
+      - step: 2
+        check: "场景判别：是否上下文并行（PCP/DCP）+ async scheduling + MTP spec decode 组合（PCP prefill worker 走投机 first pass）？"
+        expected: "是——async spec 模式下 model runner 只 populate 上游 canonical _seq_lens_cpu（来自 optimistic_seq_lens_cpu），Ascend 子类字段 seq_lens_cpu 保持 None"
+      - step: 3
+        check: "fix：升级到含 PR #8749 的构建（eagle_proposer 对 seq_lens_cpu/_seq_lens_cpu 双字段加 None 守卫并保持同步、prepare_inputs 优先读上游 canonical 字段）"
+        expected: "修复后投机采样不再崩（评论验证 'Verified, it resolves my issue'）"
+      - step: 4
+        check: "忽略项：num_prefill_reqs>0 时的赋值发生在投机 first pass；与显存/OOM、量化（w4a8/QuaRot）无关"
+        note: "同一 'adapter dcp pcp full graph and async schedule spec' 适配族内其他组合崩溃勿与本 case 混淆"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch              # PR #8749 None 守卫；落地=升级含该 PR 的构建
+
+    root_cause: >
+      v0.19.0~0.19.1rc1 的 PCP/DCP + async scheduling + MTP（deepseek_mtp）投机路径中，Ascend
+      CP attention metadata 存在两个 seq_lens 宿主字段：上游 canonical 的 _seq_lens_cpu 与 Ascend
+      子类新增的 seq_lens_cpu。async spec 模式下 model runner 只填充 _seq_lens_cpu
+      （来自 optimistic_seq_lens_cpu），seq_lens_cpu 保持 None；eagle_proposer.set_inputs_first_pass
+      在 PCP prefill worker 有 prefill 请求（num_prefill_reqs>0）时无守卫直接执行
+      cad.seq_lens_cpu[-num_prefill_reqs:] = seq_lens_p → 对 None 切片赋值抛
+      TypeError: 'NoneType' object does not support item assignment → WorkerProc 崩溃。
+      PR #8749（dcp/pcp/full graph/async spec 适配）加双字段 None 守卫并保持同步，
+      prepare_inputs 等路径优先读上游 canonical _seq_lens_cpu。
+
+    fix: >
+      升级到含 PR #8749 的构建（merged 2026-05-08 main）。验证：PCP + async + MTP 组合下投机
+      采样不再抛 TypeError（issue 内双人验证通过）。
+    rollback: "回退 #8749 / 旧构建即复现（PCP prefill worker 首请求崩溃）"

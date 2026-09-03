@@ -1,0 +1,98 @@
+# VLLM-ASC-9024 —— MTP 投机解码 + prefix caching 同时开启，首条 curl 请求即崩：model runner 把 Transformer
+#   模型状态盲目路由进 mamba_utils.preprocess_mamba → get_temporal_copy_spec 用 token 偏移当 mamba block id
+#   索引越界 IndexError: list index out of range（v0.19.1rc1；#9003 同 bug，fix 均指向 PR #9456 多流同步修复）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9024
+# fix 跟踪：PR #9456（[BugFix] Fix Deepseek-V4 async scheduling with MTP，merged 2026-05-22 main，nwpu-zxr；
+#   model_runner_v1.py _copy_valid_sampled_token_count 多流同步缺陷（valid_sampled_tokens_count 脏读写）
+#   + DSV4 专用 positions CPU buffer）；维护者 lilinsiman 'Already solved, pr #9456'（同 bug #9003 同 PR 解决），
+#   issue closed completed 2026-05-27（weiguihua2）
+# investigation_quality: medium（issue 内第三方机制分析详细但为推断；崩溃栈到行；fix 由维护者指定、PR 合入、
+#   issue 关闭；fix PR 主题为 DeepSeek-V4 async MTP，与 issue 报告的 Qwen3.5 mamba 路径崩溃存在映射不完全吻合——
+#   以维护者声明为准，机制链未逐级闭环）
+# 批量导入：sed-g3（2026-09）
+# pre-triage: new_pattern（全库无 mamba_utils/preprocess_mamba 崩溃路径 case。最近邻：VLLM-ASC-10500 是 FC1×
+#   ViT 多模态 decode 的 eagle_proposer 段 507035 硬件崩溃、VLLM-ASC-13964 是 async scheduling 静默停滞、
+#   VLLM-ASC-13710/8926 是 CP×MTP 崩溃——模块（mamba_utils 误路由）/组合（MTP×prefix-caching）/签名全异）
+# 脱敏：issue 无内网 IP/token；模型路径/modelscope 链接保留为来源引用，无替换
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-9024
+    title: "MTP 投机解码 + --enable-prefix-caching 同时开启（服务能拉起、首条 curl 即崩）：model_runner_v1.execute_model 把 Transformer（Qwen3.5-27B-w8a8-mtp 等）状态盲目路由进 vllm mamba_utils.preprocess_mamba → get_temporal_copy_spec 'src_block_id = block_ids[cur_block_idx + num_accepted_tokens - 1]' 越界 IndexError: list index out of range（v0.19.1rc1；#9003 同 bug）；维护者指向 PR #9456（async MTP 多流同步）解决"
+
+    category: interrupt
+    tags: [mtp, prefix-caching, spec-decode, mamba-utils, index-error, worker-crash, feature-combo]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: [">=0.19.1,<0.20.2"]   # 触发镜像 v0.19.1rc1（#9003/#9024，wanlongze GLM5 W4A8 同现）；#9456 merged main 2026-05-22（PR 头 vLLM v0.20.2），受影响精确区间未系统确认
+    # 平台：发帖未声明（评论者 aeytkn 在 910B1 复现同栈）；组合判别优先于平台
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "Qwen3.5-27B-w8a8-mtp（--speculative-config '{\"num_speculative_tokens\": 3, \"method\":\"qwen3_5_mtp\"}'）+ --enable-prefix-caching + --async-scheduling + FULL_DECODE_ONLY，vllm-ascend v0.19.1rc1：服务能拉起，一发 curl 请求即崩；去掉 MTP 或 prefix-caching 任一功能即正常"
+      - "崩溃：'(Worker_TP3) multiproc_executor.py:949 WorkerProc hit an exception' → vllm_ascend worker.py execute_model → model_runner_v1.py:1597 execute_model → mamba_utils.preprocess_mamba → collect_mamba_copy_meta → get_temporal_copy_spec (mamba_utils.py:285 'src_block_id = block_ids[cur_block_idx + num_accepted_tokens - 1]') → IndexError: list index out of range"
+      - "GLM-5 W4A8 同版本同栈复现（wanlongze）；workaround：关闭 --compilation-config FULL_DECODE_ONLY 可跑但速率很慢，或去掉 MTP/prefix-caching 之一"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9024"
+      - "https://github.com/vllm-project/vllm-ascend/issues/9003"
+      - "https://github.com/vllm-project/vllm-ascend/pull/9456"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #9456（merged 2026-05-22 main；维护者 lilinsiman 声明 'Already solved, pr #9456'，#9003 同 PR 解决）；issue closed completed 2026-05-27。注意：PR 语义为 DSV4 async MTP 多流计数同步，与 issue 报的 Qwen3.5 mamba 路径崩溃的映射以维护者声明为准"
+
+    quickly_check:
+      primary:
+        command_template: "grep -F 'IndexError: list index out of range' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:IndexError: list index out of range"
+        note: "须核对栈含 vllm mamba_utils.py get_temporal_copy_spec（src_block_id = block_ids[...] 越界），且由 model_runner_v1 → preprocess_mamba 引入"
+      fallback:
+        command_template: "grep -E 'mamba_utils.py.*get_temporal_copy_spec|preprocess_mamba' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(mamba_utils.py.*get_temporal_copy_spec|preprocess_mamba)"
+        note: "栈被截断时的宽松判定"
+
+    diagnosis:
+      - step: 1
+        check: "错误签名判别：崩溃为 mamba_utils.get_temporal_copy_spec 的 IndexError（block_ids 索引越界），由 model_runner_v1.execute_model 调 preprocess_mamba 引入？"
+        expected: "是——注意 vllm-ascend ModelRunnerV1 对内存状态处理不经架构判别路由进 mamba preprocess/postprocess"
+      - step: 2
+        check: "feature 组合判别：MTP 投机解码 + prefix caching（可能再加 async scheduling/FULL_DECODE_ONLY）同时开启，去掉任一即正常？"
+        expected: "是——单开任一功能均正常是本 case 关键判别（issue 原文确认）"
+      - step: 3
+        check: "模型类别：非 Mamba 的 Transformer 模型（Qwen3.5/GLM5 等）也走此路径崩溃？"
+        expected: "是——机制推断：prefix caching + MTP 产生带填充的 token 偏移，mamba 工具把大偏移当 mamba state block id 计算 → 越界"
+      - step: 4
+        check: "workaround 与 fix：临时关闭 FULL_DECODE_ONLY（慢）或去 MTP/prefix-caching 之一；正式修复升级含 PR #9456 的构建"
+        expected: "workaround 可跑但慢（wanlongze 实测）；#9456 修复（维护者声明 solved，issue closed completed）"
+      - step: 5
+        check: "注意/限制：issue 内对拒绝 token 回滚同步（correct_spec_decode_token_counts 仅 is_ngram_gpu 同步）致 KV/RoPE 失步的推断未获官方逐级确认；fix PR 语义（valid_sampled_tokens_count 多流脏读写 + DSV4 positions_cpu）与 mamba 路径的直接对应待上游复核"
+        note: "诚实标注：以维护者指定 fix PR 为准，机制链未完全闭环"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch              # PR #9456；落地=升级含该 PR 的构建
+
+    root_cause: >
+      v0.19.1rc1 起 MTP 投机解码 + prefix caching（常伴 async scheduling + FULL_DECODE_ONLY）组合下，
+      vllm-ascend ModelRunnerV1 把内存状态处理盲目路由进 vllm 的 mamba_utils.preprocess_mamba /
+      postprocess_mamba（不经模型架构判别）；prefix caching + MTP 生成的带填充 token 偏移被 mamba 工具
+      当作 mamba state block id 使用，实际 block 分配远小于该偏移 → get_temporal_copy_spec 中
+      src_block_id = block_ids[cur_block_idx + num_accepted_tokens - 1] 越界 → IndexError。
+      维护者将本族（#9003/#9024，含 DeepSeek-V4 async MTP）归因并修复于 PR #9456：_copy_valid_sampled_token_count
+      未正确同步多流导致 valid_sampled_tokens_count 脏读写（并发采样计数不一致），并新增 DSV4 专用
+      positions CPU buffer 避免同步。注：issue 内第三方对 mamba 误路由/KV 失步的分析为推断，
+      fix PR 语义与 Qwen3.5 mamba 路径的直接对应关系以维护者声明为准，未逐级代码闭环。
+
+    fix: >
+      升级到含 PR #9456 的构建（merged main 2026-05-22）。workaround：去掉 MTP 或 prefix-caching 之一，
+      或关闭 --compilation-config FULL_DECODE_ONLY（可服务但速率明显下降）。
+    rollback: "旧构建 + MTP×prefix-caching 组合即复现（首请求 IndexError）"

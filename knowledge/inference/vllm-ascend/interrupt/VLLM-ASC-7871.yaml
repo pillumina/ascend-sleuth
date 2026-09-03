@@ -1,0 +1,83 @@
+# VLLM-ASC-7871 —— KV load 失败路径触发 Prometheus metrics 负增量 ValueError（Counters can only be incremented by non-negative amounts）→ HTTP 500/首 token 超时
+# 来源: https://github.com/vllm-project/vllm-ascend/issues/7871
+# fix 跟踪: PR #8959（vllm-ascend，merged 2026-05-08 13:32:10，与 issue 关闭同刻，MengqingCao 关闭）；上游 vllm #37160（workaround）/ #37460（长期修复候选）
+# investigation_quality: high（完整 traceback + TP rank 间 load 不一致日志 + 修复 PR 合并即关闭）
+# 批量导入：r2-sed-g2（2026-09）
+# pre-triage: new_pattern（现库无 KV load 失败路径/metrics 负增量 case；邻近 11343/13934 为 KV 传输 timeout/索引越界，非失败路径计数 bug）
+
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-7871
+    title: "PD 分离 + KV offloading + kv_load_failure_policy=fail：KV load 跨 TP rank 不一致（部分块成功即报 SUCCESS）→ 请求按策略失败后，失败路径把负增量传给 Prometheus counter 抛 ValueError: Counters can only be incremented by non-negative amounts → 表面 HTTP 500/首 token 超时而非干净策略失败；PR #8959 修复（失败块标 invalid）"
+
+    category: interrupt
+    tags: [pd-disaggregation, kv-offload, kv-transfer, kv-load-failure, metrics, prometheus, negative-delta, failure-path, multi-node, tp16]
+
+    platforms: []
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.18.0"]        # 触发版本 thread 未给（vllm/v1/metrics loggers.py:1316 路径，0.18/0.19 代）；修复=含 PR #8959 的版本（merged 2026-05-08）
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      # score 草稿期不写，groom 首次评估后计算
+
+    symptoms:
+      - "PD 分离 + KV offloading + external KV backend + kv_load_failure_policy=fail，多节点 TP16：同一请求跨 TP rank KV load 结果不一致（如 [Rank1] success_blocks=173/173 SUCCESS vs [Rank0] success_blocks=6/173 SUCCESS）"
+      - "scheduler 按 policy 失败请求：[scheduler.py:2192] Failing 1 request(s) due to KV load failure (failure_policy=fail, 21376 tokens affected)"
+      - "失败路径触发 metrics 异常：ValueError: Counters can only be incremented by non-negative amounts.（vllm/v1/metrics/loggers.py:1316 → stat_logger.record → counter_prompt_tokens_by_source[source][engine_idx].inc）"
+      - "对外表现：request get chunk timeout / internal server error（HTTP 500），首 token 超时 20s；一个 workload 1066 请求中 183 个受影响"
+      - "官方修复：vllm-ascend PR #8959 '[P/D][BugFix] Fix for transmit kv cache failure'（merged 2026-05-08）；上游 vllm #37160（workaround）/ #37460（长期修复候选）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/7871"
+      - "https://github.com/vllm-project/vllm-ascend/pull/8959"
+
+    verification:
+      source: upstream-fix-merged
+      detail: 'fix PR #8959（vllm-ascend，merged 2026-05-08，issue 同步关闭）'
+
+    quickly_check:
+      primary:
+        command_template: "grep -F 'Counters can only be incremented by non-negative amounts' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Counters can only be incremented by non-negative amounts"
+      fallback:
+        command_template: "grep -aE 'Failing [0-9]+ request\\(s\\) due to KV load failure' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:Failing [0-9]+ request\\(s\\) due to KV load failure"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：配置了 kv_load_failure_policy=fail 的 PD 分离/KV offloading 场景，请求失败后日志出现 ValueError: Counters can only be incremented by non-negative amounts，且对外 HTTP 500/首 token 超时？"
+        expected: "是——按 policy 失败是期望行为，metrics 异常才是要修的缺陷（勿当独立 metrics bug 处理）"
+      - step: 2
+        check: "机制核对：同请求在 TP 各 rank 的 async KV load 结果是否不一致（部分 rank 部分块成功仍报 status=SUCCESS）？"
+        expected: "是——[adapter.py:228] [GetResult] success_blocks 各 rank 不同（如 173 vs 6），真实加载失败未跨 rank 对齐"
+      - step: 3
+        check: "修复：升级到含 PR #8959 的 vllm-ascend（修复 KV 传输失败块处理，失败块标 invalid），重压观察失败请求是否干净按 policy 返回、不再伴随 metrics ValueError/500"
+        expected: "失败请求干净处理，metrics 异常消失（issue 于 PR #8959 合并同刻关闭）"
+      - step: 4
+        check: "忽略项：frontend first-token timeout / internal server error 是失败被升级后的对外表现，不是独立问题；上游 vllm #37160/#37460 属同一 metrics 失败路径的后续治理"
+        note: "指标异常在失败路径内产生（负 delta），判型以 ValueError 文本 + Failing ... due to KV load failure 两行为准"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch                        # PR #8959（KV 传输失败块处理）；对使用者=升级到含该 PR 的版本
+
+    root_cause: >
+      两层问题叠加：① KV load 跨 TP rank 不一致——部分 rank 只加载了部分块仍报 status=SUCCESS
+      （如 6/173），scheduler 在 kv_load_failure_policy=fail 下失败该请求属预期；② 失败请求路径的
+      metrics 记录（vllm/v1/metrics/loggers.py:1316 counter_prompt_tokens_by_source 等）把负增量传进
+      Prometheus counter，抛 ValueError: Counters can only be incremented by non-negative amounts，
+      使按策略的干净失败被升级为内部错误/HTTP 500、用户侧首 token 超时。
+      vllm-ascend PR #8959 修复 KV 传输失败块的处理（失败块标 invalid），issue 随之关闭。
+
+    fix: >
+      升级到含 PR #8959 的 vllm-ascend（merged 2026-05-08）。上游 vllm #37160（workaround）与
+      #37460（长期修复候选）治理同一 metrics 失败路径。无配置 workaround。
+    rollback: "升级前行为=策略失败被 metrics 异常升级为 500；无配置层 rollback（需代码修复）"

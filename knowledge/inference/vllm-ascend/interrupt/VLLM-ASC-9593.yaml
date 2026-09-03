@@ -1,0 +1,86 @@
+# VLLM-ASC-9593 —— 310P 启动 pooling（embedding/classification/scoring）模型报 NotImplementedError "310P does not support runner_type='pooling'"：310P 早期镜像未实现非因果 attention 路径；PR #8846 为 310P 补 pooling 支持（merged 2026-05-27，v0.20.2 代）——升级解决
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9593
+# fix 跟踪：PR #8846 "[Feature] Support pooling models on 310P platform"（base main，merged 2026-05-27T02:20:06Z，merge e029f683da，作者标 vLLM v0.20.2，含 310P 非因果 attention mask + flash attention forward + E2E 测试）；维护者 Tflowers-0129 2026-06-04 确认"目前主线已支持pooling模型"，issue closed
+# investigation_quality: high（清晰 NotImplementedError 签名 + 明确 fix PR + 维护者确认 + E2E 测试覆盖；reporter 未复验升级）
+# pre-triage: new_pattern —— 库内无 310P pooling/embedding runner 支持 case（无 pooling/runner_type 相关 case）；邻近 10303（310P TTS/多模态镜像适配）不同
+# verification: upstream-fix-merged（fix PR #8846，merged 2026-05-27）
+# 脱敏：issue 无内网 IP/密钥
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest r2-sed-g4（2026-09，postmortems/inbox 草稿，待 groom 分诊转正）
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-9593
+    title: "310P（300I Duo / 310P3）vllm serve 启动 pooling 模型（如 bge-m3 --runner pooling）报 NotImplementedError: \"310P does not support runner_type='pooling'\"：310P 分支 attention 掩码生成缺非因果（pooling）支持；升级至含 PR #8846 的版本解决"
+
+    category: interrupt
+    tags: [310p, pooling, embedding, runner-type, notimplemented, feature-gap, upgrade-fix]
+
+    platforms: ["310P"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.18.0rc0+htrunk1.gts.gtsllm.310p.r4"]   # 实测触发构建（310P 版本线）；修复=含 PR #8846（merged 2026-05-27）的构建
+        note: "PR #8846 作者标 vLLM v0.20.2 代；310P 镜像版本线与 main 不完全同步，升级前确认镜像含该 commit"
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "310P（310P3/300I Duo）vllm serve 启动 pooling 模型（命令：vllm serve bge-m3 --runner pooling --dtype float16 --enforce-eager）直接报 NotImplementedError"
+      - "报错位置：vllm_ascend/_310p/attention/attention_mask.py:135 get_attention_mask → raise NotImplementedError(\"310P does not support runner_type='pooling'\")"
+      - "服务无法启动（模型加载/初始化阶段即失败）；910B 等平台同命令可正常（pooling 在非 310P 已支持）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9593"
+      - "https://github.com/vllm-project/vllm-ascend/pull/8846"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #8846（merged 2026-05-27，main）：为 310P 实现 pooling（embedding/classification/scoring）所需非因果 attention mask + flash attention forward，附 310P E2E 测试；维护者 Tflowers-0129（2026-06-04）'目前主线已支持pooling模型'"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE \"310P does not support runner_type='pooling'|runner_type.?=.?pooling\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:310P does not support runner_type='pooling'|runner_type.?=.?pooling"
+      fallback:
+        command_template: "grep -aE 'NotImplementedError.*310P|attention_mask\\.py.*get_attention_mask|--runner pooling' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:NotImplementedError.*310P|attention_mask\\.py.*get_attention_mask|--runner pooling"
+
+    diagnosis:
+      - step: 1
+        check: "签名判别：310P 上以 --runner pooling（embedding/classification/scoring 模型，如 bge-m3）启动，报 NotImplementedError(\"310P does not support runner_type='pooling'\")？"
+        expected: "是——310P 分支 attention 掩码路径未实现非因果 attention（功能缺口，非参数用法错误）"
+      - step: 2
+        check: "平台判别：同命令 910B 等非 310P 平台是否正常？"
+        expected: "是（pooling 在其他平台已支持；310P 版本线缺口）"
+      - step: 3
+        check: "版本判别：当前 310P 镜像是否含 PR #8846（merged 2026-05-27；作者标 vLLM v0.20.2）？"
+        expected: "不含 → 升级 310P 镜像/源码到含 #8846 的版本（310P 镜像版本线与 main 不完全同步，逐个核对）"
+      - step: 4
+        check: "修复：升级后复测 pooling 服务"
+        expected: "服务正常拉起（维护者 2026-06-04 确认主线已支持；#8846 附 310P E2E）"
+        note: "若已是最新 310P 版本仍不支持 → 换 910B/A3 跑 pooling 或反馈上游（区别于本 case 的旧版本缺口）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch                 # PR #8846 feature（升级解决）
+
+    root_cause: >
+      310P 平台的 vllm-ascend 分支（_310p/）只实现了因果（decode/generate）attention 路径，
+      vllm_ascend/_310p/attention/attention_mask.py get_attention_mask 对非 generate 的
+      runner_type（pooling：embedding/classification/scoring，非因果 attention）直接 raise
+      NotImplementedError("310P does not support runner_type='pooling'")——310P 早期版本线
+      （实测 0.18.0rc0+htrunk1...310p.r4）未实现 pooling 支持，属功能缺口而非用法错误。
+      PR #8846（merged 2026-05-27）为 310P 补齐 pooling 所需的非因果 attention mask 生成与
+      flash attention forward pass，并附 310P 上 classification/embedding/scoring 的 E2E 测试。
+
+    fix: >
+      升级 vllm-ascend 至含 PR #8846 的版本（作者标 vLLM v0.20.2 代；310P 镜像版本线与 main 不完全
+      同步，需确认镜像含该 commit）。升级后 310P 可跑 --runner pooling（bge-m3 等 embedding、
+      classification、scoring 模型）。
+    rollback: "回退旧 310P 镜像即复现 NotImplementedError（可验证因果）"

@@ -1,0 +1,86 @@
+# VLLM-ASC-7635 —— Qwen3.5-397B-A17B-w8a8 + EP（A2 双机 16 卡 DP2×TP8）v0.17.0rc1 拉起崩：npu_moe_distribute_dispatch_v2 → aclnnMoeDistributeDispatchV4 561002 'moeExpertNum is 32 ... must no more than 24'——单卡专家数超 MC2 上限仍选 MC2 通信，PR #7364 超限自动切 AllGather
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/7635
+# fix 跟踪：PR #7364 [BugFix] A2 MOE method && layerwise MTP bugfix && Mamba gdn_metadata bugfix（merged 2026-03-17 MengqingCao）——修 A2 MoE 通信方式选择：单卡专家数超 MC2 上限仍选 MC2 → 自动切 AllGather；作者合入后拉起+压测正常（2026-04-02 关闭 completed）
+# investigation_quality: medium（用户 EP 对照 + 维护者 PR 代码级定位；线程无逐层排查）
+# pre-triage: variant_of VLLM-ASC-10944 —— 同 MoE/EP aclnnMoeDistributeDispatchV4 启动失败族（10944=910B GLM 561000 HCCL QP 资源耗尽/未修复；本条=A2 397B 561002 单卡专家数超 MC2 上限/PR#7364 已修切 AllGather）；平台、错误码、根因、修复状态均不同
+# verification: upstream-fix-merged（fix PR #7364，merged 2026-03-17）
+# 脱敏：issue 启动脚本内 local_ip 等内网地址不引用（正文只保留非敏感配置参数）
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest r2-sed-g1（2026-09，postmortems/inbox 草稿，待 groom 分诊转正）
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-7635
+    title: "Qwen3.5-397B-A17B-w8a8 开启 --enable-expert-parallel（A2 双机 16 卡 DP2×TP8，v0.17.0rc1）拉起崩：call aclnnMoeDistributeDispatchV4 failed, error code is 561002，moeExpertNum is 32, in case of unlayered, it must no more than 24——单卡专家数超 MC2 上限仍选 MC2，升级含 PR #7364 版本（自动切 AllGather）或关 EP 规避"
+
+    category: interrupt
+    tags: [qwen3.5, moe, expert-parallel, a2, mc2, dispatch, startup-crash, comm-method-selection, allgather]
+    platforms: ["A2-910B"]            # A2 双机 16 卡（DP2×TP8×EP，DP2TP8 多处复现）
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.17.0rc1"]       # 0.17.0rc1 实测（main 修复 #7364 merged 2026-03-17；≥v0.18.0rc1 预计含，groom 回填首版）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "Qwen3.5-397B-A17B-w8a8 + --enable-expert-parallel（A2 双机 16 卡 DP2×TP8）在 v0.17.0rc1 profile_run 阶段崩：RuntimeError: npu_moe_distribute_dispatch_v2: ... call aclnnMoeDistributeDispatchV4 failed, error code is 561002"
+      - "tiling 校验签名：moeExpertNum is 32, in case of unlayered, it must no more than 24.[MoeDistributeDispatchA2CheckAttrAndSetTiling][moe_distribute_dispatch_v2_tiling.cpp:1152]"
+      - "去掉 --enable-expert-parallel 后正常拉起（barcklist：同问题 235B 关 EP 即可）"
+      - "多次出现时并行参数均为 DP2TP8；模型 512 专家 / 16 卡 = 单卡 32 专家"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/7635"
+      - "https://github.com/vllm-project/vllm-ascend/pull/7364"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #7364（merged 2026-03-17，MengqingCao）：A2 上模型专家数超过单卡 MC2 安全上限时 MoE 通信方式选择错误（仍选 MC2）→ 改为自动切换 AllGather（可能有性能损失）；作者合入 PR 后拉起+压测正常，issue 2026-04-02 关闭 completed"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE \"aclnnMoeDistributeDispatchV4 failed, error code is 561002\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:aclnnMoeDistributeDispatchV4 failed, error code is 561002"
+      fallback:
+        command_template: "grep -aE 'moeExpertNum is [0-9]+, in case of unlayered, it must no more than 24|must no more than 24' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:moeExpertNum is [0-9]+, in case of unlayered, it must no more than 24"
+
+    diagnosis:
+      - step: 1
+        check: "签名判别：EP 场景启动报 aclnnMoeDistributeDispatchV4 561002 + moeExpertNum 超 'no more than 24'（A2 unlayered）？"
+        expected: "是——单卡专家数超过 MC2 dispatch 内存安全上限（模型总专家数/EP 切分卡数 >上限）"
+        note: "log 里 E29999 InitOpInfoLib（TransposeKvCacheByBlock 等）是级联噪声，忽略；真签名是 tiling 校验 moeExpertNum"
+      - step: 2
+        check: "算账判别：模型专家总数 ÷ EP 切分后单卡专家数（512/16=32）是否超过 MC2 上限（该版本 24；不同版本 16/24）？"
+        expected: "超限 → 0.17.0rc1 仍选 MC2 是通信方式选择缺陷（A2 MoE method selection）"
+      - step: 3
+        check: "workaround 验证：去掉 --enable-expert-parallel 是否可拉起？"
+        expected: "可拉起（barcklist/作者实测）——EP 是触发开关"
+      - step: 4
+        check: "修复：升级到含 PR #7364 的版本（main 2026-03-17；≥v0.18.0rc1 预计含）"
+        expected: "超限场景自动切 AllGather 拉起+压测正常（作者验证；注意可能有性能损失）"
+        fix_on_mismatch: "升级后仍失败 → 排除本 case，按 10944 族（HCCL QP 资源）或其他 MoE 通信路径查"
+        rollback: "重开 --enable-expert-parallel（旧版本复现 561002）"
+
+    severity: service-affecting         # 服务无法启动
+    fix_side_effects: [requires-restart, potential-perf-loss]  # 切 AllGather 通信有性能损失（PR 说明）
+    fix_type: config-change             # 升级；workaround 关 EP（部署参数）
+
+    root_cause: >
+      A2 平台 MoE 通信方式选择缺陷（v0.17.0rc1）：MC2（MoeDistributeDispatchV2）出于内存安全限制
+      单卡专家数（该版本上限 24；不同版本 16/24），Qwen3.5-397B-A17B 共 512 个专家、EP 切到 16 卡后
+      单卡 32 个已超限，但 0.17.0rc1 的 A2 MoE method selection 在模型专家总数 >256 时仍错误选择 MC2
+      → MoeDistributeDispatchA2CheckAttrAndSetTiling 校验失败（aclnnMoeDistributeDispatchV4 561002）
+      → 启动崩溃。PR #7364 修正选择逻辑：单卡专家数超 MC2 上限时自动切换 AllGather 通信（牺牲部分性能）。
+
+    fix: >
+      升级 vllm-ascend 到含 PR #7364 的版本（main 2026-03-17 合入；≥v0.18.0rc1 预计含）——超限场景自动
+      切 AllGather，服务可拉起（作者压测正常，注意性能损失）。旧版本 workaround：去掉
+      --enable-expert-parallel（关闭 EP 可正常部署，实测通用于同问题其他 Qwen3.5 规模）。
+    rollback: "重新加回 --enable-expert-parallel（旧版本复现 561002）"

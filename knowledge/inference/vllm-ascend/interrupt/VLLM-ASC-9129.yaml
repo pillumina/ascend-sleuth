@@ -1,0 +1,83 @@
+# VLLM-ASC-9129 —— 310P 上 LLM-Compressor 导出的 compressed-tensors W8A8 模型拉起即 KeyError <PlatformEnum.OOT: 6>：310P 未注册 compressed-tensors 适配 → vLLM 原生 int8 kernel selector 缺 OOT 平台；310P W8A8 需 modelslim 格式 + --quantization ascend
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9129
+# fix 跟踪：无上游 fix PR（310P 设计约束，非代码缺陷）；维护者 Tflowers-0129 给出用法约束（310P W8A8 → modelslim + --quantization ascend），zyz111222 补充 qwen3-asr 模型 310P 支持矩阵提示；issue closed 2026-05-14（resolved，无代码改动）
+# investigation_quality: medium（维护者源码级解释机制 + 910B/310P 平台对照，但修复用法未被 reporter 复验、issue 无 before/after 闭环）
+# pre-triage: new_pattern —— 库内无 310P × compressed-tensors 量化格式选择 case；邻近：10610/12901（modelslim 缺 indexer key，格式已对、描述缺 key）、10122（310P QuantBatchMatMulV3 CANN bug，算子执行期 507015）、10834（w4a8 group 256 算子限制）——均为不同机制/签名
+# verification: upstream-maintainer-confirmed（无 fix PR；机制由维护者确认并给出用法解）
+# 脱敏：issue 无内网 IP/密钥；user-attachments 日志链接不引用正文
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest r2-sed-g4（2026-09，postmortems/inbox 草稿，待 groom 分诊转正）
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-9129
+    title: "310P 上 LLM-Compressor 导出的 compressed-tensors W8A8 模型拉起失败（KeyError: <PlatformEnum.OOT: 6>）：310P 分支未注册 compressed-tensors 量化适配 → vLLM 原生 int8 scaled-mm kernel selector 只枚举 CPU/CUDA/ROCm、无 OOT 平台；310P 的 W8A8 须用 modelslim 格式 + --quantization ascend"
+
+    category: interrupt
+    tags: [310p, w8a8, compressed-tensors, quantization, modelslim, startup, keyerror, platform-enum]
+
+    platforms: ["310P"]               # Atlas 300I Duo；对照：同模型/镜像 910B 正常
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "310P（Atlas 300I Duo，quay.io/ascend/vllm-ascend:v0.18.0rc1-310p）部署 LLM-Compressor 量化（scheme W8A8，config 中 quant_method=compressed-tensors）的模型，EngineCore failed to start"
+      - "报错尾部：KeyError: <PlatformEnum.OOT: 6>，栈：compressed_tensors/schemes/compressed_tensors_w8a8_int8.py create_weights → init_int8_linear_kernel → choose_scaled_mm_linear_kernel → possible_kernels[current_platform._enum]"
+      - "同一量化模型 + 同一镜像在 910B 上可正常部署（仅 310P 失败）"
+      - "启动命令带 --dtype=float16 --enforce-eager（310P 不支持 bf16），与报错无关"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9129"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "Tflowers-0129（2026-05-14）源码级解释：310P 分支只注册 AscendModelSlimConfig310、未注册 compressed-tensors 适配，模型加载落到 vLLM 原生 CompressedTensorsW8A8Int8，其 int8 kernel selector（_POSSIBLE_INT8_KERNELS）只含 CPU/CUDA/ROCm，310P 属 PlatformEnum.OOT → 查表 KeyError；910B 正常因非 310P Ascend 路径注册了 AscendCompressedTensorsConfig 完成 override。无 fix PR（设计约束）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE \"KeyError: <PlatformEnum\\.OOT: 6>\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:KeyError: <PlatformEnum\\.OOT: 6>"
+      fallback:
+        command_template: "grep -aE 'choose_scaled_mm_linear_kernel|init_int8_linear_kernel|compressed_tensors_w8a8_int8' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:choose_scaled_mm_linear_kernel|init_int8_linear_kernel|compressed_tensors_w8a8_int8"
+
+    diagnosis:
+      - step: 1
+        check: "签名判别：310P 加载 w8a8 模型报 KeyError: <PlatformEnum.OOT: 6>，栈含 init_int8_linear_kernel/choose_scaled_mm_linear_kernel？"
+        expected: "是——vLLM 原生 int8 linear kernel selector 对 OOT 平台查表失败，说明量化路径没被 vllm-ascend 提前 override"
+      - step: 2
+        check: "权重格式判别：模型 config.json 的 quantization_config.quant_method 是否为 compressed-tensors（LLM-Compressor 默认导出）？"
+        expected: "是——310P 上 compressed-tensors 路径未被接管（310P 仅注册 AscendModelSlimConfig310）；910B 正常是因其注册了 AscendCompressedTensorsConfig"
+        note: "不是模型文件损坏、也不是 --dtype/--enforce-eager 用法问题"
+      - step: 3
+        check: "修复：310P 的 W8A8 需改用 ModelSlim 量化格式并通过 --quantization ascend 加载（进入 310P 已适配的 Ascend 量化路径）"
+        expected: "重新量化/换官方 310P modelslim 权重后服务可拉起"
+      - step: 4
+        check: "若 modelslim 后仍失败：核对模型本身是否在 310P 支持列表（zyz111222：qwen3-asr 模型 310P 未支持）——以官方支持矩阵为准"
+        expected: "确认模型平台支持状态，不支持则换 910B/其他芯片"
+        note: "310P 场景的 W8A8 一律先问量化来源：compressed-tensors → 建议 modelslim"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]     # 重新量化权重 + 重启服务
+    fix_type: config-change                  # 权重格式/加载参数变更（非代码缺陷）
+
+    root_cause: >
+      LLM-Compressor 导出的是 compressed-tensors W8A8（config.json 中 quant_method: compressed-tensors）。
+      vllm-ascend 的非 310P Ascend 路径注册了 AscendCompressedTensorsConfig，能 override compressed-tensors
+      的处理逻辑，因此同模型/同镜像在 910B 正常；但 310P 分支只注册 AscendModelSlimConfig310，未注册 310P
+      对应的 compressed-tensors 适配，模型加载落入 vLLM 原生 CompressedTensorsW8A8Int8 → 原生 scaled-mm
+      linear int8 kernel 选择器（_POSSIBLE_INT8_KERNELS）只枚举 CPU/CUDA/ROCm，310P 在 vLLM 中属
+      PlatformEnum.OOT → possible_kernels[current_platform._enum] 字典查表抛 KeyError，EngineCore 启动失败。
+      这是 310P 平台设计约束（W8A8 只走 modelslim 的 Ascend 量化路径），不是代码回归。
+
+    fix: >
+      310P 上部署 w8a8 模型必须使用 ModelSlim 量化格式并用 --quantization ascend 加载（LLM-Compressor 的
+      compressed-tensors 权重不适用：需按 modelslim 重新量化或换官方 310P 权重）。若改为 modelslim 后仍失败，
+      核对模型是否在 310P 支持矩阵（如 qwen3-asr 曾被维护者提示 310P 未支持）。
+    rollback: "退回 910B 部署同一 compressed-tensors 权重仍可工作（平台差异证据）；310P 无 config 侧回退，只能换量化格式"

@@ -1,0 +1,86 @@
+# VLLM-ASC-7792 —— mooncake kv_both（同节点多实例 PD，ascend-direct/RoCE KV 传输）+ GLM-5-w4a8 报 'Transfer slice failed with status: 503900' / HcclBatchPut ret=4 "Can't find remoteBuffer by key"——需 export HCCL_INTRA_ROCE_ENABLE=1（intra-node 也走 RoCE）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/7792
+# fix 跟踪：无 vllm-ascend fix PR（HIXL/通信配置层）。维护者 Pz1116（2026-03-30）给 env 解 HCCL_INTRA_ROCE_ENABLE=1，参考 gitcode cann/hixl issues #133/#150；用户复验通过；issue 当日 weiguihua2 关闭 completed（label resolved）。原引 tutorial（pd_colocated_mooncake_multi_instance）信息过时，维护者将更新（以 kv_pool.md 为准）
+# investigation_quality: medium（维护者给 env 解 + 用户复验；未本地代码级展开，issue 简短）
+# pre-triage: new_pattern —— 库内 mooncake/KV pool 族（10532 native segfault、11343 kv_port、11459 lazy_init、13934 transfer group、8938 ZMQ）机制/签名均不同，无 503900/HcclBatchPut remoteBuffer case
+# verification: upstream-maintainer-confirmed（resolution=env 配置，维护者给出并确认；无 fix PR）
+# 脱敏：日志中远端内网 IP 与传输 key 内容均已按 [REDACTED] 处理，不引用正文
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest r2-sed-g1（2026-09，postmortems/inbox 草稿，待 groom 分诊转正）
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-7792
+    title: "mooncake kv_both + GLM-5-w4a8 KV 传输失败：Transfer slice failed with status: 503900，HcclBatchPut ret=4 Can't find remoteBuffer by key（mooncake_backend Failed to put key res:[-800]）——漏设 HCCL_INTRA_ROCE_ENABLE=1，intra-node 通信未走 RoCE 与远端 buffer 注册不匹配"
+
+    category: interrupt
+    tags: [mooncake, kv-pool, kv-both, ascend-direct, hixl, 503900, hccl, roce, env-var, pd-disagg]
+    platforms: ["A2-910B"]            # 910B3 ×8（单机同节点多实例 PD）
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.17.0rc2.dev"]     # 报告环境 0.17.0rc2.dev0+ge20f0b1a0；属部署配置要求（非版本回归），其他版本同场景同样适用
+        cann: ["8.5.1"]
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "mooncake kv_both（同节点多实例 PD，KV pool 经 ascend-direct/RoCE 传输，参考 pd_colocated_mooncake_multi_instance tutorial）+ GLM-5-w4a8，KV put 持续失败：ascend_direct_transport.cpp Transfer slice failed with status: 503900"
+      - "mooncake_backend.py: Failed to put key [...], res:[-800]；client_service.cpp: Transfer failed for key ... TRANSFER_FAIL（revoked failed put）"
+      - "PLOG/GE 侧：HcclBatchPut Logic error ret=4 hccl_one_sided_conn.cc BatchWrite 'Can't find remoteBuffer by key'；GE ErrorNo: 503900 Failed to invoke HcclBatchPut"
+      - "export HCCL_INTRA_ROCE_ENABLE=1 后报错消失（维护者 Pz1116 给出，用户复验）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/7792"
+      - "https://gitcode.com/cann/hixl/issues/133"     # 维护者提供的 HIXL 参考
+      - "https://gitcode.com/cann/hixl/issues/150"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "无 fix PR。维护者 Pz1116（2026-03-30）在 vllm-ascend issue 上给出 resolution：export HCCL_INTRA_ROCE_ENABLE=1（参考 gitcode cann/hixl #133/#150），用户复验报错消失；issue 由 weiguihua2 当日关闭 completed（label resolved）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'Transfer slice failed with status: 503900' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Transfer slice failed with status: 503900"
+      fallback:
+        command_template: "grep -aE \"Can't find remoteBuffer by key|Failed to put key .*res:\\[-800\\]|Failed to invoke HcclBatchPut\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(Can't find remoteBuffer by key|Failed to put key .*res:\\[-800\\]|Failed to invoke HcclBatchPut)"
+
+    diagnosis:
+      - step: 1
+        check: "签名判别：mooncake/KV pool（ascend-direct）传输报 503900（Transfer slice failed / HcclBatchPut ret=4 'Can't find remoteBuffer by key' / res:[-800]）？"
+        expected: "是——HCCL one-sided batch put 的 buffer/key 匹配问题，非模型/量化/mooncake 版本缺陷"
+        note: "mooncake_backend res:[-800]、client_service TRANSFER_FAIL 是 503900 的上层包装；'transfer failed and disconnect to:ip' 是断开重试副作用——都别逐层追"
+      - step: 2
+        check: "配置判别：是否漏设 HCCL_INTRA_ROCE_ENABLE？（env | grep HCCL_INTRA_ROCE_ENABLE）"
+        expected: "未设/为 0 → intra-node 通信走默认（PCIe/HCCS），与 ascend-direct 经 RoCE 注册的远端 buffer 不匹配 → 503900"
+      - step: 3
+        check: "修复：启动前 export HCCL_INTRA_ROCE_ENABLE=1 后重启"
+        expected: "报错消失、KV put 恢复（用户实测）"
+        fix_on_mismatch: "已设仍失败 → 转 HIXL 侧（gitcode cann/hixl issues #133/#150 同族）；以官方 kv_pool.md 配置清单核对，勿按过时 tutorial 逐项排查"
+        rollback: "unset HCCL_INTRA_ROCE_ENABLE（回到默认 intra-node 拓扑）"
+
+    severity: service-affecting         # KV 传输/put 失败 → PD/mooncake KV 共享功能不可用（请求受影响）
+    fix_side_effects: [requires-restart, affects-intra-node-topology]  # env 变化需重启；intra-node 改走 RoCE 需网络支持
+    fix_type: env-var
+
+    root_cause: >
+      mooncake/ascend-direct（HIXL ADXL engine）的 KV one-sided 传输在 HCCL 层执行 batch put
+      （HcclBatchPut）。远端 buffer 通过 RoCE 通道注册，而 intra-node（同节点进程间）通信默认走
+      PCIe/HCCS——两者不一致时 HcclBatchPut 找不到远端 buffer（'Can't find remoteBuffer by key'，
+      ret=4），GE 报 503900，KV put 失败（mooncake res:[-800] / TRANSFER_FAIL 为上层包装）。
+      设置 HCCL_INTRA_ROCE_ENABLE=1 让 intra-node 通信也走 RoCE，与远端 buffer 注册方式匹配后恢复。
+      属该部署形态（mooncake kv_both + ascend-direct）的配置要求；原 tutorial 表述过时（维护者将更新，
+      以 kv_pool.md 为准）。
+
+    fix: >
+      启动前 export HCCL_INTRA_ROCE_ENABLE=1（维护者给出、用户实测解决），重启服务。若已设仍失败，
+      转 HIXL 侧跟踪（gitcode cann/hixl issues #133/#150）；部署配置以官方 kv_pool.md 为准。
+    rollback: "unset HCCL_INTRA_ROCE_ENABLE（回到默认，复现 503900）"

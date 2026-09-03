@@ -1,0 +1,83 @@
+# VLLM-ASC-8646 —— 0.18.0rc1 A2 双机 GLM-5.1-W4A8 拉起报 rtMemcpy capture 模式不支持 107030/107027（plog: QuantBatchMatmulV3 NULL aclTensor）——EP MoE 量化分发与图模式冲突，moe_comm_type 切 ALLGATHER 规避
+# 来源: https://github.com/vllm-project/vllm-ascend/issues/8646
+# fix 跟踪: 无独立 fix PR；workaround=维护者 weijinqian0 的 moe_comm_type=MoECommType.ALLGATHER（关闭 completed 2026-06-15）；A3 ROCE tp16dp2 经 3ms 配置调整可拉起、tp8dp4 仍相似报错
+# investigation_quality: medium（完整报错链 107030/107027 + plog 定位 QuantBatchMatmulV3 NULL aclTensor + 维护者 workaround；无代码级根因说明）
+# 批量导入：r2-sed-g2（2026-09）
+# pre-triage: new_pattern（现库无 EP MoE 量化分发×图模式 107030 case；与 8587 同 rtMemcpy-107030-in-capture 家族但触发面/规避不同；邻近 12983 为 310P 图模式 107030 另一根因）
+
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-8646
+    title: "0.18.0rc1 A2 双机背靠背 GLM-5.1-W4A8（DP2×TP8 EP + FULL_DECODE_ONLY + MTP）拉起报 AclrtSynchronizeStreamWithTimeout 107027 / rtMemcpy capture 模式不支持 107030，plog 定位 aclnnQuantMatmulWeightNz/QuantBatchMatmulV3 Append Launch NULL aclTensor——EP MoE 量化分发路径与 ACL graph capture 冲突；moe_comm_type 切 ALLGATHER（MoECommType.ALLGATHER）规避"
+
+    category: interrupt
+    tags: [glm5, glm-5.1, w4a8, expert-parallel, moe-dispatch, quantized-matmul, quantbatchmatmulv3, full-decode-only, graph-capture, rtmemcpy, 107030, 107027, 910b, multi-node, workaround-only]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.18.0rc1"]        # 0.18.0rc1 复现；规避=MoE 通信切 ALLGATHER（维护者 workaround，代码修复未见于 thread）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      # score 草稿期不写，groom 首次评估后计算
+
+    symptoms:
+      - "A2 双机背靠背 GLM-5.1-W4A8（--quantization ascend）DP2×TP8 + EP + FULL_DECODE_ONLY（capture sizes 1..96）+ deepseek_mtp + multistream_overlap_shared_expert 拉起报错"
+      - "报错链：RuntimeError: AclrtSynchronizeStreamWithTimeout(copy_stream), error code is 107027 → EE9999: rtMemcpy execution failed, reason=the current capture mode does not support this operation → synchronized memcpy failed, kind = 1, runtime result = 107030 → Not allow to synchronize captured-stream, stream_id=15"
+      - "plog 首错：OpName:[aclnnQuantMatmulWeightNz_*_QuantBatchMatmulV3] Append Launch NULL aclTensor（placeholder）——MoE 量化 matmul 分发算子在 graph capture 内 launch 含 NULL aclTensor"
+      - "A3 双机 ROCE 同配置：tp16dp2 经 3ms 内部文档调整可拉起，tp8dp4 仍相似报错"
+      - "解决：moe_comm_type=MoECommType.ALLGATHER（MoE 专家通信切 ALLGATHER，维护者 weijinqian0）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/8646"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: 'issue #8646：维护者 weijinqian0 提供 workaround（moe_comm_type=MoECommType.ALLGATHER）并关闭 completed'
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'rtMemcpy execution failed.*capture mode does not support|runtime result = 107030' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(rtMemcpy execution failed.*capture mode does not support|runtime result = 107030)"
+      fallback:
+        command_template: "grep -aE 'QuantBatchMatmulV3.*NULL aclTensor|107027' {{plog}}"
+        rank_selector: all_failed
+        expected: "regex:(QuantBatchMatmulV3.*NULL aclTensor|107027)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：GLM-5.1-W4A8（w4a8 量化）+ EP + FULL_DECODE_ONLY 图模式 + MTP 拉起期报 107030（rtMemcpy capture 模式不支持）/107027（同步 captured stream 不允许），plog 首错为 QuantBatchMatmulV3 Append Launch NULL aclTensor？"
+        expected: "是——EP MoE 量化分发路径（aclnnQuantMatmulWeightNz/QuantBatchMatmulV3）与 ACL graph capture 冲突"
+      - step: 2
+        check: "规避验证：把 MoE 专家通信切到 ALLGATHER（thread 中 moe_comm_type=MoECommType.ALLGATHER；vllm-ascend 侧对应开关形态随版本不同，env/config 名以所装版本为准）后重启服务"
+        expected: "服务正常拉起（维护者 weijinqian0 workaround）"
+      - step: 3
+        check: "升级跟踪：官方代码修复未见（issue 关闭于 workaround）——升级前核对新版本是否已治理 MoE 通信选择策略"
+        expected: "后续版本跟踪（thread 无版本号承诺）"
+      - step: 4
+        check: "忽略项：① 107027 与 107030 是同一 graph-capture 违规的两层 runtime 报错，判型以 plog 首错 QuantBatchMatmulV3 NULL aclTensor 为准；② A3 ROCE tp8dp4 相似报错为同族（配置面非单节点形态问题）"
+        note: "与 VLLM-ASC-8587（同 rtMemcpy 107030 in capture，DS-V3.2 layer_sharding 混用，规避=升级≥0.18+去 layer_sharding）区分：本条触发面=EP 量化分发，规避=MoE 通信切 ALLGATHER"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change                        # 规避型 workaround：MoE 通信切 ALLGATHER（moe_comm_type=MoECommType.ALLGATHER）；官方代码修复未见
+
+    root_cause: >
+      EP 场景默认 MoE expert 通信走量化分发路径（aclnnQuantMatmulWeightNz / QuantBatchMatmulV3
+      量化 matmul 分发），该路径在 ACL graph capture 内 launch 参数含 NULL aclTensor placeholder，
+      并伴随同步 memcpy / stream 同步（copy_stream 同步 captured stream）操作——ACL graph
+      capture 模式不允许 → rtMemcpy 107030（capture mode does not support this operation）与
+      AclrtSynchronizeStreamWithTimeout 107027，服务拉起崩溃。维护者 workaround：把 MoE 专家
+      通信切到 ALLGATHER（moe_comm_type=MoECommType.ALLGATHER），绕过该量化分发组合。
+
+    fix: >
+      规避：将 MoE 专家通信方式设为 ALLGATHER（thread 中为 moe_comm_type=MoECommType.ALLGATHER；
+      vllm-ascend 对应开关在不同版本形态不同——env/config 名以所装版本为准）后重启。
+      官方代码修复未见于 thread；升级到治理了 MoE 通信选择策略的后续版本前，ALLGATHER 为可用规避。
+    rollback: "恢复默认 MoE 通信（非 ALLGATHER）即回到缺陷面"

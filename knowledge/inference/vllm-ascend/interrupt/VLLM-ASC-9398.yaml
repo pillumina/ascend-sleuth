@@ -1,0 +1,88 @@
+# VLLM-ASC-9398 —— CANN 9.0 镜像下 Mooncake KV pool 跨机 put key error（res -800）：HCCP RDMA MR 注册 30GiB 缓冲失败（rs_drv_exp_mr_reg addr NULL / hns_roce ret[12]）→ GE 503900 channel init 失败 → ascend_direct 传输建链失败；Mooncake 0.3.9→0.3.10 解决
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9398
+# fix 跟踪：无上游 fix PR——依赖版本兼容问题；reporter MarinaMiao（2026-05-26）：CANN 9.0.0 + HDK 25.2.1 + Mooncake 0.3.9 → 升级 Mooncake 0.3.10 后恢复；issue closed 2026-05-28
+# investigation_quality: medium（日志链完整：device log + plog + vllm + kvmaster；但归因停在"版本兼容"，具体机制（0.3.10 改动点）未由上游确认）
+# pre-triage: variant_of VLLM-ASC-10532 —— 同"Mooncake KV Pool ascend direct/ROCE 传输故障"族（与 11459/10532/11343/13934 等并列）；增量=本条为 kvpool put key error / MR 注册失败形态，fix 在 Mooncake 依赖版本（0.3.9→0.3.10），无 segfault、无 vllm-ascend 代码缺陷
+# verification: engineer-report（现场工程师升级依赖后验证恢复；机制未由上游确认）
+# 脱敏：内网 IP → [REDACTED]（正文不引用具体地址）；key 的 sha 片段不落库
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest r2-sed-g4（2026-09，postmortems/inbox 草稿，待 groom 分诊转正）
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-9398
+    title: "CANN 9.0 镜像 + Mooncake KV pool 跨机 put key error：HCCP RDMA MR 注册 30GiB 缓冲失败 + GE 503900 channel init 失败 + ascend_direct 建链失败 → backend Failed to put key res[-800]；Mooncake 0.3.9→0.3.10 解决"
+
+    category: interrupt
+    tags: [mooncake, kv-pool, kv-transfer, put-key-error, roce, rdma, version-compat, cann9]
+
+    # 平台：Ascend910 A2 系 16 卡双机跨节点（kv pool master 与远端）；issue 未明示 A2/A3 型号，不标 platforms
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.19.1rc2"]          # 实测版本（CANN 9.0.0 + torch_npu 2.10.0 + vLLM 0.20.2）
+      - framework: mooncake
+        ranges: ["=0.3.9"]             # 触发版本；0.3.10 恢复（reporter 验证）
+        cann: ["=9.0.0"]               # 升级 CANN 9.0 后出现（旧组合正常）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "CANN 9.0（+HDK 25.2.1）镜像下 GLM5.1-w8a8 PD 分离 kv pool 服务，mooncake_backend.py 反复报 'Failed to put key [...] res:[-800, -800, ...]'"
+      - "ascend_direct_transport.cpp: Failed to connect to target: [REDACTED]:<port>, status: 503900"
+      - "device-*.log（hccp_service.bin）：rs_rdma.c rs_init_typical_mr_cb: rs_drv_exp_mr_reg addr is NULL len[32212254720=30GiB] fail（ret -13）；hns_roce_u_reg_ai_mr failed ret[12]"
+      - "plog：GE 503900 Call hccl api failed ret 0x4 / Failed to init channel / Failed to process connect info（HCCL channel 建不起来）"
+      - "升级 Mooncake 0.3.9 → 0.3.10 后恢复（同 CANN 9.0.0 + HDK 25.2.1）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9398"
+
+    verification:
+      source: engineer-report
+      detail: "reporter MarinaMiao（2026-05-26）：'My previous setup was CANN 9.0.0 + HDK 25.2.1 + Mooncake 0.3.9. The issue got resolved after I upgraded Mooncake to 0.3.10, so it turned out to be a version compatibility problem.' 无上游机制确认/fix PR"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'mooncake_backend\\.py.*Failed to put key.*res:\\[-800' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:mooncake_backend\\.py.*Failed to put key.*res:\\[-800"
+      fallback:
+        command_template: "grep -aE 'rs_drv_exp_mr_reg addr is NULL|ErrorNo: 503900|Failed to connect to target: .*status: 503900' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:rs_drv_exp_mr_reg addr is NULL|ErrorNo: 503900|Failed to connect to target: .*status: 503900"
+        note: "device/hccp 日志（~/ascend/log/debug）与 vllm 日志分别 grep"
+
+    diagnosis:
+      - step: 1
+        check: "错误面：kvpool 场景反复 'Failed to put key ... res:[-800]'（mooncake_backend），无 segmentation fault？"
+        expected: "是——put 失败型，区别于 VLLM-ASC-10532 的 timeout→segfault 型"
+      - step: 2
+        check: "底层链定位：device 日志是否 HCCP RDMA MR 注册失败（rs_drv_exp_mr_reg addr is NULL len[...] fail / hns_roce_u_reg_ai_mr ret[12]）+ GE 503900 channel init/connect fail + ascend_direct Failed to connect status 503900？"
+        expected: "是——跨机传输通道建不起来，RDMA(MR) 注册层失败是上游信号"
+      - step: 3
+        check: "触发条件判别：是否在升级 CANN 9.0（镜像）后出现、且旧组合（如 CANN 8.x + Mooncake 0.3.9）正常？记录 Mooncake 版本"
+        expected: "是——依赖版本兼容问题候选；目标组合 CANN 9.0 + Mooncake ≥0.3.10"
+      - step: 4
+        check: "修复：升级 Mooncake 至 0.3.10（或最新 release）后复测；若复现再按 Mooncake KV pool/Ascend 传输族（见 10532/11459）排查"
+        expected: "升级后 put key 恢复正常（reporter 2026-05-26 验证）"
+        note: "官方未在 thread 内给出 0.3.9→0.3.10 的机制差异；如再次遇到建议向 Mooncake 上游反馈版本兼容矩阵"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change           # 依赖库版本升级型（Mooncake 0.3.9→0.3.10）
+
+    root_cause: >
+      CANN 9.0.0 + HDK 25.2.1 + Mooncake 0.3.9 组合下，Mooncake KV pool（ascend direct/ROCE，跨机）put 路径
+      建不起传输：hccp_service 的 HCCP RDMA MR 注册 30GiB 数据缓冲失败（rs_drv_exp_mr_reg 返回 addr NULL，
+      ret -13；hns_roce_u_reg_ai_mr ret[12]）→ HCCL channel init/connect 失败（GE ErrorNo 503900）→
+      ascend_direct_transport 无法连接远端（status 503900）→ kv 传输全部失败，backend 报 put key error
+      （Mooncake res -800）。升级 Mooncake 0.3.9→0.3.10 后同环境恢复——定为 Mooncake 与 CANN 9.0 的
+      版本兼容问题（RDMA/缓冲注册相关）；0.3.10 的具体修复点未在 issue 内由上游确认。
+
+    fix: >
+      升级 Mooncake 至 0.3.10（或最新 release）并重启 kv pool 服务；保持 CANN 9.0.0/HDK 25.2.1 不变。
+      若用户可接受降级，也可退回旧 CANN 组合规避——但优先升级 Mooncake。
+    rollback: "回退 Mooncake 0.3.9 即复现（可验证因果）；升级前建议先记录 Mooncake 版本来源（pip/依赖锁）"

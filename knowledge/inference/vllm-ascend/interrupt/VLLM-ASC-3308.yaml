@@ -1,0 +1,84 @@
+# VLLM-ASC-3308 —— Qwen3-Next-80B-A3B TP8 在 v0.11.0rc0 拉起即 NPU OOM（启动阶段，显存充足仍 OOM）：0.11.0rc0 适配期 ascend_config/内存配置缺陷，v0.11.0rc1+ 修复（commit 408606c0c）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/3308
+# fix 跟踪：repo 自动化回复（2026-06-02 关闭）称 v0.11.0rc1+ 修复、指 PR #3305/#3557。API 核查：#3305 内容 commit 408606c0c0（2025-09-30）直提交 main、PR closed-unmerged；#3557 是文档 PR。修复代码确实含于 v0.11.0rc1（2025-11-10）
+# investigation_quality: medium（修复版本/commit 核实；OOM→ascend_config 代码级因果未展开，凭自动回复+成功配方推理；同族 #3291 报 Ascend config not initialized）
+# pre-triage: new_pattern —— 库内无 qwen3-next 大 MoE 启动 OOM/0.11.0rc0 适配期 case；现有 OOM（10784 运行期 recompute 展开 61GB、12345 host 内存增长）机制与阶段不同
+# verification: upstream-maintainer-confirmed（无可钉死的 merged PR；修复 commit 408606c0c 在 main 且早于 v0.11.0rc1，自动回复确认 resolution）
+# 脱敏：issue 内镜像/obs 下载链接（含签名 token）不引用正文；无内网 IP
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest r2-sed-g1（2026-09，postmortems/inbox 草稿，待 groom 分诊转正）
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-3308
+    title: "Qwen3-Next-80B-A3B-Instruct（大 MoE）TP8 在 vllm-ascend v0.11.0rc0 拉起 EngineCore 启动阶段报 RuntimeError: NPU out of memory（显存充足仍 OOM）——0.11.0rc0 适配期 ascend_config 内存配置缺陷，升级 ≥v0.11.0rc1 修复，TP8 下 --gpu-memory-utilization 0.5 可缓解"
+
+    category: interrupt
+    tags: [qwen3-next, moe, startup-oom, oom, ascend-config, adaptation-bug, upgrade, tensor-parallel]
+    platforms: ["A2-910B"]            # 8 卡 TP8；单卡 29.5GiB（32GB 级 910B 型号，未精确到子型号）
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["=0.11.0rc0"]        # 0.11.0rc0 实测必现（TP8 大 MoE）；修复含于 v0.11.0rc1+
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "vllm-ascend v0.11.0rc0 起 Qwen3-Next-80B-A3B-Instruct（TP8、--max-model-len 98304）服务，EngineCore failed to start：RuntimeError: NPU out of memory. Tried to allocate 628.00 MiB (29.50 GiB total; 27.39 GiB already allocated; 478.15 MiB free)"
+      - "多卡 910B、--gpu-memory-utilization 0.7、内存看似充足仍 OOM（启动阶段，非打流）"
+      - "同版本普通小 MoE/非 qwen3-next 模型可正常拉起（问题与大 MoE + qwen3-next 0.11.0rc0 适配相关）"
+      - "同族 #3291：同模型同版本报 RuntimeError: Ascend config is not initialized. Please call init_ascend_config first."
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/3308"
+      - "https://github.com/vllm-project/vllm-ascend/issues/3291"
+      - "https://github.com/vllm-project/vllm-ascend/pull/3305"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "issue 关闭方自动化回复（2026-06-02）确认 v0.11.0rc1+ 修复并指 PR #3305/#3557；API 核查 PR #3305（修 #3291 ascend config）内容以 commit 408606c0c0 直提交 main（2025-09-30），早于 v0.11.0rc1（2025-11-10），修复代码确实在 rc1+；PR 本体 closed-unmerged、#3557 为文档 PR——修复确认存在但 PR 编号表述不精确"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE \"NPU out of memory\\. Tried to allocate\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:NPU out of memory\\. Tried to allocate"
+      fallback:
+        command_template: "grep -aE 'Worker failed with error .NPU out of memory\\.|Ascend config is not initialized|Engine core initialization failed' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(NPU out of memory|Ascend config is not initialized|Engine core initialization failed)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：启动阶段（EngineCore/worker init，非打流期）NPU OOM，模型为大 MoE（Qwen3-Next-80B-A3B 类）+ TP≥8？"
+        expected: "是——启动即 OOM 且显存利用率不高（~27.4/29.5GiB 已分配仍失败）"
+      - step: 2
+        check: "版本判别：vllm-ascend 是否 v0.11.0rc0（Qwen3-Next 首支持期）？"
+        expected: "是 → 0.11.0rc0 适配期内存配置缺陷，升级 ≥v0.11.0rc1（含 ascend_config 修复 commit 408606c0c）"
+        note: "同族 #3291 'Ascend config is not initialized' 同版本同模型——一条主线（ascend_config 适配）的两种报错"
+      - step: 3
+        check: "修复：升级到 ≥v0.11.0rc1（或打含 commit 408606c0c 的 wheel）；升级前可先缓解：--gpu-memory-utilization 0.5 + PYTORCH_NPU_ALLOC_CONF=max_split_size_mb:32 或 expandable_segments:True"
+        expected: "升级后同配置可拉起（wxsIcey 实测 TP8 无 OOM）"
+        fix_on_mismatch: "升级后仍 OOM → 查是否其他版本错配（torch/torch-npu ≥2.8.0 组合）"
+        rollback: "回退 v0.11.0rc0（复现 OOM，确认版本问题）"
+
+    severity: service-affecting         # 服务无法启动
+    fix_side_effects: [requires-restart]   # 升级重启
+    fix_type: config-change             # 升级 + 参数缓解（gpu-memory-utilization / PYTORCH_NPU_ALLOC_CONF）
+
+    root_cause: >
+      v0.11.0rc0 是 Qwen3-Next 首个支持版本（2025-09-29 发布），ascend_config 在该模型启动路径的
+      初始化/配置存在适配缺陷（同族 issue #3291 直接报 'Ascend config is not initialized'），导致
+      启动阶段内存预留/估算失真——TP8 拉 Qwen3-Next-80B-A3B（27.4GiB 已分配仍继续申请 628MiB）在
+      显存看似充足时 NPU OOM。修复为 ascend_config 初始化修正（commit 408606c0c0，PR #3305 内容以
+      直提交形式合入 main，2025-09-30），含于 v0.11.0rc1 及之后版本；0.11.0rc0 只能升级或调参缓解。
+
+    fix: >
+      升级 vllm-ascend ≥ v0.11.0rc1（修复 ascend_config 的 commit 408606c0c0 已含）。临时缓解（wxsIcey
+      实测 TP8）：--gpu-memory-utilization 0.5，PYTORCH_NPU_ALLOC_CONF=max_split_size_mb:32 或
+      expandable_segments:True；或在 rc0 上升级 torch≥2.8.0/torch-npu≥2.8.0rc1 并打含该 commit 的 wheel。
+    rollback: "回退 v0.11.0rc0（复现 OOM，确认适配期版本问题）"

@@ -1,0 +1,95 @@
+# VLLM-ASC-8808 —— PD 分离 + KV Pool 请求阻塞 waiting：0.18.0rc1 spec decode 路径缺 KV connector
+#   finalize，KV 从不 Put 入池（mooncake master PutStart=0/0）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/8808
+# fix 跟踪：PR #7874（[BugFix][0.18.0][KV Pool] Fix KV Pool not putting kv cache for vllm v0.18.0，
+#   merged 2026-04-02 releases/v0.18.0，Pz1116；vllm_ascend/worker/model_runner_v1.py：spec decode
+#   draft model 运行后补 finalize_kv_connector() 使 KV pool save/put 完成）
+# investigation_quality: medium（现象 + mooncake master 指标确认"无 Put"；维护者指认缺 PR；报者
+#   cherry-pick #7874 后实测 waiting 消失——根因链由 PR 描述闭环，报者未自定位到代码）
+# 批量导入：sed-g3（2026-09）
+# pre-triage: variant_of VLLM-ASC-11459（父 case 已确认存在于 knowledge/inference/vllm-ascend/interrupt/。
+#   同族=PD 分离 + KV Pool 场景 KV 未能 Put 入池 → 请求阻塞：11459 = MooncakeBackend lazy_init 时
+#   _setup_store() 在 KV 传输线程调无参 get_global_rank() 抛 AssertionError、store 永不初始化、
+#   每次 put() 失败（fix #11459/#9731）；8808 = v0.18.0rc1 投机解码路径漏 finalize_kv_connector、
+#   Put 从不触发（PutStart=0/0，fix #7874）。机制/修复不同，症状族同——groom 复核可保留或拆分）
+# 脱敏：issue 启动脚本本地 IP 以 ifconfig 变量注入（nic_name=xxx 占位）；正文无内网 IP/token 落库，无替换
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-8808
+    title: "GLM-5.1-w4a8 A2 1P1D PD 分离 + KV Pool（MooncakeConnectorV1 + AscendStoreConnector/mooncake）+ deepseek_mtp spec decode 0.18.0rc1：P 节点 KV cache 持续上涨、后续请求卡死 waiting——vLLM v0.18 在投机解码时推迟 KV connector finalize，vllm-ascend 未适配致 KV 从不 Put 入池（mooncake Master Metrics PutStart=0/0）"
+
+    category: interrupt
+    tags: [kv-pool, pd-separation, spec-decode, mooncake, kv-put, version-gap, waiting]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        ranges: [">=0.18.0rc1,<0.18.1"]    # 触发=未含 PR #7874 的 v0.18 构建（报者实测 0.18.0rc1 官方镜像缺，cherry-pick 后恢复）；0.17 无此行为（随 v0.18 上游"spec decode 推迟 KV connector finalize"引入）
+      # 触发条件：PD 分离 + KV Pool + 投机解码（deepseek_mtp/qwen3_5_mtp 等）同时开启
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "A2 1P1D PD 分离 + KV Pool（--kv-transfer-config MultiConnector：MooncakeConnectorV1 producer/consumer + AscendStoreConnector backend=mooncake）+ --speculative-config '{\"num_speculative_tokens\": 3, \"method\":\"deepseek_mtp\"}' + vllm-ascend 0.18.0rc1：请求调用后 P 节点 KV cache 一直上涨不释放，后续请求长时间处于 waiting 状态"
+      - "mooncake master service 日志：'Master Metrics: Mem Storage: 0 B / 32.00 GB ... PutStart=0/0, PutEnd=0/0 ... ExistKey:(Req=5/0/5, Item=665/665)' —— 服务一直收到 ExistKey/Get 查询但 Put 计数恒为 0，KV 从未写入池"
+      - "删 export VLLM_ASCEND_BALANCE_SCHEDULING=1（规避 0.18 调度死循环 waiting）、调 VLLM_NIXL_ABORT_REQUEST_TIMEOUT 均无效"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/8808"
+      - "https://github.com/vllm-project/vllm-ascend/pull/7874"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #7874（merged 2026-04-02 releases/v0.18.0）；报者 cherry-pick 后实测不再 waiting，issue closed completed 2026-05-14"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'Master Metrics:.*(PutStart|PutEnd)=0/0' {{mooncake_master_log}}"
+        rank_selector: coordinator
+        expected: "regex:Master Metrics:.*(PutStart|PutEnd)=0/0"
+        note: "周期性 metrics 中 Put 计数恒为 0（无 PutStart/PutEnd 成功记录），同时 P 节点 KV cache 持续上涨、请求 waiting → KV 从未入池"
+      fallback:
+        command_template: "grep -E 'Master Metrics: Mem Storage: 0 B' {{mooncake_master_log}}"
+        rank_selector: coordinator
+        expected: "regex:Master Metrics: Mem Storage: 0 B"
+        note: "池始终为空 + 请求堆积的宽松判定（不依赖 Put 计数字段）"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：PD 分离 + KV Pool 部署下请求卡 waiting、P 节点 KV cache 持续上涨，mooncake master metrics Put 计数为 0？"
+        expected: "是——KV 从未 Put 入池（PutStart=0/0、Mem Storage 0 B）是本 case 的判别核心"
+      - step: 2
+        check: "版本与功能组合：vllm-ascend 0.18.0rc1/0.18.0 + 投机解码（deepseek_mtp 等 spec decode）同时开启？"
+        expected: "是——上游 vLLM v0.18 在 target-model forward 时推迟 KV connector finalize（spec decode 启用时），vllm-ascend 0.18.0rc1 未把 clear_connector_metadata 换成 finalize_kv_connector → Put 从不触发"
+      - step: 3
+        check: "忽略项：VLLM_ASCEND_BALANCE_SCHEDULING 相关 waiting（0.18 调度 patch 死循环）与 VLLM_NIXL_ABORT_REQUEST_TIMEOUT 调整都是不同路径，勿混淆"
+        expected: "二者已实测无效；根因只在 KV Pool Put 未发生"
+      - step: 4
+        check: "fix 验证：cherry-pick PR #7874 或使用含该 PR 的更新镜像，复测 master metrics 是否出现 PutStart/PutEnd > 0"
+        expected: "Put 正常发生 → waiting 消失（报者实测）"
+      - step: 5
+        check: "附带观察（非本 case）：修复后 0.18.0 池化 TTFT 比 0.17.0rc1 差（127k+1k、4 并发 40s→150s），属性能问题另行排查"
+        note: "报者报告开启 FlashComm1 后 P 节点性能恢复，未在本 issue 闭环，勿与 Put bug 混淆"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]     # 需要换镜像/升级版本并重启服务
+    fix_type: code-patch                     # 缺 finalize_kv_connector 调用（PR #7874 代码修复），落地为升级含该 PR 的构建
+
+    root_cause: >
+      vLLM v0.18（上游）在投机解码（speculative decoding）启用时，把 KV connector finalization 推迟到
+      target-model forward 之后；vllm-ascend 升级 v0.18 时漏了对应适配（原 clear_connector_metadata()
+      调用被移除后未补 finalize_kv_connector）。因此 PD 分离 + KV Pool + deepseek_mtp 等 spec decode
+      组合下，KV cache 从不触发 Put 入池：mooncake master 侧 PutStart=0/0、Mem Storage 恒 0 B，
+      P 节点 KV cache 只涨不释放，请求逐渐全部阻塞在 waiting。
+      修复 PR #7874 在 spec decode 场景 draft model 运行后调用 self.finalize_kv_connector()，
+      KV pool save/put 得以完成。
+
+    fix: >
+      cherry-pick PR #7874 或升级到包含该 PR 的 vllm-ascend 构建（合入 releases/v0.18.0 2026-04-02）。
+      验证：mooncake master metrics 出现 PutStart/PutEnd 成功计数、P 节点 KV 正常释放、waiting 消失。
+    rollback: "恢复旧构建（无 #7874）即复现无 Put → 阻塞"
