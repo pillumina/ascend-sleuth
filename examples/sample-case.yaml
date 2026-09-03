@@ -23,6 +23,19 @@ cases:
       score: 0.86                        # hits/(hits+misdiagnoses)，按 last_hit 衰减；校准：>0.8 高、0.5-0.8 中、<0.5 仅提示
       last_hit: "2026-W28"
 
+    # 可选：内容被外部验证的累积记录（settle_s2_feedback.py 结算，非人设定）。
+    # 与 confidence 分开：confidence.hits/mis 只承载 S1 现场 resolve（"fix 在你环境
+    # 解决了没有"）；validation_record 承载"内容与外部 ground truth 一致"（S2
+    # issue-replay 对照维护者 resolution / fix PR 合入）。S2 结果也是 feedback——
+    # 反馈对象是内容正确性而非现场有效性。consistent=外部验证一致（提排序优先），
+    # self_consistent=自证命中（replay issue 即 case 来源，如实标注不虚增），
+    # inconsistent=命中但结论与 resolution 不符（复审信号）。无 S2 验证不填。
+    validation_record:
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1                 # 例：该 case 由 issue #NNN 沉淀，replay #NNN 命中且一致 = 自证
+      last_verified: "2026-W37"
+
     symptoms:
       - "all_to_all_single hangs at step usually after 1000+"
       - "world_size >= 64"

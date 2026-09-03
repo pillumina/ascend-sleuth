@@ -97,7 +97,7 @@
 | 流程/skill（diagnose/groom 等实现、triage 分支、脚本） | 提出改动、实验验证、按数据驱动推进 | 同上——每个改动源于一张 idea 卡、有独立验证与 commit |
 | 工作流本身（机制、指标口径） | 提出演进 idea、实验 | **永远你审**（双签）——指标口径只能人改，这是红线 |
 
-**所以"不会改 skill"是误解**：系统**会**改 skill——组件台账反复指出某流程步骤出错时，它会起草改进、过验证门、进 PR 经你批准后合入。self-evolving 的"self"指**系统自己提出并验证改进**（数据驱动、可追溯、有实验证据），不是指"无人监督地乱改"。
+**所以"不会改 skill"是误解**：系统**会**改 skill——归因事件（诊断发现流程某步骤反复出错）指向时，它会起草改进、过验证门、进 PR 经你批准后合入。self-evolving 的"self"指**系统自己提出并验证改进**（数据驱动、可追溯、有实验证据），不是指"无人监督地乱改"。
 
 **真正的边界（也请你别期待）**：
 
@@ -122,9 +122,9 @@
 
 **现在就能用**（self-evolve skill + 工具链已落地）：
 
-- 说"跑一轮自演进"，agent 会：读信号（容量/台账/指标）→ 产候选 idea 卡（`proposals/ideas/`，自动分配卡号）→ 校验 → 攒成聚合 PR 给你审；
+- 说"跑一轮自演进"，agent 会：读信号（容量/归因聚合/指标/S2 校准集）→ 产候选 idea 卡（`proposals/ideas/`，自动分配卡号）→ 校验 → 攒成聚合 PR 给你审；
 - 覆盖缺口驱动补 case：S2 校准集暴露的未覆盖问题 → 候选卡 → to-postmortem 沉淀草稿（入 inbox 待 groom）；
-- 工具：`ev_proposal.py`（产卡）/ `verify_proposals.py`（校验）/ `component_tally.py`（台账）/ `s2_calibration.py` + `s2_replay.py`（评测）/ `replay_golden.py`（回归）。
+- 工具：`ev_proposal.py`（产卡）/ `verify_proposals.py`（校验）/ `component_tally.py`（归因按需聚合）/ `settle_s2_feedback.py`（S2 反馈结算）/ `s2_calibration.py` + `s2_replay.py`（评测）/ `replay_golden.py`（回归）。
 
 **待蓝图/数据**（evolution-pipeline §11.1 标注，触发后实现）：
 

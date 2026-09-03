@@ -26,7 +26,16 @@ postmortem ─────────► inbox 待审队列 → groom 三分类
 
 case 的 confidence 不是人工设定而是在使用中习得：fix 被应用并确认解决，hits 加一；确认未解决，misdiagnoses 加一；score 随 last_hit 时间衰减。score 决定候选 case 的验证顺序——被反复验证的知识排到前面，被证伪的沉下去。结果捕获是结构化的：`feedback_pending` 标记写在状态文件里，任何一次 diagnose 或 resume 启动都会先追问未回报的结果，不依赖任何人的记性。
 
-**feedback 闭环的完整数据流**（三个写入点，git 归属刻意不同）：
+**feedback 是双通道的（2026-09 确认，selfevolve-loop 重构）**：按**反馈对象**分，不是按"谁给的"分级——两条通道分别结算、不混算：
+
+| 通道 | 反馈对象 | 来源 | 结算落点 |
+|---|---|---|---|
+| **S1 现场 resolve** | fix 在**这个用户环境**是否解决 | 工程师回报 fix 结果（feedback_pending 追问捕获） | `case.confidence`（hits/mis/score，唯一现场解决率口径） |
+| **S2 内容验证** | case 的 symptom→rc→fix 是否与外部 ground truth 一致 | S2 issue-replay 对照（issue resolution / fix PR 合入 / committer 确认——issue 本身的 resolution 就是 feedback） | `case.validation_record`（consistent=内容被外部验证，self_consistent=自证，inconsistent=复审信号；settle_s2_feedback.py 结算） |
+
+S2 通道补 S1 断供空缺的关键意义：confidence 依赖工程师回报（当前捕获率≈0），但 issue 池里已闭环的 resolution（fix PR 合入、committer 确认）是**不依赖人的 feedback**——系统沉淀这些 issue 时答案已在手上，S2 replay 只是把它系统化。现场有效性（severity 语义、环境特异性）仍只认 S1，这是两条通道不可合并的原因。
+
+**S1 feedback 闭环的完整数据流**（三个写入点，git 归属刻意不同）：
 
 ```
 【诊断时】                            【反馈时】                      【周维护时】
@@ -83,7 +92,8 @@ to-postmortem 接受任意来源的调查记录（本地 session、外部对话�
 
 | 演化动作 | 护栏 | 挡住什么 |
 |---|---|---|
-| confidence 回写 | 只按已回报的结果回写；串联保护（两次未解决即转人工） | 误诊级联 |
+| confidence 回写（S1） | 只按已回报的结果回写；串联保护（两次未解决即转人工） | 误诊级联 |
+| validation_record 结算（S2） | self-referential 隔离（replay issue = case 来源 → self_consistent 不虚增）；consistent ≠ 现场 resolve（口径不混）；inconsistent 走 case 复审 | 自证虚高、把"找得到"冒充"用得上" |
 | 新 case 升格 | inbox 人审 + 语义校验 + 高风险双签 | 错误知识入库 |
 | agent 自起草候选 | 初始低 confidence，必须经 groom 验证 | 未验证知识被当作已验证 |
 | 预分诊 / 置信度重算 | 只产出建议与证据，决定权在人 | 自动化误判直接生效 |

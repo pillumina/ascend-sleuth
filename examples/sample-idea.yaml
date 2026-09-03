@@ -21,10 +21,10 @@ supersedes: []                     # 本卡替代的旧卡 id 列表（run §5�
 superseded_by: null                # 被哪张卡替代（旧卡被替代后标 superseded）
 created_at: 2026-09-01             # ISO 日期
 source_signals:                    # 触发信号 + trajectory 出处（本卡只记引用，不贴原文）
-  - signal: component_error        # 来自组件台账 metrics/component-tally.yaml
-    evidence: "组件 triage:vllm-ascend-startup mis=6/hit=4，score 0.4"
+  - signal: component_error        # 归因事件簇（trace attribution / s2 候选，按需聚合见 evolution-pipeline.md §2）
+    evidence: "组件 triage:vllm-ascend-startup execution_error 归因 6 条（按需聚合）"
     trajectory:
-      - "metrics/component-tally.yaml 2026-W37"
+      - "traces/*.yaml#attribution 2026-W37 按需聚合"
       - "traces/2026-08-30-xxxx.yaml#attribution"
 hypothesis: 修订该分支的症状匹配逻辑后，执行错率降至 <0.3
 predicted_effect:
@@ -32,16 +32,15 @@ predicted_effect:
   from: 0.6
   to: "<0.3"
 validation:                        # 验证设计（execution §2/§5）
-  method: golden_replay            # golden_replay | tally_recheck | metrics_compare | issue_replay
+  method: golden_replay            # golden_replay | metrics_compare | issue_replay
   baseline: 现 triage-tree + 现有 golden 套件
-  success_criteria: golden 无回归 且 台账该组件 mis 不再增长
+  success_criteria: golden 无回归 且 该组件归因簇不再增长
   rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
 gate:
-  condition: "该组件 mis ≥5 且 最近 2 期无下降"
+  condition: "该组件 execution_error 归因 ≥5 且 最近 2 期无下降"
 risk: high                         # high → dual；中 → review；低且可逆 → auto
 principle_refs: [5, 6, 8, 11]    # 设计原则编号（1-11 整数，对应 design-principles 一~十一）
-estimated_cost:
-  tokens: 8000                     # 预计 token（起草时填）
 actual_cost: null                  # 执行/验证后写回（缺失 = 审计缺口）；source: estimate|measured
+                                   # （2026-09 删 estimated_cost——无 tokenMeter 时双字段纯文书）
                                    # （measured = DSH 经 tokenMeter.measure(session) 查真实值写回）
 decisions: []                      # 审计链：谁/何时/依据/结论（只追加不修改）

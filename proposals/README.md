@@ -10,7 +10,7 @@
 | `sessions/` | 单轮会话状态（进度/token 账本/停止原因）——**运行时** | ❌ gitignore |
 | `tasks/` | 长期任务状态（goal/轮次引用/预算账本）——**运行时** | ❌ gitignore |
 | `reviews/` | 季度自评报告——**运行时**（稳态结论以策略记忆入 git） | ❌ gitignore |
-| `experiments/` | 实验记录（golden 前后对照/台账复测）——**运行时** | ❌ gitignore |
+| `experiments/` | 实验记录（golden 前后对照/归因事件复测）——**运行时** | ❌ gitignore |
 
 ## git 归属原则（对齐仓库 .gitignore 哲学）
 
@@ -20,4 +20,4 @@
 ## schema 校验
 
 - idea 卡 schema 由 `scripts/verify_proposals.py --check` 校验（与 build_index/verify_references 并列）；
-- 组件台账在 `metrics/component-tally.yaml`（定义见 evolution-pipeline.md §2）。
+- 归因事件在 `traces/`（diagnose attribution + S2 候选），按需聚合见 `scripts/component_tally.py`（无常驻表，定义见 evolution-pipeline.md §2）。

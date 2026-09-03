@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-# ev_board_data.py —— 自演进看板数据汇总（EV 卡 + timeline + 容量 + 台账归因）
+# ev_board_data.py —— 自演进看板数据汇总（EV 卡 + timeline + 容量 + 归因聚合）
 #
 # 供 DSH 面板（dsh-plugins/ev-panel）host 侧调用：一次性汇总 proposals/ideas/、
-# metrics/timeline.yaml、knowledge/_index.yaml 头注、metrics/component-tally.yaml、
+# metrics/timeline.yaml、knowledge/_index.yaml 头注、归因事件按需聚合
+# （component_tally 逻辑：trace attribution + .s2-replay/attributions.yaml）、
 # .s2-replay/attributions.yaml 为 JSON，stdout 输出。确定性逻辑（原则二）：解析与
 # 聚合进脚本，agent/面板只读聚合结果。
 #
@@ -12,9 +13,13 @@ import argparse
 import glob
 import json
 import re
+import sys
 from pathlib import Path
 
 import yaml
+
+# 允许 import 同目录脚本（component_tally 按需聚合复用）
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
 def load_yaml(path):
@@ -93,11 +98,18 @@ def collect_timeline(root):
 
 
 def collect_tally(root):
-    path = root / "metrics" / "component-tally.yaml"
-    if not path.exists():
-        return None
-    d = load_yaml(path)
-    return d.get("components") if isinstance(d, dict) else None
+    """归因事件按需聚合（2026-09 重构：无常驻 metrics/component-tally.yaml 表——
+    从 trace attribution + s2 候选现聚合，语义同 component_tally.py）。"""
+    # 复用 component_tally 的聚合逻辑（同仓库脚本，直接导入避免双源漂移）
+    import component_tally
+    entries = component_tally.scan_traces(root) + component_tally.scan_replay_attributions(root)
+    if not entries:
+        return []
+    agg = component_tally.aggregate(entries)
+    return [
+        {"id": comp, **v, "traces": sorted(v["traces"])}
+        for comp, v in sorted(agg.items(), key=lambda x: -(x[1]["trace_mis"] + x[1]["s2_candidate"]))
+    ]
 
 
 def collect_s2_attrib(root):

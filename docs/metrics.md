@@ -30,6 +30,7 @@
 | Tier 3 挽救率 | 走 Tier 3 兜底检索且最终 resolved 的比例 | trace `tier3` action |
 | 反馈捕获率 | 回报 fix 结果的 session / 给出 fix 的 session | trace `feedback` action |
 | reference 引用 | 引用次数 / 引用后 resolve 率 / 平台分布 | trace `reference_lookup` 事件（引用后 outcome 从 session 最终 status 派生） |
+| S2 内容验证（口径，数据积累后进 timeline） | case 被 S2 replay 验证的分布：consistent（内容与外部 resolution 一致）/ self_consistent（自证）/ inconsistent（复审） | `.s2-replay/*.result.yaml` → `settle_s2_feedback.py` 结算 → case `validation_record`。**口径纪律**：consistent ≠ 现场 resolve——S1 现场解决率看 confidence（上表命中率/误诊率），S2 内容验证是独立通道，进 timeline 时标注 `source: issue-replay`，不与 S1 混算。按检查准入三条件，待 S2 结算有真实数据（≥2 期）后再扩展 verify_metrics 白名单 |
 
 ## 快照 schema（metrics/timeline.yaml）
 
