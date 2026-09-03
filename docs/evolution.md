@@ -9,7 +9,7 @@
 诊断循环每次运行产生三种数据：trace（哪些步骤按什么顺序执行了）、fix 结果反馈（解决了没有）、postmortem（这次定位的完整知识）。演化循环消费这些数据，产出更准的知识库，回到诊断：
 
 ```
-诊断循环（每次问题，分钟级）              演化循环（每周，git 门控）
+诊断循环（每次问题，分钟级）              演化循环（git 门控）
 
 trace ─────────────► 误诊归因：case 错改知识库 / 执行错改 skill 流程
 fix 结果回报 ───────► confidence 回写：hits / misdiagnoses → 候选排序
@@ -72,7 +72,7 @@ feedback_pending: CASE-ID）           feedback action + 清             （读 
 
 ### 2. 知识注入（每次定位后）
 
-to-postmortem 接受任意来源的调查记录（本地 session、外部对话、手工笔记、wiki 导出），提取症状、根因、修复，脱敏后进入 `postmortems/inbox/` 待审队列。groom 每周批处理：预分诊为 new_pattern / variant_of / covered_by 三类并附证据，人审后分别升格为新 case、并入已有 case（扩展版本区间）、或仅转正为 Tier 3 语料。判定为已覆盖的记录不丢弃——它仍是检索语料和未来 fixture 的来源。
+to-postmortem 接受任意来源的调查记录（本地 session、外部对话、手工笔记、wiki 导出），提取症状、根因、修复，脱敏后进入 `postmortems/inbox/` 待审队列。groom 批处理：预分诊为 new_pattern / variant_of / covered_by 三类并附证据，人审后分别升格为新 case、并入已有 case（扩展版本区间）、或仅转正为 Tier 3 语料（人工沉淀按周批处理；issue-ingest 等自动化源的草稿 verification 链完整，可直接升格，不等周批）。判定为已覆盖的记录不丢弃——它仍是检索语料和未来 fixture 的来源。
 
 ### 3. 误诊归因（每次误诊后）
 
@@ -113,4 +113,4 @@ to-postmortem 接受任意来源的调查记录（本地 session、外部对话�
 
 ## 当前状态
 
-机制 1、2、3、5 已实现；机制 4 的容量预告已实现，路由演进与结构挖掘在 roadmap（E2、E5）。完整闭环要等第一批知识播种后才开始真实运转——当前是 v1 骨架加一条播种 case，见 README 状态节。
+机制 1（confidence 回写）、2（知识注入）、3（误诊归因）、5（退休复活）已实现；机制 4 的容量预告已实现（inference/vllm-ascend interrupt 81/30 超 hard_cap，EV-006 健康指标评估判暂不拆），路由演进与结构挖掘在 roadmap（E2、E5）。真实闭环已运转：123 条 case、7 张 EV 卡全 validated、自动化 ingest 升格 5 case、S2 校准集 20 条、L3 季度自评框架完成 dry-run 预演（2026-Q3）。self-evolve 机制工程面重构（PR #104，2026-09）落地：S2 feedback 回流到 case validation_record、归因事件按需聚合、过度设计清除。完整机制细节见 [evolution-pipeline.md](evolution-pipeline.md)。
