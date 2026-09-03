@@ -48,3 +48,6 @@ decisions:
   - who: agent（讨论定稿转卡）
     when: "2026-09-02"
     conclusion: "设计要点（执行参考）：1) s2_replay 工具边界写死进 prepare 提示——允许 gh api 拉 config.json/clone 源码 grep/查官方文档，禁止查该 issue 自身讨论/评论/结论/fix PR；'无追问'只约束不向用户要信息，不约束 agent 用自己的工具查公开信息。2) result.yaml schema 扩展分层归因：routing_ok/tier2_hit/root_cause_ok/tool_used/evidence_gap_class（A 客观缺失|B 推理未收尾|C 工具未用足）。3) diagnose trace 扩展：agent 事件记 tool_calls（工具/返回摘要/如何用）——评估 #13446 可复核 agent 是否试过 gh api。4) S2 vs S3 分工：S2=完整诊断能力评测，S3 golden=检索回归守卫（fixture 期望=命中 case），S2 转向不丢检索覆盖。5) 历史兼容：旧评分报告保留旧口径标注。"
+  - who: agent（实施验证，直接落地看效果）
+    when: "2026-09-03"
+    conclusion: "已实施并验证（commit 43e6eeb）：s2_replay prepare/collect/todo 全改新口径。#13446 复测实证：huggingface.co 不可达但 hf-mirror.com 可达（HTTP 200 拉到 config.json，model_type=qwen3_vl）——旧口径标'缺 config.json 无法确证'实为'没试对工具/镜像'（工具策略问题），非客观缺失。新口径缺口归因：#13446 → B 推理未收尾（config 可查、根因方向已明但未源码级闭合），从'数据缺失'修正为'agent 可补未补'。工具边界与分层归因字段生效。"
