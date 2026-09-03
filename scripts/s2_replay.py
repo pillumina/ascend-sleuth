@@ -39,10 +39,27 @@ def load_yaml(path: Path):
 
 
 def prepare(root: Path):
-    """读校准集，产 replay 输入（现象 + 提示，不含 resolution——盲测）。"""
+    """读校准集，产 replay 输入（现象 + 提示，不含 resolution——盲测）。
+
+    EV-2026-004 口径（完整诊断能力评测）：replay 验证 agent 推理 + 知识库 + 工具的
+    完整诊断能力，不是阉割版文本推理。工具边界（写进每条输入提示）：
+    - 允许：查公开模型 config.json / clone 上游源码 grep 报错行 / 查官方文档 /
+      gh api 拉公开 issue 的关联修复 PR 编号前信息——这些是 agent 真实诊断能力；
+    - 禁止：查本 issue 自身的评论/讨论/结论/resolution/fix PR（防泄题——那是答案）。
+    "单发"只约束不向用户追问额外信息，不约束 agent 用自己的工具查公开信息。
+    """
     out_dir = root / REPLAY_DIR
     out_dir.mkdir(exist_ok=True)
     n = 0
+    tool_note = (
+        "【工具边界：本评测验证完整诊断能力】\n"
+        "- 允许使用工具查公开信息：gh api 拉模型 config.json / 查官方文档 / clone 上游源码 grep 报错行\n"
+        "- 禁止：查本 issue 自身的评论/讨论/结论/关联 fix PR（那是答案，查了即泄题）\n"
+        "- 不向用户追问（单发盲测）；但 agent 自己的推理与工具查证不受限\n"
+        "- 结论写 .s2-replay/<issue>.result.yaml，含分层归因：\n"
+        "  namespace/category/hit_case/root_cause/evidence_gap/routing_ok/tier2_hit/\n"
+        "  root_cause_ok/tool_used(工具名+拿到什么)/evidence_gap_class(A客观缺失|B推理未收尾|C工具未用足)\n"
+    )
     for f in sorted((root / S2_DIR).glob("*.yaml")):
         doc = load_yaml(f)
         if not isinstance(doc, dict):
@@ -55,11 +72,12 @@ def prepare(root: Path):
             content = (
                 f"# S2 Replay: issue #{issue} ({f.stem})\n\n"
                 f"标题：{e.get('title','')}\n\n"
+                f"{tool_note}\n"
                 f"请诊断以下昇腾问题（基于现象定位根因方向；标注证据缺口，不猜测）：\n\n{sym}\n"
             )
             (out_dir / f"{issue}.md").write_text(content, encoding="utf-8")
             n += 1
-    print(f"s2_replay: 已产出 {n} 个 replay 输入 → {out_dir}/")
+    print(f"s2_replay: 已产出 {n} 个 replay 输入 → {out_dir}/（含工具边界与分层归因提示）")
 
 
 def collect(root: Path, report_path: Path):
@@ -87,6 +105,12 @@ def collect(root: Path, report_path: Path):
             got_ns = res.get("namespace", "") or ""
             got_hit = res.get("hit_case", "")
             got_cat = res.get("category", "") or ""
+            # EV-2026-004 分层归因字段（旧 result 无则缺省）
+            gap_class = res.get("evidence_gap_class", "") or ""
+            tool_used = res.get("tool_used", "") or ""
+            root_cause_ok = res.get("root_cause_ok")  # True/False/None
+            tier2_hit_flag = res.get("tier2_hit")      # True/False/None
+            routing_ok = res.get("routing_ok")         # True/False/None
 
             # 对照评分（诚实：自动判定是弱信号）
             # 简化关键词匹配：取 resolution 的核心名词，看是否出现在诊断结论
@@ -130,6 +154,8 @@ def collect(root: Path, report_path: Path):
                 "rc_match": rc_match,
                 "overlap": sorted(overlap)[:5],
                 "route": ("MISS" if route_miss else "ok") if (exp_ns or exp_cat) else "-",
+                "gap_class": gap_class or "-",
+                "tool_used": tool_used or "-",
             })
 
     # 写路由归因（供 component_tally.py --emit 合并进组件台账；无归因则写空文件不报错）
@@ -148,13 +174,16 @@ def collect(root: Path, report_path: Path):
     report_path.parent.mkdir(parents=True, exist_ok=True)
     lines = [
         "# S2 Replay 评分报告", "",
-        "- 说明：自动关键词匹配是弱信号（candidate_match），根因判定需人工复核；无 case 命中的 issue = 覆盖缺口信号（补 case 候选）", "",
-        "| issue | status | res_conf | fix_ref | ns | hit_case | rc_match | route | overlap |", "|---|---|---|---|---|---|---|---|---|",
+        "- 说明：自动关键词匹配是弱信号（candidate_match），根因判定需人工复核；无 case 命中的 issue = 覆盖缺口信号（补 case 候选）",
+        "- EV-2026-004 口径：replay 验证完整诊断能力（推理+知识库+工具）；evidence_gap_class: A客观缺失 / B推理未收尾 / C工具未用足", "",
+        "| issue | status | res_conf | fix_ref | ns | hit_case | rc_match | route | gap_class | tool_used | overlap |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         lines.append(
             f"| {r['issue']} | {r['status']} | {r.get('res_conf','-')} | {r.get('fix_ref','-')} | "
-            f"{r.get('ns','-')} | {r.get('hit_case','-')} | {r.get('rc_match','-')} | {r.get('route','-')} | {','.join(r.get('overlap',[]))[:40]} |"
+            f"{r.get('ns','-')} | {r.get('hit_case','-')} | {r.get('rc_match','-')} | {r.get('route','-')} | "
+            f"{r.get('gap_class','-')} | {str(r.get('tool_used','-'))[:28]} | {','.join(r.get('overlap',[]))[:30]} |"
         )
     report_path.write_text("\n".join(lines), encoding="utf-8")
     print(f"s2_replay: 报告已写 {report_path}")
@@ -182,8 +211,9 @@ def todo(root: Path):
         print("s2_replay: 校准集全部已 replay（无待测）")
         return
     print(f"s2_replay: {len(rows)} 条待 replay（按 confidence 优先）：\n")
-    print("对每条：读 .s2-replay/<issue>.md（现象）→ 按 diagnose 流程诊断 → 结论写 .s2-replay/<issue>.result.yaml")
-    print("（result 结构: namespace/category/hit_case/root_cause/evidence_gap/replayed_at）\n")
+    print("对每条：读 .s2-replay/<issue>.md（现象 + 工具边界）→ 按 diagnose 流程诊断（可用工具查公开信息）→ 结论写 .s2-replay/<issue>.result.yaml")
+    print("（result 结构: namespace/category/hit_case/root_cause/evidence_gap/routing_ok/tier2_hit/")
+    print("  root_cause_ok/tool_used/evidence_gap_class/replayed_at——EV-2026-004 分层归因）\n")
     for _, issue, repo, title, conf in rows:
         print(f"  #{issue} [{conf}] ({repo}) {title[:60]}")
 

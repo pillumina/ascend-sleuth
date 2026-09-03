@@ -69,3 +69,6 @@ proposals/experiments/*
 
 # auto_fetch 候选（运行时产物，本地留存）
 .auto-fetch/
+
+# S2 replay 评分报告（运行时产物，本地留存——复盘结论入 EV 卡/变更摘要，不进 git）
+eval-reports/
