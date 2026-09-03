@@ -1,147 +1,136 @@
 #!/usr/bin/env python3
-# component_tally.py —— 流程组件失败台账（metrics/component-tally.yaml）
+# component_tally.py —— 流程组件失败归因的按需聚合报告（无常驻台账表）
 #
-# 目的（evolution-pipeline.md §2，L2 流程自演进的数据基座）：
-# 把"哪个流程组件反复出错"变成可度量——组件台账是 L2 的"知识库"，
-# 语义与 case confidence 相同（只按已回报结果回写、低分浮出 → 触发修复候选）。
+# 设计变更（2026-09 selfevolve-loop 重构）：原设计维护常驻表
+# metrics/component-tally.yaml（"组件失败台账"，evolution-pipeline.md §2）——
+# 该形态是过度设计：①归因事件 0 条时表空转（S1 断供 + S2 无路由 miss，文件从未生成）；
+# ②无 hit 侧数据源，score 恒 0，"低分浮出"无从谈起；③把 diagnose 输出与 expected 不符
+# 一律硬归因 triage 分支，归因不精确还假装精确。
 #
-# 数据源：traces/*.yaml 的 attribution 事件（diagnose 在反馈 not_resolved/partial
-# 后写入）。verdict=execution_error 且带 component 字段 → 该组件 mis +1；
-# verdict=case_error 不计入组件台账（那是 case 层的问题，走 case confidence）。
-# hit 侧：当前 trace 无组件级命中记录，台账只记 mis（如实——组件"被正确执行"没有
-# 独立证据，只有"执行错定位到哪个组件"有归因证据；hit 侧留待 diagnose 加组件命中
-# 记录后启用，不编造数据）。
+# 第一性替代：归因事件本身就是数据，入 trace（diagnose 现场写 attribution 事件 +
+# 可选 component），本脚本在**深度轮/季度自评时按需聚合**——有失败簇才考虑沉淀成
+# 修复候选，不预建表（原则十一：数据触发演进）。这是"事件入 trace、报告按需生成"，
+# 不是"表常驻、等事件填"。
 #
-# 输出：metrics/component-tally.yaml
-#   components:
-#     - id: triage:vllm-ascend-startup
-#       hits: 0          # 留待组件命中记录落地后启用（当前如实为 0）
-#       misdiagnoses: 6
-#       score: 0.0       # mis 侧：hits/(hits+mis)，当前恒 0——低分即浮出
-#       last_mis: "2026-W37"
-#       source_traces: [<session 文件>]
-# 幂等：按 trace 文件 + attribution 事件索引去重（重复跑不重复累积）。
-# 用法：python3 scripts/component_tally.py [--emit] [--root <repo>]
-#   --emit 写台账；默认只读 trace 输出统计（dry-run，确认后 --emit）。
+# 数据源（两类，来源诚实标注）：
+#   1. 硬归因：traces/*.yaml 的 attribution 事件（verdict=execution_error + component，
+#      diagnose 在反馈 not_resolved/partial 后现场写——S1 侧，可信）
+#   2. 候选路由 miss：.s2-replay/attributions.yaml（s2_replay --collect 产出——
+#      S2 对照外部 ground truth，但只能报"路由 miss 事实"，组件归因是候选，
+#      需人/深度轮从 trace 确认后才升级为修复指向；不冒充 execution_error）
+#
+# 用法：
+#   python3 scripts/component_tally.py             # 聚合报告（stdout，人读）
+#   python3 scripts/component_tally.py --json      # JSON（agent/面板消费）
+# 输出进 proposals/reviews/ 或直接读——本脚本不写任何常驻状态文件（幂等天然成立：
+# 每次从 traces + attributions 全量重算，无累积状态）。
 
 import argparse
-import re
+import json
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import yaml
 
-TALLY_PATH = "metrics/component-tally.yaml"
-
-
-def load_yaml(path: Path):
-    try:
-        return yaml.safe_load(path.read_text(encoding="utf-8"))
-    except Exception:
-        return None
-
-
-def iso_week() -> str:
-    # 近似 ISO 周（与 timeline 的 Wnn 格式一致：2026-W37）
-    now = datetime.now()
-    iso = now.isocalendar()
-    return f"{iso[0]}-W{iso[1]:02d}"
-
 
 def scan_traces(root: Path):
-    """扫 traces/*.yaml 的 attribution 事件，收集 (session, 事件序, component, 周)。"""
-    entries = []  # (session_file, trace_idx, component)
+    """扫 traces/*.yaml 的 attribution 事件（硬归因，S1 侧）。"""
+    entries = []
     for f in sorted((root / "traces").glob("*.yaml")):
-        doc = load_yaml(f)
-        if not isinstance(doc, dict):
+        try:
+            doc = yaml.safe_load(f.read_text(encoding="utf-8"))
+        except Exception:
             continue
-        trace = doc.get("trace") or []
+        trace = doc.get("trace") or [] if isinstance(doc, dict) else []
         for i, ev in enumerate(trace):
             if not isinstance(ev, dict):
                 continue
             if ev.get("action") == "attribution":
-                if ev.get("verdict") == "execution_error" and ev.get("component"):
-                    entries.append((f.name, i, ev["component"]))
+                entries.append({
+                    "source": "trace",
+                    "trace": f.name,
+                    "verdict": ev.get("verdict"),
+                    "component": ev.get("component"),
+                    "evidence": str(ev.get("evidence", ""))[:120],
+                })
     return entries
 
 
 def scan_replay_attributions(root: Path):
-    """扫 .s2-replay/attributions.yaml（s2_replay --collect 产出的路由 miss 归因，S1 无关）。
-
-    component = got 分支（把 issue 引向错误方向的 triage 分支），与 traces 的 attribution
-    同为组件失败台账的 mis 侧数据源——S2 replay 对照的是外部 ground truth（issue resolution
-    预标），非 agent 自我背书。"""
-    entries = []  # (source_tag, idx, component)
+    """扫 .s2-replay/attributions.yaml（候选路由 miss——S2 侧，无 S1 职权判 execution_error）。"""
+    entries = []
     attr_path = root / ".s2-replay" / "attributions.yaml"
-    doc = load_yaml(attr_path)
-    if not isinstance(doc, dict):
+    if not attr_path.exists():
+        return entries
+    try:
+        doc = yaml.safe_load(attr_path.read_text(encoding="utf-8"))
+    except Exception:
         return entries
     for i, ev in enumerate(doc.get("attributions") or []):
         if not isinstance(ev, dict):
             continue
-        if ev.get("verdict") == "execution_error" and ev.get("component"):
-            entries.append((f"s2-replay#{ev.get('issue', i)}", i, ev["component"]))
+        entries.append({
+            "source": "s2-replay",
+            "trace": f"s2#{ev.get('issue', i)}",
+            "verdict": "candidate",          # 候选——S2 只能报 miss 事实，组件归因待确认
+            "component": ev.get("component"),
+            "evidence": ev.get("note", ""),
+        })
     return entries
 
 
-def load_tally(root: Path):
-    path = root / TALLY_PATH
-    doc = load_yaml(path)
-    if not isinstance(doc, dict) or "components" not in doc:
-        return {}
-    return {c["id"]: c for c in doc["components"] if isinstance(c, dict) and "id" in c}
+def aggregate(entries):
+    """按 component 聚合（含来源拆分与硬/候选标注）。"""
+    from collections import defaultdict
+    by_comp = defaultdict(lambda: {"trace_mis": 0, "s2_candidate": 0, "traces": set()})
+    for e in entries:
+        comp = e.get("component") or "(未归因)"
+        agg = by_comp[comp]
+        if e["source"] == "trace" and e.get("verdict") == "execution_error":
+            agg["trace_mis"] += 1
+            agg["traces"].add(e["trace"])
+        elif e["source"] == "s2-replay":
+            agg["s2_candidate"] += 1
+            agg["traces"].add(e["trace"])
+    return dict(by_comp)
 
 
 def main():
-    ap = argparse.ArgumentParser(description="流程组件失败台账")
-    ap.add_argument("--emit", action="store_true", help="写 metrics/component-tally.yaml")
+    ap = argparse.ArgumentParser(description="流程组件失败归因的按需聚合报告（无常驻表）")
+    ap.add_argument("--json", action="store_true", help="JSON 输出（agent/面板消费）")
     ap.add_argument("--root", type=Path, default=Path("."))
     args = ap.parse_args()
 
     root = args.root.resolve()
     entries = scan_traces(root) + scan_replay_attributions(root)
     if not entries:
-        print("component_tally: 无 attribution(execution_error + component) 事件——台账无新数据")
+        msg = "component_tally: 无归因事件（trace attribution + s2 候选均为空）——按需聚合无数据，如实空转"
+        print(msg if not args.json else json.dumps({"entries": [], "note": msg}))
         return
 
-    # 按组件聚合（幂等：这里直接重算自 trace；--emit 时合并已有台账避免重复）
-    from collections import defaultdict
-    by_component = defaultdict(lambda: {"mis": 0, "traces": set()})
-    for fname, idx, comp in entries:
-        key = comp if isinstance(comp, str) else str(comp)
-        by_component[key]["mis"] += 1
-        by_component[key]["traces"].add(fname)
-
-    print(f"component_tally: 发现 {len(entries)} 条组件归因事件，{len(by_component)} 个组件")
-    for comp, data in sorted(by_component.items(), key=lambda x: -x[1]["mis"]):
-        print(f"  {comp}: mis={data['mis']} (traces: {', '.join(sorted(data['traces'])[:3])}{'...' if len(data['traces'])>3 else ''})")
-
-    if not args.emit:
-        print("（dry-run：加 --emit 写 metrics/component-tally.yaml）")
+    agg = aggregate(entries)
+    if args.json:
+        print(json.dumps({
+            "entries": entries,
+            "components": [
+                {"component": k, **v, "traces": sorted(v["traces"])}
+                for k, v in sorted(agg.items(), key=lambda x: -(x[1]["trace_mis"] + x[1]["s2_candidate"]))
+            ],
+        }, ensure_ascii=False, indent=2))
         return
 
-    # 幂等写台账：mis 从 trace + .s2-replay 归因全量重算（两源都可全量扫描），
-    # 不对旧台账累加（累加会在重复 emit 时翻倍——原有缺陷）；旧台账只迁移 hits 侧
-    # （diagnose 组件命中记录未落地前恒为 0，如实保留）。
-    old = load_tally(root)
-    week = iso_week()
-    tally = {}
-    for comp, data in sorted(by_component.items()):
-        tally[comp] = {
-            "id": comp,
-            "hits": (old.get(comp) or {}).get("hits", 0),  # hits 侧未落地，迁移旧值
-            "misdiagnoses": data["mis"],                   # 全量重算，幂等
-            "score": 0.0 if data["mis"] == 0 else 0.0,     # hits 侧为 0 → score 恒 0（如实）
-            "last_mis": week,
-            "source_traces": sorted(data["traces"]),
-        }
-
-    out_path = root / TALLY_PATH
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    doc = {"_comment": "GENERATED by scripts/component_tally.py --emit; 组件失败台账（evolution-pipeline §2）。mis 侧来自 trace attribution(execution_error+component) 与 .s2-replay/attributions.yaml（S2 路由 miss 归因，S1 无关）全量重算——重复 emit 幂等；hits 侧待 diagnose 组件命中记录落地后启用，当前如实为 0。", "components": sorted(tally.values(), key=lambda c: -c.get("misdiagnoses", 0))}
-    out_path.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
-    print(f"component_tally: 已写 {out_path}（{len(tally)} 个组件，mis 全量重算幂等）")
+    print("component_tally: 按需聚合报告（数据源：trace attribution 硬归因 + s2 路由 miss 候选）\n")
+    for comp, data in sorted(agg.items(), key=lambda x: -(x[1]["trace_mis"] + x[1]["s2_candidate"])):
+        tag = "硬归因(S1)" if data["trace_mis"] else "候选(S2)"
+        print(f"  {comp}: {tag} mis={data['trace_mis']} 候选={data['s2_candidate']}")
+        print(f"     来源: {', '.join(sorted(data['traces'])[:5])}{'…' if len(data['traces']) > 5 else ''}")
+    hard = sum(1 for e in entries if e["source"] == "trace" and e.get("verdict") == "execution_error")
+    cand = sum(1 for e in entries if e["source"] == "s2-replay")
+    print(f"\n  合计: {len(entries)} 条归因（硬 {hard} / 候选 {cand}）")
+    if hard == 0 and cand > 0:
+        print("  注: 仅有 S2 候选——组件归因是推断，需从对应 trace 确认后才可指向修复")
+    if hard > 0:
+        print("  失败簇 → 可产 L2 修复候选（修订该组件所在 skill 步骤 / triage 分支）")
 
 
 if __name__ == "__main__":
