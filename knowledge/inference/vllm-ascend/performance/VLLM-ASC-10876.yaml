@@ -1,0 +1,91 @@
+# VLLM-ASC-10876 —— DeepSeek-V4-Flash chunked prefill 偶发超长（forward_ms 4s+ / TTFT P90 ~7.3s）：
+#   triton rms kernel TOTAL_BATCH 误标 tl.constexpr → batch shape 变化即重编译
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10876
+# fix：PR #11211（Delete the tl.constexpr of total_batch param in triton_rms_kernel，merged 2026-07-03，76d338a72）
+#      main 2026-07-03 合入；tag ancestry 校验含于 v0.23.0rc1（2026-07-19）；同 fix 关联 #11209（triton_q_rms 偶现 ~3s 卡顿）
+# pre-triage: variant_of VLLM-ASC-13973 —— 同 dsa_cp/prefill 性能族（13973=v0.26 解耦+SFA DCP block table 宽度，机制=通信量/元数据；
+#     本条=v0.21 dsa_cp_forward_prefill 内 rms kernel constexpr 重编译尖峰，机制=kernel 重编译），同功能路径不同机制版本
+# verification: upstream-fix-merged（fix PR #11211）
+# 脱敏：未引用线程内内网 IP/密钥
+# 建议命名空间：inference/vllm-ascend/performance/
+# 导入管道：issue-ingest sed-g1 batch 1（2026）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-10876
+    title: "DeepSeek-V4-Flash chunked prefill 偶发超长（forward_ms 4000+ms、TTFT P90 7.3s）：vllm_ascend/ops/triton/rms_norm.py 的 TOTAL_BATCH 误标 tl.constexpr 致 batch shape 变化频繁重编译——去 constexpr（PR #11211）修复，v0.23.0rc1+"
+
+    category: performance
+    tags: [deepseek-v4, prefill, triton, recompilation, dsa-cp, chunked-prefill, ttft, performance]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.23.0rc1"]     # 0.20.2rc1/0.21.0rc1 实测复现（0.19.1-dev 打点同现）；76d338a72 含于 v0.23.0rc1
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    symptoms:
+      - "serve DeepSeek-V4-Flash（TP8 chunked prefill + prefix cache + enable-dsa-cp/flashcomm1）：多轮长对话 prefill 偶发超长——forward_ms 4000+ms（正常 chunk ~450ms），TTFT P90/P99 ~7.3s"
+      - "触发特征：单批 token 数不等于 chunked_prefill_size（8192）边界时大概率触发（实样日志：total_scheduled_tokens=3122 forward_ms=4381.53）"
+      - "强制输入对齐 8192 整数倍后各 chunk 回到 400-500ms、TTFT 降至 1s 出头；但该方法只约束了 total_batch 取值（规避重编译），非根治"
+      - "v0.21 偶发 spike，v0.23（rc1）同场景 forward 稳定 ~400ms——版本对比定位到 dsa_cp_forward_prefill 路径"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10876"
+      - "https://github.com/vllm-project/vllm-ascend/pull/11211"
+      - "https://github.com/vllm-project/vllm-ascend/issues/11209"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #11211（76d338a72，merged 2026-07-03，含于 v0.23.0rc1）；用户 v0.21 vs v0.23 版本对比实测确认（v0.23.0rc1 不可复现）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'forward_ms=[0-9]{4}' {{engine_log}}"
+        rank_selector: coordinator
+        expected: "regex:forward_ms=[0-9]{4}"        # 正常 ~4xx ms；出现 >=4000ms spike = 本 pattern 命中
+      fallback:
+        command_template: "grep -aE 'TTFT|ttft' {{bench_report}}"
+        rank_selector: coordinator
+        expected: "metric:TTFT P90 正常 <3s；>7s 且与 token 数是否对齐 chunk 相关 → 本 pattern"
+        note: "bench 对齐：TTFT 可比（同 max-tokens 场景）；QPS/TPOT 会受 output-len 影响不可直接比"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：DeepSeek-V4-Flash chunked prefill 偶发超长——forward_ms 4000+ms spike 只在单批 token ≠ chunk 边界时出现？"
+        expected: "是（engine 打点日志：total_scheduled_tokens=3122/3818/4519... forward_ms=4xxx；其余 8192 整批 ~450ms）"
+      - step: 2
+        check: "版本判别：vllm-ascend 版本 <0.23.0rc1？"
+        expected: "是——0.20.2rc1/0.21.0rc1 复现；v0.23.0rc1 同场景 forward 稳定 ~400ms（用户实测）"
+        fix_on_mismatch: ">=0.23.0rc1 仍复现则不是本 case（另查 dsa_cp/通信/调度）"
+      - step: 3
+        check: "根因验证：dsa_cp_forward_prefill（AscendDSACPImpl._forward，vllm_ascend/attention/context_parallel/dsa_cp.py）调用的 triton rms kernel 是否把 TOTAL_BATCH 标成 tl.constexpr"
+        expected: "是——vllm_ascend/ops/triton/rms_norm.py 中 TOTAL_BATCH 为 tl.constexpr，batch shape 一变即整 kernel 重编译（单次 ~4s 级）"
+        note: "同 fix PR #11211 关联 #11209（triton_q_rms 长跑偶现 ~3s 卡顿）——同根因不同表象，可作佐证"
+      - step: 4
+        check: "修复：升级到含 PR #11211 的版本（>=v0.23.0rc1）；旧版『padding 到 chunk』workaround 不再需要"
+        expected: "v0.23.0rc1 实测不可复现（issue 收尾评论）"
+        note: "用户早期 padding workaround 有效的本质是约束 total_batch 取值、减少重编译次数——不是根因修复"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      dsa_cp_forward_prefill 路径（AscendDSACPImpl._forward，vllm_ascend/attention/context_parallel/
+      dsa_cp.py）调用的 triton rms kernel（vllm_ascend/ops/triton/rms_norm.py）把 TOTAL_BATCH 参数标成
+      tl.constexpr：chunked prefill 下每批 token 数不同 → 每种新 shape 都触发整 kernel 重编译（单次
+      ~4s 级、CPU 侧编译不在 GPU 执行流上重叠），表现为偶发超长 prefill forward / TTFT 长尾。修复：
+      去掉 tl.constexpr（PR #11211），变长 batch 复用同一 kernel，perf 经 profiling 验证几乎无损。
+
+    fix: >
+      升级到含 PR #11211 的 vllm-ascend（main 2026-07-03 合入 76d338a72；含于 v0.23.0rc1，
+      2026-07-19）。旧版可临时用『pad 单批 token 到 chunk 大小』workaround 缓解（本质是约束
+      total_batch 取值减少重编译），升级后不再需要。
+    rollback: "回退 v0.23.0rc1 以下（复现风险）"

@@ -1,0 +1,83 @@
+# VLLM-ASC-11127 —— GLM-5.1 MTP + PD 分离 decode 多 DP 压测接受率退化 <1% 不可恢复 + curl 输出精度错误
+# 来源: https://github.com/vllm-project/vllm-ascend/issues/11127
+# fix 跟踪: PR #10117（vllm-ascend main，merged 2026-06-08；移除 drafter 侧 input_fits_in_drafter 判断 + 投机 mask 填充改 1）
+# investigation_quality: medium（issue 以 completed 关闭 + reporter 确认修复 + merged fix PR；thread 内无代码级根因推导，机制取 PR #10117 描述）
+# 批量导入：sed-g3（2026-09）
+# pre-triage: variant_of VLLM-ASC-12723 —— 同为 spec-decode 接受率异常族（12723=DSpark accept_len 5.6→3.0；本 case=MTP 接受率<1%），
+#   但根因/触发/修复面不同：12723=Triton rope pad 偏移的算子级数值错误（rope_dim 非 2 的幂、形状相关、确定性）；
+#   本 case=PD 分离 multi-DP 下 drafter 输入判断 input_fits_in_drafter/mask 控制流错误（多 DP 负载累积 1-2h、不可恢复、关 MTP 规避）。
+#   修复面：#12963（3 行 rope 补丁）vs #10117（移除判断 + mask fill 1）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-11127
+    title: "GLM-5.1（w8a8）MTP + PD 分离 decode 多 DP：压测 1-2h 后投机接受率退化 <1% 不恢复、手工 curl 输出精度错误——drafter 输入判断 input_fits_in_drafter 处理不当（PR #10117 移除）"
+
+    category: precision
+    tags: [mtp, spec-decode, glm5, pd-disagg, multi-dp]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: [">=0.20,<0.21"]   # 复现于 0.20 版本；PR #10117 2026-06-08 合入 main（base v0.20.2），修复版=含该 PR 的构建（reporter 主干验证 2026-07-03）；0.20.x 官方回传以 changelog 为准
+
+    investigation_quality: medium     # to-postmortem 标的调查质量，groom 据此设初始 score
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "GLM-5.1（w8a8）MTP/spec-decode 开启，PD 分离 decode 节点多 DP 压测 1-2 小时后接受率不足 1% 且无法恢复"
+      - "手工 curl 出现精度问题（输出错误），非纯性能性接受率下降"
+      - "关闭 MTP 可规避；kv_pool 池化开关不影响（开/关均复现）"
+      - "vllm-ascend 0.20 版本复现；合入 PR #10117 后修复（thread 确认）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/11127"
+      - "https://github.com/vllm-project/vllm-ascend/pull/10117"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "thread 评论（2026-07-03）确认“合入 pr10117 后问题修复”，issue completed 关闭；fix PR #10117 merged 2026-06-08（移除 input_fits_in_drafter + mask fill 1）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -iE 'acceptance|accept.?rate|接受率' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:(接受率|acceptance|accept.?rate)"
+      fallback:
+        command_template: "grep -iE '精度问题|输出错误|乱码|garbled' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*(精度问题|输出错误|乱码|garbled)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：MTP/spec-decode 开启 + PD 分离 decode 节点多 DP，压测 1-2 小时后投机接受率是否退化到不足 1%（<0.01）且不恢复，且手工 curl 出现输出精度错误？"
+        expected: "是——接受率数值 <0.01 且不可恢复，并伴输出内容错误（precision）；若输出仍正确仅为生成变慢 → 纯性能性接受率下降，属 inference_performance 族，勿用本 case"
+        note: "kv_pool 池化开/关均复现——勿追池化路径；关闭 MTP 即规避 → 根因锁定 MTP/spec-decode 路径，勿归因 PD 分离架构本身"
+      - step: 2
+        check: "同族判别（vs VLLM-ASC-12723）：是否 rope_dim 非 2 的幂（如 192）且 Q/K post-RoPE 范数比 ~0.73（12723=Triton rope sin 缓存 pad 偏移的算子级数值错误）？"
+        expected: "否——无 rope/范数异常特征，触发与 rope 形状无关而是多 DP 负载累积（1-2h）→ 本 case（drafter 输入/mask 控制流），非 12723 的 op 数值错误"
+      - step: 3
+        check: "版本判别：运行 vllm-ascend 0.20.x 且构建不含 PR #10117（2026-06-08 合入 main，移除 drafter 侧 input_fits_in_drafter 判断 + 投机 mask 填充改 1）？"
+        expected: "0.20.x 修复前版本 → 适用本 case；修复=升级到含 PR #10117 的版本（reporter 主干验证 2026-07-03）"
+        note: "PR #10117 title 指 moe multi-DP hang（关联 vllm#44185），与本 issue 症状标题不同——thread 评论明确“合入 pr10117 后问题修复”，以 thread + PR 内容（input_fits_in_drafter/mask 修复面）为准"
+
+    severity: service-affecting
+    fix_side_effects: [requires-code-change]   # 升级需替换代码并重启服务
+    fix_type: code-patch
+
+    root_cause: >
+      GLM-5.1（w8a8）+ MTP（spec-decode）+ PD 分离（decode 节点多 DP）压测场景下，
+      spec-decode drafter 输入判断 input_fits_in_drafter 在多 DP 下处理不当，长时间压测后
+      MTP 接受率退化到不足 1% 且无法恢复，输出出现精度错误。PR #10117 的修复=移除 drafter
+      侧有问题的 input_fits_in_drafter 判断，并把投机掩码填充改为 1（同修复 vllm#44185
+      moe multi-DP hang 与 #9221 回归）。thread（issue completed 关闭 2026-07-03）确认
+      “合入 pr10117 后问题修复”。
+
+    fix: >
+      升级到含 PR #10117（vllm-ascend main，merged 2026-06-08）的版本并重启服务；
+      workaround：升级前压测/联调关闭 MTP（thread 确认可规避精度问题）。
+      0.20.x 官方是否回传该修复以 changelog 为准。
+    rollback: "降级回修复前版本（恢复 input_fits_in_drafter 行为）"

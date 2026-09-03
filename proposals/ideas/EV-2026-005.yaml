@@ -1,0 +1,74 @@
+# ============================================================
+# Idea 卡：[生命周期机制测试] EV-2026-005
+# 目的：验证卡 = proposal→action→eval→decision 完整生命周期机制（pipeline §7）
+# 内容：triage inference_interrupt 正则漏 ValueError → 补正则（#7023 暴露的真实缺口）
+# ============================================================
+
+id: EV-2026-005
+layer: L2
+title: "triage inference_interrupt 正则漏 ValueError → 补正则（#7023 暴露缺口，机制测试验证）"
+status: validated                # agent 采纳：action 完成（triage 补 ValueError）+ eval 通过（正则命中 #7023 症状）
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-03
+source_signals:
+  - signal: eval_design_flaw
+    evidence: "#7023 补 case 时发现 triage inference_interrupt 异常类清单缺 ValueError（仅 RuntimeError/AssertionError）"
+    trajectory:
+      - "postmortems/inbox/VLLM-ASC-7023 头注释（triage 路由缺口）"
+      - "skills/evolve-check T4"
+hypothesis: >-
+  inference_interrupt 分支异常类清单缺 ValueError（仅 RuntimeError/AssertionError），
+  补后 ValueError 启动失败类 issue 可被路由命中（#7023 验证）
+predicted_effect:
+  metric: ValueError 类路由命中
+  from: "miss（未路由）"
+  to: "同类 Tier-2 命中"
+validation:
+  method: issue_replay
+  baseline: 现 triage-tree 无 ValueError 正则（#7023 replay 未命中）
+  success_criteria: 补正后 #7023 replay 路由命中 inference_interrupt（top-3）
+  rollback: triage-tree 改动走 PR，git revert 可回滚
+gate:
+  condition: "诊断暴露 ValueError 类启动失败无路由覆盖（#7023 已暴露）"
+risk: low
+principle_refs: [8, 11]
+estimated_cost:
+  tokens: 2000
+actual_cost:
+  tokens: 1500
+  source: estimate            # 无 token 记账环境的估算（DSH 环境可经 tokenMeter.measure 查真实值写回）
+decisions:
+  - who: agent（机制测试）
+    when: "2026-09-03"
+    type: proposal
+    conclusion: >-
+      #7023 补 case 时暴露 triage 的路由缺口：inference_interrupt 的启动期异常
+      清单只覆盖 RuntimeError/AssertionError 等，漏了 ValueError。而 #7023 的报错
+      正是 ValueError（Attempted to assign 65=65 multimodal tokens...）——这类问题
+      现在无法被路由命中。提议补上 ValueError 正则，让同类启动失败可被 Tier-2 路由。
+  - who: agent（机制测试）
+    when: "2026-09-03"
+    type: action
+    conclusion: >-
+      执行：在 triage-tree.yaml 的 inference_interrupt 启动期异常清单（原仅
+      ModuleNotFoundError/ImportError/KeyError/AttributeError/RuntimeError/
+      AssertionError）追加 ValueError，并注明来源（#7023 patch_multimodal_merge
+      计数错位）。
+  - who: agent（机制测试）
+    when: "2026-09-03"
+    type: eval
+    conclusion: >-
+      验证：用 #7023 的真实症状文本（Attempted to assign 65 = 65 multimodal
+      tokens to 3905 placeholders）跑正则匹配，ValueError 命中，路由可达
+      inference_interrupt。此卡同时验证了 EV 生命周期机制（产卡→执行→验证→
+      agent 判断）能端到端走通。
+  - who: agent（生命周期闭合）
+    when: "2026-09-03"
+    type: decision
+    conclusion: >-
+      采纳。ValueError 正则修复了真实路由缺口且验证命中，没有理由不采纳。卡状态
+      推进为 validated（agent 决策，review 级改动）；成本约 1500 token（估算）。
+      改动随 PR #97 供人审。

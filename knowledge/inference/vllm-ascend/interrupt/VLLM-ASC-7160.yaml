@@ -1,0 +1,87 @@
+# VLLM-ASC-7160 —— Qwen3.5-35B-A3B（MoE）vllm serve 启动即崩：_C_ascend.moe_gating_top_k(wrap aclnnMoeGatingTopK) 只支持 renorm=0，Qwen3.5 路由需 renorm=1 → EZ9999 tiling CheckAttr 拒绝
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/7160
+# fix：PR #7573（merged 2026-03-25）experts_selector 改走 DeviceOperator.moe_gating_top_k；A5/950 用 torch_npu.npu_moe_gating_top_k（renorm=0 + norm_type==0&&renorm==1 时手动归一化）；用户 snowsea-zero 按该 PR 改 0.18.0rc1 源码验证解决
+# pre-triage: new_pattern —— _index 全量比对无 gating_topk/renorm/EZ9999 tiling 拒绝族；最近似 10122(QuantBatchMatMulV3 507015)/10610(modelslim KeyError) 算子/机制均不同
+# verification: upstream-fix-merged（PR #7573 merged 2026-03-25；issue 线程用户源码级验证）
+# 脱敏：本 case 未引用线程内 token/内网 IP（源文档 URL 公开）
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest sed-g2 batch 1（2026）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-7160
+    title: "Qwen3.5-35B-A3B（MoE）vllm serve 启动即崩（profile_run）：fused-MoE 路由以 renorm=1 调 aclnnMoeGatingTopK，CANN op 只支持 renorm=0 → EZ9999；改走 torch_npu.npu_moe_gating_top_k（#7573）"
+
+    category: interrupt
+    tags: [qwen3.5, moe, fused-moe, gating-topk, renorm, aclnn, startup-failure]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.18.0rc1"]    # 0.17.0.0rc1/0.18.0rc1 实测复现；main 2026-03-25 合入 #7573（0.18.0rc1 需按 #7573 源码修改才解）
+    # 平台：线程内 A2-910B（verl Dockerfile a2）与 0day 镜像复现；fix 落在 A5/950 adaptor（device_op A5DeviceAdaptor.moe_gating_top_k），
+    #       非 A5 若仍走 _C_ascend 自定义 op 需 CANN 放开 renorm=1 或本地套 #7573 思路——版本/芯片判别放 diagnosis，platforms 不强标
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "Qwen3.5-35B-A3B / qwen3-30B-A3B 等 MoE 模型 vllm serve 启动，EngineCore profile_run 阶段 worker 抛 RuntimeError: call aclnnMoeGatingTopK failed, detail:EZ9999: Inner Error!"
+      - "EZ9999 详情：renorm is: 1, but currently only support 0.[FUNC:CheckAttr][FILE:moe_gating_top_k_tiling.cpp][LINE:210]；MoeGatingTopK do tiling failed, ret is -1"
+      - "调用链定位 experts_selector.py _select_experts_with_fusion_ops → torch.ops._C_ascend.moe_gating_top_k（Qwen3.5 路由 renormalize 语义）"
+      - "0.17.0.0rc1 / 0.18.0rc1 / CANN 8.5.0 均复现；verl 训练内嵌 vllm 推理同报"
+      - "硬编码 renorm=0 可绕过启动检查，但跳过 renorm 语义的权重归一化：原版模型线程内可跑通，snowsea-zero 与 SFT 模型出现重复回显 prompt/<think> 循环——静默改变路由语义，非可交付 fix"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/7160"
+      - "https://github.com/vllm-project/vllm-ascend/pull/7573"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #7573（merged 2026-03-25，DeviceOperator 分派 + A5 torch_npu.npu_moe_gating_top_k + 手动 renormalize）；issue 线程 snowsea-zero 按该 PR 改 0.18.0rc1 源码实测解决"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'renorm is: 1, but currently only support 0' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:renorm is: 1, but currently only support 0"
+      fallback:
+        command_template: "grep -E 'call aclnnMoeGatingTopK failed|MoeGatingTopK do tiling failed' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:call aclnnMoeGatingTopK failed|MoeGatingTopK do tiling failed"
+
+    diagnosis:
+      - step: 1
+        check: "错误签名：日志是否含 'renorm is: 1, but currently only support 0' + aclnnMoeGatingTopK/EZ9999？"
+        expected: "是——本 case 命中"
+      - step: 2
+        check: "模型/路由判别：是否 Qwen3.5/Qwen3-A3B 系 MoE（路由需 renormalize，renorm=1）？"
+        expected: "是——Qwen3.5-35B-A3B、qwen3-30B-A3B 均触发；非该语义模型不触发"
+      - step: 3
+        command_template: "grep -n 'moe_gating_top_k' {{src_dir}}/vllm_ascend/ops/fused_moe/experts_selector.py"
+        rank_selector: coordinator
+        expected: "regex:moe_gating_top_k"     # 确认 fused 融合路径用自定义 op（走 _C_ascend 即受影响）
+      - step: 4
+        check: "修复：升级到含 PR #7573 的版本；或本地按 #7573 改 experts_selector/device_op（A5 走 torch_npu.npu_moe_gating_top_k，renorm=0 + 手动归一化）"
+        expected: "升级/改后启动成功、路由权重归一化正确"
+        note: "勿以硬编码 renorm=0 交付——跳过所需归一化、静默改变路由语义，实测可能引发重复输出（snowsea-zero/SFT 模型）；非 A5 芯片需确认 torch_npu op 或 CANN 支持"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      Qwen3.5/Qwen3-A3B 系 MoE 模型路由需要对 top-k 权重 renormalize（renorm=1）。vllm-ascend
+      fused-MoE 融合路径 _select_experts_with_fusion_ops 把 renormalize 标志原样传入自定义 op
+      torch.ops._C_ascend.moe_gating_top_k（封装 CANN aclnnMoeGatingTopK），而该 CANN op 的 tiling
+      CheckAttr 只支持 renorm=0（moe_gating_top_k_tiling.cpp:210 拒绝 renorm=1）→ EZ9999 Inner Error，
+      EngineCore profile_run 阶段启动即崩。硬编码 renorm=0 仅绕过 tiling 检查，破坏路由权重归一化。
+
+    fix: >
+      升级到含 PR #7573 的版本：experts_selector 改经 DeviceOperator.moe_gating_top_k 分派，
+      A5/950 走 torch_npu.npu_moe_gating_top_k（CANN op 支持该语义），以 renorm=0 调用并在
+      norm_type==0 && renorm==1 时手动 topk_weights/=sum(-1) 归一化。非 A5 芯片如仍走 _C_ascend
+      自定义 op，可本地套用 #7573 思路或升级 CANN 至支持 renorm=1 的版本。
+    rollback: "回退到 #7573 前版本即复现启动失败（可验证因果）；CANN/引擎需配套升级"

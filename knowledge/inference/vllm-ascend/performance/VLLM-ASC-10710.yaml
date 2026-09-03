@@ -1,0 +1,89 @@
+# VLLM-ASC-10710 —— DSV4-Flash-w8a8-mtp 相同串行请求 prefix cache 命中率恒 0%：混合压缩 KV(compression_ratio=128) 使最小命中长度=block_size×128（block128→16k/投机32k），10k 级前缀永不命中
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10710
+# fix：配置 --block-size 32（min-hit 4k/8k，维护者推荐）；0.22.1rc1 残案 → 升级 v0.23.0rc1 解决（RFC #10517 系列：vllm-ascend #10009 等 + 上游 vllm #43447/#45845）
+# pre-triage: new_pattern —— _index 全量比对无"混合 KV prefix 命中粒度"族；13356(memcache 重叠 perf) 机制=lookup 重叠、13973(P 节点 dsa-cp 回归) 机制=通信量/SFA block table，均不同根因不同修复
+# verification: upstream-maintainer-confirmed（MengqingCao 线程机制定论 + 用户版本实测；无指向本 issue 的单 fix PR）
+# 脱敏：本 case 未引用线程内 token/内网 IP
+# 建议命名空间：inference/vllm-ascend/performance/
+# 导入管道：issue-ingest sed-g2 batch 1（2026）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-10710
+    title: "DSV4-Flash-w8a8-mtp 完全相同串行请求 Prefix Cache 命中率恒 0%：混合压缩 KV（compression_ratio=128）最小命中长度=block_size×128（block128→16k、投机/MTP→32k），10k 级前缀永不命中；--block-size 32 或升 v0.23.0rc1"
+
+    category: performance
+    tags: [prefix-cache, hybrid-kv, compression, dsv4, block-size, hit-rate, local-cache]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.22.1rc1"]     # 0.20.2rc1 复现、0.22.1rc1 残案（block32 仍失败）；v0.23.0rc1 解决
+    # 平台：issue 实为 Ascend A3 8×NPU；机制对任意混合压缩 KV 生效
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "DSV4-Flash（w8a8-mtp 等混合模型）本地 prefix cache 开启：cache_config_info enable_prefix_caching=True、prefix_cache_queries_total 正常增长"
+      - "prefix_cache_hits_total 恒 0、prompt_tokens_by_source_total{source=local_cache_hit} 恒 0——完全相同请求（≈10.1k prompt）串行 8 次 + system-prompt 复用对照组命中率均 0.00%"
+      - "请求全部 HTTP 200、服务无崩溃，仅前缀全量重算（性能退化非故障）"
+      - "开启 MTP/投机解码时下限再翻倍（block128→32k）；block_size=32 后 min-hit 4k/8k"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10710"
+      - "https://github.com/vllm-project/vllm-ascend/issues/10517"
+      - "https://github.com/vllm-project/vllm/pull/43447"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "issue#10710 维护者 MengqingCao 机制定论（block_size×compression_ratio 命中下限 16k/32k→4k/8k）；用户实测 0.22.1rc1 残案、v0.23.0rc1 解决（Li-ft 评论）；跟踪 RFC #10517"
+
+    quickly_check:
+      primary:
+        command_template: "curl -s http://{{host}}:{{port}}/metrics | grep -E 'prefix_cache_hits_total|prompt_tokens_by_source_total'"
+        rank_selector: coordinator
+        expected: "regex:prefix_cache_hits_total\\s+0|prompt_tokens_by_source_total\\{[^}]*local_cache_hit[^}]*\\}\\s+0"
+        note: "命中统计为 0 才是本 case；需另确认 prefix_cache_queries_total>0（查询在跑而命中恒 0 = 失效而非无流量）"
+      fallback:
+        command_template: "grep -aoE -- '--block-size [0-9]+|block_size=[0-9]+|enable.prefix.caching' {{launch_log}}"
+        rank_selector: coordinator
+        expected: "regex:--block-size [0-9]+|enable_prefix_caching=True"
+        note: "判别是否 DSV4 混合模型 + 大 block_size（≥128）场景"
+
+    diagnosis:
+      - step: 1
+        check: "指标判别：prefix_cache_queries_total>0 且 prefix_cache_hits_total=0（或 local_cache_hit source=0）？"
+        expected: "是——命中失效（非无请求/未开 prefix cache）"
+      - step: 2
+        check: "场景判别：模型是否混合压缩 KV（DSV4-Flash 等，compression_ratio=128）且请求前缀 < 命中下限？"
+        expected: "是——min-hit = block_size×128：block128→16k（投机/MTP→32k）；线程请求 ≈10.1k < 16k 永不命中"
+      - step: 3
+        command_template: "grep -aoE -- '--block-size [0-9]+' {{launch_log}}"
+        rank_selector: coordinator
+        expected: "regex:--block-size (32|128)"
+        fix_on_mismatch: "换 --block-size 32（min-hit 4k，MTP 开则 8k）"
+        rollback: "恢复原 block_size（命中下限回退，可对照验证）"
+      - step: 4
+        check: "版本判别：v0.22.1rc1 及更早即便 block_size=32 仍复现？"
+        expected: "是 → 升级 vllm-ascend ≥ v0.23.0rc1 复测（prefix-cache/混合 KV 系列修复合入，RFC #10517）"
+
+    severity: service-affecting         # 命中率 0 = 每请求全量 prefill，prefix 复用 workload 下性能明显退化（13973 同例），服务可用
+    fix_side_effects: [requires-restart] # 改 block_size/升级需重启服务生效
+    fix_type: config-change
+
+    root_cause: >
+      DSV4-Flash 属混合压缩 KV（compression_ratio=128）：其 prefix-cache 的最小可命中前缀长度
+      放大为 block_size×128（block_size=128 → 16k；开启 MTP/投机解码再翻倍 → 32k）。线程请求
+      prompt ≈10.1k，恒低于命中下限——完全相同请求（含 system-prompt 复用组）也永远无法命中，
+      prefix_cache_hits_total 保持 0、每请求全量 prefill。block_size=32 把下限降到 4k（MTP 8k）。
+      0.22.1rc1 及更早即使 block32 仍有残案，v0.23.0rc1（RFC #10517 系列）解决。
+
+    fix: >
+      A) 配置：--block-size 32（最小命中长度 16k→4k，MTP/投机开则 8k），命中恢复正常；
+      B) 若在 0.22.1rc1 及更早仍复现 → 升级 vllm-ascend ≥ v0.23.0rc1（含 prefix-cache/混合 KV 修复系列，
+         跟踪 RFC #10517 / vllm-ascend #10009；上游 retention 相关 vllm #43447/#45845）。
+    rollback: "恢复 block_size=128 / 退回旧版本即回到 0% 命中（可对照验证因果）"

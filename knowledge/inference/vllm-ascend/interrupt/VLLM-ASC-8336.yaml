@@ -1,0 +1,87 @@
+# VLLM-ASC-8336 —— qwen3.5 35B w8a8 910B main 镜像压测崩溃：AttributeError: WAITING_FOR_FSM（balance scheduling patch × 配套 vLLM 0.19.0 RequestStatus 缺枚举成员）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/8336
+# fix 跟踪：PR #8448（[Misc]update vllm to v0.19.1，merged 2026-04-28，配套 vLLM →v0.19.1 经上游 vllm#38048 修复 WAITING_FOR_FSM）；issue completed 关闭 2026-07-03
+# investigation_quality: medium（官方确认 fix PR + 用户实测 workaround + completed 关闭，闭环完整；根因由栈+PR 描述推导）
+# 批量导入：sed-g3（2026-09）
+# pre-triage: new_pattern（比对 VLLM-ASC-13964 async-scheduling 静默 hang、VLLM-ASC-9507 PCP×FULL 图——均无 balance scheduling patch 引用 RequestStatus.WAITING_FOR_FSM 崩溃；增量=调度 patch×配套引擎版本枚举错位，修复=升级配对 vLLM 0.19.1/关 env-var）
+# 脱敏：源日志含内网 IP（mq_connect_ip 7.242.*）未引用进草稿，无替换
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-8336
+    title: "qwen3.5 35B w8a8（--quantization ascend, main/dev 镜像）910B 压测一压就崩：AttributeError: WAITING_FOR_FSM——balance scheduling patch（patch_balance_schedule.py:297）引用配套 vLLM 0.19.0 缺失的 RequestStatus 枚举成员"
+
+    category: interrupt
+    tags: [balance-scheduling, fsm, patch-layer, version-mismatch]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.19.0"]        # 触发配对：配套 vLLM v0.19.0（RequestStatus 尚无 WAITING_FOR_FSM 成员；vllm#38048 于 v0.19.1 引入）；实测 vllm-ascend main/dev 0.17.0rc2.dev312+g1eb0cc0e4（2026-04-16）。#8448 升配套 vLLM v0.19.1 修复
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "Qwen3.5-35B-A3B-w8a8-mtp（ascend 量化 + auto tool choice/reasoning parser）vllm-ascend main/dev + 配套 vLLM v0.19.0，导出 VLLM_ASCEND_BALANCE_SCHEDULING=1，910B3 压测一压就崩：EngineCore fatal，栈尾 raise AttributeError(name) from None → AttributeError: WAITING_FOR_FSM"
+      - "崩溃点 vllm_ascend/patch/platform/patch_balance_schedule.py:297 scheduler.schedule() 内 'if request.status == RequestStatus.WAITING_FOR_FSM:'（enum.py:786 __getattr__ 抛缺成员）"
+      - "级联：AsyncLLM output_handler failed → vllm.v1.engine.exceptions.EngineDeadError → serving.py completion stream generator 多行报错 → WorkerProc shutting down，服务退出"
+      - "空闲启动正常、请求进入后才崩；workaround：去掉 export VLLM_ASCEND_BALANCE_SCHEDULING=1 不再崩但性能下降（xuyucheng220 实测）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/8336"
+      - "https://github.com/vllm-project/vllm-ascend/pull/8448"
+      # 上游 vllm#38048：引入 RequestStatus.WAITING_FOR_FSM 的修复（被 #8448 以 vLLM v0.19.1 带入）
+      - "https://github.com/vllm-project/vllm/pull/38048"
+
+
+    verification:
+
+      source: upstream-fix-merged
+
+      detail: 'fix PR #8448'
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'AttributeError: WAITING_FOR_FSM' {{log_path}}"
+        expected: "regex:AttributeError: WAITING_FOR_FSM"
+        note: "该行是 EngineCore fatal 栈尾（enum.py:786 raise AttributeError(name) from None）"
+      fallback:
+        command_template: "grep -E 'RequestStatus\\.WAITING_FOR_FSM|EngineDeadError' {{log_path}}"
+        expected: "regex:RequestStatus\\.WAITING_FOR_FSM|EngineDeadError"
+        note: "服务已退出、只剩级联段时用：命中 :297 比较行或 APIServer 侧 EngineDeadError"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：导出 VLLM_ASCEND_BALANCE_SCHEDULING=1 时压测首请求即崩，EngineCore fatal 栈尾 AttributeError: WAITING_FOR_FSM（空闲启动正常）？"
+        expected: "是——request.status 与 RequestStatus.WAITING_FOR_FSM 比较时枚举成员缺失（enum.__getattr__ 抛 AttributeError）"
+      - step: 2
+        check: "机制/版本判别：崩溃点在 vllm_ascend/patch/platform/patch_balance_schedule.py:297，配套 vLLM 是否 <0.19.1（如 0.19.0）？"
+        expected: "是——WAITING_FOR_FSM 分支按配套 vLLM v0.19.1（vllm#38048 引入该成员）编写；v0.19.0 RequestStatus 无此成员 → AttributeError（与 w8a8/量化、910B 芯片无关，纯版本配对 × 调度 patch）"
+      - step: 3
+        check: "fix：升级到含 PR #8448 的 vllm-ascend（配套 vLLM v0.19.1，LoganJane 确认最新 release/rc 已解决）；临时规避去掉 export VLLM_ASCEND_BALANCE_SCHEDULING=1"
+        expected: "升级后压测不再崩（wyu0-0 确认 #8448 已修复）；关开关可规避但性能下降（xuyucheng220 实测，升级后建议恢复开关）"
+      - step: 4
+        check: "忽略项：EngineDeadError、serving.py completion stream generator 多行报错、WorkerProc shutting down 都是 EngineCore fatal 的级联噪声"
+        note: "根因只在 patch_balance_schedule.py:297 一处枚举成员访问；排查先对版本组合（配套 vLLM <0.19.1）+ 开关状态"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]      # 升级或改 env-var 均需重启服务
+    fix_type: code-patch                      # PR #8448 升级配套 vLLM v0.19.1；workaround 为 env-var（去掉 VLLM_ASCEND_BALANCE_SCHEDULING=1）
+
+    root_cause: >
+      balance scheduling 是 vllm-ascend 自定义调度 patch（vllm_ascend/patch/platform/patch_balance_schedule.py），
+      重写 scheduler.schedule() 做请求平衡；其中 line 297 用 request.status == RequestStatus.WAITING_FOR_FSM
+      把等待 FSM（结构化输出/工具调用 grammar 态）的请求单独处理。该枚举成员由上游 vllm#38048 引入、
+      随配套 vLLM v0.19.1 才存在；issue 环境（vllm-ascend main/dev 0.17.0rc2.dev312+g1eb0cc0e4 + 配套 vLLM
+      v0.19.0，2026-04-16）的 RequestStatus 尚无 WAITING_FOR_FSM，首个进入调度的请求即触发 enum.__getattr__
+      AttributeError → EngineCore fatal。与模型量化方式/芯片无关，是调度 patch 代码与配套引擎版本的错位。
+
+    fix: >
+      升级到包含 PR #8448 的 vllm-ascend（配套 vLLM 升至 v0.19.1，经上游 vllm#38048 补齐 RequestStatus.
+      WAITING_FOR_FSM；LoganJane 2026-06-11 确认最新 release/rc 已解决，issue completed 关闭）。
+      临时 workaround：去掉 export VLLM_ASCEND_BALANCE_SCHEDULING=1（关闭 balance scheduling 规避崩溃，
+      用户实测性能下降）。
+    rollback: "升级环境恢复 export VLLM_ASCEND_BALANCE_SCHEDULING=1 不再复现；配套 vLLM 仍 <0.19.1 时恢复该开关即复现崩溃"

@@ -1,0 +1,88 @@
+# VLLM-ASC-11312 —— GLM5.1 v0.20.2 图模式 + DCP=2 启动失败：sfa_cp.py build_cp_metadata 读 None 的 num_computed_tokens_cpu → AttributeError 'NoneType' has no attribute 'to'
+# 来源: https://github.com/vllm-project/vllm-ascend/issues/11312
+# fix 跟踪: thread 提出 draft PR #11388（[BugFix][Attention] Fix GLM52 DCP）——closed 未合入（merged_at=null）；无已合入修复 PR；
+#           用户验证 GLM5.2+v0.23.0 混部开启 DCP ok 收尾（非原 GLM5.1 配置回验）
+# investigation_quality: medium（维护者 draft PR 陈述根因 + 用户验证 workaround/新版本；fix PR 未合入、原配置未回验）
+# 批量导入：sed-g3（2026-09）
+# pre-triage: variant_of VLLM-ASC-9507（同族：CP computed-token 元数据在特殊执行路径为 None → CP builder AttributeError，
+#             两案同一元数据成员 num_computed_tokens_of_pcp_dcp 为源/回退；增量=触发面 DCP×图捕获×async spec decode vs
+#             PCP×FULL 图请求期、可修代码缺陷 vs 官方功能限制、修复状态差异）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-11312
+    title: "GLM5.1（vLLM 0.20.2）图模式下开启 DCP=2 启动失败：sfa_cp.py:178 build_cp_metadata 读 num_computed_tokens_cpu=None → AttributeError: 'NoneType' object has no attribute 'to'（async 投机解码清空 CP computed-token 元数据）"
+
+    category: interrupt
+    tags: [dcp, decode-context-parallel, glm5, sfa, async-speculative, mtp, startup-failure]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.20.2"]        # issue 环境 vLLM 0.20.2；无已合入修复 PR，修复版本未明（用户验证 v0.23.0+GLM5.2 混部 DCP ok）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "GLM5.1 启动脚本加 --decode-context-parallel-size 2 + --cp-kv-cache-interleave-size 128（DCP=2）后服务拉起失败：RuntimeError: NPUModelRunner init failed, error is AttributeError: 'NoneType' object has no attribute 'to'；关闭图模式可正常拉起"
+      - "报错在 cudagraph 捕获 warmup（capture_model → _dummy_run → _build_attn_group_metadata → builder.build），栈到 vllm_ascend/attention/context_parallel/sfa_cp.py:178 build_cp_metadata：num_computed_tokens = common_attn_metadata.num_computed_tokens_cpu.to(seq_lens.device)"
+      - "配置含 async 投机解码（--speculative-config MTP num_speculative_tokens=2）且图模式为 FULL_DECODE_ONLY——与 9507（PCP×FULL 图）触发面不同，切 FULL_DECODE_ONLY 不能规避本条"
+      - "维护者 draft PR #11388 根因：DCP + 异步投机解码路径清空 CPU computed-token tensor，SFA CP builder 仍直接读取"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/11312"
+      - "https://github.com/vllm-project/vllm-ascend/pull/11388"
+
+
+    verification:
+
+      source: upstream-maintainer-confirmed
+
+      detail: "issue #11312（维护者 pisceskkk 提供 draft PR #11388 含根因与修法，PR closed 未合入）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E \"sfa_cp\\.py.*build_cp_metadata|'NoneType' object has no attribute 'to'\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(sfa_cp\\.py.*build_cp_metadata|'NoneType' object has no attribute 'to')"
+      fallback:
+        command_template: "grep -E 'num_computed_tokens_cpu|decode-context-parallel-size' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(num_computed_tokens_cpu|decode-context-parallel-size)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：图模式 + DCP（--decode-context-parallel-size > 1）且带 async 投机解码（MTP）的配置，服务拉起期（非运行期）报 AttributeError: 'NoneType' object has no attribute 'to'，栈在 sfa_cp.py build_cp_metadata？"
+        expected: "是——common_attn_metadata.num_computed_tokens_cpu 为 None，.to(seq_lens.device) 抛 NoneType AttributeError，NPUModelRunner init 失败"
+      - step: 2
+        check: "同族判别（variant_of VLLM-ASC-9507）：对照 9507——PCP + FULL 图模式请求期 update_graph_params 访问 None decode_meta 的 num_computed_tokens_of_pcp_dcp（官方限制，切 FULL_DECODE_ONLY 可解）；本 case 已 FULL_DECODE_ONLY 仍崩，属 DCP × 图捕获 × async spec decode 的 CP 元数据源选择缺陷（sfa_cp 直接读被清空的 num_computed_tokens_cpu，修法=改用 num_computed_tokens_of_pcp_dcp）"
+        expected: "是 9507 同族不同触发面——增量=DCP 而非 PCP、启动捕获期而非请求期、可修代码缺陷而非官方功能限制"
+      - step: 3
+        check: "workaround：关闭图模式后重启服务（用户已验证可正常拉起）"
+        expected: "服务拉起成功（MarinaMiao 验证）——确认根因在 graph 路径而非模型/其他配置"
+      - step: 4
+        check: "忽略项：NPUModelRunner init failed → WorkerProc exception → 引擎/服务退出是根因后的级联噪声，根因只在 sfa_cp.py:178 断言行；注意勿套用 9507 的 FULL_DECODE_ONLY workaround（本 case 已 FULL_DECODE_ONLY 仍触发）"
+        note: "根治依赖代码修复——thread 内仅 draft PR #11388（未合入），修复版本未在 thread 明确；锁定老版本可尝试手动应用其改动（SFA CP 元数据源改用 num_computed_tokens_of_pcp_dcp）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]      # 关图/重启 或 升级版本
+    fix_type: config-change                   # workaround=关闭图模式（用户验证）；根治代码修复仅 draft PR #11388，未合入
+
+    root_cause: >
+      vllm-ascend DCP（--decode-context-parallel-size=2）在 cudagraph 捕获 warmup（_dummy_run →
+      _build_attn_group_metadata → builder.build）时，异步投机解码（MTP）路径把
+      common_attn_metadata.num_computed_tokens_cpu 清成 None，sfa_cp.py:178 build_cp_metadata 仍直接对它调
+      .to(seq_lens.device) → AttributeError: 'NoneType' object has no attribute 'to' → NPUModelRunner init
+      失败、服务拉不起（维护者根因陈述，见 draft PR #11388）。与 VLLM-ASC-9507 同族（CP computed-token
+      元数据在特殊执行路径为 None → CP builder AttributeError，两案同一元数据成员 num_computed_tokens_of_pcp_dcp
+      为源/回退）；增量=触发面（DCP×图捕获×async spec decode，非 PCP×FULL 图请求期）与修复状态（可修缺陷，非功能限制）。
+
+    fix: >
+      无已合入上游修复 PR——thread 内 #11388 为 draft 且 closed 未合入（修法：SFA CP 元数据源在
+      num_computed_tokens_cpu 被清空时改用 num_computed_tokens_of_pcp_dcp）。当下可用 workaround：关闭图模式
+      可正常拉起（用户已验证）。升级方向：用户验证 GLM5.2 + v0.23.0 混部开启 DCP 正常，但 GLM5.1 + v0.20.2
+      原配置未回验，修复版本未在 thread 明确。
+    rollback: "重新开启图模式即复现启动失败（workaround 依赖关闭图模式）"

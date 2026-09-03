@@ -1,0 +1,93 @@
+# VLLM-ASC-10758 —— minimax-m2.5 流式工具调用末尾拼接 </parameter> 残缺尾片 → 调用方路径/参数解析失败
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10758
+# 关联 PR：vllm-ascend #10817（Avoid streaming partial MiniMax parameter tags）open 未合入；
+#          vllm-ascend #10377（DeltaMessage tool_calls）closed 未合入、维护者判定有误（勿采用）；
+#          vLLM 上游 #45701（Streaming Parser Engine + MinimaxM2 Parser）merged 2026-06-16 = 主线修复
+# pre-triage: variant_of VLLM-ASC-10954 —— 同"工具调用输出/传参错误"族（10954=GLM 工具幻视 json，机制=vllm parse 逻辑；
+#     本条=流式增量 parser 未闭合参数尾片），模型与机制不同
+# verification: investigation（fix PR #10817 open 未合入；主线修复在 vLLM 上游 #45701）
+# 脱敏：未引用线程内附件内容/密钥
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest sed-g1 batch 1（2026）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-10758
+    title: "minimax-m2.5（v0.20.2rc1）流式工具调用末尾拼接 </parameter> 残缺尾片致路径识别失败：增量 tool-call parser 在参数未闭合时输出 delta，需参数完整闭合后再发（vllm-ascend #10817 backport / vLLM 上游 #45701 parser engine）"
+
+    category: interrupt
+    tags: [minimax, tool-call, streaming, parser, auto-tool-choice, tool-call-parser]
+    platforms: ["A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.20.2rc1"]      # 触发版本（v0.20.2rc 增量 parser 路径）；上游 parser engine 随 vllm 修复
+      - framework: vllm
+        versions: ["< 含 vllm#45701 的 main/发布"]
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.4
+      last_hit: ""
+
+    symptoms:
+      - "minimax-m2.5-w8a8（--enable-auto-tool-choice --tool-call-parser minimax_m2）流式工具调用响应末尾拼接残缺 '</parameter>' 尾片（如参数值 'a.txt</parameter'），调用方路径/参数识别失败"
+      - "同一流最终解析出的 tool call 本身正确——问题在流式增量序列化（MiniMax-M2 tokenizer 把 </parameter> 切成 </、parameter、> 多片，parser 在参数打开时就发 delta）"
+      - "错误叠加 PR#10377 后出现：write_file() missing 2 required positional arguments: 'file_path' and 'content'（维护者判定 #10377 fix 有误）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10758"
+      - "https://github.com/vllm-project/vllm-ascend/pull/10817"
+      - "https://github.com/vllm-project/vllm/pull/45701"
+
+    verification:
+      source: investigation
+      detail: "issue #10758；vllm-ascend fix PR #10817 open（未合入）；vllm-ascend #10377 closed 未合入（fix 判定有误）；主线修复 = vLLM 上游 #45701（merged 2026-06-16）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE '</parameter>|write_file\\(\\) missing 2 required' {{stream_log}}"
+        rank_selector: coordinator
+        expected: "regex:</parameter>|write_file\\(\\) missing 2 required"
+      fallback:
+        command_template: "grep -aiE 'tool.?call|toolcalls|minimax_m2|parameter' {{stream_log}}"
+        rank_selector: coordinator
+        expected: "regex:.*(tool.?call|toolcalls|minimax_m2)"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：MiniMax-M2.5 工具调用（流式）末尾出现残缺 </parameter>（client 端路径/参数解析失败）？"
+        expected: "是——观察流式内容尾部，参数值后直接跟 </、parameter 等残片（raw_completion/rendered json 可见）"
+      - step: 2
+        check: "机制确认：MiniMax-M2.5 tokenizer 把 </parameter> 切成多片，增量 parser 在参数值仍打开（未收到完整闭合标签）时就序列化输出参数 delta"
+        expected: "是——parser 需按 completed-parameter 粒度输出（PR#10817 描述与回归测试：重建出 {\"path\":\"a.txt\",\"content\":\"123\"}）"
+      - step: 3
+        check: "修复路径：能升级 vllm → 升级到含 vllm#45701（Streaming Parser Engine + MinimaxM2 Parser）的版本"
+        expected: "parser engine 化后按完成参数输出，问题消除"
+      - step: 4
+        check: "不能升级（v0.20.2rc）：应用 vllm-ascend PR#10817（窄 backport）"
+        expected: "on-site 验证原问题解决（issue 评论 2026-06-26）"
+        note: "勿叠加 PR#10377——维护者判定其 DeltaMessage tool_calls 补丁有误，实测引入 write_file() missing args 回归"
+      - step: 5
+        check: "回归警告：若 client 报 tool_calls 缺失/参数缺失（ValidationError: tool_calls Input should be a valid list），先检查是否叠加了 #10377 类补丁"
+        expected: "回退 #10377 类改动，只保留 completed-parameter 粒度输出"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      MiniMax-M2 增量流式 tool-call parser（v0.20.2rc 的 vllm-ascend patch 路径）在完整
+      </parameter> 闭合前就输出参数 delta；MiniMax-M2.5 tokenizer 会把 </parameter> 切成多片
+      （</、parameter、>），于是流式客户端收到的工具调用内容尾部带残缺 </parameter> 尾片，
+      调用方（agent/工具层）按路径/参数解析失败——而最终解析出的 tool call 本身正确，纯属
+      流式序列化粒度问题（vllm-ascend #10817 描述；vLLM 主线以 parser engine 重写修复）。
+
+    fix: >
+      主线：升级 vllm 到含 vllm#45701（Streaming Parser Engine + MinimaxM2 Parser，merged
+      2026-06-16）的版本。v0.20.2rc 不能升级时：应用 vllm-ascend PR#10817（参数完整闭合后才
+      发 delta；open 未合入需自行合入）——勿叠加 PR#10377（维护者判定有误，引入 tool_calls/
+      参数缺失回归）。
+    rollback: "回退自定义 parser 补丁（复现风险）"

@@ -230,24 +230,25 @@ E. 抽审人 / reviewer / 体系维护人：6.3 级别人闸 + 6.6 季度自评
 ## 7. Idea 卡 schema（v2）与状态机
 
 ```yaml
-id: EV-2026-001
+id: EV-2026-XXX                 # 示例占位（真实卡号由 ev_proposal --new 分配）
 layer: L2                        # L1 | L2 | L3（本卡示例：流程层）
 title: triage 分支 vllm-ascend 启动参数族执行错率 0.6 → 修订该分支
-status: candidate                # 完整词表（v3，与 execution §5.1 一致）：
-                                 #   candidate → proposed → in_experiment
-                                 #   in_experiment 数据通过 → pending_merge（攒批待审 §6.3a）
-                                 #   —— hands-off 模式全部卡经此态（最终 PR 人审看到所有改动）；
-                                 #      default 模式 auto 卡可即时合入跳过此态（→ adopted）
-                                 #   pending_merge 批合入 → adopted；批内被打回 → re-iterate 或 rejected
-                                 #   adopted → validated | rolled_back | superseded（观察窗终态）
-                                 #   in_experiment 实验失败 → rejected；回测不达标 → re-iterate（回 proposed）
-                                 #   蓝图态（§11.1：触发条件到才启用，第一批落地不实现）：
-                                 #   adopted 观察窗超时降级 → unconfirmed_valid/unconfirmed（S1 断供持续 ≥2 期后）
-                                 #   candidate 长期未采纳 → stale（候选积压真实发生后）
-                                 # 注：本卡（EV proposal）status 无 awaiting_validation——
-                                 #   那是沉淀对象（case）的观察窗状态（见 execution §4.2/4.3），
-                                 #   属 case YAML 扩展字段，不并入 EV 卡词表
-authorization: review            # auto | review | dual（6.3 分级；candidate 时由风险+证据预判）
+status: in_experiment             # EV 卡状态词表（agent 决策档案——无人的合入语义）：
+                                  #   产卡即执行：识别信号 + 方案成形 → 产卡（状态 in_experiment，
+                                  #   开始 action + eval）——**没有 candidate 待办态**（agent 自主
+                                  #   决策、全自动推进，方案成形就该做，不做就不产卡）
+                                  #   in_experiment → 终态（agent 决策结果）：
+                                  #     validated   采纳：eval 验证 solid，改动保留（进流程层攒批/PR）
+                                  #     rejected    不采纳：试了不行/评估不成立（诚实记录，改动不保留）
+                                  #     superseded  换方向：被新 proposal 替代（supersede 链指过去）
+                                  # 注：EV 卡是 agent 自演进行为的决策档案——识别改进点→执行→
+                                  #   验证→判断采纳/不采纳。**不含 git 协作状态**（攒批/PR/合入是流程层
+                                  #   session 的事，不进卡词表）；人审发生在目标态完成提 PR 时，
+                                  #   审视的是整个自演进过程是否 solid（含 rejected 卡——诚实实验记录）
+                                  #   信号但数据前提未满足/方案未成形 → 不产卡（记 session 报告，
+                                  #   条件到再产）——信号不是提案，提案是已准备执行的方案
+authorization: review            # auto | review | dual（改动合入的知识层分级，按风险+证据预判）
+                                 # ——注意：authorization 指改动合入的知识层分级，EV 决策本身 agent 做
 dimension: evolvability          # architecture | evolvability | maintainability | observability | process
 supersedes: []                   # 本卡替代的旧卡 id 列表（run §5：新 idea 替换旧实现时填）
 superseded_by: null              # 被哪张卡替代（旧卡被替代后标 superseded，非 rejected）
@@ -267,28 +268,60 @@ gate:
   condition: "该组件 mis ≥5 且 最近 2 期无下降"
 risk: high                       # high → dual；中 → review；低且可逆 → auto
 estimated_cost: {tokens: 8000}   # 成本侧（orchestration §3.2：预计 token，起草时填）
-actual_cost: null                # 合入/回测后写回 actual_cost.tokens（缺失即审计缺口）
-principle_refs: [五, 六, 八, 十一]
-decisions: []                    # 审计链：谁在何时依据哪份证据决定什么（只追加不修改）
+actual_cost: null                # 执行/验证后写回 actual_cost.tokens（缺失即审计缺口）；
+                                 # source 标注口径：estimate（无记账环境估算）| measured
+                                 # （DSH 经 tokenMeter.measure(session) 查真实值后写回）
+principle_refs: [5, 6, 8, 11]    # 设计原则编号（1-11 整数，对应 design-principles 一~十一）
+decisions: []                    # 审计链：谁在何时依据哪份证据判断什么（只追加不修改）
+                                 # 每条含 who/when/conclusion；type 标注生命周期阶段：
+                                 #   proposal（提案：识别改进点+假设）| action（执行：改动/实验/沉淀）
+                                 #   | eval（验证：S2/golden 数据、通过与否）| decision（采纳/不采纳/换方向）
+                                 # 卡 = agent 决策档案：proposal→action→eval→decision，
+                                 #   decision 是卡终点；采纳与否由 agent 依据 eval 判断（无需人逐卡审批）
+                                 #   status 推进随 decisions 走（见下"生命周期完整性规则"）
 ```
 
-状态机（v3：与 execution §5.1 一致——**验证先于合入**：即时判定类合入前即 validated；真实反馈类合入后观察窗才结算；否决/回滚 = 终态，留理由，不删除）：
+**生命周期完整性规则（每张卡是一个 proposal→action→eval→decision 的完整档案，不是想法清单）**：
+
+1. **产卡即执行（没有 candidate 待办态）**：识别信号 + **方案成形**才产卡——产卡状态
+   in_experiment（记 proposal + action decision）→ 验证（记 eval decision）→ agent 判断
+   （validated 采纳 / rejected 不采纳 / superseded 换方向，记 decision decision）。agent
+   自主决策、全自动推进：方案成形就该做，不做就不产卡。**执行或验证完成而卡停在
+   in_experiment = 卡不完整**（机制推进，不是靠 agent 记得改状态）。
+2. **终态卡必须有 decision 记录**：validated/rejected/superseded 的卡，decisions 中必须有 agent 的对应判断结论（依据哪份 eval 数据）——无结论的终态卡 = 审计缺口（verify_proposals 校验）。
+3. **validated 后 actual_cost 必填**：成本审计（orchestration §3.2：无实际成本记录不可审计）——validated 卡 actual_cost 仍 null = 缺口。
+4. **信号 vs 提案的边界**：仅"观察到的信号"（容量超了/族够了/数据前提未满足，但无**准备执行**
+   的具体方案）**不产卡**——信号记 session 报告/任务状态，条件到（方案成形/数据齐）才产卡
+   （防想法清单污染提案账本；跨轮待做的改进点在任务状态里追踪，不是卡状态）。
+
+状态机（v5：EV 卡 = agent 决策档案——不含 git 协作状态与待办态；产卡即执行，终态是 agent 依据 eval 的判断）：
 
 ```
-candidate ──分级授权──► proposed ──实验启动──► in_experiment
-    │                          │                   ├─ eval 通过（即时判定类）→ validated（目标态，合入前已确认）
-    │                          │                   │        └──► pending_merge（攒批）──► 批合入（PR 呈现已验证改动）
-    │                          │                   ├─ 实现完成（真实反馈类，S2 佐证）→ pending_merge ──批合入──► adopted
-    │                          │                   │        └──观察窗（等真实场景/S1）──► validated | rolled_back
-    │                          │                   │          └─超时无 S1 → unconfirmed_valid | unconfirmed（§5.1a）
-    │                          │                   ├─ 批内被打回 → re-iterate 或 rejected
-    │                          │                   └─ eval/实验失败 → rejected（留结论）
-    └──否决────────────────────┴───────────────────────────────────► rejected（留理由）
+产卡（方案成形）──► in_experiment（action + eval 执行中）
+    │                ├─ eval solid → validated（采纳：改动保留，进流程层攒批/PR）
+    │                ├─ eval 不成立 → rejected（不采纳：试了不行，诚实记录，改动不保留）
+    │                └─ 发现更好方向 → superseded（换方向：新 proposal 卡 supersede 指过来）
+    │
+    └──（信号但方案未成形/数据未齐 → 不产卡，记报告，条件到再产）
 ```
 
-批提交模式下（§6.3a）：`pending_merge` 是卡完成验证/实现后、批合入前的**攒批待审态**——**两种运行模式都经此态**（default 模式 auto 卡可即时合入跳过攒批，见 §6.3a 表；hands-off 模式全部卡攒批到任务完成）。**验证在合入前完成**（§6.5 无实验证据不合入）：即时判定类进批时已是 validated；真实反馈类进批时是"已实现 + S2 佐证"，合入后观察窗才结算其现场有效性。`pending_merge` 不是滞留——批边界触发即提聚合 PR，卡随批合入或被打回。
+**EV 卡与 git/PR 的边界（关键，v4 修正）**：卡的终态是 **agent 的判断**（采纳/不采纳/换方向），
+**不含 pending_merge/adopted 等合入语义**——攒批、提 PR、人审合入是**流程层**（session state /
+批边界，§6.3a）的事，不进卡词表。人审发生在目标态完成（或降级完成，如"要沉淀 100 条实际
+只有 60 条"）时提的聚合 PR：审的是**整个自演进过程是否 solid**（agent 的 proposal→action→
+eval→decision 链是否合理、验证是否充分），不是逐卡审批合入。**rejected 卡同样进 PR 供审**——
+agent 提了个 EV、改了、实验发现不行、不采纳，这是诚实的实验记录，人审时应接受（证明机制
+在真实评估而非自欺）。采纳的改动随 PR 合入后，卡的 decision 可追加"PR #N 合入"作为追溯
+（仅追加记录，不改变卡状态——卡状态是 agent 判断的终态）。
 
-规则：`status`/`authorization` 由机制推进不靠自觉（落地时 schema 校验可机械执行则进 CI，准入判据三条件）；`decisions` 只追加不修改；`supersedes/superseded_by` 构成替换追溯链（run §5），回滚粒度 = 被替代版本的合入点。
+**validated 与观察窗**：agent 判 validated 是基于**合入前可得的验证**（S2/golden/台账复测）。
+真实反馈类（content/fix 现场有效性）agent 只能做到"实现 + S2 佐证 + 判 validated"，现场确认
+（S1）在合入后观察窗发生——观察窗结果（confirmed/rolled_back）作为**追加 decision 记录**
+到卡，不改变卡状态机（卡的 agent 决策已完成；观察窗是效果结算层）。
+
+规则：`status`/`authorization` 由机制推进不靠自觉（落地时 schema 校验可机械执行则进 CI，
+准入判据三条件）；`decisions` 只追加不修改；`supersedes/superseded_by` 构成替换追溯链
+（run §5），回滚粒度 = 被替代版本的合入点。
 
 ## 8. 自动化边界（v2）
 
@@ -345,7 +378,7 @@ candidate ──分级授权──► proposed ──实验启动──► in_ex
 
 | 分级 | 机制 | 何时实现 |
 |---|---|---|
-| **第一批落地（最小可运行闭环）** | 会话协议（目标→对齐→计划→执行）、批提交核心（pending_merge + 聚合 PR）、验证先于合入的双路径、S2 issue-replay 校准、授权分级（auto/review/dual）、基础状态机（candidate/proposed/in_experiment/validated/rejected） | Phase A–D 第一批 |
+| **第一批落地（最小可运行闭环）** | 会话协议（目标→对齐→计划→执行）、批提交核心（攒批 + 聚合 PR）、验证先于交付的双路径、S2 issue-replay 校准、知识层分级（auto/review/dual——合入门，EV 决策本身 agent 做）、EV 状态机（candidate/in_experiment/validated/rejected/superseded） | Phase A–D 第一批 |
 | **蓝图（触发后实现）** | 观察窗超时降级态（unconfirmed_valid/unconfirmed） | S1 断供真实持续 ≥2 期后（先用"标存疑 + 提醒"轻量处理，不进正式状态机） |
 | **蓝图** | stale 候选过期态 | 候选积压真实发生（>20 在池）后（先用 inbox 式标红） |
 | **蓝图** | 策略记忆独立文件（strategy-memory.yaml） | 季度自评跑通 ≥1 轮后（此前并入 session context） |

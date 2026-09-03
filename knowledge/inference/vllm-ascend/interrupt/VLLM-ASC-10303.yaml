@@ -1,0 +1,89 @@
+# VLLM-ASC-10303 —— 310P 部署 Qwen3-TTS（vllm-omni）：910B 适配镜像不可用；源码安装版本组合 + qwen3_tts.yaml dtype 全改 fp16
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10303
+# fix：vllm-omni PR#4283（Adapt Qwen3 TTS for 310P，merged 2026-06-12）+ 310P 源码安装组合
+#     （vllm 0.22.0、vllm-ascend dde19f7b06ed24d9e3cc9fed45595408424364a4、vllm-omni main）+ qwen3_tts.yaml dtype float16
+# pre-triage: new_pattern —— 库内无 qwen3-tts/vllm-omni 族；310P 存量 case 均为算子/CANN/资源机制，无部署镜像/dtype 平台兼容机制
+# verification: upstream-fix-merged（vllm-omni PR#4283 合入 2026-06-12；用户实测部署成功）
+# 脱敏：未引用线程内 token/内网 IP
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest sed-g1 batch 1（2026）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-10303
+    title: "310P 部署 Qwen3-TTS（vllm-omni）无现成镜像：需源码安装 vllm 0.22.0+vllm-ascend dde19f7+vllm-omni main(含PR#4283)，且 qwen3_tts.yaml dtype 全改 fp16（310P 不支持 bf16）"
+
+    category: interrupt
+    tags: [310p, qwen3-tts, vllm-omni, deployment, fp16, bf16-unsupported]
+    platforms: ["310P"]
+
+    compat:
+      - framework: vllm-omni
+        ranges: ["0.18.0"]        # v0.18.0 镜像 910B 适配、310P 未适配（310P 无现成 omni 部署路径）
+      - framework: vllm
+        ranges: ["0.22.0"]        # 310P 可跑组合（+ vllm-ascend dde19f7 + omni main 含#4283）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.4
+      last_hit: ""
+
+    symptoms:
+      - "310P（npu-smi 310P/310P3）上部署 Qwen3-TTS-12Hz（vllm-omni：--omni + --deploy-config qwen3_tts.yaml）失败/不可用——quay.io/ascend/vllm-omni 镜像是 910B 适配，310P 未测试"
+      - "310P 芯片不支持 bf16，qwen3_tts.yaml 默认 dtype（bf16 系）在 310P 不可用，需各 stage 改 float16"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10303"
+      - "https://github.com/vllm-project/vllm-omni/pull/4283"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "vllm-omni PR#4283（[Hardware][Ascend] Adapt Qwen3 TTS for 310P，merged 2026-06-12）；用户按维护者组合源码部署实测成功（310P 调用 NPU，issue#10303 评论）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aiE 'Qwen3-TTS|qwen3.?tts' {{launch_log}}"
+        rank_selector: coordinator
+        expected: "regex:Qwen3-TTS|qwen3.?tts"
+      fallback:
+        command_template: "npu-smi info | grep -iE '310P'"
+        rank_selector: coordinator
+        expected: "regex:310P"
+
+    diagnosis:
+      - step: 1
+        check: "平台/模型判别：310P（310P/310P3 芯片）部署 Qwen3-TTS（vllm-omni 服务）？"
+        expected: "是——310P 无 910B 那样开箱即用的 vllm-omni 部署路径"
+      - step: 2
+        check: "部署方式判别：直接使用 quay.io/ascend/vllm-omni:v0.18.0（910B 适配镜像）部署在 310P？"
+        expected: "是——需换 310P 源码安装组合：vllm 0.22.0 + vllm-ascend commit dde19f7b06ed24d9e3cc9fed45595408424364a4 + vllm-omni main（PR#4283 已合入）"
+        fix_on_mismatch: "按 issue#10303 评论给的版本组合源码构建（Dockerfile.qwen3_tts_310p 示例在评论中）"
+      - step: 3
+        command_template: "grep -iE 'dtype' {{deploy_yaml}}"
+        rank_selector: coordinator
+        expected: "regex:dtype:\\s*float16"
+        fix_on_mismatch: "qwen3_tts.yaml（vllm_omni/deploy/）所有 stage 的 dtype 改为 float16（310P 不支持 bf16）"
+        rollback: "在支持 bf16 的芯片（910B 等）上可保留原 dtype"
+      - step: 4
+        check: "若 910B 场景遇到『权重没加载到 NPU』——是镜像内另一小 bug"
+        note: "vllm-omni#2323 → fix vllm-omni#2353，与本条 310P 部署组合问题区分"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change
+
+    root_cause: >
+      vllm-omni 官方镜像/代码按 910B 适配（310P 未测试/无 310P 算子与数据格式适配层），且 Qwen3-TTS
+      部署配置 qwen3_tts.yaml 默认 dtype 为 bf16 系——310P 芯片不支持 bf16，无法按 910B 路径在 310P
+      部署。需 310P 源码安装特定版本组合（vllm 0.22.0 + vllm-ascend dde19f7 + vllm-omni main 含
+      PR#4283 的 _310p patch），并把 qwen3_tts.yaml 各 stage dtype 全改为 float16。
+
+    fix: >
+      310P 源码安装组合部署：vllm 0.22.0 + vllm-ascend commit dde19f7b06ed24d9e3cc9fed45595408424364a4
+      + vllm-omni main（PR#4283 已合入），qwen3_tts.yaml 各 stage dtype 改为 float16（310P 不支持
+      bf16），vllm serve --dtype float16 --omni 启动。用户实测 310P 部署成功（issue#10303 评论附
+      Dockerfile 与 qwen3_tts_310p.yaml 可复刻）。
+    rollback: "910B 平台沿用官方镜像 + 原 yaml 配置"

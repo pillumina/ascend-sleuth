@@ -10,15 +10,20 @@
 #   2. 必填字段齐全：id/layer/title/status/authorization/dimension/created_at/
 #      hypothesis/validation/risk/principle_refs/decisions
 #   3. id 匹配 EV-YYYY-NNN 且全局唯一
-#   4. status ∈ 合法词表（candidate/proposed/in_experiment/pending_merge/adopted/
-#      validated/rolled_back/superseded/rejected/re-iterate + 蓝图态 unconfirmed_valid/
-#      unconfirmed/stale——蓝图态触发后启用）
+#   4. status ∈ 合法词表（in_experiment/validated/rejected/superseded——产卡即执行，
+#      无 candidate 待办态；EV 卡 = agent 决策档案，不含 git 合入态；v5 词表）
 #   5. authorization ∈ {auto, review, dual}
 #   6. dimension ∈ {architecture, evolvability, maintainability, observability, process}
 #   7. layer ∈ {L1, L2, L3}
 #   8. supersedes/superseded_by 引用的卡 id 存在（若填）
-#   9. decisions 为列表，元素含 who/when/conclusion（若非空）
+#   9. decisions 为列表，元素含 who/when/conclusion（若非空）；type ∈ {proposal, action,
+#      eval, decision} 若填（生命周期阶段标注，pipeline §7）
 #   10. validation.method ∈ {golden_replay, tally_recheck, metrics_compare, issue_replay}
+#   11. 生命周期完整性（pipeline §7「生命周期完整性规则」）：
+#       - 终态卡（validated/rejected/superseded）必须有 agent 决策记录
+#       - validated 后 actual_cost 必填（成本审计缺口）
+#       - 终态卡但 decisions 全无 = 审计缺口（卡不完整）
+#   12. principle_refs：必须是 1-11 的整数列表（设计原则编号，非中文字符串）
 #
 # 用法：python3 scripts/verify_proposals.py [--check] [--root <repo>]
 # 返回非零 = 校验失败。--check 与默认行为一致（对称 build_index / verify_references / verify_metrics）。
@@ -31,15 +36,16 @@ from pathlib import Path
 import yaml
 
 VALID_STATUS = {
-    "candidate", "proposed", "in_experiment", "pending_merge", "adopted",
-    "validated", "rolled_back", "superseded", "rejected", "re-iterate",
-    # 蓝图态（pipeline §11.1：触发条件到才启用）
-    "unconfirmed_valid", "unconfirmed", "stale",
+    "in_experiment",              # 产卡即执行（无 candidate 待办态）
+    "validated", "rejected", "superseded",
 }
 VALID_AUTH = {"auto", "review", "dual"}
 VALID_DIM = {"architecture", "evolvability", "maintainability", "observability", "process"}
 VALID_LAYER = {"L1", "L2", "L3"}
 VALID_METHOD = {"golden_replay", "tally_recheck", "metrics_compare", "issue_replay"}
+VALID_DECISION_TYPE = {"proposal", "action", "eval", "decision"}
+# 终态卡：生命周期必须闭合（agent 决策记录 + validated 补 actual_cost）
+TERMINAL_STATUS = {"validated", "rejected", "superseded"}
 REQUIRED = [
     "id", "layer", "title", "status", "authorization", "dimension", "created_at",
     "hypothesis", "validation", "risk", "principle_refs", "decisions",
@@ -90,12 +96,23 @@ def check_idea(path: Path, ids: dict, errors: list):
     v = doc.get("validation")
     if isinstance(v, dict) and v.get("method") not in VALID_METHOD:
         errors.append(f"{rel}: validation.method '{v.get('method')}' 非法")
+    # principle_refs：必须是 1-11 的整数列表（设计原则编号）
+    pr = doc.get("principle_refs")
+    if pr is not None:
+        if not isinstance(pr, list) or not pr:
+            errors.append(f"{rel}: principle_refs 必须是非空列表")
+        else:
+            for x in pr:
+                if not isinstance(x, int) or not (1 <= x <= 11):
+                    errors.append(f"{rel}: principle_refs 元素 {x!r} 非法——须为 1-11 的整数（设计原则编号）")
     # decisions 结构
     d = doc.get("decisions")
+    n_decisions = 0
     if d is not None:
         if not isinstance(d, list):
             errors.append(f"{rel}: decisions 必须是列表")
         else:
+            n_decisions = len(d)
             for i, entry in enumerate(d):
                 if not isinstance(entry, dict):
                     errors.append(f"{rel}: decisions[{i}] 必须是 mapping")
@@ -103,6 +120,17 @@ def check_idea(path: Path, ids: dict, errors: list):
                     for k in ("who", "when", "conclusion"):
                         if k not in entry:
                             errors.append(f"{rel}: decisions[{i}] 缺 '{k}'")
+                    dt = entry.get("type")
+                    if dt is not None and dt not in VALID_DECISION_TYPE:
+                        errors.append(f"{rel}: decisions[{i}].type '{dt}' 非法（proposal/action/eval/decision）")
+
+    # 生命周期完整性（pipeline §7「生命周期完整性规则」——终态卡必须闭合）
+    status = doc.get("status")
+    if status in TERMINAL_STATUS:
+        if n_decisions == 0:
+            errors.append(f"{rel}: 终态卡（{status}）但 decisions 为空——审计缺口（无 agent 判断结论的终态不可信）")
+        if status == "validated" and doc.get("actual_cost") is None:
+            errors.append(f"{rel}: validated 卡 actual_cost 未写回——成本审计缺口（orchestration §3.2）")
 
 
 def resolve_supersedes(root: Path, errors: list, ids: dict):

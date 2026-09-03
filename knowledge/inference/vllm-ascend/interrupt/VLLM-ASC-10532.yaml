@@ -1,0 +1,83 @@
+# VLLM-ASC-10532 —— Mooncake KVPool（ascend direct/ROCE）transfer timeout 后 pod segmentation fault：Mooncake native AscendDirectTransport::processSliceList 并发访问 need_update_metadata_segs_(unordered_set) 无锁 → _Hashtable::erase 数据竞争
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10532
+# fix：升级 Mooncake 至含 PR #1624 版本（kvcache-ai/Mooncake，merged 2026-03-09：disconnect 时移除 stale target segment desc cache，去掉共享 update set）；vllm-ascend 侧无代码修复
+# pre-triage: variant_of VLLM-ASC-11459 —— 同 Mooncake KV Pool/Ascend 传输故障族；增量=11459 为 vllm-ascend backend python lazy_init AssertionError（线程 config），本条为 Mooncake native transport 数据竞争 segfault（fix 在依赖仓库）
+# verification: upstream-fix-merged（fix PR #1624 在 kvcache-ai/Mooncake merged 2026-03-09）
+# 脱敏：IP 一律 [REDACTED] 化——日志含 10.x 内网 IP，本 case 文件不引用具体地址
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest sed-g2 batch 2（2026）
+
+# groom 升格：2026-W36 round2 全自动轮（issue-ingest sed 批量）——schema 校验通过，variant_of 标注保留
+
+cases:
+  - id: VLLM-ASC-10532
+    title: "Mooncake KVPool（ascend direct/ROCE）传输超时后 pod segmentation fault：native AscendDirectTransport::processSliceList 对 need_update_metadata_segs_ 无锁并发（timeout/disconnect 路径）→ _Hashtable::erase 崩溃；升级 Mooncake ≥ PR#1624"
+
+    category: interrupt
+    tags: [mooncake, kv-pool, kv-transfer, segfault, data-race, timeout, ascends-direct, roce]
+
+    # compat: Mooncake v0.3.9 实现含共享 need_update_metadata_segs_（有风险）；fix=含 PR#1624（kvcache-ai/Mooncake，
+    #         merged 2026-03-09）的 release（版本号未在线程明示，诊断用'是否含 #1624'判别而非版本区间）
+    # 平台：K8s 跨 2 节点 + ROCE + ascend direct；issue 未明示 NPU 型号，不标 platforms
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "vllm-ascend + Mooncake KV Pool（ascend direct / ROCE / K8s 跨节点，如 Qwen3-8B 多 pod）推理中途 pod crash：segmentation fault"
+      - "崩溃前日志：ascend_direct_transport Transfer timeout to: ... / transfer failed and disconnect to: ... / Transfer failed for key ..."
+      - "native 栈定位：std::_Hashtable<...>::erase → mooncake::AscendDirectTransport::processSliceList"
+      - "前几个请求正常、超时开始后随机崩溃；增大 TP 只降频不解（触发条件=transfer timeout/disconnect 反复出现）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10532"
+      - "https://github.com/kvcache-ai/Mooncake/pull/1624"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #1624（kvcache-ai/Mooncake，merged 2026-03-09，[TE] remove target segment desc cache when disconnect）；vllm-ascend issue 侧为 Pz1116 源码级定位（帧→need_update_metadata_segs_→该 PR），用户未能复现做升级后验证"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'Segfault encountered|mooncake::AscendDirectTransport::processSliceList' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Segfault encountered|mooncake::AscendDirectTransport::processSliceList"
+      fallback:
+        command_template: "grep -E '_Hashtable<.*>::erase|Transfer timeout to:|transfer failed and disconnect' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:_Hashtable.*::erase|Transfer timeout to:|transfer failed and disconnect"
+
+    diagnosis:
+      - step: 1
+        check: "错误签名：pod 是否 segmentation fault，native 栈含 _Hashtable::erase / mooncake::AscendDirectTransport::processSliceList？"
+        expected: "是——Mooncake native 路径，非 vllm-ascend python 层问题"
+      - step: 2
+        check: "触发条件判别：崩溃前是否反复出现 transfer timeout / disconnect（ROCE 或网络抖动期）？"
+        expected: "是——timeout 是触发条件，实际是 AscendDirectTransport 的 need_update_metadata_segs_ 无锁并发（worker 池 vs 失败/disconnect 路径）"
+      - step: 3
+        command_template: "python3 -c \"import mooncake; print(getattr(mooncake,'__version__','unknown'))\""
+        rank_selector: coordinator
+        expected: "regex:.*"     # 版本低于含 PR#1624 的 release → 需升级
+        note: "Mooncake 无标准版本号输出时，查依赖声明/锁文件；目标=含 PR#1624（merged 2026-03-09）的版本"
+      - step: 4
+        check: "修复：升级 Mooncake 至含 PR#1624 的版本（建议最新 release）后复测；调大 ASCEND_TRANSFER_TIMEOUT 仅降频不减根因"
+        expected: "升级后超时场景不再 segfault"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change           # 依赖版本升级型（Mooncake 库）
+
+    root_cause: >
+      Mooncake native AscendDirectTransport 在 v0.3.9 实现用进程共享的 need_update_metadata_segs_
+      （std::unordered_set<SegmentID>）维护需更新的 segment 元数据，processSliceList() 运行于传输
+      worker 池，transfer timeout/failure 后的失败/disconnect 路径会并发 find/erase/emplace 同一集合，
+      无锁保护 → 原生数据竞争 → _Hashtable::erase 遍历中 segfault。transfer timeout 是触发条件，
+      崩溃落在 Mooncake ascend direct transport 原生路径。该共享 update set 由 kvcache-ai/Mooncake
+      PR#1624 移除（disconnect 时直接删除 stale target segment desc cache）。
+
+    fix: >
+      升级 Mooncake 至含 PR #1624（merged 2026-03-09）的版本（建议最新 Mooncake release）。调大
+      ASCEND_TRANSFER_TIMEOUT / 改善网络稳定性可降低 timeout 触发频率，但无法消除旧实现的 native race。
+    rollback: "退回旧 Mooncake 即复现随机 segfault（回退可验证因果）"

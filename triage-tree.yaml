@@ -70,7 +70,7 @@ branches:
       - ['ErrCode=\d+', 'EE9999', 'rtStream\w*.*fail', 'aclrt\w+.*fail']   # 错误码型签名（评估 0001 §四.2：12983 型靠退化兜底的缺口）
       - ['internal error', '\babort\b', '\bcrash\b', '\bdied\b']
       - ["failed to start", "cannot start", "unable to start", "启动失败", "service.*start.*fail"]   # 启动失败类（10610/11208/13508/9167 等）
-      - ["ModuleNotFoundError", "ImportError", "KeyError", "AttributeError", "RuntimeError", "AssertionError"]   # 启动期异常类
+      - ["ModuleNotFoundError", "ImportError", "KeyError", "AttributeError", "RuntimeError", "AssertionError", "ValueError"]   # 启动期异常类（ValueError 补录：2026-W36 #7023 patch_multimodal_merge 计数错位）
       - ["are not supported for now", "not supported for now", "Model architectures.*not supported"]   # 架构不支持（#15086：K3 版本错位，OOD 补录）
     search_namespaces:
       - inference/<detected_framework>/

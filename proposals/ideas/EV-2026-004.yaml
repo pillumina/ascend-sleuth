@@ -1,0 +1,93 @@
+# ============================================================
+# Idea 卡：S2 replay 评测口径重构——完整诊断能力评测 + 分层归因 + 工具边界约束
+# 来源：2026-W36 全自动轮 S2 replay 复盘（#13446 误标 evidence_gap 暴露评测盲区）
+# ============================================================
+
+id: EV-2026-004
+layer: L3                          # 评测机制/编排层（改 s2_replay 口径 + result schema + diagnose trace）
+title: "S2 replay 从'阉割版检索评测'改为'完整诊断能力评测'——分层归因（检索/推理/工具）+ 缺口三态化 + replay 工具边界"
+status: validated                # agent 采纳：实施完成 + 全校准集验证（2 条 miss→hit + 归因精确化）
+authorization: dual                # 改评测口径 = 改 validated/验证门判定语义（结构级，双签）
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-02
+source_signals:
+  - signal: eval_design_flaw        # 全自动轮 S2 replay 复盘发现评测盲区（#13446）
+    evidence: "#13446 replay root_cause 已推理闭合（config 类错配），但标 evidence_gap='缺 config.json 无法确证'——实际 agent 未走 diagnose §5 工具查证（gh api 可拉该 config），缺口被误标为客观缺失"
+    trajectory:
+      - "eval-reports/0002-vllm-s2-replay.md #13446（rc_match=False 但方向一致）"
+      - ".s2-replay/13446.result.yaml（evidence_gap 记'缺 config.json'）"
+      - "diagnose SKILL §5 深度排查（已定义 gh api/clone/上游检查，但 replay 未触发）"
+hypothesis: >-
+  现 S2 设计"单发无追问"把 agent 工具能力也禁了，评测的是阉割版诊断（纯文本推理 +
+  知识库检索），低估系统真实能力、且把"工具未用足/推理未收尾"误标为"数据缺失"
+  （#13446）。改为：S2 验证完整诊断流程（agent 推理 + 知识库 + 工具），结果**分层
+  归因**（路由对错 / Tier2 命中=检索贡献 / 根因判断=推理贡献 / 工具查证=工具贡献），
+  每层独立记录——总分测真实能力，分解项告诉'该改哪'（补 case vs 改 skill vs 接工具）
+predicted_effect:
+  metric: S2 replay 归因可操作性（错例能否定位到具体层）
+  from: "现状 miss 只标'未命中/缺数据'，无法区分检索/推理/工具贡献"
+  to: "每条 replay 记录含分层字段，miss 可归因到层 → 验证门能指导补 case 或改 skill"
+validation:
+  method: issue_replay               # 用 #13446 复测：允许工具查证后应能 gh api 拉 config.json 闭合（不再是 evidence_gap）
+  baseline: "#13446 replay 标'缺 config.json 无法确证'（rc_match=False）"
+  success_criteria: 同 issue 新口径 replay：agent 触发工具查证（trace 含 tool call）、evidence_gap 归为 C 类（工具未用足）或闭合、root_cause 判定可达 resolution
+  rollback: 评测口径改动集中于 s2_replay.py + result schema，git revert 可回退；历史评分报告保留旧口径标注
+gate:
+  condition: "S2 replay 已跑 ≥1 轮且出现'工具未用足被误标为数据缺失'的真实案例（#13446 已满足）"
+risk: high                            # 改评测口径影响 validated/验证门语义 + diagnose trace schema（结构级）
+principle_refs: [8, 10, 1]          # 可观测（trace 含 agent 完整轨迹）/ 诚实退化（缺口三态如实分）/ 验证先于交付（S2 测真能力）
+estimated_cost:
+  tokens: 8000                       # s2_replay 口径 + result schema + diagnose trace tool-call 记录
+actual_cost:
+  tokens: 9000
+  source: estimate            # 无 token 记账环境的估算（DSH 环境可经 tokenMeter.measure 查真实值写回）
+decisions:
+  - who: agent（与用户讨论，2026-W36 round2 复盘）
+    when: "2026-09-02"
+    type: proposal
+    conclusion: >-
+      复盘 S2 replay 时发现评测口径有问题：现有「单发、禁工具」的设计把 agent 的
+      工具能力也禁了，评测的是阉割版诊断。真实案例 #13446 中，agent 只做文本推理
+      就标了「缺 config.json 无法确证」，但该文件本可查证——缺口被误标为客观缺失。
+      经讨论确认方向：S2 应评测完整诊断能力（agent 推理 + 知识库 + 工具），结果
+      分层归因（路由/检索/推理/工具各自贡献），缺口三态化（A 客观缺失 / B 推理未
+      收尾 / C 工具未用足），S3 golden 继续守检索回归。
+  - who: agent（设计定稿）
+    when: "2026-09-02"
+    type: action
+    conclusion: >-
+      落地设计五点：①s2_replay 的 replay 输入提示写死工具边界——允许 gh api 拉
+      config.json、clone 源码 grep、查官方文档；禁止查该 issue 自身的讨论/结论/
+      fix PR（防泄题）。「无追问」只约束不向用户要信息，不约束 agent 用工具查公开
+      信息。②result.yaml 扩展分层归因字段（routing_ok / tier2_hit / root_cause_ok /
+      tool_used / evidence_gap_class）。③diagnose trace 的 source_analysis 事件记
+      tool_calls（含失败尝试）。④S2 与 S3 分工：S2 测完整诊断能力，S3 golden 守检索
+      回归。⑤历史评分报告保留旧口径标注。
+  - who: agent（实施 + 首条复测）
+    when: "2026-09-03"
+    type: action
+    conclusion: >-
+      改造 s2_replay（prepare/collect/todo）与 diagnose trace 规范。用 #13446 复测
+      验证：huggingface.co 主站本环境不可达，但试到 hf-mirror.com 镜像即 HTTP 200
+      拿到 config.json（model_type=qwen3_vl）——证明旧口径标「缺数据」实为没试对
+      源（工具策略问题），不是客观缺失；新口径下缺口归因为 B 类（推理未收尾）。
+  - who: agent（全校准集重测）
+    when: "2026-09-03"
+    type: eval
+    conclusion: >-
+      新口径重测全部校准集 4 条，对比旧口径效果显著：#14871 与 #14363 从 miss 变
+      命中（tier2_hit=true，前者找到上游删除 commit，后者验证「补 case 后能命中」
+      闭环）；#13639 仍 miss 但缺口精确归因为 A 类（工具已尽其能，clone 源码证实
+      FULL×spec-decode 是未覆盖组合）；#13446 缺口修正为 B 类。证据从「推理自洽」
+      升级为源码行级实测 + 版本锚点。副产品：HF 多源获取纪律内联进 diagnose SKILL
+      （执行环境知识归 SKILL 不归 references）。
+  - who: agent（生命周期闭合）
+    when: "2026-09-03"
+    type: decision
+    conclusion: >-
+      采纳。实施完成且全校准集重测证实新口径更接近真实诊断能力（2 条 miss→hit、
+      缺口归因从模糊变精确、证据升级为源码级），没有理由不采纳这次评测口径重构。
+      卡状态推进为 validated（agent 决策）；成本约 9000 token（估算，source:
+      estimate）。改动随 PR #97 供人审。

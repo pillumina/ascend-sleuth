@@ -81,6 +81,10 @@ description: >
            - `git clone <url> -b <tag/commit>`——URL 按平台：GitHub `https://github.com/<org>/<repo>.git`、Gitee `https://gitee.com/...`、GitCode `https://gitcode.com/...`；git 协议通用，公开仓库直接 clone；**`-b <tag>` 拉取失败（tag 不存在）时，先 `git ls-remote --tags <url>` 查真实 tag 再试**（不同版本库 tag 命名不同，如 v0.21.0rc2 实际可能是 v0.21.0rc1 或 releases/ 前缀）；
            - 公司内网（CodeHub 等）/私有仓库：**用户提供 URL**（其环境已配置凭据则直接 `git clone`）——agent 不碰内网认证/凭据；
            - **只取单文件**（不想拉全仓）时：GitHub 用 `gh api repos/<repo>/contents/<file>?ref=<commit>`（已登录 gh），其他平台用其 API 或 raw 链接；
+            - **外部资料多源获取纪律（HuggingFace 模型文件等）**：诊断需核对模型 config/权重（model_type/architectures/量化参数）等公开文件时——主站不可达**不等于数据不存在**，先多源尝试再判"客观缺失"：
+              - huggingface.co 主站可能不可达/超时（本环境实测 2026-09）→ 试 **hf-mirror.com** 镜像（`curl -sL https://hf-mirror.com/<org>/<model>/resolve/main/config.json`）；
+              - 模型 repo 多在 HF **不在 GitHub**（`gh api` 404 是常态，不是模型不存在）——查 GitHub 不是正确路径；
+              - 每次尝试（含失败）记入 trace 的 `tool_calls`（见"每步必写 trace"）——"哪个源不可达"是可复用教训，备选源清单由此持续沉淀；≤3 种源仍拿不到才如实标缺口；
         **不维护多版本、不落库**——只拉当前分析需要的文件或 checkout 到对应版本；
      3. **grep 定位**：搜报错签名/算子名/函数名（如 `grep -rn "QuantBatchMatMulV3" vllm_ascend/`）→ 读相关文件片段 → 分析根因（为什么这么实现、什么版本引入了什么行为）；
      4. **追问用户验证**：让用户对照预期/复现/补环境信息，验证根因假设；
@@ -108,7 +112,7 @@ description: >
    - **结果反馈闭环（闭合学习环，关键）**：给完 fix 后，**等工程师应用并回来报告结果**——问“应用后解决了吗？（解决 / 没解决 / 部分解决）”。结果写回该 case 的 confidence：解决 → `hits += 1`；没解决 → `misdiagnoses += 1`、更新 `last_hit`。**写回由 groom 周批的 `settle_trace_feedback.py` 统一结算**（只读 trace 的 feedback 事件、幂等、批量走 PR）——本 skill 只负责把反馈结果记进 trace（`{action: feedback, case, outcome}`），不直接改 case 文件。**不问这步，confidence/误诊率永远是初始值，整个学习机制空转。**
    - **反馈捕获结构化（不靠记性）**：给完 fix、session 收尾前，往 state 文件写 `feedback_pending: <case-id>`。**每次 `/skill:diagnose` 或 `/skill:resume-diagnosis` 启动时先扫活跃 state 文件**——发现该标记就先追问"上次 <case-id> 的 fix 应用后解决了吗？"，按答复回写 confidence（上条规则）、trace 记 `{action: feedback, case, outcome: resolved|not_resolved|partial}`、清掉标记。反馈捕获是整条学习环的吞吐上限——标记写在文件里，就不依赖任何人的记性
    - **误诊归因（反馈 not_resolved/partial 时必做，不靠用户提）**：答复为**没解决/部分解决**时，**当场读本 session 的 trace 归因**——判断是 **case 错**（quickly_check 按序执行、check 结果对，但 root cause 判断错 → 改库）还是**执行错**（跳过 fallback、加载错 namespace、漏标低置信 → 改 skill 流程），trace 记 `{action: attribution, verdict: case_error|execution_error, evidence: <trace 证据摘要>}`——归因结论结构化落点，是「执行-误诊归因比」指标与 E2/E5 自演进的数据源。归因结论由你在本次 session 输出给工程师（"这属于 case 错/执行错，建议改哪"），实际修改走 PR（knowledge_modification / structure 模板），**人确认后合入，你不直接改库**。没解决但 trace 缺失 → 如实说明"无法归因（无 trace）"，不猜
-   - **执行错归因下沉到组件（L2 流程自演进数据源）**：归因判定为**执行错**时，进一步定位到**组件**（可寻址执行单元：triage 分支名 / quickly_check id / skill 步骤号 / script 文件名 / 提示词段），trace 的 attribution 事件加 `component: <组件ID>` 字段——这是组件失败台账（metrics/component-tally.yaml）的 mis 侧数据源，让"哪个流程组件反复错"可度量、可触发流程修复候选（机制见 docs/evolution-pipeline.md §2，落地脚本 scripts/component_tally.py）。组件 ID 用稳定可寻址格式：`triage:<分支名>` / `check:<id>` / `skill:<skill名> step<N>` / `script:<文件名>`。判定不了具体组件 → 如实不填（不编造），台账以"未归因"计数
+   - **执行错归因下沉到组件（L2 流程自演进数据源）**：归因判定为**执行错**时，进一步定位到**组件**（可寻址执行单元：triage 分支名 / quickly_check id / skill 步骤号 / script 文件名 / 提示词段），trace 的 attribution 事件加 `component: <组件ID>` 字段——这是组件失败台账（metrics/component-tally.yaml）的 mis 侧数据源，让"哪个流程组件反复错"可度量、可触发流程修复候选（落地脚本 scripts/component_tally.py）。组件 ID 用稳定可寻址格式：`triage:<分支名>` / `check:<id>` / `skill:<skill名> step<N>` / `script:<文件名>`。判定不了具体组件 → 如实不填（不编造），台账以"未归因"计数
    - **反馈追问降级（体验，防骚扰）**：同一 `feedback_pending` 标记**追问 2 次未获回应 → 停止追问**，标 `feedback_stale: true`（保留标记供 trace_metrics 统计"反馈缺失"），不再每次启动骚扰工程师。工程师之后主动回报仍可回写——追问是礼貌提醒，不是逼迫
    - **沉淀已含在本步骤**：命中=常规 postmortem、未命中=含候选 case 的 postmortem，本步骤已生成。**只有当本次不是经 /diagnose 定位的**（如用 Kimi/手工查的、或没配 session-end hook 导致 postmortem 没生成），才需 `/skill:to-postmortem` 手动沉淀。
 
@@ -157,6 +161,11 @@ rollback：<rollback>
 ```yaml
 # agent 决策事件（机器标签 action + 给用户的内容 output + 决策依据 reason）
 # attribution 事件在 verdict=execution_error 时可选加 component: <组件ID>（执行错归因下沉，见"误诊归因"节）
+# source_analysis 事件在深度排查用工具查证时必记 tool_calls（评测可复核
+#   "agent 试了什么才说缺 X"）——格式 [<工具/命令>: <拿到什么关键证据/失败原因>]，如
+#   ["curl hf-mirror.com/.../config.json: HTTP 200, model_type=qwen3_vl",
+#    "curl huggingface.co/.../config.json: 超时"]。多次尝试不同来源/策略都要记（含失败）
+#   ——失败尝试是"该源不可达"的可复用教训（副产品：备选源/镜像清单由此沉淀）
 - {role: agent, step: N, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback|reference_lookup|triage_semantic|source_analysis|attribution|resume, output: <给用户的内容>, reason: <决策依据/推理过程>, ...}
 # user 输入事件（content 摘要 + evidence 完整证据——跨 agent/session 自包含的关键）
 - {role: user, step: N, content: <用户输入摘要（短，供面板快速浏览）>,
