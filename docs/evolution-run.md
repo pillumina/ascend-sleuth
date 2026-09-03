@@ -40,53 +40,52 @@ orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对
 
 **DSH 载体映射**：任务轮间调度（拉新批次 → 决定下一轮范围 → 分派轮内角色）可落到 DSH 的 **Agent Teams**（experimental：持久 roster + 共享任务 DAG + 持久 mailbox，含 blockedBy 依赖边——天然表达"回测轮依赖评测轮完成"）；轮内单步用 continuable subagent 即可。载体选项与启用条件见 evolution-pipeline.md §6.7，机制与载体解耦——无 DSH 环境时任务状态文件 + 手动/定时触发同样成立。
 
-## 3. Issue 的三重角色与 S2 即时对照（机制 B 修正）
+## 3. Issue 的三重角色与 S2 即时对照（机制 B）
 
-**修正**：早期讨论把 open issue 设计成"预诊断 → 等 closed → 对照"的延迟机制——**这是错的绕路**。高质量 issue（closed、maintainer 确认 resolution）本身就是"现象 → 根因"的带标注样本：拉取时**答案已在手上**，diagnose 评测 = 输入现象、对照维护者结论，**即时出分**，不需要等任何未来事件。issue 数据同时承担三重角色：
+**核心洞察（2026-09 强化）**：issue 的 resolution（fix PR 合入 / committer 确认 / issue 内用户反馈）**本身就是 feedback**——不是"评测数据"那么边缘的东西。S2 replay 只是把它系统化：以 issue 现象为 diagnose 输入，对照维护者结论评分。issue 数据承担三重角色：
 
 | 角色 | 用途 | 说明 |
 |---|---|---|
-| **评测数据集** | S2 即时对照（pipeline §2.1）：系统输出 vs issue resolution | 每批 closed issue = 一次可自动评分的诊断考试；分数进 feedback loop。**与沉淀素材解耦：先评测后沉淀**（见下"解耦"段） |
-| **沉淀素材** | to-postmortem / to-reference 的案例来源 | 评测完成后的 issue 才允许沉淀为 case/reference（issue-ingest 已做）；已沉淀 issue 不进 S2 test 半 |
+| **feedback 源（内容验证）** | S2 对照（pipeline §2.1）：命中且一致 → case 的 validation_record.consistent（**内容被外部验证**）；命中但结论不符 → inconsistent（复审信号） | **2026-09 起结算进 case**（settle_s2_feedback.py），不再躺在 result 文件不回流。与沉淀素材解耦：先评测后沉淀 |
+| **沉淀素材** | to-postmortem / to-reference 的案例来源 | 评测完成后的 issue 才允许沉淀为 case/reference（issue-ingest 已做） |
 | **覆盖缺口信号** | open issue：系统对某 open issue 现象无法诊断/无 case 候选 → 缺覆盖 | open issue **无答案，只能作弱信号**（诚实退化：不做"诊断确诊"，只记"未覆盖"） |
 
 **open issue 的正确处理**（替代"延迟对照"）：open 池只做**覆盖探测**——现象喂 diagnose，无命中/低置信 → 记"该现象族未覆盖"候选（进待定池），**不做结论判定**（无 resolution 可对照）。issue 转 closed 后自动进入评测池（增量拉取游标天然捕获 open→closed 转换），从那一刻起才有答案、才参与 S2。
 
-**S2 校准集的 selection/test 分离（审查可补点 1）**：S2 池分两半——`selection`（gate 决策用，改 skill 前后对照打分）与 `test`（validated 终判用，防对校准集过拟合）。规则：**gate 决策只看 selection，validated 终判只看 test**；test 半不参与任何中间对照（对应 SkillOpt 的 held-out test，防系统"记住"校准集）。
+**S2 校准集的 selection/test 分离是规模闸门（2026-09 降级）**：原设计分 selection（gate 决策用）/ test（validated 终判用，防对校准集过拟合，对应 SkillOpt held-out）。**当前池子（9 条）撑不起两半**——test 半要求"从未被本系统沉淀过的历史 issue"，而沉淀消耗池子，9 条下 test 半无法成立还自相矛盾。降级规则：**池子 ≥30 条且沉淀/评测解耦成熟后再分两半**；当前单池运行，replay 分数标注 `source: issue-replay`，validated 终判诚实标注"无 held-out test（池小），依赖 selection 对照 + 人工抽审"。
 
-**S2 评测集与沉淀来源必须解耦（防自我参照污染，方案级关键）**：S2 评测的 issue 若已被沉淀成 case（issue→to-postmortem→case 是同一循环），系统会"命中自己刚沉淀的答案"——S2 高分只证明"记住了自己写的题"，不证明对**未见现象**的诊断能力。解耦规则：
+**S2 评测集与沉淀来源的解耦（保留，self-referential 隔离，任何规模都执行）**：S2 评测的 issue 若已被沉淀成 case（issue→to-postmortem→case 是同一循环），系统会"命中自己刚沉淀的答案"——S2 高分只证明"记住了自己写的题"。隔离规则：
 
 - **先评测后沉淀**：一批新 closed issue 先全部过 S2 评测（对照 resolution 打分，此时知识库还没有这批 issue 的 case），**评测完才允许沉淀**——评测分数反映"用旧知识解新题"；
-- **沉淀过的 issue 不进 test 半**：test 半只放"从未被本系统沉淀过的历史 issue"（或沉淀前的历史快照期），保证 validated 终判是对未见题的检验；
-- **诚实标注**：若某期 test 半被迫混入已沉淀 issue（池子小），指标标注 `test 含已沉淀源` 并降权，不伪装纯净。
+- **self-referential 结算隔离**：settle_s2_feedback 结算时检查 replay issue 是否正是该 case 的沉淀来源（references 含该 issue URL）——是则记 `self_consistent`（自证，如实标注不虚增外部验证权重），不计入 `consistent`；
+- **诚实标注**：若某期混入已沉淀源（池子小），指标标注 `test 含已沉淀源` 并降权，不伪装纯净。
 
-这一条与 selection/test 分离正交：分离防"过拟合校准集"，解耦防"用自己沉淀的答案考自己"——两者都缺则 S2 分数虚高。落地时 S2 池管理（issue-ingest 的 processed 排除）需按此扩展：processed 同时记"已评测"与"已沉淀"，两集合分离。
+落地时 S2 池管理（issue-ingest 的 processed 排除）需扩展：processed 同时记"已评测"与"已沉淀"，两集合分离。
 
-## 4. 统一执行记录（机制 C）：每次 diagnose / skill 调用都留数据
+## 4. 统一执行记录（机制 C）：内容 skill 收尾留数据（2026-09 收敛边界）
 
-现状：**diagnose 写 trace**；统一 skill 执行日志已落地第一段——schema 定稿（`metrics/skill-exec-log.yaml`，append-only）+ 脚本（`scripts/log_skill_exec.py` 写 / `scripts/verify_exec_log.py` 校验 seq 唯一与字段）+ 内容 skill（issue-ingest / to-postmortem / to-reference）收尾 evolve-check 前先落一条记录；evolve-check 第 1 步读执行记录替代 agent 记忆。**尚未接入**：diagnose（仍只走 trace，不重复落）、knowledge-groom、长期任务各 agent 动作。完整蓝图如下：
+**现状（2026-09 selfevolve-loop 收敛）**：**diagnose 写 trace（不重复落 exec-log）**；内容 skill（issue-ingest / to-postmortem / to-reference）收尾 evolve-check 前落一条 exec-log——schema 定稿（`metrics/skill-exec-log.yaml`，append-only）+ 脚本（`scripts/log_skill_exec.py` 写 / `scripts/verify_exec_log.py` 校验 seq 唯一与字段）；evolve-check 第 1 步读执行记录替代 agent 记忆。**knowledge-groom 收尾同样落一条**（与内容 skill 一致）。
+
+**边界（防过度）**：exec-log 是**内容流程收尾的轻量现场记录**，不是"每次 skill 调用全记录"（原完整蓝图撤销——diagnose 已有 trace（更丰富、含完整轨迹），再落 exec-log 是重复劳动；高频调用全记录 = 记录负担超过观测价值，原则九）。记录对象是 skill 与动作、产物 id——**不是人**（不引入身份维度，roadmap「不做 KPI/身份/使用观测」红线不变，见 pipeline §5.3）。每条记录内容：
 
 ```
-每次 skill 调用写一条执行记录（traces/ 或 metrics/skill-exec-log.yaml）：
-- 调用：skill 名 + 版本 + 时间 + 触发者（任务 id / 会话 id / 人）
-- 输入摘要（脱敏纪律同 execution §2：原文留本地，日志只记引用与聚合）
+- 调用：skill 名 + 版本 + 时间 + 来源（触发者：任务 id / 会话 id / 上游 skill）
 - 产出：case/reference/卡 id、状态流转
-- 命中与成本：命中组件、耗时、token
 - decision reason：关键决策的一句话依据（agent 的 reason 字段）
+- cost：token（无记账环境用估算，source: estimate 如实标注）
 ```
 
-用途：metrics 有全链路数据源（不只诊断命中率）；归因能定位到"沉淀环节"还是"诊断环节"错；token 账本能精确到每次调用（第 3.3 节 orchestration 的预算治理才有数据）。**边界**：记录对象是 skill 与动作、产物 id——**不是人**（不引入身份维度，roadmap「不做 KPI/身份/使用观测」红线不变，见 pipeline §5.3）。
+用途：metrics 有内容流程侧的数据源（沉淀量/采纳/摩擦）；归因能定位"沉淀环节 vs 诊断环节"（诊断侧看 trace，沉淀侧看 exec-log）；evolve-check 收尾读它拿本轮现场（不靠 agent 记忆）。
 
 ## 5. 替换与回滚（机制 D）：新 idea 替换旧实现
 
 当前 schema 只有单卡生命周期（rejected = 终态）。用户场景"发现 proposal 没效果、或有了更好的 idea 可回滚之前的"需要**卡间关系**：
 
 - idea 卡加 `supersedes: [EV-xxx]` / `superseded_by: EV-yyy` 字段；
-- **替代卡可在旧卡任意阶段提出**（包括旧卡还在 adopted 观察窗内——这正是"新 idea 更好"的典型场景），但旧卡状态按其在位阶段流转：
-  - 旧卡仍 candidate/proposed/in_experiment → 新卡提出即旧卡标 `superseded`（未合入，无回滚负担），`superseded_by` 指向新卡；
-  - 旧卡 **pending_merge（批提交模式 §6.3a 攒批待审）** → 新卡提出即旧卡标 superseded 并**从批中撤出**（不再进聚合 PR）——它还未合入，没有观察窗证据要保留，撤出避免把已被替代的改动送审浪费人注意力；
-  - 旧卡已 adopted（观察窗内）→ 新卡进入实验，**旧卡观察窗继续结算到终点**（若旧卡先 validated 再被新卡 validated 顶替 → 旧卡 superseded；若旧卡先 rolled_back → 新卡自动成为唯一实现）。**避免"新卡还没验证就废弃观察窗中的旧卡"**——观察窗是旧卡效果的唯一证据，中途废弃等于丢失对照；
-  - 旧卡已 validated → 新卡 validated 后旧卡 superseded（原表述，最常见路径）。
+- **替代卡可在旧卡任意阶段提出**（v5 状态机：in_experiment/validated/rejected/superseded，无 candidate/pending_merge/adopted 态——卡状态 = agent 决策档案，攒批/合入是流程层），旧卡状态按其在位阶段流转：
+  - 旧卡 in_experiment（执行中/未终判）→ 新卡提出即旧卡标 `superseded`（未终判，无回滚负担），`superseded_by` 指向新卡；该旧卡的改动若已进攒批 → 从批中撤出（还未合入，没有观察窗证据要保留）；
+  - 旧卡 validated（已采纳、合入后观察窗内）→ 新卡进入实验，**旧卡观察窗继续结算到终点**（若旧卡先观察窗确认有效再被新卡顶替 → 旧卡 superseded；若旧卡先现场退化回滚 → 新卡自动成为唯一实现）。**避免"新卡还没验证就废弃观察窗中的旧卡"**——观察窗是旧卡效果的唯一证据，中途废弃等于丢失对照；
+  - 旧卡 validated 且观察窗已结算 → 新卡 validated 后旧卡 superseded（最常见路径）。
 - 回滚语义升级：rolled_back 时若该卡 supersedes 某旧卡 → **回滚到被替代版本**（git revert 到旧卡合入点），而不是回滚到空白。**链式 supersede 的处理（A→B→C 链回滚 C）**：沿 `superseded_by` 链回溯，回滚到**链上最近一张 validated 的实现**——若 B 已 superseded（在 A 之上被替代、非 validated 终态），则跳过 B 回到 A（或链上更早的 validated 卡）；若链上没有 validated 卡（全是降级态/未验证），回滚到链首的初始实现并标注"链上无 validated 版本"。**回滚目标 = 最近的有效实现，不是机械的紧邻旧卡**——这保证回滚后系统处于"曾被验证过"的状态，而非中间试验态；
 - 追溯链：卡 → supersedes 链 → decisions → 实验记录 → 合入 commit，任何一点可回看"现在的实现是谁、替代了谁、为什么"。**一条不变式：同一时刻每个 target_component 至多一张 validated/在位卡**——supersede 链保证实现可追溯回单一版本。
 
@@ -99,7 +98,7 @@ orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对
 | 任务总览 | 任务列表/状态（active/paused/steady）、每轮结果摘要、token 总账 | proposals/tasks/ |
 | 会话直播 | 当前轮进度：进行到哪一步、在跑哪个 agent、下一步计划 | session state + 执行日志 |
 | 卡流转 | 每卡状态机（candidate→…→validated/rolled_back/superseded）+ decisions 链 + 实验结论 | proposals/ideas/ |
-| 指标 | 四层指标（execution §6）+ 回滚率 + 每 validated 卡 token | timeline + 台账 |
+| 指标 | 四层指标（execution §6）+ 回滚率 + 每 validated 卡 token | timeline + 归因事件聚合 |
 
 载体三档，按落地成本排序：
 
@@ -140,8 +139,8 @@ orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对
 | 层 | 工程形态 | 载体 | 对应用例 |
 |---|---|---|---|
 | **流程协议** | 新的 skill（如 `self-evolve`） | `skills/self-evolve/SKILL.md` | 描述"跑一轮自演进"的会话协议（orchestration §1.2）：目标 → 默认策略装载 → 对齐 → 计划 → 观察窗执行 → 报告。**skill = agent 可加载的执行协议**，类似 knowledge-groom 的地位，但触发语义同 groom（disable-model-invocation，人显式触发，防自发批量改库） |
-| **确定性逻辑** | 一批脚本 | `scripts/` | S2 评测打分（issue→replay→对照）、component-tally 累积、token 记账、执行日志汇总——凡机械可判的环节脚本化，agent 只读聚合输出（原则二/九） |
-| **领域状态** | 数据文件 | `proposals/` + `metrics/component-tally.yaml` | **git 归属分层（对齐仓库 .gitignore 哲学：运行时状态不进 git，稳态资产才进）**：`proposals/ideas/` 是资产（卡含最终状态与 decisions，随 PR 进出，同 knowledge/ 纪律，脱敏后入 git）；`proposals/tasks|sessions|reviews|experiments/` 是**运行时状态**（进度、token 账本、逐轮变化，类比 traces/ 与 inbox 草稿）——本地留存、gitignore，稳态结果以报告/采纳项投影入 git。台账是词法数据可 diff（原则三），CI 校验 schema（ideas/ 与台账 schema） |
+| **确定性逻辑** | 一批脚本 | `scripts/` | S2 评测打分（issue→replay→对照）+ settle_s2_feedback 结算、归因事件按需聚合（component_tally）、执行日志（log_skill_exec）——凡机械可判的环节脚本化，agent 只读聚合输出（原则二/九） |
+| **领域状态** | 数据文件 | `proposals/` | **git 归属分层（对齐仓库 .gitignore 哲学：运行时状态不进 git，稳态资产才进）**：`proposals/ideas/` 是资产（卡含最终状态与 decisions，随 PR 进出，同 knowledge/ 纪律，脱敏后入 git）；`proposals/tasks|sessions|reviews|experiments/` 是**运行时状态**（进度、token 账本、逐轮变化，类比 traces/ 与 inbox 草稿）——本地留存、gitignore，稳态结果以报告/采纳项投影入 git。归因事件在 traces/（运行时），按需聚合不建常驻表；ideas/ schema 由 verify_proposals CI 校验 |
 | **可视化** | DSH Cordis 插件 | `dsh-plugins/self-evolve-panel/`（host/client）+ 加载 skill（preload-panel 先例） | run §6 领域视图（任务总览/卡流转/指标）——**不是** dsh-agent-teams 的活动面板（那只是 agent 协作态视图） |
 
 **为什么不能只做一个 skill**：skill 定义"agent 怎么做"，但它不承载确定性校验（脚本）、不承载可 diff 状态（数据文件）、不承载运行时渲染（插件）。四类能力在仓库里本就是四种载体，自演进横跨全部四类——单 skill 会把校验/状态/可视化塞进 prompt 协议，违反原则二（不变量写进结构）。dsh-agent-teams 插件属于"执行载体"层（§6.7），不在上述四层内——它提供多 agent 运行底座，可被 self-evolve skill 调用，但不是自演进工程本身。
@@ -152,9 +151,10 @@ orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对
 
 | 步骤 | 内容 | 入口闸门 |
 |---|---|---|
-| 1 | S2 校准集建立 + selection/test 划分（先 20 条验证，再扩 200，对应 §11 Phase C2） | issue 池可批量取（已具备） |
-| 2 | 统一执行记录（先 diagnose + issue-ingest，再扩展到全部 skill，对应 §11 Phase A–B） | 已落地（schema+脚本+3 内容 skill 收尾）；diagnose/groom 待接 |
-| 3 | 长期任务层试点一轮（手动触发，任务状态机 + 轮间调度跑通，对应 §11 Phase D） | 步骤 1–2 有真实数据 |
+| 1 | S2 校准集建立（已建 9 条单池；selection/test 分离是规模闸门：池 ≥30 再分，见 §3） | issue 池可批量取（已具备） |
+| 2 | 统一执行记录（内容 skill 收尾 exec-log + evolve-check 读现场） | 已落地（schema+脚本+3 内容 skill 收尾 + groom）；diagnose 走 trace 不重复落（§4 边界） |
+| 2b | S2 feedback 结算（settle_s2_feedback → case.validation_record） | 已落地（2026-09 selfevolve-loop）；真实 S2 result 批量后结算首轮 |
+| 3 | 长期任务层试点一轮（手动触发，任务状态机 + 轮间调度跑通，对应 §11 Phase D） | 步骤 1–2b 有真实数据 |
 | 4 | supersede 字段 + 回滚语义落地（schema 已含字段，出现首个替代场景时激活，对应 §11 Phase D） | 出现首个"新 idea 替代旧实现"场景 |
 | 5 | 可视化（DSH 面板扩展或 HTML 报告，对应 §11 Phase E 后） | 任务层跑通 ≥1 轮 |
 
@@ -165,8 +165,8 @@ orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对
 | 设计元素 | 服务的原则 | 说明 |
 |---|---|---|
 | issue 即带标注评测集、即时对照 | 八（可观测先于改进）、十 | 答案随拉取可得，无需延迟机制；open 只作弱信号不冒充结论 |
-| selection/test 分离 | 一（验证先于交付） | 防对校准集过拟合，validated 终判用未见过的 test |
-| 统一执行记录（对象是 skill 非人） | 八、九 | feedback loop 全链路数据；不碰身份红线 |
+| selection/test 分离（规模闸门） | 一（验证先于交付） | 池 ≥30 再分两半防过拟合；当前单池 + self-referential 隔离（self_consistent） |
+| 统一执行记录（对象是 skill 非人，内容流程收尾） | 八、九 | 内容流程全链路数据；不碰身份红线；diagnose 走 trace 不重复落 |
 | supersede 关系与回滚到被替代版本 | 七（变更可逆） | 替换可追溯，回滚粒度到"上一个有效实现" |
 | 可视化四层视图 | 八、十 | 让"人在看系统演进"成为可能而非宣称 |
 | 任务级稳态降频与安全阀 | 九、十一 | 持续运行必须有资源与质量边界 |
