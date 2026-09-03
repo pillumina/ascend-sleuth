@@ -41,3 +41,7 @@ decisions:
   - who: groom（2026-W36 round2 全自动轮）
     when: "2026-09-02"
     conclusion: "数据更新：interrupt 36→50/30（本轮 21 case 升格，14 条入 interrupt）。仍超 soft_cap 30、逼近 hard_cap 60——拆分评估更紧迫。本轮产出 8 个 variant_of 标注的独立 case（同族不同机制，未硬并入），拆分时注意 variant 归组。拆分评估属 dual 高风险，超出本轮补 case 目标范围，随卡交人审。"
+  - who: agent（生命周期标记）
+    when: "2026-09-03"
+    type: decision
+    conclusion: "保留 candidate（gate 未满足 + 等 owner 定拆分轴）：方案有（roadmap A2 platform 轴候选：507018 家族 310P IndexPut / A3-910C unique_consecutive），但健康指标（候选溢出率）待 metrics 实测 + 拆分轴需 owner 确认（dual 高风险，不自动执行）。属等待 gate 的真提案，非不完整。"

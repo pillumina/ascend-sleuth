@@ -270,7 +270,19 @@ estimated_cost: {tokens: 8000}   # 成本侧（orchestration §3.2：预计 toke
 actual_cost: null                # 合入/回测后写回 actual_cost.tokens（缺失即审计缺口）
 principle_refs: [五, 六, 八, 十一]
 decisions: []                    # 审计链：谁在何时依据哪份证据决定什么（只追加不修改）
+                                 # 每条含 who/when/conclusion；可选 type 标注生命周期阶段：
+                                 #   proposal（立项/假设定稿）| action（执行了什么：改动/实验/沉淀）
+                                 #   | eval（验证结果：S2/golden 数据、通过与否）| decision（采纳/保留/拒绝）
+                                 # 卡 = 完整生命周期 trace：proposal→action→eval→decision，
+                                 #   status 推进随 decisions 走（见下"生命周期完整性规则"）
 ```
+
+**生命周期完整性规则（每张卡是一个 proposal→action→eval→decision 的完整档案，不是想法清单）**：
+
+1. **status 推进随 decisions 走，不靠自觉**：产卡（candidate，记 proposal decision）→ 执行/实验（in_experiment，记 action decision）→ 验证通过（pending_merge/validated，记 eval decision）→ 合入/否决（adopted/rejected 等，记 decision decision）。**执行或验证完成而 status 停在 candidate = 卡不完整**（机制推进，不是靠 agent 记得改状态）。
+2. **终态卡必须有 decision 记录**：adopted/validated/rejected/rolled_back/superseded 的卡，decisions 中必须有对应结论（谁决定、依据哪份 eval 数据）——无结论的终态卡 = 审计缺口（verify_proposals 校验）。
+3. **adopted/validated 后 actual_cost 必填**：成本审计（orchestration §3.2：无实际成本记录不可审计）——终态卡 actual_cost 仍 null = 缺口。
+4. **candidate 池语义**：candidate = 有信号、方案待定/待执行的**真提案**；仅"观察到的信号"（容量超了/族够了但无具体 action 方案）不进正式 ideas/（用 signal 记录在 session 报告，方案成形才产卡）——防想法清单污染提案账本。
 
 状态机（v3：与 execution §5.1 一致——**验证先于合入**：即时判定类合入前即 validated；真实反馈类合入后观察窗才结算；否决/回滚 = 终态，留理由，不删除）：
 

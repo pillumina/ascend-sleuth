@@ -75,6 +75,19 @@ description: >
 4. 验证通过 → 卡进攒批（status → proposed → in_experiment → pending_merge）；
    验证失败 → 卡 rejected（留结论）或 re-iterate，**不推进**（§6.5 无实验证据不合入）。
 
+**第 3.5 步：生命周期完整性（卡 = proposal→action→eval→decision 的完整档案，pipeline §7）**：
+
+- **每步 decisions 记 type**：产卡记 `{type: proposal}`、执行记 `{type: action, conclusion: <做了什么/commit/产物>}`、
+  验证记 `{type: eval, conclusion: <验证数据/通过与否>}`、最终结论记 `{type: decision, conclusion: <采纳/保留/拒绝+依据>}`——
+  卡能看出生命周期走到哪、凭什么推进；
+- **status 随执行推进，不靠自觉**：action 完成 → in_experiment；eval 通过 → pending_merge
+  （攒批待合入）；否决/失败 → rejected（留结论）。**执行或验证完成而 status 停在 candidate =
+  卡不完整**（verify_proposals 会报，见下）；
+- **终态卡必闭合**：adopted/validated/rejected/rolled_back/superseded 必须有 decision 记录；
+  adopted/validated 后补 `actual_cost`（成本审计）——缺了 verify_proposals 报审计缺口；
+- 仅"观察到的信号"（无具体 action 方案）**不产卡**——信号记 session 报告，方案成形才产
+  candidate（防想法清单污染提案账本）。
+
 **第 4 步：出收尾说明**（并入流程报告，不单独打扰用户）：
 
 ```

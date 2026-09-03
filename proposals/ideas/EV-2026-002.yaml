@@ -6,7 +6,7 @@
 id: EV-2026-002
 layer: L1                          # 补 case = 知识内容层
 title: "S2 缺口 #14363：DeepSeek V4 routed expert SwiGLU limit 漏传（精度漂移）→ 补 case 候选"
-status: candidate
+status: pending_merge             # 14363 升格入库 + S2 验证通过；攒批待合入（PR #97）
 authorization: review              # 补 case 属 content，判断性中风险
 dimension: evolvability
 supersedes: []
@@ -34,7 +34,8 @@ risk: low                            # 补 case 低风险
 principle_refs: [八, 十一]            # 可观测 / 数据触发（S2 缺口驱动）
 estimated_cost:
   tokens: 3000                       # 沉淀一条 case 的评估成本
-actual_cost: null
+actual_cost:
+  tokens: 3000                     # 14363 沉淀 + 升格 + S2 replay 验证实测估算
 decisions:
   - who: self-evolve 试点
     when: "2026-09-02"
@@ -42,3 +43,7 @@ decisions:
   - who: groom（2026-W36 round2 全自动轮）
     when: "2026-09-02"
     conclusion: "执行完成并验证：14363 升格 knowledge/inference/vllm-ascend/precision/（case.yaml 补全）；S2 replay #14363 rc_match=True 佐证根因方向；index 已含该 case（precision 11 条）——'沉淀后应命中'前提成立。卡状态 candidate→proposed 待 review 合入。"
+  - who: agent（生命周期闭合）
+    when: "2026-09-03"
+    type: decision
+    conclusion: "14363 升格入库（case.yaml 补全 + pre-triage new_pattern）+ S2 replay 验证（rc_match=True + 升格后 index 可命中），status candidate→pending_merge，actual_cost 补记 3000 tok，随 PR #97 攒批待合入。"

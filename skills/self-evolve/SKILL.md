@@ -61,6 +61,13 @@ disable-model-invocation: true
 4. 验证通过 → proposed → in_experiment → pending_merge；失败 → rejected（留结论）
    或 re-iterate，**不推进**（§6.5 无实验证据不合入）。
 
+**生命周期完整性（卡 = proposal→action→eval→decision 完整档案，pipeline §7）**：每步
+decisions 记 type（proposal/action/eval/decision）；**status 随执行推进不靠自觉**——
+action 完成 → in_experiment、eval 通过 → pending_merge、否决 → rejected。执行/验证完成
+而 status 停 candidate = 卡不完整（verify_proposals 报）。终态卡（adopted/validated/
+rejected/rolled_back/superseded）必须有 decision 记录 + adopted/validated 补 actual_cost。
+仅信号无方案不产卡（信号记报告，方案成形才产）。
+
 ## 四、skill 自我演进（L2：被数据信号触发，不是用户目标）
 
 skill/流程改进**由信号驱动**，两条来源：

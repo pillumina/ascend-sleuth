@@ -6,7 +6,7 @@
 id: EV-2026-004
 layer: L3                          # 评测机制/编排层（改 s2_replay 口径 + result schema + diagnose trace）
 title: "S2 replay 从'阉割版检索评测'改为'完整诊断能力评测'——分层归因（检索/推理/工具）+ 缺口三态化 + replay 工具边界"
-status: proposed               # 实施完成 + 全校准集验证通过（2 条 miss→hit + 归因精确化）；待 review 合入
+status: pending_merge             # 实施完成 + 全校准集验证通过（2 条 miss→hit + 归因精确化）；攒批待合入（PR #97）
 authorization: dual                # 改评测口径 = 改 validated/验证门判定语义（结构级，双签）
 dimension: evolvability
 supersedes: []
@@ -40,7 +40,8 @@ risk: high                            # 改评测口径影响 validated/验证�
 principle_refs: [八, 十, 一]          # 可观测（trace 含 agent 完整轨迹）/ 诚实退化（缺口三态如实分）/ 验证先于交付（S2 测真能力）
 estimated_cost:
   tokens: 8000                       # s2_replay 口径 + result schema + diagnose trace tool-call 记录
-actual_cost: null
+actual_cost:
+  tokens: 9000                     # 实施（s2_replay 改口径 + trace 规范）+ 全校准集重测验证（2 subagent + 实证）实测估算
 decisions:
   - who: agent 讨论（与用户，2026-W36 round2 复盘）
     when: "2026-09-02"
@@ -54,3 +55,9 @@ decisions:
   - who: agent（全校准集新口径重测，commit 8b28f81）
     when: "2026-09-03"
     conclusion: "新口径重测全部校准集（14871/14363/13639 重测 + 13446 前测）——效果实证：①tier2 miss→hit：#14871（命中 VLLM-ASC-14871，rc_match=True，找到上游删除 commit a0c092ee72）与 #14363（命中 VLLM-ASC-14363，验证'补 case 后能命中'闭环达成）；②缺口归因精确化：#13639 → A 类（工具用尽、clone 源码证实 FULL×spec-decode 非覆盖组合、fixture 裁剪致客观缺失）、#13446 → B 类（工具策略可补）；③证据升级：源码行级实测 + 版本锚点 + 测试覆盖面佐证（非'推理自洽'）。旧口径 2/4 rc_match → 新口径 3/4 + 2 条 tier2 命中。副产品：HF 多源获取纪律内联进 diagnose SKILL §5.2b（hf-mirror 镜像可用——执行环境知识归 SKILL 不归 references）+ diagnose trace 记 tool_calls（含失败尝试）。"
+
+
+  - who: agent（生命周期闭合）
+    when: "2026-09-03"
+    type: decision
+    conclusion: "实施 + 全校准集验证完成（decisions 记 action/eval），status proposed→pending_merge，actual_cost 补记 9000 tok，随 PR #97 攒批待合入。"

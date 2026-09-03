@@ -1,0 +1,58 @@
+# ============================================================
+# Idea 卡：[生命周期机制测试] EV-2026-005
+# 目的：验证卡 = proposal→action→eval→decision 完整生命周期机制（pipeline §7）
+# 内容：triage inference_interrupt 正则漏 ValueError → 补正则（#7023 暴露的真实缺口）
+# ============================================================
+
+id: EV-2026-005
+layer: L2
+title: "triage inference_interrupt 正则漏 ValueError → 补正则（#7023 暴露缺口，机制测试验证）"
+status: pending_merge             # action 完成（triage 补 ValueError）+ eval 通过（正则命中 #7023 症状）；攒批待合入
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-03
+source_signals:
+  - signal: eval_design_flaw
+    evidence: "#7023 补 case 时发现 triage inference_interrupt 异常类清单缺 ValueError（仅 RuntimeError/AssertionError）"
+    trajectory:
+      - "postmortems/inbox/VLLM-ASC-7023 头注释（triage 路由缺口）"
+      - "skills/evolve-check T4"
+hypothesis: >-
+  inference_interrupt 分支异常类清单缺 ValueError（仅 RuntimeError/AssertionError），
+  补后 ValueError 启动失败类 issue 可被路由命中（#7023 验证）
+predicted_effect:
+  metric: ValueError 类路由命中
+  from: "miss（未路由）"
+  to: "同类 Tier-2 命中"
+validation:
+  method: issue_replay
+  baseline: 现 triage-tree 无 ValueError 正则（#7023 replay 未命中）
+  success_criteria: 补正后 #7023 replay 路由命中 inference_interrupt（top-3）
+  rollback: triage-tree 改动走 PR，git revert 可回滚
+gate:
+  condition: "诊断暴露 ValueError 类启动失败无路由覆盖（#7023 已暴露）"
+risk: low
+principle_refs: [八, 十一]
+estimated_cost:
+  tokens: 2000
+actual_cost:
+  tokens: 1500                     # 机制测试实测（改 triage 1 行 + 正则验证）
+decisions:
+  - who: agent（机制测试）
+    when: "2026-09-03"
+    type: proposal
+    conclusion: "产卡（candidate）：信号=#7023 暴露 triage 缺 ValueError 正则；方案=补正则；预期=同类路由命中。"
+  - who: agent（机制测试）
+    when: "2026-09-03"
+    type: action
+    conclusion: "执行：triage-tree.yaml line 73 启动期异常清单补 ValueError（#7023 类）。"
+  - who: agent（机制测试）
+    when: "2026-09-03"
+    type: eval
+    conclusion: "验证：ValueError 正则命中 #7023 症状（Attempted to assign 65=65...），路由 inference_interrupt 达成。"
+  - who: agent（机制测试）
+    when: "2026-09-03"
+    type: decision
+    conclusion: "candidate→pending_merge：action + eval 完成，随 PR #97 攒批待合入（review 级）。"
