@@ -157,6 +157,11 @@ rollback：<rollback>
 ```yaml
 # agent 决策事件（机器标签 action + 给用户的内容 output + 决策依据 reason）
 # attribution 事件在 verdict=execution_error 时可选加 component: <组件ID>（执行错归因下沉，见"误诊归因"节）
+# source_analysis 事件在深度排查用工具查证时必记 tool_calls（EV-2026-004：评测可复核
+#   "agent 试了什么才说缺 X"）——格式 [<工具/命令>: <拿到什么关键证据/失败原因>]，如
+#   ["curl hf-mirror.com/.../config.json: HTTP 200, model_type=qwen3_vl",
+#    "curl huggingface.co/.../config.json: 超时"]。多次尝试不同来源/策略都要记（含失败）
+#   ——失败尝试是"该源不可达"的可复用教训（副产品：备选源/镜像清单由此沉淀）
 - {role: agent, step: N, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback|reference_lookup|triage_semantic|source_analysis|attribution|resume, output: <给用户的内容>, reason: <决策依据/推理过程>, ...}
 # user 输入事件（content 摘要 + evidence 完整证据——跨 agent/session 自包含的关键）
 - {role: user, step: N, content: <用户输入摘要（短，供面板快速浏览）>,

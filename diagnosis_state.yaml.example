@@ -38,6 +38,8 @@ last_action: "等待用户执行 env | grep HCCL_BUFFSIZE 并贴回输出"
 #   agent: {role: agent, step: N, action: <机器标签>, output: <给用户的内容>, ...动作字段}
 # action 词表见 SKILL.md「每步必写 trace」（triage|load_index|quickly_check|...）
 # 词表外 action 会被 trace_metrics.py 报为纪律违规；新增 action 必须两处同步。
+# source_analysis 事件用工具查证时必记 tool_calls 字段（EV-2026-004）：
+#   [<工具/命令>: <拿到什么关键证据/失败原因>, ...]——含失败尝试（备选源教训由此沉淀）
 trace:
   - {role: user, step: 1, content: "训练挂了，日志在 <paste>，HCCL 相关报错",
      evidence: {inline: "rank3: HCCL timeout ...\nrank1: [ERROR] 507057 ...", files: ["traces/evidence/2026-07-09-ep-hang-a5/train.log"], sources: ["https://github.com/.../issue/1"], missing: "缺 CANN 版本"}}
