@@ -52,7 +52,7 @@ orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对
 
 **open issue 的正确处理**（替代"延迟对照"）：open 池只做**覆盖探测**——现象喂 diagnose，无命中/低置信 → 记"该现象族未覆盖"候选（进待定池），**不做结论判定**（无 resolution 可对照）。issue 转 closed 后自动进入评测池（增量拉取游标天然捕获 open→closed 转换），从那一刻起才有答案、才参与 S2。
 
-**S2 校准集的 selection/test 分离是规模闸门（2026-09 降级）**：原设计分 selection（gate 决策用）/ test（validated 终判用，防对校准集过拟合，对应 SkillOpt held-out）。**当前池子（9 条）撑不起两半**——test 半要求"从未被本系统沉淀过的历史 issue"，而沉淀消耗池子，9 条下 test 半无法成立还自相矛盾。降级规则：**池子 ≥30 条且沉淀/评测解耦成熟后再分两半**；当前单池运行，replay 分数标注 `source: issue-replay`，validated 终判诚实标注"无 held-out test（池小），依赖 selection 对照 + 人工抽审"。
+**S2 校准集的 selection/test 分离是规模闸门（2026-09 降级）**：原设计分 selection（gate 决策用）/ test（validated 终判用，防对校准集过拟合，对应 SkillOpt held-out）。**池子小撑不起两半**——test 半要求"从未被本系统沉淀过的历史 issue"，而沉淀消耗池子，小池下 test 半自相矛盾。降级规则：**单池运行直到有真实 held-out 需求**（原"≥30"是参数估计非硬门槛——theory §7 常数接受实测重校；2026-Q3 自评确认非前置阻塞，扩池是 issue 流自然流入的持续动作；单池 + self-referential 隔离已覆盖防过拟合主威胁）。当前 20 条（11 high）单池，replay 分数标注 `source: issue-replay`，validated 终判诚实标注"无 held-out test（池小），依赖 selection 对照 + 人工抽审"。
 
 **S2 评测集与沉淀来源的解耦（保留，self-referential 隔离，任何规模都执行）**：S2 评测的 issue 若已被沉淀成 case（issue→to-postmortem→case 是同一循环），系统会"命中自己刚沉淀的答案"——S2 高分只证明"记住了自己写的题"。隔离规则：
 
