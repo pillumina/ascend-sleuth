@@ -26,7 +26,7 @@ import yaml
 # attribution（误诊归因）：反馈 not_resolved 后读 trace 判定 case 错 / 执行错——归因比指标
 #   的数据源（metrics.md「执行-误诊归因比」），无此落点则该指标无法统计。
 #   注意：attribution 事件的 component 字段（执行错归因下沉，diagnose SKILL 写入）的
-#   聚合统计由 scripts/component_tally.py 承担（组件失败台账 metrics/component-tally.yaml，
+#   聚合统计由 scripts/component_tally.py 按需聚合承担（归因事件入 trace——无常驻台账表，
 #   evolution-pipeline §2）——本脚本只计 verdict 分布（case_error/execution_error 汇总指标），
 #   不重复统计 component，避免双源口径漂移。component 字段不会被词表检查拦截（非 action）。
 KNOWN_ACTIONS = {

@@ -18,7 +18,7 @@
 #   8. supersedes/superseded_by 引用的卡 id 存在（若填）
 #   9. decisions 为列表，元素含 who/when/conclusion（若非空）；type ∈ {proposal, action,
 #      eval, decision} 若填（生命周期阶段标注，pipeline §7）
-#   10. validation.method ∈ {golden_replay, tally_recheck, metrics_compare, issue_replay}
+#   10. validation.method ∈ {golden_replay, metrics_compare, issue_replay}（2026-09 去 tally_recheck——台账复测已改归因事件复测）
 #   11. 生命周期完整性（pipeline §7「生命周期完整性规则」）：
 #       - 终态卡（validated/rejected/superseded）必须有 agent 决策记录
 #       - validated 后 actual_cost 必填（成本审计缺口）
@@ -42,7 +42,7 @@ VALID_STATUS = {
 VALID_AUTH = {"auto", "review", "dual"}
 VALID_DIM = {"architecture", "evolvability", "maintainability", "observability", "process"}
 VALID_LAYER = {"L1", "L2", "L3"}
-VALID_METHOD = {"golden_replay", "tally_recheck", "metrics_compare", "issue_replay"}
+VALID_METHOD = {"golden_replay", "metrics_compare", "issue_replay"}
 VALID_DECISION_TYPE = {"proposal", "action", "eval", "decision"}
 # 终态卡：生命周期必须闭合（agent 决策记录 + validated 补 actual_cost）
 TERMINAL_STATUS = {"validated", "rejected", "superseded"}
