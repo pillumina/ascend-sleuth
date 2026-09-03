@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>自演进机制全流程</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f6f7f9; color: #1a1d21;
+    display: flex; justify-content: center; padding: 40px 20px;
+  }
+  .wrap { max-width: 1000px; width: 100%; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  .sub { color: #5c6470; font-size: 15px; margin: 0 0 28px; }
+  svg { width: 100%; height: auto; background: #fff; border-radius: 12px;
+        box-shadow: 0 2px 12px rgba(0,0,0,.06); }
+  .node { fill: #fff; stroke: #c3cad4; stroke-width: 1.5; rx: 10; }
+  .node-auto { fill: #eef4ff; stroke: #7a9ff0; }
+  .node-human { fill: #fff3ec; stroke: #e8a06a; }
+  .node-result { fill: #eafaf1; stroke: #6fc495; }
+  .node-warn { fill: #fdeef0; stroke: #e0707f; }
+  .t-main { font-size: 14px; font-weight: 600; fill: #1a1d21; }
+  .t-sub { font-size: 11px; fill: #5c6470; }
+  .edge { stroke: #9aa4b2; stroke-width: 1.6; fill: none; }
+  .edge-em { stroke: #7a9ff0; stroke-width: 2; }
+  .edge-back { stroke: #c3cad4; stroke-width: 1.4; stroke-dasharray: 5 4; }
+  .elabel { font-size: 11px; fill: #3d4550; }
+  .tag { font-size: 10px; fill: #e0707f; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 16px; margin-top: 24px; }
+  .card { background: #fff; border-radius: 10px; padding: 16px 18px; box-shadow: 0 1px 6px rgba(0,0,0,.05); border-top: 3px solid #7a9ff0; }
+  .card h3 { margin: 0 0 8px; font-size: 15px; }
+  .card.green { border-top-color: #6fc495; } .card.red { border-top-color: #e0707f; }
+  .card li { font-size: 13px; color: #3d4550; line-height: 1.6; }
+  ul { margin: 0; padding-left: 18px; }
+  @media (prefers-color-scheme: dark) {
+    body { background: #17191c; color: #e8eaed; }
+    svg { background: #1e2126; box-shadow: none; }
+    .node { fill: #23272e; stroke: #3d4550; }
+    .node-auto { fill: #1c2940; stroke: #7a9ff0; }
+    .node-human { fill: #33261c; stroke: #e8a06a; }
+    .node-result { fill: #14332a; stroke: #6fc495; }
+    .node-warn { fill: #331c20; stroke: #e0707f; }
+    .t-main { fill: #e8eaed; } .t-sub, .elabel { fill: #9aa4b2; }
+    .sub, .card li { color: #9aa4b2; }
+    .card { background: #23272e; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>自演进机制全流程</h1>
+  <p class="sub">系统每次干活后自动找改进点 → 改 + 验证 → 人把关 → 合入生效 → 下次更准（循环）</p>
+
+  <svg viewBox="0 0 1000 640" xmlns="http://www.w3.org/2000/svg">
+    <!-- 主循环（左侧下行 → 右侧下行 → 底部回到顶） -->
+    <!-- 阶段标记 -->
+    <text x="30" y="30" class="t-main" fill="#7a9ff0">自动完成区</text>
+    <text x="760" y="30" class="t-main" fill="#e8a06a">人把关区</text>
+
+    <!-- ===== 左侧：自动主链 ===== -->
+    <!-- ① 干活 -->
+    <rect class="node" x="40" y="60" width="200" height="64"/>
+    <text class="t-main" x="140" y="86" text-anchor="middle">① 日常干活</text>
+    <text class="t-sub" x="140" y="106" text-anchor="middle">诊断 / 沉淀 / 拉取 issue</text>
+
+    <!-- ② 收尾检查 -->
+    <rect class="node node-auto" x="40" y="180" width="200" height="64"/>
+    <text class="t-main" x="140" y="206" text-anchor="middle">② 收尾自动检查</text>
+    <text class="t-sub" x="140" y="226" text-anchor="middle">这轮暴露可改进点吗？</text>
+
+    <!-- ③ 有信号 -->
+    <rect class="node node-auto" x="40" y="310" width="200" height="64"/>
+    <text class="t-main" x="140" y="336" text-anchor="middle">③ 有改进点</text>
+    <text class="t-sub" x="140" y="356" text-anchor="middle">某类查不到 / 某步老错</text>
+
+    <!-- 没信号（右侧分支） -->
+    <rect class="node node-result" x="300" y="310" width="150" height="64" rx="20"/>
+    <text class="t-main" x="375" y="336" text-anchor="middle">没信号</text>
+    <text class="t-sub" x="375" y="356" text-anchor="middle">一行带过</text>
+
+    <!-- ④ 记改进卡（右列） -->
+    <rect class="node node-auto" x="520" y="60" width="220" height="64"/>
+    <text class="t-main" x="630" y="86" text-anchor="middle">④ 记改进卡</text>
+    <text class="t-sub" x="630" y="106" text-anchor="middle">改什么 + 怎么验证</text>
+
+    <!-- ⑤ 验证 -->
+    <rect class="node node-auto" x="520" y="180" width="220" height="64"/>
+    <text class="t-main" x="630" y="206" text-anchor="middle">⑤ 改完自验证</text>
+    <text class="t-sub" x="630" y="226" text-anchor="middle">真实已解决 issue 对照</text>
+
+    <!-- 验证没过 -->
+    <rect class="node node-warn" x="520" y="310" width="170" height="64" rx="14"/>
+    <text class="t-main" x="605" y="336" text-anchor="middle">验证没过</text>
+    <text class="t-sub" x="605" y="356" text-anchor="middle">记“不行”，改动不留</text>
+
+    <!-- ⑥ 攒批人审（底部） -->
+    <rect class="node node-human" x="300" y="450" width="200" height="64"/>
+    <text class="t-main" x="400" y="476" text-anchor="middle">⑥ 攒批交人审</text>
+    <text class="t-sub" x="400" y="496" text-anchor="middle">一批一 PR，按卡可回退</text>
+
+    <!-- ⑦ 合入 -->
+    <rect class="node node-human" x="550" y="450" width="190" height="64"/>
+    <text class="t-main" x="645" y="476" text-anchor="middle">⑦ 人点头合入</text>
+    <text class="t-sub" x="645" y="496" text-anchor="middle">高风险双签</text>
+
+    <!-- ⑧ 下次更准（回到顶部左侧） -->
+    <rect class="node node-result" x="40" y="450" width="200" height="64"/>
+    <text class="t-main" x="140" y="476" text-anchor="middle">⑧ 下次更准</text>
+    <text class="t-sub" x="140" y="496" text-anchor="middle">新知识 / 更顺的流程</text>
+
+    <!-- 季度人审 -->
+    <rect class="node node-human" x="760" y="450" width="200" height="64"/>
+    <text class="t-main" x="860" y="476" text-anchor="middle">每季度人审流程</text>
+    <text class="t-sub" x="860" y="496" text-anchor="middle">信号准吗？参数调吗？</text>
+
+    <!-- ===== 连线 ===== -->
+    <!-- ①→② 垂直 -->
+    <path class="edge" d="M140 124 L140 178"/>
+    <text class="elabel" x="150" y="152">收尾触发</text>
+    <!-- ②→③ 垂直（有信号，主链） -->
+    <path class="edge edge-em" d="M140 244 L140 308"/>
+    <text class="elabel" x="152" y="278">有</text>
+    <!-- ②→没信号：检查右中→上拐→没信号左中 -->
+    <path class="edge" d="M240 212 L280 212 L280 342 L300 342"/>
+    <text class="elabel" x="248" y="204">无</text>
+    <!-- ③→④：有信号右中→水平到④左中 -->
+    <path class="edge edge-em" d="M240 342 L400 342 L400 92 L518 92"/>
+    <text class="elabel" x="380" y="330">方案成形才记</text>
+    <!-- ④→⑤ 垂直 -->
+    <path class="edge edge-em" d="M630 124 L630 178"/>
+    <text class="elabel" x="640" y="152">动手改</text>
+    <!-- ⑤→验证没过：⑤左中→左拐→分支右中 -->
+    <path class="edge" d="M520 212 L470 212 L470 342 L518 342"/>
+    <text class="elabel" x="430" y="330">不成立</text>
+    <!-- ⑤→⑥：⑤下→降到⑥上方 -->
+    <path class="edge edge-em" d="M630 244 L630 380 L400 380 L400 448"/>
+    <text class="elabel" x="505" y="372">通过</text>
+    <!-- ⑥→⑦ 水平 -->
+    <path class="edge" d="M500 482 L548 482"/>
+    <text class="elabel" x="524" y="474">批准</text>
+    <!-- ⑦→⑧：⑦左中→⑧右中 -->
+    <path class="edge" d="M550 482 L242 482"/>
+    <text class="elabel" x="395" y="474">生效</text>
+    <!-- ⑧→① 回环（底部绕右） -->
+    <path class="edge edge-back" d="M140 514 L140 580 L900 580 L900 92 L742 92"/>
+    <text class="elabel" x="480" y="572">回到干活，用上新知识</text>
+    <!-- 季度→④ 回边 -->
+    <path class="edge edge-back" d="M860 514 L860 556 L630 556 L630 128"/>
+    <text class="elabel" x="700" y="548">流程要改 → 开新卡</text>
+  </svg>
+
+  <div class="cards">
+    <div class="card">
+      <h3>改进从哪来：不专门“跑改进”</h3>
+      <ul>
+        <li>每次诊断 / 沉淀 / 拉取干完活，收尾自动瞄一眼</li>
+        <li>信号例：同类问题反复查不到（缺知识）、某步老错（修流程）</li>
+        <li>没信号就一行带过——不为改进而改进</li>
+      </ul>
+    </div>
+    <div class="card green">
+      <h3>改对才算数：验证是硬门槛</h3>
+      <ul>
+        <li>每张卡自带“怎么验证”：真实已解决 issue 对照，或回放历史测试</li>
+        <li>验证不过 → 如实记“不行”并丢弃（诚实记录也给人看）</li>
+        <li>改流程影响所有诊断，验证比改知识更严</li>
+      </ul>
+    </div>
+    <div class="card red">
+      <h3>人在哪把关：审批 + 季度回顾</h3>
+      <ul>
+        <li>一批改进攒一个 PR，人按卡审：整体合入或单独打回</li>
+        <li>涉及路由 / 结构的高风险改动需双签</li>
+        <li>每季度人审一次流程本身：信号准不准、要不要调参数</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</body>
+</html>
