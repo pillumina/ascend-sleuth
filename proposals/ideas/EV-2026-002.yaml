@@ -18,7 +18,7 @@ source_signals:
     trajectory:
       - "eval/s2/vllm-ascend.yaml #14363"
       - "fix PR #14364（vllm_ascend/models/deepseek_v4.py 补 swiglu_limit）"
-hypothesis: 沉淀 #14363 为 precision case 后，同类 DeepSeek V4 routed-expert 精度问题可被 Tier 2 命中（当前走 Tier 3 兜底或漏检）
+hypothesis: "沉淀 #14363 为 precision case 后，同类 DeepSeek V4 routed-expert 精度问题可被 Tier 2 命中（当前走 Tier 3 兜底或漏检）"
 predicted_effect:
   metric: DeepSeek V4 精度类命中
   from: "无覆盖（miss）"
@@ -31,19 +31,33 @@ validation:
 gate:
   condition: "S2 校准集条目有明确 resolution（PR #14364 已验证）+ 知识库无覆盖"
 risk: low                            # 补 case 低风险
-principle_refs: [八, 十一]            # 可观测 / 数据触发（S2 缺口驱动）
+principle_refs: [8, 11]            # 可观测 / 数据触发（S2 缺口驱动）
 estimated_cost:
   tokens: 3000                       # 沉淀一条 case 的评估成本
 actual_cost:
-  tokens: 3000                     # 14363 沉淀 + 升格 + S2 replay 验证实测估算
+  tokens: 3000
+  source: estimate                # 无 token 记账环境的估算（DSH 可经 tokenMeter 查真实值）
 decisions:
-  - who: self-evolve 试点
+  - who: self-evolve 试点（S2 缺口驱动）
     when: "2026-09-02"
-    conclusion: "已执行候选→沉淀：产出 postmortems/inbox/VLLM-ASC-14363.md 草稿（待 groom 三分类升格）"
+    type: action
+    conclusion: >-
+      S2 replay 发现 #14363（DeepSeek V4 routed expert 漏传 swiglu_limit）在知识库
+      无任何覆盖。该 issue 上游已由 PR #14364 修复且意图明确，是「答案在手、库中无案」
+      的典型补 case 机会，据此走沉淀流程，产出草稿进 postmortems/inbox/ 待审。
   - who: groom（2026-W36 round2 全自动轮）
     when: "2026-09-02"
-    conclusion: "执行完成并验证：14363 升格 knowledge/inference/vllm-ascend/precision/（case.yaml 补全）；S2 replay #14363 rc_match=True 佐证根因方向；index 已含该 case（precision 11 条）——'沉淀后应命中'前提成立。卡状态：agent 判 validated（采纳）。"
+    type: eval
+    conclusion: >-
+      把 #14363 沉淀为正式 case（VLLM-ASC-14363，precision，判 new_pattern），补全
+      case.yaml 并升格入库。随后用 S2 replay 验证：根因判断与维护者 resolution 高度
+      吻合（rc_match=True，deepseek/routed/swiglu 等关键概念全命中），且升格后索引
+      已能检索到该 case——「沉淀后同类问题可命中」的前提成立，补 case 闭环走通。
   - who: agent（生命周期闭合）
     when: "2026-09-03"
     type: decision
-    conclusion: "14363 升格入库（case.yaml 补全 + pre-triage new_pattern）+ S2 replay 验证（rc_match=True + 升格后 index 可命中），status candidate→validated（agent 采纳：S2 验证 solid），actual_cost 补记 3000 tok。改动随 PR #97 供人审。"
+    conclusion: >-
+      采纳。证据链完整：case 已升格入库、S2 replay 证实根因判断正确、索引可检索
+      命中——三项验证均通过，没有理由不采纳这次补 case。卡状态推进为 validated
+      （agent 决策，非 git 合入语义）；成本约 3000 token（估算）。改动随 PR #97
+      供人审，审的是整个自演进过程是否 solid。

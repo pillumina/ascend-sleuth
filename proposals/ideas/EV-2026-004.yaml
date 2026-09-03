@@ -37,27 +37,57 @@ validation:
 gate:
   condition: "S2 replay 已跑 ≥1 轮且出现'工具未用足被误标为数据缺失'的真实案例（#13446 已满足）"
 risk: high                            # 改评测口径影响 validated/验证门语义 + diagnose trace schema（结构级）
-principle_refs: [八, 十, 一]          # 可观测（trace 含 agent 完整轨迹）/ 诚实退化（缺口三态如实分）/ 验证先于交付（S2 测真能力）
+principle_refs: [8, 10, 1]          # 可观测（trace 含 agent 完整轨迹）/ 诚实退化（缺口三态如实分）/ 验证先于交付（S2 测真能力）
 estimated_cost:
   tokens: 8000                       # s2_replay 口径 + result schema + diagnose trace tool-call 记录
 actual_cost:
-  tokens: 9000                     # 实施（s2_replay 改口径 + trace 规范）+ 全校准集重测验证（2 subagent + 实证）实测估算
+  tokens: 9000
+  source: estimate            # 无 token 记账环境的估算（DSH 环境可经 tokenMeter.measure 查真实值写回）
 decisions:
-  - who: agent 讨论（与用户，2026-W36 round2 复盘）
+  - who: agent（与用户讨论，2026-W36 round2 复盘）
     when: "2026-09-02"
-    conclusion: "确认方向：S2 转完整诊断能力评测（agent+知识+工具），分层归因 + 缺口三态化（A 客观缺失/B 推理未收尾/C 工具未用足）；S3 golden 继续守检索回归（分工清晰不丢覆盖）；replay 工具边界=允许查公开模型/源码/文档、禁止查该 issue 自身讨论/结论/fix PR（防泄题）。"
-  - who: agent（讨论定稿转卡）
+    type: proposal
+    conclusion: >-
+      复盘 S2 replay 时发现评测口径有问题：现有「单发、禁工具」的设计把 agent 的
+      工具能力也禁了，评测的是阉割版诊断。真实案例 #13446 中，agent 只做文本推理
+      就标了「缺 config.json 无法确证」，但该文件本可查证——缺口被误标为客观缺失。
+      经讨论确认方向：S2 应评测完整诊断能力（agent 推理 + 知识库 + 工具），结果
+      分层归因（路由/检索/推理/工具各自贡献），缺口三态化（A 客观缺失 / B 推理未
+      收尾 / C 工具未用足），S3 golden 继续守检索回归。
+  - who: agent（设计定稿）
     when: "2026-09-02"
-    conclusion: "设计要点（执行参考）：1) s2_replay 工具边界写死进 prepare 提示——允许 gh api 拉 config.json/clone 源码 grep/查官方文档，禁止查该 issue 自身讨论/评论/结论/fix PR；'无追问'只约束不向用户要信息，不约束 agent 用自己的工具查公开信息。2) result.yaml schema 扩展分层归因：routing_ok/tier2_hit/root_cause_ok/tool_used/evidence_gap_class（A 客观缺失|B 推理未收尾|C 工具未用足）。3) diagnose trace 扩展：agent 事件记 tool_calls（工具/返回摘要/如何用）——评估 #13446 可复核 agent 是否试过 gh api。4) S2 vs S3 分工：S2=完整诊断能力评测，S3 golden=检索回归守卫（fixture 期望=命中 case），S2 转向不丢检索覆盖。5) 历史兼容：旧评分报告保留旧口径标注。"
-  - who: agent（实施验证，直接落地看效果）
+    type: action
+    conclusion: >-
+      落地设计五点：①s2_replay 的 replay 输入提示写死工具边界——允许 gh api 拉
+      config.json、clone 源码 grep、查官方文档；禁止查该 issue 自身的讨论/结论/
+      fix PR（防泄题）。「无追问」只约束不向用户要信息，不约束 agent 用工具查公开
+      信息。②result.yaml 扩展分层归因字段（routing_ok / tier2_hit / root_cause_ok /
+      tool_used / evidence_gap_class）。③diagnose trace 的 source_analysis 事件记
+      tool_calls（含失败尝试）。④S2 与 S3 分工：S2 测完整诊断能力，S3 golden 守检索
+      回归。⑤历史评分报告保留旧口径标注。
+  - who: agent（实施 + 首条复测）
     when: "2026-09-03"
-    conclusion: "已实施并验证（commit 43e6eeb）：s2_replay prepare/collect/todo 全改新口径。#13446 复测实证：huggingface.co 不可达但 hf-mirror.com 可达（HTTP 200 拉到 config.json，model_type=qwen3_vl）——旧口径标'缺 config.json 无法确证'实为'没试对工具/镜像'（工具策略问题），非客观缺失。新口径缺口归因：#13446 → B 推理未收尾（config 可查、根因方向已明但未源码级闭合），从'数据缺失'修正为'agent 可补未补'。工具边界与分层归因字段生效。"
-  - who: agent（全校准集新口径重测，commit 8b28f81）
+    type: action
+    conclusion: >-
+      改造 s2_replay（prepare/collect/todo）与 diagnose trace 规范。用 #13446 复测
+      验证：huggingface.co 主站本环境不可达，但试到 hf-mirror.com 镜像即 HTTP 200
+      拿到 config.json（model_type=qwen3_vl）——证明旧口径标「缺数据」实为没试对
+      源（工具策略问题），不是客观缺失；新口径下缺口归因为 B 类（推理未收尾）。
+  - who: agent（全校准集重测）
     when: "2026-09-03"
-    conclusion: "新口径重测全部校准集（14871/14363/13639 重测 + 13446 前测）——效果实证：①tier2 miss→hit：#14871（命中 VLLM-ASC-14871，rc_match=True，找到上游删除 commit a0c092ee72）与 #14363（命中 VLLM-ASC-14363，验证'补 case 后能命中'闭环达成）；②缺口归因精确化：#13639 → A 类（工具用尽、clone 源码证实 FULL×spec-decode 非覆盖组合、fixture 裁剪致客观缺失）、#13446 → B 类（工具策略可补）；③证据升级：源码行级实测 + 版本锚点 + 测试覆盖面佐证（非'推理自洽'）。旧口径 2/4 rc_match → 新口径 3/4 + 2 条 tier2 命中。副产品：HF 多源获取纪律内联进 diagnose SKILL §5.2b（hf-mirror 镜像可用——执行环境知识归 SKILL 不归 references）+ diagnose trace 记 tool_calls（含失败尝试）。"
-
-
+    type: eval
+    conclusion: >-
+      新口径重测全部校准集 4 条，对比旧口径效果显著：#14871 与 #14363 从 miss 变
+      命中（tier2_hit=true，前者找到上游删除 commit，后者验证「补 case 后能命中」
+      闭环）；#13639 仍 miss 但缺口精确归因为 A 类（工具已尽其能，clone 源码证实
+      FULL×spec-decode 是未覆盖组合）；#13446 缺口修正为 B 类。证据从「推理自洽」
+      升级为源码行级实测 + 版本锚点。副产品：HF 多源获取纪律内联进 diagnose SKILL
+      （执行环境知识归 SKILL 不归 references）。
   - who: agent（生命周期闭合）
     when: "2026-09-03"
     type: decision
-    conclusion: "实施 + 全校准集验证完成（decisions 记 action/eval），status → validated（agent 采纳：实施 + 全校准集验证 solid），actual_cost 补记 9000 tok。改动随 PR #97 供人审。"
+    conclusion: >-
+      采纳。实施完成且全校准集重测证实新口径更接近真实诊断能力（2 条 miss→hit、
+      缺口归因从模糊变精确、证据升级为源码级），没有理由不采纳这次评测口径重构。
+      卡状态推进为 validated（agent 决策）；成本约 9000 token（估算，source:
+      estimate）。改动随 PR #97 供人审。

@@ -268,8 +268,10 @@ gate:
   condition: "该组件 mis ≥5 且 最近 2 期无下降"
 risk: high                       # high → dual；中 → review；低且可逆 → auto
 estimated_cost: {tokens: 8000}   # 成本侧（orchestration §3.2：预计 token，起草时填）
-actual_cost: null                # 执行/验证后写回 actual_cost.tokens（缺失即审计缺口）
-principle_refs: [五, 六, 八, 十一]
+actual_cost: null                # 执行/验证后写回 actual_cost.tokens（缺失即审计缺口）；
+                                 # source 标注口径：estimate（无记账环境估算）| measured
+                                 # （DSH 经 tokenMeter.measure(session) 查真实值后写回）
+principle_refs: [5, 6, 8, 11]    # 设计原则编号（1-11 整数，对应 design-principles 一~十一）
 decisions: []                    # 审计链：谁在何时依据哪份证据判断什么（只追加不修改）
                                  # 每条含 who/when/conclusion；type 标注生命周期阶段：
                                  #   proposal（提案：识别改进点+假设）| action（执行：改动/实验/沉淀）

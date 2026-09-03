@@ -23,6 +23,7 @@
 #       - 终态卡（validated/rejected/superseded）必须有 agent 决策记录
 #       - validated 后 actual_cost 必填（成本审计缺口）
 #       - 终态卡但 decisions 全无 = 审计缺口（卡不完整）
+#   12. principle_refs：必须是 1-11 的整数列表（设计原则编号，非中文字符串）
 #
 # 用法：python3 scripts/verify_proposals.py [--check] [--root <repo>]
 # 返回非零 = 校验失败。--check 与默认行为一致（对称 build_index / verify_references / verify_metrics）。
@@ -95,6 +96,15 @@ def check_idea(path: Path, ids: dict, errors: list):
     v = doc.get("validation")
     if isinstance(v, dict) and v.get("method") not in VALID_METHOD:
         errors.append(f"{rel}: validation.method '{v.get('method')}' 非法")
+    # principle_refs：必须是 1-11 的整数列表（设计原则编号）
+    pr = doc.get("principle_refs")
+    if pr is not None:
+        if not isinstance(pr, list) or not pr:
+            errors.append(f"{rel}: principle_refs 必须是非空列表")
+        else:
+            for x in pr:
+                if not isinstance(x, int) or not (1 <= x <= 11):
+                    errors.append(f"{rel}: principle_refs 元素 {x!r} 非法——须为 1-11 的整数（设计原则编号）")
     # decisions 结构
     d = doc.get("decisions")
     n_decisions = 0

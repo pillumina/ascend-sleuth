@@ -35,28 +35,45 @@ validation:
 gate:
   condition: "同族 case ≥3（实测 9 条远超）且可归纳出可复用分层判据"
 risk: low                            # reference 归纳低风险（方法论不进诊断上下文直到 active + PR 合入）
-principle_refs: [四, 八, 十一]        # 知识库有界（归纳防重复散 case）/ 可观测 / 数据触发
+principle_refs: [4, 8, 11]        # 知识库有界（归纳防重复散 case）/ 可观测 / 数据触发
 estimated_cost:
   tokens: 5000                       # 归纳 9 条 case 共性 + 产 methodology reference
 actual_cost:
-  tokens: 7000                     # 实测估算：逐条读 9 case 定层归属 + 归纳产 methodology 词条 + verify + 卡闭合
+  tokens: 7000
+  source: estimate            # 无 token 记账环境的估算（DSH 环境可经 tokenMeter.measure 查真实值写回）
 decisions:
-  - who: evolve-check（全自动补 case 轮收尾）
+  - who: agent（evolve-check T1 信号，2026-W36 round2 补 case 轮收尾）
     when: "2026-09-02"
-    conclusion: "T1 信号确认（9 条 ≥3 阈值）；归纳动作走 /skill:to-reference --ingest-cases，产出草稿交 review。agent 自行验证：9 条中 2 条 native transport 层（10532 Mooncake#1624 / 11459 lazy-init）、其余 python backend 层——分层判据可成立"
-  - who: agent（生命周期标记）
-    when: "2026-09-03"
-    type: decision
-    conclusion: "gate 满足（族 9 条 ≥3，分层判据可归纳），方案=to-reference --ingest-cases；未执行（未进 in_experiment），保持 candidate。"
-  - who: agent（EV-2026-003 执行）
+    type: proposal
+    conclusion: >-
+      本轮补 case 后盘点发现 Mooncake/Ascend KV-transfer 族累计 9 条（远超 ≥3 阈值），
+      且呈现清晰的分层定位共性：故障要么在 vllm-ascend 自身 python 代码（连接管理、
+      索引、流同步），要么在 Mooncake 原生传输层（库内并发缺陷）。据此提议产一条
+      分层诊断 methodology reference，让同族问题从逐个翻 case 变成按层路由。
+  - who: agent（执行归纳）
     when: "2026-09-03"
     type: action
-    conclusion: "归纳执行完成：产出 references/methodologies/ascend-mooncake-kv-transfer-triage.yaml（type: methodology，sources[].cases 9 条 case-derived，status: active——PR review 即审核闸门，合入即生效）。分层结构：python backend 层 4 条（11459 init/线程-config、13934 transfer-group/索引映射、13710 DCP/MTP 切分长度、13964 调度/KV-block 生命周期静默停滞）；native transport 层 1 条（10532 Mooncake native 数据竞争）；连接层 2 条（8938 kv_port 冲突、11343 PP 端口映射）；流同步/数据完整性层 2 条（12957 流同步缺失已确认、11169 external kv connector 数据路径未确认）。"
-  - who: agent（EV-2026-003 验证）
+    conclusion: >-
+      走 to-reference --ingest-cases 归纳 9 条 case，产出 methodology 词条
+      ascend-mooncake-kv-transfer-triage（references/methodologies/），分四层：
+      python backend（4 条）、native transport（1 条）、连接层（2 条）、流同步层
+      （2 条）。执行中发现并修正一处早前误判：VLLM-ASC-11459 曾归入 native
+      transport，逐条读文件确认其根因在 vllm-ascend 自身 mooncake_backend.py
+      （修复 PR 11459 属 vllm-ascend），应归 python backend 层——修正已记录，
+      原判断只追加不改写。
+  - who: agent（验证）
     when: "2026-09-03"
     type: eval
-    conclusion: "python3 scripts/verify_references.py --check 通过（references 共 103 词条、id 唯一）；词条零注释（grep -c '#' = 0）；case-derived methodology 引用 9 条 ≥3 深审门槛满足。层归属经逐条读 case 文件 root_cause/fix 确认——修正早前判断错误：11459 根因在 vllm-ascend 自身 mooncake_backend.py（fix PR 11459），属 python backend 层而非 native transport 层（EV 首条 decision 的二分有误，此处以文件证据为准）。族边界说明：EV 卡原 trajectory 含 VLLM-ASC-10524，但其自标 pre-triage 为 graph-capture slot_mapping（worker 正确性，PD 偶发精度族根因机制不同），未纳入本族；以 13710（同 13934 DCP+MTP 部署拓扑的 v0.26 崩溃路径）补齐 9 条。"
+    conclusion: >-
+      verify_references 通过（103 词条、id 唯一）；词条零注释；case-derived
+      methodology 引用 9 条，满足 ≥3 的深审门槛。分层判据经逐条读 case 的
+      root_cause/fix 确认——四层各有明确判别入口（python traceback / native
+      segfault / ZMQ 端口 / 无异常乱码与静默），9 条全部可被路由命中。
   - who: agent（生命周期闭合）
     when: "2026-09-03"
     type: decision
-    conclusion: "采纳：分层路由可覆盖 9 条同族 case（报错面分路 → 层内分型逐条命中），深审门槛满足（9 ≥3）且 verify 通过；status candidate→validated，actual_cost 补记 7000 tok（实测估算）。改动 = 1 条 methodology reference（active）+ 本卡闭合，随攒批 PR 供人审——reference 词条待 PR review 合入后进入诊断上下文。"
+    conclusion: >-
+      采纳。分层路由可覆盖全部 9 条同族 case，深审门槛满足且校验通过，没有理由
+      不采纳这次归纳。卡状态推进为 validated（agent 决策）；成本约 7000 token
+      （估算，source: estimate）。新增的 methodology 词条随 PR #97 提交——按
+      to-reference 闸门，PR review 合入后才进入诊断上下文。

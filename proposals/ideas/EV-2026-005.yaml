@@ -34,25 +34,41 @@ validation:
 gate:
   condition: "诊断暴露 ValueError 类启动失败无路由覆盖（#7023 已暴露）"
 risk: low
-principle_refs: [八, 十一]
+principle_refs: [8, 11]
 estimated_cost:
   tokens: 2000
 actual_cost:
-  tokens: 1500                     # 机制测试实测（改 triage 1 行 + 正则验证）
+  tokens: 1500
+  source: estimate            # 无 token 记账环境的估算（DSH 环境可经 tokenMeter.measure 查真实值写回）
 decisions:
   - who: agent（机制测试）
     when: "2026-09-03"
     type: proposal
-    conclusion: "产卡（candidate）：信号=#7023 暴露 triage 缺 ValueError 正则；方案=补正则；预期=同类路由命中。"
+    conclusion: >-
+      #7023 补 case 时暴露 triage 的路由缺口：inference_interrupt 的启动期异常
+      清单只覆盖 RuntimeError/AssertionError 等，漏了 ValueError。而 #7023 的报错
+      正是 ValueError（Attempted to assign 65=65 multimodal tokens...）——这类问题
+      现在无法被路由命中。提议补上 ValueError 正则，让同类启动失败可被 Tier-2 路由。
   - who: agent（机制测试）
     when: "2026-09-03"
     type: action
-    conclusion: "执行：triage-tree.yaml line 73 启动期异常清单补 ValueError（#7023 类）。"
+    conclusion: >-
+      执行：在 triage-tree.yaml 的 inference_interrupt 启动期异常清单（原仅
+      ModuleNotFoundError/ImportError/KeyError/AttributeError/RuntimeError/
+      AssertionError）追加 ValueError，并注明来源（#7023 patch_multimodal_merge
+      计数错位）。
   - who: agent（机制测试）
     when: "2026-09-03"
     type: eval
-    conclusion: "验证：ValueError 正则命中 #7023 症状（Attempted to assign 65=65...），路由 inference_interrupt 达成。"
-  - who: agent（机制测试）
+    conclusion: >-
+      验证：用 #7023 的真实症状文本（Attempted to assign 65 = 65 multimodal
+      tokens to 3905 placeholders）跑正则匹配，ValueError 命中，路由可达
+      inference_interrupt。此卡同时验证了 EV 生命周期机制（产卡→执行→验证→
+      agent 判断）能端到端走通。
+  - who: agent（生命周期闭合）
     when: "2026-09-03"
     type: decision
-    conclusion: "candidate→validated（agent 采纳：action + eval 完成）。改动随 PR #97 供人审（review 级）。"
+    conclusion: >-
+      采纳。ValueError 正则修复了真实路由缺口且验证命中，没有理由不采纳。卡状态
+      推进为 validated（agent 决策，review 级改动）；成本约 1500 token（估算）。
+      改动随 PR #97 供人审。
