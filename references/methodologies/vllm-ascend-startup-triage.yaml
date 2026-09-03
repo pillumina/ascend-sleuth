@@ -1,0 +1,75 @@
+id: vllm-ascend-startup-triage
+type: methodology
+title: vllm-ascend 服务启动失败通用排查（跨模型：版本配套 / 量化加载 / patch 层 / 平台特化路径）
+summary: 通用 vllm-ascend（vllm serve / EngineCore）启动即失败的分流方法论——先按失败阶段与报错签名分类，依次核对版本/配套面（vllm×vllm-ascend commit、上游支持合入点、适配期坏版本、镜像内依赖）、量化权重格式面、patch 层全局副作用，再定位平台特化执行路径缺陷（启动期图捕获 / MoE 路由与 EP / 特殊 loader），最后查部署与环境配置面；每类给典型根因与 fix 方向（升级 / 关特性规避 / 环境配置）。模型无关，GLM 系量化权重加载与 MoE 通信算子另有专项词条
+
+sources:
+  - type: case-derived
+    cases: [VLLM-ASC-10322, VLLM-ASC-10500, VLLM-ASC-10834, VLLM-ASC-11312, VLLM-ASC-11409, VLLM-ASC-13508, VLLM-ASC-15086, VLLM-ASC-1991, VLLM-ASC-3308, VLLM-ASC-6774, VLLM-ASC-6992, VLLM-ASC-7160, VLLM-ASC-7310, VLLM-ASC-7635, VLLM-ASC-8201, VLLM-ASC-8213, VLLM-ASC-9056, VLLM-ASC-9129, VLLM-ASC-9305, VLLM-ASC-9418]
+    extracted_at: 2026-09-03
+    extraction_method: to-reference --ingest-cases
+
+applies_to:
+  frameworks: [vllm-ascend]
+  categories: [interrupt]
+
+related_references: [glm-quantized-startup-triage, ascend-moe-comm-triage]
+
+status: active
+last_verified: 2026-09-03
+
+content:
+  flow:
+    - step: 1
+      name: 识别启动失败面并取分流索引
+      action: "服务拉起期失败即退出、无法进入推理（import → 权重/量化/tokenizer 加载 → EngineCore/worker 初始化 → profile_run/cudagraph 捕获 → 启动期算子与通信初始化），命中本方法论；运行期故障不适用。按报错阶段与签名取分流：import 期 ModuleNotFoundError → step2；not supported/平台能力缺失/适配期崩/依赖类 → step3；量化权重加载 AclNN/KeyError → step4；栈落 vllm_ascend/patch/ 或全局覆写副作用 → step5；profile_run/图捕获阶段 aicore/EZ/断言 → step6；MoE 路由与 EP/特殊 loader 路径 → step7；无代码栈的环境与组网 → step8。先做 step2/3 的版本判别可避免在错误层面空转。"
+      check: "grep -E 'ModuleNotFoundError|not supported for now|NPU out of memory|unexpected keyword argument|Forward context is not set|AclNN_Parameter_Error|antiquantGroupSize|PlatformEnum.OOT|NoneType object has no attribute|shared experts split computation does not match|renorm is: 1|moeExpertNum is|aclnnHcPreInvRms failed|ValidationError' {{log_path}}"
+      when_to_use: vllm serve / EngineCore 启动即失败（报错含 vllm_ascend 栈或启动期阶段）
+    - step: 2
+      name: import 期失败判别——commit 错配 vs 兼容 stub
+      action: "import vllm/vllm_ascend 阶段 ModuleNotFoundError → 分两种根因面，勿直接按版本处理：①No module named 'vllm.v1...'（如 vllm.v1.attention.backends.mla.prefill，缺失模块随错配组合变化）→ vllm 与 vllm-ascend commit 错配（dev 构建乱配两侧 commit，或官方镜像内部组合不一致）→ 按 vllm-ascend/.github/vllm-main-verified.commit（main 线）与 vllm-release-tag.commit（release 线）对齐后重建/换镜像；缺失模块是错配症状，不在该组合上继续排查。②No module named 'triton.experimental' 且 x86_64 + triton-ascend 3.2.1（依赖 triton 3.2.0，无 experimental 包）→ vllm_ascend/__init__.py 的 Gluon 兼容 stub 只注册叶子模块、未建父模块 triton.experimental（main2main 打包缺陷，arm 用 triton 3.5.0 自带 experimental 掩盖）→ 取含修复（建完整 parent-child 层级）的 main 构建。"
+      check: "grep -E 'ModuleNotFoundError.*vllm.v1|ModuleNotFoundError.*triton.experimental|No module named' {{log_path}}"
+      when_to_use: 任何 import 阶段失败——先分清 vllm 侧模块缺失（错配）还是 vllm_ascend 打包 stub 缺失
+      source_cases: [VLLM-ASC-9305, VLLM-ASC-13508]
+    - step: 3
+      name: 版本/配套/支持面核对（启动失败首查）
+      action: "报错签名属版本味 → 先核对版本组合再深入：形态 A not supported for now——'Model architectures [X] are not supported for now'（如 KimiK3ForConditionalGeneration 在 0.23.0）→ 架构支持合入点晚于所用版本（registry 0.23.0 只有 KimiK25、main 才有 kimi_k3）→ 查上游 vllm registry 合入版本后升级，勿当架构未实现。形态 B 平台能力缺失——310P/300I 拉 pooling 模型（Qwen3-Embedding 等）报 CustomQwen3 'layers' ValueError 或 ACL_PRECISION_MODE 500001/GE init failed → 310P pooling 支持缺失（feature gap，非 CANN/驱动问题，勿重装环境）→ 升级含 310P pooling 支持（PR 8846）的版本，300I 另加 --enforce-eager。形态 C 已知适配期坏版本——某 rc 在某模型组合必现启动崩/OOM（Qwen3-Next-80B-A3B TP8 + v0.11.0rc0 启动 NPU OOM 且显存看似充足 / 'Ascend config is not initialized' 同族；Qwen3.5-27B + MTP + FULL_DECODE_ONLY TP8 + v0.17.0rc1 报 call aclnnCausalConv1d failed EE1003 blockDim=0 / runtime 107000）→ 直接升级修复版本（≥v0.11.0rc1 / ≥v0.18.0rc1），勿按权重或 CANN 排查。形态 D 镜像内依赖过旧——报错在 ApiServer/tokenizer 初始化、类属新依赖版本（MiniMax-M2.7 ValueError: Tokenizer class TokenizersBackend does not exist，镜像 transformers 4.57.6 <5.5）→ 容器内升级依赖（transformers==5.5.3）后重启。"
+      check: "grep -E 'not supported for now|no module or parameter named layers|error code is 500001|NPU out of memory|Ascend config is not initialized|call aclnnCausalConv1d failed|blockDim is invalid|Tokenizer class TokenizersBackend does not exist' {{log_path}}"
+      when_to_use: 报 not supported、平台能力缺失、rc 版本必现崩溃、或 tokenizer/组件初始化报类缺失
+      source_cases: [VLLM-ASC-15086, VLLM-ASC-1991, VLLM-ASC-3308, VLLM-ASC-7310, VLLM-ASC-8213]
+    - step: 4
+      name: 量化/权重加载面——算子格式限制 vs 平台未接管量化后端
+      action: "失败在量化权重加载/量化配置解析（非 modelslim 描述缺失族，那走 glm-quantized-startup-triage）→ 两形态：形态 A 反量化算子 group 限制——ERR00100/AclNN_Parameter_Error(EZ1001) 'antiquantGroupSize should be 128 or 64, but actual [256]'（int4 权重 × FRACTAL_NZ）→ torch_npu 反量化算子只支持 group 64/128 的算子格式限制，非权重发布错误、与版本弱相关 → export VLLM_ASCEND_ENABLE_NZ=0（禁转 NZ）最快，或按 group_size=128 重新量化（官方 group256 权重需自行重量化）。形态 B 平台未接管量化后端——310P 加载 LLM-Compressor 导出的 compressed-tensors W8A8 报 KeyError: <PlatformEnum.OOT: 6>（栈 choose_scaled_mm_linear_kernel/init_int8_linear_kernel）→ 310P 分支只注册 AscendModelSlimConfig310、未 override compressed-tensors，落到 vLLM 原生 int8 kernel selector（只枚举 CPU/CUDA/ROCm）→ 310P 的 W8A8 须用 ModelSlim 格式 + --quantization ascend；同模型同镜像 910B 正常印证平台差异，不是模型文件/--dtype 用法问题。"
+      check: "grep -E 'AclNN_Parameter_Error|antiquantGroupSize should be 128 or 64|PlatformEnum.OOT|choose_scaled_mm_linear_kernel|init_int8_linear_kernel' {{log_path}}"
+      when_to_use: 量化权重（w4a8/w8a8/int4/compressed-tensors）启动报 AclNN EZ 或 kernel selector KeyError
+      source_cases: [VLLM-ASC-10834, VLLM-ASC-9129]
+    - step: 5
+      name: patch 层——上游接口漂移 vs 全局覆写副作用
+      action: "报错栈/对象指向 vllm_ascend 对上游 vLLM 的 patch 或全局行为（vllm_ascend/patch/ 或 serving 协议层）→ 两形态：形态 A patch×上游接口漂移——EngineCore 启动 TypeError ... got an unexpected keyword argument（如 'hash_block_size'，patch_balance_schedule.py:696 BalanceScheduler.__init__，配套 vLLM v0.20.1）→ 上游 Scheduler.__init__ 新增参数、balance scheduling patch 签名未适配（main2main 同步缺口）→ 同步/升级到含对应 main2main 同步（PR 9155，Main2main 0514）的版本，与配套 vLLM 对齐，勿按模型/DP 规模排查。形态 B patch 全局副作用——非 MiniMax 场景（vllm-omni/其他模型）在 0.18.0RC1 线报 Pydantic 校验失败 → patch_minimax_usage_accounting.py 模块级覆写 engine_protocol/chat_protocol 的 UsageInfo/CompletionTokenUsageInfo（全局影响；注意 0.18.0 正式版仍含覆写）→ 短期注释 vllm_ascend/patch/platform/__init__.py 的两个 patch import（有依赖须同注释）后重启；根治升级到全局覆写被 scope/移除的版本（main ≥PR 11050/11384）。"
+      check: "grep -E 'unexpected keyword argument|hash_block_size|patch_balance_schedule|BalanceScheduler|ValidationError|patch_minimax_usage_accounting|CompletionTokenUsageInfo' {{log_path}}"
+      when_to_use: 栈落 vllm_ascend/patch/，或非目标场景报 serving 协议层 pydantic 冲突
+      source_cases: [VLLM-ASC-9056, VLLM-ASC-8201]
+    - step: 6
+      name: 平台特化路径缺陷——启动期图捕获/初始化（版本已对齐仍崩）
+      action: "版本配套与量化/patch 面排除后，仍崩在 vllm-ascend 专有执行路径 → 按触发特性与签名定位修复/规避：形态 A cudagraph 显存预估——FULL_DECODE_ONLY + DSV4 压缩 KV（DSA）报 aclnnScatterNdUpdateV2 + 507015（MTE DDR 越界 + SMMU fault），崩在 profile_cudagraph_memory 的 pre-KV 临时 capture（KV cache 分配前）→ pre-KV profiling 撞压缩路径（升级含跳过 DSV4 压缩场景 pre-KV profiling 的修复 PR 10369）；升级前规避 --enforce-eager 或 export VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0。形态 B ViT×FlashComm——含 ViT 的多模态模型开 FlashComm1/2 报 AssertionError: Forward context is not set（SequenceRowParallelOp/Flashcomm2OProjRowParallelOp）→ vLLM 在 forward_context 外预计算 inputs_embeds，FC dispatch 把 ViT 层误路由进依赖 forward context 的 SP 算子（文本模型不触发）→ 升级含 dispatch 'vision_model' guard 的修复（PR 10941）；decode 阶段 LaunchCopyTask 507035/vector core 异常/aclnnAddmm 161002 是级联噪声勿单追。形态 C DCP×图捕获×异步投机——GLM 系 + DCP（--decode-context-parallel-size>1）图模式启动报 AttributeError: 'NoneType' object has no attribute 'to'（sfa_cp.py build_cp_metadata 读被 async spec decode 清空的 num_computed_tokens_cpu）→ 无已合入修复（thread 仅 draft PR 11388），规避=关闭图模式可拉起；勿套用其他 CP case 的 FULL_DECODE_ONLY workaround（本形态已 FULL_DECODE_ONLY 仍触发）。"
+      check: "grep -E 'ScatterNdUpdateV2|507015|profile_cudagraph_memory|Forward context is not set|Flashcomm2OProjRowParallelOp|sfa_cp|NoneType object has no attribute|decode-context-parallel-size' {{log_path}}"
+      when_to_use: cudagraph/FULL_DECODE_ONLY/DCP/FlashComm/MTP 等特性组合的启动期（capture/runner build）崩溃
+      source_cases: [VLLM-ASC-10322, VLLM-ASC-10500, VLLM-ASC-11312]
+    - step: 7
+      name: 平台特化路径缺陷——MoE 路由/EP 通信/特殊 loader
+      action: "版本已对齐、量化格式正确，崩在 MoE 路由/EP 通信/加载器专有路径 → 形态 A MoE gating 路由算子——Qwen3.5/Qwen3-A3B 系 profile_run 报 aclnnMoeGatingTopK failed + EZ9999 'renorm is: 1, but currently only support 0' → CANN op 只支持 renorm=0，fused 路径把模型所需 renorm=1 原样传入（moe_gating_top_k_tiling CheckAttr 拒绝）→ 升级含 DeviceOperator 分派修复（PR 7573，A5 走 torch_npu.npu_moe_gating_top_k + 手动归一化）；勿硬编码 renorm=0 交付——跳过归一化会静默改变路由语义（实测出现重复输出）。形态 B EP 通信方式选择——A2 + --enable-expert-parallel 且单卡专家数超 MC2 上限（如 512 专家/16 卡=32 > 上限 24）报 aclnnMoeDistributeDispatchV4 561002 'moeExpertNum is ... must no more than 24' → 超限仍选 MC2 的通信方式选择缺陷 → 升级含超限自动切 AllGather 的修复（PR 7364，注意可能性能损失）；规避去掉 --enable-expert-parallel。形态 C RFork loader——RFork 二次实例启动（量化 processed-layout 传输）报 'FusedMoE shared experts split computation does not match ... max absolute difference:nan' → pre-transfer post-process 在接收端权重仍空时跑 shared-expert 一致性 forward → 升级含修复（PR 12995）；普通加载正常是判别关键。"
+      check: "grep -E 'aclnnMoeGatingTopK failed|renorm is: 1|aclnnMoeDistributeDispatchV4 failed|moeExpertNum is|shared experts split computation does not match|Duplicate layer name' {{log_path}}"
+      when_to_use: MoE 模型（Qwen/GLM/DSV4）启动报 gating/dispatch 算子错、或 RFork 传输路径 NaN/abort
+      source_cases: [VLLM-ASC-7160, VLLM-ASC-7635, VLLM-ASC-11409]
+    - step: 8
+      name: 部署与环境配置面（无代码缺陷）
+      action: "以上形态均不命中且报错无 vllm-ascend 代码栈（或环境变量/组网特征明显）→ 三形态：形态 A 启动脚本路径——多卡/多机拉起失败且启动脚本与 vllm/vllm-ascend 同目录 → 把脚本移到独立目录。形态 B OS locale——非英文 OS（locale 非 C）开 CPU binding（additional-config enable_cpu_binding）失败 → cpu_binding 子进程输出被本地化（ps 等）→ 升级含强制 C locale 的修复（PR 8251），或启动前 export LC_ALL=C LANG=C LC_MESSAGES=C（三个都要设，只设 LANG 会被 LC_ALL/LC_MESSAGES 覆盖）。形态 C 跨机组网——A3 多机混部（TP/DP 跨机 + EP，未用灵衢背板）报 call aclnnHcPreInvRms failed / 拉起早期失败，启动脚本却沿用机内 AIV/HCCS 优化配置（HCCL_OP_EXPANSION_MODE=AIV + 大 HCCL_BUFFSIZE）→ 跨机链路类型与组网不符 → 跨机显式改走 ROCE：export HCCL_BUFFSIZE=200、export HCCL_INTER_HCCS_DISABLE=TRUE、删除 HCCL_OP_EXPANSION_MODE=AIV，并在 ascend_forward_context.py 设 moe_comm_type = MoECommType.ALLGATHER；有背板场景保持原 AIV 配置。"
+      check: "grep -E 'aclnnHcPreInvRms failed|enable_cpu_binding|cpu bind|启动失败|failed to start' {{log_path}}"
+      when_to_use: 报错无算子/代码签名，或明显属脚本路径/OS 语言/跨机组网 env 问题
+      source_cases: [VLLM-ASC-6774, VLLM-ASC-6992, VLLM-ASC-9418]
+    - step: 9
+      name: 排除与专项路由
+      action: "以上分流均不命中 → 先判别是否属专项词条域：GLM 系量化权重加载启动失败（modelslim 量化描述 KeyError/模块绑定/量化配置路由）→ glm-quantized-startup-triage；MoE 通信/路由算子执行错（MoeDistributeDispatchV2/V4 507057、MoeInitRoutingV3 561000、QuantBatchMatMulV3 507015 等运行期/EP 场景）→ ascend-moe-comm-triage；否则回 Tier 3（knowledge/inference/vllm-ascend/）兜底排查，勿在通用版本面继续空转。判别关键：先确认失败阶段（启动期 vs 运行期）与报错签名归属，再选词条。"
+      check: "grep -E 'modelslim_config|get_linear_quant_type|MoeDistributeDispatch|MoeInitRouting|QuantBatchMatMul' {{log_path}}"
+      when_to_use: 启动失败但不属 step2-8 任何签名族
+  verified_by_testing: false

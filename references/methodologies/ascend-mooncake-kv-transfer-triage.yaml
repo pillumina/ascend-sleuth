@@ -12,7 +12,7 @@ summary: >-
 
 sources:
   - type: case-derived
-    cases: [VLLM-ASC-11459, VLLM-ASC-10532, VLLM-ASC-13934, VLLM-ASC-8938, VLLM-ASC-11343, VLLM-ASC-13964, VLLM-ASC-12957, VLLM-ASC-11169, VLLM-ASC-13710]
+    cases: [VLLM-ASC-11459, VLLM-ASC-10532, VLLM-ASC-13934, VLLM-ASC-8938, VLLM-ASC-11343, VLLM-ASC-13964, VLLM-ASC-12957, VLLM-ASC-11169, VLLM-ASC-13710, VLLM-ASC-7792, VLLM-ASC-9398]
     extracted_at: 2026-09-03
     extraction_method: to-reference --ingest-cases
 
@@ -55,7 +55,14 @@ content:
       check: "grep -E 'Segfault encountered|mooncake::AscendDirectTransport::processSliceList|_Hashtable<.*>::erase|Transfer timeout to:|transfer failed and disconnect' {{log_path}}"
       when_to_use: B 命中 + ascend direct/ROCE + K8s 跨节点 + timeout 后随机崩
       source_cases: [VLLM-ASC-10532]
+    - step: 5.5
+      name: native transport 层 · key/put 失败型（非 segfault）
+      action: "报错面 B2——无崩溃但 KV 传输失败：①Transfer slice failed with status: 503900（HcclBatchPut ret=4 Can't find remoteBuffer by key，mooncake kv_both/ascend-direct/HIXL）：远端 buffer 经 RoCE 注册、intra-node 同节点进程间默认走 PCIe/HCCS——通道不一致 → HcclBatchPut 找不到远端 buffer。fix：export HCCL_INTRA_ROCE_ENABLE=1（intra-node 也走 RoCE 对齐远端注册）。②put key error / hccp_service HCCP RDMA MR 注册失败（跨机，GE 503900 伴生）：CANN 9.0.0 + HDK 25.2.1 + Mooncake 0.3.9 版本组合下 30GiB 数据缓冲 MR 注册失败（rs_drv_exp_mr_reg NULL，hns_roce 路径）→ 建链失败。fix：升级 Mooncake 0.3.9 → 0.3.10（版本兼容矩阵问题）。判别要点：503900 是 HCCL/RDMA 层错误码，先分 intra-node（ROCE env）vs 跨机（版本组合）两型，非 vllm-ascend 代码 bug。"
+      check: "grep -E '503900|HcclBatchPut|Can't find remoteBuffer|put key error|HCCP RDMA MR' {{log_path}}"
+      when_to_use: B2 命中（KV 传输失败/put key error，无 segfault）+ ascend direct/ROCE
+      source_cases: [VLLM-ASC-7792, VLLM-ASC-9398]
     - step: 6
+
       name: 连接层（ZMQ 握手 / kv_port 端口）
       action: "报错面 C——ZMQ 握手/端口层，两形态：①启动失败型：1P2 同机 P0/P1 几乎同时拉起时 P1 报 ZMQError: Address already in use（ZMQ bind 无重试、端口抢占）→ 为 P 节点显式配置 kv_port（如 kv_port=60000）规避；②运行期超时型：多节点 PP + 各 P 节点配置不同 base kv_port（P0=31112、P1=31113）时，D 侧 mooncake_connector._get_remote_ranks_for_req 用 P0 base 端口推全部 PP rank 的 ZMQ handshake 端口 → P1 上 PP2+ 端口整体偏移 -1 连到无人监听的 31128，D 侧反复 Receive request timeout → KV load failure → P 节点 KV cache usage 涨到 100%、bench 卡死。fix：②升级含 fix PR 11342 的版本，或各 P 节点配相同 base kv_port 规避；多节点部署推荐 Ray 统一配置（vllm serve 只在 head 启动一次、全局 device_index 保证端口唯一）。判别：先核对超时端口 vs 对方节点实际监听范围，区分 config 冲突（同机多 P）vs connector 端口映射 bug（多节点 PP 异 base port）。"
       check: "grep -E 'ZMQError|Address already in use' {{log_path}}；grep 'Receive request timeout' {{log_path}} | sort | uniq -c（核对超时端口是否落在对方监听范围外）"

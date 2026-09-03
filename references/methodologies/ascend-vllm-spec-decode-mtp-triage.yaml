@@ -1,0 +1,339 @@
+id: ascend-vllm-spec-decode-mtp-triage
+type: methodology
+title: vllm-ascend spec-decode/MTP 族分层诊断（启动/首请求/运行期崩溃 + 静默精度·性能退化）
+summary: >-
+  vllm-ascend 投机解码（spec-decode/MTP：deepseek_mtp/qwen3_5_mtp/qwen3_next_mtp/EAGLE/DSpark）故障族，
+  先按故障阶段分流——R-A 启动/拉起期（服务起不来、图捕获 warmup 崩）、R-B 服务能起但首请求/投机 first
+  pass 即崩、R-C 运行期崩（压测到并发门槛或上线后）、R-D 无异常栈静默异常（阻塞 waiting / prefix 命中
+  归零 / 接受率·输出精度退化 / profiling 产物缺失）；再按报错签名面（python None/属性缺失异常、
+  IndexError·计数污染、NPU runtime 错误码 EE1003/107030/507034、静默指标）与叠加组合（PD 分离/recompute/
+  上下文并行 DCP·PCP/EP/layer_sharding/prefix-caching/KV Pool/CANN/Triton-rope）定位到具体 fix PR。
+  族共性：投机路径只在请求/投机 step 执行，"健康检查过、首请求崩"多为代码路径缺陷；绝大多数根因为
+  vllm-ascend 功能组合适配缺陷或版本回归，fix=升级到含对应 fix PR 的构建或配置规避，勿按 OOM/KV 容量、
+  权重/量化本身方向排查。十四条同族 case（VLLM-ASC-7310/7854/8587/8808/8926/9024/9482/9887/10970/
+  11127/11312/12241/12723/14871）全部可由该路由命中。
+
+sources:
+  - type: case-derived
+    cases: [VLLM-ASC-7310, VLLM-ASC-7854, VLLM-ASC-8587, VLLM-ASC-8808, VLLM-ASC-8926, VLLM-ASC-9024, VLLM-ASC-9482, VLLM-ASC-9887, VLLM-ASC-10970, VLLM-ASC-11127, VLLM-ASC-11312, VLLM-ASC-12241, VLLM-ASC-12723, VLLM-ASC-14871]
+    extracted_at: 2026-09-03
+    extraction_method: to-reference --ingest-cases
+
+applies_to:
+  platforms: [A2-910B, A3-910C]
+  frameworks: [vllm-ascend]
+  categories: [interrupt, precision, performance]
+
+related_references: [ascend-mooncake-kv-transfer-triage]
+
+status: active
+last_verified: 2026-09-03
+
+content:
+  flow:
+    - step: 1
+      name: 前置命中与首层路由（故障阶段 × 报错面）
+      action: >-
+        命中指纹：vllm-ascend 推理部署含 spec-decode/MTP 族配置——--speculative-config 的 method 为
+        deepseek_mtp / qwen3_5_mtp / qwen3_next_mtp / eagle / dspark，或带 MTP/EAGLE drafter head 的模型
+        （GLM-5.x、DeepSeek-V3.1/V4 与 DSV4-Flash、Qwen3.5-APC 等），常叠加的路径/拓扑面：cudagraph 图模式
+        （FULL_DECODE_ONLY）、--async-scheduling、PD 分离、KV Pool/Mooncake、上下文并行（DCP/PCP）、
+        EP/MoE、recompute_scheduler、layer_sharding、prefix-caching、w8a8/w4a8 量化。命中后先按故障阶段选
+        一路，不逐个翻 case：R-A 启动/拉起期失败（Engine init、cudagraph 捕获 warmup、EngineCore 启动崩）
+        → steps 2-3；R-B 服务能起、健康检查通过、首个投机请求/投机 first pass 崩 → steps 4-6；R-C 运行期
+        崩（压测到并发门槛或上线后运行中，非首请求）→ steps 7-9；R-D 无异常栈的静默异常（请求 waiting /
+        prefix 命中 / 接受率·输出精度 / profiling 产物缺失）→ steps 10-16。判别维度 = 故障阶段（首层）+
+        报错签名面（python None/属性缺失异常、IndexError·计数污染、NPU runtime 错误码、静默指标）+ 叠加
+        组合 + 消融实验（去掉 MTP 或某一叠加功能即正常 ⇒ 锁功能组合面）。族共性：投机路径只在请求/投机
+        step 执行，故健康检查过、首请求崩多为 spec-decode 代码路径缺陷而非服务问题；绝大多数根因为
+        vllm-ascend 功能组合适配缺陷或版本回归（fix=升级到含对应 fix PR 的构建），各 case 已消融排除
+        OOM/KV 容量、权重/量化本身、checkpoint——勿往这些方向排查。
+      check: >-
+        grep -E "speculative-config|deepseek_mtp|qwen3_5_mtp|qwen3_next_mtp|dspark|num_speculative_tokens"
+        {{launch_log}}；再按 R-A~R-D 选各步 check
+      when_to_use: vllm-ascend spec-decode/MTP 族故障一律先过本路由（interrupt/precision/performance 均适用）
+    - step: 2
+      name: R-A1 启动拉起崩 · NPU 算子级（aclnnCausalConv1d EE1003 blockDim=0）
+      action: >-
+        R-A 且签名 "call aclnnCausalConv1d failed ... Invalid_Argument(EE1003): LaunchKernelV2 failed
+        because value 0 for parameter blockDim is invalid"（伴 runtime result = 107000，栈到 vllm-ascend/
+        csrc/torch_binding.cpp）。触发：Qwen3.5 系 + MTP 投机（qwen3_next_mtp/qwen3_5_mtp，
+        num_speculative_tokens=3）+ cudagraph FULL_DECODE_ONLY + 大 TP（TP8，A2 单机 8 卡），vllm-ascend
+        0.17.0rc1。根因：0.17.0rc1 适配期 bug——MTP 图路径的 CausalConv1d 以 blockDim=0 发起 kernel launch
+        （TP 越大越易现，DP2+TP4 可拉起；多人同报）。fix：升级 ≥v0.18.0rc1（候选代码修复 PR 7495 已合
+        main）；0.17.0rc1 期规避=改小 TP（如 DP2+TP4）或暂缓 Qwen3.5 MTP。勿按权重/CANN 排查——同批
+        0.17.0rc1 适配期崩溃属新版本回归族。
+      check: >-
+        grep -aE "call aclnnCausalConv1d failed|blockDim is invalid|runtime result = 107000" {{log_path}}
+      when_to_use: R-A + aclnnCausalConv1d/EE1003 blockDim=0 签名 + qwen3.5 系 MTP + 大 TP + 0.17.0rc1
+      source_cases: [VLLM-ASC-7310]
+    - step: 3
+      name: R-A2 启动拉起崩 · python None 元数据（DCP × 图捕获 × async spec）
+      action: >-
+        R-A 且签名 "AttributeError: 'NoneType' object has no attribute 'to'"（外层 RuntimeError:
+        NPUModelRunner init failed，服务拉不起；关闭图模式可正常拉起），栈 vllm_ascend/attention/
+        context_parallel/sfa_cp.py:178 build_cp_metadata（common_attn_metadata.num_computed_tokens_cpu.
+        to(seq_lens.device)）。触发：图模式（cudagraph）+ DCP（--decode-context-parallel-size 2 +
+        --cp-kv-cache-interleave-size 128）+ async 投机解码（MTP num_speculative_tokens=2），GLM5.1 +
+        vLLM 0.20.2。根因：cudagraph 捕获 warmup 期 async spec decode 路径把 num_computed_tokens_cpu 清成
+        None，SFA CP builder 仍直接 .to() → NoneType AttributeError。同族判别：VLLM-ASC-9507（PCP × FULL
+        图请求期，官方限制、切 FULL_DECODE_ONLY 可解）——本 case 已 FULL_DECODE_ONLY 仍崩，勿套 9507 的
+        规避。fix：无已合入上游修复（draft PR 11388 closed 未合入，修法=SFA CP 元数据源被清空时改用
+        num_computed_tokens_of_pcp_dcp）；当前 workaround=关闭图模式后重启（用户已验证可拉起）。
+      check: >-
+        grep -E "sfa_cp\.py.*build_cp_metadata|'NoneType' object has no attribute 'to'|num_computed_tokens_cpu"
+        {{log_path}}
+      when_to_use: R-A + build_cp_metadata None 元数据 + DCP + async spec + 图捕获 warmup
+      source_cases: [VLLM-ASC-11312]
+    - step: 4
+      name: R-B1 首请求崩 · recompute × spec decode（Request 缺 async_tokens_to_discard）
+      action: >-
+        R-B 且签名 "AttributeError: 'Request' object has no attribute 'async_tokens_to_discard'"，栈
+        vllm_ascend/core/recompute_scheduler.py:1088 update_from_output（V1/V2 model runner 同崩，scheduler
+        core 与 runner 无关）。触发：PD 分离 decode 节点同开 recompute_scheduler_enable + speculative
+        decoding（deepseek_mtp/MTP，任意带 MTP head 模型可复现），健康检查通过后首个 /v1/chat/completions
+        即崩、所有 EngineCore 退出；去掉 speculative decoding 后同一拓扑正常。根因：recompute scheduler
+        自 PR 12541 起读 request.async_tokens_to_discard 做 spec-decode 判断，配对 vLLM（v0.27.1 及当时
+        main）Request 类无该属性、仓库内亦无定义/setattr（全仓库唯一读取点）→ main2main 同步缺口；
+        spec-decode 请求每 step 填充 scheduled_spec_token_ids，使 and 链必然触达缺失属性。fix：升级含
+        PR 14504（main2main 0.27.1 for Recompute scheduler，merged 2026-08-25）的构建；规避=去
+        --speculative-config 或关 recompute_scheduler_enable。边界：若症状是运行中 OOM（MoE shared-expert
+        展开内存异常）而非首请求 AttributeError，属另一 recompute 缺陷族，机制/修复面不同，勿混判。
+      check: >-
+        grep -F "AttributeError: 'Request' object has no attribute 'async_tokens_to_discard'"
+        {{log_path}}；grep -E "recompute_scheduler\.py.*update_from_output|async_tokens_to_discard"
+        {{log_path}}
+      when_to_use: R-B + recompute_scheduler + spec decode 组合 + 首请求 AttributeError（含 PR 12541 的构建）
+      source_cases: [VLLM-ASC-14871]
+    - step: 5
+      name: R-B2 首请求崩 · 上下文并行 async spec（eagle_proposer None 切片赋值）
+      action: >-
+        R-B 且签名 "TypeError: 'NoneType' object does not support item assignment"，栈 model_runner_v1 →
+        sample_tokens → propose_draft_token_ids → eagle_proposer.py:560 _propose → set_inputs_first_pass
+        （源码行 cad.seq_lens_cpu[-num_prefill_reqs:] = seq_lens_p）；日志含 Worker_PCP0_* / Worker_DCP* 前缀。
+        触发：上下文并行（PCP/DCP）+ async scheduling + MTP（deepseek_mtp，num_spec=3）组合（DSV3.1-w4a8-
+        mtp-QuaRot A2×2，TP8 + PCP2 + EP，vllm-ascend 0.19.x），请求进入投机采样 first pass
+        （num_prefill_reqs>0）即崩。根因：async spec 模式下 model runner 只填充上游 canonical
+        _seq_lens_cpu（来自 optimistic_seq_lens_cpu），Ascend 子类字段 seq_lens_cpu 保持 None → 无守卫
+        切片赋值抛 TypeError。fix：升级含 PR 8749 的构建（merged 2026-05-08 main；eagle_proposer 对
+        seq_lens_cpu/_seq_lens_cpu 双字段加 None 守卫并保持同步、prepare_inputs 优先读上游 canonical 字段；
+        评论验证通过）。勿按 OOM/量化（w4a8/QuaRot）排查。
+      check: >-
+        grep -F "TypeError: 'NoneType' object does not support item assignment" {{log_path}}（核对栈含
+        eagle_proposer.py set_inputs_first_pass）；grep -E "Worker_PCP[0-9]+_" {{log_path}}
+      when_to_use: R-B + PCP/DCP worker + async spec first pass + eagle_proposer None 切片
+      source_cases: [VLLM-ASC-8926]
+    - step: 6
+      name: R-B3 首请求崩 · MTP × prefix-caching（mamba_utils 误路由越界）
+      action: >-
+        R-B 且签名 "IndexError: list index out of range"，栈 model_runner_v1.py execute_model →
+        mamba_utils.preprocess_mamba → collect_mamba_copy_meta → get_temporal_copy_spec（mamba_utils.py:285
+        src_block_id = block_ids[cur_block_idx + num_accepted_tokens - 1]）；multiproc_executor WorkerProc
+        exception。服务能拉起、首条 curl 即崩。触发：MTP（qwen3_5_mtp）+ --enable-prefix-caching（常伴
+        async scheduling + FULL_DECODE_ONLY），去掉 MTP 或 prefix-caching 任一即正常——单开任一功能均正常
+        是本 case 关键判别（Qwen3.5-27B-w8a8-mtp / GLM-5 W4A8，v0.19.1rc1，9003 同 bug）。根因：
+        ModelRunnerV1 把 Transformer 模型内存状态盲目路由进 vllm mamba preprocess/postprocess（不经模型
+        架构判别），prefix caching + MTP 产生的带填充 token 偏移被当作 mamba block id → block 分配远小于
+        偏移 → 越界。维护者将本族（9003/9024，含 DSV4 async MTP）归因并修复于 PR 9456（_copy_valid_
+        sampled_token_count 未正确同步多流致 valid_sampled_tokens_count 脏读写 + DSV4 专用 positions CPU
+        buffer）。诚实标注：issue 内第三方机制分析为推断，fix PR 语义与 Qwen3.5 mamba 路径的直接对应以
+        维护者声明为准，未逐级代码闭环。fix：升级含 PR 9456 的构建（merged 2026-05-22 main）；workaround=
+        去 MTP/prefix-caching 之一或关 FULL_DECODE_ONLY（可服务但速率明显下降）。
+      check: >-
+        grep -F "IndexError: list index out of range" {{log_path}}（核对栈含 mamba_utils.py
+        get_temporal_copy_spec / preprocess_mamba）
+      when_to_use: R-B + MTP×prefix-caching 组合（去一即正常）+ mamba_utils 越界 IndexError
+      source_cases: [VLLM-ASC-9024]
+    - step: 7
+      name: R-C1 运行期崩 · 图 replay rtMemcpy 107030（layer_sharding 混用）
+      action: >-
+        R-C 且签名 "EE9999: rtMemcpy execution failed, reason=the current capture mode does not support
+        this operation / synchronized memcpy failed ... runtime result=107030 / The DDR address of the
+        MTE instruction is out of range"，栈 sample_tokens → propose_draft_token_ids（MTP）→
+        deepseek_mtp forward → acl_graph.__call__（replay）→ aclnnKvRmsNormRopeCache；node 内全部 worker
+        同时崩（collective 级联、之后请求 HTTP 500）；去掉 --compilation-config cudagraph_mode
+        FULL_DECODE_ONLY 即不崩。触发：FULL_DECODE_ONLY + MTP（deepseek_mtp）+ layer_sharding
+        （--additional-config '{"layer_sharding":[...]}'）+ EP（DSV3.2-w4a8 双机 DP2×TP8，A2），压测到并发
+        门槛（cc≥4，Input=1024 Output=128）才崩，vllm-ascend ≤0.13.0。根因：早期版本未对 layer_sharding ×
+        FULL_DECODE_ONLY/MTP 混合配置做支持性断言——graph replay 内 aclnnKvRmsNormRopeCache 发起同步
+        rtMemcpy，ACL graph capture/replay 模式不允许 → 107030。fix：升级 ≥0.18.0（0.18.0 实测）并去掉
+        layer_sharding；仍崩再降 gpu-memory-utilization 排除容量次因。与同 rtMemcpy-107030-in-capture 族
+        的 8646（规避 moe_comm_type ALLGATHER）区分：本条规避=升级 + 去 layer_sharding。
+      check: >-
+        grep -aE "the current capture mode does not support this operation|rtMemcpy execution failed|
+        runtime result=107030" {{engine_log}}；grep -aE "aclnnKvRmsNormRopeCache" {{engine_log}}
+      when_to_use: R-C + 图 replay 107030 + layer_sharding×FULL_DECODE_ONLY×MTP 组合（cc 到门槛才崩）
+      source_cases: [VLLM-ASC-8587]
+    - step: 8
+      name: R-C2 运行期崩 · 507034 MoE 分发分支不一致（MTP 阶段 MC2 容量）
+      action: >-
+        R-C 且签名 "RuntimeError: error code 507034"，栈 MTP/drafter layer MoE forward →
+        token_dispatcher._preprocess → torch.repeat_interleave → AllGather。plog 级联判别：device0 先错
+        errType=0x1（task exception，MTE DDR 越界 + SMMU fault，fault kernel 相关 MoeDistributeDispatchV2
+        分发路径），其余设备 errType=0x4（communication timeout）为 device0 退出后的连锁反应——勿当独立
+        根因追。触发：PD 分离 decode（双机 A3 多 DP + EP + MTP/deepseek_mtp + FusedMC2，GLM-5.1-w8a8），
+        测试期未现、上线后现：num_batch_tokens(272) 超 MC2 单次容量(~104，按 cudagraph 最大捕获 102 推算)。
+        根因：MTP 阶段某 DP 的 token 数超 MC2 容量 → 该 DP 落入 alltoallv 分发分支、其余 DP 走 MC2 →
+        不同 DP 走不同 MoE 分发分支 → 崩溃（无官方 fix PR）。fix：规避 num_batch_tokens = max_num_seqs*3
+        （≤ cudagraph 最大捕获尺寸）且保持 32 倍数（避免 fusedmoe 算子 tiling 报错）；低代价先试=驱动
+        ≥25.5.2 或关 EP（社区早期建议，非本根因确认）。
+      check: >-
+        grep -aE "error code 507034|507034" {{engine_log}}；plog 核对 device0 errType=0x1 先于他设备
+        errType=0x4；grep -aE "max-num-batched-tokens|max-num-seqs" {{launch_config}}
+      when_to_use: R-C + 507034 + MTP/drafter 阶段 + 多 DP/EP + num_batch_tokens 超 MC2 容量
+      source_cases: [VLLM-ASC-9887]
+    - step: 9
+      name: R-C3 运行期崩 · async-scheduling × MTP 计数污染（多流脏读写）
+      action: >-
+        R-C 无唯一错误签名（不同模型可表现为 IndexError、计数断言或溢出崩溃）——先按配置组合判别：
+        --async-scheduling + MTP/spec decode（qwen3_5_mtp / deepseek_mtp，Qwen3.5-APC-MTP / DeepSeek-V4
+        类）同开且单开任一功能正常，崩溃与 num_accepted / num_computed_tokens 溢出相关（0.19.0 与当时
+        main 均复现）。根因：PR 8766 重写 model runner 的 _copy_valid_sampled_token_count，把 current_stream
+        声明进 with torch.npu.stream(...) 内部（GPU 参考实现在 context 外）→ 拷贝算子所在流未被正确同步
+        → async spec 下 valid_sampled_tokens_count 多流脏读写 → num_accepted/num_computed_tokens 污染溢出
+        崩溃。fix：升级含 PR 9456 的版本（merged 2026-05-22 main；修多流同步 + deepseek-v4 专用 positions
+        CPU tensor 免同步）；临时规避=关 --async-scheduling 或 revert PR 8766 对 _copy_valid_sampled_
+        token_count 的改写（有功能/性能代价）。同族提醒：9024（MTP + prefix caching IndexError）同 PR 9456
+        修复，触发面不同。勿按模型/参数排查，勿把长期关 async-scheduling 当交付规避。
+      check: >-
+        grep -aE "async.?scheduling|num_accepted|num_computed_tokens|_copy_valid_sampled_token_count|
+        valid_sampled" {{log_path}}
+      when_to_use: R-C + async-scheduling×MTP 组合 + 计数相关崩溃（无其他唯一签名）
+      source_cases: [VLLM-ASC-9482]
+    - step: 10
+      name: R-D1 静默阻塞 waiting · KV Pool 未 Put（spec decode 缺 connector finalize）
+      action: >-
+        R-D 无异常栈，现象=请求长时间 waiting、P 节点 KV cache 持续上涨不释放、后续请求全部阻塞。判别
+        核心在 KV 侧指标：mooncake master service 日志周期性 metrics 显示 PutStart=0/0、PutEnd=0/0、Mem
+        Storage: 0 B（服务一直收到 ExistKey/Get 查询但 Put 计数恒为 0 → KV 从未写入池）。触发：PD 分离 +
+        KV Pool（--kv-transfer-config MultiConnector：MooncakeConnectorV1 producer/consumer +
+        AscendStoreConnector backend=mooncake）+ spec decode（deepseek_mtp，num_spec=3）+ vllm-ascend
+        0.18.0rc1（未含 PR 7874 的 0.18 构建，GLM-5.1-w4a8 A2 1P1D）。根因：上游 vLLM v0.18 在投机解码
+        启用时把 KV connector finalization 推迟到 target-model forward 之后，vllm-ascend 适配 v0.18 时
+        移除 clear_connector_metadata 后未补 finalize_kv_connector → spec decode 路径 KV 从不触发 Put
+        入池。fix：cherry-pick PR 7874（merged 2026-04-02 releases/v0.18.0）或升级含该 PR 构建；验证
+        master metrics 出现 PutStart/PutEnd 成功计数、waiting 消失。忽略项：VLLM_ASCEND_BALANCE_SCHEDULING
+        相关 waiting（0.18 调度 patch 死循环）与 VLLM_NIXL_ABORT_REQUEST_TIMEOUT 是不同路径（实测无效）。
+      check: >-
+        grep -E "Master Metrics:.*(PutStart|PutEnd)=0/0|Mem Storage: 0 B" {{mooncake_master_log}}
+      when_to_use: R-D + waiting/阻塞 + PD+KV Pool + spec decode + Put 计数恒 0
+      source_cases: [VLLM-ASC-8808]
+    - step: 11
+      name: R-D2 静默性能退化 · prefix 命中归零（hybrid KV use_eagle 未传播）
+      action: >-
+        R-D 无异常栈，现象=prefix cache 命中异常：PD 分离 P 节点多并发 prefix hit rate 仅 ~10%，设
+        VLLM_PREFIX_CACHE_RETENTION_INTERVAL 后两条相同请求也不命中（归 0）；特征=开启 MTP/EAGLE 的 hybrid
+        cache（含 eagle 层组）时 hit 坍缩 0%。触发：PD 分离 P 节点 + DeepSeek-V4-Flash（MTP2 + EP）+
+        prefix cache + retention env（vllm-ascend 0.23.0，A2 四机）。根因：AscendHybridKVCacheCoordinator.
+        verify_and_split_kv_cache_groups 只把 eagle_group_ids 里的单组标记 use_eagle，未传播给 attention
+        group 中共享同一 spec 的 sibling manager（上游标注亦只标单组）→ 保持默认 use_eagle=False 的
+        manager 写侧保留 checkpoint tail 比读侧 drop_eagle_block 边界少 1 block → SWA group 永不命中、
+        get_cached_block 需全 group 命中而失败 → min-over-groups 混合命中坍缩 0%。fix：升级含 PR 11107 的
+        版本（merged 2026-07-01；对 eagle 所在 attention group 的每个 manager 含同 spec sibling 置
+        use_eagle=True，对齐上游语义）。勿把移除 P 节点 async scheduling 后 retention 变量"似乎起作用"
+        当交付 fix——仅暴露执行路径差异，不是正解；retention 变量本身非问题源（只是把失效暴露得更直接）。
+      check: >-
+        metrics 判别（prefix_cache_hits_total=0 且 queries>0）或请求级观察；grep -E
+        "VLLM_PREFIX_CACHE_RETENTION_INTERVAL|use_eagle|drop_eagle_block|eagle_group" {{log_path}}
+      when_to_use: R-D + prefix 命中归零/坍缩 + PD P 节点 + DSV4/MTP-EAGLE hybrid cache
+      source_cases: [VLLM-ASC-10970]
+    - step: 12
+      name: R-D3 静默精度退化 · 接受率/乱码三型判别入口
+      action: >-
+        R-D 且现象=投机接受率/accept_len 明显劣化或输出乱码/精度掉点（服务不崩、引擎无异常栈）。先做三型
+        判别，勿当纯性能问题或按 KV 容量/OOM 排查：型① 累积型——压测 1-2h 后才退化且不恢复、伴 curl 输出
+        内容错误、与 rope 形状无关 → step 13（drafter 输入控制流，VLLM-ASC-11127，PR 10117）；型② 数值型
+        ——确定性即时劣化、rope_dim 非 2 的幂、Q/K post-RoPE 范数比 ~0.73（参考 1.0）→ step 14（Triton
+        rope sin pad 偏移，VLLM-ASC-12723，PR 12963）；型③ 拓扑型——w8a8 EP 混部 + 高并发多模态乱码、
+        同权重改纯 TP（TP16DP1）精度正常 → step 15（dispatch_ffn_combine 缺 xmask，VLLM-ASC-7854，
+        PR 8560）。共同起点：先核对模型/部署特征（PD 分离多 DP / rope 形状 / EP 混部对照），再核对版本
+        是否已含对应 fix PR。输出正确仅为生成变慢 → 纯性能性接受率下降属性能族，不进三型。
+      check: >-
+        接受率指标 grep（accept_len|acceptance|accept.?rate|接受率）；Q/K 范数比对（~0.73）；部署对照
+        （关 MTP / 纯 TP / rope_dim 值 / EP 开关）
+      when_to_use: R-D + 接受率或输出精度退化（precision 向）先过本判别
+    - step: 13
+      name: R-D3a 累积型 · drafter 输入判断（PD 分离多 DP，input_fits_in_drafter）
+      action: >-
+        型①判别：MTP/spec-decode 开启 + PD 分离 decode 节点多 DP，压测 1-2h 后投机接受率退化到不足 1%
+        （<0.01）且无法恢复，手工 curl 出现输出精度错误（非纯性能性下降）；kv_pool 池化开关不影响（开/关
+        均复现）；关闭 MTP 可规避（GLM-5.1 w8a8，vllm-ascend 0.20.x，PR 10117 2026-06-08 合入 main）。
+        根因：spec-decode drafter 输入判断 input_fits_in_drafter 在多 DP 下处理不当，长时间压测后 MTP
+        接受率退化不可恢复并伴精度错误。fix：升级含 PR 10117 的版本（移除 drafter 侧 input_fits_in_drafter
+        判断 + 投机 mask 填充改 1，同修 vllm PR 44185 的 moe multi-DP hang 与 9221 回归；thread 确认合入
+        后问题修复）；workaround=压测/联调关 MTP。边界：若输出仍正确仅为生成变慢 → 纯性能性接受率下降，
+        勿用本 case。与型②判别（step 14）：本型无 rope_dim/范数异常特征，触发是多 DP 负载累积。
+      check: >-
+        grep -iE "acceptance|accept.?rate|接受率" {{log_path}}；curl 输出抽查精度；关 MTP 消融
+      when_to_use: 型① + PD multi-DP + 压测 1-2h 累积退化不恢复 + 输出内容错误
+      source_cases: [VLLM-ASC-11127]
+    - step: 14
+      name: R-D3b 数值型 · Triton rope sin 缓存 pad 偏移（rope_dim 非 2 幂）
+      action: >-
+        型②判别：spec-decode accept_len 明显劣化（DSpark draft k=7 时 ~5.6→3.0）且 Q/K post-RoPE 范数比
+        ~0.73（离线参考 1.000）；确定性（与负载/时长无关，非累积）；同一 rope 对象/worker/输入调
+        forward_native() 后 accept_len 恢复 5.4~5.5 → 确认 dispatched Triton 路径数值错误，勿追
+        checkpoint/接受逻辑/权重。触发条件：HAS_TRITON=True（走 rope_forward_triton 而非 torch_npu.
+        _npu_rotary_embedding）+ rope_dim 非 2 的幂（如 192，pad 到 256）；128/256 等 2 幂形状无影响。
+        根因：vllm_ascend/ops/triton/rope.py 的 sin 缓存偏移用了 pad 后的 rotary dim（sin_offsets =
+        tl.arange(pad_rope_dim//2, pad_rope_dim)）：rope_dim=192 时 sin 段实际起点是 rope_dim/2=96，代码却
+        从 pad_rope_dim/2=128 开始 → 错位 32 元素且尾部越界读垃圾 → sin≈0 → RoPE 退化 out=in*cos → Q/K
+        范数 ~0.73 → attention logits 被整体缩小 → accept_len 崩（cos_offsets 起点 0 且被 cos_mask 过滤，
+        无影响）。fix：升级含 PR 12963 的版本，或改 rope.py 两处 sin_offsets = cos_offsets + (rope_dim//2)
+        （3 行 diff；2 的幂形状行为不变）。
+      check: >-
+        grep -E "accept_len|Acceptance rate" {{log_path}}；Q/K 范数比 ~0.73 数值验证；rope_dim 非 2 幂核对
+        （HAS_TRITON 路径）
+      when_to_use: 型② + DSpark/accept_len 劣化 + rope_dim 非 2 幂 + 范数比 ~0.73
+      source_cases: [VLLM-ASC-12723]
+    - step: 15
+      name: R-D3c 拓扑型 · w8a8 EP 混部缺 xmask（dispatch_ffn_combine）
+      action: >-
+        型③判别：w8a8 大 MoE（Qwen3.5-397B-A17B-w8a8 类，--quantization ascend）混部 TP×DP + EP +
+        qwen3_5_mtp + FULL_DECODE_ONLY + async-scheduling，高并发（数百~上千）多模态/长文本精度测试出现
+        乱码回复或精度掉点（OCRbench 87.9 vs 95.6），服务不崩、引擎无异常栈（静默精度错误）；同权重只改
+        部署为 TP16DP1（无 EP 混部）精度正常、无乱回复 → 问题收敛到 EP 混部 + MTP/xmask 路径而非权重/
+        量化本身。根因：w8a8 分支 fused-MoE 自定义算子 dispatch_ffn_combine 未实现 xmask（xactivemask）
+        控制：被 xactivemask=0 屏蔽的 token 未按预期置为 padding expert（expertNum=tokenPerExpert×EP、放
+        序列尾、各设备跳过不处理），仍走真实 expert 分发/计算 → 混部多 DP 部分 rank 计算路径不一致 →
+        静默乱码。fix：升级含 PR 8560 的版本（merged 2026-04-28）；无配置 workaround（TP16DP1 仅作归因
+        对照，不是可交付规避）。勿按 KV 容量方向排查（报者曾怀疑，线程最终归因 PR 8560 xmask）。同族提示：
+        VLLM-ASC-9186 同 dispatch_ffn_combine 算子路径但为启动期 pybind 类型崩溃（interrupt），修复 PR
+        不同，勿混。
+      check: >-
+        grep -aE "qwen3_5_mtp|speculative-config.*qwen3_5" {{launch_log}}；grep -aE "enable-expert-parallel|
+        FULL_DECODE_ONLY" {{launch_log}}；评测对照（TP×DP+EP vs 纯 TP16DP1）
+      when_to_use: 型③ + w8a8 EP 混部 + 高并发乱码/精度掉点 + 纯 TP 对照正常
+      source_cases: [VLLM-ASC-7854]
+    - step: 16
+      name: R-D4 观测型 · profiling 产物缺失（CANN 9.0 × 图模式交互）
+      action: >-
+        R-D 且现象=观测能力缺失（服务本身正常，severity benign）：混部脚本采集 profiling 解析后无
+        kernel_details.csv；--enforce-eager（关图模式）后可正常采集、开 cudagraph（+MTP）必现；PD 分离
+        单独对 P 节点采集正常、仅混部（图模式+投机）采不到。触发：vllm-ascend 0.23.0 图模式 + MTP +
+        CANN 9.0.0（<9.1.0）。根因：CANN 9.0.0 的 profiling 与 NPU 图模式执行交互 bug（纯昇腾软件栈，非
+        vllm-ascend 框架特性，无代码 fix PR）。fix：升级 CANN ≥9.1.0（用户实测恢复采集）；临时规避=采集
+        窗口用 --enforce-eager 关闭图模式（损失图模式性能）或关 MTP，采集完成后恢复。勿追"采集窗口内无
+        NPU 算子下发"假说——关图模式即可采，非负载窗口问题。
+      check: >-
+        cat /usr/local/Ascend/ascend-toolkit/latest/version.cfg | grep -iE "version|cann"（9.0.x 命中）；
+        grep -iE "kernel_details\.csv|enforce-eager|cudagraph" {{log_path}}
+      when_to_use: R-D + profiling 无 kernel_details.csv + 图模式/MTP + CANN 9.0.x
+      source_cases: [VLLM-ASC-12241]
+    - step: 17
+      name: 收尾验证与注意
+      action: >-
+        各步命中后的共同收尾：本族 fix 主流=升级到含对应 fix PR 的 vllm-ascend 构建（11312 无合入 PR、
+        9887/8587 为配置规避、7310/12241 为版本升级），全部 requires-restart/requires-code-change；升级前
+        记录 vllm-ascend tag 与 CANN 版本，核对目标 release 是否含对应 fix PR，升级后按原故障场景复测
+        （崩溃计数 / 乱码 / 接受率 / 命中率 / profiling 产物）归零。同族提醒：9024 与 9482 同 PR 9456
+        修复但触发面不同（prefix-caching vs async-scheduling）；11127 与 12723 同为接受率退化，判别靠
+        rope_dim/范数特征与累积性；同一部署不同版本可先后暴露不同层故障。跨方法论：叠加 PD+KV-transfer/
+        Mooncake 的故障可先过 ascend-mooncake-kv-transfer-triage 再回本族——8808 的 KV-pool 无 Put 表象下
+        根因是 spec-decode 适配缺陷，两类都要查。诚实标注：9024 的 mamba 误路由机制链未逐级闭环（以维护者
+        指认 PR 为准）；11312 无合入 fix PR（workaround 收尾）；9887 无官方 fix（配置规避）——引用这些形态
+        时不得当作已定论根因。
+      check: >-
+        核对升级目标 release 是否含对应 fix PR；复测原故障场景归零
+      when_to_use: 任意步命中后收尾
+  verified_by_testing: false
