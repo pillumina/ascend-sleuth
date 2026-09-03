@@ -8,7 +8,9 @@ description: >
 
 从上游仓库的 closed issue 批量沉淀 case。适合：团队想吸收某框架（vllm-ascend / vllm / mindspeed-llm…）的 issue 里的排障知识，而不想逐条手工翻 issue。
 
-**自动化边界（默认自动，转正留人）**：本 skill 自动完成"拉取 → 过滤 → 评估 → 沉淀草稿 → 标记已导入"，产出 `status: draft` 的 case 草稿进 `postmortems/inbox/`——**不进诊断上下文**，由维护者批量审后转正。知识生效点（draft → active）始终是人。
+**自动化边界（拉取→沉淀全自动；升格分场景，2026-09 明确）**：本 skill 自动完成"拉取 → 过滤 → 评估 → 沉淀草稿 → 标记已导入"，产出 `status: draft` 的 case 草稿进 `postmortems/inbox/`——**不进诊断上下文**。升格分两种：
+- **默认（人工审后转正）**：维护者批量审 inbox（knowledge-groom 周批）后转正——知识生效点（draft → active）是人；
+- **自动化升格（owner 预授权源）**：本 skill 即 owner 配置的持续管道，其产出的草稿 verification 链完整（upstream-fix-merged 等外部验证）+ pre-triage 判别完成——**可直接调 knowledge-groom 升格入库提 PR**，不等周批（同 2026-W36 round2 全自动轮 22 case 先例；groom SKILL「触发场景区分」）。逐条人审不是自动化源的必经环节。
 
 ## 前置环境（不满足先处理，不跳过）
 

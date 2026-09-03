@@ -1,0 +1,97 @@
+# VLLM-ASC-10998 —— Qwen3.6-27B hybrid KV（多 cache group）+ layerwise connector + mooncake store
+#   PD disagg 长稳：D 侧批量 get 跨组 key 部分失败——group 1/2/3 的 key 全部 -704（key not found），
+#   group 0 的 key 正常（'Failed to get 3 keys out of 6. error_codes=[-704]. Check key existence and memory state.'）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10998
+# fix 跟踪：PR #11131（merged main；layerwise connector + mooncake store 下按组命中集合取块修复——
+#   校准集 eval/s2/vllm-ascend.yaml issue 10998 expected.resolution 确认）
+# investigation_quality: medium（S2 replay root_cause_ok=true，根因方向与 resolution 一致；replay 禁查
+#   issue 评论/fix PR，code 级缺陷语句未独立逐行钉死——evidence_gap_class B）
+# pre-triage: new_pattern —— 全库无 get-key 失败/-704 签名 case，无 layerwise connector + mooncake store
+#   取块路径覆盖；nearest 13934（多 transfer group × mooncake）是 AscendSFAIndexerCacheSpec 拆 1 组为
+#   2 transfer group 致 _get_kv_split_metadata 越界崩溃（IndexError、压测 306/1000、GLM-5.2/v0.26）——
+#   无 layerwise+store 组合、无按组部分 get 失败、无 -704；8808/11459/9398/10532/7792/11343 均属
+#   put/传输/端口/segfault 型，签名与机制全异（S2 replay 判 miss：tier2_hit=false）
+# verification: upstream-fix-merged（校准集确认 fix PR #11131 merged + S2 replay root_cause_ok=true）
+# 脱敏：key 的 sha256 摘要与内网 IP 不落库——symptom/正则只保留 key 结构模板（...@group:N@cache_role:kv@cache_family:...）
+# 导入管道：S2 replay 校准缺口 #10998（2026-09-03：tier2_hit=false + root_cause_ok=true）→ postmortems/inbox 草稿，待 groom 分诊转正
+# 建议命名空间：inference/vllm-ascend/interrupt/
+
+cases:
+  - id: VLLM-ASC-10998
+    title: "Qwen3.6-27B hybrid KV（多 cache group）+ layerwise connector + mooncake store PD disagg 长稳：D 侧批量 get 跨组 key 部分失败——group 1/2/3 key 全部 -704（mooncake_backend 'Failed to get 3 keys out of 6 … Check key existence and memory state'），同批 group 0 key 全命中；layerwise connector+mooncake store 按 cache group 命中集合取块缺陷（PR #11131）"
+
+    category: interrupt
+    tags: [pd-disaggregation, layerwise-connector, hybrid-kv, mooncake, kv-pool, kv-transfer, get-key-error, stability]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.21.0rc1"]       # 触发镜像（v0.21.0rc1.tar.gz + PR #10565）；fix PR #11131 merged main——首含该 PR 的 release 素材未确认，软匹配降权
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+
+    symptoms:
+      - "PD disagg 长稳压测（长序列）：prefill/decode 侧 --kv-transfer-config MultiConnector = MooncakeLayerwiseConnector（kv_producer / kv_consumer）+ AscendStoreConnector（backend=mooncake），模型 qwen3.6-27b 且 --no-disable-hybrid-kv-cache-manager（hybrid KV），触发镜像 v0.21.0rc1 + PR #10565"
+      - "vllm worker 日志偶发：'[mooncake_backend.py:240] [vllm-ascend] [distributed] - Failed to get 3 keys out of 6. error_codes=[-704]. Check key existence and memory state.'（get 失败型，-704=key not found；区别于 put 失败 -800）"
+      - "'Failed to get key details. keys=[...]' 明细：同批 key 跨 cache group（形如 Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:N@cache_role:kv@cache_family:default@<hash>），result=[OK, OK, -704, -704, -704, OK]——失败恰为 group 1/2/3 的 key，group 0 key 全部命中"
+      - "issue 同文贴出 plog：HCCL one_sided_service_adapt DeregisterMem 'The parameter memHandle[...] is invalid' + GE ErrorNo 103900 Failed to deregister mem + rtFreeHost ErrCode=507899（时间戳与 -704 报错不同窗口）——非 resolution 所指路径，不作判别主信号"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10998"
+      - "https://github.com/vllm-project/vllm-ascend/pull/11131"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "校准集 eval/s2/vllm-ascend.yaml issue 10998 expected.resolution='layerwise connector + mooncake store 下按组命中集合取块修复——PR #11131 merged'；S2 replay root_cause_ok=true（tier2_hit=false 覆盖缺口）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'Failed to get [0-9]+ keys? out of [0-9]+\\. error_codes=\\[-704\\]' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Failed to get [0-9]+ keys? out of [0-9]+\\. error_codes=\\[-704\\]"
+        note: "D 侧 vllm 引擎/worker 日志（vllm serve 输出）；mooncake_backend get 失败 -704=key not found"
+      fallback:
+        command_template: "grep -aE 'Failed to get key details\\. keys=.*@group:[0-9]+@cache_role:kv@cache_family' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Failed to get key details\\. keys=.*@group:[0-9]+@cache_role:kv@cache_family"
+        note: "key 明细行——批量 get 跨 hybrid 多 cache group（@group:N 段），失败 key 组内成片（如 group 1/2/3 全 -704）"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：日志是否出现 mooncake_backend.py 'Failed to get N keys out of M … error_codes=[-704] … Check key existence and memory state'（get 失败型）？"
+        expected: "是——本 case 命中面；区别于 put 失败（VLLM-ASC-9398/7792 Failed to put key res:[-800]）、从不 Put（VLLM-ASC-8808）、lazy_init AssertionError（VLLM-ASC-11459）、传输 segfault（VLLM-ASC-10532）"
+      - step: 2
+        check: "形态判别：'Failed to get key details' 明细中同批 key 是否跨 hybrid 多 cache group（...@group:N@cache_role:kv@cache_family:default@...），失败是否集中在部分 group（如 group 1/2/3 全 -704、group 0 全命中）？"
+        expected: "是——按 cache group 的命中集合/取块路径缺陷候选（layerwise connector + mooncake store），勿按单 key 丢失/数据竞争方向查"
+      - step: 3
+        check: "场景判别：PD disagg + MultiConnector=[MooncakeLayerwiseConnector + AscendStoreConnector(backend=mooncake)] + hybrid KV（--no-disable-hybrid-kv-cache-manager）长稳场景？记录 vllm-ascend 镜像版本（触发=v0.21.0rc1 + PR #10565）"
+        expected: "是——触发组合确认；与 VLLM-ASC-13934（SFA spec 拆 transfer group 的 _get_kv_split_metadata 越界崩溃：GLM-5.2/A3/v0.26）触发组合不同"
+      - step: 4
+        check: "排除项：issue 同文 plog 的 HCCL DeregisterMem memHandle invalid / GE ErrorNo 103900 / rtFreeHost 507899 与 -704 报错不同时间窗口，且 fix 位于 connector 取块路径——勿转入 HCCL/驱动/内存方向排查"
+        expected: "主判别信号始终是 backend 的按组 get 失败 -704"
+      - step: 5
+        check: "修复验证：升级含 PR #11131（layerwise connector + mooncake store 按组命中集合取块，merged main）的 vllm-ascend 构建并重启后长稳复测"
+        expected: "'Failed to get … error_codes=[-704]' 不再出现，跨组 get 全部命中"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]     # 需升级构建并重启 PD 两侧服务
+    fix_type: code-patch
+
+    root_cause: >
+      Qwen3.5/3.6 hybrid KV 模型（同一序列的 KV 分布在多个 cache group，命中 key 形如
+      …@group:N@cache_role:kv@cache_family:default@<hash>）+ layerwise connector
+      （MooncakeLayerwiseConnector）+ mooncake store（AscendStoreConnector backend=mooncake）的
+      PD disagg 长稳路径：D 侧一次 get 批量跨 group 请求 6 个 key，group 1/2/3 的 key 全部返回 -704
+      （key not found）、group 0 全部命中——layerwise connector + mooncake store 路径未按 cache group
+      分别构造命中集合（hit-set）并取块，组 key 的请求集合与 store 各组的实际存在状态错配，
+      把不存在/未命中的组 key 一并发出 → 组级 get 部分失败。校准 resolution：fix PR #11131
+      修复该路径的「按组命中集合取块」。code 级缺陷语句未逐行钉死（素材禁查 fix PR，evidence_gap B）。
+
+    fix: >
+      升级到含 PR #11131（merged main）的 vllm-ascend 构建——layerwise connector + mooncake store
+      路径按 cache group 分别构造命中集合取块，避免跨组批量 get 请求不存在的组 key。
+      验证：长稳复测不再报 'Failed to get … error_codes=[-704]'，跨组 get 全部命中。
+    rollback: "回退至不含 #11131 的构建（触发镜像 v0.21.0rc1 + PR #10565）即复现"

@@ -1,0 +1,82 @@
+# VLLM-ASC-10097 —— model_runner_v1 preprocess_mamba 重复传参致 TypeError（v0.20.2 回归）
+#   mamba_cache_mode=align 路径：v0.20.2 分支已把 preprocess_bufs 置为 _get_mamba_copy_bufs()，
+#   调用时仍多传一个 _get_mamba_copy_bufs() 位置实参 → 实参数超 preprocess_mamba 签名 → TypeError
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10097
+# fix 跟踪：PR #10188（merged，移除重复实参；issue closed state_reason=COMPLETED）
+# investigation_quality: high（源码级定位——issue 首帖调用代码即 bug 本体、重复实参可静态读出；
+#   S2 replay root_cause_ok=true 与校准集 eval/s2/vllm-ascend.yaml #10097 expected.resolution 一致）
+# pre-triage: new_pattern（全库仅 VLLM-ASC-9024 涉 preprocess_mamba 路径；9024=MTP×prefix-caching →
+#   get_temporal_copy_spec IndexError v0.19.1rc1，触发组合/错误签名/版本/根因全异；本 case=align 模式
+#   重复传参 TypeError v0.20.2 回归——9024 quickly_check（IndexError/get_temporal_copy_spec）不命中）
+# verification: upstream-fix-merged（fix PR #10188 merged）
+# 导入管道：S2 replay 覆盖缺口（#10097 tier2_hit=false + root_cause_ok=true）补 case → inbox（待 groom 三分类/升格）
+
+cases:
+  - id: VLLM-ASC-10097
+    title: "model_runner_v1.py Mamba align 模式调用 mamba_utils.preprocess_mamba 重复传参（v0.20.2 分支 preprocess_bufs 已 = self._get_mamba_copy_bufs()，调用仍多传一个 self._get_mamba_copy_bufs() 位置实参）→ 实参数超签名 TypeError（v0.20.2 回归）；fix PR #10188 移除重复实参"
+
+    category: interrupt
+    tags: [mamba, align-mode, preprocess-mamba, typeerror, regression, v0.20.2]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["==0.20.2"]   # 触发路径被 vllm_version_is("0.20.2") 分支保护——仅 v0.20.2（及其 rc/携带同段代码的 main 构建，issue 环境标 main）报重复传参；#10188 合入 main 修复，含修复的下一个 release tag 素材未确认
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.75
+
+    symptoms:
+      - "Mamba 模型 + mamba_cache_mode=align 配置（model_runner_v1.py preprocess_mamba 调用路径）下推理抛 TypeError——issue 标题即 '[Bug]: model_runner_v1 preprocess_mamba 重复传参致 TypeError（v0.20.2 回归）'"
+      - "报错代码特征：preprocess_mamba 调用最后两个实参重复——vllm_version_is('0.20.2') 分支先置 preprocess_bufs = mamba_bufs = self._get_mamba_copy_bufs()，随后调用仍把 self._get_mamba_copy_bufs(), 与 preprocess_bufs, 一并传入（issue 原文：'the last 2 args ... is duplicated, self._get_mamba_copy_bufs(), should be removed'）"
+      - "回归由 v0.20.2 分支引入（报错代码处于 vllm_version_is('0.20.2') 保护段）；issue 环境标 main branch——携带 0.20.2 分支同段调用代码时同现，报错与 Mamba align 模式路径绑定"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/10097"
+      - "https://github.com/vllm-project/vllm-ascend/pull/10188"
+
+    verification:
+      source: upstream-fix-merged
+      detail: 'fix PR #10188（merged；移除 model_runner_v1.py align 分支 preprocess_mamba 调用中重复的 self._get_mamba_copy_bufs() 实参）；与校准集 eval/s2/vllm-ascend.yaml #10097 expected.resolution 一致'
+
+    quickly_check:
+      primary:
+        command_template: "grep -F 'TypeError: preprocess_mamba' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:TypeError: preprocess_mamba"
+        note: "签名不匹配 TypeError 报错形如 'preprocess_mamba() takes N positional arguments but M were given'；须核对调用方为 model_runner_v1.py 的 mamba_cache_mode==align 分支"
+      fallback:
+        command_template: "grep -E 'model_runner_v1.*preprocess_mamba|mamba_cache_mode|_get_mamba_copy_bufs' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(model_runner_v1.*preprocess_mamba|mamba_cache_mode|_get_mamba_copy_bufs)"
+        note: "报错文本未含函数名/栈被截断时的宽松判定：调用点应同时出现 align 分支 + 重复的 _get_mamba_copy_bufs() 实参特征"
+
+    diagnosis:
+      - step: 1
+        check: "错误签名判别：TypeError 且栈/报错指向 mamba_utils.preprocess_mamba 的实参个数不匹配（'takes N positional arguments but M were given'），由 model_runner_v1.py 的 mamba_cache_mode=align 分支调用引入？"
+        expected: "是——这是调用侧重复传参（实参数超签名），非算子/内核级异常；不是 9024 的 IndexError（get_temporal_copy_spec 越界，v0.19.1rc1 MTP×prefix-caching 组合）"
+      - step: 2
+        check: "版本判别：vllm-ascend 环境为 v0.20.2（vllm_version_is('0.20.2') 分支）或 main/构建携带同段调用代码？"
+        expected: "是——核对调用代码最后两个实参是否重复：0.20.2 分支 preprocess_bufs 已 = self._get_mamba_copy_bufs()，多余的 self._get_mamba_copy_bufs(), 应删除"
+      - step: 3
+        check: "修复指向：升级到含 PR #10188 的版本（移除重复的 self._get_mamba_copy_bufs() 实参）；若暂不能升级，可手工删除该多余实参后重建镜像验证"
+        expected: "移除重复实参后 align 模式 preprocess_mamba 调用正常、TypeError 消失"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+
+    fix_type: code-patch   # 上游已修（PR #10188）；实际落地 = 升级到含该 PR 的版本
+
+    root_cause: >
+      v0.20.2 回归（model_runner_v1.py，Mamba align 模式）：mamba_cache_mode == "align" 分支中，
+      vllm_version_is("0.20.2") 判断下把 preprocess_bufs 直接置为 self._get_mamba_copy_bufs()
+      （该版本 copy_bufs 即 preprocess 用缓冲，preprocess_mamba 签名相应不含独立 copy_bufs 实参），
+      但调用 mamba_utils.preprocess_mamba 时仍把 self._get_mamba_copy_bufs() 作为独立位置实参再传一次，
+      与 preprocess_bufs 重复 → 实参数超过函数签名 → TypeError（对齐预处理路径崩溃）。
+      buffer 获取逻辑随 0.20.2 签名变更改了，多余的实参没删——调用残留引入的回归。
+
+    fix: >
+      PR #10188：移除 model_runner_v1.py preprocess_mamba 调用中重复的 self._get_mamba_copy_bufs()
+      位置实参（保留 preprocess_bufs）。实际动作 = 升级到含 PR #10188 的版本。

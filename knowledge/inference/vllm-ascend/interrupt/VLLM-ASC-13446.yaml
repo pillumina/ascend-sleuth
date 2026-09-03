@@ -1,0 +1,99 @@
+# VLLM-ASC-13446 —— 按 24.0rc 官方 Qwen3-Reranker deploy guide 启动 Qwen3-VL-Reranker-2B 启动报错：
+#   guide 的 --hf_overrides architectures 覆盖（Qwen3VLForSequenceClassification）与模型实际 config 类
+#   错配 → vllm qwen3_vl 数据解析路径 get_hf_config 严格断言 TypeError（Expected Qwen3VLConfig,
+#   found Qwen3Config）→ serve 起不来；root cause = 官方 guide 配方错（doc bug，非引擎/镜像缺陷）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/13446
+# fix 跟踪：PR #13510 [Doc][BugFix] Fix Qwen3-Reranker deploy guide（merged；issue closed state_reason=COMPLETED）
+# investigation_quality: high（真实报错 + 完整启动配方 + 用户实测 0.18 配方可正常启动 + 上游 doc fix PR merged；
+#   S2 replay root_cause_ok=true 与校准集 eval/s2/vllm-ascend.yaml #13446 expected.resolution 一致；
+#   S2 未读 PR #13510 diff——doc 具体改哪几行未逐字确认，落地方案以 issue 内用户实测配方为准）
+# pre-triage: new_pattern（全库无 reranker / hf_overrides / Qwen3VLForSequenceClassification / 本 TypeError
+#   签名 case；最近邻 9593+1991=310P pooling 平台缺口 NotImplementedError→升级修复、5725=pooling 精度
+#   前缀缓存、7023=多模态 placeholder 计数——平台/签名/根因层/fix_type 全异；首条 Qwen3-Reranker doc-guide case）
+# verification: upstream-fix-merged（fix PR #13510 merged）
+# 导入管道：S2 replay 覆盖缺口（#13446 tier2_hit=false + root_cause_ok=true）补 case → inbox（待 groom 三分类/升格）
+
+cases:
+  - id: VLLM-ASC-13446
+    title: "按 v0.24.0rc 官方 Qwen3-Reranker deploy guide 启动 Qwen3-VL-Reranker-2B（--runner pooling + --hf_overrides '{\"architectures\": [\"Qwen3VLForSequenceClassification\"]}'）报 TypeError: Invalid type of HuggingFace config（Expected Qwen3VLConfig but found Qwen3Config）→ serve 起不来：guide 架构覆盖与模型实际 config 类错配（doc bug，PR #13510 修 guide）；改 Qwen3ForSequenceClassification（0.18 配方）可正常启动"
+
+    category: interrupt
+    tags: [reranker, qwen3-reranker, qwen3-vl, pooling, hf-overrides, architectures, config-type-mismatch, doc-guide, startup-failure, typeerror]
+
+    compat:
+      - framework: vllm-ascend
+        note: "doc/guide 层问题、非引擎版本门：触发=按 v0.24.0rc Qwen3-Reranker deploy guide 的 hf_overrides 配方启动（实测镜像 vllm-ascend:v0.23.0rc1，910B2）；修复=guide 文档修正（PR #13510），doc 修复不随引擎 tag 发布——同配方在新/旧引擎上都会踩（错配发生在 vllm 模型加载/数据解析层），升级镜像不能替代改配方"
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.75
+
+    symptoms:
+      - "按官方文档（https://docs.vllm.ai/projects/ascend/en/v0.24.0rc/tutorials/models/Qwen3-Reranker.html）配方启动：vllm serve Qwen/Qwen3-VL-Reranker-2B --served-model-name Qwen/Qwen3-Reranker-0.6B --runner pooling --hf_overrides '{\"architectures\": [\"Qwen3VLForSequenceClassification\"],\"classifier_from_token\": [\"no\", \"yes\"],\"is_original_qwen3_reranker\": true}' --port 8000 --max-model-len 1024，serve 启动报错"
+      - "报错签名（issue 原文可匹配）：TypeError: Invalid type of HuggingFace config. Expected type: <class 'transformers.models.qwen3_vl.configuration_qwen3_vl.Qwen3VLConfig'>, but found type: <class 'transformers.models.qwen3.configuration_qwen3.Qwen3Config'>，栈经 vllm/model_executor/models/qwen3_vl.py get_data_parser/get_hf_config → vllm/multimodal/processing/context.py get_hf_config raise TypeError"
+      - "日志尾 [ERROR] ... ERR99999 UNKNOWN applicaiton exception 是启动异常后的级联兜底（同 VLLM-ASC-7823 归类），非独立错误"
+      - "对照：把 architectures 覆盖改为 Qwen3ForSequenceClassification（0.18 时代 guide 配方）后服务可正常启动——guide 给的架构名与模型实际 config 类不匹配是触发点"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/13446"
+      - "https://github.com/vllm-project/vllm-ascend/pull/13510"
+      - "https://docs.vllm.ai/projects/ascend/en/v0.24.0rc/tutorials/models/Qwen3-Reranker.html#42-source-code-installation"
+
+    verification:
+      source: upstream-fix-merged
+      detail: 'fix PR #13510 [Doc][BugFix] Fix Qwen3-Reranker deploy guide（merged；issue closed COMPLETED）——上游按 doc 修 guide 而非改引擎代码，与根因判定一致；与校准集 eval/s2/vllm-ascend.yaml #13446 expected.resolution 一致'
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'TypeError: Invalid type of HuggingFace config|Expected type:.*Qwen3VLConfig.*but found type:.*Qwen3Config' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Invalid type of HuggingFace config"
+        note: "issue 实证报错文本：TypeError: Invalid type of HuggingFace config. Expected type: <...Qwen3VLConfig>, but found type: <...Qwen3Config>（qwen3_vl.py get_hf_config 严格断言）"
+      fallback:
+        command_template: "grep -aE 'Qwen3VLForSequenceClassification|Qwen3.*Reranker|ERR99999 UNKNOWN applicaiton exception' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(Qwen3VLForSequenceClassification|Qwen3.*Reranker)"
+        note: "报错段被裁剪/未见 TypeError 全文时的宽松判定：启动命令含 Qwen3-VL-Reranker + --hf_overrides 的 VL ForSequenceClassification 架构覆盖即进入本 case 判别"
+
+    diagnosis:
+      - step: 1
+        check: "签名判别：serve 启动报错，栈含 TypeError: Invalid type of HuggingFace config，Expected Qwen3VLConfig but found Qwen3Config（qwen3_vl.py get_data_parser/get_hf_config 严格类型断言）？"
+        expected: "是——架构覆盖与实际加载的 HF config 类错配（VL 数据解析路径强制要求 Qwen3VLConfig），属加载/配置层错误，非算子/内核/设备异常"
+      - step: 2
+        check: "配方判别：启动命令是否照 0.24.0rc 官方 Qwen3-Reranker deploy guide：serve Qwen3-VL-Reranker-2B（或 Qwen3-Reranker）+ --runner pooling + --hf_overrides architectures=[Qwen3VLForSequenceClassification]？"
+        expected: "是——guide 给的架构覆盖与模型实际 config 类不匹配（Qwen3-VL-Reranker-2B config.json：model_type=qwen3_vl、architectures=[Qwen3VLForConditionalGeneration]，无 Qwen3VLForSequenceClassification 注册；按 VL 覆盖加载却落到文本 Qwen3 config → 类型断言失败）→ 根因在官方 guide 配方（doc bug，PR #13510 修 guide），不是引擎/镜像缺陷"
+      - step: 3
+        check: "修复落地：把 --hf_overrides architectures 改为 Qwen3ForSequenceClassification（0.18 时代 guide 配方，issue 内用户实测启动正常）；或按 PR #13510 修正后的官方 guide 配置，然后重启 serve"
+        expected: "改配方后 serve 正常拉起（无需升级镜像——doc 修 guide 不随引擎 tag 发布，升级不能替代改配方）"
+        note: "served-model-name（Qwen3-Reranker-0.6B 别名）与加载架构无关，可保留；判别键是 architectures 覆盖值与模型 config 类是否匹配"
+      - step: 4
+        check: "忽略项：日志尾 ERR99999 UNKNOWN application exception 是启动异常级联兜底（同 VLLM-ASC-7823），不作为独立错误定位；聚焦上文的 TypeError 签名与启动配方"
+        expected: "忽略级联兜底报错，不为其单开排查"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]   # 改启动配方后需重启 vllm serve
+
+    fix_type: config-change   # 上游修 = doc guide（PR #13510）；本 case 落地动作 = 改 hf_overrides 架构覆盖（启动配置），非引擎代码升级
+
+    root_cause: >
+      v0.24.0rc 官方 Qwen3-Reranker deploy guide 的启动配方写错（doc bug，非引擎缺陷）：guide 让用户用
+      vllm serve Qwen3-VL-Reranker-2B + --runner pooling + --hf_overrides '{"architectures":
+      ["Qwen3VLForSequenceClassification"], ...}'。该架构覆盖与模型实际 config 类不匹配——serve 目标模型的
+      config.json（model_type=qwen3_vl，architectures=[Qwen3VLForConditionalGeneration]）并无该
+      ForSequenceClassification 类，按此覆盖加载使 vllm 走进 qwen3_vl 多模态数据解析路径并实际拿到文本
+      Qwen3Config，qwen3_vl.py get_hf_config 对 config 类做严格断言 → TypeError: Invalid type of
+      HuggingFace config. Expected Qwen3VLConfig, but found Qwen3Config → serve 启动失败。issue 内用户按
+      0.18 配方把架构覆盖改为 Qwen3ForSequenceClassification（文本分类路径）后启动正常，印证 guide 架构名
+      错配是触发点。上游以 [Doc][BugFix] 修 guide（PR #13510 merged）而非改代码。
+
+    fix: >
+      修改启动配方（config-change，无需升级镜像）：
+      1) 把 --hf_overrides architectures 覆盖从 Qwen3VLForSequenceClassification 改为
+         Qwen3ForSequenceClassification（0.18 时代 guide 配方；issue 内用户实测启动正常）；保留
+         classifier_from_token/is_original_qwen3_reranker 等其余覆盖字段；
+      2) 或直接按 PR #13510 修正后的官方 Qwen3-Reranker deploy guide 配置（当前文档版本）；
+      3) 重启 vllm serve 验证拉起。上游 fix = PR #13510（merged，修正 guide 文档）；doc 修复不随引擎
+      tag 发布，升级镜像不能替代改配方。
+    rollback: "把 architectures 覆盖改回 Qwen3VLForSequenceClassification 重启即复现 TypeError（可验证因果）"

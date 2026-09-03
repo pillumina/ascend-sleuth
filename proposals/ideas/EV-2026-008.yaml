@@ -1,0 +1,54 @@
+# ============================================================
+# Idea 卡 EV-2026-008 —— triage 路由缺口（evolve-check T4 信号，S2 补 case 收尾伴随）
+# ============================================================
+
+id: EV-2026-008
+layer: L2                          # 流程层：triage-tree 路由修订
+title: "triage inference_interrupt 缺 TypeError + 推理侧 hang 签名——S2 补 case 暴露路由缺口（13446 被 training 误吸风险 / 13639 零词法命中）"
+status: validated               # agent 采纳：triage 补 TypeError + 推理 hang 签名，回放验证命中
+authorization: review              # triage 正则小改，判断性中风险（review 级，非结构级 dual）
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-03
+source_signals:
+  - signal: component_error        # S2 补 case 收尾暴露的 triage 路由缺口（evolve-check T4）
+    evidence: "S2 补 case 两条签名实测 0/误命中：13639（RPC call to sample_tokens timed out, fullgraph hang）整段 0 命中任何分支；13446（TypeError: Invalid type of HuggingFace config）被 'failed to start' 同时吸进 training_interrupt 与 inference_interrupt（training 误吸风险）"
+    trajectory:
+      - "postmortems/inbox/VLLM-ASC-13639.case.yaml（2026-W37 S2 缺口补 case）"
+      - "postmortems/inbox/VLLM-ASC-13446.case.yaml（2026-W37 S2 缺口补 case）"
+      - "triage-tree.yaml inference_interrupt 分支（实测路由模拟）"
+hypothesis: "inference_interrupt 分支补 TypeError（异常类清单）+ 推理侧 hang 签名（\\bhang\\b|\\bstuck\\b|timed out|死锁）后，13446 不再被 training 误吸、13639 有词法路由而非纯语义兜底"
+predicted_effect:
+  metric: 路由准确率（S2 对照 + 新 case 症状回放）
+  from: "13446/13639 路由 0 或误吸"
+  to: "两条签名路由到 inference_interrupt"
+validation:
+  method: golden_replay            # 回放验证：用两条真实症状文本测 triage 匹配
+  baseline: 现 triage-tree（13446→training 误吸，13639→0 命中）
+  success_criteria: 补正则后 13446→inference_interrupt 且不再命中 training、13639→inference_interrupt；现有 case 症状无回归
+  rollback: triage-tree 单行变更，git revert（原则七）
+gate:
+  condition: "S2 补 case 实测暴露路由缺口（已发生：13446/13639）"
+risk: low                           # 正则追加，低风险可逆；但影响全部诊断路由 → review 级
+principle_refs: [6, 8, 11]        # 闸门硬度匹配代价（漏判→软补正则）/ 可观测先于改进 / 数据触发
+actual_cost:
+  tokens: 1500
+  source: estimate              # 执行后写回（estimate）
+decisions:
+  - type: proposal
+    who: agent
+    when: 2026-09-03
+    conclusion: "S2 补 case（13446/13639）收尾时实测 triage 路由：13446 的 TypeError 签名无词法命中、被 'failed to start' 同时吸入 training/inference 分支；13639 的推理 hang（timed out/fullgraph deadlock）整段 0 命中。inference_interrupt 异常类清单缺 TypeError，hang 类只覆盖 timeout 变体不覆盖 'timed out'/hang/stuck。产卡补正则。"
+  - type: action
+    who: agent
+    when: 2026-09-03
+    conclusion: "改 triage-tree inference_interrupt：①异常类清单补 TypeError；②新增推理 hang 行（hang/stuck/死锁/挂起/deadlock）；③grp0 补 timed out/TimeoutError。变更在分支 kb/s2-gap-cases。"
+  - type: eval
+    who: agent
+    when: 2026-09-03
+    conclusion: "回放验证：13639（timed out/deadlock）→ inference_interrupt grp0/grp1 命中；13446（TypeError）→ inference_interrupt grp7 命中、不再依赖 failed to start 的 training 误吸；回归1（训练 hang）→ training grp0 命中；回归2（推理 OOM）→ 双分支均命中（跨框架词共现，agent 语义判断，符合多分支弱匹配设计）。eval solid。"
+  - type: decision
+    who: agent
+    when: 2026-09-03
+    conclusion: "采纳。triage 路由缺口修复真实生效（13446/13639 从 0/误吸 → inference_interrupt 命中），仅正则追加未删改现有行（EV-005 ValueError 补录同路径先例），无 golden 回归风险。变更随 S2 补 case PR 合入（kb/s2-gap-cases）。"

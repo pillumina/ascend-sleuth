@@ -1,0 +1,102 @@
+# VLLM-ASC-9769 —— 310P 图模式 W8A8 量化模型推理请求崩溃：QuantBatchmatmulV3 收 FRACTAL_NZ 期望 ND
+#   （NZ/ND 格式期望不匹配）→ ACL stream synchronize failed 507015 → EngineDeadError 500；
+#   --enforce-eager 正常——310P 图模式 fused-ops 覆盖缺口（vllm-ascend 框架侧缺陷，非 CANN 算子 bug）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9769
+# fix 跟踪：PR #9104（310P 图模式 fused-ops 覆盖；0.19.1 cherry-pick / POC 镜像；具体发布版本号未核，按分支/镜像取）
+# investigation_quality: medium（S2 replay root_cause 与校准 resolution 一致 root_cause_ok=true；
+#   fixture 中段裁剪、未 clone 0.19.1 分支逐行核对精确 fused-op 落点——evidence_gap_class B）
+# pre-triage: new_pattern —— 与 VLLM-ASC-10122 同签名面（310P+QuantBatchmatmulV3+507015）但根因异，必须判别：
+#   10122=CANN 量化算子本体 bug（eager/图模式均崩，升 CANN ≥9.1.0.beta2 修）；本 issue=310P 图模式 fused-ops
+#   覆盖缺口（eager 正常仅图模式崩，框架侧 cherry-pick PR #9104）——按 10122 走会错误升级 CANN。
+#   其余近邻均不同根因：10834=W4A8 group_size 256 反量化算子限制（910B/EZ1001/非图模式）、
+#   9129=compressed-tensors 310P 未注册适配 KeyError（量化格式选择）、7160=MoE gating renorm tiling、
+#   12983/8646/7993/13050=310P/图模式其它签名（free-mask/rtMemcpy/FIA/IndexPut）。
+# verification: upstream-fix-merged（issue #9769 state_reason=COMPLETED；校准 resolution：310P 图模式缺 fused
+#   ops 支持——cherry-pick PR #9104 或换 POC 镜像；S2 replay root_cause_ok=true 与 resolution 一致）
+# 脱敏：不引 issue 线程正文/内网 IP/token（replay fixture 内网 IP 已裁剪）
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：S2 replay 覆盖缺口（.s2-replay/9769）→ to-postmortem 草稿 → postmortems/inbox/（待 groom 分诊转正）
+# 草稿纪律：不加 confidence / validation_record 字段（人审接受后由 groom/结算脚本按口径写入）
+
+cases:
+  - id: VLLM-ASC-9769
+    title: "310P 图模式（vllm-ascend 0.19.1）W8A8 量化模型推理请求崩溃：QuantBatchmatmulV3 收 FRACTAL_NZ 期望 ND（NZ/ND 格式期望错位）→ ACL stream synchronize failed 507015 / EngineDeadError 500；--enforce-eager 正常——310P 图模式 fused-ops 覆盖缺口（框架侧，cherry-pick PR #9104）"
+
+    category: interrupt
+    tags: [310p, w8a8, quantization, quantbatchmatmulv3, graph-mode, cudagraph, fused-ops, nz-format, "507015", engine-crash]
+
+    platforms: ["310P"]              # npu-smi 310P3；Atlas 300I Duo 等 310P 系列
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.19.1"]           # 触发：vLLM 0.19.1 + vllm-ascend 0.19.1rc1（0.19.1 分支）；修复=含 PR #9104 的版本/POC 镜像（发布号未核）
+    # 环境 CANN 9.0.0（ASCEND_TOOLKIT_HOME=/usr/local/Ascend/cann-9.0.0）。故意不设 cann 兼容维度：
+    # 本 issue 根因非 CANN 侧——避免与 10122（升 CANN ≥9.1.0.beta2）混淆，判别见 diagnosis step 3
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+    # confidence/validation_record：草稿期不设（见头注释）
+
+    symptoms:
+      - "310P（npu-smi 310P3）上 vllm-ascend 0.19.1 服务 W8A8 量化模型（默认图模式），推理请求触发 EngineCore 崩溃：RuntimeError: ACL stream synchronize failed, error code:507015"
+      - "崩溃栈落 vllm_ascend/_310p/block_table.py:76 _to_numpy（query_start_loc detach→cpu→numpy 的同步点）；APIServer 侧 EngineDeadError: EngineCore encountered an issue → POST /v1/chat/completions 500 → 服务自动关闭"
+      - "同配置 --enforce-eager（eager 模式）可正常出文——崩溃仅图模式（cudagraph 捕获/执行）路径触发"
+      - "报错面为 310P W8A8 量化 batch matmul：QuantBatchmatmulV3 收到 FRACTAL_NZ 布局、期望 ND（NZ/ND 格式期望不匹配，见 issue 标题）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9769"
+      - "https://github.com/vllm-project/vllm-ascend/pull/9104"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "issue #9769 state_reason=COMPLETED；校准 resolution：310P 图模式缺 fused ops 支持——cherry-pick PR #9104 或换 POC 镜像（框架侧修复，非升 CANN）；S2 replay root_cause_ok=true、与 resolution 一致"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'QuantBatchMat[Mm]ulV3|FRACTAL_NZ' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:QuantBatchMat[Mm]ulV3|FRACTAL_NZ"
+      fallback:
+        command_template: "grep -aE 'error code:507015|EngineDeadError' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:error code:507015|EngineDeadError"
+
+    diagnosis:
+      - step: 1
+        command_template: "grep -aE 'error code:507015|EngineDeadError' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:error code:507015|EngineDeadError"
+        check: "错误签名：310P + W8A8 量化模型，请求触发 EngineCore 崩溃（ACL stream synchronize failed 507015）→ EngineDeadError / 500？"
+        note: "507015 = aicore 执行异常（与 VLLM-ASC-10122 同错误码面）；先确认签名再进模式判别"
+      - step: 2
+        check: "模式判别（关键）：同一模型/参数加 --enforce-eager 重跑是否正常出文（仅图模式崩）？"
+        expected: "是——eager 正常、仅图模式崩 → 图模式（cudagraph）执行路径专属缺陷，指向本 case；若 eager 也崩 → 转向 CANN 量化算子 bug（VLLM-ASC-10122）"
+      - step: 3
+        check: "与 VLLM-ASC-10122 判别（同签名面 310P+QuantBatchmatmulV3+507015，根因异）：是否确认报错面为 QuantBatchmatmulV3 格式期望不匹配（收 FRACTAL_NZ 期望 ND），且 CANN 版本非根因？"
+        expected: "是——本 issue = 310P 图模式 fused-ops 覆盖缺口（框架侧，eager 正常仅图模式崩），勿按 10122 升级 CANN（10122 为 CANN 量化算子本体 bug、两模式均崩、升 CANN ≥9.1.0.beta2 才修）"
+        note: "fixture 环境 CANN 9.0.0——升 CANN 对本 issue 无效，判别证据是 eager 对照实验而非 CANN 版本"
+      - step: 4
+        check: "修复：升级/换镜像到含 PR #9104（310P 图模式 fused-ops 覆盖）的版本；临时规避 --enforce-eager"
+        expected: "图模式恢复、服务出文正常（规避以放弃图模式为性能代价）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]     # 换镜像/版本需重启服务
+    fix_type: code-patch                     # 框架侧代码修复（PR #9104 cherry-pick / POC 镜像）
+
+    root_cause: >
+      vllm-ascend 0.19.1 的 310P 分支图模式（cudagraph 捕获）执行路径缺 fused ops 覆盖：W8A8 量化
+      batch matmul 在该路径上 QuantBatchmatmulV3 收到 FRACTAL_NZ 布局、期望 ND（NZ/ND 格式期望不匹配），
+      图执行在同步点报 ACL stream synchronize failed 507015（栈落 _310p/block_table.py:76 _to_numpy）
+      → EngineCore 崩溃 EngineDeadError → 服务 500 关闭。eager 模式走非图路径、格式处理正常故不触发。
+      判别为图模式专属的框架侧 fused-ops 覆盖缺口，而非 CANN 量化算子本体 bug——与 VLLM-ASC-10122
+      同签名面（310P+QuantBatchmatmulV3+507015）但根因异：10122 两模式均崩、升 CANN ≥9.1.0.beta2 修；
+      本 issue 仅图模式崩、升 CANN 无效，修复在框架侧（PR #9104）。
+
+    fix: >
+      框架侧修复：升级/换镜像到含 PR #9104（补齐 310P 图模式 fused ops 覆盖）的版本，或换含该修复的
+      POC 镜像（0.19.1 分支 cherry-pick）。临时规避：--enforce-eager 运行（eager 模式正常出文，代价为
+      放弃图模式）。非 CANN 侧缺陷——勿按 VLLM-ASC-10122 升级 CANN。
+    rollback: "回退到未含 PR #9104 的 0.19.1 版本/镜像即复现；--enforce-eager 为启动参数、无代码改动，可随时切回图模式复现对照"
