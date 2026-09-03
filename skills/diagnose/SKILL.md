@@ -81,6 +81,10 @@ description: >
            - `git clone <url> -b <tag/commit>`——URL 按平台：GitHub `https://github.com/<org>/<repo>.git`、Gitee `https://gitee.com/...`、GitCode `https://gitcode.com/...`；git 协议通用，公开仓库直接 clone；**`-b <tag>` 拉取失败（tag 不存在）时，先 `git ls-remote --tags <url>` 查真实 tag 再试**（不同版本库 tag 命名不同，如 v0.21.0rc2 实际可能是 v0.21.0rc1 或 releases/ 前缀）；
            - 公司内网（CodeHub 等）/私有仓库：**用户提供 URL**（其环境已配置凭据则直接 `git clone`）——agent 不碰内网认证/凭据；
            - **只取单文件**（不想拉全仓）时：GitHub 用 `gh api repos/<repo>/contents/<file>?ref=<commit>`（已登录 gh），其他平台用其 API 或 raw 链接；
+            - **外部资料多源获取纪律（HuggingFace 模型文件等）**：诊断需核对模型 config/权重（model_type/architectures/量化参数）等公开文件时——主站不可达**不等于数据不存在**，先多源尝试再判"客观缺失"：
+              - huggingface.co 主站可能不可达/超时（本环境实测 2026-09）→ 试 **hf-mirror.com** 镜像（`curl -sL https://hf-mirror.com/<org>/<model>/resolve/main/config.json`）；
+              - 模型 repo 多在 HF **不在 GitHub**（`gh api` 404 是常态，不是模型不存在）——查 GitHub 不是正确路径；
+              - 每次尝试（含失败）记入 trace 的 `tool_calls`（见"每步必写 trace"）——"哪个源不可达"是可复用教训，备选源清单由此持续沉淀；≤3 种源仍拿不到才如实标缺口；
         **不维护多版本、不落库**——只拉当前分析需要的文件或 checkout 到对应版本；
      3. **grep 定位**：搜报错签名/算子名/函数名（如 `grep -rn "QuantBatchMatMulV3" vllm_ascend/`）→ 读相关文件片段 → 分析根因（为什么这么实现、什么版本引入了什么行为）；
      4. **追问用户验证**：让用户对照预期/复现/补环境信息，验证根因假设；
