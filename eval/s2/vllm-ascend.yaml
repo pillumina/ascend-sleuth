@@ -354,3 +354,412 @@ calibration:
     fix_commit: 'PR #13510'
     confidence: high
   status: active
+- issue: 10097
+  split: selection
+  title: '[Bug]: model_runner_v1 preprocess_mamba 重复传参致 TypeError（v0.20.2 回归）'
+  input:
+    symptoms: |
+      ### Your current environment
+
+      main branch
+
+      ### 🐛 Describe the bug
+
+      ```python
+                      if self.cache_config.mamba_cache_mode == "align":
+                          # preprocess_mamba reads req_state.num_computed_tokens (CPU)
+                          # to decide copy operations, so we must apply deferred
+                          # corrections before it runs.
+                          if deferred_state_corrections_fn:
+                              deferred_state_corrections_fn()
+                              deferred_state_corrections_fn = None
+                          if vllm_version_is("0.20.2"):
+                              mamba_bufs = self._get_mamba_copy_bufs()
+                              preprocess_bufs = mamba_bufs
+                          else:
+                              mamba_bufs = self._get_mamba_bufs()
+                              preprocess_bufs = mamba_bufs.preprocess
+                          mamba_utils.preprocess_mamba(
+                              scheduler_output,
+                              self.kv_cache_config,
+                              self.cache_config,
+                              self.mamba_state_idx,
+                              self.input_batch,
+                              self.requests,
+                              self.compilation_config.static_forward_context,
+                              self.model.get_mamba_state_copy_func(),
+                              self._get_mamba_copy_bufs(),
+                              preprocess_bufs,
+                          )
+      ```
+      in model_runner_v1.py, the last 2 args of mamba_utils.preprocess_mamba is duplicated, `self._get_mamba_copy_bufs(),` should be  removed
+
+  expected:
+    namespace: inference/vllm-ascend
+    category: interrupt
+    resolution: 'preprocess_mamba 被多传 copy_bufs 参数（self._get_mamba_copy_bufs() 重复）致签名不匹配——PR #10188 移除多余参数修复'
+    fix_commit: 'PR #10188'
+    confidence: high
+  status: active
+
+- issue: 10998
+  split: selection
+  title: '[Bug]: Qwen3.6-27B layerwise PD disagg + kv pool failed to get key（hybrid KV）'
+  input:
+    symptoms: |
+      ### Your current environment
+
+      image: v0.21.0rc1.tar.gz + PR 10565
+      deploy mode: pd disagg, layerwise connector + mooncake store
+      model: qwen3.6-27b
+      p script:
+      ```
+      unset ftp_proxy
+      unset https_proxy
+      unset http_proxy
+      # this obtained through ifconfig
+      # nic_name is the network interface name corresponding to local_ip of the current node
+      nic_name="eth0"
+      local_ip="xx.xx.xx.xx"
+
+      # [Optional] jemalloc
+      # jemalloc is for better performance, if `libjemalloc.so` is installed on your machine, you can turn it on.
+      # export LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libjemalloc.so.2:$LD_PRELOAD
+      export MODEL_PATH=/opt/models/qwen27b
+      export VLLM_ENGINE_READY_TIMEOUT_S=30000
+      export VLLM_NIXL_ABORT_REQUEST_TIMEOUT=30000
+      export IP_ADDRESS=$local_ip
+      export NETWORK_CARD_NAME=$nic_name
+      export HCCL_IF_IP=$IP_ADDRESS
+      export GLOO_SOCKET_IFNAME=$NETWORK_CARD_NAME
+      export TP_SOCKET_IFNAME=$NETWORK_CARD_NAME
+      export HCCL_SOCKET_IFNAME=$NETWORK_CARD_NAME
+      export VLLM_USE_V1=1
+      export HCCL_BUFFSIZE=1536
+      export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages:$LD_LIBRARY_PATH
+      export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
+      export VLLM_TORCH_PROFILER_WITH_STACK=0
+      export TASK_QUEUE_ENABLE=1
+      export HCCL_OP_EXPANSION_MODE="AIV"
+
+      export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+      vllm serve ${MODEL_PATH} \
+        --host ${IP_ADDRESS} \
+        --port 30060 \
+        --data-parallel-address ${IP_ADDRESS} \
+        --max-num-seqs 64 \
+        --data-parallel-rpc-port 6884 \
+        --tensor-parallel-size 4 \
+        --seed 1024 \
+        --distributed-executor-backend mp \
+        --served-model-name qwen3.6 \
+        --max-model-len 163840 \
+        --max-num-batched-tokens 1024 \
+        --trust-remote-code \
+        --enable-prefix-caching \
+        --no-disable-hybrid-kv-cache-manager \
+        --speculative_config '{"method": "qwen3_5_mtp", "num_speculative_tokens": 3, "enforce_eager": true}' \
+        --additional-config '{"recompute_scheduler_enable": true, "enable_cpu_binding": true}' \
+        --gpu-memory-utilization 0.9 \
+        --enforce-eager \
+        --kv-transfer-config \
+          '{
+          "kv_connector": "MultiConnector",
+          "kv_role": "kv_producer",
+          "kv_load_failure_policy": "fail",
+          "kv_connector_extra_config": {
+              "connectors": [
+                  {
+                      "kv_connector": "MooncakeLayerwiseConnector",
+                      "kv_role": "kv_producer",
+                      "kv_port": "20001",
+                      "kv_connector_extra_config": {
+                          "prefill": {
+                              "dp_size": 1,
+                              "tp_size": 4
+                          },
+                          "decode": {
+                              "dp_size": 1,
+                              "tp_size": 4
+                          }
+                      }
+                  },
+                  {
+                      "kv_connector": "AscendStoreConnector",
+                      "kv_role": "kv_producer",
+                      "kv_connector_extra_config": {
+                          "lookup_rpc_port":"0",
+                          "backend": "mooncake"
+                      }
+                  }  
+              ]
+          }
+          }'
+      ```
+      d script:
+      ```
+      unset ftp_proxy
+      unset https_proxy
+      unset http_proxy
+      #!/bin/bash
+      # this obtained through ifconfig
+      # nic_name is the network interface name corresponding to local_ip of the current node
+      nic_name="eth0"
+      local_ip="xx.xx.xx.xx"
+      export MODEL_PATH=/opt/models/qwen27b
+
+      export VLLM_ENGINE_READY_TIMEOUT_S=30000
+      export VLLM_NIXL_ABORT_REQUEST_TIMEOUT=30000
+      export IP_ADDRESS=$local_ip
+      export NETWORK_CARD_NAME=$nic_name
+      export HCCL_IF_IP=$IP_ADDRESS
+      export GLOO_SOCKET_IFNAME=$NETWORK_CARD_NAME
+      export TP_SOCKET_IFNAME=$NETWORK_CARD_NAME
+      export HCCL_SOCKET_IFNAME=$NETWORK_CARD_NAME
+
+      export VLLM_USE_V1=1
+      export HCCL_BUFFSIZE=1536
+      export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/python/site-packages:$LD_LIBRARY_PATH
+      export PYTORCH_NPU_ALLOC_CONF="expandable_segments:True"
+      export VLLM_TORCH_PROFILER_WITH_STACK=0
+      export TASK_QUEUE_ENABLE=1
+
+      export HCCL_OP_EXPANSION_MODE="AIV"
+      export ASCEND_RT_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+      vllm serve ${MODEL_PATH} \
+        --host ${IP_ADDRESS} \
+        --port 30050 \
+        --no-enable-prefix-caching \
+        --max-num_seqs 32 \
+        --data-parallel-rpc-port 6884 \
+        --tensor-parallel-size 4 \
+        --seed 1024 \
+        --distributed-executor-backend mp \
+        --served-model-name qwen3.6 \
+        --max-model-len 163840 \
+        --max-num-batched-tokens 128 \
+        --trust-remote-code \
+        --no-disable-hybrid-kv-cache-manager \
+        --speculative_config '{"method": "qwen3_5_mtp", "num_speculative_tokens": 3, "enforce_eager": true}' \
+        --additional-config '{"recompute_scheduler_enable": true, "enable_cpu_binding": true}' \
+        --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' \
+        --gpu-memory-utilization 0.96 \
+        --kv-transfer-config \
+          '{
+          "kv_connector": "MultiConnector",
+          "kv_role": "kv_consumer",
+          "kv_load_failure_policy": "fail",
+          "kv_connector_extra_config": {
+              "connectors": [
+              {
+                      "kv_connector": "MooncakeLayerwiseConnector",
+                      "kv_role": "kv_consumer",
+                      "kv_port": "20002",
+                      "kv_connector_extra_config": {
+                          "prefill": {
+                              "dp_size": 1,
+                              "tp_size": 4
+                          },
+                          "decode": {
+                              "dp_size": 1,
+                              "tp_size": 4
+                          }
+                      }
+                  },
+                  {
+                      "kv_connector": "AscendStoreConnector",
+                      "kv_role": "kv_consumer",
+                      "kv_connector_extra_config": {
+                          "lookup_rpc_port":"0",
+                          "backend": "mooncake"
+                      }
+                  }
+              ]
+          }
+          }'
+      ```
+
+      ### 🐛 Describe the bug
+
+      The service occasionally throws errors during extended stability testing with long sequences. Kv pool failed to get key, and only for keys in group 1 2 3. 
+      ```
+      (Worker_TP1 pid=53994) ERROR 06-24 16:43:17 [mooncake_backend.py:240] [vllm-ascend] [distributed] - Failed to get 3 keys out of 6. error_codes=[-704]. Check key existence and memory state.
+      (Worker_TP1 pid=53994) ERROR 06-24 16:43:17 [mooncake_backend.py:246] [vllm-ascend] [distributed] - Failed to get key details. keys=['Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:0@cache_role:kv@cache_family:default@1027a6b8b93930994b5ca260be2e2e67fd996e9a21f4a033ff95ae534772fd31', 'Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:0@cache_role:kv@cache_family:default@c0f522af2dd228c65e07f3245de02bb5c6325093281eceab8ea0a8be8dfab48b', 'Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:1@cache_role:kv@cache_family:default@c0f522af2dd228c65e07f3245de02bb5c6325093281eceab8ea0a8be8dfab48b', 'Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:2@cache_role:kv@cache_family:default@c0f522af2dd228c65e07f3245de02bb5c6325093281eceab8ea0a8be8dfab48b', 'Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:3@cache_role:kv@cache_family:default@c0f522af2dd228c65e07f3245de02bb5c6325093281eceab8ea0a8be8dfab48b', 'Qwen3.5@pcp0@dcp0@head_or_tp_rank:1@pp_rank:0@group:0@cache_role:kv@cache_family:default@2ad3c347c67f31e26bd09baeb9ad2ab0cbd3f8abfb96f2ecdb9388b6f4b449cc'], result=[26738688, 26738688, -704, -704, -704, 26738688]
+      ```
+      plog
+      ```
+      [ERROR] HCCL(35177,):2026-06-23-16:27:56.471.485 [one_sided_service_adapt.cc:484] [35177][TaskExecStage][InvalidArgument] The parameter memHandle[0xfffe63fe5ee0] is invalid.
+      [ERROR] HCCL(35177,):2026-06-23-16:27:56.471.499 [one_sided_service_adapt.cc:526] [35177][HcclDeregisterGlobalMem]call trace: hcclRet -> 1
+      [ERROR] GE(35177,):2026-06-23-16:27:56.471.529 [channel_msg_handler.cc:283]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Call hccl api failed, ret: 0x1
+      [ERROR] GE(35177,):2026-06-23-16:27:56.471.544 [adxl_inner_engine.cc:425]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed to deregister mem
+      [ERROR] GE(35177,):2026-06-23-16:27:56.471.558 [adxl_engine_impl.cc:93]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed to deregister mem
+      [ERROR] GE(35177,):2026-06-23-16:27:56.471.569 [adxl_engine_impl.cc:214]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed to deregister mem, mem_handle:0xfffe63fe5ee0
+      [ERROR] HCCL(35177,):2026-06-23-16:27:56.474.280 [one_sided_service_adapt.cc:484] [35177][TaskExecStage][InvalidArgument] The parameter memHandle[0xfffe63fe5fc0] is invalid.
+      [ERROR] HCCL(35177,):2026-06-23-16:27:56.474.286 [one_sided_service_adapt.cc:526] [35177][HcclDeregisterGlobalMem]call trace: hcclRet -> 1
+      [ERROR] GE(35177,):2026-06-23-16:27:56.474.299 [channel_msg_handler.cc:283]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Call hccl api failed, ret: 0x1
+      [ERROR] GE(35177,):2026-06-23-16:27:56.474.311 [adxl_inner_engine.cc:425]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed to deregister mem
+      [ERROR] GE(35177,):2026-06-23-16:27:56.474.323 [adxl_engine_impl.cc:93]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed to deregister mem
+      [ERROR] GE(35177,):2026-06-23-16:27:56.474.333 [adxl_engine_impl.cc:214]35177 DeregisterMem: ErrorNo: 103900() [GE][MODULE]Failed to deregister mem, mem_handle:0xfffe63fe5fc0
+      [ERROR] DRV(35177,):2026-06-23-16:27:57.196.361 [drv_share_log.c:238][ascend][curpid:35177,35177][drv][devmm][share_log_read_in_single_module]Set free error. (ref_lock=1; ref_free=0; ref_count=2) Oper address failed. (va=0x12e4c0000000; ref_flag=0x108; ref_lock=0; ref_free:0; ref_count=2; convert=0; async=0)
+      [ERROR] DRV(35177,):2026-06-23-16:27:57.196.375 [devmm_virt_interface.c:340][ascend][curpid:35177,35177][drv][devmm][devmm_virt_heap_free_pages]<errno:16, 13> Devmm_ioctl_free failed. (ptr=0x12e4c0000000; heap_type=4025417729)
+      [ERROR] DRV(35177,):2026-06-23-16:27:57.196.380 [devmm_virt_base_heap.c:311][ascend][curpid:35177,35177][drv][devmm][devmm_free_to_base_heap]<errno:16, 13> Free ptr error. (ptr=0x12e4c0000000)
+      [ERROR] RUNTIME(35177,):2026-06-23-16:27:57.196.390 [npu_driver_mem.cc:772]35177 HostMemFree:[drv api] halMemFree failed: drvRetCode=17, host addr=0x12e4c0000000!
+      [ERROR] RUNTIME(35177,):2026-06-23-16:27:57.196.436 [api_error.cc:1437]35177 HostFree:Free host memory failed, host addr=0x12e4c0000000.
+      [ERROR] RUNTIME(35177,):2026-06-23-16:27:57.196.453 [api_c_memory.cc:157]35177 rtFreeHost:ErrCode=507899, desc=[driver error:internal error], InnerCode=0x7020022
+      [ERROR] RUNTIME(35177,):2026-06-23-16:27:57.196.459 [error_message_manage.cc:65]35177 FuncErrorReason:rtFreeHost execution failed, reason=driver error:internal error
+      [ERROR] ASCENDCL(35177,):2026-06-23-16:27:57.196.726 [memory.cpp:550]35177 aclrtFreeHostImpl:free host memory failed, runtime result = 507899
+      ```
+
+  expected:
+    namespace: inference/vllm-ascend
+    category: interrupt
+    resolution: 'layerwise connector + mooncake store 下按组命中集合取块修复——PR #11131 merged'
+    fix_commit: 'PR #11131'
+    confidence: high
+  status: active
+
+- issue: 9769
+  split: selection
+  title: '[Bug]: 310P 图模式 QuantBatchMatmulV3 收 FRACTAL_NZ 期望 ND（0.19.1 分支）'
+  input:
+    symptoms: |
+      ### Your current environment
+
+      <details>
+      <summary>The output of `python collect_env.py`</summary>
+
+      ```text
+      PyTorch version: 2.9.0+cpu
+      Is debug build: False
+
+      OS: Ubuntu 20.04.6 LTS (aarch64)
+      GCC version: (GCC) 15.1.0
+      Clang version: 18.1.8 (https://gh-proxy.com/https://github.com/root-project/llvm-project.git 156e947058a46ecc1785f98aa9abb8cbfaa45aa7)
+      CMake version: version 4.3.2
+      Libc version: glibc-2.31
+
+      Python version: 3.10.20 (main, Mar 11 2026, 17:41:27) [GCC 14.3.0] (64-bit runtime)
+      Python platform: Linux-5.4.0-125-generic-aarch64-with-glibc2.31
+
+      CPU:
+      Architecture:                    aarch64
+      CPU op-mode(s):                  64-bit
+      Byte Order:                      Little Endian
+      CPU(s):                          64
+      On-line CPU(s) list:             0-63
+      Thread(s) per core:              1
+      Core(s) per socket:              32
+      Socket(s):                       2
+      NUMA node(s):                    2
+      Vendor ID:                       0x48
+      Model:                           0
+      Stepping:                        0x1
+      CPU max MHz:                     2600.0000
+      CPU min MHz:                     200.0000
+      BogoMIPS:                        200.00
+      L1d cache:                       4 MiB
+      L1i cache:                       4 MiB
+      L2 cache:                        32 MiB
+      L3 cache:                        64 MiB
+      NUMA node0 CPU(s):               0-31
+      NUMA node1 CPU(s):               32-63
+      Vulnerability Itlb multihit:     Not affected
+      Vulnerability L1tf:              Not affected
+      Vulnerability Mds:               Not affected
+      Vulnerability Meltdown:          Not affected
+      Vulnerability Mmio stale data:   Not affected
+      Vulnerability Spec store bypass: Not affected
+      Vulnerability Spectre v1:        Mitigation; __user pointer sanitization
+      Vulnerability Spectre v2:        Not affected
+      Vulnerability Srbds:             Not affected
+      Vulnerability Tsx async abort:   Not affected
+      Flags:                           fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm jscvt fcma dcpop asimddp asimdfhm
+
+      Versions of relevant libraries:
+      [pip3] numpy==1.26.4
+      [pip3] pyzmq==27.1.0
+      [pip3] torch==2.9.0
+      [pip3] torch_npu==2.9.0
+      [pip3] torchaudio==2.9.0
+      [pip3] torchvision==0.24.0
+      [pip3] transformers==5.5.3
+      [pip3] triton-ascend==3.2.0
+      [conda] numpy                     1.26.4                   pypi_0    pypi
+      [conda] pyzmq                     27.1.0                   pypi_0    pypi
+      [conda] torch                     2.9.0                    pypi_0    pypi
+      [conda] torch-npu                 2.9.0                    pypi_0    pypi
+      [conda] torchaudio                2.9.0                    pypi_0    pypi
+      [conda] torchvision               0.24.0                   pypi_0    pypi
+      [conda] transformers              5.5.3                    pypi_0    pypi
+      [conda] triton-ascend             3.2.0                    pypi_0    pypi
+      vLLM Version: 0.19.1
+      vLLM Ascend Version: 0.19.1rc1
+
+      ENV Variables:
+      ATB_OPSRUNNER_KERNEL_CACHE_LOCAL_COUNT=1
+      ATB_STREAM_SYNC_EVERY_RUNNER_ENABLE=0
+      ATB_STREAM_SYNC_EVERY_KERNEL_ENABLE=0
+      ATB_OPSRUNNER_KERNEL_CACHE_GLOABL_COUNT=5
+      ATB_HOME_PATH=/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1
+      ASCEND_TOOLKIT_HOME=/usr/local/Ascend/cann-9.0.0
+      ATB_COMPARE_TILING_EVERY_KERNEL=0
+      ASCEND_OPP_PATH=/usr/local/Ascend/cann-9.0.0/opp
+      LD_LIBRARY_PATH=/usr/local/lib64:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/lib:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/examples:/usr/local/Ascend/nnal/atb/latest/atb/cxx_abi_1/tests/atbopstest:/usr/local/Ascend/cann-9.0.0/lib64:/usr/local/Ascend/cann-9.0.0/lib64/plugin/opskernel:/usr/local/Ascend/cann-9.0.0/lib64/plugin/nnengine:/usr/local/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/op_tiling/lib/linux/aarch64:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver:/usr/local/Ascend/driver/lib64:/usr/local/Ascend/driver/lib64/common:/usr/local/Ascend/driver/lib64/driver
+      ASCEND_AICPU_PATH=/usr/local/Ascend/cann-9.0.0
+      ATB_STREAM_SYNC_EVERY_OPERATION_ENABLE=0
+      ASCEND_HOME_PATH=/usr/local/Ascend/cann-9.0.0
+      ATB_MATMUL_SHUFFLE_K_ENABLE=1
+      ATB_WORKSPACE_MEM_ALLOC_ALG_TYPE=1
+      ATB_SHARE_MEMORY_NAME_SUFFIX=
+      TORCH_DEVICE_BACKEND_AUTOLOAD=1
+      PYTORCH_NVML_BASED_CUDA_CHECK=1
+      TORCHINDUCTOR_COMPILE_THREADS=1
+
+
+      NPU:
+      +--------------------------------------------------------------------------------------------------------+
+      | npu-smi 25.5.2                                   Version: 25.5.2                                       |
+      +-------------------------------+-----------------+------------------------------------------------------+
+      | NPU     Name                  | Health          | Power(W)     Temp(C)           Hugepages-Usage(page) |
+      | Chip    Device                | Bus-Id          | AICore(%)    Memory-Usage(MB)                        |
+      +===============================+=================+======================================================+
+      | 2       310P3                 | OK              | NA           51                13931 / 13931         |
+      | 0       0                     | 0000:01:00.0    | 0            29461/ 44278                            |
+      +-------------------------------+-----------------+------------------------------------------------------+
+      | 2       310P3                 | OK              | NA           49                0     / 0             |
+      | 1       1                     | 0000:01:00.0    | 0            1370 / 43693                            |
+      +===============================+=================+======================================================+
+      +-------------------------------+-----------------+------------------------------------------------------+
+      | NPU     Chip                  | Process id      | Process name             | Process memory(MB)        |
+      +===============================+=================+======================================================+
+      | 2       0                     | 1178536         | VLLMEngineC
+      ...[中段省略]...
+       = self._to_numpy(query_start_loc)[: num_reqs + 1]
+      (EngineCore pid=1174965) ERROR 05-30 17:00:18 [core.py:1110]   File "/root/code/.code/vllm/vllm-ascend/vllm_ascend/_310p/block_table.py", line 76, in _to_numpy
+      (EngineCore pid=1174965) ERROR 05-30 17:00:18 [core.py:1110]     return value.detach().cpu().numpy().astype(np.int64, copy=False)
+      (EngineCore pid=1174965) ERROR 05-30 17:00:18 [core.py:1110] RuntimeError: ACL stream synchronize failed, error code:507015
+      (APIServer pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707] AsyncLLM output_handler failed.
+      (APIServer pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707] Traceback (most recent call last):
+      (APIServer pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707]   File "/root/code/.code/vllm/vllm/vllm/v1/engine/async_llm.py", line 663, in output_handler
+      (APIServer pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707]     outputs = await engine_core.get_output_async()
+      (APIServer pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707]   File "/root/code/.code/vllm/vllm/vllm/v1/engine/core_client.py", line 985, in get_output_async
+      (APIServer pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707]     raise self._format_exception(outputs) from None
+      (APIServer pid=1174737) ERROR 05-30 17:00:18 [async_llm.py:707] vllm.v1.engine.exceptions.EngineDeadError: EngineCore encountered an issue. See stack trace (above) for the root cause.
+      (APIServer pid=1174737) INFO:     10.160.26.182:42196 - "POST /v1/chat/completions HTTP/1.1" 500 Internal Server Error
+      (APIServer pid=1174737) INFO:     Shutting down
+      (APIServer pid=1174737) INFO:     Waiting for application shutdown.
+      (APIServer pid=1174737) INFO:     Application shutdown complete.
+      (APIServer pid=1174737) INFO:     Finished server process [1174737]
+      (APIServer pid=1174737) sys:1: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+      ```
+      ### Expected Results
+
+      The server should return HTTP 200 with valid generated text, as it does when running with `--enforce-eager`.
+
+  expected:
+    namespace: inference/vllm-ascend
+    category: interrupt
+    resolution: '310P 图模式缺 fused ops 支持——cherry-pick PR #9104 或换 POC 镜像'
+    fix_commit: 'PR #9104'
+    confidence: high
+  status: active

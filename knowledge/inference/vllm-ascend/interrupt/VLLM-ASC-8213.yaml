@@ -1,0 +1,84 @@
+# VLLM-ASC-8213 —— MiniMax-M2.7 在 vllm-ascend 0.17/0.18 镜像启动失败：tokenizer 加载 ValueError TokenizersBackend does not exist（transformers 4.57.6 过旧）
+# 来源: https://github.com/vllm-project/vllm-ascend/issues/8213
+# fix 跟踪: 无上游 PR；容器内 transformers 4.57.6 → 5.5.3（pip install transformers==5.5.3）实测修复（v0.18.0rc1-a3-openeuler）；备选=Eco-Tech M2.7-w8a8-QuaRot + main 镜像（A2 实测）
+# investigation_quality: medium（启动失败单点 + 现场版本试验定位 transformers 依赖；无代码级根因/官方确认）
+# 批量导入：r2-sed-g2（2026-09）
+# pre-triage: new_pattern（现库无 MiniMax-M2.7/transformers 依赖版本 case；邻近 VLLM-ASC-12685 为 M2.7 fp8 路由 o_groups AttributeError，根因不同）
+
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-8213
+    title: "MiniMax-M2.7（bf16，fp8 checkpoint 自动反量化加载）在 vllm-ascend 0.17/0.18 镜像（A3）启动失败：ApiServer 初始化 tokenizer 抛 ValueError: Tokenizer class TokenizersBackend does not exist or is not currently imported——镜像 transformers 4.57.6 过旧（M2.7 tokenizer 需 ≥5.5 的 TokenizersBackend），容器内升级 transformers==5.5.3 解决"
+
+    category: interrupt
+    tags: [minimax, m2.7, transformers-version, tokenizer, tokenizersbackend, dependency-upgrade, startup-failure, a3, api-server]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.17.0rc1-a3", "0.18.0rc1-a3"]   # a3-openeuler 镜像（内 transformers 4.57.6）复现；修复=容器内 transformers ≥5.5.3（非 vllm-ascend 代码修复）
+      - framework: transformers
+        ranges: ["<5.5.0"]                          # 4.57.6 触发；5.5.3 实测通过
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      # score 草稿期不写，groom 首次评估后计算
+
+    symptoms:
+      - "A3 + quay.io/ascend/vllm-ascend:v0.17.0rc1-a3-openeuler / v0.18.0rc1-a3-openeuler 拉起 MiniMax-M2.7 服务（TP8 DP2 EP + FULL_DECODE_ONLY）启动失败"
+      - "ApiServer 进程 traceback 终止于 tokenizer 加载（renderer_from_config → cached_get_tokenizer → AutoTokenizer.from_pretrained）抛 ValueError: Tokenizer class TokenizersBackend does not exist or is not currently imported."
+      - "日志先打印 Resolved architecture: MiniMaxM2ForCausalLM + Detected fp8 MiniMax-M2 checkpoint on NPU. Disabling fp8 quantization and loading dequantized bf16 weights instead.（权重加载非崩溃点）"
+      - "容器内 pip install transformers==5.5.3（4.57.6→5.5.3）后 v0.18.0rc1-a3-openeuler 正常启动"
+      - "备选：Eco-Tech/MiniMax-M2.7-w8a8-QuaRot + quay vllm-ascend:main（A2 实测可跑）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/8213"
+
+    verification:
+      source: engineer-report
+      detail: 'issue #8213 报者（yang0754）现场升级 transformers 4.57.6→5.5.3 后 v0.18.0rc1-a3-openeuler 启动成功闭环（无上游 fix PR）；档位先例=KB VLLM-ASC-8798'
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'Tokenizer class TokenizersBackend does not exist or is not currently imported' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:Tokenizer class TokenizersBackend does not exist"
+      fallback:
+        command_template: "grep -aE 'MiniMax-M2\\.7|MiniMaxM2ForCausalLM' {{launch_log}}"
+        rank_selector: coordinator
+        expected: "regex:MiniMaxM2ForCausalLM|MiniMax-M2\\.7"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：MiniMax-M2.7 在 vllm-ascend 0.17/0.18 镜像启动失败，报错在 ApiServer 的 tokenizer 加载：ValueError: Tokenizer class TokenizersBackend does not exist or is not currently imported？"
+        expected: "是——transformers 版本缺口（M2.7 tokenizer 需 ≥5.5 的 TokenizersBackend）"
+      - step: 2
+        check: "版本核对：容器内 transformers 版本（python3 -c 'import transformers;print(transformers.__version__)'）"
+        expected: "4.57.6（<5.5.0）即触发面；5.5.3 实测通过"
+      - step: 3
+        check: "修复：容器内 pip install transformers==5.5.3 后重启服务（注意 pip 装到容器内生效路径/重启不吃旧 import 缓存）"
+        expected: "v0.18.0rc1-a3-openeuler 正常启动（报者实测）"
+      - step: 4
+        check: "忽略项：日志 'Detected fp8 MiniMax-M2 checkpoint ... loading dequantized bf16' 是 vllm-ascend 对 fp8 checkpoint 的正常自动反量化路径，不是崩溃点；评论#1 'fp8 不支持换 w8a8-QuaRot' 是另一路线（A2 实测），勿替代 transformers 升级判断"
+        note: "与 VLLM-ASC-12685（M2.7 fp8 被自动路由进 AscendFp8Config → o_groups AttributeError）同模型不同根因，判型以报错文本区分"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: config-change                        # 依赖版本升级（容器内 transformers ≥5.5.3）
+
+    root_cause: >
+      MiniMax-M2.7 的 tokenizer 配置依赖 transformers ≥5.5 新增的 TokenizersBackend tokenizer 后端
+      类；vllm-ascend 0.17/0.18 代 a3-openeuler 镜像预装 transformers 4.57.6 过旧，ApiServer 初始化
+      tokenizer（vllm/renderers/hf.py → AutoTokenizer.from_pretrained）时找不到
+      TokenizersBackend 类，抛 ValueError: Tokenizer class TokenizersBackend does not exist or is
+      not currently imported，服务启动失败。权重侧（fp8 checkpoint 自动反量化 bf16）正常，非崩溃点。
+
+    fix: >
+      容器内升级依赖：pip install transformers==5.5.3（≥5.5.x）后重启服务（v0.18.0rc1-a3-openeuler
+      实测通过）。备选：MiniMax-M2.7 换用 Eco-Tech/MiniMax-M2.7-w8a8-QuaRot 权重 + 更新版
+      vllm-ascend 镜像（main；A2 实测，A3 未复核）。
+    rollback: "回退 transformers 到 4.57.6 即回到失败面"

@@ -1,0 +1,88 @@
+# VLLM-ASC-9005 —— 4×A2 多节点拉起 DeepSeek-V4-Pro 显存余 20+G 却报 'Memory resources are exhausted'：
+#   HDK（firmware/driver）过低致底层 qp 资源申请失败被误报为显存耗尽，升级 firmware/driver 至 25.5.0 解决
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9005
+# fix 跟踪：无代码 PR；环境级修复=升级 HDK firmware + npu driver 至 25.5.0（CANN 8.5.1 无需动）；
+#   weiguihua2 官方建议升级 driver 验证，报者实测 '升级完可以启动了'，issue closed completed 2026-05-14
+# investigation_quality: medium（现象/复现矩阵完整（单机 DSV4-Flash OK、4 机 qwen3.5 OK、仅 4 机 DSV4-Pro 失败）；
+#   remedy 两次现场独立验证（Pastens 先前同 issue + 本 issue 报者）；根因机制为用户层解释（HDK 过低→qp 申请失败），
+#   无代码级定位、报错真实语义未深挖）
+# 批量导入：sed-g3（2026-09）
+# pre-triage: new_pattern（全库无 HDK/driver 版本过低→OOM/显存误报的 case。10944 的 'HCCL QP 资源'（EI0007 561000）
+#   是 MoE dispatch 算子申请 HCCL 通信 QP 超预算、关 EP 规避，机制/报错/修复全异；VERL-5074 仅提词辨析——均不构成覆盖）
+# 脱敏：issue 无内网 IP/token（env 省略），无替换
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-9005
+    title: "4×A2 多节点按 v0.18.0 文档拉起 DeepSeek-V4-Pro：每卡显存余 20+G 却报 'Memory resources are exhausted'，调低 max_model_len/max-num-seqs、加大共享内存均无效——HDK（firmware 7.0.1.3.220 / npu driver 23.0.7）过低致底层 qp 资源申请失败、被误报为显存耗尽；升级 firmware/driver 至 25.5.0 解决（CANN 8.5.1 不变）"
+
+    category: interrupt
+    tags: [oom-misreport, hdk, firmware-driver, qp-resource, multi-node, deepseek-v4, version-upgrade]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["~=0.18.0"]      # 按 v0.18.0 文档部署时触发（低 HDK 多节点场景）；版本相关性未系统验证
+      - hdk: ["<25.5.0"]          # firmware 7.0.1.3.220 / npu driver 23.0.7 过低；升级 25.5.0 修复，CANN 8.5.1 不需动
+    # 触发条件：多节点（≥4 机）+ 需要大量通信 qp 的模型（DeepSeek-V4-Pro）；同 HDK 下单机 DSV4-Flash、4 机 qwen3.5 均正常
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "4×A2 按 DeepSeek-V4-Pro 部署文档拉起（CANN 8.5.1、firmware 7.0.1.3.220、npu driver 23.0.7）：每卡显存约 40G 时即报 'Memory resources are exhausted'，实际每卡还余 20+ G"
+      - "调低 --max-model-len / --max-num-seqs 无效，增大容器共享内存无效"
+      - "对照：单台 A2 拉起 DSV4-Flash 正常；4 台拉起 Qwen3.5 正常；仅 4 台拉起 DSV4-Pro 失败（报错前先怀疑模型/显存，实为环境问题）"
+      - "升级 firmware + npu driver 至 25.5.0（CANN 8.5.1 不变）后可以正常启动"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9005"
+
+    verification:
+      source: engineer-report
+      detail: "两位工程师现场各自验证：Pastens（此前同 issue，升级固件+driver 25.5.0 解决）+ 本 issue 报者 garyyang85（升级后 '可以启动了'）；weiguihua2 官方建议升级 driver 验证；issue closed completed 2026-05-14（无 fix PR，机制为用户层解释）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'Memory resources are exhausted|memory resources are exhausted' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:Memory resources are exhausted"
+        note: "多节点拉起失败报显存耗尽，但 npu-smi/监控显示每卡显存仍有富余——警惕显存误报"
+      fallback:
+        command_template: "grep -E 'firmware|Version: 2[0-9]\\.' {{env_collect_log}}"
+        rank_selector: coordinator
+        expected: "regex:(firmware|driver|Version:)"
+        note: "版本判别：firmware/driver < 25.5.0 且为多节点部署时进入本 case 判断链"
+
+    diagnosis:
+      - step: 1
+        check: "显存余量核对：报 'Memory resources are exhausted' 时实际显存是否远未用完（如每卡余 20+ G）？"
+        expected: "是——显存耗尽为误报，勿按 OOM 继续调 max_model_len/max-num-seqs/共享内存（实测均无效）"
+      - step: 2
+        check: "形态判别：多节点（≥4 机）+ 通信密集型模型（如 DeepSeek-V4-Pro）？对照单机小模型/低通信模型是否正常？"
+        expected: "是——同 HDK 下单机 DSV4-Flash、4 机 qwen3.5 正常、仅 4 机 DSV4-Pro 失败 → 大量通信 qp 申请时才撞环境问题"
+      - step: 3
+        check: "HDK 版本核对：firmware / npu driver 版本是否过低（如 firmware 7.0.1.3.220 / driver 23.0.7）？"
+        expected: "是——HDK 过低时底层 qp 资源申请失败被上层误报为内存耗尽；升级 firmware+driver 至 25.5.0（CANN 8.5.1 不必动）"
+      - step: 4
+        check: "fix 验证：升级后重新拉起 DSV4-Pro"
+        expected: "升级后正常启动（报者实测）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]      # firmware/driver 升级需节点级操作/重启
+    fix_type: config-change                   # 环境版本升级型（HDK firmware/driver），非代码/非 env-var
+
+    root_cause: >
+      多节点（4×A2）拉起 DeepSeek-V4-Pro 时上层报 'Memory resources are exhausted'，但实际显存余量充足
+      （每卡余 20+ G），调 max_model_len/max-num-seqs/共享内存均无效——报错是误报。经验解释：HDK
+      （firmware 7.0.1.3.220 / npu driver 23.0.7）版本过低时，多节点通信需要的 qp 等底层资源申请失败，
+      上层以显存耗尽语义抛出；单机（无跨节点通信）或低通信模型（qwen3.5）不触发。升级 firmware + driver
+      至 25.5.0（CANN 8.5.1 不需动）后问题消失。注：qp 资源机制为用户层解释，报错内部语义未代码级定位。
+
+    fix: >
+      升级 HDK：firmware + npu driver 升级至 25.5.0（上层 CANN 8.5.1 无需变动；升级需重启节点）。
+      验证：4×A2 多节点拉起 DeepSeek-V4-Pro 正常启动，不再误报显存耗尽。
+    rollback: "降回低版本 HDK 即复现（多节点大通信量模型拉起报 Memory resources are exhausted）"

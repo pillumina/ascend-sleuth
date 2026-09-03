@@ -1,0 +1,88 @@
+# VLLM-ASC-5725 —— Qwen3-Embedding-0.6B 同串首次/二次请求向量不一致（Cosine ~0.585）：pooling 模型一律走 npu_fusion_attention（不支持 prefix caching），缓存命中路径静默错输出；PR #7452 改路由条件（causal 判别）+ #7894 backport v0.18.0
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/5725
+# fix 跟踪：PR #7452 [BugFix][APC] Fix prefix caching support for embedding models（merged 2026-03-28，attention_v1.py L968 路由条件 + 回归单测 test_embed_models_using_prefix_caching_correctness）；cherry-pick #7894 进 v0.18.0（merged 2026-04-01）；issue 2026-06-04 关闭 completed
+# investigation_quality: medium（reporter 单测可复现 + 关 prefix cache 对照验证根因方向；代码级解释在 fix PR）
+# pre-triage: new_pattern —— 库内 prefix-cache case（10710 命中率恒 0%、10970 retention 归零、13356 memcache 重叠）均为命中率/性能面；无"命中缓存致 embedding 输出静默错误"精度 case
+# verification: upstream-fix-merged（fix PR #7452 + v0.18.0 backport #7894）
+# 脱敏：issue 无内网 IP/密钥；user-attachments 的 test.txt/vector.txt 不引用正文内容
+# 建议命名空间：inference/vllm-ascend/precision/
+# 导入管道：issue-ingest r2-sed-g1（2026-09，postmortems/inbox 草稿，待 groom 分诊转正）
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-5725
+    title: "Qwen3-Embedding-0.6B 同串第二次请求向量与首次不一致（Cosine ~0.585，命中缓存后稳定但错）：pooling 模型 attention 路由无条件走 npu_fusion_attention（不支持 prefix caching）→ 缓存命中路径静默错输出；升级 ≥v0.18.0（PR #7452/#7894）或关 prefix cache 规避"
+
+    category: precision
+    tags: [embedding, pooling, prefix-cache, silent-wrong-output, precision, attention-router, qwen3-embedding, apc]
+    platforms: ["A2-910B"]            # 910B4 单卡 TP1（issue npu-smi 910B4）
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<=0.17.0"]          # 0.13.0rc1 实测，复测 0.14.0rc1/0.15.0rc1 仍现；fix main 2026-03-28（#7452）→ v0.18.0（#7894 backport 2026-04-01）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "embedding 服务（Qwen3-Embedding-0.6B，--convert embed）同一字符串首次与二次请求返回向量不一致：Cosine ~0.585；首算与原生 vLLM ~0.9997（对），二次起命中 prefix cache 的结果稳定但错（对首算 0.585、对原生 0.581）"
+      - "显式关闭 prefix cache 后不一致消失（reporter 实测）"
+      - "非崩溃：服务正常、无算子报错，仅返回向量数值错误（静默精度问题）"
+      - "模型/权重无误：原生 vLLM 输出正常"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/5725"
+      - "https://github.com/vllm-project/vllm-ascend/pull/7452"
+      - "https://github.com/vllm-project/vllm-ascend/pull/7894"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #7452（merged 2026-03-28）：attention_v1.py 路由条件由 model_runner_type=='pooling' 改为 =='pooling' and not causal——非因果 encoder 走 npu_fusion_attention、causal embedding 走支持 prefix caching 的 npu_fused_infer_attention_score，附 embedding prefix-caching 一致性单测；v0.18.0 backport #7894（merged 2026-04-01）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'Qwen3-Embedding|--convert embed|pooling_type|pooler_config' {{launch_log}}"
+        rank_selector: all_failed
+        expected: "regex:(Qwen3-Embedding|--convert embed|pooling_type|pooler_config)"
+      fallback:
+        command_template: "grep -aE 'vLLM Ascend Version: 0\\.1[3-7]\\.' {{env_log}}"
+        rank_selector: all_failed
+        expected: "regex:vLLM Ascend Version: 0\\.1[3-7]\\."
+
+    diagnosis:
+      - step: 1
+        check: "症状复现：同一字符串连续两次请求 embedding，计算两次返回向量的 Cosine Similarity"
+        expected: ">=0.999（一致）；若首次 ≈0.9997 对原生 vLLM、二次起稳定在 ~0.58 → 本 case"
+        note: "'首算对、命中缓存后错且稳定'是本 case 判别特征——缓存命中与首算走了不同算子路径"
+      - step: 2
+        check: "工作流判别：prefix caching 是否开启（v0.11+ 默认开）？关闭后重测是否一致？"
+        expected: "关闭（如 --no-enable-prefix-caching）后不一致消失 → 确认与 prefix cache 相关（workaround 可用）"
+      - step: 3
+        check: "版本判别：vllm-ascend <0.18.0？（0.13.0rc1–0.15.0rc1 实测均现）"
+        expected: "是 → 升级 ≥v0.18.0（main 由 PR #7452 修复 2026-03-28，v0.18.0 由 #7894 backport）；别再升级旧 rc 主线验证"
+      - step: 4
+        check: "排除项：同模型原生 vLLM（GPU）输出是否正常、量化/权重是否变过？"
+        expected: "原生 vLLM 正常 → 非模型/权重问题，直接按 attention 路由缺陷处理（fix PR #7452：pooling 误入不支持 prefix caching 的 npu_fusion_attention）"
+        fix_on_mismatch: "若关 prefix cache 仍不一致 → 排除本 case，查量化/权重/输入 padding 等其他精度路径"
+        rollback: "重新开启 prefix cache（低版本复现不一致）"
+
+    severity: service-affecting         # 静默错输出（embedding 下游检索/相似度结果错误），非崩溃非落盘损坏
+    fix_side_effects: [requires-restart, workaround-has-perf-cost]  # 关 prefix cache 损失命中率；升级修复为主
+    fix_type: config-change             # 升级 ≥v0.18.0；workaround 关 prefix cache
+
+    root_cause: >
+      vllm-ascend attention 路由条件过宽：只要 model_runner_type=='pooling'（embedding 等 pooling 模型）
+      就路由到 _forward_encoder_attention() → npu_fusion_attention，而该算子不支持 prefix caching。
+      同一请求命中 prefix cache（二次起）后数值路径与首算不同、结果错乱——embedding 向量静默错误
+      （首算 ≈0.9997 对原生 vLLM，缓存命中后 ~0.58）。修复（PR #7452，vllm_ascend/attention/
+      attention_v1.py）：条件收紧为 model_runner_type=='pooling' and not causal → npu_fusion_attention
+      （真 encoder）；causal 的 embedding 走支持 prefix caching 的 npu_fused_infer_attention_score。
+
+    fix: >
+      升级 vllm-ascend ≥ v0.18.0（main 修复 PR #7452，2026-03-28；v0.18.0 backport #7894，2026-04-01）。
+      旧版本 workaround：显式关闭 prefix cache（reporter 实测不一致消失），代价是丢失 prefix 命中收益；
+      升级后同请求输出与首算/原生 vLLM 一致。
+    rollback: "重开 prefix cache（旧版本复现错输出）"

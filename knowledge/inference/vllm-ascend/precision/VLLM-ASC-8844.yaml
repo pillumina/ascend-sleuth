@@ -1,0 +1,86 @@
+# VLLM-ASC-8844 —— GLM 5/5.1 四节点 PD 分离（TP16 DP2）GPQA 精度不达标：D 节点显存持续跑满触发
+#   重计算（recompute）路径精度退化，关闭 recompute_scheduler 可恢复
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/8844
+# fix 跟踪：无 fix PR；官方回复定位（Nagisa125 自动化回复 2026-05-29）："显存用满后的重计算路径导致精度下降，
+#   关闭重计算可恢复"，issue closed completed 2026-05-29（作者 ZYang6263 关闭）；关闭后 GPQA 数值未回填线程
+# investigation_quality: medium（作者自定位 + 官方确认 root cause/规避方向；无代码级定位、无合入修复、无数值复测确认）
+# 批量导入：sed-g3（2026-09）
+# pre-triage: new_pattern（全库无"显存饱和触发重计算→精度退化"的 precision case；重计算族现有两条 interrupt：
+#   VLLM-ASC-10784 = recompute 触发 MoE shared-expert 展开内存爆炸(OOM，无 PR known issue)、
+#   VLLM-ASC-14871 = recompute_scheduler×spec decode 首请求 AttributeError(PR #14504)——同为显存压力/recompute
+#   主题但机制与症状轴不同（精度 vs 内存/崩溃），8844 是该族首条 precision 形态，机制面无可复用 case）
+# 脱敏：issue 启动脚本含内网 IP（未引用进草稿，正文仅保留配置结构）；无 token/密码，无替换
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-8844
+    title: "GLM 5/5.1 w8a8 四节点 PD 分离（P/D 各 TP16 DP2，vllm-ascend 0.18.0）GPQA-diamond 精度不达标（实测 67.8）：长输出 + 高并发 + D 节点显存持续饱和触发 recompute 重计算路径精度退化——关闭 recompute_scheduler（或避免显存饱和）可恢复，无代码级根因/无合入 PR"
+
+    category: precision
+    tags: [glm5, recompute, memory-saturation, pd-disaggregation, accuracy, gpqa]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["==0.18.0"]    # 在 0.18.0 验证；无代码级修复确认，后续版本显存饱和触发 recompute 时行为未知
+    # 机型未声明（四节点 PD 分离，P 侧 TP16 DP2 / D 侧 TP16 DP2）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "GLM 5/5.1（GLM-new-w8a8，--quantization ascend）+ 四节点 PD 分离（P/D 侧 --data-parallel-size 2 --tensor-parallel-size 16 --enable-expert-parallel + deepseek_mtp spec decode），vllm/vllm-ascend 0.18.0"
+      - "GPQA-diamond 评测精度 67.8% 低于论文/标准水平；TP≤4 时无精度问题"
+      - "触发条件归纳（作者）：输出长、并发高、D 节点显存持续饱和（gpu-memory-utilization 0.92 + recompute_scheduler_enable=true）；D 节点显存不跑满则不劣化"
+      - "官方回复定位：显存用满后的重计算（recompute）路径导致精度下降，关闭重计算可消除"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/8844"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "无 fix PR；issue 线程官方回复确认根因方向（显存跑满→重计算→精度退化，关闭 recompute 可恢复）；closed completed 2026-05-29。注意：关闭 recompute 后 GPQA 数值未回填确认，无代码级定位"
+
+    quickly_check:
+      primary:
+        command_template: "grep -iE 'gpqa|accuracy|acc@|pass@' {{eval_log}}"
+        rank_selector: all_failed
+        expected: "regex:(GPQA|accuracy|acc@)"
+        note: "评测输出低于基线/论文水平时进入本 case；实测 GPQA-diamond 67.8 不达标（TP≤4 正常）"
+      fallback:
+        command_template: "grep -E 'recompute_scheduler_enable.*true|recompute' {{engine_config}}"
+        rank_selector: coordinator
+        expected: "regex:recompute"
+        note: "部署形态判别：PD 分离 + 长输出高并发 + D 节点显存饱和（recompute_scheduler 开启）"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：GLM 5/5.1 大 TP（>4）PD 分离下输出精度不达标（GPQA 等 benchmark 低于基线），且发生在长输出/高并发/D 节点显存持续饱和时？"
+        expected: "是——精度退化而非崩溃/OOM，category=precision"
+      - step: 2
+        check: "机制判别：D 节点是否显存跑满并实际触发 recompute（additional-config recompute_scheduler_enable=true，长稳后进入重计算）？"
+        expected: "是——官方定位：显存用满后的重计算路径精度缺陷；规避=关闭重计算"
+      - step: 3
+        check: "fix/规避：把 recompute_scheduler_enable 改为 false（或调低 D 节点 gpu-memory-utilization / 并发避免显存饱和）后复测精度"
+        expected: "精度恢复（线程表述 Disabling recalculations eliminates this problem）；关闭后数值未回填，请自行复测确认"
+      - step: 4
+        check: "注意/限制：root cause 未定位到具体算子或代码路径（无 PR、无数值复测）；勿把'关闭 recompute'当长期修复推广——显存/吞吐有代价，且高 TP 本身是否有独立精度影响未排除"
+        expected: "记录为规避型修复，等待上游对 recompute 路径的代码级修复"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart, throughput-cost]  # 关闭 recompute 需重启；显存预算/并发需重调
+    fix_type: config-change          # additional-config recompute_scheduler_enable=false / 降显存占用（无代码修复）
+
+    root_cause: >
+      D 节点 NPU 显存被长期打满（gpu-memory-utilization 0.92 + 长输出高并发）后，vllm-ascend
+      的 recompute scheduler 进入重计算路径；该重计算路径（具体机制未定位到代码/算子）输出精度
+      劣于正常路径，表现为 GLM 5/5.1 大 TP（TP16/DP2）PD 分离部署 GPQA-diamond 67.8% 不达标
+      （TP≤4、显存不饱和时不出现）。官方确认方向："显存用满后的重计算路径导致精度下降，关闭
+      重计算可恢复"。无合入修复，规避=关 recompute 或避免显存饱和。
+
+    fix: >
+      将 --additional-config 的 "recompute_scheduler_enable" 置 false（关闭重计算）重启服务；
+      或降低 D 节点 gpu-memory-utilization/并发，避免显存饱和触发重计算。关闭后复测 benchmark 确认精度恢复。
+    rollback: "恢复 recompute_scheduler_enable=true（显存预算紧张场景重计算是省显存的正常机制，仅在本精度缺陷修复前需权衡）"

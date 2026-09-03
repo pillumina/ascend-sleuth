@@ -1,0 +1,92 @@
+# VLLM-ASC-9482 —— --async-scheduling + MTP（spec decode）服务崩溃：num_accepted/num_computed_tokens 溢出——vllm-ascend model runner 重写 _copy_valid_sampled_token_count（PR #8766）current_stream 声明进 stream context 内、多流不同步 → valid_sampled_tokens_count 脏读写；PR #9456（merged 2026-05-22）修复
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9482
+# fix 跟踪：PR #9456 "[BugFix]Fix Deepseek-V4 async scheduling with MTP"（base main，merged 2026-05-22T15:47:16Z，merge 7e817f291b）——修 _copy_valid_sampled_token_count 多流同步缺陷并给 deepseek-v4 加专用 CPU tensor 避免同步；issue closed 2026-05-27（维护者 lilinsiman 确认 main 已解决）；同族 #9024
+# investigation_quality: high（vllm-ascend 开发者源码级定位到 PR #8766 引入的函数改写 + 本地删改验证修复 + 上游 merged PR 闭环）
+# pre-triage: variant_of VLLM-ASC-13964 —— 同"async scheduling 下 vllm-ascend runner 层 token 计数记账错误"族；增量=13964 为 num_computed_tokens 乐观计数致 SWA KV block 提前剪枝→静默停滞（PR #13518），本条为 _copy_valid_sampled_token_count 多流不同步致 valid_sampled_tokens_count 脏读→num_accepted/num_computed_tokens 溢出崩溃（PR #9456）
+# verification: upstream-fix-merged（fix PR #9456，merged 2026-05-22）
+# 脱敏：issue 主体为截图（trace 不可 grep），正文不含密钥/内网 IP
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest r2-sed-g4（2026-09，postmortems/inbox 草稿，待 groom 分诊转正）
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-9482
+    title: "--async-scheduling + MTP（spec decode）崩溃：model runner 的 _copy_valid_sampled_token_count（PR #8766 重写）把 current_stream 声明进 with torch.npu.stream() 内、多流未同步 → valid_sampled_tokens_count 脏读写 → num_accepted/num_computed_tokens 溢出崩溃；升级/合入 PR #9456 修复"
+
+    category: interrupt
+    tags: [async-scheduling, mtp, speculative-decode, model-runner, stream-sync, token-count, crash, deepseek-v4, qwen3.5]
+
+    # 平台：issue 未明示型号（910B/A3 系）；0.19.0 与 main 均复现
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.19.0"]            # 实测复现版本（当时 main 亦复现）；修复=含 PR #9456（merged 2026-05-22）的版本
+        note: "触发组合：--async-scheduling + MTP/spec decode（Qwen3.5-APC-MTP / DeepSeek-V4 类）"
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "vllm-ascend 0.19.0/main：Qwen3.5-APC + MTP（spec decode）开启 --async-scheduling 后服务崩溃（issue 内 trace 为截图）"
+      - "开发者打印定位：开启 async-scheduling 后 num_accepted 与 num_computed_tokens 溢出，导致后续崩溃"
+      - "定位到 model runner 的 _copy_valid_sampled_token_count：PR #8766 重写该方法，把 current_stream 声明在 with torch.npu.stream(self.valid_sampled_token_count_copy_stream) 内部（GPU 实现声明在 context 外）"
+      - "删除该次改写本地可修复 apc+mtp+async-scheduling（自测）；同族 #9024：MTP + prefix caching 组合报 IndexError list index out of range"
+      - "修复：main 含 PR #9456（修 _copy_valid_sampled_token_count 多流同步 + deepseek-v4 专用 CPU tensor）后不再复现"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9482"
+      - "https://github.com/vllm-project/vllm-ascend/pull/9456"
+      - "https://github.com/vllm-project/vllm-ascend/issues/9024"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #9456（merged 2026-05-22，main）；维护者 lilinsiman（2026-05-27）确认 issue 在最新 main 解决；#9456 正文：_copy_valid_sampled_token_count 未正确同步多流 → valid_sampled_tokens_count 脏读写，deepseek-v4 attn backend 需要 positions_cpu，补专用 CPU tensor 避免同步"
+
+    quickly_check:
+      # 本 case 无唯一错误签名（不同模型可表现为 IndexError/计数溢出崩溃）；先查配置组合再查 runner 函数
+      primary:
+        command_template: "grep -aE 'async.?scheduling|num_accepted|num_computed_tokens' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:async.?scheduling|num_accepted|num_computed_tokens"
+        note: "async-scheduling 开启 + MTP 时崩溃且计数相关 → 候选本 case；真实 trace 见 issue 截图"
+      fallback:
+        command_template: "grep -aE 'IndexError: list index out of range|_copy_valid_sampled_token_count|valid_sampled' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:IndexError: list index out of range|_copy_valid_sampled_token_count|valid_sampled"
+        note: "同族 #9024（MTP+prefix caching）真实 trace 为 IndexError（get_temporal_copy_spec 内 block_ids[cur_block_idx + num_accepted_tokens - 1]）"
+
+    diagnosis:
+      - step: 1
+        check: "配置判别：是否 --async-scheduling + MTP/spec decode（如 qwen3_5_mtp / deepseek_mtp）同开，且单独开任一功能正常？"
+        expected: "是——async-scheduling 与 MTP 组合触发（与 #9024 prefix caching+MTP 同族）"
+      - step: 2
+        check: "崩溃形态：IndexError list index out of range（spec-decode state/copy 路径）或计数相关断言/溢出崩溃？"
+        expected: "是——num_accepted/num_computed_tokens 被污染后的越界/溢出型崩溃"
+      - step: 3
+        check: "版本判别：vllm-ascend 是否含 PR #9456（merged 2026-05-22，修 _copy_valid_sampled_token_count 多流同步 + deepseek-v4 专用 CPU tensor）？"
+        expected: "不含 → 升级/合入；本地紧急规避可 revert #8766 对 _copy_valid_sampled_token_count 的改写（有性能代价）"
+      - step: 4
+        check: "修复：升级至含 PR #9456 的版本后复测"
+        expected: "async-scheduling + MTP 不再崩溃（维护者 2026-05-27 确认 main 已解决）"
+        note: "根因在 runner 层多流同步，非模型/参数问题；不要用关 async-scheduling 长期规避（功能回归）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart, requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      vllm-ascend 在 PR #8766 中重写 model runner 的 _copy_valid_sampled_token_count：把 current_stream
+      声明在 `with torch.npu.stream(self.valid_sampled_token_count_copy_stream)` 内部（GPU 参考实现在
+      context 外声明），导致拷贝算子所在流未被正确同步/记录。async scheduling + MTP（spec decode）路径下
+      valid_sampled_tokens_count 出现多流脏读写 → num_accepted / num_computed_tokens 被污染并溢出 →
+      后续调度/投机校验崩溃（同族 #9024 表现为 get_temporal_copy_spec 中按 num_accepted_tokens 越界
+      IndexError）。PR #9456 修正多流同步，并为 deepseek-v4（attn backend 需要 positions_cpu）加专用
+      CPU tensor 免同步，问题解决。
+
+    fix: >
+      升级 vllm-ascend 至含 PR #9456（merged 2026-05-22）的版本（main 或后续 release）；#9456 同时
+      修正 #8766 引入的多流同步缺陷并处理 deepseek-v4 的 positions_cpu 同步。临时规避：关掉
+      --async-scheduling 或移除 #8766 对 _copy_valid_sampled_token_count 的改写（均有功能/性能代价）。
+    rollback: "revert PR #9456 即回到崩溃（可验证因果）"

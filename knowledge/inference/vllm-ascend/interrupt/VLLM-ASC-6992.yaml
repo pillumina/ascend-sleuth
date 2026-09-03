@@ -1,0 +1,81 @@
+# VLLM-ASC-6992 —— 中文（非英文）OS 下 CPU binding 子进程输出解析失败：vllm_ascend/cpu_binding.py execute_command 只靠环境 locale，本地化输出破坏解析；PR #8251 spawn 前强制 LC_ALL/LANG/LC_MESSAGES=C
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/6992
+# fix 跟踪：PR #8251 [BugFix] Enforce C locale for CPU binding subprocess parsing（merged 2026-04-16 wangxiyuan，Fixes #6992，改 vllm_ascend/cpu_binding.py +11/-2 + UT）；承接未合入的 #7274（只设 LANG=C，review 指出可被 LC_ALL/LC_MESSAGES 覆盖）；issue 同日关闭 completed
+# investigation_quality: low-medium（issue 无复现日志/错误签名，机制由 merged PR 说明支撑，无现场闭环）
+# pre-triage: new_pattern —— 库内无 CPU binding / locale 相关 case（309P 12989 为 cudagraph event 资源，不同域）
+# verification: upstream-fix-merged（fix PR #8251）
+# 脱敏：无内网 IP/密钥
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest r2-sed-g1（2026-09，postmortems/inbox 草稿，待 groom 分诊转正）
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-6992
+    title: "中文（非英文）语言环境 OS 下开启 CPU binding（enable_cpu_binding）解析失败：vllm_ascend/cpu_binding.py execute_command 子进程输出被本地化（ps 等），只设 LANG=C 会被 LC_ALL/LC_MESSAGES 覆盖——升级含 PR #8251 的版本，或启动前 export LC_ALL=C LANG=C LC_MESSAGES=C"
+
+    category: interrupt
+    tags: [cpu-binding, locale, os-language, subprocess-parsing, startup, device-allocator, non-english-os]
+    platforms: []                    # 跨平台（纯 OS locale 依赖，与 NPU 型号无关）
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.18.0"]          # 修复合入 main 2026-04-16（#8251）；精确受影响下界未核实（cpu binding 功能引入起即有风险），groom 回填
+
+    investigation_quality: low-medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "操作系统语言为中文等非英文（locale 非 C/英文）时，开启 CPU binding（--additional-config '{\"enable_cpu_binding\": true}'）启动/绑定可能失败"
+      - "vllm_ascend/cpu_binding.py execute_command() 经 subprocess.Popen 执行并解析 ps 等命令输出，本地化输出导致解析不稳定"
+      - "英文（C locale）环境同配置正常——locale 是唯一变量（issue 从 PR review 转来，无具体报错日志）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/6992"
+      - "https://github.com/vllm-project/vllm-ascend/pull/8251"
+      - "https://github.com/vllm-project/vllm-ascend/pull/7274"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #8251（merged 2026-04-16）：vllm_ascend/cpu_binding.py execute_command 在 subprocess.Popen 前强制 LC_ALL=C、LANG=C、LC_MESSAGES=C，附 UT（test_cpu_binding.py 断言注入 env）；issue #6992 同日关闭 completed"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'enable_cpu_binding|cpu binding|cpu_bind' {{launch_log}}"
+        rank_selector: all_failed
+        expected: "regex:enable_cpu_binding|cpu bind"
+      fallback:
+        command_template: "locale | grep -E '^(LANG|LC_ALL|LC_MESSAGES)='"
+        rank_selector: coordinator
+        expected: "regex:(LANG|LC_ALL|LC_MESSAGES)=[^C]"     # 非 C 的本地化 locale 命中（中文 OS 特征）
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：启动/运行开了 CPU binding（additional-config enable_cpu_binding）且 OS 语言非英文（LANG/LC_ALL 为 zh_CN 等）？"
+        expected: "是——CPU binding 子进程输出本地化，解析依赖英文输出"
+      - step: 2
+        check: "workaround 验证：启动前 export LC_ALL=C LANG=C LC_MESSAGES=C 后重启，绑定是否恢复？"
+        expected: "恢复 → 确认 locale 问题（三个变量都要设：LC_ALL/LC_MESSAGES 优先级高于 LANG，只设 LANG=C 无效——#7274 的 review 教训）"
+        note: "若没设这三个变量而只试了 LANG=C，先补全再下结论"
+      - step: 3
+        check: "版本判别：vllm-ascend 是否早于含 PR #8251（main 2026-04-16）的版本？"
+        expected: "是 → 升级（代码已内部强制 C locale）；升级后无需手工 export"
+        fix_on_mismatch: "升级后仍失败 → 排除本 case，查 CPU binding 核心逻辑/亲和性配置"
+        rollback: "去掉 export（非英文 locale 复现解析失败）"
+
+    severity: benign                   # CPU binding 功能不可用/解析失败（不涉及数据；若实现抛异常则表现为启动失败）
+    fix_type: config-change            # 升级；workaround 为 env 设置
+
+    root_cause: >
+      vllm_ascend/cpu_binding.py 的 execute_command() 通过 subprocess.Popen 执行并解析命令
+      （如 ps）输出，解析依赖稳定的英文输出。中文等非英文 OS 下输出被本地化，且仅设 LANG=C
+      会被继承的 LC_ALL / LC_MESSAGES（优先级更高）覆盖，导致解析不稳定/失败、CPU binding 不生效。
+      PR #8251 在 spawn 前把 LC_ALL、LANG、LC_MESSAGES 三者统一强制为 C，保证解析输入稳定
+      （承接 #7274 并修正其只设 LANG 的遗漏）。
+
+    fix: >
+      升级 vllm-ascend 到含 PR #8251 的版本（main 2026-04-16 合入，vllm_ascend/cpu_binding.py 内部强制
+      C locale）。旧版本 workaround：启动前 export LC_ALL=C LANG=C LC_MESSAGES=C（三者都要，勿只设 LANG）。
+    rollback: "移除 export（非英文 locale 下复现）"

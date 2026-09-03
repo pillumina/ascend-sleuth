@@ -1,0 +1,92 @@
+# VLLM-ASC-9056 —— vLLM v0.20.1 + 旧 vllm-ascend main 拉起即崩：上游 Scheduler.__init__ 新增 hash_block_size
+#   参数，balance scheduling patch（patch_balance_schedule.py:696 BalanceScheduler.__init__）签名未适配 →
+#   TypeError: unexpected keyword argument 'hash_block_size'（EngineCore 启动即挂）；main2main PR #9155 修复
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9056
+# fix 跟踪：PR #9155（[CI] Main2main 0514，merged 2026-05-14 main，Potabk；同步上游 vLLM v0.20.1 改动，
+#   含 patch_balance_schedule.py 适配 Scheduler 接口）；报者确认 'As PR 9155 that fix this has been merged' 后关闭，
+#   issue closed completed 2026-05-21
+# investigation_quality: medium（报错栈到行 + 维护者确认 main2main 引入并给出 fix PR + merged 后关闭；
+#   根因为上游接口签名漂移，未做消融复现）
+# 批量导入：sed-g3（2026-09）
+# pre-triage: variant_of VLLM-ASC-8336（父 case 已确认存在于 knowledge/inference/vllm-ascend/interrupt/。
+#   同族=balance scheduling patch 层（patch_balance_schedule.py）与配套 vLLM 版本 API 漂移 → EngineCore
+#   启动即崩溃：8336 = RequestStatus.WAITING_FOR_FSM 枚举成员缺（配套 vLLM 0.19.0，fix #8448 升 v0.19.1）；
+#   9056 = Scheduler.__init__ 新增 hash_block_size 关键字未适配（配套 vLLM 0.20.1 + 旧 main@4d51588，fix #9155
+#   main2main）。同为调度 patch×上游接口版本错位，成员/签名不同、版本不同）
+# 脱敏：issue 启动脚本含内网 IP（未引用进草稿）；无 token/密码，无替换
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-9056
+    title: "vLLM v0.20.1 + vllm-ascend main@4d51588（GLM-5-w4a8，DP2 TP8 + MTP）拉起即崩：上游 Scheduler.__init__ 新增 hash_block_size 参数，balance scheduling patch 的 BalanceScheduler.__init__（patch_balance_schedule.py:696）未适配 → TypeError: BalanceScheduler.__init__() got an unexpected keyword argument 'hash_block_size'；main2main PR #9155 同步后修复"
+
+    category: interrupt
+    tags: [balance-scheduling, patch-layer, version-mismatch, main2main, scheduler-signature, startup-crash]
+
+    compat:
+      - framework: vllm
+        ranges: ["~=0.20.1"]        # 上游 0.20.1 Scheduler.__init__ 新增 hash_block_size 参数
+      # vllm-ascend 需 main@>= main2main 0514（PR #9155，2026-05-14）；issue 触发 commit main@4d51588e2381...
+    # 平台：issue 未声明机型（DP2×TP8 GLM-5-w4a8）
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "vllm v0.20.1 + vllm-ascend main@4d51588e2381018348f1022dfa3a7698899805b7（旧于 main2main 0514）拉起 GLM-5-w4a8（--data-parallel-size 2 --tensor-parallel-size 8 --enable-expert-parallel + deepseek_mtp spec decode）：EngineCore DP1 启动阶段即崩"
+      - "崩溃栈尾：patch_balance_schedule.py:696 调 super().__init__(*args, **kwargs) → 'TypeError: BalanceScheduler.__init__() got an unexpected keyword argument 'hash_block_size''"
+      - "维护者 MengqingCao 判定：'This should be the issue introduced by main2main'；Potabk 指向 PR #9155"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9056"
+      - "https://github.com/vllm-project/vllm-ascend/pull/9155"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #9155（merged 2026-05-14 main）；报者确认合并即修复并关闭，issue closed completed 2026-05-21"
+
+    quickly_check:
+      primary:
+        command_template: "grep -F \"unexpected keyword argument 'hash_block_size'\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:unexpected keyword argument 'hash_block_size'"
+        note: "EngineCore 启动期栈尾；报者粘贴的 traceback 有折行（BalanceScheduler.__init__() 被断行），用关键字片段更稳"
+      fallback:
+        command_template: "grep -E \"hash_block_size|BalanceScheduler|patch_balance_schedule\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(hash_block_size|BalanceScheduler|patch_balance_schedule)"
+        note: "栈被截断/折行时的宽松判定——命中其一即进入版本配对检查"
+
+    diagnosis:
+      - step: 1
+        check: "错误签名判别：启动即崩，栈尾 TypeError: unexpected keyword argument 'hash_block_size'（patch_balance_schedule.py:696 BalanceScheduler.__init__）？"
+        expected: "是——balance scheduling patch 构造与配套 vLLM 的 Scheduler 签名错位"
+      - step: 2
+        check: "版本配对判别：配套 vLLM 是否为 v0.20.1（上游 Scheduler.__init__ 新增 hash_block_size），vllm-ascend main 是否旧于 main2main 0514（2026-05-14）？"
+        expected: "是——上游 v0.20.1 改 Scheduler 构造签名，旧 vllm-ascend 的 patch 层未跟上 → main2main 引入的接口漂移（与模型/量化/DP 无关）"
+      - step: 3
+        check: "fix：把 vllm-ascend 同步/升级到含 PR #9155（Main2main 0514）的 main"
+        expected: "修复后正常启动（报者确认）"
+      - step: 4
+        check: "忽略项：'EngineCore DP1' 崩溃、DP/TP 规模都不是根因；勿按模型（GLM-5 w4a8）/图模式排查"
+        note: "本族（patch×配套 vLLM 版本漂移）排查先对版本组合：见 VLLM-ASC-8336（WAITING_FOR_FSM 枚举成员缺）——不同漂移点别套用"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch              # main2main PR #9155 同步；落地=升级 vllm-ascend main/版本
+
+    root_cause: >
+      balance scheduling 是 vllm-ascend 自定义调度 patch（vllm_ascend/patch/platform/patch_balance_schedule.py），
+      其 BalanceScheduler 继承并重写上游 Scheduler.__init__（line 696 调 super().__init__(*args, **kwargs)）。
+      上游 vLLM v0.20.1 给 Scheduler.__init__ 新增了 hash_block_size 参数；issue 环境（vllm v0.20.1 +
+      vllm-ascend main@4d51588，旧于 2026-05-14 的 main2main 同步）的 patch 层 __init__ 签名未适配该新参数，
+      EngineCore（DP 调度器初始化）把 hash_block_size 透传进来 → TypeError: unexpected keyword argument
+      'hash_block_size'，服务启动即挂。PR #9155（Main2main 0514）把 vllm-ascend main 同步到上游 v0.20.1
+      接口（含 patch_balance_schedule.py 适配）修复。与模型/量化/图模式无关，是 main2main 版本配套缺口。
+
+    fix: >
+      把 vllm-ascend 升级/同步到含 PR #9155（Main2main 0514，merged 2026-05-14）的构建，与配套 vLLM v0.20.1 对齐。
+    rollback: "回退到旧 main（无 #9155）+ vLLM v0.20.1 即复现启动 TypeError"

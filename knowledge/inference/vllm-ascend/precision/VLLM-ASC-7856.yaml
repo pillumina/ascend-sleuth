@@ -1,0 +1,85 @@
+# VLLM-ASC-7856 —— GLM-4.7-w8a8（float-mtp）流式工具调用 tool_calls 解析异常（json 不闭合/格式错乱）
+# 来源: https://github.com/vllm-project/vllm-ascend/issues/7856
+# fix 跟踪: 上游 vLLM PR #29947（merged 2026-03-12，随 vLLM 0.18.0）；vllm-ascend 无独立 fix，v0.18.0rc1 镜像复测通过
+# investigation_quality: medium（多轮复现+抓包+流式/非流式对照+0.18.0 复测闭环；根因=报者定位上游 vllm 并给 PR，无代码级确认）
+# 批量导入：r2-sed-g2（2026-09）
+# pre-triage: variant_of VLLM-ASC-12030（同族=GLM 系流式 tool-call 响应解析/输出异常 precision；增量=GLM4.7、上游 vllm #29947 ≥0.18 vs GLM5.1 vllm-ascend glm4_moe_tool_parser 0.23.0）
+
+# 建议命名空间：inference/vllm-ascend/precision/
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-7856
+    title: "GLM-4.7-w8a8（float-mtp）在 vllm-ascend v0.17.0rc1 镜像 opencode/webfetch 场景流式 tool_calls 解析异常（arguments json 不闭合/拼接错误，工具调用必现失败），非流式正常——上游 vLLM <0.18 流式 tool-call parser 问题（上游 PR #29947），升级 vLLM ≥0.18.0 修复"
+
+    category: precision
+    tags: [glm4, glm-4.7, streaming, tool-call, tool-parser, json, webfetch, upstream-vllm, version-upgrade]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.18.0"]        # v0.17.0rc1 镜像（内 vLLM <0.18）复现；v0.18.0rc1 镜像（vLLM 0.18.0，含上游 #29947）复测通过
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      # score 草稿期不写，groom 首次评估后计算
+
+    symptoms:
+      - "GLM-4.7-W8A8-floatmtp（--tool-call-parser glm47 等官方部署）opencode/webfetch 场景（如'洛杉矶天气怎么样'）模型输出 tool_calls 格式不正确、arguments json 不闭合/拼接错误，工具调用 100% 失败"
+      - "流式（stream=true）必现异常；同一请求非流式（stream=false）正常"
+      - "仅带 tools + tool_choice=auto 的真实场景触发；简单无 tools curl 不触发函数调用、看不出问题"
+      - "GPU 同版本 vllm 同样存在（非昇腾特有）；v0.18.0（vllm-ascend v0.18.0rc1 镜像）复测通过"
+      - "上游 fix：vllm-project/vllm PR #29947（merged 2026-03-12，随 vLLM 0.18.0）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/7856"
+      - "https://github.com/vllm-project/vllm/pull/29947"
+
+    verification:
+      source: upstream-fix-merged
+      detail: '上游 vllm-project/vllm PR #29947（merged 2026-03-12）；报者 v0.18.0（vllm-ascend v0.18.0rc1 镜像）复测闭环'
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'GLM-4\\.7|glm47' {{launch_log}}"
+        rank_selector: coordinator
+        expected: "regex:GLM-4\\.7|glm47"
+      fallback:
+        command_template: "grep -aoE 'vLLM (Ascend )?Version: [0-9.]+' {{env_log}}"
+        rank_selector: coordinator
+        expected: "regex:vLLM (Ascend )?Version: 0\\.1[0-7]"     # <0.18 为缺陷面；≥0.18.0 已修复
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：GLM-4.x 系 + 带 tools/tool_choice 的流式请求输出 tool_calls arguments json 残缺/不闭合/拼接错误，同请求非流式正常？"
+        expected: "是——问题收敛到流式 tool-call 解析/输出路径（parser/streaming），非权重或采样"
+      - step: 2
+        check: "版本判定：当前 vLLM/vllm-ascend 是否 <0.18.0？"
+        expected: "<0.18 即缺陷面（上游 #29947 修复随 vLLM 0.18.0 发布）；vllm-ascend 侧无独立 fix"
+      - step: 3
+        check: "对照排除：简单无 tools curl 正常不代表无问题——必须用 tools + tool_choice=auto 的流式请求复现（opencode/webfetch 场景或等价 curl）"
+        expected: "带 tools 的流式请求必现/高概率复现"
+      - step: 4
+        check: "修复：升级到 vLLM ≥0.18.0（vllm-ascend ≥0.18.0rc1 镜像）后同请求复测"
+        expected: "tool_calls 恢复正常（报者 v0.18.0rc1 镜像实测闭环）"
+      - step: 5
+        check: "忽略项：此问题非昇腾特有（GPU 同版本 vllm 同现）、非量化权重缺陷——勿按昇腾算子/权重方向排查"
+        note: "与 VLLM-ASC-12030 同族（GLM 流式 tool-call 精度），但 12030 根因在 vllm-ascend glm4_moe_tool_parser（GLM5.1，0.23.0 修复）；本条根因在上游 vllm（GLM4.7，≥0.18 修复）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch                        # 上游 vllm PR #29947；对使用者=升级 vLLM/vllm-ascend ≥0.18.0
+
+    root_cause: >
+      GLM-4.7 带 tools + tool_choice=auto 的流式 tool-call 响应在 vLLM <0.18 的流式 parser/
+      function-calling 输出路径生成残缺、不闭合的 arguments json（工具调用失败）；非流式路径不经
+      该流式组装逻辑故正常。该缺陷属上游 vLLM（GPU 同版本同样触发，非昇腾特有），上游
+      vllm-project/vllm PR #29947 修复流式 Tool/Function calling，随 vLLM 0.18.0 发布。
+      vllm-ascend v0.17.0rc1 镜像内含 vLLM 过旧即处于缺陷面；vllm-ascend 侧无独立代码修复。
+
+    fix: >
+      升级到 vLLM ≥0.18.0（vllm-ascend ≥0.18.0rc1 镜像内已含），同带 tools 的流式请求复测通过。
+      无配置 workaround。
+    rollback: "回退到 vLLM <0.18.0（vllm-ascend <0.18.0rc1 镜像）即回到缺陷面"

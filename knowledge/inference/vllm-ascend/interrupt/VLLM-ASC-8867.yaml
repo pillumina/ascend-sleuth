@@ -1,0 +1,90 @@
+# VLLM-ASC-8867 —— PD 分离长稳压测数小时后部分 decode engine 不再收到请求：用户取消请求抛
+#   asyncio.CancelledError（非 Exception 子类）未触发代理负载分数释放，D 节点负载分泄漏致负载均衡停止路由
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/8867
+# fix 跟踪：PR #8836（[BugFix] [P/D] release proxy resources on stream cancellation，merged 2026-04-30 main，
+#   liziyu179；改 examples/disaggregated_prefill_v1/load_balance_proxy_server_example.py(+layerwise)：
+#   CancelledError 也走资源/负载分释放路径）；报者 xuyucheng220 实测 '已经测试ok了'，issue closed completed 2026-06-29
+# investigation_quality: medium（长稳现象 + per-engine 日志证据充分；fix 由维护者给出，报者实测闭环；机制由 PR 描述说明）
+# 批量导入：sed-g3（2026-09）
+# pre-triage: new_pattern（全库无 proxy/负载均衡/流取消相关的 case。最近邻 VLLM-ASC-13964 decode DP rank
+#   静默停滞是 engine 内部 async scheduling 记账问题（#13518），8867 是代理层负载分数泄漏（取消请求不释放分数、
+#   engine 进程存活无异常）——层不同、机制不同、修复不同）
+# 脱敏：issue 无内网 IP/token；日志仅含 Engine/pid 与吞吐数字，无替换
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-8867
+    title: "910C 双机 1P1D DSV4-Flash w8a8（decode TP1 DP16，16 个 api server）+ load_balance_proxy_server_example.py 长稳压测：数小时后部分 decode engine 不再收到请求（进程存活、日志无异常）——请求取消时 asyncio.CancelledError 不属 Exception，代理负载分数不释放，负载均衡停止向该 D 节点路由；PR #8836 修复"
+
+    category: interrupt
+    tags: [pd-disaggregation, load-balance-proxy, request-cancellation, cancelled-error, proxy-score-leak, silent-degradation]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.19.1"]          # 修复合入 main 2026-04-30（v0.19.1 线）；报体 collect_env 显示 vllm-ascend 0.13.0rc3，与 fix 线跨度大——版本区间以实测为准，存疑
+      # 触发条件：PD 分离 + 多 decode engine 副本 + load_balance_proxy_server_example.py（或 layerwise 版）+ 压测中有客户端取消/断开请求
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "910C 双机 1P1D 跑 DSV4-Flash w8a8（decode 侧 TP1 DP16，16 个 Engine/API server 副本 + load_balance_proxy_server_example.py 负载分发）：长稳压测正常时 16 个 engine 日志都有请求（Running: 75 reqs、External prefix cache hit rate: 100.0%）"
+      - "数小时后部分 engine 不再收到请求：某 engine（如 Engine 013 pid=107）日志最后一条停在更早时刻（'Running: 0 reqs... 10:06:42'），此后持续缺位；进程存活、日志无 ERROR/traceback，其余 engine 继续服务"
+      - "代理把新请求逐渐只路由给仍存活分数的 engine → decode 侧实际服务能力随时间下降（静默，无显式报错）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/8867"
+      - "https://github.com/vllm-project/vllm-ascend/pull/8836"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "fix PR #8836（merged 2026-04-30）；报者实测通过并 closed completed 2026-06-29"
+
+    quickly_check:
+      primary:
+        command_template: "grep -oE 'Engine [0-9]+:' {{decode_log_window}} | sort -u"
+        rank_selector: all_failed
+        expected: "regex:Engine (0[0-9]|1[0-5]):"
+        note: "正常=0..15 全部出现；故障=集合缺位且缺位 engine 日志停更（无异常）——对两个时间窗各跑一次比对集合收缩"
+      fallback:
+        command_template: "grep -E 'Running: 0 reqs, Waiting: 0 reqs, GPU KV cache usage: 0.0%' {{decode_log}}"
+        rank_selector: all_failed
+        expected: "regex:Running: 0 reqs"
+        note: "某 engine 长期只有 Running:0 的空闲日志（压测仍在进行）而进程无 ERROR——疑似负载不再路由到它"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：PD 分离 + 多 decode 副本 + 示例负载均衡代理，长稳压测（数小时）中某/某些 engine 停止收到请求、进程存活无异常、其余 engine 正常？"
+        expected: "是——静默退化：负载均衡不再向该 engine 路由（非 engine 崩溃、非 HCCL/网络错误）"
+      - step: 2
+        check: "机制确认：代理实现 load_balance_proxy_server_example.py 中，请求处理失败/取消是否用 except Exception 收尾释放 D 节点负载分数？"
+        expected: "是——asyncio.CancelledError 继承自 BaseException 而非 Exception，用户取消流式请求时抛 CancelledError 跳过 except Exception 清理 → 该 D 节点负载分永久偏高 → 分数路由不再选它"
+      - step: 3
+        check: "fix 验证：升级到含 PR #8836 的版本（CancelledError 也走资源/分数释放路径），复测长稳是否仍有 engine 掉出分发"
+        expected: "修复后不再出现（报者实测 OK）"
+      - step: 4
+        check: "忽略项：engine 自身无异常、无 EngineDeadError；'External prefix cache hit rate: 100.0%' 是正常运行特征，勿当异常"
+        note: "本 case 症状是代理层负载分泄漏，与 engine 内部调度停滞（如 VLLM-ASC-13964）区分：13964 是 running>0 但无 token 产出，本 case 是 engine 空闲但收不到新请求"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch              # examples 代理脚本修复（PR #8836）；落地=升级或同步该脚本
+
+    root_cause: >
+      vllm-ascend 的 PD 分离示例负载均衡代理（examples/disaggregated_prefill_v1/
+      load_balance_proxy_server_example.py）按各 D 节点（engine 副本）的负载分数选路；请求处理收尾时
+      用 except Exception 释放该 engine 的负载分数。压测/长稳中用户取消或断开流式请求时抛出的是
+      asyncio.CancelledError——它继承 BaseException 而非 Exception，except Exception 捕获不到，
+      D 节点负载分数因此从不释放、永久偏高 → 代理不再把新请求路由到该 engine（进程存活、无任何异常日志）。
+      请求取消越频繁，掉出分发的 engine 越多，decode 服务能力随时间静默下降。
+      PR #8836 让取消（CancelledError）也走资源/负载分数释放路径。
+
+    fix: >
+      升级/同步到含 PR #8836 的版本或直接修补代理脚本（examples/disaggregated_prefill_v1/
+      load_balance_proxy_server_example.py / _layerwise_ 版：CancelledError 处理与正常异常一致，释放
+      D 节点负载分数）。修复后长稳压测中不再有 engine 掉出分发。
+    rollback: "回退代理脚本到修复前版本即复现（压力下取消请求 → engine 逐个不再被路由）"

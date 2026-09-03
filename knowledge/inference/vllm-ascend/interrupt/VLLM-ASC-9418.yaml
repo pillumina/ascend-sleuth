@@ -1,0 +1,87 @@
+# VLLM-ASC-9418 —— A3 双机混部（跨机 TP16+DP2+EP）拉起 DeepSeek-V4-Pro 失败：报 aclnnHcPreInvRms failed——未用灵衢背板、沿用机内 AIV/HCCS 优化配置跑跨机；修复=跨机改走 ROCE（HCCL_BUFFSIZE=200 + HCCL_INTER_HCCS_DISABLE=TRUE + 删 HCCL_OP_EXPANSION_MODE=AIV + MoE 通信类型 ALLGATHER）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/9418
+# fix 跟踪：无上游 fix PR——组网/部署配置层问题；维护者 Bowen-Leee（2026-06-04）给出原因+解决方案并关闭 issue（closed_at 2026-06-04T02:11:33Z）
+# investigation_quality: medium（维护者一句话根因 + 明确配置配方；机制细节在内网 wiki，用户未复验）
+# pre-triage: new_pattern —— 库内无 A3 跨机/混部启动失败的组网配置 case；相关但机制不同的 12461（多节点 EP FusedMoE MC2 在 ROCE 网络的 aicore exception 507057，ROCE 正常组网下的算子兼容 bug）为判别参照
+# verification: upstream-maintainer-confirmed（无 fix PR；resolution 由维护者给出并关闭）
+# 脱敏：内网 IP 与内网 wiki 链接 → [REDACTED]（正文不引用）
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest r2-sed-g4（2026-09，postmortems/inbox 草稿，待 groom 分诊转正）
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-9418
+    title: "A3 双机混部（TP16+DP2+EP，DeepSeek-V4-Pro w4a8）拉起失败：call aclnnHcPreInvRms failed——未用灵衢背板仍按机内 AIV/HCCS 配置跑跨机通信；跨机改走 ROCE（HCCL_BUFFSIZE=200、HCCL_INTER_HCCS_DISABLE=TRUE、删 HCCL_OP_EXPANSION_MODE=AIV）+ MoE 通信类型 ALLGATHER 后拉起"
+
+    category: interrupt
+    tags: [deepseek-v4, a3, multi-node, 混部, roce, hccl, ep, startup, moe-comm]
+
+    platforms: ["A3-910C"]            # HDK 25.5.2/25.5.1，A3 双机
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.18.0"]            # 用户环境 vLLM_VERSION=0.18.0（vllm-ascend 同代）
+        note: "配置层问题，非版本回归；配方按 maintainer 模板"
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "A3 双机混部部署 DeepSeek-V4-Pro-w4a8（TP16 + DP2 跨 2 节点 + expert parallel + --quantization ascend），vllm serve 拉起失败，报 'call aclnnHcPreInvRms failed'"
+      - "启动脚本特征：export HCCL_OP_EXPANSION_MODE=\"AIV\" + export HCCL_BUFFSIZE=2048（机内/超节点内优化配置），跨机仍用同配置"
+      - "主/从节点均失败；报错在服务拉起早期（算子/通信初始化）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/9418"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "Bowen-Leee（2026-06-04，关闭评论）：'原因：没用灵衢背板；解决方案：跨机走ROCE export HCCL_BUFFSIZE=200 / export HCCL_INTER_HCCS_DISABLE=TRUE / 删除 HCCL_OP_EXPANSION_MODE=\"AIV\" / ascend_forward_context.py 文件添加 moe_comm_type = MoECommType.ALLGATHER（规避方法见内网 wiki）'；无 fix PR"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE 'call aclnnHcPreInvRms failed|aclnnHcPreInvRms' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:call aclnnHcPreInvRms failed|aclnnHcPreInvRms"
+      fallback:
+        command_template: "grep -aEi '拉起失败|failed to start|cannot start|HCCL_OP_EXPANSION_MODE.?=.?AIV' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:拉起失败|failed to start|cannot start|HCCL_OP_EXPANSION_MODE.?=.?AIV"
+
+    diagnosis:
+      - step: 1
+        check: "签名：A3（910C）跨机/混部拉起 DeepSeek-V4 类 MoE 模型失败，报 call aclnnHcPreInvRms failed（或拉起早期算子失败）？"
+        expected: "是——通信/算子初始化层失败，先查组网配置而非代码"
+      - step: 2
+        check: "组网判别：是否跨服务器混部（TP 跨机/DP 跨机 + EP）且未使用灵衢背板（或所用超节点模式与背板不一致），启动脚本却按机内 HCCS/AIV 优化配置（HCCL_OP_EXPANSION_MODE=AIV、大 HCCL_BUFFSIZE）？"
+        expected: "是——跨机链路类型与实际组网不匹配是根因（没走背板就该显式切 ROCE）"
+      - step: 3
+        check: "修复（维护者配方）：export HCCL_BUFFSIZE=200；export HCCL_INTER_HCCS_DISABLE=TRUE；删除 HCCL_OP_EXPANSION_MODE=\"AIV\"；ascend_forward_context.py 中设 moe_comm_type = MoECommType.ALLGATHER"
+        expected: "按配方修改后服务可拉起（配方来源为维护者 2026-06-04；用户未在 thread 复验）"
+      - step: 4
+        check: "判别对照：多节点 EP + ROCE 下若仍报 507057/aicore（MoeDistributeDispatchV2）→ 走 VLLM-ASC-12461（MC2 算子 ROCE 兼容 bug，升级 0.20.2rc1+）"
+        expected: "配置已对但故障面不同 → 切换 case 排查"
+        note: "12461 是 ROCE 正常组网下 MC2 算子的兼容问题；本条是没用 ROCE/背板导致拉不起——先判组网"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: env-var                  # 组网 env + MoE 通信类型配置（ascend_forward_context.py 一行）
+
+    root_cause: >
+      A3 双机混部（TP/DP 跨 2 节点 + EP + MoE 通信）未使用灵衢背板，却沿用服务器内/超节点内的
+      AIV/HCCS 优化配置（HCCL_OP_EXPANSION_MODE=AIV + HCCL_BUFFSIZE=2048）跑跨机通信，拉起
+      DeepSeek-V4-Pro（w4a8）时 MoE/通信路径算子（报 aclnnHcPreInvRms failed）失败、服务拉不起。
+      维护者给出的解法是跨机显式改走 ROCE：HCCL_BUFFSIZE=200、HCCL_INTER_HCCS_DISABLE=TRUE、
+      删除 HCCL_OP_EXPANSION_MODE=\"AIV\"，并把 ascend_forward_context.py 的 MoE 通信类型设为
+      ALLGATHER（具体机制细节在内网 wiki [REDACTED]）。属部署组网配置问题，非 vllm-ascend 代码 bug。
+
+    fix: >
+      跨机/混部（无灵衢背板）场景按维护者配方：
+      1) export HCCL_BUFFSIZE=200
+      2) export HCCL_INTER_HCCS_DISABLE=TRUE（超节点内节点间走 ROCE 而非 HCCS）
+      3) 删除 HCCL_OP_EXPANSION_MODE=\"AIV\"
+      4) vllm_ascend ascend_forward_context.py 中配置 moe_comm_type = MoECommType.ALLGATHER
+      若使用灵衢背板/HCCS 超节点组网则保持原 AIV 配置即可（推荐配置面向有背板场景）。
+    rollback: "回退到原 AIV/HCCL_BUFFSIZE=2048 配置即复现失败（可验证因果）；配方仅改 env + 一行配置，可逆"

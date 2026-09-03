@@ -1,0 +1,93 @@
+# VLLM-ASC-7659 —— 双机 A2 DP（DP>1，多 ApiServer/Engine）部署看不到 Engine 统计日志（Avg prompt throughput / GPU KV cache usage）——vLLM AsyncLLM 在 client_count>1 时整体禁用 stats logging；本地 patch 恢复，上游 vLLM 修复未合入（#44390 open）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/7659
+# fix 跟踪：无 merged fix PR（根因在 vLLM 核心）。维护者 MengqingCao 2026-03-26 确认 'when dp is enabled, the log is disabled'（vLLM bug，will fix later）；作者本地 patch vLLM loggers guard 后日志恢复（2026-03-27 自关 completed）。上游 vLLM：#35291（2026-02）/ #37950（2026-03）closed-unmerged，#44390（2026-05）enable per-engine stats logging when api_server_count>1 仍 open
+# investigation_quality: medium（维护者源码级确认根因；fix=作者本地 patch 验证；上游修复未定型）
+# pre-triage: new_pattern —— 库内无 stats logger/DP 多引擎可观测性 case；mooncake/metrics 类 case（13356/10710 等）机制不同
+# verification: upstream-maintainer-confirmed（维护者确认根因与 resolution=本地 patch；无上游合并代码）
+# 脱敏：issue 启动脚本内内网 IP/数据面地址不引用；不落本地 patch 具体库路径外的敏感内容
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：issue-ingest r2-sed-g1（2026-09，postmortems/inbox 草稿，待 groom 分诊转正）
+
+# groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
+
+cases:
+  - id: VLLM-ASC-7659
+    title: "双机 A2 DP 部署（--data-parallel-size 2 → 多 ApiServer/Engine）时服务端不再输出 Engine 统计日志（Avg prompt throughput / GPU KV cache usage / Prefix cache hit rate），单机正常——vLLM AsyncLLM 对 client_count>1 整体禁用 stats logger（可观测性缺失）；本地 patch vLLM loggers guard 恢复，上游修复未合入"
+
+    category: interrupt
+    tags: [data-parallel, dp, observability, stats-logger, kv-cache-usage, logging, multi-engine, metrics]
+    platforms: ["A2-910B"]            # A2 双机（每机 TP8+EP；单机对照正常）
+
+    compat:
+      - framework: vllm-ascend
+        ranges: [">=0.17.0"]          # 报告环境 0.17.x/0.18.0 开发版（e20f0b1）；受影响=DP>1 多 ApiServer 部署且含该 guard 的版本，groom 回填精确区间
+        # 根因在 vLLM 核心（AsyncLLM loggers guard），非 vllm-ascend 专属代码
+
+    investigation_quality: medium
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "双机 A2 DP 部署（--data-parallel-size 2，双机各 TP8+EP）DeepSeek/Kimi2.5 w4a8 服务，服务端日志缺失 'Engine 000: Avg prompt throughput: ... tokens/s ... GPU KV cache usage: x%' 统计行；单机（DP=1）同配置正常"
+      - "请求与服务本身正常——纯可观测性缺失（看不到 KV cache 利用率/吞吐统计）"
+      - "vLLM AsyncLLM 构建 stats logger 时 client_count>1 → 跳过默认 stat logger 工厂（'disabling stats logging to avoid incomplete stats' guard）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/7659"
+      - "https://github.com/vllm-project/vllm/pull/44390"     # 上游修复（open）
+      - "https://github.com/vllm-project/vllm/pull/35291"     # 上游尝试（closed-unmerged）
+      - "https://github.com/vllm-project/vllm/pull/37950"     # 上游尝试（closed-unmerged）
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "vllm-ascend 维护者 MengqingCao（2026-03-26，源码定位）确认根因：DP 使能时 vLLM 禁用 stats logging，判定为 vLLM bug 并称稍后在上游修复；作者按该结论本地 patch vLLM loggers guard 后 per-Engine 统计恢复并自关 issue（completed）。上游 vLLM 修复尝试 #35291（2026-02）/ #37950（2026-03）均 closed-unmerged，#44390（2026-05）仍 open——上游修复未定型，本 case 主修=本地 patch/等上游"
+
+    quickly_check:
+      primary:
+        command_template: "grep -cE 'ApiServer_[0-9]+ pid=[0-9]+ .*Engine [0-9]+: .*KV cache usage' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:^0$"         # 病态=0（DP>1 部署应出现却缺失 Engine 统计行）；>0 且单机对照正常时排除本 case
+        note: "缺失型症状：grep 计数为 0 即命中（应有而无）"
+      fallback:
+        command_template: "grep -aE 'disabling stats logging to avoid incomplete stats|api_server_count more than 1' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:disabling stats logging to avoid incomplete stats|api_server_count more than 1"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：DP>1（多 ApiServer/Engine，如 --data-parallel-size 2）部署下日志缺 Engine 统计行，单机（DP=1）同配置有？"
+        expected: "是——DP 多引擎分支命中 vLLM stats logger 禁用 guard"
+      - step: 2
+        check: "排除项：请求/服务是否正常（缺的只是统计日志，非报错）？"
+        expected: "服务正常 → 可观测性缺陷，按本 case 处理；若同时有功能/崩溃问题另查"
+      - step: 3
+        check: "根因确认（源码级）：vLLM AsyncLLM loggers 构建处是否存在 client_count>1 → 跳过默认 stat logger 的 guard？"
+        expected: "存在 → vLLM bug（'disabling stats logging to avoid incomplete stats'），与部署配置无关"
+      - step: 4
+        check: "修复：本地 patch vLLM（去掉该 guard，issue comment 4 给出片段）或等待上游 vLLM 修复（#44390 open）；检查升级版本是否已去掉 guard"
+        expected: "patch 后 per-Engine 统计日志恢复（作者验证）"
+        fix_on_mismatch: "若上游新版已修则直接升级；仍未修则维持本地 patch"
+        rollback: "恢复原 guard（回到无统计日志状态）"
+      - step: 5
+        check: "已知次生噪声（勿当未解决）：patch 后 DP 下每 Engine 各自打印 prefix cache hit rate、多 ApiServer 数值不聚合；Prometheus/grafana 双机聚合也不完美"
+        expected: "需要聚合口径时以官方 /metrics（vllm:prefix_cache_* 计数器）计算，勿以各 Engine 打印行直接相加判断"
+        note: "per-Engine 命中率显示与指标聚合是另一缺陷，与'日志缺失'分开跟踪"
+
+    severity: benign                   # 可观测性缺失（服务/请求正常，无数据风险）
+    fix_side_effects: [requires-code-change]   # 本地 patch vLLM（升级会被覆盖，需重打）
+    fix_type: code-patch               # vLLM 侧本地 patch / 等上游（非 vllm-ascend 配置）
+
+    root_cause: >
+      vLLM AsyncLLM 构建 stats logger 时有一处 guard：当 api_server_count>1（client_count>1，即
+      DP>1 的每机多 ApiServer/多 Engine 部署）时，为"避免统计不完整"整体跳过默认 stat logger 工厂
+      （LoggingStatLogger/AggregatedLoggingStatLogger 均不加）——DP 部署因此完全缺失
+      'Engine N: Avg prompt throughput ... GPU KV cache usage' 统计输出。该 guard 是 vLLM 早期
+      多 ApiServer 场景的保守实现，未随 vLLM 官方 DP 支持（api_server_count/engine 独立统计已可行）
+      更新；vllm-ascend 双机 DP 部署正落在此分支。上游修复（#35291/#37950）未合入、#44390 仍 open。
+
+    fix: >
+      在 vLLM loggers 构建处本地 patch：去掉 client_count>1 禁用默认 logger 的分支（issue comment 4
+      提供片段，作者验证 per-Engine 统计恢复）；或跟踪上游 vLLM 修复（当前 #44390 open）合入后升级。
+      已知次生问题：patch 后 per-Engine 命中率不聚合，跨 ApiServer 口径以 /metrics 计数器为准。
+    rollback: "恢复 vLLM 原 guard（回到 DP 无统计日志状态）"
