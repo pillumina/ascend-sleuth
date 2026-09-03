@@ -46,7 +46,9 @@ Six skills in `skills/<name>/SKILL.md`, following the [Agent Skills](https://age
 
 ### Case schema (YAML in `knowledge/<ns>/`)
 
-Each case file has: `id`, `title`, `category` (interrupt|precision|performance), `tags`, `platforms`, `compat` (multi-dimensional: framework/CANN/HDK version ranges), `confidence` (hits/misdiagnoses/score managed by groom), `symptoms`, `quickly_check` (primary + fallback regex), `diagnosis` steps with `command_template`/`expected`/`fix_on_mismatch`/`rollback`, `severity` (benign|service-affecting|data-loss-risk), `fix_type` (env-var|config-change|code-patch|pending-investigation), `root_cause`, `fix`.
+Each case file has: `id`, `title`, `category` (interrupt|precision|performance), `tags`, `platforms`, `compat` (multi-dimensional: framework/CANN/HDK version ranges), `confidence` (hits/misdiagnoses/score managed by groom — **只承载 S1 现场 resolve 口径**), `symptoms`, `quickly_check` (primary + fallback regex), `diagnosis` steps with `command_template`/`expected`/`fix_on_mismatch`/`rollback`, `severity` (benign|service-affecting|data-loss-risk), `fix_type` (env-var|config-change|code-patch|pending-investigation), `root_cause`, `fix`.
+
+Optional field — `validation_record`: {consistent, inconsistent, self_consistent, last_verified} — 内容被**外部验证**的累积记录（由 `scripts/settle_s2_feedback.py` 结算，非人设定）。与 confidence 分开：S2 issue-replay 对照的是外部 ground truth（issue resolution / 维护者 fix PR / committer 确认），其结果也是 feedback——反馈对象是"case 内容正确性"而非"fix 现场有效性"。`consistent`=外部验证一致（同等 score 下排序优先）、`self_consistent`=自证命中（replay issue 即 case 来源——如实标注不虚增）、`inconsistent`=命中但结论与 resolution 不符（复审信号）。无 S2 验证不填。
 
 Optional field — `source_ref`: {repo, ref, file, line} — 根因定位到源码时的代码位置（如 `vllm_ascend/quantization/modelslim_config.py`）。诊断时 agent 按需取该版本源码片段作为证据链，**源码不落库**（上游 repo 维护各自版本，知识库只记结论 + 代码指针）。ref 用触发版本对应的 commit/tag；`line` 可选。
 
