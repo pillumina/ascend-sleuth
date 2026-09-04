@@ -53,9 +53,15 @@
 
 ground truth 三标注：`maintainer_questions` 是**合理下限非最优**（如实标注，不冒充最优标准）；多报告者线程（#2424 型）ground truth **集合化**（不同 CANN 版本根因不同 → 用字段集合而非单答案）；分数字段进报告时带分母（口径纪律，同 metrics.md）。
 
+**gold 标注校准（2026-09 首批 batch 5 条出分后修订，EV-2026-016）**：
+1. **decisive_fields 必须是"向报告者可问得"的信息**（CANN/环境/版本组合/复现细节）；resolution 侧事实（fix PR 号、维护者源码结论）只进 `resolution_ref`——诊断者不该向用户问"有没有 PR 3305"（#3325 曾错设致评分失真）；
+2. **keywords 需含别名形态**：agent 提问措辞与 gold 词面常不一致（如 "env=0" vs `VLLM_ASCEND_ENABLE_TOPK_TOPP_OPTIMIZATION`、"关闭优化"），词面过窄会误伤召回（#2424 2/3→3/3 即此类）——评分工具只做机械匹配，召回率标注"关键词口径"而非绝对语义。
+
 ## 5. 运行协议（agent 侧）
 
 与 s2_replay 同构：harness 只做数据与评分；**每段"诊断 + 追问"由 agent 执行**（读 feed → 走 diagnose skill → 写 result），不自动。顺序：`--prepare`（拉素材 + gold 模板）→ 人/agent 补 gold 与切段 → agent 逐段运行 → `--score` → `--aggregate`。盲测纪律：执行 agent **不看后续 feed 与 gold**（harness 提供分段文件即天然隔离；gold 与 feed 分文件存放）。
+
+**运行时数据归属（2026-09-04 教训）**：`.ixn-replay/` 与 `.s2-replay/arena/` 等本地运行件放在**主检出**（gitignore）——不要放在会随 `git worktree remove` 一并删除的临时检出（曾把库放 arena worktree，清理合入时整目录被删、本地库丢失；提交侧机制不受影响，运行时语料需重建）。
 
 ## 6. self / held-out 分流与 val 复用
 
@@ -77,6 +83,9 @@ ground truth 三标注：`maintainer_questions` 是**合理下限非最优**（�
 | 蓝图 | 评分阈值与筛选标准固化、交互面分数进 timeline | 首批真实运行 ≥3 条（含 held-out/self 分流）后按实测校准 |
 | 蓝图 | 归因型 replay 工具化（PR 引用为 gold） | 出现归因评测需求 + 样本可溯 PR 引用 |
 | 蓝图 | 合成变体生成器（case 派生扰动 + seed） | roadmap M3 落地后 |
+| 落地中 | 交互面作为 diagnose 追问行为的**门控回归集**（skill 改动前后同批 staged 对照，EV-2026-016） | diagnose 追问补丁（#3325 型缺口）合入时启用 |
+
+**首批出分（2026-09-04，5 条 held_out staged，本地 .ixn-replay/）**：2424/3453/5599/9798 追问召回 100% 且决定性字段在链、无过早结论；3325 = 0%（版本修复型 issue 未问"最新版本/镜像是否仍复现"——**诊断 skill 交互缺口信号**，对应补丁见 EV-2026-016）。分数进 timeline 的门 = **样本 ≥10 且带分母**（口径纪律，同 metrics.md）；当前批次作本地报告留档，不入 timeline。
 
 ## 9. 原则追溯
 
