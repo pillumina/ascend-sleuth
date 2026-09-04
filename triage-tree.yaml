@@ -83,7 +83,7 @@ branches:
     symptoms:
       - ["garbled", "乱码", "output.*wrong", "输出错误", "输出异常"]
       - ["字符重复", "character.*repeat", "重复输出"]
-      - ["speculative.*wrong", "投机.*错误", "投机.*输出"]      # 投机输出内容错误（精度）；接受率下降是性能，走 inference_performance
+      - ["speculative.*wrong", "投机.*错误", "投机.*输出"]      # 投机输出内容错误（精度）。注意：接受率下降是"双面"——无输出内容错误=性能（走 inference_performance）；伴随输出错误/乱码=精度面（inference_precision 族 11127/12723 等）。命中 performance 接受率族不符时交叉查 precision 族
       - ["overthinking", "过度思考", "reasoning.*过长"]        # 输出冗余（精度/输出形态异常）
       - ["输出.*为空", "empty.*output", "result.*empty", "输出为空", "结果为空"]
       - ["batch.*invariant", "deterministic", "非确定"]
@@ -96,9 +96,9 @@ branches:
   - id: inference_performance
     category: performance
     symptoms:
-      - ["latency.*high", "p99.*slo", "qps.*low", "吞吐.*下降", "throughput.*drop"]
+      - ["latency.*high", "p99.*slo", "qps.*low", "吞吐.*下降", "throughput.*drop", "tpot", "TPOT.*劣化", "tpot.*劣化"]
       - ["cold.*start.*slow", "first.*token.*slow"]
-      - ["accept.*rate.*drop", "accept_len.*下降", "acceptance.*rate.*drop"]   # 投机接受率下降=生成效率退化（性能）
+      - ["accept.*rate.*drop", "accept_len.*下降", "acceptance.*rate.*drop", "acceptance_per_pos", "接受率低", "接受率.*低", "投机.*接受率"]   # 投机接受率下降=生成效率退化（性能；无输出内容错误前提——伴随输出错误/乱码走 inference_precision，见 precision 分支注释）
       - ["cache.*hit.*0", "命中.*为0", "prefix.*cache.*miss", "缓存命中.*0"]    # 前缀缓存失效=性能退化
       - ["generation.*stall", "generation.*slow", "卡住.*生成"]
     search_namespaces:

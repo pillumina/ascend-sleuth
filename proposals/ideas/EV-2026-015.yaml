@@ -1,0 +1,72 @@
+# ============================================================
+# Idea 卡：L2 检索层改动走 arena 门控首跑（triage 词条字面覆盖增强）
+# 目的：补上"skill/检索文本（L2）改动被数据门裁决"的最后一公里实测——
+#       arena 台首个 L2 候选（此前首跑候选是 L1 补 case）。
+# ============================================================
+
+id: EV-2026-015
+layer: L2                          # 流程与 skill：triage 检索文本
+title: "triage 词条字面覆盖增强（inference_performance 补 acceptance_per_pos/接受率低/tpot + 接受率双面注释）——arena 门控：池内 0 回归、2 修复（14448/14306）"
+status: validated
+authorization: dual                # triage 改动 = 结构级 → kb/high-risk 双签（门控通过后仍需人双签）
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: arena_miss_literal
+    evidence: "arena baseline replay 暴露字面路由 miss：14448（tpot 无字面词，靠语义兜底）、14306（接受率低/acceptance_per_pos 无字面词）；测量 7 条 performance/precision 池 issue 中 5 条 baseline 字面 miss。14265 精度伴随为 fix PR 语义（body 无精度词）——精度侧保持语义判别，如实不硬凑"
+    trajectory:
+      - "triage-tree.yaml inference_performance/inference_precision 词条"
+      - ".s2-replay/arena/pool-val.yaml + baseline replay（本地）"
+      - "docs/evolution-eval-arena.md（arena 门控）"
+hypothesis: >-
+  triage 词条补字面词（tpot/acceptance_per_pos/接受率低 等，纯增不改结构）后，
+  池内字面路由覆盖提升且 0 回归（语义兜底不变）
+predicted_effect:
+  metric: 池内字面路由覆盖（performance/precision 子集）
+  from: 7 条中字面命中 2（5 miss）
+  to: 7 条中字面命中 4（3 miss 保留语义——13627 正文纯截图、14265/13719 精度词在 fix PR 不在正文）
+validation:
+  method: metrics_compare
+  baseline: 编辑前 triage（git HEAD）对池 7 条字面命中 2
+  success_criteria: "编辑后 0 回归、修复 2（14448/14306 字面命中）；triage YAML 解析通过；词表 scan 全绿；决策卡校验通过"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "arena baseline 数据可用（字面 miss 证据）+ 测量确认 0 回归"
+risk: medium                        # triage 文本 → dual（非 expected/fix 字段级，仍结构级）
+principle_refs: [8, 10, 11]
+actual_cost:
+  tokens: 3000
+  source: estimate
+decisions:
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      最后一公里 = 让 L2（triage 检索文本）改动走一次 arena 门控。候选 = 词条字面覆盖
+      增强（纯增不改结构）：inference_performance 补 tpot/acceptance_per_pos/接受率低
+      等字面词 + 接受率"双面"注释（无输出错→performance；伴随输出错误/乱码→precision，
+      交叉查 11127/12723 族）。为何不做 14265 硬路由：其精度性质在 fix PR 语义
+      （MoE buffer 溢出致错误输出），正文无精度词——诚实边界，精度侧留语义判别。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: action
+    conclusion: 执行：triage-tree.yaml 两处词条/注释编辑（performance latency 行补 tpot、
+      acceptance 行补 acceptance_per_pos/接受率低/投机.*接受率；precision 行注释补双面
+      判别说明）；测量脚本对照 git HEAD 词表验证。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: eval
+    conclusion: >-
+      测量（7 条 performance/precision 池 issue，编辑前 vs 编辑后词表）：字面命中 2→4，
+      修复 14448（tpot）、14306（acceptance_per_pos/接受率低）；0 回归；剩余 3 条
+      （13627 纯截图正文、14265/13719 精度词仅在 fix PR）保留语义兜底，如实标注。
+      triage YAML 解析通过；结构未改（无分支/类别变更）→ golden 路由语义不变。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated，dual）：字面覆盖增强随 methodology PR 送人双签（triage 结构级，
+      门控通过不替代人闸）。观察窗：后续 triage 修订持续以 pool 字面/路由覆盖复测
+      （E2 通道数据源）；季度自评复核本增强是否随语料漂移需回收。
