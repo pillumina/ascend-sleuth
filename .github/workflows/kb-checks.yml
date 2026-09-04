@@ -2,9 +2,9 @@ name: kb-checks
 
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/build_ref_summary_index.py"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/build_ref_summary_index.py"]
 
 jobs:
   index-freshness:
@@ -34,6 +34,8 @@ jobs:
       # 基础元信息 + 已登记 type + 按来源类型子字段 + 深审（case-derived methodology
       # 派生引用数 <3 不允许 active）。脚本解析全部 case YAML 计算派生计数，语法错即红。
       - run: python3 scripts/verify_references.py --check
+      # 背景类 summary 索引新鲜度（B1 EV-2026-026）：references 变更未重建即红
+      - run: python3 scripts/build_ref_summary_index.py --check
 
   metrics-validation:
     runs-on: ubuntu-latest

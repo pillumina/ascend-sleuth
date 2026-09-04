@@ -1,0 +1,71 @@
+# ============================================================
+# Idea 卡：B1 references 背景类 summary 索引
+# 目的：堵"references 无索引、2.5 ② 逐文件扫找 summary"的隐性线性增长（628KB/106 词条，
+#       背景类 50 条）；生成单文件索引供阶段 2.5 读取，逐文件扫描 → 一行索引。
+# ============================================================
+
+id: EV-2026-026
+layer: L2                          # 先验知识层检索协议 + 生成器/CI
+title: "B1 references summary 索引：_summary-index.yaml（背景类+active 单文件 ~18KB），diagnose 2.5 ② 读索引替代逐文件扫"
+status: validated
+authorization: review               # 脚本 + CI 检查 + skill 读取路径
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: token_audit
+    evidence: "审计 B1：references/ 628KB/106 词条（背景类 50：platform-fact 24/methodology 11/tool 7/software-fact 6/command-side-effect 2）；2.5 ② 原'扫 type-dir 逐文件只读 summary+applies_to'需逐文件读全文定位字段——随背景词条线性增长（93 词条时 summary 层已 4.5K token）"
+    trajectory:
+      - "references/（628KB/106 文件，type 分布实测）"
+      - "skills/diagnose/SKILL.md 2.5 ②"
+      - "scripts/verify_references.py（词条扫描，需跳过生成物）"
+hypothesis: >-
+  背景类+active 词条压缩为单文件索引（每行 id/type/title/summary≤160c/applies_to），
+  2.5 ② 读一行级背景提示、需深细节再按 id 读单文件——加载从"逐文件扫描"降为
+  "单索引 + 按需单文件"
+predicted_effect:
+  metric: 2.5 ② 背景层加载量（token/次）
+  from: 逐文件扫背景词条找 summary（50 文件 × ~2-6KB）
+  to: 单索引 ~18KB + 按需单文件
+validation:
+  method: metrics_compare
+  baseline: 无索引（逐文件）
+  success_criteria: "生成 48 条索引（18.5KB）+ --check 通过；verify_references --check 通过（跳过 _ 前缀）；词表 scan/verify 通过"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户'都做吧'（B1）"
+risk: low
+principle_refs: [9, 10, 11]
+actual_cost:
+  tokens: 4000
+  source: estimate
+decisions:
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      references 层纪律已好（查表类只 grep），残余隐性增长在 2.5 ②：逐文件扫背景类找
+      summary。生成 _summary-index.yaml（背景类+active，行含 summary≤160c）→ ② 读索引
+      过滤平台；生成物随 references 变更重建（CI --check），词条扫描方（verify_references）
+      跳过 _ 前缀。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: action
+    conclusion: >-
+      执行：①scripts/build_ref_summary_index.py（collect 背景类+active → 行化 summary/
+      applies_to；--check 新鲜度）；②生成 references/_summary-index.yaml（48 条/18.5KB）；
+      ③verify_references 扫描改跳 _ 前缀；④kb-checks reference-validation job 增 --check；
+      ⑤diagnose SKILL 2.5 ② 改读索引（需深细节按 id 读单文件）。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: eval
+    conclusion: >-
+      索引生成 48 条/18.5KB；--check 通过；verify_references --check 通过（_ 前缀跳过，
+      词条数/派生计数不变）；build_index --check 通过（knowledge 未动）；词表 scan 全绿。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated）：summary 索引随 methodology PR 送人审。观察窗：to-reference 新增
+      背景词条时重建索引（CI 兜底）；2.5 ② 加载 token 实测可后续补数。
