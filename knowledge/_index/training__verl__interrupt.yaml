@@ -1,0 +1,122 @@
+# GENERATED FILE —— 分片（knowledge/_index.yaml 的 training/verl__interrupt 子集），不要手改。
+# 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。
+# 阶段一加载协议（EV-2026-022）：diagnose 只读**命中 namespace 的分片**，不读整库总表。
+# 本分片：training/verl__interrupt（6 条 case）
+namespaces:
+  training/verl__interrupt:
+    interrupt:
+    - id: VERL-5074
+      title: 'verl GRPO 启动 A2 报 HCCL error code 5（hcclCommInitRootInfoConfig, RuntimeError: create_config）：runtime_env.yaml
+        的 HCCL_HOST_SOCKET_PORT_RANGE/HCCL_NPU_SOCKET_PORT_RANGE="auto" 不兼容'
+      category: interrupt
+      tags:
+      - hccl
+      - comm-init
+      - runtime-env
+      - a2
+      - grpo
+      - port-range
+      platforms:
+      - A2-910B
+      compat: verl <=0.7.x
+      confidence:
+        score: 0.3
+      symptoms:
+      - 'A2 上按 verl ascend_quick_start 跑 GRPO 启动即失败：RuntimeError: create_config:...HCCL function error:
+        hcclCommInitRootInfoConfi…'
+      file: knowledge/training/verl/interrupt/VERL-5074.yaml
+      hash: bde444a7681e
+    - id: VERL-6608
+      title: verl GRPO TP2（npu 上 qwen 4B VL）报 HCCL error code 7（hcclCommInitRootInfoConfig）：HDK 版本与 verl
+        镜像组合不兼容，换 HDK 25.5.1 修复
+      category: interrupt
+      tags:
+      - hccl
+      - comm-init
+      - hdk
+      - tp
+      - version-mismatch
+      - grpo
+      platforms: []
+      compat: verl 0.8.0; hdk 26.0.rc1
+      confidence:
+        score: 0.3
+      symptoms:
+      - 'verl GRPO + vllm-ascend rollout，TP2/N_GPUS_PER_NODE=2 训练 qwen 4B VL：vLLMHttpServer WorkerProc
+        崩溃，RuntimeError: create_co…'
+      file: knowledge/training/verl/interrupt/VERL-6608.yaml
+      hash: '750895819031'
+    - id: VERL-6707
+      title: 'verl Qwen3-MoE NPU patch 失败：verl/models/transformers/npu_patch.py 按 Transformers 4.57 编写，Transformers
+        5.x 下 Qwen3MoeSparseMoeBlock 接口不兼容（gate 变 router module）→ PR #6708 修复'
+      category: interrupt
+      tags:
+      - moe
+      - qwen3-moe
+      - npu-patch
+      - transformers-version
+      - grpo
+      platforms:
+      - A2-910B
+      compat: verl 0.8.0.dev; transformers >=5.0
+      confidence:
+        score: 0.6
+      symptoms:
+      - verl 0.8.0.dev 跑 Qwen3-MoE GRPO（910B）：npu fused kernel for Qwen3-MoE patch failed
+      file: knowledge/training/verl/interrupt/VERL-6707.yaml
+      hash: b216286b7389
+    - id: VERL-6741
+      title: verl+Ray+昇腾：训练启动 warning "Platform 'huawei' (PlatformNPU) is registered but not available...CPU-only
+        actor"——NPU 未启用，配置 trainer.device='npu'
+      category: interrupt
+      tags:
+      - ray
+      - device-detection
+      - cpu-fallback
+      - grpo
+      platforms: []
+      compat: verl 0.7.1
+      confidence:
+        score: 0.1
+      symptoms:
+      - VERL + Ray + Ascend NPU 训练启动后 warning：Platform 'huawei' (PlatformNPU) is registered but not available.
+        This may be due t…
+      file: knowledge/training/verl/interrupt/VERL-6741.yaml
+      hash: fe25a2f1e992
+    - id: VERL-6756
+      title: 'verl v0.7.1 get_npu_versions() 硬编码 NPU device ID 为 "1"（6751 同 bug 硬编码 "7"）→ 多 NPU/异 chip
+        ID 机器上版本检测失败——PR #6043 修复'
+      category: interrupt
+      tags:
+      - device-detection
+      - npu-versions
+      - startup
+      - version-upgrade
+      platforms:
+      - A2-910B
+      compat: verl 0.7.1
+      confidence:
+        score: 0.6
+      symptoms:
+      - verl v0.7.1 在 NPU device ID 非 1 的机器（如 chip ID 0 或 7）上 get_npu_versions() 检测失败/返回错误版本
+      file: knowledge/training/verl/interrupt/VERL-6756.yaml
+      hash: 4785de1f163e
+    - id: VERL-6885
+      title: verl GRPO vision（Qwen3-VL + vLLM rollout + FSDP）训练反向崩溃：aclnnConvolutionBackwardGetWorkspaceSize——升级至
+        verl 9.0.0（CANN 9.0）镜像修复
+      category: interrupt
+      tags:
+      - vision
+      - grpo
+      - convolution-backward
+      - aclnn
+      - crash
+      - version-upgrade
+      platforms: []
+      compat: verl 0.8.0.dev0; cann 8.5.0
+      confidence:
+        score: 0.3
+      symptoms:
+      - verl 0.8.0.dev0 + vllm-ascend 0.18.1 + CANN 8.5.0 跑 Qwen3-VL GRPO（vision, vLLM rollout, FSDP）反向阶段崩溃：aclnnConvolutionBack…
+      file: knowledge/training/verl/interrupt/VERL-6885.yaml
+      hash: 79633be350ad

@@ -47,14 +47,14 @@ description: >
    - **triage 未命中（无分支匹配）→ agent 语义路由兜底，不直接 Tier 3**：报错/症状里没有 triage 正则能识别的信号时，agent 用自己的语义理解判断 namespace 与 category（如"训练卡住"→ `training/<framework>/` interrupt、"投机接受率下降"→ `inference/<framework>/` performance），记进 trace `{action: triage_semantic, namespace, category, rationale}`——语义路由结果可审计、可成为 groom 学习路由错例的数据源；语义也分不出 → 才 Tier 3
 
 3. **两阶段加载 Tier 2**
-   - **阶段一**：读**命中 namespace 的索引分片** `knowledge/_index/<namespace>.yaml`（`scripts/build_index.py` 生成；文件名 `/`→`__`，如 `inference__vllm-ascend.yaml`；分片缺失时回退总表 `knowledge/_index.yaml`）——**只读命中分片、不读整库总表**（F1 EV-2026-022）。分片为**瘦身行**（F2 EV-2026-023）：含 `id/title/symptoms(首条摘要≤120字)/category/confidence.score` + `file` 定位（**无 quickly_check——已移 case 本体**；hits/misdiagnoses 也不在索引里，留 case 本体）。用 标题+症状摘要+category+score 过滤候选 ≤5（score 排序）；检查项缺信息时，记下要向客户补要什么。索引缺失或 `--check` 报过期 → 兜底：逐文件只读上述索引字段，并提醒跑 `scripts/build_index.py` 重建
+   - **阶段一**：读**命中 namespace（category 已定）的 category 分片** `knowledge/_index/<namespace>__<category>.yaml`（`scripts/build_index.py` 生成；文件名 `/`→`__`，如 `inference__vllm-ascend__interrupt.yaml`）；category 未定/分片缺失时回退 ns 分片 `<namespace>.yaml`，再退总表 `knowledge/_index.yaml`——**只读命中的最小分片**（F4 EV-2026-025：category cell，vllm-ascend interrupt 83 行，不再读整 ns 107 行；F1/F2 后累计 master 203KB→category cell ~几十 KB）。分片为**瘦身行**（F2）：含 `id/title/symptoms(首条摘要≤120字)/category/confidence.score` + `file` 定位（无 quickly_check——在 case 本体；hits/misdiagnoses 留 case 本体）。用 标题+症状摘要+score 过滤候选 ≤5（score 排序）；检查项缺信息时记下要补什么。索引缺失/过期 → 兜底逐文件读上述索引字段，并提醒重建
    - **空库提示（冷启动）**：若命中 namespace 为空（还没 case），**不要静默退化**——告诉用户“当前 `knowledge/<ns>/` 还没有验证过的 case，你可以：①继续深度排查（步骤 5）②诊断完跑 `/skill:to-postmortem` 沉淀成第一条 case ③转人工”。别让空库的体感是“这玩意啥也不会”。
    - **quickly_check 验证在阶段二（case 本体，F2）**：阶段一已用 标题+症状摘要 筛候选 ≤5，
      阶段二加载候选全文后以 quickly_check（primary→fallback）对照信息验证——primary 不匹配
      但 fallback 匹配 → 仍进验证，标记 `low_confidence`
    - **category 决定 quickly_check 形态**：interrupt 用 grep 错误签名、precision 用数值阈值（`loss>1e3`、`has_nan`）、performance 用 profiler 指标（`comm_ratio>0.4`）——别混用
    - **双面族交叉检索（E2-1，2026-09）**：接受率/投机效率退化是"双面"——无输出内容错误 → performance 族（如 VLLM-ASC-14306）；伴随输出错误/乱码/数值损坏 → precision 族（如 11127/12723）。当命中分支的候选 quickly_check 全部无匹配、且症状属接受率/投机/输出退化族时，**交叉检索另一 category 的对应族**（performance 无匹配 → 查 precision 接受率/输出族；precision 命中但症状为纯效率退化 → 反向），并记进 trace `{action: cross_category_retrieval, from, to}`——避免精度面 case 在性能路由下不可达
-   - **阶段二**：全量加载候选，按 `confidence.score` **降序**进入验证。**多条候选时明示**：“匹配到 N 条候选，先验证最可能的 `<id>`（confidence `<score>`）”，让工程师有数；工程师可说“跳过这条试下一条”
+   - **阶段二**：**Top-2 优先加载（A2 EV-2026-025）**：按 `confidence.score` 先载 **top-2** 候选全文（含 quickly_check，primary→fallback 验证），未命中再扩展至候选 ≤5——溢出族（1/3 输入 med 4）省 2–3 个 case 全文加载；**多条候选时明示**：“匹配到 N 条候选，先验证最可能的 `<id>`（confidence `<score>`）”，让工程师有数；工程师可说“跳过这条试下一条”
 
 ### 2.5 reference 辅助查询（先验知识层）——候选加载后、验证前
 

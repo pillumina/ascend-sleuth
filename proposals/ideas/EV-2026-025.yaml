@@ -1,0 +1,63 @@
+id: EV-2026-025
+layer: L2
+title: 加载预算：F4 category 分片（阶段一读 <ns>__<cat>）+ A2 阶段二 top-2 优先（扩展式验证）
+status: validated
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+- signal: token_audit
+  evidence: 审计：vllm-ascend ns 分片 F2 后仍 88KB/107 行（interrupt 83 + precision 16 + perf
+    8，路由只中一个 category）；阶段二溢出族 33% 输入 med4 → 常载 3-5 case 全文
+  trajectory:
+  - knowledge/_index/inference__vllm-ascend.yaml（88KB 实测）
+  - scripts/capacity_health.py 输出（溢出 33%、med4）
+  - skills/diagnose/SKILL.md 阶段一/二
+hypothesis: category 分片（<ns>__<cat>.yaml）让阶段一读入 = 路由中 category cell（interrupt 83 行）
+  而非整 ns；阶段二 top-2 优先把溢出族全文加载从 med4 降为 2（不中再扩展）——候选语义 不变（同一 cell 行、同一 score 排序），top-3
+  命中保持
+predicted_effect:
+  metric: 阶段一/二加载量（token/次）
+  from: ns 分片 88KB + 阶段二 med 3-5 全文
+  to: category cell（~2/3 体积）+ top-2 全文优先
+validation:
+  method: golden_replay
+  baseline: /tmp/golden-f2-after（F2 索引，3 fixture top3/hit 已录）
+  success_criteria: build_index 产 category 分片 + --check 通过；golden 子集改后 top-3 与基线一致（12723/12901
+    expected 保持、12685 documented miss）；词表 scan/verify 通过
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: 用户'都做吧'（加载预算包）
+risk: low
+principle_refs:
+- 6
+- 9
+- 11
+actual_cost:
+  tokens: 5000
+  source: estimate
+decisions:
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: proposal
+  conclusion: F1/F2 后残余显性成本：①ns 分片 88KB 含 3 个 category（路由只中一个）→ F4 按 category 拆片；②阶段二溢出族常载
+    3-5 全文 → A2 top-2 优先（扩展式）。两者不改 候选语义（同 cell 行/同排序），检索面 → golden 子集门禁。
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: action
+  conclusion: 执行完成：build_index 增 category 分片（<ns>__<cat>.yaml，11 文件）+ --check 校验；diagnose
+    SKILL 阶段一读 category 分片（未定/缺失回退 ns 分片→总表）、阶段二 top-2 优先扩展式。
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: eval
+  conclusion: golden 改后（/tmp/golden-f4-after vs 基线 golden-f2-after）3/3 逐字节一致：12723（precision
+    cell 16 行）rank1、12901（interrupt cell 83 行）rank1、12685 documented miss——无回归；build_index
+    --check（含 category 分片）通过；词表 scan/verify 通过。体积：category cell 取代 ns 分片（vllm-ascend
+    interrupt 83 行 ≈ 2/3 原 ns）。
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: decision
+  conclusion: 采纳（validated）：加载预算包随 methodology PR 送人审。观察窗：实测单次诊断阶段一/二 token 前后对照（补
+    EV 数字）；top-2 扩展率（溢出族需扩展比例）入 capacity 类观测。

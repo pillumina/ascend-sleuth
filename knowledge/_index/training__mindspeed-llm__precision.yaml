@@ -1,0 +1,66 @@
+# GENERATED FILE —— 分片（knowledge/_index.yaml 的 training/mindspeed-llm__precision 子集），不要手改。
+# 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。
+# 阶段一加载协议（EV-2026-022）：diagnose 只读**命中 namespace 的分片**，不读整库总表。
+# 本分片：training/mindspeed-llm__precision（3 条 case）
+namespaces:
+  training/mindspeed-llm__precision:
+    precision:
+    - id: MSLLM-1437
+      title: qwen3-14b-64k-lora 微调开启 uniform 重计算时 grad norm 恒为 0、loss 不收敛：LoRA 微调与 uniform 重计算组合仓库未支持/未验证，关闭重计算或改用官方脚本修复
+      category: precision
+      tags:
+      - lora
+      - recompute
+      - grad-norm-zero
+      - convergence
+      - feature-gap
+      - qwen3
+      platforms:
+      - A3-910C
+      compat: mindspeed-llm 26.0.0; cann 8.5.2
+      confidence:
+        score: 0.6
+      symptoms:
+      - qwen3-14b-64k-lora 微调开启 uniform 重计算时，grad norm 恒为 0、loss 不收敛（lm loss 停滞在 ~1.22e1 附近），num zeros/nan
+        均为 0 但训练无进展
+      file: knowledge/training/mindspeed-llm/precision/MSLLM-1437.yaml
+      hash: b30a52d8269f
+    - id: MSLLM-1532
+      title: 'Qwen3（GQA）用 convert_ckpt_v2.py 做 HF→MCore→HF 转换后导出权重 q_proj/k_proj/v_proj 错位、生成乱码：convert_mg2hf
+        按 plain [Q,K,V] 而非 grouped layout 拆分 linear_qkv（PR #4545 回归）'
+      category: precision
+      tags:
+      - checkpoint-convert
+      - gqa
+      - weight-mismatch
+      - garbled-output
+      - code-bug
+      - qwen3
+      platforms: []
+      compat: mindspeed-llm *
+      confidence:
+        score: 0.6
+      symptoms:
+      - Qwen3-0.6B 用 convert_ckpt_v2.py 做 HF→MCore→HF 无训练 round-trip 转换，导出的 HF 模型生成乱码碎片（如 'aseñaGLISHATUREATURE...'）
+      file: knowledge/training/mindspeed-llm/precision/MSLLM-1532.yaml
+      hash: 6e8f508e1eb7
+    - id: MSLLM-1780
+      title: FSDP2 断点续训后第一步日志异常：lm loss 被错误除以 global_step（0.247×31=7.66 与相邻步一致）、elapsed/tokens/s 同步失真：trainer.py
+        续训时 _last_logged_step 从 _global_step_last_logged（常为 0）恢复，纯日志统计 bug，训练本身正确
+      category: precision
+      tags:
+      - fsdp2
+      - checkpoint-resume
+      - log-statistics
+      - loss-display
+      - trainer-bug
+      platforms:
+      - A2-910B
+      compat: mindspeed-llm master@c8f3cada
+      confidence:
+        score: 0.6
+      symptoms:
+      - FSDP2 断点续训（resume_from_checkpoint）后第一步日志三项指标同时异常：lm loss 显示 0.247（×31 还原 = 7.66 与相邻步 7.74 一致）、elapsed
+        time 34.55ms（正常 90…
+      file: knowledge/training/mindspeed-llm/precision/MSLLM-1780.yaml
+      hash: 544219f96b15

@@ -1,0 +1,174 @@
+# GENERATED FILE —— 分片（knowledge/_index.yaml 的 inference/vllm-ascend__performance 子集），不要手改。
+# 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。
+# 阶段一加载协议（EV-2026-022）：diagnose 只读**命中 namespace 的分片**，不读整库总表。
+# 本分片：inference/vllm-ascend__performance（8 条 case）
+namespaces:
+  inference/vllm-ascend__performance:
+    performance:
+    - id: VLLM-ASC-10710
+      title: DSV4-Flash-w8a8-mtp 完全相同串行请求 Prefix Cache 命中率恒 0%：混合压缩 KV（compression_ratio=128）最小命中长度=block_size×128（block128→16k、投机/MTP→32k），10k
+        级前缀永不命中；--block-size 32 或升 v0.23.0rc1
+      category: performance
+      tags:
+      - prefix-cache
+      - hybrid-kv
+      - compression
+      - dsv4
+      - block-size
+      - hit-rate
+      - local-cache
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <=0.22.1rc1
+      confidence:
+        score: null
+      symptoms:
+      - DSV4-Flash（w8a8-mtp 等混合模型）本地 prefix cache 开启：cache_config_info enable_prefix_caching=True、prefix_cache_queries_total
+        正常增…
+      file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-10710.yaml
+      hash: 714b22b84936
+    - id: VLLM-ASC-10876
+      title: 'DeepSeek-V4-Flash chunked prefill 偶发超长（forward_ms 4000+ms、TTFT P90 7.3s）：vllm_ascend/ops/triton/rms_norm.py
+        的 TOTAL_BATCH 误标 tl.constexpr 致 batch shape 变化频繁重编译——去 constexpr（PR #11211）修复，v0.23.0rc1+'
+      category: performance
+      tags:
+      - deepseek-v4
+      - prefill
+      - triton
+      - recompilation
+      - dsa-cp
+      - chunked-prefill
+      - ttft
+      - performance
+      platforms: []
+      compat: vllm-ascend <0.23.0rc1
+      confidence:
+        score: 0.6
+      symptoms:
+      - serve DeepSeek-V4-Flash（TP8 chunked prefill + prefix cache + enable-dsa-cp/flashcomm1）：多轮长对话 prefill
+        偶发超长——forward_ms 40…
+      file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-10876.yaml
+      hash: 850874f544e5
+    - id: VLLM-ASC-10970
+      title: 'DSV4-Flash PD 分离 P 节点加 VLLM_PREFIX_CACHE_RETENTION_INTERVAL 后 prefix cache 命中归 0：hybrid
+        cache 管理器 use_eagle 未传播给 eagle 组 sibling manager（写读 block 差一）；修复=PR #11107'
+      category: performance
+      tags:
+      - prefix-cache
+      - pd-separation
+      - dsv4
+      - mtp
+      - eagle
+      - retention-interval
+      - hybrid-kv
+      - hit-rate
+      platforms:
+      - A2-910B
+      compat: vllm-ascend 0.23.0
+      confidence:
+        score: null
+      symptoms:
+      - PD 分离 P 节点跑 DeepSeek-V4-Flash（MTP/EP），多并发 prefix hit rate 仅 ~10%；设 VLLM_PREFIX_CACHE_RETENTION_INTERVAL
+        后两条相同请求也不命中（归 0）
+      file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-10970.yaml
+      hash: 23fab158762f
+    - id: VLLM-ASC-12241
+      title: v0.23.0 图模式（cudagraph）+ MTP 开启下 profiling 解析无 kernel_details.csv；CANN 9.0.0 与 NPU 图模式交互 bug，升级
+        CANN 9.1.0 恢复
+      category: performance
+      tags:
+      - profiling
+      - cudagraph
+      - mtp
+      - cann-version
+      - kernel-details
+      platforms: []
+      compat: vllm-ascend 0.23.0 (cann:<9.1.0)
+      confidence:
+        score: 0.1
+      symptoms:
+      - v0.23.0 图模式（cudagraph）+ MTP/投机推理开启下，混部脚本采集 profiling 解析后无 kernel_details.csv
+      file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-12241.yaml
+      hash: 6a568de79e5a
+    - id: VLLM-ASC-13356
+      title: PD 分离开启 memcache 性能劣化：lookup 与本地 prefix cache 完全重叠（num_external_hit_tokens <= num_computed_tokens）
+      category: performance
+      tags:
+      - memcache
+      - pd-separation
+      - prefix-cache
+      - kv-cache-pool
+      - throughput
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <=0.23.0rc1
+      confidence:
+        score: 0.3
+      symptoms:
+      - PD 分离下开启 memcache（AscendStoreConnector/MultiConnector，backend=memcache）性能劣化：128K 输入序列时 lookup
+        与本地 prefix cache 重叠
+      file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-13356.yaml
+      hash: 2089b748e083
+    - id: VLLM-ASC-13973
+      title: v0.26 P 节点 prefill 回归：dsa-cp 与共享专家 DP 解耦致共享专家走 fc1 额外两次通信 + SFA DCP block table 宽度用错致 kv_gather_ids
+        冲高（TTFT 7.1x）
+      category: performance
+      tags:
+      - prefill
+      - regression
+      - dcp
+      - sfa
+      - block-table
+      - shared-expert
+      - ttft
+      - glm5
+      platforms: []
+      compat: vllm-ascend 0.26.0rc; torch-npu <=2.10.0.post2
+      confidence:
+        score: 0.6
+      symptoms:
+      - GLM-5.2 w4a8 PD 分离 P 节点（kv_role=kv_producer），v0.23→v0.26 相同 DCP=8/TP=8/EP=32 拓扑下 prefill 吞吐 38811→29911
+        tok/s
+      file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-13973.yaml
+      hash: e97c7b884f57
+    - id: VLLM-ASC-14306
+      title: 'GLM-5.2 FullGraph(MRV1)+MTP（num_spec≥2）投机接受率低（per-pos 0.45/0.34/0.25、无输出质量错误）：SFA 后端按 draft
+        step 把 actual_seq_lengths 逐次写入使早期 draft step 的 attention metadata 错误（PR #14236 修复，Fixes #14306）'
+      category: performance
+      tags:
+      - spec-decode
+      - mtp
+      - sfa
+      - acceptance-rate
+      - glm5
+      - fullgraph
+      - mrv1
+      platforms: []
+      compat: vllm-ascend <0.26.0
+      confidence:
+        score: null
+      symptoms:
+      - GLM-5.2 全图/MRV1 + MTP num_spec≥2：投机接受率明显低于预期（acceptance_per_pos≈0.45/0.34/0.25、acceptance_len
+        偏低），对照 v0.23 正常
+      file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-14306.yaml
+      hash: 476e34bf900b
+    - id: VLLM-ASC-14448
+      title: 'GLM-5.2 单 D MTP（4 并发长输入 20-40k）TPOT 极差：MTP 路径 host 侧长 copy 同步点推迟算子下发、呈 host-bound（PR #14103/#14554
+        优化 DCP drafting metadata 消除多余 CPU↔NPU 拷贝）'
+      category: performance
+      tags:
+      - spec-decode
+      - mtp
+      - pd-separation
+      - tpot
+      - host-bound
+      - glm5
+      - dcp
+      platforms: []
+      compat: vllm-ascend <0.26.0
+      confidence:
+        score: null
+      symptoms:
+      - GLM-5.2 单 D（PD 分离 decode 侧）+ MTP 服务，4 并发长输入（20-40k tokens）：TPOT 明显劣化
+      file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-14448.yaml
+      hash: d39653d1ec9f
