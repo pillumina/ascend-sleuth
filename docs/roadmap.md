@@ -50,7 +50,7 @@
 | M2 | fixture replay 半自动化 | 脚本以 replay 模式喂 `eval/golden/*.yaml` 给 /skill:diagnose，比对 expected（top-3 命中断言，容忍 LLM 非确定性），产出改前/改后报告；报告随变更摘要交 owner | 真实 golden fixture ≥5 条 | v1.5 |
 | M3 | fixture 自动生成 | `replay_trace.py --emit-fixtures` 从 resolved+feedback 确认的 trace 派生 fixture 候选（输入=user 原文，期望=实际命中）；groom 人确认入库；覆盖报告同步更新（见 O4）。断言分层：未确认 trace 只做弱断言回归，不作正确性基准 | 首个 resolved+feedback 确认的 trace | v1.5+ |
 | M4 | groom 报告留档规范 | 每周 groom-report issue 固定模板：变更摘要 / 高风险项 / 容量表 / 标红项；季度回顾可直接回溯 | 首轮真实 groom 完成后固化模板 | Phase 1 初 |
-| M5 | groom token 预算（结构性减负） | 现状 groom 每次全量扫 knowledge（~47K）与 references（~82K），随库线性涨——职责重、token 大（实测核算）。修法：①确定性环节脚本化（引用校验/值重复/置信度重算/容量统计由脚本算完，agent 只读 diff 摘要，不读全量）②按信号触发（R3/R8 可选建议不全量默认扫）③references 维护按触发而非每轮全跑。验收：groom 单次 token 降至可读摘要量级（目标 <30K），且功能不缺失 | 实测单次 groom >150K token，或库规模到 60 case | v1.5 |
+| M5 | groom token 预算（结构性减负） | 现状 groom 每次全量扫 knowledge（~47K）与 references（~82K），随库线性涨，职责重、token 大（实测核算）。修法：①确定性环节脚本化（引用校验/值重复/置信度重算/容量统计由脚本算完，agent 只读 diff 摘要，不读全量）②按信号触发（R3/R8 可选建议不全量默认扫）③references 维护按触发而非每轮全跑。验收：groom 单次 token 降至可读摘要量级（目标 <30K），且功能不缺失 | 实测单次 groom >150K token，或库规模到 60 case | v1.5 |
 
 ## 四、可观测性
 
@@ -64,7 +64,7 @@
 | O4 | eval 覆盖报告 | groom 每轮输出覆盖矩阵：有 case 的 `(namespace × category × platform)` 格子 vs 有 fixture 的格子，缺口列表（"inference/sglang 0 条"、"precision 类偏弱"） | M2 完成后并入 groom | v1.5+ |
 | O5 | 容量趋势预测 | 容量表增加近 4 周增速与"预计达 80% 日期"，拆分预告由数据给出而非事后发现 | A2 首次触发前后 | v1.5 |
 | O6 | 诊断报告（trace 派生视图） | diagnose 收尾渲染人读报告：症状→路由→候选→验证→根因→fix 的推理叙事 + 证据回溯（每判断指回 trace step）+ 强度标注（已验证/推测/未知）。trace 为唯一数据源、零数据模型改动；默认本地留档，分享前脱敏；1-2 分钟读完（证据链折叠可展开）。质量基准见历史讨论 | 首次真实诊断后 | v1.5 |
-| O7 | 健康报表（groom R10 标准产出） | groom 产出自包含 HTML 数据报表（离线生成，`health_report.py` 脚本 + 必要时 agent 美化样式，数据不变）：①知识库结构视图（容量/覆盖/缺口，git 数据——本地=中心一致；知识结构图可用 archify）②系统运作视图（命中/误诊/趋势，traces 汇总——头部诚实标注〔中心全量 N sessions〕或〔本地视角 M sessions〕）。**只读聚合数据**（timeline.yaml + _index 头注 + trace_metrics/replay 脚本输出），不读 case 全文（token 预算，呼应 M5）。**职责划分**：本地 groom 也产（个人视角），中心 owner groom 产全量——同一指令，数据范围不同诚实标注。服务"改进知识库/改进系统流程"的决策（原则八决策端） | 任一 live 指标期积累后 | v1.5 |
+| O7 | 健康报表（groom R10 标准产出） | groom 产出自包含 HTML 数据报表（离线生成，`health_report.py` 脚本 + 必要时 agent 美化样式，数据不变）：①知识库结构视图（容量/覆盖/缺口，git 数据，本地=中心一致；知识结构图可用 archify）②系统运作视图（命中/误诊/趋势，traces 汇总，头部诚实标注〔中心全量 N sessions〕或〔本地视角 M sessions〕）。**只读聚合数据**（timeline.yaml + _index 头注 + trace_metrics/replay 脚本输出），不读 case 全文（token 预算，呼应 M5）。**职责划分**：本地 groom 也产（个人视角），中心 owner groom 产全量，同一指令、数据范围不同，如实标注。服务"改进知识库/改进系统流程"的决策（原则八决策端） | 任一 live 指标期积累后 | v1.5 |
 
 ## 五、流程合理性
 
@@ -76,15 +76,15 @@
 | P3 | fork 模式同步演练 | 首个团队 fork 时 dry-run 上游同步：方法论目录 merge 无冲突、知识目录零触碰，产出简短记录 | 首个 fork 发生 | 按事件 |
 | P4 | 紧急路径实测复盘 | 首个真实紧急 session 走完 stabilize 路径后，复盘 stabilize ↔ 深度排查的切换点是否清晰，必要时修订 SKILL.md 紧急节 | 首个真实紧急事件 | 按事件 |
 
-> **P1 已移除**：原"data-loss-risk 通知链路落地"是过度设计——诊断系统只输出建议（severity 三档 + halt 语义），**不接管通知行为**（对接 on-call/IM 是把诊断工具扩张成事故响应系统）。severity 三档（benign / service-affecting / data-loss-risk）是输出策略（SKILL.md 一行），保留；"通知 owner"是给工程师的一句话建议，不是系统链路。
+> **P1 已移除**：原"data-loss-risk 通知链路落地"是过度设计。诊断系统只输出建议（severity 三档 + halt 语义），**不接管通知行为**（对接 on-call/IM 是把诊断工具扩张成事故响应系统）。severity 三档（benign / service-affecting / data-loss-risk）是输出策略（SKILL.md 一行），保留；"通知 owner"是给工程师的一句话建议，不是系统链路。
 
 ---
 
 ## 阶段视图（闸门 → 解锁）
 
-**Phase 0 · 冷启动（当前）** — 目标是让所有机制吃进第一批真实知识。
+**Phase 0 · 冷启动（当前）**：目标是让所有机制吃进第一批真实知识。
 
-事项：播种 10–30 条高频 case（或 wiki 批量导入进 inbox）、M1、O1 启动。
+事项：播种 10-30 条高频 case（或 wiki 批量导入进 inbox）、M1、O1 启动。
 
 出口条件（全部满足）：
 - [ ] 在库 case ≥20 条
@@ -92,9 +92,9 @@
 - [ ] 分支保护与 CODEOWNERS 硬门生效（M1）
 - [ ] 指标双周节奏建立（O1）
 
-**Phase 1 · v1.5 池** — 各事项由自身闸门独立解锁，无统一开始时间：E1（事件）、E2（trace ≥20）、M2（fixture ≥5）、O2、A1、A2、A4、M3、M4、O4、O5、P2。建议顺序：先 E1/M2（学习与安全网），后 A2（容量到了才拆）。
+**Phase 1 · v1.5 池**：各事项由自身闸门独立解锁，无统一开始时间：E1（事件）、E2（trace ≥20）、M2（fixture ≥5）、O2、A1、A2、A4、M3、M4、O4、O5、P2。建议顺序：先 E1/M2（学习与安全网），后 A2（容量到了才拆）。
 
-**Phase 2 · v2 池** — 入口条件：trace ≥100 个 session，且 Phase 1 完成 ≥3 项，且指标趋势稳定（连续两个季度可解读）。事项：E4、E5、A3。
+**Phase 2 · v2 池**：入口条件：trace ≥100 个 session，且 Phase 1 完成 ≥3 项，且指标趋势稳定（连续两个季度可解读）。事项：E4、E5、A3。
 
 **推迟项**：E3（embedding 预分诊），闸门见事项表；落地设计已锁在 ADR-0002，届时直接实施不重新论证。
 
@@ -112,7 +112,7 @@
 
 ## 明确不做
 
-向量检索 / RAG 基础设施、ANN 索引、跨组织联邦协议——论证与重评触发条件见 [ADR-0002](adr/0002-retrieval-no-rag-lightweight-index.md)。触发条件命中前不进任何阶段池。
+向量检索 / RAG 基础设施、ANN 索引、跨组织联邦协议：论证与重评触发条件见 [ADR-0002](adr/0002-retrieval-no-rag-lightweight-index.md)。触发条件命中前不进任何阶段池。
 
 ## 待定的人事决策（阻塞 Phase 0 出口）
 
@@ -124,7 +124,7 @@
 
 - 新增事项必须带：所属维度、需求/验收标准、入口闸门；无闸门的事项默认进"待定"而非阶段池
 - 废弃事项移入下方"不再做"并留一行理由，不删除记录
-- 闸门数值每季度用 metrics 复核——数值是假设的量化形态，同样服从数据修正
+- 闸门数值每季度用 metrics 复核，数值是假设的量化形态，同样服从数据修正
 
 ### 不再做
 
@@ -138,12 +138,12 @@
 - **校准度量**：confidence 的 reliability 式校准指标进 metrics
 - **先验超参显式化**：investigation_quality → 初始 score 作为 Beta 超参管理
 - **多样性审计**：triage/quickly_check 判别力对照症状空间的定期审计
-- **参数治理**：设计常数（串联保护 n=2、批审 30 秒上限、每 ns 30 条 cap）按理论 §7 的限定属参数估计——纳入 metrics 实测复核，数据足够时重校（n=2 可由误诊级联率复核，30 秒由批审实际耗时复核）
-- **PR 描述机器层生成**（**部分落地**）：to-postmortem / groom 直接产出符合 `.github/PULL_REQUEST_TEMPLATE/` 的 PR body 草稿（预分诊、证据、CI 链接、置信变化由系统数据自动填充，人只补脱敏自查与动机）。**已落地**：5 模板加"Agent 预核意见（可选）"区块、`pr-template` CI 校验模板结构与关键区块（不拦 agent 意见缺失——内网/手动链路体验约束）。**剩余**：各 skill 产出时自动填充预分诊/证据/置信字段的完整 body 草稿。闸门：E1 落地后或团队 PR 量周均 ≥3
+- **参数治理**：设计常数（串联保护 n=2、批审 30 秒上限、每 ns 30 条 cap）按理论 §7 的限定属参数估计，纳入 metrics 实测复核，数据足够时重校（n=2 可由误诊级联率复核，30 秒由批审实际耗时复核）
+- **PR 描述机器层生成**（**部分落地**）：to-postmortem / groom 直接产出符合 `.github/PULL_REQUEST_TEMPLATE/` 的 PR body 草稿（预分诊、证据、CI 链接、置信变化由系统数据自动填充，人只补脱敏自查与动机）。**已落地**：5 模板加"Agent 预核意见（可选）"区块、`pr-template` CI 校验模板结构与关键区块（不拦 agent 意见缺失，内网/手动链路体验约束）。**剩余**：各 skill 产出时自动填充预分诊/证据/置信字段的完整 body 草稿。闸门：E1 落地后或团队 PR 量周均 ≥3
 
 由首次真实数据评估（eval-reports/0001，git 历史可查）产出的工程项（按收益排序）：
 
-- **triage 词边界匹配**：`hang`⊂`changed`、`inf`⊂`INFO` 等子串误配浪费候选预算——修复为 `\b` 词边界，低成本高收益
+- **triage 词边界匹配**：`hang`⊂`changed`、`inf`⊂`INFO` 等子串误配浪费候选预算，修复为 `\b` 词边界，低成本高收益
 - **inference_interrupt 补错误码型症状**：107030 等 error-code 型无分支命中，靠优雅退化兜底
 - **fallback regex 收紧**：related-issue 提及、启动命令词、通用 token 三类候选污染源
 - **回放 harness 的 metric-form 分支**：performance 类 metric 断言需数值提取比对，regex 回放测不了
@@ -157,10 +157,10 @@
 
 ### 明确不做（设计讨论结论，防过度设计）
 
-**使用/协作/KPI 类观测指标——不设计、不采集**。讨论结论（指标消费方三问 + 部署模式约束）：
+**使用/协作/KPI 类观测指标，不设计、不采集**。讨论结论（指标消费方三问 + 部署模式约束）：
 
 - **部署模式多样，无统一采集面**：可能同时存在"内网私有沉淀 + GitHub 开源消费"（内网案例拿不出仓，只在内部 git 平台沉淀）、"全开源集中维护"（问题全从 issue 来）、"个人 fork 私有沉淀不协作"。跨形态的 KPI 统计无统一数据源，设计必为过度工程
 - **身份维度与体系隐私约束冲突**：支撑 KPI 需工程师 ID，但知识层含客户数据、诊断 trace 本地 gitignored；引入身份采集引入灌水激励（为 KPI 沉淀低质内容），违背知识质量原则
-- **沉淀环观测（产出数/采纳率，不按人）**：机制上有价值（to-postmortem/to-reference 产出无观测是当前盲区），但受部署模式影响（fork 式产出不进主仓）；若集中式部署成为主流，可复用 groom 三分类结果（new/variant/covered 分布）记入 metrics——**触发条件：首个集中式多用户部署出现**
+- **沉淀环观测（产出数/采纳率，不按人）**：机制上有价值（to-postmortem/to-reference 产出无观测是当前盲区），但受部署模式影响（fork 式产出不进主仓）；若集中式部署成为主流，可复用 groom 三分类结果（new/variant/covered 分布）记入 metrics。**触发条件：首个集中式多用户部署出现**
 - **协作指标（PR review 时长/驳回率/双签执行度）**：场景未发生（当前单人协作）；**触发条件：首个真实双人协作 PR 或 fork 出现时**再评估，与 rollout-assessment 重估条件对齐
 - **agent 协作观测**：唯一已预留点是 triage_semantic trace（E2 数据源）；未来 agent 协作的可归因性（agent_id 维度）**在 trace schema 变更时顺带加可选字段即可，不单独设计**

@@ -1,6 +1,6 @@
 # 自演进设计
 
-诊断知识系统有两种失败终点。一种是停止演化：知识库过时、命中率衰减，最终没人再用。另一种是失控演化：重复条目膨胀、错误 case 积累、检索质量下降。自演进设计的目标是在两者之间维持一条受控路径——知识随使用持续改进，同时每一条变更都有护栏挡住腐化。
+诊断知识系统有两种失败终点。一种是停止演化：知识库过时、命中率衰减，最终没人再用。另一种是失控演化：重复条目膨胀、错误 case 积累、检索质量下降。自演进设计的目标是在两者之间维持一条受控路径：知识随使用持续改进，每一条变更都有护栏挡住腐化。
 
 本文说明演化的整体回路、五个演化机制、护栏的构成，以及数据如何驱动演化节奏。机制的理论生成处是[设计理论](design-theory.md) §4.3（两级学习闭环：快环回写置信、慢环归因改结构）；原则层面的依据见[设计原则](design-principles.md)；操作细节见 `skills/knowledge-groom/SKILL.md`；演进中的机制（路由自学习、结构挖掘等）见 [roadmap.md](roadmap.md)；把观测数据转成系统自身改进提案的三层闭环（L1 知识 / L2 流程与 skill / L3 工作流编排，含自演进执行流程设计）见 [evolution-pipeline.md](evolution-pipeline.md)。
 
@@ -24,18 +24,18 @@ postmortem ─────────► inbox 待审队列 → groom 三分类
 
 ### 1. 置信度校准（每次 fix 应用后）
 
-case 的 confidence 不是人工设定而是在使用中习得：fix 被应用并确认解决，hits 加一；确认未解决，misdiagnoses 加一；score 随 last_hit 时间衰减。score 决定候选 case 的验证顺序——被反复验证的知识排到前面，被证伪的沉下去。结果捕获是结构化的：`feedback_pending` 标记写在状态文件里，任何一次 diagnose 或 resume 启动都会先追问未回报的结果，不依赖任何人的记性。
+case 的 confidence 不是人工设定而是在使用中习得：fix 被应用并确认解决，hits 加一；确认未解决，misdiagnoses 加一；score 随 last_hit 时间衰减。score 决定候选 case 的验证顺序，被反复验证的知识排到前面，被证伪的沉下去。结果捕获是结构化的：`feedback_pending` 标记写在状态文件里，任何一次 diagnose 或 resume 启动都会先追问未回报的结果，不依赖任何人的记性。
 
-**feedback 是双通道的（2026-09 确认，selfevolve-loop 重构）**：按**反馈对象**分，不是按"谁给的"分级——两条通道分别结算、不混算：
+feedback 是双通道的（2026-09 确认，selfevolve-loop 重构），按**反馈对象**分类而非按"谁给的"分级，两条通道分别结算、不混算：
 
 | 通道 | 反馈对象 | 来源 | 结算落点 |
 |---|---|---|---|
 | **S1 现场 resolve** | fix 在**这个用户环境**是否解决 | 工程师回报 fix 结果（feedback_pending 追问捕获） | `case.confidence`（hits/mis/score，唯一现场解决率口径） |
-| **S2 内容验证** | case 的 symptom→rc→fix 是否与外部 ground truth 一致 | S2 issue-replay 对照（issue resolution / fix PR 合入 / committer 确认——issue 本身的 resolution 就是 feedback） | `case.validation_record`（consistent=内容被外部验证，self_consistent=自证，inconsistent=复审信号；settle_s2_feedback.py 结算） |
+| **S2 内容验证** | case 的 symptom→rc→fix 是否与外部 ground truth 一致 | S2 issue-replay 对照（issue resolution / fix PR 合入 / committer 确认，issue 本身的 resolution 就是 feedback） | `case.validation_record`（consistent=内容被外部验证，self_consistent=自证，inconsistent=复审信号；settle_s2_feedback.py 结算） |
 
-S2 通道补 S1 断供空缺的关键意义：confidence 依赖工程师回报（当前捕获率≈0），但 issue 池里已闭环的 resolution（fix PR 合入、committer 确认）是**不依赖人的 feedback**——系统沉淀这些 issue 时答案已在手上，S2 replay 只是把它系统化。现场有效性（severity 语义、环境特异性）仍只认 S1，这是两条通道不可合并的原因。
+S2 通道补 S1 断供空缺的关键意义：confidence 依赖工程师回报（当前捕获率≈0），但 issue 池里已闭环的 resolution（fix PR 合入、committer 确认）是**不依赖人的 feedback**：系统沉淀这些 issue 时答案已在手上，S2 replay 只是把它系统化。现场有效性（severity 语义、环境特异性）仍只认 S1，这是两条通道不可合并的原因。
 
-**S1 feedback 闭环的完整数据流**（三个写入点，git 归属刻意不同）：
+S1 feedback 闭环的完整数据流（三个写入点，git 归属刻意不同）：
 
 ```
 【诊断时】                            【反馈时】                      【周维护时】
@@ -63,16 +63,16 @@ feedback_pending: CASE-ID）           feedback action + 清             （读 
 | 写入点 | 内容 | 进 git? | 原因 |
 |---|---|---|---|
 | `traces/*.yaml` | trace + feedback_pending | 否（gitignored） | 含客户现场信息；运行时状态，终态后留在 traces/（本地） |
-| case 文件 `confidence` | hits/mis/score/last_hit | 是（走 knowledge_modification PR） | 学习环的持久知识——hits+1 必须入库才能改变下次候选排序 |
+| case 文件 `confidence` | hits/mis/score/last_hit | 是（走 knowledge_modification PR） | 学习环的持久知识：hits+1 必须入库才能改变下次候选排序 |
 | `_index.yaml` | score（仅 score，ADR-0004） | 是（生成物） | case 变 → 重建 → 随同一 PR；CI `--check` 强制同步 |
-| `metrics/timeline.yaml` | 指标时序数据（每期一条） | 是 | **周节奏、人复核**——trace_metrics 产出 YAML 骨架，人看分母后 append，非每次反馈自动写；结构由 `verify_metrics.py --check`（CI）校验 |
-| `docs/metrics.md` | metrics 机制文档（定义/口径/流程） | 是 | **稳定层**——只承载机制解释（人读理解），不随每期数据变动 |
+| `metrics/timeline.yaml` | 指标时序数据（每期一条） | 是 | **周节奏、人复核**：trace_metrics 产出 YAML 骨架，人看分母后 append，非每次反馈自动写；结构由 `verify_metrics.py --check`（CI）校验 |
+| `docs/metrics.md` | metrics 机制文档（定义/口径/流程） | 是 | **稳定层**：只承载机制解释（人读理解），不随每期数据变动 |
 
-要点：**每次反馈直接写的是 case 文件（confidence）**——那是学习环的持久状态；metrics 数据是周期性的观测汇总，不是反馈的即时回写。反馈回写 case 后应作为变更提交（groom 批次或独立小 PR），演示可随 commit，正式使用走门控。
+要点：**每次反馈直接写的是 case 文件（confidence）**，那是学习环的持久状态；metrics 数据是周期性的观测汇总，不是反馈的即时回写。反馈回写 case 后应作为变更提交（groom 批次或独立小 PR），演示可随 commit，正式使用走门控。
 
 ### 2. 知识注入（每次定位后）
 
-to-postmortem 接受任意来源的调查记录（本地 session、外部对话、手工笔记、wiki 导出），提取症状、根因、修复，脱敏后进入 `postmortems/inbox/` 待审队列。groom 批处理：预分诊为 new_pattern / variant_of / covered_by 三类并附证据，人审后分别升格为新 case、并入已有 case（扩展版本区间）、或仅转正为 Tier 3 语料（人工沉淀按周批处理；issue-ingest 等自动化源的草稿 verification 链完整，可直接升格，不等周批）。判定为已覆盖的记录不丢弃——它仍是检索语料和未来 fixture 的来源。
+to-postmortem 接受任意来源的调查记录（本地 session、外部对话、手工笔记、wiki 导出），提取症状、根因、修复，脱敏后进入 `postmortems/inbox/` 待审队列。groom 批处理：预分诊为 new_pattern / variant_of / covered_by 三类并附证据，人审后分别升格为新 case、并入已有 case（扩展版本区间）、或仅转正为 Tier 3 语料（人工沉淀按周批处理；issue-ingest 等自动化源的草稿 verification 链完整，可直接升格，不等周批）。判定为已覆盖的记录不丢弃，它仍是检索语料和未来 fixture 的来源。
 
 ### 3. 误诊归因（每次误诊后）
 
@@ -84,7 +84,7 @@ to-postmortem 接受任意来源的调查记录（本地 session、外部对话�
 
 ### 5. 退休与复活（每周）
 
-版本区间过期、或长期被选中却未解决的 case 软退休进 `_archive/`，自动退出活跃索引；从未被选中的 cold case 不退休——罕见但正确的知识占索引成本极低，误删是静默损失。`_archive/` 中的 case 在新的 compat 区间出现时可以复活（例如某框架 2.7 引入的缺陷在 2.8 修复，相关 case 先退休后恢复）。退休不是删除：trace 历史与 postmortem 全部保留。
+版本区间过期、或长期被选中却未解决的 case 软退休进 `_archive/`，自动退出活跃索引；从未被选中的 cold case 不退休，罕见但正确的知识占索引成本极低，误删是静默损失。`_archive/` 中的 case 在新的 compat 区间出现时可以复活（例如某框架 2.7 引入的缺陷在 2.8 修复，相关 case 先退休后恢复）。退休不是删除：trace 历史与 postmortem 全部保留。
 
 ## 护栏：演化为什么不腐化
 
@@ -103,13 +103,13 @@ to-postmortem 接受任意来源的调查记录（本地 session、外部对话�
 
 两个横切设计贯穿所有护栏。
 
-其一，建议与决定分离。所有自动化环节——预分诊、候选 case 起草、置信度重算——只产出建议加证据，采纳、调整或驳回永远由人执行。自动化负责压缩人的工作量（单条知识从二十分钟降到半分钟），不接管人的判断。
+其一，建议与决定分离。所有自动化环节（预分诊、候选 case 起草、置信度重算）只产出建议加证据，采纳、调整或驳回永远由人执行。自动化负责压缩人的工作量（单条知识从二十分钟降到半分钟），不接管人的判断。
 
 其二，一切升级由数据触发。embedding 预分诊、路由自学习、结构挖掘都有明确入口闸门（见 roadmap），闸门数值本身每季度用实测指标复核。不按日历排期，也不追随技术趋势；[ADR-0002](adr/0002-retrieval-no-rag-lightweight-index.md) 的检索决策重评条件是这一原则的典型样例。
 
 ## 数据回路：trace → metrics → 闸门
 
-演化的节奏由数据决定。trace 汇入 `scripts/trace_metrics.py`，计算路由准确率、反馈捕获率、Tier 3 挽救率等指标（数据落 `metrics/timeline.yaml`，定义见 [metrics.md](metrics.md)）。指标驱动两类决策：运营层面——路由准确率低则修 triage-tree，路由准但未命中高则补 case；架构层面——ADR 的重评触发条件是否命中、roadmap 闸门是否解锁。trace 历史永不删除，它是这套系统全部自我认知的数据来源。
+演化的节奏由数据决定。trace 汇入 `scripts/trace_metrics.py`，计算路由准确率、反馈捕获率、Tier 3 挽救率等指标（数据落 `metrics/timeline.yaml`，定义见 [metrics.md](metrics.md)）。指标驱动两类决策。运营层面，路由准确率低则修 triage-tree，路由准但未命中高则补 case；架构层面，ADR 的重评触发条件是否命中、roadmap 闸门是否解锁。trace 历史永不删除，它是这套系统全部自我认知的数据来源。
 
 ## 当前状态
 
