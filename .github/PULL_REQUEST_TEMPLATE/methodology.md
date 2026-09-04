@@ -1,8 +1,9 @@
----
-name: 方法论变更（skill / scripts / docs / eval）
-about: 修改 skills/、scripts/、docs/、eval/ 等框架本身
-labels: []
----
+<!-- 模板元数据（GitHub 不解析 PR 模板 frontmatter，置于注释内避免正文渲染成粗体块）：
+  name: 方法论变更（skill / scripts / docs / eval）
+  about: 修改 skills/、scripts/、docs/、eval/ 等框架本身
+  labels: []（按需 gh pr create --label）
+PR body 正文从首个 "## " 区块开始。
+-->
 
 ## 变更内容
 
@@ -24,7 +25,7 @@ labels: []
 
 - [ ] 人读 prose（描述/变更说明/摘要）中代号首次出现已解码（含义〔代号〕），无高危字母裸用（E/T/G/EV/Phase 系列）
 - [ ] 新增/新引用的代号已登记 docs/glossary.yaml（可跑 `scripts/render_review_summary.py --scan` 自检告警）
-- [ ] PR 描述提供解码审读视图（`--diff` 渲染表或等价人话摘要），reviewer 无需裸读满屏代号
+- [ ] PR 描述提供解码审读视图（`--diff` 渲染表，或等价解码摘要——人读 prose，代号已逐次解码），reviewer 无需裸读满屏代号
 
 ## Agent 预核意见（机器可填，可选——非 agent 链路提交可留空）
 

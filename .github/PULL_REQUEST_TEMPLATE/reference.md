@@ -1,8 +1,9 @@
----
-name: Reference 知识变更（导入 / 转正 / 修订）
-about: 先验知识层（references/）的词条导入、转正或修订
-labels: []
----
+<!-- 模板元数据（GitHub 不解析 PR 模板 frontmatter，置于注释内避免正文渲染成粗体块）：
+  name: Reference 知识变更（导入 / 转正 / 修订）
+  about: 先验知识层（references/）的词条导入、转正或修订
+  labels: []（按需 gh pr create --label）
+PR body 正文从首个 "## " 区块开始。
+-->
 
 ## 变更类型
 
