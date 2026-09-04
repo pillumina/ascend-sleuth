@@ -1,12 +1,14 @@
 # ============================================================
-# Idea 卡：采纳 WikiSkill（arXiv 2608.27454）机制增量（G1/G2/G3）
-# 目的：把对照结论落成可追溯决议——G1（先例咨询结构化）随本 PR 内联进 skill 步骤，
-#       G2/G3 登记 roadmap 数据闸门，全部不预建未到数据的机制（原则十一）。
+# Idea 卡：采纳 WikiSkill（arXiv 2608.27454）机制增量决议
+# 目的：把对照结论落成可追溯决议——先例咨询（skill-impact 语义）随本 PR 内联进 skill
+#       步骤，成功模式提取与实验参考备忘登记 roadmap 数据闸门，全部不预建未到数据的
+#       机制（原则十一）。三处增量用描述名，不新增字母代号（初稿 G1/G2/G3 与既有
+#       G1–G8 治理缺口编号冲突，已改为描述名，见 proposal decision）。
 # ============================================================
 
 id: EV-2026-009
 layer: L3                          # 工作流/编排层：自演进流水线机制采纳
-title: "采纳 WikiSkill（arXiv 2608.27454）机制增量：G1 同组件先例咨询结构化 / G2 成功模式信号 / G3 实现参考备忘"
+title: "采纳 WikiSkill（arXiv 2608.27454）机制增量决议：同组件先例咨询（skill-impact 语义）/ 成功模式提取信号 / 实验参考备忘"
 status: validated                  # agent 采纳：方法论 PR（pipeline §12a + roadmap E6/E7 + skill 步骤内联）随本卡送人审
 authorization: dual                # L3 结构级 → 双签/体系维护人审（pipeline §5.2）
 dimension: evolvability
@@ -22,13 +24,13 @@ source_signals:
       - "skills/evolve-check/SKILL.md 第 3 步（查重仅同 trajectory/target）"
       - "docs/evolution-execution.md §7（历史先例在供给清单，非产卡前结构步骤）"
 hypothesis: >-
-  把"同 target_component 先例咨询"提升为产卡前显式步骤并登记 G1/G2 数据闸门、
-  记录 G3 参考备忘，可降低同组件重提被拒方案的重复提案率、为 L2 补成功模式提取
-  视角；全部按数据触发落地，不预建未到数据的机制（原则十一）
+  把"同 target_component 先例咨询"提升为产卡前显式步骤并登记数据闸门、记录实验参考
+  备忘，可降低同组件重提被拒方案的重复提案率、为 L2 补成功模式提取视角；全部按数据
+  触发落地，不预建未到数据的机制（原则十一）
 predicted_effect:
   metric: 重复提案率（同组件重提被拒方案）
   from: 未度量（查重仅 trajectory/target，无 rejected L2 卡样本）
-  to: 可度量（G1 步骤生效后观察；E6 落地后入机制健康指标）
+  to: 可度量（先例咨询步骤生效后观察；E6 落地后入机制健康指标）
 validation:
   method: metrics_compare
   baseline: 现有 7 张 validated 卡池（无 rejected L2 卡、无"查同组件先例"步骤）
@@ -39,7 +41,7 @@ gate:
 risk: medium                        # L3 结构采纳 → dual
 principle_refs: [5, 6, 8, 9, 11]
 actual_cost:
-  tokens: 9000
+  tokens: 11000
   source: estimate                 # 无 tokenMeter 记账环境的估算（DSH 可经 tokenMeter.measure 写回实测）
 decisions:
   - who: agent（self-evolve 深度轮）
@@ -47,22 +49,30 @@ decisions:
     type: proposal
     conclusion: >-
       对照 WikiSkill 后确认三处有界增量，其余机制已同构甚至更严（gate 人审、no_action、
-      拒绝留痕、知识不进执行上下文）：G1=把"别重复被拒方案"从纪律（execution §7 供给
-      清单）变结构（产卡前必查同组件历史结局；--impact 聚合视图留到首个 L2 rejected/
-      回滚簇，E6）；G2=evolve-check 补成功模式提取视角（T 表现全失败/摩擦向；T8 信号，
-      E7）；G3=wikiskill 开源 gate harness 作"可自动评分 L2 子组件实验"的参考实现备忘
-      （§12a）。不取：全自动 accept/reject 终审（原则五/六——S1 现场不可自动评分）、
-      独立 Maintainer/Proposer 角色（§6.7 单 agent 压缩）、新建自观测 wiki 层（与已否决
-      的常驻失败台账同构，原则十一）。
+      拒绝留痕、知识不进执行上下文）：
+      ①同组件先例咨询（skill-impact 语义）——把"别重复被拒方案"从纪律（execution §7
+      供给清单）变结构：产卡前必查同 target_component 历史结局；聚合视图（--impact）
+      留到首个 L2 rejected/回滚簇（roadmap E6）。
+      ②成功模式提取信号——evolve-check T 表现全失败/摩擦向，补成败对照的 T8 成功信号
+      （roadmap E7）。
+      ③实验参考备忘——wikiskill 开源 gate harness（隔离 profile + git reset 回滚 +
+      skill-impact 程序化 + compare 成对统计）作"可自动评分 L2 子组件实验"的实现参考。
+      不取：全自动 accept/reject 终审（原则五/六——S1 现场不可自动评分）、独立
+      Maintainer/Proposer 角色（§6.7 单 agent 压缩）、新建自观测 wiki 层（与已否决的
+      常驻失败台账同构，原则十一）。
+      命名修正（2026-09-04 复审）：初稿把三处增量标为 G1/G2/G3，与 orchestration.md
+      引言已登记的 G1–G8 治理缺口编号冲突（G3=自我指涉治理等），改为描述名 + roadmap
+      E6/E7 锚点，不新增字母代号。
   - who: agent（self-evolve 深度轮）
     when: "2026-09-04"
     type: action
     conclusion: >-
       执行：①pipeline.md 增 §12a（WikiSkill 对照 + 采纳决议 + 不取 + 原则追溯）+ §11.1
-      蓝图表补 G1/G2 两行；②roadmap.md 登记 E6（proposal 影响视图）/ E7（成功模式信号）；
+      蓝图表补两行；②roadmap.md 登记 E6（proposal 影响视图）/ E7（成功模式信号）；
       ③evolve-check / self-evolve SKILL.md 产卡第 1 步内联"同组件先例咨询"（查重扩展，
-      不新增脚本依赖）；④本卡 decisions 全链记录。改动集中在 kb/evolve-wikiskill-increments
-      分支一个 methodology PR。
+      不新增脚本依赖）；④evolution.md 顶部补"指代速查"（代号总登记处，防 L/S/A–P/G/T/
+      EV/Phase 等系列撞车与失忆）；⑤本卡 decisions 全链记录。改动集中在
+      kb/evolve-wikiskill-increments 分支一个 methodology PR。
   - who: agent（self-evolve 深度轮）
     when: "2026-09-04"
     type: eval
@@ -73,12 +83,12 @@ decisions:
       "该分支已被改过、结论 validated"，避免重复方向或须注明差异依据；步骤无死路。
       verify_proposals.py --check 通过（本卡 + 存量卡）、build_index.py --check 通过
       （无 case 改动，索引新鲜）。golden 不适用（改动不触及 diagnose 路径），PR 模板
-      回归区块如实标注机制级 dry-run 替代。
+      回归区块如实标注机制级 dry-run 替代。指代速查补丁后复跑全部检查仍绿。
   - who: agent（self-evolve 深度轮）
     when: "2026-09-04"
     type: decision
     conclusion: >-
-      采纳（validated）：机制决议 + skill 步骤内联随 methodology PR 送人审（体系维护人
-      = 用户）；E6/E7 实现挂 roadmap 数据闸门，触发条件到才激活，本卡只采纳设计与登记，
-      不预建实现。观察窗：G1 步骤生效后观察重复提案率（E6 落地后入指标）；季度自评复核
-      是否保留（pipeline §6.6）。
+      采纳（validated）：机制决议 + skill 步骤内联 + 指代速查随 methodology PR 送人审
+      （体系维护人 = 用户）；E6/E7 实现挂 roadmap 数据闸门，触发条件到才激活，本卡只
+      采纳设计与登记，不预建实现。观察窗：先例咨询步骤生效后观察重复提案率（E6 落地后
+      入指标）；季度自评复核是否保留（pipeline §6.6）。

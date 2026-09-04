@@ -4,6 +4,18 @@
 
 本文说明演化的整体回路、五个演化机制、护栏的构成，以及数据如何驱动演化节奏。机制的理论生成处是[设计理论](design-theory.md) §4.3（两级学习闭环：快环回写置信、慢环归因改结构）；原则层面的依据见[设计原则](design-principles.md)；操作细节见 `skills/knowledge-groom/SKILL.md`；演进中的机制（路由自学习、结构挖掘等）见 [roadmap.md](roadmap.md)；把观测数据转成系统自身改进提案的三层闭环（L1 知识 / L2 流程与 skill / L3 工作流编排，含自演进执行流程设计）见 [evolution-pipeline.md](evolution-pipeline.md)。
 
+> **指代速查**（本组文档代号总登记处——读前先看；各代号在各自定义处详述。**新增代号必须先在此登记，禁止与既有代号撞车**，撞车实例教训：WikiSkill 增量初稿用 G1/G2/G3，与下表的治理缺口 G1–G8 冲突，EV-2026-009 复审后改描述名）：
+>
+> | 代号 | 含义 | 定义处 |
+> |---|---|---|
+> | **L1 / L2 / L3** | 演进对象三层：知识内容（case/reference）/ 流程与 skill / 工作流与编排 | evolution-pipeline.md §1 |
+> | **S1 / S2 / S3** | 评分源分级（反馈按对象分）：S1 现场回报→confidence / S2 issue-replay 对照→validation_record / S3 golden 回归门 | evolution-pipeline.md §2.1 |
+> | **A# / E# / M# / O# / P#** | roadmap 事项 ID（架构/可演进性/可维护性/可观测性/流程），如 E2=router 从 trace 错例演进 | roadmap.md 各维度表 |
+> | **G1–G8** | 治理缺口标注（G1 会话层缺失…G8 无暂停重启）——**不是"改进增量"系列** | evolution-orchestration.md 引言 |
+> | **T#** | evolve-check 触发信号条目（如 T4=执行错无归属 → L2 卡） | skills/evolve-check/SKILL.md 信号表 |
+> | **EV-YYYY-NNN** | 自演进决策档案卡 ID（proposals/ideas/） | evolution-pipeline.md §7 |
+> | **Phase A–E** | 落地阶段（A 文档采纳…E 常态化），与 roadmap 的 "E6" 无关联 | evolution-pipeline.md §11 |
+
 ## 演化回路
 
 诊断循环每次运行产生三种数据：trace（哪些步骤按什么顺序执行了）、fix 结果反馈（解决了没有）、postmortem（这次定位的完整知识）。演化循环消费这些数据，产出更准的知识库，回到诊断：
