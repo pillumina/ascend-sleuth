@@ -19,7 +19,7 @@
 
 诊断时 Tier 2 命中直接给结论，未命中走 Tier 3 或源码分析，定位完沉淀成新知识。这就是"知识随使用变厚"：每次兜底后沉淀，下次同类问题直接命中。
 
-**先认识几个词**：
+先认识几个词：
 
 - **case**（Tier 2 条目）：一个问题的完整闭环，症状 → 检查 → 根因 → fix。沉淀在 `knowledge/`。
 - **reference**（2.5 层条目）：独立事实或方法论，如"507015 错误码含义"、"MoE 算子故障排查流程"。沉淀在 `references/`。
@@ -28,7 +28,7 @@
 - **confidence**：case 的可信度（0-1）。新 case 按调查质量给初始值，随用户反馈校准，详见第 4 节。
 - **pre-triage**：沉淀时预判新 case 是全新模式（`new_pattern`）、已有 case 的变体（`variant_of`）、还是已被覆盖（`covered_by`）。
 
-**六个 skill 各管一段**：
+六个 skill 各管一段：
 
 | skill | 职责 |
 |---|---|
@@ -39,7 +39,7 @@
 | `knowledge-groom` | 周批：审草稿、转正、重算置信度 |
 | `resume-diagnosis` | 续接被打断的诊断 |
 
-**怎么开始用**：clone 仓库后，用 DSH 打开目录，`/skill:` 列表直接出现六个 skill；其他 agent（Claude Code / Cursor / Codex…）跑一次 `bash scripts/enable-agent-skills.sh`，自动为已安装的 agent 建 symlink。
+怎么开始用：clone 仓库后，用 DSH 打开目录，`/skill:` 列表直接出现六个 skill；其他 agent（Claude Code / Cursor / Codex…）跑一次 `bash scripts/enable-agent-skills.sh`，自动为已安装的 agent 建 symlink。
 
 ```bash
 git clone https://github.com/pillumina/ascend-sleuth.git
@@ -89,14 +89,14 @@ agent 收到后做**症状归一**：把原始报错提炼成可检索的签名�
   - 还缺：CANN 版本（修复判定的关键）——先按已有信息走，验证阶段会问
 ```
 
-**① Tier 1 路由**：triage-tree 把症状映射到命名空间。
+① **Tier 1 路由**。triage-tree 把症状映射到命名空间。
 
 ```
 [示例输出] 症状路由：interrupt（aicore exception / 算子执行失败）
 → namespace: inference/vllm-ascend/interrupt
 ```
 
-**② Tier 2 候选**：读 `_index.yaml` 过滤候选（≤5），按 confidence 排序。agent 比对 quickly_check（case 里的快速检查正则）与已提供信息，排除不匹配的。
+② **Tier 2 候选**。读 `_index.yaml` 过滤候选（≤5），按 confidence 排序。agent 比对 quickly_check（case 里的快速检查正则）与已提供信息，排除不匹配的。
 
 ```
 [示例输出] 候选比对（_index.yaml 命中 namespace 的 interrupt 条目）：
@@ -105,7 +105,7 @@ agent 收到后做**症状归一**：把原始报错提炼成可检索的签名�
 匹配到 1 条候选：VLLM-ASC-10122
 ```
 
-**③ 2.5 层 reference 辅助**：报错里的错误码走签名检索，命中先验知识，agent 判断这条先验是否相关、怎么辅助。
+③ **2.5 层 reference 辅助**。报错里的错误码走签名检索，命中先验知识，agent 判断这条先验是否相关、怎么辅助。
 
 ```
 [示例输出] 错误码 507015 → references/errors/cann-runtime.yaml：
@@ -114,7 +114,7 @@ agent 收到后做**症状归一**：把原始报错提炼成可检索的签名�
   → 与候选 case 的根因方向一致，先验佐证：量化算子版本问题，不是用户用法错误
 ```
 
-**④ 验证 → 输出**：diagnosis checks 逐条对照客户信息。缺信息时 agent 会停下问你，不跳步。
+④ **验证 → 输出**。diagnosis checks 逐条对照客户信息。缺信息时 agent 会停下问你，不跳步。
 
 ```
 [示例输出] 验证：
@@ -191,7 +191,7 @@ aclnnScatterNdUpdate error 507011
    trace: {action: source_analysis, repo, ref, files_read, followup: unfixed}
 ```
 
-**多层级**：根因不在 vllm-ascend 时，agent 继续往下看。torch-npu 等底层开源仓用同样流程分析（`source_ref` 指向该仓）；CANN 未开源则承认局限，给根因方向 + 建议联系华为。
+根因不在 vllm-ascend 时，agent 继续往下看。torch-npu 等底层开源仓用同样流程分析（`source_ref` 指向该仓）；CANN 未开源则承认局限，给根因方向 + 建议联系华为。
 
 诊断是"词法检索提名 + agent 语义判断放行"。路由/候选/签名 grep 是结构化的，但症状归一、候选比对、缺信息追问、验证逐条、fix 综合、未命中转深度排查，全是 agent 的理解与判断。它是一个会追问、会解释、会承认不知道的排查协作者，不是查表器。
 
@@ -256,7 +256,7 @@ GitCode 源有几个实测差异：不返回 `closed_at`（游标用 `updated_at
 
 ## 3. Groom 预分诊 + PR 门控（演化循环）
 
-`knowledge-groom` 周批处理待审队列。**agent 给建议，人决定**：
+`knowledge-groom` 周批处理待审队列。agent 给建议，人决定：
 
 ```
 [示例输出] inbox 预分诊（每条约 30 秒人确认）：
@@ -283,7 +283,7 @@ GitCode 源有几个实测差异：不返回 `closed_at`（游标用 `updated_at
   kb-checks 三检查绿 → merge → 索引重建 → case 进入 Tier 2
 ```
 
-**关键**：`inbox` 是本地待审队列，草稿不进 git/PR；转正才走 PR。PR 审核看的是已分诊的变更，不是裸草稿。
+`inbox` 是本地待审队列，草稿不进 git/PR，转正才走 PR。PR 审核看的是已分诊的变更，不是裸草稿。
 
 groom 还负责**置信度结算**：跑 `settle_trace_feedback.py`，把上一周期的用户反馈累积进 case 的 confidence（详见第 4 节学习环）。结算先于置信度重算，保证重算的输入来自真实反馈，不是初始值。
 
@@ -307,7 +307,7 @@ groom 的 R8 信号让共性提炼不靠人肉发现：
   moe 标签 4 条 case → 建议提炼（已产出 ascend-moe-comm-triage）
 ```
 
-**置信度学习环**：case 的 `confidence.hits/misdiagnoses` 来自用户可信反馈，不是系统命中。reference 的命中统计（R6）来自 trace 的 `reference_lookup` 事件，没有数据如实显示 0，等使用积累。
+置信度学习环里，case 的 `confidence.hits/misdiagnoses` 来自用户可信反馈，不是系统命中；reference 的命中统计（R6）来自 trace 的 `reference_lookup` 事件，没有数据如实显示 0，等使用积累。
 
 ```
 [示例输出] 诊断后用户反馈（一次问答）：
@@ -344,7 +344,7 @@ trace 记 {action: attribution, verdict: case_error|execution_error, evidence}
 
 在 DSH 中可通过动态 Cordis 插件把诊断面板挂进会话视图环（`conversation.view` 加"诊断"tab），把上面第 1-4 节的所有环节变成可视化、可操作的界面。
 
-**面板能力与流程环节的对应**：
+下表把面板能力对应到流程环节：
 
 | 面板能力 | 对应流程环节 | 说明 |
 |---|---|---|
@@ -358,7 +358,7 @@ trace 记 {action: attribution, verdict: case_error|execution_error, evidence}
 | 证据文件点击打开 | 跨 agent 自包含 | `traces/evidence/<session_id>/` 本地文件 |
 | 指标 tab（timeline 快照/kind 过滤/实时计算） | 自演进观测（第 3 节） | 展示 `metrics/timeline.yaml` 各期快照（live/replay/example 可过滤）+ 运行 trace_metrics.py 实时对照 |
 
-**trace 自包含**（面板 + 跨 agent/session resume 的数据基础）：user 事件升级为 `content`（摘要）+ `evidence`（完整证据）。
+trace 要做到自包含，这是面板与跨 agent/session resume 的数据基础：user 事件升级为 `content`（摘要）+ `evidence`（完整证据）。
 
 ```yaml
 # traces/<session_id>.yaml 顶层
@@ -379,9 +379,9 @@ sedimented: {state: submitted}   # none→submitted→knowledge/archived（零�
 - `archived`：仅转正 Tier 3 语料（covered/语料），grep 兜底，非 active case
 - 拒绝不记录：用户拒绝沉淀是交互决策，不持久进 trace，随时可重新沉淀
 
-**交互原则**：面板只生成指令（copy → 粘贴对话 → agent 执行），最终交互始终在 agent 与用户之间。面板是"指令生成器"，不做决策。沉淀/续接都要用户确认。
+面板只生成指令（copy → 粘贴对话 → agent 执行），最终交互始终在 agent 与用户之间。面板是"指令生成器"，不做决策；沉淀/续接都要用户确认。
 
-**面板界面演示**：下面是真实诊断 session 在 DSH 对话视图 + 诊断面板上的完整回放（本仓库 `traces/2026-09-01-10562-lora-hidden.yaml` 的真实轨迹驱动）：对话中逐条 append 工具调用与诊断结论（新卡片居中登场），随后切到「诊断」tab 展开会话卡片，逐条回放 9 步诊断轨迹（路由 → 候选过滤 → Tier 3 兜底 → 源码分析 → 结论）。
+下面是真实诊断 session 在 DSH 对话视图 + 诊断面板上的完整回放（本仓库 `traces/2026-09-01-10562-lora-hidden.yaml` 的真实轨迹驱动）：对话中逐条 append 工具调用与诊断结论（新卡片居中登场），随后切到「诊断」tab 展开会话卡片，逐条回放 9 步诊断轨迹（路由 → 候选过滤 → Tier 3 兜底 → 源码分析 → 结论）。
 
 <img src="demo-assets/ascend-replay-hd.gif" alt="DSH 诊断面板演示回放" width="480" />
 

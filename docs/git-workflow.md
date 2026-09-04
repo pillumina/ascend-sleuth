@@ -2,7 +2,7 @@
 
 目标是在不预设具体 owner 的前提下，让门控、审核、分发与合入的闭环可以运转。全部机制用 git 原生能力承载：分支保护、PR、CODEOWNERS、标签、CI，并可移植到不同平台（GitHub / GitLab / GitCode 的对应关系见文末）。
 
-需要说明各道闸门的实际强度。git 能够硬性强制的是三件事：谁审批过、YAML 是否合法、索引是否新鲜。语义层面的闸门——脱敏是否彻底、root cause 是否正确、severity 标注是否恰当——只能依靠流程约定与人工抽查。下表对每道闸门标注强度，避免把约定误认为已被强制。
+需要说明各道闸门的实际强度。git 能够硬性强制的是三件事：谁审批过、YAML 是否合法、索引是否新鲜。语义层面的闸门（脱敏是否彻底、root cause 是否正确、severity 标注是否恰当）只能依靠流程约定与人工抽查。下表对每道闸门标注强度，避免把约定误认为已被强制。
 
 ## 分支模型
 
@@ -22,8 +22,8 @@ git worktree remove ../ascend-sleuth-s<session>
 
 约束（机制边界 + 协作约定）：
 
-1. **工作区隔离**：worktree 隔离工作区文件 / index / HEAD / 未提交改动——各 session 在自己 worktree 内任意修改，不污染他人检出（`git checkout` 携带未提交改动的问题从根上消失）。
-2. **共享面（worktree 不隔离）**：`.git` 对象库与 refs 全局共享——分支名 `kb/<用途>` 必须全局唯一；共享状态文件（ingest-state.json 的 processed、metrics/timeline.yaml、knowledge/_index.yaml、postmortems/inbox/）在各 worktree 是各自分支的副本，合流时**显式解决 merge 冲突**：processed 数组合并、索引以最新重建为准、inbox 清空先确认无他人草稿。
+1. **工作区隔离**：worktree 隔离工作区文件 / index / HEAD / 未提交改动，各 session 在自己 worktree 内任意修改，不污染他人检出（`git checkout` 携带未提交改动的问题从根上消失）。
+2. **共享面（worktree 不隔离）**：`.git` 对象库与 refs 全局共享，分支名 `kb/<用途>` 必须全局唯一；共享状态文件（ingest-state.json 的 processed、metrics/timeline.yaml、knowledge/_index.yaml、postmortems/inbox/）在各 worktree 是各自分支的副本，合流时**显式解决 merge 冲突**：processed 数组合并、索引以最新重建为准、inbox 清空先确认无他人草稿。
 3. **串行操作**：涉及 ingest-state.json 的 fetch / `--mark-imported` / 游标更新必须串行（read-modify-write 无锁，并发写互相覆盖）；groom 清空 inbox 前先确认无其他 session 未提交草稿。
 4. **开工纪律**：`git fetch origin` 确认最新 → 确认自己在自己的 worktree 与分支 → 收工前提交或 stash 清空工作区，避免未提交改动滞留共享检出。
 
@@ -75,11 +75,11 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 
 `.github/PULL_REQUEST_TEMPLATE/` 下按变更对象分五类（创建 PR 时选择，或 `?template=` 直链）：**knowledge_intake**（新知识升格：预分诊+证据+脱敏自查）、**knowledge_modification**（改 expected/fix/compat 等高风险字段：触发条款+依据+双签）、**reference**（references/ 词条：导入/转正/修订，含聚类检查与 verification 声明）、**methodology**（skill/脚本/文档：原则追溯+golden 回归对照）、**structure**（triage-tree/namespace：数据依据+迁移完整性检查单）。模板目录属上游方法论，随 fork 同步。
 
-**模板选择与结构约束**：agent 提交 PR 时模板选择由产出流程决定（to-postmortem/groom/to-reference 产出物自带对应模板类型），不靠提交时自觉选。`pr-template` CI（每次 PR 都跑）校验"用了正确模板 + 关键结构区块在"——缺失即红（如 knowledge 类缺脱敏自查、高风险类缺双签）。**Agent 预核意见区块是可选增值，CI 不校验是否填写**——agent 提交链路未打通的内网/手动提交者可留空，不被硬卡；有则给 reviewer 提供基于事实的独立意见供对齐判断（不替代人审）。模板里的"机器可填"字段当前部分自动生成（fixture 候选的 agent_review、预分诊结论），完整自动生成在 roadmap 待定池（PR 描述机器层生成）。
+**模板选择与结构约束**：agent 提交 PR 时模板选择由产出流程决定（to-postmortem/groom/to-reference 产出物自带对应模板类型），不靠提交时自觉选。`pr-template` CI（每次 PR 都跑）校验"用了正确模板 + 关键结构区块在"，缺失即红（如 knowledge 类缺脱敏自查、高风险类缺双签）。**Agent 预核意见区块是可选增值，CI 不校验是否填写**，agent 提交链路未打通的内网/手动提交者可留空，不被硬卡；有则给 reviewer 提供基于事实的独立意见供对齐判断（不替代人审）。模板里的"机器可填"字段当前部分自动生成（fixture 候选的 agent_review、预分诊结论），完整自动生成在 roadmap 待定池（PR 描述机器层生成）。
 
 ## Skill 自包含边界（SKILL.md 与 docs/ 的引用关系）
 
-`skills/<name>/SKILL.md` 必须**自包含到"没有 docs/ 也能正确执行"**：执行必需的决策参数（阈值、cap、映射、检查单）直接内联进 SKILL.md 或其 `references/`；`docs/` 是**可选论证层**——只承载"为什么这样设计"的推导，引用时标注"可选论证层"（如"论证见 docs/adr/0004——可选论证层，上述数值为执行值"）。原因：`docs/` 是仓库根级目录，依赖安装方式（`-g` 模式带全仓库，独立 skill 分发不带）；执行参数若只放在 docs 里，未装 docs 的 agent 无法正确执行。引用三分类：运行时参数 → 内联；背景论证 → docs + 可选标注；指标/产物数据源 → 保留为知识索引（如 metrics.md）。新写 skill 或修改时，不得新增"执行必需的 docs 依赖"。
+`skills/<name>/SKILL.md` 必须**自包含到"没有 docs/ 也能正确执行"**：执行必需的决策参数（阈值、cap、映射、检查单）直接内联进 SKILL.md 或其 `references/`；`docs/` 是**可选论证层**，只承载"为什么这样设计"的推导，引用时标注"可选论证层"（如"论证见 docs/adr/0004，可选论证层，上述数值为执行值"）。原因：`docs/` 是仓库根级目录，依赖安装方式（`-g` 模式带全仓库，独立 skill 分发不带）；执行参数若只放在 docs 里，未装 docs 的 agent 无法正确执行。引用三分类：运行时参数 → 内联；背景论证 → docs + 可选标注；指标/产物数据源 → 保留为知识索引（如 metrics.md）。新写 skill 或修改时，不得新增"执行必需的 docs 依赖"。
 
 ## 高风险双签
 
@@ -108,7 +108,7 @@ pip install pyyaml
 python3 scripts/build_index.py --check
 ```
 
-两条命令在任何平台都能等价配置（GitLab CI 的 `.gitlab-ci.yml`、GitCode 流水线同理）。索引过期意味着变更不完整——修改了 case 却忘记重建索引——CI 直接置红。
+两条命令在任何平台都能等价配置（GitLab CI 的 `.gitlab-ci.yml`、GitCode 流水线同理）。索引过期意味着变更不完整，比如修改了 case 却忘记重建索引，CI 直接置红。
 
 ## 平台对应表
 
