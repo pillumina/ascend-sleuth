@@ -77,6 +77,8 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 
 **模板选择与结构约束**：agent 提交 PR 时模板选择由产出流程决定（to-postmortem/groom/to-reference 产出物自带对应模板类型），不靠提交时自觉选。`pr-template` CI（每次 PR 都跑）校验"用了正确模板 + 关键结构区块在"，缺失即红（如 knowledge 类缺脱敏自查、高风险类缺双签）。**Agent 预核意见区块是可选增值，CI 不校验是否填写**，agent 提交链路未打通的内网/手动提交者可留空，不被硬卡；有则给 reviewer 提供基于事实的独立意见供对齐判断（不替代人审）。模板里的"机器可填"字段当前部分自动生成（fixture 候选的 agent_review、预分诊结论），完整自动生成在 roadmap 待定池（PR 描述机器层生成）。
 
+**frontmatter 与 body 起点**：GitHub 不解析 PR 模板的 YAML frontmatter（name/about/labels 是 issue 模板语法），原样带入会渲染成正文顶部粗体块。模板文件内的元数据因此放在 HTML 注释里（供人读与平台迁移适配）；创建 PR（`?template=` 或 agent `--body-file`）时正文从首个 `## ` 区块开始，注释块可留可删（渲染不可见，CI 只查 `## ` 区块）。`labels` 不随模板自动应用，需 `gh pr create --label` 显式打（如 `kb/high-risk`）。
+
 ## 人读性与代号约定（审读面 / 存储面分离）
 
 仓库产物（docs、EV 卡、SKILL.md、case、PR body）混用多套设计层代号（L/S/A/E/M/O/P/G/T/EV/Phase 等系列）。机器读得动，**人不该靠记忆读**——本约定把"人读视图"与"词法存储"分开，代号体系本身保持词法（供脚本/CI/面板直读），人读时走解码。
