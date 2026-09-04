@@ -109,8 +109,12 @@ def collect(root: Path):
                     # 由 groom 置信度重算读取，不进入检索视图（避免学习环每次更新全量重建索引）。
                     "score": (case.get("confidence") or {}).get("score"),
                 },
-                "symptoms": case.get("symptoms", []),
-                "quickly_check": quickly_check_summary(case.get("quickly_check")),
+                # F2 行瘦身（EV-2026-023）：索引只留 symptoms 首条摘要（~120 字）作阶段一
+                # 过滤；完整 symptoms/quickly_check 移 case 本体，阶段二加载候选后验证。
+                "symptoms": [
+                    (s[:120] + ("…" if len(s) > 120 else ""))
+                    for s in (case.get("symptoms") or [])[:1]
+                ],
                 "file": str(Path("knowledge") / rel),
                 "hash": case_hash(path),
             })

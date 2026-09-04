@@ -1,0 +1,64 @@
+id: EV-2026-023
+layer: L2
+title: F2 索引行瘦身：index 行删 quickly_check、symptoms 取首条 120 字摘要；阶段一标题+症状摘要+score 筛 ≤5，阶段二用
+  case 本体 quickly_check 验证
+status: validated
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+- signal: f1_followup
+  evidence: F1 分片后 vllm-ascend 单 ns 仍 175KB（90 case）；symptoms 33% + quickly_check
+    25% 占行大头——行瘦身是下一杠杆（F2 方案早已列在 EV-2026-022 观察窗）
+  trajectory:
+  - knowledge/_index/inference__vllm-ascend.yaml（F1 后实测 175.5KB）
+  - skills/diagnose/SKILL.md 阶段一/二（quickly_check 从索引移 case 本体）
+  - scripts/build_index.py（collect 行字段）
+hypothesis: index 行删 quickly_check + symptoms 首条 120 字摘要后，行体积 ~1/2；阶段一以 标题+症状摘要+score
+  筛 ≤5（候选略增），阶段二加载 case 本体 quickly_check 验证—— 检索语义基本等价（top-3 命中保持），token 减半
+predicted_effect:
+  metric: 阶段一索引读入量（命中 ns 分片）
+  from: vllm-ascend 分片 175.5KB（F1 后）
+  to: ~88KB（实测）
+validation:
+  method: golden_replay
+  baseline: /tmp/golden-e21-base（F2 前索引，3 fixture 已录 top3/hit）
+  success_criteria: build_index 重生成（主表+分片）与 --check 通过；golden 子集改后 top-3 命中不倒退（12723/12901
+    保持 expected 在 top-3、12685 documented miss）；词表 scan/verify 通过
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: 用户'实施 F2'
+risk: low-medium
+principle_refs:
+- 6
+- 9
+- 11
+actual_cost:
+  tokens: 5000
+  source: estimate
+decisions:
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: proposal
+  conclusion: F1 分片后单 ns（vllm-ascend 90 case）仍 175KB——下一杠杆是行瘦身：删 quickly_check （25%）、symptoms
+    取首条 120 字摘要（33%→~5%）。检索协议变化：阶段一按标题+症状 摘要+score 筛 ≤5（候选集略变宽——原 quickly_check 预筛移到阶段二
+    case 本体验证）。 检索面 → 按 EV-2026-021 分级走 golden 子集（3 fixture，基线复用）。
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: action
+  conclusion: 执行完成：build_index collect 行瘦身（symptoms 首条 120 字、删 quickly_check）+ 头注；diagnose
+    SKILL 阶段一/二协议措辞（F2：阶段一标题+症状摘要+score 筛 ≤5、quickly_check 后置阶段二 case 本体）；CLAUDE Tier2
+    行同步；主表+4 分片重建（--check 通过）。
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: eval
+  conclusion: 体积实测：vllm-ascend 分片 175.5→88KB、master 203.5→104KB（约 -50%）。golden 子集改后（/tmp/golden-f2-after
+    vs 基线 /tmp/golden-e21-base）：12723/12901 top3 全同且 rank1 保持、12685 documented miss
+    不变——3/3 无回归。词表 scan 通过。注：部分行 score=None（混合排序口径），非瘦身引入。
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: decision
+  conclusion: 采纳（validated）：F2 随 methodology PR 送人审。观察窗：F3（vllm-ascend interrupt 81/30
+    拆族）在 F1+F2 token 实测后重评（ADR-0004/A2 刷新）；后续可按需再压缩 title/tags 行宽。

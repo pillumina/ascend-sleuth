@@ -15,7 +15,7 @@ This is a **knowledge/skills repo** — there is no build, no lint, no test suit
 | Tier | Content | When loaded |
 |------|---------|-------------|
 | Tier 1 | `triage-tree.yaml` — symptom → namespace routing (≤30 branches) | Always |
-| Tier 2 | `knowledge/<ns>/*.yaml` — structured case rules | Two-phase: read generated index `knowledge/_index.yaml` first (one read; id/symptoms/quickly_check ~70 tok each), then full body for candidates ≤5. Rebuild index after any case change via `scripts/build_index.py` |
+| Tier 2 | `knowledge/<ns>/*.yaml` — structured case rules | Two-phase: read **命中 namespace 的索引分片** `knowledge/_index/<ns>.yaml` first (瘦身行 F2: id/title/symptoms 首条摘要/category/score + file；完整 symptoms/quickly_check 在 case 本体), filter candidates ≤5 by title/symptom-summary/score, then load full body (with quickly_check) to verify. Rebuild index (master + shards) after any case change via `scripts/build_index.py` |
 | Tier 3 | `postmortems/` — raw investigation records | Keyword grep fallback when Tier 2 misses |
 
 ### Two orthogonal problem dimensions

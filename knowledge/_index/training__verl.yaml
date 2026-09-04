@@ -23,17 +23,7 @@ namespaces:
         score: 0.3
       symptoms:
       - 'A2 上按 verl ascend_quick_start 跑 GRPO 启动即失败：RuntimeError: create_config:...HCCL function error:
-        hcclCommInitRootInfoConfig(numRanks, &rootInfo, rank, config, ...), error code is 5'
-      - 同环境跑 vllm-ascend 推理正常——问题在 verl 侧拉起（ray/WorkerDict）
-      - 'verl/trainer/runtime_env.yaml 含 HCCL_HOST_SOCKET_PORT_RANGE: "auto" 与 HCCL_NPU_SOCKET_PORT_RANGE:
-        "auto"'
-      quickly_check:
-        primary:
-          command: grep 'hcclCommInitRootInfoConfig' {{log_path}}
-          expected: regex:.*hcclCommInitRootInfoConfig.*error code is 5
-        fallback:
-          command: grep -n 'HCCL_HOST_SOCKET_PORT_RANGE\|HCCL_NPU_SOCKET_PORT_RANGE' verl/trainer/runtime_env.yaml
-          expected: regex:HCCL_.*SOCKET_PORT_RANGE.*auto
+        hcclCommInitRootInfoConfi…'
       file: knowledge/training/verl/interrupt/VERL-5074.yaml
       hash: bde444a7681e
     - id: VERL-6608
@@ -53,17 +43,7 @@ namespaces:
         score: 0.3
       symptoms:
       - 'verl GRPO + vllm-ascend rollout，TP2/N_GPUS_PER_NODE=2 训练 qwen 4B VL：vLLMHttpServer WorkerProc
-        崩溃，RuntimeError: create_config:...HCCL function error: hcclCommInitRootInfoConfig(...), error
-        code is 7'
-      - 多 TP 必现，单卡不报
-      - 官方 verl 0.8.0 镜像推荐 Ascend HDK 26.0.rc1，但 26.0.rc1 触发、25.5.1 可跑
-      quickly_check:
-        primary:
-          command: grep 'hcclCommInitRootInfoConfig' {{log_path}}
-          expected: regex:.*hcclCommInitRootInfoConfig.*error code is 7
-        fallback:
-          command: grep -E 'HCCL function error|hcclCommInit' {{log_path}}
-          expected: regex:.*(HCCL function error|hcclCommInit)
+        崩溃，RuntimeError: create_co…'
       file: knowledge/training/verl/interrupt/VERL-6608.yaml
       hash: '750895819031'
     - id: VERL-6707
@@ -83,15 +63,6 @@ namespaces:
         score: 0.6
       symptoms:
       - verl 0.8.0.dev 跑 Qwen3-MoE GRPO（910B）：npu fused kernel for Qwen3-MoE patch failed
-      - Transformers 5.x 环境下 Qwen3 MoE forward 路由行为错误或运行失败（patch 与上游模型实现不兼容）
-      - patch 位于 verl/models/transformers/npu_patch.py
-      quickly_check:
-        primary:
-          command: grep -iE 'Qwen3.?Moe.*patch|npu_patch|fused kernel' {{log_path}}
-          expected: regex:.*(Qwen3Moe|npu_patch|fused kernel).*(patch|fail)
-        fallback:
-          command: python3 -c 'import transformers; print(transformers.__version__)'
-          expected: '>= 5.0 时需确认 verl npu_patch 兼容性'
       file: knowledge/training/verl/interrupt/VERL-6707.yaml
       hash: b216286b7389
     - id: VERL-6741
@@ -109,16 +80,7 @@ namespaces:
         score: 0.1
       symptoms:
       - VERL + Ray + Ascend NPU 训练启动后 warning：Platform 'huawei' (PlatformNPU) is registered but not available.
-        This may be due to this ray actor being a CPU-only actor.
-      - NPU worker 未正确启用，存在 fallback 到 CPU 的可能
-      - 训练能启动但设备异常（慢/未用 NPU）
-      quickly_check:
-        primary:
-          command: grep -E "Platform 'huawei'.*not available|CPU-only actor" {{log_path}}
-          expected: regex:.*(Platform 'huawei'.*not available|CPU-only actor)
-        fallback:
-          command: grep -iE 'registered but not available|huawei.*platform' {{log_path}}
-          expected: regex:.*registered but not available
+        This may be due t…
       file: knowledge/training/verl/interrupt/VERL-6741.yaml
       hash: fe25a2f1e992
     - id: VERL-6756
@@ -137,15 +99,6 @@ namespaces:
         score: 0.6
       symptoms:
       - verl v0.7.1 在 NPU device ID 非 1 的机器（如 chip ID 0 或 7）上 get_npu_versions() 检测失败/返回错误版本
-      - NPU 版本检测硬编码 device ID：6756=1、6751=7——不同机器暴露不同取值，同一源码 bug
-      - 多 NPU、可配置部署场景受影响
-      quickly_check:
-        primary:
-          command: grep -rn 'get_npu_versions' verl/ --include='*.py'
-          expected: regex:.*get_npu_versions.*(device|dev_id|npu_id).*[0-9]
-        fallback:
-          command: grep -E 'get_npu_versions|npu version' {{log_path}}
-          expected: regex:.*(get_npu_versions|npu version)
       file: knowledge/training/verl/interrupt/VERL-6756.yaml
       hash: 4785de1f163e
     - id: VERL-6885
@@ -164,15 +117,6 @@ namespaces:
       confidence:
         score: 0.3
       symptoms:
-      - verl 0.8.0.dev0 + vllm-ascend 0.18.1 + CANN 8.5.0 跑 Qwen3-VL GRPO（vision, vLLM rollout, FSDP）反向阶段崩溃：aclnnConvolutionBackwardGetWorkspaceSize
-      - 崩溃落在 WorkerDict 的 torch::autograd::Engine::thread_main 反向传播路径
-      - 卷积层 backward 无法完成，进程 crash
-      quickly_check:
-        primary:
-          command: grep 'aclnnConvolutionBackwardGetWorkspaceSize' {{log_path}}
-          expected: regex:.*aclnnConvolutionBackwardGetWorkspaceSize.*
-        fallback:
-          command: grep -iE 'ConvolutionBackward|convolution backward' {{log_path}}
-          expected: regex:.*(ConvolutionBackward|convolution backward)
+      - verl 0.8.0.dev0 + vllm-ascend 0.18.1 + CANN 8.5.0 跑 Qwen3-VL GRPO（vision, vLLM rollout, FSDP）反向阶段崩溃：aclnnConvolutionBack…
       file: knowledge/training/verl/interrupt/VERL-6885.yaml
       hash: 79633be350ad
