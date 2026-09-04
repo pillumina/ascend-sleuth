@@ -51,6 +51,7 @@ description: >
    - **空库提示（冷启动）**：若命中 namespace 为空（还没 case），**不要静默退化**——告诉用户“当前 `knowledge/<ns>/` 还没有验证过的 case，你可以：①继续深度排查（步骤 5）②诊断完跑 `/skill:to-postmortem` 沉淀成第一条 case ③转人工”。别让空库的体感是“这玩意啥也不会”。
    - primary 不匹配但 fallback 匹配 → 仍进验证，标记 `low_confidence`
    - **category 决定 quickly_check 形态**：interrupt 用 grep 错误签名、precision 用数值阈值（`loss>1e3`、`has_nan`）、performance 用 profiler 指标（`comm_ratio>0.4`）——别混用
+   - **双面族交叉检索（E2-1，2026-09）**：接受率/投机效率退化是"双面"——无输出内容错误 → performance 族（如 VLLM-ASC-14306）；伴随输出错误/乱码/数值损坏 → precision 族（如 11127/12723）。当命中分支的候选 quickly_check 全部无匹配、且症状属接受率/投机/输出退化族时，**交叉检索另一 category 的对应族**（performance 无匹配 → 查 precision 接受率/输出族；precision 命中但症状为纯效率退化 → 反向），并记进 trace `{action: cross_category_retrieval, from, to}`——避免精度面 case 在性能路由下不可达
    - **阶段二**：全量加载候选，按 `confidence.score` **降序**进入验证。**多条候选时明示**：“匹配到 N 条候选，先验证最可能的 `<id>`（confidence `<score>`）”，让工程师有数；工程师可说“跳过这条试下一条”
 
 ### 2.5 reference 辅助查询（先验知识层）——候选加载后、验证前

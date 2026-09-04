@@ -1,0 +1,61 @@
+id: EV-2026-020
+layer: L2
+title: E2-1：接受率/投机族双面检索——performance 候选无匹配时交叉检索 precision 接受率族（diagnose 阶段一加一行）
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+- signal: e2_candidates
+  evidence: e2-candidates E2-1：14265（precision 面，annotation）/14306（performance 面）同现'接受率下降'，triage
+    只把其路由 performance → 精度面族（11127/12723）在 perf 路由下不可达；#116 已补 triage 注释（双面判别），本卡落执行指引
+  trajectory:
+  - triage-tree.yaml inference_performance acceptance 行注释（#116）
+  - skills/diagnose/SKILL.md 阶段一（候选过滤，line ~53）
+  - eval/ixn-arena/14265/gold.yaml（self：MegaMoe 精度面）
+hypothesis: diagnose 阶段一加"双面族交叉检索"指引（acceptance/投机族 perf 无匹配 → 交叉查 precision 族；反之亦然），可让精度面接受率
+  case 在 perf 路由下仍可达，且不改 纯单面场景路由
+predicted_effect:
+  metric: 双面族检索可达性（跨 category）
+  from: 单 category（perf 路由只查 perf 族）
+  to: 双面提示（perf 无匹配 → 交叉查 precision 族）
+validation:
+  method: golden_replay
+  baseline: golden 子集 3 fixture 改前 replay（/tmp/golden-e21-base/）
+  success_criteria: skill 加一行后 golden 子集改后 replay 与改前一致（无回归）；词表 scan/verify 通过
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: 用户'推进 E2-1 完整化'
+risk: low
+principle_refs:
+- 8
+- 10
+- 11
+actual_cost:
+  tokens: 5000
+  source: estimate
+decisions:
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: proposal
+  conclusion: 接受率/投机退化是"双面"：无输出内容错误 → performance（14306 类）； 伴随输出错误/数值损坏 → precision（11127/12723/14265
+    类）。triage 只按字面 路由单分支，精度面在 perf 路由下不可达 → 在 diagnose 阶段一加交叉检索提示 （perf acceptance
+    族 quickly_check 无匹配时，交叉查 precision 接受率/输出族， 反之亦然），记进 trace。
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: action
+  conclusion: 执行完成：diagnose SKILL 阶段一（line 54）加"双面族交叉检索（E2-1）"指引（performance 接受率族无匹配→交叉查
+    precision 族，反之亦然，记 trace）；golden 改前基线 → 改后对照（v2 指向含编辑的 worktree）。
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: eval
+  conclusion: golden 前后对照（3 fixture，改后 v2 读含编辑 worktree）：12685 documented miss、12723
+    rank1、12901 rank1——与基线 3/3 一致、无回归；cross_category_used 0/3（本批 fixture 无"perf 路由无匹配需交叉"场景——指引为方向性增强，正向效果待
+    acceptance 类场景（如 14265 精度面 replay）复测）。词表 scan/verify 通过。
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: decision
+  conclusion: 采纳（validated）：交叉检索指引随 methodology PR 送人审。观察窗：arena 池重建或后续 acceptance/投机类
+    replay 时复测跨类可达性（14265/14306 双面样本）；triage 注释（#116）与 SKILL 指引双载体一致。
