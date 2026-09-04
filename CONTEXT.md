@@ -99,3 +99,18 @@ _避免_：外推（extrapolation 是数值数学术语，语义不符）
 **影子价格（shadow price）**:
 约束优化中资源的边际价值：一单位预算折合多少期望损失。一切权衡的兑换率。
 _避免_：隐含价格、机会成本（语义近但不等）
+
+## 机制与工具（2026-09 新增，规范定义）
+
+| 术语 | 定义 |
+|---|---|
+| **元层 eval 台（arena）** | WikiSkill 式 train/val 门控：selection（held-out，候选门控）/test（终判，按规模）分离；候选改动 golden 无回归 + val 严格提升才收、否则回滚；影响账本 append。工具 `scripts/eval_arena.py`（--pool/--stats/--gate/--rc-check），设计 docs/evolution-eval-arena.md，决议 EV-2026-013/014 |
+| **交互型 replay（ixn-replay）** | 交互面评测：分期披露驱动 diagnose，测追问/信息充分性/过早结论；gold 决定性字段须"向报告者可问得"；`eval/ixn-arena/` 规格入库、正文本地。工具 `scripts/ixn_replay.py`，设计 docs/evolution-ixn-replay.md，决议 EV-2026-012/016/017/018 |
+| **归因层 rc-check** | 结论一致离线对照：agent 根因 vs 标注 resolution（启发式 + 人工核验，不自动终判），`eval_arena --rc-check` |
+| **门禁分级** | skill 改动按影响面选门禁：检索/路由面 → golden 子集（非全量）+ 基线缓存；交互/指引面 → ixn 对口；文档 → 免跑。docs/eval.md「门禁分级」，决议 EV-2026-021 |
+| **gate_diff** | gated 基线机械对照：`scripts/gate_diff.py --base/--after/--expected`，top3 一致或 expected 保持 top-3 为无回归。决议 EV-2026-027 |
+| **索引分片（F1/F2/F4）** | `build_index.py` 生成 `knowledge/_index/<ns>.yaml` 与 `<ns>__<cat>.yaml`（category 分片）；行瘦身（无 quickly_check、symptoms 首条摘要）；阶段一只读命中分片。决议 EV-2026-022/023/025 |
+| **容量闸门（F3）** | vllm-ascend interrupt 83/30 溢出 33%：token 维度已由 F1/F2 解，残余溢出维度挂再拆闸门（溢出≥40% / med>5 / 分片读入>60KB）。决议 EV-2026-024 |
+| **references summary 索引** | `references/_summary-index.yaml`（背景类+active 词条行化），diagnose 2.5 ② 读索引替代逐文件扫。脚本 `build_ref_summary_index.py`，决议 EV-2026-026 |
+| **EV 卡** | proposals/ideas/EV-YYYY-NNN.yaml：agent 决策档案（proposal→action→eval→decision），不含 git 合入态；validation_record/self_consistent 口径见 case schema |
+| **consumed（self）** | 评测样本被沉淀为 case 后转 self/回归（held_out=false），自证命中不虚增外部验证 |
