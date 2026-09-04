@@ -1,0 +1,71 @@
+# ============================================================
+# Idea 卡：F3 容量治理重评（vllm-ascend interrupt 83/30）——F1/F2 后数据刷新 + 再拆闸门
+# 目的：EV-006"暂不拆"的主因（阶段一全读 token）已被 F1/F2 消除；重跑健康指标，
+#       区分"token 维度"与"候选溢出维度"，给出再拆闸门（数据触发，不预拆）。
+# ============================================================
+
+id: EV-2026-024
+layer: L3                          # 容量治理决策（结构拆分与否）
+title: "F3 容量重评：interrupt 83/30、溢出率 33%——token 维度已解（F1/F2），残余溢出维度；暂不拆 + 再拆闸门（溢出≥40%/med>5/分片读入>60KB）"
+status: validated
+authorization: dual                # 结构决策（拆分与否）+ roadmap 刷新 → 人双签确认
+dimension: architecture
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: f1f2_followup
+    evidence: "用户'推进 F3'。capacity_health.py 复测（128 case）：interrupt 83/30（超 hard_cap 60）、候选溢出率 33%（14/43 >5 候选，med 4/max 14，超 20% 恶化阈）；precision/performance 0% 健康。EV-006 原判'暂不拆'主因=阶段一全读 token——F1/F2 已消（master 203.5→104KB、分片+瘦身）"
+    trajectory:
+      - "scripts/capacity_health.py 输出（2026-09-04 复测）"
+      - "docs/roadmap.md A2（原 81/30 记录 → 本卡刷新 83/30 + 33%）"
+      - "EV-2026-006/008（原评估与阈值）、EV-2026-022/023（F1/F2）"
+hypothesis: >-
+  区分两个独立维度后重判：①token 维度（F1/F2 已解——即"升破 30% 再评估加载协议优化"
+  的执行）；②候选溢出维度（33% 超标但 med≤5 非崩坏）。结构拆分（子族）是高成本高风险
+  （目录迁移+索引+fixture 断言），仅在溢出继续恶化时触发——设再拆闸门，数据驱动
+predicted_effect:
+  metric: 容量治理可决策性（两维度分离 + 明确闸门）
+  from: EV-006 以 token 为由暂缓（该理由已失效）
+  to: token 已解 + 溢出监控 + 再拆闸门（溢出≥40%/med>5/分片>60KB）
+validation:
+  method: metrics_compare
+  baseline: EV-006 复测（interrupt 81、溢出 25% 8/32）
+  success_criteria: "capacity_health 复测数据落 roadmap A2；再拆闸门定义明确；词表 scan/verify 通过"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户'F3 请推进'"
+risk: low                            # 本卡为决策+文档（不执行拆分）
+principle_refs: [6, 10, 11]
+actual_cost:
+  tokens: 3000
+  source: estimate
+decisions:
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      EV-006"暂不拆"主因 = 阶段一全读 token（拆目录救不了读文件）。F1/F2 已消除该障碍
+      （分片 + 行瘦身：master 203.5→104KB、命中 ns 读入大降）——token 维度关闭。F3
+      复测暴露**独立残余维度**：候选溢出率 33%（14/43，med 4/max 14，超 20% 阈但 med
+      仍 ≤cap5、非检索崩坏）。结构拆分（子族 moe/startup-failure/mtp/mooncake+kv…）
+      成本高（目录迁移+索引+fixture 断言同步，ADRR 层级+2 曾被拒）；按数据触发：设
+      再拆闸门，不预拆。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: action
+    conclusion: 执行：capacity_health 复测（数据如上）；roadmap A2 刷新（83/30、33%、
+      两维度结论、再拆闸门）；EV-2026-024 留痕。未执行结构拆分（闸门未触发）。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: eval
+    conclusion: 复测数据与脚本输出一致（interrupt 83、溢出 14/43=33%、med4/max14、
+      precision/perf 0%）；roadmap A2 文本更新解析正常；词表 scan/verify 通过。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated，dual）：维持暂不拆（结构），token 维度由 F1/F2 关闭，溢出维度
+      挂再拆闸门：溢出率 ≥40% 或 med >5 或 vllm-ascend 命中分片读入 >60KB → 启动子族
+      拆分评估（映射已备）+ kb/high-risk 双签。观察窗：capacity_health 随 groom 复测；
+      阈值固化待 metrics 复核（owner）。
