@@ -1,0 +1,74 @@
+# ============================================================
+# Idea 卡：F1 索引分片加载（阶段一只读命中 namespace 分片）
+# 目的：治"index 无限膨胀、整库 ~200KB 全量进上下文"的 token 成本（用户顾虑；
+#       A2 早已判定'真问题是阶段一全读 token'——本卡改加载协议）。
+# ============================================================
+
+id: EV-2026-022
+layer: L2                          # 检索加载协议 + 生成器
+title: "F1 索引分片：build_index 产每 namespace 分片，diagnose 阶段一只读命中分片（整库 ~200KB → 命中 ns 子集）"
+status: validated
+authorization: review               # 脚本 + skill 读取路径（候选逻辑逐字节不变）
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: human_review_feedback
+    evidence: "用户顾虑'index 无限膨胀、token 大'——实测 _index.yaml 206KB/128 case（symptoms 33% + quickly_check 25%）；diagnose 阶段一若整文件进上下文 ≈6-8 万 token/次；roadmap A2 记'真问题是阶段一全读 token'（拆目录救不了读文件）"
+    trajectory:
+      - "knowledge/_index.yaml（实测 206KB/128 case）"
+      - "skills/diagnose/SKILL.md 阶段一（读整表）"
+      - "scripts/build_index.py（collect/render/main）"
+hypothesis: >-
+  索引按 namespace 分片（行内容不变，仅文件切分），阶段一只读命中分片 → 单次诊断
+  索引读成本从"整库条数"降为"命中 ns 条数"，候选逻辑逐字节等价（无回归）
+predicted_effect:
+  metric: 阶段一索引读入量（token/次）
+  from: 整库 128 case（~200KB，≈6-8 万 token）
+  to: 命中 ns 分片（vllm-ascend ~90 case 仍大——后续 F2 行瘦身 + F3 容量治理接力）
+validation:
+  method: metrics_compare
+  baseline: 整表读取
+  success_criteria: "build_index 产 4 分片 + --check（含分片新鲜度）通过；shard 内容 = 总表该 ns 子集（逐字节）；diagnose skill 阶段一改读命中分片（回退整表）；词表 scan 通过"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户要求'先做 F1'"
+risk: low                            # 行内容不变，仅文件切分/读取路径；候选逻辑等价 → 按门禁分级免全量 golden（加载路径面，非候选逻辑面）
+principle_refs: [6, 9, 11]
+actual_cost:
+  tokens: 6000
+  source: estimate
+decisions:
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      实测整库索引 206KB/128 case（symptoms+quickly_check ≈58%），阶段一全量读 ≈6-8 万
+      token/次且随库线性涨——"无限膨胀"属实。治理分层 F1 分片加载（不改行/不改候选
+      逻辑）/ F2 行瘦身（改阶段一过滤，需 golden 子集）/ F3 容量拆族（interrupt 81/30
+      超 hard_cap，A2 曾因'拆了仍贵'暂缓——F1+F2 后 token 下降再重评）。先做 F1。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: action
+    conclusion: >-
+      执行：①build_index.py：collect 跳过 _index/ 分片目录、新增 render_shard/
+      shard_dirty/shard_path，main 写总表 + 每 ns 分片 + 清理失效分片，--check 校验
+      分片新鲜度；②生成 4 分片（inference/vllm-ascend、sglang、training/mindspeed-llm、
+      verl）；③diagnose SKILL 阶段一改读命中 ns 分片（/→__ 文件名；缺失回退整表）；
+      ④决策链留痕。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: eval
+    conclusion: >-
+      build_index 重生成：总表 + 4 分片（128 case）；--check 通过（含分片新鲜度）；
+      shard 内容与总表该 ns 子集一致；diagnose skill 语法/词表 scan 通过。门禁分级：
+      F1 是加载路径面（行内容与候选逻辑逐字节不变）→ 按 EV-2026-021 免全量 golden，
+      以 --check + 内容等价校验覆盖（可审）。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated）：F1 分片随 methodology PR 送人审。观察窗：F2（行瘦身，
+      quickly_check 后置）待阶段一 token 实测后评估；F3（vllm-ascend interrupt 拆族）
+      在 F1+F2 落地后重评（ADR-0004/A2 数据刷新）。
