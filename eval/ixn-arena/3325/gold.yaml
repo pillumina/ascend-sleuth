@@ -1,0 +1,16 @@
+issue: 3325
+repo: vllm-project/vllm-ascend
+held_out: true
+resolution_ref: 'PR #3305（vllm-ascend main + vllm 0.11.0 分支）'
+resolution_summary: 'Qwen3-Next-80B-A3B 启动报错：需 main+PR #3305（升级即修复）'
+maintainer_questions:
+- field: fix 版本/PR
+  keywords:
+  - '3305'
+decisive_fields:
+- field: 更新版本/镜像验证
+  keywords:
+  - main
+  - 更新
+  - 镜像
+  - 最新

@@ -1,0 +1,13 @@
+issue: 13639
+repo: vllm-project/vllm-ascend
+held_out: false
+resolution_ref: MRV2/ModelAclGraphManager 图捕获死锁（fullgraph hang）
+resolution_summary: Speculative decoding hangs in FullGraph(MRV2)：ModelAclGraphManager
+  死锁
+maintainer_questions: []
+decisive_fields:
+- field: MRV2/图模式
+  keywords:
+  - MRV2
+  - FullGraph
+  - graph

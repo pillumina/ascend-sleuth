@@ -1,0 +1,19 @@
+issue: 9769
+repo: vllm-project/vllm-ascend
+held_out: false
+resolution_ref: CANN 9.1.0 算子坑 + 复现分支矛盾（0.18 clone vs 0.19.1 引擎）
+resolution_summary: 310P W8A8SC FULL_DECODE_ONLY QuantBatchMatmulV3 ND/FRACTAL_NZ：CANN
+  版本相关 + 复现版本分支自相矛盾
+maintainer_questions:
+- field: CANN 版本
+  keywords:
+  - CANN
+decisive_fields:
+- field: CANN 版本
+  keywords:
+  - CANN
+- field: 分支一致性
+  keywords:
+  - '0.18'
+  - '0.19'
+  - 分支

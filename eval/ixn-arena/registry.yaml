@@ -1,0 +1,107 @@
+_comment: ixn-replay 评测集规格（gold + stage feed 入库；真实 issue 正文本地按号拉取，运行结果本地 .ixn-replay/）。持
+  久化模型同 eval/s2/：规格入库、结果本地。机制见 docs/evolution-ixn-replay.md
+version: 1
+samples:
+- issue: 2424
+  repo: vllm-project/vllm-ascend
+  url: https://github.com/vllm-project/vllm-ascend/issues/2424
+  held_out: true
+  staged: true
+  decisive_fields:
+  - CANN 版本
+  - env 复测
+  scored: 100%
+  tags: CANN/env 追问
+- issue: 3325
+  repo: vllm-project/vllm-ascend
+  url: https://github.com/vllm-project/vllm-ascend/issues/3325
+  held_out: true
+  staged: true
+  decisive_fields:
+  - 更新版本/镜像验证
+  scored: 100%(补丁后)
+  tags: 版本更新追问(第④问)
+- issue: 3453
+  repo: vllm-project/vllm-ascend
+  url: https://github.com/vllm-project/vllm-ascend/issues/3453
+  held_out: true
+  staged: true
+  decisive_fields:
+  - torch/torch_npu 版本
+  - 安装日志/源码构建
+  scored: 80%
+  tags: torch_npu 版本错配
+- issue: 5599
+  repo: vllm-project/vllm-ascend
+  url: https://github.com/vllm-project/vllm-ascend/issues/5599
+  held_out: true
+  staged: true
+  decisive_fields:
+  - CANN 版本
+  - 运行环境
+  scored: 100%
+  tags: CANN/环境 socversion
+- issue: 9798
+  repo: vllm-project/vllm-ascend
+  url: https://github.com/vllm-project/vllm-ascend/issues/9798
+  held_out: true
+  staged: true
+  decisive_fields:
+  - CANN 版本
+  scored: 100%
+  tags: CANN→POC
+- issue: 9769
+  repo: vllm-project/vllm-ascend
+  url: https://github.com/vllm-project/vllm-ascend/issues/9769
+  held_out: false
+  staged: true
+  decisive_fields:
+  - CANN 版本
+  - 分支一致性
+  scored: (回归)
+  tags: QuantBatchMatmulV3 族; self
+- issue: 13673
+  repo: vllm-project/vllm-ascend
+  url: https://github.com/vllm-project/vllm-ascend/issues/13673
+  held_out: true
+  staged: false
+  decisive_fields:
+  - fix PR
+  scored: 未跑
+  tags: 'random_sample 跨流; fix #13394'
+- issue: 10097
+  repo: vllm-project/vllm-ascend
+  url: https://github.com/vllm-project/vllm-ascend/issues/10097
+  held_out: false
+  staged: false
+  decisive_fields:
+  - 版本/引入 PR
+  scored: (回归)
+  tags: mamba align duplicated arg
+- issue: 10998
+  repo: vllm-project/vllm-ascend
+  url: https://github.com/vllm-project/vllm-ascend/issues/10998
+  held_out: false
+  staged: false
+  decisive_fields:
+  - 模型/cache 结构
+  scored: (回归)
+  tags: hybrid KV cache group
+- issue: 13446
+  repo: vllm-project/vllm-ascend
+  url: https://github.com/vllm-project/vllm-ascend/issues/13446
+  held_out: false
+  staged: false
+  decisive_fields:
+  - 文档配方
+  scored: (回归)
+  tags: reranker 文档配方
+- issue: 13639
+  repo: vllm-project/vllm-ascend
+  url: https://github.com/vllm-project/vllm-ascend/issues/13639
+  held_out: false
+  staged: false
+  decisive_fields:
+  - MRV2/图模式
+  scored: (回归)
+  tags: MRV2 fullgraph hang

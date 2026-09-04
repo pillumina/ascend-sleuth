@@ -1,0 +1,24 @@
+issue: 5599
+repo: vllm-project/vllm-ascend
+held_out: true
+resolution_ref: socversion 不匹配：bin 按 910B1 编译、设备 310P3；需 -310p 产物/镜像或 run.sh socversion
+  参数（维护者追问 CANN/环境）
+resolution_summary: 310P3 上跑 910B1 编译的 bin → socversion mismatch；SoC 选型/部署不匹配（非代码缺陷）
+maintainer_questions:
+- field: CANN 版本
+  keywords:
+  - CANN
+- field: 运行环境
+  keywords:
+  - docker
+  - host
+  - 镜像
+decisive_fields:
+- field: CANN 版本
+  keywords:
+  - CANN
+- field: 运行环境
+  keywords:
+  - docker
+  - host
+  - 镜像

@@ -1,0 +1,75 @@
+# ============================================================
+# Idea 卡：ixn 评测集持久化入库（eval/ixn-arena）——规格入库、正文与结果本地
+# 目的：测试集可复用不重建（曾因临时检出清理致本地库丢失；规格入库后 clone 即可跑，
+#       正文按号 gh 拉取）。持久化模型同 eval/s2/。
+# ============================================================
+
+id: EV-2026-017
+layer: L2                          # 评测资产与工具路径
+title: "ixn 评测集持久化：gold + stage feed 入库 eval/ixn-arena/（registry + 工具路径改造 + 文档同步）"
+status: validated
+authorization: review               # eval 规格 + 脚本路径调整
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: human_review_feedback
+    evidence: "审核诉求：'测试集别重建能复用'——本地库曾随临时检出清理丢失（EV-2026-016 教训）；且 eval/s2/vllm-ascend.yaml 已入库为同型先例（校准规格含输入症状全文 + expected，提交；运行结果本地）"
+    trajectory:
+      - "eval/s2/vllm-ascend.yaml（同型先例：规格入库、结果本地）"
+      - ".ixn-replay/（本地重建经验：素材 /tmp 幸存、gold/feed 需重写）"
+      - "docs/evolution-ixn-replay.md §3/§5/§8"
+hypothesis: >-
+  gold（held_out/resolution/decisive）与 stage feed 是"我们产出的评测规格"（非真实语料
+  全文），入库 eval/ixn-arena/ 后测试集随 PR 持久、跨机器/agent 可复用不重建；真实正文
+  仍本地按号拉取，公共仓不含真实语料全文的纪律不变；样本数只决定 timeline 门，不决定
+  评测集可用性
+predicted_effect:
+  metric: 评测集重建成本（从零恢复可用 staged 样本）
+  from: 全重建（正文+gold+feed 均需重做）
+  to: 仅正文（gh 按号拉取，秒级）；gold/feed/registry 随 clone 在场
+validation:
+  method: metrics_compare
+  baseline: 无入库（11 条目 gold/feed 仅本地，曾整体丢失）
+  success_criteria: "eval/ixn-arena/ 11 条目 gold + 6 条 stage feed + registry 入库；ixn_replay --score 从入库 gold 出分（本地 result）；词表 scan/verify 通过"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户要求'按测试集持久化可复用修改提 PR'（2026-09-04）"
+risk: low
+principle_refs: [9, 10, 11]
+actual_cost:
+  tokens: 4000
+  source: estimate
+decisions:
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      测试集分层：①gold + stage feed = 评测规格（我们产出的派生文本）→ 入库
+      eval/ixn-arena/（同 eval/s2 先例，可审可复用）；②真实正文（issue.md/comments.md）
+      → 本地按号 gh 拉取（公共仓纪律不变）；③run 结果/score → 本地。样本 ≥10 只是
+      timeline 入数门，不决定评测集是否可用/入库。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: action
+    conclusion: >-
+      执行：①eval/ixn-arena/ 建 11 条目（gold ×11 + stage feed ×6（2424/3325/3453/
+      5599/9769/9798））+ registry.yaml（issue/URL/held_out/staged/decisive/scored）；
+      ②ixn_replay.py：gold 权威源 = eval/ixn-arena（回退 .ixn-replay），result/score
+      仍本地；③docs §3（持久化模型）/§5（数据归属修订）/§8（≥10 澄清：只关 timeline）；
+      ④决策链留痕。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: eval
+    conclusion: >-
+      11 条目 gold YAML 解析通过；registry 生成（11 rows）；py_compile OK；冒烟：
+      --score 2424 从入库 gold + 本地 result 出分 3/3（100%）与丢失前一致；词表 scan
+      全绿；verify_proposals/build_index 通过（eval 层新增不影响知识索引）。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated）：评测规格入库随 methodology PR 送人审。观察窗：后续新增样本
+      走 eval/ixn-arena PR；出分 ≥10 带分母后进 timeline；正文拉取失败（上游删除）时
+      样本标"源不可达"降级（诚实标注，不硬凑）。

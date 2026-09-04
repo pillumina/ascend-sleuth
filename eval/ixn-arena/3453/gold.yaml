@@ -1,0 +1,29 @@
+issue: 3453
+repo: vllm-project/vllm-ascend
+held_out: true
+resolution_ref: 维护者：SOC 列表未用可删 + weak_ref_tensor 不支持为回退告警；追 torch_npu 2.8rc1 版本选择
+resolution_summary: 自定义算子 weak_ref_tensor CPU 回退（非致命）；torch 2.8.0 + torch_npu 2.8.0rc1
+  RC 版本错配
+maintainer_questions:
+- field: torch_npu 版本
+  keywords:
+  - torch_npu
+- field: torch_npu 版本选择
+  keywords:
+  - '2.8'
+  - rc1
+- field: 安装/编译方式
+  keywords:
+  - pip
+  - 编译
+  - 安装
+decisive_fields:
+- field: torch/torch_npu 版本
+  keywords:
+  - torch
+  - torch_npu
+- field: 安装日志/源码构建
+  keywords:
+  - 日志
+  - 编译
+  - 源码

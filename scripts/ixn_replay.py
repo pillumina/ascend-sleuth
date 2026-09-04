@@ -6,20 +6,21 @@
 # 验证数据与结论内联于该文档 §4/§7）。
 #
 # harness 只做数据与评分；每段"诊断 + 追问"由 agent 执行（读 feed → 走 diagnose skill
-# → 写 result），不自动（与 s2_replay 同构）。目录规范 .ixn-replay/<issue>/：
-#   issue.md / comments.md      gh 拉取的原始线程（--prepare 产出）
-#   gold.yaml                   标注：held_out / resolution_ref / maintainer_questions
-#                              （合理下限 ground truth）/ decisive_fields / resolution_summary
-#   stage-0.md … stage-N.md     分期 feed（S0 = 首报版，不含 decisive_fields 答案）
-#   stage-k.result.yaml         agent 每段产物：{stage, route, sufficient,
-#                              premature_conclusion, questions: []}
-#   conclusion.yaml             agent 最终结论：{root_cause, fix, confidence}
+# → 写 result），不自动（与 s2_replay 同构）。目录规范（持久化模型同 eval/s2/）：
+#   eval/ixn-arena/<issue>/        **入库规格**（随 PR 审，可复用不重建）：gold.yaml
+#                                 （held_out/resolution_ref/maintainer_questions(合理下限
+#                                 ground truth)/decisive_fields/resolution_summary）
+#                                 + stage-0.md … stage-N.md（分期 feed，S0 不含决定性答案）
+#   .ixn-replay/<issue>/           本地：issue.md/comments.md（真实正文，gh 拉取）+
+#                                 stage-k.result.yaml（agent 每段产物）+ conclusion.yaml
+#                                 + score.yaml（评分输出）
 #
 # 用法：
 #   python3 scripts/ixn_replay.py --prepare 2424 --repo vllm-project/vllm-ascend
-#       拉 issue+评论 → issue.md/comments.md + gold.yaml 模板（gh 可用时）
+#       拉 issue+评论 → .ixn-replay/<issue>/issue.md + comments.md（正文本地；gold/feed 走
+#       eval/ixn-arena 提交）
 #   python3 scripts/ixn_replay.py --score 2424
-#       读 gold + 各段 result + conclusion → score.yaml + 人读摘要
+#       读 gold（入库权威源）+ 本地各段 result + conclusion → score.yaml + 人读摘要
 #       指标：追问召回（∪questions ∩ ground truth 字段）/ 决定性字段在链 /
 #       过早结论率 / 结论一致（需人工核验，v1 不自动判）
 #   python3 scripts/ixn_replay.py --aggregate
@@ -105,13 +106,28 @@ def _field_hits(fields, text):
     return hit, miss
 
 
+ARENA_DIR = "eval/ixn-arena"     # 入库规格：gold + stage feed（持久化，随 PR 审；模型同 eval/s2/）
+#                                # .ixn-replay/（本地）：真实正文/评论 + run 结果 + score
+
+
+def arena_gold_path(root, issue):
+    """gold 权威源：入库 eval/ixn-arena/<issue>/gold.yaml，回退本地 .ixn-replay/。"""
+    p = root / ARENA_DIR / str(issue) / "gold.yaml"
+    if p.exists():
+        return p
+    return root / RUN_DIR / str(issue) / "gold.yaml"
+
+
 def cmd_score(issue, root):
     d = sample_dir(root, issue)
-    if not d.exists():
-        print(f"样本不存在: {d}", file=sys.stderr)
+    gp = arena_gold_path(root, issue)
+    if not gp.exists():
+        print(f"gold 缺失（入库 {root / ARENA_DIR}/{issue}/gold.yaml 或本地 .ixn-replay）: {gp}",
+              file=sys.stderr)
         return 1
-    gold = yaml.safe_load((d / "gold.yaml").read_text(encoding="utf-8"))
-    # 收集各段 result
+    d.mkdir(parents=True, exist_ok=True)
+    gold = yaml.safe_load(gp.read_text(encoding="utf-8"))
+    # 收集各段 result（本地 .ixn-replay/<issue>/）
     stages = []
     for f in sorted(d.glob("stage-*.result.yaml")):
         r = yaml.safe_load(f.read_text(encoding="utf-8")) or {}

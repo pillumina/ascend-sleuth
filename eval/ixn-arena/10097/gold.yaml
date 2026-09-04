@@ -1,0 +1,12 @@
+issue: 10097
+repo: vllm-project/vllm-ascend
+held_out: false
+resolution_ref: 'PR #10188（移除 duplicated arg；#9726 引入）'
+resolution_summary: 'Mamba align preprocess_mamba 末两参重复（0.20.2 vllm_version_is 引入回归
+  PR #9726）'
+maintainer_questions: []
+decisive_fields:
+- field: 版本/引入 PR
+  keywords:
+  - 0.20.2
+  - '9726'

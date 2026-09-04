@@ -1,0 +1,14 @@
+issue: 9798
+repo: vllm-project/vllm-ascend
+held_out: true
+resolution_ref: 维护者问 CANN（9.1.0 该算子有坑，POC 9.0.T3 可试）
+resolution_summary: qwen3 235B W8A8 310P moE QuantBatchMatmulV3 ND/NZ（9769 同族）；CANN
+  版本相关
+maintainer_questions:
+- field: CANN 版本
+  keywords:
+  - CANN
+decisive_fields:
+- field: CANN 版本
+  keywords:
+  - CANN
