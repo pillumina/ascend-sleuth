@@ -67,6 +67,7 @@
 | O5 | 容量趋势预测 | 容量表增加近 4 周增速与"预计达 80% 日期"，拆分预告由数据给出而非事后发现 | A2 首次触发前后 | v1.5 |
 | O6 | 诊断报告（trace 派生视图） | diagnose 收尾渲染人读报告：症状→路由→候选→验证→根因→fix 的推理叙事 + 证据回溯（每判断指回 trace step）+ 强度标注（已验证/推测/未知）。trace 为唯一数据源、零数据模型改动；默认本地留档，分享前脱敏；1-2 分钟读完（证据链折叠可展开）。质量基准见历史讨论 | 首次真实诊断后 | v1.5 |
 | O7 | 健康报表（groom R10 标准产出） | groom 产出自包含 HTML 数据报表（离线生成，`health_report.py` 脚本 + 必要时 agent 美化样式，数据不变）：①知识库结构视图（容量/覆盖/缺口，git 数据，本地=中心一致；知识结构图可用 archify）②系统运作视图（命中/误诊/趋势，traces 汇总，头部诚实标注〔中心全量 N sessions〕或〔本地视角 M sessions〕）。**只读聚合数据**（timeline.yaml + _index 头注 + trace_metrics/replay 脚本输出），不读 case 全文（token 预算，呼应 M5）。**职责划分**：本地 groom 也产（个人视角），中心 owner groom 产全量，同一指令、数据范围不同，如实标注。服务"改进知识库/改进系统流程"的决策（原则八决策端） | 任一 live 指标期积累后 | v1.5 |
+| O8 | 交互型 replay 评测（ixn-replay） | 分期披露脚本驱动 diagnose 交互，按"追问召回 + 决定性字段在链 + 过早结论"评分（机制决议 EV-2026-012；设计 docs/evolution-ixn-replay.md；工具 `scripts/ixn_replay.py`）。落地形态分两级：harness v1（prepare/score/aggregate + 样本库筛选制入库）→ 常态化（评分阈值固化、交互面分数进 timeline，须分母标注）。**归因型 replay（PR 引用为 gold）为兄弟维度，蓝图** | harness v1 + ≥3 条真实 staged 运行（含 held-out/self 分流）后校准；常态化的分数进 timeline 前提 = 样本 ≥10 带分母 | v1.5 |
 
 ## 五、流程合理性
 
