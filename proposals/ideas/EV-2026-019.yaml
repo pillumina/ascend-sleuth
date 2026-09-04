@@ -1,0 +1,71 @@
+# ============================================================
+# Idea 卡：E2 消费第 2 轮（补 case 13792/14265）+ timeline 指标行落库
+# 目的：消费 e2-candidates 清单中 resolution 可溯的两条补 case 缺口；
+#       交互面首条指标行（n=10）经人复核落 metrics/timeline（本 PR 即该 append）。
+# ============================================================
+
+id: EV-2026-019
+layer: L1                          # 知识内容补 case + 指标数据
+title: "E2 消费：补 VLLM-ASC-13792（graph capture 107025）/ VLLM-ASC-14265（MegaMoe buffer 精度）→ case 入库；timeline W37 交互面指标行"
+status: validated
+authorization: review               # 新增 case（非高风险字段）+ metrics 数据行（人复核后 append 于本 PR）
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: e2_candidates
+    evidence: "arena/ixn 数据驱动缺口（.s2-replay/arena/e2-candidates.md E2-3/E2-5）：13792（graph capture stream-not-joined，fix PR #13692+hcomm#4878）、14265（接受率劣化=MoE buffer 溢出精度面，fix #14358/#14730）——均 resolution 可溯、KB 无覆盖"
+    trajectory:
+      - ".s2-replay/arena/e2-candidates.md（本地）"
+      - "eval/ixn-arena/{13792,14265}/gold.yaml（held_out → self 翻转）"
+      - "metrics/timeline.yaml（W37 提案）"
+hypothesis: >-
+  补 2 case 后对应现象族在 KB 可达（E2-3/5 缺口闭合）；consumed 样本转 self 回归；
+  timeline W37 行记录交互面首批 n=10
+predicted_effect:
+  metric: E2 候选闭合数（resolution 可溯）
+  from: 0（第 2 轮未消费）
+  to: 2（13792/14265）
+validation:
+  method: metrics_compare
+  baseline: 无 case（E2-3/5 miss）
+  success_criteria: "2 case schema/索引通过；verify_metrics --check（7 期）通过；gold held_out 翻转解析通过；词表 scan 全绿"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户'推进 1,3'（timeline append + E2 消费）"
+risk: low
+principle_refs: [8, 10, 11]
+actual_cost:
+  tokens: 6000
+  source: estimate
+decisions:
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      E2 清单挑 resolution 可溯两条（E2-5 13792 / E2-3 14265）；E2-1（跨类检索）由
+      #116 注释已部分覆盖、完整化留待诊断指引改动；E2-2/4/6/7 resolution 弱或属上游，
+      暂挂。timeline W37 行 = EV-2026-018 提案经人复核后 append（本 PR 即复核载体）。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: action
+    conclusion: >-
+      执行：①VLLM-ASC-13792（interrupt，graph capture 107025，PR #13692）+ 
+      VLLM-ASC-14265（precision，MegaMoe buffer，PR #14358/#14730）落地，索引重建
+      128 条；②eval/ixn-arena/{13792,14265} gold held_out→false（self 标注）；
+      ③timeline append W37 行（verify_metrics 7 期通过）；④本卡留痕。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: eval
+    conclusion: >-
+      2 case schema YAML 解析通过、build_index --check（128）通过；verify_metrics
+      --check（7 期，live 2）通过；gold 翻转解析通过；verify_proposals 18 卡通过；
+      词表 scan 全绿。case 均含真实 fix PR（resolution 可溯）+ quickly_check/diagnosis。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated）：2 case + timeline 行随 PR 送人审（本 PR = 人复核 append 动作）。
+      观察窗：consumed 13792/14265 转 self 回归（ixn held_out 现 6）；检索可达性以
+      后续 replay 复测（E2 通道数据源）。

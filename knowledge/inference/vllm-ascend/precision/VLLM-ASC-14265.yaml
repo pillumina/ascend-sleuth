@@ -1,0 +1,63 @@
+cases:
+- id: VLLM-ASC-14265
+  title: v0.26.0rc GLM-5.2+MTP 投机接受率相对 v0.23 大幅劣化：MegaMoe 对称通信 prefill buffer 按 decode
+    graph 大小分配（enable_prefill_mc2 关闭时）致大 prefill batch 容量溢出产生错误输出
+  category: precision
+  tags:
+  - spec-decode
+  - mtp
+  - glm5
+  - mega-moe
+  - buffer-sizing
+  - acceptance-rate
+  - prefill
+  compat:
+  - framework: vllm-ascend
+    ranges:
+    - '>=0.26.0rc,<0.26.0'
+  investigation_quality: high
+  confidence:
+    hits: 0
+    misdiagnoses: 0
+  symptoms:
+  - v0.26.0rc GLM-5.2 + MTP（deepseek_mtp spec-decode）投机接受率相对 v0.23（50%+）大幅劣化
+  - 大 prefill 场景更明显：MegaMoe 对称通信 buffer 容量不足 → 溢出 → 错误输出 → 接受率下降（精度面而非纯效率）
+  references:
+  - https://github.com/vllm-project/vllm-ascend/issues/14265
+  - https://github.com/vllm-project/vllm-ascend/pull/14358
+  - https://github.com/vllm-project/vllm-ascend/pull/14730
+  verification:
+    source: upstream-fix-merged
+    detail: 'PR #14358（enable_prefill_mc2 关闭时 MegaMoe 对称通信 buffer 按 decode graph 分配致较大
+      prefill batch 容量溢出产生错误输出）+ PR #14730（mega_moe_max_tokens 可配置化分配、超限告警）修复'
+  quickly_check:
+    primary:
+      command_template: grep -aoE 'acceptance_per_pos|acceptance_rate|接受率' {{server_log}}
+      rank_selector: coordinator
+      expected: regex:acceptance
+      note: 接受率指标存在
+    fallback:
+      command_template: grep -aoE -- 'enable_prefill_mc2|mega_moe_max_tokens|num_speculative_tokens'
+        {{launch_log}}
+      rank_selector: coordinator
+      expected: regex:enable_prefill_mc2|mega_moe_max_tokens
+      note: MegaMoe buffer 相关配置
+  diagnosis:
+  - step: 1
+    check: GLM-5.2+MTP 接受率大幅劣化（v0.26.0rc）且疑似伴随错误输出？
+    expected: 是——精度面嫌疑（区别于 14306 纯 SFA 效率面）
+  - step: 2
+    check: 大 prefill + enable_prefill_mc2 关闭？
+    expected: 是——MegaMoe 对称通信 buffer 按 decode graph 分配，溢出产错
+    fix_on_mismatch: '升级含 PR #14358/#14730 版本或设 mega_moe_max_tokens 上限'
+    rollback: 回退版本复现
+  severity: service-affecting
+  fix_side_effects:
+  - requires-restart
+  fix_type: upgrade
+  root_cause: 'v0.26.0rc 在 enable_prefill_mc2 关闭时，MegaMoe 对称通信 buffer 按 decode graph
+    大小而非 max_num_batched_tokens 分配；较大 prefill batch 容量溢出 → 错误输出 → MTP 投机接受率大幅劣化。PR
+    #14358 修复 buffer 分配，#14730 提供 mega_moe_max_tokens 可配置上限与超限告警。'
+  fix: '升级 vllm-ascend 至含 PR #14358/#14730 的版本；或配置 mega_moe_max_tokens 控制 prefill
+    batch 上限。'
+  rollback: 回退版本即复现

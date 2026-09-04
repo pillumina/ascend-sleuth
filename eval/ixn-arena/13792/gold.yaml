@@ -1,11 +1,28 @@
 issue: 13792
 repo: vllm-project/vllm-ascend
-held_out: true
-resolution_ref: "PR #13692 + gitcode.com/cann/hcomm#4878"
-resolution_summary: "torch_npu/torchair 升级（PR 2781 capture stream 管控）后 NPU graph capture 失败：AclmdlRICaptureEnd 107025 'stream was not joined to the original stream'（capture stream 与通信 stream 碰撞）；由 vllm-ascend #13692 + hcomm #4878 修复"
+held_out: false
+resolution_ref: 'PR #13692 + gitcode.com/cann/hcomm#4878'
+resolution_summary: 'torch_npu/torchair 升级（PR 2781 capture stream 管控）后 NPU graph capture
+  失败：AclmdlRICaptureEnd 107025 ''stream was not joined to the original stream''（capture
+  stream 与通信 stream 碰撞）；由 vllm-ascend #13692 + hcomm #4878 修复'
 maintainer_questions:
-  - {field: 版本组合, keywords: ['torch_npu', 'torchair', '版本']}
-  - {field: 图捕获配置, keywords: ['capture', 'PIECEWISE', 'graph']}
+- field: 版本组合
+  keywords:
+  - torch_npu
+  - torchair
+  - 版本
+- field: 图捕获配置
+  keywords:
+  - capture
+  - PIECEWISE
+  - graph
 decisive_fields:
-  - {field: 版本组合, keywords: ['torch_npu', 'torchair']}
-  - {field: 图捕获配置, keywords: ['capture', 'PIECEWISE']}
+- field: 版本组合
+  keywords:
+  - torch_npu
+  - torchair
+- field: 图捕获配置
+  keywords:
+  - capture
+  - PIECEWISE
+_note: E2 消费：已沉淀为 case（VLLM-ASC-13792），转 self/回归

@@ -3,9 +3,9 @@
 # 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-09-04    case 总数：126
+# 生成日期：2026-09-04    case 总数：128
 #   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=82/30, performance=8/30, precision=15/30
+#   容量(inference/vllm-ascend): interrupt=83/30, performance=8/30, precision=16/30
 #   容量(training/mindspeed-llm): interrupt=11/30, precision=3/30
 #   容量(training/verl): interrupt=6/30
 namespaces:
@@ -1269,6 +1269,33 @@ namespaces:
           expected: regex:.*(256.*260|generate_pcp_mtp_input|slot_mapping_draft)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13710.yaml
       hash: 931166fa5549
+    - id: VLLM-ASC-13792
+      title: torch_npu/torchair 升级（PR 2781 capture stream 管控）后 NPU graph capture 失败：AclmdlRICaptureEnd
+        107025 “stream was not joined to the original stream”（capture stream 与通信 stream 碰撞，PIECEWISE 更易触发）
+      category: interrupt
+      tags:
+      - graph-capture
+      - torchair
+      - torch-npu
+      - stream
+      - '107025'
+      - tp
+      platforms: []
+      compat: vllm-ascend <0.26.0
+      confidence:
+        score: null
+      symptoms:
+      - TP 推理图捕获失败：AclmdlRICaptureEnd 报 107025 / “capture model contains a stream that was not joined
+        to the original stream”
+      - torch_npu/torchair 引入 capture stream 管控（PR 2781）后出现；PIECEWISE 模式更易触发
+      - 原 mitigation（PIECEWISE 关 npugraph_ex）因 NPUPlatform.check_and_update_config 只改进程内 AscendConfig、spawn
+        的 EngineCore/worker 从陈旧 additional_config 重建而失效
+      quickly_check:
+        primary:
+          command: grep -aoE 'AclmdlRICaptureEnd|107025|stream was not joined' {{server_log}}
+          expected: regex:107025|stream was not joined
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13792.yaml
+      hash: c3d343d720ab
     - id: VLLM-ASC-13934
       title: v0.26 新增 AscendSFAIndexerCacheSpec 使 1 个 KV cache group 拆成 2 个 Mooncake transfer group，而
         vllm 侧 remote_block_ids 仍按 1 组索引，D 侧 _get_kv_split_metadata 访问 remote_block_ids[1] 越界崩溃
@@ -3311,6 +3338,34 @@ namespaces:
           expected: regex:.*(garbled|rdma|adxl)
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12957.yaml
       hash: 9f1ec0ef14f7
+    - id: VLLM-ASC-14265
+      title: v0.26.0rc GLM-5.2+MTP 投机接受率相对 v0.23 大幅劣化：MegaMoe 对称通信 prefill buffer 按 decode graph 大小分配（enable_prefill_mc2
+        关闭时）致大 prefill batch 容量溢出产生错误输出
+      category: precision
+      tags:
+      - spec-decode
+      - mtp
+      - glm5
+      - mega-moe
+      - buffer-sizing
+      - acceptance-rate
+      - prefill
+      platforms: []
+      compat: vllm-ascend >=0.26.0rc,<0.26.0
+      confidence:
+        score: null
+      symptoms:
+      - v0.26.0rc GLM-5.2 + MTP（deepseek_mtp spec-decode）投机接受率相对 v0.23（50%+）大幅劣化
+      - 大 prefill 场景更明显：MegaMoe 对称通信 buffer 容量不足 → 溢出 → 错误输出 → 接受率下降（精度面而非纯效率）
+      quickly_check:
+        primary:
+          command: grep -aoE 'acceptance_per_pos|acceptance_rate|接受率' {{server_log}}
+          expected: regex:acceptance
+        fallback:
+          command: grep -aoE -- 'enable_prefill_mc2|mega_moe_max_tokens|num_speculative_tokens' {{launch_log}}
+          expected: regex:enable_prefill_mc2|mega_moe_max_tokens
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-14265.yaml
+      hash: e01ccf6f85e6
     - id: VLLM-ASC-14363
       title: DeepSeek V4 adapter 构造 routed FusedMoE 时漏传 swiglu_limit（config=10.0）→ routed expert 以默认 None
         运行、无 SwiGLU clamp → 敏感前缀处 next-token logit/ranking 漂移 → 异常中文/特殊 token（BF16 与量化均受影响，main 与 v0.25.1rc
