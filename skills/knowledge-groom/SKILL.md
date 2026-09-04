@@ -30,11 +30,33 @@ disable-model-invocation: true
   自动化源（issue-ingest 链路本身即 owner 配置的持续管道，其产出视为预授权）。草稿头
   注释带完整 pre-triage/verification 证据 → 复核确认而非重判。
 
+## groom 成本预算与脚本先行（M5，2026-09；决议 EV-2026-028）
+
+目标：单次 groom（含 inbox 段与 references 维护段）token 降至可读摘要量级（<30K），
+功能不缺失。纪律：
+
+1. **确定性环节一律跑脚本、只读输出摘要，不读全量原文**：
+   - 引用完整性/悬挂/role：`scripts/verify_references.py --check`（输出进摘要）；
+   - 索引/容量：`scripts/build_index.py`（头注容量）+ `scripts/capacity_health.py`（溢出/健康）输出进摘要；
+   - 引用可观测性：`scripts/trace_metrics.py`（R6）；tag 聚类：读 `_index` tags 聚合（R8，零 token 机械）；
+   - reference 规模/退化（R7）：按文件数/metrics 判断，不逐文件读。
+2. **全量重扫默认关闭，改信号触发**：
+   - R3（引用发现，需扫 case 正文）：**默认不跑**——仅当本轮 新升格 case ≥5 且 owner 要求时执行
+     （R3 本就是可选项；防"每周全量扫 128 case 正文"常设成本）；
+   - confidence 重算（步骤 4）：只对"结算/升格有变化的 case"重算（3.5/3.5b 输出 diff 涉及 + 新升格）；
+     无变化跳过并说明；
+   - references 维护段（R1/R5/R5.5/R6）：仅当 references/ 本轮有变更（新词条/修订/失效信号）才跑；
+     无变更 → 摘要一句"references 无变更，跳过维护段"。
+3. **预分诊比对不全文重读**：draft 与现有 case 比对用 `_index` 行（title/symptoms 摘要/score）定位
+   候选 → 只读 1-2 个最高分候选全文核对；draft 头注释已有产出时分诊建议 → 复核证据成立即可，不重判。
+4. 变更摘要 = 各脚本输出摘要 + agent 判断行；审计链在 EV 卡/PR，不靠每次重读全库。
+
 ## 流程（一次 groom 产出一个变更摘要）
 
 1. **intake 队列处理（升格的前置）**：处理 `postmortems/inbox/`（`/skill:to-postmortem` / `/skill:issue-ingest` 的产出都落这里）：
    - **节律**：单仓集中可周批；**分布式（成员本地 inbox，远程仓不存）在提交主仓时处理**——产出时已做 pre-triage（见下），groom 复核确认而非重判；
-   - 逐条**预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象：命中 namespace + `common/` 的现有 case——用 `knowledge/_index.yaml` 按 symptoms/tags 定位候选，全量读比对 root_cause 与 fix。**draft 头注释已带 to-postmortem/issue-ingest 产出的分诊建议 → 复核证据是否成立，不重判**（建议与决定分离：判断在产出时做，groom 是审核者）；
+   - 逐条**预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象：命中 namespace + `common/` 的现有 case——用 `knowledge/_index.yaml` 行（title/symptoms 摘要/score）按 symptoms/tags 定位候选，
+   只读 1-2 个最高分候选全文核对 root_cause/fix（M5 成本预算 #3，不全文重读全库）。**draft 头注释已带 to-postmortem/issue-ingest 产出的分诊建议 → 复核证据是否成立，不重判**（建议与决定分离：判断在产出时做，groom 是审核者）；
    - 产出**批审清单**交 owner 处理（像清 PR inbox，~30 秒/条）：
      - `covered_by` → 建议关闭升格；postmortem 转正 `postmortems/YYYY-QN/`（Tier 3 语料，**不是丢弃**）
      - `variant_of` → 建议并入已有 case（扩 compat 区间、补 symptoms）；若要动 `expected`/`fix_on_mismatch` 按高风险变更走双签
@@ -48,7 +70,7 @@ disable-model-invocation: true
 3.5. **反馈结算（confidence 输入，先于重算）**：跑 `python3 scripts/settle_trace_feedback.py --state ingest-state.json` 把 traces/ 里的 `feedback` 事件确定性结算进 case 的 `confidence.hits`/`misdiagnoses`/`last_hit`（幂等——按 session+事件序列 hash 记录在 ingest-state.json，重复跑不重复累积；脚本默认 dry-run，确认 diff 后 `--apply`）。**结算规则（2026-08-31 用户/owner 设计决策）**：只有 `feedback.resolved` 才 `hits += 1`——命中（hit 事件）是系统检索行为，不代表 case 有效；可信反馈（用户确认"诊断解决了问题"）才是置信度信号。`not_resolved`/`partial` → `misdiagnoses += 1`。结算产出的 confidence 变更走 knowledge_modification PR（脚本本身不改 git）。**无 feedback 事件时如实跳过**（反馈闭环未发生=现状，不编造）。
 
 3.5b. **S2 验证结算（validation_record 输入，与 3.5 并行）**：跑 `python3 scripts/settle_s2_feedback.py --state ingest-state.json` 把 `.s2-replay/*.result.yaml` 的 S2 replay 结果确定性结算进 case 的 `validation_record`（幂等同 3.5；默认 dry-run，确认 diff 后 `--apply`）。**语义（selfevolve-loop 重构）**：S2 对照的是外部 ground truth（issue resolution / 维护者 fix PR / committer 确认），结果即 feedback——只是反馈对象是"内容被外部验证"（`consistent`/`self_consistent`），与 confidence 的 S1 现场 resolve 口径**分开、不混算**（resolve 仍只认 S1；S2 另立验证记录，不再被降格为无落点的旁证）。`inconsistent`（命中 case 但结论与 resolution 不符）是**复审信号**——按脚本输出候选清单走 case 复审（内容错/过时/判别力不足 → 改 case 或 rejected，走 knowledge_modification PR）。排序提示：`validation_record.consistent > 0` 的 case 在同等 score 下优先（内容被外部验证）。**无 result 文件时如实跳过**。
-4. **置信度重算**：从 `hits`/`misdiagnoses`/`last_hit` 重算每条 case 的 `confidence.score`（按时间衰减）。**新升格的 case 初始 score 不设 0**——由 `verification`（来源验证强度）与 `confidence`（调查质量）联合决定（Beta 先验超参 $(\alpha,\beta)$ 的实例化；参数治理见 roadmap 待定池，理论推导见 docs/design-theory.md §4.1——该文档为可选论证层，本参数为执行值）：
+4. **置信度重算（M5：只对有变化的 case）**：从 `hits`/`misdiagnoses`/`last_hit` 重算 `confidence.score`（按时间衰减）——范围 = 3.5/3.5b 结算 diff 涉及的 case + 本轮新升格 case；无变化不重算（不每周全量扫 128 case 的 hits/mis 字段）。**新升格的 case 初始 score 不设 0**——由 `verification`（来源验证强度）与 `confidence`（调查质量）联合决定（Beta 先验超参 $(\alpha,\beta)$ 的实例化；参数治理见 roadmap 待定池，理论推导见 docs/design-theory.md §4.1——该文档为可选论证层，本参数为执行值）：
 
    | verification \ confidence | high | medium | low |
    |---|---|---|---|
@@ -67,7 +89,7 @@ disable-model-invocation: true
 7. **同 namespace 合并建议**：相似 case 对自动提示。
 8. **索引维护（收尾必做）**：所有 KB 变更（升格/合并/退休/改 confidence）完成后，运行 `python3 scripts/build_index.py` 重新生成 `knowledge/_index.yaml` 并随变更摘要一起提交。`--check` 报过期 = 变更不完整（忘了重建索引）。软退休的 case 移 `_archive/` 后自动从活跃索引消失。
 
-## reference 维护（先验知识层——与 case 流程并行）
+## reference 维护（先验知识层——与 case 流程并行；M5：本轮 references 无变更则整段跳过并在摘要说明）
 
 先验知识层（`references/`）是独立资产，维护动作与 case 平行：
 
@@ -78,7 +100,7 @@ disable-model-invocation: true
 
 **R2. 引用完整性校验**：case 的 `ref_knowledge.ref` 必须真实存在于 `references/`（`verify_references.py` 已强校验悬挂引用与非法 role——groom 把结果带进变更摘要，不重复计算）。
 
-**R3. 引用发现（可选建议，不强制——case 不"应该"连 reference）**：扫描 case 的 `diagnosis`/`fix` 内容，发现**隐式依赖**某 active reference（如 fix 提到"HCCL_BUFFSIZE 需重启生效"而该事实是独立词条）但未填 `ref_knowledge` → 变更摘要建议"该 case 可补 ref_knowledge"，由 owner 决定。**大多数 case 是自包含闭环（quickly_check/diagnosis/fix 都在体内），不需要连**——只有依赖命令副作用 / 平台硬事实 / 错误码含义等独立先验事实的少数 case 值得连；强制连接只会增加维护负担和脆弱引用。
+**R3. 引用发现（可选建议，不强制；M5 默认不跑，仅新升格 ≥5 且 owner 要求时）**：扫描 case 的 `diagnosis`/`fix` 内容，发现**隐式依赖**某 active reference（如 fix 提到"HCCL_BUFFSIZE 需重启生效"而该事实是独立词条）但未填 `ref_knowledge` → 变更摘要建议"该 case 可补 ref_knowledge"，由 owner 决定。**大多数 case 是自包含闭环（quickly_check/diagnosis/fix 都在体内），不需要连**——只有依赖命令副作用 / 平台硬事实 / 错误码含义等独立先验事实的少数 case 值得连；强制连接只会增加维护负担和脆弱引用。
 
 **R4. 失效与降级信号**：见下方信号表新增行。
 

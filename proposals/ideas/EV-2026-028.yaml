@@ -1,0 +1,70 @@
+# ============================================================
+# Idea 卡：M5 groom token 治理（成本预算与脚本先行 + 信号触发）
+# 目的：groom 每周全量扫 knowledge(~47K)+references(~82K)≈129K token——最大剩余
+#       显性成本点（roadmap v1.5 已登记，闸门=实测 >150K 或库≥60 case 均已达）。
+# ============================================================
+
+id: EV-2026-028
+layer: L3                          # 流程（groom SKILL 执行协议）+ roadmap 状态
+title: "M5 groom token 治理：确定性环节脚本先行（agent 只读摘要）+ R3/置信度重算/references 维护信号触发"
+status: validated
+authorization: dual                # groom 执行协议（L2/L3）+ roadmap
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: token_audit
+    evidence: "审计：groom 全量扫 knowledge(128 case ~47K)+references(106 词条 ~82K)≈129K token/次——最大剩余显性成本；roadmap M5 已登记（闸门 >150K 或库≥60 case：128 case 已达）"
+    trajectory:
+      - "docs/roadmap.md M5（roadmap 行）"
+      - "skills/knowledge-groom/SKILL.md（步骤 1 预分诊/R3/R4/R8/references 维护段）"
+hypothesis: >-
+  确定性环节（引用校验/容量/可观测性/tag 聚类）脚本先行、agent 只读输出摘要；全量
+  重扫类动作（R3 正文扫描/置信度全量重算/references 维护段）改信号触发——单次 groom
+  token 从 ~129K 降至 <30K 摘要级且功能不缺失
+predicted_effect:
+  metric: 单次 groom token
+  from: ~129K（全量扫两库）
+  to: <30K（脚本摘要 + 信号触发）
+validation:
+  method: metrics_compare
+  baseline: roadmap M5 实测口径（>150K 全量或 ~129K 估算）
+  success_criteria: "groom SKILL 成本预算节 + 触发默认值落地；roadmap M5 标记落地；词表 scan/verify 通过"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户'可以'（M5 立项，库 128 case 已达 roadmap 闸门）"
+risk: low                            # 流程协议（不改脚本语义；确定性环节复用现有脚本）
+principle_refs: [9, 11]
+actual_cost:
+  tokens: 3000
+  source: estimate
+decisions:
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      M5 落地为 groom 执行协议改造而非新基建：①确定性环节全部指向现有脚本
+      （verify_references/build_index/capacity_health/trace_metrics/_index tags），agent
+      只读输出摘要；②R3（扫 case 正文的引用发现）默认关、按'新升格 ≥5 + owner 要求'
+      触发；③置信度重算只对有变化的 case（3.5/3.5b diff + 新升格）；④references 维护段
+      本轮无变更则跳过；⑤预分诊比对只读 1-2 高分候选全文。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: action
+    conclusion: 执行：groom SKILL 插入「成本预算与脚本先行」节 + 步骤 1/R3/步骤 4/
+      references 维护段措辞按触发；roadmap M5 标记落地；EV-2026-028 留痕。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: eval
+    conclusion: >-
+      groom SKILL 编辑解析正常、词表 scan 全绿；未改任何脚本语义（复用现有确定性脚本）；
+      roadmap M5 行更新。成本实测（单次真实 groom token 前后）留观察窗，待下次真实
+      groom 记录。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated，dual）：groom 协议改造随 methodology PR 送人审。观察窗：下次真实
+      groom 按新协议执行并记录 token（对照 roadmap 基线）；若仍超 <30K，继续砍（如
+      inbox 分页/候选项摘要化）。
