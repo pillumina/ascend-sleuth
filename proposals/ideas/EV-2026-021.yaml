@@ -1,0 +1,71 @@
+# ============================================================
+# Idea 卡：skill 改动门禁分级（成本治理——改哪里测哪里，不机械全量）
+# 目的：修"每次改 skill 都全量跑 fixture/ixn"的成本失控。按影响面分级：
+#       检索/路由面 → golden 子集 + 基线缓存；交互/指引面 → ixn 对口；文档 → 免跑。
+# ============================================================
+
+id: EV-2026-021
+layer: L3                          # 评估机制分级（docs/eval.md + skills 门禁措辞）
+title: "skill 改动门禁分级：影响面×门禁矩阵 + 基线缓存（golden 子集 / ixn 对口 / 文档免跑）"
+status: validated
+authorization: dual                # eval.md + 两个 skill 的门禁措辞（L2/L3 交叉）
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: human_review_feedback
+    evidence: "审核顾虑：'改 skill 都跑 fixture/ixn？刚才 fixture 跑很久、token 很大'——EV-2026-016/020 属交互/指引面改动却机械跑了检索 golden（3 fixture ×2 侧，重上下文回合；cross_category_used 0/3 证低信号）"
+    trajectory:
+      - "docs/eval.md（原：改 skill 跑全量 golden，无分级）"
+      - "skills/evolve-check/SKILL.md / self-evolve/SKILL.md（门禁措辞）"
+      - "EV-2026-016/020（交互/指引面改动实例）"
+hypothesis: >-
+  按影响面分级门禁（检索/路由面→golden 子集+基线缓存；交互/指引面→ixn 对口；
+  文档→免跑），同等验证质量下成本降 ~70%（去全量、去 ×2 基线重跑、去低信号面）
+predicted_effect:
+  metric: 单次 skill 改动验证成本（agent 回合/token）
+  from: 全量 golden ×2 侧（6+ 重回合）
+  to: 子集/对口样本 ×1 侧（2-4 轻回合；交互面走 ixn 2-3 条）
+validation:
+  method: metrics_compare
+  baseline: EV-2026-016/020 实际开销（全量子集 ×2 侧）
+  success_criteria: "分级矩阵入 eval.md；evolve-check/self-evolve 措辞指向分级（执行值内联）；词表 scan/verify 通过"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户提出成本顾虑（2026-09-04）"
+risk: low
+principle_refs: [6, 9, 11]
+actual_cost:
+  tokens: 4000
+  source: estimate
+decisions:
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      成本失控根因：eval.md 原措辞"改 skill 跑全量 golden"无分级；EV-2026-016/020 是
+      交互/指引面改动（不改候选选择），却跑了检索 golden ×2 侧——低信号高成本
+      （cross_category_used 0/3 即证）。修正 = 影响面×门禁矩阵 + 基线缓存 + 子集选择。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: action
+    conclusion: >-
+      执行：①docs/eval.md 增「门禁分级」节（三行矩阵 + 配套纪律：基线缓存/子集选择/
+      EV 卡记录所属面）；②evolve-check/self-evolve 第 3 步措辞按分级改写（执行值内联，
+      docs 为可选论证层）；③决策链留痕。注：首版误编辑在主检出已回滚，按 worktree 纪律
+      重做。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: eval
+    conclusion: >-
+      eval.md 分级矩阵 + 两 skill 措辞更新，YAML/markdown 解析正常；词表 scan 全绿；
+      verify_proposals 通过；分类判断进 EV 卡的要求已写入（每张改 skill 卡声明所属面
+      与门禁）。实际成本下降待下张改 skill 卡实测（观察窗）。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated，dual）：分级门禁随 methodology PR 送人审。观察窗：下张
+      交互面 skill 改动按新门禁走 ixn（不再跑检索 golden），记录 token 前后对比；
+      基线缓存落 .s2-replay/gates/（本地），跨改动复用。
