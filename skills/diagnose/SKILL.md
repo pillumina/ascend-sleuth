@@ -47,7 +47,7 @@ description: >
    - **triage 未命中（无分支匹配）→ agent 语义路由兜底，不直接 Tier 3**：报错/症状里没有 triage 正则能识别的信号时，agent 用自己的语义理解判断 namespace 与 category（如"训练卡住"→ `training/<framework>/` interrupt、"投机接受率下降"→ `inference/<framework>/` performance），记进 trace `{action: triage_semantic, namespace, category, rationale}`——语义路由结果可审计、可成为 groom 学习路由错例的数据源；语义也分不出 → 才 Tier 3
 
 3. **两阶段加载 Tier 2**
-   - **阶段一**：读 `knowledge/_index.yaml`（`scripts/build_index.py` 生成的一次性索引，含 `id/title/symptoms/quickly_check/category/confidence.score` + `file` 定位——hits/misdiagnoses 不在索引里，它们是学习环动态字段留在 case 本体），取命中 namespace 的条目，用 `quickly_check`（primary→fallback）**对照已提供的信息**过滤候选 ≤5；检查项缺信息时，记下要向客户补要什么。索引缺失或 `--check` 报过期 → 兜底：逐文件只读上述索引字段，并提醒跑 `scripts/build_index.py` 重建
+   - **阶段一**：读**命中 namespace 的索引分片** `knowledge/_index/<namespace>.yaml`（`scripts/build_index.py` 生成；文件名 `/`→`__`，如 `inference__vllm-ascend.yaml`；分片缺失时回退总表 `knowledge/_index.yaml`）——**只读命中分片、不读整库总表**（整库 128 case 曾 ~200KB 全量进上下文，EV-2026-022）。分片含 `id/title/symptoms/quickly_check/category/confidence.score` + `file` 定位（hits/misdiagnoses 不在索引里，是学习环动态字段留 case 本体），取该 namespace 条目，用 `quickly_check`（primary→fallback）**对照已提供的信息**过滤候选 ≤5；检查项缺信息时，记下要向客户补要什么。索引缺失或 `--check` 报过期 → 兜底：逐文件只读上述索引字段，并提醒跑 `scripts/build_index.py` 重建
    - **空库提示（冷启动）**：若命中 namespace 为空（还没 case），**不要静默退化**——告诉用户“当前 `knowledge/<ns>/` 还没有验证过的 case，你可以：①继续深度排查（步骤 5）②诊断完跑 `/skill:to-postmortem` 沉淀成第一条 case ③转人工”。别让空库的体感是“这玩意啥也不会”。
    - primary 不匹配但 fallback 匹配 → 仍进验证，标记 `low_confidence`
    - **category 决定 quickly_check 形态**：interrupt 用 grep 错误签名、precision 用数值阈值（`loss>1e3`、`has_nan`）、performance 用 profiler 指标（`comm_ratio>0.4`）——别混用

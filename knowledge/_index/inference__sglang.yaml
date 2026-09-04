@@ -1,0 +1,37 @@
+# GENERATED FILE —— 分片（knowledge/_index.yaml 的 inference/sglang 子集），不要手改。
+# 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。
+# 阶段一加载协议（EV-2026-022）：diagnose 只读**命中 namespace 的分片**，不读整库总表。
+# 本分片：inference/sglang（1 条 case）
+namespaces:
+  inference/sglang:
+    interrupt:
+    - id: SGL-PD-HEAP-001
+      title: PD 分离偶发失败：CombineMemories 合并 K+V 超过 heap_size 致 halShmemCreateHandle 拒绝
+      category: interrupt
+      tags:
+      - pd-separation
+      - kv-cache-transfer
+      - sdma
+      - combinememories
+      - heap-overflow
+      - non-deterministic
+      platforms:
+      - A3-910C
+      compat: sglang <=0.5.10; memfabric_hybrid <=1.0.5
+      confidence:
+        score: 0.6
+      symptoms:
+      - PD 分离 --disaggregation-transfer-backend ascend，KV cache 跨 NPU 传输偶发失败
+      - decode 侧日志：halShmemCreateHandle → 'Size is bad' → size > heap_size → Create_para_check fail
+      - 大模型(GLM W8A8 ~17GB KV)偶发失败、小模型(Qwen3-4B)成功
+      - 非必现：page_num ±1（torch.npu.mem_get_info 整数除法精度）决定 K end 是否等于 V base
+      quickly_check:
+        primary:
+          command: grep 'Size is bad.*heap_size' {{log_path}}
+          expected: regex:.*Size is bad.*heap_size
+        fallback:
+          command: grep -E 'halShmemCreateHandle.*Create_para_check fail|rtIpcOpenMemory.*ErrCode=507899'
+            {{log_path}}
+          expected: regex:.*(Create_para_check|ErrCode=507899)
+      file: knowledge/inference/sglang/SGL-PD-HEAP-001.yaml
+      hash: 3576617fec9c

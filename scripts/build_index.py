@@ -76,7 +76,7 @@ def collect(root: Path):
     kdir = root / "knowledge"
     for path in sorted(kdir.rglob("*.yaml")):
         rel = path.relative_to(kdir)
-        if rel.parts[0] == "_archive" or path.name == "_index.yaml":
+        if rel.parts[0] in ("_archive", "_index") or path.name == "_index.yaml":
             continue
         ns = str(Path(*rel.parts[:-1]))
         # ADR-0004：目录按 (framework × category) 分层，但 ns 停在工作负载层
@@ -115,6 +115,42 @@ def collect(root: Path):
                 "hash": case_hash(path),
             })
     return namespaces
+
+
+def shard_slug(ns: str) -> str:
+    """namespace → 分片文件名（/ → __，避免目录层级）。"""
+    return ns.replace("/", "__") + ".yaml"
+
+
+def shard_path(root: Path, ns: str) -> Path:
+    return root / "knowledge" / "_index" / shard_slug(ns)
+
+
+def render_shard(ns, cells) -> str:
+    n = sum(len(c) for c in cells.values())
+    header = "\n".join([
+        "# GENERATED FILE —— 分片（knowledge/_index.yaml 的 " + ns + " 子集），不要手改。",
+        "# 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。",
+        "# 阶段一加载协议（EV-2026-022）：diagnose 只读**命中 namespace 的分片**，不读整库总表。",
+        f"# 本分片：{ns}（{n} 条 case）",
+        "",
+    ])
+    body = yaml.safe_dump(
+        {"namespaces": {ns: cells}},
+        allow_unicode=True, sort_keys=False, default_flow_style=False, width=100,
+    )
+    return header + body
+
+
+def shard_dirty(root: Path, ns, cells) -> list:
+    """返回过期/缺失分片（[] = 新鲜）。"""
+    p = shard_path(root, ns)
+    if not p.exists():
+        return [(ns, "(分片缺失)")]
+    if p.read_text(encoding="utf-8") != render_shard(ns, cells):
+        return [(ns, "(分片过期)")]
+    return []
+
 
 
 def render(namespaces) -> str:
@@ -197,13 +233,31 @@ def main():
             print(f"\n{len(stale)} 条过期。运行 `python3 scripts/build_index.py` 重新生成后提交。")
             sys.exit(1)
         n_cases = sum(len(cases) for cells in ns.values() for cases in cells.values())
-        print(f"索引新鲜，与 knowledge/ 一致（{n_cases} 条 case）。")
+        dirty = []
+        for nsk, cells in ns.items():
+            dirty += shard_dirty(root, nsk, cells)
+        if dirty:
+            for s in dirty:
+                print(f"SHARD STALE: {s[0]} {s[1]}")
+            print("运行 `python3 scripts/build_index.py` 重新生成后提交。")
+            sys.exit(1)
+        print(f"索引新鲜，与 knowledge/ 一致（{n_cases} 条 case；分片 {len(ns)} 个）。")
         return
 
     out = root / "knowledge" / "_index.yaml"
     out.write_text(render(ns), encoding="utf-8")
+    shard_dir = root / "knowledge" / "_index"
+    shard_dir.mkdir(exist_ok=True)
+    expected = set()
+    for nsk, cells in ns.items():
+        p = shard_path(root, nsk)
+        p.write_text(render_shard(nsk, cells), encoding="utf-8")
+        expected.add(p.name)
+    for old in shard_dir.glob("*.yaml"):
+        if old.name not in expected:
+            old.unlink()
     n_cases = sum(len(cases) for cells in ns.values() for cases in cells.values())
-    print(f"已生成 {out}（{len(ns)} 个 namespace / {n_cases} 条 case）")
+    print(f"已生成 {out} + {len(ns)} 个分片（{n_cases} 条 case）")
 
 
 if __name__ == "__main__":
