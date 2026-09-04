@@ -365,6 +365,8 @@ validated 与观察窗：agent 判 validated 基于**合入前可得的验证**�
 | **蓝图** | reviews/experiments 独立目录 | 有真实归档需求后（此前并入 session state，运行时载体） |
 | **蓝图** | 稳态降频（steady）、候选积压治理水位 | scope 真实收敛或积压出现后 |
 | **蓝图** | 运行模式细化（任务级攒批跨轮） | 用户真实要求"跨多轮攒批"后（默认批边界 = 一轮已够） |
+| **蓝图** | proposal 影响视图（同组件先例咨询的聚合形态：`ev_proposal.py --impact` 按 target_component 聚合尝试×diff×eval×decision，skill-impact 语义，见 §12a） | 首个 L2 rejected/回滚簇出现后（roadmap E6；此前"查同组件先例"为 evolve-check/self-evolve 产卡步骤，手工执行） |
+| **蓝图** | 成功模式提取信号（evolve-check T8，见 §12a） | 常态运行中首次出现可复述成功模式（roadmap E7；无信号即止，不预设轮次） |
 
 分级原则：机制分为"解决已发生问题的第一批落地件"与"解决预测问题的蓝图件"。蓝图件**保留设计但不实现**，触发条件（数据/用户诉求）出现才激活，这正是仓库原则十一（数据触发演进）与 roadmap「明确不做（触发条件到再评估）」的形态。全套文档是蓝图库，不是全部待办清单：第一批落地只需上表"第一批落地"列的组件，跑通后再按数据触发逐步激活蓝图。
 
@@ -399,3 +401,47 @@ validated 与观察窗：agent 判 validated 基于**合入前可得的验证**�
 | 全自动接受（无抽审形态） | 违反原则五 | **不取**（我们保留 auto+抽审+可撤销） |
 
 一句话结论：SkillOpt 的**验证门语义与自动评分集思路**与本设计一致并互相印证；它的**执行形态**（自由编辑单文档、transcript 外送、无抽审）与本仓库规范冲突，不引入。若未来要跑类 SkillOpt 实验，其作用域仅限于 L2 的某个可自动评分的子组件（如 triage 分支文本），且必须先有 S2 校准集与 golden 验证门。
+
+## 12a. 外部参考：与 WikiSkill（arXiv 2608.27454）的关系（借鉴什么、不取什么）
+
+> [WikiSkill: Compiling Agent Experience into Persistent Knowledge for Skill Evolution](https://arxiv.org/abs/2608.27454)（Google Research，2026-08）。本节与 §12 并列：SkillOpt 是"文本空间优化器"对照，WikiSkill 是"知识/skill 分层 + 蒸馏角色"对照。逐条吸收语义，不引入其代码或运行时。决议载体：EV-2026-009。
+
+### 12a.1 机制对照（WikiSkill 三层架构 vs 本流水线）
+
+| WikiSkill 机制 | 本设计对应 | 关系 |
+|---|---|---|
+| Raw 层（不可变执行轨迹） | `traces/` + `metrics/skill-exec-log.yaml`（gitignore 运行时件） | 同构 |
+| Wiki 层（pattern 页 + index/log/skill-impact，**永不复滚**） | 领域知识 = case/references（L1，持久）；自观测决策留痕 = EV 卡（proposals/ideas，git 持久）+ 深度轮报告（proposals/reviews，gitignore） | 部分同构：决策留痕有，"蒸馏成教训 → 供后续轮次读取"缺结构载体（见 §12a.2 采纳决议） |
+| skill-impact.md（提案 diff+验证分+结局程序化留痕，proposer 第 2 步强制先读，防重提被拒方案） | EV 卡 decisions 只追加 + execution §7「历史先例」供给清单；查重仅同 trajectory/target | 采纳：同组件先例咨询（§12a.2） |
+| Maintainer 成败对照（成功与失败轨迹都深析，提取成功策略） | evolve-check T1–T7 几乎全失败/摩擦向；E5（trace 结构挖掘，v2）偏失败噪音侧 | 采纳：成功模式提取（§12a.2） |
+| Gate：`R_val > R_best` 严格提升 + 回滚 skills（wiki 保留） | golden/S2 无回归 + 观察窗回滚 + 批 PR 人审（§6.3） | 更严（有意，见 12a.3） |
+| no_action / `R_best=1.0` 提前终止 | 无信号即止 / 稳态降频（orchestration §2.3） | 同构 |
+| 单提案原子编辑 + bounded | 每卡独立 commit、变更集原子（orchestration §5.2） | 同构 |
+| 知识不进 Inference 执行上下文（消融 −2.8%） | references（领域先验）与自观测教训分层，教训从不注入 diagnose | 边界已成立，外部证据背书 |
+| 跨模型/workspace skill 转移（标准 SKILL.md） | 多 backend（Claude Code / Codex / pi）共用 SKILL.md | 同构（N/A） |
+
+### 12a.2 采纳决议（2026-09，EV-2026-009；各带数据闸门，不预建。三处增量用描述名，不新增字母代号——初稿 G1/G2/G3 与既有 G1–G8 治理缺口编号冲突）
+
+| 采纳项 | 机制（一句话） | 本 PR 落地 | 入口闸门（实现） |
+|---|---|---|---|
+| **同组件先例咨询**（skill-impact 语义） | "别重复被拒方案"从纪律变结构：产卡前必查同 target_component 历史结局 | "查同组件先例"已内联进 evolve-check / self-evolve 产卡步骤（手工执行）；`ev_proposal.py --impact` 聚合视图登记 roadmap E6 | 首个真实 L2 rejected/回滚簇出现 |
+| **成功模式提取**（T8 信号） | 成败对照视角：同一流程/组件多次成功且成功路径可复述（≥N 次）→ L2 卡固化，补 T 表全失败向之缺 | evolve-check T 表补 T8 成功信号，登记 roadmap E7 | 常态运行中首次出现可复述成功模式（无信号即止） |
+| **实验参考备忘** | 类 SkillOpt 实验的实现参考 | wikiskill 开源 gate harness（隔离 profile + git reset 回滚 + skill-impact 程序化 + `compare` 成对统计）作为 §12 末句所预留实验的参考实现备忘 | 可自动评分的 L2 子组件实验立项时 |
+
+### 12a.3 不取（与 §12 同理由，防回归）
+
+- **全自动 accept/reject 作最终决定**：WikiSkill gate 只对 autogradable bench 成立；诊断现场有效性（S1）不可自动评分，auto+抽审 + 批 PR 人审 + 观察窗回滚是刻意更严（原则五/六）；
+- **独立 Maintainer/Proposer 角色常驻**：单 agent 现实（§6.7 角色压缩），观测/起草/实验由同一 agent 依协议完成；角色展开属蓝图，真实多 agent 并行出现才启用；
+- **新建"自观测 wiki"层**：与 2026-09 否决的"常驻组件失败台账"同构（0 数据建层即空转，原则十一）；蒸馏教训的正确容器是既有面（EV 卡 + skill-exec-log + 深度轮报告），缺的只是先例咨询的聚合视图（E6），不是新层。
+
+### 12a.4 验证性收获（外部证据背书，不新增机制）
+
+WikiSkill 消融（§5.1）独立印证本设计的几项原则驱动选择：持久知识累积是技能演化关键（→ EV 卡留痕 / rejected 留结论 / decisions 只追加 方向正确）；index 一行摘要（problem+RCA+fix）供相关性判断（→ 两阶段供给 + quickly_check 摘要，原则九）；pattern 页 10–30 行、update 不 create（→ case 判重 / groom 语义）；**知识不进执行上下文**（→ references 与自观测教训分层边界应保持）。
+
+### 12a.5 原则追溯
+
+| 设计元素 | 服务的原则 | 说明 |
+|---|---|---|
+| 同组件先例咨询结构化（防重提被拒方案） | 八、九、十一 | 历史先例防重复失败提案（八）；咨询读卡不重扫全库（九）；`--impact` 与 T8 均挂数据闸门（十一） |
+| 成功模式提取信号（无信号即止） | 八、十一 | 成功侧可观测（八）；不为预测问题预设轮次（十一） |
+| 不取全自动终审 / 独立角色 / 新 wiki 层 | 五、六、十一 | 决定权在人（五）；闸门硬度与错误代价匹配（六）；防台账反模式复燃（十一） |

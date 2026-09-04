@@ -77,6 +77,18 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 
 **模板选择与结构约束**：agent 提交 PR 时模板选择由产出流程决定（to-postmortem/groom/to-reference 产出物自带对应模板类型），不靠提交时自觉选。`pr-template` CI（每次 PR 都跑）校验"用了正确模板 + 关键结构区块在"，缺失即红（如 knowledge 类缺脱敏自查、高风险类缺双签）。**Agent 预核意见区块是可选增值，CI 不校验是否填写**，agent 提交链路未打通的内网/手动提交者可留空，不被硬卡；有则给 reviewer 提供基于事实的独立意见供对齐判断（不替代人审）。模板里的"机器可填"字段当前部分自动生成（fixture 候选的 agent_review、预分诊结论），完整自动生成在 roadmap 待定池（PR 描述机器层生成）。
 
+## 人读性与代号约定（审读面 / 存储面分离）
+
+仓库产物（docs、EV 卡、SKILL.md、case、PR body）混用多套设计层代号（L/S/A/E/M/O/P/G/T/EV/Phase 等系列）。机器读得动，**人不该靠记忆读**——本约定把"人读视图"与"词法存储"分开，代号体系本身保持词法（供脚本/CI/面板直读），人读时走解码。
+
+规则：
+
+1. **机器字段保持词法**：YAML 枚举字段（`layer`/`status`/`method`/`authorization` 等）不做中文替换——它们是脚本与 CI 的契约；
+2. **人读 prose 首次出现即解码**：docs 论证文字、EV 卡 prose 字段、PR body、批审摘要、报告里，代号第一次出现写"含义（代号）"或"代号〔含义〕"，之后才允许裸用；高危字母（E/T/G/EV/Phase，及 A/M/O/P+数字）与落地 Phase 系列**裸用即歧义**，首次出现必解码；
+3. **审读面优先**：批量审 / PR 审读用解码渲染（`scripts/render_review_summary.py --card/--diff/--scan`，词表 `docs/glossary.yaml`），**源文件不变**——人审读渲染视图，不裸读 diff；渲染出的未登记代号告警即"先登记再使用"的自我约束；
+4. **新增代号先登记**：`docs/glossary.yaml`（机器数据，唯一权威）+ `docs/evolution.md` 顶部"指代速查"表（人读视图）同步登记，禁止与既有系列撞车（教训：WikiSkill 增量初稿 G1/G2/G3 撞治理缺口 G1–G8）；
+5. **不进 CI**：prose 可读性是判断性规范（检查准入三条件不满足），由 PR 人读性自查（methodology 模板试点）+ review spot-check 保证，不硬门化。
+
 ## Skill 自包含边界（SKILL.md 与 docs/ 的引用关系）
 
 `skills/<name>/SKILL.md` 必须**自包含到"没有 docs/ 也能正确执行"**：执行必需的决策参数（阈值、cap、映射、检查单）直接内联进 SKILL.md 或其 `references/`；`docs/` 是**可选论证层**，只承载"为什么这样设计"的推导，引用时标注"可选论证层"（如"论证见 docs/adr/0004，可选论证层，上述数值为执行值"）。原因：`docs/` 是仓库根级目录，依赖安装方式（`-g` 模式带全仓库，独立 skill 分发不带）；执行参数若只放在 docs 里，未装 docs 的 agent 无法正确执行。引用三分类：运行时参数 → 内联；背景论证 → docs + 可选标注；指标/产物数据源 → 保留为知识索引（如 metrics.md）。新写 skill 或修改时，不得新增"执行必需的 docs 依赖"。
