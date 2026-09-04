@@ -2,9 +2,11 @@
 
 > Roadmap 采用闸门驱动而非日期驱动：每个事项定义入口条件（数据或事件触发）与验收标准，解锁与否由 metrics 和 trace 数据判定，不按日历排期。这与 [ADR-0002](adr/0002-retrieval-no-rag-lightweight-index.md) 的原则一致：升级由数据触发，而非由技术趋势触发。全部事项的立项依据与闸门设计派生自[设计原则](design-principles.md)第八、十一条。
 >
-> 阅读方式：五个维度回答"哪类改进"（架构 / 可演进性 / 可维护性 / 可观测性 / 流程合理性），阶段视图回答"何时做"（Phase 0 → 1 → 2，由闸门衔接），完成账本回答"已做到哪"（落地即从池移出并登记）。事项 ID 稳定，供 groom 报告和 issue 引用。
+> 阅读方式：五个维度回答"哪类改进"（架构 / 可演进性 / 可维护性 / 可观测性 / 流程合理性），阶段视图回答"何时做"（落地阶段〔Phase〕0 → 1 → 2，由闸门衔接），阶段语义速查回答"现在该做哪些"（闸门快照，季度刷新），完成账本回答"已做到哪"（落地即登记）。事项 ID 稳定，供 groom 报告和 issue 引用。
 
 ## 现状基线（v1，已就绪）
+
+> v1 基线是**冻结快照**（首批机制就绪清单，历史产物），不代表当前全量机制——references 先验层、元层 eval 台（arena）、交互型 replay（ixn）等 v1.5 机制见各维度表与完成账本。
 
 | 维度 | 已就绪 |
 |---|---|
@@ -23,10 +25,10 @@
 | ID | 事项 | 需求 / 验收标准 | 入口闸门 | 阶段 |
 |---|---|---|---|---|
 | A1 | Tier 3 postmortem frontmatter 结构化 | `postmortems/**/*.md` 加 frontmatter（framework / category / platform / case-id / keywords）；诊断 Tier 3 检索先按字段过滤再 grep；to-postmortem 产出自动带 frontmatter；存量文件一次性补齐 | Tier 3 语料 >300 篇，或 tier3 检索频繁但挽救率指标偏低 | v1.5 |
-| A2 | 格子容量治理与拆分（ADR-0004 已落地 category 分层） | cap 按 (framework×category) 格子计：soft_cap 30 触发评估 + 健康指标（候选溢出/重复率/维护时长）；hard_cap 60 强制拆。拆分建议 → 人确认；目录迁移、`_index.yaml` 重建、fixture namespace 断言同步，**同一 PR 完成**。**触发实例**：inference/vllm-ascend interrupt 81/30 **已超 hard_cap 60**（2026-W36/37 多轮沉淀与补 case：36→50→76→81）。可拆分子族实测：moe 13 / startup-failure 12 / mtp(spec-decode) 11 / mooncake+kv 9 / patch-layer 5 / 310P 4 / cudagraph 3。**健康指标（EV-2026-006 定，capacity_health.py 精确 regex 口径，EV-008 后复测仍适用）**：interrupt 候选溢出率 25%（8/32 输入 >5 候选，中位数 3、max 12），略超 20% 阈值但非检索崩坏，precision/performance 0% 健康。结论：**暂不强制拆**（ADR-0004 拒目录深度+2）。阶段一加载协议优化已落地（F1 分片 EV-2026-022 + F2 行瘦身 EV-2026-023：master 203.5→104KB、命中 ns 分片读入大降——"全读 token"障碍已除）。**2026-09 复测（F3，EV-2026-024，128 case）**：interrupt 83/30（超 hard_cap 60）；候选溢出率 **33%**（14/43 >5 候选，med 4 / max 14），超 20% 恶化阈但 med 仍 ≤5 cap、非检索崩坏；precision/performance 0% 健康。结论：token 维度已解（F1/F2 即"升破 30% 再评估加载协议优化"的执行），**残余为候选溢出维度**——维持暂不拆，**再拆闸门（任一触发即评估子族拆分，映射已列：moe/startup-failure/mtp/mooncake+kv/patch-layer/310P/cudagraph）**：溢出率 ≥40% 或 med >5 或 vllm-ascend 命中分片读入 >60KB；capacity_health 持续复测；**2026-09 实测（EV-2026-029）**：interrupt category cell 68.9KB（~21K tok，估 bytes/3.4）——当时 >60KB 闸门触发、拆评估待启动；随后 **F4 category 分片 + 阶段二 top-2 优先（EV-2026-025）**、**F5 索引行宽压缩（EV-2026-030：title≤160 / 去 platforms / tags≤6，超长 title 检索面 golden fixture 已覆盖）** 落地；**2026-09-04 F5 后复测**（build_index 重生成，128 case）：该单元降至 **~60.2–60.6KB**（剔除注释行 60.2KB / 含文件头 60.6KB，贴 60KB 线、在口径噪声内）；master 索引累计 203.5→104.1（F2）→**94.2KB**。**结论更新：拆评估不启动，转观察窗**——60KB 是否仍超落在口径噪声内（含头与否差 <1%、估 tok 系数 bytes/3.4 未实测），统一口径复测后裁决；**soft_cap/hard_cap 阈值与拆分轴是执行参数（待 metrics 复核），数据齐后 owner 确认固化，不自动执行** | 格子超 soft_cap 且健康指标恶化 / 超 hard_cap | 按闸门 |
-| A3 | 第二拆分轴（硬件 platform）ADR | 若 (framework×category) 格子拆分后仍超限，写**新 ADR（编号 0009+——ADR-0003 已被「平台可移植性（git 托管平台）」占用，勿复用号）**，论证**硬件平台**轴（A2-910B / A3-910C / A5-950…，与 ADR-0003 的 platform 术语区分）或索引分片的取舍 | 某 (framework×category) 格子 >100 条（vllm-ascend interrupt 现 83 条，W36/37 两周净增 ~47，按此增速数周内触顶；**触发单位按 ADR-0004 格子口径计，非整 namespace**——vllm-ascend 整 ns 107 条已达字面 >100，勿误触发） | v2 前置 |
+| A2 | 格子容量治理与拆分（ADR-0004：category 子层 + 参数化 cap，拒目录深度 +2） | cap 按 (framework×category) 格子计：soft_cap 30 触发评估（健康指标：候选溢出 / 重复率 / 维护时长），hard_cap 60 强制拆；拆分建议 → 人确认，目录迁移 + `_index.yaml` 重建 + fixture namespace 断言同步，**同一 PR 完成**。**2026-09-04 状态**：vllm-ascend interrupt **83/30（超 hard_cap 60）**；F1–F5 加载协议优化落地后，命中 category 分片读入由 68.9KB（EV-2026-029）降至 **~60.2–60.6KB**（F4/F5 后复测，128 case）——贴 60KB 线，**拆评估不启动、转观察窗**。**owner 待办**：统一口径（含头与否、估 tok 系数 bytes/3.4）复测后裁决，不自动执行。**再拆闸门（任一触发即评估子族拆分）**：溢出率 ≥40% / med >5 / 统一口径后命中分片读入 >60KB；子族映射（moe / startup-failure / mtp / mooncake+kv / patch-layer / 310P / cudagraph）与容量健康复测历史见 EV-2026-006/022~025/029/030 + 完成账本，此处不重复搬运 | 格子超 soft_cap 且健康指标恶化 / 超 hard_cap | 按闸门 |
+| A3 | 第二拆分轴（硬件 platform）ADR | 若 (framework×category) 格子拆分后仍超限，写**新 ADR（编号 0009+——ADR-0003 已被「平台可移植性（git 托管平台）」占用，勿复用号）**，论证**硬件平台**轴（A2-910B / A3-910C / A5-950…，与 ADR-0003 的 platform 术语区分）或索引分片的取舍 | 某 (framework×category) 格子 >100 条（vllm-ascend interrupt 现 83 条，W36/37 两周净增 ~47，按此增速数周内触顶；**触发单位按 ADR-0004 格子口径计，非整 namespace**——vllm-ascend 整 ns 107 条已达字面 >100，勿误触发） | v2 |
 | A4 | 非单调版本兼容实测 | 真实非单调 case（如 2.7 失效、2.8 恢复）出现时，groom 的 `_archive/` 复活检查跑通全流程，结论记录进 ADR | 首个真实非单调 case 被 groom 处理 | 按事件 |
-| A5 | 容量推演重算 | 用实测过滤率、退休率、增速重算 ADR-0002 的稳态规模与容量结论；确认或修订"不上 RAG"决策及触发条件 | 第 6 个月，或 metrics 首次给出完整过滤/退休数据 | 常设检查点 |
+| A5 | 容量推演重算 | 用实测过滤率、退休率、增速重算 ADR-0002 的稳态规模与容量结论；确认或修订"不上 RAG"决策及触发条件 | 第 6 个月，或 metrics 首次给出完整过滤/退休数据 | 常设 |
 
 ## 二、可演进性
 
@@ -41,7 +43,7 @@
 | E5 | trace 结构挖掘 | 从 trace 语料报告低判别力 quickly_check、噪声 triage 分支、高验证耗时 case，产出结构改进建议 | v2 入口条件 | v2 |
 | E6 | proposal 影响视图（skill-impact 语义） | `ev_proposal.py` 增 `--impact`：按 target_component 聚合历史尝试（提案×diff×eval 结果×decision 结局），evolve-check/self-evolve 产卡前必查，防同组件重提被拒方案（来源：WikiSkill skill-impact.md 咨询语义，arXiv 2608.27454；机制决议见 evolution-pipeline §12a，EV-2026-009） | 首个真实 L2 rejected/回滚簇出现（此前以手工"查同组件先例"步骤运行，见 evolve-check/self-evolve） | 按闸门 |
 | E7 | 成功模式提取信号 | evolve-check T 表加成功向信号 T8：本轮某流程/组件多次成功且成功路径可复述（对照成功 vs 失败执行差在哪）→ 产 L2 卡固化成功模式（来源：WikiSkill maintainer 成败对照分析 §3.2.2/E.2；机制决议见 evolution-pipeline §12a，EV-2026-009） | 常态运行中首次出现可复述成功模式（无信号即止，不预设轮次） | 按闸门 |
-| E8 | 元层 eval 台（arena，WikiSkill 式门控） | 从未沉淀 closed issue 池构建 selection（held-out）+ expected 标注；候选改动（triage/quickly_check/case）经 golden 无回归 + val 命中/路由严格提升门才收，否则回滚；影响账本 append（设计 docs/evolution-eval-arena.md；工具 `scripts/eval_arena.py`；决议 EV-2026-013）。test/selection 分离按规模闸门（selection ≥20） | **已达成（2026-09-04）**：selection 池运行 **16 条**（EV-2026-013 候选清单 17 → 实际池 16，口径以 .s2-replay/arena/pool-val.yaml 为准）、baseline hit 6/16（route 16/16）→ 补 3 case（14306/14448/12933，真实 fix PR）→ 独立盲测 3/3 miss→hit、对照 37.5%→56.3% 无回归 → 门控 accept 合入 + 影响账本（EV-2026-013/014）。残余：test/selection 分离（selection ≥20 后启用） | 已完成（见完成账本） |
+| E8 | 元层 eval 台（arena，WikiSkill 式门控） | 从未沉淀 closed issue 池构建 selection（held-out）+ expected 标注；候选改动（triage/quickly_check/case）经 golden 无回归 + val 命中/路由严格提升门才收，否则回滚；影响账本 append（设计 docs/evolution-eval-arena.md；工具 `scripts/eval_arena.py`；决议 EV-2026-013）。test/selection 分离按规模闸门（selection ≥20） | **已达成（2026-09-04）**：selection 池运行 **16 条**（EV-2026-013 候选清单 17 → 实际池 16，口径以 .s2-replay/arena/pool-val.yaml 为准）、baseline hit 6/16（route 16/16）→ 补 3 case（14306/14448/12933，真实 fix PR）→ 独立盲测 3/3 miss→hit、对照 37.5%→56.3% 无回归 → 门控 accept 合入 + 影响账本（EV-2026-013/014）。残余：test/selection 分离（selection ≥20 后启用） | 已完成 |
 
 ## 三、可维护性
 
@@ -49,10 +51,10 @@
 
 | ID | 事项 | 需求 / 验收标准 | 入口闸门 | 阶段 |
 |---|---|---|---|---|
-| M1 | CODEOWNERS 转正 + 分支保护 | `CODEOWNERS.example` 复制为 `.github/CODEOWNERS` 填真实账号；main 开分支保护 + required review；验证一次硬门生效（越权直推被拒） | owner 人名确定 | Phase 0 出口 |
+| M1 | CODEOWNERS 转正 + 分支保护 | `CODEOWNERS.example` 复制为 `.github/CODEOWNERS` 填真实账号；main 开分支保护 + required review；验证一次硬门生效（越权直推被拒） | owner 人名确定 | Phase 0 |
 | M2 | fixture replay 半自动化 | 脚本以 replay 模式喂 `eval/golden/*.yaml` 给 /skill:diagnose，比对 expected（top-3 命中断言，容忍 LLM 非确定性），产出改前/改后报告；报告随变更摘要交 owner | 真实 golden fixture ≥5 条 | v1.5 |
-| M3 | fixture 自动生成 | `replay_trace.py --emit-fixtures` 从 resolved+feedback 确认的 trace 派生 fixture 候选（输入=user 原文，期望=实际命中）；groom 人确认入库；覆盖报告同步更新（见 O4）。断言分层：未确认 trace 只做弱断言回归，不作正确性基准 | 首个 resolved+feedback 确认的 trace | v1.5+ |
-| M4 | groom 报告留档规范 | 每周 groom-report issue 固定模板：变更摘要 / 高风险项 / 容量表 / 标红项；季度回顾可直接回溯 | 首轮真实 groom 完成后固化模板 | Phase 1 初 |
+| M3 | fixture 自动生成 | `replay_trace.py --emit-fixtures` 从 resolved+feedback 确认的 trace 派生 fixture 候选（输入=user 原文，期望=实际命中）；groom 人确认入库；覆盖报告同步更新（见 O4）。断言分层：未确认 trace 只做弱断言回归，不作正确性基准 | 首个 resolved+feedback 确认的 trace | v1.5 |
+| M4 | groom 报告留档规范 | 每周 groom-report issue 固定模板：变更摘要 / 高风险项 / 容量表 / 标红项；季度回顾可直接回溯 | 首轮真实 groom 完成后固化模板 | v1.5 |
 | M5 | groom token 预算（结构性减负） | 现状 groom 每次全量扫 knowledge（~47K）与 references（~82K），随库线性涨，职责重、token 大（实测核算）。修法：①确定性环节脚本化（引用校验/值重复/置信度重算/容量统计由脚本算完，agent 只读 diff 摘要，不读全量）②按信号触发（R3/R8 可选建议不全量默认扫）③references 维护按触发而非每轮全跑。验收：groom 单次 token 降至可读摘要量级（目标 <30K），且功能不缺失。**落地：groom SKILL「成本预算与脚本先行」+ 信号触发（R3/置信度重算/references 维护按需），决议 EV-2026-028** | 实测单次 groom >150K token，或库规模到 60 case | v1.5 |
 
 ## 四、可观测性
@@ -63,12 +65,12 @@
 |---|---|---|---|---|
 | O1 | 指标常态化 | 每两周 `trace_metrics.py` 输出经人复核 append `metrics/timeline.yaml`（数据）；所有比例必须带分母；小样本（分母 <10）显式标注 | Phase 0 出口后即常态 | 常设 |
 | O2 | 指标按团队分账 | state 文件记 workload（training/inference）；`trace_metrics.py` 按组输出命中率与误诊率，两组各自复盘 | 首次真实使用后的小改动 | v1.5 |
-| O3 | 反馈捕获率监测 | feedback 捕获率（回报 session / 给出 fix 的 session）进 metrics；连续两期 <50% 触发流程检查（追问话术、nag 时机）。**现状（2026-09-04）**：W35-live1 与 W36-live2 捕获均 0/3（0%，全部 pending 未回报）——贴近触发线；两期同日回填，是否算「连续两期」待定口径（回填期不算则未触发）；一旦触发，流程检查须留痕（本行无触发记录 = 按回填期口径未触发）。S1 反馈 =0 同步影响 confidence 学习环与 2026-Q4 自评「S1 反馈 >0」数据前提 | O1 常态化后 | 常设 + 阈值 |
-| O4 | eval 覆盖报告 | groom 每轮输出覆盖矩阵：有 case 的 `(namespace × category × platform)` 格子 vs 有 fixture 的格子，缺口列表（"inference/sglang 0 条"、"precision 类偏弱"） | M2 完成后并入 groom | v1.5+ |
+| O3 | 反馈捕获率监测 | feedback 捕获率（回报 session / 给出 fix 的 session）进 metrics；连续两期 <50% 触发流程检查（追问话术、nag 时机）。**现状（2026-09-04）**：W35-live1 与 W36-live2 捕获均 0/3（0%，全部 pending 未回报）——贴近触发线；两期同日回填，是否算「连续两期」待定口径（回填期不算则未触发）；一旦触发，流程检查须留痕（本行无触发记录 = 按回填期口径未触发）。S1 反馈 =0 同步影响 confidence 学习环与 2026-Q4 自评「S1 反馈 >0」数据前提 | O1 常态化后 | 常设 |
+| O4 | eval 覆盖报告 | groom 每轮输出覆盖矩阵：有 case 的 `(namespace × category × platform)` 格子 vs 有 fixture 的格子，缺口列表（"inference/sglang 0 条"、"precision 类偏弱"） | M2 完成后并入 groom | v1.5 |
 | O5 | 容量趋势预测 | 容量表增加近 4 周增速与"预计达 80% 日期"，拆分预告由数据给出而非事后发现 | A2 首次触发前后 | v1.5 |
 | O6 | 诊断报告（trace 派生视图） | diagnose 收尾渲染人读报告：症状→路由→候选→验证→根因→fix 的推理叙事 + 证据回溯（每判断指回 trace step）+ 强度标注（已验证/推测/未知）。trace 为唯一数据源、零数据模型改动；默认本地留档，分享前脱敏；1-2 分钟读完（证据链折叠可展开）。质量基准见历史讨论 | 首次真实诊断后 | v1.5 |
 | O7 | 健康报表（groom R10 标准产出） | groom 产出自包含 HTML 数据报表（离线生成，`health_report.py` 脚本 + 必要时 agent 美化样式，数据不变）：①知识库结构视图（容量/覆盖/缺口，git 数据，本地=中心一致；知识结构图可用 archify）②系统运作视图（命中/误诊/趋势，traces 汇总，头部诚实标注〔中心全量 N sessions〕或〔本地视角 M sessions〕）。**只读聚合数据**（timeline.yaml + _index 头注 + trace_metrics/replay 脚本输出），不读 case 全文（token 预算，呼应 M5）。**职责划分**：本地 groom 也产（个人视角），中心 owner groom 产全量，同一指令、数据范围不同，如实标注。服务"改进知识库/改进系统流程"的决策（原则八决策端） | 任一 live 指标期积累后 | v1.5 |
-| O8 | 交互型 replay 评测（ixn-replay） | 分期披露脚本驱动 diagnose 交互，按"追问召回 + 决定性字段在链 + 过早结论"评分（机制决议 EV-2026-012；设计 docs/evolution-ixn-replay.md；工具 `scripts/ixn_replay.py`）。落地形态分两级：harness v1（prepare/score/aggregate + 样本库筛选制入库）→ 常态化（评分阈值固化、交互面分数进 timeline，须分母标注）。**归因型 replay（PR 引用为 gold）为兄弟维度，蓝图** | **首级已达成（2026-09-04）**：harness v1（EV-2026-012/016/017）+ 首批 staged n=10（held_out 8 + self 2）出分并经人复核进 timeline（2026-W37 行，EV-2026-018）。残余：常态化前提 held_out ≥10 未达（现 8）；该 timeline 行 heldout 0.975 / self 1.0 为裸比例缺分母、held_out n=8 属小样本未标注——未满足本行「带分母」前提，按 O1 补正后视为常态化首行 | v1.5（首级完成，见完成账本） |
+| O8 | 交互型 replay 评测（ixn-replay） | 分期披露脚本驱动 diagnose 交互，按"追问召回 + 决定性字段在链 + 过早结论"评分（机制决议 EV-2026-012；设计 docs/evolution-ixn-replay.md；工具 `scripts/ixn_replay.py`）。落地形态分两级：harness v1（prepare/score/aggregate + 样本库筛选制入库）→ 常态化（评分阈值固化、交互面分数进 timeline，须分母标注）。**归因型 replay（PR 引用为 gold）为兄弟维度，蓝图** | **首级已达成（2026-09-04）**：harness v1（EV-2026-012/016/017）+ 首批 staged n=10（held_out 8 + self 2）出分并经人复核进 timeline（2026-W37 行，EV-2026-018）。残余：常态化前提 held_out ≥10 未达（现 8）；该 timeline 行 heldout 0.975 / self 1.0 为裸比例缺分母、held_out n=8 属小样本未标注——未满足本行「带分母」前提，按 O1 补正后视为常态化首行 | v1.5 · 首级达成 |
 
 ## 五、流程合理性
 
@@ -76,7 +78,7 @@
 
 | ID | 事项 | 需求 / 验收标准 | 入口闸门 | 阶段 |
 |---|---|---|---|---|
-| P2 | 双签核验自查单 | `kb/high-risk` PR 模板带核验清单（两组各至少一人批），merge 前勾选；groom-report 汇总本期高风险项及签署情况 | M1 完成后 | Phase 1 初 |
+| P2 | 双签核验自查单 | `kb/high-risk` PR 模板带核验清单（两组各至少一人批），merge 前勾选；groom-report 汇总本期高风险项及签署情况 | M1 完成后 | v1.5 |
 | P3 | fork 模式同步演练 | 首个团队 fork 时 dry-run 上游同步：方法论目录 merge 无冲突、知识目录零触碰，产出简短记录 | 首个 fork 发生 | 按事件 |
 | P4 | 紧急路径实测复盘 | 首个真实紧急 session 走完 stabilize 路径后，复盘 stabilize ↔ 深度排查的切换点是否清晰，必要时修订 SKILL.md 紧急节 | 首个真实紧急事件 | 按事件 |
 
@@ -106,7 +108,7 @@
 
 ### 阶段语义速查（哪些做、哪些不做）
 
-> 阶段名（v1.5 / v2 / 按闸门 / 推迟 / 待定）只是**分组**，不裁决——**做不做由闸门数据定**。下表是 2026-09-04 闸门快照，由常设检查点的季度校准用 metrics 复核后刷新；判断会过期，读时先看日期。
+> 阶段名只是**分组**，不裁决——**做不做由闸门数据定**。阶段列词表 = 时机 {Phase 0, v1.5, v2, 按闸门, 按事件, 常设, 推迟}；状态（已完成 / 首级达成 / 观察窗）不进阶段列，记行内与完成账本。下表是 **2026-09-04 闸门快照**（数据口径：`knowledge/_index.yaml` 头注 + `metrics/timeline.yaml` + traces/、eval/golden、postmortems/ 目录计数，读时取最新），由常设检查点的季度校准用 metrics 复核后刷新；判断会过期，读时先看日期。
 
 | 归属 | 事项 | 现在的判断 | 依据（闸门 vs 现状） |
 |---|---|---|---|
@@ -170,7 +172,11 @@
 
 - 新增事项必须带：所属维度、需求/验收标准、入口闸门；无闸门的事项默认进"待定"而非阶段池
 - 废弃事项移入下方"不再做"并留一行理由，不删除记录
-- 落地/完成事项：维度表行标注状态（首级达成 / 已完成）+ 在"完成账本"登记后移出阶段池；行不删除（完成 ≠ 废弃，决策链保留）
+- 落地/完成事项：行不删除（完成 ≠ 废弃，决策链保留）；状态记行内 + "完成账本"，并移出阶段池
+- 阶段列只放时机词表 {Phase 0, v1.5, v2, 按闸门, 按事件, 常设, 推迟}；状态（已完成 / 首级达成 / 观察窗）不进阶段列（见阶段语义速查）
+- 行内状态只留最新一条 + 日期；历史序列（复测数值 / 多次触发 / 数字流水）进 EV 卡或 metrics——单格 >800 字符即触发外移（A2 教训）
+- 状态源分工：维度表行 = 定义 + 最新状态（变更落地时同步）；完成账本 = 落地登记（落地时写）；阶段语义速查 = 闸门快照（季度校准刷新）；事实源 = EV 卡 / commits / metrics，行文不重复搬运
+- 样式约定：事项 ID 与提案卡（EV）号用粗体，脚本与文件路径用反引号——全文统一
 - 闸门数值每季度用 metrics 复核，数值是假设的量化形态，同样服从数据修正
 
 ### 不再做
