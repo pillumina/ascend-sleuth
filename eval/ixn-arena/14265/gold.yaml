@@ -1,0 +1,11 @@
+issue: 14265
+repo: vllm-project/vllm-ascend
+held_out: true
+resolution_ref: "PR #14358/#14730（MegaMoe buffer sizing，MoE 对称通信 buffer 按 decode graph 分配致大 prefill 溢出错误输出 → 接受率劣化）"
+resolution_summary: "v0.26.0rc GLM-5.2+MTP 投机接受率相对 v0.23 大幅劣化；MoE prefill buffer 容量不足致错误输出"
+maintainer_questions:
+  - {field: 启动命令与MTP配置, keywords: ['启动命令', 'MTP', 'speculative']}
+  - {field: benchmark与接受率指标, keywords: ['benchmark', '接受率', 'metric']}
+decisive_fields:
+  - {field: 版本组合, keywords: ['v0.26', '版本']}
+  - {field: 启动命令与MTP配置, keywords: ['启动命令', 'MTP', 'num_spec']}

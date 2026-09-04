@@ -1,0 +1,11 @@
+issue: 13974
+repo: vllm-project/vllm-ascend
+held_out: true
+resolution_ref: "维护者：TRANSFER_ENGINE_BACKEND/HIXL_ROUTE 框架未定义参数（疑扩展/平台侧）；无 fix PR"
+resolution_summary: "PD 分离 8 机 + rfork + hixl：第二实例 d 节点 KV 注册 Mooncake memory registration failed(103900)；维护者称相关 env 非框架参数；关第二实例 d 节点 MTP 亦不再报错（疑 MTP×mooncake 冲突）"
+maintainer_questions:
+  - {field: 环境变量设置原因, keywords: ['TRANSFER_ENGINE', 'HIXL', '环境变量']}
+  - {field: 是否扩展/平台配置, keywords: ['扩展', '平台', 'roma', 'rfork']}
+decisive_fields:
+  - {field: 环境变量设置原因, keywords: ['TRANSFER_ENGINE', 'HIXL']}
+  - {field: MTP×mooncake 对照, keywords: ['MTP', '关', 'mtp']}
