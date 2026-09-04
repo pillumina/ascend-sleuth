@@ -197,7 +197,9 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 - **[路线图](docs/roadmap.md)** — 闸门驱动的演进计划，每个事项的触发条件与验收标准
 - **[Git 工作流](docs/git-workflow.md)** — 审核、门控、合入的落地（标签集、CODEOWNERS、CI、双签）
 - **[Issue 导入管道](docs/issue-ingest-pipeline.md)** — issue → case 半自动管道（拉取/过滤/评估/沉淀/幂等）
-- **[评估](docs/eval.md)** — skill 改动前后的回归检查（golden 套件与真实 fixture）
+- **[评估](docs/eval.md)** — skill 改动前后的回归检查（golden 套件与真实 fixture；门禁分级 + gate_diff 基线缓存）
+- **[元层 eval 台（arena）](docs/evolution-eval-arena.md)** — WikiSkill 式 train/val 门控：selection 池、golden/val 严格提升门、影响账本（`scripts/eval_arena.py`）
+- **[交互型 replay 评测（ixn-replay）](docs/evolution-ixn-replay.md)** — 交互面评测（追问/充分性/过早结论），`eval/ixn-arena/` 规格入库 + `scripts/ixn_replay.py`
 - **[全流程演示](docs/demo-walkthrough.md)** — 从一次诊断到知识演化的可读 walkthrough（含交互输出示例）
 - **[推广就绪度评估](docs/rollout-assessment.md)** — 对照十一条原则的四层就绪度评估与推广动作清单
 - **[术语表](CONTEXT.md)** — case、postmortem、groom、trace 等术语的规范定义
@@ -208,7 +210,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 ```
 knowledge/
-├── _index.yaml              Tier 2 生成索引（scripts/build_index.py 生成；阶段一直读，变更后重建；仅含 score 排序字段）
+├── _index.yaml              Tier 2 总索引（scripts/build_index.py 生成；阶段一按命中 namespace/category 读 `_index/<ns>[-<cat>].yaml` 分片——F1/F2/F4 索引治理）
 ├── training/{mindspeed-llm,mindspeed-mm,verl}/
 ├── inference/{vllm-ascend,sglang}/
 │   └── vllm-ascend/         （framework × category 格子分层，ADR-0004）
