@@ -7,7 +7,7 @@ namespaces:
     precision:
     - id: VLLM-ASC-10524
       title: 'GLM-5.1-w8a8 PD 分离偶现精度问题（Claude Code 多并发长请求）：graph-capture/dummy run 未走 _prepare_inputs()
-        导致 slot_mapping 读未初始化残留值，需 dummy run 重置 slot_mapping 为 pad id（PR #11774）'
+        导致 slot_mapping 读未初始化残留值，需 dummy run 重置 slot_mapping 为 pad id（PR #1177…'
       category: precision
       tags:
       - glm5
@@ -16,9 +16,6 @@ namespaces:
       - slot-mapping
       - mooncake
       - intermittent
-      - glm5.1
-      platforms:
-      - A3-910C
       compat: vllm-ascend <0.24.0rc1
       confidence:
         score: 0.6
@@ -38,10 +35,6 @@ namespaces:
       - routing
       - qwen3.6
       - overthinking
-      - precision
-      - fusedmoe
-      platforms:
-      - 310P
       compat: vllm-ascend <0.23.0rc1
       confidence:
         score: 0.6
@@ -60,8 +53,6 @@ namespaces:
       - glm5
       - pd-disagg
       - multi-dp
-      platforms:
-      - A3-910C
       compat: vllm-ascend >=0.20,<0.21
       confidence:
         score: null
@@ -71,7 +62,7 @@ namespaces:
       hash: 35a6d6064c54
     - id: VLLM-ASC-11169
       title: A2 双机拉起 GLM-5.2 w8a8（DP=2 双节点 + UCMConnector external kv connector）发送中文请求返回乱码；root cause
-        未确认，workaround：VLLM_ASCEND_ENABLE_FLASHCOMM1=1 或关闭 external kv connector
+        未确认，workaround：VLLM_ASCEND_ENABLE_FLASHCOMM1=1 或关闭 external kv connecto…
       category: precision
       tags:
       - glm5
@@ -79,8 +70,6 @@ namespaces:
       - kv-transfer
       - flashcomm1
       - workaround-only
-      platforms:
-      - A2-910B
       compat: vllm-ascend
       confidence:
         score: 0.1
@@ -97,8 +86,6 @@ namespaces:
       - batch-invariance
       - ci-test
       - use-deterministic-algorithms
-      platforms:
-      - A5-950
       compat: vllm-ascend <0.23.0
       confidence:
         score: 0.3
@@ -116,8 +103,6 @@ namespaces:
       - tool-call
       - glm4_moe_tool_parser
       - pd-separation
-      platforms:
-      - A3-910C
       compat: vllm-ascend <0.23.0
       confidence:
         score: 0.3
@@ -135,8 +120,6 @@ namespaces:
       - rmsnorm
       - mrope
       - codegen
-      platforms:
-      - A5-950
       compat: vllm-ascend <=0.21.0; triton-ascend <3.2.2
       confidence:
         score: 0.6
@@ -154,8 +137,6 @@ namespaces:
       - non-power-of-two
       - dspark
       - spec-decode
-      platforms:
-      - A3-910C
       compat: vllm-ascend <=0.23.0
       confidence:
         score: 0.73
@@ -173,8 +154,6 @@ namespaces:
       - rdma
       - kv-transfer
       - stream-sync
-      platforms:
-      - A3-910C
       compat: vllm-ascend <=0.20.2
       confidence:
         score: 0.6
@@ -193,8 +172,6 @@ namespaces:
       - mega-moe
       - buffer-sizing
       - acceptance-rate
-      - prefill
-      platforms: []
       compat: vllm-ascend >=0.26.0rc,<0.26.0
       confidence:
         score: null
@@ -204,8 +181,7 @@ namespaces:
       hash: e01ccf6f85e6
     - id: VLLM-ASC-14363
       title: DeepSeek V4 adapter 构造 routed FusedMoE 时漏传 swiglu_limit（config=10.0）→ routed expert 以默认 None
-        运行、无 SwiGLU clamp → 敏感前缀处 next-token logit/ranking 漂移 → 异常中文/特殊 token（BF16 与量化均受影响，main 与 v0.25.1rc
-        均存在）
+        运行、无 SwiGLU clamp → 敏感前缀处 next-token logit/ranking 漂移 → 异常中文/特殊 tok…
       category: precision
       tags:
       - deepseek-v4
@@ -214,7 +190,6 @@ namespaces:
       - fusedmoe
       - precision
       - logit-drift
-      platforms: []
       compat: vllm-ascend <0.25.1
       confidence:
         score: null
@@ -224,8 +199,7 @@ namespaces:
       hash: '241081616295'
     - id: VLLM-ASC-5725
       title: 'Qwen3-Embedding-0.6B 同串第二次请求向量与首次不一致（Cosine ~0.585，命中缓存后稳定但错）：pooling 模型 attention 路由无条件走
-        npu_fusion_attention（不支持 prefix caching）→ 缓存命中路径静默错输出；升级 ≥v0.18.0（PR #7452/#7894）或关 prefix cache
-        规避'
+        npu_fusion_attention（不支持 prefix caching）→ 缓存命中路径静默错输出；升级 ≥v0.18.0（PR #…'
       category: precision
       tags:
       - embedding
@@ -234,10 +208,6 @@ namespaces:
       - silent-wrong-output
       - precision
       - attention-router
-      - qwen3-embedding
-      - apc
-      platforms:
-      - A2-910B
       compat: vllm-ascend <=0.17.0
       confidence:
         score: null
@@ -247,9 +217,8 @@ namespaces:
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-5725.yaml
       hash: 6ae48f811c92
     - id: VLLM-ASC-7854
-      title: 'Qwen3.5-397B-A17B-w8a8 混部部署（TP4×DP4 + EP + qwen3_5_mtp + FULL_DECODE_ONLY + quantization
-        ascend）高并发多模态压测返回乱码/精度掉点（OCRbench 87.9 vs 95.6），TP16DP1 正常——w8a8 fused-MoE dispatch_ffn_combine
-        缺 xmask（xactivemask）处理，PR #8560 修复'
+      title: Qwen3.5-397B-A17B-w8a8 混部部署（TP4×DP4 + EP + qwen3_5_mtp + FULL_DECODE_ONLY + quantization
+        ascend）高并发多模态压测返回乱码/精度掉点（OCRbench 87.9 vs 95.6），TP16DP1 正常——w8a8 fused-…
       category: precision
       tags:
       - qwen3.5
@@ -258,14 +227,6 @@ namespaces:
       - moe
       - expert-parallel
       - mtp
-      - full-decode-only
-      - xmask
-      - dispatch_ffn_combine
-      - garbled-output
-      - multimodal
-      - hybrid
-      platforms:
-      - A2-910B
       compat: vllm-ascend <=0.18.0
       confidence:
         score: null
@@ -275,9 +236,8 @@ namespaces:
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-7854.yaml
       hash: ee8e63403693
     - id: VLLM-ASC-7856
-      title: 'GLM-4.7-w8a8（float-mtp）在 vllm-ascend v0.17.0rc1 镜像 opencode/webfetch 场景流式 tool_calls 解析异常（arguments
-        json 不闭合/拼接错误，工具调用必现失败），非流式正常——上游 vLLM <0.18 流式 tool-call parser 问题（上游 PR #29947），升级 vLLM ≥0.18.0
-        修复'
+      title: GLM-4.7-w8a8（float-mtp）在 vllm-ascend v0.17.0rc1 镜像 opencode/webfetch 场景流式 tool_calls 解析异常（arguments
+        json 不闭合/拼接错误，工具调用必现失败），非流式正常——上游 vLLM <0.18 流式 tool-call pa…
       category: precision
       tags:
       - glm4
@@ -286,11 +246,6 @@ namespaces:
       - tool-call
       - tool-parser
       - json
-      - webfetch
-      - upstream-vllm
-      - version-upgrade
-      platforms:
-      - A2-910B
       compat: vllm-ascend <0.18.0
       confidence:
         score: null
@@ -310,8 +265,6 @@ namespaces:
       - model-capability
       - enable_thinking
       - precision
-      platforms:
-      - A2-910B
       compat: vllm-ascend <=0.18.0rc1
       confidence:
         score: 0.4
@@ -322,7 +275,7 @@ namespaces:
       hash: fa27e8666424
     - id: VLLM-ASC-8844
       title: GLM 5/5.1 w8a8 四节点 PD 分离（P/D 各 TP16 DP2，vllm-ascend 0.18.0）GPQA-diamond 精度不达标（实测 67.8）：长输出
-        + 高并发 + D 节点显存持续饱和触发 recompute 重计算路径精度退化——关闭 recompute_scheduler（或避免显存饱和）可恢复，无代码级根因/无合入 PR
+        + 高并发 + D 节点显存持续饱和触发 recompute 重计算路径精度退化——关闭 recompute_scheduler（或避免显…
       category: precision
       tags:
       - glm5
@@ -331,7 +284,6 @@ namespaces:
       - pd-disaggregation
       - accuracy
       - gpqa
-      platforms: []
       compat: vllm-ascend ==0.18.0
       confidence:
         score: null

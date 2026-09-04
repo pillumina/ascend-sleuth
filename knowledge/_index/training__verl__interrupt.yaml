@@ -7,7 +7,7 @@ namespaces:
     interrupt:
     - id: VERL-5074
       title: 'verl GRPO 启动 A2 报 HCCL error code 5（hcclCommInitRootInfoConfig, RuntimeError: create_config）：runtime_env.yaml
-        的 HCCL_HOST_SOCKET_PORT_RANGE/HCCL_NPU_SOCKET_PORT_RANGE="auto" 不兼容'
+        的 HCCL_HOST_SOCKET_PORT_RANGE/HCCL_NPU_SOCKET_PORT…'
       category: interrupt
       tags:
       - hccl
@@ -16,8 +16,6 @@ namespaces:
       - a2
       - grpo
       - port-range
-      platforms:
-      - A2-910B
       compat: verl <=0.7.x
       confidence:
         score: 0.3
@@ -37,7 +35,6 @@ namespaces:
       - tp
       - version-mismatch
       - grpo
-      platforms: []
       compat: verl 0.8.0; hdk 26.0.rc1
       confidence:
         score: 0.3
@@ -47,8 +44,8 @@ namespaces:
       file: knowledge/training/verl/interrupt/VERL-6608.yaml
       hash: '750895819031'
     - id: VERL-6707
-      title: 'verl Qwen3-MoE NPU patch 失败：verl/models/transformers/npu_patch.py 按 Transformers 4.57 编写，Transformers
-        5.x 下 Qwen3MoeSparseMoeBlock 接口不兼容（gate 变 router module）→ PR #6708 修复'
+      title: verl Qwen3-MoE NPU patch 失败：verl/models/transformers/npu_patch.py 按 Transformers 4.57 编写，Transformers
+        5.x 下 Qwen3MoeSparseMoeBlock 接口不兼容（gate 变 router module）→ …
       category: interrupt
       tags:
       - moe
@@ -56,8 +53,6 @@ namespaces:
       - npu-patch
       - transformers-version
       - grpo
-      platforms:
-      - A2-910B
       compat: verl 0.8.0.dev; transformers >=5.0
       confidence:
         score: 0.6
@@ -74,7 +69,6 @@ namespaces:
       - device-detection
       - cpu-fallback
       - grpo
-      platforms: []
       compat: verl 0.7.1
       confidence:
         score: 0.1
@@ -92,8 +86,6 @@ namespaces:
       - npu-versions
       - startup
       - version-upgrade
-      platforms:
-      - A2-910B
       compat: verl 0.7.1
       confidence:
         score: 0.6
@@ -112,7 +104,6 @@ namespaces:
       - aclnn
       - crash
       - version-upgrade
-      platforms: []
       compat: verl 0.8.0.dev0; cann 8.5.0
       confidence:
         score: 0.3

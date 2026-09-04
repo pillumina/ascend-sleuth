@@ -15,8 +15,6 @@ namespaces:
       - convergence
       - feature-gap
       - qwen3
-      platforms:
-      - A3-910C
       compat: mindspeed-llm 26.0.0; cann 8.5.2
       confidence:
         score: 0.6
@@ -36,7 +34,6 @@ namespaces:
       - garbled-output
       - code-bug
       - qwen3
-      platforms: []
       compat: mindspeed-llm *
       confidence:
         score: 0.6
@@ -46,7 +43,7 @@ namespaces:
       hash: 6e8f508e1eb7
     - id: MSLLM-1780
       title: FSDP2 断点续训后第一步日志异常：lm loss 被错误除以 global_step（0.247×31=7.66 与相邻步一致）、elapsed/tokens/s 同步失真：trainer.py
-        续训时 _last_logged_step 从 _global_step_last_logged（常为 0）恢复，纯日志统计 bug，训练本身正确
+        续训时 _last_logged_step 从 _global_step_last_logged（常为 0）恢复，纯日志…
       category: precision
       tags:
       - fsdp2
@@ -54,8 +51,6 @@ namespaces:
       - log-statistics
       - loss-display
       - trainer-bug
-      platforms:
-      - A2-910B
       compat: mindspeed-llm master@c8f3cada
       confidence:
         score: 0.6

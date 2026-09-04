@@ -1,0 +1,60 @@
+id: EV-2026-030
+layer: L2
+title: F5 索引行宽压缩：title≤160、移除 platforms、tags≤6（interrupt cell 68.9→59.2KB，解除 F3 60KB
+  闸门）
+status: validated
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+- signal: token_backfill
+  evidence: EV-2026-029 实测：interrupt category cell 68.9KB（~21K tok）>60KB 触发 F3 闸门；并列候选
+    F5 行宽压缩
+  trajectory:
+  - EV-2026-029（实测与闸门触发）
+  - scripts/build_index.py（collect 行字段）
+hypothesis: title 截 160（保留判别前缀）+ 去 platforms（无消费）+ tags 截 6（R8 聚类仍够）后， interrupt cell
+  降至 <60KB、阶段一 ~17K tok；阶段一匹配（title 前缀+症状摘要）语义 保持 → golden top-3 不变
+predicted_effect:
+  metric: interrupt category cell 体积 / 阶段一读入
+  from: 68.9KB（~21K tok）
+  to: ~59KB（~17K tok）
+validation:
+  method: golden_replay
+  baseline: /tmp/golden-f4-after（3 fixture top3/hit）
+  success_criteria: interrupt cell <60KB；golden 改后 3/3 top3 与基线一致（12723/12901 expected
+    保持）；build_index --check 通过
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: EV-2026-029 触发 + 用户'F5 可以做'
+risk: low-medium
+principle_refs:
+- 9
+- 11
+actual_cost:
+  tokens: 4000
+  source: estimate
+decisions:
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: proposal
+  conclusion: interrupt cell 超 F3 闸门；先做低风险行宽压缩（F5）再评估子族拆分。压缩项： title≤160（判别前缀保留）、platforms
+    移除（索引无消费方）、tags≤6（R8 聚类仍可用）。
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: action
+  conclusion: 执行完成：build_index collect 行压缩（title≤160、去 platforms、tags≤6）；重生成主表+分片；实测
+    interrupt cell 68.9→59.2KB（解除 60KB 闸门）、ns 88→76.8、master 104→92。
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: eval
+  conclusion: golden 改后（/tmp/golden-f5-after vs f4-after）3/3 逐字段一致：12685 documented
+    miss、12723 rank1、12901 rank1——无回归。注意：本子集相关 title 均≤160 未触发截断（截断只命中超长行且保留前缀；超长
+    title 匹配由未来 fixture 覆盖，风险低）。build_index --check 通过；词表 scan/verify 通过。
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: decision
+  conclusion: 采纳（validated）：F5 行宽压缩随 methodology PR 送人审。观察窗：interrupt cell <60KB（F3
+    闸门解除）；若库持续增长再次超 60KB → 回到子族拆分评估（EV-2026-029 已记）；groom 的 R8 聚类仍可用（tags≤6 保留）。

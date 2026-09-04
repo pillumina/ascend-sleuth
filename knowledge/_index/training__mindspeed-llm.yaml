@@ -15,7 +15,6 @@ namespaces:
       - cuda-mixin
       - startup-fail
       - install
-      platforms: []
       compat: mindspeed-llm *
       confidence:
         score: 0.6
@@ -33,7 +32,6 @@ namespaces:
       - path-config
       - file-not-found
       - qwen3
-      platforms: []
       compat: mindspeed-llm *
       confidence:
         score: 0.6
@@ -53,7 +51,6 @@ namespaces:
       - version-mismatch
       - pta
       - deepseek
-      platforms: []
       compat: mindspeed-llm *
       confidence:
         score: 0.6
@@ -72,7 +69,6 @@ namespaces:
       - config-change
       - startup-fail
       - dsv4
-      platforms: []
       compat: mindspeed-llm *
       confidence:
         score: 0.6
@@ -90,8 +86,6 @@ namespaces:
       - environment
       - startup-fail
       - qwen3
-      platforms:
-      - A2-910B
       compat: mindspeed-llm master; cann 8.5.0
       confidence:
         score: 0.1
@@ -111,8 +105,6 @@ namespaces:
       - startup-fail
       - deepseek
       - dsv4
-      platforms:
-      - A3-910C
       compat: mindspeed-llm master; mindspeed 0.12.1
       confidence:
         score: 0.3
@@ -132,9 +124,6 @@ namespaces:
       - install
       - startup-fail
       - deepseek
-      - dsv4
-      platforms:
-      - A3-910C
       compat: mindspeed-llm master; mindspeed *
       confidence:
         score: 0.3
@@ -145,8 +134,7 @@ namespaces:
       hash: 1041be3ee2ad
     - id: MSLLM-1655
       title: 'gemma-2-9b 预训练启动报 RuntimeError: Cannot infer model type from architectures of Huggingface
-        config.json ''{arch_row}'': CKPT_LOAD_DIR 传入 HF 权重触发权重在线加载（train_from_hf）功能，该功能未全面支持 gemma2，先转
-        HF→Megatron 权重再训练'
+        config.json ''{arch_row}'': CKPT_LOAD_DIR 传入 HF 权重触发权重在线加载（train_from_hf…'
       category: interrupt
       tags:
       - checkpoint-load
@@ -155,8 +143,6 @@ namespaces:
       - model-type-infer
       - startup-fail
       - gemma2
-      platforms:
-      - A5-950
       compat: mindspeed-llm 26.1.0
       confidence:
         score: 0.3
@@ -175,8 +161,6 @@ namespaces:
       - fsdp2
       - startup-fail
       - gpt-oss
-      platforms:
-      - A2-910B
       compat: mindspeed-llm 26.1.0; transformers 5.2.0
       confidence:
         score: 0.6
@@ -187,8 +171,7 @@ namespaces:
       hash: ead8cc1692df
     - id: MSLLM-1707
       title: 'deepseek-v4-flash LoRA 微调启动报 RuntimeError: Tried to register an operator (npu_moe_distribute_dispatch_v2)
-        multiple times 或 ModuleNotFoundError: No module named ''cann_ops_transformer''：CANN 9.0.0 过旧，升级
-        9.1.0B120 及以上修复'
+        multiple times 或 ModuleNotFoundError: No module named …'
       category: interrupt
       tags:
       - moe
@@ -197,9 +180,6 @@ namespaces:
       - version-mismatch
       - lora
       - startup-fail
-      - module-not-found
-      platforms:
-      - A3-910C
       compat: mindspeed-llm 26.0.0; cann 9.0.0
       confidence:
         score: 0.6
@@ -210,7 +190,7 @@ namespaces:
       hash: 896e5d831ba7
     - id: MSLLM-1805
       title: 'master 分支 --ai-framework mindspore 启动失败：ModuleNotFoundError: No module named ''mindspeed_llm.tasks.checkpoint.models''——上游
-        commit f107818 删除 ckpt-v1 但 MindSpore 侧未同步迁移（代码漂移），同步迁移或移除旧引用修复'
+        commit f107818 删除 ckpt-v1 但 MindSpore 侧…'
       category: interrupt
       tags:
       - mindspore
@@ -219,8 +199,6 @@ namespaces:
       - import-error
       - startup-fail
       - ckpt-v1
-      platforms:
-      - A2-910B
       compat: mindspeed-llm master@c77308a1
       confidence:
         score: 0.6
@@ -240,8 +218,6 @@ namespaces:
       - convergence
       - feature-gap
       - qwen3
-      platforms:
-      - A3-910C
       compat: mindspeed-llm 26.0.0; cann 8.5.2
       confidence:
         score: 0.6
@@ -261,7 +237,6 @@ namespaces:
       - garbled-output
       - code-bug
       - qwen3
-      platforms: []
       compat: mindspeed-llm *
       confidence:
         score: 0.6
@@ -271,7 +246,7 @@ namespaces:
       hash: 6e8f508e1eb7
     - id: MSLLM-1780
       title: FSDP2 断点续训后第一步日志异常：lm loss 被错误除以 global_step（0.247×31=7.66 与相邻步一致）、elapsed/tokens/s 同步失真：trainer.py
-        续训时 _last_logged_step 从 _global_step_last_logged（常为 0）恢复，纯日志统计 bug，训练本身正确
+        续训时 _last_logged_step 从 _global_step_last_logged（常为 0）恢复，纯日志…
       category: precision
       tags:
       - fsdp2
@@ -279,8 +254,6 @@ namespaces:
       - log-statistics
       - loss-display
       - trainer-bug
-      platforms:
-      - A2-910B
       compat: mindspeed-llm master@c8f3cada
       confidence:
         score: 0.6

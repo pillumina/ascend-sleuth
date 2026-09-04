@@ -15,8 +15,6 @@ namespaces:
       - combinememories
       - heap-overflow
       - non-deterministic
-      platforms:
-      - A3-910C
       compat: sglang <=0.5.10; memfabric_hybrid <=1.0.5
       confidence:
         score: 0.6
