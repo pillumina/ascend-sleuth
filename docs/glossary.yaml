@@ -1,0 +1,342 @@
+# ============================================================
+# 设计层代号词表（机器可读，人读性渲染工具的数据源）
+# 用途：scripts/render_review_summary.py 读本文件，把"人读文本里的代号"
+#       渲染成"首次出现即解码"的可读形式；未登记代号在渲染时告警，
+#       倒逼"先登记再使用"（防撞车与失忆，教训：G1/G2/G3 撞 G1–G8）。
+# 覆盖范围：设计层代号全量（L/S 评分源/roadmap 事项 A-E-M-O-P/治理缺口 G/
+#           触发信号 T/落地阶段 Phase）——scan 清零是常态目标；
+#           EV 卡实例号（EV-YYYY-NNN）家族自解释，不逐张登记。
+# 维护规则（docs/git-workflow.md「人读性与代号约定」）：
+#   1. 新增代号先在此登记（本文件 = 机器词表唯一数据源）；
+#   2. 同步在 docs/evolution.md 顶部"指代速查"表补行（人读视图）；
+#   3. 机器字段（layer/status/method 等枚举值）不在本表——它们保持词法。
+# 稳定文档层 vs 数据的分层先例：docs/metrics.md（机制解释）vs
+# metrics/timeline.yaml（数据）——本文件类比 timeline.yaml。
+# ============================================================
+
+version: 1
+
+# token: 文本中出现的字面代号（渲染时按最长匹配替换）
+# short: 内联解码短义（"代号〔短义〕"）——优先用于人读 prose 内联注释
+# meaning: 完整解码含义（表格视图用，可含定义处指针）
+# family: 所属代号系列
+# see: 定义处文档指针
+entries:
+  - token: L1
+    short: 知识内容层
+    family: 演进对象层
+    meaning: 知识内容层：case / reference / triage 内容
+    see: evolution-pipeline.md §1
+  - token: L2
+    short: 流程与 skill 层
+    family: 演进对象层
+    meaning: 流程与 skill 层：diagnose/groom/to-* 实现、triage 分支、scripts、新 skill
+    see: evolution-pipeline.md §1
+  - token: L3
+    short: 工作流与编排层
+    family: 演进对象层
+    meaning: 工作流与编排层：流水线、groom 节奏、roadmap 机制、evolution 文档本身
+    see: evolution-pipeline.md §1
+  - token: S1
+    short: 现场反馈（工程师回报）
+    family: 评分源
+    meaning: 现场反馈：工程师回报 fix 是否解决 → case.confidence（唯一现场 resolve 口径）
+    see: evolution-pipeline.md §2.1
+  - token: S2
+    short: issue 回放对照（内容验证）
+    family: 评分源
+    meaning: 内容验证：issue-replay 对照外部 resolution → case.validation_record
+    see: evolution-pipeline.md §2.1
+  - token: S3
+    short: golden 回归门
+    family: 评分源
+    meaning: 回归防护：golden 回放，只作验证门不改 case 数据
+    see: evolution-pipeline.md §2.1
+  - token: E1
+    short: roadmap 事项：agent 自起草候选 case
+    family: roadmap 可演进性
+    meaning: roadmap 事项：agent 自起草候选 case
+    see: roadmap.md
+  - token: E2
+    short: roadmap 事项：router 从 trace 错例演进
+    family: roadmap 可演进性
+    meaning: roadmap 事项：router 从 trace 错例演进
+    see: roadmap.md
+  - token: E4
+    short: roadmap 事项：trusted auto-promotion
+    family: roadmap 可演进性
+    meaning: roadmap 事项：trusted auto-promotion（自动升格 + 月度抽审）
+    see: roadmap.md
+  - token: E5
+    short: roadmap 事项：trace 结构挖掘
+    family: roadmap 可演进性
+    meaning: roadmap 事项：trace 结构挖掘（低判别力 quickly_check 等）
+    see: roadmap.md
+  - token: E6
+    short: roadmap 事项：proposal 影响视图
+    family: roadmap 可演进性
+    meaning: roadmap 事项（EV-2026-009 新登记）：proposal 影响视图——按组件聚合历史尝试，闸门=首个 L2 rejected/回滚簇
+    see: roadmap.md
+  - token: E7
+    short: roadmap 事项：成功模式提取
+    family: roadmap 可演进性
+    meaning: roadmap 事项（EV-2026-009 新登记）：成功模式提取信号（evolve-check T8），闸门=常态运行中首次可复述成功模式
+    see: roadmap.md
+  - token: A2
+    short: roadmap 事项：容量治理拆分
+    family: roadmap 架构
+    meaning: roadmap 事项：格子容量治理与拆分
+    see: roadmap.md
+  - token: M5
+    short: roadmap 事项：groom token 预算
+    family: roadmap 可维护性
+    meaning: roadmap 事项：groom token 预算（结构性减负）
+    see: roadmap.md
+  - token: O6
+    short: roadmap 事项：诊断报告
+    family: roadmap 可观测性
+    meaning: roadmap 事项：诊断报告（trace 派生的人读视图）
+    see: roadmap.md
+  - token: O7
+    short: roadmap 事项：健康报表
+    family: roadmap 可观测性
+    meaning: roadmap 事项：健康报表（只读聚合 HTML 视图）
+    see: roadmap.md
+  - token: G3
+    short: 治理缺口：自我指涉
+    family: 治理缺口
+    meaning: 治理缺口：系统改自己的 skill，防自我确认偏差
+    see: evolution-orchestration.md §4
+  - token: G5
+    short: 治理缺口：无全局上下文
+    family: 治理缺口
+    meaning: 治理缺口：agent 每轮执行前无全局上下文
+    see: evolution-orchestration.md §5.1
+  - token: G6
+    short: 治理缺口：无成本侧
+    family: 治理缺口
+    meaning: 治理缺口：卡无成本侧字段
+    see: evolution-orchestration.md §3.2
+  - token: T4
+    short: 信号：执行错无归属→L2 卡
+    family: 触发信号
+    meaning: evolve-check 信号：执行错反复出现且无归属组件 → L2 修订卡
+    see: skills/evolve-check/SKILL.md
+  - token: T8
+    short: 信号：成功模式可复述→L2 卡
+    family: 触发信号
+    meaning: evolve-check 信号（EV-2026-009 拟新增）：同流程成功路径可复述 → L2 成功模式卡
+    see: skills/evolve-check/SKILL.md
+  - token: evolve-check
+    short: skill：收尾评估协议
+    family: skill
+    meaning: 收尾评估协议：任何内容流程收尾的低成本演进检查
+    see: skills/evolve-check/SKILL.md
+  - token: self-evolve
+    short: skill：深度轮+攒批聚合
+    family: skill
+    meaning: 自演进深度轮 + 攒批聚合器（用户显式触发）
+    see: skills/self-evolve/SKILL.md
+  - token: Phase A
+    family: 落地阶段
+    meaning: 落地阶段 A：文档采纳
+    see: evolution-pipeline.md §11
+  - token: Phase D
+    family: 落地阶段
+    meaning: 落地阶段 D：自演进试点一轮
+    see: evolution-pipeline.md §11
+  - token: Phase E
+    family: 落地阶段
+    meaning: 落地阶段 E：auto 扩权/参数校准常态化
+    see: evolution-pipeline.md §11
+  - token: G1
+    family: 治理缺口
+    short: 治理缺口：会话层缺失
+    meaning: 治理缺口：会话层缺失（无会话协议）
+    see: evolution-orchestration.md 引言
+  - token: G2
+    family: 治理缺口
+    short: 治理缺口：无目标与停止
+    meaning: 治理缺口：无目标函数与停止条件
+    see: evolution-orchestration.md 引言
+  - token: G4
+    family: 治理缺口
+    short: 治理缺口：同轮冲突
+    meaning: 治理缺口：同轮多卡冲突无编排
+    see: evolution-orchestration.md 引言
+  - token: G7
+    family: 治理缺口
+    short: 治理缺口：无稳态降频
+    meaning: 治理缺口：无稳态降频机制
+    see: evolution-orchestration.md 引言
+  - token: G8
+    family: 治理缺口
+    short: 治理缺口：无暂停重启
+    meaning: 治理缺口：无暂停/重启机制
+    see: evolution-orchestration.md 引言
+  - token: T1
+    family: 触发信号
+    short: 信号：同根因沉淀≥3条→归纳 reference
+    meaning: 信号：同根因沉淀≥3条→归纳 reference（详见 evolve-check 信号表 T1–T7 全表）
+    see: skills/evolve-check/SKILL.md
+  - token: T2
+    family: 触发信号
+    short: 信号：miss 某 issue 族→补 case
+    meaning: 信号：miss 某 issue 族→补 case（详见 evolve-check 信号表 T1–T7 全表）
+    see: skills/evolve-check/SKILL.md
+  - token: T3
+    family: 触发信号
+    short: 信号：同一手动动作重复≥2次→固化流程
+    meaning: 信号：同一手动动作重复≥2次→固化流程（详见 evolve-check 信号表 T1–T7 全表）
+    see: skills/evolve-check/SKILL.md
+  - token: T5
+    family: 触发信号
+    short: 信号：新源/新类型首次出现→扩覆盖
+    meaning: 信号：新源/新类型首次出现→扩覆盖（详见 evolve-check 信号表 T1–T7 全表）
+    see: skills/evolve-check/SKILL.md
+  - token: T6
+    family: 触发信号
+    short: 信号：容量超 soft_cap→拆分评估
+    meaning: 信号：容量超 soft_cap→拆分评估（详见 evolve-check 信号表 T1–T7 全表）
+    see: skills/evolve-check/SKILL.md
+  - token: T7
+    family: 触发信号
+    short: 信号：可复用链路跑通→沉淀 skill 候选
+    meaning: 信号：可复用链路跑通→沉淀 skill 候选（详见 evolve-check 信号表 T1–T7 全表）
+    see: skills/evolve-check/SKILL.md
+  - token: A1
+    family: roadmap 架构
+    short: roadmap 事项：Tier 3 postmortem frontmatter 结构化
+    meaning: roadmap  架构事项：Tier 3 postmortem frontmatter 结构化（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: A3
+    family: roadmap 架构
+    short: roadmap 事项：第二拆分轴（platform）ADR
+    meaning: roadmap  架构事项：第二拆分轴（platform）ADR（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: A4
+    family: roadmap 架构
+    short: roadmap 事项：非单调版本兼容实测
+    meaning: roadmap  架构事项：非单调版本兼容实测（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: A5
+    family: roadmap 架构
+    short: roadmap 事项：容量推演重算
+    meaning: roadmap  架构事项：容量推演重算（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: E3
+    family: roadmap 可演进性
+    short: roadmap 事项：embedding intake 预分诊（推迟项）
+    meaning: roadmap  可演进性事项：embedding intake 预分诊（推迟项）（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: M1
+    family: roadmap 可维护性
+    short: roadmap 事项：CODEOWNERS 转正 + 分支保护
+    meaning: roadmap  可维护性事项：CODEOWNERS 转正 + 分支保护（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: M2
+    family: roadmap 可维护性
+    short: roadmap 事项：fixture replay 半自动化
+    meaning: roadmap  可维护性事项：fixture replay 半自动化（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: M3
+    family: roadmap 可维护性
+    short: roadmap 事项：fixture 自动生成
+    meaning: roadmap  可维护性事项：fixture 自动生成（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: M4
+    family: roadmap 可维护性
+    short: roadmap 事项：groom 报告留档规范
+    meaning: roadmap  可维护性事项：groom 报告留档规范（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: O1
+    family: roadmap 可观测性
+    short: roadmap 事项：指标常态化
+    meaning: roadmap  可观测性事项：指标常态化（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: O2
+    family: roadmap 可观测性
+    short: roadmap 事项：指标按团队分账
+    meaning: roadmap  可观测性事项：指标按团队分账（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: O3
+    family: roadmap 可观测性
+    short: roadmap 事项：反馈捕获率监测
+    meaning: roadmap  可观测性事项：反馈捕获率监测（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: O4
+    family: roadmap 可观测性
+    short: roadmap 事项：eval 覆盖报告
+    meaning: roadmap  可观测性事项：eval 覆盖报告（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: O5
+    family: roadmap 可观测性
+    short: roadmap 事项：容量趋势预测
+    meaning: roadmap  可观测性事项：容量趋势预测（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: P1
+    family: roadmap 流程
+    short: roadmap 事项：流程事项：已移除（data-loss-risk 通知链路，见 roadmap 注）
+    meaning: roadmap  流程事项：流程事项：已移除（data-loss-risk 通知链路，见 roadmap 注）（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: P2
+    family: roadmap 流程
+    short: roadmap 事项：双签核验自查单
+    meaning: roadmap  流程事项：双签核验自查单（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: P3
+    family: roadmap 流程
+    short: roadmap 事项：fork 模式同步演练
+    meaning: roadmap  流程事项：fork 模式同步演练（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: P4
+    family: roadmap 流程
+    short: roadmap 事项：紧急路径实测复盘
+    meaning: roadmap  流程事项：紧急路径实测复盘（需求/验收/闸门见 roadmap.md）
+    see: roadmap.md
+  - token: Phase B
+    family: 落地阶段
+    short: 落地阶段 B（归因事件聚合跑通）
+    meaning: 落地阶段 B：归因事件按需聚合跑通 + L2 首条候选卡
+    see: evolution-pipeline.md §11
+  - token: Phase C
+    family: 落地阶段
+    short: 落地阶段 C（golden 验证门常态化）
+    meaning: 落地阶段 C：golden 验证门常态化
+    see: evolution-pipeline.md §11
+  - token: Phase C2
+    family: 落地阶段
+    short: 落地阶段 C2（S2 校准集）
+    meaning: 落地阶段 C2：S2 issue-replay 校准集建立
+    see: evolution-pipeline.md §11
+
+# 系列级说明（无固定字面 token 的系列；渲染告警与速查表用）
+families:
+  - id: layers
+    label: 演进对象层
+    pattern: L[1-3]
+    note: L1 知识 / L2 流程与 skill / L3 工作流编排
+  - id: sources
+    label: 评分源
+    pattern: S[1-3]
+    note: S1 现场反馈 / S2 issue 回放对照 / S3 golden 回归
+  - id: roadmap
+    label: roadmap 事项
+    pattern: '[AEMOP][0-9]'
+    note: A=架构 E=可演进性 M=可维护性 O=可观测性 P=流程；具体含义见 roadmap.md 各维度表
+  - id: governance
+    label: 治理缺口
+    pattern: G[1-8]
+    note: G1 会话层缺失…G8 无暂停重启；不是'改进增量'系列（教训：曾误用 G1/G2/G3）
+  - id: signals
+    label: 触发信号
+    pattern: T[0-9]+
+    note: evolve-check 信号条目（T4=执行错无归属 等）
+  - id: evcards
+    label: EV 卡
+    pattern: EV-\d{4}-\d{3}
+    note: 自演进决策档案卡（proposals/ideas/）
+  - id: phases
+    label: 落地阶段
+    pattern: Phase [A-E]
+    note: pipeline §11 落地阶段 A–E；与 roadmap 的 E# 无关联

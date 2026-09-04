@@ -15,6 +15,8 @@
 > | **T#** | evolve-check 触发信号条目（如 T4=执行错无归属 → L2 卡） | skills/evolve-check/SKILL.md 信号表 |
 > | **EV-YYYY-NNN** | 自演进决策档案卡 ID（proposals/ideas/） | evolution-pipeline.md §7 |
 > | **Phase A–E** | 落地阶段（A 文档采纳…E 常态化），与 roadmap 的 "E6" 无关联 | evolution-pipeline.md §11 |
+>
+> 上表是人读视图；**机器可读权威词表 = `docs/glossary.yaml`**（`scripts/render_review_summary.py` 渲染解码视图时读取）。新增代号在两处同步登记：先 `glossary.yaml`（数据），再本表补行（人读视图）——分层先例同 metrics.md（机制文档）vs timeline.yaml（数据）。
 
 ## 演化回路
 

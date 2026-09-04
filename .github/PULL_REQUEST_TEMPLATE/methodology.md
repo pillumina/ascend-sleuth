@@ -20,6 +20,12 @@ labels: []
 - [ ] 改动后重跑，原通过项无一变为失败
 - 改前/改后对照（摘要或附完整报告）：
 
+## 人读性自查（约定，非 CI——docs/git-workflow.md「人读性与代号约定」）
+
+- [ ] 人读 prose（描述/变更说明/摘要）中代号首次出现已解码（含义〔代号〕），无高危字母裸用（E/T/G/EV/Phase 系列）
+- [ ] 新增/新引用的代号已登记 docs/glossary.yaml（可跑 `scripts/render_review_summary.py --scan` 自检告警）
+- [ ] PR 描述提供解码审读视图（`--diff` 渲染表或等价人话摘要），reviewer 无需裸读满屏代号
+
 ## Agent 预核意见（机器可填，可选——非 agent 链路提交可留空）
 
 <!-- 基于事实的独立意见，供 reviewer 对齐判断——不替代人审 -->
