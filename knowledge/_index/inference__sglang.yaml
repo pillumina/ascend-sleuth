@@ -22,16 +22,5 @@ namespaces:
         score: 0.6
       symptoms:
       - PD 分离 --disaggregation-transfer-backend ascend，KV cache 跨 NPU 传输偶发失败
-      - decode 侧日志：halShmemCreateHandle → 'Size is bad' → size > heap_size → Create_para_check fail
-      - 大模型(GLM W8A8 ~17GB KV)偶发失败、小模型(Qwen3-4B)成功
-      - 非必现：page_num ±1（torch.npu.mem_get_info 整数除法精度）决定 K end 是否等于 V base
-      quickly_check:
-        primary:
-          command: grep 'Size is bad.*heap_size' {{log_path}}
-          expected: regex:.*Size is bad.*heap_size
-        fallback:
-          command: grep -E 'halShmemCreateHandle.*Create_para_check fail|rtIpcOpenMemory.*ErrCode=507899'
-            {{log_path}}
-          expected: regex:.*(Create_para_check|ErrCode=507899)
       file: knowledge/inference/sglang/SGL-PD-HEAP-001.yaml
       hash: 3576617fec9c

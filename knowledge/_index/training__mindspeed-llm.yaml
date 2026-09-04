@@ -21,15 +21,6 @@ namespaces:
         score: 0.6
       symptoms:
       - 昇腾环境执行训练脚本 examples/mcore/qwen3/pretrain_qwen3_8b_4K_ptd.sh 启动即失败
-      - '/opt/conda/lib/python3.11/site-packages/bitsandbytes/libbitsandbytes_cpu.so: cannot open shared
-        object file: No such file or directory（bitsandbytes 动态库缺失/加载失败），训练无法拉起'
-      quickly_check:
-        primary:
-          command: grep -E 'libbitsandbytes_cpu.so|cannot open shared object file' {{log_path}}
-          expected: regex:.*(libbitsandbytes_cpu.so|cannot open shared object file)
-        fallback:
-          command: grep -iE 'bitsandbytes|environment' {{log_path}}
-          expected: regex:.*(bitsandbytes|environment)
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1459.yaml
       hash: 07419a3511b3
     - id: MSLLM-1465
@@ -48,15 +39,7 @@ namespaces:
         score: 0.6
       symptoms:
       - '执行 examples/mcore/qwen3/data_convert_qwen3_pretrain.sh 做 Qwen3 预训练数据预处理时，preprocess_data.py 报
-        FileNotFoundError: Couldn''t find any data file at /data/dataset/train-00000-of-00042-d964455e17e96d5a.parquet'
-      - 日志中夹杂 bitsandbytes/DeprecationWarning 等干扰项，关键报错是这一行
-      quickly_check:
-        primary:
-          command: grep -E "Couldn't find any data file" {{log_path}}
-          expected: regex:.*Couldn't find any data file
-        fallback:
-          command: grep -n 'input' {{script_path}}
-          expected: regex:.*--input
+        FileNotFoundError: Couldn''…'
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1465.yaml
       hash: 36cf3046a188
     - id: MSLLM-1525
@@ -76,15 +59,7 @@ namespaces:
         score: 0.6
       symptoms:
       - DeepSeek-V4 整网训练开启 config.batch_p2p_comm（mindspeed/core/pipeline_parallel/optimize_p2p_comm/adaptor.py）后
-        rank 报错崩溃，栈崩在 megatron core pipeline parallel schedules 的 recv_forward（p2p_communication.recv_forward）接收前向张量路径
-      - 关闭 batch_p2p_comm 配置后训练可继续
-      quickly_check:
-        primary:
-          command: grep -n 'batch_p2[op]_comm' {{config_path}}
-          expected: regex:batch_p2[op]_comm
-        fallback:
-          command: grep -E 'recv_forward|p2p_communication' {{log_path}}
-          expected: regex:.*(recv_forward|p2p_communication)
+        rank 报错崩溃，栈崩在 m…
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1525.yaml
       hash: 2ff53140990d
     - id: MSLLM-1526
@@ -103,15 +78,6 @@ namespaces:
         score: 0.6
       symptoms:
       - dsv4 整网训练将 step 从 2000 改为 20000（数据总量变化）后启动训练报错
-      - rank41 在 build_train_valid_test_data_iterators → build_train_valid_test_data_loaders 数据集构建/加载阶段抛异常，训练无法拉起
-      quickly_check:
-        primary:
-          command: grep -E 'build_train_valid_test_data_iterators|build_train_valid_test_data_loaders'
-            {{log_path}}
-          expected: regex:.*build_train_valid_test_data_(iterators|loaders)
-        fallback:
-          command: ls {{repo_path}}/mindspeed_llm/core/datasets/helpers_cpp*
-          expected: regex:.*helpers_cpp
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1526.yaml
       hash: b39513bc1f8e
     - id: MSLLM-1550
@@ -132,14 +98,6 @@ namespaces:
       symptoms:
       - 8 卡 910B4（openEuler，CANN 8.5.0，master 分支）运行 Qwen3-8B 预训练脚本，环境校验（torch_npu/torchair 导入、8 卡 NPU
         可用）均正常通过
-      - 启动后算子编译/加载阶段报 GMMOpBuilder 重复注册操作符，训练无法继续
-      quickly_check:
-        primary:
-          command: grep -iE 'GMMOpBuilder.*register|重复注册' {{log_path}}
-          expected: regex:.*GMMOpBuilder
-        fallback:
-          command: pip list | grep -i mindspeed
-          expected: regex:.*mindspeed
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1550.yaml
       hash: 7949f4309125
     - id: MSLLM-1554
@@ -159,16 +117,8 @@ namespaces:
       confidence:
         score: 0.3
       symptoms:
-      - 'A3 节点按指导文档用 MindSpeed-LLM master + mindspeed 0.12.1 拉起 dsv4 训练（pretrain_deepseek4.py → import
-        mindspeed_llm → megatron_adaptor_v2 初始化）即报 ImportError: cannot import name ''PipelineModelParallelLayoutFeature''
-        from ''mindspeed.features_manager''，ERR99999 UNKNOWN application exception，训练进程无法启动'
-      quickly_check:
-        primary:
-          command: grep -E 'cannot import name.*features_manager' {{log_path}}
-          expected: regex:.*cannot import name.*from 'mindspeed.features_manager'
-        fallback:
-          command: grep -E 'ERR99999|UNKNOWN application exception' {{log_path}}
-          expected: regex:.*(ERR99999|UNKNOWN application exception)
+      - A3 节点按指导文档用 MindSpeed-LLM master + mindspeed 0.12.1 拉起 dsv4 训练（pretrain_deepseek4.py → import
+        mindspeed_llm → megatron_a…
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1554.yaml
       hash: 86962dcf4c75
     - id: MSLLM-1555
@@ -189,16 +139,8 @@ namespaces:
       confidence:
         score: 0.3
       symptoms:
-      - 'A3 节点 Atlas A3 训练镜像上按 install_guide.md 手动安装 MindSpeed(Master)+MindSpeed-LLM+Megatron core_v0.12.1
-        后，拉起 dsv4 训练（pretrain_deepseek4.py）报 ImportError: cannot import name ''HcclOpModeSetFeature''
-        from ''mindspeed.features_manager''，训练拉起失败'
-      quickly_check:
-        primary:
-          command: grep -E 'cannot import name.*features_manager' {{log_path}}
-          expected: regex:.*cannot import name.*from 'mindspeed.features_manager'
-        fallback:
-          command: grep -E 'cannot import name' {{log_path}}
-          expected: regex:.*cannot import name
+      - A3 节点 Atlas A3 训练镜像上按 install_guide.md 手动安装 MindSpeed(Master)+MindSpeed-LLM+Megatron core_v0.12.1
+        后，拉起 dsv4 训练（pretrain_…
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1555.yaml
       hash: 1041be3ee2ad
     - id: MSLLM-1655
@@ -220,18 +162,7 @@ namespaces:
         score: 0.3
       symptoms:
       - '预训练 gemma-2-9b 时框架无法识别 architectures: Gemma2ForCausalLM，报 RuntimeError: Cannot infer model type
-        from architectures of Huggingface config.json ''{arch_row}''. Please specify --model-type-hf explicitly'
-      - 栈：pretrain_gpt.py → validate_features_args → convert_checkpoint.py:158 validate_args → infer_model_type_from_hf_config
-        抛错
-      - 上下文日志含 'When context_parallel is not activated, kv_head_repeat_before_uly_alltoall would be set
-        to False'（训练启动正常，卡在 checkpoint 参数校验）
-      quickly_check:
-        primary:
-          command: grep -E "Cannot infer model type from architectures" {{log_path}}
-          expected: regex:.*Cannot infer model type from architectures
-        fallback:
-          command: grep -E 'infer_model_type_from_hf_config|model_type_hf' {{log_path}}
-          expected: regex:.*(infer_model_type_from_hf_config|model_type_hf)
+        from architectures of Hu…'
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1655.yaml
       hash: bf99997b3bc8
     - id: MSLLM-1667
@@ -251,14 +182,7 @@ namespaces:
         score: 0.6
       symptoms:
       - A2 上运行 fsdp2 训练减层版 gpt-oss-20b（mindspeed-llm 26.1.0 + transformers 5.2.0），在模型构建/加载阶段（ModelFactory.create
-        → model_loader.create_model → _create_on_cpu）报错退出，训练无法启动
-      quickly_check:
-        primary:
-          command: grep -E '_create_on_cpu|ModelFactory.create|model_loader' {{log_path}}
-          expected: regex:.*(_create_on_cpu|ModelFactory.create|model_loader)
-        fallback:
-          command: grep -iE 'fp8|BF16|精度|weight' {{log_path}}
-          expected: regex:.*(fp8|BF16|精度|weight)
+        → model_loader.…
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1667.yaml
       hash: ead8cc1692df
     - id: MSLLM-1707
@@ -282,19 +206,6 @@ namespaces:
       symptoms:
       - Atlas 800I A3 + CANN 9.0.0 + MindSpeed-LLM 26.0.0 镜像内源码安装最新版，deepseek-v4-flash 做 LoRA 微调（posttrain_gpt.py
         launch）启动即失败
-      - 'RuntimeError: Tried to register an operator (npu_ops_transformer::npu_moe_distribute_dispatch_v2(...))
-        with the same name and overload name multiple times，Duplicate registration at /dev/null:241'
-      - '变体（#1801）：同 CANN 9.0.0 族（9.0.0-beta.2）+ deepseekv4-flash lora，启动报 ModuleNotFoundError: No module
-        named ''cann_ops_transformer''（mindspeed_llm/ops/npu_mhc.py 导入失败）——CANN 过旧导致算子组件缺失，升级后新 CANN 自带该包'
-      quickly_check:
-        primary:
-          command: grep -E 'Tried to register an operator|Duplicate registration|No module named.*cann_ops_transformer'
-            {{log_path}}
-          expected: regex:.*(Tried to register an operator|Duplicate registration|No module named.*cann_ops_transformer)
-        fallback:
-          command: grep -E 'npu_moe_distribute_dispatch|npu_ops_transformer|cann_ops_transformer|npu_mhc'
-            {{log_path}}
-          expected: regex:.*(npu_moe_distribute_dispatch|npu_ops_transformer|cann_ops_transformer|npu_mhc)
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1707.yaml
       hash: 896e5d831ba7
     - id: MSLLM-1805
@@ -315,19 +226,7 @@ namespaces:
         score: 0.6
       symptoms:
       - 'master 分支用 --ai-framework mindspore 启动（pretrain_gpt.py）稳定失败：ModuleNotFoundError: No module named
-        ''mindspeed_llm.tasks.checkpoint.models''，双 rank 均复现'
-      - '栈：pretrain_gpt.py → mindspeed_llm/__init__.py → megatron_adaptor_v2.py:114 FeatureAdaptor.execute()
-        → ms_patch_feature.py → mindspore_adaptor_v2.py:157 _patch_optimizer_and_training → from mindspeed_llm.mindspore.tasks.checkpoint.models
-        import register_functions → 其 line 11: from mindspeed_llm.tasks.checkpoint.models import ModelBase
-        → ModuleNotFoundError'
-      - 直接加载 mindspeed_llm/mindspore/tasks/checkpoint/models.py 也触发相同错误
-      quickly_check:
-        primary:
-          command: grep -E "No module named 'mindspeed_llm.tasks.checkpoint.models'" {{log_path}}
-          expected: regex:.*No module named 'mindspeed_llm.tasks.checkpoint.models'
-        fallback:
-          command: grep -E 'mindspore_adaptor_v2|tasks.checkpoint.models' {{log_path}}
-          expected: regex:.*(mindspore_adaptor_v2|tasks.checkpoint.models)
+        ''mindspeed_llm.tasks.ch…'
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1805.yaml
       hash: ed9449185eda
     precision:
@@ -349,14 +248,6 @@ namespaces:
       symptoms:
       - qwen3-14b-64k-lora 微调开启 uniform 重计算时，grad norm 恒为 0、loss 不收敛（lm loss 停滞在 ~1.22e1 附近），num zeros/nan
         均为 0 但训练无进展
-      - 环境：A3、cann_8.5.2、mindspeed-llm 26.0.0
-      quickly_check:
-        primary:
-          command: grep -E 'grad norm.*0|grad_norm.*0\b' {{log_path}}
-          expected: regex:.*grad.?norm.*0
-        fallback:
-          command: grep -E 'lm loss.*1\.2[0-9]e1|loss.*不收敛' {{log_path}}
-          expected: regex:.*loss
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1437.yaml
       hash: b30a52d8269f
     - id: MSLLM-1532
@@ -376,14 +267,6 @@ namespaces:
         score: 0.6
       symptoms:
       - Qwen3-0.6B 用 convert_ckpt_v2.py 做 HF→MCore→HF 无训练 round-trip 转换，导出的 HF 模型生成乱码碎片（如 'aseñaGLISHATUREATURE...'）
-      - 逐 tensor 对比仅 q_proj/k_proj/v_proj 权重与原始不一致（mean_abs≈0.03），其余 embed/lm_head/norm/mlp 权重完全一致
-      quickly_check:
-        primary:
-          command: grep -E 'garbled|乱码|aseña|GLISH' {{log_path}}
-          expected: regex:.*(garbled|乱码)
-        fallback:
-          command: grep -n 'qkv_type.*unpack\|linear_qkv' {{convert_script_path}}
-          expected: regex:.*(linear_qkv|qkv_type)
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1532.yaml
       hash: 6e8f508e1eb7
     - id: MSLLM-1780
@@ -403,15 +286,6 @@ namespaces:
         score: 0.6
       symptoms:
       - FSDP2 断点续训（resume_from_checkpoint）后第一步日志三项指标同时异常：lm loss 显示 0.247（×31 还原 = 7.66 与相邻步 7.74 一致）、elapsed
-        time 34.55ms（正常 90.11）、tokens/s 560（正常 6747）——三个互不相关指标同时除以恢复后的 global_step
-      - consumed tokens/samples 从 0 重新计数而非从 checkpoint 恢复累计值
-      - 用 checkpoint 权重离线重放 step 31 实际 batch，真实 loss≈6.94 与相邻 batch 同档——训练本身（模型/optimizer/lr/数据位置/真实 loss）完全正确，仅日志统计失真
-      quickly_check:
-        primary:
-          command: 'grep -E ''lm loss: [0-9]\.[0-9]+E-[0-9]'' {{log_path}}'
-          expected: 'regex:.*lm loss: [0-9]\.[0-9]+E-[0-9]'
-        fallback:
-          command: grep -E 'resume_from_checkpoint|global_step_30' {{config_path}}
-          expected: regex:.*(resume_from_checkpoint|global_step_)
+        time 34.55ms（正常 90…
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1780.yaml
       hash: 544219f96b15
