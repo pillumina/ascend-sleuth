@@ -55,7 +55,9 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 `scripts/eval_arena.py`：
 - `--pool <yaml>`：校验池文件结构；
 - `--stats <pool>`：聚合各 issue 的 result → 指标（写 .s2-replay/arena/stats-*.yaml）；
-- `--gate --baseline <stats-a> --candidate <stats-b>`：对照判定 + 追加影响账本。
+- `--gate --baseline <stats-a> --candidate <stats-b>`：对照判定 + 追加影响账本；
+- `--rc-check <pool>`：结论一致离线对照（agent root_cause vs 标注 resolution_summary，
+  启发式信号 + 人工核验清单——归因层/结论一致的评分件，auto 不终判）。
 
 ## 6. 与既有机制的关系
 
