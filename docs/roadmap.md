@@ -35,7 +35,7 @@
 | ID | 事项 | 需求 / 验收标准 | 入口闸门 | 阶段 |
 |---|---|---|---|---|
 | E1 | agent 自起草候选 case | Tier-2 未命中但最终解决的 session，diagnose 产出含候选 case 的 postmortem 落 inbox（confidence 初始低值）；groom 按正常三分类验证；采纳率进 metrics | 首次发生"Tier-2 未命中但最终解决" | v1.5 |
-| E2 | router 从 trace 错例演进 | groom 从 trace 提取路由错例（`triage.routed` 集合 vs 命中 case 实际 namespace），产出 triage-tree 修订建议（diff 形式），走 `kb/high-risk` 双签合入；修订后用 `trace_metrics.py` 复测路由准确率并记入 metrics | trace ≥20 个可归因 session（`hit.case` 与 `triage.routed` 齐全） | v1.5 |
+| E2 | router 从 trace 错例演进 | groom 从 trace 提取路由错例（`triage.routed` 集合 vs 命中 case 实际 namespace），产出 triage-tree 修订建议（diff 形式），走 `kb/high-risk` 双签合入；修订后用 `trace_metrics.py` 复测路由准确率并记入 metrics | trace ≥20 个可归因 session（`hit.case` 与 `triage.routed` 齐全；**计数口径 = 真实 diagnose trace，S2 replay result 不计入**——与 S2 池独立，防同池自我优化，见 evolution-pipeline §11.2） | v1.5 |
 | E3 | embedding intake 预分诊 | 按 ADR-0002 既定设计落地：`semantics.text_hash` + `model` 字段 + `.embeddings/` sidecar（人审文件 diff 保持干净），embedding 经 API 生成、本地暴力余弦，**不引入向量库**；预分诊输出三分类 + 相似度证据，人审环节不变 | inbox 周均 ≥4 条持续 4 周，或 covered/variant 占比可观测地 >50% | 推迟项 |
 | E4 | trusted auto-promotion | 近重复 + quickly_check 通过 + 连续 N 次兄弟命中未误诊的新 case 可自动升格，标 `auto_promoted: true`，进月度抽审 | v2 入口条件（见阶段视图） | v2 |
 | E5 | trace 结构挖掘 | 从 trace 语料报告低判别力 quickly_check、噪声 triage 分支、高验证耗时 case，产出结构改进建议 | v2 入口条件 | v2 |

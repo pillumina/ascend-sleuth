@@ -1,0 +1,86 @@
+# ============================================================
+# Idea 卡：闸门×数据源盘点 + §11.1 状态口径修订
+# 目的：把"等数据积累"从模糊口号变成可核对清单；修正文档中与 2026-09 现状
+#       脱节的陈旧状态描述（数据已开始真实流入，逐项盘点见 pipeline §11.2）。
+# ============================================================
+
+id: EV-2026-011
+layer: L3                          # 工作流/编排层：文档机制口径修订
+title: "闸门×数据源盘点（2026-09-04）：三类数据性质的闸门口径表 + §11.1/roadmap E2 状态与计数口径修订"
+status: validated
+authorization: dual                # L3 结构级（evolution 文档修订）→ 人审
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: human_review_feedback
+    evidence: "审核疑问：'很多蓝图说要数据积累，但 S2 replay 与 skill 使用 trace 难道不能作为数据？'——盘点后确认：多数闸门未解锁不是'没记录'，而是量/事件未发生/可判性/独立性四类性质限制；且文档 §11.1 状态描述（feedback≈0、S2 未建、无 EV 卡）已与 2026-09 现状脱节"
+    trajectory:
+      - "docs/evolution-pipeline.md §11.1（2026-09 重构前状态快照，已过时）"
+      - "docs/roadmap.md E2 闸门（计数口径未定义 replay 是否计入）"
+      - "实测：traces/ 12（齐全 5）、.s2-replay/ 9 result、skill-exec-log 3、golden 23、EV 卡 10"
+hypothesis: >-
+  按对象定义闸门计数口径（真实 trace / S2 replay / skill-exec-log 三类来源不混算），
+  并把每道闸门的缺口性质（量 / 事件未发生 / 可判性 / 独立性）写明，可让"等数据"成为
+  可核对清单，避免两类错误：把已有检索类数据当不存在（S2 覆盖缺口已达标未结算），
+  或把评测数据当执行错证据（S2 miss 三义无 verdict）
+predicted_effect:
+  metric: 蓝图闸门盘点可核对性（每闸门是否有 达标判定 + 缺口性质 标注）
+  from: 无（文档状态陈旧、口径未定义）
+  to: 全闸门入表（§11.2）；E2 计数口径写明
+validation:
+  method: metrics_compare
+  baseline: 无盘点表；§11.1 写"feedback≈0、S2 集未建、无真实 EV 卡"
+  success_criteria: "§11.2 表内计数与实测一致（traces 12 / replay 9 / 齐全 5 / golden 23 / EV 10 / skill-exec-log 3）；roadmap E2 口径注明不计 replay；verify_proposals / build_index 通过；CI 全绿"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户要求先回答问题再做 A+B（2026-09-04）；A 的覆盖缺口结算结果为 2 真候选（13673/13961）"
+risk: medium
+principle_refs: [3, 8, 9, 10, 11]
+actual_cost:
+  tokens: 8000
+  source: estimate
+decisions:
+  - who: agent（self-evolve 深度轮）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      审核疑问指向真实问题：文档反复说"等数据积累"，但 S2 replay（9 条完整诊断运行）、
+      真实 trace（12 条）、golden（23）、skill-exec-log（3）明明在产数据。盘点后确认为
+      三种性质而非一种"缺量"：①检索行为类（路由/命中/覆盖缺口）量已够且部分已在喂
+      机制——S2 tier2 miss 7/9 → 覆盖缺口信号（5 条已沉淀同名 case，2 真候选 13673/
+      13961）；路由错例当前为 0（EV-2026-005/008 修 triage 后样本内不再出错，诚实零）；
+      ②失败事件可判性缺——S2 miss 三义无 verdict，不能冒充 execution_error；③独立性缺
+      ——S2 单池不可兼作触发与验证样本，E2 要"真实 trace"是防同池自我优化。另确认
+      skill-exec-log 只有 3 条是设计叠加（diagnose 不落、机制 2026-09 才接入、内容 skill
+      只落收尾摘要），不是日志故障，也不该加常驻统一台账。
+  - who: agent（self-evolve 深度轮）
+    when: "2026-09-04"
+    type: action
+    conclusion: >-
+      执行：①pipeline §11.1 状态段改为"2026-09 已开始真实运行，实时计数以脚本/文件
+      输出为准"；②新增 §11.2「闸门×数据源盘点」：计数口径原则（三类来源不混算）+
+      11 行闸门表（每行含 达标判定 + 缺口性质）+ 盘点结论；③roadmap E2 闸门注明计数
+      口径=真实 diagnose trace、S2 replay 不计入（独立性）；④A 结算（不落库）：S2 覆盖
+      缺口 7 无命中中 5 已沉淀，真候选 2（13673/13961）留 issue-ingest 管道待上游闭环
+      核验；⑤决策链留痕本卡。
+  - who: agent（self-evolve 深度轮）
+    when: "2026-09-04"
+    type: eval
+    conclusion: >-
+      实测计数与 §11.2 表一致：traces/ 12（routed 8 / hit 6 / 齐全 5）；.s2-replay/ 9
+      result（route 全 ok、attributions 0）；skill-exec-log 3；golden 23；EV 卡 10（全
+      validated，无 rejected L2——E6 事件未发生）；knowledge case 123（vllm-ascend 81/
+      30 interrupt）。A 结算核对：9 replay 中 7 无命中、其中 5 已存在同名 case 文件
+      （VLLM-ASC-10097/10998/13446/13639/9769 等），确认 replay miss 为沉淀前快照。
+      verify_proposals / build_index 通过（本次未改 case/卡结构外字段）。golden 不适用
+      （未触及 diagnose 路径）。
+  - who: agent（self-evolve 深度轮）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated）：§11.2 盘点表 + §11.1 状态修订 + roadmap E2 口径随 methodology
+      PR 送人审。观察窗：§11.2 的实时数字在后续文档修订中按"以脚本输出为准"原则刷新，
+      不在此表硬编码长期数值；A 的 2 个覆盖缺口候选（13673/13961）由 issue-ingest 管道
+      在核验上游闭环后决定沉淀；季度自评复核各闸门缺口性质是否随使用变化（§6.6）。
