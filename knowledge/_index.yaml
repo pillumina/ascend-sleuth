@@ -1,9 +1,11 @@
 # GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。
 # case 变更后重新生成并提交；`build_index.py --check` 校验新鲜度（groom/CI）。
-# 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。
+# 阶段一加载协议：本文件是总表（容量/头注视图 + 兜底）；diagnose 只读命中的最小分片
+# （knowledge/_index/<ns>__<category>.yaml；category 未定回退 <ns>.yaml），候选 ≤5 过滤后
+# 按 file 字段定位做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-09-04    case 总数：128
+# 生成日期：2026-09-05    case 总数：128
 #   容量(inference/sglang): interrupt=1/30
 #   容量(inference/vllm-ascend): interrupt=83/30, performance=8/30, precision=16/30
 #   容量(training/mindspeed-llm): interrupt=11/30, precision=3/30
