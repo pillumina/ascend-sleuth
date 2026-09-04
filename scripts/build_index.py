@@ -240,6 +240,8 @@ def main():
         dirty = []
         for nsk, cells in ns.items():
             dirty += shard_dirty(root, nsk, cells)
+            for cat, cases in cells.items():
+                dirty += shard_dirty(root, f"{nsk}__{cat}", {cat: cases})
         if dirty:
             for s in dirty:
                 print(f"SHARD STALE: {s[0]} {s[1]}")
@@ -254,9 +256,16 @@ def main():
     shard_dir.mkdir(exist_ok=True)
     expected = set()
     for nsk, cells in ns.items():
+        # ns 级分片（保留：category 未定/回退/其他消费者）
         p = shard_path(root, nsk)
         p.write_text(render_shard(nsk, cells), encoding="utf-8")
         expected.add(p.name)
+        # F4（EV-2026-025）：category 级分片 <ns>__<category>.yaml——路由已定 category 时
+        # 阶段一只读该 cell，避免整 ns（vllm-ascend 107 行）进上下文
+        for cat, cases in cells.items():
+            cp = shard_path(root, f"{nsk}__{cat}")
+            cp.write_text(render_shard(f"{nsk}__{cat}", {cat: cases}), encoding="utf-8")
+            expected.add(cp.name)
     for old in shard_dir.glob("*.yaml"):
         if old.name not in expected:
             old.unlink()

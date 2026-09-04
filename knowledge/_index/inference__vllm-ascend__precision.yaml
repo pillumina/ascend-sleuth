@@ -1,0 +1,342 @@
+# GENERATED FILE —— 分片（knowledge/_index.yaml 的 inference/vllm-ascend__precision 子集），不要手改。
+# 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。
+# 阶段一加载协议（EV-2026-022）：diagnose 只读**命中 namespace 的分片**，不读整库总表。
+# 本分片：inference/vllm-ascend__precision（16 条 case）
+namespaces:
+  inference/vllm-ascend__precision:
+    precision:
+    - id: VLLM-ASC-10524
+      title: 'GLM-5.1-w8a8 PD 分离偶现精度问题（Claude Code 多并发长请求）：graph-capture/dummy run 未走 _prepare_inputs()
+        导致 slot_mapping 读未初始化残留值，需 dummy run 重置 slot_mapping 为 pad id（PR #11774）'
+      category: precision
+      tags:
+      - glm5
+      - pd-separation
+      - graph-capture
+      - slot-mapping
+      - mooncake
+      - intermittent
+      - glm5.1
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <0.24.0rc1
+      confidence:
+        score: 0.6
+      symptoms:
+      - GLM-5.1-w8a8 PD 分离（P:TP16/DP2，D:TP4/DP8 FULL_DECODE_ONLY 图模式+MTP，Mooncake KV transfer）+ Claude
+        Code（转 completions 接口）压测偶…
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-10524.yaml
+      hash: 59ee44653ce5
+    - id: VLLM-ASC-10892
+      title: '310P（v0.21.0rc1）上 Qwen3.6-35B-A3B-w8a8 长请求过度思考/不按要求输出：npu_moe_gating_top_k_softmax 单次 >1024
+        token 返回无效路由（_310p/fused_moe），升级含 PR #11391（0.23.0rc1+）修复'
+      category: precision
+      tags:
+      - 310p
+      - moe
+      - gating
+      - routing
+      - qwen3.6
+      - overthinking
+      - precision
+      - fusedmoe
+      platforms:
+      - 310P
+      compat: vllm-ascend <0.23.0rc1
+      confidence:
+        score: 0.6
+      symptoms:
+      - 310P 上 MoE 模型（Qwen3.6-35B-A3B-w8a8）长请求（~2700 token 等 >1024 路由 token 场景）输出劣化：要求只输出 JSON/答案却输出大段中英混杂逐步分析、thinking
+        失控（'过度思考…
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-10892.yaml
+      hash: a7502b17335b
+    - id: VLLM-ASC-11127
+      title: 'GLM-5.1（w8a8）MTP + PD 分离 decode 多 DP：压测 1-2h 后投机接受率退化 <1% 不恢复、手工 curl 输出精度错误——drafter 输入判断
+        input_fits_in_drafter 处理不当（PR #10117 移除）'
+      category: precision
+      tags:
+      - mtp
+      - spec-decode
+      - glm5
+      - pd-disagg
+      - multi-dp
+      platforms:
+      - A3-910C
+      compat: vllm-ascend >=0.20,<0.21
+      confidence:
+        score: null
+      symptoms:
+      - GLM-5.1（w8a8）MTP/spec-decode 开启，PD 分离 decode 节点多 DP 压测 1-2 小时后接受率不足 1% 且无法恢复
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11127.yaml
+      hash: 35a6d6064c54
+    - id: VLLM-ASC-11169
+      title: A2 双机拉起 GLM-5.2 w8a8（DP=2 双节点 + UCMConnector external kv connector）发送中文请求返回乱码；root cause
+        未确认，workaround：VLLM_ASCEND_ENABLE_FLASHCOMM1=1 或关闭 external kv connector
+      category: precision
+      tags:
+      - glm5
+      - garbled-output
+      - kv-transfer
+      - flashcomm1
+      - workaround-only
+      platforms:
+      - A2-910B
+      compat: vllm-ascend
+      confidence:
+        score: 0.1
+      symptoms:
+      - A2 双机（DP=2 双节点）GLM-5.2 w8a8 + UCMConnector external kv connector 拉起推理，发送中文请求返回乱码
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11169.yaml
+      hash: 743b756ecca3
+    - id: VLLM-ASC-11824
+      title: Ascend NPU 上 batch invariance 测试输出随 batch 波动：算子默认非确定性执行，需在 override_envs_for_invariance()
+        开启 torch.use_deterministic_algorithms(True, warn_only=True)
+      category: precision
+      tags:
+      - determinism
+      - batch-invariance
+      - ci-test
+      - use-deterministic-algorithms
+      platforms:
+      - A5-950
+      compat: vllm-ascend <0.23.0
+      confidence:
+        score: 0.3
+      symptoms:
+      - batch invariance 测试（如 Qwen3-30B）断言同输入、不同 batch 输出一致，在 Ascend NPU 上随 batch 波动、测试失败
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11824.yaml
+      hash: 50c83692e0ad
+    - id: VLLM-ASC-12030
+      title: vllm-ascend 0.20 + GLM-5.1 w8a8 910C PD 分离：特定请求（function-calling）流式响应经常出现单词最后 1 个字符重复，非流式正常——GLM5
+        流式 tool-call 解析器 glm4_moe_tool_parser.py 解析缺陷，0.23.0 已修复
+      category: precision
+      tags:
+      - glm5
+      - streaming
+      - tool-call
+      - glm4_moe_tool_parser
+      - pd-separation
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <0.23.0
+      confidence:
+        score: 0.3
+      symptoms:
+      - vllm-ascend 0.20 + GLM-5.1 w8a8 910C PD 分离，特定请求（tools + tool_choice=auto）流式响应经常出现单词最后 1 个字符重复
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12030.yaml
+      hash: 20f3331624ac
+    - id: VLLM-ASC-12642
+      title: triton-ascend 3.2.1 对 [4,256] K 做 head reduction 后接 extract_slice+cos 广播的布局/归约路径生成错误设备代码，square_sums
+        被算成 0 → K RMSNorm variance=0 → K 放大 1000 倍
+      category: precision
+      tags:
+      - triton-ascend
+      - fused-op
+      - rmsnorm
+      - mrope
+      - codegen
+      platforms:
+      - A5-950
+      compat: vllm-ascend <=0.21.0; triton-ascend <3.2.2
+      confidence:
+        score: 0.6
+      symptoms:
+      - 'Ascend 950PR (A5) 上 Qwen3.5-4B (bf16, partial RoPE: rope_dim=64 < head_size=256) 输出错误'
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12642.yaml
+      hash: f3a58a52d7df
+    - id: VLLM-ASC-12723
+      title: Triton rope 的 sin 缓存偏移用了 pad 后的 rotary dim（rope_dim=192→pad 256，起点错位 32 元素）致 RoPE 退化为 out=in*cos，Q/K
+        范数 ~0.73，DSpark 投机接受率 5.6→3.0
+      category: precision
+      tags:
+      - triton-rope
+      - rotary-embedding
+      - non-power-of-two
+      - dspark
+      - spec-decode
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <=0.23.0
+      confidence:
+        score: 0.73
+      symptoms:
+      - GLM-5.2 DSpark 投机解码（bf16, NeoX, head_dim=rotary_dim=192）在线 accept_len 从 ~5.6 崩到 ~3.0
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12723.yaml
+      hash: da449e293210
+    - id: VLLM-ASC-12957
+      title: PD 分离 P 侧 sfa_v1.py 的 k_pe 经 kv_ag_handle.wait() 后未同步 NPU 流，D 侧 RDMA pull 读到未落盘陈旧 k_pe，PP4
+        首请求乱码
+      category: precision
+      tags:
+      - pd-separation
+      - ascend-direct
+      - rdma
+      - kv-transfer
+      - stream-sync
+      platforms:
+      - A3-910C
+      compat: vllm-ascend <=0.20.2
+      confidence:
+        score: 0.6
+      symptoms:
+      - PD 分离（use_ascend_direct=true RDMA/ADXL）+ PP=4 + DP=8 decode 下，服务拉起后首个请求输出与 prompt 无关的随机乱码
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12957.yaml
+      hash: 9f1ec0ef14f7
+    - id: VLLM-ASC-14265
+      title: v0.26.0rc GLM-5.2+MTP 投机接受率相对 v0.23 大幅劣化：MegaMoe 对称通信 prefill buffer 按 decode graph 大小分配（enable_prefill_mc2
+        关闭时）致大 prefill batch 容量溢出产生错误输出
+      category: precision
+      tags:
+      - spec-decode
+      - mtp
+      - glm5
+      - mega-moe
+      - buffer-sizing
+      - acceptance-rate
+      - prefill
+      platforms: []
+      compat: vllm-ascend >=0.26.0rc,<0.26.0
+      confidence:
+        score: null
+      symptoms:
+      - v0.26.0rc GLM-5.2 + MTP（deepseek_mtp spec-decode）投机接受率相对 v0.23（50%+）大幅劣化
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-14265.yaml
+      hash: e01ccf6f85e6
+    - id: VLLM-ASC-14363
+      title: DeepSeek V4 adapter 构造 routed FusedMoE 时漏传 swiglu_limit（config=10.0）→ routed expert 以默认 None
+        运行、无 SwiGLU clamp → 敏感前缀处 next-token logit/ranking 漂移 → 异常中文/特殊 token（BF16 与量化均受影响，main 与 v0.25.1rc
+        均存在）
+      category: precision
+      tags:
+      - deepseek-v4
+      - routed-expert
+      - swiglu
+      - fusedmoe
+      - precision
+      - logit-drift
+      platforms: []
+      compat: vllm-ascend <0.25.1
+      confidence:
+        score: null
+      symptoms:
+      - 'DeepSeek V4 部署后输出异常中文/特殊 token（关联 #13615），BF16 与量化 checkpoint 均受影响'
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-14363.yaml
+      hash: '241081616295'
+    - id: VLLM-ASC-5725
+      title: 'Qwen3-Embedding-0.6B 同串第二次请求向量与首次不一致（Cosine ~0.585，命中缓存后稳定但错）：pooling 模型 attention 路由无条件走
+        npu_fusion_attention（不支持 prefix caching）→ 缓存命中路径静默错输出；升级 ≥v0.18.0（PR #7452/#7894）或关 prefix cache
+        规避'
+      category: precision
+      tags:
+      - embedding
+      - pooling
+      - prefix-cache
+      - silent-wrong-output
+      - precision
+      - attention-router
+      - qwen3-embedding
+      - apc
+      platforms:
+      - A2-910B
+      compat: vllm-ascend <=0.17.0
+      confidence:
+        score: null
+      symptoms:
+      - embedding 服务（Qwen3-Embedding-0.6B，--convert embed）同一字符串首次与二次请求返回向量不一致：Cosine ~0.585；首算与原生 vLLM
+        ~0.9997（对），二次起命中 prefix c…
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-5725.yaml
+      hash: 6ae48f811c92
+    - id: VLLM-ASC-7854
+      title: 'Qwen3.5-397B-A17B-w8a8 混部部署（TP4×DP4 + EP + qwen3_5_mtp + FULL_DECODE_ONLY + quantization
+        ascend）高并发多模态压测返回乱码/精度掉点（OCRbench 87.9 vs 95.6），TP16DP1 正常——w8a8 fused-MoE dispatch_ffn_combine
+        缺 xmask（xactivemask）处理，PR #8560 修复'
+      category: precision
+      tags:
+      - qwen3.5
+      - 397b
+      - w8a8
+      - moe
+      - expert-parallel
+      - mtp
+      - full-decode-only
+      - xmask
+      - dispatch_ffn_combine
+      - garbled-output
+      - multimodal
+      - hybrid
+      platforms:
+      - A2-910B
+      compat: vllm-ascend <=0.18.0
+      confidence:
+        score: null
+      symptoms:
+      - Qwen3.5-397B-A17B-w8a8（--quantization ascend）混部 TP4×DP4 + --enable-expert-parallel + --speculative-config
+        '{"method":"qw…
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-7854.yaml
+      hash: ee8e63403693
+    - id: VLLM-ASC-7856
+      title: 'GLM-4.7-w8a8（float-mtp）在 vllm-ascend v0.17.0rc1 镜像 opencode/webfetch 场景流式 tool_calls 解析异常（arguments
+        json 不闭合/拼接错误，工具调用必现失败），非流式正常——上游 vLLM <0.18 流式 tool-call parser 问题（上游 PR #29947），升级 vLLM ≥0.18.0
+        修复'
+      category: precision
+      tags:
+      - glm4
+      - glm-4.7
+      - streaming
+      - tool-call
+      - tool-parser
+      - json
+      - webfetch
+      - upstream-vllm
+      - version-upgrade
+      platforms:
+      - A2-910B
+      compat: vllm-ascend <0.18.0
+      confidence:
+        score: null
+      symptoms:
+      - GLM-4.7-W8A8-floatmtp（--tool-call-parser glm47 等官方部署）opencode/webfetch 场景（如'洛杉矶天气怎么样'）模型输出 tool_calls
+        格式不正确、arguments js…
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-7856.yaml
+      hash: 3376fb4abc06
+    - id: VLLM-ASC-8798
+      title: Qwen3.5 系（27B/35B-A3B/397B-A17B）enable_thinking 下概率性 thinking 段无限重复输出——模型能力问题；规避：换 Qwen3.6
+        或关闭 enable_thinking（PR#8764/关 async-scheduling 已消融排除）
+      category: precision
+      tags:
+      - qwen3.5
+      - thinking
+      - repetition
+      - model-capability
+      - enable_thinking
+      - precision
+      platforms:
+      - A2-910B
+      compat: vllm-ascend <=0.18.0rc1
+      confidence:
+        score: 0.4
+      symptoms:
+      - Qwen3.5-27B/35B-A3B/397B-A17B-W4A8（enable_thinking=true，MTP/async-scheduling 可开）请求概率性输出无限自我重复：thinking
+        段同一句/思路重复直到 max_c…
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-8798.yaml
+      hash: fa27e8666424
+    - id: VLLM-ASC-8844
+      title: GLM 5/5.1 w8a8 四节点 PD 分离（P/D 各 TP16 DP2，vllm-ascend 0.18.0）GPQA-diamond 精度不达标（实测 67.8）：长输出
+        + 高并发 + D 节点显存持续饱和触发 recompute 重计算路径精度退化——关闭 recompute_scheduler（或避免显存饱和）可恢复，无代码级根因/无合入 PR
+      category: precision
+      tags:
+      - glm5
+      - recompute
+      - memory-saturation
+      - pd-disaggregation
+      - accuracy
+      - gpqa
+      platforms: []
+      compat: vllm-ascend ==0.18.0
+      confidence:
+        score: null
+      symptoms:
+      - GLM 5/5.1（GLM-new-w8a8，--quantization ascend）+ 四节点 PD 分离（P/D 侧 --data-parallel-size 2 --tensor-parallel-size
+        16 --enable…
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-8844.yaml
+      hash: 1842dd289395
