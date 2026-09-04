@@ -1,0 +1,11 @@
+issue: 13673
+repo: vllm-project/vllm-ascend
+held_out: true
+resolution_ref: 'PR #13394'
+resolution_summary: random_sample 高并发正确性：q.exponential_() global_stream 跨流生命周期缺陷（#13394
+  解决）
+maintainer_questions: []
+decisive_fields:
+- field: fix PR
+  keywords:
+  - '13394'

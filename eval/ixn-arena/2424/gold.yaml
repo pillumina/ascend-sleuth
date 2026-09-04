@@ -1,0 +1,28 @@
+issue: 2424
+repo: vllm-project/vllm-ascend
+held_out: true
+resolution_ref: env VLLM_ASCEND_ENABLE_TOPK_TOPP_OPTIMIZATION=0 兜底；npu_top_k_top_p
+  需 CANN>=8.2rc1（sampler.py:35）
+resolution_summary: Qwen3-32B tp2 服务运行 aivec/ACL stream 507035 崩溃：topk_top_p 优化路径依赖
+  CANN>=8.2rc1，版本过低崩溃；关 env 优化恢复（后版本修复）
+maintainer_questions:
+- field: CANN 版本
+  keywords:
+  - CANN
+- field: Driver 版本
+  keywords:
+  - Driver
+- field: env 复测
+  keywords:
+  - TOPK_TOPP_OPTIMIZATION
+  - env=0
+  - 关闭.*优化
+decisive_fields:
+- field: CANN 版本
+  keywords:
+  - CANN
+- field: env 复测
+  keywords:
+  - TOPK_TOPP_OPTIMIZATION
+  - env=0
+  - 关闭.*优化

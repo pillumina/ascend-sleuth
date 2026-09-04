@@ -1,0 +1,12 @@
+issue: 10998
+repo: vllm-project/vllm-ascend
+held_out: false
+resolution_ref: 维护者机制解释（Qwen3.6 hybrid KV 多 cache group 结构差异）
+resolution_summary: Qwen3.6-27B layerwise PD+kv pool：混合 KV 多 cache group 结构；GLM5.1
+  结构不同不复现
+maintainer_questions: []
+decisive_fields:
+- field: 模型/cache 结构
+  keywords:
+  - cache_group
+  - hybrid

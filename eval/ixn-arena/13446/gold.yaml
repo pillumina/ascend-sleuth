@@ -1,0 +1,12 @@
+issue: 13446
+repo: vllm-project/vllm-ascend
+held_out: false
+resolution_ref: 官方 v0.24.0rc docs Qwen3-Reranker 指南配方问题
+resolution_summary: Qwen3-Reranker 部署失败根因在官方文档配方（非代码）
+maintainer_questions: []
+decisive_fields:
+- field: 文档配方
+  keywords:
+  - docs
+  - 配方
+  - reranker

@@ -23,18 +23,22 @@
 3. **归因型**不进入本评测，归兄弟维度；
 4. 样本库按此**筛选制**入库，持续由 issue 流自然补充（reuse 方案见 §6）。
 
-## 3. 分期构造规则
+## 3. 分期构造规则（持久化模型：规格入库、正文与结果本地——同 eval/s2/）
 
-每样本一个目录 `.ixn-replay/<issue>/`：
+每样本分两处：
 
-- `issue.md` / `comments.md`：gh 拉取的原始线程（含作者，供 gold 提取）；
-- `gold.yaml`：标注文件——
-  - `held_out: true|false`（该 issue 是否已沉淀为 case；已沉淀 → self_consistent，只作 train/回归，见 §6）；
-  - `resolution_ref`：上游 fix PR / commit / closed 依据；
-  - `maintainer_questions`：维护者实际追问的字段（合理下限 ground truth）；
-  - `decisive_fields`：**改变结论走向的字段**（如 #2424 的 CANN 版本 + env 复测、#9769 的分支一致性）；
-  - `resolution_summary`：结论链；
-- `stage-0.md … stage-N.md`：分期 feed（S0 = 重构"首报版"，只给标题 + 现象段；后续每段只含该轮真实披露的信息；**S0 与 feed 均不含 decisive_fields 的答案**）。
+- **`eval/ixn-arena/<issue>/`（入库，随 PR 审，可复用不重建）**：
+  - `gold.yaml`：标注文件——
+    - `held_out: true|false`（该 issue 是否已沉淀为 case；已沉淀 → self_consistent，只作 train/回归，见 §6）；
+    - `resolution_ref`：上游 fix PR / commit / closed 依据；
+    - `maintainer_questions`：维护者实际追问的字段（合理下限 ground truth）；
+    - `decisive_fields`：**改变结论走向的字段**（如 #2424 的 CANN 版本 + env 复测、#9769 的分支一致性）；
+    - `resolution_summary`：结论链；
+  - `stage-0.md … stage-N.md`：分期 feed（S0 = 重构"首报版"，只给标题 + 现象段；后续每段只含该轮真实披露的信息；**S0 与 feed 均不含 decisive_fields 的答案**）；
+  - `registry.yaml`：样本清单（issue 号 / URL / held_out / staged / decisive 字段 / 评分行）。
+- **`.ixn-replay/<issue>/`（本地 gitignore）**：`issue.md` / `comments.md`（真实正文，`--prepare` 用 gh 按号拉取）+ `stage-k.result.yaml` / `conclusion.yaml` / `score.yaml`（运行产物）。
+
+新增/修订样本 = 编辑 `eval/ixn-arena/` 走 methodology PR；正文只在本地（公共仓不含真实语料全文的纪律不变，`eval/s2/` 同此模型）。`ixn_replay.py --score` 的 gold 权威源 = `eval/ixn-arena/`（回退本地）。
 
 **切段纪律**：段间信息增量必须真实（来自线程或详 body 的真实内容），不许伪造"用户没说但假装给了"。
 
@@ -61,7 +65,7 @@ ground truth 三标注：`maintainer_questions` 是**合理下限非最优**（�
 
 与 s2_replay 同构：harness 只做数据与评分；**每段"诊断 + 追问"由 agent 执行**（读 feed → 走 diagnose skill → 写 result），不自动。顺序：`--prepare`（拉素材 + gold 模板）→ 人/agent 补 gold 与切段 → agent 逐段运行 → `--score` → `--aggregate`。盲测纪律：执行 agent **不看后续 feed 与 gold**（harness 提供分段文件即天然隔离；gold 与 feed 分文件存放）。
 
-**运行时数据归属（2026-09-04 教训）**：`.ixn-replay/` 与 `.s2-replay/arena/` 等本地运行件放在**主检出**（gitignore）——不要放在会随 `git worktree remove` 一并删除的临时检出（曾把库放 arena worktree，清理合入时整目录被删、本地库丢失；提交侧机制不受影响，运行时语料需重建）。
+**运行时数据归属（2026-09-04 教训 + 2026-09 持久化修订）**：评测**规格**（gold + stage feed）入库 `eval/ixn-arena/`（随 PR 审、可复用不重建——曾把库放临时检出，清理 worktree 时整目录被删、需重建；规格入库后重建只缺正文，正文可按号 gh 拉取）。本地 gitignore 只留：真实正文（`.ixn-replay/`、`.s2-replay/arena/` 运行件）——放**主检出**，不放会随 `git worktree remove` 删除的临时检出。
 
 ## 6. self / held-out 分流与 val 复用
 
@@ -85,7 +89,7 @@ ground truth 三标注：`maintainer_questions` 是**合理下限非最优**（�
 | 蓝图 | 合成变体生成器（case 派生扰动 + seed） | roadmap M3 落地后 |
 | 落地中 | 交互面作为 diagnose 追问行为的**门控回归集**（skill 改动前后同批 staged 对照，EV-2026-016） | diagnose 追问补丁（#3325 型缺口）合入时启用 |
 
-**首批出分（2026-09-04，5 条 held_out staged，本地 .ixn-replay/）**：2424/3453/5599/9798 追问召回 100% 且决定性字段在链、无过早结论；3325 = 0%（版本修复型 issue 未问"最新版本/镜像是否仍复现"——**诊断 skill 交互缺口信号**，对应补丁见 EV-2026-016）。分数进 timeline 的门 = **样本 ≥10 且带分母**（口径纪律，同 metrics.md）；当前批次作本地报告留档，不入 timeline。
+**首批出分（2026-09-04，5 条 held_out staged，规格已入库 eval/ixn-arena/）**：2424/3453/5599/9798 追问召回 100% 且决定性字段在链、无过早结论；3325 = 0%（版本修复型 issue 未问"最新版本/镜像是否仍复现"——**诊断 skill 交互缺口信号**，补丁 EV-2026-016 后重跑 100%）。**样本是否 ≥10 只决定 timeline 何时入，不决定评测集是否可用/入库**：测试集规格随 PR 入库即可复用（不依赖条数）；分数进 timeline 的门 = **样本 ≥10 且带分母**（口径纪律，同 metrics.md；分母 <10 也可带"小样本"标注进本地报告，不污染 trend）。当前 5 条出分作本地报告留档。
 
 ## 9. 原则追溯
 
