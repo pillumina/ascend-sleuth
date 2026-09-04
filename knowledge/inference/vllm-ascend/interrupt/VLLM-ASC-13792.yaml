@@ -1,0 +1,64 @@
+cases:
+- id: VLLM-ASC-13792
+  title: torch_npu/torchair 升级（PR 2781 capture stream 管控）后 NPU graph capture 失败：AclmdlRICaptureEnd
+    107025 “stream was not joined to the original stream”（capture stream 与通信 stream
+    碰撞，PIECEWISE 更易触发）
+  category: interrupt
+  tags:
+  - graph-capture
+  - torchair
+  - torch-npu
+  - stream
+  - '107025'
+  - tp
+  compat:
+  - framework: vllm-ascend
+    ranges:
+    - <0.26.0
+  investigation_quality: medium
+  confidence:
+    hits: 0
+    misdiagnoses: 0
+  symptoms:
+  - TP 推理图捕获失败：AclmdlRICaptureEnd 报 107025 / “capture model contains a stream that
+    was not joined to the original stream”
+  - torch_npu/torchair 引入 capture stream 管控（PR 2781）后出现；PIECEWISE 模式更易触发
+  - 原 mitigation（PIECEWISE 关 npugraph_ex）因 NPUPlatform.check_and_update_config 只改进程内
+    AscendConfig、spawn 的 EngineCore/worker 从陈旧 additional_config 重建而失效
+  references:
+  - https://github.com/vllm-project/vllm-ascend/issues/13792
+  - https://github.com/vllm-project/vllm-ascend/pull/13692
+  verification:
+    source: upstream-fix-merged
+    detail: 'PR #13692（check_and_update_config 改 additional_config，v0.26.0）+ CANN
+      hcomm PR 4878（gitcode.com/cann/hcomm）修复；issue 2026-08-31 关闭确认'
+  quickly_check:
+    primary:
+      command_template: grep -aoE 'AclmdlRICaptureEnd|107025|stream was not joined'
+        {{server_log}}
+      rank_selector: coordinator
+      expected: regex:107025|stream was not joined
+      note: 错误码签名命中
+  diagnosis:
+  - step: 1
+    check: 图捕获期 AclmdlRICaptureEnd 107025（stream not joined）？
+    expected: 是——torchair 捕获流与通信流碰撞嫌疑
+  - step: 2
+    check: torch_npu/torchair 是否近期升级（capture stream 管控 PR 2781 后）？
+    expected: '是——与 #13692 修复面一致'
+  - step: 3
+    check: '版本是否含 PR #13692？'
+    expected: '否 → 升级含 #13692 版本 + CANN hcomm PR 4878'
+    fix_on_mismatch: 升级；临时可关图模式（PIECEWISE→e2e 或 enforce-eager）规避
+    rollback: 回退版本复现
+  severity: service-affecting
+  fix_side_effects:
+  - requires-restart
+  fix_type: upgrade
+  root_cause: 'torchair 的 capture stream 管控（PR 2781）使捕获流与通信流冲突，AclmdlRICaptureEnd
+    报 stream not joined(107025)；vllm-ascend 原有 mitigation 因配置只改进程内 AscendConfig、spawn
+    的 EngineCore 从陈旧 additional_config 重建而失效。PR #13692 改为修改 additional_config 使 mitigation
+    传播到子进程，配合 CANN hcomm PR 4878 修复。'
+  fix: '升级 vllm-ascend 至含 PR #13692 版本并配套 CANN hcomm PR 4878；临时规避：关闭图模式（enforce-eager
+    或非 PIECEWISE）。'
+  rollback: 回退版本即复现

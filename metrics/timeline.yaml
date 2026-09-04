@@ -1,13 +1,3 @@
-# metrics/timeline.yaml —— 指标时序数据（机器可读，CI 校验，append-only）
-#
-# 每个快照 = 一个 period 条目，字段集合由 scripts/trace_metrics.py 固定生成，
-# 人复核后追加。字段合法性由 scripts/verify_metrics.py --check 校验（CI 强制），
-# 防格式漂移（曾发生 W28/W35 字段完全不同、跨期不可比的教训）。
-#
-# kind: live（活诊断周期快照）| replay（回放评估）| example（示例，展示格式用）
-# 只有 live 参与趋势对比；replay/example 供参考，不参与跨期趋势。
-# 机制定义见 docs/metrics.md（可选论证层，参数为执行值）。
-
 periods:
 - period: 2026-W35
   kind: replay
@@ -215,3 +205,13 @@ periods:
     命中 3/6 interrupt；precision 0/1。reference 3 次命中 2 ref（msllm-startup-version-env-triage
     x2、cann-runtime-error-codes x1）引用后全 resolved。feedback 0/3（全部 pending 未回报——置信度学习环等真实反馈）。capacity
     头注已按工作负载层折叠（面板展示修复）。
+- period: 2026-W37
+  kind: replay
+  title: 交互面评测首批 n=10（ixn-replay staged，held_out 8 + self 2）
+  recorded_at: '2026-09-04'
+  source: ixn-replay（EV-2026-018）：追问召回 9×100% + 3453=80%；决定性字段全在链、零过早结论。人复核后 append。
+  metrics:
+    ixn_question_recall_heldout: 0.975
+    ixn_question_recall_self: 1.0
+    ixn_decisive_in_chain_heldout: 8/8
+    ixn_premature: 0/10
