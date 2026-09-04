@@ -67,6 +67,9 @@ proposals/experiments/*
 .s2-replay/
 .s2-replay-report.md
 
+# 交互型 replay 运行时产物（.ixn-replay/ issue 线程/分期 feed/gold/result/score，本地留存）
+.ixn-replay/
+
 # auto_fetch 候选（运行时产物，本地留存）
 .auto-fetch/
 

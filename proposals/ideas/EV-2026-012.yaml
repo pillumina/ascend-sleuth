@@ -1,0 +1,83 @@
+# ============================================================
+# Idea 卡：交互型 replay 评测机制（ixn-replay）v1 落地
+# 目的：把诊断评测从"单发全信息"扩展到"分期披露交互"——测 diagnose 的追问/信息
+#       充分性判断（交互面），与单发 S2（检索/内容面）正交；口径经 3 条真实 issue
+#       pilot 验证（N=3 本地试跑，结论内联于 docs/evolution-ixn-replay.md §4/§7）。
+# ============================================================
+
+id: EV-2026-012
+layer: L3                          # 工作流/编排层：评测机制扩展（S2 家族）
+title: "交互型 replay 评测（ixn-replay）v1：分期披露构造 + 追问双层评分（字段命中∪链深度），与归因型并列兄弟维度"
+status: validated
+authorization: dual                # 文档 + 工具链 → 人审
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: human_review_feedback
+    evidence: "审核疑问'S2 replay 走完整 diagnose，交互层能否用现成 issue 造'——扩样 10 条 + 3 条真实分期试跑（#2424/#9769/#9798）验证：分期构造可行、追问评分可判、区分度存在；数据逼出三条口径修正（追问按链评分/ground truth 集合化/self 与 held-out 分流）"
+    trajectory:
+      - "docs/evolution-ixn-replay.md（口径内联 §4/§7；本地 pilot N=3 验证，运行留档不入库）"
+      - "ingest-state.json + .s2-replay/（现成 issue 池与 S2 数据源）"
+      - "docs/evolution-pipeline.md §2.1（S2 口径与诚实化）"
+hypothesis: >-
+  用分期披露脚本（筛选渐进披露 issue + 详 body 人为切段）驱动 diagnose 交互，并按
+  "追问字段 ∩ 后续披露 ∩ 被结论使用 + 决定性字段是否在链内 + 是否过早下结论"评分，
+  可把 diagnose 的交互面变成可评测、可回归、可演进的对象——机制设计已由 pilot 数据
+  定稿，能力结论留待评测上线后更大样本产出
+predicted_effect:
+  metric: diagnose 交互面可评测性（追问召回 / 链深度 / 过早结论率）
+  from: 不可评测（单发 S2 无追问维度；交互能力靠人工判断）
+  to: 可评测（harness v1 出分；样本库按筛选制扩充）
+validation:
+  method: metrics_compare
+  baseline: 无工具（pilot 手工跑 3 条）
+  success_criteria: "harness v1（prepare/score/aggregate）可跑通：gold 模板 + 分期 feed 产出 + 双层评分出分；用 pilot 3 条数据回放 score 与手工结论一致；scan/verify_proposals/build_index 通过"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户确认先扩样后试跑、数据通过后落地方案与工程（2026-09-04）"
+risk: medium
+principle_refs: [3, 8, 9, 10, 11]
+actual_cost:
+  tokens: 12000
+  source: estimate
+decisions:
+  - who: agent（self-evolve 深度轮）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      pilot 数据（#2424 held-out 5/5 追问命中；#9769 self_consistent 2/2 决定性字段在链内；
+      #9798 同族兄弟 covered 候选）证明：①分期构造可行——真实线程可切、详 body 可人为
+      拆段；②追问评分可判且有区分度（good 链 vs premature 基线稳定拉开）；③成本量级
+      staged≈单发 1.5–2.5×，E* 标注 3–8 分/条可半自动。数据逼出三条口径：追问按"链"
+      评分非首轮命中、多报告者 ground truth 集合化、self_consistent 与 held-out 分流。
+      能力结论与 ROI 终判不在 pilot 下结论（N 小 + 执行者同源）。
+  - who: agent（self-evolve 深度轮）
+    when: "2026-09-04"
+    type: action
+    conclusion: >-
+      执行：①docs/evolution-ixn-replay.md——设计文档（三维评测定位：单发 S2 检索面 /
+      交互 replay 交互面 / 归因 replay 源码面；筛选制选样；分期构造规则；双层评分口径；
+      self/held-out 分流；成本；蓝图/第一批分级）；②scripts/ixn_replay.py v1——
+      --prepare（gh 拉 issue+评论 → 素材 + gold 模板）/ --score（读分期 result + gold，
+      算 追问召回/决定性字段在链/过早结论，出 score.yaml）/ --aggregate（样本汇总）；
+      ③roadmap 可观测性登记 O8（常态闸门）；④.gixn-replay/ 入 .gitignore；
+      ⑤glossary 补词条；⑥决策链留痕。
+  - who: agent（self-evolve 深度轮）
+    when: "2026-09-04"
+    type: eval
+    conclusion: >-
+      机制回放：用 pilot 3 条（#2424/#9769/#9798）的 gold 字段与手工追问集构造
+      score 输入，harness 双层评分输出与 pilot 手工结论一致（#2424 召回 5/5、#9769
+      决定性字段在链、premature 基线分低）；py_compile OK；词表 scan 全绿；
+      verify_proposals（11 卡）/ build_index 通过。golden 不适用（评测工具层，非
+      diagnose 执行路径）。真实 staged agent 运行是协议用法，留待样本库首批执行。
+  - who: agent（self-evolve 深度轮）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated）：方案文档 + harness v1 随 methodology PR 送人审。观察窗：
+      ①首批真实 staged 运行（≥3 条，含 held-out 与 self_consistent 分流）后校准评分
+      阈值与筛选标准；②交互面分数进 timeline 的前提 = 样本 ≥10 且分母标注（口径纪律）；
+      ③季度自评审视该评测是否产出"单发测不出的失败"（ROI 终判，此前不做能力结论）。

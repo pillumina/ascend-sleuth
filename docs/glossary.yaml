@@ -309,6 +309,12 @@ entries:
     short: 落地阶段 C2（S2 校准集）
     meaning: 落地阶段 C2：S2 issue-replay 校准集建立
     see: evolution-pipeline.md §11
+  - token: O8
+    family: roadmap 可观测性
+    short: roadmap 事项：交互型 replay 评测（ixn-replay）
+    meaning: roadmap 可观测性事项：分期披露驱动 diagnose 交互评分（追问召回/决定性字段在链/过早结论），机制决议 EV-2026-012，设计
+      docs/evolution-ixn-replay.md
+    see: roadmap.md
 
 # 系列级说明（无固定字面 token 的系列；渲染告警与速查表用）
 families:
