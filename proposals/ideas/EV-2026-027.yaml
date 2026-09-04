@@ -1,0 +1,68 @@
+# ============================================================
+# Idea 卡：B3 gated 基线缓存落地（gate_diff.py）
+# 目的：把 EV-2026-021「基线缓存」从政策落成工具+目录约定——检索面改动只跑改后侧，
+#       逐 fixture 机械对照（top3 一致或 expected 保持 top-3）。
+# ============================================================
+
+id: EV-2026-027
+layer: L3                          # 评估门禁工具（docs/eval.md + 脚本）
+title: "B3 gate_diff.py：gated 基线缓存落地（.s2-replay/gates/<面>-baseline|after + 机械对照）"
+status: validated
+authorization: review               # 脚本 + eval.md 配套纪律
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: token_audit
+    evidence: "审计 B3：每次检索面 skill 改动 = 2-4 replay agent ×改前+改后两侧；EV-2026-021 已把'基线缓存/子集'写进政策但未成工具（各次手工 /tmp 目录、无对照器）"
+    trajectory:
+      - "docs/eval.md 门禁分级配套纪律①（政策态）"
+      - "本会话多轮 golden 手工对照（/tmp/golden-* 各目录）"
+hypothesis: >-
+  基线目录约定 + gate_diff 机械对照后，检索面改动只需跑改后侧，回归判定从"手工 diff"
+  变一条命令（top3 一致或 expected 保持 top-3，容忍 LLM 非确定性）
+predicted_effect:
+  metric: 单次 gated 验证成本（replay agent 回合）
+  from: 改前+改后 ×2 侧
+  to: 仅改后 ×1 侧（基线缓存复用）
+validation:
+  method: metrics_compare
+  baseline: 手工 /tmp 对照（无工具）
+  success_criteria: "gate_diff 冒烟（e21-base vs f4-after 3 fixture）exit 0；eval.md 配套纪律更新；词表 scan 通过"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户'都做吧'（B3）"
+risk: low
+principle_refs: [9, 11]
+actual_cost:
+  tokens: 2000
+  source: estimate
+decisions:
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      检索面 gated 对照每侧都重跑 agent、baseline 各存 /tmp——把政策落成工具：目录约定
+      .s2-replay/gates/<面>-baseline|after + gate_diff.py（top3 一致或 expected 保持 top-3
+      为无回归；documented miss 不得变 hit-漏判）。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: action
+    conclusion: >-
+      执行：①scripts/gate_diff.py（--base/--after/--expected；0=无回归，1=回归/缺结果）；
+      ②docs/eval.md 门禁分级配套纪律改写为落地约定（基线目录 + gate_diff 用法 +
+      expected.yaml 可选）；③决策链留痕。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: eval
+    conclusion: >-
+      冒烟：e21-base vs f4-after（3 fixture）→ gate_diff exit 0（top3 逐字节一致）；
+      py_compile 通过；词表 scan 通过。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated）：工具 + 约定随 methodology PR 送人审。观察窗：后续检索面改动
+      按此走（baseline 入 .s2-replay/gates/，附 gate_diff 输出路径到 EV 卡）；expected
+      map 由 fixture expected 生成可后续脚本化。

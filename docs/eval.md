@@ -29,7 +29,15 @@
 | **交互/追问/指引面**（不改变候选选择） | 信息收集清单、双面族交叉提示、输出措辞 | **ixn 交互样本**（对口 2-3 条）或针对性探针；**不跑检索 golden** | golden 测检索、测不出交互（EV-2026-016 实证 0→100% 由 ixn 测出）；交互改动跑检索 golden = 低信号高成本 |
 | **纯文档/注释**（无行为变化） | SKILL 说明行、注释 | 不跑 replay；词表 scan + 人审 | — |
 
-配套纪律：①**基线缓存**——同改动面干净状态的基线存本地（如 `.s2-replay/gates/<面>-baseline/`），下次只跑改后侧（改前 ×2 → ×1）；②**子集选择**——golden 按影响面挑 fixture，不默认全量；③**分类判断进 EV 卡**——每张改 skill 的卡写清所属面与所选门禁，审阅可复核。
+配套纪律（基线缓存已落地 B3 EV-2026-027）：
+①**基线缓存**——同改动面干净状态的 fixture 结果 JSON 存 `.s2-replay/gates/<面>-baseline/`（本地）；
+  下次只跑改后侧（改前 ×2 → ×1），改后写 `<面>-after/`；
+②**机械对照**——`python3 scripts/gate_diff.py --base <面>-baseline --after <面>-after
+  [--expected <面>.expected.yaml]`：退出 0=无回归（top3 一致或 expected case 仍在 top-3），
+  非 0=回归/缺结果（逐 fixture 报告）；expected.yaml 可选映射 {fixture: expected_case}；
+③**子集选择**——golden 按影响面挑 fixture，不默认全量；
+④**分类判断进 EV 卡**——每张改 skill 的卡写清所属面与所选门禁（附 gate_diff 输出路径），
+  审阅可复核。
 
 ## 数据策略
 
