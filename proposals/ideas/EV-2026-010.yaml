@@ -1,0 +1,79 @@
+# ============================================================
+# Idea 卡：人读性机制（第 1、2 步）——代号写作约定 + 审读面渲染工具
+# 目的：解决"人审产物 lost 于设计层代号"的实感问题（PR #112 审核中暴露）；
+#       机器字段保持词法，人读走解码视图——审读面与存储面分离。
+# ============================================================
+
+id: EV-2026-010
+layer: L3                          # 工作流/编排层：文档/审读机制修订
+title: "人读性机制：代号写作约定（git-workflow + methodology 模板试点）+ 审读面渲染（glossary.yaml + render_review_summary.py）"
+status: validated
+authorization: dual                # L3 结构级（docs/模板修订）→ 人审
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: human_review_feedback
+    evidence: "PR #112 审核中，体系维护人对 L/S/A–P/G/T/EV/Phase 等代号系列失去跟随（'人看充斥大量代号的产物会 lost'）；且本 PR 初稿 G1/G2/G3 与既有 G1–G8 治理缺口编号撞车，暴露无代号登记处的结构缺口"
+    trajectory:
+      - "PR #112 审核对话（2026-09-04）"
+      - "docs/evolution-orchestration.md 引言（G1–G8 既有系列）"
+      - "docs/evolution.md 顶部指代速查（EV-2026-009 初版）"
+hypothesis: >-
+  把人读视图与词法存储分离——机器字段保持词法（脚本/CI 契约），人读 prose 首次出现即解码、
+  新增代号先登记机器词表——可让人审不再裸读满屏代号；判断性规范不进 CI，用渲染工具告警
+  + PR 自查兜底，不硬门化
+predicted_effect:
+  metric: 人审可读性（未解码代号在审读面出现率 / 代号撞车发生次数）
+  from: 未度量（曾发生 G1–G8 撞车 + 审核 lost）
+  to: 审读面可经 --scan 清零（常态目标）；新增代号先登记
+validation:
+  method: metrics_compare
+  baseline: 无词表、无渲染工具、无写作约定（8 篇演化文档 scan 报 25+ 未登记代号）
+  success_criteria: "scan 对演化文档族 + 相关 skill 全绿；--card/--diff 模式渲染可用；compile/verify_proposals/build_index 通过；CI 全绿；dogfood 评论贴回 PR #112"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户认可第 3 步演示效果后指示做第 1、2 步（2026-09-04）"
+risk: medium
+principle_refs: [3, 8, 9, 11]
+actual_cost:
+  tokens: 9000
+  source: estimate                 # 无 tokenMeter 记账环境的估算（DSH 可经 tokenMeter.measure 写回实测）
+decisions:
+  - who: agent（self-evolve 深度轮）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      代号问题拆三种性质：①机器字段（layer/status/method 枚举）无优化空间——脚本/CI
+      契约，动了断链；②人读 prose 可降熵——首次出现即解码 + 高危字母（E/T/G/EV/Phase）
+      裸用即歧义；③审读面可分离——源文件保持词法，人读视图承担解码（原则三延伸：
+      底座词法、人读视图解码）。全量中文重写是负优化（churn/断链/token，原则二/三/九），
+      不做；判断性规范不进 CI（检查准入三条件），用渲染告警 + PR 自查兜底。
+  - who: agent（self-evolve 深度轮）
+    when: "2026-09-04"
+    type: action
+    conclusion: >-
+      执行：①docs/glossary.yaml——设计层代号机器可读词表（58 词条 + 7 家族，全量覆盖
+      存量演化文档引用）；②scripts/render_review_summary.py——--card 渲染 EV 卡解码
+      审读稿 / --diff 渲染变更解码表 / --scan 未登记代号告警（EV 实例号家族自解释豁免）；
+      ③docs/git-workflow.md「人读性与代号约定」（机器字段保持词法 / 首次出现即解码 /
+      审读面优先 / 新增先登记 / 不进 CI）；④methodology PR 模板加「人读性自查」试点区块；
+      ⑤docs/evolution.md 速查表注明机器权威词表为 glossary.yaml。改动随 PR #112 分支
+      一个 methodology PR 送审。
+  - who: agent（self-evolve 深度轮）
+    when: "2026-09-04"
+    type: eval
+    conclusion: >-
+      py_compile OK；--scan 对 8 篇演化文档 + evolve-check/self-evolve 全绿（补全词表后
+      从 25+ 未登记降至 0）；--diff origin/main..HEAD 输出逐文件解码表、无未登记告警；
+      --card EV-2026-009 渲染可读（短义内联注释不打断句子）；verify_proposals（9 卡）、
+      build_index --check 通过；PR CI 五道全绿；渲染产物已 dogfood 贴回 PR #112 评论。
+      golden 不适用（未触及 diagnose 路径），以机制级 dry-run + scan 对照替代。
+  - who: agent（self-evolve 深度轮）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated）：写作约定 + 词表 + 渲染工具随 PR #112 送人审（体系维护人 =
+      用户）。观察窗：后续 PR 审读是否仍 lost（若再发生，评估把 --scan 纳入 PR 创建
+      前置或扩模板试点到其他四类）；季度自评审视约定执行度（pipeline §6.6）。
