@@ -1,6 +1,6 @@
 # 交互型 replay 评测（ixn-replay）
 
-> 机制决议：EV-2026-012。pilot 数据与口径验证：`proposals/reviews/2026-09-04-ixn-replay-pilot.md`（gitignore 运行时件）。本文是评测机制的**设计文档**（第一批落地 = 文档 + `scripts/ixn_replay.py` v1）；评分阈值与筛选标准的校准属蓝图，触发条件见 §8。
+> 机制决议：EV-2026-012。本文是评测机制的**设计文档**（第一批落地 = 文档 + `scripts/ixn_replay.py` v1）；评分口径经 2026-09 本地 pilot（N=3：vllm-ascend #2424/#9769/#9798，含 held-out 与 self_consistent 分流）验证，验证数据与结论内联于 §4/§7（pilot 运行留档为本地运行时件，不入库）；评分阈值与筛选标准的校准属蓝图，触发条件见 §8。
 
 ## 1. 定位：诊断评测的第三个维度
 

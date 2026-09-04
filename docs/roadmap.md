@@ -111,7 +111,7 @@
 | 第 6 个月 | 容量推演重算（A5） | ADR-0002 修订或确认 |
 | 持续 | ADR-0002 三条重评触发条件监控（namespace >100 且路由劣化 / Tier 3 >5K 篇且挽救率不足 / 真联邦出现） | metrics + groom |
 | 季度 | 用 metrics 校准本 roadmap 的闸门数值；回顾"三层架构是否真的在变好用" | 本文件 + `metrics/timeline.yaml` |
-| 季度 | **L3 自演进季度自评**（evolution-pipeline §6.6 六项审视：信号质量/授权/产出/腐化/参数/流程 → 结论落参数或结构提案） | `proposals/reviews/<YYYY-Qn>.md`（首次真实自评：2026-Q4，数据前提 = ≥1 季度运行 + S1 反馈 >0；预演 dry-run 见 2026-Q3-selfreview-preview） |
+| 季度 | **L3 自演进季度自评**（evolution-pipeline §6.6 六项审视：信号质量/授权/产出/腐化/参数/流程 → 结论落参数或结构提案） | `proposals/reviews/<YYYY-Qn>.md`（首次真实自评：2026-Q4，数据前提 = ≥1 季度运行 + S1 反馈 >0；2026-Q3 已做 dry-run 预演） |
 
 ## 明确不做
 

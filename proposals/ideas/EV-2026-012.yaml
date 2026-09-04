@@ -2,7 +2,7 @@
 # Idea 卡：交互型 replay 评测机制（ixn-replay）v1 落地
 # 目的：把诊断评测从"单发全信息"扩展到"分期披露交互"——测 diagnose 的追问/信息
 #       充分性判断（交互面），与单发 S2（检索/内容面）正交；口径经 3 条真实 issue
-#       pilot 验证（proposals/reviews/2026-09-04-ixn-replay-pilot.md，gitignore）。
+#       pilot 验证（N=3 本地试跑，结论内联于 docs/evolution-ixn-replay.md §4/§7）。
 # ============================================================
 
 id: EV-2026-012
@@ -18,8 +18,8 @@ source_signals:
   - signal: human_review_feedback
     evidence: "审核疑问'S2 replay 走完整 diagnose，交互层能否用现成 issue 造'——扩样 10 条 + 3 条真实分期试跑（#2424/#9769/#9798）验证：分期构造可行、追问评分可判、区分度存在；数据逼出三条口径修正（追问按链评分/ground truth 集合化/self 与 held-out 分流）"
     trajectory:
-      - "proposals/reviews/2026-09-04-ixn-replay-pilot.md（gitignore 运行时报告）"
-      - ".s2-replay/ + ingest-state.json（现成 issue 池）"
+      - "docs/evolution-ixn-replay.md（口径内联 §4/§7；本地 pilot N=3 验证，运行留档不入库）"
+      - "ingest-state.json + .s2-replay/（现成 issue 池与 S2 数据源）"
       - "docs/evolution-pipeline.md §2.1（S2 口径与诚实化）"
 hypothesis: >-
   用分期披露脚本（筛选渐进披露 issue + 详 body 人为切段）驱动 diagnose 交互，并按
