@@ -1,0 +1,65 @@
+id: EV-2026-016
+layer: L2
+title: ixn 首批出分（5 条）→ gold 校准两条 → diagnose 追问补丁（'最新版本/镜像是否仍复现'）→ golden 前后对照
+status: validated
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+- signal: ixn_batch_finding
+  evidence: 首批 5 条 held_out staged 出分（本地 .ixn-replay/）：2424/3453/5599/9798 追问召回 100%、决定性字段在链、无过早结论；3325=0%（版本修复型
+    issue，agent 问 env/对照/复现却未问'是否已在最新版本/镜像复现'）——对'升级即修复'类是标准一问，诊断 skill 交互缺口
+  trajectory:
+  - .ixn-replay/*/（本地 5 条 score + result）
+  - docs/evolution-ixn-replay.md §4（gold 校准）+ §8（指标门）
+  - skills/diagnose/SKILL.md 信息收集节（line 38 追问清单）
+hypothesis: '把"是否已在最新版本/镜像复现"补为 diagnose 标准追问（加到信息不足追问清单）， 可修 #3325 型交互缺口；gold 校准两条（决定性字段须向报告者可问得、keywords
+  含别名） 使评分不失真；改动经 golden 前后对照无回归'
+predicted_effect:
+  metric: ixn 追问召回（#3325 型版本修复样本）
+  from: 0/2（3325 baseline）
+  to: ≥1/2（补丁后重跑 3325 预期提升）
+validation:
+  method: golden_replay
+  baseline: golden 子集 3 fixture 改前 replay（/tmp/golden-baseline/）
+  success_criteria: diagnose 追问清单加一条后，golden 子集改后 replay 与改前一致（top-3 命中不变、路由不变）；词表
+    scan 全绿；决策卡/索引校验通过
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: 用户批准（2026-09-04：'两个都可以做'）
+risk: low
+principle_refs:
+- 8
+- 10
+- 11
+actual_cost:
+  tokens: 9000
+  source: estimate
+decisions:
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: proposal
+  conclusion: '首批 5 条 staged 出分验证交互面可测（4×100% + 1×0%），且 0% 暴露真实缺口： #3325 为版本修复型（fix=用
+    main+PR#3305），agent 全程问 env/对照/复现， 未问"最新版本/镜像是否仍复现"——诊断 skill 的追问清单（line 38：症状/版本
+    组合/日志位置）缺"最新版本复现性"标准问。另修 gold 校准两条（decisive 须 可问得、keywords 含别名）。改动经 golden 子集前后对照验证（无回归）。'
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: action
+  conclusion: 执行完成：①docs/evolution-ixn-replay.md §4 校准两条 + §8 首批出分与指标门 + §5 运行时数据归属教训（本地库曾随
+    worktree remove 丢失，改主检出 gitignore 存放）；②diagnose SKILL 追问清单加第④问"是否已在最新版本/镜像复现"；
+    ③golden 基线（改前）/ 改后同 3 fixture 对照。
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: eval
+  conclusion: golden 前后对照（3 fixture）：12685=documented miss（输入无症状信号，与历史一致）、 12723 rank1、12901
+    rank1——改后与改前 3/3 一致，**无回归**（/tmp/golden-baseline vs /tmp/golden-after）。3325 补丁验证（.ixn-replay/3325
+    重建于主检出后重跑）：追问召回 **0/2 → 2/2（100%）**、决定性字段"更新版本/镜像验证"进链——第④问直接修复该型 交互缺口。注：arena
+    本地运行时库曾因 worktree remove 丢失（清理失误），已重建 3325 于主检出并记录归属教训；其余库条目重建为恢复项。
+- who: agent（goal 执行）
+  when: '2026-09-04'
+  type: decision
+  conclusion: 采纳（validated）：diagnose 追问清单补丁 + ixn 校准口径随 methodology PR 送人审。 观察窗：后续
+    diagnose 交互行为改动以 ixn 同批 staged 前后对照为门（交互面成为 skill 改动回归集）；首批评分 4×100% + 本补丁实证 0→100%，样本
+    ≥10 带分母后进 timeline（口径纪律）。
