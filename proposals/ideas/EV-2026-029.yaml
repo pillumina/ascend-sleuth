@@ -1,0 +1,72 @@
+# ============================================================
+# Idea 卡：token 治理实测回填 + F3 闸门触发记录（观察窗闭合）
+# 目的：把 F1-F4/B1/M5 承诺的"实测对照"补成真数字；并如实记录：vllm-ascend
+#       interrupt category cell 68.9KB > 60KB → 触发 F3 再拆闸门（子族拆分评估应启动，
+#       非自动拆分）。
+# ============================================================
+
+id: EV-2026-029
+layer: L3                          # 观测回填 + 闸门状态
+title: "token 治理实测回填：master 60K→31K tok；vllm-ascend interrupt 阶段一仍 ~21K tok（cell 68.9KB>60KB 触发 F3 子族评估）"
+status: validated
+authorization: review               # 决策留痕 + roadmap 状态
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: observation_window
+    evidence: "F2/F4/B1/M5 各卡观察窗承诺'实测 token 前后对照'——本卡回填；实测发现 vllm-ascend interrupt category cell 68.9KB（~21K tok），> F3 再拆闸门 60KB"
+    trajectory:
+      - "EV-2026-022/023/025/026/028（观察窗承诺）"
+      - "knowledge/_index*.yaml（实测字节）"
+      - "docs/roadmap.md A2（F3 再拆闸门）"
+hypothesis: >-
+  回填真数字并记录闸门状态：索引治理确实降了 master（203.5KB→104.1KB），但典型
+  vllm-ascend interrupt 路由的阶段一读仍 ~21K tok（83 行×行宽），>60KB 闸门触发子族
+  评估——诚实地把"未完全达标"也记下来，避免治理收尾假象
+predicted_effect:
+  metric: 阶段一读入 token（vllm-ascend interrupt 路由）
+  from: ~60K（治理前整库）
+  to: ~21K（现状）——仍 > 期望，触发 F3 子族评估（下一步）
+validation:
+  method: metrics_compare
+  baseline: 治理前 master 203.5KB（~60K tok 估）
+  success_criteria: "实测数字入卡与 roadmap；F3 闸门触发状态如实标注（子族拆分评估为观察动作非自动拆分）"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户'继续'（回填观察窗）"
+risk: low
+principle_refs: [10, 11]
+actual_cost:
+  tokens: 2000
+  source: estimate
+decisions:
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      回填实测（2026-09-04，估 token≈bytes/3.4）：master 索引 203.5KB(60K)→104.1KB
+      (31K)；vllm-ascend ns 分片 88KB(26K)；interrupt category cell 68.9KB(~21K)——
+      阶段一典型读（vllm-ascend interrupt 路由）~21K tok，主因 83 行×行宽（长 title/
+      tags/platforms/compat）。**诚实点：治理收益真实（-65%）但未到"小"**；且 cell
+      68.9KB > F3 再拆闸门 60KB → 子族拆分评估按自己闸门触发（观察动作，非自动）。
+      references 2.5 summary 索引 18KB(~5.4K)。groom 协议已改、实测待下次真实 groom。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: action
+    conclusion: 执行：实测字节/token 入本卡；roadmap A2 补一行闸门触发状态（interrupt
+      cell 68.9KB>60KB → 子族拆分评估待启动，候选行宽压缩 F5 并列）。未执行拆分（需
+      双签）。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: eval
+    conclusion: 数字复核（同上）；词表 scan/verify 通过。gap 如实：阶段一仍 ~21K、cell 超
+      60KB 闸门。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated）：实测回填 + 闸门状态随 PR 送人审。下一步（数据已触发）：①子族
+      拆分评估（F3 闸门，需双签）或 ②行宽压缩 F5（title 截断/去 tags 全文，检索面 golden
+      子集）——两者择一，倾向先 F5 行宽（成本低、不动目录结构），评估后再定拆分。
