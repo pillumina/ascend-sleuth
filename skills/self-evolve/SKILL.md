@@ -57,10 +57,12 @@ disable-model-invocation: true
    被拒方案（E6 落地后改用 `--impact` 聚合视图）；
 2. 产骨架：`scripts/ev_proposal.py --new` → 填字段（layer / title / source_signals 带
    trajectory / hypothesis / predicted_effect / validation / risk / principle_refs）；
-3. **agent 自行验证执行**：能即时判定的（检索/路由/脚本/补 case）直接跑 golden 前后
-   对照或 S2 replay（replay_golden.py / s2_replay.py）；检索/路由层候选在 arena
-   selection 池可用时加跑 val 前后对照（eval_arena.py --stats/--gate：golden 无回归
-   + val 命中/路由严格提升，论证见 docs/evolution-eval-arena.md 可选层）；真实反馈类
+3. **agent 自行验证执行**：按影响面分级选门禁（docs/eval.md「门禁分级」可选层）——
+   检索/路由/候选选择面 → golden 子集（2-5 条，基线缓存复用）或 S2 replay
+   （replay_golden.py / s2_replay.py）；检索/路由层候选在 arena selection 池可用时
+   加跑 val 前后对照（eval_arena.py --stats/--gate：golden 无回归 + val 命中/路由
+   严格提升，论证见 docs/evolution-eval-arena.md 可选层）；**交互/追问/指引面 → ixn
+   对口样本（ixn_replay.py），不跑检索 golden**；纯文档 → 免跑 replay；真实反馈类
    完成实现 + S2 佐证、标"待真实确认"（现场有效性进观察窗，事后结算）；
 4. **agent 判断**（EV 卡 = agent 决策档案，不含 git 合入态/待办态）：产卡即执行（方案成形
    才产卡，状态 in_experiment）；eval solid → validated（采纳）；eval 不成立 → rejected

@@ -78,12 +78,16 @@ description: >
    risk / principle_refs），trajectory 必须指到本轮执行出处（产出文件 id / replay
    结果 / trace）；
 3. **自行验证执行**（评估自动化的核心——agent 自己验证，不把验证推给人）：
-   - 能即时判定的（检索/路由/脚本/补 case）：直接跑 golden 前后对照或 S2 replay
-     （`scripts/replay_golden.py` / `scripts/s2_replay.py`），数据通过才算 eval solid；
-     检索/路由层候选（triage 文本 / quickly_check / case 排序）在 **arena selection
-     池可用时**（`scripts/eval_arena.py --stats/--gate`，论证见 docs/evolution-eval-arena.md
-     可选层）：golden 无回归 + val 命中/路由严格提升才判 solid（门控判定是数据门槛，
-     不替代 dual 双签）；
+   - 按**影响面分级**选门禁（docs/eval.md「门禁分级」可选论证层，下述为执行值）：
+     **检索/路由/候选选择面**改动 → golden 子集前后对照（2-5 条受影响 fixture，
+     非全量；基线缓存复用，只跑改后侧）或 S2 replay（`scripts/replay_golden.py` /
+     `scripts/s2_replay.py`），数据通过才算 eval solid；检索/路由层候选在 **arena
+     selection 池可用时**（`scripts/eval_arena.py --stats/--gate`，论证见
+     docs/evolution-eval-arena.md 可选层）：golden 无回归 + val 命中/路由严格提升
+     才判 solid（门控判定是数据门槛，不替代 dual 双签）；
+     **交互/追问/指引面**改动（不改变候选选择）→ 跑 ixn 对口样本（`scripts/ixn_replay.py`，
+     2-3 条针对性）或小型探针，**不跑检索 golden**；
+     纯文档/注释 → 不跑 replay，scan + 人审；
    - 不能即时判定的（真实反馈类 content/fix）：完成实现 + S2 佐证，如实标注
      "已实现待真实确认"（现场有效性进观察窗，事后结算）；
 4. **agent 判断（EV 卡 = agent 决策档案，不含 git 合入态/待办态）**：
