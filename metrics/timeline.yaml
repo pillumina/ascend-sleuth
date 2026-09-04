@@ -211,7 +211,12 @@ periods:
   recorded_at: '2026-09-04'
   source: ixn-replay（EV-2026-018）：追问召回 9×100% + 3453=80%；决定性字段全在链、零过早结论。人复核后 append。
   metrics:
-    ixn_question_recall_heldout: 0.975
-    ixn_question_recall_self: 1.0
+    ixn_question_recall_heldout: 0.975   # 逐 session 判定均值：7/8 全中 + 3453=80%；分母 n=8（<10 小样本）
+    ixn_question_recall_self: 1.0        # 分母 n=2（<10 小样本）
     ixn_decisive_in_chain_heldout: 8/8
     ixn_premature: 0/10
+  notes: >-
+    首批交互面 staged 评测（EV-2026-018）：held_out 8（2424/3325/3453/5599/9798/13792/13974/14265）
+    + self/回归 2（9769/10097）。追问召回按 session 判定：heldout 0.975 = (7×100% + 3453×80%)/8、
+    self 1.0 = 2/2——n=8 / n=2 均 <10，小样本显式标注（O1 规范）；决定性字段 8/8 在链、过早结论
+    0/10。常态化前提 held_out ≥10 未达（现 8），本行不作趋势基准（O8 残余）。人复核后 append。

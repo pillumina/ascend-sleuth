@@ -3,7 +3,8 @@
 #
 # 设计决策见 docs/adr/0002-retrieval-no-rag-lightweight-index.md：
 #   - 索引是生成物，提交进 git，随 case 变更一起 diff / 评审
-#   - 把"阶段一只加载索引字段"从 prompt 纪律变成结构保证：阶段一 = 读这一个文件
+#   - 把"阶段一只加载索引字段"从 prompt 纪律变成结构保证：阶段一 = 读命中 (ns×category)
+#     的最小分片（总表 + ns 分片 + 类分片均由本脚本生成，见 render_shard/render）
 #   - 每条 case 记 content hash，--check 校验新鲜度（groom 每次跑，可挂 CI）
 #
 # 用法：
@@ -132,10 +133,20 @@ def shard_path(root: Path, ns: str) -> Path:
 
 def render_shard(ns, cells) -> str:
     n = sum(len(c) for c in cells.values())
+    # 类分片（ns 含 "__"）与 ns 分片共用本渲染；头注区分加载语义：
+    # category 已定 → diagnose 只读类分片（F4 EV-2026-025）；category 未定/缺失 → 回退 ns 分片（F1 EV-2026-022）
+    is_cat = "__" in ns
+    proto = (
+        "# 阶段一加载协议（F1 EV-2026-022 + F4 EV-2026-025）：category 已定时 diagnose 只读命中"
+        " (namespace×category) 的类分片，不读整库总表。"
+        if is_cat
+        else "# 阶段一加载协议（F1 EV-2026-022）：category 未定 / 类分片缺失时 diagnose 回退读本"
+        " namespace 分片，不读整库总表。"
+    )
     header = "\n".join([
         "# GENERATED FILE —— 分片（knowledge/_index.yaml 的 " + ns + " 子集），不要手改。",
         "# 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。",
-        "# 阶段一加载协议（EV-2026-022）：diagnose 只读**命中 namespace 的分片**，不读整库总表。",
+        proto,
         f"# 本分片：{ns}（{n} 条 case）",
         "",
     ])
@@ -182,7 +193,9 @@ def render(namespaces) -> str:
     header = "\n".join([
         "# GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。",
         "# case 变更后重新生成并提交；`build_index.py --check` 校验新鲜度（groom/CI）。",
-        "# 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。",
+        "# 阶段一加载协议：本文件是总表（容量/头注视图 + 兜底）；diagnose 只读命中的最小分片",
+        "# （knowledge/_index/<ns>__<category>.yaml；category 未定回退 <ns>.yaml），候选 ≤5 过滤后",
+        "# 按 file 字段定位做阶段二全量加载。",
         "# 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，",
         "# 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。",
         f"# 生成日期：{date.today().isoformat()}    case 总数：{n}",
@@ -247,7 +260,8 @@ def main():
                 print(f"SHARD STALE: {s[0]} {s[1]}")
             print("运行 `python3 scripts/build_index.py` 重新生成后提交。")
             sys.exit(1)
-        print(f"索引新鲜，与 knowledge/ 一致（{n_cases} 条 case；分片 {len(ns)} 个）。")
+        n_shards = len(ns) + sum(len(c) for c in ns.values())
+        print(f"索引新鲜，与 knowledge/ 一致（{n_cases} 条 case；分片 {n_shards} 个）。")
         return
 
     out = root / "knowledge" / "_index.yaml"
@@ -270,7 +284,8 @@ def main():
         if old.name not in expected:
             old.unlink()
     n_cases = sum(len(cases) for cells in ns.values() for cases in cells.values())
-    print(f"已生成 {out} + {len(ns)} 个分片（{n_cases} 条 case）")
+    n_shards = len(ns) + sum(len(c) for c in ns.values())
+    print(f"已生成 {out} + {n_shards} 个分片（{n_cases} 条 case）")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 # GENERATED FILE —— 分片（knowledge/_index.yaml 的 inference/sglang 子集），不要手改。
 # 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。
-# 阶段一加载协议（EV-2026-022）：diagnose 只读**命中 namespace 的分片**，不读整库总表。
+# 阶段一加载协议（F1 EV-2026-022）：category 未定 / 类分片缺失时 diagnose 回退读本 namespace 分片，不读整库总表。
 # 本分片：inference/sglang（1 条 case）
 namespaces:
   inference/sglang:
