@@ -315,6 +315,11 @@ entries:
     meaning: roadmap 可观测性事项：分期披露驱动 diagnose 交互评分（追问召回/决定性字段在链/过早结论），机制决议 EV-2026-012，设计
       docs/evolution-ixn-replay.md
     see: roadmap.md
+  - token: E8
+    family: roadmap 可演进性
+    short: roadmap 事项：元层 eval 台（arena）
+    meaning: roadmap 可演进性事项：train/val 分离 + golden/val 门控 + 影响账本，决议 EV-2026-013，设计 docs/evolution-eval-arena.md
+    see: roadmap.md
 
 # 系列级说明（无固定字面 token 的系列；渲染告警与速查表用）
 families:

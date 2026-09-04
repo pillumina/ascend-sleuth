@@ -41,6 +41,7 @@
 | E5 | trace 结构挖掘 | 从 trace 语料报告低判别力 quickly_check、噪声 triage 分支、高验证耗时 case，产出结构改进建议 | v2 入口条件 | v2 |
 | E6 | proposal 影响视图（skill-impact 语义） | `ev_proposal.py` 增 `--impact`：按 target_component 聚合历史尝试（提案×diff×eval 结果×decision 结局），evolve-check/self-evolve 产卡前必查，防同组件重提被拒方案（来源：WikiSkill skill-impact.md 咨询语义，arXiv 2608.27454；机制决议见 evolution-pipeline §12a，EV-2026-009） | 首个真实 L2 rejected/回滚簇出现（此前以手工"查同组件先例"步骤运行，见 evolve-check/self-evolve） | 按闸门 |
 | E7 | 成功模式提取信号 | evolve-check T 表加成功向信号 T8：本轮某流程/组件多次成功且成功路径可复述（对照成功 vs 失败执行差在哪）→ 产 L2 卡固化成功模式（来源：WikiSkill maintainer 成败对照分析 §3.2.2/E.2；机制决议见 evolution-pipeline §12a，EV-2026-009） | 常态运行中首次出现可复述成功模式（无信号即止，不预设轮次） | 按闸门 |
+| E8 | 元层 eval 台（arena，WikiSkill 式门控） | 从未沉淀 closed issue 池构建 selection（held-out）+ expected 标注；候选改动（triage/quickly_check/case）经 golden 无回归 + val 命中/路由严格提升门才收，否则回滚；影响账本 append（设计 docs/evolution-eval-arena.md；工具 `scripts/eval_arena.py`；决议 EV-2026-013）。test/selection 分离按规模闸门（selection ≥20） | baseline replay 跑通首批 selection 17 条 + 一次端到端门控合入 | v1.5 |
 
 ## 三、可维护性
 

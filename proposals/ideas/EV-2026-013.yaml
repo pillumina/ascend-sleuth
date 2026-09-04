@@ -1,0 +1,80 @@
+# ============================================================
+# Idea 卡：元层 eval 台（arena）——WikiSkill 式 train/val 分离 + 门控自演进
+# 目的：把 S2 replay 从"单池评测"升级为"held-out selection 池 + 自动评分门 +
+#       影响账本"的元层台，让检索/路由层组件的每次改动可被"候选侧 vs baseline
+#       在 val 上严格提升"裁决（对应 WikiSkill R_val > R_best 语义）。
+# ============================================================
+
+id: EV-2026-013
+layer: L3                          # 工作流/编排层：元层演进机制
+title: "元层 eval 台（arena）：selection 池构建 + golden 无回归/val 严格提升门 + 影响账本（eval_arena.py v1）"
+status: validated
+authorization: dual                # 文档 + 工具链 → 人审
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: human_review_feedback
+    evidence: "审核链路'与 WikiSkill 元层差什么数据、现成 issue 能否建 eval'——盘点确认检索/路由层材料齐（123 已沉淀 + 325 processed 中 233 未沉淀 + golden 23），缺的是 train/val 分离与门控动作；用户指示按目标全量构建并运转元层 self-evolve"
+    trajectory:
+      - "docs/evolution-pipeline.md §2.1（S2 口径）/ §11.2（闸门盘点）/ §12a（WikiSkill 采纳）"
+      - "docs/evolution-ixn-replay.md（交互层兄弟台）"
+      - "ingest-state.json + .s2-replay/（现成 issue 池与 S2 数据）"
+hypothesis: >-
+  selection 池（未沉淀 closed/completed issue + expected 标注）提供 held-out 评分面，
+  "golden 无回归 + val 命中/路由严格提升"门可裁决检索/路由层候选改动，影响账本留痕——
+  构成可运转的元层自演进台；test/selection 分离按规模闸门启用（防对 selection 过拟合）
+predicted_effect:
+  metric: 检索/路由层改动可门控率（候选是否需数据裁决）
+  from: 无（改动靠 golden 无回归 + 人审，无 held-out 提升门）
+  to: 可门控（pool 17 条 + stats/gate 工具；端到端运转一次）
+validation:
+  method: metrics_compare
+  baseline: 无 arena（S2 单池评测无门）
+  success_criteria: "池文件校验通过；工具 smoke（pool/stats/gate 合成样本）输出正确；词表 scan 全绿；verify_proposals / build_index 通过"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户指示'把各层构建完毕、元层 self-evolve 彻底完善并运转'（2026-09-04）"
+risk: medium
+principle_refs: [1, 5, 6, 7, 10, 11]
+actual_cost:
+  tokens: 10000
+  source: estimate
+decisions:
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      盘点结论：检索/路由层 eval 材料已齐（golden 23 回归 + S2 result schema + ingest
+      processed 325 中 233 未沉淀 closed issue），缺 train/val 分离与门控动作本身。
+      arena 设计：selection 池 = 未沉淀 closed/completed issue（resolution 可溯）+
+      expected 标注；评分复用 S2 result（hit/route/rc_match 带分母）；门控 = golden
+      无回归 + val 命中/路由严格提升（对应 WikiSkill R_val>R_best，pipeline §12 语义
+      已吸收）；影响账本 append-only。门控是数据门槛，不替代人闸（dual 仍双签）。
+      首批 selection 17 条（vllm-ascend 0.21–0.26，DS-V4-Flash/GLM-5.2/MTP/PD 等族）。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: action
+    conclusion: >-
+      执行：①docs/evolution-eval-arena.md（分层/池治理/评分口径/门控协议/工具/分级）；
+      ②scripts/eval_arena.py v1（--pool 校验 / --stats 聚合 / --gate 判定+账本）；
+      ③selection 池候选清单选出 17 条（规则：processed 减 KB 已沉淀 → closed/
+      completed → 实体 Bug/Usage）；④roadmap 登记 E8、glossary 补词条；⑤决策链留痕。
+      池文件与 result 属本地运行件（.s2-replay/arena/，gitignore），工具与规则提交。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: eval
+    conclusion: >-
+      工具 smoke：合成 pool + 两条 result（一条 route ok/hit、一条 miss）→ --stats 聚合
+      与手算一致（分母标注）；--gate 在 candidate hit↑ 时 accept、hit↓ 时 reject，账本
+      append 生效；池候选清单核对 17 条均为 closed/completed 且非 KB 已沉淀。py_compile
+      OK；verify_proposals / build_index 通过；词表 scan 全绿。golden 不适用（工具层）。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated）：设计 + 工具 v1 随 methodology PR 送人审。观察窗：①selection
+      池 expected 标注 + baseline replay（subagent 批量）→ stats 落地；②端到端运转一次
+      （真实 miss → 候选 → gate → 合入）验证门控可用；③test/selection 分离按规模闸门
+      （selection ≥20）启用；④分数进 timeline 前提样本 ≥10 带分母（口径纪律）。
