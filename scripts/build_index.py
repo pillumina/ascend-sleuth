@@ -98,10 +98,10 @@ def collect(root: Path):
                 )
             namespaces.setdefault(ns, {}).setdefault(category, []).append({
                 "id": case.get("id", ""),
-                "title": case.get("title", ""),
+                # F5 行宽压缩（EV-2026-030）：title 截 160、platforms 移除、tags 截 6
+                "title": (case.get("title", "")[:160] + ("…" if len(case.get("title", "") or "") > 160 else "")),
                 "category": category,
-                "tags": case.get("tags", []),
-                "platforms": case.get("platforms", []),
+                "tags": (case.get("tags") or [])[:6],
                 "compat": compat_summary(case.get("compat")),
                 "confidence": {
                     # ADR-0004 修正：索引只保留排序所需的 score；

@@ -7,7 +7,7 @@ namespaces:
     performance:
     - id: VLLM-ASC-10710
       title: DSV4-Flash-w8a8-mtp 完全相同串行请求 Prefix Cache 命中率恒 0%：混合压缩 KV（compression_ratio=128）最小命中长度=block_size×128（block128→16k、投机/MTP→32k），10k
-        级前缀永不命中；--block-size 32 或升 v0.23.0rc1
+        级前缀永不命中；--block-size 32 或升 v0…
       category: performance
       tags:
       - prefix-cache
@@ -16,9 +16,6 @@ namespaces:
       - dsv4
       - block-size
       - hit-rate
-      - local-cache
-      platforms:
-      - A3-910C
       compat: vllm-ascend <=0.22.1rc1
       confidence:
         score: null
@@ -28,8 +25,8 @@ namespaces:
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-10710.yaml
       hash: 714b22b84936
     - id: VLLM-ASC-10876
-      title: 'DeepSeek-V4-Flash chunked prefill 偶发超长（forward_ms 4000+ms、TTFT P90 7.3s）：vllm_ascend/ops/triton/rms_norm.py
-        的 TOTAL_BATCH 误标 tl.constexpr 致 batch shape 变化频繁重编译——去 constexpr（PR #11211）修复，v0.23.0rc1+'
+      title: DeepSeek-V4-Flash chunked prefill 偶发超长（forward_ms 4000+ms、TTFT P90 7.3s）：vllm_ascend/ops/triton/rms_norm.py
+        的 TOTAL_BATCH 误标 tl.constexpr 致 batch shape 变化频繁重编译—…
       category: performance
       tags:
       - deepseek-v4
@@ -38,9 +35,6 @@ namespaces:
       - recompilation
       - dsa-cp
       - chunked-prefill
-      - ttft
-      - performance
-      platforms: []
       compat: vllm-ascend <0.23.0rc1
       confidence:
         score: 0.6
@@ -51,7 +45,7 @@ namespaces:
       hash: 850874f544e5
     - id: VLLM-ASC-10970
       title: 'DSV4-Flash PD 分离 P 节点加 VLLM_PREFIX_CACHE_RETENTION_INTERVAL 后 prefix cache 命中归 0：hybrid
-        cache 管理器 use_eagle 未传播给 eagle 组 sibling manager（写读 block 差一）；修复=PR #11107'
+        cache 管理器 use_eagle 未传播给 eagle 组 sibling manager（写读 block 差一）；修复=PR #111…'
       category: performance
       tags:
       - prefix-cache
@@ -60,10 +54,6 @@ namespaces:
       - mtp
       - eagle
       - retention-interval
-      - hybrid-kv
-      - hit-rate
-      platforms:
-      - A2-910B
       compat: vllm-ascend 0.23.0
       confidence:
         score: null
@@ -82,7 +72,6 @@ namespaces:
       - mtp
       - cann-version
       - kernel-details
-      platforms: []
       compat: vllm-ascend 0.23.0 (cann:<9.1.0)
       confidence:
         score: 0.1
@@ -99,8 +88,6 @@ namespaces:
       - prefix-cache
       - kv-cache-pool
       - throughput
-      platforms:
-      - A3-910C
       compat: vllm-ascend <=0.23.0rc1
       confidence:
         score: 0.3
@@ -120,9 +107,6 @@ namespaces:
       - sfa
       - block-table
       - shared-expert
-      - ttft
-      - glm5
-      platforms: []
       compat: vllm-ascend 0.26.0rc; torch-npu <=2.10.0.post2
       confidence:
         score: 0.6
@@ -132,8 +116,8 @@ namespaces:
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-13973.yaml
       hash: e97c7b884f57
     - id: VLLM-ASC-14306
-      title: 'GLM-5.2 FullGraph(MRV1)+MTP（num_spec≥2）投机接受率低（per-pos 0.45/0.34/0.25、无输出质量错误）：SFA 后端按 draft
-        step 把 actual_seq_lengths 逐次写入使早期 draft step 的 attention metadata 错误（PR #14236 修复，Fixes #14306）'
+      title: GLM-5.2 FullGraph(MRV1)+MTP（num_spec≥2）投机接受率低（per-pos 0.45/0.34/0.25、无输出质量错误）：SFA 后端按 draft
+        step 把 actual_seq_lengths 逐次写入使早期 draft step 的 attention metadata 错误…
       category: performance
       tags:
       - spec-decode
@@ -142,8 +126,6 @@ namespaces:
       - acceptance-rate
       - glm5
       - fullgraph
-      - mrv1
-      platforms: []
       compat: vllm-ascend <0.26.0
       confidence:
         score: null
@@ -163,8 +145,6 @@ namespaces:
       - tpot
       - host-bound
       - glm5
-      - dcp
-      platforms: []
       compat: vllm-ascend <0.26.0
       confidence:
         score: null
