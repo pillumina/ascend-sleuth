@@ -1,0 +1,366 @@
+# GENERATED FILE —— 背景类 summary 索引（diagnose 2.5 ② 读取），不要手改。
+# 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
+# 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
+# 生成日期：2026-09-04    词条数：48
+entries:
+- id: a5-950dt-memory-spec
+  type: platform-fact
+  title: A5 950DT 片上内存规格（144GB / 4TB/s）
+  summary: 昇腾950DT 单芯片最高 144GB / 4TB/s 高速片上内存，覆盖大模型全生命周期
+  applies_to:
+    platforms:
+    - A5-950DT
+- id: a5-950pr-memory-spec
+  type: platform-fact
+  title: A5 950PR 片上内存规格（128GB / 1.6TB/s）
+  summary: 昇腾950PR 单芯片最高 128GB / 1.6TB/s 高速片上内存，面向推荐、LLM Prefill、多模态推理
+  applies_to:
+    platforms:
+    - A5-950PR
+- id: a5-ai-subsystem-compute-spec
+  type: platform-fact
+  title: A5 AI 子系统数量与算力规格（Cube/Vector 数量 + TFLOPS 表）
+  summary: 昇腾950 共 36 个 AI 子系统（各 1 Cube + 2 Vector）；Cube 数量 950PR 32/28、950DT 36/32/28；算力随精度格式分级
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-ccu
+  type: platform-fact
+  title: A5 CCU 集合通信计算加速单元
+  summary: CCU 硬件卸载集合通信任务，计算通信深度并行，释放 AI Core 算力
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-ccu-algorithms
+  type: platform-fact
+  title: A5 CCU 集合通信算法支持（Broadcast/ReduceScatter/AllGather/AllReduce/All2All/All2Allv）
+  summary: CCU 硬件执行 6 种集合通信算法；CCUM Mission 接口 + CCUA（MemorySlice 存储 + Reduce Unit 计算）
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-cube-core-spec
+  type: platform-fact
+  title: A5 Cube Core 规格（数值格式算力倍率、L0C Buffer、随路量化）
+  summary: 第三代 Cube：FP8/MXFP8/HiF8 提供 2 倍 FP16 TFLOPS、MXFP4 提供 4 倍；更大 L0C Buffer；回写 UB 时随路量化（FP32→BF16/FP16/FP8、NZ→ND/DN）
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-cv-fusion
+  type: platform-fact
+  title: A5 Cube-Vector 融合（CV 直连通道、FlashAttention 内部通路、随路转换）
+  summary: Cube L1 Buffer 与 Vector Unified Buffer 直连通道；FA 带宽瓶颈的 Cube-Vector 内部数据通路；传输时随路精度/排布转换
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-die-architecture
+  type: platform-fact
+  title: A5 多 Die 合封架构（2 AI Die + 2 IO Die + 片上内存模块）
+  summary: 昇腾950 为 Chiplet 合封：2 AI Die + 2 IO Die + 8(PR)/4(DT) 片上内存模块，D2D Clink 互联，UMA 统一内存
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-hif8-format
+  type: platform-fact
+  title: HiF8 精度格式细节（38 指数、无 MX 缩放因子、特殊值编码）
+  summary: HiF8 综合阶码范围 [-22,15] 共 38 个指数，比 FP8 E4M3 的 18 个动态范围成倍提升；与 MXFP8 相比无需 8 位 MX 缩放因子
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-interconnect-ub2
+  type: platform-fact
+  title: A5 灵衢 Unified Bus 2.0 互联（2TB/s，URMA/UB Memory/PCIe 5.0/UBoE）
+  summary: 昇腾950 单芯片互联带宽 2TB/s：72×HiLink(112Gbps)/18 Port，URMA 异步拷贝、UB Memory 同步语义、PCIe 5.0 x16 双模式、2×400Gbps
+    UBoE
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-l2-cache
+  type: platform-fact
+  title: A5 全局 L2 Cache（128MB，Chiplet UMA）
+  summary: 昇腾950 提供 128MB 统一访问 L2 Cache，支持按 Way Cache Lock，管理粒度 128Byte Sector
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-l2-cache-detail
+  type: platform-fact
+  title: A5 L2 Cache 微架构与 Cache 管理（512B Cache Line、L2 hint、CMO）
+  summary: A5 L2 Cache 512B Cache Line + 128B Sector，2 Die UMA 跨 Die 访问，硬件一致性，L2 hint 分配/替换策略，SDMA CMO（Prefetch/Writeback/Invalid/Flush）
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-memory-hierarchy
+  type: platform-fact
+  title: A5 Memory 层次与容量（表 4-2）
+  summary: 昇腾950 Memory 层次：L1 512KB、L0A/L0B 64KB、L0C 256KB、Unified Buffer 512KB（per AI Core）；CPU L1 64KB/L2
+    1MB/L3 4MB；L2 ≤128MB；片上内存 PR≤128GB、DT≤96/144GB
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-memory-ras
+  type: platform-fact
+  title: A5 高速片上内存 RAS 特性
+  summary: 昇腾950 片上内存支持 Online ECC、巡检、行失效动态隔离（用户无感）
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-nddma
+  type: platform-fact
+  title: A5 NDDMA 指令（多维数据排布转换、5 维重排、128B 读合并）
+  summary: NDDMA 硬化地址生成，最多 5 维数据重排，128B 读操作合并，降低数据搬运编程复杂度
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-pcie5-spec
+  type: platform-fact
+  title: A5 PCIe 5.0 规格（x16 128GB/s、EP/RC 静态选择、DMA/MCTP）
+  summary: 昇腾950 支持 PCIe GEN5 1x16/1x8/1x4/1x2，128GB/s 双向，EP/RC 双模静态选择，支持 DMA、MCTP 加速器
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-precision-format-support
+  type: platform-fact
+  title: A5 精度格式支持（原生 MXFP4/MXFP8/HiF8，另含 FP8/INT8/TF32/FP16/BF16）
+  summary: 昇腾950 系列原生支持 MXFP4/MXFP8/HiF8 低精度格式，全面支持 FP8/INT8/TF32/FP16/BF16
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-simd-simt-mixed
+  type: platform-fact
+  title: A5 SIMD/SIMT 混合编程架构（SIMD 为主、SIMT 为辅）
+  summary: 昇腾950 DaVinci Core 采用 SIMD 为主 / SIMT 为辅的混合编程；SIMT 面向离散访问与复杂分支；Vector Function（VF）支持快速切换
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-stars2-scheduler
+  type: platform-fact
+  title: A5 STARS 2.0 任务调度器（HSCB、任务流、Group、资源池）
+  summary: STARS 2.0 调度 AIC/AIV/CPU/DVPP/SDMA/UB/CCU；HSCB ns 级调度；2048 任务流下沉；8 Group 亲和性调度；16 资源池算力切分
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-supernode-scale
+  type: platform-fact
+  title: A5 超节点规模（8K 卡）与集群规模（128K+ 卡）
+  summary: 昇腾超节点从上一代 384 卡提升至 8K 卡，整体集群支持超 128K 卡，nD-Mesh/Clos 灵活组网
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-ub-onchip-switch
+  type: platform-fact
+  title: A5 UB On Chip Switch（IO Die 内 9×x4 Port 转发，不占 DRAM 带宽）
+  summary: 单 IO Die 内 9 个 x4 Port 间流量转发，经 NoC 完成，不进计算 Die、不占 DRAM 带宽
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-urma-semantics
+  type: platform-fact
+  title: A5 URMA 异步通信语义（操作集、RTP/CTP 传输模式）
+  summary: URMA 异步语义：Write/Read/Send/Atomic（FetchAdd、CAS）；RTP 可靠传输（4 Port）vs CTP 简易传输（9 Port）；Doorbell
+    + Jetty 队列 + UMMU 地址转换
+  applies_to:
+    platforms:
+    - A5-950
+- id: a5-vector-core-spec
+  type: platform-fact
+  title: A5 Vector Core 规格（BF16 原生支持、RegFile、算力翻倍）
+  summary: 第三代 Vector：单核 FP16/FP32 TFLOPS 较上代提升 100%；新增 BF16 原生支持与格式转换指令；UB 与 Vector ALU 间引入 RegFile
+  applies_to:
+    platforms:
+    - A5-950
+- id: ascend-310p-known-limits
+  type: platform-fact
+  title: 310P（Atlas 300I Duo）平台已知限制
+  summary: 310P 平台特有限制：event 资源有限（cudagraph 捕获超限）、aicpu IndexPut 异常（驱动版本相关）、MTP 与图模式不可同时开启（缺 free-mask
+    算子）
+  applies_to:
+    platforms:
+    - 310P
+- id: ascend-aicore-error-triage
+  type: methodology
+  title: AI Core Error 问题定位（RAS → NPU 硬件 → 软件 → msaicerr 分析）
+  summary: AI Core Error 按四层分流：①event 日志搜 event_id 查 RAS 硬件故障（npu-smi health 兜底）→ ②plog 搜 ECC/同 chipId
+    多次报错，ascend-dmi 压测核验 NPU 硬件 → ③索引类算子 0x800000 报错查软件越界 → ④msaicerr 输出…
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-asys
+  type: tool
+  title: asys 故障信息收集与解析工具（仅 Ascend EP 形态）
+  summary: asys 一键式收集故障信息并解析 plog 伴侣文件：collect/launch 收集（含业务复跑）、info 状态展示、health 健康检查、diagnose 压测检测（stress/hbm/cpu）、analyze
+    解析（trace/coredump/stackcore/coretrace/ub/aicore…
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-device-log-ops
+  type: tool
+  title: Device 日志排查操作（RAS 故障 ID / 资源占用 / 进程拉起与结束时间）
+  summary: 三组常用 Device 日志操作：①msnpureport -f 导出后在 event_*.log 搜 event_id 查 RAS 故障码（npu-smi info -t health
+    兜底查最近 8 次故障）；②Device 日志 SYSMONITOR 看 fd usage（阈值 90%）与僵尸进程（阈值 5）；③…
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-error-code-structure
+  type: software-fact
+  title: 昇腾 6 位错误码结构（级别位 + 模块位 + 内部码规则）
+  summary: 错误码 6 位：第 1 位 E/W/I（错误/告警/提示）；第 2 位模块（E1=GE、E2=FE、E3=AI CPU、E4=TEFusion、E7=Vector 算子插件、E8=Vector
+    算子、EB=TBE Pass、EC=Auto Tune、ED=RLTune、EE=Runtime、EF=LxFusion&Au…
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-log-classification
+  type: software-fact
+  title: 昇腾日志分类与统一格式
+  summary: 昇腾日志分系统类（Device 侧）/ 应用类（Host+Device）/ trace（内存记录、出错或退出才落盘）三类；统一格式 [Level] ModuleName(PID,PName):DateTimeMS
+    [FileName:LineNumber]LogContent；文件名中 id=Device ID、pid…
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-log-levels
+  type: tool
+  title: 设置日志级别（应用类环境变量 / 系统类 msnpureport 或 slog.conf）
+  summary: 日志级别序 0 DEBUG < 1 INFO < 2 WARNING < 3 ERROR < 4 NULL 不输出；调试日志默认 ERROR 可调、安全日志默认 DEBUG 不可调、运行日志默认
+    INFO 不可调；应用类用 ASCEND_GLOBAL_LOG_LEVEL 等环境变量，系统类 EP 用 msnpurepo…
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-log-locations
+  type: software-fact
+  title: 昇腾日志存储路径（EP / RC / Control CPU 开放形态）
+  summary: 应用类日志 Ascend EP 默认在 $HOME/ascend/log、Ascend RC 与 Control CPU 开放形态在 /var/log/npu/slog 按 debug/run/security
+    分目录；EP 无 Device 登录权限、系统类日志须用 msnpureport 导出；日志支持老化自动删除
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-log-modules
+  type: software-fact
+  title: 昇腾日志模块名字典（ModuleName 解码）
+  summary: 日志行 [Level] ModuleName(PID,PName):... 中 ModuleName 对照：Device 侧 SLOG/IDEDD/DVPP/TS/TSDUMP/LP/AICPU，Host
+    侧 GE/ASCENDCL/DRV/RUNTIME/TBE/TDT/HCCL/TEFUSION/ATC/PLOG；…
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-log-troubleshooting
+  type: methodology
+  title: 日志异常排查（不落盘 / 时间戳不对 / 多余打屏）
+  summary: 日志故障按现象分流：不落盘按部署形态分支排查（EP/RC/Control CPU × 应用/系统：系统日志报错 → df -h 磁盘 → ldd 动态库 → ps 查 slogd →
+    重启日志进程）；时间戳不对是 AI 任务启动后改系统时区所致（重启任务或 timedatectl 改回）；多余打屏是日志模块与 slog…
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-moe-comm-triage
+  type: methodology
+  title: MoE 通信/路由算子故障排查（MoeDistributeDispatch / MoeInitRouting / QuantBatchMatMul）
+  summary: MoE 相关算子（aclnnMoeDistributeDispatchV2/V4、MoeInitRoutingV3、QuantBatchMatMulV3）执行报错按形态分流：507057
+    SUSPECT REMOTE ERROR + MTE 越界 → ROCE 组网兼容性（升级 0.20.2rc1+ / HCCS 退避…
+  applies_to:
+    platforms: []
+- id: ascend-mooncake-kv-transfer-triage
+  type: methodology
+  title: Mooncake/Ascend KV-transfer 分层诊断（python backend / native transport / 连接 / 流同步）
+  summary: PD 分离 + Mooncake KV-pool 部署故障先按报错面路由到层、再按层内形态定位，把同族诊断从逐个翻 case 变成分层路由：python traceback 且栈指
+    vllm_ascend/*.py → python backend 层（vllm-ascend 自身代码， 细分 init/线程 conf…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+- id: ascend-msaicerr
+  type: tool
+  title: msaicerr AI Core Error 专项分析工具
+  summary: msaicerr 分析 AI Core Error 问题（输出 info.txt 分析报告）、解析 Dump 文件、转换 Dump 数据类型、检查环境；不支持 MatmulAllReduce
+    类算子（7 个）的 AI Core Error 分析
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-oom-triage
+  type: methodology
+  title: 内存 OOM 问题定位（C 接口 → CANN Host 内存 → CANN Device 内存 → 业务进程异常）
+  summary: OOM 按申请方分流：C 标准接口 malloc/memset 申请 Host 内存→asan 检测；CANN 接口 aclrtMallocHost 申请 Host 内存→日志搜 mem_stats
+    看组件统计；aclrtMalloc/aclrtMallocPhysical/hi_mpi_dvpp_malloc 申请 …
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-process-hang-triage
+  type: methodology
+  title: 进程卡住问题定位（调用栈定位下发/执行阶段 → 卡住任务 → 编译耗时）
+  summary: 进程卡住先用 asys collect -r=stacktrace 取调用栈：栈无 CANN 内部函数→任务未下发查客户脚本；有 SendTask→卡在任务下发；有 Synchronize→卡在任务执行，用
+    trace 日志 stream_id+head/pos 定位卡住任务；plog 有 watchdog timeo…
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-process-interrupt-triage
+  type: methodology
+  title: 进程中断问题定位（首报错 → 接口错误 → 任务执行错误 → 心跳丢失 → 资源未释放）
+  summary: 进程异常退出按五层排查：①plog 首报错有错误码（非 E*9***）查错误码参考；②acl***/rt*** 接口报错（对外接口查 API 参考，内部接口联系技术支持）；③fault
+    kernel_name 算子执行报错 / Task run failed 内部任务报错（ascend-dmi 压测）；④Device …
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-restart-slogd
+  type: tool
+  title: 重启 Device 侧日志进程 slogd
+  summary: 修改日志配置或日志进程异常后重启 slogd：kill -15 <pid> 让其清理共享内存后自动拉起（反复失败才用 -9），ps -elf | grep log 确认；重启后系统类日志续写未满旧文件、应用类写全新文件；需
+    Device 侧登录权限，EP 形态无此权限
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-slog-conf
+  type: tool
+  title: Device 侧日志配置文件 /etc/slog.conf
+  summary: RC 与 Control CPU 开放形态 Device 侧系统日志配置在 /etc/slog.conf：global_level、enableEvent、模块级别（5=跟随全局）、滚动规格、logAgentFileDir（≤255
+    字节）、permission_for_all；改后必须重启 slogd 生效；Asce…
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-stack-view
+  type: tool
+  title: 查看 Python / C&C++ 应用程序堆栈（py-spy / gdb）
+  summary: 卡住进程取堆栈：Python 用 py-spy dump -p <pid> > pyspy.log（不中断进程）；C/C++ 用 gdb -p <pid> 后 bt 查看调用栈（需安装
+    gdb）；进程中断/卡住定位的宿主侧配合手段
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-trace-logs
+  type: software-fact
+  title: trace 日志机制与落盘路径（仅 Ascend EP 标准形态）
+  summary: trace 将软件栈维测信息记内存、运行出错或进程结束时才落盘，仅 Ascend EP 标准形态支持；根目录 $HOME/ascend/atrace（ASCEND_WORK_PATH
+    可重定向），事件三类 schedule/stackcore/exit；stackcore 与 *.bin 轨迹需 asys 工具解析，目…
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-vllm-spec-decode-mtp-triage
+  type: methodology
+  title: vllm-ascend spec-decode/MTP 族分层诊断（启动/首请求/运行期崩溃 + 静默精度·性能退化）
+  summary: vllm-ascend 投机解码（spec-decode/MTP：deepseek_mtp/qwen3_5_mtp/qwen3_next_mtp/EAGLE/DSpark）故障族，
+    先按故障阶段分流——R-A 启动/拉起期（服务起不来、图捕获 warmup 崩）、R-B 服务能起但首请求/投机 first pass 即…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+- id: glm-quantized-startup-triage
+  type: methodology
+  title: GLM 系模型量化加载启动失败排查（按报错形态分类）
+  summary: GLM 系模型（GLM-5/5.1/5.2）w8a8/w4a8/w4a8c8 量化权重拉起 vllm serve 启动失败时，先按报错形态分类定位——modelslim 描述缺失 /
+    版本错配 / 算子绑定 / 量化路由，各类修法不同
+  applies_to:
+    platforms: []
+- id: msllm-startup-version-env-triage
+  type: methodology
+  title: mindspeed-llm 训练启动失败排查（版本/环境配套面 + import 失败判别）
+  summary: mindspeed-llm 训练启动即失败的常见根因分流：import 失败先判别"版本/安装面 vs 代码漂移面"（features_manager 缺符号=版本不配套；tasks.checkpoint.models
+    缺失=上游删模块未同步后端）；算子重复注册（CANN 版本过旧 vs 多版本 mindspeed）；…
+  applies_to:
+    platforms: []
+- id: verl-official-image-no-hdk
+  type: software-fact
+  title: verl 官方昇腾 Docker 镜像不含 HDK
+  summary: verl 官方昇腾镜像（quay.io/ascend/verl:*）不含 HDK，需按 install_guidance.rst 自选安装——HDK 版本与镜像组合不兼容是 verl+昇腾故障的常见根因面
+  applies_to:
+    platforms:
+    - cross
+- id: vllm-ascend-startup-triage
+  type: methodology
+  title: vllm-ascend 服务启动失败通用排查（跨模型：版本配套 / 量化加载 / patch 层 / 平台特化路径）
+  summary: 通用 vllm-ascend（vllm serve / EngineCore）启动即失败的分流方法论——先按失败阶段与报错签名分类，依次核对版本/配套面（vllm×vllm-ascend
+    commit、上游支持合入点、适配期坏版本、镜像内依赖）、量化权重格式面、patch 层全局副作用，再定位平台特化执行路径缺陷（启动…
+  applies_to:
+    platforms: []

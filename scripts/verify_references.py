@@ -61,7 +61,7 @@ def check_case_ref_links(root: Path, ref_ids: set):
     if not kdir.exists():
         return counts, errors
     for path in sorted(kdir.rglob("*.yaml")):
-        if path.name == "_index.yaml":
+        if path.name.startswith("_"):   # _types.yaml 与生成物 _summary-index.yaml 非词条
             continue
         rel = str(path.relative_to(root))
         doc = load_yaml(path)
@@ -350,7 +350,7 @@ def main():
     # 1) reference 词条 ID 集（先于 case 侧校验；_types.yaml 不是词条）
     ref_ids = set()
     for path in sorted(refs_dir.rglob("*.yaml")):
-        if path.name == "_types.yaml":
+        if path.name.startswith("_"):   # _types.yaml / 生成物 _summary-index.yaml 非词条
             continue
         doc = load_yaml(path)
         rid = doc.get("id") if isinstance(doc, dict) else None
@@ -363,7 +363,7 @@ def main():
     errors = list(case_errors)
     seen_ids = {}
     for path in sorted(refs_dir.rglob("*.yaml")):
-        if path.name == "_types.yaml":
+        if path.name.startswith("_"):
             continue
         rel = str(path.relative_to(refs_dir))
         doc = load_yaml(path)
@@ -381,7 +381,7 @@ def main():
             print(f"  - {e}")
         sys.exit(1)
 
-    n = len([p for p in refs_dir.rglob("*.yaml") if p.name != "_types.yaml"])
+    n = len([p for p in refs_dir.rglob("*.yaml") if not p.name.startswith("_")])
     print(f"references 校验通过（{n} 个词条，id 全部唯一）")
 
 
