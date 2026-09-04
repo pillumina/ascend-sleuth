@@ -66,8 +66,13 @@ description: >
 
 **第 3 步：产卡 + 自行验证（有信号时，agent 自动完成，不等用户）**：
 
-1. 查重：`python3 scripts/ev_proposal.py --list`——同 trajectory/同 target 已有在池卡
-   → 合并不新建（候选水位超限时只记信号不产卡）；
+1. 查重 + **同组件先例咨询**（防重提被拒方案——skill-impact 咨询语义，2026-09；
+   论证可选层 docs/evolution-pipeline.md §12a）：`python3 scripts/ev_proposal.py --list`
+   ——同 trajectory/同 target 已有在池卡 → 合并不新建（候选水位超限时只记信号不产卡）；
+   同时查本卡要改的组件（skill 步骤 / triage 分支 / script）在历史卡里的结局：
+   `--list` 定位同组件卡 → 读其 decisions——该组件被改过 / 回滚过 / 有 rejected 结论 =
+   该方向已试过 → 不重复方案（改提新方向，或记信号不产卡）；E6 落地后改用
+   `scripts/ev_proposal.py --impact` 聚合视图（组件×尝试×结局）一次查全；
 2. 产骨架：`python3 scripts/ev_proposal.py --new` → 填字段（layer / title /
    source_signals 带 trajectory / hypothesis / predicted_effect / validation /
    risk / principle_refs），trajectory 必须指到本轮执行出处（产出文件 id / replay
