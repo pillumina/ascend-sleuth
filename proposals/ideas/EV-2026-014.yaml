@@ -1,0 +1,82 @@
+# ============================================================
+# Idea 卡：元层闭环端到端运转一次（arena 门控首跑）
+# 目的：验证"真实 val miss → 候选 → golden/val 门控 → 合入 → 影响账本"闭环可用
+#       （对应 WikiSkill R_val > R_best 语义的本仓实现首跑）。
+# ============================================================
+
+id: EV-2026-014
+layer: L2                          # 知识内容 + 门控工具链的首跑
+title: "arena 闭环首跑：基线 val miss（14306/14448/12933）→ 补 3 case → 改后重放 miss→hit + 其余无回归 → 门控合入 → 账本"
+status: validated                  # 门控 accept：候选 3 case 合入前独立盲测重放 3/3 miss→hit；16 池对照 hit 37.5%→56.3%
+authorization: review               # 补 case（新根因族，非 expected/fix 高风险字段）+ 门控证据
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: arena_miss
+    evidence: "baseline replay 9/16：route 9/9 全对，hit 3/9（33%）；覆盖缺口带真实 fix PR：14306（SFA 每 draft step 写 actual_seq_lengths → MTP 接受率低，PR #14236）、14448（GLM-5.2 单 D MTP host-bound 下发，PR #14103/#14554）、12933（NetLoader P2P 加载 hang+OOM，PR #12885 修复 tensor 数量/格式不匹配）；检索一致性缺陷同现：triage 把接受率下降固定归 performance，KB 精度接受率族（11127/12723）不可达"
+    trajectory:
+      - ".s2-replay/arena/pool-val.yaml（16 条 selection，gitignore）"
+      - ".s2-replay/{14306,14448,12933}.result.yaml（基线盲测）"
+      - ".s2-replay/arena/annotations/*.yaml（expected + resolution）"
+      - "triage-tree.yaml:101（accept.*rate.*drop → performance）"
+hypothesis: >-
+  补 3 条新根因族 case（SFA MTP 接受率 / host-bound MTP 下发 / NetLoader P2P）后，
+  对应 val issue 由 miss→hit（自证命中，如实标注不虚增外部验证），其余 val 重放无回归，
+  门控 accept 并记影响账本——闭环可复现
+predicted_effect:
+  metric: val 命中率（selection 池）
+  from: 3/9（33%，9 条已跑）
+  to: ≥6/12（候选侧新增 3 命中；consumed 标注后池更新）
+validation:
+  method: metrics_compare
+  baseline: 现 KB + golden 全绿（基线 replay stats-val）
+  success_criteria: "改后重放：14306/14448/12933 各自命中新 case（self_consistent 如实标注）；其余已跑 val 重放结果不劣化；build_index/verify 通过；gate 判定 accept + impact.yaml append"
+  rollback: 分支合入前可整体丢弃；case 合入后 git revert（原则七）
+gate:
+  condition: "baseline 可用（9 条已跑）且 3 候选 case 有真实 fix PR（resolution 可溯）"
+risk: low                           # 新增 case（非改 expected/fix），review 级
+principle_refs: [1, 5, 7, 10, 11]
+actual_cost:
+  tokens: 22000
+  source: estimate                 # 含 3 case 起草 + 3 候选重放 + baseline 16 条累计；无 tokenMeter 记账环境估算
+decisions:
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      baseline（9/16，route 9/9、hit 3/9）暴露 3 个带真实 fix PR 的覆盖缺口与 1 个检索
+      一致性缺陷（triage 接受率路由 vs KB 精度族）。首跑候选 = 补 3 case（新根因族）：
+      14306→SFA 投机 metadata（PR #14236）、14448→host-bound MTP 下发（PR #14103）、
+      12933→NetLoader P2P（PR #12885）。门控口径按 arena 文档：golden 无回归 +
+      val 命中严格提升且其余不降（本次为"反例 miss→hit + 其余重放无回归"，consumed
+      的 3 条移出 val 后池由未沉淀 closed issue 补充）。检索一致性缺陷（triage 接受率
+      路由）记 E2 通道，另走 high-risk 双签，不混入本首跑。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: action
+    conclusion: >-
+      执行完成：3 条 case 落地（VLLM-ASC-14306/14448/12933，performance/interrupt，
+      schema 复刻 10710 模板，YAML 解析 + 索引重建 126 条通过）；pool 按 consumed
+      语义更新（selection 13 + consumed 3，self_consistent 转回归集）；候选侧独立
+      盲测重放 3 条（subagent，新 KB）。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: eval
+    conclusion: >-
+      门控数据：baseline（原 KB，16 池）route 16/16、hit 6/16（37.5%）；候选侧
+      （补 3 case）独立盲测重放 14306→VLLM-ASC-14306、14448→VLLM-ASC-14448、
+      12933→VLLM-ASC-12933（3/3 miss→hit，各自经索引+quickly_check 核对）；
+      16 池对照 hit 9/16（56.3%）、route 稳定 100%、rc 0（盲测）→ eval_arena --gate
+      = accept，影响账本 impact.yaml 追加（EV-2026-014，knowledge+3cases）。
+      consumed 3 条如实标 self（自证命中，不虚增外部验证）；gate16 仅为演示保留
+      计数，权威池 = pool-val（13）。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated）：3 条补丁 case + 门控证据随知识/方法论 PR 送人审。检索一致性
+      缺陷（triage 接受率路由 vs KB 精度族，14265 等复证）记 E2 通道另走 high-risk
+      双签，不混入本卡。观察窗：consumed 3 条入回归集，后续循环在权威池（13+补充）
+      上以"非 consumed 严格提升"语义继续；retention 回测 = 季度自评复核命中率趋势。

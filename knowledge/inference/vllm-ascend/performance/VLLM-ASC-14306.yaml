@@ -1,0 +1,77 @@
+# VLLM-ASC-14306 —— GLM-5.2 FullGraph(MRV1)+MTP>1 投机接受率低（per-pos 0.45/0.34/0.25）：SFA 后端按 draft step 把 actual_seq_lengths 逐次写入致早期 draft metadata 错误
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/14306
+# fix：PR #14236（jiajinzhu2，2026-08-17 合入，Fixes #14306）——SFA MTP>1 接受率修复
+# pre-triage: new_pattern —— KB 接受率退化族（11127=GLM5.1 MTP 长跑<1%+精度错、12723=DSpark rope bug）均为精度/数值路径，本 case 为 SFA 投机 attention metadata 缺陷（性能面、无输出错误）
+# verification: upstream-fix-merged（PR #14236 Fixes #14306，合入即关闭）
+# 脱敏：本 case 未引用线程内 token/内网 IP
+# 建议命名空间：inference/vllm-ascend/performance/
+# 导入管道：arena selection miss → EV-2026-014 门控补丁（2026-09）
+
+cases:
+  - id: VLLM-ASC-14306
+    title: "GLM-5.2 FullGraph(MRV1)+MTP（num_spec≥2）投机接受率低（per-pos 0.45/0.34/0.25、无输出质量错误）：SFA 后端按 draft step 把 actual_seq_lengths 逐次写入使早期 draft step 的 attention metadata 错误（PR #14236 修复，Fixes #14306）"
+
+    category: performance
+    tags: [spec-decode, mtp, sfa, acceptance-rate, glm5, fullgraph, mrv1]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.26.0"]      # PR #14236 2026-08-17 合入，受影响精确区间未系统确认
+
+    investigation_quality: high     # fix PR Fixes 关联 + 机制定位（SFA metadata 写入路径）
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "GLM-5.2 全图/MRV1 + MTP num_spec≥2：投机接受率明显低于预期（acceptance_per_pos≈0.45/0.34/0.25、acceptance_len 偏低），对照 v0.23 正常"
+      - "无输出乱码/精度错误伴随（区别于 11127/12723 的精度路径）——纯生成效率退化"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/14306"
+      - "https://github.com/vllm-project/vllm-ascend/pull/14236"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "PR #14236 Fixes #14306（2026-08-17 合入）：SFA 后端按 draft step 构建 attention metadata 时把 actual_seq_lengths 逐次写入，使早前 draft step 的 metadata 错误致接受率下降"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aoE 'acceptance_per_pos|acceptance_len|num_speculative_tokens|method.?[:=].?(mtp|qwen)' {{server_log}}"
+        rank_selector: coordinator
+        expected: "regex:acceptance_per_pos|acceptance_len"
+        note: "先确认 MTP 与接受率数值存在"
+      fallback:
+        command_template: "grep -aoE -- 'compilation_config|full_graph|--speculative-config' {{launch_log}}"
+        rank_selector: coordinator
+        expected: "regex:full_graph|speculative-config"
+        note: "判别 FullGraph/MRV1 + MTP 组合"
+
+    diagnosis:
+      - step: 1
+        check: "MTP/投机场景接受率显著低于对照版本且无输出质量错误？"
+        expected: "是——SFA×MTP 效率路径嫌疑"
+      - step: 2
+        check: "是否 FullGraph/MRV1 + MTP num_spec≥2？"
+        expected: "是——与 PR #14236 场景一致（SFA 每 draft step 写 actual_seq_lengths）"
+      - step: 3
+        check: "版本是否含 PR #14236？"
+        expected: "否 → 升级含 #14236 版本复测接受率"
+        fix_on_mismatch: "升级 vllm-ascend ≥ 含 PR #14236 版本；临时对照：关闭投机或降 num_spec=1"
+        rollback: "回退版本复现（对照验证）"
+
+    severity: service-affecting        # 投机失效 = 吞吐/有效加速比明显下降，服务可用
+    fix_side_effects: [requires-restart]
+    fix_type: upgrade
+
+    root_cause: >
+      SFA（speculative 前端）后端在按 draft step 构建 attention metadata 时，把
+      actual_seq_lengths_query/key 逐次写入；num_spec≥2 时早前 draft step 的 metadata
+      因此被错误覆盖，MTP>1 的投机接受率显著下降（无输出正确性问题）。PR #14236 修正
+      SFA 的 MTP>1 metadata 构造。
+
+    fix: >
+      升级 vllm-ascend 至含 PR #14236 的版本；核验时用同请求 eager/关闭投机对照接受率，
+      确认异常源于 SFA×MTP>1 而非模型/量化本身。
+
+    rollback: "回退版本即复现（对照验证因果）"

@@ -3,9 +3,9 @@
 # 阶段一加载协议：diagnose 只读本文件过滤候选 ≤5，按 file 字段定位后做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-09-03    case 总数：123
+# 生成日期：2026-09-04    case 总数：126
 #   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=81/30, performance=6/30, precision=15/30
+#   容量(inference/vllm-ascend): interrupt=82/30, performance=8/30, precision=15/30
 #   容量(training/mindspeed-llm): interrupt=11/30, precision=3/30
 #   容量(training/verl): interrupt=6/30
 namespaces:
@@ -908,6 +908,36 @@ namespaces:
           expected: regex:.*(wq_b\.weight|modelslim_config)
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12901.yaml
       hash: 9cb393fd26da
+    - id: VLLM-ASC-12933
+      title: 'GLM5.1-W8A8 Elastic NetLoader P2P 权重加载 hang/deadlock，int8_cache=dram 配 memcache 时内存过量 OOM：HCCL
+        P2P 收发端 tensor 数量/格式不匹配（PR #12885 改传 processed-layout + JOIN_ACK + numel fail-fast 解决）'
+      category: interrupt
+      tags:
+      - netloader
+      - p2p
+      - weight-loading
+      - glm5
+      - w8a8
+      - memcache
+      - hang
+      - oom
+      platforms: []
+      compat: vllm-ascend <0.26.0
+      confidence:
+        score: null
+      symptoms:
+      - Elastic NetLoader P2P 加载 GLM5.1-W8A8（INT8_CACHE=dram 或 memcache 同开）时 hang/deadlock：加载不完成、无报错退出
+      - NetLoader 与 memcache 同开且 int8_cache=dram：host/device 内存过量占用，memcache 不可用/不稳定（DRAM 权重缓存路径）
+      - 非模型/算子层：仅权重加载引擎（NetLoader P2P / DRAM 缓存 / memcache 共存）路径触发
+      quickly_check:
+        primary:
+          command: ps -eo pid,etime,stat,cmd | grep -E 'vllm serve|EngineCore' | grep -v grep
+          expected: regex:STAT.*D|etime 持续增长（加载阶段卡死）
+        fallback:
+          command: grep -aoE -- 'int8_cache=[a-z]+|memcache|netloader|enable.*load' {{launch_log}}
+          expected: regex:int8_cache=dram|memcache|netloader
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12933.yaml
+      hash: 8e4ba0a0bd33
     - id: VLLM-ASC-12983
       title: 310P MTP 与图模式无法同时开启：镜像缺 free-mask 算子，pageattention-splitfuse 变化 shape mask 不入图
       category: interrupt
@@ -2956,6 +2986,65 @@ namespaces:
           expected: 'metric:step 内非重叠通信占比 < 3%（v0.23: 1.58%；v0.26 回归: 8.19%）'
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-13973.yaml
       hash: e97c7b884f57
+    - id: VLLM-ASC-14306
+      title: 'GLM-5.2 FullGraph(MRV1)+MTP（num_spec≥2）投机接受率低（per-pos 0.45/0.34/0.25、无输出质量错误）：SFA 后端按 draft
+        step 把 actual_seq_lengths 逐次写入使早期 draft step 的 attention metadata 错误（PR #14236 修复，Fixes #14306）'
+      category: performance
+      tags:
+      - spec-decode
+      - mtp
+      - sfa
+      - acceptance-rate
+      - glm5
+      - fullgraph
+      - mrv1
+      platforms: []
+      compat: vllm-ascend <0.26.0
+      confidence:
+        score: null
+      symptoms:
+      - GLM-5.2 全图/MRV1 + MTP num_spec≥2：投机接受率明显低于预期（acceptance_per_pos≈0.45/0.34/0.25、acceptance_len
+        偏低），对照 v0.23 正常
+      - 无输出乱码/精度错误伴随（区别于 11127/12723 的精度路径）——纯生成效率退化
+      quickly_check:
+        primary:
+          command: grep -aoE 'acceptance_per_pos|acceptance_len|num_speculative_tokens|method.?[:=].?(mtp|qwen)'
+            {{server_log}}
+          expected: regex:acceptance_per_pos|acceptance_len
+        fallback:
+          command: grep -aoE -- 'compilation_config|full_graph|--speculative-config' {{launch_log}}
+          expected: regex:full_graph|speculative-config
+      file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-14306.yaml
+      hash: 476e34bf900b
+    - id: VLLM-ASC-14448
+      title: 'GLM-5.2 单 D MTP（4 并发长输入 20-40k）TPOT 极差：MTP 路径 host 侧长 copy 同步点推迟算子下发、呈 host-bound（PR #14103/#14554
+        优化 DCP drafting metadata 消除多余 CPU↔NPU 拷贝）'
+      category: performance
+      tags:
+      - spec-decode
+      - mtp
+      - pd-separation
+      - tpot
+      - host-bound
+      - glm5
+      - dcp
+      platforms: []
+      compat: vllm-ascend <0.26.0
+      confidence:
+        score: null
+      symptoms:
+      - GLM-5.2 单 D（PD 分离 decode 侧）+ MTP 服务，4 并发长输入（20-40k tokens）：TPOT 明显劣化
+      - profiling 显示 MTP 分支耗时超长、host 侧存在长 copy 操作推迟 MTP 算子下发——整体 host-bound（算子未及时下发，流水空档），非 NPU kernel
+        算力瓶颈
+      quickly_check:
+        primary:
+          command: grep -aoE 'tpot|avg_prompt_throughput|throughput' {{server_log}} | tail -5
+          expected: regex:tpot|throughput
+        fallback:
+          command: grep -aoE -- '--speculative-config|method.?[:=].?(mtp)|pd|deploy' {{launch_log}}
+          expected: regex:mtp|speculative-config
+      file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-14448.yaml
+      hash: d39653d1ec9f
     precision:
     - id: VLLM-ASC-10524
       title: 'GLM-5.1-w8a8 PD 分离偶现精度问题（Claude Code 多并发长请求）：graph-capture/dummy run 未走 _prepare_inputs()
