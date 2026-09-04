@@ -1,0 +1,79 @@
+# VLLM-ASC-12933 —— GLM5.1-W8A8 Elastic NetLoader P2P 加载 hang/deadlock + int8_cache=dram 与 memcache 同开内存过量：HCCL P2P 收发端 tensor 数量/格式不匹配
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12933
+# fix：PR #12885（[BugFix][NetLoader] Fix processed-layout P2P for INT8_CACHE=no，fixes #12933，2026-07-31 合入）——改为传输 process_weights_after_loading 后的 processed-layout tensor + JOIN_ACK manifest + numel fail-fast
+# pre-triage: new_pattern —— 库内无 NetLoader/P2P 权重加载或 int8_cache=dram×memcache 内存占用 case；memcache 相关 13356/10970 为 PD 分离 prefix lookup 机制，异根因异修复
+# verification: upstream-fix-merged（PR #12885 fixes #12933，合入即关闭；维护者复现定位）
+# 脱敏：本 case 未引用线程内 token/内网 IP
+# 建议命名空间：inference/vllm-ascend/interrupt/
+# 导入管道：arena selection miss → EV-2026-014 门控补丁（2026-09）
+
+cases:
+  - id: VLLM-ASC-12933
+    title: "GLM5.1-W8A8 Elastic NetLoader P2P 权重加载 hang/deadlock，int8_cache=dram 配 memcache 时内存过量 OOM：HCCL P2P 收发端 tensor 数量/格式不匹配（PR #12885 改传 processed-layout + JOIN_ACK + numel fail-fast 解决）"
+
+    category: interrupt
+    tags: [netloader, p2p, weight-loading, glm5, w8a8, memcache, hang, oom]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.26.0"]      # PR #12885 2026-07-31 合入（v0.25.x 期），精确受影响区间未系统确认
+
+    investigation_quality: high     # 维护者复现定位 + fix PR fixes 关联 + 合入即关闭
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "Elastic NetLoader P2P 加载 GLM5.1-W8A8（INT8_CACHE=dram 或 memcache 同开）时 hang/deadlock：加载不完成、无报错退出"
+      - "NetLoader 与 memcache 同开且 int8_cache=dram：host/device 内存过量占用，memcache 不可用/不稳定（DRAM 权重缓存路径）"
+      - "非模型/算子层：仅权重加载引擎（NetLoader P2P / DRAM 缓存 / memcache 共存）路径触发"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12933"
+      - "https://github.com/vllm-project/vllm-ascend/pull/12885"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "PR #12885 声明 fixes #12933，2026-07-31 合入后 issue 关闭；维护者复现定位为 HCCL P2P 收发端 tensor 数量/格式不匹配"
+
+    quickly_check:
+      primary:
+        command_template: "ps -eo pid,etime,stat,cmd | grep -E 'vllm serve|EngineCore' | grep -v grep"
+        rank_selector: coordinator
+        expected: "regex:STAT.*D|etime 持续增长（加载阶段卡死）"
+        note: "确认是否为权重加载期 hang（非推理期）"
+      fallback:
+        command_template: "grep -aoE -- 'int8_cache=[a-z]+|memcache|netloader|enable.*load' {{launch_log}}"
+        rank_selector: coordinator
+        expected: "regex:int8_cache=dram|memcache|netloader"
+        note: "判别是否 NetLoader P2P + DRAM 权重缓存/memcache 组合场景"
+
+    diagnosis:
+      - step: 1
+        check: "加载阶段（模型权重 P2P 传输中）hang 或死锁，非推理期？"
+        expected: "是——NetLoader P2P 加载路径嫌疑"
+      - step: 2
+        check: "是否 int8_cache=dram / memcache 同开组合？"
+        expected: "是——与 PR #12885 场景一致（processed-layout P2P 未处理 INT8_CACHE 路径）"
+      - step: 3
+        check: "版本是否含 PR #12885？"
+        expected: "否 → 升级含 #12885 版本（传 processed-layout tensor + JOIN_ACK + numel fail-fast）"
+        fix_on_mismatch: "升级 vllm-ascend 至含 PR #12885 版本；临时规避可关闭 memcache 或 int8_cache 非 dram"
+        rollback: "退回旧版本复现（对照验证因果）"
+
+    severity: service-affecting        # 加载卡死 = 服务无法就绪
+    fix_side_effects: [requires-restart]
+    fix_type: upgrade                  # 修复在框架侧（PR #12885）
+
+    root_cause: >
+      Elastic NetLoader P2P 权重加载路径把未处理（非 processed-layout）的 tensor 直接做
+      HCCL P2P 传输，收发端 tensor 数量/格式不匹配 → 加载 hang/deadlock；INT8_CACHE=dram
+      与 memcache 同开时 DRAM 权重缓存路径进一步放大占用致内存过量/OOM。PR #12885 改为
+      传输 process_weights_after_loading 后的 processed-layout tensor、加 JOIN_ACK manifest
+      与 numel fail-fast，消除不匹配并快速失败。
+
+    fix: >
+      升级 vllm-ascend 至含 PR #12885 的版本；加载仍卡时核对是否 NetLoader P2P ×
+      int8_cache=dram/memcache 组合，临时关闭 memcache 或改用非 dram 权重缓存规避。
+
+    rollback: "恢复旧版本即复现（可对照验证因果）"

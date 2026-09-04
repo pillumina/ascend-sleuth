@@ -169,12 +169,52 @@ def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note):
     return 0
 
 
+def cmd_rc_check(root, pool_file):
+    """离线结论一致对照（归因层/结论一致收尾件）：agent root_cause vs 标注 resolution_summary。
+    只给启发式信号 + 供人核验清单，不做自动终判（resolution 多阶段，诚实口径）。"""
+    pool = load(pool_file)
+    if not pool:
+        return 1
+    ann_dir = root / ARENA_SUBDIR / "annotations"
+    out_rows = []
+    for it in pool["issues"]:
+        iid = it["id"]
+        ann = ann_dir / f"{iid}.yaml"
+        rp = root / S2_RESULT_REL.format(iid)
+        if not ann.exists() or not rp.exists():
+            continue
+        a = load(ann) or {}
+        r = load(rp) or {}
+        agent_rc = str(r.get("root_cause") or "")
+        reso = str(a.get("resolution_summary") or "")
+        # 启发式信号：共享 token（版本号/PR 号/机制词）或明显对立词
+        import re as _re
+        def toks(s):
+            return {t.lower() for t in _re.findall(r"[A-Za-z0-9][A-Za-z0-9_.\-]*", s)}
+        inter = toks(agent_rc) & toks(reso)
+        cues = [t for t in ["fix", "fixed", "pr", "workaround", "升级", "版本", "配置", "非代码", "自行关闭", "dspark", "prefix"] if t.lower() in agent_rc.lower() or t.lower() in reso.lower()]
+        signal = "likely_match" if (len(inter) >= 3 or "non-bug" in reso or "自行关闭" in reso and "非" not in agent_rc) else ("likely_mismatch" if ("无" in agent_rc and "无" not in reso) else "unclear")
+        out_rows.append({"id": iid, "signal": signal, "shared_tokens": sorted(inter)[:8],
+                         "agent_rc": agent_rc[:160], "resolution": reso[:200], "verify": "human"})
+    out = pool_file.parent / f"rc-{pool.get('name', 'pool')}.yaml"
+    out.write_text(yaml.safe_dump(out_rows, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    n = len(out_rows)
+    lk = sum(1 for x in out_rows if x["signal"] == "likely_match")
+    lm = sum(1 for x in out_rows if x["signal"] == "likely_mismatch")
+    print(f"== rc 离线对照：{n} 条（启发式信号，需人工核验；写入 {out}）==")
+    print(f"  likely_match {lk} / likely_mismatch {lm} / unclear {n - lk - lm}")
+    for x in out_rows:
+        print(f"  #{x['id']} [{x['signal']}] agent: {x['agent_rc'][:70]}")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="元层 eval 台工具（EV-2026-013；docs/evolution-eval-arena.md）")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--pool", metavar="YAML", help="校验池文件")
     g.add_argument("--stats", metavar="YAML", help="聚合池内 result → stats")
+    g.add_argument("--rc-check", metavar="YAML", help="结论一致离线对照（agent rc vs 标注 resolution）")
     g.add_argument("--gate", action="store_true", help="baseline vs candidate 门控判定")
     ap.add_argument("--baseline", default="", help="--gate: baseline stats yaml")
     ap.add_argument("--candidate", default="", help="--gate: candidate stats yaml")
@@ -188,6 +228,8 @@ def main():
         return cmd_pool(root, pool_path(root, args.pool))
     if args.stats:
         return cmd_stats(root, pool_path(root, args.stats))
+    if args.rc_check:
+        return cmd_rc_check(root, pool_path(root, args.rc_check))
     return cmd_gate(root, pool_path(root, args.baseline), pool_path(root, args.candidate),
                     args.component, args.candidate_ref, args.note)
 

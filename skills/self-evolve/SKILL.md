@@ -58,8 +58,10 @@ disable-model-invocation: true
 2. 产骨架：`scripts/ev_proposal.py --new` → 填字段（layer / title / source_signals 带
    trajectory / hypothesis / predicted_effect / validation / risk / principle_refs）；
 3. **agent 自行验证执行**：能即时判定的（检索/路由/脚本/补 case）直接跑 golden 前后
-   对照或 S2 replay（replay_golden.py / s2_replay.py）；真实反馈类完成实现 + S2 佐证、
-   标"待真实确认"（现场有效性进观察窗，事后结算）；
+   对照或 S2 replay（replay_golden.py / s2_replay.py）；检索/路由层候选在 arena
+   selection 池可用时加跑 val 前后对照（eval_arena.py --stats/--gate：golden 无回归
+   + val 命中/路由严格提升，论证见 docs/evolution-eval-arena.md 可选层）；真实反馈类
+   完成实现 + S2 佐证、标"待真实确认"（现场有效性进观察窗，事后结算）；
 4. **agent 判断**（EV 卡 = agent 决策档案，不含 git 合入态/待办态）：产卡即执行（方案成形
    才产卡，状态 in_experiment）；eval solid → validated（采纳）；eval 不成立 → rejected
    （不采纳，留结论）；发现更好方向 → superseded（新卡替代）。执行/验证完成而卡仍停

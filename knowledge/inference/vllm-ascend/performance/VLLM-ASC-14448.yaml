@@ -1,0 +1,78 @@
+# VLLM-ASC-14448 —— GLM-5.2 单 D MTP 服务 4 并发长输入（20-40k）TPOT 极差：host 侧长 copy 同步点推迟 MTP 算子下发（host-bound）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/14448
+# fix：PR #14103（main）/ #14554（v0.26.0rc 回移，coder-fny）——DCP 投机解码 drafting metadata 优化（MLA draft base seq lengths 留 CPU、SFA 由 device 侧 seq_lens 计算），消除多余 CPU↔NPU 拷贝
+# pre-triage: new_pattern —— KB performance 族无 host-bound/MTP 算子下发延迟 case（既有 MTP 族为接受率/精度，异面）
+# verification: upstream-fix-merged（PR #14103/#14554 合入后 issue 关闭）
+# 脱敏：本 case 未引用线程内 token/内网 IP
+# 建议命名空间：inference/vllm-ascend/performance/
+# 导入管道：arena selection miss → EV-2026-014 门控补丁（2026-09）
+
+cases:
+  - id: VLLM-ASC-14448
+    title: "GLM-5.2 单 D MTP（4 并发长输入 20-40k）TPOT 极差：MTP 路径 host 侧长 copy 同步点推迟算子下发、呈 host-bound（PR #14103/#14554 优化 DCP drafting metadata 消除多余 CPU↔NPU 拷贝）"
+
+    category: performance
+    tags: [spec-decode, mtp, pd-separation, tpot, host-bound, glm5, dcp]
+
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.26.0"]      # PR #14103 main（v0.26.0rc 为 #14554），受影响精确区间未系统确认
+
+    investigation_quality: medium   # fix PR 合入对应；profiling 为截图证据，机制由 fix 措辞支持
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    symptoms:
+      - "GLM-5.2 单 D（PD 分离 decode 侧）+ MTP 服务，4 并发长输入（20-40k tokens）：TPOT 明显劣化"
+      - "profiling 显示 MTP 分支耗时超长、host 侧存在长 copy 操作推迟 MTP 算子下发——整体 host-bound（算子未及时下发，流水空档），非 NPU kernel 算力瓶颈"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/14448"
+      - "https://github.com/vllm-project/vllm-ascend/pull/14103"
+      - "https://github.com/vllm-project/vllm-ascend/pull/14554"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "PR #14103（main）/ #14554（v0.26.0rc）优化 DCP 投机 drafting metadata 准备——消除多余 CPU↔NPU 拷贝，issue 合入后关闭"
+
+    quickly_check:
+      primary:
+        command_template: "grep -aoE 'tpot|avg_prompt_throughput|throughput' {{server_log}} | tail -5"
+        rank_selector: coordinator
+        expected: "regex:tpot|throughput"
+        note: "确认性能劣化数值存在"
+      fallback:
+        command_template: "grep -aoE -- '--speculative-config|method.?[:=].?(mtp)|pd|deploy' {{launch_log}}"
+        rank_selector: coordinator
+        expected: "regex:mtp|speculative-config"
+        note: "判别 D 节点 MTP 场景"
+
+    diagnosis:
+      - step: 1
+        check: "PD 分离 D 节点 + MTP 场景 TPOT 明显劣化（对照非投机/GPU 基线）？"
+        expected: "是——MTP 路径性能嫌疑"
+      - step: 2
+        check: "profiling 是否呈 host-bound（host 长 copy/同步点推迟 MTP 下发）而非 kernel 瓶颈？"
+        expected: "是——与 PR #14103 场景一致（drafting metadata 多余 CPU↔NPU 拷贝）"
+      - step: 3
+        check: "版本是否含 PR #14103/#14554？"
+        expected: "否 → 升级含修复版本复测 TPOT"
+        fix_on_mismatch: "升级 vllm-ascend 至含 PR #14103（main）/ #14554（v0.26.0rc）版本；临时规避：降并发或对照 eager"
+        rollback: "回退版本复现（对照验证）"
+
+    severity: service-affecting        # TPOT 明显劣化 = 服务质量下降，服务可用
+    fix_side_effects: [requires-restart]
+    fix_type: upgrade
+
+    root_cause: >
+      D 节点 MTP 路径的 drafting metadata 准备存在多余 CPU↔NPU 拷贝与同步点，host 侧
+      长 copy 推迟 MTP 算子下发 → 呈 host-bound、TPOT 明显劣化（非 kernel 算力瓶颈）。
+      PR #14103/#14554 把 MLA draft base seq lengths 留在 CPU、SFA 场景由 device 侧
+      seq_lens 计算，消除多余拷贝与下发阻塞。
+
+    fix: >
+      升级 vllm-ascend 至含 PR #14103（main）/ #14554（v0.26.0rc）的版本；核验用
+      非投机/GPU 基线对照确认异常范围（MTP 路径 host-bound）。
+
+    rollback: "回退版本即复现（对照验证因果）"
