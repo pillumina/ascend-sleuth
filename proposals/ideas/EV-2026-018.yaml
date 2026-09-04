@@ -1,0 +1,82 @@
+# ============================================================
+# Idea 卡：ixn 评测出分 n=10（第 2 批 staged）+ 规格入库 + timeline 指标提案
+# 目的：出分样本达 timeline 门（≥10 带分母）；第 2 批新样本规格入库；指标行
+#       交给 owner 人复核后 append（双周纪律），agent 不直改 timeline。
+# ============================================================
+
+id: EV-2026-018
+layer: L2                          # 评测资产 + 指标口径
+title: "ixn 出分 n=10（held_out 8 + self 2）→ 规格入库（+14265/13974/13792/10097 feed）→ timeline 指标行提案（人复核 append）"
+status: validated
+authorization: review               # eval 规格 + registry
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-04
+source_signals:
+  - signal: ixn_batch2
+    evidence: "第 2 批 5 条 staged 完成（14265/13974/13792/9769/10097），出分 n=10：held_out 8 + self 2；追问召回 9×100% + 3453=80%（维护者_question '安装/编译方式' 未字面命中）；决定性字段全部在链、零过早结论"
+    trajectory:
+      - "eval/ixn-arena/（registry v1 → v2，新增 3 样本 + feed）"
+      - ".ixn-replay/*/score.yaml（本地 n=10）"
+      - "docs/evolution-ixn-replay.md §8（≥10 门）"
+hypothesis: >-
+  n=10（带分母、split 标注 held_out/self）后交互面分数可按口径进 timeline；第 2 批
+  规格入库使评测集 14 条目持久
+predicted_effect:
+  metric: 交互面出分样本数
+  from: 5（held_out）
+  to: 10（held_out 8 + self 2）
+validation:
+  method: metrics_compare
+  baseline: n=5（2026-09-04 首批评分）
+  success_criteria: "n=10 聚合正确（8 held_out + 2 self 分别带分母）；registry v2 14 条目；词表 scan/verify 通过；timeline 行提案给出（不直改，人复核 append）"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户'推进接下来的工作'；第 2 批 staged 全部回传"
+risk: low
+principle_refs: [9, 10, 11]
+actual_cost:
+  tokens: 14000
+  source: estimate
+decisions:
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: proposal
+    conclusion: >-
+      第 2 批补样本达 timeline 门（n=10）：held_out 8（2424/3325/3453/5599/9798/
+      13792/13974/14265）+ self/回归 2（9769/10097）。结果：追问召回 9×100% +
+      3453=80%（'安装/编译方式'为维护者问、非决定性，agent 问了安装细节但词面未命中），
+      决定性字段全部在链、零过早结论。规格（3 新条目 + 10097 feed）入库，registry v2。
+      timeline 指标行按双周纪律：产出 YAML 提案，owner 人复核后 append（agent 不直改）。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: action
+    conclusion: >-
+      执行：①eval/ixn-arena 新增 14265/13974/13792（gold+feed）+ 10097 stage feed；
+      ②registry v2（14 条目，scored 列回填 n=10）；③docs §8 状态句更新；④本卡留痕。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: eval
+    conclusion: >-
+      n=10 聚合：8 held_out + 2 self 各自带分母；追问召回 held_out 组
+      （2424/3325/3453/5599/9798/13792/13974/14265）= 100%×7 + 80%×1；
+      self 组（9769/10097）= 100%×2；决定性字段缺 = 0；过早结论 = 0。registry v2
+      YAML 解析通过；词表 scan 全绿；verify_proposals 17 卡 / build_index 通过。
+      9769/10097 阶段 result 曾因 agent 未引号冒号写坏 YAML，已修复（工具侧可考虑
+      safe_load 提示，记低优先项）。
+  - who: agent（goal 执行）
+    when: "2026-09-04"
+    type: decision
+    conclusion: >-
+      采纳（validated）：规格入库 + registry v2 随 methodology PR 送人审。timeline
+      行提案（人复核后 append）：
+      ```
+      - period: 2026-W36
+        source: ixn-replay
+        note: 交互面首批 n=10（held_out 8 / self 2，分母按 split）
+        question_recall: {held_out: {n: 8, avg: 0.975}, self: {n: 2, avg: 1.0}}
+        decisive_in_chain: 8/8 held_out
+        premature: 0/10
+      ```
+      观察窗：批次 3（补到 held_out ≥10）后再评估是否单列 held_out trend。
