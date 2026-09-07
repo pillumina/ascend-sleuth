@@ -26,6 +26,23 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 | 诊断面板 | `dsh-plugins/ascend-panel/` | `ascend-diagnose`(20) / `ascend-metrics`(21) | 会话列表/轨迹/证据 + 知识库健康/指标 |
 | 自演进看板 | `dsh-plugins/ev-panel/` | `ascend-evolve`(22) | EV 卡状态机 / 容量热力 / 归因与 S2 反馈 / timeline |
 
+## 依赖预检（激活前跑，避免面板加载后白屏/报错）
+
+面板 host 已做优雅退化（自演进 JSON 不截断、无 traces/ 显示空态、缺 pyyaml 给提示），
+但 loader 在激活前跑一次预检，能把"依赖缺失"改成**主动告知**而不是面板里一条报错：
+
+- **通用**：确认会话工作区是 ascend-sleuth 仓库（Host 从 `session.header.cwd` 解析数据目录）。
+- **ev-panel（自演进）**：确认 `python3` + PyYAML 可用——
+  ```bash
+  python3 -c "import yaml; print('pyyaml ok')" # 失败 → pip install pyyaml（或 brew install pyyaml）
+  ```
+  若失败，先告知用户"自演进看板需要 PyYAML，请 `pip install pyyaml`"，再决定是否仍加载
+  （host 也会给同样提示，但 loader 提前讲更友好）。
+- **ascend-panel（诊断）**：`traces/` 可能不存在（gitignored、按需生成）——host 已把
+  "目录不存在"当空态处理，无需预建；但如果用户预期有历史诊断却显示为空，提示
+  "运行 /skill:diagnose 后生成 traces/"。指标 tab 的「实时计算」用 `shell` 跑
+  `scripts/trace_metrics.py`，同样需要 pyyaml。
+
 ## 流程
 
 1. **确定要加载的面板**：用户要诊断可视化 → ascend-panel；要自演进状态（EV 卡/
@@ -47,7 +64,8 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 5. **验证**：确认插件 running 且无 waitingFor（`cordis_inspect_self`）；tab 出现在
    对话视图（conversation.view 插槽，按上表 id 核对）。自演进看板首次打开会调
    `scripts/ev_board_data.py` 汇总数据——确认数据区渲染（EV 卡/容量有真实数据，
-   归因/S2 反馈可能显示"数据积累中"，如实）。
+   归因/S2 反馈可能显示"数据积累中"，如实）。若见"数据加载失败"，按顶部
+   「依赖预检」逐条排查（pyyaml / traces / 工作区）。
 
 ## 交互原则
 
@@ -60,7 +78,10 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 - DSH 会话（`cordis_define` / `cordis_run` / `cordis_inspect_self` 工具）
 - 工作区为 ascend-sleuth 仓库（Host 从 session.header.cwd 解析数据目录）
 - Host 服务：`fs` / `sessions` / `shell`
-- 自演进看板额外依赖：python3 + PyYAML（`scripts/ev_board_data.py` 聚合数据）
+- **ev-panel（自演进）**：`python3` + **PyYAML**（`scripts/ev_board_data.py` 聚合数据）——
+  缺 pyyaml 时 host 会提示安装；loader 侧建议激活前预检（见「依赖预检」）。
+- **ascend-panel（指标「实时计算」）**：`shell` + `python3`（`scripts/trace_metrics.py`，同样需 pyyaml）。
+- 诊断「打开证据」依赖 `open`/`xdg-open`（macOS/Linux 均可用）。
 
 ## 说明
 

@@ -24,12 +24,16 @@ return {
         const spec = shell.resolve({
           command: 'python3 scripts/ev_board_data.py',
           workdir: cwd,
-          stdoutMaxBytes: 65536,
+          stdoutMaxBytes: 4 * 1024 * 1024, // EV 卡聚合 JSON 随库增长（实测 89KB），防截断
         })
         const r = await shell.run(spec)
         const stdout = r && r.stdout && typeof r.stdout.text === 'string' ? r.stdout.text : ''
         if (!stdout.trim()) {
-          const err = r && typeof r.stderr === 'string' ? r.stderr : 'ev_board_data.py 无输出'
+          const stderrStr = r && typeof r.stderr === 'string' ? r.stderr : ''
+          if (/no module named ['\"]?yaml/i.test(stderrStr)) {
+            return { ok: false, error: '运行自演进看板需要 PyYAML——请安装：pip install pyyaml（或 brew install pyyaml）后重开面板' }
+          }
+          const err = stderrStr || 'ev_board_data.py 无输出'
           return { ok: false, error: String(err).slice(0, 800) }
         }
         let data = null
