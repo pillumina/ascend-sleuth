@@ -1,12 +1,19 @@
-# 昇腾知识浏览器（KB Explorer）· demo v1
+# 昇腾知识浏览器（KB Explorer）· v2（工作台 × 期刊质感）
 
-面向人的先验知识层检索/学习界面。数据源 `references/`（102 词条）+ `triage-tree.yaml`，
-渲染成单个**自包含 HTML**（无外部依赖，`file://` 双击即可打开）。
+面向人的先验知识层检索/学习界面。数据源 `references/`（105 词条）+ `triage-tree.yaml`。
+设计定位：**诊断现场快查优先** —— 报错在手 → ≤5 秒定位错误码含义/命令/根因，同时保留学习浏览的期刊质感。
 
 ## 打开
 
 ```
 open docs/kb-explorer/index.html
+```
+
+or 本地起服务（更稳，推荐）：
+
+```
+cd docs/kb-explorer && python3 -m http.server 8080
+# http://127.0.0.1:8080
 ```
 
 ## 重新生成
@@ -17,24 +24,31 @@ open docs/kb-explorer/index.html
 python3 scripts/build_kb_explorer.py
 ```
 
-模板在 `scripts/kb-explorer/template.html`（含全部 CSS/JS 与 `__KB_JSON__` 占位），
-生成器把语料 JSON 内联进 `docs/kb-explorer/index.html`。
+源码在 `scripts/kb-explorer/src/`（分模块 CSS/JS，无 node 依赖），
+生成器 `scripts/build_kb_explorer.py` 把 CSS/JS 拼接、语料 JSON 内联成静态目录：
 
-## 视图
+```
+docs/kb-explorer/
+  index.html   页面壳（顶栏 / 主区 / toast）
+  app.css      设计系统（src/*.css 按序拼接）
+  app.js       应用（src/*.js 按序拼接，经典 script，file:// 直接可开）
+  kb-data.js   语料 JSON（const KB = …，与 app 分离便于体积感知）
+```
 
-- **总览**：检索 + 四个起点（错误码 / 方法论 / 日志位置 / triage 路由）+ 目录
-- **方法论**：flow 渲染为步骤流（when_to_use 分流 → action → 可复制 check 命令）
-- **表格族**（错误码 / 故障模式 / 环境变量 / 兼容矩阵）：泛型表格渲染，优先列 + 额外列兜底
-- **事实/工具**：claim/evidence、命令卡、坑点、副作用+回滚
-- **词条详情**：来源类型徽章（official-doc / case-derived / engineer-input × 校验状态 × 核验时间）、
-  平台/版本/框架/类别 chips、related_references 跳转 + 反向引用（派生视图）
-- **搜索**：词条级加权全文检索（title/summary/id/全文），支持错误码数字、命令、路径、平台名
-- **triage**：症状路由分支（正则关键词明细可展开）
+## v2 设计要点
 
-## Demo 边界（有意为之）
+- **布局**：启动台首页（大搜索 + 场景卡 + 最近浏览 + 数据域）+ 双栏检索（master-detail）
+  + 独立词条页 + 症状路由图。
+- **交互**：全局搜索（⌘K / `/` 唤起，输入联想、↑↓ / Enter 导航）、列表 ↔ 详情原地切换、
+  命令工具卡一键复制 + toast、步骤流 timeline、可展开来源面板、键盘上下键浏览。
+- **动效**：路由 View Transition、面板内容淡入、卡片 hover 位移/光晕、reveal 滚动渐显、
+  复制态 morph + toast；全部尊重 `prefers-reduced-motion`。
+- **视觉**：暖纸 × 赤陶 oklch 品牌（沿用 v1），light/dark 双主题（跟随系统 + 手动持久化）；
+  语义状态色对齐诊断 severity（信息/警告/危险/成功）；命令深底 mono 块为视觉锚点。
+- **约束**：零外部依赖、零构建工具链；产物可审计、离线可开。case 层（knowledge/）为私有，未纳入。
 
-- **不含 knowledge/（case 层）**——case 含客户数据（private），v1 只做 references（public 方法论）。
-  首页/路由图均有标注。
-- **case↔reference 反链（ref_knowledge）**：schema 已定义但全库暂无 case 填充，
-  随 diagnose/to-reference 沉淀累积后，再在词条页加「被哪些 case 引用（role）」视图。
-- 本目录产物未接 CI；demo 定型后再决定沉淀载体（docs 静态站 vs DSH 面板知识 tab）。
+## Demo 边界（同 v1）
+
+- **不含 knowledge/（case 层）**——case 含客户数据（private），只做 references（public 方法论）。
+- **case↔reference 反链（ref_knowledge）**：schema 已定义但全库暂无 case 填充，随沉淀累积后加「被哪些 case 引用」视图。
+- 本目录产物未接 CI；定型后再决定沉淀载体（docs 静态站 vs DSH 面板知识 tab）。

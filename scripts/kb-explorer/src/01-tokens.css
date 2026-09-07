@@ -1,0 +1,81 @@
+/* ============================================================
+   KB Explorer v2 · design tokens
+   工作台 × 期刊质感。oklch 色彩系统，light / dark 双主题。
+   ============================================================ */
+:root{
+  /* ---- 品牌身份（沿用 v1：暖纸 × 赤陶 vermilion）---- */
+  --accent:      oklch(0.545 0.155 33);
+  --accent-ink:  oklch(0.435 0.130 34);
+  --accent-soft: oklch(0.935 0.038 38);
+  --accent-soft2:oklch(0.905 0.052 40);
+  --brand-serif: Georgia,"Songti SC","STSong","Noto Serif CJK SC",serif;
+  --mono: ui-monospace,"SF Mono","Cascadia Mono","JetBrains Mono",Menlo,Consolas,"PingFang SC","Microsoft YaHei",monospace;
+  --sans: "PingFang SC","Hiragino Sans GB","Noto Sans CJK SC","Microsoft YaHei",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+
+  /* ---- 语义状态色（对齐诊断 severity 语义，非纯装饰）---- */
+  --info:   oklch(0.52 0.115 252);  --info-soft:   oklch(0.93 0.032 250);
+  --ok:     oklch(0.47 0.105 152);  --ok-soft:     oklch(0.925 0.042 152);
+  --warn:   oklch(0.55 0.115 74);   --warn-soft:   oklch(0.94 0.042 80);
+  --bad:    oklch(0.51 0.155 29);   --bad-soft:    oklch(0.935 0.045 32);
+  --violet: oklch(0.50 0.135 302);  --violet-soft: oklch(0.93 0.045 302);
+
+  /* ---- 表面 / 墨 ---- */
+  --canvas:    oklch(0.974 0.0055 84);
+  --surface:   oklch(0.998 0.0025 86);
+  --surface-2: oklch(0.955 0.0085 83);
+  --surface-3: oklch(0.922 0.012 80);
+  --ink:    oklch(0.265 0.014 70);
+  --ink-2:  oklch(0.435 0.015 68);
+  --ink-3:  oklch(0.585 0.013 66);
+  --line:   oklch(0.907 0.009 83);
+  --line-2: oklch(0.845 0.016 81);
+
+  /* ---- 代码（深底 mono 视觉锚点）---- */
+  --code-bg:  oklch(0.255 0.012 74);
+  --code-ink: oklch(0.93 0.006 84);
+  --code-btn: oklch(0.315 0.012 74);
+
+  /* ---- 阴影 ---- */
+  --sh-1: 0 1px 2px oklch(0.30 0.02 60 / 0.05), 0 1px 1px oklch(0.30 0.02 60 / 0.03);
+  --sh-2: 0 2px 6px oklch(0.30 0.02 60 / 0.07), 0 8px 22px oklch(0.30 0.02 60 / 0.07);
+  --sh-3: 0 6px 16px oklch(0.30 0.02 60 / 0.12), 0 22px 50px oklch(0.30 0.02 60 / 0.14);
+  --sh-glow-accent: 0 0 0 3px var(--accent-soft);
+
+  /* ---- 圆角 / 动效时长 ---- */
+  --r-sm: 8px;  --r-md: 12px; --r-lg: 18px; --r-xl: 24px; --r-pill: 999px;
+  --ease-out: cubic-bezier(.2,.7,.2,1);
+  --ease-spring: cubic-bezier(.34,1.4,.4,1);
+  --t-fast: 130ms; --t-med: 200ms; --t-slow: 320ms;
+}
+
+/* ============ 暗色主题（墨蓝夜，非反色） ============ */
+html[data-theme="dark"]{
+  --accent:      oklch(0.705 0.125 40);
+  --accent-ink:  oklch(0.80 0.095 45);
+  --accent-soft: oklch(0.30 0.055 42);
+  --accent-soft2:oklch(0.36 0.06 42);
+
+  --info:   oklch(0.72 0.105 252);  --info-soft:   oklch(0.275 0.045 252);
+  --ok:     oklch(0.71 0.10 152);   --ok-soft:     oklch(0.275 0.05 152);
+  --warn:   oklch(0.74 0.11 78);    --warn-soft:   oklch(0.29 0.055 80);
+  --bad:    oklch(0.70 0.14 30);    --bad-soft:    oklch(0.29 0.05 32);
+  --violet: oklch(0.73 0.12 302);   --violet-soft: oklch(0.29 0.05 302);
+
+  --canvas:    oklch(0.168 0.009 266);
+  --surface:   oklch(0.212 0.010 266);
+  --surface-2: oklch(0.248 0.011 266);
+  --surface-3: oklch(0.292 0.012 266);
+  --ink:    oklch(0.925 0.006 90);
+  --ink-2:  oklch(0.74 0.009 92);
+  --ink-3:  oklch(0.585 0.008 92);
+  --line:   oklch(0.30 0.011 266);
+  --line-2: oklch(0.375 0.013 266);
+
+  --code-bg:  oklch(0.125 0.007 262);
+  --code-ink: oklch(0.90 0.006 88);
+  --code-btn: oklch(0.20 0.008 262);
+
+  --sh-1: 0 1px 2px oklch(0 0 0 / 0.25);
+  --sh-2: 0 2px 8px oklch(0 0 0 / 0.32), 0 10px 26px oklch(0 0 0 / 0.30);
+  --sh-3: 0 8px 20px oklch(0 0 0 / 0.42), 0 24px 56px oklch(0 0 0 / 0.42);
+}

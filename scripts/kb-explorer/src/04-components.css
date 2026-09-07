@@ -1,0 +1,88 @@
+/* ============================================================
+   04 · components：徽章/chips/命令工具卡/空态/骨架/工具条
+   ============================================================ */
+/* --- 徽章 / chips --- */
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:3px 9px;border-radius:7px;letter-spacing:.02em;white-space:nowrap}
+.badge code{font-size:10px}
+.b-flow,.b-methodology{background:var(--accent-soft);color:var(--accent-ink)}
+.b-table,.b-error-code,.b-fault-pattern,.b-env-var-table,.b-compat-matrix{background:var(--info-soft);color:var(--info)}
+.b-fact,.b-tool,.b-platform-fact,.b-software-fact,.b-command-side-effect{background:var(--ok-soft);color:var(--ok)}
+.b-src.official-doc{background:var(--info-soft);color:var(--info)}
+.b-src.case-derived{background:var(--violet-soft);color:var(--violet)}
+.b-src.engineer-input{background:var(--warn-soft);color:var(--warn)}
+.b-status{display:inline-flex;align-items:center;gap:7px}
+.b-status .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 0 4px var(--ok-soft)}
+.b-status.active{color:var(--ok);font-weight:600;font-size:12px}
+
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:11px;line-height:1.5;padding:2.5px 9px;
+  border-radius:var(--r-pill);background:var(--surface-2);color:var(--ink-2);border:1px solid transparent;
+  transition:background var(--t-fast),border-color var(--t-fast),color var(--t-fast)}
+.chip code{font-size:10px;font-family:var(--mono)}
+.chip-plat{background:var(--info-soft);color:var(--info)}
+.chip-cat{background:var(--warn-soft);color:var(--warn)}
+.chip-fw{background:var(--ok-soft);color:var(--ok)}
+a.chip{text-decoration:none}
+a.chip:hover{border-color:var(--accent);color:var(--accent-ink);background:var(--surface)}
+.chip-link{border:1px dashed var(--line-2);background:var(--surface);color:var(--accent-ink)}
+a.chip-link:hover{border-style:solid;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-soft)}
+.score-tag{font-size:10px;font-weight:600;color:var(--info);background:var(--info-soft);border-radius:5px;padding:1px 7px;letter-spacing:.02em}
+
+/* --- 命令工具卡（工作台核心元素） --- */
+.cmd-card{display:flex;align-items:stretch;border-radius:10px;overflow:hidden;margin:5px 0;
+  background:var(--code-bg);color:var(--code-ink);border:1px solid oklch(0 0 0/.12);
+  box-shadow:var(--sh-1);transition:border-color var(--t-fast),box-shadow var(--t-fast)}
+html[data-theme="dark"] .cmd-card{border-color:oklch(1 0 0/.07)}
+.cmd-card .c-label{flex:none;display:flex;align-items:center;padding:0 12px;font-size:10.5px;font-weight:700;
+  letter-spacing:.1em;color:var(--ink-3);background:var(--code-btn);border-right:1px solid oklch(1 0 0/.08);
+  text-transform:uppercase}
+.cmd-card .c-code{flex:1 1 auto;min-width:0;padding:9px 14px;font-family:var(--mono);font-size:12.6px;
+  line-height:1.6;overflow-x:auto;white-space:pre;word-break:break-word;letter-spacing:.01em;display:flex;align-items:center}
+.cmd-card .c-act{flex:none;display:flex;align-items:stretch;border-left:1px solid oklch(1 0 0/.08)}
+.cmd-card .c-copy{border:0;background:transparent;color:var(--code-ink);padding:0 13px;cursor:pointer;
+  font-size:11.5px;display:flex;align-items:center;gap:6px;transition:background var(--t-fast),color var(--t-fast)}
+.cmd-card .c-copy:hover{background:var(--accent);color:#fff}
+.cmd-card .c-copy .ic{width:14px;height:14px}
+.cmd-card.copied{box-shadow:0 0 0 2px var(--ok)}
+.cmd-card.copied .c-copy{background:var(--ok);color:#fff}
+
+/* --- 通用按钮 --- */
+.btn{display:inline-flex;align-items:center;gap:7px;border-radius:10px;padding:7px 14px;font-size:13px;
+  font-weight:600;cursor:pointer;border:1px solid transparent;transition:transform var(--t-fast),box-shadow var(--t-fast),background var(--t-fast)}
+.btn-primary{background:var(--accent);color:#fff;box-shadow:var(--sh-1)}
+.btn-primary:hover{filter:brightness(1.06);box-shadow:var(--sh-2)}
+.btn-primary:active{transform:translateY(1px)}
+.btn-ghost{background:var(--surface);color:var(--ink-2);border-color:var(--line-2)}
+.btn-ghost:hover{background:var(--surface-2);color:var(--ink)}
+a.btn{text-decoration:none}
+
+/* --- 空态 --- */
+.empty{padding:54px 20px;text-align:center;color:var(--ink-3);animation:page-in .3s var(--ease-out)}
+.empty .big{font-size:38px;line-height:1;margin-bottom:10px;opacity:.8}
+.empty h3{margin:6px 0;color:var(--ink-2);font-size:15px}
+.empty p{margin:2px auto 0;max-width:44ch;font-size:12.5px}
+
+/* --- 详情工具条（随内容滚动，不悬浮） --- */
+.d-toolbar{display:flex;align-items:center;gap:10px;
+  padding:14px 0 4px;margin-bottom:2px}
+.d-toolbar .crumb{font-size:12px;color:var(--ink-3);display:flex;gap:6px;align-items:center;min-width:0;overflow:hidden}
+.d-toolbar .crumb a{color:var(--ink-3)}
+.d-toolbar .crumb a:hover{color:var(--accent-ink)}
+.d-toolbar .crumb .sep{color:var(--line-2)}
+.d-toolbar .crumb .cur{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:34ch}
+.d-toolbar .sp{flex:1}
+.d-toolbar .mini{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line-2);background:var(--surface);
+  color:var(--ink-2);font-size:11.5px;border-radius:8px;padding:4px 9px;cursor:pointer;transition:all var(--t-fast)}
+.d-toolbar .mini:hover{background:var(--surface-2);color:var(--ink);border-color:var(--line-2)}
+
+/* --- 数据健康 / stat --- */
+.stat-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat-card{border:1px solid var(--line);border-radius:var(--r-md);background:var(--surface);
+  padding:12px 14px;box-shadow:var(--sh-1)}
+.stat-card .num{font-family:var(--mono);font-size:21px;font-weight:700;color:var(--ink);line-height:1.1}
+.stat-card .lbl{font-size:11.5px;color:var(--ink-3);margin-top:3px}
+
+/* --- 通用分层标题 --- */
+.sec-head{display:flex;align-items:baseline;gap:12px;margin:30px 0 2px}
+.sec-head h2{font-size:12px;margin:0;letter-spacing:.16em;font-weight:700;color:var(--ink-2);text-transform:uppercase}
+.sec-head h2 .zh{letter-spacing:.02em;text-transform:none}
+.sec-head .sub{color:var(--ink-3);font-size:12px;margin-left:auto}

@@ -1,0 +1,39 @@
+/* ============================================================
+   02 · base：reset / 排版 / 通用
+   ============================================================ */
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth}
+html[data-theme="auto"]{color-scheme:light dark}
+html[data-theme="light"]{color-scheme:light}
+html[data-theme="dark"]{color-scheme:dark}
+body{margin:0;font-family:var(--sans);font-size:14.5px;line-height:1.65;
+     background:var(--canvas);color:var(--ink);
+     -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+body::before{ /* 极淡纸纹，期刊质感 */
+  content:"";position:fixed;inset:0;pointer-events:none;z-index:0;opacity:.5;
+  background:
+    radial-gradient(1100px 500px at 82% -8%, var(--accent-soft) 0%, transparent 55%),
+    radial-gradient(900px 480px at -8% 112%, oklch(0.90 0.03 200 / .35) 0%, transparent 60%);
+}
+@media (prefers-color-scheme:dark){ body::before{opacity:.16} }
+#view{position:relative;z-index:1}
+::selection{background:var(--accent-soft2);color:var(--ink)}
+a{color:var(--accent-ink);text-decoration:none;cursor:pointer}
+a:hover{text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--accent-soft2)}
+code{font-family:var(--mono);font-size:.88em}
+button{font-family:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+/* 滚动条（webkit 淡化） */
+*{scrollbar-width:thin;scrollbar-color:var(--line-2) transparent}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--line-2);border-radius:99px;border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-track{background:transparent}
+
+.kicker{font-size:11px;letter-spacing:.24em;color:var(--accent);font-weight:700;text-transform:uppercase}
+.mono{font-family:var(--mono)}
+.skip-link{position:fixed;left:-999px;top:0;z-index:999;background:var(--accent);color:#fff;padding:8px 14px;border-radius:0 0 8px 0}
+.skip-link:focus{left:0}
+
+/* 布局容器 */
+.container{width:min(1180px,100% - clamp(28px,6vw,72px));margin-inline:auto}
