@@ -1,8 +1,9 @@
----
-name: 路由与结构变更（triage-tree / namespace / 平台目录）
-about: 修改路由表、拆分/新建 namespace、调整目录结构
-labels: [kb/high-risk]
----
+<!-- 模板元数据（GitHub 不解析 PR 模板 frontmatter，置于注释内避免正文渲染成粗体块）：
+  name: 路由与结构变更（triage-tree / namespace / 平台目录）
+  about: 修改路由表、拆分/新建 namespace、调整目录结构
+  labels: [kb/high-risk]（需 gh pr create --label kb/high-risk 显式打）
+PR body 正文从首个 "## " 区块开始。
+-->
 
 > 路由是共享资产：变更影响两个团队所有诊断的命中率。需双签；目录迁移必须同一 PR 完成全部关联更新（roadmap A2）。
 

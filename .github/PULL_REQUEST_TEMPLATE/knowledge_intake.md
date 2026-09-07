@@ -1,8 +1,9 @@
----
-name: 知识注入（新 case / postmortem 转正）
-about: 新知识经 to-postmortem 沉淀、groom 预分诊后的升格 PR
-labels: []
----
+<!-- 模板元数据（GitHub 不解析 PR 模板 frontmatter，置于注释内避免正文渲染成粗体块）：
+  name: 知识注入（新 case / postmortem 转正）
+  about: 新知识经 to-postmortem 沉淀、groom 预分诊后的升格 PR
+  labels: []（按需 gh pr create --label）
+PR body 正文从首个 "## " 区块开始。
+-->
 
 ## 预分诊结论（groom 周批审产出，机器可填）
 

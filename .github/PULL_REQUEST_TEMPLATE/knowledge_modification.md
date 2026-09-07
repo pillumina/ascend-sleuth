@@ -1,8 +1,9 @@
----
-name: 知识修改（改已有 case 的关键字段）
-about: 修改 expected / fix_on_mismatch / compat / severity 等高风险字段，或合并 case
-labels: [kb/high-risk]
----
+<!-- 模板元数据（GitHub 不解析 PR 模板 frontmatter，置于注释内避免正文渲染成粗体块）：
+  name: 知识修改（改已有 case 的关键字段）
+  about: 修改 expected / fix_on_mismatch / compat / severity 等高风险字段，或合并 case
+  labels: [kb/high-risk]（需 gh pr create --label kb/high-risk 显式打）
+PR body 正文从首个 "## " 区块开始。
+-->
 
 > 高风险变更：错误修改会污染后续所有诊断。需领域 owner + 体系维护人双签（原则六：代价大的变更多一道闸）。
 
