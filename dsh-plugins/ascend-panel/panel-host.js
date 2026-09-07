@@ -87,7 +87,8 @@ return {
       try {
         base = await fs.resolve('traces', { cwd })
       } catch (e) {
-        return { ok: false, error: 'traces 目录不存在或不可读: ' + String(e && e.message || e) }
+        // 全新检出无 traces/（gitignored、按需生成）→ 友好空态，而非报错
+        return { ok: true, sessions: [] }
       }
       let entries = []
       try {
