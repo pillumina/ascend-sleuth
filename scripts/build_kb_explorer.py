@@ -1,22 +1,29 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-build_kb_explorer.py —— 生成「昇腾知识浏览器」自包含 HTML demo（人面消费层 v1）。
+build_kb_explorer.py —— 生成「昇腾知识浏览器」静态站点（references 人面消费层 v2）。
 
 数据源：references/**/*.yaml（先验知识层，public 方法论）+ triage-tree.yaml（入口路由）。
-产出：docs/kb-explorer/index.html —— 单文件、离线可开（file:// 直接打开），
-      references/ 变更后重跑本脚本即可刷新（demo 阶段不接 CI）。
+产出（目录）：docs/kb-explorer/
+    index.html   页面壳（顶栏 / 主区 / toast）
+    app.css      设计系统（src/*.css 拼接）
+    app.js       应用（src/*.js 按序拼接，经典 script，file:// 双击可开）
+    kb-data.js   语料 JSON（const KB = …，与 app 分离便于体积感知）
 
-刻意排除 knowledge/（case 含客户数据，private）——v1 只做 references 层；
-case↔reference 反链视图等 ref_knowledge 数据累积后再加（见讨论记录）。
+v2 设计决策：
+    - 工作台 × 期刊质感：启动台首页 + 双栏检索（master-detail）+ View Transition 路由动效
+    - light/dark 双主题（CSS 变量）；语义状态色对齐诊断 severity
+    - 零框架 vanilla：无 node 依赖、无外部 CDN；产物可审计、可离线
+references/ 或 triage-tree.yaml 变更后重跑本脚本即可刷新。
 
 用法：
-    python3 scripts/build_kb_explorer.py [输出路径]
+    python3 scripts/build_kb_explorer.py [输出目录]
 """
 from __future__ import annotations
 
 import argparse
 import datetime
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -24,10 +31,24 @@ from pathlib import Path
 import yaml
 
 REPO = Path(__file__).resolve().parent.parent
-DEFAULT_OUT = REPO / "docs" / "kb-explorer" / "index.html"
-TEMPLATE = REPO / "scripts" / "kb-explorer" / "template.html"
+SRC_DIR = REPO / "scripts" / "kb-explorer" / "src"
+TPL = REPO / "scripts" / "kb-explorer" / "index.tpl.html"
+DEFAULT_OUT = REPO / "docs" / "kb-explorer"
 
-# type 展示顺序 / 目录 / 中文标签 / kind / 一句话说明（首页与侧栏文案）
+JS_ORDER = [
+    "10-util.js",
+    "20-data.js",
+    "30-store.js",
+    "40-dom.js",
+    "50-detail.js",
+    "60-views.js",
+    "70-searchui.js",
+    "72-palette.js",
+    "80-router.js",
+]
+CSS_GLOB = "0?-*.css"  # 01-tokens … 06-motion
+
+# type 展示顺序 / 目录 / 中文标签 / kind / 一句话说明
 TYPE_META: dict[str, dict] = {
     "methodology":       {"dir": "methodologies",      "label": "方法论 · 定位流程", "kind": "flow",  "hint": "一类问题的多步定位流程：现象分流 → 采集 → 逐条命令验证"},
     "error-code":        {"dir": "errors",             "label": "错误码表",           "kind": "table", "hint": "错误码 / 异常代码含义，按组件分族（ge / hccl / rts / cann-runtime …）"},
@@ -83,7 +104,7 @@ def load_all() -> dict:
     return {"entries": entries, "triage": triage}
 
 
-def build() -> dict:
+def build_payload() -> dict:
     data = load_all()
     counts = {t: 0 for t in TYPE_ORDER}
     for e in data["entries"]:
@@ -92,7 +113,7 @@ def build() -> dict:
         {**TYPE_META[t], "type": t, "count": counts[t], "src_label": SRC_TYPE_LABEL}
         for t in TYPE_ORDER
     ]
-    payload = {
+    return {
         "generated_at": datetime.date.today().isoformat(),
         "type_order": TYPE_ORDER,
         "types": types,
@@ -100,15 +121,23 @@ def build() -> dict:
         "triage": data["triage"],
         "note": "数据层仅含 references/（先验知识，public）；knowledge/ case 内容为私有，未纳入本 demo。",
     }
-    return payload
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("out", nargs="?", default=str(DEFAULT_OUT))
-    args = ap.parse_args()
+def assemble() -> dict:
+    """读取 src 下的 css/js，返回文本。"""
+    css_files = sorted(SRC_DIR.glob(CSS_GLOB))
+    css = "\n".join(f.read_text(encoding="utf-8") for f in css_files)
+    js = []
+    for name in JS_ORDER:
+        p = SRC_DIR / name
+        if not p.exists():
+            print(f"missing src {name}", file=sys.stderr)
+            sys.exit(1)
+        js.append(p.read_text(encoding="utf-8"))
+    return {"css": css, "js": "\n".join(js), "css_files": css_files}
 
-    payload = build()
+
+def json_payload_text(payload: dict) -> str:
     json_text = json.dumps(
         payload,
         ensure_ascii=False,
@@ -117,19 +146,37 @@ def main() -> int:
         if isinstance(o, (datetime.date, datetime.datetime))
         else json.JSONEncoder().default(o),
     )
-    json_text = json_text.replace("</", "<\\/")  # 防 </script 截断
+    return json_text.replace("</", "<\\/")  # 防 </script 截断
 
-    template = TEMPLATE.read_text(encoding="utf-8")
-    marker = "__KB_JSON__"
-    if marker not in template:
-        print(f"template marker {marker!r} missing in {TEMPLATE}", file=sys.stderr)
-        return 1
-    html = template.replace(marker, json_text, 1)
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("out", nargs="?", default=str(DEFAULT_OUT))
+    args = ap.parse_args()
+
+    payload = build_payload()
+    assets = assemble()
 
     out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(html, encoding="utf-8")
-    print(f"ok: {out}  ({len(payload['entries'])} entries, {len(html)/1024:.0f} KiB)")
+    out.mkdir(parents=True, exist_ok=True)
+
+    (out / "index.html").write_text(TPL.read_text(encoding="utf-8"), encoding="utf-8")
+    (out / "app.css").write_text(assets["css"], encoding="utf-8")
+    (out / "app.js").write_text(assets["js"], encoding="utf-8")
+    kb_js = "const KB = " + json_payload_text(payload) + ";"
+    (out / "kb-data.js").write_text(kb_js, encoding="utf-8")
+
+    # 缓存失配：给资源 URL 加构建指纹，重新生成即换 URL，浏览器必拉新
+    v = hashlib.md5((assets["css"] + assets["js"] + kb_js).encode("utf-8")).hexdigest()[:8]
+    html = TPL.read_text(encoding="utf-8").replace('href="app.css"', 'href="app.css?v=' + v + '"') \
+              .replace('src="app.js"', 'src="app.js?v=' + v + '"') \
+              .replace('src="kb-data.js"', 'src="kb-data.js?v=' + v + '"')
+    (out / "index.html").write_text(html, encoding="utf-8")
+
+    n = len(payload["entries"])
+    parts = [out / "index.html", out / "app.css", out / "app.js", out / "kb-data.js"]
+    total = sum(p.stat().st_size for p in parts)
+    print(f"ok: {out}/  ({n} entries · css {len(assets['css_files'])} files · {total/1024:.0f} KiB total)")
     return 0
 
 
