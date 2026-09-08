@@ -33,8 +33,15 @@ link_skills() {
   local link="$agent_dir/skills"
   if [ -L "$link" ]; then
     echo "[$label] 已配置：$link -> ../skills"
+  elif [ -f "$link" ]; then
+    # Windows core.symlinks=false 时 clone 会把 symlink 落成普通文本文件（内容 = 目标路径）——
+    # 这是残留，不是用户数据：删掉重建为 symlink。
+    rm -f "$link"
+    mkdir -p "$agent_dir"
+    ln -s "../skills" "$link"
+    echo "[$label] ✅ 已修正：$link 原为文本文件（Windows clone 残留）→ 重建为 symlink"
   elif [ -e "$link" ]; then
-    echo "[$label] ⚠️  $link 已存在但不是 symlink（真实目录）——跳过，请手动处理"
+    echo "[$label] ⚠️  $link 已存在且不是 symlink（真实目录）——跳过，请手动处理"
   else
     mkdir -p "$agent_dir"
     ln -s "../skills" "$link"

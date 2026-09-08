@@ -47,7 +47,17 @@ bash scripts/enable-agent-skills.sh    # 检测已安装 agent，建项目级 sk
 
 > `.agents/skills` 未使用：仅 DSH 支持（已被 `.dsh/skills` 覆盖），无其他 agent 以其为项目级 skills 目录。
 
-**Windows**：若 git 未开 `core.symlinks=true`，clone 不还原 symlink——跑一次 `enable-agent-skills.sh` 补建。
+**Windows**：git 默认 `core.symlinks=false`，clone **不会还原** symlink——`.dsh/skills` 会变成内容为 `../skills` 的普通**文本文件**（不是目录），agent 发现不了 skills。补建用 **PowerShell 建 junction**（目录链接，免管理员；`.sh` 需 bash、且 Git Bash 的 `ln -s` 在 Windows 上默认退化成复制，都不合适）：
+
+```powershell
+# 在仓库根目录运行
+foreach ($d in '.dsh','.claude','.cursor','.trae','.codebuddy','.codex') {
+  New-Item -ItemType Directory -Force $d | Out-Null
+  # 清掉克隆残留的同名文本文件（若非目录）
+  if ((Test-Path "$d\skills") -and -not (Get-Item "$d\skills" -Force).PSIsContainer) { Remove-Item "$d\skills" -Force }
+  if (-not (Test-Path "$d\skills")) { New-Item -ItemType Junction "$d\skills" -Target (Resolve-Path .\skills) | Out-Null }
+}
+```
 
 加载后在 agent 里以 `/skill:<name>` 调用。
 
