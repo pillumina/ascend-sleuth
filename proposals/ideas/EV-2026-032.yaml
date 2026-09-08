@@ -1,0 +1,48 @@
+# ============================================================
+# Idea 卡模板（proposals/ideas/EV-YYYY-NNN.yaml）
+# 自演进候选 idea 的 schema 参考——新建卡时复制本文件改字段。
+# 完整 schema 与状态机定义见 docs/evolution-pipeline.md §7（权威）。
+# 校验：python3 scripts/verify_proposals.py --check
+# 脱敏纪律：只含聚合值与证据引用，不含客户现场原文（同 eval fixture）。
+# ============================================================
+
+id: EV-2026-032                    # 稳定 ID（EV-年-序号）
+layer: L2                          # L1 知识内容 | L2 流程与 skill | L3 工作流编排
+title: 诊断源码获取与 trace 边界约束确定性化（src_fetch.py 入口 + evnote 渐进式披露通道）
+status: in_experiment             # EV 卡 = agent 决策档案（不含 git 合入态/待办态），词表见 pipeline §7：
+                                   #   产卡即执行（方案成形才产卡，无 candidate 待办态）
+                                   #   in_experiment → 终态（agent 判断）：
+                                   #   validated 采纳（eval solid，改动保留进流程层攒批）
+                                   #   rejected  不采纳（试了不行/评估不成立，诚实记录）
+                                   #   superseded 换方向（被新 proposal 替代）
+authorization: review              # auto | review | dual（§6.3 分级；candidate 时按风险预判）
+dimension: process                 # architecture | evolvability | maintainability | observability | process
+supersedes: []                     # 本卡替代的旧卡 id 列表（run §5）
+superseded_by: null                # 被哪张卡替代（旧卡被替代后标 superseded）
+created_at: 2026-09-08             # ISO 日期
+source_signals:                    # 触发信号 + trajectory 出处（本卡只记引用，不贴原文）
+  - signal: process_friction       # 用户驱动的流程/设计反馈（非本次诊断输入，属自演进信号）
+    evidence: "续接会话 2026-09-07-glm53-pd-sfa-c8-hang 中用户指出两点：①源码分析应走 src-code/<org>/<repo> 本地复用而非临时 /tmp（'不落库'=不提交+不写库，≠ 不需要源码）；②流程/设计讨论被误写入问题 trace（应走离轨通道）"
+    trajectory:
+      - "session 2026-09-07-glm53-pd-sfa-c8-hang（resume 续接；流程讨论已按 trace 边界清出，未留守于该问题 trace）"
+      - "diagnose SKILL 源码分析节 + trace 边界节（第 84-95 / 199 行）"
+hypothesis: 把「源码 clone 到哪 / 同版本复用 / URL 来源」从 agent 自觉提升为脚本确定性入口（`scripts/src_fetch.py`），把「流程讨论污染问题 trace」从依赖自觉提升为离轨通道（`_evnote.md` + 渐进式披露），使 resume 续接后的定位约束与 diagnose 不漂移
+predicted_effect:
+  metric: 续接后与 diagnose 的约束丢失度（severity 闸门/证据落盘铁律/源码脚本入口/误诊归因/连续失败≤2 等被继承）
+  from: 部分约束在续接后丢失（resume 只带薄约束）
+  to: 0（resume 显式继承 diagnose 全约束，单一数据源）
+validation:                        # 验证设计（execution §2/§5）
+  method: scan_review              # 指引面/文档面改动，不改变候选选择；按 eval.md 分级不跑检索 golden，词表 scan + 人审
+  baseline: 现有 diagnose / resume-diagnosis SKILL 行为
+  success_criteria: 续接后源码分析走 src_fetch.py 且复用 src-code/；流程/设计讨论不再写入问题 trace；resume 显式声明继承 diagnose 约束
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "续接路径与 diagnose 约束不一致的观察 ≥2 次（已复现：源码 /tmp、流程讨论入 trace 各 ≥1 次）"
+risk: medium                       # medium → review；改动为指引面/文档面 + 新增脚本，未触 knowledge/ 高险字段
+principle_refs: [2, 6, 8]          # 二 不变量写进结构（脚本确定性入口）；六 闸门硬度与错误代价匹配（语义不硬门）；八 可观测先于改进（离轨通道落盘）
+actual_cost: null                  # 执行/验证后写回（缺失 = 审计缺口）；source: estimate|measured
+decisions:                         # 审计链：谁/何时/依据/结论（只追加不修改）
+  - who: agent
+    when: 2026-09-08
+    type: proposal
+    conclusion: "采纳「确定性脚本 + 离轨通道」而非「CI 硬门 on trace」：cluster 到哪/复用/URL 用 src_fetch.py 承载；trace 边界为语义层不设 CI 硬门，改用 _evnote 渐进式披露通道消除源头（trace 不进 PR，CI 无意义）；软信号（process_leak）不做——非确定性且 trace 不可见 CI"
