@@ -41,25 +41,25 @@ return {
         const target = await fs.resolve('traces/' + traceFile, { cwd })
         const text = await fs.readText(target)
         const lines = text.split('\n')
+        // 写回 schema 的块映射形式（与 diagnosis_state.yaml.example 一致；读取端兼容块/内联/字符串）
+        const block = ['sedimented:', '  state: ' + state, '  case_id: "' + (caseId || '') + '"', '  inbox_path: ""']
         const out = []
         let replaced = false
-        for (const line of lines) {
-          if (/^sedimented:/.test(line.trim())) {
-            const parts = { state: state }
-            if (state === 'knowledge' || state === 'archived') parts.caseId = caseId || ''
-            const inner = Object.keys(parts).map(k => k + ': ' + (k === 'state' ? parts[k] : '"' + parts[k] + '"')).join(', ')
-            out.push('sedimented: {' + inner + '}')
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i]
+          const indent = line.length - line.trimStart().length
+          if (!replaced && indent === 0 && /^sedimented:/.test(line.trim())) {
+            out.push(...block)
             replaced = true
-          } else {
-            out.push(line)
+            // 跳过原 sedimented 块的缩进子行（避免残留成游离顶层键）
+            let j = i + 1
+            while (j < lines.length && lines[j].trim() !== '' && (lines[j].length - lines[j].trimStart().length) > 0) j++
+            i = j - 1
+            continue
           }
+          out.push(line)
         }
-        if (!replaced) {
-          const parts = { state: state }
-          if (state === 'knowledge' || state === 'archived') parts.caseId = caseId || ''
-          const inner = Object.keys(parts).map(k => k + ': ' + (k === 'state' ? parts[k] : '"' + parts[k] + '"')).join(', ')
-          out.push('sedimented: {' + inner + '}')
-        }
+        if (!replaced) out.push(...block)
         await fs.writeText(target, out.join('\n'))
         return { ok: true }
       } catch (e) {
@@ -285,18 +285,10 @@ return {
             total++
             const status = doc.status ? String(doc.status) : ''
             if (status === 'in_progress' || status === 'escalated') inProgress++
-            const rawSed = String(doc.sedimented || '')
-            if (rawSed) {
-              let state = null
-              if (rawSed.startsWith('{')) {
-                const parsed = parseInlineMap(rawSed)
-                if (parsed && parsed.state) state = String(parsed.state)
-              } else {
-                state = rawSed
-              }
-              if (state === 'submitted') submitted++
-              else if (state === 'knowledge' || state === 'archived') promoted++
-            }
+            const sedObj = readSedimented(doc)
+            const state = sedObj ? sedObj.state : null
+            if (state === 'submitted') submitted++
+            else if (state === 'knowledge' || state === 'archived') promoted++
             const trace = Array.isArray(doc.trace) ? doc.trace : []
             let hasRef = false
             for (const t of trace) {
@@ -348,16 +340,7 @@ return {
           evidence: t && t.role === 'user' && t.evidence ? parseEvidence(t.evidence) : null,
         }))
         const refCount = trace.filter(t => t && t.action === 'reference_lookup').length
-        let sed = null
-        const rawSed = String(doc.sedimented || '')
-        if (rawSed && rawSed !== '') {
-          if (rawSed.startsWith('{')) {
-            const parsed = parseInlineMap(rawSed)
-            if (parsed && parsed.state) sed = { state: String(parsed.state), caseId: parsed.caseId || null, inboxPath: parsed.inbox_path || null }
-          } else {
-            sed = { state: rawSed }
-          }
-        }
+        const sed = readSedimented(doc)
         return { ok: true, steps, summary: doc.summary ? String(doc.summary) : null, refCount, sedimented: sed }
       } catch (e) {
         return { ok: false, error: '读取失败: ' + String(e && e.message || e) }
@@ -453,28 +436,61 @@ return {
       }
     }
 
+    // 读取沉淀状态——兼容三种写法：块映射（doc.sedimented 为对象，schema 默认）、
+    // 内联流映射字符串（面板写入形态 sedimented: {state:…, caseId:…}）、纯字符串。
+    function readSedimented(doc) {
+      const raw = doc ? doc.sedimented : null
+      if (raw && typeof raw === 'object') {
+        if (!raw.state) return null
+        return { state: String(raw.state), caseId: raw.caseId || raw.case_id || null, inboxPath: raw.inbox_path || null }
+      }
+      const s = String(raw || '')
+      if (!s) return null
+      if (s.startsWith('{')) {
+        const parsed = parseInlineMap(s)
+        if (parsed && parsed.state) return { state: String(parsed.state), caseId: parsed.caseId || parsed.case_id || null, inboxPath: parsed.inbox_path || null }
+        return null
+      }
+      return { state: s }
+    }
     function parseYaml(text) {
       const lines = text.split(/\r?\n/)
       const doc = {}
       const trace = []
       let inTrace = false
+      let blockKey = null      // 当前块映射的键（sedimented / feedback 等）
+      let blockIndent = -1     // 块头缩进（其子行缩进更深）
       for (const raw of lines) {
         const trimmed = raw.trim()
         const isTraceItem = /^-\s*\{/.test(trimmed)
         const noComment = isTraceItem ? raw.trimEnd() : raw.replace(/\s+#.*$/, '').trimEnd()
         if (noComment === '') continue
+        const indent = noComment.length - noComment.trimStart().length
         if (inTrace) {
           const tm = /^\s*-\s*(.*)$/.exec(noComment)
           if (tm) { trace.push(parseInlineMap(tm[1])); continue }
-          if (/^[a-zA-Z_]+:/.test(noComment)) { inTrace = false }
+          if (/^[a-zA-Z_]+:/.test(noComment)) { inTrace = false; blockKey = null }
           else continue
         }
-        if (noComment === 'trace:') { inTrace = true; continue }
-        const m = /^([a-zA-Z_]+):\s*(.*)$/.exec(noComment)
-        if (m) {
-          const v = m[2].replace(/^["']|["']$/g, '')
-          if (v === '[]') doc[m[1]] = []
-          else if (v !== '') doc[m[1]] = v
+        if (noComment.trim() === 'trace:') { inTrace = true; blockKey = null; continue }
+        const m = /^([a-zA-Z_]+):\s*(.*)$/.exec(noComment.trim())
+        if (!m) continue
+        const rawVal = m[2]
+        const v = rawVal.replace(/^["']|["']$/g, '')
+        // 块映射的子行（缩进比块头更深）→ 收进嵌套对象
+        if (blockKey !== null && indent > blockIndent) {
+          doc[blockKey][m[1]] = v
+          continue
+        }
+        blockKey = null
+        if (rawVal === '') {          // 空值 → 块映射头（sedimented:/feedback:）
+          doc[m[1]] = {}
+          blockKey = m[1]
+          blockIndent = indent
+        } else if (v === '[]') {
+          doc[m[1]] = []
+        } else {
+          doc[m[1]] = v
         }
       }
       if (trace.length) doc.trace = trace
