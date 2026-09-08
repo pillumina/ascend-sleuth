@@ -87,13 +87,16 @@ return {
       try {
         base = await fs.resolve('traces', { cwd })
       } catch (e) {
-        // 全新检出无 traces/（gitignored、按需生成）→ 友好空态，而非报错
-        return { ok: true, sessions: [] }
+        return { ok: false, error: 'traces 路径解析失败: ' + String(e && e.message || e) }
       }
       let entries = []
       try {
         entries = await fs.listDir(base)
       } catch (e) {
+        // 全新检出无 traces/（gitignored、按需生成）→ 友好空态，而非报错。
+        // 注意：resolve 对不存在的路径**不抛错**（沿最近存在的祖先回走、拼回缺失段），
+        // 抛 FS_NOT_FOUND 的是 listDir——存在性判断必须挂在 listDir 这一侧。
+        if (e && e.code === 'FS_NOT_FOUND') return { ok: true, sessions: [] }
         return { ok: false, error: 'traces 目录不可读: ' + String(e && e.message || e) }
       }
       const kbIds = await loadKbCaseIds(cwd)
@@ -250,7 +253,16 @@ return {
           out.references.byType = byType
           out.references.caseDerivedCount = caseDerived
         } catch (e) {
-          out.references.error = String(e && e.message || e)
+          // references/ 缺失（裁剪检出 / sparse-checkout 未含该目录）→ 全零空态，而非报错
+          if (e && e.code === 'FS_NOT_FOUND') {
+            out.references.total = 0
+            out.references.draftCount = 0
+            out.references.staleCount = 0
+            out.references.byType = {}
+            out.references.caseDerivedCount = 0
+          } else {
+            out.references.error = String(e && e.message || e)
+          }
         }
         return { ok: true, ...out }
       } catch (e) {
@@ -265,12 +277,16 @@ return {
         try {
           base = await fs.resolve('traces', { cwd })
         } catch (e) {
-          return { ok: true, total: 0, submitted: 0, promoted: 0, inProgress: 0, resumed: 0, refSessions: 0 }
+          return { ok: false, error: 'traces 路径解析失败: ' + String(e && e.message || e) }
         }
         let entries = []
         try {
           entries = await fs.listDir(base)
         } catch (e) {
+          // 全新检出无 traces/ → 全零空态（与 listTraces 同一口径：判 listDir 的 FS_NOT_FOUND）
+          if (e && e.code === 'FS_NOT_FOUND') {
+            return { ok: true, total: 0, submitted: 0, promoted: 0, inProgress: 0, resumed: 0, refSessions: 0 }
+          }
           return { ok: false, error: 'traces 不可读: ' + String(e && e.message || e) }
         }
         const basePath = fs.processPath(base)
@@ -424,7 +440,13 @@ return {
     async function runLiveMetrics(cwd) {
       if (!shell || !cwd) return { ok: false, error: '实时计算需要 shell 与工作区（当前不可用）' }
       try {
-        const spec = shell.resolve({ command: 'python3 scripts/trace_metrics.py', workdir: cwd, stdoutMaxBytes: 16384 })
+        const spec = shell.resolve({
+          command: 'python3 scripts/trace_metrics.py',
+          workdir: cwd,
+          stdoutMaxBytes: 16384,
+          // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
+          env: { PYTHONIOENCODING: 'utf-8' },
+        })
         const r = await shell.run(spec)
         let out = null
         if (r && r.stdout && typeof r.stdout.text === 'string' && r.stdout.text.trim()) out = r.stdout.text

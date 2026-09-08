@@ -25,6 +25,8 @@ return {
           command: 'python3 scripts/ev_board_data.py',
           workdir: cwd,
           stdoutMaxBytes: 4 * 1024 * 1024, // EV 卡聚合 JSON 随库增长（实测 89KB），防截断
+          // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
+          env: { PYTHONIOENCODING: 'utf-8' },
         })
         const r = await shell.run(spec)
         const stdout = r && r.stdout && typeof r.stdout.text === 'string' ? r.stdout.text : ''
