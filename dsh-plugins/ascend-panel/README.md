@@ -14,23 +14,26 @@
 在 DSH 对话中粘贴（或直接 `/skill:preload-panel`）：
 
 ```
-请加载 ascend-sleuth 诊断面板：读 dsh-plugins/ascend-panel/panel-host.js 作为 code.host、
-panel-client.js 作为 code.client，用 cordis_define（kind: new）创建动态 Cordis 插件并 cordis_run 激活。
+请加载 ascend-sleuth 诊断面板：用 cordis_define（kind: new）把
+codeFile.host = dsh-plugins/ascend-panel/panel-host.js、
+codeFile.client = dsh-plugins/ascend-panel/panel-client.js 建成动态 Cordis 插件，再 cordis_run 激活。
 完成后对话视图应出现「诊断」「指标」两个 tab。
 ```
 
-agent 读本目录文件 → `cordis_define` → `cordis_run` 激活，无需手动复制代码。`/skill:preload-panel` 是同一流程的 skill 封装（仅 DSH）。
+agent 只发两个路径 → Host 读盘并快照进 Package → `cordis_run` 激活。**不要自己把文件内容重新输出一遍**：两个文件合计 ~70KB，转写要几千 token、几分钟；给路径只要几十 token。工具不支持 `codeFile` 参数时才回退到读全文贴进 `code.host` / `code.client`。`/skill:preload-panel` 是同一流程的 skill 封装（仅 DSH）。
 
 前置条件：agent 具备 `cordis_define` / `cordis_run` 工具；工作区为 ascend-sleuth 仓库（面板读 `traces/`、`knowledge/`、`references/`、`metrics/`）。
 
 ### 手动加载
 
 1. `cordis_define`（kind: new，idPrefix 如 `sleu`）：
-   - `code.host` ← [panel-host.js](panel-host.js) 全文
-   - `code.client` ← [panel-client.js](panel-client.js) 全文
+   - `codeFile.host` ← `dsh-plugins/ascend-panel/panel-host.js`
+   - `codeFile.client` ← `dsh-plugins/ascend-panel/panel-client.js`
 2. `cordis_run`（mode: run）激活 → 出现「诊断」「指标」两个 tab
 
-**形态约束**：文件是 `cordis_define` 需要的函数体（`return { apply(ctx) {...} }`），直接粘贴。不要改成 `export default` / `import`——动态插件代码不经过打包器，ESM 语法无法加载（此前因此失败过一次）。
+**形态约束**：文件是 `cordis_define` 需要的函数体（`return { apply(ctx) {...} }`），原样读入/粘贴。不要改成 `export default` / `import`——动态插件代码不经过打包器，ESM 语法无法加载（此前因此失败过一次）。
+
+**改代码后**：`codeFile` 读入的是**定义时的快照**——编辑 `panel-*.js` 后要重新 `cordis_define`（kind: existing，同一 pluginId）产生新 Package，再 `cordis_run`（mode: update）切换。
 
 ## 依赖
 

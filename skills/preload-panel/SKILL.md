@@ -1,9 +1,9 @@
 ---
 name: preload-panel
 description: >
-  在 DSH 会话中热加载 ascend-sleuth 面板插件：读取 dsh-plugins/<panel>/ 下的
-  panel-host.js 与 panel-client.js，用 cordis_define 创建动态 Cordis 插件并
-  cordis_run 激活，对话视图出现对应 tab。面板选择：
+  在 DSH 会话中热加载 ascend-sleuth 面板插件：用 cordis_define 的 codeFile 直接指向
+  dsh-plugins/<panel>/ 下的 panel-host.js 与 panel-client.js（Host 读盘快照，不要转写
+  全文），再 cordis_run 激活，对话视图出现对应 tab。面板选择：
   - ascend-panel →「诊断」「指标」两个 tab（诊断会话/轨迹/证据 + 知识库健康）
   - ev-panel →「自演进」tab（EV 卡状态机 / 容量热力 / 归因与 S2 反馈 / timeline）
   仅 DSH 可用——依赖 DSH 的 cordis_define / cordis_run 工具
@@ -48,20 +48,26 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 1. **确定要加载的面板**：用户要诊断可视化 → ascend-panel；要自演进状态（EV 卡/
    容量/归因）→ ev-panel；两者可同时加载（不同 tab id，互不冲突）。
 
-2. **读插件代码**：读 `<面板目录>/panel-host.js`（Host 半）与 `<面板目录>/panel-client.js`
-   （Client 半）。文件是 `cordis_define` 需要的函数体形态（`return { apply(ctx) {...} }`），
-   **原样粘贴，不要改形态**——动态插件代码不经过打包器，`export default` / `import`
-   等 ESM 语法无法加载。
+2. **创建插件**：`cordis_define`（kind: new，idPrefix：ascend-panel 用 `sleu`、
+   ev-panel 用 `evbd`），**优先用文件路径**（`cordis_define` 支持 `codeFile` 时）：
 
-3. **创建插件**：`cordis_define`（kind: new，idPrefix：ascend-panel 用 `sleu`、
-   ev-panel 用 `evbd`）：
-   - `code.host` ← panel-host.js 全文
-   - `code.client` ← panel-client.js 全文
+   ```
+   codeFile.host   ← dsh-plugins/<面板>/panel-host.js
+   codeFile.client ← dsh-plugins/<面板>/panel-client.js
+   ```
 
-4. **激活**：`cordis_run`（mode: run）。若返回 awaiting-approval，告知用户需在 UI 允许
+   Host 读盘后把源码快照进 Package——**不要自己把文件内容重新输出一遍**（面板两个文件
+   合计 ~70KB，转写要几千 token、几分钟；给路径只要几十 token）。文件是函数体形态
+   （`return { apply(ctx) {...} }`），原样读入即可，别改形态——动态插件代码不经过打包器，
+   `export default` / `import` 等 ESM 语法无法加载。
+
+   若该 DSH 版本的工具**没有** `codeFile` 参数（返回 unknown property / 校验失败），
+   回退到内联：读两个文件全文 → `code.host` / `code.client` 原样粘贴。
+
+3. **激活**：`cordis_run`（mode: run）。若返回 awaiting-approval，告知用户需在 UI 允许
    （Client 半需授权）；授权后插件激活，对话视图出现对应 tab。
 
-5. **验证**：确认插件 running 且无 waitingFor（`cordis_inspect_self`）；tab 出现在
+4. **验证**：确认插件 running 且无 waitingFor（`cordis_inspect_self`）；tab 出现在
    对话视图（conversation.view 插槽，按上表 id 核对）。自演进看板首次打开会调
    `scripts/ev_board_data.py` 汇总数据——确认数据区渲染（EV 卡/容量有真实数据，
    归因/S2 反馈可能显示"数据积累中"，如实）。若见"数据加载失败"，按顶部
