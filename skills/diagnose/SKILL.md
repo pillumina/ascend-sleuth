@@ -96,7 +96,7 @@ rollback：<rollback>
 
 报错签名指向框架代码/算子名/量化描述表（如 `fault kernel_name=QuantBatchMatMulV3`、`modelslim_config.py` 相关 KeyError）且 Tier 3 未覆盖时：
 
-1. **向用户确认版本**（vllm-ascend / CANN / torch-npu——源码分析依赖对应版本，不要猜）。
+1. **按报错背景确定是哪个源码仓，再向其确认版本**（`scripts/src_fetch.py --list` 看已支持仓库：如 vllm-ascend / torch-npu / CANN / mindspeed-* / verl 等，取决于报错签名指向哪——源码分析依赖对应版本，不要猜）。
 2. **获取源码（统一走 `scripts/src_fetch.py` 确定性入口——本地优先、复用优先）**：`python3 scripts/src_fetch.py <repo> --ref <tag>`（`--list` 看已知仓库与 host：vllm-ascend=GitHub、mindspeed-*=GitCode、torch-npu=GitCode、verl=GitHub；未知/私有 → `--url`）。脚本把「clone 到哪 / 同版本复用 / URL 来自哪」从 agent 自觉变成**确定性操作**——本地 `src-code/<org>/<repo>/` 已有则**复用**（`git -C log -1`/`describe` 核对版本），没有则按已知 host 拉取。**「不落库」= 源码不随仓库提交、也不写进知识库**；分析仍要保留源码（`src-code/` 本地缓存），知识库只记 `source_ref` 代码指针。
 3. **grep 定位**：搜报错签名/算子名/函数名（如 `grep -rn "QuantBatchMatMulV3" vllm_ascend/`）→ 读相关文件片段 → 分析根因。
 4. **追问用户验证**：对照预期/复现/补环境信息，验证根因假设。
