@@ -89,11 +89,16 @@ npx skills@latest add pillumina/ascend-sleuth -s diagnose -s to-postmortem -s to
 DSH 会话可加载可视化面板——会话列表/轨迹展开/证据文件打开/指标视图。在对话中粘贴：
 
 ```
-请加载 ascend-sleuth 诊断面板：读 dsh-plugins/ascend-panel/panel-host.js 作为 code.host、
-panel-client.js 作为 code.client，用 cordis_define（kind: new）创建动态 Cordis 插件并 cordis_run 激活。
+请加载 ascend-sleuth 诊断面板：先确保 panel_from_file 工具可用
+（没有就加载 dsh-plugins/loader/panel-from-file.js，host-only 免审批），
+再用 panel_from_file 按路径加载 dsh-plugins/ascend-panel/panel-host.js 与 panel-client.js。
 ```
 
-面板是可选增强，不改变任何 skill 行为。加载说明见 [dsh-plugins/ascend-panel/README.md](dsh-plugins/ascend-panel/README.md)。
+面板两个文件合计 ~70KB，直接贴进 `cordis_define` 要几千 output token、几分钟；
+`panel_from_file` 只发两个路径（几十 token），读盘后源码仍进不可变 Package（可审计）。
+DSH 支持 `cordis_define` 的 `codeFile` 时也可跳过 loader 直接用它。
+
+面板是可选增强，不改变任何 skill 行为。加载说明见 [dsh-plugins/ascend-panel/README.md](dsh-plugins/ascend-panel/README.md)、[dsh-plugins/loader/README.md](dsh-plugins/loader/README.md)。
 
 ### 一个诊断
 

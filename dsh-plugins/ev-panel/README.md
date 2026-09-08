@@ -22,7 +22,7 @@ panel-client.js  conversation.view 注册 'ascend-evolve'（order 22）
 
 ## 加载
 
-同 ascend-panel：agent 读本目录两个文件 → `cordis_define`（kind: new）→ `cordis_run`。
-或 `/skill:preload-panel` 的 ev-panel 变体（见 skills/preload-panel）。
+同 ascend-panel：先加载一次性 loader（`dsh-plugins/loader/panel-from-file.js`，host-only 免审批），再 `panel_from_file`（idPrefix `evbd`，`host = dsh-plugins/ev-panel/panel-host.js`、`client = dsh-plugins/ev-panel/panel-client.js`）按路径加载。
+或 `/skill:preload-panel` 的 ev-panel 变体（见 skills/preload-panel）。改完 `panel-*.js` 要传 `pluginId` + `mode: 'update'` 追加新 Package——读入的是定义时快照。
 
 前置：DSH 会话工作区为 ascend-sleuth 仓库；python3 + PyYAML 可用（数据脚本依赖）。
