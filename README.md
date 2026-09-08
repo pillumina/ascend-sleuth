@@ -1,10 +1,17 @@
-# ascend-sleuth
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+    <img alt="ascend-sleuth" src="docs/assets/logo.svg" width="460">
+  </picture>
+</p>
 
-[![platform: Ascend NPU](https://img.shields.io/badge/platform-Ascend%20NPU-CC0000?logo=huawei&logoColor=white)](https://www.hiascend.com/)
-[![Agent Skills](https://img.shields.io/badge/Agent%20Skills-compliant-8B5CF6.svg)](https://agentskills.io/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+<p align="center">
+  <a href="https://www.hiascend.com/"><img alt="platform: Ascend NPU" src="https://img.shields.io/badge/platform-Ascend%20NPU-CC0000?logo=huawei&logoColor=white"></a>
+  <a href="https://agentskills.io/"><img alt="Agent Skills compliant" src="https://img.shields.io/badge/Agent%20Skills-compliant-8B5CF6.svg"></a>
+  <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
+</p>
 
-昇腾 NPU 训练与推理的诊断工具套件。把每次问题定位沉淀为可复用知识，让同类问题下次直接命中。
+<p align="center">昇腾 NPU 训练与推理的诊断工具套件。把每次问题定位沉淀为可复用知识，让同类问题下次直接命中。</p>
 
 遵循 [Agent Skills](https://agentskills.io/) 标准，可在 pi、Claude Code、Codex 等任意支持该标准的 agent 中使用。
 
