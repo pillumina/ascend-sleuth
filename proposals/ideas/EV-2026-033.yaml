@@ -1,0 +1,42 @@
+# ============================================================
+# Idea 卡模板（proposals/ideas/EV-YYYY-NNN.yaml）
+# 自演进候选 idea 的 schema 参考——新建卡时复制本文件改字段。
+# 完整 schema 与状态机定义见 docs/evolution-pipeline.md §7（权威）。
+# 校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+
+id: EV-2026-033
+layer: L2
+title: diagnose skill 去复杂化/结构化（瘦 SKILL 脊梁 + 详情下沉 skill 本地 references + 去重）
+status: in_experiment
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-08
+source_signals:
+  - signal: process_friction
+    evidence: "从 skill-creator 规范评估 diagnose：SKILL.md 213 行，与它自己的 skills/diagnose/references/diagnosis-procedure.md（126 行）在核心循环（步骤1-6/severity/输出格式/confidence 校准/误诊归因）大篇幅重复；SKILL 内联了带 EV 卡号标注的微规则（F4/A2/B1/E2-1）及按需才用的边角细节（HF 多源、category-cell、双面交叉检索）。→ 上下文成本（原则九）+ 重复导致漂移风险。"
+    trajectory:
+      - "skills/diagnose/SKILL.md（213 行）"
+      - "skills/diagnose/references/diagnosis-procedure.md（126 行）"
+hypothesis: 把 SKILL.md 瘦身为「可执行脊梁」（仅始终要跑的骨架/severity 闸门/命中输出/trace 纪律/不要做），把「按需才用的细节规则」下沉到 skill 本地 references/（懒加载），消除 SKILL 与 diagnosis-procedure.md 对同一核心循环的重复描述 → 降低上下文成本与漂移风险，且行为语义不变
+predicted_effect:
+  metric: SKILL.md 行数 / 与 skill 本地 reference 的重复度
+  from: "213 行（核心循环与 references/diagnosis-procedure.md 重复）"
+  to: "<~90 行（slim spine，每条规则一处住；详情在 references/ 懒加载）"
+validation:
+  method: scan_review
+  baseline: 现有 skills/diagnose/SKILL.md + references/ 行为
+  success_criteria: 重构后 skill-self-contained CI 通过；与重构前逐条比对「行为语义不变」（骨架仍含 triage→load→verify→produce + severity 闸门 + 命中输出 + trace 纪律 + 不要做）；无规则被意外删除/改义
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "SKILL.md 行数 >200 且 与 skill 本地 references 描述的同一规则重复（已确认：核心循环重复）"
+risk: medium
+principle_refs: [2, 9]
+actual_cost: null
+decisions:
+  - who: agent
+    when: 2026-09-08
+    type: proposal
+    conclusion: "采纳「瘦 SKILL 脊梁 + 详情下沉 skill references + 去重」：核心问题不是缺结构化（SKILL 已有本地 references/），而是 SKILL 把 reference 的内容又内联了一份。按 skill-creator best practice + 原则九（上下文预算）拆分，行为语义保持不变。与 src_fetch/trace 边界 PR（EV-2026-032）分开，独立成 PR。"
