@@ -289,4 +289,6 @@ def main():
 
 
 if __name__ == "__main__":
+    from _stdio import pin_utf8_stdio
+    pin_utf8_stdio()
     main()

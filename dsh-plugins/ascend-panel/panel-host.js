@@ -87,13 +87,16 @@ return {
       try {
         base = await fs.resolve('traces', { cwd })
       } catch (e) {
-        // 全新检出无 traces/（gitignored、按需生成）→ 友好空态，而非报错
-        return { ok: true, sessions: [] }
+        return { ok: false, error: 'traces 路径解析失败: ' + String(e && e.message || e) }
       }
       let entries = []
       try {
         entries = await fs.listDir(base)
       } catch (e) {
+        // 全新检出无 traces/（gitignored、按需生成）→ 友好空态，而非报错。
+        // 注意：resolve 对不存在的路径**不抛错**（沿最近存在的祖先回走、拼回缺失段），
+        // 抛 FS_NOT_FOUND 的是 listDir——存在性判断必须挂在 listDir 这一侧。
+        if (e && e.code === 'FS_NOT_FOUND') return { ok: true, sessions: [] }
         return { ok: false, error: 'traces 目录不可读: ' + String(e && e.message || e) }
       }
       const kbIds = await loadKbCaseIds(cwd)
@@ -250,7 +253,16 @@ return {
           out.references.byType = byType
           out.references.caseDerivedCount = caseDerived
         } catch (e) {
-          out.references.error = String(e && e.message || e)
+          // references/ 缺失（裁剪检出 / sparse-checkout 未含该目录）→ 全零空态，而非报错
+          if (e && e.code === 'FS_NOT_FOUND') {
+            out.references.total = 0
+            out.references.draftCount = 0
+            out.references.staleCount = 0
+            out.references.byType = {}
+            out.references.caseDerivedCount = 0
+          } else {
+            out.references.error = String(e && e.message || e)
+          }
         }
         return { ok: true, ...out }
       } catch (e) {
@@ -265,12 +277,16 @@ return {
         try {
           base = await fs.resolve('traces', { cwd })
         } catch (e) {
-          return { ok: true, total: 0, submitted: 0, promoted: 0, inProgress: 0, resumed: 0, refSessions: 0 }
+          return { ok: false, error: 'traces 路径解析失败: ' + String(e && e.message || e) }
         }
         let entries = []
         try {
           entries = await fs.listDir(base)
         } catch (e) {
+          // 全新检出无 traces/ → 全零空态（与 listTraces 同一口径：判 listDir 的 FS_NOT_FOUND）
+          if (e && e.code === 'FS_NOT_FOUND') {
+            return { ok: true, total: 0, submitted: 0, promoted: 0, inProgress: 0, resumed: 0, refSessions: 0 }
+          }
           return { ok: false, error: 'traces 不可读: ' + String(e && e.message || e) }
         }
         const basePath = fs.processPath(base)
@@ -421,14 +437,49 @@ return {
         return { ok: false, error: 'timeline.yaml 不可读: ' + String(e && e.message || e) }
       }
     }
+    // Python 解释器解析（Windows 兼容）：面板用 shell 跑 Python 脚本，但 Windows 上
+    // `python3` 常不存在——python.org 安装器装的是 `python.exe` + `py.exe` 启动器；
+    // 若 PATH 里还有 Store 的「应用执行别名」占位程序，执行 `python3` 不报"找不到命令"
+    // 而是弹 Microsoft Store。因此按候选逐个探测，取第一个能打印 Python 3.x 的
+    // （退出码 0 + 版本号双重判据，占位程序两者都过不了）；结果缓存，一次加载只探一轮。
+    // 注意：dynamic Cordis 插件不能 import，此函数与 ev-panel 的同名函数是刻意重复的副本。
+    let pythonCmd
+    async function resolvePython() {
+      if (pythonCmd !== undefined) return pythonCmd
+      for (const candidate of ['python3', 'python', 'py -3']) {
+        try {
+          const spec = shell.resolve({ command: candidate + ' --version', stdoutMaxBytes: 4096 })
+          const r = await shell.run(spec)
+          const out = [r && r.stdout && r.stdout.text, r && r.stderr && r.stderr.text]
+            .filter(t => typeof t === 'string').join('\n')
+          if (r && r.exitCode === 0 && /Python 3\./.test(out)) { pythonCmd = candidate; return pythonCmd }
+        } catch (e) {
+          // 候选不可执行 → 试下一个
+        }
+      }
+      pythonCmd = null
+      return pythonCmd
+    }
+
     async function runLiveMetrics(cwd) {
       if (!shell || !cwd) return { ok: false, error: '实时计算需要 shell 与工作区（当前不可用）' }
+      const py = await resolvePython()
+      if (!py) {
+        return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）——'
+          + '实时计算跑的是 scripts/trace_metrics.py，装好 Python 3 并确保在 PATH 里' }
+      }
       try {
-        const spec = shell.resolve({ command: 'python3 scripts/trace_metrics.py', workdir: cwd, stdoutMaxBytes: 16384 })
+        const spec = shell.resolve({
+          command: py + ' scripts/trace_metrics.py',
+          workdir: cwd,
+          stdoutMaxBytes: 16384,
+          // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
+          env: { PYTHONIOENCODING: 'utf-8' },
+        })
         const r = await shell.run(spec)
         let out = null
         if (r && r.stdout && typeof r.stdout.text === 'string' && r.stdout.text.trim()) out = r.stdout.text
-        if (out === null && r && typeof r.stderr === 'string' && r.stderr.trim()) out = r.stderr
+        if (out === null && r && r.stderr && typeof r.stderr.text === 'string' && r.stderr.text.trim()) out = r.stderr.text
         if (!out || !out.trim()) return { ok: false, error: 'trace_metrics.py 无输出（traces/ 为空或脚本报错）' }
         return { ok: true, output: out.slice(0, 8000) }
       } catch (e) {

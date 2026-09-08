@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+# _stdio.py —— 把 stdin/stdout/stderr 钉成 UTF-8（Windows 兼容）
+#
+# 为什么需要：Windows 上三个标准流接到**管道/文件**时用 locale 编码（中文系统 =
+# cp936/GBK），只有接到真控制台才走 UTF-16 通道。后果三类：
+#   ① 输出里的非 GBK 字符（−、✓、⚠、✅、↔、⏭ 等）→ UnicodeEncodeError，
+#      进程非零退出且 stdout 为空（面板拿到空串，只能显示 traceback）；
+#   ② 中文本身能编码，但产出 GBK 字节，被按 UTF-8 解码的采集方读成乱码
+#      （DSH 的 shell 采集器按 UTF-8 解码子进程输出）；
+#   ③ 输入侧镜像问题：管道喂进来的 UTF-8 字节按 cp936 解码 → UnicodeDecodeError
+#      （如 `gh pr view --json body --jq .body | python3 scripts/verify_pr_body.py`）。
+# 三者同源：仓库的数据契约是 UTF-8（文件、YAML/JSON、PR body 全是 UTF-8），
+# 但"进程标准流的编码"没跟着钉住。放在这里，各脚本入口调一次即可。
+#
+# 用法（脚本 __main__ 块首行）：
+#     from _stdio import pin_utf8_stdio
+#     pin_utf8_stdio()
+
+import sys
+
+
+def pin_utf8_stdio() -> None:
+    """把 sys.stdin / sys.stdout / sys.stderr 重配为 UTF-8。
+
+    已是 UTF-8、或流不支持 reconfigure（被替换成非文本流 / 已关闭）时静默跳过——
+    这种情况下调用方本就没走 TextIOWrapper 的编码路径。
+    """
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        encoding = (getattr(stream, "encoding", "") or "").replace("-", "").lower()
+        if encoding == "utf8":
+            continue
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8")
+        except Exception:
+            # 流已关闭 / 非 TextIOWrapper：保持原样，由调用方自行处理
+            pass

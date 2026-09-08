@@ -33,9 +33,11 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 但 loader 在激活前跑一次预检，能把"依赖缺失"改成**主动告知**而不是面板里一条报错：
 
 - **通用**：确认会话工作区是 ascend-sleuth 仓库（Host 从 `session.header.cwd` 解析数据目录）。
-- **ev-panel（自演进）**：确认 `python3` + PyYAML 可用——
+- **ev-panel（自演进）**：确认 Python 3 + PyYAML 可用——面板 host 会自动探测解释器
+  （`python3` → `python` → `py -3`，取第一个能打印 Python 3.x 的；Windows 上 `python3` 常不存在），
+  预检照探测结果来：
   ```bash
-  python3 -c "import yaml; print('pyyaml ok')" # 失败 → pip install pyyaml（或 brew install pyyaml）
+  python3 -c "import yaml; print('pyyaml ok')" # 失败 → 试 python / py -3；再失败 → pip install pyyaml
   ```
   若失败，先告知用户"自演进看板需要 PyYAML，请 `pip install pyyaml`"，再决定是否仍加载
   （host 也会给同样提示，但 loader 提前讲更友好）。
@@ -103,10 +105,12 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
   `harness.registerTool` + `ctx.get('dynamicCordisRunner')`——DSH 内置机制，无需补丁）
 - 工作区为 ascend-sleuth 仓库（Host 从 session.header.cwd 解析数据目录）
 - Host 服务：`fs` / `sessions` / `shell`
-- **ev-panel（自演进）**：`python3` + **PyYAML**（`scripts/ev_board_data.py` 聚合数据）——
-  缺 pyyaml 时 host 会提示安装；loader 侧建议激活前预检（见「依赖预检」）。
-- **ascend-panel（指标「实时计算」）**：`shell` + `python3`（`scripts/trace_metrics.py`，同样需 pyyaml）。
-- 诊断「打开证据」依赖 `open`/`xdg-open`（macOS/Linux 均可用）。
+- **ev-panel（自演进）**：Python 3 + **PyYAML**（`scripts/ev_board_data.py` 聚合数据）——
+  host 自动探测解释器（`python3` → `python` → `py -3`）；缺 pyyaml 时 host 会提示安装；
+  loader 侧建议激活前预检（见「依赖预检」）。
+- **ascend-panel（指标「实时计算」）**：`shell` + Python 3（`scripts/trace_metrics.py`，同样需 pyyaml；
+  解释器同样自动探测）。
+- 诊断「打开证据」依赖 `open`/`xdg-open`（macOS/Linux 均可用；Windows 未覆盖）。
 
 ## 说明
 
