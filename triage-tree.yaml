@@ -66,6 +66,7 @@ branches:
     symptoms:
       - ["\\btimeout\\b", "超时", "synchronize.*timeout", "广播.*超时", "timed out", "TimeoutError"]   # 推理侧通信/同步超时（timed out/TimeoutError 补录：2026-W37 #13639 sample_tokens RPC 超时）
       - ["\\bhang\\b", "\\bstuck\\b", "死锁", "挂起", "deadlock"]   # 推理侧 hang/死锁（2026-W37 #13639 fullgraph deadlock 补录——原只有 timeout 变体，hang 被 training 分支独占）
+      - ["\\bpreempt\\b", "抢占", "无法.*调度", "调度.*(卡|死锁|楔)", "admission.*fail", "排队.*堆积", "waiting.*递增"]   # 调度/接纳层（preemption/admission）——PD 分离静默冻结/调度楔（2026-09-08 ascend_store PD prefill hang；真实支点常是调度/控制循环层而非 load/传输组件）
       - ["kv.*cache.*full", "out of memory", "\\bOOM\\b", "内存泄漏", "memory leak", "内存.*持续增长"]   # 长跑内存泄漏/OOM（#12345：CANN host buffer 不驱逐，中文/大写 OOM 补录）
       - ["serving.*crash", "engine.*error"]
       - ['ErrCode=\d+', 'EE9999', 'rtStream\w*.*fail', 'aclrt\w+.*fail']   # 错误码型签名（评估 0001 §四.2：12983 型靠退化兜底的缺口）
