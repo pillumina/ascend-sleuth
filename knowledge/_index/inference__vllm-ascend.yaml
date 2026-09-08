@@ -1,7 +1,7 @@
 # GENERATED FILE —— 分片（knowledge/_index.yaml 的 inference/vllm-ascend 子集），不要手改。
 # 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。
 # 阶段一加载协议（F1 EV-2026-022）：category 未定 / 类分片缺失时 diagnose 回退读本 namespace 分片，不读整库总表。
-# 本分片：inference/vllm-ascend（107 条 case）
+# 本分片：inference/vllm-ascend（108 条 case）
 namespaces:
   inference/vllm-ascend:
     interrupt:
@@ -813,6 +813,25 @@ namespaces:
         are not supported…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-15086.yaml
       hash: 65ee9aaeeb24
+    - id: VLLM-ASC-15087
+      title: PD 分离 prefill 节点静默冻结：v0.23.0 新引入的 _disable_preemption_on_prefill_node()（patch_balance_schedule.py:79，guard=vllm_version_is('0.23.0')
+        && kv_role=='kv_producer'）在…
+      category: interrupt
+      tags:
+      - pd-disaggregation
+      - preemption
+      - prefill-hang
+      - scheduling
+      - balance-scheduling
+      - kv-pool
+      compat: vllm-ascend >=0.23.0,<0.23.1
+      confidence:
+        score: 0.65
+      symptoms:
+      - PD 分离（1P1D/多机，P 节点内存池化 AscendStoreConnector + load_async=true）多轮对话压测，约 8 分钟后全量请求 prefill hang
+        不恢复，P/D 全部卡死
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-15087.yaml
+      hash: 7d40ed534e2a
     - id: VLLM-ASC-1991
       title: 'Qwen3-Embedding-4B（pooling 模型）在 300I Duo/310P3 上无法启动：模型加载报 ValueError: no module or parameter
         named ''layers'' in CustomQwen3ForCausalLM（或 worker init 报 ACL SetPr…'

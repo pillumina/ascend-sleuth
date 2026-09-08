@@ -1,0 +1,104 @@
+# VLLM-ASC-15087 —— PD 分离 prefill 节点静默冻结：v0.23.0 新引入的 _disable_preemption_on_prefill_node() 禁用抢占 → 调度活锁 → 引擎 quiesce
+# 来源：现场诊断 trace 2026-09-08-ascendstore-pd-prefill-hang + vllm-ascend 开发确认
+#   （PR #14233 为 Qwen3.5 系上游临时方案；fix 由开发本地验证）
+# fix：patch_balance_schedule.py:79 改 self._disable_preemption = False（或回退 PR #14233），同部署复测 4 次不复现
+# investigation_quality: high（源码级定位 + 维护者确认 + fix 复测验证）
+# pre-triage: new_pattern —— 全库无 _disable_preemption_on_prefill_node / PD prefill 无抢占楔 case
+#   邻近：8808(put 不入池)、11343(PP 端口)、10998(get -704)、13356(need_to_allocate=0)、
+#         13964(decode 侧计数冻结)、7871(metrics ValueError) —— 机制/签名全异
+# 脱敏：日志 reqid 为 chatcmpl- hex（非敏感），无内网 IP/token/密码落库，无替换
+# groom 转正：2026-09-08 升格 Tier 2（new_pattern），score=0.65（verification=upstream-maintainer-confirmed × confidence=high）
+
+cases:
+  - id: VLLM-ASC-15087
+    title: "PD 分离 prefill 节点静默冻结：v0.23.0 新引入的 _disable_preemption_on_prefill_node()（patch_balance_schedule.py:79，guard=vllm_version_is('0.23.0') && kv_role=='kv_producer'）在 prefill 节点禁用自动抢占 → allocate_slots 给不出槽位时直接 break、不抢占腾资源 → 请求永远拿不到槽位、加载从不真正执行 → 调度活锁 → 引擎 quiesce（PR #14233 为 Qwen3.5 系上游临时方案）"
+
+    category: interrupt
+    tags: [pd-disaggregation, preemption, prefill-hang, scheduling, balance-scheduling, kv-pool, silent-hang, v0.23.0, regression]
+
+    platforms: ["A3-910C", "A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        ranges: [">=0.23.0,<0.23.1"]    # 触发=含 _disable_preemption_on_prefill_node 的 v0.23.0（开发确认其他镜像版本不涉及）
+
+    investigation_quality: high
+    confidence:
+      hits: 1
+      misdiagnoses: 0
+      score: 0.65                      # 转正初值：verification=upstream-maintainer-confirmed(0.65) × confidence=high；S1 现场确认后按反馈校准
+
+    source_ref:                        # 源码分析路径：vllm-ascend 自定义调度 patch
+      repo: vllm-ascend
+      ref: v0.23.0
+      file: vllm_ascend/patch/platform/patch_balance_schedule.py
+      line: 79
+
+    symptoms:
+      - "PD 分离（1P1D/多机，P 节点内存池化 AscendStoreConnector + load_async=true）多轮对话压测，约 8 分钟后全量请求 prefill hang 不恢复，P/D 全部卡死"
+      - "P 侧 EngineCore 每 ~1s 重复同一 reqid 的 'KV pool load spec created ... need_to_allocate=NN load_async=True use_layerwise=False'（pool_scheduler.py:559/580），计数冻结、不再推进"
+      - "启动即打印 'Automatic scheduler preemption is disabled on this PD-disaggregated prefill node.'（patch_balance_schedule.py:80）"
+      - "P EngineCore 主线程 py-spy 稳定卡 collective_rpc → _wait_for_response → get_response → dequeue（shm_broadcast.wait）；D 侧 worker 在 dummy_run acl_graph.call 后空转 dequeue"
+      - "无 ERROR/Traceback/HCCL timeout/abort 等报错面（静默冻结）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/pull/14233"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "vllm-ascend 开发确认：v0.23.0 由 _disable_preemption_on_prefill_node() 在 PD prefill 节点禁抢占致调度退化；PR #14233 为 Qwen3.5 系上游临时方案；fix=patch_balance_schedule.py:79 改 self._disable_preemption=False（同部署复测 4 次不复现）"
+
+    quickly_check:
+      primary:
+        command_template: "grep 'Automatic scheduler preemption is disabled on this PD-disaggregated prefill node' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:Automatic scheduler preemption is disabled on this PD-disaggregated prefill node"
+        note: "patch_balance_schedule.py:80 启动日志（_disable_preemption=True 才打印）——本 case 最干净的判别签名；需 P 节点启动段日志"
+      fallback:
+        command_template: "grep 'KV pool load spec created.*load_async=True' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*KV pool load spec created.*load_async=True"
+        note: "可观测症状：同一 reqid 每 ~1s 重复打 load spec 且计数冻结（静默活锁）——本现场证据命中"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：PD 分离 prefill 节点静默冻结（无报错面）——请求卡死 + P EngineCore 卡 collective_rpc + 计数冻结？"
+        expected: "是（本 case 无 ERROR/traceback/HCCL error，健康检查仍 200）"
+        note: "静默是本 case 特征（区别于显式崩溃类 hang）"
+      - step: 2
+        command_template: "grep 'Automatic scheduler preemption is disabled' {{log_path}}"
+        rank_selector: coordinator
+        expected: "出现该 warning → _disable_preemption=True → 确认命中本 case"
+      - step: 3
+        check: "版本/角色判别：vllm-ascend v0.23.0 且 kv_role=kv_producer（PD 分离 prefill 节点）？"
+        expected: "是——guard=vllm_version_is('0.23.0') && kv_role=='kv_producer'；其他镜像版本或非 producer 不触发"
+      - step: 4
+        command_template: "grep -E 'Running: 1 reqs.*Waiting: [0-9]+ reqs|GPU KV cache usage: 9[0-9]' {{log_path}}"
+        rank_selector: coordinator
+        expected: "P 节点 KV usage 打满 + Running/Waiting 积累（allocate_slots 给不出槽位）"
+      - step: 5
+        check: "修复验证：改 patch_balance_schedule.py:79 为 self._disable_preemption=False（或回退 PR #14233）后复测"
+        expected: "preemption 恢复 → 调度不再活锁 → 不再静默冻结（开发已复测 4 次不复现）"
+      - step: 6
+        check: "忽略项：load-async '从不完成'/EngineDeadError/级联错误 是静默冻结后的次生表征，勿当独立缺陷"
+        note: "真实支点在调度/控制循环层（preemption 被禁），不是 load/传输/后端缺陷"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart, requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      vLLM v0.23.0（上游）为 Qwen3.5 系引入 _disable_preemption_on_prefill_node()
+      （patch_balance_schedule.py:79，guard=vllm_version_is('0.23.0') && kv_role=='kv_producer'），
+      在 PD 分离的 prefill 节点禁用自动抢占。当 P 节点 KV cache 打满、新请求需从外部 kv pool
+      加载大上下文（多轮对话复用）时，allocate_slots 给不出槽位——正常调度器会抢占最低优先级
+      running 请求腾资源，但 _disable_preemption=True 直接 break、不抢占 → 请求永远拿不到槽位 →
+      加载从不真正执行 → 调度活锁（scheduler 每步重评估，pool_scheduler 每 ~1s 重打 load spec）→
+      P EngineCore 主线程卡 collective_rpc 等 worker 响应 → 引擎 quiesce → P/D 全部冻结。
+      这是调度/控制循环层问题，不是 load/传输/后端缺陷。
+
+    fix: >
+      一行修复：vllm_ascend/patch/platform/patch_balance_schedule.py:79
+      把 self._disable_preemption = _disable_preemption_on_prefill_node(vllm_config)
+      改为 self._disable_preemption = False（或回退 PR #14233，等价且更干净）。
+      恢复自动抢占后重测原故障场景（不再静默冻结）；切记复测 PR #14233 原本守护的 Qwen3.5 系场景是否回归。
+    rollback: "回退本行修复（恢复 _disable_preemption_on_prefill_node(vllm_config)）即复现原冻结"
