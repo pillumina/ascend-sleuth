@@ -1,0 +1,110 @@
+# ============================================================
+# Idea 卡：诊断结论引用完整性（arXiv 2609.03874 约束解码的降级采纳）
+# 目的：把"结论引用的 case id 必须真实存在"从纪律变成可判定——论文用约束解码把
+#       非叶子输出压到 0.05%（DSI 3.25% / 裸 LLM 26.81%），本仓对应物是"输出必须
+#       指向真实存在的对象"。只取可判定的那一半（id 存在性），**不取**"必须 ∈ 本轮
+#       候选集"——候选集由 regex 过滤产生、不完备（W35 回放 candidate_recall 16/21），
+#       强制内选会把正确的越界答案逼成错误的内集答案（论证见 decisions[0]）。
+# ============================================================
+
+id: EV-2026-036
+layer: L2                          # 流程与 skill：diagnose 输出纪律 + 观测指标
+title: "引用完整性：诊断结论的 case id 必须真实存在（arXiv 2609.03874 约束解码降级采纳，不取候选集闭集）"
+status: validated                  # agent 执行 + 验证通过，改动随本 PR 送人审（review）
+authorization: review              # 触及 diagnose 输出纪律（影响诊断路径）→ 人审
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-08
+source_signals:
+  - signal: external_reference
+    evidence: "STAIR（arXiv 2609.03874）推理阶段把输出词表限制在 ToC 叶子集合内（约束生成），非叶子输出率 0.05% vs 微调 DSI 3.25% / 裸 LLM 26.81%；其前提是 gold leaf 必在 ToC 内（闭集完备），STAIR 只负责'选哪一个'"
+    trajectory:
+      - "https://arxiv.org/abs/2609.03874 §4.2 图 2 Stage 3（constrained generation）/ §6.1 消融（幻觉率与训练样本数无关）/ §6.2 错误分析（DSI 编出 '2.2.2 Autonomy vs. Shame/Doubt (Preschool years)' 似真但不存在的小节标题）"
+  - signal: component_error
+    evidence: "编造/错写 case id 的 session 会从 routed_accuracy 静默蒸发：trace_metrics.py:178 by_case.get(hit_case) 查不到 → ns=None → 第 180 行 if routed and ns: 跳过整个 session，既不计数也不报错"
+    trajectory:
+      - "scripts/trace_metrics.py:172-183（hit 分支）"
+      - "traces/2026-09-08-vllmasc-glm53-a3-topk-vec.yaml（候选 7993/9887/10500 全 excluded → miss + Tier 3；行为正确但无从证明未越界）"
+hypothesis: >-
+  新增"结论引用的 case id 必须存在于 knowledge/"的确定性检查与观测指标后，
+  编造 id 类幻觉从静默消失变为可检出；因为不附加"必须从候选集内选"的约束，
+  不增加误诊风险、不改变 routed_accuracy 口径
+predicted_effect:
+  metric: citation_integrity（hit.case 指向知识库对象的比例）+ citation_unknown_id / citation_non_case_id 两类明细
+  from: 未度量（编造 id 静默消失于 routed_accuracy）
+  to: 可观测（现有 3 条 trace：hit 事件 1 例，属"非 case id 形态"；编造 id 类真实发生 0 例）
+validation:
+  method: metrics_compare
+  baseline: 现有 traces/*.yaml 3 条（无编造 id 先例）
+  success_criteria: "trace_metrics.py 输出 citation_integrity + 两类明细；合成'编造 id'场景被 citation_unknown_id 捕获；verify_metrics.py --check / build_index.py --check / verify_proposals.py --check / verify_references.py --check / build_ref_summary_index.py --check 全绿；golden 不适用（不改检索与候选路径，仅输出纪律 + 观测）"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户确认落地方向（2026-09-08：'降级版可以做'）"
+risk: low                          # 只增确定性检查与指标，不新增闸门、不改候选路径
+principle_refs: [2, 8, 10]         # 二 不变量写进结构 / 八 可观测先于改进 / 十 诚实退化
+actual_cost:
+  tokens: 0
+  source: estimate
+decisions:
+  - who: agent（用户会话：arXiv 2609.03874 机制对照）
+    when: "2026-09-08"
+    type: proposal
+    conclusion: >-
+      采纳论文机制中可判定的那一半，否决另一半。
+      取：结论引用的 case id 必须真实存在于 knowledge/（论文"输出必须是合法标识符"
+        的本仓对应物，确定可判、零假阳性）；fix 命令须能回到该 case 的
+        fix / fix_on_mismatch / source_ref，不得自造。
+      不取（关键）：把结论限制在"本轮枚举的候选集"内。论文的闭集完备（gold leaf 必在
+        ToC 内），本仓候选集不完备——阶段一是 regex 过滤产物，W35 回放
+        candidate_recall 16/21（约 1/4 案例正确答案未进候选集）、routed_accuracy 19/21。
+        在不完备闭集上强制内选，会把"正确的越界答案"逼成"错误的内集答案"：agent 为
+        合规从 ≤5 条里挑最像的强行套用 → 误诊（原则一代价不对称下最贵的一类错误），
+        且指标化后会形成 Goodhart 扭曲（合规率奖励少输出 out_of_set，而 out_of_set
+        正是诚实退化的正确形态，原则十）。另：该指标测的是"越没越界"而非"对不对"，
+        过度宣传会制造安全感错觉（原则二禁止把约定当硬门）。
+      不取附带项：不把未知 id 计入 routed_accuracy 分母——那会改变历史口径使跨期不可比
+        （metrics.md W28/W35 教训）；改由 citation_integrity 承接，routed_accuracy 语义不变。
+  - who: agent（用户会话）
+    when: "2026-09-08"
+    type: action
+    conclusion: >-
+      执行：①scripts/trace_metrics.py 增引用完整性检查（hit case ∉ 索引即违规）+ 指标
+      citation_integrity / citation_integrity_detail + markdown 概览行 + 头注说明；
+      ②scripts/verify_metrics.py LIVE_FIELDS 增两字段（live 快照白名单外字段 CI 红）；
+      ③docs/metrics.md 指标定义表增一行（含"不测什么"的口径说明）；
+      ④skills/diagnose/SKILL.md「始终要避的坑」增一条引用完整性纪律，并显式写反向约束
+      "这不等于必须选候选之一"（防把降级版误读为完整版）。
+      未改 references/diagnosis-procedure.md（最小面：纪律在 SKILL 内联即够，procedure 不加重复条款）。
+  - who: agent（用户会话）
+    when: "2026-09-08"
+    type: eval
+    conclusion: >-
+      机制级验证（n=3 trace，样本量不足，如实标注）：
+      ① 合成场景：把一条 trace 的 miss 改写为 `hit, case: VLLM-ASC-99999`（形如 id 但不存在）
+        → citation_unknown_id 正确捕获（"id 形态但 ∉ knowledge/"），证明论文口径的幻觉路径可检出；
+      ② 真实数据：机制首次运行即在既有 trace 中发现 1 例未指向知识库对象的值——
+        `2026-09-07-glm53-pd-sfa-c8-hang: hit known-issue-family(sfa_c8)`。**这不是幻觉**：
+        该 session 的 reason 已诚实写明"KB 无直接 case，依官方 known-issue 族定论"，问题是
+        `hit.case` 语义只接受 case id，"KB 无匹配但结论成立"缺合法编码（下游 routed_accuracy
+        也因 ns=None 静默跳过该 session）。据此把指标拆成 citation_unknown_id（编造/错写）与
+        citation_non_case_id（编码待复核）两类，避免把编码问题误报成幻觉、污染信号。
+      ③ 检查全绿：build_index --check / verify_metrics --check / verify_proposals --check /
+        verify_references --check / build_ref_summary_index --check / skills 无 ADR 编号 /
+        triage-tree 可解析。golden 与 ixn 不适用（改动不触及检索、候选与 fix 内容路径）。
+      指标可靠性限制如实记录：citation_integrity 只覆盖"指向的对象不存在"，不覆盖"选错 case"
+      （由 feedback 误诊率 + 归因覆盖）；现有 3 条 trace 中 hit 事件仅 1 例（且为非 id 形态），
+      该比率当前无统计意义。
+  - who: agent（用户会话）
+    when: "2026-09-08"
+    type: decision
+    conclusion: >-
+      采纳（validated）：改动随本 methodology PR 送人审。**不进 CI**——按检查准入三条件
+      （可机械判定 ✓ / 确定性后果 ✓ / 已复发 ≥2 次 ✗：编造 id 真实发生 0 次，合成验证 1 次），
+      当前只作 trace_metrics 观测指标；出现 ≥2 次真实 citation_unknown_id 后再讨论硬化。
+      观察窗与后续触发条件：
+      ① 下次 groom 周批看 citation_integrity / citation_unknown_id 是否出现"编造 id"簇；
+      ② citation_non_case_id 累计 ≥2 例 → 立项讨论"KB 无匹配但结论成立"的合法编码
+         （当前用 hit.case 塞族名属借用，本次刻意不改 hit 语义以保持最小面，原则九/十一）；
+      ③ 季度自评复核该指标是否仍值得保留（若长期恒为满值且无新增价值，按原则十一退役，
+         不养僵尸指标）。

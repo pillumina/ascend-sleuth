@@ -9,11 +9,24 @@
 #   triage / load_index / quickly_check / load_full / run_check / hit / miss
 #   / tier3（Tier 3 兜底检索）/ feedback（结果反馈：resolved|not_resolved|partial）
 # 字段缺失时降级计算，不硬崩。小样本时比例波动大——解读前先看分母。
+#
+# 引用完整性（EV-2026-036）：hit.case 必须真实存在于知识库——"编造 id"类幻觉的确定性检出。
+#   来源：论文 arXiv 2609.03874 用约束解码把"非叶子输出"压到 0.05%（本仓对应物=输出必须
+#   指向真实存在的对象）。**只取 id 存在性**，不约束"必须 ∈ 本轮候选集"——候选集是 regex
+#   过滤产物、不完备（W35 回放 candidate_recall 16/21），强制内选会把正确的越界答案逼成
+#   错误的内集答案（论证见 proposals/ideas/EV-2026-036.yaml decisions[0]）。
+#   两类未指向知识库对象的值分开记（修复动作不同，不混算）：
+#     citation_unknown_id   = 形如 case id 但不存在 → 编造/错写（论文口径的幻觉）
+#     citation_non_case_id  = 非 case id 形态（如族名/自由文本）→ 编码待复核，非幻觉
 
+import re
 import sys
 from pathlib import Path
 
 import yaml
+
+# case id 形态（VLLM-ASC-12461 / SGL-PD-HEAP-001 / MSLLM-EP-HANG-001 / VERL-5074）
+CASE_ID_RE = re.compile(r"^[A-Z][A-Z0-9]*(-[A-Z0-9]+)*-\d+$")
 
 # trace action 固定词表（与 skills/diagnose/SKILL.md「每步必写 trace」一致）
 # 词表外 action = 诊断纪律违规，写入时靠 SKILL.md 约束，此处确定性检出
@@ -93,6 +106,11 @@ def main():
     complete = 0
     vocab_total = 0
     vocab_bad = []
+    # 引用完整性（EV-2026-036）：结论引用的 case id 必须存在于知识库
+    cite_total = 0
+    cite_ok = 0
+    cite_unknown = []      # 形如 id 但不存在 = 编造/错写
+    cite_nonid = []        # 非 id 形态 = 编码待复核（非幻觉）
 
     # reference 指标（ADR-0008 观测性）：hits per ref / 引用后 resolve 率 / 平台分布。
     # 引用后 outcome 从该 session 最终 status 派生（不新增事件）；平台来自 lookup 事件。
@@ -177,6 +195,16 @@ def main():
                 misdiagnosed += 1
             info = by_case.get(hit_case)
             ns = info[0] if isinstance(info, tuple) else info
+            # 引用完整性（EV-2026-036）：hit.case 必须指向知识库中的真实对象。
+            # 不并入 routed_accuracy 分母（那会改变历史口径使跨期不可比），只由本指标承接。
+            sid = st.get("session_id", "?")
+            cite_total += 1
+            if ns is not None:
+                cite_ok += 1
+            elif CASE_ID_RE.match(str(hit_case)):
+                cite_unknown.append(f"{sid}: hit {hit_case}（id 形态但 ∉ knowledge/）")
+            else:
+                cite_nonid.append(f"{sid}: hit {hit_case}（非 case id 形态）")
             if routed and ns:
                 routed_total += 1
                 if any(r == ns or r.endswith("/" + ns) or ns.endswith("/" + r) for r in routed):
@@ -205,6 +233,9 @@ def main():
                              "partial": fb["partial"]},
         "trace_completeness": {"ok": complete, "total": n},
         "vocab_compliance": {"ok": vocab_total - len(vocab_bad), "total": vocab_total},
+        "citation_integrity": {"ok": cite_ok, "total": cite_total} if cite_total else None,
+        "citation_unknown_id": cite_unknown or None,
+        "citation_non_case_id": cite_nonid or None,
         "tier3": {"used": tier3_used, "saved": tier3_saved},
         "reference": {"hits": sum(ref_hits.values()), "refs": len(ref_hits)} if ref_hits else None,
         "reference_detail": {rid: {"hits": h, "resolved": ref_resolved.get(rid, 0)}
@@ -235,6 +266,10 @@ def main():
         f"| trace 完整性（proxy：含 triage + 过滤步） | {complete}/{n} ({complete / n:.0%})",
         f"| trace 词表合规（词表外 action） | {vocab_total - len(vocab_bad)}/{vocab_total}"
         + (f"（违规：{'、'.join(vocab_bad[:5])}{'…' if len(vocab_bad) > 5 else ''}）" if vocab_bad else ""),
+        (f"| 引用完整性（hit.case 指向知识库对象） | {cite_ok}/{cite_total}"
+         + ("；编造/错写 id：" + "、".join(cite_unknown[:3]) if cite_unknown else "")
+         + ("；非 case id 形态：" + "、".join(cite_nonid[:3]) if cite_nonid else ""))
+        if cite_total else "| 引用完整性（hit.case 指向知识库对象） | 无可算样本（需 trace 含 hit.case） |",
         f"| Tier 3 兜底使用 / 其中挽救（resolved 且无 Tier 2 命中） | {tier3_used} / {tier3_saved} |",
     ]
     # reference 指标（ADR-0008 观测性）——无引用时如实显示为空（reference 刚建立是现状）

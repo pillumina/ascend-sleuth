@@ -30,6 +30,7 @@
 | Tier 3 挽救率 | 走 Tier 3 兜底检索且最终 resolved 的比例 | trace `tier3` action |
 | 反馈捕获率 | 回报 fix 结果的 session / 给出 fix 的 session | trace `feedback` action |
 | reference 引用 | 引用次数 / 引用后 resolve 率 / 平台分布 | trace `reference_lookup` 事件（引用后 outcome 从 session 最终 status 派生） |
+| 引用完整性 | `hit.case` 是否指向知识库中的真实对象（分子=存在于 `knowledge/`，分母=所有 hit 事件） | trace `hit.case` vs `knowledge/_index.yaml`。**只测"指向的对象是否存在"**——不测"是否 ∈ 本轮候选集"（候选集是 regex 过滤产物、不完备，强制内选会制造误诊，见 EV-2026-036 decisions[0]），也不测"选得对不对"（那由误诊率 + 归因覆盖）。未指向对象的值分两类记录，修复动作不同：`citation_unknown_id`（形如 case id 但不存在 = 编造/错写）与 `citation_non_case_id`（非 id 形态，如族名/自由文本 = 编码待复核，非幻觉）。不进 CI（检查准入三条件之"已复发 ≥2 次"未满足），只作观测 |
 | S2 内容验证（口径，数据积累后进 timeline） | case 被 S2 replay 验证的分布：consistent（内容与外部 resolution 一致）/ self_consistent（自证）/ inconsistent（复审） | `.s2-replay/*.result.yaml` → `settle_s2_feedback.py` 结算 → case `validation_record`。**口径纪律**：consistent ≠ 现场 resolve——S1 现场解决率看 confidence（上表命中率/误诊率），S2 内容验证是独立通道，进 timeline 时标注 `source: issue-replay`，不与 S1 混算。按检查准入三条件，待 S2 结算有真实数据（≥2 期）后再扩展 verify_metrics 白名单 |
 
 ## 快照 schema（metrics/timeline.yaml）
@@ -54,6 +55,7 @@ periods:
       feedback_capture: {resolved: 1, not_resolved: 1, partial: 0}
       trace_completeness: {ok: 2, total: 3}
       vocab_compliance: {ok: 22, total: 22}
+      citation_integrity: {ok: 3, total: 3}
       tier3: {used: 0, saved: 0}
       reference: {hits: 1, refs: 1}
     notes: |
