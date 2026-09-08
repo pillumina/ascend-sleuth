@@ -407,6 +407,12 @@
       "14363": "5e1506a6f1fdfb96",
       "14871": "3ab917fc54963a41",
       "9769": "edd43863c6d44dea"
+    },
+    "_trace_feedback": {
+      "2026-09-08-ascendstore-pd-prefill-hang": {
+        "events": "1850a89fcff41567",
+        "settled_at": "2026-08-31"
+      }
     }
   }
 }
