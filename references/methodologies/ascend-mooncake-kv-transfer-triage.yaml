@@ -12,7 +12,7 @@ summary: >-
 
 sources:
   - type: case-derived
-    cases: [VLLM-ASC-11459, VLLM-ASC-10532, VLLM-ASC-13934, VLLM-ASC-8938, VLLM-ASC-11343, VLLM-ASC-13964, VLLM-ASC-12957, VLLM-ASC-11169, VLLM-ASC-13710, VLLM-ASC-7792, VLLM-ASC-9398]
+    cases: [VLLM-ASC-11459, VLLM-ASC-10532, VLLM-ASC-13934, VLLM-ASC-8938, VLLM-ASC-11343, VLLM-ASC-13964, VLLM-ASC-12957, VLLM-ASC-11169, VLLM-ASC-13710, VLLM-ASC-7792, VLLM-ASC-9398, VLLM-ASC-15087]
     extracted_at: 2026-09-03
     extraction_method: to-reference --ingest-cases
 
@@ -80,6 +80,12 @@ content:
       check: "无 grep 签名——用 per-engine 指标判别：vllm:num_requests_running > 0 同时 generation/completed 计数冻结（{{metrics_path}}）"
       when_to_use: D2 命中（静默停滞、计数冻结、无异常栈）
       source_cases: [VLLM-ASC-13964]
+    - step: 8.1
+      name: python backend 层 · prefill 侧调度楔 / 接纳失败型（静默冻结）
+      action: "报错面 D2 的 PREFILL 侧子形态——静默冻结：无 ERROR/traceback/HCCL timeout，但 PD 分离 prefill 节点请求卡死（新请求需从外部池加载大上下文、KV usage 打满、Running/Waiting 积累），P EngineCore 主线程卡 collective_rpc/dequeue、D 节点停摆 → 引擎 quiesce。复现组合：v0.23.0 + kv_role=kv_producer + KV cache pool（AscendStoreConnector，load_async）+ 多轮长上下文。根因：v0.23.0 的 _disable_preemption_on_prefill_node()（patch_balance_schedule.py:79，guard=vllm_version_is('0.23.0') && kv_role=='kv_producer'）在 prefill 节点禁用自动抢占 → allocate_slots 给不出槽位时直接 break、不抢占腾资源 → 请求永远拿不到槽位、加载从不真正执行 → 调度活锁 → 引擎 quiesce。**这是调度/控制循环层问题，不是 load/传输/后端缺陷**——别把'发日志的组件'(pool_scheduler/mooncake)当故障组件。判别：同实体每~1s 重复打同一条调度日志且计数冻结=控制循环活锁。fix：patch_balance_schedule.py:79 改 self._disable_preemption = False（或回退 PR #14233；恢复抢占后重测该 PR 原本守护的 Qwen3.5 场景是否回归）。已沉淀 case VLLM-ASC-15087（inbox 待审）。"
+      check: "grep 'KV pool load spec created|pool_scheduler' 按 reqid 去重→看是否同一 reqid 每~1s 重复且计数冻结；grep 'patch_balance_schedule' {{log_path}}/源码"
+      when_to_use: D2 命中 + 静默冻结在 prefill 节点（而非 decode 计数冻结）+ v0.23.0/KV pool/多轮复用 现场
+      source_cases: [VLLM-ASC-15087]
     - step: 9
       name: 收尾验证与注意
       action: "各层命中后的共同收尾：fix 均为升级/配置验证型——python backend 层与连接层映射型升级 vllm-ascend（含对应 fix PR），native transport 层升级 Mooncake 依赖库，连接层冲突型改 kv_port 配置；全部 requires-restart，升级后按原故障场景复测。升级前记录 vllm-ascend tag 与 Mooncake 版本（判别是否含 fix PR 1624），Mooncake 无标准版本号输出时查依赖声明/锁文件。同一部署可在不同版本先后暴露不同层的故障（VLLM-ASC-13934 与 VLLM-ASC-13710 同为 v0.26 DCP+MTP 崩溃路径，报错串不同，需按异常串再分型）；root cause 未确认的形态（VLLM-ASC-11169）只走 workaround + 上报官方，不当作已定论层引用。"

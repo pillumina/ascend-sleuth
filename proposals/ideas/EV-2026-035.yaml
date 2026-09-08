@@ -1,0 +1,58 @@
+id: EV-2026-035
+layer: L2                          # triage 路由 + 检索协议 + methodology 扩层 + diagnose 行为规则
+title: 调度/控制循环层问题被误归因到数据面组件（静默停滞 → 先查控制循环，别锚定在发日志的组件上）
+status: in_experiment
+authorization: review
+dimension: process                 # 流程/skill 层改进
+supersedes: []
+superseded_by: null
+created_at: 2026-09-08
+source_signals:
+- signal: attribution
+  evidence: PD 分离 prefill hang：真实根因是 patch_balance_schedule.py:79 的 _disable_preemption_on_prefill_node()（在 PD prefill 节点禁用抢占→调度楔），但我把"请求卡在 pool load"读成"组件故障"，归到 AscendStore 异步 load 路径，workaround(load_async=false) 打错杠杆。三个可核验子缺：①检索词表从未搜 preemption/balance_schedule（知识库本有 balance-scheduling 族：VLLM-ASC-8336/9056 同指 patch_balance_schedule.py），候选只按 title/symptom 未扫 tags → 调度 patch 族被整个漏掉；②同实体每~1s 重复打日志=控制循环活锁，我却按"组件坏了"判；③methodology 静默停滞层只列 decode 侧计数冻结(13964)，缺 prefill 侧调度楔子形态。
+  trajectory:
+  - knowledge/_index/inference__vllm-ascend__interrupt.yaml（balance-scheduling tag 存在但候选筛不到）
+  - references/methodologies/ascend-mooncake-kv-transfer-triage.yaml（step8 静默停滞仅13964 decode 侧）
+  - skills/diagnose/SKILL.md（无活锁判定/判别优先追问规则）
+  - traces/2026-09-08-ascendstore-pd-prefill-hang.yaml
+hypothesis: 静默停滞类（无报错面 + 队列堆积 + 引擎 quiesce）问题的因果支点常在"控制循环/调度层"，而诊断系统被"发日志的组件名"招引到数据面组件。统一改进：①诊断行为规则——同实体固定节奏重复打日志 → 判"控制循环活锁，向调度/接纳/抢占上游走"，非组件故障；多假设并存先问能二分的那个控制维度（如抢占是否被禁），再补数据流细节。②检索/路由——候选筛选在 title/symptom 之外补扫 tags；triage 加"调度楔/接纳失败"症状分支（Running/Waiting creep + 高KV%静止 + 无报错面 → 调度patch族）。③method 静默停滞层补 prefill 侧子形态（请求加载被阻断/无法接纳抢占 → 队列堆积 → engine quiesce → 查 patch_balance_schedule.py 抢占门）。
+predicted_effect:
+  metric: 静默停滞/调度楔类问题的因果定位命中层（正确支点）
+  from: 锚定在"发日志组件"（如 load/transfer 后端），workaround 打错杠杆
+  to: 优先定位控制循环层（调度/接纳/抢占），且知识库能路由/召回调度 patch 族
+validation:
+  method: golden_replay
+  baseline: 本次诊断首次输出（traces/2026-09-08-ascendstore-pd-prefill-hang.yaml step5）
+  success_criteria: ①候选筛选取样含 balance-scheduling 族（tag 扫描）；②triage 有"调度楔"分支命中本现场；③method 第8层含 prefill 侧子形态且指向 patch_balance_schedule.py；④skill 引入"活锁判定 + 判别优先追问"且回放重写后结论归因支点落到调度层。
+  rollback: 各子项未合入前可整体丢弃；合入后 git revert
+gate:
+  condition: 用户确认纳入（Triage/索引/method/skill 四处联动 vs 只做核心行为规则，择一）
+risk: low
+principle_refs:
+- 6
+- 7
+- 9
+actual_cost:
+  tokens: 6000
+  source: estimate
+decisions:
+- who: agent
+  when: '2026-09-08'
+  type: proposal
+  conclusion: 合并为一张"调度/控制循环 vs 数据面归因"卡（不再逐条拆分）：检索路由(补 tags 扫描+调度楔分支+method prefill 子形态) + 诊断行为规则(活锁判定+判别优先追问) 同属一个盲区。
+- who: agent
+  when: '2026-09-08'
+  type: decision
+  conclusion: 两条实现路径供人审：A) 全量四处联动（推荐，覆盖面完整，成本高）；B) 只加 diagnose 行为规则（活锁判定+判别优先追问）先落地最小改进，检索/路由洞留观测。产品队按优先级择一。
+- who: agent
+  when: '2026-09-08'
+  type: action
+  conclusion: 实施（A 全量）：①skills/diagnose/SKILL.md「始终要避的坑」+活锁≠组件故障、判别优先追问；②skills/diagnose/references/diagnosis-procedure.md 阶段一筛候选补扫 tags；③triage-tree.yaml inference_interrupt +调度/接纳层症状分支（preempt/抢占/调度卡死/排队堆积）；④references/methodologies/ascend-mooncake-kv-transfer-triage.yaml step 8.1 prefill 侧调度楔子形态。本地诊断案例已按此沉淀 VLLM-ASC-15087。
+- who: agent
+  when: '2026-09-08'
+  type: eval
+  conclusion: 静态校验通过（YAML、verify_proposals/verify_references、build_index --check）。改动为检索/路由/候选面（增量）→ 按门禁应跑 golden 子集前后对照；未即时跑，标"已实施待 golden-replay 验证"（改动均为加法，不删候选，理性预期不回归）。
+- who: agent
+  when: '2026-09-08'
+  type: decision
+  conclusion: 采纳（in_experiment → 实施完成）。用户批准按此卡修正；检索/路由面 golden-replay 为推荐后续验证项。
