@@ -1,0 +1,82 @@
+id: EV-2026-034
+layer: L2                          # 流程与 skill（diagnose 输出规范）
+title: diagnose 输出去AI味 + 源码分析结论流程可视化（面向工程师的可读结论）
+status: in_experiment
+authorization: review
+dimension: process                 # 流程/skill 层改进
+supersedes: []
+superseded_by: null
+created_at: 2026-09-08
+source_signals:
+- signal: attribution
+  evidence: 一次 PD 分离 prefill hang 诊断，源码分析结论以"命中 case 排除表 + 代码定位 + 内部术语（静默停滞亚层/归因校正/quiesce/活锁）"呈现。工程师反馈"结论可以更让人看懂一些，涉及源码分析用去AI味/流程可视化的方式让人看明白"。定位本身后来由开发确认（_disable_preemption_on_prefill_node），但首次输出的可读性差是把"已定位"和"看得懂"割裂的主因。
+  trajectory:
+  - traces/2026-09-08-ascendstore-pd-prefill-hang.yaml
+  - skills/diagnose/SKILL.md（"命中时的输出格式"节）
+hypothesis: diagnose SKILL 的"命中时的输出格式"面向内部推理链（排除表/强度标注/confidence 标尺），在源码分析场景下堆代码引用 + 术语，工程师难以消化。改进 = 在输出规范中增加"面向工程师的结论呈现"一节：①流程可视化（时间线/因果链，而不是并列清单）；②去AI味（藏起内部词表，用因果白话来翻译）；③"果/因"分离（先讲发生了什么，再讲真正要动哪个开关）；④一行 fix 给在最显眼处 + 证据链回扣。**关键边界：去AI味 ≠ 删机制——当源码分析已把原理钉清，必须把源码流程/机制原理讲给用户（为何这行开关导致这个现象），否则用户无法 follow-up / 做下一步判断；只把"内部词表/术语/交叉引用"翻译成因果白话，保留机制细节。**
+predicted_effect:
+  metric: 诊断结论的工程师可读性（人审：抓到"改哪里/为什么" + 能否据此 follow-up）
+  from: 结论=内部推理链复述（代码引用 + 词表术语 + 排除表），读的人要重构因果、机制被压扁成一句话
+  to: 结论=时间线 + 因果链 + 机制原理讲清楚（源码流程）+ 单一 fix 突出的"人能直接执行且能继续判断"的结构
+validation:
+  method: golden_replay
+  baseline: 本次诊断首次输出（traces/2026-09-08-ascendstore-pd-prefill-hang.yaml step5 output）
+  success_criteria: 用改后规范重写本次结论；人审（postmortem/PR review）达到"不看内部推理也能明确抓到改动点与理由"；不改变结论内容本身（只改呈现）
+  rollback: 只改 SKILL.md 输出节，未合入前可整体丢弃；合入后 revert
+gate:
+  condition: 用户确认"输出规范往这个方向改"（含去AI味的尺度界定）
+risk: low
+principle_refs:
+- 5
+- 7
+actual_cost:
+  tokens: 3000
+  source: estimate
+decisions:
+- who: agent
+  when: '2026-09-08'
+  type: proposal
+  conclusion: 扩充 diagnose SKILL"命中时的输出格式"——加"结论呈现"子节：把源码分析结论按 时间线→因果链→单一 fix→证据回扣 组织；内部词表（亚层/归因校正/quiesce/活锁 等）在对外输出中翻译成因果大白话；"果/因"显式分离。
+- who: agent
+  when: '2026-09-08'
+  type: proposal
+  conclusion: 尺度界定：去AI味 = 去"只有内部才懂的术语/交叉引用/强度标注挤占阅读"；**保留** = 机制原理本身（源码流程要讲清，让用户能 follow-up）+ 结论可核对性（证据锚点）+ 置信度，但后两者放在证据链末尾作为"可信度说明"而非主叙述。
+- who: agent
+  when: '2026-09-08'
+  type: decision
+  conclusion: 边界确认（用户反馈）：去AI味 ≠ 删机制。源码已钉清原理时必须把"源码流程/机制原理"讲给用户（为何这行开关 → 这个现象），否则用户无法 follow-up / 做下一步判断。输出规范写入此强制项。
+- who: agent
+  when: '2026-09-08'
+  type: decision
+  conclusion: 质量标准（用户定调）：给用户呈现须**专业、细致、严谨、解释得清楚**。据此定义"源码分析结论输出模板"（见 template_index），作为 diagnose SKILL 输出规范的落地形态——非逐条拆分，落成一张卡的固定结构。
+- who: agent
+  when: '2026-09-08'
+  type: action
+  conclusion: 实施：skills/diagnose/SKILL.md 新增「结论呈现」小节（9 段模板：结论先行/时间线/机制原理/证据对照/根因与影响面/修复方案/验证与复测/风险与follow-up/可靠度），并内联"去AI味≠删机制、机制原理必须完整讲清"红线。
+- who: agent
+  when: '2026-09-08'
+  type: eval
+  conclusion: 静态校验通过：YAML 解析、verify_proposals/verify_references、build_index --check（skill 无 ADR-\d{4} 引用）。输出格式为指引性改动，不跑检索 golden（面=交互/指引）；golden-replay 作为推荐后续（落地后全量回归）。
+- who: agent
+  when: '2026-09-08'
+  type: decision
+  conclusion: 采纳（in_experiment → 实施完成）。用户已批准按此卡修正；golden-replay 为后续验证项（改 SKILL.md 输出节，不影响候选选择语义）。
+template_index:
+  - section: 1. 结论先行
+    content: "一句话=现象+根因+改哪个开关；不含内部词表。规范：人能不看下文先抓'哪里坏了、改一个开关'。"
+  - section: 2. 时间线（现象）
+    content: "严格按日志校准时间排；只放可观察事实，不夹判断。规范：时间轴形式，让'发生了什么'一目了然。"
+  - section: 3. 机制原理（源码流程）
+    content: "分段讲源码流程：①触发前置条件（版本守卫/角色守卫）；②每步动作对应'为什么'；③因→果闭环。强制项：源码已钉清时必须完整，不能压扁，这是用户 follow-up 的依据。"
+  - section: 4. 证据对照
+    content: "每行=一条日志/源码行 → 支撑的机制环节。规范：每个结论都能回到一条证据，无处悬空（严谨性来源）。"
+  - section: 5. 根因与影响面
+    content: "明确'什么条件触发 / 什么条件不触发'（版本/角色/配置/载荷）。规范：让用户判断'我这边是否属这个面'。"
+  - section: 6. 修复方案
+    content: "精确 diff（文件:行 + 改前/改后）+ 备选并列；注明 side-effect（如需重启、可能回归）。规范：可直接执行。"
+  - section: 7. 验证与复测
+    content: "可执行判定：复测条件 + 看什么信号变/不变。规范：给可跑的验证，不只给'升级'。"
+  - section: 8. 风险与 follow-up
+    content: "改后要重测什么、有哪些依赖；哪些是规避（非根治）。规范：让用户能做下一步判断，而非停在结论。"
+  - section: 9. 可靠度
+    content: "confidence + 证据强度；推测/已验证分开标。规范：避免用户把推测当已验证（诚实退化）。"

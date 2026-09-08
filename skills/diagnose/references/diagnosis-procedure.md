@@ -37,7 +37,7 @@
 
 ## 步骤 3：两阶段加载 Tier 2
 
-**阶段一（索引）**：读 `knowledge/_index.yaml`（`scripts/build_index.py` 生成的结构化索引，已含每条 case 的 `id/title/symptoms/quickly_check/category/confidence` + `file` 定位，~70 token/条），取命中 namespace 的条目——两阶段加载由**结构**保证，不靠逐文件打开的自觉。索引缺失或 `build_index.py --check` 报过期 → 兜底：逐文件只读上述索引字段，并提醒重建索引。用 `quickly_check` **对照已提供的信息**：
+**阶段一（索引）**：读 `knowledge/_index.yaml`（`scripts/build_index.py` 生成的结构化索引，已含每条 case 的 `id/title/symptoms/quickly_check/category/confidence` + `file` 定位，~70 token/条），取命中 namespace 的条目——两阶段加载由**结构**保证，不靠逐文件打开的自觉。索引缺失或 `build_index.py --check` 报过期 → 兜底：逐文件只读上述索引字段，并提醒重建索引。**筛候选时同步扫索引里的 `tags` 字段**（与 title/symptom 并查）：同族 case 常只靠 tag 表达（如 `balance-scheduling` / `patch-layer`），只按 title/symptom 词面 grep 会把"同文件族"整片漏掉（静默停滞类尤其如此——真实故障常是调度/控制循环层，而它的 tag 不在症状词面里）。用 `quickly_check` **对照已提供的信息**：
 - 先 primary（精确）
 - primary 不匹配 → 跑 fallback（更模糊）
 - primary 不匹配但 fallback 匹配 → 仍进阶段二，标 `low_confidence`
