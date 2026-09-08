@@ -82,8 +82,9 @@ description: >
    - Tier 3 关键词检索 `postmortems/`（`rg -l '<keyword>' postmortems/`，top-3 读片段；含 `postmortems/inbox/` 未审草稿——可用但标注未经人审）。trace 记 `{action: tier3, keyword, files_read}`——Tier 3 挽救率指标（docs/metrics.md）靠这条统计。这是骨架阶段真正能用的兜底
    - **源码分析（问题疑似框架/算子层时，常见且高价值）**——报错签名指向框架代码/算子名/量化描述表等（如 `fault kernel_name=QuantBatchMatMulV3`、`modelslim_config.py` 相关 KeyError）且 Tier 3 未覆盖时：
      1. **向用户确认版本**（vllm-ascend / CANN / torch-npu——源码分析依赖对应版本，不要猜）；
-     2. **获取源码（本地优先，按平台选工具）**：
-        a. **先查本地**——问用户一句"本地是否已有 <repo> 源码？"（默认先查约定位置 `<repo根>/src-code/<org>/<repo>/`，用户也可给任意路径）。本地已有 → 直接用，并用 `git -C <path> log -1` 或版本文件**核对版本与客户环境 compat 匹配**；版本不符 → 提示切到对应 tag 或按需拉对应版本（不假设本地副本就是对的）；
+     2. **获取源码（统一走 `scripts/src_fetch.py` 确定性入口——本地优先、复用优先；按平台选工具）**：
+        - **入口**：`python3 scripts/src_fetch.py <repo> --ref <tag>`（`--list` 看已知仓库与 host：vllm-ascend=GitHub、mindspeed-*=GitCode、torch-npu=GitCode、verl=GitHub；未知仓库/私有/内网 → `--url`）。脚本把「clone 到哪 / 同版本复用 / URL 来自哪」从 agent 自觉变成**确定性操作**——本地 `src-code/<org>/<repo>/` 已有则**复用**（`git -C log -1`/`describe` 核对版本），没有则按已知 host 拉取；这是**新 session / resume 也会遵守的统一规则**（源码分析一律走本脚本，不再自行 clone 到 /tmp 或重复拉取）。
+        a. **先查本地**——用脚本即本地优先；用户也可给任意路径（`--url`）。拿到路径后仍用 `git -C <path> log -1` 或版本文件**核对版本与客户环境 compat 匹配**；版本不符 → 脚本 `--ref <正确tag>` 检查出/重拉（不假设本地副本就是对的）；
         b. **本地没有 → 按需拉取（统一 git clone，公开仓库无需认证）**：
            - `git clone <url> -b <tag/commit>`——URL 按平台：GitHub `https://github.com/<org>/<repo>.git`、Gitee `https://gitee.com/...`、GitCode `https://gitcode.com/...`；git 协议通用，公开仓库直接 clone；**`-b <tag>` 拉取失败（tag 不存在）时，先 `git ls-remote --tags <url>` 查真实 tag 再试**（不同版本库 tag 命名不同，如 v0.21.0rc2 实际可能是 v0.21.0rc1 或 releases/ 前缀）；
            - 公司内网（CodeHub 等）/私有仓库：**用户提供 URL**（其环境已配置凭据则直接 `git clone`）——agent 不碰内网认证/凭据；
@@ -92,7 +93,7 @@ description: >
               - huggingface.co 主站可能不可达/超时（本环境实测 2026-09）→ 试 **hf-mirror.com** 镜像（`curl -sL https://hf-mirror.com/<org>/<model>/resolve/main/config.json`）；
               - 模型 repo 多在 HF **不在 GitHub**（`gh api` 404 是常态，不是模型不存在）——查 GitHub 不是正确路径；
               - 每次尝试（含失败）记入 trace 的 `tool_calls`（见"每步必写 trace"）——"哪个源不可达"是可复用教训，备选源清单由此持续沉淀；≤3 种源仍拿不到才如实标缺口；
-        **不维护多版本、不落库**——只拉当前分析需要的文件或 checkout 到对应版本；
+        **同版本复用、不重复 clone；「不落库」= 源码不随仓库提交、也不写进知识库**——分析仍要保留源码：clone/checkout 到约定位置 `src-code/<org>/<repo>/`（可带版本子目录），同版本后续诊断**直接复用**（用 `git -C <path> log -1` 核对版本），换版本才另拉；`.gitignore` 已忽略 `src-code/`（不提交），源码不写入 `knowledge/` / `references/`（只记 `source_ref` 代码指针）；
      3. **grep 定位**：搜报错签名/算子名/函数名（如 `grep -rn "QuantBatchMatMulV3" vllm_ascend/`）→ 读相关文件片段 → 分析根因（为什么这么实现、什么版本引入了什么行为）；
      4. **追问用户验证**：让用户对照预期/复现/补环境信息，验证根因假设；
      5. **follow-up（定位根因后，按序做）**：
@@ -196,7 +197,9 @@ rollback：<rollback>
   - `reason`：**决策依据/推理过程**（回放、误诊归因、知识沉淀的证据）——**关键决策必写**：triage 路由（为什么命中此分支）、quickly_check 排除（比对了哪些候选、为何排除）、hit/miss（证据链、比对结果）、reference 甄别（为何部分适用/不适用）、根因判断（证据→结论）。**output 和 reason 分开**：结论简洁，推理要完整（如 #13688 的最小复现矩阵是 miss 的最有力证据，必须进 reason）
 - **反馈闭环**：反馈确认后，顶层 `feedback: {case, outcome, confirmed_at}` 要填——`status=resolved 且 feedback.outcome=resolved` 是该 trace 升格为 fixture（强断言基准）的资格条件
 - 词表与 `scripts/trace_metrics.py` 的 `KNOWN_ACTIONS` 保持一致（词表外 action 会被指标脚本报为纪律违规）；新增 action 必须两处同步。user 事件无 action，不参与词表检查
-- **trace 边界（只记诊断轨迹 + 误诊归因，别混自演进）**：本 trace 的语义 = 对**这一个问题**的诊断轨迹（症状/路由/候选/验证/命中/深度排查）+ 误诊归因（`attribution` 事件）。**用户在中途提出的流程改进 / 设计讨论**（如"该不该先问配置""相似检测""闭合位置"）**不是本诊断的输入**——它们是自演进信号。归属：**执行错归因**（诊断确实做错了，如证据未落盘）→ 记 `attribution` 事件（喂 `component_tally`）；**主动设计改进**（用户驱动的 SKILL 改动）→ 载体是 git 的 SKILL diff +（可选）hindsight 知识页；**反复 miss 同族/流程摩擦** → S2 replay + 深度轮归因事件。**别把改进讨论写成 trace 的 user/agent 事件**，**也别用 `source_analysis` 记 skill 编辑**（会虚增源码分析计数）。
+- **trace 边界（只记诊断轨迹 + 误诊归因，别混自演进）**：本 trace 的语义 = 对**这一个问题**的诊断轨迹（症状/路由/候选/验证/命中/深度排查）+ 误诊归因（`attribution` 事件）。**用户在中途提出的流程改进 / 设计讨论**（如"该不该先问配置""相似检测""闭合位置"）**不是本诊断的输入**——它们是自演进信号。归属：**执行错归因**（诊断确实做错了，如证据未落盘）→ 记 `attribution` 事件（喂 `component_tally`）；**主动设计改进**（用户驱动的 SKILL 改动）→ 载体是 git 的 SKILL diff +（可选）hindsight 知识页；**反复 miss 同族/流程摩擦** → S2 replay + 深度轮归因事件。
+   - **诊断进行中产生的流程/设计观察（渐进式披露通道）**：先 `traces/evidence/<session_id>/<session_id>_evnote.md` 落盘**一句可复用观察**（或直接产 EV 卡），**不写进本 trace**；正常定位时**不需要**这份过程讨论（不披露），只有后续**真要改 SKILL/脚本**时才把该观察升级为 EV 卡（`scripts/ev_proposal.py --new`）——**不要为一堆观察就产一堆 EV 卡**（攒批、只在真改动时提）。
+   - **别把改进讨论写成 trace 的 user/agent 事件**，**也别用 `source_analysis` 记 skill 编辑**（会虚增源码分析计数）。
 
 trace 是误诊归因的唯一依据（见 references/diagnosis-procedure.md 末段"误诊归因"）：误诊时先读 trace 判断是 **case 错**（改库）还是**执行错**（改 skill）。不写 trace = 无法归因 = 可能改坏正确的 case。
 
