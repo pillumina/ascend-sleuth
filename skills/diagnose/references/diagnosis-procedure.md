@@ -54,7 +54,10 @@
 
 **阶段二（全量）**：候选 ≤5 条，全量加载 body，按 `confidence.score` **降序**验证（最可靠的先试）。**多条候选时明示**：“匹配到 N 条，先验证最可能的 `<id>`（confidence `<score>`）”，工程师可说“跳过这条试下一条”。
 
-**阶段二.5：reference 辅助查询（先验知识层）**——候选加载后、验证前，按需取先验知识辅助诊断：
+**阶段二.5：reference 辅助查询（先验知识层）**——候选加载后、验证前，按需取先验知识辅助诊断：（先验知识层，**只读 `status: active`**）：
+
+- **② 平台匹配的 summary 层（只限背景类 type）**：读 `references/_summary-index.yaml`（生成索引，背景类+active 词条）→ 过滤 `applies_to.platforms` 匹配客户平台（含 `cross` 或未填 platforms 视为跨平台）→ 得候选词条列表，**行内 summary 即平台背景提示**（不读全文）；确需细节再按 `id` 读单文件。**查表类（error-code / fault-pattern / env-var-table / compat-matrix）不进 summary 层**——它们是码/签名/组件名/版本检索键，按需走 ③。
+- **③ 签名/查表类检索（不走 summary 层——签名/名是检索键不是摘要）**：错误码（E1xxxx/EIxxxx/507xxx 等）→ 查 `ascend-error-code-structure` 的 `module_files` 前缀映射定位族文件（`references/errors/<族>.yaml`）族内 grep code 读 meaning/solution；可 grep 的故障签名（"0x800000"、fault kernel_name、event_id）→ 按域定位 `references/fault-patterns/<域>.yaml` 域内 grep symptoms 读 cause/fix；具体环境变量 → `references/env-vars/<表>.yaml` 内 grep name；版本组合需核对 → `references/compat-matrices/` 按传导链分层（framework 层→adapter 层 torch-npu↔CANN→base 层 CANN↔HDK）。
 
 - **只读 `status: active` 词条**——draft / pending-review / deprecated 一律不加载（未验证知识不进上下文——这是"agent 不引用错误先验"的机制化，不是自觉）；
 - **两条加载路径**：

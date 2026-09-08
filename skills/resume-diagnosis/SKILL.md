@@ -25,10 +25,29 @@ description: >
 4. **续接必写 trace（与 diagnose 同要求，闭环关键）**：确认续接开始后，往 `traces/<session_id>.yaml` 追加一条 `{role: agent, action: resume, step: <current_step+1>, output: "续接 <session_id>，恢复到 step <N>"}`，**并刷新顶层 `updated_at: <ISO 时间>`**——这是诊断面板"最新活动置顶"的依据（续接 = 该 session 又活跃了）；后续续接中的关键决策同样带 `reason`（与 diagnose 的 trace 要求一致）
 5. 等人执行上次要求的命令并贴回输出，从 current_step 继续
 
+## 恢复后的约束（继承 diagnose，不降低）
+
+resume 只负责**恢复现场**——恢复后继续的是 `/diagnose` 的完整诊断循环（步骤 2-6），**不是更松的模式**。续接中以下 diagnose 约束**同样生效**（完整定义以 `skills/diagnose/SKILL.md` 为准，此处只列续接时最易被丢失的）：
+
+- **severity 闸门**：`data-loss-risk` 不给 fix，先停/保留现场/通知 owner；`service-affecting` 标 `fix_side_effects`。
+- **命中输出格式 + 强度标注**：结构化推理链 + `已验证/推测/数据` + confidence 校准，别甩一句 fix。
+- **经验证后给 fix**：对照已提供信息验证 diagnosis checks，缺就问；`fix_on_mismatch` 带 rollback。
+- **版本软匹配**：compat 不符只降 confidence，不硬排除。
+- **证据落盘铁律**：用户证据完整落 `traces/evidence/<session_id>/`，不写摘要/指纹；每次写 trace 刷新顶层 `updated_at`。
+- **深度排查**：Tier 3 / 源码分析一律走 `scripts/src_fetch.py`（复用、不自行 clone）。
+- **误诊归因**：反馈 not_resolved/partial → 读 trace 判 case_error/execution_error。
+- **连续失败 ≤2**：两次未解决转人工，不连续试第三个。
+- **trace 边界**：续接后同样别把流程/设计讨论写进本 trace（走 `_evnote.md`）。
+- **检索面**：若续接中需重新路由/加载（如 active_case 丢失），照 diagnose 的 tier1 / 两阶段 tier2 / 2.5 reference 流程执行——那是续接中必要的重新定位，不是"回到起点"。
+
+> 单一数据源纪律：上表是"易丢项清单"，**权威定义仍在 diagnose**；两者冲突时以 diagnose 为准，并在 diagnose 同步修正。
+
 ## 不要做
 
 - 不要从头重新收集症状——state 文件里都有
 - 如果 `session_id` 和当前不匹配，提示"该问题可能已被其他人接手——是否继续？"（并发检测，脆弱机制，只作提示不硬阻塞）
+- **不要在这份 trace 里记录本 resume 期间发生的流程/设计讨论**（与 diagnose 的"trace 边界"一致——那是自演进信号，走 EV card / 自演进通道，不污染本问题的诊断 trace）。`resume` 事件只承载诊断状态（恢复到哪步、待办什么），不掺流程改进内容
+- 续接中若需源码分析，**用 `scripts/src_fetch.py <repo> --ref <tag>`**（复用 `src-code/<org>/<repo>/` 本地缓存，同版本不重复 clone，`git -C <path> log -1` 核对版本；`--list` 看已知仓库与 host），不自行决定 clone 到哪、不重复拉取
 
 ## 状态文件生命周期
 

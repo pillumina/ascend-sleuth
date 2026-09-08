@@ -53,7 +53,7 @@ Each case file has: `id`, `title`, `category` (interrupt|precision|performance),
 
 Optional field — `validation_record`: {consistent, inconsistent, self_consistent, last_verified} — 内容被**外部验证**的累积记录（由 `scripts/settle_s2_feedback.py` 结算，非人设定）。与 confidence 分开：S2 issue-replay 对照的是外部 ground truth（issue resolution / 维护者 fix PR / committer 确认），其结果也是 feedback——反馈对象是"case 内容正确性"而非"fix 现场有效性"。`consistent`=外部验证一致（同等 score 下排序优先）、`self_consistent`=自证命中（replay issue 即 case 来源——如实标注不虚增）、`inconsistent`=命中但结论与 resolution 不符（复审信号）。无 S2 验证不填。
 
-Optional field — `source_ref`: {repo, ref, file, line} — 根因定位到源码时的代码位置（如 `vllm_ascend/quantization/modelslim_config.py`）。诊断时 agent 按需取该版本源码片段作为证据链，**源码不落库**（上游 repo 维护各自版本，知识库只记结论 + 代码指针）。ref 用触发版本对应的 commit/tag；`line` 可选。
+Optional field — `source_ref`: {repo, ref, file, line} — 根因定位到源码时的代码位置（如 `vllm_ascend/quantization/modelslim_config.py`）。诊断时 agent 按需取该版本源码片段作为证据链。**「源码不落库」= 源码不随仓库提交、也不写进知识库**——`.gitignore` 已忽略 `src-code/<org>/<repo>/`（作为本地分析缓存，按需 `git clone`/checkout 到对应版本、同版本**复用**以免重复 clone）；知识库只记结论 + `source_ref` 代码指针（上游 repo 维护各自版本）。「不落库」≠ 分析不需要/不保留源码——深入排查**仍要 clone 源码**。ref 用触发版本对应的 commit/tag；`line` 可选。
 
 Optional field — `ref_knowledge`: structured linkage to prior-knowledge entries in `references/`. Each entry is `ref: <reference-id>` + `role: signature-source | fix-methodology | root-cause-context`. `ref` must exist in `references/` and `role` must be legal — enforced by `scripts/verify_references.py` (dangling refs and illegal roles fail CI). The reverse view (which cases reference a given entry) is derived by that script, never stored on the reference side — one relation, stored once. Not required on existing cases; add as needed.
 
