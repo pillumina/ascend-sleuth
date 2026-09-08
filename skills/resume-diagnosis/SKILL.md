@@ -32,7 +32,6 @@ description: >
 
 ## 状态文件生命周期
 
-case 标 `resolved`/`escalated` 时，把 state 文件移入 `postmortems/history/`。
-active 目录只留进行中 session。**trace 历史不删**——它是路由准确率、执行保真度等指标的数据源（见 docs/metrics.md）。
+case 标 `resolved`/`escalated` 时**留在 `traces/` 原位**（用 `status` 字段标记闭环，**不挪去 `postmortems/history/`**——诊断面板与 `ascend_trace_status` 都只读 `traces/`，挪走会看不到/打不开）。`traces/` 持有全部诊断记录（进行中 + 已闭环），**判"可续接"看 `status`**：只把 `in_progress`/`feedback_pending` 的当活跃可续接；`resolved`/`escalated` 的只作参考不可续接（不再提示"续接"）。**trace 历史不删**——它是路由准确率、执行保真度等指标的数据源（见 docs/metrics.md）。`postmortems/` 只放知识 postmortem 工件（.md，Tier 3），不是 trace 的归档处（trace 是 gitignored 机密记录）。
 
 **与诊断面板的闭环**：resume 是 trace 的写入方之一——续接追加 `resume` 事件 + 刷新 `updated_at`，使该 session 在面板"更新 X 前"重置、置顶。面板"继续诊断"按钮 → 复制指令 → 本 skill 触发 → 续接写 trace → 面板刷新可见活动。任一环缺失（如续接不写 trace）闭环断，面板不反映续接。
