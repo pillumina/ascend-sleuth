@@ -35,6 +35,7 @@ LIVE_FIELDS = {
     "sessions_total", "tier2_hit", "routed_accuracy", "misdiagnosis_rate",
     "by_category_hit", "attribution_ratio", "confidence_distribution",
     "feedback_capture", "trace_completeness", "vocab_compliance", "tier3",
+    "citation_integrity", "citation_unknown_id", "citation_non_case_id",
     "reference", "reference_detail",
 }
 
