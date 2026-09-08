@@ -26,15 +26,15 @@ ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路
 
 **主路径：仓库即 workspace，skills 随仓使能**。clone 本仓后，把 agent 的项目级 skills 目录指向 `<clone>/skills/`。skills/ 是单一事实源，git 管理版本，更新走 git pull，热刷新即时生效，无需重装。装齐主 skill：`diagnose` / `to-postmortem` / `to-reference` / `issue-ingest` / `knowledge-groom` / `resume-diagnosis` / `self-evolve`（另有 `evolve-check` 伴随协议随内容 skill 收尾自动执行，`preload-panel` 供 DSH 面板加载，均无需单独安装）。
 
-**零配置（DSH，团队主力）**。仓库已跟踪 `.dsh/skills → ../skills` 相对 symlink，clone 后自动还原，DSH 项目 root 自动发现并热刷新：git pull 更新 SKILL.md 即时生效，无需任何配置。
+**零配置（DSH，团队主力）**。仓库已跟踪 `.dsh/skills → ../skills` 相对 symlink，clone 后自动还原，DSH 项目 root 自动发现并热刷新：git pull 更新 SKILL.md 即时生效，无需任何配置。（Windows 上 git 默认不还原 symlink，见下方 Windows 段。）
 
 **其他 agent 按需建**（仓库不携带额外 symlink，根目录干净）：
 
 ```bash
-bash scripts/enable-agent-skills.sh    # 检测已安装 agent，建项目级 skills symlink（幂等，可重跑）
+python3 scripts/enable_agent_skills.py    # 检测已安装 agent，建项目级 skills 链接（幂等，可重跑）
 ```
 
-各 agent 的项目级 skills 目录（脚本自动建 symlink，也可手动）：
+各 agent 的项目级 skills 目录（脚本自动建链接，也可手动）：
 
 | Agent | 项目级 skills 目录 |
 |---|---|
@@ -47,7 +47,19 @@ bash scripts/enable-agent-skills.sh    # 检测已安装 agent，建项目级 sk
 
 > `.agents/skills` 未使用：仅 DSH 支持（已被 `.dsh/skills` 覆盖），无其他 agent 以其为项目级 skills 目录。
 
-**Windows**：git 默认 `core.symlinks=false`，clone **不会还原** symlink——`.dsh/skills` 会变成内容为 `../skills` 的普通**文本文件**（不是目录），agent 发现不了 skills。补建用 **PowerShell 建 junction**（目录链接，免管理员；`.sh` 需 bash、且 Git Bash 的 `ln -s` 在 Windows 上默认退化成复制，都不合适）：
+**Windows**：Git for Windows 默认 `core.symlinks=false`，clone **不会还原** symlink——`.dsh/skills` 会变成内容为 `../skills` 的普通**文本文件**（不是目录），agent 发现不了 skills，且 git 从 clone 起就一直显示 ` T .dsh/skills`。两条路，**优先第一条**：
+
+**① 开真 symlink（首选）**：Windows 10+ 打开「开发者模式」即可免管理员建 symlink。clone 前 `git config --global core.symlinks true`；已经 clone 的原地修（不用重新 clone）：
+
+```powershell
+git config core.symlinks true
+Remove-Item .dsh\skills -Force     # 删掉 clone 残留的文本文件
+git checkout -- .dsh/skills        # 重新检出为真 symlink
+```
+
+修完 `git status` 干净，pull / rebase / reset 无任何特例。
+
+**② 开不了开发者模式：用脚本建 junction**。`python3 scripts/enable_agent_skills.py`（Windows 上先试真 symlink，无权限自动退到 `mklink /J` 目录链接，免管理员），它还会自动对 `.dsh/skills` 打 `git update-index --skip-worktree`——消除「永久 ` D .dsh/skills`」脏状态与 `git pull --rebase` 每次都失败（该路径在仓库里是内容固定的 symlink 条目，日常 pull 不会碰它；万一上游真改了这个链接，git 会拒绝合并，按提示先 `git update-index --no-skip-worktree .dsh/skills` 再重来）。等价的手工版：
 
 ```powershell
 # 在仓库根目录运行
@@ -57,7 +69,10 @@ foreach ($d in '.dsh','.claude','.cursor','.trae','.codebuddy','.codex') {
   if ((Test-Path "$d\skills") -and -not (Get-Item "$d\skills" -Force).PSIsContainer) { Remove-Item "$d\skills" -Force }
   if (-not (Test-Path "$d\skills")) { New-Item -ItemType Junction "$d\skills" -Target (Resolve-Path .\skills) | Out-Null }
 }
+git update-index --skip-worktree .dsh/skills   # 让 git 忽略 junction 造成的类型变更
 ```
+
+> 别用 Git Bash 的 `ln -s` 补建：它在 Windows 上默认退化成**复制**，建出的是 `skills/` 目录副本，之后 git pull 更新 SKILL.md 不再同步（静默的知识库过期）。仓库已带 `.gitattributes`（`* text=auto eol=lf`），所有文本文件在 Windows 上也按 LF 检出，避免 CRLF 在 YAML/脚本里引发解析失败或 diff 噪音。
 
 加载后在 agent 里以 `/skill:<name>` 调用。
 

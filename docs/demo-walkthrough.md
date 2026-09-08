@@ -39,7 +39,7 @@
 | `knowledge-groom` | 周批：审草稿、转正、重算置信度 |
 | `resume-diagnosis` | 续接被打断的诊断 |
 
-怎么开始用：clone 仓库后，用 DSH 打开目录，`/skill:` 列表直接出现六个 skill；其他 agent（Claude Code / Cursor / Codex…）跑一次 `bash scripts/enable-agent-skills.sh`，自动为已安装的 agent 建 symlink。
+怎么开始用：clone 仓库后，用 DSH 打开目录，`/skill:` 列表直接出现六个 skill；其他 agent（Claude Code / Cursor / Codex…）跑一次 `python3 scripts/enable_agent_skills.py`，自动为已安装的 agent 建 skills 链接（Windows 上无开发者模式时自动退到 junction）。
 
 ```bash
 git clone https://github.com/pillumina/ascend-sleuth.git
