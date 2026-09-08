@@ -1,0 +1,18 @@
+# 文本文件统一 LF：Windows 上 Git for Windows 默认 core.autocrlf=true，会把 .sh/.py/.yml
+# 检出成 CRLF——shebang/`set -euo pipefail` 直接报错，YAML/Markdown 也会产生 diff 噪音。
+# 仓库内容本来就是 LF（0 个 CRLF 文件），这里只是把它固定住，不产生 renormalize 变更。
+* text=auto eol=lf
+
+# 二进制资产：禁止任何行尾转换
+*.png binary
+*.jpg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.zip binary
+*.gz binary
+*.mp4 binary
+*.webm binary
