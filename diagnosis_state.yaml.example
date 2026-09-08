@@ -43,6 +43,14 @@ last_action: "等待用户执行 env | grep HCCL_BUFFSIZE 并贴回输出"
 trace:
   - {role: user, step: 1, content: "训练挂了，日志在 <paste>，HCCL 相关报错",
      evidence: {inline: "rank3: HCCL timeout ...\nrank1: [ERROR] 507057 ...", files: ["traces/evidence/2026-07-09-ep-hang-a5/train.log"], sources: ["https://github.com/.../issue/1"], missing: "缺 CANN 版本"}}
+  # 【证据落盘示例】用户贴的是完整启动配置/脚本/日志块 → 一律先落文件，inline 只留一行指向：
+  #  ✅ 正确：先写 traces/evidence/<session_id>/deploy-config.txt（完整配置原文），files 用相对路径引用，inline 只留一行
+  # - {role: user, step: 1, content: "P0/D0 部署配置如下（perfill/decode PD 分离）",
+  #    evidence: {files: ["traces/evidence/2026-07-09-ep-hang-a5/deploy-config.txt"],
+  #       inline: "完整启动配置见 evidence.files / deploy-config.txt；要点: P 侧 --additional-config 含 enable_dsa_cp:true, enable_sparse_sfa_c8:true, c8_enable_reshape_optim:true",
+  #       missing: "P1/D1 未贴差异；缺 P 节点 hang 时日志栈"}}
+  #  ❌ 错误（勿写）：把配置原文压成指纹塞进 inline，而文件未落盘、files 缺失 —— 跨 agent resume 无法重建现场
+  #     禁止只写 content 摘要或压指纹。
   - {role: agent, step: 2, action: triage, branch: training_interrupt, category: interrupt, routed: [training/mindspeed-llm/, common/], output: "判断为训练中断类，加载 training/mindspeed-llm 与 common 候选", reason: "症状'训练挂 + HCCL'无 inference 特征且含 HCCL 通信关键词 → training_interrupt；同域候选可能跨 framework → 带 common"}
   - {role: agent, step: 3, action: load_index, namespaces: [training/mindspeed-llm/, common/], n_cases: 34}
   - {role: agent, step: 4, action: quickly_check, case: MSLLM-EP-HANG-001, primary: pass, output: "候选 1 命中主检查", reason: "日志 grep 'HCCL' 命中该 case primary 正则且版本兼容"}

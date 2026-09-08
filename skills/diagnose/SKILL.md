@@ -31,11 +31,14 @@ description: >
 
 > **执行模型**：你不访问任何环境。所有信息——日志、版本、报错、环境变量——都由工程师从客户那提供（粘贴进来）。你的主动角色是**信息不够时，明确提示工程师需要向客户要什么**。case 里的 `command` 是“要确认的检查”：对照已提供的信息判断，或让客户跑后把输出贴回来——不是你直接执行 `pip`/`env`/`grep`。
 >
-> **续接**：若存在未完成的 `traces/*.yaml`（每个并发诊断一个文件），先问“有未完成的诊断，要 `/skill:resume-diagnosis` 续接吗？”——别让工程师自己记着跑 resume。
+> **先验 trace 相似检测（替代旧"未完成即问续接"）**：收集到症状后、路由前，扫 `traces/*.yaml`（**全部 status**——进行中 + 已闭环都留在 `traces/`，不挪走），用症状里的**模型/框架/配置名/category** 对每个 state 文件的 `summary`/`detected_framework`/`detected_category` 做**词法 grep 匹配**。命中则提示（**hint，非硬 gate**，不替代 KB 路径——KB 命中仍优先）：
+>   - 匹配且 `status: in_progress`（或 `feedback_pending`）→ "本地有同问题进行中的诊断 `<session_id>`（<summary>）。要 `/skill:resume-diagnosis` 续接吗？（是→续接；否→重新定位）"
+>   - 匹配且已 `resolved`/`escalated` → "上次同类问题 `<session_id>` 已定位（<summary>）。要参考其结论，还是重新定位？"
+> 无匹配 → 正常从路由开始。**不再泛泛问"有未完成诊断要续接吗"**——那个旧提示对"未完成 session 与本次问题无关"的场景是噪音，且覆盖不到"诊断完但还没进 KB"的同类。DSH 里可先用 `ascend_trace_status` 列清单位（it 也读 `traces/`），再对可疑的读 trace 匹配。
 
 1. **收集症状 + 确认框架**（全部来自工程师提供的信息）
    - 错误信息、`HCCL_*`/`ASCEND_*`/`NPU_*` 环境变量值、**版本组合**（引擎版本 + CANN + HDK/驱动 + 架构 A2/A3/A5）——都从客户那要来
-   - **信息不全就主动问**：若没说清，主动问——①症状（什么报错/什么时候挂）②客户的版本组合（引擎/CANN/HDK/架构）③日志/profiler 在哪（贴相关 rank + 栈尾）④**是否已在最新版本/镜像复现**（升过引擎/ascend 或换过镜像没——"升级即修复"类判据；ixn #3325 型教训，2026-09）。别干等
+   - **信息不全就主动问**：若没说清，主动问——①症状（什么报错/什么时候挂）②客户的版本组合（引擎/CANN/HDK/架构）③日志/profiler 在哪（贴相关 rank + 栈尾）④**是否已在最新版本/镜像复现**（升过引擎/ascend 或换过镜像没——"升级即修复"类判据；ixn #3325 型教训，2026-09）。别干等。**这里问的是"路由信息"**（症状/框架/版本/平台/部署形态）——足以决定去哪查、归哪类即可；**候选验证所需的精确配置值**（如某个 `--additional-config` 字段、量化档、硬件型号）**不在此全量收集**，留给步骤 4 按需问，避免为了问而问让用户倒一大坨。
    - **框架从提供的信息/报错判断**（日志里 mindspeed/vllm 字样等）；判断不了就直接问工程师“客户跑的什么框架”，**不要跑 `pip list`**（那是你本地环境，跟客户无关）
    - **主动裁剪日志**：让工程师只贴失败 rank + 报错栈尾，绝不灌全量 profiler——诊断 session 的 context 八成是日志，全量灌进来会滑出 smart zone（~120K token 推理最锐利），推理质量暴跌。**若工程师已贴全文：agent 自行裁剪进 context（保留失败 rank + 栈尾 + 相关段），不要求工程师重贴**——裁剪是 agent 的职责，不是让工程师反复操作
 
@@ -70,6 +73,7 @@ description: >
 4. **验证 diagnosis checks**
    - 顺序验证候选 case 的 `diagnosis` 检查项（**对照已提供的信息**，不跳步）；某步缺信息 → 提示工程师向客户要（或让客户跑该 command 贴回输出）；mismatch 且有 `fix_on_mismatch` → 提示 fix（**先看 severity**，见下）
    - **版本软匹配**：把候选 case 的 `compat`（framework/cann/hdk，**填了的维度**）逐维对照客户的版本组合——任一维不匹配 → 标 `version_mismatch`、confidence 临时下调，**case 仍是候选**（不硬排除）；没填的维度跳过
+   - **「两种缺信息，两个时机」**：①**路由信息**（症状/框架/版本/平台/部署形态）不全 → 在**步骤 1** 问（见上）；②**验证候选所需的精确配置值**（某个 `--additional-config` 字段 / 环境变量 / 量化档 / 硬件型号）→ 在**本步**按需问。别混：不要为了问而问让用户全量倒（如"P0/P1/D0/D1 配置全贴"——只问判据所需字段即可），也**不要在未确认该字段前把 provisional 结论写成 `hit`**（先给低置信假设 + 明确要什么来验证）。症状若**已给出具体配置名**（如 `c8_enable_reshape_optim`），可直接定位到该配置族，只需按该族需要的字段问。
    - 命中 → 输出 root cause + fix，进入步骤 6
    - 所有候选未命中 → 深度排查（步骤 5）
 
@@ -112,6 +116,7 @@ description: >
    - **Tier-2 命中**：常规 postmortem 草稿
    - **Tier-2 未命中但最终解决**：postmortem 含一段你起草的**候选 case**（quickly_check + diagnosis + confidence 低），交 `/skill:knowledge-groom` 验证
    - 完整 trace 随 `traces/<session_id>.yaml` 留存（每并发诊断一文件；模板见 `diagnosis_state.yaml.example`）
+   - **trace 生命周期（闭环 = status 原位标记，不移动文件）**：`status: resolved|escalated` 即闭环，**留在 `traces/` 原位**（用 `status` 字段标记，**不挪去 `postmortems/history/`**）——诊断面板与 `ascend_trace_status` 都只读 `traces/`、按 `status` 徽章展示，挪走会使面板看不到、detail 打不开。`traces/` 持有全部诊断记录（进行中 + 已闭环），**不删历史**（指标/fixture 数据源）。消费方按 `status` 区分：**resume** 只续接可续接的（`in_progress`/`feedback_pending`），**相似检测** 扫全部 status，**面板** 全列 + status 徽章。⚠️ `feedback_pending` 未回填前 session 不算真正结束（别提前标 resolved）。**`postmortems/` 只放知识 postmortem 工件（.md，Tier 3）**，不是 trace 的归档处——trace 是 gitignored 机密诊断记录，与 postmortems/ 的类别/保密边界都不同。
    - **结果反馈闭环（闭合学习环，关键）**：给完 fix 后，**等工程师应用并回来报告结果**——问“应用后解决了吗？（解决 / 没解决 / 部分解决）”。结果写回该 case 的 confidence：解决 → `hits += 1`；没解决 → `misdiagnoses += 1`、更新 `last_hit`。**写回由 groom 周批的 `settle_trace_feedback.py` 统一结算**（只读 trace 的 feedback 事件、幂等、批量走 PR）——本 skill 只负责把反馈结果记进 trace（`{action: feedback, case, outcome}`），不直接改 case 文件。**不问这步，confidence/误诊率永远是初始值，整个学习机制空转。**
    - **反馈捕获结构化（不靠记性）**：给完 fix、session 收尾前，往 state 文件写 `feedback_pending: <case-id>`。**每次 `/skill:diagnose` 或 `/skill:resume-diagnosis` 启动时先扫活跃 state 文件**——发现该标记就先追问"上次 <case-id> 的 fix 应用后解决了吗？"，按答复回写 confidence（上条规则）、trace 记 `{action: feedback, case, outcome: resolved|not_resolved|partial}`、清掉标记。反馈捕获是整条学习环的吞吐上限——标记写在文件里，就不依赖任何人的记性
    - **误诊归因（反馈 not_resolved/partial 时必做，不靠用户提）**：答复为**没解决/部分解决**时，**当场读本 session 的 trace 归因**——判断是 **case 错**（quickly_check 按序执行、check 结果对，但 root cause 判断错 → 改库）还是**执行错**（跳过 fallback、加载错 namespace、漏标低置信 → 改 skill 流程），trace 记 `{action: attribution, verdict: case_error|execution_error, evidence: <trace 证据摘要>}`——归因结论结构化落点，是「执行-误诊归因比」指标与 E2/E5 自演进的数据源。归因结论由你在本次 session 输出给工程师（"这属于 case 错/执行错，建议改哪"），实际修改走 PR（knowledge_modification / structure 模板），**人确认后合入，你不直接改库**。没解决但 trace 缺失 → 如实说明"无法归因（无 trace）"，不猜
@@ -178,17 +183,20 @@ rollback：<rollback>
 - **时间戳（必写，供面板排序/显示）**：建 session 时写顶层 `created_at: <ISO 时间>`；**每次写 trace 更新顶层 `updated_at: <ISO 时间>`**（含 resume 续接——续接刷新 `updated_at` 使该 session 在诊断面板置顶）。面板按 `updated_at` 倒序排列、显示"更新 X 前"。缺时间戳的历史文件回退用 session_id 日期前缀（天粒度）
 - **user 事件必记（content 摘要 + evidence 完整证据，缺一不可）**：每次用户贴输入（症状、日志、回答追问），记 `{role: user, step, content, evidence}`——
   - `content`：**摘要**（短，供面板列表/快速浏览，token 纪律）
-  - `evidence`：**完整证据**（跨 agent/session 自包含的唯一载体——跨 agent 时平台 memory 不可用，新 agent 只能靠 trace 里的证据重建）：
-    - `inline`：完整原文（报错栈/命令/环境表，<2K 字符直接内联）
-    - `files`：附件/日志文件（大文件，**相对仓库路径**，下载到 `traces/evidence/<session_id>/` 再引用——跨 agent 同一工作区可直接读）
-    - `sources`：外部来源 URL（issue/文档链接）
-    - `missing`：已知缺失但诊断需要的证据（诚实标注，跨 agent 时新 agent 知道还缺什么）
-  - **写入纪律：用户贴的日志/报错/命令不得只写摘要**——短的内联 `inline`、长的落文件进 `files`。这是 fixture 输入（`replay_trace.py` 取 `evidence.inline`）与跨 agent resume 的基础
+  - `evidence`：**完整证据**（跨 agent/session 自包含的唯一载体——跨 agent 时平台 memory 不可用，新 agent 只能靠 trace 里的证据重建）
+  - **证据落盘铁律（必走，无例外）**：先按下面分流，**再**写 trace——
+    - **单行报错 / 一句症状 / 短数值** → `inline` 存**完整原文**。
+    - **完整命令 / 启动配置 / 脚本 / 日志块 / 多行输出 / 附件** → **先写 `traces/evidence/<session_id>/<名>.txt`**（完整原文），`evidence.files` 用**相对路径**引用；`inline` 只留一行"完整原文见 evidence.files" + 关键指纹。
+    - **禁止**：只写 `content` 摘要、或把原始配置/日志**压成指纹**塞进 `inline` 而原文不落盘。
+  - **写前自检（本步必过，不满足即重写）**：问"用户贴的原文现在在哪？"——若答不出一个指向**已存在文件**的 `evidence.files` 相对路径、或一份**完整 `inline`**，则证据未落，先落盘再写 trace。
+  - `sources`（外部 URL，issue/文档链接）/ `missing`（已知缺失但诊断需要的证据，诚实标注——跨 agent 时新 agent 知道还缺什么）按需填。
+- **外部事实获取落盘（agent 侧，与 `user.evidence` 分开）**：诊断中为**形成结论**而做的外部获取——`web_search` / `web_fetch` / `gh api` / `git clone` / 源码 `grep` 读——**记到 agent 事件**（`source_analysis` 的 `tool_calls`，或 `reference_lookup`）。每条 = `[<工具/来源>: <该来源确立的关键事实 或 失败原因>]`，**记"用了哪个事实"而非"抓了整页"**（token 纪律）；失败的源也记（"哪源不可达/404"是可复用教训，备选源清单由此沉淀）。判据：这条外部事实是否**进入了本次诊断结论的推理链**——是 → 记；纯背景、未用 → 不必记。**别与 `user.evidence` 混**：外部是 agent 查到的、可再查证（记来源+事实即可）；用户**提供的**现场证据是跨 agent 必须自包含的（走 inline/file，见上）。
 - **agent 事件分两层（output 给用户 / reason 记决策依据，缺一不可）**：
   - `output`：给用户看的内容（可精简）——透明性（C）的呈现层
   - `reason`：**决策依据/推理过程**（回放、误诊归因、知识沉淀的证据）——**关键决策必写**：triage 路由（为什么命中此分支）、quickly_check 排除（比对了哪些候选、为何排除）、hit/miss（证据链、比对结果）、reference 甄别（为何部分适用/不适用）、根因判断（证据→结论）。**output 和 reason 分开**：结论简洁，推理要完整（如 #13688 的最小复现矩阵是 miss 的最有力证据，必须进 reason）
 - **反馈闭环**：反馈确认后，顶层 `feedback: {case, outcome, confirmed_at}` 要填——`status=resolved 且 feedback.outcome=resolved` 是该 trace 升格为 fixture（强断言基准）的资格条件
 - 词表与 `scripts/trace_metrics.py` 的 `KNOWN_ACTIONS` 保持一致（词表外 action 会被指标脚本报为纪律违规）；新增 action 必须两处同步。user 事件无 action，不参与词表检查
+- **trace 边界（只记诊断轨迹 + 误诊归因，别混自演进）**：本 trace 的语义 = 对**这一个问题**的诊断轨迹（症状/路由/候选/验证/命中/深度排查）+ 误诊归因（`attribution` 事件）。**用户在中途提出的流程改进 / 设计讨论**（如"该不该先问配置""相似检测""闭合位置"）**不是本诊断的输入**——它们是自演进信号。归属：**执行错归因**（诊断确实做错了，如证据未落盘）→ 记 `attribution` 事件（喂 `component_tally`）；**主动设计改进**（用户驱动的 SKILL 改动）→ 载体是 git 的 SKILL diff +（可选）hindsight 知识页；**反复 miss 同族/流程摩擦** → S2 replay + 深度轮归因事件。**别把改进讨论写成 trace 的 user/agent 事件**，**也别用 `source_analysis` 记 skill 编辑**（会虚增源码分析计数）。
 
 trace 是误诊归因的唯一依据（见 references/diagnosis-procedure.md 末段"误诊归因"）：误诊时先读 trace 判断是 **case 错**（改库）还是**执行错**（改 skill）。不写 trace = 无法归因 = 可能改坏正确的 case。
 
@@ -198,4 +206,5 @@ trace 是误诊归因的唯一依据（见 references/diagnosis-procedure.md 末
 - 不要连续尝试第三个 case——两次未解决即转人工（误诊保护的串联保护，见 references/diagnosis-procedure.md）
 - 不要把全量 profiler 灌进 context——裁剪到相关 rank + 栈尾
 - 不要用 interrupt 的 grep 思路建 precision 的 quickly_check（category 形态不同）
+- **不要直接改本 skill / triage / reference 等会进诊断上下文的资产——改进动作必须先产 EV 卡**（`scripts/ev_proposal.py --new`，proposal→action→eval→decision→validated）**再涉及**。诊断中发现的流程改进（执行错/摩擦）走 `attribution`（执行错归因喂 component_tally）或 EV 卡（主动设计改进），**不混入本诊断 trace**（见"trace 边界"）。**别先改后补卡**（教训：MTP/startup 先执行后补卡、决策链缺失人审无据）。
 - 被打断 → `/skill:resume-diagnosis`
