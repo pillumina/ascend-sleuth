@@ -6,7 +6,6 @@ ascend-sleuth 的标识。**纯字标（wordmark），不带独立图标**。
 |---|---|
 | `logo.svg` | 字标，浅色背景（README 页首，宽 460）|
 | `logo-dark.svg` | 字标，深色背景；README 用 `<picture>` + `prefers-color-scheme` 自动切换 |
-| `ascii-logo.txt` | 终端 banner（文本块字）：CLI 启动画面、CI 日志、纯文本场景 |
 
 ## 字形
 
