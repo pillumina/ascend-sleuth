@@ -77,3 +77,4 @@ proposals/experiments/*
 eval-reports/
 # skill 执行记录（逐次 append 流水，本地留存；聚合值进 timeline）
 metrics/skill-exec-log.yaml
+.flow-replay/
