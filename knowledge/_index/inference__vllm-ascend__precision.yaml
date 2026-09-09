@@ -233,7 +233,7 @@ namespaces:
       - Qwen3.5-397B-A17B-w8a8（--quantization ascend）混部 TP4×DP4 + --enable-expert-parallel + --speculative-config
         '{"method":"qw…
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-7854.yaml
-      hash: ee8e63403693
+      hash: 909aa2319a41
     - id: VLLM-ASC-7856
       title: GLM-4.7-w8a8（float-mtp）在 vllm-ascend v0.17.0rc1 镜像 opencode/webfetch 场景流式 tool_calls 解析异常（arguments
         json 不闭合/拼接错误，工具调用必现失败），非流式正常——上游 vLLM <0.18 流式 tool-call pa…

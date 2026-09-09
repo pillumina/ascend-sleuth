@@ -1392,7 +1392,7 @@ namespaces:
       - deepseek-v4
       - a3
       - multi-node
-      - 混部
+      - mixed-parallel
       - roce
       - hccl
       compat: vllm-ascend 0.18.0
@@ -1402,7 +1402,7 @@ namespaces:
       - A3 双机混部部署 DeepSeek-V4-Pro-w4a8（TP16 + DP2 跨 2 节点 + expert parallel + --quantization ascend），vllm
         serve 拉起失败，报 'call acln…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9418.yaml
-      hash: 68a28fba02cd
+      hash: c99461bb61a2
     - id: VLLM-ASC-9482
       title: '--async-scheduling + MTP（spec decode）崩溃：model runner 的 _copy_valid_sampled_token_count（PR
         #8766 重写）把 current_stream 声明进 with torch.npu.stream() 内、多流未同步 → valid_…'

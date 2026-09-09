@@ -1,0 +1,81 @@
+# case tag 词表（registry）—— 由 scripts/tag_hygiene.py 读取
+#
+# 为什么需要它：tag 归一与 R8 聚类原先把映射与类别写死在脚本里，新增一个同义词/
+# 模型名就要改代码（2026-09-09 review 指出"写死了很多"）。本文件把**决策**从
+# **逻辑**里分出来：脚本只做通用处理（解析/改写/聚类），词表在这里维护。
+#
+# ── 语言约定 ────────────────────────────────────────────────
+# tag 是**词法检索键**（grep 目标），统一用英文小写 kebab-case。
+# 语义层（title / summary / diagnosis / root_cause）用中文——按**层**分工，不是按偏好：
+# 词法层混语言会让「中文 tag 搜不到英文查询」，与"同义 tag 分裂"是同一类失败
+# （后者已在 2026-09-09 归一修复：startup 四种拼法互相看不见）。
+# 当前词表 511 个 tag 中仅 1 个中文（`混部`），统一成本极低；两套并行词表则长期分裂。
+#
+# ── 自动识别的删除项（无需在此登记）────────────────────────
+# 脚本自动删除「与 case 字段重复」的 tag：
+#   - category 值（interrupt / precision / performance）——与 category 字段重复
+#   - namespace 叶子名（vllm-ascend / verl / mindspeed-llm / sglang / common）——与目录重复
+# 这两类随 KB 增长自动跟进，不用维护。
+
+# ── 同义 / 变体 / 语言变体（alias → canonical）─────────────
+synonyms:
+  # 同义（同一现象多种拼法，实测零重叠——互相检索不到）
+  startup: startup-failure
+  startup-fail: startup-failure
+  startup-crash: startup-failure
+  pd-disaggregation: pd-separation
+  pd-disagg: pd-separation
+  speculative-decode: spec-decode
+  # 拼写变体
+  fusedmoe: fused-moe
+  # 产品名变体
+  dsv4: deepseek-v4
+  # 语义变体（"升级解决"类问题的统一检索键）
+  upgrade: version-upgrade
+  # 语言变体（中文 → 英文）
+  混部: mixed-parallel          # "混部部署"= TP×DP+EP 等混合并行部署（非 P/D 分离）
+  hybrid: mixed-parallel        # VLLM-ASC-7854 的 hybrid 亦指混部部署；
+                                # 注意 hybrid-kv（混合压缩 KV）是另一含义，**不在此映射**
+
+# ── tag 类别（R8 聚类输出用；未列出的默认 mechanism）────────
+# 只有 mechanism 族值得提炼成 case-derived reference：
+#   model       —— 同模型 ≠ 同根因，提炼出来是"该模型排障清单"
+#   env-feature —— "用了什么"（精度格式/特性/平台），不是"哪里坏了"
+kinds:
+  model:
+    - glm5
+    - glm
+    - qwen3.5
+    - qwen3
+    - qwen2.5
+    - qwen3-embedding
+    - qwen-image-edit
+    - minimax
+    - deepseek-v4
+    - deepseek
+    - kimi
+    - llama
+    - gemma
+    - gemma2
+    - mova
+    - tora
+  env-feature:
+    - 310p
+    - w8a8
+    - w4a8
+    - cudagraph
+    - mtp
+    - spec-decode
+    - quantization
+    - fp8
+
+# ── 额外删除（自动识别之外的人工补充；当前为空）─────────────
+drop: []
+
+# ── 明确不合并（非近义，是不同 facet——防止后来者"顺手"合并）──
+keep_separate:
+  - [kv-transfer, kv-pool, hybrid-kv]      # 传输 / 池 / 混合压缩 KV：三条不同链路
+  - [module-not-found, import-error]       # 具体错误 vs 错误类别
+  - [quantization, modelslim, w8a8, w4a8]  # 量化总类 / 工具 / 精度格式
+  - [mtp, spec-decode]                     # 具体特性 vs 方法类
+  - [a2, a5, 910b]                         # 平台名（与 platforms 字段并存，保留 grep 便利）
