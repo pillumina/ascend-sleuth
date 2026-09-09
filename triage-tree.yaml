@@ -59,6 +59,14 @@ branches:
       - ["step.*time.*slow", "step.*time.*波动"]
       - ["comm.*ratio.*high", "communication.*overhead"]
       - ["tflops.*low", '\bidle\b', "util.*low"]
+      # Host/Device 侧性能指标形态（profiling 驱动；2026-09-09 msprof 案例沉淀时补录，
+      # 覆盖「吞吐/延迟族」之外的系统层与采集层判据）
+      - ["利用率.*(低|偏低)", "util.*low", "idle.*(高|占比)", "free.*(占比|时间)", "无效空闲", "空档"]
+      - ["上下文切换", "context.?switch", "锁等待", "lock.*wait", "\\bGIL\\b", "GC.*(抖动|耗时|回收)", "syscall", "malloc.*耗时", "中断.*(偏高|集中|次数)", "\\bIRQ\\b", "cache miss", "透明大页", "\\bTHP\\b"]
+      - ["通信.*耗时.*占比", "AllReduce.*(波动|耗时)", "慢卡", "快等慢", "带宽使用率", "等待时长比例"]
+      - ["显存.*(缓慢|持续).*(增长|上涨)", "reserved.*(上涨|增长)", "allocated.*不涨", "显存.*(累积|泄漏)", "显存.*OOM"]
+      - ["op_statistic", "aclopCompile", "算子编译", "访存密集", "\\bNonZero\\b", "batch.*(过小|偏小)"]
+      - ["dequeue", "同步接口", "aclrtSynchronizeStream", "耗时.*抖动", "吞吐.*(不足|偏低|下降)"]
     search_namespaces:
       - training/<detected_framework>/
       - common/
@@ -106,6 +114,14 @@ branches:
       - ["accept.*rate.*drop", "accept_len.*下降", "acceptance.*rate.*drop", "acceptance_per_pos", "接受率低", "接受率.*低", "投机.*接受率"]   # 投机接受率下降=生成效率退化（性能；无输出内容错误前提——伴随输出错误/乱码走 inference_precision，见 precision 分支注释）
       - ["cache.*hit.*0", "命中.*为0", "prefix.*cache.*miss", "缓存命中.*0"]    # 前缀缓存失效=性能退化
       - ["generation.*stall", "generation.*slow", "卡住.*生成"]
+      # Host/Device 侧性能指标形态（profiling 驱动；2026-09-09 msprof 案例沉淀时补录，
+      # 覆盖「吞吐/延迟族」之外的系统层与采集层判据）
+      - ["利用率.*(低|偏低)", "util.*low", "idle.*(高|占比)", "free.*(占比|时间)", "无效空闲", "空档"]
+      - ["上下文切换", "context.?switch", "锁等待", "lock.*wait", "\\bGIL\\b", "GC.*(抖动|耗时|回收)", "syscall", "malloc.*耗时", "中断.*(偏高|集中|次数)", "\\bIRQ\\b", "cache miss", "透明大页", "\\bTHP\\b"]
+      - ["通信.*耗时.*占比", "AllReduce.*(波动|耗时)", "慢卡", "快等慢", "带宽使用率", "等待时长比例"]
+      - ["显存.*(缓慢|持续).*(增长|上涨)", "reserved.*(上涨|增长)", "allocated.*不涨", "显存.*(累积|泄漏)", "显存.*OOM"]
+      - ["op_statistic", "aclopCompile", "算子编译", "访存密集", "\\bNonZero\\b", "batch.*(过小|偏小)"]
+      - ["dequeue", "同步接口", "aclrtSynchronizeStream", "耗时.*抖动", "吞吐.*(不足|偏低|下降)"]
     search_namespaces:
       - inference/<detected_framework>/
       - common/

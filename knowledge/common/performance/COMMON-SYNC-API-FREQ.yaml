@@ -1,0 +1,63 @@
+# COMMON-SYNC-API-FREQ —— 同步接口频繁调用把异步下发变同步：NPU 利用率低
+# 来源：msprof 官方 best_practices《同步接口频繁调用》（tag_MindStudio_26.2.0.B060_001）
+# pre-triage: new_pattern —— 全库无「同步接口阻塞下发」形态（VLLM-ASC-12957 是流同步缺失，根因相反）
+# 转正：knowledge-groom 2026-09-09
+
+cases:
+  - id: COMMON-SYNC-API-FREQ
+    title: "推理/训练中 NPU 整体利用率较低：trace 里大量 aclrtSynchronizeStreamWithTimeout 等同步接口，同步调用期间没有任何其他算子下发，异步下发被打断"
+
+    category: performance
+    tags: [profiling, sync-api, aclrtSynchronizeStream, host-bound, utilization, ascend-launch-blocking]
+
+    platforms: []
+    compat:
+      - framework: cross
+        ranges: ["*"]
+
+    investigation_quality: high
+    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
+
+    symptoms:
+      - "可视化打开 msprof.json / trace_view.json 发现较多算子执行伴随 aclrtSynchronizeStreamWithTimeout 等同步接口"
+      - "同步接口调用期间没有任何其他算子下发 → 阻塞其余算子下发，NPU 整体利用率较低"
+
+    references:
+      - "msprof docs/zh/best_practices/sync_api_frequent_call.md（MindStudio 26.2.0.B060_001）"
+
+    verification: {source: upstream-official-doc, detail: "msprof 官方 best_practices 案例"}
+
+    quickly_check:
+      primary:
+        command_template: "从 trace 统计同步接口（aclrtSynchronizeStream*）出现频次与其前后算子下发情况"
+        rank_selector: coordinator
+        expected: "同步接口频繁且调用期间无算子下发"
+        note: "performance 类：primary 用调用频次/下发空档指标断言"
+      fallback:
+        command_template: "grep -icE 'aclrtSynchronizeStream|synchronize' {{profiling_report_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "trace 中同步接口是否频繁、且其前后存在下发空档？"
+        expected: "是 → 异步下发被同步打断"
+      - step: 2
+        check: "同步是业务代码引入还是环境变量引入？"
+        expected: "多数为业务代码；也可能是环境变量（如 ASCEND_LAUNCH_BLOCKING 会对每个算子做流同步）"
+      - step: 3
+        check: "该同步是否必要？"
+        expected: "不必要的删除；必要的保留（同步语义需求）"
+
+    severity: benign
+    fix_side_effects: [requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      大量同步接口调用把本应异步下发的行为变成同步行为，导致算子下发不连贯、
+      硬件资源利用率降低。多数同步由业务代码引入，也可能由环境变量引入
+      （如 ASCEND_LAUNCH_BLOCKING 会对每个算子做流同步）。
+    fix: >
+      优先确认业务代码，从业务逻辑角度评估同步接口必要性并酌情删除；
+      同时排查是否由环境变量引入。
+    rollback: "恢复同步调用（利用率回落）"

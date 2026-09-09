@@ -5,14 +5,279 @@
 # 按 file 字段定位做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-09-09    case 总数：142
-#   容量(common): precision=6/30
+# 生成日期：2026-09-09    case 总数：157
+#   容量(common): performance=15/30, precision=6/30
 #   容量(inference/sglang): interrupt=1/30
 #   容量(inference/vllm-ascend): interrupt=84/30, performance=8/30, precision=21/30
 #   容量(training/mindspeed-llm): interrupt=11/30, precision=4/30
 #   容量(training/verl): interrupt=6/30, precision=1/30
 namespaces:
   common:
+    performance:
+    - id: COMMON-CPU-CACHE-MISS
+      title: Ascend+Kunpeng 平台核心性能指标全面落后于 Ascend+X86（TPOT/TTFT 劣化、吞吐偏低、延迟抖动），但无算子报错、无 NPU 计算异常、无通信报错：未做
+        CPU 资源隔离，业务进程与其他进程抢占 CPU 核，上下文切换导致 Cache Miss 命中率劣化
+      category: performance
+      tags:
+      - profiling
+      - cpu-isolation
+      - cache-miss
+      - context-switch
+      - a-k-platform
+      - tpot
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - 对标 A+X 平台，A+K 平台 TPOT（单 Token 耗时）、TTFT（首 Token 延迟）显著劣化，整体推理吞吐偏低、请求延迟抖动大
+      file: knowledge/common/performance/COMMON-CPU-CACHE-MISS.yaml
+      hash: 48de99bf2375
+    - id: COMMON-CPU-THREAD-SWITCH
+      title: 8 机 96 卡训练中每迭代均有一张卡 PyTorch 框架侧 Dequeue 耗时过长（最长 7.9s），同期 Device 无算子执行、CPU 侧 synchronize 多等
+        92ms：无关后台线程与算子下发线程竞争 CPU，导致下发线程频繁非自愿上下文切换
+      category: performance
+      tags:
+      - profiling
+      - cpu-affinity
+      - context-switch
+      - dequeue
+      - host-bound
+      - multi-node
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - 每个训练迭代均有某一张卡 PyTorch 框架侧队列取出（Dequeue）耗时过长，最长可达 7.9 秒
+      file: knowledge/common/performance/COMMON-CPU-THREAD-SWITCH.yaml
+      hash: b2dfa8798e7f
+    - id: COMMON-DISPATCH-BATCH-SMALL
+      title: 业务整体 free 时间占比偏高、硬件资源利用率低：未充分利用硬件（如 batch 过小），通过流水图与 host_to_device 连线可直观看到瓶颈与资源使用情况
+      category: performance
+      tags:
+      - profiling
+      - free-ratio
+      - utilization
+      - batch-size
+      - host-to-device
+      - pipeline
+      compat: cross *
+      confidence:
+        score: 0.55
+      symptoms:
+      - Insight 打开 msprof.json / trace_view.json 可观察到业务整体 free 时间占比偏高
+      file: knowledge/common/performance/COMMON-DISPATCH-BATCH-SMALL.yaml
+      hash: b5d6786b471e
+    - id: COMMON-GIL-PREEMPTION
+      title: Python 模型业务迁移到 Ascend 平台后整体性能未达预期（耗时偏高、吞吐不足），无算子报错/数据异常/硬件瓶颈，业务核心链路存在大量多线程并发：GIL 单时刻单线程执行
+        + 工作线程长期持锁不释放，导致其他线程抢锁失败、调度失衡
+      category: performance
+      tags:
+      - profiling
+      - gil
+      - python-thread
+      - lock-contention
+      - migration
+      - throughput
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - Python 模型业务迁移至 Ascend 平台后运行耗时偏高、任务吞吐率不足
+      file: knowledge/common/performance/COMMON-GIL-PREEMPTION.yaml
+      hash: 1082a56c130c
+    - id: COMMON-HCCL-ADDR-ALIGN
+      title: 8 卡训练单 step 通信耗时占比 >40%、AllReduce 耗时波动 2~3 倍（计算侧稳定）：自定义算子用 torch.empty() 分配输出 tensor 未指定
+        memory_format，起始地址不满足 HCCL 128 字节对齐，触发 HCCL 内部对齐拷贝（约 200ms）
+      category: performance
+      tags:
+      - profiling
+      - hccl
+      - communication
+      - memory-alignment
+      - torch-empty
+      - multi-card
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - 8 卡训练（约 70B）单 step 通信耗时占比超过 40%，AllReduce 算子耗时波动大——部分 step 的通信耗时是其他 step 的 2~3 倍
+      file: knowledge/common/performance/COMMON-HCCL-ADDR-ALIGN.yaml
+      hash: 1317ac58b285
+    - id: COMMON-IRQ-IMBALANCE
+      title: A+K 平台整体吞吐/延迟明显劣于 A+X，排除算子、NPU 计算、内存、网络、环境、驱动后：部分 CPU 核心中断次数异常偏高，硬件中断过度集中在个别核，持续抢占业务线程时间片，形成慢卡与集群『快等慢』
+      category: performance
+      tags:
+      - profiling
+      - irq
+      - interrupt-balance
+      - cpu-affinity
+      - slow-node
+      - a-k-platform
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - A+K 平台业务吞吐、延迟等核心性能指标明显劣化，达不到预期
+      file: knowledge/common/performance/COMMON-IRQ-IMBALANCE.yaml
+      hash: ff3c28dbcbec
+    - id: COMMON-KERNEL-THREAD-SWITCH
+      title: 业务部署后延迟波动大、吞吐不稳、CPU 有效算力利用率偏低、sys 开销偏高：系统全局线程上下文切换次数异常暴涨、内核态 CPU 占用占比过高、任务就绪队列堆积——大量轻量短时线程叠加默认调度配置未做亲和性绑定
+      category: performance
+      tags:
+      - profiling
+      - kernel-schedule
+      - context-switch
+      - thread-affinity
+      - runqueue
+      - sys-overhead
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - 运行延迟波动大、任务吞吐不稳定、实时响应超时、CPU 有效算力利用率偏低、系统 sys 开销偏高
+      file: knowledge/common/performance/COMMON-KERNEL-THREAD-SWITCH.yaml
+      hash: 46900c50abd7
+    - id: COMMON-KVCACHE-REFCOUNT-LEAK
+      title: 推理运行约 12 小时后在第 471 个 step 触发 OOM：custom_attention_forward 算子的 KV-cache 引用计数错误，每 step 约 47MB
+        中间 tensor 无法回收，累积约 22GB
+      category: performance
+      tags:
+      - profiling
+      - memory-leak
+      - oom
+      - kv-cache
+      - refcount
+      - operator-bug
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - 稳定复现：B 版本运行约 12 小时后第 471 个 step 出现 OOM；A 版本与 GPU 均未复现
+      file: knowledge/common/performance/COMMON-KVCACHE-REFCOUNT-LEAK.yaml
+      hash: 86c901e3e672
+    - id: COMMON-NONZERO-ACCESS-HEAVY
+      title: op_statistic.csv 中某索引类算子（如 NonZero）占比很大、执行时间明显偏长：访存密集型操作对昇腾达芬奇架构不友好，访存开销主导
+      category: performance
+      tags:
+      - profiling
+      - op-statistic
+      - nonzero
+      - memory-bound
+      - access-heavy
+      - operator-replace
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - Insight 打开 msprof.json / trace_view.json 可观察到某些算子执行时间较长
+      file: knowledge/common/performance/COMMON-NONZERO-ACCESS-HEAVY.yaml
+      hash: d9d7dc5d9dc5
+    - id: COMMON-NPU-MEM-FRAGMENTATION
+      title: 推理过程中显存缓慢增长（每次十几 MB），约 10 小时后 OOM；开启 empty_cache 仍持续上涨，profiling 显示 allocated 基本不涨而 reserved
+        持续涨——内存碎片累积（非泄漏）
+      category: performance
+      tags:
+      - profiling
+      - memory-fragmentation
+      - oom
+      - reserved
+      - allocated
+      - expandable-segments
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - 推理经过几次图推后显存缓慢增长（每次上涨十几 MB），约 10 小时后 OOM；GPU 上未复现，仅 NPU 出现
+      file: knowledge/common/performance/COMMON-NPU-MEM-FRAGMENTATION.yaml
+      hash: 20458247164a
+    - id: COMMON-OP-COMPILE-LATENCY
+      title: 训练 step 耗时偏高、Host 下发空档大：api_statistic.csv 中 aclopCompile 调用频繁，算子编译额外增加下发耗时，NPU 执行空隙增大（示例
+        free 占比 22%）
+      category: performance
+      tags:
+      - profiling
+      - aclopcompile
+      - operator-compile
+      - host-bound
+      - ops-package
+      - free-ratio
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - 从 api_statistic.csv 可见 aclopCompile 相关编译 API 调用频繁
+      file: knowledge/common/performance/COMMON-OP-COMPILE-LATENCY.yaml
+      hash: 338c401223f8
+    - id: COMMON-PTHREAD-LOCK-WAIT
+      title: NPU 利用率降低、Device 空闲时间增加等待 Host 下发，单步训练耗时增加、吞吐下降：锁粒度设计错误——整个数据预处理（解码/增强/归一化）都在临界区内执行，平均持锁约
+        8ms，worker 无法入队形成串行化
+      category: performance
+      tags:
+      - profiling
+      - lock-contention
+      - critical-section
+      - data-preprocess
+      - host-bound
+      - device-idle
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - NPU 利用率降低、Device 空闲时间增加，等待 Host 下发计算任务
+      file: knowledge/common/performance/COMMON-PTHREAD-LOCK-WAIT.yaml
+      hash: 920660e68fa7
+    - id: COMMON-PY-GC-LATENCY
+      title: 各节点训练单步耗时周期性抖动（示例 2770ms 抖到 2900ms 左右），抖动趋势与发生频率跨节点高度一致：Python 循环引用累积触发自动 GC（标记-清除），GC 的
+        Stop-The-World 特性阻塞整个进程
+      category: performance
+      tags:
+      - profiling
+      - python-gc
+      - stop-the-world
+      - periodic-jitter
+      - cyclic-reference
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - 稳定复现：长跑分析显示各节点单步耗时抖动趋势与发生频率高度一致
+      file: knowledge/common/performance/COMMON-PY-GC-LATENCY.yaml
+      hash: baa0d1b70efc
+    - id: COMMON-SYNC-API-FREQ
+      title: 推理/训练中 NPU 整体利用率较低：trace 里大量 aclrtSynchronizeStreamWithTimeout 等同步接口，同步调用期间没有任何其他算子下发，异步下发被打断
+      category: performance
+      tags:
+      - profiling
+      - sync-api
+      - aclrtSynchronizeStream
+      - host-bound
+      - utilization
+      - ascend-launch-blocking
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - 可视化打开 msprof.json / trace_view.json 发现较多算子执行伴随 aclrtSynchronizeStreamWithTimeout 等同步接口
+      file: knowledge/common/performance/COMMON-SYNC-API-FREQ.yaml
+      hash: 66a5dc76bd68
+    - id: COMMON-SYSCALL-THP
+      title: 训练前 500 步性能正常，保存 Checkpoint 后性能下降 20%+ 再缓慢恢复：30GB 量级 D2H 拷贝长期占用 Host 内存，触发内核内存回收与重整，malloc/free
+        耗时显著增长；透明大页（THP）后台合并进一步抢占训练进程 CPU
+      category: performance
+      tags:
+      - profiling
+      - syscall
+      - malloc
+      - checkpoint
+      - transparent-hugepage
+      - thp
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - 稳定复现：训练启动后前 500 步性能正常，第 500 步保存 Checkpoint 后性能下降 20%+，之后缓慢恢复
+      file: knowledge/common/performance/COMMON-SYSCALL-THP.yaml
+      hash: 2325e90a18e3
     precision:
     - id: COMMON-EMBEDDING-BWD-EMPTY
       title: 训练 loss NaN（首个 NaN 在 embedding/wte 层梯度）：embedding 反向输入为空时返回默认内存中的未初始化数据——触发源 A：dsp 序列切分致部分卡无

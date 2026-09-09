@@ -1,0 +1,62 @@
+# COMMON-CPU-THREAD-SWITCH —— 无关后台线程抢占下发线程 CPU：某卡 Dequeue 最长 7.9s、Device 无效空闲 92ms
+# 来源：msprof 官方 best_practices《CPU 线程频繁切换》（tag_MindStudio_26.2.0.B060_001）
+# pre-triage: new_pattern —— 全库无 host 侧 CPU 调度类 performance case
+# 转正：knowledge-groom 2026-09-09
+
+cases:
+  - id: COMMON-CPU-THREAD-SWITCH
+    title: "8 机 96 卡训练中每迭代均有一张卡 PyTorch 框架侧 Dequeue 耗时过长（最长 7.9s），同期 Device 无算子执行、CPU 侧 synchronize 多等 92ms：无关后台线程与算子下发线程竞争 CPU，导致下发线程频繁非自愿上下文切换"
+
+    category: performance
+    tags: [profiling, cpu-affinity, context-switch, dequeue, host-bound, multi-node]
+
+    platforms: []
+    compat:
+      - framework: cross
+        ranges: ["*"]
+
+    investigation_quality: high
+    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
+
+    symptoms:
+      - "每个训练迭代均有某一张卡 PyTorch 框架侧队列取出（Dequeue）耗时过长，最长可达 7.9 秒"
+      - "同期 Device 硬件侧没有任何算子在执行，CPU 侧 synchronize 同步函数多等约 92ms 才返回 → Device 无效空闲"
+
+    references:
+      - "msprof docs/zh/best_practices/cpu_thread_frequent_switching.md（MindStudio 26.2.0.B060_001）"
+
+    verification: {source: upstream-official-doc, detail: "msprof 官方 best_practices 案例"}
+
+    quickly_check:
+      primary:
+        command_template: "从 profiling 看框架侧 Dequeue / 同步等待时长与 Device 空闲时间"
+        rank_selector: all_failed
+        expected: "Dequeue 耗时达秒级、同期 Device 空闲"
+        note: "performance 类：primary 用耗时指标断言，不 grep 错误签名"
+      fallback:
+        command_template: "grep -icE 'dequeue|synchronize' {{profiling_report_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "是单卡偶发还是每迭代固定某卡？"
+        expected: "每迭代固定某卡 → 该卡所在节点存在 CPU 竞争"
+      - step: 2
+        check: "同期 Device 是否空闲、synchronize 是否多等？"
+        expected: "是 → Host 下发被阻塞，不是 Device 计算问题"
+      - step: 3
+        check: "该节点是否存在大量与训练无关的后台线程竞争 CPU？"
+        expected: "是 → 命中本 case"
+
+    severity: benign
+    fix_side_effects: [requires-config-change]
+    fix_type: config-change
+
+    root_cause: >
+      系统侧运行着大量与模型训练无关的后台线程，与模型算子下发线程竞争 CPU 资源，
+      导致下发线程发生频繁的非自愿上下文切换。
+    fix: >
+      CPU 绑核：把 NPU 核心链路线程绑定到独立 CPU 核，减少上下文切换与跨核迁移开销
+      （优先绑核对象为执行时间长、CPU 消耗高的进程/线程）。
+    rollback: "取消绑核（Dequeue 耗时恢复）"

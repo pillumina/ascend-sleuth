@@ -1,0 +1,61 @@
+# COMMON-KERNEL-THREAD-SWITCH —— 大量短时线程致内核调度开销激增：上下文切换暴涨、就绪队列堆积
+# 来源：msprof 官方 best_practices《内核进程频繁切换》（tag_MindStudio_26.2.0.B060_001）
+# pre-triage: new_pattern —— 全库无内核线程调度形态
+# 转正：knowledge-groom 2026-09-09
+
+cases:
+  - id: COMMON-KERNEL-THREAD-SWITCH
+    title: "业务部署后延迟波动大、吞吐不稳、CPU 有效算力利用率偏低、sys 开销偏高：系统全局线程上下文切换次数异常暴涨、内核态 CPU 占用占比过高、任务就绪队列堆积——大量轻量短时线程叠加默认调度配置未做亲和性绑定"
+
+    category: performance
+    tags: [profiling, kernel-schedule, context-switch, thread-affinity, runqueue, sys-overhead]
+
+    platforms: []
+    compat: [{framework: cross, ranges: ["*"]}]
+
+    investigation_quality: high
+    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
+
+    symptoms:
+      - "运行延迟波动大、任务吞吐不稳定、实时响应超时、CPU 有效算力利用率偏低、系统 sys 开销偏高"
+      - "排除代码报错、算子异常、内存泄漏、硬件满载后：全局线程上下文切换次数异常暴涨、内核态 CPU 占比过高、任务就绪队列堆积"
+
+    references:
+      - "msprof docs/zh/best_practices/kernel_thread_switching.md（MindStudio 26.2.0.B060_001）"
+
+    verification: {source: upstream-official-doc, detail: "msprof 官方 best_practices 案例"}
+
+    quickly_check:
+      primary:
+        command_template: "看全局上下文切换次数、内核态 CPU 占比与就绪队列长度（vmstat/pidstat 或 profiling 系统指标）"
+        rank_selector: coordinator
+        expected: "上下文切换暴涨 + 内核态占比高 + 就绪队列堆积"
+        note: "performance 类：primary 用系统指标断言"
+      fallback:
+        command_template: "grep -icE 'context switch|runqueue|sys%' {{profiling_report_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "是否排除业务逻辑/数据链路/环境/驱动/硬件后仍劣化？"
+        expected: "是 → 转向系统调度层"
+      - step: 2
+        check: "上下文切换次数是否异常暴涨、内核态 CPU 占比是否过高？"
+        expected: "是 → 命中本 case"
+      - step: 3
+        check: "业务是否创建大量轻量短时线程、且未做 CPU 亲和性绑定？"
+        expected: "是 → 线程模型 + 调度配置双重问题"
+
+    severity: benign
+    fix_side_effects: [requires-code-change, requires-config-change]
+    fix_type: code-patch
+
+    root_cause: >
+      Linux 默认时间片轮转抢占机制在高并发短时任务下开销被放大；业务创建大量轻量短时线程
+      （频繁退出重建或唤醒-执行-休眠循环），且未做线程 CPU 亲和性绑定，
+      线程频繁跨核调度，加剧上下文切换开销。
+    fix: >
+      改业务线程模型（批量任务处理，减少线程创建/销毁）；设置线程 CPU 亲和性与调度策略，
+      避免频繁跨核调度。
+    rollback: "回退线程模型与调度配置（切换次数恢复）"

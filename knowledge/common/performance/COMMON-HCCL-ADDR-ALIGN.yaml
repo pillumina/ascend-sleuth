@@ -1,0 +1,70 @@
+# COMMON-HCCL-ADDR-ALIGN —— 通信地址未对齐致 HCCL 额外对齐拷贝：单 step 通信耗时占比 >40%、AllReduce 耗时波动 2~3 倍
+# 来源：msprof 官方 best_practices《通信地址不对齐导致性能下降》（tag_MindStudio_26.2.0.B060_001）
+# pre-triage: new_pattern —— 全库 performance 类 case 均为 vllm-ascend 推理侧，无 host/系统层与通信对齐形态
+# 转正：knowledge-groom 2026-09-09（owner 指定 msprof 案例全量做 + 直接 groom）
+
+cases:
+  - id: COMMON-HCCL-ADDR-ALIGN
+    title: "8 卡训练单 step 通信耗时占比 >40%、AllReduce 耗时波动 2~3 倍（计算侧稳定）：自定义算子用 torch.empty() 分配输出 tensor 未指定 memory_format，起始地址不满足 HCCL 128 字节对齐，触发 HCCL 内部对齐拷贝（约 200ms）"
+
+    category: performance
+    tags: [profiling, hccl, communication, memory-alignment, torch-empty, multi-card]
+
+    platforms: []
+    compat:
+      - framework: cross
+        ranges: ["*"]
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "8 卡训练（约 70B）单 step 通信耗时占比超过 40%，AllReduce 算子耗时波动大——部分 step 的通信耗时是其他 step 的 2~3 倍"
+      - "计算耗时稳定（约 320ms），通信耗时在 195ms~410ms 之间剧烈波动；单卡推理正常（排除计算瓶颈）"
+
+    references:
+      - "msprof docs/zh/best_practices/communication_address_misalignment.md（MindStudio 26.2.0.B060_001）"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprof 官方 best_practices 案例（上游发布，含定位链与根因）"
+
+    quickly_check:
+      primary:
+        command_template: "从 profiling 通信统计看单 step 通信耗时占比（communication time / step time）"
+        rank_selector: coordinator
+        expected: "通信占比 >40% 且 AllReduce 耗时波动 2~3 倍"
+        note: "performance 类：primary 用指标断言形态，不 grep 错误签名"
+      fallback:
+        command_template: "grep -iE 'AllReduce|HCCL|alignment' {{profiling_report_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*(AllReduce|HCCL)"
+
+    diagnosis:
+      - step: 1
+        check: "计算耗时是否稳定、仅通信耗时波动？单卡是否正常？"
+        expected: "计算稳定、通信波动大、单卡正常 → 排除计算瓶颈，锁定通信链路"
+      - step: 2
+        check: "通信算子输入 tensor 的起始地址是否满足 HCCL 的 128 字节对齐？"
+        expected: "存在未对齐 tensor → 命中本 case"
+        note: "重点查自定义算子里用 torch.empty() 分配输出的地方"
+      - step: 3
+        check: "未对齐 tensor 的来源是哪个算子？"
+        expected: "自定义算子分配输出时未指定 memory_format"
+
+    severity: benign
+    fix_side_effects: [requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      自定义算子使用 torch.empty() 分配输出 tensor 内存时未指定 memory_format 对齐参数，
+      部分 tensor 起始地址不满足 HCCL 通信库的 128 字节对齐要求；HCCL 检测到未对齐后
+      自动做一次对齐拷贝，额外耗时约 200ms。
+    fix: >
+      分配输出 tensor 时保证地址对齐（指定 memory_format 或改用对齐分配），
+      避免 HCCL 内部对齐拷贝。
+    rollback: "回退算子分配方式（通信耗时波动复现）"

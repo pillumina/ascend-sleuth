@@ -1,0 +1,61 @@
+# COMMON-PTHREAD-LOCK-WAIT —— 锁粒度过大（平均持锁 8ms）致数据预处理串行化：Device 空闲等 Host
+# 来源：msprof 官方 best_practices《Pthread线程锁等待》（tag_MindStudio_26.2.0.B060_001）
+# pre-triage: new_pattern —— 全库无锁等待/临界区形态
+# 转正：knowledge-groom 2026-09-09
+
+cases:
+  - id: COMMON-PTHREAD-LOCK-WAIT
+    title: "NPU 利用率降低、Device 空闲时间增加等待 Host 下发，单步训练耗时增加、吞吐下降：锁粒度设计错误——整个数据预处理（解码/增强/归一化）都在临界区内执行，平均持锁约 8ms，worker 无法入队形成串行化"
+
+    category: performance
+    tags: [profiling, lock-contention, critical-section, data-preprocess, host-bound, device-idle]
+
+    platforms: []
+    compat: [{framework: cross, ranges: ["*"]}]
+
+    investigation_quality: high
+    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
+
+    symptoms:
+      - "NPU 利用率降低、Device 空闲时间增加，等待 Host 下发计算任务"
+      - "单步训练耗时增加、整体训练吞吐下降"
+      - "锁持有时间过长（示例平均 8ms），其他 worker 线程无法入队"
+
+    references:
+      - "msprof docs/zh/best_practices/pthread_lock_wait.md（MindStudio 26.2.0.B060_001）"
+
+    verification: {source: upstream-official-doc, detail: "msprof 官方 best_practices 案例"}
+
+    quickly_check:
+      primary:
+        command_template: "看 Device 空闲时间占比与 Host 侧锁等待时长（profiling 时间线 + 锁竞争统计）"
+        rank_selector: coordinator
+        expected: "Device 空闲等待 Host、锁等待时长偏高"
+        note: "performance 类：primary 用空闲/等待时长指标断言"
+      fallback:
+        command_template: "grep -icE 'lock|wait' {{profiling_report_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "NPU 利用率是否偏低、Device 是否在等 Host 下发？"
+        expected: "是 → 瓶颈在 Host 侧"
+      - step: 2
+        check: "Host 侧是否存在长时间持锁？"
+        expected: "是（示例平均 8ms）→ 命中本 case"
+      - step: 3
+        check: "临界区是否包含整个数据预处理而非仅队列操作？"
+        expected: "是 → 锁粒度过大导致串行化"
+
+    severity: benign
+    fix_side_effects: [requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      锁粒度设计错误：把整个数据预处理过程（解码、增强、归一化）放进临界区，
+      而不是仅在队列操作时持锁；锁持有时间过长（平均 8ms）导致其他 worker 线程无法入队，
+      形成串行化执行，Host 下发跟不上 Device 消费。
+    fix: >
+      缩小临界区（仅在队列操作时持锁）；按需调整锁类型（如读写锁/无锁队列）。
+    rollback: "恢复原锁设计（串行化复现）"

@@ -1,0 +1,61 @@
+# COMMON-IRQ-IMBALANCE —— 中断过度集中个别 CPU 核致慢卡：A+K 部分核中断次数异常偏高
+# 来源：msprof 官方 best_practices《IRQ中断打断问题分析》（tag_MindStudio_26.2.0.B060_001）
+# pre-triage: new_pattern —— 全库无中断负载均衡形态
+# 转正：knowledge-groom 2026-09-09
+
+cases:
+  - id: COMMON-IRQ-IMBALANCE
+    title: "A+K 平台整体吞吐/延迟明显劣于 A+X，排除算子、NPU 计算、内存、网络、环境、驱动后：部分 CPU 核心中断次数异常偏高，硬件中断过度集中在个别核，持续抢占业务线程时间片，形成慢卡与集群『快等慢』"
+
+    category: performance
+    tags: [profiling, irq, interrupt-balance, cpu-affinity, slow-node, a-k-platform]
+
+    platforms: []
+    compat: [{framework: cross, ranges: ["*"]}]
+
+    investigation_quality: high
+    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
+
+    symptoms:
+      - "A+K 平台业务吞吐、延迟等核心性能指标明显劣化，达不到预期"
+      - "排除算子执行异常、NPU 计算瓶颈、内存泄漏、网络通信异常、环境配置错误、驱动故障等常规问题"
+      - "系统资源监控与内核状态观测发现：部分 CPU 核心中断次数异常偏高，大量资源消耗在硬件中断处理流程"
+
+    references:
+      - "msprof docs/zh/best_practices/irq_interruption.md（MindStudio 26.2.0.B060_001）"
+
+    verification: {source: upstream-official-doc, detail: "msprof 官方 best_practices 案例"}
+
+    quickly_check:
+      primary:
+        command_template: "看各 CPU 核中断次数分布（/proc/interrupts 或 profiling 的中断统计）"
+        rank_selector: coordinator
+        expected: "部分核中断次数异常偏高、分布不均"
+        note: "performance 类：primary 用中断分布指标断言"
+      fallback:
+        command_template: "grep -icE 'irq|interrupt' {{profiling_report_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "是否常规问题（算子/计算/内存/网络/环境/驱动）都排除后仍劣化？"
+        expected: "是 → 转向系统层"
+      - step: 2
+        check: "各 CPU 核中断次数是否分布不均、个别核异常偏高？"
+        expected: "是 → 命中本 case"
+      - step: 3
+        check: "核心业务中断（如 sq_send_trigger_irq / cq_update_irq）是否集中在少数核？"
+        expected: "是 → 中断负载不均衡"
+
+    severity: benign
+    fix_side_effects: [requires-config-change]
+    fix_type: config-change
+
+    root_cause: >
+      Ascend 平台 Host 与 NPU 通过中断完成任务下发与状态同步，高并发下发场景下中断频次天然升高；
+      A+K 平台默认中断调度策略未做针对性优化，核心业务中断过度集中在个别 CPU 核心，
+      单核长期高频处理中断、持续抢占业务线程时间片。
+    fix: >
+      中断负载均衡 / 绑核：把核心业务中断分散到多核，避免单核长期高频处理中断。
+    rollback: "恢复默认中断调度策略（劣化复现）"

@@ -1,0 +1,60 @@
+# COMMON-GIL-PREEMPTION —— Python 业务长期持 GIL 致迁移后性能不达标
+# 来源：msprof 官方 best_practices《GIL锁抢占问题分析》（tag_MindStudio_26.2.0.B060_001）
+# pre-triage: new_pattern —— 全库无 GIL/多线程锁竞争形态
+# 转正：knowledge-groom 2026-09-09
+
+cases:
+  - id: COMMON-GIL-PREEMPTION
+    title: "Python 模型业务迁移到 Ascend 平台后整体性能未达预期（耗时偏高、吞吐不足），无算子报错/数据异常/硬件瓶颈，业务核心链路存在大量多线程并发：GIL 单时刻单线程执行 + 工作线程长期持锁不释放，导致其他线程抢锁失败、调度失衡"
+
+    category: performance
+    tags: [profiling, gil, python-thread, lock-contention, migration, throughput]
+
+    platforms: []
+    compat: [{framework: cross, ranges: ["*"]}]
+
+    investigation_quality: high
+    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
+
+    symptoms:
+      - "Python 模型业务迁移至 Ascend 平台后运行耗时偏高、任务吞吐率不足"
+      - "无算子报错、无数据异常、无硬件资源瓶颈，但业务核心链路存在大量多线程并发操作"
+
+    references:
+      - "msprof docs/zh/best_practices/gil_lock_preemption.md（MindStudio 26.2.0.B060_001）"
+
+    verification: {source: upstream-official-doc, detail: "msprof 官方 best_practices 案例"}
+
+    quickly_check:
+      primary:
+        command_template: "看 CPU 多核利用率是否偏低、线程锁竞争/等待占比是否偏高（profiling 线程视图）"
+        rank_selector: coordinator
+        expected: "多核利用率低 + 锁等待占比高"
+        note: "performance 类：primary 用利用率/锁等待指标断言"
+      fallback:
+        command_template: "grep -icE 'gil|lock' {{profiling_report_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "是否无算子报错/数据异常/硬件瓶颈，但多核利用率偏低？"
+        expected: "是 → 指向 Python 层并发模型"
+      - step: 2
+        check: "业务是否存在大量多线程并发且线程长期持锁？"
+        expected: "是 → 命中本 case"
+      - step: 3
+        check: "持锁逻辑是否缺少释放/让出机制？"
+        expected: "是 → 其他线程抢锁失败、上下文切换频繁"
+
+    severity: benign
+    fix_side_effects: [requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      Python GIL 单时刻单线程执行的特性决定纯 Python 多线程无法利用多核并行算力；
+      业务多线程逻辑存在缺陷——部分工作线程在执行耗时逻辑期间长期占用 GIL 不主动释放，
+      导致其他业务线程持续抢锁失败、长时间阻塞等待，算力浪费在锁竞争与线程等待中。
+    fix: >
+      改业务多线程设计：缩短持锁时间、增加合理释放/让出机制，避免长期占用 GIL。
+    rollback: "回退业务线程逻辑（性能回落）"

@@ -1,0 +1,61 @@
+# COMMON-SYSCALL-THP —— Checkpoint 保存后性能下降 20%+：D2H 大拷贝 + 透明大页后台合并
+# 来源：msprof 官方 best_practices《系统调用高耗时函数》（tag_MindStudio_26.2.0.B060_001）
+# pre-triage: new_pattern —— 全库无 syscall/THP 形态
+# 转正：knowledge-groom 2026-09-09
+
+cases:
+  - id: COMMON-SYSCALL-THP
+    title: "训练前 500 步性能正常，保存 Checkpoint 后性能下降 20%+ 再缓慢恢复：30GB 量级 D2H 拷贝长期占用 Host 内存，触发内核内存回收与重整，malloc/free 耗时显著增长；透明大页（THP）后台合并进一步抢占训练进程 CPU"
+
+    category: performance
+    tags: [profiling, syscall, malloc, checkpoint, transparent-hugepage, thp, d2h-copy]
+
+    platforms: []
+    compat: [{framework: cross, ranges: ["*"]}]
+
+    investigation_quality: high
+    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
+
+    symptoms:
+      - "稳定复现：训练启动后前 500 步性能正常，第 500 步保存 Checkpoint 后性能下降 20%+，之后缓慢恢复"
+      - "malloc、free 系统调用耗时显著增长"
+
+    references:
+      - "msprof docs/zh/best_practices/syscall_high_latency.md（MindStudio 26.2.0.B060_001）"
+
+    verification: {source: upstream-official-doc, detail: "msprof 官方 best_practices 案例"}
+
+    quickly_check:
+      primary:
+        command_template: "对比 Checkpoint 前后 malloc/free 系统调用耗时与 Host 内存回收活动"
+        rank_selector: coordinator
+        expected: "Checkpoint 后 syscall 耗时显著增长"
+        note: "performance 类：primary 用 syscall 耗时指标断言"
+      fallback:
+        command_template: "grep -icE 'malloc|free|checkpoint' {{profiling_report_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "性能下降是否与 Checkpoint 保存时点对齐？"
+        expected: "对齐 → 指向 Checkpoint 期间的 Host 内存行为"
+      - step: 2
+        check: "malloc/free 等系统调用耗时是否显著增长？"
+        expected: "是 → 内核内存回收与重整被触发"
+      - step: 3
+        check: "是否开启透明大页（THP）？"
+        expected: "开启 → THP 后台合并抢占 CPU，放大影响"
+
+    severity: benign
+    fix_side_effects: [requires-config-change]
+    fix_type: config-change
+
+    root_cause: >
+      Checkpoint 保存阶段模型执行 30GB 量级 D2H 数据拷贝并长期占用 Host 内存，
+      触发内核内存回收与重整机制，malloc/free 系统调用耗时显著增长；
+      Linux 透明大页（THP）的后台合并过程进一步触发内存回收与重整，抢占训练进程 CPU。
+      大内存集群场景下若系统默认页尺寸已较大，THP 收益小于其负面影响。
+    fix: >
+      大模型集群训练场景关闭透明大页（THP）。
+    rollback: "重新开启 THP（性能下降复现）"

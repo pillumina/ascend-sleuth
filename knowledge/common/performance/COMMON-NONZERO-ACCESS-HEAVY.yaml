@@ -1,0 +1,59 @@
+# COMMON-NONZERO-ACCESS-HEAVY —— 访存密集型算子（NonZero 类）拖慢整网
+# 来源：msprof 官方 best_practices《代码高耗时函数段优化》（tag_MindStudio_26.2.0.B060_001）
+# pre-triage: new_pattern —— 全库无算子级访存瓶颈形态
+# 转正：knowledge-groom 2026-09-09
+
+cases:
+  - id: COMMON-NONZERO-ACCESS-HEAVY
+    title: "op_statistic.csv 中某索引类算子（如 NonZero）占比很大、执行时间明显偏长：访存密集型操作对昇腾达芬奇架构不友好，访存开销主导"
+
+    category: performance
+    tags: [profiling, op-statistic, nonzero, memory-bound, access-heavy, operator-replace]
+
+    platforms: []
+    compat: [{framework: cross, ranges: ["*"]}]
+
+    investigation_quality: high
+    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
+
+    symptoms:
+      - "Insight 打开 msprof.json / trace_view.json 可观察到某些算子执行时间较长"
+      - "op_statistic.csv 中对应算子占比很大（示例：NonZero），确认其性能不符合预期"
+
+    references:
+      - "msprof docs/zh/best_practices/code_high_latency_function.md（MindStudio 26.2.0.B060_001）"
+
+    verification: {source: upstream-official-doc, detail: "msprof 官方 best_practices 案例"}
+
+    quickly_check:
+      primary:
+        command_template: "在 op_statistic.csv 中按执行时间/占比排序，看是否存在单个访存密集型算子占比异常"
+        rank_selector: coordinator
+        expected: "某索引/访存密集算子占比显著偏高"
+        note: "performance 类：primary 用算子占比指标断言"
+      fallback:
+        command_template: "grep -iE 'NonZero' {{profiling_report_path}}"
+        rank_selector: coordinator
+        expected: "regex:.*NonZero"
+
+    diagnosis:
+      - step: 1
+        check: "整网耗时是否集中在少数算子？"
+        expected: "是 → 看 op_statistic.csv 的占比排序"
+      - step: 2
+        check: "高占比算子是否属索引/访存密集型（如 NonZero）？"
+        expected: "是 → 命中本 case"
+      - step: 3
+        check: "该算子能否替换为不依赖大范围访存的等价实现？"
+        expected: "可替换 → 给出替换方案"
+
+    severity: benign
+    fix_side_effects: [requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      索引类算子（如 nonzero）是典型访存密集型操作，对昇腾达芬奇架构不友好，
+      访存开销主导执行时间，成为整网瓶颈。
+    fix: >
+      避免大量访存：替换为不依赖大范围访存的等价实现（如掩码/阈值替代逐元素索引）。
+    rollback: "回退算子替换（耗时复现）"
