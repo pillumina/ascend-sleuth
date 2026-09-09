@@ -1,0 +1,38 @@
+id: EV-2026-036
+layer: L2                          # case schema 词表 + triage 路由
+title: 上游官方「best_practices 案例文档」是第四类来源：verification 档位无对应项 + 其症状形态未进 triage 正则
+status: in_experiment
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-09
+source_signals:
+- signal: new_source_type
+  evidence: 2026-09-09 从 msprobe 官方 best_practices 批量沉淀 6 条 case（MSLLM-FA-MASK-GRADNAN / VLLM-ASC-KVMIRROR-MISSING / VLLM-ASC-ROPE-CFG-MISMATCH / COMMON-SEED-RESET-DETERMINISM / COMMON-RMSNORM-WEIGHT-SCALE / COMMON-EMBEDDING-BWD-EMPTY）。这批来源既不是 issue 线程、也不是本地调查，而是**上游项目发布的案例文档**（含定位链 + 验证结论 + 修复验证）。skills/to-postmortem 的 verification 词表只有 upstream-fix-merged / upstream-maintainer-confirmed / investigation / engineer-report 四档，其中 upstream-maintainer-confirmed 的定义是"上游 issue 维护者确认 resolution"——与"官方文档发布的案例"语义不完全一致，本次按最贴近档位标注并在 detail 说明来源。
+  trajectory:
+  - skills/to-postmortem/SKILL.md（verification 档位定义，仅面向 issue）
+  - postmortems/inbox/*.case.yaml（6 条本次产出，verification.source=upstream-maintainer-confirmed + detail 注明官方文档）
+  - triage-tree.yaml（training_precision 分支症状表）
+hypothesis: 上游官方案例文档会成为常态来源（msprobe/框架仓库的 best_practices 目录持续更新），需要：①case schema 的 verification 增补一档 `upstream-official-case`（或把 upstream-maintainer-confirmed 的定义扩为"上游发布且含验证结论"，含 issue 与官方文档两形态）——二选一由 owner 定；②to-postmortem 明确该来源的档位选择规则（避免每条都靠 agent 临时判断）；③triage-tree 的 training_precision 分支补症状正则：本次有 2 条 case（COMMON-SEED-RESET-DETERMINISM 的"重复训练 loss/grad_norm 不一致"、COMMON-RMSNORM-WEIGHT-SCALE 的"grad_norm 偏大"）无法被现有正则命中——现分支只有 nan/inf/overflow/收敛/乱码/日志失真族。
+predicted_effect:
+  metric: 上游官方案例沉淀的 verification 标注一致性与训练精度类 case 的路由命中率
+  from: 档位靠 agent 临时贴靠（语义不贴）+ 2/6 条 case 需靠 Tier 3 兜底
+  to: 档位有明确定义、来源类型可机械判定；训练精度类新形态可被 triage 正则命中
+validation:
+  method: scan_review
+  baseline: 本次 6 条草稿的 verification 标注 + 现有 training_precision 症状正则
+  success_criteria: ①verification 档位定义覆盖官方案例来源且 to-postmortem 有选择规则；②triage-tree training_precision 补入"重复训练.*不一致 / 确定性.*不一致 / grad_norm.*偏大"类症状，且回放现有 6 条 case 的 symptoms 全部可路由；③变更走 structure 模板人审。
+  rollback: schema 词表与 triage 正则均可单独 revert
+gate:
+  condition: owner 确认档位方案（新增档 vs 扩展现有档定义）后执行
+risk: low
+principle_refs:
+- 2
+- 10
+- 11
+decisions:
+- who: agent
+  when: '2026-09-09'
+  type: proposal
+  conclusion: 本批 6 条草稿按最贴近档位 upstream-maintainer-confirmed 标注并在 detail 注明「官方 best_practices 文档」；档位定义是否新增/扩展、以及 training_precision 症状正则的补录内容，均交 owner 在 case PR 人审时定夺（建议与 6 条 case 同一 PR 走 structure 模板）。
