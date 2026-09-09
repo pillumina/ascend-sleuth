@@ -22,7 +22,7 @@ cases:
     title: "vLLM v0.20.1 + vllm-ascend main@4d51588（GLM-5-w4a8，DP2 TP8 + MTP）拉起即崩：上游 Scheduler.__init__ 新增 hash_block_size 参数，balance scheduling patch 的 BalanceScheduler.__init__（patch_balance_schedule.py:696）未适配 → TypeError: BalanceScheduler.__init__() got an unexpected keyword argument 'hash_block_size'；main2main PR #9155 同步后修复"
 
     category: interrupt
-    tags: [balance-scheduling, patch-layer, version-mismatch, main2main, scheduler-signature, startup-crash]
+    tags: [balance-scheduling, patch-layer, version-mismatch, main2main, scheduler-signature, startup-failure]
 
     compat:
       - framework: vllm

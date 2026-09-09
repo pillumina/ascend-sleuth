@@ -120,7 +120,14 @@ disable-model-invocation: true
 - `references/` 下文件数 >50，**或** metrics 显示 reference 检索退化（漏检增多 / 平台匹配耗时长）；
 - 达到 → 变更摘要**建议**生成 `references/_index.yaml`（`build_references_index.py`，与 case 层 `build_index.py` 同构）——**只建议不自动生成**（建议与决定分离）；未达到 → 不提及（目录 + grep 足够，不为不存在的规模购置基础设施）。
 
-**R8. case 共性提炼候选（case-derived reference 触发信号）**：每次 groom 扫 `knowledge/_index.yaml` 的 tags——**同 tag 的 case ≥3 条** → 变更摘要列出该组（case id + tag + root_cause 摘要），**建议**走 `/skill:to-reference --ingest-cases "[id1, id2...]"` 提炼共性（methodology / error-code 表追加）——只建议不自动提炼（建议与决定分离；同 tag 是弱信号，是否提炼由 owner 定）。**排除已覆盖 case（2026-08-31 教训）**：聚类前先汇总 `references/**` 词条的 `sources[].cases` 与 `content.*.source_cases` 中已出现的 case id，从候选中剔除——已被 reference 收录的 case 不再重复建议提炼（例：glm5 组 9 条中 6 条已在 `glm-quantized-startup-triage`，原 R8 重复建议）。理由：共性识别靠人工不可持续（2026-08 从 42 条 case 人工发现 MoE 通信算子族，4 条同 tag）；tag 聚类是零 token 的机械信号，先把候选端到人眼前——但已覆盖排除同样是机械可查的（grep `source_cases`/`cases:` 汇总），建议前必须做。
+**R8. case 共性提炼候选（case-derived reference 触发信号）**：跑 `python3 scripts/tag_hygiene.py`（机械聚类，零 token 手扫）——**同 tag 的 case ≥3 条且 ≥3 条未被 reference 收录** → 变更摘要列出该组（tag + case id），**建议**走 `/skill:to-reference --ingest-cases "[id1, id2...]"` 提炼共性（methodology / error-code 表追加）——只建议不自动提炼（建议与决定分离；同 tag 是弱信号，是否提炼由 owner 定）。
+
+- **按 tag 类别过滤**：脚本标注每组为「模型名 / 环境·特性 / 机制」。**只有「机制」族值得提炼**——模型名族（glm5/qwen3.5/deepseek-v4…）同模型 ≠ 同根因，提炼出来是"该模型排障清单"而非独立于事故的先验知识；环境·特性族（mtp/spec-decode/w8a8/310p/cudagraph）是"用了什么"而非"哪里坏了"，且多数已被现有方法论覆盖（如 `mtp` 归 `ascend-vllm-spec-decode-mtp-triage`）。摘要里模型名/特性族只列一行计数，不进候选。
+- **先看形态**：组内根因**分散**（同现象不同根因）→ 适合提炼 methodology（给分流路径）；根因**收敛**（同根因）→ 不走提炼，走 case 合并 / `variant_of`（提炼只会得到一条 case 的复述）。
+- **已覆盖排除由脚本做**：`references/**` 的 `sources[].cases` 与 `content.*.source_cases` 中的 case id 自动剔除——已被 reference 收录的 case 不再重复建议（2026-08-31 教训：glm5 组 9 条中 6 条已在 `glm-quantized-startup-triage`，原 R8 重复建议）。
+- **tag 归一前置**：脚本的 `--normalize` 负责删除与字段重复的 tag（category/namespace 名）、合并同义/拼写变体（`startup`/`startup-fail`/`startup-crash`→`startup-failure` 等，映射在脚本内）。tag 一乱 R8 就给噪声（2026-09-09 实测：归一前 507 个 tag、70 个 ≥3 次、35 组候选，其中含 `precision`/`vllm-ascend` 这类零信息组）；**先修信号源再挑候选**。
+
+理由：共性识别靠人工不可持续（2026-08 从 42 条 case 人工发现 MoE 通信算子族，4 条同 tag）；tag 聚类是零 token 的机械信号，先把候选端到人眼前。
 
 **R9. fixture 候选语义预核（agent 预核 → 人确认，A 的语义侧）**：跑 `python3 scripts/replay_trace.py --emit-fixtures` 产出 fixture 候选（`_candidate: true`，期望=实际命中 case，输入=多轮 user 原文折叠，已按覆盖去重）。**对每个候选做三项语义判断，填 `agent_review` 字段**（建议与决定分离——意见供人核，不替代人）：
 - `expectation`：核对命中 case 的 `root_cause`/`fix` 与该 trace 的证据是否一致——`trustworthy`（证据一致，可信）/ `uncertain`（证据不足，需人重点核）/ `misdiagnosed`（命中 case 与证据矛盾，**建议不入 fixture**，并触发误诊归因）；

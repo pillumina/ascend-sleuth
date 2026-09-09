@@ -10,7 +10,7 @@ cases:
     title: "多节点 EP + FusedMoE MC2 通信算子（MoeDistributeDispatchV2）在 ROCE 网络触发 aicore exception（MTE DDR 越界）→ SUSPECT REMOTE ERROR 507057 启动失败；HCCS 可跑通，升级 0.20.2rc1+ 修复"
 
     category: interrupt
-    tags: [multi-node, ep, mc2, roce, fusedmoe]
+    tags: [multi-node, ep, mc2, roce, fused-moe]
 
     platforms: ["A3-910C"]
     compat:

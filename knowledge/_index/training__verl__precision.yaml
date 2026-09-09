@@ -10,16 +10,16 @@ namespaces:
         与实际外层配置 4096 不一致，位置编码偏差致 MLA 输出不一致
       category: precision
       tags:
-      - verl
       - rl
       - train-infer-consistency
       - log-prob
       - rope
       - yarn
+      - mla
       compat: verl *
       confidence:
         score: 0.7
       symptoms:
       - RL 训练中 log_prob 指数首 step 差异较大（超出预期范围）
       file: knowledge/training/verl/precision/VERL-LOGPROB-CONFIG-MISMATCH.yaml
-      hash: 42084f75a806
+      hash: 49220befe2f1

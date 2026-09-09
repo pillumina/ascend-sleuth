@@ -8,7 +8,7 @@ cases:
     title: "A2 上跑 fsdp2 gpt-oss-20b 训练在模型加载阶段报错：A2（910B）不支持 FP8 训练，gpt-oss-20b 默认权重为 FP8，改用 BF16 权重修复"
 
     category: interrupt
-    tags: [fp8, precision-unsupported, weight-format, fsdp2, startup-fail, gpt-oss]
+    tags: [fp8, precision-unsupported, weight-format, fsdp2, startup-failure, gpt-oss]
 
     platforms: ["A2-910B"]
     compat:

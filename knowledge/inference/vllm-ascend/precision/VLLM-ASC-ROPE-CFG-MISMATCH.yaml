@@ -8,7 +8,7 @@ cases:
     title: "tora 模型 + vllm-ascend 统一数据集推理，NPU 评分 54.4 明显低于 GPU 80.6：hf config.json 的 max_position_embedding（16384→8192）与 rope_theta（1000000→10000）取值与模型训练配置不匹配"
 
     category: precision
-    tags: [vllm-ascend, rope, config-mismatch, position-embedding, migration, scoring-gap]
+    tags: [rope, config-mismatch, position-embedding, migration, scoring-gap]
 
     platforms: []
     compat:

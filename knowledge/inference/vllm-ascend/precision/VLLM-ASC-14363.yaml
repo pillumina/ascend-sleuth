@@ -12,7 +12,7 @@ cases:
     title: "DeepSeek V4 adapter 构造 routed FusedMoE 时漏传 swiglu_limit（config=10.0）→ routed expert 以默认 None 运行、无 SwiGLU clamp → 敏感前缀处 next-token logit/ranking 漂移 → 异常中文/特殊 token（BF16 与量化均受影响，main 与 v0.25.1rc 均存在）"
 
     category: precision
-    tags: [deepseek-v4, routed-expert, swiglu, fusedmoe, precision, logit-drift]
+    tags: [deepseek-v4, routed-expert, swiglu, fused-moe, logit-drift]
 
     compat:
       - framework: vllm-ascend

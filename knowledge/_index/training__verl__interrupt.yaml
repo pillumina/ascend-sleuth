@@ -84,7 +84,7 @@ namespaces:
       tags:
       - device-detection
       - npu-versions
-      - startup
+      - startup-failure
       - version-upgrade
       compat: verl 0.7.1
       confidence:
@@ -92,7 +92,7 @@ namespaces:
       symptoms:
       - verl v0.7.1 在 NPU device ID 非 1 的机器（如 chip ID 0 或 7）上 get_npu_versions() 检测失败/返回错误版本
       file: knowledge/training/verl/interrupt/VERL-6756.yaml
-      hash: 4785de1f163e
+      hash: 395e0196d29f
     - id: VERL-6885
       title: verl GRPO vision（Qwen3-VL + vLLM rollout + FSDP）训练反向崩溃：aclnnConvolutionBackwardGetWorkspaceSize——升级至
         verl 9.0.0（CANN 9.0）镜像修复

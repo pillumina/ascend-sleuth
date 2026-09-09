@@ -9,7 +9,7 @@ cases:
     title: "DeepSeek-V4 Pro 在 Atlas 800I A3 上 GPQA 评分明显偏低（同模型其他环境正常）：三个独立根因叠加——rope 转 float32、Dequantswigluquant/GMMswigluquant 的 clamp 缺陷（主因）、moe_gating_top_k_hash 内部与后续重复 renorm"
 
     category: precision
-    tags: [vllm-ascend, gpqa, scoring-gap, clamp, rope, renorm, moe-gating, multi-root-cause]
+    tags: [gpqa, scoring-gap, clamp, rope, renorm, moe-gating, multi-root-cause]
 
     platforms: ["A3-910C"]
     compat:

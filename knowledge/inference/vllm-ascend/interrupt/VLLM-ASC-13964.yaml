@@ -10,7 +10,7 @@ cases:
     title: "Decode DP rank 静默停滞：async scheduling 下 num_computed_tokens 计入未处理输出，SWA/chunked-local KV block 被提前剪枝复用"
 
     category: interrupt
-    tags: [silent-hang, decode-liveness, swa, chunked-local-kv, async-scheduling, pd-disaggregation, mooncake, mtp]
+    tags: [silent-hang, decode-liveness, swa, chunked-local-kv, async-scheduling, pd-separation, mooncake, mtp]
 
     platforms: ["A3-910C"]
     compat:

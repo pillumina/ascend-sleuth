@@ -13,7 +13,7 @@ cases:
     title: "DS-V3.2-w4a8（QuaRot）双机 DP2×TP8 EP + FULL_DECODE_ONLY + deepseek_mtp + layer_sharding，压测 cc=4 时 node1 全 8 worker 崩：EE9999 rtMemcpy execution failed（107030，capture 模式不支持）/ DDR MTE 越界，栈经 aclnnKvRmsNormRopeCache——layer_sharding 与 FULL_DECODE_ONLY/MTP 混用不被支持（0.13 无断言），升级 ≥0.18 并去掉 layer_sharding 解决"
 
     category: interrupt
-    tags: [layer-sharding, full-decode-only, mtp, speculative-decode, deepseek, dsv3.2, w4a8, rtmemcpy, 107030, graph-replay, 910b, multi-node, crash]
+    tags: [layer-sharding, full-decode-only, mtp, spec-decode, deepseek, dsv3.2, w4a8, rtmemcpy, '107030', graph-replay, 910b, multi-node, crash]
 
     platforms: ["A2-910B"]
     compat:

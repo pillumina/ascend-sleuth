@@ -14,7 +14,7 @@ cases:
     title: "PD 分离 decode 开 recompute_scheduler + speculative decoding（deepseek_mtp/MTP）首请求即崩：AttributeError: 'Request' object has no attribute 'async_tokens_to_discard'（vllm_ascend/core/recompute_scheduler.py:1088 update_from_output，V1/V2 同崩）；PR #14504 main2main 0.27.1 修复"
 
     category: interrupt
-    tags: [recompute, recompute-scheduler, pd-disaggregation, speculative-decode, mtp, code-sync]
+    tags: [recompute, recompute-scheduler, pd-separation, spec-decode, mtp, code-sync]
 
     compat:
       - framework: vllm-ascend

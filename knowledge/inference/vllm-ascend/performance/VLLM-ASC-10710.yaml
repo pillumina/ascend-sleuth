@@ -14,7 +14,7 @@ cases:
     title: "DSV4-Flash-w8a8-mtp 完全相同串行请求 Prefix Cache 命中率恒 0%：混合压缩 KV（compression_ratio=128）最小命中长度=block_size×128（block128→16k、投机/MTP→32k），10k 级前缀永不命中；--block-size 32 或升 v0.23.0rc1"
 
     category: performance
-    tags: [prefix-cache, hybrid-kv, compression, dsv4, block-size, hit-rate, local-cache]
+    tags: [prefix-cache, hybrid-kv, compression, deepseek-v4, block-size, hit-rate, local-cache]
 
     platforms: ["A3-910C"]
     compat:

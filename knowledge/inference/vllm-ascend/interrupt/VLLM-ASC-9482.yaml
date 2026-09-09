@@ -15,7 +15,7 @@ cases:
     title: "--async-scheduling + MTP（spec decode）崩溃：model runner 的 _copy_valid_sampled_token_count（PR #8766 重写）把 current_stream 声明进 with torch.npu.stream() 内、多流未同步 → valid_sampled_tokens_count 脏读写 → num_accepted/num_computed_tokens 溢出崩溃；升级/合入 PR #9456 修复"
 
     category: interrupt
-    tags: [async-scheduling, mtp, speculative-decode, model-runner, stream-sync, token-count, crash, deepseek-v4, qwen3.5]
+    tags: [async-scheduling, mtp, spec-decode, model-runner, stream-sync, token-count, crash, deepseek-v4, qwen3.5]
 
     # 平台：issue 未明示型号（910B/A3 系）；0.19.0 与 main 均复现
     compat:

@@ -15,7 +15,7 @@ cases:
     title: "Qwen3.5-27B（A2 单机 8 卡）+ qwen3_next_mtp 投机（num_speculative_tokens=3）+ cudagraph FULL_DECODE_ONLY，v0.17.0rc1 TP8 拉起报 call aclnnCausalConv1d failed: Invalid_Argument(EE1003) value 0 for parameter blockDim is invalid / runtime 107000——0.17.0rc1 适配期 bug，升级 ≥v0.18.0rc1 修复"
 
     category: interrupt
-    tags: [qwen3.5, mtp, speculative, startup-crash, causalconv1d, cudagraph, full-decode-only, adaptation-bug, upgrade]
+    tags: [qwen3.5, mtp, speculative, startup-failure, causalconv1d, cudagraph, full-decode-only, adaptation-bug, version-upgrade]
     platforms: ["A2-910B"]            # A2 单机 8 卡
 
     compat:

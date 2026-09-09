@@ -13,7 +13,7 @@ cases:
     title: "PD 分离 + KV offloading + kv_load_failure_policy=fail：KV load 跨 TP rank 不一致（部分块成功即报 SUCCESS）→ 请求按策略失败后，失败路径把负增量传给 Prometheus counter 抛 ValueError: Counters can only be incremented by non-negative amounts → 表面 HTTP 500/首 token 超时而非干净策略失败；PR #8959 修复（失败块标 invalid）"
 
     category: interrupt
-    tags: [pd-disaggregation, kv-offload, kv-transfer, kv-load-failure, metrics, prometheus, negative-delta, failure-path, multi-node, tp16]
+    tags: [pd-separation, kv-offload, kv-transfer, kv-load-failure, metrics, prometheus, negative-delta, failure-path, multi-node, tp16]
 
     platforms: []
     compat:

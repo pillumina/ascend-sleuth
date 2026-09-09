@@ -8,7 +8,7 @@ cases:
     title: "dsv4 训练拉起报 ImportError: cannot import name 'PipelineModelParallelLayoutFeature' from 'mindspeed.features_manager'：mindspeed 与 MindSpeed-LLM 版本不配套，对齐配套版本修复"
 
     category: interrupt
-    tags: [version-mismatch, import-error, features-manager, startup-fail, deepseek, dsv4]
+    tags: [version-mismatch, import-error, features-manager, startup-failure, deepseek, deepseek-v4]
 
     platforms: ["A3-910C"]
     compat:

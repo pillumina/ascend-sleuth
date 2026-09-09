@@ -10,7 +10,7 @@ cases:
     title: "verl v0.7.1 get_npu_versions() 硬编码 NPU device ID 为 \"1\"（6751 同 bug 硬编码 \"7\"）→ 多 NPU/异 chip ID 机器上版本检测失败——PR #6043 修复"
 
     category: interrupt
-    tags: [device-detection, npu-versions, startup, version-upgrade]
+    tags: [device-detection, npu-versions, startup-failure, version-upgrade]
 
     platforms: ["A2-910B"]           # npu-smi 显示 910B3（chip 0）
     compat:

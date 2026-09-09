@@ -15,7 +15,7 @@ cases:
     title: "310P 上 LLM-Compressor 导出的 compressed-tensors W8A8 模型拉起失败（KeyError: <PlatformEnum.OOT: 6>）：310P 分支未注册 compressed-tensors 量化适配 → vLLM 原生 int8 scaled-mm kernel selector 只枚举 CPU/CUDA/ROCm、无 OOT 平台；310P 的 W8A8 须用 modelslim 格式 + --quantization ascend"
 
     category: interrupt
-    tags: [310p, w8a8, compressed-tensors, quantization, modelslim, startup, keyerror, platform-enum]
+    tags: [310p, w8a8, compressed-tensors, quantization, modelslim, startup-failure, keyerror, platform-enum]
 
     platforms: ["310P"]               # Atlas 300I Duo；对照：同模型/镜像 910B 正常
 

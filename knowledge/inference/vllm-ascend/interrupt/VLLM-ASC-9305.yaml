@@ -14,7 +14,7 @@ cases:
     title: "启动报 ModuleNotFoundError: No module named 'vllm.v1.attention.backends.mla.prefill'：vllm 与 vllm-ascend 版本错配（乱配 commit），按 vllm-main-verified.commit / vllm-release-tag.commit 对齐解决"
 
     category: interrupt
-    tags: [version-mismatch, module-not-found, mla, startup-failure, vllm-ascend]
+    tags: [version-mismatch, module-not-found, mla, startup-failure]
 
     # compat: 触发组合=vllm-ascend dev 构建（0.19.1rc2.dev75+g5385230a8）配 vllm 0.20.2、及官方镜像
     #         quay.io/ascend/vllm-ascend:v0.20.2rc1 配 Qwen3.5-9B——核心是 vllm/vllm-ascend commit 错配，

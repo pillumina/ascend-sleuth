@@ -8,7 +8,7 @@ cases:
     title: "master 分支 --ai-framework mindspore 启动失败：ModuleNotFoundError: No module named 'mindspeed_llm.tasks.checkpoint.models'——上游 commit f107818 删除 ckpt-v1 但 MindSpore 侧未同步迁移（代码漂移），同步迁移或移除旧引用修复"
 
     category: interrupt
-    tags: [mindspore, code-drift, deleted-module, import-error, startup-fail, ckpt-v1]
+    tags: [mindspore, code-drift, deleted-module, import-error, startup-failure, ckpt-v1]
 
     platforms: ["A2-910B"]
     compat:

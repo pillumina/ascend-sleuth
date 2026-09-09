@@ -17,7 +17,7 @@ cases:
     title: "DeepSeek-V4-Flash chunked prefill 偶发超长（forward_ms 4000+ms、TTFT P90 7.3s）：vllm_ascend/ops/triton/rms_norm.py 的 TOTAL_BATCH 误标 tl.constexpr 致 batch shape 变化频繁重编译——去 constexpr（PR #11211）修复，v0.23.0rc1+"
 
     category: performance
-    tags: [deepseek-v4, prefill, triton, recompilation, dsa-cp, chunked-prefill, ttft, performance]
+    tags: [deepseek-v4, prefill, triton, recompilation, dsa-cp, chunked-prefill, ttft]
 
     compat:
       - framework: vllm-ascend

@@ -8,7 +8,7 @@ cases:
     title: "dsv4 整网训练将 step 从 2000 改成 20000 后启动报数据集构建失败：数据总量变化后旧 helpers_cpp 编译缓存未删除，删除后重新 make 修复"
 
     category: interrupt
-    tags: [dataset, build-cache, cpp-compile, config-change, startup-fail, dsv4]
+    tags: [dataset, build-cache, cpp-compile, config-change, startup-failure, deepseek-v4]
 
     platforms: []
     compat:

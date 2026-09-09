@@ -15,7 +15,7 @@ cases:
     title: "Qwen3-Embedding-4B（pooling 模型）在 300I Duo/310P3 上无法启动：模型加载报 ValueError: no module or parameter named 'layers' in CustomQwen3ForCausalLM（或 worker init 报 ACL SetPrecisionMode 500001）——310P 平台 pooling 支持缺失，升级到含 PR #8846 的版本（main/后续发布）可用"
 
     category: interrupt
-    tags: [310p, 300i-duo, pooling, embedding, qwen3-embedding, not-supported, startup-failure, upgrade]
+    tags: [310p, 300i-duo, pooling, embedding, qwen3-embedding, not-supported, startup-failure, version-upgrade]
     platforms: ["310P"]               # Atlas 300I Duo（芯片 310P3）
 
     compat:

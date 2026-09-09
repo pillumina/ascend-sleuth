@@ -10,7 +10,7 @@ cases:
     title: "DSV4-Flash-0731 是 DSpark 模型无 MTP head：mtp 模式启动报 KeyError 'mtp.0.head.weight'，应改用 dspark"
 
     category: interrupt
-    tags: [deepseek-v4, dspark, mtp, speculative-decode, model-version]
+    tags: [deepseek-v4, dspark, mtp, spec-decode, model-version]
 
     platforms: ["A2-910B"]
     compat:

@@ -8,7 +8,7 @@ cases:
     title: "CANN 升级到 9.1.0 后 vLLM 推理回复乱码（回退 9.0.0 即恢复正常）：all_reduce 算子数值偏差，升级到已修复的 9.1.0 B037 解决"
 
     category: precision
-    tags: [vllm-ascend, all-reduce, cann-upgrade, numeric-drift, single-op-repro, garbled-output]
+    tags: [all-reduce, cann-upgrade, numeric-drift, single-op-repro, garbled-output]
 
     platforms: ["A5-950PR"]
     compat:

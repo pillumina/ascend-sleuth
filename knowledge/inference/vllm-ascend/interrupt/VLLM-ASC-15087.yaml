@@ -14,7 +14,7 @@ cases:
     title: "PD 分离 prefill 节点静默冻结：v0.23.0 新引入的 _disable_preemption_on_prefill_node()（patch_balance_schedule.py:79，guard=vllm_version_is('0.23.0') && kv_role=='kv_producer'）在 prefill 节点禁用自动抢占 → allocate_slots 给不出槽位时直接 break、不抢占腾资源 → 请求永远拿不到槽位、加载从不真正执行 → 调度活锁 → 引擎 quiesce（PR #14233 为 Qwen3.5 系上游临时方案）"
 
     category: interrupt
-    tags: [pd-disaggregation, preemption, prefill-hang, scheduling, balance-scheduling, kv-pool, silent-hang, v0.23.0, regression]
+    tags: [pd-separation, preemption, prefill-hang, scheduling, balance-scheduling, kv-pool, silent-hang, v0.23.0, regression]
 
     platforms: ["A3-910C", "A2-910B"]
     compat:

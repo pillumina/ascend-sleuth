@@ -9,7 +9,7 @@ cases:
     title: "PD 分离 + 多节点 PP：D 侧 _get_remote_ranks_for_req 用 P0 的 base kv_port(31112) 计算所有 PP rank 的 ZMQ 端口，P1(31113) 上 PP2+ 端口整体偏移 -1，连到无人监听的 31128 → KV 传输超时、P 节点显存堆积、bench 卡死"
 
     category: interrupt
-    tags: [pd-disagg, pp, zmq, port-mapping, mooncake, multi-node]
+    tags: [pd-separation, pp, zmq, port-mapping, mooncake, multi-node]
 
     platforms: ["A3-910C"]            # 两节点 A3，PP=4/DP=1/TP=8，world_size 32（评论#3 Yuli-yx 确认）
     compat:

@@ -203,7 +203,7 @@ namespaces:
       - cudagraph
       - full-decode-only
       - acl-graph
-      - startup-crash
+      - startup-failure
       - aicore-exception
       compat: ''
       confidence:
@@ -212,7 +212,7 @@ namespaces:
       - DeepSeek-V4-Flash（w8a8-mtp）decode 服务 FULL_DECODE_ONLY cudagraph 模式启动：全部 DP worker 在 profile_cudagraph_memory
         → _warmup_a…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10322.yaml
-      hash: dfeba3f203cb
+      hash: 8ef7ad8b7285
     - id: VLLM-ASC-10500
       title: 含 ViT 的多模态/VL 模型开启 FlashComm1+FlashComm2 报错：vLLM 在 forward_context 外预计算 inputs_embeds，ViT
         层被 FC1/FC2 dispatch 误路由到依赖 forward context 的 SP 线性算子（SequenceRowParall…
@@ -379,7 +379,7 @@ namespaces:
         侧批量 get 跨组 key 部分失败——group 1/2/3 key 全部 -704（mooncake_backend 'Failed …
       category: interrupt
       tags:
-      - pd-disaggregation
+      - pd-separation
       - layerwise-connector
       - hybrid-kv
       - mooncake
@@ -392,7 +392,7 @@ namespaces:
       - PD disagg 长稳压测（长序列）：prefill/decode 侧 --kv-transfer-config MultiConnector = MooncakeLayerwiseConnector（kv_producer
         / kv_c…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10998.yaml
-      hash: e6cc03755a2f
+      hash: 84d010c60a67
     - id: VLLM-ASC-11208
       title: '双机 A2 按官方教程部署 GLM5.2 启动报 ModuleNotFoundError: No module named ''vllm.model_executor.layers.fused_moe.expert_map_manager''（v0.22.1rc
         未适配 GLM5.2）'
@@ -434,7 +434,7 @@ namespaces:
         端口，P1(31113) 上 PP2+ 端口整体偏移 -1，连到无人监听的 31128 → KV 传输超时、P 节点显存堆积、bench …
       category: interrupt
       tags:
-      - pd-disagg
+      - pd-separation
       - pp
       - zmq
       - port-mapping
@@ -446,7 +446,7 @@ namespaces:
       symptoms:
       - PD 分离 + 多节点 PP（各 P 节点配置不同 base kv_port，如 P0=31112、P1=31113）部署，单 curl 请求 OK，bench 跑到 100+ 请求后彻底卡死
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-11343.yaml
-      hash: 539cda5838d0
+      hash: 05aee328282a
     - id: VLLM-ASC-11409
       title: RFork 二次实例启动失败：pre-transfer post-process 在接收端权重仍空时跑 FusedMoE shared-expert 一致性 forward →
         NaN mismatch abort（quantized processed-layout 传输，GLM-5 W4A8+MTP 等）
@@ -584,7 +584,7 @@ namespaces:
       - ep
       - mc2
       - roce
-      - fusedmoe
+      - fused-moe
       compat: vllm-ascend <0.20.2rc1
       confidence:
         score: 0.6
@@ -592,7 +592,7 @@ namespaces:
       - '2×A3 多节点 + EP + MTP(num_speculative_tokens=4) 启动即失败：RuntimeError: SUSPECT REMOTE ERROR, error
         code is 507057（synchronize…'
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12461.yaml
-      hash: 506d36246b1f
+      hash: bde94c49bacb
     - id: VLLM-ASC-12685
       title: 非量化模型被自动路由进 AscendFp8Config：fp8_config.py get_quant_method 硬编码 ds_linear scheme，MiniMax-M2.7
         启动即 AttributeError 'o_groups'
@@ -719,7 +719,7 @@ namespaces:
       - deepseek-v4
       - dspark
       - mtp
-      - speculative-decode
+      - spec-decode
       - model-version
       compat: vllm-ascend <0.25.1rc,>=0.25.1rc
       confidence:
@@ -727,7 +727,7 @@ namespaces:
       symptoms:
       - nightly-releases-v0.25.1rc-openeuler 版本启动 DeepSeek-V4-Flash-0731-w8a8 的 mtp 模式报错（A2 机器）
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13329.yaml
-      hash: 05afcdd66439
+      hash: ab785ed7de9c
     - id: VLLM-ASC-13446
       title: '按 v0.24.0rc 官方 Qwen3-Reranker deploy guide 启动 Qwen3-VL-Reranker-2B（--runner pooling + --hf_overrides
         ''{"architectures": ["Qwen3VLForSequenceClassification"]}''）报…'
@@ -772,7 +772,7 @@ namespaces:
       tags:
       - mrv2
       - fullgraph
-      - speculative-decode
+      - spec-decode
       - cudagraph
       - deadlock
       - hang
@@ -783,7 +783,7 @@ namespaces:
       - MRV2（vllm_ascend/worker/v2 Model Runner V2）FullGraph 图模式下开启 speculative decoding，请求到达后 hang（不再出
         token/挂起）——非启动失败、非崩溃
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13639.yaml
-      hash: 40936453e4cf
+      hash: 64867e64acb8
     - id: VLLM-ASC-13688
       title: AIV 模式下 torch.npu.graph_task_group_begin 包 HCCL all_reduce 导致 graph capture 失败 + 首请求死锁（507009/507903，AIV+RIC
         task_group 组合冲突）
@@ -868,7 +868,7 @@ namespaces:
       - swa
       - chunked-local-kv
       - async-scheduling
-      - pd-disaggregation
+      - pd-separation
       compat: vllm-ascend <=0.23.0rc1; torch-npu <=2.10.0.post2
       confidence:
         score: 0.6
@@ -876,7 +876,7 @@ namespaces:
       - DeepSeek-V4-Flash W8A8 + one-token MTP + Mooncake P/D 分离 + async-scheduling + FULL_DECODE_ONLY（decode
         DP=16/TP=1/EP）
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13964.yaml
-      hash: 61e608cfcdcf
+      hash: 432d03458220
     - id: VLLM-ASC-14166
       title: A5 950DT 启动 DeepSeek-V4-Flash-0731 报 MoeInitRoutingV3 找不到二进制（torch-npu 需 >=2.10.0.post4）
       category: interrupt
@@ -911,7 +911,7 @@ namespaces:
       - PD 分离（2P+2D）GLM-5.2-w4a8 + DCP(decode-context-parallel-size=8) + MTP 投机，持续压测下 decode EngineCore
         崩溃
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-14320.yaml
-      hash: dcd7a96a408d
+      hash: bbc8e17b53fc
     - id: VLLM-ASC-14871
       title: 'PD 分离 decode 开 recompute_scheduler + speculative decoding（deepseek_mtp/MTP）首请求即崩：AttributeError:
         ''Request'' object has no attribute ''async_tokens_to_discard''（vll…'
@@ -919,8 +919,8 @@ namespaces:
       tags:
       - recompute
       - recompute-scheduler
-      - pd-disaggregation
-      - speculative-decode
+      - pd-separation
+      - spec-decode
       - mtp
       - code-sync
       compat: 'vllm-ascend 含 #12541、未含 #14504 的构建'
@@ -930,7 +930,7 @@ namespaces:
       - PD 分离部署 decode 节点同开 recompute_scheduler_enable 与 speculative decoding（deepseek_mtp/MTP，任意带 MTP
         head 模型可复现）：健康检查通过后第一个 /v…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-14871.yaml
-      hash: ddfc44695cd4
+      hash: f2c489135c62
     - id: VLLM-ASC-15086
       title: KIMI K3 部署报 'Model architectures [KimiK3ForConditionalGeneration] are not supported for now'——版本错位（支持在
         0.23.0 之后合入上游 registry）
@@ -953,7 +953,7 @@ namespaces:
         && kv_role=='kv_producer'）在…
       category: interrupt
       tags:
-      - pd-disaggregation
+      - pd-separation
       - preemption
       - prefill-hang
       - scheduling
@@ -966,7 +966,7 @@ namespaces:
       - PD 分离（1P1D/多机，P 节点内存池化 AscendStoreConnector + load_async=true）多轮对话压测，约 8 分钟后全量请求 prefill hang
         不恢复，P/D 全部卡死
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-15087.yaml
-      hash: 7d40ed534e2a
+      hash: 51623eaec303
     - id: VLLM-ASC-1991
       title: 'Qwen3-Embedding-4B（pooling 模型）在 300I Duo/310P3 上无法启动：模型加载报 ValueError: no module or parameter
         named ''layers'' in CustomQwen3ForCausalLM（或 worker init 报 ACL SetPr…'
@@ -985,7 +985,7 @@ namespaces:
       - 300I Duo（310P3）上用 vllm-ascend v0.9.2rc1-310p 镜像起 Qwen3-Embedding-4B（--tensor-parallel-size 2）服务，worker
         init_device 报 Run…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-1991.yaml
-      hash: 1bcba940b3b7
+      hash: c46fbc16e749
     - id: VLLM-ASC-3308
       title: 'Qwen3-Next-80B-A3B-Instruct（大 MoE）TP8 在 vllm-ascend v0.11.0rc0 拉起 EngineCore 启动阶段报 RuntimeError:
         NPU out of memory（显存充足仍 OOM）——0.11.0rc0 适配期 ascend_config 内存配置缺…'
@@ -1004,14 +1004,14 @@ namespaces:
       - vllm-ascend v0.11.0rc0 起 Qwen3-Next-80B-A3B-Instruct（TP8、--max-model-len 98304）服务，EngineCore failed
         to start：RuntimeErro…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-3308.yaml
-      hash: 6a268da17ba2
+      hash: 713ae95f40ac
     - id: VLLM-ASC-6774
       title: qwen3.5 A2 双机启动失败——启动脚本与 vllm/vllm-ascend 同目录导致，改脚本路径解决
       category: interrupt
       tags:
       - qwen3.5
       - a2
-      - startup
+      - startup-failure
       - script-path
       compat: vllm-ascend
       confidence:
@@ -1019,7 +1019,7 @@ namespaces:
       symptoms:
       - qwen3.5 A2 双机启动失败
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-6774.yaml
-      hash: 04770c19a186
+      hash: d3191a71df92
     - id: VLLM-ASC-6992
       title: '中文（非英文）语言环境 OS 下开启 CPU binding（enable_cpu_binding）解析失败：vllm_ascend/cpu_binding.py execute_command
         子进程输出被本地化（ps 等），只设 LANG=C 会被 LC_ALL/LC_MESSAGES 覆盖——升级含 PR #82…'
@@ -1029,7 +1029,7 @@ namespaces:
       - locale
       - os-language
       - subprocess-parsing
-      - startup
+      - startup-failure
       - device-allocator
       compat: vllm-ascend <0.18.0
       confidence:
@@ -1037,7 +1037,7 @@ namespaces:
       symptoms:
       - '操作系统语言为中文等非英文（locale 非 C/英文）时，开启 CPU binding（--additional-config ''{"enable_cpu_binding": true}''）启动/绑定可能失败'
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-6992.yaml
-      hash: c8a557427674
+      hash: bdaa24de00b0
     - id: VLLM-ASC-7023
       title: 'Qwen3.5 多模态高并发打流 Worker 崩溃：patch_multimodal_merge 报 ValueError: Attempted to assign 65 =
         65 multimodal tokens to 3905 placeholders（placeholder/embedding 计数不匹配）'
@@ -1083,7 +1083,7 @@ namespaces:
       - qwen3.5
       - mtp
       - speculative
-      - startup-crash
+      - startup-failure
       - causalconv1d
       - cudagraph
       compat: vllm-ascend =0.17.0rc1
@@ -1093,7 +1093,7 @@ namespaces:
       - Qwen3.5-27B + --speculative-config '{"method":"qwen3_next_mtp","num_speculative_tokens":3}' +
         --compilation-config '{"cu…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-7310.yaml
-      hash: e089b328aa5c
+      hash: 0a8961ee3ec7
     - id: VLLM-ASC-7635
       title: Qwen3.5-397B-A17B-w8a8 开启 --enable-expert-parallel（A2 双机 16 卡 DP2×TP8，v0.17.0rc1）拉起崩：call
         aclnnMoeDistributeDispatchV4 failed, error code is 561002，moeExpertNum…
@@ -1112,7 +1112,7 @@ namespaces:
       - 'Qwen3.5-397B-A17B-w8a8 + --enable-expert-parallel（A2 双机 16 卡 DP2×TP8）在 v0.17.0rc1 profile_run
         阶段崩：RuntimeError: npu_moe_…'
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-7635.yaml
-      hash: 8d924d260d95
+      hash: 7a813350df04
     - id: VLLM-ASC-7659
       title: 双机 A2 DP 部署（--data-parallel-size 2 → 多 ApiServer/Engine）时服务端不再输出 Engine 统计日志（Avg prompt throughput
         / GPU KV cache usage / Prefix cache hit rate），单机正常——vLLM Asyn…
@@ -1142,7 +1142,7 @@ namespaces:
       - kv-both
       - ascend-direct
       - hixl
-      - 503900
+      - '503900'
       compat: vllm-ascend 0.17.0rc2.dev (cann:8.5.1)
       confidence:
         score: null
@@ -1150,7 +1150,7 @@ namespaces:
       - mooncake kv_both（同节点多实例 PD，KV pool 经 ascend-direct/RoCE 传输，参考 pd_colocated_mooncake_multi_instance
         tutorial）+ GLM-5-w4a8…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-7792.yaml
-      hash: 3b663adc5fab
+      hash: 8a37bc188eff
     - id: VLLM-ASC-7823
       title: 'vllm serve 启动即崩（任何模型，qwen3.5 亦复现）：patch_minimax_usage_accounting 源码改写补丁在上游 vLLM v0.18.0
         源码漂移后定位不到期望块，RuntimeError: Failed to locate expected block while patchin…'
@@ -1174,7 +1174,7 @@ namespaces:
         请求按策略失败后，失败路径把负增量传给 Prometheus counter 抛 ValueError: Counters can on…'
       category: interrupt
       tags:
-      - pd-disaggregation
+      - pd-separation
       - kv-offload
       - kv-transfer
       - kv-load-failure
@@ -1187,7 +1187,7 @@ namespaces:
       - PD 分离 + KV offloading + external KV backend + kv_load_failure_policy=fail，多节点 TP16：同一请求跨 TP rank
         KV load 结果不一致（如 [Rank1]…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-7871.yaml
-      hash: '705684811521'
+      hash: 0bd10bf4a44c
     - id: VLLM-ASC-7993
       title: A2（910B）跑 MiniMax-M2.5-w8a8-QuaRot（FULL_DECODE_ONLY 图模式）推理偶现崩溃：runtime 报 fftsplus FIA 算子越界/内存访问错误（aicore/aivector
         error、sq sw status error、model stream execute …
@@ -1269,7 +1269,7 @@ namespaces:
       - layer-sharding
       - full-decode-only
       - mtp
-      - speculative-decode
+      - spec-decode
       - deepseek
       - dsv3.2
       compat: vllm-ascend <=0.13.0
@@ -1279,7 +1279,7 @@ namespaces:
       - DS-V3.2-w4a8（--quantization ascend）双机 16×910B，DP2×TP8 + EP + FULL_DECODE_ONLY + deepseek_mtp +
         --additional-config '{"la…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-8587.yaml
-      hash: 59e889436f8a
+      hash: d28e63d7fdde
     - id: VLLM-ASC-8646
       title: 0.18.0rc1 A2 双机背靠背 GLM-5.1-W4A8（DP2×TP8 EP + FULL_DECODE_ONLY + MTP）拉起报 AclrtSynchronizeStreamWithTimeout
         107027 / rtMemcpy capture 模式不支持 107030，plog 定位 aclnnQu…
@@ -1323,7 +1323,7 @@ namespaces:
         长稳压测：数小时后部分 decode engine 不再收到请求（进程存活、日志无异常）——请求取消时 asyncio.…
       category: interrupt
       tags:
-      - pd-disaggregation
+      - pd-separation
       - load-balance-proxy
       - request-cancellation
       - cancelled-error
@@ -1336,7 +1336,7 @@ namespaces:
       - 910C 双机 1P1D 跑 DSV4-Flash w8a8（decode 侧 TP1 DP16，16 个 Engine/API server 副本 + load_balance_proxy_server_example.py
         负载分发）：…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-8867.yaml
-      hash: f5dad9f53528
+      hash: a8bfbf9e43cf
     - id: VLLM-ASC-8926
       title: DeepSeek-V3.1-w4a8-mtp-QuaRot A2×2（TP8 + PCP2 + EP + deepseek_mtp num_spec=3，vllm-ascend
         0.19.x）投机解码 worker 崩溃：async spec 模式下 model runner 只填上游 canonical _seq_l…
@@ -1361,7 +1361,7 @@ namespaces:
         kv_port 解决'
       category: interrupt
       tags:
-      - pd-disaggregation
+      - pd-separation
       - kv-pool
       - zmq
       - port
@@ -1371,7 +1371,7 @@ namespaces:
       symptoms:
       - '1P2 + KV Pool：P0 服务拉起成功后，偶现 P1 服务拉起失败，报错 ZMQError: Address already in use'
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-8938.yaml
-      hash: 3ac3df1016a4
+      hash: 7fe679b7406d
     - id: VLLM-ASC-9005
       title: 4×A2 多节点按 v0.18.0 文档拉起 DeepSeek-V4-Pro：每卡显存余 20+G 却报 'Memory resources are exhausted'，调低
         max_model_len/max-num-seqs、加大共享内存均无效——HDK（firmware 7.0.1.3.220 / npu dr…
@@ -1420,7 +1420,7 @@ namespaces:
       - version-mismatch
       - main2main
       - scheduler-signature
-      - startup-crash
+      - startup-failure
       compat: vllm ~=0.20.1
       confidence:
         score: null
@@ -1428,7 +1428,7 @@ namespaces:
       - vllm v0.20.1 + vllm-ascend main@4d51588e2381018348f1022dfa3a7698899805b7（旧于 main2main 0514）拉起
         GLM-5-w4a8（--data-parallel…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9056.yaml
-      hash: ddca195e4774
+      hash: fb21d804ba83
     - id: VLLM-ASC-9129
       title: '310P 上 LLM-Compressor 导出的 compressed-tensors W8A8 模型拉起失败（KeyError: <PlatformEnum.OOT: 6>）：310P
         分支未注册 compressed-tensors 量化适配 → vLLM 原生 int8 scaled-mm kernel sel…'
@@ -1439,7 +1439,7 @@ namespaces:
       - compressed-tensors
       - quantization
       - modelslim
-      - startup
+      - startup-failure
       compat: ''
       confidence:
         score: null
@@ -1447,7 +1447,7 @@ namespaces:
       - 310P（Atlas 300I Duo，quay.io/ascend/vllm-ascend:v0.18.0rc1-310p）部署 LLM-Compressor 量化（scheme W8A8，config
         中 quant_method=co…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9129.yaml
-      hash: 841d12bf3622
+      hash: '186538758055'
     - id: VLLM-ASC-9167
       title: 'GLM5.1-w4a8 拉起报 AssertionError: FlashAttnPrefillBackend requires flash_attn_varlen_func（vLLM
         0.20.1 下 MLA prefill backend patch 分支不匹配）'
@@ -1493,14 +1493,13 @@ namespaces:
       - module-not-found
       - mla
       - startup-failure
-      - vllm-ascend
       compat: ''
       confidence:
         score: null
       symptoms:
       - 'vllm-ascend（dev 构建或官方镜像）与 vllm 版本未对齐时启动报 ModuleNotFoundError: No module named ''vllm.v1.attention.backends.mla.prefill'''
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9305.yaml
-      hash: a60b450ff05c
+      hash: 93cb464fcd32
     - id: VLLM-ASC-9398
       title: CANN 9.0 镜像 + Mooncake KV pool 跨机 put key error：HCCP RDMA MR 注册 30GiB 缓冲失败 + GE 503900 channel
         init 失败 + ascend_direct 建链失败 → backend Failed to put key res[-800…
@@ -1528,7 +1527,7 @@ namespaces:
       - deepseek-v4
       - a3
       - multi-node
-      - 混部
+      - mixed-parallelism
       - roce
       - hccl
       compat: vllm-ascend 0.18.0
@@ -1538,7 +1537,7 @@ namespaces:
       - A3 双机混部部署 DeepSeek-V4-Pro-w4a8（TP16 + DP2 跨 2 节点 + expert parallel + --quantization ascend），vllm
         serve 拉起失败，报 'call acln…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9418.yaml
-      hash: d8ec1b82eb73
+      hash: acdee658b102
     - id: VLLM-ASC-9482
       title: '--async-scheduling + MTP（spec decode）崩溃：model runner 的 _copy_valid_sampled_token_count（PR
         #8766 重写）把 current_stream 声明进 with torch.npu.stream() 内、多流未同步 → valid_…'
@@ -1546,7 +1545,7 @@ namespaces:
       tags:
       - async-scheduling
       - mtp
-      - speculative-decode
+      - spec-decode
       - model-runner
       - stream-sync
       - token-count
@@ -1557,7 +1556,7 @@ namespaces:
       - vllm-ascend 0.19.0/main：Qwen3.5-APC + MTP（spec decode）开启 --async-scheduling 后服务崩溃（issue 内 trace
         为截图）
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9482.yaml
-      hash: 411df3688b3e
+      hash: 2336ecb35094
     - id: VLLM-ASC-9507
       title: 'minimax2.7 TP4 + --prefill-context-parallel-size 2 开启 PCP 时 curl 报 AttributeError: ''NoneType''
         object has no attribute ''num_computed_tokens_of_pcp_dcp''；FULL 图模式不…'
@@ -1677,7 +1676,7 @@ namespaces:
       - prefix-cache
       - hybrid-kv
       - compression
-      - dsv4
+      - deepseek-v4
       - block-size
       - hit-rate
       compat: vllm-ascend <=0.22.1rc1
@@ -1687,7 +1686,7 @@ namespaces:
       - DSV4-Flash（w8a8-mtp 等混合模型）本地 prefix cache 开启：cache_config_info enable_prefix_caching=True、prefix_cache_queries_total
         正常增…
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-10710.yaml
-      hash: 714b22b84936
+      hash: fecf7f0e069c
     - id: VLLM-ASC-10876
       title: DeepSeek-V4-Flash chunked prefill 偶发超长（forward_ms 4000+ms、TTFT P90 7.3s）：vllm_ascend/ops/triton/rms_norm.py
         的 TOTAL_BATCH 误标 tl.constexpr 致 batch shape 变化频繁重编译—…
@@ -1706,7 +1705,7 @@ namespaces:
       - serve DeepSeek-V4-Flash（TP8 chunked prefill + prefix cache + enable-dsa-cp/flashcomm1）：多轮长对话 prefill
         偶发超长——forward_ms 40…
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-10876.yaml
-      hash: 850874f544e5
+      hash: eb35eb2d2c1e
     - id: VLLM-ASC-10970
       title: 'DSV4-Flash PD 分离 P 节点加 VLLM_PREFIX_CACHE_RETENTION_INTERVAL 后 prefix cache 命中归 0：hybrid
         cache 管理器 use_eagle 未传播给 eagle 组 sibling manager（写读 block 差一）；修复=PR #111…'
@@ -1714,7 +1713,7 @@ namespaces:
       tags:
       - prefix-cache
       - pd-separation
-      - dsv4
+      - deepseek-v4
       - mtp
       - eagle
       - retention-interval
@@ -1725,7 +1724,7 @@ namespaces:
       - PD 分离 P 节点跑 DeepSeek-V4-Flash（MTP/EP），多并发 prefix hit rate 仅 ~10%；设 VLLM_PREFIX_CACHE_RETENTION_INTERVAL
         后两条相同请求也不命中（归 0）
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-10970.yaml
-      hash: 23fab158762f
+      hash: 3229ba554fc3
     - id: VLLM-ASC-12241
       title: v0.23.0 图模式（cudagraph）+ MTP 开启下 profiling 解析无 kernel_details.csv；CANN 9.0.0 与 NPU 图模式交互 bug，升级
         CANN 9.1.0 恢复
@@ -1854,7 +1853,7 @@ namespaces:
       - 310P 上 MoE 模型（Qwen3.6-35B-A3B-w8a8）长请求（~2700 token 等 >1024 路由 token 场景）输出劣化：要求只输出 JSON/答案却输出大段中英混杂逐步分析、thinking
         失控（'过度思考…
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-10892.yaml
-      hash: a7502b17335b
+      hash: 59443ce84108
     - id: VLLM-ASC-11127
       title: 'GLM-5.1（w8a8）MTP + PD 分离 decode 多 DP：压测 1-2h 后投机接受率退化 <1% 不恢复、手工 curl 输出精度错误——drafter 输入判断
         input_fits_in_drafter 处理不当（PR #10117 移除）'
@@ -1863,7 +1862,7 @@ namespaces:
       - mtp
       - spec-decode
       - glm5
-      - pd-disagg
+      - pd-separation
       - multi-dp
       compat: vllm-ascend >=0.20,<0.21
       confidence:
@@ -1871,7 +1870,7 @@ namespaces:
       symptoms:
       - GLM-5.1（w8a8）MTP/spec-decode 开启，PD 分离 decode 节点多 DP 压测 1-2 小时后接受率不足 1% 且无法恢复
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11127.yaml
-      hash: 35a6d6064c54
+      hash: 9d4f9b0e7043
     - id: VLLM-ASC-11169
       title: A2 双机拉起 GLM-5.2 w8a8（DP=2 双节点 + UCMConnector external kv connector）发送中文请求返回乱码；root cause
         未确认，workaround：VLLM_ASCEND_ENABLE_FLASHCOMM1=1 或关闭 external kv connecto…
@@ -1999,8 +1998,7 @@ namespaces:
       - deepseek-v4
       - routed-expert
       - swiglu
-      - fusedmoe
-      - precision
+      - fused-moe
       - logit-drift
       compat: vllm-ascend <0.25.1
       confidence:
@@ -2008,7 +2006,7 @@ namespaces:
       symptoms:
       - 'DeepSeek V4 部署后输出异常中文/特殊 token（关联 #13615），BF16 与量化 checkpoint 均受影响'
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-14363.yaml
-      hash: '241081616295'
+      hash: 2dfa63656d4d
     - id: VLLM-ASC-5725
       title: 'Qwen3-Embedding-0.6B 同串第二次请求向量与首次不一致（Cosine ~0.585，命中缓存后稳定但错）：pooling 模型 attention 路由无条件走
         npu_fusion_attention（不支持 prefix caching）→ 缓存命中路径静默错输出；升级 ≥v0.18.0（PR #…'
@@ -2018,8 +2016,8 @@ namespaces:
       - pooling
       - prefix-cache
       - silent-wrong-output
-      - precision
       - attention-router
+      - qwen3-embedding
       compat: vllm-ascend <=0.17.0
       confidence:
         score: null
@@ -2027,7 +2025,7 @@ namespaces:
       - embedding 服务（Qwen3-Embedding-0.6B，--convert embed）同一字符串首次与二次请求返回向量不一致：Cosine ~0.585；首算与原生 vLLM
         ~0.9997（对），二次起命中 prefix c…
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-5725.yaml
-      hash: 6ae48f811c92
+      hash: bcb606e4411d
     - id: VLLM-ASC-7854
       title: Qwen3.5-397B-A17B-w8a8 混部部署（TP4×DP4 + EP + qwen3_5_mtp + FULL_DECODE_ONLY + quantization
         ascend）高并发多模态压测返回乱码/精度掉点（OCRbench 87.9 vs 95.6），TP16DP1 正常——w8a8 fused-…
@@ -2046,7 +2044,7 @@ namespaces:
       - Qwen3.5-397B-A17B-w8a8（--quantization ascend）混部 TP4×DP4 + --enable-expert-parallel + --speculative-config
         '{"method":"qw…
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-7854.yaml
-      hash: ee8e63403693
+      hash: 9b6e1885679f
     - id: VLLM-ASC-7856
       title: GLM-4.7-w8a8（float-mtp）在 vllm-ascend v0.17.0rc1 镜像 opencode/webfetch 场景流式 tool_calls 解析异常（arguments
         json 不闭合/拼接错误，工具调用必现失败），非流式正常——上游 vLLM <0.18 流式 tool-call pa…
@@ -2076,7 +2074,6 @@ namespaces:
       - repetition
       - model-capability
       - enable_thinking
-      - precision
       compat: vllm-ascend <=0.18.0rc1
       confidence:
         score: 0.4
@@ -2084,7 +2081,7 @@ namespaces:
       - Qwen3.5-27B/35B-A3B/397B-A17B-W4A8（enable_thinking=true，MTP/async-scheduling 可开）请求概率性输出无限自我重复：thinking
         段同一句/思路重复直到 max_c…
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-8798.yaml
-      hash: fa27e8666424
+      hash: 5d1a354db1ab
     - id: VLLM-ASC-8844
       title: GLM 5/5.1 w8a8 四节点 PD 分离（P/D 各 TP16 DP2，vllm-ascend 0.18.0）GPQA-diamond 精度不达标（实测 67.8）：长输出
         + 高并发 + D 节点显存持续饱和触发 recompute 重计算路径精度退化——关闭 recompute_scheduler（或避免显…
@@ -2093,7 +2090,7 @@ namespaces:
       - glm5
       - recompute
       - memory-saturation
-      - pd-disaggregation
+      - pd-separation
       - accuracy
       - gpqa
       compat: vllm-ascend ==0.18.0
@@ -2103,12 +2100,11 @@ namespaces:
       - GLM 5/5.1（GLM-new-w8a8，--quantization ascend）+ 四节点 PD 分离（P/D 侧 --data-parallel-size 2 --tensor-parallel-size
         16 --enable…
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-8844.yaml
-      hash: 1842dd289395
+      hash: 327b9ed54925
     - id: VLLM-ASC-ALLREDUCE-NUMERIC-DRIFT
       title: CANN 升级到 9.1.0 后 vLLM 推理回复乱码（回退 9.0.0 即恢复正常）：all_reduce 算子数值偏差，升级到已修复的 9.1.0 B037 解决
       category: precision
       tags:
-      - vllm-ascend
       - all-reduce
       - cann-upgrade
       - numeric-drift
@@ -2120,49 +2116,48 @@ namespaces:
       symptoms:
       - CANN 从 9.0.0 升级到 9.1.0 后，vLLM 推理请求回复乱码（正常场景回复正常文本，异常场景回复乱码数据）
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-ALLREDUCE-NUMERIC-DRIFT.yaml
-      hash: a787e64972ad
+      hash: 6977d5fd3879
     - id: VLLM-ASC-GPQA-OPERATOR-CLAMP
       title: DeepSeek-V4 Pro 在 Atlas 800I A3 上 GPQA 评分明显偏低（同模型其他环境正常）：三个独立根因叠加——rope 转 float32、Dequantswigluquant/GMMswigluquant
         的 clamp 缺陷（主因）、moe_gating_top_k_hash 内部与后续重复…
       category: precision
       tags:
-      - vllm-ascend
       - gpqa
       - scoring-gap
       - clamp
       - rope
       - renorm
+      - moe-gating
       compat: vllm-ascend *
       confidence:
         score: 0.7
       symptoms:
       - DeepSeek-V4 Pro 在 Atlas 800I A3 环境下 GPQA 数据集评分明显偏低；同模型其他环境、以及 DeepSeek-V4 Flash 在同环境下评分均正常
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-GPQA-OPERATOR-CLAMP.yaml
-      hash: df4ea01a626b
+      hash: 29c154d87058
     - id: VLLM-ASC-KVMIRROR-MISSING
       title: VL 模型从 H20+transformers 迁移到昇腾 vLLM 后，从第 7 个 token 起输出与 GPU 对不上并出现乱码：Attention 的 KVMirrorManagerHook
         / KVMirrorManager 未随模型移植，28 层以后 key_states/value_states 取到异常…
       category: precision
       tags:
-      - vllm-ascend
       - vl-model
       - migration
       - kv-mirror
       - attention
       - garbled-output
+      - module-porting
       compat: vllm-ascend *
       confidence:
         score: 0.7
       symptoms:
       - VL 模型从 H20 + transformers 迁到昇腾 + vLLM 后，第 7 个 token 开始 NPU 输出与 GPU 对不上，随后出现乱码
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-KVMIRROR-MISSING.yaml
-      hash: e5f095a6ab3a
+      hash: 0d1700f1e80d
     - id: VLLM-ASC-ROPE-CFG-MISMATCH
       title: tora 模型 + vllm-ascend 统一数据集推理，NPU 评分 54.4 明显低于 GPU 80.6：hf config.json 的 max_position_embedding（16384→8192）与
         rope_theta（1000000→10000）取值与模型训练配置不匹配
       category: precision
       tags:
-      - vllm-ascend
       - rope
       - config-mismatch
       - position-embedding
@@ -2174,24 +2169,24 @@ namespaces:
       symptoms:
       - tora 模型 + vllm（vllm-ascend）推理，统一数据集下游评分 NPU 54.4 明显差于 GPU 80.6
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-ROPE-CFG-MISMATCH.yaml
-      hash: d064c5b4a3ee
+      hash: 26faa41918ee
     - id: VLLM-ASC-XGRAMMAR-REPEAT
       title: 昇腾 vLLM 部署 Qwen2.5-7B-Instruct，某用例偶现持续输出换行、回复不终止：xgrammar 结构化输出的 JSON 约束解码认为字符串已闭合，与模型回复内容完整性冲突
       category: precision
       tags:
-      - vllm-ascend
       - structured-output
       - xgrammar
       - json
       - repetition
       - sampling
+      - qwen2.5
       compat: vllm-ascend *
       confidence:
         score: 0.7
       symptoms:
       - 昇腾 + vLLM 部署 Qwen2.5-7B-Instruct，某推理用例偶现持续输出换行符、回复不终止
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-XGRAMMAR-REPEAT.yaml
-      hash: ada00e13f899
+      hash: 1ce41de12ce0
   training/mindspeed-llm:
     interrupt:
     - id: MSLLM-1459
@@ -2202,7 +2197,7 @@ namespaces:
       - environment
       - bitsandbytes
       - cuda-mixin
-      - startup-fail
+      - startup-failure
       - install
       compat: mindspeed-llm *
       confidence:
@@ -2210,7 +2205,7 @@ namespaces:
       symptoms:
       - 昇腾环境执行训练脚本 examples/mcore/qwen3/pretrain_qwen3_8b_4K_ptd.sh 启动即失败
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1459.yaml
-      hash: 07419a3511b3
+      hash: 6057d5fae0f5
     - id: MSLLM-1465
       title: 'Qwen3 预训练数据预处理报 FileNotFoundError: Couldn''t find any data file at /data/dataset/xxx.parquet：--input
         文件名写错，ls 核实后改真实路径或指向目录修复'
@@ -2256,15 +2251,15 @@ namespaces:
       - build-cache
       - cpp-compile
       - config-change
-      - startup-fail
-      - dsv4
+      - startup-failure
+      - deepseek-v4
       compat: mindspeed-llm *
       confidence:
         score: 0.6
       symptoms:
       - dsv4 整网训练将 step 从 2000 改为 20000（数据总量变化）后启动训练报错
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1526.yaml
-      hash: b39513bc1f8e
+      hash: 07266a591f03
     - id: MSLLM-1550
       title: 8 卡 910B4 跑 Qwen3-8B 预训练环境校验通过但启动报 GMMOpBuilder 重复注册操作符：很可能安装多个 mindspeed 版本致算子重复编译注册，清理多版本修复
       category: interrupt
@@ -2273,7 +2268,7 @@ namespaces:
       - multi-version
       - install
       - environment
-      - startup-fail
+      - startup-failure
       - qwen3
       compat: mindspeed-llm master; cann 8.5.0
       confidence:
@@ -2282,7 +2277,7 @@ namespaces:
       - 8 卡 910B4（openEuler，CANN 8.5.0，master 分支）运行 Qwen3-8B 预训练脚本，环境校验（torch_npu/torchair 导入、8 卡 NPU
         可用）均正常通过
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1550.yaml
-      hash: 7949f4309125
+      hash: ade92fc921e9
     - id: MSLLM-1554
       title: 'dsv4 训练拉起报 ImportError: cannot import name ''PipelineModelParallelLayoutFeature'' from ''mindspeed.features_manager''：mindspeed
         与 MindSpeed-LLM 版本不配套，对齐配套版本修复'
@@ -2291,9 +2286,9 @@ namespaces:
       - version-mismatch
       - import-error
       - features-manager
-      - startup-fail
+      - startup-failure
       - deepseek
-      - dsv4
+      - deepseek-v4
       compat: mindspeed-llm master; mindspeed 0.12.1
       confidence:
         score: 0.3
@@ -2301,7 +2296,7 @@ namespaces:
       - A3 节点按指导文档用 MindSpeed-LLM master + mindspeed 0.12.1 拉起 dsv4 训练（pretrain_deepseek4.py → import
         mindspeed_llm → megatron_a…
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1554.yaml
-      hash: 86962dcf4c75
+      hash: 7427cec06575
     - id: MSLLM-1555
       title: 'dsv4 训练拉起报 ImportError: cannot import name ''HcclOpModeSetFeature'' from ''mindspeed.features_manager''：镜像预装
         mindspeed 与手动重装未覆盖，卸载重装配套版本修复'
@@ -2311,7 +2306,7 @@ namespaces:
       - import-error
       - features-manager
       - install
-      - startup-fail
+      - startup-failure
       - deepseek
       compat: mindspeed-llm master; mindspeed *
       confidence:
@@ -2320,7 +2315,7 @@ namespaces:
       - A3 节点 Atlas A3 训练镜像上按 install_guide.md 手动安装 MindSpeed(Master)+MindSpeed-LLM+Megatron core_v0.12.1
         后，拉起 dsv4 训练（pretrain_…
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1555.yaml
-      hash: 1041be3ee2ad
+      hash: 906ca991f2cc
     - id: MSLLM-1655
       title: 'gemma-2-9b 预训练启动报 RuntimeError: Cannot infer model type from architectures of Huggingface
         config.json ''{arch_row}'': CKPT_LOAD_DIR 传入 HF 权重触发权重在线加载（train_from_hf…'
@@ -2330,7 +2325,7 @@ namespaces:
       - weight-online-load
       - train-from-hf
       - model-type-infer
-      - startup-fail
+      - startup-failure
       - gemma2
       compat: mindspeed-llm 26.1.0
       confidence:
@@ -2339,7 +2334,7 @@ namespaces:
       - '预训练 gemma-2-9b 时框架无法识别 architectures: Gemma2ForCausalLM，报 RuntimeError: Cannot infer model type
         from architectures of Hu…'
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1655.yaml
-      hash: bf99997b3bc8
+      hash: e2f7077d65c2
     - id: MSLLM-1667
       title: A2 上跑 fsdp2 gpt-oss-20b 训练在模型加载阶段报错：A2（910B）不支持 FP8 训练，gpt-oss-20b 默认权重为 FP8，改用 BF16 权重修复
       category: interrupt
@@ -2348,7 +2343,7 @@ namespaces:
       - precision-unsupported
       - weight-format
       - fsdp2
-      - startup-fail
+      - startup-failure
       - gpt-oss
       compat: mindspeed-llm 26.1.0; transformers 5.2.0
       confidence:
@@ -2357,7 +2352,7 @@ namespaces:
       - A2 上运行 fsdp2 训练减层版 gpt-oss-20b（mindspeed-llm 26.1.0 + transformers 5.2.0），在模型构建/加载阶段（ModelFactory.create
         → model_loader.…
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1667.yaml
-      hash: ead8cc1692df
+      hash: b156763cbbd5
     - id: MSLLM-1707
       title: 'deepseek-v4-flash LoRA 微调启动报 RuntimeError: Tried to register an operator (npu_moe_distribute_dispatch_v2)
         multiple times 或 ModuleNotFoundError: No module named …'
@@ -2368,7 +2363,7 @@ namespaces:
       - cann-version
       - version-mismatch
       - lora
-      - startup-fail
+      - startup-failure
       compat: mindspeed-llm 26.0.0; cann 9.0.0
       confidence:
         score: 0.6
@@ -2376,7 +2371,7 @@ namespaces:
       - Atlas 800I A3 + CANN 9.0.0 + MindSpeed-LLM 26.0.0 镜像内源码安装最新版，deepseek-v4-flash 做 LoRA 微调（posttrain_gpt.py
         launch）启动即失败
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1707.yaml
-      hash: 896e5d831ba7
+      hash: 9edb22936e2f
     - id: MSLLM-1805
       title: 'master 分支 --ai-framework mindspore 启动失败：ModuleNotFoundError: No module named ''mindspeed_llm.tasks.checkpoint.models''——上游
         commit f107818 删除 ckpt-v1 但 MindSpore 侧…'
@@ -2386,7 +2381,7 @@ namespaces:
       - code-drift
       - deleted-module
       - import-error
-      - startup-fail
+      - startup-failure
       - ckpt-v1
       compat: mindspeed-llm master@c77308a1
       confidence:
@@ -2395,7 +2390,7 @@ namespaces:
       - 'master 分支用 --ai-framework mindspore 启动（pretrain_gpt.py）稳定失败：ModuleNotFoundError: No module named
         ''mindspeed_llm.tasks.ch…'
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1805.yaml
-      hash: ed9449185eda
+      hash: 9c900d8e2d3e
     precision:
     - id: MSLLM-1437
       title: qwen3-14b-64k-lora 微调开启 uniform 重计算时 grad norm 恒为 0、loss 不收敛：LoRA 微调与 uniform 重计算组合仓库未支持/未验证，关闭重计算或改用官方脚本修复
@@ -2468,7 +2463,7 @@ namespaces:
       symptoms:
       - GradNorm 出现 NaN/Inf（256 卡 Qwen3-235B 长序列 SFT，序列长度 131072，TP4/PP4/EP16/CP16/VPP3）
       file: knowledge/training/mindspeed-llm/precision/MSLLM-FA-MASK-GRADNAN.yaml
-      hash: ae4167452f2c
+      hash: e68c03f8b425
   training/verl:
     interrupt:
     - id: VERL-5074
@@ -2550,7 +2545,7 @@ namespaces:
       tags:
       - device-detection
       - npu-versions
-      - startup
+      - startup-failure
       - version-upgrade
       compat: verl 0.7.1
       confidence:
@@ -2558,7 +2553,7 @@ namespaces:
       symptoms:
       - verl v0.7.1 在 NPU device ID 非 1 的机器（如 chip ID 0 或 7）上 get_npu_versions() 检测失败/返回错误版本
       file: knowledge/training/verl/interrupt/VERL-6756.yaml
-      hash: 4785de1f163e
+      hash: 395e0196d29f
     - id: VERL-6885
       title: verl GRPO vision（Qwen3-VL + vLLM rollout + FSDP）训练反向崩溃：aclnnConvolutionBackwardGetWorkspaceSize——升级至
         verl 9.0.0（CANN 9.0）镜像修复
@@ -2583,16 +2578,16 @@ namespaces:
         与实际外层配置 4096 不一致，位置编码偏差致 MLA 输出不一致
       category: precision
       tags:
-      - verl
       - rl
       - train-infer-consistency
       - log-prob
       - rope
       - yarn
+      - mla
       compat: verl *
       confidence:
         score: 0.7
       symptoms:
       - RL 训练中 log_prob 指数首 step 差异较大（超出预期范围）
       file: knowledge/training/verl/precision/VERL-LOGPROB-CONFIG-MISMATCH.yaml
-      hash: 42084f75a806
+      hash: 49220befe2f1
