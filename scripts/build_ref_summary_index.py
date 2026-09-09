@@ -4,8 +4,10 @@
 # 目的（B1 EV-2026-026）：diagnose 阶段 2.5 ②（平台背景 summary 层）原"扫
 # references/<type-dir>/*.yaml 只读 summary+applies_to"需逐文件读全文找字段；
 # 本索引把**背景类（platform-fact/software-fact/tool/methodology）+ status=active**
-# 词条压缩为每行 {id/type/title/summary(≤160c)/applies_to.platforms}，单文件 ~20KB 封顶，
-# 且随词条数线性增长的只是索引行（远小于逐文件扫描）。
+# 词条压缩为每行 {id/type/title/summary(≤160c)/applies_to.platforms+categories}，
+# 单文件 ~20KB 封顶，且随词条数线性增长的只是索引行（远小于逐文件扫描）。
+# categories 入索引（EV-2026-037）：2.5 ② 可按本轮 category 收窄背景加载，
+# 声明了 categories 的词条不再无条件灌进上下文；空列表 = 不限定类别。
 # 查表类（error-code/fault-pattern/env-var-table/compat-matrix/command-side-effect）
 # 不进 summary 层（签名/名是检索键，走 diagnose 2.5 ③ 按需 grep）——与 skill 口径一致。
 #
@@ -42,22 +44,38 @@ def platforms_of(entry) -> list:
     return []
 
 
+def categories_of(entry) -> list:
+    ap = entry.get("applies_to")
+    if isinstance(ap, dict):
+        c = ap.get("categories")
+        return list(c) if isinstance(c, list) else []
+    return []
+
+
 def render(doc_entries) -> str:
     rows = []
     for e in sorted(doc_entries, key=lambda x: x.get("id", "")):
         s = e.get("summary") or ""
         if len(s) > SUMMARY_CAP:
             s = s[:SUMMARY_CAP] + "…"
+        # categories 入索引（EV-2026-037）：2.5 ② 原只按平台过滤，精度/性能问题会把
+        # 无关平台背景全灌进上下文；声明了 categories 的词条可按本轮 category 再收窄。
+        # 未声明 categories 的词条 = 不限定类别——**不输出该键**（省行宽，原则九）。
+        applies_to = {"platforms": e.get("_platforms", [])}
+        cats = e.get("_categories", [])
+        if cats:
+            applies_to["categories"] = cats
         rows.append({
             "id": e.get("id", ""), "type": e.get("type", ""),
             "title": e.get("title", ""), "summary": s,
-            "applies_to": {"platforms": e.get("_platforms", [])},
+            "applies_to": applies_to,
         })
     n = len(rows)
     header = "\n".join([
         "# GENERATED FILE —— 背景类 summary 索引（diagnose 2.5 ② 读取），不要手改。",
         "# 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。",
         "# 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。",
+        "# applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。",
         f"# 生成日期：{date.today().isoformat()}    词条数：{n}",
         "",
     ])
@@ -79,6 +97,7 @@ def collect(refs_dir: Path):
         if d.get("status") not in (None, "active"):
             continue
         d["_platforms"] = platforms_of(d)
+        d["_categories"] = categories_of(d)
         out.append(d)
     return out
 

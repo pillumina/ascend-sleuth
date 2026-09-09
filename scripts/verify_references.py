@@ -9,6 +9,10 @@
 #     < 3 条引用时不允许 status: active（引用数不存储于 reference 本体）
 #   - case 侧 ref_knowledge 强校验（ADR-0008 §7）：ref 必须存在于 references/（防
 #     悬挂引用）、role 必须合法（signature-source / fix-methodology / root-cause-context）
+#   - skill 侧绑定强校验（EV-2026-037）：skill 支撑文件里的 ref-id 绑定
+#     （skills/diagnose/references/collect-gates.yaml）必须指向存在且 active 的词条——
+#     散文里硬编码 ref-id 会静默腐化（曾把不存在的 profiling-performance-fault-patterns
+#     当已有落点写进 SKILL），绑定落成数据后由 CI 兜住
 #   - reference 层入口门槛比 case 更严（ADR-0008：reference 比 case 更宝贵）
 #
 # 用法：
@@ -91,6 +95,76 @@ def check_case_ref_links(root: Path, ref_ids: set):
                         f"（合法: {', '.join(sorted(VALID_ROLES))}）"
                     )
     return counts, errors
+
+
+# skill 侧 ref-id 绑定（EV-2026-037）：采集闸门表把「category → 采集面词条」的绑定
+# 从 SKILL 散文搬成数据。校验：结构合法 + 每个 id 存在且 active——否则红。
+SKILL_BINDING_FILES = ["skills/diagnose/references/collect-gates.yaml"]
+VALID_GATE_KINDS = {"probe", "conditional"}
+
+
+def check_skill_ref_bindings(root: Path, ref_ids: set, active_ids: set):
+    """校验 skill 支撑文件里的 ref-id 绑定（防悬挂引用 + 防引用非 active 词条）。
+
+    未验证的先验不进诊断上下文——绑定指向 draft/pending-review/deprecated 词条
+    与悬挂引用同样危险（前者会把未审内容带进流程），两者都红。"""
+    errors = []
+    for rel_file in SKILL_BINDING_FILES:
+        path = root / rel_file
+        if not path.exists():
+            continue
+        doc = load_yaml(path)
+        if isinstance(doc, dict) and doc.get("__yaml_error__"):
+            errors.append(f"{rel_file}: YAML 解析失败: {doc['__yaml_error__']}")
+            continue
+        if not isinstance(doc, dict) or not isinstance(doc.get("gates"), list) or not doc.get("gates"):
+            errors.append(f"{rel_file}: 缺少非空 gates 列表")
+            continue
+        for i, gate in enumerate(doc["gates"]):
+            if not isinstance(gate, dict):
+                errors.append(f"{rel_file}: gates[{i}] 不是 mapping")
+                continue
+            gid = gate.get("id", f"gates[{i}]")
+            if not gate.get("id"):
+                errors.append(f"{rel_file}: gates[{i}] 缺少 id")
+            if not gate.get("category"):
+                errors.append(f"{rel_file} ({gid}): 缺少 category")
+            if gate.get("kind") not in VALID_GATE_KINDS:
+                errors.append(
+                    f"{rel_file} ({gid}): kind '{gate.get('kind')}' 非法"
+                    f"（合法: {', '.join(sorted(VALID_GATE_KINDS))}）"
+                )
+            branches = gate.get("branches")
+            if not isinstance(branches, list) or not branches:
+                errors.append(f"{rel_file} ({gid}): 缺少非空 branches 列表")
+                continue
+            for j, br in enumerate(branches):
+                if not isinstance(br, dict):
+                    errors.append(f"{rel_file} ({gid}): branches[{j}] 不是 mapping")
+                    continue
+                when = br.get("when", f"branches[{j}]")
+                if not br.get("when"):
+                    errors.append(f"{rel_file} ({gid}): branches[{j}] 缺少 when")
+                refs = br.get("refs")
+                if not isinstance(refs, list) or not refs:
+                    errors.append(f"{rel_file} ({gid}/{when}): refs 必须是非空列表")
+                    continue
+                for rid in refs:
+                    if rid not in ref_ids:
+                        errors.append(
+                            f"{rel_file} ({gid}/{when}): ref '{rid}' 不存在于 references/（悬挂引用）"
+                        )
+                    elif rid not in active_ids:
+                        errors.append(
+                            f"{rel_file} ({gid}/{when}): ref '{rid}' 非 status: active"
+                            f"（未验证的先验不进诊断上下文）"
+                        )
+            for rid in gate.get("caveat_refs") or []:
+                if rid not in ref_ids:
+                    errors.append(f"{rel_file} ({gid}): caveat_ref '{rid}' 不存在于 references/（悬挂引用）")
+                elif rid not in active_ids:
+                    errors.append(f"{rel_file} ({gid}): caveat_ref '{rid}' 非 status: active")
+    return errors
 
 
 def check_reference(path: Path, refs_dir: Path, types_registry: dict, case_ref_counts: dict, errors: list):
@@ -347,8 +421,9 @@ def main():
         print(f"FATAL: references/_types.yaml 无法解析或 types 为空")
         sys.exit(1)
 
-    # 1) reference 词条 ID 集（先于 case 侧校验；_types.yaml 不是词条）
+    # 1) reference 词条 ID 集 + active 集（先于 case/skill 侧校验；_types.yaml 不是词条）
     ref_ids = set()
+    active_ids = set()
     for path in sorted(refs_dir.rglob("*.yaml")):
         if path.name.startswith("_"):   # _types.yaml / 生成物 _summary-index.yaml 非词条
             continue
@@ -356,11 +431,14 @@ def main():
         rid = doc.get("id") if isinstance(doc, dict) else None
         if rid:
             ref_ids.add(rid)
+            if doc.get("status") == "active":
+                active_ids.add(rid)
 
     # 2) case 侧 ref_knowledge：派生计数（深审用）+ ref 存在性/role 合法性强校验
     case_ref_counts, case_errors = check_case_ref_links(root, ref_ids)
 
-    errors = list(case_errors)
+    # 3) skill 侧绑定：采集闸门表里的 ref-id 必须存在且 active
+    errors = list(case_errors) + check_skill_ref_bindings(root, ref_ids, active_ids)
     seen_ids = {}
     for path in sorted(refs_dir.rglob("*.yaml")):
         if path.name.startswith("_"):

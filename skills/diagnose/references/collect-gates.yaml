@@ -1,0 +1,79 @@
+# 采集闸门表（diagnose 的「数据缺口」消费点）——结构化绑定，不写散文
+#
+# 为什么存在：reference 的检索层定位是「候选命中后的辅助查询」（不参与候选路由/排序，
+# 这一不变量不变）。但 tool 类里有一组内容服务的是**数据缺口**——把数据拿回来本身，
+# 它的消费时机在 Tier2 候选加载**之前**。这段绑定过去只写在 SKILL.md 散文里（硬编码
+# ref-id 字符串），已发生静默腐化：`profiling-performance-fault-patterns` 全库不存在
+# （真 id `msprof-tool-fault-patterns`）。现在绑定落成数据，由 verify_references.py
+# 校验（id 必须存在于 references/ 且 status: active），腐化从静默变为 CI 红。
+#
+# 分工：**形态归 SKILL，内容归 reference**——本表只决定「问什么、按什么分支、取哪些词条」；
+# 探询只问一次、只问一句，采集面只在 no_data / gap 分支展开（原则九），
+# 交互纪律见 skills/diagnose/SKILL.md「数据资产探询」节。
+#
+# kind 两种：
+#   probe       探询型——先问一句，按对方回答分支（精度/性能：有数据就不讲采集）
+#   conditional 条件型——不预先问；仅当缺口出现（现有材料不足以定位）才给采集指引
+
+gates:
+  - id: precision-data
+    category: precision
+    kind: probe
+    trigger: 下一步需要测量数据（数值比对 / 溢出检测 / 精度预检）
+    question: "你已经有 dump 数据 / 分析结果了吗？还是要我给到代码级接入步骤？"
+    branches:
+      - when: has_data
+        action: 直接进比对 / 分析路径，不展开接入说明
+        refs:
+          - msprobe-accuracy-compare
+          - msprobe-overflow-check
+          - msprobe-accuracy-checker
+      - when: no_data
+        action: >-
+          给接入步骤（API 骨架 + config.json）；接入点用调用栈法现场定位（不背位置）；
+          明确这是临时调试改动、需回滚
+        refs:
+          - msprobe-data-dump
+    caveat_refs:
+      - msprobe-tool-side-effect-fault-patterns   # 工具介入可能让同步/踩踏类问题消失——先排除再下结论
+
+  - id: performance-data
+    category: performance
+    kind: probe
+    trigger: 下一步需要测量数据（指标阈值 / 时间线 / 通信占比）
+    question: "你已经有 profiling 数据了吗（采集产物）？还是要我给采集指引？"
+    branches:
+      - when: has_data
+        action: 直接分析产物（kernel_details.csv / step trace 等），不展开采集说明
+        refs:
+          - msprof-collect-parse
+          - msprof-tool-fault-patterns
+          - msprof-comm-bottleneck-thresholds
+      - when: no_data
+        action: >-
+          给采集方式（命令 + PROF_* 产物结构）；具体命令以客户环境的工具版本为准
+          （版本差异以实际输出为准，不照搬示例）
+        refs:
+          - msprof-collect-parse
+          - msprof-tool-fault-patterns
+
+  - id: interrupt-evidence-gap
+    category: interrupt
+    kind: conditional
+    trigger: >-
+      已提供的日志不足以定位——缺另一层日志（级别不够 / 只有 Host 侧 / 需按时间找首报错 rank）
+      或需卡住进程的调用栈
+    question: null
+    branches:
+      - when: gap
+        action: >-
+          给采集方式并说明需复跑与影响面：提日志级别重跑；导出 Device 侧日志按时间找首报错；
+          一键收集故障信息；卡住进程取堆栈（不中断进程）
+        refs:
+          - ascend-log-levels
+          - ascend-device-log-ops
+          - ascend-asys
+          - ascend-stack-view
+          - ascend-msaicerr
+    caveat_refs:
+      - ascend-log-troubleshooting   # 日志量级/裁剪纪律：只贴失败 rank + 栈尾，别灌全量
