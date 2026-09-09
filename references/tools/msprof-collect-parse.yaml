@@ -1,0 +1,44 @@
+id: msprof-collect-parse
+type: tool
+title: msprof 性能数据采集与解析（--application / --output，PROF_* 输出结构）
+summary: msprof 采集性能数据：`msprof --application="python3 train.py" --output=<dir>` 拉起业务并自动采集+解析导出，产物为 PROF_<时间戳>/（含 host/、device_<id>/ 原始数据、msprof_<ts>.db、mindstudio_profiler_output 汇总）；另提供解析/导出/查询数据文件信息/通信性能解析等子能力；与 msprobe 分工——msprobe 采精度数据、msprof 采性能数据
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprof/blob/tag_MindStudio_26.2.0.B060_001/docs/zh/quick_start/msprof_quick_start.md"
+    version: "MindStudio 26.2.0.B060_001（msprof docs/zh/quick_start）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprof/blob/tag_MindStudio_26.2.0.B060_001/docs/zh/user_guide/msprof_parsing_instruct.md"
+    version: "MindStudio 26.2.0.B060_001（msprof docs/zh/user_guide）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [performance]
+
+related_references: [msprof-tool-fault-patterns, msprof-comm-bottleneck-thresholds, msprobe-capability-limits]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  tool_name: "msprof（昇腾性能数据采集与分析工具）"
+  invocation: "采集：`msprof --application=\"python3 <train.py>\" --output=<输出目录>` 直接拉起业务并采集，结束后自动解析导出（日志末尾出现 `Profiling finished` + `Data is saved in .../PROF_<时间戳>` 即成功）。查看产物：`PROF_DIR=$(ls -dt <output>/PROF_* | head -n 1)` 后看 `mindstudio_profiler_output/`。解析/导出/查询另有独立子能力（见 content.commands），用于对已有原始数据二次处理"
+  commands:
+    collect: "msprof --application=\"python3 ${HOME}/train.py\" --output=${HOME}/prof_output（业务侧无需改代码；若提示无空闲 NPU，先释放或指定空闲卡）"
+    locate_output: "PROF_DIR=$(ls -dt <output>/PROF_* | head -n 1); tree -L 1 \"$PROF_DIR\"; tree -L 1 \"$PROF_DIR/mindstudio_profiler_output\""
+    parse_export: "msprof 的解析与导出子能力（见解析指南）：解析并导出性能数据、查询性能数据文件信息、解析性能数据、**通信性能数据解析**"
+    visualize: "可选：用 MindStudio Insight 打开导出的 msprof.json / trace_view.json 做可视化分析"
+  output_meaning:
+    - "`PROF_<时间戳>` 目录同时含原始数据与解析导出结果：`host/data`（Host 侧原始数据）、`device_<id>/data`（Device 侧原始数据）、`msprof_<timestamp>.db`（数据库格式性能数据）、`mindstudio_profiler_output/`（Host 与各 Device 汇总，日常分析看这里）"
+    - "导出后常见交付件：`msprof.json` / `trace_view.json`（时间线，用 Insight 打开）、`op_statistic.csv`（算子耗时占比）、`api_statistic.csv`（API 调用统计）、`operator_memory.csv`（算子内存）、以及内存 `allocated` / `reserved` 跨 step 趋势"
+    - "**与 msprobe 的分工**：msprobe 采**精度**数据（dump / compare / monitor），msprof 采**性能**数据（时间线 / 算子耗时 / 内存）——诊断性能问题时采 msprof，诊断精度问题时采 msprobe；两者可同时用于「性能劣化伴随精度异常」的场景"
+  pitfalls:
+    - "快速入门示例要求**在标准化 CANN 容器内**执行（不支持裸机/虚拟机/非标准容器），且需驱动固件已装、`npu-smi info` 正常；离线内网另有镜像获取与依赖安装方案"
+    - "采集命令是**拉起业务**（`--application`），不是 attach 到已有进程——需要能重跑该业务；不想改业务代码时这是首选方式"
+    - "超时先怀疑环境：若超过 5 分钟不完成，可能 NPU 异常或被抢占，换空闲卡重试"
+    - "`PROF_*` 目录里 `host/`、`device_*/` 是**原始数据**，快速分析不必关注；看汇总走 `mindstudio_profiler_output/`"
+    - "数据文件字段含义有独立参考手册（`profile_data_file_references.md`，篇幅很大）——查具体字段时按需查原文，不要试图整体载入"

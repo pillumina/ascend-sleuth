@@ -1,0 +1,43 @@
+id: msprof-tool-fault-patterns
+type: fault-pattern
+title: msprof 采集/解析工具故障（PROF 无呈现 / host 目录为空 / 路径与安装问题）
+summary: msprof 自身使用故障的现象→根因→处理：PROF 拖入 Insight 无呈现（缺 mindstudio_profiler_output，用 --export=on 补解析）/ host 目录为空（查 PLOG：磁盘空间、目录权限）/ 动态采集落盘路径按脚本相对路径而非配置路径 / 安装包提示 /root 空间不足（TMPDIR 切换解压目录）；排查首选 PLOG（~/ascend/log）
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprof/blob/tag_MindStudio_26.2.0.B060_001/docs/zh/support/faq.md"
+    version: "MindStudio 26.2.0.B060_001（msprof docs/zh/support/faq）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [performance]
+
+related_references: [msprof-collect-parse]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  patterns:
+    - pattern: PROF 目录拖入 MindStudio Insight 后没有任何呈现
+      symptoms: ["Insight 中无数据呈现", "PROF 目录下缺 mindstudio_profiler_output"]
+      cause: PROF 目录只有原始数据、未做过解析导出
+      fix: "`msprof --export=on --output=<PROF 路径>` 重新解析导出，生成 mindstudio_profiler_output 后再拖入"
+    - pattern: 采集成功但 host 目录为空、没有数据
+      symptoms: ["host 目录为空", "PLOG 中有 ERROR/WARNING"]
+      cause: 常见为磁盘空间不足，或目录没有相应操作权限
+      fix: 先查 PLOG 报错；清理磁盘空间 / 修目录权限后重采
+    - pattern: msprof 动态采集配置完成后，当前路径下没有采集到数据
+      symptoms: ["按配置路径找不到采集产物"]
+      cause: prof_dir 若配成相对路径，是相对于**脚本**的路径，而不是相对于 profiler_config.json 的路径
+      fix: 用绝对路径，或按脚本所在目录换算相对路径
+    - pattern: 安装 mindstudio-profiler 时提示 Not enough space left in /root
+      symptoms: ["Not enough space left in /root"]
+      cause: 安装包解压阶段默认用 /root 作临时目录，/root 剩余空间不足（并非安装包损坏）
+      fix: 清理 /root 空间后重装；或不清理而改用其他空间更大的临时目录——`export TMPDIR=/path/to/tmpdir` 后重新执行安装
+    - pattern: 采集失败/数据为空，需要查日志定位
+      symptoms: ["采集失败", "数据为空", "解析异常"]
+      cause: 需要看工具自身的运行日志才能定位
+      fix: "查 PLOG：默认路径 `~/ascend/log`；`export ASCEND_GLOBAL_LOG_LEVEL=0`（DEBUG）调级别、`export ASCEND_PROCESS_LOG_PATH=/path` 改输出路径。等级 0 DEBUG / 1 INFO / 2 WARNING / 3 ERROR / 4 NULL（关闭）——遇到采集失败、host 目录为空时优先看 ERROR/WARNING"
