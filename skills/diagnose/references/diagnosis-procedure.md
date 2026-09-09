@@ -18,17 +18,12 @@
 - 只贴报错**栈尾**（最后 N 行，含第一个 ERROR）
 - profiler 数据先过 `ascend-profile-analyze` 出 `report.md`，只读报告不读原始数据
 
-**数据资产探询（「数据缺口」消费点——精度 / 性能类必做，见 SKILL「数据资产探询」节）**：症状收齐、确定下一步需要**测量数据**后，先问一句再决定路径。绑定见本 skill 的 `references/collect-gates.yaml`（与本文同级，**不是仓库根 references/**；id 受 CI 校验）：
+**数据资产探询（「数据缺口」消费点——精度 / 性能类必做，见 SKILL「数据资产探询」节）**：症状收齐、确定下一步需要**测量数据**后，按本 skill 的 `references/collect-gates.yaml`（与本文同级，**不是仓库根 references/**）执行闸门——问句、分支动作、词条绑定都在表里（id 受 CI 校验），本文不重复：
 
-- precision：「已经有 dump 数据/分析结果了吗？还是要我给到代码级接入步骤？」
-  - 已有 → 直接进比对/分析（`msprobe-accuracy-compare` / `-overflow-check` / `-accuracy-checker`），**不展开接入说明**；
-  - 没有 → 给接入步骤（`msprobe-data-dump` 的 API 骨架 + config.json），接入点用**调用栈法**现场定位（临时替换高频算子打印调用栈、读栈得位置、随后撤掉）；明确这是**临时调试改动、需回滚**（改框架源码时尤其）。
-- performance：「已经有 profiling 数据了吗？还是要我给采集指引？」
-  - 已有 → 直接分析产物；
-  - 没有 → 按 `msprof-collect-parse` 给采集方式（命令 + `PROF_*` 产物结构），再用 `msprof-tool-fault-patterns` 对齐「指标形态 → 常见根因」；具体命令以客户环境工具版本为准。
-- interrupt（条件型，不预先问）：已提供日志不足以定位时才给采集指引——`ascend-log-levels`（提级别重跑）、`ascend-device-log-ops`（导出 Device 日志按时间找首报错）、`ascend-asys`（一键收集）、`ascend-stack-view`（卡住进程取堆栈）。
+- `kind: probe`（precision / performance）→ 先问一句，按回答走「已有 → 分析路径」「没有 → 采集指引」；
+- `kind: conditional`（interrupt）→ 不预先问，缺口出现（现有日志不足以定位）才给采集指引。
 
-探询**只问一次、只问一句**；对方说已有数据就不要"顺便"把采集步骤也讲了（原则九：上下文与注意力都是预算）。**采集面被消费时记 trace**：`{action: reference_lookup, ref_id, purpose: collect}`——采集面此前无 purpose 可记，等于零观测。
+三条纪律（只问一次 / 区分改谁 / 命令以客户环境为准 + 先排除采集副作用）见 SKILL 同名节，不在此重复。**采集面被消费时记 trace**：`{action: reference_lookup, ref_id, purpose: collect}`——采集面此前无 purpose 可记，等于零观测。
 
 ## 步骤 2：分类 → triage-tree
 

@@ -10,6 +10,12 @@
 # 分工：**形态归 SKILL，内容归 reference**——本表只决定「问什么、按什么分支、取哪些词条」；
 # 探询只问一次、只问一句，采集面只在 no_data / gap 分支展开（原则九），
 # 交互纪律见 skills/diagnose/SKILL.md「数据资产探询」节。
+# **本表是唯一绑定处**：SKILL / diagnosis-procedure 只写形态与纪律，不重复 ref-id——
+# 改词条、改分支只改本表一处（散文与数据双源必漂移，改一处即生效）。
+#
+# 校验（verify_references.py，随 CI）：文件必须存在（约定 <skill>/references/*-gates.yaml）；
+# gate id 唯一；category ∈ triage-tree 取值；kind ∈ {probe, conditional} 且 probe 必带
+# question、conditional 必不带；branches[].refs / caveat_refs 的每个 id 存在且 status: active。
 #
 # kind 两种：
 #   probe       探询型——先问一句，按对方回答分支（精度/性能：有数据就不讲采集）

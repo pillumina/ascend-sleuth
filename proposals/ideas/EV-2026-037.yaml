@@ -78,11 +78,23 @@ decisions:
     conclusion: >-
       执行：①新建 skills/diagnose/references/collect-gates.yaml（category→探询问句→分支→ref-ids，
       含 interrupt 的条件型闸门：不预先问，缺另一层日志时才给采集指引）；②verify_references.py 增
-      check_skill_ref_bindings()（id 存在 + status: active，CI 随 reference-validation job 跑）；
-      ③build_ref_summary_index.py 增 categories 字段并重建索引；④修死引用
-      profiling-performance-fault-patterns → msprof-tool-fault-patterns；⑤diagnosis-procedure.md
-      的 reference_lookup purpose 词表增 collect；⑥SKILL.md 数据资产探询节与 2.5 节改为按缺口口径，
-      CLAUDE.md / references/README.md 同步。
+      check_skill_ref_bindings()（CI 随 reference-validation job 跑）；③build_ref_summary_index.py 增
+      categories 字段并重建索引；④修死引用 profiling-performance-fault-patterns →
+      msprof-tool-fault-patterns；⑤diagnosis-procedure.md 的 reference_lookup purpose 词表增 collect；
+      ⑥SKILL.md 数据资产探询节与 2.5 节改为按缺口口径，CLAUDE.md / references/README.md 同步。
+  - who: agent（PR 自审轮）
+    when: "2026-09-09"
+    type: action
+    conclusion: >-
+      自审后加固（把"会静默失效的点"变成 CI 红）：①绑定文件按约定 `<skill>/references/*-gates.yaml`
+      发现，**找不到即红**（原实现"文件不存在就跳过"= 删掉文件检查静默消失）；②category 取值校验，
+      合法集从 triage-tree.yaml 派生（手写集合会与 triage 漂移）——闸门拼错会静默不触发、
+      词条 `applies_to.categories` 拼错会在该类别下**静默不加载**（2.5 ② 把该字段从惰性元数据
+      变成承重字段，必须校验）；③kind=probe 必带 question、conditional 必不带（闸门形态缺失
+      = 交互断链）；④gate id 唯一；⑤trace_metrics.py 增 KNOWN_PURPOSES（collect/signature/fix/
+      background）并报词表外值——新增的「消费点分布」指标此前依赖无人校验的自由文本；
+      ⑥**散文去重**：SKILL / diagnosis-procedure 不再重复 ref-id 与分支动作（只留形态与纪律），
+      绑定唯一处 = 闸表，消除散文/数据双源漂移。六条负例逐条验红。
   - who: agent（diagnose 讨论轮）
     when: "2026-09-09"
     type: eval
@@ -96,6 +108,8 @@ decisions:
       行在平台过滤之后仍加载，缺省 categories 的行（36 条）不受影响——不会新增加载面。
       不跑检索 golden——本卡不改候选路由/排序（reference 仍不参与），改动面为绑定与加载收窄，
       scan + 人审足以覆盖；2.5 ② 的收窄是减少上下文而非改变命中集。
+      负例逐条验红：category 拼错 / probe 缺问句 / conditional 带问句 / gate id 重复 /
+      绑定文件缺失 / 词条 categories 拼错——6/6 报红，复原后绿。
   - who: agent（diagnose 讨论轮）
     when: "2026-09-09"
     type: decision
@@ -106,4 +120,8 @@ decisions:
       ①methodology 消费点（方法缺口）；②interrupt 侧采集词条（ascend-log-levels / ascend-device-log-ops /
       ascend-asys / ascend-stack-view / ascend-msaicerr）未标 applies_to.categories——本卡不补标
       （补标属修订 active 词条，走 kb/high-risk；且缺省=不限定类别，不影响正确性）；③docs/metrics.md
-      的 reference 引用指标已补「消费点分布」口径。
+      的 reference 引用指标已补「消费点分布」口径；④`applies_to.platforms` 无注册表（自由取值）
+      仍未校验——拼错与 categories 同属静默不加载，但建平台注册表是另一件事（涉平台可移植性），另案；
+      ⑤2.5 ③ 的散文 ref-id（如 `ascend-error-code-structure`）仍无 CI 校验——通用「散文 ref-id 扫描」
+      需维护 ~39 项白名单（脚本名/枚举/标签），维护成本 > 收益（原则九），不做；**受校验的绑定路径
+      是 `*-gates.yaml`**，新增绑定类内容应走它。
