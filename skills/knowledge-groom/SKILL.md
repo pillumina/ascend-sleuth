@@ -75,6 +75,7 @@ disable-model-invocation: true
    | verification \ confidence | high | medium | low |
    |---|---|---|---|
    | `upstream-fix-merged`（fix PR 合入） | **0.75** | 0.6 | 0.5 |
+   | `upstream-official-doc`（上游官方案例/指南文档，含验证结论） | 0.7 | 0.55 | 0.45 |
    | `upstream-maintainer-confirmed` | 0.65 | 0.5 | 0.4 |
    | `engineer-report`（现场验证） | 0.85 | 0.7 | 0.6 |
    | `investigation` / 未填 | 0.6 | 0.3 | 0.1 |

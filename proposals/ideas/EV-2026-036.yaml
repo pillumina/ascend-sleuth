@@ -14,7 +14,7 @@ source_signals:
   - skills/to-postmortem/SKILL.md（verification 档位定义，仅面向 issue）
   - postmortems/inbox/*.case.yaml（6 条本次产出，verification.source=upstream-maintainer-confirmed + detail 注明官方文档）
   - triage-tree.yaml（training_precision 分支症状表）
-hypothesis: 上游官方案例文档会成为常态来源（msprobe/框架仓库的 best_practices 目录持续更新），需要：①case schema 的 verification 增补一档 `upstream-official-case`（或把 upstream-maintainer-confirmed 的定义扩为"上游发布且含验证结论"，含 issue 与官方文档两形态）——二选一由 owner 定；②to-postmortem 明确该来源的档位选择规则（避免每条都靠 agent 临时判断）；③triage-tree 的 training_precision 分支补症状正则：本次有 2 条 case（COMMON-SEED-RESET-DETERMINISM 的"重复训练 loss/grad_norm 不一致"、COMMON-RMSNORM-WEIGHT-SCALE 的"grad_norm 偏大"）无法被现有正则命中——现分支只有 nan/inf/overflow/收敛/乱码/日志失真族。
+hypothesis: 上游官方案例文档会成为常态来源（msprobe/框架仓库的 best_practices 目录持续更新）。**owner 已裁定：新增档位**——verification 按「来源形态」分而非按 issue 分（issue 只是一种外部来源，本地闭环 investigation 与上游官方案例同样各成一档）。已实施：case schema 新增 `upstream-official-doc`（skills/to-postmortem 档位表 + docs/evolution-execution 字段表 + examples/sample-case 注释 + groom 先验表 0.7/0.55/0.45）。**triage 症状补录不走本卡**——按 to-postmortem 步骤 3.5，路由建议随 case PR 一并提交（已在本轮同 PR 完成：training_precision 补重复训练/确定性/训推一致类，inference_precision 补花图/评分低/回复不终止类）。
 predicted_effect:
   metric: 上游官方案例沉淀的 verification 标注一致性与训练精度类 case 的路由命中率
   from: 档位靠 agent 临时贴靠（语义不贴）+ 2/6 条 case 需靠 Tier 3 兜底
@@ -22,7 +22,7 @@ predicted_effect:
 validation:
   method: scan_review
   baseline: 本次 6 条草稿的 verification 标注 + 现有 training_precision 症状正则
-  success_criteria: ①verification 档位定义覆盖官方案例来源且 to-postmortem 有选择规则；②triage-tree training_precision 补入"重复训练.*不一致 / 确定性.*不一致 / grad_norm.*偏大"类症状，且回放现有 6 条 case 的 symptoms 全部可路由；③变更走 structure 模板人审。
+  success_criteria: ①verification 档位定义覆盖官方案例来源且 to-postmortem 有选择规则（已实施）；②本批 14 条 case 的 symptoms 全部可被 triage-tree 路由（已实测 14/14）；③变更走 structure 模板人审。
   rollback: schema 词表与 triage 正则均可单独 revert
 gate:
   condition: owner 确认档位方案（新增档 vs 扩展现有档定义）后执行
@@ -35,4 +35,4 @@ decisions:
 - who: agent
   when: '2026-09-09'
   type: proposal
-  conclusion: 本批 6 条草稿按最贴近档位 upstream-maintainer-confirmed 标注并在 detail 注明「官方 best_practices 文档」；档位定义是否新增/扩展、以及 training_precision 症状正则的补录内容，均交 owner 在 case PR 人审时定夺（建议与 6 条 case 同一 PR 走 structure 模板）。
+  conclusion: owner 裁定「需要新增」→ 已新增 upstream-official-doc 档位（四处词表同步 + groom 先验 0.7/0.55/0.45）；本批 14 条草稿全部改用该档位。triage 症状补录按步骤 3.5 随 case PR 提交，不占本卡。
