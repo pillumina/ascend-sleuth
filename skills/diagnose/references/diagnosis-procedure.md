@@ -18,6 +18,17 @@
 - 只贴报错**栈尾**（最后 N 行，含第一个 ERROR）
 - profiler 数据先过 `ascend-profile-analyze` 出 `report.md`，只读报告不读原始数据
 
+**数据资产探询（精度 / 性能类必做，见 SKILL「数据资产探询」节）**：症状收齐、确定下一步需要**测量数据**后，先问一句再决定路径——
+
+- precision：「已经有 dump 数据/分析结果了吗？还是要我给到代码级接入步骤？」
+  - 已有 → 直接进比对/分析（`msprobe-accuracy-compare` / `-overflow-check` / `-accuracy-checker`），**不展开接入说明**；
+  - 没有 → 给接入步骤（`msprobe-data-dump` 的 API 骨架 + config.json），接入点用**调用栈法**现场定位（临时替换高频算子打印调用栈、读栈得位置、随后撤掉）；明确这是**临时调试改动、需回滚**（改框架源码时尤其）。
+- performance：「已经有 profiling 数据了吗？还是要我给采集指引？」
+  - 已有 → 直接分析产物；
+  - 没有 → 按 `msprof-collect-parse` 给采集方式（命令 + `PROF_*` 产物结构），再用 `profiling-performance-fault-patterns` 对齐「指标形态 → 常见根因」；具体命令以客户环境工具版本为准。
+
+探询**只问一次、只问一句**；对方说已有数据就不要"顺便"把采集步骤也讲了（原则九：上下文与注意力都是预算）。
+
 ## 步骤 2：分类 → triage-tree
 
 加载 `triage-tree.yaml`。症状匹配分支（正则兼容的模糊匹配）。每个分支带 `category`（interrupt / precision / performance）。
