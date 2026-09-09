@@ -62,6 +62,42 @@ expect('mode 自动推导（有 currentPackageId 才 update）', /row\.currentPa
 expect('返回 reused 标记', /reused: targetPluginId !== undefined/.test(src))
 expect('工具重名不抛错（工具注册是进程全局的，第二份 loader 应降级）',
   /already registered/.test(src) && /本次跳过注册/.test(src))
+expect('成对 RPC 守卫存在且在加载前调用', /function assertRpcPair\(/.test(src) && /assertRpcPair\(hostCode, clientCode\)/.test(src))
+expect('不一致时给出可操作的错误（提示路径/工作区）', /两半不是同一版本/.test(src) && /按会话工作区解析/.test(src))
+
+
+// —— 成对 RPC 一致性守卫（规则副本，与 loader 的 assertRpcPair 一致）——
+function rpcNames(code, pattern) {
+  const out = []
+  let m
+  const re = new RegExp(pattern, 'g')
+  while ((m = re.exec(code)) !== null) if (out.indexOf(m[1]) < 0) out.push(m[1])
+  return out
+}
+function rpcMismatch(hostCode, clientCode) {
+  const called = rpcNames(clientCode, "host\\.call\\(\\s*'([^']+)'")
+  const handled = rpcNames(hostCode, "harness\\.handle\\(\\s*'([^']+)'")
+  return {
+    missing: called.filter(n => hostCode.indexOf("'" + n + "'") < 0),
+    unused: handled.filter(n => clientCode.indexOf("'" + n + "'") < 0),
+  }
+}
+
+console.log('\n[成对 RPC 守卫]')
+{
+  const hostPath = path.join(repo, 'dsh-plugins/ev-panel/panel-host.js')
+  const clientPath = path.join(repo, 'dsh-plugins/ev-panel/panel-client.js')
+  const host = fs.readFileSync(hostPath, 'utf8')
+  const client = fs.readFileSync(clientPath, 'utf8')
+  const ok = rpcMismatch(host, client)
+  expect('真实面板两半一致（不误报）', ok.missing.length === 0 && ok.unused.length === 0,
+    JSON.stringify(ok))
+  // 用"去掉 detail handler 的 host"模拟半新半旧（这正是曾导致展开报错的场景）
+  const stale = host.replace(/\s*const detailDisposer = harness\.handle\('ev-idea-detail'[\s\S]*?\n    \}\)\n/, '\n')
+  const bad = rpcMismatch(stale, client)
+  expect('半新半旧被抓到（缺失 ev-idea-detail）', bad.missing.indexOf('ev-idea-detail') >= 0,
+    JSON.stringify(bad.missing))
+}
 
 console.log('\n' + (fails.length ? '失败 ' + fails.length + ' 项: ' + fails.join(' | ') : '全部通过'))
 process.exit(fails.length ? 1 : 0)

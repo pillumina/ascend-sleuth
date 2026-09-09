@@ -41,6 +41,34 @@ return {
       return await fs.readText(target)
     }
 
+    // 成对 RPC 一致性守卫：面板的 host/client 通过 harness.handle / host.call 成对通信。
+    // 若两半取自不同版本（最典型：路径按会话工作区解析，改过代码的副本在别的 worktree），
+    // 会出现"client 调了 host 没有的 RPC"——症状是加载成功、点开才报错，很难从现象看根因。
+    // 通用实现：扫出 client 调的 RPC 名与 host 声明的 handler 名，任一方引用不到另一方就拒绝。
+    function rpcNames(code, pattern) {
+      const out = []
+      let m
+      const re = new RegExp(pattern, 'g')
+      while ((m = re.exec(code)) !== null) {
+        if (out.indexOf(m[1]) < 0) out.push(m[1])
+      }
+      return out
+    }
+    function assertRpcPair(hostCode, clientCode) {
+      if (clientCode === undefined) return
+      const called = rpcNames(clientCode, "host\\.call\\(\\s*'([^']+)'")
+      const handled = rpcNames(hostCode, "harness\\.handle\\(\\s*'([^']+)'")
+      const missing = called.filter(n => hostCode.indexOf("'" + n + "'") < 0)
+      const unused = handled.filter(n => clientCode.indexOf("'" + n + "'") < 0)
+      if (missing.length === 0 && unused.length === 0) return
+      const parts = []
+      if (missing.length) parts.push('client 调用了 host 未声明的 RPC: ' + missing.join(', '))
+      if (unused.length) parts.push('host 声明了 client 未使用的 RPC: ' + unused.join(', '))
+      throw new Error('host/client 两半不是同一版本——' + parts.join('；')
+        + '。请确认 host 与 client 指向同一份代码（相对路径按会话工作区解析，'
+        + '改过代码的副本可能在别的 worktree）。')
+    }
+
     // 找本 session 已存在的同前缀插件（重复调用 → 复用而非新建）
     function findExisting(agentId, idPrefix) {
       if (typeof runner.inventory !== 'function' || idPrefix === undefined) return undefined
@@ -113,6 +141,8 @@ return {
         const cwd = agent.session.header.cwd
         const hostCode = await readHalf(args.host, cwd)
         const clientCode = args.client === undefined || args.client === '' ? undefined : await readHalf(args.client, cwd)
+        // 两半必须同版本：不一致就拒绝，别让人加载完再点到报错
+        assertRpcPair(hostCode, clientCode)
 
         // 幂等：同前缀重复调用 = 重载（复用已有插件，不新建）
         const existing = args.pluginId === undefined ? findExisting(agent.id, args.idPrefix) : undefined

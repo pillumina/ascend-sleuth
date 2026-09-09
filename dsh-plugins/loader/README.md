@@ -72,6 +72,16 @@
 
 一句话：**同 session 重复调用 = 真重载；跨 session 调用 = 新建并覆盖显示。**
 
+## 成对 RPC 一致性守卫
+
+面板的 host/client 通过 `harness.handle` / `host.call` 成对通信。若两半取自**不同版本**
+（最典型：相对路径按会话工作区解析，而改过代码的副本在别的 worktree），会出现"client 调了
+host 没有的 RPC"——症状是**加载成功、点开才报错**，从现象看不出根因（2026-09 实际踩过：
+展开报 `unrecognized arguments: --detail`）。
+
+加载前会扫出 client 调的 RPC 名与 host 声明的 handler 名，任一方引用不到另一方就**拒绝加载**
+并指出缺哪个，而不是让人加载完再点到报错。这是通用检查，不针对某个面板。
+
 ## 幂等规则的校验
 
 `scripts/check_loader_idempotency.js` 用**规则副本**给"重复调用=重载"的匹配逻辑做单元测试
