@@ -1,0 +1,56 @@
+id: ascend-train-precision-triage
+type: methodology
+title: 大模型训练精度定位五步路径（CheckList → 复现前置 → 稳定/不稳定分流 → 分支排查 → 单算子确认与修复）
+summary: 训练侧精度问题定位五步路径：先做 CheckList 排除非算子因素（超参/环境变量/三方库/数据读取/模型结构/权重初始化/版本）→ 复现前置（固定随机性、打开确定性、seed_all、缩小规模）→ 按「能否稳定复现 + 现象」分流（溢出或NaN / 首Step Loss差异 / 长稳Loss差异 vs 内存踩踏/算子确定性/硬件/框架/版本）→ 分支排查 → 单算子三方比对确认后用「修复三板斧」判定该 API 对整体 Loss 的影响
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/best_practices/train_debug_guide.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/best_practices/train_debug_guide）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [msprobe-config-check, msprobe-data-dump, msprobe-visualization, msprobe-accuracy-compare, msprobe-accuracy-checker, msprobe-monitor]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  flow:
+    - step: 1
+      name: CheckList——先排除非算子因素（大部分精度问题出在这里）
+      action: "定位算子精度之前必须先排除非算子干扰，且需要**同时准备标杆环境与 NPU 环境**（定位本质是两者对比）。六项：①训练超参与环境变量比对（Beyond Compare 比对日志/启动脚本，或用脚本比对工具）；②三方库版本比对（git 分支查 MindSpeed-LLM / Megatron / DeepSpeed，pip list 查 PyTorch / torch_npu）；③数据读取检查（采集最开始送入模型的输入数据或打印 forward 入参）；④模型结构检查（两侧直接打印模型结构比对）；⑤权重初始化对齐（同一预训练模型或同一随机种子）；⑥环境版本更新（条件允许时升到最新 CANN/驱动/torch_npu——很多问题在旧版本已修复）。"
+      check: "六项逐项给出「一致/不一致」结论；不一致的先解释差异，不要带进算子层排查"
+      when_to_use: 任何训练精度问题定位的第 0 步（不可跳过——跳过等于在错误层面空转）
+    - step: 2
+      name: 复现前置——固定随机性、打开确定性、缩小规模
+      action: "目标是跑出与客户描述一致的训练过程：①固定随机性（np.random.seed / torch.manual_seed / torch_npu.npu.manual_seed，关闭 Dropout，数据加载 shuffle=False）；②打开算子计算确定性与通信确定性（`torch.use_deterministic_algorithms(True)` 等，需在训练代码开始前尽早设置）；③用 msprobe 的 `seed_all(seed=1234, mode=True, rm_dropout=True)` 一次性固定随机种子、Dropout 与计算/通信确定性（mode=True 含算子与通信确定性；之后只需手动关 shuffle）；④缩小规模（千卡/万卡问题保持 TP/PP/CP/SP/EP 切分不变，缩 Batch Size 或减模型层数，裁剪需伴随实验确保仍能复现）。"
+      check: "同参数重复跑两次结果一致；缩规模后问题仍复现"
+      when_to_use: CheckList 通过后、进入分支排查前
+    - step: 3
+      name: 分流——先判「能否稳定复现」，再按现象定分支
+      action: "稳定复现的问题，基本原理是采集标杆与 NPU 训练数据做细粒度对比，找出异常计算 API；不稳定复现的问题，通常涉及不支持确定性计算的特殊算子、内存踩踏、硬件多 bit 翻转或框架/三方库 bug，需逐一排查。按现象细分：溢出或 NaN / 首 Step Loss 差异 / 长稳训练 Loss 差异（稳定侧）；内存踩踏 / 算子确定性 / 硬件 / 训练框架 / 训练阶段·模型阶段·版本（不稳定侧）。**强化学习场景**（reward 相对标杆下降、伴随 logp_diff 上升）有独立分支，本路径不展开。"
+      check: "明确回答两个问题：问题能否稳定复现？现象是 NaN/首步差异/长稳差异/其他？"
+      when_to_use: 复现前置完成后（分流决定后面走哪条路，分错路会在错误层面堆证据）
+    - step: 4
+      name: 稳定复现三分支——采集口径按现象定
+      action: "①**溢出或 NaN**：先定「问题 Step」——NPU 有 NaN 而 GPU 无 → 取 NPU 首个 NaN 步；两者都有但 NPU 明显更多 → 取「NPU 有而 GPU 无」的首步。然后采集该步前反向输入输出：加工具后溢出消失 → 怀疑内存踩踏（转不稳定侧）；仍复现 → 用分级可视化/手动搜 Inf/NaN 定位溢出最先发生的位置——落在 **weight** 则疑上一步反向梯度，切换采集步为上一步；落在 **input** 则疑未被采集的特殊算子，对照代码栈查 input 来源；落在 **output** 则 output 所在算子重点分析。②**首 Step Loss 差异**（前几步平均相对误差 >1%）：第 1 步不对齐 → 采第 1 步正向；第 1 步对齐第 2 步不对齐 → 采第 1 步反向 + 第 2 步正向（第 3、4 步同理）；再走可视化构图或表格比对找可疑算子，仍无果则用精度预检辅助。③**长稳 Loss 差异**（初期对齐、后期对不齐）：Loss 跳变采「上一步反向 + 当前步正向」，Grad Norm 跳变采当前步反向；模型小直接采 mix 级统计量，模型大先采模块级再收缩到 API 级；不确定步数或规模大时改用训练状态监测（Grad Norm 先异常优先采梯度，Loss 为主优先采激活值与权重）。"
+      check: "采到目标步/目标阶段的数据；能给出 1-3 个可疑算子（否则按该分支的补充手段继续）"
+      when_to_use: 稳定复现分支（三个子分支按现象二选一）
+    - step: 5
+      name: 不稳定复现五分支——按可疑方向逐一排除
+      action: "①**内存踩踏**：开流同步（`ASCEND_LAUNCH_BLOCKING=1`）或加工具后问题稳定消失 → 大概率是计算/通信流踩踏、框架内存分配偏移计算错误或通信无保护读入无效数据；算子内部踩踏（分核/分 UB 计算、非整块、数据类型变化）加同步也规避不了。排查：改异步 dump（`async_dump: true`）采「开同步无 NaN」与「不开同步有 NaN」两组的最早 NaN tensor；看差异是否按整倍/按行/按列等**规整**规律；用 profiling+insight 看并行关系；打 ptr 内存地址；用算子检测工具查流水内/流水间/核间实现。②**算子确定性**：用精度采集 + md5 模式**重复采两次**，找首个「输入一致输出不一致」的算子；若为特殊随机算子（如 torch.randn——同种子在不同硬件仍生成不同随机数），把随机数改在 CPU 上生成再搬 device；若为暂不支持确定性计算的算子（如 MSDA、grid_sample），转 CPU 或咨询替代实现。③**硬件**：大集群纯偶然的 Loss 跑飞/尖刺且换设备消失 → 模型压测/算子压测/`ascend-dmi -dg -i aicore -s -sc 60 -q` 压测，或用 HCCL_INTRA_ROCE_ENABLE=0 / HCCL_INTRA_PCIE_ENABLE=0 逐步禁链路。④**训练框架**：Megatron 去 overlap 类参数、简化 TP/PP/SP/CP/EP；DeepSpeed 去 overlap、调 bucket_size、切 Zero1/2/3/offload。⑤**阶段与版本**：训练阶段——关优化器或学习率置 0 定界前反向、换优化器（Adam→SGD、融合 Adam→小算子）；模型阶段——减层/二分/挪 device/反向二分冻结梯度；版本——现象与特定版本绑定时用版本二分（替换对应合入的 so 或重编译）。"
+      check: "每个分支有明确的「是/否」判定依据（如加同步是否消失、md5 两次是否一致、换设备是否消失），不靠感觉排除"
+      when_to_use: 不能稳定复现时（含从稳定侧「加工具后溢出消失」转来的内存踩踏）
+    - step: 6
+      name: 定界到 API 后——单算子验证 + 修复三板斧
+      action: "①**单算子验证**：以 CPU 为绝对标杆做三方比对——同一份输入在 NPU 与标杆上分别跑，比较「NPU↔CPU」与「标杆↔CPU」的欧氏距离；前者大于后者则确认该算子存在精度问题。②**修复三板斧**（标杆等价替换，观测替换后 Loss 是否正常）：**升精度**（FP16/BF16→FP32，注意 random 类噪声生成算子不适合升精度）；**常规 API 转 CPU**（该 API 在 CPU 侧有对应实现时，在 forward 里把输入/模块搬到 CPU 再搬回）；**小算子代替融合算子**（如用分支变量在融合 attention 与常规实现间切换，如 `--use_fused_attn`）。判定：替换后 Loss 正常 → 该 API 是根因；Loss 变好但不达标 → 有影响但非唯一因素；Loss 无变化 → 该 API 对精度无影响。三种都无效则联系算子支撑人员定位责任人。"
+      check: "三方欧氏距离对比结论；替换后 Loss 的三种走向之一（正常/变好不达标/无变化）"
+      when_to_use: 已定位到可疑算子之后——不要拿比对结果的 diff 直接当根因
+
+  verified_by_testing: false
+  test_scenarios: []

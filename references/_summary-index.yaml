@@ -1,7 +1,7 @@
 # GENERATED FILE —— 背景类 summary 索引（diagnose 2.5 ② 读取），不要手改。
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
-# 生成日期：2026-09-09    词条数：56
+# 生成日期：2026-09-09    词条数：57
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -324,6 +324,14 @@ entries:
   title: trace 日志机制与落盘路径（仅 Ascend EP 标准形态）
   summary: trace 将软件栈维测信息记内存、运行出错或进程结束时才落盘，仅 Ascend EP 标准形态支持；根目录 $HOME/ascend/atrace（ASCEND_WORK_PATH
     可重定向），事件三类 schedule/stackcore/exit；stackcore 与 *.bin 轨迹需 asys 工具解析，目…
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-train-precision-triage
+  type: methodology
+  title: 大模型训练精度定位五步路径（CheckList → 复现前置 → 稳定/不稳定分流 → 分支排查 → 单算子确认与修复）
+  summary: 训练侧精度问题定位五步路径：先做 CheckList 排除非算子因素（超参/环境变量/三方库/数据读取/模型结构/权重初始化/版本）→ 复现前置（固定随机性、打开确定性、seed_all、缩小规模）→
+    按「能否稳定复现 + 现象」分流（溢出或NaN / 首Step Loss差异 / 长稳Loss差异 vs 内存踩踏/算…
   applies_to:
     platforms:
     - cross
