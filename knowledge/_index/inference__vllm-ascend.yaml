@@ -1392,7 +1392,7 @@ namespaces:
       - deepseek-v4
       - a3
       - multi-node
-      - mixed-parallel
+      - mixed-parallelism
       - roce
       - hccl
       compat: vllm-ascend 0.18.0
@@ -1402,7 +1402,7 @@ namespaces:
       - A3 双机混部部署 DeepSeek-V4-Pro-w4a8（TP16 + DP2 跨 2 节点 + expert parallel + --quantization ascend），vllm
         serve 拉起失败，报 'call acln…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9418.yaml
-      hash: c99461bb61a2
+      hash: acdee658b102
     - id: VLLM-ASC-9482
       title: '--async-scheduling + MTP（spec decode）崩溃：model runner 的 _copy_valid_sampled_token_count（PR
         #8766 重写）把 current_stream 声明进 with torch.npu.stream() 内、多流未同步 → valid_…'
@@ -1909,7 +1909,7 @@ namespaces:
       - Qwen3.5-397B-A17B-w8a8（--quantization ascend）混部 TP4×DP4 + --enable-expert-parallel + --speculative-config
         '{"method":"qw…
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-7854.yaml
-      hash: 909aa2319a41
+      hash: 9b6e1885679f
     - id: VLLM-ASC-7856
       title: GLM-4.7-w8a8（float-mtp）在 vllm-ascend v0.17.0rc1 镜像 opencode/webfetch 场景流式 tool_calls 解析异常（arguments
         json 不闭合/拼接错误，工具调用必现失败），非流式正常——上游 vLLM <0.18 流式 tool-call pa…

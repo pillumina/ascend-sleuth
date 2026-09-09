@@ -15,7 +15,7 @@ cases:
     title: "A3 双机混部（TP16+DP2+EP，DeepSeek-V4-Pro w4a8）拉起失败：call aclnnHcPreInvRms failed——未用灵衢背板仍按机内 AIV/HCCS 配置跑跨机通信；跨机改走 ROCE（HCCL_BUFFSIZE=200、HCCL_INTER_HCCS_DISABLE=TRUE、删 HCCL_OP_EXPANSION_MODE=AIV）+ MoE 通信类型 ALLGATHER 后拉起"
 
     category: interrupt
-    tags: [deepseek-v4, a3, multi-node, mixed-parallel, roce, hccl, ep, startup-failure, moe-comm]
+    tags: [deepseek-v4, a3, multi-node, mixed-parallelism, roce, hccl, ep, startup-failure, moe-comm]
 
     platforms: ["A3-910C"]            # HDK 25.5.2/25.5.1，A3 双机
     compat:

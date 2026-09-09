@@ -13,7 +13,7 @@ cases:
     title: "Qwen3.5-397B-A17B-w8a8 混部部署（TP4×DP4 + EP + qwen3_5_mtp + FULL_DECODE_ONLY + quantization ascend）高并发多模态压测返回乱码/精度掉点（OCRbench 87.9 vs 95.6），TP16DP1 正常——w8a8 fused-MoE dispatch_ffn_combine 缺 xmask（xactivemask）处理，PR #8560 修复"
 
     category: precision
-    tags: [qwen3.5, 397b, w8a8, moe, expert-parallel, mtp, full-decode-only, xmask, dispatch_ffn_combine, garbled-output, multimodal, mixed-parallel]
+    tags: [qwen3.5, 397b, w8a8, moe, expert-parallel, mtp, full-decode-only, xmask, dispatch_ffn_combine, garbled-output, multimodal, mixed-parallelism]
 
     platforms: ["A2-910B"]
     compat:

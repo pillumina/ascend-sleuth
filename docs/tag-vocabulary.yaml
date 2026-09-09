@@ -33,8 +33,11 @@ synonyms:
   # 语义变体（"升级解决"类问题的统一检索键）
   upgrade: version-upgrade
   # 语言变体（中文 → 英文）
-  混部: mixed-parallel
-  hybrid: mixed-parallel        # VLLM-ASC-7854 的 hybrid 亦指混部部署
+  混部: mixed-parallelism
+  hybrid: mixed-parallelism     # VLLM-ASC-7854 的 hybrid 亦指混合并行部署
+  # 更名（消除歧义）：mixed-parallel 易被读成「PD 混部」，改为 mixed-parallelism——
+  # 核心词是 parallelism，明确指"并行策略叠加"这一维度
+  mixed-parallel: mixed-parallelism
 
 # ── 「混部」的三种口径（2026-09-09 查证，防止后来者打错 tag）─────
 # 官方文档（华为云 ModelArts）把推理部署分为并列三档：
@@ -46,11 +49,12 @@ synonyms:
 #   → 所以「混部 vs 分离」的关系取决于口径：把"PD 分离"当**物理隔离部署**时两者互斥（②vs③）；
 #     把"PD 分离"当**多角色分离架构**时混部是其中一种（文档标题即"多角色分离 - 混部"）。
 #
-# 本词表的 `mixed-parallel` 取**第三义：混合并行部署**（TP/DP/EP 等并行策略叠加），
+# 本词表的 `mixed-parallelism` 取**第三义：混合并行部署**（TP/DP/EP 等并行策略叠加），
+# 命名刻意让核心词落在 parallelism 上，避免 mixed-* 被读成"PD 混部"；
 # 依据是本库两条来源 case 的实际文本——VLLM-ASC-9418「双机混部（TP16+DP2+EP）」、
 # VLLM-ASC-7854「混部部署（TP4×DP4+EP）」并附对照句「只改部署策略为 TP16DP1（无 EP 混部）」，
 # 两者全文均**无 P/D 单元分离的表述**。因此：
-#   - `mixed-parallel` ≠ PD 混部（第②义）；
+#   - `mixed-parallelism` ≠ PD 混部（第②义）；
 #   - 将来若出现真正的 PD 混部 case，应新增与 `pd-separation` 成对的 `pd-mixed`（本文件暂不登记，
 #     无 case 支撑的 tag 不预先创建——避免空 tag 污染聚类信号）；
 #   - 另有第④义「训练推理混部」（训推共卡/共集群），同样与 PD 无关，需要时另立 tag。
