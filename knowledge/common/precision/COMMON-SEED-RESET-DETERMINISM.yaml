@@ -36,6 +36,10 @@ cases:
       source: upstream-official-doc
       detail: "msprobe 官方 best_practices 案例（上游发布，含定位链与验证结论）"
 
+    ref_knowledge:
+      - ref: ascend-determinism-triage
+        role: fix-methodology
+
     quickly_check:
       primary:
         command_template: "grep -rn 'seed_all()' {{train_code_path}} | grep -v 'mode=True'"

@@ -35,6 +35,10 @@ cases:
       source: upstream-official-doc
       detail: "msprobe 官方 best_practices 案例（上游发布，含定位链与验证结论）"
 
+    ref_knowledge:
+      - ref: ascend-garbled-output-triage
+        role: fix-methodology
+
     quickly_check:
       primary:
         command_template: "grep -E '乱码|garbled' {{log_path}}"

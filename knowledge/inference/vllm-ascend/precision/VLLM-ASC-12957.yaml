@@ -40,6 +40,10 @@ cases:
 
       detail: 'fix PR #14269'
 
+    ref_knowledge:
+      - ref: ascend-garbled-output-triage
+        role: fix-methodology
+
     quickly_check:
       primary:
         command_template: "grep -E '乱码|garbled|badcase' {{log_path}}"

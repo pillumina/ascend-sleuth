@@ -1,0 +1,50 @@
+id: ascend-garbled-output-triage
+type: methodology
+title: 乱码类「无报错错误输出」分流路径（权重错位 / 模块未移植 / 算子数值偏差 / KV 传输时序 / 传输路径未定位）
+summary: 推理或训练输出乱码且**无报错**时的分流路径：先按「三段定界」（输入预处理 / 前向计算 / 传输与后处理）判断问题落在哪一段，再按五条机制分流——①权重转换/加载后逐 tensor 错位 ②模型模块未移植（分层分界，如第 N 层后异常）③算子数值偏差（版本绑定，回退版本即消失）④KV 传输/流同步时序（首请求、跨 PP stage 边界）⑤传输路径缺陷未定位（切换通信路径可规避）；乱码没有签名可 grep，判别靠「分层分界点 + 版本绑定 + 触发时机」三把尺子
+
+sources:
+  - type: case-derived
+    cases: [MSLLM-1532, VLLM-ASC-KVMIRROR-MISSING, VLLM-ASC-ALLREDUCE-NUMERIC-DRIFT, VLLM-ASC-12957, VLLM-ASC-11169]
+    extracted_at: 2026-09-09
+    extraction_method: to-reference --ingest-cases
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [vllm-infer-precision-triage, msprobe-accuracy-compare, msprobe-visualization]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  flow:
+    - step: 1
+      name: 先确认「无报错的错误输出」——本路径的适用边界
+      action: "乱码/输出错乱类问题**没有错误签名可 grep**（不像 interrupt 能靠栈尾定位），这是它与其它精度问题的根本差别。先排除有报错的场景（崩溃/超时/断言失败走各自路径），再确认现象是「服务正常返回、内容错」。同时收集三把尺子：**分层分界点**（从第几层/第几个 token 开始错）、**版本绑定**（换版本是否消失）、**触发时机**（首请求 / 长跑后 / 特定并发）。"
+      check: "是否无报错？从第 N 层或第 M 个 token 起异常？换版本/换设备是否变化？首请求还是稳定复现？"
+      when_to_use: 推理输出乱码、生成内容错乱、训练产物不可用等"内容错但进程健康"的场景
+    - step: 2
+      name: 三段定界——问题落在哪一段
+      action: "把链路切成三段定位：**输入预处理**（prompt/tokenizer/采样参数）→ **前向计算**（模型权重与算子）→ **传输与后处理**（KV cache 传输、跨进程/跨 stage、解码与约束解码）。判据：①统计信息层（余弦相似度）看不出差异但 tensor 层能看出 → 偏向实现级差异（模块/权重）；②差异集中在固定层号之后 → 偏向该层引入的结构缺失；③首请求异常、先发普通请求再发 badcase 就正常 → 偏向前序状态/时序；④切换通信路径或关闭某特性即规避 → 偏向传输/特性路径。"
+      check: "统计信息层 vs tensor 层的差异可见性；异常起点是固定层/固定 token 还是随机；是否与首请求/并发相关"
+      when_to_use: step 1 确认适用后（先定界再深入，避免全链路 dump）
+    - step: 3
+      name: 前向计算段——权重错位 vs 模块未移植
+      action: "①**权重转换/加载错位**：逐 tensor 比对权重，通常只有少数几个参数不一致（如 q_proj/k_proj/v_proj，其余 embed/lm_head/norm/mlp 完全一致）→ 查转换脚本的 layout 假设（如 grouped GQA layout 被按 plain [all Q, all K, all V] 切开）。②**模型模块未移植**：差异从固定层号（如 28 层）之后出现、且该层 K/V 等参数值异常小 → 核对模型配置里被引用的模块（如 KVMirrorManagerHook/KVMirrorManager）是否随模型一起移植到目标框架。"
+      check: "逐 tensor 权重比对（差异是否只集中在少数参数）；逐层比对的首个异常层号；模型配置引用的模块在目标框架代码中是否存在"
+      when_to_use: 定界到前向段，且「统计信息看不出、tensor 能看出」时
+    - step: 4
+      name: 算子与传输段——数值偏差 vs 时序
+      action: "①**算子数值偏差**：现象与版本强绑定（升级后出现、回退即消失）→ 走 Dump → 比对 → 单算子复现，收敛到具体算子（如 all_reduce），再取修复版本。②**KV 传输/流同步时序**：异常集中在跨 PP stage 边界（如 layer 20→21/40→41）、或只在首请求出现、或 P 侧改切分后消失 → 用 kvcache 逐层数值比对定位突变层，检查写入后是否同步 NPU 流（跨 engine 读取读到陈旧值）。③**传输路径缺陷未定位**：切换通信路径（如 `VLLM_ASCEND_ENABLE_FLASHCOMM1=1`）或关闭 external kv connector 即可规避 → 属于**workaround 定界**，把范围锁到该传输路径，根因待官方定位，别把 workaround 当结论。"
+      check: "版本二分（回退是否消失）；kvcache 逐层比对是否在 stage 边界突变；切换通信路径/关闭特性是否规避"
+      when_to_use: 定界到传输或算子层，或前向段比对未发现差异时
+    - step: 5
+      name: 收口——用「可解释的机制」而不是「不报错了」作为完成标准
+      action: "修复后必须能解释机制：权重类 → 说明 layout/切片假设错在哪；模块类 → 说明缺失模块承担的语义；算子类 → 给出单算子复现与版本修复点；时序类 → 说明哪个写入未同步哪条流。若只拿到 workaround（如切换通信路径），在结论里显式标注「根因未定位，workaround 已验证」，并按需补 `to-postmortem` 记录 pending-investigation 状态。"
+      check: "结论能否复述为「A 导致 B 导致 C」的因果链；workaround 是否被如实标注为 workaround"
+      when_to_use: 输出结论前（乱码类最容易「改了个配置好了」就收工）
+
+  verified_by_testing: false
+  test_scenarios: []

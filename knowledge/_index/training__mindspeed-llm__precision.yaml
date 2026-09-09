@@ -40,7 +40,7 @@ namespaces:
       symptoms:
       - Qwen3-0.6B 用 convert_ckpt_v2.py 做 HF→MCore→HF 无训练 round-trip 转换，导出的 HF 模型生成乱码碎片（如 'aseñaGLISHATUREATURE...'）
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1532.yaml
-      hash: 6e8f508e1eb7
+      hash: b7b18dd4f964
     - id: MSLLM-1780
       title: FSDP2 断点续训后第一步日志异常：lm loss 被错误除以 global_step（0.247×31=7.66 与相邻步一致）、elapsed/tokens/s 同步失真：trainer.py
         续训时 _last_logged_step 从 _global_step_last_logged（常为 0）恢复，纯日志…

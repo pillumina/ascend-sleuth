@@ -1752,7 +1752,7 @@ namespaces:
       symptoms:
       - A2 双机（DP=2 双节点）GLM-5.2 w8a8 + UCMConnector external kv connector 拉起推理，发送中文请求返回乱码
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11169.yaml
-      hash: 743b756ecca3
+      hash: b15c8257b170
     - id: VLLM-ASC-11824
       title: Ascend NPU 上 batch invariance 测试输出随 batch 波动：算子默认非确定性执行，需在 override_envs_for_invariance()
         开启 torch.use_deterministic_algorithms(True, warn_only=True)
@@ -1768,7 +1768,7 @@ namespaces:
       symptoms:
       - batch invariance 测试（如 Qwen3-30B）断言同输入、不同 batch 输出一致，在 Ascend NPU 上随 batch 波动、测试失败
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11824.yaml
-      hash: 50c83692e0ad
+      hash: 9ebe5c5e844d
     - id: VLLM-ASC-12030
       title: vllm-ascend 0.20 + GLM-5.1 w8a8 910C PD 分离：特定请求（function-calling）流式响应经常出现单词最后 1 个字符重复，非流式正常——GLM5
         流式 tool-call 解析器 glm4_moe_tool_parser.py 解析缺陷，0.23.0 已修复
@@ -1836,7 +1836,7 @@ namespaces:
       symptoms:
       - PD 分离（use_ascend_direct=true RDMA/ADXL）+ PP=4 + DP=8 decode 下，服务拉起后首个请求输出与 prompt 无关的随机乱码
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12957.yaml
-      hash: 9f1ec0ef14f7
+      hash: 41aff8d7d5b2
     - id: VLLM-ASC-14265
       title: v0.26.0rc GLM-5.2+MTP 投机接受率相对 v0.23 大幅劣化：MegaMoe 对称通信 prefill buffer 按 decode graph 大小分配（enable_prefill_mc2
         关闭时）致大 prefill batch 容量溢出产生错误输出
@@ -1981,7 +1981,7 @@ namespaces:
       symptoms:
       - CANN 从 9.0.0 升级到 9.1.0 后，vLLM 推理请求回复乱码（正常场景回复正常文本，异常场景回复乱码数据）
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-ALLREDUCE-NUMERIC-DRIFT.yaml
-      hash: 6977d5fd3879
+      hash: ecb8df212d0e
     - id: VLLM-ASC-GPQA-OPERATOR-CLAMP
       title: DeepSeek-V4 Pro 在 Atlas 800I A3 上 GPQA 评分明显偏低（同模型其他环境正常）：三个独立根因叠加——rope 转 float32、Dequantswigluquant/GMMswigluquant
         的 clamp 缺陷（主因）、moe_gating_top_k_hash 内部与后续重复…
@@ -2017,7 +2017,7 @@ namespaces:
       symptoms:
       - VL 模型从 H20 + transformers 迁到昇腾 + vLLM 后，第 7 个 token 开始 NPU 输出与 GPU 对不上，随后出现乱码
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-KVMIRROR-MISSING.yaml
-      hash: 0d1700f1e80d
+      hash: a859bdcbe51a
     - id: VLLM-ASC-ROPE-CFG-MISMATCH
       title: tora 模型 + vllm-ascend 统一数据集推理，NPU 评分 54.4 明显低于 GPU 80.6：hf config.json 的 max_position_embedding（16384→8192）与
         rope_theta（1000000→10000）取值与模型训练配置不匹配

@@ -1,0 +1,50 @@
+id: ascend-determinism-triage
+type: methodology
+title: 确定性失效排查路径（开关被重置 / 算子内部竞争 / batch invariance 三路分流）
+summary: 训练或推理结果不可复现时的分流路径：先确认确定性开关是否**真的**开着（易被业务代码中途重置）→ 再看「全量 dump 是否让问题消失」（消失=采集行为影响时序，指向竞争）→ 三路分流：①plog 看 aclnn deterministic 标识是否中途变 0（业务代码重置开关）②ASCEND_LAUNCH_BLOCKING=1 后消失 + mssanitizer 报竞争（算子内部数据竞争）③同输入不同 batch 输出波动（batch invariance 未显式开启确定性算法）
+
+sources:
+  - type: case-derived
+    cases: [COMMON-SEED-RESET-DETERMINISM, COMMON-FA-RACE-DETERMINISM, VLLM-ASC-11824]
+    extracted_at: 2026-09-09
+    extraction_method: to-reference --ingest-cases
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [ascend-train-precision-triage, msprobe-tool-side-effect-fault-patterns]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  flow:
+    - step: 1
+      name: 先确认确定性开关「真的」开着——它可能被中途重置
+      action: "结果不可复现时，第一反应常是「确定性没开」。但更常见的是**开了又被重置**：业务代码里的自定义装饰器（如对 randn 做 wrap 的 fix_randn）反复调用无参 `seed_all()`，会把已置 True 的 `torch.use_deterministic_algorithms` 重置回 False。全局搜所有 `seed_all(` 与 `torch.use_deterministic_algorithms(` 调用点，确认是否存在不带 mode/True 的重复设置。"
+      check: "`grep -rn 'seed_all(' <train_code> | grep -v 'mode=True'`（存在即命中）；`grep -rn 'use_deterministic_algorithms' <train_code>` 看调用顺序"
+      when_to_use: 已开确定性但仍不可复现（不可复现 ≠ 没开）
+    - step: 2
+      name: 看 plog 的 aclnn deterministic 标识是否稳定
+      action: "plog 中底层 aclnn 算子的 deterministic 标识应全程为 1。若出现「部分 1、部分 0」（中途被改），即可确认是**开关被中途重置**而非算子本身非确定性——回到 step 1 找重置点；若全程为 1 仍不可复现，转 step 3。"
+      check: "plog 搜 aclnn deterministic 标识，确认是否全程 1；与前向/反向阶段对应"
+      when_to_use: step 1 未直接命中、需要区分「开关被重置」与「算子本身竞争」时
+    - step: 3
+      name: 用「全量 dump 是否让问题消失」判竞争类
+      action: "采集行为本身会改变执行时序：若**全量 dump 后问题不再复现**、降低采集粒度（如 L1）或缩小模型规模后复现，说明是并发竞争而非数值精度。再用 `ASCEND_LAUNCH_BLOCKING=1` 强制算子串行下发——消失即算子**间**竞争；算子内部大量加 flag 等待后消失即算子**内**竞争；单算子脚本 + mssanitizer 可定位内存竞争。"
+      check: "全量 dump / 降粒度 / 缩规模三组的复现性对比；ASCEND_LAUNCH_BLOCKING=1 前后对比；mssanitizer 输出"
+      when_to_use: plog 标识全程为 1、或采集工具一介入问题就变样时
+    - step: 4
+      name: 按「重现形态」分流到三条机制
+      action: "①**开关被业务代码重置**：现象是偶发、前向一致而反向偶现差异、单算子重复跑稳定而整网概率性变化（单算子复现失败本身是判据）→ 修业务代码（`seed_all(mode=True)`）；②**算子内部数据竞争**：版本绑定（某 CANN 版本引入/修复）、全量 dump 不复现 → 取修复包/升级，并回查算子内数据搬迁前后是否缺同步；③**batch invariance**：断言「同输入不同 batch 输出一致」失败、结果随 batch 波动 → 需在 batch invariance 专用开关里显式 `torch.use_deterministic_algorithms(True, warn_only=True)`，因为 Ascend NPU 上部分算子（matmul/累加类）默认非确定性执行。"
+      check: "三问定位：差异是前向还是反向？（前向一致→开关/竞争）单算子能否复现？（不能→整网竞争）是否随 batch 变化？（是→batch invariance）"
+      when_to_use: 完成 step 1-3 的证据收集后（三路互斥，不要同时打三处补丁）
+    - step: 5
+      name: 定界到具体代码/算子并验证
+      action: "开关类 → 全局搜 `torch.use_deterministic_algorithms` 唯一调用点并检查装饰器链；竞争类 → 单算子脚本 + mssanitizer 收敛到算子，按版本二分确认引入/修复版本；batch invariance → 在对应开关函数中开启确定性算法后重跑原断言。验证标准统一：**同参数重复运行，loss/grad_norm（或输出）逐位一致**。"
+      check: "重复运行 N 次结果一致；改动的调用点与 plog/mssanitizer 证据对得上"
+      when_to_use: 收口阶段——避免「改了某处不报错了」但没解释机制"
+
+  verified_by_testing: false
+  test_scenarios: []
