@@ -432,9 +432,9 @@ entries:
     - cross
 - id: msprobe-monitor
   type: tool
-  title: msprobe monitor / monitor_v2——训练状态监测（CSV 字段与解读口径）
-  summary: msprobe monitor_v2：训练过程中按需采集模块输入输出/权重梯度/优化器动量/参数分布/通信算子统计，按 rank 落 CSV（rank_<id>/<module>_step{X}-{Y}.csv）；统一表头
-    vpp_stage|step|module_name|scope|指标列，各监测项有固定 sco…
+  title: msprobe monitor——训练状态监测（v1 全功能 / v2 轻量 CSV）
+  summary: msprobe monitor：训练中采集权重/权重梯度/激活值/优化器状态/通信算子统计——v1（TrainerMon，README 主指向、能力最全：异常告警/堆栈/l2 特征/mbs
+    粒度/csv2tensorboard）与 v2（TrainerMonitorV2，轻量 CSV 子集，按 rank 落 rank_…
   applies_to:
     platforms:
     - cross

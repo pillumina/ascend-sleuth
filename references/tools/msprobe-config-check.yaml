@@ -26,11 +26,15 @@ content:
     collect_static: "msprobe config_check -d [<*.sh> <*.yaml>] [-o <output_file_path>]（仅采集环境变量、第三方库版本、训练超参；env/pip 默认采，超参需传 shell 脚本或 yaml）"
     collect_dynamic: "脚本内 `from msprobe.core.config_check import ConfigChecker`；流程开始处 `ConfigChecker.apply_patches(fmk)`，模型初始化后 `ConfigChecker(model=model, shell_path=\"\", output_zip_path=\"\", fmk=\"\")`（覆盖环境变量/第三方库/超参/权重/数据集/随机操作）"
     compare: "msprobe config_check -c bench_zip_path cmp_zip_path [-o <output_path>]（bench=标杆环境，cmp=待对比环境；默认输出目录 config_check_result）"
+    verl_compare: "msprobe config_check -vc <NPU_log> <bench_log> [-o <compare_result>]（verl 超参比对：从两侧训练日志里提取真实生效超参并逐项比对，默认输出 ./verl_param_compare_result）"
+    verl_verify: "msprobe config_check -vv [<bench_config>] <tgt_log> [-o <compare_result>]（verl 关键超参校验：输出关键超参的实际生效值并判断是否满足要求，默认输出 ./verl_param_verify_result；bench_config 可选）"
+    slime_compare: "msprobe config_check -sc <NPU_log> <bench_log> [-o <compare_result>]（slime 超参比对，同 verl 的日志提取思路）"
   output_meaning:
     - "采集产物：两侧各一个 `config_check_pack.zip`（动态采集按 rank 与 micro_step 分存）"
     - "比对产物：输出目录下 bench/、cmp/ 两个目录 + `result.xlsx`；summary 页给六项总览（env / pip / dataset / weights / hyperparameters / random），其余 sheet 是各检查项详情"
     - "pass_check 取值：pass=通过；error=不通过；warning=存在对 msProbe 后续操作无影响的非关键第三方库版本不一致，建议看详情分析"
     - "**前五项（env/pip/dataset/weights/hyperparameters）在精度比对前必须保证 pass**——不通过就先解释差异，别急着比 dump"
+    - "**verl / slime 超参面（同一 CLI 下的另两个动作）**：`-vc` 比对两台服务器训练日志中**真实生效**的超参（不是启动脚本里写的，而是日志里跑出来的），`-vv` 输出关键超参实际生效值并判定是否满足要求，`-sc` 是 slime 版比对。适合 RL 场景「怀疑两侧超参不一致但启动参数看起来一样」——比逐行 diff 启动脚本更准"
   pitfalls:
     - "静态采集只拿到**系统中的环境变量**，且 shell 脚本里解析的超参不支持复杂运算的数据还原——有这类情况改用动态采集"
     - "动态采集在 MindSpeed-LLM 场景下，`apply_patches` 必须在框架 pretrain_gpt.py 的 megatron_adaptor 函数**导入之后**执行，否则不生效"
