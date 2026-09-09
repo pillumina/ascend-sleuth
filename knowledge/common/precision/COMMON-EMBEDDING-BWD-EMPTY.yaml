@@ -1,0 +1,78 @@
+# COMMON-EMBEDDING-BWD-EMPTY —— embedding 反向输入为空时返回未初始化数据致 loss NaN（两种触发源：dsp 切分 / gt_labels 空）
+# 来源：msprobe 官方 best_practices《基于昇腾的多模态理解训练NaN问题定位》+《基于昇腾的mmdetection训练NaN问题定位》（MindStudio 26.2.0.B050_003）
+# pre-triage: new_pattern（全库无 embedding 反向空输入 / aclnn 空 tensor 边界类 case）
+# 转正：knowledge-groom 2026-09-09（precision；两条同机制草稿按 variant 并入——COMMON-GT-LABELS-EMPTY-NAN 为其触发源 B，owner 裁定 A 方案）
+
+cases:
+  - id: COMMON-EMBEDDING-BWD-EMPTY
+    title: "训练 loss NaN（首个 NaN 在 embedding/wte 层梯度）：embedding 反向输入为空时返回默认内存中的未初始化数据——触发源 A：dsp 序列切分致部分卡无 token；触发源 B：数据标注越界致 gt_labels 为空（早期 CANN <8.0.0）"
+
+    category: precision
+    tags: [nan, embedding, backward, empty-tensor, aclnn, fsdp, dsp, gt-labels, data-quality]
+
+    platforms: []
+    compat:
+      - framework: cross
+        ranges: ["*"]     # 触发源 B 需 CANN <8.0.0（8.0.0 及以上已修复）；触发源 A 为算子边界缺陷，需打补丁
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "训练出现 loss NaN，打印 grad 信息后首个 NaN 出现在 embedding（wte）层的梯度"
+      - "触发源 A：多模态模型 FSDP 全参微调且开启 dsp（distributed sequence parallel）——部分卡没有 token 输入，dump 显示该 rank 输入 shape [0]、反向输入 [0, 4096]，输出疑似未初始化的内存"
+      - "触发源 B：检测类模型（如 mmdetection）换用新数据集后 NaN，且无标杆可对照——数据集中分类标注不在规定范围内导致 gt_labels 输入为空"
+      - "随机数据有几率复现（触发源 A 依赖切分后该卡是否分到 token）"
+
+    references:
+      - "msprobe docs/zh/best_practices/ascend_multimodal_training_nan_analysis.md"
+      - "msprobe docs/zh/best_practices/ascend_mmdetection_training_nan_localization.md"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprobe 官方 best_practices 案例（两条，上游发布含定位链与验证结论）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -iE 'first.*nan.*(wte|embed)|wte.*nan|embed.*grad.*nan' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:^[1-9]"
+      fallback:
+        command_template: "grep -icE 'loss.*nan|gt_labels|empty.*label' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "首个 NaN 出现在哪一层？"
+        expected: "embedding（wte）层的梯度"
+        note: "首个 NaN 落在 embedding 反向 → 优先查输入形态而非算子数值精度"
+      - step: 2
+        check: "是否开启 dsp / 序列切分类特性，导致部分卡无 token 输入？"
+        expected: "是 → 触发源 A；dump 该卡输入 shape 应为 [0]、反向 [0, hidden]"
+      - step: 3
+        check: "（非 A）是否换用了新数据集、且模型为检测/多任务类？gt_labels 是否为空？"
+        expected: "是 → 触发源 B；分类标注越界导致 gt_labels 为空"
+      - step: 4
+        check: "CANN 版本是否低于 8.0.0？"
+        expected: "是 → 早期 CANN 在 embedding 输入 shape 为 0 时反向产生 NaN（8.0.0 及以上已修复）"
+
+    severity: data-loss-risk
+    fix_side_effects: [requires-code-change, requires-rebuild, requires-data-fix]
+    fix_type: code-patch
+
+    root_cause: >
+      embedding 反向输入为空时，aclnnEmbeddingDenseBackward 对空输入不做处理、直接返回默认内存中的
+      未初始化数据，被当作梯度参与后续计算，导致 loss NaN。两种触发源：
+      A——开启 dsp 后部分卡无 token 输入（序列切分）；
+      B——数据集分类标注越界使 gt_labels 为空，进而 embedding 输入为空（早期 CANN <8.0.0 在空输入时反向产生 NaN）。
+
+    fix: >
+      按触发源处置：A——修改 aclnnEmbeddingDenseBackward 逻辑，反向输入为空时返回 0 梯度，重新出包验证；
+      B——升级到新版 CANN（8.0.0 及以上，已修复空输入反向 NaN）+ 修正数据集标注使分类标注落在规定范围内。
+      两者共同根因是「空输入应返回 0 梯度而非未初始化数据」。
+    rollback: "A 回退算子改动并重新出包；B 回退 CANN 版本并恢复原数据集（均复现）"

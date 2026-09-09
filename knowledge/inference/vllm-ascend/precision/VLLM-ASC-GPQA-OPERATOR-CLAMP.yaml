@@ -1,0 +1,68 @@
+# VLLM-ASC-GPQA-OPERATOR-CLAMP —— DeepSeek-V4 Pro 在 Atlas 800I A3 上 GPQA 评分明显偏低：三个独立根因（rope fp32 / clamp 缺陷 / 重复 renorm）
+# 来源：msprobe 官方 best_practices《基于昇腾的DeepSeek-V4 GPQA精度优化》（MindStudio 26.2.0.B050_003）
+# pre-triage: new_pattern —— 全库无 GPQA/评测评分偏低类 case；clamp 边界缺陷形态无重叠
+# 转正：knowledge-groom 2026-09-09（precision；upstream-official-doc × high → 初始 score 0.7）
+# 注意：本 case 含 3 个独立根因（同一现象），fix 需全做；groom 审时若认为应拆条，可拆为 3 条
+
+cases:
+  - id: VLLM-ASC-GPQA-OPERATOR-CLAMP
+    title: "DeepSeek-V4 Pro 在 Atlas 800I A3 上 GPQA 评分明显偏低（同模型其他环境正常）：三个独立根因叠加——rope 转 float32、Dequantswigluquant/GMMswigluquant 的 clamp 缺陷（主因）、moe_gating_top_k_hash 内部与后续重复 renorm"
+
+    category: precision
+    tags: [vllm-ascend, gpqa, scoring-gap, clamp, rope, renorm, moe-gating, multi-root-cause]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["*"]
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "DeepSeek-V4 Pro 在 Atlas 800I A3 环境下 GPQA 数据集评分明显偏低；同模型其他环境、以及 DeepSeek-V4 Flash 在同环境下评分均正常"
+      - "badcase 分析 + 代码走读 + badcase 复现三步定位到算子/模型侧三处差异"
+
+    references:
+      - "msprobe docs/zh/best_practices/ascend_deepseek_v4_gpqa_accuracy_optimization.md（MindStudio 26.2.0.B050_003）"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprobe 官方 best_practices 案例（上游发布，含定位链与验证结论）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -iE 'gpqa' {{log_path}} | grep -icE 'score|评分|准确率'"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+      fallback:
+        command_template: "grep -cE 'Dequantswigluquant|GMMswigluquant|moe_gating_top_k_hash' {{model_code_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "同一模型在其他环境评分是否正常？同环境其他模型是否正常？"
+        expected: "同模型其他环境正常、同环境其他模型正常 → 收敛到该模型在本环境的算子/实现差异"
+      - step: 2
+        check: "逐项拆分验证：rope 计算精度、swiglu 量化算子 clamp 边界、moe gating 是否重复 renorm？"
+        expected: "三处均存在差异——clamp 问题影响最严重（评分偏低主要来源）"
+        note: "三个根因需分别修复，只修一个评分不达标"
+
+    severity: service-affecting
+    fix_side_effects: [requires-code-change, requires-rebuild]
+    fix_type: code-patch
+
+    root_cause: >
+      三个独立根因叠加：①模型侧 + 算子侧——rope 转化为 float32 计算；
+      ②算子侧——Dequantswigluquant 与 GMMswigluquant 的 clamp 功能存在问题（评分偏低的主要来源）；
+      ③模型侧——torch.ops._C_ascend.moe_gating_top_k_hash 算子内部做了一次 renorm，后续又额外做了一次 renorm。
+
+    fix: >
+      ①rope 改为 float32 计算；②修正 Dequantswigluquant / GMMswigluquant 的 clamp 实现；
+      ③去掉 moe_gating_top_k_hash 之后的重复 renorm。修正后评分恢复至正常水平。
+    rollback: "逐项回退（评分回落）"

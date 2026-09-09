@@ -1,0 +1,72 @@
+# COMMON-FSDP-OFFLOAD-SYNC-NAN —— MOVA 模型训练 NaN：FSDP post_backward / foreach_reduce 前后 offload 场景流同步缺失、.to() 数据搬运时序异常
+# 来源：msprobe 官方 best_practices《基于昇腾的MOVA模型NaN问题定位分析》（MindStudio 26.2.0.B050_003）
+# pre-triage: new_pattern —— 全库无「offload 场景流同步/搬运时序」形态（FSDP 相关 case 根因均为日志统计/续训）
+# 转正：knowledge-groom 2026-09-09（precision；upstream-official-doc × high → 初始 score 0.7）
+
+cases:
+  - id: COMMON-FSDP-OFFLOAD-SYNC-NAN
+    title: "MOVA 模型训练 NaN：offload 场景下 FSDP post_backward / foreach_reduce 前后的流同步缺失，.to() 前后的数据搬运时序异常（加同步后问题消失）"
+
+    category: precision
+    tags: [nan, fsdp, offload, stream-sync, accelerate, ddp, post-backward, data-movement]
+
+    platforms: []
+    compat:
+      - framework: cross
+        ranges: ["*"]     # 根因在 FSDP + offload 的同步时序
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "MOVA 模型训练出现 NaN：L0 dump 发现 step 2 前向权重已为 NaN"
+      - "异常在 DDP 域中传播（手动打印修正观察位置后确认）"
+      - "mix dump 定位到 __mul__.5643.forward；结合调用栈排除 gate * residual 路径，指向 clip_grad_norm 与 reciprocal() * other"
+      - "monitor 观察到 video_dit.block.0.modulation 聚合后 shape 异常、数值变为 NaN"
+      - "问题发生在 FSDP post_backward 的 foreach_reduce 前后；加同步后问题消失"
+
+    references:
+      - "msprobe docs/zh/best_practices/ascend_mova_model_nan_analysis.md（MindStudio 26.2.0.B050_003）"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprobe 官方 best_practices 案例（上游发布，含定位链与验证结论）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -icE 'post_backward|foreach_reduce' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:^[1-9]"
+      fallback:
+        command_template: "grep -icE 'nan' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "NaN 是否在权重更新后即出现（step N 前向权重已 NaN）？"
+        expected: "是——指向上一 step 的权重更新过程"
+      - step: 2
+        check: "加同步（流同步 / .to() 前后同步）后问题是否消失？"
+        expected: "消失 → 指向流同步/数据搬运时序，而非算子数值精度"
+        note: "「加同步即消失」是本 case 的核心判据；不消失则转算子数值路径"
+      - step: 3
+        check: "是否处于 accelerate + FSDP + offload 组合场景？"
+        expected: "是——重点检查该组合下的同步机制（post_backward / foreach_reduce 前后）"
+
+    severity: data-loss-risk
+    fix_side_effects: [requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      offload 场景下的流同步问题：FSDP post_backward / foreach_reduce 前后、以及 .to() 前后的
+      数据搬运时序异常，导致权重更新阶段出现 NaN 并在 DDP 域中传播。
+
+    fix: >
+      重点检查并补齐 accelerate + FSDP + offload 场景下的同步机制
+      （在数据搬运操作前后增加必要的流同步）。
+    rollback: "回退同步改动（NaN 复现）"

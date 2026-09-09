@@ -87,6 +87,10 @@ def collect(root: Path):
         parts = rel.parts
         if len(parts) >= 3 and parts[0] in ("inference", "training") and parts[2] != "platforms":
             ns = str(Path(parts[0], parts[1]))
+        # common/ 无框架层：common/<category>/<case>.yaml → ns 停在 common（2026-09-09，
+        # 首批跨框架共性 case 落 common/ 时引入；此前 common/ 为空，未触发该分支）
+        elif len(parts) >= 2 and parts[0] == "common":
+            ns = "common"
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         for case in doc.get("cases", []):
             category = case.get("category", "")

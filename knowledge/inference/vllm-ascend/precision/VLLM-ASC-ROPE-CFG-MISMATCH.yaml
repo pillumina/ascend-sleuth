@@ -1,0 +1,71 @@
+# VLLM-ASC-ROPE-CFG-MISMATCH —— tora+vllm-ascend 推理评分 NPU 54.4 vs GPU 80.6：hf config.json 的 max_position_embedding 与 rope_theta 取值不匹配模型训练配置
+# 来源：msprobe 官方 best_practices《基于昇腾的tora模型推理差异定位》（MindStudio 26.2.0.B050_003）
+# pre-triage: new_pattern —— 全库 rope 相关（12723 Triton rope 偏移 / 8587 / 12642）均为算子实现级根因，无「hf config 取值不匹配」形态
+# 转正：knowledge-groom 2026-09-09（precision；upstream-official-doc × high → 初始 score 0.7）
+
+cases:
+  - id: VLLM-ASC-ROPE-CFG-MISMATCH
+    title: "tora 模型 + vllm-ascend 统一数据集推理，NPU 评分 54.4 明显低于 GPU 80.6：hf config.json 的 max_position_embedding（16384→8192）与 rope_theta（1000000→10000）取值与模型训练配置不匹配"
+
+    category: precision
+    tags: [vllm-ascend, rope, config-mismatch, position-embedding, migration, scoring-gap]
+
+    platforms: []
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.9.1"]     # 文档记录版本；根因是模型 config 取值，与框架版本弱相关
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "tora 模型 + vllm（vllm-ascend）推理，统一数据集下游评分 NPU 54.4 明显差于 GPU 80.6"
+      - "存在稳定的 badcase（特定 prompt 输出错误）"
+      - "同模型 GPU 用不同 vllm 版本（0.1.4 图模式 vs 0.9.1 单算子模式）评分差异巨大，先缩小到「版本差异」再进一步收敛"
+
+    references:
+      - "msprobe docs/zh/best_practices/ascend_tora_inference_diff_localization.md（MindStudio 26.2.0.B050_003）"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprobe 官方 best_practices 案例（上游发布，含定位链与验证结论）"
+
+    quickly_check:
+      primary:
+        command_template: "python3 -c \"import json,sys;c=json.load(open(sys.argv[1]));print(c.get('max_position_embeddings'),c.get('rope_theta'))\" {{model_config_path}}"
+        rank_selector: coordinator
+        expected: "regex:16384|1000000"
+      fallback:
+        command_template: "grep -iE '评分.*低|score.*low|badcase' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "先用同一台 GPU 机器跑不同 vllm 版本，能否复现评分差异？"
+        expected: "能——GPU 0.9.1 单算子模式下同样出现 badcase（评分 0），说明不是 NPU 特有问题"
+        note: "先做「同平台跨版本」对照，把 NPU vs GPU 的差异缩小成版本/配置差异"
+      - step: 2
+        check: "比对两侧输入 shape 与未初始化权重的填充方式是否一致？"
+        expected: "旧版对 input_token pad 成 8 的倍数、embedding 未覆盖区间填随机值（可能含极值/nan）；新版填 0"
+        note: "**这两点是干扰项**：把 pad 注释掉、empty 改 zeros 后评测结果不变——不是根因，只是让 dump 不可比"
+      - step: 3
+        check: "对齐干扰项后逐层比对，差异是否落在位置编码相关参数上？"
+        expected: "是——hf config.json 的 max_position_embedding 与 rope_theta 取值与模型训练时不一致"
+
+    severity: service-affecting
+    fix_side_effects: [requires-config-change, requires-restart]
+    fix_type: config-change
+
+    root_cause: >
+      tora 模型的 hf config.json 中 max_position_embedding（16384）与 rope_theta（1000000）
+      与模型训练时的实际取值不匹配，导致位置编码计算偏差、推理评分下降。
+
+    fix: >
+      修改 hf config.json：max_position_embedding 由 16384 改为 8192；rope_theta 由 1000000 改为 10000。
+      改后 GPU 091 版本评测达标、NPU badcase 验证达标、全量数据集评分达标。
+    rollback: "恢复 config.json 原值（问题复现）"

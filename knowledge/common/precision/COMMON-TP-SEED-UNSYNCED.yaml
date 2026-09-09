@@ -1,0 +1,72 @@
+# COMMON-TP-SEED-UNSYNCED —— TP8 推理第 3 张图必花：TP 组内随机种子未同步（0 卡作通信主卡 random 次数不同）
+# 来源：msprobe 官方 best_practices《基于昇腾的Qwen-Image-Edit模型TP8花图问题定位》（MindStudio 26.2.0.B050_003）
+# pre-triage: new_pattern —— 全库无「TP 组内随机种子未同步」形态（TP8 相关 case 均为通信/切分层根因）
+# 转正：knowledge-groom 2026-09-09（precision；upstream-official-doc × high → 初始 score 0.7）
+
+cases:
+  - id: COMMON-TP-SEED-UNSYNCED
+    title: "Qwen-Image-Edit 基于 Megatron 在 NPU 上 TP8 推理，跑多个请求时第 3 张生成图必然花图：TP 组内随机种子未同步——0 卡作通信主卡的 random 调用次数与其他卡不同"
+
+    category: precision
+    tags: [tensor-parallel, random-seed, diffusion, image-generation, megatron, multi-card]
+
+    platforms: []
+    compat:
+      - framework: cross
+        ranges: ["*"]     # 根因在并行组内随机性同步，与框架版本无关
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "TP=8 时跑多个请求，第 3 张生成图片必然花图；TP=1 时低分辨率推理跑 100 个实例未发现花图"
+      - "msprobe 分级可视化比对 TP8 vs TP1：第一个 nn.Module（Linear）就出现精度不一致"
+      - "该层为非行切/列切层（未做 TP 切分），多卡间统计值本应完全相同，但卡 0 的数据明显与其他卡不同"
+      - "代码回溯定位到模型初始阶段的 random.randint 在卡 0 上与其他卡不同"
+
+    references:
+      - "msprobe docs/zh/best_practices/ascend_qwen_image_edit_tp8_distorted_image_localization.md（MindStudio 26.2.0.B050_003）"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprobe 官方 best_practices 案例（上游发布，含定位链与验证结论）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -nE 'random\\.randint|np\\.random|torch\\.rand' {{model_code_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+      fallback:
+        command_template: "grep -cE '花图|distorted|图像.*异常' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "TP=1 是否正常、TP=8 是否必现？"
+        expected: "TP=1 正常、TP=8 必现（多请求下第 N 张图花）→ 并行组内不一致"
+      - step: 2
+        check: "用分级可视化做 TP8 vs TP1 切分合并比对，首个不一致在哪？"
+        expected: "第一个 module（Linear）输入统计值即不同 → 数据进入首个模块前就已不同"
+        note: "该层未做 TP 切分，多卡统计值本应完全相同——不同即说明输入源（随机性）不一致"
+      - step: 3
+        check: "逐卡看节点信息，异常集中在哪张卡？代码里模型初始阶段的随机数生成方式？"
+        expected: "卡 0 明显不同；random.randint 在卡 0 与其他卡取值不同"
+
+    severity: service-affecting
+    fix_side_effects: [requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      TP8 场景下未控制同一 TP 组内各卡输入一致，仅依赖初始随机种子。
+      0 卡作为通信主卡，其 random 调用次数与其他 TP 卡不一致，导致组内各卡拿到的随机数不同，
+      后续模型输出不同，拼接为完整图片后表现为花图。
+
+    fix: >
+      增加同步广播机制：随机种子生成后由主卡广播到副卡同步，确保所有卡拿到相同随机种子。
+      长稳测试后图像生成正常，未再出现花图。
+    rollback: "回退广播改动（花图复现）"

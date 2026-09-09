@@ -1,0 +1,72 @@
+# VERL-LOGPROB-CONFIG-MISMATCH —— RL 训推 log_prob 首 step 差异过大：YarnRotaryEmbedding 的 original_max_position_embeddings=1024 与外层配置 4096 不一致
+# 来源：msprobe 官方 best_practices《基于昇腾的Kimi2.5训推一致性优化》（MindStudio 26.2.0.B050_003）
+# pre-triage: new_pattern —— 全库无 verl 精度 case（training/verl 现有 6 条全为 interrupt）；训推 log_prob 差异形态无重叠
+# 转正：knowledge-groom 2026-09-09（precision；upstream-official-doc × high → 初始 score 0.7）
+
+cases:
+  - id: VERL-LOGPROB-CONFIG-MISMATCH
+    title: "Kimi2.5 RL 训练 log_prob 首 step 指数差异过大：训练侧 YarnRotaryEmbedding 的 original_max_position_embeddings=1024 与实际外层配置 4096 不一致，位置编码偏差致 MLA 输出不一致"
+
+    category: precision
+    tags: [verl, rl, train-infer-consistency, log-prob, rope, yarn, mla, config-mismatch]
+
+    platforms: []
+    compat:
+      - framework: verl
+        ranges: ["*"]     # 根因是两侧配置不一致，与框架版本弱相关
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "RL 训练中 log_prob 指数首 step 差异较大（超出预期范围）"
+      - "缩小至双机多卡后差异仍明显"
+      - "训推两侧用相同输入分别 dump，逐层比对：首个不一致模块是 MLA 输出"
+      - "向上追溯 cos/sin → freqs → YarnRotaryEmbedding 入参，发现 original_max_position_embeddings=1024 而外层配置为 4096"
+
+    references:
+      - "msprobe docs/zh/best_practices/ascend_kimi2_5_train_infer_consistency_optimization.md（MindStudio 26.2.0.B050_003）"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprobe 官方 best_practices 案例（上游发布，含定位链与验证结论）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'original_max_position_embeddings' {{config_path}}"
+        rank_selector: coordinator
+        expected: "regex:1024"
+      fallback:
+        command_template: "grep -icE 'log_?prob.*(差异|不一致|偏大)' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "log_prob 差异是首 step 就出现，还是训练若干步后累积？"
+        expected: "首 step 即出现且差异指数级偏大 → 指向训推两侧实现/配置不一致，而非累积误差"
+      - step: 2
+        check: "训推两侧用同一输入 dump 后逐层比对，首个不一致的模块是什么？"
+        expected: "MLA 输出——由它向上追溯（cos/sin → freqs → YarnRotaryEmbedding）"
+        note: "先减层到 1 层对齐 dense、再加 moe 层，可把范围压到位置编码面"
+      - step: 3
+        check: "打印 YarnRotaryEmbedding 入参，两侧的 original_max_position_embeddings 是否一致？"
+        expected: "训练侧 1024，外层实际配置 4096 → 不一致即命中本 case"
+
+    severity: service-affecting
+    fix_side_effects: [requires-config-change, requires-restart]
+    fix_type: config-change
+
+    root_cause: >
+      训练侧 YarnRotaryEmbedding 的 original_max_position_embeddings 取值为 1024，
+      而实际外层配置为 4096，两侧位置编码计算不一致，导致 MLA 输出不一致、
+      训推 log_prob 首 step 差异指数级偏大。
+
+    fix: >
+      修正配置使两侧 original_max_position_embeddings 一致；
+      修正后 log_prob 指数首 step 差异明显下降至预期范围，持续训练后 reward 稳定上升。
+    rollback: "恢复原配置（差异复现）"

@@ -1,0 +1,72 @@
+# VLLM-ASC-ALLREDUCE-NUMERIC-DRIFT —— CANN 升级后推理回复乱码：all_reduce 算子数值偏差（回退版本即消失）
+# 来源：msprobe 官方 best_practices《CANN版本升级后的推理请求回复乱码问题》（MindStudio 26.2.0.B050_003）
+# pre-triage: new_pattern —— 全库 all_reduce 命中仅 VLLM-ASC-13688（AIV 模式图任务组），无「CANN 版本升级引入 all_reduce 数值偏差」形态
+# 转正：knowledge-groom 2026-09-09（precision；upstream-official-doc × high → 初始 score 0.7）
+
+cases:
+  - id: VLLM-ASC-ALLREDUCE-NUMERIC-DRIFT
+    title: "CANN 升级到 9.1.0 后 vLLM 推理回复乱码（回退 9.0.0 即恢复正常）：all_reduce 算子数值偏差，升级到已修复的 9.1.0 B037 解决"
+
+    category: precision
+    tags: [vllm-ascend, all-reduce, cann-upgrade, numeric-drift, single-op-repro, garbled-output]
+
+    platforms: ["A5-950PR"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["*"]
+        cann: ["9.1.0"]     # 9.0.0 正常、9.1.0 异常；修复版本 9.1.0 B037
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "CANN 从 9.0.0 升级到 9.1.0 后，vLLM 推理请求回复乱码（正常场景回复正常文本，异常场景回复乱码数据）"
+      - "回退 CANN 版本后问题消失——升级前后模型结构、API 调用逻辑均未改变"
+      - "同一输入在 9.0.0 与 9.1.0 上 dump 比对可看到数值差异，单算子复现后收敛到 all_reduce"
+
+    references:
+      - "msprobe docs/zh/best_practices/problem_of_garbled_response_after_cann_upgrade.md（MindStudio 26.2.0.B050_003）"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprobe 官方 best_practices 案例（上游发布，含定位链与验证结论）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E '乱码|garbled' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+      fallback:
+        command_template: "cat /usr/local/Ascend/ascend-toolkit/latest/version.cfg 2>/dev/null | grep -i version"
+        rank_selector: coordinator
+        expected: "regex:9\\.1\\.0"
+
+    diagnosis:
+      - step: 1
+        check: "乱码是否与 CANN 版本绑定（回退版本后是否消失）？"
+        expected: "绑定——升级后乱码、回退后正常，且模型结构与 API 调用未变"
+        note: "版本绑定是「把问题收敛到新版本数值行为变化的算子」的前提"
+      - step: 2
+        check: "两次 dump（9.0.0 vs 9.1.0）比对，能否看到数值差异？"
+        expected: "能——整网比对显示数值差异，据此挑出可疑算子"
+      - step: 3
+        check: "单算子复现能否复现该数值偏差？"
+        expected: "能——收敛到 all_reduce 算子数值偏差"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: env-var
+
+    root_cause: >
+      CANN 9.1.0 中 all_reduce 算子存在数值偏差（9.0.0 无此问题），
+      升级前后模型与调用逻辑未变，因此问题被收敛到该算子的数值行为变化，
+      表现为推理回复乱码。
+
+    fix: >
+      将 CANN 环境升级至已修复 all_reduce 算子数值偏差的 9.1.0 B037 版本
+      （临时规避可回退到 9.0.0）。
+    rollback: "回退 CANN 到 9.0.0（问题消失但失去 9.1.0 的其他修复）"
