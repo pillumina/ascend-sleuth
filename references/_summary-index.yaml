@@ -1,7 +1,7 @@
 # GENERATED FILE —— 背景类 summary 索引（diagnose 2.5 ② 读取），不要手改。
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
-# 生成日期：2026-09-09    词条数：65
+# 生成日期：2026-09-09    词条数：67
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -191,6 +191,14 @@ entries:
   applies_to:
     platforms:
     - cross
+- id: ascend-determinism-triage
+  type: methodology
+  title: 确定性失效排查路径（开关被重置 / 算子内部竞争 / batch invariance 三路分流）
+  summary: 训练或推理结果不可复现时的分流路径：先确认确定性开关是否**真的**开着（易被业务代码中途重置）→ 再看「全量 dump 是否让问题消失」（消失=采集行为影响时序，指向竞争）→ 三路分流：①plog
+    看 aclnn deterministic 标识是否中途变 0（业务代码重置开关）②ASCEND_LAUNCH_BLOC…
+  applies_to:
+    platforms:
+    - cross
 - id: ascend-device-log-ops
   type: tool
   title: Device 日志排查操作（RAS 故障 ID / 资源占用 / 进程拉起与结束时间）
@@ -204,6 +212,14 @@ entries:
   title: 昇腾 6 位错误码结构（级别位 + 模块位 + 内部码规则）
   summary: 错误码 6 位：第 1 位 E/W/I（错误/告警/提示）；第 2 位模块（E1=GE、E2=FE、E3=AI CPU、E4=TEFusion、E7=Vector 算子插件、E8=Vector
     算子、EB=TBE Pass、EC=Auto Tune、ED=RLTune、EE=Runtime、EF=LxFusion&Au…
+  applies_to:
+    platforms:
+    - cross
+- id: ascend-garbled-output-triage
+  type: methodology
+  title: 乱码类「无报错错误输出」分流路径（权重错位 / 模块未移植 / 算子数值偏差 / KV 传输时序 / 传输路径未定位）
+  summary: 推理或训练输出乱码且**无报错**时的分流路径：先按「三段定界」（输入预处理 / 前向计算 / 传输与后处理）判断问题落在哪一段，再按五条机制分流——①权重转换/加载后逐 tensor
+    错位 ②模型模块未移植（分层分界，如第 N 层后异常）③算子数值偏差（版本绑定，回退版本即消失）④KV 传输/流同步时序（首请求、跨 …
   applies_to:
     platforms:
     - cross

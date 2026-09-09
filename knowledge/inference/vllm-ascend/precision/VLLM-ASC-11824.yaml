@@ -39,6 +39,10 @@ cases:
 
       detail: 'fix PR #11824'
 
+    ref_knowledge:
+      - ref: ascend-determinism-triage
+        role: fix-methodology
+
     quickly_check:
       primary:
         command_template: "grep -E 'use_deterministic_algorithms\\(True, warn_only=True\\)' {{log_path}}"

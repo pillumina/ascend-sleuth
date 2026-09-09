@@ -39,7 +39,7 @@ namespaces:
       symptoms:
       - 80 卡大规模训练任务结果确定性无法固定（重复运行 Loss 曲线不一致）
       file: knowledge/common/precision/COMMON-FA-RACE-DETERMINISM.yaml
-      hash: f747034514bf
+      hash: aafe17712015
     - id: COMMON-FSDP-OFFLOAD-SYNC-NAN
       title: MOVA 模型训练 NaN：offload 场景下 FSDP post_backward / foreach_reduce 前后的流同步缺失，.to() 前后的数据搬运时序异常（加同步后问题消失）
       category: precision
@@ -91,7 +91,7 @@ namespaces:
       symptoms:
       - 同一模型重复训练，loss 与 grad_norm 不一致（偶现，非每次）
       file: knowledge/common/precision/COMMON-SEED-RESET-DETERMINISM.yaml
-      hash: 1dd4a5a8425a
+      hash: 536a763fc302
     - id: COMMON-TP-SEED-UNSYNCED
       title: Qwen-Image-Edit 基于 Megatron 在 NPU 上 TP8 推理，跑多个请求时第 3 张生成图必然花图：TP 组内随机种子未同步——0 卡作通信主卡的 random
         调用次数与其他卡不同

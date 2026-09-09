@@ -36,6 +36,10 @@ cases:
 
       detail: 'issue #1532'
 
+    ref_knowledge:
+      - ref: ascend-garbled-output-triage
+        role: fix-methodology
+
     quickly_check:
       primary:
         command_template: "grep -E 'garbled|乱码|aseña|GLISH' {{log_path}}"

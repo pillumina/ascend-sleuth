@@ -38,6 +38,10 @@ cases:
 
       detail: 'issue #11169'
 
+    ref_knowledge:
+      - ref: ascend-garbled-output-triage
+        role: fix-methodology
+
     quickly_check:
       primary:
         command_template: "grep -E '乱码|garbled' {{log_path}}"
