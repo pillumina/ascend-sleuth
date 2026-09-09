@@ -40,7 +40,7 @@ return {
       return pythonCmd
     }
 
-    async function loadBoard(sessionId) {
+    async function runScript(sessionId, extraArgs) {
       const cwd = resolveCwd(sessionId)
       if (!cwd) return { ok: false, error: '无法解析工作区' }
       if (!shell) return { ok: false, error: 'shell 不可用' }
@@ -51,7 +51,7 @@ return {
       }
       try {
         const spec = shell.resolve({
-          command: py + ' scripts/ev_board_data.py',
+          command: py + ' scripts/ev_board_data.py' + (extraArgs ? ' ' + extraArgs : ''),
           workdir: cwd,
           stdoutMaxBytes: 4 * 1024 * 1024, // EV 卡聚合 JSON 随库增长（实测 89KB），防截断
           // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
@@ -79,13 +79,36 @@ return {
       }
     }
 
+    function loadBoard(sessionId) {
+      return runScript(sessionId, null)
+    }
+
+    // 单卡全文：面板点开某张卡时才拉（列表页只带摘要，不把 36 张卡的完整决策链
+    // 一次性塞进客户端）。id 只放行 EV-YYYY-NNN 形状，防 shell 注入。
+    function loadIdeaDetail(sessionId, ideaId) {
+      const id = String(ideaId || '')
+      if (!/^EV-\d{4}-\d{3,}$/.test(id)) return Promise.resolve({ ok: false, error: '非法卡 id: ' + id })
+      return runScript(sessionId, '--detail ' + id)
+    }
+
     const handleDisposer = harness.handle('ev-board-load', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       return loadBoard(sessionId)
     })
 
+    const detailDisposer = harness.handle('ev-idea-detail', async (args) => {
+      const sessionId = args && args.sessionId ? String(args.sessionId) : null
+      const ideaId = args && args.ideaId ? String(args.ideaId) : ''
+      const r = await loadIdeaDetail(sessionId, ideaId)
+      if (!r.ok) return r
+      const payload = r.data || {}
+      if (payload.ok === false) return { ok: false, error: payload.error || '读取失败' }
+      return { ok: true, idea: payload.idea }
+    })
+
     return () => {
       if (handleDisposer) handleDisposer()
+      if (detailDisposer) detailDisposer()
     }
   },
 }

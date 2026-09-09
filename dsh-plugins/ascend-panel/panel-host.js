@@ -650,7 +650,18 @@ return {
         }
       },
     })
-    const disposer = harness.registerTool(ctx, tool)
+    // 注册诊断状态工具（diagnose 启动时查未完成 session / feedback 债）。
+    // 重名必须降级而不是抛：registerTool 在名字已被占用时**同步抛错**，会把整个
+    // apply() 打断——面板的 tab/RPC 全部注册不上，只因为一个顺手带的工具撞了名。
+    // 占用者通常是上一次会话遗留的同类插件（host 侧已看不到、无法 stop），
+    // 此时同名工具仍然可用，面板本身没有损失，所以只告警不中断。
+    let disposer = null
+    try {
+      disposer = harness.registerTool(ctx, tool)
+    } catch (e) {
+      console.error('[ascend-panel] ascend_trace_status 注册失败（可能已由其他插件注册），'
+        + '面板其余功能照常：' + String(e && e.message || e))
+    }
 
     const handleDisposer = harness.handle('ascend-traces-list', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null

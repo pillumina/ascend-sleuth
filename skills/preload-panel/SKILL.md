@@ -6,7 +6,7 @@ description: >
   加载 dsh-plugins/<panel>/ 下的 panel-host.js 与 panel-client.js——**只发两个路径，
   不转写 ~70KB 源码**，最后 cordis_run 激活，对话视图出现对应 tab。面板选择：
   - ascend-panel →「诊断」「指标」两个 tab（诊断会话/轨迹/证据 + 知识库健康）
-  - ev-panel →「自演进」tab（EV 卡状态机 / 容量热力 / 归因与 S2 反馈 / timeline）
+  - ev-panel →「自演进」tab（待办优先条 / 可展开决策流 / 自演进度量 / timeline）
   仅 DSH 可用——依赖 DSH 的 cordis_define / cordis_run 工具
   与 conversation.view 插槽；其他 agent（Claude Code / Codex / pi）无此机制。
 ---
@@ -24,8 +24,8 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 
 | 面板 | 目录 | tab id / label | 视图 |
 |---|---|---|---|
-| 诊断面板 | `dsh-plugins/ascend-panel/` | `ascend-diagnose`(20) / `ascend-metrics`(21) | 会话列表/轨迹/证据 + 知识库健康/指标 |
-| 自演进看板 | `dsh-plugins/ev-panel/` | `ascend-evolve`(22) | EV 卡状态机 / 容量热力 / 归因与 S2 反馈 / timeline |
+| 诊断面板 | `dsh-plugins/ascend-panel/` | `ascend-diagnose`(20) / `ascend-metrics`(21) | 会话列表/轨迹/证据 + 本期变化对照/知识库健康/历史快照折叠 |
+| 自演进看板 | `dsh-plugins/ev-panel/` | `ascend-evolve`(22) | 待办优先（实验中/审计缺口/最近采纳）+ 可展开决策流 + 自演进度量 + timeline |
 
 ## 依赖预检（激活前跑，避免面板加载后白屏/报错）
 

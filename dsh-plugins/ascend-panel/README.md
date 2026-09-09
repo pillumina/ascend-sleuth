@@ -3,7 +3,13 @@
 诊断可视化操作台，对话视图提供两个 tab：
 
 - **诊断**：会话列表（状态/时间/搜索/过滤）→ 展开轨迹（summary/evidence/reason/reference）→ 证据文件打开
-- **指标**：知识库健康 / 流程闭环 / timeline 快照 / 实时计算
+- **指标**：**本期 vs 上期变化**置顶 → 知识库健康 / 流程闭环 → timeline 快照（默认只展开最近 2 个 live 期，其余进「历史快照」折叠）→ 实时计算
+
+### 指标 tab 的"变化优先"（2026-09 重做）
+
+旧版把 7 期 × 10+ 指标全平铺成 label/value 网格，读者得自己逐行找"哪一行和上期不一样"。
+新版首屏是 `CompareStrip`：只列**动了**的指标（新增 / 变化 / 本期不再采集），
+标注 `7 → 11` 与增量，末尾报"N 项持平"；期卡收起时带前 3 项指标摘要。
 
 ## 加载方式
 
@@ -39,9 +45,20 @@
 **DSH 版本差异**：`cordis_define` 支持 `codeFile` 时，可跳过 loader 直接
 `cordis_define(codeFile.host, codeFile.client)` + `cordis_run`；两者都没有时回退到读全文内联。
 
+
+### 面板统一色语（2026-09）
+
+本面板与 ev-panel 共用一套颜色角色（`scripts/check_panel_tokens.py` 校验）：
+`--c-*` 文字色、`--acc-*` 装饰色、`--fill-*` 实心底、`--btn-*` 渐变端色。
+改动：原先直接拿亮色当文字用（`#22c55e` 绿 2.28:1、`#f59e0b` 琥珀 2.15:1，均不达 AA），
+现在文字走 `--c-*` 深档；渐变按钮压深一档（原 `#3b82f6` 白字 3.68:1 → `#2563eb` 5.17:1）。
+
 ## 依赖
 
 - Host：`fs` / `sessions` / `shell`。`shell` 缺失时证据文件打开与实时计算降级，其余正常。
+- **工具重名降级**：host 会注册 `ascend_trace_status`（供 diagnose 查未完成 session / feedback 债）。
+  `harness.registerTool` 在名字已被占用时**同步抛错**——曾因此让整个 `apply()` 中断、面板完全加载不上。
+  现在改为 try/catch 告警：同名工具仍可用（占用者通常是上次会话遗留的同类插件），面板其余功能照常。
 - 工作区：ascend-sleuth 仓库（Host 从 session.header.cwd 解析）。
 
 ## 功能

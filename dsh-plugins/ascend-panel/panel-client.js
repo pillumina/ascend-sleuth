@@ -10,23 +10,39 @@ return {
       success: 'var(--dsw-alias-state-success-primary)', warn: 'var(--dsw-alias-state-warn-primary)',
       error: 'var(--dsw-alias-state-error-primary)',
     }
+
+    // 面板统一色语（与 ev-panel 同一套角色，见 scripts/check_panel_tokens.py）：
+    //   --c-*   文字色（深一档同色相，过 WCAG AA——本面板原先直接用亮色当文字，
+    //           绿 2.28:1 / 琥珀 2.15:1 都不达标）
+    //   --acc-* 装饰色（点/条/边框/渐变——大块面，两面板共用同一亮色）
+    //   --btn-* 渐变按钮（白字，压深一档才过 AA）
+    const PANEL_CSS = `
+:root{--c-blue:#1d4ed8;--c-green:#15803d;--c-purple:#7c3aed;--c-amber:#92400e;--c-red:#b91c1c;--c-gray:#64748b;
+  --acc-blue:#3b82f6;--acc-green:#22c55e;--acc-purple:#8b5cf6;--acc-amber:#f59e0b;--acc-red:#ef4444;--acc-gray:#9ca3af;
+  --btn-blue-a:#2563eb;--btn-blue-b:#1d4ed8;--btn-green-a:#16a34a;--btn-green-b:#15803d;
+  --btn-purple-a:#7c3aed;--btn-purple-b:#6d28d9}
+body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b39bfb;--c-amber:#fbbf24;--c-red:#fb8a8a;--c-gray:#a8b0bd;
+  --acc-blue:#60a5fa;--acc-green:#4ade80;--acc-purple:#a78bfa;--acc-amber:#fbbf24;--acc-red:#f87171;--acc-gray:#9ca3af}
+`
+    const tokenSheet = styles.insert(PANEL_CSS)
+
     const statusMeta = {
-      resolved: { label: '已解决', color: '#22c55e' },
-      in_progress: { label: '进行中', color: '#3b82f6' },
-      escalated: { label: '已升级', color: '#f59e0b' },
-      unknown: { label: '未知', color: '#9ca3af' },
+      resolved: { label: '已解决', color: 'var(--c-green)', acc: 'var(--acc-green)' },
+      in_progress: { label: '进行中', color: 'var(--c-blue)', acc: 'var(--acc-blue)' },
+      escalated: { label: '已升级', color: 'var(--c-amber)', acc: 'var(--acc-amber)' },
+      unknown: { label: '未知', color: 'var(--c-gray)', acc: 'var(--acc-gray)' },
     }
     const RESUMEABLE = { in_progress: true, escalated: true }
     const sedMeta = {
       none: { label: '未沉淀', color: T.text2 },
-      submitted: { label: '已提交待审', color: T.brand },
-      knowledge: { label: '已沉淀 · 知识库', color: T.success },
-      archived: { label: '已沉淀 · Tier3', color: T.warn },
+      submitted: { label: '已提交待审', color: 'var(--c-blue)' },
+      knowledge: { label: '已沉淀 · 知识库', color: 'var(--c-green)' },
+      archived: { label: '已沉淀 · Tier3', color: 'var(--c-amber)' },
     }
     const kindMeta = {
-      live: { label: 'live', color: T.success, note: '活诊断 · 参与趋势' },
-      replay: { label: 'replay', color: '#3b82f6', note: '离线评估 · 不参与趋势' },
-      example: { label: 'example', color: T.text2, note: '示例' },
+      live: { label: 'live', color: 'var(--c-green)', acc: 'var(--acc-green)', note: '活诊断 · 参与趋势' },
+      replay: { label: 'replay', color: 'var(--c-blue)', acc: 'var(--acc-blue)', note: '离线评估 · 不参与趋势' },
+      example: { label: 'example', color: T.text2, acc: 'var(--acc-gray)', note: '示例' },
     }
     const METRIC_LABELS = {
       sessions_total: '诊断 session 数', tier2_hit: 'Tier 2 命中',
@@ -91,10 +107,52 @@ return {
     }
     function pct(a, b) { return b > 0 ? Math.round(a / b * 100) + '%' : '—' }
 
+    // 指标值 → {text, num, rate}：变化对照用（rate = ok/total 或 hit/total 的比率）
+    function metricValue(v) {
+      if (v === null || v === undefined) return { text: '—', num: null, rate: null }
+      if (typeof v === 'number') return { text: String(v), num: v, rate: null }
+      if (typeof v !== 'object') return { text: String(v), num: null, rate: null }
+      const keys = Object.keys(v)
+      if (keys.includes('ok') && keys.includes('total') && typeof v.total === 'number') {
+        return { text: v.ok + '/' + v.total, num: v.ok, rate: v.total > 0 ? v.ok / v.total : null }
+      }
+      if (keys.includes('hit') && keys.includes('total') && typeof v.total === 'number') {
+        return { text: v.hit + '/' + v.total, num: v.hit, rate: v.total > 0 ? v.hit / v.total : null }
+      }
+      if (keys.includes('before') && keys.includes('after')) {
+        return { text: v.before + ' → ' + v.after, num: v.after, rate: null }
+      }
+      return { text: fmtVal(v), num: null, rate: null }
+    }
+
+    // 两期对照：只保留"动了"的指标（新增 / 变化），这是"本期发生了什么"的答案
+    function diffPeriods(prev, cur) {
+      if (!cur) return { moved: [], same: 0, prevPeriod: null, curPeriod: null }
+      const pm = (prev && prev.metrics) || {}
+      const cm = cur.metrics || {}
+      const moved = []
+      let same = 0
+      Object.keys(cm).forEach(k => {
+        const a = k in pm ? metricValue(pm[k]) : null
+        const b = metricValue(cm[k])
+        const label = METRIC_LABELS[k] || k
+        if (a === null) { moved.push({ key: k, label, kind: 'new', to: b.text }); return }
+        // 数值可比值优先比数值；否则比显示文本
+        const changed = (a.num !== null && b.num !== null) ? a.num !== b.num : a.text !== b.text
+        if (changed) moved.push({ key: k, label, kind: 'change', from: a.text, to: b.text, delta: (a.num !== null && b.num !== null) ? b.num - a.num : null })
+        else same++
+      })
+      // 上期有、本期没有的指标 = 本期不再采集
+      Object.keys(pm).forEach(k => {
+        if (!(k in cm)) moved.push({ key: k, label: METRIC_LABELS[k] || k, kind: 'gone', from: metricValue(pm[k]).text })
+      })
+      return { moved, same, prevPeriod: prev ? prev.period : null, curPeriod: cur.period }
+    }
+
     const btnBase = { border: 'none', borderRadius: 7, padding: '4px 12px', fontSize: 11, fontWeight: 600, cursor: 'pointer', transition: 'all .15s', letterSpacing: '.01em' }
-    const btnPrimary = { ...btnBase, background: 'linear-gradient(135deg,#3b82f6,#2563eb)', color: '#fff', boxShadow: '0 1px 3px rgba(37,99,235,.3)' }
-    const btnSuccess = { ...btnBase, background: 'linear-gradient(135deg,#22c55e,#16a34a)', color: '#fff', boxShadow: '0 1px 3px rgba(22,163,74,.3)' }
-    const btnPurple = { ...btnBase, background: 'linear-gradient(135deg,#8b5cf6,#7c3aed)', color: '#fff', boxShadow: '0 1px 3px rgba(124,58,237,.3)' }
+    const btnPrimary = { ...btnBase, background: 'linear-gradient(135deg,var(--btn-blue-a),var(--btn-blue-b))', color: '#fff', boxShadow: '0 1px 3px rgba(37,99,235,.3)' }
+    const btnSuccess = { ...btnBase, background: 'linear-gradient(135deg,var(--btn-green-a),var(--btn-green-b))', color: '#fff', boxShadow: '0 1px 3px rgba(22,163,74,.3)' }
+    const btnPurple = { ...btnBase, background: 'linear-gradient(135deg,var(--btn-purple-a),var(--btn-purple-b))', color: '#fff', boxShadow: '0 1px 3px rgba(124,58,237,.3)' }
     const btnGhost = { ...btnBase, background: 'transparent', border: '1px solid ' + T.border, color: T.text2 }
     const btnOutline = (c) => ({ ...btnBase, background: 'transparent', border: '1px solid ' + c, color: c })
     function Dot({ color, size }) {
@@ -415,6 +473,79 @@ return {
       )
     }
 
+    // ============ 本期 vs 上期变化对照（指标 tab 首屏） ============
+    // 旧版把 7 期 × 10+ 指标全平铺成 label/value 网格，读者要自己找"哪一行和上期不一样"。
+    // 这里把"变了的"提到最前：新增 / 变化 / 本期不再采集，不变的只报个数。
+    function CompareStrip({ prev, cur }) {
+      const d = diffPeriods(prev, cur)
+      if (!cur) return null
+      const km = kindMeta[cur.kind] || kindMeta.example
+      const META = {
+        new: { label: '新增', color: '#3b82f6' },
+        change: { label: '变化', color: T.warn },
+        gone: { label: '不再采集', color: T.text2 },
+      }
+      return React.createElement('div', { style: { background: T.bg, border: '1px solid ' + T.border, borderRadius: 14, padding: '11px 14px', marginBottom: 12, boxShadow: '0 1px 2px rgba(0,0,0,.04)' } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' } },
+          React.createElement('span', { style: { fontSize: 13, fontWeight: 700 } }, '本期变化'),
+          React.createElement('span', { style: { color: km.color, border: '1px solid ' + km.color, borderRadius: 999, padding: '1px 9px', fontSize: 10, fontWeight: 700 } }, km.label),
+          React.createElement('span', { style: { fontFamily: 'ui-monospace,monospace', fontSize: 12, fontWeight: 700 } }, cur.period),
+          d.prevPeriod
+            ? React.createElement('span', { style: { fontSize: 11, color: T.text2 } }, '对比 ' + d.prevPeriod)
+            : React.createElement('span', { style: { fontSize: 11, color: T.text2 } }, '无上一期可比'),
+          React.createElement('span', { style: { marginLeft: 'auto', fontSize: 11, color: T.text2 } },
+            d.moved.length ? d.moved.length + ' 项变动 · ' + d.same + ' 项持平' : '与上期完全一致'),
+        ),
+        d.moved.length
+          ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+              d.moved.map(m => {
+                const meta = META[m.kind] || META.change
+                return React.createElement('div', { key: m.key, style: { display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', background: T.bg2, borderRadius: 7, fontSize: 11, flexWrap: 'wrap' } },
+                  React.createElement('span', { style: { color: meta.color, fontWeight: 700, fontSize: 10, minWidth: 52 } }, meta.label),
+                  React.createElement('span', { style: { color: T.text2, flex: '1 1 130px', minWidth: 0 } }, m.label),
+                  React.createElement('span', { style: { fontFamily: 'ui-monospace,monospace', color: T.text } },
+                    m.kind === 'change' ? (m.from + ' → ' + m.to) : (m.kind === 'new' ? m.to : m.from)),
+                  m.delta !== null && m.delta !== undefined ? React.createElement('span', { style: { fontSize: 10, fontWeight: 700, color: m.delta > 0 ? T.success : (m.delta < 0 ? T.error : T.text2) } },
+                    (m.delta > 0 ? '+' : '') + m.delta) : null,
+                )
+              }),
+            )
+          : React.createElement('div', { style: { fontSize: 11, color: T.text2 } }, '本期各指标与上一期逐项相同——没有新变化可读。'),
+      )
+    }
+
+    // ============ 单期卡片（可折叠） ============
+    function PeriodCard({ p, open, onToggle }) {
+      const km = kindMeta[p.kind] || kindMeta.example
+      const metricKeys = Object.keys(p.metrics || {})
+      const summary = metricKeys.slice(0, 3).map(k => (METRIC_LABELS[k] || k) + ' ' + metricValue(p.metrics[k]).text).join(' · ')
+      return React.createElement('div', { style: { background: T.bg, border: '1px solid ' + T.border, borderRadius: 14, marginBottom: 10, overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,.04)' } },
+        React.createElement('div', { onClick: onToggle, style: { padding: open ? '12px 16px 8px' : '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+          React.createElement(Chevron, { open: open, color: km.color }),
+          React.createElement('span', { style: { color: km.color, border: '1px solid ' + km.color, borderRadius: 999, padding: '1px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' } }, km.label),
+          React.createElement('span', { style: { fontWeight: 700, fontSize: 13, fontFamily: 'ui-monospace,monospace' } }, p.period),
+          p.recorded_at ? React.createElement('span', { style: { color: T.text2, fontSize: 11 } }, '记录 ' + p.recorded_at) : null,
+          !open && summary ? React.createElement('span', { style: { marginLeft: 'auto', color: T.text2, fontSize: 11, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '55%' } }, summary) : null,
+          open ? null : React.createElement('span', { style: { color: T.text2, fontSize: 10 } }, metricKeys.length + ' 项'),
+        ),
+        open ? React.createElement('div', { style: { padding: '0 16px 12px' } },
+          km.note ? React.createElement('div', { style: { color: T.text2, fontSize: 10, marginBottom: 4, fontStyle: 'italic' } }, km.note) : null,
+          p.title ? React.createElement('div', { style: { color: T.text, fontSize: 12, marginTop: 3, lineHeight: 1.5 } }, p.title) : null,
+          p.source ? React.createElement('div', { style: { color: T.text2, fontSize: 11, marginTop: 3, wordBreak: 'break-word', lineHeight: 1.5 } }, '来源: ' + p.source) : null,
+          metricKeys.length ? React.createElement('div', { style: { marginTop: 9, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 12px' } },
+            metricKeys.map(k => {
+              const v = p.metrics[k]
+              const total = ratioTotal(v)
+              const small = total !== null && total > 0 && total < 5
+              return React.createElement(MetricRow, { key: k, label: METRIC_LABELS[k] || k, value: fmtVal(v), small: small })
+            }),
+          ) : null,
+          p.notes && p.notes.trim() ? React.createElement('div', { style: { marginTop: 9, padding: '7px 10px', background: 'color-mix(in srgb, ' + T.brand + ' 5%, transparent)', borderLeft: '3px solid ' + T.brand, borderRadius: 5, fontSize: 11, color: T.text2, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 } },
+            p.notes.trim()) : null,
+        ) : null,
+      )
+    }
+
     function MetricsView(props) {
       const sessionId = props && props.sessionId
       const [state, setState] = React.useState({ loading: true, data: null })
@@ -425,6 +556,9 @@ return {
       const [infoOpen, setInfoOpen] = React.useState(false)
       const [fbCmd, setFbCmd] = React.useState(false)
       const [copied, setCopied] = React.useState(null)
+      // 展开的期（默认只展开最近 2 个 live 期——"变了什么"优先，历史期收起来）
+      const [openPeriods, setOpenPeriods] = React.useState(null)
+      const [histOpen, setHistOpen] = React.useState(false)
       React.useEffect(() => {
         let alive = true
         host.call('ascend-metrics-load', { sessionId: sessionId || null })
@@ -453,6 +587,7 @@ return {
       const filterLabels = { all: '全部', live: 'live', replay: 'replay', example: 'example' }
 
       const lastLive = periods.filter(p => p.kind === 'live').slice(-1)[0] || null
+      const livePeriods = periods.filter(p => p.kind === 'live')
       let feedbackAlert = null
       if (lastLive && lastLive.metrics) {
         const fb = lastLive.metrics.feedback_capture
@@ -518,33 +653,31 @@ return {
         ),
         liveCount === 0 ? React.createElement('div', { style: { marginBottom: 10, padding: 10, background: 'color-mix(in srgb, ' + T.warn + ' 8%, transparent)', border: '1px solid ' + T.border, borderRadius: 9, fontSize: 12, color: T.text2 } },
           '尚无 live 快照。首次活诊断后由 owner 追加（docs/metrics.md 汇总职责）。') : null,
+        // 首屏：本期 vs 上期变化（读者最先要的是"变了什么"，不是"一共有多少行"）
+        React.createElement(CompareStrip, { prev: livePeriods.length >= 2 ? livePeriods[livePeriods.length - 2] : null, cur: livePeriods[livePeriods.length - 1] || null }),
         shown.length === 0 ? React.createElement('div', { style: { color: T.text2, padding: '24px 0', textAlign: 'center', fontSize: 12 } }, '无该类型快照')
-          : React.createElement('div', null, shown.map((p, i) => {
-            const km = kindMeta[p.kind] || kindMeta.example
-            const metricKeys = Object.keys(p.metrics || {})
-            return React.createElement('div', { key: p.period + '-' + i, style: { background: T.bg, border: '1px solid ' + T.border, borderRadius: 14, marginBottom: 10, overflow: 'hidden', boxShadow: '0 1px 2px rgba(0,0,0,.04)' } },
-              React.createElement('div', { style: { padding: '12px 16px' } },
-                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-                  React.createElement('span', { style: { color: km.color, border: '1px solid ' + km.color, borderRadius: 999, padding: '1px 10px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' } }, km.label),
-                  React.createElement('span', { style: { fontWeight: 700, fontSize: 13, fontFamily: 'ui-monospace,monospace' } }, p.period),
-                  p.recorded_at ? React.createElement('span', { style: { color: T.text2, fontSize: 11 } }, '记录 ' + p.recorded_at) : null,
-                ),
-                km.note ? React.createElement('div', { style: { color: T.text2, fontSize: 10, marginTop: 3, fontStyle: 'italic' } }, km.note) : null,
-                p.title ? React.createElement('div', { style: { color: T.text, fontSize: 12, marginTop: 5, lineHeight: 1.5 } }, p.title) : null,
-                p.source ? React.createElement('div', { style: { color: T.text2, fontSize: 11, marginTop: 3, wordBreak: 'break-word', lineHeight: 1.5 } }, '来源: ' + p.source) : null,
-                metricKeys.length ? React.createElement('div', { style: { marginTop: 9, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 12px' } },
-                  metricKeys.map(k => {
-                    const v = p.metrics[k]
-                    const total = ratioTotal(v)
-                    const small = total !== null && total > 0 && total < 5
-                    return React.createElement(MetricRow, { key: k, label: METRIC_LABELS[k] || k, value: fmtVal(v), small: small })
-                  }),
+          : React.createElement('div', null, (() => {
+              // 默认展开：最近 2 个 live 期；历史期收进"历史快照"折叠区
+              const recent = shown.slice(0, 2)
+              const older = shown.slice(2)
+              const isOpen = (p) => openPeriods === null ? recent.indexOf(p) >= 0 : !!openPeriods[p.period]
+              const toggle = (p) => setOpenPeriods(Object.assign({}, openPeriods === null ? Object.fromEntries(recent.map(x => [x.period, true])) : openPeriods, { [p.period]: !isOpen(p) }))
+              return React.createElement(React.Fragment, null,
+                recent.map((p, i) => React.createElement(PeriodCard, { key: 'r' + i, p: p, open: isOpen(p), onToggle: () => toggle(p) })),
+                older.length ? React.createElement('div', null,
+                  React.createElement('button', {
+                    onClick: () => setHistOpen(!histOpen),
+                    style: { ...btnGhost, width: '100%', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6, marginBottom: histOpen ? 8 : 0 },
+                  },
+                    React.createElement(Chevron, { open: histOpen, color: T.text2 }),
+                    '历史快照 ' + older.length + ' 期',
+                    React.createElement('span', { style: { marginLeft: 'auto', color: T.text2, fontWeight: 400 } }, histOpen ? '收起' : '展开'),
+                  ),
+                  histOpen ? React.createElement('div', { style: { marginTop: 8 } },
+                    older.map((p, i) => React.createElement(PeriodCard, { key: 'o' + i, p: p, open: isOpen(p), onToggle: () => toggle(p) }))) : null,
                 ) : null,
-                p.notes && p.notes.trim() ? React.createElement('div', { style: { marginTop: 9, padding: '7px 10px', background: 'color-mix(in srgb, ' + T.brand + ' 5%, transparent)', borderLeft: '3px solid ' + T.brand, borderRadius: 5, fontSize: 11, color: T.text2, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.55 } },
-                  p.notes.trim()) : null,
-              ),
-            )
-          })),
+              )
+            })()),
         React.createElement('div', { style: { marginTop: 14, paddingTop: 10, borderTop: '1px dashed ' + T.border, fontSize: 11, color: T.text2 } },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 } },
             React.createElement('span', { style: { fontWeight: 700, color: T.text } }, '实时计算'),
