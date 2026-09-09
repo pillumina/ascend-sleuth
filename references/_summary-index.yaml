@@ -1,7 +1,7 @@
 # GENERATED FILE —— 背景类 summary 索引（diagnose 2.5 ② 读取），不要手改。
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
-# 生成日期：2026-09-09    词条数：55
+# 生成日期：2026-09-09    词条数：56
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -420,3 +420,11 @@ entries:
     commit、上游支持合入点、适配期坏版本、镜像内依赖）、量化权重格式面、patch 层全局副作用，再定位平台特化执行路径缺陷（启动…
   applies_to:
     platforms: []
+- id: vllm-infer-precision-triage
+  type: methodology
+  title: vLLM 推理精度定位五步路径（前置对齐 → 首差异 token → dump → compare → 单算子确认）
+  summary: vLLM 推理精度定位五步路径（单 case 可复现场景）：问题场景与标杆场景对齐（配置/超参/三方库/输入）并固定采样随机性（temperature=0）与算子确定性 → 打印输出
+    token_id 序列定位**首个差异 token**（把"整句不对"缩到"第 N 个 token 起不对"）→ 两侧使能 msprob…
+  applies_to:
+    platforms:
+    - cross
