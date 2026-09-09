@@ -95,6 +95,18 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 
 ## 交互原则
 
+**跨 session（实测）**：工具 `panel_from_file` 是**进程全局**的——新 session 不必再加载
+loader，直接就有它可用；重复加载 loader 会撞名但不报错（工具仍可用），只有要更新 loader
+自身代码时才需重启 DSH。面板插件则是 **per-session** 的：新 session 认领不了旧 session
+的插件（DSH 的 `define(kind:'existing')` 要求同 session 拥有），所以会新建一个同 tab id 的
+插件——新 tab 覆盖旧 tab 的显示，旧插件仍在跑（RPC 还在、仍读它自己 session 的工作目录）。
+彻底清理需重启 DSH，或在各 session 内对自己的插件 `cordis_stop`。
+
+**重复加载 = 重载（幂等）**：面板代码改了就再调一次同一条 `panel_from_file`——
+同 `idPrefix` 会复用本 session 的已有插件并切到新 Package（返回 `reused: true`），
+不会堆出重复 tab；无需手工传 `pluginId`/`mode`。跨 session（DSH 重启）会新建同 tab id
+的插件覆盖显示。
+
 面板是**只读可视化 + 指令生成器**——展示状态、生成续接/沉淀指令供用户触发，
 面板自身不做决策与写入（唯一例外：诊断面板的沉淀状态标记由用户在面板确认后
 更新）。自演进看板纯只读：展示 EV 卡状态与演进信号，产卡/验证走 agent + 攒批。
