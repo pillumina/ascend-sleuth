@@ -1,0 +1,52 @@
+id: vllm-infer-precision-triage
+type: methodology
+title: vLLM 推理精度定位五步路径（前置对齐 → 首差异 token → dump → compare → 单算子确认）
+summary: vLLM 推理精度定位五步路径（单 case 可复现场景）：问题场景与标杆场景对齐（配置/超参/三方库/输入）并固定采样随机性（temperature=0）与算子确定性 → 打印输出 token_id 序列定位**首个差异 token**（把"整句不对"缩到"第 N 个 token 起不对"）→ 两侧使能 msprobe dump（推荐 mix+statistics）→ msprobe compare 按统计量 diff 找可疑算子 → 单算子复现确认；不适用"整句随机错、每次错法不同"的不稳定场景
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/best_practices/infer_debug_guide.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/best_practices/infer_debug_guide）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [vllm-ascend]
+  categories: [precision]
+
+related_references: [msprobe-data-dump, msprobe-accuracy-compare, msprobe-overflow-check]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  flow:
+    - step: 1
+      name: 定位前置——把「问题场景」与「标杆场景」对齐
+      action: "标杆有两种：GPU 推理结果，或历史精度正常版本的 NPU 基线。逐项对齐两侧的推理超参与环境变量、三方库版本（MindIE / vLLM / Transformers / torch_npu 等）、输入数据、模型配置；vLLM 场景还需固定采样随机性（temperature=0）并打开算子计算与通信确定性。配置不对齐就开始比 dump，等于在噪声上做差分。"
+      check: "两侧启动脚本/日志的超参与环境变量比对（Beyond Compare 或脚本比对）；`pip list` 与 git 分支核对三方库；vLLM 里打印 `llm.llm_engine.model_config` 比对模型配置；确认 temperature=0、seed 固定、max_tokens 相同"
+      when_to_use: 单 case 可复现的推理精度问题（同一 prompt + 同一参数每次错法相同）；不稳定复现（每次错法不同、随机错）不适用，那类走内存踩踏/算子确定性/硬件/框架版本分支
+    - step: 2
+      name: 确认首个差异 token——把问题范围收窄
+      action: "打印问题场景与标杆场景的输出 token_id 序列，逐位比较找到**第一个不同的 token 位置**。这一步把「整句输出不对」压缩成「从第 N 个 token 起不对」，后续 dump 与比对只需围绕该位置前后的 prefill/decode 阶段展开，避免全量比对。注意这是**收窄手段、不是根因**——首个差异 token 对应的算子未必就是问题算子。"
+      check: "两侧输出 token_id 序列的首个差异下标；对应到是 prefill 阶段差异还是 decode 阶段差异"
+      when_to_use: 两个场景都能稳定产出可比较的输出序列时（始终在第 2 步做，不要跳过直接 dump）
+    - step: 3
+      name: 两侧使能 msprobe dump 采集数据
+      action: "在问题场景与标杆场景分别使能 msprobe 采集。**推荐 mix 级别 + statistics 模式**——同时拿到模块级与 API 级数据，且只落统计量、体积可控（真实数据模式在长序列推理上磁盘与耗时都不可接受）。本流程只给骨架，**不含版本相关的使能位置**：vLLM 各拉起方式（离线/在线、V0/V1 engine、TP/PP 是否 >1、是否 disable-frontend-multiprocessing）的加工具位置随版本变化，属易腐行为事实，需按当前版本源码定位，勿照抄旧版路径。"
+      check: "两侧各自产出 dump 目录（含 dump.json 与 dump_tensor_data）；采集级别与模式在两侧一致"
+      when_to_use: 首差异 token 已定位、需要看具体算子的数值差异时
+    - step: 4
+      name: msprobe compare 比对，按统计量 diff 定位可疑算子
+      action: "对两侧 dump 执行 `msprobe compare -tp <问题场景 dump> -gp <标杆场景 dump>`，在结果表里看四种统计量（max/min/mean/L2norm）的 diff 与相对误差，**从 diff 最大的算子开始怀疑**。比对模式由采集时的 task/summary_mode 决定——statistics 模式只有统计量指标，定位不到具体元素；需要逐元素比对时改用真实数据模式（磁盘与耗时显著上升）。"
+      check: "compare_result_{timestamp}.csv 中按 diff/RelativeErr 降序的头部算子；结合首差异 token 位置判断该算子是否落在对应阶段"
+      when_to_use: 两侧 dump 齐备后
+    - step: 5
+      name: 单算子复现确认
+      action: "对可疑算子做单算子复现：用同一份输入在 NPU 与标杆上分别运行，以 CPU 为绝对标杆做三方比对（NPU↔CPU 与 标杆↔CPU 的欧氏距离），若 NPU 与 CPU 的差距大于标杆与 CPU 的差距，则可确认该算子存在精度问题。确认后再评估它对整体输出的影响（替换实现/升精度后看输出是否恢复）。"
+      check: "单算子脚本的三方欧氏距离对比；替换或升精度后问题场景输出是否恢复"
+      when_to_use: compare 给出可疑算子之后——不要拿 compare 的 diff 直接当根因
+
+  verified_by_testing: false
+  test_scenarios: []

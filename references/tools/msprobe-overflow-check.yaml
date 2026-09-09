@@ -1,0 +1,31 @@
+id: msprobe-overflow-check
+type: tool
+title: msprobe overflow_check——整网首个 NaN/Inf 节点定位（多卡）
+summary: msprobe overflow_check：对 PyTorch dump 数据定位多卡场景下每张卡首个产生 inf/nan 的节点（经通信传播的可回溯到首个异常 rank）；输出 anomaly_analyze_{ts}.json 或打印无异常；判定口径是「输入正常而输出异常」才算溢出起点，输入已异常者是传播受害者
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/overflow_check/overflow_check_instruct.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/overflow_check）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  tool_name: "msprobe overflow_check（整网首个溢出节点分析）"
+  invocation: "分析已采集的 PyTorch dump 数据，在多卡场景下检测每张卡中产生 inf/nan 的节点；若是经通信算子传播的 inf/nan，可定位到首个产生异常的 rank 与节点。前置：先用 msprobe 采集精度数据（dump 目录须指到 step 层级）；仅支持 PyTorch 场景的 dump 数据（MindSpore 不支持）"
+  commands:
+    overflow_check: "msprobe overflow_check -i <dump/stepN 目录> -o <输出目录>（-i 必选且须指到 step 层级，如 -i /xxx/dump/step0；-o 可选，未配置时在当前目录创建 ./output）"
+  output_meaning:
+    - "无异常节点：只打印 `Cannot find any anomaly node, no need to generate analyze file.`，不生成分析文件"
+    - "有异常节点：生成 `anomaly_analyze_{timestamp}.json`，按 rank 分组（如 rank_0），每项含 op_name（节点名）、data_info（input_args / input_kwargs / output）、construct_info（节点层级）、stack_info（堆栈）"
+  pitfalls:
+    - "异常判定不是「找 nan 就完事」：计算节点必须满足「输入正常（Max/Min 中无 inf/nan）而输出异常」才算溢出起点——输入已异常的节点是传播受害者，不是首个溢出点，据此继续上溯"
+    - "通信节点分有向（send/recv/scatter/gather/broadcast/reduce）与无向（all_gather/all_reduce/reduce_scatter/all_to_all）：有向节点 src 的 input 已异常 → 上溯到 src 所在 rank 的前序计算节点；src 的 input 正常而 output 异常、或 dst 的 output 异常 → 判定通信节点本身产生了异常数据。无向节点判据相同，但异常视为同时发生"
+    - "顺序判定：相连的有向通信算子中 src 早于 dst；计算节点按 dump 顺序排序——用于确定「首个」，别按文件名或 rank 号排序"

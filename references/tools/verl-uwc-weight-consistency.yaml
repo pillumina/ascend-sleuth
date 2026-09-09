@@ -1,0 +1,45 @@
+id: verl-uwc-weight-consistency
+type: tool
+title: UWC 训推权重一致性验证——RL 训练侧到 vLLM 推理侧权重同步链路三段比对
+summary: UWC（Unified Weight Consistency）验证 RL 训推一体场景下「训练侧（verl+Megatron-core）→ 推理侧（vLLM）」权重同步链路的数值一致性，把链路拆成三段独立可比对：①Bridge 转换 HF↔mcore ②跨进程传输 ③vLLM 加载；容差为 P0 vs P2 atol=1e-3 / P2_sender vs P5 exact / G0 vs G1 cos>0.99；任一阶段 fail 即定位到该环节
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/rl_weight_consistency_verify.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/rl_weight_consistency_verify）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [verl]
+  versions:
+    verl: "v0.7.1 为例（文档以该版本为样例，未声明完整支持范围）"
+  categories: [precision]
+
+related_references: [verl-probs-diff-monitoring, verl-cross-validation]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  tool_name: "UWC（Unified Weight Consistency，训推权重一致性验证）"
+  invocation: "验证 RL 训推一体场景下训练侧（verl + Megatron-core）→ 推理侧（vLLM）权重同步链路的数值一致性。链路被拆成三个**互相独立、可单独开关**的阶段：①Bridge 转换（HF ↔ mcore 格式）②传输（共享内存 / IPC）③vLLM 加载（HF → 内部分片）。通过环境变量控制采集开关，采集零侵入、默认关闭。需按文档在 verl 侧新增采集位点代码与 `verl/utils/uwc/` 工具包"
+  commands:
+    stage1_export: "export UWC_ENABLE=1 UWC_STAGE1=1 UWC_STAGE2=0 UWC_STAGE3=0; export UWC_DUMP_DIR=/path/to/uwc_dump; 启动训练（无需跑完整步）; python -m verl.utils.uwc.offline.uwc_compare --dump_dir $UWC_DUMP_DIR --stage 1 [--model_config /path/to/config.json]"
+    stage1_forward: "python -m verl.utils.uwc.offline.forward_verify --local_path /path/to/model_safetensors --dump_dir $UWC_DUMP_DIR --input_ids 1,2,3,4,5（G0 vs G1 前向校验，需 NPU+mbridge、单卡、fp32、TP=1 PP=1、关 sequence_parallel、eval 模式）"
+    stage2: "export UWC_ENABLE=1 UWC_STAGE1=0 UWC_STAGE2=1 UWC_STAGE3=0; export UWC_DUMP_DIR=...; 至少跑 1 个训练步（触发首次 update_weights）; python -m verl.utils.uwc.offline.uwc_compare --dump_dir $UWC_DUMP_DIR --stage 2"
+    stage3: "① dummy vs safetensors 差分：分别用 load_format=dummy / load_format=safetensors 各跑一次 RL 首步，输出存 json，再 python -m verl.utils.uwc.offline.stage3_diff_test --dummy <a.json> --safetensors <b.json>；② data_ptr 指针偏移验证：比对 load_weights 前后的 ptr（ptr_after==ptr_before → 该层漏同步）"
+  output_meaning:
+    - "采集位点：P0（原始 HF 权重，磁盘 safetensors）/ P2（bridge.export_weights 后的 HF 权重）/ P2_sender（同步时刻 sender 实际发送的权重）/ P5（receiver 收到）/ G0、G1（transformers 与 mcore 前向 logits）/ ptr_before、ptr_after"
+    - "容差：阶段1 export → P0 vs P2 `atol=1e-3`（bf16 量级）；阶段1 load → G0 vs G1 `avg_cos>0.99` 且 `max/min_cos>=0.95`；阶段2 传输 → P2_sender vs P5 `exact=True`（max_abs_diff==0）；阶段3 → 行为判定（差分矩阵）+ ptr 是否变化"
+    - "日志信号：`[UWC stage2] P2_sender saved ... keys=N`、`[UWC stage2] P5 saved ... keys=N`、`[UWC export diag] ... vs_P0_max_diff`（step0 应≈0；极大说明 sender 侧是 dummy 权重）"
+    - "P0/P2/P2_sender/P5 每个 rank 内容相同 → 只落盘 rank 0、比对只用 rank 0"
+  pitfalls:
+    - "**阶段2 必须用同步时刻的 P2_sender**，不能用 init 时刻的 P2——训练后权重已变化，用 init 的 P2 会合法误报"
+    - "阶段3 的差分测试抓不住「首步之后才坏」的指针复用问题（param.data 别名传入 buffer 后被复用）——需配合 data_ptr 或多步跨 sync 测试"
+    - "阶段2 只比发送端与接收端，定位不到是「拷贝操作错」还是「传输通道错」；需要时加中间采集点 P2' 做三点比对"
+    - "阶段1 的 P0 vs P2 命名归一化依赖模型结构（qkv / gate_up 合并规则），不同架构需核对 name_normalizer.py"
+    - "阶段1 前向校验（forward_verify）约束多：fp32 前向、固定 input_ids、TP=1 PP=1、关 sequence_parallel、两侧 eval 关 dropout、attention 实现 / RoPE / norm eps / 激活函数两侧对齐（建议从同一份 config.json 派生）"
+    - "需在 verl 侧做代码改动（采集位点 + uwc 工具包），**随 verl 版本变化**——按当前版本核对，勿照抄样例路径"
+    - "文档结论只覆盖实测场景（Qwen2.5-0.5B-Instruct / NPU / GRPO），其他模型与规模需自己复跑"

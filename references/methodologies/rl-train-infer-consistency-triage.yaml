@@ -1,0 +1,54 @@
+id: rl-train-infer-consistency-triage
+type: methodology
+title: RL 训推一致性排查路径（先定分歧面，再选权重链路 / 概率偏移 / 阶段定界）
+summary: RL（GRPO/PPO）训推一致性问题的排查路径：先按现象定分歧面——输出崩溃（乱码/生僻字/重复）多指向权重同步链路，reward 下降 + logp_diff 上升多指向逐 token 概率偏移，整体效果差但难分训推则需阶段定界；再选手段（UWC 三段比对权重链路 / 逐 token probs_diff 看概率分布 / 交叉打桩定界训练还是推理），最后按各自容差判读
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/rl_weight_consistency_verify.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/rl_weight_consistency_verify）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/dump/verl_token_level_probs_diff_monitoring.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/dump/verl_token_level_probs_diff_monitoring）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/verl_cross_validation.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/verl_cross_validation）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [verl]
+  categories: [precision]
+
+related_references: [verl-uwc-weight-consistency, verl-probs-diff-monitoring, verl-cross-validation]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  flow:
+    - step: 1
+      name: 先定分歧面——按现象归到三类
+      action: "RL 训推一致性问题的现象决定用哪条路径，别三条一起上：①**输出崩溃**（乱码、生僻字、重复输出）→ 优先怀疑训练侧到推理侧的**权重同步链路**（权重经 Bridge 转换、跨进程传输、vLLM 加载三道工序才到推理侧，任一环节出错都会导致乱码且极难排查）；②**reward 相对标杆下降、伴随 logp_diff 上升** → 优先怀疑**逐 token 概率偏移**（权重同步滞后 / 算子精度差异 / 推理与训练模式差异）；③**整体效果差但分不清是训练还是推理** → 需要**阶段定界**（打桩替换一个阶段输出）。"
+      check: "明确回答：现象是输出崩溃、概率/指标偏移，还是分不清训推？"
+      when_to_use: 拿到 RL 训推不一致问题后的第一步（选错路径会在错误层面空转）
+    - step: 2
+      name: 权重同步链路 → UWC 三段比对
+      action: "用 UWC 把「训练侧 verl+Megatron-core → 推理侧 vLLM」的权重链路拆成三个独立阶段分别比对：①Bridge 转换（HF ↔ mcore）②传输（共享内存/IPC）③vLLM 加载（HF → 内部分片）。三个阶段可单独开关，任一阶段比对 fail 即可把不一致定位到该环节；推理侧另做 dummy vs safetensors 差分与 data_ptr 指针偏移验证，能精确到「哪一层参数没被 load_weights 覆盖」。"
+      check: "阶段1 P0 vs P2（atol=1e-3）/ 阶段2 P2_sender vs P5（exact，max_abs_diff==0）/ 阶段3 行为差分 + ptr 是否变化——按容差逐段判读"
+      when_to_use: 现象指向权重链路（输出崩溃），或需要验证「推理侧拿到的就是训练侧最新权重」时
+    - step: 3
+      name: 概率分布偏移 → 逐 token probs_diff 监控
+      action: "开启逐 token prob diff：对同一 response 序列比较 rollout（vLLM 推理）与 actor 前向（训练引擎）的对数概率差，看差异是集中在少数 token 还是整体抬升。注意前提必须先设 `actor_rollout_ref.rollout.calculate_log_probs=True`，否则 vLLM 不返回 rollout_log_probs、diff 算不出来。三类偏差来源分别对应不同处置：权重同步滞后 → 回到 UWC 查链路；算子精度差异 → 查算子/精度；推理与训练模式差异 → 查 dropout / flash attention 等前向行为差异。"
+      check: "训练日志 `training/rollout_probs_diff/s{i}_p{jjjj}` 逐点值 + `rollout_probs_diff_max/mean/std`、`rollout_actor_probs_pearson_corr`；需要细看时读 `prob_diff_step_{step}.npy` 与 mask 做离线分析"
+      when_to_use: 现象是 reward 下降 / logp_diff 上升，或怀疑权重同步滞后但不确定影响面时
+    - step: 4
+      name: 分不清训推 → 交叉打桩定界
+      action: "用 verl 交叉验证把训练与推理阶段解耦：两种模式（`share_data=ckpt`：推理执行并保存 rollout 数据、训练执行并加载 ckpt；`share_data=rollout`：推理加载 rollout 数据跳过推理、训练执行并保存 ckpt）通过共享数据目录交换数据，替换掉一个阶段的输出后看问题是否消失——消失则问题在该阶段。Rollout Skip 只是省时间的手段（复用已保存的推理数据），本身不做定界。"
+      check: "替换某阶段输出后问题是否消失；两个训练过程能否用相同配置与数据同时拉起"
+      when_to_use: 前两条路径都无法归因，或需要先把「训练 vs 推理」这条界划清时

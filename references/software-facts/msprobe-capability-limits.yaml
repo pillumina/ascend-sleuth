@@ -1,0 +1,35 @@
+id: msprobe-capability-limits
+type: software-fact
+title: msprobe 五功能的适用场景与当前版本局限性（选型与边界）
+summary: msprobe 选型与能力边界：dump（API 级仅支持白名单、对 inplace 支持有限、不支持参数及参数梯度，且**加工具可能让同步问题消失**）/ 离线预检（不受累计误差影响，但依赖 GPU 环境、不支持通信算子、仅部分融合算子）/ 整网比对与可视化（可疑算子受累计误差影响、大模型耗时长）/ 训练状态监测（仅模块级统计量、仅 megatron 与 deepspeed）
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/limitations_and_precautions.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/limitations_and_precautions）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [msprobe-data-dump, msprobe-accuracy-checker, msprobe-accuracy-compare, msprobe-visualization, msprobe-monitor]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  claim: >-
+    msprobe 五功能的官方定位与边界（PyTorch 框架）——
+    ①**数据采集 dump**：采集模型训练中 API/Module 层级的前反向输入输出（层次关系、统计量、真实数据、调用栈），用于保存数据与查看溢出位置；
+    局限：API 级数据采集仅支持白名单列表上的 API；**工具会做一些同步操作，引入工具可能导致一些同步问题消失**（排查同步/踩踏类问题时的关键陷阱）；对 inplace 操作 API/Module 支持度有限；暂不支持参数及参数梯度的采集。
+    ②**离线预检 api_accuracy_checker**：为网络中每个 API 创建用例并综合判定 NPU 精度是否达标；
+    优势：精度排查**不受模型累计误差影响**；局限：依赖 GPU 环境、不支持通信算子、仅支持部分融合算子。
+    ③**整网比对 compare**：计算整网 NPU 与标杆的误差指标并标记异常 API/Module；
+    局限：使用整网 dump 数据，定位的可疑算子**受累计误差影响**；模型规模大时比对耗时长。
+    ④**可视化比对 visualization**：还原模型图结构、逐层比对、浏览器展示与搜索；
+    局限同上（累计误差、大模型耗时长）。
+    ⑤**训练状态监测 monitor**：收集训练中的激活值、梯度、优化器状态；
+    局限：仅支持模块级统计量指标分析、仅支持 megatron 与 deepspeed 框架、少量增加时间与显存开销。
+  evidence: "MindStudio 26.2.0.B050_003 官方文档《msProbe 工具功能模块简介、适用场景和当前版本局限性》§1 PyTorch 框架表（逐功能列 简介/适用场景与优势/当前版本局限性）；MindSpore 框架表结构相同（本文档只沉淀 PyTorch 侧，KB 无 MindSpore 场景）"

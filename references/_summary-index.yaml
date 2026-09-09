@@ -1,7 +1,7 @@
 # GENERATED FILE —— 背景类 summary 索引（diagnose 2.5 ② 读取），不要手改。
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
-# 生成日期：2026-09-07    词条数：48
+# 生成日期：2026-09-09    词条数：65
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -327,6 +327,14 @@ entries:
   applies_to:
     platforms:
     - cross
+- id: ascend-train-precision-triage
+  type: methodology
+  title: 大模型训练精度定位五步路径（CheckList → 复现前置 → 稳定/不稳定分流 → 分支排查 → 单算子确认与修复）
+  summary: 训练侧精度问题定位五步路径：先做 CheckList 排除非算子因素（超参/环境变量/三方库/数据读取/模型结构/权重初始化/版本）→ 复现前置（固定随机性、打开确定性、seed_all、缩小规模）→
+    按「能否稳定复现 + 现象」分流（溢出或NaN / 首Step Loss差异 / 长稳Loss差异 vs 内存踩踏/算…
+  applies_to:
+    platforms:
+    - cross
 - id: ascend-vllm-spec-decode-mtp-triage
   type: methodology
   title: vllm-ascend spec-decode/MTP 族分层诊断（启动/首请求/运行期崩溃 + 静默精度·性能退化）
@@ -350,10 +358,130 @@ entries:
     缺失=上游删模块未同步后端）；算子重复注册（CANN 版本过旧 vs 多版本 mindspeed）；…
   applies_to:
     platforms: []
+- id: msprobe-accuracy-checker
+  type: tool
+  title: msprobe acc_check——离线精度预检（API 达标判定链路与阈值）
+  summary: msprobe acc_check：在 NPU 上扫描训练模型的 API 输入数据，与 CPU 高精度标杆逐 API 比对给出达标判定；判链是「余弦相似度 > 0.99 → 最大绝对误差
+    < 0.001 → 双百/双千/双万」；输出 accuracy_checking_result/details_{ts}.csv；m…
+  applies_to:
+    platforms:
+    - cross
+- id: msprobe-accuracy-compare
+  type: tool
+  title: msprobe compare——数值精度比对（NPU vs 标杆，真实数据/统计量/MD5 三模式）
+  summary: msprobe compare：把 NPU dump 与 CPU/GPU/NPU 标杆 dump 逐 API 比对，输出 compare_result_{ts}.csv（多卡按 rank
+    分文件）；三种数据模式（真实数据/统计数据/MD5）对应三套表头与指标；加 -da 可自动识别全网首个差异节点
+  applies_to:
+    platforms:
+    - cross
+- id: msprobe-capability-limits
+  type: software-fact
+  title: msprobe 五功能的适用场景与当前版本局限性（选型与边界）
+  summary: msprobe 选型与能力边界：dump（API 级仅支持白名单、对 inplace 支持有限、不支持参数及参数梯度，且**加工具可能让同步问题消失**）/ 离线预检（不受累计误差影响，但依赖
+    GPU 环境、不支持通信算子、仅部分融合算子）/ 整网比对与可视化（可疑算子受累计误差影响、大模型耗时长）/ 训练状态监测（仅…
+  applies_to:
+    platforms:
+    - cross
+- id: msprobe-checkpoint-compare
+  type: tool
+  title: msprobe ckpt 比对——逐参数 l2/余弦相似度（Megatron/MindSpeed）
+  summary: msprobe ckpt 比对：`msprobe config_check --compare <ckpt1> <ckpt2>` 逐参数输出 l2（欧氏距离）/cos（余弦相似度）/numel/shape
+    到 json；支持 Megatron-LM 与 MindSpeed（含 TP/PP/EP/VPP 与 megatr…
+  applies_to:
+    platforms:
+    - cross
+- id: msprobe-config-check
+  type: tool
+  title: msprobe config_check——训练前配置检查（双环境差异比对）
+  summary: msprobe config_check：对比两个训练环境下影响精度的配置差异（环境变量/第三方库版本/训练超参/权重/数据集/随机操作）；静态采集只覆盖前三项，动态采集才覆盖全部；比对输出
+    result.xlsx，summary 页六项 pass/error/warning，前五项必须在精度比对前 pass
+  applies_to:
+    platforms:
+    - cross
+- id: msprobe-data-dump
+  type: tool
+  title: msprobe dump 精度数据采集（config.json 配置 + PrecisionDebugger 接口）
+  summary: msprobe dump：PyTorch 精度数据采集——config.json 配 task/dump_path/rank/step/level/scope/list/summary_mode，代码里用
+    PrecisionDebugger(config_path).start/stop/step 采集；输出 dump…
+  applies_to:
+    platforms:
+    - cross
+- id: msprobe-data-load
+  type: tool
+  title: msprobe load 精度数据覆盖加载（隔离前序累计误差）
+  summary: msprobe load：用已采集的模块级（L0）输入 tensor 覆盖目标模块的实际输入，隔离前序模块累计误差、精准定位本模块及下游问题；config.json 顶层 load
+    段配 path/modules/step/rank/dump_after_load；要求源 dump 与目标模型模块结构、命名严格一致
+  applies_to:
+    platforms:
+    - cross
+- id: msprobe-monitor
+  type: tool
+  title: msprobe monitor / monitor_v2——训练状态监测（CSV 字段与解读口径）
+  summary: msprobe monitor_v2：训练过程中按需采集模块输入输出/权重梯度/优化器动量/参数分布/通信算子统计，按 rank 落 CSV（rank_<id>/<module>_step{X}-{Y}.csv）；统一表头
+    vpp_stage|step|module_name|scope|指标列，各监测项有固定 sco…
+  applies_to:
+    platforms:
+    - cross
+- id: msprobe-overflow-check
+  type: tool
+  title: msprobe overflow_check——整网首个 NaN/Inf 节点定位（多卡）
+  summary: msprobe overflow_check：对 PyTorch dump 数据定位多卡场景下每张卡首个产生 inf/nan 的节点（经通信传播的可回溯到首个异常 rank）；输出
+    anomaly_analyze_{ts}.json 或打印无异常；判定口径是「输入正常而输出异常」才算溢出起点，输入已异常者是传播受害者
+  applies_to:
+    platforms:
+    - cross
+- id: msprobe-response-anomaly
+  type: tool
+  title: msprobe response_anomaly——推理异常检测（生僻字/乱码/重复/NaN logprobs）
+  summary: msprobe response_anomaly：基于输出 token + topk logprobs 的**无参照**实时异常检测，返回 [is_ill, ill_type]（1=生僻字
+    2=乱码 3=重复 4=NaN Value）；库接口 analyze_output_anomaly(topk_logprobs, …
+  applies_to:
+    platforms:
+    - cross
+- id: msprobe-visualization
+  type: tool
+  title: msprobe graph_visualize——分级可视化构图比对（TensorBoard 图/颜色判定）
+  summary: msprobe graph_visualize：把 dump 数据还原成模型图结构，用 TensorBoard 做结构与精度双图比对；节点颜色 error>warning>pass>未匹配，判定规则按真实数据/统计数据/MD5
+    三模式分列；支持溢出筛选、名称搜索、跨套件比对与多卡构图
+  applies_to:
+    platforms:
+    - cross
+- id: rl-train-infer-consistency-triage
+  type: methodology
+  title: RL 训推一致性排查路径（先定分歧面，再选权重链路 / 概率偏移 / 阶段定界）
+  summary: RL（GRPO/PPO）训推一致性问题的排查路径：先按现象定分歧面——输出崩溃（乱码/生僻字/重复）多指向权重同步链路，reward 下降 + logp_diff 上升多指向逐 token
+    概率偏移，整体效果差但难分训推则需阶段定界；再选手段（UWC 三段比对权重链路 / 逐 token probs_diff 看概率分…
+  applies_to:
+    platforms:
+    - cross
+- id: verl-cross-validation
+  type: tool
+  title: verl 训推交叉打桩——Rollout Skip + 交叉验证（精度定界在训练还是推理）
+  summary: verl 交叉验证：用打桩替换一个阶段的输出实现精度定界——两种模式 ckpt（推理执行并保存 rollout 数据 / 训练执行并加载 ckpt）与 rollout（推理加载 rollout
+    数据跳过推理 / 训练执行并保存 ckpt），两个训练过程通过共享数据目录交换数据；另有 Rollout Skip 基础功能（…
+  applies_to:
+    platforms:
+    - cross
 - id: verl-official-image-no-hdk
   type: software-fact
   title: verl 官方昇腾 Docker 镜像不含 HDK
   summary: verl 官方昇腾镜像（quay.io/ascend/verl:*）不含 HDK，需按 install_guidance.rst 自选安装——HDK 版本与镜像组合不兼容是 verl+昇腾故障的常见根因面
+  applies_to:
+    platforms:
+    - cross
+- id: verl-probs-diff-monitoring
+  type: tool
+  title: verl 逐 token prob diff 监控——rollout 与 actor 前向的概率差
+  summary: verl 逐 token prob diff 监控：逐 token 计算 rollout（vLLM）与 actor 前向（训练引擎）对同一 response 的对数概率差，输出到训练日志并落
+    npy；前提必须设 actor_rollout_ref.rollout.calculate_log_probs=True；偏差来…
+  applies_to:
+    platforms:
+    - cross
+- id: verl-uwc-weight-consistency
+  type: tool
+  title: UWC 训推权重一致性验证——RL 训练侧到 vLLM 推理侧权重同步链路三段比对
+  summary: UWC（Unified Weight Consistency）验证 RL 训推一体场景下「训练侧（verl+Megatron-core）→ 推理侧（vLLM）」权重同步链路的数值一致性，把链路拆成三段独立可比对：①Bridge
+    转换 HF↔mcore ②跨进程传输 ③vLLM 加载；容差为 P0 vs P2 atol=…
   applies_to:
     platforms:
     - cross
@@ -364,3 +492,11 @@ entries:
     commit、上游支持合入点、适配期坏版本、镜像内依赖）、量化权重格式面、patch 层全局副作用，再定位平台特化执行路径缺陷（启动…
   applies_to:
     platforms: []
+- id: vllm-infer-precision-triage
+  type: methodology
+  title: vLLM 推理精度定位五步路径（前置对齐 → 首差异 token → dump → compare → 单算子确认）
+  summary: vLLM 推理精度定位五步路径（单 case 可复现场景）：问题场景与标杆场景对齐（配置/超参/三方库/输入）并固定采样随机性（temperature=0）与算子确定性 → 打印输出
+    token_id 序列定位**首个差异 token**（把"整句不对"缩到"第 N 个 token 起不对"）→ 两侧使能 msprob…
+  applies_to:
+    platforms:
+    - cross

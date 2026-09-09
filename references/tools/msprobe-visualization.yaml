@@ -1,0 +1,39 @@
+id: msprobe-visualization
+type: tool
+title: msprobe graph_visualize——分级可视化构图比对（TensorBoard 图/颜色判定）
+summary: msprobe graph_visualize：把 dump 数据还原成模型图结构，用 TensorBoard 做结构与精度双图比对；节点颜色 error>warning>pass>未匹配，判定规则按真实数据/统计数据/MD5 三模式分列；支持溢出筛选、名称搜索、跨套件比对与多卡构图
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/accuracy_compare/pytorch_visualization_instruct.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/accuracy_compare）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [msprobe-data-dump, msprobe-accuracy-compare]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  tool_name: "msprobe graph_visualize（PyTorch 场景分级可视化构图比对）"
+  invocation: "先把 dump 数据解析成图结构文件，再起 TensorBoard 在浏览器看：`msprobe graph_visualize -tp <target_path> -gp <golden_path> -o <output_path> [-lm] [-oc] [-fm] [-tensor_log] [-progress_log]`。用途是理解模型结构、按层级比对精度、定位疑似问题节点（精度差异越大颜色越深）"
+  commands:
+    graph_visualize: "msprobe graph_visualize -tp <NPU dump 路径> -gp <标杆 dump 路径> -o <输出路径> [-lm] [-oc] [-fm] [-tensor_log] [-progress_log]（-fm 模糊匹配；-oc/-lm 等开关见原文参数表）"
+    view: "启动 TensorBoard 指向输出目录后在浏览器打开图；支持名称搜索、精度筛选、溢出筛选、未匹配节点筛选、手动选择节点匹配"
+  output_meaning:
+    - "节点颜色四类：红=error / 橙=warning / 白=pass / 灰=节点未匹配；一个节点代表一个 API 或模块，颜色由其多个输入输出的多个指标共同算出，优先级 error > warning > pass"
+    - "error 的典型判定：①NPU 侧 max/min 含 nan/inf（标杆同样如此则忽略）②真实数据模式下 One Thousandth Err Ratio 的 input/parameters > 0.9 且 output < 0.6 ③统计数据模式下 input 的 norm 相对误差 < 0.1 且 output 的 norm 相对误差 > 0.5 ④Requires_grad 不一致 ⑤非 tensor 标量参数不一致 ⑥md5 模式下 CRC-32 不一致 ⑦dtype 不一致 ⑧shape 不一致"
+    - "warning 的典型判定：①统计数据模式下 output 的 norm 相对误差是 input/parameters 的 10 倍 ②真实数据模式下 Cosine 的 input/parameters > 0.9 且 input/parameters - output > 0.1 ③md5 模式下参数未匹配"
+    - "指标随模式不同：真实数据模式有 Cosine / EucDist / MaxAbsErr / MaxRelativeErr / One Thousandth Err Ratio / Five Thousandth Err Ratio；统计数据模式是统计量（max/min/mean/norm）的 diff 与 RelativeErr；MD5 模式只有 CRC-32"
+  pitfalls:
+    - "**依赖模块级 dump**：level 必须为 L0（模块信息）或 mix（模块+API 信息），且 construct.json 内容不能为空——用默认 L1 采的数据构不出图"
+    - "冗余 API 的所有指标不适用：empty / empty_like / numpy / to / setitem / empty_with_format / new_empty_strided / new_empty / empty_strided"
+    - "输入存在占位的 API，涉及「使用输入进行计算」的指标规则不适用：_reduce_scatter_base / _all_gather_base / all_to_all_single / batch_isend_irecv"
+    - "灰色节点不是 pass——是未达到匹配条件、两个节点无法比对，需按匹配说明排查（命名/层级/调用次数差异）"
+    - "跨套件比对、不同切分策略下的图合并、自定义比对算法各有前置配置，不是默认可用"
+    - "官方口径的版本局限性：使用整网 dump 数据，定位到的可疑算子**受累计误差影响**；模型规模大时比对耗时长（详见 msprobe-capability-limits）"

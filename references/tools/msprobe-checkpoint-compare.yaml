@@ -1,0 +1,35 @@
+id: msprobe-checkpoint-compare
+type: tool
+title: msprobe ckpt 比对——逐参数 l2/余弦相似度（Megatron/MindSpeed）
+summary: msprobe ckpt 比对：`msprobe config_check --compare <ckpt1> <ckpt2>` 逐参数输出 l2（欧氏距离）/cos（余弦相似度）/numel/shape 到 json；支持 Megatron-LM 与 MindSpeed（含 TP/PP/EP/VPP 与 megatron.core / legacy / TransformerEngine 实现）；用于验证权重转换、续训、格式往返后参数是否走样
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/checkpoint_compare_instruct.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/checkpoint_compare_instruct）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [msprobe-config-check]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  tool_name: "msprobe ckpt 比对（Checkpoint Compare）"
+  invocation: "`msprobe config_check --compare <ckpt_path1> <ckpt_path2> [-o <output_path.json>]`；逐参数比较两个 checkpoint 的相似度，用于验证权重转换/续训/格式往返后是否走样。加载 Megatron、MindSpeed 的 ckpt 依赖 megatron（需已装在 Python 环境或代码在当前路径下）"
+  commands:
+    compare: "msprobe config_check --compare <ckpt_path1> <ckpt_path2> [-o ./ckpt_similarity.json]（-o 默认 ./ckpt_similarity.json；输出路径已存在会报错终止）"
+    path_forms: "目录名 → 通过 latest_checkpointed_iteration.txt 自动取最后一个 ckpt；目录名/iter_xxxxxxx → 指定 iteration；暂不支持单个 rank 的比对"
+  output_meaning:
+    - "输出 json，按参数名给出四项：l2（欧氏距离 ‖a-b‖₂）、cos（余弦相似度 <a,b>/(‖a‖₂‖b‖₂)）、numel（元素个数）、shape"
+    - "读法：cos≈1 且 l2≈0 表示该参数一致；cos 明显低于 1 或 l2 显著非零即该参数走样——按参数名定位到具体层（如 decoder.layers.0.input_layernorm.weight）"
+  pitfalls:
+    - "命令挂在 `config_check` 子命令下（`--compare`），与配置差异比对共用 CLI 入口但**是两件事**：ckpt 比对比的是权重数值，config_check 比的是环境/超参——别混"
+    - "ckpt 交给工具加载前，用户必须确保 ckpt 安全可信（官方提供 SHA256 等校验值时必须先校验），避免加载被篡改的权重"
+    - "暂不支持单 rank 比对；目录形式会自动取最后一个 iteration，要比指定步需显式给 iter_xxxxxxx 路径"
+    - "只支持 Megatron-LM / MindSpeed 的 ckpt 结构；HF 原生 safetensors 不在支持范围内"

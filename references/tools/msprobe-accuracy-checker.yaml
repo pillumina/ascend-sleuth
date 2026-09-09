@@ -1,0 +1,40 @@
+id: msprobe-accuracy-checker
+type: tool
+title: msprobe acc_check——离线精度预检（API 达标判定链路与阈值）
+summary: msprobe acc_check：在 NPU 上扫描训练模型的 API 输入数据，与 CPU 高精度标杆逐 API 比对给出达标判定；判链是「余弦相似度 > 0.99 → 最大绝对误差 < 0.001 → 双百/双千/双万」；输出 accuracy_checking_result/details_{ts}.csv；multi_acc_check 为多线程版
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/accuracy_checker/pytorch_accuracy_checker_instruct.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/accuracy_checker）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [msprobe-data-dump]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  tool_name: "msprobe acc_check（PyTorch 场景离线精度预检）"
+  invocation: "先按 task=acc_check 采集 API 输入数据（只拿到输入，不含标杆），再跑预检得到 NPU vs CPU 高精度标杆（以及 GPU vs CPU）的逐 API 比对结果：`msprobe acc_check -api_info <dump.json> [-save_error_data] [-o <out>] [-j] [-d <device_id>] [-csv_path <csv>] [-f] [-config <config>]`。数据量大时用 `multi_acc_check` 多线程版"
+  commands:
+    acc_check: "msprobe acc_check -api_info <dump_json_path> [-save_error_data] [-o <out_path>] [-j] [-d <device_id>] [-csv_path <result_csv_path>] [-f] [-config <config_path>]"
+    multi_acc_check: "msprobe multi_acc_check …（多线程预检，适用于数据量较大的大模型场景）"
+  output_meaning:
+    - "`accuracy_checking_result_{timestamp}.csv`：每 API 一行，看 Forward Test Success / Backward Test Success（pass / warning / error / SKIP）与 Message；一个 API 的全部输出都 pass 才记 pass，有一个 error 即 error，只有 warning 与 pass 则记 warning。**该文件是中间结果，后续会被删除**，别当存档"
+    - "`accuracy_checking_details_{timestamp}.csv`：每 API 的每个输出一行，含余弦相似度 / 最大绝对误差 / 双百 / 双千 / 双万 / 小值域错误占比 / inf-nan 错误率 / 相对误差错误率 / 绝对误差错误率 / ULP 误差等指标与 Status"
+    - "达标判定链路：余弦相似度 ≤ 0.99 → error；> 0.99 再看最大绝对误差 < 0.001 → pass；≥ 0.001 再看双百/双千/双万——float16/bfloat16 数据：双百不通过=error、双百过而双千不过=warning、双千也过=pass；float32/float64 数据：双千不通过=error、双千过而双万不过=warning、双万也过=pass"
+    - "小值域阈值（判为小值的界限）：float32 = 2**-14、float16 = 2**-11、bfloat16 = 2**-8；小值域的绝对误差阈值：float32 = 2**-30、float16/bfloat16 = 2**-16"
+    - "双百/双千/双万口径：相对误差小于百分之一/千分之一/万分之一 的元素占比；通过标准是「大于该比例的个数占比小于该比例」"
+  pitfalls:
+    - "预检结果只是**参考指标**——官方建议完成「预检结果比对」后再看最终结论；直接拿 result.csv 下结论容易误判"
+    - "SKIP 不是通过也不是失败：该 API 不支持预检、被黑名单过滤或不在白名单、运行错误、反向不计算梯度、dtype 不支持新精度标准（如 float64）等都会 SKIP——原因看 Message"
+    - "一个 API 可能有多组输入/输出，必须全部 pass 才在 result.csv 记 pass；只看 details 里某一行 pass 会误判"
+    - "acc_check 的输入数据来自 dump 的 task=acc_check 采集（与 task=statistics/tensor 的采集配置不同），别拿普通 dump 数据跑预检"
+    - "数据量大必须用 multi_acc_check，单线程 acc_check 在大模型场景耗时不可接受"
+    - "官方口径的版本局限性：**依赖 GPU 环境**（需要 GPU 侧标杆）、**不支持通信算子**、仅支持部分融合算子（详见 msprobe-capability-limits）；优势是不受模型累计误差影响——这是它相对整网比对的核心价值"

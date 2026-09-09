@@ -1,0 +1,55 @@
+id: msprobe-tool-side-effect-fault-patterns
+type: fault-pattern
+title: msprobe 工具自身副作用与采集异常（8 条）
+summary: msprobe 使用中的反直觉故障模式：加工具后 loss/gnorm 变化或 NaN 不再复现（item 同步 / hook 改变梯度累加顺序）/ dump.json 出现 null / API 在支持列表却没 dump / L0 下部分 module 反向数据缺失 / vLLM dump 报跨 device / 同目录重复 dump 覆盖 / 溢出检测报 107002 / HCCL EI0006
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/support/faq.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/support/faq）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [msprobe-capability-limits, msprobe-data-dump]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  patterns:
+    - pattern: 使能 msprobe 后 loss / gnorm 出现偏差，或不加工具时才复现 NaN
+      symptoms: ["加工具后 loss 变化", "加工具后 gnorm 变化", "加工具后 NaN 不再复现", "未使用工具时问题复现、使用工具后不再出现"]
+      cause: 采集统计量时通过 item() 把 device 侧 tensor 同步到 CPU 再落盘，item 是同步操作；PyTorch/MindSpore 的 hook 机制也会改变梯度累加顺序，从而影响反向 gnorm
+      fix: 先设 `ASCEND_LAUNCH_BLOCKING=1` 判定——若结果仍变化则确认是同步引起；定位时改用异步 dump（config.json 里把 async_dump 置为 true）；hook 引起的梯度累加顺序变化属预期行为
+    - pattern: dump.json 中 API/Module 的统计信息出现 null 或 None
+      symptoms: ["dump.json 统计信息 null", "统计信息 None", "Mean/Norm 为 null"]
+      cause: 输入或输出本身是 None；参数类型工具不支持（有日志提醒）；输入/输出 tensor 的 dtype 为 bool 时 Mean、Norm 等字段为 null
+      fix: 按上述三类逐一对照；dtype=bool 的 null 属预期，不是采集失败
+    - pattern: API 在 support_wrap_ops.yaml 支持列表中，但没有 dump 到数据
+      symptoms: ["API 无 dump 数据"]
+      cause: ①调用不在 start/stop 接口涵盖范围内；②API 被直接 import（如 `from torch import relu`），地址已确定，工具无法 patch
+      fix: 确认调用在采集范围内；把 `relu(x)` 改成 `torch.relu(x)` 让工具能 patch
+    - pattern: L0 dump 下部分 module 的反向数据没有采集到
+      symptoms: ["The {module_name} has registered deprecated register_backward_hook"]
+      cause: 该 module 挂载了 PyTorch 废弃的 register_backward_hook，与工具使用的 register_full_backward_hook 冲突，工具跳过其反向数据
+      fix: 把模型中的 register_backward_hook 改为 register_full_backward_pre_hook 或 register_full_backward_hook
+    - pattern: vLLM 场景 dump 报 tensor 跨 device
+      symptoms: ["Expected all tensors to be on the same device, but found at least two devices, cpu and npu:0"]
+      cause: debugger 实例化早于 LLM 实例化
+      fix: 把 PrecisionDebugger 的实例化移到 LLM 实例化之后
+    - pattern: 同一目录多次执行 dump 结果互相覆盖
+      symptoms: ["前一次 dump 结果丢失"]
+      cause: 同一 dump 目录重复执行会覆盖上一次结果
+      fix: 用 dump_path 参数指定不同目录（或先归档上一次结果）
+    - pattern: 溢出检测报 NPU error 107002
+      symptoms: ["torch_npu._C._clear_overflow_npu() RuntimeError NPU error, error code is 107002"]
+      cause: 未显式设置 device（单卡与多卡场景都需设置）
+      fix: 单卡加 `torch.npu.set_device('npu:0')`；多卡按 rank 加 `torch.npu.set_device(f'npu:{rank}')`；若是精度比对报同一错误，尝试升级最新版 msProbe
+    - pattern: HCCL 报 EI0006
+      symptoms: ["error code: EI0006"]
+      cause: CANN 软件版本较低导致不兼容
+      fix: 升级新版 CANN
