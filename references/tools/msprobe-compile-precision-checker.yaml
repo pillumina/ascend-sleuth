@@ -1,0 +1,42 @@
+id: msprobe-compile-precision-checker
+type: tool
+title: msprobe PrecisionChecker——eager 与 compile 逐模块精度比对（single-pass / two-pass）
+summary: msprobe PrecisionChecker：给启用 torch.compile 后出现的 loss 抖动/收敛变差/输出不一致定位差异来源——wrap 标记模块后分别以 eager 与 compile 执行，逐模块比对前向输出与输入梯度；训练场景用 single-pass（install+collect），推理/eval 用 two-pass（compare）；判定看逐模块 FORWARD OUTPUT/BACKWARD，loss_eager 为 NaN 属预期
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/accuracy_compare/pytorch_compile_accuracy_compare_instruct.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/accuracy_compare）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [msprobe-accuracy-compare, msprobe-data-dump]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  tool_name: "msprobe PrecisionChecker（PyTorch eager 与 compile 模式逐模块精度对比）"
+  invocation: "模型启用 torch.compile 后若出现 loss 抖动、收敛变差或推理输出不一致，用本工具逐模块定位差异来源。工作方式：`wrap` 标记待检查模块 → 分别以 eager 与 compile 两种方式执行这些模块 → 逐个比对前向输出与输入梯度，确定差异所在模块、差异类型（前向/反向）与误差量级。**先选模式**：训练（含 loss.backward()）用 single-pass（默认，入口 `install()` + `collect()`）；推理/eval（仅 forward）用 two-pass（入口 `compare()`）"
+  commands:
+    single_pass: "from msprobe.pytorch.compile_accuracy_checker.precision_checker import PrecisionChecker; checker = PrecisionChecker(); checker.wrap_by_policy(model, (nn.Linear,)); checker.install(model); loss = run_step(model); result = checker.collect(loss); checker.report(result, csv_path=\"precision_report.csv\")"
+    two_pass: "checker.compare(...)（推理/eval 场景；会 deepcopy 模型）"
+    wrap_methods: "checker.wrap(m) 单模块 / checker.wrap_by_policy(model, (Qwen2Block,)) 按类型批量 / checker.wrap_all_children(model, depth=N) 按深度自动 wrap（自动跳过 ModuleList/ModuleDict/Sequential）/ checker.wrap(model) 整模型"
+    ctor_params: "PrecisionChecker(backend=\"aot_eager\", threshold=1e-4, dump_graphs=False, graph_dir=\"./graph_dump\", cast_dtype=None, capture_input=True, single_pass=True)"
+  output_meaning:
+    - "report 输出 csv；**精度判定依据是逐模块的 FORWARD OUTPUT 与 BACKWARD**，不是整体 loss"
+    - "`loss_eager` 为 `NaN` 属**预期行为**——别拿它当精度结论"
+    - "`threshold`（默认 1e-4）是预留参数，实际判定走 `torch.allclose(a, b, atol=1e-4, rtol=1e-3)`"
+    - "`capture_input=True`（默认）会采集模块前向输入，用于区分「输入本身已有差异」与「本模块计算产生差异」——这是判读时最先要分的一刀"
+    - "`cast_dtype` 可对被 wrap 模块启用 autocast（类似 mixed precision policy）；`dump_graphs=True` 把编译期捕获的 graph 写入 `graph_dir`"
+  pitfalls:
+    - "**它不替代 compare**：`msprobe-accuracy-compare` 比的是 NPU 与标杆（两个环境）；PrecisionChecker 比的是**同一模型 eager 与 compile**（同一环境两种执行方式）。torch.compile 引入的精度问题走本条，不走 compare"
+    - "仅支持 PyTorch 场景，且依赖 `torch.compile`（PyTorch 版本需支持）"
+    - "`install()` 仅支持 `single_pass=True`；two-pass 会 deepcopy 模型，**不支持 FSDP2 等禁止 deepcopy 的模型**"
+    - "若标记的是**根模型本身**，`install()` 原地替换后 `torch.compile(model)` 的返回值无法写回调用者持有的变量——改用 `compare()`，或标记根模型下的子模块"
+    - "`dump_graphs` 依赖 PyTorch Dynamo 内部接口，PyTorch 版本变化可能影响 graph dump 行为"
+    - "大模型建议**先粗粒度再逐步细分**；已被 wrap 的模块，其内部子模块不会重复作为顶层编译目标处理"

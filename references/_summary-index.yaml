@@ -1,7 +1,7 @@
 # GENERATED FILE —— 背景类 summary 索引（diagnose 2.5 ② 读取），不要手改。
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
-# 生成日期：2026-09-09    词条数：67
+# 生成日期：2026-09-09    词条数：69
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -406,6 +406,14 @@ entries:
   applies_to:
     platforms:
     - cross
+- id: msprobe-compile-precision-checker
+  type: tool
+  title: msprobe PrecisionChecker——eager 与 compile 逐模块精度比对（single-pass / two-pass）
+  summary: msprobe PrecisionChecker：给启用 torch.compile 后出现的 loss 抖动/收敛变差/输出不一致定位差异来源——wrap 标记模块后分别以 eager
+    与 compile 执行，逐模块比对前向输出与输入梯度；训练场景用 single-pass（install+collect），推理/…
+  applies_to:
+    platforms:
+    - cross
 - id: msprobe-config-check
   type: tool
   title: msprobe config_check——训练前配置检查（双环境差异比对）
@@ -451,6 +459,14 @@ entries:
   title: msprobe response_anomaly——推理异常检测（生僻字/乱码/重复/NaN logprobs）
   summary: msprobe response_anomaly：基于输出 token + topk logprobs 的**无参照**实时异常检测，返回 [is_ill, ill_type]（1=生僻字
     2=乱码 3=重复 4=NaN Value）；库接口 analyze_output_anomaly(topk_logprobs, …
+  applies_to:
+    platforms:
+    - cross
+- id: msprobe-trend-visualization
+  type: tool
+  title: msprobe data2db 趋势可视化——统计量按 step/rank/张量三维趋势（含 Megatron 并行切分可视化）
+  summary: msprobe 趋势可视化：`msprobe data2db --db <dir> --data <dump/monitor 目录>` 把 dump(L0/mix) 或 monitor(csv)
+    解析成 .trend.db，再用 TensorBoard 的 TREND ANALYZER 从 step/rank/张量目标…
   applies_to:
     platforms:
     - cross

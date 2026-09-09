@@ -1,0 +1,40 @@
+id: msprobe-trend-visualization
+type: tool
+title: msprobe data2db 趋势可视化——统计量按 step/rank/张量三维趋势（含 Megatron 并行切分可视化）
+summary: msprobe 趋势可视化：`msprobe data2db --db <dir> --data <dump/monitor 目录>` 把 dump(L0/mix) 或 monitor(csv) 解析成 .trend.db，再用 TensorBoard 的 TREND ANALYZER 从 step/rank/张量目标三维看统计量趋势；配套 `plot_model_parallelism` 画 Megatron 切分图（各卡层与整网位置对应），支撑热力图判读
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/accuracy_compare/trend_visualization_instruct.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/accuracy_compare）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision, performance]
+
+related_references: [msprobe-data-dump, msprobe-monitor]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  tool_name: "msprobe 趋势可视化（data2db + TensorBoard TREND ANALYZER）+ Megatron 模型并行可视化"
+  invocation: "把 dump 或 monitor 的统计量按「迭代步数 × 节点 rank × 张量目标」三维看趋势，用于从整体分布观测精度问题（而不是逐个 tensor 比对）。流程：①`msprobe data2db` 解析成 `.trend.db`；②起 TensorBoard，`--logdir` 指向解析输出目录；③浏览器在 `TREND ANALYZER` 插件看。Megatron 多卡场景另用 `plot_model_parallelism` 画切分图，看清「各卡上的层在整网中的位置」"
+  commands:
+    data2db: "msprobe data2db --db <db_path> --data <data_path> [--format auto|dump|monitor] [--mapping <mapping.json>] [--micro_step <bool>] [--process_num <n>]（--db 为存盘目录，产出 .trend.db；--data 传 dump 目录须到 step 的上一层、monitor 目录须到 rank 的上一层）"
+    tensorboard: "tensorboard --logdir <db_path> 后在 TREND ANALYZER 插件查看"
+    megatron_plot: "from msprobe.core.common.megatron_utils import ParallelConfig, plot_model_parallelism; config = ParallelConfig(world_size=32, num_layers=48, tensor_parallel_size=4, pipeline_parallel_size=4, num_layers_per_virtual_pipeline_stage=3, order=\"tp-cp-ep-dp-pp\", standalone_embedding_stage=False, output_path='./'); plot_model_parallelism(config)  # 再 python plot_model.py"
+  output_meaning:
+    - "`msprobe data2db` 产出 `.trend.db`（SQLite）；dump 数据仅支持 `level=L0` 或 `mix`，monitor 数据仅支持 `format=csv`"
+    - "**数值被裁剪**：落盘范围 `[-1e9, 1e9]`，超出被截断；`inf` → `1e9+1`、`-inf` → `-1e9-1`——看趋势时遇到这些哨兵值要意识到是截断而非真实值"
+    - "`--mapping` 可传 json 映射文件，把模型层/算子名做转换，达到「精简名称」或「step 间名称对齐」的效果"
+    - "`--micro_step` 默认 true，把一个 step 拆成多个微迭代分析；`--process_num` 仅对 monitor 数据并行加速（dump 不支持多进程）"
+    - "`plot_model_parallelism` 输出切分图：展示 TP/PP/VPP/DP 下各节点 rank 的层分布，用于判断「采集到的层处于整网哪个位置」"
+  pitfalls:
+    - "**只支持两类输入**：dump 的 `level=L0`/`mix`，或 monitor 的 `format=csv`——用 L1 采集的 dump 或其它 monitor 格式解析不出来"
+    - "`--data` 的路径层级有要求：dump 要到 step 的上一层、monitor 要到 rank 的上一层；传错层级会解析为空"
+    - "Megatron 切分可视化**限制明确**：仅 Megatron 场景的 TP/PP/VPP/DP，且 `world_size ≤ 1024`、`num_layers ≤ 256`"
+    - "趋势可视化看的是**统计量随时间/卡的变化**，不定位到具体 tensor 元素——要逐元素比对仍走 `msprobe-accuracy-compare`（真实数据模式）"
+    - "与 `msprobe-visualization`（分级可视化构图比对）的分工：后者还原模型图结构做层级比对，本条是按 step/rank 看趋势分布"
