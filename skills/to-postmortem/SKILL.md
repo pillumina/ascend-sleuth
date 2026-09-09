@@ -40,6 +40,21 @@ agent 读取文件，后续流程同内联。
 
 扫描目录下 `.md`/`.txt`，每个文件各成一条。大文件逐个处理，不全量载入 context。目录模式就是批量导入历史案例的入口——不需要单独的批量导入 skill。
 
+**二进制文档（`.docx`/`.doc`/`.pptx`/`.xlsx`/`.rtf`/`.epub`）预处理**：客户报告、排查记录、汇报材料常是这些格式，先转 Markdown 再走上面四种输入：
+
+```bash
+npx -y @firecrawl/anydoc <file> -o <file>.md     # 有 Node ≥ 20，首次自动下载
+# 无 Node 但有 Python ≥ 3.10：
+pip install firecrawl-anydoc
+python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
+```
+
+- 两者都没有 → **明确告诉用户"这份文件抽不出来，请转成 md 或贴文本"，不静默跳过附件**——附件里的报错原文正是 case 的 symptoms 证据。
+- **目录模式**的扫描范围随之扩展到上述扩展名，逐份转换后再成条。
+- **截图**：anydoc 只输出文字，文档里的定位截图会被整段丢弃（无占位、无告警）。`.docx`/`.pptx`/`.xlsx`/`.odt` 都是 zip，用 `python -m zipfile -e <file> out/` 取 `word/media/`（pptx 为 `ppt/media/`，xlsx 为 `xl/media/`），再用**自己的图片识别能力直接读图**（模型支持图片输入时）。
+- **读不了图就如实记缺口**：在 postmortem 里列「未提取的证据」清单（文件名 + 所在段落上下文 + 未识别原因），草稿标 `needs-human-review`。**不要拿截图的标题或上下文推测报错原文**——`symptoms` 只写文本里确有的内容。
+- **不外传**：不要用 `--ocr hosted`（把整份文档上传第三方服务）；客户材料一律本地处理。
+
 ## 流程
 
 1. **提取**：从输入中抽出——

@@ -27,7 +27,7 @@ description: >
 /skill:to-reference --file ~/ascend/昇腾950_NPU架构白皮书.md --source official-doc
 ```
 
-`--source` 是**必填判断项**（engineer-input / official-doc）：来源类型由**内容权威性**决定，不由输入通道决定——同一份文件可能是工程师笔记（engineer-input）也可能是官方文档（official-doc）。本地 PDF 也可处理：用工具提取文本（如 `pymupdf`）后再走本模式，`verification` 状态见 §1。
+`--source` 是**必填判断项**（engineer-input / official-doc）：来源类型由**内容权威性**决定，不由输入通道决定——同一份文件可能是工程师笔记（engineer-input）也可能是官方文档（official-doc）。本地 PDF 用工具提取文本（如 `pymupdf`）后再走本模式；`.docx`/`.doc`/`.pptx`/`.xlsx`/`.rtf`/`.epub` 先转 Markdown（见 §1「二进制文档与截图」）。`verification` 状态见 §1。
 
 **3. URL 爬取**（官方文档，`official-doc`）：
 
@@ -72,6 +72,14 @@ description: >
 - **必须标注 `sources[].verification`，二选一**：
   - `auto-extracted`——模型从源材料抽取、**未经 agent 对源逐字核验**（如一次 URL 抓取后直接归纳），reviewer 必须 spot-check 语义是否被扭曲；
   - `cross-checked-source`——agent 已直接对源原文（如 PDF 文本提取）逐字核验，reviewer 抽查即可。**只有当你真的逐字对照过源才标这个**；拿不准一律标 `auto-extracted`（诚实退化，宁低估不高估）。
+
+**二进制文档与截图（本地官方文档）**：
+- **文本提取**：`.docx`/`.doc`/`.pptx`/`.xlsx`/`.rtf`/`.epub` 用 `npx -y @firecrawl/anydoc <file> -o <file>.md`（有 Node ≥ 20，首次自动下载）；无 Node 但有 Python ≥ 3.10 → `pip install firecrawl-anydoc` + `python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>`；PDF 用 `pymupdf`。工具都没有 → 请用户转成 md 或贴文本，**不静默跳过附件**。
+- **截图**：官方文档里的架构图 / 报错截图会被 anydoc 整段丢弃（无占位、无告警）。`.docx`/`.pptx`/`.xlsx`/`.odt` 都是 zip，用 `python -m zipfile -e <file> out/` 取 `word/media/`（pptx 为 `ppt/media/`，xlsx 为 `xl/media/`），再用**自己的图片识别能力直接读图**（模型支持图片输入时）。
+- **读不了图 → 不提取、不推测**：词条只写文本里确有的内容，未提取的截图列进 PR body 的「来源与验证状态」区块交 reviewer 补——**不要从截图的标题或上下文反推内容**。
+- **确定性转换才可逐字核验**：anydoc 是确定性解析（不经模型改写），逐字对照原文后可标 `cross-checked-source`；只从截图之外的文本归纳、未逐字对照的仍标 `auto-extracted`。
+- **出处仍须可移植**：本地 docx 的 `sources[].url` 用可移植文档引用（标题 + 出品方 + 版本），**禁止写 `~/` 或绝对路径**（CI 会红）。
+- **不外传**：不要用 `--ocr hosted`（把整份文档上传第三方服务）；内部文档一律本地处理。
 
 **内联 / 文件（engineer-input）**：
 - 从工程师描述中抽取事实/方法论，判断 type（见 §2）；
