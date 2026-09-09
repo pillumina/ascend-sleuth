@@ -29,6 +29,7 @@ content:
     config_json_minimal: '{"task":"statistics","dump_path":"/home/data_dump","rank":[],"step":[],"level":"L1","async_dump":false,"extra_info":true,"statistics":{"scope":[],"list":[],"tensor_list":[],"data_mode":["all"],"summary_mode":"statistics"}}'
     enable_in_script: "from msprobe.pytorch import PrecisionDebugger, seed_all; seed_all(); debugger = PrecisionDebugger(config_path=\"./config.json\"); debugger.start(model=model) … debugger.stop(); debugger.step()"
     range_dump: '"scope": ["Module.conv1.Conv2d.forward.0", "Module.fc2.Linear.forward.0"] 锁定区间；"list": ["Tensor.permute.1.forward"] 指定 API；"tensor_list": ["relu"] 指定某类 API/模块（子串匹配、不区分大小写）'
+    kernel_dump: '{"task":"tensor","dump_path":"./dump_path","level":"L2","rank":[],"step":[],"tensor":{"scope":[],"list":["Functional.linear.0.backward"]}}（kernel 级采集：task 必须 tensor、list 必须填一个 API 名）'
   output_meaning:
     - "目录结构：dump_path/step{N}/rank{N}/dump_tensor_data/*.pt 与 dump.json；tensor 文件名 API 级为 `{api_type}.{api_name}.{调用次数}.{forward|backward}.{input|output}.{参数序号}.pt`，Module 级为 `{Module}.{module_name}.{class_name}.{forward|backward}.{调用次数}.{input|output}.{参数序号}.pt`（list 参数按 1.1 继续下钻）"
     - "task=statistics 只落统计量；task=tensor 落统计量+完全复刻的真实数据（磁盘占用大）；task=structure 只落模型结构与调用栈；task=nan_check 检测寄存器级 NaN/Inf；task=exception_dump 采集异常现场"
@@ -42,3 +43,5 @@ content:
     - "PyTorch 模块级 dump 会对 BackwardHook 输出张量重置属性，可能造成 dump 数据缺少 `nn.ReLU(inplace=True)` 及其上一个模块的反向数据"
     - "`risk_level` 默认 FOCUS——排除 reshape/transpose/permute/to/view 等形状变换类 API；排查这些 API 的精度问题必须显式改成 ALL"
     - "跨文件采集、推理模型指定 token_range、自定义 API 批量注册等场景的接口不同，需查原文对应小节"
+    - "官方口径的版本局限性：API 级采集**仅支持白名单列表上的 API**；工具会做同步操作，**引入工具可能让同步/踩踏类问题消失**（排查这类问题时先看 msprobe-tool-side-effect-fault-patterns）；对 inplace 操作支持有限；**暂不支持参数及参数梯度的采集**（详见 msprobe-capability-limits）"
+    - "kernel 级（L2）采集：每 step 只支持采集**一个** API，list 必填该 API 名（取自 L1 dump.json）；成功打印 `The kernel data of {api_name} is dumped successfully.`，不支持时打印 `The kernel dump does not support the {api_name} API.`；打印成功但无数据 → 查 API 名格式、确认该 API 跑在 NPU 上，或改用 torch_npu.npu 的 init_dump/set_dump/finalize_dump"

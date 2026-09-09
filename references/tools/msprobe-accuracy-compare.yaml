@@ -37,3 +37,4 @@ content:
     - "-dm（data_mapping）仅支持逐卡比对；-cm（cell_mapping）用于不同平台/不同配置的模块比对；两者都只在自动匹配失败时才需要"
     - "--consistent_check 是 verl 训推一致性专用（须配 --backend），普通精度比对不要开"
     - "量化场景的 tensor 矩阵乘校准需要 --config 传 matmul.yaml，仅 PyTorch 支持"
+    - "官方口径的版本局限性：使用整网 dump 数据，定位到的可疑算子**受累计误差影响**（需用 msprobe-data-load 覆盖输入来隔离，或改走离线预检）；模型规模大时比对耗时长（详见 msprobe-capability-limits）"

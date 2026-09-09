@@ -39,3 +39,4 @@ content:
     - "只有 monitors 里启用的模块才出 CSV——目录里缺某个 CSV 不是采集失败，是没开"
     - "CSV 里的 step 与 micro_step 是两个层级：分析异常时要先确认看的是哪个粒度，别把 micro_step 当训练 step"
     - "cc 的开销最大（通信统计），排查完应及时关闭；官方推荐顺序是先 cc_log_only 再 cc_codeline 再统计，一步到位会淹没在无关通信里"
+    - "官方口径的版本局限性：仅支持**模块级**统计量指标分析（到不了 API 级）、仅支持 megatron 与 deepspeed 框架、会少量增加时间与显存开销（详见 msprobe-capability-limits）"

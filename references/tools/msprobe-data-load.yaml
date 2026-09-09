@@ -1,0 +1,37 @@
+id: msprobe-data-load
+type: tool
+title: msprobe load 精度数据覆盖加载（隔离前序累计误差）
+summary: msprobe load：用已采集的模块级（L0）输入 tensor 覆盖目标模块的实际输入，隔离前序模块累计误差、精准定位本模块及下游问题；config.json 顶层 load 段配 path/modules/step/rank/dump_after_load；要求源 dump 与目标模型模块结构、命名严格一致
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/dump/pytorch_data_load_instruct.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/dump/pytorch_data_load_instruct）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [msprobe-data-dump, msprobe-accuracy-compare]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  tool_name: "msprobe load（PyTorch 场景精度数据覆盖加载）"
+  invocation: "配置驱动、无需改训练脚本：在 config.json 顶层加 `load` 段（与 task/dump_path/level 同级），加载先前采集的 L0 输入 tensor，在模型前向时覆盖目标模块的实际输入——用于隔离前序模块累计误差，精准定位本模块及下游的精度问题。前提：先用 `level=L0` 或 `mix`、`task=tensor` 采集过一次，产出 dump_tensor_data/*.pt"
+  commands:
+    config: '{"task":"tensor","dump_path":"/home/data_dump_b","level":"L0","rank":[],"step":[],"load":{"path":"/home/data_dump_a","modules":["Module.blocks.0.attn.MultiHeadSelfAttention.forward.0"],"step":[],"rank":[],"dump_after_load":false}}'
+    fields: "load.path 源 dump 目录（step{N} 的上一层）；load.modules 要覆盖的模块条目名列表（取 .pt 文件名中 .input.{i}.pt / .kwargs.{key}.pt 之前的部分，不支持 .backward.{N}，不允许重复）；load.step / load.rank 可选（空=每步/每卡都 load，自动对齐源 dump 的对应 step/rank）；dump_after_load=false 只覆盖不 dump，true 覆盖后继续 dump"
+  output_meaning:
+    - "load 读取的是模块级（L0）tensor，要求源 dump 用 level=L0 或 mix；启用 load 时会强制挂模块 hook，即使 config.json 里 level=L1 也能正常覆盖"
+    - "源与目标的文件命名必须严格一致：位置参数 `{full_forward_name}.input.{i}.pt`、关键字参数 `{full_forward_name}.kwargs.{key}.pt`，路径为 `{load.path}/step{N}/rank{M}/dump_tensor_data/...`"
+    - "单卡（非分布式）场景 dump 产出在 proc{pid} 目录，load 会自动在 step{N}/ 下找 proc*，无需指定 pid"
+    - "shape/dtype 不一致时：加载阶段打 warning（含模块名、参数位置、两侧 shape/dtype）**仍执行替换**；forward 阶段 PyTorch 算子可能报 RuntimeError（shape 不匹配通常报错，dtype 不匹配可能隐式转换或报错）"
+  pitfalls:
+    - "**forward 签名必须一致**：若模型 A 是 `forward(x, mask)`、B 是 `forward(mask, x)`，工具按位置 index 加载——A 的 x 会加载到 B 的 mask 位置；shape 可能碰巧对上但语义错误，**工具无法自动检测**"
+    - "被覆盖的模块及其直接上游模块的 backward 数据在 dump 时可能缺失（覆盖后的 tensor 来自 torch.load，不在 BackwardHook 追踪范围内）——只影响 dump 采集，不影响模型实际反向计算"
+    - "源 dump 与目标模型的模块结构、命名必须一致（named_modules() 点分路径完全对应）；训推框架命名差异、切分差异需手工改造源 dump，本功能不负责"
+    - "验证覆盖是否真的生效要用**不同输入**跑两次（输入相同则覆盖与不覆盖结果一致，看不出区别）"

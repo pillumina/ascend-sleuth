@@ -1,7 +1,7 @@
 # GENERATED FILE —— 背景类 summary 索引（diagnose 2.5 ② 读取），不要手改。
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
-# 生成日期：2026-09-09    词条数：57
+# 生成日期：2026-09-09    词条数：61
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -374,6 +374,22 @@ entries:
   applies_to:
     platforms:
     - cross
+- id: msprobe-capability-limits
+  type: software-fact
+  title: msprobe 五功能的适用场景与当前版本局限性（选型与边界）
+  summary: msprobe 选型与能力边界：dump（API 级仅支持白名单、对 inplace 支持有限、不支持参数及参数梯度，且**加工具可能让同步问题消失**）/ 离线预检（不受累计误差影响，但依赖
+    GPU 环境、不支持通信算子、仅部分融合算子）/ 整网比对与可视化（可疑算子受累计误差影响、大模型耗时长）/ 训练状态监测（仅…
+  applies_to:
+    platforms:
+    - cross
+- id: msprobe-checkpoint-compare
+  type: tool
+  title: msprobe ckpt 比对——逐参数 l2/余弦相似度（Megatron/MindSpeed）
+  summary: msprobe ckpt 比对：`msprobe config_check --compare <ckpt1> <ckpt2>` 逐参数输出 l2（欧氏距离）/cos（余弦相似度）/numel/shape
+    到 json；支持 Megatron-LM 与 MindSpeed（含 TP/PP/EP/VPP 与 megatr…
+  applies_to:
+    platforms:
+    - cross
 - id: msprobe-config-check
   type: tool
   title: msprobe config_check——训练前配置检查（双环境差异比对）
@@ -390,6 +406,14 @@ entries:
   applies_to:
     platforms:
     - cross
+- id: msprobe-data-load
+  type: tool
+  title: msprobe load 精度数据覆盖加载（隔离前序累计误差）
+  summary: msprobe load：用已采集的模块级（L0）输入 tensor 覆盖目标模块的实际输入，隔离前序模块累计误差、精准定位本模块及下游问题；config.json 顶层 load
+    段配 path/modules/step/rank/dump_after_load；要求源 dump 与目标模型模块结构、命名严格一致
+  applies_to:
+    platforms:
+    - cross
 - id: msprobe-monitor
   type: tool
   title: msprobe monitor / monitor_v2——训练状态监测（CSV 字段与解读口径）
@@ -403,6 +427,14 @@ entries:
   title: msprobe overflow_check——整网首个 NaN/Inf 节点定位（多卡）
   summary: msprobe overflow_check：对 PyTorch dump 数据定位多卡场景下每张卡首个产生 inf/nan 的节点（经通信传播的可回溯到首个异常 rank）；输出
     anomaly_analyze_{ts}.json 或打印无异常；判定口径是「输入正常而输出异常」才算溢出起点，输入已异常者是传播受害者
+  applies_to:
+    platforms:
+    - cross
+- id: msprobe-response-anomaly
+  type: tool
+  title: msprobe response_anomaly——推理异常检测（生僻字/乱码/重复/NaN logprobs）
+  summary: msprobe response_anomaly：基于输出 token + topk logprobs 的**无参照**实时异常检测，返回 [is_ill, ill_type]（1=生僻字
+    2=乱码 3=重复 4=NaN Value）；库接口 analyze_output_anomaly(topk_logprobs, …
   applies_to:
     platforms:
     - cross

@@ -36,3 +36,4 @@ content:
     - "输入存在占位的 API，涉及「使用输入进行计算」的指标规则不适用：_reduce_scatter_base / _all_gather_base / all_to_all_single / batch_isend_irecv"
     - "灰色节点不是 pass——是未达到匹配条件、两个节点无法比对，需按匹配说明排查（命名/层级/调用次数差异）"
     - "跨套件比对、不同切分策略下的图合并、自定义比对算法各有前置配置，不是默认可用"
+    - "官方口径的版本局限性：使用整网 dump 数据，定位到的可疑算子**受累计误差影响**；模型规模大时比对耗时长（详见 msprobe-capability-limits）"

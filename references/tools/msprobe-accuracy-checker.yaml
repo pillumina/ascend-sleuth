@@ -37,3 +37,4 @@ content:
     - "一个 API 可能有多组输入/输出，必须全部 pass 才在 result.csv 记 pass；只看 details 里某一行 pass 会误判"
     - "acc_check 的输入数据来自 dump 的 task=acc_check 采集（与 task=statistics/tensor 的采集配置不同），别拿普通 dump 数据跑预检"
     - "数据量大必须用 multi_acc_check，单线程 acc_check 在大模型场景耗时不可接受"
+    - "官方口径的版本局限性：**依赖 GPU 环境**（需要 GPU 侧标杆）、**不支持通信算子**、仅支持部分融合算子（详见 msprobe-capability-limits）；优势是不受模型累计误差影响——这是它相对整网比对的核心价值"

@@ -1,0 +1,39 @@
+id: msprobe-response-anomaly
+type: tool
+title: msprobe response_anomaly——推理异常检测（生僻字/乱码/重复/NaN logprobs）
+summary: msprobe response_anomaly：基于输出 token + topk logprobs 的**无参照**实时异常检测，返回 [is_ill, ill_type]（1=生僻字 2=乱码 3=重复 4=NaN Value）；库接口 analyze_output_anomaly(topk_logprobs, tokens, model_configs)，需先备 config.yaml 阈值与模型 token→字符类别映射；适合线上发现"输出崩溃"类故障
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/response_anomaly_instruct.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/response_anomaly_instruct）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [vllm-ascend]
+  categories: [precision]
+
+related_references: [msprobe-data-dump, msprobe-accuracy-compare]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  tool_name: "msprobe response_anomaly（推理异常检测，Response Anomaly）"
+  invocation: "**库接口，不是 CLI**：推理应用脚本里 `from msprobe.response_anomaly import analyze_output_anomaly`；先用采样参数 `logprobs=topk, prompt_logprobs=1` 让 vLLM 返回 topk logprobs，再调用 `analyze_output_anomaly([topk_logprobs], [tokens], [model_configs])`。使用前准备：config.yaml（检测阈值，已给默认值）、mtype_config.json 与 token_id→字符类别映射文件（官方提供 deepseekv3 / glm4 / qwen3，其他模型用 tools/gen_model_config.py 生成）"
+  commands:
+    call: "result = analyze_output_anomaly([topk_logprobs], [tokens], ['Qwen3-30B-A3B'])；is_ill, ill_type = result[0][0], result[0][1]"
+    gen_model_config: "python gen_model_config.py --model-path /home/Qwen3-30B-A3B --model-name Qwen3-30B-A3B（模型名小写化、`-_.`统一转 `-`，必须与接口 model_configs 传入的名称一致）"
+    sampling_params: "SamplingParams(temperature=0.8, top_p=0.95, logprobs=topk, prompt_logprobs=1)——不拿 topk logprobs 就无法检测"
+  output_meaning:
+    - "返回 `[[is_ill, ill_type], ...]`，每条请求一组：is_ill（bool，是否异常）；ill_type：0=正常 / 1=生僻字 / 2=乱码 / 3=重复 / 4=NaN Value"
+    - "logprobs 出现 nan/inf 时直接返回 ill_type=4（NaN Value），不再做生僻字/乱码/重复检测——即「推理已经坏了」的硬信号"
+    - "单请求也要在外层套一层 list；同一模型服务的多条请求，model_configs 要重复填该模型名（如 ['Qwen3-30B-A3B']*3）"
+    - "config.yaml 可调项：window_size / stride（全局）+ rare_character（explogp_sum_thresh、category_thresh、top1_logp_thresh）/ garbled（top1_logp_thresh、window_ratio、window_thresh）/ repetition（trajectory 的 n、distinct_n_thresh；acf 的 acf_threshold；单方法检出 single_window_thresh=14、双方法同时检出 multi_window_thresh=2）"
+  pitfalls:
+    - "**无参照检测**——不需要标杆环境，这是它区别于 dump+compare 的核心价值：适合线上实时发现「输出崩溃」（生僻字/乱码/重复）类故障，而不是定位到具体算子"
+    - "是库接口不是命令行工具，接入点在推理应用脚本里；不能像 dump/compare 那样直接跑"
+    - "模型名映射文件必须与接口传入的 model_configs 完全一致（大小写、`-_.`归一化），否则检测不可用"
+    - "只覆盖官方给映射的模型族（deepseekv3 / glm4 / qwen3）或自己生成的映射；换模型不生成映射会失效"
