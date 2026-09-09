@@ -67,7 +67,10 @@ status: active | pending-review | deprecated | draft   # 新产出即 active（P
 - type 必须已登记（`_types.yaml`）；
 - 按 type 强校验 `schema_required` 字段；
 - 按来源类型强校验子字段；`sources[].verification`（可选）填了必须合法（`auto-extracted` / `cross-checked-source`，ADR-0008 §4.2）；
-- 深审：case-derived + methodology 的提炼来源 case 数（`sources[].cases` 长度）<3 不允许 `status: active`。
+- 深审：case-derived + methodology 的提炼来源 case 数（`sources[].cases` 长度）<3 不允许 `status: active`；
+- **skill 侧绑定**：skill 支撑文件里引用的 ref-id（`skills/diagnose/references/collect-gates.yaml` 的采集闸门表）必须存在且 `status: active`——散文里硬编码 ref-id 会静默腐化（曾把不存在的 `profiling-performance-fault-patterns` 当已有落点写进 SKILL），绑定落成数据后由 CI 兜住。
+
+**两个消费点**（EV-2026-037）：reference 不参与候选路由/排序（不是第四检索层），但按流程里的**缺口**在两个时点被消费——**数据缺口**（缺测量数据 → tool 的采集面，`skills/diagnose/references/collect-gates.yaml` 绑定，诊断步骤 1）与**判断缺口**（有候选、缺签名/背景/修复依据 → 诊断步骤 2.5）。两处都只读 `active`。
 
 **修订走 PR**（ADR-0008 §1.7）：内容修订 active 词条 = 修改已生效知识 → **methodology 模板 + `kb/high-risk` 双签**（小修直接改 YAML + PR；大修用 `/skill:to-reference --update <ref-id>`）。
 

@@ -1,6 +1,7 @@
 # GENERATED FILE —— 背景类 summary 索引（diagnose 2.5 ② 读取），不要手改。
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
+# applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
 # 生成日期：2026-09-09    词条数：71
 entries:
 - id: a5-950dt-memory-spec
@@ -175,6 +176,8 @@ entries:
   applies_to:
     platforms:
     - 310P
+    categories:
+    - interrupt
 - id: ascend-aicore-error-triage
   type: methodology
   title: AI Core Error 问题定位（RAS → NPU 硬件 → 软件 → msaicerr 分析）
@@ -183,6 +186,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: ascend-asys
   type: tool
   title: asys 故障信息收集与解析工具（仅 Ascend EP 形态）
@@ -199,6 +204,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: ascend-device-log-ops
   type: tool
   title: Device 日志排查操作（RAS 故障 ID / 资源占用 / 进程拉起与结束时间）
@@ -223,6 +230,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: ascend-log-classification
   type: software-fact
   title: 昇腾日志分类与统一格式
@@ -263,6 +272,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: ascend-moe-comm-triage
   type: methodology
   title: MoE 通信/路由算子故障排查（MoeDistributeDispatch / MoeInitRouting / QuantBatchMatMul）
@@ -270,6 +281,8 @@ entries:
     SUSPECT REMOTE ERROR + MTE 越界 → ROCE 组网兼容性（升级 0.20.2rc1+ / HCCS 退避…
   applies_to:
     platforms: []
+    categories:
+    - interrupt
 - id: ascend-mooncake-kv-transfer-triage
   type: methodology
   title: Mooncake/Ascend KV-transfer 分层诊断（python backend / native transport / 连接 / 流同步）
@@ -279,6 +292,9 @@ entries:
     platforms:
     - A2-910B
     - A3-910C
+    categories:
+    - interrupt
+    - precision
 - id: ascend-msaicerr
   type: tool
   title: msaicerr AI Core Error 专项分析工具
@@ -295,6 +311,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: ascend-process-hang-triage
   type: methodology
   title: 进程卡住问题定位（调用栈定位下发/执行阶段 → 卡住任务 → 编译耗时）
@@ -303,6 +321,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: ascend-process-interrupt-triage
   type: methodology
   title: 进程中断问题定位（首报错 → 接口错误 → 任务执行错误 → 心跳丢失 → 资源未释放）
@@ -311,6 +331,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: ascend-restart-slogd
   type: tool
   title: 重启 Device 侧日志进程 slogd
@@ -351,6 +373,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: ascend-vllm-spec-decode-mtp-triage
   type: methodology
   title: vllm-ascend spec-decode/MTP 族分层诊断（启动/首请求/运行期崩溃 + 静默精度·性能退化）
@@ -360,6 +384,10 @@ entries:
     platforms:
     - A2-910B
     - A3-910C
+    categories:
+    - interrupt
+    - precision
+    - performance
 - id: glm-quantized-startup-triage
   type: methodology
   title: GLM 系模型量化加载启动失败排查（按报错形态分类）
@@ -367,6 +395,8 @@ entries:
     版本错配 / 算子绑定 / 量化路由，各类修法不同
   applies_to:
     platforms: []
+    categories:
+    - interrupt
 - id: msllm-startup-version-env-triage
   type: methodology
   title: mindspeed-llm 训练启动失败排查（版本/环境配套面 + import 失败判别）
@@ -374,6 +404,8 @@ entries:
     缺失=上游删模块未同步后端）；算子重复注册（CANN 版本过旧 vs 多版本 mindspeed）；…
   applies_to:
     platforms: []
+    categories:
+    - interrupt
 - id: msprobe-accuracy-checker
   type: tool
   title: msprobe acc_check——离线精度预检（API 达标判定链路与阈值）
@@ -382,6 +414,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: msprobe-accuracy-compare
   type: tool
   title: msprobe compare——数值精度比对（NPU vs 标杆，真实数据/统计量/MD5 三模式）
@@ -390,6 +424,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: msprobe-capability-limits
   type: software-fact
   title: msprobe 五功能的适用场景与当前版本局限性（选型与边界）
@@ -398,6 +434,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: msprobe-checkpoint-compare
   type: tool
   title: msprobe ckpt 比对——逐参数 l2/余弦相似度（Megatron/MindSpeed）
@@ -406,6 +444,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: msprobe-compile-precision-checker
   type: tool
   title: msprobe PrecisionChecker——eager 与 compile 逐模块精度比对（single-pass / two-pass）
@@ -414,6 +454,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: msprobe-config-check
   type: tool
   title: msprobe config_check——训练前配置检查（双环境差异比对）
@@ -422,6 +464,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: msprobe-data-dump
   type: tool
   title: msprobe dump 精度数据采集（config.json 配置 + PrecisionDebugger 接口）
@@ -430,6 +474,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: msprobe-data-load
   type: tool
   title: msprobe load 精度数据覆盖加载（隔离前序累计误差）
@@ -438,6 +484,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: msprobe-monitor
   type: tool
   title: msprobe monitor——训练状态监测（v1 全功能 / v2 轻量 CSV）
@@ -446,6 +494,9 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
+    - performance
 - id: msprobe-overflow-check
   type: tool
   title: msprobe overflow_check——整网首个 NaN/Inf 节点定位（多卡）
@@ -454,6 +505,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: msprobe-response-anomaly
   type: tool
   title: msprobe response_anomaly——推理异常检测（生僻字/乱码/重复/NaN logprobs）
@@ -462,6 +515,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: msprobe-trend-visualization
   type: tool
   title: msprobe data2db 趋势可视化——统计量按 step/rank/张量三维趋势（含 Megatron 并行切分可视化）
@@ -470,6 +525,9 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
+    - performance
 - id: msprobe-visualization
   type: tool
   title: msprobe graph_visualize——分级可视化构图比对（TensorBoard 图/颜色判定）
@@ -478,6 +536,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: msprof-collect-parse
   type: tool
   title: msprof 性能数据采集与解析（--application / --output，PROF_* 输出结构）
@@ -486,6 +546,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - performance
 - id: msprof-comm-bottleneck-thresholds
   type: methodology
   title: 通信瓶颈判定阈值（Wait Time Ratio / 传输前同步比例 / 带宽使用率）
@@ -494,6 +556,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - performance
 - id: rl-train-infer-consistency-triage
   type: methodology
   title: RL 训推一致性排查路径（先定分歧面，再选权重链路 / 概率偏移 / 阶段定界）
@@ -502,6 +566,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: verl-cross-validation
   type: tool
   title: verl 训推交叉打桩——Rollout Skip + 交叉验证（精度定界在训练还是推理）
@@ -510,6 +576,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: verl-official-image-no-hdk
   type: software-fact
   title: verl 官方昇腾 Docker 镜像不含 HDK
@@ -525,6 +593,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: verl-uwc-weight-consistency
   type: tool
   title: UWC 训推权重一致性验证——RL 训练侧到 vLLM 推理侧权重同步链路三段比对
@@ -533,6 +603,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision
 - id: vllm-ascend-startup-triage
   type: methodology
   title: vllm-ascend 服务启动失败通用排查（跨模型：版本配套 / 量化加载 / patch 层 / 平台特化路径）
@@ -540,6 +612,8 @@ entries:
     commit、上游支持合入点、适配期坏版本、镜像内依赖）、量化权重格式面、patch 层全局副作用，再定位平台特化执行路径缺陷（启动…
   applies_to:
     platforms: []
+    categories:
+    - interrupt
 - id: vllm-infer-precision-triage
   type: methodology
   title: vLLM 推理精度定位五步路径（前置对齐 → 首差异 token → dump → compare → 单算子确认）
@@ -548,3 +622,5 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - precision

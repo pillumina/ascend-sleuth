@@ -35,6 +35,14 @@ KNOWN_ACTIONS = {
     "triage_semantic", "source_analysis", "attribution", "resume",
 }
 
+# reference_lookup 的 purpose 固定词表（与 skills/diagnose/references/diagnosis-procedure.md 一致）：
+#   collect    数据缺口的采集面（步骤 1，候选加载前）——此前无值可记，采集面等于零观测
+#   signature  错误码 / 故障签名 / 环境变量等查表检索（步骤 2.5 ③）
+#   fix        修复依据（command-side-effect / 工具解读）
+#   background 平台 / 软件背景 summary（步骤 2.5 ②）
+# 词表外的 purpose → 消费点分布指标（docs/metrics.md）不可算，此处确定性检出。
+KNOWN_PURPOSES = {"collect", "signature", "fix", "background"}
+
 
 def load_states(root: Path):
     # traces/ 是诊断状态目录（gitignored，含客户信息）——活跃 + 历史都归此
@@ -99,6 +107,9 @@ def main():
     ref_hits = {}
     ref_resolved = {}
     ref_platforms = {}
+    # 消费点分布（docs/metrics.md「reference 引用」口径）：purpose ∈ collect/signature/fix/background
+    ref_purposes = {}
+    purpose_bad = []
 
     # 按类命中（metrics.md 定义）：每个 category 的 Tier2 命中 session / 该 category session
     # category 从 trace 的 triage/triage_semantic 事件取（agent 语义路由兜底也带 category）。
@@ -139,6 +150,11 @@ def main():
                 plat = t.get("platform")
                 if plat:
                     ref_platforms[plat] = ref_platforms.get(plat, 0) + 1
+                pur = t.get("purpose")
+                if pur:
+                    ref_purposes[pur] = ref_purposes.get(pur, 0) + 1
+                    if pur not in KNOWN_PURPOSES:
+                        purpose_bad.append(f"{st.get('session_id', '?')}: {pur!r}")
             elif a == "attribution":
                 v = t.get("verdict")
                 if v in attr:
@@ -240,6 +256,13 @@ def main():
     # reference 指标（ADR-0008 观测性）——无引用时如实显示为空（reference 刚建立是现状）
     if ref_hits:
         rows.append(f"| reference 引用次数（去重 ref） | {sum(ref_hits.values())}（{len(ref_hits)} 个 ref） |")
+        pur_summary = "、".join(f"{k} {v}" for k, v in sorted(ref_purposes.items(), key=lambda x: -x[1]))
+        rows.append(
+            f"| reference 消费点分布（collect/signature/fix/background） | "
+            + (pur_summary if pur_summary else "无 purpose 字段（旧 trace 未记）")
+            + (f"；**词表外：{'、'.join(purpose_bad[:5])}**" if purpose_bad else "")
+            + " |"
+        )
         for rid, hits in sorted(ref_hits.items(), key=lambda x: -x[1]):
             res = ref_resolved.get(rid, 0)
             rate = f"{res}/{hits} ({res / hits:.0%})" if hits else "0"

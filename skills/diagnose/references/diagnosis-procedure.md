@@ -18,16 +18,12 @@
 - 只贴报错**栈尾**（最后 N 行，含第一个 ERROR）
 - profiler 数据先过 `ascend-profile-analyze` 出 `report.md`，只读报告不读原始数据
 
-**数据资产探询（精度 / 性能类必做，见 SKILL「数据资产探询」节）**：症状收齐、确定下一步需要**测量数据**后，先问一句再决定路径——
+**数据资产探询（「数据缺口」消费点——精度 / 性能类必做，见 SKILL「数据资产探询」节）**：症状收齐、确定下一步需要**测量数据**后，按本 skill 的 `references/collect-gates.yaml`（与本文同级，**不是仓库根 references/**）执行闸门——问句、分支动作、词条绑定都在表里（id 受 CI 校验），本文不重复：
 
-- precision：「已经有 dump 数据/分析结果了吗？还是要我给到代码级接入步骤？」
-  - 已有 → 直接进比对/分析（`msprobe-accuracy-compare` / `-overflow-check` / `-accuracy-checker`），**不展开接入说明**；
-  - 没有 → 给接入步骤（`msprobe-data-dump` 的 API 骨架 + config.json），接入点用**调用栈法**现场定位（临时替换高频算子打印调用栈、读栈得位置、随后撤掉）；明确这是**临时调试改动、需回滚**（改框架源码时尤其）。
-- performance：「已经有 profiling 数据了吗？还是要我给采集指引？」
-  - 已有 → 直接分析产物；
-  - 没有 → 按 `msprof-collect-parse` 给采集方式（命令 + `PROF_*` 产物结构），再用 `profiling-performance-fault-patterns` 对齐「指标形态 → 常见根因」；具体命令以客户环境工具版本为准。
+- `kind: probe`（precision / performance）→ 先问一句，按回答走「已有 → 分析路径」「没有 → 采集指引」；
+- `kind: conditional`（interrupt）→ 不预先问，缺口出现（现有日志不足以定位）才给采集指引。
 
-探询**只问一次、只问一句**；对方说已有数据就不要"顺便"把采集步骤也讲了（原则九：上下文与注意力都是预算）。
+三条纪律（只问一次 / 区分改谁 / 命令以客户环境为准 + 先排除采集副作用）见 SKILL 同名节，不在此重复。**采集面被消费时记 trace**：`{action: reference_lookup, ref_id, purpose: collect}`——采集面此前无 purpose 可记，等于零观测。
 
 ## 步骤 2：分类 → triage-tree
 
@@ -65,21 +61,22 @@
 
 **阶段二（全量）**：候选 ≤5 条，全量加载 body，按 `confidence.score` **降序**验证（最可靠的先试）。**多条候选时明示**：“匹配到 N 条，先验证最可能的 `<id>`（confidence `<score>`）”，工程师可说“跳过这条试下一条”。
 
-**阶段二.5：reference 辅助查询（先验知识层）**——候选加载后、验证前，按需取先验知识辅助诊断：（先验知识层，**只读 `status: active`**）：
+**阶段二.5：reference 辅助查询（「判断缺口」消费点）**——候选加载后、验证前，按需取先验知识辅助诊断（**只读 `status: active`**）。reference 的另一个消费点是**数据缺口**（步骤 1 的采集面，候选加载前）——两处都不参与候选路由/排序，路由与筛排只看 case：
 
-- **② 平台匹配的 summary 层（只限背景类 type）**：读 `references/_summary-index.yaml`（生成索引，背景类+active 词条）→ 过滤 `applies_to.platforms` 匹配客户平台（含 `cross` 或未填 platforms 视为跨平台）→ 得候选词条列表，**行内 summary 即平台背景提示**（不读全文）；确需细节再按 `id` 读单文件。**查表类（error-code / fault-pattern / env-var-table / compat-matrix）不进 summary 层**——它们是码/签名/组件名/版本检索键，按需走 ③。
+- **② 平台/类别匹配的 summary 层（只限背景类 type）**：读 `references/_summary-index.yaml`（生成索引，背景类+active 词条）→ 过滤 `applies_to.platforms` 匹配客户平台（含 `cross` 或未填 platforms 视为跨平台）；**该行 `applies_to.categories` 有值时，再按本轮 category 收窄**（缺省 = 不限定类别，照常加载）→ 得候选词条列表，**行内 summary 即背景提示**（不读全文）；确需细节再按 `id` 读单文件。**查表类（error-code / fault-pattern / env-var-table / compat-matrix）不进 summary 层**——它们是码/签名/组件名/版本检索键，按需走 ③。
 - **③ 签名/查表类检索（不走 summary 层——签名/名是检索键不是摘要）**：错误码（E1xxxx/EIxxxx/507xxx 等）→ 查 `ascend-error-code-structure` 的 `module_files` 前缀映射定位族文件（`references/errors/<族>.yaml`）族内 grep code 读 meaning/solution；可 grep 的故障签名（"0x800000"、fault kernel_name、event_id）→ 按域定位 `references/fault-patterns/<域>.yaml` 域内 grep symptoms 读 cause/fix；具体环境变量 → `references/env-vars/<表>.yaml` 内 grep name；版本组合需核对 → `references/compat-matrices/` 按传导链分层（framework 层→adapter 层 torch-npu↔CANN→base 层 CANN↔HDK）。
 
 - **只读 `status: active` 词条**——draft / pending-review / deprecated 一律不加载（未验证知识不进上下文——这是"agent 不引用错误先验"的机制化，不是自觉）；
 - **两条加载路径**：
   1. 候选 case 有 `ref_knowledge` → 加载引用的 reference 全文（最精准；当前 case 尚无此字段，未来路径）；
-  2. 否则/同时：按客户平台扫 `references/<type-dir>/*.yaml` 中 `applies_to.platforms` 匹配且 active 的词条，**只读 `summary` + `applies_to`**（每条一行；A5 全量 ~700 token 内）；
+  2. 否则/同时：读 `references/_summary-index.yaml` 中 `applies_to.platforms` 匹配（并按 `applies_to.categories` 收窄）且 active 的词条，**只读行内 `summary` + `applies_to`**（每条一行；A5 全量 ~700 token 内）；
 - **按需全文**：验证具体事实需要细节（如 950DT 内存规格、HiF8 指数范围）才读全文；
-- **token 纪律**：只在命中候选后查询，summary 层先于全文层，平台不匹配不加载（当前仅 A5 有词条，A2/A3 场景自然跳过）；
-- **trace 必记**：每次查询记 `{action: reference_lookup, ref_id, platform, purpose: signature|fix|background}`——reference 命中统计（hits/last_hit）的数据源。
+- **token 纪律**：只在命中候选后查询，summary 层先于全文层，平台/类别不匹配不加载（当前仅 A5 有词条，A2/A3 场景自然跳过）；
+- **trace 必记**：每次查询记 `{action: reference_lookup, ref_id, platform, purpose: collect|signature|fix|background}`——reference 命中统计（hits/last_hit）的数据源。`collect` = 步骤 1 的数据缺口采集面（在 2.5 之外发生，同样要记）。
 
 trace 记：
 ```yaml
+- {step: 1, action: reference_lookup, ref_id: msprobe-data-dump, purpose: collect}
 - {step: 2, action: load_index, namespaces: [...], n_cases: 34}
 - {step: 3, action: quickly_check, case: MSLLM-EP-HANG-001, primary: pass}
 - {step: 3, action: load_full, candidates: [...], order: by_confidence_score}

@@ -1,0 +1,127 @@
+# ============================================================
+# Idea 卡：reference 消费点按「知识缺口」定位 + 采集闸门结构化绑定
+# 目的：把"reference 是第 2.5 层"这一**检索层**定位与"它在流程哪几个时点被消费"
+#       这一**消费时机**问题分开——tool 类里的采集/观测面服务的是「数据缺口」，
+#       消费点在 Tier2 候选之前，而这段绑定此前只写在 SKILL 散文里（硬编码 ref-id
+#       字符串），已发生静默腐化（详见 source_signals）。
+# ============================================================
+
+id: EV-2026-037
+layer: L2                          # 流程与 skill：diagnose 消费点定义 + 绑定机制
+title: "reference 消费点按「知识缺口」定位：采集闸门结构化绑定 + 索引补 categories + trace 增 collect purpose"
+status: validated
+authorization: review              # L2 流程/skill 改动 → review（用户在本轮讨论中确认方向 B）
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-09
+source_signals:
+  - signal: process_friction
+    evidence: "用户驱动的设计反馈：diagnose 与 reference 的联动关系说不清——tool 类（怎么查 plog 首报错 / 怎么 dump 精度数据 / 怎么采 profiling）实际是**数据缺口**处的交互，应在候选加载前消费，但机制上 reference 只被定义为『2.5 层：候选命中后的辅助查询』"
+    trajectory:
+      - "skills/diagnose/SKILL.md:36（步骤 3 阶段 2.5 定位）"
+      - "skills/diagnose/SKILL.md:41-55（数据资产探询：tool 类 reference 已在步骤 1 被散文引用）"
+      - "docs/adr/0008-prior-knowledge-framework.md §1（reference 是 case 诊断时的辅助查询）"
+  - signal: process_friction
+    evidence: "散文绑定已腐化：SKILL.md:55 与 diagnosis-procedure.md:28 引用的 ref-id `profiling-performance-fault-patterns` 全库不存在（真 id 为 `msprof-tool-fault-patterns`），由 bc7869d 引入——该提交信息里还把不存在的 id 当作已有落点写明。此类『悬挂引用』历史上已修过一次（1afb7a0 修 eval.md 悬挂引用），且 case 侧 ref_knowledge 悬挂引用早已是 CI 强校验项（verify_references.py）——同类失败复发 ≥2 次"
+    trajectory:
+      - "git show bc7869d -- skills/diagnose/SKILL.md"
+      - "git log --oneline --grep=悬挂（1afb7a0）"
+      - "scripts/verify_references.py:51-93（case 侧悬挂引用 CI 强校验）"
+  - signal: process_friction
+    evidence: "采集面零观测：`reference_lookup` 的 purpose 词表只有 signature|fix|background，无「采集/操作」；实测 traces/ 内 4 次 reference_lookup 全为 signature，采集面被用 0 次且即使用了也记不下——不可观测的机制无法改进（原则八）"
+    trajectory:
+      - "skills/diagnose/references/diagnosis-procedure.md:79"
+      - "traces/*.yaml（4 次 reference_lookup，purpose 全为 signature）"
+      - "docs/metrics.md:32（reference 引用指标口径）"
+  - signal: process_friction
+    evidence: "索引缺维度：_summary-index.yaml 每行只带 applies_to.platforms，不带 categories；tool 类 23 条里 20 条标了 categories，但按 category 触发采集面查询时索引里看不见该字段（且 ascend-log-levels / ascend-device-log-ops / ascend-asys 等 interrupt 侧采集词条一条 categories 都没标）"
+    trajectory:
+      - "scripts/build_ref_summary_index.py:26（BG_TYPES）+ render()（只输出 applies_to.platforms）"
+      - "references/tools/*.yaml（categories 标注分布）"
+hypothesis: >-
+  把 reference 的消费点按流程中的「知识缺口」定位（数据缺口→采集面；判断缺口→签名/背景/修复依据；
+  方法缺口→methodology 分流），并把「category → 采集面 ref」的绑定从 SKILL 散文改成受 CI 校验的数据文件，
+  可在不改变 reference 检索层定位（不参与候选路由/排序）的前提下，让采集面的腐化从静默变为可观测、
+  让采集面的消费进入 trace 与指标
+predicted_effect:
+  metric: skill 侧 reference 绑定的悬挂引用数 / 采集面 reference_lookup 记录数
+  from: "悬挂引用 1（profiling-performance-fault-patterns）；采集面 reference_lookup 记录 0"
+  to: "悬挂引用 0（CI 硬校验）；采集面消费可记录（purpose: collect）"
+validation:
+  method: scan_review
+  baseline: 现 diagnose SKILL + references/_summary-index.yaml + verify_references.py
+  success_criteria: "①verify_references.py 新增 skill 侧绑定校验，指向不存在/非 active 的 ref 即红；②collect-gates.yaml 覆盖 precision/performance/interrupt 三类，id 全部存在且 active；③build_ref_summary_index.py 输出含 categories，--check 通过；④build_index.py --check / verify_proposals.py --check / skill 自包含 grep 全绿；⑤diagnose 步骤 2.5 与「数据资产探询」口径改为按缺口消费，死引用清除"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户 2026-09-09 确认方向 B（显式化数据闸门 + 结构化绑定表）"
+risk: medium                        # L2 流程/skill 改动，触及进诊断上下文的资产 → review
+principle_refs: [2, 8, 9, 10]
+actual_cost:
+  tokens: 42000
+  source: estimate                  # 本轮无 tokenMeter 记账通道，按改动面估算
+decisions:
+  - who: agent（diagnose 讨论轮）
+    when: "2026-09-09"
+    type: proposal
+    conclusion: >-
+      现状描述纠正：reference 在**检索层**是第 2.5 层（不参与候选路由/排序，ADR-0008 不变量保留），
+      但在**消费时机**上已有两个点——①数据缺口（category 粗判后、候选加载前，取 tool 采集面，
+      现状只有散文）②判断缺口（候选加载后，取签名/背景/修复依据，现状机制完整）。另发现第三个
+      缺口（方法缺口：methodology 的 flow 被当背景摘要，真实 trace 里 agent 按 purpose=signature
+      去读方法论）暂无消费点定义，本卡只登记不实现（避免与 methodology 消费点设计混在一起）。
+      结论：消费点由「缺口」决定，不由层号决定；「提前对清楚」的对象是数据资产现状（一句探询），
+      不是 reference 内容（内容只在回答"没有"时展开——原则九）。
+  - who: agent（diagnose 讨论轮）
+    when: "2026-09-09"
+    type: action
+    conclusion: >-
+      执行：①新建 skills/diagnose/references/collect-gates.yaml（category→探询问句→分支→ref-ids，
+      含 interrupt 的条件型闸门：不预先问，缺另一层日志时才给采集指引）；②verify_references.py 增
+      check_skill_ref_bindings()（CI 随 reference-validation job 跑）；③build_ref_summary_index.py 增
+      categories 字段并重建索引；④修死引用 profiling-performance-fault-patterns →
+      msprof-tool-fault-patterns；⑤diagnosis-procedure.md 的 reference_lookup purpose 词表增 collect；
+      ⑥SKILL.md 数据资产探询节与 2.5 节改为按缺口口径，CLAUDE.md / references/README.md 同步。
+  - who: agent（PR 自审轮）
+    when: "2026-09-09"
+    type: action
+    conclusion: >-
+      自审后加固（把"会静默失效的点"变成 CI 红）：①绑定文件按约定 `<skill>/references/*-gates.yaml`
+      发现，**找不到即红**（原实现"文件不存在就跳过"= 删掉文件检查静默消失）；②category 取值校验，
+      合法集从 triage-tree.yaml 派生（手写集合会与 triage 漂移）——闸门拼错会静默不触发、
+      词条 `applies_to.categories` 拼错会在该类别下**静默不加载**（2.5 ② 把该字段从惰性元数据
+      变成承重字段，必须校验）；③kind=probe 必带 question、conditional 必不带（闸门形态缺失
+      = 交互断链）；④gate id 唯一；⑤trace_metrics.py 增 KNOWN_PURPOSES（collect/signature/fix/
+      background）并报词表外值——新增的「消费点分布」指标此前依赖无人校验的自由文本；
+      ⑥**散文去重**：SKILL / diagnosis-procedure 不再重复 ref-id 与分支动作（只留形态与纪律），
+      绑定唯一处 = 闸表，消除散文/数据双源漂移。六条负例逐条验红。
+  - who: agent（diagnose 讨论轮）
+    when: "2026-09-09"
+    type: eval
+    conclusion: >-
+      scan_review 验证：verify_references.py --check 绿（含新增绑定校验；负例测试——把不存在的
+      `profiling-performance-fault-patterns` 塞进采集闸表即报红，证明校验真的生效）；
+      build_ref_summary_index.py --check 绿（categories 已入索引，35/71 行带值）；
+      build_index.py --check 绿（157 条 case / 15 分片）；verify_proposals.py --check 绿；
+      verify_metrics.py --check 绿；triage-tree 可解析；skills/ 无 ADR 编号锚定。
+      category 收窄为**单向**（只减不增）：interrupt 48/71、precision 59/71、performance 41/71
+      行在平台过滤之后仍加载，缺省 categories 的行（36 条）不受影响——不会新增加载面。
+      不跑检索 golden——本卡不改候选路由/排序（reference 仍不参与），改动面为绑定与加载收窄，
+      scan + 人审足以覆盖；2.5 ② 的收窄是减少上下文而非改变命中集。
+      负例逐条验红：category 拼错 / probe 缺问句 / conditional 带问句 / gate id 重复 /
+      绑定文件缺失 / 词条 categories 拼错——6/6 报红，复原后绿。
+  - who: agent（diagnose 讨论轮）
+    when: "2026-09-09"
+    type: decision
+    conclusion: >-
+      采纳（validated）：改动随 kb/ref-consumption-gaps 分支的 methodology PR 送人审。不取：把采集面
+      整体拆成 skill 支撑文件（丢来源/版本 pin/验证状态，且违反 reference type 划分）、让 reference
+      参与候选路由（违反 ADR-0008 定位与原则四/九）。遗留观察项（另案，不在本卡实现）：
+      ①methodology 消费点（方法缺口）；②interrupt 侧采集词条（ascend-log-levels / ascend-device-log-ops /
+      ascend-asys / ascend-stack-view / ascend-msaicerr）未标 applies_to.categories——本卡不补标
+      （补标属修订 active 词条，走 kb/high-risk；且缺省=不限定类别，不影响正确性）；③docs/metrics.md
+      的 reference 引用指标已补「消费点分布」口径；④`applies_to.platforms` 无注册表（自由取值）
+      仍未校验——拼错与 categories 同属静默不加载，但建平台注册表是另一件事（涉平台可移植性），另案；
+      ⑤2.5 ③ 的散文 ref-id（如 `ascend-error-code-structure`）仍无 CI 校验——通用「散文 ref-id 扫描」
+      需维护 ~39 项白名单（脚本名/枚举/标签），维护成本 > 收益（原则九），不做；**受校验的绑定路径
+      是 `*-gates.yaml`**，新增绑定类内容应走它。

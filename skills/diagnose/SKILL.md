@@ -27,7 +27,7 @@ description: >
 
 ## 流程（骨架）
 
-> 每步只写「做什么 + 何时用」；**子步骤与判定细节**见 `references/diagnosis-procedure.md` 对应「步骤 N」。核心循环 = 收集 → 路由 → 两阶段加载+2.5 reference → 验证 → (未命中)深度排查 → 产出。
+> 每步只写「做什么 + 何时用」；**子步骤与判定细节**见 `references/diagnosis-procedure.md` 对应「步骤 N」。核心循环 = 收集 →（数据缺口则取采集面）→ 路由 → 两阶段加载+2.5 reference → 验证 → (未命中)深度排查 → 产出。
 
 > **先验 trace 相似检测**（收集症状后、路由前）：扫 `traces/*.yaml`（**全部 status**——进行中+已闭环都留在 `traces/`），按症状里的模型/框架/配置名/category 对每个 state 文件的 `summary`/`detected_framework`/`detected_category` 做**词法 grep 匹配**。命中且 `status: in_progress`(或 `feedback_pending`) → "本地有同问题进行中 `<session_id>`（<summary>）。要 `/skill:resume-diagnosis` 续接吗？"；命中且已 `resolved`/`escalated` → "上次同类 `<session_id>` 已定位（<summary>）。参考其结论还是重新定位？"；无匹配 → 正常从路由开始。**不再泛泛问"有未完成诊断要续接吗"**（旧提示对无关 session 是噪音）。
 
@@ -38,21 +38,25 @@ description: >
 5. **深度排查（未命中）**：Tier 3 grep `postmortems/`；**源码分析**（疑似框架/算子层且 Tier 3 未覆盖）走 `scripts/src_fetch.py`（见源码分析小节）；都没有→诚实说"知识库未覆盖"，建议 `/skill:to-postmortem`。→ 展开见 reference 步骤 5。
 6. **产出**：`resolution` + 顶层 `summary` + 沉淀状态(`sedimented`) + trace；**结果反馈闭环**（问 fix 结果回写 confidence + 写 `feedback_pending`）。→ 展开见 reference 步骤 6。
 
-## 数据资产探询（精度 / 性能类问题先问这一句）
+## 数据资产探询（「数据缺口」消费点——精度 / 性能类先问这一句）
 
-命中精度或性能类问题、下一步需要**测量数据**时，**先探询对方手上的资产，再决定给「分析」还是给「采集指导」**——别默认对方不会采，也别默认对方已有数据。一句话的成本，换掉一整段可能没人需要的接入说明（原则九：上下文与注意力都是预算）。
+reference 有两个消费点，都由流程里的**缺口**决定、都不参与候选路由/排序：**数据缺口**（缺测量数据 → 本节的采集面，在候选加载前）与**判断缺口**（有候选、缺签名/背景/修复依据 → 步骤 2.5）。本节只管数据缺口：命中精度或性能类问题、下一步需要**测量数据**时，**先探询对方手上的资产，再决定给「分析」还是给「采集指导」**——别默认对方不会采，也别默认对方已有数据。一句话的成本，换掉一整段可能没人需要的接入说明（原则九：上下文与注意力都是预算）。
 
-| category | 探询 | 已有 | 没有 |
-|---|---|---|---|
-| **precision** | 「你已经有 dump 数据 / 分析结果了吗？还是要我给到代码级接入步骤？」 | 直接进比对/分析路径（`msprobe-accuracy-compare` / `-overflow-check` / `-accuracy-checker`），**不展开接入说明** | 给接入步骤：API 骨架 + config.json（见 `msprobe-data-dump`）；接入点用**调用栈法现场定位**（不背位置）；并说明这是**临时调试改动、需回滚** |
-| **performance** | 「你已经有 profiling 数据了吗（采集产物）？还是要我给采集指引？」 | 直接分析产物（如 `kernel_details.csv`、step trace） | 给采集指引 |
-| interrupt | 不需要探询 | 有报错就有证据，直接走签名路由 | — |
+**绑定落在数据上，不写在散文里**：category → 探询问句 → 分支 → 词条 的绑定见 `references/collect-gates.yaml`（本 skill 支撑文件；每个 id 由 `verify_references.py` 校验存在且 `active`——散文里硬编码 ref-id 会静默腐化，已有先例）。本节只给交互形态（问什么、何时问）：
+
+| category | 探询问句 | 闸门形态 |
+|---|---|---|
+| **precision** | 「你已经有 dump 数据 / 分析结果了吗？还是要我给到代码级接入步骤？」 | 探询型：按回答分支 |
+| **performance** | 「你已经有 profiling 数据了吗（采集产物）？还是要我给采集指引？」 | 探询型：按回答分支 |
+| **interrupt** | —（不预先问） | 条件型：日志不足以定位时才给采集指引 |
+
+**分支动作与词条不在此重复**（改一处即生效，避免散文与数据双源漂移）：走闸表的 `branches[].action` / `refs`。
 
 三条纪律：
 
 - **探询只问一次、只问一句**——问完按对方回答走，不要"顺便把步骤也讲了"。
 - **给接入步骤时必须区分改谁**：改**用户业务代码**（加 `PrecisionDebugger` 等）风险低；改**框架源码**（vLLM/verl 的 runner 等）属"改被测系统"，必须标注临时性 + 给回滚方式。
-- **指引落到词条上**：performance 没有 profiling 数据时，按 `msprof-collect-parse` 给采集方式（`msprof --application=... --output=...`、`PROF_*` 产物结构），并用 `profiling-performance-fault-patterns` 对齐「指标形态 → 常见根因」；具体命令以**客户环境的工具版本**为准（版本差异以实际输出为准，不照搬示例）。
+- **命令以客户环境为准 + 先排除采集副作用**：具体命令以客户环境的工具版本为准（版本差异以实际输出为准，不照搬示例）；采集行为本身可能让问题消失（工具介入的副作用），先排除再下结论——判据词条见闸表 `caveat_refs`。
 
 > 展开细节见 `references/diagnosis-procedure.md` 步骤 1。
 
