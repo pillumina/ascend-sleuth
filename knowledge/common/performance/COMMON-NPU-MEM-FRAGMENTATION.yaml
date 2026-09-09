@@ -1,0 +1,69 @@
+# COMMON-NPU-MEM-FRAGMENTATION —— 显存碎片累积致 OOM：allocated 不涨而 reserved 持续涨，开 empty_cache 仍涨
+# 来源：msprof 官方 best_practices《内存碎片》（tag_MindStudio_26.2.0.B060_001）
+# pre-triage: new_pattern —— 全库无显存碎片型 case（与泄漏型是不同根因）
+# 转正：knowledge-groom 2026-09-09
+
+cases:
+  - id: COMMON-NPU-MEM-FRAGMENTATION
+    title: "推理过程中显存缓慢增长（每次十几 MB），约 10 小时后 OOM；开启 empty_cache 仍持续上涨，profiling 显示 allocated 基本不涨而 reserved 持续涨——内存碎片累积（非泄漏）"
+
+    category: performance
+    tags: [profiling, memory-fragmentation, oom, reserved, allocated, expandable-segments]
+
+    platforms: []
+    compat:
+      - framework: cross
+        ranges: ["*"]
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "推理经过几次图推后显存缓慢增长（每次上涨十几 MB），约 10 小时后 OOM；GPU 上未复现，仅 NPU 出现"
+      - "开启 empty_cache 后显存仍持续上涨"
+      - "operator_memory.csv 中 allocated 基本不涨、reserved 持续上涨"
+
+    references:
+      - "msprof docs/zh/best_practices/memory_fragmentation.md（MindStudio 26.2.0.B060_001）"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprof 官方 best_practices 案例（上游发布，含定位链与结论）"
+
+    quickly_check:
+      primary:
+        command_template: "对比跨 step 的 allocated 与 reserved 趋势（profiling 内存数据）"
+        rank_selector: coordinator
+        expected: "allocated 稳定而 reserved 持续上涨 → 优先按碎片排查"
+        note: "performance 类：primary 用内存趋势指标断言"
+      fallback:
+        command_template: "grep -icE 'out of memory|OOM' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "allocated 是否稳定、reserved 是否持续上涨？"
+        expected: "是 → 优先怀疑碎片，而不是典型泄漏"
+      - step: 2
+        check: "筛选 operator_memory.csv，上涨来自 GE 侧还是框架侧？"
+        expected: "可区分两侧来源，定位碎片主要贡献方"
+      - step: 3
+        check: "开启碎片缓解环境变量后 reserved 涨幅是否明显被抑制？"
+        expected: "被抑制 → 确认碎片特征"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: env-var
+
+    root_cause: >
+      短序列场景下主要是内存碎片持续累积（GE 侧 + 框架侧），而非典型代码泄漏；
+      表现为 allocated 基本稳定而 reserved 持续上涨。
+    fix: >
+      export GE_USE_STATIC_MEMORY=3 与 export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True
+      （示例中 reserved 涨幅从约 600MB 降至约 75MB）。
+    rollback: "unset 两个环境变量（reserved 涨幅恢复）"

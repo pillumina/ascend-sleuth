@@ -1,0 +1,60 @@
+# COMMON-DISPATCH-BATCH-SMALL —— 硬件资源未用满（batch 过小）致下发性能不及预期
+# 来源：msprof 官方 best_practices《下发性能不及预期》（tag_MindStudio_26.2.0.B060_001）
+# pre-triage: new_pattern —— 全库无「资源未用满」型性能 case
+# 转正：knowledge-groom 2026-09-09
+
+cases:
+  - id: COMMON-DISPATCH-BATCH-SMALL
+    title: "业务整体 free 时间占比偏高、硬件资源利用率低：未充分利用硬件（如 batch 过小），通过流水图与 host_to_device 连线可直观看到瓶颈与资源使用情况"
+
+    category: performance
+    tags: [profiling, free-ratio, utilization, batch-size, host-to-device, pipeline]
+
+    platforms: []
+    compat: [{framework: cross, ranges: ["*"]}]
+
+    investigation_quality: medium
+    confidence: {hits: 0, misdiagnoses: 0, score: 0.55, last_hit: ""}
+
+    symptoms:
+      - "Insight 打开 msprof.json / trace_view.json 可观察到业务整体 free 时间占比偏高"
+      - "硬件资源利用率较低，存在明显空档"
+
+    references:
+      - "msprof docs/zh/best_practices/dispatch_small_batch_performance.md（MindStudio 26.2.0.B060_001）"
+
+    verification: {source: upstream-official-doc, detail: "msprof 官方 best_practices 案例（根因表述较泛）"}
+
+    quickly_check:
+      primary:
+        command_template: "看 trace 中 free 时间占比与硬件利用率"
+        rank_selector: coordinator
+        expected: "free 占比偏高、利用率低"
+        note: "performance 类：primary 用占比指标断言"
+      fallback:
+        command_template: "grep -icE 'free|idle' {{profiling_report_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "free 时间占比是否偏高？"
+        expected: "偏高 → 硬件未被喂满"
+      - step: 2
+        check: "流水图 / host_to_device 连线是否显示下发不足或数据供给跟不上？"
+        expected: "是 → 定位到资源使用面"
+      - step: 3
+        check: "batch size 等并行/批参数是否偏小？"
+        expected: "偏小 → 命中本 case"
+
+    severity: benign
+    fix_side_effects: [requires-config-change]
+    fix_type: config-change
+
+    root_cause: >
+      未充分利用硬件资源（如 batch size 偏小），导致算子下发与执行之间出现大量空档，
+      free 时间占比偏高、整体利用率低。
+    fix: >
+      借 profiling 流水图 / host_to_device 连线 / 内存数据定位瓶颈后调整业务参数
+      （如增大 batch size）。
+    rollback: "恢复原参数（free 占比回升）"

@@ -1,0 +1,68 @@
+# COMMON-KVCACHE-REFCOUNT-LEAK —— 算子 KV-cache 引用计数错误致显存泄漏：约 12h / 第 471 步 OOM，每 step 约 47MB 累积
+# 来源：msprof 官方 best_practices《内存泄漏》（tag_MindStudio_26.2.0.B060_001）
+# pre-triage: new_pattern —— 全库无显存泄漏累积型 performance case
+# 转正：knowledge-groom 2026-09-09
+
+cases:
+  - id: COMMON-KVCACHE-REFCOUNT-LEAK
+    title: "推理运行约 12 小时后在第 471 个 step 触发 OOM：custom_attention_forward 算子的 KV-cache 引用计数错误，每 step 约 47MB 中间 tensor 无法回收，累积约 22GB"
+
+    category: performance
+    tags: [profiling, memory-leak, oom, kv-cache, refcount, operator-bug]
+
+    platforms: []
+    compat:
+      - framework: cross
+        ranges: ["*"]
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "稳定复现：B 版本运行约 12 小时后第 471 个 step 出现 OOM；A 版本与 GPU 均未复现"
+      - "已确认开启了虚拟内存；每 step 显存累积量稳定（约 47MB），累积约 22GB 后 OOM"
+
+    references:
+      - "msprof docs/zh/best_practices/memory_leak.md（MindStudio 26.2.0.B060_001）"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprof 官方 best_practices 案例（上游发布，含定位链与根因）"
+
+    quickly_check:
+      primary:
+        command_template: "对比两个版本单 step profiling 的内存数据（allocated/reserved 跨 step 趋势）"
+        rank_selector: coordinator
+        expected: "某版本 reserved/allocated 随 step 线性累积"
+        note: "performance 类：primary 用内存趋势指标断言"
+      fallback:
+        command_template: "grep -icE 'out of memory|OOM|NPU out of memory' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "是否与版本绑定（另一版本/GPU 不复现）？显存是否随 step 线性累积？"
+        expected: "版本绑定 + 线性累积 → 指向算子/实现级泄漏，而非容量不足"
+      - step: 2
+        check: "采集多个 step 的 profiling，泄漏累积趋势是否稳定？"
+        expected: "每 step 固定泄漏量（如 47MB），可据此估算触发 OOM 的步数"
+      - step: 3
+        check: "通过调用栈定位泄漏来源在哪个算子？"
+        expected: "定位到具体算子的引用管理（示例：KV-cache 内部对中间 tensor 引用管理不当）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-code-change, requires-rebuild]
+    fix_type: code-patch
+
+    root_cause: >
+      B 版本 custom_attention_forward 算子的 KV-cache 实现存在引用计数错误，
+      每 step 产生的中间 tensor（约 47MB）无法被垃圾回收、持续累积在显存中，
+      经过 471 个 step 累积约 22GB 后触发 OOM。
+    fix: >
+      修算子内部的引用管理（确保中间 tensor 引用计数正确释放）；重新出包并验证。
+    rollback: "回退算子改动（泄漏复现）"

@@ -1,0 +1,60 @@
+# COMMON-PY-GC-LATENCY —— Python GC Stop-The-World 致 step 耗时周期性抖动
+# 来源：msprof 官方 best_practices《Python GC回收高耗时》（tag_MindStudio_26.2.0.B060_001）
+# pre-triage: new_pattern —— 全库无 GC/周期性抖动形态
+# 转正：knowledge-groom 2026-09-09
+
+cases:
+  - id: COMMON-PY-GC-LATENCY
+    title: "各节点训练单步耗时周期性抖动（示例 2770ms 抖到 2900ms 左右），抖动趋势与发生频率跨节点高度一致：Python 循环引用累积触发自动 GC（标记-清除），GC 的 Stop-The-World 特性阻塞整个进程"
+
+    category: performance
+    tags: [profiling, python-gc, stop-the-world, periodic-jitter, cyclic-reference]
+
+    platforms: []
+    compat: [{framework: cross, ranges: ["*"]}]
+
+    investigation_quality: high
+    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
+
+    symptoms:
+      - "稳定复现：长跑分析显示各节点单步耗时抖动趋势与发生频率高度一致"
+      - "单步 step 耗时周期性从约 2770ms 抖动到约 2900ms"
+
+    references:
+      - "msprof docs/zh/best_practices/python_gc_high_latency.md（MindStudio 26.2.0.B060_001）"
+
+    verification: {source: upstream-official-doc, detail: "msprof 官方 best_practices 案例"}
+
+    quickly_check:
+      primary:
+        command_template: "看 step 耗时是否存在跨节点一致的周期性抖动，并统计 GC 触发次数/耗时"
+        rank_selector: coordinator
+        expected: "周期性抖动且与 GC 触发时间对齐"
+        note: "performance 类：primary 用周期性指标断言"
+      fallback:
+        command_template: "grep -icE 'gc|garbage collect' {{profiling_report_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "step 耗时抖动是否周期性、且跨节点高度一致？"
+        expected: "是 → 指向全局性的进程内机制（如 GC），而非个别节点问题"
+      - step: 2
+        check: "抖动时间是否与 Python GC 触发对齐？"
+        expected: "对齐 → 命中本 case"
+      - step: 3
+        check: "业务中是否存在大量循环引用对象？"
+        expected: "存在 → 循环引用累积触发 GC"
+
+    severity: benign
+    fix_side_effects: [requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      Python 对象形成循环引用时，引用计数机制无法回收；循环引用累积到阈值后触发自动 GC
+      （标记-清除），GC 是计算密集型任务且执行时阻塞整个进程（Stop-The-World），
+      表现为单步耗时周期性异常升高。
+    fix: >
+      减少循环引用（用弱引用/显式断开）或调整 GC 触发阈值，避免长跑中周期性 Stop-The-World。
+    rollback: "恢复原代码（抖动复现）"

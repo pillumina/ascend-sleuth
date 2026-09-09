@@ -1,0 +1,62 @@
+# COMMON-OP-COMPILE-LATENCY —— 算子编译（aclopCompile）致 Host Bound：free 占比 22%
+# 来源：msprof 官方 best_practices《算子编译高耗时》（tag_MindStudio_26.2.0.B060_001）
+# pre-triage: new_pattern —— 全库无算子编译耗时形态
+# 转正：knowledge-groom 2026-09-09
+
+cases:
+  - id: COMMON-OP-COMPILE-LATENCY
+    title: "训练 step 耗时偏高、Host 下发空档大：api_statistic.csv 中 aclopCompile 调用频繁，算子编译额外增加下发耗时，NPU 执行空隙增大（示例 free 占比 22%）"
+
+    category: performance
+    tags: [profiling, aclopcompile, operator-compile, host-bound, ops-package, free-ratio]
+
+    platforms: []
+    compat:
+      - framework: cross
+        ranges: ["*"]
+
+    investigation_quality: high
+    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
+
+    symptoms:
+      - "从 api_statistic.csv 可见 aclopCompile 相关编译 API 调用频繁"
+      - "整体 overlap 统计中 free 时间占比偏高（示例 computing 2.95s / free 1.1s，free 占 22%），step 耗时被拉长"
+
+    references:
+      - "msprof docs/zh/best_practices/operator_compilation_latency.md（MindStudio 26.2.0.B060_001）"
+
+    verification: {source: upstream-official-doc, detail: "msprof 官方 best_practices 案例"}
+
+    quickly_check:
+      primary:
+        command_template: "在 api_statistic.csv 中按关键字 aclopCompile 统计编译 API 调用次数"
+        rank_selector: coordinator
+        expected: "aclopCompile 调用频繁"
+        note: "performance 类：primary 用调用次数/占比指标断言"
+      fallback:
+        command_template: "grep -icE 'aclopCompile|free' {{profiling_report_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "free 时间占比是否偏高？"
+        expected: "偏高 → 下发侧（Host）成为瓶颈"
+      - step: 2
+        check: "api_statistic.csv 中 aclopCompile 是否频繁？"
+        expected: "频繁 → 命中本 case"
+      - step: 3
+        check: "环境是否安装了 ops 包（内置二进制算子）？"
+        expected: "未装/不全 → aclopCompile 作为保底行为被反复触发"
+
+    severity: benign
+    fix_side_effects: [requires-config-change]
+    fix_type: config-change
+
+    root_cause: >
+      在大部分用户安装 ops 包的前提下，aclopCompile 本质是一种保底行为；
+      未安装或算子不在内置包内时会在运行时触发算子编译，额外增加 Host 下发耗时，
+      使 NPU 上算子执行空隙增大、整体执行效率降低。
+    fix: >
+      安装/补齐 ops 包，使算子走昇腾内置可执行二进制算子，避免运行时编译。
+    rollback: "卸载 ops 包（编译耗时复现）"

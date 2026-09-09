@@ -1,0 +1,61 @@
+# COMMON-CPU-CACHE-MISS —— A+K 未做 CPU 资源隔离致 Cache Miss：TPOT/TTFT 全面劣化但无报错
+# 来源：msprof 官方 best_practices《CPU Cache Miss资源冲突与受限》（tag_MindStudio_26.2.0.B060_001）
+# pre-triage: new_pattern —— 全库无「平台差异（A+K vs A+X）+ CPU 隔离」形态
+# 转正：knowledge-groom 2026-09-09
+
+cases:
+  - id: COMMON-CPU-CACHE-MISS
+    title: "Ascend+Kunpeng 平台核心性能指标全面落后于 Ascend+X86（TPOT/TTFT 劣化、吞吐偏低、延迟抖动），但无算子报错、无 NPU 计算异常、无通信报错：未做 CPU 资源隔离，业务进程与其他进程抢占 CPU 核，上下文切换导致 Cache Miss 命中率劣化"
+
+    category: performance
+    tags: [profiling, cpu-isolation, cache-miss, context-switch, a-k-platform, tpot, ttft]
+
+    platforms: []
+    compat: [{framework: cross, ranges: ["*"]}]
+
+    investigation_quality: high
+    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
+
+    symptoms:
+      - "对标 A+X 平台，A+K 平台 TPOT（单 Token 耗时）、TTFT（首 Token 延迟）显著劣化，整体推理吞吐偏低、请求延迟抖动大"
+      - "初步排查无算子报错、无 NPU 计算异常、无通信链路报错 → 指向宿主机 CPU 侧调度/系统层瓶颈"
+      - "单节点慢卡形成集群短板，触发『多 Rank 等待单 Rank』的集群阻塞效应，通信耗时占比飙升"
+
+    references:
+      - "msprof docs/zh/best_practices/cpu_cache_miss_conflict.md（MindStudio 26.2.0.B060_001）"
+
+    verification: {source: upstream-official-doc, detail: "msprof 官方 best_practices 案例"}
+
+    quickly_check:
+      primary:
+        command_template: "对比同业务在 A+K 与 A+X 的 TPOT/TTFT 指标，并看 CPU 上下文切换与 Cache Miss 统计"
+        rank_selector: coordinator
+        expected: "A+K 明显劣化且上下文切换频繁 / Cache Miss 升高"
+        note: "performance 类：primary 用平台对比指标断言"
+      fallback:
+        command_template: "grep -icE 'cache miss|context switch|ctx_switches' {{profiling_report_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "是否 A+K 与 A+X 平台对比才出现劣化、且无算子/通信报错？"
+        expected: "是 → 排除 NPU 计算与通信链路，指向 Host 侧"
+      - step: 2
+        check: "CPU 上下文切换是否频繁、Cache Miss 命中率是否劣化？"
+        expected: "是 → 命中本 case"
+      - step: 3
+        check: "部署环境是否做了 CPU 资源隔离？"
+        expected: "未隔离 → 业务进程与系统其他进程抢占 CPU 核"
+
+    severity: benign
+    fix_side_effects: [requires-config-change]
+    fix_type: config-change
+
+    root_cause: >
+      A+K 平台部署环境未做 CPU 资源隔离，业务进程与系统其他进程抢占 CPU 核心资源，
+      引发频繁的 CPU 上下文切换，导致 Cache Miss 命中率严重劣化；传导为算子下发延迟、
+      下发链路空泡，单节点慢卡进一步形成集群短板。
+    fix: >
+      做 CPU 资源隔离 / 绑核，避免业务进程与其他进程争抢 CPU 核心。
+    rollback: "取消隔离配置（指标回落）"
