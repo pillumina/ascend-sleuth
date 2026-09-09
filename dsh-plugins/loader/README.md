@@ -45,8 +45,27 @@
 | `pluginId` | 追加到已有 Plugin 时用（与 `idPrefix` 二选一） |
 | `mode` | `run`（默认）/ `update` |
 
-**快照语义**：读入的是**定义时**的文件内容。改了 `panel-*.js` 后要传 `pluginId` +
-`mode: 'update'` 追加新 Package 再切换——改文件不会自动生效。
+**快照语义 + 幂等重载**：读入的是**定义时**的文件内容——改文件不会自动生效。
+但**重复调用同一条命令即可重载**：工具会先查本 session 的插件清单，找到同 `idPrefix`
+的插件就复用它（追加新 Package + 自动切到 update 模式），返回 `reused: true`，
+**不会堆出重复插件**。所以改完 `panel-*.js` 直接再调一次即可，不必记 `pluginId` 与 `mode`。
+
+- 跨 session（DSH 重启后）找不到旧插件，会新建一个同 tab id 的插件：新 tab 覆盖旧 tab 的
+  显示，旧插件的 RPC 仍在但不再被 tab 使用（DSH 的 `define(kind: 'update')` 只允许
+  追加到当前 session 拥有的插件，跨 session 认领不了）。
+- 想显式指定时仍可传 `pluginId` + `mode: 'update'`。
+
+## 幂等规则的校验
+
+`scripts/check_loader_idempotency.js` 用**规则副本**给"重复调用=重载"的匹配逻辑做单元测试
+（动态插件的代码是函数体、不能 import），并断言 loader 源文件里仍有对应标记，防测试与实现漂移：
+
+```
+node scripts/check_loader_idempotency.js
+```
+
+覆盖：同 session 同前缀命中 / 跨 session 不认领（否则 `define(kind:'existing')` 抛归属错误）/
+精确 id 优先 / 旧写法 `evbd-99` 也能命中 / mode 自动推导 / 返回 `reused` 标记。
 
 ## 失败时
 

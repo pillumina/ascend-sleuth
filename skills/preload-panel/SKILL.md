@@ -6,7 +6,7 @@ description: >
   加载 dsh-plugins/<panel>/ 下的 panel-host.js 与 panel-client.js——**只发两个路径，
   不转写 ~70KB 源码**，最后 cordis_run 激活，对话视图出现对应 tab。面板选择：
   - ascend-panel →「诊断」「指标」两个 tab（诊断会话/轨迹/证据 + 知识库健康）
-  - ev-panel →「自演进」tab（待办优先条 / 可展开决策流 / 自演进度量 / timeline）
+  - ev-panel →「自演进」tab（EV 卡状态机 / 容量热力 / 归因与 S2 反馈 / timeline）
   仅 DSH 可用——依赖 DSH 的 cordis_define / cordis_run 工具
   与 conversation.view 插槽；其他 agent（Claude Code / Codex / pi）无此机制。
 ---
@@ -24,8 +24,8 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 
 | 面板 | 目录 | tab id / label | 视图 |
 |---|---|---|---|
-| 诊断面板 | `dsh-plugins/ascend-panel/` | `ascend-diagnose`(20) / `ascend-metrics`(21) | 会话列表/轨迹/证据 + 本期变化对照/知识库健康/历史快照折叠 |
-| 自演进看板 | `dsh-plugins/ev-panel/` | `ascend-evolve`(22) | 待办优先（实验中/审计缺口/最近采纳）+ 可展开决策流 + 自演进度量 + timeline |
+| 诊断面板 | `dsh-plugins/ascend-panel/` | `ascend-diagnose`(20) / `ascend-metrics`(21) | 会话列表/轨迹/证据 + 知识库健康/指标 |
+| 自演进看板 | `dsh-plugins/ev-panel/` | `ascend-evolve`(22) | EV 卡状态机 / 容量热力 / 归因与 S2 反馈 / timeline |
 
 ## 依赖预检（激活前跑，避免面板加载后白屏/报错）
 
@@ -94,6 +94,11 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
   再切换（读入的是定义时快照，改文件不会自动生效）。
 
 ## 交互原则
+
+**重复加载 = 重载（幂等）**：面板代码改了就再调一次同一条 `panel_from_file`——
+同 `idPrefix` 会复用本 session 的已有插件并切到新 Package（返回 `reused: true`），
+不会堆出重复 tab；无需手工传 `pluginId`/`mode`。跨 session（DSH 重启）会新建同 tab id
+的插件覆盖显示。
 
 面板是**只读可视化 + 指令生成器**——展示状态、生成续接/沉淀指令供用户触发，
 面板自身不做决策与写入（唯一例外：诊断面板的沉淀状态标记由用户在面板确认后

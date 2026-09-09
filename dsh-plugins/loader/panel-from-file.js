@@ -9,11 +9,19 @@
 // 因此在任何带 Cordis 工具的 DSH 版本上都能用；真实面板源码仍进不可变 Package
 // （可被 cordis_inspect_self 审计），审批流不变。
 //
+// **幂等（2026-09）**：改完面板代码再调一次是常事，所以重复调用不再新建插件——
+// 先查 inventory 找本 session 已存在的同前缀插件，找到就复用（追加新 Package +
+// mode update），返回 reused: true。不传 pluginId 也不会再堆出重复插件。
+// 归属约束：DSH 的 define(kind: 'existing') 要求插件属于当前 session，因此只在
+// 本 session 内查找；跨 session（如 DSH 重启后）会新建一个同 tab id 的插件，
+// 新 tab 覆盖旧 tab 的显示（旧插件的 RPC 仍在，只是不再被 tab 使用）。
+//
 // 用法（一个 DSH 会话一次）：
 //   cordis_define(kind: new, idPrefix: 'ldr', code.host ← 本文件全文)  →  cordis_run（host-only，免审批）
 //   panel_from_file(host: 'dsh-plugins/ev-panel/panel-host.js',
 //                   client: 'dsh-plugins/ev-panel/panel-client.js',
 //                   idPrefix: 'evbd', name: '…', purpose: '…')
+// 改代码后再调**同一条**命令即可重载；也可传 pluginId + mode: 'update' 显式指定。
 // 若会话里已有 panel_from_file（cordis_inspect_query 的 Tool 目录可查），直接调用，不要重复加载。
 return {
   name: 'panel-from-file',
@@ -33,6 +41,24 @@ return {
       return await fs.readText(target)
     }
 
+    // 找本 session 已存在的同前缀插件（重复调用 → 复用而非新建）
+    function findExisting(agentId, idPrefix) {
+      if (typeof runner.inventory !== 'function' || idPrefix === undefined) return undefined
+      const prefix = String(idPrefix)
+      let rows = []
+      try {
+        rows = runner.inventory() || []
+      } catch (e) {
+        return undefined
+      }
+      // 归属过滤：DSH 只允许追加到当前 session 拥有的插件
+      const mine = rows.filter(r => r && r.agentId === agentId)
+      // 优先精确前缀（evbd-12），退化为"以前缀开头"（防前缀带数字后缀的旧写法）
+      return mine.find(r => r.pluginId === prefix)
+        || mine.find(r => String(r.pluginId).replace(/-\d+$/, '') === prefix)
+        || mine.find(r => String(r.pluginId).startsWith(prefix + '-'))
+    }
+
     harness.registerTool(ctx, harness.defineTool({
       name: 'panel_from_file',
       description:
@@ -40,15 +66,17 @@ return {
         + 'Use it for panel-style plugins whose source already lives in the repository: pass paths, never re-emit the source. '
         + 'Reading a client half requires user approval at activation, exactly like cordis_run. '
         + 'Omit client to load a host-only package, which activates without approval. '
-        + 'Editing a source file needs a NEW Package (call again with pluginId + mode "update").',
+        + 'Idempotent by idPrefix: calling again with the same idPrefix (after editing a source file) reuses the '
+        + 'existing plugin of this session, appends a new Package, and switches to it (reused: true) — no duplicate '
+        + 'plugins pile up. Pass pluginId + mode "update" only when targeting a plugin explicitly.',
       parameters: {
         host: { type: 'string', required: true, description: 'Host-half source path, resolved against the session workspace.' },
         client: { type: 'string', description: 'Client-half source path. Omit for a host-only package (no approval).' },
         name: { type: 'string', required: true, description: 'Package label.' },
         purpose: { type: 'string', required: true, description: 'One-sentence, user-facing purpose.' },
-        idPrefix: { type: 'string', description: 'Semantic prefix (3–6 lowercase letters) for a NEW Plugin; give this or pluginId.' },
+        idPrefix: { type: 'string', description: 'Semantic prefix (3–6 lowercase letters). Reused on repeat calls to reload that plugin; give this or pluginId.' },
         pluginId: { type: 'string', description: 'Existing Plugin ID to append a Package to; give this or idPrefix.' },
-        mode: { type: 'string', enum: ['run', 'update'], description: 'run (default) for the first activation, update to switch versions.' },
+        mode: { type: 'string', enum: ['run', 'update'], description: 'run (default) for the first activation, update to switch versions. Auto-derived when idPrefix matches an existing plugin.' },
       },
       output: {
         schema: { type: 'json' },
@@ -56,13 +84,14 @@ return {
           const v = value || {}
           const status = String(v.status)
           const run = v.pluginRunId === undefined ? '' : ' (' + String(v.pluginRunId) + ')'
+          const tail = v.reused === true ? ' [reloaded existing plugin]' : ''
           return [{
             type: 'text',
             text: status === 'awaiting-approval'
-              ? String(v.pluginId) + '/' + String(v.packageId) + ' is awaiting user approval' + run + '.'
+              ? String(v.pluginId) + '/' + String(v.packageId) + ' is awaiting user approval' + run + tail + '.'
               : status === 'starting'
-                ? String(v.pluginId) + '/' + String(v.packageId) + ' is starting asynchronously' + run + '.'
-                : String(v.pluginId) + '/' + String(v.packageId) + ' is running' + run + '.',
+                ? String(v.pluginId) + '/' + String(v.packageId) + ' is starting asynchronously' + run + tail + '.'
+                : String(v.pluginId) + '/' + String(v.packageId) + ' is running' + run + tail + '.',
           }]
         },
       },
@@ -77,22 +106,33 @@ return {
         const cwd = agent.session.header.cwd
         const hostCode = await readHalf(args.host, cwd)
         const clientCode = args.client === undefined || args.client === '' ? undefined : await readHalf(args.client, cwd)
+
+        // 幂等：同前缀重复调用 = 重载（复用已有插件，不新建）
+        const existing = args.pluginId === undefined ? findExisting(agent.id, args.idPrefix) : undefined
+        const targetPluginId = args.pluginId === undefined
+          ? (existing === undefined ? undefined : existing.pluginId)
+          : String(args.pluginId)
+
         const receipt = runner.define({
           sessionId: agent.id,
-          plugin: args.pluginId === undefined
+          plugin: targetPluginId === undefined
             ? { kind: 'new', idPrefix: String(args.idPrefix) }
-            : { kind: 'existing', pluginId: String(args.pluginId) },
+            : { kind: 'existing', pluginId: targetPluginId },
           name: String(args.name),
           purpose: String(args.purpose),
           code: clientCode === undefined ? { host: hostCode } : { host: hostCode, client: clientCode },
         })
-        const outcome = await runner.run(
-          agent,
-          receipt.pluginId,
-          receipt.packageId,
-          args.mode === 'update' ? 'update' : 'run',
-          exec.signal,
-        )
+
+        // mode：显式传入优先；复用已有插件时，有成功版本才用 update，否则 run（首次激活）
+        let mode = args.mode === 'update' ? 'update' : 'run'
+        if (args.mode === undefined && targetPluginId !== undefined) {
+          const row = (() => {
+            try { return (runner.inventory() || []).find(r => r && r.pluginId === targetPluginId) } catch (e) { return undefined }
+          })()
+          mode = row !== undefined && row.currentPackageId !== undefined ? 'update' : 'run'
+        }
+
+        const outcome = await runner.run(agent, receipt.pluginId, receipt.packageId, mode, exec.signal)
         if (outcome === undefined || outcome.ok !== true) {
           throw new Error('激活失败: ' + String(outcome === undefined ? '无返回' : outcome.message))
         }
@@ -102,6 +142,7 @@ return {
           pluginRunId: String(outcome.pluginRunId),
           status: String(outcome.status),
           mode: String(outcome.mode),
+          reused: targetPluginId !== undefined,
         }
       },
     }))
