@@ -1,0 +1,38 @@
+id: verl-probs-diff-monitoring
+type: tool
+title: verl 逐 token prob diff 监控——rollout 与 actor 前向的概率差
+summary: verl 逐 token prob diff 监控：逐 token 计算 rollout（vLLM）与 actor 前向（训练引擎）对同一 response 的对数概率差，输出到训练日志并落 npy；前提必须设 actor_rollout_ref.rollout.calculate_log_probs=True；偏差来源三类——权重同步滞后 / 算子精度差异 / 推理与训练模式差异
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/dump/verl_token_level_probs_diff_monitoring.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/dump/verl_token_level_probs_diff_monitoring）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [verl]
+  categories: [precision]
+
+related_references: [verl-uwc-weight-consistency, verl-cross-validation]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  tool_name: "verl 逐 token prob diff 监控（calculate_token_level_prob_diff）"
+  invocation: "RL（GRPO/PPO）中一条 response token 序列走两条路径算对数概率：rollout（vLLM 推理生成，用上一个同步周期的 base model 权重）与 actor 前向（训练时重新 forward，用当前 actor 权重）。本模块是**可开关的调试工具**，仅开启时产生额外开销：逐 token 计算两者的 prob diff，把前 N 个 sample × 前 M 个 position 的差异以网格形式打进训练日志，并把完整 2D diff 矩阵与 mask 落到磁盘供离线分析"
+  commands:
+    enable: "python3 -m verl.trainer.main_ppo ... actor_rollout_ref.rollout.calculate_log_probs=True +trainer.enable_token_level_prob_diff=True +trainer.prob_diff_save_dir=\"/path/to/save\" +trainer.prob_diff_token_max_print=10 +trainer.prob_diff_sample_max_print=8"
+    params: "calculate_log_probs（前提，bool，默认 false，必须开否则 vLLM 不返回 rollout_log_probs）；enable_token_level_prob_diff（默认 false）；prob_diff_save_dir（npy 保存目录，None 不保存）；prob_diff_token_max_print（每 sample 输出 position 数，默认 10）；prob_diff_sample_max_print（输出 sample 数，默认 8）。带 + 前缀的是 Hydra 未预定义项，命令行必须加 +"
+  output_meaning:
+    - "逐点日志指标：`training/rollout_probs_diff/s{i}_p{jjjj}`（如 s0_p0000 0.0012）；指标数 = min(batch_size, sample_max_print) × min(response_length, token_max_print)，仅含 mask=1 的有效位置（默认最多 8×10=80 个）"
+    - "聚合指标同时输出：`training/rollout_probs_diff_max` / `_mean` / `_std` 与 `training/rollout_actor_probs_pearson_corr`（宏观概览，适合监控告警）"
+    - "磁盘文件（每步两个）：`prob_diff_step_{step}.npy`（float32，形状 [batch, response_length]，padding 位置为 0）与 `prob_mask_step_{step}.npy`（bool，1=有效位置，0=padding）；npy 只在单 driver 进程保存一次，无多副本"
+    - "三类偏差来源（读结果时的归因方向）：权重同步滞后（actor 更新后 vLLM 权重尚未同步）/ 算子精度差异（NPU 与 GPU、vLLM 与 Megatron 的算子实现差异）/ 推理与训练模式差异（dropout、flash attention 等前向行为不同）"
+  pitfalls:
+    - "**前提条件不满足就完全无效**：必须设 `actor_rollout_ref.rollout.calculate_log_probs=True`，否则 vLLM 不返回 rollout_log_probs，diff 无法计算"
+    - "开启后每步增加最多 80 个日志指标，**建议只在调试阶段开**"
+    - "需改 verl 代码（`verl/utils/debug/metrics.py`、`verl/trainer/ppo/ray_trainer.py`），随 verl 版本变化"
+    - "与 `calculate_debug_metrics` 的关系：后者出聚合统计（max/mean/std/pearson），本模块出逐 token 明细 + npy；两者互补、共享同一数据源——排查用逐 token，监控用聚合"

@@ -1,7 +1,7 @@
 # GENERATED FILE —— 背景类 summary 索引（diagnose 2.5 ② 读取），不要手改。
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
-# 生成日期：2026-09-09    词条数：61
+# 生成日期：2026-09-09    词条数：65
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -446,10 +446,42 @@ entries:
   applies_to:
     platforms:
     - cross
+- id: rl-train-infer-consistency-triage
+  type: methodology
+  title: RL 训推一致性排查路径（先定分歧面，再选权重链路 / 概率偏移 / 阶段定界）
+  summary: RL（GRPO/PPO）训推一致性问题的排查路径：先按现象定分歧面——输出崩溃（乱码/生僻字/重复）多指向权重同步链路，reward 下降 + logp_diff 上升多指向逐 token
+    概率偏移，整体效果差但难分训推则需阶段定界；再选手段（UWC 三段比对权重链路 / 逐 token probs_diff 看概率分…
+  applies_to:
+    platforms:
+    - cross
+- id: verl-cross-validation
+  type: tool
+  title: verl 训推交叉打桩——Rollout Skip + 交叉验证（精度定界在训练还是推理）
+  summary: verl 交叉验证：用打桩替换一个阶段的输出实现精度定界——两种模式 ckpt（推理执行并保存 rollout 数据 / 训练执行并加载 ckpt）与 rollout（推理加载 rollout
+    数据跳过推理 / 训练执行并保存 ckpt），两个训练过程通过共享数据目录交换数据；另有 Rollout Skip 基础功能（…
+  applies_to:
+    platforms:
+    - cross
 - id: verl-official-image-no-hdk
   type: software-fact
   title: verl 官方昇腾 Docker 镜像不含 HDK
   summary: verl 官方昇腾镜像（quay.io/ascend/verl:*）不含 HDK，需按 install_guidance.rst 自选安装——HDK 版本与镜像组合不兼容是 verl+昇腾故障的常见根因面
+  applies_to:
+    platforms:
+    - cross
+- id: verl-probs-diff-monitoring
+  type: tool
+  title: verl 逐 token prob diff 监控——rollout 与 actor 前向的概率差
+  summary: verl 逐 token prob diff 监控：逐 token 计算 rollout（vLLM）与 actor 前向（训练引擎）对同一 response 的对数概率差，输出到训练日志并落
+    npy；前提必须设 actor_rollout_ref.rollout.calculate_log_probs=True；偏差来…
+  applies_to:
+    platforms:
+    - cross
+- id: verl-uwc-weight-consistency
+  type: tool
+  title: UWC 训推权重一致性验证——RL 训练侧到 vLLM 推理侧权重同步链路三段比对
+  summary: UWC（Unified Weight Consistency）验证 RL 训推一体场景下「训练侧（verl+Megatron-core）→ 推理侧（vLLM）」权重同步链路的数值一致性，把链路拆成三段独立可比对：①Bridge
+    转换 HF↔mcore ②跨进程传输 ③vLLM 加载；容差为 P0 vs P2 atol=…
   applies_to:
     platforms:
     - cross

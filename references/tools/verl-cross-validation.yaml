@@ -1,0 +1,40 @@
+id: verl-cross-validation
+type: tool
+title: verl 训推交叉打桩——Rollout Skip + 交叉验证（精度定界在训练还是推理）
+summary: verl 交叉验证：用打桩替换一个阶段的输出实现精度定界——两种模式 ckpt（推理执行并保存 rollout 数据 / 训练执行并加载 ckpt）与 rollout（推理加载 rollout 数据跳过推理 / 训练执行并保存 ckpt），两个训练过程通过共享数据目录交换数据；另有 Rollout Skip 基础功能（跳过推理直接加载已保存的推理数据）
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/verl_cross_validation.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/verl_cross_validation）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [verl]
+  versions:
+    verl: "Rollout Skip 支持 v0.6.0–v0.7.1；交叉验证以 v0.7.1 为例"
+  categories: [precision]
+
+related_references: [verl-uwc-weight-consistency, verl-probs-diff-monitoring]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  tool_name: "verl 交叉验证（训推交叉打桩）+ Rollout Skip"
+  invocation: "RL 精度问题一般需要先**定界出问题在推理还是训练阶段**再采数据。本手段基于「打桩替换掉一个阶段的输出」实现定界：两个训练过程通过共享数据目录交换 rollout 数据与检查点。另含 Rollout Skip（跳过推理阶段、直接加载已保存的推理数据，用于反复跑相同配置实验）"
+  commands:
+    skip_rollout: "python train.py actor_rollout_ref.rollout.skip_rollout=True actor_rollout_ref.rollout.skip_dump_dir=\"/tmp/rollout_dump\"（Rollout Skip 基础功能，v0.6.0–v0.7.1）"
+    cross_validation: "交叉验证两个参数：`share_data` = rollout | ckpt（rollout：加载推理数据、保存检查点；ckpt：保存推理数据、加载检查点）；`share_data_dir` = 共享数据存储路径（默认 /tmp/verl/share_data_dir）"
+    code_change: "需在 verl 侧新增 `verl/utils/share_data.py` 等工具类并修改 Trainer 类（文档以 v0.7.1 为例给出改动清单）"
+  output_meaning:
+    - "两种模式的交叉组合：ckpt 模式下「推理阶段执行并保存 rollout 数据 / 训练阶段执行并加载 ckpt」；rollout 模式下「推理阶段加载 rollout 数据（跳过推理）/ 训练阶段执行并保存 ckpt」"
+    - "Rollout Skip 落盘文件命名：`{experiment_name}_{project_name}_GBS{gbs}__N{n}`（experiment_name / project_name / 生成批次大小 gbs / 每 prompt 回复数 n）"
+    - "定界读法：替换掉某一阶段输出后问题消失 → 问题在该阶段；问题仍在 → 在另一阶段（或两阶段接口处）"
+  pitfalls:
+    - "当前仅支持 verl 强化学习框架"
+    - "要求**两个训练过程使用相同配置和数据、且能同时拉起**，共享数据路径可访问且有足够存储空间——不是单机单进程能验证的"
+    - "需改 verl 代码（新增工具类 + 修改 Trainer），**随 verl 版本变化**；文档的改动清单以 v0.7.1 为例"
+    - "Rollout Skip 只是省时间的手段（跳过推理复用数据），它本身不定位精度问题——定界要靠交叉验证的两种模式组合"
