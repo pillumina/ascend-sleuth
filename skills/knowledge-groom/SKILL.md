@@ -156,7 +156,7 @@ disable-model-invocation: true
 | 工程师反馈某 reference 引用后诊断失败（trace `outcome_after_use` 恶化） | methodology → `draft` + 禁用 30 天；普通 → `pending-review` |
 | 某 case 的 `diagnosis`/`fix` 隐式依赖 active reference 但未填 `ref_knowledge` | **建议**补 ref_knowledge（R3，可选——case 不强制连 reference，owner 决定） |
 | 某 reference sources 链接失效（spot-check 发现） | 立即标 `pending-review` |
-| 某 `tool` 词条全文读入 > 8K token（初始阈值，字节数/3.4）／`content.commands` key > 8／同文件内条目 `last_verified` 分化 > 90 天 | **split 建议**（ADR-0008 §1.9）：拆成多个用途面条目，人确认后执行，不自动拆 |
+| 某 `tool` 词条全文读入 > 8K token（初始阈值，字节数/3.4）／`content.commands` key > 8／同文件内条目 `last_verified` 分化 > 90 天 | **split 建议**：拆成多个用途面条目（判据见 `references/_types.yaml` 的 tool 段注释），人确认后执行，不自动拆 |
 | 两个 `tool` 词条在 ≥5 个 trace 里同 session 共现 `reference_lookup`（R6 数据）且 `sources[].url` 同源 | **merge 建议**：合并为一个用途面条目（子命令并入 `content.commands`），人确认 |
 
 ## v2 职责（路线图，v1 不做）
