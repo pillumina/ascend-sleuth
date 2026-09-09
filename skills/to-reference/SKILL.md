@@ -104,7 +104,7 @@ description: >
 
 **error-code 表形态（组织单元 = 验证单元）**：错误码天然成族（CANN Runtime 507xxx / HCCL / aicpu / Driver），同族同源同验证——**一个族一个文件**（如 `references/errors/cann-runtime.yaml` 承载 507903/507018/507057...），表级共享 sources/status/applies_to，不逐码建文件。case 提炼的条目逐条验证 → 条目带可选 `source_cases`。检索时 agent 按族定位文件，表内 grep code 一次命中。**数据集类的 `applies_to` 平台/版本应从来源的结构化字段映射（如官方文档的 models/support 字段），不靠 agent 猜测**——来源没声明的平台不写。
 
-**tool 组织单元 = 一个「诊断用途面」**（不是「一个可执行文件」，也不是「一个子命令」）——先查 `references/tools/` 是否已有同用途面条目，有则**追加到该条目的 `content.commands`，不新建文件**。判据三问，全部为「是」才合、任一为「否」就拆：①**同源**（同一官方文档章节 + 同一版本 pin + 同一次 `last_verified`）；②**同诊断**（一次诊断会同时需要它们——同 category、同阶段）；③**同输出语义**（共享输出结构与判定口径）。反例：一个产品有 20 个子命令 ≠ 20 个词条——按用途面归并（如 msprobe 的 dump+config 合为一条采集面，overflow_check 因有独立判定规则单列）。**检索键前置**：工具名 / 子命令名必须出现在 `title` / `summary` 开头——`tool` 走 summary 层（`_summary-index.yaml`）且该层会截断，键写在后面等于检索不到。
+**tool 组织单元 = 一个「诊断用途面」**（不是「一个可执行文件」，也不是「一个子命令」）——先查 `references/tools/` 是否已有同用途面条目，有则**追加到该条目的 `content.commands`，不新建文件**。判据三问的实质：**它们是不是一次动作的三个面（配置/执行/输出）**——是则合，是两个独立动作则拆。三问：①**同验证**（同版本 pin + 同次 `last_verified`，可以是同一份文档，也可以是一份能力的配置面+执行面文档）；②**同诊断**（一次诊断会同时需要它们——同 category、同阶段）；③**同动作**（同一动作的三个面，各有自己的命令与输出面即为两个动作）。反例：一个产品有 20 个子命令 ≠ 20 个词条——按用途面归并（msprobe 的 dump+config.json 是「采集」这一次动作的配置面与执行面 → 合；compare 与 graph_visualize 是两个独立动作、两套输出语义 → 拆）。**检索键前置**：工具名 / 子命令名必须出现在 `title` / `summary` 开头——`tool` 走 summary 层（`_summary-index.yaml`）且该层会截断，键写在后面等于检索不到。
 
 拿不准 type → 按最贴近的登记 type 落草稿，并在草稿里标注 `type_uncertain: true` 交 maintainer 定夺。**不要自行发明未登记 type**（CI 会红；登记是 maintainer 的动作，见 `_types.yaml`）。
 
