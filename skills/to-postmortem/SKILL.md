@@ -40,18 +40,26 @@ agent 读取文件，后续流程同内联。
 
 扫描目录下 `.md`/`.txt`，每个文件各成一条。大文件逐个处理，不全量载入 context。目录模式就是批量导入历史案例的入口——不需要单独的批量导入 skill。
 
-**二进制文档（`.docx`/`.doc`/`.pptx`/`.xlsx`/`.rtf`/`.epub`）预处理**：客户报告、排查记录、汇报材料常是这些格式，先转 Markdown 再走上面四种输入：
+**二进制文档（`.docx`/`.doc`/`.pptx`/`.xlsx`/`.rtf`/`.epub`）预处理**：客户报告、排查记录、汇报材料常是这些格式，先取到文本再走上面四种输入。**约束是不变量，不是工具**——只要满足三条：①文本取自原文件（不凭标题或上下文编造）②出处可核验 ③材料不外传（客户/内部文档不上传第三方服务）。工具怎么选、能不能装，都是这三条之下的实现细节。
+
+省事的首选（装得上就用，装不上别卡死）：
 
 ```bash
-npx -y @firecrawl/anydoc <file> -o <file>.md     # 有 Node ≥ 20，首次自动下载
+npx -y @firecrawl/anydoc <file> -o <file>.md     # Node ≥ 20，首次自动下载，保留表格/公式/脚注
 # 无 Node 但有 Python ≥ 3.10：
 pip install firecrawl-anydoc
 python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 ```
 
-- 两者都没有 → **明确告诉用户"这份文件抽不出来，请转成 md 或贴文本"，不静默跳过附件**——附件里的报错原文正是 case 的 symptoms 证据。
-- **目录模式**的扫描范围随之扩展到上述扩展名，逐份转换后再成条。
-- **截图**：anydoc 只输出文字，文档里的定位截图会被整段丢弃（无占位、无告警）。`.docx`/`.pptx`/`.xlsx`/`.odt` 都是 zip，用 `python -m zipfile -e <file> out/` 取 `word/media/`（pptx 为 `ppt/media/`，xlsx 为 `xl/media/`），再用**自己的图片识别能力直接读图**（模型支持图片输入时）。
+**anydoc 或任何库都装不上（离线、无 Node/Python、版本冲突）→ 先自己找路，不要直接判失败。** 已知可行的零依赖路线（这些格式本质都是 zip + XML）：
+
+- `.docx`：`python -m zipfile -e <file> out/`（Windows 无 Python 时用 `[System.IO.Compression.ZipFile]::ExtractToDirectory`）后读 `out/word/document.xml`，按 `<w:p>` 段落取 `<w:t>` 文本拼回；`out/word/media/` 是内嵌图片。
+- `.pptx`：`ppt/slides/slide*.xml`（备注在 `ppt/notesSlides/`）；`.xlsx`：`xl/sharedStrings.xml` + `xl/worksheets/sheet*.xml`；`.odt`/`.ods`/`.odp`：`content.xml`。
+- 这条路拿到的文本通常够沉淀（case 要的是症状/命令/根因，不是版式）；**丢掉的表格结构/排版如实记进 postmortem**，别假装完整。
+- 探索出的新路线跑通了，值得固化 → 收尾的伴随演进评估会看到"重复手动动作"信号并决定是否写成步骤（见 `/skill:evolve-check`），**不要在这里自己加卡**。
+- 真的都抽不出来 → **明确告诉用户"这份文件抽不出来，请转成 md 或贴文本"，不静默跳过附件**——附件里的报错原文正是 case 的 symptoms 证据。
+- **目录模式**的扫描范围随之扩展到上述扩展名，逐份取到文本后再成条。
+- **截图**：纯文本通道（anydoc 或 XML 提取）都只出文字，文档里的定位截图会被丢掉（anydoc 无占位、无告警）。`.docx`/`.pptx`/`.xlsx`/`.odt` 都是 zip，用 `python -m zipfile -e <file> out/` 取 `word/media/`（pptx 为 `ppt/media/`，xlsx 为 `xl/media/`），再用**自己的图片识别能力直接读图**（模型支持图片输入时）。
 - **读不了图就如实记缺口**：在 postmortem 里列「未提取的证据」清单（文件名 + 所在段落上下文 + 未识别原因），草稿标 `needs-human-review`。**不要拿截图的标题或上下文推测报错原文**——`symptoms` 只写文本里确有的内容。
 - **不外传**：不要用 `--ocr hosted`（把整份文档上传第三方服务）；客户材料一律本地处理。
 

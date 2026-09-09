@@ -73,11 +73,12 @@ description: >
   - `auto-extracted`——模型从源材料抽取、**未经 agent 对源逐字核验**（如一次 URL 抓取后直接归纳），reviewer 必须 spot-check 语义是否被扭曲；
   - `cross-checked-source`——agent 已直接对源原文（如 PDF 文本提取）逐字核验，reviewer 抽查即可。**只有当你真的逐字对照过源才标这个**；拿不准一律标 `auto-extracted`（诚实退化，宁低估不高估）。
 
-**二进制文档与截图（本地官方文档）**：
-- **文本提取**：`.docx`/`.doc`/`.pptx`/`.xlsx`/`.rtf`/`.epub` 用 `npx -y @firecrawl/anydoc <file> -o <file>.md`（有 Node ≥ 20，首次自动下载）；无 Node 但有 Python ≥ 3.10 → `pip install firecrawl-anydoc` + `python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>`；PDF 用 `pymupdf`。工具都没有 → 请用户转成 md 或贴文本，**不静默跳过附件**。
-- **截图**：官方文档里的架构图 / 报错截图会被 anydoc 整段丢弃（无占位、无告警）。`.docx`/`.pptx`/`.xlsx`/`.odt` 都是 zip，用 `python -m zipfile -e <file> out/` 取 `word/media/`（pptx 为 `ppt/media/`，xlsx 为 `xl/media/`），再用**自己的图片识别能力直接读图**（模型支持图片输入时）。
+**二进制文档与截图（本地官方文档）**：约束是不变量、不是工具——词条只写源里确有的内容、出处可核验可移植、材料不外传。工具选择（含装不上时的替代路线）都在这个约束之下。
+- **文本提取（首选）**：`.docx`/`.doc`/`.pptx`/`.xlsx`/`.rtf`/`.epub` 用 `npx -y @firecrawl/anydoc <file> -o <file>.md`（Node ≥ 20，首次自动下载，保留表格/公式）；无 Node 但有 Python ≥ 3.10 → `pip install firecrawl-anydoc` + `python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>`；PDF 用 `pymupdf`。
+- **首选装不上就自己找路，别直接判失败**：这些格式本质是 zip + XML——`.docx` 读 `word/document.xml` 的 `<w:t>`；`.pptx` 读 `ppt/slides/slide*.xml`；`.xlsx` 读 `xl/sharedStrings.xml` + `xl/worksheets/sheet*.xml`；`.odt`/`.ods`/`.odp` 读 `content.xml`（`python -m zipfile -e <file> out/` 解包，Windows 无 Python 用 `[System.IO.Compression.ZipFile]::ExtractToDirectory`）。丢掉的表格/排版如实记进 PR body，不假装完整。探索出的新路线跑通了值得固化 → 交给收尾的伴随演进评估（见 `/skill:evolve-check`），**不要在这里自己加卡**。真的都抽不出来 → 请用户转成 md 或贴文本，**不静默跳过附件**。
+- **截图**：纯文本通道（anydoc 或 XML 提取）只出文字，架构图 / 报错截图会被丢掉（anydoc 无占位、无告警）。`.docx`/`.pptx`/`.xlsx`/`.odt` 都是 zip，用 `python -m zipfile -e <file> out/` 取 `word/media/`（pptx 为 `ppt/media/`，xlsx 为 `xl/media/`），再用**自己的图片识别能力直接读图**（模型支持图片输入时）。
 - **读不了图 → 不提取、不推测**：词条只写文本里确有的内容，未提取的截图列进 PR body 的「来源与验证状态」区块交 reviewer 补——**不要从截图的标题或上下文反推内容**。
-- **确定性转换才可逐字核验**：anydoc 是确定性解析（不经模型改写），逐字对照原文后可标 `cross-checked-source`；只从截图之外的文本归纳、未逐字对照的仍标 `auto-extracted`。
+- **确定性提取才可逐字核验**：anydoc 或 XML 直读都是确定性解析（不经模型改写），逐字对照原文后可标 `cross-checked-source`；未逐字对照的仍标 `auto-extracted`。
 - **出处仍须可移植**：本地 docx 的 `sources[].url` 用可移植文档引用（标题 + 出品方 + 版本），**禁止写 `~/` 或绝对路径**（CI 会红）。
 - **不外传**：不要用 `--ocr hosted`（把整份文档上传第三方服务）；内部文档一律本地处理。
 
