@@ -1,0 +1,38 @@
+id: msprof-comm-bottleneck-thresholds
+type: methodology
+title: 通信瓶颈判定阈值（Wait Time Ratio / 传输前同步比例 / 带宽使用率）
+summary: msprof 官方的通信瓶颈判定口径：①一个迭代内是否存在「等待时长比例（Wait Time Ratio）> 0.2」的卡——有则通信瓶颈；②找 WTR 最大的卡看「传输前同步时长比例 > 0.2」——大于则存在慢卡（查慢卡前反向计算时间与数据预处理），否则链路异常；③通信矩阵：带宽使用率 > 0.8 说明链路正常、通信包比例 > 0.8 指向链路配置/劣化、包尺寸过小指向带宽瓶颈
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprof/blob/tag_MindStudio_26.2.0.B060_001/docs/zh/user_guide/extended_functions.md"
+    version: "MindStudio 26.2.0.B060_001（msprof docs/zh/user_guide/extended_functions，性能调优建议节）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [performance]
+
+related_references: [msprof-collect-parse]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  flow:
+    - step: 1
+      name: 判定是否存在通信瓶颈——先看等待时长比例
+      action: "集合通信算子是同步执行的，集群中若有慢节点会因木桶效应拖累整体。先在一个迭代内看是否存在**等待时长比例（Wait Time Ratio）> 0.2** 的卡；存在即该迭代有通信瓶颈，进入 step 2。"
+      check: "Wait Time Ratio = Wait Time / (Wait Time + Transit Time)；阈值 0.2"
+      when_to_use: 训练/推理性能劣化且怀疑通信瓶颈时（需已采集 msprof 通信数据）
+    - step: 2
+      name: 找瓶颈卡——看传输前同步比例，区分慢卡与链路异常
+      action: "找到 **WTR 最大**的那张卡，看它的**传输前同步时长比例（Synchronization Time Ratio Before Transit）是否 > 0.2**：①大于 → 存在慢卡（即 WTR 最小的卡），去看慢卡的前向/反向计算时间——若远大于其他卡，检查负载均衡与处理器故障；若与其他卡基本相同，检查**数据预处理**时间；②不大于 → 属链路异常，查是否有链路故障或通信量过小。"
+      check: "Synchronization Time Ratio Before Transit = Synchronization Time / (Synchronization Time + Transit Time)；阈值 0.2"
+      when_to_use: 已确认存在通信瓶颈（step 1 命中）后
+    - step: 3
+      name: 用通信矩阵细分链路——带宽使用率 / 包比例 / 包尺寸
+      action: "按链路类型（HCCS / PCIE / RDMA）看通信矩阵的平均与最慢链路信息（传输总耗时、平均带宽、平均大包传输率；带宽小于平均带宽 20% 时输出最慢链路）。判据：①**带宽使用率 > 0.8** → 带宽使用正常、全网无瓶颈，回到 step 2 的慢卡路径；②**通信包比例 > 0.8** → 包尺寸无异常，指向链路配置问题或链路劣化；③**通信包尺寸过小** → 每次传输包太小导致带宽使用率不高，属带宽瓶颈。"
+      check: "三种链路类型的耗时占比；每种链路的平均/最慢带宽、带宽利用率、大包比例"
+      when_to_use: step 2 判为链路异常、或需要给出可执行的调优方向时

@@ -1,7 +1,7 @@
 # GENERATED FILE —— 背景类 summary 索引（diagnose 2.5 ② 读取），不要手改。
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
-# 生成日期：2026-09-09    词条数：69
+# 生成日期：2026-09-09    词条数：71
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -475,6 +475,22 @@ entries:
   title: msprobe graph_visualize——分级可视化构图比对（TensorBoard 图/颜色判定）
   summary: msprobe graph_visualize：把 dump 数据还原成模型图结构，用 TensorBoard 做结构与精度双图比对；节点颜色 error>warning>pass>未匹配，判定规则按真实数据/统计数据/MD5
     三模式分列；支持溢出筛选、名称搜索、跨套件比对与多卡构图
+  applies_to:
+    platforms:
+    - cross
+- id: msprof-collect-parse
+  type: tool
+  title: msprof 性能数据采集与解析（--application / --output，PROF_* 输出结构）
+  summary: msprof 采集性能数据：`msprof --application="python3 train.py" --output=<dir>` 拉起业务并自动采集+解析导出，产物为 PROF_<时间戳>/（含
+    host/、device_<id>/ 原始数据、msprof_<ts>.db、mindstudio_profil…
+  applies_to:
+    platforms:
+    - cross
+- id: msprof-comm-bottleneck-thresholds
+  type: methodology
+  title: 通信瓶颈判定阈值（Wait Time Ratio / 传输前同步比例 / 带宽使用率）
+  summary: msprof 官方的通信瓶颈判定口径：①一个迭代内是否存在「等待时长比例（Wait Time Ratio）> 0.2」的卡——有则通信瓶颈；②找 WTR 最大的卡看「传输前同步时长比例
+    > 0.2」——大于则存在慢卡（查慢卡前反向计算时间与数据预处理），否则链路异常；③通信矩阵：带宽使用率 > 0.8 说明链路正常、通…
   applies_to:
     platforms:
     - cross
