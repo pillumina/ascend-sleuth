@@ -22,11 +22,18 @@ types:
     schema_required: [patterns]
     schema_optional: [title, summary]
 
+  # tool 的组织单元 = 一个「诊断用途面」——不是「一个可执行文件」，也不是「一个子命令」
+  # （ADR-0008 §1.9）。判据三问，全部为「是」才合，任一为「否」就拆：
+  #   ① 同源？同一份官方文档章节 + 同一版本 pin + 同一次 last_verified
+  #   ② 同诊断？一次诊断会同时需要它们（同 category、同阶段）
+  #   ③ 同输出语义？共享输出结构与判定口径
+  # 同一用途面的子命令 / 子工具 → 嵌套进 content.commands（追加不新建）。
+  # 检索键（工具名 / 子命令名）前置到 title / summary 开头——summary 层会截断。
   tool:
     kind: fact
-    description: 工具 / 命令的使用方法与输出解读（如 npu-smi info 字段含义）
+    description: 工具 / 命令的使用方法与输出解读（如 npu-smi info 字段含义）；组织单元=诊断用途面——一个用途面一个文件，同用途面的子命令/子工具嵌套在 content.commands（如 ascend-stack-view 收 py-spy+gdb、ascend-log-levels 收环境变量+msnpureport+slog.conf）
     schema_required: [tool_name, invocation]
-    schema_optional: [output_meaning, pitfalls]
+    schema_optional: [output_meaning, pitfalls, commands]
 
   platform-fact:
     kind: fact

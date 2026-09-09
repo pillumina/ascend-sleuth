@@ -1,7 +1,7 @@
 # GENERATED FILE —— 背景类 summary 索引（diagnose 2.5 ② 读取），不要手改。
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
-# 生成日期：2026-09-07    词条数：48
+# 生成日期：2026-09-09    词条数：49
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -350,6 +350,14 @@ entries:
     缺失=上游删模块未同步后端）；算子重复注册（CANN 版本过旧 vs 多版本 mindspeed）；…
   applies_to:
     platforms: []
+- id: msprobe-overflow-check
+  type: tool
+  title: msprobe overflow_check——整网首个 NaN/Inf 节点定位（多卡）
+  summary: msprobe overflow_check：对 PyTorch dump 数据定位多卡场景下每张卡首个产生 inf/nan 的节点（经通信传播的可回溯到首个异常 rank）；输出
+    anomaly_analyze_{ts}.json 或打印无异常；判定口径是「输入正常而输出异常」才算溢出起点，输入已异常者是传播受害者
+  applies_to:
+    platforms:
+    - cross
 - id: verl-official-image-no-hdk
   type: software-fact
   title: verl 官方昇腾 Docker 镜像不含 HDK

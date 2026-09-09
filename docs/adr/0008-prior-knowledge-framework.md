@@ -17,6 +17,7 @@ Adopted（2026-08-27 合入后随使用修订，见下"修订记录"）
 | 3 | 2026-08-28 | 修订机制校准（基于"沉淀的 reference 有误如何更新"的 review）：补全 reference 生命周期缺失的一环——**内容修订**。新增 §1.7：发现（观测性 resolve 率低 / groom 信号 / maintainer 复查）→ 降级（pending-review/draft）→ 修订（维护者直接改 YAML + PR，或 `to-reference --update` agent 辅助）→ 验证（CI + review）→ 回 active。**修订 active 内容 = 修改已生效知识 → kb/high-risk 双签**（对齐 case 层 knowledge_modification 逻辑）；修订中 status 保持降级态，diagnose 只读 active 天然隔离修订中的词条 |
 | 4 | 2026-08-29 | 源码知识边界校准（基于"开源仓库源码是否应沉淀进 reference"的 review）：新增 §1.8——**源码是证据源，不是独立输入通道**（不新增 source type；源码知识经三条现有通道进入，源码作为证据升级器）；按"版本稳定性 × 事故独立性 × 验证成本"把源码知识拆成四形态（稳定结构事实 / 易腐行为事实 / 事故绑定知识 / 诊断方法论），各自落点不同；稳定结构事实（仓库架构/文件布局/框架自定义 env var/版本兼容矩阵）是唯一值得主动沉淀的形态，定位为**导航辅助**（不参与路由、不解决冷启动——冷启动是 case 问题，issue-ingest 已部分覆盖）；源码提炼的验证故事是"版本 pin + verification 词表"而非 grill；结构事实从真实使用进入（diagnose 源码分析步骤顺手沉淀，演进由数据触发） |
 | 5 | 2026-08-31 | 激活机制简化（基于"PR 合入即生效、不再二次翻牌"的 review）：**to-reference 产出即 `status: active`**，PR review 即审核闸门——approve + 合入即进入诊断上下文，无 draft 中间态（未合入的 PR 分支不 main，天然隔离未审内容，隔离语义从 draft 状态迁移到合入动作）；深审门槛（case-derived methodology ≥3 条 case 引用）前置到产出时，由 PR CI 强制把关（产出时不达标直接红，不以 active 合入未达门槛词条）；遗留 draft（修订 5 前产出）由 groom R1 按需清理；修订 active 内容仍为 kb/high-risk 双签（§1.7 不变） |
+| 6 | 2026-09-09 | tool 层组织规则（基于 msprobe 工具链文档选摘的 review）：新增 §1.9——**tool 的组织单元 = 一个「诊断用途面」**（不是「一个可执行文件」、不是「一个子命令」），是 §1.5「组织单元 = 验证单元」在 tool 层的实例化；判据三问（同源 / 同诊断 / 同输出语义），同用途面子命令嵌套 `content.commands`（追加不新建）；检索键必须前置到 `title`/`summary` 开头（summary 层会截断）；split/merge 由 groom 信号表驱动、只建议不自动（原则十一）；**不引入 `aliases`**（零消费方的死元数据）、**暂不给 `verify_references.py` 加 `commands` 形态校验**（未满足 CI 准入的"复发 ≥2 次"） |
 
 ## Deciders
 
@@ -167,6 +168,39 @@ reference 内容有误/过时/不完整时的更新路径——补全生命周�
 3. **结构事实从真实使用进入，演进由数据触发（原则十一）**——diagnose 源码分析步骤（SKILL 5.7）在定位到稳定结构事实时**顺手**走 to-reference，而不是预先纯挖掘：结构事实在 ≥3 次诊断中被反复 grep 到，才是它进 reference 的数据闸门。反模式：为"提前备好"对三个仓库做一轮全量源码梳理——产出大量永不触发的词条，groom 的 `last_verified` 退化信号变成每周报警。
 
 **填充优先级**（对齐 §Consequences 2 的价值密度排序）：版本兼容矩阵按**传导链分层**（§1.8 的 compat-matrix 形态）——base（昇腾底座 CANN↔HDK/驱动，来源昇腾官方兼容页）/ adapter（torch-npu↔CANN+torch，来源 Ascend/pytorch 官方 COMPATIBILITY.en.md，官方本就维护此表）/ framework（vllm-ascend、verl 等上层框架↔torch-npu+torch，来源各仓库 pyproject.toml）；每层独立验证、独立腐化节奏、层间 related_references 互链，**上层不重复声明底层内容**（vllm-ascend 的 CANN 兼容由 adapter 层传导）。试点从 adapter（torch-npu-cann）+ framework（vllm-ascend-torch-npu）两层开始，均为 draft。
+
+### 1.9 tool 层组织规则：组织单元 = 诊断用途面（修订 6 引入）
+
+tool 层面临的具体问题：一个产品有几十个子命令（如 msprobe 的 dump / compare / acc_check / overflow_check / monitor / config_check …），按「一个子命令一个词条」会平铺出几十个文件，按「一个产品一个词条」又会得到一个读不完的巨型条目。**两个极端都错，因为判据用错了维度**。
+
+**第一性原理（§1.5 的实例化）**：组织单元 = 验证单元。对 tool 而言，验证单元不是「一个可执行文件」（验证的是用法与输出语义，不是二进制），也不是「一个子命令」（子命令常共享来源与输出结构），而是**一个「诊断用途面」**——一次诊断会一起用到、一起验证、一起过时的那组工具能力。
+
+**已有条目的实证**（规则来自现状，不是发明）：`ascend-stack-view` 收 py-spy + gdb（两个工具，一个用途）；`ascend-log-levels` 收环境变量 + msnpureport + slog.conf（三套机制，一个用途）；`ascend-asys` 收一个工具的 9 个子命令。
+
+**判据三问**（全部为「是」才合，任一为「否」就拆）：
+
+| 问 | 合的条件 | 拆的信号 |
+|---|---|---|
+| ① 同源？ | 同一份官方文档章节 + 同一版本 pin + 同一次 `last_verified` | 分属不同文档章节或不同版本节奏 |
+| ② 同诊断？ | 一次诊断会同时需要它们（同 category、同阶段） | 被不同 category 的诊断使用，且不会同次加载 |
+| ③ 同输出语义？ | 共享输出结构与判定口径 | 各自有独立的输出字段集与阈值/判定规则 |
+
+**形态约定**：同一用途面的子命令 / 子工具 → 嵌套进 `content.commands`（追加不新建，对齐 §1.6）；跨用途面的检索键（工具名 / 子命令名）**前置到 `title` / `summary` 开头**——`tool` 走 summary 层（`_summary-index.yaml`），而该层会截断摘要，键写在后面等于检索不到。
+
+**自演化机制**（原则十一：判据 + 信号来源由结构承载，阈值是初始参数、由实测替换）：
+
+| 信号 | 可机械查 | 动作 |
+|---|---|---|
+| 单文件全文读入 > 8K token（初始阈值，字节数/3.4） | ✅ | split 建议 |
+| `content.commands` key > 8 | ✅ | split 建议 |
+| 同文件内条目 `last_verified` 分化 > 90 天 | ✅ | split 建议 |
+| 两条 tool 在 ≥5 个 trace 里同 session 共现 `reference_lookup` 且 `sources[].url` 同源 | ⚠️ trace 分析 | merge 建议 |
+| 新工具面与现有条目同用途面 | ❌ 语义 | 追加到 `content.commands`，不新建 |
+| 条目 90 天零 hit 且 `last_verified` 过期 | ✅ `trace_metrics.py` | 降级（既有信号表） |
+
+全部为**建议**，人确认后执行（原则五：建议与决定分离）。
+
+**明确不做**：① **不引入 `aliases`**——全库零消费方（tool 走 summary 层不走 grep），加了就是死元数据（原则九）；② **暂不给 `verify_references.py` 加 `commands` 形态校验**——虽可机械校验且有确定性后果，但形态尚未漂移过，未满足 CI 准入的「复发 ≥2 次」（CLAUDE.md check-admission criterion），等真漂移两次再进 CI；③ **不给已有 `ascend-*` 条目重命名**——id 稳定优先于命名整齐。
 
 ### 2. reference 仓库结构（修订 1 更新）
 

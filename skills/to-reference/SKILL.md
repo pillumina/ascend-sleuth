@@ -104,6 +104,8 @@ description: >
 
 **error-code 表形态（组织单元 = 验证单元）**：错误码天然成族（CANN Runtime 507xxx / HCCL / aicpu / Driver），同族同源同验证——**一个族一个文件**（如 `references/errors/cann-runtime.yaml` 承载 507903/507018/507057...），表级共享 sources/status/applies_to，不逐码建文件。case 提炼的条目逐条验证 → 条目带可选 `source_cases`。检索时 agent 按族定位文件，表内 grep code 一次命中。**数据集类的 `applies_to` 平台/版本应从来源的结构化字段映射（如官方文档的 models/support 字段），不靠 agent 猜测**——来源没声明的平台不写。
 
+**tool 组织单元 = 一个「诊断用途面」**（不是「一个可执行文件」，也不是「一个子命令」）——先查 `references/tools/` 是否已有同用途面条目，有则**追加到该条目的 `content.commands`，不新建文件**。判据三问，全部为「是」才合、任一为「否」就拆：①**同源**（同一官方文档章节 + 同一版本 pin + 同一次 `last_verified`）；②**同诊断**（一次诊断会同时需要它们——同 category、同阶段）；③**同输出语义**（共享输出结构与判定口径）。反例：一个产品有 20 个子命令 ≠ 20 个词条——按用途面归并（如 msprobe 的 dump+config 合为一条采集面，overflow_check 因有独立判定规则单列）。**检索键前置**：工具名 / 子命令名必须出现在 `title` / `summary` 开头——`tool` 走 summary 层（`_summary-index.yaml`）且该层会截断，键写在后面等于检索不到。
+
 拿不准 type → 按最贴近的登记 type 落草稿，并在草稿里标注 `type_uncertain: true` 交 maintainer 定夺。**不要自行发明未登记 type**（CI 会红；登记是 maintainer 的动作，见 `_types.yaml`）。
 
 ### 3. Grill 阶段（关键——确保产物符合用户意图）
