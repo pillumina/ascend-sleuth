@@ -8,7 +8,7 @@ cases:
     title: "8 卡 910B4 跑 Qwen3-8B 预训练环境校验通过但启动报 GMMOpBuilder 重复注册操作符：很可能安装多个 mindspeed 版本致算子重复编译注册，清理多版本修复"
 
     category: interrupt
-    tags: [operator-registration, multi-version, install, environment, startup-fail, qwen3]
+    tags: [operator-registration, multi-version, install, environment, startup-failure, qwen3]
 
     platforms: ["A2-910B"]            # 910B4
     compat:

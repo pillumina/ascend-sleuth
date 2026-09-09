@@ -42,7 +42,7 @@ namespaces:
       - 310P 上 MoE 模型（Qwen3.6-35B-A3B-w8a8）长请求（~2700 token 等 >1024 路由 token 场景）输出劣化：要求只输出 JSON/答案却输出大段中英混杂逐步分析、thinking
         失控（'过度思考…
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-10892.yaml
-      hash: a7502b17335b
+      hash: 59443ce84108
     - id: VLLM-ASC-11127
       title: 'GLM-5.1（w8a8）MTP + PD 分离 decode 多 DP：压测 1-2h 后投机接受率退化 <1% 不恢复、手工 curl 输出精度错误——drafter 输入判断
         input_fits_in_drafter 处理不当（PR #10117 移除）'
@@ -51,7 +51,7 @@ namespaces:
       - mtp
       - spec-decode
       - glm5
-      - pd-disagg
+      - pd-separation
       - multi-dp
       compat: vllm-ascend >=0.20,<0.21
       confidence:
@@ -59,7 +59,7 @@ namespaces:
       symptoms:
       - GLM-5.1（w8a8）MTP/spec-decode 开启，PD 分离 decode 节点多 DP 压测 1-2 小时后接受率不足 1% 且无法恢复
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11127.yaml
-      hash: 35a6d6064c54
+      hash: 9d4f9b0e7043
     - id: VLLM-ASC-11169
       title: A2 双机拉起 GLM-5.2 w8a8（DP=2 双节点 + UCMConnector external kv connector）发送中文请求返回乱码；root cause
         未确认，workaround：VLLM_ASCEND_ENABLE_FLASHCOMM1=1 或关闭 external kv connecto…
@@ -187,8 +187,7 @@ namespaces:
       - deepseek-v4
       - routed-expert
       - swiglu
-      - fusedmoe
-      - precision
+      - fused-moe
       - logit-drift
       compat: vllm-ascend <0.25.1
       confidence:
@@ -196,7 +195,7 @@ namespaces:
       symptoms:
       - 'DeepSeek V4 部署后输出异常中文/特殊 token（关联 #13615），BF16 与量化 checkpoint 均受影响'
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-14363.yaml
-      hash: '241081616295'
+      hash: 2dfa63656d4d
     - id: VLLM-ASC-5725
       title: 'Qwen3-Embedding-0.6B 同串第二次请求向量与首次不一致（Cosine ~0.585，命中缓存后稳定但错）：pooling 模型 attention 路由无条件走
         npu_fusion_attention（不支持 prefix caching）→ 缓存命中路径静默错输出；升级 ≥v0.18.0（PR #…'
@@ -206,8 +205,8 @@ namespaces:
       - pooling
       - prefix-cache
       - silent-wrong-output
-      - precision
       - attention-router
+      - qwen3-embedding
       compat: vllm-ascend <=0.17.0
       confidence:
         score: null
@@ -215,7 +214,7 @@ namespaces:
       - embedding 服务（Qwen3-Embedding-0.6B，--convert embed）同一字符串首次与二次请求返回向量不一致：Cosine ~0.585；首算与原生 vLLM
         ~0.9997（对），二次起命中 prefix c…
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-5725.yaml
-      hash: 6ae48f811c92
+      hash: bcb606e4411d
     - id: VLLM-ASC-7854
       title: Qwen3.5-397B-A17B-w8a8 混部部署（TP4×DP4 + EP + qwen3_5_mtp + FULL_DECODE_ONLY + quantization
         ascend）高并发多模态压测返回乱码/精度掉点（OCRbench 87.9 vs 95.6），TP16DP1 正常——w8a8 fused-…
@@ -264,7 +263,6 @@ namespaces:
       - repetition
       - model-capability
       - enable_thinking
-      - precision
       compat: vllm-ascend <=0.18.0rc1
       confidence:
         score: 0.4
@@ -272,7 +270,7 @@ namespaces:
       - Qwen3.5-27B/35B-A3B/397B-A17B-W4A8（enable_thinking=true，MTP/async-scheduling 可开）请求概率性输出无限自我重复：thinking
         段同一句/思路重复直到 max_c…
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-8798.yaml
-      hash: fa27e8666424
+      hash: 5d1a354db1ab
     - id: VLLM-ASC-8844
       title: GLM 5/5.1 w8a8 四节点 PD 分离（P/D 各 TP16 DP2，vllm-ascend 0.18.0）GPQA-diamond 精度不达标（实测 67.8）：长输出
         + 高并发 + D 节点显存持续饱和触发 recompute 重计算路径精度退化——关闭 recompute_scheduler（或避免显…
@@ -281,7 +279,7 @@ namespaces:
       - glm5
       - recompute
       - memory-saturation
-      - pd-disaggregation
+      - pd-separation
       - accuracy
       - gpqa
       compat: vllm-ascend ==0.18.0
@@ -291,12 +289,11 @@ namespaces:
       - GLM 5/5.1（GLM-new-w8a8，--quantization ascend）+ 四节点 PD 分离（P/D 侧 --data-parallel-size 2 --tensor-parallel-size
         16 --enable…
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-8844.yaml
-      hash: 1842dd289395
+      hash: 327b9ed54925
     - id: VLLM-ASC-ALLREDUCE-NUMERIC-DRIFT
       title: CANN 升级到 9.1.0 后 vLLM 推理回复乱码（回退 9.0.0 即恢复正常）：all_reduce 算子数值偏差，升级到已修复的 9.1.0 B037 解决
       category: precision
       tags:
-      - vllm-ascend
       - all-reduce
       - cann-upgrade
       - numeric-drift
@@ -308,49 +305,48 @@ namespaces:
       symptoms:
       - CANN 从 9.0.0 升级到 9.1.0 后，vLLM 推理请求回复乱码（正常场景回复正常文本，异常场景回复乱码数据）
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-ALLREDUCE-NUMERIC-DRIFT.yaml
-      hash: a787e64972ad
+      hash: 6977d5fd3879
     - id: VLLM-ASC-GPQA-OPERATOR-CLAMP
       title: DeepSeek-V4 Pro 在 Atlas 800I A3 上 GPQA 评分明显偏低（同模型其他环境正常）：三个独立根因叠加——rope 转 float32、Dequantswigluquant/GMMswigluquant
         的 clamp 缺陷（主因）、moe_gating_top_k_hash 内部与后续重复…
       category: precision
       tags:
-      - vllm-ascend
       - gpqa
       - scoring-gap
       - clamp
       - rope
       - renorm
+      - moe-gating
       compat: vllm-ascend *
       confidence:
         score: 0.7
       symptoms:
       - DeepSeek-V4 Pro 在 Atlas 800I A3 环境下 GPQA 数据集评分明显偏低；同模型其他环境、以及 DeepSeek-V4 Flash 在同环境下评分均正常
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-GPQA-OPERATOR-CLAMP.yaml
-      hash: df4ea01a626b
+      hash: 29c154d87058
     - id: VLLM-ASC-KVMIRROR-MISSING
       title: VL 模型从 H20+transformers 迁移到昇腾 vLLM 后，从第 7 个 token 起输出与 GPU 对不上并出现乱码：Attention 的 KVMirrorManagerHook
         / KVMirrorManager 未随模型移植，28 层以后 key_states/value_states 取到异常…
       category: precision
       tags:
-      - vllm-ascend
       - vl-model
       - migration
       - kv-mirror
       - attention
       - garbled-output
+      - module-porting
       compat: vllm-ascend *
       confidence:
         score: 0.7
       symptoms:
       - VL 模型从 H20 + transformers 迁到昇腾 + vLLM 后，第 7 个 token 开始 NPU 输出与 GPU 对不上，随后出现乱码
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-KVMIRROR-MISSING.yaml
-      hash: e5f095a6ab3a
+      hash: 0d1700f1e80d
     - id: VLLM-ASC-ROPE-CFG-MISMATCH
       title: tora 模型 + vllm-ascend 统一数据集推理，NPU 评分 54.4 明显低于 GPU 80.6：hf config.json 的 max_position_embedding（16384→8192）与
         rope_theta（1000000→10000）取值与模型训练配置不匹配
       category: precision
       tags:
-      - vllm-ascend
       - rope
       - config-mismatch
       - position-embedding
@@ -362,21 +358,21 @@ namespaces:
       symptoms:
       - tora 模型 + vllm（vllm-ascend）推理，统一数据集下游评分 NPU 54.4 明显差于 GPU 80.6
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-ROPE-CFG-MISMATCH.yaml
-      hash: d064c5b4a3ee
+      hash: 26faa41918ee
     - id: VLLM-ASC-XGRAMMAR-REPEAT
       title: 昇腾 vLLM 部署 Qwen2.5-7B-Instruct，某用例偶现持续输出换行、回复不终止：xgrammar 结构化输出的 JSON 约束解码认为字符串已闭合，与模型回复内容完整性冲突
       category: precision
       tags:
-      - vllm-ascend
       - structured-output
       - xgrammar
       - json
       - repetition
       - sampling
+      - qwen2.5
       compat: vllm-ascend *
       confidence:
         score: 0.7
       symptoms:
       - 昇腾 + vLLM 部署 Qwen2.5-7B-Instruct，某推理用例偶现持续输出换行符、回复不终止
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-XGRAMMAR-REPEAT.yaml
-      hash: ada00e13f899
+      hash: 1ce41de12ce0

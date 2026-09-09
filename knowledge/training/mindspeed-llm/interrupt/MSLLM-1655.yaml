@@ -8,7 +8,7 @@ cases:
     title: "gemma-2-9b 预训练启动报 RuntimeError: Cannot infer model type from architectures of Huggingface config.json '{arch_row}': CKPT_LOAD_DIR 传入 HF 权重触发权重在线加载（train_from_hf）功能，该功能未全面支持 gemma2，先转 HF→Megatron 权重再训练"
 
     category: interrupt
-    tags: [checkpoint-load, weight-online-load, train-from-hf, model-type-infer, startup-fail, gemma2]
+    tags: [checkpoint-load, weight-online-load, train-from-hf, model-type-infer, startup-failure, gemma2]
 
     platforms: ["A5-950"]
     compat:

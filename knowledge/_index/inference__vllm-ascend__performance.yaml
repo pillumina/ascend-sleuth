@@ -13,7 +13,7 @@ namespaces:
       - prefix-cache
       - hybrid-kv
       - compression
-      - dsv4
+      - deepseek-v4
       - block-size
       - hit-rate
       compat: vllm-ascend <=0.22.1rc1
@@ -23,7 +23,7 @@ namespaces:
       - DSV4-Flash（w8a8-mtp 等混合模型）本地 prefix cache 开启：cache_config_info enable_prefix_caching=True、prefix_cache_queries_total
         正常增…
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-10710.yaml
-      hash: 714b22b84936
+      hash: fecf7f0e069c
     - id: VLLM-ASC-10876
       title: DeepSeek-V4-Flash chunked prefill 偶发超长（forward_ms 4000+ms、TTFT P90 7.3s）：vllm_ascend/ops/triton/rms_norm.py
         的 TOTAL_BATCH 误标 tl.constexpr 致 batch shape 变化频繁重编译—…
@@ -42,7 +42,7 @@ namespaces:
       - serve DeepSeek-V4-Flash（TP8 chunked prefill + prefix cache + enable-dsa-cp/flashcomm1）：多轮长对话 prefill
         偶发超长——forward_ms 40…
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-10876.yaml
-      hash: 850874f544e5
+      hash: eb35eb2d2c1e
     - id: VLLM-ASC-10970
       title: 'DSV4-Flash PD 分离 P 节点加 VLLM_PREFIX_CACHE_RETENTION_INTERVAL 后 prefix cache 命中归 0：hybrid
         cache 管理器 use_eagle 未传播给 eagle 组 sibling manager（写读 block 差一）；修复=PR #111…'
@@ -50,7 +50,7 @@ namespaces:
       tags:
       - prefix-cache
       - pd-separation
-      - dsv4
+      - deepseek-v4
       - mtp
       - eagle
       - retention-interval
@@ -61,7 +61,7 @@ namespaces:
       - PD 分离 P 节点跑 DeepSeek-V4-Flash（MTP/EP），多并发 prefix hit rate 仅 ~10%；设 VLLM_PREFIX_CACHE_RETENTION_INTERVAL
         后两条相同请求也不命中（归 0）
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-10970.yaml
-      hash: 23fab158762f
+      hash: 3229ba554fc3
     - id: VLLM-ASC-12241
       title: v0.23.0 图模式（cudagraph）+ MTP 开启下 profiling 解析无 kernel_details.csv；CANN 9.0.0 与 NPU 图模式交互 bug，升级
         CANN 9.1.0 恢复

@@ -18,7 +18,7 @@ cases:
     title: "310P（v0.21.0rc1）上 Qwen3.6-35B-A3B-w8a8 长请求过度思考/不按要求输出：npu_moe_gating_top_k_softmax 单次 >1024 token 返回无效路由（_310p/fused_moe），升级含 PR #11391（0.23.0rc1+）修复"
 
     category: precision
-    tags: [310p, moe, gating, routing, qwen3.6, overthinking, precision, fusedmoe]
+    tags: [310p, moe, gating, routing, qwen3.6, overthinking, fused-moe]
     platforms: ["310P"]
     compat:
       - framework: vllm-ascend

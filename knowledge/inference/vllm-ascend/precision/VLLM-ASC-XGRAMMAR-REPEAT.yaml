@@ -8,7 +8,7 @@ cases:
     title: "昇腾 vLLM 部署 Qwen2.5-7B-Instruct，某用例偶现持续输出换行、回复不终止：xgrammar 结构化输出的 JSON 约束解码认为字符串已闭合，与模型回复内容完整性冲突"
 
     category: precision
-    tags: [vllm-ascend, structured-output, xgrammar, json, repetition, sampling, qwen2.5]
+    tags: [structured-output, xgrammar, json, repetition, sampling, qwen2.5]
 
     platforms: []
     compat:

@@ -8,7 +8,7 @@ cases:
     title: "VL 模型从 H20+transformers 迁移到昇腾 vLLM 后，从第 7 个 token 起输出与 GPU 对不上并出现乱码：Attention 的 KVMirrorManagerHook / KVMirrorManager 未随模型移植，28 层以后 key_states/value_states 取到异常小的值"
 
     category: precision
-    tags: [vllm-ascend, vl-model, migration, kv-mirror, attention, garbled-output, module-porting]
+    tags: [vl-model, migration, kv-mirror, attention, garbled-output, module-porting]
 
     platforms: []
     compat:

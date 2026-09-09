@@ -15,7 +15,7 @@ cases:
     title: "Qwen3-Embedding-0.6B 同串第二次请求向量与首次不一致（Cosine ~0.585，命中缓存后稳定但错）：pooling 模型 attention 路由无条件走 npu_fusion_attention（不支持 prefix caching）→ 缓存命中路径静默错输出；升级 ≥v0.18.0（PR #7452/#7894）或关 prefix cache 规避"
 
     category: precision
-    tags: [embedding, pooling, prefix-cache, silent-wrong-output, precision, attention-router, qwen3-embedding, apc]
+    tags: [embedding, pooling, prefix-cache, silent-wrong-output, attention-router, qwen3-embedding, apc]
     platforms: ["A2-910B"]            # 910B4 单卡 TP1（issue npu-smi 910B4）
 
     compat:

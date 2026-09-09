@@ -17,7 +17,7 @@ cases:
     title: "MRV2 FullGraph（FULL 全图捕获/回放）模式下开启 speculative decoding 请求 hang：main 与 draft 模型图的参数更新流（update_stream）未统一 → fullgraph 死锁，decode worker 采样步永不返回，EngineCore 经 multiproc executor 报 'TimeoutError: RPC call to sample_tokens timed out'，随后 executor shutdown 等待 worker exit（count=8）——PR #13600 Unify update_stream across main and draft 修复"
 
     category: interrupt
-    tags: [mrv2, fullgraph, speculative-decode, cudagraph, deadlock, hang, update-stream, stream-sync]
+    tags: [mrv2, fullgraph, spec-decode, cudagraph, deadlock, hang, update-stream, stream-sync]
 
     compat:
       - framework: vllm-ascend

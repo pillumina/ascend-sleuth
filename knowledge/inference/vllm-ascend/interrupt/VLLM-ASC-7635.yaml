@@ -15,7 +15,7 @@ cases:
     title: "Qwen3.5-397B-A17B-w8a8 开启 --enable-expert-parallel（A2 双机 16 卡 DP2×TP8，v0.17.0rc1）拉起崩：call aclnnMoeDistributeDispatchV4 failed, error code is 561002，moeExpertNum is 32, in case of unlayered, it must no more than 24——单卡专家数超 MC2 上限仍选 MC2，升级含 PR #7364 版本（自动切 AllGather）或关 EP 规避"
 
     category: interrupt
-    tags: [qwen3.5, moe, expert-parallel, a2, mc2, dispatch, startup-crash, comm-method-selection, allgather]
+    tags: [qwen3.5, moe, expert-parallel, a2, mc2, dispatch, startup-failure, comm-method-selection, allgather]
     platforms: ["A2-910B"]            # A2 双机 16 卡（DP2×TP8×EP，DP2TP8 多处复现）
 
     compat:

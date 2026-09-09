@@ -21,7 +21,7 @@ cases:
     title: "Qwen3.6-27B hybrid KV（多 cache group）+ layerwise connector + mooncake store PD disagg 长稳：D 侧批量 get 跨组 key 部分失败——group 1/2/3 key 全部 -704（mooncake_backend 'Failed to get 3 keys out of 6 … Check key existence and memory state'），同批 group 0 key 全命中；layerwise connector+mooncake store 按 cache group 命中集合取块缺陷（PR #11131）"
 
     category: interrupt
-    tags: [pd-disaggregation, layerwise-connector, hybrid-kv, mooncake, kv-pool, kv-transfer, get-key-error, stability]
+    tags: [pd-separation, layerwise-connector, hybrid-kv, mooncake, kv-pool, kv-transfer, get-key-error, stability]
 
     compat:
       - framework: vllm-ascend

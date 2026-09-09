@@ -16,7 +16,7 @@ cases:
     title: "Qwen3.5 系（27B/35B-A3B/397B-A17B）enable_thinking 下概率性 thinking 段无限重复输出——模型能力问题；规避：换 Qwen3.6 或关闭 enable_thinking（PR#8764/关 async-scheduling 已消融排除）"
 
     category: precision
-    tags: [qwen3.5, thinking, repetition, model-capability, enable_thinking, precision]
+    tags: [qwen3.5, thinking, repetition, model-capability, enable_thinking]
     platforms: ["A2-910B"]
     compat:
       - framework: vllm-ascend

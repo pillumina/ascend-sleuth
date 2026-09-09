@@ -13,7 +13,7 @@ namespaces:
       - environment
       - bitsandbytes
       - cuda-mixin
-      - startup-fail
+      - startup-failure
       - install
       compat: mindspeed-llm *
       confidence:
@@ -21,7 +21,7 @@ namespaces:
       symptoms:
       - 昇腾环境执行训练脚本 examples/mcore/qwen3/pretrain_qwen3_8b_4K_ptd.sh 启动即失败
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1459.yaml
-      hash: 07419a3511b3
+      hash: 6057d5fae0f5
     - id: MSLLM-1465
       title: 'Qwen3 预训练数据预处理报 FileNotFoundError: Couldn''t find any data file at /data/dataset/xxx.parquet：--input
         文件名写错，ls 核实后改真实路径或指向目录修复'
@@ -67,15 +67,15 @@ namespaces:
       - build-cache
       - cpp-compile
       - config-change
-      - startup-fail
-      - dsv4
+      - startup-failure
+      - deepseek-v4
       compat: mindspeed-llm *
       confidence:
         score: 0.6
       symptoms:
       - dsv4 整网训练将 step 从 2000 改为 20000（数据总量变化）后启动训练报错
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1526.yaml
-      hash: b39513bc1f8e
+      hash: 07266a591f03
     - id: MSLLM-1550
       title: 8 卡 910B4 跑 Qwen3-8B 预训练环境校验通过但启动报 GMMOpBuilder 重复注册操作符：很可能安装多个 mindspeed 版本致算子重复编译注册，清理多版本修复
       category: interrupt
@@ -84,7 +84,7 @@ namespaces:
       - multi-version
       - install
       - environment
-      - startup-fail
+      - startup-failure
       - qwen3
       compat: mindspeed-llm master; cann 8.5.0
       confidence:
@@ -93,7 +93,7 @@ namespaces:
       - 8 卡 910B4（openEuler，CANN 8.5.0，master 分支）运行 Qwen3-8B 预训练脚本，环境校验（torch_npu/torchair 导入、8 卡 NPU
         可用）均正常通过
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1550.yaml
-      hash: 7949f4309125
+      hash: ade92fc921e9
     - id: MSLLM-1554
       title: 'dsv4 训练拉起报 ImportError: cannot import name ''PipelineModelParallelLayoutFeature'' from ''mindspeed.features_manager''：mindspeed
         与 MindSpeed-LLM 版本不配套，对齐配套版本修复'
@@ -102,9 +102,9 @@ namespaces:
       - version-mismatch
       - import-error
       - features-manager
-      - startup-fail
+      - startup-failure
       - deepseek
-      - dsv4
+      - deepseek-v4
       compat: mindspeed-llm master; mindspeed 0.12.1
       confidence:
         score: 0.3
@@ -112,7 +112,7 @@ namespaces:
       - A3 节点按指导文档用 MindSpeed-LLM master + mindspeed 0.12.1 拉起 dsv4 训练（pretrain_deepseek4.py → import
         mindspeed_llm → megatron_a…
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1554.yaml
-      hash: 86962dcf4c75
+      hash: 7427cec06575
     - id: MSLLM-1555
       title: 'dsv4 训练拉起报 ImportError: cannot import name ''HcclOpModeSetFeature'' from ''mindspeed.features_manager''：镜像预装
         mindspeed 与手动重装未覆盖，卸载重装配套版本修复'
@@ -122,7 +122,7 @@ namespaces:
       - import-error
       - features-manager
       - install
-      - startup-fail
+      - startup-failure
       - deepseek
       compat: mindspeed-llm master; mindspeed *
       confidence:
@@ -131,7 +131,7 @@ namespaces:
       - A3 节点 Atlas A3 训练镜像上按 install_guide.md 手动安装 MindSpeed(Master)+MindSpeed-LLM+Megatron core_v0.12.1
         后，拉起 dsv4 训练（pretrain_…
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1555.yaml
-      hash: 1041be3ee2ad
+      hash: 906ca991f2cc
     - id: MSLLM-1655
       title: 'gemma-2-9b 预训练启动报 RuntimeError: Cannot infer model type from architectures of Huggingface
         config.json ''{arch_row}'': CKPT_LOAD_DIR 传入 HF 权重触发权重在线加载（train_from_hf…'
@@ -141,7 +141,7 @@ namespaces:
       - weight-online-load
       - train-from-hf
       - model-type-infer
-      - startup-fail
+      - startup-failure
       - gemma2
       compat: mindspeed-llm 26.1.0
       confidence:
@@ -150,7 +150,7 @@ namespaces:
       - '预训练 gemma-2-9b 时框架无法识别 architectures: Gemma2ForCausalLM，报 RuntimeError: Cannot infer model type
         from architectures of Hu…'
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1655.yaml
-      hash: bf99997b3bc8
+      hash: e2f7077d65c2
     - id: MSLLM-1667
       title: A2 上跑 fsdp2 gpt-oss-20b 训练在模型加载阶段报错：A2（910B）不支持 FP8 训练，gpt-oss-20b 默认权重为 FP8，改用 BF16 权重修复
       category: interrupt
@@ -159,7 +159,7 @@ namespaces:
       - precision-unsupported
       - weight-format
       - fsdp2
-      - startup-fail
+      - startup-failure
       - gpt-oss
       compat: mindspeed-llm 26.1.0; transformers 5.2.0
       confidence:
@@ -168,7 +168,7 @@ namespaces:
       - A2 上运行 fsdp2 训练减层版 gpt-oss-20b（mindspeed-llm 26.1.0 + transformers 5.2.0），在模型构建/加载阶段（ModelFactory.create
         → model_loader.…
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1667.yaml
-      hash: ead8cc1692df
+      hash: b156763cbbd5
     - id: MSLLM-1707
       title: 'deepseek-v4-flash LoRA 微调启动报 RuntimeError: Tried to register an operator (npu_moe_distribute_dispatch_v2)
         multiple times 或 ModuleNotFoundError: No module named …'
@@ -179,7 +179,7 @@ namespaces:
       - cann-version
       - version-mismatch
       - lora
-      - startup-fail
+      - startup-failure
       compat: mindspeed-llm 26.0.0; cann 9.0.0
       confidence:
         score: 0.6
@@ -187,7 +187,7 @@ namespaces:
       - Atlas 800I A3 + CANN 9.0.0 + MindSpeed-LLM 26.0.0 镜像内源码安装最新版，deepseek-v4-flash 做 LoRA 微调（posttrain_gpt.py
         launch）启动即失败
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1707.yaml
-      hash: 896e5d831ba7
+      hash: 9edb22936e2f
     - id: MSLLM-1805
       title: 'master 分支 --ai-framework mindspore 启动失败：ModuleNotFoundError: No module named ''mindspeed_llm.tasks.checkpoint.models''——上游
         commit f107818 删除 ckpt-v1 但 MindSpore 侧…'
@@ -197,7 +197,7 @@ namespaces:
       - code-drift
       - deleted-module
       - import-error
-      - startup-fail
+      - startup-failure
       - ckpt-v1
       compat: mindspeed-llm master@c77308a1
       confidence:
@@ -206,7 +206,7 @@ namespaces:
       - 'master 分支用 --ai-framework mindspore 启动（pretrain_gpt.py）稳定失败：ModuleNotFoundError: No module named
         ''mindspeed_llm.tasks.ch…'
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1805.yaml
-      hash: ed9449185eda
+      hash: 9c900d8e2d3e
     precision:
     - id: MSLLM-1437
       title: qwen3-14b-64k-lora 微调开启 uniform 重计算时 grad norm 恒为 0、loss 不收敛：LoRA 微调与 uniform 重计算组合仓库未支持/未验证，关闭重计算或改用官方脚本修复
@@ -279,4 +279,4 @@ namespaces:
       symptoms:
       - GradNorm 出现 NaN/Inf（256 卡 Qwen3-235B 长序列 SFT，序列长度 131072，TP4/PP4/EP16/CP16/VPP3）
       file: knowledge/training/mindspeed-llm/precision/MSLLM-FA-MASK-GRADNAN.yaml
-      hash: ae4167452f2c
+      hash: e68c03f8b425

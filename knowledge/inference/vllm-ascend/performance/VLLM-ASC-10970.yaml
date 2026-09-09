@@ -14,7 +14,7 @@ cases:
     title: "DSV4-Flash PD 分离 P 节点加 VLLM_PREFIX_CACHE_RETENTION_INTERVAL 后 prefix cache 命中归 0：hybrid cache 管理器 use_eagle 未传播给 eagle 组 sibling manager（写读 block 差一）；修复=PR #11107"
 
     category: performance
-    tags: [prefix-cache, pd-separation, dsv4, mtp, eagle, retention-interval, hybrid-kv, hit-rate]
+    tags: [prefix-cache, pd-separation, deepseek-v4, mtp, eagle, retention-interval, hybrid-kv, hit-rate]
 
     platforms: ["A2-910B"]
     compat:

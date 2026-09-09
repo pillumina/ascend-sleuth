@@ -8,7 +8,7 @@ cases:
     title: "Kimi2.5 RL 训练 log_prob 首 step 指数差异过大：训练侧 YarnRotaryEmbedding 的 original_max_position_embeddings=1024 与实际外层配置 4096 不一致，位置编码偏差致 MLA 输出不一致"
 
     category: precision
-    tags: [verl, rl, train-infer-consistency, log-prob, rope, yarn, mla, config-mismatch]
+    tags: [rl, train-infer-consistency, log-prob, rope, yarn, mla, config-mismatch]
 
     platforms: []
     compat:

@@ -10,7 +10,7 @@ cases:
     title: "qwen3.5 A2 双机启动失败——启动脚本与 vllm/vllm-ascend 同目录导致，改脚本路径解决"
 
     category: interrupt
-    tags: [qwen3.5, a2, startup, script-path]
+    tags: [qwen3.5, a2, startup-failure, script-path]
 
     platforms: ["A2-910B"]
 

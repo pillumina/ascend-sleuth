@@ -8,7 +8,7 @@ cases:
     title: "昇腾环境执行 MindSpeed-LLM 训练脚本启动报 /opt/conda/.../bitsandbytes/libbitsandbytes_cpu.so: cannot open shared object file：bitsandbytes 为 CUDA 依赖、NPU 环境不支持，清理环境/用昇腾原生镜像修复"
 
     category: interrupt
-    tags: [environment, bitsandbytes, cuda-mixin, startup-fail, install]
+    tags: [environment, bitsandbytes, cuda-mixin, startup-failure, install]
 
     platforms: []
     compat:

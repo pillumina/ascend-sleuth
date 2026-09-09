@@ -76,4 +76,4 @@ namespaces:
       symptoms:
       - GradNorm 出现 NaN/Inf（256 卡 Qwen3-235B 长序列 SFT，序列长度 131072，TP4/PP4/EP16/CP16/VPP3）
       file: knowledge/training/mindspeed-llm/precision/MSLLM-FA-MASK-GRADNAN.yaml
-      hash: ae4167452f2c
+      hash: e68c03f8b425

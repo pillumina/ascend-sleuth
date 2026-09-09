@@ -18,7 +18,7 @@ cases:
     title: "910C 双机 1P1D DSV4-Flash w8a8（decode TP1 DP16，16 个 api server）+ load_balance_proxy_server_example.py 长稳压测：数小时后部分 decode engine 不再收到请求（进程存活、日志无异常）——请求取消时 asyncio.CancelledError 不属 Exception，代理负载分数不释放，负载均衡停止向该 D 节点路由；PR #8836 修复"
 
     category: interrupt
-    tags: [pd-disaggregation, load-balance-proxy, request-cancellation, cancelled-error, proxy-score-leak, silent-degradation]
+    tags: [pd-separation, load-balance-proxy, request-cancellation, cancelled-error, proxy-score-leak, silent-degradation]
 
     platforms: ["A3-910C"]
     compat:

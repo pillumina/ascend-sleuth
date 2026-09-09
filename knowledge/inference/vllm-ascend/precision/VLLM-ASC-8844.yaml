@@ -18,7 +18,7 @@ cases:
     title: "GLM 5/5.1 w8a8 四节点 PD 分离（P/D 各 TP16 DP2，vllm-ascend 0.18.0）GPQA-diamond 精度不达标（实测 67.8）：长输出 + 高并发 + D 节点显存持续饱和触发 recompute 重计算路径精度退化——关闭 recompute_scheduler（或避免显存饱和）可恢复，无代码级根因/无合入 PR"
 
     category: precision
-    tags: [glm5, recompute, memory-saturation, pd-disaggregation, accuracy, gpqa]
+    tags: [glm5, recompute, memory-saturation, pd-separation, accuracy, gpqa]
 
     compat:
       - framework: vllm-ascend

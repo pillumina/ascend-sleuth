@@ -15,7 +15,7 @@ cases:
     title: "Qwen3-Next-80B-A3B-Instruct（大 MoE）TP8 在 vllm-ascend v0.11.0rc0 拉起 EngineCore 启动阶段报 RuntimeError: NPU out of memory（显存充足仍 OOM）——0.11.0rc0 适配期 ascend_config 内存配置缺陷，升级 ≥v0.11.0rc1 修复，TP8 下 --gpu-memory-utilization 0.5 可缓解"
 
     category: interrupt
-    tags: [qwen3-next, moe, startup-oom, oom, ascend-config, adaptation-bug, upgrade, tensor-parallel]
+    tags: [qwen3-next, moe, startup-oom, oom, ascend-config, adaptation-bug, version-upgrade, tensor-parallel]
     platforms: ["A2-910B"]            # 8 卡 TP8；单卡 29.5GiB（32GB 级 910B 型号，未精确到子型号）
 
     compat:

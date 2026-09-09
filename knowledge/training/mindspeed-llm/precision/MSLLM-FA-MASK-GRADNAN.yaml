@@ -8,7 +8,7 @@ cases:
     title: "256卡 Qwen3-235B 长序列 SFT GradNorm 出现 NaN/Inf：sparsemode=0 下 pre_tockens 默认值 65536 小于序列长度 131072，causal mask 由三角下全计算退化为 band、attention 只能看到有限数据，反向逐层放大"
 
     category: precision
-    tags: [gradnorm-nan, flash-attention, sparse-mode, causal-mask, long-sequence, dump-analysis, mindspeed-llm]
+    tags: [gradnorm-nan, flash-attention, sparse-mode, causal-mask, long-sequence, dump-analysis]
 
     platforms: []
     compat:

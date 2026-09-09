@@ -15,7 +15,7 @@ cases:
     title: "mooncake kv_both + GLM-5-w4a8 KV 传输失败：Transfer slice failed with status: 503900，HcclBatchPut ret=4 Can't find remoteBuffer by key（mooncake_backend Failed to put key res:[-800]）——漏设 HCCL_INTRA_ROCE_ENABLE=1，intra-node 通信未走 RoCE 与远端 buffer 注册不匹配"
 
     category: interrupt
-    tags: [mooncake, kv-pool, kv-both, ascend-direct, hixl, 503900, hccl, roce, env-var, pd-disagg]
+    tags: [mooncake, kv-pool, kv-both, ascend-direct, hixl, '503900', hccl, roce, env-var, pd-separation]
     platforms: ["A2-910B"]            # 910B3 ×8（单机同节点多实例 PD）
 
     compat:

@@ -10,7 +10,7 @@ cases:
     title: "1P2 + KV Pool 场景 P0/P1 服务极短时间内同时拉起时，P1 报 ZMQError: Address already in use（ZMQ 端口绑定无重试、端口抢占）——配置 kv_port 解决"
 
     category: interrupt
-    tags: [pd-disaggregation, kv-pool, zmq, port]
+    tags: [pd-separation, kv-pool, zmq, port]
 
     platforms: ["cross"]
 

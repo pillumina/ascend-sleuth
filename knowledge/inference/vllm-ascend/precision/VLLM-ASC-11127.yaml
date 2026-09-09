@@ -15,7 +15,7 @@ cases:
     title: "GLM-5.1（w8a8）MTP + PD 分离 decode 多 DP：压测 1-2h 后投机接受率退化 <1% 不恢复、手工 curl 输出精度错误——drafter 输入判断 input_fits_in_drafter 处理不当（PR #10117 移除）"
 
     category: precision
-    tags: [mtp, spec-decode, glm5, pd-disagg, multi-dp]
+    tags: [mtp, spec-decode, glm5, pd-separation, multi-dp]
 
     platforms: ["A3-910C"]
     compat:

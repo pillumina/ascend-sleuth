@@ -500,7 +500,8 @@ cases:
 
 #### 8.4 深审校验（methodology + case-derived）
 
-- source type 为 `case-derived` 且 type 为 `methodology`：校验脚本从全库 case 的 `ref_knowledge` 派生计算本词条被引用数，**< 3 时不允许 `status: active`**（引用数不存储于 reference 本体）；
+- source type 为 `case-derived` 且 type 为 `methodology`：**提炼来源 case 数 < 3 时不允许 `status: active`**——计数 = `sources[].cases` 长度（提炼来源，即"本词条由几条 case 印证"）；
+  > **勘误（2026-09-09）**：本条原文写的是「从全库 case 的 `ref_knowledge` 派生计算被引用数」。该口径与实现不符且会使门槛失效——`ref_knowledge` 是「case 主动引用 reference」的正向关系，全库此前 0 条 case 填过该字段，用它计数会让所有 case-derived methodology 恒为 0、永远不达标。实现（`scripts/verify_references.py`）自 2026-08 转正时起即按 `sources[].cases` 长度计数，此处同步修正；`ref_knowledge` 计数只用于"哪些 case 引用了本词条"的派生视图（§7），不作 active 门槛。
 - `verified_by_testing` 字段缺失时降 confidence（不强制 active 阻断）。
 
 集成进 `.github/workflows/kb-checks.yml`——与 `build_index.py --check` 同一 CI 流程。

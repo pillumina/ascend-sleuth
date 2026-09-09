@@ -8,7 +8,7 @@ cases:
     title: "dsv4 训练拉起报 ImportError: cannot import name 'HcclOpModeSetFeature' from 'mindspeed.features_manager'：镜像预装 mindspeed 与手动重装未覆盖，卸载重装配套版本修复"
 
     category: interrupt
-    tags: [version-mismatch, import-error, features-manager, install, startup-fail, deepseek, dsv4]
+    tags: [version-mismatch, import-error, features-manager, install, startup-failure, deepseek, deepseek-v4]
 
     platforms: ["A3-910C"]
     compat:

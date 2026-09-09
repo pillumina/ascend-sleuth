@@ -15,7 +15,7 @@ cases:
     title: "DSV4-Flash decode 服务（FULL_DECODE_ONLY cudagraph + DSA 压缩 KV）启动即崩：profile_cudagraph_memory 阶段 aclnnScatterNdUpdateV2 aicore exception 507015（MTE DDR 越界/SMMU fault）——#9865 pre-KV ACL graph 显存预估在 KV 分配前临时 capture 撞 DSA 压缩路径；PR #10369 跳过该场景 pre-KV profiling"
 
     category: interrupt
-    tags: [deepseek-v4, cudagraph, full-decode-only, acl-graph, startup-crash, aicore-exception, 507015, scatternd, memory-profiling]
+    tags: [deepseek-v4, cudagraph, full-decode-only, acl-graph, startup-failure, aicore-exception, '507015', scatternd, memory-profiling]
 
     # 平台：Ascend910（ascend910_9392）×16 单机 decode；vllm 0.21.0 + vllm-ascend main 0a79510a0
     # 版本边界以 commit/PR 计：#9865（commit 9099b7f，pre-KV profiling）引入触发，#10369（merged 2026-06-12）修复；

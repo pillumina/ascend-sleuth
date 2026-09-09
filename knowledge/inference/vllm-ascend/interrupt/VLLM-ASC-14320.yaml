@@ -10,7 +10,7 @@ cases:
     title: "DCP replicated block_table 越界：v0.26 PCP 移除(#12592)改 total_cp_size 后 block id 超单 rank k_cache 容量，LightningIndexerQuant MTE 越界崩溃"
 
     category: interrupt
-    tags: [dcp, block-table, k-cache-capacity, lightning-indexer, mte, aicore-exception, glm5, pd-disaggregation]
+    tags: [dcp, block-table, k-cache-capacity, lightning-indexer, mte, aicore-exception, glm5, pd-separation]
 
     platforms: ["A3-910C"]             # 线程 Hardware 列：Ascend 910A3 (HPU910a3)
     compat:

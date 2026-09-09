@@ -9,7 +9,7 @@ cases:
     title: "deepseek-v4-flash LoRA 微调启动报 RuntimeError: Tried to register an operator (npu_moe_distribute_dispatch_v2) multiple times 或 ModuleNotFoundError: No module named 'cann_ops_transformer'：CANN 9.0.0 过旧，升级 9.1.0B120 及以上修复"
 
     category: interrupt
-    tags: [moe, operator-registration, cann-version, version-mismatch, lora, startup-fail, module-not-found]
+    tags: [moe, operator-registration, cann-version, version-mismatch, lora, startup-failure, module-not-found]
 
     platforms: ["A3-910C"]            # Atlas 800I A3
     compat:
