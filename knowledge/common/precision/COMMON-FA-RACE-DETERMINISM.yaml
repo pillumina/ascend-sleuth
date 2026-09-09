@@ -1,0 +1,72 @@
+# COMMON-FA-RACE-DETERMINISM —— 80 卡大模型训练结果确定性无法固定：CANN 8.1.0 RC1 的 Flash Attention 算子内部数据搬迁缺同步（数据竞争）
+# 来源：msprobe 官方 best_practices《基于昇腾的80卡大模型训练确定性排查》（MindStudio 26.2.0.B050_003）
+# pre-triage: new_pattern —— 全库无「算子内部数据竞争」形态（COMMON-SEED-RESET-DETERMINISM 是业务代码重置开关，机制不同）
+# 转正：knowledge-groom 2026-09-09（precision；upstream-official-doc × high → 初始 score 0.7）
+
+cases:
+  - id: COMMON-FA-RACE-DETERMINISM
+    title: "80 卡大规模训练结果确定性无法固定：CANN 8.1.0 RC1 的 Flash Attention 算子内部数据搬迁前后缺少同步机制（数据竞争），8.0.0 RC4 无此问题"
+
+    category: precision
+    tags: [determinism, race-condition, flash-attention, cann-upgrade, mssanitizer, multi-card]
+
+    platforms: []
+    compat:
+      - framework: cross
+        ranges: ["*"]
+        cann: ["8.1.0.RC1"]     # 8.0.0.RC4 无此问题；修复包在算子内部搬迁前后加同步
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "80 卡大规模训练任务结果确定性无法固定（重复运行 Loss 曲线不一致）"
+      - "全量 dump 会导致问题不复现（采集行为影响执行时序）"
+      - "降低采集粒度（如 L1）或缩小模型规模后问题可复现"
+
+    references:
+      - "msprobe docs/zh/best_practices/ascend_80_card_large_model_training_determinism_troubleshooting.md（MindStudio 26.2.0.B050_003）"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprobe 官方 best_practices 案例（上游发布，含定位链与验证结论）"
+
+    quickly_check:
+      primary:
+        command_template: "cat /usr/local/Ascend/ascend-toolkit/latest/version.cfg 2>/dev/null | grep -i version"
+        rank_selector: coordinator
+        expected: "regex:8\\.1\\.0"
+      fallback:
+        command_template: "grep -icE 'determinis|确定性|loss.*不一致' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "是否已固定随机性并打开确定性，仍无法固定？"
+        expected: "是——排除随机种子与确定性开关问题（对比 COMMON-SEED-RESET-DETERMINISM）"
+      - step: 2
+        check: "全量 dump 是否让问题消失？降低采集粒度（L1）或缩小规模后是否复现？"
+        expected: "全量 dump 不复现、降粒度/缩规模可复现 → 采集行为影响执行时序，指向并发竞争"
+        note: "这一条是区分「竞争类」与「数值类」的关键观察"
+      - step: 3
+        check: "用 ASCEND_LAUNCH_BLOCKING=1 强制算子串行下发，问题是否消失？单算子 + mssanitizer 是否报竞争？"
+        expected: "串行下发后消失 → 算子间/算子内并发竞争；mssanitizer 可定位内存竞争"
+
+    severity: service-affecting
+    fix_side_effects: [requires-operator-package]
+    fix_type: code-patch
+
+    root_cause: >
+      CANN 8.1.0 RC1 的 Flash Attention 算子内部在数据搬迁操作前后未添加必要的同步机制。
+      多卡并行/高并发场景下，这种缺乏同步的操作导致数据读写时序不确定，产生非确定性计算结果；
+      8.0.0 RC4 无此问题。
+
+    fix: >
+      获取修复包（核心修改：算子内部数据搬迁操作前后增加同步机制）；
+      验证后连续多次训练 Loss 曲线完全一致。
+    rollback: "回退到未修复算子包（确定性再次失效）"

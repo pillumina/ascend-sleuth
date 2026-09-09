@@ -7,11 +7,12 @@
 # <detected_framework>：工程师提供的框架（/diagnose 从客户提供的信息/报错判断，不跑 pip list）。
 # 分支数 ≤ 30。框架检测失败时只用 common/。
 #
-# ⚠️ common/ 当前实际状态：仅 .gitkeep，无任何 case 文件（跨框架权威记录待 groom 从多
-# namespace 同根因 case 中提炼，触发条件见 skills/knowledge-groom/SKILL.md）。
-# 因此 search_namespaces 中的 common/ 这一项目前等价于"no-op + 走 Tier 3 fallback"；
-# README + ADR-0005 的"common/ 必拉"措辞指的是**设计承诺**，**不是当前可消费的资产**。
-# agent 在路由到 common/ 后应当直接进入 Tier 3，不要假装该 namespace 有内容可检索。
+# ✅ common/ 实际状态（2026-09-09 groom 转正后）：已有 **6 条跨框架/框架未登记**的共性
+# case（knowledge/common/precision/）——框架无关根因：业务代码重置确定性开关、加载权重数值
+# 异常、embedding 反向空输入、FSDP offload 流同步、CANN 算子数据竞争、TP 组内种子未同步。
+# search_namespaces 中的 common/ 一项**已生效**（框架检测失败或首个 namespace 未命中时查它）。
+# README + ADR-0005 的"common/ 必拉"从设计承诺变为可消费资产；新共性 case 仍从
+# 多 namespace 同根因 case 中提炼（触发条件见 skills/knowledge-groom/SKILL.md）。
 
 branches:
   - id: training_interrupt
@@ -44,6 +45,8 @@ branches:
       - ['\bdiverg', "not converg"]        # 收敛问题走 precision.convergence 子类型
       - ["乱码", "garbled", "weight.*mismatch", "权重.*错位"]   # 权重错位/输出乱码（MSLLM-1532 mg2hf GQA 拆分 / MSLLM-1437 grad norm 0）
       - ["日志.*异常", "统计失真", "被错误除以", "除以.*global_step", "日志失真"]   # 日志统计/数值呈现异常（MSLLM-1780 FSDP2 续训首步 lm loss 被除 global_step）
+      - ["重复训练.*(不一致|差异)", "确定性.*(不一致|失效|无法固定)", "grad_norm.*(偏大|异常)"]   # 重复训练/确定性类（COMMON-SEED-RESET-DETERMINISM 业务装饰器重置确定性开关 / COMMON-RMSNORM-WEIGHT-SCALE 加载权重数值放大 / COMMON-FA-RACE-DETERMINISM 算子数据竞争）
+      - ["log_?prob.*(差异|不一致)", "训推.*(不一致|差异|对齐)", "reward.*(下降|崩溃)"]   # 训推一致性类（VERL-LOGPROB-CONFIG-MISMATCH）
     search_namespaces:
       - training/<detected_framework>/
       - common/
@@ -83,12 +86,13 @@ branches:
     category: precision
     symptoms:
       - ["garbled", "乱码", "output.*wrong", "输出错误", "输出异常"]
-      - ["字符重复", "character.*repeat", "重复输出"]
+      - ["字符重复", "character.*repeat", "重复输出", "回复不终止", "输出不终止", "持续输出.*换行"]   # 重复/不终止类（VLLM-ASC-XGRAMMAR-REPEAT 结构化输出约束与内容冲突）
       - ["speculative.*wrong", "投机.*错误", "投机.*输出"]      # 投机输出内容错误（精度）。注意：接受率下降是"双面"——无输出内容错误=性能（走 inference_performance）；伴随输出错误/乱码=精度面（inference_precision 族 11127/12723 等）。命中 performance 接受率族不符时交叉查 precision 族
       - ["overthinking", "过度思考", "reasoning.*过长"]        # 输出冗余（精度/输出形态异常）
       - ["输出.*为空", "empty.*output", "result.*empty", "输出为空", "结果为空"]
       - ["batch.*invariant", "deterministic", "非确定"]
       - ['\bNAN\b', '\bNaN\b', "loss.*nan", '\binf\b']      # 推理侧精度（输出含 NaN/Inf）
+      - ["花图", "图像.*(异常|畸变|错乱)", "评分.*(低|下降|不达标)", "score.*(low|drop)"]   # 生成图像异常 / 下游评分下降（COMMON-TP-SEED-UNSYNCED TP 组内种子未同步花图 / VLLM-ASC-GPQA-OPERATOR-CLAMP 评分偏低）
     search_namespaces:
       - inference/<detected_framework>/
       - common/

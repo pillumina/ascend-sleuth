@@ -5,12 +5,120 @@
 # 按 file 字段定位做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-09-08    case 总数：129
+# 生成日期：2026-09-09    case 总数：142
+#   容量(common): precision=6/30
 #   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=84/30, performance=8/30, precision=16/30
-#   容量(training/mindspeed-llm): interrupt=11/30, precision=3/30
-#   容量(training/verl): interrupt=6/30
+#   容量(inference/vllm-ascend): interrupt=84/30, performance=8/30, precision=21/30
+#   容量(training/mindspeed-llm): interrupt=11/30, precision=4/30
+#   容量(training/verl): interrupt=6/30, precision=1/30
 namespaces:
+  common:
+    precision:
+    - id: COMMON-EMBEDDING-BWD-EMPTY
+      title: 训练 loss NaN（首个 NaN 在 embedding/wte 层梯度）：embedding 反向输入为空时返回默认内存中的未初始化数据——触发源 A：dsp 序列切分致部分卡无
+        token；触发源 B：数据标注越界致 gt_labels 为空（早期 CANN <8.0.0）
+      category: precision
+      tags:
+      - nan
+      - embedding
+      - backward
+      - empty-tensor
+      - aclnn
+      - fsdp
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - 训练出现 loss NaN，打印 grad 信息后首个 NaN 出现在 embedding（wte）层的梯度
+      file: knowledge/common/precision/COMMON-EMBEDDING-BWD-EMPTY.yaml
+      hash: 479dc0c7ebaa
+    - id: COMMON-FA-RACE-DETERMINISM
+      title: 80 卡大规模训练结果确定性无法固定：CANN 8.1.0 RC1 的 Flash Attention 算子内部数据搬迁前后缺少同步机制（数据竞争），8.0.0 RC4 无此问题
+      category: precision
+      tags:
+      - determinism
+      - race-condition
+      - flash-attention
+      - cann-upgrade
+      - mssanitizer
+      - multi-card
+      compat: cross * (cann:8.1.0.RC1)
+      confidence:
+        score: 0.7
+      symptoms:
+      - 80 卡大规模训练任务结果确定性无法固定（重复运行 Loss 曲线不一致）
+      file: knowledge/common/precision/COMMON-FA-RACE-DETERMINISM.yaml
+      hash: f747034514bf
+    - id: COMMON-FSDP-OFFLOAD-SYNC-NAN
+      title: MOVA 模型训练 NaN：offload 场景下 FSDP post_backward / foreach_reduce 前后的流同步缺失，.to() 前后的数据搬运时序异常（加同步后问题消失）
+      category: precision
+      tags:
+      - nan
+      - fsdp
+      - offload
+      - stream-sync
+      - accelerate
+      - ddp
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - MOVA 模型训练出现 NaN：L0 dump 发现 step 2 前向权重已为 NaN
+      file: knowledge/common/precision/COMMON-FSDP-OFFLOAD-SYNC-NAN.yaml
+      hash: 13f63bba0157
+    - id: COMMON-RMSNORM-WEIGHT-SCALE
+      title: Gemma 加载权重后重复训练 Loss 差异偏大、grad_norm 异常偏大：加载的 RMSNorm 权重数值异常放大（数值每经一层 RMSNorm 放大约百倍，深层尤甚），随机初始化时正常
+      category: precision
+      tags:
+      - rmsnorm
+      - weight-scale
+      - retrain-diff
+      - non-deterministic
+      - weight-loading
+      - dump-analysis
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - 随机初始化权重时两遍训练 Loss 对齐；加载权重时两遍 Loss 差异偏大，但两侧加载的权重确实完全一致
+      file: knowledge/common/precision/COMMON-RMSNORM-WEIGHT-SCALE.yaml
+      hash: c644ba21b030
+    - id: COMMON-SEED-RESET-DETERMINISM
+      title: Qwen2.5-omni 重复训练 loss 与 grad_norm 不一致：业务代码自定义 fix_randn 装饰器内重复调用无参 seed_all()（未带 mode=True），把
+        torch.use_deterministic_algorithms(True) 重置为 False，aclnn 算子 deter…
+      category: precision
+      tags:
+      - determinism
+      - seed
+      - non-deterministic
+      - business-code
+      - plog
+      - training
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - 同一模型重复训练，loss 与 grad_norm 不一致（偶现，非每次）
+      file: knowledge/common/precision/COMMON-SEED-RESET-DETERMINISM.yaml
+      hash: 1dd4a5a8425a
+    - id: COMMON-TP-SEED-UNSYNCED
+      title: Qwen-Image-Edit 基于 Megatron 在 NPU 上 TP8 推理，跑多个请求时第 3 张生成图必然花图：TP 组内随机种子未同步——0 卡作通信主卡的 random
+        调用次数与其他卡不同
+      category: precision
+      tags:
+      - tensor-parallel
+      - random-seed
+      - diffusion
+      - image-generation
+      - megatron
+      - multi-card
+      compat: cross *
+      confidence:
+        score: 0.7
+      symptoms:
+      - TP=8 时跑多个请求，第 3 张生成图片必然花图；TP=1 时低分辨率推理跑 100 个实例未发现花图
+      file: knowledge/common/precision/COMMON-TP-SEED-UNSYNCED.yaml
+      hash: 4fd55e475f23
   inference/sglang:
     interrupt:
     - id: SGL-PD-HEAP-001
@@ -1996,6 +2104,94 @@ namespaces:
         16 --enable…
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-8844.yaml
       hash: 1842dd289395
+    - id: VLLM-ASC-ALLREDUCE-NUMERIC-DRIFT
+      title: CANN 升级到 9.1.0 后 vLLM 推理回复乱码（回退 9.0.0 即恢复正常）：all_reduce 算子数值偏差，升级到已修复的 9.1.0 B037 解决
+      category: precision
+      tags:
+      - vllm-ascend
+      - all-reduce
+      - cann-upgrade
+      - numeric-drift
+      - single-op-repro
+      - garbled-output
+      compat: vllm-ascend * (cann:9.1.0)
+      confidence:
+        score: 0.7
+      symptoms:
+      - CANN 从 9.0.0 升级到 9.1.0 后，vLLM 推理请求回复乱码（正常场景回复正常文本，异常场景回复乱码数据）
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-ALLREDUCE-NUMERIC-DRIFT.yaml
+      hash: a787e64972ad
+    - id: VLLM-ASC-GPQA-OPERATOR-CLAMP
+      title: DeepSeek-V4 Pro 在 Atlas 800I A3 上 GPQA 评分明显偏低（同模型其他环境正常）：三个独立根因叠加——rope 转 float32、Dequantswigluquant/GMMswigluquant
+        的 clamp 缺陷（主因）、moe_gating_top_k_hash 内部与后续重复…
+      category: precision
+      tags:
+      - vllm-ascend
+      - gpqa
+      - scoring-gap
+      - clamp
+      - rope
+      - renorm
+      compat: vllm-ascend *
+      confidence:
+        score: 0.7
+      symptoms:
+      - DeepSeek-V4 Pro 在 Atlas 800I A3 环境下 GPQA 数据集评分明显偏低；同模型其他环境、以及 DeepSeek-V4 Flash 在同环境下评分均正常
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-GPQA-OPERATOR-CLAMP.yaml
+      hash: df4ea01a626b
+    - id: VLLM-ASC-KVMIRROR-MISSING
+      title: VL 模型从 H20+transformers 迁移到昇腾 vLLM 后，从第 7 个 token 起输出与 GPU 对不上并出现乱码：Attention 的 KVMirrorManagerHook
+        / KVMirrorManager 未随模型移植，28 层以后 key_states/value_states 取到异常…
+      category: precision
+      tags:
+      - vllm-ascend
+      - vl-model
+      - migration
+      - kv-mirror
+      - attention
+      - garbled-output
+      compat: vllm-ascend *
+      confidence:
+        score: 0.7
+      symptoms:
+      - VL 模型从 H20 + transformers 迁到昇腾 + vLLM 后，第 7 个 token 开始 NPU 输出与 GPU 对不上，随后出现乱码
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-KVMIRROR-MISSING.yaml
+      hash: e5f095a6ab3a
+    - id: VLLM-ASC-ROPE-CFG-MISMATCH
+      title: tora 模型 + vllm-ascend 统一数据集推理，NPU 评分 54.4 明显低于 GPU 80.6：hf config.json 的 max_position_embedding（16384→8192）与
+        rope_theta（1000000→10000）取值与模型训练配置不匹配
+      category: precision
+      tags:
+      - vllm-ascend
+      - rope
+      - config-mismatch
+      - position-embedding
+      - migration
+      - scoring-gap
+      compat: vllm-ascend 0.9.1
+      confidence:
+        score: 0.7
+      symptoms:
+      - tora 模型 + vllm（vllm-ascend）推理，统一数据集下游评分 NPU 54.4 明显差于 GPU 80.6
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-ROPE-CFG-MISMATCH.yaml
+      hash: d064c5b4a3ee
+    - id: VLLM-ASC-XGRAMMAR-REPEAT
+      title: 昇腾 vLLM 部署 Qwen2.5-7B-Instruct，某用例偶现持续输出换行、回复不终止：xgrammar 结构化输出的 JSON 约束解码认为字符串已闭合，与模型回复内容完整性冲突
+      category: precision
+      tags:
+      - vllm-ascend
+      - structured-output
+      - xgrammar
+      - json
+      - repetition
+      - sampling
+      compat: vllm-ascend *
+      confidence:
+        score: 0.7
+      symptoms:
+      - 昇腾 + vLLM 部署 Qwen2.5-7B-Instruct，某推理用例偶现持续输出换行符、回复不终止
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-XGRAMMAR-REPEAT.yaml
+      hash: ada00e13f899
   training/mindspeed-llm:
     interrupt:
     - id: MSLLM-1459
@@ -2255,6 +2451,24 @@ namespaces:
         time 34.55ms（正常 90…
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1780.yaml
       hash: 544219f96b15
+    - id: MSLLM-FA-MASK-GRADNAN
+      title: 256卡 Qwen3-235B 长序列 SFT GradNorm 出现 NaN/Inf：sparsemode=0 下 pre_tockens 默认值 65536 小于序列长度 131072，causal
+        mask 由三角下全计算退化为 band、attention 只能看到有限数据，反向逐层放大
+      category: precision
+      tags:
+      - gradnorm-nan
+      - flash-attention
+      - sparse-mode
+      - causal-mask
+      - long-sequence
+      - dump-analysis
+      compat: mindspeed-llm 2.1.0 (cann:8.2.RC1)
+      confidence:
+        score: 0.7
+      symptoms:
+      - GradNorm 出现 NaN/Inf（256 卡 Qwen3-235B 长序列 SFT，序列长度 131072，TP4/PP4/EP16/CP16/VPP3）
+      file: knowledge/training/mindspeed-llm/precision/MSLLM-FA-MASK-GRADNAN.yaml
+      hash: ae4167452f2c
   training/verl:
     interrupt:
     - id: VERL-5074
@@ -2363,3 +2577,22 @@ namespaces:
       - verl 0.8.0.dev0 + vllm-ascend 0.18.1 + CANN 8.5.0 跑 Qwen3-VL GRPO（vision, vLLM rollout, FSDP）反向阶段崩溃：aclnnConvolutionBack…
       file: knowledge/training/verl/interrupt/VERL-6885.yaml
       hash: 79633be350ad
+    precision:
+    - id: VERL-LOGPROB-CONFIG-MISMATCH
+      title: Kimi2.5 RL 训练 log_prob 首 step 指数差异过大：训练侧 YarnRotaryEmbedding 的 original_max_position_embeddings=1024
+        与实际外层配置 4096 不一致，位置编码偏差致 MLA 输出不一致
+      category: precision
+      tags:
+      - verl
+      - rl
+      - train-infer-consistency
+      - log-prob
+      - rope
+      - yarn
+      compat: verl *
+      confidence:
+        score: 0.7
+      symptoms:
+      - RL 训练中 log_prob 指数首 step 差异较大（超出预期范围）
+      file: knowledge/training/verl/precision/VERL-LOGPROB-CONFIG-MISMATCH.yaml
+      hash: 42084f75a806

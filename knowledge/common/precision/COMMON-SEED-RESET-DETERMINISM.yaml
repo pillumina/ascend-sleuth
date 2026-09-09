@@ -1,0 +1,78 @@
+# COMMON-SEED-RESET-DETERMINISM —— 重复训练 loss/grad_norm 不一致：业务装饰器 fix_randn 内重复调用无参 seed_all() 把确定性开关重置回 False
+# 来源：msprobe 官方 best_practices《基于昇腾的Qwen2.5-omni模型确定性排查》（MindStudio 26.2.0.B050_003）
+# pre-triage: new_pattern —— VLLM-ASC-11824 是 batch invariance/算子非确定性（推理侧），本 case 是业务代码破坏确定性开关（训练侧），机制不同
+# 转正：knowledge-groom 2026-09-09（precision；upstream-official-doc × high → 初始 score 0.7）
+
+cases:
+  - id: COMMON-SEED-RESET-DETERMINISM
+    title: "Qwen2.5-omni 重复训练 loss 与 grad_norm 不一致：业务代码自定义 fix_randn 装饰器内重复调用无参 seed_all()（未带 mode=True），把 torch.use_deterministic_algorithms(True) 重置为 False，aclnn 算子 deterministic 标识由 1 变 0"
+
+    category: precision
+    tags: [determinism, seed, non-deterministic, business-code, plog, training]
+
+    platforms: []
+    compat:
+      - framework: cross
+        ranges: ["*"]     # 根因在业务代码，与框架/CANN 版本无关
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "同一模型重复训练，loss 与 grad_norm 不一致（偶现，非每次）"
+      - "dump 两次数据比对，cross_entropy 存在确定性问题；to cpu 后第一步 loss 一致但 grad_norm 仍偶现不一致，几步后累积到 loss 不一致"
+      - "grad_norm 差异来源是第 0 步 rank3 上 embed_token 反向的偶现差异（前向完全一致）"
+      - "plog 中底层 aclnn 算子 deterministic 标识为 0，且中途出现部分 1、部分 0（即中途被改）"
+      - "整网重复跑 embedding backward 结果概率性变化，但本地单算子重复跑多遍都一致"
+
+    references:
+      - "msprobe docs/zh/best_practices/ascend_qwen25_omni_determinism_troubleshooting.md（MindStudio 26.2.0.B050_003）"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprobe 官方 best_practices 案例（上游发布，含定位链与验证结论）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -rn 'seed_all()' {{train_code_path}} | grep -v 'mode=True'"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"    # 存在不带 mode 的 seed_all() 调用即命中
+      fallback:
+        command_template: "grep -icE 'deterministic.*(0|false)|aclnn.*deterministic' {{plog_path}}"
+        rank_selector: all_failed
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "确定性是否被打开（torch.use_deterministic_algorithms(True)）？重复训练仍不一致？"
+        expected: "已打开但仍不一致 → 不是「没开确定性」而是「开了被重置」"
+      - step: 2
+        check: "dump 两次比对，不一致出现在哪个算子？是否为反向偶现差异？"
+        expected: "cross_entropy / embed_token 反向偶现差异，前向一致"
+        note: "前向一致、反向偶现 = 指向确定性开关被中途改变，而非数值精度"
+      - step: 3
+        check: "plog 中 aclnn 算子的 deterministic 标识是否稳定为 1？"
+        expected: "不稳定——部分为 1 部分为 0（中途被改回 0）"
+        note: "这一步是分水岭：plog 显示中途改 0 → 去业务代码找重置点；若全程为 1 → 转算子本身非确定性路径"
+      - step: 4
+        check: "全局搜索 torch.use_deterministic_algorithms 与 seed_all 调用，是否存在不带 mode 的重复设置？"
+        expected: "业务代码 fix_randn 装饰器（对 randn 接口 wrap）内重复调用 seed_all() 且未带 mode"
+
+    severity: service-affecting
+    fix_side_effects: [requires-code-change, requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      seed_all() 不传 mode=True 时不会开启 PyTorch 确定性算法开关 torch.use_deterministic_algorithms(True)。
+      业务装饰器 fix_randn 在运行过程中反复调用无参 seed_all()，把已经置为 True 的确定性开关重置为 False，
+      传导到底层 CANN，使 aclnn 算子的 deterministic 标识由 1 变为 0，算子切到非确定性路径执行。
+      并非昇腾算子本身的非确定性缺陷。
+
+    fix: >
+      将业务代码 fix_randn 装饰器内的 seed_all() 改为 seed_all(mode=True)，
+      保证每次设置随机种子时同步维持 torch.use_deterministic_algorithms(True) 处于打开状态。
+    rollback: "回退装饰器改动（确定性开关会被再次重置，问题复现）"

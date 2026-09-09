@@ -1,0 +1,77 @@
+# COMMON-RMSNORM-WEIGHT-SCALE —— 加载权重后重复训练 Loss/grad_norm 差异偏大：加载的 RMSNorm 权重数值异常放大（每层约百倍），非软件栈问题
+# 来源：msprobe 官方 best_practices《基于昇腾的Gemma模型重复训练Loss差异定位》（MindStudio 26.2.0.B050_003）
+# pre-triage: new_pattern —— 全库无「加载权重数值异常放大」形态（8587/12642 的 RMSNorm 命中均为算子/布局级根因）
+# 转正：knowledge-groom 2026-09-09（precision；upstream-official-doc × high → 初始 score 0.7）
+
+cases:
+  - id: COMMON-RMSNORM-WEIGHT-SCALE
+    title: "Gemma 加载权重后重复训练 Loss 差异偏大、grad_norm 异常偏大：加载的 RMSNorm 权重数值异常放大（数值每经一层 RMSNorm 放大约百倍，深层尤甚），随机初始化时正常"
+
+    category: precision
+    tags: [rmsnorm, weight-scale, retrain-diff, non-deterministic, weight-loading, dump-analysis]
+
+    platforms: []
+    compat:
+      - framework: cross
+        ranges: ["*"]     # 根因是加载的权重数值，与框架/软件栈版本无关
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "随机初始化权重时两遍训练 Loss 对齐；加载权重时两遍 Loss 差异偏大，但两侧加载的权重确实完全一致"
+      - "grad_norm 异常偏大"
+      - "加载权重并减层处理后能对齐"
+      - "master 分支与旧分支训练也存在差异"
+      - "可视化溢出检测显示 RMSNorm 反向位于 high level；查前向 dump 发现该权重统计值很大（其他模型 RMSNorm 权重大多 <1，随机初始化时初值为全 1）"
+      - "数值每经过一次 RMSNorm 量级约放大百倍，前几层尚在正常范围，深层尤甚"
+
+    references:
+      - "msprobe docs/zh/best_practices/ascend_gemma_retrain_loss_diff_analysis.md（MindStudio 26.2.0.B050_003）"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprobe 官方 best_practices 案例（上游发布，含定位链与验证结论）"
+
+    quickly_check:
+      primary:
+        command_template: "python3 -c \"import sys,glob;print(sum(1 for f in glob.glob(sys.argv[1]+'/**/rmsnorm*',recursive=True)))\" {{dump_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+      fallback:
+        command_template: "grep -icE 'grad_norm.*(大|偏大|nan)|overflow.*rmsnorm' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "随机初始化权重 vs 加载权重，两遍训练的 Loss 差异是否只在加载权重时出现？"
+        expected: "是——随机初始化时对齐，加载权重时差异偏大，且两侧权重逐 tensor 完全一致"
+        note: "「权重一致但结果不一致」是本 case 的入口特征，直接排除权重加载错位（对比 MSLLM-1532）"
+      - step: 2
+        check: "减层处理后是否对齐？"
+        expected: "对齐——说明问题随层数累积放大"
+      - step: 3
+        check: "用可视化溢出检测看反向，哪类算子位于 high level？"
+        expected: "RMSNorm 反向位于 high level"
+      - step: 4
+        check: "查对应前向 dump 的权重统计值：RMSNorm 权重是否远大于 1（正常应 <1 起缩小作用，随机初始化为全 1）？"
+        expected: "是——数值每经一层 RMSNorm 约放大百倍，深层尤甚 → 命中本 case"
+
+    severity: service-affecting
+    fix_side_effects: [requires-config-change]
+    fix_type: config-change
+
+    root_cause: >
+      加载的 RMSNorm 权重数值异常放大：数值每经过一层 RMSNorm 放大约百倍，深层尤为严重。
+      该异常导致两遍训练的 Loss/grad_norm 差异偏大，并放大了确定性计算误差
+      （小数值相乘误差小、大数值相乘误差被放大）。根因不在昇腾软件栈。
+
+    fix: >
+      仅将 RMSNorm 权重随机初始化、其余权重正常加载，即可规避。
+      验证：master 分支 grad_norm 从异常大量级降为正常水平；不开确定性时两遍差异明显缩小、分支间成功对齐。
+    rollback: "恢复 RMSNorm 权重为加载值（问题复现）"

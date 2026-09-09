@@ -59,12 +59,13 @@ agent 读取文件，后续流程同内联。
 3. **输出结构化 YAML 草稿 + postmortem.md**：
    - **postmortem 策略**：源是混乱对话/手工笔记 → 写完整 postmortem.md（提炼+结构化）；**源已经是结构化文档**（调查报告/issue/wiki）→ postmortem.md 只写指针（`# 原文见：<source-url/path>`），不重写。YAML case 草稿两种情况都照常产出。
    - 标 `confidence: high | medium | low`——**人的调查质量判断**（五天详查 vs 随手记录），不是来源验证
-   - 标 `verification: {source: <档>, detail: <引用>}`——**来源验证状态**（与 confidence 区分：confidence=内容判断质量，verification=外部证据强度）：
+   - 标 `verification: {source: <档>, detail: <引用>}`——**来源验证状态**（与 confidence 区分：confidence=内容判断质量，verification=外部证据强度）。**档位按「来源形态」分，不按 issue 分**——issue 只是外部来源之一，官方案例文档与本地闭环同样是来源：
      - `upstream-fix-merged`：来源是上游 issue 且关联 fix PR 已合入（references 含 `pull/<n>` 或确认 merged）——内容被外部验证（根因+修复代码合入），最强档；
+     - `upstream-official-doc`：来源是**上游官方发布的案例/指南文档**（如框架仓库 `best_practices/` 下的定位实践、官方 troubleshooting 指南），含完整定位链与验证结论——内容被上游发布验证，但无指向本问题的 fix PR；
      - `upstream-maintainer-confirmed`：上游 issue 维护者确认 resolution 但无 fix PR 引用；
      - `investigation`：本地深度排查/源码分析定位（`source_ref` 佐证），无上游确认；
      - `engineer-report`：工程师现场回报验证过（最强现场证据，rare）。
-     `detail` 记 issue/PR 号或来源路径。无明确外部验证 → 不填 verification（如实：仅调查级）
+     `detail` 记 issue/PR 号、文档路径或来源路径。无明确外部验证 → 不填 verification（如实：仅调查级）
    - 标 `novelty: new_pattern | variant | covered`（**pre-triage，对比现有 case 判定**）：用 `knowledge/_index.yaml` 按 symptoms/tags 定位候选，全量读比对 root_cause/fix——无重叠 → `new_pattern`；同主题不同形态 → `variant`（注明 `variant_of:<case-id>`）；已有 case 覆盖 → `covered`（注明 `covered_by:<case-id>`）。**给出证据**（如"同算子×同网络，增量=升级修复"），groom 复核该标签而非重判
    - 标 `category: interrupt | precision | performance` **三选一，无 other**（按症状判断——interrupt 是 hang/crash/OOM/启动失败、precision 是 NaN/数值发散/输出错误/乱码、performance 是吞吐/延迟）。分不进去 → 由人确认归入最接近的分类，不设 other
    - 标 `tags`（sub-type，如 `oom`、`kv-cache`、`precision.convergence`）

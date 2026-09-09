@@ -40,7 +40,7 @@ v2 机制把"观测 → 候选 → 授权 → 合入"串起来了，但执行时
 | `source_evidence` | 来源（issue/trace/postmortem id）+ 现象/日志/根因证据引用 | 证据充分性判定（缺证据的低置信沉淀） |
 | `sediment_form` | 新 case / variant 并入 / reference / Tier3 转正 | 决定验证方式与审批路径 |
 | `evidence_strength` | 症状/根因/fix 三证据各自强度：确证 / 推测 / 缺失 | 初始置信度（investigation_quality 对应物）与诚实标注 |
-| `verification` | 来源验证状态：`upstream-fix-merged`（fix PR 合入）/ `upstream-maintainer-confirmed` / `investigation` / `engineer-report` | **初始 score 先验档位**（与 evidence_strength 区分：strength=调查判断，verification=外部证据强度），档位判定见 groom 置信度重算规则表 |
+| `verification` | 来源验证状态（按「来源形态」分，不按 issue 分）：`upstream-fix-merged`（fix PR 合入）/ `upstream-official-doc`（上游官方发布的案例/指南文档，含定位链与验证结论）/ `upstream-maintainer-confirmed` / `investigation` / `engineer-report` | **初始 score 先验档位**（与 evidence_strength 区分：strength=调查判断，verification=外部证据强度），档位判定见 groom 置信度重算规则表 |
 | `discriminative_power` | quickly_check 能否区分同 namespace 相似 case（对比候选） | 防重复沉淀、防低判别力污染候选集 |
 | `predicted_value` | **预期命中场景**：这条沉淀预计命中哪类未来问题（可检验的描述，见第 4 节） | 沉淀效果度量的对比基准 |
 | `ref_knowledge` | 关联的 active reference（role 合法，verify_references 校验） | 已有机制，沉淀时一并评估 |

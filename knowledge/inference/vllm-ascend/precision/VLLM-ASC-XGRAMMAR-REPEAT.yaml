@@ -1,0 +1,72 @@
+# VLLM-ASC-XGRAMMAR-REPEAT —— Qwen2.5 结构化输出场景持续输出换行不终止：xgrammar 的 JSON 约束解码与回复内容完整性冲突
+# 来源：msprobe 官方 best_practices《Qwen2.5模型推理回复复读问题》（MindStudio 26.2.0.B050_003）
+# pre-triage: new_pattern —— 全库复读族（VLLM-ASC-8798 无限重复 / 10524）根因均为模型/算子侧，无「结构化输出约束与内容冲突」形态
+# 转正：knowledge-groom 2026-09-09（precision；upstream-official-doc × high → 初始 score 0.7）
+
+cases:
+  - id: VLLM-ASC-XGRAMMAR-REPEAT
+    title: "昇腾 vLLM 部署 Qwen2.5-7B-Instruct，某用例偶现持续输出换行、回复不终止：xgrammar 结构化输出的 JSON 约束解码认为字符串已闭合，与模型回复内容完整性冲突"
+
+    category: precision
+    tags: [vllm-ascend, structured-output, xgrammar, json, repetition, sampling, qwen2.5]
+
+    platforms: []
+    compat:
+      - framework: vllm-ascend
+        ranges: ["*"]     # 根因在约束解码与 prompt 内容的字符冲突
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "昇腾 + vLLM 部署 Qwen2.5-7B-Instruct，某推理用例偶现持续输出换行符、回复不终止"
+      - "eager 模式 / 采样参数 / 硬件相关性逐一排除后仍复现"
+      - "定位到问题发生在模型前向执行结束后的采样阶段（数据后处理），而非前向计算"
+
+    references:
+      - "msprobe docs/zh/best_practices/inference_reply_replay_problem_of_Qwen2.5.md（MindStudio 26.2.0.B050_003）"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprobe 官方 best_practices 案例（上游发布，含定位链与验证结论）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -cE 'structured_outputs|guided_json|response_format|xgrammar' {{launch_script_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+      fallback:
+        command_template: "grep -icE '重复输出|复读|repetition|不终止' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "是否开启了结构化输出（xgrammar / guided_json / response_format）？"
+        expected: "开启——本 case 的前提"
+        fix_on_mismatch: "未开启结构化输出 → 转 VLLM-ASC-8798（模型侧无限重复输出）等复读族 case"
+      - step: 2
+        check: "问题是否发生在采样/后处理阶段而非前向计算？"
+        expected: "是——按「输入预处理 → 前向执行 → 数据后处理」三段定界，落在后处理"
+      - step: 3
+        check: "prompt 里待格式化的内容是否含转义双引号（\\\"）？"
+        expected: "含——该 token 被采样随机性替换为 \" 后，xgrammar 认为字符串变量已闭合"
+
+    severity: service-affecting
+    fix_side_effects: [requires-prompt-change]
+    fix_type: config-change
+
+    root_cause: >
+      预期输出中某个 token 因采样随机性把转义双引号（\\\"）替换为裸双引号（"），
+      解码后端 xgrammar 据此认为字符串变量已闭合，掩盖了后续应输出的内容；
+      JSON 格式合法性（xgrammar 约束）与回复内容完整性（模型应继续输出）冲突，
+      导致持续输出换行、回复不终止。
+
+    fix: >
+      把 prompt 里需要格式化的内容中的双引号（"）替换为单引号（'）或中文双引号（“），
+      避免与 JSON 格式中的特殊字符冲突。
+    rollback: "恢复原 prompt（问题复现）"

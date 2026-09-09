@@ -44,8 +44,9 @@ cases:
     references: common/hccl/buffer_config.yaml#ASCEND-HCCL-BUFFER-001
 
     # 可选：来源验证状态（to-postmortem 产出时标；区别于 investigation_quality——
-    # quality=人的调查判断，verification=外部证据强度）。档位见 skills/to-postmortem：
-    #   upstream-fix-merged | upstream-maintainer-confirmed | investigation | engineer-report
+    # quality=人的调查判断，verification=外部证据强度）。档位按「来源形态」分，不按 issue 分：
+    #   upstream-fix-merged | upstream-official-doc | upstream-maintainer-confirmed
+    #   | investigation | engineer-report
     # 决定初始 confidence.score 先验（groom 置信度重算规则表）；无外部验证不填。
     verification:
       source: investigation

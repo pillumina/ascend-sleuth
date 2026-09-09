@@ -1,7 +1,7 @@
 # GENERATED FILE —— 分片（knowledge/_index.yaml 的 training/mindspeed-llm 子集），不要手改。
 # 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。
 # 阶段一加载协议（F1 EV-2026-022）：category 未定 / 类分片缺失时 diagnose 回退读本 namespace 分片，不读整库总表。
-# 本分片：training/mindspeed-llm（14 条 case）
+# 本分片：training/mindspeed-llm（15 条 case）
 namespaces:
   training/mindspeed-llm:
     interrupt:
@@ -262,3 +262,21 @@ namespaces:
         time 34.55ms（正常 90…
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1780.yaml
       hash: 544219f96b15
+    - id: MSLLM-FA-MASK-GRADNAN
+      title: 256卡 Qwen3-235B 长序列 SFT GradNorm 出现 NaN/Inf：sparsemode=0 下 pre_tockens 默认值 65536 小于序列长度 131072，causal
+        mask 由三角下全计算退化为 band、attention 只能看到有限数据，反向逐层放大
+      category: precision
+      tags:
+      - gradnorm-nan
+      - flash-attention
+      - sparse-mode
+      - causal-mask
+      - long-sequence
+      - dump-analysis
+      compat: mindspeed-llm 2.1.0 (cann:8.2.RC1)
+      confidence:
+        score: 0.7
+      symptoms:
+      - GradNorm 出现 NaN/Inf（256 卡 Qwen3-235B 长序列 SFT，序列长度 131072，TP4/PP4/EP16/CP16/VPP3）
+      file: knowledge/training/mindspeed-llm/precision/MSLLM-FA-MASK-GRADNAN.yaml
+      hash: ae4167452f2c

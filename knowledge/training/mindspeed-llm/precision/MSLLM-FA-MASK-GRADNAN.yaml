@@ -1,0 +1,78 @@
+# MSLLM-FA-MASK-GRADNAN —— 256卡 Qwen3-235B 长序列 SFT GradNorm NaN：sparsemode=0 下 pre_tockens 默认 65536 < 序列长度 131072，causal mask 退化为 band
+# 来源：msprobe 官方 best_practices《基于昇腾的复杂dump数据分析GradNorm NaN定位实践》（MindStudio 26.2.0.B050_003）
+# pre-triage: new_pattern —— 全库无 GradNorm NaN / FA sparse mode / causal mask 退化类 case
+# 转正：knowledge-groom 2026-09-09（precision；upstream-official-doc × high → 初始 score 0.7）
+
+cases:
+  - id: MSLLM-FA-MASK-GRADNAN
+    title: "256卡 Qwen3-235B 长序列 SFT GradNorm 出现 NaN/Inf：sparsemode=0 下 pre_tockens 默认值 65536 小于序列长度 131072，causal mask 由三角下全计算退化为 band、attention 只能看到有限数据，反向逐层放大"
+
+    category: precision
+    tags: [gradnorm-nan, flash-attention, sparse-mode, causal-mask, long-sequence, dump-analysis, mindspeed-llm]
+
+    platforms: []
+    compat:
+      - framework: mindspeed-llm
+        ranges: ["2.1.0"]
+        cann: ["8.2.RC1"]
+        # TorchNPU 2.6.0 / MindSpeed 0.8.0（文档记录的环境；sparsemode 与 pre_tockens 语义随版本核对）
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "GradNorm 出现 NaN/Inf（256 卡 Qwen3-235B 长序列 SFT，序列长度 131072，TP4/PP4/EP16/CP16/VPP3）"
+      - "export ASCEND_LAUNCH_BLOCKING=1 后仍显示 NaN"
+      - "关闭 overlap_grad_reduce / overlap_param_gather / use_cp_send_recv_overlap / moe_alltoall_overlap_comm / overlap_p2p_communication 后仍 NaN"
+      - "dump 反向数据呈逐层放大趋势：FA（npu_fusion_attention）与 RMSNorm 反向数值沿层放大，最后一组 VPP 尤其明显"
+
+    references:
+      - "msprobe docs/zh/best_practices/ascend_complex_dump_gradnorm_nan_analysis.md（MindStudio 26.2.0.B050_003）"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprobe 官方 best_practices 案例（上游发布，含定位链与验证结论）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -iE 'grad[_ ]?norm.*(nan|inf)|grad_norm.*nan' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+      fallback:
+        command_template: "grep -icE 'nan|inf' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "序列长度是否超过 65536？sparsemode 配置是多少？"
+        expected: "序列长度 131072（>65536）且 sparsemode=0 → 命中本 case"
+        fix_on_mismatch: "序列长度 ≤65536 时本 case 不适用，转其他 GradNorm NaN 路径（内存踩踏 / 算子确定性）"
+      - step: 2
+        check: "关闭各类 overlap 与开流同步后 NaN 是否仍复现？"
+        expected: "仍复现（排除 overlap 与流同步时序问题）"
+        note: "若开流同步后 NaN 消失 → 转内存踩踏路径（见 msprobe-tool-side-effect-fault-patterns）"
+      - step: 3
+        check: "dump 反向数据是否呈逐层放大（FA / RMSNorm 反向沿层放大）？"
+        expected: "是——反向逐层放大，最后一组 VPP 最明显"
+        note: "放大趋势是定位到 FA 的判据；只看到 NaN 不足以定 FA"
+      - step: 4
+        check: "FA 反向 api 对应的前向算子入参是否合规（pre_tockens / sparsemode）？"
+        expected: "sparsemode=0 且 pre_tockens=65536（默认值），小于实际序列长度 131072"
+
+    severity: service-affecting
+    fix_side_effects: [requires-config-change, requires-restart]
+    fix_type: config-change
+
+    root_cause: >
+      sparsemode=0 下 MindSpeed 框架把 pre_tockens 默认值设为 65536，而实际序列长度 131072 超过该值；
+      本应传 causal mask 做三角下全计算，退化为 band 模式，attention 只能看到有限数据，
+      导致 FA 反向数值逐层放大并最终使 GradNorm 出现 NaN。
+
+    fix: >
+      二选一：(1) 将 sparsemode 改为 2；(2) 将 pre_tockens 设为算子默认值 2147483647。
+    rollback: "恢复 sparsemode=0 / pre_tockens=65536 并重启训练"

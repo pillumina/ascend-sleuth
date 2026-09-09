@@ -1,0 +1,77 @@
+# VLLM-ASC-KVMIRROR-MISSING —— VL 模型迁移昇腾 vLLM 后第 7 token 起输出对不上并乱码：KVMirrorManagerHook / KVMirrorManager 未随模型移植，28 层以后 K/V 取到异常小的值
+# 来源：msprobe 官方 best_practices《基于昇腾的VL模型迁移vLLM精度问题》（MindStudio 26.2.0.B050_003）
+# pre-triage: new_pattern —— 全库乱码族（11169/12957/14306 等）均为权重/流同步/传输类根因，无「模型模块未随移植」形态
+# 转正：knowledge-groom 2026-09-09（precision；upstream-official-doc × high → 初始 score 0.7）
+
+cases:
+  - id: VLLM-ASC-KVMIRROR-MISSING
+    title: "VL 模型从 H20+transformers 迁移到昇腾 vLLM 后，从第 7 个 token 起输出与 GPU 对不上并出现乱码：Attention 的 KVMirrorManagerHook / KVMirrorManager 未随模型移植，28 层以后 key_states/value_states 取到异常小的值"
+
+    category: precision
+    tags: [vllm-ascend, vl-model, migration, kv-mirror, attention, garbled-output, module-porting]
+
+    platforms: []
+    compat:
+      - framework: vllm-ascend
+        ranges: ["*"]     # 迁移缺失类问题，与具体版本无关（取决于模型移植是否补齐该模块）
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.7
+      last_hit: ""
+
+    symptoms:
+      - "VL 模型从 H20 + transformers 迁到昇腾 + vLLM 后，第 7 个 token 开始 NPU 输出与 GPU 对不上，随后出现乱码"
+      - "msprobe 统计信息层（余弦相似度）找不到差异——需再采集 tensor 数据才能看到"
+      - "从第 7 个 token 的 logits 往前看：Module.language_model.transformer.h.29.DecoderLayer.forward.0 输出差异大"
+      - "Module.language_model.transformer.h.29.attn.attn.Attention.forward.0 的 k、v 值异常小；28 层及以后同样问题，27 层及以前正常"
+
+    references:
+      - "msprobe docs/zh/best_practices/ascend_vl_migration_vllm_precision.md（MindStudio 26.2.0.B050_003）"
+
+    verification:
+      source: upstream-official-doc
+      detail: "msprobe 官方 best_practices 案例（上游发布，含定位链与验证结论）"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E 'KVMirrorManager|kv_mirror_imitated_layers|kv_mirror_layers' {{model_code_path}}"
+        rank_selector: coordinator
+        expected: "regex:^0"    # 未移植时这两个符号在 vLLM 模型代码中不存在
+      fallback:
+        command_template: "grep -E '乱码|garbled' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:^[1-9]"
+
+    diagnosis:
+      - step: 1
+        check: "输出是从第几个 token 开始对不上？是否为「前半段正常、某个层之后异常」？"
+        expected: "第 7 个 token 起不对齐，且 28 层及以后异常、27 层及以前正常"
+        note: "分层分界点是本 case 的关键特征——单点错位而非全程漂移"
+      - step: 2
+        check: "统计信息（余弦相似度）能否看出差异？"
+        expected: "看不出——统计信息层不敏感，需采集 tensor 逐层比对"
+        fix_on_mismatch: "若统计信息已明显异常，优先转 msprobe-accuracy-compare 的常规整网比对路径"
+      - step: 3
+        check: "对应层的 Attention 里 k、v 是否异常小？"
+        expected: "是——kv_mirror_layers 对应层 K/V 的 parameter 值非常小"
+      - step: 4
+        check: "模型配置里是否有 kv_mirror 相关配置，且 vLLM 模型代码里是否存在 KVMirrorManagerHook / KVMirrorManager？"
+        expected: "配置存在但两个模块未移植到 vLLM 模型 → 命中本 case"
+
+    severity: service-affecting
+    fix_side_effects: [requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      模型移植时 Attention 模块的 KVMirrorManagerHook 与 KVMirrorManager 未一起移植。
+      这两个模块负责在 kv_mirror_imitated_layers 保存 key_states/value_states、在 kv_mirror_layers 取用；
+      缺失后，kv_mirror_layers 对应层的 K/V parameter 值非常小，给到 attention 计算的 key_states/value_states
+      即为异常小的值，28 层以后与 GPU 无法对齐。
+
+    fix: >
+      在 vLLM 模型中补齐 KVMirrorManagerHook 与 KVMirrorManager 两个模块的移植，
+      使 key_states / value_states 的保存与取用逻辑与 GPU 侧一致。
+    rollback: "回退模型代码到移植前版本（问题复现）"
