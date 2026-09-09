@@ -59,8 +59,15 @@ return {
         || mine.find(r => String(r.pluginId).startsWith(prefix + '-'))
     }
 
-    harness.registerTool(ctx, harness.defineTool({
-      name: 'panel_from_file',
+    // 工具注册是**进程全局**的（实测：动态插件用自身 ctx 注册的工具，其他 session 的
+    // agent 也看得到），所以本 loader 是"一个进程一份"：
+    //   - 好处：新 session 不必自己加载 loader，直接就有 panel_from_file 可用；
+    //   - 代价：第二个 session 再加载 loader 会撞名——这时**不抛错**，因为工具已经可用，
+    //     抛错只会让人以为"loader 坏了"。真正需要刷新 loader 自身代码时，重启 DSH。
+    let registered = false
+    try {
+      harness.registerTool(ctx, harness.defineTool({
+        name: 'panel_from_file',
       description:
         'Define and activate a dynamic Cordis Package whose Host (and optional Client) half is read from a workspace file. '
         + 'Use it for panel-style plugins whose source already lives in the repository: pass paths, never re-emit the source. '
@@ -145,6 +152,17 @@ return {
           reused: targetPluginId !== undefined,
         }
       },
-    }))
+      }))
+      registered = true
+    } catch (e) {
+      const msg = String(e && e.message || e)
+      if (/already registered/.test(msg)) {
+        console.error('[panel-from-file] panel_from_file 已由本进程内先前的 loader 注册（工具注册是进程全局的），'
+          + '本次跳过注册——工具仍可直接使用；只有需要更新 loader 自身代码时才需重启 DSH。')
+      } else {
+        console.error('[panel-from-file] 注册失败: ' + msg)
+      }
+    }
+    if (!registered) return
   },
 }

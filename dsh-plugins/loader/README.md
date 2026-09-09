@@ -55,6 +55,23 @@
   追加到当前 session 拥有的插件，跨 session 认领不了）。
 - 想显式指定时仍可传 `pluginId` + `mode: 'update'`。
 
+## 跨 session 与进程全局（实测）
+
+两件事都实测过（用探针插件 + 开新会话观察），结论对使用者很关键：
+
+1. **工具注册是进程全局的**。动态插件用自身 `ctx` 注册的工具，其他 session 的 agent 也看得到
+   （实测：探针工具出现在另一个 session 的工具目录里）。所以本 loader 是"一个进程一份"：
+   - 新 session **不必**再加载 loader，直接就有 `panel_from_file` 可用；
+   - 第二个 session 再加载 loader 会撞名，但**不会报错**——loader 捕获后只打一条提示，
+     工具照常可用。要刷新 loader 自身代码，只能重启 DSH。
+2. **面板插件是 per-session 的**，且 `define(kind:'existing')` 只允许追加到**当前 session 拥有**
+   的插件。所以新 session 加载面板时**认领不了旧 session 的插件**，会新建一个同 tab id 的
+   插件：新 tab 覆盖旧 tab 的显示（slot 的 id 是"占用该格"语义），**旧插件仍在跑**
+   （RPC handler 还在、仍读它自己 session 的工作目录）。想彻底清掉，重启 DSH，
+   或在各 session 里对自己的插件 `cordis_stop`。
+
+一句话：**同 session 重复调用 = 真重载；跨 session 调用 = 新建并覆盖显示。**
+
 ## 幂等规则的校验
 
 `scripts/check_loader_idempotency.js` 用**规则副本**给"重复调用=重载"的匹配逻辑做单元测试

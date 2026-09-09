@@ -60,6 +60,8 @@ expect('三段匹配（精确 / 去后缀 / 前缀）',
 expect('同前缀重复调用走 existing 分支', /const existing = args\.pluginId === undefined \? findExisting\(/.test(src))
 expect('mode 自动推导（有 currentPackageId 才 update）', /row\.currentPackageId !== undefined \? 'update' : 'run'/.test(src))
 expect('返回 reused 标记', /reused: targetPluginId !== undefined/.test(src))
+expect('工具重名不抛错（工具注册是进程全局的，第二份 loader 应降级）',
+  /already registered/.test(src) && /本次跳过注册/.test(src))
 
 console.log('\n' + (fails.length ? '失败 ' + fails.length + ' 项: ' + fails.join(' | ') : '全部通过'))
 process.exit(fails.length ? 1 : 0)
