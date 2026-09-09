@@ -1,0 +1,215 @@
+# ============================================================
+# Idea 卡：流程性先验知识的载体与加载方式——实验判定「保留 reference + 结构触发 + 必须加载全文」
+# 两轮盲测（21 次，proposals/experiments/flow-form/，本地留存）：
+#   第一轮（12 次）：形态（flow[] YAML vs 散文 skill）不影响执行保真度（R = S = 100%）；
+#                    现状缺口在**加载**（精度/性能会话 0 次加载），不在载体形态。
+#   第二轮（9 次，原始态场景）：**加载深度是决定性的**——不给全文 0/4 对、只给摘要行 0/2 对、
+#                    给全文 2/2 对（P3）；P4 上无资料臂漏掉「小包→带宽瓶颈」判据。
+# 本卡记录判定与证据；实现动作待用户批准后执行（本卡不含 git 待办态）。
+# ============================================================
+
+id: EV-2026-038
+layer: L2
+title: "流程性先验知识（methodology）载体与加载判定：保留 reference + 结构触发 + 必须加载全文（摘要行无效），不拆新 skill"
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-10
+source_signals:
+  - signal: process_friction
+    evidence: "用户驱动的设计问题：流程性先验知识（精度怎么用 msprobe / 性能怎么找性能点）是否应改为新 skill？讨论中的关键假设——『数据形态（content.flow[]）的流程不会被当流程执行』——此前无任何证据"
+    trajectory:
+      - "references/_types.yaml:67-71（methodology = kind: flow）"
+      - "references/methodologies/*.yaml（17 条）"
+      - "docs/adr/0008-prior-knowledge-framework.md §Q2（methodology 与 case diagnosis.steps 的形态关系）"
+  - signal: process_friction
+    evidence: "加载缺口实测：12 条 trace 中 precision 2 条、performance 0 条；含 reference_lookup 的仅 4 条（5 事件），其中 methodology 被加载 2 次且 purpose 全为 signature（甄别用途），两个 precision 会话 0 次加载流程"
+    trajectory:
+      - "traces/*.yaml（12 条，逐条统计）"
+      - "skills/diagnose/references/diagnose-procedure.md:75（purpose 词表 collect|signature|fix|background，无 procedure）"
+      - "proposals/ideas/EV-2026-037.yaml（同缺口已登记：『methodology 消费点（方法缺口）本卡只登记不实现』）"
+  - signal: process_friction
+    evidence: "评测池缺口：eval/golden 24 条中 precision 3 / performance 2 且全为 Tier-2 命中夹具；eval/s2 20 条中 precision 2 / performance 0；arena val 池文件本地缺失 → 无法直接做载体对照实验，须先构造"
+    trajectory:
+      - "eval/golden/*.fixture.yaml（expected.namespace 逐条统计）"
+      - "eval/s2/vllm-ascend.yaml（calibration 20 条）"
+      - "docs/eval.md:81（能力边界：小样本只能捕捉回归与大的改动）"
+  - signal: process_friction
+    evidence: "构造实验（12 次盲测，3 场景 × 3 臂）：R=flow[] YAML / S=同内容散文 skill / N=不给流程。G2 保真度 R=S=100%（差 0）；G3 正确性 R=S=N 全对（4/4 格）；唯一可测差异 = F2 的下一步工具（R/S 给出 ASCEND_LAUNCH_BLOCKING=1 与 mssanitizer，N 未给出）。成本：单条流程 413–790 tok，散文比词条全文省 200–400 tok"
+    trajectory:
+      - "proposals/experiments/flow-form/SPEC.md（预登记判定规则）"
+      - "proposals/experiments/flow-form/GROUND_TRUTH.md（标准答案与评分口径）"
+      - "proposals/experiments/flow-form/runs/*.md（12 次盲测原始输出）"
+      - "proposals/experiments/flow-form/SCORE.md（结果与判定）"
+  - signal: process_friction
+    evidence: >-
+      第二轮加载对照实验（9 次盲测，2 个原始态场景 × 3 个加载臂 N/SUM/FULL）：去掉计算列后，
+      只有套用流程「慢卡 = WTR 最小的卡」这条反直觉判据才能定到正确的卡。
+      P3：N 0/2 对、SUM 0/2 对（4/4 都误判 rank5 为根因）、FULL 2/2 对（rank2）；
+      P4：N 漏掉「小包 → 带宽瓶颈」并主动排除 RDMA（错），SUM/FULL 命中。
+      成本：FULL 比 SUM 多约 550 tok/次。→ 加载深度是决定性变量，摘要行与不加载等效
+    trajectory:
+      - "proposals/experiments/flow-form/GROUND_TRUTH-2.md（第二轮标准答案）"
+      - "proposals/experiments/flow-form/SCORE-2.md（第二轮结果与判定）"
+      - "proposals/experiments/flow-form/runs2/*.md（9 次盲测原始输出）"
+      - "references/_summary-index.yaml（摘要层每行 = title+summary，决定性判据被截断）"
+  - signal: process_friction
+    evidence: >-
+      流程评测样本落地：24 个 precision/performance 候选 issue 中 13 条通过泄露扫描，
+      建成 eval/flow/vllm-ascend.yaml（输入 = 上游首帖不含标题，ground truth = 对应 case 的
+      root_cause）。其中 7 条有对应流程（MTP/投机 4、乱码/权重 2、通信瓶颈 1）、
+      **6 条无流程覆盖**（prefix cache / graph capture / chunked prefill / tool parser 类）
+      ——即流程层同时存在覆盖缺口；泄露口径 = root_cause 决定性词 − case symptoms 词
+    trajectory:
+      - "eval/flow/vllm-ascend.yaml（13 条样本）"
+      - "eval/flow/README.md（构造纪律与泄露口径）"
+      - "scripts/flow_pool.py（--leak-scan / --prepare / --stats / --flow-coverage）"
+  - signal: process_friction
+    evidence: >-
+      第三轮（真实样本 7 × 3 臂 = 21 次盲测）：选择器 7/7 全对；但「给正确流程」只在**流程收录了该 case 的样本**
+      上改善结论（2/2），在 **5 条未收录样本上 0/5 改善**，其中 2 条被流程的分支判别推入高置信错误分支
+      （型② rope pad）。→ 流程分两类：official-doc 来源=真方法（阈值/判据）；case-derived 来源=案例索引
+      （指纹+fix PR 逐条），后者不泛化且可能误导。第二轮"流程有价值"的结论只对前者成立
+    trajectory:
+      - "proposals/experiments/flow-form/GROUND_TRUTH-3.md（第三轮标准答案）"
+      - "proposals/experiments/flow-form/SCORE-3.md（第三轮结果与判定）"
+      - "proposals/experiments/flow-form/runs3/*.md（21 次盲测原始输出）"
+      - "scripts/flow_pool.py --flow-coverage（留出检验：收录 vs 未收录样本）"
+hypothesis: >-
+  流程性先验知识的失效原因是**加载深度与触发时机**，不是载体形态：把 methodology 的 flow 保留在
+  reference（可 CI 校验、带来源与版本 pin），在 diagnose 的数据/方法缺口处补结构化「执行触发点」
+  （category + 数据状态 → flow 词条 id），并且**必须加载 content.flow[] 全文**——
+  摘要行（现状 2.5 层形态）会截掉决定性判据，实测与不加载等效；拆成新 skill 在同一目标上
+  没有额外收益（形态不构成障碍），反而丢掉 schema/来源/verification 与 CI 绑定校验
+predicted_effect:
+  metric: 精度/性能会话中 methodology 的加载次数与加载深度 + 结论正确性
+  from: "precision/performance 会话加载 0 次；summary 层摘要行与不加载等效（P3 0/2 vs 0/2）"
+  to: "结构触发下按 category 命中即加载全文（P3 2/2 正确）；trace 可记 purpose: procedure；结果 schema 可记 flow_refs_loaded / steps_executed / branch_taken"
+validation:
+  method: scan_review
+  baseline: "12 次盲测（R/S/N 三臂）+ E-cost/E-load 实测 + 17 条 methodology 词条"
+  success_criteria: >-
+    ①形态判定成立：R 与 S 保真度差 ≤1 判据点（实测差 0）；
+    ②不建 skill 的依据成立：无 G3 证据支持 skill 有收益，且成本差仅 200–400 tok/次；
+    ③实现后 verify_references.py 的 skill 侧绑定校验覆盖新触发点、trace_metrics.py 的
+    KNOWN_PURPOSES 含 procedure；
+    ④不把结论外推为「流程无价值」——G3 存在构造偏差（场景数据已把判据摆好），列为遗留命题
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "实验已完成（12 次盲测）；实现动作待用户批准"
+risk: medium
+principle_refs: [2, 8, 9, 11]
+actual_cost:
+  tokens: 180000
+  source: estimate
+decisions:
+  - who: agent（设计讨论轮）
+    when: "2026-09-10"
+    type: proposal
+    conclusion: >-
+      提出四个候选载体：A reference + 结构触发 / B 新 skill / C 脚本 + 薄 reference /
+      D 混合（skill 骨架 + reference 事实）。预登记判定规则（SPEC.md §三）：
+      形态差 ≤1 判据点且加载由结构保证 → 选 A；R 显著低于 S → 改形态；N ≈ R ≈ S → 不下
+      「流程无价值」结论（列遗留命题）；R/S 都不被 follow → 形态不是变量、触发才是。
+  - who: agent（实验执行轮）
+    when: "2026-09-10"
+    type: action
+    conclusion: >-
+      执行：①E-cost（确定性）：单条 flow 413–790 tok、17 条合计 25401 tok、summary 层 2336 tok；
+      ②E-load（观测 12 条 trace）：precision/performance 会话加载 0 次、methodology 2 次且
+      purpose 全为 signature；③E-conf + E-out（12 次盲测 subagent，3 场景 × 3 臂）：
+      P1a/P1b/P1c/P2 四场景，R/S/N 三臂，标准答案由构造确定，输出经机械抽取交叉核对。
+  - who: agent（实验执行轮）
+    when: "2026-09-10"
+    type: eval
+    conclusion: >-
+      eval solid（方向性）：G2 保真度 R = S = 100%（4 格全满，差 0）→「数据形态不可 follow」
+      被证伪；G3 正确性 R = S = N 全对 → 结论层面流程无边际价值；唯一差异 = F2 下一步工具
+      （R/S 给 ASCEND_LAUNCH_BLOCKING/mssanitizer，N 未给）→ 流程的边际价值在「下一步用哪个
+      具体工具」。成本差 200–400 tok/次，不构成决策变量。有效性边界：N=1/格；场景由流程自身
+      判据结构反推构造（数据列即流程要算的指标），故测不出「流程是否告诉你该看什么」；
+      subagent ≠ 真实 diagnose 会话。
+  - who: agent（实验执行轮）
+    when: "2026-09-10"
+    type: decision
+    conclusion: >-
+      **采纳方向 A（reference + 结构触发），不拆新 skill**（命中预登记规则第 1 条：R/S 保真度差 0）。
+      不取 B（形态无收益、丢 schema/来源/verification 与 CI 绑定校验、新增触发竞争）、
+      C/D 作为后续选项（当且仅当出现确定性可脚本化的流程段）。
+      实现动作（待用户批准后执行，本卡不含待办态）：①collect-gates.yaml 增 procedure 类绑定；
+      ②trace purpose 词表补 procedure（trace_metrics.py KNOWN_PURPOSES 同步）；
+      ③replay 结果 schema 补 flow_refs_loaded / steps_executed / branch_taken。
+      遗留命题（入口闸门见 SCORE.md §六）：流程是否提供模型自身没有的**判据**——需 ≥2 个
+      「原始态」场景（无预计算列、无口径提示）、每格 ≥2 次重复、标准答案由构造确定。
+  - who: agent（第二轮实验轮）
+    when: "2026-09-10"
+    type: action
+    conclusion: >-
+      执行第二轮（原始态场景 + 加载深度对照）：去掉逐卡计算列，3 个加载臂
+      N（只有现场数据）/ SUM（+条目摘要行，现状 2.5 层形态）/ FULL（+条目全文含 content.flow[]），
+      2 个场景 P3（慢卡）/P4（带宽瓶颈），共 9 次盲测。
+  - who: agent（第二轮实验轮）
+    when: "2026-09-10"
+    type: eval
+    conclusion: >-
+      eval solid（方向性）：P3 上 N 0/2、SUM 0/2、FULL 2/2（完全分离：4 次错判全部把
+      WTR 最大的 rank5 当根因，2 次正确全部指出 rank2 是慢卡）；P4 上 N 漏掉「小包→带宽瓶颈」
+      并主动排除 RDMA，SUM/FULL 命中。→ ①「摘要行足以承载流程」被证伪；②「全文改变结论」成立；
+      ③「流程提供模型自身没有的判据」成立；④成本差 ~550 tok/次，不构成障碍。
+      边界：每格 1–2 次；场景合成；subagent ≠ 真实会话；FULL 测的是「内容可得」而非「强制执行」；
+      流程内容自身的正确性未验证（测的是有无它的影响）。
+  - who: agent（第二轮实验轮）
+    when: "2026-09-10"
+    type: decision
+    conclusion: >-
+      **加载方式判定（数据支撑）**：①必须加载 `content.flow[]` 全文——只加载 summary 行与不加载
+      等效（SUM = N = 0/2）；②触发必须结构性（现状精度/性能会话 0 次自发加载）；
+      ③**summary 层对 methodology 类无效**：截断的流程只多花 token、不改变结论，
+      建议要么全文、要么不进上下文（修订 `build_ref_summary_index.py` 的 BG_TYPES 或对 flow 类特殊处理，
+      属实现动作）；④不拆新 skill（第一轮形态对照已证伪）。
+      实现动作（待用户批准）：collect-gates.yaml 增 procedure 类绑定（**绑定到全文**）；
+      trace purpose 词表补 procedure（trace_metrics.py KNOWN_PURPOSES 同步）；
+      replay 结果 schema 补 flow_refs_loaded / steps_executed / branch_taken。
+      未测项：强制按流程执行（注入全文 + 要求按步骤执行）是否进一步改善——留作可选后续。
+  - who: agent（第三轮实验轮）
+    when: "2026-09-10"
+    type: eval
+    conclusion: >-
+      第三轮 eval solid（方向性）：①选择器路径 **7/7** 选对（此前"未测过的扩展性缺口"补齐）；
+      ②"给正确流程"的增益**只在流程收录了该 case 的样本上出现**（005/007 各 1 例，2/2），
+      **未收录样本 0/5**（008/009/010/011/013）；③流程会误导：009、010 被"三型判别"推入型②（rope pad）
+      高置信错误分支；④流程不会硬凑：011 明确报"四形态全不匹配、属覆盖缺口"。
+      边界：每格 1 次；4 条首帖截断到 6000 字符（低估两侧表现）；S2 臂给的是 oracle 流程。
+  - who: agent（第三轮实验轮）
+    when: "2026-09-10"
+    type: decision
+    conclusion: >-
+      **加载机制判定不变**（全文 + 结构触发 + 索引选择器，三条均获验证）；
+      **新增内容标准（本卡的关键修正）**：`case-derived` 的 methodology 不得是"案例指纹 + fix PR"清单——
+      它只是第二份 case 索引，加载它对新变体无益且可能误导；必须是**可对新变体执行的判据**
+      （阈值/分支/可测指标）。配套两条：
+      ①**留出检验作为机械门**：`scripts/flow_pool.py --flow-coverage` 按 `sources[].cases` 判定样本是
+      "收录（污染）"还是"未收录（泛化）"；一条流程若**无未收录样本的通过记录**，其"方法"地位未验证
+      → 不进 procedure 闸门（当前 `ascend-vllm-spec-decode-mtp-triage` 3 条未收录样本 0/3 通过）。
+      ②**分支必须由数据决定**：流程给出分支时，须用可测判据（如 rope_dim 是否 2 的幂）判定，
+      不得凭配置指纹"结构性排除"后高置信套用（009/010 的错误正是这么产生的）。
+      未测项：official-doc 来源流程（真方法）在未收录样本上的泛化——池内暂无对口样本（13973 的根因是
+      代码级 buffer 分配，非阈值型方法可解），需按方法形态补样本。
+  - who: agent（内容治理轮，用户指示"先降级为普通 case，reference 里不要有案例索引型的"）
+    when: "2026-09-10"
+    type: action
+    conclusion: >-
+      按**形态**（而非来源）判定"案例索引型"：步骤以 case 指纹 + fix PR 为主体（机械信号：含 PR 号/ case id
+      的 step 占比）。归档 3 条：`ascend-vllm-spec-decode-mtp-triage`（17 步 / 13 PR / 15 case id）、
+      `ascend-mooncake-kv-transfer-triage`（11 步 / 9 PR / 10 case id）、`vllm-ascend-startup-triage`
+      （9 步 / 5 PR / 7 case id）→ 移入 `references/_archive/`，`status: deprecated` + `deprecated_at/reason`。
+      安全性核验（降级前）：三条的 `sources[].cases` **全部在 knowledge/ 内**（无知识丢失）；
+      无 case 的 `ref_knowledge` 指向它们；`collect-gates.yaml` 无绑定；归档后
+      `verify_references.py --check` / `build_ref_summary_index.py --check` 均绿。
+      `eval/flow/` 池内 4 条样本的 `flow_relevant` 置 null（现为覆盖缺口，附 note）。
+      保留（案例归纳但**形态是判据驱动**，未达"案例索引"标准）：`ascend-determinism-triage`、
+      `ascend-garbled-output-triage`、`msllm-startup-version-env-triage`、`glm-quantized-startup-triage`、
+      `ascend-moe-comm-triage`——其中前两条被 8 条 case 的 `ref_knowledge` 引用。
+      结果：methodologies 17 → 14。

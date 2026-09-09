@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-09    词条数：71
+# 生成日期：2026-09-09    词条数：68
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -283,18 +283,6 @@ entries:
     platforms: []
     categories:
     - interrupt
-- id: ascend-mooncake-kv-transfer-triage
-  type: methodology
-  title: Mooncake/Ascend KV-transfer 分层诊断（python backend / native transport / 连接 / 流同步）
-  summary: PD 分离 + Mooncake KV-pool 部署故障先按报错面路由到层、再按层内形态定位，把同族诊断从逐个翻 case 变成分层路由：python traceback 且栈指
-    vllm_ascend/*.py → python backend 层（vllm-ascend 自身代码， 细分 init/线程 conf…
-  applies_to:
-    platforms:
-    - A2-910B
-    - A3-910C
-    categories:
-    - interrupt
-    - precision
 - id: ascend-msaicerr
   type: tool
   title: msaicerr AI Core Error 专项分析工具
@@ -375,19 +363,6 @@ entries:
     - cross
     categories:
     - precision
-- id: ascend-vllm-spec-decode-mtp-triage
-  type: methodology
-  title: vllm-ascend spec-decode/MTP 族分层诊断（启动/首请求/运行期崩溃 + 静默精度·性能退化）
-  summary: vllm-ascend 投机解码（spec-decode/MTP：deepseek_mtp/qwen3_5_mtp/qwen3_next_mtp/EAGLE/DSpark）故障族，
-    先按故障阶段分流——R-A 启动/拉起期（服务起不来、图捕获 warmup 崩）、R-B 服务能起但首请求/投机 first pass 即…
-  applies_to:
-    platforms:
-    - A2-910B
-    - A3-910C
-    categories:
-    - interrupt
-    - precision
-    - performance
 - id: glm-quantized-startup-triage
   type: methodology
   title: GLM 系模型量化加载启动失败排查（按报错形态分类）
@@ -605,15 +580,6 @@ entries:
     - cross
     categories:
     - precision
-- id: vllm-ascend-startup-triage
-  type: methodology
-  title: vllm-ascend 服务启动失败通用排查（跨模型：版本配套 / 量化加载 / patch 层 / 平台特化路径）
-  summary: 通用 vllm-ascend（vllm serve / EngineCore）启动即失败的分流方法论——先按失败阶段与报错签名分类，依次核对版本/配套面（vllm×vllm-ascend
-    commit、上游支持合入点、适配期坏版本、镜像内依赖）、量化权重格式面、patch 层全局副作用，再定位平台特化执行路径缺陷（启动…
-  applies_to:
-    platforms: []
-    categories:
-    - interrupt
 - id: vllm-infer-precision-triage
   type: methodology
   title: vLLM 推理精度定位五步路径（前置对齐 → 首差异 token → dump → compare → 单算子确认）
