@@ -1,0 +1,39 @@
+id: msprobe-accuracy-compare
+type: tool
+title: msprobe compare——数值精度比对（NPU vs 标杆，真实数据/统计量/MD5 三模式）
+summary: msprobe compare：把 NPU dump 与 CPU/GPU/NPU 标杆 dump 逐 API 比对，输出 compare_result_{ts}.csv（多卡按 rank 分文件）；三种数据模式（真实数据/统计数据/MD5）对应三套表头与指标；加 -da 可自动识别全网首个差异节点
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/accuracy_compare/pytorch_accuracy_compare_instruct.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/accuracy_compare）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [msprobe-data-dump, msprobe-visualization]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  tool_name: "msprobe compare（PyTorch 场景精度比对）"
+  invocation: "以 CPU/GPU（或另一 NPU）的计算结果为标杆，逐 API 比对运行时精度：`msprobe compare -tp <NPU dump.json 或 dump 目录> -gp <标杆 dump.json 或目录> [options]`。单卡传 dump.json、多卡传 dump 目录；比对完成打印 `msprobe compare ends successfully.`。前置：两侧 dump 的 task/summary_mode 配置决定走哪套指标"
+  commands:
+    compare: "msprobe compare -tp <target_path> -gp <golden_path> [-o <out>] [--xlsx] [-fm] [-dm <*.yaml>] [-cm <*.yaml>] [-da] [-tensor_log] [--consistent_check --backend <fsdp|megatron>] [--config <matmul.yaml>]"
+    diff_analyze: "msprobe compare -tp … -gp … -da（自动识别网络中首个差异节点，支持 md5/统计量 dump，单卡/多卡均可）"
+  output_meaning:
+    - "单卡：compare_result_{timestamp}.csv（--xlsx 则为 .xlsx）；多卡：compare_result_rank{rank_id}_{timestamp}.csv 每卡一份"
+    - "-da 额外产出 compare_result_rank{rank_id}_{timestamp}.json 与 diff_analyze_{timestamp}.json（打印 `Saving json file to disk: …` / `The analyze result is saved in: …`）"
+    - "比对结果先看 Result 与 Err_Message 定位可疑算子，但**每个指标各有判定标准，需结合实际判断**，不能只看 Result"
+    - "三套表头：真实数据模式（task=tensor）有 Cosine / EucDist / MaxAbsErr / MaxRelativeErr / One Thousandth Err Ratio / Five Thousandth Err Ratio；统计数据模式（task=statistics + summary_mode=statistics）只有统计量 diff / RelativeErr / 统计量本身；MD5 模式（summary_mode=md5 或 xor）只有两侧 CRC-32 值"
+  pitfalls:
+    - "比对模式由**采集时的配置**决定，不是命令行选的——两侧 dump 的 task/summary_mode 不一致时可比性会变差（拿不到 tensor 就退化为统计量比对）"
+    - "多卡场景必须传 dump 目录而非单个 dump.json，否则只能比到单卡"
+    - "输出目录下与结果文件同名的文件会被**删除覆盖**，重复比对时注意"
+    - "-dm（data_mapping）仅支持逐卡比对；-cm（cell_mapping）用于不同平台/不同配置的模块比对；两者都只在自动匹配失败时才需要"
+    - "--consistent_check 是 verl 训推一致性专用（须配 --backend），普通精度比对不要开"
+    - "量化场景的 tensor 矩阵乘校准需要 --config 传 matmul.yaml，仅 PyTorch 支持"

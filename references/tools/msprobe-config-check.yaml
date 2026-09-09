@@ -1,0 +1,39 @@
+id: msprobe-config-check
+type: tool
+title: msprobe config_check——训练前配置检查（双环境差异比对）
+summary: msprobe config_check：对比两个训练环境下影响精度的配置差异（环境变量/第三方库版本/训练超参/权重/数据集/随机操作）；静态采集只覆盖前三项，动态采集才覆盖全部；比对输出 result.xlsx，summary 页六项 pass/error/warning，前五项必须在精度比对前 pass
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/config_check_instruct.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [msprobe-accuracy-compare]
+
+status: active
+last_verified: 2026-09-09
+
+content:
+  tool_name: "msprobe config_check（训练前配置检查）"
+  invocation: "精度排查的**第一道分诊**：在两台训练服务器上分别采集配置，再把两个 zip 拷到同一环境比对，判断差异是否足以解释精度问题。流程：准备两台服务器 → 各自采集（静态或动态）→ 数据比对 → 看 result.xlsx 的 summary 页"
+  commands:
+    collect_static: "msprobe config_check -d [<*.sh> <*.yaml>] [-o <output_file_path>]（仅采集环境变量、第三方库版本、训练超参；env/pip 默认采，超参需传 shell 脚本或 yaml）"
+    collect_dynamic: "脚本内 `from msprobe.core.config_check import ConfigChecker`；流程开始处 `ConfigChecker.apply_patches(fmk)`，模型初始化后 `ConfigChecker(model=model, shell_path=\"\", output_zip_path=\"\", fmk=\"\")`（覆盖环境变量/第三方库/超参/权重/数据集/随机操作）"
+    compare: "msprobe config_check -c bench_zip_path cmp_zip_path [-o <output_path>]（bench=标杆环境，cmp=待对比环境；默认输出目录 config_check_result）"
+  output_meaning:
+    - "采集产物：两侧各一个 `config_check_pack.zip`（动态采集按 rank 与 micro_step 分存）"
+    - "比对产物：输出目录下 bench/、cmp/ 两个目录 + `result.xlsx`；summary 页给六项总览（env / pip / dataset / weights / hyperparameters / random），其余 sheet 是各检查项详情"
+    - "pass_check 取值：pass=通过；error=不通过；warning=存在对 msProbe 后续操作无影响的非关键第三方库版本不一致，建议看详情分析"
+    - "**前五项（env/pip/dataset/weights/hyperparameters）在精度比对前必须保证 pass**——不通过就先解释差异，别急着比 dump"
+  pitfalls:
+    - "静态采集只拿到**系统中的环境变量**，且 shell 脚本里解析的超参不支持复杂运算的数据还原——有这类情况改用动态采集"
+    - "动态采集在 MindSpeed-LLM 场景下，`apply_patches` 必须在框架 pretrain_gpt.py 的 megatron_adaptor 函数**导入之后**执行，否则不生效"
+    - "重复执行比对会**覆盖**输出路径里原有的比对结果"
+    - "warning 不是失败——是非关键三方库版本不一致，需人工看详情判断是否影响本次精度问题"
+    - "该工具解决的是「两个环境配置是否不同」，不解决「同一环境下模型本身的精度问题」——先排除环境差异再进 dump 比对链路"
