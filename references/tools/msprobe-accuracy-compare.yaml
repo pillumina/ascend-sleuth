@@ -25,6 +25,10 @@ content:
   commands:
     compare: "msprobe compare -tp <target_path> -gp <golden_path> [-o <out>] [--xlsx] [-fm] [-dm <*.yaml>] [-cm <*.yaml>] [-da] [-tensor_log] [--consistent_check --backend <fsdp|megatron>] [--config <matmul.yaml>]"
     diff_analyze: "msprobe compare -tp … -gp … -da（自动识别网络中首个差异节点，支持 md5/统计量 dump，单卡/多卡均可）"
+    offline_model: "离线模型一键式比对：输入原始模型（ONNX/OM）+ 对应离线模型，自动完成整网比对；支持动态 shape 与 AIPP 预处理。注意 ATC 转出的 OM 必须与运行环境芯片型号一致"
+    offline_data: "离线模型 dump 数据精度比对：ONNX/TensorFlow 的 ATC 转换前后、TF 训练场景、离线模型不同版本之间的比对"
+    atb: "ATB 场景精度比对（比对 ATB dump 的输入输出，按余弦相似度/欧氏距离判相似度）"
+    torchair: "torchair 图模式整网算子精度比对：GE 数据 vs FX 数据、GE 开关融合数据的比对，用于判断图模式下不同算子精度是否一致"
   output_meaning:
     - "单卡：compare_result_{timestamp}.csv（--xlsx 则为 .xlsx）；多卡：compare_result_rank{rank_id}_{timestamp}.csv 每卡一份"
     - "-da 额外产出 compare_result_rank{rank_id}_{timestamp}.json 与 diff_analyze_{timestamp}.json（打印 `Saving json file to disk: …` / `The analyze result is saved in: …`）"
@@ -36,5 +40,7 @@ content:
     - "输出目录下与结果文件同名的文件会被**删除覆盖**，重复比对时注意"
     - "-dm（data_mapping）仅支持逐卡比对；-cm（cell_mapping）用于不同平台/不同配置的模块比对；两者都只在自动匹配失败时才需要"
     - "--consistent_check 是 verl 训推一致性专用（须配 --backend），普通精度比对不要开"
+    - "比对族还有几个**场景变体**（同一动作、不同输入面，见 content.commands 的 offline_model / offline_data / atb / torchair）：离线模型（ONNX/OM）、ATB、torchair 图模式各有专用入口——拿错入口会出现「比不出来」而不是报错。MindSpore 版比对（mindspore_accuracy_compare）本词条不覆盖"
+    - "torch.compile 引入的精度差异**不走 compare**，走独立的 PrecisionChecker（eager vs compile 逐模块比对）——两者别混"
     - "量化场景的 tensor 矩阵乘校准需要 --config 传 matmul.yaml，仅 PyTorch 支持"
     - "官方口径的版本局限性：使用整网 dump 数据，定位到的可疑算子**受累计误差影响**（需用 msprobe-data-load 覆盖输入来隔离，或改走离线预检）；模型规模大时比对耗时长（详见 msprobe-capability-limits）"

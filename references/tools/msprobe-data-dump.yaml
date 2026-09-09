@@ -44,4 +44,5 @@ content:
     - "`risk_level` 默认 FOCUS——排除 reshape/transpose/permute/to/view 等形状变换类 API；排查这些 API 的精度问题必须显式改成 ALL"
     - "跨文件采集、推理模型指定 token_range、自定义 API 批量注册等场景的接口不同，需查原文对应小节"
     - "官方口径的版本局限性：API 级采集**仅支持白名单列表上的 API**；工具会做同步操作，**引入工具可能让同步/踩踏类问题消失**（排查这类问题时先看 msprobe-tool-side-effect-fault-patterns）；对 inplace 操作支持有限；**暂不支持参数及参数梯度的采集**（详见 msprobe-capability-limits）"
+    - "**接入点怎么找（版本无关的方法）**：加工具的位置随框架与版本变化，别背位置——在目标框架里临时替换一个高频算子并打印调用栈（如把 `F.linear` 换成打印 `traceback.print_stack()` 的 wrapper 再调原函数），从栈里读出该在哪插 `PrecisionDebugger`；定位后**撤掉替换**。这是把「易腐的接入点知识」换成「现场可求解的方法」"
     - "kernel 级（L2）采集：每 step 只支持采集**一个** API，list 必填该 API 名（取自 L1 dump.json）；成功打印 `The kernel data of {api_name} is dumped successfully.`，不支持时打印 `The kernel dump does not support the {api_name} API.`；打印成功但无数据 → 查 API 名格式、确认该 API 跑在 NPU 上，或改用 torch_npu.npu 的 init_dump/set_dump/finalize_dump"

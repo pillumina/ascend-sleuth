@@ -1,12 +1,17 @@
 id: msprobe-monitor
 type: tool
-title: msprobe monitor / monitor_v2——训练状态监测（CSV 字段与解读口径）
-summary: msprobe monitor_v2：训练过程中按需采集模块输入输出/权重梯度/优化器动量/参数分布/通信算子统计，按 rank 落 CSV（rank_<id>/<module>_step{X}-{Y}.csv）；统一表头 vpp_stage|step|module_name|scope|指标列，各监测项有固定 scope 语义与解读方向
+title: msprobe monitor——训练状态监测（v1 全功能 / v2 轻量 CSV）
+summary: msprobe monitor：训练中采集权重/权重梯度/激活值/优化器状态/通信算子统计——v1（TrainerMon，README 主指向、能力最全：异常告警/堆栈/l2 特征/mbs 粒度/csv2tensorboard）与 v2（TrainerMonitorV2，轻量 CSV 子集，按 rank 落 rank_<id>/<module>_step{X}-{Y}.csv）；v1 表头 vpp_stage|name|step|micro_step|*ops，输出走 MONITOR_OUTPUT_DIR
 
 sources:
   - type: official-doc
+    url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/monitor_instruct.md"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/monitor_instruct，v1）"
+    fetched_at: 2026-09-09
+    verification: cross-checked-source
+  - type: official-doc
     url: "https://gitcode.com/Ascend/msprobe/blob/tag_MindStudio_26.2.0.B050_003/docs/zh/user_guide/monitor_v2_instruct.md"
-    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/monitor_v2）"
+    version: "MindStudio 26.2.0.B050_003（msprobe docs/zh/user_guide/monitor_v2，v2）"
     fetched_at: 2026-09-09
     verification: cross-checked-source
 
@@ -14,29 +19,31 @@ applies_to:
   platforms: [cross]
   categories: [precision, performance]
 
-related_references: [msprobe-data-dump]
+related_references: [msprobe-data-dump, msprobe-capability-limits]
 
 status: active
 last_verified: 2026-09-09
 
 content:
-  tool_name: "msprobe monitor_v2（训练状态轻量化监测；同族另有 monitor v1）"
-  invocation: "在训练过程中采集关键中间量并以 CSV 落盘，用于训练稳定性评估与异常定位：①配置要采集的监测项（module / weight_grad / optimizer / param / cc）；②训练代码里初始化并按 step 调用一次 `mon.step()`；③在 output_dir 下看 CSV。推荐策略：长期启用 weight_grad 作底座，问题发生时再按需开 module / cc 并用目标筛选压开销"
+  tool_name: "msprobe monitor（训练状态监测；v1 = TrainerMon，v2 = TrainerMonitorV2）"
+  invocation: "**先选版本再动手**：`user_guide/README.md` 的「训练状态监测」指向 **v1（monitor_instruct.md）**，v1 能力比 v2 全；v2 是后续的轻量化 CSV 子集。v1：在训练代码里 model/optimizer 定义完成后、训练开始前插入 `from msprobe.pytorch import TrainerMon` → `TrainerMon(config_file_path=...).set_monitor(model, grad_acc_steps=..., optimizer=...)`，输出走环境变量 `MONITOR_OUTPUT_DIR`。v2：`TrainerMonitorV2` 按 step 调一次 `mon.step()`，输出到 config 的 output_dir、按 rank 落 CSV"
   commands:
-    setup: "在训练脚本中初始化 TrainerMonitorV2（配置 monitors 与 output_dir），每个训练 step 调用一次 mon.step()"
-    scenarios: "loss 上扬/尖刺 → 看 module（前向输入输出与反向梯度分布）；grad norm 异常 → 看 weight_grad（unreduced 梯度累积期 / reduced 梯度聚合前）；收敛变差或震荡 → 看 optimizer（exp_avg / exp_avg_sq）；分布式同步或通信异常 → 看 cc"
+    v1_enable: "from msprobe.pytorch import TrainerMon; monitor = TrainerMon(config_file_path=\"./monitor_config.json\", params_have_main_grad=True); monitor.set_monitor(model, grad_acc_steps=args.global_batch_size//args.data_parallel_size//args.micro_batch_size, optimizer=optimizer)——deepspeed+accelerate 场景 optimizer 传 optimizer.optimizer"
+    v1_config: '{"targets":{},"wg_distribution":true,"format":"csv","ops":["min","max","mean","norm"],"ndigits":16,"step_count_per_record":1}'
+    v1_output_dir: "export MONITOR_OUTPUT_DIR=/xxx/output_dir（默认 ./monitor_output/）"
+    v2_enable: "from msprobe.core.monitor_v2.trainer import TrainerMonitorV2（config 配 monitors 与 output_dir；每训练 step 调一次 mon.step()）"
+    v2_scenarios: "loss 上扬/尖刺 → module；grad norm 异常 → weight_grad（unreduced 累积期 / reduced 聚合前）；收敛变差或震荡 → optimizer（exp_avg / exp_avg_sq）；分布式同步或通信异常 → cc"
   output_meaning:
-    - "输出目录：`<output_dir>/rank_<rank_id>/{module,weight_grad,optimizer,param,cc}_step{X}-{Y}.csv`；**只有 monitors 中启用的模块才生成对应 CSV**；当前仅支持 format=csv"
-    - "统一表头：`vpp_stage | step | module_name | scope | micro_step(可选) | min | max | mean | norm | nans`（统计指标按 ops 展开为列，只写用户启用的指标）"
-    - "module.csv：scope = forward / backward；module_name 形如 `<module_name>.<io_kind>.<idx>`，io_kind ∈ input/output/grad_input/grad_output。解读：优先看同一模块在 forward 与 backward 是否**同时**异常，以区分「前向激活异常传导」还是「梯度链路异常」"
-    - "weight_grad.csv：scope = unreduced / reduced；module_name 为参数名。解读：unreduced 正常而 reduced 异常 → 偏向梯度在 step 前形态被改变/修改；unreduced 已异常 → 偏向反向链路内产生异常"
-    - "optimizer.csv：scope = exp_avg / exp_avg_sq。解读：训练震荡/不收敛时对比异常前后的动量变化，判断是否优化器状态突变"
-    - "param.csv：scope = param_origin / param_updated。解读：对比 step 前后参数分布变化，定位更新异常或数值突变"
-    - "cc.csv：scope = comm；module_name 为通信 tag（含通信算子/序号/代码位置）。解读：先用 cc_log_only=true 拿通信日志，再用 cc_codeline 过滤无关通信，最后开统计采集定位异常通信的输入输出分布"
-    - "vpp_stage 从 name 前缀 `<idx><NAME_SEP>` 推导，无前缀默认 0；micro_step 仅在启用微步能力时出现（如 weight_grad.monitor_mbs_grad=true），未开启时记录梯度累积总微步数"
+    - "**v1 表头**：`vpp_stage | name | step | micro_step(可选) | *ops`；仅激活值监测含 micro_step；激活值监测的 name 为 `<module_name>.<input|output>`，其他任务的 name 为 `<param_name>`；`step_count_per_record` 可把多个 step 合并进一个 csv"
+    - "**v1 能力面**（v2 不含）：权重监测 / 权重梯度监测 / 激活值监测 / 优化器状态监测、**异常告警（alert）**、采集 module 堆栈信息、指定监测对象、l2 可解释特征监测、mbs 粒度梯度监测、**csv 转 TensorBoard 可视化**、动态启停、功能重载"
+    - "**v2 输出**：`<output_dir>/rank_<rank_id>/{module,weight_grad,optimizer,param,cc}_step{X}-{Y}.csv`；仅 monitors 中启用的模块才生成；仅支持 format=csv；统一表头 `vpp_stage | step | module_name | scope | micro_step(可选) | min | max | mean | norm | nans`"
+    - "v2 module.csv：scope = forward / backward；module_name 形如 `<module_name>.<io_kind>.<idx>`（io_kind ∈ input/output/grad_input/grad_output）。解读：看同一模块 forward 与 backward 是否**同时**异常，区分「前向激活异常传导」与「梯度链路异常」"
+    - "v2 weight_grad.csv：scope = unreduced / reduced。解读：unreduced 正常而 reduced 异常 → 偏向梯度在 step 前形态被改变；unreduced 已异常 → 偏向反向链路内产生异常"
+    - "v2 optimizer.csv / param.csv / cc.csv：scope 分别为 exp_avg·exp_avg_sq / param_origin·param_updated / comm。cc 解读顺序：先 cc_log_only 拿通信日志，再 cc_codeline 过滤无关通信，最后开统计"
   pitfalls:
-    - "本文档覆盖 **monitor_v2**（轻量化监测）。同族还有 monitor v1（`user_guide/monitor_instruct.md`），配置项与 CSV 字段不同——拿 v1 的配置套 v2 会不生效，按版本查原文"
-    - "只有 monitors 里启用的模块才出 CSV——目录里缺某个 CSV 不是采集失败，是没开"
-    - "CSV 里的 step 与 micro_step 是两个层级：分析异常时要先确认看的是哪个粒度，别把 micro_step 当训练 step"
-    - "cc 的开销最大（通信统计），排查完应及时关闭；官方推荐顺序是先 cc_log_only 再 cc_codeline 再统计，一步到位会淹没在无关通信里"
-    - "官方口径的版本局限性：仅支持**模块级**统计量指标分析（到不了 API 级）、仅支持 megatron 与 deepspeed 框架、会少量增加时间与显存开销（详见 msprobe-capability-limits）"
+    - "**别以为 monitor 只有 CSV**：README 指向的 v1 含异常告警（alert）、module 堆栈、l2 特征、mbs 粒度梯度、csv→TensorBoard 等能力；v2 文档自己写明「暂不提供 v1 中的 print_struct、stack_info、异常告警、csv2tensorboard/csv2db」——**v2 是子集**"
+    - "v1 与 v2 的配置项与输出字段不同（v1 用 config.json 的 targets/ops/ndigits/step_count_per_record，v2 用 monitors/output_dir）——拿一套配置套另一套不生效，先确认 msprobe 版本与用哪套"
+    - "v2 里只有 monitors 启用的模块才出 CSV——目录里缺某个 CSV 不是采集失败，是没开"
+    - "CSV 的 step 与 micro_step 是两个层级：先确认看的是哪个粒度，别把 micro_step 当训练 step"
+    - "cc 开销最大（通信统计），排查完及时关闭"
+    - "官方口径的版本局限性：仅支持**模块级**统计量（到不了 API 级）、仅支持 megatron 与 deepspeed 框架、少量时间与显存开销（详见 msprobe-capability-limits）"
