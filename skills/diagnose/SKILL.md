@@ -52,7 +52,7 @@ description: >
 
 - **探询只问一次、只问一句**——问完按对方回答走，不要"顺便把步骤也讲了"。
 - **给接入步骤时必须区分改谁**：改**用户业务代码**（加 `PrecisionDebugger` 等）风险低；改**框架源码**（vLLM/verl 的 runner 等）属"改被测系统"，必须标注临时性 + 给回滚方式。
-- **缺什么就说什么**：performance 的 profiling **采集**指引当前 reference 层未覆盖（msprof 是独立仓库、尚未沉淀）——只能按客户环境的工具版本现场确认，**不要编造命令**；如实说明并建议沉淀（`/skill:to-reference`）。
+- **指引落到词条上**：performance 没有 profiling 数据时，按 `msprof-collect-parse` 给采集方式（`msprof --application=... --output=...`、`PROF_*` 产物结构），并用 `profiling-performance-fault-patterns` 对齐「指标形态 → 常见根因」；具体命令以**客户环境的工具版本**为准（版本差异以实际输出为准，不照搬示例）。
 
 > 展开细节见 `references/diagnosis-procedure.md` 步骤 1。
 
