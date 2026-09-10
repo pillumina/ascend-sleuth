@@ -2,9 +2,9 @@ name: kb-checks
 
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/build_docs_index.py"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/build_docs_index.py"]
 
 jobs:
   index-freshness:
@@ -68,6 +68,20 @@ jobs:
       # 注意：verify_exec_log.py **不进 CI**——exec-log（metrics/skill-exec-log.yaml）是
       # .gitignore 运行时件，CI checkout 里不存在，跑它只会打印"跳过"并空转。
       # 该不变量改由 evolve-check 收尾自查（skills/evolve-check 第 4 步）。
+
+  # 人读面的名字与数字（docs/_manifest.yaml → README 区块）。为什么值得一道硬门：
+  # "skill 共几个""有哪些文档"这类事实原先手写在多处，实测已漂移（术语表曾写"共九个"
+  # 而实际十个；文档目录 17 条平铺，读者看不出该读哪篇）。数字没有理由手写——
+  # 生成物与清单不一致即红；**docs/ 下出现未登记的文档也即红**（漏登记比数字写错更难发现）。
+  docs-index:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      - run: python3 scripts/build_docs_index.py --check
 
   # 封存对照集（holdout）：eval/golden/ 里由维护者独占的那部分。理由见 scripts/holdout.py
   # 头注——golden 在改动者可写面内且 groom 被要求跟着 case 改夹具，所以"无回归"是可

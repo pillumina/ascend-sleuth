@@ -45,7 +45,7 @@ _避免_：priority、weight、优先级
 _避免_：log、transcript、历史
 
 **Skill（技能）**:
-遵循 Agent Skills 规范、由 `SKILL.md` 定义的 agent 可调用工作流。本体系共九个：diagnose、to-postmortem、to-reference、issue-ingest、knowledge-groom、resume-diagnosis、self-evolve、evolve-check（内容流程收尾的伴随协议）、preload-panel（DSH 专用）。
+遵循 Agent Skills 规范、由 `SKILL.md` 定义的 agent 可调用工作流。**名单与数量不在此处写死**——它们由 `docs/_manifest.yaml` 生成到 README 的「skill 名单」节（`scripts/build_docs_index.py --check` 保证一致）；本表只定义术语本身。
 _避免_：command、plugin、tool
 
 **Severity（严重度闸门）**:
@@ -63,6 +63,10 @@ _避免_：entry、wiki 段落、先验条目
 **ref_knowledge（case 侧知识引用）**:
 case YAML 的可选字段，结构化引用 reference 词条（`ref: <reference-id>` + `role: signature-source / fix-methodology / root-cause-context`）。反向视图（哪些 case 引用了某 reference）是派生的、不存储——一条关系只存一处（ADR-0008 §7）。
 _避免_：references（那是 case 的事故溯源 URL 列表，两回事）
+
+**consumed（评测样本已消耗）**:
+评测样本（fixture / S2 样本）被沉淀为 case 后的标记：该样本转为自证/回归用途（`held_out=false`），此后它命中的 case 就是它自己产出的，**自证命中不计入外部验证**（否则等于自己给自己出题又自己判分）。
+_避免_：已用、已归档（都丢失"自证不虚增"这层语义）
 
 ## 理论术语（design-theory.md 用词标准）
 
@@ -100,18 +104,10 @@ _避免_：外推（extrapolation 是数值数学术语，语义不符）
 约束优化中资源的边际价值：一单位预算折合多少期望损失。一切权衡的兑换率。
 _避免_：隐含价格、机会成本（语义近但不等）
 
-## 机制与工具（2026-09 新增，规范定义）
+## 机制术语去哪找
 
-| 术语 | 定义 |
-|---|---|
-| **元层 eval 台（arena）** | WikiSkill 式 train/val 门控：selection（held-out，候选门控）/test（终判，按规模）分离；候选改动 golden 无回归 + val 严格提升才收、否则回滚；影响账本 append。工具 `scripts/eval_arena.py`（--pool/--stats/--gate/--rc-check），设计 docs/evolution-eval-arena.md，决议 EV-2026-013/014 |
-| **交互型 replay（ixn-replay）** | 交互面评测：分期披露驱动 diagnose，测追问/信息充分性/过早结论；gold 决定性字段须"向报告者可问得"；`eval/ixn-arena/` 规格入库、正文本地。工具 `scripts/ixn_replay.py`，设计 docs/evolution-ixn-replay.md，决议 EV-2026-012/016/017/018 |
-| **归因层 rc-check** | 结论一致离线对照：agent 根因 vs 标注 resolution（启发式 + 人工核验，不自动终判），`eval_arena --rc-check` |
-| **门禁分级** | skill 改动按影响面选门禁：检索/路由面 → golden 子集（非全量）+ 基线缓存；交互/指引面 → ixn 对口；文档 → 免跑。docs/eval.md「门禁分级」，决议 EV-2026-021 |
-| **gate_diff** | gated 基线机械对照：`scripts/gate_diff.py --base/--after/--expected`，top3 一致或 expected 保持 top-3 为无回归。决议 EV-2026-027 |
-| **索引分片（F1/F2/F4）** | `build_index.py` 生成 `knowledge/_index/<ns>.yaml` 与 `<ns>__<cat>.yaml`（category 分片）；行瘦身（无 quickly_check、symptoms 首条摘要）；阶段一只读命中分片。决议 EV-2026-022/023/025 |
-| **容量闸门（F3）** | vllm-ascend interrupt 83/30 溢出 33%：token 维度已由 F1/F2 解，残余溢出维度挂再拆闸门（溢出≥40% / med>5 / 分片读入>60KB）。决议 EV-2026-024 |
-| **references summary 索引** | `references/_summary-index.yaml`（背景类+active 词条行化），diagnose 2.5 ② 读索引替代逐文件扫。脚本 `build_ref_summary_index.py`，决议 EV-2026-026 |
-| **references 流程索引** | `references/_procedure-index.yaml`（`methodology` 的**选择器**索引——挑"读哪条流程"，选定后必须读全文）。脚本 `build_procedure_index.py`，决议 EV-2026-038 |
-| **EV 卡** | proposals/ideas/EV-YYYY-NNN.yaml：agent 决策档案（proposal→action→eval→decision），不含 git 合入态；validation_record/self_consistent 口径见 case schema |
-| **consumed（self）** | 评测样本被沉淀为 case 后转 self/回归（held_out=false），自证命中不虚增外部验证 |
+本表**不定义机制**。此前这里堆了十几条机制定义（eval 台、交互型 replay、门禁分级、索引分片、容量闸门……），每条还挂着决议卡号——结果是：一份**术语表**被当成了**机制注册表**，读者要先在这里学会一整套机制才能去读机制文档，而机制文档本来才是它们该待的地方。
+
+每件事只有一个权威处，按"你要做什么"查 [docs/evolution.md](docs/evolution.md) 的**权威归属**表（那张表也说明每篇文档什么时候该读）。
+
+术语表只回答"**这个词是什么意思**"——case / postmortem / groom / trace / reference / 分诊树 / 严重度闸门 等。机制怎么运作、由谁裁决、什么时候改，不在这里。

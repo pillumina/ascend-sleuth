@@ -1,5 +1,7 @@
 # 元层 eval 台（arena）——WikiSkill 式 train/val 分离 + 门控自演进
 
+> **论证层——日常不必读。** 执行规则与机制地图见 [evolution.md](evolution.md)；本文只承载「为什么这样设计」的推导，改机制本身时才需要读。
+
 > 机制决议：EV-2026-013。对应 WikiSkill（arXiv 2608.27454）的元层：候选改动在
 > held-out 评测集上**严格提升才接受**、否则回滚、结果留影响账本。本台把 S2 replay
 > 从"单池评测"升级为"train/val 分离 + 门控 + 账本"的 eval 台，服务检索/路由层
