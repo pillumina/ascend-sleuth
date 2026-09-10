@@ -1,7 +1,7 @@
 id: EV-2026-034
 layer: L2                          # 流程与 skill（diagnose 输出规范）
 title: diagnose 输出去AI味 + 源码分析结论流程可视化（面向工程师的可读结论）
-status: in_experiment
+status: validated
 authorization: review
 dimension: process                 # 流程/skill 层改进
 supersedes: []
@@ -61,6 +61,10 @@ decisions:
   when: '2026-09-08'
   type: decision
   conclusion: 采纳（in_experiment → 实施完成）。用户已批准按此卡修正；golden-replay 为后续验证项（改 SKILL.md 输出节，不影响候选选择语义）。
+- who: agent（2026-09-10 evolve-check 审计补录）
+  when: '2026-09-10'
+  type: decision
+  conclusion: "**状态推进补录**：本卡上一条 decision 已判「采纳」，但 status 未随之推进（面板口径 status_lag）。本次只把 status 置 validated，不新增判断；残留观察项如实保留——golden-replay 全量回归仍未跑（不改变候选选择语义的输出节改动，按 docs/eval.md 分级的观察窗处理）"
 template_index:
   - section: 1. 结论先行
     content: "一句话=现象+根因+改哪个开关；不含内部词表。规范：人能不看下文先抓'哪里坏了、改一个开关'。"

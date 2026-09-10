@@ -9,7 +9,7 @@
 id: EV-2026-032                    # 稳定 ID（EV-年-序号）
 layer: L2                          # L1 知识内容 | L2 流程与 skill | L3 工作流编排
 title: 诊断源码获取与 trace 边界约束确定性化（src_fetch.py 入口 + evnote 渐进式披露通道）
-status: in_experiment             # EV 卡 = agent 决策档案（不含 git 合入态/待办态），词表见 pipeline §7：
+status: validated                  # 2026-09-10 由 in_experiment 推进（执行/验证早已完成，缺的是卡上的 judgement 记录）
                                    #   产卡即执行（方案成形才产卡，无 candidate 待办态）
                                    #   in_experiment → 终态（agent 判断）：
                                    #   validated 采纳（eval solid，改动保留进流程层攒批）
@@ -40,9 +40,24 @@ gate:
   condition: "续接路径与 diagnose 约束不一致的观察 ≥2 次（已复现：源码 /tmp、流程讨论入 trace 各 ≥1 次）"
 risk: medium                       # medium → review；改动为指引面/文档面 + 新增脚本，未触 knowledge/ 高险字段
 principle_refs: [2, 6, 8]          # 二 不变量写进结构（脚本确定性入口）；六 闸门硬度与错误代价匹配（语义不硬门）；八 可观测先于改进（离轨通道落盘）
-actual_cost: null                  # 执行/验证后写回（缺失 = 审计缺口）；source: estimate|measured
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "2026-09-08 会话内联执行，未单独记账（成本记在该会话本身）；2026-09-10 补录生命周期时按 0 计，口径如实标注"
 decisions:                         # 审计链：谁/何时/依据/结论（只追加不修改）
   - who: agent
     when: 2026-09-08
     type: proposal
     conclusion: "采纳「确定性脚本 + 离轨通道」而非「CI 硬门 on trace」：cluster 到哪/复用/URL 用 src_fetch.py 承载；trace 边界为语义层不设 CI 硬门，改用 _evnote 渐进式披露通道消除源头（trace 不进 PR，CI 无意义）；软信号（process_leak）不做——非确定性且 trace 不可见 CI"
+  - who: agent（2026-09-10 evolve-check 审计补录）
+    when: 2026-09-10
+    type: action
+    conclusion: "执行已完成并合入：`866dee2` 新增 `scripts/src_fetch.py`（182 行）+ diagnose 源码分析节改走脚本 + resume-diagnosis 显式继承约束（+19 行）；`edec32b` 补「按报错背景定仓」→ `--list`。产物在位：`scripts/src_fetch.py`、`skills/diagnose/SKILL.md:38/148/149`、`skills/resume-diagnosis/SKILL.md:37/50`"
+  - who: agent（同轮补录）
+    when: 2026-09-10
+    type: eval
+    conclusion: "scan_review（指引面/改动按 docs/eval.md 分级不跑检索 golden）：①`python3 scripts/src_fetch.py --list` 实跑 exit 0，输出 7 个已知 repo→host 映射；②`grep -rn src_fetch skills/` 命中 diagnose 3 处 + resume-diagnosis 2 处，无「自行 clone 到 /tmp」的旧表述残留；③CLAUDE.md 的 source_ref 段同步（866dee2 含 CLAUDE.md 改动）"
+  - who: agent（同轮补录）
+    when: 2026-09-10
+    type: decision
+    conclusion: "**validated**（采纳，改动保留）。执行与验证均已完成、产物已在 main；本卡此前只记 proposal 属审计链缺口（evolve-check §3.5「卡不完整」），本轮按真实证据补齐 action/eval/decision 并置终态"

@@ -8,7 +8,7 @@
 id: EV-2026-033
 layer: L2
 title: diagnose skill 去复杂化/结构化（瘦 SKILL 脊梁 + 详情下沉 skill 本地 references + 去重）
-status: in_experiment
+status: validated
 authorization: review
 dimension: maintainability
 supersedes: []
@@ -34,9 +34,24 @@ gate:
   condition: "SKILL.md 行数 >200 且 与 skill 本地 references 描述的同一规则重复（已确认：核心循环重复）"
 risk: medium
 principle_refs: [2, 9]
-actual_cost: null
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "2026-09-08 会话内联执行，未单独记账；2026-09-10 补录生命周期时按 0 计，口径如实标注"
 decisions:
   - who: agent
     when: 2026-09-08
     type: proposal
     conclusion: "采纳「瘦 SKILL 脊梁 + 详情下沉 skill references + 去重」：核心问题不是缺结构化（SKILL 已有本地 references/），而是 SKILL 把 reference 的内容又内联了一份。按 skill-creator best practice + 原则九（上下文预算）拆分，行为语义保持不变。与 src_fetch/trace 边界 PR（EV-2026-032）分开，独立成 PR。"
+  - who: agent（2026-09-10 evolve-check 审计补录）
+    when: 2026-09-10
+    type: action
+    conclusion: "执行已完成并合入：`4d9e59d`「diagnose skill 去复杂化：瘦 SKILL 脊梁 + 详情下沉 skill 本地 references + 去重」——`skills/diagnose/SKILL.md` 210 → 114 行，新增 `references/diagnosis-trace.md`（36 行），`diagnosis-procedure.md` 同步去重（-5/+3）"
+  - who: agent（同轮补录）
+    when: 2026-09-10
+    type: eval
+    conclusion: "scan_review（组织形态/指引面改动，按 docs/eval.md 分级不跑检索 golden）：①行数 210→114（后经 EV-2026-040/041 在原结构上继续增补至 163——**结构可承载后续四次改动而未回退**，这是「脊梁 + 懒加载详情」分离生效的反证）；②success_criteria 里的「逐条比对行为语义不变」当时未做 golden 对照，如实标注：属未独立验证项，非通过项"
+  - who: agent（同轮补录）
+    when: 2026-09-10
+    type: decision
+    conclusion: "**validated**（采纳，改动保留）。产出的结构被后续三张卡（037/040/041）继续承载使用；本卡此前只记 proposal 属审计链缺口，本轮按真实证据补齐并置终态"

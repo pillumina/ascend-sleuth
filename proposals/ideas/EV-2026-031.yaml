@@ -43,8 +43,9 @@ gate:
 risk: medium                       # 改核心 diagnose skill 流程；可逆 → review 级
 principle_refs: [5, 6, 8, 11]
 actual_cost:
+  tokens: 0
   source: estimate
-  note: "无 tokenMeter，estimate；本次为 skill/模板文档面改动 + 卡补录，成本低"
+  note: "无 tokenMeter，estimate；本次为 skill/模板文档面改动 + 卡补录，成本低。2026-09-10 补写 tokens：0 只表示「未量化」，不表示零成本——口径与面板 audit_gaps / verify_proposals 的成本缺口判据对齐"
 decisions:
   - {type: proposal, who: agent, when: "2026-09-08", conclusion: "diagnose 流程体验与证据纪律改进聚合卡（本 session 驱动）"}
   - {type: action, who: agent, when: "2026-09-08", conclusion: "改 skills/diagnose/SKILL.md（证据落盘铁律/两种缺信息/外部事实落盘/trace边界/相似检测/trace生命周期/改进先产EV卡护栏）+ skills/resume-diagnosis/SKILL.md（status 原位闭环）+ diagnosis_state.yaml.example（证据落盘示例）+ scripts/verify_proposals.py（VALID_METHOD 补 scan_review）+ 新增本卡"}

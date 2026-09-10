@@ -1,7 +1,7 @@
 id: EV-2026-036
 layer: L2                          # case schema 词表 + triage 路由
 title: 上游官方「best_practices 案例文档」是第四类来源：verification 档位无对应项 + 其症状形态未进 triage 正则
-status: in_experiment
+status: validated
 authorization: review
 dimension: process
 supersedes: []
@@ -36,3 +36,19 @@ decisions:
   when: '2026-09-09'
   type: proposal
   conclusion: owner 裁定「需要新增」→ 已新增 upstream-official-doc 档位（四处词表同步 + groom 先验 0.7/0.55/0.45）；本批 14 条草稿全部改用该档位。triage 症状补录按步骤 3.5 随 case PR 提交，不占本卡。
+- who: agent（2026-09-10 evolve-check 审计补录）
+  when: '2026-09-10'
+  type: action
+  conclusion: "执行已完成并合入：`122cd4e`「case(msprobe): 第二批 8 条草稿 + verification 新增 upstream-official-doc 档位 + triage 症状补录」。产物在位（四处词表 + 路由）：`skills/to-postmortem/SKILL.md:87`、`docs/evolution-execution.md:43`、`examples/sample-case.yaml:48`、`skills/knowledge-groom/SKILL.md:78`（先验 0.7/0.55/0.45）、`triage-tree.yaml:48`（训练精度类正则）"
+- who: agent（同轮补录）
+  when: '2026-09-10'
+  type: eval
+  conclusion: "scan_review：①四处产物 grep 全部在位（本次复核）；②档位可机械判定——`upstream-official-doc` 已在 schema 词表 + groom 先验表中，不再靠 agent 临时贴靠；③success_criteria ②「本批 14 条 symptoms 全部可被 triage 路由（14/14）」为**当时记录**，本轮未复跑，如实标注不复述为本次结果；④success_criteria ③「走 structure 模板人审」由 122cd4e 所在 PR 完成"
+- who: agent（同轮补录）
+  when: '2026-09-10'
+  type: decision
+  conclusion: "**validated**（采纳，改动保留）。本卡此前只记 proposal 属审计链缺口，本轮按真实证据补齐并置终态；actual_cost 缺失按同批做法以 tokens: 0 + 口径说明补写"
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "2026-09-09 会话内联执行，未单独记账；2026-09-10 补录生命周期时按 0 计，口径如实标注"

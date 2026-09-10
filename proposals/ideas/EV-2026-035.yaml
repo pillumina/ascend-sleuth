@@ -1,7 +1,7 @@
 id: EV-2026-035
 layer: L2                          # triage 路由 + 检索协议 + methodology 扩层 + diagnose 行为规则
 title: 调度/控制循环层问题被误归因到数据面组件（静默停滞 → 先查控制循环，别锚定在发日志的组件上）
-status: in_experiment
+status: validated
 authorization: review
 dimension: process                 # 流程/skill 层改进
 supersedes: []
@@ -56,3 +56,7 @@ decisions:
   when: '2026-09-08'
   type: decision
   conclusion: 采纳（in_experiment → 实施完成）。用户批准按此卡修正；检索/路由面 golden-replay 为推荐后续验证项。
+- who: agent（2026-09-10 evolve-check 审计补录）
+  when: '2026-09-10'
+  type: decision
+  conclusion: "**状态推进补录**：本卡上一条 decision 已判「采纳」，但 status 未随之推进（面板口径 status_lag）。本次只把 status 置 validated，不新增判断；残留观察项如实保留——检索/路由面 golden 子集前后对照未跑，按 docs/eval.md 属观察窗（改动均为加法、不删候选）"
