@@ -64,7 +64,9 @@ S2 评测集与沉淀来源解耦这条规则保留，self-referential 隔离在
 
 ## 4. 统一执行记录（机制 C）：内容 skill 收尾留数据（2026-09 收敛边界）
 
-2026-09 的 selfevolve-loop 收敛后，现状是：diagnose 写 trace，不重复落 exec-log；内容 skill（issue-ingest / to-postmortem / to-reference）在收尾 evolve-check 前落一条 exec-log。schema 定稿（`metrics/skill-exec-log.yaml`，append-only），配套脚本 `scripts/log_skill_exec.py` 负责写、`scripts/verify_exec_log.py` 负责校验 seq 唯一与字段；evolve-check 第 1 步读执行记录替代 agent 记忆。knowledge-groom 收尾同样落一条（与内容 skill 一致）。
+2026-09 的 selfevolve-loop 收敛后，现状是：diagnose 写 trace，不重复落 exec-log；内容 skill（issue-ingest / to-postmortem / to-reference / knowledge-groom）在收尾 evolve-check 前落一条 exec-log；**evolve-check 自己也落一条**（含"无演进信号"的情况——不落则"跑了无信号"与"没跑"在数据上不可区分）。schema 定稿（`metrics/skill-exec-log.yaml`，append-only），配套脚本 `scripts/log_skill_exec.py` 负责写、`scripts/verify_exec_log.py` 负责校验 seq 唯一与字段；evolve-check 第 1 步走 `scripts/tail_exec_log.py` 读执行记录替代 agent 记忆。
+
+> **2026-09-10 审计补记（本节的诚实边界）**：①knowledge-groom 的收尾挂钩此前只写在本节、未落进 skill，本轮补上；②第 1 步原先内联在 SKILL.md 的 python 一行在两种环境都跑不通（有记录时 `at` 被解析成 datetime 不可下标；新 worktree 里文件不存在），已脚本化为 `tail_exec_log.py`（文件缺失/空表 = 正常退化，exit 0）；③exec-log 是 `.gitignore` **本地件**，跨 worktree/克隆不聚合——"本轮现场"只在同一 worktree 内成立；④"聚合值进 timeline"（.gitignore 原注释）**未实现**：9 天只积累了 4 条记录，按原则十一（0 数据建层即空转）不新增 timeline 指标，改为面板「执行现场」可见 + 本节如实标注；⑤`verify_exec_log.py` **不进 CI**（CI 上文件不存在，跑了只会空转），改由 evolve-check 第 4 步自查。
 
 exec-log 只做内容流程收尾时的轻量现场记录，不做"每次 skill 调用全记录"；原完整蓝图已撤销，因为 diagnose 已有 trace（信息更丰富、含完整轨迹），再落 exec-log 是重复劳动，高频调用全记录会让记录负担超过观测价值（原则九）。记录对象是 skill 与动作、产物 id，不涉及人，不引入身份维度（roadmap「不做 KPI/身份/使用观测」红线不变，见 pipeline §5.3）。每条记录内容：
 
@@ -75,7 +77,7 @@ exec-log 只做内容流程收尾时的轻量现场记录，不做"每次 skill 
 - cost：token（无记账环境用估算，source: estimate 如实标注）
 ```
 
-用途：metrics 有内容流程侧的数据源（沉淀量/采纳/摩擦）；归因能定位"沉淀环节 vs 诊断环节"（诊断侧看 trace，沉淀侧看 exec-log）；evolve-check 收尾读它拿本轮现场（不靠 agent 记忆）。
+用途：metrics 有内容流程侧的数据源（沉淀量/采纳/摩擦）；归因能定位"沉淀环节 vs 诊断环节"（诊断侧看 trace，沉淀侧看 exec-log）；evolve-check 收尾读它拿本轮现场（不靠 agent 记忆）。**读法一律走 `scripts/tail_exec_log.py`**（人读尾巴 / `--json` 给面板），不要在别处重新实现解析——datetime 归一与缺失退化只应有一份实现。**边界**：本地件、不跨 worktree 聚合（见上"审计补记"），所以它是"本工作区现场"，不是全系统运行台账。
 
 ## 5. 替换与回滚（机制 D）：新 idea 替换旧实现
 
@@ -152,7 +154,7 @@ exec-log 只做内容流程收尾时的轻量现场记录，不做"每次 skill 
 | 步骤 | 内容 | 入口闸门 |
 |---|---|---|
 | 1 | S2 校准集建立（已建 9 条单池；selection/test 分离是规模闸门：池 ≥30 再分，见 §3） | issue 池可批量取（已具备） |
-| 2 | 统一执行记录（内容 skill 收尾 exec-log + evolve-check 读现场） | 已落地（schema+脚本+3 内容 skill 收尾 + groom）；diagnose 走 trace 不重复落（§4 边界） |
+| 2 | 统一执行记录（内容 skill 收尾 exec-log + evolve-check 读现场） | 已落地（schema+脚本+4 内容 skill 收尾含 groom+evolve-check 自落记录+`tail_exec_log.py` 取数入口+CI 卡校验配套）；diagnose 走 trace 不重复落（§4 边界）。**本地件、不跨 worktree 聚合**，timeline 聚合未实现（§4 审计补记） |
 | 2b | S2 feedback 结算（settle_s2_feedback → case.validation_record） | 已落地（2026-09 selfevolve-loop）；真实 S2 result 批量后结算首轮 |
 | 3 | 长期任务层试点一轮（手动触发，任务状态机 + 轮间调度跑通，对应 §11 Phase D） | 步骤 1–2b 有真实数据 |
 | 4 | supersede 字段 + 回滚语义落地（schema 已含字段，出现首个替代场景时激活，对应 §11 Phase D） | 出现首个"新 idea 替代旧实现"场景 |
