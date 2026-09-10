@@ -173,6 +173,22 @@ disable-model-invocation: true
 | 某 `tool` 词条全文读入 > 8K token（初始阈值，字节数/3.4）／`content.commands` key > 8／同文件内条目 `last_verified` 分化 > 90 天 | **split 建议**：拆成多个用途面条目（判据见 `references/_types.yaml` 的 tool 段注释），人确认后执行，不自动拆 |
 | 两个 `tool` 词条在 ≥5 个 trace 里同 session 共现 `reference_lookup`（R6 数据）且 `sources[].url` 同源 | **merge 建议**：合并为一个用途面条目（子命令并入 `content.commands`），人确认 |
 
+## 收尾 evolve-check（伴随演进评估，默认执行）
+
+**先落执行记录**（evolve-check 读它作现场，不靠 agent 记忆）：
+`python3 scripts/log_skill_exec.py --skill knowledge-groom --products "<升格 case id(knowledge),...>" --reason "<一句话：批审 N 条 / 升格 M 条 / 退休 K 条>" --source knowledge-groom --tokens <估算>`
+
+批审产出、出变更摘要前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
+遵循）：本轮暴露覆盖缺口（T2）、容量格子压线/健康指标恶化（T6）、reference 家族需扩
+（T5）、或批审环节有重复手动动作与流程摩擦（T3/T4）时，**agent 自动产 idea 卡并自行验证
+执行**（ev_proposal 产卡 → 验证 → 进攒批）；无信号则摘要加一行"evolve-check：无演进信号"。
+这是流程默认收尾，**不需要用户另说"改进系统"**。
+
+> 为什么 groom 也要挂：groom 是**批量改动知识库的收尾动作**（升格/退休/改 confidence），
+> 一轮 groom 天然产生"同族沉淀是否达归纳阈值""格子是否压线""哪条 case 反复被复测"这类
+> 演进信号——它不挂收尾，这批信号就只存在于 agent 记忆里（此前 groom 从未落过 exec-log、
+> 也没有收尾协议，`docs/evolution-run.md` 的"已落地含 groom"曾是纸面承诺）。
+
 ## v2 职责（路线图，v1 不做）
 
 8. **结构挖掘**：挖 trace 语料，报告低判别力 `quickly_check`、噪声 triage 分支、高验证耗时 case。让库学结构，不只 bump 分数。

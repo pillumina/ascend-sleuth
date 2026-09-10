@@ -2,9 +2,9 @@ name: kb-checks
 
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py"]
 
 jobs:
   index-freshness:
@@ -51,6 +51,23 @@ jobs:
       # metrics 时序数据结构校验（教训：W28/W35 字段格式漂移导致跨期不可比、趋势不可算）：
       # period 唯一 / kind 合法 / recorded_at 必填 / 比例字段 ok,total 合法。结构由 CI 兜底。
       - run: python3 scripts/verify_metrics.py --check
+
+  proposal-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      # EV 卡是自演进的知识资产（随 PR 进出，同 knowledge/ 纪律），但此前 CI 从未校验过它——
+      # 触发路径不含 proposals/**，"schema 由 verify_proposals CI 校验"（proposals/README.md）
+      # 是纸面承诺（2026-09-10 审计）。本 job 把承诺变成硬门：卡结构 + 生命周期完整性
+      # （终态卡缺 decision / validated 缺成本 / 在实验卡执行完未推进 / 僵尸卡 / 出处缺失）。
+      - run: python3 scripts/verify_proposals.py --check
+      # 注意：verify_exec_log.py **不进 CI**——exec-log（metrics/skill-exec-log.yaml）是
+      # .gitignore 运行时件，CI checkout 里不存在，跑它只会打印"跳过"并空转。
+      # 该不变量改由 evolve-check 收尾自查（skills/evolve-check 第 4 步）。
 
   skill-self-contained:
     runs-on: ubuntu-latest

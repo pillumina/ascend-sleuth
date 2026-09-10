@@ -21,14 +21,29 @@
 #   10. validation.method ∈ {golden_replay, metrics_compare, issue_replay, scan_review}（2026-09 去 tally_recheck——台账复测已改归因事件复测；scan_review 补"指引面/文档面改动"——不跑检索 golden，scan + 人审，见 evolve-check 分级）
 #   11. 生命周期完整性（pipeline §7「生命周期完整性规则」）：
 #       - 终态卡（validated/rejected/superseded）必须有 agent 决策记录
-#       - validated 后 actual_cost 必填（成本审计缺口）
+#       - validated 后 actual_cost.tokens 必填（成本审计缺口；口径与面板 ev_board_data
+#         的 audit_gaps 对齐——面板报的缺口与 CI 报的缺口必须是同一件事）
 #       - 终态卡但 decisions 全无 = 审计缺口（卡不完整）
 #   12. principle_refs：必须是 1-11 的整数列表（设计原则编号，非中文字符串）
+#   13. 在实验卡不完整（2026-09-10 补；对账 evolve-check §3.5「执行或验证完成而卡仍停
+#       in_experiment = 卡不完整」——此前 SKILL.md 声称本脚本会报，实际只校验终态卡）：
+#       in_experiment 且已记 action **且** eval 但无 decision = 状态未推进 → 报错。
+#       只记 action（验证还在跑）是正常中间态，不报——首版写成"action 或 eval"时
+#       立刻在产卡当轮的 EV-2026-044 上误报，据此收紧为"两者都完成"。
+#   14. 僵尸卡（同上补）：in_experiment 且 created_at 超 STALE_DAYS 仍无 decision → 报错
+#       （防卡静默烂在实验态；天数口径与面板 scripts/ev_board_data.py 的 STALE_DAYS 一致）。
+#   15. source_signals 溯源齐备：非空列表且每条含 trajectory（卡必须指到本轮执行出处——
+#       无出处则无法回放归因，卡就只是叙述）。
+#
+# CI：kb-checks 的 proposal-audit job 跑本脚本（proposals/** 已在触发路径里）。
+# 注意：exec-log（metrics/skill-exec-log.yaml）是 .gitignore 运行时件、CI 上不存在，
+# 因此 verify_exec_log.py 不进 CI，改由 evolve-check 收尾自查（见 skills/evolve-check 第 4 步）。
 #
 # 用法：python3 scripts/verify_proposals.py [--check] [--root <repo>]
 # 返回非零 = 校验失败。--check 与默认行为一致（对称 build_index / verify_references / verify_metrics）。
 
 import argparse
+import datetime
 import re
 import sys
 from pathlib import Path
@@ -46,6 +61,8 @@ VALID_METHOD = {"golden_replay", "metrics_compare", "issue_replay", "scan_review
 VALID_DECISION_TYPE = {"proposal", "action", "eval", "decision"}
 # 终态卡：生命周期必须闭合（agent 决策记录 + validated 补 actual_cost）
 TERMINAL_STATUS = {"validated", "rejected", "superseded"}
+# 在实验卡静默超期 = 僵尸卡（口径与面板 scripts/ev_board_data.py 的 STALE_DAYS 一致）
+STALE_DAYS = 14
 REQUIRED = [
     "id", "layer", "title", "status", "authorization", "dimension", "created_at",
     "hypothesis", "validation", "risk", "principle_refs", "decisions",
@@ -124,13 +141,63 @@ def check_idea(path: Path, ids: dict, errors: list):
                     if dt is not None and dt not in VALID_DECISION_TYPE:
                         errors.append(f"{rel}: decisions[{i}].type '{dt}' 非法（proposal/action/eval/decision）")
 
+    # source_signals 溯源齐备（卡必须指到本轮执行出处；无出处 = 无法回放归因）
+    ss = doc.get("source_signals")
+    if not isinstance(ss, list) or not ss:
+        errors.append(f"{rel}: source_signals 必须是非空列表（触发信号 + trajectory 出处）")
+    else:
+        for i, s in enumerate(ss):
+            if not isinstance(s, dict):
+                errors.append(f"{rel}: source_signals[{i}] 必须是 mapping")
+                continue
+            if not s.get("trajectory"):
+                errors.append(f"{rel}: source_signals[{i}] 缺 trajectory——卡必须指到本轮执行出处"
+                              "（产出文件 id / replay 结果 / trace），否则归因无法回放")
+
     # 生命周期完整性（pipeline §7「生命周期完整性规则」——终态卡必须闭合）
     status = doc.get("status")
+    decided_types = {e.get("type") for e in (d or []) if isinstance(e, dict)}
     if status in TERMINAL_STATUS:
         if n_decisions == 0:
             errors.append(f"{rel}: 终态卡（{status}）但 decisions 为空——审计缺口（无 agent 判断结论的终态不可信）")
-        if status == "validated" and doc.get("actual_cost") is None:
-            errors.append(f"{rel}: validated 卡 actual_cost 未写回——成本审计缺口（orchestration §3.2）")
+        elif "decision" not in decided_types:
+            errors.append(f"{rel}: 终态卡（{status}）但没有 type: decision 的记录——审计缺口"
+                          "（终态必须有一条 agent 判断：采纳/不采纳/换方向 + 依据；"
+                          "口径与面板 ev_board_data.audit_gaps 的 no_decision 一致）")
+        if status == "validated":
+            ac = doc.get("actual_cost")
+            tokens = ac.get("tokens") if isinstance(ac, dict) else None
+            if tokens is None:
+                errors.append(f"{rel}: validated 卡 actual_cost.tokens 未写回——成本审计缺口"
+                              "（口径与面板 ev_board_data.audit_gaps 一致：无法量化时写 0 + note 说明口径）")
+
+    # 在实验卡不完整 / 僵尸卡（evolve-check §3.5「卡不完整」的机器可判定形态）
+    if status == "in_experiment":
+        if {"action", "eval"} <= decided_types and "decision" not in decided_types:
+            errors.append(f"{rel}: 卡不完整——已记 action 且 eval 但无 decision，状态仍 in_experiment"
+                          "（执行与验证都完成后必须给判断：validated / rejected / superseded）")
+        elif "decision" not in decided_types:
+            age = age_days(doc.get("created_at"))
+            if age is not None and age >= STALE_DAYS:
+                errors.append(f"{rel}: 僵尸卡——in_experiment 已 {age} 天（≥{STALE_DAYS}）仍无 decision"
+                              "（卡静默烂在实验态；补判断或如实标注未执行）")
+
+
+def age_days(value, today=None):
+    """created_at → 距今天数（int）；不可解析返回 None（不猜、不报假错）。
+    YAML 可能给出 date / datetime / str 三种形态，一律归一。"""
+    if value is None:
+        return None
+    if isinstance(value, datetime.datetime):
+        d = value.date()
+    elif isinstance(value, datetime.date):
+        d = value
+    else:
+        try:
+            d = datetime.date.fromisoformat(str(value)[:10])
+        except ValueError:
+            return None
+    return ((today or datetime.date.today()) - d).days
 
 
 def resolve_supersedes(root: Path, errors: list, ids: dict):

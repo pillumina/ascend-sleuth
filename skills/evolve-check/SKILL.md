@@ -41,15 +41,19 @@ description: >
 
 **第 1 步：读本轮执行现场**（不重扫全库、不读 case 全文——token 预算，原则九）：
 
-- **优先读统一执行记录**：内容 skill 收尾时已由 `log_skill_exec.py` 落一条到
-  `metrics/skill-exec-log.yaml`（skill/时间/产出 id/decision_reason）。本步读最近几条：
-  `python3 -c "import yaml;d=yaml.safe_load(open('metrics/skill-exec-log.yaml'));print('\n'.join(f\"{r['seq']} {r['skill']} {r.get('at','')[:16]} {r.get('products','')} {r.get('decision_reason','')[:40]}\" for r in (d.get('records') or [])[-3:]))"`
+- **优先读统一执行记录**（走脚本，别内联 python——内联版两种环境都会崩：
+  有记录时 `at` 被 PyYAML 解析成 datetime 不可下标，新 worktree 里文件根本不存在）：
+  `python3 scripts/tail_exec_log.py`（默认尾部 3 条；`--n 5` / `--skill evolve-check` / `--json`）
   ——拿"本轮做了什么"（替代凭 agent 记忆）：
 - 产出：本轮新增 case/reference/卡 id（从记录 products 提取，不重扫全库）；
 - 过程中有没有：miss（diagnose/replay 未命中）、重复手动动作、流程摩擦、执行错、
   新数据源/新 issue 类型首次出现——这些在 decision_reason 未提及时由 agent 现场补判断；
-- **无执行记录时**（历史流程/外部动作）：如实标注"无执行记录，基于现场判断"——不假装
-  有数据（诚实退化）；内容 skill 收尾应落记录（见各 skill「收尾」节）。
+- **无执行记录时**：脚本打印一行「无执行记录」并 exit 0——这是**正常退化路径，不是报错**
+  （内容 skill 忘了落记录、或本轮是历史流程/外部动作）。按它给的口径如实标注"无执行记录，
+  基于现场判断"，不假装有数据（诚实退化）。内容 skill 收尾应落记录（见各 skill「收尾」节）；
+  修好记录缺失比在本步硬猜更有价值。
+- **exec-log 是本地件**（`.gitignore` 运行时件，跨 worktree/克隆不聚合）：本工作区为空
+  ≠"内容流程没跑"。脚本输出自带这句标注，**不要**把本地读数说成全系统读数。
 
 **第 2 步：对照触发条件表**——命中的信号才继续，无命中直接出报告（加一行
 "evolve-check：无演进信号"），**不为产卡而产卡**（原则四/十）。
@@ -104,10 +108,17 @@ description: >
   验证记 `{type: eval, conclusion: <验证数据/通过与否>}`、最终判断记 `{type: decision, conclusion: <采纳/不采纳/换方向+依据>}`——
   卡能看出生命周期走到哪、凭什么判断；
 - **status 随执行推进，不靠自觉**：方案成形 → 产卡（in_experiment，开始 action + eval）；
-  agent 判断采纳 → validated / 不采纳 → rejected / 换方向 → superseded。**执行或验证完成
-  而卡仍停 in_experiment = 卡不完整**（verify_proposals 会报，见下）；
+  agent 判断采纳 → validated / 不采纳 → rejected / 换方向 → superseded。**执行与验证都完成
+  而卡仍停 in_experiment = 卡不完整**——这条已可机器判定，`verify_proposals.py` 报两类：
+  ①**卡不完整**：in_experiment 且已记 `action` **且** `eval` 但无 `decision`（工作做完了、
+  判断没落；只记了 action、验证还在跑的在途卡不算——那是正常中间态）；②**僵尸卡**：
+  in_experiment 超 14 天（`STALE_DAYS`，与面板同口径）仍无 `decision`。CI 的 `proposal-audit`
+  job 跑它，卡随 PR 合入即被校验；
 - **终态卡必闭合**：validated/rejected/superseded 必须有 agent 判断的 decision 记录；
-  validated 后补 `actual_cost`（成本审计）——缺了 verify_proposals 报审计缺口；
+  validated 后补 `actual_cost.tokens`（成本审计；无法量化写 `0` + `note` 说明口径）——
+  缺了 CI 报审计缺口，面板也标「缺成本」（两处口径一致）；
+- **卡必须能追到出处**：`source_signals` 非空且每条带 `trajectory`（产出文件 id / replay
+  结果 / trace）——没有出处的卡无法回放归因，CI 直接报错；
 - 仅"观察到的信号"（数据前提未满足 / 无准备执行的具体方案）**不产卡**——信号记 session
   报告/任务状态，条件到（方案成形/数据齐）才产卡执行（防想法清单污染提案账本）。
 - **改进动作必须先产 EV 卡（前置元流程，防绕过）**：T1 归纳（→ to-reference --ingest-cases）、
@@ -118,7 +129,25 @@ description: >
   不在此列；凡 **status: active 直进上下文**的产出（reference 词条、triage 改动）必须有
   EV 卡决策链。
 
-**第 4 步：出收尾说明**（并入流程报告，不单独打扰用户）：
+**第 4 步：落收尾记录 + 出说明**（并入流程报告，不单独打扰用户）：
+
+1. **先落本协议的收尾记录**（顺序不能反：记录落了，"这次协义跑过"才是数据）。
+   **为什么必须落**：不落记录时"收尾跑了但无演进信号"与"根本没跑"在数据上完全不可区分，
+   机制是否在运作无法证伪（收尾记录此前几乎为空，面板与 metrics 都不读 exec-log）。
+   面板「执行现场」按它显示运行次数与无信号次数。
+
+   ```
+   python3 scripts/log_skill_exec.py --skill evolve-check \
+     --products "<EV-xxxx(validated),...>" \
+     --reason "<一句话：命中 T# → 动作 / 收尾无演进信号>" \
+     --source <上游 skill：issue-ingest / to-reference / to-postmortem / knowledge-groom> \
+     --tokens <估算>
+   ```
+   无信号时 `--products` 留空、`--reason` 写"收尾无演进信号"（面板据此单列 no-signal 计数）。
+   落完自查本地不变量：`python3 scripts/verify_exec_log.py --check`（seq 唯一/字段齐全）。
+   该脚本**不进 CI**——exec-log 是 `.gitignore` 运行时件，CI 上文件不存在，进 CI 只会空转。
+
+2. 出说明：
 
 ```
 evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ agent 判断采纳（validated）
@@ -156,8 +185,11 @@ evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ agent �
 
 | 能力 | 工具/入口 |
 |---|---|
+| 读本轮执行现场（第 1 步） | `scripts/tail_exec_log.py`（确定性入口；文件缺失/空表 = 正常退化，exit 0） |
+| 落收尾记录（第 4 步） | `scripts/log_skill_exec.py --skill evolve-check` + 自查 `scripts/verify_exec_log.py --check` |
 | 查重/产卡骨架 | `scripts/ev_proposal.py --list / --new` |
-| 卡校验 | `scripts/verify_proposals.py` |
+| 卡校验 | `scripts/verify_proposals.py`（CI `proposal-audit` job；含卡不完整/僵尸卡/出处缺失） |
 | 验证门（即时判定） | `scripts/replay_golden.py` / `scripts/s2_replay.py` |
 | 归因事件聚合（T4 信号） | `scripts/component_tally.py` |
+| 收尾可见性（面板） | `scripts/ev_board_data.py` 的 `skill_exec` 段 → ev-panel「执行现场（exec-log）」 |
 | 内容沉淀（T1/T2 落到执行） | /skill:to-reference / /skill:to-postmortem |
