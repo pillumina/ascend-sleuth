@@ -1,0 +1,115 @@
+# ============================================================
+# Idea 卡：流程类先验知识的加载机制（procedure 闸门 + 选择器索引 + 观测）
+# 依据：三轮盲测（12 + 9 + 21 次）与 EV-2026-038 的判定——内容留 reference、结构触发、**必须加载全文**。
+# 本卡补的是"让判定生效"的执行面：在 EV-2026-038 里登记为"实现动作（待批准）"的三项 + 索引语义拆分。
+# ============================================================
+
+id: EV-2026-040
+layer: L2
+title: "流程加载机制：procedure 闸门 + 流程选择器索引（methodology 退出背景 summary 层）+ procedure 观测字段"
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-10
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      EV-2026-038 的判定（内容留 reference / 结构触发 / 必须全文）此前只落在决策卡里，
+      仓库中**没有任何代码让流程真的被加载**：12 条真实 trace 里精度/性能会话加载流程 0 次；
+      `collect-gates.yaml` 只有数据缺口（probe/conditional）两类闸门，没有方法缺口消费点
+    trajectory:
+      - "proposals/ideas/EV-2026-038.yaml（判定与三轮实验）"
+      - "traces/*.yaml（12 条，purpose 全为 signature）"
+      - "skills/diagnose/references/collect-gates.yaml（两类闸门，无 procedure）"
+  - signal: process_friction
+    evidence: >-
+      `_summary-index.yaml` 双重语义：methodology 行既当"背景提示"（2.5 ②）又必须当"流程选择器"（新机制），
+      同一文件两种语义靠 type 隐式分流——属自评中已指出的腐化点；且实测摘要行当内容用与不加载等效
+    trajectory:
+      - "scripts/build_ref_summary_index.py（BG_TYPES 含 methodology）"
+      - "skills/diagnose/references/diagnosis-procedure.md:66,72（行内 summary 即背景提示，不读全文）"
+hypothesis: >-
+  在 diagnose 的「方法缺口」处补一个结构化消费点（kind: procedure 闸门 → 流程选择器索引 →
+  **读 content.flow[] 全文**），并把 methodology 从背景 summary 层拆到独立选择器索引，
+  即可让流程进入诊断上下文且可归因；观测面（purpose=procedure + procedure_follow 事件）是它的验收前提
+predicted_effect:
+  metric: 精度/性能会话的流程加载率 + 流程跟随可归因性
+  from: "precision/performance 会话加载 0 次；purpose 词表无 procedure；无 procedure_follow 事件"
+  to: "procedure 闸门命中即加载全文（可测）；trace 可记 procedure 全文加载 + 跟随深度/分支/缺口"
+validation:
+  method: scan_review
+  baseline: "三轮盲测结论 + 现有 collect-gates/verify_references 校验路径"
+  success_criteria: >-
+    ①`verify_references.py` 对 kind=procedure 强校验（trigger + load: full + selector 存在），
+    负例逐条验红；②methodology 从 `_summary-index.yaml` 消失、出现在 `_procedure-index.yaml`，
+    两索引 --check 均绿；③KB-checks CI 增加 `build_procedure_index.py --check`；
+    ④diagnose SKILL/procedure/trace 三处口径一致（全文加载 + gap 如实 + procedure 词表）；
+    ⑤`trace_metrics.py` 词表同步（procedure purpose + procedure_follow action）
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "用户 2026-09-10 指示『把缺的补上』（EV-2026-038 的四个未落地项）"
+risk: medium
+principle_refs: [2, 4, 8, 9]
+actual_cost:
+  tokens: 60000
+  source: estimate
+decisions:
+  - who: agent（机制实现轮）
+    when: "2026-09-10"
+    type: proposal
+    conclusion: >-
+      四项缺口：①procedure 闸门（加载机制本体）；②观测字段（purpose/action/指标）；
+      ③流程留出检验接进 groom；④`_summary-index.yaml` 双重语义拆分。
+      设计取舍：**闸门不写症状关键词分支**——症状→流程的选择由词条自身的 title/summary 经选择器索引承担
+      （关键词写进闸门 = 与 triage-tree 双源，必漂移；且第三轮实测"只给索引让 agent 自己选"7/7 选对，
+      无需预置关键词）。这是相对 PLAN.md §3.1 初稿的修正。
+  - who: agent（机制实现轮）
+    when: "2026-09-10"
+    type: action
+    conclusion: >-
+      ①`scripts/build_procedure_index.py`（新）+ `references/_procedure-index.yaml`（17 条流程，含用法四条）；
+      ②`build_ref_summary_index.py` 的 BG_TYPES 去掉 methodology（71 → 54 条背景类）；
+      ③`skills/diagnose/references/procedure-gates.yaml`（三个 category 的 kind=procedure 闸门，
+      load: full + selector + trigger + caveat_refs）；④`verify_references.py`：VALID_GATE_KINDS 增 procedure
+      + 专属性校验分支；⑤diagnose SKILL「方法缺口」段 + procedure.md 步骤 2.5 ④（全文加载/一条流程/gap 如实）
+      + trace.md 的 procedure_follow 字段；⑥`trace_metrics.py` 词表同步；⑦groom R10 流程留出检验
+      （`flow_pool.py --flow-coverage`）；⑧`docs/metrics.md` 增"流程加载与跟随"指标行；⑨kb-checks 增
+      procedure 索引新鲜度 step 与 paths；⑩CONTEXT.md / references/README.md 同步。
+  - who: agent（机制实现轮）
+    when: "2026-09-10"
+    type: eval
+    conclusion: >-
+      scan_review：`verify_references.py --check` / `build_ref_summary_index.py --check` /
+      `build_procedure_index.py --check` / `build_index.py --check` / `verify_metrics.py --check` /
+      `verify_proposals.py --check` / skill 自包含 grep 全绿。**未跑检索 golden**——本卡不改候选路由/排序
+      （流程不参与 Tier 1/2 检索），改动面为"新增消费点 + 索引拆分 + 观测词表"，按 docs/eval.md 门禁分级
+      属"交互/指引面"，扫查 + 人审覆盖；真实效果由 procedure 加载率指标在启用后验证（先落观测，不预判）。
+  - who: agent（机制实现轮）
+    when: "2026-09-10"
+    type: decision
+    conclusion: >-
+      采纳（validated）：随 PR 送人审（review——L2 流程改动，进诊断上下文的是"什么时候读什么"而非结论）。
+      不取：①在闸门里写症状关键词分支（与 triage-tree 双源，必漂移）；②把流程做成 skill（第一轮已证形态无关，
+      且会丢 schema/来源/CI 绑定校验）；③摘要行 + 按需读全文（第二轮已证摘要当内容与不加载等效）；
+      ④一条诊断加载多条流程（成本无界，规则定为"最多一条，必要时按 related_references 追加"）。
+      遗留：#165（归档 3 条案例索引型）与本 PR 都重建 `references/_summary-index.yaml`，
+      **谁后合谁要 rebase 并重建两个索引**（机械动作）；`eval/flow/README.md` 的观测字段说明在 #166，
+      合并后可按本卡口径补一行。
+  - who: agent（提交前自评轮）
+    when: "2026-09-10"
+    type: action
+    conclusion: >-
+      自评发现并修掉四个隐性问题（均在合入前）：①**生成物不是合法 YAML**——`render()` 逐行拼接 +
+      `safe_dump` 单标量在默认 width=80 处折行顶掉缩进，而 `--check` 只比文本（两次同样错误的生成结果），
+      属**自证式校验**，CI 全绿也发现不了；已改为整篇 safe_dump + `--check` 增"产物必须可解析"断言。
+      ②**加载时机自相矛盾**：SKILL 把流程写在「数据资产探询」节（=候选加载前），procedure.md 写在 2.5
+      （=候选之后）；且"候选前加载"会让流程强先验在评估候选前**锚定**解释框架（第三轮实测该分支会误导）。
+      已统一到**步骤 5（候选全部未命中后）**，三个闸门 trigger 同步改写。
+      ③**一轮一条的边界没写死**：补"该流程走完仍未定位 → 转深度排查/人工，不换第二条"（对齐连续失败 ≤2）。
+      ④**错流程无反馈回路**：补 `attribution` 事件的 `component: reference:<ref-id>` 口径
+      （跟随流程给出 fix 但没解决时写），让 `component_tally.py` 能聚合"被跟随后仍失败"的流程簇——
+      否则流程层只有加载率（活动度量）没有失败率，错流程会被稳定注入而无人察觉。
+      另补：流程索引的增长闸门（条数 > 25 或 > 5K token → 按 category 分片）与实测成本（17 条 = 2.9K token，
+      选择器每次整读）；groom R10 容忍 `flow_pool.py` 缺席（脚本随 #166 引入，避免跨 PR 悬挂指令）。

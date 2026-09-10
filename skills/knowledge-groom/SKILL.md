@@ -129,6 +129,12 @@ disable-model-invocation: true
 
 理由：共性识别靠人工不可持续（2026-08 从 42 条 case 人工发现 MoE 通信算子族，4 条同 tag）；tag 聚类是零 token 的机械信号，先把候选端到人眼前。
 
+**R10. 流程留出检验（methodology 的"方法"地位核验，EV-2026-038）**：跑 `python3 scripts/flow_pool.py --flow-coverage`（该脚本随 `eval/flow/` 评测池引入；**脚本不存在时跳过并在摘要如实标注"评测池未就绪"**，不臆造覆盖数据）——按每条 methodology 的 `sources[].cases` 把评测池样本分成「收录（该词条的来源 case，train-on-test）」与「未收录（泛化证据）」两列：
+- **无未收录样本通过记录的流程，其"方法"地位未验证** → 变更摘要建议：或补判据（把案例指纹改写成可对新变体执行的阈值/分支），或摘掉 procedure 绑定（`skills/diagnose/references/procedure-gates.yaml` 的 selector 不再选它）；
+- 第三轮盲测的判据：给正确流程后，**收录样本 2/2 改善、未收录样本 0/5 改善**且 2 次被分支判别误导——即"能对上自己收录的 case"不等于"是方法"；
+- 与 R8（case 共性提炼候选）配对：R8 决定"要不要提炼"，R10 决定"提炼出来的算不算方法"。
+- 无样本覆盖对应流程时如实显示"无数据"，不编造（诚实退化）。
+
 **R9. fixture 候选语义预核（agent 预核 → 人确认，A 的语义侧）**：跑 `python3 scripts/replay_trace.py --emit-fixtures` 产出 fixture 候选（`_candidate: true`，期望=实际命中 case，输入=多轮 user 原文折叠，已按覆盖去重）。**对每个候选做三项语义判断，填 `agent_review` 字段**（建议与决定分离——意见供人核，不替代人）：
 - `expectation`：核对命中 case 的 `root_cause`/`fix` 与该 trace 的证据是否一致——`trustworthy`（证据一致，可信）/ `uncertain`（证据不足，需人重点核）/ `misdiagnosed`（命中 case 与证据矛盾，**建议不入 fixture**，并触发误诊归因）；
 - `input_sufficient`：`true` / `false`——输入是否含判别信号（版本/错误码/配置），缺什么在 `redaction_notes` 旁补一句；

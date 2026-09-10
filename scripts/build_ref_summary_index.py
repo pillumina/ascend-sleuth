@@ -24,7 +24,10 @@ from pathlib import Path
 
 import yaml
 
-BG_TYPES = {"platform-fact", "software-fact", "tool", "methodology"}
+# methodology **不在背景类**（EV-2026-038）：流程类要的不是"读一行背景"而是
+# "选中一条、读全文、按判据执行"——摘要行当内容用与不加载等效（决定性判据会被截断）。
+# 它走独立的 references/_procedure-index.yaml（选择器，scripts/build_procedure_index.py）。
+BG_TYPES = {"platform-fact", "software-fact", "tool"}
 OUT_NAME = "_summary-index.yaml"
 SUMMARY_CAP = 160
 
