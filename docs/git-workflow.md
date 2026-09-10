@@ -107,8 +107,11 @@ python3 scripts/ev_measure.py --audit            # 全库盘点：可复现 / �
 1. **机器字段保持词法**：YAML 枚举字段（`layer`/`status`/`method`/`authorization` 等）不做中文替换——它们是脚本与 CI 的契约；
 2. **人读 prose 首次出现即解码**：docs 论证文字、EV 卡 prose 字段、PR body、批审摘要、报告里，代号第一次出现写"含义（代号）"或"代号〔含义〕"，之后才允许裸用；高危字母（E/T/G/EV/Phase，及 A/M/O/P+数字）与落地 Phase 系列**裸用即歧义**，首次出现必解码；
 3. **审读面优先**：批量审 / PR 审读用解码渲染（`scripts/render_review_summary.py --card/--diff/--scan`，词表 `docs/glossary.yaml`），**源文件不变**——人审读渲染视图，不裸读 diff；渲染出的未登记代号告警即"先登记再使用"的自我约束；
-4. **新增代号先登记**：`docs/glossary.yaml`（机器数据，唯一权威）+ `docs/evolution.md` 顶部"指代速查"表（人读视图）同步登记，禁止与既有系列撞车（教训：WikiSkill 增量初稿 G1/G2/G3 撞治理缺口 G1–G8）；
-5. **不进 CI**：prose 可读性是判断性规范（检查准入三条件不满足），由 PR 人读性自查（methodology 模板试点）+ review spot-check 保证，不硬门化。
+4. **新增代号先登记，并同时定它的生存范围**：`docs/glossary.yaml`（机器数据，唯一权威）里每条带 `scope` 字段——`["*"]` 只给领域语汇（分层 L1–L3、反馈通道 S1–S3、平台与 skill 名）；**记账号（roadmap 事项 A/E/M/O/P、治理缺口 G、触发信号 T、落地阶段 Phase）只在各自的计划文档里裸用**，机制文档 / PR body / EV 卡 prose 要引用就写中文含义。旧做法要求"在 docs/evolution.md 顶部指代速查表补一行"——那张表已删（它把术语表变成了代号登记处，且把"起新代号"从**需要理由**变成**需要登记**）；
+5. **越界用途可查**：`python3 scripts/render_review_summary.py --scan docs/ README.md CONTEXT.md`（可传目录）会报三类——未登记代号、越界用途（新人可见面单列并优先清理，其余按文件计数可增量清理）、以及词表冲突。`docs/adr/` 与 `proposals/` 是只追加的档案，豁免越界检查（不追溯改历史）；
+6. **同形冲突登记而不改名**：`A1/A2/A3` 同时是设计公理、roadmap 事项与平台代号前缀，`P0` 同时是优先级与（易混的）流程事项族——这类冲突在词表里各自登记、用 `scope` 消歧，**不靠改历史编号**（改编号会打烂只追加档案里的引用）。新增代号前先查是否已有同形；
+7. **跨文档引用不写裸小节号**：引用别处的小节写 `文件名 §N` 或直接写小节标题，**不写裸 `§N`**（读者不知道是哪篇；且小节号会随文档重排失效——仓库里现存约 100 处这类引用，属历史欠账，见 EV-2026-052 残留）。**不硬门化**：无"复发 ≥2 次"的证据，不满足检查准入三条件；
+8. **不进 CI**：prose 可读性是判断性规范（检查准入三条件不满足），由 PR 人读性自查（methodology 模板试点）+ review spot-check 保证，不硬门化。**唯一例外是机械可判的部分**——名单/数字是否与 `docs/_manifest.yaml` 一致、`docs/` 有无未登记文档，由 `build_docs_index.py --check` 硬门（那是"生成物与清单一致性"，不是可读性判断）。
 
 ## Skill 自包含边界（SKILL.md 与 docs/ 的引用关系）
 

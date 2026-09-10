@@ -1,0 +1,127 @@
+id: EV-2026-053
+layer: L2
+title: 代号的生存范围——词表从"登记表"改成"范围表"，扫描器报越界与同形冲突
+status: validated
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-10
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      EV-2026-052 的残留第 ③ 条：范围规则已进入人读文档（入口文档示范"，但不落地机器侧——
+      `glossary.yaml` 仍是"登记表"，扫描器仍只报"未登记"，不会报"登记了但不该出现在这里"。
+      而登记表模型有一个表达不了的情形：**同名两义**。实测三处同形冲突，全部登记在册、
+      扫描全绿，读者却无从判断：
+      ① `A1/A2/A3` = 设计公理（"理论 A2（资源有界）"）/ roadmap 事项 ID / 平台代号
+         （A2-910B、A3-910C）——三义，且 `roadmap.md` **同一行内** A3 两义；
+      ② `P0` = 优先级标记（rollout-assessment 行动清单）/ 与 roadmap 流程事项 P1–P4 同形；
+      ③ 平台裸写：README 与 CONTEXT 用裸 `A2/A3/A5` 指平台，而词表里 `A2` 是 roadmap 事项。
+      旧模型的后果具体可见：`P0` 被报成"未登记"，而**按提示登记就会与 P1–P4 撞族**——
+      即机制在引导人制造下一次撞车。
+    trajectory:
+      - "docs/glossary.yaml 头部（改前）：'未登记代号在渲染时告警，倒逼先登记再使用'"
+      - "grep -n '理论 A[123]（' docs/design-principles.md → 公理用法；docs/roadmap.md 表格 A1/A2/A3 → 事项用法；A2-910B/A3-910C/A5-950 → 平台用法"
+      - "python3 scripts/render_review_summary.py --scan docs/ → 仅报 '未登记代号 P0'（真问题一条不报）"
+      - "README.md:26 'A2/A3/A5 平台差异'；CONTEXT.md:36 'Platform（A2/A3/A5）'——裸平台写法"
+hypothesis: >-
+  给词表每条加 `scope`（允许裸用本代号的文件列表；`["*"]` 只给领域语汇），扫描器据此报
+  "越界用途"，则：①记账号被限制在各自的计划文档，机制文档 / PR body / 新人可见面不再要求
+  读者先学会一套内部台账；②**同名两义可被表达**——同形冲突各自登记、按文件消歧，而不是靠
+  改历史编号（改编号会打烂只追加档案里的引用）；③"起新代号"的成本回来了：不是"登记即可"，
+  而是"要回答它只在哪出现"。判据强度如实标注：越界检查是**约定**（不进 CI，无"复发≥2 次"
+  证据），但"新人可见面是否干净"这条具体事实由卡上的 measure 一条命令可复核。
+predicted_effect:
+  metric: 新人可见面的记账号越界处数与同形冲突的可表达能力
+  from: >-
+    裸写平台代号 4 处（README 2 / CONTEXT 2）；同形冲突 3 组无法表达（P0 只能报"未登记"）；
+    扫描器指向目录直接抛 IsADirectoryError（而 PR 模板写的是"可跑 --scan 自检"）
+  to: >-
+    新人可见面（README / CONTEXT / docs/evolution.md）零越界；三组同形冲突各在词表中
+    登记并用 scope 消歧；扫描器接受目录、分两档报越界（新人可见面单列 / 其余按文件计数）
+  measure:
+    command: python3 scripts/render_review_summary.py --scan README.md CONTEXT.md docs/evolution.md
+    expect_exit: 0
+    expect_stdout: "新人可见面（README / CONTEXT / docs/evolution.md）干净"
+validation:
+  method: scan_review
+  baseline: >-
+    改前：词表 60 条无 scope 字段；扫描器只报未登记代号（对 docs/ 全量扫描仅 1 条告警）；
+    指向目录即崩。改前演练基线 120 条断言（无一条覆盖代号范围）。
+  success_criteria: >-
+    ①词表每条带 scope，`["*"]` 只给领域语汇；②同形冲突三组登记且 scope 消歧；
+    ③扫描器接受目录（不再崩）；④越界按两档报（新人可见面单列、其余按文件计数）；
+    ⑤新人可见面零越界（由本卡 measure 一条命令复核）；⑥plan/proposals 档案面豁免，
+    不追溯改历史；⑦全部既有 CI 与演练断言无回归。
+  rollback: 词表加字段 + 扫描器增强 + 文档四条规则；无数据迁移、不触碰 knowledge/ 与 skills/ 行为。git revert（原则七）
+gate:
+  condition: EV-2026-052 落地范围规则且其残留点名本条（已发生）。非日历驱动。
+risk: low
+principle_refs: [2, 3, 8, 9, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "单会话内联执行，未单独记账；口径同前三张卡"
+decisions:
+  - who: agent
+    when: 2026-09-10
+    type: proposal
+    conclusion: >-
+      采纳"给词表加 scope + 扫描器报越界 + 同形冲突登记"而不是"重命名冲突代号"：
+      ①重命名公理 A1–A3 或 roadmap 事项号会打烂只追加档案（EV 卡、ADR）里的历史引用，
+      收益只是好看；②scope 消歧能表达"同名两义"，而这是登记表模型结构上做不到的——
+      所以问题不在数据填得对不对，在**模型少了维度**；③越界检查不硬门化：无"复发 ≥2 次"
+      证据，不满足本仓检查准入三条件（可机械判定 + 确定性后果 + 复发），按约定强度执行。
+      **不做的事（明确）**：不做 46 处非新人可见面的越界清理（逐处都是语义重写，风险高于
+      收益，留作增量）；不改 `docs/adr/` 与 `proposals/` 的历史引用（只追加档案）。
+  - who: agent
+    when: 2026-09-10
+    type: action
+    conclusion: >-
+      实施：①`docs/glossary.yaml` 64 条全部带 `scope`（`["*"]` = 领域语汇：分层 L1–L3、
+      反馈通道 S1–S3、平台与 skill 名；记账号限定到其所有者文档）；②新增 4 条消歧条目
+      （`P0` 优先级、`A2-910B`/`A3-910C`/`A5-950` 平台）；词表头部从"用途：登记"改写为
+      "两个用途：解码 + 限定生存范围"，并记录同形冲突与维护规则；
+      ③`render_review_summary.py`：Glossary 增 `scope/out_of_scope`、新增
+      `out_of_scope_tokens` 与 `expand_paths`（接受目录）、`cmd_scan` 分两档报越界并
+      豁免 `proposals/` 与 `docs/adr/`；平台守卫（后接 `-9xx` 的 `A2` 不算 roadmap 事项）；
+      ④`docs/git-workflow.md`「人读性与代号约定」规则 4–8 重写（范围表语义、越界可查、
+      同形冲突登记而不改名、跨文档不写裸 §N、唯一硬门是名单一致性）；
+      ⑤methodology 模板加两条自查：记账号未越界、本 PR 新增/改名的机制逐条列出。
+  - who: agent
+    when: 2026-09-10
+    type: eval
+    conclusion: >-
+      `scan_review` + 机械复核：CI 八条本地全绿；演练 **120/120 通过**（无回归）；
+      越界扫描实测——新人可见面从 4 处越界（README/CONTEXT 裸平台写法）清理到零并报
+      "✓ 干净"；其余 11 个文件 46 处按文件计数报出（最大项 evolution-pipeline 18 处），
+      供增量清理；`--scan docs/` 不再抛 IsADirectoryError。
+      实现期修出三处自己的错（如实记录）：①**我把 4 条新条目追加到了文件末尾**，
+      而该文件末尾还有 `families:` 段——条目落进了错误的列表，`families` 从 7 条变 11 条
+      且条目缺 `id/pattern`。已按段落边界改插到 `entries` 末尾并断言结构完整
+      （entries 64 / families 7 / 全部带 scope）。②首版把 README 的裸 `A2/A3/A5` 判为
+      扫描器误报，实测后发现**不是误报**——README 真的用裸 `A2/A3/A5` 指平台，
+      而词表 A2 是 roadmap 事项：那是碰撞在实战中的样子，因此加了平台守卫（`-9xx` 后缀）
+      并**同时**把文档改成显式平台名（A2-910B 等）——守卫防的是"A2-910B"里的误判，
+      改文档才是消除裸写歧义。③**本卡的 measure 第一次跑 FAIL**：新人可见面干净时
+      扫描器什么都不打印（"干净"分支只在别处有越界时才走），于是"扫过、没事"与
+      "没扫"不可区分——正是 evolve-check 那条教训（"跑了无信号"必须与"没跑"可分）。
+      已改为结论**总是**打印（扫描文件数 / 未登记有无 / 新人可见面判定 / 其余计数）。
+      这一处是 measure 纪律本身的产出：没有"一条命令 + 期望输出"，这个缺陷会以
+      "工具很安静所以大概没问题"的形式长期存在。
+  - who: agent
+    when: 2026-09-10
+    type: decision
+    conclusion: >-
+      **validated（采纳，改动保留）**。判据：success_criteria 七项达成；新人可见面零越界
+      由本卡 measure 复核。
+      残留（如实标注）：
+      ①**46 处越界未清理**（`docs/evolution-pipeline.md` 18 处最多）——已由扫描器
+      按文件计数报出，增量清理即可；本卡只保证新人可见面干净。
+      ②**跨文档裸 `§N` 锚点约 100 处仍在**（含 `§12a` 类子节号），规则已写（不写裸 §N），
+      但无机械检查——按检查准入三条件不硬门化。
+      ③**`docs/adr/` 与 `proposals/` 的旧代号引用永久豁免**——档案不追溯，这意味着
+      范围规则只能约束增量，存量历史读起来仍需要查词表。
+      ④**`CLAUDE.md` 仍未同步**（未纳入越界扫描的清理面，且它逐篇罗列 evolution 文档的
+      描述已被 EV-2026-052 的分层改变）——它是 agent 常驻上下文，需单独决定。

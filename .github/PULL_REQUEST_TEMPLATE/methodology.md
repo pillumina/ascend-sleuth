@@ -26,7 +26,9 @@ PR body 正文从首个 "## " 区块开始。
 ## 人读性自查（约定，非 CI——docs/git-workflow.md「人读性与代号约定」）
 
 - [ ] 人读 prose（描述/变更说明/摘要）中代号首次出现已解码（含义〔代号〕），无高危字母裸用（E/T/G/EV/Phase 系列）
-- [ ] 新增/新引用的代号已登记 docs/glossary.yaml（可跑 `scripts/render_review_summary.py --scan` 自检告警）
+- [ ] **记账号未越界**——roadmap 事项（A/E/M/O/P）、治理缺口（G）、触发信号（T）、落地阶段（Phase）只在各自的计划文档里裸用；本 PR 的 prose 要引用就写中文含义（可跑 `scripts/render_review_summary.py --scan <改动文件>` 自检）
+- [ ] **本 PR 新增或改名的机制 / 脚本 / 数据文件逐个列出**（无则写"无"）——每个新名字都是读者的长期成本，列出来才看得见；能不加名字就不加
+- [ ] 新增/新引用的代号已登记 docs/glossary.yaml（含 `scope` 字段）
 - [ ] PR 描述提供解码审读视图（`--diff` 渲染表，或等价解码摘要——人读 prose，代号已逐次解码），reviewer 无需裸读满屏代号
 
 ## Agent 预核意见（机器可填，可选——非 agent 链路提交可留空）

@@ -33,7 +33,7 @@ _避免_：category、文件夹、模块
 _避免_：type、severity、类型
 
 **Dispatch Axes（分发维度）**:
-三个正交维度合称：Platform（A2/A3/A5）、Workload（训/推 × 框架 → namespace）、Category（interrupt/precision/performance），共同决定加载哪些 case。
+三个正交维度合称：Platform（A2-910B / A3-910C / A5-950）、Workload（训/推 × 框架 → namespace）、Category（interrupt/precision/performance），共同决定加载哪些 case。
 _避免_：路由维度
 
 **Confidence Score（置信度）**:
@@ -53,7 +53,7 @@ _避免_：command、plugin、tool
 _避免_：priority、urgency、影响
 
 **Soft Match（软匹配）**:
-版本兼容的判定方式：case 的 `compat` 区间与客户环境对照，不匹配只下调置信度、不把 case 排除出候选集。这是刻意设计——在 A5 上验证过的 case 可能同样适用于 A3。
+版本兼容的判定方式：case 的 `compat` 区间与客户环境对照，不匹配只下调置信度、不把 case 排除出候选集。这是刻意设计——在 A5-950 上验证过的 case 可能同样适用于 A3-910C。
 _避免_：strict match、精确匹配
 
 **Reference（先验知识词条）**:
