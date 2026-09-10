@@ -77,7 +77,7 @@ exec-log 只做内容流程收尾时的轻量现场记录，不做"每次 skill 
 - cost：token（无记账环境用估算，source: estimate 如实标注）
 ```
 
-用途：metrics 有内容流程侧的数据源（沉淀量/采纳/摩擦）；归因能定位"沉淀环节 vs 诊断环节"（诊断侧看 trace，沉淀侧看 exec-log）；evolve-check 收尾读它拿本轮现场（不靠 agent 记忆）。**读法一律走 `scripts/tail_exec_log.py`**（人读尾巴 / `--summary` 聚合 / `--json` 给面板），不要在别处重新实现解析——datetime 归一、路径解析与缺失退化只应有一份实现（路径解析在 `scripts/exec_log_path.py`）。**边界**：同一克隆内共享（跨 worktree 共写共读主检出那份，见上"审计补记"），**跨克隆/跨机不聚合**——要跨机就把 `--summary` 的聚合值写进 `metrics/timeline.yaml`，流水本身不进 git。
+用途：metrics 有内容流程侧的数据源（沉淀量/采纳/摩擦）；归因能定位"沉淀环节 vs 诊断环节"（诊断侧看 trace，沉淀侧看 exec-log）；evolve-check 收尾读它拿本轮现场（不靠 agent 记忆）。**读法一律走 `scripts/tail_exec_log.py`**（人读尾巴 / `--summary` 聚合 / `--json` 给面板），不要在别处重新实现解析——datetime 归一、路径解析与缺失退化只应有一份实现（路径解析在 `scripts/exec_log_path.py`）。**边界**：同一克隆内共享（跨 worktree 共写共读主检出那份，见上"审计补记"），**跨克隆/跨机不聚合**——跨机走"聚合值进 timeline"这条路，且**已接线**：`metrics_snapshot.py` 组装每期快照时把 `tail_exec_log --summary` 的聚合（`content_flow_runs` / `evolve_check_runs` / `evolve_check_no_signal`）作为内容流程侧写进 `metrics/timeline.yaml`（随 PR 共享；流水本身仍不进 git）。
 
 ## 5. 替换与回滚（机制 D）：新 idea 替换旧实现
 
@@ -154,7 +154,7 @@ exec-log 只做内容流程收尾时的轻量现场记录，不做"每次 skill 
 | 步骤 | 内容 | 入口闸门 |
 |---|---|---|
 | 1 | S2 校准集建立（已建 9 条单池；selection/test 分离是规模闸门：池 ≥30 再分，见 §3） | issue 池可批量取（已具备） |
-| 2 | 统一执行记录（内容 skill 收尾 exec-log + evolve-check 读现场） | 已落地（schema+脚本+4 内容 skill 收尾含 groom+evolve-check 自落记录+`tail_exec_log.py` 取数入口+`exec_log_path.py` 共享路径+CI 卡校验配套）；diagnose 走 trace 不重复落（§4 边界）。**同一克隆共享**（跨 worktree 共写共读，写侧持锁），跨克隆/跨机走 `--summary` 聚合值进 timeline（§4 审计补记） |
+| 2 | 统一执行记录（内容 skill 收尾 exec-log + evolve-check 读现场） | 已落地（schema+脚本+4 内容 skill 收尾含 groom+evolve-check 自落记录+`tail_exec_log.py` 取数入口+`exec_log_path.py` 共享路径+CI 卡校验配套）；diagnose 走 trace 不重复落（§4 边界）。**同一克隆共享**（跨 worktree 共写共读，写侧持锁）；跨克隆/跨机的口径**已接线**：`metrics_snapshot.py` 把 exec-log 聚合写进 `metrics/timeline.yaml`（§4） |
 | 2b | S2 feedback 结算（settle_s2_feedback → case.validation_record） | 已落地（2026-09 selfevolve-loop）；真实 S2 result 批量后结算首轮 |
 | 3 | 长期任务层试点一轮（手动触发，任务状态机 + 轮间调度跑通，对应 §11 Phase D） | 步骤 1–2b 有真实数据 |
 | 4 | supersede 字段 + 回滚语义落地（schema 已含字段，出现首个替代场景时激活，对应 §11 Phase D） | 出现首个"新 idea 替代旧实现"场景 |

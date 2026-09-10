@@ -413,7 +413,108 @@ def ex_shared_exec_log(root: Path):
         _sh.rmtree(p, ignore_errors=True)
 
 
-# ---------------------------------------------------------------- ⑧ CI parity
+# ---------------------------------------------------------------- ⑧ metrics 闭环
+def ex_metrics_loop(root: Path):
+    """metrics 的产出→入库→判据→检测→动作这条腿（2026-09-10 审计：原先只有"产出"和"入库"，
+    检测腿是空的——按旧流程跑一遍不会被告知"结构指标 10 天没更新 / 格子 85/30 越界 /
+    反馈为 0 导致误诊率不可解读"）。
+
+    三组断言：①组装命令覆盖各来源；②在真实数据上，检测器必须把**真实存在的**越界与
+    不可解读报出来；③合成的"健康"与"崩坏"两份数据：前者不许哭狼（`--check` 为 0），
+    后者必须全中并非零。
+    """
+    print("\n[E10] metrics 闭环 · 组装覆盖全部来源 + 检测器该红必红、不该红不哭狼")
+    import shutil as _sh
+
+    # ① 组装：把真实 traces 拷进演练场（沙箱默认不含 traces/，它是各检出各一份的运行时件），
+    #    验证诊断侧也会被组装进来。注意 traces 只在**主检出**里——本演练自己就活在 worktree 里，
+    #    直接读 REPO/traces 会读不到（这正是 metrics_snapshot 要自动解析该读哪一份的原因）。
+    import sys as _sys
+    _sys.path.insert(0, str(REPO / "scripts"))
+    from exec_log_path import main_checkout
+    real_root = main_checkout(REPO) or REPO
+    src_traces = real_root / "traces"
+    dst_traces = root / "traces"
+    if src_traces.is_dir():
+        _sh.rmtree(dst_traces, ignore_errors=True)
+        _sh.copytree(src_traces, dst_traces)
+    rc, out = py(root, "scripts/metrics_snapshot.py", "--json")
+    try:
+        snap = json.loads(out)
+    except Exception as e:
+        snap = {}
+        check("metrics_snapshot 输出可解析", False, f"{e} :: {out[:200]}")
+    s = snap.get("sources") or {}
+    check("组装覆盖结构侧", "structural_side" in s, str(list(s)))
+    check("组装覆盖内容流程侧", "content_flow_side" in s, str(list(s)))
+    check("组装覆盖诊断侧（真实 traces 已拷入）", "diagnose_side" in s, str(s.get("diagnose_side"))[:120])
+    check("结构侧带出真实 case 总数", isinstance((snap.get("metrics") or {}).get("case_total"), int),
+          str((snap.get("metrics") or {}).get("case_total")))
+    check("拿不到的块如实点名（不写 0 冒充）", isinstance(snap.get("missing"), list))
+
+    # ② 真实数据上的检测器：必须报出真实存在的越界与不可解读
+    rc, out = py(root, "scripts/metrics_health.py", "--json")
+    try:
+        h = json.loads(out)
+    except Exception:
+        h = {}
+    texts = " ".join(f.get("text", "") for f in (h.get("findings") or []))
+    check("检测器报出容量越界（真实 85/30）", "interrupt = 85/30" in texts, texts[:200])
+    check("检测器报出反馈下限被触发", "捕获反馈 0 条" in texts or "feedback" in texts.lower(), texts[:200])
+    check("检测器把 misdiagnosis_rate 标为不可解读", "misdiagnosis_rate：不可解读" in texts, texts[:200])
+    check("真实数据上 --check 非零（有 ✗ 未处理）", py(root, "scripts/metrics_health.py", "--check")[0] != 0)
+
+    # ③ 两份合成数据：健康的不许哭狼；崩坏的必须全中
+    tl_path = root / "metrics" / "timeline.yaml"
+    idx_path = root / "knowledge" / "_index.yaml"
+    tl_backup, idx_backup = tl_path.read_text(encoding="utf-8"), idx_path.read_text(encoding="utf-8")
+    idx_small = ("# GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。\n"
+                 "# 生成日期：2026-09-10    case 总数：20\n"
+                 "#   容量(inference/vllm-ascend): interrupt=5/30\n")
+    from datetime import date, timedelta
+
+    def make_timeline(recorded, feedback, cell_count, case_total=20, attr_case=1):
+        return yaml.safe_dump({"periods": [{
+            "period": "2026-W37-live", "kind": "live", "title": "合成",
+            "recorded_at": recorded, "source": "合成（演练）",
+            "metrics": {
+                "sessions_total": 3, "tier2_hit": 1,
+                "misdiagnosis_rate": {"ok": 0, "total": 1},
+                "attribution_ratio": {"case_error": attr_case, "execution_error": 0},
+                "feedback_capture": {"resolved": feedback, "not_resolved": 0, "partial": 0},
+                "case_total": case_total,
+                "capacity_by_ns": {"inference/vllm-ascend": {"interrupt": {"count": cell_count, "cap": 30}}},
+            },
+        }]}, allow_unicode=True, sort_keys=False)
+
+    try:
+        # ③a 健康：今天的一期、有反馈、有归因、格子未越界 → 不许有 ✗（不哭狼）
+        idx_path.write_text(idx_small, encoding="utf-8")
+        tl_path.write_text(make_timeline(date.today().isoformat(), 1, 5), encoding="utf-8")
+        rc, out = py(root, "scripts/metrics_health.py", "--json", "--check")
+        h2 = json.loads(out)
+        check("健康数据上不哭狼（0 项 ✗，--check 为 0）", h2.get("fail_count") == 0 and rc == 0,
+              json.dumps([f for f in h2.get("findings") or [] if f.get("level") != "ok"], ensure_ascii=False)[:300])
+        # ③b 崩坏：30 天前的一期 + **现实格子 70**（超 hard_cap）+ 反馈 0 + 无归因 → 必须全中且非零。
+        #     注意容量越界判的是"当前现实"（_index 头注），不是快照旧值——头注也要跟着坏（测试口径）
+        idx_path.write_text(idx_small.replace("interrupt=5/30", "interrupt=70/30"), encoding="utf-8")
+        tl_path.write_text(make_timeline((date.today() - timedelta(days=30)).isoformat(), 0, 70, attr_case=0),
+                           encoding="utf-8")
+        rc, out = py(root, "scripts/metrics_health.py", "--json", "--check")
+        h3 = json.loads(out)
+        t3 = " ".join(f.get("text", "") for f in (h3.get("findings") or []))
+        check("崩坏数据：报陈旧", "超期" in t3, t3[:200])
+        check("崩坏数据：报 soft_cap 与 hard_cap 越界", t3.count("interrupt = 70/30") >= 2, t3[:200])
+        check("崩坏数据：报反馈下限 + 不可解读", "不可解读" in t3, t3[:200])
+        check("崩坏数据：--check 非零", rc != 0, f"rc={rc}")
+    finally:
+        tl_path.write_text(tl_backup, encoding="utf-8")
+        idx_path.write_text(idx_backup, encoding="utf-8")
+    rc, out = py(root, "scripts/verify_metrics.py", "--check")
+    check("还原后 timeline 结构仍合法", rc == 0, out[-200:])
+
+
+# ---------------------------------------------------------------- ⑨ CI parity
 def ex_ci_parity(root: Path):
     print("\n[E6] CI parity · kb-checks 的每条命令在本地逐条复跑")
     wf_path = root / ".github" / "workflows" / "kb-checks.yml"
@@ -440,7 +541,7 @@ def ex_ci_parity(root: Path):
     return cmds
 
 
-# ---------------------------------------------------------------- ⑨ 面板渲染断言
+# ---------------------------------------------------------------- ⑩ 面板渲染断言
 def ex_panel(root: Path, enabled: bool):
     print("\n[E7] 面板渲染断言（ev-panel 执行现场区块 + 既有断言不回归）")
     if not enabled:
@@ -473,6 +574,7 @@ def main():
         ex_negative_rules(sandbox)
         ex_card_id_safety(sandbox)
         ex_shared_exec_log(sandbox)
+        ex_metrics_loop(sandbox)
         ex_ci_parity(sandbox)
         ex_panel(sandbox, not args.no_panel)
     finally:

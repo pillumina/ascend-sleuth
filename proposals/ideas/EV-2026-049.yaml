@@ -1,0 +1,123 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）
+# 校验：python3 scripts/verify_proposals.py --check
+# 脱敏纪律：只含聚合值与证据引用，不含客户现场原文。
+# ============================================================
+
+id: EV-2026-049
+layer: L2
+title: metrics 闭环补检测腿——单一产出命令（三来源）+ 阈值数据化 + 体检器 + 口径修正（结构指标进 live）
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-10
+source_signals:
+  - signal: observability_gap
+    evidence: >-
+      用户提问"metrics 各指标是否可以闭环运作"。按 `docs/metrics.md` 的周批流程（trace_metrics →
+      人复核 → append → verify_metrics）**实跑一遍**，三类真问题一个都不会被告知：
+      ①**陈旧**：结构指标最后进快照是 2026-08-31（`case_total 52`），而现实是 **158**；
+      ②**越界无人喊**：`inference/vllm-ascend · interrupt = 85/30`（soft_cap 的 2.8 倍、已超 hard_cap 60），
+      而 `verify_metrics --check` 照样 exit 0（它只验结构：period 唯一/字段白名单/比例合法），
+      全仓也没有第二处把"格子数 vs soft_cap"判一次（`grep soft_cap scripts/*.py` 只有 build_index 的注释）；
+      ③**不可解读被当结论**：12 个 trace 里 **0 个**含 feedback 事件 → `feedback_capture` 全 0，
+      于是 `misdiagnosis_rate 0/3` 会被读成"零误诊"，实际是"没人回报"。
+      附带：`traces/` 是各检出各一份的运行时件，而周批的指标生产者读它——**在 worktree 里跑周批
+      会静默产出空诊断指标**（实测"未找到任何 traces/*.yaml"），而仓库纪律要求 agent 都在 worktree 干活。
+    trajectory:
+      - "实跑周批：python3 scripts/trace_metrics.py --emit-yaml（输出 0 处 capacity/case_total/reference_total）"
+      - "python3 scripts/verify_metrics.py --check → exit 0（越界 85/30、10 天陈旧、反馈 0 分母全不报）"
+      - "knowledge/_index.yaml 头注：case 总数 158 / 容量(inference/vllm-ascend) interrupt=85/30"
+      - "grep -rn 'action: feedback' traces/*.yaml → 0 命中（反馈闭环零数据）"
+  - signal: documentation_drift
+    evidence: >-
+      `docs/metrics.md` 写"所有指标由 `trace_metrics.py` 计算（单一数据源）"——**不成立**：
+      timeline 里的指标实际来自四类来源（诊断侧 trace / 结构侧 build_index+verify_references /
+      内容流程侧 exec-log / 评测侧 ixn·golden·S2）。这句错话直接导致周批第 1 步只跑一个脚本、
+      其余靠人手工搬运（于是有了上面 10 天的陈旧）。文档错一句，流程就少一半。
+    trajectory:
+      - "docs/metrics.md 指标定义节（原文：单一数据源）"
+      - "metrics/timeline.yaml 各期 source 字段（实际四类来源）"
+hypothesis: >-
+  把指标链路补齐成六段可判：**产出**（单一命令组装三来源，逐块标 sources）→ **入库**（append）
+  → **判据**（阈值落成 `metrics/gates.yaml` 数据）→ **检测**（`metrics_health.py` 判新鲜度/越界/
+  可解读性，`--check` 非零）→ **动作**（报告直接给行动）→ **复测**（下一期体检）。
+  同时修两处口径：结构指标允许进 live（否则没有趋势通道）、traces 读主检出那份（否则 worktree 里空跑）
+predicted_effect:
+  metric: 指标链路的检出力——(a) 判据能否被脚本读；(b) 越界/陈旧/不可解读是否会被报出并给行动
+  from: "(a) 否（阈值只在散文与注释里）；(b) 全不报（旧流程实跑 exit 0）"
+  to: "(a) 是（gates.yaml 数据 + 白名单 + sources）；(b) 三类全报，`--check` 非零，且不哭狼（健康数据 0 ✗）"
+validation:
+  method: scan_review
+  baseline: 旧周批流程实跑结果（越界/陈旧/不可解读全不报；worktree 里诊断侧为空）
+  success_criteria: >-
+    ①`metrics_snapshot.py` 组装覆盖诊断侧+结构侧+内容流程侧，逐块标 sources，拿不到的块如实点名；
+    ②`metrics_health.py` 在**真实数据**上报出：结构侧越界（85/30 ×2 条闸门）、反馈下限、两条
+    不可解读，且 `--check` 非零；③两份合成数据：健康的 0 项 ✗ 且 `--check` 为 0（不哭狼），
+    崩坏的（30 天陈旧 + 现实格子 70 + 反馈 0 + 无归因）全中且非零；④`verify_metrics --check`
+    仍通过（扩白名单后结构指标可进 live）；⑤新流程真产出一期快照（W37）并 append。
+  rollback: 新增脚本 + 数据文件 + 文档；timeline 追加一期；均可 git revert（原则七）
+gate:
+  condition: "用户提问触发（已发生），且三类断点已实测复现（越界/陈旧/不可解读全不报）"
+risk: medium
+principle_refs: [2, 8, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "单会话内联执行（审计 → 三脚本/阈值数据 → 接线 → 演练 → 产出首期快照），未单独记账"
+decisions:
+  - who: agent（用户提问触发）
+    when: 2026-09-10
+    type: proposal
+    conclusion: >-
+      采纳「补检测腿 + 单一产出命令 + 阈值数据化 + 两处口径修正」，而不是"提醒 owner 记得每周跑"：
+      ①提醒不是结构（本轮 10 天陈旧就是提醒失效的实例）；②阈值留在散文里，检测器无从读起，
+      改一处口径要人肉同步四处（roadmap/ADR/metrics.md/groom 表）；③只补检测不补产出命令，
+      仍会漏来源（结构侧这次就漏了 10 天）。**不做的事（明确）**：不新增 timeline 指标口径、
+      不改评分/闸门数值（红线：系统不改自己考卷）——`gates.yaml` 只是把既有阈值搬成数据，
+      数值与 ADR-0004 / groom 表逐字一致；检测器不进 CI（安静的一周没有新快照是正常状态，硬门会假红）。
+  - who: agent
+    when: 2026-09-10
+    type: action
+    conclusion: >-
+      实施：①新增 `scripts/metrics_snapshot.py`（三来源组装 + 逐块 sources + 缺席如实点名 +
+      越界预览）；②新增 `metrics/gates.yaml`（新鲜度/soft_cap/hard_cap/反馈下限/可解读性规则，
+      带 meaning+action）；③新增 `scripts/metrics_health.py`（新鲜度/越界/可解读性/内容流程四面，
+      `--check` 非零，默认 0）；④`trace_metrics.py` 加 `--emit-yaml-only` 与 `--root`（修 worktree
+      读不到 traces 的盲区）；⑤`verify_metrics.py` 扩 live 白名单（结构侧+内容流程侧字段）+
+      校验 `sources` 形状；⑥`exec_log_path.py` 抽出 `main_checkout()` 供 traces 解析复用；
+      ⑦文档接线：`docs/metrics.md`（角色表/四来源/新周批 5 步/闸门与可解读性节/季度回顾先体检）、
+      groom 步骤 6 与 evolve-check T6 指向体检器、`docs/evolution-run.md` §4 写明 exec-log 聚合已接线
+      到快照；⑧演练新增 `[E10]`（15 条断言）；⑨用新流程产出并 append `2026-W37-live` 一期。
+  - who: agent
+    when: 2026-09-10
+    type: eval
+    conclusion: >-
+      scan_review + 演练实测（`python3 scripts/rehearse_evolve_loop.py` → **81/81 通过**，其中 `[E10]` 15 条）：
+      ①真实数据上体检器准确报出 5 项 ✗（两条容量闸门、反馈下限、两条不可解读）+ 新鲜度两类，
+      且 `--check` 非零；②合成对照两侧都对：健康数据 0 ✗ / `--check` 0（不哭狼），崩坏数据全中 / 非零；
+      ③组装命令三来源齐全（诊断侧自动解析到主检出那份 traces 并标注、结构侧带出真实 158、内容流程侧 4 条）；
+      ④`verify_metrics --check` 通过（8 期，live 3）；⑤W37 一期已 append，体检后新鲜度两面转 ✓。
+      **两次自我纠错（如实记录）**：`metrics_health.py` 首版用 `recorded_at` 排"最新"，
+      两期同日期时挑错（挑中较早的 W35-live1）→ 改为同日期以列表位置（append 顺序）为准；
+      首版把 `misdiagnosis_rate` 判为"可解读"（因为它的分母是命中数而非反馈数）→ 新增
+      `source_nonzero` 规则，改为"反馈来源为 0 即不可解读"——**这条正是本轮要抓的假绿**。
+      另外演练自身也修了三处：traces 只在主检出（演练自己活在 worktree）→ 用 `main_checkout` 定位；
+      合成"健康"数据缺归因导致误判 → 补 `attribution_ratio`；容量越界判的是"当前现实"而非快照旧值
+      → 负例把头注一起改坏（测试口径对齐实现口径）。
+  - who: agent
+    when: 2026-09-10
+    type: decision
+    conclusion: >-
+      **validated（采纳，改动保留）**。判据：success_criteria 五项全部达成，且"该红必红/不该红不哭狼"
+      由两份合成数据双向验证。**顺带回答了另一个问题（必要性判定）**：exec-log 的**跨克隆/跨机聚合**
+      不做原始流水——本仓库对跨机聚合的既有形态是"各机本地汇总 → 聚合值进 timeline（随 PR 共享）"，
+      因此把 exec-log 聚合接进 `metrics_snapshot` 即可（本轮已接线），不需要新管道、也不需要把流水入 git；
+      且"按人/按机统计使用量"触碰 roadmap 的"不做 KPI/身份"红线，不在候选内。
+      残留（如实标注）：①体检器不进 CI，靠周批/季度回顾运行——若某天没人跑周批，陈旧会以"没有新 snapshot"
+      的形式再次积累（此时体检器一旦跑起来就会报出来，比旧流程好，但仍依赖人跑）；②`gates.yaml` 的数值
+      与 ADR-0004/groom 表一致，但仍是**两处**（数据 + 散文），改数值要同步；③真实待办留给 owner：
+      `inference/vllm-ascend · interrupt = 85/30` 已超 hard_cap，按 ADR-0004 应强制拆分——本卡只记录与报警，
+      拆分是知识结构决策（groom 步骤 6），不在机制卡里顺手做。

@@ -29,13 +29,22 @@ def load_yaml(path: Path):
         return {"__yaml_error__": str(e)}
 
 
-# live 快照字段白名单（trace_metrics.py --emit-yaml 固定输出，见 docs/metrics.md 快照 schema）
-# 增删字段 = 改 trace_metrics.py 与本文同步（单一数据源纪律）；白名单外字段 = 跨期不可比
+# live 快照字段白名单
+# ——来源一：trace_metrics.py --emit-yaml（诊断侧，单一实现）
+# ——来源二：metrics_snapshot.py 组装的结构侧与内容流程侧（2026-09-10 起）
+#   为什么结构侧也要进 live：容量格子/case 数/reference 数是**最该看趋势**的治理指标，
+#   而它们原先只能出现在 kind=replay 的快照里，按"只有 live 参与趋势"的规则等于没有趋势通道
+#   （实测：某格已 85/30、快照里还停在 36/30）。字段名仍是白名单制，防漂移。
 LIVE_FIELDS = {
+    # 诊断侧（trace_metrics.py）
     "sessions_total", "tier2_hit", "routed_accuracy", "misdiagnosis_rate",
     "by_category_hit", "attribution_ratio", "confidence_distribution",
     "feedback_capture", "trace_completeness", "vocab_compliance", "tier3",
     "reference", "reference_detail",
+    # 结构侧（metrics_snapshot.py ← build_index 头注 / verify_references）
+    "case_total", "reference_total", "capacity_by_ns",
+    # 内容流程侧（metrics_snapshot.py ← tail_exec_log 聚合）
+    "content_flow_runs", "evolve_check_runs", "evolve_check_no_signal",
 }
 
 
@@ -126,6 +135,10 @@ def main():
                         f"（合法字段: {', '.join(sorted(LIVE_FIELDS))}；字段名漂移=跨期不可比，"
                         f"W28/W35 教训）"
                     )
+        # sources：逐块出处（metrics_snapshot.py 组装时写；没有也能是手写快照）
+        srcs = p.get("sources")
+        if srcs is not None and not isinstance(srcs, dict):
+            errors.append(f"{rel} [{pid}]: sources 应为 mapping（块名 → 出处说明），便于回溯每个指标块")
 
     if errors:
         print(f"metrics/timeline.yaml 校验失败（{len(errors)} 处）：")

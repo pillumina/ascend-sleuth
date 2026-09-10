@@ -62,6 +62,23 @@ def _git_common_dir(root: Path):
     return None
 
 
+def main_checkout(root: Path):
+    """主检出根（同一克隆的"共享侧"）；拿不到返回 None。
+
+    这套语义**不只用于 exec-log**：`traces/` 同样是各检出各一份的运行时件，而周批的指标
+    生产者（trace_metrics.py）要读它——在 worktree 里跑会静默读不到（2026-09-10 实测：
+    worktree 里 `traces/` 不存在 → "未找到任何 traces/*.yaml" → 周批会产出**空诊断指标**）。
+    所以 metrics_snapshot.py 也用它来定位 traces 该读哪一份。
+    """
+    common = _git_common_dir(Path(root))
+    if common is None:
+        return None
+    main_root = common.parent              # <主检出>/.git → <主检出>
+    if (main_root / ".git").exists() or (main_root / "metrics").exists():
+        return main_root
+    return None
+
+
 def resolve(root: Path, explicit: Path = None, local: bool = False):
     """返回 (log_path, where)。绝不抛异常——取不到就老实退化。"""
     root = Path(root)
@@ -69,11 +86,9 @@ def resolve(root: Path, explicit: Path = None, local: bool = False):
         return Path(explicit), "explicit"
     if local:
         return root / LOG_REL, "local"
-    common = _git_common_dir(root)
-    if common is not None:
-        main_root = common.parent          # <主检出>/.git → <主检出>
-        if (main_root / ".git").exists() or (main_root / "metrics").exists():
-            return main_root / LOG_REL, "shared"
+    main_root = main_checkout(root)
+    if main_root is not None:
+        return main_root / LOG_REL, "shared"
     return root / LOG_REL, "fallback"
 
 
