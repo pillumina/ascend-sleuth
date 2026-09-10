@@ -61,7 +61,7 @@
 
 **阶段二（全量）**：候选 ≤5 条，全量加载 body，按 `confidence.score` **降序**验证（最可靠的先试）。**多条候选时明示**：“匹配到 N 条，先验证最可能的 `<id>`（confidence `<score>`）”，工程师可说“跳过这条试下一条”。
 
-**阶段二.5：reference 辅助查询（「判断缺口」消费点）**——候选加载后、验证前，按需取先验知识辅助诊断（**只读 `status: active`**）。reference 的另一个消费点是**数据缺口**（步骤 1 的采集面，候选加载前）——两处都不参与候选路由/排序，路由与筛排只看 case：
+**阶段二.5：reference 辅助查询（「判断缺口」消费点）**——候选加载后、验证前，按需取先验知识辅助诊断（**只读 `status: active`**）。reference 的另两个消费点是**数据缺口**（步骤 1 的采集面，候选加载前）与**方法缺口**（候选全未命中后的流程加载，步骤 5）——三处都不参与候选路由/排序，路由与筛排只看 case：
 
 - **② 平台/类别匹配的 summary 层（只限背景类 type）**：读 `references/_summary-index.yaml`（生成索引，背景类+active 词条）→ 过滤 `applies_to.platforms` 匹配客户平台（含 `cross` 或未填 platforms 视为跨平台）；**该行 `applies_to.categories` 有值时，再按本轮 category 收窄**（缺省 = 不限定类别，照常加载）→ 得候选词条列表，**行内 summary 即背景提示**（不读全文）；确需细节再按 `id` 读单文件。**查表类（error-code / fault-pattern / env-var-table / compat-matrix）不进 summary 层**——它们是码/签名/组件名/版本检索键，按需走 ③。**流程类（methodology）也不进背景层**——它要的是"选中一条读全文"，不是"读一行背景"；走 ④ 的流程选择器索引。
 - **③ 签名/查表类检索（不走 summary 层——签名/名是检索键不是摘要）**：错误码（E1xxxx/EIxxxx/507xxx 等）→ 查 `ascend-error-code-structure` 的 `module_files` 前缀映射定位族文件（`references/errors/<族>.yaml`）族内 grep code 读 meaning/solution；可 grep 的故障签名（"0x800000"、fault kernel_name、event_id）→ 按域定位 `references/fault-patterns/<域>.yaml` 域内 grep symptoms 读 cause/fix；具体环境变量 → `references/env-vars/<表>.yaml` 内 grep name；版本组合需核对 → `references/compat-matrices/` 按传导链分层（framework 层→adapter 层 torch-npu↔CANN→base 层 CANN↔HDK）。
@@ -72,17 +72,7 @@
   2. 否则/同时：读 `references/_summary-index.yaml` 中 `applies_to.platforms` 匹配（并按 `applies_to.categories` 收窄）且 active 的词条，**只读行内 `summary` + `applies_to`**（每条一行；A5 全量 ~700 token 内）；
 - **按需全文**：验证具体事实需要细节（如 950DT 内存规格、HiF8 指数范围）才读全文；
 - **token 纪律**：只在命中候选后查询，summary 层先于全文层，平台/类别不匹配不加载（当前仅 A5 有词条，A2/A3 场景自然跳过）；
-- **④ 方法缺口——加载**一条**流程的**全文**（EV-2026-038）**：category 已定、手上已有测量数据（或 interrupt 类候选全未命中）时，按 `references/procedure-gates.yaml` 的 `kind: procedure` 闸门取流程：
-
-1. 读 `references/_procedure-index.yaml`（**选择器**，按 category 过滤 `categories`），用 `title`/`summary` 选**一条**最贴合的流程——一轮诊断最多加载一条；
-2. 按该行的 `file` 打开词条，读 **`content.flow[]` 全文**（step / action / check / when_to_use）——**摘要行不算加载**：实测只读摘要与不读等效，决定性判据会被截断；
-3. 按流程执行：用每步的 `check` 当判定口径（阈值、分流条件），跳步要说明理由；
-4. 某步所需数据不在手上（如流程要看"逐卡计算耗时"而导出里没有）→ **如实记 `gap`**，不臆断分支结论；
-5. 记 trace：`{action: reference_lookup, ref_id, purpose: procedure}` + `{action: procedure_follow, ref_id, steps_executed, branch_taken, gap}`（字段见 `diagnosis-trace.md`）。
-
-> **为什么必须全文**：流程携带的是**反直觉判据**（例："等得最久的卡不是慢卡，等得最少的那张才是"）。摘要会把它压没，agent 于是回到直觉判断——实测 4/4 判错；给全文 2/2 判对。
-
-**trace 必记**：每次查询记 `{action: reference_lookup, ref_id, platform, purpose: collect|signature|fix|background|procedure}`——reference 命中统计（hits/last_hit）的数据源。`collect` = 步骤 1 的数据缺口采集面（在 2.5 之外发生，同样要记）。
+- **trace 必记**：每次查询记 `{action: reference_lookup, ref_id, platform, purpose: collect|signature|fix|background|procedure}`——reference 命中统计（hits/last_hit）的数据源。`collect` = 步骤 1 的数据缺口采集面（在 2.5 之外发生，同样要记）。
 
 trace 记：
 ```yaml
@@ -114,6 +104,17 @@ trace 记：
 命中 → 步骤 6（产出）。所有候选未命中 → 步骤 5（深度排查）。
 
 ## 步骤 5：深度排查（Tier 2 未命中）
+
+**先取流程（方法缺口消费点，EV-2026-038）**：所有候选未命中、进入本步时，按 `references/procedure-gates.yaml` 的 `kind: procedure` 闸门取流程：
+
+1. 读 `references/_procedure-index.yaml`（**选择器**，按 category 过滤 `categories`），用 `title`/`summary` 选**一条**最贴合的流程——一轮诊断最多加载一条；
+2. 按该行的 `file` 打开词条，读 **`content.flow[]` 全文**（step / action / check / when_to_use）——**摘要行不算加载**：实测只读摘要与不读等效，决定性判据会被截断；
+3. 按流程执行：用每步的 `check` 当判定口径（阈值、分流条件），跳步要说明理由；
+4. 某步所需数据不在手上（如流程要看"逐卡计算耗时"而导出里没有）→ **如实记 `gap`**，不臆断分支结论；
+5. 记 trace：`{action: reference_lookup, ref_id, purpose: procedure}` + `{action: procedure_follow, ref_id, steps_executed, branch_taken, gap}`（字段见 `diagnosis-trace.md`）。
+
+> **为什么必须全文**：流程携带的是**反直觉判据**（例："等得最久的卡不是慢卡，等得最少的那张才是"）。摘要会把它压没，agent 于是回到直觉判断——实测 4/4 判错；给全文 2/2 判对。
+
 
 **若 Script 工具已接入**（见 script-integration.md），按 category 用：interrupt→日志/core dump、precision→`mem-analyze`、performance→`ascend-profile-analyze`/`bench-run`。**当前骨架阶段多半还没接**——别假装能调，诚实告诉工程师。
 

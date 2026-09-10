@@ -129,7 +129,7 @@ disable-model-invocation: true
 
 理由：共性识别靠人工不可持续（2026-08 从 42 条 case 人工发现 MoE 通信算子族，4 条同 tag）；tag 聚类是零 token 的机械信号，先把候选端到人眼前。
 
-**R10. 流程留出检验（methodology 的"方法"地位核验，EV-2026-038）**：跑 `python3 scripts/flow_pool.py --flow-coverage`——按每条 methodology 的 `sources[].cases` 把评测池样本分成「收录（该词条的来源 case，train-on-test）」与「未收录（泛化证据）」两列：
+**R10. 流程留出检验（methodology 的"方法"地位核验，EV-2026-038）**：跑 `python3 scripts/flow_pool.py --flow-coverage`（该脚本随 `eval/flow/` 评测池引入；**脚本不存在时跳过并在摘要如实标注"评测池未就绪"**，不臆造覆盖数据）——按每条 methodology 的 `sources[].cases` 把评测池样本分成「收录（该词条的来源 case，train-on-test）」与「未收录（泛化证据）」两列：
 - **无未收录样本通过记录的流程，其"方法"地位未验证** → 变更摘要建议：或补判据（把案例指纹改写成可对新变体执行的阈值/分支），或摘掉 procedure 绑定（`skills/diagnose/references/procedure-gates.yaml` 的 selector 不再选它）；
 - 第三轮盲测的判据：给正确流程后，**收录样本 2/2 改善、未收录样本 0/5 改善**且 2 次被分支判别误导——即"能对上自己收录的 case"不等于"是方法"；
 - 与 R8（case 共性提炼候选）配对：R8 决定"要不要提炼"，R10 决定"提炼出来的算不算方法"。

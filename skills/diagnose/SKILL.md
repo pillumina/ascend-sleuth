@@ -35,12 +35,12 @@ description: >
 2. **分类 → `triage-tree.yaml`（Tier 1）**：症状匹配分支 → 路由 namespace；triage 决策记 trace；未命中 → 语义兜底 `triage_semantic`；无法分类 → Tier 3。→ 展开见 reference 步骤 2。
 3. **两阶段加载 Tier 2**：阶段一读命中 category 分片索引筛候选(≤5)；阶段二按 `confidence.score` 载全文 + `quickly_check`(primary→fallback) 验证；**阶段 2.5** 按需取先验 reference（只读 `active`）。→ 展开见 reference 步骤 3。
 4. **验证 diagnosis checks**：顺序**对照已提供信息**验证；缺信息→追问；mismatch 且有 `fix_on_mismatch`→提示 fix（**先看 severity**）；无 `fix_on_mismatch`→标 `excluded_cases` 试下一个。→ 展开见 reference 步骤 4。
-5. **深度排查（未命中）**：Tier 3 grep `postmortems/`；**源码分析**（疑似框架/算子层且 Tier 3 未覆盖）走 `scripts/src_fetch.py`（见源码分析小节）；都没有→诚实说"知识库未覆盖"，建议 `/skill:to-postmortem`。→ 展开见 reference 步骤 5。
+5. **深度排查（未命中）**：**先取流程（方法缺口，见下节）** → Tier 3 grep `postmortems/`；**源码分析**（疑似框架/算子层且 Tier 3 未覆盖）走 `scripts/src_fetch.py`（见源码分析小节）；都没有→诚实说"知识库未覆盖"，建议 `/skill:to-postmortem`。→ 展开见 reference 步骤 5。
 6. **产出**：`resolution` + 顶层 `summary` + 沉淀状态(`sedimented`) + trace；**结果反馈闭环**（问 fix 结果回写 confidence + 写 `feedback_pending`）。→ 展开见 reference 步骤 6。
 
 ## 数据资产探询（「数据缺口」消费点——精度 / 性能类先问这一句）
 
-reference 有两个消费点，都由流程里的**缺口**决定、都不参与候选路由/排序：**数据缺口**（缺测量数据 → 本节的采集面，在候选加载前）与**判断缺口**（有候选、缺签名/背景/修复依据 → 步骤 2.5）。本节只管数据缺口：命中精度或性能类问题、下一步需要**测量数据**时，**先探询对方手上的资产，再决定给「分析」还是给「采集指导」**——别默认对方不会采，也别默认对方已有数据。一句话的成本，换掉一整段可能没人需要的接入说明（原则九：上下文与注意力都是预算）。
+reference 有三个消费点，都由流程里的**缺口**决定、都不参与候选路由/排序：**数据缺口**（缺测量数据 → 本节的采集面，在候选加载前）、**判断缺口**（有候选、缺签名/背景/修复依据 → 步骤 2.5）、**方法缺口**（候选全未命中、需要"这类问题怎么查" → 步骤 5）。本节只管数据缺口：命中精度或性能类问题、下一步需要**测量数据**时，**先探询对方手上的资产，再决定给「分析」还是给「采集指导」**——别默认对方不会采，也别默认对方已有数据。一句话的成本，换掉一整段可能没人需要的接入说明（原则九：上下文与注意力都是预算）。
 
 **绑定落在数据上，不写在散文里**：category → 探询问句 → 分支 → 词条 的绑定见 `references/collect-gates.yaml`（本 skill 支撑文件；每个 id 由 `verify_references.py` 校验存在且 `active`——散文里硬编码 ref-id 会静默腐化，已有先例）。本节只给交互形态（问什么、何时问）：
 
@@ -49,12 +49,6 @@ reference 有两个消费点，都由流程里的**缺口**决定、都不参与
 | **precision** | 「你已经有 dump 数据 / 分析结果了吗？还是要我给到代码级接入步骤？」 | 探询型：按回答分支 |
 | **performance** | 「你已经有 profiling 数据了吗（采集产物）？还是要我给采集指引？」 | 探询型：按回答分支 |
 | **interrupt** | —（不预先问） | 条件型：日志不足以定位时才给采集指引 |
-
-**方法缺口（③）——别漏**：category 已定且有测量数据（interrupt 类是候选全未命中）时，
-按 `references/procedure-gates.yaml` 的 `kind: procedure` 闸门取流程：读 `references/_procedure-index.yaml`
-（选择器）选**一条**，然后打开词条读 **`content.flow[]` 全文**按判据执行——**摘要行不算加载**
-（实测只读摘要与不读等效，流程的反直觉判据会被摘要截断）；数据缺口如实记 `gap`，不臆断分支。
-展开见 `references/diagnosis-procedure.md` 步骤 2.5 ④。
 
 **分支动作与词条不在此重复**（改一处即生效，避免散文与数据双源漂移）：走闸表的 `branches[].action` / `refs`。
 
@@ -73,6 +67,26 @@ reference 有两个消费点，都由流程里的**缺口**决定、都不参与
 - **活锁 ≠ 组件故障**：同一请求/实体以固定节奏（~1s）重复打同一条日志、且计数冻结 → 判"控制循环活锁"（调度/接纳/抢占在反复重试却无法推进），**向控制循环上游走**——别把"发日志的组件"当故障组件（load/传输后端常只是表象，真实支点在调度/接纳/抢占层）。
 - **判别优先追问**：多假设并存时，先问能二分命中的那个问题（如"PD prefill 节点是否禁用了抢占？"这类**控制/调度**维度，而非数据流细节），再补数据流/传输细节——一刀命中，避免在错误维度上堆证据。
 - **连续失败 ≤2**：两次未解决即转人工，不试第三个。
+
+## 方法缺口（流程加载——候选全部未命中时才走这一步）
+
+**何时**：所有 Tier 2 候选都未命中、进入步骤 5 深度排查时。**不在候选之前加载**——候选命中时流程用不上，
+而流程自带强先验，早加载只会在评估候选前**锚定**解释框架（实测过：流程的分支判别把 agent 推入高置信错误分支）。
+
+**怎么做**（绑定在 `references/procedure-gates.yaml` 的 `kind: procedure` 闸门，id 由 `verify_references.py` 校验）：
+
+1. 读 `references/_procedure-index.yaml`（**选择器**，不是内容）：按本轮 category 过滤 `categories`（**该列为空 = 不限定类别**），用 `title`/`summary` 选**一条**最贴合的流程——**一轮诊断只加载一条**；该流程走完仍未定位 → 转深度排查或人工，**不换第二条**（与"连续失败 ≤2"的串联保护一致，防误诊级联）；
+2. 按该行的 `file` 打开词条，读 **`content.flow[]` 全文**（step / action / check / when_to_use）——**摘要行不算加载**：实测只读摘要与不读等效，流程的反直觉判据会被摘要截断（例：摘要写"同步比例 > 0.2 则存在慢卡"，漏掉"慢卡 = WTR 最小的卡"）；
+3. 按流程执行：用每步的 `check` 当判定口径（阈值、分流条件），**跳步要说明理由**；
+4. 某步所需数据不在手上（流程要看"逐卡计算耗时"而导出里没有）→ 如实记 `gap`，**不臆断分支结论**；
+5. 记 trace：`{action: reference_lookup, ref_id, purpose: procedure}` + `{action: procedure_follow, ref_id, steps_executed, branch_taken, gap}`（字段见 `references/diagnosis-trace.md`）。
+
+> **流程不得替代候选验证**：流程给的是"这类问题怎么查"，不是"这次就是这个"。它的分支结论仍需数据支撑才进结论；
+> 且流程走通并解决了问题**不免除 case 沉淀**（方法解决一次不等于这次事故不值得成为 case）。
+>
+> **流程错了也要能被发现**：跟随流程给出 fix、但工程师回报没解决时，在 `attribution` 事件里写
+> `component: reference:<ref-id>`——这样"被跟随后仍失败"的流程能进组件失败簇聚合（`component_tally.py`），
+> 否则流程层只有加载率、没有失败率，错流程会被稳定注入而无人察觉。
 
 ## severity 闸门（命中后先看这个）
 

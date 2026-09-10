@@ -65,27 +65,54 @@ def collect(refs_dir: Path):
 
 
 def render(entries) -> str:
-    lines = [
+    """生成索引文本。
+
+    **必须整篇经 yaml.safe_dump 输出**：早先逐行拼接 + safe_dump 单个标量会在默认
+    width=80 处折行，折出来的续行顶掉缩进 → 产物不是合法 YAML（而 --check 只比文本、
+    比的是两次同样错误的生成结果，属自证式校验，CI 全绿也发现不了）。
+    """
+    header = [
         "# GENERATED FILE —— 流程选择器索引（diagnose 方法缺口消费点读它），不要手改。",
-        "# 由 scripts/build_procedure_index.py 生成；--check 校验新鲜度（CI）。",
+        "# 由 scripts/build_procedure_index.py 生成；--check 校验新鲜度 + 可解析性（CI）。",
         "#",
         "# 用法（形态归 SKILL、内容归词条）：",
-        "#   1) 按本轮 category 过滤 categories（空 = 不限定类别）；",
+        "#   1) 按本轮 category 过滤 categories——**该列为空 = 不限定类别，照常进入候选**；",
         "#   2) 用 title/summary 选**一条**最贴合的流程（本索引只是选择器，不是内容）；",
         "#   3) 按 file 打开该词条读 **content.flow[] 全文**——摘要行不承载判据，只读摘要等于没加载；",
-        "#   4) 一轮诊断最多加载一条流程（成本有界），必要时再按词条内 related_references 追加。",
+        "#   4) 一轮诊断最多加载一条流程（成本有界）。",
         "#",
-        f"# 生成日期：{date.today()}    流程条数：{len(entries)}",
-        "entries:",
+        f"# 生成日期：{date.today()}    流程条数：{len(entries)}    本文件整体加载成本：约 "
+        f"{round(len(''.join(str(e) for e in entries)) / 2.6)} token（选择器每次都要整读，故单文件 + 记成本）",
+        "#",
+        "# 增长闸门（原则十一：按闸门不按日历）：流程条数 > 25，或本文件 > 5K token → 按 category 分片",
+        "#   （对齐 case 层 knowledge/_index/<ns>__<category>.yaml 的做法）。当前单文件即可。",
     ]
-    for e in entries:
-        lines.append(f"- id: {e['id']}")
-        lines.append(f"  title: {yaml.safe_dump(e['title'], allow_unicode=True).strip()}")
-        lines.append(f"  summary: {yaml.safe_dump(e['summary'], allow_unicode=True).strip()}")
-        lines.append(f"  categories: {e['categories']}")
-        lines.append(f"  platforms: {e['platforms']}")
-        lines.append(f"  file: {e['file']}")
-    return "\n".join(lines) + "\n"
+    doc = {
+        "entries": [
+            {
+                "id": e["id"],
+                "title": e["title"],
+                "summary": e["summary"],
+                "categories": e["categories"],
+                "platforms": e["platforms"],
+                "file": e["file"],
+            }
+            for e in entries
+        ]
+    }
+    body = yaml.safe_dump(doc, allow_unicode=True, sort_keys=False, width=10 ** 6, default_flow_style=False)
+    return "\n".join(header) + "\n" + body
+
+
+def parses(text: str) -> str:
+    """返回空串 = 可解析；否则返回错误描述。"""
+    try:
+        d = yaml.safe_load(text)
+    except Exception as e:
+        return str(e).splitlines()[0]
+    if not isinstance(d, dict) or not isinstance(d.get("entries"), list):
+        return "解析结果不是 {entries: [...]}"
+    return ""
 
 
 def main():
@@ -96,19 +123,31 @@ def main():
     root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parent.parent
     refs = root / "references"
     out_path = refs / OUT_NAME
-    text = render(collect(refs))
+    entries = collect(refs)
+    text = render(entries)
     if args.check:
         if not out_path.exists():
             print(f"{OUT_NAME} 不存在——运行 scripts/build_procedure_index.py 生成")
             return 1
         old = out_path.read_text(encoding="utf-8")
+        # ① 产物必须能解析（防"生成器坏了但 --check 仍是绿的"自证式校验：
+        #    只比文本 = 比两次同样错误的生成结果，发现不了结构损坏）
+        err = parses(old)
+        if err:
+            print(f"{OUT_NAME} 不是合法 YAML：{err}")
+            return 1
+        # ② 新鲜度
         if _normalize_date(old) != _normalize_date(text):
             print(f"{OUT_NAME} 过期——references/ 有变更未重建（运行 scripts/build_procedure_index.py）")
             return 1
-        print(f"procedure 索引新鲜（{len(collect(refs))} 条流程）")
+        print(f"procedure 索引新鲜且可解析（{len(entries)} 条流程）")
         return 0
+    err = parses(text)
+    if err:
+        print(f"生成失败：产物不是合法 YAML：{err}")
+        return 1
     out_path.write_text(text, encoding="utf-8")
-    print(f"已生成 {out_path}（{len(collect(refs))} 条流程）")
+    print(f"已生成 {out_path}（{len(entries)} 条流程）")
     return 0
 
 

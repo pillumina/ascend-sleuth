@@ -10,6 +10,9 @@
 #     ③ 选择可靠：只给 id/title/summary 索引让 agent 自己挑 → 7/7 选对。
 #   现状缺口：12 条真实 trace 里精度/性能会话**加载流程 0 次**——触发点缺失，不是内容缺失。
 #
+# **时机统一在步骤 5（候选全部未命中后）**，不在候选之前——候选命中时流程用不上，而流程自带强先验，
+#   早加载会在评估候选前锚定解释框架（第三轮实测：流程的分支判别把 agent 推入过高置信错误分支）。
+#
 # 分工（形态归 SKILL，内容归词条）：本表只决定「何时该取流程、取到后怎么用」；
 #   具体是哪一条流程由 `references/_procedure-index.yaml`（选择器）按 category + title/summary 选出。
 #   **本表不写症状关键词分支**——关键词写在闸门里等于与 triage-tree 双源，必漂移。
@@ -22,8 +25,8 @@ gates:
     category: precision
     kind: procedure
     trigger: >-
-      已确认 category=precision，且手上已有测量数据（dump / 比对产物 / plog 标识）——
-      下一步是"按什么方法定界根因"，而不是继续取数、也不是查错误签名
+      precision 类问题、**所有 Tier 2 候选都未命中**、进入步骤 5 深度排查时——
+      需要"按什么方法定界根因"，而不是继续取数、也不是继续查错误签名
     load: full
     selector: references/_procedure-index.yaml
     caveat_refs:
@@ -33,8 +36,8 @@ gates:
     category: performance
     kind: procedure
     trigger: >-
-      已确认 category=performance，且手上已有采集产物（profiling 数据 / 通信统计 / step 时间线）——
-      下一步需要按判据（阈值、分流规则）定位瓶颈环节
+      performance 类问题、**所有 Tier 2 候选都未命中**、进入步骤 5 深度排查时——
+      需要按判据（阈值、分流规则）定位瓶颈环节
     load: full
     selector: references/_procedure-index.yaml
 
@@ -42,8 +45,8 @@ gates:
     category: interrupt
     kind: procedure
     trigger: >-
-      已确认 category=interrupt，且候选 case 全部未命中（quickly_check 都不匹配）——
-      下一步需要按某条排查路径分流，而非继续 grep 签名
+      interrupt 类问题、**所有 Tier 2 候选都未命中**、进入步骤 5 深度排查时——
+      需要按某条排查路径分流，而非继续 grep 签名
     load: full
     selector: references/_procedure-index.yaml
     caveat_refs:

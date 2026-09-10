@@ -79,6 +79,9 @@ status: active | pending-review | deprecated | draft   # 新产出即 active（P
 
 **两个消费点**（EV-2026-037）：reference 不参与候选路由/排序（不是第四检索层），但按流程里的**缺口**在两个时点被消费——**数据缺口**（缺测量数据 → tool 的采集面，`skills/diagnose/references/collect-gates.yaml` 绑定，诊断步骤 1）与**判断缺口**（有候选、缺签名/背景/修复依据 → 诊断步骤 2.5）。两处都只读 `active`。
 
+生成物校验（CI）：`build_ref_summary_index.py --check`（背景索引新鲜度）+
+`build_procedure_index.py --check`（流程索引新鲜度 **且可解析**——只比文本的自证式校验发现不了结构损坏，已踩过）。
+
 **修订走 PR**（ADR-0008 §1.7）：内容修订 active 词条 = 修改已生效知识 → **methodology 模板 + `kb/high-risk` 双签**（小修直接改 YAML + PR；大修用 `/skill:to-reference --update <ref-id>`）。
 
 **维护约定——词条零注释**：词条 YAML 是给 agent 消费的数据，**不得含任何 `#` 注释行**（语义解释只在本 README / ADR-0008 / SKILL.md 文档层）。新增词条后 `grep -c "#" <file>` 应为 0。
