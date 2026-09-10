@@ -2,9 +2,9 @@ name: kb-checks
 
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py"]
 
 jobs:
   index-freshness:
@@ -68,6 +68,46 @@ jobs:
       # 注意：verify_exec_log.py **不进 CI**——exec-log（metrics/skill-exec-log.yaml）是
       # .gitignore 运行时件，CI checkout 里不存在，跑它只会打印"跳过"并空转。
       # 该不变量改由 evolve-check 收尾自查（skills/evolve-check 第 4 步）。
+
+  # 封存对照集（holdout）：eval/golden/ 里由维护者独占的那部分。理由见 scripts/holdout.py
+  # 头注——golden 在改动者可写面内且 groom 被要求跟着 case 改夹具，所以"无回归"是可
+  # 控信号；封存后改内容必红，要合法改就得维护者 reseal 并在 PR 上留下标签。
+  holdout-integrity:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 供下一步的 diff 用（label 闸门要知道 PR 改没改对照集）
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      # ① 硬门：封存夹具内容被改动即红（哈希就是判据，不需要看 diff）
+      - run: python3 scripts/holdout.py --check
+      # ② 半硬：改对照集须带 holdout-change 标签，让"改量尺"在评审面上可见。
+      #    强度如实标注：标签闸门由本步强制，但在 CODEOWNERS/分支保护落实前，有写权限者
+      #    仍可自行打标签——真正的独立性随 CODEOWNERS 到位（见 CODEOWNERS.example）。
+      #    本地复跑（演练 E6）无 GITHUB_BASE_REF，走"跳过"分支并 exit 0，不误红。
+      - name: holdout 对照集变更须带 holdout-change 标签
+        env:
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -z "$BASE_REF" ]; then
+            echo "非 PR 环境（本地复跑 / push）——跳过标签闸门"
+            exit 0
+          fi
+          git fetch --no-tags --depth=1 origin "$BASE_REF" >/dev/null 2>&1 || true
+          changed=$(git diff --name-only "origin/$BASE_REF"...HEAD -- eval/holdout.yaml || true)
+          if [ -z "$changed" ]; then
+            echo "未改动 eval/holdout.yaml——无需标签"
+            exit 0
+          fi
+          case ",$LABELS," in
+            *,holdout-change,*) echo "eval/holdout.yaml 已改动，且带 holdout-change 标签 ✓" ;;
+            *) echo "eval/holdout.yaml 已改动但缺 holdout-change 标签——改量尺必须在评审面上可见"; exit 1 ;;
+          esac
 
   skill-self-contained:
     runs-on: ubuntu-latest

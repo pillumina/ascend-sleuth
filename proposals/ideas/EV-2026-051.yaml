@@ -1,0 +1,147 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）
+# 校验：python3 scripts/verify_proposals.py --check
+# 脱敏纪律：只含聚合值与证据引用，不含客户现场原文。
+# ============================================================
+
+id: EV-2026-051
+layer: L2
+title: 封存对照集（holdout）——把"CI 绿"从可控信号变成维护者独占的量尺
+status: validated
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-10
+source_signals:
+  - signal: observability_gap
+    evidence: >-
+      承接 EV-2026-050 的诊断：那张卡让"改动声称的效果"可复核，但**没有**解决"无回归"
+      这件事本身是否独立。缺口是结构性的——`eval/golden/` 在改动者可写面内，而且
+      `docs/eval.md`「套件如何演化」一节**要求 groom 跟着 case 改夹具**（case 的 fix 变了，
+      夹具期望要同步）。于是同一双手既改被测对象、也改对照标准："golden 无回归"是**可控
+      信号**。判据独立性的唯一标准是：改动者不能靠写文字（或改夹具）通过检查。
+      实测还暴露一个更基础的问题：**夹具根本没有覆盖全部知识**。
+    trajectory:
+      - "docs/eval.md「套件如何演化」：case 的 fix 变了，夹具的期望同步更新（groom 自动检测）"
+      - "docs/eval.md「门禁分级」：检索/路由面改动的门禁 = golden 子集对照（对照标准在同仓可写面）"
+      - "scripts/holdout.py --list（首跑）：夹具覆盖 4 个格子；有 case 却无夹具的格子 6 个"
+      - "24 个 fixture 覆盖 inference/vllm-ascend 的 interrupt/precision/performance 与 inference/sglang/interrupt；training/mindspeed-llm、training/verl、common 共 6 个格子为 0"
+  - signal: process_friction
+    evidence: >-
+      组织面：推广面即将从 1 人扩到约 10 人，且每个人都可以改 skill（以 evolve-check 为
+      授权依据）。人手变多时"谁改量尺"必须是个有名字的角色，而不是"反正都会看"——
+      评审者会变多，而完整心智模型只有一个。本卡把量尺的改动权显式挂到维护者（标签闸门 +
+      CODEOWNERS 条目），使"改量尺"成为一件有痕迹的事。
+    trajectory:
+      - "用户输入：第一批约 10 人；改 skill 本身每个人都可以改（因为有 evolve-check）"
+hypothesis: >-
+  把一部分夹具**按内容哈希封存**（`eval/holdout.yaml` 钉住 sha256），则改封存夹具内容
+  必然被 CI 抓到——哈希就是判据，不需要比对 diff，也不需要依赖"改动者如实申报"。要合法
+  改（case 内容变更带来的同步）就必须由维护者显式 `--reseal`，并在 PR 上带
+  `holdout-change` 标签，于是"改量尺"在评审面上可见一次。同时 `--list` 把"有 case 却
+  没有夹具"的格子报出来，让"这段知识没有回归保护"从沉默变成可见（补夹具需要真实数据，
+  不能凭空造，因此只报不改 CI 结论）。
+predicted_effect:
+  metric: 改动者削弱对照集（改夹具内容 / 删夹具）能否被自动抓住
+  from: 否——对照集在被测对象同一可写面内，改夹具不需要任何额外动作，CI 不会红
+  to: >-
+    是——改封存夹具内容或删除封存夹具，`holdout.py --check` 必然非零；合法改动需维护者
+    reseal + PR 带 holdout-change 标签；改**未封存**夹具不红（不误伤正常同步）
+  measure:
+    command: python3 scripts/rehearse_evolve_loop.py --no-panel
+    expect_exit: 0
+    expect_stdout: "改封存夹具内容 → --check 非零"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前：`eval/golden/` 无任何完整性钉固（全仓无 holdout 概念）；改前演练基线 102 条断言
+    （含 EV-2026-050 的 21 条），其中没有一条覆盖"对照集被改动"这一情形。
+  success_criteria: >-
+    ①改封存夹具内容 → `--check` 非零且报"内容已变"；②删除封存夹具 → 非零；③维护者
+    `--reseal` 是合法出口（不是死锁），且提示需带 holdout-change 标签；④改**未封存**夹具
+    不红（不哭狼）；⑤`--reseal` 缺 `--all/--id` 时 exit 2（不静默全量重封）；⑥对照集未建立
+    时 `--check` exit 0（优雅退化）；⑦CI 新增 holdout-integrity job，其命令在本地复跑
+    （演练 E6）通过——标签闸门在无 PR 上下文时走"跳过"分支而非误红；⑧`--list` 如实报出
+    无夹具格子（含 training 段）。全部由演练 [E12] 13 条断言钉住。
+  rollback: >-
+    新增一个脚本 + 一个数据文件 + 一个 CI job + 文档；无迁移、不触碰 knowledge/ 与
+    skills/ 行为。整体 git revert 即回到"无钉固"的现状（原则七）。
+gate:
+  condition: >-
+    推广面即将扩到约 10 人（已发生），且 EV-2026-050 已确认"预测可复核"不足以使
+    "无回归"独立（已发生）。非日历驱动。
+risk: medium
+principle_refs: [1, 2, 6, 8, 9]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "单会话内联执行（选样、实现、两侧演练、CI 接线、文档），未单独记账；口径同上卡"
+decisions:
+  - who: agent（用户确认「holdout 可以搞」触发）
+    when: 2026-09-10
+    type: proposal
+    conclusion: >-
+      采纳「按内容哈希封存 + 标签闸门 + 覆盖面缺口报告」，而不是"要求改动者自觉不碰
+      golden"或"把 eval/ 目录整体加进 CODEOWNERS"：
+      ①自觉是**约定**强度，而这里的错误方向是"放行危险变更"（改动者顺手把期望改松，
+      评审看不出来）——按原则六该用硬门；②整体加 CODEOWNERS 会把"正常同步夹具"也
+      变成需要审批的重活（`docs/eval.md` 明确要求 groom 跟改），摩擦过大必然被绕过；
+      ③哈希只钉**维护者挑出来的那部分**，所以正常同步的成本不变，而"削弱量尺"的成本
+      从 0 变成必须显式 reseal + 打标签。
+      **不做的事（明确）**：不补 training/common 的 6 个缺口格子（需真实数据，凭空造
+      等于制造假覆盖）；不做"按 diff 自动分档 reviewer 注意力"；不做"机制改动的入口闸门"。
+  - who: agent
+    when: 2026-09-10
+    type: action
+    conclusion: >-
+      实施：①新增 `scripts/holdout.py`（`--check` / `--list` / `--json` / `--reseal`，
+      含 `--list` 的覆盖面缺口报告）；②新增 `eval/holdout.yaml`（11 条封存条目，每条带
+      `covers` 与 `why`，选取标准写入文件头）；③`.github/workflows/kb-checks.yml` 新增
+      `holdout-integrity` job（哈希硬门 + PR 标签闸门），并把 `eval/**` 与
+      `scripts/holdout.py` 加入触发路径——**此前 `eval/**` 完全不在触发路径里**，
+      即改夹具不会触发任何 CI；④`CODEOWNERS.example` 增 `eval/holdout.yaml` 条件
+      （独立性的落点）；⑤接线文档：`docs/eval.md` 新增「对照集的封存」节（含强度分层与
+      已知代价）、`docs/git-workflow.md` 门控映射表加一行。
+  - who: agent
+    when: 2026-09-10
+    type: eval
+    conclusion: >-
+      `metrics_compare`：`python3 scripts/rehearse_evolve_loop.py` → **118/118 通过**
+      （改前基线 102；新增 [E12] 13 条 + CI parity 自动纳入的新 CI 命令 3 条）。两侧实测：
+      **该红必红**——改封存夹具内容、删除封存夹具，均非零且报文精确；**不哭狼**——改未封存
+      夹具（VLLM-ASC-12461）不红、对照集缺失时 exit 0、`--reseal` 用法错 exit 2 而不是
+      静默全量重封；**CI parity**——新增的标签闸门在无 PR 上下文时走"跳过"分支 exit 0，
+      在演练场里逐条复跑通过。
+      实现期修出三处自己的错（如实记录）：①封存条目名的 `covers` 把 category 目录算了两遍
+      （`inference/vllm-ascend/interrupt/interrupt`）——ADR-0004 的 (framework × category)
+      分层使 category 同时出现在路径末段与字段里；②演练里我用 bytes 字面量写中文注释，
+      Python 直接 SyntaxError；③**我自己的测试顺序错**：`--reseal` 会改写量尺记录，而我只
+      还原了夹具没还原 manifest，导致后续断言假红——正是"两侧对照"断言把这个测试自身的
+      缺陷抓了出来（若只验正例，这条会一直以"绿"的形式骗过我）。
+      顺带发现（比本卡更基础）：夹具只覆盖 4 个格子；**training/mindspeed-llm、training/verl、
+      common 的 6 个格子（合计 24 条 case）没有任何 golden 夹具**——与 `docs/eval.md`
+      「每个有真实 case 的格子至少配一个夹具」的自家规则相违。已由 `--list` 如实报出，
+      不在本卡内解决（见残留）。
+  - who: agent
+    when: 2026-09-10
+    type: decision
+    conclusion: >-
+      **validated（采纳，改动保留）**。判据：success_criteria 八项全部达成，由 [E12] 13 条
+      断言逐条钉住；CI parity 证明新 CI 命令可本地复跑（不会让演练场误红）。
+      **如实标注的边界（原则十）**：哈希比对是**硬门**（绕不过）；"谁有权 reseal"是**半硬**
+      ——标签闸门由 CI 强制，但在 CODEOWNERS / 分支保护落实前，有写权限者仍可自行打标签。
+      因此现在应把 holdout 读成"改量尺会被标记可见"，**不是"已有人把关"**；真正的独立性
+      随 CODEOWNERS 到位（已在 `CODEOWNERS.example` 预留条目）。
+      残留（如实标注，留给后续卡 / 维护者决定）：
+      ①**11 条封存条目是 agent 按规则选的，不是维护者选的**——选取标准（每格子至少一条 +
+      频率加权 + 困难路径）已写进 `eval/holdout.yaml` 头部，但"哪几条是你的量尺"应由你确认
+      或替换；这是本卡最该被 review 的地方。
+      ②**holdout 只覆盖检索/路由面**（golden）。交互/追问面与输出契约面走的是 ixn 样本与
+      盲辨对照，**没有**同等强度的钉固——那两面的"独立性"仍是空白。
+      ③**6 个无夹具格子**（training ×2 框架 ×2 类别 + common ×2 类别，合计 24 条 case）
+      至今无回归保护；补它们需要真实 replay 数据。在这之前，改 skill 对 training 场景的
+      影响没有任何 golden 信号。
+      ④**已知摩擦**：case 内容合法变更导致夹具期望需同步时 CI 会因哈希不符而红，需维护者
+      reseal 一次。这是刻意的（量尺被动过就该被看见一次），但若一周内频繁发生，说明
+      封存集选错了对象（选到了高频变动的夹具），应换掉而不是加豁免。

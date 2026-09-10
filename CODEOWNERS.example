@@ -15,6 +15,13 @@
 /eval/                 @todo-system-maintainer
 /knowledge/platforms/  @todo-system-maintainer
 
+# ---- 封存对照集：只有维护者能改（独立性的落点）----
+# eval/holdout.yaml 钉住一部分 golden 夹具的内容哈希。它是"CI 绿是否有意义"的前提：
+# 改动者能改被测对象、也能改量尺时，"无回归"不是独立信号。CI 已强制"改它须带
+# holdout-change 标签"，但那只是半硬——**真正的独立性由本行 + 分支保护 required review
+# 提供**。owner 落实前，请把 holdout 读成"标记可见"而非"已有人把关"（原则十）。
+/eval/holdout.yaml     @todo-system-maintainer
+
 # ---- 训练 namespace：训练 owner ----
 /knowledge/training/   @todo-training-owner
 

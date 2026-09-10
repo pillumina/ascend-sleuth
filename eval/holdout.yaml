@@ -1,0 +1,46 @@
+version: 1
+entries:
+- fixture: VLLM-ASC-13329.fixture.yaml
+  covers: inference/vllm-ascend/interrupt
+  why: 排名非第一的命中路径（rank=2）——只测"能否命中"会漏掉排序退化
+  sha256: e30662a57d134f12375dfb4298efd8bb7c64a32bb76decfa4eda74d1d10f5c26
+- fixture: VLLM-ASC-13379.fixture.yaml
+  covers: inference/vllm-ascend/interrupt
+  why: 与上条同一 case 的第二个输入——测措辞差异下是否仍归到同一条
+  sha256: 87dc88adbdf19acfd383fc4a775ec88be0668467f5f419ed02816d868431f324
+- fixture: VLLM-ASC-12685.fixture.yaml
+  covers: inference/vllm-ascend/interrupt
+  why: 高频命中路径（另有 14467 为其第二输入）
+  sha256: 8b365ff3e5ce157fa8bc4f6e5df19255b377b7f681028cdb53bbadf18d67ea7a
+- fixture: VLLM-ASC-14467.fixture.yaml
+  covers: inference/vllm-ascend/interrupt
+  why: 上条的第二个输入——同 case 多输入是措辞鲁棒性的最小对照
+  sha256: 6a30f914e9f4ec59ad8a829ca5d8d8779c19d553eb79836da2a3556e3a9c8caa
+- fixture: VLLM-ASC-14166.fixture.yaml
+  covers: inference/vllm-ascend/interrupt
+  why: 困难路径（多候选场景）
+  sha256: fafe5320beefb473eaf59b88efa9cefed7921284601c01eee366330ad5723d76
+- fixture: VLLM-ASC-12642.fixture.yaml
+  covers: inference/vllm-ascend/precision
+  why: precision 面代表——该类改动的成败不能用 interrupt 的夹具判
+  sha256: 43d2edd911eeaa2b54f0e9e7eb58ba877eebe730e80dc4139d181ab40f512cb9
+- fixture: VLLM-ASC-12723.fixture.yaml
+  covers: inference/vllm-ascend/precision
+  why: precision 面第二条（同为高频族）
+  sha256: f202f0399984900447b3a14d4feeee4a8e614ea945b4762bf1f90673d461ff30
+- fixture: VLLM-ASC-12957.fixture.yaml
+  covers: inference/vllm-ascend/precision
+  why: 历史 miss→hit 的样本（docs/eval.md 时效性一节引用过）——防"回退成 miss"
+  sha256: 271152dc17b208fcf3723e1726b682277e356ad197fe7d23353d1aa40f2e3c11
+- fixture: VLLM-ASC-13356.fixture.yaml
+  covers: inference/vllm-ascend/performance
+  why: performance 面代表——形态与 interrupt/precision 完全不同（metric 对照）
+  sha256: 89c9a0bee4491529d77ef70a03de8d540b4917fa1f51544f72c818a5cd4424cb
+- fixture: VLLM-ASC-13973.fixture.yaml
+  covers: inference/vllm-ascend/performance
+  why: performance 面第二条；同为 docs/eval.md 时效性一节引用过的样本
+  sha256: cb48ff5620a82da1ec2a59eae02885f59a061779592f243e8058659bf4d3575d
+- fixture: SGL-PD-HEAP-001.fixture.yaml
+  covers: inference/sglang/interrupt
+  why: 唯一的跨框架覆盖——单框架对照集测不出"框架路由"回归
+  sha256: ce6f326efa3d7e6e7e99d08fb12e75f81e9d2dba45b76c2e1ce5607311fa31d4

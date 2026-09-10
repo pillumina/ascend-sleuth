@@ -71,6 +71,7 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 | 脱敏 / severity 纪律 | to-postmortem 流程 + groom 周批审抽查 | 约定 |
 | eval 回归（改 skill 时） | 按 [eval.md](eval.md) 分级手动 replay；**触及输出契约/交互形态时另出盲辨对照**（同问题新旧输出各一份、交不知情者判），M2 脚本化后并入 CI | 约定 → 半硬 |
 | EV 卡预测可复现 | CI：`scripts/verify_proposals.py --check`（`predicted_effect.measure` 必须有命令 + 期望，或如实声明不可度量） | 硬（结构）/ 约定（命令是否有意义） |
+| 对照集不被改动者削弱 | CI：`scripts/holdout.py --check`（封存夹具按哈希钉住）+ `holdout-change` 标签闸门；CODEOWNERS 保护 `eval/holdout.yaml` | 硬（哈希）/ 半硬（谁有权 reseal——CODEOWNERS 落实前不是人把关） |
 
 ## 评审把手（reviewer 怎么判"该不该合"）
 

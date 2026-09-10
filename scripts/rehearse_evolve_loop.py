@@ -670,7 +670,92 @@ def ex_measure_path(root: Path):
     check("清理后卡池校验仍通过（无残留副作用）", rc == 0, out[-260:])
 
 
-# ---------------------------------------------------------------- ⑩ CI parity
+# ---------------------------------------------------------------- ⑩ 封存对照集
+def ex_holdout(root: Path):
+    """封存对照集（holdout）：把"CI 绿是否有意义"钉成可执行断言。
+
+    这条机制的全部价值在**独立性**：改动者能改被测对象、也能改量尺时，"无回归"不是
+    独立信号。所以断言必须证明两侧：改封存夹具**必红**（哈希就是判据），而未封存的
+    夹具被改**不红**（不哭狼，否则贡献者会被无关的红劝退）。
+    """
+    print("\n[E12] 封存对照集 · 改量尺必红 / 改非对照集不哭狼")
+    import json as _json
+
+    manifest = root / "eval" / "holdout.yaml"
+    golden = root / "eval" / "golden"
+    doc = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+    entries = [e for e in (doc.get("entries") or []) if isinstance(e, dict)]
+    sealed = entries[0]["fixture"]
+    unsealed = next((f.name for f in sorted(golden.glob("*.fixture.yaml"))
+                     if f.name not in {e["fixture"] for e in entries}), None)
+
+    # ① 基线：封存后 --check 绿
+    rc, out = py(root, "scripts/holdout.py", "--check")
+    check("封存后 --check 绿", rc == 0 and "OK" in out, out[-200:])
+
+    # ② 该红必红：改封存夹具的内容（模拟"把量尺改松"）
+    p = golden / sealed
+    backup = p.read_bytes()
+    manifest_bytes = manifest.read_bytes()      # reseal 会改 manifest，测试结束要一并还原
+    p.write_bytes(backup + "\n# 演练：篡改封存夹具\n".encode("utf-8"))
+    rc, out = py(root, "scripts/holdout.py", "--check")
+    check("改封存夹具内容 → --check 非零（哈希即判据）", rc != 0 and "内容已变" in out, out[-260:])
+
+    # ③ reseal 是合法出口（维护者动作），但要留下可见痕迹
+    rc, out = py(root, "scripts/holdout.py", "--reseal", "--id", sealed)
+    check("维护者 reseal 后回到绿（合法出口存在，不是死锁）",
+          rc == 0 and "更新 1 条封存哈希" in out, out[-260:])
+    check("reseal 提示需带 holdout-change 标签（改量尺须在评审面上可见）",
+          "holdout-change" in out, out[-260:])
+    rc, out = py(root, "scripts/holdout.py", "--check")
+    check("reseal 后 --check 绿", rc == 0, out[-200:])
+    p.write_bytes(backup)
+    manifest.write_bytes(manifest_bytes)        # 还原 reseal 对量尺记录本身的改动
+
+    # ④ 删封存夹具 → 红（防"删掉量尺"绕过）
+    p.unlink()
+    rc, out = py(root, "scripts/holdout.py", "--check")
+    check("删除封存夹具 → --check 非零", rc != 0 and "不存在" in out, out[-260:])
+    p.write_bytes(backup)
+    rc, out = py(root, "scripts/holdout.py", "--check")
+    check("恢复后回到绿（断言无残留副作用）", rc == 0, out[-200:])
+
+    # ⑤ 不哭狼：改**未封存**的夹具不该红（贡献者正常同步夹具不被误伤）
+    if unsealed:
+        q = golden / unsealed
+        qb = q.read_bytes()
+        q.write_bytes(qb + "\n# 演练：改非对照集夹具\n".encode("utf-8"))
+        rc, out = py(root, "scripts/holdout.py", "--check")
+        check(f"改未封存夹具（{unsealed}）不报错——不哭狼", rc == 0, out[-260:])
+        q.write_bytes(qb)
+
+    # ⑥ 用法错与优雅退化
+    rc, out = py(root, "scripts/holdout.py", "--reseal")
+    check("reseal 缺 --all/--id 时 exit 2（不静默全量重封）", rc == 2, out[-200:])
+    manifest_backup = manifest.read_bytes()
+    manifest.unlink()
+    rc, out = py(root, "scripts/holdout.py", "--check")
+    check("对照集未建立时 --check exit 0（优雅退化，不是崩溃）", rc == 0 and "未找到" in out, out[-200:])
+    manifest.write_bytes(manifest_backup)
+
+    # ⑦ 覆盖面缺口如实报出（软信号：有 case 却无夹具的格子 = 无回归保护）
+    rc, out = py(root, "scripts/holdout.py", "--list", "--json")
+    try:
+        data = _json.loads(out[out.index("{"):]) if "{" in out else {}
+    except ValueError:
+        data = {}
+    gaps = data.get("populated_cells_without_fixture") or []
+    check("--list 报出封存条目数", len(data.get("holdout") or []) == len(entries),
+          f"manifest={len(entries)} json={len(data.get('holdout') or [])}")
+    check("--list 报出「有 case 却无夹具」的格子（training 段无回归保护是事实，须可见）",
+          any("training/" in g for g in gaps), str(gaps)[:200])
+    all_cells = (data.get("golden_cells") or []) + gaps
+    dupes = [g for g in all_cells if any(g.endswith("/" + seg + "/" + seg)
+                                         for seg in ("interrupt", "precision", "performance"))]
+    check("格子名不自我重复（category 目录只算一次）", not dupes, str(dupes)[:200])
+
+
+# ---------------------------------------------------------------- ⑪ CI parity
 def ex_ci_parity(root: Path):
     print("\n[E6] CI parity · kb-checks 的每条命令在本地逐条复跑")
     wf_path = root / ".github" / "workflows" / "kb-checks.yml"
@@ -697,7 +782,7 @@ def ex_ci_parity(root: Path):
     return cmds
 
 
-# ---------------------------------------------------------------- ⑪ 面板渲染断言
+# ---------------------------------------------------------------- ⑫ 面板渲染断言
 def ex_panel(root: Path, enabled: bool):
     print("\n[E7] 面板渲染断言（ev-panel 执行现场区块 + 既有断言不回归）")
     if not enabled:
@@ -732,6 +817,7 @@ def main():
         ex_shared_exec_log(sandbox)
         ex_metrics_loop(sandbox)
         ex_measure_path(sandbox)
+        ex_holdout(sandbox)
         ex_ci_parity(sandbox)
         ex_panel(sandbox, not args.no_panel)
     finally:
