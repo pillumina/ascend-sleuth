@@ -84,4 +84,17 @@ jobs:
             exit 1
           fi
           echo "skill 自包含 OK（零 ADR 编号引用）"
+      # 外部锚卫生（与 ADR 编号同一类，同一条判据）：skill 里只写行为规则与依据，
+      # 溯源归 git / PR / EV 卡——日期记录的是"某次会话的观测时点"，读起来像事实；
+      # EV 卡号会随卡被修订/supersede 而失真；两者都会让 skill 行为看起来由外部记录定义。
+      # 要写"为什么"，就把依据内联成一句话（或让 commit/卡承载）。
+      # 只在 skills/ 上判——docs/ 与 proposals/ 里的日期与卡号正是溯源该待的地方。
+      - run: |
+          hits=$(grep -rnE '20[0-9]{2}-[0-9]{2}|EV-[0-9]{4}-[0-9]{3}' skills/ | grep -v '\.py' || true)
+          if [ -n "$hits" ]; then
+            echo "skill 文件含外部锚（日期 / EV 卡号）——行为规则须内联，溯源归 git/PR/卡："
+            echo "$hits"
+            exit 1
+          fi
+          echo "skill 外部锚卫生 OK（零日期 / 零 EV 卡号锚）"
 

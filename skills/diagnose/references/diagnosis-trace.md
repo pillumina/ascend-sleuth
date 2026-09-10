@@ -14,7 +14,7 @@ triage | load_index | quickly_check | load_full | run_check | hit | miss | tier3
 
 user 事件无 `action`，不参与词表检查。**新增 action 时同步改 `trace_metrics.py` 的 `KNOWN_ACTIONS` 与本文**（单一数据源纪律）。
 
-### `procedure_follow` 事件（方法缺口消费点，EV-2026-038）
+### `procedure_follow` 事件（方法缺口消费点）
 
 流程闸门命中后，按流程执行时记一条：
 

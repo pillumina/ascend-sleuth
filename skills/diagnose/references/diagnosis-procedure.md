@@ -105,7 +105,7 @@ trace 记：
 
 ## 步骤 5：深度排查（Tier 2 未命中）
 
-**先取流程（方法缺口消费点，EV-2026-038）**：所有候选未命中、进入本步时，按 `references/procedure-gates.yaml` 的 `kind: procedure` 闸门取流程：
+**先取流程（方法缺口消费点）**：所有候选未命中、进入本步时，按 `references/procedure-gates.yaml` 的 `kind: procedure` 闸门取流程：
 
 1. 读 `references/_procedure-index.yaml`（**选择器**，按 category 过滤 `categories`），用 `title`/`summary` 选**一条**最贴合的流程——**默认一条**（前提与现场证据明确矛盾时可换一条，受"连续失败 ≤2"约束并记冲突理由）；
 2. 按该行的 `file` 打开词条，读 **`content.flow[]` 全文**（step / action / check / when_to_use）——**摘要行不算加载**：实测只读摘要与不读等效，决定性判据会被截断；

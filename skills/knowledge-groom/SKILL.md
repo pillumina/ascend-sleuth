@@ -19,7 +19,7 @@ disable-model-invocation: true
 
 手动运行，建议每周一次（连续四周无新 postmortem 则自动切双周）。
 
-**触发场景区分（2026-09 明确）**：
+**触发场景区分**：
 - **人工使用场景（默认周批）**：人通过 diagnose/to-postmortem 等沉淀的草稿——攒 inbox
   到周批统一处理，人审 ~30s/条后升格提 PR（人的注意力是稀缺资源，批处理是预算分配，
   原则九）；
@@ -30,7 +30,7 @@ disable-model-invocation: true
   自动化源（issue-ingest 链路本身即 owner 配置的持续管道，其产出视为预授权）。草稿头
   注释带完整 pre-triage/verification 证据 → 复核确认而非重判。
 
-## groom 成本预算与脚本先行（M5，2026-09；决议 EV-2026-028）
+## groom 成本预算与脚本先行（token 预算纪律：确定性环节脚本先行、agent 只读摘要）
 
 目标：单次 groom（含 inbox 段与 references 维护段）token 降至可读摘要量级（<30K），
 功能不缺失。纪律：
@@ -61,13 +61,13 @@ disable-model-invocation: true
      - `covered_by` → 建议关闭升格；postmortem 转正 `postmortems/YYYY-QN/`（Tier 3 语料，**不是丢弃**）
      - `variant_of` → 建议并入已有 case（扩 compat 区间、补 symptoms）；若要动 `expected`/`fix_on_mismatch` 按高风险变更走双签
      - `new_pattern` → 结构化 + 语义校验 → 升格 `knowledge/<ns>/`。校验失败标 `needs-structurer-review`，语义不明标 `needs-human-review`
-   - **转正后回写来源 trace 的沉淀状态（闭环，动作发生时写）**：每条被 accept 的草稿，若来源是诊断 trace（头注释记了 `traces/<session_id>.yaml`），转正落位后**回写该 trace 的 `sedimented.state`**——`new_pattern`/`variant_of` 升格 Tier 2 → `{state: knowledge, caseId: <case-id>}`；`covered_by` 仅 postmortem 转正 → `{state: archived, caseId: <case-id>}`。2026-08-31 教训：groom 转正后未回写，trace 停留 `submitted`，诊断面板"沉淀漏斗"显示 4 沉淀 → 0 转正（数据滞后于实际入库）——零推断纪律同样约束转正侧：**转正是动作，发生时必须写**。
+   - **转正后回写来源 trace 的沉淀状态（闭环，动作发生时写）**：每条被 accept 的草稿，若来源是诊断 trace（头注释记了 `traces/<session_id>.yaml`），转正落位后**回写该 trace 的 `sedimented.state`**——`new_pattern`/`variant_of` 升格 Tier 2 → `{state: knowledge, caseId: <case-id>}`；`covered_by` 仅 postmortem 转正 → `{state: archived, caseId: <case-id>}`。教训：曾因 groom 转正后未回写，trace 停留 `submitted`，诊断面板"沉淀漏斗"显示 4 沉淀 → 0 转正（数据滞后于实际入库）——零推断纪律同样约束转正侧：**转正是动作，发生时必须写**。
    - inbox 停留 >2 周的条目在摘要里标红（队列不是档案）
    - **建议与决定分离**：预分诊只排序注意力，accept / adjust / reject 由人
-1.5. **case 分类校验（三分类强制，废弃 other）**：审核/升格 case 时校验 `category` ∈ {interrupt, precision, performance}——**不存在 other**。发现 other 的 case → 重新分类（按症状性质归入三分类：启动失败/崩溃/资源→interrupt，输出错误/乱码/数值异常→precision，吞吐/延迟→performance）；分不进去 → 标 `needs-human-review`，由 owner 定夺，不静默保留 other。reason：other 是分类残余，实践表明残余全部可归入三分类（2026-08 重分类 5 条验证）；保留 other 会让路由层永远无法到达这些 case（triage-tree 无 other 分支）。
+1.5. **case 分类校验（三分类强制，废弃 other）**：审核/升格 case 时校验 `category` ∈ {interrupt, precision, performance}——**不存在 other**。发现 other 的 case → 重新分类（按症状性质归入三分类：启动失败/崩溃/资源→interrupt，输出错误/乱码/数值异常→precision，吞吐/延迟→performance）；分不进去 → 标 `needs-human-review`，由 owner 定夺，不静默保留 other。reason：other 是分类残余，实践表明残余全部可归入三分类（曾重分类 5 条全部归入，无一条真属"其他"）；保留 other 会让路由层永远无法到达这些 case（triage-tree 无 other 分支）。
 2. **引用完整性校验**:扫所有 case 的 `references`,检查指向真实存在的文件和锚点。悬挂引用进变更摘要（自演化系统的“坏账”，不校验会静默累积）。
 3. **值重复检测**：框架 case 的 `expected`/`fix_on_mismatch` 是否硬编码了 `common/` 权威记录拥有的值？是 → 标 must-fix，要求改成引用。
-3.5. **反馈结算（confidence 输入，先于重算）**：跑 `python3 scripts/settle_trace_feedback.py --state ingest-state.json` 把 traces/ 里的 `feedback` 事件确定性结算进 case 的 `confidence.hits`/`misdiagnoses`/`last_hit`（幂等——按 session+事件序列 hash 记录在 ingest-state.json，重复跑不重复累积；脚本默认 dry-run，确认 diff 后 `--apply`）。**结算规则（2026-08-31 用户/owner 设计决策）**：只有 `feedback.resolved` 才 `hits += 1`——命中（hit 事件）是系统检索行为，不代表 case 有效；可信反馈（用户确认"诊断解决了问题"）才是置信度信号。`not_resolved`/`partial` → `misdiagnoses += 1`。结算产出的 confidence 变更走 knowledge_modification PR（脚本本身不改 git）。**无 feedback 事件时如实跳过**（反馈闭环未发生=现状，不编造）。
+3.5. **反馈结算（confidence 输入，先于重算）**：跑 `python3 scripts/settle_trace_feedback.py --state ingest-state.json` 把 traces/ 里的 `feedback` 事件确定性结算进 case 的 `confidence.hits`/`misdiagnoses`/`last_hit`（幂等——按 session+事件序列 hash 记录在 ingest-state.json，重复跑不重复累积；脚本默认 dry-run，确认 diff 后 `--apply`）。**结算规则（owner 设计决策）**：只有 `feedback.resolved` 才 `hits += 1`——命中（hit 事件）是系统检索行为，不代表 case 有效；可信反馈（用户确认"诊断解决了问题"）才是置信度信号。`not_resolved`/`partial` → `misdiagnoses += 1`。结算产出的 confidence 变更走 knowledge_modification PR（脚本本身不改 git）。**无 feedback 事件时如实跳过**（反馈闭环未发生=现状，不编造）。
 
 3.5b. **S2 验证结算（validation_record 输入，与 3.5 并行）**：跑 `python3 scripts/settle_s2_feedback.py --state ingest-state.json` 把 `.s2-replay/*.result.yaml` 的 S2 replay 结果确定性结算进 case 的 `validation_record`（幂等同 3.5；默认 dry-run，确认 diff 后 `--apply`）。**语义（selfevolve-loop 重构）**：S2 对照的是外部 ground truth（issue resolution / 维护者 fix PR / committer 确认），结果即 feedback——只是反馈对象是"内容被外部验证"（`consistent`/`self_consistent`），与 confidence 的 S1 现场 resolve 口径**分开、不混算**（resolve 仍只认 S1；S2 另立验证记录，不再被降格为无落点的旁证）。`inconsistent`（命中 case 但结论与 resolution 不符）是**复审信号**——按脚本输出候选清单走 case 复审（内容错/过时/判别力不足 → 改 case 或 rejected，走 knowledge_modification PR）。排序提示：`validation_record.consistent > 0` 的 case 在同等 score 下优先（内容被外部验证）。**无 result 文件时如实跳过**。
 4. **置信度重算（M5：只对有变化的 case）**：从 `hits`/`misdiagnoses`/`last_hit` 重算 `confidence.score`（按时间衰减）——范围 = 3.5/3.5b 结算 diff 涉及的 case + 本轮新升格 case；无变化不重算（不每周全量扫 128 case 的 hits/mis 字段）。**新升格的 case 初始 score 不设 0**——由 `verification`（来源验证强度）与 `confidence`（调查质量）联合决定（Beta 先验超参 $(\alpha,\beta)$ 的实例化；参数治理见 roadmap 待定池，理论推导见 docs/design-theory.md §4.1——该文档为可选论证层，本参数为执行值）：
@@ -124,12 +124,12 @@ disable-model-invocation: true
 
 - **按 tag 类别过滤**：脚本标注每组为「模型名 / 环境·特性 / 机制」。**只有「机制」族值得提炼**——模型名族（glm5/qwen3.5/deepseek-v4…）同模型 ≠ 同根因，提炼出来是"该模型排障清单"而非独立于事故的先验知识；环境·特性族（mtp/spec-decode/w8a8/310p/cudagraph）是"用了什么"而非"哪里坏了"，且多数已被现有方法论覆盖（如 `mtp` 归 `ascend-vllm-spec-decode-mtp-triage`）。摘要里模型名/特性族只列一行计数，不进候选。
 - **先看形态**：组内根因**分散**（同现象不同根因）→ 适合提炼 methodology（给分流路径）；根因**收敛**（同根因）→ 不走提炼，走 case 合并 / `variant_of`（提炼只会得到一条 case 的复述）。
-- **已覆盖排除由脚本做**：`references/**` 的 `sources[].cases` 与 `content.*.source_cases` 中的 case id 自动剔除——已被 reference 收录的 case 不再重复建议（2026-08-31 教训：glm5 组 9 条中 6 条已在 `glm-quantized-startup-triage`，原 R8 重复建议）。
-- **tag 归一前置**：脚本的 `--normalize` 负责删除与字段重复的 tag（category/namespace 名）、合并同义/拼写变体（`startup`/`startup-fail`/`startup-crash`→`startup-failure` 等，映射在脚本内）。tag 一乱 R8 就给噪声（2026-09-09 实测：归一前 507 个 tag、70 个 ≥3 次、35 组候选，其中含 `precision`/`vllm-ascend` 这类零信息组）；**先修信号源再挑候选**。
+- **已覆盖排除由脚本做**：`references/**` 的 `sources[].cases` 与 `content.*.source_cases` 中的 case id 自动剔除——已被 reference 收录的 case 不再重复建议（教训：glm5 组 9 条中 6 条已在 `glm-quantized-startup-triage`，原 R8 仍重复建议）。
+- **tag 归一前置**：脚本的 `--normalize` 负责删除与字段重复的 tag（category/namespace 名）、合并同义/拼写变体（`startup`/`startup-fail`/`startup-crash`→`startup-failure` 等，映射在脚本内）。tag 一乱 R8 就给噪声（曾实测：未归一前 tag 达 507 个，其中 ≥3 次者 70 个、聚类候选 35 组，还含 `precision`/`vllm-ascend` 这类零信息组）；**先修信号源再挑候选**。
 
-理由：共性识别靠人工不可持续（2026-08 从 42 条 case 人工发现 MoE 通信算子族，4 条同 tag）；tag 聚类是零 token 的机械信号，先把候选端到人眼前。
+理由：共性识别靠人工不可持续（曾从 42 条 case 里人工才发现 MoE 通信算子族，且仅 4 条同 tag）；tag 聚类是零 token 的机械信号，先把候选端到人眼前。
 
-**R10. 流程留出检验（methodology 的"方法"地位核验，EV-2026-038）**：跑 `python3 scripts/flow_pool.py --flow-coverage`（该脚本随 `eval/flow/` 评测池引入；**脚本不存在时跳过并在摘要如实标注"评测池未就绪"**，不臆造覆盖数据）——按每条 methodology 的 `sources[].cases` 把评测池样本分成「收录（该词条的来源 case，train-on-test）」与「未收录（泛化证据）」两列：
+**R10. 流程留出检验（methodology 的"方法"地位核验）**：跑 `python3 scripts/flow_pool.py --flow-coverage`（该脚本随 `eval/flow/` 评测池引入；**脚本不存在时跳过并在摘要如实标注"评测池未就绪"**，不臆造覆盖数据）——按每条 methodology 的 `sources[].cases` 把评测池样本分成「收录（该词条的来源 case，train-on-test）」与「未收录（泛化证据）」两列：
 - **无未收录样本通过记录的流程，其"方法"地位未验证** → 变更摘要建议：或补判据（把案例指纹改写成可对新变体执行的阈值/分支），或摘掉 procedure 绑定（`skills/diagnose/references/procedure-gates.yaml` 的 selector 不再选它）；
 - 第三轮盲测的判据：给正确流程后，**收录样本 2/2 改善、未收录样本 0/5 改善**且 2 次被分支判别误导——即"能对上自己收录的 case"不等于"是方法"；
 - 与 R8（case 共性提炼候选）配对：R8 决定"要不要提炼"，R10 决定"提炼出来的算不算方法"。
