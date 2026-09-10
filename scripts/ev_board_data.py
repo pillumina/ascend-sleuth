@@ -303,8 +303,12 @@ def collect_skill_exec(root):
     机制是否在运作无法证伪。解析复用 scripts/tail_exec_log.py（单一事实源：datetime
     归一 / 文件缺失退化只在一处实现，防两处漂移）。
 
-    语义边界：exec-log 是**本地件**（.gitignore 运行时件），跨 worktree/克隆不聚合——
-    note 字段必须随数据一起递给面板，防把本地读数误读成全系统读数。
+    语义边界（2026-09-10 修）：exec-log 从"各 worktree 各持一份的检出内文件"改为
+    **同一克隆共享**（主检出 metrics/，见 scripts/exec_log_path.py）——从此代理在任意
+    worktree 收尾落的记录，本面板（读用户会话的 cwd）就能看到，且 worktree 清理不再
+    丢数据。仍不假装的部分：**跨克隆/跨机不聚合**；共享件是 read-modify-write，
+    写侧持锁（并发实测：无锁 16 次写入只剩 3 条）。note/sharing 字段随数据一起递给
+    面板，防把本地读数误读成全系统读数。
     """
     try:
         import tail_exec_log
@@ -312,7 +316,7 @@ def collect_skill_exec(root):
         return {"present": False, "state": "unavailable", "note": f"tail_exec_log 不可用: {e}",
                 "total": 0, "recent": [], "evolve_check_runs": 0, "last_evolve_check": None,
                 "by_skill": {}}
-    records, state = tail_exec_log.load_records(root)
+    records, state, path, where = tail_exec_log.load_records(root)
     rows = [tail_exec_log.summarize(r) for r in records if isinstance(r, dict)]
     ev = [r for r in rows if r["skill"] == "evolve-check"]
     by_skill = {}
@@ -324,7 +328,10 @@ def collect_skill_exec(root):
     return {
         "present": state == "ok",
         "state": state,
-        "note": tail_exec_log.LOCAL_NOTE,
+        "note": tail_exec_log.describe(path, where),
+        "path": str(path),
+        "where": where,
+        "aggregate": tail_exec_log.aggregate(rows),
         "total": len(rows),
         "recent": rows[-5:],
         "by_skill": by_skill,

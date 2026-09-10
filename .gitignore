@@ -75,8 +75,10 @@ proposals/experiments/*
 
 # S2 replay 评分报告（运行时产物，本地留存——复盘结论入 EV 卡/变更摘要，不进 git）
 eval-reports/
-# skill 执行记录（逐次 append 流水）。**本地件**：跨 worktree/克隆不聚合——它是"本工作区现场"，
-# 不是全系统运行台账。读法一律走 scripts/tail_exec_log.py；"聚合值进 timeline" 未实现
-# （数据量不足，原则十一），可见性走 ev-panel「执行现场」；详见 docs/evolution-run.md §4 审计补记。
+# skill 执行记录（逐次 append 流水）。**同一克隆共享**：路径由 scripts/exec_log_path.py 解析到
+# 主检出（所有 worktree 共写共读同一份；跨克隆/跨机不聚合），故 worktree 清理不丢数据、面板可读。
+# 读法一律走 scripts/tail_exec_log.py（写侧持 flock，勿直接改写）；跨机口径走其 --summary
+# 聚合值进 metrics/timeline.yaml（流水本身不进 git）。详见 docs/evolution-run.md §4。
 metrics/skill-exec-log.yaml
+metrics/skill-exec-log.yaml.lock
 .flow-replay/

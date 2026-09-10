@@ -16,7 +16,8 @@ from pathlib import Path
 
 import yaml
 
-LOG_PATH = "metrics/skill-exec-log.yaml"
+from exec_log_path import describe, resolve
+
 VALID_SKILLS = {
     "diagnose", "resume-diagnosis", "to-postmortem", "to-reference",
     "issue-ingest", "knowledge-groom", "s2-replay", "replay-golden",
@@ -25,14 +26,16 @@ VALID_SKILLS = {
 
 
 def main():
-    ap = argparse.ArgumentParser(description="校验 metrics/skill-exec-log.yaml")
+    ap = argparse.ArgumentParser(description="校验统一执行记录（默认读同一克隆共享的那份）")
     ap.add_argument("--check", action="store_true", help="CI 模式")
     ap.add_argument("--root", type=Path, default=Path("."))
+    ap.add_argument("--log", type=Path, default=None, help="显式指定 exec-log 路径")
+    ap.add_argument("--local", action="store_true", help="只看当前检出内的路径")
     args = ap.parse_args()
     root = args.root.resolve()
-    path = root / LOG_PATH
+    path, where = resolve(root, explicit=args.log, local=args.local)
     if not path.exists():
-        print("skill-exec-log.yaml 不存在——跳过（执行记录未启用）")
+        print(f"exec-log 不存在——跳过（执行记录未启用；{describe(path, where)}）")
         return
 
     errors = []
@@ -72,7 +75,7 @@ def main():
         for e in errors:
             print(f"  - {e}")
         sys.exit(1)
-    print(f"verify_exec_log: OK（{len(records)} 条执行记录，seq 连续唯一）")
+    print(f"verify_exec_log: OK（{len(records)} 条执行记录，seq 连续唯一；{describe(path, where)}）")
 
 
 if __name__ == "__main__":

@@ -229,22 +229,25 @@ async function main() {
   expect('卡号用可读链接色 --link', /--link:/.test(css) && /\.ev-id\{[^}]*var\(--link\)/.test(css))
 
   // —— 执行现场（exec-log）：2026-09-10 新增区块，两种状态都要能渲染 ——
-  // 本工作区的 exec-log 是 .gitignore 本地件，通常不存在 → 走退化分支；这里两个分支都断言，
+  // exec-log 现在是**同一克隆共享**的运行时件（主检出 metrics/，跨 worktree 共写共读）；
+  // 无 git 的检出（如本仓库的演练沙箱）退化为检出内路径。两种状态都断言，
   // 不依赖"本机碰巧有没有记录"。
+  const SHARE_RE = /同一克隆共享|检出内/
   expect('执行现场区块出现', ev.text.includes('执行现场（exec-log）'))
   if (board.skill_exec && board.skill_exec.present) {
     expect('执行现场：报出 evolve-check 收尾次数', /evolve-check 收尾/.test(ev.text))
-    expect('执行现场：本地件标注（防读成全系统）', /跨 worktree\/克隆不聚合/.test(ev.text))
+    expect('执行现场：标注共享范围（防读成全系统）', SHARE_RE.test(ev.text))
   } else {
     expect('无 exec-log 时走退化分支（不是空白也不是假数据）', /无执行记录/.test(ev.text))
     expect('退化分支给出补救指引', /内容流程收尾应先落一条 exec-log/.test(ev.text))
-    expect('退化分支标注本地件口径', /跨 worktree\/克隆不聚合/.test(ev.text))
+    expect('退化分支标注共享范围', SHARE_RE.test(ev.text))
   }
   // 合成数据分支：present + 有 evolve-check 记录（含无信号）→ 渲染运行次数与无信号计数
   {
     const synthetic = Object.assign({}, board, {
       skill_exec: {
-        present: true, state: 'ok', note: '本地件：跨 worktree/克隆不聚合（.gitignore 运行时件）',
+        present: true, state: 'ok',
+        note: '/repo/metrics/skill-exec-log.yaml（同一克隆共享（主检出 metrics/；所有 worktree 共写共读））',
         total: 3, by_skill: { 'to-reference': 1, 'evolve-check': 2 },
         evolve_check_runs: 2, evolve_check_no_signal: 1,
         last_evolve_check: { seq: 3, skill: 'evolve-check', at: '2026-09-10T17:20:00', source: 'to-reference', products: ['EV-2026-044(validated)'], decision_reason: 'T3 信号 → 产卡 EV-2026-044' },

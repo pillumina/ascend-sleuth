@@ -98,7 +98,7 @@ Golden-case regression suite in `eval/golden/`. Public repo contains only constr
 - **必须在独立 worktree 中工作**：每个 agent/session 使用 `git worktree add <路径> <自己的 kb/* 分支>` 检出独立工作区，禁止直接在主检出目录修改/提交（`git worktree remove <路径>` 清理）。
 - **git 强制的边界**：worktree 隔离工作区/index/未提交改动；同一分支同时只能被一个 worktree 检出（git 拒绝重复检出）。
 - **worktree 不隔离的（合流时显式解决）**：refs 全局共享（分支名 `kb/<用途>` 全局唯一）；共享状态文件（`ingest-state.json` 的 processed、`metrics/timeline.yaml`、`knowledge/_index.yaml`、`postmortems/inbox/`）在各 worktree 是各自分支副本——并发修改靠 PR merge 显式合并，不靠覆盖。
-- **各 worktree 各持一份的本地件（既不共享、也不合并）**：`metrics/skill-exec-log.yaml`（`.gitignore` 运行时件，逐次 append 流水）。**收尾读现场只在同一 worktree 内成立**——别把本地条数当全系统读数，也别把"本工作区为空"读成"内容流程没跑"（读法一律走 `scripts/tail_exec_log.py`，它自带这句标注）。
+- **exec-log 是"同一克隆共享"的运行时件（跨 worktree 共写共读，跨克隆不聚合）**：`metrics/skill-exec-log.yaml` 虽在 `.gitignore` 里，但路径由 `scripts/exec_log_path.py` 解析到**主检出**（`git rev-parse --git-common-dir` 的父目录）——**所有 worktree 写的是同一份**，因此代理在 worktree 里收尾落的记录，主检出（= 用户会话 cwd / 面板读处）立刻可见，且 worktree 清理不会连带丢数据。它是 read-modify-write：**写侧持 flock**（并发实测：无锁 16 次写入只剩 3 条），别用其他方式直接改写它。读法一律走 `scripts/tail_exec_log.py`（自带路径与共享范围标注）；跨克隆/跨机的口径走它的 `--summary` 聚合值进 `metrics/timeline.yaml`，流水本身不进 git。
 - **串行操作**：`ingest-state.json` 的 fetch / `--mark-imported` / 游标更新是 read-modify-write 无锁，必须串行；groom 清空 inbox 前先确认无其他 session 未提交草稿。
 - **开工/收工纪律**：开工 `git fetch origin` 确认最新 + 确认自己在自己的 worktree 与分支；收工前提交或 stash，不留未提交改动。
 

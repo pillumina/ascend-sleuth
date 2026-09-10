@@ -778,15 +778,18 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
 
     // ============ ④ 执行现场（exec-log：evolve-check 到底跑没跑） ============
     // 2026-09-10 审计发现的盲区：exec-log 先前只有 evolve-check 第 1 步读它，面板与 metrics
-    // 都不看——于是"收尾跑了但无演进信号"与"根本没跑"在数据上完全不可区分。这一格把本地
-    // 现场端到人眼前（无信号收尾也落记录，所以它同样可见）。
+    // 都不看——于是"收尾跑了但无演进信号"与"根本没跑"在数据上完全不可区分。这一格把现场
+    // 端到人眼前（无信号收尾也落记录，所以它同样可见）。
+    // 同日的第二个修正：exec-log 原先写在**各 worktree 的检出内**且是 .gitignore 件，而
+    // 代理都按仓库纪律在 worktree 里干活 → 代理落的记录这份面板（读用户会话 cwd）根本读不到，
+    // 这一格常年空着。现在改为主检出共享件（同一克隆所有 worktree 共写共读）。
     function ExecLogSection({ execLog }) {
       if (!execLog) return null
-      const note = execLog.note || '本地件：跨 worktree/克隆不聚合'
+      const note = execLog.note || '同一克隆共享（主检出 metrics/）'
       if (!execLog.present) {
-        return React.createElement(Section, { title: '执行现场（exec-log）', right: '本地件' },
+        return React.createElement(Section, { title: '执行现场（exec-log）', right: '同一克隆共享' },
           React.createElement('div', { className: 'ev-empty' },
-            '无执行记录（' + (execLog.state === 'missing' ? '本工作区没有 metrics/skill-exec-log.yaml'
+            '无执行记录（' + (execLog.state === 'missing' ? '还没有任何收尾记录'
               : execLog.state === 'unavailable' ? execLog.note : '解析失败或 records 为空') + '）——'
             + '这是正常退化路径：内容流程收尾应先落一条 exec-log，evolve-check 才读得到本轮现场。'),
           React.createElement('div', { className: 'ev-note', style: { marginTop: 6 } }, note))
@@ -796,7 +799,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       const silent = execLog.evolve_check_no_signal || 0
       return React.createElement(Section, {
         title: '执行现场（exec-log）',
-        right: '本地件 · 共 ' + (execLog.total || 0) + ' 条',
+        right: '共 ' + (execLog.total || 0) + ' 条',
       },
         React.createElement('div', { className: 'ev-krow' },
           React.createElement('span', { className: 'k', style: { display: 'flex', alignItems: 'center', gap: 6 } },
@@ -827,7 +830,8 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
         ),
         React.createElement('div', { className: 'ev-note', style: { marginTop: 6 } }, note
           + '；内容流程（issue-ingest / to-reference / to-postmortem / knowledge-groom）收尾落一条，'
-          + 'evolve-check 收尾也落一条（含"无信号"）'),
+          + 'evolve-check 收尾也落一条（含"无信号"）。跨克隆/跨机不聚合——那要走 `--summary` 的'
+          + '聚合值进 metrics/timeline.yaml'),
       )
     }
 

@@ -1,0 +1,113 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）
+# 校验：python3 scripts/verify_proposals.py --check
+# 脱敏纪律：只含聚合值与证据引用，不含客户现场原文。
+# ============================================================
+
+id: EV-2026-048
+layer: L2
+title: exec-log 归属修正——从"各 worktree 各持一份"改为"同一克隆共享"（+ 写侧 flock + 聚合出口）
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-10
+source_signals:
+  - signal: structure_defect
+    evidence: >-
+      用户 review 上一轮结论时追问"这个不做不是有严重问题吗"，实测复现了缺陷（临时仓库 + 两个
+      真实 linked worktree）：①代理按仓库纪律在 worktree 里收尾落一条记录 → **主检出读不到**
+      （而主检出正是用户会话 cwd、也是 DSH 面板读数据的地方）；②`git worktree remove`
+      （还得先 `--force`，因为那份未跟踪文件）→ **记录随 worktree 一起消失**。
+      即：一个 per-worktree 的运行时文件，被拿来当"全流程观测台账"用——语义不成立。
+      影响面不止聚合：EV-2026-044 刚加的 ev-panel「执行现场」区块读的就是用户会话 cwd
+      → 代理在 worktree 干的活它常年看不见，那块可见性形同虚设。
+    trajectory:
+      - "复现：git init 临时仓 + git worktree add ×2 → worktree 内 log_skill_exec → 主检出 tail_exec_log 仍报'无执行记录'"
+      - "scripts/rehearse_evolve_loop.py [E9]（修复后六条断言，含'修前读不到'的对照语义）"
+  - signal: design_mislabel
+    evidence: >-
+      更值得记的是**上一轮的定性错误**：这条结构缺陷被写成了"有意保留的边界"
+      （EV-2026-044 的 eval 残留项 + CLAUDE.md 一条"各 worktree 各持一份的本地件"+
+      .gitignore 注释 + evolve-check SKILL 的一句"本工作区为空 ≠ 内容流程没跑"）——
+      等于把一个缺陷**制度化**，并用文档把它讲圆。用户一句追问才把它翻出来：
+      凡是"机制的效果依赖某个不成立的前提"，那不是边界，是缺陷。
+    trajectory:
+      - "EV-2026-044 的 eval 残留项（原文：'exec-log 的跨 worktree/跨机聚合仍未实现，按原则十一不建空转指标'）"
+      - "CLAUDE.md「各 worktree 各持一份的本地件」条目（本轮删除并改写）"
+hypothesis: >-
+  把 exec-log 的路径解析落成单一事实源（`scripts/exec_log_path.py`：解析到主检出，
+  同一克隆所有 worktree 共写共读；无 git 环境退化检出内），写侧加 flock 互斥，
+  并给"跨机口径"一个明确出口（`tail_exec_log.py --summary` 聚合值 → metrics/timeline.yaml）——
+  代理在任意 worktree 落的收尾记录，用户会话与面板立刻可见，且 worktree 清理不再丢数据
+predicted_effect:
+  metric: 代理收尾记录对"用户会话/面板"的可见率；worktree 清理导致的数据丢失
+  from: 可见率 0%（跨 worktree 时必然读不到）；worktree 清理 = 记录必然消失
+  to: 可见率 100%（同一克隆内）；worktree 清理不再丢数据；跨机走聚合值出口
+validation:
+  method: scan_review
+  baseline: 修前行为（[E9] 复现：worktree 写入 → 主检出读不到 → worktree 清后消失）
+  success_criteria: >-
+    ①`[E9]` 六条断言全绿：worktree 写入解析到共享件 / 主检出立刻可读 / 10 条并发写入全落盘且
+    seq 唯一 / 聚合视图可用 / 清理 worktree 后记录仍在 / 无 git 沙箱退化为检出内路径；
+    ②并发对照：无锁版本同条件 16 次写入**只剩 3 条**（证明锁不是装饰）；
+    ③既有链路零回归（[E1]–[E8] 全绿，含 CI parity 与面板渲染断言）；
+    ④文档口径同步（CLAUDE.md / .gitignore / docs/evolution-run.md §4 / ev-panel README / evolve-check SKILL）。
+  rollback: 改动集中在路径解析 + 锁 + 文档；git revert（原则七）
+gate:
+  condition: "用户 review 明确指出（已发生），且缺陷已实测复现（worktree 写入 → 主检出读不到）"
+risk: medium
+principle_refs: [2, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "单会话内联执行（复现 → 路径解析/锁 → 演练断言 → 文档同步），未单独记账；口径如实标注"
+decisions:
+  - who: agent（用户 review 触发）
+    when: 2026-09-10
+    type: proposal
+    conclusion: >-
+      采纳「共享路径 + 写侧锁 + 聚合出口」而非「保持 per-worktree + 加一个收集脚本」：
+      ①收集脚本仍要读各 worktree 的检出内文件，而 worktree 随时被清（本轮清理就删了 4 个）
+      → 收集窗口与生命周期不成立；②共享件是同一个文件、同一套 seq 语义，不需要新增中间层；
+      ③把"跨机"与"同克隆"分开对待：同克隆用共享文件（零新概念），跨机走**聚合值**进
+      timeline（流水不进 git，避免 append-only 流水在多分支合并时的必然冲突）。
+  - who: agent
+    when: 2026-09-10
+    type: action
+    conclusion: >-
+      实施：①新增 `scripts/exec_log_path.py`（路径解析单一事实源：git common dir → 主检出
+      metrics/；`--log` 显式覆盖；`--local` 强制检出内；无 git 退化并如实标注 where）；
+      ②`log_skill_exec.py` 接共享路径 + **fcntl.flock 互斥**（无 fcntl 平台 yield False 并提示）
+      + 父目录兜底创建（本轮 demo 实测过的 FileNotFoundError）；
+      ③`tail_exec_log.py` / `verify_exec_log.py` 接同一解析，新增 `--summary` 聚合视图；
+      ④`ev_board_data.py` 的 skill_exec 段带 path/where/aggregate（面板显示共享范围）；
+      ⑤ev-panel 文案：'本地件' → '同一克隆共享'，退化分支不再说"本工作区没有"；
+      ⑥文档口径同步：CLAUDE.md（改写 worktree 本地件条目 + 锁与并发实测数字）、.gitignore
+      （含 .lock）、docs/evolution-run.md §4/§9、ev-panel README、evolve-check SKILL 第 1 步；
+      ⑦演练新增 `[E9]`（六条断言，用临时 git 仓 + 两个真实 linked worktree 验证）。
+  - who: agent
+    when: 2026-09-10
+    type: eval
+    conclusion: >-
+      scan_review + 演练实测（`python3 scripts/rehearse_evolve_loop.py` → **66/66 断言通过**）：
+      ①`[E9]` 六条全绿——含"主检出立刻读到 worktree 落的记录（修前读不到）"与"worktree 被清后
+      记录仍在"；②并发对照实测：无锁版同条件 16 次写入**只剩 3 条**、有锁 16/16 且 seq 唯一
+      （这是"共享必须加锁"的直接证据，也说明 per-worktree 时代是**碰巧**避开了这个竞态）；
+      ③零回归：`[E1]`–`[E8]` 全绿，含 CI parity（13 条命令）与面板渲染断言；
+      ④文档四处口径同步，`.gitignore` 增加 `.lock`。
+      **一次自我纠错（如实记录）**：`[E9]` 的两条面板/取数断言最初仍写旧文案
+      （"跨 worktree/克隆不聚合"），改文案未同步断言 → 当场红两条，已按新口径修正
+      （断言写"共享范围必须被标注"而不是钉死某句文案，防下次再漂）。
+  - who: agent
+    when: 2026-09-10
+    type: decision
+    conclusion: >-
+      **validated（采纳，改动保留）**。判据：success_criteria 四项达成，且核心目标（跨 worktree
+      可见 + 清理不丢）有正反两侧证据（E9 断言 + 修前行为对照）。残留（如实标注）：
+      ①**跨克隆/跨机仍不聚合**——出口已明确（`--summary` 聚合值 → timeline），执行节奏按数据量
+      与周更走，不在本卡内假装已实现；②共享件是 read-modify-write + flock，NFS/网络文件系统上
+      flock 语义不保证，多机共享同一目录的场景不在支持范围（本地克隆是主场景）；
+      ③`.lock` 文件与日志同目录、留空文件，属预期产物（已 ignore）。
+      人审边界：改的是 exec-log 归属与三个脚本 + 文档，按授权边界属 review 级。
