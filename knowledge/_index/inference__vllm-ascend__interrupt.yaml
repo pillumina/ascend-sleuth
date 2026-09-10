@@ -457,7 +457,7 @@ namespaces:
       - '2×A3 多节点 + EP + MTP(num_speculative_tokens=4) 启动即失败：RuntimeError: SUSPECT REMOTE ERROR, error
         code is 507057（synchronize…'
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12461.yaml
-      hash: bde94c49bacb
+      hash: b9283513da03
     - id: VLLM-ASC-12685
       title: 非量化模型被自动路由进 AscendFp8Config：fp8_config.py get_quant_method 硬编码 ds_linear scheme，MiniMax-M2.7
         启动即 AttributeError 'o_groups'

@@ -114,7 +114,7 @@ namespaces:
       - GLM-5.2 w4a8 PD 分离 P 节点（kv_role=kv_producer），v0.23→v0.26 相同 DCP=8/TP=8/EP=32 拓扑下 prefill 吞吐 38811→29911
         tok/s
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-13973.yaml
-      hash: e97c7b884f57
+      hash: dc4764c15678
     - id: VLLM-ASC-14306
       title: GLM-5.2 FullGraph(MRV1)+MTP（num_spec≥2）投机接受率低（per-pos 0.45/0.34/0.25、无输出质量错误）：SFA 后端按 draft
         step 把 actual_seq_lengths 逐次写入使早期 draft step 的 attention metadata 错误…
