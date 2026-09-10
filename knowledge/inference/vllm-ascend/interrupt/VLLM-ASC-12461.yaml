@@ -15,7 +15,12 @@ cases:
     platforms: ["A3-910C"]
     compat:
       - framework: vllm-ascend
-        ranges: ["<0.20.2rc1"]        # 触发 <0.20.2rc1（12461: <=0.21.0 / 9503: 0.19.1rc1）；0.20.2rc1+ 修复（ZYang6263 确认）
+        ranges: ["<0.20.2rc1"]        # 触发 <0.20.2rc1；0.20.2rc1+ 修复（9503 维护者 ZYang6263 确认）
+        # 版本口径澄清（2026-09-10 核对）：issue #12461 正文**没有给 vllm-ascend 版本**——只有镜像 tag
+        #   quay.io/ascend/vllm-ascend:glm5.2-a3 与 `VLLM_VERSION=0.21.0`（那是 **vLLM 的版本**，不是
+        #   vllm-ascend 的）。因此"现场 0.21.0 仍复现 ⇒ 范围应覆盖 0.21.0"是**误读**，不能据此放宽 ranges；
+        #   该做的是下次取到现场 vllm-ascend 真实版本（`pip show vllm-ascend`）再定范围。
+        #   9503 变体给的 0.19.1rc1 落在本范围内，与本条一致。
 
     investigation_quality: high
     confidence:

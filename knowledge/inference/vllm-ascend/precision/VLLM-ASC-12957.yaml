@@ -1,20 +1,27 @@
-# VLLM-ASC-12957 —— PD 分离 P 侧 k_pe 经 kv_ag_handle.wait() 后未同步 NPU 流，D 侧 RDMA pull 读到陈旧 k_pe
+# VLLM-ASC-12957 —— PD 分离 PP4 下 P 侧 _v_up_proj 的 batch_matmul_transpose 快路径算错 V 投影，V cache 在 PP 边界突变，首请求乱码
 # 来源：https://github.com/vllm-project/vllm-ascend/issues/12957
-# fix 跟踪：PR #14269（vllm_ascend/attention/sfa_v1.py 加 torch.npu.current_stream().synchronize()）
+# fix 跟踪：PR #14269「[Refactor][Ops] Remove batch_matmul_transpose custom operator」
+#   （base = releases/v0.26.0rc，merge 11921514，2026-08-19）——它删掉了 sfa_v1.py::_v_up_proj 里
+#   `torch.ops._C_ascend.batch_matmul_transpose` 这条快路径（该路径仅在 bf16/fp16 且 token ≤1024 时启用）
+#   并改用 torch_npu.npu_transpose_batchmatmul；报障人在 issue 里确认「#14269 fix it」。
+#   **注意两点**（2026-09-10 逐条核对上游源码/PR 后修订）：①该 PR 只进了 release 分支，当时 main 仍是旧实现；
+#   ②原记录的"kv_ag_handle.wait() 后缺 current_stream().synchronize()"来自 issue 评论里的**规避补丁**，
+#   在 main / v0.20.2rc1 的 sfa_v1.py 里 0 命中、且位于 `if self.enable_dsa_cp:`（默认关）内，
+#   报障脚本也未开 dsa_cp/SP —— 已降级为未证实的备选假设。
 # investigation_quality: high（kvcache 数值比对定位 PP stage 边界突变 + 代码级根因 + 官方落地修复）
 # 批量导入：docs/eval-reports/0001-vllm-ascend-batch-plan.md（batch 1，2026-08）
 
 cases:
   - id: VLLM-ASC-12957
-    title: "PD 分离 P 侧 sfa_v1.py 的 k_pe 经 kv_ag_handle.wait() 后未同步 NPU 流，D 侧 RDMA pull 读到未落盘陈旧 k_pe，PP4 首请求乱码"
+    title: "PD 分离 PP4 下 P 侧 sfa_v1.py 的 _v_up_proj 走 batch_matmul_transpose 快路径算错 V 投影，V cache 在 PP stage 边界突变，首请求输出乱码"
 
     category: precision
-    tags: [pd-separation, ascend-direct, rdma, kv-transfer, stream-sync]
+    tags: [pd-separation, ascend-direct, rdma, kv-transfer, custom-op, v-up-proj]
 
     platforms: ["A3-910C"]
     compat:
       - framework: vllm-ascend
-        ranges: ["<=0.20.2"]        # 受影响为 0.20.2（含 ascend_direct RDMA 的 PP>1 路径）；fix PR #14269 在后续版本
+        ranges: ["<0.26.0rc1"]      # 含 batch_matmul_transpose 快路径的版本均受影响；fix PR #14269 落在 releases/v0.26.0rc（即 ≥v0.26.0rc1）
 
     investigation_quality: high
     confidence:
@@ -38,7 +45,18 @@ cases:
 
       source: upstream-fix-merged
 
-      detail: 'fix PR #14269'
+      detail: >-
+        PR #14269（base releases/v0.26.0rc，merge 11921514，2026-08-19）：删除 sfa_v1.py::_v_up_proj 中
+        `torch.ops._C_ascend.batch_matmul_transpose` 快路径（原条件 bf16/fp16 + token ≤1024）并改用
+        torch_npu.npu_transpose_batchmatmul。报障人在 issue #12957 评论区写下「#14269 fix it」，
+        issue 同日关闭。**归属强度：中**——机制归因来自报障人单行确认 + PR 实际改动，
+        未经维护者逐步分析；且该 PR 只进 release 分支，main 当时仍是旧实现。
+
+    source_ref:
+      repo: vllm-project/vllm-ascend
+      ref: v0.26.0rc1
+      file: vllm_ascend/attention/sfa_v1.py
+      line: 1179          # _v_up_proj 修复后的实现（旧实现在 v0.20.2rc1 的 833 行）
 
     ref_knowledge:
       - ref: ascend-garbled-output-triage
@@ -56,31 +74,35 @@ cases:
 
     diagnosis:
       - step: 1
-        check: "症状判别：乱码是否满足 PP 时序特征——首请求 badcase 乱码、P 节点改 DP=4（无 PP）不乱码、服务先发普通请求再发 badcase 不乱码？"
-        expected: "是——指向 PP 跨 stage 的 KV 传输时序问题"
+        check: "症状判别：乱码是否满足「仅首个短请求触发」的形态——首请求 badcase（如 261 token）乱码、先发普通请求再发 badcase 不乱码、短 prompt（1+1）正常、P 节点改 DP=4（无 PP）不乱码？"
+        expected: "是——指向 P 侧 prefill 小 token 数路径（快路径）算错 V 投影，而非功能开关"
       - step: 2
-        check: "代码级验证：vllm_ascend/attention/sfa_v1.py 的 attn.forward() 中，enable_dsa_cp 分支 kv_ag_handle.wait() 之后是否有 torch.npu.current_stream().synchronize()？"
-        expected: "缺同步——NPU 异步写对跨 engine 的 RDMA pull 不可见 → stale k_pe；加同步后首请求恢复（实测通过，78 次/prefill，仅 P 侧生效）"
+        check: "代码级验证：vllm_ascend/attention/sfa_v1.py 的 _v_up_proj 里是否还存在 `torch.ops._C_ascend.batch_matmul_transpose` 快路径（条件含 token ≤ BMM_TRANS_MAX_SUPPORTED_TOKENS=1024）？"
+        expected: "存在 = 命中本 case（该快路径算错 V 投影 → V cache 在 PP 边界突变）；v0.26.0rc1 起该分支已被 PR #14269 删除，只剩 torch_npu.npu_transpose_batchmatmul / torch.bmm 两条路径"
+        note: "不要按「synchronize 缺失」去找——上游 main / v0.20.2rc1 的 sfa_v1.py 里 current_stream().synchronize 0 命中；issue 评论里那条补丁位于 `if self.enable_dsa_cp:`（默认关，需 additional_config.enable_dsa_cp + VLLM_ASCEND_ENABLE_FLASHCOMM1=1），报障脚本未开，属他人现场尝试的规避手段，未合入"
       - step: 3
-        check: "辅助证据：kvcache 打印比对可见 V cache 在 PP stage 边界（layer 21/41/61）数值突变——每个 stage 边界引入一次偏差"
+        check: "辅助证据：kvcache 打印比对可见 V cache 在 PP stage 边界（layer 21/41/61）数值突变甚至正负翻转"
         expected: "badcase 下 V cache 突变、simple case 下三种 cache 向量全部匹配"
       - step: 4
         check: "忽略项：关闭 MTP/prefix cache/reasoning parser/图模式、kvcache 清零、slot mapping=-1（含 drafter）等消融均不能消除乱码——这些不是根因方向"
-        note: "根因是跨引擎 RDMA pull 与 NPU 流的同步缺失，不是任何功能开关"
+        note: "根因在 V 投影算子的数值正确性，不是任何功能开关，也不是 KV 传输时序"
 
     severity: service-affecting
     fix_side_effects: [requires-code-change]
     fix_type: code-patch
 
     root_cause: >
-      PD 分离 + PP4 下，P 侧 prefill 每层把 k_pe 写入 kv_cache[1]（V cache）后经
-      kv_ag_handle.wait() 等待 all-gather 完成，但未同步 NPU 当前流；D 侧 ascend_direct RDMA
-      pull 在 prefill forward 返回后立即读取 k_pe，读到尚未落盘/对跨 engine 不可见的陈旧值。
-      每个 PP stage 边界（layer 20→21、40→41、60→61）引入一次偏差，首请求（PP 时序冷启动 +
-      特定 content）输出乱码。修复：vllm_ascend/attention/sfa_v1.py 在 kv_ag_handle.wait()
-      后加 torch.npu.current_stream().synchronize()（PR #14269）。
+      PD 分离 + PP4 下，P 侧 prefill 每个 stage 的 V cache 由 sfa_v1.py::_v_up_proj 计算。
+      v0.26.0rc1 之前，该方法在 bf16/fp16 且 token 数 ≤ BMM_TRANS_MAX_SUPPORTED_TOKENS(1024) 时
+      走 `torch.ops._C_ascend.batch_matmul_transpose` 自定义算子快路径——首请求的短序列（如 261 token）
+      正好落在这条路径上，其结果与长序列走的 npu_transpose_batchmatmul / torch.bmm 路径不一致：V cache 数值在 PP stage 边界
+      （layer 20→21、40→41、60→61）突变甚至正负翻转，首个请求因此输出与 prompt 无关的随机乱码。
+      修复：PR #14269 删除该快路径，统一改用 torch_npu.npu_transpose_batchmatmul（按
+      local_num_heads × kv_lora_rank < 65536 分两支），落在 releases/v0.26.0rc（≥v0.26.0rc1）。
 
     fix: >
-      升级到包含 PR #14269 的版本；或本地在 vllm_ascend/attention/sfa_v1.py 的 enable_dsa_cp
-      分支 kv_ag_handle.wait() 后追加 torch.npu.current_stream().synchronize()（每层一次，仅 P 侧生效）。
-    rollback: "revert PR #14269 / 回退到修复前版本"
+      升级到 v0.26.0rc1 或更新的 vllm-ascend（含 PR #14269）。不能升级时：让触发请求避开快路径——
+      把首个请求的 token 数推过 1024（先发一个长请求再发 badcase，现场实测可规避），
+      或退掉 PP（P 节点改 DP=4）。**不要**照 issue 评论里那条 `torch.npu.current_stream().synchronize()`
+      打补丁：它不在上游任何 ref 里，且其所在分支（enable_dsa_cp）在本现场默认不生效。
+    rollback: "回退到修复前版本（<v0.26.0rc1）即回到出问题状态；本地改动按 git revert"

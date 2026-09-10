@@ -145,22 +145,23 @@ namespaces:
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12723.yaml
       hash: da449e293210
     - id: VLLM-ASC-12957
-      title: PD 分离 P 侧 sfa_v1.py 的 k_pe 经 kv_ag_handle.wait() 后未同步 NPU 流，D 侧 RDMA pull 读到未落盘陈旧 k_pe，PP4
-        首请求乱码
+      title: PD 分离 PP4 下 P 侧 sfa_v1.py 的 _v_up_proj 走 batch_matmul_transpose 快路径算错 V 投影，V cache 在 PP stage
+        边界突变，首请求输出乱码
       category: precision
       tags:
       - pd-separation
       - ascend-direct
       - rdma
       - kv-transfer
-      - stream-sync
-      compat: vllm-ascend <=0.20.2
+      - custom-op
+      - v-up-proj
+      compat: vllm-ascend <0.26.0rc1
       confidence:
         score: 0.6
       symptoms:
       - PD 分离（use_ascend_direct=true RDMA/ADXL）+ PP=4 + DP=8 decode 下，服务拉起后首个请求输出与 prompt 无关的随机乱码
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12957.yaml
-      hash: 41aff8d7d5b2
+      hash: 606f692ec5b9
     - id: VLLM-ASC-14265
       title: v0.26.0rc GLM-5.2+MTP 投机接受率相对 v0.23 大幅劣化：MegaMoe 对称通信 prefill buffer 按 decode graph 大小分配（enable_prefill_mc2
         关闭时）致大 prefill batch 容量溢出产生错误输出
