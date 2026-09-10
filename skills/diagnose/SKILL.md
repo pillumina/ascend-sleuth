@@ -50,6 +50,12 @@ reference 有两个消费点，都由流程里的**缺口**决定、都不参与
 | **performance** | 「你已经有 profiling 数据了吗（采集产物）？还是要我给采集指引？」 | 探询型：按回答分支 |
 | **interrupt** | —（不预先问） | 条件型：日志不足以定位时才给采集指引 |
 
+**方法缺口（③）——别漏**：category 已定且有测量数据（interrupt 类是候选全未命中）时，
+按 `references/procedure-gates.yaml` 的 `kind: procedure` 闸门取流程：读 `references/_procedure-index.yaml`
+（选择器）选**一条**，然后打开词条读 **`content.flow[]` 全文**按判据执行——**摘要行不算加载**
+（实测只读摘要与不读等效，流程的反直觉判据会被摘要截断）；数据缺口如实记 `gap`，不臆断分支。
+展开见 `references/diagnosis-procedure.md` 步骤 2.5 ④。
+
 **分支动作与词条不在此重复**（改一处即生效，避免散文与数据双源漂移）：走闸表的 `branches[].action` / `refs`。
 
 三条纪律：

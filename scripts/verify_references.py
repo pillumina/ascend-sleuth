@@ -101,7 +101,7 @@ def check_case_ref_links(root: Path, ref_ids: set):
 # 「category → 采集面词条」的绑定从 SKILL 散文搬成数据。校验：**至少一个绑定文件存在**
 # （约定后缀发现——删掉文件不等于检查静默消失）+ 结构合法 + 每个 id 存在且 active。
 SKILL_BINDING_GLOB = "skills/**/references/*-gates.yaml"
-VALID_GATE_KINDS = {"probe", "conditional"}
+VALID_GATE_KINDS = {"probe", "conditional", "procedure"}
 FALLBACK_CATEGORIES = {"interrupt", "precision", "performance"}
 
 
@@ -164,12 +164,39 @@ def check_skill_ref_bindings(root: Path, ref_ids: set, active_ids: set, legal_ca
                     f"{rel_file} ({gid}): kind '{kind}' 非法"
                     f"（合法: {', '.join(sorted(VALID_GATE_KINDS))}）"
                 )
+            elif kind == "procedure":
+                # procedure 闸门 = 方法缺口消费点（EV-2026-038）。形态与 probe/conditional 不同：
+                # **不在闸门里写症状关键词分支**——症状→流程的选择由词条自身的 title/summary
+                # 经流程索引承担（关键词写在闸门里 = 与 triage-tree 双源，必漂移）。
+                # 因此这里校验三件：load 必须 full、selector 必须存在、trigger 必填。
+                if gate.get("question"):
+                    errors.append(f"{rel_file} ({gid}): kind=procedure 不应有 question（不是探询型）")
+                if not gate.get("trigger"):
+                    errors.append(f"{rel_file} ({gid}): kind=procedure 必须给 trigger（何时该加载流程）")
+                if gate.get("load") != "full":
+                    errors.append(
+                        f"{rel_file} ({gid}): kind=procedure 必须 load: full——"
+                        f"摘要行不承载判据（实测与不加载等效，决定性规则会被截断）"
+                    )
+                sel = gate.get("selector")
+                if not sel:
+                    errors.append(f"{rel_file} ({gid}): kind=procedure 必须给 selector（流程索引路径）")
+                elif not (root / str(sel)).exists():
+                    errors.append(f"{rel_file} ({gid}): selector '{sel}' 不存在（索引未生成？）")
             else:
                 q = gate.get("question")
                 if kind == "probe" and not q:
                     errors.append(f"{rel_file} ({gid}): kind=probe 必须给 question（探询型闸门的形态就是问一句）")
                 if kind == "conditional" and q:
                     errors.append(f"{rel_file} ({gid}): kind=conditional 不应有 question（条件型闸门不预先问）")
+            if kind == "procedure":
+                # procedure 闸门不做 refs 绑定（选择器产出的是"本轮该读哪条流程"，非预置清单）
+                for rid in gate.get("caveat_refs") or []:
+                    if rid not in ref_ids:
+                        errors.append(f"{rel_file} ({gid}): caveat_ref '{rid}' 不存在于 references/（悬挂引用）")
+                    elif rid not in active_ids:
+                        errors.append(f"{rel_file} ({gid}): caveat_ref '{rid}' 非 status: active")
+                continue
             branches = gate.get("branches")
             if not isinstance(branches, list) or not branches:
                 errors.append(f"{rel_file} ({gid}): 缺少非空 branches 列表")

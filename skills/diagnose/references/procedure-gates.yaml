@@ -1,0 +1,50 @@
+# 流程闸门表（diagnose 的「方法缺口」消费点）——结构化绑定，不写散文
+#
+# 为什么存在（EV-2026-038，三轮盲测的结论）：
+#   流程类先验知识（type: methodology）的失效原因不是载体形态，而是**加载时机与深度**——
+#   实测结论三条：
+#     ① 形态无关：同一份流程写成 flow[] YAML 或散文 skill，被执行的保真度一致（R = S = 满分）；
+#     ② 摘要行无效：只给摘要行与不给等效（P3 0/2 vs 0/2）——决定性判据会被摘要截断
+#        （例：摘要写"同步比例 > 0.2 则存在慢卡"，却漏掉"慢卡 = WTR 最小的卡"这条反直觉规则）；
+#        给全文才改变结论（2/2）。
+#     ③ 选择可靠：只给 id/title/summary 索引让 agent 自己挑 → 7/7 选对。
+#   现状缺口：12 条真实 trace 里精度/性能会话**加载流程 0 次**——触发点缺失，不是内容缺失。
+#
+# 分工（形态归 SKILL，内容归词条）：本表只决定「何时该取流程、取到后怎么用」；
+#   具体是哪一条流程由 `references/_procedure-index.yaml`（选择器）按 category + title/summary 选出。
+#   **本表不写症状关键词分支**——关键词写在闸门里等于与 triage-tree 双源，必漂移。
+#
+# 校验（verify_references.py，随 CI）：kind=procedure 必须给 trigger + load: full + selector，
+#   且 selector 指向的文件必须存在；caveat_refs 必须存在且 active。
+
+gates:
+  - id: precision-procedure
+    category: precision
+    kind: procedure
+    trigger: >-
+      已确认 category=precision，且手上已有测量数据（dump / 比对产物 / plog 标识）——
+      下一步是"按什么方法定界根因"，而不是继续取数、也不是查错误签名
+    load: full
+    selector: references/_procedure-index.yaml
+    caveat_refs:
+      - msprobe-tool-side-effect-fault-patterns   # 采集行为本身可能让问题消失——先排除再下结论
+
+  - id: performance-procedure
+    category: performance
+    kind: procedure
+    trigger: >-
+      已确认 category=performance，且手上已有采集产物（profiling 数据 / 通信统计 / step 时间线）——
+      下一步需要按判据（阈值、分流规则）定位瓶颈环节
+    load: full
+    selector: references/_procedure-index.yaml
+
+  - id: interrupt-procedure
+    category: interrupt
+    kind: procedure
+    trigger: >-
+      已确认 category=interrupt，且候选 case 全部未命中（quickly_check 都不匹配）——
+      下一步需要按某条排查路径分流，而非继续 grep 签名
+    load: full
+    selector: references/_procedure-index.yaml
+    caveat_refs:
+      - ascend-log-troubleshooting   # 日志量级/裁剪纪律：只贴失败 rank + 栈尾，别灌全量

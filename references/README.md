@@ -9,6 +9,8 @@
 ```
 references/
 ├── _types.yaml               # type 注册表（渐进登记；CI 强校验的 schema 依据）
+├── _summary-index.yaml       # 生成物：背景类（platform-fact/software-fact/tool）行化索引（diagnose 2.5 ②）
+├── _procedure-index.yaml     # 生成物：流程选择器索引（methodology；diagnose 2.5 ④）
 
 ├── errors/                   # type: error-code（表形态，按组件分族：cann-runtime/hccl/aicpu/driver）
 ├── fault-patterns/           # type: fault-pattern（表形态，按主题域成表：现象→根因→处理）
@@ -69,6 +71,11 @@ status: active | pending-review | deprecated | draft   # 新产出即 active（P
 - 按来源类型强校验子字段；`sources[].verification`（可选）填了必须合法（`auto-extracted` / `cross-checked-source`，ADR-0008 §4.2）；
 - 深审：case-derived + methodology 的提炼来源 case 数（`sources[].cases` 长度）<3 不允许 `status: active`；
 - **skill 侧绑定**：skill 支撑文件里引用的 ref-id（`skills/diagnose/references/collect-gates.yaml` 的采集闸门表）必须存在且 `status: active`——散文里硬编码 ref-id 会静默腐化（曾把不存在的 `profiling-performance-fault-patterns` 当已有落点写进 SKILL），绑定落成数据后由 CI 兜住。
+
+**流程类的消费方式与事实类不同**（EV-2026-038，三轮盲测结论）：`methodology` 不进背景 summary 层，
+走独立的 `_procedure-index.yaml` 选择器——**只用来挑"本轮读哪条流程"，选定后必须读 `content.flow[]` 全文**。
+实测：只读摘要行与不读等效（决定性判据会被截断），给全文才改变结论；只给 id/title/summary 索引让 agent
+自己挑则 7/7 选对。生成：`python3 scripts/build_procedure_index.py`（`--check` 校验新鲜度，随 CI）。
 
 **两个消费点**（EV-2026-037）：reference 不参与候选路由/排序（不是第四检索层），但按流程里的**缺口**在两个时点被消费——**数据缺口**（缺测量数据 → tool 的采集面，`skills/diagnose/references/collect-gates.yaml` 绑定，诊断步骤 1）与**判断缺口**（有候选、缺签名/背景/修复依据 → 诊断步骤 2.5）。两处都只读 `active`。
 
