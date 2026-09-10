@@ -69,7 +69,7 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 | 命名空间变更审批 | `CODEOWNERS` + 分支保护 required review | 硬 |
 | 高风险双签 | `kb/high-risk` 标签 + CODEOWNERS 双组路径（每组至少一人批） | 半硬（"恰好两个 approval"需人核验，见下） |
 | 脱敏 / severity 纪律 | to-postmortem 流程 + groom 周批审抽查 | 约定 |
-| eval 回归（改 skill 时） | 按 [eval.md](eval.md) 手动 replay，M2 脚本化后并入 CI | 约定 → 半硬 |
+| eval 回归（改 skill 时） | 按 [eval.md](eval.md) 分级手动 replay；**触及输出契约/交互形态时另出盲辨对照**（同问题新旧输出各一份、交不知情者判），M2 脚本化后并入 CI | 约定 → 半硬 |
 
 ## PR 模板
 
