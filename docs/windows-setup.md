@@ -18,7 +18,14 @@ git status --short -- .dsh/skills
 | ② 普通文本文件（clone 默认） | `False` | 长度 9、内容 `../skills`；`git status` **可能为空** |
 | ③ 破损的 reparse 点 | `False` | 长度 0、内容读不出；`git status` 显示 ` M .dsh/skills` |
 
-**为什么不能只看 `git status`**：`core.symlinks=false` 时，git 会把"内容正好是 symlink 目标的普通文件"视为未变更。实测（git 2.55.0.windows.5、`core.symlinks=false`）：状态 ② 的 `git status --short -- .dsh/skills` 输出**为空**。所以 status 干净是状态 ② 的典型表现，不是修好的证据——判据用 `PSIsContainer`。
+**为什么不能只看 `git status`**：它取决于 `core.symlinks` 的**当前值**，同一个磁盘状态会给出不同答案。
+
+- `core.symlinks=false`（Git for Windows 默认）：git 把"内容正好是 symlink 目标的普通文件"视为未变更 → 状态 ② 的 `git status --short -- .dsh/skills` 输出**为空**。
+- `core.symlinks=true` 而磁盘上仍是那个文本文件：同一台机器上同一状态显示 ` T .dsh/skills`（类型变更）。
+
+（两条都实测于 git 2.55.0.windows.5：先以默认 `false` 观察为空，随后 `git config core.symlinks true` 后同一文件变成 ` T`。）
+
+所以"status 干净"既可能是修好了、也可能是状态 ②；只有"显示 ` T`"能确定没修好。**判据一律用 `PSIsContainer`**，别用 status。
 
 ## 修法（优先第一条）
 
