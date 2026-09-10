@@ -84,6 +84,12 @@ description: >
    source_signals 带 trajectory / hypothesis / predicted_effect / validation /
    risk / principle_refs），trajectory 必须指到本轮执行出处（产出文件 id / replay
    结果 / trace）；
+   `predicted_effect` 必须带 **`measure`——预测的出处**：一条命令 + 期望
+   （`expect_exit` 或 `expect_stdout` 至少一项），让**任何** reviewer 一条命令就能
+   复核预测是否成立（`scripts/ev_measure.py <卡号> --run`；三态退出码 =
+   符合 / 被证伪 / 无法判定）。真不可度量时如实声明 `reason`，不要编一条命令。
+   预测写不出可复现口径，通常说明它还不是一个可证伪的假设——先改预测。
+   与 `trajectory` 的分工：trajectory 管**问题可回放**，measure 管**预测可复现**；
 3. **自行验证执行**（评估自动化的核心——agent 自己验证，不把验证推给人）：
    - 按**影响面分级**选门禁（docs/eval.md「门禁分级」可选论证层，下述为执行值）：
      **检索/路由/候选选择面**改动 → golden 子集前后对照（2-5 条受影响 fixture，
@@ -97,6 +103,8 @@ description: >
      纯文档/注释 → 不跑 replay，scan + 人审；
    - 不能即时判定的（真实反馈类 content/fix）：完成实现 + S2 佐证，如实标注
      "已实现待真实确认"（现场有效性进观察窗，事后结算）；
+   - **先跑一遍自己的 `measure`**（`scripts/ev_measure.py <卡号> --run`）：判据跑不通
+     或期望对不上的预测，不算验证——先修判据或如实改预测，别把不可复现的预期留在卡上；
 4. **agent 判断（EV 卡 = agent 决策档案，不含 git 合入态/待办态）**：
    - eval solid → `validated`（采纳：改动保留，进流程层攒批/PR 供人审）；
    - eval 不成立 / 实验失败 → `rejected`（不采纳：留结论，改动不保留）；
@@ -121,6 +129,10 @@ description: >
   缺了 CI 报审计缺口，面板也标「缺成本」（两处口径一致）；
 - **卡必须能追到出处**：`source_signals` 非空且每条带 `trajectory`（产出文件 id / replay
   结果 / trace）——没有出处的卡无法回放归因，CI 直接报错；
+- **预测也必须能追到出处**：`predicted_effect.measure` 带命令 + 期望（或如实声明不可度量）。
+  理由：评审被设计成 30 秒判定（`predicted_effect` vs 验证结果），而只有散文的预测判不了
+  ——reviewer 只剩"开全文"或"直接批"两个动作。缺 measure / 有命令无期望 / 命令仍是占位
+  都会被 CI 报错；存量卡豁免但缺口由 `scripts/ev_measure.py --audit` 如实报出；
 - 仅"观察到的信号"（数据前提未满足 / 无准备执行的具体方案）**不产卡**——信号记 session
   报告/任务状态，条件到（方案成形/数据齐）才产卡执行（防想法清单污染提案账本）。
 - **改进动作必须先产 EV 卡（前置元流程，防绕过）**：T1 归纳（→ to-reference --ingest-cases）、
@@ -191,6 +203,7 @@ evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ agent �
 | 落收尾记录（第 4 步） | `scripts/log_skill_exec.py --skill evolve-check` + 自查 `scripts/verify_exec_log.py --check` |
 | 查重/产卡骨架 | `scripts/ev_proposal.py --list / --new` |
 | 卡校验 | `scripts/verify_proposals.py`（CI `proposal-audit` job；含卡不完整/僵尸卡/出处缺失） |
+| 预测复核 | `scripts/ev_measure.py <卡号> --run`（**自己先跑一遍**：判据跑不通的预测不算验证） |
 | 验证门（即时判定） | `scripts/replay_golden.py` / `scripts/s2_replay.py` |
 | 归因事件聚合（T4 信号） | `scripts/component_tally.py` |
 | 收尾可见性（面板） | `scripts/ev_board_data.py` 的 `skill_exec` 段 → ev-panel「执行现场（exec-log）」 |

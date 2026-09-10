@@ -108,6 +108,7 @@ pipeline/execution 定义了"一轮里每一步怎么走"，但没有定义"一�
 
 ```yaml
 predicted_effect: {metric: "...", from: X, to: Y}   # 质量预期（execution §2）
+predicted_effect.measure: {command: "...", expect_exit: 0}   # 预测的出处（可复现，execution §2/§7）
 actual_cost: {tokens: 9500, source: estimate}       # 写回后必填，缺失即审计缺口
 ```
 

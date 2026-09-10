@@ -1,0 +1,146 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）
+# 校验：python3 scripts/verify_proposals.py --check
+# 脱敏纪律：只含聚合值与证据引用，不含客户现场原文。
+# ============================================================
+
+id: EV-2026-050
+layer: L2
+title: 预测的出处——predicted_effect 必须可复现（reviewer 判定把手 ev_measure）
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-10
+source_signals:
+  - signal: observability_gap
+    evidence: >-
+      maintainer 反馈"check CI 是否过、测试是否跑就合入了；判断不了这个 PR 是不是真的能合"。
+      量化后不是错觉，而是结构性的：**PR 里每一个命题都由制造改动的同一个过程写成**——
+      success_criteria 由 agent 写、由 agent 判定达成；验证断言（rehearse 81/81）由 agent 写；
+      golden fixture 是 groom 被规定要跟着 case 改的（docs/eval.md §套件如何演化）；
+      CI 检查的是索引新鲜度 / YAML 合法性 / 模板结构齐全 = 全部内部自洽。于是
+      **"CI 绿 + 测试过"对"该不该合"携带的信息量接近零**。
+      而 execution §7 早已把评审设计成「predicted_effect vs verification 结果（30s 判定）」，
+      并把失效形态命名为"评审变橡皮图章或被迫开全文"——即本轮实测到的状态。
+    trajectory:
+      - "grep -rl 'predicted_effect' proposals/ideas/*.yaml | wc -l → 48/48 张卡都有预测"
+      - "grep -A4 'predicted_effect' proposals/ideas/*.yaml | grep -c 'python3|npm|bash' → 0/48 张带可执行命令"
+      - "grep -rh 'method:' proposals/ideas/*.yaml | sort | uniq -c → scan_review 16、metrics_compare 18、golden_replay 8、issue_replay 6"
+      - "docs/evolution-execution.md:173（评审供给清单：30s 判定 / 失效形态=橡皮图章）"
+      - "scripts/verify_proposals.py：REQUIRED 不含 predicted_effect；全脚本无 measure 相关校验（grep predicated_effect → 0 命中）"
+  - signal: process_friction
+    evidence: >-
+      推广面即将从 1 人扩到约 10 人，且**每个人都可以改 skill**（组织上以 evolve-check 作为
+      授权依据）。这把上述问题从"我一个人跟不跟得上"变成"谁来判"：评审者会变多，
+      而"完整心智模型"只有一个——不持有该模型的 reviewer 面对 500 行自洽的 PR，除了读全文
+      或直接批，没有第三种动作。**授权的前提（evolve-check 有真实数据）当前并不成立**：
+      traces 12 个、feedback 事件 0、exec-log 4 条，而 156/158 条 case `hits: 0`。
+      即：现在的 skill 改动无法由"是否让诊断变好"来判定。本卡不解决该前提（见残留），
+      只解决"改动声称的效果能否被任一 reviewer 在 30 秒内机械复核"。
+    trajectory:
+      - "用户输入：第一批约 10 人；改 skill 本身每个人都可以改（因为有 evolve-check）"
+      - "traces/*.yaml → 12 个文件，grep 'action: feedback' → 0 命中"
+      - "metrics/skill-exec-log.yaml → 4 条记录（2026-09-03 → 2026-09-10）"
+hypothesis: >-
+  把「预测的出处」补成与「问题的出处」对称的强制字段：`source_signals.trajectory` 已经保证
+  信号可回放，但 `predicted_effect` 只有散文（48/48 有字段、0/48 可执行）。若在
+  `verify_proposals`（CI 硬门）强制 `measure`（command + expect_exit/expect_stdout 至少一项，
+  或如实声明 reason），并提供一个 reviewer 侧的复现把手脚本，则：①每张新卡的预测都能被
+  **任何** reviewer 用一条命令复核，不必持有改动者的心智模型；②"判不了"与"判为假"分成两个
+  退出码，reviewer 不会被逼在"开全文"与"橡皮图章"之间二选一。预测本身是否*值得*做，
+  该把手管不了——那是残留，不是本卡的失败。
+predicted_effect:
+  metric: reviewer 判定一张卡预测成立与否所需的条件——是否有一条人人可跑、输出可 diff 的命令
+  from: 0/48 张卡带可执行判据；reviewer 无判定把手（只能读全文或直接批）
+  to: >-
+    新卡（MEASURE_CUTOVER 起创建）强制带 measure；`ev_measure <card-id> --run` 给出
+    符合 / 被证伪 / 无法判定三态退出码；缺口由 `--audit` 盘点可见（存量 48 张如实标为豁免）
+  measure:
+    command: python3 scripts/rehearse_evolve_loop.py --no-panel
+    expect_exit: 0
+    expect_stdout: "闭环演练：全部通过"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前 rehearse_evolve_loop 为 81 条断言全绿（EV-2026-049 记录），但其中**没有一条**
+    覆盖预测口径——该套件自身的 E1-E10 与 measure 无关；改后新增 [E11] 21 条（含两侧对照）。
+    另有 CI 现状：verify_proposals 只校验卡的"叙事完整性"，不校验预测可否复现。
+  success_criteria: >-
+    ①`verify_proposals --check` 对强制卡缺 measure / 有 command 无期望 / 占位 command /
+    缺整个 predicted_effect 四类均报错；②对存量卡（早于 cutover）不报错（不哭狼）；
+    ③`ev_measure <card-id> --run` 三态正确：符合=0、期望不成立=1、无法判定（存量卡 /
+    声明不可度量 / 找不到卡）=2；④期望不成立但结构合法的卡**必须**在判据侧被判 FAIL
+    （证明把手不是只看结构）；⑤`--audit` 分四类计数且缺口存在时非零退出、清干净后归零；
+    ⑥`rehearse_evolve_loop` 全绿（不含回归）。
+  rollback: >-
+    新增一个脚本 + 三处文档 + 一个 PR 模板条目 + 一个 CI 校验分支；无数据迁移、无 schema
+    破坏（存量卡不受影响）。整体 git revert 即回到现状（原则七）。
+gate:
+  condition: >-
+    maintainer 明确反馈"判不了该不该合"（已发生），且推广面即将扩到约 10 人（已发生）。
+    非日历驱动。
+risk: medium
+principle_refs: [2, 5, 6, 8, 9, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "单会话内联执行（含设计、实现、两侧演练、文档接线），未单独记账；口径同 EV-2026-049"
+decisions:
+  - who: agent（用户反馈触发）
+    when: 2026-09-10
+    type: proposal
+    conclusion: >-
+      采纳「把预测的出处补成强制字段 + 给 reviewer 一个复现把手」，而不是"要求 PR 写得更短 /
+      要求 agent 自述更清楚"：①PR 长度不是自变量——短 PR 若其证据全由作者生成，同样不可判
+      （maintainer 亦确认"量大不大其次"）；②让 agent 多写一段"我为什么对"只会增加同源命题，
+      不增加独立性；③真正的自变量是**判据的出处**——一条别人能跑的命令，与一个别人只能读的
+      论证，是两种东西。
+      **不做的事（明确）**：不做"独立 holdout 测试集"、不做"按 diff 自动分档 reviewer 注意力"、
+      不做"机制改动的入口闸门"——三者都在本轮讨论中被识别为有价值，但各自需要独立决策与
+      独立证据，不塞进本卡。本卡只做"预测可复现"这一条腿。
+  - who: agent
+    when: 2026-09-10
+    type: action
+    conclusion: >-
+      实施：①`scripts/verify_proposals.py` 新增第 16 条校验——`predicted_effect` 强制
+      （`MEASURE_CUTOVER`=2026-09-11 起；存量卡豁免但如实可见）+ `measure` 结构校验
+      （command 配期望、或 command 省略配 reason；占位符拦截）+ 抽出 `as_date` 供
+      `age_days` 共用；②新增 `scripts/ev_measure.py`——reviewer 把手（`<card-id>` 看判据 /
+      `--run` 执行比对 / `--audit` 盘点；三态退出码）；③`examples/sample-idea.yaml` 骨架
+      留显式占位 measure（忘填 = CI 响亮失败，不带假绿过审）；④接线文档：execution §2 信息
+      契约表 + §7 评审把手与判据强度 + §9 原则追溯、pipeline §7 schema 样例、orchestration
+      §3.2 成本侧样例、methodology PR 模板加一条复核项。
+  - who: agent
+    when: 2026-09-10
+    type: eval
+    conclusion: >-
+      `metrics_compare`：`python3 scripts/rehearse_evolve_loop.py` → **102/102 通过**（改前
+      基线 81 条；新增 [E11] 21 条）。两侧对照均实测：**该红必红**——缺 measure、有 command
+      无期望、占位 command、缺整个 predicted_effect、期望不成立（结构合法但判据 FAIL）五类
+      全部如期判红；**不哭狼**——存量卡缺 measure 不报错、声明不可度量通过校验、清掉缺口后
+      `--audit` 归零、含 `> ` 重定向类的合法命令不被占位符规则误伤。
+      演练自身修出三处真问题（如实记录）：①**E3 遗留骨架卡未清理**，而骨架改为占位 measure
+      后它让**所有后续 verify 断言**变红——顺带暴露该演练的既有缺陷：断言依赖"骨架恰好合法"，
+      且在 cutover 生效日前后结论相反（定时炸弹）；已改为 E3 的演练卡带真判据。②E8 的
+      "清理后校验通过"断言实际**在清理前**执行，与自身标签不符；已把 unlink 移到校验之前。
+      ③首版占位符正则含 `[<>]`，会误伤 shell 重定向（`cmd > out`）与进程替换；收紧为显式
+      占位词。
+  - who: agent
+    when: 2026-09-10
+    type: decision
+    conclusion: >-
+      **validated（采纳，改动保留）**。判据：success_criteria 六项全部达成，且由 E11 的
+      21 条断言逐条钉住（含两态退出码与"结构合法但判据 FAIL"这一关键区分）。
+      **如实标注的边界（原则十）**：本卡证明的是**效果**（预测从此可复现），不证明**价值**
+      （预测是否值得做、命令是否真在测那件事）——后者机器判不了，属约定强度，靠人审抽查；
+      "合法但无意义的 command + 自洽期望"这条残余仍在（`--run` 会 PASS），只是从"不可判"
+      降为"5 秒可读完的一行命令"。
+      残留（如实标注，留给 owner / 后续卡）：①**独立 holdout 测试集缺失**——`eval/golden/`
+      在 agent 可写面内且 groom 被规定要跟着 case 改它，因此"无回归"至今仍是可控信号；
+      这是本卡之外、且比本卡更根本的一条腿。②**注意力分档未做**——reviewer 该全读哪些 PR
+      （不可逆面：删改 case id / schema / 输出契约 / 阈值数字 / common/ / triage-tree）
+      仍靠自觉。③**机制改动的入口闸门未做**——EV 卡的 gate 目前多为"用户提问触发"（自触发），
+      与"演进由数据触发"（原则十一）之间仍有缝。④**评审者仍是我**——本卡让判定成本下降，
+      但没有改变"只有一个人持有完整模型"这一事实。

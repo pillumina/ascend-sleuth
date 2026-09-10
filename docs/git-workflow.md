@@ -70,6 +70,24 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 | 高风险双签 | `kb/high-risk` 标签 + CODEOWNERS 双组路径（每组至少一人批） | 半硬（"恰好两个 approval"需人核验，见下） |
 | 脱敏 / severity 纪律 | to-postmortem 流程 + groom 周批审抽查 | 约定 |
 | eval 回归（改 skill 时） | 按 [eval.md](eval.md) 分级手动 replay；**触及输出契约/交互形态时另出盲辨对照**（同问题新旧输出各一份、交不知情者判），M2 脚本化后并入 CI | 约定 → 半硬 |
+| EV 卡预测可复现 | CI：`scripts/verify_proposals.py --check`（`predicted_effect.measure` 必须有命令 + 期望，或如实声明不可度量） | 硬（结构）/ 约定（命令是否有意义） |
+
+## 评审把手（reviewer 怎么判"该不该合"）
+
+判据的独立性只有一条标准：**改动者不能靠"写文字"通过它**。PR 里的命题（success_criteria 达成、无回归、断言全过）多由制造改动的同一过程写成，而 CI 检查的是内部自洽（索引新鲜度、YAML 合法性、模板结构齐全）——因此"CI 绿 + 测试过"对"该不该合"的信息量接近于零，reviewer 会被逼在"开全文"与"直接批"之间二选一（`evolution-execution.md` §7 把这一失效形态命名为"橡皮图章"）。
+
+改动侧义务：EV 卡带 `predicted_effect.measure`。reviewer 侧动作：
+
+```
+python3 scripts/ev_measure.py <card-id> --run    # 打印判据命令 + 期望，执行并比对
+python3 scripts/ev_measure.py --audit            # 全库盘点：可复现 / 声明不可度量 / 缺口 / 存量豁免
+```
+
+退出码三态：`0` 符合预测 / `1` 预测被证伪 / `2` 无法判定（存量卡无口径、声明不可度量、卡不存在）——刻意分开，避免"判不了"被读成"验证失败"。
+
+**强度如实标注（原则十）**：本把手证明**效果**（改动是否产生了它声称的变化），不证明**价值**（该变化是否值得做）；"命令是否真在测那件事"机器判不了，属**约定**强度，靠人审抽查。存量卡（`verify_proposals.py` 的 `MEASURE_CUTOVER` 之前创建）豁免强制要求——补写不恢复当时的判断，只造事后叙述；缺口由 `--audit` 如实报出。
+
+**抽审纪律（约定，同"渐进审序"的用意）**：reviewer 每轮**自行随机点一处**核对，**不从改动者列的 spot-check 清单里挑**。不指望抓全，目的是让"如实标注"成为改动侧的占优策略。
 
 ## PR 模板
 

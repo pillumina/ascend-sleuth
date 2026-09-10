@@ -34,6 +34,13 @@
 #       （防卡静默烂在实验态；天数口径与面板 scripts/ev_board_data.py 的 STALE_DAYS 一致）。
 #   15. source_signals 溯源齐备：非空列表且每条含 trajectory（卡必须指到本轮执行出处——
 #       无出处则无法回放归因，卡就只是叙述）。
+#   16. predicted_effect 带可复现的测量口径（2026-09-10 补，EV-2026-050）：预测必须配
+#       `measure`——command + 期望（expect_exit / expect_stdout 至少一项），或如实声明
+#       不可度量（command 缺省 + reason 非空）。与第 15 条对称：trajectory 管"问题的出处
+#       （可回放）"，measure 管"预测的出处（可复现）"。缺它则 execution §「评审：30s 判定」
+#       无从执行——reviewer 只能读全文或直接批，即该节自陈的失效形态「橡皮图章」。
+#       存量卡（MEASURE_CUTOVER 之前创建）豁免：给已完成的决策补一条命令不恢复当时的判断，
+#       只造事后叙述（原则十）；缺口由 scripts/ev_measure.py --audit 如实报出，不静默跳过。
 #
 # CI：kb-checks 的 proposal-audit job 跑本脚本（proposals/** 已在触发路径里）。
 # 注意：exec-log（metrics/skill-exec-log.yaml）是 .gitignore 运行时件、CI 上不存在，
@@ -49,6 +56,18 @@ import sys
 from pathlib import Path
 
 import yaml
+
+# 「预测的出处」强制生效日（第 16 条，EV-2026-050 的迁移窗口）：本日及之后创建的卡必须带
+# 可复现测量口径。本日之前创建的卡豁免——它们已经是做完的决策，补写命令无法恢复当时的判断。
+# 缺口可见性由 scripts/ev_measure.py --audit 提供。存量迁移完成后删除本常量与豁免分支。
+MEASURE_CUTOVER = datetime.date(2026, 9, 11)
+
+# 占位符检测：产卡骨架（examples/sample-idea.yaml）刻意留占位 measure，让"忘了填"在 CI 上
+# 响亮失败，而不是带着一条假命令过审（假 command + 自洽的期望 = 假绿，原则十）。
+# 只认显式占位词，不收 `[<>]`——shell 重定向与进程替换（`> out`、`<(a)`）是合法命令形态。
+# 残留（如实标注）：一条查无此命令的假 command 结构上合法；`ev_measure --run` 会以
+# exit 127 判 FAIL，但 --run 不进 CI——命令是否真在测那件事 = 约定强度。
+PLACEHOLDER_RE = re.compile(r"待填|占位|TODO|FIXME|XXX|PLACEHOLDER", re.IGNORECASE)
 
 VALID_STATUS = {
     "in_experiment",              # 产卡即执行（无 candidate 待办态）
@@ -75,6 +94,92 @@ def load_yaml(path: Path):
         return yaml.safe_load(path.read_text(encoding="utf-8"))
     except Exception as e:
         return {"__yaml_error__": str(e)}
+
+
+def as_date(value):
+    """YAML 的 date/datetime/str 三种形态 → datetime.date；不可解析返回 None（不猜）。"""
+    if isinstance(value, datetime.datetime):
+        return value.date()
+    if isinstance(value, datetime.date):
+        return value
+    try:
+        return datetime.date.fromisoformat(str(value)[:10])
+    except (ValueError, TypeError):
+        return None
+
+
+def exit_code_value(value):
+    """expect_exit 归一为 int；bool/None/非数字串 → None（不猜）。"""
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().lstrip("+-").isdigit():
+        return int(value.strip())
+    return None
+
+
+def measure_enforced(doc) -> bool:
+    """本卡是否落在「预测必须可复现」的强制范围内（第 16 条的迁移窗口）。"""
+    d = as_date(doc.get("created_at"))
+    return d is not None and d >= MEASURE_CUTOVER
+
+
+def check_predicted_effect(doc, rel, errors, enforce: bool):
+    """第 16 条：predicted_effect 的出处（可复现）。
+
+    enforce=False（存量卡）时只做形状检查，不要求 measure——豁免是如实可见的，
+    不是静默跳过：缺口清单一律由 scripts/ev_measure.py --audit 报出。
+    """
+    pe = doc.get("predicted_effect")
+    if pe is None:
+        if enforce:
+            errors.append(f"{rel}: 缺 predicted_effect——卡必须写可测预期"
+                          "（metric/from/to + measure），否则执行后无可对照（execution §2 信息契约）")
+        return
+    if not isinstance(pe, dict):
+        errors.append(f"{rel}: predicted_effect 必须是 mapping")
+        return
+    for k in ("metric", "from", "to"):
+        v = pe.get(k)
+        if v is None or (isinstance(v, str) and not v.strip()):
+            errors.append(f"{rel}: predicted_effect.{k} 缺失或为空"
+                          "（metric=测什么，from=改前实测，to=改后应有值）")
+
+    m = pe.get("measure")
+    if m is None:
+        if enforce:
+            errors.append(
+                f"{rel}: predicted_effect 缺 measure——预测必须带可复现的测量口径："
+                "measure.command 配 expect_exit / expect_stdout 至少一项，"
+                "或如实声明不可度量（command 缺省 + reason 非空）。"
+                "缺它则「30s 判定」无从执行（reviewer 只能开全文）；"
+                "复现方式：python3 scripts/ev_measure.py <card-id>")
+        return
+    if not isinstance(m, dict):
+        errors.append(f"{rel}: predicted_effect.measure 必须是 mapping")
+        return
+
+    cmd = m.get("command")
+    if isinstance(cmd, str) and cmd.strip():
+        if PLACEHOLDER_RE.search(cmd):
+            errors.append(f"{rel}: predicted_effect.measure.command 仍是占位符"
+                          f"（{cmd.strip()[:60]!r}）——换成真命令；带占位符过审 = 假绿")
+        has_expect = (
+            exit_code_value(m.get("expect_exit")) is not None
+            or (isinstance(m.get("expect_stdout"), str) and m["expect_stdout"].strip())
+        )
+        if not has_expect:
+            errors.append(f"{rel}: predicted_effect.measure 有 command 但无期望——"
+                          "没有期望就无法判定符合与否（expect_exit 或 expect_stdout 至少一项）")
+    elif cmd is None or (isinstance(cmd, str) and not cmd.strip()):
+        reason = m.get("reason")
+        if not (isinstance(reason, str) and reason.strip()):
+            errors.append(f"{rel}: predicted_effect.measure 既无 command 也无 reason——"
+                          "不可度量必须如实声明理由（原则十：诚实退化，不静默留空）")
+    else:
+        errors.append(f"{rel}: predicted_effect.measure.command 必须是字符串"
+                      "（或省略 command 并给 reason 声明不可度量）")
 
 
 def check_idea(path: Path, ids: dict, errors: list):
@@ -154,6 +259,9 @@ def check_idea(path: Path, ids: dict, errors: list):
                 errors.append(f"{rel}: source_signals[{i}] 缺 trajectory——卡必须指到本轮执行出处"
                               "（产出文件 id / replay 结果 / trace），否则归因无法回放")
 
+    # predicted_effect 的出处（第 16 条）：预测必须可复现，否则不可证伪
+    check_predicted_effect(doc, rel, errors, enforce=measure_enforced(doc))
+
     # 生命周期完整性（pipeline §7「生命周期完整性规则」——终态卡必须闭合）
     status = doc.get("status")
     decided_types = {e.get("type") for e in (d or []) if isinstance(e, dict)}
@@ -184,19 +292,10 @@ def check_idea(path: Path, ids: dict, errors: list):
 
 
 def age_days(value, today=None):
-    """created_at → 距今天数（int）；不可解析返回 None（不猜、不报假错）。
-    YAML 可能给出 date / datetime / str 三种形态，一律归一。"""
-    if value is None:
+    """created_at → 距今天数（int）；不可解析返回 None（不猜、不报假错）。"""
+    d = as_date(value)
+    if d is None:
         return None
-    if isinstance(value, datetime.datetime):
-        d = value.date()
-    elif isinstance(value, datetime.date):
-        d = value
-    else:
-        try:
-            d = datetime.date.fromisoformat(str(value)[:10])
-        except ValueError:
-            return None
     return ((today or datetime.date.today()) - d).days
 
 

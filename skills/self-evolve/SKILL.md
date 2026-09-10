@@ -60,6 +60,8 @@ disable-model-invocation: true
    被拒方案（E6 落地后改用 `--impact` 聚合视图）；
 2. 产骨架：`scripts/ev_proposal.py --new` → 填字段（layer / title / source_signals 带
    trajectory / hypothesis / predicted_effect / validation / risk / principle_refs）；
+   `predicted_effect` 须带 `measure`（预测的出处：命令 + 期望，或如实声明不可度量）——
+   reviewer 靠 `scripts/ev_measure.py <卡号> --run` 机械复核预测，规则同 evolve-check 产卡链；
 3. **agent 自行验证执行**：按影响面分级选门禁（docs/eval.md「门禁分级」可选层）——
    检索/路由/候选选择面 → golden 子集（2-5 条，基线缓存复用）或 S2 replay
    （replay_golden.py / s2_replay.py）；检索/路由层候选在 arena selection 池可用时
@@ -130,5 +132,6 @@ dual 双签 + kb/high-risk，步骤级小调 review。
 | 观测（深度轮信号） | `scripts/component_tally.py` / `s2_replay.py --todo` / `_index.yaml` 头注 | 深度轮 |
 | 查重/产卡 | `scripts/ev_proposal.py --list / --new` | 产卡时 |
 | 卡校验 | `scripts/verify_proposals.py` | 产卡后必跑 |
+| 预测复核 | `scripts/ev_measure.py <卡号> --run` | 判采纳前必跑（判据跑不通的预测不算验证） |
 | 验证门 | `scripts/replay_golden.py` / `scripts/s2_replay.py` | skill/case 改动验证 |
 | 内容沉淀（evolve-check 落点） | /skill:to-reference / /skill:to-postmortem | 伴随评估产出指向 |

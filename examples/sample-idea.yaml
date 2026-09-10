@@ -31,6 +31,16 @@ predicted_effect:
   metric: 组件执行错率
   from: 0.6
   to: "<0.3"
+  measure:                           # 预测的出处（可复现）——EV-2026-050。reviewer 靠它做
+                                     # execution §「30s 判定」；缺它则评审只能开全文。
+    command: "待填：复现本条预测的命令（如 python3 scripts/eval_arena.py --gate）"
+    expect_exit: 0                   # 与 expect_stdout 至少给一项；本骨架的占位 command
+                                     # 会被 verify_proposals 拦下——填完再提交（刻意响亮失败）
+    # expect_stdout: "top3 命中 18/20"   # 子串匹配（stdout+stderr 合并后）
+    # 真的不可度量时如实声明（原则十），不要编一条命令：
+    # command: null
+    # reason: "……"
+    # 复现：python3 scripts/ev_measure.py <card-id> --run
 validation:                        # 验证设计（execution §2/§5）
   method: golden_replay            # golden_replay | metrics_compare | issue_replay
   baseline: 现 triage-tree + 现有 golden 套件

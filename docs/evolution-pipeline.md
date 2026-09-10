@@ -238,6 +238,10 @@ source_signals:
     trajectory: ["traces/*.yaml#attribution 2026-W37 聚合", "traces/2026-08-30-xxxx.yaml#attribution"]
 hypothesis: 修订该分支的症状匹配逻辑后，执行错率降至 <0.3
 predicted_effect: {metric: "组件执行错率", from: 0.6, to: "<0.3"}   # 可测预期（execution §2 follow-up 判定基准）
+  measure:                       # 预测的出处（可复现，execution §2/§7）——reviewer 的判定把手
+    command: python3 scripts/eval_arena.py --gate
+    expect_exit: 0               # 与 expect_stdout 至少一项；不可度量时 command 省略 + reason
+                                 # 复核：python3 scripts/ev_measure.py <card-id> --run
 validation:
   method: golden_replay          # golden_replay | metrics_compare | issue_replay（S2 校准）
   baseline: 现 triage-tree + 现有 golden 套件
