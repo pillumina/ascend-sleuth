@@ -1,0 +1,640 @@
+_meta:
+  purpose: 流程类先验知识（methodology）评测池：加载哪条流程 / 加载多深，对诊断结论的影响（EV-2026-038）
+  repo: vllm-project/vllm-ascend
+  fetched_at: '2026-09-10'
+  split: selection
+  n: 13
+  construction:
+  - input = 上游 issue 首帖正文（**不含标题**——标题常直接写根因）
+  - held_out_case 必须在本轮检索中排除（否则直接命中 case，测不到方法）
+  - root_cause_keywords = case root_cause 的决定性词（跨样本 DF≥4 的通用词已剔除），供打分用，不提供给被测 agent
+  - leak_critical = 决定性词中「不出现在 case symptoms 里」的子集（症状词是观察量、不是隐藏机制）——泄露扫描用这一列
+  - leakage = leak_critical 是否出现在 input 中（clean = 未出现）
+  - flow_relevant=null 含两类：①从未有流程覆盖；②原流程被降级归档（见 flow_relevant_note）
+samples:
+- id: FLOW-2026-001
+  source_issue: 10524
+  category: precision
+  namespace: inference/vllm-ascend/precision/
+  held_out_case: VLLM-ASC-10524
+  flow_relevant: null
+  leakage: clean
+  leak_hits: []
+  input:
+    symptoms: "### Your current environment\n\n### \U0001F41B Describe the bug\n\n# 模型服务启动脚本\nA3 4机（1P1D），PD都是双机\n社区0.18.0版本，vllm和vllm-ascend都是tag：v0.18.0拉取的（6月15日拉取）\n权重地址：https://modelscope.cn/models/Eco-Tech/GLM-5.1-w8a8\n\
+      P节点：\n~~~\nif [ \"$#\" -ne 1 ]; then\n    echo \"Usage: $0 <node_rank>\"\n    echo \"<node_rank> should start from 0 for both prefill and decode.\"\n    exit 1\nfi\n\ncurrent_dir=$(dirname \"$0\"\
+      )\nsource ${current_dir}/../../common.sh\nexport VLLM_ASCEND_ENABLE_FUSED_MC2=1\nNODE_RANK=$1\nif [ $NODE_RANK -ne 0 ]; then\n    extra_params=\"--headless\"\nelse\n    extra_params=\"\"\nfi\nexport\
+      \ PYTHONPATH=/a3_inference/itask/workdir/fny02324681/Q2/community/0.18.0/vllm-ascend:/a3_inference/itask/workdir/fny02324681/Q2/community/0.18.0/vllm:$PYTHONPATH\nexport NET_CARD_NAME=\"eth0\"\nexport\
+      \ MODEL_PATH=\"/a3_inference/itask/workdir/models/glm5.1-w8a8-v2\"\nexport DATA_PARALLEL_HEAD_ADDRESS=${DATA_PARALLEL_HEAD_ADDRESS:-\"<内网IP>\"}\nexport VLLM_ASCEND_MOONCAKE_TRANSFER_DFX=0\n# Basic\n\
+      export OMP_PROC_BIND=false\nexport OMP_NUM_THREADS=6\nexport PYTORCH_NPU_ALLOC_CONF=expandable_segments:True\nexport LD_PRELOAD=/usr/local/lib/libjemalloc.so.2:${LD_PRELOAD}\n# Workdir\nexport VLLM_TORCH_PROFILER_DIR=${VLLM_TORCH_PROFILER_DIR:-\"\
+      /tmp/theta_workdir/profiles\"}\nexport VLLM_WORKDIR=\"/tmp/theta_workdir/current\"\n\n# Stability\nexport SHM_BARRIER=true\nexport HCCL_OP_EXPANSION_MODE=\"AIV\"\n# Omni Reject Sampler\nexport VLLM_ASCEND_ENABLE_OMNIINFER_SAMPLER=0\n\
+      \n# Ascend\nexport GLOO_SOCKET_IFNAME=${NET_CARD_NAME}\nexport TP_SOCKET_IFNAME=${NET_CARD_NAME}\nexport HCCL_SOCKET_IFNAME=${NET_CARD_NAME}\n\n# MoonCake\nexport VLLM_BASE_PORT=9100\nexport MC_LOG_LEVEL=INFO\n\
+      export MC_LOG_DIR=/home/<user>/logs/mooncake\nexport GLOG_alsologtostderr=1\n\nexport VLLM_ASCEND_ENABLE_FLASHCOMM1=1\nexport ASCEND_AGGREGATE_ENABLE=1\nexport ASCEND_TRANSPORT_PRINT=1\nexport ACL_OP_INIT_MODE=1\n\
+      export ASCEND_A3_ENABLE=1\nexport VLLM_NIXL_ABORT_REQUEST_TIMEOUT=300000\nexport HCCL_BUFFSIZE=512\n\nvllm serve /a3_inference/itask/workdir/models/glm5.1-w8a8-v2 --port 8100 --trust-remote-code --served-model-name\
+      \ auto --distributed-executor-backend mp --model-loader-extra-config '{\"enable_multithread_load\":true,\"num_threads\":8}' --enable-log-requests --enable-prompt-tokens-details --otlp-traces-endpoint\
+      \ https://antcollector.alipay.com/namespace/aicloud/task/otlptrace/otlp/api/v1/traces --max-model-len 202752 --max-num-batched-tokens 4096 --block-size 128 --gpu-memory-utilization 0.92 --trust-remote-code\
+      \ --enable-prefix-caching --data-parallel-size 2 --data-parallel-size-local 1 --data-parallel-address <内网IP> --data-parallel-rpc-port 14435 --data-parallel-start-rank 0 --tensor-parallel-size 16 --pipeline-parallel-size\
+      \ 1 --enforce-eager --enable-auto-tool-choice --tool-call-parser glm47 --reasoning-parser glm45 --seed 1024 --quantization ascend --enable-expert-parallel --speculative-config '{\"num_speculative_tokens\"\
+      : 2, \"method\":\"deepseek_mtp\"}' --additional-config '{\n    \"layer_sharding\":[\"q_b_proj\", \"o_proj\"],\n    \"multistream_overlap_shared_expert\":true,\n    \"enable_npugraph_ex\": true,\n\
+      \    \"fuse_muls_add\":true,\n    \"recompute_scheduler_enable\" : false\n}' --kv-transfer-config '{\n        \"kv_connector\": \"MooncakeConnectorV1\",\n        \"kv_connector_module_path\": \"vllm_ascend.distributed.kv_transfer.kv_p2p.mooncake_connector\"\
+      ,\n        \"kv_buffer_device\": \"npu\",\n        \"kv_role\": \"kv_producer\",\n        \"kv_parallel_size\": 2,\n        \"kv_port\": \"20002\",\n        \"engine_id\": \"prefill-0\",\n       \
+      \ \"kv_rank\": 0,\n        \"kv_connector_extra_config\": {\n            \"use_ascend_direct\": true,\n            \"prefill\": {\n                    \"dp_size\": 2,\n                    \"tp_size\"\
+      : 16,\n                    \"pp_size\": 1\n             },\n             \"decode\": {\n                    \"dp_size\": 8,\n                    \"tp_size\": 4\n             }\n        }\n    }'`\n\
+      ~~~\nD节点：\n~~~\nif [ \"$#\" -ne 1 ]; then\n    echo \"Usage: $0 <node_rank>\"\n    echo \"<node_rank> should start from 0 for both prefill and decode.\"\n    exit 1\nfi\n\ncurrent_dir=$(dirname \"\
+      $0\")\nsource ${current_dir}/../ds_env.sh\nsource ${current_dir}/../hccl_buff_size.sh\nsource ${current_dir}/../../common.sh\nexport VLLM_ASCEND_ENABLE_FUSED_MC2=1\nexport VLLM_ASCEND_ENABLE_MLAPO=1\n\
+      NODE_RANK=$1\nexport PYTHONPATH=/a3_inference/itask/workdir/fny02324681/Q2/community/0.18.0/vllm-ascend:/a3_inference/itask/workdir/fny02324681/Q2/community/0.18.0/vllm:$PYTHONPATH\nexport NET_CARD_NAME=\"\
+      eth0\"\nexport MODEL_PATH=\"/a3_inference/itask/workdir/models/glm5.1-w8a8-v2\"\nexport DATA_PARALLEL_HEAD_ADDRESS=${DATA_PARALLEL_HEAD_ADDRESS:-\"<内网IP>\"}\nexport VLLM_ASCEND_MOONCAKE_TRANSFER_DFX=0\n\
+      # Basic\nexport TASK_QUEUE_ENABLE=1\nexport OMP_PROC_BIND=false\nexport OMP_NUM_THREADS=6\nexport PYTORCH_NPU_ALLOC_CONF=expandable_segments:True\nexport LD_PRELOAD=/usr/local/lib/libjemalloc.so.2:${LD_PRELOAD}\n\
+      \n# System\nexport CPLUS_INCLUDE_PATH=$CPLUS_INCLUDE_PATH:/usr/include/c++/12/:/usr/include/c++/12/x86_64-openEuler-linux/\nexport CPLUS_INCLUDE_PATH=\"/usr/local/Ascend/ascend-toolkit/8.2.RC1/toolkit/toolchain/hcc/aarch64-target-linux-gnu/include/c++/7.3.0/:/usr/local/Ascend/ascend-toolkit/8.2.RC1/toolkit/toolchain/hcc/aarch64-target-linux-gnu/include/c++/7.3.0/aarch64-target-linux-gnu/:${CPLUS_INCLUDE_PATH}\"\
+      \n\n# Workdir\nexport VLLM_TORCH_PROFILER_DIR=${VLLM_TORCH_PROFILER_DIR:-\"/tmp/theta_workdir/profiles\"}\nexport VLLM_WORKDIR=\"/tmp/theta_workdir/current\"\n\n# Stability\nexport SHM_BARRIER=true\n\
+      export HCCL_OP_EXPANSION_MODE=\"AIV\"\n# Omni Reject Sampler\nexport VLLM_ASCEND_ENABLE_OMNIINFER_SAMPLER=1\n\n# Ascend\nexport GLOO_SOCKET_IFNAME=${NET_CARD_NAME}\nexport TP_SOCKET_IFNAME=${NET_CARD_NAME}\n\
+      export HCCL_SOCKET_IFNAME=${NET_CARD_NAME}\n\n# MoonCake\nexport VLLM_BASE_PORT=9200\nexport MC_LOG_LEVEL=INFO\nexport MC_LOG_DIR=/home/<user>/logs/mooncake\nexport GLOG_alsologtostderr=1\n\nSCENARIO=${SCENARIO:-\"\
+      online_my_a3\"}\necho \"Running scenario: ${SCENARIO}\"\nsource \"${current_dir}/parallel_config.sh\"\nEXTRA_PARAMS=$([ $NODE_RANK -ne 0 ] && echo \"--headless\" || echo \"--api-server-count 4\")\n\
+      \nexport LD_LIBRARY_PATH=/usr/local/Ascend/asce"
+    truncated: true
+  expected:
+    root_cause_summary: 'GLM-5.1-w8a8 PD 分离 + FULL_DECODE_ONLY 图模式下，dummy/graph-capture run 不走 _prepare_inputs()，所有 kv cache group 的 slot_mapping 未被填充；图捕获时读取到上一 run 残留的未初始化/陈旧 slot 值（并发长短请求改变 batch 结构后更易命中），捕获进图的
+      KV 索引 含垃圾值 → decode 偶发错误输出（复读等），重发请求自愈。修复：dummy run 把 slot_mapping 重置为 pad id（PR #11774，vllm_ascend worker 图捕获路径）。 '
+    root_cause_keywords:
+    - prepare_inputs
+    - slot_mapping
+    leak_critical:
+    - prepare_inputs
+    - slot_mapping
+    resolution: '升级到含 PR #11774 的 vllm-ascend（main 2026-07-11 合入 b9acec8；首个含修复 tag v0.24.0rc1； PR 测试 env v0.23.0）。无配置 workaround——线程未给，不建议在旧版本绕行（问题偶发且无日志）。 '
+- id: FLOW-2026-002
+  source_issue: 10710
+  category: performance
+  namespace: inference/vllm-ascend/performance/
+  held_out_case: VLLM-ASC-10710
+  flow_relevant: null
+  leakage: clean
+  leak_hits: []
+  input:
+    symptoms: "### Your current environment\n\n### 硬件与部署信息\n\n```text\n硬件：Ascend A3，8 张 NPU\n模型：DeepSeek-V4-Flash-w8a8-mtp\n模型路径：/home/<user>/models/DeepSeek-V4-Flash-w8a8-mtp\n\nNPU 数量：8\n数据并行：DP_SIZE=2\n\
+      张量并行：TP_SIZE=4\n专家并行：已开启\n\nvLLM 版本：0.20.2+empty  /opt/vllm_src/vllm-0.20.2\nvLLM-Ascend  0.20.2rc1\nCANN 版本：9.0.0\nPyTorch 版本：2.10.0\ntorch-npu 版本：2.10.0\n\nMooncake：未安装、未启用\n外部 KV Connector：未启用\n\
+      MTP：未启用\n异步调度：未启用\n```\n\n### 相关启动配置\n\n为了获取更多调试信息，启动前设置：\n\n```bash\nexport VLLM_LOGGING_LEVEL=DEBUG\n```\n\n核心启动命令如下：\n\n```bash\nvllm serve /home/<user>/models/DeepSeek-V4-Flash-w8a8-mtp \\\n \
+      \ --served-model-name dsv4 \\\n  --host 0.0.0.0 \\\n  --port 8900 \\\n  --data-parallel-size 2 \\\n  --tensor-parallel-size 4 \\\n  --enable-expert-parallel \\\n  --tokenizer-mode deepseek_v4 \\\n\
+      \  --tool-call-parser deepseek_v4 \\\n  --reasoning-parser deepseek_v4 \\\n  --enable-auto-tool-choice \\\n  --quantization ascend \\\n  --max-model-len 35536 \\\n  --max-num-batched-tokens 4096 \\\
+      \n  --max-num-seqs 16 \\\n  --gpu-memory-utilization 0.86 \\\n  --block-size 128 \\\n  --enable-prefix-caching \\\n  --no-async-scheduling \\\n  --compilation-config '{\n    \"cudagraph_mode\": \"\
+      FULL_DECODE_ONLY\",\n    \"cudagraph_capture_sizes\": [4, 8, 16]\n  }' \\\n  --additional-config '{\n    \"ascend_compilation_config\": {\n      \"enable_npugraph_ex\": true,\n      \"enable_static_kernel\"\
+      : false\n    },\n    \"enable_cpu_binding\": true,\n    \"enable_flashcomm1\": true,\n    \"enable_fused_mc2\": true\n  }'\n```\n\n为了排除 Chunked Prefill 对 Prefix Cache 的影响，复现问题时没有传入：\n\n```text\n--enable-chunked-prefill\n\
+      ```\n\n最终复现配置为：\n\n```text\nENABLE_PREFIX_CACHING=1\nENABLE_CHUNKED_PREFILL=0\nENABLE_MTP=0\nENABLE_ASYNC_SCHEDULING=0\nDP_SIZE=2\nTP_SIZE=4\n```\n\n### \U0001F41B Describe the bug\n\n## 问题描述\n\n\
+      在 `DeepSeek-V4-Flash-w8a8-mtp` 上启用本地 Prefix Cache 后，服务配置和 Metrics 都显示 Prefix Cache 已经开启，但通过普通 `/v1/chat/completions` 接口串行重复发送完全相同的请求时，Prefix Cache 始终没有产生任何命中。\n\n观察到的现象如下：\n\n```text\n1. vllm:cache_config_info\
+      \ 中 enable_prefix_caching=\"True\"。\n2. 每次请求后 prefix_cache_queries_total 都正常增长。\n3. prefix_cache_hits_total 始终为 0。\n4. prompt_tokens_by_source_total{source=\"local_cache_hit\"} 始终为 0。\n5. 关闭 Chunked\
+      \ Prefill 后问题仍然存在。\n6. 测试使用普通 /v1/chat/completions 接口串行执行，不是同一 batch 内无法复用的问题。\n7. system prompt、user prompt、采样参数和 chat_template_kwargs 完全相同，连续执行 8 次后仍然没有命中。\n8. 所有请求均正常返回 HTTP 200，服务没有崩溃。\n```\n\n\
+      当前每个请求约包含：\n\n```text\nprompt_tokens ≈ 10102\n```\n\n8 次完全相同请求的累计指标：\n\n```text\nPrefix 查询 Token 增量：80816\nPrefix 命中 Token 增量：0\nPrefix 命中率：0.00%\n```\n\n相同 System Prompt、不同 User Prompt 的累计指标：\n\n\
+      ```text\nPrefix 查询 Token 增量：60584\nPrefix 命中 Token 增量：0\nPrefix 命中率：0.00%\n```\n\n不同 System Prompt 对照组的累计指标：\n\n```text\nPrefix 查询 Token 增量：40480\nPrefix 命中 Token 增量：0\nPrefix 命中率：0.00%\n```\n\n---\n\
+      \n## 最小复现代码\n\n```python\nimport time\nfrom dataclasses import dataclass\n\nimport requests\n\nAPI_URL = \"http://127.0.0.1:8900/v1/chat/completions\"\nMETRICS_URL = \"http://127.0.0.1:8900/metrics\"\
+      \n\nMODEL = \"dsv4\"\nROUNDS = 8\n\ndef build_system_prompt() -> str:\n    base = \"\"\"\n你是一名专业技术助手。\n\n回答要求：\n1. 使用中文回答。\n2. 内容准确、简洁。\n3. 不要输出无关内容。\n4. 不要输出思考过程。\n\"\"\".strip()\n\n    rules = \"\
+      \\n\".join(\n        (\n            f\"补充规则 {i}：回答必须保持技术准确性，\"\n            \"不得遗漏关键条件，不得输出与问题无关的内容。\"\n        )\n        for i in range(1, 401)\n    )\n\n    return base + \"\\n\\n\" + rules\n\n\
+      SYSTEM_PROMPT = build_system_prompt()\nUSER_PROMPT = \"请解释什么是 Prefix Cache，并用一句话说明它的主要收益。\"\n\n@dataclass\nclass Metrics:\n    queries: float\n    hits: float\n    local_hits: float\n\ndef metric_sum(\n\
+      \    text: str,\n    name: str,\n    required_labels: tuple[str, ...] = (),\n) -> float:\n    total = 0.0\n\n    for line in text.splitlines():\n        line = line.strip()\n\n        if not line\
+      \ or line.startswith(\"#\"):\n            continue\n\n        if not line.startswith(name):\n            continue\n\n        if any(label not in line for label in required_labels):\n            continue\n\
+      \n        total += float(line.rsplit(None, 1)[1])\n\n    return total\n\ndef read_metrics() -> Metrics:\n    response = requests.get(METRICS_URL, timeout=30)\n    response.raise_for_status()\n\n \
+      \   text = response.text\n\n    return Metrics(\n        queries=metric_sum(\n            text,\n            \"vllm:prefix_cache_queries_total\",\n            ('model_name=\"dsv4\"',),\n        ),\n\
+      \        hits=metric_sum(\n            text,\n            \"vllm:prefix_cache_hits_total\",\n            ('model_name=\"dsv4\"',),\n        ),\n        local_hits=metric_sum(\n            text,\n\
+      \            \"vllm:prompt_tokens_by_source_total\",\n            (\n                'model_name=\"dsv4\"',\n                'source=\"local_cache_hit\"',\n            ),\n        ),\n    )\n\ndef\
+      \ main() -> None:\n    payload = {\n        \"model\": MODEL,\n        \"messages\": [\n            {\n                \"role\": \"system\",\n                \"content\": SYSTEM_PROMPT,\n        \
+      \    },\n            {\n                \"role\": \"user\",\n                \"content\": USER_PROMPT,\n            },\n        ],\n        \"max_tokens\": 32,\n        \"temperature\": 0.0,\n   \
+      \     \"top_p\": 1.0,\n        \"stream\": False,\n        \"chat_template_kwargs\": {\n            \"enable_thinking\": False\n        },\n    }\n\n    test_before = read_metrics()\n\n    for index\
+      \ in range(1, ROUNDS + 1):\n        before = read_metrics()\n        started = time.perf_counter()\n\n        response = requests.post(\n            API_URL,\n            json=payload,\n         \
+      \   timeout=1800,\n        )\n        response.raise_for_status()\n\n        elapsed = time.perf_counter() - started\n        data = response.json()\n\n        time.sleep(0.5)\n        after = read_metrics()\n\
+      \n        usage = data.get(\"usage\", {})\n\n        query_delta = after.queries - before.queries\n        hit_delta = after.hits - before.hits\n        local_hit_delta = after.local_hits - before.local_hits\n\
+      \n        hit_rate = 0.0\n        if query_delta > 0:\n            hit_rate = hit_delta / query_delta * 100\n\n        print(f\"轮次={index}\")\n        print(f\"耗时={elapsed:.3f}s\")\n        print(f\"\
+      Prompt Token 数={usage.get('prompt_tokens')}\")\n        print(f\"Prefix 查询 Token 增量={query_delta}\")\n        print(f\"Prefix 命中 Token 增量={hit_delta}\")\n        print(f\"本地缓存命中 Token 增量={local_hit_delta}\"\
+      )\n        print(f\"Prefix 增量命中率={hit_rate:.2f}%\")\n        prin"
+    truncated: true
+  expected:
+    root_cause_summary: 'DSV4-Flash 属混合压缩 KV（compression_ratio=128）：其 prefix-cache 的最小可命中前缀长度 放大为 block_size×128（block_size=128 → 16k；开启 MTP/投机解码再翻倍 → 32k）。线程请求 prompt ≈10.1k，恒低于命中下限——完全相同请求（含 system-prompt
+      复用组）也永远无法命中， prefix_cache_hits_total 保持 0、每请求全量 prefill。block_size=32 把下限降到 4k（MTP 8k）。 0.22.1rc1 及更早即使 block32 仍有残案，v0.23.0rc1（RFC #10517 系列）解决。 '
+    root_cause_keywords:
+    - block_size
+    - compression_ratio
+    - prefix_cache_hits_total
+    leak_critical:
+    - compression_ratio
+    resolution: 'A) 配置：--block-size 32（最小命中长度 16k→4k，MTP/投机开则 8k），命中恢复正常； B) 若在 0.22.1rc1 及更早仍复现 → 升级 vllm-ascend ≥ v0.23.0rc1（含 prefix-cache/混合 KV 修复系列， 跟踪 RFC #10517 / vllm-ascend #10009；上游 retention
+      相关 vllm #43447/#45845）。 '
+- id: FLOW-2026-003
+  source_issue: 10876
+  category: performance
+  namespace: inference/vllm-ascend/performance/
+  held_out_case: VLLM-ASC-10876
+  flow_relevant: null
+  leakage: clean
+  leak_hits: []
+  input:
+    symptoms: "### Your current environment\n\n### \U0001F41B Describe the bug\n\n### The phenomenon\n\n+ **Explanation of Long Prefill Duration**\n\nUsing evalscope perf for load testing, with **concurrency\
+      \ set to 1, max-tokens=1** to generate only one token, testing the extreme Prefill performance:\n\n```shell\nminturn=4\nmaxturn=4\nevalscope perf \\\n  --url \"http://$host:$port/v1/chat/completions\"\
+      \ \\\n  --model default-model \\\n  --tokenizer-path $model_path \\\n  --api-key \"sk-test\" \\\n  --api openai \\\n  --tokenizer-path $model_path \\\n  --dataset random_multi_turn \\\n  --multi-turn\
+      \ \\\n  --min-turns $minturn \\\n  --max-turns $maxturn \\\n  --min-first-turn-length 45000 \\\n  --max-first-turn-length 55000 \\\n  --min-prompt-length 800 \\\n  --max-prompt-length 1200 \\\n  --max-tokens\
+      \ 1 \\\n  --parallel 1 \\\n  --number 1 \\\n  --stream \\\n  --read-timeout 1800 \\\n  --outputs-dir $results_dir \\\n  --extra-args '{\"ignore_eos\": true}'\n```\n\nAs shown in the test command above,\
+      \ the initial input prompt length is around 50,000 tokens, with approximately 1,000 tokens appended per round in a 4-round conversation. \nIn multi-turn conversation scenarios, the average prefill\
+      \ duration is 5.6 seconds, with P90/P99 values at 7.3 seconds, which is quite long\n\n```plain\n               Latency Percentile Distribution   [TTFT: ms,  Lat: s]\n┏━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━━┳━━━━━━━┓\n\
+      ┃      ┃    TTFT ┃    TTFT ┃    TTFT ┃    TTFT ┃    Lat ┃    Lat ┃    Lat ┃    Lat┃\n┃Conc. ┃     Avg ┃     P50 ┃     P90 ┃     P99 ┃    Avg ┃    P50 ┃    P90 ┃    P99┃\n┡━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━━╇━━━━━━━┩\n\
+      │    1 │  5624.9 │  5123.4 │  7308.0 │  7308.0 │  5.625 │  5.120 │  7.310 │  7.310│\n└──────┴─────────┴─────────┴─────────┴─────────┴────────┴────────┴────────┴───────┘\n```\n\n+ **Explanation of\
+      \ Unstable Prefill Duration**\n\nUsing the same evalscope perf script as above, increasing the parallel / number test values, we observed occasional test results where increasing concurrency actually\
+      \ decreased the average Prefill duration, which is unreasonable:\n\n+ concurrency = 2, prefill avg duration = 7122.5ms\n+ concurrency = **3**, prefill avg duration = **6041.8ms**\n\n```shell\nmax_model_len=135168\n\
+      prefill_chunk_size=8192\ntpsize=8\ndpsize=1\npcpsize=1\n\nvllm serve $model_path \\\n  --served-model-name deepseek-v4-flash \\\n  --served-model-name default-model \\\n  --safetensors-load-strategy\
+      \ 'prefetch' \\\n  --max-model-len $max_model_len \\\n  --block-size 32 \\\n  --enable-chunked-prefill \\\n  --enable-prefix-caching \\\n  --max-num-batched-tokens $prefill_chunk_size \\\n  --gpu-memory-utilization\
+      \ 0.93 \\\n  --max-num-seqs 32 \\\n  --data-parallel-size $dpsize \\\n  --tensor-parallel-size $tpsize \\\n  --prefill-context-parallel-size $pcpsize \\\n  --enable-expert-parallel \\\n  --quantization\
+      \ ascend \\\n  --port 8080 \\\n  --tokenizer-mode deepseek_v4 \\\n  --tool-call-parser deepseek_v4 \\\n  --enable-auto-tool-choice \\\n  --reasoning-parser deepseek_v4 \\\n  --async-scheduling \\\n\
+      \  --profiler-config '{\"profiler\": \"torch\", \"torch_profiler_dir\": \"./vllm_profile\", \"torch_profiler_with_stack\": false}' \\\n  --additional-config '{\"enable_cpu_binding\":true,\"multistream_overlap_shared_expert\"\
+      :true,\"multistream_dsa_preprocess\":true,\"enable_flashcomm1\": true,\"enable_dsa_cp\": true}' \\\n  --compilation-config '{\"cudagraph_mode\":\"FULL_DECODE_ONLY\",\"cudagraph_capture_sizes\":[1,2,4,5,6,8,10,12,14,16,18,20,24,28,30,32]}'\
+      \ \\\n  --model-loader-extra-config '{\"enable_multithread_load\":true,\"num_threads\":32}'\n```\n\n### Further Analysis:\n\n+ **Code Logging/Timing**\n\nI added timing logs in the vllm-ascend code\
+      \ to print the processing time for each phase:\n\n```plain\n06-19 15:32:57 DEBUG execute_model: attn_state=ChunkedPrefill num_reqs=1 total_scheduled_tokens=8192 forward_ms=456.98 logits_ms=0.48 attn_backend=ABCMeta\
+      \ num_computed_tokens=[6062] num_scheduled_tokens=[8192]\n06-19 15:32:57 DEBUG sample_tokens complete: num_reqs=1 attn_state=ChunkedPrefill execution_time_ms=0.00\n06-19 15:32:57 DEBUG execute_model:\
+      \ attn_state=ChunkedPrefill num_reqs=1 total_scheduled_tokens=8192 forward_ms=453.49 logits_ms=0.48 attn_backend=ABCMeta num_computed_tokens=[14254] num_scheduled_tokens=[8192]\n06-19 15:32:57 DEBUG\
+      \ sample_tokens complete: num_reqs=1 attn_state=ChunkedPrefill execution_time_ms=0.00\n06-19 15:32:58 DEBUG execute_model: attn_state=ChunkedPrefill num_reqs=1 total_scheduled_tokens=8192 forward_ms=453.74\
+      \ logits_ms=0.48 attn_backend=ABCMeta num_computed_tokens=[22446] num_scheduled_tokens=[8192]\n06-19 15:32:58 DEBUG sample_tokens complete: num_reqs=1 attn_state=ChunkedPrefill execution_time_ms=0.00\n\
+      06-19 15:32:58 DEBUG execute_model: attn_state=ChunkedPrefill num_reqs=1 total_scheduled_tokens=8192 forward_ms=453.54 logits_ms=0.47 attn_backend=ABCMeta num_computed_tokens=[30638] num_scheduled_tokens=[8192]\n\
+      06-19 15:32:58 DEBUG sample_tokens complete: num_reqs=1 attn_state=ChunkedPrefill execution_time_ms=0.00\n06-19 15:32:59 DEBUG execute_model: attn_state=ChunkedPrefill num_reqs=1 total_scheduled_tokens=8192\
+      \ forward_ms=458.69 logits_ms=0.47 attn_backend=ABCMeta num_computed_tokens=[38830] num_scheduled_tokens=[8192]\n06-19 15:32:59 DEBUG sample_tokens complete: num_reqs=1 attn_state=ChunkedPrefill execution_time_ms=0.00\n\
+      06-19 15:32:59 DEBUG execute_model: attn_state=ChunkedPrefill num_reqs=1 total_scheduled_tokens=8192 forward_ms=453.19 logits_ms=0.47 attn_backend=ABCMeta num_computed_tokens=[47022] num_scheduled_tokens=[8192]\n\
+      06-19 15:32:59 DEBUG sample_tokens complete: num_reqs=1 attn_state=ChunkedPrefill execution_time_ms=0.00\n06-19 15:33:00 DEBUG execute_model: attn_state=ChunkedPrefill num_reqs=2 total_scheduled_tokens=8192\
+      \ forward_ms=447.69 logits_ms=0.57 attn_backend=ABCMeta num_computed_tokens=[55214, 0] num_scheduled_tokens=[388, 7804]\n06-19 15:33:00 DEBUG sample_tokens complete: num_reqs=2 attn_state=ChunkedPrefill\
+      \ execution_time_ms=0.00\n06-19 15:33:00 DEBUG execute_model: attn_state=ChunkedPrefill num_reqs=1 total_scheduled_tokens=8192 forward_ms=454.47 logits_ms=0.48 attn_backend="
+    truncated: true
+  expected:
+    root_cause_summary: 'dsa_cp_forward_prefill 路径（AscendDSACPImpl._forward，vllm_ascend/attention/context_parallel/ dsa_cp.py）调用的 triton rms kernel（vllm_ascend/ops/triton/rms_norm.py）把 TOTAL_BATCH 参数标成
+      tl.constexpr：chunked prefill 下每批 token 数不同 → 每种新 shape 都触发整 kernel 重编译（单次 ~4s 级、CPU 侧编译不在 GPU 执行流上重叠），表现为偶发超长 prefill forward / TTFT 长尾。修复： 去掉 tl.constexpr（PR #11211），变长 batch 复用同一 kernel，perf 经 profiling
+      验证几乎无损。 '
+    root_cause_keywords:
+    - AscendDSACPImpl
+    - constexpr
+    - context_parallel
+    - dsa_cp.py
+    - dsa_cp_forward_prefill
+    - rms_norm.py
+    leak_critical:
+    - AscendDSACPImpl
+    - constexpr
+    - context_parallel
+    - dsa_cp.py
+    - rms_norm.py
+    resolution: '升级到含 PR #11211 的 vllm-ascend（main 2026-07-03 合入 76d338a72；含于 v0.23.0rc1， 2026-07-19）。旧版可临时用『pad 单批 token 到 chunk 大小』workaround 缓解（本质是约束 total_batch 取值减少重编译），升级后不再需要。 '
+- id: FLOW-2026-004
+  source_issue: 10970
+  category: performance
+  namespace: inference/vllm-ascend/performance/
+  held_out_case: VLLM-ASC-10970
+  flow_relevant: null
+  leakage: clean
+  leak_hits: []
+  input:
+    symptoms: "### Your current environment\n\n### \U0001F41B Describe the bug\n\n环境：NPU-A2，四机PD分离\n模型：DeepSeek-V4-Flash\n现象：多并发时 P节点的Prefix cache hit rate仅维持在10%左右，于是参考https://github.com/vllm-project/vllm/pull/43447\
+      \  添加环境变量VLLM_PREFIX_CACHE_RETENTION_INTERVAL后，发送两条相同的请求都不会命中prefix cahce\nP节点参数：\n#!/bin/bash\n\nexport VLLM_PREFIX_CACHE_RETENTION_INTERVAL=16384\nexport VLLM_RPC_TIMEOUT=3600000\nexport VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=30000\n\
+      export ASCEND_CONNECT_TIMEOUT=10000\nexport ASCEND_TRANSFER_TIMEOUT=10000\nexport HCCL_OP_EXPANSION_MODE=\"AIV\"\nexport TASK_QUEUE_ENABLE=1\nexport ASCEND_BUFFER_POOL=\"4:8\"\nexport OMP_PROC_BIND=\"\
+      false\"\nexport OMP_NUM_THREADS=64\nexport PYTORCH_NPU_ALLOC_CONF=\"expandable_segments:True\"\nexport VLLM_USE_V1=1\nexport HCCL_BUFFSIZE=512\nexport GLOO_SOCKET_IFNAME=\"eth0\"\nexport TP_SOCKET_IFNAME=\"\
+      eth0\"\nexport HCCL_SOCKET_IFNAME=\"eth0\"\nexport VLLM_WORKER_MULTIPROC_METHOD=\"fork\"\nexport PYTHONHASHSEED=0\n\nvllm serve \"/opt/Dsv4-flash-bf16\" \\\n  --port 8124 \\\n  --served-model-name\
+      \ DeepSeek-V4-Flash-023 \\\n  --gpu-memory-utilization 0.9 \\\n  --data-parallel-size 2 \\\n  --tensor-parallel-size 8 \\\n  --pipeline-parallel-size 1 \\\n  --enable-expert-parallel \\\n  --data-parallel-rpc-port\
+      \ 8042 \\\n  --data-parallel-address  \\\n  --data-parallel-rank 0 \\\n  --enable-prompt-tokens-details \\\n  --enable-prefix-caching \\\n  --no-disable-hybrid-kv-cache-manager \\\n  --enforce-eager\
+      \ \\\n  --max-model-len 204800 \\\n  --max-num-batched-tokens 8192 \\\n  --max-num-seqs 16 \\\n  --seed 1024 \\\n  --block-size 128 \\\n  --async-scheduling \\\n  --trust-remote-code \\\n  --tokenizer-mode\
+      \ deepseek_v4 \\\n  --tool-call-parser deepseek_v4 \\\n  --enable-auto-tool-choice \\\n  --model-loader-extra-config '{\"enable_multithread_load\":\"true\",\"num_threads\":128}' \\\n  --safetensors-load-strategy\
+      \ prefetch \\\n  --speculative-config '{\"num_speculative_tokens\":2,\"method\":\"mtp\",\"enforce_eager\":true}' \\\n  --additional-config '{\"enable_cpu_binding\":true,\"enable_shared_expert_dp\"\
+      :true,\"enable_flashcomm1\":true, \"multistream_overlap_shared_expert\": false}' \\\n  --kv-transfer-config '{\"kv_connector\":\"MooncakeHybridConnector\",\"kv_buffer_device\":\"npu\",\"kv_role\"\
+      :\"kv_producer\",\"kv_parallel_size\":1,\"kv_port\":\"30000\",\"engine_id\":\"0\",\"kv_rank\":0,\"kv_connector_extra_config\":{\"prefill\":{\"dp_size\":2,\"tp_size\":8},\"decode\":{\"dp_size\":2,\"\
+      tp_size\":8}}}'"
+    truncated: false
+  expected:
+    root_cause_summary: DeepSeek-V4 混合 KV cache（含 EAGLE/MTP 层组）中，写路径 cache_blocks→reachable_block_mask 按 manager.use_eagle 保留 checkpoint tail，读路径 find_longest_cache_hit 对合并后的 eagle attention group 应用 drop_eagle_block。vllm-ascend
+      AscendHybridKVCacheCoordinator. verify_and_split_kv_cache_groups 只把 eagle_group_ids 里的单组标记 use_eagle，未传播给 attention group 中共享同一 spec 的 sibling manager（上游 _annotate_eagle_groups_deepseek_v4 也只标单组）
+    root_cause_keywords:
+    - AscendHybridKVCacheCoordinator
+    - annotate_eagle_groups_deepseek_v4
+    - cache_blocks
+    - checkpoint
+    - drop_eagle_block
+    - eagle_group_ids
+    - find_longest_cache_hit
+    - get_cached_block
+    - reachable_block_mask
+    - retention
+    - use_eagle
+    - verify_and_split_kv_cache_groups
+    leak_critical:
+    - AscendHybridKVCacheCoordinator
+    - annotate_eagle_groups_deepseek_v4
+    - cache_blocks
+    - drop_eagle_block
+    - eagle_group_ids
+    - find_longest_cache_hit
+    - get_cached_block
+    - reachable_block_mask
+    - use_eagle
+    - verify_and_split_kv_cache_groups
+    resolution: '升级到含 PR #11107 的版本：verify_and_split_kv_cache_groups 对 eagle 所在 attention group 的 每个 manager（含同 spec sibling）置 use_eagle=True，对齐上游 HybridKVCacheCoordinator 语义。 不要用"移除 P 节点 async scheduling"作为交付
+      fix——仅规避观察面。retention interval 后续由 上游 vllm #45845 提供（RFC #10517 记录 vllm-ascend 无需额外适配）。 '
+- id: FLOW-2026-005
+  source_issue: 11127
+  category: precision
+  namespace: inference/vllm-ascend/precision/
+  held_out_case: VLLM-ASC-11127
+  flow_relevant: null
+  leakage: clean
+  leak_hits: []
+  input:
+    symptoms: '### Your current environment
+
+
+      [Bug]: 0.20版本、glm5.1 w8a8，A3 PD分离版本，开启kv_pool池化功能（经过实验，开不开启池化，都有精度问题），decode开启MTP，压测1-2小时候，decode节点的DP就逐渐出现MTP接受率不足1% 无法恢复，手工curl出现精度问题
+
+
+      ### 🐛 Describe the bug
+
+
+      [Bug]: 0.20版本、glm5.1 w8a8，A3 PD分离版本，开启kv_pool池化功能（经过实验，开不开启池化，都有精度问题），decode开启MTP，压测1-2小时候，decode节点的DP就逐渐出现MTP接受率不足1% 无法恢复，手工curl出现精度问题
+
+
+      DP：出现 MTP接受率下降：
+
+      <img width="2800" height="707" alt="Image" src="https://github.com/user-attachments/assets/b7b2dc47-512b-4907-ac04-826d11715cc2" />
+
+
+      手工curl精度问题：
+
+
+      <img width="2700" height="976" alt="Image" src="https://github.com/user-attachments/assets/29b69054-c2f4-4552-87b4-d229260975a3" />
+
+
+      排除实验：
+
+      关闭池化功能，验证也有精度问题
+
+
+      <img width="2839" height="1323" alt="Image" src="https://github.com/user-attachments/assets/92fbaa1f-0ddd-47e0-8b32-da94f97615e6" />'
+    truncated: false
+  expected:
+    root_cause_summary: 'GLM-5.1（w8a8）+ MTP（spec-decode）+ PD 分离（decode 节点多 DP）压测场景下， spec-decode drafter 输入判断 input_fits_in_drafter 在多 DP 下处理不当，长时间压测后 MTP 接受率退化到不足 1% 且无法恢复，输出出现精度错误。PR #10117 的修复=移除 drafter
+      侧有问题的 input_fits_in_drafter 判断，并把投机掩码填充改为 1（同修复 vllm#44185 moe multi-DP hang 与 #9221 回归）。thread（issue completed 关闭 2026-07-03）确认 “合入 pr10117 后问题修复”。 '
+    root_cause_keywords:
+    - completed
+    - input_fits_in_drafter
+    leak_critical:
+    - completed
+    - input_fits_in_drafter
+    resolution: '升级到含 PR #10117（vllm-ascend main，merged 2026-06-08）的版本并重启服务； workaround：升级前压测/联调关闭 MTP（thread 确认可规避精度问题）。 0.20.x 官方是否回传该修复以 changelog 为准。 '
+  flow_relevant_note: 原指向的流程已于 2026-09-10 降级归档（案例索引型，EV-2026-038）；该样本现为「无流程覆盖」
+- id: FLOW-2026-006
+  source_issue: 12030
+  category: precision
+  namespace: inference/vllm-ascend/precision/
+  held_out_case: VLLM-ASC-12030
+  flow_relevant: null
+  leakage: clean
+  leak_hits: []
+  input:
+    symptoms: '### Your current environment
+
+
+      [Bug]: vllm-ascend 0.20 + glm5.1 w8a8 910C pd分离环境，客户业务方反馈有特定请求的流式响应经常出现单词最后1个字符重复问题
+
+      ，非流式响应没问题。
+
+
+      <img width="845" height="266" alt="Image" src="https://github.com/user-attachments/assets/0db3ad78-190d-4d09-a45c-5bb7e7dc86e5" />
+
+
+      <img width="799" height="26" alt="Image" src="https://github.com/user-attachments/assets/a5dfabb6-91d5-477f-a002-475a64706d8b" />
+
+
+      ### 🐛 Describe the bug
+
+
+      [Bug]: vllm-ascend 0.20 + glm5.1 w8a8 910C pd分离环境，客户业务方反馈有特定请求的流式响应经常出现单词最后1个字符重复问题
+
+      ，非流式响应没问题。
+
+
+      <img width="845" height="266" alt="Image" src="https://github.com/user-attachments/assets/81a98257-9d59-46dd-9a77-cfedcbba6d4f" />
+
+
+      <img width="799" height="26" alt="Image" src="https://github.com/user-attachments/assets/98d9181a-617e-41e0-a8f9-14e03d06b7f0" />'
+    truncated: false
+  expected:
+    root_cause_summary: 'GLM5 的流式 tool-call 响应由 vllm-ascend 特有的 glm4_moe_tool_parser.py 解析器处理， 其解析逻辑存在缺陷：特定请求（function-calling）的流式响应中单词最后 1 个字符被重复； 非流式响应路径不经此 parser，表现正常。修复随 v0.23.0 发布（parser 更新），线程未定位到
+      独立 fix PR，仅提供修复版脚本附件与 0.23.0 复测闭环。 '
+    root_cause_keywords:
+    - function
+    - glm4_moe_tool_parser.py
+    leak_critical:
+    - function
+    - glm4_moe_tool_parser.py
+    resolution: '升级到 vllm-ascend 0.23.0+（评论#8 用同一 curl 复测确认已解决）；临时 workaround： 用评论#3 附件的修复版 glm4_moe_tool_parser.py 替换部署中同路径脚本后重启。 '
+- id: FLOW-2026-007
+  source_issue: 12957
+  category: precision
+  namespace: inference/vllm-ascend/precision/
+  held_out_case: VLLM-ASC-12957
+  flow_relevant: ascend-garbled-output-triage
+  leakage: clean
+  leak_hits: []
+  input:
+    symptoms: "### Your current environment\n\nvllm：0.20.2\nvllm-ascend：0.20.2\n模型:glm-5.1-w8a8\n硬件:4 台 a3 16 卡 pod\n\n### \U0001F41B Describe the bug\n\n **启动脚本与配置**\n\n  - 脚本:\n  \n[start_d.sh](https://github.com/user-attachments/files/30440806/start_d.sh)\n\
+      [start_p.sh](https://github.com/user-attachments/files/30440807/start_p.sh)\n\n  - Prefill:PP=4, TP=8, DP=1,PREFILL_PP_LAYER_PARTITION=\"20,20,20,18\"\n  - Decode:DP=8, TP=4\n  - use_ascend_direct=true(ascend_direct\
+      \ RDMA / ADXL)\n  - 未开kvpool也可复现\n  - kv_role:prefill=kv_producer,decode=kv_consumer\n \n**复现方式**\n\n  4 台同超节点 pod 拉起 PD-sep 后,第一个请求即发 badcase:\n `curl --location \"http://<proxy>:7001/v1/chat/completions\"\
+      \ \\\n    --header 'Content-type: application/json' \\\n    --data '{\n      \"model\": \"auto\",\n      \"messages\": [\n        {\n          \"role\": \"user\",\n          \"content\": \"人工智能（AI）是计算机科学的一个分支，旨在创建能够执行通常需要人类智能的任务的系统。自20世纪50年代诞生以来，AI经历了多次起伏，如今得益于大数据、强大算力和先进算法，迎来了蓬勃发展。机器学习作为AI的核心，让计算机通过数据学习规律，而不需要显式编程。深度学习更是通过多层神经网络，在图像识别、语音识别和自然语言处理等领域取得了突破性进展。在实际应用中，AI已广泛用于医疗影像诊断、自动驾驶汽车、智能客服、金融风险预测和个性化推荐等场景，极大提升了效率和便利性。然而，AI的快速发展也带来诸多挑战，如数据隐私、算法偏见、就业替代和武器化风险，引发了社会各界的广泛讨论。为了确保AI的安全可控，研究者们提出了可解释AI、联邦学习、对抗训练等技术，政府和国际组织也纷纷制定伦理准则和法律法规。展望未来，AI有望与脑科学、量子计算等前沿领域融合，创造出更强大的通用人工智能，但也必须警惕潜在的超智能风险。我们应当在发展技术的同时，加强人文关怀，确保AI造福全人类。您对以上关于人工智能的论述有何看法？请结合您的知识，给出您对这篇文章的评价、补充或不同意见。\"\
+      \n        }\n      ],\n      \"stream\": false,\n      \"max_tokens\": 128,\n      \"temperature\": 0\n    }'`\n  \n  (prompt_tokens=261,3 个 KV blocks)\n\n**预期(复现成功)**\n\n  - 首请求返回乱码:与 prompt 无关的随机英文,如\
+      \ \"The is a simple command-line tool that prints its input... echo is a command that prints its input back to the terminal...\"(prompt_tokens=261,finish=length,content=null)。\n  - 紧接着发普通请求 → 正常;继续发\
+      \ badcase → 仍乱码。\n  - 对照:若服务起来后先发一个普通请求,再发 badcase → 不乱码。\n\n**现象**\n\n  1. 服务拉起后首个请求是 badcase → 输出乱码(随机英文,与 prompt 无关)。\n  2. 此时发别的普通请求 → 无乱码。\n  3. 继续多次发 badcase → 均乱码。\n  4. 但若服务拉起后第一个请求是普通请求(非\
+      \ badcase)→ 不出现乱码(即使后续发 badcase 也不乱)。\n  5. 短 prompt(如\"1+1\")正常。\n  6. P 节点改 DP=4(无 PP)→ 不乱码\n\n**已做的实验(消融,均已排除与本问题直接相关)**\n\n  - 关闭 MTP\n  - 关闭 prefix cache(P、D 分别)\n  - 关闭 reasoning parser\n  -\
+      \ kvcache 清零(dummy run 后强行覆盖赋值)\n  - 回退 slot mapping=-1(claudecode 偶现乱码修复 PR)\n  - drafter slot mapping=-1(对上一修复 PR 的补充)\n  - 关闭图模式(enforce_eager)\n  **均存在乱码现象**"
+    truncated: false
+  expected:
+    root_cause_summary: 'PD 分离 + PP4 下，P 侧 prefill 每层把 k_pe 写入 kv_cache[1]（V cache）后经 kv_ag_handle.wait() 等待 all-gather 完成，但未同步 NPU 当前流；D 侧 ascend_direct RDMA pull 在 prefill forward 返回后立即读取 k_pe，读到尚未落盘/对跨
+      engine 不可见的陈旧值。 每个 PP stage 边界（layer 20→21、40→41、60→61）引入一次偏差，首请求（PP 时序冷启动 + 特定 content）输出乱码。修复：vllm_ascend/attention/sfa_v1.py 在 kv_ag_handle.wait() 后加 torch.npu.current_stream().synchronize()（PR
+      #14269）。 '
+    root_cause_keywords:
+    - ascend_direct
+    - current_stream
+    - kv_ag_handle
+    - kv_cache
+    - sfa_v1.py
+    - synchronize
+    leak_critical:
+    - current_stream
+    - kv_ag_handle
+    - kv_cache
+    - sfa_v1.py
+    - synchronize
+    resolution: '升级到包含 PR #14269 的版本；或本地在 vllm_ascend/attention/sfa_v1.py 的 enable_dsa_cp 分支 kv_ag_handle.wait() 后追加 torch.npu.current_stream().synchronize()（每层一次，仅 P 侧生效）。 '
+- id: FLOW-2026-008
+  source_issue: 13973
+  category: performance
+  namespace: inference/vllm-ascend/performance/
+  held_out_case: VLLM-ASC-13973
+  flow_relevant: msprof-comm-bottleneck-thresholds
+  leakage: clean
+  leak_hits: []
+  input:
+    symptoms: "### Your current environment\n\n| 项目 | 值 |\n| :--- | :--- |\n| PyTorch 版本 | 2.10.0+cpu |\n| torch_npu 版本 | 2.10.0.post2 |\n| Python 版本 | 3.11.15 |\n| vllm 版本 | 0.23.1rc1.dev1291+g568afb3a1\
+      \ (branch: releases/v0.26.0, commit: 568afb3a1, 2026-07-26) |\n| vllm-ascend 版本 | 0.19.1rc2.dev1317+ge8156772d (branch: releases/v0.26.0rc, commit: e8156772d, 2026-08-07) |\n| OS | openEuler 24.03\
+      \ (LTS)（容器环境） |\n| CANN 版本 | 9.0.1 |\n| 硬件 | Ascend 910 × 16 cards (2 pods × 8 NPU, each NPU 2 chips) |\n\n**Baseline (v0.23) environment used for comparison**:\n\n| 项目 | 值 |\n| :--- | :--- |\n| vllm\
+      \ 版本 | 0.23.1.dev30+gfe30dc0a8 |\n| vllm-ascend 版本 | 0.23.0rc2.dev6+g5e1467062 (local branch `v0.23.0`, commit 5e1467062) |\n| CANN 版本 | 9.0.0 |\n| torch_npu 版本 | 2.10.0 |\n| 硬件 | Ascend 910 × 16\
+      \ cards (same pod topology) |\n\nBoth versions run with **identical parallel topology** (verified via `profiler_metadata.json` `parallel_group_info`): TP=8, DCP=8, EP=32, mc2=32, `dcp_comm_backend=ag_rs`.\
+      \ So the regression is **not** attributable to a parallel-config difference. `enable_sparse_sfa_c8=false` in **both** versions.\n\n---\n\n### \U0001F41B Describe the bug\n\nOn vllm-ascend v0.26.0rc,\
+      \ the GLM-5.2 (w4a8) **P-node (prefill, `kv_role=kv_producer`)** shows a severe prefill-time regression versus v0.23, under the same DCP=8/TP=8/EP=32 topology and the same `enable_sparse_sfa_c8=false`\
+      \ setting. Profiling on the same P-node rank0 shows the DCP collective communication volume grew **~5–6x**, raising the non-overlapped communication share of step time from **1.58% → 8.19%**.\n\n\
+      #### Bench result comparison (single P-node, same `cc=64` workload)\n\n| Metric | v0.23 (5e1467062) | v0.26 (baaf1809c) |\n| :--- | :--- | :--- |\n| bench params | cc=64, rr=1.8, num=1000, output-len=700\
+      \ | cc=64, rr=1.72, num=1000, output-len=1 |\n| QPS (req/s) | 1.69 | 1.14 |\n| TTFT (ms)  Mean / P50 / P90 / P99 | 7527 / 7617 / 10091 / 12038 | 52038 / 54296 / 63610 / 67826 |\n| TPOT (ms)  Mean\
+      \ / P50 / P90 / P99 | 45.28 / 44.81 / 59.54 / 68.21 | 0.00 / 0.00 / 0.00 / 0.00 (output=1, no decode) |\n| ITL (ms)  Mean / P50 / P90 / P99 | 144.68 / 148.04 / 153.51 / 177.88 | 0.03 / 0.03 / 0.05\
+      \ / 0.05 |\n| Cache hit rate | Prefix 17.7% / External 0% | Prefix 17.5% / External 2.8% |\n| P0 throughput (steady mid-bench) | prompt 38811 tok/s, gen 2.0 tok/s (Running 6 / Waiting 0, KV 63.0%)\
+      \ | prompt 29911 tok/s, gen 1.3 tok/s (Running 7 / Waiting 23, KV 4.5%) |\n| P0 memory | weights 29.54 GB, KV cache 18.73 GiB (1,412,096 tokens) | weights 20.21 GB, KV cache 24.30 GiB (1,831,936 tokens)\
+      \ |\n\n> **Bench parity note**: the v0.23 row used `output-len=700` (prefill+decode) while the v0.26 row used `output-len=1` (pure prefill), so QPS / throughput / TPOT are **not** strictly apples-to-apples.\
+      \ **TTFT is comparable** — it measures prefill latency only (time to first token), and reflects the single-prefill wall time under the same `cc=64`. The TTFT P50 regression is **7617 ms → 54296 ms\
+      \ (~7.1x)**. The profiling metrics below are independent of the bench output-len setting.\n\n---\n\n### Profiling comparison (objective, same P-node rank0 `dp0_pp0_tp0_dcp0_ep0_rank0`)\n#### 单次forward耗时差异（增长800ms）\n\
+      v0.23 单step耗时约2.0s，v0.26 单step耗时约2.8s\n<img width=\"3304\" height=\"1892\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/fef38c84-003a-4c96-85e9-fc4ff9f7bd29\" />\n\n<img width=\"\
+      1884\" height=\"783\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/9da033fc-dc7c-4326-b5df-4223052f139b\" />\n\n#### 核心耗时差异来源分析\n观察到DispatchFFNCombineW4A8算子单次执行时间劣化严重（15.2ms→22.6ms\
+      \ * 78层，总计劣化近600ms）\n<img width=\"620\" height=\"234\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/3c0f7e50-441b-4b24-8f67-621138664924\" />\n\n### Observed code changes between\
+      \ v0.23 `5e1467062` and v0.26 `e8156772d` (factual `git diff --stat`, NOT a causal claim)\n\nListed only to point maintainers at the areas that changed between the two versions. We are **not** asserting\
+      \ a specific causal path from any of these to the regression — the profiling data above is the objective evidence.\n\n| Path | Change |\n| :--- | :--- |\n| `worker/pcp_utils.py` | −2387 (deleted)\
+      \ |\n| `worker/dcp_utils.py` | +693 (new) |\n| `worker/kvcomp_utils.py` | −666 (deleted) |\n| `worker/v2/pcp_manager.py` | +107 (new) |\n| `worker/v2/spec_decode/{mtp,dspark,dflash,autoregressive,eagle}/`\
+      \ | new multi-speculator subsystem |\n| `worker/model_runner_v1.py` | 1614 lines changed |\n| `attention/context_parallel/{attention_cp,common_cp,dsa_cp,mla_cp,sfa_cp}.py` | +736 / −1854 (5 files\
+      \ rewritten) |\n\n---\n\n### To Reproduce\n\n```bash\n# ===== P node vllm serve (prefill, kv_role=kv_producer) — same as #13934 P node =====\nvllm serve <model_path> \\\n    --port 8100 \\\n    --trust-remote-code\
+      \ \\\n    --max-num-seqs 8 \\\n    --block-size 128 \\\n    --max-model-len 1024000 \\\n    --max-num-batched-tokens 16384 \\\n    --gpu-memory-utilization 0.85 \\\n    --data-parallel-size 4 \\\n\
+      \    --data-parallel-size-local 2 \\\n    --tensor-parallel-size 8 \\\n    --pipeline-parallel-size 1 \\\n    --prefill-context-parallel-size 1 \\\n    --decode-context-parallel-size 8 \\\n    --cp-kv-cache-interleave-size\
+      \ 128 \\\n    --enforce-eager \\\n    --quantization ascend \\\n    --enable-expert-parallel \\\n    --enable-prefix-caching \\\n    --enable-auto-tool-choice \\\n    --tool-call-parser glm47 \\\n\
+      \    --reasoning-parser glm45 \\\n    --seed 1024 \\\n    --speculative-config '{\"num_speculative_tokens\": 1, \"method\": \"deepseek_mtp\", \"enforce_eager\": true}' \\\n    --additional-config\
+      \ '{\"enable_flashcomm1\": true, \"enable_dsa_cp\": true, \"ascend_compilation_config\": {\"enable_npugraph_ex\": false, \"enable_static_kernel\": false}, \"fuse_muls_add\": true, \"multistream_overlap_shared_expert\"\
+      : true, \"enable_mc2_hierarchy_comm\": false, \"enable_sparse_sfa_c8\": false, \"enable_sparse_li_c8\": true, \"enable_cpu_binding\": true, \"recompute_scheduler_enable\": true}' \\\n    --kv-transfer-config\
+      \ '{\"kv_connector\": \"MooncakeConnectorV1\", \"kv_buffer_device\": \"npu\", \"kv_role\": \"kv_producer\", \"kv_port\": \"31112\", \"engine_id\": \"prefill-0\", \"kv_rank\": 0, \"kv_connector_extra_config\"\
+      : {\"use_ascend_direct"
+    truncated: true
+  expected:
+    root_cause_summary: '两个叠加因素：(1) v0.26 将 dsa-cp 与共享专家 DP 特性解耦，未显式开启 shared_expert_dp_enabled 时 共享专家启用 fc1，引入额外两次通信，DCP collective 通信量 ~5-6x；(2) 开 prefix cache 时 SFA DCP metadata 构造用错 block table 宽度——父类
+      AscendSFAMetadataBuilder.build() 新增 _build_with_metadata_view()， DCP 子类调用 super().build() 使第二层 _build() 看到 replicated 宽表而非原始 local 表，invalid tail 非零 block id 被 unique() 扫进去，kv_gather_ids 周期性冲高，host
+      侧同步与 metadata 构造成本放大。 '
+    root_cause_keywords:
+    - AscendSFAMetadataBuilder
+    - build_with_metadata_view
+    - kv_gather_ids
+    - replicated
+    - shared_expert_dp_enabled
+    leak_critical:
+    - AscendSFAMetadataBuilder
+    - build_with_metadata_view
+    - shared_expert_dp_enabled
+    resolution: '(1) 显式开启 additional-config 中 "shared_expert_dp_enabled": true 持平 v0.23 通信量； (2) SFA DCP block table 宽度改回 local 宽度（官方已修复，随版本升级落地）。 '
+- id: FLOW-2026-009
+  source_issue: 14265
+  category: precision
+  namespace: inference/vllm-ascend/precision/
+  held_out_case: VLLM-ASC-14265
+  flow_relevant: null
+  leakage: clean
+  leak_hits: []
+  input:
+    symptoms: '### Your current environment
+
+
+      ### 🐛 Describe the bug
+
+      启动脚本：
+
+
+      [start_serve_v026_mtp_pdcolocated_dp4tp8.sh](https://github.com/user-attachments/files/31054225/start_serve_v026_mtp_pdcolocated_dp4tp8.sh)
+
+
+      <img width="1137" height="446" alt="Image" src="https://github.com/user-attachments/assets/143bc8c7-f3d2-4c45-96c6-1bd9e863c1dd" />
+
+      v0.23版本接受率50%+'
+    truncated: false
+  expected:
+    root_cause_summary: 'v0.26.0rc 在 enable_prefill_mc2 关闭时，MegaMoe 对称通信 buffer 按 decode graph 大小而非 max_num_batched_tokens 分配；较大 prefill batch 容量溢出 → 错误输出 → MTP 投机接受率大幅劣化。PR #14358 修复 buffer 分配，#14730 提供
+      mega_moe_max_tokens 可配置上限与超限告警。'
+    root_cause_keywords:
+    - enable_prefill_mc2
+    - max_num_batched_tokens
+    - mega_moe_max_tokens
+    leak_critical:
+    - enable_prefill_mc2
+    - max_num_batched_tokens
+    - mega_moe_max_tokens
+    resolution: '升级 vllm-ascend 至含 PR #14358/#14730 的版本；或配置 mega_moe_max_tokens 控制 prefill batch 上限。'
+  flow_relevant_note: 原指向的流程已于 2026-09-10 降级归档（案例索引型，EV-2026-038）；该样本现为「无流程覆盖」
+- id: FLOW-2026-010
+  source_issue: 14306
+  category: performance
+  namespace: inference/vllm-ascend/performance/
+  held_out_case: VLLM-ASC-14306
+  flow_relevant: null
+  leakage: clean
+  leak_hits: []
+  input:
+    symptoms: "### Your current environment\n\n### \U0001F41B Describe the bug\n\nThe MTP acceptance rate for GLM-5.2 is low.\n\nThe server is started with:\n\n```bash\nexport VLLM_USE_V2_MODEL_RUNNER=0\n\
+      export ASCEND_RT_VISIBLE_DEVICES=2,3,4,5,6,7,8,9\nexport HCCL_OP_EXPANSION_MODE=\"AIV\"\nexport OMP_PROC_BIND=false\nexport OMP_NUM_THREADS=1\nexport HCCL_BUFFSIZE=300\nexport PYTORCH_NPU_ALLOC_CONF=expandable_segments:True\n\
+      export VLLM_ENGINE_READY_TIMEOUT_S=30000\n\nvllm serve /mnt/a800_weight/GLM-5.2-w4a8 \\\n  --host 0.0.0.0 \\\n  --port 8077 \\\n  --served-model-name glm-5 \\\n  --tensor-parallel-size 8 \\\n  --data-parallel-size\
+      \ 1 \\\n  --quantization ascend \\\n  --enable-expert-parallel \\\n  --max-model-len 64000 \\\n  --max-num-seqs 32 \\\n  --max-num-batched-tokens 2048 \\\n  --gpu-memory-utilization 0.92 \\\n  --compilation-config\
+      \ '{\"cudagraph_mode\":\"FULL_DECODE_ONLY\"}' \\\n  --no-enable-prefix-caching \\\n  --no-async-scheduling \\\n  --aggregate-engine-logging \\\n  --speculative-config '{\"method\":\"mtp\",\"num_speculative_tokens\"\
+      :3}' \\\n  --additional-config '{\"enable_flashcomm1\":false}' \\\n  --trust-remote-code\n```\n\nSend the following three requests sequentially:\n\n```bash\ncurl http://127.0.0.1:8077/v1/chat/completions\
+      \ \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"model\": \"glm-5\",\n    \"messages\": [\n      {\"role\": \"user\", \"content\": \"请简要解释为什么天空通常看起来是蓝色的。\"}\n    ],\n    \"temperature\"\
+      : 0,\n    \"max_tokens\": 256\n  }'\n\ncurl http://127.0.0.1:8077/v1/chat/completions \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\n    \"model\": \"glm-5\",\n    \"messages\": [\n    \
+      \  {\"role\": \"user\", \"content\": \"用通俗语言说明什么是投机解码，以及它为什么能加速大模型推理。\"}\n    ],\n    \"temperature\": 0,\n    \"max_tokens\": 256\n  }'\n\ncurl http://127.0.0.1:8077/v1/chat/completions \\\n  -H\
+      \ \"Content-Type: application/json\" \\\n  -d '{\n    \"model\": \"glm-5\",\n    \"messages\": [\n      {\"role\": \"user\", \"content\": \"写一段不超过150字的文字，介绍人工智能在软件开发中的作用。\"}\n    ],\n    \"temperature\"\
+      : 0,\n    \"max_tokens\": 256\n  }'\n```\n\nWe received a lower acceptance rate:\n\n```json\n{\n  \"num_drafts\": 375,\n  \"num_accepted_tokens_per_pos\": [169, 126, 95],\n  \"acceptance_per_pos\"\
+      : [\n    0.4506666667,\n    0.336,\n    0.2533333333\n  ],\n  \"acceptance_len\": 2.04\n}\n```"
+    truncated: false
+  expected:
+    root_cause_summary: 'SFA（speculative 前端）后端在按 draft step 构建 attention metadata 时，把 actual_seq_lengths_query/key 逐次写入；num_spec≥2 时早前 draft step 的 metadata 因此被错误覆盖，MTP>1 的投机接受率显著下降（无输出正确性问题）。PR #14236
+      修正 SFA 的 MTP>1 metadata 构造。 '
+    root_cause_keywords:
+    - actual_seq_lengths_query
+    - num_spec
+    leak_critical:
+    - actual_seq_lengths_query
+    resolution: '升级 vllm-ascend 至含 PR #14236 的版本；核验时用同请求 eager/关闭投机对照接受率， 确认异常源于 SFA×MTP>1 而非模型/量化本身。 '
+  flow_relevant_note: 原指向的流程已于 2026-09-10 降级归档（案例索引型，EV-2026-038）；该样本现为「无流程覆盖」
+- id: FLOW-2026-011
+  source_issue: 14448
+  category: performance
+  namespace: inference/vllm-ascend/performance/
+  held_out_case: VLLM-ASC-14448
+  flow_relevant: null
+  leakage: clean
+  leak_hits: []
+  input:
+    symptoms: '### Your current environment
+
+
+      ### 🐛 Describe the bug
+
+
+      服务启动脚本：
+
+      [start_serve_glm52_singleD_mtp.sh](https://github.com/user-attachments/files/31141686/start_serve_glm52_singleD_mtp.sh)
+
+      性能测试条件：4并发，输入20-40k的数据集，tpot性能非常差，采集了profiling
+
+
+      <img width="846" height="878" alt="Image" src="https://github.com/user-attachments/assets/4dbcb317-34ca-4ba9-9181-f06ff4c5ef5f" />
+
+      MTP部分耗时超长
+
+      <img width="1181" height="410" alt="Image" src="https://github.com/user-attachments/assets/d86507b5-c363-4bb5-8020-f1321d0f0b5b" />
+
+      host侧存在较长的copy操作，推迟了MTP的相关算子下发，导致了host bound'
+    truncated: false
+  expected:
+    root_cause_summary: 'D 节点 MTP 路径的 drafting metadata 准备存在多余 CPU↔NPU 拷贝与同步点，host 侧 长 copy 推迟 MTP 算子下发 → 呈 host-bound、TPOT 明显劣化（非 kernel 算力瓶颈）。 PR #14103/#14554 把 MLA draft base seq lengths 留在 CPU、SFA
+      场景由 device 侧 seq_lens 计算，消除多余拷贝与下发阻塞。 '
+    root_cause_keywords:
+    - drafting
+    - seq_lens
+    leak_critical:
+    - drafting
+    - seq_lens
+    resolution: '升级 vllm-ascend 至含 PR #14103（main）/ #14554（v0.26.0rc）的版本；核验用 非投机/GPU 基线对照确认异常范围（MTP 路径 host-bound）。 '
+  flow_relevant_note: 原指向的流程已于 2026-09-10 降级归档（案例索引型，EV-2026-038）；该样本现为「无流程覆盖」
+- id: FLOW-2026-012
+  source_issue: 5725
+  category: precision
+  namespace: inference/vllm-ascend/precision/
+  held_out_case: VLLM-ASC-5725
+  flow_relevant: null
+  leakage: clean
+  leak_hits: []
+  input:
+    symptoms: '### Your current environment
+
+
+      ### 🐛 Describe the bug
+
+
+      通过vllm_asend用Qwen3-Embedding-0.6B计算向量，同一个字符串的第一次和第二次计算向量不一致，存在很大误差：
+
+
+      同一字符串第一次和第二次的计算结果如下:
+
+      vllm_asend1 [-0.040415141731500626, -0.042031750082969666, -0.00848717987537384, -0.020126741379499435......]
+
+      vllm_asend2 [-0.04523852840065956, -0.042745064944028854, -0.013268780894577503, 0.013090676628053188......]
+
+      Cosine Similarity: 0.5854467846288606
+
+
+      后续多次计算后向量不变了（似乎是命中缓存了）
+
+      vllm_asend3 [-0.04523852840065956, -0.042745064944028854, -0.013268780894577503, 0.013090676628053188......]
+
+      vllm_asend4 [-0.04523852840065956, -0.042745064944028854, -0.013268780894577503, 0.013090676628053188......]
+
+      Cosine Similarity: 1.0
+
+
+      同时,后续多次计算(命中缓存)的向量与vllm原版计算的向量存在较大误差：
+
+      vllm_asend5 [-0.04523852840065956, -0.042745064944028854, -0.013268780894577503, 0.013090676628053188......]
+
+      vllm1 [-0.04109756648540497, -0.04302401468157768, -0.008347943425178528, -0.02086985856294632......]
+
+      Cosine Similarity: 0.58146199025003
+
+
+      但是，字符串首次计算时，vllm_asend与vllm计算出的向量误差不大，看起来似乎是缓存影响了向量的计算:
+
+      vllm_asend1 [-0.03841076046228409, -0.0435752347111702, -0.008553656749427319, -0.01799495704472065......]
+
+      vllm1 [-0.0386030338704586, -0.04365237429738045, -0.00863274559378624, -0.021174659952521324......]
+
+      Cosine Similarity: 0.9997130553006451
+
+
+      测试字符串1kb左右：
+
+      [test.txt](https://github.com/user-attachments/files/24490944/test.txt)
+
+
+      完整的向量：
+
+      [vector.txt](https://github.com/user-attachments/files/24490945/vector.txt)'
+    truncated: false
+  expected:
+    root_cause_summary: 'vllm-ascend attention 路由条件过宽：只要 model_runner_type==''pooling''（embedding 等 pooling 模型） 就路由到 _forward_encoder_attention() → npu_fusion_attention，而该算子不支持 prefix caching。 同一请求命中 prefix
+      cache（二次起）后数值路径与首算不同、结果错乱——embedding 向量静默错误 （首算 ≈0.9997 对原生 vLLM，缓存命中后 ~0.58）。修复（PR #7452，vllm_ascend/attention/ attention_v1.py）：条件收紧为 model_runner_type==''pooling'' and not causal → npu_fusion_attention
+      （真 encoder）；causa'
+    root_cause_keywords:
+    - attention_v1.py
+    - embedding
+    - forward_encoder_attention
+    - model_runner_type
+    - npu_fused_infer_attention_score
+    - npu_fusion_attention
+    leak_critical:
+    - attention_v1.py
+    - forward_encoder_attention
+    - model_runner_type
+    - npu_fused_infer_attention_score
+    - npu_fusion_attention
+    resolution: '升级 vllm-ascend ≥ v0.18.0（main 修复 PR #7452，2026-03-28；v0.18.0 backport #7894，2026-04-01）。 旧版本 workaround：显式关闭 prefix cache（reporter 实测不一致消失），代价是丢失 prefix 命中收益； 升级后同请求输出与首算/原生 vLLM 一致。 '
+- id: FLOW-2026-013
+  source_issue: 7854
+  category: precision
+  namespace: inference/vllm-ascend/precision/
+  held_out_case: VLLM-ASC-7854
+  flow_relevant: ascend-garbled-output-triage
+  leakage: clean
+  leak_hits: []
+  input:
+    symptoms: "### Your current environment\n\n### \U0001F41B Describe the bug\n\n使用社区官方镜像，其中commit号：\nvllm-ascend: f83cb0e6dc4687329b39785fa88898d47fc38256\nvllm: bcf2be96120005e9aea171927f85055a6a5c0cf6\n\
+      启动脚本：\n```shell\nexport VLLM_USE_V1=1\nexport VLLM_VERSION=0.18.0\nexport VLLM_EXECUTE_MODEL_TIMEOUT_SECONDS=380\n\nexport OTEL_EXPORTER_OTLP_TRACES_PROTOCOL=http/protobuf\nexport PROMETHEUS_MULTIPROC_DIR=/tmp/\n\
+      \nexport COMMON_ARGS=\"\n    --trust-remote-code\n    --served-model-name auto\n    --distributed-executor-backend mp\n    --model-loader-extra-config {\\\"enable_multithread_load\\\":true,\\\"num_threads\\\
+      \":8}\n    --enable-log-requests\n    --enable-prompt-tokens-details\n    --otlp-traces-endpoint https://antcollector.alipay.com/namespace/aicloud/task/otlptrace/otlp/api/v1/traces\n\"\nexport HCCL_BUFFSIZE=1024\n\
+      export VLLM_ASCEND_ENABLE_NZ=2\nexport PYTORCH_NPU_ALLOC_CONF=expandable_segments:True\nexport VLLM_ASCEND_ENABLE_FUSED_MC2=1\n\n#提升图编译速度\nexport HCCL_OP_EXPANSION_MODE=\"AIV\"\n#单线程\nexport OMP_NUM_THREADS=1\n\
+      #优先加载jemalloc内存分配器\nexport LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libjemalloc.so.2:$LD_PRELOAD\n#开启算子异步执行\nexport TASK_QUEUE_ENABLE=1\n\n#CPU性能配置\n#锁频\necho performance | tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor\n\
+      #禁止swap\nsysctl -w vm.swappiness=0\n#关闭numa平衡\nsysctl -w kernel.numa_balancing=0\n#减少调度，一次调度成本为50000ns\nsysctl kernel.sched_migration_cost_ns=50000\n\nnohup vllm serve /sfs_turbo/models/Qwen3.5-397B-A17B-w8a8-mtp\
+      \ \\\n    $COMMON_ARGS \\\n    --port 8006 \\\n    -tp 4 \\\n    -dp 4 \\\n    --max-model-len 262144 \\\n    --max-num-batched-tokens 16384 \\\n    --max-num-seqs 128 \\\n    --gpu-memory-utilization\
+      \ 0.90 \\\n    --compilation-config '{\"cudagraph_capture_sizes\":[1,4,8,16,24,32,48,64,72,128], \"cudagraph_mode\":\"FULL_DECODE_ONLY\"}' \\\n    --speculative-config '{\"method\": \"qwen3_5_mtp\"\
+      , \"num_speculative_tokens\": 3, \"enforce_eager\": true}' \\\n    --async-scheduling \\\n    --quantization ascend \\\n    --mm-processor-cache-gb 0 \\\n    --enable-expert-parallel \\\n    --additional-config\
+      \ '{\"enable_cpu_binding\":true}' > only-revert-vllm-pr.log 2>&1 &\n```\n复现方法：高并发（1024）执行多模态数据集（OCRbench）精度测试脚本\n\n乱码情况：\n\n<img width=\"2465\" height=\"919\" alt=\"Image\" src=\"https://github.com/user-attachments/assets/3be6b7d8-edf6-425c-9991-dffdd8bbb382\"\
+      \ />"
+    truncated: false
+  expected:
+    root_cause_summary: 'w8a8 分支的昇腾 fused-MoE 自定义算子 dispatch_ffn_combine 未实现 xmask（xactivemask）控制： EP 混部 + MTP/FULL_DECODE_ONLY 高并发场景下，被 xactivemask=0 屏蔽的 token 没有按预期置为 padding expert（expertNum = tokenPerExpert×EP、放序列尾、各设备跳过不处理），仍走真实
+      expert 分发/计算，混部多 DP 下部分 rank 计算路径不一致 → 推理输出乱码、精度评测掉点（OCRbench 87.9 vs 95.6），且无任何引擎异常（静默精度错误）。PR #8560 给 dispatch_ffn_combine 加 xactivemask 逻辑修复。 '
+    root_cause_keywords:
+    - dispatch_ffn_combine
+    - xactivemask
+    leak_critical: []
+    resolution: '升级到含 PR #8560 的 vllm-ascend（merged 2026-04-28）。机制：xactivemask=0 时该 token 的 expertIdx 置为 expertNum，token 放序列尾，各设备只处理前 tokenPerExpert×EP 个 expert、 不处理 padding expert。无配置 workaround——静默精度问题只能升级后复测验证（TP16DP1
+      仅作 归因对照，不是可交付规避）。 '

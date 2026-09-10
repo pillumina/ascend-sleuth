@@ -1,0 +1,63 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）
+# 校验：python3 scripts/verify_proposals.py --check
+# 脱敏纪律：只含聚合值与证据引用，不含客户现场原文。
+# ============================================================
+
+id: EV-2026-043
+layer: L1
+title: 第四轮实验暴露的 3 处 case 内容缺陷（含 1 条"空修复路径"）→ 修订 + 加 ingest 核验点
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-10
+source_signals:
+  - signal: component_error
+    evidence: >-
+      加载时机/选择器实验（54 格盲测）的副产物：多个独立格子各自核对上游源码/PR 后报告同一批 case 内容错误——
+      12957 的 fix 指错 PR（5 格重复报告）、12957 的 diagnosis.step 2 缺前置守卫（2 格）、
+      12461 的 compat.ranges 与自身证据矛盾（4 格）、13973 的配置键名与源码不符（1 格，源码级核对）。
+    trajectory:
+      - "proposals/experiments/flow-form/SCORE-4.md §三"
+hypothesis: 修掉这 3 处后，"照 case 给的升级/配置路径执行"不再出现空路（12957 当前给出的升级建议用户做了也没用）
+predicted_effect:
+  metric: 命中后按 fix 执行的成功率（跟随后 resolve 口径）
+  from: 未知（无该维度基线）
+  to: 12957 一条从"空路"变为可执行
+validation:
+  method: issue_replay
+  baseline: 现 case 内容（groom 未修订）
+  success_criteria: >-
+    12957 的 fix/verification 指向真实修复（或明确降级为 pending-investigation 并保留可用的就地规避）；
+    12461 的 compat 三处口径统一；13973 的配置键名与源码一致；三者均通过 verify_references.py
+  rollback: 单 case 内容修改，git revert 即可
+gate:
+  condition: "同一 case 内容缺陷被 ≥2 个独立格子重复报告"
+risk: high
+principle_refs: [1, 3, 8, 11]
+actual_cost:
+  tokens: 0        # 产卡成本计入第四轮实验（54 格）本身，不另计；本卡尚未执行修订
+  source: estimate
+  note: "缺陷由第四轮实验的副产物发现（该轮成本记在实验记录，不重复计入本卡）；修订动作未开始"
+decisions:
+  - who: agent（第四轮实验 + 汇总）
+    when: "2026-09-10"
+    type: decision
+    conclusion: >-
+      **产卡而非就地改**（知识内容修订走 `kb/*` 分支 + 双签，不在实验 PR 里夹带）。三处缺陷：
+      ①`VLLM-ASC-12957` 的 `fix` / `verification.detail` 把修复指向 PR #14269，但该 PR 实为
+      *[Refactor][Ops] Remove batch_matmul_transpose custom operator*，**全文无任何 stream synchronize**；
+      那条 `torch.npu.current_stream().synchronize()` 只是 issue 评论里提问人贴的验证用规避补丁
+      ⇒「升级到含 #14269 的版本」对用户是**空路**（5 个独立格子各自核对后报告）。
+      ②同 case 的 `diagnosis.step 2` 缺 `enable_dsa_cp` 前置守卫——该同步在 `if self.enable_dsa_cp:` 内，
+      而它默认 False（需 `additional_config.enable_dsa_cp` + `VLLM_ASCEND_ENABLE_FLASHCOMM1=1`），
+      现场照抄会打一个永不执行的补丁（2 格）。
+      ③`VLLM-ASC-12461` 的 `compat.ranges`（`<0.20.2rc1`）与其自身证据矛盾——报告者现场 `VLLM_VERSION=0.21.0`
+      仍复现，索引/正文注释/fix 三处互相打架（4 格）。
+      ④`VLLM-ASC-13973` 的配置键写成 `shared_expert_dp_enabled`，源码实际键是 `enable_shared_expert_dp`
+      （`ascend_config.py`；1 格，源码级）。
+      **通用核验点（值得进 issue-ingest 的评估清单）**：上游 issue **关单评论里自述的 fix PR ≠ 该 PR 的实际内容**
+      ——#12957 就是报障人写「#14269 fix it」而 PR 内容无关。ingest 时若 fix 引用了 PR，应核对 PR 的
+      文件/行是否真的触及所述代码位，核对不上就标 `pending-investigation` 而不是写成既定修复。

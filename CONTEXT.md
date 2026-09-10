@@ -112,5 +112,6 @@ _避免_：隐含价格、机会成本（语义近但不等）
 | **索引分片（F1/F2/F4）** | `build_index.py` 生成 `knowledge/_index/<ns>.yaml` 与 `<ns>__<cat>.yaml`（category 分片）；行瘦身（无 quickly_check、symptoms 首条摘要）；阶段一只读命中分片。决议 EV-2026-022/023/025 |
 | **容量闸门（F3）** | vllm-ascend interrupt 83/30 溢出 33%：token 维度已由 F1/F2 解，残余溢出维度挂再拆闸门（溢出≥40% / med>5 / 分片读入>60KB）。决议 EV-2026-024 |
 | **references summary 索引** | `references/_summary-index.yaml`（背景类+active 词条行化），diagnose 2.5 ② 读索引替代逐文件扫。脚本 `build_ref_summary_index.py`，决议 EV-2026-026 |
+| **references 流程索引** | `references/_procedure-index.yaml`（`methodology` 的**选择器**索引——挑"读哪条流程"，选定后必须读全文）。脚本 `build_procedure_index.py`，决议 EV-2026-038 |
 | **EV 卡** | proposals/ideas/EV-YYYY-NNN.yaml：agent 决策档案（proposal→action→eval→decision），不含 git 合入态；validation_record/self_consistent 口径见 case schema |
 | **consumed（self）** | 评测样本被沉淀为 case 后转 self/回归（held_out=false），自证命中不虚增外部验证 |

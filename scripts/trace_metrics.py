@@ -33,6 +33,7 @@ KNOWN_ACTIONS = {
     "triage", "load_index", "quickly_check", "load_full",
     "run_check", "hit", "miss", "tier3", "feedback", "reference_lookup",
     "triage_semantic", "source_analysis", "attribution", "resume",
+    "procedure_follow",   # 按流程执行（方法缺口消费点，EV-2026-038）：记 ref_id/steps_executed/branch_taken
 }
 
 # reference_lookup 的 purpose 固定词表（与 skills/diagnose/references/diagnosis-procedure.md 一致）：
@@ -40,8 +41,9 @@ KNOWN_ACTIONS = {
 #   signature  错误码 / 故障签名 / 环境变量等查表检索（步骤 2.5 ③）
 #   fix        修复依据（command-side-effect / 工具解读）
 #   background 平台 / 软件背景 summary（步骤 2.5 ②）
+#   procedure  方法缺口的流程加载（步骤 2.5 ④，EV-2026-038）——**只读全文**，摘要行不算加载
 # 词表外的 purpose → 消费点分布指标（docs/metrics.md）不可算，此处确定性检出。
-KNOWN_PURPOSES = {"collect", "signature", "fix", "background"}
+KNOWN_PURPOSES = {"collect", "signature", "fix", "background", "procedure"}
 
 
 def load_states(root: Path):

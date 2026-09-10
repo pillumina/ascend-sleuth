@@ -1,0 +1,62 @@
+# 流程闸门表（diagnose 的「方法缺口」消费点）——结构化绑定，不写散文
+#
+# 为什么存在（EV-2026-038，三轮盲测的结论）：
+#   流程类先验知识（type: methodology）的失效原因不是载体形态，而是**加载时机与深度**——
+#   实测结论三条：
+#     ① 形态无关：同一份流程写成 flow[] YAML 或散文 skill，被执行的保真度一致（R = S = 满分）；
+#     ② 摘要行无效：只给摘要行与不给等效（P3 0/2 vs 0/2）——决定性判据会被摘要截断
+#        （例：摘要写"同步比例 > 0.2 则存在慢卡"，却漏掉"慢卡 = WTR 最小的卡"这条反直觉规则）；
+#        给全文才改变结论（2/2）。
+#     ③ 选择可靠：只给 id/title/summary 索引让 agent 自己挑 → 7/7 选对（第四轮近邻对 + 负对照再测：16/16，
+#        其中含一对"两条都像"的启动失败流程，以及 4 次"应弃用"的负对照）。
+#   现状缺口：12 条真实 trace 里精度/性能会话**加载流程 0 次**——触发点缺失，不是内容缺失。
+#   第四轮补测（用于定位触发点是否真的补上了）：真·候选未命中时 C 臂 3/4 走到本步并加载全文；
+#   而"记录为 miss"的旧样本 0/6 加载——因为那些 issue 事后已各自沉淀了 case，前提不再成立
+#   （回放记录会腐烂，见 eval/flow/README.md 的"使用纪律"）。
+#
+# **时机统一在步骤 5（候选全部未命中后）**，不在候选之前。理由按**预算**（原则九）：候选命中时流程用不上，
+#   提前加载只是白付一次注意力预算。第四轮做了对照（流程先行 vs 候选先行，18 格）：**11/11 未致偏离命中 case**
+#   ⇒"早加载会锚定"**未获支持**，不得再当实测结论引用；第三轮 009/010 的误导发生在**流程不覆盖该样本**时，
+#   归因是"错流程"（内容面）而非"时机"（顺序面）。
+#
+# 分工（形态归 SKILL，内容归词条）：本表只决定「何时该取流程、取到后怎么用」；
+#   具体是哪一条流程由**仓库根先验层**的 `references/_procedure-index.yaml`（选择器）按 category + title/summary 选出
+#   （注意：本文件在 `skills/diagnose/references/`，选择器在仓库根 `references/`——两处同名不同目录）。
+#   **本表不写症状关键词分支**——关键词写在闸门里等于与 triage-tree 双源，必漂移。
+#   **默认一条**；前提与现场证据明确矛盾时可换一条（受"连续失败 <=2"约束，记 conflict）。
+#   流程与证据冲突时以证据为准——流程是"这类问题怎么查"的参考，不是"这次就是这个"的判词。
+#
+# 校验（verify_references.py，随 CI）：kind=procedure 必须给 trigger + load: full + selector，
+#   且 selector 指向的文件必须存在；caveat_refs 必须存在且 active。
+
+gates:
+  - id: precision-procedure
+    category: precision
+    kind: procedure
+    trigger: >-
+      precision 类问题、**所有 Tier 2 候选都未命中**、进入步骤 5 深度排查时——
+      需要"按什么方法定界根因"，而不是继续取数、也不是继续查错误签名
+    load: full
+    selector: references/_procedure-index.yaml
+    caveat_refs:
+      - msprobe-tool-side-effect-fault-patterns   # 采集行为本身可能让问题消失——先排除再下结论
+
+  - id: performance-procedure
+    category: performance
+    kind: procedure
+    trigger: >-
+      performance 类问题、**所有 Tier 2 候选都未命中**、进入步骤 5 深度排查时——
+      需要按判据（阈值、分流规则）定位瓶颈环节
+    load: full
+    selector: references/_procedure-index.yaml
+
+  - id: interrupt-procedure
+    category: interrupt
+    kind: procedure
+    trigger: >-
+      interrupt 类问题、**所有 Tier 2 候选都未命中**、进入步骤 5 深度排查时——
+      需要按某条排查路径分流，而非继续 grep 签名
+    load: full
+    selector: references/_procedure-index.yaml
+    caveat_refs:
+      - ascend-log-troubleshooting   # 日志量级/裁剪纪律：只贴失败 rank + 栈尾，别灌全量

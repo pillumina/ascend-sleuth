@@ -5,10 +5,10 @@
 # 按 file 字段定位做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-09-09    case 总数：157
+# 生成日期：2026-09-10    case 总数：158
 #   容量(common): performance=15/30, precision=6/30
 #   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=84/30, performance=8/30, precision=21/30
+#   容量(inference/vllm-ascend): interrupt=85/30, performance=8/30, precision=21/30
 #   容量(training/mindspeed-llm): interrupt=11/30, precision=4/30
 #   容量(training/verl): interrupt=6/30, precision=1/30
 namespaces:
@@ -1142,6 +1142,25 @@ namespaces:
         DP=16/TP=1/EP）
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13964.yaml
       hash: 432d03458220
+    - id: VLLM-ASC-14121
+      title: DSV4 压缩 KV + AscendStore MemCache 首请求懒初始化把 TP rank 初始化时序撕裂 → 集合通信序分叉（store.init non-zero
+        / BM join -2 / EI0002 / 507034 / EngineCore 退出、Prefill 全挂）
+      category: interrupt
+      tags:
+      - kv-pool
+      - memcache
+      - ascendstore
+      - lazy-init
+      - rank-initialization
+      - pd-separation
+      compat: vllm-ascend * (hdk:<26.1)
+      confidence:
+        score: 0.65
+      symptoms:
+      - DSV4 压缩/hybrid KV cache + AscendStore MemCache backend（MemCache/MemFabric 1.1.3、protocol=device_sdma）+
+        TP>1：首请求阶段报 `stor…
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-14121.yaml
+      hash: abf7b750826c
     - id: VLLM-ASC-14166
       title: A5 950DT 启动 DeepSeek-V4-Flash-0731 报 MoeInitRoutingV3 找不到二进制（torch-npu 需 >=2.10.0.post4）
       category: interrupt

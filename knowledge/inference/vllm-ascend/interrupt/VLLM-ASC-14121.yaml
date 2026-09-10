@@ -1,0 +1,78 @@
+# VLLM-ASC-14121 —— DSV4 压缩 KV + AscendStore MemCache：首请求懒初始化把 TP rank 初始化时序撕裂 →
+#   集合通信序分叉（EI0002/507034、EngineCore 退出、Prefill 全 API 退出）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/14121
+# investigation_quality: high（生产证据完整：8 个 TP 进程时序 + 失败链 + 维护者确认 + 同拓扑复测）
+# pre-triage: variant_of VLLM-ASC-11459 —— 同族 = kv-pool store 懒初始化路径缺席守卫；增量 =
+#   ①backend 不同（MemCache 而非 MooncakeBackend）；②失效形态不同（11459 = KV 传输线程上 process-global
+#   config 为 None 抛 AssertionError；本例 = TP rank 间初始化完成时刻不一致 → 集合通信序分叉）；
+#   ③根因含驱动规避语义（lazy init 本身是 HDK <26.1 的规避手段），fix 是组合拳而非代码补丁
+# 脱敏：issue 原文自述内网 IP/客户路径已 sanitize；本条无敏感信息
+# 升格：knowledge-groom 2026-09-10（issue-ingest 批次唯一通过评估项，owner 指示直接并入）
+# 注意：issue 状态 closed not_planned 系 stale 机器人自动关单，非「无定论」——维护者已确认成因、
+#   报告人已同拓扑复测通过（详见 postmortems/2026-Q3/VLLM-ASC-14121.md）
+
+cases:
+  - id: VLLM-ASC-14121
+    title: "DSV4 压缩 KV + AscendStore MemCache 首请求懒初始化把 TP rank 初始化时序撕裂 → 集合通信序分叉（store.init non-zero / BM join -2 / EI0002 / 507034 / EngineCore 退出、Prefill 全挂）"
+
+    category: interrupt
+    tags: [kv-pool, memcache, ascendstore, lazy-init, rank-initialization, pd-separation, driver-compat]
+
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["*"]
+        hdk: ["<26.1"]
+
+    investigation_quality: high
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.65
+      last_hit: ""
+
+    symptoms:
+      - "DSV4 压缩/hybrid KV cache + AscendStore MemCache backend（MemCache/MemFabric 1.1.3、protocol=device_sdma）+ TP>1：首请求阶段报 `store.init returned non-zero` + `assert res == 0` → AssertionError → EngineCore 退出、Prefill 全部 API 退出"
+      - "同一 TP 组内部分 rank 报 `BM join failed after remote result -2`（MemFabric join 返回 -2），另一部分 rank 已 `smem_bm_init success`；同组各 rank 初始化完成时刻相差十余秒"
+      - "随后集合通信超时 EI0002 / 507034 / EngineDeadError，后序 rank 分别停在 AllGather 与 ReduceScatter（通信序分叉）"
+      - "伴随 SM_INNER_BUSY（-2013）；TP rank 重入组后 AutoRank ID / BMEX key 集合发生变化"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/14121"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "维护者 bowgneo 确认：DSV4 的 MemCache 懒初始化是为规避 HDK <26.1 的驱动兼容问题（DSV4 自定义算子与 MemCache 动态内存分配不兼容，提前初始化可能 hang），已在 HDK driver 26.1+ 解决；报告人 ZhengDeL 已在同拓扑（A3、P: DP4×TP4、D: DP16×TP1）升级 26.1.1 后复测通过"
+
+    quickly_check:
+      primary:
+        command_template: "grep -F 'store.init returned non-zero' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:store\\.init returned non-zero|BM join failed after remote result -2"
+        note: "interrupt 类：primary 用错误签名 grep（不混 precision/performance 形态）"
+      fallback:
+        command_template: "grep -E 'smem_bm_init success|SM_INNER_BUSY|EI0002' {{log_path}}"
+        rank_selector: coordinator
+        expected: "regex:smem_bm_init success|SM_INNER_BUSY|EI0002"
+
+    diagnosis:
+      - step: 1
+        check: "错误签名：是否出现 `store.init returned non-zero` / `assert res == 0` / `BM join failed after remote result -2`？"
+        expected: "是——本 case 命中"
+      - step: 2
+        check: "场景判别：是否 DSV4 压缩（compress/hybrid）KV cache + AscendStore MemCache backend + TP>1，且懒初始化仍为 True？"
+        expected: "是——lazy_init 把 store.init 推迟到首请求，各 TP rank 完成/失败/重试时刻不一致"
+      - step: 3
+        check: "HDK/driver 版本是否 < 26.1？"
+        expected: "是——lazy init 是 HDK <26.1 的驱动规避手段，本例根因成立；≥26.1 时该规避不再必要"
+        fix_on_mismatch: "升级 HDK/driver 至 26.1.1（firmware 9.0.0.9.220），并把 Prefill/Decode 两侧的 `backend_kwargs[lazy_init] = False` 显式关闭——让 MemCache 在引擎启动期完成初始化（复测口径：引擎启动即 4/4 Prefill + 16/16 Decode 初始化完成，首请求懒初始化日志消失）"
+        rollback: "回退 HDK 版本并恢复 lazy_init=True（回到原规避行为）"
+        note: "两步须同时做：只升 HDK 不关 lazy_init、或只关 lazy_init 不升 HDK（后者在 <26.1 上可能触发驱动侧 hang），都不完整"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart, requires-driver-upgrade]
+    fix_type: config-change
+    root_cause: "双层根因。①框架侧触发源：DSV4 压缩 KV 路径上 vLLM-Ascend 把 MemCache backend 以 lazy_init=True 创建（pool_worker.py: backend_kwargs[lazy_init] = self.use_compress），store.init(local_rank, init_bm=...) 被推迟到首个真实请求，失败路径直接 assert res == 0（无重试、无守卫）；TP 各 rank 完成/失败/重试时刻不一致，先完成的 rank 进入后续模型集合通信而 peer 仍在 BM 组重入 → 集合通信序分叉 → EI0002/507034/EngineDeadError。②环境侧成因：该懒初始化本身是为规避 HDK <26.1 的驱动兼容问题（DSV4 自定义算子与 MemCache 的动态内存分配不兼容，提前初始化 MemCache 可能 hang 进程），并非框架缺陷——驱动侧已在新版本解决。"
+    fix: "升级 HDK/driver 至 26.1.1（firmware 9.0.0.9.220），并在 Prefill/Decode 两侧显式设置 backend_kwargs[lazy_init] = False，使 MemCache 初始化在引擎启动期完成。同拓扑（A3、P: DP4×TP4、D: DP16×TP1）复测原故障不复现。"
+
+    rollback: "回退 HDK 至 <26.1 并恢复 lazy_init=True（回到原规避行为）；或回退配置改动后按原故障复现评估"

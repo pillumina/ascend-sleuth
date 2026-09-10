@@ -1,0 +1,77 @@
+# ============================================================
+# Idea 卡：issue-ingest 候选排序——stale/wait-feedback 降权而非排除
+# 来源：2026-09-10 issue-ingest 批次（拉取 17 / 候选 9 / 评估通过 1）实测：
+#   9 条候选里 6 条是 stale 机器人自动关单（零结论），但**唯一通过评估的 #14121 恰带 stale 标签**。
+# ============================================================
+
+id: EV-2026-039
+layer: L2
+title: "issue-ingest 候选排序：stale/wait-feedback 降权（不排除）——避免评估预算被自动关单簇占据，同时不漏掉已定论案例"
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-10
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      本批 9 条候选中 6 条带 stale/wait-feedback 且 state_reason=not_planned（github-actions 按 14 天无活动
+      自动关单），逐条评估后零结论——纯消耗评估预算；而唯一通过评估的 #14121 也带 stale 标签
+      （维护者已确认成因、报告人已同拓扑复测）。→ 需要区分「自动关单 ≠ 无定论」，但机器无法从标签区分
+    trajectory:
+      - "ingest-state.json sources.github/vllm-project/vllm-ascend（本批 processed +9）"
+      - "postmortems/inbox/VLLM-ASC-14121.case.yaml（唯一通过者）"
+      - "scripts/issue_filter.py:50-55（heuristic_key：原排序无 stale 维度）"
+hypothesis: >-
+  把 stale/wait-feedback 从"候选池硬排除"改为"排序降权（末维）"，可在候选数超过 limit 时
+  优先花评估预算在新鲜候选上，同时保留对已定论 stale 案例的召回
+predicted_effect:
+  metric: 每批候选的"零结论评估"占比
+  from: "6/9（本批）"
+  to: "候选数 > limit 时趋近 0；候选数 ≤ limit 时不变（全部保留、仅重排）"
+validation:
+  method: scan_review
+  baseline: "scripts/issue_filter.py（phases 前）+ 2026-09-10 批次缓存 /tmp/issues-va-0910.json"
+  success_criteria: >-
+    ①负例复测：候选集不变（9 条全保留，含 #14121）；②非 stale 候选（#13623 resolved、#3210）排到 stale 簇之前；
+    ③报告行不再声称"已排除 label"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "本批实测（6/9 零结论 + 唯一通过者带 stale 标签）"
+risk: low
+principle_refs: [6, 9, 11]
+actual_cost:
+  tokens: 12000
+  source: estimate
+decisions:
+  - who: agent（issue-ingest 批次收尾 evolve-check）
+    when: "2026-09-10"
+    type: proposal
+    conclusion: >-
+      初版设计是 `--exclude-labels stale,wait-feedback`（硬排除）。负例测试立刻暴露问题：
+      硬排除会把本批**唯一通过评估**的 #14121（带 stale 标签）一起滤掉（9 → 2 条候选）。
+      按原则六（漏判代价更高时用软降级）改为 `--deprioritize-labels`：只把这类候选排到末位，不丢弃。
+  - who: agent（issue-ingest 批次收尾 evolve-check）
+    when: "2026-09-10"
+    type: action
+    conclusion: >-
+      `scripts/issue_filter.py`：新增 `--deprioritize-labels`（默认 stale,wait-feedback）；
+      `heuristic_key` 增末维 `not_deprioritized`（label 优先级 > 已解决 > 非降权 > 评论数）；
+      移除硬排除分支与对应报告项。`ingest-state.json` 的 vllm-ascend config 增
+      `exclude_labels` → `deprioritize_labels` 语义并写入策略说明。
+  - who: agent（issue-ingest 批次收尾 evolve-check）
+    when: "2026-09-10"
+    type: eval
+    conclusion: >-
+      scan_review 验证：负例复测（同缓存 + 去掉本批 processed）→ 候选仍 9 条（含 #14121），
+      #13623/#3210 排到 stale 簇之前；`ast.parse` 语法通过；既有 `--mark-imported` 纯标记路径未受影响。
+      未跑 golden/S2——本卡不改检索/路由/诊断面（只是离线的候选排序）。
+  - who: agent（issue-ingest 批次收尾 evolve-check）
+    when: "2026-09-10"
+    type: decision
+    conclusion: >-
+      采纳（validated）：改动随本 PR 送人审（review——L2 流程改动，不进诊断上下文）。
+      不取：①硬排除 stale（会漏掉已定论案例，本批已实证）；②按 state_reason=not_planned 排除
+      （同一问题：#14121 也是 not_planned，自动关单）；③在 skill 里加"记得跳过 stale"的散文提醒
+      （原则二：能由脚本承载的规则不交给执行者自觉）。

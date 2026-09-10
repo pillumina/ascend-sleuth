@@ -1,7 +1,7 @@
 # GENERATED FILE —— 分片（knowledge/_index.yaml 的 inference/vllm-ascend__interrupt 子集），不要手改。
 # 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。
 # 阶段一加载协议（F1 EV-2026-022 + F4 EV-2026-025）：category 已定时 diagnose 只读命中 (namespace×category) 的类分片，不读整库总表。
-# 本分片：inference/vllm-ascend__interrupt（84 条 case）
+# 本分片：inference/vllm-ascend__interrupt（85 条 case）
 namespaces:
   inference/vllm-ascend__interrupt:
     interrupt:
@@ -742,6 +742,25 @@ namespaces:
         DP=16/TP=1/EP）
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13964.yaml
       hash: 432d03458220
+    - id: VLLM-ASC-14121
+      title: DSV4 压缩 KV + AscendStore MemCache 首请求懒初始化把 TP rank 初始化时序撕裂 → 集合通信序分叉（store.init non-zero
+        / BM join -2 / EI0002 / 507034 / EngineCore 退出、Prefill 全挂）
+      category: interrupt
+      tags:
+      - kv-pool
+      - memcache
+      - ascendstore
+      - lazy-init
+      - rank-initialization
+      - pd-separation
+      compat: vllm-ascend * (hdk:<26.1)
+      confidence:
+        score: 0.65
+      symptoms:
+      - DSV4 压缩/hybrid KV cache + AscendStore MemCache backend（MemCache/MemFabric 1.1.3、protocol=device_sdma）+
+        TP>1：首请求阶段报 `stor…
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-14121.yaml
+      hash: abf7b750826c
     - id: VLLM-ASC-14166
       title: A5 950DT 启动 DeepSeek-V4-Flash-0731 报 MoeInitRoutingV3 找不到二进制（torch-npu 需 >=2.10.0.post4）
       category: interrupt

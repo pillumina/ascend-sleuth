@@ -2,9 +2,9 @@ name: kb-checks
 
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/build_ref_summary_index.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/build_ref_summary_index.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py"]
 
 jobs:
   index-freshness:
@@ -36,6 +36,9 @@ jobs:
       - run: python3 scripts/verify_references.py --check
       # 背景类 summary 索引新鲜度（B1 EV-2026-026）：references 变更未重建即红
       - run: python3 scripts/build_ref_summary_index.py --check
+      # 流程选择器索引新鲜度（B2 EV-2026-038）：methodology 不进背景层，走独立索引；
+      # references/ 变更未重建即红（与背景索引同待遇）。
+      - run: python3 scripts/build_procedure_index.py --check
 
   metrics-validation:
     runs-on: ubuntu-latest

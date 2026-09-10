@@ -9,9 +9,34 @@ trace 的 agent 事件 `action` 必须落在词表内（词表外 action 会被 
 ```
 triage | load_index | quickly_check | load_full | run_check | hit | miss | tier3
 | feedback | reference_lookup | triage_semantic | source_analysis | attribution | resume
+| procedure_follow
 ```
 
 user 事件无 `action`，不参与词表检查。**新增 action 时同步改 `trace_metrics.py` 的 `KNOWN_ACTIONS` 与本文**（单一数据源纪律）。
+
+### `procedure_follow` 事件（方法缺口消费点，EV-2026-038）
+
+流程闸门命中后，按流程执行时记一条：
+
+```yaml
+- {step: N, action: procedure_follow, ref_id: msprof-comm-bottleneck-thresholds,
+   steps_executed: [1, 2, 3], branch_taken: 慢卡, gap: null}
+```
+
+- `ref_id`：本轮加载并按之执行的流程词条（对应一条 `reference_lookup` 事件，purpose: `procedure`）；
+- `steps_executed`：实际走完的 step 序号；**跳步要写理由**（`skipped` 字段，如 `{2: "本导出无计算列"}`）；
+- `branch_taken`：流程给出分流时的实际分支（如"慢卡" / "链路异常"）；无分流写 `null`；
+- `gap`：流程某步所需数据不在手上时如实记缺口（缺什么、怎么补），**不臆断分支结论**；
+- `conflict`：流程的前提/分支与现场证据**明确矛盾**时记该矛盾（如"流程假设可采到逐卡计算耗时，本导出无此列"）——
+  这是"以证据为准、换一条或转深度排查"的依据；无冲突写 `null`。**记冲突不是记叛逆**：流程被判据推翻是正常结果，
+  写下来才能让流程层知道自己哪一步在这个现场不成立。
+
+**流程走完但没解决**：在 `attribution` 事件里带 `component: reference:<ref_id>`（verdict 照旧按
+case 错 / 执行错判）——让 `component_tally.py` 能聚合出"被跟随后仍失败"的流程簇。否则流程层只有加载率、
+没有失败率（加载率是活动度量，加了触发点必然接近 100%），错流程会被稳定注入而无人察觉。
+
+这组字段是"流程是否被真正使用、用得对不对"的唯一数据源——没有它，流程层不可观测（原则八），
+也就无法判断某条流程该留、该改、该摘。
 
 ## 外部事实获取落盘（agent 侧，与 `user.evidence` 分开）
 
