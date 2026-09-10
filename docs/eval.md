@@ -50,6 +50,16 @@
 
 真实夹具不需要手工编造：`traces/`（完整交互轨迹）是主要来源，`scripts/replay_trace.py --emit-fixtures` 从 **status=resolved 且 feedback.outcome=resolved** 的 trace 自动派生 fixture 候选（输入=user 事件原文，期望=实际命中 case），人确认后入 `eval/golden/`。断言分两层：只有反馈闭环确认的 trace 能作正确性基准（强断言），未确认的只能做弱断言（行为差异回归）。postmortem 是次级来源（含未走 diagnose 的调查）。脱敏复用 to-postmortem 的同一步骤；无法充分脱敏的条目移入团队私有仓库。
 
+### 记录的时效性：回放结果会**腐烂**，不等于当前状态
+
+fixture 头部的 `candidates=Y/N`、`eval/s2` 的 `tier2_hit` 记的是**那一次回放当时**的结果。而回放本身会改变知识库：一条 miss 被诊断清楚后沉淀成 case，**同一个 issue 下次就变成 hit**。实测（2026-09）：`.s2-replay` 里记为 miss 的样本，其 case 在该次回放当天或之后入库，重跑时 6/6 全部命中；`VLLM-ASC-13973` 的 fixture 记 `path=semantic-obs`（未命中），其 case 入库后四个盲测格子全部命中。
+
+因此：
+
+- 要判"这条现在会不会命中"，**必须当场重跑**（或直接读 `knowledge/_index/` 分片核对），**不能引用历史记录**；
+- 任何以「候选未命中」为前提的评测或实验（流程加载、深度排查、Tier 3 兜底、S2 miss 率）**不能用旧记录选样本**——改用**尚无对应 case 的新 issue**（判据：`knowledge/` 下无该 id 文件）；
+- 反过来，**miss 率下降不等于检索变好**：知识库变大也会压低 miss 率。单看趋势不可下结论，要同时看库容量与该期新增 case 数。
+
 ## 套件如何演化
 
 套件随知识库一起增长，由 groom 在例行流程中维护。维护动作分两类，节奏不同。
