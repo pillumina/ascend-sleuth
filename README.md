@@ -195,7 +195,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 ![ascend-sleuth 架构](docs/diagrams/ascend-sleuth-architecture.png)
 
-**自演进机制全流程**（[交互图 HTML](docs/diagrams/self-evolve-flow.html)；机制细节见 [evolution-pipeline.md](docs/evolution-pipeline.md)）：
+**自演进机制全流程**（[交互图 HTML](docs/diagrams/self-evolve-flow.html)；机制细节见 [docs/mechanism/pipeline.md](docs/mechanism/pipeline.md)）：
 
 ![自演进机制全流程](docs/diagrams/self-evolve-flow.png)
 
@@ -237,20 +237,20 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 - [design-theory.md](docs/design-theory.md) — 四公理 → 公式 → 原则的完整推导链（原则的生成处）
 
 **演进机制（改机制本身才读；日常不必读）**
-*你要改演进/评测/编排机制本身时——其余情况读 docs/evolution.md 一篇就够*
+*你要改演进/评测/编排机制本身时——日常只读 docs/evolution.md 一篇，论证层在 docs/mechanism/*
 
 - [evolution.md](docs/evolution.md) — **演进机制入口**：机制地图、权威归属、周度 runbook——日常只读这一篇
-- [evolution-pipeline.md](docs/evolution-pipeline.md) — 三层闭环（知识 / 流程 / 编排）与 proposal 状态机、卡 schema
-- [evolution-execution.md](docs/evolution-execution.md) — proposal 信息契约、评审判据、follow-up 验证、指标分层
-- [evolution-orchestration.md](docs/evolution-orchestration.md) — 自演进会话协议、目标函数与停止条件、token 预算
-- [evolution-run.md](docs/evolution-run.md) — 长期运行、issue 三重角色、统一执行记录、可视化
-- [evolution-eval-arena.md](docs/evolution-eval-arena.md) — 元层 eval 台（train/val 门控）与影响账本
-- [evolution-ixn-replay.md](docs/evolution-ixn-replay.md) — 交互面评测（追问 / 信息充分性 / 过早结论）
-- [evolution-user-guide.md](docs/evolution-user-guide.md) — 使用者侧：能说什么、一句话后发生什么、怎么读进度
+- [pipeline.md](docs/mechanism/pipeline.md) — 三层闭环（知识 / 流程 / 编排）与 proposal 状态机、卡 schema
+- [execution.md](docs/mechanism/execution.md) — proposal 信息契约、评审判据、follow-up 验证、指标分层
+- [orchestration.md](docs/mechanism/orchestration.md) — 自演进会话协议、目标函数与停止条件、token 预算
+- [run.md](docs/mechanism/run.md) — 长期运行、issue 三重角色、统一执行记录、可视化
+- [eval-arena.md](docs/mechanism/eval-arena.md) — 元层 eval 台（train/val 门控）与影响账本
+- [ixn-replay.md](docs/mechanism/ixn-replay.md) — 交互面评测（追问 / 信息充分性 / 过早结论）
 
 **操作指南（用到那个环节时才读）**
 *你要装环境（Windows skills 使能）、跑评测、看指标、走 git 门控、或做 issue 导入时*
 
+- [evolution-user-guide.md](docs/evolution-user-guide.md) — 使用者侧：能说什么、一句话后发生什么、怎么读进度
 - [eval.md](docs/eval.md) — 改 skill 前后跑什么（门禁分级）、对照集封存与已冻结的判据
 - [metrics.md](docs/metrics.md) — 指标口径与周批流程（数字以 metrics/timeline.yaml 为准）
 - [git-workflow.md](docs/git-workflow.md) — 审核、门控、合入与多人协作的落地（含评审把手）
@@ -298,7 +298,7 @@ CONTEXT.md                   领域术语表（中英对照）
 scripts/                     build_index.py、trace_metrics.py、replay_prep.py、replay_trace.py、replay_golden.py、issue_filter.py、fetch_issues.py、settle_trace_feedback.py、settle_s2_feedback.py、verify_references.py、verify_metrics.py、verify_proposals.py、component_tally.py（归因按需聚合）、s2_calibration.py、s2_replay.py、ev_proposal.py、ev_measure.py（EV 卡预测的复现把手，reviewer 用）
 dsh-plugins/ascend-panel/    DSH 诊断面板插件（可选，动态 Cordis 插件；加载见其 README）
 eval/golden/                 回归测试夹具
-proposals/                   自演进领域状态：ideas/（idea 卡，资产入 git）+ sessions/tasks/ 等运行时（gitignore）；机制见 docs/evolution-pipeline.md
+proposals/                   自演进领域状态：ideas/（idea 卡，资产入 git）+ sessions/tasks/ 等运行时（gitignore）；机制见 docs/mechanism/pipeline.md
 docs/                        文档体系（见上方「文档」索引）
 CODEOWNERS.example           owner 落实后启用
 .github/                     kb-checks CI + 分场景 PR 模板

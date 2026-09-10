@@ -1,17 +1,18 @@
 # 演进流水线（v2）：三层自演进闭环与自演进执行流程
 
-> **论证层——日常不必读。** 执行规则与机制地图见 [evolution.md](evolution.md)；本文只承载「为什么这样设计」的推导，改机制本身时才需要读。
+> **给谁读**：要改演进机制本身的人（机制定义、proposal 状态机、卡 schema）；**什么时候读**：你要动机制定义时；**读完能做什么**：能说清一条改进从 idea 卡到合入要过哪几道状态、每道由谁裁决、卡 schema 的必填字段从哪来。
+> **论证层——日常不必读。** 执行规则与机制地图见 [../evolution.md](../evolution.md)。
 
 > 本文回答一个问题：系统如何闭环地改进自己的三层资产（知识内容、流程/skill、工作流本身），并把"人的参与"从逐条执行上移到流程审视。
-> v1（本文件旧版）只覆盖知识内容层的候选 idea 闭环；v2 扩展为三层模型（L1 知识内容 / L2 流程与 skill / L3 工作流与编排），并新增第 6 节「自演进执行流程」，一个降低人工参与度、但每次改动可追溯、每次合入必须由实验数据驱动的专门流程。执行级信息契约（proposal 要记录什么、验证如何区分合入前可判与合入后需真实反馈、沉淀效果怎么度量、agent 拿到什么）见 [evolution-execution.md](evolution-execution.md)；编排与治理层（会话如何启动、目标函数与停止条件、token 预算、自我指涉治理）见 [evolution-orchestration.md](evolution-orchestration.md)；从一条指令到持续运行的运行视图（长期任务、issue 评测循环、执行记录、可视化）见 [evolution-run.md](evolution-run.md)；面向使用者的指令/报告/干预语言见 [evolution-user-guide.md](evolution-user-guide.md)。
+> v1（本文件旧版）只覆盖知识内容层的候选 idea 闭环；v2 扩展为三层模型（L1 知识内容 / L2 流程与 skill / L3 工作流与编排），并新增第 6 节「自演进执行流程」，一个降低人工参与度、但每次改动可追溯、每次合入必须由实验数据驱动的专门流程。执行级信息契约（proposal 要记录什么、验证如何区分合入前可判与合入后需真实反馈、沉淀效果怎么度量、agent 拿到什么）见 [execution.md](execution.md)；编排与治理层（会话如何启动、目标函数与停止条件、token 预算、自我指涉治理）见 [orchestration.md](orchestration.md)；从一条指令到持续运行的运行视图（长期任务、issue 评测循环、执行记录、可视化）见 [run.md](run.md)；面向使用者的指令/报告/干预语言见 [evolution-user-guide.md](../evolution-user-guide.md)。
 > 实现分级声明：本文是**完整设计蓝图**，非全部待办。落地时只实现 §11.1「必需」列的机制；「蓝图」列（超时降级态、stale、策略记忆、稳态降频等）是预测性设计，触发条件（数据/用户诉求）出现才激活，不为未发生的问题预建全量机制（防过度设计，仓库原则十一）。
-> 对象层闭环（case 越用越准）已在 [evolution.md](evolution.md) 落地；理论推导见 [design-theory.md](design-theory.md) §4.2–4.4（元层信念、自演进闭环、演化即假设检验）；原则依据见 [design-principles.md](design-principles.md)。本文自身的修订走 methodology PR + 体系维护人审（它属于 L3 结构，受本文第 5.2 节管辖）。
+> 对象层闭环（case 越用越准）已在 [../evolution.md](../evolution.md) 落地；理论推导见 [design-theory.md](../design-theory.md) §4.2–4.4（元层信念、自演进闭环、演化即假设检验）；原则依据见 [design-principles.md](../design-principles.md)。本文自身的修订走 methodology PR + 体系维护人审（它属于 L3 结构，受本文第 5.2 节管辖）。
 
 ## 1. 三层模型
 
 | 层 | 对象 | 闭环的完成定义 | 当前状态 | 自动化边界 |
 |---|---|---|---|---|
-| **L1 知识内容** | case、reference、triage-tree 内容 | 知识随使用变准：命中率升、误诊率降 | ✅ 已闭环（evolution.md 五机制） | groom 预分诊自动、人审转正；E4 auto-promotion 在 v2 池 |
+| **L1 知识内容** | case、reference、triage-tree 内容 | 知识随使用变准：命中率升、误诊率降 | ✅ 已闭环（../evolution.md 五机制） | groom 预分诊自动、人审转正；E4 auto-promotion 在 v2 池 |
 | **L2 流程与 skill** | diagnose/groom/to-* 实现、triage 分支、scripts、新 skill | 流程随误诊变对：执行错率（按组件）下降 | ⚠️ 半闭环（归因事件入 trace、按需聚合脚本已就绪；无真实归因事件积累、验证门有设计无常态数据、无回测） | 归因自动、修复建议自动、合入人审（本文 4 节设计补全） |
 | **L3 工作流与编排** | 流水线、groom 节奏、roadmap 机制、本文档 | 流程本身不腐化且参数被数据校准 | ❌ 未闭环（人季度回顾，参数不回流） | 参数级自校准半自动；结构级演进留人（本文 5 节） |
 
@@ -53,10 +54,10 @@ S2 校准集当前单池运行，selection/test 分离是规模闸门（2026-09 
 
 ## 3. L1 知识内容层（已闭环，简述）
 
-evolution.md 五机制 + roadmap A/E 系列已覆盖：confidence 回写、groom 维护、误诊归因改 case、容量治理。本流水线对 L1 只做两件事：
+../evolution.md 五机制 + roadmap A/E 系列已覆盖：confidence 回写、groom 维护、误诊归因改 case、容量治理。本流水线对 L1 只做两件事：
 
 - **承接**：L1 的维护动作（groom 信号表）升级为带 trajectory 的候选 idea 卡（本文 7 节 schema），让"容量告警/路由错例/覆盖缺口"不再止步于动作而进入提案闭环；
-- **校正**：误诊归因（case 错 vs 执行错）的判决依据落在 trace attribution 事件上，误改正确 case 的风险下降（evolution.md 机制 3 的直接增强）。
+- **校正**：误诊归因（case 错 vs 执行错）的判决依据落在 trace attribution 事件上，误改正确 case 的风险下降（../evolution.md 机制 3 的直接增强）。
 
 ## 4. L2 流程/skill 层（半闭环 → 全闭环设计）
 

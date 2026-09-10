@@ -75,7 +75,7 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 
 ## 评审把手（reviewer 怎么判"该不该合"）
 
-判据的独立性只有一条标准：**改动者不能靠"写文字"通过它**。PR 里的命题（success_criteria 达成、无回归、断言全过）多由制造改动的同一过程写成，而 CI 检查的是内部自洽（索引新鲜度、YAML 合法性、模板结构齐全）——因此"CI 绿 + 测试过"对"该不该合"的信息量接近于零，reviewer 会被逼在"开全文"与"直接批"之间二选一（`evolution-execution.md` §7 把这一失效形态命名为"橡皮图章"）。
+判据的独立性只有一条标准：**改动者不能靠"写文字"通过它**。PR 里的命题（success_criteria 达成、无回归、断言全过）多由制造改动的同一过程写成，而 CI 检查的是内部自洽（索引新鲜度、YAML 合法性、模板结构齐全）——因此"CI 绿 + 测试过"对"该不该合"的信息量接近于零，reviewer 会被逼在"开全文"与"直接批"之间二选一（`mechanism/execution.md` §7 把这一失效形态命名为"橡皮图章"）。
 
 改动侧义务：EV 卡带 `predicted_effect.measure`。reviewer 侧动作：
 

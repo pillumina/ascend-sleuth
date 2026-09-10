@@ -2,7 +2,7 @@
 # ixn_replay.py —— 交互型 replay 评测 harness（机制决议 EV-2026-012）
 #
 # 测 diagnose 的"交互面"（追问 / 信息充分性 / 过早结论），与单发 S2（检索/内容面）
-# 正交。设计文档 docs/evolution-ixn-replay.md（口径经 2026-09 本地 pilot N=3 验证，
+# 正交。设计文档 docs/mechanism/ixn-replay.md（口径经 2026-09 本地 pilot N=3 验证，
 # 验证数据与结论内联于该文档 §4/§7）。
 #
 # harness 只做数据与评分；每段"诊断 + 追问"由 agent 执行（读 feed → 走 diagnose skill
@@ -197,7 +197,7 @@ def cmd_aggregate(root):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="交互型 replay 评测 harness（机制 EV-2026-012；文档 docs/evolution-ixn-replay.md）")
+        description="交互型 replay 评测 harness（机制 EV-2026-012；文档 docs/mechanism/ixn-replay.md）")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--prepare", metavar="ISSUE", help="拉 issue+评论，生成素材与 gold 模板")
     g.add_argument("--score", metavar="ISSUE", help="读 gold + 各段 result，出分")

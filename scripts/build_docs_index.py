@@ -92,7 +92,8 @@ def render_docs(root: Path, doc) -> str:
 
 
 def missing_docs(root: Path, doc) -> list:
-    """docs/ 下未登记进清单的 .md（含 ADR：ADR 以目录条目 `docs/adr/` 整体登记）。"""
+    """docs/ 下未登记进清单的 .md（含 ADR 与 mechanism：ADR 以目录条目 `docs/adr/`
+    整体登记；mechanism 逐篇登记，故逐文件比对）。"""
     listed = {e["path"] for e in (doc.get("docs") or [])}
     missing = []
     for f in sorted((root / "docs").glob("*.md")):
@@ -102,6 +103,10 @@ def missing_docs(root: Path, doc) -> list:
     if "docs/adr/" not in listed:
         for f in sorted((root / "docs" / "adr").glob("*.md")):
             missing.append(f"docs/adr/{f.name}")
+    for f in sorted((root / "docs" / "mechanism").glob("*.md")):
+        rel = f"docs/mechanism/{f.name}"
+        if rel not in listed:
+            missing.append(rel)
     return missing
 
 

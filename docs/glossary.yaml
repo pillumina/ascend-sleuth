@@ -46,37 +46,37 @@ entries:
     family: 演进对象层
     scope: ["*"]
     meaning: 知识内容层：case / reference / triage 内容
-    see: evolution-pipeline.md §1
+    see: mechanism/pipeline.md §1
   - token: L2
     short: 流程与 skill 层
     family: 演进对象层
     scope: ["*"]
     meaning: 流程与 skill 层：diagnose/groom/to-* 实现、triage 分支、scripts、新 skill
-    see: evolution-pipeline.md §1
+    see: mechanism/pipeline.md §1
   - token: L3
     short: 工作流与编排层
     family: 演进对象层
     scope: ["*"]
     meaning: 工作流与编排层：流水线、groom 节奏、roadmap 机制、evolution 文档本身
-    see: evolution-pipeline.md §1
+    see: mechanism/pipeline.md §1
   - token: S1
     short: 现场反馈（工程师回报）
     family: 评分源
     scope: ["*"]
     meaning: 现场反馈：工程师回报 fix 是否解决 → case.confidence（唯一现场 resolve 口径）
-    see: evolution-pipeline.md §2.1
+    see: mechanism/pipeline.md §2.1
   - token: S2
     short: issue 回放对照（内容验证）
     family: 评分源
     scope: ["*"]
     meaning: 内容验证：issue-replay 对照外部 resolution → case.validation_record
-    see: evolution-pipeline.md §2.1
+    see: mechanism/pipeline.md §2.1
   - token: S3
     short: golden 回归门
     family: 评分源
     scope: ["*"]
     meaning: 回归防护：golden 回放，只作验证门不改 case 数据
-    see: evolution-pipeline.md §2.1
+    see: mechanism/pipeline.md §2.1
   - token: E1
     short: roadmap 事项：agent 自起草候选 case
     family: roadmap 可演进性
@@ -140,21 +140,21 @@ entries:
   - token: G3
     short: 治理缺口：自我指涉
     family: 治理缺口
-    scope: ["docs/roadmap.md", "docs/evolution-orchestration.md"]
+    scope: ["docs/roadmap.md", "docs/mechanism/orchestration.md"]
     meaning: 治理缺口：系统改自己的 skill，防自我确认偏差
-    see: evolution-orchestration.md §4
+    see: mechanism/orchestration.md §4
   - token: G5
     short: 治理缺口：无全局上下文
     family: 治理缺口
-    scope: ["docs/roadmap.md", "docs/evolution-orchestration.md"]
+    scope: ["docs/roadmap.md", "docs/mechanism/orchestration.md"]
     meaning: 治理缺口：agent 每轮执行前无全局上下文
-    see: evolution-orchestration.md §5.1
+    see: mechanism/orchestration.md §5.1
   - token: G6
     short: 治理缺口：无成本侧
     family: 治理缺口
-    scope: ["docs/roadmap.md", "docs/evolution-orchestration.md"]
+    scope: ["docs/roadmap.md", "docs/mechanism/orchestration.md"]
     meaning: 治理缺口：卡无成本侧字段
-    see: evolution-orchestration.md §3.2
+    see: mechanism/orchestration.md §3.2
   - token: T4
     short: 信号：执行错无归属→L2 卡
     family: 触发信号
@@ -181,49 +181,49 @@ entries:
     see: skills/self-evolve/SKILL.md
   - token: Phase A
     family: 落地阶段
-    scope: ["docs/roadmap.md", "docs/evolution-pipeline.md"]
+    scope: ["docs/roadmap.md", "docs/mechanism/pipeline.md"]
     meaning: 落地阶段 A：文档采纳
-    see: evolution-pipeline.md §11
+    see: mechanism/pipeline.md §11
   - token: Phase D
     family: 落地阶段
-    scope: ["docs/roadmap.md", "docs/evolution-pipeline.md"]
+    scope: ["docs/roadmap.md", "docs/mechanism/pipeline.md"]
     meaning: 落地阶段 D：自演进试点一轮
-    see: evolution-pipeline.md §11
+    see: mechanism/pipeline.md §11
   - token: Phase E
     family: 落地阶段
-    scope: ["docs/roadmap.md", "docs/evolution-pipeline.md"]
+    scope: ["docs/roadmap.md", "docs/mechanism/pipeline.md"]
     meaning: 落地阶段 E：auto 扩权/参数校准常态化
-    see: evolution-pipeline.md §11
+    see: mechanism/pipeline.md §11
   - token: G1
     family: 治理缺口
-    scope: ["docs/roadmap.md", "docs/evolution-orchestration.md"]
+    scope: ["docs/roadmap.md", "docs/mechanism/orchestration.md"]
     short: 治理缺口：会话层缺失
     meaning: 治理缺口：会话层缺失（无会话协议）
-    see: evolution-orchestration.md 引言
+    see: mechanism/orchestration.md 引言
   - token: G2
     family: 治理缺口
-    scope: ["docs/roadmap.md", "docs/evolution-orchestration.md"]
+    scope: ["docs/roadmap.md", "docs/mechanism/orchestration.md"]
     short: 治理缺口：无目标与停止
     meaning: 治理缺口：无目标函数与停止条件
-    see: evolution-orchestration.md 引言
+    see: mechanism/orchestration.md 引言
   - token: G4
     family: 治理缺口
-    scope: ["docs/roadmap.md", "docs/evolution-orchestration.md"]
+    scope: ["docs/roadmap.md", "docs/mechanism/orchestration.md"]
     short: 治理缺口：同轮冲突
     meaning: 治理缺口：同轮多卡冲突无编排
-    see: evolution-orchestration.md 引言
+    see: mechanism/orchestration.md 引言
   - token: G7
     family: 治理缺口
-    scope: ["docs/roadmap.md", "docs/evolution-orchestration.md"]
+    scope: ["docs/roadmap.md", "docs/mechanism/orchestration.md"]
     short: 治理缺口：无稳态降频
     meaning: 治理缺口：无稳态降频机制
-    see: evolution-orchestration.md 引言
+    see: mechanism/orchestration.md 引言
   - token: G8
     family: 治理缺口
-    scope: ["docs/roadmap.md", "docs/evolution-orchestration.md"]
+    scope: ["docs/roadmap.md", "docs/mechanism/orchestration.md"]
     short: 治理缺口：无暂停重启
     meaning: 治理缺口：无暂停/重启机制
-    see: evolution-orchestration.md 引言
+    see: mechanism/orchestration.md 引言
   - token: T1
     family: 触发信号
     scope: ["docs/roadmap.md", "skills/evolve-check/SKILL.md"]
@@ -370,34 +370,34 @@ entries:
     see: roadmap.md
   - token: Phase B
     family: 落地阶段
-    scope: ["docs/roadmap.md", "docs/evolution-pipeline.md"]
+    scope: ["docs/roadmap.md", "docs/mechanism/pipeline.md"]
     short: 落地阶段 B（归因事件聚合跑通）
     meaning: 落地阶段 B：归因事件按需聚合跑通 + L2 首条候选卡
-    see: evolution-pipeline.md §11
+    see: mechanism/pipeline.md §11
   - token: Phase C
     family: 落地阶段
-    scope: ["docs/roadmap.md", "docs/evolution-pipeline.md"]
+    scope: ["docs/roadmap.md", "docs/mechanism/pipeline.md"]
     short: 落地阶段 C（golden 验证门常态化）
     meaning: 落地阶段 C：golden 验证门常态化
-    see: evolution-pipeline.md §11
+    see: mechanism/pipeline.md §11
   - token: Phase C2
     family: 落地阶段
-    scope: ["docs/roadmap.md", "docs/evolution-pipeline.md"]
+    scope: ["docs/roadmap.md", "docs/mechanism/pipeline.md"]
     short: 落地阶段 C2（S2 校准集）
     meaning: 落地阶段 C2：S2 issue-replay 校准集建立
-    see: evolution-pipeline.md §11
+    see: mechanism/pipeline.md §11
   - token: O8
     family: roadmap 可观测性
     scope: ["docs/roadmap.md"]
     short: roadmap 事项：交互型 replay 评测（ixn-replay）
     meaning: roadmap 可观测性事项：分期披露驱动 diagnose 交互评分（追问召回/决定性字段在链/过早结论），机制决议 EV-2026-012，设计
-      docs/evolution-ixn-replay.md
+      docs/mechanism/ixn-replay.md
     see: roadmap.md
   - token: E8
     family: roadmap 可演进性
     scope: ["docs/roadmap.md"]
     short: roadmap 事项：元层 eval 台（arena）
-    meaning: roadmap 可演进性事项：train/val 分离 + golden/val 门控 + 影响账本，决议 EV-2026-013，设计 docs/evolution-eval-arena.md
+    meaning: roadmap 可演进性事项：train/val 分离 + golden/val 门控 + 影响账本，决议 EV-2026-013，设计 docs/mechanism/eval-arena.md
     see: roadmap.md
 
 # 系列级说明（无固定字面 token 的系列；渲染告警与速查表用）

@@ -1,7 +1,7 @@
 # 演进机制（入口）
 
 > **这是演进机制的唯一入口。** 日常只读这一篇：它给出三个闭环的全图、每件事"由哪篇文档说了算"、以及每周实际要做什么。
-> 其余 `evolution-*.md` 是**论证层**——只在你要改机制本身时才读（分层清单见 [README 的「文档」节](../README.md#文档)）。
+> 其余 `mechanism/*.md` 是**论证层**——只在你要改机制本身时才读（分层清单见 [README 的「文档」节](../README.md#文档)）。
 >
 > 本文不写死任何数字。条数与容量见 `knowledge/_index.yaml` 头注；卡数见 `scripts/ev_measure.py --audit`；
 > 指标时序见 `metrics/timeline.yaml`。手写的数字会腐烂（本文曾写"123 条 case、7 张 EV 卡"，而当时已是 158 条、50 张）。
@@ -29,8 +29,8 @@
 | 改测评门禁 / 跑回归 | [eval.md](eval.md) | 门禁分级、对照集封存、判据强度如实标注 |
 | 走 PR / 门控 / 多人协作 | [git-workflow.md](git-workflow.md) | 含「评审把手」：reviewer 怎么判"该不该合" |
 | 看指标口径 / 跑周批 | [metrics.md](metrics.md) | 数字在 `metrics/timeline.yaml`，机制在这里 |
-| 改演进机制本身 | [evolution-pipeline.md](evolution-pipeline.md)（状态机与卡 schema）、[evolution-execution.md](evolution-execution.md)（信息契约与验证）、[evolution-orchestration.md](evolution-orchestration.md)（会话与预算）、[evolution-run.md](evolution-run.md)（持续运行） | 四篇各管一段，互有引用——改前先确认改的是哪一段 |
-| 做评测机制（元层 / 交互面） | [evolution-eval-arena.md](evolution-eval-arena.md)、[evolution-ixn-replay.md](evolution-ixn-replay.md) | 论证层，稳定性要求高 |
+| 改演进机制本身 | [mechanism/pipeline.md](mechanism/pipeline.md)（状态机与卡 schema）、[mechanism/execution.md](mechanism/execution.md)（信息契约与验证）、[mechanism/orchestration.md](mechanism/orchestration.md)（会话与预算）、[mechanism/run.md](mechanism/run.md)（持续运行） | 四篇各管一段，互有引用——改前先确认改的是哪一段 |
+| 做评测机制（元层 / 交互面） | [mechanism/eval-arena.md](mechanism/eval-arena.md)、[mechanism/ixn-replay.md](mechanism/ixn-replay.md) | 论证层，稳定性要求高 |
 | 排下一步工作 / 评估能否推广 | [roadmap.md](roadmap.md)、[rollout-assessment.md](rollout-assessment.md) | 闸门驱动，不按日历 |
 | 查"当初为什么这样选" | `docs/adr/` | 决策留痕，含被否决的替代方案与重评条件 |
 

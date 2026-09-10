@@ -22,7 +22,7 @@
 #
 # 边界（不假装）：**跨克隆/跨机不聚合**——本文件只解决"同一克隆内的一致性"。要跨机，
 #   得让**聚合值**（不是流水）进 git（如 metrics/timeline.yaml），见 tail_exec_log.py --summary
-#   与 docs/evolution-run.md §4。
+#   与 docs/mechanism/run.md §4。
 #
 # 用法（三个调用方共用）：
 #   from exec_log_path import LOG_REL, resolve

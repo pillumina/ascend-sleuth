@@ -3,7 +3,7 @@
 #
 # WikiSkill 式门控的数据/评分侧：候选改动（triage/quickly_check/case 等检索路由层
 # 组件）在 held-out selection 池上 baseline vs candidate 重放对照，严格提升才接受，
-# 否则回滚；结果留影响账本。设计文档 docs/evolution-eval-arena.md。
+# 否则回滚；结果留影响账本。设计文档 docs/mechanism/eval-arena.md。
 #
 # 目录（本地运行件，gitignore）：.s2-replay/arena/
 #   pool-*.yaml         池清单：{name, split, issues:[{id, expected_ns, category,
@@ -210,7 +210,7 @@ def cmd_rc_check(root, pool_file):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="元层 eval 台工具（EV-2026-013；docs/evolution-eval-arena.md）")
+        description="元层 eval 台工具（EV-2026-013；docs/mechanism/eval-arena.md）")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--pool", metavar="YAML", help="校验池文件")
     g.add_argument("--stats", metavar="YAML", help="聚合池内 result → stats")

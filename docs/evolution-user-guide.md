@@ -2,8 +2,8 @@
 
 > **论证层——日常不必读。** 执行规则与机制地图见 [evolution.md](evolution.md)；本文只承载「为什么这样设计」的推导，改机制本身时才需要读。
 
-> 这是**使用侧的 UX 规格**（面向"用自演进系统改进诊断"的工程师），不是机制文档。机制在 [evolution-pipeline.md](evolution-pipeline.md) / [evolution-execution.md](evolution-execution.md) / [evolution-orchestration.md](evolution-orchestration.md) / [evolution-run.md](evolution-run.md)。本文回答使用时的五个问题：**我能说什么？一句话后会发生什么？怎么知道它在跑？怎么知道它跑得对不对？中途想改怎么办？**
-> 状态：**第一批能力已可用**（self-evolve skill + 工具链已落地：产卡/校验/攒批聚合 PR/补 case 沉淀），见下文"当前可用"标注。标"蓝图/待数据"的能力（长期任务层、token 效率、可视化面板等）是设计目标，触发条件到才实现（evolution-pipeline §11.1）。
+> 这是**使用侧的 UX 规格**（面向"用自演进系统改进诊断"的工程师），不是机制文档。机制在 [pipeline.md](mechanism/pipeline.md) / [execution.md](mechanism/execution.md) / [orchestration.md](mechanism/orchestration.md) / [run.md](mechanism/run.md)。本文回答使用时的五个问题：**我能说什么？一句话后会发生什么？怎么知道它在跑？怎么知道它跑得对不对？中途想改怎么办？**
+> 状态：**第一批能力已可用**（self-evolve skill + 工具链已落地：产卡/校验/攒批聚合 PR/补 case 沉淀），见下文"当前可用"标注。标"蓝图/待数据"的能力（长期任务层、token 效率、可视化面板等）是设计目标，触发条件到才实现（mechanism/pipeline.md §11.1）。
 
 ## 1. 你能说什么（指令示例菜单）
 
@@ -134,7 +134,7 @@ self-evolving 覆盖三层，全都改（下表列每一层做什么、何时给
 - 覆盖缺口驱动补 case：S2 replay 暴露的未覆盖问题 → 候选卡 → to-postmortem 沉淀。升格分场景：默认草稿进 inbox 待 owner 审；owner 预授权的自动化源（issue-ingest 链路）可直接 groom 升格，不等周批；
 - 工具：`ev_proposal.py`（产卡）/ `verify_proposals.py`（校验）/ `component_tally.py`（归因按需聚合）/ `settle_s2_feedback.py`（S2 反馈结算）/ `s2_calibration.py` + `s2_replay.py`（评测）/ `replay_golden.py`（回归）。
 
-**待蓝图/数据**（evolution-pipeline §11.1 标注，触发后实现）：
+**待蓝图/数据**（mechanism/pipeline.md §11.1 标注，触发后实现）：
 
 - 长期任务层（跨多轮自动攒批）、token 效率诊断（需 token 记账）、回滚归因轮（需真实 rolled_back 卡）、可视化面板（当前看 proposals/ 文件与对话报告）；
 - 超时降级态、策略记忆等蓝图机制。

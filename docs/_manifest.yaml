@@ -25,7 +25,7 @@ layers:
     when: 你要判断某个设计/改动是否合规，或要挑战一条既有规则时
   - id: mechanism
     title: 演进机制（改机制本身才读；日常不必读）
-    when: 你要改演进/评测/编排机制本身时——其余情况读 docs/evolution.md 一篇就够
+    when: 你要改演进/评测/编排机制本身时——日常只读 docs/evolution.md 一篇，论证层在 docs/mechanism/
   - id: guide
     title: 操作指南（用到那个环节时才读）
     when: 你要装环境（Windows skills 使能）、跑评测、看指标、走 git 门控、或做 issue 导入时
@@ -49,26 +49,26 @@ docs:
   - path: docs/evolution.md
     layer: mechanism
     purpose: "**演进机制入口**：机制地图、权威归属、周度 runbook——日常只读这一篇"
-  - path: docs/evolution-pipeline.md
+  - path: docs/mechanism/pipeline.md
     layer: mechanism
     purpose: 三层闭环（知识 / 流程 / 编排）与 proposal 状态机、卡 schema
-  - path: docs/evolution-execution.md
+  - path: docs/mechanism/execution.md
     layer: mechanism
     purpose: proposal 信息契约、评审判据、follow-up 验证、指标分层
-  - path: docs/evolution-orchestration.md
+  - path: docs/mechanism/orchestration.md
     layer: mechanism
     purpose: 自演进会话协议、目标函数与停止条件、token 预算
-  - path: docs/evolution-run.md
+  - path: docs/mechanism/run.md
     layer: mechanism
     purpose: 长期运行、issue 三重角色、统一执行记录、可视化
-  - path: docs/evolution-eval-arena.md
+  - path: docs/mechanism/eval-arena.md
     layer: mechanism
     purpose: 元层 eval 台（train/val 门控）与影响账本
-  - path: docs/evolution-ixn-replay.md
+  - path: docs/mechanism/ixn-replay.md
     layer: mechanism
     purpose: 交互面评测（追问 / 信息充分性 / 过早结论）
   - path: docs/evolution-user-guide.md
-    layer: mechanism
+    layer: guide
     purpose: 使用者侧：能说什么、一句话后发生什么、怎么读进度
   - path: docs/eval.md
     layer: guide

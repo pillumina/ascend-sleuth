@@ -187,7 +187,7 @@ disable-model-invocation: true
 > 为什么 groom 也要挂：groom 是**批量改动知识库的收尾动作**（升格/退休/改 confidence），
 > 一轮 groom 天然产生"同族沉淀是否达归纳阈值""格子是否压线""哪条 case 反复被复测"这类
 > 演进信号——它不挂收尾，这批信号就只存在于 agent 记忆里（此前 groom 从未落过 exec-log、
-> 也没有收尾协议，`docs/evolution-run.md` 的"已落地含 groom"曾是纸面承诺）。
+> 也没有收尾协议，`docs/mechanism/run.md` 的"已落地含 groom"曾是纸面承诺）。
 
 ## v2 职责（路线图，v1 不做）
 

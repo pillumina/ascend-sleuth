@@ -113,7 +113,7 @@ _避免_：隐含价格、机会成本（语义近但不等）
 | `A2-910B` / `A3-910C` / `A5-950` | 昇腾三代硬件平台标识；case 的 `platforms` 字段与各自的 diagnosis 分支按它分派 | `skills/diagnose/references/platform-dispatch.md` |
 | `DSH` | DeepSeek Harness：本仓的 agent 运行环境与零配置主路径；`.dsh/skills` 与诊断面板仅在 DSH 下生效 | 本仓 README「快速开始」 |
 | `S1` / `S2` | 反馈的两条通道：S1 = 现场 resolve（工程师回报 fix 是否解决）；S2 = 内容验证（issue-replay 对照外部 ground truth） | `docs/evolution.md` |
-| `EV 卡` | 演进提案卡（`proposals/ideas/EV-*.yaml`），演进闭环的改进单元 | `docs/evolution-pipeline.md` |
+| `EV 卡` | 演进提案卡（`proposals/ideas/EV-*.yaml`），演进闭环的改进单元 | `docs/mechanism/pipeline.md` |
 | `F1`–`F5` | 阶段一索引加载协议的优化子项编号 | `docs/roadmap.md` 的「加载协议子流」条目 |
 | 格子 | 容量治理单元 = (框架 × 类别)；软上限 30、硬上限 60 | `docs/adr/0004-capacity-governance.md` |
 | 夹具 / `holdout` | 回归评测样本统称夹具；其中按内容哈希封存、不被改动者削弱的那部分叫 holdout | `docs/eval.md` |

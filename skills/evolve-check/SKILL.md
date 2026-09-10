@@ -74,7 +74,7 @@ description: >
 **第 3 步：产卡 + 自行验证（有信号时，agent 自动完成，不等用户）**：
 
 1. 查重 + **同组件先例咨询**（防重提被拒方案——skill-impact 咨询语义；
-   论证可选层 docs/evolution-pipeline.md §12a）：`python3 scripts/ev_proposal.py --list`
+   论证可选层 docs/mechanism/pipeline.md §12a）：`python3 scripts/ev_proposal.py --list`
    ——同 trajectory/同 target 已有在池卡 → 合并不新建（候选水位超限时只记信号不产卡）；
    同时查本卡要改的组件（skill 步骤 / triage 分支 / script）在历史卡里的结局：
    `--list` 定位同组件卡 → 读其 decisions——该组件被改过 / 回滚过 / 有 rejected 结论 =
@@ -96,7 +96,7 @@ description: >
      非全量；基线缓存复用，只跑改后侧）或 S2 replay（`scripts/replay_golden.py` /
      `scripts/s2_replay.py`），数据通过才算 eval solid；检索/路由层候选在 **arena
      selection 池可用时**（`scripts/eval_arena.py --stats/--gate`，论证见
-     docs/evolution-eval-arena.md 可选层）：golden 无回归 + val 命中/路由严格提升
+     docs/mechanism/eval-arena.md 可选层）：golden 无回归 + val 命中/路由严格提升
      才判 solid（门控判定是数据门槛，不替代 dual 双签）；
      **交互/追问/指引面**改动（不改变候选选择）→ 跑 ixn 对口样本（`scripts/ixn_replay.py`，
      2-3 条针对性）或小型探针，**不跑检索 golden**；
