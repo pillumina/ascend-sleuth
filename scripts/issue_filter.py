@@ -47,12 +47,17 @@ def has_label(item: dict, labels: list) -> bool:
     return any(l in item_labels for l in labels)
 
 
-def heuristic_key(it: dict):
-    """启发式排序键（零 token）：label 优先级 > state_reason=completed > 评论数"""
+def heuristic_key(it: dict, avoid_labels=()):
+    """启发式排序键（零 token）：label 优先级 > state_reason=completed > 评论数 > 非 stale 优先
+
+    末维是**降权而非排除**：stale/wait-feedback 多为机器人自动关单（缺信息未复现），
+    但其中也有已定论的好案例——只让它们排在后面（先花预算在更新鲜的候选上），不丢弃。
+    """
     labels = {l.get("name", l) if isinstance(l, dict) else l for l in it.get("labels", [])}
     label_score = max((LABEL_PRIORITY.get(l, 0) for l in labels), default=0)
     resolved = 1 if it.get("state_reason") == "completed" else 0
-    return (label_score, resolved, it.get("comments") or 0)
+    not_deprioritized = 0 if (avoid_labels and labels & set(avoid_labels)) else 1
+    return (label_score, resolved, not_deprioritized, it.get("comments") or 0)
 
 
 def load_state(path: Path) -> dict:
@@ -69,6 +74,12 @@ def main():
     ap.add_argument("--limit", type=int, default=50, help="候选数量上限")
     ap.add_argument("--report", help="候选列表写 JSON（管道产物，供评估阶段消费）")
     ap.add_argument("--mark-imported", help="逗号分隔的 issue 编号：沉淀完成后追加 processed（幂等）")
+    ap.add_argument("--deprioritize-labels", default="stale,wait-feedback",
+                    help="逗号分隔：含任一 label 的 issue 排序降到最后（**不排除**）。"
+                         "stale/wait-feedback = 机器人按无活动自动关单——多数是「缺信息未复现」，"
+                         "但**也有已定论的好案例**（2026-09-10 实测：本批唯一通过评估的 #14121 恰带 stale 标签，"
+                         "维护者已确认成因、报告人已同拓扑复测）。故只降权不硬排——"
+                         "硬排除会漏掉好案例（原则六：漏判代价更高时用软降级）")
     args = ap.parse_args()
 
     state_path = Path(args.state)
@@ -103,6 +114,7 @@ def main():
     # 硬过滤（保持缓存顺序，候选按启发式排序）
     candidates = []
     excluded = {"processed": [], "no_label": [], "low_comments": [], "title": []}
+    avoid_labels = [l.strip() for l in (args.deprioritize_labels or "").split(",") if l.strip()]
     for it in issues:
         n = it["number"]
         if n in processed:
@@ -119,7 +131,7 @@ def main():
             continue
         candidates.append(it)
 
-    candidates.sort(key=heuristic_key, reverse=True)
+    candidates.sort(key=lambda it: heuristic_key(it, avoid_labels), reverse=True)
     candidates = candidates[: args.limit]
 
     print(f"候选 {len(candidates)} 条（上限 {args.limit}，按 label 优先级/已解决/评论数排序）")
