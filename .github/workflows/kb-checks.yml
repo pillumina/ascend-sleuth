@@ -112,8 +112,14 @@ jobs:
             echo "非 PR 环境（本地复跑 / push）——跳过标签闸门"
             exit 0
           fi
-          git fetch --no-tags --depth=1 origin "$BASE_REF" >/dev/null 2>&1 || true
-          changed=$(git diff --name-only "origin/$BASE_REF"...HEAD -- eval/holdout.yaml || true)
+          # 不能 shallow fetch：三点 diff（A...B）需要 merge-base，取不到时 diff 会
+          # 静默为空 → 闸门形同虚设。checkout 已 fetch-depth: 0，这里做完整 fetch。
+          git fetch --no-tags origin "$BASE_REF" >/dev/null 2>&1 || true
+          if ! git rev-parse --verify --quiet "origin/$BASE_REF" >/dev/null; then
+            echo "取不到 origin/$BASE_REF——无法判定是否改动对照集，按缺标签处理（宁可要人看一眼）"
+            exit 1
+          fi
+          changed=$(git diff --name-only "origin/$BASE_REF...HEAD" -- eval/holdout.yaml || true)
           if [ -z "$changed" ]; then
             echo "未改动 eval/holdout.yaml——无需标签"
             exit 0
