@@ -76,7 +76,8 @@ def ex_degraded(root: Path):
     check("tail_exec_log 无记录时 exit 0（不是崩溃）", rc == 0, out[-300:])
     check("报出「无执行记录」", "无执行记录" in out, out[-200:])
     check("给出退化口径（不假装有数据）", "如实标注" in out or "基于现场判断" in out, out[-200:])
-    check("标注本地件（防读成全系统）", "跨 worktree/克隆不聚合" in out, out[-200:])
+    check("标注共享范围（防读成全系统）", "同一克隆共享" in out or "检出内" in out, out[-200:])
+    check("沙箱（无 .git）退化为检出内路径", "检出内" in out, out[-200:])
     # 旧实现（SKILL.md 原内联命令）在同一环境下的行为——留档对比
     old = ("import yaml;d=yaml.safe_load(open('metrics/skill-exec-log.yaml'));"
            "print('\\n'.join(f\"{r['seq']} {r['skill']} {r.get('at','')[:16]}\" for r in (d.get('records') or [])[-3:]))")
@@ -177,7 +178,10 @@ def ex_signal_path(root: Path):
     check("看板带出最后一条收尾的卡号",
           any(cid in p for r in [se.get("last_evolve_check") or {}] for p in (r.get("products") or [])),
           str(se.get("last_evolve_check"))[:200])
-    check("看板标注本地件口径", "不聚合" in (se.get("note") or ""), str(se.get("note"))[:120])
+    check("看板标注共享范围口径", "同一克隆共享" in (se.get("note") or "") or "检出内" in (se.get("note") or ""),
+          str(se.get("note"))[:120])
+    check("看板带聚合视图（供 --summary→timeline 用）", isinstance(se.get("aggregate"), dict)
+          and se["aggregate"].get("total") == se.get("total"), json.dumps(se.get("aggregate"), ensure_ascii=False)[:160])
     return cid
 
 
@@ -339,7 +343,77 @@ target.unlink()
     made.unlink()
 
 
-# ---------------------------------------------------------------- ⑦ CI parity
+# ---------------------------------------------------------------- ⑦ 共享 exec-log
+def ex_shared_exec_log(root: Path):
+    """exec-log 的共享语义 + 并发锁（2026-09-10 修的结构缺陷）。
+
+    缺陷本体：记录原先写在"各 worktree 的检出内"且是 .gitignore 件，而本仓库强制每个 agent
+    在独立 worktree 干活 → 代理落的记录**主检出（= 用户会话 cwd / 面板读处）读不到**，
+    worktree 一清记录随之消失。修法：路径解析到主检出（同一克隆共享），写侧持 flock。
+    这里用一个临时 git 仓库 + 两个真实 linked worktree 来验证（沙箱自己无 .git，测不到这点）。
+    """
+    print("\n[E9] 共享 exec-log · 跨 worktree 可见 + worktree 清理不丢 + 并发不覆盖")
+    import shutil as _sh
+    import subprocess as _sp
+
+    if _sh.which("git") is None:
+        print("  — 跳过（无 git）")
+        return
+    demo = root.parent / "sharedlog-demo"
+    wt1, wt2 = root.parent / "sharedlog-wt1", root.parent / "sharedlog-wt2"
+    for p in (demo, wt1, wt2):
+        _sh.rmtree(p, ignore_errors=True)
+    demo.mkdir(parents=True)
+    (demo / "metrics").mkdir()
+    (demo / "metrics" / "timeline.yaml").write_text("periods: []\n", encoding="utf-8")
+    _sh.copytree(root / "scripts", demo / "scripts")
+    _sp.run(["git", "init", "-q"], cwd=demo, check=True)
+    _sp.run(["git", "add", "-A"], cwd=demo, check=True)
+    _sp.run(["git", "-c", "user.email=r@x", "-c", "user.name=r", "commit", "-qm", "init"], cwd=demo, check=True)
+    _sp.run(["git", "worktree", "add", "-q", str(wt1), "-b", "kb/wt1"], cwd=demo, check=True)
+    _sp.run(["git", "worktree", "add", "-q", str(wt2), "-b", "kb/wt2"], cwd=demo, check=True)
+
+    # ① 从 worktree 落一条 → 主检出立刻能读到（这是修复的核心目标）
+    rc, out = py(wt1, "scripts/log_skill_exec.py", "--skill", "to-reference",
+                 "--products", "ref-x(active)", "--reason", "共享语义实测", "--source", "to-reference")
+    check("worktree 写入解析到主检出共享件", rc == 0 and "同一克隆共享" in out, out[-220:])
+    rc, out = py(demo, "scripts/tail_exec_log.py")
+    check("主检出立刻读到 worktree 落的记录（修前读不到）", rc == 0 and "共享语义实测" in out, out[-260:])
+
+    # ② 并发写：两个 worktree 各 5 条 → 全在、seq 唯一（锁的证据）
+    old_n = len([1 for line in (demo / "metrics" / "skill-exec-log.yaml").read_text(encoding="utf-8").splitlines()
+                 if line.strip().startswith("- seq:")])
+    procs = []
+    for i in range(5):
+        for wt, tag in ((wt1, "w1"), (wt2, "w2")):
+            procs.append(_sp.Popen([sys.executable, "scripts/log_skill_exec.py", "--skill", "evolve-check",
+                                    "--reason", f"无演进信号 {tag}-{i}", "--source", "to-reference", "--tokens", "1"],
+                                   cwd=str(wt), stdout=_sp.DEVNULL, stderr=_sp.DEVNULL))
+    for p in procs:
+        p.wait()
+    rc, out = py(demo, "scripts/verify_exec_log.py", "--check")
+    n_new = len([1 for line in (demo / "metrics" / "skill-exec-log.yaml").read_text(encoding="utf-8").splitlines()
+                 if line.strip().startswith("- seq:")])
+    check(f"10 条并发写入全部落盘（{old_n} → {n_new}）且 seq 唯一", rc == 0 and n_new == old_n + 10, out[-260:])
+
+    # ③ 聚合视图（供 --summary → metrics/timeline.yaml 的跨机口径）
+    rc, out = py(demo, "scripts/tail_exec_log.py", "--summary")
+    check("聚合视图给出收尾次数与无信号次数",
+          rc == 0 and "evolve-check 收尾 10 次" in out and "无信号 10 次" in out, out[-300:])
+
+    # ④ worktree 清理不丢数据（修前：记录随 worktree 消失）
+    _sp.run(["git", "worktree", "remove", "--force", str(wt1)], cwd=demo, check=True)
+    rc, out = py(demo, "scripts/tail_exec_log.py", "--skill", "to-reference")
+    check("worktree 被清后记录仍在（数据不再随 worktree 消失）", rc == 0 and "共享语义实测" in out, out[-260:])
+
+    # ⑤ 无 git 环境退化为检出内路径（沙箱/CI 的隔离性）
+    rc, out = py(root, "scripts/tail_exec_log.py")
+    check("无 git 沙箱退化为检出内路径（隔离不被破坏）", "检出内" in out, out[-200:])
+    for p in (demo, wt2):
+        _sh.rmtree(p, ignore_errors=True)
+
+
+# ---------------------------------------------------------------- ⑧ CI parity
 def ex_ci_parity(root: Path):
     print("\n[E6] CI parity · kb-checks 的每条命令在本地逐条复跑")
     wf_path = root / ".github" / "workflows" / "kb-checks.yml"
@@ -357,7 +431,7 @@ def ex_ci_parity(root: Path):
                 cmds.append((jname, step["run"].strip()))
     check("proposal-audit 跑 verify_proposals --check",
           any("verify_proposals.py --check" in c for j, c in cmds if j == "proposal-audit"))
-    check("CI 不跑 verify_exec_log（本地件，跑了只会空转）",
+    check("CI 不跑 verify_exec_log（运行时件，CI 上不存在，跑了只会空转）",
           not any("verify_exec_log" in c for _, c in cmds))
     for jname, cmd in cmds:
         rc, out = run(["bash", "-c", cmd], cwd=root)
@@ -366,7 +440,7 @@ def ex_ci_parity(root: Path):
     return cmds
 
 
-# ---------------------------------------------------------------- ⑧ 面板渲染断言
+# ---------------------------------------------------------------- ⑨ 面板渲染断言
 def ex_panel(root: Path, enabled: bool):
     print("\n[E7] 面板渲染断言（ev-panel 执行现场区块 + 既有断言不回归）")
     if not enabled:
@@ -398,6 +472,7 @@ def main():
         ex_no_signal(sandbox)
         ex_negative_rules(sandbox)
         ex_card_id_safety(sandbox)
+        ex_shared_exec_log(sandbox)
         ex_ci_parity(sandbox)
         ex_panel(sandbox, not args.no_panel)
     finally:
