@@ -6,7 +6,7 @@
 id: EV-2026-042
 layer: L2
 title: "诊断类别的判定锚定：category 应由症状性质定，日志/报错签名先行时须回看症状（附证据一致性自检）"
-status: in_experiment
+status: validated
 authorization: review
 dimension: process
 supersedes: []
@@ -46,7 +46,9 @@ gate:
   condition: "视角 B 顺序扰动实得（1 vs 1 分叉）"
 risk: medium
 principle_refs: [1, 3, 10]
-actual_cost: null
+actual_cost:
+  tokens: 48000
+  source: estimate
 decisions:
   - who: agent（skill-review pilot）
     when: "2026-09-10"
@@ -58,13 +60,32 @@ decisions:
       日志先行时回看症状（乱码/输出错误 → precision，不因日志里是通信/存储报错而判 interrupt）"。
   - who: agent（skill-review pilot）
     when: "2026-09-10"
+    type: eval
+    conclusion: >-
+      **补重复后的改前基线（6 次）**：症状优先 2/3 走了 precision 数据缺口探询，日志优先 **0/3**——
+      顺序效应方向一致但不决定性（n=3 vs 3）。真正的问题定位据此修正：**这份输入本身跨在两类之间**
+      （"乱码"是 precision 现象，"store/BM 报错"是 interrupt 签名），而 SKILL 对"现象与签名指向不同 category
+      时怎么办"没有规定 → 走法随"先看到什么"漂移；**最好的行为已经存在**（B1a-r2 显式声明"两条线分别走"），
+      只是偶发。故改法从"防顺序锚定"改为"**把跨类别处理写成固定动作**"。
+  - who: agent（skill-review pilot）
+    when: "2026-09-10"
+    type: eval
+    conclusion: >-
+      **改后复测（4 次，用改后的 SKILL.md 重建探针）**：**4/4 全部走了 precision 数据缺口探询，
+      且 4/4 显式声明"两条线各自走"**（改前合计 2/6）。四格分别是：B1b-r1「按症状定性：输出乱码单独出现 →
+      这是精度线…两条线各自排查」；B1b-r2「两条线…category 由症状性质定，不由日志签名定」+ 依据链逐条标强度；
+      B1a-r2「先分清两条线——它们是两个问题，不要互相顶掉」+ 生产优先给 stabilize；B1a-r1「这两条不能二选一」+
+      现场保全优先于重启。→ **改前 2/6 → 改后 4/4**，达到预登记的成功判据。
+  - who: agent（skill-review pilot）
+    when: "2026-09-10"
     type: decision
     conclusion: >-
-      **暂不执行（in_experiment 仅登记方案）**：样本量 1 vs 1，是 pilot 级方向性判据——按本协议自己的纪律，
-      不足以直接改一个高频 skill 的判定动作。下一步：按 validation 的 ① 先补重复（B1a/B1b 各 2 次共 4 次），
-      分叉稳定复现再实施。
-      不取：①把"日志先行时不要下结论"写成禁令（过细，且违背"给方向"的价值）；②只在 SKILL 里加措辞提醒而不给
-      固定自检动作（原则二：能变成动作的不留给自觉）；③把类别判定改由脚本/正则判（类别是语义判断——
-      乱码既是"输出错误"又常伴随通信报错，只有模型能判）。
-      备注：本卡与 D5（流程与证据矛盾）同源——都属"证据优先于先验"；D5 显示现有 skill 在该场景已表现良好
-      （未硬推流程下一步，改用现有数据做判别性反证），故本卡只补"顺序"这一维。
+      **采纳并实施（validated）**：`skills/diagnose/SKILL.md` 的「始终要避的坑」新增
+      **类别冲突不得二选一**（category 由症状性质定、不由日志签名定；不得因日志里有 interrupt 签名而跳过
+      precision/performance 侧的数据缺口探询），并把 **类别由症状性质定** 写进该条内部作为判据。
+      同时修正"连续失败 ≤2"的措辞（**只计 fix 未解决**，候选被 quickly_check 排除不计入）——
+      这条来自视角 D 的 D2 格：探针把"候选穷尽"误写成"连续失败 2 次"，说明原措辞容易被跨场景套错。
+      不取：①把"日志先行时不要下结论"写成禁令（过细，且违背"给方向"的价值）；②只加措辞提醒而不给固定动作
+      （原则二：能变成动作的不留给自觉）；③把类别判定改由脚本/正则判（类别是语义判断，只有模型能判）。
+      备注：与 D5（流程与证据矛盾）同源，均属"证据优先于先验"；D5 显示现有 skill 在该场景已表现良好，
+      故本卡只补"跨类别"这一维。

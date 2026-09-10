@@ -7,7 +7,7 @@
 id: EV-2026-041
 layer: L2
 title: "diagnose 输出契约合并：两套并行规范（18 段必填）→ 4 段必需 + 2 个按需块，长度随问题复杂度伸缩"
-status: in_experiment
+status: validated
 authorization: review
 dimension: process
 supersedes: []
@@ -44,7 +44,9 @@ gate:
   condition: "视角 A 实得（18 段并行 + 大面积重叠）"
 risk: medium
 principle_refs: [9, 10]
-actual_cost: null
+actual_cost:
+  tokens: 55000
+  source: estimate
 decisions:
   - who: agent（skill-review pilot）
     when: "2026-09-10"
@@ -58,11 +60,24 @@ decisions:
       命中且根因明确时不必展开机制原理与时间线。
   - who: agent（skill-review pilot）
     when: "2026-09-10"
+    type: eval
+    conclusion: >-
+      **盲辨对照完成（视角 C）**：两个问题 × 两种契约 = 4 份渲染，匿名化为 J01–J04 交独立评审。
+      结果：**新契约两对都赢**——P1（MemCache 命中）25 vs 22、P2（QKV 布局命中）26 vs 24；
+      长度 **~2× 更短**（OLD 7393/7519 字符 vs NEW 3801/3268）。评审对 OLD 的批评集中在
+      "同一件事说 2~4 遍"（根因/fix/rollback 在开头块与第 6、7 节各写一遍）、"fix 迟到"、
+      "不像模板"仅 2–3 分；对 NEW 的评分为 结论先行 5、fix 效率 5、不像模板 4。
+      配对全对（J01/J02=P2、J03/J04=P1）→ **两种契约都保住了问题区分度**（差别在效率与冗余，不在内容）。
+      评审另指出两处渲染级缺陷（非契约级）：OLD 把材料未提供的事实写进证据表；NEW 把"排除链"标成"已验证"却无明细。
+  - who: agent（skill-review pilot）
+    when: "2026-09-10"
     type: decision
     conclusion: >-
-      **本卡暂不执行（status: in_experiment 仅登记方案）**：改的是**输出契约**，影响所有命中路径，
-      而且"更清楚"属主观判断——按本仓库的纪律，主观结论不能只凭一次静态审计就动手。
-      下一步顺序：先做视角 C 的盲辨实验（同问题新旧输出并排，让不知情者判），拿到对照数据再实施；
-      实施以独立 PR 提交（不与"建立审视能力"混在一起）。
-      不取：①直接删掉 5 项（会丢时间线/机制原理/风险 follow-up 的独特价值）；②保持 18 段只改措辞
-      （重叠仍在，模板化不解决）；③把它做成硬门（输出形态是判断性规范，不能 CI 化）。
+      **采纳并实施（validated）**：`skills/diagnose/SKILL.md` 的两节合并为「4 段必需 + 2 个按需块」，
+      并把旧 9 项的独有内容逐条落位（时间线→按需 B；机制原理→按需 A；根因与影响面→结论先行 + 触发/不触发面；
+      验证与复测→修复方案；风险 follow-up→第 4 段；可靠度→第 4 段；推理链 5 项→依据链子清单）。
+      同时把盲评暴露的两点写进契约：**"一件事只说一遍"**与**"排除链要给出检查明细，材料没给就标'未提供'、不写'已验证'"**，
+      并给修复方案加"**前提未验证时把核验写成第 0 步**"（这来自 NEW 渲染自己发现的 HDK 前提缺口）。
+      **实施中自查发现并修掉一处回归**：新契约丢了旧模板的"命中 `<CASE-ID>`（confidence/hits/misdiagnoses）"锚点——
+      两份新渲染里只有一份写了 case id。已在依据链子清单里把它写成**必写项**（它是回溯知识库与回写 confidence 的锚点）。
+      不取：①直接删掉 5 项（会丢独特价值）；②保持 18 段只改措辞；③做成硬门（输出形态是判断性规范）。
