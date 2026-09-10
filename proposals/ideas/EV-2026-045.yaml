@@ -1,0 +1,114 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）
+# 校验：python3 scripts/verify_proposals.py --check
+# 脱敏纪律：只含聚合值与证据引用，不含客户现场原文。
+# ============================================================
+
+id: EV-2026-045
+layer: L2
+title: skill 去外部锚——日期与 EV 卡号移出行为规范（保留规则，溯源归 git/PR/卡）+ CI 卫生检查
+status: validated
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-10
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      PR #173 review 中提出问题"skill 里怎么还有日期"。清点 `skills/`（14 个 md + 2 个 yaml）：
+      **日期形状锚 15 处**（`knowledge-groom` 8 处、`issue-ingest` 1 处、`evolve-check` 1 处、
+      `diagnose/references/` 3 处是 EV 卡号内嵌的 `2026-03`）+ **EV 卡号锚 5 处**
+      （`diagnose/references/` 3 处引 EV-2026-038、`knowledge-groom` 引 EV-2026-028/038）。
+      全部由**其他会话**引入，仓库 CI 只禁 ADR 编号（kb-checks 的 skill-self-contained job），
+      日期与卡号无任何规则——属规则空白而非违规。
+    trajectory:
+      - "grep -rnE '20[0-9]{2}-[0-9]{2}' skills/ → 15 处（清点见 PR #173 review 对话）"
+      - "grep -rnE 'EV-[0-9]{4}-[0-9]{3}' skills/ → 5 处"
+      - ".github/workflows/kb-checks.yml skill-self-contained job（只 grep 'ADR-[0-9]{4}'）"
+  - signal: principle_drift
+    evidence: >-
+      仓库已对 ADR 编号写明判据："ADR 会被修订/吸收，编号锚定让 skill 行为看起来由外部文档
+      间接定义；行为规则必须内联，traceability 归 git/PR/ADR 历史"。日期与卡号是**同一类外部锚**
+      且更脆：①日期记录的是"某次会话的观测时点"，读起来像事实、实际是历史；②其中 2 处把
+      **本地可变计数**写进了规范（"归一前 507 个 tag"、"exec-log 全表只有 1 条 evolve-check
+      记录"）——本地件随时在变，快照写进 skill 必腐烂；③卡号锚会随卡被修订/supersede 而失真
+      （EV-2026-038 的落地方式随后被 EV-2026-040 改写）。
+    trajectory:
+      - "CLAUDE.md「Skill self-containment (CI-enforced)」段（ADR 编号判据）"
+      - "skills/knowledge-groom/SKILL.md（tag 计数快照）、skills/evolve-check/SKILL.md（exec-log 计数快照，本 PR 之前）"
+      - "proposals/ideas/EV-2026-040.yaml（改写了 EV-2026-038 的落地方式）"
+hypothesis: >-
+  把 skill 里的日期与 EV 卡号锚全部移出（**保留规则与教训本身**，把"为什么"内联成一句依据或
+  留给卡/commit），并在 kb-checks 的 skill-self-contained job 增加与 ADR 同级的 grep 检查——
+  规范文件不再随观测时点过期而失真，且这类锚不再复发
+predicted_effect:
+  metric: skills/ 里的外部锚数量（日期形状 + EV 卡号）与复发率
+  from: 日期 15 处 + 卡号 5 处（跨 4 个文件，全部为其他会话引入）；CI 无检查
+  to: 0 处；CI 硬门（与 ADR 编号同级），新增即红
+validation:
+  method: scan_review
+  baseline: 当前 skills/ 文本（15 处日期 + 5 处卡号）
+  success_criteria: >-
+    ①改写遵循"删锚不删规则"——逐条差分审读，确认规则内容与教训强度未变；
+    ②新 CI grep 在 skills/ 上零命中，且 kb-checks 的全部命令本地逐条通过；
+    ③行为语义零变化（不改脚本逻辑、不改 triage-tree、不改 case/reference 内容）；
+    ④不改判断口径：删日期不等于否认教训，教训用"曾/实践中"表述而非时点。
+  rollback: 文本级改动 + 一行 CI，git revert 即可（原则七）
+gate:
+  condition: "用户 review 明确指出（已发生：PR #173 上提出'skill 里怎么还有日期'）"
+risk: low
+principle_refs: [2, 9, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "单会话内联执行，未单独记账；口径如实标注为未量化，不表示零成本"
+decisions:
+  - who: agent（2026-09-10 审计会话，用户 review 触发）
+    when: 2026-09-10
+    type: proposal
+    conclusion: >-
+      采纳「日期 + 卡号一并扫，并加 CI 同级检查（用户在三选项中选定）」而非"只防新增"：
+      预存的 15+5 处锚里，有 2 处是**可变计数快照**（会主动误导读者），不是无害的历史注释；
+      只防新增会把已知缺陷长期留在规范里。范围界定：**只清 skills/**（行为规范）；`docs/`、
+      `proposals/`、commit message 里的日期与卡号**保留**——那些正是溯源该待的地方；
+      docs 的章节指针（如 `docs/eval.md` 门禁分级）也保留：那是**规范指针**（随规范一起变），
+      不是**历史锚**（记录某次观测），两者性质不同，不做一刀切。
+  - who: agent（同轮执行）
+    when: 2026-09-10
+    type: action
+    conclusion: >-
+      已执行：①改写 `skills/` 11 行——删 15 处日期 + 5 处卡号锚，规则与教训全部保留
+      （`knowledge-groom` 8 行、`issue-ingest` 1 行、`evolve-check` 1 行、`diagnose/references/` 3 行）；
+      ②`.github/workflows/kb-checks.yml` 的 skill-self-contained job 增加
+      `grep -rnE '20[0-9]{2}-[0-9]{2}|EV-[0-9]{4}-[0-9]{3}' skills/`（沿用 `.py` 排除），
+      注释写明判据与范围；③本卡留痕。
+      **顺带处理（同一类锚、同一行内）**：`knowledge-groom` 成本段标题里的 `M5`（roadmap 行号）
+      也一并解码为规则本身（"token 预算纪律：确定性环节脚本先行、agent 只读摘要"）——
+      它与卡号同理（指向外部记录、会随 roadmap 重排失真），如认为应保留 roadmap 行号请在 review 指出。
+  - who: agent（同轮验证）
+    when: 2026-09-10
+    type: eval
+    conclusion: >-
+      scan_review（纯文本 + CI 卫生检查，无检索/路由/行为语义变化，按 docs/eval.md 分级不跑 golden）：
+      ①**清零**：`grep -rnE '20[0-9]{2}-[0-9]{2}|EV-[0-9]{4}-[0-9]{3}' skills/` 零命中（改前 15+5）；
+      ②**CI 全绿**：kb-checks 的 11 条 run 命令本地逐条通过，新检查输出 "skill 外部锚卫生 OK
+      （零日期 / 零 EV 卡号锚）"；索引/reference/metrics 三条校验不受影响；
+      ③**负例证明检查会红**：在临时目录塞入"（2026-09-10 教训）"或"（决议 EV-2026-999）"→ grep 命中并
+      打印行号（干净态 exit 0）——不是纸面规则；
+      ④**差分审读**：逐行 diff 确认"删锚不删规则"——11 行改动全部只动锚，规则文本与教训强度未变
+      （如"2026-08-31 教训：groom 转正后未回写…"→"教训：曾因 groom 转正后未回写…"，
+      量级保留、时点去掉）；
+      ⑤**范围边界已验证**：`docs/roadmap.md` 仍有 14 处日期、`proposals/` 卡里的日期与卡号照旧——
+      溯源该待的地方没有被连带清掉（检查只在 skills/ 上判）。
+      残留（如实标注）：该检查属文档卫生类，确定性后果弱于功能错误（不拦错行为，只拦噪声复发）；
+      若日后出现"skill 确实必须写某个日期"的场景（如版本化兼容矩阵），需回本卡复议规则边界。
+  - who: agent（同轮判断）
+    when: 2026-09-10
+    type: decision
+    conclusion: >-
+      **validated（采纳，改动保留）**。判据：success_criteria 四项全部达成（见 eval），
+      且检查的"会红"由负例实证而非推断。未采纳的替代方案：①"只防新增、不清存量"——存量含 2 处
+      可变计数快照（会主动误导读者），留着等于长期带病；②"连 docs/proposals 一起清"——
+      那些地方的日期与卡号正是溯源载体，清了反而丢证据链。人审边界：纯文本 + 一行 CI，
+      按 evolve-check 授权边界属 review 级（非 kb/high-risk：未动 triage/skill 骨架/指标口径）。
