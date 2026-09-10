@@ -1,0 +1,68 @@
+# ============================================================
+# Idea 卡：diagnose 输出契约合并——两套并行规范（合计 18 段必填）→ 4 段必需 + 2 个按需块
+# 来源：skill-review 首次 pilot（视角 A 静态审计）实得：SKILL.md 内「命中时的输出格式」9 段
+#   + 「结论呈现」9 段并行，且两者大面积重叠。
+# ============================================================
+
+id: EV-2026-041
+layer: L2
+title: "diagnose 输出契约合并：两套并行规范（18 段必填）→ 4 段必需 + 2 个按需块，长度随问题复杂度伸缩"
+status: in_experiment
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-10
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      skill-review 视角 A 静态审计：`skills/diagnose/SKILL.md` 的「命中时的输出格式」与「结论呈现」
+      两节并行，各自规定约 9 段必填输出（合计 18 段），且逐项大面积重叠——
+      推理链 ↔ 证据对照；root cause ↔ 结论先行 + 根因与影响面；fix/rollback/应用后检查 ↔
+      修复方案 + 验证与复测；confidence/hits ↔ 可靠度。输出长度与结构因而与问题复杂度几乎无关
+    trajectory:
+      - "skills/diagnose/SKILL.md（「命中时的输出格式」节 + 「结论呈现」节，合计 708 token）"
+      - "proposals/reviews/skill-review-diagnose-2026-09-10.md（视角 A 报告）"
+hypothesis: >-
+  把两套规范合并为「4 段必需（结论先行 / 依据链 / 修复方案 / 可靠度与残余风险）+ 2 个按需块
+  （机制原理、时间线）」，并写明"输出长度与段数应与问题复杂度相关"，可在不丢信息的前提下
+  降低模板化与读者负担；原 9 项中独有的价值（时间线、机制原理、风险 follow-up）以按需块或子项保留
+predicted_effect:
+  metric: 输出必填段数 + 盲辨实验（视角 C）的判读结果
+  from: "命中路径 18 段必填（两套并行）"
+  to: "4 段必需 + 2 段按需；同一问题的输出在盲辨对照中被判为更清楚（不劣）"
+validation:
+  method: scan_review
+  baseline: "现行 SKILL.md 两节；同一 scenario 的改动前后输出各 1 份"
+  success_criteria: >-
+    ①改动后 SKILL.md 的"输出必填段数"从 18 降到 6 以内（视角 A 可复算）；
+    ②**盲辨对照**（视角 C）：同问题的新旧输出并排，让不知情者判"哪份更清楚/更不像模板"——新结构不得更差；
+    ③**扰动复核**（视角 B）：顺序扰动与催促两格在新结构下重跑，追问链与验证闸门行为不退化；
+    ④不丢项：原 9 项与推理链 5 项逐条能在新结构里找到落点（列映射表，缺一项即不通过）
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）——输出契约是纯文本，回退无副作用
+gate:
+  condition: "视角 A 实得（18 段并行 + 大面积重叠）"
+risk: medium
+principle_refs: [9, 10]
+actual_cost: null
+decisions:
+  - who: agent（skill-review pilot）
+    when: "2026-09-10"
+    type: proposal
+    conclusion: >-
+      拟定新结构：**4 段必需**——① 结论先行（现象 + 根因 + 改哪个开关）；② 依据链（每条结论 → 支撑它的
+      证据/检查结果；命中 case 时把"路由依据/排除链/匹配症状/版本匹配/历史表现"作为本段**子清单**，
+      强度标注内联）；③ 修复方案（精确 diff/命令 + rollback + side-effect + 应用后验证；无 fix 时给下一步动作）；
+      ④ 可靠度与残余风险（confidence 校准 + 推测/已验证分离 + follow-up）。**2 个按需块**——机制原理（源码流程）、
+      时间线（按日志时间排）。判读口径写进 SKILL：**输出的段数与长度应与问题复杂度相关**，
+      命中且根因明确时不必展开机制原理与时间线。
+  - who: agent（skill-review pilot）
+    when: "2026-09-10"
+    type: decision
+    conclusion: >-
+      **本卡暂不执行（status: in_experiment 仅登记方案）**：改的是**输出契约**，影响所有命中路径，
+      而且"更清楚"属主观判断——按本仓库的纪律，主观结论不能只凭一次静态审计就动手。
+      下一步顺序：先做视角 C 的盲辨实验（同问题新旧输出并排，让不知情者判），拿到对照数据再实施；
+      实施以独立 PR 提交（不与"建立审视能力"混在一起）。
+      不取：①直接删掉 5 项（会丢时间线/机制原理/风险 follow-up 的独特价值）；②保持 18 段只改措辞
+      （重叠仍在，模板化不解决）；③把它做成硬门（输出形态是判断性规范，不能 CI 化）。

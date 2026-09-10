@@ -175,10 +175,9 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 | `knowledge-groom` | 周期维护：批处理待审队列、升格、去重、置信度重算、软退休、索引重建 | owner 例行维护（人工沉淀按周批处理，自动化导入源可即时升格） | 显式 `/skill:knowledge-groom` |
 | `resume-diagnosis` | 续接被打断的诊断：读取状态文件与 trace，复述现场后继续 | 诊断被会议或上下文压缩打断 | 显式 `/skill:resume-diagnosis` |
 | `preload-panel` | 在 DSH 会话中热加载诊断面板插件（`cordis_define` + `cordis_run` 激活「诊断」「指标」tab） | 新 DSH 会话需要面板时 | 显式 `/skill:preload-panel`（仅 DSH） |
-| `skill-review` | skill 的质量与体验审视：静态审计 / 扰动实验 / 盲辨走查 / 坏路径 / 注意力预算 五视角 → 评审报告 `proposals/reviews/` + 建议（不做 CI 硬门） | 想审视某个 skill 用起来是否机械、大改之后体感是否退化 | 显式 `/skill:skill-review` |
 | `self-evolve` | 自演进深度轮：全库观测（容量 / 归因聚合 / 指标 / S2 校准集）→ 候选 idea 卡 → 校验 → 攒批 → 聚合 PR 给人审 | 想对全库做一次体检、或持续改进某方向时 | 显式 `/skill:self-evolve` |
 
-完整的操作细节（severity 闸门、trace 规则、语义校验等）在各自 `skills/<name>/SKILL.md`。诊断类与审视类 skill 为 user-only，诊断决策由人触发；`to-postmortem` / `to-reference` / `issue-ingest` 允许自动触发，降低沉淀门槛。issue-ingest 的升格分场景：默认进 inbox 由 owner 批量审后转正；owner 预授权源（该 skill 本身即配置的持续管道）产出的草稿 verification 链完整，可直接调 groom 升格，不等周批。
+完整的操作细节（severity 闸门、trace 规则、语义校验等）在各自 `skills/<name>/SKILL.md`。**本表只列用户会用到的 skill**；`evolve-check`（内容流程收尾的伴随评估协议）与 `skill-review`（skill 质量/体验审视协议）是内部协议，由流程收尾或深度轮转接，不单列、也不单独调用。三个诊断类 skill 为 user-only，诊断决策由人触发；`to-postmortem` / `to-reference` / `issue-ingest` 允许自动触发，降低沉淀门槛。issue-ingest 的升格分场景：默认进 inbox 由 owner 批量审后转正；owner 预授权源（该 skill 本身即配置的持续管道）产出的草稿 verification 链完整，可直接调 groom 升格，不等周批。
 
 ## 工作原理
 

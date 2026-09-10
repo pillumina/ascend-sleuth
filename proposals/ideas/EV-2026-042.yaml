@@ -1,0 +1,70 @@
+# ============================================================
+# Idea 卡：诊断 category 判定对「输入顺序」敏感（先看到日志 → 锚定 → 类别漂移 → 消费路径漂移）
+# 来源：skill-review 首次 pilot 的视角 B（顺序扰动）实得。
+# ============================================================
+
+id: EV-2026-042
+layer: L2
+title: "诊断类别的判定锚定：category 应由症状性质定，日志/报错签名先行时须回看症状（附证据一致性自检）"
+status: in_experiment
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-10
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      skill-review 视角 B 顺序扰动（同一份信息 = 症状 A + 环境 B + 日志 C，仅改给出顺序）：
+      症状优先（A→B→C）判为 **precision** 并触发了数据缺口探询（"有 dump 吗 / 还是要接入步骤"），
+      且质疑了证据矛盾（`store.init returned non-zero` 通常会让进程起不来，与"服务仍能出 token、压测后才乱码"矛盾）；
+      日志优先（C→B→A）判为 **interrupt 类**（其自述"interrupt 类不预先问数据资产"），
+      **跳过数据缺口探询**，并在结尾主动排除采集（"profiler/精度 dump 这次用不上"），
+      同时**完全漏掉**了那条证据矛盾检查，一上来就押了方向（"大概率是脏 KV 而非量化退化"）。
+      → 同一输入、只改顺序，类别判定与消费路径分叉；样本量 1 vs 1，属方向性判据
+    trajectory:
+      - "proposals/reviews/skill-review-diagnose-2026-09-10.md（视角 B 结果）"
+      - "skills/diagnose/SKILL.md（category 由症状性质定的规则 + 数据资产探询节）"
+      - "skills/diagnose/references/collect-gates.yaml（category → 探询绑定）"
+hypothesis: >-
+  在 diagnose 的步骤 1/2 之间加一条**固定动作**——"证据一致性自检"（现象与报错是否同层？有无互相矛盾？
+  若矛盾，先要时间线再定类别），并明确"**category 由症状性质定，不由日志签名定；日志先行时回看症状**"，
+  可消除输入顺序对类别判定与消费路径的影响
+predicted_effect:
+  metric: 顺序扰动下 category 判定与消费路径（探询/闸门）的一致性
+  from: "2/2 不一致（precision+探询 vs interrupt+无探询）"
+  to: "两次判定一致，且探询行为一致"
+validation:
+  method: scan_review
+  baseline: "视角 B 的 B1a/B1b 两次探针（同信息、两种顺序）"
+  success_criteria: >-
+    ①改动后重跑 B1a/B1b（各 2 次、共 4 次）：category 判定一致率 4/4，且数据缺口探询行为一致；
+    ②不引入新缺陷：B2（催促）与 D 系列六条坏路径重跑，三条底线（明说现状/给下一步/不甩锅）仍全过；
+    ③语气与长度不显著变长（视角 E：输出段数与问题复杂度仍相关）
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "视角 B 顺序扰动实得（1 vs 1 分叉）"
+risk: medium
+principle_refs: [1, 3, 10]
+actual_cost: null
+decisions:
+  - who: agent（skill-review pilot）
+    when: "2026-09-10"
+    type: proposal
+    conclusion: >-
+      拟定改法（两处，都很小）：①步骤 1 末尾加**证据一致性自检**固定动作——"先问三件事：现象与报错是否同一层？
+      报错能否解释现象？（例：初始化失败通常进程起不来，那"服务仍在出 token"就与它矛盾）有无时间先后？
+      矛盾未解之前不锁定类别与方向"；②步骤 2 补一句"**category 由症状性质定，不由日志/报错签名定**——
+      日志先行时回看症状（乱码/输出错误 → precision，不因日志里是通信/存储报错而判 interrupt）"。
+  - who: agent（skill-review pilot）
+    when: "2026-09-10"
+    type: decision
+    conclusion: >-
+      **暂不执行（in_experiment 仅登记方案）**：样本量 1 vs 1，是 pilot 级方向性判据——按本协议自己的纪律，
+      不足以直接改一个高频 skill 的判定动作。下一步：按 validation 的 ① 先补重复（B1a/B1b 各 2 次共 4 次），
+      分叉稳定复现再实施。
+      不取：①把"日志先行时不要下结论"写成禁令（过细，且违背"给方向"的价值）；②只在 SKILL 里加措辞提醒而不给
+      固定自检动作（原则二：能变成动作的不留给自觉）；③把类别判定改由脚本/正则判（类别是语义判断——
+      乱码既是"输出错误"又常伴随通信报错，只有模型能判）。
+      备注：本卡与 D5（流程与证据矛盾）同源——都属"证据优先于先验"；D5 显示现有 skill 在该场景已表现良好
+      （未硬推流程下一步，改用现有数据做判别性反证），故本卡只补"顺序"这一维。
