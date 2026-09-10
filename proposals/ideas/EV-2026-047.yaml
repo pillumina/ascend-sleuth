@@ -1,0 +1,105 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）
+# 校验：python3 scripts/verify_proposals.py --check
+# 脱敏纪律：只含聚合值与证据引用，不含客户现场原文。
+# ============================================================
+
+id: EV-2026-047
+layer: L2
+title: 产卡链安全——卡号分配避开"已占文件名"，make_new 加覆盖保护（防静默吃掉既有 EV 卡）
+status: validated
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-10
+source_signals:
+  - signal: data_loss_path
+    evidence: >-
+      `scripts/ev_proposal.py` 的 `make_new()` 是**直接覆盖写**（`out.write_text()`，无存在性检查），
+      而 `next_id()` **只读卡内 `id:` 字段**、不看文件名。二者叠加出一条静默数据损失路径：
+      当某个卡文件的文件名与它内部的 `id:` 不一致（复制粘贴卡时的常见手误，例如文件叫
+      `EV-2026-049.yaml` 而内容是 `id: EV-2026-046`）时，`next_id()` 算出的"下一个号"**正好是
+      那个已存在的文件名** → `--new` 覆盖写 → 既有卡（含完整决策链）**无声消失**。
+      对照实测：在卡池末尾构造该条件后，旧算法算出的号与被占文件名完全相等（演练断言
+      "（对照）旧算法算出的号 49 正是刚占用的文件名 = 覆盖路径可复现"）。
+    trajectory:
+      - "scripts/ev_proposal.py（修前 next_id / make_new 实现）"
+      - "scripts/rehearse_evolve_loop.py [E8]（对照断言 + 修复后三条断言）"
+  - signal: process_friction
+    evidence: >-
+      同一天内这条风险面被真实触发过一次（由我自己的手工操作触发）：验证合并结果时把
+      `--new` 打印的 046 看成了 044，随后的 `mv` 覆盖了刚生成的骨架，git status 里那张卡
+      直接变成 `D`。真实卡 EV-2026-044 从 git 恢复并校验无损失（44 张全 validated），
+      但这说明"卡文件的手工/半手工操作"同样是事故面——工具层能给的保护不该靠人不错。
+    trajectory:
+      - "EV-2026-046 的 decision（该事故的登记处）"
+      - "git status 实测：D proposals/ideas/EV-2026-044.yaml → git checkout HEAD 恢复并校验"
+hypothesis: >-
+  卡号分配同时看**文件名**与**卡内 id 字段**取 max+1（分配结果同时避开"已用号"与"已占文件名"），
+  且 `make_new()` 在目标已存在时**拒绝写而非覆盖**（非零退出 + 一行可照做的原因）——
+  产卡链不再存在静默覆盖既有卡的路径
+predicted_effect:
+  metric: 产卡链静默覆盖事故数（既有卡被覆盖而无人察觉的次数）
+  from: 路径可达（对照实测可复现：旧算法算出的号正落在已占文件名上）
+  to: 0（分配避开已占名 + 万一撞上则拒绝写、非零退出、原文件字节不变）
+validation:
+  method: scan_review
+  baseline: 修前 next_id / make_new；演练 [E8] 的对照断言给出旧算法行为
+  success_criteria: >-
+    ①`[E8]` 八条断言全绿（含"对照：旧算法算出的号正是被占文件名"）；
+    ②正常产卡路径零回归（`[E3]` 仍能产卡并按新规则校验通过）；
+    ③卡池校验不受影响（45 张卡 `verify_proposals --check` OK）；
+    ④拒绝路径可观测：非零退出（exit 2）+ 一行原因，不抛 traceback、不改任何文件。
+  rollback: 单文件改动 + 演练断言，git revert（原则七）
+gate:
+  condition: "覆盖路径可复现（对照实测已复现）+ 同类事故已发生 1 次（mv 覆盖骨架）"
+risk: medium
+principle_refs: [2, 7, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "单会话内联执行（发现 → 修 → 演练断言 → 验证），未单独记账；口径如实标注为未量化"
+decisions:
+  - who: agent（#175 合并后清理轮）
+    when: 2026-09-10
+    type: proposal
+    conclusion: >-
+      采纳「分配逻辑修根因 + 写入加保护」两层，而非只加保护或只在 SKILL 里写提醒：
+      ①只加保护 → 每次正常产卡都可能先撞名再报错（噪声大、agent 会开始用 --force 绕过）；
+      ②只改分配 → 保护缺失仍会在并发产卡（两个 worktree 各自算出同一个号）与异常文件状态下
+      静默覆盖；③写进 SKILL 提醒 → 判据不在结构里，等于指望人不错（本轮事故正是人出错）。
+      该缺陷属"产卡链机械环节"，与 EV-2026-044 修的闭环同链，故按仓库纪律先产卡再改。
+  - who: agent
+    when: 2026-09-10
+    type: action
+    conclusion: >-
+      改 `scripts/ev_proposal.py`：`next_id()` 对每个卡文件同时取**文件名号**与**`id:` 字段号**
+      两路候选求 max+1（注释写明为什么两处都看）；`make_new()` 在 `out.exists()` 时抛
+      `FileExistsError` 且不写盘；`main()` 捕获该异常 → stderr 一行可照做的原因 + `exit 2`
+      （不抛 traceback）。演练 `scripts/rehearse_evolve_loop.py` 增 `[E8] 卡号分配安全`
+      八条断言（正常递增 / 连产两张不互相覆盖 / 旧算法对照 / 避开已占名 / 不一致文件不被触碰 /
+      目标被占时拒绝且非零退出 / 既有卡字节不变 / 无残留副作用）。
+  - who: agent
+    when: 2026-09-10
+    type: eval
+    conclusion: >-
+      scan_review + 演练实测（`python3 scripts/rehearse_evolve_loop.py` → **58/58 断言通过**）：
+      ①`[E8]` 八条全绿，其中"（对照）旧算法算出的号 49 正是刚占用的文件名"是被修缺陷的**可复现
+      证据**，其余五条是修复后的行为契约（含拒绝路径 exit 2 与既有卡字节不变）；
+      ②`[E3]` 正常产卡→校验链路仍通过（零回归）；③`verify_proposals --check` OK（45 张卡）；
+      ④`kb-checks` 全部命令本地逐条通过。
+      **一次设计纠错（如实记录）**：`[E8]` 第 3 条最初写成**端到端**（先占住 `--next` 报的号
+      再跑 `--new`），实测走不到保护分支——因为 `next_id` 修好后已把已占文件名算进去，正常路径
+      永远算不出已存在的号；断言当场假失败，据此改成**单元级直击分支**（monkeypatch `next_id`）。
+      这条纠错本身进了注释：防御性分支只能靠直击分支来测。
+  - who: agent
+    when: 2026-09-10
+    type: decision
+    conclusion: >-
+      **validated（采纳，改动保留）**。判据：success_criteria 四项全部达成，且缺陷路径有可复现
+      对照证据（不只是"理论上可能"）。残留（如实标注）：①`out.exists()` 检查与写入之间仍存在
+      理论上的竞态窗口（两个进程同一瞬间产卡）——彻底消除需要文件锁或 O_EXCL 创建，本轮按
+      "宁可失败也不覆盖"的语义处理，未引入锁（跨 worktree 场景下锁也不共享，收益低）；
+      ②`mv` 这类**人工**操作仍在工具保护之外，本轮只登记教训，不新增拦截。
+      人审边界：改的是产卡辅助脚本 + 演练断言，按授权边界属 review 级（未动 triage/skill 骨架/指标口径）。

@@ -21,6 +21,7 @@
 
 import argparse
 import shutil
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -38,21 +39,29 @@ def load_yaml(path: Path):
 
 
 def next_id(root: Path) -> str:
+    """下一个卡号 = max(文件名里的号, 卡内 `id:` 字段的号) + 1。
+
+    为什么两处都看（2026-09-10 修）：只看 `id:` 字段时，一旦文件名与它内部的 `id:`
+    不一致（复制粘贴卡时的常见手误，如文件叫 EV-2026-099.yaml 而内容是 `id: EV-2026-001`），
+    算出的"下一个号"会撞上一个**已存在的文件名**；而 make_new 是直接覆盖写——于是静默
+    吃掉一张既有卡。取两边最大值，让分配结果同时避开"已用号"与"已占文件名"。
+    """
     year = datetime.now().year
     max_n = 0
     for f in (root / IDEAS_DIR).glob("EV-*.yaml"):
+        candidates = []
         doc = load_yaml(f)
         if isinstance(doc, dict):
-            cid = str(doc.get("id", ""))
-        else:
-            cid = f.stem
-        # 格式 EV-YYYY-NNN
-        parts = cid.split("-")
-        if len(parts) == 3 and parts[1] == str(year):
-            try:
-                max_n = max(max_n, int(parts[2]))
-            except ValueError:
-                pass
+            candidates.append(str(doc.get("id", "")))
+        candidates.append(f.stem)          # 文件名也算一路（防文件名/字段不一致）
+        for cid in candidates:
+            # 格式 EV-YYYY-NNN
+            parts = cid.split("-")
+            if len(parts) == 3 and parts[1] == str(year):
+                try:
+                    max_n = max(max_n, int(parts[2]))
+                except ValueError:
+                    pass
     return f"EV-{year}-{max_n + 1:03d}"
 
 
@@ -60,6 +69,13 @@ def make_new(root: Path) -> Path:
     cid = next_id(root)
     tpl = root / TEMPLATE
     out = root / IDEAS_DIR / f"{cid}.yaml"
+    # 覆盖保护（2026-09-10）：本函数的写入是"直接覆盖"。一旦算出的号已被占用
+    # （文件名/字段不一致、手工放了同名文件、并发产卡），覆盖写会**静默吃掉既有卡**——
+    # 卡是审计资产，静默丢失不可接受。这里宁可失败也不覆盖，让人/agent 显式处理。
+    if out.exists():
+        raise FileExistsError(
+            f"{out} 已存在——拒绝覆盖（EV 卡是审计资产，静默覆盖=丢决策链）。"
+            "请先处理该文件：填完它、改名，或确认不该存在后删除，再重跑 --new。")
     if tpl.exists():
         # 复制模板，替换 id 与 created_at
         txt = tpl.read_text(encoding="utf-8")
@@ -100,7 +116,12 @@ def main():
     if args.next:
         print(next_id(root))
     elif args.new:
-        p = make_new(root)
+        try:
+            p = make_new(root)
+        except FileExistsError as e:
+            # 覆盖保护触发：非零退出 + 一行可读原因（不抛 traceback，agent 能直接照做）
+            print(f"ev_proposal: 拒绝产卡——{e}", file=sys.stderr)
+            sys.exit(2)
         print(f"已生成骨架: {p}")
         print(f"ID: {p.stem} —— 按 examples/sample-idea.yaml 填字段后跑 verify_proposals.py")
     elif args.list:
