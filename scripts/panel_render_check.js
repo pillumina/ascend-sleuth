@@ -161,7 +161,14 @@ async function main() {
   expect('待办条：审计缺口 ' + nGap, new RegExp('审计缺口[\\s\\S]{0,60}?' + nGap).test(ev.text))
   expect('v5 状态词「实验中」', ev.text.includes('实验中'))
   expect('v5 状态词「已采纳」', ev.text.includes('已采纳'))
-  expect('旧 v1 词表已清除', !/pending_merge|已提议|候选/.test(ev.text), (ev.text.match(/pending_merge|已提议|候选/) || [])[0])
+  // v1 词表检查**查声明、不查整页渲染文本**：整页里会带历史数据原文（exec-log 的
+  // decision_reason、卡的结论摘要），里面的"候选"是数据不是 UI 状态词——用渲染文本判会把
+  // 数据误判成词表回归（2026-09-10 合并后在带 exec-log 的检出上实测假失败：命中来自
+  // '拉取 17 / 候选 9 / 评估通过 1' 这条历史记录）。v1 词表当年是 v1 状态机的产物，
+  // 因此正确的判据是"状态词声明里没有 v1 词"，加上 v5 词确有渲染（上面两条）。
+  const statusVocab = evSrc.slice(evSrc.indexOf('const STATUS_META'), evSrc.indexOf('const AUTH_META'))
+  expect('STATUS_META 声明里无 v1 状态词', statusVocab.length > 0 && !/pending_merge|已提议|候选/.test(statusVocab),
+    (statusVocab.match(/pending_merge|已提议|候选/) || [])[0])
   // 缺口 pill 只在真有缺口卡时出现（数据驱动；无缺口时不该硬渲染关键词）
   // 首屏三态（数据驱动，别把"无缺口"当成"无卡"——演练场里就有 in_experiment 卡）
   if (nGap > 0) {
