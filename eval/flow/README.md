@@ -50,6 +50,20 @@ python3 scripts/flow_pool.py --prepare      # 产回放输入 → .flow-replay/<
 python3 scripts/flow_pool.py --prepare --with-flow   # 附上流程词条全文（对照臂）
 ```
 
+## 使用纪律：**样本的"未命中"状态会过期，别引用历史记录**
+
+回放一条 miss → 诊断成功后沉淀出 case → 同一个 issue 下次就变成 **hit**。实测（第四轮）：
+`.s2-replay` 里记为 miss 的样本，其 case 已分别在该次回放当天或之后提交入库，于是再次跑时 6/6 全部命中。
+
+因此：
+
+- `eval/golden/*.fixture.yaml` 头部的 `candidates=Y/N`、`eval/s2` 的 `tier2_hit` —— **都是历史记录，不是当前状态**；
+  要判"这条现在会不会命中"，**必须当场重跑**（或直接读 `knowledge/_index/` 分片核对签名）；
+- 任何以「候选未命中」为前提的实验（流程加载、深度排查、Tier 3 兜底）**不能沿用旧记录选样本**，
+  应改用**尚未沉淀 case 的新 issue**（判据：`knowledge/` 下无对应 id 文件）；
+- 反过来这也意味着：**miss 率是会被自己消耗掉的指标**——它下降既可能来自检索变好，也可能来自库变大，
+  不能单看趋势下结论。
+
 ## 当前池（2026-09-10）
 
 13 条（precision 7 / performance 6），全部 `leakage: clean`。
