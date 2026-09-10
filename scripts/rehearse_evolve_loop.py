@@ -243,7 +243,103 @@ def ex_negative_rules(root: Path):
     check("移除负例卡后恢复通过（规则无残留副作用）", rc == 0, out[-260:])
 
 
-# ---------------------------------------------------------------- ⑥ CI parity
+# ---------------------------------------------------------------- ⑥ 卡号分配安全
+def ex_card_id_safety(root: Path):
+    """产卡链的机械环节：卡号分配不得撞号、不得静默覆盖既有卡。
+
+    2026-09-10 实测过的真实事故面：`make_new()` 是直接覆盖写，而 `next_id()` 只看卡内
+    `id:` 字段——一旦文件名与该字段不一致，算出的"下一个号"会撞上一个已存在的文件名，
+    于是**静默吃掉一张既有卡**（我自己 `mv` 覆盖骨架时触发过一次同类事故）。这里把三类
+    场景钉成固定断言：正常递增、字段/文件名不一致、目标文件已存在。
+    """
+    print("\n[E8] 卡号分配安全 · 不撞号、不覆盖")
+    import hashlib
+    import yaml as _yaml
+
+    ideas = root / "proposals" / "ideas"
+
+    def sha(p):
+        return hashlib.sha256(p.read_bytes()).hexdigest()
+
+    # ① 正常递增：--next 的号必须与 --new 实际创建的号一致，且两次 --new 得到两个不同号
+    rc, out = py(root, "scripts/ev_proposal.py", "--next")
+    nxt = out.strip()
+    rc2, out2 = py(root, "scripts/ev_proposal.py", "--new")
+    made = sorted(ideas.glob("EV-*.yaml"))[-1]
+    check("--next 与 --new 的卡号一致（" + nxt + "）", rc == 0 and rc2 == 0 and made.stem == nxt, out2[-200:])
+    first_hash = sha(made)
+    rc3, out3 = py(root, "scripts/ev_proposal.py", "--new")
+    second = sorted(ideas.glob("EV-*.yaml"))[-1]
+    check("连产两张卡得两个不同号、且第一张未被覆盖",
+          rc3 == 0 and second != made and sha(made) == first_hash, out3[-200:])
+    second.unlink()          # 清掉第二张骨架，别影响后续断言
+
+    # ② 文件名与 id 字段不一致（复制粘贴手误）→ 必须避开"已占用的文件名"。
+    #    构造旧算法**必然踩中**的精确条件：文件名叫 EV-<base+1>.yaml（= 旧算法算出的下一个号），
+    #    内容 id 却写成更小的号。旧代码只看 id 字段 → 算出 base+1 → 覆盖写这个已存在的文件
+    #    = 静默吃掉既有卡。这里同时留一条"对照"断言，证明缺陷路径可复现、修复不是空谈。
+    id_nums = []
+    for f in ideas.glob("EV-*.yaml"):
+        d = _yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+        cid = str(d.get("id", ""))
+        parts = cid.split("-")
+        if len(parts) == 3 and parts[1] == str(__import__("datetime").datetime.now().year):
+            try:
+                id_nums.append(int(parts[2]))
+            except ValueError:
+                pass
+    base = max(id_nums)
+    victim = ideas / f"EV-2026-{base + 1:03d}.yaml"
+    victim.write_text(f"# 既有卡（文件名 {base + 1} / 字段 {base - 5}）\nid: EV-2026-{base - 5:03d}\n",
+                      encoding="utf-8")
+    before = victim.read_bytes()
+    check(f"（对照）旧算法算出的号 {base + 1} 正是刚占用的文件名 = 覆盖路径可复现",
+          victim.stem == f"EV-2026-{base + 1:03d}")
+    rc, out = py(root, "scripts/ev_proposal.py", "--next")
+    new_next = int(out.strip().split("-")[-1]) if rc == 0 and out.strip() else -1
+    check("新算法避开已占文件名（返回号 > 被占号）", rc == 0 and new_next > base + 1, out.strip())
+    rc, out = py(root, "scripts/ev_proposal.py", "--new")
+    check("产卡不动那张'文件名/字段不一致'的既有卡", victim.read_bytes() == before, out[-200:])
+    for f in ideas.glob(f"EV-2026-{new_next:03d}.yaml"):
+        f.unlink()
+    victim.unlink()
+
+    # ③ 覆盖保护：直接把 make_new 指向一个已存在的目标，断言"拒绝写、原文件字节不变"。
+    #    为什么用单元级调用（monkeypatch next_id）而不是端到端：next_id 修好后会把已占用的
+    #    文件名也算进去，正常路径**永远不会**算出已存在的号——该分支只能被并发产卡 / 异常
+    #    文件状态推到。（先写的端到端版本实测走不到、断言假失败，据实改成直击分支。）
+    unit = '''
+import sys
+from pathlib import Path
+sys.path.insert(0, "scripts")
+import ev_proposal as ep
+
+root = Path(".").resolve()
+target = root / "proposals" / "ideas" / "EV-2026-777.yaml"
+target.write_text("# 既有卡：不许被覆盖\\nid: EV-2026-777\\n", encoding="utf-8")
+before = target.read_bytes()
+
+ep.next_id = lambda r: "EV-2026-777"          # 模拟"分配到已被占用的号"
+sys.argv = ["ev_proposal.py", "--new"]
+try:
+    ep.main()
+except SystemExit as e:
+    code = e.code
+else:
+    code = 0
+print("REFUSED" if code not in (0, None) else "NO-REFUSAL", "exit=", code)
+print("INTACT" if target.read_bytes() == before else "OVERWRITTEN")
+target.unlink()
+'''
+    rc, out = py(root, "-c", unit)
+    check("目标号被占用时拒绝产卡、非零退出（exit 2）", "REFUSED" in out and "exit= 2" in out, out[-260:])
+    check("拒绝时既有卡字节不变（未被静默覆盖）", "INTACT" in out, out[-200:])
+    rc, out = py(root, "scripts/verify_proposals.py", "--check")
+    check("清理后卡池校验仍通过（断言无残留副作用）", rc == 0, out[-200:])
+    made.unlink()
+
+
+# ---------------------------------------------------------------- ⑦ CI parity
 def ex_ci_parity(root: Path):
     print("\n[E6] CI parity · kb-checks 的每条命令在本地逐条复跑")
     wf_path = root / ".github" / "workflows" / "kb-checks.yml"
@@ -270,7 +366,7 @@ def ex_ci_parity(root: Path):
     return cmds
 
 
-# ---------------------------------------------------------------- ⑦ 面板渲染断言
+# ---------------------------------------------------------------- ⑧ 面板渲染断言
 def ex_panel(root: Path, enabled: bool):
     print("\n[E7] 面板渲染断言（ev-panel 执行现场区块 + 既有断言不回归）")
     if not enabled:
@@ -301,6 +397,7 @@ def main():
         ex_signal_path(sandbox)
         ex_no_signal(sandbox)
         ex_negative_rules(sandbox)
+        ex_card_id_safety(sandbox)
         ex_ci_parity(sandbox)
         ex_panel(sandbox, not args.no_panel)
     finally:
