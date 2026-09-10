@@ -295,6 +295,45 @@ def collect_stats(ideas):
     }
 
 
+def collect_skill_exec(root):
+    """统一执行记录（exec-log）——让面板看得见 evolve-check 是否真的在收尾运行。
+
+    为什么需要这一格（2026-09-10 审计）：exec-log 先前只被 evolve-check 第 1 步读，
+    面板与 metrics 都不看它，于是"收尾跑了但无信号"与"根本没跑"在数据上完全不可区分——
+    机制是否在运作无法证伪。解析复用 scripts/tail_exec_log.py（单一事实源：datetime
+    归一 / 文件缺失退化只在一处实现，防两处漂移）。
+
+    语义边界：exec-log 是**本地件**（.gitignore 运行时件），跨 worktree/克隆不聚合——
+    note 字段必须随数据一起递给面板，防把本地读数误读成全系统读数。
+    """
+    try:
+        import tail_exec_log
+    except Exception as e:  # 不该发生；如实标注而非伪造数据
+        return {"present": False, "state": "unavailable", "note": f"tail_exec_log 不可用: {e}",
+                "total": 0, "recent": [], "evolve_check_runs": 0, "last_evolve_check": None,
+                "by_skill": {}}
+    records, state = tail_exec_log.load_records(root)
+    rows = [tail_exec_log.summarize(r) for r in records if isinstance(r, dict)]
+    ev = [r for r in rows if r["skill"] == "evolve-check"]
+    by_skill = {}
+    for r in rows:
+        by_skill[r["skill"]] = by_skill.get(r["skill"], 0) + 1
+    # 无信号收尾也落记录（products 为空 + reason 含"无演进信号"）——单独计数，
+    # 这样"跑了且无信号"是可观测的，而不是消失在沉默里。
+    no_signal = [r for r in ev if not r["products"] and "无演进信号" in r["decision_reason"]]
+    return {
+        "present": state == "ok",
+        "state": state,
+        "note": tail_exec_log.LOCAL_NOTE,
+        "total": len(rows),
+        "recent": rows[-5:],
+        "by_skill": by_skill,
+        "evolve_check_runs": len(ev),
+        "evolve_check_no_signal": len(no_signal),
+        "last_evolve_check": ev[-1] if ev else None,
+    }
+
+
 def collect_timeline(root):
     """只取每期标题/kind/关键指标（路由准确率/候选召回等），供趋势 sparkline。"""
     path = root / "metrics" / "timeline.yaml"
@@ -365,6 +404,7 @@ def main():
     capacity = parse_index_header(index_path.read_text(encoding="utf-8")) if index_path.exists() else {}
     tally = collect_tally(root)
     s2_attrib = collect_s2_attrib(root)
+    skill_exec = collect_skill_exec(root)
 
     # 卡状态机分布（词表以 verify_proposals 为准；unknown 说明卡有 schema 问题）
     status_count = {}
@@ -381,6 +421,7 @@ def main():
         "capacity": capacity,
         "tally": tally,
         "s2_attrib": s2_attrib,
+        "skill_exec": skill_exec,
         "stale_days": STALE_DAYS,
         "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
     }

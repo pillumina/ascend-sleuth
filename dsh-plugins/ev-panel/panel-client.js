@@ -776,6 +776,61 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       )
     }
 
+    // ============ ④ 执行现场（exec-log：evolve-check 到底跑没跑） ============
+    // 2026-09-10 审计发现的盲区：exec-log 先前只有 evolve-check 第 1 步读它，面板与 metrics
+    // 都不看——于是"收尾跑了但无演进信号"与"根本没跑"在数据上完全不可区分。这一格把本地
+    // 现场端到人眼前（无信号收尾也落记录，所以它同样可见）。
+    function ExecLogSection({ execLog }) {
+      if (!execLog) return null
+      const note = execLog.note || '本地件：跨 worktree/克隆不聚合'
+      if (!execLog.present) {
+        return React.createElement(Section, { title: '执行现场（exec-log）', right: '本地件' },
+          React.createElement('div', { className: 'ev-empty' },
+            '无执行记录（' + (execLog.state === 'missing' ? '本工作区没有 metrics/skill-exec-log.yaml'
+              : execLog.state === 'unavailable' ? execLog.note : '解析失败或 records 为空') + '）——'
+            + '这是正常退化路径：内容流程收尾应先落一条 exec-log，evolve-check 才读得到本轮现场。'),
+          React.createElement('div', { className: 'ev-note', style: { marginTop: 6 } }, note))
+      }
+      const rows = execLog.recent || []
+      const runs = execLog.evolve_check_runs || 0
+      const silent = execLog.evolve_check_no_signal || 0
+      return React.createElement(Section, {
+        title: '执行现场（exec-log）',
+        right: '本地件 · 共 ' + (execLog.total || 0) + ' 条',
+      },
+        React.createElement('div', { className: 'ev-krow' },
+          React.createElement('span', { className: 'k', style: { display: 'flex', alignItems: 'center', gap: 6 } },
+            React.createElement(Dot, { color: runs ? 'var(--c-green)' : 'var(--c-amber)' }),
+            'evolve-check 收尾'),
+          React.createElement('span', { className: 'v' }, runs + ' 次' + (runs ? '（其中无信号 ' + silent + '）' : '')),
+        ),
+        runs ? null : React.createElement('div', { className: 'ev-note', style: { color: 'var(--c-amber)' } },
+          'exec-log 里没有 evolve-check 收尾记录——无法区分"跑了无信号"与"没跑"；'
+          + '内容流程收尾应落一条（skills/evolve-check 第 4 步）。'),
+        React.createElement('div', { style: { marginTop: 8 } },
+          React.createElement(SectionLabel, { color: 'var(--br)' }, '最近执行（尾部 ' + rows.length + ' 条）'),
+          rows.map(r => React.createElement('div', {
+            key: String(r.seq), className: 'ev-kv', style: { padding: '3px 0', borderBottom: '1px dashed var(--bd)' },
+          },
+            React.createElement('span', { style: { fontFamily: mono, color: 'var(--tx)' } },
+              '[' + r.seq + '] ' + r.skill),
+            React.createElement('span', { style: { marginLeft: 8, color: 'var(--tx2)' } },
+              String(r.at || '').replace('T', ' ').slice(0, 16)),
+            r.products && r.products.length
+              ? React.createElement('span', { style: { marginLeft: 8 } }, '→ ' + r.products.join('、'))
+              : null,
+            r.decision_reason
+              ? React.createElement('span', { style: { marginLeft: 8, color: 'var(--tx2)' } },
+                  '（' + String(r.decision_reason).slice(0, 46) + '）')
+              : null,
+          )),
+        ),
+        React.createElement('div', { className: 'ev-note', style: { marginTop: 6 } }, note
+          + '；内容流程（issue-ingest / to-reference / to-postmortem / knowledge-groom）收尾落一条，'
+          + 'evolve-check 收尾也落一条（含"无信号"）'),
+      )
+    }
+
     // ============ 主视图 ============
     function BoardView(props) {
       const sessionId = props && props.sessionId
@@ -826,6 +881,8 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
         ),
         React.createElement('div', { className: 'ev-rise' },
           React.createElement(StatsPanel, { stats: data.stats })),
+        React.createElement('div', { className: 'ev-rise' },
+          React.createElement(ExecLogSection, { execLog: data.skill_exec })),
         React.createElement('div', { className: 'ev-rise' },
           React.createElement(TimelineTrend, { timeline: data.timeline })),
         React.createElement('div', { className: 'ev-rise' },

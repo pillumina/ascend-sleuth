@@ -149,26 +149,49 @@ async function main() {
   const ev = await renderAsync(evSrc, { sessionId: 'sess-1' }, evHost)
   expect('渲染无异常', true)
   expect('注册 tab「自演进」', ev.regs[0].opts.label === '自演进' && ev.regs[0].opts.id === 'ascend-evolve')
-  // 标题里的数字现在是独立节点（等宽对齐），文本被 flatten 拆开
-  expect('标题含卡数', /EV 卡[\s\S]{0,6}36[\s\S]{0,6}张/.test(ev.text), ev.text.slice(0, 120))
-  expect('待办条：实验中 5', /实验中[\s\S]{0,60}?5/.test(ev.text))
-  expect('待办条：审计缺口 3', /审计缺口[\s\S]{0,60}?3/.test(ev.text))
+  // 期望值一律从真实数据推导，不硬编码计数/卡号——硬编码会随卡库增长腐烂
+  // （2026-09-10 实测：全卡闭合后 "实验中 5 / 审计缺口 3 / EV-2026-034" 全部失真，
+  //  且首屏无卡导致后面的点击用例找不到目标而崩溃）
+  const nExp = (board.stats && board.stats.by_status && board.stats.by_status.in_experiment) || 0
+  const nGap = (board.stats && board.stats.gap_count) || 0
+  const nIdeas = board.idea_count
+  const validatedNoGap = (board.ideas || []).find(c => c.status === 'validated' && !(c.gaps || []).length)
+  expect('标题含卡数（来自数据 ' + nIdeas + '）', new RegExp('EV 卡[\\s\\S]{0,6}' + nIdeas + '[\\s\\S]{0,6}张').test(ev.text), ev.text.slice(0, 120))
+  expect('待办条：实验中 ' + nExp, new RegExp('实验中[\\s\\S]{0,60}?' + nExp).test(ev.text))
+  expect('待办条：审计缺口 ' + nGap, new RegExp('审计缺口[\\s\\S]{0,60}?' + nGap).test(ev.text))
   expect('v5 状态词「实验中」', ev.text.includes('实验中'))
   expect('v5 状态词「已采纳」', ev.text.includes('已采纳'))
   expect('旧 v1 词表已清除', !/pending_merge|已提议|候选/.test(ev.text), (ev.text.match(/pending_merge|已提议|候选/) || [])[0])
-  expect('缺口 pill「缺成本」', ev.text.includes('缺成本'))
-  expect('缺口 pill「状态滞后」', ev.text.includes('状态滞后'))
-  expect('缺口卡 id 出现', /EV-2026-034/.test(ev.text) && /EV-2026-031/.test(ev.text))
-  expect('收起态带结论摘要（共 N 条）', /共 \d+ 条/.test(ev.text))
+  // 缺口 pill 只在真有缺口卡时出现（数据驱动；无缺口时不该硬渲染关键词）
+  // 首屏三态（数据驱动，别把"无缺口"当成"无卡"——演练场里就有 in_experiment 卡）
+  if (nGap > 0) {
+    expect('缺口 pill「缺成本」或「状态滞后」', /缺成本|状态滞后/.test(ev.text))
+    expect('缺口卡 id 出现', (board.stats.gap_cards || []).some(id => ev.text.includes(id)))
+  } else if (nExp > 0) {
+    expect('有实验中的卡时首屏出卡（' + nExp + ' 张）', /«cls:ev-card/.test(ev.text))
+  } else {
+    expect('无待办卡时首屏明示「无待办卡」', ev.text.includes('无待办卡'))
+  }
+  // 用 ev-card class 判"首屏有没有卡"，不要用 "共 N 条" 这类文案——执行现场区块也有"共 N 条"
+  // （2026-09-10 演练场实测：文案匹配把 exec-log 区块的计数误当成卡片，断言假失败）
+  if (nExp + nGap > 0) expect('有待办卡时首屏出卡', /«cls:ev-card/.test(ev.text))
+  else expect('无待办卡时首屏不渲染卡（不空转）', !/«cls:ev-card/.test(ev.text))
   expect('自演进度量：采纳率', /采纳率/.test(ev.text))
   expect('自演进度量：验证方式分布', /验证方式分布/.test(ev.text) && /S2 issue 回放/.test(ev.text))
   expect('信号来源分布', /信号来源/.test(ev.text))
-  expect('容量压力超 cap 格子出现', /84\/30/.test(ev.text), (ev.text.match(/\d+\/30/g) || []).join(','))
+  // 容量压力：从真实容量表里取最紧的那一格做断言（不硬编码 84/30）
+  const capCells = []
+  Object.keys(board.capacity || {}).forEach(ns => Object.keys(board.capacity[ns] || {}).forEach(cat => {
+    const c = board.capacity[ns][cat]
+    capCells.push({ label: c.count + '/' + c.cap, ratio: c.cap ? c.count / c.cap : 0 })
+  }))
+  const tightest = capCells.sort((a, b) => b.ratio - a.ratio)[0]
+  if (tightest && tightest.ratio > 0.8) expect('容量压力出现最紧格子 ' + tightest.label, ev.text.includes(tightest.label), (ev.text.match(/\d+\/30/g) || []).join(','))
   expect('timeline sparkline', /routed_accuracy/.test(ev.text))
   expect('空区块不占位（tally 空 → 一行说明）', /暂无归因事件/.test(ev.text))
   expect('收起态不泄露完整决策链（长文本仅在展开后）', !/三项验证均通过/.test(ev.text))
   // 默认筛选是「待办优先」：只出实验中的卡 + 有缺口的卡，不含无缺口的已采纳卡
-  expect('待办优先筛选：已采纳无缺口卡不出现在首屏', !/EV-2026-002/.test(ev.text))
+  if (validatedNoGap) expect('待办优先筛选：已采纳无缺口卡（' + validatedNoGap.id + '）不出现在首屏', !ev.text.includes(validatedNoGap.id))
 
   // —— 样式层（styles.insert 注入的 class 体系）——
   const css = cssChunks.join('\n')
@@ -179,7 +202,8 @@ async function main() {
   expect('样式表用主题变量而非硬编码底色', /--dsw-alias-bg-layer-1/.test(css) && /--dsw-alias-label-primary/.test(css))
   expect('展开用 grid-template-rows 过渡（不动画 height）', /grid-template-rows/.test(css))
   expect('等宽数字对齐（tabular-nums）', /tabular-nums/.test(css))
-  expect('渲染用 class 而非全内联', /«cls:ev-card/.test(ev.text) && /«cls:ev-head/.test(ev.text))
+  // 首屏无卡时（无实验中的卡 + 无缺口）这里没有卡片可查——改到"展开单卡"节断言（那边必有卡）
+  if (nExp + nGap > 0) expect('渲染用 class 而非全内联', /«cls:ev-card/.test(ev.text) && /«cls:ev-head/.test(ev.text))
   expect('亮色分层：表面叠加层 --surf', /--surf:rgba/.test(css) && /linear-gradient\(var\(--surf\)/.test(css))
   expect('发丝线变量 --hair（亮色下 border-l1 只有 4% 不可见）', /--hair:color-mix/.test(css))
   expect('主题判定跟随 DSH（body[data-ds-dark-theme]）而非 prefers-color-scheme',
@@ -196,6 +220,48 @@ async function main() {
   expect('悬停预取（点开即就绪）', /onPointerEnter/.test(fs.readFileSync(path.join(repo, 'dsh-plugins/ev-panel/panel-client.js'), 'utf8')))
   expect('暗色实心徽标用浅底深字（白字配浅底只有 2:1）', /data-ds-dark-theme\]\s*\.ev-pill\.solid\{[^}]*color:#111318/.test(css))
   expect('卡号用可读链接色 --link', /--link:/.test(css) && /\.ev-id\{[^}]*var\(--link\)/.test(css))
+
+  // —— 执行现场（exec-log）：2026-09-10 新增区块，两种状态都要能渲染 ——
+  // 本工作区的 exec-log 是 .gitignore 本地件，通常不存在 → 走退化分支；这里两个分支都断言，
+  // 不依赖"本机碰巧有没有记录"。
+  expect('执行现场区块出现', ev.text.includes('执行现场（exec-log）'))
+  if (board.skill_exec && board.skill_exec.present) {
+    expect('执行现场：报出 evolve-check 收尾次数', /evolve-check 收尾/.test(ev.text))
+    expect('执行现场：本地件标注（防读成全系统）', /跨 worktree\/克隆不聚合/.test(ev.text))
+  } else {
+    expect('无 exec-log 时走退化分支（不是空白也不是假数据）', /无执行记录/.test(ev.text))
+    expect('退化分支给出补救指引', /内容流程收尾应先落一条 exec-log/.test(ev.text))
+    expect('退化分支标注本地件口径', /跨 worktree\/克隆不聚合/.test(ev.text))
+  }
+  // 合成数据分支：present + 有 evolve-check 记录（含无信号）→ 渲染运行次数与无信号计数
+  {
+    const synthetic = Object.assign({}, board, {
+      skill_exec: {
+        present: true, state: 'ok', note: '本地件：跨 worktree/克隆不聚合（.gitignore 运行时件）',
+        total: 3, by_skill: { 'to-reference': 1, 'evolve-check': 2 },
+        evolve_check_runs: 2, evolve_check_no_signal: 1,
+        last_evolve_check: { seq: 3, skill: 'evolve-check', at: '2026-09-10T17:20:00', source: 'to-reference', products: ['EV-2026-044(validated)'], decision_reason: 'T3 信号 → 产卡 EV-2026-044' },
+        recent: [
+          { seq: 1, skill: 'to-reference', at: '2026-09-10T17:10:00', source: 'to-reference', products: ['msprof-x(active)'], decision_reason: '归纳 3 case' },
+          { seq: 2, skill: 'evolve-check', at: '2026-09-10T17:15:00', source: 'to-reference', products: [], decision_reason: '收尾无演进信号' },
+          { seq: 3, skill: 'evolve-check', at: '2026-09-10T17:20:00', source: 'to-reference', products: ['EV-2026-044(validated)'], decision_reason: 'T3 信号 → 产卡 EV-2026-044' },
+        ],
+      },
+    })
+    const synHost = (method, args) => {
+      if (method === 'ev-board-load') return { ok: true, data: synthetic }
+      if (method === 'ev-idea-detail') return detailOf(args.ideaId)
+      return { ok: false, error: 'unknown ' + method }
+    }
+    const syn = await renderAsync(evSrc, { sessionId: 'sess-1' }, synHost)
+    expect('执行现场（有记录）：收尾 2 次 · 无信号 1', /evolve-check 收尾[\s\S]{0,40}?2 次[\s\S]{0,30}?无信号 1/.test(syn.text), syn.text.slice(syn.text.indexOf('执行现场（exec-log）'), syn.text.indexOf('执行现场（exec-log）') + 160))
+    expect('执行现场（有记录）：列出最近执行（含无信号那条）', syn.text.includes('收尾无演进信号'))
+    expect('执行现场（有记录）：show 卡产出', syn.text.includes('EV-2026-044'))
+    // present 但一次 evolve-check 都没跑 → 琥珀色告警（这正是修前的真实状态）
+    const syn2 = Object.assign({}, synthetic, { skill_exec: Object.assign({}, synthetic.skill_exec, { evolve_check_runs: 0, evolve_check_no_signal: 0 }) })
+    const syn2r = await renderAsync(evSrc, { sessionId: 'sess-1' }, (m, a) => m === 'ev-board-load' ? { ok: true, data: syn2 } : detailOf(a && a.ideaId))
+    expect('执行现场：零运行时报「无法区分跑了无信号与没跑」', /无法区分/.test(syn2r.text))
+  }
 
   // ================= 展开单卡 =================
   console.log('\n[ev-panel 展开单卡 · 决策链全文]')
@@ -232,11 +298,37 @@ async function main() {
     }
     let tree = await pump(5)
     // 真实点击：点第一张卡的头部（onClick 挂在收起态的可点区域上）
-    const handlers = []
-    tree.forEach(t => collectHandlers(t, handlers))
-    // 点"含某张卡 id 的可点区域"——即卡头，而不是顶部筛选按钮
     // 卡头特征：文本以卡 id 开头且含"共 N 条"（决策计数）；顶部筛选条不含
-    const target = handlers.find(h => /EV-2026-0\d\d/.test(h.text) && /共 \d+ 条/.test(h.text) && !/审计缺口|最近采纳/.test(h.text))
+    const isCardHead = h => /EV-2026-0\d\d/.test(h.text) && /共 \d+ 条/.test(h.text) && !/审计缺口|最近采纳/.test(h.text)
+    let handlers = []
+    tree.forEach(t => collectHandlers(t, handlers))
+    // 首屏「待办优先」在"无实验中的卡 + 无缺口"时是空的（全卡闭合后的真实状态）。
+    // 这时先点「全部」筛选，保证有可点目标——否则用例会点不到卡并连带崩溃
+    // （2026-09-10 实测：硬编码目标 + 空首屏 = 用例本身成了故障源）。
+    if (!handlers.some(isCardHead)) {
+      // 注意：flatten 把 «cls:...» 标记插在文本最前面，所以只能 contains 匹配，不能用 startsWith/^
+      const allChip = handlers.find(h => String(h.text).includes('全部'))
+      if (allChip) {
+        allChip.fn({})
+        tree = await pump(4)
+        handlers = []
+        tree.forEach(t => collectHandlers(t, handlers))
+        console.log('  [debug] 首屏无待办卡 → 已切到「全部」筛选')
+      }
+    }
+    if (!handlers.some(isCardHead)) {
+      // 「全部」视图里若所有卡都"已采纳且无缺口"，它们收在「归档」折叠里（只增不减的墙的解法），
+      // 得先展开才有点得着的卡头
+      const archiveToggle = handlers.find(h => String(h.text).includes('归档'))
+      if (archiveToggle) {
+        archiveToggle.fn({})
+        tree = await pump(4)
+        handlers = []
+        tree.forEach(t => collectHandlers(t, handlers))
+        console.log('  [debug] 卡都在「归档」折叠里 → 已展开')
+      }
+    }
+    const target = handlers.find(isCardHead)
     let clicked = 0
     if (target) { target.fn({}); clicked = 1 }
     console.log('  [debug] 可点区域', handlers.length, '个；点击目标首 40 字:', target ? target.text.slice(0, 40) : '未找到')
@@ -249,6 +341,7 @@ async function main() {
       console.log('  [debug] 展开片段:', JSON.stringify(text.slice(i, i + 700)))
     }
     expect('模拟点击生效（' + clicked + ' 次）', clicked === 1)
+    expect('渲染用 class 而非全内联（展开态）', /«cls:ev-card/.test(text) && /«cls:ev-head/.test(text))
     expect('展开后出现「假设」节', text.includes('假设'))
     expect('展开后出现「预期效果」节', text.includes('预期效果'))
     expect('展开后出现「验证」节与成功判据', text.includes('成功判据'))
