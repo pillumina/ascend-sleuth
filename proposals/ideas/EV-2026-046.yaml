@@ -1,0 +1,92 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）
+# 校验：python3 scripts/verify_proposals.py --check
+# 脱敏纪律：只含聚合值与证据引用，不含客户现场原文。
+# ============================================================
+
+id: EV-2026-046
+layer: L2
+title: 验证断言的数据依赖假失败——面板渲染检查改"查声明"而非"查整页文本"（同类复发第 3 次）
+status: validated
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-10
+source_signals:
+  - signal: eval_asset_flaw
+    evidence: >-
+      PR #173/#174 合并后做一致性验证时，`scripts/panel_render_check.js` 在 main 上红了一条
+      （"旧 v1 词表已清除"，命中词「候选」），而面板代码一行未变——**假失败**。根因：该断言
+      扫的是**整页渲染文本**，而页面上有"最近执行"区块会渲染 exec-log 里的历史
+      `decision_reason` 原文（本条来自 '拉取 17 / 候选 9 / 评估通过 1'）。也就是说：
+      **断言把"数据内容"当成了"UI 词表"**——换一台机器、换一份本地 exec-log，结果就会翻转。
+    trajectory:
+      - "node scripts/panel_render_check.js → ✗ 旧 v1 词表已清除 :: 候选（合并后 main，本地有 exec-log）"
+      - "metrics/skill-exec-log.yaml（本地件，decision_reason 含'候选 9'）"
+      - "dsh-plugins/ev-panel/panel-client.js 最近执行区块（渲染 decision_reason）"
+  - signal: recurring_pattern
+    evidence: >-
+      **同类复发第 3 次**（都发生在同一个文件、同一次审计周期内）：①"首屏不空转"用文案
+      `共 N 条` 判卡片，被新加的 exec-log 区块的"共 N 条"误命中；②把"无缺口"当成"无卡"
+      （硬编码计数/卡号随卡库腐烂，全卡闭合后点击用例直接崩）；③本次"查整页文本"判词表。
+      共同点：**断言依赖可变数据/可变文案，而非依赖被断言对象的声明**。
+    trajectory:
+      - "scripts/panel_render_check.js（三次修复都在这一个文件里，见 EV-2026-044 的 eval 决策）"
+hypothesis: >-
+  把"v1 状态词表已清除"这条断言从**整页渲染文本**改成**状态词声明**（`STATUS_META` 块）+
+  保留 v5 词确有渲染的断言：词表回归是声明问题，不是数据问题——查声明即可判，且不受任何
+  历史数据内容影响
+predicted_effect:
+  metric: 该断言在"本地 exec-log 任意内容"下的稳定性（假失败率）
+  from: 依赖本地运行时数据——exec-log 里出现"候选/已提议/pending_merge"任一即假红（实测命中）
+  to: 与数据解耦：只由 STATUS_META 声明决定（塞回 v1 词则必红，已负例验证）
+validation:
+  method: scan_review
+  baseline: 现断言（整页文本扫描）
+  success_criteria: >-
+    ①干净检出（无 exec-log）通过；②**复现原条件**：造一条含"候选"的 exec-log → 仍通过；
+    ③**负例**：把 v1 词塞回 `STATUS_META` → 必须红（证明不是橡皮图章）；
+    ④v5 词渲染断言照旧（"实验中"/"已采纳"仍须出现在首屏）。
+  rollback: 单文件 6 行改动，git revert（原则七）
+gate:
+  condition: "同一断言类假失败复发 ≥2 次（已 3 次，均在同一验证脚本内）"
+risk: low
+principle_refs: [1, 2, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "单会话内联执行（合并后验证时发现并修复），未单独记账；口径如实标注为未量化"
+decisions:
+  - who: agent（合并后一致性验证轮）
+    when: 2026-09-10
+    type: proposal
+    conclusion: >-
+      采纳「改断言口径（查声明）」而非「删掉这条断言」或「给断言加数据白名单」：删掉会丢掉
+      "v1 词表不得回流"这条真实约束（v1 词表曾让 9 个状态里 5 个永不出现）；白名单是给假失败
+      打补丁，下一份 exec-log 换个词又会红。查声明是**断言对象与判据对齐**，一次到位。
+  - who: agent
+    when: 2026-09-10
+    type: action
+    conclusion: >-
+      改 `scripts/panel_render_check.js`：断言从 `/pending_merge|已提议|候选/.test(ev.text)`
+      改为取 `evSrc` 的 `STATUS_META` 声明块做判据，并把"为什么不能查整页"写进注释
+      （数据会出现在页面上：exec-log 历史记录、卡结论摘要）。v5 渲染断言保留。
+  - who: agent
+    when: 2026-09-10
+    type: eval
+    conclusion: >-
+      三态实测（scan_review）：①干净检出（先删本地 exec-log）→ 全部通过；
+      ②复现原条件——落一条含"候选"的 issue-ingest 记录后重跑 → 全部通过（修前此条件必红）；
+      ③负例——往 `STATUS_META` 塞 `candidate: {label: '候选'}` → 该断言红并打印命中词，还原后恢复全绿。
+      ④未改任何面板渲染代码（`panel-client.js` 仅临时改动用于负例，已 `cp` 还原，`git status` 可核）。
+  - who: agent
+    when: 2026-09-10
+    type: decision
+    conclusion: >-
+      **validated（采纳，改动保留）**。判据：四态实测覆盖（含负例），且改动面仅 6 行断言。
+      未修而在 PR 中如实披露的相关发现：`scripts/ev_proposal.py` 的 `make_new()` **无覆盖保护**
+      （`out.write_text()` 直接写），若 `next_id()` 因"文件名与 `id:` 字段不一致"（复制粘贴常见）
+      而返回一个已存在的卡号，会**静默覆盖既有卡**——本轮验证时曾因我自己的 `mv` 覆盖刚生成
+      的骨架而触发一次同类事故（真实卡 044 已从 git 恢复并校验）。该缺陷属另一目标
+      （卡号分配安全），未夹带进本 PR，据实登记待办。
