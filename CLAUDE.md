@@ -25,7 +25,7 @@ This is a **knowledge/skills repo** — there is no build, no lint, no test suit
 
 ### Skills
 
-Nine skills in `skills/<name>/SKILL.md`, following the [Agent Skills](https://agentskills.io/) spec:
+Ten skills in `skills/<name>/SKILL.md`, following the [Agent Skills](https://agentskills.io/) spec:
 
 - **`diagnose`** — Core diagnostic loop: symptom collection → (data gap? take the tool entry's collection surface) → triage-tree routing → two-phase Tier 2 loading (phase 2.5 loads active references from the prior-knowledge layer) → verify diagnosis checks → output fix or fall back to deep investigation. Writes trace to `traces/<session_id>.yaml` on every step (incl. `reference_lookup` events, `purpose: collect|signature|fix|background`). On fix delivery writes `feedback_pending`; any diagnose/resume startup nags for the outcome (degrades to `feedback_stale` after 2 unanswered attempts — polite, not coercive) and updates case confidence. `disable-model-invocation: true` (user-triggered only).
 - **`to-postmortem`** — Case-knowledge injection entry. Accepts inline paste, single file, multiple files, or directory. Extracts symptoms/root cause/fix, suggests namespace, runs semantic validation + redaction, outputs YAML draft + postmortem.md into `postmortems/inbox/` (review queue; human-contributed drafts batch weekly, automation-sourced drafts may be groomed directly). Decoupled from diagnose — any investigation source can feed it.
@@ -35,6 +35,7 @@ Nine skills in `skills/<name>/SKILL.md`, following the [Agent Skills](https://ag
 - **`resume-diagnosis`** — Reads `traces/*.yaml` to resume an interrupted diagnosis session. `disable-model-invocation: true`.
 - **`self-evolve`** — Self-evolution deep round + batch aggregator. Explicit deep review of the whole knowledge base (capacity / attribution aggregation / metrics / S2 set) when the user says "run a self-evolve round" or "what could be improved"; also aggregates evolve-check cards into one review PR. `disable-model-invocation: true` (user-triggered only).
 - **`evolve-check`** — Lightweight post-content-flow evolution check (default, no separate goal round). After a content task (issue-ingest / to-postmortem / to-reference / knowledge-groom) finishes, checks for improvement signals (≥3 same-root cases → generalize, coverage gaps, repeated manual steps, component failure clusters); produces EV cards only when a signal fires, one line otherwise.
+- **`skill-review`** — Quality/UX review of a skill (default `diagnose`): five lenses — static audit (rule density, output-segment count, judgment-vs-step ratio, resident token cost), perturbation probes (ordering / information saturation / false premise / hurry-up / wording drift), blind discrimination + persona walkthrough, bad-path experience (empty KB, all-miss, no data, second failure, flow-vs-evidence conflict), attention budget. Report → `proposals/reviews/` (local), improvements → EV card. **Never a CI gate**: experience is a judgmental norm, hardening it is fake hardening. `disable-model-invocation: true` (user-triggered only).
 - **`preload-panel`** — Loads DSH visualization panels (diagnose / metrics tabs) via `cordis_define` + `cordis_run`. DSH only.
 
 
