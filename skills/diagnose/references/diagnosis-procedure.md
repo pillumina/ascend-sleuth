@@ -107,11 +107,11 @@ trace 记：
 
 **先取流程（方法缺口消费点，EV-2026-038）**：所有候选未命中、进入本步时，按 `references/procedure-gates.yaml` 的 `kind: procedure` 闸门取流程：
 
-1. 读 `references/_procedure-index.yaml`（**选择器**，按 category 过滤 `categories`），用 `title`/`summary` 选**一条**最贴合的流程——一轮诊断最多加载一条；
+1. 读 `references/_procedure-index.yaml`（**选择器**，按 category 过滤 `categories`），用 `title`/`summary` 选**一条**最贴合的流程——**默认一条**（前提与现场证据明确矛盾时可换一条，受"连续失败 ≤2"约束并记冲突理由）；
 2. 按该行的 `file` 打开词条，读 **`content.flow[]` 全文**（step / action / check / when_to_use）——**摘要行不算加载**：实测只读摘要与不读等效，决定性判据会被截断；
 3. 按流程执行：用每步的 `check` 当判定口径（阈值、分流条件），跳步要说明理由；
 4. 某步所需数据不在手上（如流程要看"逐卡计算耗时"而导出里没有）→ **如实记 `gap`**，不臆断分支结论；
-5. 记 trace：`{action: reference_lookup, ref_id, purpose: procedure}` + `{action: procedure_follow, ref_id, steps_executed, branch_taken, gap}`（字段见 `diagnosis-trace.md`）。
+5. 记 trace：`{action: reference_lookup, ref_id, purpose: procedure}` + `{action: procedure_follow, ref_id, steps_executed, branch_taken, gap, conflict}`（字段见 `diagnosis-trace.md`）。
 
 > **为什么必须全文**：流程携带的是**反直觉判据**（例："等得最久的卡不是慢卡，等得最少的那张才是"）。摘要会把它压没，agent 于是回到直觉判断——实测 4/4 判错；给全文 2/2 判对。
 

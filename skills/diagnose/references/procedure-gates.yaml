@@ -16,6 +16,8 @@
 # 分工（形态归 SKILL，内容归词条）：本表只决定「何时该取流程、取到后怎么用」；
 #   具体是哪一条流程由 `references/_procedure-index.yaml`（选择器）按 category + title/summary 选出。
 #   **本表不写症状关键词分支**——关键词写在闸门里等于与 triage-tree 双源，必漂移。
+#   **默认一条**；前提与现场证据明确矛盾时可换一条（受"连续失败 <=2"约束，记 conflict）。
+#   流程与证据冲突时以证据为准——流程是"这类问题怎么查"的参考，不是"这次就是这个"的判词。
 #
 # 校验（verify_references.py，随 CI）：kind=procedure 必须给 trigger + load: full + selector，
 #   且 selector 指向的文件必须存在；caveat_refs 必须存在且 active。

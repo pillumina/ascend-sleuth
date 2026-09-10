@@ -7,7 +7,7 @@
 #   3) 按 file 打开该词条读 **content.flow[] 全文**——摘要行不承载判据，只读摘要等于没加载；
 #   4) 一轮诊断最多加载一条流程（成本有界）。
 #
-# 生成日期：2026-09-10    流程条数：17    本文件整体加载成本：约 2852 token（选择器每次都要整读，故单文件 + 记成本）
+# 生成日期：2026-09-10    流程条数：14    本文件整体加载成本：约 2297 token（选择器每次都要整读，故单文件 + 记成本）
 #
 # 增长闸门（原则十一：按闸门不按日历）：流程条数 > 25，或本文件 > 5K token → 按 category 分片
 #   （对齐 case 层 knowledge/_index/<ns>__<category>.yaml 的做法）。当前单文件即可。
@@ -51,16 +51,6 @@ entries:
   - interrupt
   platforms: []
   file: references/methodologies/ascend-moe-comm-triage.yaml
-- id: ascend-mooncake-kv-transfer-triage
-  title: Mooncake/Ascend KV-transfer 分层诊断（python backend / native transport / 连接 / 流同步）
-  summary: PD 分离 + Mooncake KV-pool 部署故障先按报错面路由到层、再按层内形态定位，把同族诊断从逐个翻 case 变成分层路由：python traceback 且栈指 vllm_ascend/*.py → python backend 层（vllm-ascend 自身代码， 细分 init/线程 config、transfer-group 索引、DCP/MTP 切分长度、调度 KV…
-  categories:
-  - interrupt
-  - precision
-  platforms:
-  - A2-910B
-  - A3-910C
-  file: references/methodologies/ascend-mooncake-kv-transfer-triage.yaml
 - id: ascend-oom-triage
   title: 内存 OOM 问题定位（C 接口 → CANN Host 内存 → CANN Device 内存 → 业务进程异常）
   summary: OOM 按申请方分流：C 标准接口 malloc/memset 申请 Host 内存→asan 检测；CANN 接口 aclrtMallocHost 申请 Host 内存→日志搜 mem_stats 看组件统计；aclrtMalloc/aclrtMallocPhysical/hi_mpi_dvpp_malloc 申请 Device 内存→mem_stats；其它报错→搜 DEV_PROC_MEM…
@@ -93,17 +83,6 @@ entries:
   platforms:
   - cross
   file: references/methodologies/ascend-train-precision-triage.yaml
-- id: ascend-vllm-spec-decode-mtp-triage
-  title: vllm-ascend spec-decode/MTP 族分层诊断（启动/首请求/运行期崩溃 + 静默精度·性能退化）
-  summary: vllm-ascend 投机解码（spec-decode/MTP：deepseek_mtp/qwen3_5_mtp/qwen3_next_mtp/EAGLE/DSpark）故障族， 先按故障阶段分流——R-A 启动/拉起期（服务起不来、图捕获 warmup 崩）、R-B 服务能起但首请求/投机 first pass 即崩、R-C 运行期崩（压测到并发门槛或上线后）、R-D 无异常栈静默异常（阻塞…
-  categories:
-  - interrupt
-  - precision
-  - performance
-  platforms:
-  - A2-910B
-  - A3-910C
-  file: references/methodologies/ascend-vllm-spec-decode-mtp-triage.yaml
 - id: glm-quantized-startup-triage
   title: GLM 系模型量化加载启动失败排查（按报错形态分类）
   summary: GLM 系模型（GLM-5/5.1/5.2）w8a8/w4a8/w4a8c8 量化权重拉起 vllm serve 启动失败时，先按报错形态分类定位——modelslim 描述缺失 / 版本错配 / 算子绑定 / 量化路由，各类修法不同
@@ -134,13 +113,6 @@ entries:
   platforms:
   - cross
   file: references/methodologies/rl-train-infer-consistency-triage.yaml
-- id: vllm-ascend-startup-triage
-  title: vllm-ascend 服务启动失败通用排查（跨模型：版本配套 / 量化加载 / patch 层 / 平台特化路径）
-  summary: 通用 vllm-ascend（vllm serve / EngineCore）启动即失败的分流方法论——先按失败阶段与报错签名分类，依次核对版本/配套面（vllm×vllm-ascend commit、上游支持合入点、适配期坏版本、镜像内依赖）、量化权重格式面、patch 层全局副作用，再定位平台特化执行路径缺陷（启动期图捕获 / MoE 路由与 EP / 特殊 loader），最后查部署与环境…
-  categories:
-  - interrupt
-  platforms: []
-  file: references/methodologies/vllm-ascend-startup-triage.yaml
 - id: vllm-infer-precision-triage
   title: vLLM 推理精度定位五步路径（前置对齐 → 首差异 token → dump → compare → 单算子确认）
   summary: vLLM 推理精度定位五步路径（单 case 可复现场景）：问题场景与标杆场景对齐（配置/超参/三方库/输入）并固定采样随机性（temperature=0）与算子确定性 → 打印输出 token_id 序列定位**首个差异 token**（把"整句不对"缩到"第 N 个 token 起不对"）→ 两侧使能 msprobe dump（推荐 mix+statistics）→ msprobe comp…

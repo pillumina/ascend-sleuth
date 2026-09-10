@@ -75,13 +75,14 @@ reference 有三个消费点，都由流程里的**缺口**决定、都不参与
 
 **怎么做**（绑定在 `references/procedure-gates.yaml` 的 `kind: procedure` 闸门，id 由 `verify_references.py` 校验）：
 
-1. 读 `references/_procedure-index.yaml`（**选择器**，不是内容）：按本轮 category 过滤 `categories`（**该列为空 = 不限定类别**），用 `title`/`summary` 选**一条**最贴合的流程——**一轮诊断只加载一条**；该流程走完仍未定位 → 转深度排查或人工，**不换第二条**（与"连续失败 ≤2"的串联保护一致，防误诊级联）；
+1. 读 `references/_procedure-index.yaml`（**选择器**，不是内容）：按本轮 category 过滤 `categories`（**该列为空 = 不限定类别**），用 `title`/`summary` 选**一条**最贴合的流程——**默认一条**。若该流程的前提与现场证据**明确矛盾**（如它要求的数据形态在你手上根本不成立），可换一条：同样受"连续失败 ≤2"约束，并在 trace 记冲突理由；
 2. 按该行的 `file` 打开词条，读 **`content.flow[]` 全文**（step / action / check / when_to_use）——**摘要行不算加载**：实测只读摘要与不读等效，流程的反直觉判据会被摘要截断（例：摘要写"同步比例 > 0.2 则存在慢卡"，漏掉"慢卡 = WTR 最小的卡"）；
 3. 按流程执行：用每步的 `check` 当判定口径（阈值、分流条件），**跳步要说明理由**；
 4. 某步所需数据不在手上（流程要看"逐卡计算耗时"而导出里没有）→ 如实记 `gap`，**不臆断分支结论**；
 5. 记 trace：`{action: reference_lookup, ref_id, purpose: procedure}` + `{action: procedure_follow, ref_id, steps_executed, branch_taken, gap}`（字段见 `references/diagnosis-trace.md`）。
 
-> **流程不得替代候选验证**：流程给的是"这类问题怎么查"，不是"这次就是这个"。它的分支结论仍需数据支撑才进结论；
+> **流程是参考，不是判词**：流程给的是"这类问题怎么查"，不是"这次就是这个"。**它与现场证据冲突时以证据为准**（记 `conflict` 字段），
+> 分支结论仍需数据支撑才进结论；
 > 且流程走通并解决了问题**不免除 case 沉淀**（方法解决一次不等于这次事故不值得成为 case）。
 >
 > **流程错了也要能被发现**：跟随流程给出 fix、但工程师回报没解决时，在 `attribution` 事件里写
