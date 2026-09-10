@@ -79,14 +79,16 @@ def collect(root: Path):
         rel = path.relative_to(kdir)
         if rel.parts[0] in ("_archive", "_index") or path.name == "_index.yaml":
             continue
-        ns = str(Path(*rel.parts[:-1]))
+        # 路径一律用 POSIX 分隔符（Windows 上 str(Path(...)) 会给反斜杠，
+        # 生成物与 Linux 不一致 → --check 永久红、分片名也会被当成子目录）
+        ns = "/".join(rel.parts[:-1])
         # ADR-0004：目录按 (framework × category) 分层，但 ns 停在工作负载层
         # （triage 路由到框架，category 是正交轴的格子维度，从 case 字段取）
         # inference 与 training 对称折叠（2026-08-31 修复：此前只折叠 inference，
         # training 保留三级导致面板渲染出重复 category 标签）
         parts = rel.parts
         if len(parts) >= 3 and parts[0] in ("inference", "training") and parts[2] != "platforms":
-            ns = str(Path(parts[0], parts[1]))
+            ns = "/".join(parts[:2])
         # common/ 无框架层：common/<category>/<case>.yaml → ns 停在 common（2026-09-09，
         # 首批跨框架共性 case 落 common/ 时引入；此前 common/ 为空，未触发该分支）
         elif len(parts) >= 2 and parts[0] == "common":
@@ -120,7 +122,7 @@ def collect(root: Path):
                     (s[:120] + ("…" if len(s) > 120 else ""))
                     for s in (case.get("symptoms") or [])[:1]
                 ],
-                "file": str(Path("knowledge") / rel),
+                "file": (Path("knowledge") / rel).as_posix(),
                 "hash": case_hash(path),
             })
     return namespaces
