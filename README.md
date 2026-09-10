@@ -54,32 +54,13 @@ python3 scripts/enable_agent_skills.py    # 检测已安装 agent，建项目级
 
 > `.agents/skills` 未使用：仅 DSH 支持（已被 `.dsh/skills` 覆盖），无其他 agent 以其为项目级 skills 目录。
 
-**Windows**：Git for Windows 默认 `core.symlinks=false`，clone **不会还原** symlink——`.dsh/skills` 会变成内容为 `../skills` 的普通**文本文件**（不是目录），agent 发现不了 skills，且 git 从 clone 起就一直显示 ` T .dsh/skills`。两条路，**优先第一条**：
-
-**① 开真 symlink（首选）**：Windows 10+ 打开「开发者模式」即可免管理员建 symlink。clone 前 `git config --global core.symlinks true`；已经 clone 的原地修（不用重新 clone）：
+**Windows**：Git for Windows 默认 `core.symlinks=false`，clone / worktree **不会还原** symlink——`.dsh/skills` 会变成内容为 `../skills` 的普通**文本文件**（不是目录），agent 发现不了 skills。此时 `git status` **可能是干净的**，别靠它判断；先自检：
 
 ```powershell
-git config core.symlinks true
-Remove-Item .dsh\skills -Force     # 删掉 clone 残留的文本文件
-git checkout -- .dsh/skills        # 重新检出为真 symlink
+(Get-Item .dsh\skills -Force).PSIsContainer   # True = 正常；False = 需要修
 ```
 
-修完 `git status` 干净，pull / rebase / reset 无任何特例。
-
-**② 开不了开发者模式：用脚本建 junction**。`python3 scripts/enable_agent_skills.py`（Windows 上先试真 symlink，无权限自动退到 `mklink /J` 目录链接，免管理员），它还会自动对 `.dsh/skills` 打 `git update-index --skip-worktree`——消除「永久 ` D .dsh/skills`」脏状态与 `git pull --rebase` 每次都失败（该路径在仓库里是内容固定的 symlink 条目，日常 pull 不会碰它；万一上游真改了这个链接，git 会拒绝合并，按提示先 `git update-index --no-skip-worktree .dsh/skills` 再重来）。等价的手工版：
-
-```powershell
-# 在仓库根目录运行
-foreach ($d in '.dsh','.claude','.cursor','.trae','.codebuddy','.codex') {
-  New-Item -ItemType Directory -Force $d | Out-Null
-  # 清掉克隆残留的同名文本文件（若非目录）
-  if ((Test-Path "$d\skills") -and -not (Get-Item "$d\skills" -Force).PSIsContainer) { Remove-Item "$d\skills" -Force }
-  if (-not (Test-Path "$d\skills")) { New-Item -ItemType Junction "$d\skills" -Target (Resolve-Path .\skills) | Out-Null }
-}
-git update-index --skip-worktree .dsh/skills   # 让 git 忽略 junction 造成的类型变更
-```
-
-> 别用 Git Bash 的 `ln -s` 补建：它在 Windows 上默认退化成**复制**，建出的是 `skills/` 目录副本，之后 git pull 更新 SKILL.md 不再同步（静默的知识库过期）。仓库已带 `.gitattributes`（`* text=auto eol=lf`），所有文本文件在 Windows 上也按 LF 检出，避免 CRLF 在 YAML/脚本里引发解析失败或 diff 噪音。
+两条修法（优先开真 symlink）、三种状态的判别（含破损 reparse 点）、junction 与 `skip-worktree` 的取舍，见 **[docs/windows-setup.md](docs/windows-setup.md)**。
 
 加载后在 agent 里以 `/skill:<name>` 调用。
 
@@ -228,7 +209,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 **语义判断交给 agent，知识底座保持词法。** 工程师的模糊描述由 agent 归一为可检索的错误签名；知识库本身始终是 YAML 和 git，可 diff、可审计、可回滚。这是不引入向量检索的直接原因，完整论证与重评条件见 [ADR-0002](docs/adr/0002-retrieval-no-rag-lightweight-index.md)。
 
-**规模上限是一项架构承诺。** 每个命名空间 30 条 case 的上限并非洁癖：正是这个上限保证了全量索引可以单次加载、暴力过滤永远成立。上限先于任何检索基础设施存在。
+**规模上限是一项架构承诺。** 每个 `(框架 × 类别)` 格子 30 条 case 的软上限并非洁癖：正是这个上限保证了命中分片能在单次加载里暴力过滤。上限先于任何检索基础设施存在；超软上限触发拆分评估，超 60 条强制拆分（口径与拆分轴见 [ADR-0004](docs/adr/0004-capacity-governance.md)，各格子当前实测值与拆分裁决见 [roadmap.md](docs/roadmap.md) 的容量治理条目）。
 
 **自动化产出建议，人做决定。** 预分诊、候选 case 起草、置信度重算都只给出建议和依据，采纳、调整或驳回由维护者判定。人的工作从结构化整理上移为快速审批，单条成本从二十分钟降到半分钟以内。
 
@@ -244,6 +225,11 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 > 其余是改机制本身时才读的论证层。名单由 `docs/_manifest.yaml` 生成（`scripts/build_docs_index.py --check` 防漏登记）。
 
 <!-- BEGIN generated: docs-index (scripts/build_docs_index.py；由 docs/_manifest.yaml 生成，勿手改) -->
+**入门（第一次接触先读这篇）**
+*你还不清楚这套系统在做什么、数据怎么流动*
+
+- [demo-walkthrough.md](docs/demo-walkthrough.md) — 从一次诊断到知识演化的可读演示：两分钟架构总览 + 术语与 skill 速览 + 全流程示例（不需要动手）
+
 **规范（约束一切设计与演进；改机制前必读）**
 *你要判断某个设计/改动是否合规，或要挑战一条既有规则时*
 
@@ -263,19 +249,19 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 - [evolution-user-guide.md](docs/evolution-user-guide.md) — 使用者侧：能说什么、一句话后发生什么、怎么读进度
 
 **操作指南（用到那个环节时才读）**
-*你要跑评测、看指标、走 git 门控、或做 issue 导入时*
+*你要装环境（Windows skills 使能）、跑评测、看指标、走 git 门控、或做 issue 导入时*
 
 - [eval.md](docs/eval.md) — 改 skill 前后跑什么（门禁分级）、对照集封存与已冻结的判据
 - [metrics.md](docs/metrics.md) — 指标口径与周批流程（数字以 metrics/timeline.yaml 为准）
 - [git-workflow.md](docs/git-workflow.md) — 审核、门控、合入与多人协作的落地（含评审把手）
 - [issue-ingest-pipeline.md](docs/issue-ingest-pipeline.md) — issue → case 的半自动导入管道
+- [windows-setup.md](docs/windows-setup.md) — Windows 下让 agent 发现 skills：三种状态的判别与两条修法
 
 **计划与就绪度（想知道"下一步做什么"时读）**
 *你要排下一步工作，或评估能不能推广给一个团队时*
 
 - [roadmap.md](docs/roadmap.md) — 闸门驱动的演进计划（每个事项的入口条件与验收标准）
 - [rollout-assessment.md](docs/rollout-assessment.md) — 对照原则的四层就绪度评估与推广动作清单
-- [demo-walkthrough.md](docs/demo-walkthrough.md) — 从一次诊断到知识演化的可读演示（含交互输出示例）
 
 **决策留痕（查"当初为什么这样选"时读）**
 *你想推翻某个既有选择，需要先看它当时的论证与重评条件*

@@ -1,18 +1,16 @@
 # Tier 1: 症状 → namespace 路由
 #
-# 两个正交轴（别混，§5.1）：
+# 两个正交轴（别混）：
 #   轴 1（在哪查）= 训推 × 框架 → search_namespaces 指向的目录
 #   轴 2（什么性质）= category → 决定诊断路径 + quickly_check 形态 + 默认工具
 #
 # <detected_framework>：工程师提供的框架（/diagnose 从客户提供的信息/报错判断，不跑 pip list）。
 # 分支数 ≤ 30。框架检测失败时只用 common/。
 #
-# ✅ common/ 实际状态（2026-09-09 groom 转正后）：已有 **6 条跨框架/框架未登记**的共性
-# case（knowledge/common/precision/）——框架无关根因：业务代码重置确定性开关、加载权重数值
-# 异常、embedding 反向空输入、FSDP offload 流同步、CANN 算子数据竞争、TP 组内种子未同步。
-# search_namespaces 中的 common/ 一项**已生效**（框架检测失败或首个 namespace 未命中时查它）。
-# README + ADR-0005 的"common/ 必拉"从设计承诺变为可消费资产；新共性 case 仍从
-# 多 namespace 同根因 case 中提炼（触发条件见 skills/knowledge-groom/SKILL.md）。
+# common/：跨框架/框架未登记的共性 case 落入此处（框架无关根因）。README + ADR-0005 的"common/ 必拉"
+# 已从设计承诺变为可消费资产；search_namespaces 中的 common/ 一项已生效（框架检测失败或首个
+# namespace 未命中时查它）。条数与容量见 knowledge/_index.yaml 头注；新共性 case 的提炼触发条件见
+# skills/knowledge-groom/SKILL.md。（本文件是 Tier 1 数据，不承载运行时状态播报。）
 
 branches:
   - id: training_interrupt

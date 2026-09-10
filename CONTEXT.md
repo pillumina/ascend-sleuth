@@ -41,7 +41,7 @@ _避免_：路由维度
 _避免_：priority、weight、优先级
 
 **Trace（诊断轨迹）**:
-诊断 session 期间写入 `diagnosis_state-<session_id>.yaml` 的分步审计记录。误诊归因的唯一依据：区分 case 错（改知识库 YAML）与执行错（改 skill 流程）。
+诊断 session 期间写入 `traces/<session_id>.yaml` 的分步审计记录（每个并发诊断一个文件；schema 模板见 `diagnosis_state.yaml.example`）。误诊归因的唯一依据：区分 case 错（改知识库 YAML）与执行错（改 skill 流程）。
 _避免_：log、transcript、历史
 
 **Skill（技能）**:
@@ -103,6 +103,24 @@ _避免_：外推（extrapolation 是数值数学术语，语义不符）
 **影子价格（shadow price）**:
 约束优化中资源的边际价值：一单位预算折合多少期望损失。一切权衡的兑换率。
 _避免_：隐含价格、机会成本（语义近但不等）
+
+## 内代号速查（只解码，不解释机制）
+
+正文里还会出现一批**内部代号**。它们不是术语表的定义对象（机制定义一律留在机制文档），但首次出现时读者需要知道"这个语形指的是什么"。这里只给**代号 → 含义 → 权威处**：
+
+| 代号 | 含义 | 权威处 |
+|---|---|---|
+| `A2-910B` / `A3-910C` / `A5-950` | 昇腾三代硬件平台标识；case 的 `platforms` 字段与各自的 diagnosis 分支按它分派 | `skills/diagnose/references/platform-dispatch.md` |
+| `DSH` | DeepSeek Harness：本仓的 agent 运行环境与零配置主路径；`.dsh/skills` 与诊断面板仅在 DSH 下生效 | 本仓 README「快速开始」 |
+| `S1` / `S2` | 反馈的两条通道：S1 = 现场 resolve（工程师回报 fix 是否解决）；S2 = 内容验证（issue-replay 对照外部 ground truth） | `docs/evolution.md` |
+| `EV 卡` | 演进提案卡（`proposals/ideas/EV-*.yaml`），演进闭环的改进单元 | `docs/evolution-pipeline.md` |
+| `F1`–`F5` | 阶段一索引加载协议的优化子项编号 | `docs/roadmap.md` 的「加载协议子流」条目 |
+| 格子 | 容量治理单元 = (框架 × 类别)；软上限 30、硬上限 60 | `docs/adr/0004-capacity-governance.md` |
+| 夹具 / `holdout` | 回归评测样本统称夹具；其中按内容哈希封存、不被改动者削弱的那部分叫 holdout | `docs/eval.md` |
+| `grill` | 沉淀 reference 前的反复确认追问环节 | `skills/to-reference/SKILL.md` |
+| 口径 | 统计或判定所用的统一算法与边界定义——口径不同则数字不可比 | `docs/metrics.md` |
+
+> 记账号（roadmap 事项 A/E/M/O/P、治理缺口 G、触发信号 T、落地阶段 Phase）不在此表：它们登记在 `docs/glossary.yaml`，只在各自的计划文档里裸用，机制文档与 PR 里要写中文含义。
 
 ## 机制术语去哪找
 

@@ -1,23 +1,23 @@
-# Canonical sample case —— 演示完整 schema（5 轮设计全字段）
+# Canonical sample case —— 演示完整 schema（全字段）
 # 新建 case 时照此模板，按需删可选字段。
 
 cases:
   - id: MSLLM-EP-HANG-001
     title: "HCCL buffer undersize for large-scale EP dispatch"
 
-    # 轴 2（§5.1）：什么性质的问题。驱动 quickly_check 形态 + 默认工具 + CHEATSHEET 分组
+    # 轴 2（问题性质）：什么性质的问题。驱动 quickly_check 形态 + 默认工具 + CHEATSHEET 分组
     category: interrupt                  # interrupt | precision | performance
     tags: [hang, ep, hccl]               # sub-type；收敛问题用 precision.convergence
 
     platforms: ["A5-950", "A3-910C"]    # 平台差异用 platforms 字段的独立 diagnosis 分支表达（ADR-0008：不再有平台背景文档）
-    compat:                              # 版本兼容（§5.5）——多维度，每维可选，只填真判别的
+    compat:                              # 版本兼容——多维度，每维可选，只填真判别的
       - framework: mindspeed-llm
         ranges: [">=2.4.0,<2.7.0", ">=2.8.0"]   # 引擎版本，非单调（2.7 失效、2.8 恢复）
         cann: [">=8.0"]                          # 可选：CANN 版本，仅当影响这条 case 时填
         hdk: [">=23.0"]                          # 可选：HDK/固件版本
-    # 匹配软判：客户版本不在区间 → version_mismatch 降权，不硬排除（§5.5）
+    # 匹配软判：客户版本不在区间 → version_mismatch 降权，不硬排除
 
-    confidence:                          # groom 计算，非人设定（§5.5）
+    confidence:                          # groom 计算，非人设定
       hits: 18
       misdiagnoses: 1
       score: 0.86                        # hits/(hits+misdiagnoses)，按 last_hit 衰减；校准：>0.8 高、0.5-0.8 中、<0.5 仅提示
@@ -40,8 +40,10 @@ cases:
       - "all_to_all_single hangs at step usually after 1000+"
       - "world_size >= 64"
 
-    # 可选：指向 common/ 权威记录。root cause 被确认多框架共用时才填（§5.3）
-    references: common/hccl/buffer_config.yaml#ASCEND-HCCL-BUFFER-001
+    # 可选：指向 common/ 权威记录（root cause 被确认多框架共用时才填）。
+    # 本 canonical sample 是构造示例，指向的权威记录尚未入库——启用前先建，
+    # 否则是死引用。示意如下：
+    # references: common/precision/COMMON-EXAMPLE-001.yaml#COMMON-EXAMPLE-001
 
     # 可选：来源验证状态（to-postmortem 产出时标；区别于 investigation_quality——
     # quality=人的调查判断，verification=外部证据强度）。档位按「来源形态」分，不按 issue 分：
@@ -52,7 +54,7 @@ cases:
       source: investigation
       detail: "本地源码分析定位（见 source_ref）"
 
-    # 阶段一加载（两阶段加载，§6）：过滤用，约 70 token/条
+    # 阶段一加载（两阶段加载）：过滤用，约 70 token/条
     quickly_check:
       primary:                           # 精确但易因日志格式变化失效
         command_template: "grep -c 'all_to_all' {{log_path}}"
@@ -73,7 +75,7 @@ cases:
         fix_on_mismatch: "export HCCL_BUFFSIZE=4194304"
         rollback: "unset HCCL_BUFFSIZE  # 恢复默认"
 
-    severity: service-affecting          # benign | service-affecting | data-loss-risk（§9.2 闸门）
+    severity: service-affecting          # benign | service-affecting | data-loss-risk（severity 闸门；三档含义见 skills/diagnose/SKILL.md）
     fix_side_effects: [requires-restart] # 应用此 fix 的代价；agent 要提示人协调重启窗口
     fix_type: env-var                   # env-var | config-change | code-patch | pending-investigation
 

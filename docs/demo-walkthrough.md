@@ -8,27 +8,27 @@
 
 ## 0. 两分钟架构总览
 
-系统处理昇腾训练/推理问题（中断、精度、性能三类），核心是一个会追问、会查知识、会承认不知道的诊断协作者。知识按四层组织，检索自顶向下：
+系统处理昇腾训练/推理问题（中断、精度、性能三类），核心是一个会追问、会查知识、会承认不知道的诊断协作者。知识按三层组织，检索自顶向下；先验知识是独立的一层，不参与候选路由与排序，只在流程出现缺口时被读：
 
 | 层 | 内容 | 干什么 |
 |---|---|---|
 | Tier 1 | `triage-tree.yaml` 路由表 | 症状 → 命名空间（约 30 个分支） |
 | Tier 2 | `knowledge/<ns>/*.yaml` case 规则 | 结构化诊断案例（症状/检查/fix） |
-| 2.5 | `references/` 先验知识 | 独立于事故的事实与方法论 |
 | Tier 3 | `postmortems/` 原始记录 | 未结构化的排查底稿，关键词兜底 |
+| 先验知识（非检索层）| `references/` 事实与方法论 | 独立于事故；在"缺测量数据"与"缺签名/背景/修复依据"两个缺口处被读（机制见 `docs/evolution.md`）|
 
 诊断时 Tier 2 命中直接给结论，未命中走 Tier 3 或源码分析，定位完沉淀成新知识。这就是"知识随使用变厚"：每次兜底后沉淀，下次同类问题直接命中。
 
 先认识几个词：
 
 - **case**（Tier 2 条目）：一个问题的完整闭环，症状 → 检查 → 根因 → fix。沉淀在 `knowledge/`。
-- **reference**（2.5 层条目）：独立事实或方法论，如"507015 错误码含义"、"MoE 算子故障排查流程"。沉淀在 `references/`。
+- **reference**（先验知识层条目）：独立事实或方法论，如"507015 错误码含义"、"MoE 算子故障排查流程"。沉淀在 `references/`。
 - **postmortem**（Tier 3 底稿）：原始调查记录，未结构化。进 `postmortems/inbox/` 待审。
 - **groom**：周批维护，把待审草稿分诊、转正、重算置信度、重建索引。
 - **confidence**：case 的可信度（0-1）。新 case 按调查质量给初始值，随用户反馈校准，详见第 4 节。
 - **pre-triage**：沉淀时预判新 case 是全新模式（`new_pattern`）、已有 case 的变体（`variant_of`）、还是已被覆盖（`covered_by`）。
 
-六个 skill 各管一段：
+日常会用到的几个 skill 各管一段（完整名单与数量见 README 的「skill 名单」节，本文不写死）：
 
 | skill | 职责 |
 |---|---|
@@ -39,7 +39,7 @@
 | `knowledge-groom` | 周批：审草稿、转正、重算置信度 |
 | `resume-diagnosis` | 续接被打断的诊断 |
 
-怎么开始用：clone 仓库后，用 DSH 打开目录，`/skill:` 列表直接出现六个 skill；其他 agent（Claude Code / Cursor / Codex…）跑一次 `python3 scripts/enable_agent_skills.py`，自动为已安装的 agent 建 skills 链接（Windows 上无开发者模式时自动退到 junction）。
+怎么开始用：clone 仓库后，用 DSH 打开目录，`/skill:` 列表直接列出本仓的 skill；其他 agent（Claude Code / Cursor / Codex…）跑一次 `python3 scripts/enable_agent_skills.py`，自动为已安装的 agent 建 skills 链接（Windows 上无开发者模式时自动退到 junction）。
 
 ```bash
 git clone https://github.com/pillumina/ascend-sleuth.git
