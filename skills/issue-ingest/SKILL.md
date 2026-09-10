@@ -92,6 +92,8 @@ python3 scripts/issue_filter.py --cached /tmp/issues-<repo>.json \
 对候选逐条：`gh api repos/<repo>/issues/<n>` 取 **body + 评论**（issue 的 body 多为环境信息+现象，**根因和 fix 通常沉淀在评论里**——至少读最后 2-3 条评论，结论常在尾部；body 只读现象段落），判断：
 - **可否沉淀**：症状→根因→fix 是否闭环（根因有定论、fix 有方向即可，不必等社区验证）、是否昇腾相关、是否与现有 case 重复（对照 `knowledge/` 与 `postmortems/`）；
 - 评论数多的不等于可沉淀（可能多问题未定论）——以"根因是否定论 + fix 是否明确"为判据，不只看评论热度；
+- **fix 指向 PR 时，核对那个 PR 是否真的动了所述代码位**（零 token：`gh pr view <n> --json title,files`；要对齐到行就 `gh api repos/<repo>/pulls/<n>/files` 看 patch）。关单评论里的"#NNNNN fix it"**不等于**该 PR 就是所述修复——先例：VLLM-ASC-12957 被记成"PR #14269 加了流同步"，而该 PR 实为删除 `batch_matmul_transpose` 算子，照 case 给用户的"升级到含 #14269 的版本"是**空路**。核对不上就写成待确认（草案 `fix_type: pending-investigation` + 注明"上游自述 PR 与所述修复不符"），不要记成既定修复；
+- **版本号认准维度**：issue 里的 `VLLM_VERSION` 是 **vLLM** 的版本，镜像 tag（如 `quay.io/ascend/vllm-ascend:glm5.2-a3`）也不是 vllm-ascend 的版本号。写 `compat.ranges` 必须用 vllm-ascend 自身版本（`pip show vllm-ascend` 级别的事实）；取不到就留空或标注待补，**不要拿 vLLM 版本凑**——先例：VLLM-ASC-12461 的版本范围一度按现场的 `VLLM_VERSION=0.21.0` 误判；
 - 不可沉淀（feature/讨论/无结论）→ 跳过，但记录到 `ingest-state.json` 的 `processed`（`--mark-imported` 一并标记，防反复评估）。
 
 `--mode confirm`：先展示候选列表（编号/标题/评论数）给用户确认取舍，再评估。
