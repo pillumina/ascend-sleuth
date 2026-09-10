@@ -86,9 +86,16 @@ def main():
     ap = argparse.ArgumentParser(description="从 traces/*.yaml 计算 metrics")
     ap.add_argument("--emit-yaml", action="store_true",
                     help="额外输出 YAML 快照骨架（人复核后 append 进 metrics/timeline.yaml）")
+    ap.add_argument("--emit-yaml-only", action="store_true",
+                    help="只输出 YAML（块末的 periods 片段，不带人读 markdown）——供 "
+                         "scripts/metrics_snapshot.py 组合快照时取诊断侧那一块")
+    ap.add_argument("--root", default=None,
+                    help="仓库根（默认：脚本上两级）。**traces/ 是各检出各一份的运行时件**——"
+                         "在 worktree 里跑本脚本读不到主检出的 trace，需显式传主检出根；"
+                         "metrics_snapshot.py 会自动解析并标注读的是哪一份")
     args = ap.parse_args()
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[1]
     by_case = ns_map_from_index(root)
     states = load_states(root)
     if not states:
@@ -277,11 +284,13 @@ def main():
             )
     else:
         rows.append("| reference 引用 | 0——先验知识层刚建立（ADR-0008），trace 尚未积累 reference_lookup 事件 |")
-    print("\n".join(rows))
-    print("\n<!-- metrics 由 owner 在 groom 周批时集中汇总：人复核后 append 进 metrics/timeline.yaml（每期一条，团队共享）；工程师不需要提交 metrics——他们只做诊断（本地 trace）+ 反馈（case confidence 走 PR）。小样本比例波动大，解读先看分母。机器可读快照：python3 scripts/trace_metrics.py --emit-yaml -->")
+    # `--emit-yaml-only` 是机器读路径（供 metrics_snapshot.py 组合快照）：不出人读 markdown，
+    # 否则调用方要在一堆 markdown 里找 YAML 块（实测会直接解析失败）。
+    if not args.emit_yaml_only:
+        print("\n".join(rows))
+        print("\n<!-- metrics 由 owner 在 groom 周批时集中汇总：人复核后 append 进 metrics/timeline.yaml（每期一条，团队共享）；工程师不需要提交 metrics——他们只做诊断（本地 trace）+ 反馈（case confidence 走 PR）。小样本比例波动大，解读先看分母。机器可读快照：python3 scripts/trace_metrics.py --emit-yaml -->")
 
-    if args.emit_yaml:
-        print("\n--- metrics yaml 快照（复核后 append 进 metrics/timeline.yaml）---")
+    if args.emit_yaml or args.emit_yaml_only:
         import datetime
         snapshot = {
             "period": "YYYY-WNN",  # TODO: 填本期（如 2026-W36）；W 周期 ISO 8601
@@ -291,8 +300,14 @@ def main():
             "source": "trace_metrics.py 从 traces/*.yaml 自动生成",
             "metrics": {k: v for k, v in m.items() if v is not None},
         }
-        yaml.safe_dump({"periods": [snapshot]}, sys.stdout, allow_unicode=True,
-                       sort_keys=False, default_flow_style=False)
+        if args.emit_yaml_only:
+            # 机器读路径：只吐 metrics mapping（组合快照的调用方要的就是这一块）
+            yaml.safe_dump({"metrics": snapshot["metrics"]}, sys.stdout,
+                           allow_unicode=True, sort_keys=False, default_flow_style=False)
+        else:
+            print("\n--- metrics yaml 快照（复核后 append 进 metrics/timeline.yaml）---")
+            yaml.safe_dump({"periods": [snapshot]}, sys.stdout, allow_unicode=True,
+                           sort_keys=False, default_flow_style=False)
 
 
 if __name__ == "__main__":

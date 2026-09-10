@@ -1,0 +1,49 @@
+# metrics 阈值与可解读性下限（**数据，不是散文**）
+#
+# 谁读：`scripts/metrics_health.py`（闭环检测器）；`docs/metrics.md` 的周批流程第 2 步。
+#
+# 为什么单独成文件（2026-09-10 审计）：
+#   阈值原先散在 `docs/roadmap.md`（闸门叙述）、ADR-0004（容量数值）、`docs/metrics.md`（口径）
+#   与 groom 的信号表里，**没有任何一处能被脚本读** —— 于是"指标越界"永远不会自己喊：
+#   实测某格 `interrupt=85/30`（soft_cap 的 2.8 倍）、结构快照 10 天没更新、反馈捕获为 0
+#   （命中/误诊没有分母），而周批第 4 步 `verify_metrics.py --check` 照样 exit 0
+#   （它只验结构：period 唯一 / 字段白名单 / 比例字段合法）。
+#   阈值落成数据 = 检测器有判据可读（原则二：不变量写进结构），且改判据只改一处。
+#
+# 改这里 = 改判据：同步 `docs/metrics.md` 的「闸门与可解读性」节、`docs/roadmap.md` 的闸门描述。
+
+freshness:
+  # 诊断侧 live 快照：超期 = 趋势断档（季度回顾要读连续 live 快照）
+  live_snapshot_max_age_days: 7
+  # 结构侧（容量 / case 数 / reference 数）：超期 = 治理信号过期（格子压线时最要命）
+  structural_max_age_days: 7
+
+gates:
+  - id: cell_soft_cap
+    dimension: capacity_cell
+    op: ">"
+    value: 30
+    meaning: "(framework × category) 格子条数超 soft_cap"
+    action: 触发拆分评估（groom 步骤 6：category 轴深化或 platform 轴）
+  - id: cell_hard_cap
+    dimension: capacity_cell
+    op: ">="
+    value: 60
+    meaning: 格子条数超 hard_cap（信道物理上限）
+    action: 强制拆分，不等健康指标
+  - id: feedback_capture_floor
+    dimension: feedback_capture_total
+    op: "<="
+    value: 0
+    meaning: 本期捕获到 fix 结果的 session 为 0
+    action: 命中率/误诊率/归因比无分母——不得据此下"无异常"结论；groom 摘要提示补反馈
+
+# 可解读性下限：分母为 0（或来源无数据）的指标必须被标成"不可解读"，而不是安静地写成 0
+readability:
+  - metric: misdiagnosis_rate
+    rule: source_nonzero
+    source: feedback_capture
+    why: 反馈捕获为 0 时，命中样本从未被人验证过——"0/N"只表示"没人回报"，不表示"没有误诊"
+  - metric: attribution_ratio
+    rule: any_gt_0
+    why: 全 0 会被读成"无归因问题"，实际是"没有一个 not_resolved 触发过归因"（没数据）

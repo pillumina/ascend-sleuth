@@ -406,12 +406,28 @@ async function main() {
     mt = out.join('\n')
   }
   expect('「本期变化」区块存在', mt.includes('本期变化'))
-  expect('对照标注 live2 vs live1', /2026-W36-live2/.test(mt) && /对比 2026-W35-live1/.test(mt))
-  expect('变化项 sessions_total 7 → 11', /诊断 session 数[\s\S]{0,50}7 → 11/.test(mt), (mt.match(/诊断 session 数[\s\S]{0,60}/) || [])[0])
+  // 期号/数值一律从真实数据推导——原先钉死 "live2 vs live1" 与 "7 → 11"，
+  // 新增一期 live 快照（W37）后三条断言全部失真（同类第 N 次：断言钉死在可变数据上）。
+  const livePeriods = periods.filter(p => p.kind === 'live')
+  const cur = livePeriods[livePeriods.length - 1]
+  const prev = livePeriods[livePeriods.length - 2]
+  if (cur && prev) {
+    expect('对照标注最新两期 live（' + prev.period + ' vs ' + cur.period + '）',
+      mt.includes(cur.period) && mt.includes('对比 ' + prev.period), mt.slice(mt.indexOf('本期变化'), mt.indexOf('本期变化') + 200))
+    const curV = (cur.metrics || {}).sessions_total, prevV = (prev.metrics || {}).sessions_total
+    if (typeof curV === 'number' && typeof prevV === 'number' && curV !== prevV) {
+      expect('变化项 sessions_total ' + prevV + ' → ' + curV,
+        new RegExp('诊断 session 数[\\s\\S]{0,50}' + prevV + ' → ' + curV).test(mt),
+        (mt.match(/诊断 session 数[\s\S]{0,60}/) || [])[0])
+    }
+  } else {
+    expect('live 期不足两期时不渲染对照（诚实退化）', !/对比/.test(mt))
+  }
   expect('新增项标注「新增」', /新增/.test(mt))
   expect('持平项计数', /项持平/.test(mt))
-  // 默认 live 筛选只有 2 期（全部展开，无历史可折叠）——切到「全部」才该出现折叠
-  expect('live 筛选：无历史折叠（期数不足）', !/历史快照 \d+ 期/.test(mt))
+  // 默认 live 筛选：只有最近 2 期展开，更早的收进「历史快照」折叠——期数 ≤2 时不该有折叠
+  if (livePeriods.length > 2) expect('live 筛选：超过 2 期才出现历史折叠', /历史快照 \d+ 期/.test(mt))
+  else expect('live 筛选：期数不足 2 期以上，无历史折叠', !/历史快照 \d+ 期/.test(mt))
   {
     // 切「全部」筛选，再看折叠与收起态摘要
     hookIdx = 0; hookState = []; depState = []; effectQueue = []; cssChunks = []

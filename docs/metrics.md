@@ -6,16 +6,35 @@
 
 | 载体 | 内容 | 变更频率 |
 |---|---|---|
-| `metrics/timeline.yaml` | 指标时序数据：每期一条快照（period / kind / metrics / notes） | 每期（groom 周批 append） |
+| `metrics/timeline.yaml` | 指标时序数据：每期一条快照（period / kind / metrics / sources / notes） | 每期（groom 周批 append） |
 | `docs/metrics.md`（本文） | 机制文档：指标定义、口径、汇总流程、示例 | 机制变化时 |
-| `scripts/trace_metrics.py` | 从 trace 生成指标（markdown 概览 + `--emit-yaml` 快照骨架） | 随机制 |
-| `scripts/verify_metrics.py` | 校验 timeline.yaml 结构（period 唯一 / kind 合法 / 比例字段合法），CI 强制 | 随机制 |
+| `metrics/gates.yaml` | **阈值与可解读性下限（数据）**：新鲜度上限、格子 soft/hard cap、反馈下限、哪些指标分母为 0 即"不可解读" | 判据变化时 |
+| `scripts/metrics_snapshot.py` | **一期快照的单一产出命令**：组装诊断侧 + 结构侧 + 内容流程侧（逐块标 `sources`）；评测侧按需 | 随机制 |
+| `scripts/metrics_health.py` | **闭环检测器**：读 timeline + gates，判新鲜度 / 越界 / 可解读性；`--check` 有 ✗ 则非零 | 随机制 |
+| `scripts/trace_metrics.py` | 诊断侧指标（markdown 概览 + `--emit-yaml` 骨架 + `--emit-yaml-only` 供组装） | 随机制 |
+| `scripts/verify_metrics.py` | 校验 timeline.yaml 结构（period 唯一 / kind 合法 / 比例字段合法 / live 字段白名单），CI 强制 | 随机制 |
 
 **为什么数据不进 docs**：docs 是给人看的稳定文档，指标数据是随使用增长的结构化记录——两者变更节奏不同，混在一起会让文档随数据漂移（曾发生 W28/W35 字段格式完全不同、跨期不可比的教训）。数据进 `metrics/timeline.yaml` 后，结构由 CI 校验兜底（原则二：不变量写进结构）。
 
 ## 指标定义
 
-所有指标由 `trace_metrics.py` 计算（单一数据源），`--emit-yaml` 生成快照骨架。比例类指标务必连同分母解读，样本量小（分母不足 10）时波动很大。
+指标来自**四类来源**——不是"单一脚本"：本行原写作"所有指标由 `trace_metrics.py` 计算（单一数据源）"，
+而实际 timeline 里还有结构侧与评测侧指标。这个错误表述让周批只跑 trace_metrics、其余靠人手工搬运，
+实测导致结构指标 **10 天**没进快照（快照 `case_total 52` vs 现实 **158**，某格已 `85/30` 而快照里还是 `36/30`）。
+
+| 来源 | 谁产出 | 指标 |
+|---|---|---|
+| 诊断侧 | `trace_metrics.py`（读 `traces/*.yaml`） | 命中率、误诊率、路由准确率、归因比、按类命中、置信度分布、trace 完整性、Tier 3、反馈捕获、reference 引用/消费点、流程加载与跟随 |
+| 结构侧 | `build_index.py` 头注 + `verify_references.py` | `case_total`、`reference_total`、`capacity_by_ns`（每格 `count/cap`） |
+| 内容流程侧 | `log_skill_exec.py` → `tail_exec_log.py --summary` | `content_flow_runs`、`evolve_check_runs`、`evolve_check_no_signal` |
+| 评测侧 | ixn / golden / S2 等按需 | `ixn_*`、`golden_suite`、S2 内容验证（口径见下） |
+
+`metrics_snapshot.py` 把 ①②③ 拼成一期骨架（④ 按需；拿不到的块**如实不写，不写 0 冒充**）。
+比例类指标务必连同分母解读，样本量小（分母不足 10）时波动很大。
+
+**traces 是各检出各一份的运行时件**：在 worktree 里跑周批读不到主检出的 trace
+（实测会静默产出空诊断指标）。`metrics_snapshot.py` 会自动解析该读哪一份（优先主检出）
+并在 `sources.diagnose_side` 里标明；手工跑 `trace_metrics.py` 时需显式 `--root <主检出>`。
 
 | 指标 | 含义 | 数据来源 |
 |---|---|---|
@@ -45,9 +64,13 @@ periods:
     kind: live                      # live（活诊断周期快照）| replay（回放评估）| example（示例）
     title: "本期诊断指标"
     recorded_at: "2026-08-29"       # 人复核日期（不可自动戳）
-    source: "trace_metrics.py 从 traces/*.yaml 自动生成"
+    source: "metrics_snapshot.py 组装（诊断侧+结构侧+内容流程侧）"
+    sources:                        # 逐块出处（组装命令写入；手写快照可省）
+      diagnose_side: "trace_metrics.py（traces/*.yaml ← 主检出，12 个 session）"
+      structural_side: "build_index.py 头注 + verify_references.py"
+      content_flow_side: "log_skill_exec.py → tail_exec_log.py"
     metrics:
-      sessions_total: 3
+      sessions_total: 12
       tier2_hit: 3
       routed_accuracy: {ok: 2, total: 3}
       misdiagnosis_rate: {ok: 1, total: 3}
@@ -59,29 +82,63 @@ periods:
       vocab_compliance: {ok: 22, total: 22}
       tier3: {used: 0, saved: 0}
       reference: {hits: 1, refs: 1}
+      case_total: 158                        # 结构侧
+      reference_total: 130
+      capacity_by_ns: {inference/vllm-ascend: {interrupt: {count: 85, cap: 30}}}
+      content_flow_runs: 4                   # 内容流程侧
+      evolve_check_runs: 1
+      evolve_check_no_signal: 1
     notes: |
       # 人复核时补充本期解读（miss 归因、异常说明、非指标信息），可多行
 ```
 
 规则：
 - **kind 只有 `live` 参与跨期趋势对比**；`replay`（回放评估）与 `example`（示例）供参考，不参与趋势
-- `verify_metrics.py --check`（CI）校验：period 唯一、kind 合法、recorded_at 必填、metrics 非空、比例字段 ok/total 合法
+  - 结构性指标（`case_total` / `reference_total` / `capacity_by_ns`）**允许出现在 live**：它们是最该看趋势的治理指标，早期只能放在 replay 里 → 按本规则等于没有趋势通道（实测某格已 `85/30`，快照里还停在 `36/30`）
+- `verify_metrics.py --check`（CI）校验：period 唯一、kind 合法、recorded_at 必填、metrics 非空、比例字段 ok/total 合法、live 字段在白名单内、`sources` 若填必须是 mapping
 - 无数据的指标**如实不写**（诚实退化：reference 刚建立时 hits=0 是现状，不是 bug）
+
+## 闸门与可解读性（`metrics/gates.yaml` + `metrics_health.py`）
+
+阈值**落成数据**（`metrics/gates.yaml`），由 `metrics_health.py` 在周批第 2 步判三件事：
+
+| 面 | 判据（gates.yaml） | 说明 |
+|---|---|---|
+| 新鲜度 | `live_snapshot_max_age_days` / `structural_max_age_days` | 超期 = 趋势断档（实测：结构侧 10 天没进快照） |
+| 越界 | `cell_soft_cap`(>30) / `cell_hard_cap`(>=60) / `feedback_capture_floor`(<=0) | 每条带 `meaning` 与 `action`，报告直接给下一步 |
+| 可解读性 | `readability` 规则（如 `source_nonzero`） | 分母/来源无数据时把指标标成**不可解读**，禁止把 `0/N` 读成"零问题" |
+
+**为什么必须单独有这一层**：`verify_metrics.py` 只验**结构**（period 唯一/字段合法），
+它不判"该更新的没更新""越界了""这个 0 是没数据还是真没问题"——实测按旧流程走一遍
+（trace_metrics → 复核 → append → verify）不会被告知上述任何一条，指标坏了只能等人想起来。
+检测器**不进 CI**：安静的一周没有新快照是正常状态，硬门会假红；它服务于周批与季度回顾。
 
 ## 汇总流程（owner 职责）
 
 metrics 由 **owner 在 groom 周批时集中生成并 append**（每期一条，团队共享）。工程师不提交 metrics——他们只做诊断（本地 trace）+ 反馈（case confidence 走 PR）；中心化指标（命中/误诊/confidence 分布）直接从仓库 case 统计，无需工程师动作。
 
 ```
-1. 跑 python3 scripts/trace_metrics.py --emit-yaml
-   → stdout：markdown 概览（人读）+ YAML 快照骨架
-2. 人复核：核对分母、补充 notes（miss 归因/异常/本期说明）、改 kind 为 live
-3. append 进 metrics/timeline.yaml（每期一条）
-4. python3 scripts/verify_metrics.py --check 通过后随 PR 提交
+1. 组一期骨架（**三块一起**，不用再从多个脚本手工搬运）：
+   python3 scripts/metrics_snapshot.py --period 2026-W37-live --kind live
+   → stdout：人读摘要（含"如实缺席"清单 + 已越界格子）+ YAML 骨架（逐块 sources）
+2. **体检**（判据在 metrics/gates.yaml：新鲜度 / 越界 / 可解读性）：
+   python3 scripts/metrics_health.py
+   → 逐面列出 ✓/!/✗ 与**行动**；`--check` 时有 ✗ 则非零
+3. 人复核：核对分母、把"不可解读"的指标写进 notes（禁止把 0/N 读成"零问题"）、
+   越界格子按行动列处置（容量拆分走 groom 步骤 6）
+4. append 进 metrics/timeline.yaml（每期一条；建议 `--emit-yaml` 直出后手工补 title/notes）
+5. python3 scripts/verify_metrics.py --check 通过后随 PR 提交
 ```
+
+**可解读性纪律**：`metrics_health.py` 判为"不可解读"的指标（例：反馈捕获为 0 时的误诊率），
+**不得**在 notes/报告里写成"零误诊/无异常"——那是把"没人回报"读成"没有问题"。如实写
+"本期该指标不可解读（原因）"。
 
 ## 季度回顾（固定动作）
 
 用 `metrics/timeline.yaml` 中连续 live 快照：核对命中率/误诊率/路由准确率趋势，校准 [roadmap](roadmap.md) 闸门数值，确认学习闭环在数据上成立。趋势直接从 YAML 读取，不需人眼 diff。
+
+**回顾前先跑一次体检**：`python3 scripts/metrics_health.py` —— 它把"哪些指标超期没更新、
+哪些闸门越界没人处理、哪些指标本期不可解读"直接列出来，避免回顾时对着过期快照讨论趋势。
 
 <!-- 示例快照保留在 git 历史（W28/W35），如需展示格式见 timeline.yaml 现有 replay 条目 -->
