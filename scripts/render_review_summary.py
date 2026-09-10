@@ -76,6 +76,17 @@ class Glossary:
         gloss = e.get("short") or e.get("meaning", "")
         return f"{token}〔{gloss}〕"
 
+    def scope(self, token):
+        """本代号允许裸用的文件列表；`["*"]` = 任意。无 scope 字段 = 不限（兼容旧条目）。"""
+        e = self.entries.get(token) or {}
+        sc = e.get("scope")
+        return sc if isinstance(sc, list) else ["*"]
+
+    def out_of_scope(self, token, rel):
+        """token 在 rel 这个文件里是否越界（登记了 scope、且 rel 不在其中）。"""
+        sc = self.scope(token)
+        return "*" not in sc and rel not in sc
+
 
 def split_code_spans(text):
     """切成 (is_code, chunk) 段：``` 围栏与行内反引号内视为代码，不解码。"""
@@ -143,6 +154,56 @@ def unknown_tokens(text, gl):
                 if tok not in gl.entries:
                     found.add((tok, fam))
     return found
+
+
+# 越界用途的严重度：新人/维护者第一眼就会读到的文件，越界代价最高
+NEWCOMER_FACING = {"README.md", "CONTEXT.md", "docs/evolution.md"}
+# 越界检查的豁免面：
+#   - proposals/ ：**只追加的审计档案**（EV 卡记的是当时的决策与 roadmap 事项引用），
+#     按今天的范围规则去改历史卡等于篡改审计链；
+#   - docs/adr/ ：决策留痕同理（ADR 记的是当时依据，含被否决方案与 roadmap 事项引用）。
+# 范围规则面向**人读面**（README / CONTEXT / 机制文档 / 指南），不追溯档案。
+SCOPE_EXEMPT_PREFIX = ("proposals/", "docs/glossary.yaml", "docs/adr/")
+
+
+# 平台代号（A2-910B / A3-910C / A5-950…）与 roadmap 架构事项同形：`\bA2\b` 会在
+# "A2-910B" 里命中。平台名是领域语汇（任意文档可用），roadmap 事项才是记账号——
+# 因此这里按"后接 -9xx"把平台用法排除掉。同形冲突的背景见 docs/glossary.yaml 头部。
+PLATFORM_SUFFIX = re.compile(r"-9\d\d")
+
+
+def out_of_scope_tokens(text, rel, gl):
+    """已登记、但**不该出现在这个文件里**的代号（scope 越界）。"""
+    found = set()
+    if rel.startswith(SCOPE_EXEMPT_PREFIX):
+        return found
+    for is_code, chunk in split_code_spans(text):
+        if is_code:
+            continue
+        for tok in gl.entries:
+            if not gl.out_of_scope(tok, rel):
+                continue
+            pat = r"\b" + re.escape(tok) + r"\b" if (tok[0].isalnum() and tok[-1].isalnum()) \
+                else re.escape(tok)
+            for m in re.finditer(pat, chunk):
+                if PLATFORM_SUFFIX.match(chunk, m.end()):
+                    continue        # 平台代号，不是 roadmap 事项
+                found.add(tok)
+                break
+    return found
+
+
+def expand_paths(paths, root):
+    """展开路径：目录 → 其下全部 .md（此前指向目录会直接 IsADirectoryError——
+    而 PR 模板写的是"可跑 --scan 自检"，指向 docs/ 是人的第一反应）。"""
+    out = []
+    for rel in paths:
+        p = root / rel
+        if p.is_dir():
+            out.extend(str(f.relative_to(root)) for f in sorted(p.rglob("*.md")))
+        else:
+            out.append(rel)
+    return out
 
 
 def emit(label, value, lines, seen, gl):
@@ -270,7 +331,11 @@ def cmd_diff(rev_range, root):
 def cmd_scan(paths, root):
     gl = Glossary(root)
     bad = False
-    for rel in paths:
+    files = expand_paths(paths, root)
+
+    unknown_hits = {}      # rel -> [(tok, fam)]
+    scope_hits = {}        # rel -> [tok]
+    for rel in files:
         p = root / rel
         if not p.exists():
             print(f"找不到: {rel}", file=sys.stderr)
@@ -279,9 +344,39 @@ def cmd_scan(paths, root):
         text = p.read_text(encoding="utf-8")
         unk = unknown_tokens(text, gl)
         if unk:
-            print(f"{rel}:")
-            for tok, fam in sorted(unk):
-                print(f"  ⚠ 未登记代号 `{tok}`（{fam}）——先登记 docs/glossary.yaml")
+            unknown_hits[rel] = sorted(unk)
+        oos = out_of_scope_tokens(text, rel, gl)
+        if oos:
+            scope_hits[rel] = sorted(oos)
+
+    # 结论必须**总是**打印：静默退出会让"扫过、没事"与"没扫"不可区分
+    # （同 evolve-check 的教训——"跑了无信号"必须与"没跑"可分）。
+    face = {r: t for r, t in scope_hits.items() if r in NEWCOMER_FACING}
+    rest = {r: t for r, t in scope_hits.items() if r not in NEWCOMER_FACING}
+    n_unknown = sum(len(v) for v in unknown_hits.values())
+
+    print(f"代号扫描：{len(files)} 个文件")
+    if unknown_hits:
+        print(f"  ⚠ 未登记代号 {n_unknown} 处——先登记 docs/glossary.yaml：")
+        for rel, unk in sorted(unknown_hits.items()):
+            print(f"      {rel}: " + "、".join(f"`{tok}`（{fam}）" for tok, fam in unk))
+    else:
+        print("  ✓ 未登记代号：无")
+
+    print("  越界用途（记账号 A/E/M/O/P/G/T/Phase 只应在各自的计划文档里裸用；"
+          "机制文档 / PR body / EV 卡 prose 要引用就写中文含义）：")
+    if face:
+        for rel, toks in sorted(face.items()):
+            print(f"  ⚠ {rel}（新人可见面，优先清理）: {' '.join(toks)}")
+    else:
+        print("  ✓ 新人可见面（README / CONTEXT / docs/evolution.md）干净")
+    if rest:
+        total = sum(len(v) for v in rest.values())
+        print(f"  其余 {len(rest)} 个文件共 {total} 处（可增量清理，逐文件计数）：")
+        for rel, toks in sorted(rest.items(), key=lambda kv: -len(kv[1]))[:12]:
+            print(f"      {rel}: {len(toks)}")
+    else:
+        print("  ✓ 其余文件：无越界")
     return 1 if bad else 0
 
 

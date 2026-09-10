@@ -1,0 +1,119 @@
+# ============================================================
+# 人读面的清单（docs/_manifest.yaml）—— 唯一的人工维护点
+#
+# 为什么需要它：`README.md` 的文档目录与 skill 名单原先手写，于是**事实被镜像到多处
+# 就会漂移**（术语表曾写"共九个 skill"而实际十个；文档目录是 17 条平铺，看不出该读哪篇）。
+# 本文件是数据，`scripts/build_docs_index.py` 由它生成 README 的两个标记区块；
+# 数字与名单不再手写（分层先例同 metrics/timeline.yaml vs docs/metrics.md）。
+#
+# 维护规则：
+#   1. 新增文档 / 新增 skill → 先在这里登记（生成器会报"未登记"，CI --check 红）；
+#   2. `layer` 决定它在 README 里的分组，也决定读者"什么时候该读"；
+#   3. 改完跑 `python3 scripts/build_docs_index.py`（不带参数即写回 README），再提交。
+# ============================================================
+
+version: 1
+
+# 读者要回答的问题不是"有哪些文档"，而是"我现在该读哪篇"——所以按 layer 分组，
+# 每组给一句"什么时候读"。
+layers:
+  - id: spec
+    title: 规范（约束一切设计与演进；改机制前必读）
+    when: 你要判断某个设计/改动是否合规，或要挑战一条既有规则时
+  - id: mechanism
+    title: 演进机制（改机制本身才读；日常不必读）
+    when: 你要改演进/评测/编排机制本身时——其余情况读 docs/evolution.md 一篇就够
+  - id: guide
+    title: 操作指南（用到那个环节时才读）
+    when: 你要跑评测、看指标、走 git 门控、或做 issue 导入时
+  - id: plan
+    title: 计划与就绪度（想知道"下一步做什么"时读）
+    when: 你要排下一步工作，或评估能不能推广给一个团队时
+  - id: adr
+    title: 决策留痕（查"当初为什么这样选"时读）
+    when: 你想推翻某个既有选择，需要先看它当时的论证与重评条件
+
+docs:
+  - path: docs/design-principles.md
+    layer: spec
+    purpose: 十一条规范性条文——一切设计、实现、修复与演进的依据
+  - path: docs/design-theory.md
+    layer: spec
+    purpose: 四公理 → 公式 → 原则的完整推导链（原则的生成处）
+  - path: docs/evolution.md
+    layer: mechanism
+    purpose: "**演进机制入口**：机制地图、权威归属、周度 runbook——日常只读这一篇"
+  - path: docs/evolution-pipeline.md
+    layer: mechanism
+    purpose: 三层闭环（知识 / 流程 / 编排）与 proposal 状态机、卡 schema
+  - path: docs/evolution-execution.md
+    layer: mechanism
+    purpose: proposal 信息契约、评审判据、follow-up 验证、指标分层
+  - path: docs/evolution-orchestration.md
+    layer: mechanism
+    purpose: 自演进会话协议、目标函数与停止条件、token 预算
+  - path: docs/evolution-run.md
+    layer: mechanism
+    purpose: 长期运行、issue 三重角色、统一执行记录、可视化
+  - path: docs/evolution-eval-arena.md
+    layer: mechanism
+    purpose: 元层 eval 台（train/val 门控）与影响账本
+  - path: docs/evolution-ixn-replay.md
+    layer: mechanism
+    purpose: 交互面评测（追问 / 信息充分性 / 过早结论）
+  - path: docs/evolution-user-guide.md
+    layer: mechanism
+    purpose: 使用者侧：能说什么、一句话后发生什么、怎么读进度
+  - path: docs/eval.md
+    layer: guide
+    purpose: 改 skill 前后跑什么（门禁分级）、对照集封存与已冻结的判据
+  - path: docs/metrics.md
+    layer: guide
+    purpose: 指标口径与周批流程（数字以 metrics/timeline.yaml 为准）
+  - path: docs/git-workflow.md
+    layer: guide
+    purpose: 审核、门控、合入与多人协作的落地（含评审把手）
+  - path: docs/issue-ingest-pipeline.md
+    layer: guide
+    purpose: issue → case 的半自动导入管道
+  - path: docs/roadmap.md
+    layer: plan
+    purpose: 闸门驱动的演进计划（每个事项的入口条件与验收标准）
+  - path: docs/rollout-assessment.md
+    layer: plan
+    purpose: 对照原则的四层就绪度评估与推广动作清单
+  - path: docs/demo-walkthrough.md
+    layer: plan
+    purpose: 从一次诊断到知识演化的可读演示（含交互输出示例）
+  - path: docs/adr/
+    layer: adr
+    purpose: 架构决策记录（软版本匹配 / 不引入 RAG / 容量治理 / 先验知识层等）
+
+# skill 名单。`scope` 回答的唯一问题是"**我（某类使用者）需要看哪几个**"——
+# 原先 README 写"八个 skill"、术语表写"共九个"，读者无法判断是"总数"还是"某一面"。
+skills:
+  - name: diagnose
+    scope: 你要用的
+  - name: resume-diagnosis
+    scope: 你要用的
+  - name: to-postmortem
+    scope: 沉淀知识
+  - name: to-reference
+    scope: 沉淀知识
+  - name: issue-ingest
+    scope: 沉淀知识
+  - name: knowledge-groom
+    scope: 维护与演进
+  - name: self-evolve
+    scope: 维护与演进
+  - name: evolve-check
+    scope: 维护与演进
+    note: 内部协议，由内容流程收尾自动转接，不单独调用
+  - name: skill-review
+    scope: 维护与演进
+    note: 内部协议，由用户显式触发做 skill 质量审视
+  - name: preload-panel
+    scope: 维护与演进
+    note: 仅 DSH——在会话中热加载可视化面板
+
+scope_order: ["你要用的", "沉淀知识", "维护与演进"]

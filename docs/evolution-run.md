@@ -1,5 +1,7 @@
 # 持续运行：长期任务、issue 评测循环、执行记录与可视化
 
+> **论证层——日常不必读。** 执行规则与机制地图见 [evolution.md](evolution.md)；本文只承载「为什么这样设计」的推导，改机制本身时才需要读。
+
 > 四份文档的分工：**[evolution-pipeline.md](evolution-pipeline.md)** 机制总览；**[evolution-execution.md](evolution-execution.md)** 单卡执行契约；**[evolution-orchestration.md](evolution-orchestration.md)** 单轮会话编排；**本文是运行视图**，回答"我下一条指令后，系统作为**持续自演进系统**怎么跑、跑到什么时候停、我怎么看到它在跑"。它把前三份的单轮/单卡机制装配成用户可下指令、可观察、可干预的长期运行形态。使用者侧的一句话指令/报告/干预语言见 **[evolution-user-guide.md](evolution-user-guide.md)**（UX 规格）。
 > 推导依据：原则一/五/七/八/九/十/十一；理论见 design-theory §4.2–4.4 与 §6。**本文自身修订 = L3 结构（methodology PR + 体系维护人审）。**
 

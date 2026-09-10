@@ -70,6 +70,25 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 | 高风险双签 | `kb/high-risk` 标签 + CODEOWNERS 双组路径（每组至少一人批） | 半硬（"恰好两个 approval"需人核验，见下） |
 | 脱敏 / severity 纪律 | to-postmortem 流程 + groom 周批审抽查 | 约定 |
 | eval 回归（改 skill 时） | 按 [eval.md](eval.md) 分级手动 replay；**触及输出契约/交互形态时另出盲辨对照**（同问题新旧输出各一份、交不知情者判），M2 脚本化后并入 CI | 约定 → 半硬 |
+| EV 卡预测可复现 | CI：`scripts/verify_proposals.py --check`（`predicted_effect.measure` 必须有命令 + 期望，或如实声明不可度量） | 硬（结构）/ 约定（命令是否有意义） |
+| 对照集不被改动者削弱 | CI：`scripts/holdout.py --check`（封存夹具按哈希钉住）+ `holdout-change` 标签闸门；CODEOWNERS 保护 `eval/holdout.yaml` | 硬（哈希）/ 半硬（谁有权 reseal——CODEOWNERS 落实前不是人把关） |
+
+## 评审把手（reviewer 怎么判"该不该合"）
+
+判据的独立性只有一条标准：**改动者不能靠"写文字"通过它**。PR 里的命题（success_criteria 达成、无回归、断言全过）多由制造改动的同一过程写成，而 CI 检查的是内部自洽（索引新鲜度、YAML 合法性、模板结构齐全）——因此"CI 绿 + 测试过"对"该不该合"的信息量接近于零，reviewer 会被逼在"开全文"与"直接批"之间二选一（`evolution-execution.md` §7 把这一失效形态命名为"橡皮图章"）。
+
+改动侧义务：EV 卡带 `predicted_effect.measure`。reviewer 侧动作：
+
+```
+python3 scripts/ev_measure.py <card-id> --run    # 打印判据命令 + 期望，执行并比对
+python3 scripts/ev_measure.py --audit            # 全库盘点：可复现 / 声明不可度量 / 缺口 / 存量豁免
+```
+
+退出码三态：`0` 符合预测 / `1` 预测被证伪 / `2` 无法判定（存量卡无口径、声明不可度量、卡不存在）——刻意分开，避免"判不了"被读成"验证失败"。
+
+**强度如实标注（原则十）**：本把手证明**效果**（改动是否产生了它声称的变化），不证明**价值**（该变化是否值得做）；"命令是否真在测那件事"机器判不了，属**约定**强度，靠人审抽查。存量卡（`verify_proposals.py` 的 `MEASURE_CUTOVER` 之前创建）豁免强制要求——补写不恢复当时的判断，只造事后叙述；缺口由 `--audit` 如实报出。
+
+**抽审纪律（约定，同"渐进审序"的用意）**：reviewer 每轮**自行随机点一处**核对，**不从改动者列的 spot-check 清单里挑**。不指望抓全，目的是让"如实标注"成为改动侧的占优策略。
 
 ## PR 模板
 
@@ -88,8 +107,11 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 1. **机器字段保持词法**：YAML 枚举字段（`layer`/`status`/`method`/`authorization` 等）不做中文替换——它们是脚本与 CI 的契约；
 2. **人读 prose 首次出现即解码**：docs 论证文字、EV 卡 prose 字段、PR body、批审摘要、报告里，代号第一次出现写"含义（代号）"或"代号〔含义〕"，之后才允许裸用；高危字母（E/T/G/EV/Phase，及 A/M/O/P+数字）与落地 Phase 系列**裸用即歧义**，首次出现必解码；
 3. **审读面优先**：批量审 / PR 审读用解码渲染（`scripts/render_review_summary.py --card/--diff/--scan`，词表 `docs/glossary.yaml`），**源文件不变**——人审读渲染视图，不裸读 diff；渲染出的未登记代号告警即"先登记再使用"的自我约束；
-4. **新增代号先登记**：`docs/glossary.yaml`（机器数据，唯一权威）+ `docs/evolution.md` 顶部"指代速查"表（人读视图）同步登记，禁止与既有系列撞车（教训：WikiSkill 增量初稿 G1/G2/G3 撞治理缺口 G1–G8）；
-5. **不进 CI**：prose 可读性是判断性规范（检查准入三条件不满足），由 PR 人读性自查（methodology 模板试点）+ review spot-check 保证，不硬门化。
+4. **新增代号先登记，并同时定它的生存范围**：`docs/glossary.yaml`（机器数据，唯一权威）里每条带 `scope` 字段——`["*"]` 只给领域语汇（分层 L1–L3、反馈通道 S1–S3、平台与 skill 名）；**记账号（roadmap 事项 A/E/M/O/P、治理缺口 G、触发信号 T、落地阶段 Phase）只在各自的计划文档里裸用**，机制文档 / PR body / EV 卡 prose 要引用就写中文含义。旧做法要求"在 docs/evolution.md 顶部指代速查表补一行"——那张表已删（它把术语表变成了代号登记处，且把"起新代号"从**需要理由**变成**需要登记**）；
+5. **越界用途可查**：`python3 scripts/render_review_summary.py --scan docs/ README.md CONTEXT.md`（可传目录）会报三类——未登记代号、越界用途（新人可见面单列并优先清理，其余按文件计数可增量清理）、以及词表冲突。`docs/adr/` 与 `proposals/` 是只追加的档案，豁免越界检查（不追溯改历史）；
+6. **同形冲突登记而不改名**：`A1/A2/A3` 同时是设计公理、roadmap 事项与平台代号前缀，`P0` 同时是优先级与（易混的）流程事项族——这类冲突在词表里各自登记、用 `scope` 消歧，**不靠改历史编号**（改编号会打烂只追加档案里的引用）。新增代号前先查是否已有同形；
+7. **跨文档引用不写裸小节号**：引用别处的小节写 `文件名 §N` 或直接写小节标题，**不写裸 `§N`**（读者不知道是哪篇；且小节号会随文档重排失效——仓库里现存约 100 处这类引用，属历史欠账，见 EV-2026-052 残留）。**不硬门化**：无"复发 ≥2 次"的证据，不满足检查准入三条件；
+8. **不进 CI**：prose 可读性是判断性规范（检查准入三条件不满足），由 PR 人读性自查（methodology 模板试点）+ review spot-check 保证，不硬门化。**唯一例外是机械可判的部分**——名单/数字是否与 `docs/_manifest.yaml` 一致、`docs/` 有无未登记文档，由 `build_docs_index.py --check` 硬门（那是"生成物与清单一致性"，不是可读性判断）。
 
 ## Skill 自包含边界（SKILL.md 与 docs/ 的引用关系）
 

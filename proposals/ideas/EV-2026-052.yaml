@@ -1,0 +1,123 @@
+id: EV-2026-052
+layer: L2
+title: 人读面减法重构——机制入口 + 权威归属 + 名单脚本化（止住文档与数字漂移）
+status: validated
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-10
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      用户（维护者）判断："这个项目最大的问题还是文档学习、文档量对用户和维护不友好，
+      而且有大量 agent 制造的术语遍布文档与 PR body，让用户和维护者搞不清楚各类机制
+      （诊断、沉淀闭环、evolve 机制）"。量化后成立，且**已有的机制在报"没问题"**——
+      用仓库自己的扫描器扫全部人读文档是零告警（60 条代号全部登记），因为它量的是
+      "代号登记了没有"这一封闭世界的词法检查，量不到真正的成本。
+    trajectory:
+      - "python3 scripts/render_review_summary.py --scan docs/*.md README.md CLAUDE.md CONTEXT.md → 仅 1 条告警（P0），即机制自判合规"
+      - "7 篇 evolution-*.md 两两互引：pipeline/orchestration/execution/run/user-guide 五篇构成完全图，无任何一篇是入口"
+      - "跨文档 § 锚点：带文件名 20 处 + 短名 80 处（含 pipeline §12a / §6.3a 类子节号），无任何检查保证其仍指向原节"
+      - "同一机制三种叫法：evolve-check 102 / 伴随评估 6 / 伴随协议 2；两套数字轴混用 Tier 1/2/3（110）vs 阶段一/二（19）"
+      - "CONTEXT.md 写「本体系共九个」并列 9 个，漏 skill-review（实际 10）；README 写「八个 skill」（本意是用户面子集，但读者无法判断）"
+      - "CONTEXT.md 底部 15 行「机制与工具」表：术语表被当成机制注册表，每条还挂 EV 卡号"
+      - "代号撞车实证：A1/A2/A3 同时是三套东西——设计公理（理论 A2（资源有界））、roadmap 事项 ID、平台代号（A3-910C）；roadmap.md 同一行内 A3 两义"
+  - signal: observability_gap
+    evidence: >-
+      手写数字会腐烂，且腐烂时无人报错：`docs/evolution.md` 的「当前状态」写"123 条 case、
+      7 张 EV 卡全 validated"，而当时实际是 158 条、50 张。这类事实被镜像到多处
+      （README / CONTEXT / evolution.md），每处独立腐烂。
+    trajectory:
+      - "docs/evolution.md（改前）§当前状态：123 条 case / 7 张 EV 卡 / interrupt 81-30"
+      - "knowledge/_index.yaml 头注：case 总数 158；scripts/ev_measure.py --audit：50 张卡"
+hypothesis: >-
+  把"人读面"按**读者要回答的问题**重组，而不是按机制名平铺：①`docs/evolution.md` 从
+  "代号登记处"改成唯一入口（三闭环全图 + 每件事由哪篇文档说了算 + 周度 runbook，且不写死任何
+  数字）；②7 篇设计文档加"论证层——日常不必读"横幅，读者不必再靠互引链自己摸索层级；
+  ③名单与数字改由 `docs/_manifest.yaml` → `scripts/build_docs_index.py` 生成并进 CI
+  （生成物不一致、或 docs/ 下有未登记文档即红）——手写的数字没有理由手写；
+  ④术语表回归术语：15 行机制定义删除，指向权威归属表（机制定义只有一个家）。
+predicted_effect:
+  metric: 新人/维护者理解机制所需的入口数，以及手写事实的漂移面
+  from: >-
+    无入口（7 篇平铺 + 完全图互引）；读任意一篇都会被送去另外四篇；skill 数与文档目录
+    手写在 3 处且已漂移；术语表承载 15 条机制定义
+  to: >-
+    一个入口（docs/evolution.md）给出三闭环与权威归属；6 篇设计文档标注"不必读"；
+    skill 名单与文档目录由 manifest 生成、CI --check 防漏登记；术语表回到只定义术语
+  measure:
+    command: python3 scripts/build_docs_index.py --check
+    expect_exit: 0
+    expect_stdout: "README 区块一致"
+validation:
+  method: metrics_compare
+  baseline: 改前演练 118 条断言全绿（其中无一条覆盖"文档/名单一致性"）；CI 七条不含人读面检查
+  success_criteria: >-
+    ①`build_docs_index --check` 在 README 区块与清单不一致时非零；②`docs/` 下出现未登记
+    文档时非零（漏登记比数字写错更难发现）；③生成物内容正确（分组、计数、链接路径可用）；
+    ④CI 新增 docs-index job 且命令可在本地逐条复跑（演练 E6）；⑤全部既有 CI 与原断言无回归；
+    ⑥入口文档不再含手写数字，机制定义只剩一个家。
+  rollback: 纯文档与生成器改动，不触碰 knowledge/ 与 skills/ 行为；整体 git revert（原则七）
+gate:
+  condition: 用户明确判断"文档是最大的问题"且推广面即将扩到约 10 人（均已发生）。非日历驱动。
+risk: low
+principle_refs: [2, 3, 8, 9, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "单会话内联执行，未单独记账；口径同前两张卡"
+decisions:
+  - who: agent（用户判断触发）
+    when: 2026-09-10
+    type: proposal
+    conclusion: >-
+      采纳「重排 + 生成 + 删除」而不是"再写一份导读"或"扩充词表"：
+      ①已有机制报合规而人不合规——说明缺的不是登记，是**概念数与层级**：再写导读只会
+      增加第 8 篇 evolution 文档；②词表把"起个新代号"从需要理由变成需要登记，属于许可
+      流程而非成本流程，扩它只会加重病情；③真正的减法在三处：删掉术语表里的机制表、
+      删掉入口文档里的代号登记处、删掉手写数字（改为生成）。
+      **不做的事（明确）**：不移动/不改名任何文档路径——实测单个文档被 8–20 处引用
+      （含 11 张历史 EV 卡，而卡是只追加的审计档案），改名的收益（目录前缀）远小于它
+      打烂审计链的成本；不清理全部记账号（见残留）。
+  - who: agent
+    when: 2026-09-10
+    type: action
+    conclusion: >-
+      实施：①`docs/evolution.md` 重写为入口（三闭环表 + 权威归属表 + 五个机制 + 护栏 +
+      数据回路 + 周度 runbook + 状态改为指向生成物）；②7 篇 `evolution-*.md` 加"论证层"横幅；
+      ③新增 `docs/_manifest.yaml`（分层文档清单 + skill 归属）与 `scripts/build_docs_index.py`
+      （生成 README 两个区块 + `--check`，含 docs/ 未登记检测）；④CI 新增 docs-index job 与
+      触发路径（`docs/**`、`README.md`）；⑤README：文档目录 17 条平铺 → 分层生成区块、
+      「八个 skill」→「skill 名单」+ 生成的分组计数、工作原理节"两个循环"→三闭环表；
+      ⑥`CONTEXT.md`：删 15 行机制表（指向权威归属）、skill 计数删（指向生成物）、
+      补回唯一无处安放的术语 `consumed`（按其语义归入 case 口径术语）。
+  - who: agent
+    when: 2026-09-10
+    type: eval
+    conclusion: >-
+      `metrics_compare`：`rehearse_evolve_loop` → **120/120 通过**（改前 118；新增的
+      docs-index CI 命令由 E6 CI parity 自动纳入逐条复跑）；CI 八条本地全绿；
+      `build_docs_index --check` 两侧实测：正常为 0；造一篇未登记文档 → 非零且点名该文件；
+      删除探针后恢复绿。skill 卫生（ADR/日期/EV 锚三条 grep）仍 OK。
+      **自我更正（如实记录）**：本轮先前把 README 的"八个 skill"报告为"数量漂移"，实际上
+      README 表列的就是 8 个用户面 skill 并显式说明另两个是内部协议——它的毛病是**scope
+      未标明**（读者无法判断"八个"是总数还是某一面），不是过期；真漂移在 `CONTEXT.md`
+      （写"共九个"且漏 skill-review）。本卡据此把 skill 名单改为按 scope 分组生成，
+      根治的是歧义而非计数。
+  - who: agent
+    when: 2026-09-10
+    type: decision
+    conclusion: >-
+      **validated（采纳，改动保留）**。判据：success_criteria 六项达成；`--check` 两侧行为
+      实测（该红必红 / 清理后归绿）。
+      残留（如实标注，留给下一轮）：
+      ①**记账号仍未清理**——`A/E/M/O/P/G/F/Phase` 系列在 roadmap.md 之外仍有约 180 处
+      （其中 A 系列 46、G 系列 38）。本卡只定了规则（内部记账号只在各自计划文档裸用）与
+      入口文档的示范，**未做全量重写**：那是一次 180 处的语义重写，风险高于收益，
+      应作为独立一轮并逐文件对照原意。
+      ②**跨文档 § 锚点未清理**（约 100 处，含 `§12a` 类子节号），且无检查保证其有效性。
+      ③**glossary.yaml 仍是"登记表"而非"范围表"**——尚未加 scope 字段，扫描器也还不会
+      报"越界用途"（本卡让范围规则进入了人读文档，但机器侧未落地）。
+      ④**CLAUDE.md 未同步**——它仍把 `docs/evolution-*.md` 逐篇罗列，且含多篇已被本次
+      重新分层的描述；它是 agent 的常驻上下文，改动需单独决定（避免与本次人读面改动混在一起）。

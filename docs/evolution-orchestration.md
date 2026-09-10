@@ -1,5 +1,7 @@
 # 编排与治理：自演进会话、目标函数、token 预算
 
+> **论证层——日常不必读。** 执行规则与机制地图见 [evolution.md](evolution.md)；本文只承载「为什么这样设计」的推导，改机制本身时才需要读。
+
 > 三份文档的分工：**[evolution-pipeline.md](evolution-pipeline.md)** 是机制总览（三层闭环、分级授权、状态机、落地节奏）；**[evolution-execution.md](evolution-execution.md)** 是单条 proposal 的执行契约（记录什么、follow-up 怎么验证、沉淀效果怎么度量）；**本文是编排与治理层**，回答把自演进当成一个**会持续运行的自动化系统**时的问题：**人一开始怎么下指令？一轮的边界和目标是什么？token 预算与停止条件怎么设？token 使用效率本身是不是优化项？系统改自己的 skill 时如何防止自我确认偏差？** 把一轮轮会话装配成长期持续运行（长期任务、issue 评测循环、执行记录、可视化）的运行视图见 [evolution-run.md](evolution-run.md)；面向使用者的指令/报告/干预语言（UX 规格）见 [evolution-user-guide.md](evolution-user-guide.md)。
 > 推导依据：原则五（建议与决定分离）、七（变更可逆）、八（可观测先于改进）、九（资源预算）、十（诚实退化）、十一（数据触发）；理论见 design-theory §4.2-4.4（元层）与 §6（影子价格：token 是预算资源，有价格）。**本文自身修订 = L3 结构（methodology PR + 体系维护人审）。**
 > 文中 G1-G8 标注的是对前两份文档从"自动化 + 演进流程"视角审视发现的缺口编号（G1 会话层缺失 / G2 无目标与停止 / G3 自我指涉 / G4 同轮冲突 / G5 无全局上下文 / G6 无成本侧 / G7 无稳态降频 / G8 无暂停重启），各节标题括号内是其所补的缺口。
@@ -108,6 +110,7 @@ pipeline/execution 定义了"一轮里每一步怎么走"，但没有定义"一�
 
 ```yaml
 predicted_effect: {metric: "...", from: X, to: Y}   # 质量预期（execution §2）
+predicted_effect.measure: {command: "...", expect_exit: 0}   # 预测的出处（可复现，execution §2/§7）
 actual_cost: {tokens: 9500, source: estimate}       # 写回后必填，缺失即审计缺口
 ```
 

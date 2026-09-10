@@ -126,6 +126,12 @@ def ex_signal_path(root: Path):
         "dimension": "process",
         "layer": "L2",
         "hypothesis": "演练：动作 + 验证 + 判断三步齐备后卡可闭合",
+        "predicted_effect": {          # 本条不是占位：演练卡的预测就是"结构合法、校验通过"
+            "metric": "演练卡的结构合法性",
+            "from": "骨架态（measure 为占位）被 verify_proposals 拦下",
+            "to": "补齐结构后 --check 通过（exit 0）",
+            "measure": {"command": "python3 scripts/verify_proposals.py --check", "expect_exit": 0},
+        },
         "validation": {"method": "scan_review", "baseline": "—", "success_criteria": "—", "rollback": "git revert"},
         "risk": "low",
         "principle_refs": [2, 8, 10, 11],
@@ -338,9 +344,12 @@ target.unlink()
     rc, out = py(root, "-c", unit)
     check("目标号被占用时拒绝产卡、非零退出（exit 2）", "REFUSED" in out and "exit= 2" in out, out[-260:])
     check("拒绝时既有卡字节不变（未被静默覆盖）", "INTACT" in out, out[-200:])
+    # 先清掉 --new 产出的骨架卡再校验：骨架的 measure 是刻意留的占位（EV-2026-050），
+    # 本断言问的是"清理后有无残留副作用"，与骨架自身是否合法无关——骨架的合法性由
+    # [E11] 断言。留在卡池里会让本断言依赖当天日期（cutover 前后结论相反）。
+    made.unlink()
     rc, out = py(root, "scripts/verify_proposals.py", "--check")
     check("清理后卡池校验仍通过（断言无残留副作用）", rc == 0, out[-200:])
-    made.unlink()
 
 
 # ---------------------------------------------------------------- ⑦ 共享 exec-log
@@ -514,7 +523,239 @@ def ex_metrics_loop(root: Path):
     check("还原后 timeline 结构仍合法", rc == 0, out[-200:])
 
 
-# ---------------------------------------------------------------- ⑨ CI parity
+# ---------------------------------------------------------------- ⑨ 预测的出处（可复现）
+def ex_measure_path(root: Path):
+    """EV-2026-050：predicted_effect 必须带可复现口径（第 16 条）。
+
+    为什么钉成演练断言：这条规则的全部价值在"两侧都对"——正例能过、该红必红、不该红不哭狼。
+    只验一侧的版本会在两种真实场景下静默失效：①把关过松，占位命令带一条自洽的期望过审
+    （假绿）；②把关过紧，存量卡被追溯 → CI 常红 → 规则被人绕过。两种失效都不会自己暴露。
+
+    日期用远期（2030）与远期过去（2026-01）构造：断言不随当天日期漂移。若用"今天"，
+    本演练会在 cutover 生效日前后给出不同结论——写日期相关的断言 = 埋定时炸弹。
+    """
+    print("\n[E11] 预测的出处 · 可复现口径两侧对照（该红必红 / 不哭狼）")
+    import copy
+    import json as _json
+    import shlex
+
+    ideas = root / "proposals" / "ideas"
+    CMD = f"{shlex.quote(sys.executable)} -c \"print('MEASURE-OK')\""
+
+    def base(cid, created):
+        return {
+            "id": cid, "layer": "L2", "title": f"演练卡 {cid}", "status": "in_experiment",
+            "authorization": "review", "dimension": "observability", "created_at": created,
+            "source_signals": [{"signal": "observability_gap", "evidence": "e", "trajectory": ["t"]}],
+            "hypothesis": "h", "validation": {"method": "scan_review"}, "risk": "low",
+            "principle_refs": [8], "decisions": [], "supersedes": [], "superseded_by": None,
+        }
+
+    def write(doc):
+        p = ideas / f"{doc['id']}.yaml"
+        p.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        return p
+
+    def verify():
+        return py(root, "scripts/verify_proposals.py", "--check")
+
+    # ① 正例：强制范围内 + 可复现口径 → 结构过、判据真的成立
+    ok = base("EV-2099-101", "2030-01-01")
+    ok["predicted_effect"] = {"metric": "m", "from": "a", "to": "b",
+                              "measure": {"command": CMD, "expect_stdout": "MEASURE-OK"}}
+    p_ok = write(ok)
+    rc, out = verify()
+    check("正例（强制范围 + 可复现口径）通过校验", rc == 0, out[-300:])
+    rc, out = py(root, "scripts/ev_measure.py", "EV-2099-101", "--run")
+    check("正例 --run 判 PASS（exit 0）", rc == 0 and "PASS" in out, out[-300:])
+    check("--run 打印实测 exit 与输出（判据可见，不是黑盒）", "实测" in out and "MEASURE-OK" in out,
+          out[-300:])
+
+    # ② 有预测但没给复现口径（规则本体）
+    d2 = base("EV-2099-102", "2030-01-01")
+    d2["predicted_effect"] = {"metric": "m", "from": "a", "to": "b"}
+    p2 = write(d2)
+    rc, out = verify()
+    check("强制卡写了预测但缺 measure 被拦", rc != 0 and "缺 measure" in out, out[-320:])
+    rc, out = py(root, "scripts/ev_measure.py", "EV-2099-102")
+    check("缺 measure 的卡判「无法判定」而非冒充通过（exit 2）",
+          rc == 2 and "无法判定" in out, out[-300:])
+    p2.unlink()
+
+    # ②b 更早的断点：整个 predicted_effect 缺失 → 报的是另一条（别只覆盖一种）
+    p2b = write(base("EV-2099-109", "2030-01-01"))
+    rc, out = verify()
+    check("强制卡缺整个 predicted_effect 被拦", rc != 0 and "缺 predicted_effect" in out, out[-320:])
+    p2b.unlink()
+
+    # ③ 有 command 无期望 → 不可判定，必须报（没有期望就无法判定符合与否）
+    d3 = base("EV-2099-103", "2030-01-01")
+    d3["predicted_effect"] = {"metric": "m", "from": "a", "to": "b",
+                              "measure": {"command": CMD}}
+    p3 = write(d3)
+    rc, out = verify()
+    check("有 command 但无期望被拦", rc != 0 and "无期望" in out, out[-300:])
+    p3.unlink()
+
+    # ④ 占位命令（产卡骨架的默认形态）→ 必须响亮失败，不得带假绿过审
+    d4 = base("EV-2099-104", "2030-01-01")
+    d4["predicted_effect"] = {"metric": "m", "from": "a", "to": "b",
+                              "measure": {"command": "待填：复现命令", "expect_exit": 0}}
+    p4 = write(d4)
+    rc, out = verify()
+    check("占位 command 被拦（骨架忘填 = 响亮失败）", rc != 0 and "占位符" in out, out[-300:])
+    p4.unlink()
+
+    # ⑤ 判据侧该红必红：结构合法、但期望在真实世界里不成立 → --run 必须 FAIL
+    d5 = base("EV-2099-105", "2030-01-01")
+    d5["predicted_effect"] = {"metric": "m", "from": "a", "to": "b",
+                              "measure": {"command": CMD, "expect_stdout": "NEVER-APPEARS"}}
+    p5 = write(d5)
+    rc, out = verify()
+    check("（前提）期望不成立的卡结构上合法——结构检查管不到语义", rc == 0, out[-260:])
+    rc, out = py(root, "scripts/ev_measure.py", "EV-2099-105", "--run")
+    check("期望不成立 → --run 判 FAIL（exit 1，预测被证伪）", rc == 1 and "FAIL" in out, out[-320:])
+    p5.unlink()
+
+    # ⑥ 不哭狼 · 存量卡：cutover 之前创建、无口径 → 不因 measure 报错，但如实标为存量豁免。
+    #    （须带一条 decision，避开既有的"僵尸卡"规则——本断言单测的是 measure 豁免，不是烂卡）
+    d6 = base("EV-2099-106", "2026-01-01")
+    d6["decisions"] = [{"who": "agent", "when": "2026-01-01", "type": "decision",
+                        "conclusion": "存量演练卡（已闭合）"}]
+    p6 = write(d6)
+    rc, out = verify()
+    check("存量卡（早于 cutover）不因缺 measure 被报错", rc == 0, out[-300:])
+    rc, out = py(root, "scripts/ev_measure.py", "EV-2099-106")
+    check("存量卡查询如实标「存量豁免」并判无法判定（exit 2）",
+          rc == 2 and "存量卡" in out, out[-300:])
+    p6.unlink()
+
+    # ⑦ 不哭狼 · 如实声明不可度量：合法退化路径，不计为缺口、不冒充通过
+    d7 = base("EV-2099-107", "2030-01-01")
+    d7["predicted_effect"] = {"metric": "m", "from": "a", "to": "b",
+                              "measure": {"reason": "该预测依赖外部团队排期，本仓无可复现判据"}}
+    p7 = write(d7)
+    rc, out = verify()
+    check("声明不可度量（reason）通过校验——诚实退化不阻断", rc == 0, out[-300:])
+    rc, out = py(root, "scripts/ev_measure.py", "EV-2099-107")
+    check("声明不可度量的卡判无法判定（exit 2）且打印理由，不冒充通过",
+          rc == 2 and "声明不可度量" in out and "外部团队排期" in out, out[-320:])
+    p7.unlink()
+
+    # ⑧ 找不到卡 → 也无法判定，不得静默成功
+    rc, out = py(root, "scripts/ev_measure.py", "EV-2099-999")
+    check("找不到卡时 exit 2（不静默成功）", rc == 2 and "找不到卡" in out, out[-200:])
+
+    # ⑨ --audit 分四类计数，且缺口存在时非零退出
+    p9 = write(base("EV-2099-108", "2030-01-01"))          # 缺口：强制卡无 measure
+    rc, out = py(root, "scripts/ev_measure.py", "--audit", "--json")
+    try:
+        data = _json.loads(out[out.index("{"):]) if "{" in out else {}
+    except ValueError:
+        data = {}
+    check("--audit 缺口存在时非零退出（现状可当门用）", rc == 1, out[-260:])
+    check("--audit 如实点名缺口卡", "EV-2099-108" in (data.get("missing") or []), out[-320:])
+    check("--audit 把可复现的正例计入 runnable",
+          "EV-2099-101" in (data.get("runnable") or []), out[-320:])
+    check("--audit 计入存量豁免（不静默丢弃存量）", len(data.get("legacy") or []) >= 40,
+          out[-320:])
+    p9.unlink()
+    rc, out = py(root, "scripts/ev_measure.py", "--audit")
+    check("清掉缺口后 --audit 归零（不哭狼）", rc == 0 and "缺口（强制卡缺 measure） :   0" in out,
+          out[-400:])
+
+    # ⑩ 还原：卡池校验仍通过（断言无残留副作用）
+    p_ok.unlink()
+    rc, out = verify()
+    check("清理后卡池校验仍通过（无残留副作用）", rc == 0, out[-260:])
+
+
+# ---------------------------------------------------------------- ⑩ 封存对照集
+def ex_holdout(root: Path):
+    """封存对照集（holdout）：把"CI 绿是否有意义"钉成可执行断言。
+
+    这条机制的全部价值在**独立性**：改动者能改被测对象、也能改量尺时，"无回归"不是
+    独立信号。所以断言必须证明两侧：改封存夹具**必红**（哈希就是判据），而未封存的
+    夹具被改**不红**（不哭狼，否则贡献者会被无关的红劝退）。
+    """
+    print("\n[E12] 封存对照集 · 改量尺必红 / 改非对照集不哭狼")
+    import json as _json
+
+    manifest = root / "eval" / "holdout.yaml"
+    golden = root / "eval" / "golden"
+    doc = yaml.safe_load(manifest.read_text(encoding="utf-8")) or {}
+    entries = [e for e in (doc.get("entries") or []) if isinstance(e, dict)]
+    sealed = entries[0]["fixture"]
+    unsealed = next((f.name for f in sorted(golden.glob("*.fixture.yaml"))
+                     if f.name not in {e["fixture"] for e in entries}), None)
+
+    # ① 基线：封存后 --check 绿
+    rc, out = py(root, "scripts/holdout.py", "--check")
+    check("封存后 --check 绿", rc == 0 and "OK" in out, out[-200:])
+
+    # ② 该红必红：改封存夹具的内容（模拟"把量尺改松"）
+    p = golden / sealed
+    backup = p.read_bytes()
+    manifest_bytes = manifest.read_bytes()      # reseal 会改 manifest，测试结束要一并还原
+    p.write_bytes(backup + "\n# 演练：篡改封存夹具\n".encode("utf-8"))
+    rc, out = py(root, "scripts/holdout.py", "--check")
+    check("改封存夹具内容 → --check 非零（哈希即判据）", rc != 0 and "内容已变" in out, out[-260:])
+
+    # ③ reseal 是合法出口（维护者动作），但要留下可见痕迹
+    rc, out = py(root, "scripts/holdout.py", "--reseal", "--id", sealed)
+    check("维护者 reseal 后回到绿（合法出口存在，不是死锁）",
+          rc == 0 and "更新 1 条封存哈希" in out, out[-260:])
+    check("reseal 提示需带 holdout-change 标签（改量尺须在评审面上可见）",
+          "holdout-change" in out, out[-260:])
+    rc, out = py(root, "scripts/holdout.py", "--check")
+    check("reseal 后 --check 绿", rc == 0, out[-200:])
+    p.write_bytes(backup)
+    manifest.write_bytes(manifest_bytes)        # 还原 reseal 对量尺记录本身的改动
+
+    # ④ 删封存夹具 → 红（防"删掉量尺"绕过）
+    p.unlink()
+    rc, out = py(root, "scripts/holdout.py", "--check")
+    check("删除封存夹具 → --check 非零", rc != 0 and "不存在" in out, out[-260:])
+    p.write_bytes(backup)
+    rc, out = py(root, "scripts/holdout.py", "--check")
+    check("恢复后回到绿（断言无残留副作用）", rc == 0, out[-200:])
+
+    # ⑤ 不哭狼：改**未封存**的夹具不该红（贡献者正常同步夹具不被误伤）
+    if unsealed:
+        q = golden / unsealed
+        qb = q.read_bytes()
+        q.write_bytes(qb + "\n# 演练：改非对照集夹具\n".encode("utf-8"))
+        rc, out = py(root, "scripts/holdout.py", "--check")
+        check(f"改未封存夹具（{unsealed}）不报错——不哭狼", rc == 0, out[-260:])
+        q.write_bytes(qb)
+
+    # ⑥ 用法错与优雅退化
+    rc, out = py(root, "scripts/holdout.py", "--reseal")
+    check("reseal 缺 --all/--id 时 exit 2（不静默全量重封）", rc == 2, out[-200:])
+    manifest_backup = manifest.read_bytes()
+    manifest.unlink()
+    rc, out = py(root, "scripts/holdout.py", "--check")
+    check("对照集未建立时 --check exit 0（优雅退化，不是崩溃）", rc == 0 and "未找到" in out, out[-200:])
+    manifest.write_bytes(manifest_backup)
+
+    # ⑦ 覆盖面缺口如实报出（软信号：有 case 却无夹具的格子 = 无回归保护）
+    rc, out = py(root, "scripts/holdout.py", "--list", "--json")
+    try:
+        data = _json.loads(out[out.index("{"):]) if "{" in out else {}
+    except ValueError:
+        data = {}
+    gaps = data.get("populated_cells_without_fixture") or []
+    check("--list 报出封存条目数", len(data.get("holdout") or []) == len(entries),
+          f"manifest={len(entries)} json={len(data.get('holdout') or [])}")
+    check("--list 报出「有 case 却无夹具」的格子（training 段无回归保护是事实，须可见）",
+          any("training/" in g for g in gaps), str(gaps)[:200])
+    all_cells = (data.get("golden_cells") or []) + gaps
+    dupes = [g for g in all_cells if any(g.endswith("/" + seg + "/" + seg)
+                                         for seg in ("interrupt", "precision", "performance"))]
+    check("格子名不自我重复（category 目录只算一次）", not dupes, str(dupes)[:200])
+
+
+# ---------------------------------------------------------------- ⑪ CI parity
 def ex_ci_parity(root: Path):
     print("\n[E6] CI parity · kb-checks 的每条命令在本地逐条复跑")
     wf_path = root / ".github" / "workflows" / "kb-checks.yml"
@@ -541,7 +782,7 @@ def ex_ci_parity(root: Path):
     return cmds
 
 
-# ---------------------------------------------------------------- ⑩ 面板渲染断言
+# ---------------------------------------------------------------- ⑫ 面板渲染断言
 def ex_panel(root: Path, enabled: bool):
     print("\n[E7] 面板渲染断言（ev-panel 执行现场区块 + 既有断言不回归）")
     if not enabled:
@@ -575,6 +816,8 @@ def main():
         ex_card_id_safety(sandbox)
         ex_shared_exec_log(sandbox)
         ex_metrics_loop(sandbox)
+        ex_measure_path(sandbox)
+        ex_holdout(sandbox)
         ex_ci_parity(sandbox)
         ex_panel(sandbox, not args.no_panel)
     finally:

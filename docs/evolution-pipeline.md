@@ -1,5 +1,7 @@
 # 演进流水线（v2）：三层自演进闭环与自演进执行流程
 
+> **论证层——日常不必读。** 执行规则与机制地图见 [evolution.md](evolution.md)；本文只承载「为什么这样设计」的推导，改机制本身时才需要读。
+
 > 本文回答一个问题：系统如何闭环地改进自己的三层资产（知识内容、流程/skill、工作流本身），并把"人的参与"从逐条执行上移到流程审视。
 > v1（本文件旧版）只覆盖知识内容层的候选 idea 闭环；v2 扩展为三层模型（L1 知识内容 / L2 流程与 skill / L3 工作流与编排），并新增第 6 节「自演进执行流程」，一个降低人工参与度、但每次改动可追溯、每次合入必须由实验数据驱动的专门流程。执行级信息契约（proposal 要记录什么、验证如何区分合入前可判与合入后需真实反馈、沉淀效果怎么度量、agent 拿到什么）见 [evolution-execution.md](evolution-execution.md)；编排与治理层（会话如何启动、目标函数与停止条件、token 预算、自我指涉治理）见 [evolution-orchestration.md](evolution-orchestration.md)；从一条指令到持续运行的运行视图（长期任务、issue 评测循环、执行记录、可视化）见 [evolution-run.md](evolution-run.md)；面向使用者的指令/报告/干预语言见 [evolution-user-guide.md](evolution-user-guide.md)。
 > 实现分级声明：本文是**完整设计蓝图**，非全部待办。落地时只实现 §11.1「必需」列的机制；「蓝图」列（超时降级态、stale、策略记忆、稳态降频等）是预测性设计，触发条件（数据/用户诉求）出现才激活，不为未发生的问题预建全量机制（防过度设计，仓库原则十一）。
@@ -238,6 +240,10 @@ source_signals:
     trajectory: ["traces/*.yaml#attribution 2026-W37 聚合", "traces/2026-08-30-xxxx.yaml#attribution"]
 hypothesis: 修订该分支的症状匹配逻辑后，执行错率降至 <0.3
 predicted_effect: {metric: "组件执行错率", from: 0.6, to: "<0.3"}   # 可测预期（execution §2 follow-up 判定基准）
+  measure:                       # 预测的出处（可复现，execution §2/§7）——reviewer 的判定把手
+    command: python3 scripts/eval_arena.py --gate
+    expect_exit: 0               # 与 expect_stdout 至少一项；不可度量时 command 省略 + reason
+                                 # 复核：python3 scripts/ev_measure.py <card-id> --run
 validation:
   method: golden_replay          # golden_replay | metrics_compare | issue_replay（S2 校准）
   baseline: 现 triage-tree + 现有 golden 套件

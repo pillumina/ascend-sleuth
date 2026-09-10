@@ -17,13 +17,13 @@
 
 > **agent 执行差异**：不同 agent 对 SKILL.md 的执行质量有差异（prompt 纪律本质是概率性的），诊断结果与 trace 质量可能因 agent 而异。团队内建议统一 agent；跨 agent 对比时，先归因执行差异，再判断是否知识错误。
 
-**快速跳转**：[为什么需要](#为什么需要它) · [快速开始](#快速开始) · [八个 skill](#八个-skill) · [诊断面板](#诊断面板dsh-可选) · [工作原理](#工作原理) · [文档](#文档)
+**快速跳转**：[为什么需要](#为什么需要它) · [快速开始](#快速开始) · [skill 名单](#skill-名单) · [诊断面板](#诊断面板dsh-可选) · [工作原理](#工作原理) · [文档](#文档)
 
 ---
 
 ## 为什么需要它
 
-昇腾支持工程师日常处理三类问题：训练或推理中断（hang、crash、OOM）、精度异常（loss 发散、FP8 衰减）、性能退化（吞吐下降、通信占比过高）。这些问题的根因高度重复，相关知识却散在个人笔记、IM 聊天与各处 wiki。新 case 每周都在出现，A2/A3/A5 平台差异还在扩大，靠个人手工维护的方案撑不过几周。
+昇腾支持工程师日常处理三类问题：训练或推理中断（hang、crash、OOM）、精度异常（loss 发散、FP8 衰减）、性能退化（吞吐下降、通信占比过高）。这些问题的根因高度重复，相关知识却散在个人笔记、IM 聊天与各处 wiki。新 case 每周都在出现，A2-910B / A3-910C / A5-950 三代平台的差异还在扩大，靠个人手工维护的方案撑不过几周。
 
 ascend-sleuth 把这些经验沉淀为结构化知识库：诊断时按症状路由到已验证的 case；问题定位结束后，新知识进入待审队列，由例行维护完成去重、升格与退休（人工沉淀按周批处理，自动化导入源可直接升格）。知识随使用不断校准，不依赖某个人的持续投入。
 
@@ -114,7 +114,7 @@ DSH 支持 `cordis_define` 的 `codeFile` 时也可跳过 loader 直接用它。
 ```
 /skill:diagnose
 
-客户 A5 (950) 训练在 step ~3000 hang，all_to_all timeout，world_size=128。
+客户 A5-950 训练在 step ~3000 hang，all_to_all timeout，world_size=128。
 框架 mindspeed-llm 2.5.0。报错栈尾：[粘贴相关 rank 的日志片段]
 ```
 
@@ -164,7 +164,16 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 **稀疏拉取注意**：sparse-checkout 只收窄 case 数据，白名单必含方法论/工具全量（`skills/` `scripts/` `references/` `triage-tree.yaml` `postmortems/` `ingest-state.json` `.dsh/` 等，否则 agent 无 skill 可用），`knowledge/` 按需收窄（如 `vllm-ascend/` + `common/`）。`_index.yaml` 是全量生成物，收窄后重跑 `scripts/build_index.py` 重建；`common/` 必留占位（ADR-0005）。当前规模用全量 clone，稀疏拉取是知识库长大后的带宽优化。
 
-## 八个 skill
+## skill 名单
+
+<!-- BEGIN generated: skill-roster (scripts/build_docs_index.py；由 docs/_manifest.yaml 生成，勿手改) -->
+本仓共 **10 个 skill**，按**你用不用得上**分三组：
+- **你要用的**（2）：`diagnose` · `resume-diagnosis`
+- **沉淀知识**（3）：`to-postmortem` · `to-reference` · `issue-ingest`
+- **维护与演进**（5）：`knowledge-groom` · `self-evolve` · `evolve-check`（内部协议，由内容流程收尾自动转接，不单独调用） · `skill-review`（内部协议，由用户显式触发做 skill 质量审视） · `preload-panel`（仅 DSH——在会话中热加载可视化面板）
+<!-- END generated: skill-roster -->
+
+下表给出**你要用的**与**沉淀知识**两组的操作细节；`维护与演进` 组见各自 SKILL.md。
 
 | Skill | 作用 | 何时使用 | 触发方式 |
 |---|---|---|---|
@@ -177,7 +186,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 | `preload-panel` | 在 DSH 会话中热加载诊断面板插件（`cordis_define` + `cordis_run` 激活「诊断」「指标」tab） | 新 DSH 会话需要面板时 | 显式 `/skill:preload-panel`（仅 DSH） |
 | `self-evolve` | 自演进深度轮：全库观测（容量 / 归因聚合 / 指标 / S2 校准集）→ 候选 idea 卡 → 校验 → 攒批 → 聚合 PR 给人审 | 想对全库做一次体检、或持续改进某方向时 | 显式 `/skill:self-evolve` |
 
-完整的操作细节（severity 闸门、trace 规则、语义校验等）在各自 `skills/<name>/SKILL.md`。**本表只列用户会用到的 skill**；`evolve-check`（内容流程收尾的伴随评估协议）与 `skill-review`（skill 质量/体验审视协议）是内部协议，由流程收尾或深度轮转接，不单列、也不单独调用。三个诊断类 skill 为 user-only，诊断决策由人触发；`to-postmortem` / `to-reference` / `issue-ingest` 允许自动触发，降低沉淀门槛。issue-ingest 的升格分场景：默认进 inbox 由 owner 批量审后转正；owner 预授权源（该 skill 本身即配置的持续管道）产出的草稿 verification 链完整，可直接调 groom 升格，不等周批。
+完整的操作细节（severity 闸门、trace 规则、语义校验等）在各自 `skills/<name>/SKILL.md`。**本表覆盖"你要用的"与"沉淀知识"两组**；`维护与演进` 组（`knowledge-groom` / `self-evolve` / `evolve-check` / `skill-review` / `preload-panel`）的操作细节见各自 SKILL.md——其中 `evolve-check` 与 `skill-review` 是内部协议，由流程收尾或用户显式触发转接，日常不单独调用。三个诊断类 skill 为 user-only，诊断决策由人触发；`to-postmortem` / `to-reference` / `issue-ingest` 允许自动触发，降低沉淀门槛。issue-ingest 的升格分场景：默认进 inbox 由 owner 批量审后转正；owner 预授权源（该 skill 本身即配置的持续管道）产出的草稿 verification 链完整，可直接调 groom 升格，不等周批。
 
 ## 工作原理
 
@@ -193,7 +202,15 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 诊断过程全程记录 trace：加载了哪些命名空间、按什么顺序执行了哪些检查。trace 用于事后归因。一次误诊，究竟是知识库里的 case 写错了，还是 agent 执行流程走偏了，两者的修复路径完全不同——混在一起会把本来正确的东西改坏。
 
-两个循环驱动整个系统：**诊断循环**（每次问题，分钟级：诊断 → 命中或兜底 → 沉淀）与**演化循环**（git 门控：内容流程收尾自动采信号 → 改进卡 → 验证 → 聚合 PR → 合入 → 下次诊断直接命中；人工沉淀的 inbox 由 owner 按周批处理，自动化 ingest 源的草稿可直接升格）。完整全景见下方架构图（[交互版](docs/diagrams/ascend-sleuth-architecture.html?theme=light)，支持主题切换与 PNG 导出）；每个演化机制配什么护栏防止越学越错，见 [docs/evolution.md](docs/evolution.md)。
+三个闭环驱动整个系统，分清它们各自消费什么、产出什么，是理解这套机制的前提（**全图与权威归属见 [docs/evolution.md](docs/evolution.md)**）：
+
+| 闭环 | 什么时候发生 | 入口 | 产出 |
+|---|---|---|---|
+| **诊断闭环** | 每次问题（分钟级） | `/skill:diagnose` | 修复建议 + trace（证据与决策依据） |
+| **沉淀闭环** | 定位结束后 / 定期批量 | `/skill:to-postmortem`、`/skill:to-reference`、`/skill:issue-ingest` | 待审队列 → 升格为 case / reference 词条 |
+| **演进闭环** | 内容流程收尾 / 全库体检轮 | `/skill:evolve-check`、`/skill:self-evolve` | 改进卡 → 验证 → 攒批 PR（人审）→ 回到前两个闭环 |
+
+完整全景见下方架构图（[交互版](docs/diagrams/ascend-sleuth-architecture.html?theme=light)，支持主题切换与 PNG 导出）；每个机制配什么护栏防止越学越错、以及每周实际要做什么，见 [docs/evolution.md](docs/evolution.md)。
 
 ![ascend-sleuth 架构](docs/diagrams/ascend-sleuth-architecture.png)
 
@@ -223,23 +240,51 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 ## 文档
 
-- **[设计理论](docs/design-theory.md)** — 四公理推导出全部设计原则的形式化内核，以及它的适用范围
-- **[设计原则](docs/design-principles.md)** — 十一条规范性条文，约束一切设计与演进
-- **[自演进设计](docs/evolution.md)** — 系统如何随使用变准、每个机制配什么护栏
-- **[演进流水线 v2（设计）](docs/evolution-pipeline.md)** — 三层自演进闭环（知识内容 / 流程与 skill / 工作流编排）+ 自演进执行流程（三级授权、可追溯、数据驱动合入、季度自评）
-- **[执行链路（设计）](docs/evolution-execution.md)** — proposal 信息契约、follow-up 验证、沉淀效果度量、metrics 分层、agent 决策点信息供给
-- **[编排与治理（设计）](docs/evolution-orchestration.md)** — 自演进会话协议（人怎么下指令）、目标函数与停止条件、token 预算与效率优化、自我指涉治理
-- **[持续运行（设计）](docs/evolution-run.md)** — 从一条指令到持续自演进：长期任务、issue 三重角色（评测/沉淀/覆盖）、统一执行记录、supersede 替换回滚、可视化
-- **[自演进用户指南（UX 规格）](docs/evolution-user-guide.md)** — 使用者侧：能说什么、一句话后发生什么、进度/报告怎么读、中途干预话术、术语对照
-- **[路线图](docs/roadmap.md)** — 闸门驱动的演进计划，每个事项的触发条件与验收标准
-- **[Git 工作流](docs/git-workflow.md)** — 审核、门控、合入的落地（标签集、CODEOWNERS、CI、双签）
-- **[Issue 导入管道](docs/issue-ingest-pipeline.md)** — issue → case 半自动管道（拉取/过滤/评估/沉淀/幂等）
-- **[评估](docs/eval.md)** — skill 改动前后的回归检查（golden 套件与真实 fixture；门禁分级 + gate_diff 基线缓存）
-- **[元层 eval 台（arena）](docs/evolution-eval-arena.md)** — WikiSkill 式 train/val 门控：selection 池、golden/val 严格提升门、影响账本（`scripts/eval_arena.py`）
-- **[交互型 replay 评测（ixn-replay）](docs/evolution-ixn-replay.md)** — 交互面评测（追问/充分性/过早结论），`eval/ixn-arena/` 规格入库 + `scripts/ixn_replay.py`
-- **[全流程演示](docs/demo-walkthrough.md)** — 从一次诊断到知识演化的可读 walkthrough（含交互输出示例）
-- **[推广就绪度评估](docs/rollout-assessment.md)** — 对照十一条原则的四层就绪度评估与推广动作清单
-- **[术语表](CONTEXT.md)** — case、postmortem、groom、trace 等术语的规范定义
+> 别从头读。先问"我现在要干什么"，再按下表找那一篇——**日常只需要 [演进机制入口](docs/evolution.md) 一篇**，
+> 其余是改机制本身时才读的论证层。名单由 `docs/_manifest.yaml` 生成（`scripts/build_docs_index.py --check` 防漏登记）。
+
+<!-- BEGIN generated: docs-index (scripts/build_docs_index.py；由 docs/_manifest.yaml 生成，勿手改) -->
+**规范（约束一切设计与演进；改机制前必读）**
+*你要判断某个设计/改动是否合规，或要挑战一条既有规则时*
+
+- [design-principles.md](docs/design-principles.md) — 十一条规范性条文——一切设计、实现、修复与演进的依据
+- [design-theory.md](docs/design-theory.md) — 四公理 → 公式 → 原则的完整推导链（原则的生成处）
+
+**演进机制（改机制本身才读；日常不必读）**
+*你要改演进/评测/编排机制本身时——其余情况读 docs/evolution.md 一篇就够*
+
+- [evolution.md](docs/evolution.md) — **演进机制入口**：机制地图、权威归属、周度 runbook——日常只读这一篇
+- [evolution-pipeline.md](docs/evolution-pipeline.md) — 三层闭环（知识 / 流程 / 编排）与 proposal 状态机、卡 schema
+- [evolution-execution.md](docs/evolution-execution.md) — proposal 信息契约、评审判据、follow-up 验证、指标分层
+- [evolution-orchestration.md](docs/evolution-orchestration.md) — 自演进会话协议、目标函数与停止条件、token 预算
+- [evolution-run.md](docs/evolution-run.md) — 长期运行、issue 三重角色、统一执行记录、可视化
+- [evolution-eval-arena.md](docs/evolution-eval-arena.md) — 元层 eval 台（train/val 门控）与影响账本
+- [evolution-ixn-replay.md](docs/evolution-ixn-replay.md) — 交互面评测（追问 / 信息充分性 / 过早结论）
+- [evolution-user-guide.md](docs/evolution-user-guide.md) — 使用者侧：能说什么、一句话后发生什么、怎么读进度
+
+**操作指南（用到那个环节时才读）**
+*你要跑评测、看指标、走 git 门控、或做 issue 导入时*
+
+- [eval.md](docs/eval.md) — 改 skill 前后跑什么（门禁分级）、对照集封存与已冻结的判据
+- [metrics.md](docs/metrics.md) — 指标口径与周批流程（数字以 metrics/timeline.yaml 为准）
+- [git-workflow.md](docs/git-workflow.md) — 审核、门控、合入与多人协作的落地（含评审把手）
+- [issue-ingest-pipeline.md](docs/issue-ingest-pipeline.md) — issue → case 的半自动导入管道
+
+**计划与就绪度（想知道"下一步做什么"时读）**
+*你要排下一步工作，或评估能不能推广给一个团队时*
+
+- [roadmap.md](docs/roadmap.md) — 闸门驱动的演进计划（每个事项的入口条件与验收标准）
+- [rollout-assessment.md](docs/rollout-assessment.md) — 对照原则的四层就绪度评估与推广动作清单
+- [demo-walkthrough.md](docs/demo-walkthrough.md) — 从一次诊断到知识演化的可读演示（含交互输出示例）
+
+**决策留痕（查"当初为什么这样选"时读）**
+*你想推翻某个既有选择，需要先看它当时的论证与重评条件*
+
+- `docs/adr/` — 架构决策记录（软版本匹配 / 不引入 RAG / 容量治理 / 先验知识层等）
+  - [0001](docs/adr/0001-soft-version-matching.md)、[0002](docs/adr/0002-retrieval-no-rag-lightweight-index.md)、[0003](docs/adr/0003-platform-portability.md)、[0004](docs/adr/0004-capacity-governance.md)、[0005](docs/adr/0005-knowledge-consumption-split.md)、[0006](docs/adr/0006-knowledge-ingest-dedup.md)、[0008](docs/adr/0008-prior-knowledge-framework.md)
+<!-- END generated: docs-index -->
+
+另：[术语表](CONTEXT.md) 给出 case / postmortem / groom / trace / reference 等术语的规范定义（用词有争议时以它为准）。
 
 ### 知识库结构
 
@@ -264,7 +309,7 @@ postmortems/                 Tier 3 原始记录；inbox/ 是待审队列（groo
 references/                 先验知识层（ADR-0008）：独立事实 + 方法论，从官方文档/案例沉淀（表形态与独立词条，导航见 references/README.md）
 examples/sample-case.yaml    canonical 样例（全 schema 演示）
 CONTEXT.md                   领域术语表（中英对照）
-scripts/                     build_index.py、trace_metrics.py、replay_prep.py、replay_trace.py、replay_golden.py、issue_filter.py、fetch_issues.py、settle_trace_feedback.py、settle_s2_feedback.py、verify_references.py、verify_metrics.py、verify_proposals.py、component_tally.py（归因按需聚合）、s2_calibration.py、s2_replay.py、ev_proposal.py
+scripts/                     build_index.py、trace_metrics.py、replay_prep.py、replay_trace.py、replay_golden.py、issue_filter.py、fetch_issues.py、settle_trace_feedback.py、settle_s2_feedback.py、verify_references.py、verify_metrics.py、verify_proposals.py、component_tally.py（归因按需聚合）、s2_calibration.py、s2_replay.py、ev_proposal.py、ev_measure.py（EV 卡预测的复现把手，reviewer 用）
 dsh-plugins/ascend-panel/    DSH 诊断面板插件（可选，动态 Cordis 插件；加载见其 README）
 eval/golden/                 回归测试夹具
 proposals/                   自演进领域状态：ideas/（idea 卡，资产入 git）+ sessions/tasks/ 等运行时（gitignore）；机制见 docs/evolution-pipeline.md

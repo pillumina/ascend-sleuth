@@ -10,6 +10,18 @@ This is a **knowledge/skills repo** — there is no build, no lint, no test suit
 
 ## Architecture
 
+### 三个闭环（读这套系统之前先分清）
+
+系统由三个闭环构成，**混起来读是理解这套机制最大的障碍**。判断一个动作属于哪个闭环，比记住任何机制名都重要：
+
+| 闭环 | 何时发生 | 入口 skill | 产出 |
+|------|---------|-----------|------|
+| **诊断闭环** | 每次问题（分钟级） | `diagnose`（被打断则 `resume-diagnosis`） | 修复建议 + `traces/<session>.yaml` |
+| **沉淀闭环** | 定位结束 / 定期批量 | `to-postmortem`、`to-reference`、`issue-ingest` | `postmortems/inbox/` 草稿 → groom 升格为 case / reference |
+| **演进闭环** | 内容流程收尾 / 全库体检轮 | `evolve-check`（伴随）、`self-evolve`（深度轮） | EV 卡 → 执行 → 验证 → 攒批 PR（人审） |
+
+三者共用一条链：前两个产生数据，演进读数据改机制，改完回落。**机制地图、权威归属（每件事由哪篇文档说了算）与周度 runbook 在 `docs/evolution.md`——那是演进机制的唯一入口**，其余 `docs/evolution-*.md` 是论证层（改机制本身时才读）。
+
 ### Three-tier knowledge loading (controls context cost)
 
 | Tier | Content | When loaded |
@@ -25,7 +37,7 @@ This is a **knowledge/skills repo** — there is no build, no lint, no test suit
 
 ### Skills
 
-Ten skills in `skills/<name>/SKILL.md`, following the [Agent Skills](https://agentskills.io/) spec:
+Ten skills in `skills/<name>/SKILL.md`, following the [Agent Skills](https://agentskills.io/) spec. **名单与数量不在此硬编码**——由 `docs/_manifest.yaml` 生成到 README 的「skill 名单」节（`scripts/build_docs_index.py --check` 保证一致）。按"谁用得上"分三组：**你要用的**（`diagnose`、`resume-diagnosis`）、**沉淀知识**（`to-postmortem`、`to-reference`、`issue-ingest`）、**维护与演进**（`knowledge-groom`、`self-evolve`、`evolve-check`、`skill-review`、`preload-panel`）。
 
 - **`diagnose`** — Core diagnostic loop: symptom collection → (data gap? take the tool entry's collection surface) → triage-tree routing → two-phase Tier 2 loading (phase 2.5 loads active references from the prior-knowledge layer) → verify diagnosis checks → output fix or fall back to deep investigation. Writes trace to `traces/<session_id>.yaml` on every step (incl. `reference_lookup` events, `purpose: collect|signature|fix|background`). On fix delivery writes `feedback_pending`; any diagnose/resume startup nags for the outcome (degrades to `feedback_stale` after 2 unanswered attempts — polite, not coercive) and updates case confidence. `disable-model-invocation: true` (user-triggered only).
 - **`to-postmortem`** — Case-knowledge injection entry. Accepts inline paste, single file, multiple files, or directory. Extracts symptoms/root cause/fix, suggests namespace, runs semantic validation + redaction, outputs YAML draft + postmortem.md into `postmortems/inbox/` (review queue; human-contributed drafts batch weekly, automation-sourced drafts may be groomed directly). Decoupled from diagnose — any investigation source can feed it.
@@ -62,7 +74,7 @@ Version matching is **soft**: compat mismatch downgrades confidence but never ha
 
 ### Severity gate
 
-诊断输出的安全语义——不是通知机制（P1 已移除，见 roadmap）：诊断系统只输出建议，不接管通知行为。
+诊断输出的安全语义——不是通知机制（通知链路已移除，见 roadmap）：诊断系统只输出建议，不接管通知行为。
 
 - `benign` → give fix directly
 - `service-affecting` → give fix but flag `fix_side_effects` (e.g., requires-restart)
@@ -91,6 +103,12 @@ Every diagnose step writes to `traces/<session_id>.yaml` trace array (trajectory
 
 Golden-case regression suite in `eval/golden/`. Public repo contains only constructed examples (no real customer data). Real fixtures go in a private repo. Run before/after skill changes: feed fixed input via replay mode, verify namespace routing + case matching + fix content against `expected`. LLM non-determinism means asserting "top-3 hit" rather than "must be first."
 
+**门禁分级（改哪里测哪里，不机械全量）**：检索/路由/候选选择面 → golden 子集 + 基线缓存；交互/追问/指引面 → ixn 对口样本（**不跑检索 golden**）；输出契约/交互形态 → 盲辨对照（主观成败只有对照能证）；纯文档 → 不跑 replay。分级表与判据强度在 `docs/eval.md`。
+
+**封存对照集（holdout）——"无回归"是否有意义的前提**：`eval/golden/` 在改动者可写面内，且 groom 被要求跟着 case 改夹具，所以"golden 无回归"原本是**可控信号**。`eval/holdout.yaml` 把一部分夹具按内容哈希封存（`scripts/holdout.py --check`，CI `holdout-integrity` job）：改封存夹具内容或删除即红；合法改需维护者 `--reseal` 且 PR 带 `holdout-change` 标签。`--list` 报出"有 case 却无夹具"的格子。**覆盖率仍有缺口**（training / common 段无夹具）——改 skill 对那些场景没有 golden 信号，别把"CI 绿"读成"全都测过"。
+
+**评审把手**：EV 卡的 `predicted_effect.measure` 给出"一条命令 + 期望"，`python3 scripts/ev_measure.py <卡号> --run` 打印实测并判 `符合 / 被证伪 / 无法判定` 三态。它证明**效果**，不证明价值（"命令是否真在测那件事"是约定强度）。
+
 ## Multi-agent collaboration (worktree 约束)
 
 多 agent/session 可能并发操作同一仓库——**共享检出目录是冲突根源**（未提交改动随 checkout 流动、共享状态文件互相覆盖）。本仓库约定（机制细节见 `docs/git-workflow.md`「多 agent / 多 session 并行」节）：
@@ -110,10 +128,15 @@ Golden-case regression suite in `eval/golden/`. Public repo contains only constr
 - **知识库结构性状态**：实时数字（各 namespace 条数/容量，含 soft_cap=30 容量治理信号）以 `python3 scripts/build_index.py` 生成的 `knowledge/_index.yaml` 头部注释为准，**不在 CLAUDE.md 硬编码**（具体条数/哪个格子接近上限随 KB 增长腐烂——如 verl 从空到非空、容量格子持续增长）；按周 append 的指标时序数据在 `metrics/timeline.yaml`（结构由 `verify_metrics.py --check` 校验），机制定义见 `docs/metrics.md`。通用原则：
   - namespace 是否有内容以 `knowledge/_index.yaml` 头注为准；空的 namespace 走 Tier 3 fallback，不假装有内容可检（与 `triage-tree.yaml` 头部注释同源）
   - canonical sample 仍是 `examples/sample-case.yaml`
+- **人读面的名单与数字同样不硬编码**：skill 名单、文档目录由 `docs/_manifest.yaml` 生成到 README（`scripts/build_docs_index.py`；`--check` 进 CI `docs-index` job，**生成物不一致或 `docs/` 下有未登记文档即红**）。改文档或 skill 后跑它。手写数字会腐烂且不报错（实测：入口文档曾写"123 条 case / 7 张 EV 卡"，实际已 158 / 50）。
+- **代号有生存范围**：`docs/glossary.yaml` 每条带 `scope`。记账号（roadmap 事项 A/E/M/O/P、治理缺口 G、触发信号 T、落地阶段 Phase）**只在各自的计划文档里裸用**；你写的 PR body / EV 卡 prose / 机制文档要引用就写中文含义（`scripts/render_review_summary.py --scan <文件或目录>` 会报越界）。同形冲突（`A1/A2/A3` = 公理 / roadmap 事项 / 平台前缀；`P0` = 优先级）已登记消歧，别新增同类。`docs/adr/` 与 `proposals/` 是只追加档案，豁免且不追溯。
 - **Public/private separation:** `skills/`, `references/`, `examples/` are methodology (public). `knowledge/` and `postmortems/` with real content contain customer data and must stay private. `.gitignore` enforces this boundary for `traces/` files.
 - **Index freshness:** `knowledge/_index.yaml` is generated by `scripts/build_index.py` and committed. After changing any case YAML, regenerate it; `--check` (run by groom and the kb-checks CI) fails on staleness. Retrieval is deliberately lexical/structural — no vector RAG (see `docs/adr/0002`).
 - **Git gating:** KB changes land via PR — triage labels (`kb/new-pattern|variant|covered`), `kb/high-risk` dual sign-off, CODEOWNERS-based review (see `docs/git-workflow.md`; `CODEOWNERS.example` is a placeholder until owners are named). Deployable centralized or as a framework fork — knowledge dirs never merge from upstream.
-- **Skill self-containment (CI-enforced):** skill files (`skills/**`) must not reference ADR numbers (`ADR-\d{4}`) — ADRs get revised/absorbed, a number anchor makes skill behavior look externally defined. Behavior rules must be inline; traceability belongs to git/PR/ADR history. This is a *hygiene* check (mechanical + recurrent), not a correctness check.
+- **Skill self-containment (CI-enforced):** skill files (`skills/**`) must not reference ADR numbers (`ADR-\d{4}`), dates (`20\d\d-\d\d`), or EV card numbers (`EV-\d{4}-\d{3}`) — ADRs get revised/absorbed; a number anchor makes skill behavior look externally defined; dates read as facts; card numbers rot when the card is superseded. Behavior rules must be inline; traceability belongs to git/PR/card history. This is a *hygiene* check (mechanical + recurrent), not a correctness check.
+- **EV 卡的预测必须可复现 (CI-enforced):** `predicted_effect.measure` 要带一条命令 + 期望（`expect_exit` / `expect_stdout` 至少一项），或如实声明 `reason`（不可度量）。缺它则"评审 30 秒判定"无从执行——reviewer 只能开全文或直接批。产卡骨架的占位 `measure` 会被 CI 拦下（忘填 = 响亮失败，不带假绿过审）；判 `validated` 前先跑一遍自己的 measure。存量卡（`MEASURE_CUTOVER` 之前）豁免，缺口由 `scripts/ev_measure.py --audit` 如实报出。
+- **对照集不由改动者削弱:** `eval/holdout.yaml` 封存的夹具按内容哈希钉住（CI `holdout-integrity`）——改内容或删除即红，要合法改就得维护者 `--reseal` 并带 `holdout-change` 标签。**注意强度**：哈希是硬门，但"谁有权 reseal"在 CODEOWNERS 落实前是半硬（有写权限者仍可打标签），别把它读成"已有人把关"。
 - **Check-admission criterion (what deserves CI):** only rules that are ①mechanically checkable, ②have deterministic consequences, ③proven recurrent (failed ≥2×) go into CI. Judgmental norms (grill grading, asking-what's-needed, redaction thoroughness) stay as SKILL.md execution instructions + review spot-checks — never fake-hardened (principle six). Adding a check without meeting all three = over-engineering.
+- **提交前必跑的 CI（`kb-checks`，八条）**：`build_index.py --check`（索引新鲜度 + 顺带解析全部 case YAML）、`verify_references.py --check`、`build_ref_summary_index.py --check`、`build_procedure_index.py --check`、`verify_metrics.py --check`、`verify_proposals.py --check`（卡结构 + 生命周期 + 预测口径）、`holdout.py --check`（对照集未被削弱）、`build_docs_index.py --check`（名单与文档目录一致）；另有 `pr-template`（PR body 模板结构）与 `skill-self-contained`（skills/ 的 ADR/日期/卡号锚三条 grep）。本地逐条复跑：`python3 scripts/rehearse_evolve_loop.py`（含 CI parity，120 条断言）。**`verify_exec_log.py` 不进 CI**（exec-log 是 .gitignore 运行时件）。
 - **No more than 2 consecutive failed case attempts** — fall back to human on the third (serial protection against misdiagnosis cascades).
 - **Log clipping is mandatory.** Only paste failed-rank logs + error stack tails into context. Full profiler data overwhelms the ~120K token reasoning sweet spot.
