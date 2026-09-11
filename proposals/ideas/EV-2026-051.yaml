@@ -145,3 +145,19 @@ decisions:
       ④**已知摩擦**：case 内容合法变更导致夹具期望需同步时 CI 会因哈希不符而红，需维护者
       reseal 一次。这是刻意的（量尺被动过就该被看见一次），但若一周内频繁发生，说明
       封存集选错了对象（选到了高频变动的夹具），应换掉而不是加豁免。
+  - who: agent（复盘补记：缺陷由另一 session 在 Windows 上发现并修复）
+    when: 2026-09-11
+    type: action
+    conclusion: >-
+      **事后缺陷记录（本卡封存哈希的跨平台问题）**。`sha256_of()` 用 `path.read_bytes()`
+      **按字节**哈希。Windows 上 reseal 会把 CRLF 字节的哈希写进 `eval/holdout.yaml`，
+      而 CI 在 Linux 检出的是 LF 字节 → 判"内容已变"，且报错只说哈希不一致、看不出根因是行尾。
+      **设计教训（本卡把判据强度写错了）**：本卡称哈希是"硬门"，但**字节哈希只有在被哈希的
+      字节跨平台不变时才是有效判据**——判据的硬度不只取决于比对精度，还取决于被比对对象是否
+      稳定。修法是**归一 CRLF 后再哈希**（不是把判定放松），而不是在文档里加一句
+      "Windows 上请小心"。写入侧同类：`eval/holdout.yaml` 走 `Path.write_text`，Windows 上
+      产出 CRLF，工作树出现内容为空的 phantom 修改。
+      修复位置：commit `4d1249d`（写入改走 `_stdio.write_text_lf`；`case_hash` 与 holdout
+      封存哈希归一 CRLF）。**记录时该 commit 尚未合入 main**——它随 PR #181 合进了一个已被
+      合入的父分支 `kb/docs-newcomer-fixes`，而该分支没有指向 main 的开放 PR（搁浅）。
+      本条只记事实与修法；合入状态以 `git log main -- scripts/holdout.py` 为准。

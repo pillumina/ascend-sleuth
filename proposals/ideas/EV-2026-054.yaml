@@ -1,0 +1,113 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）
+# 校验：python3 scripts/verify_proposals.py --check
+# 脱敏纪律：只含聚合值与证据引用，不含客户现场原文。
+# ============================================================
+
+id: EV-2026-054
+layer: L2
+title: 修演练的日期相关 flaky——面板断言挑最新卡，而合成夹具的结论只有 4 字
+status: validated
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-11
+source_signals:
+  - signal: observability_gap
+    evidence: >-
+      在同步 main（`d3f87e1`）后跑演练，得 119/120，失败项是「panel_render_check 全绿」
+      （沙箱内）。定性为**日期相关的 flaky**，与平台无关：
+      ①面板检查挑"按 `created_at` 降序排第一"的卡展开，并断言该卡最长 conclusion > 70 字
+      （目的是验证全文未被截断）；
+      ②演练的 E3 每轮都用 `ev_proposal.py --new` 产一张合成卡，`created_at` = 当天，而它的
+      conclusions 只有"演练产卡 / 演练执行 / 演练验证 / 演练采纳"各 4 字；
+      ③**当"当天晚于最新已提交卡的日期"时，合成卡成为排第一的那张 → 断言必然失败**。
+      这解释了为什么它此前一直绿：当时的四张卡（050–053）与合成卡同为 2026-09-10，稳定排序把
+      id 更小的 `EV-2026-050`（conclusion 长）排在前。
+    trajectory:
+      - "python3 scripts/rehearse_evolve_loop.py → 119/120，失败项「panel_render_check 全绿」"
+      - "沙箱内 PANEL_DEBUG=1 node scripts/panel_render_check.js → 点击目标「EV-2026-054」，最长 conclusion 4 字"
+      - "对照实验：把沙箱里 EV-2026-054 的 created_at 由 2026-09-11 改回 2026-09-10 → 同一命令「全部通过」"
+      - "在同步前的 7627435 上复跑演练 → 同样 119/120、同一失败项（即非本次同步引入）"
+      - "在途 commit 55ba6c2 的说明独立记录同一现象（同卡号、同 4 字、注明 Linux 亦复现、『修它要么改演练夹具、要么改面板断言，属改检查判据，留人审』）"
+hypothesis: >-
+  面板断言"被展开卡的最长 conclusion 完整出现在渲染文本中"隐含一个前提：**被展开的那张卡
+  有足够长的 conclusion**。而"被展开的是哪张卡"由 `created_at` 降序决定，演练每轮又会造出一张
+  当天最新的合成卡——于是该断言的结果取决于"当天是否已有同期的已提交卡"这一与检查目标无关的
+  偶然。把夹具的 conclusion 写成真实长度（≥70 字），前提就恒成立，flaky 根因消失；反之，
+  改断言去挑一张固定/白名单的卡，等于把"看最新卡"缩成"看挑好的卡"，是为变绿而缩小检查面。
+predicted_effect:
+  metric: 演练在"当天晚于最新已提交卡日期"时是否仍然全绿（原为必然失败）
+  from: 119/120，失败项固定为「panel_render_check 全绿」（2026-09-11 实测；同步前的 7627435 同样）
+  to: 120/120，且夹具的结论长度不再依赖"当天是否有同日期的已提交卡"这一偶然
+  measure:
+    command: python3 scripts/rehearse_evolve_loop.py
+    expect_exit: 0
+    expect_stdout: "panel_render_check 全绿"
+validation:
+  method: metrics_compare
+  baseline: 改前在 2026-09-11 与 7627435 两个检出上均为 119/120（同一失败项）
+  success_criteria: >-
+    ①演练在"合成夹具是最新卡"的情形下全绿（2026-09-11 即该情形）；②原 119 条通过项无一变为
+    失败；③夹具的结论长度足以满足面板断言的本意（≥70 字，且与真实卡同量级），并留下"别改短"
+    的说明，避免下一个人为"简洁"再把它改回去；④全部 CI 八条不变。
+  rollback: 只改演练夹具的 4 条 conclusion 文本与一处注释；git revert 即回退（原则七）
+gate:
+  condition: 同步 main 后实测演练转红，且已在两个检出与两个日期上定性（已发生）。非日历驱动。
+risk: low
+principle_refs: [2, 8, 9, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "单会话内联执行，未单独记账；口径同前几张卡"
+decisions:
+  - who: agent
+    when: 2026-09-11
+    type: proposal
+    conclusion: >-
+      采纳"**改夹具**"而不是"改面板断言"：两者都能修好，但性质不同——
+      ①面板断言的本意是"验证长 conclusion 未被截断"，那么**夹具本来就该长成断言所假设的样子**；
+      一个只有 4 字结论的夹具不是"更简单"，而是**不具备被断言的性质**，属夹具与断言不匹配；
+      ②改断言（例如改成挑一张已提交的卡）动的是**检查判据**，按本仓纪律属需要人审的范畴
+      （在途 commit 也把它标为"留人审"）——修夹具则不动判据、不放松任何检查；
+      ③改夹具还顺带修掉了 flaky 的**根因**（结论长度），而不是掩盖症状（固定展开某张卡）。
+      **不做的事（明确）**：不给面板断言加"跳过合成卡"的白名单——那会让检查从"看最新卡"
+      退化为"看一张挑好的卡"，等于为了变绿而缩小检查面。
+  - who: agent
+    when: 2026-09-11
+    type: action
+    conclusion: >-
+      实施：①`scripts/rehearse_evolve_loop.py` 的 E3 夹具四条 conclusion 由 4 字改为
+      70–110 字的真实演练叙述（保留原本的语义：产卡 / 只记 action / 补 eval / 补 decision），
+      并在该处留下注释说明"面板断言以被展开卡（= 按 created_at 排第一，本演练每轮都会造出
+      当天最新的卡）的最长 conclusion 是否完整出现来验证未截断——**别为简洁把这几条改短**"；
+      ②按只追加纪律，向三张卡的 `decisions` 补记事后缺陷与更正：EV-2026-051（封存哈希按字节
+      → CRLF 下跨平台失效，及其"判据硬度依赖被比对对象稳定"的教训）、EV-2026-052
+      （`write_text` 未固定 LF）、EV-2026-053（scope 匹配在 Windows 恒不命中；并更正 052/053
+      残留中"CLAUDE.md 逐篇罗列 evolution 文档"这句不成立的依据）。
+  - who: agent
+    when: 2026-09-11
+    type: eval
+    conclusion: >-
+      `metrics_compare`：`python3 scripts/rehearse_evolve_loop.py` → **120/120 通过**
+      （改前在 2026-09-11 与 7627435 上均为 119/120）；`verify_proposals --check` 52 张卡通过；
+      CI 八条本地全绿。原 119 条通过项无回归。
+      边界如实标注：本卡的 measure 是整轮演练（约 70 秒），不是"一条 5 秒命令"——它证明的是
+      "面板断言在合成夹具为最新卡时通过"，而不是"这类日期相关 flaky 从此绝迹"；若日后有人
+      再让夹具与断言不匹配，同一断言会再次变红（这正是它该有的行为）。
+  - who: agent
+    when: 2026-09-11
+    type: decision
+    conclusion: >-
+      **validated（采纳，改动保留）**。判据：success_criteria 四项达成，其中①在原先必然失败
+      的那一天（2026-09-11）实测转绿。
+      残留（如实标注）：
+      ①**日期相关的同类风险未系统排查**——本次只修了这一处。演练里仍有硬编码日期
+      （E3 的 `when: "2026-09-10"`，E5/E8 用相对日期），未逐条评估它们是否会随时间产生
+      类似 flaky。
+      ②**在途的 Windows 修复尚未合入 main**（`kb/docs-newcomer-fixes` 搁浅，见 EV-2026-051/052
+      的补记）。其中的 `holdout.py` 修复与本仓"封存哈希跨平台有效"直接相关；**在那条落地前，
+      Windows 上 reseal 出来的封存集在 Linux CI 上会红**。
+      ③"检查判据"这类改动仍无独立评审路径——本次之所以能自己修，是因为我判断"改夹具不改判据"；
+      若判据确实需要改，本仓目前没有"谁批"的答案（CODEOWNERS 未落实）。
