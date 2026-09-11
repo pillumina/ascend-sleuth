@@ -27,20 +27,24 @@ from pathlib import Path
 
 import yaml  # noqa: F401  (对齐仓库脚本风格，可能用于 config 扩展)
 
+from _stdio import write_text_lf
+
 STATE_FILE = "ingest-state.json"
 OUT_DIR = ".auto-fetch"
 
 
 def load_state(root: Path):
-    return json.loads((root / STATE_FILE).read_text())
+    # 显式 encoding：Windows 上 read_text() 默认按 locale（中文 = GBK）解码，
+    # 文件里一旦有非 ASCII 就 UnicodeDecodeError
+    return json.loads((root / STATE_FILE).read_text(encoding="utf-8"))
 
 
 def save_state(root: Path, state):
-    (root / STATE_FILE).write_text(json.dumps(state, indent=2, ensure_ascii=False))
+    write_text_lf(root / STATE_FILE, json.dumps(state, indent=2, ensure_ascii=False))
 
 
 def gh_api(path: str):
-    out = subprocess.run(["gh", "api", path], capture_output=True, text=True, timeout=50)
+    out = subprocess.run(["gh", "api", path], capture_output=True, text=True, timeout=50, encoding="utf-8", errors="replace")
     if out.returncode != 0:
         raise RuntimeError(f"gh api 失败: {out.stderr[:200]}")
     return json.loads(out.stdout)

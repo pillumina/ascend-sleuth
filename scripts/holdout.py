@@ -38,12 +38,17 @@ from pathlib import Path
 
 import yaml
 
+from _stdio import write_text_lf
+
 MANIFEST = "eval/holdout.yaml"
 GOLDEN = "eval/golden"
 
 
 def sha256_of(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    # 归一 CRLF：封存哈希是**按字节**算的（对照集靠它钉住内容）。不归一的话，
+    # 在 Windows 上 reseal 会把 CRLF 字节的哈希写进 holdout.yaml，而 CI 检出 LF →
+    # 同一份内容被判"被改动"，闸门误红。LF 文件归一后不变，故对已有封存无影响。
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def load_manifest(root: Path):
@@ -54,8 +59,7 @@ def load_manifest(root: Path):
 
 
 def save_manifest(root: Path, doc):
-    (root / MANIFEST).write_text(
-        yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    write_text_lf(root / MANIFEST, yaml.safe_dump(doc, allow_unicode=True, sort_keys=False))
 
 
 def entries_of(doc):

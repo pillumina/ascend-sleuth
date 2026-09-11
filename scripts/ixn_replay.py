@@ -51,11 +51,11 @@ def fetch_issue(repo, issue):
     """gh api 拉 issue body 与评论；返回 (body, comments_list)。"""
     body = subprocess.run(
         ["gh", "api", f"repos/{repo}/issues/{issue}", "--jq", ".body"],
-        capture_output=True, text=True, check=True).stdout
+        capture_output=True, text=True, check=True, encoding="utf-8", errors="replace").stdout
     comments = subprocess.run(
         ["gh", "api", f"repos/{repo}/issues/{issue}/comments?per_page=100",
          "--jq", "[.[]|{user:.user.login,created:.created_at,body}]"],
-        capture_output=True, text=True, check=True).stdout
+        capture_output=True, text=True, check=True, encoding="utf-8", errors="replace").stdout
     return body, json.loads(comments)
 
 

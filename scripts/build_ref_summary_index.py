@@ -24,6 +24,8 @@ from pathlib import Path
 
 import yaml
 
+from _stdio import write_text_lf
+
 # methodology **不在背景类**（EV-2026-038）：流程类要的不是"读一行背景"而是
 # "选中一条、读全文、按判据执行"——摘要行当内容用与不加载等效（决定性判据会被截断）。
 # 它走独立的 references/_procedure-index.yaml（选择器，scripts/build_procedure_index.py）。
@@ -125,7 +127,7 @@ def main():
             sys.exit(1)
         print(f"reference summary 索引新鲜（{len(entries)} 条背景类词条）。")
         return
-    out.write_text(text, encoding="utf-8")
+    write_text_lf(out, text)
     print(f"已生成 {out}（{len(entries)} 条背景类词条）")
 
 

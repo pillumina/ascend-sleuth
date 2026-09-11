@@ -46,14 +46,14 @@ def _git_common_dir(root: Path):
     """git common dir 的绝对路径；失败返回 None（不抛）。"""
     try:
         r = subprocess.run(["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
-                           capture_output=True, text=True, cwd=str(root))
+                           capture_output=True, text=True, cwd=str(root), encoding="utf-8", errors="replace")
         if r.returncode == 0 and r.stdout.strip():
             return Path(r.stdout.strip())
     except Exception:
         pass
     try:  # 老版本 git 没有 --path-format，退回相对路径 + 手工解析
         r = subprocess.run(["git", "rev-parse", "--git-common-dir"],
-                           capture_output=True, text=True, cwd=str(root))
+                           capture_output=True, text=True, cwd=str(root), encoding="utf-8", errors="replace")
         if r.returncode == 0 and r.stdout.strip():
             p = Path(r.stdout.strip())
             return p if p.is_absolute() else (root / p).resolve()

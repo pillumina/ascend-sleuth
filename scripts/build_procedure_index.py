@@ -25,6 +25,8 @@ from pathlib import Path
 
 import yaml
 
+from _stdio import write_text_lf
+
 OUT_NAME = "_procedure-index.yaml"
 SUMMARY_CAP = 200
 
@@ -147,7 +149,7 @@ def main():
     if err:
         print(f"生成失败：产物不是合法 YAML：{err}")
         return 1
-    out_path.write_text(text, encoding="utf-8")
+    write_text_lf(out_path, text, encoding="utf-8")
     print(f"已生成 {out_path}（{len(entries)} 条流程）")
     return 0
 

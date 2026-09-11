@@ -29,6 +29,8 @@
 import argparse
 import re
 import sys
+
+from _stdio import write_text_lf
 from collections import defaultdict
 from pathlib import Path
 
@@ -215,7 +217,7 @@ def normalize_file(path: Path, norm_list, apply: bool):
             continue
         i += 1
     if changes and apply:
-        path.write_text("\n".join(lines), encoding="utf-8")
+        write_text_lf(path, "\n".join(lines))
     return changes
 
 
