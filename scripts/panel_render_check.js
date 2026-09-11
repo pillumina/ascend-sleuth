@@ -8,6 +8,30 @@ const { execFileSync } = require('child_process')
 
 const repo = path.resolve(__dirname, '..')
 
+// ---- Python 解释器解析（Windows 兼容）----
+// 与 dsh-plugins/*/panel-host.js 的同名解析同源：Windows 上 `python3` 常不存在
+// （python.org 安装器装的是 python.exe + py.exe 启动器；PATH 里 Store 的「应用执行
+// 别名」占位程序既不返回 0 也不打印版本）。逐个候选探测，取第一个 exit 0 且打印
+// Python 3.x 的；结果在本次进程内缓存。
+function resolvePython() {
+  for (const [cmd, prefix] of [['python3', []], ['python', []], ['py', ['-3']]]) {
+    try {
+      const out = execFileSync(cmd, [...prefix, '--version'], { encoding: 'utf-8' })
+      if (/Python 3\./.test(out)) return { cmd, prefix }
+    } catch (e) {
+      // 候选不可执行（含 9009 占位程序）→ 试下一个
+    }
+  }
+  return null
+}
+const PY = resolvePython()
+if (!PY) {
+  console.error('未找到可用的 Python 3 解释器（已试 python3 / python / py -3）——'
+    + 'scripts/panel_render_check.js 要用它跑 scripts/ev_board_data.py 与读 metrics/timeline.yaml')
+  process.exit(2)
+}
+const pyRun = (args, opts) => execFileSync(PY.cmd, [...PY.prefix, ...args], opts)
+
 // ---- mock React ----
 function flatten(node, out) {
   if (node === null || node === undefined || node === false || node === true) return
@@ -117,19 +141,25 @@ async function renderAsync(clientSrc, slotProps, hostImpl, { settle = 8 } = {}) 
 }
 
 // ---- 真实数据 ----
-const board = JSON.parse(execFileSync('python3', ['scripts/ev_board_data.py'], { cwd: repo, maxBuffer: 32 * 1024 * 1024 }).toString())
+// 子进程一律带上 UTF-8 环境（Windows 兼容）：这几个调用要把中文数据（周期 notes、卡片
+// 标题…）经 stdout 传回来，而 Windows 上子进程 Python 的 stdout 默认按 locale 编码
+// （中文系统 = cp936）——字节是 GBK、这边按 UTF-8 解码 → 中文全变乱码。症状很隐蔽：
+// 渲染不报错，只是文案烂掉，于是"按其内容做的断言"无理由失败（实测正是它让
+// 「期卡收起态带指标摘要」在 Windows 上失败，而 Linux 上通过）。
+const PY_ENV = { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
+const board = JSON.parse(pyRun(['scripts/ev_board_data.py'], { cwd: repo, maxBuffer: 32 * 1024 * 1024, env: PY_ENV }).toString())
 const detailCache = {}
 function detailOf(id) {
   if (!detailCache[id]) {
-    detailCache[id] = JSON.parse(execFileSync('python3', ['scripts/ev_board_data.py', '--detail', id], { cwd: repo, maxBuffer: 32 * 1024 * 1024 }).toString())
+    detailCache[id] = JSON.parse(pyRun(['scripts/ev_board_data.py', '--detail', id], { cwd: repo, maxBuffer: 32 * 1024 * 1024, env: PY_ENV }).toString())
   }
   return detailCache[id]
 }
-const periods = JSON.parse(execFileSync('python3', ['-c', `
+const periods = JSON.parse(pyRun(['-c', `
 import yaml, json
 d = yaml.safe_load(open('metrics/timeline.yaml', encoding='utf-8'))
 print(json.dumps(d['periods'], ensure_ascii=False, default=str))
-`], { cwd: repo }).toString())
+`], { cwd: repo, env: PY_ENV }).toString())
 
 const failures = []
 function expect(name, cond, extra) {

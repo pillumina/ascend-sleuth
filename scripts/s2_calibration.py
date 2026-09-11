@@ -175,7 +175,7 @@ def gh_api(path: str, timeout: int = 40):
     out = subprocess.run(
         ["gh", "api", path],
         capture_output=True, text=True, timeout=timeout, check=True,
-    )
+        encoding="utf-8", errors="replace")
     return json.loads(out.stdout)
 
 

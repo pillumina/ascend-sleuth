@@ -92,6 +92,27 @@ def one_line(value, limit=160) -> str:
     return s if len(s) <= limit else s[:limit - 1] + "…"
 
 
+def localize_command(command: str) -> str:
+    """**仅 Windows**：把卡里写的 `python3 ...` 替换为本机当前解释器；其他平台原样返回。
+
+    EV 卡的 `predicted_effect.measure.command` 按约定写成 `python3 scripts/xxx.py`
+    （CI / Linux 口径）。Windows 上 `python3` 常不存在——python.org 安装器装的是
+    `python.exe` + `py.exe` 启动器，而 PATH 里 Store 的「应用执行别名」占位程序既不
+    打印版本也不返回 0。照原样执行会得到 ERROR（无法判定）；而"判据跑不起来"与
+    "预测被证伪"必须分开（本脚本的退出码 2 与 1 正是为此分的）。只替换首个 token。
+
+    POSIX 上**不做替换**：那里 `python3` 就在 PATH 里，替换会改变实际执行的解释器
+    （虚拟环境里的 python 与 PATH 的 python3 未必同一个），属无谓的行为差异。
+    """
+    if os.name != "nt":
+        return command
+    parts = command.split(None, 1)
+    if not parts or parts[0] not in ("python3", "python"):
+        return command
+    rest = f" {parts[1]}" if len(parts) > 1 else ""
+    return f'"{sys.executable}"{rest}'
+
+
 def describe(card_id, doc, kind, measure):
     pe = doc.get("predicted_effect") or {}
     print(f"=== {card_id} · {one_line(doc.get('title'), 90)} ===")
@@ -120,12 +141,15 @@ def describe(card_id, doc, kind, measure):
 
 def run_measure(root: Path, measure, timeout: int):
     """执行并比对 → (verdict, detail)。verdict ∈ PASS / FAIL / ERROR。"""
-    command = measure["command"].strip()
+    command = localize_command(measure["command"].strip())
+    if command != measure["command"].strip():
+        print(f"  （卡内命令以 `{measure['command'].strip().split(None, 1)[0]}` 书写；"
+              f"本机改用当前解释器执行——判据等价，避免「跑不起来」被读成「被证伪」）")
     env = dict(os.environ)
     env["PYTHONIOENCODING"] = "utf-8"
     try:
         r = subprocess.run(command, shell=True, cwd=str(root), capture_output=True,
-                           text=True, timeout=timeout, env=env)
+                           text=True, timeout=timeout, env=env, encoding="utf-8", errors="replace")
     except subprocess.TimeoutExpired:
         return "ERROR", f"命令超时（>{timeout}s）——预测未能在给定时限内复现"
     out = (r.stdout or "") + (r.stderr or "")

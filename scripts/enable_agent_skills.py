@@ -86,7 +86,7 @@ def make_link(link: Path, target: Path) -> str:
         subprocess.run(
             ["cmd", "/c", "mklink", "/J", str(link), str(target)],
             check=True, capture_output=True, text=True,
-        )
+            encoding="utf-8", errors="replace")
         return "junction"
     os.symlink(relative, link)
     return "symlink"
@@ -137,7 +137,7 @@ def ensure_link(agent_dir: Path, label: str, target: Path) -> tuple[str, str | N
 def git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["git", "-C", str(repo), *args], check=True, capture_output=True, text=True,
-    )
+        encoding="utf-8", errors="replace")
 
 
 def ensure_core_symlinks(repo: Path) -> str | None:

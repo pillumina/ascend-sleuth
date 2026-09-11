@@ -84,7 +84,7 @@ def run(cmd, check=False):
 def head_version(path: Path):
     """返回当前检出版本描述（tag 或短 hash），用于复用核对。"""
     for args in (["describe", "--tags", "--exact-match"], ["log", "-1", "--format=%h"]):
-        p = subprocess.run(["git"] + args, cwd=path, capture_output=True, text=True)
+        p = subprocess.run(["git"] + args, cwd=path, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if p.returncode == 0 and p.stdout.strip():
             return p.stdout.strip()
     return "?"
@@ -164,7 +164,7 @@ def main():
             ok = True
             break
         # 该源失败：问真实 tag（不同版本库 tag 命名不同），供 agent 记 tool_calls
-        ls = subprocess.run(["git", "ls-remote", "--tags", url], capture_output=True, text=True)
+        ls = subprocess.run(["git", "ls-remote", "--tags", url], capture_output=True, text=True, encoding="utf-8", errors="replace")
         if ls.returncode == 0 and ls.stdout.strip():
             tags = [ln.split("refs/tags/")[-1] for ln in ls.stdout.strip().splitlines() if "refs/tags/" in ln]
             print(f"    该源可达，tag 名或异：可用 tag 示例（前10）: {', '.join(tags[:10])}")

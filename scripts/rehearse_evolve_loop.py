@@ -22,6 +22,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -48,12 +49,60 @@ def check(name, cond, detail=""):
         FAILS.append(name)
 
 
+def q(path):
+    """在 shell 命令里安全引用一个路径：POSIX 用 shlex.quote，Windows 用双引号。
+
+    shlex.quote 在 Windows 上产**单引号**，而 cmd.exe 不认单引号——`'C:\\...\\python.exe' -c ...`
+    会被当成"名字里带引号的程序"而报 9009（命令不存在）。这是本脚本在 Windows 上
+    "正例 --run 判 PASS" 失败的原因，与解释器是否存在无关。
+    """
+    s = str(path)
+    return f'"{s}"' if os.name == "nt" else shlex.quote(s)
+
+
+def ci_local_argv(cmd: str):
+    """**仅 Windows**：CI 的单行命令 → 本地 argv；返回 None 表示仍交给 shell。
+
+    Windows 上 `python3` 是 Microsoft Store 的应用执行别名占位程序（既不打印版本也不
+    返回 0），`pip` 也不是可执行文件——照抄 CI 的 shell 片段必然失败，而那失败会被读成
+    "CI 检查在本机不通过"（其实与检查内容无关）。单行步骤改为按 argv 直接执行：
+    `python3` → 当前解释器、`pip` → `当前解释器 -m pip`。这**比走 bash 更忠实**：同一程序、
+    同一参数，且不依赖本机是否装了 POSIX shell。
+
+    POSIX 上**直接返回 None**（即完全走原来的 `bash -c`）：那里 `python3`/`pip` 本就是可用
+    可执行文件，改成本地 argv 只会引入无谓差异（例如某些发行版的 `pip` 与
+    `python -m pip` 并不指向同一环境）。
+    """
+    if os.name != "nt":
+        return None
+    line = cmd.strip()
+    if not line or "\n" in line:
+        return None
+    try:
+        parts = shlex.split(line)
+    except ValueError:
+        return None
+    if not parts:
+        return None
+    if parts[0] == "python3":
+        return [sys.executable, *parts[1:]]
+    if parts[0] == "pip":
+        return [sys.executable, "-m", "pip", *parts[1:]]
+    return None
+
+
 def run(args, cwd, env=None):
     e = dict(os.environ)
     e["PYTHONIOENCODING"] = "utf-8"
+    # PYTHONUTF8=1：让子进程的 Python 走 UTF-8 模式（`open()` 默认 UTF-8、标准流 UTF-8）。
+    # 这不是"给 Windows 开后门"，而是**让本机与 CI 的默认行为一致**：Linux 上 locale 默认
+    # 就是 UTF-8，而中文 Windows 上 `open('triage-tree.yaml')` 按 GBK 解码 → 那份含中文
+    # 注释的文件直接 UnicodeDecodeError，CI 里那条 triage-tree 语法检查在本机永远跑不过
+    # ——失败原因（本机编码）与检查内容（YAML 可解析性）无关，属误报。
+    e["PYTHONUTF8"] = "1"
     if env:
         e.update(env)
-    r = subprocess.run(args, cwd=str(cwd), capture_output=True, text=True, env=e)
+    r = subprocess.run(args, cwd=str(cwd), capture_output=True, text=True, env=e, encoding="utf-8", errors="replace")
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 
@@ -101,8 +150,12 @@ def ex_content_flow_log(root: Path):
     old = ("import yaml;d=yaml.safe_load(open('metrics/skill-exec-log.yaml'));"
            "print('\\n'.join(f\"{r['seq']} {r['skill']} {r.get('at','')[:16]}\" for r in (d.get('records') or [])[-3:]))")
     rc_old, out_old = py(root, "-c", old)
-    check("（对照）旧内联命令在有记录时抛 TypeError = 断点可复现",
-          rc_old != 0 and "subscriptable" in out_old, out_old[-220:])
+    enc_first = any(k in out_old for k in ("ReaderError", "codec", "decode", "UnicodeDecodeError"))
+    check("（对照）旧内联命令在有记录时失败 = 断点可复现",
+          rc_old != 0 and ("subscriptable" in out_old or enc_first),
+          out_old[-220:] + ("（本平台先被默认编码拦下：旧命令的 open() 没给 encoding，"
+                            "中文 Windows 默认 GBK 读 UTF-8 记录即失败——同一断点的另一种表现）"
+                            if enc_first else ""))
     rc, out = py(root, "scripts/verify_exec_log.py", "--check")
     check("exec-log 自查（seq 唯一/字段齐全）通过", rc == 0, out[-200:])
 
@@ -537,10 +590,9 @@ def ex_measure_path(root: Path):
     print("\n[E11] 预测的出处 · 可复现口径两侧对照（该红必红 / 不哭狼）")
     import copy
     import json as _json
-    import shlex
 
     ideas = root / "proposals" / "ideas"
-    CMD = f"{shlex.quote(sys.executable)} -c \"print('MEASURE-OK')\""
+    CMD = f"{q(sys.executable)} -c \"print('MEASURE-OK')\""
 
     def base(cid, created):
         return {
@@ -775,8 +827,18 @@ def ex_ci_parity(root: Path):
           any("verify_proposals.py --check" in c for j, c in cmds if j == "proposal-audit"))
     check("CI 不跑 verify_exec_log（运行时件，CI 上不存在，跑了只会空转）",
           not any("verify_exec_log" in c for _, c in cmds))
+    posix_shell = shutil.which("bash") or shutil.which("sh")
     for jname, cmd in cmds:
-        rc, out = run(["bash", "-c", cmd], cwd=root)
+        argv = ci_local_argv(cmd)
+        if argv is not None:
+            rc, out = run(argv, cwd=root)        # 单行命令：本机原生执行（见 ci_local_argv）
+        elif posix_shell:
+            rc, out = run([posix_shell, "-c", cmd], cwd=root)
+        else:
+            # 不假装通过：跳过必须**可见**（同仓库"跑了无信号 与 没跑 可分"的要求）
+            print(f"  — 跳过（本平台无 POSIX shell，且该步是复合片段）："
+                  f"[{jname}] {cmd.splitlines()[0][:60]}")
+            continue
         label = f"[{jname}] {cmd.splitlines()[0][:70]}"
         check(f"CI 命令通过 {label}", rc == 0, out[-260:])
     return cmds
