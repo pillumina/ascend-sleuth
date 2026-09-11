@@ -41,6 +41,8 @@ from pathlib import Path
 
 import yaml
 
+from _stdio import write_text_lf
+
 REPLAY_DIR = Path(".s2-replay")
 
 
@@ -185,7 +187,7 @@ def settle(root: Path, state_path: Path, apply: bool):
                 for k in ("consistent", "inconsistent", "self_consistent", "last_verified"):
                     block.append(f"      {k}: {vals[k]}")
                 lines[insert_at:insert_at] = block
-            case_f.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            write_text_lf(case_f, "\n".join(lines) + "\n", encoding="utf-8")
             settled[issue] = content_hash
 
     print(f"发现 {len(diffs)} 条 S2 结算变更（{len(recheck)} 条复审候选）。\n")
