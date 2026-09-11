@@ -27,6 +27,8 @@ from pathlib import Path
 
 import yaml
 
+from _stdio import write_text_lf
+
 IDEAS_DIR = "proposals/ideas"
 TEMPLATE = "examples/sample-idea.yaml"
 
@@ -81,9 +83,9 @@ def make_new(root: Path) -> Path:
         txt = tpl.read_text(encoding="utf-8")
         txt = txt.replace("id: EV-2026-001", f"id: {cid}")
         txt = txt.replace("created_at: 2026-09-01", f"created_at: {datetime.now().date().isoformat()}")
-        out.write_text(txt, encoding="utf-8")
+        write_text_lf(out, txt, encoding="utf-8")
     else:
-        out.write_text(f"# {cid} idea 卡骨架（模板缺失，手填）\nid: {cid}\n", encoding="utf-8")
+        write_text_lf(out, f"# {cid} idea 卡骨架（模板缺失，手填）\nid: {cid}\n", encoding="utf-8")
     return out
 
 

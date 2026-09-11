@@ -22,7 +22,7 @@ def gh_api(url: str) -> list:
     out = subprocess.run(
         ["gh", "api", url, "--paginate"],
         capture_output=True, text=True, check=True,
-    )
+        encoding="utf-8", errors="replace")
     return json.loads(out.stdout)
 
 

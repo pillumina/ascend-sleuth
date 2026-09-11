@@ -66,7 +66,7 @@ def _log_lock(log_path: Path):
 def git_head(root: Path) -> str:
     try:
         r = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
-                           capture_output=True, text=True, cwd=str(root))
+                           capture_output=True, text=True, cwd=str(root), encoding="utf-8", errors="replace")
         return r.stdout.strip() or "unknown"
     except Exception:
         return "unknown"

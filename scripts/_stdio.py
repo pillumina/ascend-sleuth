@@ -19,6 +19,22 @@
 import sys
 
 
+def write_text_lf(path, text, encoding: str = "utf-8") -> None:
+    """写文本文件并**固定 LF 换行**（Windows 兼容）。
+
+    为什么需要（都不是"只是噪声"）：
+      ① 入库产物在 Windows 上被 `Path.write_text()` 写成 CRLF，`git status` 出现
+         内容为空的 phantom 修改，reviewer 与 `git add -A` 都被干扰；
+      ② 更硬的一类：`build_index.case_hash()` 与 `holdout` 的封存哈希都是
+         `read_bytes()` 的 SHA-256——**按字节**算。用 CRLF 写出的 case / fixture，
+         在 Windows 上重建索引并提交后，Linux CI 检出的是 LF，哈希对不上 →
+         `--check` 必然判 STALE（红），而失败信息只说"过期"，看不出是行尾所致。
+    Linux 上本就是 LF，改用本函数无行为差异。
+    """
+    with open(path, "w", encoding=encoding, newline="\n") as fh:
+        fh.write(str(text))
+
+
 def pin_utf8_stdio() -> None:
     """把 sys.stdin / sys.stdout / sys.stderr 重配为 UTF-8。
 

@@ -20,6 +20,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
+from _stdio import write_text_lf
+
 try:
     import yaml
 except ImportError:
@@ -32,7 +34,11 @@ HARD_CAP = 60
 
 
 def case_hash(path: Path) -> str:
-    return hashlib.sha256(path.read_bytes()).hexdigest()[:12]
+    # 归一 CRLF 后再哈希：本哈希**按字节**算，而 Windows 上文件可能被写成 CRLF。
+    # 不归一的话，Windows 重建索引并提交后，Linux CI 检出的是 LF → 哈希对不上 →
+    # `--check` 判 STALE（红），而失败信息只说"过期"，看不出是行尾所致。
+    # LF 文件归一后不变，故对已有索引是无操作。
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()[:12]
 
 
 def compat_summary(compat) -> str:
@@ -271,20 +277,20 @@ def main():
         return
 
     out = root / "knowledge" / "_index.yaml"
-    out.write_text(render(ns), encoding="utf-8")
+    write_text_lf(out, render(ns))
     shard_dir = root / "knowledge" / "_index"
     shard_dir.mkdir(exist_ok=True)
     expected = set()
     for nsk, cells in ns.items():
         # ns 级分片（保留：category 未定/回退/其他消费者）
         p = shard_path(root, nsk)
-        p.write_text(render_shard(nsk, cells), encoding="utf-8")
+        write_text_lf(p, render_shard(nsk, cells))
         expected.add(p.name)
         # F4（EV-2026-025）：category 级分片 <ns>__<category>.yaml——路由已定 category 时
         # 阶段一只读该 cell，避免整 ns（vllm-ascend 107 行）进上下文
         for cat, cases in cells.items():
             cp = shard_path(root, f"{nsk}__{cat}")
-            cp.write_text(render_shard(f"{nsk}__{cat}", {cat: cases}), encoding="utf-8")
+            write_text_lf(cp, render_shard(f"{nsk}__{cat}", {cat: cases}))
             expected.add(cp.name)
     for old in shard_dir.glob("*.yaml"):
         if old.name not in expected:

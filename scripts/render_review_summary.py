@@ -281,7 +281,7 @@ def cmd_diff(rev_range, root):
     try:
         diff = subprocess.run(
             ["git", "-C", str(root), "diff", "-U0"] + rev_range.split(".."),
-            capture_output=True, text=True, check=True).stdout
+            capture_output=True, text=True, check=True, encoding="utf-8", errors="replace").stdout
     except subprocess.CalledProcessError as e:
         print("git diff 失败:", e.stderr, file=sys.stderr)
         return 1

@@ -25,6 +25,8 @@ from pathlib import Path
 
 import yaml
 
+from _stdio import write_text_lf
+
 REPO = Path(__file__).resolve().parent.parent
 MANIFEST = "docs/_manifest.yaml"
 BEGIN = "<!-- BEGIN generated: docs-index (scripts/build_docs_index.py；由 docs/_manifest.yaml 生成，勿手改) -->"
@@ -150,7 +152,7 @@ def main() -> int:
         print(f"build_docs_index --check: OK（{n} 条文档登记、{len(doc.get('skills') or [])} 个 skill，README 区块一致）")
         return 0
 
-    readme_path.write_text(want, encoding="utf-8")
+    write_text_lf(readme_path, want, encoding="utf-8")
     print(f"build_docs_index: 已写回 README.md（{len(doc.get('docs') or [])} 条文档登记、"
           f"{len(doc.get('skills') or [])} 个 skill）")
     if missing:

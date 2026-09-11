@@ -34,6 +34,8 @@ from pathlib import Path
 
 import yaml
 
+from _stdio import write_text_lf
+
 TRACES_DIR = Path("traces")
 
 
@@ -160,7 +162,7 @@ def settle(traces_dir: Path, state_path: Path, apply: bool, kb_root: Path = Path
                         # 离开 confidence 块：下一个非空非注释且不以 6 空格缩进的值行
                         if s and not s.startswith("#") and not new_lines[j].startswith("      "):
                             break
-                    case_f.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+                    write_text_lf(case_f, "\n".join(new_lines) + "\n", encoding="utf-8")
 
         if apply:
             settled[sid] = {"events": h, "settled_at": "2026-08-31"}

@@ -38,7 +38,7 @@ from tail_exec_log import aggregate as aggregate_exec_log, load_records
 
 def _run(root: Path, args: list):
     r = subprocess.run([sys.executable, *args], cwd=str(root), capture_output=True, text=True,
-                       env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+                       env={**os.environ, "PYTHONIOENCODING": "utf-8"}, encoding="utf-8", errors="replace")
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 

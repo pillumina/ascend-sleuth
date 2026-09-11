@@ -30,6 +30,8 @@ from pathlib import Path
 
 import yaml
 
+from _stdio import write_text_lf
+
 REPO = Path(__file__).resolve().parent.parent
 SRC_DIR = REPO / "scripts" / "kb-explorer" / "src"
 TPL = REPO / "scripts" / "kb-explorer" / "index.tpl.html"
@@ -160,18 +162,18 @@ def main() -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    (out / "index.html").write_text(TPL.read_text(encoding="utf-8"), encoding="utf-8")
-    (out / "app.css").write_text(assets["css"], encoding="utf-8")
-    (out / "app.js").write_text(assets["js"], encoding="utf-8")
+    write_text_lf((out / "index.html"), TPL.read_text(encoding="utf-8"), encoding="utf-8")
+    write_text_lf((out / "app.css"), assets["css"], encoding="utf-8")
+    write_text_lf((out / "app.js"), assets["js"], encoding="utf-8")
     kb_js = "const KB = " + json_payload_text(payload) + ";"
-    (out / "kb-data.js").write_text(kb_js, encoding="utf-8")
+    write_text_lf((out / "kb-data.js"), kb_js, encoding="utf-8")
 
     # 缓存失配：给资源 URL 加构建指纹，重新生成即换 URL，浏览器必拉新
     v = hashlib.md5((assets["css"] + assets["js"] + kb_js).encode("utf-8")).hexdigest()[:8]
     html = TPL.read_text(encoding="utf-8").replace('href="app.css"', 'href="app.css?v=' + v + '"') \
               .replace('src="app.js"', 'src="app.js?v=' + v + '"') \
               .replace('src="kb-data.js"', 'src="kb-data.js?v=' + v + '"')
-    (out / "index.html").write_text(html, encoding="utf-8")
+    write_text_lf((out / "index.html"), html, encoding="utf-8")
 
     n = len(payload["entries"])
     parts = [out / "index.html", out / "app.css", out / "app.js", out / "kb-data.js"]
