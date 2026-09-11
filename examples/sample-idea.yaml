@@ -1,7 +1,7 @@
 # ============================================================
 # Idea 卡模板（proposals/ideas/EV-YYYY-NNN.yaml）
 # 自演进候选 idea 的 schema 参考——新建卡时复制本文件改字段。
-# 完整 schema 与状态机定义见 docs/evolution-pipeline.md §7（权威）。
+# 完整 schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）。
 # 校验：python3 scripts/verify_proposals.py --check
 # 脱敏纪律：只含聚合值与证据引用，不含客户现场原文（同 eval fixture）。
 # ============================================================
@@ -21,7 +21,7 @@ supersedes: []                     # 本卡替代的旧卡 id 列表（run §5�
 superseded_by: null                # 被哪张卡替代（旧卡被替代后标 superseded）
 created_at: 2026-09-01             # ISO 日期
 source_signals:                    # 触发信号 + trajectory 出处（本卡只记引用，不贴原文）
-  - signal: component_error        # 归因事件簇（trace attribution / s2 候选，按需聚合见 evolution-pipeline.md §2）
+  - signal: component_error        # 归因事件簇（trace attribution / s2 候选，按需聚合见 docs/mechanism/pipeline.md §2）
     evidence: "组件 triage:vllm-ascend-startup execution_error 归因 6 条（按需聚合）"
     trajectory:
       - "traces/*.yaml#attribution 2026-W37 按需聚合"

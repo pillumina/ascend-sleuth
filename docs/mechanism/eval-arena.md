@@ -1,12 +1,13 @@
 # 元层 eval 台（arena）——WikiSkill 式 train/val 分离 + 门控自演进
 
-> **论证层——日常不必读。** 执行规则与机制地图见 [evolution.md](evolution.md)；本文只承载「为什么这样设计」的推导，改机制本身时才需要读。
+> **给谁读**：要改元层 eval 台（train/val 分离、门控协议、影响账本）的人；**什么时候读**：你要改评测机制本身的稳定性判据时；**读完能做什么**：能说清 train/val 分离怎么防「拿同一批数据自证」，门控协议在哪一层生效。
+> **论证层——日常不必读。** 执行规则与机制地图见 [../evolution.md](../evolution.md)。
 
 > 机制决议：EV-2026-013。对应 WikiSkill（arXiv 2608.27454）的元层：候选改动在
 > held-out 评测集上**严格提升才接受**、否则回滚、结果留影响账本。本台把 S2 replay
 > 从"单池评测"升级为"train/val 分离 + 门控 + 账本"的 eval 台，服务检索/路由层
 > 组件（triage 文本 / quickly_check / case 排序）的演进门控。交互层（ixn-replay，
-> O8）与归因层是兄弟台，机制见 docs/evolution-ixn-replay.md。
+> O8）与归因层是兄弟台，机制见 docs/mechanism/ixn-replay.md。
 
 ## 1. 分层与角色
 

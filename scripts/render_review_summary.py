@@ -83,9 +83,13 @@ class Glossary:
         return sc if isinstance(sc, list) else ["*"]
 
     def out_of_scope(self, token, rel):
-        """token 在 rel 这个文件里是否越界（登记了 scope、且 rel 不在其中）。"""
+        """token 在 rel 这个文件里是否越界（登记了 scope、且 rel 不在其中）。
+
+        rel 一律按 POSIX 比较：scope 与 NEWCOMER_FACING 都是正斜杠书写的路径字面量，
+        Windows 的 `docs\\x.md` 会让**每个已登记代号都判成越界**。
+        """
         sc = self.scope(token)
-        return "*" not in sc and rel not in sc
+        return "*" not in sc and str(rel).replace("\\", "/") not in sc
 
 
 def split_code_spans(text):
@@ -195,14 +199,19 @@ def out_of_scope_tokens(text, rel, gl):
 
 def expand_paths(paths, root):
     """展开路径：目录 → 其下全部 .md（此前指向目录会直接 IsADirectoryError——
-    而 PR 模板写的是"可跑 --scan 自检"，指向 docs/ 是人的第一反应）。"""
+    而 PR 模板写的是"可跑 --scan 自检"，指向 docs/ 是人的第一反应）。
+
+    一律返回 POSIX 相对路径：scope 与 NEWCOMER_FACING 都是正斜杠书写的路径字面量，
+    Windows 上 str(Path) 给反斜杠会让**每个代号都判成越界**，且"新人可见面"恒报干净
+    （那条结论恰恰是这个工具最要紧的输出）。
+    """
     out = []
     for rel in paths:
         p = root / rel
         if p.is_dir():
-            out.extend(str(f.relative_to(root)) for f in sorted(p.rglob("*.md")))
+            out.extend(f.relative_to(root).as_posix() for f in sorted(p.rglob("*.md")))
         else:
-            out.append(rel)
+            out.append(str(rel).replace("\\", "/"))
     return out
 
 

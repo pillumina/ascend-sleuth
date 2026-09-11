@@ -20,7 +20,7 @@ This is a **knowledge/skills repo** — there is no build, no lint, no test suit
 | **沉淀闭环** | 定位结束 / 定期批量 | `to-postmortem`、`to-reference`、`issue-ingest` | `postmortems/inbox/` 草稿 → groom 升格为 case / reference |
 | **演进闭环** | 内容流程收尾 / 全库体检轮 | `evolve-check`（伴随）、`self-evolve`（深度轮） | EV 卡 → 执行 → 验证 → 攒批 PR（人审） |
 
-三者共用一条链：前两个产生数据，演进读数据改机制，改完回落。**机制地图、权威归属（每件事由哪篇文档说了算）与周度 runbook 在 `docs/evolution.md`——那是演进机制的唯一入口**，其余 `docs/evolution-*.md` 是论证层（改机制本身时才读）。
+三者共用一条链：前两个产生数据，演进读数据改机制，改完回落。**机制地图、权威归属（每件事由哪篇文档说了算）与周度 runbook 在 `docs/evolution.md`——那是演进机制的唯一入口**，其余 `docs/mechanism/*.md` 是论证层（改机制本身时才读）。
 
 ### Three-tier knowledge loading (controls context cost)
 

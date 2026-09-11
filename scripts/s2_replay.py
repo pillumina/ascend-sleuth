@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # s2_replay.py —— S2 校准集的 diagnose replay 记录与对照评分（Phase C2 闸门：对照评分规则定稿）
 #
-# S2 = Issue-replay 校准（evolution-pipeline §2.1 / evolution-run §3）：拿校准集 issue 的
+# S2 = Issue-replay 校准（docs/mechanism/pipeline §2.1 / docs/mechanism/run §3）：拿校准集 issue 的
 # 现象喂 diagnose（单发，无追问），产出诊断结论（路由 namespace / 命中 case / 根因判断），
 # 与 issue 实际 resolution（维护者 fix PR/结论）对照评分。
 #

@@ -1,8 +1,9 @@
 # 持续运行：长期任务、issue 评测循环、执行记录与可视化
 
-> **论证层——日常不必读。** 执行规则与机制地图见 [evolution.md](evolution.md)；本文只承载「为什么这样设计」的推导，改机制本身时才需要读。
+> **给谁读**：要改长期运行、统一执行记录与可视化的人；**什么时候读**：你要改「长期任务怎么排、执行记录怎么留、面板看什么」时；**读完能做什么**：能说清执行记录的统一口径，以及它喂给哪些视图。
+> **论证层——日常不必读。** 执行规则与机制地图见 [../evolution.md](../evolution.md)。
 
-> 四份文档的分工：**[evolution-pipeline.md](evolution-pipeline.md)** 机制总览；**[evolution-execution.md](evolution-execution.md)** 单卡执行契约；**[evolution-orchestration.md](evolution-orchestration.md)** 单轮会话编排；**本文是运行视图**，回答"我下一条指令后，系统作为**持续自演进系统**怎么跑、跑到什么时候停、我怎么看到它在跑"。它把前三份的单轮/单卡机制装配成用户可下指令、可观察、可干预的长期运行形态。使用者侧的一句话指令/报告/干预语言见 **[evolution-user-guide.md](evolution-user-guide.md)**（UX 规格）。
+> 四份文档的分工：**[pipeline.md](pipeline.md)** 机制总览；**[execution.md](execution.md)** 单卡执行契约；**[orchestration.md](orchestration.md)** 单轮会话编排；**本文是运行视图**，回答"我下一条指令后，系统作为**持续自演进系统**怎么跑、跑到什么时候停、我怎么看到它在跑"。它把前三份的单轮/单卡机制装配成用户可下指令、可观察、可干预的长期运行形态。使用者侧的一句话指令/报告/干预语言见 **[evolution-user-guide.md](../evolution-user-guide.md)**（UX 规格）。
 > 推导依据：原则一/五/七/八/九/十/十一；理论见 design-theory §4.2–4.4 与 §6。**本文自身修订 = L3 结构（methodology PR + 体系维护人审）。**
 
 ## 1. 从一条指令到持续自演进（愿景总览）
@@ -40,7 +41,7 @@ orchestration §1 的会话是**单轮**（目标 → 装载默认策略 → 对
 
 任务状态落 `proposals/tasks/<TASK-ID>.yaml`（goal、scope、来源配置、每轮引用、预算账本、停止原因），**运行时状态，本地留存、gitignore**（稳态结果以报告/采纳卡入 git）。任务是容器，会话是任务的一次执行：session state 与 task state 分离（task 记得目标与历史，session 记得本轮进度）。
 
-任务轮间调度（拉新批次 → 决定下一轮范围 → 分派轮内角色）在 DSH 上的载体是 **Agent Teams**（experimental：持久 roster + 共享任务 DAG + 持久 mailbox，含 blockedBy 依赖边，天然表达"回测轮依赖评测轮完成"）；轮内单步用 continuable subagent 即可。载体选项与启用条件见 evolution-pipeline.md §6.7。机制与载体解耦，无 DSH 环境时任务状态文件 + 手动/定时触发同样成立。
+任务轮间调度（拉新批次 → 决定下一轮范围 → 分派轮内角色）在 DSH 上的载体是 **Agent Teams**（experimental：持久 roster + 共享任务 DAG + 持久 mailbox，含 blockedBy 依赖边，天然表达"回测轮依赖评测轮完成"）；轮内单步用 continuable subagent 即可。载体选项与启用条件见 pipeline.md §6.7。机制与载体解耦，无 DSH 环境时任务状态文件 + 手动/定时触发同样成立。
 
 ## 3. Issue 的三重角色与 S2 即时对照（机制 B）
 
@@ -122,7 +123,7 @@ exec-log 只做内容流程收尾时的轻量现场记录，不做"每次 skill 
 
 **长期安全阀**：回滚率或抽审发现率超阈值 → 任务自动降授权级别（auto→review）并通知人（自我指涉治理，orchestration §4）。
 
-### 7.1 报告的用户语言规范（UX 规格见 evolution-user-guide.md §4）
+### 7.1 报告的用户语言规范（UX 规格见 ../evolution-user-guide.md §4）
 
 报告**首行回答用户的原始目标**，机制细节折叠在后面。用户下的是"命中率低"，想看的是"解决了吗、提升多少"，而不是内部状态（validated X 卡 / token Y）。报告示例如下：
 
@@ -132,7 +133,7 @@ exec-log 只做内容流程收尾时的轻量现场记录，不做"每次 skill 
 
 每条结论标注**证据强度来源**（pipeline §2.1 评分源分级渲染成用户可读的信任信号）：真实 issue 对照验证（S2，可点开看是哪几条）/ 工程师反馈确认（S1，最高但稀缺）/ 仅回放无回归（S3，下限保障）/ 系统推断（最低）。validated 结论必须可**点开证据**（issue、diff、前后指标），用户不必只信系统自评。
 
-### 7.2 中途干预的用户话术（UX 规格见 evolution-user-guide.md §5）
+### 7.2 中途干预的用户话术（UX 规格见 ../evolution-user-guide.md §5）
 
 三种干预写进用户指南，执行语义在此定义：**"停一下"** = 本轮停止 + 出中间报告 + 状态保留；**"方向不对，改重点看 X"** = 当前方向终止、未完成项保留、按新方向继续（resume 时先对齐新目标，不原样硬跑）；**"这条改动有问题，回滚"** = 该卡 rolled_back（用户侧触发，记录留痕）。需要人的决策点（dual 审批/抽审）**入队为待办并通知人**，不阻塞能自动的部分。
 

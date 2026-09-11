@@ -57,7 +57,8 @@ def collect(refs_dir: Path):
                 "summary": summary,
                 "categories": list(ap.get("categories") or []),
                 "platforms": list(ap.get("platforms") or []),
-                "file": str(p.relative_to(refs_dir.parent)),
+                # 一律 POSIX：str(Path) 在 Windows 上给反斜杠，生成物与 Linux 不一致 → --check 永久红
+                "file": p.relative_to(refs_dir.parent).as_posix(),
             }
         )
     out.sort(key=lambda e: e["id"])

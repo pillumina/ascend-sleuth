@@ -120,7 +120,7 @@ def full_decisions(decisions):
 def audit_gaps(doc, days_open):
     """卡自审：机制要求 vs 实际字段的缺口（诚实退化——面板报出来，不粉饰）。
 
-    依据 docs/evolution-pipeline.md §7「生命周期完整性规则」与 verify_proposals.py：
+    依据 docs/mechanism/pipeline.md §7「生命周期完整性规则」与 verify_proposals.py：
       - 终态卡必须有 decision 记录（审计缺口）
       - validated 卡 actual_cost 必填（成本审计缺口）
       - 执行/验证完成而卡停在 in_experiment = 卡不完整（机制推进，不靠 agent 记得改状态）

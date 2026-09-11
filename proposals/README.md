@@ -1,6 +1,6 @@
 # proposals/ —— 自演进领域状态
 
-自演进（self-evolving）体系的领域状态目录。机制定义见 `docs/evolution-pipeline.md`（三层闭环/授权/状态机）、`docs/evolution-execution.md`（proposal 契约/验证）、`docs/evolution-run.md`（持续运行）。
+自演进（self-evolving）体系的领域状态目录。机制定义见 `docs/mechanism/pipeline.md`（三层闭环/授权/状态机）、`docs/mechanism/execution.md`（proposal 契约/验证）、`docs/mechanism/run.md`（持续运行）。
 
 ## 目录与 git 归属
 
@@ -21,4 +21,4 @@
 
 - idea 卡 schema 由 `scripts/verify_proposals.py --check` 校验（与 build_index/verify_references 并列）——**由 kb-checks 的 `proposal-audit` job 在 CI 执行**（`proposals/**` 在触发路径里；2026-09-10 前只是纸面承诺）。除结构外还校验**生命周期完整性**：终态卡缺 decision / validated 缺 `actual_cost.tokens` / 在实验卡执行完未推进（status lag）/ 在实验超 14 天未闭合（僵尸卡）/ `source_signals` 缺 `trajectory` 出处；
 - **状态与面板同口径**：`verify_proposals` 报的缺口与 `scripts/ev_board_data.py` 的 `audit_gaps` 是同一件事（CI 硬门 + 面板提示两处看同一批卡，不各报各的）；
-- 归因事件在 `traces/`（diagnose attribution + S2 候选），按需聚合见 `scripts/component_tally.py`（无常驻表，定义见 evolution-pipeline.md §2）。
+- 归因事件在 `traces/`（diagnose attribution + S2 候选），按需聚合见 `scripts/component_tally.py`（无常驻表，定义见 docs/mechanism/pipeline.md §2）。

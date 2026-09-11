@@ -37,13 +37,13 @@
 | ID | 事项 | 需求 / 验收标准 | 入口闸门 | 阶段 |
 |---|---|---|---|---|
 | E1 | agent 自起草候选 case | Tier-2 未命中但最终解决的 session，diagnose 产出含候选 case 的 postmortem 落 inbox（confidence 初始低值）；groom 按正常三分类验证；采纳率进 metrics | 首次发生"Tier-2 未命中但最终解决" | v1.5 |
-| E2 | router 从 trace 错例演进 | groom 从 trace 提取路由错例（`triage.routed` 集合 vs 命中 case 实际 namespace），产出 triage-tree 修订建议（diff 形式），走 `kb/high-risk` 双签合入；修订后用 `trace_metrics.py` 复测路由准确率并记入 metrics | trace ≥20 个可归因 session（`hit.case` 与 `triage.routed` 齐全；**计数口径 = 真实 diagnose trace，S2 replay result 不计入**——与 S2 池独立，防同池自我优化，见 evolution-pipeline §11.2） | v1.5 |
+| E2 | router 从 trace 错例演进 | groom 从 trace 提取路由错例（`triage.routed` 集合 vs 命中 case 实际 namespace），产出 triage-tree 修订建议（diff 形式），走 `kb/high-risk` 双签合入；修订后用 `trace_metrics.py` 复测路由准确率并记入 metrics | trace ≥20 个可归因 session（`hit.case` 与 `triage.routed` 齐全；**计数口径 = 真实 diagnose trace，S2 replay result 不计入**——与 S2 池独立，防同池自我优化，见 mechanism/pipeline §11.2） | v1.5 |
 | E3 | embedding intake 预分诊 | 按 ADR-0002 既定设计落地：`semantics.text_hash` + `model` 字段 + `.embeddings/` sidecar（人审文件 diff 保持干净），embedding 经 API 生成、本地暴力余弦，**不引入向量库**；预分诊输出三分类 + 相似度证据，人审环节不变 | inbox 周均 ≥4 条持续 4 周，或 covered/variant 占比可观测地 >50% | 推迟项 |
 | E4 | trusted auto-promotion | 近重复 + quickly_check 通过 + 连续 N 次兄弟命中未误诊的新 case 可自动升格，标 `auto_promoted: true`，进月度抽审 | v2 入口条件（见阶段视图） | v2 |
 | E5 | trace 结构挖掘 | 从 trace 语料报告低判别力 quickly_check、噪声 triage 分支、高验证耗时 case，产出结构改进建议 | v2 入口条件 | v2 |
-| E6 | proposal 影响视图（skill-impact 语义） | `ev_proposal.py` 增 `--impact`：按 target_component 聚合历史尝试（提案×diff×eval 结果×decision 结局），evolve-check/self-evolve 产卡前必查，防同组件重提被拒方案（来源：WikiSkill skill-impact.md 咨询语义，arXiv 2608.27454；机制决议见 evolution-pipeline §12a，EV-2026-009） | 首个真实 L2 rejected/回滚簇出现（此前以手工"查同组件先例"步骤运行，见 evolve-check/self-evolve） | 按闸门 |
-| E7 | 成功模式提取信号 | evolve-check T 表加成功向信号 T8：本轮某流程/组件多次成功且成功路径可复述（对照成功 vs 失败执行差在哪）→ 产 L2 卡固化成功模式（来源：WikiSkill maintainer 成败对照分析 §3.2.2/E.2；机制决议见 evolution-pipeline §12a，EV-2026-009） | 常态运行中首次出现可复述成功模式（无信号即止，不预设轮次） | 按闸门 |
-| E8 | 元层 eval 台（arena，WikiSkill 式门控） | 从未沉淀 closed issue 池构建 selection（held-out）+ expected 标注；候选改动（triage/quickly_check/case）经 golden 无回归 + val 命中/路由严格提升门才收，否则回滚；影响账本 append（设计 docs/evolution-eval-arena.md；工具 `scripts/eval_arena.py`；决议 EV-2026-013）。test/selection 分离按规模闸门（selection ≥20） | **已达成（2026-09-04）**：selection 池运行 **16 条**（EV-2026-013 候选清单 17 → 实际池 16，口径以 .s2-replay/arena/pool-val.yaml 为准）、baseline hit 6/16（route 16/16）→ 补 3 case（14306/14448/12933，真实 fix PR）→ 独立盲测 3/3 miss→hit、对照 37.5%→56.3% 无回归 → 门控 accept 合入 + 影响账本（EV-2026-013/014）。残余：test/selection 分离（selection ≥20 后启用） | 已完成 |
+| E6 | proposal 影响视图（skill-impact 语义） | `ev_proposal.py` 增 `--impact`：按 target_component 聚合历史尝试（提案×diff×eval 结果×decision 结局），evolve-check/self-evolve 产卡前必查，防同组件重提被拒方案（来源：WikiSkill skill-impact.md 咨询语义，arXiv 2608.27454；机制决议见 mechanism/pipeline §12a，EV-2026-009） | 首个真实 L2 rejected/回滚簇出现（此前以手工"查同组件先例"步骤运行，见 evolve-check/self-evolve） | 按闸门 |
+| E7 | 成功模式提取信号 | evolve-check T 表加成功向信号 T8：本轮某流程/组件多次成功且成功路径可复述（对照成功 vs 失败执行差在哪）→ 产 L2 卡固化成功模式（来源：WikiSkill maintainer 成败对照分析 §3.2.2/E.2；机制决议见 mechanism/pipeline §12a，EV-2026-009） | 常态运行中首次出现可复述成功模式（无信号即止，不预设轮次） | 按闸门 |
+| E8 | 元层 eval 台（arena，WikiSkill 式门控） | 从未沉淀 closed issue 池构建 selection（held-out）+ expected 标注；候选改动（triage/quickly_check/case）经 golden 无回归 + val 命中/路由严格提升门才收，否则回滚；影响账本 append（设计 docs/mechanism/eval-arena.md；工具 `scripts/eval_arena.py`；决议 EV-2026-013）。test/selection 分离按规模闸门（selection ≥20） | **已达成（2026-09-04）**：selection 池运行 **16 条**（EV-2026-013 候选清单 17 → 实际池 16，口径以 .s2-replay/arena/pool-val.yaml 为准）、baseline hit 6/16（route 16/16）→ 补 3 case（14306/14448/12933，真实 fix PR）→ 独立盲测 3/3 miss→hit、对照 37.5%→56.3% 无回归 → 门控 accept 合入 + 影响账本（EV-2026-013/014）。残余：test/selection 分离（selection ≥20 后启用） | 已完成 |
 
 ## 三、可维护性
 
@@ -70,7 +70,7 @@
 | O5 | 容量趋势预测 | 容量表增加近 4 周增速与"预计达 80% 日期"，拆分预告由数据给出而非事后发现 | A2 首次触发前后 | v1.5 |
 | O6 | 诊断报告（trace 派生视图） | diagnose 收尾渲染人读报告：症状→路由→候选→验证→根因→fix 的推理叙事 + 证据回溯（每判断指回 trace step）+ 强度标注（已验证/推测/未知）。trace 为唯一数据源、零数据模型改动；默认本地留档，分享前脱敏；1-2 分钟读完（证据链折叠可展开）。质量基准见历史讨论 | 首次真实诊断后 | v1.5 |
 | O7 | 健康报表（groom R10 标准产出） | groom 产出自包含 HTML 数据报表（离线生成，`health_report.py` 脚本 + 必要时 agent 美化样式，数据不变）：①知识库结构视图（容量/覆盖/缺口，git 数据，本地=中心一致；知识结构图可用 archify）②系统运作视图（命中/误诊/趋势，traces 汇总，头部诚实标注〔中心全量 N sessions〕或〔本地视角 M sessions〕）。**只读聚合数据**（timeline.yaml + _index 头注 + trace_metrics/replay 脚本输出），不读 case 全文（token 预算，呼应 M5）。**职责划分**：本地 groom 也产（个人视角），中心 owner groom 产全量，同一指令、数据范围不同，如实标注。服务"改进知识库/改进系统流程"的决策（原则八决策端） | 任一 live 指标期积累后 | v1.5 |
-| O8 | 交互型 replay 评测（ixn-replay） | 分期披露脚本驱动 diagnose 交互，按"追问召回 + 决定性字段在链 + 过早结论"评分（机制决议 EV-2026-012；设计 docs/evolution-ixn-replay.md；工具 `scripts/ixn_replay.py`）。落地形态分两级：harness v1（prepare/score/aggregate + 样本库筛选制入库）→ 常态化（评分阈值固化、交互面分数进 timeline，须分母标注）。**归因型 replay（PR 引用为 gold）为兄弟维度，蓝图** | **首级已达成（2026-09-04）**：harness v1（EV-2026-012/016/017）+ 首批 staged n=10（held_out 8 + self 2）出分并经人复核进 timeline（2026-W37 行，EV-2026-018）。残余：常态化前提 held_out ≥10 未达（现 8）；该 timeline 行 heldout 0.975 / self 1.0 为裸比例缺分母、held_out n=8 属小样本未标注——未满足本行「带分母」前提，按 O1 补正后视为常态化首行 | v1.5 · 首级达成 |
+| O8 | 交互型 replay 评测（ixn-replay） | 分期披露脚本驱动 diagnose 交互，按"追问召回 + 决定性字段在链 + 过早结论"评分（机制决议 EV-2026-012；设计 docs/mechanism/ixn-replay.md；工具 `scripts/ixn_replay.py`）。落地形态分两级：harness v1（prepare/score/aggregate + 样本库筛选制入库）→ 常态化（评分阈值固化、交互面分数进 timeline，须分母标注）。**归因型 replay（PR 引用为 gold）为兄弟维度，蓝图** | **首级已达成（2026-09-04）**：harness v1（EV-2026-012/016/017）+ 首批 staged n=10（held_out 8 + self 2）出分并经人复核进 timeline（2026-W37 行，EV-2026-018）。残余：常态化前提 held_out ≥10 未达（现 8）；该 timeline 行 heldout 0.975 / self 1.0 为裸比例缺分母、held_out n=8 属小样本未标注——未满足本行「带分母」前提，按 O1 补正后视为常态化首行 | v1.5 · 首级达成 |
 
 ## 五、流程合理性
 
@@ -156,7 +156,7 @@
 | 第 6 个月 | 容量推演重算（A5） | ADR-0002 修订或确认 |
 | 持续 | ADR-0002 三条重评触发条件监控（namespace >100 且路由劣化 / Tier 3 >5K 篇且挽救率不足 / 真联邦出现） | metrics + groom |
 | 季度 | 用 metrics 校准本 roadmap 的闸门数值；回顾"三层架构是否真的在变好用" | 本文件 + `metrics/timeline.yaml` |
-| 季度 | **L3 自演进季度自评**（evolution-pipeline §6.6 六项审视：信号质量/授权/产出/腐化/参数/流程 → 结论落参数或结构提案） | `proposals/reviews/<YYYY-Qn>.md`（首次真实自评：2026-Q4，数据前提 = ≥1 季度运行 + S1 反馈 >0；2026-Q3 已做 dry-run 预演） |
+| 季度 | **L3 自演进季度自评**（mechanism/pipeline §6.6 六项审视：信号质量/授权/产出/腐化/参数/流程 → 结论落参数或结构提案） | `proposals/reviews/<YYYY-Qn>.md`（首次真实自评：2026-Q4，数据前提 = ≥1 季度运行 + S1 反馈 >0；2026-Q3 已做 dry-run 预演） |
 
 ## 明确不做
 
