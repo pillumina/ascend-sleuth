@@ -125,3 +125,26 @@ decisions:
       范围规则只能约束增量，存量历史读起来仍需要查词表。
       ④**`CLAUDE.md` 仍未同步**（未纳入越界扫描的清理面，且它逐篇罗列 evolution 文档的
       描述已被 EV-2026-052 的分层改变）——它是 agent 常驻上下文，需单独决定。
+  - who: agent（复盘补记：缺陷由另一 session 在 Windows 上发现并修复）
+    when: 2026-09-11
+    type: action
+    conclusion: >-
+      **事后缺陷记录（本条缺陷就在本卡的交付物里）**。`scope` 与 `NEWCOMER_FACING` 都是
+      **正斜杠**路径字面量，而 `expand_paths()` 的目录分支用 `str(f.relative_to(root))` 产
+      路径——Windows 上给反斜杠。后果：①`out_of_scope()` 是精确字符串成员判断 → **每个已登记
+      代号都被判越界**，实测 `docs/roadmap.md`（正是 A/E/M/O/P 系列的权威文档）被报成 31 处
+      越界；②经目录展开时 `docs/evolution.md` 会掉出新人面分类。修复：commit `0e2ed02`
+      （**已合入 main**）——路径在边界统一归一 POSIX，`out_of_scope()` 比较前也归一。
+      **对本卡 measure 的影响（如实标注，已核实）**：本卡 measure 用**显式文件路径**调用
+      （`--scan README.md CONTEXT.md docs/evolution.md`），走 `expand_paths` 的 else 分支、
+      正斜杠原样保留，因此该 measure 在 Windows 上**仍然有效、不是空转**。上游 commit
+      message 称此 bug 让工具"永远打印『新人可见面干净』"——那对**显式路径**调用不成立；
+      真实损害是目录展开路径的误报洪水与分类盲区。核实方式：探针
+      `out_of_scope('A2','docs\\roadmap.md')` 修复前 True、修复后 False。
+      ③残留更新：上游建议"把 `--scan` 接进 CI"**未做**（存量偏多，且按本仓准入判据还差
+      "复发 ≥2 次"），与本卡残留①一致。另**计数口径**：本卡"46 处 / 11 个文件"是
+      `docs/` + 三份根文档、且 `proposals/` 与 `docs/adr/` 按工具豁免的口径；另有一次盘点报
+      "154 处 / 73 个文件"，覆盖面更宽——两者不可直接比较。
+      ④**更正本卡残留 ④ 的依据**：残留④前半句成立（当时 CLAUDE.md 确未同步），**后半句不成立**
+      ——核验后 CLAUDE.md 零处引用 evolution 文档。CLAUDE.md 已在 commit `ec1ba16` 同步。
+      按只追加纪律不改原文，以本条为准。

@@ -138,27 +138,45 @@ def ex_signal_path(root: Path):
         "source_signals": [{"signal": "process_friction", "evidence": "演练信号",
                             "trajectory": ["scripts/rehearse_evolve_loop.py"]}],
         "actual_cost": None,
-        "decisions": [{"who": "agent", "when": "2026-09-10", "type": "proposal", "conclusion": "演练产卡"}],
+        # 结论刻意写长（最长那条 >70 字）：面板渲染断言用"**被展开卡**的最长 conclusion 是否
+        # 完整出现在渲染文本中"来验证全文未被截断，而它挑的是按 created_at 降序排第一的卡。
+        # 本演练每轮都会新产一张卡（created_at = 当天），所以当"当天晚于最新已提交卡的日期"时，
+        # 本卡**就是**排第一的那张——结论若只有"演练产卡"这种 4 字短句，那条断言必然失败
+        # （2026-09-11 实测：macOS 复现，Linux 亦复现，与平台无关）。夹具应当长成断言所假设的
+        # 样子：**别为了"简洁"把这几条改短**。
+        "decisions": [{"who": "agent", "when": "2026-09-10", "type": "proposal",
+                       "conclusion": "演练：产卡即执行——方案成形后先落卡，记录 layer / title / "
+                                     "source_signals 等字段并把状态置为 in_experiment；本轮目的是"
+                                     "验证卡结构与生命周期规则的机器可判性，不产生真实知识变更。"}],
     })
     card_path.write_text(yaml.safe_dump(card, allow_unicode=True, sort_keys=False), encoding="utf-8")
     rc, out = py(root, "scripts/verify_proposals.py", "--check")
     check("在途卡（只记 proposal）不误报", rc == 0, out[-300:])
 
     # 反例：只记 action（验证还在跑）也不该误报——首版规则在这里误报过
-    card["decisions"].append({"who": "agent", "when": "2026-09-10", "type": "action", "conclusion": "演练执行"})
+    card["decisions"].append({"who": "agent", "when": "2026-09-10", "type": "action",
+                              "conclusion": "演练：只追加一条 action 记录（验证仍在跑）——用于证明"
+                                            "『只记 action』属正常中间态、校验器不应报错；随后再"
+                                            "补齐 eval 与 decision，把卡推进到终态。"})
     card_path.write_text(yaml.safe_dump(card, allow_unicode=True, sort_keys=False), encoding="utf-8")
     rc, out = py(root, "scripts/verify_proposals.py", "--check")
     check("在途卡（只记 action、验证未跑）不误报", rc == 0, out[-300:])
 
     # 执行 + 验证都完成但没判断 → 必须报
-    card["decisions"].append({"who": "agent", "when": "2026-09-10", "type": "eval", "conclusion": "演练验证"})
+    card["decisions"].append({"who": "agent", "when": "2026-09-10", "type": "eval",
+                              "conclusion": "演练：追加 eval 记录——按影响面分级，本例属纯文档/注释面，"
+                                            "不跑 replay，只做 scan + 人审；判据是生命周期三阶段齐备"
+                                            "后，校验器能正确区分『中间态』与『未闭合』两种情形。"})
     card_path.write_text(yaml.safe_dump(card, allow_unicode=True, sort_keys=False), encoding="utf-8")
     rc, out = py(root, "scripts/verify_proposals.py", "--check")
     check("卡不完整（action+eval 齐但无 decision）被拦", rc != 0 and "卡不完整" in out, out[-300:])
 
     # 补判断 → 终态（validated 需 actual_cost.tokens，否则报成本缺口）
     card["status"] = "validated"
-    card["decisions"].append({"who": "agent", "when": "2026-09-10", "type": "decision", "conclusion": "演练采纳"})
+    card["decisions"].append({"who": "agent", "when": "2026-09-10", "type": "decision",
+                              "conclusion": "演练：追加 decision 记录并置 validated——结论是四条生命"
+                                            "周期规则（终态需判断、validated 需成本、执行完未推进、"
+                                            "僵尸卡）都能被机械拦住；本卡是演练夹具，不代表真实决策。"})
     card_path.write_text(yaml.safe_dump(card, allow_unicode=True, sort_keys=False), encoding="utf-8")
     rc, out = py(root, "scripts/verify_proposals.py", "--check")
     check("validated 缺 actual_cost.tokens 被拦（成本审计）", rc != 0 and "成本审计缺口" in out, out[-300:])

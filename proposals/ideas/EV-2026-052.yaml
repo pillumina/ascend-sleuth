@@ -121,3 +121,18 @@ decisions:
       报"越界用途"（本卡让范围规则进入了人读文档，但机器侧未落地）。
       ④**CLAUDE.md 未同步**——它仍把 `docs/evolution-*.md` 逐篇罗列，且含多篇已被本次
       重新分层的描述；它是 agent 的常驻上下文，改动需单独决定（避免与本次人读面改动混在一起）。
+  - who: agent（复盘补记：缺陷由另一 session 在 Windows 上发现并修复）
+    when: 2026-09-11
+    type: action
+    conclusion: >-
+      **事后缺陷记录**。①`build_docs_index.py` 写 README 用 `Path.write_text`（文本模式），
+      Windows 上把 `\n` 翻成 `\r\n` → 入库产物与 Linux 不一致、工作树出现内容为空的 phantom
+      修改；`--check` 比的是文本而非字节，所以它**不会红**，但 diff 会脏、让人误判"生成物不
+      一致"。修复：commit `4d1249d` 改走 `_stdio.write_text_lf`（同批改了 `build_index.py` /
+      `build_procedure_index.py` / `build_ref_summary_index.py` / `ev_proposal.py` 等 13 处
+      入库写入）；截至记录时未合入 main（见 EV-2026-053 中同批搁浅的说明）。
+      ②**更正本卡残留 ④ 的依据**：残留④称"CLAUDE.md 仍把 `docs/evolution-*.md` 逐篇罗列"
+      ——**这条不成立**。事后核验 `grep -n 'evolution' CLAUDE.md` 零命中：CLAUDE.md 从未列过
+      那些文档，真实缺口是缺三闭环定位、Eval 节缺 holdout 与门禁分级、约束段缺本次新增项。
+      CLAUDE.md 已在 commit `ec1ba16` 同步（补三闭环节 + CI 清单 + 四条约束）。按只追加纪律
+      不改原文，以本条为准。
