@@ -205,8 +205,19 @@ return {
             category: doc.detected_category ? String(doc.detected_category) : '',
             activeCase: activeCase,
             activeCaseInKb: activeCase ? !!(kbIds && kbIds.has(activeCase)) : false,
-            feedbackPending: doc.feedback_pending ? String(doc.feedback_pending) : null,
-            feedback: doc.feedback ? String(doc.feedback) : null,
+            // 反馈债标记：**新口径**是 `feedback.outcome: pending`（配 `feedback.case`），词表见
+            // 仓库根 `trace-status.yaml`；旧 trace 里是 `feedback_pending: <case-id>`。本机历史
+            // trace 两种都存在，所以两种都读（先新后旧）——只认一种会让另一半会话的"待回报"
+            // 从面板上静默消失（词表改了、读取端没跟，就是这类断链）。
+            feedbackPending: (function () {
+              const fb = doc.feedback
+              if (fb && typeof fb === 'object' && String(fb.outcome || '') === 'pending') {
+                return fb.case ? String(fb.case) : 'pending'
+              }
+              if (typeof fb === 'string' && fb.trim() === 'pending') return 'pending'
+              return doc.feedback_pending ? String(doc.feedback_pending) : null
+            })(),
+            feedback: doc.feedback && typeof doc.feedback === 'object' ? String(doc.feedback.outcome || '') : (doc.feedback ? String(doc.feedback) : null),
             userSteps: Number(userSteps) || 0,
             agentSteps: Number(agentSteps) || 0,
             lastAction: lastAction,
@@ -919,7 +930,7 @@ return {
 
     const tool = harness.defineTool({
       name: 'ascend_trace_status',
-      description: '查询 ascend-sleuth 诊断系统当前 traces/ 状态：列出所有诊断会话（session_id/status/framework/category/active_case/feedback_pending/步骤数/更新时间）。diagnose 流程启动时用于检查未完成 session 或 feedback 债。',
+      description: '查询 ascend-sleuth 诊断系统当前 traces/ 状态：列出所有诊断会话（session_id/status/framework/category/active_case/feedback.outcome/步骤数/更新时间）。diagnose 流程启动时用于检查未完成 session 或 feedback 债。',
       parameters: {
         type: 'object',
         properties: {

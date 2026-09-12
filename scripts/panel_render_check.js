@@ -1241,6 +1241,23 @@ _MS._run_no_pipe = no_fallback`)
     expect('面板不写入报告内容（只读入口）', !/ascend-write-report/.test(ascSrc) && !/ascend-write-report/.test(hostSrc))
   }
 
+  // —— 词表口径：反馈债读 feedback.outcome（新口径）+ 兼容旧 trace 的 feedback_pending ——
+  // 踩坑（实测）：词表从 `feedback_pending` 改成 `feedback.outcome: pending` 之后，**写侧改了、
+  // 读侧没跟**——面板 host 仍只读旧字段，于是"待回报"从会话列表上静默消失：人以为没有债，
+  // 实际是没人报结果。所以这里把"新口径必须读、旧件必须仍能读"两侧都钉住。
+  {
+    const hostSrc = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+    const mhSrc = fs.readFileSync(path.join(repo, 'scripts/metrics_health.py'), 'utf8')
+    expect('host 读新口径 feedback.outcome === pending',
+      /String\(fb\.outcome \|\| ''\) === 'pending'/.test(hostSrc))
+    expect('host 兼容旧 trace 的 feedback_pending（历史件仍要显示待回报）',
+      /doc\.feedback_pending/.test(hostSrc))
+    expect('面板补反馈指令指向新口径而非旧字段名',
+      /feedback\.outcome: pending/.test(ascSrc) && !/含 feedback_pending 的/.test(ascSrc))
+    expect('metrics_health 的补反馈指令同样用新口径',
+      /含 feedback\.outcome: pending 的/.test(mhSrc) && !/含 feedback_pending 的/.test(mhSrc))
+  }
+
   // —— 动态包的运行环境契约：客户端包内没有浏览器定时器全局 ——
   // 实测踩过：面板里一处 `setTimeout` 让用户点「打开报告」直接拿到
   // "RPC 失败: setTimeout is not available in a dynamic client half"。延时只能走注入的
