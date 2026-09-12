@@ -205,6 +205,9 @@ return {
             category: doc.detected_category ? String(doc.detected_category) : '',
             activeCase: activeCase,
             activeCaseInKb: activeCase ? !!(kbIds && kbIds.has(activeCase)) : false,
+            // 收起态副标题的原料：问题背景段（要回答"这单在查什么"）。不用最后一个事件的 output——
+            // 那常常是产出报告 / 续接 / 回报这类记录维护动作，读者看不懂（实测反馈）。
+            summarySnippet: doc.summary ? String(doc.summary).replace(/\s+/g, ' ').trim().slice(0, 140) : null,
             // 反馈债标记：**新口径**是 `feedback.outcome: pending`（配 `feedback.case`），词表见
             // 仓库根 `trace-status.yaml`；旧 trace 里是 `feedback_pending: <case-id>`。本机历史
             // trace 两种都存在，所以两种都读（先新后旧）——只认一种会让另一半会话的"待回报"

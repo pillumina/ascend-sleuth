@@ -122,6 +122,17 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       unknown: { label: '未知', color: 'var(--c-gray)', acc: 'var(--acc-gray)' },
     }
     const RESUMEABLE = { in_progress: true, escalated: true }
+    // 诊断轨迹的人读语言：内部 action 名（triage / quickly_check / load_full / miss …）是回放与归因
+    // 的词表，不是阅读语言——人读视图给中文标签，原词留在 title 里供维护者回查。
+    const STEP_LABELS = {
+      triage: '路由分类', triage_semantic: '语义兜底路由', load_index: '读候选索引', quickly_check: '候选核验',
+      load_full: '读候选正文', run_check: '逐条验证', hit: '命中', miss: '候选全未命中', tier3: '历史案例检索',
+      reference_lookup: '取先验知识', procedure_follow: '按流程排查', source_analysis: '源码分析',
+      attribution: '误诊归因', resume: '续接', report: '产出/修订报告', feedback: '回报结果',
+    }
+    // **记录维护类**动作（产出报告 / 续接 / 回报 / 归因）回答的是"记录被改了什么"，不是"问题查到哪了"。
+    // 实测反馈：展开后"带了很多和问题无关的记录"——人读视图默认收起它们，完整轨迹里仍可见。
+    const PROC_ACTIONS = { report: true, resume: true, feedback: true, attribution: true }
     const sedMeta = {
       none: { label: '未沉淀', color: T.text2 },
       submitted: { label: '已提交待审', color: 'var(--c-blue)' },
@@ -323,6 +334,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const [openErr, setOpenErr] = React.useState(null)
       const [openVia, setOpenVia] = React.useState(null)
       const [sedCmd, setSedCmd] = React.useState(false)
+      const [fullTrace, setFullTrace] = React.useState(false)   // 人读视图（默认）⇄ 完整轨迹
       const meta = statusMeta[s.status] || statusMeta.unknown
       const canResume = RESUMEABLE[s.status]
 
@@ -331,7 +343,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         setOpen(true)
         setSteps({ loading: true })
         host.call('ascend-traces-detail', { sessionId: ownerSessionId || null, traceFile: s.file })
-          .then(r => setSteps({ loading: false, list: r && r.ok ? r.steps : [], summary: r && r.summary, refCount: r && r.refCount, sedimented: r && r.sedimented, error: r && r.error }))
+          .then(r => setSteps({ loading: false, list: r && r.ok ? r.steps : [], summary: r && r.summary, refCount: r && r.refCount, sedimented: r && r.sedimented, sedimentCandidates: r && r.sedimentCandidates, error: r && r.error }))
           .catch(e => setSteps({ loading: false, list: [], error: 'RPC 失败: ' + String(e && e.message || e) }))
       }
       function doCopy(txt, key) { copyText(txt).then(ok => setCopied(ok ? key : 'fail')) }
@@ -388,30 +400,47 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               React.createElement('code', { style: { userSelect: 'all', background: T.bg, border: '1px solid ' + T.border, borderRadius: 6, padding: '5px 8px', display: 'block', fontSize: 12.5, fontFamily: 'var(--font-mono)' } },
                 '用 /skill:to-postmortem 沉淀 ' + s.sessionId),
             ) : null,
-            steps.list.map((st, i) => {
-              const isUser = st.role === 'user'
-              const isRef = st.action === 'reference_lookup'
-              const ev = st.evidence
-              const evOpenHere = evOpen === i
-              const hasInline = !!(ev && ev.inline)
-              const hasFiles = !!(ev && ev.files && ev.files.length)
-              const hasMissing = !!(ev && ev.missing)
-              const hasEv = hasInline || hasFiles || hasMissing
-              // 刻度点颜色 = 这一步在流程里扮演什么角色：用户输入 / 参考层 / 有证据的 agent 步 / 普通步
-              const dotColor = isUser ? 'var(--acc-blue)' : (isRef ? 'var(--acc-purple)' : (hasEv ? 'var(--acc-green)' : null))
-              const last = i === steps.list.length - 1
-              return React.createElement('div', { key: i, className: 'sleu-tl-row' },
-                // 左侧：刻度点 + 竖轨（"第几步"能一眼数出来；最后一步不画轨）
-                React.createElement('div', { className: 'sleu-tl-mk' },
-                  React.createElement('span', { className: 'sleu-tl-dot', style: dotColor ? { background: dotColor } : undefined }),
-                  last ? null : React.createElement('span', { className: 'sleu-tl-rail' }),
+            // 轨迹区：**人读视图（默认）** 只给"问题查到哪了"——记录维护类动作收起、推理不铺开、
+            // action 用中文标签；「看完整轨迹」回到逐条原始事件（回放/归因用）。
+            (function () {
+              const all = steps.list
+              const shown = fullTrace ? all : all.filter(st => !PROC_ACTIONS[st.action])
+              const hidden = all.length - shown.length
+              return React.createElement('div', null,
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' } },
+                  React.createElement('span', { style: { fontSize: 12.5, color: T.text2 } },
+                    fullTrace
+                      ? '完整轨迹（' + all.length + ' 条原始事件，含推理与记录维护动作）'
+                      : ('诊断轨迹：' + shown.length + ' 步' + (hidden ? '（已收起 ' + hidden + ' 条记录维护动作）' : ''))),
+                  React.createElement('button', { type: 'button', className: 'sleu-chip', onClick: () => setFullTrace(!fullTrace), style: btnGhost },
+                    fullTrace ? '只看诊断' : '看完整轨迹'),
                 ),
-                React.createElement('div', { style: { flex: 1, minWidth: 0, paddingBottom: last ? 0 : 14 } },
-                  React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 7, fontSize: 13.5, color: T.text2, flexWrap: 'wrap' } },
-                    React.createElement('span', { style: { fontWeight: 700, color: isUser ? T.brand : T.text } }, isUser ? '用户' : 'Agent'),
-                    st.step ? React.createElement('span', { className: 'sleu-num', style: { fontSize: 12.5 } }, '第 ' + st.step + ' 步') : null,
-                    st.action ? React.createElement('span', { className: 'sleu-mono', style: { background: T.bg2, padding: '1px 7px', borderRadius: 5, fontSize: 11.5, color: T.text2 } }, st.action) : null,
-                    isRef ? React.createElement('span', { className: 'sleu-chip', style: { background: 'var(--tint-purple)', color: 'var(--d-purple)', borderRadius: 999, padding: '1px 8px', fontSize: 11.5, fontWeight: 600 } }, '参考层') : null,
+                shown.map((st, i) => {
+                  const isUser = st.role === 'user'
+                  const isRef = st.action === 'reference_lookup'
+                  const ev = st.evidence
+                  const evOpenHere = evOpen === i
+                  const hasInline = !!(ev && ev.inline)
+                  const hasFiles = !!(ev && ev.files && ev.files.length)
+                  const hasMissing = !!(ev && ev.missing)
+                  const hasEv = hasInline || hasFiles || hasMissing
+                  // 刻度点颜色 = 这一步在流程里扮演什么角色：用户输入 / 参考层 / 有证据的 agent 步 / 普通步
+                  const dotColor = isUser ? 'var(--acc-blue)' : (isRef ? 'var(--acc-purple)' : (hasEv ? 'var(--acc-green)' : null))
+                  const last = i === shown.length - 1
+                  return React.createElement('div', { key: i, className: 'sleu-tl-row' },
+                    // 左侧：刻度点 + 竖轨（"第几步"能一眼数出来；最后一步不画轨）
+                    React.createElement('div', { className: 'sleu-tl-mk' },
+                      React.createElement('span', { className: 'sleu-tl-dot', style: dotColor ? { background: dotColor } : undefined }),
+                      last ? null : React.createElement('span', { className: 'sleu-tl-rail' }),
+                    ),
+                    React.createElement('div', { style: { flex: 1, minWidth: 0, paddingBottom: last ? 0 : 14 } },
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 7, fontSize: 13.5, color: T.text2, flexWrap: 'wrap' } },
+                        React.createElement('span', { style: { fontWeight: 700, color: isUser ? T.brand : T.text } }, isUser ? '用户' : 'Agent'),
+                        st.step ? React.createElement('span', { className: 'sleu-num', style: { fontSize: 12.5 } }, '第 ' + st.step + ' 步') : null,
+                        st.action ? (fullTrace
+                          ? React.createElement('span', { className: 'sleu-mono', style: { background: T.bg2, padding: '1px 7px', borderRadius: 5, fontSize: 11.5, color: T.text2 } }, st.action)
+                          : React.createElement('span', { title: st.action, style: { background: T.bg2, padding: '1px 7px', borderRadius: 5, fontSize: 11.5, color: T.text2 } }, STEP_LABELS[st.action] || st.action)) : null,
+                        isRef ? React.createElement('span', { className: 'sleu-chip', style: { background: 'var(--tint-purple)', color: 'var(--d-purple)', borderRadius: 999, padding: '1px 8px', fontSize: 11.5, fontWeight: 600 } }, '参考层') : null,
                     // 证据存在性**提到步骤行**：扫轨迹时先看哪几步带证据，不必逐个展开
                     hasEv ? React.createElement('span', { style: { display: 'flex', gap: 4, alignItems: 'center' } },
                       React.createElement('span', { style: tinyBadge('var(--d-green)') }, '证据' +
@@ -421,7 +450,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                     ) : null,
                   ),
                   st.output ? React.createElement('div', { style: { marginTop: 4, color: T.text, fontSize: 14.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.75 } }, st.output) : null,
-                  st.reason ? React.createElement('div', { style: { marginTop: 3, color: T.text2, fontSize: 13.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontStyle: 'italic', lineHeight: 1.68 } },
+                  // 推理（决策依据）只在完整轨迹里铺开：它写给回放与误诊归因，不是给人读的叙述
+                  // （实测：18 步的 trace 里 reason 占 2800 字，是展开后"很多无关记录"的主体）。
+                  fullTrace && st.reason ? React.createElement('div', { style: { marginTop: 3, color: T.text2, fontSize: 13.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontStyle: 'italic', lineHeight: 1.68 } },
                     '推理: ' + st.reason) : null,
                   st.content ? React.createElement('div', { style: { marginTop: 4, color: T.text2, fontSize: 14.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.75 } }, st.content) : null,
                   // 证据明细（可点开原文 / 打开文件）——存在性已在上面标了，这里给操作
@@ -435,9 +466,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                     !hasInline && !hasFiles && hasMissing ? React.createElement('span', { style: { color: T.text2 } }, '这一步没有留证据') : null,
                   ) : null,
                   evOpenHere && ev.inline ? React.createElement('pre', { style: { marginTop: 6, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 8, padding: 10, fontSize: 12.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: T.text, lineHeight: 1.7, maxHeight: 320, overflowY: 'auto' } }, ev.inline) : null,
-                ),
+                  ),
+                )
+              })
               )
-            })
+            })()
           )
         } else {
           body = React.createElement('div', { style: { color: T.text2, padding: 10 } }, steps && steps.error ? '加载失败: ' + steps.error : '无轨迹步骤')
@@ -508,10 +541,22 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       })
       for (const c of closeCmds) actions.push({ key: c.key, label: c.label, style: toneStyle(c.tone), title: '生成闭环指令（复制后粘到对话执行）', cmd: c.cmd })
       const openedCmd = actions.filter(a => a.key === showCmd)[0] || null
-      // 报告与沉淀候选入口（diagnose 步骤 6 的产出）：报告是人读件的落点，"待沉淀 N 条"让
-      // "这单还能沉淀什么"在卡片上就看得见（trace 里存的是结构化候选，面板只报条数，
-      // 正文留在报告与 trace 里——面板不做二次编辑）。
+      // 报告与沉淀候选入口（diagnose 步骤 6 的产出）：报告是人读件的落点；沉淀候选除了条数，
+      // **展开卡片时把每条列出来**（kind + 一句话）——只给一个数字，读者没法判断"这 3 条要不要做、
+      // 各是什么"（实测反馈："沉淀3条我也挺奇怪的，为啥是3条"）。明细来自 detail RPC，只在展开时取。
       const reportPath = s.reportFile ? 'traces/' + s.reportFile : null
+      const cands = (open && steps && steps.sedimentCandidates) ? steps.sedimentCandidates : []
+      const candList = cands.length
+        ? React.createElement('div', { style: { marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 } },
+            React.createElement('div', { style: { fontSize: 11.5, color: T.text2 } },
+              '沉淀候选（' + cands.length + ' 条，与报告第 8 节同源）——值不值得做由你判断：'),
+            cands.map((c, i) => React.createElement('div', { key: i, style: { display: 'flex', alignItems: 'baseline', gap: 6, fontSize: 11.5 } },
+              React.createElement('span', { style: tinyBadge(c.kind === 'case' ? 'var(--d-green)' : 'var(--d-purple)') }, c.kind || '?'),
+              React.createElement('span', { title: c.summary, style: { flex: 1, minWidth: 0, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, c.summary || '(无摘要)'),
+              c.suggestedSkill ? React.createElement('span', { className: 'sleu-mono', style: { color: T.text2, flexShrink: 0 } }, c.suggestedSkill) : null,
+            )),
+          )
+        : null
       const docRow = (reportPath || s.sedimentCandidates)
         ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' } },
             reportPath ? React.createElement('button', {
@@ -528,6 +573,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // 展开的命令块只出现一次（谁被点开就显示谁），按钮本身用"未选中的淡一档"表达选中关系
       const actionArea = React.createElement('div', { style: { margin: '0 16px 12px', paddingTop: 10, borderTop: '1px dashed ' + T.border } },
         docRow,
+        candList,
         React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
           actions.map(a => React.createElement('button', {
             key: a.key, type: 'button', title: a.title,
@@ -558,14 +604,15 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               React.createElement(Chevron, { open: open }),
             ),
           ),
-          // 副行：**收起态显示"这单在查什么"**——最后一步 Agent 的结论（host 已带 lastOutput，
-          // 不需要额外 RPC）。旧版显示"框架 · 平台 · 类别"，那是标签不是信息：不点开不知道在查什么。
-          // 展开态仍给完整的环境标签（那时读者需要细节）。
+          // 副行：**收起态显示"这单在查什么"**——取 trace 的问题背景段（host 带的 summarySnippet）。
+          // 旧版显示"最后一步 · Agent" + 最后一个事件的 output，读者看不懂：最后一个事件常常是
+          // 产出报告 / 续接 / 回报这类**记录维护**动作（实测反馈："最后一步……让人看不懂也觉得很奇怪"），
+          // 它回答的是"记录被改了什么"，不是"这单在查什么"。没有背景段才退回最后一个事件的输出。
           React.createElement('div', { style: { color: T.text2, fontSize: 13.5, marginTop: 5, lineHeight: 1.6, display: 'flex', gap: 6, alignItems: 'baseline' } },
-            !open && s.lastOutput
+            !open && (s.summarySnippet || s.lastOutput)
               ? React.createElement(React.Fragment, null,
-                  React.createElement('span', { style: { color: T.text2, flexShrink: 0 } }, s.lastRole === 'user' ? '最后一步 · 用户' : '最后一步 · Agent'),
-                  React.createElement('span', { title: s.lastOutput, style: { color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 } }, s.lastOutput),
+                  React.createElement('span', { style: { color: T.text2, flexShrink: 0 } }, s.summarySnippet ? '背景' : '末条记录'),
+                  React.createElement('span', { title: s.summarySnippet || s.lastOutput, style: { color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 } }, s.summarySnippet || s.lastOutput),
                 )
               : React.createElement('span', null, [s.framework, s.platform, s.category].filter(Boolean).join(' · ') || '—'),
           ),
@@ -577,7 +624,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             '轨迹: ' + s.userSteps + ' 用户输入 / ' + s.agentSteps + ' agent 步骤'),
           s.feedbackPending ? React.createElement('div', { style: { color: T.warn, fontSize: 13.5, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 } },
             React.createElement(Dot, { color: T.warn }),
-            '结果还没回报（' + s.feedbackPending + '）——好在下面可以直接闭环') : null,
+            '结果待回报：' + s.feedbackPending + '（下方可生成回报指令）') : null,
         ),
         // 状态指令区：续接（仅活跃会话） + 闭环四种结局；形态见上方 actionArea 注释
         actionArea,
@@ -604,8 +651,16 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       if (!r || !r.ok) return React.createElement('div', { style: { ...base, padding: 16, color: T.error } }, '无法读取 traces/: ' + (r && r.error || '未知错误'))
 
       let sessions = r.sessions || []
-      const nActive = sessions.filter(s => s.status === 'in_progress').length
-      const nPending = sessions.filter(s => s.feedbackPending).length
+      // 待跟进**三类互斥**（此前重复计数：`status: in_progress` 的定义含"结论已给但用户在跟进"，
+      // 于是"已给 fix 等回报"的单同时落进旧的 nActive 与 nPending，1 单显示成 2 项待跟进）：
+      //   在查   = in_progress、**没有** pending 回报、且回报不是已生效 —— 诊断还没结论（含等用户补材料）→ 续接
+      //   等回报 = 有 pending 回报（不论 status）—— 已给结论/方案等着验证 → 追问结果
+      //   该闭环 = 回报已 resolved 但 status 还停在 in_progress —— 验证过了、状态没更新 → 标闭环
+      // 三者之和 = 面板徽章的"待跟进"数（不再有重复计入的项；三条条件互斥，见下面各自的谓词）。
+      const isClosedButOpen = s => s.status === 'in_progress' && s.feedback === 'resolved'
+      const nLooking = sessions.filter(s => s.status === 'in_progress' && !s.feedbackPending && !isClosedButOpen(s)).length
+      const nAwaiting = sessions.filter(s => s.feedbackPending).length
+      const nClose = sessions.filter(isClosedButOpen).length
       const nInKb = sessions.filter(s => s.activeCase && s.activeCaseInKb).length
       const nNew = sessions.filter(s => s.activeCase && !s.activeCaseInKb).length
       const q = query.trim().toLowerCase()
@@ -622,11 +677,14 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       if (kbFilter === 'kb') sessions = sessions.filter(s => s.activeCase && s.activeCaseInKb)
       if (kbFilter === 'new') sessions = sessions.filter(s => s.activeCase && !s.activeCaseInKb)
       if (kbFilter === 'miss') sessions = sessions.filter(s => !s.activeCase)
+      // 待跟进三类见上方计数处注释（互斥）；徽章与横幅都用这三个数
       const badge = [
         (r.sessions || []).length + ' 会话',
         nInKb ? nInKb + ' 库中已有' : null,
         nNew ? nNew + ' 新形态' : null,
-        nActive ? nActive + ' 进行中' : null,
+        nLooking ? nLooking + ' 在查' : null,
+        nAwaiting ? nAwaiting + ' 等回报' : null,
+        nClose ? nClose + ' 该闭环' : null,
       ].filter(Boolean).join(' · ')
       const kbChips = [
         { id: 'all', label: '全部' },
@@ -643,7 +701,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
 
       // 首屏要先回答"有什么在等我"——所以计数里把**待跟进**的两项单独提出来（进行中、待回报），
       // 而不是混在一串 "N 会话 · N 库中已有 …" 里让读者自己找
-      const nFollow = nActive + nPending
+      const nFollow = nLooking + nAwaiting + nClose
       return React.createElement('div', { className: 'sleu', style: { ...base, padding: 20 } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 10, flexWrap: 'wrap' } },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
@@ -653,13 +711,17 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           React.createElement('span', { title: badge, style: { fontSize: 12.5, color: T.text2, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 999, padding: '3px 11px' } },
             nFollow ? (nFollow + ' 项待跟进') : ((r.sessions || []).length + ' 个会话')),
         ),
-        // 待跟进提示：只在真有的时候出现，且给"下一步做什么"
+        // 待跟进提示：只在真有的时候出现，且给"下一步做什么"。
+        // 三类各自对应一个动作（续接 / 追问结果 / 标闭环），所以分开说；末尾一句点明这是两条轴，
+        // 免得读者把"在查"与"等回报"读成同一件事的两句话。
         nFollow ? React.createElement('div', { style: { ...rise(0), display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '8px 12px', marginBottom: 10, background: 'var(--tint-amber)', border: '1px solid var(--hair)', borderRadius: 10, fontSize: 13.5, color: T.text } },
           React.createElement(Dot, { color: T.warn, size: 7 }),
-          nActive ? React.createElement('span', null, nActive + ' 个诊断还没结束') : null,
-          nActive && nPending ? React.createElement('span', { style: { color: T.text2 } }, '·') : null,
-          nPending ? React.createElement('span', null, nPending + ' 个结果还没回报') : null,
-          React.createElement('span', { style: { color: T.text2, marginLeft: 'auto', fontSize: 12.5 } }, '卡片里点按钮生成指令 → 复制 → 粘到对话执行'),
+          nLooking ? React.createElement('span', null, nLooking + ' 个在查') : null,
+          nLooking && (nAwaiting || nClose) ? React.createElement('span', { style: { color: T.text2 } }, '·') : null,
+          nAwaiting ? React.createElement('span', null, nAwaiting + ' 个等回报') : null,
+          nAwaiting && nClose ? React.createElement('span', { style: { color: T.text2 } }, '·') : null,
+          nClose ? React.createElement('span', null, nClose + ' 个该闭环') : null,
+          React.createElement('span', { style: { color: T.text2, marginLeft: 'auto', fontSize: 12.5 } }, '在查=诊断没结论；等回报=结论已给、fix 没验证｜卡片里点按钮生成指令 → 复制 → 粘到对话执行'),
         ) : null,
         // 工具栏（筛选 + 搜索）**吸顶**：会话一多就得往下滚，工具不该滚走
         React.createElement('div', { style: { position: 'sticky', top: 0, zIndex: 2, paddingTop: 2, paddingBottom: 8, marginBottom: 4, background: T.bg, backgroundImage: 'var(--surf)' } },

@@ -1010,6 +1010,8 @@ _MS._run_no_pipe = no_fallback`)
       activeCase: i % 4 === 0 ? 'VLLM-ASCEND-OOM' : null,
       activeCaseInKb: i % 8 === 0,
       feedbackPending: i % 5 === 0 ? 'pending' : null,
+      // 收起态副标题优先用问题背景段；偶数单给背景、奇数单不给（验证回退到"末条记录"）
+      summarySnippet: i % 2 === 0 ? '问题背景：第 ' + i + ' 单的服务启动失败，在 profile_run 阶段崩掉' : null,
       userSteps: 2, agentSteps: 4,
       lastRole: 'agent',
       lastOutput: '定位到 device OOM：batch size 超过 910B 显存，建议降到 8 并开 NPU 内存碎片整理（这是第 ' + i + ' 单的结论摘要）',
@@ -1038,10 +1040,13 @@ _MS._run_no_pipe = no_fallback`)
     }
     const dg = await renderAsync(ascSrc, { sessionId: 'sess-1' }, diagHost)
     const dt = dg.text
-    // ② 卡片摘要：收起态显示最后一步结论，而不是"框架 · 平台 · 类别"
-    expect('诊断 tab：卡片收起态显示最后一步摘要', /最后一步 · Agent/.test(dt) && /定位到 device OOM/.test(dt))
+    // ② 卡片摘要：收起态要回答"这单在查什么"——优先问题背景段；没有背景段才退回末条记录。
+    //    旧版写「最后一步 · Agent」+ 最后事件的 output：最后一个事件常常是产出报告/续接这类
+    //    **记录维护**动作，读者看不懂（实测反馈："最后一步……让人看不懂也觉得很奇怪"）。
+    expect('诊断 tab：收起态优先显示问题背景（不是"最后一步"）', /背景/.test(dt) && /问题背景：第 2 单/.test(dt))
+    expect('诊断 tab：无背景段时退回末条记录，且不再叫「最后一步」', /末条记录/.test(dt) && /定位到 device OOM/.test(dt) && !/最后一步/.test(dt))
     expect('诊断 tab：收起态不再只给环境标签（框架/平台/类别仍在展开态）',
-      !/vllm-ascend · A2-910B · interrupt[\s\S]{0,40}最后一步/.test(dt))
+      !/vllm-ascend · A2-910B · interrupt[\s\S]{0,40}背景/.test(dt))
     // ④ 回到顶部：会话 > 20 才出现
     expect('诊断 tab：会话 >20 时出现「回到顶部」按钮（23 个会话）', /«title:回到顶部/.test(dt))
     // 闭环指令（阶段一）：四种结局分开给，且命令里带上正确的状态词与 feedback outcome
@@ -1069,6 +1074,46 @@ _MS._run_no_pipe = no_fallback`)
       const dg2 = await renderAsync(ascSrc, { sessionId: 'sess-1' },
         (m, a) => (m === 'ascend-traces-list' ? { ok: true, sessions: few } : diagHost(m, a)))
       expect('诊断 tab：会话 ≤20 时不出现「回到顶部」（不占位）', !/«title:回到顶部/.test(dg2.text))
+    }
+    // 待跟进三类**互斥**（回归：曾把"结论已给等回报"同时算进"进行中"和"待回报"，1 单显示 2 项）
+    {
+      const follow = [
+        mkSession(1, { status: 'in_progress', feedbackPending: null, feedback: null }),          // 在查
+        mkSession(2, { status: 'in_progress', feedbackPending: 'pending', feedback: null }),     // 等回报（旧口径会双算）
+        mkSession(3, { status: 'in_progress', feedbackPending: null, feedback: 'resolved' }),    // 该闭环
+        mkSession(4, { status: 'resolved', feedbackPending: null, feedback: 'resolved' }),       // 闭环，不计
+      ]
+      const dg3 = await renderAsync(ascSrc, { sessionId: 'sess-1' },
+        (m, a) => (m === 'ascend-traces-list' ? { ok: true, sessions: follow } : diagHost(m, a)))
+      expect('待跟进三类各自计数（1 在查 / 1 等回报 / 1 该闭环）',
+        /1 个在查/.test(dg3.text) && /1 个等回报/.test(dg3.text) && /1 个该闭环/.test(dg3.text), dg3.text.slice(0, 200))
+      expect('待跟进徽章 = 三类之和（3，不是把等回报双算成 4）',
+        /3 项待跟进/.test(dg3.text) && !/4 项待跟进/.test(dg3.text), dg3.text.slice(0, 160))
+      expect('横幅点明两条轴（在查=诊断没结论；等回报=结论已给、fix 没验证）',
+        /在查=诊断没结论/.test(dg3.text) && /等回报=结论已给/.test(dg3.text))
+      expect('不再出现旧的合并措辞（"个诊断还没结束"/"个结果还没回报"）',
+        !/个诊断还没结束/.test(dg3.text) && !/个结果还没回报/.test(dg3.text))
+    }
+    // 沉淀候选**展开即列出明细**（只给一个数字读者无从判断"为啥是 3 条"）
+    {
+      expect('detail 数据把沉淀候选带回客户端', /sedimentCandidates: r && r\.sedimentCandidates/.test(ascSrc))
+      expect('面板列出候选明细（kind + 摘要 + 建议 skill）',
+        /cands\.map\(\(c, i\)/.test(ascSrc) && /c\.suggestedSkill/.test(ascSrc) && /沉淀候选（/.test(ascSrc))
+    }
+    // 展开视图分两档：人读视图（默认）只给"问题查到哪了"，完整轨迹才是原始事件（回放/归因用）
+    {
+      const hostSrc = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+      expect('收起态副标题的原料来自 host 的 summarySnippet', /summarySnippet: doc\.summary/.test(hostSrc))
+      expect('人读视图默认开（完整轨迹要手动切）', /const \[fullTrace, setFullTrace\] = React\.useState\(false\)/.test(ascSrc))
+      expect('记录维护类动作默认收起（report/resume/feedback/attribution）',
+        /const PROC_ACTIONS = \{ report: true, resume: true, feedback: true, attribution: true \}/.test(ascSrc)
+        && /all\.filter\(st => !PROC_ACTIONS\[st\.action\]\)/.test(ascSrc))
+      expect('推理文本只在完整轨迹里铺开（人读视图不铺 reason）', /fullTrace && st\.reason \?/.test(ascSrc))
+      expect('人读视图给中文动作标签（原词留 title 供回查）',
+        /STEP_LABELS\[st\.action\] \|\| st\.action/.test(ascSrc) && /triage: '路由分类'/.test(ascSrc))
+      expect('两种视图可切换（看完整轨迹 / 只看诊断）', /'看完整轨迹'/.test(ascSrc) && /'只看诊断'/.test(ascSrc))
+      expect('措辞专业化（不再出现"好在下面可以直接闭环"）',
+        !/好在下面可以直接闭环/.test(ascSrc) && /结果待回报：/.test(ascSrc))
     }
     // ① 轨迹时间轴：展开一张会话卡后应有刻度点/竖轨，且证据存在性提到步骤行
     {
