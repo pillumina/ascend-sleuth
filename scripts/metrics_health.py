@@ -368,7 +368,7 @@ def main():
     # —— 下一步（候选动作）：判据说"该做什么"，这里给出"粘到对话就能做"的那一下 ——
     # 命令是候选不是自动执行：诊断系统只输出建议，动作由人/agent 触发（与 diagnose 同取向）。
     candidate_commands = [
-        {"label": "补反馈", "command": "回报 fix 结果：逐个确认 traces/ 中已定位 case 的 session（含 feedback_pending 的）"
+        {"label": "补反馈", "command": "回报 fix 结果：逐个确认 traces/ 中已定位 case 的 session（含 feedback.outcome: pending 的）"
                                       "fix 应用后是否解决，按 resolved / not_resolved / partial 写 feedback 事件",
          "why": "反馈捕获为 0 时，误诊率/归因比没有分母"},
         {"label": "追快照", "command": "python3 scripts/metrics_snapshot.py",

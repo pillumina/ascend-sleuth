@@ -872,7 +872,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const f = String(face || '')
       const t = String(text || '')
       if (/cell_|容量|超\s*(soft|hard)_cap/.test(f + t)) return { label: '拆格子', command: '用 /skill:knowledge-groom 处理容量越界格子（先跑 python3 scripts/capacity_health.py 看候选溢出率，再定 category 轴深化或 platform 轴拆分）' }
-      if (/feedback|反馈/.test(f + t)) return { label: '补反馈', command: '回报 fix 结果：逐个确认 traces/ 中已定位 case 的 session（含 feedback_pending 的）fix 应用后是否解决，按 resolved / not_resolved / partial 写 feedback 事件' }
+      if (/feedback|反馈/.test(f + t)) return { label: '补反馈', command: '回报 fix 结果：逐个确认 traces/ 中已定位 case 的 session（含 feedback.outcome: pending 的）fix 应用后是否解决，按 resolved / not_resolved / partial 写 feedback 事件' }
       if (/新鲜度|快照|超期/.test(f + t)) return { label: '追快照', command: 'python3 scripts/metrics_snapshot.py' }
       if (/索引|drift/.test(f + t)) return { label: '重建索引', command: 'python3 scripts/build_index.py' }
       return null
@@ -1299,7 +1299,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         const fb = lastLive.metrics.feedback_capture
         const hits = lastLive.metrics.tier2_hit
         if (fb && typeof fb === 'object' && (fb.resolved === 0 || fb.resolved === undefined) && (fb.not_resolved === 0 || fb.not_resolved === undefined) && (fb.partial === 0 || fb.partial === undefined) && hits > 0) {
-          const fbCmdText = '回报 fix 结果：请逐个确认 traces/ 中已定位 case 的 session（含 feedback_pending 的）fix 应用后是否解决，按 resolved / not_resolved / partial 回报并写 feedback 事件（trace_metrics 据此更新误诊率/confidence）'
+          const fbCmdText = '回报 fix 结果：请逐个确认 traces/ 中已定位 case 的 session（含 feedback.outcome: pending 的）fix 应用后是否解决，按 resolved / not_resolved / partial 回报并写 feedback 事件（trace_metrics 据此更新误诊率/confidence）'
           feedbackAlert = React.createElement('div', { style: { marginBottom: 12, border: '1px solid ' + T.warn, borderRadius: 9, overflow: 'hidden' } },
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'color-mix(in srgb, ' + T.warn + ' 8%, transparent)' } },
               React.createElement(Dot, { color: T.warn }),
