@@ -5,12 +5,31 @@ return {
     const sessions = ctx.get('sessions')
     const shell = ctx.get('shell')
 
-    function resolveCwd(sessionId) {
-      if (sessions && sessionId) {
-        const s = sessions.get(sessionId)
-        if (s && s.header && s.header.cwd) return s.header.cwd
+    // 工作区解析。**三处消费者的共同前提**：面板读 traces/ knowledge/ metrics/ scripts/ 全靠它。
+    //
+    // 兜底理由（2026-09-11 实测）：`sessions.get(sessionId)` 可能拿不到 header.cwd（会话标识形态变化、
+    // 或面板 tab 所在会话与数据所在检出不是同一个），此时返回 undefined 会让 shell 命令在**别的目录**
+    // 下执行——`python scripts/metrics_health.py` 于是找不到文件，只在面板上留下一截截断的 traceback。
+    // 所以退一步：扫一遍已知会话，取第一个带 cwd 的（`ascend_trace_status` 工具一直这么做）。
+    function pickCwdFromSessions() {
+      if (!sessions || typeof sessions.list !== 'function') return undefined
+      try {
+        const all = sessions.list() || []
+        for (const s of all) {
+          if (s && s.header && s.header.cwd) return s.header.cwd
+        }
+      } catch (e) {
+        return undefined
       }
       return undefined
+    }
+    function resolveCwd(sessionId) {
+      if (sessions && sessionId) {
+        let s = null
+        try { s = sessions.get(sessionId) } catch (e) { s = null }
+        if (s && s.header && s.header.cwd) return s.header.cwd
+      }
+      return pickCwdFromSessions()
     }
 
     async function openEvidence(sessionId, path) {
@@ -19,17 +38,34 @@ return {
       if (!cwd) return { opened: false, error: '无法解析工作区' }
       const p = String(path)
       if (p.startsWith('/') || p.includes('..')) return { opened: false, error: '拒绝非仓库路径' }
+      if (p.indexOf("'") >= 0 || p.indexOf('"') >= 0) return { opened: false, error: '路径含引号，拒绝拼命令' }
       if (!shell) return { opened: false, error: 'shell 不可用' }
-      try {
-        const full = cwd + '/' + p
-        const quote = JSON.stringify(full)
-        const cmd = '(open ' + quote + ' || xdg-open ' + quote + ') >/dev/null 2>&1 &'
-        const spec = shell.resolve({ command: cmd })
-        await shell.run(spec)
-        return { opened: true }
-      } catch (e) {
-        return { opened: false, error: '打开失败: ' + String(e && e.message || e) }
+      const full = cwd + '/' + p
+      const q = "'" + full.replace(/'/g, "''") + "'"
+      // **不能假设 shell 是 bash**：DSH 在 Windows 上把 `ctx.shell` 接到 **PowerShell 5.1**（实测）。
+      // 旧实现写的是 `(open X || xdg-open X) >/dev/null 2>&1 &`——`||` 在 PowerShell 5.1 是语法错误，
+      // 整条命令直接失败且被 `>/dev/null 2>&1 &` 吞掉（exit 0），于是用户点「打开报告」**什么都没发生**。
+      // 现在按"最可能的方言在前、失败即下一个"的顺序试，用 exit code 判定，并把结果与试过的方式回报给面板。
+      const attempts = [
+        { via: 'powershell', cmd: 'Start-Process -FilePath ' + q },
+        { via: 'macos-open', cmd: 'open ' + q },
+        { via: 'xdg-open', cmd: 'xdg-open ' + q },
+        { via: 'explorer', cmd: 'explorer.exe ' + q, okCodes: [0, 1] },   // explorer.exe 成功时也常返回 1
+      ]
+      const tried = []
+      for (const a of attempts) {
+        try {
+          const r = await shell.run(shell.resolve({ command: a.cmd, timeoutMs: 5000 }))
+          tried.push(a.via + '=' + (r.exitCode === null ? 'null' : r.exitCode))
+          const okCodes = a.okCodes || [0]
+          if (!r.timedOut && !r.aborted && okCodes.indexOf(r.exitCode) >= 0) {
+            return { opened: true, via: a.via }
+          }
+        } catch (e) {
+          tried.push(a.via + '=err')
+        }
       }
+      return { opened: false, error: '四种打开方式都不行（' + tried.join(' ') + '）' }
     }
 
     async function updateSedimented(sessionId, traceFile, state, caseId) {
@@ -80,6 +116,47 @@ return {
       } catch (e) {
         return null
       }
+    }
+
+    // —— 索引头注解析：容量**逐格**（framework × category）+ 声明总数 ——
+    // 原先 loadHealth 把格子加总到 namespace 再比 /30，于是 vllm-ascend 显示 114/30，
+    // 读者推不出"interrupt 是唯一爆掉的格子"。判据（gates.yaml）逐格计，面板就必须逐格显。
+    function parseIdxHeader(text) {
+      const head = text.split(/\r?\n/).filter(l => l.startsWith('#')).join('\n')
+      const totalM = /case 总数：\s*(\d+)/.exec(head)
+      const genM = /生成日期：\s*(\d{4}-\d{2}-\d{2})/.exec(head)
+      const cells = []
+      const re = /^#\s*容量\(([^)]+)\):\s*(.+)$/gm
+      let m
+      while ((m = re.exec(head)) !== null) {
+        const ns = m[1].trim()
+        for (const part of m[2].split(',')) {
+          const cm = /^\s*([a-zA-Z_]+)\s*=\s*(\d+)\/(\d+)\s*$/.exec(part)
+          if (cm) cells.push({ namespace: ns, category: cm[1], count: Number(cm[2]), cap: Number(cm[3]) })
+        }
+      }
+      return { caseTotal: totalM ? Number(totalM[1]) : null, generatedAt: genM ? genM[1] : null, cells: cells }
+    }
+    // 磁盘上的 case 文件数——与索引头注对照，索引陈旧时立刻可见（面板读的是索引，不是磁盘）
+    async function countCaseFiles(cwd) {
+      let n = 0
+      async function walk(dirTarget, isRoot, depth) {
+        if (depth > 6) return
+        let entries = []
+        try { entries = await fs.listDir(dirTarget) } catch (e) { return }
+        for (const ent of entries) {
+          if (ent.type === 'directory') {
+            if (isRoot && ent.name.startsWith('_')) continue
+            await walk(ent.target, false, depth + 1)
+            continue
+          }
+          if (!ent.name.endsWith('.yaml')) continue
+          if (isRoot && ent.name.startsWith('_')) continue
+          n++
+        }
+      }
+      try { await walk(await fs.resolve('knowledge', { cwd }), true, 0) } catch (e) { return null }
+      return n
     }
 
     async function listTraces(cwd) {
@@ -137,6 +214,10 @@ return {
             lastOutput: lastOutput,
             createdAt: createdAt,
             updatedAt: updatedAt,
+            // 人读定位报告与结构化沉淀候选（diagnose 步骤 6 产出）：报告名与 trace 同名不同后缀，
+            // 面板给"打开报告"入口；候选条数给"待沉淀 N 条"，让"这单还能沉淀什么"在列表上就可见。
+            reportFile: doc.report_file ? String(doc.report_file) : null,
+            sedimentCandidates: Array.isArray(doc.sediment_candidates) ? doc.sediment_candidates.length : 0,
           })
         } catch (e) {
         }
@@ -166,7 +247,6 @@ return {
           let curScore = null
           let curCat = null
           const catTotal = {}
-          const nsCells = {}
           let total = 0
           let low = 0
           for (const raw of lines) {
@@ -183,8 +263,6 @@ return {
               curScore = null
               curCat = cat
               catTotal[cat] = (catTotal[cat] || 0) + 1
-              const key = ns + '/' + cat
-              nsCells[key] = (nsCells[key] || 0) + 1
               continue
             }
             if (inCase) {
@@ -198,16 +276,14 @@ return {
           out.cases.total = total
           out.cases.lowConfidence = low
           out.cases.byCategory = catTotal
-          const nsAgg = {}
-          for (const key of Object.keys(nsCells)) {
-            const idx = key.lastIndexOf('/')
-            const nsk = key.slice(0, idx)
-            const ck = key.slice(idx + 1)
-            if (!nsAgg[nsk]) nsAgg[nsk] = { total: 0, byCat: {} }
-            nsAgg[nsk].total += nsCells[key]
-            nsAgg[nsk].byCat[ck] = nsCells[key]
-          }
-          out.cases.byNamespace = nsAgg
+          // 逐格容量（判据口径）：头注里的 count/cap 已带 cap，直接透传。
+          // 刻意**不**再给 namespace 加总值——判据逐格计，加总口径会让读者看不出是哪一格爆了。
+          const hdr = parseIdxHeader(text)
+          out.cases.byCell = hdr.cells
+          out.cases.indexGeneratedAt = hdr.generatedAt
+          // drift：索引头注声明的条数 vs 磁盘实际 case 文件数（面板读索引，索引陈了就报旧数）
+          out.cases.declaredTotal = hdr.caseTotal
+          out.cases.diskTotal = await countCaseFiles(cwd)
         } catch (e) {
           out.cases.error = String(e && e.message || e)
         }
@@ -322,19 +398,32 @@ return {
       }
     }
 
-    function parseEvidence(str) {
-      if (!str || typeof str !== 'string') return null
-      const m = /^\{\s*(.*)\s*\}$/.exec(str.trim())
-      if (!m) return null
-      const inner = parseInlineMap('{' + m[1] + '}')
-      const out = {}
-      if (inner.inline) out.inline = String(inner.inline)
-      if (inner.files) {
-        const fm = /^\[\s*(.*)\s*\]$/.exec(String(inner.files).trim())
-        out.files = fm ? String(fm[1]).split(',').map(x => x.trim().replace(/^["']|["']$/g, '')).filter(Boolean) : [String(inner.files)]
+    // 证据：两种形态都要吃——内联字符串（老 trace 的 `evidence: {inline: "…"}`）与解析器给出的
+    // 对象（块写法 `evidence:` 换行展开）。旧实现只吃字符串，块写法 trace 的证据会被整条丢掉。
+    function parseEvidence(ev) {
+      if (!ev) return null
+      const asList = (v) => {
+        // 内联写法里 `files: [a, b]` 到这一步还是"带方括号的字符串"（parseInlineMap 不做流式展开），
+        // 先过一遍 yamlScalar 才能得到数组；块写法给的是真数组。
+        const val = typeof v === 'string' ? yamlScalar(v) : v
+        return Array.isArray(val) ? val.map(x => String(x)).filter(Boolean) : [String(val)]
       }
-      if (inner.sources) out.sources = [String(inner.sources)]
-      if (inner.missing) out.missing = String(inner.missing)
+      const out = {}
+      if (typeof ev === 'object') {
+        if (ev.inline) out.inline = String(ev.inline)
+        if (ev.files) out.files = asList(ev.files)
+        if (ev.sources) out.sources = asList(ev.sources)
+        if (ev.missing) out.missing = String(ev.missing)
+        return Object.keys(out).length ? out : null
+      }
+      if (typeof ev !== 'string') return null
+      const raw = ev.trim()
+      if (!/^\{[\s\S]*\}$/.test(raw)) return { inline: ev }
+      const inner = parseInlineMap(raw)
+      for (const key of ['inline', 'files', 'sources', 'missing']) {
+        if (inner[key] === undefined || inner[key] === '') continue
+        out[key] = (key === 'inline' || key === 'missing') ? String(inner[key]) : asList(yamlScalar(String(inner[key])))
+      }
       return Object.keys(out).length ? out : null
     }
 
@@ -357,7 +446,17 @@ return {
         }))
         const refCount = trace.filter(t => t && t.action === 'reference_lookup').length
         const sed = readSedimented(doc)
-        return { ok: true, steps, summary: doc.summary ? String(doc.summary) : null, refCount, sedimented: sed }
+        const cands = Array.isArray(doc.sediment_candidates) ? doc.sediment_candidates : []
+        return {
+          ok: true, steps, summary: doc.summary ? String(doc.summary) : null, refCount, sedimented: sed,
+          reportFile: doc.report_file ? String(doc.report_file) : null,
+          sedimentCandidates: cands.map(c => ({
+            kind: c && c.kind ? String(c.kind) : '',
+            summary: c && c.summary ? String(c.summary) : '',
+            suggestedSkill: c && (c.suggested_skill || c.suggestedSkill) ? String(c.suggested_skill || c.suggestedSkill) : '',
+            status: c && c.status ? String(c.status) : '',
+          })).filter(c => c.kind || c.summary),
+        }
       } catch (e) {
         return { ok: false, error: '读取失败: ' + String(e && e.message || e) }
       }
@@ -461,6 +560,120 @@ return {
       return pythonCmd
     }
 
+    // 指标闭环体检（verdict）：判据在 metrics/gates.yaml，体检在 scripts/metrics_health.py。
+    //
+    // **为什么面板必须走这个脚本而不是自己算**：阈值落在数据文件里、只此一处（原则二），
+    // 面板若自算就是第二份判据副本——实测的结局是"面板显示 85/30 却没有任何结论行"。
+    // 脚本既有的三段式（结论 / 证据 / 下一步动作）正是"聚焦"本身；面板只负责把它端到人眼前。
+    //
+    // 诚实退化：脚本/解释器/依赖缺一不可，缺了就返回可执行的提示，而不是显示"一切正常"。
+    let metricsHealthCache = null
+    async function loadMetricsVerdict(cwd) {
+      if (!shell) {
+        return { ok: false, error: '体检需要 shell 服务（当前不可用）——判据与命令见 metrics/gates.yaml 与 scripts/metrics_health.py' }
+      }
+      if (metricsHealthCache && metricsHealthCache.cwd === cwd) return metricsHealthCache.value
+      const value = await buildMetricsVerdict(cwd)
+      metricsHealthCache = { cwd: cwd, value: value }
+      return value
+    }
+    // drift：索引头注声明的 case 数 vs 磁盘实际 case 文件数。面板读的是生成物索引，
+    // 索引落后于磁盘时面板会安静地显示旧数——这类"看到的不等于现实"必须被说出来。
+    async function buildMetricsVerdict(cwd) {
+      const res = await runMetricsHealth(cwd)
+      if (!res.ok) return res
+      const v = res.verdict
+      try {
+        const target = await fs.resolve('knowledge/_index.yaml', { cwd })
+        const text = await fs.readText(target)
+        const hdr = parseIdxHeader(text)
+        const disk = await countCaseFiles(cwd)
+        v.drift = { declared: hdr.caseTotal, disk: disk, generatedAt: hdr.generatedAt }
+      } catch (e) {
+        v.drift = { declared: null, disk: null, error: String(e && e.message || e) }
+      }
+      return { ok: true, verdict: v }
+    }
+
+    // 体检执行前的上下文守卫 + 失败时的自诊断。
+    //
+    // 为什么必须有（2026-09-11 实测事故）：`resolveCwd()` 在拿不到会话工作区时返回 `undefined`，
+    // 而 `shell.resolve({workdir: undefined})` **不报错**——它退到某个默认目录，于是
+    // `python scripts/metrics_health.py` 找不到文件、Python 抛异常，面板上只剩一截
+    // 被 `slice(0,400)` 截断的 traceback（连异常类型都被截掉），无从定位。
+    // `runLiveMetrics` 一直防着这件事（`if (!shell || !cwd)`），本函数当初漏了。
+    // 两条规则：①没有工作区就直接说清，不发起注定失败的命令；②报错带上**执行上下文**
+    //（解释器 / 工作目录 / 命令 / 退出码）与 stderr 的**尾部**（traceback 的最后几行才是结论）。
+    function shellFail(prefix, py, cwd, r, err) {
+      const tailLines = String(err || '').trim().split(/\r?\n/).filter(Boolean).slice(-6)
+      const ctx = '［解释器 ' + (py || '—') + ' · 工作目录 ' + (cwd || '（未知）')
+        + ' · 命令 ' + ((py || 'python') + ' scripts/metrics_health.py --json')
+        + (r && r.exitCode !== null && r.exitCode !== undefined ? ' · exit ' + r.exitCode : '') + '］'
+      return {
+        ok: false,
+        error: prefix + ' ' + ctx + (tailLines.length ? '\n' + tailLines.join('\n') : ''),
+        py: py || null,
+        cwd: cwd || null,
+        exitCode: r ? r.exitCode : null,
+        stderrTail: tailLines.join('\n'),
+      }
+    }
+
+    async function runMetricsHealth(cwd) {
+      if (!shell) {
+        return { ok: false, error: '体检需要 shell 服务（当前不可用）——判据在 metrics/gates.yaml，'
+          + '手工复现：python3 scripts/metrics_health.py' }
+      }
+      if (!cwd) {
+        // 不发起注定失败的命令：说清缺什么、为什么重要、怎么手工复现
+        return shellFail('拿不到会话工作区（session.header.cwd），无法定位 scripts/metrics_health.py——'
+          + '体检需要以 ascend-sleuth 检出为工作目录运行；面板其余部分（timeline 快照、知识库统计）'
+          + '仍可用，但它们不代表判据结论。手工复现：在检出根目录跑 python3 scripts/metrics_health.py',
+          null, cwd, null, '')
+      }
+      const py = await resolvePython()
+      if (!py) {
+        return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）——'
+          + '体检跑的是 scripts/metrics_health.py，装好 Python 3 并确保在 PATH 里' }
+      }
+      let r = null
+      try {
+        r = await shell.run(shell.resolve({
+          command: py + ' scripts/metrics_health.py --json',
+          workdir: cwd,
+          timeoutMs: 60000,
+          stdoutMaxBytes: 65536,
+          // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
+          env: { PYTHONIOENCODING: 'utf-8' },
+        }))
+      } catch (e) {
+        return shellFail('体检脚本执行失败: ' + String(e && e.message || e), py, cwd, null, '')
+      }
+      const out = r && r.stdout && typeof r.stdout.text === 'string' ? r.stdout.text : ''
+      const err = r && r.stderr && typeof r.stderr.text === 'string' ? r.stderr.text : ''
+      if (r && r.timedOut) {
+        return { ok: false, error: '体检脚本超时（60s）——它内部会跑 verify_references.py，检出很大时可能偏慢',
+                 py: py, cwd: cwd, exitCode: r.exitCode }
+      }
+      const trimmed = out.trim()
+      if (trimmed.startsWith('{')) {
+        let doc = null
+        try {
+          doc = JSON.parse(trimmed)
+        } catch (e) {
+          return { ok: false, error: '体检输出不是合法 JSON: ' + String(e && e.message || e), py: py, cwd: cwd }
+        }
+        if (doc && typeof doc === 'object' && !Array.isArray(doc)) return { ok: true, verdict: doc }
+        return { ok: false, error: '体检输出不是对象', py: py, cwd: cwd }
+      }
+      if (/ModuleNotFoundError|No module named 'yaml'/.test(err)) {
+        return shellFail('体检脚本缺 PyYAML——pip install pyyaml', py, cwd, r, err)
+      }
+      // traceback 的**末几行**才是结论；别用 slice(0,N) 把头截下来（实测踩过：异常类型被截掉）
+      if (err.trim()) return shellFail('体检脚本报错（stderr 末几行）:', py, cwd, r, err)
+      return shellFail('体检脚本无输出（脚本不存在？工作区不是 ascend-sleuth 检出？）', py, cwd, r, err)
+    }
+
     async function runLiveMetrics(cwd) {
       if (!shell || !cwd) return { ok: false, error: '实时计算需要 shell 与工作区（当前不可用）' }
       const py = await resolvePython()
@@ -504,48 +717,171 @@ return {
       }
       return { state: s }
     }
+    // ---- trace YAML 子集解析 -------------------------------------------------
+    // 为什么不引库：动态插件不允许 import/require，Host 也没有 YAML 服务（只有 fs/shell/sessions）。
+    // 为什么必须支持**块写法**（2026-09-12 修复）：trace 由 agent 手写，schema 允许两种形态——
+    // 内联 `- {role: agent, output: "…"}` 与块写法（`- role: agent` 换行缩进展开，长
+    // `output`/`reason`/`evidence.inline` 用块标量 `>-`）。旧实现只认内联：遇到块写法时，
+    // dash 行只留下 `role`，第二个键就把 inTrace 关掉 → 事件里 **output/content/reason 全丢**，
+    // 面板上表现为"agent 回答都是空的"、证据全无。
+    // ⚠️ 计数不是健康信号：块写法下 role 仍在 dash 行上，所以 `1u/15a` 这类步数**恰好还是对的**
+    //    （实测：16 个事件解析出 32 条、其中 role 全对但 output 0 条）——判断解析是否健康必须看
+    //    "事件里有没有 output/content/reason"，不能看步数。
+    function splitYamlLine(raw) {
+      // 去注释（`#` 前有空白才算注释）+ 去行尾空白；引号内的 # / : 保持原样
+      let out = ''
+      let quote = null
+      for (let i = 0; i < raw.length; i++) {
+        const ch = raw[i]
+        if (quote) { out += ch; if (ch === quote) quote = null; continue }
+        if (ch === '"' || ch === "'") { quote = ch; out += ch; continue }
+        if (ch === '#' && (i === 0 || /\s/.test(raw[i - 1]))) break
+        out += ch
+      }
+      return out.replace(/\s+$/, '')
+    }
+    function yamlUnquote(s) {
+      const t = String(s == null ? '' : s).trim()
+      if (t.length >= 2 && (t[0] === '"' || t[0] === "'") && t[t.length - 1] === t[0]) {
+        const inner = t.slice(1, -1)
+        return t[0] === '"'
+          ? inner.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+          : inner.replace(/''/g, "'")
+      }
+      return t
+    }
+    function splitFlow(inner) {
+      const parts = []
+      let cur = ''
+      let quote = null
+      let depth = 0
+      for (let i = 0; i < inner.length; i++) {
+        const ch = inner[i]
+        if (quote) { cur += ch; if (ch === quote) quote = null; continue }
+        if (ch === '"' || ch === "'") { quote = ch; cur += ch; continue }
+        if (ch === '[' || ch === '{') depth++
+        if (ch === ']' || ch === '}') depth = Math.max(0, depth - 1)
+        if (ch === ',' && depth === 0) { parts.push(cur); cur = ''; continue }
+        cur += ch
+      }
+      if (cur.trim() !== '') parts.push(cur)
+      return parts
+    }
+    function yamlScalar(text) {
+      const t = String(text == null ? '' : text).trim()
+      if (t === '') return ''
+      if (t[0] === '{') return parseInlineMap(t)
+      if (t[0] === '[') {
+        const inner = t.slice(1, t[t.length - 1] === ']' ? -1 : undefined)
+        return splitFlow(inner).map(yamlScalar)
+      }
+      return yamlUnquote(t)
+    }
     function parseYaml(text) {
-      const lines = text.split(/\r?\n/)
-      const doc = {}
-      const trace = []
-      let inTrace = false
-      let blockKey = null      // 当前块映射的键（sedimented / feedback 等）
-      let blockIndent = -1     // 块头缩进（其子行缩进更深）
-      for (const raw of lines) {
-        const trimmed = raw.trim()
-        const isTraceItem = /^-\s*\{/.test(trimmed)
-        const noComment = isTraceItem ? raw.trimEnd() : raw.replace(/\s+#.*$/, '').trimEnd()
-        if (noComment === '') continue
-        const indent = noComment.length - noComment.trimStart().length
-        if (inTrace) {
-          const tm = /^\s*-\s*(.*)$/.exec(noComment)
-          if (tm) { trace.push(parseInlineMap(tm[1])); continue }
-          if (/^[a-zA-Z_]+:/.test(noComment)) { inTrace = false; blockKey = null }
-          else continue
+      // 先折算成"去注释 + 带缩进"的行表，再按缩进递归收结构
+      const rows = []
+      for (const raw of String(text == null ? '' : text).split(/\r?\n/)) {
+        const line = splitYamlLine(raw)
+        const body = line.trim()
+        if (body === '' || body === '---') continue
+        rows.push({ indent: line.length - line.trimStart().length, body: body, raw: line })
+      }
+      if (!rows.length) return {}
+      const cursor = { rows: rows, i: 0 }
+      return readYamlMap(cursor, rows[0].indent)
+    }
+    function readYamlMap(cursor, indent) {
+      const obj = {}
+      while (cursor.i < cursor.rows.length) {
+        const row = cursor.rows[cursor.i]
+        if (row.indent < indent) break
+        if (row.indent > indent) { cursor.i++; continue }        // 结构错位：跳过而不是崩
+        const m = /^([A-Za-z_][A-Za-z0-9_.-]*):(?:\s+(.*))?$/.exec(row.body)
+        if (!m) { cursor.i++; continue }
+        cursor.i++
+        obj[m[1]] = readYamlValue(cursor, indent, m[2] === undefined ? '' : String(m[2]).trim())
+      }
+      return obj
+    }
+    function readYamlValue(cursor, indent, rest) {
+      if (rest === '') {
+        // 空值：下面有更深缩进 → 嵌套块（序列或映射）；否则空字符串
+        if (cursor.i < cursor.rows.length && cursor.rows[cursor.i].indent > indent) {
+          const childIndent = cursor.rows[cursor.i].indent
+          return /^-(?:\s|$)/.test(cursor.rows[cursor.i].body)
+            ? readYamlSeq(cursor, childIndent)
+            : readYamlMap(cursor, childIndent)
         }
-        if (noComment.trim() === 'trace:') { inTrace = true; blockKey = null; continue }
-        const m = /^([a-zA-Z_]+):\s*(.*)$/.exec(noComment.trim())
-        if (!m) continue
-        const rawVal = m[2]
-        const v = rawVal.replace(/^["']|["']$/g, '')
-        // 块映射的子行（缩进比块头更深）→ 收进嵌套对象
-        if (blockKey !== null && indent > blockIndent) {
-          doc[blockKey][m[1]] = v
-          continue
-        }
-        blockKey = null
-        if (rawVal === '') {          // 空值 → 块映射头（sedimented:/feedback:）
-          doc[m[1]] = {}
-          blockKey = m[1]
-          blockIndent = indent
-        } else if (v === '[]') {
-          doc[m[1]] = []
+        return ''
+      }
+      if (/^[|>][-+]?$/.test(rest)) return readYamlBlockScalar(cursor, indent, rest)
+      if (/^-(?:\s|$)/.test(rest)) return yamlScalar(rest.replace(/^-\s*/, ''))
+      return yamlScalar(rest)
+    }
+    function readYamlBlockScalar(cursor, indent, head) {
+      // `|` 原样保留换行；`>` 折叠（连续非空行合空格、空行分段）——与 YAML 语义一致
+      const literal = head[0] === '|'
+      const collected = []
+      while (cursor.i < cursor.rows.length && cursor.rows[cursor.i].indent > indent) {
+        collected.push(cursor.rows[cursor.i])
+        cursor.i++
+      }
+      if (!collected.length) return ''
+      let baseIndent = collected[0].indent
+      for (const r of collected) if (r.indent < baseIndent) baseIndent = r.indent
+      const lines = collected.map(r => r.raw.slice(baseIndent))
+      if (literal) return lines.join('\n').replace(/\n+$/, '')
+      const out = []
+      let buf = []
+      for (const ln of lines) {
+        if (ln.trim() === '') {
+          if (buf.length) { out.push(buf.join(' ')); buf = [] }
+          out.push('')
         } else {
-          doc[m[1]] = v
+          buf.push(ln.trim())
         }
       }
-      if (trace.length) doc.trace = trace
-      return doc
+      if (buf.length) out.push(buf.join(' '))
+      return out.join('\n').replace(/\n+$/, '')
+    }
+    function readYamlSeq(cursor, indent) {
+      const arr = []
+      while (cursor.i < cursor.rows.length) {
+        const row = cursor.rows[cursor.i]
+        if (row.indent !== indent || !/^-(?:\s|$)/.test(row.body)) break
+        const rest = row.body.replace(/^-\s*/, '')
+        cursor.i++
+        if (rest === '') {
+          if (cursor.i < cursor.rows.length && cursor.rows[cursor.i].indent > indent) {
+            const childIndent = cursor.rows[cursor.i].indent
+            arr.push(/^-(?:\s|$)/.test(cursor.rows[cursor.i].body)
+              ? readYamlSeq(cursor, childIndent)
+              : readYamlMap(cursor, childIndent))
+          } else {
+            arr.push('')
+          }
+          continue
+        }
+        if (/^[A-Za-z_][A-Za-z0-9_.-]*:(?:\s|$)/.test(rest)) {
+          // 块映射项：dash 行上就是第一个键，其余键缩进更深——把 dash 行还原成同缩进的一行，
+          // 与后续行一起按同一层解析（键缩进取实际值，2/4 空格两种写法都吃）
+          let keyIndent = indent + 2
+          for (let k = cursor.i; k < cursor.rows.length; k++) {
+            if (cursor.rows[k].indent <= indent) break
+            keyIndent = cursor.rows[k].indent
+            break
+          }
+          const subRows = [{ indent: keyIndent, body: rest, raw: ' '.repeat(keyIndent) + rest }]
+          while (cursor.i < cursor.rows.length && cursor.rows[cursor.i].indent > indent) {
+            subRows.push(cursor.rows[cursor.i])
+            cursor.i++
+          }
+          arr.push(readYamlMap({ rows: subRows, i: 0 }, keyIndent))
+          continue
+        }
+        arr.push(rest[0] === '{' ? parseInlineMap(rest) : yamlScalar(rest))
+      }
+      return arr
     }
     function parseInlineMap(text) {
       const obj = {}
@@ -630,14 +966,9 @@ return {
           return [{ type: 'text', text: v.sessionCount + ' 个诊断会话:\n' + lines.join('\n') }]
         },
       },
-      execute: async (args) => {
+      async execute(args) {
         let cwd = args && args.cwd ? String(args.cwd) : undefined
-        if (!cwd && sessions) {
-          const all = sessions.list()
-          for (const s of all) {
-            if (s && s.header && s.header.cwd) { cwd = s.header.cwd; break }
-          }
-        }
+        if (!cwd) cwd = pickCwdFromSessions()
         const r = await listTraces(cwd)
         if (!r.ok) return { error: r.error }
         return {
@@ -711,6 +1042,12 @@ return {
       return loadProcessHealth(cwd)
     })
 
+    const verdictDisposer = harness.handle('ascend-metrics-verdict', async (args) => {
+      const sessionId = args && args.sessionId ? String(args.sessionId) : null
+      const cwd = resolveCwd(sessionId)
+      return loadMetricsVerdict(cwd)
+    })
+
     const liveDisposer = harness.handle('ascend-metrics-live', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const cwd = resolveCwd(sessionId)
@@ -726,6 +1063,7 @@ return {
       if (metricsDisposer) metricsDisposer()
       if (healthDisposer) healthDisposer()
       if (processDisposer) processDisposer()
+      if (verdictDisposer) verdictDisposer()
       if (liveDisposer) liveDisposer()
     }
   },

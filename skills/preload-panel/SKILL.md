@@ -5,7 +5,7 @@ description: >
   加载 dsh-plugins/loader/panel-from-file.js，~1.5KB，host-only 免审批），再用它按路径
   加载 dsh-plugins/<panel>/ 下的 panel-host.js 与 panel-client.js——**只发两个路径，
   不转写 ~70KB 源码**，最后 cordis_run 激活，对话视图出现对应 tab。面板选择：
-  - ascend-panel →「诊断」「指标」两个 tab（诊断会话/轨迹/证据 + 知识库健康）
+  - ascend-panel →「诊断」「指标」两个 tab（诊断会话/轨迹/证据 + **指标闭环判决**：首屏列要处理的判据、容量逐格、不可解读标记）
   - ev-panel →「自演进」tab（EV 卡状态机 / 容量热力 / 归因与 S2 反馈 / timeline）
   仅 DSH 可用——依赖 DSH 的 cordis_define / cordis_run 工具
   与 conversation.view 插槽；其他 agent（Claude Code / Codex / pi）无此机制。
@@ -24,7 +24,7 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 
 | 面板 | 目录 | tab id / label | 视图 |
 |---|---|---|---|
-| 诊断面板 | `dsh-plugins/ascend-panel/` | `ascend-diagnose`(20) / `ascend-metrics`(21) | 会话列表/轨迹/证据 + 知识库健康/指标 |
+| 诊断面板 | `dsh-plugins/ascend-panel/` | `ascend-diagnose`(20) / `ascend-metrics`(21) | 会话列表/轨迹/证据 + 指标闭环判决（判据→结论/证据/下一步）/容量逐格/趋势 |
 | 自演进看板 | `dsh-plugins/ev-panel/` | `ascend-evolve`(22) | EV 卡状态机 / 容量热力 / 归因与 S2 反馈 / timeline |
 
 ## 依赖预检（激活前跑，避免面板加载后白屏/报错）
@@ -43,8 +43,10 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
   （host 也会给同样提示，但 loader 提前讲更友好）。
 - **ascend-panel（诊断）**：`traces/` 可能不存在（gitignored、按需生成）——host 已把
   "目录不存在"当空态处理，无需预建；但如果用户预期有历史诊断却显示为空，提示
-  "运行 /skill:diagnose 后生成 traces/"。指标 tab 的「实时计算」用 `shell` 跑
-  `scripts/trace_metrics.py`，同样需要 pyyaml。
+  "运行 /skill:diagnose 后生成 traces/"。指标 tab 需要 Python 3 + **PyYAML**：
+  「闭环判决」跑 `scripts/metrics_health.py --json`（判据读 `metrics/gates.yaml`），
+  「实时计算」跑 `scripts/trace_metrics.py`；缺依赖时面板会显示「体检不可用」并给出
+  安装/路径提示，**不会**假装闭环正常——所以预检失败仍可加载，只是首屏没有判决条。
 
 ## 流程
 
@@ -120,8 +122,10 @@ loader，直接就有它可用；重复加载 loader 会撞名但不报错（工
 - **ev-panel（自演进）**：Python 3 + **PyYAML**（`scripts/ev_board_data.py` 聚合数据）——
   host 自动探测解释器（`python3` → `python` → `py -3`）；缺 pyyaml 时 host 会提示安装；
   loader 侧建议激活前预检（见「依赖预检」）。
-- **ascend-panel（指标「实时计算」）**：`shell` + Python 3（`scripts/trace_metrics.py`，同样需 pyyaml；
-  解释器同样自动探测）。
+- **ascend-panel（指标）**：`shell` + Python 3 + PyYAML——
+  「闭环判决」跑 `scripts/metrics_health.py --json`、「实时计算」跑 `scripts/trace_metrics.py`；
+  解释器同样自动探测（`python3` → `python` → `py -3`）。缺依赖时判决条退化为
+  「体检不可用」+ 可执行提示（不是空面板、也不谎报正常）。
 - 诊断「打开证据」依赖 `open`/`xdg-open`（macOS/Linux 均可用；Windows 未覆盖）。
 
 ## 说明
