@@ -331,7 +331,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         setOpen(true)
         setSteps({ loading: true })
         host.call('ascend-traces-detail', { sessionId: ownerSessionId || null, traceFile: s.file })
-          .then(r => setSteps({ loading: false, list: r && r.ok ? r.steps : [], summary: r && r.summary, refCount: r && r.refCount, sedimented: r && r.sedimented, error: r && r.error }))
+          .then(r => setSteps({ loading: false, list: r && r.ok ? r.steps : [], summary: r && r.summary, refCount: r && r.refCount, sedimented: r && r.sedimented, sedimentCandidates: r && r.sedimentCandidates, error: r && r.error }))
           .catch(e => setSteps({ loading: false, list: [], error: 'RPC 失败: ' + String(e && e.message || e) }))
       }
       function doCopy(txt, key) { copyText(txt).then(ok => setCopied(ok ? key : 'fail')) }
@@ -508,10 +508,22 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       })
       for (const c of closeCmds) actions.push({ key: c.key, label: c.label, style: toneStyle(c.tone), title: '生成闭环指令（复制后粘到对话执行）', cmd: c.cmd })
       const openedCmd = actions.filter(a => a.key === showCmd)[0] || null
-      // 报告与沉淀候选入口（diagnose 步骤 6 的产出）：报告是人读件的落点，"待沉淀 N 条"让
-      // "这单还能沉淀什么"在卡片上就看得见（trace 里存的是结构化候选，面板只报条数，
-      // 正文留在报告与 trace 里——面板不做二次编辑）。
+      // 报告与沉淀候选入口（diagnose 步骤 6 的产出）：报告是人读件的落点；沉淀候选除了条数，
+      // **展开卡片时把每条列出来**（kind + 一句话）——只给一个数字，读者没法判断"这 3 条要不要做、
+      // 各是什么"（实测反馈："沉淀3条我也挺奇怪的，为啥是3条"）。明细来自 detail RPC，只在展开时取。
       const reportPath = s.reportFile ? 'traces/' + s.reportFile : null
+      const cands = (open && steps && steps.sedimentCandidates) ? steps.sedimentCandidates : []
+      const candList = cands.length
+        ? React.createElement('div', { style: { marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 } },
+            React.createElement('div', { style: { fontSize: 11.5, color: T.text2 } },
+              '沉淀候选（' + cands.length + ' 条，与报告第 8 节同源）——值不值得做由你判断：'),
+            cands.map((c, i) => React.createElement('div', { key: i, style: { display: 'flex', alignItems: 'baseline', gap: 6, fontSize: 11.5 } },
+              React.createElement('span', { style: tinyBadge(c.kind === 'case' ? 'var(--d-green)' : 'var(--d-purple)') }, c.kind || '?'),
+              React.createElement('span', { title: c.summary, style: { flex: 1, minWidth: 0, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, c.summary || '(无摘要)'),
+              c.suggestedSkill ? React.createElement('span', { className: 'sleu-mono', style: { color: T.text2, flexShrink: 0 } }, c.suggestedSkill) : null,
+            )),
+          )
+        : null
       const docRow = (reportPath || s.sedimentCandidates)
         ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' } },
             reportPath ? React.createElement('button', {
@@ -528,6 +540,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // 展开的命令块只出现一次（谁被点开就显示谁），按钮本身用"未选中的淡一档"表达选中关系
       const actionArea = React.createElement('div', { style: { margin: '0 16px 12px', paddingTop: 10, borderTop: '1px dashed ' + T.border } },
         docRow,
+        candList,
         React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
           actions.map(a => React.createElement('button', {
             key: a.key, type: 'button', title: a.title,
@@ -604,8 +617,16 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       if (!r || !r.ok) return React.createElement('div', { style: { ...base, padding: 16, color: T.error } }, '无法读取 traces/: ' + (r && r.error || '未知错误'))
 
       let sessions = r.sessions || []
-      const nActive = sessions.filter(s => s.status === 'in_progress').length
-      const nPending = sessions.filter(s => s.feedbackPending).length
+      // 待跟进**三类互斥**（此前重复计数：`status: in_progress` 的定义含"结论已给但用户在跟进"，
+      // 于是"已给 fix 等回报"的单同时落进旧的 nActive 与 nPending，1 单显示成 2 项待跟进）：
+      //   在查   = in_progress、**没有** pending 回报、且回报不是已生效 —— 诊断还没结论（含等用户补材料）→ 续接
+      //   等回报 = 有 pending 回报（不论 status）—— 已给结论/方案等着验证 → 追问结果
+      //   该闭环 = 回报已 resolved 但 status 还停在 in_progress —— 验证过了、状态没更新 → 标闭环
+      // 三者之和 = 面板徽章的"待跟进"数（不再有重复计入的项；三条条件互斥，见下面各自的谓词）。
+      const isClosedButOpen = s => s.status === 'in_progress' && s.feedback === 'resolved'
+      const nLooking = sessions.filter(s => s.status === 'in_progress' && !s.feedbackPending && !isClosedButOpen(s)).length
+      const nAwaiting = sessions.filter(s => s.feedbackPending).length
+      const nClose = sessions.filter(isClosedButOpen).length
       const nInKb = sessions.filter(s => s.activeCase && s.activeCaseInKb).length
       const nNew = sessions.filter(s => s.activeCase && !s.activeCaseInKb).length
       const q = query.trim().toLowerCase()
@@ -622,11 +643,14 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       if (kbFilter === 'kb') sessions = sessions.filter(s => s.activeCase && s.activeCaseInKb)
       if (kbFilter === 'new') sessions = sessions.filter(s => s.activeCase && !s.activeCaseInKb)
       if (kbFilter === 'miss') sessions = sessions.filter(s => !s.activeCase)
+      // 待跟进三类见上方计数处注释（互斥）；徽章与横幅都用这三个数
       const badge = [
         (r.sessions || []).length + ' 会话',
         nInKb ? nInKb + ' 库中已有' : null,
         nNew ? nNew + ' 新形态' : null,
-        nActive ? nActive + ' 进行中' : null,
+        nLooking ? nLooking + ' 在查' : null,
+        nAwaiting ? nAwaiting + ' 等回报' : null,
+        nClose ? nClose + ' 该闭环' : null,
       ].filter(Boolean).join(' · ')
       const kbChips = [
         { id: 'all', label: '全部' },
@@ -643,7 +667,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
 
       // 首屏要先回答"有什么在等我"——所以计数里把**待跟进**的两项单独提出来（进行中、待回报），
       // 而不是混在一串 "N 会话 · N 库中已有 …" 里让读者自己找
-      const nFollow = nActive + nPending
+      const nFollow = nLooking + nAwaiting + nClose
       return React.createElement('div', { className: 'sleu', style: { ...base, padding: 20 } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 10, flexWrap: 'wrap' } },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
@@ -653,13 +677,17 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           React.createElement('span', { title: badge, style: { fontSize: 12.5, color: T.text2, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 999, padding: '3px 11px' } },
             nFollow ? (nFollow + ' 项待跟进') : ((r.sessions || []).length + ' 个会话')),
         ),
-        // 待跟进提示：只在真有的时候出现，且给"下一步做什么"
+        // 待跟进提示：只在真有的时候出现，且给"下一步做什么"。
+        // 三类各自对应一个动作（续接 / 追问结果 / 标闭环），所以分开说；末尾一句点明这是两条轴，
+        // 免得读者把"在查"与"等回报"读成同一件事的两句话。
         nFollow ? React.createElement('div', { style: { ...rise(0), display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '8px 12px', marginBottom: 10, background: 'var(--tint-amber)', border: '1px solid var(--hair)', borderRadius: 10, fontSize: 13.5, color: T.text } },
           React.createElement(Dot, { color: T.warn, size: 7 }),
-          nActive ? React.createElement('span', null, nActive + ' 个诊断还没结束') : null,
-          nActive && nPending ? React.createElement('span', { style: { color: T.text2 } }, '·') : null,
-          nPending ? React.createElement('span', null, nPending + ' 个结果还没回报') : null,
-          React.createElement('span', { style: { color: T.text2, marginLeft: 'auto', fontSize: 12.5 } }, '卡片里点按钮生成指令 → 复制 → 粘到对话执行'),
+          nLooking ? React.createElement('span', null, nLooking + ' 个在查') : null,
+          nLooking && (nAwaiting || nClose) ? React.createElement('span', { style: { color: T.text2 } }, '·') : null,
+          nAwaiting ? React.createElement('span', null, nAwaiting + ' 个等回报') : null,
+          nAwaiting && nClose ? React.createElement('span', { style: { color: T.text2 } }, '·') : null,
+          nClose ? React.createElement('span', null, nClose + ' 个该闭环') : null,
+          React.createElement('span', { style: { color: T.text2, marginLeft: 'auto', fontSize: 12.5 } }, '在查=诊断没结论；等回报=结论已给、fix 没验证｜卡片里点按钮生成指令 → 复制 → 粘到对话执行'),
         ) : null,
         // 工具栏（筛选 + 搜索）**吸顶**：会话一多就得往下滚，工具不该滚走
         React.createElement('div', { style: { position: 'sticky', top: 0, zIndex: 2, paddingTop: 2, paddingBottom: 8, marginBottom: 4, background: T.bg, backgroundImage: 'var(--surf)' } },

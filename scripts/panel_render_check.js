@@ -1070,6 +1070,31 @@ _MS._run_no_pipe = no_fallback`)
         (m, a) => (m === 'ascend-traces-list' ? { ok: true, sessions: few } : diagHost(m, a)))
       expect('诊断 tab：会话 ≤20 时不出现「回到顶部」（不占位）', !/«title:回到顶部/.test(dg2.text))
     }
+    // 待跟进三类**互斥**（回归：曾把"结论已给等回报"同时算进"进行中"和"待回报"，1 单显示 2 项）
+    {
+      const follow = [
+        mkSession(1, { status: 'in_progress', feedbackPending: null, feedback: null }),          // 在查
+        mkSession(2, { status: 'in_progress', feedbackPending: 'pending', feedback: null }),     // 等回报（旧口径会双算）
+        mkSession(3, { status: 'in_progress', feedbackPending: null, feedback: 'resolved' }),    // 该闭环
+        mkSession(4, { status: 'resolved', feedbackPending: null, feedback: 'resolved' }),       // 闭环，不计
+      ]
+      const dg3 = await renderAsync(ascSrc, { sessionId: 'sess-1' },
+        (m, a) => (m === 'ascend-traces-list' ? { ok: true, sessions: follow } : diagHost(m, a)))
+      expect('待跟进三类各自计数（1 在查 / 1 等回报 / 1 该闭环）',
+        /1 个在查/.test(dg3.text) && /1 个等回报/.test(dg3.text) && /1 个该闭环/.test(dg3.text), dg3.text.slice(0, 200))
+      expect('待跟进徽章 = 三类之和（3，不是把等回报双算成 4）',
+        /3 项待跟进/.test(dg3.text) && !/4 项待跟进/.test(dg3.text), dg3.text.slice(0, 160))
+      expect('横幅点明两条轴（在查=诊断没结论；等回报=结论已给、fix 没验证）',
+        /在查=诊断没结论/.test(dg3.text) && /等回报=结论已给/.test(dg3.text))
+      expect('不再出现旧的合并措辞（"个诊断还没结束"/"个结果还没回报"）',
+        !/个诊断还没结束/.test(dg3.text) && !/个结果还没回报/.test(dg3.text))
+    }
+    // 沉淀候选**展开即列出明细**（只给一个数字读者无从判断"为啥是 3 条"）
+    {
+      expect('detail 数据把沉淀候选带回客户端', /sedimentCandidates: r && r\.sedimentCandidates/.test(ascSrc))
+      expect('面板列出候选明细（kind + 摘要 + 建议 skill）',
+        /cands\.map\(\(c, i\)/.test(ascSrc) && /c\.suggestedSkill/.test(ascSrc) && /沉淀候选（/.test(ascSrc))
+    }
     // ① 轨迹时间轴：展开一张会话卡后应有刻度点/竖轨，且证据存在性提到步骤行
     {
       const registrations = []
