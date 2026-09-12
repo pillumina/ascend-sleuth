@@ -1,0 +1,145 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）
+# 校验：python3 scripts/verify_proposals.py --check
+# 脱敏纪律：只含聚合值与证据引用，不含客户现场原文。
+# ============================================================
+
+id: EV-2026-055
+layer: L2
+title: 判据链"接了但没通电"——collect_structural 漏解包，让容量越界判据从未触发；面板改从判据渲染
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-11
+source_signals:
+  - signal: observability_gap
+    evidence: >-
+      用户对指标面板提"无法得到聚焦的信息"。实跑面板与它背后的数据面时发现：
+      **面板显示 85/30（soft_cap 的 2.8 倍、已超 hard_cap 60），页面上却没有任何一句结论**。
+      顺着判据链（阈值 → 检测器 → 展示）查，断点在三处、且是叠加的：
+      ①**展示层不接判据**：面板 host 从不调用 `metrics_health.py`（全文件只有
+      `runLiveMetrics` 一处 shell 调用）；阈值也没读 `gates.yaml`，而是在 host 里写死 `/30`；
+      ②**另一处独立 bug 让检测器自己也没通电**：`metrics_health.py` 调用
+      `MS.collect_structural(root)`（该函数返回 `(out, notes)` 元组）时**漏了解包**，
+      于是 `structural.get(...)` 抛 AttributeError 被 `except` 吞掉，`s_notes` 恒为空、
+      `capacity_by_ns` 恒为空 dict → `cells` 恒为空 → **`cell_soft_cap`/`cell_hard_cap`
+      两条闸门从来没触发过一次**，`--json` 的 `current` 块也跟着恒为 `None`；
+      ③**面板另一处同源 bug**：host 把 (framework × category) 格子加总到 namespace 再比 `/30`
+      （vllm-ascend 显示 `114/30`），而判据是逐格计——读者从 `114/30` 推不出
+      "interrupt 是唯一爆掉的格子"。
+      附带两类"看到的不等于现实"：面板读**生成物**（`_index.yaml` 头注 / timeline 快照）却不标龄期；
+      `misdiagnosis_rate 0/3` 与 `85/30` 在视觉上同等权重，而 `gates.yaml` 的 readability
+      明确判它**不可解读**（反馈捕获为 0 = 没有分母，不是"零误诊"）。
+    trajectory:
+      - "python3 scripts/metrics_health.py → 越界节曾只有 `ok 所有格子均未触发`（85/30 不在其中）"
+      - "python3 -c 'import metrics_snapshot as MS; print(type(MS.collect_structural(root)))' → <class 'tuple'>"
+      - "grep -rn 'metrics_health' dsh-plugins/ascend-panel/panel-host.js → 0 命中"
+      - "grep -rn 'byNamespace' dsh-plugins/ascend-panel/panel-host.js → 面板按 namespace 加总容量"
+      - "修复后 python3 scripts/metrics_health.py --json → fail_count 5，capacity_cells 里 interrupt 85/30 soft+hard 双真"
+  - signal: repeated_manual_step
+    evidence: >-
+      "这算好还是坏"每次都靠人肉：读者要先在心里跑一遍阈值，才知道 20+ 行 label/value 里
+      哪一行是问题。而判据、检测器、动作文案**三者早已存在**（`metrics/gates.yaml` 有 meaning+action，
+      `metrics_health.py` 输出恒为"结论 + 证据 + 下一步动作"三段式）——缺的只是把它们端到人眼前。
+      即：这不是"没有能力"，而是"能力没接线"，属于典型的接线缺口而非新机制需求。
+    trajectory:
+      - "metrics/gates.yaml: 每条 gate 带 meaning 与 action，但只有 metrics_health.py 读它"
+      - "docs/metrics.md 周批第 2 步：人跑体检 → 与面板看的不是同一条路径"
+hypothesis: >-
+  **判据只能有一份，且必须被渲染而不是被重算**。面板若自己算阈值/自己聚合口径，就必然与
+  `gates.yaml` 漂移（本轮两处：写死 `/30`、加总到 namespace）；反过来，面板只渲染
+  `metrics_health.py` 的结论（结论/证据/下一步/可复制指令），则判据改动只改一处，
+  人看到的与 CI/周批判的是同一件事。前提是检测器本身真的通电——所以"检测器存在"必须由
+  断言钉住（脚本在真实数据上真的报出越界），否则一个被静默吞掉的异常就能让整条链空转。
+predicted_effect:
+  metric: 指标链的检出力——先修检测器（其容量判据从未通电），再让面板只渲染判据而非自己算阈值
+  from: "检测器：容量越界恒不报（structural 恒为空）；面板：写死 /30 且加总到 namespace，首屏无一结论行"
+  to: "检测器：真实数据上报出 interrupt 85/30 两条闸门（soft+hard），--check 非零；面板：首屏按判据列结论+证据+下一步，容量逐格，阈值取自 gates.yaml"
+  measure:
+    command: node scripts/panel_render_check.js
+    expect_exit: 0
+    expect_stdout: 容量越界格数与判据一致
+validation:
+  method: metrics_compare
+  baseline: 改前 `metrics_health.py` 越界节只有"所有格子均未触发"；面板 host 全文无 metrics_health 调用、容量按 namespace 加总
+  success_criteria: >-
+    ①`metrics_health.py` 在**真实数据**上报出容量越界（interrupt 85/30，soft 与 hard 双触发），
+    且是逐格判的；②面板首屏出现判决条（结论/证据/下一步），零越界时不占位；
+    ③容量逐格渲染，阈值从 `gates.yaml` 读，面板报的越界格 == 按 gates 独立算出的越界格；
+    ④分母为 0 的指标被标「不可解读」而不是显示成 0；⑤体检不可用时如实退化为可执行提示、
+    且**不**显示"闭环未见阻塞项"；⑥全部既有断言无回归（含 ev-panel 与诊断 tab）。
+  rollback: 改 4 个文件（1 脚本 + 1 演练/闸门 + 面板 host/client 各一）与 2 处文档；均可 git revert（原则七）
+gate:
+  condition: "用户对指标面板提出聚焦性问题触发；三处断点均已实测复现（已发生）"
+risk: low
+principle_refs: [2, 6, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "单会话内联执行，未单独记账；口径同前几张卡"
+decisions:
+  - who: agent
+    when: 2026-09-11
+    type: proposal
+    conclusion: >-
+      采纳"**面板只渲染判据，不重算判据**"，而不是"给面板补一套自己的阈值逻辑"：
+      ①阈值若在面板再写一遍就是第二份判据副本，本轮实测的两处漂移（写死 `/30`、加总到 namespace）
+      正是这样来的；②`metrics_health.py` 的输出本就恒为"结论 + 证据 + 下一步动作"三段式，
+      那正是"聚焦"的定义——面板的工作只是把它端到人眼前 + 把动作变成可复制指令；
+      ③先修检测器再改面板：检测器没通电时，面板接线只会渲染出一份"所有格子均未触发"的假绿，
+      反而比不接更糟。**不做的事（明确）**：不改 `gates.yaml` 的任何数值
+      （红线：系统不改自己考卷），只把既有阈值搬成数据并让面板读它；不把体检器塞进 CI
+      （安静的一周没有新快照是正常状态，硬门会假红，这条沿用前一张卡的判断）。
+  - who: agent
+    when: 2026-09-11
+    type: action
+    conclusion: >-
+      实施：①修 `scripts/metrics_health.py` 的 `collect_structural` 解包（这处 bug 让容量判据从未触发）；
+      ②该脚本 `--json` 扩展为面板的数据契约：`gates`（阈值+meaning+action）、`readability`
+      （带 metric 名，供面板打标记）、`capacity_cells`（逐格 + soft/hard 判定）、`freshness`
+      （龄期与阈值）、`candidate_commands`（判据动作 → 可粘贴指令）、`current`（修好后才有值）；
+      ③`panel-host.js`：新增 `ascend-metrics-verdict` RPC（跑体检脚本，解释器沿用既有探测与
+      UTF-8 钉法，缺解释器/缺 PyYAML/超时/无输出各自给可执行提示），新增 `parseIdxHeader`
+      （逐格容量 + 索引生成日期）与 `countCaseFiles`（磁盘真实 case 数 → drift），
+      删掉 namespace 加总口径；④`panel-client.js`：`StatusBar`（快照龄期 + drift）、
+      `VerdictCard`（首屏判决，点开给证据与可复制指令，零越界一行说明）、`CheckLedger`
+      （判据全貌折叠）、`CapacityLedger`+`CapacityCell`（逐格 + 进度条 + 倍数 + 硬上限徽标）、
+      `MetricRow` 支持「不可解读」徽标、`PeriodCard` 卡头报该期不可解读项数、卡头改 `<button>`
+      并带 `aria-expanded`（键盘可达）、补 `prefers-reduced-motion` 兜底与首屏浮现；
+      ⑤`scripts/panel_render_check.js` 新增「指标 · 闭环判决」节（约 35 条断言）；
+      ⑥文档：面板 README（判据链断点 + 四处缺陷 + 闸门说明）。
+  - who: agent
+    when: 2026-09-11
+    type: eval
+    conclusion: >-
+      `metrics_compare`（命令见 predicted_effect.measure）：
+      ①`node scripts/panel_render_check.js` → **全部通过**（exit 0），其中新增「闭环判决」节约 35 条；
+      ②改前该命令在容量口径断言上必然失败（面板按 namespace 加总 → 报 1 格越界的判据对不上）；
+      ③真实数据实测：`metrics_health.py --json` → `fail_count 5`、`capacity_cells` 中
+      `inference/vllm-ascend · interrupt = 85/30` soft+hard 双真（改前该格恒不出现）；
+      ④`check_panel_tokens.py` OK（两面板色语角色仍一致）；
+      ⑤`rehearse_evolve_loop.py` → 113/114，唯一失败项「组装覆盖诊断侧（真实 traces 已拷入）」
+      是**本机环境前提不成立**（该检出没有 `traces/`，而断言依赖真实 traces 被拷入），与本次改动无关，
+      如实记录不作"全绿"表述。
+      边界如实标注：面板断言证明的是"渲染逻辑与数据契约"，不是浏览器里的视觉与交互——
+      对比度、帧间隔、真实点击仍属约定强度（沿用 ev-panel 的既定分工）。
+  - who: agent
+    when: 2026-09-11
+    type: decision
+    conclusion: >-
+      **validated（采纳，改动保留）**。判据：success_criteria 六项中①③④⑤由命令实测达成，
+      ②⑥由渲染闸门与既有断言无回归达成。
+      残留（如实标注）：
+      ①**"接了但没通电"是一类缺陷，不止这一处**——本轮两次发现同源问题（先发现面板侧，
+      修完以为好了，二次实测才发现脚本侧更严重）。系统里凡是"新增检测器/接线"的改动，
+      都缺一条"它在真实数据上真的报过警"的证据要求；本卡只用断言钉住了容量这一条链，
+      未做系统排查。
+      ②**面板读生成物却只对 case 数做了 drift**——`_index.yaml` 的容量头注、timeline 快照的
+      指标值都没有同类对照；若索引落后而 case 总数恰好未变，面板仍会显示旧容量。
+      ③**`--check` 依赖现实里有违规项**：`metrics_health.py --check` 的退出码随真实数据变化，
+      因此本卡的 measure 刻意选了不依赖现实数据的渲染闸门；若要拿 `--check` 当门，需先界定
+      "本期没有违规"与"检测器失效"的区别。
+      ④**体检器仍未进 CI**（沿用 EV-2026-049 的判断）——若长期没人跑周批，陈旧仍会以
+      "没有新 snapshot"的形式积累；现在面板把它端到了首屏，属提示面而非硬门。

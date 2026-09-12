@@ -12,7 +12,7 @@ description: >
 
 ## 流程
 
-**先清反馈债**：扫到的 state 文件里若有 `feedback_pending: <case-id>`（上次给了 fix 还没回报结果），先追问“上次 <case-id> 的 fix 应用后解决了吗？（解决 / 没解决 / 部分解决）”——按结果回写该 case 的 confidence（hits/misdiagnoses/last_hit）、trace 记 `{action: feedback, case, outcome}`、清掉标记，再进入续接。
+**先清反馈债**：扫到的 state 文件里若有 `feedback.outcome: pending` 且 `feedback.case` 非空（上次给了 fix 还没回报结果），先追问“上次 <case-id> 的 fix 应用后解决了吗？（解决 / 没解决 / 部分解决）”——按结果回写该 case 的 confidence（hits/misdiagnoses/last_hit）、trace 记 `{action: feedback, case, outcome}`、把 `feedback.outcome` 从 `pending` 改成实际结果，再进入续接。状态与结局词表见仓库根的 `trace-status.yaml`（**不是** `feedback_pending` 那个旧说法）。
 
 1. 读活跃的 `traces/*.yaml`（每个并发诊断一个文件；模板见 `diagnosis_state.yaml.example`，含 `trace` 数组）。**多个时列出让工程师选续接哪个**
    - **先看有没有配套的人读报告** `traces/<session_id>.report.md`（diagnose 步骤 6 产出）：它把结论、证据链、源码分析、机制图、修复方案、**当前状态与下一步**、**沉淀候选**集中在一处。先读报告能最快恢复"这单在查什么、停在哪、待回报什么"，也直接告诉你**这次能沉淀什么知识**（顶层 `sediment_candidates` 是同一份内容的结构化版本）。读报告**不替代**读 trace：报告的结论要用 trace 的 `reason`/证据核对，两者冲突时以 trace 的现场记录为准并记下冲突。

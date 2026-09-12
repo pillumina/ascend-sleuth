@@ -28,7 +28,7 @@ description: >
 - issue-ingest：沉淀与标记完成后；
 - to-reference / to-postmortem：草稿产出、落盘后；
 - diagnose：**不强制每次收尾跑本协议**（高频 + 已有内建 evolving：未命中起草候选
-  case、源码揭示稳定结构事实顺手走 to-reference、反馈捕获写 feedback_pending）——
+  case、源码揭示稳定结构事实顺手走 to-reference、反馈捕获把 `feedback.outcome` 置 `pending`）——
   其 L2/L3 视角（反复 miss 同族、流程摩擦）由 S2 replay（`s2_replay.py --todo`）
   与深度轮归因事件信号覆盖，见 /skill:self-evolve §二；
 - knowledge-groom：批审产出后。
