@@ -587,7 +587,12 @@ def ex_metrics_loop(root: Path):
         h3 = json.loads(out)
         t3 = " ".join(f.get("text", "") for f in (h3.get("findings") or []))
         check("崩坏数据：报陈旧", "超期" in t3, t3[:200])
-        check("崩坏数据：报 soft_cap 与 hard_cap 越界", t3.count("interrupt = 70/30") >= 2, t3[:200])
+        # 容量**一个格子只报一条**（2026-09 七轮的设计）：格子同时越过 soft/hard 时合成一条，
+        # 在判据出处里点名越过了哪两条判据。所以断言从"同一格出现两行"（旧渲染的产物）
+        # 改为"格子被报到 + 两种判据都点名"——两条判据都得浮出来，重复行不该回来。
+        check("崩坏数据：报 soft_cap 与 hard_cap 越界（一格子一条，两种判据都点名）",
+              t3.count("interrupt = 70/30") >= 1 and "cell_soft_cap" in t3 and "cell_hard_cap" in t3,
+              t3[:200])
         check("崩坏数据：报反馈下限 + 不可解读", "不可解读" in t3, t3[:200])
         check("崩坏数据：--check 非零", rc != 0, f"rc={rc}")
     finally:

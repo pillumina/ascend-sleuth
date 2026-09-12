@@ -121,3 +121,18 @@ decisions:
       与 ADR-0004/groom 表一致，但仍是**两处**（数据 + 散文），改数值要同步；③真实待办留给 owner：
       `inference/vllm-ascend · interrupt = 85/30` 已超 hard_cap，按 ADR-0004 应强制拆分——本卡只记录与报警，
       拆分是知识结构决策（groom 步骤 6），不在机制卡里顺手做。
+  - who: agent
+    when: 2026-09-11
+    type: action
+    conclusion: >-
+      **事后缺陷补记（只追加，不改上文）**：本卡 decisions 第 3 条据以判"三类全报"的
+      **容量越界那一报，是假的**。`metrics_health.py` 里 `MS.collect_structural(root)` 返回
+      `(out, notes)` 元组而调用处漏了解包 → `structural.get(...)` 抛 AttributeError 被 `except` 吞掉
+      （`s_notes` 因此恒为空）→ `capacity_by_ns` 恒为空 dict → `cell_soft_cap`/`cell_hard_cap`
+      **从未触发过一次**，`--json` 的 `current` 块也恒为 `None`。
+      当时那 5 项 ✗ 里的容量两条，来自本卡④实现的**另一条**（`gather` 之外的那份代码路径）；
+      漏解包的那处是并列的第二条路径。教训（原则十一：假设换成实测）：
+      **"检测器写好了"不等于"检测器通电了"**——"某条判据在真实数据上按期望报过警"
+      本身需要一条证据（本仓既有做法是"该红必红/不该红不哭狼"两份合成数据，
+      但这次是实现里存在两条路径、只测到了一条）。修复与面板侧的判据渲染见 EV-2026-055；
+      本卡结论（补检测腿的方向）不变，但"已全部通电"这一判断由 EV-2026-055 重新取证。

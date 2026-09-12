@@ -27,6 +27,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from datetime import date
 from pathlib import Path
 
@@ -36,10 +37,51 @@ from exec_log_path import resolve as resolve_exec_log     # noqa: F401  （路�
 from tail_exec_log import aggregate as aggregate_exec_log, load_records
 
 
+def _run_no_pipe(root: Path, args: list, env):
+    """无管道捕获地跑子进程：输出重定向到临时文件，再把文件读回来。
+
+    为什么必须有（2026-09-11 实测）：诊断面板跑体检时，`subprocess.run(capture_output=True)`
+    报 `PermissionError: [WinError 5] 拒绝访问`——受限执行环境里**管道创建**被拒。
+    于是 `collect_structural` 整体抛错，面板上"容量越界 85/30"这种最要命的信号直接消失
+    （只见一截看不懂的 traceback）。管道不可用是环境的限制，不是"这个数拿不到"——
+    改用文件重定向就能拿到同一个结果，检测腿不必因此断掉。
+    落在 tempfile.gettempdir()（环境保证可写），用完即删。
+    """
+    fd_out, path_out = tempfile.mkstemp(prefix="metrics_run_", suffix=".out")
+    fd_err, path_err = tempfile.mkstemp(prefix="metrics_run_", suffix=".err")
+    os.close(fd_out)
+    os.close(fd_err)
+    try:
+        with open(path_out, "wb") as fo, open(path_err, "wb") as fe:
+            r = subprocess.run([sys.executable, *args], cwd=str(root), stdout=fo, stderr=fe,
+                               stdin=subprocess.DEVNULL, env=env, timeout=300)
+        with open(path_out, "rb") as fo:
+            out = fo.read().decode("utf-8", "replace")
+        with open(path_err, "rb") as fe:
+            err = fe.read().decode("utf-8", "replace")
+        return r.returncode, out + err
+    finally:
+        for p in (path_out, path_err):
+            try:
+                os.unlink(p)
+            except OSError:
+                pass
+
+
 def _run(root: Path, args: list):
-    r = subprocess.run([sys.executable, *args], cwd=str(root), capture_output=True, text=True,
-                       env={**os.environ, "PYTHONIOENCODING": "utf-8"}, encoding="utf-8", errors="replace")
-    return r.returncode, (r.stdout or "") + (r.stderr or "")
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    try:
+        r = subprocess.run([sys.executable, *args], cwd=str(root), capture_output=True, text=True,
+                           env=env, encoding="utf-8", errors="replace")
+        return r.returncode, (r.stdout or "") + (r.stderr or "")
+    except (PermissionError, OSError) as e:
+        # 管道被拒（受限执行环境）→ 退回文件重定向；连它也不成，才如实报"跑不了"
+        try:
+            return _run_no_pipe(root, args, env)
+        except Exception as e2:
+            msg = " ".join(str(e2).split())
+            return 127, (f"子进程无法执行（{type(e).__name__}: {' '.join(str(e).split())}；"
+                         f"文件重定向回退也失败：{type(e2).__name__}: {msg[:160]}）")
 
 
 def resolve_trace_root(root: Path):

@@ -482,6 +482,17 @@ def check_reference(path: Path, refs_dir: Path, types_registry: dict, case_ref_c
                 )
 
 
+def count_entries(refs_dir: Path) -> int:
+    """词条计数（**唯一口径**）：`references/**/*.yaml` 递归，跳过 `_` 开头的文件。
+
+    单独成函数是给"降级路径"复用的：`metrics_health.py` 在子进程跑不动时（受限执行环境）
+    需要不启子进程就得到词条数。降级值必须与权威值**同口径**——实测教训：那边自己写了一份
+    "只数直接子目录"的规则，漏掉 `references/<type>/<family>/x.yaml` 这一层嵌套，得到 127
+    而权威是 130。避免漂移的办法不是"对齐两份规则"，是**只留一份**。
+    """
+    return len([p for p in refs_dir.rglob("*.yaml") if not p.name.startswith("_")])
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="CI 模式（与默认行为一致，对称 build_index）")
@@ -540,7 +551,7 @@ def main():
             print(f"  - {e}")
         sys.exit(1)
 
-    n = len([p for p in refs_dir.rglob("*.yaml") if not p.name.startswith("_")])
+    n = count_entries(refs_dir)
     print(f"references 校验通过（{n} 个词条，id 全部唯一）")
 
 

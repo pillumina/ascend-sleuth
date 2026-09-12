@@ -10,7 +10,7 @@
 | `docs/metrics.md`（本文） | 机制文档：指标定义、口径、汇总流程、示例 | 机制变化时 |
 | `metrics/gates.yaml` | **阈值与可解读性下限（数据）**：新鲜度上限、格子 soft/hard cap、反馈下限、哪些指标分母为 0 即"不可解读" | 判据变化时 |
 | `scripts/metrics_snapshot.py` | **一期快照的单一产出命令**：组装诊断侧 + 结构侧 + 内容流程侧（逐块标 `sources`）；评测侧按需 | 随机制 |
-| `scripts/metrics_health.py` | **闭环检测器**：读 timeline + gates，判新鲜度 / 越界 / 可解读性；`--check` 有 ✗ 则非零 | 随机制 |
+| `scripts/metrics_health.py` | **闭环检测器**：读 timeline + gates，判新鲜度 / 越界 / 可解读性；`--check` 三态（0 判据全评过且无越界 / 1 有违反 / 2 有判据未被评估）；`--json` 是诊断面板的数据契约 | 随机制 |
 | `scripts/trace_metrics.py` | 诊断侧指标（markdown 概览 + `--emit-yaml` 骨架 + `--emit-yaml-only` 供组装） | 随机制 |
 | `scripts/verify_metrics.py` | 校验 timeline.yaml 结构（period 唯一 / kind 合法 / 比例字段合法 / live 字段白名单），CI 强制 | 随机制 |
 
@@ -113,6 +113,26 @@ periods:
 （trace_metrics → 复核 → append → verify）不会被告知上述任何一条，指标坏了只能等人想起来。
 检测器**不进 CI**：安静的一周没有新快照是正常状态，硬门会假红；它服务于周批与季度回顾。
 
+### `--check` 的三态：把"体检器坏了"与"本期没事"分开
+
+`--check` 的退出码**不止"有没有 ✗"**（2026-09-11 起），语义与 `ev_measure.py` 三态同形：
+
+| 退出码 | 含义 | 处置 |
+|---|---|---|
+| `0` | 判据**全部被评估过**且无越界 | 本期确实没有阻塞项 |
+| `1` | 有判据被违反 | 按报告的 `action` 列处置 |
+| `2` | 有判据**没被评估**（结构性） | **结论不可用**——"没有越界"不成立，先修检测器/数据源 |
+
+**为什么需要 2 这一态**（两个实测假绿的教训）：修前只看"有没有 ✗"，于是
+①`metrics_health.py` 里一处 `collect_structural` 漏解包（返回元组未拆）让容量格子恒为空 →
+两条容量闸门**从未触发过一次**，`--check` 照样 exit 0；
+②`load_yaml` 把解析异常 `except: return {}` 吞掉 → `gates.yaml` 语法坏掉时判据变成 0 条，
+体检器报 `clean（判据全部评过）`——**检测器的配置读坏了它自己不会喊**。
+现在两种情况都报 2，并逐条点名（`--json` 的 `broken` 字段），
+报告里也给"判据覆盖面"（`闸门 N/M 条已评估 · 可解读性规则 K/L 条已评估`）——
+"没报越界"与"没被检查"从此在数据上可区分。诊断面板的指标 tab 首屏据同一份输出显示
+「体检器失效」，而不是"闭环未见阻塞项"。
+
 ## 汇总流程（owner 职责）
 
 metrics 由 **owner 在 groom 周批时集中生成并 append**（每期一条，团队共享）。工程师不提交 metrics——他们只做诊断（本地 trace）+ 反馈（case confidence 走 PR）；中心化指标（命中/误诊/confidence 分布）直接从仓库 case 统计，无需工程师动作。
@@ -123,7 +143,8 @@ metrics 由 **owner 在 groom 周批时集中生成并 append**（每期一条�
    → stdout：人读摘要（含"如实缺席"清单 + 已越界格子）+ YAML 骨架（逐块 sources）
 2. **体检**（判据在 metrics/gates.yaml：新鲜度 / 越界 / 可解读性）：
    python3 scripts/metrics_health.py
-   → 逐面列出 ✓/!/✗ 与**行动**；`--check` 时有 ✗ 则非零
+   → 逐面列出 ✓/!/✗ 与**行动**，末尾报"判据覆盖面"
+   → `--check` 退出码三态：0 判据全评过且无越界 · 1 有违反 · 2 有判据**未被评估**（结论不可用）
 3. 人复核：核对分母、把"不可解读"的指标写进 notes（禁止把 0/N 读成"零问题"）、
    越界格子按行动列处置（容量拆分走 groom 步骤 6）
 4. append 进 metrics/timeline.yaml（每期一条；建议 `--emit-yaml` 直出后手工补 title/notes）

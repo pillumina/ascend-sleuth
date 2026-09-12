@@ -1,0 +1,230 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）
+# 校验：python3 scripts/verify_proposals.py --check
+# 脱敏纪律：只含聚合值与证据引用，不含客户现场原文。
+# ============================================================
+
+id: EV-2026-056
+layer: L2
+title: 把"体检器坏了"与"本期没事"分开——`--check` 补第三态；面板据同一输出显示体检器失效
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-11
+source_signals:
+  - signal: observability_gap
+    evidence: >-
+      接 EV-2026-055（修掉容量判据从不通电）之后，继续深挖"检测腿"时又实测到**两处同类假绿**，
+      且都是"配置/实现坏了而体检器照样报健康"：
+      ①**`--check` 只有 0/1 两态**：退出码只由"有没有 ✗"决定，于是"体检器没在工作"与
+      "本期确实没有违规"**在数据上完全不可区分**——这不是理论风险，是刚发生过的事
+      （漏解包让两条容量闸门从未触发，`--check` 照样 exit 0）；
+      ②**`load_yaml` 把解析异常吞成空文档**：`except Exception: return {}`，于是
+      `metrics/gates.yaml` 语法坏掉时判据变成 0 条、体检器报
+      `clean（判据全部评过）` —— 检测器的**配置读坏了它自己不会喊**（本轮实测复现）。
+      另外两条同源观察：
+      ③面板没有可信的"覆盖了多少判据"，读者无法判断"没报越界"与"没被检查"；
+      ④`metrics/timeline.yaml` 里的容量有**三种形状**（`{count,cap}` 字典 / `"36/30"` 字符串 /
+      整块缺席），任何只认一种形状的消费者都会安静地少看到数据（本轮做容量趋势条时实测）。
+    trajectory:
+      - "python3 scripts/metrics_health.py --check（gates.yaml 正常）→ exit 0/1 两态，无第三态"
+      - "造一份语法坏掉的 gates.yaml → 修前体检器报 clean、exit 0；修后报 ScannerError、exit 2"
+      - "造一份多一条未实现 dimension 的 gates.yaml → 修前该判据静默不检查；修后 exit 2 且点名 brand_new_gate"
+      - "yaml 解析 timeline 各期 capacity_by_ns → 8 期里 1 期是字典、2 期是 'N/30' 字符串、5 期整块缺席"
+  - signal: repeated_manual_step
+    evidence: >-
+      周批第 2 步的人读面原本只有 `✓/!/✗` 清单，读者要自己数"一共检查了几条判据"才知道
+      报告是否完整；季度回顾时"这期没有越界"这句话的可信度无从核。补上覆盖面与第三态后，
+      "报告完整"与"结论可用"成为报告自己声明的东西，不必靠人回忆配置。
+    trajectory:
+      - "docs/metrics.md 周批第 2 步：只有'逐面列出 ✓/!/✗ 与行动'，无覆盖面"
+hypothesis: >-
+  **检测器的可用性必须自证**：一个体检报告的结论强度取决于"它实际评了几条判据"，
+  因此报告必须同时给出①覆盖面（N/M）与②三态退出码，且"配置读不动"要作为**不可判定**
+  而不是"没有越界"。退出码语义与 `ev_measure.py` 三态同形（0 符合 / 1 被证伪 / 2 无法判定）——
+  同一套语言在两类评审把手上复用，读者不必学两套。下游（面板）只渲染这份自证结果，
+  第三态时显式呈现"结论不可用"，从而**把假绿变成可见的红**。
+predicted_effect:
+  metric: 体检结论的可判定性——"体检器坏了"能否与"本期无越界"在退出码与报告上区分
+  from: "两态：exit 0 既表示'本期没事'也表示'判据根本没被评过'；配置解析失败被吞成空文档后报 clean"
+  to: "三态：exit 2 = 有判据未被评估（结论不可用）并逐条点名；报告给出判据覆盖面 N/M；面板首屏显示「体检器失效」而非「闭环未见阻塞项」"
+  measure:
+    command: node scripts/panel_render_check.js
+    expect_exit: 0
+    expect_stdout: 体检器失效
+validation:
+  method: metrics_compare
+  baseline: 修前：语法坏掉的 gates.yaml → exit 0 + clean；多一条未实现 dimension → 该判据静默跳过；面板无覆盖面、无失效态
+  success_criteria: >-
+    ①`--check` 三态可判：真实数据 1、造出的"判据不可评估"场景 2、且 2 时 verdict 不是 clean；
+    ②覆盖面可查（闸门 N/M · 可解读性 K/L），真实数据为 3/3 与 2/2；
+    ③面板第三态出红色横幅、点名缺口、覆盖面显示 3/4、且**不**出现"闭环未见阻塞项"；
+    ④`load_yaml` 解析失败进 broken（不再是空文档）；
+    ⑤容量趋势条能跨三种形状归一（实测 `32→85 (+53)`）；
+    ⑥既有断言无回归。
+  rollback: 改 1 脚本 + 1 新增夹具 + 面板 client 一文件 + 2 处文档；均可 git revert（原则七）
+gate:
+  condition: "为 EV-2026-055 收尾时实测到两处同类假绿（已发生）；非日历驱动"
+risk: low
+principle_refs: [2, 6, 8, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "单会话内联执行，未单独记账；口径同前几张卡"
+decisions:
+  - who: agent
+    when: 2026-09-11
+    type: proposal
+    conclusion: >-
+      采纳"**让检测器自证可用性**"（覆盖面 + 三态退出码 + 配置读不动即不可判定），
+      而不是"在文档里提醒人注意配置别写坏"：①提醒不是结构，本轮两处假绿都是"没人会注意"的类型；
+      ②覆盖面是**报告自己声明**的事实，不依赖读者回忆 gates.yaml 里有几条判据；
+      ③三态与 `ev_measure.py` 同形，复用既有语言而不新造一套。
+      **不做的事（明确）**：①不改任何闸门数值（红线：系统不改自己考卷）——本轮只加"是否被评估"
+      与退出码语义；②体检器仍**不进 CI**（沿用前两张卡：安静的一周没有新快照是正常状态，
+      硬门会假红）；③不为"配置坏掉"加自动修复——检测器的职责是如实喊出来，不是替人改文件。
+  - who: agent
+    when: 2026-09-11
+    type: action
+    conclusion: >-
+      实施：①`metrics_health.py`：`load_yaml` 解析失败记入 `load_errors` 并进 `broken`
+      （不再 `except: return {}`）；新增"判据覆盖面"审计（闸门 dimension 与 readability rule
+      各自对照 `IMPLEMENTED_GATE_DIMENSIONS` / `IMPLEMENTED_READABILITY_RULES` 常量，
+      以及该指标是否真出现在最新 live 快照里），未实现/未评估一律进 `broken`；
+      `--json` 增 `exit_code` / `check_verdict` / `broken` / `coverage`；
+      `--check` 退出码改三态；人读面加"判据覆盖面"节与三态说明；
+      ②新增 `scripts/fixtures/make_broken_metrics_root.py`：造"数据齐备但判据不可评估"的临时 root
+      （该状态真实仓库给不出，它要求"配置坏/判据未实现"），目录用 junction 指回真实检出；
+      ③`panel_render_check.js` 新增三态断言（两个夹具场景 + 真实数据 violations/exit 1）
+      与体检器失效态断言；④面板 `panel-client.js`：`verdictState()` 统一三态判读、
+      状态条加判据覆盖面、新增 `BrokenDetector` 红色横幅（点名缺口 + "没报越界 ≠ 没有越界" +
+      复现命令 + 三态语义）；⑤容量趋势条 `CapacityTrend` + `normalizeCapacity`
+      （归一三种形状）；⑥文档：`docs/metrics.md` 增「`--check` 的三态」节与周批第 2 步说明，
+      面板 README 增三轮说明。
+  - who: agent
+    when: 2026-09-11
+    type: eval
+    conclusion: >-
+      `metrics_compare`（命令见 measure）：
+      ①夹具场景 A（多一条未实现 dimension）→ `--check` exit 2、verdict=broken、coverage 3/4、
+      点名 `brand_new_gate`；②场景 B（gates.yaml 语法坏掉）→ exit 2、broken 里是
+      `gates.yaml 读取/解析失败（ScannerError…）`，**不再报 clean**；
+      ③真实数据 → verdict=violations、exit 1、闸门 3/3、可解读性 2/2、broken 为空；
+      ④面板：`node scripts/panel_render_check.js` 全部通过（含体检器失效态 7 条、三态 6 条、
+      趋势条 2 条新断言）；⑤趋势条实测对上 `32→85 (+53)`（3 期：W35 32 / W36 36 / W37 85）。
+      边界如实标注：①`--check` 的 1 与 0 两态依赖现实数据，故 measure 选的是不依赖现实数据的
+      渲染闸门（夹具已把 2 那一态钉住）；②退出码三态只是**可判定性**的保障，
+      不证明"判据选得对"（那是约定强度，靠人审）。
+  - who: agent
+    when: 2026-09-11
+    type: decision
+    conclusion: >-
+      **validated（采纳，改动保留）**。判据：success_criteria 六项达成。
+      残留（如实标注）：
+      ①**"配置读不动→不可判定"只覆盖了 gates.yaml 与 timeline.yaml 两处**；同类的
+      "脚本依赖的文件坏了但被吞掉"在本仓其他脚本里未做系统排查（本轮只改了体检器）。
+      ②**覆盖面判据仍是白名单式**（`IMPLEMENTED_*` 常量 vs gates.yaml 声明）：能抓住
+      "新增判据没实现"，抓不住"实现了但实现写错（比如 op 写反）"——后者需要判据级自测。
+      ③面板的容量趋势条只画**最近 6 期**且按快照原始值；W35/W36 的结构快照只有 interrupt 一格，
+      所以其他格子的趋势条要等结构侧快照继续积累（现显示"趋势待积累"，不假装有走势）。
+      ④本轮操作事故（如实记录）：我用 PowerShell 内联改写测试夹具时因引号被解析，
+      **误写了真实的 `metrics/gates.yaml`**（中文变乱码、并混入一条测试闸门）。
+      已按 git 对象库里的 HEAD blob 逐字节比对恢复（1552 字符 / 50 行完全一致），
+      并用解析结果与体检输出复核。教训：**改夹具不许在真实路径上做字符串替换**——
+      夹具改为写进临时 root（本轮新增的 `scripts/fixtures/` 即为此），且损坏检测要能自证
+      （恢复过程中正是新加的三态检查第一时间报出了"gates.yaml 读取/解析失败"）。
+  - who: agent
+    when: 2026-09-11
+    type: action
+    conclusion: >-
+      **验收当天的实测事故补记（只追加）**：用户在面板上看到的是
+      「体检脚本报错: Traceback ... line 149, in main / structural, s_notes = MS.collect_structural(root) ...」
+      ——一截**被截断、连异常类型都看不到**的 traceback，等于"面板坏了但不说为什么"。
+      查因三处叠加，都是"失败时不给线索"：
+      ①`resolveCwd()` 拿不到 `session.header.cwd` 时返回 `undefined`，而
+      `shell.resolve({workdir: undefined})` **不报错**（退到某个默认目录）→
+      `python scripts/metrics_health.py` 找不到文件；`runLiveMetrics` 一直防着这件事
+      （`if (!shell || !cwd)`），我新写的 `runMetricsHealth` 漏了；
+      ②错误串用 `err.trim().slice(0, 400)` —— **traceback 的结论在最后几行**，从头截等于只留噪声；
+      ③`collect_structural` 内部用 `subprocess.run(capture_output=True)` 跑 `verify_references.py`，
+      在受限执行环境里子进程/管道可能被拒 → 异常冒到模块级 → 整轮体检崩掉，
+      **连容量越界这种最要命的信号一起没了**。
+      修复：①`resolveCwd` 加兜底（会话拿不到就扫已知会话取第一个带 cwd 的）+ 无工作区时
+      **不发起注定失败的命令**并说清缺口与手工复现路径；②`shellFail()` 统一报错形态：
+      执行上下文（解释器 / 工作目录 / 命令 / 退出码）+ stderr **尾部**（限行数，不撑版面）+
+      结构化字段（`py`/`cwd`/`exitCode`/`stderrTail`）；③`collect_structural_safe()` 防御包装：
+      任何异常降级为"结构侧采集失败 + 容量判据本轮**未被评估**"（进 `broken`，exit 2），
+      `reference` 词条数降级为直接计数并**标注口径**，`collect_content_flow` 同样包装
+      （并注明"按 0 显示不代表真的没跑"）。
+      回归：`panel_render_check.js` 新增一节——从**真实 host 源文件**按行抽取
+      `runMetricsHealth`/`shellFail` 配桩运行（断言：无工作区 0 次命令调用并说清缺口；
+      报错含解释器/目录/命令/退出码；stderr 尾部保留 `PermissionError`；错误串 ≤8 行；
+      正路仍能解析 verdict），外加"`subprocess.run` 抛 PermissionError 时脚本仍产出 JSON 且如实报降级"。
+      逐项踩到的**测试自身**的坑也如实记下：`new Function` 体不是 async（抽出的函数含 `await`）、
+      包 async IIFE 后返回的是 Promise 必须 `await`、用花括号配平抽函数会被字符串/正则里的花括号
+      干扰（改为按行扫描 `    }`）——三条都是"抽真实源码做断言"这一手法本身的成本。
+  - who: agent
+    when: 2026-09-11
+    type: action
+    conclusion: >-
+      **根因坐实 + 可读性返工（只追加）**：用户贴出的面板报错里含
+      `PermissionError: [WinError 5] 拒绝访问。`——上一轮那条"管道被拒"的猜测被证实，
+      且**不止是报错不好看**：它让容量越界（85/30，超 hard_cap）在面板里根本显示不出来。
+      修法：`_run` 在 `capture_output` 被拒时**回退到文件重定向**（stdout/stderr 落 `tempfile`
+      再读回），于是面板环境下容量判据**照常评估、不降级**；连回退也失败才走到"如实降级"分支。
+      回归拆成两个场景（回退成功 → 不降级；回退也失败 → 如实降级），只测后者会漏掉更好的结局。
+      同轮修掉一处**口径重复**：降级计数原先自己写了份 rglob 规则（漏 `references/<type>/<family>/`
+      嵌套层，得 127 而权威 130），改为复用 `verify_references.count_entries`——
+      **避免漂移的办法不是对齐两份规则，是只留一份**。
+      用户另反馈"看着吃力、配色尖锐"。**先量化再动手**：实测文字色对白底 4.76–7.09:1、
+      暗色 7.6–10.6:1，**全部已过 WCAG AA**——所以问题不在对比度，在**用色位置**：
+      红色同时出现在底纹+左边框+图标+胶囊+按钮五处；绿色同时表示"库健康/品牌/容量正常"三项
+      无关语义；底纹浓度各写各的（5/6/8/12/14%）。三处返工：①判决行从三栏（图标+66px 标签列+正文）
+      改为**单行流式**（一句话被拆成三段是"读起来断续"的主因）；②体检器失效时首屏先说
+      "哪几项没跑 + 所以结论怎样"，把原始异常串/覆盖面/复现命令收进折叠——**诊断信息是给维护者的，
+      不是给用户的**；③`--d-*`（深档）专供文字描边、`--acc-*` 只作大块面、底纹统一 9%，
+      并补上定义了却没用的 `--surf`/`--hair`。顺带修两处真缺陷：判据文案里的 Markdown `**`
+      会渲染成字面量；broken 态下状态条说"判据 3/3 全部被评估"与横幅"判据不完整"**自相矛盾**。
+  - who: agent
+    when: 2026-09-11
+    type: action
+    conclusion: >-
+      **字体与排版（只追加）**：用户再反馈"字体小、看着累"。实测原状：字号有 **9 档却只差 3.5px**
+      （9.5→13）、正文 11–12px、中文 `line-height` 只有 1.5——即**没有尺度**，只有一堆随手写的值。
+      改为：①字体栈走 token（`--font-sans/mono/num`），组件里 100+ 处内联 `fontFamily` 全部收口，
+      `.sleu` 作唯一落点；**不做 web font**（离线/内网会闪、中文子集几 MB）；
+      ②建立 `--t-*` 字号尺度（10.5 → 20），基准 13 → **14.5**，最小 9.5 → 10.5；
+      ③中文行高 1.6/1.75，数字 `tabular-nums`；④现代观感落在 `--elev-*` 分层阴影、
+      `--r-*` 圆角尺度与 `.sleu-row/.sleu-card/.sleu-chip` 的 hover 反馈上。
+      **操作事故（如实记录）**：我先把"字号重映射"写成一串内容替换，替换**级联**了
+      （`11.5→13→15`、`13→15→18`），85 处字号被推到 18px；两次尝试从 git 恢复都失败
+      （blob 不在 packfile，也不在松散对象里——本检出是裁剪过的），于是改用**行号定位**
+      逐处重映射并定语义档位，再用文本锚点校准标题（12.5 → 15）。教训与上一条同类：
+      **批量字符串替换必须有"不会互相命中"的保证**（按行号或事后校验分布），
+      而且**改之前应先看清楚分布**（我当时连"原有哪些档位"都没查就动手了）。
+      回归新增一节排版契约（档位 ≤8、最小 ≥10、基准 ≥14、行高 ≥1.6、字体栈无字面量残留、
+      根挂 `.sleu`、阴影/圆角走 token、hover 走 class），把尺度本身钉住。
+  - who: agent
+    when: 2026-09-11
+    type: action
+    conclusion: >-
+      **文案层返工（只追加）**：用户指出面板整屏是**变量名**——`cell_soft_cap`、
+      `feedback_capture_floor`、`misdiagnosis_rate`——句子也是对着实现说的
+      （"(framework × category) 格子条数超 soft_cap"）。这是**把自己的内部标识符当成了用户文案**，
+      比字号和配色更根本。改法：**一个概念两层说法**——findings 从 4 元组扩成 5 元组，
+      增一列 `plain`；判据的身份住在 `metrics_health.py` 一侧，所以人话也由它下发，
+      **面板只渲染、不做启发式翻译**（面板翻译等于第二份口径，迟早漂移）。
+      面板收起态渲染 `plain`，展开区保留技术文案作「判据出处」（维护者仍能回查配置）。
+      同轮两处顺带发现并修掉：①**同一个格子报两遍**——85/30 同时越过 soft(>30) 与 hard(>=60)，
+      旧版渲染成两行几乎相同的话（读者以为是两件事），现按格子合并并在判据出处写明越过了哪两条，
+      越界项 5 → 4；②**面名是分析方法名**（`越界 cell_soft_cap`、`可解读性`）→ 改为用户语
+      （`容量`、`数字可信度`）；命名空间与类别也写中文（`推理 · vllm-ascend 的「中断类报错」`）。
+      回归断言：每条失败判据必须有人话版、人话版**不得残留实现标识符**、
+      收起态不出现判据名、展开区仍能回查到技术文案。
+      **操作事故（第二次同类）**：用编辑工具替换 `VerdictRow` 时，旧函数头与开头几行**没被删掉**，
+      形成"残缺函数头 + 注释 + 完整函数"的重复，文件语法坏掉。定位过程暴露了我自己的工具缺陷：
+      两份手写的括号配平脚本对正则/模板字面量处理不一致（一份说多左括号、一份说缺右括号），
+      最后靠"读整个函数核对"才找到。教训：**括号配平脚本不能只处理引号，还要处理模板与正则**；
+      以及**大段替换后第一件事是 `node --check`**（这次是先改完一堆才校验的）。
