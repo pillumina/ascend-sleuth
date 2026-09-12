@@ -15,6 +15,9 @@ description: >
 **先清反馈债**：扫到的 state 文件里若有 `feedback_pending: <case-id>`（上次给了 fix 还没回报结果），先追问“上次 <case-id> 的 fix 应用后解决了吗？（解决 / 没解决 / 部分解决）”——按结果回写该 case 的 confidence（hits/misdiagnoses/last_hit）、trace 记 `{action: feedback, case, outcome}`、清掉标记，再进入续接。
 
 1. 读活跃的 `traces/*.yaml`（每个并发诊断一个文件；模板见 `diagnosis_state.yaml.example`，含 `trace` 数组）。**多个时列出让工程师选续接哪个**
+   - **先看有没有配套的人读报告** `traces/<session_id>.report.md`（diagnose 步骤 6 产出）：它把结论、证据链、源码分析、机制图、修复方案、**当前状态与下一步**、**沉淀候选**集中在一处。先读报告能最快恢复"这单在查什么、停在哪、待回报什么"，也直接告诉你**这次能沉淀什么知识**（顶层 `sediment_candidates` 是同一份内容的结构化版本）。读报告**不替代**读 trace：报告的结论要用 trace 的 `reason`/证据核对，两者冲突时以 trace 的现场记录为准并记下冲突。
+   - **报告是活件——续接中要顺手修订它**（不是只读）：把新证据并入第 3 节对应强度段、更新第 7 节"当前状态与下一步"、必要时补第 4/5 节、元信息"最后更新"与第 10 节追加一行修订记录；**同一份文件改到底，不另起一份**。规则见 `skills/diagnose/references/report-template.md` 第 2 节。
+   - 报告不存在（老 session 或未走完步骤 6）→ 照下面第 2、3 步从 trace 恢复，不视为异常。
 2. **恢复完整现场（读 trace 全轨迹，不只元信息）**：
    - 复述：session_id、status、current_step、已排除的 case（`excluded_cases`）、当前 active_case、`last_action`（上次等你做什么）
    - **读 trace 数组恢复对话上下文**：上次问了用户什么、用户已回答了什么、已排除哪些候选及原因（`reason`）——续接是**接着上次的对话继续**，不是从头开始（用户已提供的信息不重复要）

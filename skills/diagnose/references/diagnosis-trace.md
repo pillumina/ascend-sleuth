@@ -9,10 +9,44 @@ trace 的 agent 事件 `action` 必须落在词表内（词表外 action 会被 
 ```
 triage | load_index | quickly_check | load_full | run_check | hit | miss | tier3
 | feedback | reference_lookup | triage_semantic | source_analysis | attribution | resume
-| procedure_follow
+| procedure_follow | report
 ```
 
 user 事件无 `action`，不参与词表检查。**新增 action 时同步改 `trace_metrics.py` 的 `KNOWN_ACTIONS` 与本文**（单一数据源纪律）。
+
+### `report` 事件（人读定位报告产出，步骤 6 必写一条）
+
+报告是 diagnose 的三份产出之一（另两份是 trace 与对话输出）：trace 管过程可回放，对话输出管现场能行动，
+报告管"结论可复述 + 证据可核对 + 沉淀可执行"。结构与行文见 `report-template.md`（本目录）。产出时记：
+
+```yaml
+- {step: 6, action: report, report_file: "<session_id>.report.md",
+   sediment_candidates: 3, output: "产出报告（9 节 + N 张 mermaid 图）",
+   reason: "为什么写报告；命中型也要写清机制，不因已知根因缩水"}
+```
+
+- `report_file`：文件名（与 trace 同目录、同名不同后缀），面板据此提供"打开报告"入口；
+- `sediment_candidates`：候选条数（内容见顶层字段，别在事件里重复正文）。
+
+**报告是活件**：报告后来被修订时（resume 续接、用户回报 fix 结果、新证据推翻原结论、沉淀动作发生），
+**再记一条** `{action: report, step: <当前步>, report_file, output: "修订了什么（哪几节）", reason: "触发来源"}`——
+step 递增即可。没有这条，"报告被维护过"就不可观测（面板与指标都只能看到初稿）。
+
+### 顶层 `sediment_candidates`（结构化沉淀候选）
+
+报告第 8 节与 trace 的这个字段是**同一份内容**的两种呈现：报告给人读，trace 给机器与 resume 读——
+resume 时不必重读报告全文即可知道"这单能沉淀什么"。每条四项：
+
+```yaml
+sediment_candidates:
+  - kind: reference          # case | reference | triage
+    summary: 一句话说清可复用的结构事实（跨事故稳定，不绑定本次个案）
+    evidence: 本轮哪条证据支撑它（trace 事件 / 文件 / issue）
+    suggested_skill: to-reference   # to-postmortem | to-reference | knowledge-groom
+    status: proposed         # drafted（本轮已起草）| proposed（建议做，未做）
+```
+
+判"能不能当 reference"的口径：换个事故、换个客户还成立吗？只对本次个案成立的内容属于 case（走 to-postmortem）。
 
 ### `procedure_follow` 事件（方法缺口消费点）
 

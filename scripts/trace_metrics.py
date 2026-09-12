@@ -34,6 +34,7 @@ KNOWN_ACTIONS = {
     "run_check", "hit", "miss", "tier3", "feedback", "reference_lookup",
     "triage_semantic", "source_analysis", "attribution", "resume",
     "procedure_follow",   # 按流程执行（方法缺口消费点，EV-2026-038）：记 ref_id/steps_executed/branch_taken
+    "report",             # 人读定位报告产出（diagnose 步骤 6）：记 report_file/sediment_candidates
 }
 
 # reference_lookup 的 purpose 固定词表（与 skills/diagnose/references/diagnosis-procedure.md 一致）：

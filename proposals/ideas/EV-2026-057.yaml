@@ -1,0 +1,163 @@
+id: EV-2026-057
+layer: L2                          # 流程与 skill（diagnose 产出面）
+title: 诊断定位报告（人读 md）——把 trace 投影成可深读、可复核、可教学的报告，并把沉淀建议结构化进 trace
+status: in_experiment
+authorization: review              # 改 diagnose 产出面（输出规范 + 模板），不改候选选择语义 → review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-12
+source_signals:
+  - signal: human_review_feedback
+    evidence: >-
+      用户（本系统所有者）2026-09-12 明确要求：diagnose 除 trace 外要产出 md 格式定位报告，
+      按「背景 / 证据链 / 源码分析流程 / 原理图」记录；报告是给人深度阅读的，读者要能据此自行
+      判断对错并学到机制原理；并指出"前面输出给 to-reference 的建议也应写进报告，这样 resume
+      时也知道可以沉淀什么定位后的知识"。
+    trajectory:
+      - "traces/2026-09-12-dsv4-a3-hcpre-16379.yaml（本轮深度排查：Tier2 全未命中 + 源码分析结论）"
+      - "skills/diagnose/SKILL.md（步骤 6 产出：只写 trace，人读面只有对话输出）"
+  - signal: process_friction
+    evidence: >-
+      同一轮诊断里，报告要写的东西分散在三处且都不持久：结论在对话输出（会话关掉就散）、
+      证据在 trace 事件里（人读要自己拼）、沉淀建议只以"建议走 to-reference/to-postmortem"
+      一句话出现在对话末尾（resume 时读 trace 看不到）。
+    trajectory:
+      - "traces/2026-09-12-dsv4-a3-hcpre-16379.yaml#step5 source_analysis（结论与机制都在 agent 事件里）"
+hypothesis: >-
+  给 diagnose 加一份持久的人读报告（traces/<session>.report.md，模板见 skills/diagnose/references/report-template.md），
+  并在 trace 里加结构化的 sediment_candidates，可把三件事从"靠人重读 trace / 重问 agent"变成"读一份 md 即可"：
+  ①结论可复述（TL;DR + 依据链）②上下文可恢复（resume 只读报告即可接上：停在哪、待回报什么、未验证假设）
+  ③沉淀可执行（报告与 trace 两侧都给出候选条目与建议 skill）。**边界**：报告不替代 trace（过程可回放的权威仍是 trace），
+  也不替代 postmortem（知识草稿的入口仍是 to-postmortem）；报告是"人读投影"，且**固定按深度排查规格写**
+  （用户定调：读者要能据此判断对错并学到机制原理 → 不设"短版报告"缩水）。
+predicted_effect:
+  metric: 单次诊断的人读面完整度（结构可机检 + 沉淀建议可执行）
+  from: 无持久人读件；结论/机制/证据/沉淀建议分散在对话与 trace 事件里；resume 需重读全部 trace 事件
+  to: 每次诊断产出 traces/<session>.report.md（TL;DR / 背景 / 依据链 / 源码分析 / 机制图 / 修复 / 当前状态与下一步 / 沉淀建议 / 附录），且 trace 里有 sediment_candidates
+  measure:
+    command: "python scripts/report_lint.py traces/2026-09-12-dsv4-a3-hcpre-16379.report.md"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 本轮诊断（DSV4/A3 hc_pre）的对话输出 + traces/2026-09-12-dsv4-a3-hcpre-16379.yaml
+  success_criteria: >-
+    ①report_lint 通过（必需节齐全且非空、TL;DR 不超长、mermaid 块成对、报告点名的证据文件存在、
+    报告有沉淀建议节时 trace 必须有 sediment_candidates）；②用本轮真实诊断写的报告，人审能不看
+    对话即复述结论与理由（用户确认）；③resume 场景下只读报告能说出"停在哪、待回报什么、可沉淀什么"。
+  rollback: 模板与 SKILL 步骤改动未合入前可整体丢弃；合入后 revert（报告本身是 traces/ 下 gitignored 产物）
+gate:
+  condition: 用户已对齐设计（位置 traces/ 下、agent 写、沉淀建议两侧都写、固定深度规格、mermaid 直出、报告≠postmortem）
+risk: low
+principle_refs: [5, 7, 8, 9, 10]   # 五建议与决定分离 / 七变更可逆 / 八可观测先于改进 / 九稀缺资源预算 / 十诚实退化
+actual_cost: null
+decisions:
+  - who: agent
+    when: '2026-09-12'
+    type: proposal
+    conclusion: >-
+      产卡：诊断定位报告 + trace.sediment_candidates。先查同组件先例——EV-2026-034（diagnose 输出去 AI 味 +
+      机制可视化）已确立"结论呈现 9 段模板"与红线"去 AI 味 ≠ 删机制"，EV-2026-041 已把对话输出契约收敛为
+      "4 段必需 + 2 按需"。本卡不重复那两件事，只补它们没覆盖的：**持久化的人读件**（对话输出关掉就散）、
+      **固定深度规格**（用户定调：报告供深读与教学，不做短版缩水）、**沉淀建议的双写**（报告给人读、trace 给机器/resume 读）。
+  - who: agent
+    when: '2026-09-12'
+    type: proposal
+    conclusion: >-
+      行文规范以 humanizer-zh（去 AI 痕迹指南，翻译自 blader/humanizer）为底，但**剔除其中面向叙事写作的条目**
+      （注入个性/幽默/第一人称抒情、允许跑题）——技术报告要的是"专业、细致、严谨、解释清楚"，不是有人味的故事。
+      采纳的是反模式清单：AI 词汇、系动词回避、否定式排比、三段式法则、同义词循环、虚假范围、破折号与粗体滥用、
+      内联标题垂直列表、填充短语、过度限定、通用积极结论、模糊归因；并要求句长与段落收尾有变化。
+  - who: agent
+    when: '2026-09-12'
+    type: action
+    conclusion: >-
+      实施：新增 skills/diagnose/references/report-template.md（报告契约 + 行文规范 + mermaid 规范 + 与 trace/postmortem 的分工）；
+      diagnose SKILL 步骤 6 增"写报告 + 写 sediment_candidates"；references/diagnosis-trace.md 与 diagnosis_state.yaml.example 增字段；
+      scripts/report_lint.py（结构自检，未进 CI）；面板加"报告/待沉淀"入口；本地源码缓存（src-code/）已就绪可复核。
+  - who: agent
+    when: '2026-09-12'
+    type: eval
+    conclusion: >-
+      report_lint 对本轮真实报告 exit 0（必需小节齐全非空 / TL;DR 3 行 / mermaid 3 张成对且带 classDef /
+      点名的 traces 证据路径存在 / 沉淀建议与 trace 的 sediment_candidates 同源）；四个负例夹具全部按预期报红
+      （删机制图节、mermaid 去 classDef、点名路径不存在、trace 缺候选），证明判据不是空转；
+      panel_render_check 全绿（新增"trace 两种写法解析""报告入口/待沉淀条数""指令区横排"断言）；
+      skill 自含性 grep（ADR 号/日期/卡号）无命中；trace 词表合规 16/16（新增 action `report` 已同步 trace_metrics）。
+  - who: agent
+    when: '2026-09-12'
+    type: eval
+    conclusion: >-
+      CI parity 演练：工作区 113/114，唯一失败项「崩坏数据：报 soft_cap 与 hard_cap 越界」**与本卡无关**——
+      该失败在 HEAD 的独立 worktree 上不出现（HEAD 118/120，失败的是 exec-log 并发/聚合两条环境相关断言），
+      且它只经 scripts/metrics_health.py + metrics/knowledge 夹具，而本卡未触碰该路径（属工作区另一轮在飞的
+      metrics 改动）。HEAD 侧两条失败为 Windows 无 fcntl 与聚合视图，与本卡无关。
+  - who: agent
+    when: '2026-09-12'
+    type: decision
+    conclusion: >-
+      采纳（validated）：报告作为 diagnose 的标准产出落地；**报告不替代 trace / 不替代 postmortem** 的边界写入模板；
+      resume-diagnosis 增加"先读报告"一步（报告含结论、当前状态与下一步、沉淀候选）；面板给「打开报告」入口与
+      「待沉淀 N 条」。行文规范以去 AI 痕迹指南为底并剔除叙事类条目（技术报告要严谨，不要有人味的故事）。
+      残留观察项：报告对"命中 case 型"诊断是否过长（本卡样本是深度排查型），由后续命中型诊断再校准一次。
+  - who: agent
+    when: '2026-09-12'
+    type: proposal
+    conclusion: >-
+      第二轮（用户审阅后提出的两点）：①**报告是活件**——诊断会继续（回报 fix 结果 / resume 续接 / 新证据推翻结论 /
+      沉淀动作），报告必须跟着长，否则第一次交付之后就开始说谎；把"同一份文件改到底 + 修订留痕 + 两侧同步"
+      写成约束（含各触发点改哪几节）。②用户反馈"这个报告质量不错，先按照这来"→ 把**被认可样本的质量特征**
+      显式写进模板（TL;DR 自足 / 排除链 / 源码可复核 / 机制图讲因果并给读图顺序 / 修复带前置核验 /
+      未验证显式 / 读者能学到东西），分别标为机械项（lint 能钉）与人审项。附：面板 `setTimeout` 在动态客户端包
+      内不可用（用户点击报错）→ 改走注入的 Client Service `timer`，并把"无全局定时器调用点"做成渲染检查判据。
+  - who: agent
+    when: '2026-09-12'
+    type: action
+    conclusion: >-
+      实施：report-template.md 增「产出与维护（活件）」节 + 修订触发表 + 质量基线节 + 图型三类分工；
+      结构契约加 9 附录、10 修订记录，元信息要求"最后更新"；report_lint.py 增"元信息含最后更新"与 9/10 节非空判据；
+      diagnose SKILL 步骤 6 / diagnosis-procedure 步骤 6 / resume-diagnosis / diagnosis-trace 同步"活件"规则与
+      "报告被修订时再记一条 report 事件"；样本报告补最后更新与修订记录。
+  - who: agent
+    when: '2026-09-12'
+    type: eval
+    conclusion: >-
+      第二轮验证：report_lint 对样本 exit 0（11 节齐全 + 元信息含最后更新 + mermaid 3 张 + 两侧同源）；
+      新增判据的负例按预期报红（删「最后更新」→ 报"读者无法判断这份是初判还是已闭环"）；
+      panel_render_check 全绿（新增"client 无全局定时器调用点""延时走注入 timer 服务""host 无定时器"三条）；
+      skill 自含性 grep 无命中；verify_proposals 56 张卡通过；CI parity 演练维持与第一轮同一基线（唯一红项为
+      工作区另一轮在飞的 metrics 改动，已在 HEAD worktree 上确认与本卡无关）。
+  - who: agent
+    when: '2026-09-12'
+    type: decision
+    conclusion: >-
+      第二轮结论：报告质量基线经用户认可（"先按照这来"），已落为模板中的机械项 + 人审项两层约束，不再依赖个案默契。
+      "活件"属性进入三处流程约束（diagnose 步骤 6、procedure 步骤 6、resume 步骤 1）与 trace 观测（修订时追加
+      report 事件），使"报告被维护过"可被面板与指标看见。生产环境适配问题（动态包无浏览器定时器）以判据固化，
+      防止再次回退。
+  - who: agent
+    when: '2026-09-12'
+    type: action
+    conclusion: >-
+      第三轮（用户点「打开报告」没反应）：用 host-only 探针工具实测 DSH `ctx.shell` 的方言——**Windows 上是
+      PowerShell 5.1**，不是服务名暗示的 bash；旧实现的 `(open X || xdg-open X) >/dev/null 2>&1 &` 在 PS 里整条
+      语法错误、又被后台重定向吞掉 → 点击毫无反应。改为跨方言阶梯（`Start-Process -FilePath` → `open` →
+      `xdg-open` → `explorer.exe`）+ 按 exit code 判定（explorer 成功也常返 1，单列 okCodes）+ 面板显示
+      「已打开（via powershell）」或失败原因；探针实测 `Start-Process` 成功打开报告。附：`log_skill_exec.py`
+      的 `--products` 遇"状态里带逗号"会静默切成两条产物（本人踩到）→ 改成括号不闭合即响亮失败。
+  - who: agent
+    when: '2026-09-12'
+    type: eval
+    conclusion: >-
+      第三轮验证：panel_render_check 新增五条断言全绿（无 bash-only `||` 链 / 四方言尝试 / 按 exit code 判定并
+      回报 via / 成功有反馈 / 失败显原因），且判据改为"看代码不看注释"（注释里引用旧写法不误报）；
+      `log_skill_exec.py` 负例 `X(in_progress,no_hit)` 按预期拒绝并 exit 2；探针实测 `Start-Process` 打开报告成功
+      （exit 0/True），随后探针插件已 undefine，不留残留工具。
+  - who: agent
+    when: '2026-09-12'
+    type: decision
+    conclusion: >-
+      第三轮结论：面板"打开文件"通路改为方言无关实现，并把"DSH 的 shell 不是 bash"写进面板 README 的依赖节
+      （`ctx.shell` 在 Windows = PowerShell 5.1），避免后续面板代码再按 bash 直觉写。教训归类：**服务名不等于
+      实现方言**，凡经 `ctx.shell` 执行的命令必须按方言安全写或用阶梯探测；这条同时适用于指标 tab 的
+      `python scripts/...` 调用（那条恰好两方言都成立）。
