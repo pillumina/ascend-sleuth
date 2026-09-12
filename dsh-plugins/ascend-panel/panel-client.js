@@ -498,34 +498,37 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       if (s.activeCase) {
         closeCmds.push({
           key: 'close-fix', label: '已解决 · fix 生效', tone: 'success',
-          cmd: '闭环诊断 ' + s.sessionId + '：fix 已应用且验证生效（' + s.activeCase + ' 命中，'
-            + '标 status: resolved + feedback{outcome: resolved}，写一条 feedback 事件）',
+          cmd: '闭环诊断 ' + s.sessionId + '：fix 已应用且验证生效（' + s.activeCase + ' 命中）。'
+            + '标 status: resolved + feedback{outcome: resolved}，写一条 feedback 事件。',
         })
         closeCmds.push({
           key: 'close-nofix', label: '没解决', tone: 'warn',
-          cmd: '闭环诊断 ' + s.sessionId + '：' + s.activeCase + ' 的 fix 应用后没解决问题'
-            + '（标 status: resolved + feedback{outcome: not_resolved}，写 feedback 事件，并按误诊归因判 case_error / execution_error）',
+          cmd: '闭环诊断 ' + s.sessionId + '：' + s.activeCase + ' 的 fix 应用后没解决问题。'
+            + '标 status: resolved + feedback{outcome: not_resolved}，写一条 feedback 事件。'
+            + '误诊归因按 trace 判定是 case_error 还是 execution_error。',
         })
       } else {
         closeCmds.push({
           key: 'close-fix', label: '已解决', tone: 'success',
-          cmd: '闭环诊断 ' + s.sessionId + '：问题已解决（未命中知识库 case，所以不写 feedback——'
-            + '标 status: resolved，并在 summary 里补一句最终怎么解决的）',
+          cmd: '闭环诊断 ' + s.sessionId + '：问题已解决。未命中知识库 case，因此不写 feedback；'
+            + '标 status: resolved，并在 summary 里补一句最终怎么解决的。',
         })
       }
       closeCmds.push({
         key: 'close-archive', label: '不跟了', tone: 'ghost',
-        cmd: '闭环诊断 ' + s.sessionId + '：不再跟进，且**不对 fix 是否有效下判断**'
-          + '（问题自行消失 / 环境变更后不复现 —— 标 status: archived，不写 feedback 事件）',
+        cmd: '闭环诊断 ' + s.sessionId + '：不再跟进，也不判断 fix 是否有效'
+          + '（问题自行消失，或环境变更后不再复现。标 status: archived，不写 feedback 事件）',
       })
       closeCmds.push({
         key: 'close-escalate', label: '转上游', tone: 'ghost',
-        cmd: '闭环诊断 ' + s.sessionId + '：本地无法定位，转上游/技术支持（标 status: escalated，不写 feedback 事件）',
+        cmd: '闭环诊断 ' + s.sessionId + '：本地无法定位，转上游或技术支持。'
+          + '标 status: escalated，不写 feedback 事件。',
       })
       if (!canResume) {
         closeCmds.push({
           key: 'reopen', label: '重新打开', tone: 'ghost',
-          cmd: '把这个诊断重新打开：' + s.sessionId + '（status 改回 in_progress；若当时写过 feedback 事件，一并撤掉那条）',
+          cmd: '把这个诊断重新打开：' + s.sessionId + '。'
+          + 'status 改回 in_progress；若当时写过 feedback 事件，一并撤掉那条。',
         })
       }
       const toneStyle = (tone) => tone === 'success' ? btnSuccess : (tone === 'warn' ? btnRed : btnGhost)
@@ -933,8 +936,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     function commandFor(face, text) {
       const f = String(face || '')
       const t = String(text || '')
-      if (/cell_|容量|超\s*(soft|hard)_cap/.test(f + t)) return { label: '拆格子', command: '用 /skill:knowledge-groom 处理容量越界格子（先跑 python3 scripts/capacity_health.py 看候选溢出率，再定 category 轴深化或 platform 轴拆分）' }
-      if (/feedback|反馈/.test(f + t)) return { label: '补反馈', command: '回报 fix 结果：逐个确认 traces/ 中已定位 case 的 session（含 feedback.outcome: pending 的）fix 应用后是否解决，按 resolved / not_resolved / partial 写 feedback 事件' }
+      if (/cell_|容量|超\s*(soft|hard)_cap/.test(f + t)) return { label: '拆格子', command: '用 /skill:knowledge-groom 处理容量越界格子。先跑 python3 scripts/capacity_health.py 看候选溢出率，再决定沿 category 轴深化还是沿 platform 轴拆分。' }
+      if (/feedback|反馈/.test(f + t)) return { label: '补反馈', command: '回报 fix 结果：逐个确认 traces/ 中已定位 case 的 session（含 feedback.outcome: pending 的）fix 应用后是否解决。按 resolved / not_resolved / partial 写 feedback 事件。' }
       if (/新鲜度|快照|超期/.test(f + t)) return { label: '追快照', command: 'python3 scripts/metrics_snapshot.py' }
       if (/索引|drift/.test(f + t)) return { label: '重建索引', command: 'python3 scripts/build_index.py' }
       return null
@@ -1361,7 +1364,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         const fb = lastLive.metrics.feedback_capture
         const hits = lastLive.metrics.tier2_hit
         if (fb && typeof fb === 'object' && (fb.resolved === 0 || fb.resolved === undefined) && (fb.not_resolved === 0 || fb.not_resolved === undefined) && (fb.partial === 0 || fb.partial === undefined) && hits > 0) {
-          const fbCmdText = '回报 fix 结果：请逐个确认 traces/ 中已定位 case 的 session（含 feedback.outcome: pending 的）fix 应用后是否解决，按 resolved / not_resolved / partial 回报并写 feedback 事件（trace_metrics 据此更新误诊率/confidence）'
+          const fbCmdText = '回报 fix 结果：请逐个确认 traces/ 中已定位 case 的 session（含 feedback.outcome: pending 的）fix 应用后是否解决。按 resolved / not_resolved / partial 回报并写 feedback 事件；trace_metrics 据此更新误诊率与 confidence。'
           feedbackAlert = React.createElement('div', { style: { marginBottom: 12, border: '1px solid ' + T.warn, borderRadius: 9, overflow: 'hidden' } },
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'color-mix(in srgb, ' + T.warn + ' 8%, transparent)' } },
               React.createElement(Dot, { color: T.warn }),
@@ -1422,7 +1425,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             React.createElement(Chevron, { open: showDataNote, color: T.text2 }),
             '数据来源说明'),
           showDataNote ? React.createElement('div', { style: { marginTop: 6, padding: '8px 10px', background: T.bg2, border: '1px solid ' + T.border, borderRadius: 8, fontSize: 13.5, color: T.text2, lineHeight: 1.6 } },
-            '早期诊断（2026-08 前）未记录 feedback / attribution / tier3 / triage_semantic 事件，相关指标（反馈捕获、误诊归因、Tier3 兜底）为该缺失所致，非真实水平。新诊断起完整记录，欠账随新 trace 稀释。') : null,
+            '2026-08 之前的诊断没有记录四类事件：feedback、attribution、tier3、triage_semantic；'
+            + '因此反馈捕获、误诊归因、Tier3 兜底三项指标偏低，不代表真实水平。',
+            React.createElement('br', null),
+            '新诊断已完整记录，这三项指标会随新 trace 累积逐步回到真实水平。') : null,
         ),
         // ⑥ 趋势：本期 vs 上期差分（阈值语义在判决条里，这里只回答"动了什么"）
         React.createElement(CompareStrip, { prev: livePeriods.length >= 2 ? livePeriods[livePeriods.length - 2] : null, cur: livePeriods[livePeriods.length - 1] || null, isUnreadable: isUnreadable }),

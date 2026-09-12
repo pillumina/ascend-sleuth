@@ -1595,6 +1595,57 @@ _MS._run_no_pipe = no_fallback`)
     expect('client 打开失败显原因', /打开失败（无返回）/.test(ascSrc))
   }
 
+  // ================= 面板共通约定（跨两个面板的机械检查）=================
+  // 规范与理由见 dsh-plugins/README.md「文案规范」。八条里只有这一条同时满足
+  // 检查准入三条件：① 机械可查 ② 后果确定（星号会原样渲染成字符、且会被复制进指令）
+  // ③ 复发 ≥2 次（ev-panel 一次、ascend-panel 一次，都是实测发现的）。其余七条是判断性
+  // 规范，对照规范表人审——不为"AI 味"造硬门，那是假装硬化（原则六）。
+  console.log('\n[面板共通约定 · 文案]')
+  {
+    const PANEL_SOURCES = [
+      'dsh-plugins/ev-panel/panel-client.js', 'dsh-plugins/ev-panel/panel-host.js',
+      'dsh-plugins/ascend-panel/panel-client.js', 'dsh-plugins/ascend-panel/panel-host.js',
+    ]
+    // 抽取"人读文案里的字面星号"：跳过注释与 CSS 模板块，且要求同一字符串里有中文
+    // （否则会把正则字面量、`'**'` 这类代码里的星号误判成文案缺陷）。
+    function literalAsterisks(text) {
+      const hits = []
+      let inCss = false
+      text.split('\n').forEach((line, idx) => {
+        if (/const CSS = `/.test(line)) inCss = true
+        if (inCss) {
+          if (line.trimEnd().endsWith('`') && !/const CSS = `/.test(line)) inCss = false
+          return
+        }
+        const code = line.replace(/\/\/.*$/, '').replace(/\/\*.*?\*\//g, '')
+        if (/^\s*\*/.test(code)) return
+        for (const m of code.matchAll(/'([^'\\\n]*)'|"([^"\\\n]*)"/g)) {
+          const s = m[1] !== undefined ? m[1] : m[2]
+          if (s && /\*\*/.test(s) && /[\u4e00-\u9fff]/.test(s)) {
+            hits.push((idx + 1) + ': ' + s.slice(0, 70))
+          }
+        }
+      })
+      return hits
+    }
+    for (const rel of PANEL_SOURCES) {
+      const bad = literalAsterisks(fs.readFileSync(path.join(repo, rel), 'utf8'))
+      expect('人读文案无字面 Markdown 星号 · ' + rel.split('/')[1] + '/' + path.basename(rel),
+        bad.length === 0, bad.join(' | '))
+    }
+    // 规范文件存在且被两个面板的 README 引用（规范只有一个权威处）
+    const sharedReadme = path.join(repo, 'dsh-plugins/README.md')
+    expect('面板共通约定有唯一权威处（dsh-plugins/README.md）', fs.existsSync(sharedReadme))
+    const sharedText = fs.existsSync(sharedReadme) ? fs.readFileSync(sharedReadme, 'utf8') : ''
+    expect('共通约定含文案规范八条', (sharedText.match(/^\| \d+ \|/gm) || []).length === 8,
+      String((sharedText.match(/^\| \d+ \|/gm) || []).length))
+    for (const rel of ['dsh-plugins/ev-panel/README.md', 'dsh-plugins/ascend-panel/README.md']) {
+      const t = fs.readFileSync(path.join(repo, rel), 'utf8')
+      expect('「' + rel.split('/')[1] + '」README 指向共通约定（不在面板内各自维护一套）',
+        /\.\.\/README\.md/.test(t), t.slice(0, 80))
+    }
+  }
+
   console.log('\n' + (failures.length ? '失败 ' + failures.length + ' 项: ' + failures.join(' | ') : '全部通过'))
   process.exit(failures.length ? 1 : 0)
 }
