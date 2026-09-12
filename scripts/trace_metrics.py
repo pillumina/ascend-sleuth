@@ -289,7 +289,7 @@ def main():
     # 否则调用方要在一堆 markdown 里找 YAML 块（实测会直接解析失败）。
     if not args.emit_yaml_only:
         print("\n".join(rows))
-        print("\n<!-- metrics 由 owner 在 groom 周批时集中汇总：人复核后 append 进 metrics/timeline.yaml（每期一条，团队共享）；工程师不需要提交 metrics——他们只做诊断（本地 trace）+ 反馈（case confidence 走 PR）。小样本比例波动大，解读先看分母。机器可读快照：python3 scripts/trace_metrics.py --emit-yaml -->")
+        print("\n<!-- metrics 在周批时机汇总（**任何人跑周批时都可做**，不是某个角色的专属动作）：人复核后把这一期写进 metrics/timeline.d/<期号>.yaml，再跑 python3 scripts/build_timeline.py 重建生成物 metrics/timeline.yaml（每期一个源文件，团队共享）。工程师不需要提交 metrics——他们只做诊断（本地 trace）+ 回报 fix 结果（case confidence 走 PR）。小样本比例波动大，解读先看分母。机器可读快照：python3 scripts/trace_metrics.py --emit-yaml -->")
 
     if args.emit_yaml or args.emit_yaml_only:
         import datetime

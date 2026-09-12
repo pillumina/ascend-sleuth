@@ -2,9 +2,9 @@ name: kb-checks
 
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/build_docs_index.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/build_docs_index.py"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/build_docs_index.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/build_docs_index.py"]
 
 jobs:
   index-freshness:
@@ -49,8 +49,12 @@ jobs:
           python-version: "3.11"
       - run: pip install pyyaml
       # metrics 时序数据结构校验（教训：W28/W35 字段格式漂移导致跨期不可比、趋势不可算）：
-      # period 唯一 / kind 合法 / recorded_at 必填 / 比例字段 ok,total 合法。结构由 CI 兜底。
+      # period 唯一 / kind 合法 / recorded_at 必填 / 比例字段 ok,total 合法 / live 期号命名。结构由 CI 兜底。
       - run: python3 scripts/verify_metrics.py --check
+      # 生成物与源一致（源 = metrics/timeline.d/<期号>.yaml，一期一个文件）。
+      # 为什么需要这道门：timeline.yaml 是**生成物**，两人各写各的源文件才不撞；但若谁直接改了
+      # 生成物（或改了源忘记重建），读者会拿到一份与源不符的时序数据——必须红，且报错要给出"重跑一次"的修法。
+      - run: python3 scripts/build_timeline.py --check
 
   proposal-audit:
     runs-on: ubuntu-latest
