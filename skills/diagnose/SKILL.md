@@ -29,14 +29,14 @@ description: >
 
 > 每步只写「做什么 + 何时用」；**子步骤与判定细节**见 `references/diagnosis-procedure.md` 对应「步骤 N」。核心循环 = 收集 →（数据缺口则取采集面）→ 路由 → 两阶段加载+2.5 reference → 验证 → (未命中)深度排查 → 产出。
 
-> **先验 trace 相似检测**（收集症状后、路由前）：扫 `traces/*.yaml`（**全部 status**——进行中+已闭环都留在 `traces/`），按症状里的模型/框架/配置名/category 对每个 state 文件的 `summary`/`detected_framework`/`detected_category` 做**词法 grep 匹配**。命中且 `status: in_progress`(或 `feedback_pending`) → "本地有同问题进行中 `<session_id>`（<summary>）。要 `/skill:resume-diagnosis` 续接吗？"；命中且已 `resolved`/`escalated` → "上次同类 `<session_id>` 已定位（<summary>）。参考其结论还是重新定位？"；无匹配 → 正常从路由开始。**不再泛泛问"有未完成诊断要续接吗"**（旧提示对无关 session 是噪音）。
+> **先验 trace 相似检测**（收集症状后、路由前）：扫 `traces/*.yaml`（**全部 status**——进行中+已闭环都留在 `traces/`），按症状里的模型/框架/配置名/category 对每个 state 文件的 `summary`/`detected_framework`/`detected_category` 做**词法 grep 匹配**。命中且 `status: in_progress` → "本地有同问题进行中 `<session_id>`（<summary>）。要 `/skill:resume-diagnosis` 续接吗？"；命中且已 `resolved`/`escalated`/`archived` → "上次同类 `<session_id>` 已定位（<summary>）。参考其结论还是重新定位？"；无匹配 → 正常从路由开始。**不再泛泛问"有未完成诊断要续接吗"**（旧提示对无关 session 是噪音）。状态词表见仓库根 `trace-status.yaml`。
 
 1. **收集症状 + 确认框架**（全部来自工程师提供）：错误/环境变量/版本组合(引擎+CANN+HDK+架构)；**信息不全就主动问**；**主动裁剪日志**（失败 rank + 栈尾，绝不灌全量 profiler）。→ 展开见 reference 步骤 1。
 2. **分类 → `triage-tree.yaml`（Tier 1）**：症状匹配分支 → 路由 namespace；triage 决策记 trace；未命中 → 语义兜底 `triage_semantic`；无法分类 → Tier 3。→ 展开见 reference 步骤 2。
 3. **两阶段加载 Tier 2**：阶段一读命中 category 分片索引筛候选(≤5)；阶段二按 `confidence.score` 载全文 + `quickly_check`(primary→fallback) 验证；**阶段 2.5** 按需取先验 reference（只读 `active`）。→ 展开见 reference 步骤 3。
 4. **验证 diagnosis checks**：顺序**对照已提供信息**验证；缺信息→追问；mismatch 且有 `fix_on_mismatch`→提示 fix（**先看 severity**）；无 `fix_on_mismatch`→标 `excluded_cases` 试下一个。→ 展开见 reference 步骤 4。
 5. **深度排查（未命中）**：**先取流程（方法缺口，见下节）** → Tier 3 grep `postmortems/`；**源码分析**（疑似框架/算子层且 Tier 3 未覆盖）走 `scripts/src_fetch.py`（见源码分析小节）；都没有→诚实说"知识库未覆盖"，建议 `/skill:to-postmortem`。→ 展开见 reference 步骤 5。
-6. **产出**：`resolution` + 顶层 `summary` + **人读定位报告**（`traces/<session_id>.report.md`，结构与行文见 `references/report-template.md`；**报告是活件**——后续回报/resume/新证据到达时修订同一份并追加修订记录，不另起）+ **`sediment_candidates`**（结构化沉淀候选，与报告第 8 节同源）+ 沉淀状态(`sedimented`) + trace；**结果反馈闭环**（问 fix 结果回写 confidence + 写 `feedback_pending`）。→ 展开见 reference 步骤 6。
+6. **产出**：`resolution` + 顶层 `summary` + **人读定位报告**（`traces/<session_id>.report.md`，结构与行文见 `references/report-template.md`；**报告是活件**——后续回报/resume/新证据到达时修订同一份并追加修订记录，不另起）+ **`sediment_candidates`**（结构化沉淀候选，与报告第 8 节同源）+ 沉淀状态(`sedimented`) + trace；**结果反馈闭环**（问 fix 结果回写 confidence + 把 `feedback.outcome` 置为 `pending` 表示待回报）。→ 展开见 reference 步骤 6。
 
 ## 数据资产探询（「数据缺口」消费点——精度 / 性能类先问这一句）
 

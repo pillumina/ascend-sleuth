@@ -1,0 +1,71 @@
+# traces 的生命周期词表（**数据，不是散文**）
+#
+# 谁读：诊断面板（按钮语义与配色）、`skills/diagnose`、`skills/resume-diagnosis`（写 trace 时取值）、
+#       `scripts/settle_trace_feedback.py`（结算时按 outcome 分类）。
+#
+# 为什么单独成文件（2026-09 阶段一）：`status` 的取值原先散在三处——`diagnosis_state.yaml.example`
+# 的注释、skill 正文的散文、面板代码里的常量表。散文那两处**脚本读不到**，于是
+# 「词表加了新值而面板不认」或「面板写的值与 skill 写的不一致」都不会报错。
+# 闭环按钮要落地就必须先有这一份：面板写入的值要能被校验、被 skill 认同、被指标脚本正确分类。
+#
+# 位置说明：放仓库根（与 `triage-tree.yaml` 同类：顶层数据文件）。**不能放 `traces/`**——那目录
+# 是 gitignored 的运行时件，面板与脚本在别的检出读不到。
+#
+# 改这里 = 改判据：同步 `diagnosis_state.yaml.example`、`skills/diagnose`、`skills/resume-diagnosis`。
+
+status:
+  - value: in_progress
+    label: 进行中
+    resumable: true          # 可被 /skill:resume-diagnosis 续接
+    terminal: false
+    meaning: 诊断尚未给出结论，或结论已给但用户在跟进
+    when_to_set: 诊断开始时写入；续接时刷新 updated_at 但不改状态
+  - value: resolved
+    label: 已解决
+    resumable: false
+    terminal: true
+    meaning: 诊断给出了 fix，且用户确认该 fix 在自己的环境里生效
+    when_to_set: 仅当「有命中 case + 用户确认 fix 生效」时。**没有命中 case 却因别的原因恢复，用 archived**
+    writes_feedback: true
+  - value: escalated
+    label: 已转上游
+    resumable: false
+    terminal: true
+    meaning: 本地无法定位，转给上游/技术支持跟进
+    when_to_set: 排查走到能力边界（缺环境、缺内部资料、需厂商介入）
+    writes_feedback: false
+  - value: archived
+    label: 不再跟进
+    resumable: false
+    terminal: true
+    meaning: 不再跟进这单，且**不对"fix 是否有效"下判断**
+    when_to_set: >-
+      问题自行消失 / 环境变更后不复现 / 没有走诊断就结束。
+      **缺这个值，这类情况只能被标成 resolved（虚高解决率）或 not_resolved（冤枉命中的 case）**
+    writes_feedback: false
+  - value: unknown
+    label: 未知
+    resumable: false
+    terminal: false
+    meaning: 初期记录或手工写入的 trace 未带状态
+    when_to_set: 兼容旧 trace；新写入不使用
+
+# 反馈结果（命中 case 的 fix 是否生效）。**与 status 正交**：
+# status 说"这单结束了没"，outcome 说"那个 case 给的 fix 到底行不行"。
+outcome:
+  - value: pending
+    label: 待回报
+    counts_as: none          # 结算时**既不计 hit 也不计误诊**——"没回报"不等于"没解决"
+    meaning: 还没测、或还没回报；保留为反馈债
+  - value: resolved
+    label: 生效
+    counts_as: hit           # settle_trace_feedback.py: hits += 1
+    meaning: 用户确认 fix 在自己环境里解决了问题
+  - value: not_resolved
+    label: 未生效
+    counts_as: misdiagnosis  # misdiagnoses += 1（负信号）
+    meaning: 用户确认 fix 没解决问题
+  - value: partial
+    label: 部分生效
+    counts_as: misdiagnosis  # 命中的 case 给出的 fix 不完整
+    meaning: 症状缓解但未根治

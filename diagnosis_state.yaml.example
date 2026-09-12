@@ -9,9 +9,16 @@
 #   * user 事件：记录用户输入原文（症状、日志、回答）——回放/fixture 的输入源
 #   * agent 事件：记录 agent 决策（action）+ 输出给用户的内容（output）
 # - feedback 确认的 resolved session 是 fixture 的合格来源（强断言基准）
+#
+# **状态与反馈词表在 `trace-status.yaml`**（数据文件，别在这里另抄一份）：
+#   status  ∈ in_progress | resolved | escalated | archived | unknown
+#   outcome ∈ pending | resolved | not_resolved | partial
+# 注意：**`feedback_pending` 不是本 schema 的字段**——它是面板与 skill 口头沿用的旧说法。
+# 表示"fix 给出去了但结果还没回报"的正确写法是 `feedback.outcome: pending`（可选
+# `feedback_pending_since` 记给出 fix 的时间，用于算反馈债账龄）。2026-09 阶段一统一到此口径。
 
 session_id: "2026-07-09-ep-hang-a5"
-status: in_progress                    # in_progress | resolved | escalated | unknown
+status: in_progress                    # 取值见 trace-status.yaml；终态后文件留在 traces/
 current_step: 3
 summary: "用户报告训练挂起（HCCL 相关）。环境 mindspeed-llm/A5。关键报错 HCCL timeout。已定位：待确认"  # 问题背景段（agent 整合，面板直接显示）
 created_at: "2026-07-09T09:15:00+08:00"  # 诊断开始时间（ISO 8601）——面板排序/显示用
@@ -34,8 +41,9 @@ sediment_candidates: []               # 结构化沉淀候选（与报告第 8 �
                                       #     status: proposed         # drafted（已起草）| proposed（建议做，未做）
 feedback:                             # 反馈闭环结果（fixture 资格判定用）
   case: ""                            # 命中的 case id（或 pending-investigation）
-  outcome: ""                         # resolved | not_resolved | partial | pending
+  outcome: ""                         # pending | resolved | not_resolved | partial（见 trace-status.yaml）
   confirmed_at: ""                    # 反馈确认日期
+feedback_pending_since: ""            # outcome=pending 时填给出 fix 的日期（反馈债账龄，可空）
 
 excluded_cases: [ASCEND-EP-HANG-001, ASCEND-EP-HANG-002]
 active_case: MSLLM-EP-HANG-001
@@ -69,5 +77,8 @@ trace:
      output: "产出人读定位报告（9 节 + mermaid 机制图）", reason: "trace 管回放、对话输出管现场；报告管结论可复述/证据可核对/沉淀可执行"}
   - {role: user, step: 6, content: "应用了 fix，问题解决了"}
 
-# 生命周期：status 终态后文件留在 traces/（gitignored，含客户现场信息）；
-# 脱敏后可投影为 eval/golden/*.fixture.yaml（M3 自动生成，人确认入仓）。
+# 生命周期：status 终态（resolved/escalated/archived）后文件**留在 traces/** 原位，
+# 用 `status` 字段标记闭环（面板与 ascend_trace_status 都只读 traces/，挪走会看不到）。
+# 判"可续接"看 status：只有 in_progress 的当活跃（见 trace-status.yaml 的 resumable）。
+# traces/ 是 gitignored 的本地件（含客户现场信息）；脱敏后可投影为
+# eval/golden/*.fixture.yaml（M3 自动生成，人确认入仓）。
