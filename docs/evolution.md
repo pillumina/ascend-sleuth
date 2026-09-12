@@ -146,7 +146,7 @@ to-postmortem 接受任意来源的调查记录（本地 session、外部对话�
 | 定位结束后 | 沉淀知识 | `/skill:to-postmortem`、`/skill:to-reference` | `postmortems/inbox/` 草稿 |
 | 内容流程收尾 | 伴随演进评估（有信号才产卡，无信号一行即止） | `/skill:evolve-check` | EV 卡 或 一行无信号记录 |
 | 每周 | 批处理待审队列、升格、去重、退休、重建索引 | `/skill:knowledge-groom` | 知识变更 PR |
-| 每周 | 产出指标快照并 append 一期 | `python3 scripts/metrics_snapshot.py` → 人复核 → `metrics_health.py` | `metrics/timeline.yaml` 一期 |
+| 每周 | 产出指标快照并 append 一期（**任何人跑周批时都可做**；期号默认生成、并发靠 PR 合流） | `python3 scripts/metrics_snapshot.py --kind live` → 人复核 → `metrics_health.py` | `metrics/timeline.yaml` 一期 |
 | 每周 | 批量拉取上游 issue | `/skill:issue-ingest` | inbox 草稿 + 导入游标 |
 | 随时 | reviewer 判定一张卡 | `python3 scripts/ev_measure.py <卡号> --run` | 符合 / 被证伪 / 无法判定（并落一笔实测记录） |
 | 每周 | 演进闭环体检（积压 / 可证伪面 / 自证比例 / 指路腐烂） | `python3 scripts/evolution_health.py` | 逐条判据的 ✓/✗ + 下一步动作（判据在 `proposals/gates.yaml`） |

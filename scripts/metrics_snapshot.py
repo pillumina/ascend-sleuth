@@ -205,7 +205,11 @@ def main():
     root = args.root.resolve()
 
     iso = date.today().isocalendar()
-    period = args.period or f"{iso[0]}-W{iso[1]:02d}"
+    week = f"{iso[0]}-W{iso[1]:02d}"
+    # 期号按 kind 生成**正确形状**，不让人手写（手写会撞：实测默认值 `2026-W37` 与已有的
+    # replay 期同名，而 live 期号另有约定）。规则与校验见 verify_metrics.LIVE_PERIOD_RE。
+    period = args.period or (f"{week}-live-{date.today():%m%d}" if args.kind == "live"
+                             else f"{week}-{args.kind}")
     metrics, sources, missing = build_metrics(root)
 
     if args.json:

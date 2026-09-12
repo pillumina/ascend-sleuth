@@ -885,6 +885,37 @@ def ex_panel(root: Path, enabled: bool):
     check("执行现场区块断言在其中", "执行现场" in out, tail)
 
 
+# ---------------------------------------------------------------- ⑬ live 期号规则
+def ex_period_naming(root: Path):
+    """live 期号的命名规则必须**能拦**，且存量豁免成立。
+
+    为什么单独演一遍：期号是趋势锚点，而周批人人可跑（并发靠 PR merge 合流）。规则写进
+    verify_metrics 后若只跑真实数据，只能证明"存量没被误伤"——证明不了"新写的错误期号会被拦"。
+    """
+    print("\n[E13] live 期号规则（YYYY-Www-live-MMDD）")
+    base = "periods:\n- period: 2026-W35-live1\n  kind: live\n  recorded_at: '2026-08-31'\n  metrics: {sessions_total: 7}\n"
+    cases = [
+        ("存量豁免（cutover 前的旧形状不追溯改名）", base, 0),
+        ("新 live 期号正确形状（带日期）",
+         base + "- period: 2026-W40-live-1001\n  kind: live\n  recorded_at: '2026-10-01'\n  metrics: {sessions_total: 3}\n", 0),
+        ("同一周两个不同期号都合法（靠日期区分，不再像'同一期被改'）",
+         base + "- period: 2026-W40-live-1001\n  kind: live\n  recorded_at: '2026-10-01'\n  metrics: {sessions_total: 3}\n"
+         "- period: 2026-W40-live-1003\n  kind: live\n  recorded_at: '2026-10-03'\n  metrics: {sessions_total: 5}\n", 0),
+        ("新 live 期号缺日期 → 拦下",
+         base + "- period: 2026-W40-live\n  kind: live\n  recorded_at: '2026-10-01'\n  metrics: {sessions_total: 3}\n", 1),
+        ("新 live 期号用旧 -liveN 形状 → 拦下",
+         base + "- period: 2026-W40-live2\n  kind: live\n  recorded_at: '2026-10-01'\n  metrics: {sessions_total: 3}\n", 1),
+    ]
+    for label, text, want in cases:
+        d = root / "tmp-period-naming"
+        (d / "metrics").mkdir(parents=True, exist_ok=True)
+        (d / "metrics" / "timeline.yaml").write_text(text, encoding="utf-8")
+        rc, out = run([sys.executable, "scripts/verify_metrics.py", "--check", "--root", str(d)], cwd=root)
+        check(label, rc == want, "exit=%d 期望=%d :: %s" % (rc, want, out.strip()[:160]))
+        if want == 1:
+            check("  且点名了期号规则（不是一句泛泛的失败）", "YYYY-Www-live-MMDD" in out, out.strip()[:160])
+
+
 def main():
     ap = argparse.ArgumentParser(description="evolve-check 闭环端到端演练")
     ap.add_argument("--no-panel", action="store_true", help="跳过 node 面板断言")
@@ -907,6 +938,7 @@ def main():
         ex_measure_path(sandbox)
         ex_holdout(sandbox)
         ex_ci_parity(sandbox)
+        ex_period_naming(sandbox)
         ex_panel(sandbox, not args.no_panel)
     finally:
         if args.keep:
