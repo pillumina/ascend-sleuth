@@ -1750,6 +1750,78 @@ _MS._run_no_pipe = no_fallback`)
     }
   }
 
+  // ================= 面板 host 服务缺失 · 只降级依赖它的功能 =================
+  // 为什么单开一节：两个 host 原先都在 apply() 第一行写 `if (fs === undefined) return`——
+  // **fs 一缺席，整个插件什么都不注册**（RPC 全没、tab 点开即死）。而 ev-panel 的 host
+  // 根本不用 fs（数据全由 shell 跑脚本产出），ascend-panel 的指标 tab 那两项也不用 fs
+  // （`loadMetricsVerdict` / `runLiveMetrics` 全程无 fs 调用，已按函数逐段核对）。
+  // 失败形态是"挂载了却什么都没贡献"：面板不报错，只是什么都没发生——最难查的一类。
+  console.log('\n[面板 host 服务缺失 · 只降级依赖它的功能]')
+  {
+    const loadHost = (rel) => fs.readFileSync(path.join(repo, rel), 'utf8')
+    const codeOf = (src) => src.split(/\r?\n/).filter(l => !/^\s*\/\//.test(l)).join('\n')
+    // 用最小 ctx/harness 驱动真 apply()（不复制逻辑）
+    const driveHost = (src, svc) => {
+      const regs = {}
+      const ctx = { get: (n) => n === 'fs' ? svc.fs : n === 'shell' ? svc.shell : n === 'sessions' ? svc.sessions : undefined }
+      const harness = {
+        handle: (name, fn) => { regs[name] = fn; return () => {} },
+        // ascend-panel 会 harness.defineTool({...}) 再 registerTool(ctx, tool)：
+        // 桩只需把声明原样返回（真 registerTool 重名抛错一事，由 host 自己的 try/catch 兜住）
+        defineTool: (opts) => opts,
+        registerTool: () => () => {},
+      }
+      // 这两个 host 文件的形态是「return { apply(ctx) {...} }」——**先取插件对象再调 apply**；
+      // 直接把源码当函数体执行只会拿到插件对象、apply 从不运行（踩过：RPC 一个都没注册）。
+      const plugin = new Function('harness', 'console', src)(harness, { error: () => {}, log: () => {} })
+      const disposer = plugin && typeof plugin.apply === 'function' ? plugin.apply(ctx) : undefined
+      return { regs, disposer }
+    }
+    const NO_SVC = { fs: undefined, shell: undefined, sessions: undefined }
+
+    // ① ev-panel：fs 缺失时照样注册（它不用 fs），退化逐调用发生在 session/shell 侧
+    {
+      const evSrc = loadHost('dsh-plugins/ev-panel/panel-host.js')
+      const d = driveHost(evSrc, NO_SVC)
+      expect('ev-panel：fs 缺失时仍注册两个 RPC（不再整插件早退）',
+        !!d.regs['ev-board-load'] && !!d.regs['ev-health-load'], Object.keys(d.regs).join(','))
+      expect('ev-panel：fs 缺失时仍注册单卡详情 RPC', !!d.regs['ev-idea-detail'])
+      expect('ev-panel：返回可用的 disposer（不是 undefined）', typeof d.disposer === 'function')
+      const r = await d.regs['ev-board-load']({})
+      expect('ev-panel：fs 缺失时调用给出明确错误而非静默成功',
+        r && r.ok === false && /无法解析工作区/.test(r.error), String(r && r.error).slice(0, 90))
+      expect('ev-panel：代码里无 fs 调用（守卫本就不该存在，防被照抄回来）', !/\bfs\./.test(codeOf(evSrc)))
+      expect('ev-panel：代码里无「fs 缺失就整插件 return」', !/if \(fs === undefined\) return/.test(codeOf(evSrc)))
+    }
+
+    // ② ascend-panel：fs 缺失时仍注册全部 RPC；依赖 fs 的六个给明确错误，不依赖的三个不受影响
+    {
+      const ascHostSrc = loadHost('dsh-plugins/ascend-panel/panel-host.js')
+      const d = driveHost(ascHostSrc, NO_SVC)
+      const needFsRpcs = ['ascend-traces-list', 'ascend-traces-detail', 'ascend-update-sedimented',
+        'ascend-metrics-load', 'ascend-kb-health', 'ascend-process-health']
+      const noFsRpcs = ['ascend-open-evidence', 'ascend-metrics-verdict', 'ascend-metrics-live']
+      expect('ascend-panel：fs 缺失时仍注册全部 9 个 RPC',
+        Object.keys(d.regs).length === 9, Object.keys(d.regs).join(','))
+      expect('ascend-panel：返回可用的 disposer', typeof d.disposer === 'function')
+      for (const rpc of needFsRpcs) {
+        const r = await d.regs[rpc]({})
+        expect('ascend-panel：' + rpc + ' 在 fs 缺失时报「需要 fs 服务」并指出指标 tab 仍可用',
+          r && r.ok === false && /需要 fs 服务/.test(r.error) && /仍然可用/.test(r.error),
+          String(r && r.error).slice(0, 110))
+      }
+      for (const rpc of noFsRpcs) {
+        const r = await d.regs[rpc]({})
+        expect('ascend-panel：' + rpc + ' 不因 fs 缺失被拦（走的不是 fs 分支）',
+          !(r && r.ok === false && /需要 fs 服务/.test(r.error)), String(r && r.error).slice(0, 110))
+      }
+      const guarded = (ascHostSrc.match(/if \(!fs\) return needFs\(\)/g) || []).length
+      expect('ascend-panel：恰好 6 个 handler 带 fs 守卫（放错位置即被这条抓住）', guarded === 6, 'guarded=' + guarded)
+      expect('ascend-panel：代码里无「fs 缺失就整插件 return」',
+        !/if \(fs === undefined\) return/.test(codeOf(ascHostSrc)))
+    }
+  }
+
   console.log('\n' + (failures.length ? '失败 ' + failures.length + ' 项: ' + failures.join(' | ') : '全部通过'))
   process.exit(failures.length ? 1 : 0)
 }
