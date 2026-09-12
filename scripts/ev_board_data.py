@@ -558,6 +558,12 @@ def collect_stats(ideas):
     for c in ok:
         st = ((c.get("surface_basis") or {}).get("strength")) or "未归因"
         basis_strength[st] = basis_strength.get(st, 0) + 1
+    # 归类依据按**字段名**计（面板据此显示"改动说明/证据引用/…"）：强度是内部三档，
+    # 字段名才是人能核对的那个东西——"强/弱"说了等于没说，读者要知道依据取自哪里。
+    by_basis_field = {}
+    for c in ok:
+        f = ((c.get("surface_basis") or {}).get("field")) or "未归因"
+        by_basis_field[f] = by_basis_field.get(f, 0) + 1
 
     # ---- 已消失的点名路径（判据 pointer_rot 的分子） ----
     dead_cards = [(c.get("id"), c.get("dead_refs") or []) for c in ok if c.get("dead_refs")]
@@ -596,6 +602,7 @@ def collect_stats(ideas):
         "by_surface_recent": by_surface_recent,
         "surface_window_days": window,
         "surface_basis_strength": basis_strength,
+        "by_basis_field": by_basis_field,
         "dead_ref_cards": [cid for cid, _ps in dead_cards],
         "dead_ref_paths": dead_paths,
         "dead_ref_count": len(dead_paths),

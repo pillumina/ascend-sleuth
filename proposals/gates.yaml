@@ -35,8 +35,8 @@ gates:
     value: 0
     min_sample: 20
     title: 零否决记录
-    meaning: "终态卡中「不采纳」（rejected）与「换方向」（superseded）合计为 0：假设检验只产生采纳，没有拒绝域。"
-    action: "复核产卡触发条件（skills/evolve-check 的触发条件表）：是触发过严（只提交高确定性候选），还是验证不具判别力（只判定「是否改动」而非「是否改对」）。后者要改验证设计，不是继续产卡。"
+    meaning: "终态卡中「不采纳」（rejected）与「换方向」（superseded）合计为 0，即全部为「已采纳」。此类分布下，采纳记录不能单独作为质量结论。"
+    action: "复核产卡触发条件（见 skills/evolve-check）：确认是触发过严（只提交确定性高的候选），还是验证方式不足以区分对错。若属后者，应改验证设计。"
 
   - id: backlog_over
     dimension: backlog_count
@@ -44,15 +44,15 @@ gates:
     value: 20
     title: 待合入积压
     meaning: "已验证但决策链中没有任何合入指针（PR/issue 号）的卡数超过上限。批上限为 10 卡/PR，此阈值等于「已攒满两批仍未送审」。"
-    action: "先提聚合 PR 消化积压，期间暂停产出新候选（orchestration §2.4 候选积压治理）。积压率长期偏高时下调该信号的产卡权重，而非扩大候选池。"
+    action: "先提聚合 PR 合入积压改动，期间暂停产出新候选（见 orchestration §2.4）。积压长期偏高时下调产卡权重。"
 
   - id: measure_never_run
     dimension: runnable_never_measured
     op: ">"
     value: 0
     title: 预测未复现
-    meaning: "已声明可复现判据（measure 含 command 与期望）但从未执行过 ev_measure.py --run 的卡数。「已声明」与「已执行」是两件事；本判据只说明判据未被执行，不对预测对错下结论。"
-    action: "复核这类卡时先执行一次：python3 scripts/ev_measure.py <卡号> --run。执行记录写入主检出的 metrics/ev-measure-log.yaml，面板据此计数。"
+    meaning: "已声明可复现判据（measure 含 command 与期望）但从未执行过 ev_measure.py --run 的卡数。本判据只统计判据命令是否被执行，不判断预测对错。"
+    action: "复核这些卡片时执行一次：python3 scripts/ev_measure.py <卡号> --run。执行记录写入 metrics/ev-measure-log.yaml。"
 
   - id: evidence_weak
     dimension: external_ground_truth_ratio
@@ -61,7 +61,7 @@ gates:
     min_sample: 10
     title: 外部验证占比不足
     meaning: "终态卡的验证方式来自系统之外（golden 回放 / issue-replay 对照）的比例过低；其余为自定口径的机械测量（metrics_compare）或自审（scan_review）。按本仓库「客观评分源优先」的排序，自证占比过高时趋势读数不可作为效果证据。"
-    action: "优先把候选改写为可在 golden/S2 上判定的形态；只能自证的卡在结论中标注来源，并在趋势读数中降低权重，不得计入外部验证。"
+    action: "优先把候选改写为可在 golden 或 S2 上判定的形态。只能自证的卡片，在结论中标注来源，不计入外部验证。"
 
   - id: signal_dominant
     dimension: top_signal_share
@@ -70,23 +70,23 @@ gates:
     min_sample: 20
     title: 信号来源过度集中
     meaning: "单一触发信号占全部卡数的比例过高（全部信号均匀分布时每类约占 2%）。集中说明假设空间由一个来源主导，演进在同一处反复做功。"
-    action: "复核该信号的触发条件：是确有大量同类摩擦，还是阈值过松、每次收尾都命中。信号误报率是其下游读数（orchestration §5.1 参数校准）。"
+    action: "复核该信号的触发条件，判断是确有大量同类问题，还是阈值过松。信号误报率的校准见 orchestration §5.1。"
 
   - id: pointer_rot
     dimension: dead_ref_count
     op: ">"
     value: 0
     title: 引用路径失效
-    meaning: "卡正文点名的仓库文件已不存在（重命名或删除后未同步更新）。本判据只说明指路失效，不说明这些卡的结论失效——后者需人复核。"
-    action: "逐条复核被点名的卡：结论仍成立则修正指路；结论依赖已消失文件则该卡按 superseded 处理，或补 evidence 后重写（不得静默改写历史结论）。"
+    meaning: "卡片正文引用的仓库文件已不存在（重命名或删除后未同步更新）。本判据只统计路径引用是否失效，不判断卡片结论是否仍成立。"
+    action: "逐条复核这些卡片：结论仍成立时更新路径引用；结论依赖已消失文件时，把卡片标为 superseded，或补充证据后重写结论。"
 
   - id: unfalsifiable
     dimension: unfalsifiable_enforced
     op: ">"
     value: 0
     title: 预测口径缺失
-    meaning: "预测口径强制生效（created_at 不早于 measure cutover）之后产出的卡中，既无 command 也无 reason 的卡数。CI（verify_proposals --check）已对此设硬门，本判据是面板侧复核；cutover 之前的存量卡豁免并如实计数，不补写（补写只造事后叙述，原则十）。"
-    action: "此类卡不应进入 main：先补可复现判据（一条命令加期望），或如实声明不可度量，再送审。"
+    meaning: "预测口径强制生效（created_at 不早于 measure cutover）之后产出的卡中，既无 command 也无 reason 的卡数。CI（verify_proposals --check）已对此设硬门，本判据是面板侧复核；早于该时间点的存量卡不计入，也不补写（补写会形成事后叙述，见原则十）。"
+    action: "此类卡不应进入 main：补上判据命令与期望值，或声明不可度量，再送审。"
 
 # ---- 可解读性：该读数是否可信 ----
 # rule: source_nonzero（分母来源必须非 0）| any_gt_0（至少一项非 0）
@@ -95,4 +95,4 @@ readability:
     label: 判断更准（能力轴）
     rule: source_nonzero
     source: s1_feedback_capture
-    why: "现场反馈捕获（工程师回报 fix 结果）是「判断更准」这一能力轴唯一的标签来源。其为 0 时命中率、误诊率与校准均无分母——此时不得把能力轴画成平稳直线称「稳定」，只能如实标注「不可解读」（设计理论 §4.1 校准性质在演进侧的形态）。"
+    why: "现场反馈捕获（工程师回报 fix 结果）是「判断更准」这一能力轴的标签来源。该项为 0 时，命中率、误诊率与校准均没有分母，这些读数只能标注为「不可解读」（设计理论 §4.1 的校准性质在演进侧的形态）。"

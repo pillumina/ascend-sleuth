@@ -22,16 +22,16 @@ return {
     // 旧版的 candidate/proposed/pending_merge/adopted/rolled_back 是 v1 词表，v5 下永不出现；
     // rejected/superseded 反而是合法终态却被漏渲染。这里只列真实存在的四个状态。
     const STATUS_META = {
-      in_experiment: { label: '实验中', color: 'var(--c-blue)', fill: 'var(--fill-blue)', acc: 'var(--acc-blue)', hint: '产卡即执行——agent 正在改并验证' },
-      validated: { label: '已采纳', color: 'var(--c-green)', fill: 'var(--fill-green)', acc: 'var(--acc-green)', hint: 'eval 验证 solid，改动保留' },
-      rejected: { label: '未采纳', color: 'var(--c-gray)', fill: 'var(--fill-gray)', acc: 'var(--acc-gray)', hint: '试了不行——诚实实验记录' },
-      superseded: { label: '已替代', color: 'var(--c-gray)', fill: 'var(--fill-gray)', acc: 'var(--acc-gray)', hint: '换方向，被新卡取代' },
+      in_experiment: { label: '实验中', color: 'var(--c-blue)', fill: 'var(--fill-blue)', acc: 'var(--acc-blue)', hint: '已产出卡片，正在执行与验证' },
+      validated: { label: '已采纳', color: 'var(--c-green)', fill: 'var(--fill-green)', acc: 'var(--acc-green)', hint: '验证通过，改动保留' },
+      rejected: { label: '未采纳', color: 'var(--c-gray)', fill: 'var(--fill-gray)', acc: 'var(--acc-gray)', hint: '验证未通过，改动未保留' },
+      superseded: { label: '已替代', color: 'var(--c-gray)', fill: 'var(--fill-gray)', acc: 'var(--acc-gray)', hint: '改由后续卡片接手' },
     }
     const LAYER_LABELS = { L1: '内容', L2: '流程', L3: '机制' }
     const AUTH_META = {
-      auto: { label: 'auto', color: 'var(--c-green)', hint: '低风险可逆，agent 自动合入' },
-      review: { label: 'review', color: 'var(--c-blue)', hint: '中风险，人审 PR' },
-      dual: { label: 'dual', color: 'var(--c-red)', hint: '高风险，双人签核' },
+      auto: { label: 'auto', color: 'var(--c-green)', hint: '低风险且可回退，自动合入' },
+      review: { label: 'review', color: 'var(--c-blue)', hint: '中等风险，人工审阅 PR' },
+      dual: { label: 'dual', color: 'var(--c-red)', hint: '高风险，需双人签核' },
     }
     const METHOD_LABELS = {
       golden_replay: 'golden 回放', metrics_compare: '指标对照',
@@ -619,7 +619,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           }, f.label, f.n ? React.createElement('span', { className: 'n' }, f.n) : null)),
         ),
         shown.length === 0
-          ? React.createElement(EmptyBox, { text: filter === 'focus' ? '无待办卡——没有实验中的卡，也没有审计缺口' : '该筛选下无卡' })
+          ? React.createElement(EmptyBox, { text: filter === 'focus' ? '无待办卡（没有实验中的卡，也没有审计缺口）' : '该筛选下没有卡片' })
           : React.createElement('div', null,
               primary.map(c => React.createElement(IdeaCard, { key: c.id, idea: c, sessionId: sessionId })),
               archived.length ? React.createElement('div', null,
@@ -667,10 +667,9 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
             }),
             React.createElement('div', { className: 'ev-note' },
               '采纳率 ', React.createElement('b', { style: { color: 'var(--tx)' } }, stats.adoption_rate === null ? '—' : Math.round(stats.adoption_rate * 100) + '%'),
-              ' —— 只在终态卡上算（实验中未判决，不进分母）。',
-              React.createElement('b', { style: { color: 'var(--c-amber)' } },
-                '注意：这个数高不是成绩，是症状'),
-              '——终态卡里一次「不采纳/换方向」都没有，说明拒绝域为空（见「① 要处理的」第 1 条）。'),
+              '（只在终态卡上计算，实验中的卡未判决，不计入分母）。',
+              React.createElement('b', { style: { color: 'var(--c-amber)' } }, '采纳率 100% 表示没有否决记录'),
+              '：终态卡中不采纳 0 张、换方向 0 张，该项见「① 要处理的」。'),
           ),
           React.createElement('div', null,
             React.createElement(SectionLabel, { color: 'var(--c-amber)' }, '验证方式分布'),
@@ -723,7 +722,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       // 恒定与样本不足用注记明说，不靠图上的高度差暗示趋势（原则十）。
       const cols = TREND_METRICS.filter(m => rows.some(r => r[m.key] !== undefined))
       if (!cols.length) return React.createElement(Section, { title: '指标趋势' },
-        React.createElement(EmptyBox, { text: '近期快照里没有可画趋势的指标（routed_accuracy / tier2_hit / sessions_total 均缺）' }))
+        React.createElement(EmptyBox, { text: '近期快照缺路由准确率、Tier2 命中与会话数三项，无法成表' }))
       const grid = { gridTemplateColumns: 'auto repeat(' + cols.length + ',minmax(0,1fr))' }
       const maxOf = key => Math.max(1, ...rows.map(r => {
         const v = r[key]
@@ -805,7 +804,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
         notes.length
           ? React.createElement('div', { className: 'ev-note', style: { marginTop: 7 } },
               (constantOnly
-                ? '注：可画的读数在各期没有变化，趋势不可读——'
+                ? '注：表中读数各期没有变化，无法据此判断趋势——'
                 : '注：') + notes.join('；') + '。')
           : null,
       )
@@ -837,7 +836,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
                 key: r.ns + r.cat, color: r.count > r.cap ? 'var(--c-red)' : 'var(--c-amber)',
                 title: r.ns + ' · ' + r.cat + ' ' + r.count + '/' + r.cap,
               }, r.ns.split('/').pop() + ' · ' + r.cat + ' ' + r.count + '/' + r.cap)))
-          : React.createElement(EmptyBox, { text: '所有格子均在 soft_cap 的 80% 以下，无压力' }),
+          : React.createElement(EmptyBox, { text: '全部格子在软上限的 80% 以下' }),
       )
     }
 
@@ -848,7 +847,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       if (!hasTally && !hasS2) {
         return React.createElement(Section, { title: '流程演进信号' },
           React.createElement('div', { className: 'ev-empty' },
-            '暂无归因事件——S1 反馈归因或 S2 replay 路由 miss 积累后出现。'),
+            '尚无归因事件（需 S1 反馈归因或 S2 replay 路由未命中累积后产生）。'),
         )
       }
       return React.createElement(Section, { title: '流程演进信号' },
@@ -879,9 +878,9 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       if (!execLog.present) {
         return React.createElement(Section, { title: '执行现场（exec-log）', right: '同一克隆共享' },
           React.createElement('div', { className: 'ev-empty' },
-            '无执行记录（' + (execLog.state === 'missing' ? '还没有任何收尾记录'
-              : execLog.state === 'unavailable' ? execLog.note : '解析失败或 records 为空') + '）——'
-            + '这是正常退化路径：内容流程收尾应先落一条 exec-log，evolve-check 才读得到本轮现场。'),
+            '无执行记录（' + (execLog.state === 'missing' ? '尚无任何收尾记录'
+              : execLog.state === 'unavailable' ? execLog.note : '记录文件解析失败') + '）。'
+            + '内容流程收尾时应写入一条 exec-log，evolve-check 才能读到本轮现场。'),
           React.createElement('div', { className: 'ev-note', style: { marginTop: 6 } }, note))
       }
       const rows = execLog.recent || []
@@ -895,11 +894,11 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           React.createElement('span', { className: 'k', style: { display: 'flex', alignItems: 'center', gap: 6 } },
             React.createElement(Dot, { color: runs ? 'var(--c-green)' : 'var(--c-amber)' }),
             'evolve-check 收尾'),
-          React.createElement('span', { className: 'v' }, runs + ' 次' + (runs ? '（其中无信号 ' + silent + '）' : '')),
+          React.createElement('span', { className: 'v' }, runs + ' 次' + (silent ? '（其中无信号 ' + silent + '）' : '')),
         ),
         runs ? null : React.createElement('div', { className: 'ev-note', style: { color: 'var(--c-amber)' } },
-          'exec-log 里没有 evolve-check 收尾记录——无法区分"跑了无信号"与"没跑"；'
-          + '内容流程收尾应落一条（skills/evolve-check 第 4 步）。'),
+          'exec-log 中没有 evolve-check 的收尾记录。缺少这条记录时，'
+          + '"运行但无演进信号"与"未运行"无法区分。内容流程收尾应写入一条（见 skills/evolve-check）。'),
         React.createElement('div', { style: { marginTop: 8 } },
           React.createElement(SectionLabel, { color: 'var(--br)' }, '最近执行（尾部 ' + rows.length + ' 条）'),
           rows.map(r => React.createElement('div', {
@@ -919,9 +918,9 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           )),
         ),
         React.createElement('div', { className: 'ev-note', style: { marginTop: 6 } }, note
-          + '；内容流程（issue-ingest / to-reference / to-postmortem / knowledge-groom）收尾落一条，'
-          + 'evolve-check 收尾也落一条（含"无信号"）。跨克隆/跨机不聚合——那要走 `--summary` 的'
-          + '聚合值进 metrics/timeline.yaml'),
+          + '。内容流程（issue-ingest / to-reference / to-postmortem / knowledge-groom）与 evolve-check '
+          + '各自收尾各写一条，无演进信号时也写。本记录跨克隆与跨机不聚合，'
+          + '跨机口径需用 `--summary` 的汇总值写入 metrics/timeline.yaml'),
       )
     }
 
@@ -937,26 +936,31 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       broken: { label: '体检器失效', color: 'var(--c-purple)', acc: 'var(--acc-purple)', cls: 'broken' },
     }
 
-    // 预测实测记录：**系统里唯一真实的负反馈读数**。为什么单独给一行：这一层修前完全不可见
-    // （`ev_measure.py --run` 只往 stdout 打印），于是"9 张卡写了可复现判据、一次没测过"
-    // 在数据上不可区分；而"被证伪"是唯一能证明拒绝域存在的证据。记录在
-    // metrics/ev-measure-log.yaml（同一克隆共享，append-only）。
-    const MEASURE_LABEL = { PASS: '符合', FAIL: '被证伪', ERROR: '判不了' }
+    // 预测实测记录：`ev_measure.py --run` 的执行次数与结果分布。这一层原先没有观测面
+    // （`--run` 只往 stdout 打印），于是"卡片写了判据命令、但从未执行"在数据上不可区分。
+    // 记录文件在 metrics/ev-measure-log.yaml（同一克隆共享，只追加）。
+    const MEASURE_LABEL = { PASS: '符合', FAIL: '被证伪', ERROR: '无法判定' }
+    const LEDGER_LABEL = { ok: '正常', missing: '尚无记录文件', unparsable: '记录文件解析失败',
+      unavailable: '路径解析不可用' }
     function measureLine(health) {
       const ro = (health && health.readouts) || {}
       const mv = ro.measure_by_verdict || {}
       const runs = ro.measure_runs || 0
+      const ledger = LEDGER_LABEL[(ro.measure_ledger || {}).state] || '状态未知'
       if (!runs) {
+        const pending = ro.runnable_cards || 0
         return React.createElement('div', { className: 'ev-note', style: { marginTop: 8 } },
-          '预测实测记录：0 笔——写了可复现判据的卡里，',
-          React.createElement('b', { style: { color: 'var(--c-amber)' } }, '一次都没有被复现过'),
-          '。"声明了"与"测过"是两件事；跑一次：python3 scripts/ev_measure.py <卡号> --run')
+          '预测实测记录：0 次执行（' + pending + ' 张卡片写了判据命令）',
+          React.createElement('br', null),
+          '执行方式：python3 scripts/ev_measure.py <卡号> --run；执行次数与结果会记入 '
+          + 'metrics/ev-measure-log.yaml。')
       }
       const parts = ['PASS', 'FAIL', 'ERROR'].filter(k => mv[k]).map(k => MEASURE_LABEL[k] + ' ' + mv[k])
       return React.createElement('div', { className: 'ev-note', style: { marginTop: 8 } },
-        '预测实测记录：', React.createElement('b', { style: { color: 'var(--tx)' } }, runs + ' 笔'),
-        '（', parts.join(' · '), '）——这是系统里唯一真实的负反馈读数；',
-        '「被证伪」是拒绝域存在的唯一证据。记录：', ro.measure_ledger ? ro.measure_ledger.state : '—')
+        '预测实测记录：', React.createElement('b', { style: { color: 'var(--tx)' } }, runs + ' 次执行'),
+        '（', parts.join(' · '), '）。记录文件：', ledger,
+        React.createElement('br', null),
+        '「被证伪」表示卡片写下的判据命令不再成立，需按卡片结论重新评估或回退改动。')
     }
 
     function HealthPanel({ health }) {
@@ -985,7 +989,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           : null,
         broken.length
           ? React.createElement(Pill, { color: 'var(--c-purple)', fill: 'var(--fill-purple)' },
-              '结论不可用：' + broken.length + ' 条判据没被评估')
+              broken.length + ' 条判据未评估，结论不成立')
           : null,
       )
 
@@ -1006,29 +1010,28 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
         React.createElement('div', { style: { marginTop: 8 } },
           React.createElement(Section, {
             title: '① 要处理的',
-            right: fails.length + ' 项' + (others.length ? ' · 另 ' + others.length + ' 项如实标注' : ''),
+            right: fails.length + ' 项' + (others.length ? '，另 ' + others.length + ' 项供参考' : ''),
           },
             fails.length
               ? fails.map(row)
               : React.createElement('div', { className: 'ev-empty' },
-                  '本期没有需要动作的判据——这不等于"没问题"：先看上面的判据覆盖面，'
-                  + '"没报越界"与"没被检查"是两件事。'),
+                  '本期无判据越界。读数是否可用见上方结论条：判据未全部评估时结论不成立。'),
             others.length ? others.map(row) : null,
             broken.length ? React.createElement('div', { className: 'ev-note', style: { marginTop: 8, color: 'var(--c-purple)' } },
-              '体检器自身：' + broken.join('；')) : null,
+              '体检器问题：' + broken.join('；')) : null,
             measureLine(health),
           ),
         ),
       )
     }
 
-    // ============ ② 这批补在哪一层（触及面，确定性派生） ============
+    // ============ ② 改动落在哪一层（按卡片正文的仓库路径归类） ============
     const SURFACE_META = {
-      '判断更准': { acc: 'var(--acc-blue)', hint: '路由 / 候选排序 / 知识内容——直接作用于判断' },
-      '闸门更硬': { acc: 'var(--acc-purple)', hint: 'CI / 校验器 / 评测——把规则搬进可观测失败的一侧' },
-      '看得见': { acc: 'var(--acc-green)', hint: '脚本 / 面板 / 观测面——让后面能判' },
-      '走得顺': { acc: 'var(--acc-amber)', hint: '流程 / 文档 / 卡片机制本身' },
-      '未归因': { acc: 'var(--acc-gray)', hint: '卡文本里扫不到仓库路径（如实标注，不猜）' },
+      '判断更准': { acc: 'var(--acc-blue)', hint: '知识内容与检索路由（triage-tree.yaml / knowledge / references）' },
+      '闸门更硬': { acc: 'var(--acc-purple)', hint: 'CI 校验与评测资产（eval / verify_* / gates）' },
+      '看得见': { acc: 'var(--acc-green)', hint: '脚本、面板与观测记录（scripts / dsh-plugins / traces）' },
+      '走得顺': { acc: 'var(--acc-amber)', hint: 'skill 流程与文档（skills / docs）' },
+      '未归因': { acc: 'var(--acc-gray)', hint: '卡片正文未出现仓库路径，无法归类' },
     }
 
     function SurfacePanel({ stats }) {
@@ -1039,19 +1042,22 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       const order = ['判断更准', '闸门更硬', '看得见', '走得顺', '未归因']
       const keys = order.filter(k => (cum[k] || 0) + (rec[k] || 0) > 0)
         .concat(Object.keys(cum).filter(k => order.indexOf(k) < 0))
-      // 0 张卡时**不静默消失**：整个区块 return null 会让编号从 ① 跳到 ③，读者以为是渲染坏了。
-      // 如实说明"没有可归因的卡"，与其余区块的退化口径一致。
+      // 没有卡片时整个区块 return null 会让编号从 ① 跳到 ③，读者会以为是渲染故障；
+      // 因此改为给出空态说明，与其余区块的处理一致。
       if (!keys.length) {
-        return React.createElement(Section, { title: '② 这批补在哪一层' },
+        return React.createElement(Section, { title: '② 改动落在哪一层' },
           React.createElement('div', { className: 'ev-empty' },
-            '暂无可归因的卡（proposals/ideas/ 为空或尚未产出卡片）——触及面由卡里写下的仓库路径派生，'
-            + '没有卡就没有这一层读数。'))
+            '暂无卡片，因此没有这一层读数（本表按 proposals/ideas/ 下卡片正文出现的仓库路径统计）。'))
       }
       const max = Math.max(1, ...keys.map(k => cum[k] || 0))
-      const basis = stats.surface_basis_strength || {}
+      const basis = stats.by_basis_field || {}
+      const BASIS_LABEL = {
+        action: '改动说明', title: '卡片标题', hypothesis: '假设',
+        success_criteria: '成功判据', trajectory: '证据引用', 'card-text': '全文兜底',
+      }
       const top = stats.top_signal
       return React.createElement(Section, {
-        title: '② 这批补在哪一层',
+        title: '② 改动落在哪一层',
         right: '近 ' + win + ' 天 ' + (Object.keys(rec).reduce((a, k) => a + rec[k], 0))
           + ' 张 · 累计 ' + (stats.total || 0) + ' 张',
       },
@@ -1073,26 +1079,21 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           }),
         ),
         React.createElement('div', { className: 'ev-caveat' },
-          React.createElement('b', null, '轴记的是「改动落在机器的哪一层」'),
-          '——不是"变好了多少"，也不是作者想优化什么。轴由卡里已写下的仓库路径',
-          React.createElement('b', null, '确定性派生'),
-          '（不让 agent 自己声明，免得学会写能通过的标签）；依据来自改动自述时最硬，来自证据引用时'
-          + '只是线索。',
+          '说明：本表按卡片正文出现的仓库路径归类，表示改动落在哪一层，不表示改善幅度。',
           React.createElement('br', null),
-          React.createElement('b', null, '变好多少属能力轴，当前不可解读'),
-          '：现场反馈捕获为 0，命中率/误诊率/校准都没有分母。此处不画趋势线称"稳定"（原则十）。',
+          '改善幅度属能力轴，当前无数据：现场反馈捕获为 0，命中率与误诊率都没有分母。',
         ),
         Object.keys(basis).length
           ? React.createElement('div', { className: 'ev-note', style: { marginTop: 6 } },
-              '归因依据强度：' + Object.keys(basis).sort((a, b) => basis[b] - basis[a])
-                .map(k => k + ' ' + basis[k]).join(' · ')
-              + '（强 = 改动自述；弱 = 取自证据引用，未必是改动落点）')
+              '归类依据：' + Object.keys(basis).sort((a, b) => basis[b] - basis[a])
+                .map(k => (BASIS_LABEL[k] || k) + ' ' + basis[k] + ' 张').join(' · ')
+              + '（依据取自「证据引用」或「全文兜底」时，可能不是实际改动位置）')
           : null,
         top
           ? React.createElement('div', { className: 'ev-note' },
-              '信号集中度：最高信号 ', React.createElement('b', { style: { color: 'var(--tx)' } }, top.signal),
-              ' ', top.cards, ' 张（占 ', Math.round((stats.top_signal_share || 0) * 100), '%）· ',
-              top.first, '→', top.last, '——29 种信号均匀分布时每种约 2%')
+              '触发信号：本期最多的是 ', React.createElement('b', { style: { color: 'var(--tx)' } }, top.signal),
+              '（', top.cards, ' 张，占 ', Math.round((stats.top_signal_share || 0) * 100), '%，',
+              top.first, ' 至 ', top.last, '）')
           : null,
       )
     }
@@ -1110,7 +1111,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           onClick: () => setOpen(!open),
         },
           React.createElement(Chevron, { open: open, color: 'var(--tx2)' }),
-          React.createElement('span', { className: 'ev-sec-t' }, '④ 卡片（diff 日志）'),
+          React.createElement('span', { className: 'ev-sec-t' }, '④ 卡片档案'),
           React.createElement('span', { className: 'ev-num' },
             ideas.length + ' 张 · 实验中 ' + live + ' · 审计缺口 ' + gaps
             + ' · 已采纳且无缺口 ' + ideas.filter(c => c.status === 'validated' && !(c.gaps || []).length).length),

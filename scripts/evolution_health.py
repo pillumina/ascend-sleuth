@@ -57,7 +57,7 @@ GATE_READINGS = {
     "measure_never_run": "{runnable_never_measured} 张已声明可复现判据，从未执行",
     "evidence_weak": "外部验证占比 {external_ratio_pct}（下限 {value_pct}）",
     "signal_dominant": "最高信号「{top_signal_name}」占 {top_signal_share_pct}（阈值 {value_pct}）",
-    "pointer_rot": "{dead_ref_count} 个点名文件已不存在：{dead_ref_sample}",
+    "pointer_rot": "卡片引用的 {dead_ref_count} 个文件已不存在：{dead_ref_sample}",
     "unfalsifiable": "强制范围内缺可复现判据 {unfalsifiable_enforced} 张",
 }
 # 比例型维度：读数与阈值都按百分比渲染（"0.246（下限 0.333）"不如"24.6%（下限 33.3%）"可读）。
@@ -238,20 +238,19 @@ def evaluate(root: Path):
     age_card = dims.get("newest_card_age_days")
     if readouts.get("evolve_check_runs", 0) == 0:
         findings.append({"level": "fail", "face": "新鲜度", "id": "evolve_check_never",
-                         "title": "收尾记录为空：一次 evolve-check 都没跑过",
+                         "title": "无收尾记录：尚未运行过 evolve-check",
                          "reading": "共 0 次",
-                         "action": "内容流程收尾应落记录（log_skill_exec.py --skill evolve-check）；"
-                                   "先让它跑起来，再谈趋势"})
+                         "action": "内容流程收尾时执行 log_skill_exec.py --skill evolve-check 写入记录"})
     elif isinstance(age_ev, int) and isinstance(lim_ev, (int, float)) and age_ev > lim_ev:
         findings.append({"level": "fail", "face": "新鲜度", "id": "evolve_check_stale",
-                         "title": "演进断档：最近一次收尾距今过久",
+                         "title": "收尾断档：最近一次 evolve-check 距今过久",
                          "reading": f"{age_ev} 天前（上限 {lim_ev} 天）",
-                         "action": "跑一轮内容流程或深度轮（/skill:self-evolve）"})
+                         "action": "运行一轮内容流程，或做一次全库观测轮（/skill:self-evolve）"})
     if isinstance(age_card, int) and isinstance(lim_card, (int, float)) and age_card > lim_card:
         findings.append({"level": "fail", "face": "新鲜度", "id": "no_new_cards",
                          "title": "产卡停滞",
                          "reading": f"最新一张卡 {age_card} 天前（上限 {lim_card} 天）",
-                         "action": "复核是「确实无事可做」还是信号被关掉了"})
+                         "action": "确认是暂无待改进项，还是产卡信号被关闭"})
 
     # ---- 越界 ----
     gate_rows = []
@@ -281,7 +280,7 @@ def evaluate(root: Path):
             findings.append({"level": "note", "face": "越界", "id": gid,
                              "title": (g.get("title") or gid) + "（样本不足，本期不判）",
                              "reading": f"样本 {sample_dim} < 门槛 {sample}",
-                             "action": "积累样本后本判据自动生效"})
+                             "action": "样本积累到门槛后本判据自动生效"})
             continue
         try:
             hit = OPS[g.get("op")](val, g.get("value"))

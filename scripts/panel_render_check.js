@@ -235,27 +235,28 @@ async function main() {
   // 预测实测记录：唯一真实的负反馈读数（0 笔时必须明说"一次都没被复现过"，不静默）
   const nMv = (health.readouts && health.readouts.measure_runs) || 0
   const mv = (health.readouts && health.readouts.measure_by_verdict) || {}
-  expect('① 要处理的：报出预测实测记录 ' + nMv + ' 笔', new RegExp('预测实测记录[\\s\\S]{0,12}?' + nMv + '\\s*笔').test(ev.text), ev.text.slice(0, 200))
+  expect('① 要处理的：报出预测实测记录 ' + nMv + ' 次执行', new RegExp('预测实测记录[\\s\\S]{0,12}?' + nMv + '\\s*次执行').test(ev.text), ev.text.slice(0, 200))
   if (nMv === 0) {
-    expect('实测 0 笔时明说"一次都没被复现过"（不静默）', /一次都没有被复现过/.test(ev.text))
+    expect('实测 0 次时明说 0 次并给执行方式（不静默）', /预测实测记录：0 次执行/.test(ev.text) && /ev_measure\.py/.test(ev.text))
   } else {
     const MV_LABEL = { PASS: '符合', FAIL: '被证伪', ERROR: '判不了' }
     const expectParts = Object.keys(mv).filter(k => MV_LABEL[k]).map(k => MV_LABEL[k] + ' ' + mv[k])
     expect('实测分布按三态渲染（' + expectParts.join(' · ') + '）',
       expectParts.every(t => ev.text.includes(t)), expectParts.join('/'))
-    expect('点明"被证伪"是拒绝域存在的唯一证据', /拒绝域存在的唯一证据/.test(ev.text))
+    expect('说明「被证伪」的含义与后续动作', /被证伪[\s\S]{0,30}不再成立/.test(ev.text))
   }
 
   // ---- ② 触及面（这批补在哪一层）：确定性派生的读数 ----
-  expect('② 这批补在哪一层：区块存在', ev.text.includes('② 这批补在哪一层'))
+  expect('② 改动落在哪一层：区块存在', ev.text.includes('② 改动落在哪一层'))
   const surfaces = Object.keys(board.stats.by_surface || {})
   expect('② 触及面：全部 ' + surfaces.length + ' 个轴都已渲染',
     surfaces.every(s => ev.text.includes(s)), surfaces.join('、'))
-  expect('② 触及面：标注"改动落在哪一层"而非"变好了多少"',
-    /改动落在机器的哪一层/.test(ev.text) && /变好了多少/.test(ev.text))
+  expect('② 触及面：说明本表表示层次、不表示改善幅度',
+    /表示改动落在哪一层，不表示改善幅度/.test(ev.text))
   // 诚实退化：能力轴不可解读时必须明说，不得画趋势线称"稳定"
   expect('② 触及面：能力轴标注不可解读（不是"稳定"）', /不可解读/.test(ev.text) && !/能力轴[^。]{0,20}稳定/.test(ev.text))
-  expect('② 触及面：标注归因依据强度（弱归因不当作改动落点）', /归因依据强度/.test(ev.text))
+  expect('② 触及面：标注归类依据字段（并说明依据较弱时的局限）',
+    /归类依据/.test(ev.text) && /可能不是实际改动位置/.test(ev.text))
   // 两条**已在本仓库另一面板踩过**的文案缺陷，这里一并钉住（同类缺陷复发 ≥2 次才进 CI 的口径）：
   // ① Markdown 星号当强调写进渲染文本 → 面板原样显示字面量（诊断面板已修过一次）；
   // ② 内部标识符（metric/dimension id）泄漏到人读文案里。
@@ -285,7 +286,7 @@ async function main() {
   // ---- ④ 卡片抽屉：默认收起（判决上屏、卡按需） ----
   // 这一条是本次重排的核心行为：旧版首屏直接平铺卡墙（实测退化成一堵只增不减的墙）。
   expect('④ 卡片抽屉：默认收起（首屏不渲染任何卡）', !/«cls:ev-card/.test(ev.text))
-  expect('④ 卡片抽屉：收起态标出这是 diff 日志', /④ 卡片（diff 日志）/.test(ev.text))
+  expect('④ 卡片抽屉：收起态标出这是卡片档案', /④ 卡片档案/.test(ev.text))
   expect('④ 卡片抽屉：收起态不泄露完整决策链', !/三项验证均通过/.test(ev.text))
   expect('v5 状态词「实验中」', ev.text.includes('实验中'))
   expect('v5 状态词「已采纳」', ev.text.includes('已采纳'))  // v1 词表检查**查声明、不查整页渲染文本**：整页里会带历史数据原文（exec-log 的
@@ -305,7 +306,7 @@ async function main() {
   expect('自演进度量：采纳率', /采纳率/.test(ev.text))
   // 采纳率不再是"成绩"读数：终态卡从未出现否决时，它必须在旁边点明这是症状（原则十）
   if ((board.stats.negative_terminal || 0) === 0 && (board.stats.terminal_count || 0) > 0) {
-    expect('采纳率 100% 旁点明"是症状不是成绩"', /不是成绩/.test(ev.text), ev.text.slice(0, 200))
+    expect('采纳率 100% 旁点明其含义（没有否决记录）', /没有否决记录/.test(ev.text), ev.text.slice(0, 200))
   }
   expect('自演进度量：验证方式分布', /验证方式分布/.test(ev.text) && /S2 issue 回放/.test(ev.text))
   expect('信号来源分布', /信号来源/.test(ev.text))
@@ -335,7 +336,7 @@ async function main() {
     const anyDelta = sessCol.some((v, i) => i > 0 && v !== sessCol[i - 1])
     if (anyDelta) expect('趋势：给出相对上期的变化量（+N/-N）', /[+]\d|−\d/.test(ev.text) || /\+\d/.test(ev.text))
   }
-  expect('趋势：读数恒定/分母过小时用注记明说', /趋势不可读|不可解读/.test(ev.text))
+  expect('趋势：读数恒定/分母过小时用注记明说', /无法据此判断趋势|不可解读/.test(ev.text))
   // 排版契约：与「指标」面板共用同一套 8 档字号（本面板原先 17 个散值、最小 8.5px =
   // "字小 + 中文糊"的直接原因）。断言查**源码**，这样新增档位会在离线闸门被拦下。
   const tDecl = {}
@@ -351,7 +352,7 @@ async function main() {
   expect('排版：中文基准行高 ≥ 1.6', /--lh-base:1\.6/.test(evSrc))
   expect('排版：与「指标」面板同档位值域（两面板同一套刻度）',
     tDecl['--t-base'] === 14.5 && tDecl['--t-tiny'] === 11.5 && tDecl['--t-sm'] === 12.5)
-  expect('空区块不占位（tally 空 → 一行说明）', /暂无归因事件/.test(ev.text))
+  expect('空区块不占位（tally 空 → 一行说明）', /尚无归因事件/.test(ev.text))
   expect('收起态不泄露完整决策链（长文本仅在展开后）', !/三项验证均通过/.test(ev.text))
   // 默认筛选是「待办优先」：只出实验中的卡 + 有缺口的卡，不含无缺口的已采纳卡。
   // 注意判据已变：卡收在默认收起的抽屉里，所以"已采纳无缺口卡不在首屏"要**展开抽屉后**才成立
@@ -443,8 +444,8 @@ async function main() {
     const noHealth = await renderAsync(evSrc, { sessionId: 'sess-1' },
       (m, a) => m === 'ev-board-load' ? { ok: true, data: board } : (m === 'ev-health-load' ? { ok: false, error: '体检器不可用' } : detailOf(a && a.ideaId)))
     expect('判决拿不到时不冒充判决（不渲染结论条）', !/«cls:ev-verdict»/.test(noHealth.text))
-    expect('判决拿不到时其余区块照常渲染（一次失败不牵连另一块）', /② 这批补在哪一层/.test(noHealth.text))
-    expect('判决拿不到时不静默（卡区/触及面仍在，读者仍能判读）', /④ 卡片（diff 日志）/.test(noHealth.text))
+    expect('判决拿不到时其余区块照常渲染（一次失败不牵连另一块）', /② 改动落在哪一层/.test(noHealth.text))
+    expect('判决拿不到时不静默（卡区/触及面仍在，读者仍能判读）', /④ 卡片档案/.test(noHealth.text))
   }
   // ---- 体检器失效（exit 2 语义）必须上屏，而不是"没报越界" ----
   {
@@ -456,8 +457,8 @@ async function main() {
       (m, a) => m === 'ev-board-load' ? { ok: true, data: board } : (m === 'ev-health-load' ? { ok: true, data: brokenHealth } : detailOf(a && a.ideaId)))
     expect('体检器失效：结论条标「体检器失效」而不是"未见阻塞项"',
       /体检器失效/.test(br.text) && !/本期无阻塞项/.test(br.text))
-    expect('体检器失效：报出"结论不可用"与未评估条数',
-      /结论不可用/.test(br.text) && /判据\s*0\/7\s*条已评估/.test(br.text), br.text.slice(0, 160))
+    expect('体检器失效：报出结论不成立与未评估条数',
+      /结论不成立/.test(br.text) && /判据\s*0\/7\s*条已评估/.test(br.text), br.text.slice(0, 160))
   }
 
   // ================= ev-panel 退化路径（无条件跑，不依赖本机碰巧缺什么）=================
@@ -533,22 +534,22 @@ async function main() {
       expect(fc.label + ' · 渲染不抛异常', !renderErr, renderErr)
       const t = rendered ? rendered.text : ''
       expect(fc.label + ' · 四个区块编号齐全（缺件不静默消失）',
-        /① 要处理的/.test(t) && /② 这批补在哪一层/.test(t)
-        && /③|执行现场（exec-log）/.test(t) && /④ 卡片（diff 日志）/.test(t), t.slice(0, 160))
+        /① 要处理的/.test(t) && /② 改动落在哪一层/.test(t)
+        && /执行现场（exec-log）/.test(t) && /④ 卡片档案/.test(t), t.slice(0, 160))
       if (fc.case === 'no-exec-log' || fc.case === 'no-metrics') {
         expect(fc.label + ' · 执行现场走退化分支并给补救指引',
-          /无执行记录/.test(t) && /落一条 exec-log/.test(t), t.slice(0, 200))
+          /无执行记录/.test(t) && /写入一条 exec-log/.test(t), t.slice(0, 200))
         expect(fc.label + ' · 退化分支仍标注共享范围（防读成全系统）', SHARE_RE.test(t))
       }
       if (fc.case === 'empty-cards') {
-        expect(fc.label + ' · 触及面如实说"暂无可归因的卡"（不画空图）',
-          /暂无可归因的卡/.test(t), t.slice(0, 220))
-        expect(fc.label + ' · 卡区报 0 张而不是隐藏', /④ 卡片（diff 日志）/.test(t) && /0 张/.test(t))
+        expect(fc.label + ' · 触及面说明无读数原因（不画空图）',
+          /暂无卡片，因此没有这一层读数/.test(t), t.slice(0, 220))
+        expect(fc.label + ' · 卡区报 0 张而不是隐藏', /④ 卡片档案/.test(t) && /0 张/.test(t))
       }
       if (fc.case === 'no-gates' || fc.case === 'broken-gates') {
         expect(fc.label + ' · 结论条标「体检器失效」而非"未见阻塞项"',
           /体检器失效/.test(t) && !/本期无阻塞项/.test(t), t.slice(0, 200))
-        expect(fc.label + ' · 报出"结论不可用"', /结论不可用/.test(t), t.slice(0, 220))
+        expect(fc.label + ' · 报出结论不成立', /结论不成立/.test(t), t.slice(0, 220))
       }
     }
     fs.rmSync(fixtureRoot, { recursive: true, force: true })
@@ -593,8 +594,8 @@ async function main() {
     // 旧版把卡墙直接平铺在首屏（本次要修的就是那个形态）。
     let handlers = []
     tree.forEach(t => collectHandlers(t, handlers))
-    const drawerToggle = handlers.find(h => String(h.text).includes('④ 卡片（diff 日志）'))
-    expect('抽屉可点开（④ 卡片（diff 日志））', !!drawerToggle)
+    const drawerToggle = handlers.find(h => String(h.text).includes('④ 卡片档案'))
+    expect('抽屉可点开（④ 卡片档案）', !!drawerToggle)
     if (drawerToggle) drawerToggle.fn({})
     tree = await pump(4)
     // 真实点击：点第一张卡的头部（onClick 挂在收起态的可点区域上）
