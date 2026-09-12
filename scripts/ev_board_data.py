@@ -670,25 +670,46 @@ def collect_skill_exec(root):
 
 
 def collect_timeline(root):
-    """只取每期标题/kind/关键指标（路由准确率/候选召回等），供趋势 sparkline。"""
+    """每期的关键指标，供面板画趋势。
+
+    **必须保留分母**（2026-09 修一处口径缺陷）：旧实现把 `{ok, total}` 压成 `ok`
+    （`v if not isinstance(v, dict) else v.get("ok", v)`），于是三期的路由准确率
+    "3/3" 渲染成三根等高的柱子、标签只有一个孤零零的 "3"——趋势既读不懂也无法判读。
+    metrics.md 的口径纪律本来就写着"比例类指标务必连同分母解读"，这里是它在读侧的落实。
+    比例类一律给 `{ok, total}`（total 缺失时如实为 None，不编分母）。
+    """
     path = root / "metrics" / "timeline.yaml"
     if not path.exists():
         return []
     d = load_yaml(path)
     if not isinstance(d, dict):
         return []
+    RATIOS = ("routed_accuracy", "misdiagnosis_rate", "candidate_recall")
+    SCALARS = ("tier2_hit", "sessions_total")
     out = []
     for p in d.get("periods") or []:
+        if not isinstance(p, dict):
+            continue
         m = p.get("metrics") or {}
         row = {
             "period": p.get("period"),
             "kind": p.get("kind"),
             "title": (p.get("title") or "")[:60],
         }
-        for k in ("routed_accuracy", "candidate_recall", "golden_suite"):
-            if k in m:
-                v = m[k]
-                row[k] = v if not isinstance(v, dict) else v.get("ok", v)
+        for k in RATIOS:
+            v = m.get(k)
+            if isinstance(v, dict) and "ok" in v:
+                row[k] = {"ok": v.get("ok"), "total": v.get("total")}
+            elif isinstance(v, (int, float)):
+                row[k] = {"ok": v, "total": None}
+        for k in SCALARS:
+            v = m.get(k)
+            if isinstance(v, (int, float)):
+                row[k] = v
+        fc = m.get("feedback_capture")
+        if isinstance(fc, dict):
+            row["feedback_capture_total"] = sum(
+                v for v in fc.values() if isinstance(v, (int, float)))
         out.append(row)
     return out
 

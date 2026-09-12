@@ -81,8 +81,27 @@ return {
   --fill-amber:#b45309; --fill-red:#b91c1c; --fill-gray:#475569;
   --link:var(--c-blue);
   --tint:9%;
+  /* ── 字号尺度（与「指标」面板同一套 8 档；2026-09 补）───────────────────
+     为什么要补：本面板原先**没有尺度**，17 个散落的 font-size（8.5–17px）各自为政，
+     最小的 8.5px 给了趋势的期间标签——中文在这个尺寸下笔画会糊成一团，是本面板
+     "字小、看不懂"的直接原因。同一套档位也让两个面板读起来像同一个产品
+     （色语已经在 check_panel_tokens 里统一，排版的道理相同）。
+     基准 14.5：面板信息密度高，而中文在 11–12px 下会糊（指标面板实测过）。
+     用法：内联值只允许取这 8 档（回归闸门会拦新档位）。 */
+  --t-md2:10.5px;     /* 徽章、角标 */
+  --t-tiny:11.5px;    /* chip、时间戳、计数 */
+  --t-sm:12.5px;      /* 密集行、注释、摘要 */
+  --t-md:13.5px;      /* 行主体（密集正文） */
+  --t-base:14.5px;    /* 正文、判据行、卡正文 */
+  --t-lg:15px;        /* 区块标题、卡片主标题 */
+  --t-xl:16.5px;      /* 主数值 */
+  --t-2xl:18px;       /* 视图标题 */
+  /* ── 行高：中文需要更松（1.5 会挤）────────────────────────────── */
+  --lh-tight:1.35;
+  --lh-base:1.6;
+  --lh-prose:1.75;
   padding:10px 12px 18px;display:flex;flex-direction:column;gap:10px;
-  color:var(--tx);font-size:12px;line-height:1.5;
+  color:var(--tx);font-size:var(--t-base);line-height:var(--lh-base);
   -webkit-font-smoothing:antialiased;
 }
 /* 主题判定跟随 DSH 的机制（body[data-ds-dark-theme]），不用 prefers-color-scheme：
@@ -116,8 +135,8 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
 .ev-top{display:flex;align-items:baseline;gap:9px;flex-wrap:wrap;padding-bottom:2px}
 .ev-mark{width:8px;height:16px;border-radius:4px;flex-shrink:0;
   background:linear-gradient(180deg,var(--acc-blue),var(--acc-purple))}
-.ev-title{font-size:13.5px;font-weight:700;letter-spacing:-.01em}
-.ev-meta{font-size:10.5px;color:var(--tx2);font-variant-numeric:tabular-nums}
+.ev-title{font-size:var(--t-base);font-weight:700;letter-spacing:-.01em}
+.ev-meta{font-size:var(--t-tiny);color:var(--tx2);font-variant-numeric:tabular-nums}
 .ev-meta b{color:var(--tx);font-weight:650}
 
 /* —— 区块 —— */
@@ -126,13 +145,13 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
   padding:11px 13px;box-shadow:0 1px 2px rgba(0,0,0,.035)}
 .ev-sec-hd{display:flex;align-items:center;gap:8px;margin-bottom:9px}
 .ev-sec-hd.has-body{margin-bottom:9px}
-.ev-sec-t{font-size:12px;font-weight:680;letter-spacing:.005em}
-.ev-sec-r{margin-left:auto;font-size:10px;color:var(--tx2);font-variant-numeric:tabular-nums}
-.ev-label{font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+.ev-sec-t{font-size:var(--t-md);font-weight:680;letter-spacing:.005em}
+.ev-sec-r{margin-left:auto;font-size:var(--t-tiny);color:var(--tx2);font-variant-numeric:tabular-nums}
+.ev-label{font-size:var(--t-md2);font-weight:700;letter-spacing:.09em;text-transform:uppercase;
   color:var(--tx2);margin-bottom:5px}
 
 /* —— 按钮 —— */
-.ev-btn{font:inherit;font-size:11px;font-weight:600;cursor:pointer;
+.ev-btn{font:inherit;font-size:var(--t-sm);font-weight:600;cursor:pointer;
   border:1px solid var(--hair);background:transparent;color:var(--tx2);
   border-radius:7px;padding:3px 11px;letter-spacing:.01em;
   transition:color .14s ease,border-color .14s ease,background-color .14s ease,transform .14s ease}
@@ -150,24 +169,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
 .ev-btn.wide .ev-sec-r{margin-left:auto}
 
 /* —— 待办条 —— */
-.ev-focus{display:flex;gap:8px;flex-wrap:wrap}
-.ev-fcard{flex:1 1 152px;min-width:0;text-align:left;cursor:pointer;font:inherit;color:inherit;
-  background-color:var(--b);background-image:linear-gradient(var(--surf),var(--surf));border:1px solid var(--hair);border-radius:11px;padding:9px 11px;
-  display:flex;flex-direction:column;gap:4px;
-  transition:border-color .16s ease,background-color .16s ease,transform .16s cubic-bezier(.22,1,.36,1),box-shadow .16s ease}
-.ev-fcard:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.07);
-  border-color:var(--bd2);background:color-mix(in srgb,var(--tx) 3%,var(--b))}
-.ev-fcard:focus-visible{outline:2px solid var(--br);outline-offset:2px}
-.ev-fcard.live{border-color:color-mix(in srgb,var(--fc-acc,var(--fc)) 42%,transparent)}
-.ev-fcard.live:hover{border-color:color-mix(in srgb,var(--fc-acc,var(--fc)) 70%,transparent)}
-.ev-frow{display:flex;align-items:center;gap:6px}
-.ev-flabel{font-size:11px;color:var(--tx2);letter-spacing:.01em}
-.ev-fnum{margin-left:auto;font-size:17px;font-weight:800;line-height:1;
-  font-variant-numeric:tabular-nums;letter-spacing:-.02em;
-  color:var(--fc,var(--tx2))}
-.ev-fnote{font-size:10px;color:var(--tx2);font-family:var(--mono);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ev-stats{display:flex;gap:16px;flex-wrap:wrap;margin-top:9px;font-size:10.5px;color:var(--tx2)}
+.ev-stats{display:flex;gap:16px;flex-wrap:wrap;margin-top:9px;font-size:var(--t-tiny);color:var(--tx2)}
 .ev-stats b{color:var(--tx);font-weight:680;font-variant-numeric:tabular-nums}
 
 /* —— 状态点 —— */
@@ -177,7 +179,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
   50%{box-shadow:0 0 0 3.5px color-mix(in srgb,var(--dc) 0%,transparent)}}
 
 /* —— 徽标 —— */
-.ev-pill{font-size:10px;line-height:1.7;padding:0 7px;border-radius:999px;white-space:nowrap;
+.ev-pill{font-size:var(--t-tiny);line-height:var(--lh-prose);padding:0 7px;border-radius:999px;white-space:nowrap;
   flex-shrink:0;letter-spacing:.01em;font-weight:550;
   color:var(--pc);background:color-mix(in srgb,var(--pc) var(--tint),transparent);
   border:1px solid color-mix(in srgb,var(--pc) 26%,transparent)}
@@ -200,11 +202,11 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
 .ev-head:hover{background:color-mix(in srgb,var(--tx) 3.5%,transparent)}
 .ev-head:focus-visible{outline:2px solid var(--br);outline-offset:-2px}
 .ev-hrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.ev-id{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--link);letter-spacing:-.01em}
-.ev-age{margin-left:auto;font-size:10px;color:var(--tx2);white-space:nowrap;
+.ev-id{font-family:var(--mono);font-size:var(--t-sm);font-weight:700;color:var(--link);letter-spacing:-.01em}
+.ev-age{margin-left:auto;font-size:var(--t-tiny);color:var(--tx2);white-space:nowrap;
   font-variant-numeric:tabular-nums}
-.ev-ctitle{margin-top:5px;font-size:12.5px;font-weight:600;line-height:1.5;color:var(--tx)}
-.ev-csum{margin-top:4px;font-size:11px;color:var(--tx2);line-height:1.55;
+.ev-ctitle{margin-top:5px;font-size:var(--t-md);font-weight:600;line-height:var(--lh-base);color:var(--tx)}
+.ev-csum{margin-top:4px;font-size:var(--t-sm);color:var(--tx2);line-height:var(--lh-base);
   overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .ev-csum .t{font-weight:700}
 .ev-csum .c{font-family:var(--mono);margin-left:6px;opacity:.85}
@@ -224,13 +226,13 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
   transition:opacity .22s ease,transform .26s cubic-bezier(.22,1,.36,1)}
 .ev-bodywrap.open .ev-bodyin{opacity:1;transform:none;transition-delay:.06s}
 
-.ev-txt{font-size:12px;line-height:1.65;color:var(--tx);white-space:pre-wrap;word-break:break-word}
-.ev-effect{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;font-size:12px}
+.ev-txt{font-size:var(--t-md);line-height:var(--lh-prose);color:var(--tx);white-space:pre-wrap;word-break:break-word}
+.ev-effect{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;font-size:var(--t-md)}
 .ev-effect .m{font-weight:680}
-.ev-effect .from{color:var(--tx2);font-family:var(--mono);font-size:11px}
+.ev-effect .from{color:var(--tx2);font-family:var(--mono);font-size:var(--t-sm)}
 .ev-effect .arrow{color:var(--tx2);margin:0 1px}
-.ev-effect .to{color:var(--ok);font-weight:700;font-family:var(--mono);font-size:11.5px}
-.ev-kv{font-size:11px;line-height:1.6;color:var(--tx)}
+.ev-effect .to{color:var(--ok);font-weight:700;font-family:var(--mono);font-size:var(--t-sm)}
+.ev-kv{font-size:var(--t-sm);line-height:var(--lh-base);color:var(--tx)}
 .ev-kv .k{color:var(--tx2)}
 .ev-box{background-color:var(--b);background-image:linear-gradient(var(--surf),var(--surf));border:1px solid var(--hair);border-radius:9px;
   padding:9px 11px;display:flex;flex-direction:column;gap:6px}
@@ -239,9 +241,9 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
 .ev-sig{margin-bottom:8px}
 .ev-sig:last-child{margin-bottom:0}
 .ev-sigrow{display:flex;align-items:flex-start;gap:7px}
-.ev-sigev{font-size:11px;line-height:1.6;color:var(--tx);flex:1;min-width:0}
+.ev-sigev{font-size:var(--t-sm);line-height:var(--lh-base);color:var(--tx);flex:1;min-width:0}
 .ev-traj{margin-top:4px;padding-left:9px;border-left:1px solid var(--hair)}
-.ev-traj div{font-size:10px;color:var(--tx2);font-family:var(--mono);line-height:1.65;word-break:break-all}
+.ev-traj div{font-size:var(--t-tiny);color:var(--tx2);font-family:var(--mono);line-height:var(--lh-prose);word-break:break-all}
 
 /* 决策链：发丝轨 + 阶段点 */
 .ev-chain{display:flex;flex-direction:column}
@@ -253,9 +255,9 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
 .ev-rail s{flex:1;width:1px;background:var(--hair);margin-top:4px}
 .ev-decbody{flex:1;min-width:0}
 .ev-dechd{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
-.ev-decwho{font-size:11px;color:var(--tx2)}
-.ev-decwhen{font-size:10px;color:var(--tx2);font-family:var(--mono);font-variant-numeric:tabular-nums}
-.ev-decct{margin-top:4px;font-size:12px;line-height:1.68;color:var(--tx);
+.ev-decwho{font-size:var(--t-sm);color:var(--tx2)}
+.ev-decwhen{font-size:var(--t-tiny);color:var(--tx2);font-family:var(--mono);font-variant-numeric:tabular-nums}
+.ev-decct{margin-top:4px;font-size:var(--t-md);line-height:var(--lh-prose);color:var(--tx);
   white-space:pre-wrap;word-break:break-word}
 
 .ev-skel{display:flex;flex-direction:column;gap:9px;padding:2px 0}
@@ -273,52 +275,60 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
   background:color-mix(in srgb,var(--bd) 55%,transparent)}
 .ev-bar i{display:block;height:100%;border-radius:2px;background:var(--dc);
   transition:width .4s cubic-bezier(.22,1,.36,1)}
-.ev-krow{display:flex;justify-content:space-between;gap:8px;font-size:11px;padding:2.5px 0}
+.ev-krow{display:flex;justify-content:space-between;gap:8px;font-size:var(--t-sm);padding:2.5px 0}
 .ev-krow .k{color:var(--tx2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ev-krow .v{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--tx);flex-shrink:0}
-.ev-note{font-size:10px;color:var(--tx2);margin-top:7px;line-height:1.6}
+.ev-note{font-size:var(--t-tiny);color:var(--tx2);margin-top:7px;line-height:var(--lh-base)}
 
-/* —— 趋势 —— */
-.ev-bars{display:flex;align-items:flex-end;gap:6px;height:60px;padding:2px 0 0}
-.ev-barcol{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:4px}
-.ev-barv{font-size:9px;font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--c-blue)}
-.ev-barcol i{width:100%;border-radius:3px 3px 2px 2px;
-  background:linear-gradient(180deg,var(--acc-blue),color-mix(in srgb,var(--acc-blue) 45%,transparent));
-  transition:height .45s cubic-bezier(.22,1,.36,1),opacity .2s ease}
-.ev-barcol.dim i{opacity:.42}
-.ev-barcol:hover i{opacity:1}
-.ev-barx{font-size:8.5px;color:var(--tx2);font-family:var(--mono);
-  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ev-empty{font-size:11px;color:var(--tx2);padding:6px 0;line-height:1.6}
-.ev-err{font-size:11px;color:var(--er);line-height:1.6}
+/* —— 趋势（旧 sparkline 的 .ev-bar* 已随 2026-09 重写删除；现用 .ev-trend/.ev-tbar）—— */
+.ev-empty{font-size:var(--t-sm);color:var(--tx2);padding:6px 0;line-height:var(--lh-base)}
+.ev-err{font-size:var(--t-sm);color:var(--er);line-height:var(--lh-base)}
 
 /* ---- 判决面（2026-09 新增）：首屏只放要动作的 ---- */
 .ev-verdict{display:flex;align-items:center;gap:9px;flex-wrap:wrap;
   padding:9px 12px;border-radius:9px;background-image:var(--surf);
   border:1px solid var(--hair)}
-.ev-verdict-t{font-size:12.5px;font-weight:650;color:var(--tx)}
-.ev-verdict-s{font-size:10.5px;color:var(--tx2);font-variant-numeric:tabular-nums}
-.ev-num{font-size:10.5px;color:var(--tx2);font-variant-numeric:tabular-nums}
+.ev-verdict-t{font-size:var(--t-md);font-weight:650;color:var(--tx)}
+.ev-verdict-s{font-size:var(--t-tiny);color:var(--tx2);font-variant-numeric:tabular-nums}
+.ev-num{font-size:var(--t-tiny);color:var(--tx2);font-variant-numeric:tabular-nums}
+
+/* ---- 指标趋势（2026-09 重写：一行一期，含量与分母与变化量）---- */
+.ev-trend{margin-top:2px}
+.ev-thead,.ev-trow{display:grid;gap:8px;align-items:center}
+.ev-thead{padding-bottom:4px;border-bottom:1px solid var(--hair)}
+.ev-thead > span{font-size:var(--t-tiny);color:var(--tx2);font-weight:600}
+.ev-trow{padding:5px 0;border-bottom:1px dashed var(--bd)}
+.ev-trow:last-child{border-bottom:0}
+.ev-tper{font-size:var(--t-sm);color:var(--tx2);font-family:var(--mono);white-space:nowrap}
+.ev-tc{display:flex;align-items:center;gap:7px;min-width:0}
+.ev-tbar{flex:1;min-width:16px;height:8px;border-radius:4px;background:var(--bd);overflow:hidden}
+.ev-tbar i{display:block;height:100%;border-radius:4px}
+.ev-tnum{font-size:var(--t-sm);color:var(--tx);font-family:var(--mono);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.ev-tdl{font-size:var(--t-tiny);color:var(--tx2);font-family:var(--mono);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.ev-tdl.up{color:var(--c-green)}
+.ev-tdl.down{color:var(--c-red)}
 .ev-find{display:flex;gap:9px;align-items:flex-start;padding:8px 0;
   border-bottom:1px dashed var(--bd)}
 .ev-find:last-child{border-bottom:0}
 .ev-find-hd{display:flex;gap:7px;align-items:baseline;flex-wrap:wrap}
-.ev-find-t{font-size:11.5px;font-weight:640;color:var(--tx)}
-.ev-find-r{font-size:10.5px;color:var(--tx2);font-family:var(--mono);
+.ev-find-t{font-size:var(--t-sm);font-weight:640;color:var(--tx)}
+.ev-find-r{font-size:var(--t-tiny);color:var(--tx2);font-family:var(--mono);
   font-variant-numeric:tabular-nums}
-.ev-find-act{font-size:10.5px;color:var(--tx2);line-height:1.65;margin-top:3px}
+.ev-find-act{font-size:var(--t-tiny);color:var(--tx2);line-height:var(--lh-prose);margin-top:3px}
 .ev-find-act b{color:var(--tx);font-weight:600}
 .ev-surf{margin-top:2px}
 .ev-surf-row{display:grid;grid-template-columns:64px 1fr auto;gap:8px;
   align-items:center;padding:3px 0}
-.ev-surf-k{font-size:11px;color:var(--tx)}
+.ev-surf-k{font-size:var(--t-sm);color:var(--tx)}
 .ev-surf-track{height:9px;border-radius:5px;background:var(--bd);overflow:hidden;
   display:flex}
 .ev-surf-track i{display:block;height:100%;opacity:.42}
 .ev-surf-track i.now{opacity:1}
-.ev-surf-v{font-size:10.5px;color:var(--tx2);font-family:var(--mono);
+.ev-surf-v{font-size:var(--t-tiny);color:var(--tx2);font-family:var(--mono);
   font-variant-numeric:tabular-nums;white-space:nowrap}
-.ev-caveat{font-size:10.5px;color:var(--tx2);line-height:1.65;margin-top:7px;
+.ev-caveat{font-size:var(--t-tiny);color:var(--tx2);line-height:var(--lh-prose);margin-top:7px;
   padding-left:9px;border-left:2px solid var(--hair)}
 .ev-caveat b{color:var(--tx);font-weight:600}
 .ev-drawer-hd{display:flex;align-items:center;gap:8px;width:100%;
@@ -548,13 +558,13 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           React.createElement('div', null,
             React.createElement('div', { className: 'ev-hrow', style: { marginBottom: 7 } },
               React.createElement(SectionLabel, null, '决策链'),
-              React.createElement('span', { style: { fontSize: 10, color: 'var(--tx2)' } }, '只追加不修改——提案 → 执行 → 验证 → 判断'),
+              React.createElement('span', { style: { fontSize:'var(--t-tiny)', color: 'var(--tx2)' } }, '只追加不修改——提案 → 执行 → 验证 → 判断'),
             ),
             d ? React.createElement(DecisionChain, { decisions: d.decisions })
               : (idea.decisions || []).map((x, i) => React.createElement('div', { key: i, className: 'ev-kv' }, x.summary + (x.length > 60 ? '…' : ''))),
           ),
           // —— 元信息
-          (d && (d.principle_refs || []).length) ? React.createElement('div', { style: { fontSize: 10, color: 'var(--tx2)' } },
+          (d && (d.principle_refs || []).length) ? React.createElement('div', { style: { fontSize:'var(--t-tiny)', color: 'var(--tx2)' } },
             '设计原则：', d.principle_refs.map(n => '原则' + n).join(' · '),
             d.file ? React.createElement('span', { style: { marginLeft: 8, fontFamily: mono } }, d.file) : null,
           ) : null,
@@ -678,37 +688,126 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       )
     }
 
-    // ============ 指标趋势（routed_accuracy） ============
+    // ============ 指标趋势 ============
+    // 2026-09 重写（旧版为什么看不懂，三条实测原因）：
+    //   ① **分母丢了**：collect_timeline 把 {ok,total} 压成 ok，于是三期 live 的
+    //      「3/3」渲染成三根等高的柱子加一个孤零零的「3」——比例没有分母不可解读
+    //      （metrics.md 的口径纪律：比例类务必连同分母解读）。数据面已修，这里消费分母。
+    //   ② **没有说话的部分**：只有一组柱，没有刻度、没有变化量、没有说明哪个读数在动。
+    //   ③ **期间标签 8.5px**：中文在这个尺寸下认不出（已并入 --t-* 档位，现为 --t-sm）。
+    // 现在的形态是一行一期 × 一列一指标，逐格给「含量与分母」与「相对上期的变化量」；
+    // 恒定或分母过小时用一行注记明说，不靠柱高差暗示趋势（原则十）。
+    const TREND_METRICS = [
+      { key: 'routed_accuracy', label: '路由准确率', acc: 'var(--acc-blue)' },
+      { key: 'tier2_hit', label: 'Tier2 命中', acc: 'var(--acc-green)' },
+      { key: 'sessions_total', label: '会话数', acc: 'var(--acc-purple)', delta: true },
+    ]
+
+    function ratioText(v) {
+      if (!v || v.ok === null || v.ok === undefined) return '—'
+      return (v.total === null || v.total === undefined) ? String(v.ok) : v.ok + '/' + v.total
+    }
+    function ratioPct(v) {
+      if (!v || !v.total) return null
+      return Math.max(0, Math.min(1, v.ok / v.total))
+    }
+
     function TimelineTrend({ timeline }) {
       const all = timeline || []
       const live = all.filter(p => p.kind === 'live')
       const rows = (live.length ? live : all).slice(-8)
-      if (!rows.length) return React.createElement(Section, { title: '指标趋势' }, React.createElement(EmptyBox, { text: 'timeline 无数据' }))
-      const vals = rows.map(p => (typeof p.routed_accuracy === 'number' ? p.routed_accuracy : null))
-      const nums = vals.filter(v => v !== null)
-      const max = nums.length ? Math.max(...nums) : 1
-      const min = nums.length ? Math.min(...nums) : 0
-      const span = max - min || 1
+      if (!rows.length) return React.createElement(Section, { title: '指标趋势' },
+        React.createElement(EmptyBox, { text: 'timeline 无数据（跑一次周批生成快照：python3 scripts/metrics_snapshot.py）' }))
+
+      // 一行一期，逐指标给出「读数（含分母）+ 相对上期的变化量」。
+      // 恒定与样本不足用注记明说，不靠图上的高度差暗示趋势（原则十）。
+      const cols = TREND_METRICS.filter(m => rows.some(r => r[m.key] !== undefined))
+      if (!cols.length) return React.createElement(Section, { title: '指标趋势' },
+        React.createElement(EmptyBox, { text: '近期快照里没有可画趋势的指标（routed_accuracy / tier2_hit / sessions_total 均缺）' }))
+      const grid = { gridTemplateColumns: 'auto repeat(' + cols.length + ',minmax(0,1fr))' }
+      const maxOf = key => Math.max(1, ...rows.map(r => {
+        const v = r[key]
+        if (v && typeof v === 'object') return v.total || v.ok || 0
+        return typeof v === 'number' ? v : 0
+      }))
+      const textOf = (key, v) => {
+        if (v && typeof v === 'object') return ratioText(v)
+        return typeof v === 'number' ? String(v) : '—'
+      }
+      const pctOf = (key, v) => {
+        if (v && typeof v === 'object') return ratioPct(v)
+        if (typeof v === 'number') return Math.max(0, Math.min(1, v / maxOf(key)))
+        return null
+      }
+
+      // 注记：把"能不能读出趋势"这件事直接写在图上，而不是留给读者猜
+      const notes = []
+      cols.filter(c => c.key !== 'sessions_total').forEach(c => {
+        const texts = rows.map(r => textOf(c.key, r[c.key]))
+        const present = texts.filter(t => t !== '—')
+        if (present.length > 1 && present.every(t => t === present[0])) {
+          notes.push(c.label + ' 各期恒为 ' + present[0])
+        }
+      })
+      const sess = rows.map(r => r.sessions_total).filter(v => typeof v === 'number')
+      if (sess.length > 1) notes.push('会话数 ' + sess.join(' → '))
+      const smallDen = rows.some(r => r.routed_accuracy && r.routed_accuracy.total
+        && r.routed_accuracy.total < 10)
+      if (smallDen) notes.push('路由准确率的分母小于 10，跨期波动不可解读')
+      const fcs = rows.map(r => r.feedback_capture_total).filter(v => typeof v === 'number')
+      if (fcs.length && fcs.every(v => v === 0)) {
+        notes.push('反馈捕获各期均为 0，故命中率/误诊率没有分母（不可解读）')
+      }
+      const constantOnly = cols.every(c => c.key === 'sessions_total'
+        || rows.map(r => textOf(c.key, r[c.key])).every(t => t === textOf(c.key, rows[0][c.key])))
+
       return React.createElement(Section, {
         title: '指标趋势',
-        right: (live.length ? 'live 期' : 'replay/示例参考（live 期不足）') + ' · routed_accuracy',
+        right: (live.length ? 'live 期 ' + rows.length + ' 期' : 'replay/示例参考（live 期不足）'),
       },
-        React.createElement('div', { className: 'ev-bars' },
+        React.createElement('div', { className: 'ev-trend' },
+          React.createElement('div', { className: 'ev-thead', style: grid },
+            React.createElement('span', null, '期间'),
+            cols.map(c => React.createElement('span', { key: c.key }, c.label)),
+          ),
           rows.map((p, i) => {
-            const v = vals[i]
-            const h = v === null ? 4 : 10 + Math.round(((v - min) / span) * 42)
-            return React.createElement('div', {
-              key: p.period + i,
-              className: 'ev-barcol' + (p.kind === 'live' ? '' : ' dim'),
-              title: p.period + ' · ' + (p.title || '') + ' · ' + (v === null ? '无值' : v),
-            },
-              React.createElement('span', { className: 'ev-barv', style: v === null ? { color: 'var(--tx2)' } : undefined },
-                v === null ? '—' : v),
-              React.createElement('i', { style: { height: h, background: v === null ? 'var(--bd)' : undefined } }),
-              React.createElement('span', { className: 'ev-barx' }, String(p.period || '').replace(/^2026-/, '')),
+            const prev = i > 0 ? rows[i - 1] : null
+            return React.createElement('div', { key: String(p.period) + i, className: 'ev-trow', style: grid },
+              React.createElement('span', {
+                className: 'ev-tper',
+                title: String(p.period) + ' · ' + (p.title || ''),
+              }, String(p.period || '').replace(/^2026-/, '')),
+              cols.map(c => {
+                const v = p[c.key]
+                const pct = pctOf(c.key, v)
+                const cur = typeof v === 'number' ? v : null
+                const pre = prev && typeof prev[c.key] === 'number' ? prev[c.key] : null
+                const delta = (c.delta && cur !== null && pre !== null) ? cur - pre : null
+                return React.createElement('div', { key: c.key, className: 'ev-tc' },
+                  React.createElement('span', { className: 'ev-tbar' },
+                    React.createElement('i', {
+                      style: {
+                        width: (pct === null ? 0 : Math.max(4, pct * 100)) + '%',
+                        background: pct === null ? 'var(--bd)' : c.acc,
+                      },
+                    })),
+                  React.createElement('span', { className: 'ev-tnum' }, textOf(c.key, v)),
+                  delta !== null && delta !== 0
+                    ? React.createElement('span', {
+                        className: 'ev-tdl ' + (delta > 0 ? 'up' : 'down'),
+                      }, (delta > 0 ? '+' : '') + delta)
+                    : null,
+                )
+              }),
             )
           }),
         ),
+        notes.length
+          ? React.createElement('div', { className: 'ev-note', style: { marginTop: 7 } },
+              (constantOnly
+                ? '注：可画的读数在各期没有变化，趋势不可读——'
+                : '注：') + notes.join('；') + '。')
+          : null,
       )
     }
 

@@ -310,7 +310,40 @@ async function main() {
   }))
   const tightest = capCells.sort((a, b) => b.ratio - a.ratio)[0]
   if (tightest && tightest.ratio > 0.8) expect('容量压力出现最紧格子 ' + tightest.label, ev.text.includes(tightest.label), (ev.text.match(/\d+\/30/g) || []).join(','))
-  expect('timeline sparkline', /routed_accuracy/.test(ev.text))
+  expect('timeline 趋势区块存在', /指标趋势/.test(ev.text))
+  // 趋势的可读性契约（2026-09 重写后新增，起因是实测看不懂）：
+  // ① 比例必须带分母——旧实现把 {ok,total} 压成 ok，三期 "3/3" 渲染成三根等高的柱 + 一个 "3"；
+  // ② 会话数那列要有变化量（+N），否则"哪个读数在动"要靠人对比；
+  // ③ 读数恒定时要用注记明说"趋势不可读"，不靠柱高差暗示趋势（原则十）。
+  const liveRows = periods.filter(p => p.kind === 'live').slice(-6)
+  const raWithDen = liveRows.filter(p => p.metrics && p.metrics.routed_accuracy
+    && p.metrics.routed_accuracy.total)
+  if (raWithDen.length) {
+    const raTxt = raWithDen[0].metrics.routed_accuracy
+    expect('趋势：比例带分母（' + raTxt.ok + '/' + raTxt.total + '）', ev.text.includes(raTxt.ok + '/' + raTxt.total), ev.text.slice(0, 200))
+  }
+  const sessCol = liveRows.map(p => p.metrics && p.metrics.sessions_total).filter(v => typeof v === 'number')
+  if (sessCol.length > 1) {
+    expect('趋势：会话数列渲染', sessCol.every(v => new RegExp('\\b' + v + '\\b').test(ev.text)), sessCol.join(','))
+    const anyDelta = sessCol.some((v, i) => i > 0 && v !== sessCol[i - 1])
+    if (anyDelta) expect('趋势：给出相对上期的变化量（+N/-N）', /[+]\d|−\d/.test(ev.text) || /\+\d/.test(ev.text))
+  }
+  expect('趋势：读数恒定/分母过小时用注记明说', /趋势不可读|不可解读/.test(ev.text))
+  // 排版契约：与「指标」面板共用同一套 8 档字号（本面板原先 17 个散值、最小 8.5px =
+  // "字小 + 中文糊"的直接原因）。断言查**源码**，这样新增档位会在离线闸门被拦下。
+  const tDecl = {}
+  ;(evSrc.match(/--t-[a-z0-9]+:\s*[0-9.]+px/g) || []).forEach(d => {
+    const kv = d.split(':'); tDecl[kv[0].trim()] = parseFloat(kv[1])
+  })
+  expect('排版：声明 8 档字号', Object.keys(tDecl).length === 8, Object.keys(tDecl).join(','))
+  expect('排版：无硬编码 font-size（一律走 --t-*）', !/font-size:\s*[0-9.]+px/.test(evSrc))
+  expect('排版：无内联 fontSize 字面量', !/fontSize:\s*'?[0-9.]+/.test(evSrc))
+  const tVals = Object.keys(tDecl).map(k => tDecl[k])
+  expect('排版：最小档 ≥ 10（原 8.5 中文会糊）', Math.min(...tVals) >= 10, String(Math.min(...tVals)))
+  expect('排版：基准档 ≥ 14（原 12）', (tDecl['--t-base'] || 0) >= 14, String(tDecl['--t-base']))
+  expect('排版：中文基准行高 ≥ 1.6', /--lh-base:1\.6/.test(evSrc))
+  expect('排版：与「指标」面板同档位值域（两面板同一套刻度）',
+    tDecl['--t-base'] === 14.5 && tDecl['--t-tiny'] === 11.5 && tDecl['--t-sm'] === 12.5)
   expect('空区块不占位（tally 空 → 一行说明）', /暂无归因事件/.test(ev.text))
   expect('收起态不泄露完整决策链（长文本仅在展开后）', !/三项验证均通过/.test(ev.text))
   // 默认筛选是「待办优先」：只出实验中的卡 + 有缺口的卡，不含无缺口的已采纳卡。

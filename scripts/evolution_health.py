@@ -48,15 +48,23 @@ IMPLEMENTED_GATE_DIMENSIONS = {
 }
 IMPLEMENTED_READABILITY_RULES = {"source_nonzero", "any_gt_0"}
 
-# 每条判据的一行标题（含实测值时由代码拼，不从 gates.yaml 抄散文——散文只写 meaning/action）
-GATE_TITLES = {
-    "no_negative_feedback": "从未说过「不」",
-    "backlog_over": "待合入积压",
-    "measure_never_run": "声明了却没测",
-    "evidence_weak": "自证过多",
-    "signal_dominant": "单一信号主导",
-    "pointer_rot": "依据已消失",
-    "unfalsifiable": "不可证伪",
+# 判据的**标题**在 proposals/gates.yaml（文案属数据，人可改不必动代码）；这里只留
+# **带数值的读数模板**（格式化贴着维度定义，且要能引上下文值如信号名/失效路径）。
+# 找不到 title 时退回 id，不静默。
+GATE_READINGS = {
+    "no_negative_feedback": "终态 {terminal_cards} 张全部采纳，否决 0 张",
+    "backlog_over": "{backlog_count} 张已验证卡无合入指针（批上限 {value}）",
+    "measure_never_run": "{runnable_never_measured} 张已声明可复现判据，从未执行",
+    "evidence_weak": "外部验证占比 {external_ratio_pct}（下限 {value_pct}）",
+    "signal_dominant": "最高信号「{top_signal_name}」占 {top_signal_share_pct}（阈值 {value_pct}）",
+    "pointer_rot": "{dead_ref_count} 个点名文件已不存在：{dead_ref_sample}",
+    "unfalsifiable": "强制范围内缺可复现判据 {unfalsifiable_enforced} 张",
+}
+# 比例型维度：读数与阈值都按百分比渲染（"0.246（下限 0.333）"不如"24.6%（下限 33.3%）"可读）。
+# 值是占位符名 → 模板里用短名，避免 `{external_ground_truth_ratio_pct}` 这种长占位符。
+RATIO_DIMS = {
+    "external_ground_truth_ratio": "external_ratio_pct",
+    "top_signal_share": "top_signal_share_pct",
 }
 
 
@@ -116,6 +124,7 @@ def collect_dimensions(root: Path):
         "external_ground_truth_ratio": stats["external_ratio"],
         "top_signal_share": stats["top_signal_share"],
         "dead_ref_count": stats["dead_ref_count"],
+        "dead_ref_paths": stats["dead_ref_paths"],
         "unfalsifiable_enforced": len(missing_enforced),
     }
 
@@ -183,17 +192,6 @@ def _rule_any_gt_0(value) -> bool:
     return False
 
 
-GATE_READINGS = {
-    "no_negative_feedback": "{negative_terminal} 张（终态 {terminal_cards} 张）",
-    "backlog_over": "{backlog_count} 张已验证卡无合入指针（上限 {value}）",
-    "measure_never_run": "{runnable_never_measured} 张有可复现判据、一次没跑过",
-    "evidence_weak": "外部 ground truth 占比 {external_ground_truth_ratio}（下限 {value}）",
-    "signal_dominant": "最高信号占全部卡数 {top_signal_share}（阈值 {value}）",
-    "pointer_rot": "{dead_ref_count} 个点名文件已不存在",
-    "unfalsifiable": "强制范围内缺 measure {unfalsifiable_enforced} 张",
-}
-
-
 def evaluate(root: Path):
     findings = []
     broken = []
@@ -217,6 +215,20 @@ def evaluate(root: Path):
     except Exception as e:
         errors.append(f"维度采集失败：{e}")
         dims, readouts = {}, {}
+
+    # 读数模板可引用的上下文值（阈值本身 + 需要点名的主体：哪个信号、哪些失效路径）。
+    # 判据的读数应当**点名主体**：只报数字的判决仍然要人自己去查是哪一处。
+    top = (readouts.get("signal_spread") or [{}])[0] if readouts else {}
+    dead = dims.get("dead_ref_paths") or []
+    fmt_ctx = dict(dims)
+    fmt_ctx.update({
+        "top_signal_name": top.get("signal") or "—",
+        "top_signal_cards": top.get("cards"),
+        "dead_ref_sample": "、".join(dead[:3]) + ("…" if len(dead) > 3 else "") if dead else "—",
+    })
+    for _d, _alias in RATIO_DIMS.items():
+        _v = dims.get(_d)
+        fmt_ctx[_alias] = f"{_v:.1%}" if isinstance(_v, (int, float)) else "—"
 
     # ---- 新鲜度：演进还在跑吗 ----
     fresh = cfg.get("freshness") or {}
@@ -267,7 +279,7 @@ def evaluate(root: Path):
         if isinstance(sample, (int, float)) and isinstance(sample_dim, (int, float)) \
                 and sample_dim < sample:
             findings.append({"level": "note", "face": "越界", "id": gid,
-                             "title": GATE_TITLES.get(gid, gid) + "：样本不足，本期不判",
+                             "title": (g.get("title") or gid) + "（样本不足，本期不判）",
                              "reading": f"样本 {sample_dim} < 门槛 {sample}",
                              "action": "积累样本后本判据自动生效"})
             continue
@@ -277,11 +289,17 @@ def evaluate(root: Path):
             broken.append(f"判据 {gid} 的 op={g.get('op')!r} 不支持")
             continue
         if hit:
-            tpl = GATE_READINGS.get(gid, "{reading}")
-            reading = tpl.format(value=g.get("value"),
-                                 **{k: ("—" if v is None else v) for k, v in dims.items()})
+            ctx = dict(fmt_ctx)
+            ctx["value"] = g.get("value")
+            if dim_name in RATIO_DIMS and isinstance(g.get("value"), (int, float)):
+                ctx["value_pct"] = f"{g['value']:.1%}"
+            tpl = GATE_READINGS.get(gid)
+            if tpl:
+                reading = tpl.format(**{k: ("—" if v is None else v) for k, v in ctx.items()})
+            else:
+                reading = f"{dim_name} = {val}（阈值 {g.get('op')} {g.get('value')}）"
             findings.append({"level": "fail", "face": "越界", "id": gid,
-                             "title": GATE_TITLES.get(gid, gid),
+                             "title": g.get("title") or gid,
                              "reading": reading,
                              "meaning": " ".join(str(g.get("meaning") or "").split()),
                              "action": " ".join(str(g.get("action") or "").split())})
