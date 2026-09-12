@@ -80,7 +80,7 @@ exec-log 只做内容流程收尾时的轻量现场记录，不做"每次 skill 
 - cost：token（无记账环境用估算，source: estimate 如实标注）
 ```
 
-用途：metrics 有内容流程侧的数据源（沉淀量/采纳/摩擦）；归因能定位"沉淀环节 vs 诊断环节"（诊断侧看 trace，沉淀侧看 exec-log）；evolve-check 收尾读它拿本轮现场（不靠 agent 记忆）。**读法一律走 `scripts/tail_exec_log.py`**（人读尾巴 / `--summary` 聚合 / `--json` 给面板），不要在别处重新实现解析——datetime 归一、路径解析与缺失退化只应有一份实现（路径解析在 `scripts/exec_log_path.py`）。**边界**：同一克隆内共享（跨 worktree 共写共读主检出那份，见上"审计补记"），**跨克隆/跨机不聚合**——跨机走"聚合值进 timeline"这条路，且**已接线**：`metrics_snapshot.py` 组装每期快照时把 `tail_exec_log --summary` 的聚合（`content_flow_runs` / `evolve_check_runs` / `evolve_check_no_signal`）作为内容流程侧写进 `metrics/timeline.yaml`（随 PR 共享；流水本身仍不进 git）。
+用途：metrics 有内容流程侧的数据源（沉淀量/采纳/摩擦）；归因能定位"沉淀环节 vs 诊断环节"（诊断侧看 trace，沉淀侧看 exec-log）；evolve-check 收尾读它拿本轮现场（不靠 agent 记忆）。**读法一律走 `scripts/tail_exec_log.py`**（人读尾巴 / `--summary` 聚合 / `--json` 给面板），不要在别处重新实现解析——datetime 归一、路径解析与缺失退化只应有一份实现（路径解析在 `scripts/exec_log_path.py`）。**边界**：同一克隆内共享（跨 worktree 共写共读主检出那份，见上"审计补记"），**跨克隆/跨机不聚合**——跨机走"聚合值进 timeline"这条路，且**已接线**：`metrics_snapshot.py` 组装每期快照时把 `tail_exec_log --summary` 的聚合（`content_flow_runs` / `evolve_check_runs` / `evolve_check_no_signal`）作为内容流程侧写进**当期的指标源文件**（`metrics/timeline.d/<期号>.yaml`；聚合 `metrics/timeline.yaml` 由 `scripts/build_timeline.py` 重建，是生成物，不要手写。随 PR 共享；流水本身仍不进 git）。
 
 ## 5. 替换与回滚（机制 D）：新 idea 替换旧实现
 

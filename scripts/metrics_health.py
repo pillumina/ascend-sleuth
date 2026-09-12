@@ -2,7 +2,7 @@
 # metrics_health.py —— 指标闭环体检（新鲜度 / 越界 / 可解读性）
 #
 # 为什么需要（2026-09-10 审计实测）：
-#   `docs/metrics.md` 的周批流程是"跑 trace_metrics → 人复核 → append → verify_metrics"。
+#   `docs/metrics.md` 的周批流程是「跑 metrics_snapshot → 人复核 → 写当期源文件 → build_timeline → verify_metrics」。
 #   实测按这个流程走一遍，**不会**被告知三类真问题：
 #     ① 结构指标（容量/条数）已 10 天没进快照：快照 `case_total 52` vs 现实 **158**；
 #        某格 `interrupt=85/30`（soft_cap 的 2.8 倍），而快照里那次还是 `36/30`；
@@ -80,8 +80,8 @@ def op_holds(op: str, value, threshold) -> bool:
 
 
 def latest_by(periods, pred):
-    """取"最新"的一期：先比 recorded_at，**同日期时以列表位置为准**（timeline 是 append-only，
-    后出现的更新）。实测踩过：两期 recorded_at 同为 2026-08-31，只比日期会挑中较早那期。"""
+    """取"最新"的一期：先比 recorded_at，**同日期时以列表位置为准**（聚合按 recorded_at 升序生成，
+    位置靠后的更新）。实测踩过：两期 recorded_at 同为 2026-08-31，只比日期会挑中较早那期。"""
     cands = [(i, p) for i, p in enumerate(periods) if pred(p)]
     if not cands:
         return None
@@ -217,7 +217,7 @@ def main():
             ("结构侧（容量/条数）", last_struct, "structural_max_age_days", "知识库统计")):
         limit = fresh.get(limit_key)
         if doc is None:
-            findings.append(("fail", "数据新鲜度", f"{label}：一期都没有", "跑 metrics_snapshot.py 组装后 append",
+            findings.append(("fail", "数据新鲜度", f"{label}：一期都没有", "跑 metrics_snapshot.py 组装 → 写 metrics/timeline.d/ → build_timeline.py",
                              f"还没有任何{plain_label}快照——趋势无从谈起"))
             continue
         age = age_days(doc.get("recorded_at"))
@@ -226,7 +226,7 @@ def main():
         elif limit is not None and age > limit:
             findings.append(("fail", "数据新鲜度",
                              f"{label}：最后 {doc.get('period')}（{doc.get('recorded_at')}，{age} 天前）超期 {limit} 天",
-                             "跑 metrics_snapshot.py 组装本期快照",
+                             "跑 metrics_snapshot.py 组装本期 → 写源文件 → build_timeline.py",
                              f"{plain_label}已经 {age} 天没更新（惯例是每 {limit} 天一次）——"
                              f"现在看到的还是 {doc.get('period')} 的状态"))
         else:
