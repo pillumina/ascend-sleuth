@@ -3,8 +3,13 @@
 // host 侧通过 shell 跑 scripts/ev_board_data.py 汇总 JSON（确定性逻辑在脚本，遵循原则二）。
 return {
   apply(ctx) {
-    const fs = ctx.get('fs')
-    if (fs === undefined) return
+    // **刻意没有 fs 守卫**：本插件的 host 从不读写文件——数据全由 `shell` 跑 Python 脚本产出
+    // （`ev_board_data.py` / `evolution_health.py`）。原先照抄 ascend-panel 写的是
+    // `const fs = ctx.get('fs'); if (fs === undefined) return`，后果是 fs 服务缺席时
+    // **整个插件什么都不注册**（两个 RPC 全没、tab 点开即死），而它一个 fs 调用都没有——
+    // "挂载了却什么都没贡献"是最难查的失败形态。
+    // 现在的退化是**逐调用**的：`shell` 缺 → runScript 返回「shell 不可用」；工作区缺 →
+    // 「无法解析工作区」。两者都有断言（panel_render_check 的 `[ev-panel host 失败路径]` 一节）。
     const sessions = ctx.get('sessions')
     const shell = ctx.get('shell')
 
