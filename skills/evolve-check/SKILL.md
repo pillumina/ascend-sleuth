@@ -41,8 +41,10 @@ description: >
 
 **第 1 步：读本轮执行现场**（不重扫全库、不读 case 全文——token 预算，原则九）：
 
-- **优先读统一执行记录**（走脚本，别内联 python——内联版两种环境都会崩：
-  有记录时 `at` 被 PyYAML 解析成 datetime 不可下标，新 worktree 里文件根本不存在）：
+- **优先读统一执行记录**（走脚本，别内联 python）：脚本自带三件内联版没有的东西——**路径解析**
+  （共享件在主检出还是本检出内）、**共享范围标注**（防把读数读成全系统读数）、**无记录时的退化口径**。
+  内联版还踩过另一类坑：记录里的 `at` 曾被 PyYAML 读成 datetime，`r['at'][:16]` 直接 TypeError
+  （写侧现已统一为带引号 ISO 字符串，该断点已修——但前三条理由不变，且新 worktree 里文件根本不存在）：
   `python3 scripts/tail_exec_log.py`（默认尾部 3 条；`--n 5` / `--skill evolve-check` / `--json`）
   ——拿"本轮做了什么"（替代凭 agent 记忆）：
 - 产出：本轮新增 case/reference/卡 id（从记录 products 提取，不重扫全库）；

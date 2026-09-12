@@ -64,12 +64,55 @@ def _log_lock(log_path: Path):
 
 
 def git_head(root: Path) -> str:
+    """当前检出对应的提交短哈希。
+
+    为什么不能只问 `git`：**git 不在 PATH 上时**（本项目 Windows 实测：MinGit 便携版装在
+    `%LOCALAPPDATA%\\mingit`，shell 里没有 `git`）这里会退化成 "unknown"，于是每条执行记录都丢掉
+    "当时是哪个提交"——审计链最该有的那一栏变成空话。所以加一条不依赖 git 二进制的退化路径：
+    直接读 `.git`（HEAD → refs/ → packed-refs，含 worktree 的 `gitdir:` 指针）。
+    """
     try:
         r = subprocess.run(["git", "rev-parse", "--short", "HEAD"],
                            capture_output=True, text=True, cwd=str(root), encoding="utf-8", errors="replace")
-        return r.stdout.strip() or "unknown"
+        head = r.stdout.strip()
+        if head:
+            return head
+    except Exception:
+        pass
+    try:
+        git_dir = root / ".git"
+        if git_dir.is_file():                     # worktree / submodule：`.git` 是指向真实 git 目录的文件
+            text = git_dir.read_text(encoding="utf-8", errors="replace").strip()
+            if text.startswith("gitdir:"):
+                git_dir = (git_dir.parent / text.split(":", 1)[1].strip()).resolve()
+        head_line = (git_dir / "HEAD").read_text(encoding="utf-8", errors="replace").strip()
+        if head_line.startswith("ref:"):
+            ref = head_line.split(":", 1)[1].strip()
+            ref_file = git_dir / ref
+            if ref_file.is_file():
+                return ref_file.read_text(encoding="utf-8", errors="replace").strip()[:7]
+            packed = git_dir / "packed-refs"
+            if packed.is_file():
+                for line in packed.read_text(encoding="utf-8", errors="replace").splitlines():
+                    if line.endswith(" " + ref):
+                        return line.split(" ", 1)[0][:7]
+            return "unknown"
+        return (head_line[:7] or "unknown")        # detached HEAD：HEAD 里直接就是哈希
     except Exception:
         return "unknown"
+
+
+def iso_at(value) -> str:
+    """把 `at` 规整成 ISO 字符串。
+
+    为什么要规整：写回时是文本级构建，但**读回走 PyYAML**——未加引号的 `2026-09-12T17:56:41`
+    会被解析成 datetime，再写出去就是 `2026-09-12 16:49:27`（空格、无 T）。同一字段两种形态，
+    下游 `rec['at'][:10]` 这类下标操作还会直接 TypeError（evolve-check 文档专门警告过这条）。
+    所以：读回时把 datetime 转回 ISO，写出去时**加引号**保持字符串。
+    """
+    if isinstance(value, datetime):
+        return value.isoformat(timespec="seconds")
+    return str(value)
 
 
 def main():
@@ -131,6 +174,15 @@ def main():
                     pid, _, st = p.rstrip()[:-1].partition("(")
                     entry["products"].append({"id": pid.strip(), "status": st.strip()})
                 else:
+                    # 括号不闭合 = 十有八九是"状态里带了逗号"（如 `id(in_progress,no_hit)`），
+                    # 被 split 切成两段后**静默写成两条产物**——审计记录被悄悄改形，比报错更糟。
+                    # 这里响亮失败，让人改用不含逗号的写法（`id(in_progress)` / `id(no_hit)`）。
+                    if "(" in p or ")" in p:
+                        print(
+                            "log_skill_exec: --products 段「" + p + "」括号不闭合——逗号只用于分隔产物，"
+                            "不能出现在 id 或状态里（要记两件事就写两条产物，或用 / 连接）",
+                            file=sys.stderr)
+                        sys.exit(2)   # 入口是 `main()`（不是 sys.exit(main())），必须自己 sys.exit 才带退出码
                     entry["products"].append({"id": p})
         if args.reason:
             entry["decision_reason"] = args.reason
@@ -149,7 +201,7 @@ def main():
             out.append(f"- seq: {r['seq']}")
             out.append(f"  skill: {r['skill']}")
             out.append(f"  version: {r['version']}")
-            out.append(f"  at: {r['at']}")
+            out.append(f"  at: '{iso_at(r['at'])}'")   # 加引号：读回时保持字符串，不被 PyYAML 变 datetime
             out.append(f"  source: {r['source']}")
             if r.get("session"):
                 out.append(f"  session: {r['session']}")

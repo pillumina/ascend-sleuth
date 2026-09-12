@@ -151,10 +151,13 @@ def ex_content_flow_log(root: Path):
            "print('\\n'.join(f\"{r['seq']} {r['skill']} {r.get('at','')[:16]}\" for r in (d.get('records') or [])[-3:]))")
     rc_old, out_old = py(root, "-c", old)
     enc_first = any(k in out_old for k in ("ReaderError", "codec", "decode", "UnicodeDecodeError"))
-    check("（对照）旧内联命令在有记录时失败 = 断点可复现",
-          rc_old != 0 and ("subscriptable" in out_old or enc_first),
-          out_old[-220:] + ("（本平台先被默认编码拦下：旧命令的 open() 没给 encoding，"
-                            "中文 Windows 默认 GBK 读 UTF-8 记录即失败——同一断点的另一种表现）"
+    # 历史断点：`at` 未加引号 → PyYAML 读成 datetime → `[:16]` 直接 TypeError（内联版必崩）。
+    # 写侧改为带引号 ISO 字符串后**该断点已修**，所以这里断言"不再因类型崩溃"而不是"必失败"。
+    # 编码那一层仍可能拦下内联版（open() 未指定 encoding），但不作为判据——"别内联"的真正理由
+    # 是脚本自带路径解析 / 共享范围标注 / 退化口径三件，内联版都没有。
+    check("（对照）旧内联命令不再因 at 类型崩溃（datetime 断点已修）",
+          "subscriptable" not in out_old,
+          out_old[-220:] + ("（本平台另被默认编码拦下——同一「别内联」理由的另一种表现）"
                             if enc_first else ""))
     rc, out = py(root, "scripts/verify_exec_log.py", "--check")
     check("exec-log 自查（seq 唯一/字段齐全）通过", rc == 0, out[-200:])

@@ -20,10 +20,18 @@ detected_framework: mindspeed-llm
 detected_platform: A5-950
 detected_category: interrupt           # triage 路由到的 category
 resolved_at: ""                        # status=resolved 时填 ISO 日期
+report_file: ""                        # 人读定位报告文件名（与 trace 同目录、同名不同后缀）；结构见
+                                       # skills/diagnose/references/report-template.md。步骤 6 产出必填。
 sedimented:                           # 沉淀状态（零推断：动作发生时写；拒绝不记录）
   state: none                         # none → submitted（to-postmortem 产出草稿时）→ knowledge（升 Tier 2）/ archived（仅 Tier 3）
   case_id: ""                         # 已沉淀的 case id（state=knowledge/archived 时）
   inbox_path: ""                      # 草稿路径（state=submitted 时）
+sediment_candidates: []               # 结构化沉淀候选（与报告第 8 节同源）——resume 时不必重读报告即可知道能沉淀什么：
+                                      #   - kind: reference          # case | reference | triage
+                                      #     summary: 可复用的结构事实（跨事故稳定）；只对本案成立的属 case
+                                      #     evidence: 哪条证据支撑（trace 事件 / 文件 / issue）
+                                      #     suggested_skill: to-reference   # to-postmortem | to-reference | knowledge-groom
+                                      #     status: proposed         # drafted（已起草）| proposed（建议做，未做）
 feedback:                             # 反馈闭环结果（fixture 资格判定用）
   case: ""                            # 命中的 case id（或 pending-investigation）
   outcome: ""                         # resolved | not_resolved | partial | pending
@@ -57,6 +65,8 @@ trace:
   - {role: agent, step: 4, action: quickly_check, case: MSLLM-EP-HANG-007, primary: fail, fallback: pass, marked: low_confidence, reason: "primary 未命中（无该 case 的特定码），fallback 宽匹配通过但置信低"}
   - {role: agent, step: 4, action: load_full, candidates: [MSLLM-EP-HANG-001, MSLLM-EP-HANG-007], order: by_confidence_score}
   - {role: agent, step: 5, action: hit, case: MSLLM-EP-HANG-001, confidence: 0.6, output: "命中 MSLLM-EP-HANG-001，root cause: HCCL 通信超时...", reason: "run_check 两步 match（stream/rank 检查），且 007 为低置信排除——证据指向 001"}
+  - {role: agent, step: 6, action: report, report_file: "2026-07-09-ep-hang-a5.report.md", sediment_candidates: 1,
+     output: "产出人读定位报告（9 节 + mermaid 机制图）", reason: "trace 管回放、对话输出管现场；报告管结论可复述/证据可核对/沉淀可执行"}
   - {role: user, step: 6, content: "应用了 fix，问题解决了"}
 
 # 生命周期：status 终态后文件留在 traces/（gitignored，含客户现场信息）；

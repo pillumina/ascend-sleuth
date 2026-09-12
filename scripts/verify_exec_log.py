@@ -11,12 +11,14 @@
 # 用法：python3 scripts/verify_exec_log.py [--check] [--root <repo>]
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
 import yaml
 
 from exec_log_path import describe, resolve
+from log_skill_exec import git_head
 
 VALID_SKILLS = {
     "diagnose", "resume-diagnosis", "to-postmortem", "to-reference",
@@ -49,6 +51,10 @@ def main():
 
     records = doc["records"]
     seen_seq = set()
+    try:
+        head_now = git_head(root)          # 能解析到 HEAD 时，"version: unknown" 就是漏填而非环境所限
+    except Exception:
+        head_now = "unknown"
     for i, r in enumerate(records):
         rel = f"records[{i}]"
         if not isinstance(r, dict):
@@ -59,6 +65,16 @@ def main():
         for k in ("at", "version", "source"):
             if not r.get(k):
                 errors.append(f"{rel}: 缺 '{k}'")
+        # at 必须是 ISO 字符串：PyYAML 把未加引号的时间读成 datetime —— 同一字段两种形态，
+        # 且下游切片/比较会直接炸。写侧已加引号；这里把"又漂回去"的情况拦住。
+        at = r.get("at")
+        if at is not None and not isinstance(at, str):
+            errors.append(f"{rel}: at 不是字符串（{type(at).__name__}）——写侧漏了引号，时间会被 YAML 读成 datetime")
+        elif isinstance(at, str) and not re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$", at):
+            errors.append(f"{rel}: at 不是 ISO 形态（'{at}'），应为 YYYY-MM-DDTHH:MM:SS")
+        # version: 有 git 信息却记成 unknown = 审计链丢栏（实测踩过：git 不在 PATH）
+        if r.get("version") == "unknown" and head_now != "unknown":
+            errors.append(f"{rel}: version 记成 unknown，但本检出能解析到 HEAD={head_now}——写侧退化路径没生效")
         seq = r.get("seq")
         if seq in seen_seq:
             errors.append(f"{rel}: seq {seq} 重复（append-only 不变量破坏）")
@@ -66,6 +82,11 @@ def main():
         for p in r.get("products") or []:
             if not isinstance(p, dict) or not p.get("id"):
                 errors.append(f"{rel}: products 元素须含 id")
+                continue
+            # id 里出现括号/逗号 = 十有八九被 `--products "id(a,b)"` 的逗号 split 撕裂过
+            # （实测：一条产物被写成两条 `id(in_progress` / `no_hit)`）。这正是校验该拦的形态。
+            if any(ch in str(p["id"]) for ch in "(),"):
+                errors.append(f"{rel}: products id「{p['id']}」含括号或逗号——疑似被 --products 逗号切分撕裂")
         dr = r.get("decision_reason")
         if dr is not None and not str(dr).strip():
             errors.append(f"{rel}: decision_reason 为空")
