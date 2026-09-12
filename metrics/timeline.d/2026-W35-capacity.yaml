@@ -1,0 +1,20 @@
+period: 2026-W35-capacity
+kind: replay
+title: 1.0.0 打 tag 时点容量快照
+recorded_at: '2026-08-29'
+source: scripts/build_index.py 头注实时值（ADR-0004 格子口径）
+metrics:
+  capacity_by_ns:
+    inference/vllm-ascend:
+      interrupt: 32/30
+      performance: 3/30
+      precision: 6/30
+    inference/sglang:
+      interrupt: 1/30
+  case_total: 42
+  reference_total: 95
+notes: '- inference/vllm-ascend interrupt 32/30 已超 soft_cap（roadmap A2 入口闸门）
+
+  - 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 60 才强制拆分；当前先记录
+
+  '

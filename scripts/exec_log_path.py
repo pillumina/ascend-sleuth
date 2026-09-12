@@ -24,14 +24,23 @@
 #   得让**聚合值**（不是流水）进 git（如 metrics/timeline.yaml），见 tail_exec_log.py --summary
 #   与 docs/mechanism/run.md §4。
 #
-# 用法（三个调用方共用）：
+# 用法（调用方共用）：
 #   from exec_log_path import LOG_REL, resolve
 #   path, where = resolve(root, explicit=args.log, local=args.local)
+#   path, where = resolve_rel(root, MEASURE_LOG_REL)      # 第二个共享件（口径同一条）
+#
+# 2026-09 泛化：**"同一克隆共享的运行件"不只 exec-log 一件**。`metrics/ev-measure-log.yaml`
+#   （EV 卡预测的实测记录，判据「声明了却没测」的数据源）有一模一样的两个约束：面板读主检出、
+#   worktree 清理不能丢数据。所以共享件路径解析与写锁原语都收在本模块，不再各写一份
+#   （抄两份 = 口径漂移的经典来源；本模块的注释已经因为同一原因被引用过多次）。
 
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
 
 LOG_REL = Path("metrics") / "skill-exec-log.yaml"
+# EV 卡预测的实测记录（reviewer 跑 ev_measure.py --run 时 append 一笔）
+MEASURE_LOG_REL = Path("metrics") / "ev-measure-log.yaml"
 
 # where 的含义（人读输出里直接标注，防止把"本地"读成"全系统"）
 WHERE_LABEL = {
@@ -79,17 +88,48 @@ def main_checkout(root: Path):
     return None
 
 
-def resolve(root: Path, explicit: Path = None, local: bool = False):
-    """返回 (log_path, where)。绝不抛异常——取不到就老实退化。"""
+def resolve_rel(root: Path, rel: Path, explicit: Path = None, local: bool = False):
+    """任意共享运行件 → (path, where)。绝不抛异常——取不到就老实退化。
+
+    `resolve()` 是本函数在 exec-log 上的特例（保留旧签名，三个调用方不动）。
+    """
     root = Path(root)
     if explicit is not None:
         return Path(explicit), "explicit"
     if local:
-        return root / LOG_REL, "local"
+        return root / Path(rel), "local"
     main_root = main_checkout(root)
     if main_root is not None:
-        return main_root / LOG_REL, "shared"
-    return root / LOG_REL, "fallback"
+        return main_root / Path(rel), "shared"
+    return root / Path(rel), "fallback"
+
+
+def resolve(root: Path, explicit: Path = None, local: bool = False):
+    """exec-log 的路径解析（保留原签名）。"""
+    return resolve_rel(root, LOG_REL, explicit=explicit, local=local)
+
+
+@contextmanager
+def log_lock(path: Path):
+    """共享运行件的跨进程写锁（flock）。yield True=已持锁 / False=本平台无 flock。
+
+    read-modify-write 无锁 = 后写覆盖先写（丢记录）或算出重复 seq。无 fcntl 的平台
+    （Windows）退化为不加锁：语义如实告知调用方，不假装有互斥。
+    两个共享件（exec-log / ev-measure-log）共用本原语。
+    """
+    try:
+        import fcntl
+    except ImportError:
+        yield False
+        return
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "a+") as fh:
+        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        try:
+            yield True
+        finally:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
 def describe(path: Path, where: str) -> str:

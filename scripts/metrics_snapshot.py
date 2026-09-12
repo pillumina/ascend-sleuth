@@ -164,6 +164,35 @@ def collect_content_flow(root: Path):
     }, {"state": state, "path": str(path), "where": where}
 
 
+def next_available_period(root: Path, base: str):
+    """期号去重：`base` 已被占用则依次试 `base-2`、`base-3`… → (period, bumped)。
+
+    为什么需要（2026-09-13）：期号只带日期、不带人，**同一天两人各跑一次就产出同一个号**。
+    各自分支单独看都是绿的（唯一性只在文件内部校验），冲突要到 merge 才暴露；而合并时"留一份"
+    会**静默丢掉另一期读数**（比报错更糟）。这里从源头避免同号：撞了就自动加后缀并打印说明。
+
+    占用判定看两处：源目录 `metrics/timeline.d/<期号>.yaml` 与聚合文件里的 period
+    （只看了源就是漏——生成物可能还没重建；只看了聚合就是漏——源可能已写、聚合未重建）。
+    """
+    taken = set()
+    src_dir = root / "metrics" / "timeline.d"
+    if src_dir.is_dir():
+        taken |= {f.stem for f in src_dir.glob("*.yaml")}
+    agg = root / "metrics" / "timeline.yaml"
+    if agg.exists():
+        try:
+            d = yaml.safe_load(agg.read_text(encoding="utf-8")) or {}
+            taken |= {str(p.get("period")) for p in (d.get("periods") or []) if isinstance(p, dict)}
+        except Exception:
+            pass
+    if base not in taken:
+        return base, False
+    n = 2
+    while f"{base}-{n}" in taken:
+        n += 1
+    return f"{base}-{n}", True
+
+
 def build_metrics(root: Path):
     """三块拼一份 metrics；拿不到的块如实缺席并记录原因。"""
     metrics, sources, missing = {}, {}, []
@@ -205,7 +234,12 @@ def main():
     root = args.root.resolve()
 
     iso = date.today().isocalendar()
-    period = args.period or f"{iso[0]}-W{iso[1]:02d}"
+    week = f"{iso[0]}-W{iso[1]:02d}"
+    # 期号按 kind 生成**正确形状**，不让人手写（手写会撞：实测默认值 `2026-W37` 与已有的
+    # replay 期同名，而 live 期号另有约定）。规则与校验见 verify_metrics.LIVE_PERIOD_RE。
+    base = f"{week}-live-{date.today():%m%d}" if args.kind == "live" else f"{week}-{args.kind}"
+    period, bumped = next_available_period(root, base)
+    period = args.period or period
     metrics, sources, missing = build_metrics(root)
 
     if args.json:
@@ -214,18 +248,25 @@ def main():
         return 0
 
     if args.emit_yaml:
-        print(yaml.safe_dump({"periods": [{
+        # 产出**一期源文件**（写入 metrics/timeline.d/<期号>.yaml），不是聚合文件：
+        # 聚合是生成物（scripts/build_timeline.py 重建），手写进聚合 = 下一个人撞在同一段文本上。
+        print(yaml.safe_dump({
             "period": period, "kind": args.kind,
             "title": "本期指标（metrics_snapshot.py 组装，人复核）",
+            # recorded_at 是**人复核日期**：脚本预填当天只是省一次输入，不等于已复核
             "recorded_at": date.today().isoformat(),
             "source": "metrics_snapshot.py（诊断侧+结构侧+内容流程侧，逐块见 sources）",
             "sources": sources,
             "metrics": metrics,
             "notes": "# 人复核时补：分母是否够、miss 归因、本期说明（阈值见 metrics/gates.yaml）\n",
-        }]}, allow_unicode=True, sort_keys=False))
+        }, allow_unicode=True, sort_keys=False))
         return 0
 
     print(f"metrics 快照骨架 · {period}（kind={args.kind}）")
+    if bumped:
+        print(f"  ! 今天已有一期（{args.period or ''}{period.rsplit('-', 1)[0]}）——本期改用期号 {period}")
+        print(f"    为什么自动加后缀：期号只带日期、不带人，同一天两人各跑一次会撞同一个号；")
+        print(f"    撞号的后果不是报错，而是合并时静默丢掉一期读数（比报错更糟）。")
     print(f"  指标块 {len(metrics)} 个字段，来源：")
     for k, v in sources.items():
         print(f"    - {k}: {v}")
@@ -240,7 +281,9 @@ def main():
         print("  已越界格子（判据见 metrics/gates.yaml，检测走 metrics_health.py）：")
         for ns, cat, n, cap in over:
             print(f"    ! {ns} · {cat} = {n}/{cap}")
-    print("\n下一步：人复核 → `python3 scripts/metrics_health.py` 体检 → append 进 metrics/timeline.yaml → verify_metrics --check")
+    print("\n下一步：人复核 → `python3 scripts/metrics_health.py` 体检 → 把这一期写进 "
+          f"metrics/timeline.d/{period}.yaml → `python3 scripts/build_timeline.py` → verify_metrics --check")
+    print("  注意：metrics/timeline.yaml 是**生成物**，不要直接编辑它（重建会覆盖）。")
     return 0
 
 

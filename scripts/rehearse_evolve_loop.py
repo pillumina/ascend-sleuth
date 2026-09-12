@@ -885,6 +885,130 @@ def ex_panel(root: Path, enabled: bool):
     check("执行现场区块断言在其中", "执行现场" in out, tail)
 
 
+# ---------------------------------------------------------------- ⑬ live 期号规则
+def ex_period_naming(root: Path):
+    """live 期号的命名规则必须**能拦**，且存量豁免成立。
+
+    为什么单独演一遍：期号是趋势锚点，而周批人人可跑（并发靠 PR merge 合流）。规则写进
+    verify_metrics 后若只跑真实数据，只能证明"存量没被误伤"——证明不了"新写的错误期号会被拦"。
+    """
+    print("\n[E13] live 期号规则（YYYY-Www-live-MMDD）")
+    base = "periods:\n- period: 2026-W35-live1\n  kind: live\n  recorded_at: '2026-08-31'\n  metrics: {sessions_total: 7}\n"
+    cases = [
+        ("存量豁免（cutover 前的旧形状不追溯改名）", base, 0),
+        ("新 live 期号正确形状（带日期）",
+         base + "- period: 2026-W40-live-1001\n  kind: live\n  recorded_at: '2026-10-01'\n  metrics: {sessions_total: 3}\n", 0),
+        ("同一周两个不同期号都合法（靠日期区分，不再像'同一期被改'）",
+         base + "- period: 2026-W40-live-1001\n  kind: live\n  recorded_at: '2026-10-01'\n  metrics: {sessions_total: 3}\n"
+         "- period: 2026-W40-live-1003\n  kind: live\n  recorded_at: '2026-10-03'\n  metrics: {sessions_total: 5}\n", 0),
+        ("新 live 期号缺日期 → 拦下",
+         base + "- period: 2026-W40-live\n  kind: live\n  recorded_at: '2026-10-01'\n  metrics: {sessions_total: 3}\n", 1),
+        ("新 live 期号用旧 -liveN 形状 → 拦下",
+         base + "- period: 2026-W40-live2\n  kind: live\n  recorded_at: '2026-10-01'\n  metrics: {sessions_total: 3}\n", 1),
+    ]
+    for label, text, want in cases:
+        d = root / "tmp-period-naming"
+        (d / "metrics").mkdir(parents=True, exist_ok=True)
+        (d / "metrics" / "timeline.yaml").write_text(text, encoding="utf-8")
+        rc, out = run([sys.executable, "scripts/verify_metrics.py", "--check", "--root", str(d)], cwd=root)
+        check(label, rc == want, "exit=%d 期望=%d :: %s" % (rc, want, out.strip()[:160]))
+        if want == 1:
+            check("  且点名了期号规则（不是一句泛泛的失败）", "YYYY-Www-live-MMDD" in out, out.strip()[:160])
+
+
+# ---------------------------------------------------------------- ⑭ 时序数据的源/生成物
+def ex_timeline_sources(root: Path):
+    """一期一文件 + 生成物：**冲突从判断题变成机械题**，且这道门必须能红。
+
+    背景：timeline.yaml 原先既是源又是 append 目标，而它是一个列表文件——任意两人各加一期
+    都会撞在同一段文本上，冲突要人判断"留哪一份"（判断错就静默丢一期读数）。改后源是
+    metrics/timeline.d/<期号>.yaml（各人各写一个），聚合由 build_timeline.py 重建、CI 校验一致性。
+    """
+    print("\n[E14] 时序数据 · 源（一期一文件）与生成物一致")
+    from datetime import date          # 模块级没有；本函数独立可用（同 ex_metrics_loop 的写法）
+    demo = root / "tmp-timeline-src"
+    if demo.exists():
+        shutil.rmtree(demo)
+    (demo / "metrics" / "timeline.d").mkdir(parents=True)
+
+    def write_src(pid, kind, recorded, sessions):
+        (demo / "metrics" / "timeline.d" / (pid + ".yaml")).write_text(
+            yaml.safe_dump({"period": pid, "kind": kind, "recorded_at": recorded,
+                            "metrics": {"sessions_total": sessions}},
+                           allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    write_src("2026-W40-live-1001", "live", "2026-10-01", 3)
+    write_src("2026-W40-live-1003", "live", "2026-10-03", 5)
+
+    # ① 重建 → 校验一致性
+    rc, out = run([sys.executable, "scripts/build_timeline.py", "--root", str(demo)], cwd=root)
+    check("源 → 生成物重建成功", rc == 0, out.strip()[-160:])
+    rc, out = run([sys.executable, "scripts/build_timeline.py", "--check", "--root", str(demo)], cwd=root)
+    check("生成物与源一致时 --check 绿", rc == 0, out.strip()[-160:])
+
+    # ② 直接改生成物（绕过源）→ 必须红，且报错给出"重跑一次"的机械修法
+    agg = demo / "metrics" / "timeline.yaml"
+    agg.write_text(agg.read_text(encoding="utf-8") + "\n# 有人手改了生成物\n", encoding="utf-8")
+    rc, out = run([sys.executable, "scripts/build_timeline.py", "--check", "--root", str(demo)], cwd=root)
+    check("手改生成物 → --check 红（生成物不是源）", rc == 1, "exit=%d" % rc)
+    check("  且给出机械修法（重跑重建，而不是让人判断留哪份）",
+          "python3 scripts/build_timeline.py" in out, out.strip()[:160])
+
+    # ③ 源里有重复期号（两个文件声明同一个 period）→ 必须红并点出是哪两个文件
+    (demo / "metrics" / "timeline.d" / "dup.yaml").write_text(
+        yaml.safe_dump({"period": "2026-W40-live-1001", "kind": "live",
+                        "recorded_at": "2026-10-01", "metrics": {"sessions_total": 9}},
+                       allow_unicode=True, sort_keys=False), encoding="utf-8")
+    rc, out = run([sys.executable, "scripts/build_timeline.py", "--check", "--root", str(demo)], cwd=root)
+    check("源内重复期号 → 红", rc == 1, "exit=%d" % rc)
+    check("  且同时点出「期号与文件名不一致」与「期号重复」两处",
+          "文件名不一致" in out and "重复" in out, out.strip()[:200])
+
+    # ④ 文件名与期号不一致（有人手工改名）→ 必须红
+    (demo / "metrics" / "timeline.d" / "dup.yaml").unlink()
+    (demo / "metrics" / "timeline.d" / "2026-W40-live-1001.yaml").rename(
+        demo / "metrics" / "timeline.d" / "renamed.yaml")
+    rc, out = run([sys.executable, "scripts/build_timeline.py", "--check", "--root", str(demo)], cwd=root)
+    check("文件名与期号不一致 → 红（期号即文件名）", rc == 1 and "文件名不一致" in out, out.strip()[:160])
+
+    # ⑤ git 冲突标记（两人同期号 → add/add 冲突留在源文件里）→ 红，且报错必须说"下一步做什么"。
+    #    实测来源：用两个真分支复现合并，发现不特判时报的是"YAML 解析失败：while scanning a simple key
+    #    ... <<<<<<< HEAD"——人能对上的是文件名，报错却讲 YAML 语法。
+    (demo / "metrics" / "timeline.d" / "renamed.yaml").rename(
+        demo / "metrics" / "timeline.d" / "2026-W40-live-1001.yaml")
+    (demo / "metrics" / "timeline.d" / "2026-W40-live-1003.yaml").write_text(
+        "<<<<<<< HEAD\nperiod: 2026-W40-live-1003\nkind: live\nrecorded_at: '2026-10-03'\n"
+        "metrics: {sessions_total: 5}\n=======\nperiod: 2026-W40-live-1003\nkind: live\n"
+        "recorded_at: '2026-10-03'\nmetrics: {sessions_total: 8}\n>>>>>>> engD\n", encoding="utf-8")
+    rc, out = run([sys.executable, "scripts/build_timeline.py", "--check", "--root", str(demo)], cwd=root)
+    check("源文件含 git 冲突标记 → 红", rc == 1, "exit=%d" % rc)
+    check("  且点名真因（两人写了同一个期号）而不是只报 YAML 语法错",
+          "冲突标记" in out and "同一个期号" in out and "YAML 解析失败" not in out, out.strip()[:200])
+    check("  且给出三种处置与「不要两份都留」",
+          "加后缀" in out and "不要" in out and "两份都留" in out, out.strip()[:200])
+    shutil.rmtree(demo, ignore_errors=True)
+
+    # ⑤ 真实检出：生成物与源一致（存量 8 期的迁移结果）
+    rc, out = run([sys.executable, "scripts/build_timeline.py", "--check"], cwd=root)
+    check("真实检出：生成物与源一致（存量期已迁移）", rc == 0, out.strip()[-160:])
+
+    # ⑥ 同天撞号自动加后缀（期号只带日期、不带人）
+    demo2 = root / "tmp-period-bump"
+    (demo2 / "metrics" / "timeline.d").mkdir(parents=True, exist_ok=True)
+    iso = date.today().isocalendar()
+    base = "%d-W%02d-live-%s" % (iso[0], iso[1], date.today().strftime("%m%d"))
+    (demo2 / "metrics" / "timeline.d" / (base + ".yaml")).write_text(
+        "period: %s\nkind: live\nrecorded_at: '%s'\nmetrics: {sessions_total: 3}\n"
+        % (base, date.today().isoformat()), encoding="utf-8")
+    rc, out = run([sys.executable, "scripts/metrics_snapshot.py", "--kind", "live", "--emit-yaml",
+                   "--root", str(demo2)], cwd=root)
+    check("同天已有一期 → 第二人自动加后缀（%s → -2）" % base,
+          rc == 0 and ("period: " + base + "-2") in out, out.splitlines()[0][:120] if out else "")
+    check("  加后缀的期号仍合法（命名规则允许 -N 后缀）",
+          bool(re.match(r"^\d{4}-W\d{2}-live-\d{4}(-\d+)?$", base + "-2")))
+    shutil.rmtree(demo2, ignore_errors=True)
+
+
 def main():
     ap = argparse.ArgumentParser(description="evolve-check 闭环端到端演练")
     ap.add_argument("--no-panel", action="store_true", help="跳过 node 面板断言")
@@ -907,6 +1031,8 @@ def main():
         ex_measure_path(sandbox)
         ex_holdout(sandbox)
         ex_ci_parity(sandbox)
+        ex_period_naming(sandbox)
+        ex_timeline_sources(sandbox)
         ex_panel(sandbox, not args.no_panel)
     finally:
         if args.keep:

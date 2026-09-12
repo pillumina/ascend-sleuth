@@ -1,0 +1,167 @@
+# ============================================================
+# Idea 卡（proposals/ideas/）——schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）
+# 校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+
+id: EV-2026-059
+layer: L3
+title: 演进闭环补判据层：卡墙 → 体检台（判据落成数据 + 触及面确定性派生 + 预测实测留痕）
+status: validated
+authorization: dual
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-12
+source_signals:
+  - signal: human_review_feedback
+    evidence: "用户读自演进面板后的直接反馈：卡本身内容太多、几十张之后没人会读、'基本是只有 agent 才会看'；要的是能固化的维度，看每批卡把系统往哪变了"
+    trajectory:
+      - "对话：面板呈现不适用（用户指出卡墙形态失效）"
+  - signal: process_friction
+    evidence: "面板自己的 README 已记录第一轮重做的实测：只增不减的墙——31/36 张落在 validated；本轮复核为 56/57 validated、rejected/superseded 各 0、authorization 里 auto 用了 0 次，故任何聚合读数都是常数"
+    trajectory:
+      - "dsh-plugins/ev-panel/README.md#设计取向"
+      - "proposals/ideas 全库实测聚合"
+hypothesis: >
+  人的首屏若从"卡墙"换成"判决层"（判据落成数据 + 三态退出码 + 只列要动作的），
+  卡降为按需展开的 diff 日志，则演进闭环可被人在一屏内读懂并可动作；同时把"这批补在哪一层"
+  做成**确定性派生**（从卡里已写下的仓库路径反推，不让 agent 自报），让"往哪变了"可比较、
+  可审计、且对存量卡同样成立。
+predicted_effect:
+  metric: "演进闭环判据的评估覆盖与三态结论"
+  from: "无判据层：面板只能画数据，人无法从聚合读数判断闭环健康"
+  to: "7 条判据全部被评估，结论三态可区分（0 全评过无越界 / 1 有违反 / 2 有判据没被评估）"
+  measure:
+    command: "python3 scripts/evolution_health.py --usable && node scripts/panel_render_check.js"
+    expect_exit: 0
+    expect_stdout: "全部通过"
+validation:
+  method: metrics_compare
+  baseline: "改前：面板首屏为 FocusStrip + 卡墙平铺；无 proposals/gates.yaml、无 evolution_health.py；触及面字段被 host 采集但客户端 0 引用"
+  success_criteria: >
+    ① evolution_health.py 三态退出码可复现（真实数据退 1；判据声明未实现或配置坏掉退 2 且不报 clean）；
+    ② 触及面派生对全库 0 张未归因，且归因依据字段可回查；
+    ③ 面板首屏默认不渲染任何卡，判决/触及面/现场上屏，卡在可点开的抽屉里；
+    ④ 离线渲染门（panel_render_check）全绿，且断言钉的是真实行为而非为绿灯放松。
+  rollback: >
+    纯增量：新增 proposals/gates.yaml 与 scripts/evolution_health.py，ev_board_data 只增键，
+    面板判决面为新增区块。回退 = 把 BoardView 恢复为卡墙顺序 + 删除两个新件（不需要数据迁移）。
+gate:
+  condition: "面板首屏仍是卡墙平铺，或演进闭环的聚合读数退化为一组常数（状态分布单柱 + 采纳率恒定）"
+risk: medium
+principle_refs: [2, 8, 9, 10, 11]
+actual_cost: {tokens: 260000, source: estimate}
+decisions:
+  - who: agent
+    when: 2026-09-12
+    type: proposal
+    conclusion: >
+      识别信号：面板呈现失效的根因不是视觉而是"上屏的是什么"——卡是只增的 diff 日志，
+      判决才是可动作的状态。方案：抄 metrics 侧已经验证过的分工（gates.yaml 判据数据 +
+      metrics_health.py 三态判决 + 面板只渲染不重算），为演进闭环建同构的一层。
+  - who: agent
+    when: 2026-09-12
+    type: action
+    conclusion: >
+      落地：新增 proposals/gates.yaml（7 条判据 + 1 条可解读性规则）与 scripts/evolution_health.py；
+      ev_board_data.py 加确定性派生（触及面 / 指路腐烂 / 信号集中度 / 实测记录读取，stats 只增键）；
+      ev_measure.py --run 落一笔共享实测记录（metrics/ev-measure-log.yaml，复用 exec_log_path 的
+      路径解析与写锁原语）；ev-panel 首屏改判决面 + 触及面 + 现场，卡收进默认收起的抽屉。
+  - who: agent
+    when: 2026-09-12
+    type: eval
+    conclusion: >
+      验证通过：evolution_health.py --check 在真实数据上退 1（6 项要处理、7/7 判据已评估）；
+      构造「判据声明了没实现」与「判据文件语法坏掉」两种坏态均退 2 且不报 clean；
+      触及面派生 57/57 张全部归因（0 未归因，归因依据强度: 强/中/弱 三档可回查）；
+      panel_render_check 全绿（含"首屏不渲染任何卡""判决拿不到时不冒充判决""体检器失效不报未见阻塞项"）。
+      本卡自己的第一版 measure 被实测证伪（`--check` 期望 exit 0，实测 1）——因为它把
+      "结论是 clean"当成了成功条件，而判据层正常工作的表现恰恰是**报出违反**。修法是分开两种问法：
+      新增 `--usable`（只问结论可不可用：判据全被评估即退 0，未被评估才退 2），measure 改用它。
+      这条证伪记录留在 metrics/ev-measure-log.yaml 里（实测记录是 append-only，不美化）。
+  - who: agent
+    when: 2026-09-12
+    type: action
+    conclusion: >
+      第二轮（用户读后反馈：判据文案不够专业、字号偏小、指标趋势看不懂且不美观）：
+      ① 文案——判据标题与动作改写为术语（「零否决记录」「外部验证占比不足」「引用路径失效」），
+      标题移入 gates.yaml 作为数据，读数补点名主体（信号名、失效路径）与百分比；
+      meaning/action 改成单行（YAML 折叠标量按行断句会在句中插空格，实测渲染出"命中率升， 还是"）。
+      ② 排版——本面板原先**没有字号尺度**（17 个散值，最小 8.5px，中文会糊），
+      补上与「指标」面板同一套 8 档 --t-* 与 --lh-*，40 处 font-size 与 13 处行高全部并档；
+      同时删掉两轮重做留下的死 CSS（ev-focus 一族、旧 sparkline 的 .ev-bar*）。
+      ③ 趋势——修一处**口径缺陷**：collect_timeline 把 {ok,total} 压成 ok，三期 live 的
+      「3/3」渲染成三根等高柱加一个孤零零的「3」。现改为保留分母，一行一期 × 一列一指标，
+      给出读数（含量与分母）与相对上期的变化量，并在读数恒定/分母过小时用注记明说趋势不可读。
+  - who: agent
+    when: 2026-09-12
+    type: eval
+    conclusion: >
+      第二轮验证：panel_render_check 由 272 条增至 283 条并全绿——新增断言钉住排版契约
+      （声明 8 档、无硬编码 font-size、最小档 ≥10、基准档 ≥14、与指标面板同值域）与
+      趋势可读性契约（比例带分母、会话数的变化量、恒定/分母过小时必须出注记）；
+      rehearse_evolve_loop 114/114、八条 kb-checks 全绿、check_panel_tokens 两面板角色集仍一致。
+      诚实保留：本轮**没有**在真实浏览器里核验渲染效果（离线闸门只证明"渲染没坏 + 信息在场"，
+      视觉观感仍待用户判断），这与面板 README 记的"视觉类指标改样式时浏览器实测一次"是同一约定。
+  - who: agent
+    when: 2026-09-12
+    type: action
+    conclusion: >
+      第三轮（用户提问"exec-log 不存在时面板会不会报错"）——实测发现**退化路径从未被测试过**：
+      面板那条断言写成了条件式（exec-log 存在则走正常分支，否则走退化分支），而工作机上
+      exec-log 与 timeline 都在，于是退化分支一次都没执行；rehearse 的沙箱又会把 metrics/
+      一并复制过去，同样命中正常分支。补上无条件覆盖：新增夹具
+      scripts/fixtures/make_degraded_evolve_root.py（5 个缺件用例：无 exec-log / 无 metrics/ /
+      无卡 / 无判据文件 / 判据文件语法坏掉），在离线闸门里对每个用例真跑两个脚本 + 真渲染。
+      同时修一处退化期的呈现缺陷：0 张卡时触及面区块 return null，会让编号从 ① 跳到 ③
+      （读者以为渲染坏了），改为如实说明"暂无可归因的卡"。
+  - who: agent
+    when: 2026-09-12
+    type: eval
+    conclusion: >
+      第三轮验证：5 个退化用例 × 数据面/判决面/渲染面共 38 条断言全绿——
+      数据脚本一律 exit 0 且输出可解析 JSON（不崩即不白屏）；缺件时 skill_exec 与实测记录
+      如实报 state=missing 而不是编 0 冒充；判据文件缺席或语法坏掉一律 verdict=broken
+      且点名是判据文件的问题（不报 clean）；渲染不抛异常、四个区块编号齐全、
+      执行现场给补救指引并标注共享范围。panel_render_check 由 283 增至 322 条断言全绿；
+      rehearse_evolve_loop 114/114。
+      结论（回答提问）：**exec-log 不存在不会让面板报错**，会退化成"无执行记录 + 补救指引"；
+      但这条路径此前是**偶然未被测到**而非被验证过，现在它有了无条件的回归覆盖。
+  - who: agent
+    when: 2026-09-12
+    type: action
+    conclusion: >
+      第四轮（用户反馈"用词 AI 味太浓、要看明白"）：先定文案规范八条（写进面板 README），
+      再按规范逐条重写 198 条人读文案。规范要点：一条只说一件事；不用比喻拟人；
+      不用对偶排比；不用强调副词；引号不做强调；**不自我评价**（"如实标注/不冒充/诚实的实验记录"
+      一律删——如实是默认要求，不必在界面上声明）；内部标识符不上屏；命令与路径原样给出。
+      同时把归类依据从内部三档（强/中/弱）改为**字段名**（改动说明 / 证据引用 / 卡片标题），
+      因为"强弱"说了等于没说，读者要知道依据取自哪里；信号集中度只报数、去掉防御性附注。
+  - who: agent
+    when: 2026-09-12
+    type: eval
+    conclusion: >
+      第四轮验证：322 条断言全绿（18 条断言随之改到新文案——文案改了钉它的断言必须一起改，
+      否则要么红要么假绿）；rehearse_evolve_loop 114/114；check_panel_tokens 两面板角色集仍一致。
+      规范里只有"无字面 Markdown 星号""不泄漏内部标识符"两条被离线闸门机械钉住，其余七条是
+      **判断性规范**（对照 README 表人审），按检查准入三条件不硬化为 CI 检查。
+  - who: agent
+    when: 2026-09-12
+    type: decision
+    conclusion: >
+      采纳。判据层、触及面与文案规范保留。两条如实记录的局限：① 触及面只做"改动落在哪一层"，
+      不做"改善幅度"——后者属能力轴，现场反馈捕获为 0 时没有分母（原则十）；
+      ② 判据阈值是假设（单一信号占比 25%、外部验证占比下限 1/3 等），接受实测重校（原则十一）。
+  - who: agent
+    when: 2026-09-13
+    type: decision
+    conclusion: >
+      **已知未覆盖（如实记录，不当作已测）**：ev-panel 的 host 侧失败路径只测了"判决 RPC 失败"
+      一种——Python 解释器缺失、shell 管道被拒、脚本抛 traceback 这三条走的是 host 的
+      `state.error` 分支，目前**没有断言**。指标面板（ascend-panel）对这类有现成断言
+      （"无工作区：不发起注定失败的命令（0 次 shell 调用）"等）可抄，已两次提议补上，未获决定，
+      故不再等：按现状记为缺口。为什么值得记而不是默默略过：本轮的退化路径回归（[E1]/缺件 5 用例）
+      证明"缺文件"这一类是可测的，而"缺解释器/管道被拒"是**另一类**失败（RPC 直接失败），
+      把它当成已被覆盖会制造假绿——与"12 天后才发现指标没进快照"是同一类错误的形状。
+      补的方法与验收：照 ascend-panel 的 `[host 自诊断]` 一节，用 mock shell 让 `run` 返回
+      非零/EPERM，断言面板走 `state.error` 且**不冒充判决**；工作量约 30 分钟。

@@ -78,7 +78,13 @@ eval-reports/
 # skill 执行记录（逐次 append 流水）。**同一克隆共享**：路径由 scripts/exec_log_path.py 解析到
 # 主检出（所有 worktree 共写共读同一份；跨克隆/跨机不聚合），故 worktree 清理不丢数据、面板可读。
 # 读法一律走 scripts/tail_exec_log.py（写侧持 flock，勿直接改写）；跨机口径走其 --summary
-# 聚合值进 metrics/timeline.yaml（流水本身不进 git）。详见 docs/evolution-run.md §4。
+# 聚合值进 metrics/timeline.yaml（流水本身不进 git）。详见 docs/mechanism/run.md §4。
 metrics/skill-exec-log.yaml
 metrics/skill-exec-log.yaml.lock
+# EV 卡预测的实测记录（reviewer 跑 scripts/ev_measure.py --run 时 append 一笔）。
+# **同一克隆共享**（同一套路径解析与写锁原语）：面板据此判「声明了可复现判据却从没被测过」——
+# 修前这件事没有任何观测面（`--run` 只往 stdout 打印，跑没跑过在数据上不可区分）。
+# 判据与读法见 proposals/gates.yaml 的 measure_never_run 与 scripts/evolution_health.py。
+metrics/ev-measure-log.yaml
+metrics/ev-measure-log.yaml.lock
 .flow-replay/

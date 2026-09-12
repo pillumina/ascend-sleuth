@@ -1,0 +1,106 @@
+period: 2026-W37-live
+kind: live
+title: W37 完整 live 快照（新流程首期：诊断侧 + 结构侧 + 内容流程侧三块组装）
+recorded_at: '2026-09-10'
+source: metrics_snapshot.py 组装（诊断侧 trace_metrics / 结构侧 build_index+verify_references
+  / 内容流程侧 tail_exec_log），逐块出处见 sources
+sources:
+  diagnose_side: trace_metrics.py（traces/*.yaml ← 主检出（同一克隆共享侧），12 个 session）
+  structural_side: build_index.py 头注（容量/case 总数）+ verify_references.py（词条数）
+  content_flow_side: log_skill_exec.py → tail_exec_log.py（shared）
+metrics:
+  sessions_total: 12
+  tier2_hit: 3
+  routed_accuracy:
+    ok: 3
+    total: 3
+  misdiagnosis_rate:
+    ok: 0
+    total: 3
+  by_category_hit:
+    interrupt:
+      hit: 3
+      total: 7
+    precision:
+      hit: 0
+      total: 1
+  attribution_ratio:
+    case_error: 0
+    execution_error: 0
+  confidence_distribution:
+    low: 33
+    total: 109
+  feedback_capture:
+    resolved: 0
+    not_resolved: 0
+    partial: 0
+  trace_completeness:
+    ok: 8
+    total: 12
+  vocab_compliance:
+    ok: 54
+    total: 54
+  tier3:
+    used: 3
+    saved: 2
+  reference:
+    hits: 4
+    refs: 3
+  reference_detail:
+    msllm-startup-version-env-triage:
+      hits: 2
+      resolved: 2
+    cann-runtime-error-codes:
+      hits: 1
+      resolved: 1
+    '?':
+      hits: 1
+      resolved: 0
+  case_total: 158
+  reference_total: 130
+  capacity_by_ns:
+    common:
+      performance:
+        count: 15
+        cap: 30
+      precision:
+        count: 6
+        cap: 30
+    inference/sglang:
+      interrupt:
+        count: 1
+        cap: 30
+    inference/vllm-ascend:
+      interrupt:
+        count: 85
+        cap: 30
+      performance:
+        count: 8
+        cap: 30
+      precision:
+        count: 21
+        cap: 30
+    training/mindspeed-llm:
+      interrupt:
+        count: 11
+        cap: 30
+      precision:
+        count: 4
+        cap: 30
+    training/verl:
+      interrupt:
+        count: 6
+        cap: 30
+      precision:
+        count: 1
+        cap: 30
+  content_flow_runs: 4
+  evolve_check_runs: 1
+  evolve_check_no_signal: 1
+notes: 新流程首期（EV-2026-049）：由 `metrics_snapshot.py` 一次性组装三块，不再靠人从多个脚本手工搬运 （旧流程第 1 步只跑
+  trace_metrics，结构侧因此 10 天没进快照：case_total 快照 52 → 现实 158）。 **本期两条指标不可解读**（`metrics_health.py`
+  依 `metrics/gates.yaml` 判定）：misdiagnosis_rate 与 attribution_ratio 的反馈来源为 0——12 个
+  session 里**没有一个回报过 fix 结果**， "0/3 = 零误诊"只表示没人回报，不表示没误诊，**不得据此下"无异常"结论**。 结构侧另有硬信号：`inference/vllm-ascend
+  · interrupt = 85/30`（soft_cap 2.8 倍、已超 hard_cap 60） ——按 ADR-0004 应触发/强制拆分，本期只如实记录，拆分动作属
+  groom 步骤 6 的独立决策。 容量随本期进 live（口径修正：结构指标原先只能出现在 replay 快照里，按"只有 live 参与趋势" 的规则等于没有趋势通道）。人复核后
+  append（分母：诊断侧 12 session 为累计值，非本期新增）。

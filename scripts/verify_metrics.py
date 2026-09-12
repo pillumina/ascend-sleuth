@@ -16,7 +16,9 @@
 # 返回非零 = 校验失败。--check 与默认行为一致（对称 build_index / verify_references）。
 
 import argparse
+import re
 import sys
+from datetime import date
 from pathlib import Path
 
 import yaml
@@ -62,6 +64,23 @@ def check_ratio(rel: str, period: str, field: str, val, errors: list):
         errors.append(f"{rel} [{period}]: metrics.{field}.ok 必须为 0..total 的整数（{ok!r}）")
 
 
+# live 期号的命名规则（2026-09 起）：`YYYY-Www-live-MMDD`，如 `2026-W37-live-0912`。
+#
+# 为什么需要：期号是**趋势锚点**，而周批可由任何人跑（CLAUDE.md 多 agent 节：并发修改靠 PR merge
+# 显式合并）。两个 groomer 各 append 一期时，手写期号有两种坏结局——同名（CI 靠 period 唯一性拦住，
+# 但拦在 merge 时）与异名同期（各自进 main，趋势线上同一周两个数字，读的人分不清哪个是真的）。
+# 期号带上快照日期后，两个人产出的期号天然不撞，"两个不同时点"也一眼可辨。
+#
+# 存量豁免（沿用 verify_proposals 的 MEASURE_CUTOVER 先例）：早于 cutover 的期不追溯改名——
+# 改名是改写历史锚点，而 metrics/timeline.yaml 是 append-only 数据。豁免是如实标注，不是放宽。
+#
+# 末尾的 `(-\d+)?` 是**同天第二期**的后缀：期号只带日期、不带人，同一天两人各跑一次会撞同一个号，
+# 生成器撞号时自动加 `-2`（见 metrics_snapshot.next_available_period）。不带后缀的横线形状即
+# "一天一期"，带后缀即"同一天的第 N 期"——两者都合法，且都不会撞上别人的号。
+PERIOD_NAMING_CUTOVER = date(2026, 9, 12)
+LIVE_PERIOD_RE = re.compile(r"^\d{4}-W\d{2}-live-\d{4}(-\d+)?$")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="CI 模式（与默认行为一致，对称 build_index）")
@@ -99,7 +118,11 @@ def main():
             errors.append(f"periods[{i}]: 缺少 period")
             continue
         if pid in seen:
-            errors.append(f"periods[{i}]: period '{pid}' 与 periods[{seen[pid]}] 重复（趋势锚点必须唯一）")
+            errors.append(
+                f"periods[{i}]: period '{pid}' 与 periods[{seen[pid]}] 重复（趋势锚点必须唯一）。"
+                f"两种合法处置：① 同期两次快照 → 给其中一期加后缀（如 '-2'，见 metrics_snapshot 的自动加后缀）；"
+                f"② 确认两份读数一致 → 删掉一份。**不要**两份都留（趋势线上同一期两个数字，读者分不清哪个是真的）"
+            )
         else:
             seen[pid] = i
 
@@ -112,6 +135,25 @@ def main():
 
         if not p.get("recorded_at"):
             errors.append(f"{rel} [{pid}]: 缺少 recorded_at（人审日期，不可自动戳）")
+
+        # live 期号命名规则（cutover 后强制；见 LIVE_PERIOD_RE 的注释说明为什么）
+        if kind == "live" and isinstance(pid, str) and not LIVE_PERIOD_RE.match(pid):
+            ra = p.get("recorded_at")
+            ra_date = None
+            if hasattr(ra, "year"):
+                ra_date = date(ra.year, ra.month, ra.day)
+            elif ra is not None:
+                try:
+                    ra_date = date.fromisoformat(str(ra)[:10])
+                except ValueError:
+                    ra_date = None
+            if ra_date is not None and ra_date >= PERIOD_NAMING_CUTOVER:
+                errors.append(
+                    f"{rel} [{pid}]: live 期号应为 YYYY-Www-live-MMDD（同天第二期加 -2 等后缀），"
+                    f"如 2026-W37-live-0913 / 2026-W37-live-0913-2；期号是趋势锚点，带快照日期才不至于"
+                    f"两人产出同名或同期两个数字（{PERIOD_NAMING_CUTOVER.isoformat()} 之前的期豁免，"
+                    f"不追溯改名）"
+                )
 
         metrics = p.get("metrics")
         if not isinstance(metrics, dict) or len(metrics) == 0:

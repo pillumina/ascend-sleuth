@@ -6,7 +6,7 @@ description: >
   加载 dsh-plugins/<panel>/ 下的 panel-host.js 与 panel-client.js——**只发两个路径，
   不转写 ~70KB 源码**，最后 cordis_run 激活，对话视图出现对应 tab。面板选择：
   - ascend-panel →「诊断」「指标」两个 tab（诊断会话/轨迹/证据 + **指标闭环判决**：首屏列要处理的判据、容量逐格、不可解读标记）
-  - ev-panel →「自演进」tab（EV 卡状态机 / 容量热力 / 归因与 S2 反馈 / timeline）
+  - ev-panel →「自演进」tab（演进体检判决 / 触及面 / 执行现场 / EV 卡决策链）
   仅 DSH 可用——依赖 DSH 的 cordis_define / cordis_run 工具
   与 conversation.view 插槽；其他 agent（Claude Code / Codex / pi）无此机制。
 ---
@@ -25,7 +25,7 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 | 面板 | 目录 | tab id / label | 视图 |
 |---|---|---|---|
 | 诊断面板 | `dsh-plugins/ascend-panel/` | `ascend-diagnose`(20) / `ascend-metrics`(21) | 会话列表/轨迹/证据 + 指标闭环判决（判据→结论/证据/下一步）/容量逐格/趋势 |
-| 自演进看板 | `dsh-plugins/ev-panel/` | `ascend-evolve`(22) | EV 卡状态机 / 容量热力 / 归因与 S2 反馈 / timeline |
+| 自演进看板 | `dsh-plugins/ev-panel/` | `ascend-evolve`(22) | 首屏是**体检判决**（要处理的判据 + 下一步动作）与**触及面**（这批改动落在机器的哪一层）；卡收在默认收起的抽屉里作为 diff 日志（决策链全文按需拉取） |
 
 ## 依赖预检（激活前跑，避免面板加载后白屏/报错）
 
@@ -119,7 +119,9 @@ loader，直接就有它可用；重复加载 loader 会撞名但不报错（工
   `harness.registerTool` + `ctx.get('dynamicCordisRunner')`——DSH 内置机制，无需补丁）
 - 工作区为 ascend-sleuth 仓库（Host 从 session.header.cwd 解析数据目录）
 - Host 服务：`fs` / `sessions` / `shell`
-- **ev-panel（自演进）**：Python 3 + **PyYAML**（`scripts/ev_board_data.py` 聚合数据）——
+- **ev-panel（自演进）**：Python 3 + **PyYAML**——两个脚本：`scripts/ev_board_data.py`（卡库/触及面/现场聚合）
+  与 `scripts/evolution_health.py --json`（体检判决，判据在 `proposals/gates.yaml`）。判决是一次独立调用：
+  它失败时面板**不渲染结论条**（不拿卡数冒充"没有越界"），其余区块照常。
   host 自动探测解释器（`python3` → `python` → `py -3`）；缺 pyyaml 时 host 会提示安装；
   loader 侧建议激活前预检（见「依赖预检」）。
 - **ascend-panel（指标）**：`shell` + Python 3 + PyYAML——
