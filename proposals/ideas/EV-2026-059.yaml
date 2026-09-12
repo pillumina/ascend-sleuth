@@ -105,6 +105,30 @@ decisions:
       视觉观感仍待用户判断），这与面板 README 记的"视觉类指标改样式时浏览器实测一次"是同一约定。
   - who: agent
     when: 2026-09-12
+    type: action
+    conclusion: >
+      第三轮（用户提问"exec-log 不存在时面板会不会报错"）——实测发现**退化路径从未被测试过**：
+      面板那条断言写成了条件式（exec-log 存在则走正常分支，否则走退化分支），而工作机上
+      exec-log 与 timeline 都在，于是退化分支一次都没执行；rehearse 的沙箱又会把 metrics/
+      一并复制过去，同样命中正常分支。补上无条件覆盖：新增夹具
+      scripts/fixtures/make_degraded_evolve_root.py（5 个缺件用例：无 exec-log / 无 metrics/ /
+      无卡 / 无判据文件 / 判据文件语法坏掉），在离线闸门里对每个用例真跑两个脚本 + 真渲染。
+      同时修一处退化期的呈现缺陷：0 张卡时触及面区块 return null，会让编号从 ① 跳到 ③
+      （读者以为渲染坏了），改为如实说明"暂无可归因的卡"。
+  - who: agent
+    when: 2026-09-12
+    type: eval
+    conclusion: >
+      第三轮验证：5 个退化用例 × 数据面/判决面/渲染面共 38 条断言全绿——
+      数据脚本一律 exit 0 且输出可解析 JSON（不崩即不白屏）；缺件时 skill_exec 与实测记录
+      如实报 state=missing 而不是编 0 冒充；判据文件缺席或语法坏掉一律 verdict=broken
+      且点名是判据文件的问题（不报 clean）；渲染不抛异常、四个区块编号齐全、
+      执行现场给补救指引并标注共享范围。panel_render_check 由 283 增至 322 条断言全绿；
+      rehearse_evolve_loop 114/114。
+      结论（回答提问）：**exec-log 不存在不会让面板报错**，会退化成"无执行记录 + 补救指引"；
+      但这条路径此前是**偶然未被测到**而非被验证过，现在它有了无条件的回归覆盖。
+  - who: agent
+    when: 2026-09-12
     type: decision
     conclusion: >
       采纳。判据层与触及面保留；但**触及面刻意只做"落在哪一层"**，不做"变好了多少"——

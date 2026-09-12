@@ -1039,7 +1039,14 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       const order = ['判断更准', '闸门更硬', '看得见', '走得顺', '未归因']
       const keys = order.filter(k => (cum[k] || 0) + (rec[k] || 0) > 0)
         .concat(Object.keys(cum).filter(k => order.indexOf(k) < 0))
-      if (!keys.length) return null
+      // 0 张卡时**不静默消失**：整个区块 return null 会让编号从 ① 跳到 ③，读者以为是渲染坏了。
+      // 如实说明"没有可归因的卡"，与其余区块的退化口径一致。
+      if (!keys.length) {
+        return React.createElement(Section, { title: '② 这批补在哪一层' },
+          React.createElement('div', { className: 'ev-empty' },
+            '暂无可归因的卡（proposals/ideas/ 为空或尚未产出卡片）——触及面由卡里写下的仓库路径派生，'
+            + '没有卡就没有这一层读数。'))
+      }
       const max = Math.max(1, ...keys.map(k => cum[k] || 0))
       const basis = stats.surface_basis_strength || {}
       const top = stats.top_signal

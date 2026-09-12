@@ -3,6 +3,7 @@
 //  2) 关键信息（决策链全文、变化对照、缺口提示）确实出现在输出里
 // 不是替代浏览器验证，是把"渲染逻辑 + 数据契约"这一层先钉死。
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
 const { execFileSync } = require('child_process')
 
@@ -258,12 +259,18 @@ async function main() {
   // 两条**已在本仓库另一面板踩过**的文案缺陷，这里一并钉住（同类缺陷复发 ≥2 次才进 CI 的口径）：
   // ① Markdown 星号当强调写进渲染文本 → 面板原样显示字面量（诊断面板已修过一次）；
   // ② 内部标识符（metric/dimension id）泄漏到人读文案里。
-  // ①的范围要收紧到**面板自己的文案**（新增区块的源码），不查整页渲染文本：整页里带历史数据原文
-  // （实测 exec-log 的 decision_reason 里就有 `**有**`），用渲染文本判会把数据误判成文案缺陷——
-  // 与上面 v1 状态词"查声明不查整页"是同一条教训。
+  // ①的范围要收紧到**面板自己的文案**（新增区块的源码，且剥掉注释），不查整页渲染文本：
+  //    - 整页里带历史数据原文（实测 exec-log 的 decision_reason 里就有 `**有**`），用渲染文本判
+  //      会把数据误判成文案缺陷——与上面 v1 状态词"查声明不查整页"是同一条教训；
+  //    - 源码里的**代码注释**不参与渲染，注释里用 `**` 强调是正常的（实测：本行加了
+  //      "0 张卡时**不静默消失**"的注释就把这条断言判红了）。
   const newCopyBlocks = evSrc.slice(evSrc.indexOf('function measureLine'),
     evSrc.indexOf('// ============ 主视图 ============'))
-  expect('判决/触及面文案不含字面 Markdown 星号（数据里的星号不算）', !/\*\*/.test(newCopyBlocks),
+    .split('\n')
+    .map(l => l.replace(/\s*\/\/.*$/, ''))
+    .filter(l => l.trim())
+    .join('\n')
+  expect('判决/触及面文案不含字面 Markdown 星号（数据与注释里的不算）', !/\*\*/.test(newCopyBlocks),
     (newCopyBlocks.match(/.{0,24}\*\*.{0,24}/) || [])[0])
   expect('不把内部指标 id 端给人看（readability 用人读名）',
     !/capability_readout/.test(ev.text) && /读数不可解读|判断更准/.test(ev.text))
@@ -451,6 +458,100 @@ async function main() {
       /体检器失效/.test(br.text) && !/本期无阻塞项/.test(br.text))
     expect('体检器失效：报出"结论不可用"与未评估条数',
       /结论不可用/.test(br.text) && /判据\s*0\/7\s*条已评估/.test(br.text), br.text.slice(0, 160))
+  }
+
+  // ================= ev-panel 退化路径（无条件跑，不依赖本机碰巧缺什么）=================
+  // 为什么单开一节：上面那条"无 exec-log 时走退化分支"是**条件断言**——本机 exec-log 与
+  // timeline 都在，于是它永远走 `present` 分支，退化路径一次都没被执行过；rehearse 的沙箱
+  // 又会把 metrics/ 一并复制，同样命中正常分支。实测由用户提问才发现这个盲区。
+  // 现在用 fixture 根（真脚本 + 真渲染）把每种"缺件"都跑一遍。
+  console.log('\n[ev-panel 退化路径 · 缺件时不崩且如实说]')
+  {
+    const fixtureCases = [
+      { case: 'no-exec-log', label: '无 exec-log（有 metrics/ 有卡有判据）' },
+      { case: 'no-metrics', label: '无 metrics/（timeline/实测记录全缺）' },
+      { case: 'empty-cards', label: '无卡（proposals/ideas 为空）' },
+      { case: 'no-gates', label: '无判据文件' },
+      { case: 'broken-gates', label: '判据文件语法坏掉' },
+    ]
+    const fixtureRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'evdeg-'))
+    for (const fc of fixtureCases) {
+      const root = path.join(fixtureRoot, fc.case)
+      pyRun(['scripts/fixtures/make_degraded_evolve_root.py', '--repo', repo, '--out', root,
+        '--case', fc.case], { cwd: repo, env: PY_ENV, stdio: 'pipe' })
+      // ① 数据面：必须 exit 0 且输出可解析的 JSON（脚本崩了面板就只能白屏）
+      let degraded = null
+      let healthDeg = null
+      try {
+        degraded = JSON.parse(pyRun(['scripts/ev_board_data.py', '--root', root],
+          { cwd: repo, maxBuffer: 16 * 1024 * 1024, env: PY_ENV }).toString())
+      } catch (e) {
+        degraded = { __crash: String((e && e.stderr || e)).slice(0, 200) }
+      }
+      try {
+        healthDeg = JSON.parse(pyRunAllowFail(['scripts/evolution_health.py', '--json', '--root', root],
+          { cwd: repo, maxBuffer: 16 * 1024 * 1024, env: PY_ENV }))
+      } catch (e) {
+        healthDeg = { __crash: String((e && e.stderr || e)).slice(0, 200) }
+      }
+      expect(fc.label + ' · 数据脚本不崩且输出 JSON',
+        !degraded.__crash && typeof degraded.idea_count === 'number', degraded.__crash)
+      expect(fc.label + ' · 判决脚本不崩且输出 JSON',
+        !healthDeg.__crash && !!healthDeg.check_verdict, healthDeg.__crash)
+
+      // ② 缺件的具体退化口径（哪些字段必须如实说 missing，而不是编 0 冒充）
+      if (fc.case === 'no-exec-log' || fc.case === 'no-metrics') {
+        expect(fc.label + ' · skill_exec 如实报 missing（不编 0 冒充"跑了但无信号"）',
+          degraded.skill_exec && degraded.skill_exec.present === false
+          && degraded.skill_exec.state === 'missing', JSON.stringify(degraded.skill_exec && degraded.skill_exec.state))
+        expect(fc.label + ' · 实测记录如实报 missing',
+          degraded.measure_runs && degraded.measure_runs.state === 'missing',
+          JSON.stringify(degraded.measure_runs && degraded.measure_runs.state))
+      }
+      if (fc.case === 'empty-cards') {
+        expect(fc.label + ' · 卡数为 0 且触及面为空', degraded.idea_count === 0
+          && Object.keys(degraded.stats.by_surface || {}).length === 0)
+      }
+      if (fc.case === 'no-gates' || fc.case === 'broken-gates') {
+        expect(fc.label + ' · 判决如实报 broken（不报 clean）', healthDeg.check_verdict === 'broken',
+          healthDeg.check_verdict)
+        expect(fc.label + ' · 点名是判据文件的问题',
+          JSON.stringify(healthDeg.errors || []).includes('gates.yaml'),
+          JSON.stringify(healthDeg.errors || []).slice(0, 120))
+      }
+
+      // ③ 渲染面：真客户端 + 该退化数据，必须渲染出人话且不抛
+      let rendered = null
+      let renderErr = null
+      try {
+        rendered = await renderAsync(evSrc, { sessionId: 'sess-1' },
+          (m) => m === 'ev-board-load' ? { ok: true, data: degraded }
+            : (m === 'ev-health-load' ? { ok: true, data: healthDeg } : { ok: false, error: 'n/a' }))
+      } catch (e) {
+        renderErr = String(e && e.message || e)
+      }
+      expect(fc.label + ' · 渲染不抛异常', !renderErr, renderErr)
+      const t = rendered ? rendered.text : ''
+      expect(fc.label + ' · 四个区块编号齐全（缺件不静默消失）',
+        /① 要处理的/.test(t) && /② 这批补在哪一层/.test(t)
+        && /③|执行现场（exec-log）/.test(t) && /④ 卡片（diff 日志）/.test(t), t.slice(0, 160))
+      if (fc.case === 'no-exec-log' || fc.case === 'no-metrics') {
+        expect(fc.label + ' · 执行现场走退化分支并给补救指引',
+          /无执行记录/.test(t) && /落一条 exec-log/.test(t), t.slice(0, 200))
+        expect(fc.label + ' · 退化分支仍标注共享范围（防读成全系统）', SHARE_RE.test(t))
+      }
+      if (fc.case === 'empty-cards') {
+        expect(fc.label + ' · 触及面如实说"暂无可归因的卡"（不画空图）',
+          /暂无可归因的卡/.test(t), t.slice(0, 220))
+        expect(fc.label + ' · 卡区报 0 张而不是隐藏', /④ 卡片（diff 日志）/.test(t) && /0 张/.test(t))
+      }
+      if (fc.case === 'no-gates' || fc.case === 'broken-gates') {
+        expect(fc.label + ' · 结论条标「体检器失效」而非"未见阻塞项"',
+          /体检器失效/.test(t) && !/本期无阻塞项/.test(t), t.slice(0, 200))
+        expect(fc.label + ' · 报出"结论不可用"', /结论不可用/.test(t), t.slice(0, 220))
+      }
+    }
+    fs.rmSync(fixtureRoot, { recursive: true, force: true })
   }
 
   // ================= 展开单卡 =================
