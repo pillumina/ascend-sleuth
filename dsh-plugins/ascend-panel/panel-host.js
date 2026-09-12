@@ -1,9 +1,24 @@
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
-    if (fs === undefined) return
     const sessions = ctx.get('sessions')
     const shell = ctx.get('shell')
+
+    // fs 缺失时**只降级依赖它的功能**，不再让整个插件静默不注册。
+    //
+    // 原先这里写的是 `if (fs === undefined) return`：后果是 fs 缺席时**两个 tab 一起死**——
+    // 连指标 tab 的「闭环判决」「实时计算」也没了，而那两项只跑脚本、根本不用 fs
+    // （`loadMetricsVerdict` / `runLiveMetrics` 全程无 fs 调用，已由测试逐函数核对）。
+    // "挂载了却什么都没贡献"是最难查的失败形态：面板不报错，只是什么都没发生。
+    //
+    // 现在的分工（按函数核对过）：需要 fs 的六个 RPC → traces-list / traces-detail /
+    // update-sedimented / metrics-load / kb-health / process-health；不需要 → open-evidence
+    // （只走 shell 打开文件）/ metrics-verdict（drift 那步已在 try 里，降级即可）/ metrics-live。
+    const needFs = () => ({
+      ok: false,
+      error: '该功能需要 fs 服务（读写仓库文件），当前不可用；'
+        + '指标 tab 的「闭环判决」「实时计算」不经 fs，仍然可用',
+    })
 
     // 工作区解析。**三处消费者的共同前提**：面板读 traces/ knowledge/ metrics/ scripts/ 全靠它。
     //
@@ -1009,6 +1024,7 @@ return {
     }
 
     const handleDisposer = harness.handle('ascend-traces-list', async (args) => {
+      if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const cwd = resolveCwd(sessionId)
       const r = await listTraces(cwd)
@@ -1017,6 +1033,7 @@ return {
     })
 
     const detailDisposer = harness.handle('ascend-traces-detail', async (args) => {
+      if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const traceFile = args && args.traceFile ? String(args.traceFile) : null
       if (!traceFile) return { ok: false, error: '缺 traceFile' }
@@ -1031,6 +1048,7 @@ return {
     })
 
     const sedDisposer = harness.handle('ascend-update-sedimented', async (args) => {
+      if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const traceFile = args && args.traceFile ? String(args.traceFile) : null
       const state = args && args.state ? String(args.state) : null
@@ -1039,18 +1057,21 @@ return {
     })
 
     const metricsDisposer = harness.handle('ascend-metrics-load', async (args) => {
+      if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const cwd = resolveCwd(sessionId)
       return loadTimeline(cwd)
     })
 
     const healthDisposer = harness.handle('ascend-kb-health', async (args) => {
+      if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const cwd = resolveCwd(sessionId)
       return loadHealth(cwd)
     })
 
     const processDisposer = harness.handle('ascend-process-health', async (args) => {
+      if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const cwd = resolveCwd(sessionId)
       return loadProcessHealth(cwd)
