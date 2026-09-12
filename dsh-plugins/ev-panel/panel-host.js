@@ -75,7 +75,15 @@ return {
         }
         return { ok: true, data }
       } catch (e) {
-        return { ok: false, error: '看板数据读取失败: ' + String(e && e.message || e) }
+        // 走到这里的常见成因是**执行环境**问题而不是数据问题：受限环境不允许创建管道
+        // （Windows 上报 `PermissionError: [WinError 5] 拒绝访问`）。原先只说一句
+        // "看板数据读取失败: <msg>"，读者既不知道是哪个脚本、也没有手工复现的路。
+        // 补齐三样：脚本名与工作目录、可复制的手工复现命令、以及"这不是数据问题"的判断。
+        const msg = String(e && e.message || e)
+        return { ok: false, error: '看板数据读取失败: ' + msg
+          + '\n脚本 ' + scriptName + '（工作目录 ' + cwd + '）'
+          + '\n手工复现：在仓库根目录执行 ' + py + ' ' + scriptName + (extraArgs ? ' ' + extraArgs : '')
+          + '\n若提示拒绝访问 / EPERM，是执行环境不允许创建管道所致，与数据无关。' }
       }
     }
 

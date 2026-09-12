@@ -1646,6 +1646,110 @@ _MS._run_no_pipe = no_fallback`)
     }
   }
 
+  // ================= ev-panel host 失败路径 =================
+  // 为什么单开一节（这一节是补 EV-2026-059 里如实记下的未覆盖缺口）：ev-panel 此前只测了
+  // "判决 RPC 失败"这一种失败，而 host 的另外几条失败路径——拿不到工作区 / shell 服务缺失 /
+  // Python 解释器缺失 / 脚本抛错（管道被拒等）/ 输出非 JSON——**没有任何断言**。它们与
+  // "缺文件"（上一节已覆盖）成因不同：那些是"文件不在"，这些是"RPC 直接失败"，把它当成
+  // 已覆盖就是假绿。手法与 ascend-panel 的 host 自诊断同：**从真实源文件抽出函数体**配桩运行，
+  // 逻辑不复制（复制了断言就退化成"我自己跟自己对"）。
+  console.log('\n[ev-panel host 失败路径 · 不崩且说清缺口]')
+  {
+    const evHostSrc = fs.readFileSync(path.join(repo, 'dsh-plugins/ev-panel/panel-host.js'), 'utf8')
+    const grabEv = (name) => {
+      const lines = evHostSrc.split(/\r?\n/)
+      const startIdx = lines.findIndex(l => /^    (async )?function /.test(l) && l.indexOf('function ' + name) > 0)
+      if (startIdx < 0) return null
+      for (let i = startIdx + 1; i < lines.length; i++) {
+        if (lines[i] === '    }') return lines.slice(startIdx, i + 1).join('\n')
+      }
+      return null
+    }
+    expect('能从 ev-panel host 源文件抽出 resolveCwd / resolvePython / runScript',
+      !!grabEv('resolveCwd') && !!grabEv('resolvePython') && !!grabEv('runScript'))
+    const evFnSrc = [grabEv('resolveCwd'), 'let pythonCmd', grabEv('resolvePython'), grabEv('runScript')].join('\n')
+    const buildEv = async (shell, sessions) => {
+      const factory = new Function('shell', 'sessions',
+        'return (async () => {\n' + evFnSrc + '\nreturn { runScript }\n})()')
+      return await factory(shell, sessions)
+    }
+    const SESS = { get: () => ({ header: { cwd: 'E:/projects/ascend-sleuth' } }) }
+    const okShell = (runImpl) => ({ resolve: (x) => x, run: runImpl })
+    const pyOk = async (spec) => (/--version/.test(spec.command)
+      ? { exitCode: 0, stdout: { text: 'Python 3.13.0' }, stderr: { text: '' } }
+      : await runImplRef(spec))
+
+    // ① 拿不到工作区：不发起任何命令，并说清缺口（"无工作区还去跑命令"= 制造一条假报错）
+    {
+      let calls = 0
+      const mod = await buildEv(okShell(async () => { calls++; return { exitCode: 0, stdout: { text: '{}' }, stderr: { text: '' } } }), undefined)
+      const r = await mod.runScript('sess-1', 'scripts/ev_board_data.py', null)
+      expect('无工作区：如实报「无法解析工作区」', r.ok === false && /无法解析工作区/.test(r.error), String(r.error).slice(0, 80))
+      expect('无工作区：0 次 shell 调用（不发起注定失败的命令）', calls === 0, 'calls=' + calls)
+    }
+    // ② shell 服务缺失：报「shell 不可用」（不是静默返回空数据）
+    {
+      const mod = await buildEv(undefined, SESS)
+      const r = await mod.runScript('sess-1', 'scripts/ev_board_data.py', null)
+      expect('shell 不可用：如实报错（不假装成功）', r.ok === false && /shell 不可用/.test(r.error), String(r.error).slice(0, 80))
+    }
+    // ③ Python 解释器缺失：三个候选都探测过，报出候选与脚本名，且**不执行数据脚本**
+    {
+      const commands = []
+      const mod = await buildEv(okShell(async (spec) => {
+        commands.push(spec.command)
+        return { exitCode: 1, stdout: { text: '' }, stderr: { text: 'command not found' } }
+      }), SESS)
+      const r = await mod.runScript('sess-1', 'scripts/ev_board_data.py', null)
+      expect('解释器缺失：探测了 3 个候选', commands.filter(c => /--version/.test(c)).length === 3, commands.join(' | '))
+      expect('解释器缺失：报出候选与所需脚本名',
+        r.ok === false && /python3 \/ python \/ py -3/.test(r.error) && /ev_board_data\.py/.test(r.error), String(r.error).slice(0, 120))
+      expect('解释器缺失：未执行数据脚本（只探测解释器）',
+        !commands.some(c => /ev_board_data\.py/.test(c)), commands.join(' | '))
+    }
+    // ④ 脚本抛错（受限环境不允许创建管道 → EPERM）：必须说清脚本、工作目录、手工复现，并点明"与数据无关"
+    {
+      const mod = await buildEv(okShell(async (spec) => {
+        if (/--version/.test(spec.command)) return { exitCode: 0, stdout: { text: 'Python 3.13.0' }, stderr: { text: '' } }
+        throw new Error('spawn EPERM')
+      }), SESS)
+      const r = await mod.runScript('sess-1', 'scripts/ev_board_data.py', null)
+      expect('脚本抛错：如实报错且保留原因', r.ok === false && /EPERM/.test(r.error), String(r.error).slice(0, 90))
+      expect('脚本抛错：点名脚本与工作目录', /ev_board_data\.py/.test(r.error) && /E:\/projects\/ascend-sleuth/.test(r.error), String(r.error).slice(0, 160))
+      expect('脚本抛错：给出手工复现命令（可复制）', /手工复现/.test(r.error) && /python3? scripts\/ev_board_data\.py/.test(r.error), String(r.error).slice(0, 200))
+      expect('脚本抛错：点明"执行环境"而非读者去查数据', /与数据无关/.test(r.error))
+    }
+    // ⑤ 脚本失败但 stderr 有内容：保留 stderr（截断到有限长度）；pyyaml 缺失给安装提示
+    {
+      const mod = await buildEv(okShell(async (spec) => (/--version/.test(spec.command)
+        ? { exitCode: 0, stdout: { text: 'Python 3.13.0' }, stderr: { text: '' } }
+        : { exitCode: 1, stdout: { text: '' }, stderr: { text: 'x'.repeat(2000) + '\nModuleNotFoundError: No module named yaml' } })), SESS)
+      const r = await mod.runScript('sess-1', 'scripts/ev_board_data.py', null)
+      expect('脚本失败：如实报错且长度收敛（不把整页撑爆）', r.ok === false && r.error.length <= 800, 'len=' + String(r.error).length)
+      const mod2 = await buildEv(okShell(async (spec) => (/--version/.test(spec.command)
+        ? { exitCode: 0, stdout: { text: 'Python 3.13.0' }, stderr: { text: '' } }
+        : { exitCode: 1, stdout: { text: '' }, stderr: { text: "ModuleNotFoundError: No module named 'yaml'" } })), SESS)
+      const r2 = await mod2.runScript('sess-1', 'scripts/ev_board_data.py', null)
+      expect('缺 PyYAML：给出安装提示（不是一句原始 traceback）', /pip install pyyaml/.test(r2.error), String(r2.error).slice(0, 120))
+    }
+    // ⑥ 输出非 JSON：报出脚本名与解析错误
+    {
+      const mod = await buildEv(okShell(async (spec) => (/--version/.test(spec.command)
+        ? { exitCode: 0, stdout: { text: 'Python 3.13.0' }, stderr: { text: '' } }
+        : { exitCode: 0, stdout: { text: '这不是 JSON' }, stderr: { text: '' } })), SESS)
+      const r = await mod.runScript('sess-1', 'scripts/ev_board_data.py', null)
+      expect('输出非 JSON：报出脚本名 + 解析错误', r.ok === false && /ev_board_data\.py 输出非 JSON/.test(r.error), String(r.error).slice(0, 120))
+    }
+    // ⑦ 正常路径不因加了防御而破：合法 JSON → ok:true
+    {
+      const mod = await buildEv(okShell(async (spec) => (/--version/.test(spec.command)
+        ? { exitCode: 0, stdout: { text: 'Python 3.13.0' }, stderr: { text: '' } }
+        : { exitCode: 0, stdout: { text: JSON.stringify({ ok: true, idea_count: 3 }) }, stderr: { text: '' } })), SESS)
+      const r = await mod.runScript('sess-1', 'scripts/ev_board_data.py', null)
+      expect('正常输出：仍解析为 JSON（正路未被防御破坏）', r.ok === true && r.data && r.data.idea_count === 3)
+    }
+  }
+
   console.log('\n' + (failures.length ? '失败 ' + failures.length + ' 项: ' + failures.join(' | ') : '全部通过'))
   process.exit(failures.length ? 1 : 0)
 }

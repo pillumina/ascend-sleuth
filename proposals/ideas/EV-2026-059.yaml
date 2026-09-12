@@ -165,3 +165,22 @@ decisions:
       把它当成已被覆盖会制造假绿——与"12 天后才发现指标没进快照"是同一类错误的形状。
       补的方法与验收：照 ascend-panel 的 `[host 自诊断]` 一节，用 mock shell 让 `run` 返回
       非零/EPERM，断言面板走 `state.error` 且**不冒充判决**；工作量约 30 分钟。
+  - who: agent
+    when: 2026-09-13
+    type: action
+    conclusion: >
+      缺口已补（上面那条"已知未覆盖"就此关闭）。新增 panel_render_check 的
+      [ev-panel host 失败路径] 一节：从**真实 host 源文件抽出** resolveCwd / resolvePython /
+      runScript 配桩运行（逻辑不复制——复制了断言就退化成"我自己跟自己对"），覆盖 7 类：
+      无工作区（0 次 shell 调用）/ shell 服务缺失 / 解释器缺失（3 个候选都探测且不执行数据脚本）/
+      脚本抛错（EPERM）/ stderr 非空（长度收敛 + pyyaml 安装提示）/ 输出非 JSON / 正常路径。
+      同时修一处真缺陷：脚本抛错时原先只说"看板数据读取失败: <msg>"，读者既不知道是哪个脚本、
+      也没有手工复现的路——现补上脚本名与工作目录、可复制的手工复现命令、以及"若提示拒绝访问 /
+      EPERM，是执行环境不允许创建管道所致，与数据无关"的判断。
+  - who: agent
+    when: 2026-09-13
+    type: eval
+    conclusion: >
+      panel_render_check 330 → 345 条断言全绿（新增 15 条，其中 1 条先被自己写错的正则判红——
+      实际命令是 `python3 scripts/...`，断言写成 `python\s+scripts/...`；已改正则而非放宽断言）。
+      九条 CI 与 rehearse_evolve_loop 全绿。
