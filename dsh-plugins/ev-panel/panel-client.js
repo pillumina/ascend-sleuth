@@ -292,6 +292,48 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
 .ev-empty{font-size:11px;color:var(--tx2);padding:6px 0;line-height:1.6}
 .ev-err{font-size:11px;color:var(--er);line-height:1.6}
 
+/* ---- 判决面（2026-09 新增）：首屏只放要动作的 ---- */
+.ev-verdict{display:flex;align-items:center;gap:9px;flex-wrap:wrap;
+  padding:9px 12px;border-radius:9px;background-image:var(--surf);
+  border:1px solid var(--hair)}
+.ev-verdict-t{font-size:12.5px;font-weight:650;color:var(--tx)}
+.ev-verdict-s{font-size:10.5px;color:var(--tx2);font-variant-numeric:tabular-nums}
+.ev-num{font-size:10.5px;color:var(--tx2);font-variant-numeric:tabular-nums}
+.ev-find{display:flex;gap:9px;align-items:flex-start;padding:8px 0;
+  border-bottom:1px dashed var(--bd)}
+.ev-find:last-child{border-bottom:0}
+.ev-find-hd{display:flex;gap:7px;align-items:baseline;flex-wrap:wrap}
+.ev-find-t{font-size:11.5px;font-weight:640;color:var(--tx)}
+.ev-find-r{font-size:10.5px;color:var(--tx2);font-family:var(--mono);
+  font-variant-numeric:tabular-nums}
+.ev-find-act{font-size:10.5px;color:var(--tx2);line-height:1.65;margin-top:3px}
+.ev-find-act b{color:var(--tx);font-weight:600}
+.ev-surf{margin-top:2px}
+.ev-surf-row{display:grid;grid-template-columns:64px 1fr auto;gap:8px;
+  align-items:center;padding:3px 0}
+.ev-surf-k{font-size:11px;color:var(--tx)}
+.ev-surf-track{height:9px;border-radius:5px;background:var(--bd);overflow:hidden;
+  display:flex}
+.ev-surf-track i{display:block;height:100%;opacity:.42}
+.ev-surf-track i.now{opacity:1}
+.ev-surf-v{font-size:10.5px;color:var(--tx2);font-family:var(--mono);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.ev-caveat{font-size:10.5px;color:var(--tx2);line-height:1.65;margin-top:7px;
+  padding-left:9px;border-left:2px solid var(--hair)}
+.ev-caveat b{color:var(--tx);font-weight:600}
+.ev-drawer-hd{display:flex;align-items:center;gap:8px;width:100%;
+  background:none;border:0;padding:7px 8px;border-radius:8px;cursor:pointer;
+  color:var(--tx);font:inherit;text-align:left}
+.ev-drawer-hd:hover{background-image:var(--surf)}
+.ev-drawer-hd:focus-visible{outline:2px solid var(--acc-blue);outline-offset:1px}
+.ev-drawer-bd{margin-top:6px}
+
+/* ---- 判决面颜色角色（只用既有 12 角色，不新增——check_panel_tokens 要求两面板角色集一致） ---- */
+.ev-verdict.ok{border-color:color-mix(in srgb,var(--acc-green) 34%,transparent)}
+.ev-verdict.warn{border-color:color-mix(in srgb,var(--acc-amber) 38%,transparent)}
+.ev-verdict.bad{border-color:color-mix(in srgb,var(--acc-red) 38%,transparent)}
+.ev-verdict.broken{border-color:color-mix(in srgb,var(--acc-purple) 40%,transparent)}
+
 @media (prefers-reduced-motion:reduce){
   .ev-rise,.ev-dot.pulse{animation:none!important}
   .ev-root *{transition-duration:.01ms!important}
@@ -359,60 +401,6 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           right ? React.createElement('span', { className: 'ev-sec-r' }, right) : null,
         ),
         children,
-      )
-    }
-
-    // ============ ① 待办/待审优先条 ============
-    // 首屏回答"现在该看哪张卡"：实验中的卡（agent 正在动）+ 审计缺口 + 最近采纳。
-    function FocusStrip({ stats, ideas, onFocus }) {
-      const inExp = ideas.filter(c => c.status === 'in_experiment')
-      const gaps = ideas.filter(c => (c.gaps || []).length)
-      const recent = ideas.filter(c => c.status === 'validated')
-        .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
-        .slice(0, 3)
-      const cards = [
-        {
-          key: 'exp', color: 'var(--c-blue)', acc: 'var(--acc-blue)', label: '实验中', n: inExp.length,
-          note: inExp.length ? inExp.map(c => c.id).slice(0, 3).join(' · ') : '无',
-          hint: 'agent 正在改并验证——产卡即执行，无需你审批；点开看它在改什么',
-        },
-        {
-          key: 'gap', color: gaps.length ? 'var(--c-amber)' : 'var(--c-green)', acc: gaps.length ? 'var(--acc-amber)' : 'var(--acc-green)', label: '审计缺口', n: gaps.length,
-          note: gaps.length ? gaps.map(c => c.id).slice(0, 3).join(' · ') : '无',
-          hint: '机制要求与卡实际字段不符（缺成本/状态滞后/缺决策）——该补的是机制推进，不是人审',
-        },
-        {
-          key: 'recent', color: 'var(--c-green)', acc: 'var(--acc-green)', label: '最近采纳', n: recent.length,
-          note: recent.length ? recent.map(c => c.id).slice(0, 3).join(' · ') : '无',
-          hint: '最近 3 张已采纳的卡——点开看系统学到了什么',
-        },
-      ]
-      const adoption = stats && stats.adoption_rate !== null && stats.adoption_rate !== undefined
-        ? Math.round(stats.adoption_rate * 100) + '%' : '—'
-      return React.createElement('div', null,
-        React.createElement('div', { className: 'ev-focus' },
-          cards.map(c => React.createElement('button', {
-            key: c.key, type: 'button', onClick: () => onFocus(c.key), title: c.hint,
-            className: 'ev-fcard' + (c.n ? ' live' : ''),
-            style: { '--fc': c.color, '--fc-acc': c.acc || c.color },
-          },
-            React.createElement('div', { className: 'ev-frow' },
-              React.createElement(Dot, { color: c.acc || c.color, pulse: c.key === 'exp' && c.n > 0 }),
-              React.createElement('span', { className: 'ev-flabel' }, c.label),
-              React.createElement('span', { className: 'ev-fnum' }, c.n),
-            ),
-            React.createElement('div', { className: 'ev-fnote' }, c.note),
-          )),
-        ),
-        React.createElement('div', { className: 'ev-stats' },
-          React.createElement('span', null, '采纳率 ', React.createElement('b', null, adoption), '（终态卡 ', (stats && stats.terminal_count) || 0, ' 张）'),
-          stats && stats.cost_median !== null && stats.cost_median !== undefined
-            ? React.createElement('span', null, '单卡成本中位 ', React.createElement('b', null, fmtTokens(stats.cost_median)), ' tok · 累计 ', fmtTokens(stats.cost_total), '（', stats.cost_cards, ' 张有记账）')
-            : null,
-          stats && stats.oldest_open_days !== null && stats.oldest_open_days !== undefined
-            ? React.createElement('span', null, '最久未闭合 ', React.createElement('b', null, stats.oldest_open_days + ' 天'))
-            : null,
-        ),
       )
     }
 
@@ -669,7 +657,10 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
             }),
             React.createElement('div', { className: 'ev-note' },
               '采纳率 ', React.createElement('b', { style: { color: 'var(--tx)' } }, stats.adoption_rate === null ? '—' : Math.round(stats.adoption_rate * 100) + '%'),
-              ' —— 只在终态卡上算（实验中未判决，不进分母）'),
+              ' —— 只在终态卡上算（实验中未判决，不进分母）。',
+              React.createElement('b', { style: { color: 'var(--c-amber)' } },
+                '注意：这个数高不是成绩，是症状'),
+              '——终态卡里一次「不采纳/换方向」都没有，说明拒绝域为空（见「① 要处理的」第 1 条）。'),
           ),
           React.createElement('div', null,
             React.createElement(SectionLabel, { color: 'var(--c-amber)' }, '验证方式分布'),
@@ -835,19 +826,218 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       )
     }
 
+    // ============ 判决面（2026-09 新增）：首屏只放要动作的 ============
+    // 为什么重排：旧首屏是"状态分组 + 卡片平铺"，实测退化成一堵只增不减的墙——56/57 validated、
+    // 0 rejected、采纳率 100%，于是任何聚合读数都是常数，人读不出信息、也不再读。而人的注意力
+    // 是硬预算（原则九）：一批几十张卡的决策链合计约数万字，远超"批级人审"的带宽。所以正确的
+    // 分工是**判决层上屏、卡降为按需展开的 diff 日志**（与「指标」tab 的 VerdictCard 同形）。
+    // 判决由 scripts/evolution_health.py 算（判据在 proposals/gates.yaml），面板只渲染不重算。
+    const VERDICT_META = {
+      clean: { label: '本期无阻塞项', color: 'var(--c-green)', acc: 'var(--acc-green)', cls: 'ok' },
+      violations: { label: '有判据被违反', color: 'var(--c-amber)', acc: 'var(--acc-amber)', cls: 'warn' },
+      broken: { label: '体检器失效', color: 'var(--c-purple)', acc: 'var(--acc-purple)', cls: 'broken' },
+    }
+
+    // 预测实测记录：**系统里唯一真实的负反馈读数**。为什么单独给一行：这一层修前完全不可见
+    // （`ev_measure.py --run` 只往 stdout 打印），于是"9 张卡写了可复现判据、一次没测过"
+    // 在数据上不可区分；而"被证伪"是唯一能证明拒绝域存在的证据。记录在
+    // metrics/ev-measure-log.yaml（同一克隆共享，append-only）。
+    const MEASURE_LABEL = { PASS: '符合', FAIL: '被证伪', ERROR: '判不了' }
+    function measureLine(health) {
+      const ro = (health && health.readouts) || {}
+      const mv = ro.measure_by_verdict || {}
+      const runs = ro.measure_runs || 0
+      if (!runs) {
+        return React.createElement('div', { className: 'ev-note', style: { marginTop: 8 } },
+          '预测实测记录：0 笔——写了可复现判据的卡里，',
+          React.createElement('b', { style: { color: 'var(--c-amber)' } }, '一次都没有被复现过'),
+          '。"声明了"与"测过"是两件事；跑一次：python3 scripts/ev_measure.py <卡号> --run')
+      }
+      const parts = ['PASS', 'FAIL', 'ERROR'].filter(k => mv[k]).map(k => MEASURE_LABEL[k] + ' ' + mv[k])
+      return React.createElement('div', { className: 'ev-note', style: { marginTop: 8 } },
+        '预测实测记录：', React.createElement('b', { style: { color: 'var(--tx)' } }, runs + ' 笔'),
+        '（', parts.join(' · '), '）——这是系统里唯一真实的负反馈读数；',
+        '「被证伪」是拒绝域存在的唯一证据。记录：', ro.measure_ledger ? ro.measure_ledger.state : '—')
+    }
+
+    function HealthPanel({ health }) {
+      if (!health) return null
+      const cov = health.coverage || {}
+      const findings = health.findings || []
+      const fails = findings.filter(f => f.level === 'fail')
+      const others = findings.filter(f => f.level !== 'fail')
+      const vm = VERDICT_META[health.check_verdict] || VERDICT_META.violations
+      const unreadable = Object.keys(health.readability || {})
+        .filter(k => health.readability[k] && health.readability[k].readable === false)
+        .map(k => health.readability[k].label || k)
+      const broken = (health.broken || []).concat(health.errors || [])
+
+      const verdict = React.createElement('div', { className: 'ev-verdict ' + vm.cls },
+        React.createElement(Dot, { color: vm.acc, pulse: health.check_verdict !== 'clean' }),
+        React.createElement('span', { className: 'ev-verdict-t' }, vm.label),
+        React.createElement('span', null, fails.length
+          ? React.createElement('b', { style: { color: vm.color } }, fails.length + ' 项要处理')
+          : '0 项要处理'),
+        React.createElement('span', { className: 'ev-verdict-s' },
+          '判据 ', (cov.gates_evaluated || 0) + '/' + (cov.gates_total || 0), ' 条已评估'),
+        unreadable.length
+          ? React.createElement(Pill, { color: 'var(--c-amber)', fill: 'var(--fill-amber)' },
+              '读数不可解读：' + unreadable.join('、'))
+          : null,
+        broken.length
+          ? React.createElement(Pill, { color: 'var(--c-purple)', fill: 'var(--fill-purple)' },
+              '结论不可用：' + broken.length + ' 条判据没被评估')
+          : null,
+      )
+
+      const row = f => React.createElement('div', { key: f.id || f.title, className: 'ev-find' },
+        React.createElement(Dot, { color: f.level === 'fail' ? 'var(--acc-amber)' : 'var(--acc-gray)' }),
+        React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+          React.createElement('div', { className: 'ev-find-hd' },
+            React.createElement('span', { className: 'ev-find-t' }, f.title),
+            f.reading ? React.createElement('span', { className: 'ev-find-r' }, f.reading) : null,
+          ),
+          f.action ? React.createElement('div', { className: 'ev-find-act' },
+            React.createElement('b', null, '→ '), f.action) : null,
+        ),
+      )
+
+      return React.createElement('div', null,
+        verdict,
+        React.createElement('div', { style: { marginTop: 8 } },
+          React.createElement(Section, {
+            title: '① 要处理的',
+            right: fails.length + ' 项' + (others.length ? ' · 另 ' + others.length + ' 项如实标注' : ''),
+          },
+            fails.length
+              ? fails.map(row)
+              : React.createElement('div', { className: 'ev-empty' },
+                  '本期没有需要动作的判据——这不等于"没问题"：先看上面的判据覆盖面，'
+                  + '"没报越界"与"没被检查"是两件事。'),
+            others.length ? others.map(row) : null,
+            broken.length ? React.createElement('div', { className: 'ev-note', style: { marginTop: 8, color: 'var(--c-purple)' } },
+              '体检器自身：' + broken.join('；')) : null,
+            measureLine(health),
+          ),
+        ),
+      )
+    }
+
+    // ============ ② 这批补在哪一层（触及面，确定性派生） ============
+    const SURFACE_META = {
+      '判断更准': { acc: 'var(--acc-blue)', hint: '路由 / 候选排序 / 知识内容——直接作用于判断' },
+      '闸门更硬': { acc: 'var(--acc-purple)', hint: 'CI / 校验器 / 评测——把规则搬进可观测失败的一侧' },
+      '看得见': { acc: 'var(--acc-green)', hint: '脚本 / 面板 / 观测面——让后面能判' },
+      '走得顺': { acc: 'var(--acc-amber)', hint: '流程 / 文档 / 卡片机制本身' },
+      '未归因': { acc: 'var(--acc-gray)', hint: '卡文本里扫不到仓库路径（如实标注，不猜）' },
+    }
+
+    function SurfacePanel({ stats }) {
+      if (!stats) return null
+      const cum = stats.by_surface || {}
+      const rec = stats.by_surface_recent || {}
+      const win = stats.surface_window_days || 7
+      const order = ['判断更准', '闸门更硬', '看得见', '走得顺', '未归因']
+      const keys = order.filter(k => (cum[k] || 0) + (rec[k] || 0) > 0)
+        .concat(Object.keys(cum).filter(k => order.indexOf(k) < 0))
+      if (!keys.length) return null
+      const max = Math.max(1, ...keys.map(k => cum[k] || 0))
+      const basis = stats.surface_basis_strength || {}
+      const top = stats.top_signal
+      return React.createElement(Section, {
+        title: '② 这批补在哪一层',
+        right: '近 ' + win + ' 天 ' + (Object.keys(rec).reduce((a, k) => a + rec[k], 0))
+          + ' 张 · 累计 ' + (stats.total || 0) + ' 张',
+      },
+        React.createElement('div', { className: 'ev-surf' },
+          keys.map(k => {
+            const acc = (SURFACE_META[k] || {}).acc || 'var(--acc-gray)'
+            const c = cum[k] || 0
+            const now = rec[k] || 0
+            const prev = Math.max(0, c - now)
+            return React.createElement('div', { key: k, className: 'ev-surf-row', title: (SURFACE_META[k] || {}).hint || '' },
+              React.createElement('span', { className: 'ev-surf-k' },
+                React.createElement(Dot, { color: acc }), ' ' + k),
+              React.createElement('div', { className: 'ev-surf-track' },
+                React.createElement('i', { style: { '--dc': acc, background: acc, width: (prev / max * 100) + '%' } }),
+                React.createElement('i', { className: 'now', style: { '--dc': acc, background: acc, width: (now / max * 100) + '%' } }),
+              ),
+              React.createElement('span', { className: 'ev-surf-v' }, now + ' / ' + c),
+            )
+          }),
+        ),
+        React.createElement('div', { className: 'ev-caveat' },
+          React.createElement('b', null, '轴记的是「改动落在机器的哪一层」'),
+          '——不是"变好了多少"，也不是作者想优化什么。轴由卡里已写下的仓库路径',
+          React.createElement('b', null, '确定性派生'),
+          '（不让 agent 自己声明，免得学会写能通过的标签）；依据来自改动自述时最硬，来自证据引用时'
+          + '只是线索。',
+          React.createElement('br', null),
+          React.createElement('b', null, '变好多少属能力轴，当前不可解读'),
+          '：现场反馈捕获为 0，命中率/误诊率/校准都没有分母。此处不画趋势线称"稳定"（原则十）。',
+        ),
+        Object.keys(basis).length
+          ? React.createElement('div', { className: 'ev-note', style: { marginTop: 6 } },
+              '归因依据强度：' + Object.keys(basis).sort((a, b) => basis[b] - basis[a])
+                .map(k => k + ' ' + basis[k]).join(' · ')
+              + '（强 = 改动自述；弱 = 取自证据引用，未必是改动落点）')
+          : null,
+        top
+          ? React.createElement('div', { className: 'ev-note' },
+              '信号集中度：最高信号 ', React.createElement('b', { style: { color: 'var(--tx)' } }, top.signal),
+              ' ', top.cards, ' 张（占 ', Math.round((stats.top_signal_share || 0) * 100), '%）· ',
+              top.first, '→', top.last, '——29 种信号均匀分布时每种约 2%')
+          : null,
+      )
+    }
+
+    // ============ 卡区抽屉：默认收起（判决上屏、卡按需） ============
+    function CardDrawer({ ideas, sessionId }) {
+      const [open, setOpen] = React.useState(false)
+      const [filter, setFilter] = React.useState('focus')
+      const [archivedOpen, setArchivedOpen] = React.useState(false)
+      const gaps = ideas.filter(c => (c.gaps || []).length).length
+      const live = ideas.filter(c => c.status === 'in_experiment').length
+      return React.createElement('div', null,
+        React.createElement('button', {
+          type: 'button', className: 'ev-drawer-hd', 'aria-expanded': open,
+          onClick: () => setOpen(!open),
+        },
+          React.createElement(Chevron, { open: open, color: 'var(--tx2)' }),
+          React.createElement('span', { className: 'ev-sec-t' }, '④ 卡片（diff 日志）'),
+          React.createElement('span', { className: 'ev-num' },
+            ideas.length + ' 张 · 实验中 ' + live + ' · 审计缺口 ' + gaps
+            + ' · 已采纳且无缺口 ' + ideas.filter(c => c.status === 'validated' && !(c.gaps || []).length).length),
+          React.createElement('span', { className: 'ev-sec-r' }, open ? '收起' : '展开'),
+        ),
+        open
+          ? React.createElement('div', { className: 'ev-drawer-bd' },
+              React.createElement(DecisionFeed, {
+                ideas: ideas, sessionId: sessionId, filter: filter, setFilter: setFilter,
+                archivedOpen: archivedOpen, setArchivedOpen: setArchivedOpen,
+              }))
+          : null,
+      )
+    }
+
     // ============ 主视图 ============
     function BoardView(props) {
       const sessionId = props && props.sessionId
       const [state, setState] = React.useState({ loading: true, data: null, error: null })
-      const [filter, setFilter] = React.useState('focus')
-      const [archivedOpen, setArchivedOpen] = React.useState(false)
+      const [health, setHealth] = React.useState(null)
 
+      // 判决与数据分两次拉：判决来自 evolution_health.py（与「指标」tab 拉 metrics_health 同形），
+      // 一次失败不影响另一块——判决拿不到时如实缺省，不拿卡数冒充判决。
       const load = React.useCallback(() => {
         setState({ loading: true, data: null, error: null })
+        setHealth(null)
         host.call('ev-board-load', { sessionId: sessionId }).then(r => {
           if (r && r.ok) setState({ loading: false, data: r.data, error: null })
           else setState({ loading: false, data: null, error: (r && r.error) || '读取失败' })
         }).catch(e => setState({ loading: false, data: null, error: String(e && e.message || e) }))
+        host.call('ev-health-load', { sessionId: sessionId }).then(r => {
+          if (r && r.ok) setHealth(r.data)
+        }).catch(() => {})
       }, [sessionId])
 
       React.useEffect(() => { load() }, [load])
@@ -863,7 +1053,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       return React.createElement('div', { className: 'ev-root' },
         React.createElement('div', { className: 'ev-top ev-rise' },
           React.createElement('span', { className: 'ev-mark' }),
-          React.createElement('span', { className: 'ev-title' }, '自演进看板'),
+          React.createElement('span', { className: 'ev-title' }, '自演进 · 体检'),
           React.createElement('span', { className: 'ev-meta' },
             'EV 卡 ', React.createElement('b', null, data.idea_count || 0), ' 张 · 数据 ',
             (data.generated_at || '').replace('T', ' ')),
@@ -871,22 +1061,21 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
             type: 'button', className: 'ev-btn', onClick: load, style: { marginLeft: 'auto' },
           }, '刷新'),
         ),
+        // ① 判决（要处理的）+ 结论条
         React.createElement('div', { className: 'ev-rise' },
-          React.createElement(FocusStrip, {
-            stats: data.stats, ideas: ideas,
-            onFocus: (key) => { setFilter(key === 'exp' ? 'exp' : key === 'gap' ? 'gap' : 'adopted') },
-          }),
-        ),
+          React.createElement(HealthPanel, { health: health })),
+        // ② 这批补在哪一层（触及面，确定性派生）
         React.createElement('div', { className: 'ev-rise' },
-          React.createElement(DecisionFeed, {
-            ideas: ideas, sessionId: sessionId, filter: filter, setFilter: setFilter,
-            archivedOpen: archivedOpen, setArchivedOpen: setArchivedOpen,
-          }),
-        ),
-        React.createElement('div', { className: 'ev-rise' },
-          React.createElement(StatsPanel, { stats: data.stats })),
+          React.createElement(SurfacePanel, { stats: data.stats })),
+        // ③ 现场：演进到底在不在跑
         React.createElement('div', { className: 'ev-rise' },
           React.createElement(ExecLogSection, { execLog: data.skill_exec })),
+        // ④ 卡片：默认收起（判决上屏、卡按需展开为 diff 日志）
+        React.createElement('div', { className: 'ev-rise' },
+          React.createElement(CardDrawer, { ideas: ideas, sessionId: sessionId })),
+        // 明细（按需往下看）
+        React.createElement('div', { className: 'ev-rise' },
+          React.createElement(StatsPanel, { stats: data.stats })),
         React.createElement('div', { className: 'ev-rise' },
           React.createElement(TimelineTrend, { timeline: data.timeline })),
         React.createElement('div', { className: 'ev-rise' },

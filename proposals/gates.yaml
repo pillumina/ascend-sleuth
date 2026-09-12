@@ -1,0 +1,119 @@
+# 演进闭环的判据（数据）——由 scripts/evolution_health.py 读，面板只渲染不重算。
+#
+# 为什么需要这一层（2026-09）：面板旧版把 EV 卡当实时看板画（状态分组 + 卡片平铺），
+# 实测退化成一堵"只增不减的墙"——56/57 落在 validated、0 rejected、采纳率 100%，
+# 于是任何聚合读数都是常数，人读不出信息、也不再读。根因不在视觉，在于**没有判决层**：
+# 指标侧早有 metrics/gates.yaml + metrics_health.py（判据落成数据、三态退出码、只报要动作的），
+# 演进侧一直缺同构的一层。本文件就是那一层的数据面。
+#
+# 口径纪律（与 metrics/gates.yaml 一致）：
+#   - 阈值是**假设**，接受实测重校（原则十一）；调整阈值要写进 PR 说明，不悄悄改。
+#   - 判据的**实现**在 scripts/evolution_health.py（对应 IMPLEMENTED_GATE_DIMENSIONS）；
+#     "声明了但没实现"由覆盖面对比检出 → --check 退 2（不是 0），防假绿。
+#   - 判据强度如实标注：每条 meaning 里说清它证明什么、不证明什么。
+#   - 分母为 0 / 数据源缺席时标"不可解读"，禁止把 0/N 读成"零问题"。
+
+version: 1
+
+# ---- 新鲜度：演进还在跑吗（对应 metrics 的 freshness 面）----
+freshness:
+  # 内容流程/深度轮的收尾距今超过该天数 = 演进停摆（不是"没问题"，是"没在看"）
+  evolve_check_max_age_days: 14
+  # 最新一张卡距今超过该天数 = 产卡停滞
+  card_max_age_days: 21
+
+# ---- 越界：哪些需要动作 ----
+# op 支持 > >= < <= == !=，dimension 是脚本提供的数值维度（见 evolution_health.DIMENSIONS）
+gates:
+  - id: no_negative_feedback
+    dimension: negative_terminal
+    op: "=="
+    value: 0
+    min_sample: 20            # 终态卡不足 20 张时不下这个结论（样本太小，0 拒绝无意义）
+    meaning: >
+      终态卡里从未出现过"不采纳"（rejected）或"换方向"（superseded）。一个只采纳、从不否决的
+      假设生成器不是在做假设检验——拒绝域为空时，"验证通过"不构成证据。
+    action: >
+      复核产卡触发阈值（skills/evolve-check 的触发条件表）：是信号太严（只挑十拿九稳的做），
+      还是验证没有判别力（eval 只看"改了没有"而不是"改对了没有"）。
+
+  - id: backlog_over
+    dimension: backlog_count
+    op: ">"
+    value: 20
+    meaning: >
+      已验证但决策链里没有任何合入指针（PR/issue 号）的卡数超上限。pipeline §6.3a 的批上限是
+      10 卡/PR，此值等于"攒了 2 批还没送审"。积压本身就是信号：假设产出率超过了检验带宽。
+    action: >
+      先提聚合 PR 消化积压，期间停产新候选（orchestration §2.4 候选积压治理）。积压率长期偏高
+      → 下调该信号的产卡触发权重，不是扩池。
+
+  - id: measure_never_run
+    dimension: runnable_never_measured
+    op: ">"
+    value: 0
+    meaning: >
+      有可复现 measure（command + 期望）但从未被 ev_measure.py --run 执行过的卡数。它证明
+      "声明"与"测过"是两件事——本判据只说明判据没被执行，不断言预测对错。
+    action: >
+      复核每张这样的卡时先跑一次：python3 scripts/ev_measure.py <卡号> --run
+      （执行记录落主检出 metrics/ev-measure-log.yaml，面板据此计数）。
+
+  - id: evidence_weak
+    dimension: external_ground_truth_ratio
+    op: "<"
+    value: 0.333
+    min_sample: 10
+    meaning: >
+      终态卡中验证方式来自**系统之外**（golden 回放 / issue-replay 对照）的占比过低。其余
+      validation.method 是自定口径的机械测量（metrics_compare）或自审（scan_review）。按仓库
+      自己的"客观评分源优先"排序，自证占多数时，全部趋势读数都不可信（原则十）。
+    action: >
+      优先把候选改成可在 golden/S2 上判定的形态；对只能自证的卡，结论标注"自证"并降低其
+      在趋势读数里的权重（不得冒充外部验证）。
+
+  - id: signal_dominant
+    dimension: top_signal_share
+    op: ">="
+    value: 0.25
+    min_sample: 20
+    meaning: >
+      单一触发信号占全部卡数的比例过高（29 种信号均匀分布时每种约 2%）。假设空间被一个信号
+      来源主导时，演进在对着同一处反复做功。
+    action: >
+      复核该信号的触发条件：是真有一堆同类摩擦，还是阈值太松、每次收尾都命中。信号误报率
+      是它的下游读数（orchestration §5.1 参数校准）。
+
+  - id: pointer_rot
+    dimension: dead_ref_count
+    op: ">"
+    value: 0
+    meaning: >
+      卡正文点名的仓库文件已不存在（重命名/删除后没跟着改），涉及若干张卡。它证明"卡里的指路
+      已经不准"，**不**证明这些卡的结论失效——结论是否还成立要人复核。
+    action: >
+      逐条复核被点名的卡：结论仍成立 → 修指路；结论依赖已消失的文件 → 该卡按 superseded
+      或补 evidence 重写（不得静默改历史结论）。
+
+  - id: unfalsifiable
+    dimension: unfalsifiable_enforced
+    op: ">"
+    value: 0
+    meaning: >
+      预测口径强制生效（created_at >= measure cutover）之后产出的卡里，既无 command、也无
+      reason 的卡数。CI（verify_proposals --check）已硬门拦住这一条，本判据是面板侧的复核。
+      cutover 之前的存量卡豁免，如实计数、不补写（补写只造事后叙述，原则十）。
+    action: >
+      这类卡不该进 main：先补 measure（一条命令 + 期望）或如实声明不可度量，再送审。
+
+# ---- 可解读性：这个读数能不能信 ----
+# rule: source_nonzero（分母来源必须非 0）| any_gt_0（至少一项非 0）
+readability:
+  - metric: capability_readout
+    label: 判断更准（能力轴）
+    rule: source_nonzero
+    source: s1_feedback_capture
+    why: >
+      现场反馈捕获（工程师回报 fix 结果）是"判断更准"这一能力轴的唯一标签来源。它为 0 时，
+      命中率/误诊率/校准全部没有分母——此时**不得**把能力轴画成平稳直线称"稳定"，只能如实
+      标注"不可解读"。这正是设计理论 §4.1 校准性质在演进侧的形态。

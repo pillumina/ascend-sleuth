@@ -55,6 +55,13 @@ VALID_STATUS = ("in_experiment", "validated", "rejected", "superseded")
 TERMINAL_STATUS = ("validated", "rejected", "superseded")
 # 卡龄超过该天数仍未闭合 → 标 stale（面板"待办优先"条据此提示）
 STALE_DAYS = 14
+# 触及面的"本期"窗口（滚动天数）。为什么不用"批"：批边界（攒批 PR）没有落在卡上，
+# 编一个批概念只会引入不可核对的数字；滚动窗口人人能自己验算。
+SURFACE_WINDOW_DAYS = 7
+# 外部 ground truth 的验证方式（仓库"客观评分源优先"排序的前两档）：golden 回放与
+# issue-replay 对照，其判据来自系统之外；其余（metrics_compare 自定口径、scan_review 自审）
+# 不算外部证据。判据 evidence_weak 用它算占比。
+EXTERNAL_METHODS = ("golden_replay", "issue_replay")
 
 PR_RE = re.compile(r"(?:PR|#)\s?#?(\d{2,6})")
 
@@ -69,6 +76,250 @@ def extract_pr_refs(text):
         if n not in out:
             out.append(n)
     return out[:5]
+
+
+# ===========================================================================
+# 确定性"触及面"派生：EV 卡 → 这批改动落在机器的哪一层
+#
+# 为什么不给卡加一个 `axis` 字段让 agent 自己填：agent 自报既是弱观测（同 `procedure_follow`
+# 的先例：只可作趋势，不可作验收），又是**可被刷的靶子**——系统会学会写能通过的标签。
+# 所以轴从**卡里已经写下的仓库路径**反推，三个性质是刻意的：
+#   - 确定性：同一份卡文本必得同一个轴（没有 LLM、没有时间依赖）；
+#   - 可审计：归因依据字段与依据路径随轴一起给出，人可核对为什么是这一层；
+#   - 对存量成立：不必给 57 张历史卡补写字段（补写只造事后叙述，原则十）。
+#
+# 边界（面板必须原样这么说，不得简写成"改进维度"）：轴记的是**改动落在哪一层**，
+# 既不是"作者想优化什么"（意图），也不是"变好了多少"（那是能力轴，当前不可解读）。
+#
+# 轴映射与字段优先级是**实现事实**（对应 metrics_health 的 IMPLEMENTED_* 分工），
+# 阈值在 proposals/gates.yaml（数据）。
+# ===========================================================================
+
+# 顺序即优先级（first match wins）；前缀命中即归属，不再看后面的轴。
+SURFACE_AXES = (
+    ("判断更准", ("triage-tree.yaml", "knowledge/", "references/")),
+    ("闸门更硬", (".github/", "eval/", "metrics/gates.yaml", "proposals/gates.yaml",
+                  "scripts/verify_", "scripts/holdout", "scripts/check_",
+                  "scripts/panel_render_check.js", "scripts/rehearse_")),
+    ("看得见", ("scripts/", "dsh-plugins/", "traces/", ".s2-replay/", "metrics/")),
+    ("走得顺", ("skills/", "docs/", "proposals/", "examples/", "CLAUDE.md", "README.md",
+                "CONTEXT.md")),
+)
+UNATTRIBUTED = "未归因"
+
+# 字段优先级：**改动落点优先于证据引用**。evidence/trajectory 里引用的文件未必是改动的文件，
+# 所以它是弱归因；强度随轴一起给出，面板不得把弱归因读成强归因。
+SURFACE_FIELD_ORDER = (
+    ("action", "强"),            # decisions[type=action].conclusion —— 改动的自述
+    ("title", "中"),
+    ("hypothesis", "中"),
+    ("success_criteria", "弱"),
+    ("trajectory", "弱"),
+)
+
+_REPO_DIRS = (r"(?:skills|scripts|docs|knowledge|references|metrics|eval|dsh-plugins"
+              r"|examples|postmortems|proposals|\.github|\.s2-replay|\.ixn-replay)")
+SURFACE_PATH_RE = re.compile(
+    r"(?<![\w./-])(" + _REPO_DIRS + r"/[A-Za-z0-9_./+-]+"
+    r"|triage-tree\.yaml|CLAUDE\.md|README\.md|CONTEXT\.md)")
+# 只认**反引号内**的路径：散文里的半截路径（`metrics/timeline`）不是引用，认了就是噪声
+BACKTICK_RE = re.compile(r"`([^`\n]+)`")
+# 运行时件/被忽略件：它们**本就不该在检出里**，缺席不是腐烂（否则判据全是假红）
+SURFACE_SKIP_PREFIX = (
+    "traces/", ".s2-replay/", ".ixn-replay/", ".auto-fetch/", "eval-reports/",
+    "src-code/", ".flow-replay/", "postmortems/inbox/",
+    "proposals/sessions/", "proposals/tasks/", "proposals/reviews/",
+    "proposals/experiments/", "knowledge/_archive/",
+    "metrics/skill-exec-log.yaml", "metrics/ev-measure-log.yaml",
+)
+
+
+def scan_refs(text):
+    """**死指针**用的扫描：反引号内的**字面**仓库路径（去重保序）。
+
+    glob / 占位符 / 运行时件都不算引用——否则判据满是假红（实测过：不收紧时 154 个"路径"里
+    58 个"不存在"，大半是 `docs/*.md`、`.s2-replay/arena/` 这类根本不该在检出里的东西）。
+    """
+    out = []
+    for raw in BACKTICK_RE.findall(text or ""):
+        cand = raw.strip().rstrip(".,;:()，。；：）").rstrip("/")
+        if not cand or not SURFACE_PATH_RE.fullmatch(cand):
+            continue
+        if any(ch in cand for ch in "*?[]<>"):
+            continue
+        if "YYYY" in cand or "NNN" in cand:
+            continue
+        if any(cand == p.rstrip("/") or cand.startswith(p) for p in SURFACE_SKIP_PREFIX):
+            continue
+        if cand not in out:
+            out.append(cand)
+    return out
+
+
+def scan_refs_loose(text):
+    """**轴派生**用的扫描：不要求反引号，允许 glob 与半截路径（去重保序）。
+
+    与 `scan_refs` 的两处差异都是刻意的，因为两者回答的是**不同的问题**：
+      - 死指针问"卡点名的文件还在不在"→ 必须是字面路径（glob 无法判存在性，半截路径是噪声）；
+      - 轴派生问"这张卡在说机器的哪一层"→ 证据里的 `eval/golden/*.fixture.yaml`、
+        `metrics/timeline` 同样是有效线索，滤掉反而大面积漏判（实测：只用反引号口径时
+        57 张卡有 **37 张**归因不出来，用本口径 0 张）。
+    """
+    out = []
+    for p in SURFACE_PATH_RE.findall(text or ""):
+        p = p.rstrip(".,;:()，。；：）")
+        if p and p not in out:
+            out.append(p)
+    return out
+
+
+def axis_of_paths(paths):
+    """路径集 → (轴, 依据路径)；全不命中返回 (None, None)。"""
+    for p in paths:
+        for name, prefixes in SURFACE_AXES:
+            if any(p == pre.rstrip("/") or p.startswith(pre) for pre in prefixes):
+                return name, p
+    return None, None
+
+
+def _surface_field_texts(doc):
+    decisions = doc.get("decisions") or []
+    validation = doc.get("validation") or {}
+    signals = doc.get("source_signals") or []
+    return {
+        "action": " ".join(str(x.get("conclusion") or "") for x in decisions
+                           if isinstance(x, dict) and x.get("type") == "action"),
+        "title": str(doc.get("title") or ""),
+        "hypothesis": str(doc.get("hypothesis") or ""),
+        "success_criteria": str(validation.get("success_criteria") or "")
+                            if isinstance(validation, dict) else "",
+        "trajectory": " ".join(
+            str(s.get("evidence") or "") + " " + " ".join(str(t) for t in (s.get("trajectory") or []))
+            for s in signals if isinstance(s, dict)),
+    }
+
+
+def derive_surface(doc):
+    """卡 → {surface, basis_field, basis_path, basis_strength}（确定性，无 LLM）。"""
+    texts = _surface_field_texts(doc)
+    for field, strength in SURFACE_FIELD_ORDER:
+        axis, path = axis_of_paths(scan_refs_loose(texts.get(field)))
+        if axis:
+            return {"surface": axis, "basis_field": field, "basis_path": path,
+                    "basis_strength": strength}
+    # 兜底：全卡文本（强度最弱，如实标注为弱归因）
+    axis, path = axis_of_paths(scan_refs_loose(" ".join(texts.values())))
+    if axis:
+        return {"surface": axis, "basis_field": "card-text", "basis_path": path,
+                "basis_strength": "弱"}
+    return {"surface": UNATTRIBUTED, "basis_field": None, "basis_path": None,
+            "basis_strength": None}
+
+
+def _all_strings(obj, out=None, depth=0):
+    """递归收集文档里的全部字符串（限深，防意外结构导致爆炸）。"""
+    if out is None:
+        out = []
+    if depth > 6:
+        return out
+    if isinstance(obj, str):
+        out.append(obj)
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            _all_strings(v, out, depth + 1)
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            _all_strings(v, out, depth + 1)
+    return out
+
+
+def scan_dead_refs(root, doc):
+    """卡文本点名、但检出里已不存在**且不受 git 跟踪**的字面路径。
+
+    口径两处刻意收紧（否则判据全是假红，实测过）：
+      - 运行时/被忽略件不算腐烂（`SURFACE_SKIP_PREFIX`）；
+      - 目录引用去尾斜杠后判存在性（`references/methodologies/` 是目录，不是死指针）。
+    强度如实标注：本判据只说明"卡点名的文件不在了"，**不**断言卡的结论因此失效。
+    """
+    dead = []
+    for p in scan_refs(" ".join(_all_strings(doc))):
+        if not (root / p).exists():
+            dead.append(p)
+    return dead
+
+
+def detect_signal_spread(ideas):
+    """按触发信号聚合：卡数、时间跨度、以及"在一张已采纳卡之后又出现"的次数。
+
+    这是最接近 loss 的读数（不需要目标值，只需要"闭上的环别再开"）。但**它今天还不是判据**：
+    9 天、57 张卡、56 张 validated 的语料上，"同信号再次触发"既可能是"上次没解决"，也可能是
+    "又发现一处同类摩擦"——两者用现有字段区分不了。所以如实降级为**读数**（趋势与异常信号），
+    只有当某个信号在卡数上占绝对主导时才升为判据（见 proposals/gates.yaml 的 signal_dominant）。
+    """
+    by_sig = {}
+    for c in ideas:
+        if not c.get("id"):
+            continue
+        names = c.get("signals_all")
+        if names is None:      # 兜底：外部构造的 idea dict（无 signals_all）走截断后的列表
+            names = [(s or {}).get("signal") for s in (c.get("source_signals") or [])]
+        for name in dict.fromkeys(n for n in names if n):
+            by_sig.setdefault(str(name), []).append(c)
+    rows = []
+    for sig, cs in by_sig.items():
+        cs = sorted(cs, key=lambda c: str(c.get("created_at") or ""))
+        adopted_seen = False
+        recurred = []
+        for c in cs:
+            if c.get("status") == "validated":
+                adopted_seen = True
+            elif adopted_seen:
+                recurred.append(c.get("id"))
+        rows.append({
+            "signal": sig,
+            "cards": len(cs),
+            "adopted": sum(1 for c in cs if c.get("status") == "validated"),
+            "after_adopted": len(recurred),
+            "cards_after_adopted": recurred[:8],
+            "first": str(cs[0].get("created_at"))[:10],
+            "last": str(cs[-1].get("created_at"))[:10],
+        })
+    rows.sort(key=lambda r: (-r["cards"], r["signal"]))
+    return rows
+
+
+def collect_measure_runs(root):
+    """EV 卡预测的实测记录（共享运行件）——"声明了可复现判据却从没被测过"的观测面。
+
+    解析失败/文件缺席如实退化（`state`），不把"没有记录"读成"都测过了"，也不读成"都没测"：
+    两者由 `runs` 与 `cards` 共同决定，读侧只看这两个数。
+    """
+    try:
+        import exec_log_path
+    except Exception as e:
+        return {"present": False, "state": "unavailable", "note": f"exec_log_path 不可用: {e}",
+                "runs": 0, "cards": [], "by_verdict": {}, "last": None}
+    path, where = exec_log_path.resolve_rel(root, exec_log_path.MEASURE_LOG_REL)
+    note = exec_log_path.describe(path, where)
+    if not path.exists():
+        return {"present": False, "state": "missing", "note": note, "path": str(path),
+                "where": where, "runs": 0, "cards": [], "by_verdict": {}, "last": None}
+    d = load_yaml(path)
+    if not isinstance(d, dict):
+        return {"present": False, "state": "unparsable", "note": note, "path": str(path),
+                "where": where, "runs": 0, "cards": [], "by_verdict": {}, "last": None}
+    records = [r for r in (d.get("records") or []) if isinstance(r, dict)]
+    by_verdict = {}
+    cards = []
+    for r in records:
+        v = str(r.get("verdict") or "?")
+        by_verdict[v] = by_verdict.get(v, 0) + 1
+        cid = r.get("card")
+        if cid and cid not in cards:
+            cards.append(cid)
+    return {"present": True, "state": "ok", "note": note, "path": str(path), "where": where,
+            "runs": len(records), "cards": cards, "by_verdict": by_verdict,
+            "last": records[-1] if records else None}
 
 
 def days_since(value):
@@ -160,6 +411,8 @@ def collect_ideas(root):
         # 决策链全文参与 PR 号提取（「随 PR #97 供人审」这类追溯指针只在结论里）
         blob = " ".join(str(x.get("conclusion") or "") for x in decisions if isinstance(x, dict))
         validation = d.get("validation") or {}
+        surface = derive_surface(d)
+        dead_refs = scan_dead_refs(root, d)
         ideas.append({
             "id": d.get("id"),
             "title": d.get("title"),
@@ -178,6 +431,10 @@ def collect_ideas(root):
                 }
                 for s in (d.get("source_signals") or [])[:3] if isinstance(s, dict)
             ],
+            # 信号名全量（列表页只带前 3 条证据，但**聚合口径必须看全量**——
+            # 实测差异：只看前 3 条时 process_friction 计 22 张，全量是 27 张）
+            "signals_all": [s.get("signal") for s in (d.get("source_signals") or [])
+                            if isinstance(s, dict) and s.get("signal")],
             "hypothesis": d.get("hypothesis"),
             "predicted_effect": d.get("predicted_effect"),
             "validation": {
@@ -197,6 +454,11 @@ def collect_ideas(root):
             "superseded_by": d.get("superseded_by"),
             # 派生：面板"待办优先"与自审用
             "gaps": audit_gaps(d, days_open),
+            # 派生（确定性）：触及面 + 依据字段强度 + 已消失的点名路径
+            "surface": surface["surface"],
+            "surface_basis": {"field": surface["basis_field"], "path": surface["basis_path"],
+                              "strength": surface["basis_strength"]},
+            "dead_refs": dead_refs,
             "file": f.name,
         })
     return ideas
@@ -277,6 +539,43 @@ def collect_stats(ideas):
     stale = [c for c in ok if c.get("status") == "in_experiment" and isinstance(c.get("days_open"), int)
              and c["days_open"] >= STALE_DAYS]
 
+    # ---- 触及面（确定性派生）与时间窗 ----
+    # 窗口用滚动天数而不是"批"：批边界（攒批 PR）没有落在卡上，编一个只会引入不可核对的数字。
+    by_surface = {}
+    for c in ok:
+        s = c.get("surface") or UNATTRIBUTED
+        by_surface[s] = by_surface.get(s, 0) + 1
+    window = SURFACE_WINDOW_DAYS
+    cutoff = datetime.date.today() - datetime.timedelta(days=window - 1)
+    by_surface_recent = {}
+    for c in ok:
+        d = _as_date(c.get("created_at"))
+        if d is None or d < cutoff:
+            continue
+        s = c.get("surface") or UNATTRIBUTED
+        by_surface_recent[s] = by_surface_recent.get(s, 0) + 1
+    basis_strength = {}
+    for c in ok:
+        st = ((c.get("surface_basis") or {}).get("strength")) or "未归因"
+        basis_strength[st] = basis_strength.get(st, 0) + 1
+
+    # ---- 已消失的点名路径（判据 pointer_rot 的分子） ----
+    dead_cards = [(c.get("id"), c.get("dead_refs") or []) for c in ok if c.get("dead_refs")]
+    dead_paths = sorted({p for _cid, ps in dead_cards for p in ps})
+
+    # ---- 待合入积压：已验证但决策链里没有合入指针（判据 backlog 的分子） ----
+    backlog = [c.get("id") for c in ok
+               if c.get("status") == "validated" and not c.get("pr_refs")]
+
+    # ---- 验证证据强度：外部 ground truth 占比（判据 evidence_weak 的分母/分子） ----
+    # 口径来自仓库自己的"客观评分源优先"排序：golden / issue-replay 是**系统之外**的
+    # ground truth；metrics_compare 是自定口径的机械测量；scan_review 是自审。
+    external = sum(1 for c in ok
+                   if (c.get("validation") or {}).get("method") in EXTERNAL_METHODS)
+
+    spreads = detect_signal_spread(ok)
+    top_signal = spreads[0] if spreads else None
+
     return {
         "total": total,
         "by_status": by_status,
@@ -292,7 +591,36 @@ def collect_stats(ideas):
         "gap_cards": [c["id"] for c in gap_cards],
         "stale_count": len(stale),
         "stale_cards": [c["id"] for c in stale],
+        # ---- 以下为 2026-09 新增（只增键，旧键语义不变） ----
+        "by_surface": by_surface,
+        "by_surface_recent": by_surface_recent,
+        "surface_window_days": window,
+        "surface_basis_strength": basis_strength,
+        "dead_ref_cards": [cid for cid, _ps in dead_cards],
+        "dead_ref_paths": dead_paths,
+        "dead_ref_count": len(dead_paths),
+        "backlog_count": len(backlog),
+        "backlog_cards": backlog[:20],
+        "external_ground_truth": external,
+        "external_ratio": round(external / terminal, 3) if terminal else None,
+        "negative_terminal": (by_status.get("rejected", 0) + by_status.get("superseded", 0)),
+        "signal_spread": spreads,
+        "top_signal": top_signal,
+        "top_signal_share": (round(top_signal["cards"] / total, 3)
+                             if top_signal and total else None),
     }
+
+
+def _as_date(value):
+    """created_at → date；无法解析返回 None（与 days_since 同一口径，不各写一份）。"""
+    if value is None:
+        return None
+    if hasattr(value, "timetuple") and not isinstance(value, str):
+        return datetime.date(value.year, value.month, value.day)
+    try:
+        return datetime.date.fromisoformat(str(value).strip()[:10])
+    except ValueError:
+        return None
 
 
 def collect_skill_exec(root):
@@ -412,6 +740,7 @@ def main():
     tally = collect_tally(root)
     s2_attrib = collect_s2_attrib(root)
     skill_exec = collect_skill_exec(root)
+    measure_runs = collect_measure_runs(root)
 
     # 卡状态机分布（词表以 verify_proposals 为准；unknown 说明卡有 schema 问题）
     status_count = {}
@@ -429,7 +758,9 @@ def main():
         "tally": tally,
         "s2_attrib": s2_attrib,
         "skill_exec": skill_exec,
+        "measure_runs": measure_runs,
         "stale_days": STALE_DAYS,
+        "surface_window_days": SURFACE_WINDOW_DAYS,
         "generated_at": datetime.datetime.now().isoformat(timespec="seconds"),
     }
     print(json.dumps(payload, ensure_ascii=False, default=str))

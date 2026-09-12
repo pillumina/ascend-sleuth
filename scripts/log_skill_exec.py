@@ -26,41 +26,18 @@
 import argparse
 import subprocess
 import sys
-from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
 import yaml
 
-from exec_log_path import describe, resolve
+from exec_log_path import describe, log_lock, resolve
 
 VALID_SKILLS = {
     "diagnose", "resume-diagnosis", "to-postmortem", "to-reference",
     "issue-ingest", "knowledge-groom", "s2-replay", "replay-golden",
     "evolve-check", "self-evolve", "capacity-health",
 }
-
-
-@contextmanager
-def _log_lock(log_path: Path):
-    """跨进程互斥（flock）——共享 exec-log 后，多个 worktree 可能同时 append。
-
-    read-modify-write 无锁 = 后写覆盖先写（丢记录）或算出重复 seq。无 fcntl 的平台
-    （Windows）退化为不加锁：语义如实告知调用方（yield False），不假装有互斥。
-    """
-    try:
-        import fcntl
-    except ImportError:
-        yield False
-        return
-    lock_path = log_path.with_suffix(log_path.suffix + ".lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(lock_path, "a+") as fh:
-        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
-        try:
-            yield True
-        finally:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
 
 
 def git_head(root: Path) -> str:
@@ -142,7 +119,7 @@ def main():
 
     # 共享路径下多个 worktree 可能同时 append——read-modify-write 必须持锁，
     # 否则并发写会互相覆盖（丢记录）或算出重复 seq。无 flock 的平台退化为不加锁并如实提示。
-    with _log_lock(log_path) as locked:
+    with log_lock(log_path) as locked:
         if log_path.exists():
             try:
                 doc = yaml.safe_load(log_path.read_text(encoding="utf-8")) or {}

@@ -1,0 +1,89 @@
+# ============================================================
+# Idea 卡（proposals/ideas/）——schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）
+# 校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+
+id: EV-2026-059
+layer: L3
+title: 演进闭环补判据层：卡墙 → 体检台（判据落成数据 + 触及面确定性派生 + 预测实测留痕）
+status: validated
+authorization: dual
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-12
+source_signals:
+  - signal: human_review_feedback
+    evidence: "用户读自演进面板后的直接反馈：卡本身内容太多、几十张之后没人会读、'基本是只有 agent 才会看'；要的是能固化的维度，看每批卡把系统往哪变了"
+    trajectory:
+      - "对话：面板呈现不适用（用户指出卡墙形态失效）"
+  - signal: process_friction
+    evidence: "面板自己的 README 已记录第一轮重做的实测：只增不减的墙——31/36 张落在 validated；本轮复核为 56/57 validated、rejected/superseded 各 0、authorization 里 auto 用了 0 次，故任何聚合读数都是常数"
+    trajectory:
+      - "dsh-plugins/ev-panel/README.md#设计取向"
+      - "proposals/ideas 全库实测聚合"
+hypothesis: >
+  人的首屏若从"卡墙"换成"判决层"（判据落成数据 + 三态退出码 + 只列要动作的），
+  卡降为按需展开的 diff 日志，则演进闭环可被人在一屏内读懂并可动作；同时把"这批补在哪一层"
+  做成**确定性派生**（从卡里已写下的仓库路径反推，不让 agent 自报），让"往哪变了"可比较、
+  可审计、且对存量卡同样成立。
+predicted_effect:
+  metric: "演进闭环判据的评估覆盖与三态结论"
+  from: "无判据层：面板只能画数据，人无法从聚合读数判断闭环健康"
+  to: "7 条判据全部被评估，结论三态可区分（0 全评过无越界 / 1 有违反 / 2 有判据没被评估）"
+  measure:
+    command: "python3 scripts/evolution_health.py --usable && node scripts/panel_render_check.js"
+    expect_exit: 0
+    expect_stdout: "全部通过"
+validation:
+  method: metrics_compare
+  baseline: "改前：面板首屏为 FocusStrip + 卡墙平铺；无 proposals/gates.yaml、无 evolution_health.py；触及面字段被 host 采集但客户端 0 引用"
+  success_criteria: >
+    ① evolution_health.py 三态退出码可复现（真实数据退 1；判据声明未实现或配置坏掉退 2 且不报 clean）；
+    ② 触及面派生对全库 0 张未归因，且归因依据字段可回查；
+    ③ 面板首屏默认不渲染任何卡，判决/触及面/现场上屏，卡在可点开的抽屉里；
+    ④ 离线渲染门（panel_render_check）全绿，且断言钉的是真实行为而非为绿灯放松。
+  rollback: >
+    纯增量：新增 proposals/gates.yaml 与 scripts/evolution_health.py，ev_board_data 只增键，
+    面板判决面为新增区块。回退 = 把 BoardView 恢复为卡墙顺序 + 删除两个新件（不需要数据迁移）。
+gate:
+  condition: "面板首屏仍是卡墙平铺，或演进闭环的聚合读数退化为一组常数（状态分布单柱 + 采纳率恒定）"
+risk: medium
+principle_refs: [2, 8, 9, 10, 11]
+actual_cost: {tokens: 260000, source: estimate}
+decisions:
+  - who: agent
+    when: 2026-09-12
+    type: proposal
+    conclusion: >
+      识别信号：面板呈现失效的根因不是视觉而是"上屏的是什么"——卡是只增的 diff 日志，
+      判决才是可动作的状态。方案：抄 metrics 侧已经验证过的分工（gates.yaml 判据数据 +
+      metrics_health.py 三态判决 + 面板只渲染不重算），为演进闭环建同构的一层。
+  - who: agent
+    when: 2026-09-12
+    type: action
+    conclusion: >
+      落地：新增 proposals/gates.yaml（7 条判据 + 1 条可解读性规则）与 scripts/evolution_health.py；
+      ev_board_data.py 加确定性派生（触及面 / 指路腐烂 / 信号集中度 / 实测记录读取，stats 只增键）；
+      ev_measure.py --run 落一笔共享实测记录（metrics/ev-measure-log.yaml，复用 exec_log_path 的
+      路径解析与写锁原语）；ev-panel 首屏改判决面 + 触及面 + 现场，卡收进默认收起的抽屉。
+  - who: agent
+    when: 2026-09-12
+    type: eval
+    conclusion: >
+      验证通过：evolution_health.py --check 在真实数据上退 1（6 项要处理、7/7 判据已评估）；
+      构造「判据声明了没实现」与「判据文件语法坏掉」两种坏态均退 2 且不报 clean；
+      触及面派生 57/57 张全部归因（0 未归因，归因依据强度: 强/中/弱 三档可回查）；
+      panel_render_check 全绿（含"首屏不渲染任何卡""判决拿不到时不冒充判决""体检器失效不报未见阻塞项"）。
+      本卡自己的第一版 measure 被实测证伪（`--check` 期望 exit 0，实测 1）——因为它把
+      "结论是 clean"当成了成功条件，而判据层正常工作的表现恰恰是**报出违反**。修法是分开两种问法：
+      新增 `--usable`（只问结论可不可用：判据全被评估即退 0，未被评估才退 2），measure 改用它。
+      这条证伪记录留在 metrics/ev-measure-log.yaml 里（实测记录是 append-only，不美化）。
+  - who: agent
+    when: 2026-09-12
+    type: decision
+    conclusion: >
+      采纳。判据层与触及面保留；但**触及面刻意只做"落在哪一层"**，不做"变好了多少"——
+      后者属能力轴，S1 现场反馈捕获为 0 时没有分母，面板如实标"不可解读"而非画平线称稳定（原则十）。
+      同时如实记录本卡自身的一条局限：判据的**阈值是假设**（如单一信号占比 0.25、
+      自证比例下限 1/3），接受实测重校（原则十一）。

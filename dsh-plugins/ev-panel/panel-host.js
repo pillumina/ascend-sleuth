@@ -40,18 +40,18 @@ return {
       return pythonCmd
     }
 
-    async function runScript(sessionId, extraArgs) {
+    async function runScript(sessionId, scriptName, extraArgs) {
       const cwd = resolveCwd(sessionId)
       if (!cwd) return { ok: false, error: '无法解析工作区' }
       if (!shell) return { ok: false, error: 'shell 不可用' }
       const py = await resolvePython()
       if (!py) {
         return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）——'
-          + '自演进看板的数据脚本 scripts/ev_board_data.py 需要它，装好 Python 3 并确保在 PATH 里' }
+          + '自演进看板的数据脚本 ' + scriptName + ' 需要它，装好 Python 3 并确保在 PATH 里' }
       }
       try {
         const spec = shell.resolve({
-          command: py + ' scripts/ev_board_data.py' + (extraArgs ? ' ' + extraArgs : ''),
+          command: py + ' ' + scriptName + (extraArgs ? ' ' + extraArgs : ''),
           workdir: cwd,
           stdoutMaxBytes: 4 * 1024 * 1024, // EV 卡聚合 JSON 随库增长（实测 89KB），防截断
           // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
@@ -64,14 +64,14 @@ return {
           if (/no module named ['\"]?yaml/i.test(stderrStr)) {
             return { ok: false, error: '运行自演进看板需要 PyYAML——请安装：pip install pyyaml（或 brew install pyyaml）后重开面板' }
           }
-          const err = stderrStr || 'ev_board_data.py 无输出'
+          const err = stderrStr || scriptName + ' 无输出'
           return { ok: false, error: String(err).slice(0, 800) }
         }
         let data = null
         try {
           data = JSON.parse(stdout)
         } catch (e) {
-          return { ok: false, error: 'ev_board_data.py 输出非 JSON: ' + String(e && e.message || e) }
+          return { ok: false, error: scriptName + ' 输出非 JSON: ' + String(e && e.message || e) }
         }
         return { ok: true, data }
       } catch (e) {
@@ -79,8 +79,18 @@ return {
       }
     }
 
+    const BOARD_SCRIPT = 'scripts/ev_board_data.py'
+    const HEALTH_SCRIPT = 'scripts/evolution_health.py'
+
     function loadBoard(sessionId) {
-      return runScript(sessionId, null)
+      return runScript(sessionId, BOARD_SCRIPT, null)
+    }
+
+    // 判决层：与「指标」tab 拉 metrics_health 同形。为什么单独一次调用而不是并进 board：
+    // 判决来自 evolution_health.py（判据在 proposals/gates.yaml），一次失败不该影响另一块；
+    // 合并会让"体检器坏了"与"没有数据"在客户端再次混成一个错误。
+    function loadHealth(sessionId) {
+      return runScript(sessionId, HEALTH_SCRIPT, '--json')
     }
 
     // 单卡全文：面板点开某张卡时才拉（列表页只带摘要，不把 36 张卡的完整决策链
@@ -88,12 +98,17 @@ return {
     function loadIdeaDetail(sessionId, ideaId) {
       const id = String(ideaId || '')
       if (!/^EV-\d{4}-\d{3,}$/.test(id)) return Promise.resolve({ ok: false, error: '非法卡 id: ' + id })
-      return runScript(sessionId, '--detail ' + id)
+      return runScript(sessionId, BOARD_SCRIPT, '--detail ' + id)
     }
 
     const handleDisposer = harness.handle('ev-board-load', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       return loadBoard(sessionId)
+    })
+
+    const healthDisposer = harness.handle('ev-health-load', async (args) => {
+      const sessionId = args && args.sessionId ? String(args.sessionId) : null
+      return loadHealth(sessionId)
     })
 
     const detailDisposer = harness.handle('ev-idea-detail', async (args) => {
@@ -108,6 +123,7 @@ return {
 
     return () => {
       if (handleDisposer) handleDisposer()
+      if (healthDisposer) healthDisposer()
       if (detailDisposer) detailDisposer()
     }
   },
