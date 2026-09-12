@@ -1,0 +1,20 @@
+# 负例夹具：exec-log 的三类历史腐化形态（校验器必须全部拦下）
+#
+# 为什么留成夹具：这三类都是**静默**发生过的——写侧不报错、校验器当时也放行，
+# 只有在人读那条记录时才发现。夹具把"该红"钉住，避免判据又被简化掉。
+#
+#  ① at 未加引号 → PyYAML 读成 datetime（同一字段两种形态，下游切片 TypeError）
+#  ② products id 含括号/逗号 → `--products "id(a,b)"` 被逗号切分撕裂成两条
+#  ③ version 记成 unknown → 检出本可解析到 HEAD，说明写侧退化路径没生效
+#
+# 用法：python scripts/verify_exec_log.py --check --log scripts/fixtures/bad-exec-log.yaml  （期望 exit 1）
+records:
+- seq: 1
+  skill: diagnose
+  version: unknown
+  at: 2026-09-12 16:49:27
+  source: 会话
+  products:
+    - id: 2026-09-12-dsv4-a3-hcpre-16379(in_progress
+    - id: no_hit)
+  decision_reason: '演示：version 退化 + at 被 YAML 读成 datetime + products 被逗号撕裂'

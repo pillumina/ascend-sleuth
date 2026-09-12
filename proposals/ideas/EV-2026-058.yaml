@@ -1,0 +1,85 @@
+id: EV-2026-058
+layer: L2                          # 流程工具（exec-log 及其校验器）
+title: 运行件格式腐化——exec-log 的 at 类型漂移 / products 逗号撕裂 / version 退化，与"校验器缺判据"
+status: validated
+authorization: review              # 运行件 + 校验器判据，不改评分口径与知识内容 → review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-12
+source_signals:
+  - signal: human_review_feedback
+    evidence: >-
+      用户查看 skill-exec-log 后提问："里面有版本相关问题也修复一下""version 是 null 正常吗""这个会提交到仓上吗"
+      ——一次阅读就看出三处异常，说明这些腐化在**人读面**上可见，但没有任何判据拦过。
+    trajectory:
+      - "metrics/skill-exec-log.yaml（seq 1/3 的 products 被撕裂；全部记录 version: unknown；at 两种形态）"
+  - signal: observability_gap
+    evidence: >-
+      `verify_exec_log.py --check` 在三种腐化同时存在时仍报 OK——它只查"字段非空 + seq 唯一"，
+      结构性的类型漂移与切分撕裂不在判据里；写侧也没有对"逗号出现在状态位"设防，于是
+      `--products "id(a,b)"` 会静默写成两条产物（审计记录被悄悄改形）。
+    trajectory:
+      - "scripts/verify_exec_log.py（旧判据清单）"
+      - "scripts/log_skill_exec.py#products 解析"
+hypothesis: >-
+  把"格式事实"变成**双向**约束——写侧规范化（at 统一带引号 ISO、git 缺失时直接读 .git 解析 HEAD、
+  products 括号不闭合即响亮失败）+ 读侧校验（at 必须是 ISO 字符串、products id 不许含括号逗号、
+  能解析到 HEAD 时 version 不许是 unknown）——可让这类腐化在下一次写入时就暴露，而不是等人读到时才发现。
+predicted_effect:
+  metric: 三类腐化形态的检出能力（写侧拦截 + 校验器报错）
+  from: 写侧静默撕裂/退化，校验器对三类形态全部放行
+  to: 写侧响亮失败（exit 2），校验器对三类形态各报一条错并 exit 1
+  measure:
+    command: "python scripts/verify_exec_log.py --check --log scripts/fixtures/bad-exec-log.yaml"
+    expect_exit: 1
+validation:
+  method: scan_review
+  baseline: 修复前的 metrics/skill-exec-log.yaml（6 条记录，含三类腐化）
+  success_criteria: >-
+    ①三类形态的负例夹具报错数 ≥3 且 exit 1；②往返写入两次后所有 `at` 仍是带引号 ISO 字符串
+    （不再被 PyYAML 变 datetime）；③写侧 `--products "X(a,b)"` exit 2；④修好的运行件在 CI parity 演练里
+    不再出现新红项（对照断言按"断点已修"更新，不留下过期判据）；⑤skill 正文里关于 `at` 的陈述与现状一致（去文档漂移）。
+  rollback: 脚本改动可 revert；运行件是 gitignored 本机件，重新生成即恢复（回填的 version 不回滚）
+gate:
+  condition: 用户要求"日志里的问题也修一下"（本轮直接触发）
+risk: low
+principle_refs: [2, 8, 10]        # 二不变量写进结构 / 八可观测先于改进 / 十诚实退化
+actual_cost:
+  tokens: 30000
+  source: estimate
+decisions:
+  - who: agent
+    when: '2026-09-12'
+    type: proposal
+    conclusion: >-
+      三点都按"结构约束"处理而不是就地擦干净：①`at` 类型漂移（写回文本级 + 读回 PyYAML → 未加引号的 ISO
+      时间被读成 datetime，再写出成空格形态，同一字段两形态且下游切片会 TypeError）→ 写侧加引号 + 读侧规整；
+      ②`products` 逗号撕裂 → 写侧括号不闭合即 exit 2，读侧判 id 含 `()`/`,` 即报错；
+      ③`version: unknown` 是**退化**不是 null（git_head 只问 git 命令，而 Windows 上 MinGit 不在 PATH）→
+      加不依赖 git 二进制的 `.git/HEAD → refs → packed-refs`（含 worktree gitdir 指针）解析路径。
+  - who: agent
+    when: '2026-09-12'
+    type: action
+    conclusion: >-
+      改 `scripts/log_skill_exec.py`（git_head 退化解析、iso_at 规整与引号写入、products 守卫 exit 2）、
+      `scripts/verify_exec_log.py`（新增三条判据，import git_head 以判断"本可解析却记 unknown"）、
+      就地修复运行件 6 条记录的 products 撕裂与格式、回填 version（依据：本会话期间 HEAD 恒为 46dddb3、
+      无任何提交）、把校验器负例固化为夹具 `scripts/fixtures/bad-exec-log.yaml`。
+  - who: agent
+    when: '2026-09-12'
+    type: eval
+    conclusion: >-
+      ①负例夹具报 4 项错并 exit 1（at 非字符串 / version 该有却是 unknown / 两条 id 含括号——三类都拦下）；
+      ②往返测试（副本上追加两条再校验）后 9 条记录的 `at` 全为带引号 ISO；③`--products "X(a,b)"` exit 2；
+      ④CI parity 演练回到 113/114——原先因修复而变红的"旧内联命令必失败"对照断言已按现状改写为
+      "不再因 at 类型崩溃"，唯一的红项仍是工作区另一轮在飞的 metrics 改动（与本卡无关）；
+      ⑤`skills/evolve-check/SKILL.md` 里"at 是 datetime 不可下标"的过期陈述已更新为现状 + 真理由（路径解析/共享范围/退化口径）。
+  - who: agent
+    when: '2026-09-12'
+    type: decision
+    conclusion: >-
+      采纳（validated）。**边界说明（诚实记录）**：exec-log 的约定是 append-only，本轮对既有 6 条做了
+      **格式修复**（products 撕裂 + at 引号 + version 回填）——不改任何判断内容（skill/时间/理由/成本原样保留），
+      并在对话里明示；若维护者认为"历史件一律不碰"，可只保留写侧与校验器改动，把运行件改回原样。
+      另：该文件是 gitignored 运行件，**不会**随 PR 进仓；跨机口径仍走 `--summary` → `metrics/timeline.yaml`。
