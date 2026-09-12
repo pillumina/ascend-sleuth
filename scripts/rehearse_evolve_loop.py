@@ -970,6 +970,22 @@ def ex_timeline_sources(root: Path):
         demo / "metrics" / "timeline.d" / "renamed.yaml")
     rc, out = run([sys.executable, "scripts/build_timeline.py", "--check", "--root", str(demo)], cwd=root)
     check("文件名与期号不一致 → 红（期号即文件名）", rc == 1 and "文件名不一致" in out, out.strip()[:160])
+
+    # ⑤ git 冲突标记（两人同期号 → add/add 冲突留在源文件里）→ 红，且报错必须说"下一步做什么"。
+    #    实测来源：用两个真分支复现合并，发现不特判时报的是"YAML 解析失败：while scanning a simple key
+    #    ... <<<<<<< HEAD"——人能对上的是文件名，报错却讲 YAML 语法。
+    (demo / "metrics" / "timeline.d" / "renamed.yaml").rename(
+        demo / "metrics" / "timeline.d" / "2026-W40-live-1001.yaml")
+    (demo / "metrics" / "timeline.d" / "2026-W40-live-1003.yaml").write_text(
+        "<<<<<<< HEAD\nperiod: 2026-W40-live-1003\nkind: live\nrecorded_at: '2026-10-03'\n"
+        "metrics: {sessions_total: 5}\n=======\nperiod: 2026-W40-live-1003\nkind: live\n"
+        "recorded_at: '2026-10-03'\nmetrics: {sessions_total: 8}\n>>>>>>> engD\n", encoding="utf-8")
+    rc, out = run([sys.executable, "scripts/build_timeline.py", "--check", "--root", str(demo)], cwd=root)
+    check("源文件含 git 冲突标记 → 红", rc == 1, "exit=%d" % rc)
+    check("  且点名真因（两人写了同一个期号）而不是只报 YAML 语法错",
+          "冲突标记" in out and "同一个期号" in out and "YAML 解析失败" not in out, out.strip()[:200])
+    check("  且给出三种处置与「不要两份都留」",
+          "加后缀" in out and "不要" in out and "两份都留" in out, out.strip()[:200])
     shutil.rmtree(demo, ignore_errors=True)
 
     # ⑤ 真实检出：生成物与源一致（存量 8 期的迁移结果）

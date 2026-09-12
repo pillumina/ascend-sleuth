@@ -45,6 +45,17 @@ def load_yaml(path: Path):
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+# git 冲突标记：源文件里出现它，几乎只有一个原因——**两个人写了同一个期号**（期号即文件名，
+# 所以同一天各跑一次的两人落在同一个文件上，git 报 add/add 冲突并把两份内容都塞进来）。
+# 不特判的话，下面只会报"YAML 解析失败：while scanning a simple key ... <<<<<<< HEAD"，
+# 而人要的答案是"给其中一份加后缀"——报错必须说下一步做什么（实测：验证两个分支合并时撞见）。
+CONFLICT_MARKERS = ("<<<<<<<", ">>>>>>>", "=======")
+
+
+def conflict_marked(text: str) -> bool:
+    return any(m in text for m in CONFLICT_MARKERS)
+
+
 def collect_sources(root: Path):
     """→ (periods, errors)。源目录不存在时返回空并如实说明（不假装有数据）。"""
     src_dir = root / SRC_DIR_REL
@@ -54,8 +65,18 @@ def collect_sources(root: Path):
     periods = []
     seen = {}
     for f in sorted(src_dir.glob("*.yaml")):
+        raw = f.read_text(encoding="utf-8")
+        if conflict_marked(raw):
+            errors.append(
+                f"{f.name}: 文件里有 **git 冲突标记**——多半是两个人写了同一个期号（期号即文件名，"
+                f"同一天各跑一次就会落在同一个文件上）。处置：① 给其中一份加后缀改成另一个期号"
+                f"（如 {f.stem}-2，生成器会自己加这个后缀）；② 或确认两份读数一致后删掉一份；"
+                f"③ 删掉冲突标记，重跑 `python3 scripts/build_timeline.py`——"
+                f"**不要**两份都留（趋势线上同一期两个数字，读者分不清哪个是真的）"
+            )
+            continue
         try:
-            doc = load_yaml(f)
+            doc = yaml.safe_load(raw)
         except Exception as e:
             errors.append(f"{f.name}: YAML 解析失败：{e}")
             continue
