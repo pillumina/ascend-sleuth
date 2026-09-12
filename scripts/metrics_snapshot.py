@@ -11,13 +11,17 @@
 #   周批流程第 1 步只跑 trace_metrics → ②③④ 全靠人手工搬运 → 实测结构指标 10 天没进快照
 #   （快照 `case_total 52` vs 现实 **158**，某格 `85/30` 已是 soft_cap 的 2.8 倍，
 #   而快照里那次还是 `36/30`）。本命令把 ①②③ 拼成一份骨架（④ 按需），每块标 source，
-#   人复核后 append —— 消除手工搬运这个环节。
+#   人复核后**写成当期源文件**（`metrics/timeline.d/<期号>.yaml`）——消除手工搬运这个环节；
+#   聚合 `metrics/timeline.yaml` 由 `scripts/build_timeline.py` 重建，不要手写。
 #
 # 用法：
 #   python3 scripts/metrics_snapshot.py                 # 人读摘要 + YAML 骨架
-#   python3 scripts/metrics_snapshot.py --emit-yaml     # 只输出 YAML 骨架（供 append）
+#   python3 scripts/metrics_snapshot.py --emit-yaml     # 只输出**单期源文件**（写进 metrics/timeline.d/<期号>.yaml）
 #   python3 scripts/metrics_snapshot.py --json          # 机器读（体检脚本/实验断言）
-#   python3 scripts/metrics_snapshot.py --period 2026-W37 --kind live
+#   python3 scripts/metrics_snapshot.py --kind live     # 期号按 kind 生成；同天撞号自动加 -2 后缀
+#
+# 落地路径：源文件 metrics/timeline.d/<期号>.yaml → python3 scripts/build_timeline.py 重建聚合
+#   metrics/timeline.yaml（**生成物，不要手写**）→ verify_metrics.py --check。
 #
 # 边界（诚实退化）：拿不到的来源如实不写并在摘要里点名，**不写 0 冒充**。
 

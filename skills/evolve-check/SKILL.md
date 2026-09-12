@@ -57,7 +57,8 @@ description: >
 - **exec-log 是同一克隆共享的**（主检出 `metrics/skill-exec-log.yaml`，所有 worktree 共写共读；
   `.gitignore` 运行时件）：所以"这里为空"= **这个克隆还没有任何收尾记录**，而不是"本 worktree
   没跑"。脚本输出自带路径与共享范围标注，**不要**把读数说成全系统读数——**跨克隆/跨机不聚合**，
-  要跨机得让聚合值（`--summary`）进 `metrics/timeline.yaml`。
+  要跨机得让聚合值（`--summary`）写进当期的指标源文件（`metrics/timeline.d/<期号>.yaml`，
+  随后 `scripts/build_timeline.py` 重建聚合）。
 
 **第 2 步：对照触发条件表**——命中的信号才继续，无命中直接出报告（加一行
 "evolve-check：无演进信号"），**不为产卡而产卡**（原则四/十）。
