@@ -236,6 +236,34 @@ return {
               return doc.feedback_pending ? String(doc.feedback_pending) : null
             })(),
             feedback: doc.feedback && typeof doc.feedback === 'object' ? String(doc.feedback.outcome || '') : (doc.feedback ? String(doc.feedback) : null),
+            // 反馈轴的**分型**：`feedback.case` 有两种取值——真实 case id，或占位串
+            // `pending-investigation`（词表在 `diagnosis_state.yaml.example` 里明确允许它表示
+            // "没命中 case、只给了建议"）。占位串**不是** case id：读成后者会让面板说
+            // "结果待回报：pending-investigation"（读起来像有个 fix 等验证），也会让
+            // `resume-diagnosis` 去回写一个不存在的 case 的 confidence。所以这里把两种分开：
+            //   'case'    = 给了可应用 fix、等回报（feedback 轴承载结果）
+            //   'no-case' = 没命中 case，等的是**现场补材料**（结果记在 status 与 summary 里）
+            feedbackKind: (function () {
+              const fb = doc.feedback
+              const out = (fb && typeof fb === 'object') ? String(fb.outcome || '') : (typeof fb === 'string' ? fb.trim() : '')
+              if (out !== 'pending') return null
+              const cs = (fb && typeof fb === 'object' && fb.case) ? String(fb.case) : ''
+              return (cs && cs !== 'pending-investigation') ? 'case' : 'no-case'
+            })(),
+            feedbackCase: (function () {
+              const fb = doc.feedback
+              const cs = (fb && typeof fb === 'object' && fb.case) ? String(fb.case) : ''
+              return (cs && cs !== 'pending-investigation') ? cs : null
+            })(),
+            // "在等什么"：无命中单等的不是 fix verdict，而是材料。取**最近一条带 `evidence.missing`
+            // 的事件**（那是"还缺什么"的最新陈述），退到顶层 `last_action`。
+            waitingFor: (function () {
+              for (let i = trace.length - 1; i >= 0; i--) {
+                const ev = trace[i] && trace[i].evidence
+                if (ev && ev.missing) return String(ev.missing).replace(/\s+/g, ' ').trim()
+              }
+              return doc.last_action ? String(doc.last_action).replace(/\s+/g, ' ').trim() : null
+            })(),
             userSteps: Number(userSteps) || 0,
             agentSteps: Number(agentSteps) || 0,
             lastAction: lastAction,
@@ -505,50 +533,62 @@ return {
       if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) return v.slice(1, -1)
       return v
     }
+    // 期次解析：**缩进按相对层级判定，不写死空格数**。
+    //
+    // 为什么（实测）：`metrics/timeline.yaml` 由 `scripts/build_timeline.py` 生成，而 PyYAML
+    // 默认把序列项顶格写在键下（`periods:` 的下一行就是 `- period:`）；历史上手写的版本是
+    // 2 空格缩进。旧实现把四种层级写死成 2/4/6/8 空格，于是**生成物一条期次都解析不出来**
+    // ——实测真实文件解析出 0 期，而面板把"解析失败"渲染成「尚无 live 快照」（文件里有 3 期
+    // live）。数据在、结论假，正是这个面板最该防的那类缺陷；解析器因此改成以 `- period:`
+    // 那条的缩进为基准逐层 +2，两种形状都能读。
     function parseTimeline(text) {
       const lines = text.split(/\r?\n/)
       const periods = []
       let cur = null
-      let inNotes = false
       let notesIndent = 0
+      let itemIndent = null      // `- period:` 那条的缩进 = 其余层级的基准
+      let blockKey = null        // 块标量（`notes: |-`、`source: >-`）的目标键
       for (const raw of lines) {
         const noComment = raw.replace(/\s+#.*$/, '').trimEnd()
-        if (noComment === '') { if (inNotes && cur) cur.notes += '\n'; continue }
-        if (inNotes && cur) {
-          const indent = noComment.length - noComment.trimStart().length
-          if (indent >= notesIndent) { cur.notes += noComment.trim() + '\n'; continue }
-          inNotes = false
+        if (noComment === '') { if (blockKey && cur) cur[blockKey] += '\n'; continue }
+        const indent = noComment.length - noComment.trimStart().length
+        const body = noComment.trimStart()
+        if (blockKey && cur) {
+          if (indent >= notesIndent) { cur[blockKey] += body + '\n'; continue }
+          blockKey = null
         }
-        if (noComment === 'periods:') continue
-        const item = /^  - (.+)$/.exec(noComment)
-        if (item) {
+        if (body === 'periods:') continue
+        const item = /^- (.+)$/.exec(body)
+        if (item && (itemIndent === null || indent === itemIndent)) {
+          if (itemIndent === null) itemIndent = indent
           if (cur) periods.push(cur)
           cur = { notes: '' }
           const fm = /^([a-zA-Z0-9_]+):\s*(.*)$/.exec(item[1])
           if (fm) cur[fm[1]] = parseFlowValue(fm[2])
           continue
         }
-        if (!cur) continue
-        const m = /^    ([a-zA-Z0-9_]+):\s*(.*)$/.exec(noComment)
-        if (m) {
-          const key = m[1]
-          const v = m[2]
+        if (!cur || itemIndent === null) continue
+        const m = /^([a-zA-Z0-9_/-]+):\s*(.*)$/.exec(body)
+        if (!m) continue
+        const key = m[1]
+        const v = m[2]
+        const rel = indent - itemIndent
+        if (rel <= 2) {
           if (key === 'metrics') { cur.metrics = {}; continue }
-          if (key === 'notes') { inNotes = true; notesIndent = 6; continue }
+          // `notes: >-` 走块标量（后续更深行并入该键）；`notes: 一句话` 是行内值
+          //（旧实现两种都进块模式，行内值会被整条丢掉）。
+          if (v && /^[>|][-+]?$/.test(v)) { cur[key] = ''; blockKey = key; notesIndent = indent + 2; continue }
           cur[key] = parseFlowValue(v)
           continue
         }
-        const mm = /^      ([a-zA-Z0-9_]+):\s*(.*)$/.exec(noComment)
-        if (mm && cur.metrics) {
-          const key = mm[1]
-          cur.metrics[key] = parseFlowValue(mm[2])
+        if (rel <= 4 && cur.metrics) {
+          cur.metrics[key] = parseFlowValue(v)
           cur._lastMetricKey = key
           continue
         }
-        const nm = /^        ([a-zA-Z0-9_/-]+):\s*(.*)$/.exec(noComment)
-        if (nm && cur.metrics && cur._lastMetricKey) {
+        if (cur.metrics && cur._lastMetricKey) {
           if (!cur.metrics[cur._lastMetricKey] || typeof cur.metrics[cur._lastMetricKey] !== 'object') cur.metrics[cur._lastMetricKey] = {}
-          cur.metrics[cur._lastMetricKey][nm[1]] = parseFlowValue(nm[2])
+          cur.metrics[cur._lastMetricKey][key] = parseFlowValue(v)
         }
       }
       if (cur) periods.push(cur)
@@ -560,9 +600,43 @@ return {
         const text = await fs.readText(target)
         const periods = parseTimeline(text)
         for (const p of periods) delete p._lastMetricKey
-        return { ok: true, periods }
+        // 解析完整性：文件声明了 periods 却一条期次都没解析出来 = **解析器与结构不符**，
+        // 不等于"没有数据"。两者混在一起时面板会显示「尚无 live 快照」——而文件里明明有
+        // （实测踩过：真实文件 3 期 live、解析 0 期、面板说没有）。所以把它作为独立字段
+        // 交给客户端，由客户端分别渲染。
+        const declared = /^\s*periods:/m.test(text)
+        return { ok: true, periods, integrity: (declared && periods.length === 0) ? 'unparsed' : 'ok' }
       } catch (e) {
         return { ok: false, error: 'timeline.yaml 不可读: ' + String(e && e.message || e) }
+      }
+    }
+
+    // ---- 人读定位报告（这单要交付出去的那份东西）----
+    // 只读文本，不改写；报告名取 trace 的 `report_file`（缺字段时按同名规则回退
+    // `<trace 同名>.report.md`，与 diagnose 的产出规则一致）。限长避免把整份报告塞进 RPC
+    // （实测最长一份 36KB；512KB 是上限，超了如实标 truncated，由客户端提示"看全文请打开文件"）。
+    const REPORT_MAX_CHARS = 512 * 1024
+    async function readReport(cwd, traceFile) {
+      if (!traceFile) return { ok: false, error: '缺 traceFile' }
+      try {
+        const traceTarget = await fs.resolve('traces/' + traceFile, { cwd })
+        const doc = parseYaml(await fs.readText(traceTarget))
+        const name = (doc && doc.report_file)
+          ? String(doc.report_file)
+          : String(traceFile).replace(/\.yaml$/, '') + '.report.md'
+        const rel = 'traces/' + name
+        const target = await fs.resolve(rel, { cwd })
+        const text = await fs.readText(target)
+        const truncated = text.length > REPORT_MAX_CHARS
+        return {
+          ok: true,
+          path: rel,
+          text: truncated ? text.slice(0, REPORT_MAX_CHARS) : text,
+          chars: text.length,
+          truncated: truncated,
+        }
+      } catch (e) {
+        return { ok: false, error: '报告不可读: ' + String(e && e.message || e) }
       }
     }
     // Python 解释器解析（Windows 兼容）：面板用 shell 跑 Python 脚本，但 Windows 上
@@ -1063,6 +1137,15 @@ return {
       return loadTimeline(cwd)
     })
 
+    // 报告正文（只读）。面板不给"写入报告"的入口——报告归 diagnose 产，见其 report-template。
+    const reportDisposer = harness.handle('ascend-read-report', async (args) => {
+      if (!fs) return needFs()
+      const sessionId = args && args.sessionId ? String(args.sessionId) : null
+      const traceFile = args && args.traceFile ? String(args.traceFile) : null
+      const cwd = resolveCwd(sessionId)
+      return readReport(cwd, traceFile)
+    })
+
     const healthDisposer = harness.handle('ascend-kb-health', async (args) => {
       if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
@@ -1096,6 +1179,7 @@ return {
       if (openDisposer) openDisposer()
       if (sedDisposer) sedDisposer()
       if (metricsDisposer) metricsDisposer()
+      if (reportDisposer) reportDisposer()
       if (healthDisposer) healthDisposer()
       if (processDisposer) processDisposer()
       if (verdictDisposer) verdictDisposer()

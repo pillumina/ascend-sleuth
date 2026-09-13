@@ -128,7 +128,11 @@ loader，直接就有它可用；重复加载 loader 会撞名但不报错（工
   「闭环判决」跑 `scripts/metrics_health.py --json`、「实时计算」跑 `scripts/trace_metrics.py`；
   解释器同样自动探测（`python3` → `python` → `py -3`）。缺依赖时判决条退化为
   「体检不可用」+ 可执行提示（不是空面板、也不谎报正常）。
-- 诊断「打开证据」依赖 `open`/`xdg-open`（macOS/Linux 均可用；Windows 未覆盖）。
+- 诊断「打开证据 / 打开报告」按方言阶梯探测：Windows 先试 `Start-Process`，再 `open`、`xdg-open`、
+  `explorer.exe`，按退出码判定并回报用了哪一路（Windows 走 `ctx.shell` 实际接的是 PowerShell，
+  不是 bash——bash 链在那边整条命令解析失败，表现为"点了没反应"）。四种都不行时界面给原因。
+- 「看报告」不需要外部程序：报告正文由 host 只读读入后在面板内渲染（章节跳转 + 复制全文），
+  「打开文件」才依赖上面的阶梯。
 
 ## 说明
 

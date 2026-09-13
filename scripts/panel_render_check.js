@@ -755,15 +755,100 @@ async function main() {
     }
     const mtAll = textOf(tree)
     expect('切「全部」后出现历史快照折叠', /历史快照 \d+ 期/.test(mtAll), mtAll.match(/历史快照[^\n]{0,20}/))
-    // 收起态摘要取该期前 3 项指标（replay 期含「路由准确率」，live 期含「诊断 session 数」）
-    expect('期卡收起态带指标摘要', /路由准确率 \d+\/\d+/.test(mtAll) || /诊断 session 数 \d+/.test(mtAll),
-      (mtAll.match(/路由准确率[^\n]{0,20}/) || [])[0])
+    // 期卡要有读数（分子与分母一起给）。**不钉指标名**：默认展开的是最新两期，而"最新两期里
+    // 有哪些指标"会随新快照变——旧断言钉的是当时恰好被展开的最旧一期里的"路由准确率 3/3"，
+    // 一旦默认展开的期次修正为最新两期，它就假失败（实测）。
+    expect('期卡带指标读数（分子/分母一起给）', /\d+\/\d+/.test(mtAll),
+      (mtAll.match(/[^\n]{0,14}\d+\/\d+[^\n]{0,10}/) || [])[0])
     expect('收起态标注项数（N 项）', /\d+ 项/.test(mtAll))
   }
   expect('知识库健康保留', mt.includes('知识库健康'))
   expect('流程闭环保留', mt.includes('流程闭环'))
   expect('实时计算保留', mt.includes('实时计算'))
   expect('默认收起期卡数量少于总期数（避免平铺）', (mt.match(/项$/gm) || []).length <= periods.length)
+
+  // ================= 指标 tab · 数据源的三种结局（2026-09-13 补）=================
+  // 为什么单开这一节：上面所有指标断言都把 periods **从 Python 直接喂给客户端**，不经过 host 的
+  // parseTimeline——于是"解析器与真实文件结构不符"这条能一路漏到用户面前：实测 `metrics/timeline.yaml`
+  // 里有 8 期（含 3 期 live），host 解析出 0 期，面板因此显示「尚无 live 快照」并把最新一期折进
+  // 「历史快照」。数据在、结论假，正是这块面板反复修的那类缺陷，而当时的 364 条断言一条都盖不到它
+  // （喂的是 Python 解析结果，等于绕过了被怀疑的那一层）。第一条断言就是"解析器与权威口径逐条对齐"。
+  console.log('\n[ascend-panel 指标 · 数据源三态]')
+  {
+    const hostSrc = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+    const from = hostSrc.indexOf('function parseFlowValue')
+    const to = hostSrc.indexOf('async function loadTimeline')
+    expect('host timeline 解析器可抽出（parseFlowValue → loadTimeline 区块存在）', from > 0 && to > from)
+    const tl = new Function(hostSrc.slice(from, to) + '\nreturn { parseTimeline: parseTimeline };')()
+    const tlText = fs.readFileSync(path.join(repo, 'metrics/timeline.yaml'), 'utf8')
+    const jsPeriods = tl.parseTimeline(tlText)
+    expect('真实 timeline.yaml：解析出 ' + jsPeriods.length + ' 期（Python 口径 ' + periods.length + ' 期）',
+      jsPeriods.length === periods.length && jsPeriods.length > 0,
+      'js=' + jsPeriods.length + ' py=' + periods.length)
+    expect('真实 timeline.yaml：期号与 kind 逐条一致（不是只读出壳子）',
+      jsPeriods.length === periods.length && jsPeriods.every((p, i) => p.period === periods[i].period && p.kind === periods[i].kind),
+      jsPeriods.map(p => String(p.period) + '/' + String(p.kind)).join(',') + ' | ' + periods.map(p => String(p.period) + '/' + String(p.kind)).join(','))
+    const jsM = jsPeriods.map(p => Object.keys(p.metrics || {}).length)
+    const pyM = periods.map(p => Object.keys(p.metrics || {}).length)
+    expect('真实 timeline.yaml：每期指标键数一致', JSON.stringify(jsM) === JSON.stringify(pyM), jsM.join(',') + ' | ' + pyM.join(','))
+    expect('真实 timeline.yaml：live 期被认出来（≥1 期）', jsPeriods.filter(p => p.kind === 'live').length >= 1)
+    expect('真实 timeline.yaml：notes 也读到了（期卡展开要显示）', jsPeriods.some(p => String(p.notes || '').trim().length > 0))
+
+    // 加载窗口：判决 RPC 未返回时**不能说"没问题"**。窗口真实存在——timeline 是文件读，
+    // 判决要 spawn Python；旧实现在这段窗口里按"0 条 findings"走绿分支，打印
+    // 「本期无阻塞项 · 按 0 条判据检查，全部通过」（"按 0 条判据检查"本身是结论不可用）。
+    const pendingHost = (m, a) => m === 'ascend-metrics-verdict' ? new Promise(() => {}) : ascHost(m, a)
+    const pend = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, pendingHost)).text
+    expect('判决未返回：不显示「本期无阻塞项」', !pend.includes('本期无阻塞项'),
+      pend.slice(Math.max(0, pend.indexOf('现在什么坏了')), Math.max(0, pend.indexOf('现在什么坏了')) + 140))
+    expect('判决未返回：不显示「全部通过」', !pend.includes('全部通过'))
+    expect('判决未返回：如实说"读取中 / 待载入"', /读取中|体检待载入/.test(pend))
+    expect('判决未返回：结论未到就不给状态色（源码里 pending 与 error 同走中性边）', /\(error \|\| pending\) \? T\.border/.test(ascSrc))
+
+    // timeline 读不到：判决与实时计算**照常**（旧实现一行早退把整页藏了，与 host 自己的提示相反）
+    const noTl = (m, a) => m === 'ascend-metrics-load' ? { ok: false, error: 'timeline.yaml 不可读: 缺文件' } : ascHost(m, a)
+    const nt = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, noTl)).text
+    expect('timeline 读不到：明说期次不可读', nt.includes('期次与趋势不可读'), nt.slice(0, 120))
+    expect('timeline 读不到：判决卡仍在（不整页早退）', nt.includes('现在什么坏了'))
+    expect('timeline 读不到：实时计算仍在（host 的承诺与界面一致）', nt.includes('实时计算'))
+    expect('timeline 读不到：不谎称「尚无 live 快照」', !nt.includes('尚无 live 快照'))
+    expect('timeline 读不到：头部计数如实（不是 0 期 · live 0）', nt.includes('期次不可读'))
+
+    // 解析不出期次（结构与解析器不符）：必须与"没有数据"分开说
+    const unparsed = (m, a) => m === 'ascend-metrics-load' ? { ok: true, periods: [], integrity: 'unparsed' } : ascHost(m, a)
+    const up = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, unparsed)).text
+    expect('期次解析不出：说清"不是没有数据"', /一条都没解析出来/.test(up) && /不是"没有数据"/.test(up), up.slice(0, 160))
+    expect('期次解析不出：不显示「尚无 live 快照」', !up.includes('尚无 live 快照'))
+    expect('期次解析不出：给可复现命令', /build_timeline\.py --check/.test(up))
+    expect('期次解析不出：头部计数如实', up.includes('期次解析失败'))
+
+    // 默认展开"最新的两期"（旧实现展开的是最旧两期，最新一期被折进历史）
+    {
+      const sorted = periods.filter(p => p.kind === 'live').slice()
+        .sort((a, b) => {
+          const wk = (p) => { const w = /(\d{4})-W(\d{2})/.exec(String(p.period)); return w ? Number(w[1]) * 100 + Number(w[2]) : -1 }
+          return wk(a) - wk(b) || String(a.recorded_at || '').localeCompare(String(b.recorded_at || ''))
+        })
+      const clean = (s) => String(s || '').replace(/\*\*/g, '').replace(/`/g, '').trim()
+      const newest = sorted.length ? clean(sorted[sorted.length - 1].notes).slice(0, 24) : ''
+      const oldest = sorted.length ? clean(sorted[0].notes).slice(0, 24) : ''
+      if (newest && oldest && newest !== oldest) {
+        expect('默认展开的是最新两期：最新一期 notes 可见（' + sorted[sorted.length - 1].period + '）', mt.includes(newest))
+        expect('默认展开的是最新两期：最旧一期收在历史折叠里（' + sorted[0].period + '）', !mt.includes(oldest))
+        expect('历史折叠报出被收起几期', /历史快照 \d+ 期/.test(mt))
+      } else {
+        expect('默认展开顺序：样本没有可比 notes，跳过（如实标注）', true)
+      }
+    }
+    // 期卡上的数据文案不得把 Markdown 语法端上屏（notes 是数据，里面有 `**重点**` 这类强调）
+    expect('期卡数据文案去掉字面 Markdown 星号与反引号（面板不是渲染器）',
+      /function plainNote\(s\)/.test(ascSrc) && /plainNote\(p\.notes\)/.test(ascSrc))
+    const w37 = periods.filter(p => String(p.notes || '').includes('**'))[0]
+    if (w37) {
+      const shown = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, ascHost)).text
+      expect('真实 notes 里的强调标记不再上屏（' + w37.period + '）', !/\*\*/.test(shown))
+    }
+  }
 
   // ================= 指标 tab · 闭环判决（2026-09 重做） =================
   // 这一节钉住的是"聚焦"这件事本身：判据读 gates.yaml（面板不重算）、
@@ -1355,11 +1440,131 @@ _MS._run_no_pipe = no_fallback`)
       expect('不再出现旧的合并措辞（"个诊断还没结束"/"个结果还没回报"）',
         !/个诊断还没结束/.test(dg3.text) && !/个结果还没回报/.test(dg3.text))
     }
+    // —— 反馈轴分型（2026-09-13 补）——
+    // `feedback.case` 允许写占位串 `pending-investigation`（表示**没命中 case、只给了建议**，
+    // 定义见 diagnosis_state.yaml.example）。占位串**不是 case id**：读成后者会让面板说
+    // 「结果待回报：pending-investigation」（像有个 fix 等验证），把一个还在多轮里的单报成债；
+    // 也会让 resume 去回写一个不存在的 case 的 confidence。这一节钉住"两种取值分开处理"。
+    {
+      const mix = [
+        mkSession(1, { status: 'in_progress', feedbackKind: 'no-case', feedbackPending: 'pending-investigation',
+          waitingFor: '缺镜像摘要与容器内 HCCL_* 全量值（现场回填中）' }),
+        mkSession(2, { status: 'in_progress', feedbackKind: 'case', feedbackPending: 'VLLM-ASC-1234',
+          feedbackCase: 'VLLM-ASC-1234', waitingFor: null }),
+      ]
+      const dg4 = await renderAsync(ascSrc, { sessionId: 'sess-1' },
+        (m, a) => (m === 'ascend-traces-list' ? { ok: true, sessions: mix } : diagHost(m, a)))
+      expect('分型后仍各占一桶（1 在查 / 1 等回报）',
+        /1 个在查/.test(dg4.text) && /1 个等回报/.test(dg4.text), dg4.text.slice(0, 220))
+      expect('首屏说明点出"在查含等现场补材料"',
+        /在查=诊断没结论（含等现场补材料）/.test(dg4.text))
+      // 单卡断言分两次渲染：一次只放占位串单、一次只放真实 case 单——两张卡同屏时
+      // "结果待回报"本来就该出现（那是另一张卡的），全局否定断言会假失败
+      const onlyNoCase = await renderAsync(ascSrc, { sessionId: 'sess-1' },
+        (m, a) => (m === 'ascend-traces-list' ? { ok: true, sessions: [mix[0]] } : diagHost(m, a)))
+      const onlyCase = await renderAsync(ascSrc, { sessionId: 'sess-1' },
+        (m, a) => (m === 'ascend-traces-list' ? { ok: true, sessions: [mix[1]] } : diagHost(m, a)))
+      expect('占位串单显示「等现场补材料」并说出等什么',
+        /等现场补材料/.test(onlyNoCase.text) && /缺镜像摘要/.test(onlyNoCase.text), onlyNoCase.text.slice(0, 200))
+      expect('占位串单不显示「结果待回报」（占位串不是 case id）', !/结果待回报/.test(onlyNoCase.text))
+      expect('占位串单只算「在查」，不算「等回报」',
+        /1 个在查/.test(onlyNoCase.text) && !/个等回报/.test(onlyNoCase.text))
+      expect('真实 case 单才显示「结果待回报：<case>」', /结果待回报：VLLM-ASC-1234/.test(onlyCase.text))
+      expect('真实 case 单只算「等回报」', /1 个等回报/.test(onlyCase.text) && !/个在查/.test(onlyCase.text))
+      const hostSrc2 = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+      expect('host 把占位串判成 no-case（不当 case id）',
+        /cs !== 'pending-investigation'/.test(hostSrc2) && /'no-case'/.test(hostSrc2))
+      expect('host 给出「在等什么」（最近一条 evidence.missing，退到 last_action）',
+        /waitingFor: \(function \(\)/.test(hostSrc2) && /ev\.missing/.test(hostSrc2) && /doc\.last_action/.test(hostSrc2))
+      expect('无命中单结案时清掉遗留的 feedback.outcome: pending（不出现两轴打架）',
+        /feedback\.outcome: pending（无命中单留下的占位），一并清掉/.test(ascSrc))
+      // 读取端与写入端一起钉：只改面板会在下一批 trace 上重新长出同一个混用
+      const resumeMd = fs.readFileSync(path.join(repo, 'skills/resume-diagnosis/SKILL.md'), 'utf8')
+      expect('resume 按 feedback.case 的两种取值分支',
+        /真实 case id/.test(resumeMd) && /占位串 `pending-investigation`/.test(resumeMd))
+      expect('占位串分支不回写 confidence，且明确不是终态',
+        /不要求回写 confidence/.test(resumeMd) && /不是终态/.test(resumeMd))
+      const procMd = fs.readFileSync(path.join(repo, 'skills/diagnose/references/diagnosis-procedure.md'), 'utf8')
+      expect('diagnose 写明未命中时的 case 填占位串（不是 case id）',
+        /未命中但给了建议 → 占位串/.test(procMd))
+    }
     // 沉淀候选**展开即列出明细**（只给一个数字读者无从判断"为啥是 3 条"）
     {
       expect('detail 数据把沉淀候选带回客户端', /sedimentCandidates: r && r\.sedimentCandidates/.test(ascSrc))
       expect('面板列出候选明细（kind + 摘要 + 建议 skill）',
         /cands\.map\(\(c, i\)/.test(ascSrc) && /c\.suggestedSkill/.test(ascSrc) && /沉淀候选（/.test(ascSrc))
+    }
+    // —— 报告进面板：只读渲染 + 复制全文（2026-09-13 补）——
+    // 之前面板只有「打开报告」（落到外部编辑器）：36KB 的报告要交给客户/回贴上游，得自己翻文件找
+    // TL;DR，或全选复制。这里钉三件事：点得开（RPC 真被调用）、**只渲染所选那一节**（不是把
+    // 36KB 全铺开）、能复制全文。
+    {
+      const reportMd = [
+        '# 定位报告：sess-1 启动失败',
+        '',
+        '## 1 TL;DR',
+        '',
+        '- 现象：profile_run 崩溃',
+        '- 先动什么：换更新的构建复跑',
+        '',
+        '## 3 依据链',
+        '',
+        '| # | 结论 | 证据 |',
+        '|---|---|---|',
+        '| V1 | 该构建已脱离分支 | gh api compare |',
+        '',
+        '## 6 下一步',
+        '',
+        '1. 复跑',
+      ].join('\n')
+      const reportCalls = []
+      const rpHost = (m, a) => {
+        if (m === 'ascend-read-report') {
+          reportCalls.push(a)
+          return { ok: true, path: 'traces/sess-1.report.md', text: reportMd, chars: reportMd.length, truncated: false }
+        }
+        if (m === 'ascend-traces-list') return { ok: true, sessions: [mkSession(1, { reportFile: 'sess-1.report.md' })] }
+        return diagHost(m, a)
+      }
+      hookIdx = 0; hookState = []; depState = []; effectQueue = []
+      const registrations = []
+      const ctx = { get: n => n === 'slots' ? { inject: (s, cb) => cb(), register: (o, c) => registrations.push({ o, c }) } : undefined, effect(fn) { const d = fn(); return typeof d === 'function' ? d : () => {} }, on() { return () => {} } }
+      const host = { call: (m, a) => Promise.resolve(rpHost(m, a)) }
+      const plugin = new Function('React', 'host', 'styles', 'return (function(){' + ascSrc + '})()')(React, host, { insert: () => () => {} })
+      plugin.apply(ctx)
+      // 只渲染诊断 tab：mock 的 useState 槽位是全局的，两个 tab 一起渲染会串槽
+      // （实测：MetricsView 拿到诊断 tab 的槽位 → state 为 null 直接崩）
+      const renderTree = () => { effectQueue = []; hookIdx = 0; const o = []; registrations.filter(r => r.o.id === 'ascend-diagnose').forEach(r => o.push(r.c({ sessionId: 'sess-1' }))); return o }
+      const textOf = t => { const o = []; flatten(t, o); return o.join('\n') }
+      const pump = async (rounds) => {
+        let tree = null
+        for (let i = 0; i < rounds; i++) {
+          tree = renderTree()
+          effectQueue.slice().forEach(f => f())
+          await new Promise(r => setImmediate(r))
+          await new Promise(r => setImmediate(r))
+        }
+        return tree
+      }
+      let tree = await pump(4)
+      let texts = textOf(tree)
+      expect('报告入口在收起态的卡片上就有（「看报告」）', /看报告/.test(texts), texts.slice(0, 200))
+      const hs = []
+      tree.forEach(t => collectHandlers(t, hs))
+      // 按钮的 flatten 文本会把 title 一并收集，所以按"以标签结尾"匹配（不按全等）
+      const btn = hs.filter(h => /看报告$/.test(h.text.trim()))[0]
+      expect('报告入口可点', !!btn)
+      if (btn) {
+        btn.fn({})
+        tree = await pump(5)
+        texts = textOf(tree)
+        expect('点击后真的取了报告（read-report 被调用 ' + reportCalls.length + ' 次）', reportCalls.length === 1)
+        expect('报告给章节跳转与「复制全文」', /TL;DR/.test(texts) && /复制全文/.test(texts))
+        expect('报告仍给「打开文件」（长报告要能落到外部）', /打开文件/.test(texts))
+        expect('报告默认停在 TL;DR 节（正文里先给结论）', /现象：profile_run 崩溃/.test(texts))
+        expect('只渲染所选那一节（依据链正文不上屏，避免把整份报告铺开）', !/该构建已脱离分支/.test(texts))
+        expect('报告是只读入口（没有写入报告的 RPC）', !/ascend-write-report/.test(ascSrc))
+      }
     }
     // 展开视图分两档：人读视图（默认）只给"问题查到哪了"，完整轨迹才是原始事件（回放/归因用）
     {
@@ -1803,15 +2008,15 @@ _MS._run_no_pipe = no_fallback`)
       expect('ev-panel：代码里无「fs 缺失就整插件 return」', !/if \(fs === undefined\) return/.test(codeOf(evSrc)))
     }
 
-    // ② ascend-panel：fs 缺失时仍注册全部 RPC；依赖 fs 的六个给明确错误，不依赖的三个不受影响
+    // ② ascend-panel：fs 缺失时仍注册全部 RPC；依赖 fs 的七个给明确错误，不依赖的三个不受影响
     {
       const ascHostSrc = loadHost('dsh-plugins/ascend-panel/panel-host.js')
       const d = driveHost(ascHostSrc, NO_SVC)
       const needFsRpcs = ['ascend-traces-list', 'ascend-traces-detail', 'ascend-update-sedimented',
-        'ascend-metrics-load', 'ascend-kb-health', 'ascend-process-health']
+        'ascend-metrics-load', 'ascend-read-report', 'ascend-kb-health', 'ascend-process-health']
       const noFsRpcs = ['ascend-open-evidence', 'ascend-metrics-verdict', 'ascend-metrics-live']
-      expect('ascend-panel：fs 缺失时仍注册全部 9 个 RPC',
-        Object.keys(d.regs).length === 9, Object.keys(d.regs).join(','))
+      expect('ascend-panel：fs 缺失时仍注册全部 10 个 RPC',
+        Object.keys(d.regs).length === 10, Object.keys(d.regs).join(','))
       expect('ascend-panel：返回可用的 disposer', typeof d.disposer === 'function')
       for (const rpc of needFsRpcs) {
         const r = await d.regs[rpc]({})
@@ -1825,7 +2030,7 @@ _MS._run_no_pipe = no_fallback`)
           !(r && r.ok === false && /需要 fs 服务/.test(r.error)), String(r && r.error).slice(0, 110))
       }
       const guarded = (ascHostSrc.match(/if \(!fs\) return needFs\(\)/g) || []).length
-      expect('ascend-panel：恰好 6 个 handler 带 fs 守卫（放错位置即被这条抓住）', guarded === 6, 'guarded=' + guarded)
+      expect('ascend-panel：恰好 7 个 handler 带 fs 守卫（放错位置即被这条抓住）', guarded === 7, 'guarded=' + guarded)
       expect('ascend-panel：代码里无「fs 缺失就整插件 return」',
         !/if \(fs === undefined\) return/.test(codeOf(ascHostSrc)))
     }
