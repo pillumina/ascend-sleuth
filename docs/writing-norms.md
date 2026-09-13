@@ -107,7 +107,8 @@
   Get-ChildItem docs,skills -Recurse -File | Select-String "<关键短语>"
   ```
 
-  命中处应当是两处：本文件，以及 `skills/diagnose/references/report-template.md`。多一处、少一处都要查清。
+  命中处应当是**两个文件**：本文件与 `skills/diagnose/references/report-template.md`。
+  本文件里可能不止一条命中（§1 的条目本身，加上本节举的例子词），按文件数看即可；多一个文件或少一个文件都要查清。
   为什么不做成脚本：只有两份全文副本，漂移的后果是文字质量退化而不是确定性故障，且至今只发生过一次——
   按检查准入三条（机械可查 / 后果确定 / 复发 ≥2 次）不合格，不为它新增文件与名字。
 - **为什么要有这一篇**：本文件出现前，同一套条目在面板 README「文案规范」、`report-template.md` 第 4 节、
