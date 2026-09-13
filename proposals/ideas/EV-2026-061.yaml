@@ -6,7 +6,7 @@
 id: EV-2026-061
 layer: L2
 title: CLAUDE.md 常驻成本减半：把"只在某个动作发生时才要"的内容下沉到各自的权威处，只留约束与指路
-status: in_experiment
+status: validated
 authorization: review
 dimension: process
 supersedes: []
@@ -51,7 +51,8 @@ gate: >-
   常驻字符数再次明显上涨，或再次出现"同一信息在常驻文件与别处各写一份"时，按本卡口径重跑一次。
 risk: medium
 principle_refs: [2, 6, 9, 10, 11]
-actual_cost: null
+actual_cost: {tokens: 320000, source: estimate,
+              note: "本会话无 tokenMeter 读数，故为量级估计而非实测：约 4 次子代理对照运行（每次读 12K/22K 指令 + 仓库文件）加上父会话的编辑与验证工作。按仓库口径这类估值应视为审计毛刺，不是精确成本。"}
 decisions:
   - who: agent
     when: 2026-09-13
@@ -73,7 +74,7 @@ decisions:
       实测（同一量具）：22,214 → 11,981 字符（−46.1%），144 → 135 行。
   - who: agent
     when: 2026-09-13
-    type: decision
+    type: action
     conclusion: >-
       **第二批刻意未做，原因是权威缺位**：Case schema（2,063 字符）与 Reference layer（2,063 字符）两节
       合计 18.6%，但核验发现它们现在的权威就在 CLAUDE.md 本身——`references/README.md` 里没有聚类规则
@@ -157,6 +158,31 @@ decisions:
       硬发现（某侧漏做）才有强信息量；本次两侧皆过，属弱证据。
       产物按用户要求**不归档**，故本卡读数无法从仓库复核；要复核就按本段记录的步骤重跑
       （评分逻辑：Q1 数九条与附加项命中并取差异集，Q3 用 `yaml.safe_load` 校验结构）。
+  - who: agent
+    when: 2026-09-13
+    type: decision
+    conclusion: >-
+      **采纳（validated）**。依据分两半，强度不同、分开说：
+      ①**预测的主效果是确定性验证过的**：`measure` 命令实跑 exit 0，常驻字符数 22,214 → 12,034（−45.8%），
+      这与本卡 hypothesis 写的"降幅 ≥40%"一致，且命令可原样复现。
+      ②**"没有行为退化"是弱证据**：隔离版对照在两问（提交前门禁、最小合法 trace）与一问（批量导入流程）上
+      得到覆盖集合等价（差异集为空），但每臂 n=1、单模型、agent 自读文本；两侧皆过只能说明"没看到退化"。
+      ③**验证过程本身产出过硬发现**：逐条可达性复核查出两处真实退化（提交前门禁被改弱、platform 口径丢失）
+      并当场修回——这类"验证抓到东西"比"验证全绿"更能说明 eval 有效。
+      按 pipeline §7「即时判定类（skill/流程面）合入前 eval 通过即 validated」，本卡属该类，故在 PR 合入前
+      即置终态；PR 呈现的即是已验证改动。
+      **保留的未完成项（不因 validated 而消失）**：Case schema 与 Reference layer 两节（约 19%）未压缩，
+      前置是给它们建权威处；本卡只覆盖已验证的第一批。
+      **同时记录一处本卡自己的瑕疵**：我把"第二批刻意未做"那条的范围判定写成了 `type: decision`，
+      于是 `verify_proposals` 的"已记 action 且 eval 但无 decision"规则被**表面满足**（存在 decision 类型），
+      而卡其实没有终态判断。已把它改回 `type: action`，终态判断由本条承担。可机械判的缺口因此浮现：
+      **规则只看 `decision` 类型是否存在，不看状态是否推进**——"in_experiment 且含 type: decision"这种自相矛盾
+      的卡不会被拦。**实测复发面：存量 `EV-2026-057` 与 `EV-2026-060` 同为 in_experiment 却带 `type: decision`，
+      加上本卡本次共 3 次**（本卡初稿此处写"复发仅 1 次"，是只看自己不查全库的错述，已更正）。
+      因此按检查准入三条：机械可查 ✓、后果是审计链假绿 ✓、复发 ≥2 ✓——**三条全满足，够格进 CI**。
+      本卡不顺手改 CI：改机制要先产卡，且那是另一件事。已向用户报告并建议单独产卡加这条一致性检查
+      （`in_experiment` 卡出现 `type: decision` 即报，或改成"含 decision 但状态未推进即报"）。
+      存量两卡的 `decisions` 是只追加档案，按纪律不回头改写。
       指路处存在性逐项核对通过：`scripts/rehearse_evolve_loop.py`、`docs/eval.md`、`docs/git-workflow.md`、
       `skills/diagnose/references/diagnosis-trace.md`、`references/README.md`、README 的 skill 名单节（2 处命中）。
       闸门：`build_docs_index.py --check`、`verify_proposals.py --check` 绿。
