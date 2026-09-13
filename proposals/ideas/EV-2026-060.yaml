@@ -106,3 +106,25 @@ decisions:
       docs-index 这个 CI 保证不漏登记），还是就地扩 `dsh-plugins/README.md`（省一次登记，但它自称
       "面板共通约定"，装不下 EV 卡与 case 词条）。定后动作：三处改指路 + 新权威文档 + 登 `_manifest.yaml`
       + 重跑 `build_docs_index.py` + 跑 kb-checks 九条。在定之前不改动既有规范文本。
+  - who: agent
+    when: 2026-09-13
+    type: decision
+    conclusion: >-
+      用户定方向：规范落 `docs/`；之后每类给人读或审阅的文本都要符合它（以准确严谨为前提）；并逐面按该场景
+      自己的约束确认"可以共用还是要定制"。据此把卡的目标定稿为"`docs/` 单一权威 + 各面只写定制条款"，
+      判定口径采纳权威文档 §4 的三问：能否共用取决于"读者手上有什么上下文"（有关则该面定制），
+      红线是不得以好读为由删掉事实、编号、命令或数字。
+  - who: agent
+    when: 2026-09-13
+    type: action
+    conclusion: >-
+      落地：新增 `docs/writing-norms.md`（共用条目十五条 + 必须保留的四类原值 + 十个面的共用/定制表 +
+      新面接入三问 + 可硬化性判断），登记进 `docs/_manifest.yaml` 并重跑 `build_docs_index.py`
+      （README 20 条文档登记，`--check` 绿）；三处拷贝改为指路加定制条款——`dsh-plugins/README.md`
+      （面板四条：内部标识符不上屏、命令路径原样、判据文案是数据、改文案同步改断言）、
+      `report-template.md` 第 4 节（报告三条 + 写作当场的最小内联集）、`diagnosis-trace.md`「行文口径」
+      （trace 特有：读者没有会话上下文，字段要能独立读懂）。
+      有意保留一处重复：进 agent 上下文的面留最小内联集，并声明"两处不一致时以 `docs/writing-norms.md` 为准"——
+      理由与边界写在权威文档 §6（skill 必须自包含，只给指路会让规范在执行时读不到）。
+      核验命令：`verify_proposals.py --check`、`build_docs_index.py --check`、`report_lint.py`、
+      skills 锚点卫生（ADR 号/日期/卡号）。

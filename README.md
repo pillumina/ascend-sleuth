@@ -235,6 +235,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 - [design-principles.md](docs/design-principles.md) — 十一条规范性条文——一切设计、实现、修复与演进的依据
 - [design-theory.md](docs/design-theory.md) — 四公理 → 公式 → 原则的完整推导链（原则的生成处）
+- [writing-norms.md](docs/writing-norms.md) — 人读/审阅文本的行文规范（唯一权威）：共用条目、必须保留的原值、各面的共用与定制判定、哪些能硬化
 
 **演进机制（改机制本身才读；日常不必读）**
 *你要改演进/评测/编排机制本身时——日常只读 docs/evolution.md 一篇，论证层在 docs/mechanism/*

@@ -46,6 +46,9 @@ docs:
   - path: docs/design-theory.md
     layer: spec
     purpose: 四公理 → 公式 → 原则的完整推导链（原则的生成处）
+  - path: docs/writing-norms.md
+    layer: spec
+    purpose: 人读/审阅文本的行文规范（唯一权威）：共用条目、必须保留的原值、各面的共用与定制判定、哪些能硬化
   - path: docs/evolution.md
     layer: mechanism
     purpose: "**演进机制入口**：机制地图、权威归属、周度 runbook——日常只读这一篇"
