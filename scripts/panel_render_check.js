@@ -1732,6 +1732,44 @@ _MS._run_no_pipe = no_fallback`)
     expect('trace 块写法：parseEvidence 也吃对象形态（块写法给的是映射，不是字符串）',
       (() => { const ev = parser.parseEvidence(bt[0] && bt[0].evidence); return !!(ev && Array.isArray(ev.files) && ev.files.length === 1 && ev.missing === '缺 CANN 版本') })(),
       JSON.stringify(parser.parseEvidence(bt[0] && bt[0].evidence)))
+
+    // —— 定位结论的落点（2026-09-13）——
+    // 为什么要测：人读视图会收起 report/resume/feedback/attribution 四类记录维护动作，
+    // 而真实 trace 的末条**常常是** report/feedback——于是"结论在哪"不能用"文件里最后一个事件"算，
+    // 必须取"人读视图的可见末条"。判错的表现是：卡片通篇没有落点（读者读完不知道定在哪），
+    // 或把报告生成当结论。这条判据在 host 里，纯函数可验，故按逻辑测而不是只断言字符串。
+    {
+      const fromC = hostSrc.indexOf('const HOST_PROC_ACTIONS')
+      const toC = hostSrc.indexOf('const tool = harness.defineTool')
+      expect('结论文案块可抽出（HOST_PROC_ACTIONS → defineTool 区块存在）', fromC > 0 && toC > fromC)
+      const hostMod = new Function(hostSrc.slice(fromC, toC) + '\nreturn { HOST_PROC_ACTIONS: HOST_PROC_ACTIONS, traceDetail: traceDetail };')()
+      expect('host 侧记录维护类动作与 client 同值（report/resume/feedback/attribution）',
+        JSON.stringify(hostMod.HOST_PROC_ACTIONS) === JSON.stringify({ report: true, resume: true, feedback: true, attribution: true }),
+        JSON.stringify(hostMod.HOST_PROC_ACTIONS))
+      // 只取结论判定那一段（traceDetail 要 fs 才能跑端到端，这里取纯逻辑）
+      const hv = hostSrc.indexOf('const conclusionIndex = (function () {')
+      const he = hostSrc.indexOf('})()', hv)
+      const conclusionOf = new Function('trace', 'HOST_PROC_ACTIONS', hostSrc.slice(hv, he + 4) + '\nreturn conclusionIndex;')
+      const T = arr => arr.map((a, i) => ({ step: 1, action: a, output: 'x' + i }))
+      expect('结论落点：显式 conclusion: true 认得出',
+        conclusionOf([{ step: 1, action: 'miss', output: 'a' }, { step: 2, action: 'hit', conclusion: true, output: 'b' }], hostMod.HOST_PROC_ACTIONS) === 1)
+      expect('结论落点：末条是 report 时取它前面的 hit（真实 trace 的常见形态：hit → report → feedback）',
+        conclusionOf(T(['triage', 'miss', 'hit', 'report', 'feedback']), hostMod.HOST_PROC_ACTIONS) === 2)
+      expect('结论落点：前面出现过的 hit 不算，只有可见末条算',
+        conclusionOf(T(['hit', 'miss', 'report']), hostMod.HOST_PROC_ACTIONS) === -1)
+      expect('结论落点：末条是 report 且没有 hit → -1（不把报告生成当结论）',
+        conclusionOf(T(['triage', 'source_analysis', 'report']), hostMod.HOST_PROC_ACTIONS) === -1)
+      expect('结论落点：空 trace → -1（不崩）', conclusionOf([], hostMod.HOST_PROC_ACTIONS) === -1)
+      // 结构断言：结论块在**轨迹之后**（读者的落点在结尾），且人读视图不重复渲染该步
+      expect('结论块排在轨迹之后（卡片以结论收尾，不是开头）',
+        /定位结论[\s\S]*\}\)\(\),\s*\n\s*\/\/ —— 定位结论落底 —— \/\//.test(ascSrc))
+      expect('人读视图从轨迹里去掉结论那条（同一段不读两遍），完整轨迹保留',
+        /const timeline = \(!fullTrace && shownIdx\.at >= 0\)/.test(ascSrc))
+      expect('结论按对象身份定位（不混用过滤前后下标）',
+        /shown\.indexOf\(conclusionStep\)/.test(ascSrc) && /steps\.list\.indexOf\(conclusionStep\)/.test(ascSrc))
+      expect('没有结论时给一行说明（读者能分辨"还没收尾"与"这单没有结论"）',
+        /本单还没有定位结论/.test(ascSrc))
+    }
   }
 
   // —— 指令区形态（2026-09-12 改版）：按钮横排 + 卡片内不复读提示 ——
