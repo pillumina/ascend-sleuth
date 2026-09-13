@@ -112,7 +112,8 @@ decisions:
       **对照验证（用户批准执行）**：两臂同模型、同一组三问，唯一变量是常驻指令文件——A 臂 `origin/main` 的
       CLAUDE.md（22214 字符，含逐条列出的"提交前必跑九条"），B 臂本分支（12034 字符，改为指向
       `.github/workflows/kb-checks.yml`）。变量隔离已先验证：两臂 `skills/` 逐文件一致（各 17 个），
-      差异仅 CLAUDE.md 与本卡。判据机械可查，产物归档在 `traces/evidence/<session>/ab-claude-md/`。
+      差异仅 CLAUDE.md 与本卡。判据机械可查。**产物不归档**（用户要求不留临时件污染工作区）——因此本卡的读数
+      无法从仓库里直接复核，只能按下面记录的步骤重跑；这是如实标注的复现成本，不是"已验证"。
       结果：①**Q1 提交前命令清单——两臂覆盖集合完全相同（各 14/14 项，A 独有 0、B 独有 0）**，
       九条 `--check`、`pr-template`、两个 skill grep、`triage-tree` 语法都在；两臂都写明 rehearse 脚本
       "不能替代逐条 --check"（即本轮刚修回的那条口径生效）。B 写出 19 行、A 写出 73 行（含分节散文），
@@ -130,6 +131,32 @@ decisions:
       （它引用的两句都只存在于自己版本，其中一句正是新版已删的"提交前必跑九条"原句），所以更可能是②，
       但不能证明。**若要把 A 臂做成有效对照**：把 A 臂指令文本内联进提示、并显式声明忽略 harness 注入，
       或在不共享工作区的进程里跑。本卡按"已做的部分"记，不把它当作等价性证据。
+  - who: agent
+    when: 2026-09-13
+    type: eval
+    conclusion: >-
+      **隔离版对照重跑（用户要求，两臂方法对称）**：指令文本改放中性文件名 `PROJECT-INSTRUCTIONS.txt`；
+      两臂共用同一个 worktree（`origin/main`），且**该树里删掉了 `CLAUDE.md` 与 `AGENTS.md`**；
+      提示里显式要求忽略 harness 注入；自证追加硬判据（**字符数** + "提交前必跑"那条的逐字引用）。
+      自证两臂全中：A 报 **22214**、引用旧版九条原句；B 报 **12034**、引用新版指向 `kb-checks.yml` 的句子
+      （B 还自行指出按 GBK 误解码会得 13281、属解码错误）。
+      **A 臂主动报告"harness 注入了 AGENTS.md/CLAUDE.md，按要求已忽略"——这解释了上一版 A 臂的疑点**：
+      注入确实存在；上一版没要求忽略、且仓库树里就放着我改动后的文件，于是被混用。
+      机械评分（同一脚本，判据不含主观项）：**Q1 九条命中两臂均 9/9**；附加项（`verify_pr_body`、`rehearse`、
+      `triage-tree` 语法、两条 skills grep、`knowledge_intake`）**两臂同集合，差异集为空**（各 16 项）。
+      篇幅：A 3831 字符 / 79 行，B 2080 字符 / 19 行。Q3：两臂 YAML 均可解析、均含 user 事件与链接，
+      **B 的顶层字段（19）比 A（7）更完整**。Q2：两臂同一链路（`issue-ingest` → `to-postmortem` → groom），
+      gh 前置、`postmortems/inbox/` 落点、`ingest-state.json` 串行纪律齐备。
+      **结论（方法对称后）**：在"改 case 后的提交前门禁 / 批量导入流程 / 最小合法 trace"这三件事上，
+      两臂**覆盖集合完全等价**，未发现新指令导致的退化；B 以约一半的常驻字符换到同等覆盖。
+      **唯一实质差异（记录，不判优劣）**：A 把九条复述为"必跑"；B 把清单**重新分档**（必然相关 / 只在对应目录
+      变更时才可能红 / 可选且不替代）。可能机制：指向权威文件的版本邀请 agent **解读并分档**，枚举版邀请
+      **逐字执行**。分档在"只改 case"场景下判断正确（metrics 与卡类校验不会因它变红），但引入了"低估必跑项"
+      的小概率。若日后要收紧，可在那条常驻指令里补一句"九条一律跑，不要按改动面省略"。
+      **仍然成立的限制**：每臂 n=1、单模型、agent 自读文本而非 harness 原生注入（虽已显式要求忽略注入）。
+      硬发现（某侧漏做）才有强信息量；本次两侧皆过，属弱证据。
+      产物按用户要求**不归档**，故本卡读数无法从仓库复核；要复核就按本段记录的步骤重跑
+      （评分逻辑：Q1 数九条与附加项命中并取差异集，Q3 用 `yaml.safe_load` 校验结构）。
       指路处存在性逐项核对通过：`scripts/rehearse_evolve_loop.py`、`docs/eval.md`、`docs/git-workflow.md`、
       `skills/diagnose/references/diagnosis-trace.md`、`references/README.md`、README 的 skill 名单节（2 处命中）。
       闸门：`build_docs_index.py --check`、`verify_proposals.py --check` 绿。
