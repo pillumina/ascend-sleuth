@@ -236,6 +236,34 @@ return {
               return doc.feedback_pending ? String(doc.feedback_pending) : null
             })(),
             feedback: doc.feedback && typeof doc.feedback === 'object' ? String(doc.feedback.outcome || '') : (doc.feedback ? String(doc.feedback) : null),
+            // 反馈轴的**分型**：`feedback.case` 有两种取值——真实 case id，或占位串
+            // `pending-investigation`（词表在 `diagnosis_state.yaml.example` 里明确允许它表示
+            // "没命中 case、只给了建议"）。占位串**不是** case id：读成后者会让面板说
+            // "结果待回报：pending-investigation"（读起来像有个 fix 等验证），也会让
+            // `resume-diagnosis` 去回写一个不存在的 case 的 confidence。所以这里把两种分开：
+            //   'case'    = 给了可应用 fix、等回报（feedback 轴承载结果）
+            //   'no-case' = 没命中 case，等的是**现场补材料**（结果记在 status 与 summary 里）
+            feedbackKind: (function () {
+              const fb = doc.feedback
+              const out = (fb && typeof fb === 'object') ? String(fb.outcome || '') : (typeof fb === 'string' ? fb.trim() : '')
+              if (out !== 'pending') return null
+              const cs = (fb && typeof fb === 'object' && fb.case) ? String(fb.case) : ''
+              return (cs && cs !== 'pending-investigation') ? 'case' : 'no-case'
+            })(),
+            feedbackCase: (function () {
+              const fb = doc.feedback
+              const cs = (fb && typeof fb === 'object' && fb.case) ? String(fb.case) : ''
+              return (cs && cs !== 'pending-investigation') ? cs : null
+            })(),
+            // "在等什么"：无命中单等的不是 fix verdict，而是材料。取**最近一条带 `evidence.missing`
+            // 的事件**（那是"还缺什么"的最新陈述），退到顶层 `last_action`。
+            waitingFor: (function () {
+              for (let i = trace.length - 1; i >= 0; i--) {
+                const ev = trace[i] && trace[i].evidence
+                if (ev && ev.missing) return String(ev.missing).replace(/\s+/g, ' ').trim()
+              }
+              return doc.last_action ? String(doc.last_action).replace(/\s+/g, ' ').trim() : null
+            })(),
             userSteps: Number(userSteps) || 0,
             agentSteps: Number(agentSteps) || 0,
             lastAction: lastAction,

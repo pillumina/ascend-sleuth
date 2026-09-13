@@ -156,7 +156,7 @@
 | 指标 tab · 存量体检 | 知识库健康（case 总数/低置信/category 分布 + reference 草稿/过期/type）+ 流程闭环（沉淀漏斗/续接/参考参与） |
 | 指标 tab · 趋势与快照 | 本期 vs 上期差分（只列动了的）+ timeline 期卡（live 置顶、默认展开**最新两期**、小样本/不可解读标注）+ 实时计算 |
 | 指标 tab · 数据源三态 | timeline **读不到** / **解析不出期次** / 正常，三种结局分开说：中间那一种是"结构与解析器不符"，明确写"这不是没有数据"，并给复现命令 |
-| 学习环提示 | 反馈未回报警示 + 回报指令生成（复制→对话触发 feedback 动作） |
+| 学习环提示 | 反馈债**按 `feedback.case` 的取值分两种**：真实 case id → 「结果待回报：<case>」+ 回报指令；占位串 `pending-investigation`（没命中 case，只给了建议）→ 「等现场补材料：<等什么>」并归入「在查」——占位串不是 case id，读成 case 会把它报成"有个 fix 等验证" |
 | 不可解读标记 | 分母为 0 的指标（误诊率/归因比）显示「不可解读」徽标而非 `0/N`；期卡头报该期有几项不可解读 |
 
 ## 回归闸门
@@ -180,6 +180,9 @@
 - **报告进面板**：点「看报告」真的取报告（`ascend-read-report` 被调用）、默认停在 TL;DR 节、
   只渲染所选那一节（不把整份报告铺开）、给「复制全文」与「打开文件」、无写入报告的 RPC
 - **期卡数据文案无字面星号**：notes/title/source 是数据，显示前经 `plainNote` 去标记
+- **反馈轴分型**：占位串单显示「等现场补材料：<等什么>」、归「在查」、不显示「结果待回报」；
+  只有真实 case 单才显示「结果待回报：<case>」；读取端（面板）与写入端（`diagnose` 的
+  `case` 取值规则）、追问端（`resume-diagnosis` 的两分支）三条一起钉
 - 契约：client 每个 RPC 都有 host 声明、host 没有 client 不用的 RPC；
   host 侧不再有 `byNamespace`、不再内联 `30` 做判断、确实走 `metrics_health.py`
 - **三态**：用 `scripts/fixtures/make_broken_metrics_root.py` 造两个"判据不可评估"的临时 root
@@ -198,6 +201,23 @@
 
 ## 版本
 
+- 2026-09-13 · 反馈轴分型（`feedback.case` 的两种取值分开处理）。`feedback.case` 有两种合法取值
+  （`diagnosis_state.yaml.example`：命中的 case id **或** 占位串 `pending-investigation`），而
+  读取端只判了"非空"，于是占位串被当成 case id：
+  ①面板把没命中 case 的单显示成「结果待回报：pending-investigation」——读起来像"有个 fix 等验证"，
+  而实际等的是**现场材料**；
+  ②`resume-diagnosis` 会把占位串念给用户听（"上次 pending-investigation 的 fix 应用后解决了吗"），
+  并要求回写一个不存在的 case 的 confidence（结算脚本只会 warn-and-skip）；
+  ③卡片上的「已解决」在无命中分支里明写"不写 feedback、只标 status"，于是一次结案后出现
+  "状态已 resolved、反馈轴仍挂 pending"，两轴互相矛盾且没有任何东西会让它们一致。
+  改法：host 出 `feedbackKind`（`case` / `no-case`）、`feedbackCase`（真实 id 或 null）与
+  `waitingFor`（最近一条 `evidence.missing`，退到 `last_action`）；面板按分型说话——真实 case
+  才是"结果待回报"，占位串是"等现场补材料：<等什么>"并归入「在查」那一轴；无命中单结案时清掉
+  遗留的 `feedback.outcome: pending`。`resume-diagnosis` 与 `diagnosis-procedure` 的写入/追问
+  规则同步（未命中时 `case` 填占位串，且它不是 case id）。
+  **实测（真实 traces）**：两单都是 `feedbackKind: no-case`，`waitingFor` 分别给出
+  "缺现场材料：①issue 评论区…②plog 完整首报错…③启动脚本/生效的 HCCL_* 全量 env…" 与
+  "缺现场命令输出：npu-smi 之外的 SOC 取值…"——不是编的，取自各自的 `evidence.missing`。
 - 2026-09-13 · 数据源三态与报告进面板。三处缺陷 + 一处新能力：
   ①**期次解析器与真实文件结构不符**。`parseTimeline` 把四种缩进层级写死成 2/4/6/8 空格，而
   `metrics/timeline.yaml` 由 `build_timeline.py` 生成（PyYAML 默认把 `- period:` 顶格写在

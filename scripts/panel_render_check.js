@@ -1440,6 +1440,54 @@ _MS._run_no_pipe = no_fallback`)
       expect('不再出现旧的合并措辞（"个诊断还没结束"/"个结果还没回报"）',
         !/个诊断还没结束/.test(dg3.text) && !/个结果还没回报/.test(dg3.text))
     }
+    // —— 反馈轴分型（2026-09-13 补）——
+    // `feedback.case` 允许写占位串 `pending-investigation`（表示**没命中 case、只给了建议**，
+    // 定义见 diagnosis_state.yaml.example）。占位串**不是 case id**：读成后者会让面板说
+    // 「结果待回报：pending-investigation」（像有个 fix 等验证），把一个还在多轮里的单报成债；
+    // 也会让 resume 去回写一个不存在的 case 的 confidence。这一节钉住"两种取值分开处理"。
+    {
+      const mix = [
+        mkSession(1, { status: 'in_progress', feedbackKind: 'no-case', feedbackPending: 'pending-investigation',
+          waitingFor: '缺镜像摘要与容器内 HCCL_* 全量值（现场回填中）' }),
+        mkSession(2, { status: 'in_progress', feedbackKind: 'case', feedbackPending: 'VLLM-ASC-1234',
+          feedbackCase: 'VLLM-ASC-1234', waitingFor: null }),
+      ]
+      const dg4 = await renderAsync(ascSrc, { sessionId: 'sess-1' },
+        (m, a) => (m === 'ascend-traces-list' ? { ok: true, sessions: mix } : diagHost(m, a)))
+      expect('分型后仍各占一桶（1 在查 / 1 等回报）',
+        /1 个在查/.test(dg4.text) && /1 个等回报/.test(dg4.text), dg4.text.slice(0, 220))
+      expect('首屏说明点出"在查含等现场补材料"',
+        /在查=诊断没结论（含等现场补材料）/.test(dg4.text))
+      // 单卡断言分两次渲染：一次只放占位串单、一次只放真实 case 单——两张卡同屏时
+      // "结果待回报"本来就该出现（那是另一张卡的），全局否定断言会假失败
+      const onlyNoCase = await renderAsync(ascSrc, { sessionId: 'sess-1' },
+        (m, a) => (m === 'ascend-traces-list' ? { ok: true, sessions: [mix[0]] } : diagHost(m, a)))
+      const onlyCase = await renderAsync(ascSrc, { sessionId: 'sess-1' },
+        (m, a) => (m === 'ascend-traces-list' ? { ok: true, sessions: [mix[1]] } : diagHost(m, a)))
+      expect('占位串单显示「等现场补材料」并说出等什么',
+        /等现场补材料/.test(onlyNoCase.text) && /缺镜像摘要/.test(onlyNoCase.text), onlyNoCase.text.slice(0, 200))
+      expect('占位串单不显示「结果待回报」（占位串不是 case id）', !/结果待回报/.test(onlyNoCase.text))
+      expect('占位串单只算「在查」，不算「等回报」',
+        /1 个在查/.test(onlyNoCase.text) && !/个等回报/.test(onlyNoCase.text))
+      expect('真实 case 单才显示「结果待回报：<case>」', /结果待回报：VLLM-ASC-1234/.test(onlyCase.text))
+      expect('真实 case 单只算「等回报」', /1 个等回报/.test(onlyCase.text) && !/个在查/.test(onlyCase.text))
+      const hostSrc2 = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+      expect('host 把占位串判成 no-case（不当 case id）',
+        /cs !== 'pending-investigation'/.test(hostSrc2) && /'no-case'/.test(hostSrc2))
+      expect('host 给出「在等什么」（最近一条 evidence.missing，退到 last_action）',
+        /waitingFor: \(function \(\)/.test(hostSrc2) && /ev\.missing/.test(hostSrc2) && /doc\.last_action/.test(hostSrc2))
+      expect('无命中单结案时清掉遗留的 feedback.outcome: pending（不出现两轴打架）',
+        /feedback\.outcome: pending（无命中单留下的占位），一并清掉/.test(ascSrc))
+      // 读取端与写入端一起钉：只改面板会在下一批 trace 上重新长出同一个混用
+      const resumeMd = fs.readFileSync(path.join(repo, 'skills/resume-diagnosis/SKILL.md'), 'utf8')
+      expect('resume 按 feedback.case 的两种取值分支',
+        /真实 case id/.test(resumeMd) && /占位串 `pending-investigation`/.test(resumeMd))
+      expect('占位串分支不回写 confidence，且明确不是终态',
+        /不要求回写 confidence/.test(resumeMd) && /不是终态/.test(resumeMd))
+      const procMd = fs.readFileSync(path.join(repo, 'skills/diagnose/references/diagnosis-procedure.md'), 'utf8')
+      expect('diagnose 写明未命中时的 case 填占位串（不是 case id）',
+        /未命中但给了建议 → 占位串/.test(procMd))
+    }
     // 沉淀候选**展开即列出明细**（只给一个数字读者无从判断"为啥是 3 条"）
     {
       expect('detail 数据把沉淀候选带回客户端', /sedimentCandidates: r && r\.sedimentCandidates/.test(ascSrc))

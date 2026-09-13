@@ -444,6 +444,16 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       )
     }
 
+    // 反馈轴的分型（host 的 `feedbackKind`）：'case' = 给了可应用 fix、等回报；'no-case' =
+    // 没命中 case，等的是现场补材料。"等现场补材料"不是债，它属于"在查"那一轴——把它算进
+    // "等回报"会让一个还在多轮里的会话看起来像"有个 fix 等验证"。
+    // 缺该字段的老 host 输出按旧口径退化（有 feedbackPending 就当等回报），避免静默丢一桶。
+    function fbKindOf(s) {
+      if (!s) return null
+      if (s.feedbackKind !== undefined) return s.feedbackKind
+      return s.feedbackPending ? 'case' : null
+    }
+
     function SessionCard(props) {
       const s = props.session
       const ownerSessionId = props.sessionId
@@ -663,8 +673,12 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       } else {
         closeCmds.push({
           key: 'close-fix', label: '已解决', tone: 'success',
+          // 无命中单的结果**不走反馈轴**（没有 case 可回写 confidence）：结果记在 status 与 summary。
+          // 同时要把遗留的 `feedback.outcome: pending` 清掉——否则"状态已结、反馈轴仍挂 pending"，
+          // 面板与 resume 都会把它读成一个还在等的回报（实测这两轴就是这么打架的）。
           cmd: '闭环诊断 ' + s.sessionId + '：问题已解决。未命中知识库 case，因此不写 feedback；'
-            + '标 status: resolved，并在 summary 里补一句最终怎么解决的。',
+            + '标 status: resolved，并在 summary 里补一句最终怎么解决的；'
+            + '若 trace 里还留着 feedback.outcome: pending（无命中单留下的占位），一并清掉。',
         })
       }
       closeCmds.push({
@@ -781,9 +795,17 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           ) : React.createElement('div', { style: { marginTop: 5, color: T.text2, fontSize: 12.5 } }, '未定位到知识库 case'),
           React.createElement('div', { style: { color: T.text2, fontSize: 13.5, marginTop: 4 } },
             '轨迹: ' + s.userSteps + ' 用户输入 / ' + s.agentSteps + ' agent 步骤'),
-          s.feedbackPending ? React.createElement('div', { style: { color: T.warn, fontSize: 13.5, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 } },
+          // 两条轴的**话术分开**：有可应用 fix 才叫"结果待回报"；没命中 case 的单等的是材料，
+          // 而"等什么"trace 里已经写着（最近一条 `evidence.missing`，退到 `last_action`）——
+          // 直接把它显示出来，读者不用展开轨迹去猜。这一类用中性色：它不是债。
+          fbKindOf(s) === 'case' ? React.createElement('div', { style: { color: T.warn, fontSize: 13.5, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 } },
             React.createElement(Dot, { color: T.warn }),
-            '结果待回报：' + s.feedbackPending + '（下方可生成回报指令）') : null,
+            '结果待回报：' + (s.feedbackCase || s.activeCase || '命中 case') + '（下方可生成回报指令）') : null,
+          fbKindOf(s) === 'no-case' ? React.createElement('div', { style: { color: T.text2, fontSize: 13.5, marginTop: 4, display: 'flex', alignItems: 'baseline', gap: 6 } },
+            React.createElement('span', { style: { flexShrink: 0 } }, '等现场补材料：'),
+            React.createElement('span', { title: s.waitingFor || '', style: { color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 } },
+              s.waitingFor ? (s.waitingFor.length > 60 ? s.waitingFor.slice(0, 60) + '…' : s.waitingFor) : '本次诊断缺的材料（见轨迹里的「缺」标记）'),
+          ) : null,
         ),
         // 状态指令区：续接（仅活跃会话） + 闭环四种结局；形态见上方 actionArea 注释
         actionArea,
@@ -817,8 +839,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       //   该闭环 = 回报已 resolved 但 status 还停在 in_progress —— 验证过了、状态没更新 → 标闭环
       // 三者之和 = 面板徽章的"待跟进"数（不再有重复计入的项；三条条件互斥，见下面各自的谓词）。
       const isClosedButOpen = s => s.status === 'in_progress' && s.feedback === 'resolved'
-      const nLooking = sessions.filter(s => s.status === 'in_progress' && !s.feedbackPending && !isClosedButOpen(s)).length
-      const nAwaiting = sessions.filter(s => s.feedbackPending).length
+      const nLooking = sessions.filter(s => s.status === 'in_progress' && fbKindOf(s) !== 'case' && !isClosedButOpen(s)).length
+      const nAwaiting = sessions.filter(s => fbKindOf(s) === 'case').length
       const nClose = sessions.filter(isClosedButOpen).length
       const nInKb = sessions.filter(s => s.activeCase && s.activeCaseInKb).length
       const nNew = sessions.filter(s => s.activeCase && !s.activeCaseInKb).length
@@ -880,7 +902,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           nAwaiting ? React.createElement('span', null, nAwaiting + ' 个等回报') : null,
           nAwaiting && nClose ? React.createElement('span', { style: { color: T.text2 } }, '·') : null,
           nClose ? React.createElement('span', null, nClose + ' 个该闭环') : null,
-          React.createElement('span', { style: { color: T.text2, marginLeft: 'auto', fontSize: 12.5 } }, '在查=诊断没结论；等回报=结论已给、fix 没验证｜卡片里点按钮生成指令 → 复制 → 粘到对话执行'),
+          React.createElement('span', { style: { color: T.text2, marginLeft: 'auto', fontSize: 12.5 } }, '在查=诊断没结论（含等现场补材料）；等回报=结论已给、fix 没验证｜卡片里点按钮生成指令 → 复制 → 粘到对话执行'),
         ) : null,
         // 工具栏（筛选 + 搜索）**吸顶**：会话一多就得往下滚，工具不该滚走
         React.createElement('div', { style: { position: 'sticky', top: 0, zIndex: 2, paddingTop: 2, paddingBottom: 8, marginBottom: 4, background: T.bg, backgroundImage: 'var(--surf)' } },
