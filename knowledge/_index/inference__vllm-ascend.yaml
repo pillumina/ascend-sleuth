@@ -833,8 +833,8 @@ namespaces:
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-15086.yaml
       hash: 65ee9aaeeb24
     - id: VLLM-ASC-15087
-      title: PD 分离 prefill 节点静默冻结：v0.23.0 新引入的 _disable_preemption_on_prefill_node()（patch_balance_schedule.py:79，guard=vllm_version_is('0.23.0')
-        && kv_role=='kv_producer'）在…
+      title: 'PD 分离 prefill 节点静默冻结：抢占禁用开关 _disable_preemption_on_prefill_node()（由 PR #14233 引入并只在含它的构建里存在；patch_balance_schedule.py:79，guard=vllm_version_is(''0.23.0'')
+        && kv_r…'
       category: interrupt
       tags:
       - pd-separation
@@ -843,14 +843,14 @@ namespaces:
       - scheduling
       - balance-scheduling
       - kv-pool
-      compat: vllm-ascend >=0.23.0,<0.23.1
+      compat: vllm-ascend 0.23.0
       confidence:
         score: 0.65
       symptoms:
       - PD 分离（1P1D/多机，P 节点内存池化 AscendStoreConnector + load_async=true）多轮对话压测，约 8 分钟后全量请求 prefill hang
         不恢复，P/D 全部卡死
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-15087.yaml
-      hash: 51623eaec303
+      hash: 5d0ed58a05f7
     - id: VLLM-ASC-1991
       title: 'Qwen3-Embedding-4B（pooling 模型）在 300I Duo/310P3 上无法启动：模型加载报 ValueError: no module or parameter
         named ''layers'' in CustomQwen3ForCausalLM（或 worker init 报 ACL SetPr…'

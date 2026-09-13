@@ -5,7 +5,7 @@
 # 按 file 字段定位做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-09-10    case 总数：158
+# 生成日期：2026-09-13    case 总数：158
 #   容量(common): performance=15/30, precision=6/30
 #   容量(inference/sglang): interrupt=1/30
 #   容量(inference/vllm-ascend): interrupt=85/30, performance=8/30, precision=21/30
@@ -1233,8 +1233,8 @@ namespaces:
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-15086.yaml
       hash: 65ee9aaeeb24
     - id: VLLM-ASC-15087
-      title: PD 分离 prefill 节点静默冻结：v0.23.0 新引入的 _disable_preemption_on_prefill_node()（patch_balance_schedule.py:79，guard=vllm_version_is('0.23.0')
-        && kv_role=='kv_producer'）在…
+      title: 'PD 分离 prefill 节点静默冻结：抢占禁用开关 _disable_preemption_on_prefill_node()（由 PR #14233 引入并只在含它的构建里存在；patch_balance_schedule.py:79，guard=vllm_version_is(''0.23.0'')
+        && kv_r…'
       category: interrupt
       tags:
       - pd-separation
@@ -1243,14 +1243,14 @@ namespaces:
       - scheduling
       - balance-scheduling
       - kv-pool
-      compat: vllm-ascend >=0.23.0,<0.23.1
+      compat: vllm-ascend 0.23.0
       confidence:
         score: 0.65
       symptoms:
       - PD 分离（1P1D/多机，P 节点内存池化 AscendStoreConnector + load_async=true）多轮对话压测，约 8 分钟后全量请求 prefill hang
         不恢复，P/D 全部卡死
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-15087.yaml
-      hash: 51623eaec303
+      hash: 5d0ed58a05f7
     - id: VLLM-ASC-1991
       title: 'Qwen3-Embedding-4B（pooling 模型）在 300I Duo/310P3 上无法启动：模型加载报 ValueError: no module or parameter
         named ''layers'' in CustomQwen3ForCausalLM（或 worker init 报 ACL SetPr…'
