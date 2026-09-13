@@ -279,12 +279,26 @@ return {
         } catch (e) {
         }
       }
+      // 排序：**按诊断开始时间倒序**（最新的在最上），`updated_at` 只作同刻并列时的次序。
+      // 为什么不用 `updated_at` 当主键：它是 agent 写 trace 时手填的字段，写错或漏刷新都会
+      // 直接改列表次序（实测：某次 session 的 created_at 最新，却因 updated_at 被填成较早的
+      // 时刻而排在中间，读者按"最新在最上"找不到它）；`created_at` 建 session 时写一次、
+      // 之后按约定不改，是唯一能当"何时开始诊断"的键。活跃度改由卡片上的状态徽章与
+      // `updated_at` 字段本身承载，不再借排序表达。
+      // 两者都缺时退到文件名——文件名以日期开头，字典序仍近似时间序。
+      const ts = (v) => {
+        const t = v ? new Date(v).getTime() : NaN
+        return Number.isNaN(t) ? null : t
+      }
       out.sort((a, b) => {
-        const ta = a.updatedAt ? new Date(a.updatedAt).getTime() : null
-        const tb = b.updatedAt ? new Date(b.updatedAt).getTime() : null
-        if (ta !== null && tb !== null) return tb - ta
-        if (ta !== null) return -1
-        if (tb !== null) return 1
+        const ca = ts(a.createdAt)
+        const cb = ts(b.createdAt)
+        if (ca !== null && cb !== null && ca !== cb) return cb - ca
+        const ua = ts(a.updatedAt)
+        const ub = ts(b.updatedAt)
+        if (ua !== null && ub !== null && ua !== ub) return ub - ua
+        if (ua !== null && ub === null) return -1
+        if (ub !== null && ua === null) return 1
         return a.file < b.file ? 1 : -1
       })
       return { ok: true, sessions: out }
