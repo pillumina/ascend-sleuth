@@ -102,7 +102,7 @@ python3 scripts/issue_filter.py --cached /tmp/issues-<repo>.json \
 
 评估通过的 → 走 `/skill:to-postmortem` 逐条提炼（症状/根因/fix/命名空间建议），产出 case 草稿 + postmortem 进 `postmortems/inbox/`。批量时逐条执行，不合并多 issue 为一条 case。
 
-**产出时同步 pre-triage**（省去提交时重复判断）：用 `knowledge/_index.yaml` 按 symptoms/tags 定位现有 case 候选，全量读比对 root_cause 与 fix，给 `new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 证据（简要），写入 draft 头注释（如 `# pre-triage: variant_of VLLM-ASC-XXXX（同算子×同网络，增量=维护者确认升级修复）`）。groom 复核该标签而非重判。
+**产出时同步 pre-triage**（省去提交时重复判断）：用**命中 (namespace × category) 的索引分片** `knowledge/_index/<ns>__<category>.yaml`（category 未定回退 `<ns>.yaml`；已知 namespace 时不读全库总表）按 symptoms/tags 定位现有 case 候选，再全量读候选本体比对 root_cause 与 fix，给 `new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 证据（简要），写入 draft 头注释（如 `# pre-triage: variant_of VLLM-ASC-XXXX（同算子×同网络，增量=维护者确认升级修复）`）。groom 复核该标签而非重判。
 
 ### 5. 标记已导入（幂等闭环）
 

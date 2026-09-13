@@ -67,15 +67,10 @@ disable-model-invocation: true
 | 常驻 vs 按需 | SKILL.md token vs references token | 常驻部分是否已超预算（常驻每轮都付） |
 
 ```bash
-python3 - <<'PY'
-import re, pathlib, glob
-MODAL = re.compile(r'必须|禁止|不得|一律|始终|绝不')
-SEG   = re.compile(r'^\d+\.\s+\*\*', re.M)
-for p in ['skills/<name>/SKILL.md'] + sorted(glob.glob('skills/<name>/references/*.md')):
-    t = pathlib.Path(p).read_text(encoding='utf-8')
-    print(f"{p:52s} tok≈{round(len(t)/2.6):5d}  强制词={len(MODAL.findall(t)):3d}  输出段={len(SEG.findall(t)):3d}")
-PY
+python3 scripts/audit_skill_cost.py --skill <name> --dups   # 常驻/按需/重复面 + 强制词密度与输出段数
 ```
+
+前四项（强制词密度、输出必填段数）由该脚本按同一把尺算，第五项（常驻 vs 按需）也在它的输出里——**不要另抄一份内联片段**：同一把尺、可对照趋势，是这项审计能"与上一次对照"的前提。判据/步骤比与分支/步骤比要看 flow 语义，仍由人读（脚本不判）。
 
 判读：**不设合格线**。要找的是"某处突然变多/变密"，并逐条回答两个问题——
 ①这条规则是为了**安全**（误诊代价不对称）还是为了**可观测**（能演进）？两者都答不上来 = 为了整齐，该砍。

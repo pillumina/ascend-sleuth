@@ -89,7 +89,7 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
      - `investigation`：本地深度排查/源码分析定位（`source_ref` 佐证），无上游确认；
      - `engineer-report`：工程师现场回报验证过（最强现场证据，rare）。
      `detail` 记 issue/PR 号、文档路径或来源路径。无明确外部验证 → 不填 verification（如实：仅调查级）
-   - 标 `novelty: new_pattern | variant | covered`（**pre-triage，对比现有 case 判定**）：用 `knowledge/_index.yaml` 按 symptoms/tags 定位候选，全量读比对 root_cause/fix——无重叠 → `new_pattern`；同主题不同形态 → `variant`（注明 `variant_of:<case-id>`）；已有 case 覆盖 → `covered`（注明 `covered_by:<case-id>`）。**给出证据**（如"同算子×同网络，增量=升级修复"），groom 复核该标签而非重判
+   - 标 `novelty: new_pattern | variant | covered`（**pre-triage，对比现有 case 判定**）：用**命中 (namespace × category) 的索引分片** `knowledge/_index/<ns>__<category>.yaml`（category 未定回退 `<ns>.yaml`；已知 namespace 时不读全库总表）按 symptoms/tags 定位候选，再全量读候选 case 本体比对 root_cause/fix——无重叠 → `new_pattern`；同主题不同形态 → `variant`（注明 `variant_of:<case-id>`）；已有 case 覆盖 → `covered`（注明 `covered_by:<case-id>`）。**给出证据**（如"同算子×同网络，增量=升级修复"），groom 复核该标签而非重判
    - 标 `category: interrupt | precision | performance` **三选一，无 other**（按症状判断——interrupt 是 hang/crash/OOM/启动失败、precision 是 NaN/数值发散/输出错误/乱码、performance 是吞吐/延迟）。分不进去 → 由人确认归入最接近的分类，不设 other
    - 标 `tags`（sub-type，如 `oom`、`kv-cache`、`precision.convergence`）
    - 根因定位到源码时（如 vllm-ascend 某文件某行），标 `source_ref: {repo, ref, file, line}`——`ref` 用触发版本对应的 commit/tag，`line` 可选。源码不落库，只记代码指针（诊断按需取该版本片段）

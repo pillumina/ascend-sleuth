@@ -1,0 +1,101 @@
+# ============================================================
+# Idea 卡（proposals/ideas/）——schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）
+# 校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+
+id: EV-2026-064
+layer: L2
+title: 端到端演练在 Windows 上的两处红：一条断言钉住了已废弃的载体形态；exec-log 写锁缺 Windows 原语（静默丢记录）
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-14
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      在 worktree 上跑 `python3 scripts/rehearse_evolve_loop.py` 得两处红，逐一定位后都不是"被测对象坏了"，
+      而是"量具坏了"：①`panel_render_check.js` 断言「共通约定含文案规范八条」钉的是面板 README 里
+      **恰好 8 行 `| N |` 编号表**——而文案规范后来合并进唯一权威处（共用条目归 `docs/writing-norms.md`，
+      面板 README 只留 4 条定制条款），该形态被刻意废弃，断言于是**在未改动的 main 上恒红**
+      （实测：`git stash` 前后同一失败项）。②演练的共享 exec-log 段实测「10 条并发写入
+      全部落盘（1 → 2）」——`exec_log_path.log_lock` 只实现了 flock，注释写着"无 fcntl 的平台
+      （Windows）退化为不加锁"，而 Windows 是本仓明确支持的开发平台（`docs/windows-setup.md`），
+      等价于在 Windows 上**静默丢记录**（一个只在该平台复现的数据丢失）。
+      两处都是"闸门没在说真话"这一类，与上一张卡同一病灶。
+    trajectory:
+      - "scripts/panel_render_check.js（断言：共通约定含文案规范八条）"
+      - "dsh-plugins/README.md（规范并入唯一权威处后的现状：4 条定制条款 + 指针）"
+      - "docs/writing-norms.md（15 个共用条目的唯一权威处）"
+      - "scripts/exec_log_path.py（log_lock：只有 flock 分支）"
+      - "scripts/rehearse_evolve_loop.py（E9：临时 git 仓库 + 两个 worktree，10 条并发写入）"
+      - "CLAUDE.md（写侧持 flock 的纪律：无锁实测 16 次写入只剩 3 条）"
+hypothesis: >-
+  把两条红改成各自的不变量而不是各自的旧形态——面板断言改钉"共用条目归唯一权威处且该权威处非空 +
+  面板自己的定制条款成条"；`log_lock` 补上 Windows 的等价原语（`msvcrt.locking`，非阻塞 + 退避轮询），
+  只有两平台原语都缺时才如实退化——则演练在 Windows 上也能给出真信号，且 exec-log
+  "写侧持锁"这条纪律不再是一个只在 Linux 成立的承诺。
+predicted_effect:
+  metric: 端到端演练在 Windows（git 在 PATH）上的通过项数
+  from: "139/141：失败项为「10 条并发写入全部落盘（1 → 2）且 seq 唯一」「聚合视图给出收尾次数与无信号次数」"
+  to: "141/141（与面板断言修复后的新增 3 条一并计）"
+  measure:
+    command: "python3 scripts/rehearse_evolve_loop.py"
+    expect_exit: 0
+    expect_stdout: "通过"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前：`node scripts/panel_render_check.js` 在**未改动的 main** 上 exit 1，唯一失败项
+    「共通约定含文案规范八条 :: 0」；演练 E9 段「10 条并发写入全部落盘（1 → 2）」与
+    「聚合视图给出收尾次数与无信号次数」两项红（后者的期望计数依赖前者的 10 条，属同一根因的下游）。
+  success_criteria: >-
+    ① measure 命令 exit 0；②`panel_render_check.js` 的文案一节 4 条断言全绿，
+    且新断言钉的是"权威处存在且非空""定制条款成条"，不是旧的 8 行表格形态；
+    ③锁原语隔离实测：两个进程串行拿锁（第二个 waited 0.79s 后拿到），10 条并发写入全部落盘且 seq 唯一；
+    ④无 git 环境仍退化为检出内路径（E9 的隔离性断言不变）；⑤逐条 CI 检查与 `verify_proposals --check` 仍绿。
+  rollback: >-
+    两个文件、单个提交内可 revert：`scripts/panel_render_check.js`（断言文本）与
+    `scripts/exec_log_path.py`（锁原语）。锁原语改动不影响 POSIX 分支（仍然走 flock），无数据迁移。
+gate: "演练/闸门出现红项时，先判它钉的是不变量还是当年的载体形态；只在不变量上改被测对象"
+risk: low
+principle_refs: [2, 6, 8, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: >-
+    本轮无独立读数：本卡所属会话的账单已整笔记在 EV-2026-063（同一次会话、同一批改动）。
+    按仓库口径"无法单独量化时写 0 并说明口径"——这个 0 表示"未单独量化"，不表示零成本。
+decisions:
+  - who: agent
+    when: '2026-09-14'
+    type: proposal
+    conclusion: >-
+      识别：两处红都不是"被测对象"坏，而是量具坏——一条断言钉了已被刻意废弃的载体形态（文案规范八条
+      并入唯一权威处），一处能力只在 POSIX 上成立却写成通用承诺（写侧持锁）。按"改不变量、不改形态"
+      处理，且优先修根因（补 Windows 锁原语）而不是给断言加平台豁免。
+  - who: agent
+    when: '2026-09-14'
+    type: action
+    conclusion: >-
+      执行：①`panel_render_check.js` 把「共通约定含文案规范八条」替换为三条不变量断言
+      （`docs/writing-norms.md` 存在且被面板约定指向 / 该权威处条目表 ≥10 行 / 面板定制条款 ≥3 条），
+      并在注释里写明旧断言为何恒红；②`exec_log_path.log_lock` 增加 `msvcrt.locking` 分支
+      （非阻塞 + 20ms 退避轮询、10s 上限，超时才如实 yield False），POSIX 分支与退化语义不变。
+  - who: agent
+    when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      验证：`node scripts/panel_render_check.js` → 全部通过（exit 0），文案一节 4 条断言可见；
+      锁原语两进程隔离实测 `acquired=True waited=0.00s` / `acquired=True waited=0.79s`（真互斥）；
+      演练复跑见卡内 measure。**另记一处观察**：Windows 上并发写此前"没报错但丢数据"，
+      也就是说"Windows 支持"这件事在 exec-log 这条链上此前只做到了能跑，没做到不丢——
+      这条纪律的强度如实上修为"两平台都真持锁"。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      **采纳（validated）**：两条都按根因修。刻意不做的事：不给并发断言加"Windows 跳过"豁免
+      （那会把一个真实的数据丢失变成平台差异，掩盖缺陷）；不改 CLAUDE.md 的"写侧持锁"措辞
+      （原文没写平台限定，修完才与它相符）。
