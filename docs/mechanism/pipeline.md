@@ -211,6 +211,8 @@ hands-off 需要用户明确要求，防止"自动 = 失控"。它有几条硬�
 
 ## 7. Idea 卡 schema（v2）与状态机
 
+**卡是写给人审的文本**：`title` / `hypothesis` / `decisions[].conclusion` 按 `docs/writing-norms.md` 写（可选论证层）；本面的定制条款见该文件 §3 的「EV 卡」一行——判据与结论要让评审不开全文即可判定。
+
 ```yaml
 id: EV-2026-XXX                 # 示例占位（真实卡号由 ev_proposal --new 分配）
 layer: L2                        # L1 | L2 | L3（本卡示例：流程层）

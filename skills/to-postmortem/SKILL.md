@@ -112,6 +112,8 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 
 **生成后明确告诉用户存哪了**——报出具体路径（如 `postmortems/inbox/custA-ep-hang.md`）和 YAML 草稿位置，说明"周审后转正"，别让工程师去找自己的产出。
 
+**写草稿时的行文**：postmortem 与 case 词条都是给人读、给人审的文本，按 `docs/writing-norms.md` 写（可选论证层，不影响本 skill 执行）；本面的定制条款见该文件 §3 的「case / reference 词条」与「postmortem」两行——症状句要能直接当 grep 判据，`root_cause` / `fix` 只写结论与依据，时间线只放可观察事实。
+
 **回写来源 trace 的沉淀状态（诊断闭环）**：若本次沉淀来源是一个诊断 trace（输入提到 `traces/<session_id>.yaml`，或用户从诊断面板"沉淀此案例"触发），产出草稿落 inbox 后**回写该 trace 的 `sedimented.state: submitted`**（动作发生时写，零推断）——诊断面板据此显示"已提交沉淀待审"，不再重复提示沉淀。转正（`knowledge`/`archived`）由用户在面板/对话确认时更新，本 skill 不写。
 
 ## 收尾 evolve-check（伴随演进评估，默认执行）
