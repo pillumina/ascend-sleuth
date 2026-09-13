@@ -15,6 +15,8 @@
 | `scripts/metrics_health.py` | **闭环检测器**：读 timeline + gates，判新鲜度 / 越界 / 可解读性；`--check` 三态（0 判据全评过且无越界 / 1 有违反 / 2 有判据未被评估）；`--json` 是诊断面板的数据契约 | 随机制 |
 | `scripts/trace_metrics.py` | 诊断侧指标（markdown 概览 + `--emit-yaml` 骨架 + `--emit-yaml-only` 供组装） | 随机制 |
 | `scripts/verify_metrics.py` | 校验聚合结构（period 唯一 / kind 合法 / live 期号命名 / 比例字段合法 / live 字段白名单），CI 强制 | 随机制 |
+| `scripts/session_cost.mjs` | **真实账单（提供方 usage）**：解析 DSH 会话日志（多帧 zstd + JSONL），按 (turn, step) 去重后给出未缓存输入 / 缓存读取 / 缓存写入 / 输出与逐轮汇总；`--session <id>` / `--file` / `--all`；exec-log 的 `--cost-source measured` 就该填它读出来的值 | 需要 measured 口径时 |
+| `scripts/audit_skill_cost.py` | **skill 上下文成本审计**：常驻面（CLAUDE.md/AGENTS.md/被注入的 description）、按需面（正文 + 本地 references）、重复面（同一行出现在 ≥2 skill）、强制词密度与输出段数；skill-review 的 A 静态审计调它 | skill 改动前后 |
 
 **为什么源与生成物分开**（2026-09-13，起因是提问"两个 PR 都生成了这个文件、同名怎么办"）：
 `timeline.yaml` 原先**既是源、又是所有人 append 的目标**，而它是一个**列表文件**——任意两人各加一期

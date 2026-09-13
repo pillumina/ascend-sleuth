@@ -1,0 +1,123 @@
+# ============================================================
+# Idea 卡（proposals/ideas/）——schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）
+# 校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+
+id: EV-2026-063
+layer: L2
+title: 度量诚实性批：修好恒为 0 的容量健康指标（假绿）、统一索引口径指令面、并给上下文成本补上确定性量具与真实账单入口
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-14
+source_signals:
+  - signal: token_audit
+    evidence: >-
+      做"skill 使用与 token 优化点"审计时，实测三件事同时成立：①`scripts/capacity_health.py` 的
+      候选溢出率恒为 0——它从 `knowledge/_index.yaml` 的**索引条目**里取 `quickly_check`（行瘦身后
+      索引已不含该字段），字段名也写成 `command`（schema 实际是 `command_template`），case 文件又是
+      `cases:` 容器；三处叠加使 44 个输入在三个格子上全部算 0 候选，脚本仍打印「0% 溢出 ✅ 健康」。
+      ②"阶段一读哪个索引"在指令面上有三个互相冲突的写法：`diagnose/SKILL.md` 与生成物头注说读
+      **(ns×category) 最小分片**，`CLAUDE.md`（每会话注入）说读 `<ns>.yaml`，
+      而 `diagnosis-procedure.md`（SKILL 指定的步骤 3 展开文件）与 4 个内容 skill 说读**全库总表**
+      `knowledge/_index.yaml`（116,662 B ≈ 34.3K token；行宽自述"~70 token/条"实测 217–221）。
+      ③"改动之后 skill 常驻/正文/重复面变多重"这件事没有确定性量具——只在 `skill-review` 里有一段
+      内联 heredoc，每次重算、无法对照趋势；而 skill 相关流程的成本数字全部是 `source: estimate`。
+    trajectory:
+      - "scripts/capacity_health.py（取数路径与健康判定）"
+      - "knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10097.yaml（quickly_check 实际 schema）"
+      - "skills/diagnose/references/diagnosis-procedure.md:47（步骤 3 展开说的读法）"
+      - "CLAUDE.md（Tier 2 行的读法）与 4 个内容 skill 的预分诊段"
+      - "docs/mechanism/run.md §4（exec-log 的 cost 字段允许 measured）"
+hypothesis: >-
+  把度量面按"能算出数、且算不动时不许说健康"重做——容量健康指标改为从 case 本体按 id 取数并对
+  整格全 0 报"不可解读"；索引口径在指令面统一为 (ns×category) 最小分片（category 未定回退
+  `<ns>.yaml`）；新增长期可复用的两个量具（skill 上下文成本审计、DSH 会话真实账单解析）——
+  则"要不要拆格子"这类决策重新建立在可读的数上，且此后每次 skill 改动都有前后可比的成本读数。
+predicted_effect:
+  metric: 容量健康指标可解读性（候选数是否非零）+ 索引口径指令一致性
+  from: "恒 0 候选 → 打印「0% 溢出 ✅ 健康」（假绿）；指令面 6 处把全库总表当阶段一/预分诊读取面"
+  to: "interrupt 格子实测 19/44 溢出 = 43%（med 5 / max 14，可解读）；指令面统一为最小分片 + 回退口径"
+  measure:
+    command: >-
+      python -c "import subprocess,sys,json; r=subprocess.run([sys.executable,'scripts/capacity_health.py','--json'],capture_output=True,text=True); d=json.loads(r.stdout); c=d['cells']['interrupt']; ok=c['readable'] and c['max']>0; print('capacity-readable', c['med'], c['max']); sys.exit(0 if ok else 1)"
+    expect_exit: 0
+    expect_stdout: "capacity-readable"
+validation:
+  method: scan_review
+  baseline: >-
+    改前：`capacity_health.py` 输出 `interrupt: 0/44 溢出 → 率 0% ✅ 健康 (候选数 min=0 med=0 max=0)`
+    （同形于 precision / performance）；`grep -rn "knowledge/_index.yaml" skills/ CLAUDE.md` 命中
+    6 处"读全库总表"式指令；`skills/knowledge-groom/SKILL.md:121` 点名的 `build_references_index.py`
+    与 `references/_index.yaml` 均不存在（真实生成物是 `_summary-index.yaml` 与 `_procedure-index.yaml`）。
+  success_criteria: >-
+    ① measure 命令 exit 0；② `python3 scripts/capacity_health.py` 三格全部可解读
+    （interrupt 43% 越 20% 恶化阈，precision 2% / performance 0% 健康），且整格全 0 时打印"不可解读"
+    而非健康；③ `grep -rn "knowledge/_index.yaml" skills/ CLAUDE.md` 只剩重建索引、共享状态文件、
+    头注口径、以及"不要退化成读总表"的否定式引用；④ `python3 scripts/audit_skill_cost.py` 与
+    `node scripts/session_cost.mjs` 均 exit 0 并给出预期输出；⑤ 悬空脚本名 0 命中；
+    ⑥ 逐条 CI 检查全绿（索引新鲜度 / reference / metrics / proposal / docs-index / holdout / skill 自包含）。
+  rollback: >-
+    单个提交内：脚本改动 `git revert` 即可（无数据依赖，capacity_health 只读不写）；
+    指令面为纯文本改动；两个新脚本删除即回到原状。无 case / reference 内容变更，无索引重建需求。
+gate: "再出现「某个判据脚本恒为同一个数」时，先查取数字段与数据形态是否与生成物一致，再据此下结论"
+risk: low
+principle_refs: [2, 5, 8, 9, 10]
+actual_cost:
+  tokens: 20743246
+  source: measured
+  note: >-
+    口径 = 提供方 usage（assistant/message.usage），由本批新增的 scripts/session_cost.mjs 从 DSH
+    会话日志读取；BILLED = 未缓存输入 + 缓存读取 + 缓存写入 + 输出。该值是**整个会话**（含此前的
+    审计与讨论轮），不是本卡单独的改动成本；会话未结束时读数，故为下界。首次用 measured 口径回填的卡。
+    注意缓存读取占 99%——同一段上下文在后续每一步都要重付一遍，这是「加载量」之外必须被看见的一维。
+decisions:
+  - who: agent
+    when: '2026-09-14'
+    type: proposal
+    conclusion: >-
+      识别：三个病根属同一类——**度量面在说谎**（恒 0 的假绿）、**指令面在漂移**（同一动作三种读法）、
+      **成本面没有量具**（只能估算）。拆成三件独立可验证的事，同批做（都指向"先让数可信"），
+      刻意不掺入结构改动（格子拆分、阶段一读法改造）——那些要等数可信之后再判。
+  - who: agent
+    when: '2026-09-14'
+    type: action
+    conclusion: >-
+      执行：①`capacity_health.py` 改从 case 本体按 `id` 取数（兼容 `cases:` 容器），判定式取
+      `command_template` 的 grep 模式 + `expected` 的 `regex:` 断言，输入文本取 fixture 的
+      `symptoms` + `log_snippet`（后者此前从未被使用），并对"整格全 0 / 取不到 case 本体 / 判别式
+      恒真（含空分支）"分别报不可解读或告警；②`diagnosis-procedure.md` 步骤 3 拆正
+      （阶段一 = 最小分片筛 title/tags/symptoms 摘要；`quickly_check` 归阶段二）、`CLAUDE.md` Tier 2 行、
+      `to-postmortem`/`issue-ingest` 预分诊段、`knowledge-groom` 预分诊与 R7、`self-evolve` 容量信号源
+      统一口径；③新增 `scripts/audit_skill_cost.py`（常驻/按需/重复面 + 强制词密度与输出段数，
+      取代 skill-review 的内联 heredoc）与 `scripts/session_cost.mjs`（多帧 zstd 会话日志 →
+      提供方 usage 的真实账单），并在 `docs/metrics.md` 工具表登记。
+  - who: agent
+    when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      验证：measure 命令原样实跑 exit 0（`capacity-readable 5 14`）；改后 `capacity_health.py` 输出
+      `interrupt: 19/44 溢出 → 率 43% ⚠️ 恶化 (min=1 med=5 max=14；判别式 324 条)`，
+      `precision 2% / performance 0%` 健康；抽样核对最重的输入（14 候选）逐条命中理由合理——
+      其中暴露出知识库侧一处真缺陷：一条 case 的判别式写成 `sfa_cp\.py.*build_cp_metadata|`
+      （空分支 = 恒真），脚本现对该类给出告警（不改 case 内容，属后续独立改动）。
+      `audit_skill_cost.py` 实测常驻 22,284 B ≈ 6,554 tok（CLAUDE.md 17,518 + AGENTS.md 621 +
+      7 条被注入的 description 4,145）、按需正文合计 146,836 B、跨 skill 重复行 5 组 363 B；
+      `session_cost.mjs` 实测本会话 113 次计费步：未缓存输入 165,392 / 缓存读取 20,464,512 /
+      输出 113,342（推理 64,806），缓存读取占输入侧 99.2%。
+      **诚实边界**：①"指令面统一为最小分片"这一条的收益**未被观测到**——2 个真实诊断 trace 里
+      agent 本来就读了分片，本次改的是"指令不再教它读总表"（除哑弹），不是已发生的浪费；
+      ②格子的 43% 溢出是"每条 case 自己的判别式命中测试文本"的口径，与 agent 判候选不完全等价，
+      它证明的是**可读**、不是**准确**；③两把换算尺（bytes/3.4 与 len/2.6）本次未统一，
+      `audit_skill_cost.py` 只用前者并在输出里写明——统一属独立改动。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      **采纳（validated）**：三件都收——判据脚本恢复可读、指令面口径统一、成本量具落地。
+      格子拆分与阶段一"先 grep 后整读"两条**不在本批**：前者需要第二拆分轴的口径裁决
+      （硬上限强制拆分与"格子 >100 才启用第二轴"两条闸门口径冲突），后者会改变候选选择、
+      要跑检索门禁并做 A/B 同质量对照；两条都等这次的数可信之后再判。ADR 档案里的同一处
+      悬空脚本名（`build_references_index.py`）按"只追加档案、不追溯"处理，不回改，差异记在本卡。

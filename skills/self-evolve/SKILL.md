@@ -44,7 +44,7 @@ disable-model-invocation: true
 
 | 信号 | 数据源 | 候选动作 |
 |---|---|---|
-| 容量超 soft_cap / 健康指标恶化 | `knowledge/_index.yaml` 头注（build_index.py 生成） | L1 拆分评估卡（ev_proposal） |
+| 容量超 soft_cap / 健康指标恶化 | `scripts/metrics_health.py --json`（判据数值在 `metrics/gates.yaml`，容量越界清单不读全库总表） | L1 拆分评估卡（ev_proposal） |
 | 归因事件聚合浮出失败簇（反复执行错，按需聚合） | `scripts/component_tally.py` | L2 修订该组件所在 skill 步骤 / triage 分支 |
 | S2 校准集未测条目 / replay miss | `scripts/s2_replay.py --todo` | L1 补 case 卡（S2 佐证缺口） |
 | 指标漂移（命中率/回滚/token 趋势） | `metrics/timeline.yaml` + trace_metrics | 诊断式候选轮 |

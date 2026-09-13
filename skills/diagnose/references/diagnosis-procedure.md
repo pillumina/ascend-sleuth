@@ -44,11 +44,8 @@
 
 ## 步骤 3：两阶段加载 Tier 2
 
-**阶段一（索引）**：读 `knowledge/_index.yaml`（`scripts/build_index.py` 生成的结构化索引，已含每条 case 的 `id/title/symptoms/quickly_check/category/confidence` + `file` 定位，~70 token/条），取命中 namespace 的条目——两阶段加载由**结构**保证，不靠逐文件打开的自觉。索引缺失或 `build_index.py --check` 报过期 → 兜底：逐文件只读上述索引字段，并提醒重建索引。**筛候选时同步扫索引里的 `tags` 字段**（与 title/symptom 并查）：同族 case 常只靠 tag 表达（如 `balance-scheduling` / `patch-layer`），只按 title/symptom 词面 grep 会把"同文件族"整片漏掉（静默停滞类尤其如此——真实故障常是调度/控制循环层，而它的 tag 不在症状词面里）。用 `quickly_check` **对照已提供的信息**：
-- 先 primary（精确）
-- primary 不匹配 → 跑 fallback（更模糊）
-- primary 不匹配但 fallback 匹配 → 仍进阶段二，标 `low_confidence`
-- 都不匹配 → 跳过该 case
+**阶段一（索引）**：读**命中 (namespace × category) 的索引分片** `knowledge/_index/<ns>__<category>.yaml`（`scripts/build_index.py` 生成；category 未定 → 回退该 namespace 的分片 `<ns>.yaml`），用条目里的 `title` / `tags` / `symptoms` 首条摘要 / `confidence.score` 筛候选（≤5）。条目每条约 0.7KB（≈210 token），**这个分片就是本步的预算上限**——不要退化成读全库总表 `knowledge/_index.yaml`（它随库线性涨，且不增加本步需要的判别信息）。
+两阶段加载由**结构**保证，不靠逐文件打开的自觉：**索引条目里没有 `quickly_check`**（行已瘦身成 id/title/tags/symptoms 首条摘要/category/score + `file` 定位），判定式在 case 本体、到阶段二才读。索引缺失或 `build_index.py --check` 报过期 → 兜底：逐文件只读上述索引字段，并提醒重建索引。**筛候选时同步扫 `tags`**（与 title/symptom 并查）：同族 case 常只靠 tag 表达（如 `balance-scheduling` / `patch-layer`），只按 title/symptom 词面 grep 会把"同文件族"整片漏掉（静默停滞类尤其如此——真实故障常是调度/控制循环层，而它的 tag 不在症状词面里）。
 
 **空库提示（冷启动）**：若命中 namespace 为空（还没 case），**不要静默退化**——告诉用户“当前 `knowledge/<ns>/` 还没有验证过的 case，你可以：①继续深度排查（步骤 5）②诊断完跑 `/skill:to-postmortem` 沉淀成第一条 case ③转人工”。空库的体感不该是“啥也不会”。
 
@@ -59,7 +56,13 @@
 
 拿 interrupt 的 grep 思路建 precision case，匹配不上。
 
-**阶段二（全量）**：候选 ≤5 条，全量加载 body，按 `confidence.score` **降序**验证（最可靠的先试）。**多条候选时明示**：“匹配到 N 条，先验证最可能的 `<id>`（confidence `<score>`）”，工程师可说“跳过这条试下一条”。
+**阶段二（全量）**：候选 ≤5 条，全量加载 body，按 `confidence.score` **降序**验证（最可靠的先试）。**先跑候选的 `quickly_check` 对照已提供的信息**：
+- 先 primary（精确）
+- primary 不匹配 → 跑 fallback（更模糊）
+- primary 不匹配但 fallback 匹配 → 仍进验证，标 `low_confidence`
+- 都不匹配 → 跳过该 case（它不是候选）
+
+**多条候选时明示**：“匹配到 N 条，先验证最可能的 `<id>`（confidence `<score>`）”，工程师可说“跳过这条试下一条”。
 
 **阶段二.5：reference 辅助查询（「判断缺口」消费点）**——候选加载后、验证前，按需取先验知识辅助诊断（**只读 `status: active`**）。reference 的另两个消费点是**数据缺口**（步骤 1 的采集面，候选加载前）与**方法缺口**（候选全未命中后的流程加载，步骤 5）——三处都不参与候选路由/排序，路由与筛排只看 case：
 
