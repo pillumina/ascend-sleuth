@@ -34,7 +34,9 @@
 #   worktree 清理不能丢数据。所以共享件路径解析与写锁原语都收在本模块，不再各写一份
 #   （抄两份 = 口径漂移的经典来源；本模块的注释已经因为同一原因被引用过多次）。
 
+import os
 import subprocess
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -111,25 +113,58 @@ def resolve(root: Path, explicit: Path = None, local: bool = False):
 
 @contextmanager
 def log_lock(path: Path):
-    """共享运行件的跨进程写锁（flock）。yield True=已持锁 / False=本平台无 flock。
+    """共享运行件的跨进程写锁。yield True=已持锁 / False=本平台连降级原语都没有。
 
-    read-modify-write 无锁 = 后写覆盖先写（丢记录）或算出重复 seq。无 fcntl 的平台
-    （Windows）退化为不加锁：语义如实告知调用方，不假装有互斥。
+    read-modify-write 无锁 = 后写覆盖先写（丢记录）或算出重复 seq。原先只实现了 flock，
+    于是"无 fcntl 的平台（Windows）退化为不加锁"——而 Windows 是本仓明确支持的开发平台
+    （见 docs/windows-setup.md），等价于**在 Windows 上静默丢记录**：端到端演练实测
+    10 条并发写入只落 2 条（rehearse_evolve_loop 的共享 exec-log 段）。现在补上
+    Windows 的等价原语（msvcrt.locking），两平台都真持锁；都没有的罕见平台才如实
+    yield False（不假装有互斥）。
     两个共享件（exec-log / ev-measure-log）共用本原语。
     """
+    lock_path = path.with_suffix(path.suffix + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         import fcntl
     except ImportError:
+        fcntl = None
+    if fcntl is not None:
+        with open(lock_path, "a+") as fh:
+            fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+            try:
+                yield True
+            finally:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+        return
+    try:
+        import msvcrt
+    except ImportError:
         yield False
         return
-    lock_path = path.with_suffix(path.suffix + ".lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(lock_path, "a+") as fh:
-        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+    # msvcrt.locking 锁的是"从当前文件位置开始的 N 字节"，所以被锁文件必须先有那 1 字节。
+    # 用非阻塞 + 退避轮询而不是 LK_LOCK：后者在争用超时后直接抛异常，写侧拿不到锁就丢记录，
+    # 而"等一会儿"正是这里想要的语义。
+    with open(lock_path, "a+b") as fh:
+        if os.path.getsize(lock_path) == 0:
+            fh.write(b"\0")
+            fh.flush()
+        fh.seek(0)
+        acquired = False
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline:
+            try:
+                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+                acquired = True
+                break
+            except OSError:
+                time.sleep(0.02)
         try:
-            yield True
+            yield acquired
         finally:
-            fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            if acquired:
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
 
 
 def describe(path: Path, where: str) -> str:
