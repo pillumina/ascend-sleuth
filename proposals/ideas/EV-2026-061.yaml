@@ -1,0 +1,97 @@
+# ============================================================
+# Idea 卡（proposals/ideas/）——schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）
+# 校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+
+id: EV-2026-061
+layer: L2
+title: CLAUDE.md 常驻成本减半：把"只在某个动作发生时才要"的内容下沉到各自的权威处，只留约束与指路
+status: in_experiment
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-13
+source_signals:
+  - signal: human_review_feedback
+    evidence: >-
+      用户提问："CLAUDE.md 的上下文是不是必然会注入 agent 的上下文？如果内容很多，上下文就天然扩大了，
+      这符合 best practices 吗？是不是 CLAUDE.md 里只放必要的、其余渐进式披露？"——追问点是对的，
+      且实测证实：本文件每次会话整份注入（skills 只注入 name + description，是渐进披露）。
+      改前 22,071 字符 / 143 行 / 27,767 字节，其中 Skills 节（十个 skill 各一段详述）5,683 字符、占 25.7%，
+      而每个 skill 的 name + description 本来就由 harness 自动注入 → 同一信息两份常驻成本。
+    trajectory:
+      - "对话：CLAUDE.md 的常驻成本与渐进披露之问"
+      - "CLAUDE.md 改前实测（按 ## / ### 分桶统计字符数）"
+hypothesis: >-
+  把常驻指令里"只在某个动作发生时才需要"的内容下沉到该动作的权威处并留一行指路，常驻字符数降幅 ≥40%；
+  且被移出的每一条仍能从指路文件读到——即省下的是重复与错位，不是信息。
+predicted_effect:
+  metric: CLAUDE.md 常驻字符数
+  from: "22214 字符（改前实测；量具 = python len() 读 UTF-8 全文，含换行）"
+  to: "<13000 字符"
+  measure:
+    command: >-
+      python -c "import io,sys;n=len(io.open('CLAUDE.md',encoding='utf-8').read());print('chars',n);sys.exit(0 if n<=13000 else 1)"
+    expect_exit: 0
+    expect_stdout: "chars"
+    # 这条只证"常驻成本降下来了"，不证"agent 行为没变"——后者见 validation 第 ②③ 条
+validation:
+  method: metrics_compare
+  baseline: "改前 22214 字符 / 144 行 / 27,767 字节（量具同上；按 ## 与 ### 分桶的占比：Skills 25.7%、Key constraints 24.4%、Case schema 9.3%、Reference layer 9.3%、Multi-agent 5.7%、Eval 4.9%、Trace 4.3%）"
+  success_criteria: >-
+    ① measure 命令 exit 0（同量具实测 11,981 字符，22214 → 11981，降幅 46.1%）；
+    ② 逐条抽查被移出内容的可达性：skills 名单与分组 → README 的 skill 名单节（生成物）+ 各 SKILL.md 的
+    description；门禁分级与 holdout → `docs/eval.md`；worktree/exec-log/串行纪律 → `docs/git-workflow.md`；
+    trace schema 与证据落盘 → `skills/diagnose/references/diagnosis-trace.md`；CI 清单 → `scripts/rehearse_evolve_loop.py`；
+    ③ 未新增硬编码数字或名单（含删掉原文里的 "Ten skills"）；
+    ④ `build_docs_index.py --check`、`verify_proposals.py --check` 绿。
+  rollback: "git revert 单个提交即可；纯文本改动，无数据迁移、无脚本依赖"
+gate: >-
+  常驻字符数再次明显上涨，或再次出现"同一信息在常驻文件与别处各写一份"时，按本卡口径重跑一次。
+risk: medium
+principle_refs: [2, 6, 9, 10, 11]
+actual_cost: null
+decisions:
+  - who: agent
+    when: 2026-09-13
+    type: proposal
+    conclusion: >-
+      识别：常驻指令的成本与"这次用不用得上"无关，而本文件把大量按需内容写成常驻——最大的一块 Skills 节
+      还与 harness 自动注入的 skill 摘要重复计费。仓库里已有同构先例可循（把 diagnose 的 SKILL.md 瘦成
+      "可执行脊梁"、细节下沉 references 懒加载），论证同样是上下文预算。方案：按三问逐节判——
+      每次都要遵守吗？留；只在某个动作发生时要吗？移到那个动作的写点；别处已有权威吗？删掉只留指路。
+  - who: agent
+    when: 2026-09-13
+    type: action
+    conclusion: >-
+      分批执行，本批只动"别处确有权威"的四节：①Skills 节（5,683 字符）删详述，改为指向 README 的 skill 名单节
+      与各 SKILL.md 的 description（harness 自动注入），并删掉原文里自相矛盾的硬编码 "Ten skills"；
+      ②Eval 节压成三条要点 + 指向 `docs/eval.md`；③Multi-agent 节压成四条纪律 + 指向 `docs/git-workflow.md`；
+      ④Trace 节压成关键字段一行 + 指向 `skills/diagnose/references/diagnosis-trace.md`；
+      ⑤CI 九条清单改为指向 `rehearse_evolve_loop.py`；⑥新增一节说明两套传递机制（常驻 / 渐进披露）与判据。
+      实测（同一量具）：22,214 → 11,981 字符（−46.1%），144 → 135 行。
+  - who: agent
+    when: 2026-09-13
+    type: decision
+    conclusion: >-
+      **第二批刻意未做，原因是权威缺位**：Case schema（2,063 字符）与 Reference layer（2,063 字符）两节
+      合计 18.6%，但核验发现它们现在的权威就在 CLAUDE.md 本身——`references/README.md` 里没有聚类规则
+      （append-don't-create 零命中），也不存在 case schema 文档，`examples/sample-case.yaml` 只是样本不是规格。
+      所以删了是丢信息，不是搬家。下一步：先给这两块建权威处（case schema 落 `docs/` 或 to-postmortem 的
+      references；reference 聚类规则落 `references/README.md`），核验"逐条可读到"之后，再压缩 CLAUDE.md 对应节。
+      这条边界写进卡，避免下一步有人以为"没做完"而直接删。
+  - who: agent
+    when: 2026-09-13
+    type: eval
+    conclusion: >-
+      复现命令（卡里 measure 那条原样跑过）：`python -c "import io,sys;n=len(io.open('CLAUDE.md',encoding='utf-8').read());print('chars',n);sys.exit(0 if n<=13000 else 1)"`
+      → chars 11981、exit 0（改前 22214）。
+      **量具不一致的更正**：本卡初稿把两个量具的数字混用了——PowerShell 按行文本长度求和（不含换行）得 22,071 → 11,847，
+      而 measure 命令用 python `len()`（含换行）得 22,214 → 11,981，差值恰为一行的换行数。现全部统一为后者，
+      并写明量具。教训与"改前/改后必须同一把尺"同源：一卡之内混用两把尺，读者会以为其中一个是错的。
+      指路处存在性逐项核对通过：`scripts/rehearse_evolve_loop.py`、`docs/eval.md`、`docs/git-workflow.md`、
+      `skills/diagnose/references/diagnosis-trace.md`、`references/README.md`、README 的 skill 名单节（2 处命中）。
+      闸门：`build_docs_index.py --check`、`verify_proposals.py --check` 绿。
+      **诚实边界**：measure 证明的是常驻字符数下降，不证明"agent 行为未变"——后者需要一次 diagnose 演练或
+      `rehearse_evolve_loop.py` 全量复跑，本卡不声明已验证，留 `in_experiment`。
