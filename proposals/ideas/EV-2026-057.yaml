@@ -1,7 +1,7 @@
 id: EV-2026-057
 layer: L2                          # 流程与 skill（diagnose 产出面）
 title: 诊断定位报告（人读 md）——把 trace 投影成可深读、可复核、可教学的报告，并把沉淀建议结构化进 trace
-status: in_experiment
+status: validated
 authorization: review              # 改 diagnose 产出面（输出规范 + 模板），不改候选选择语义 → review
 dimension: process
 supersedes: []
@@ -50,7 +50,7 @@ gate:
   condition: 用户已对齐设计（位置 traces/ 下、agent 写、沉淀建议两侧都写、固定深度规格、mermaid 直出、报告≠postmortem）
 risk: low
 principle_refs: [5, 7, 8, 9, 10]   # 五建议与决定分离 / 七变更可逆 / 八可观测先于改进 / 九稀缺资源预算 / 十诚实退化
-actual_cost: null
+actual_cost: {tokens: 0, source: estimate, note: "产生本卡的那轮会话无 tokenMeter 读数；按仓库口径：无法量化时写 0 并说明口径——本值不代表零成本。"}
 decisions:
   - who: agent
     when: '2026-09-12'
@@ -161,3 +161,13 @@ decisions:
       （`ctx.shell` 在 Windows = PowerShell 5.1），避免后续面板代码再按 bash 直觉写。教训归类：**服务名不等于
       实现方言**，凡经 `ctx.shell` 执行的命令必须按方言安全写或用阶梯探测；这条同时适用于指标 tab 的
       `python scripts/...` 调用（那条恰好两方言都成立）。
+  - who: agent
+    when: '2026-09-13'
+    type: action
+    conclusion: >-
+      状态字段补记（不改任何历史条目）：本卡三轮的 decisions 均以 `type: decision` 给出结论——首轮明文
+      "采纳（validated）"，第二、三轮为"结论"，末条之后没有待办——而 `status` 一直停在 `in_experiment`，
+      属状态滞后，不是内容未完成。据此把 status 补成 `validated`，并补 `actual_cost`（按仓库口径：
+      无法量化时写 0 加 note 说明口径）。发现路径：核对另一张卡时注意到"in_experiment 却带 decision 类型"
+      这一形态，逐卡区分后确认本卡是真滞后（那张是中途判断被记成了 decision，形态不同）。
+      若作者本意是"还有下一轮"，把 status 改回 `in_experiment` 即可，历史条目仍然完整。
