@@ -69,6 +69,24 @@
 | 指标注记 | `metrics/timeline.d/*.yaml`、exec-log | 看面板趋势 | 读数带分母；趋势不可读时明说不可读，不画等高柱充数 | `verify_metrics.py`、`build_timeline.py --check` |
 | skill 与 docs 正文 | `skills/**`、`docs/**` | agent 载入 + 人读 | skill 正文的行为规则要内联（自包含）；不能出现 ADR 号、日期、卡号这类外部锚点 | `skill-self-contained`、`docs-index` |
 
+### 写点在哪（改这些文件时才会读到本规范）
+
+判定做完不等于接入完成：规范要在**写的那一刻**能被读到，否则等于没有。下表是本仓各面的写点；
+改动其中任一处时，先看 §1 与本节对应那一行的定制条款。
+
+| 面 | 写点（已指路） |
+|---|---|
+| 定位报告 | `skills/diagnose/references/report-template.md` |
+| trace 人读字段 | `skills/diagnose/references/diagnosis-trace.md`（共用条目指向同目录的报告模板，再指向本文件） |
+| 诊断对话输出 | `skills/diagnose/SKILL.md` 的「命中时的输出格式」一节 |
+| case 词条 / postmortem | `skills/to-postmortem/SKILL.md` 的「产出落点」一节 |
+| reference 词条 | `skills/to-reference/SKILL.md` 的「产出词条」一节 |
+| EV 卡 | `docs/mechanism/pipeline.md` 的「Idea 卡 schema」一节 |
+| 面板文案 | `dsh-plugins/README.md` 的「面板文案的定制条款」一节 |
+| PR body | `.github/PULL_REQUEST_TEMPLATE/methodology.md` 的「人读性自查」一节 |
+| 指标注记 | **暂无写点**：注记直接写在 `metrics/timeline.d/*.yaml` 里，没有模板可挂。接入需先给它一个模板或 schema 约束，或把定制条款写进该目录的注释头 |
+| skill 与 docs 正文 | 无需指路：写 skill 的人就在写这个面 |
+
 ## 4 新面接入时怎么判：共用还是定制
 
 新出现一类给人看的文本时，按顺序问三个问题：

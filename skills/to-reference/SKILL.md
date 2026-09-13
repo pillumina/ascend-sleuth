@@ -166,6 +166,8 @@ grill 是**人审的第一道过滤**——确认过程中用户放弃/否认的
 
 按 reference schema 产出完整 YAML（字段定义见 `references/_types.yaml` 与 `references/README.md`；基础元信息 + content 全部填齐，CI 强校验——词条必须 schema 完整，这是与 to-postmortem 草稿可残缺的差异）：
 
+**写词条时的行文**：reference 词条是给人检索、给 agent 载入的文本，按 `docs/writing-norms.md` 写（可选论证层，不影响本 skill 执行）；本面的定制条款见该文件 §3 的「case / reference 词条」一行——症状句要能直接当 grep 判据（保留报错原文与算子名），事实与结论直接写，不写推理过程。
+
 ```yaml
 id: <kebab-case-slug>              # 唯一；如 plog-error-507903、a3-hccl-buffsize-check
 type: <registered-type>            # 见 references/_types.yaml
