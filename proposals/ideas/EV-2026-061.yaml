@@ -105,6 +105,31 @@ decisions:
       exec-log flock 仍留在常驻面（`docs/git-workflow.md` 里没有这句，所以不能删）。
       方法论教训（比本条改动更值钱）：**"删冗余"与"搬信息"必须逐条核对事实，不能按节看目的地文件是否存在**。
       前一版验收只核了"目的地文件存在"，因此漏掉这两处；正确口径是"这条事实在目的地读得到"。
+  - who: agent
+    when: 2026-09-13
+    type: eval
+    conclusion: >-
+      **对照验证（用户批准执行）**：两臂同模型、同一组三问，唯一变量是常驻指令文件——A 臂 `origin/main` 的
+      CLAUDE.md（22214 字符，含逐条列出的"提交前必跑九条"），B 臂本分支（12034 字符，改为指向
+      `.github/workflows/kb-checks.yml`）。变量隔离已先验证：两臂 `skills/` 逐文件一致（各 17 个），
+      差异仅 CLAUDE.md 与本卡。判据机械可查，产物归档在 `traces/evidence/<session>/ab-claude-md/`。
+      结果：①**Q1 提交前命令清单——两臂覆盖集合完全相同（各 14/14 项，A 独有 0、B 独有 0）**，
+      九条 `--check`、`pr-template`、两个 skill grep、`triage-tree` 语法都在；两臂都写明 rehearse 脚本
+      "不能替代逐条 --check"（即本轮刚修回的那条口径生效）。B 写出 19 行、A 写出 73 行（含分节散文），
+      覆盖相同而篇幅更短。②Q2（issue-ingest 批量导入）两臂都给出同一套要素：skill 名、`gh` 安装+认证前置、
+      `postmortems/inbox/` 落点、`ingest-state.json` 串行纪律、worktree 纪律；**信息量相当正是"被删掉的
+      issue-ingest 详述能从 `skills/issue-ingest/SKILL.md` 按需拿回来"的直接证据**——渐进披露按预期工作。
+      ③Q3（最小合法 trace）两臂 YAML 均可解析、都含 user 事件/`content`/`evidence` 里的 issue 链接；
+      A 产出偏重（含 `sediment_candidates`/`sedimented`/`report_file` 等完整状态字段），B 更贴合"最小"。
+      **结论（单边）**：新指令没有导致退化——B 臂在该任务集上全过，且拿到九条的方式正是"按指路去读 yml"。
+      **不能得出的结论**：不能从这个 n=1 实验说"两版等价"。A 臂的隔离有疑点：它 Q1 顶部那句
+      "逐条命令以 `.github/workflows/kb-checks.yml` 与 `pr-template.yml` 为准"的措辞与本分支新句一致，
+      而 A 臂自己的 CLAUDE.md 里 grep 不到 `kb-checks.yml`（实测 False）；两种解释无法从产物区分——
+      ①harness 把父会话工作区的 CLAUDE.md（新版）也注入了子代理，②A 自己发现了那两份 workflow 文件并
+      独立得出同结论（它同时实跑了 `build_index.py --check`，有这个习惯）。A 臂的自证是干净的
+      （它引用的两句都只存在于自己版本，其中一句正是新版已删的"提交前必跑九条"原句），所以更可能是②，
+      但不能证明。**若要把 A 臂做成有效对照**：把 A 臂指令文本内联进提示、并显式声明忽略 harness 注入，
+      或在不共享工作区的进程里跑。本卡按"已做的部分"记，不把它当作等价性证据。
       指路处存在性逐项核对通过：`scripts/rehearse_evolve_loop.py`、`docs/eval.md`、`docs/git-workflow.md`、
       `skills/diagnose/references/diagnosis-trace.md`、`references/README.md`、README 的 skill 名单节（2 处命中）。
       闸门：`build_docs_index.py --check`、`verify_proposals.py --check` 绿。
