@@ -1,0 +1,108 @@
+# ============================================================
+# Idea 卡（proposals/ideas/）——schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）
+# 校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+
+id: EV-2026-060
+layer: L2
+title: 人读文案缺单一权威：同一套行文规范已散成三份拷贝 → 收敛到一处 + 各面只写差异
+status: in_experiment
+authorization: auto
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-13
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      用户在本会话内两次反馈，都落在 trace 的人读字段上：第一次针对源码分析事件的 output/reason
+      "感觉没说人话，读不懂"；第二次点名 report 修订事件"在 trace 合适吗，而且也没有说人话"。
+      被判读不懂的原文有四个可复现的毛病：抽象名词当主语（"验证措辞来自文档 PR""结论权重""支点为什么坏"）；
+      自造代称不定义即复用（"中间态""混跑形态""自引""降权"）；①②③ 并列掩盖因果；几乎没有动词句。
+    trajectory:
+      - "traces/2026-09-13-dsv4-a3-moe-16419.yaml#summary"
+      - "traces/evidence/2026-09-13-dsv4-a3-moe-16419/2026-09-13-dsv4-a3-moe-16419_evnote.md"
+  - signal: documentation_drift
+    evidence: >-
+      用户追问"是否可以变成可复用的（因为很多人读文字产物地方都要遵循这个）"后盘点发现：同一套行文规范
+      已经写在三处，且互不知道对方存在——① dsh-plugins/README.md「文案规范」八条（权威实现列写的就是它自己）；
+      ② report-template.md 第 4 节「禁用的模式 / 要做到的」（AI 词汇堆砌、系动词回避、三段式、同义词循环……）；
+      ③ 本次新加的 diagnosis-trace.md「行文口径」四条。三份拷贝的重叠面很大（不用比喻拟人、不自我评价、
+      不用并列凑数），但各有各的措辞与反例，且"哪些能硬化"这条判断在每处各判一次。
+      成因：规范过去只在被反馈打到的那一个面上就地补写，没有一层承接"所有给人看的文本"。
+    trajectory:
+      - "dsh-plugins/README.md#文案规范（八条 + 行话的取舍 + 哪些规则能硬化）"
+      - "skills/diagnose/references/report-template.md#行文规范"
+      - "skills/diagnose/references/diagnosis-trace.md#行文口径"
+hypothesis: >
+  人读文本的行文规范收敛为**一份权威 + 各面只写差异**（权威承载共用条目与"哪些能硬化"的判断；每个面只写
+  自己特有的部分，例如报告必须展开机制、trace 必须保留证据原值、面板不得上屏内部标识符），则同一套规范
+  不再各写一份、不再各自漂移；新出现的面（EV 卡、case 词条、postmortem、PR body）有现成的地方可指，
+  而不是第四次就地补写。
+predicted_effect:
+  metric: 行文规范的书面拷贝数与覆盖到的面数
+  from: "3 份互不知道的拷贝（面板八条 / 报告第 4 节 / trace 四条），覆盖 3 个面，其余 6 个人读面无规范"
+  to: "1 份权威 + 各面指路；未覆盖的人读面在权威里点名列出（有规范的面不再各写一份）"
+  measure:
+    command: null
+    reason: >-
+      规范本身是判断性的，效果无法机械判定（同一段话"读得懂"没有脚本判据），故不给命令。但**拷贝数**是可
+      清点的确定事实，人审按 validation.success_criteria 第 ② 条 grep 即可复核，不需要新建脚本；
+      为"AI 味"造硬门是假装硬化（原则六）。
+validation:
+  method: scan_review
+  baseline: >-
+    改前：规范散在三处（`dsh-plugins/README.md` 八条、`report-template.md` 第 4 节、`diagnosis-trace.md`
+    四条）；`verify_proposals.py` 只校验卡的结构、`report_lint.py` 只校验报告的节与图，都不看行文；
+    EV 卡、case/reference 词条、postmortem、诊断对话输出、PR body、指标注记六个面没有规范。
+  success_criteria: >-
+    ① 权威文档存在并登记进 `docs/_manifest.yaml`（`build_docs_index.py --check` 绿），承载共用条目 +
+    "哪些能硬化"的判断 + 有意保留的例外（原值/路径/命令不翻译）；
+    ② 原三处改为指路 + 只留各自特有条款；全库 grep 共用条目只命中权威一处（这条可当场复核）；
+    ③ 权威里点名列出尚未覆盖的人读面，供后续逐个接入，不再各写一份；
+    ④ 本会话 trace 的被点名字段已按规范重写，且重写不丢事实——case/issue 编号、文件行号、命令、数字、
+    报错原文逐条核对未变；
+    ⑤ 盲辨：同一事件新旧两版交给不了解本案的人复述，新版能被复述出"谁做了什么、所以下一步动什么"。
+  rollback: >-
+    纯文本搬家：把三处的规范文本原样放回各自文件即回退（无数据迁移、无脚本依赖）；
+    若权威文档已合入，删文件 + 撤销 `_manifest.yaml` 登记 + 重跑 `build_docs_index.py` 即可。
+gate:
+  condition: >-
+    规范漂移已经发生（三份拷贝），这是触发本卡的事实依据；升格为硬检查的门槛仍是"机械可查 + 后果确定 +
+    复发 ≥2 次"——目前只有"无字面 Markdown 星号"一条满足，其余留人审。
+risk: low
+principle_refs: [2, 6, 9, 10, 11]
+actual_cost: null
+decisions:
+  - who: agent
+    when: 2026-09-13
+    type: proposal
+    conclusion: >-
+      识别：两次反馈都指向同一面——trace 的人读字段。根因不是字段缺失（上一轮已按规范补齐 output/reason），
+      而是 trace 侧只规定了"字段要有"，没规定"写成什么样"。方案：把行文口径补进 diagnosis-trace.md 的
+      agent 事件小节，与面板文案规范对齐（同一件事一个权威，不另造第二套），并写明 trace 的例外：
+      trace 是证据载体，case/issue 编号、文件行号、命令、数字、报错原文原样保留，不翻译成白话。
+      为何不直接改 skill：按仓库纪律，改会进诊断上下文的资产必须先产卡；本卡即该前置。
+  - who: agent
+    when: 2026-09-13
+    type: action
+    conclusion: >-
+      落地：diagnosis-trace.md 的 agent 事件小节新增「行文口径」（四条要点 + 一条例外：证据原值不翻译），
+      与 dsh-plugins/README.md 的文案规范同源（差异处已写明理由）；本会话 trace 按新口径重写四处被判读不懂的
+      字段——顶层 summary、step-5 source_analysis 的 reason、step-6 report 修订事件的 output/reason，
+      重写后逐条核对 case/issue 编号、文件行号、命令、数字、报错原文未变。
+      核验：verify_proposals 59 张卡通过；skills/ 的锚点卫生检查（ADR 号/日期/卡号）无新增命中；trace YAML 可解析。
+      未声明 validated 的理由：本卡的效果是判断性的，只有"证据原值不翻译"一条在文本上可对照检查，
+      其余四条进不了 CI，故留 in_experiment 等第二个会话的同类反馈或一次盲辨复述来判成败。
+  - who: agent
+    when: 2026-09-13
+    type: decision
+    conclusion: >-
+      扩范围（用户追问"EV 卡的文本要不要遵守、还有哪些人读面、能不能复用"）：上面的 action 把规范就地补在
+      trace 一处，实际结果是**第三份拷贝**——盘点确认 panel README 八条与 report-template 第 4 节早已各写一份，
+      三份重叠面很大而措辞与反例各异，"哪些能硬化"还各判一次。这与仓库最反对的双源漂移是同一种病，
+      故把本卡的目标从"trace 字段可读"扩为"人读文案单一权威 + 各面只写差异"。
+      未决（需用户定，因为影响 CI 登记与既有文件）：权威落 `docs/` 新建一篇（推荐：docs/ 是权威归属层，
+      docs-index 这个 CI 保证不漏登记），还是就地扩 `dsh-plugins/README.md`（省一次登记，但它自称
+      "面板共通约定"，装不下 EV 卡与 case 词条）。定后动作：三处改指路 + 新权威文档 + 登 `_manifest.yaml`
+      + 重跑 `build_docs_index.py` + 跑 kb-checks 九条。在定之前不改动既有规范文本。
