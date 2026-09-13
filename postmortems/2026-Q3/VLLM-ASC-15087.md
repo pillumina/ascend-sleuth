@@ -1,4 +1,4 @@
-# VLLM-ASC-15087: PD 分离 prefill 节点静默冻结 —— v0.23.0 `_disable_preemption_on_prefill_node()` 禁用抢占致调度活锁
+# VLLM-ASC-15087: PD 分离 prefill 节点静默冻结 —— 抢占禁用开关 `_disable_preemption_on_prefill_node()`（由 PR #14233 引入）致调度活锁
 
 > 源：现场诊断 trace `traces/2026-09-08-ascendstore-pd-prefill-hang.yaml`（证据 `traces/evidence/2026-09-08-ascendstore-pd-prefill-hang/evidence.txt`）+ vllm-ascend 开发确认（PR #14233）。
 > 本 case YAML 草稿：`postmortems/inbox/VLLM-ASC-15087.case.yaml`；按 to-postmortem 流程产出，进 inbox 待 grom 分诊。
@@ -52,10 +52,16 @@ DP 多轮载荷 + KV cache pool(load_async) + PD(kv_producer) + v0.23.0
   → P EngineCore 卡 collective_rpc 等 worker 响应 → 引擎 quiesce → P/D 全部冻结
 ```
 
-## 为什么只影响 v0.23.0 / 某些组合
+## 为什么只影响某些构建
 
-- 双守卫：`vllm_version_is('0.23.0') && kv_role=='kv_producer'` → 其他镜像版本、或非 prefill(producer) 节点不触发。
-- 充分条件：**P 节点 KV 打满 + 需从池重载大上下文** 同时出现（多轮长上下文 + 池化 + load_async 才凑齐）→ 所以"其他模型通常不踩"。
+- 双守卫：`vllm_version_is('0.23.0') && kv_role=='kv_producer'` → 非 prefill(producer) 节点不触发。
+  注意 `vllm_version_is` 比的是**已装 vLLM 版本**（`VLLM_VERSION` 环境变量或 `vllm.__version__`），
+  它不构成 vllm-ascend 自身构建的门控。
+- **构建级门控**：该开关 2026-08-13 才随 PR #14233 合入 `releases/v0.23.0`；
+  `v0.23.0rc1` tag（commit `f4a08bdd`）的同名文件里没有 `_disable_preemption*`（grep 0 命中）。
+  所以"版本号是 0.23.0"不等于本机制成立——**判定按现场构建里有没有 step 1 那行 warning**，
+  不按版本号。
+- 充分条件：**P 节点 KV 打满 + 需从池重载大上下文** 同时出现（多轮长上下文 + 池化 + `load_async` 才凑齐）→ 所以"其他模型通常不踩"。
 
 ## fix
 
