@@ -67,7 +67,7 @@
 | 诊断对话输出 | 会话里 | 现场工程师，要立刻行动 | 4 段必需 + 2 个按需块（见 `skills/diagnose/SKILL.md`）；一件事只说一遍；结论先行 | 无 |
 | PR body / 评审摘要 | `.github/PULL_REQUEST_TEMPLATE.md`、`scripts/render_review_summary.py` | 评审人 | 结构按模板的 `##` 区块；代号写中文含义（`docs/glossary.yaml` 的 `scope` 规则） | `pr-template`、`render_review_summary.py --scan` |
 | 指标注记 | `metrics/timeline.d/*.yaml`、exec-log | 看面板趋势 | 读数带分母；趋势不可读时明说不可读，不画等高柱充数 | `verify_metrics.py`、`build_timeline.py --check` |
-| skill 与 docs 正文 | `skills/**`、`docs/**` | agent 载入 + 人读 | skill 正文的行为规则要内联（自包含）；不能出现 ADR 号、日期、卡号这类外部锚点 | `skill-self-contained`、`docs-index` |
+| skill 与 docs 正文 | `skills/**`、`docs/**`、`README.md`、`CLAUDE.md`、`CONTEXT.md` | agent 载入 + 人读 | skill 正文的行为规则要内联（自包含）；不能出现 ADR 号、日期、卡号这类外部锚点；仓库根的人读文档与 `docs/` 正文同样适用 §1 的共用条目与 §2 的原值例外 | `skill-self-contained`、`docs-index`、`render_review_summary.py --scan`（代号未登记与越界） |
 
 ### 写点在哪（改这些文件时才会读到本规范）
 
@@ -85,7 +85,7 @@
 | 面板文案 | `dsh-plugins/README.md` 的「面板文案的定制条款」一节 |
 | PR body | `.github/PULL_REQUEST_TEMPLATE/methodology.md` 的「人读性自查」一节 |
 | 指标注记 | **暂无写点**：注记直接写在 `metrics/timeline.d/*.yaml` 里，没有模板可挂。接入需先给它一个模板或 schema 约束，或把定制条款写进该目录的注释头 |
-| skill 与 docs 正文 | 无需指路：写 skill 的人就在写这个面 |
+| docs 与 skill 正文（含 README / CLAUDE.md / CONTEXT.md） | 无需在每个文件里指路：`CLAUDE.md` 的「Key constraints」一节（每个 agent 会话都会读到）+ `docs/_manifest.yaml` 的维护规则第 4 条（新增文档时读到），两处都指向本文件 |
 
 ## 4 新面接入时怎么判：共用还是定制
 
