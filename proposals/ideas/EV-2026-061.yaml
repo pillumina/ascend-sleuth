@@ -90,6 +90,21 @@ decisions:
       **量具不一致的更正**：本卡初稿把两个量具的数字混用了——PowerShell 按行文本长度求和（不含换行）得 22,071 → 11,847，
       而 measure 命令用 python `len()`（含换行）得 22,214 → 11,981，差值恰为一行的换行数。现全部统一为后者，
       并写明量具。教训与"改前/改后必须同一把尺"同源：一卡之内混用两把尺，读者会以为其中一个是错的。
+  - who: agent
+    when: 2026-09-13
+    type: eval
+    conclusion: >-
+      用户追问"删冗余后新 agent 的认知效果是否没变化"触发**逐条可达性复核**，查出一处真实退化（不是搬家）：
+      原文把"提交前必跑的九条 `--check`"逐条列出；我改写成"跑 `rehearse_evolve_loop.py`"，而该脚本自述
+      "**不进 CI**，它不是回归门，是验证工具"。照我的版本做事的 agent 会跑一个更重、还需要 node 的演练，
+      或者干脆不跑那九条。已修：改成"逐条命令以 `.github/workflows/kb-checks.yml` 与 `pr-template.yml` 为准
+      （不在本文件抄一份，抄了会腐烂）"，并把 rehearse 脚本降级为"更重的端到端演练，不能替代逐条 `--check`"。
+      同类第二处：Platform dispatch 一节漏掉了"诊断 phase 2.5 注入匹配平台摘要、未匹配平台不给先验"这句
+      （核验 `skills/diagnose/references/platform-dispatch.md` 无此句）→ 已补回。
+      其余抽查项无丢失：门禁分级与 holdout 在 `docs/eval.md`、证据落盘与行文口径在 `diagnosis-trace.md`、
+      exec-log flock 仍留在常驻面（`docs/git-workflow.md` 里没有这句，所以不能删）。
+      方法论教训（比本条改动更值钱）：**"删冗余"与"搬信息"必须逐条核对事实，不能按节看目的地文件是否存在**。
+      前一版验收只核了"目的地文件存在"，因此漏掉这两处；正确口径是"这条事实在目的地读得到"。
       指路处存在性逐项核对通过：`scripts/rehearse_evolve_loop.py`、`docs/eval.md`、`docs/git-workflow.md`、
       `skills/diagnose/references/diagnosis-trace.md`、`references/README.md`、README 的 skill 名单节（2 处命中）。
       闸门：`build_docs_index.py --check`、`verify_proposals.py --check` 绿。

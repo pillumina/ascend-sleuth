@@ -87,7 +87,7 @@ Version matching is **soft**: compat mismatch downgrades confidence but never ha
 
 ### Platform dispatch
 
-平台差异是 case 内的**字段级**差异：一个 case 可有多段按 `platforms` 键控的 `diagnosis` 分支（如 `A2-910B` / `A3-910C` / `A5-950`）；无 `platforms` 字段视为跨平台。平台事实在先验层 `references/platform-facts/`（经 to-reference 带真实来源沉淀）。平台背景文档已废除（agent 生成、零外部来源）。
+平台差异是 case 内的**字段级**差异：一个 case 可有多段按 `platforms` 键控的 `diagnosis` 分支（如 `A2-910B` / `A3-910C` / `A5-950`）；无 `platforms` 字段视为跨平台。诊断 phase 2.5 注入匹配平台的背景摘要，未匹配的平台不给先验（每个 case 仍自带 `platforms` 键控的证据分支）。平台事实在先验层 `references/platform-facts/`（经 to-reference 带真实来源沉淀）。平台背景文档已废除（agent 生成、零外部来源）。
 
 ### Trace and misdiagnosis attribution
 
@@ -129,6 +129,6 @@ Golden-case 回归套件在 `eval/golden/`：公开仓只放构造示例，真�
 - **Skill self-containment (CI-enforced):** skill files (`skills/**`) must not reference ADR numbers (`ADR-\d{4}`), dates (`20\d\d-\d\d`), or EV card numbers (`EV-\d{4}-\d{3}`) — ADRs get revised/absorbed; a number anchor makes skill behavior look externally defined; dates read as facts; card numbers rot. Behavior rules must be inline; traceability belongs to git/PR/card history.
 - **EV 卡的预测必须可复现 (CI-enforced):** `predicted_effect.measure` 要带一条命令 + 期望（`expect_exit` / `expect_stdout` 至少一项），或如实声明 `reason`（不可度量）。缺它则"评审 30 秒判定"无从执行；产卡骨架的占位 `measure` 会被 CI 拦下。判 `validated` 前先跑一遍自己的 measure。
 - **Check-admission criterion (what deserves CI):** only rules that are ①mechanically checkable, ②have deterministic consequences, ③proven recurrent (failed ≥2×) go into CI. Judgmental norms stay as execution instructions + review spot-checks — never fake-hardened (原则六).
-- **提交前必跑**：`python3 scripts/rehearse_evolve_loop.py` 逐条复跑 CI parity（断言条数以脚本输出为准，不在此写死）。它覆盖 `kb-checks` 九条（索引新鲜度、references、procedure/summary 索引、metrics、timeline 生成物、卡结构、holdout、docs 名单）与 `pr-template`、`skill-self-contained`。**`verify_exec_log.py` 不进 CI**（exec-log 是运行时件）。
+- **提交前必跑**：逐条命令以 `.github/workflows/kb-checks.yml` 与 `pr-template.yml` 为准（**不在本文件抄一份**——抄了会腐烂且不报错）。另有更重的端到端演练 `python3 scripts/rehearse_evolve_loop.py`：它在临时副本里真跑一遍闭环、并逐条复跑 CI 命令；**但它自己不进 CI，也不能替代上面逐条 `--check`**。`verify_exec_log.py` 不进 CI（exec-log 是运行时件）。
 - **No more than 2 consecutive failed case attempts** — fall back to human on the third (serial protection against misdiagnosis cascades).
 - **Log clipping is mandatory.** Only paste failed-rank logs + error stack tails into context. Full profiler data overwhelms the ~120K token reasoning sweet spot.
