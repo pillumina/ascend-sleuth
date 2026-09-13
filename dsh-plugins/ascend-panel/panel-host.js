@@ -469,6 +469,11 @@ return {
       }
     }
 
+    // 记录维护类动作——与 panel-client.js 的 PROC_ACTIONS 同值（人读视图收起它们）。
+    // 两处必须一致：host 用它找"人读视图的可见末条"来判定位结论的落点，client 用它过滤渲染；
+    // 任一侧单独改动都会让"结论块"与"轨迹末条"指向不同的事件。
+    const HOST_PROC_ACTIONS = { report: true, resume: true, feedback: true, attribution: true }
+
     // 证据：两种形态都要吃——内联字符串（老 trace 的 `evidence: {inline: "…"}`）与解析器给出的
     // 对象（块写法 `evidence:` 换行展开）。旧实现只吃字符串，块写法 trace 的证据会被整条丢掉。
     function parseEvidence(ev) {
@@ -518,8 +523,22 @@ return {
         const refCount = trace.filter(t => t && t.action === 'reference_lookup').length
         const sed = readSedimented(doc)
         const cands = Array.isArray(doc.sediment_candidates) ? doc.sediment_candidates : []
+        // 定位结论的落点：`conclusion: true` 是显式标记；否则退到一条约定——**人读视图里可见的最后一条**
+        // 若为 `hit`，它也当结论（老 trace 没有该标记，但末条写结论曾是个别 session 的自觉做法）。
+        // 约定取的是**可见末条**：报告 / 续接 / 回报 / 归因是记录维护动作，人读视图会收起它们，
+        // 所以结论不是"文件里的最后一个事件"（真实 trace 的末条常常是 report/feedback）。
+        const conclusionIndex = (function () {
+          for (let i = trace.length - 1; i >= 0; i--) {
+            const a = trace[i] && trace[i].action ? String(trace[i].action) : null
+            if (a && HOST_PROC_ACTIONS[a]) continue
+            return (a === 'hit' || (trace[i] && trace[i].conclusion === true)) ? i : -1
+          }
+          return -1
+        })()
+        if (conclusionIndex >= 0 && steps[conclusionIndex]) steps[conclusionIndex].isConclusion = true
         return {
           ok: true, steps, summary: doc.summary ? String(doc.summary) : null, refCount, sedimented: sed,
+          conclusionIndex: conclusionIndex,
           reportFile: doc.report_file ? String(doc.report_file) : null,
           sedimentCandidates: cands.map(c => ({
             kind: c && c.kind ? String(c.kind) : '',

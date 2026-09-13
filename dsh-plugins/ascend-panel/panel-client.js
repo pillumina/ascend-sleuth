@@ -473,13 +473,36 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const [reportSec, setReportSec] = React.useState(null)
       const meta = statusMeta[s.status] || statusMeta.unknown
       const canResume = RESUMEABLE[s.status]
+      // 定位结论：host 标 `isConclusion`（显式 `conclusion: true`，或"人读视图可见末条是 hit"这条约定）。
+      // 这里算它在**可见列表**里的位置——host 给的是原始下标，人读视图先过滤过记录维护动作，
+      // 直接拿原下标会错位（这是"两个索引混用"的经典坑，故用对象身份找而不是比下标）。
+      const conclusionStep = (steps && steps.list) ? (steps.list.find(st => st && st.isConclusion) || null) : null
+      const conclusionAt = (steps && steps.list && conclusionStep) ? steps.list.indexOf(conclusionStep) : -1
+      const shownIdx = (steps && steps.list) ? (function () {
+        const all = steps.list
+        const shown = fullTrace ? all : all.filter(st => !PROC_ACTIONS[st.action])
+        const hidden = all.length - shown.length
+        const at = (conclusionStep && shown.indexOf(conclusionStep) >= 0) ? shown.indexOf(conclusionStep) : -1
+        return { all: all, shown: shown, hidden: hidden, at: at }
+      })() : { all: [], shown: [], hidden: 0, at: -1 }
+      // 人读视图里结论**不重复出现在轨迹末尾**（它已在上面的结论块里），只留一个回指；
+      // 完整轨迹保留原事件，回放时结论仍是轨迹的一部分。
+      const timeline = (!fullTrace && shownIdx.at >= 0)
+        ? shownIdx.shown.filter((st, i) => i !== shownIdx.at)
+        : shownIdx.shown
+      // 没有结论时给一行说明，而不是让卡片默默以某个过程步骤收尾：读者要能分辨
+      // "诊断还没收尾"与"这单本身没有结论"。resolved 的单不提示（已闭环，结论在 out 口述里）。
+      const noConclusionHint = (steps && steps.list && steps.list.length && s.status !== 'resolved')
+        ? React.createElement('div', { style: { marginTop: 12, padding: 8, border: '1px solid ' + T.border, borderRadius: 9, fontSize: 12.5, color: T.text2 } },
+            '本单还没有定位结论（轨迹末条是过程记录）。点「看完整轨迹」看全部事件，或等诊断收尾时补一条结论。')
+        : null
 
       function toggle() {
         if (open) { setOpen(false); setSteps(null); setEvOpen(null); return }
         setOpen(true)
         setSteps({ loading: true })
         host.call('ascend-traces-detail', { sessionId: ownerSessionId || null, traceFile: s.file })
-          .then(r => setSteps({ loading: false, list: r && r.ok ? r.steps : [], summary: r && r.summary, refCount: r && r.refCount, sedimented: r && r.sedimented, sedimentCandidates: r && r.sedimentCandidates, error: r && r.error }))
+          .then(r => setSteps({ loading: false, list: r && r.ok ? r.steps : [], summary: r && r.summary, refCount: r && r.refCount, sedimented: r && r.sedimented, sedimentCandidates: r && r.sedimentCandidates, conclusionIndex: r && typeof r.conclusionIndex === 'number' ? r.conclusionIndex : -1, error: r && r.error }))
           .catch(e => setSteps({ loading: false, list: [], error: 'RPC 失败: ' + String(e && e.message || e) }))
       }
       function doCopy(txt, key) { copyText(txt).then(ok => setCopied(ok ? key : 'fail')) }
@@ -564,9 +587,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             ) : null,
             // 轨迹区：**人读视图（默认）** 只给"问题查到哪了"——记录维护类动作收起、推理不铺开、
             // action 用中文标签；「看完整轨迹」回到逐条原始事件（回放/归因用）。
+            // 收尾：结论块排在轨迹**之后**——卡片从现象读到过程、以定位结论落底，
+            // 读者的落点在结尾而不是开头；轨迹本身末条也是结论（人读视图里不重复渲染，见 timeline）。
             (function () {
-              const all = steps.list
-              const shown = fullTrace ? all : all.filter(st => !PROC_ACTIONS[st.action])
+              const all = shownIdx.all
+              const shown = timeline
               const hidden = all.length - shown.length
               return React.createElement('div', null,
                 React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' } },
@@ -632,7 +657,22 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 )
               })
               )
-            })()
+            })(),
+            // —— 定位结论落底 —— //
+            // 读者要的是"最后定在哪"；它排在轨迹之后，卡片以结论收尾。轨迹末条本身也是结论
+            // （trace 里就能读到），人读视图里不重复渲染那条，只在完整轨迹保留原事件。
+            conclusionStep ? React.createElement('div', { style: { marginTop: 12, padding: 10, background: 'color-mix(in srgb, var(--acc-green) 7%, transparent)', border: '1px solid var(--acc-green)', borderRadius: 9 } },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' } },
+                React.createElement(SectionLabel, { color: 'var(--c-green)' }, '定位结论'),
+                conclusionStep.step ? React.createElement('span', { className: 'sleu-num', style: { fontSize: 12.5 } }, '第 ' + conclusionStep.step + ' 步') : null,
+                React.createElement('span', { style: { fontSize: 12.5, color: T.text2 } }, '轨迹末条'),
+              ),
+              React.createElement('div', { style: { fontSize: 14.5, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.75 } }, conclusionStep.output || conclusionStep.content || '(该步没有 output)'),
+              React.createElement('div', { style: { marginTop: 6, fontSize: 12.5, color: T.text2 } },
+                fullTrace
+                  ? '上方完整轨迹里保留了这条事件的原位置。'
+                  : '上方轨迹略去了这条（同一段不读两遍）；「看完整轨迹」里它在原位置。'),
+            ) : (noConclusionHint),
           )
         } else {
           body = React.createElement('div', null, reportBlock,
