@@ -1,0 +1,99 @@
+# ============================================================
+# Idea 卡（proposals/ideas/）——schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）
+# 校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+
+id: EV-2026-062
+layer: L2
+title: decision 的语义——定义与实现不一致 → 明确为"该节点做出的判断，可多次；终态由 status 承载"
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-13
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      核对 EV-2026-057（三轮均以 `type: decision` 给出结论、`status` 却停在 in_experiment）与
+      EV-2026-060（两条中途判断也记成 `decision`）时撞到同一处矛盾：文档把 decision 写作
+      "终态判断（采纳/不采纳/换方向）"，而 `verify_proposals` 的规则 13（in_experiment 且已记
+      action 与 eval 但无 decision 即报错）**要求**动作与验证完成后必须有 decision——按文档把
+      中途判断改名反而触发规则（本会话实测改名后规则 13 = True），按实现则中途判断同样是 decision。
+      文档自身也前后不一：schema 注释写"decision 是卡终点"，而生命周期规则里又写"采纳的改动随 PR
+      合入后，卡的 decision 可追加『PR #N 合入』""观察窗结果作为追加 decision 记录"——后两条只有在
+      "decision 可以出现在终态之后、可以有多次"时才成立。
+      代价实测：修"卡停在不完整态"时要在"改名（触发 CI）"与"硬推终态（可能不实）"之间二选一。
+    trajectory:
+      - "proposals/ideas/EV-2026-057.yaml（真滞后案例）"
+      - "proposals/ideas/EV-2026-060.yaml（中途判断记成 decision 的案例）"
+      - "docs/mechanism/pipeline.md（schema 注释与生命周期完整性规则）"
+      - "scripts/verify_proposals.py（规则 13 实现：decided_types 含 action 与 eval 而无 decision 即报）"
+hypothesis: >-
+  把 decision 明确定义为"在那张卡的该节点上做出的判断"（可多次出现；**终态由 status 承载**，不由是否出现
+  decision 承载），并在 docs 与 skill 两处写成同一口径、顺带修掉三处笔误，则文档与实现一致，
+  "卡停在不完整态"的修复不再需要在改名与硬推终态之间二选一。
+predicted_effect:
+  metric: 文档（docs + 承载该规则的 skill 正文）对 decision 的定义是否与实现一致
+  from: "不一致：schema 注释称『decision 是卡终点』，实现却要求动作+验证完成后必须有 decision 并允许其后继续追加"
+  to: "一致：两处都写『decision 是该节点做出的判断，可多次；终态由 status 承载』"
+  measure:
+    command: >-
+      python -c "import io,sys; t=io.open('docs/mechanism/pipeline.md',encoding='utf-8').read(); s=io.open('skills/evolve-check/SKILL.md',encoding='utf-8').read(); ok=('终态由 status 承载' in t) and ('终态由 status 承载' in s) and ('decision 是卡终点' not in t); print('semantics-aligned', ok); sys.exit(0 if ok else 1)"
+    expect_exit: 0
+    expect_stdout: "semantics-aligned"
+validation:
+  method: scan_review
+  baseline: >-
+    改前：`pipeline.md` 的 schema 注释写"decision 是卡终点"，生命周期规则第 1 条含三处笔误
+    （"记 proposal + action decision""记 eval decision""记 decision decision"）；
+    `skills/evolve-check/SKILL.md` 写"最终判断记 {type: decision}"。
+  success_criteria: >-
+    ① measure 命令 exit 0；② docs 与 skill 两处语义一致（都写"该节点的判断，可多次，终态由 status 承载"）；
+    ③ 三处笔误清除，规则 1 明确"有中途判断但还有下一轮 = 正常中间态"；
+    ④ `verify_proposals.py --check` 与 `build_docs_index.py --check` 仍绿；
+    ⑤ 存量卡无需为本次改动而变（057 的状态补记仍成立、060 不改名）——即本次是"对齐定义"，
+    不是"为迁就实现而放宽检查"。
+  rollback: "纯文档与 skill 正文改动，git revert 单个提交即可；无脚本或数据依赖"
+gate: "再遇到『文档说终态判断、实现要求中间判断』这类定义与实现不一致时，先对齐定义再决定要不要加检查"
+risk: low
+principle_refs: [2, 3, 10, 11]
+actual_cost: {tokens: 40000, source: estimate,
+              note: "本轮无 tokenMeter 读数，按量级估计：一次核对、两处文档改动与一次验证。"}
+decisions:
+  - who: agent
+    when: '2026-09-13'
+    type: proposal
+    conclusion: >-
+      识别：decision 的语义在文档与实现之间不一致，且文档自身前后矛盾（"decision 是卡终点" vs
+      "终态之后仍可追加 decision"）。影响面有限（只影响卡的生命周期写法与修卡动作），但每次都逼出
+      无谓的二选一，属"定义层漂移"而非"检查层缺陷"。
+  - who: agent
+    when: '2026-09-13'
+    type: action
+    conclusion: >-
+      用户选定方向：**改定义以对齐实现**——decision 是那张卡在该节点做出的判断，不必然是最终态，
+      后面可以再有一条最终判断。据此刻意不改 `verify_proposals` 的规则 13（它有真实约束力：
+      动作与验证都完成后必须落判断）。落地面：`docs/mechanism/pipeline.md` 的 schema 注释与
+      生命周期完整性规则第 1 条；`skills/evolve-check/SKILL.md` 第 3.5 步。两处都写明"终态由 status 承载"。
+  - who: agent
+    when: '2026-09-13'
+    type: eval
+    conclusion: >-
+      验证：卡内 measure 命令**原样实跑** → `semantics-aligned True`、exit 0（改前同一命令因
+      "decision 是卡终点"仍存在而失败）；`pipeline.md` 里三处笔误（action decision / eval decision /
+      decision decision）与"decision 是卡终点"均已 grep 不到。
+      **量具本身抓到一处真不一致**：同一句断言最初在 skill 侧写成"终态由 `status` 承载"（带反引号）、
+      docs 侧不带 → 断言失败；统一为无反引号版本后通过（顺带避免 measure 命令里的反引号被 shell 当命令替换）。
+      闸门：`verify_proposals.py --check` 61 张卡通过、`build_docs_index.py --check` 绿、skills 锚点卫生 clean。
+      **未跑**：`rehearse_evolve_loop.py` 全量（本次只改文档与一处 skill 正文，逐条跑了受影响的闸门）；
+      本次改动不改变任何运行时行为，故不需要盲辨对照。
+  - who: agent
+    when: '2026-09-13'
+    type: decision
+    conclusion: >-
+      **采纳（validated）**：定义按用户选定方向对齐实现——decision 是"那张卡在该节点做出的判断"，
+      可多次出现；终态由 status 承载。刻意**不改** `verify_proposals` 的规则 13：它约束的是"动作与验证
+      都完成后必须落判断"，有真实约束力，本次矛盾出在定义层而非检查层。
+      存量卡无需为本次改动而变：EV-2026-057 的状态补记仍成立，EV-2026-060 无需改名——新语义下两者都自洽。
+      按 pipeline §7，本卡属即时判定类，故在 PR 合入前即置终态。

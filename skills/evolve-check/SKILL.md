@@ -118,15 +118,17 @@ description: >
 **第 3.5 步：生命周期完整性（卡 = proposal→action→eval→decision 的 agent 决策档案）**：
 
 - **每步 decisions 记 type**：产卡记 `{type: proposal}`、执行记 `{type: action, conclusion: <做了什么/commit/产物>}`、
-  验证记 `{type: eval, conclusion: <验证数据/通过与否>}`、最终判断记 `{type: decision, conclusion: <采纳/不采纳/换方向+依据>}`——
-  卡能看出生命周期走到哪、凭什么判断；
+  验证记 `{type: eval, conclusion: <验证数据/通过与否>}`、判断记 `{type: decision, conclusion: <采纳/不采纳/换方向/继续下一轮+依据>}`——
+  卡能看出生命周期走到哪、凭什么判断。**decision 是"在该节点做出的判断"，不是"卡的终点"**：一张卡可以有多次
+  （多轮：判断 → 新一轮 → 再判断），终态由 status 承载；
 - **status 随执行推进，不靠自觉**：方案成形 → 产卡（in_experiment，开始 action + eval）；
   agent 判断采纳 → validated / 不采纳 → rejected / 换方向 → superseded。**执行与验证都完成
   而卡仍停 in_experiment = 卡不完整**——这条已可机器判定，`verify_proposals.py` 报两类：
   ①**卡不完整**：in_experiment 且已记 `action` **且** `eval` 但无 `decision`（工作做完了、
   判断没落；只记了 action、验证还在跑的在途卡不算——那是正常中间态）；②**僵尸卡**：
   in_experiment 超 14 天（`STALE_DAYS`，与面板同口径）仍无 `decision`。CI 的 `proposal-audit`
-  job 跑它，卡随 PR 合入即被校验；
+  job 跑它，卡随 PR 合入即被校验。**有中途 decision、只是还有下一轮要跑，仍停在 in_experiment 是正常的**：
+  结束与否看 `status`，不看 decision 的个数；
 - **终态卡必闭合**：validated/rejected/superseded 必须有 agent 判断的 decision 记录；
   validated 后补 `actual_cost.tokens`（成本审计；无法量化写 `0` + `note` 说明口径）——
   缺了 CI 报审计缺口，面板也标「缺成本」（两处口径一致）；

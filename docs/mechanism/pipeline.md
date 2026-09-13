@@ -264,19 +264,23 @@ principle_refs: [5, 6, 8, 11]    # 设计原则编号（1-11 整数，对应 des
 decisions: []                    # 审计链：谁在何时依据哪份证据判断什么（只追加不修改）
                                  # 每条含 who/when/conclusion；type 标注生命周期阶段：
                                  #   proposal（提案：识别改进点+假设）| action（执行：改动/实验/沉淀）
-                                 #   | eval（验证：S2/golden 数据、通过与否）| decision（采纳/不采纳/换方向）
-                                 # 卡 = agent 决策档案：proposal→action→eval→decision，
-                                 #   decision 是卡终点；采纳与否由 agent 依据 eval 判断（无需人逐卡审批）
+                                 #   | eval（验证：S2/golden 数据、通过与否）
+                                 #   | decision（**在该节点做出的判断**：采纳 / 不采纳 / 换方向 / 继续下一轮）
+                                 # 卡 = agent 决策档案：proposal→action→eval→[decision]…，
+                                 #   **decision 不是"卡的终点"**：一张卡可以有多次（多轮：判断→新一轮→再判断），
+                                 #   也可以中途判断后状态仍留在 in_experiment；
+                                 #   **终态由 status 承载**（validated/rejected/superseded），不由"是否出现 decision"承载。
+                                 #   采纳与否由 agent 依据 eval 判断（无需人逐卡审批）；
                                  #   status 推进随 decisions 走（见下"生命周期完整性规则"）
 ```
 
 生命周期完整性规则：每张卡都是一个 proposal→action→eval→decision 的完整档案，不是想法清单。具体如下：
 
 1. 产卡即执行，没有 candidate 待办态：识别信号 + 方案成形才产卡，产卡状态即
-   in_experiment（记 proposal + action decision）→ 验证（记 eval decision）→ agent 判断
-   （validated 采纳 / rejected 不采纳 / superseded 换方向，记 decision decision）。agent
-   自主决策、全自动推进：方案成形就该做，不做就不产卡。执行或验证完成而卡停在
-   in_experiment = 卡不完整（机制推进，不是靠 agent 记得改状态）。
+   in_experiment（记 proposal 与 action）→ 验证（记 eval）→ 判断（记 decision：采纳 / 不采纳 /
+   换方向 / 继续下一轮，四种都是合法判断）。agent 自主决策、全自动推进：方案成形就该做，不做就不产卡。
+   **执行与验证都完成、却既无终态又没有任何 decision = 卡不完整**（机制推进，不是靠 agent 记得改状态）；
+   反之，**有中途判断、只是还有下一轮要跑，是正常中间态**——一张卡结束与否看 `status`，不看 decision 的个数。
 2. 终态卡必须有 decision 记录：validated/rejected/superseded 的卡，decisions 中必须有 agent 的对应判断结论（依据哪份 eval 数据），无结论的终态卡 = 审计缺口（verify_proposals 校验）。
 3. validated 后 actual_cost 必填：成本审计（orchestration §3.2：无实际成本记录不可审计）要求 validated 卡 actual_cost 不能仍为 null，否则就是缺口。
 4. 信号 vs 提案的边界：仅有"观察到的信号"（容量超了/族够了/数据前提未满足，但无准备执行
