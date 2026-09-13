@@ -152,3 +152,18 @@ decisions:
       教训：提检查动作之前先跑一遍准入三条，别让"能查"冒充"值得查"。
       另记一处本人口径错误：我在对话里说过"这条已经写进卡里了"，当时卡里只写了"合并动作的验收条件是旧清单
       逐条命中"，并没有这一条。现在补上，并保留这句差异说明——不悄悄补齐当作没发生。
+  - who: agent
+    when: 2026-09-13
+    type: action
+    conclusion: >-
+      用户追问"写在 CLAUDE.md 是不是每个 agent 都能遵循"后查证：**不是**。CLAUDE.md 只被 DSH（本会话实测）
+      与 Claude Code 读；Codex 读 `AGENTS.md`；WorkBuddy / CodeBuddy 读 `.codebuddy/CODEBUDDY.md` 且官方声明
+      兼容 `AGENTS.md`；Trae 默认读 `.trae/rules/*.md`，`AGENTS.md` 与 `CLAUDE.md` 要在设置里开开关才导入
+      （官方文档）；Cursor 读 `.cursor/rules/*.mdc`。本仓此前没有 `AGENTS.md` —— 也就是说 Codex / Cursor /
+      WorkBuddy 的使用者连仓库的基本约束（不只行文规范）都读不到，这是比本卡更大的缺口。
+      另有一个佐证：`scripts/enable_agent_skills.py` 的 AGENTS 列表已登记这六家，但它只负责让各家发现 `skills/`，
+      没有管指令文件这一层。
+      本次动作（按用户选择的最小范围）：新增根目录 `AGENTS.md`，内容只有一行指路（项目指令见 `CLAUDE.md`、
+      行文规范见本规范文档），覆盖 Codex 与 WorkBuddy、并让 Trae 的导入开关有东西可导；Cursor 暂不处理（用户指定）。
+      不在 `AGENTS.md` 里复制正文，避免多出需要同步的副本。规范文档 §3 的写点表随之增加"跨 harness 入口"一行。
+      仍然成立的事实：跨 harness 真正通用的是各面的写点钩子（skills 与模板层面），指令文件只是便利项。

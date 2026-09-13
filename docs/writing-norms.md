@@ -86,6 +86,7 @@
 | PR body | `.github/PULL_REQUEST_TEMPLATE/methodology.md` 的「人读性自查」一节 |
 | 指标注记 | **暂无写点**：注记直接写在 `metrics/timeline.d/*.yaml` 里，没有模板可挂。接入需先给它一个模板或 schema 约束，或把定制条款写进该目录的注释头 |
 | docs 与 skill 正文（含 README / CLAUDE.md / CONTEXT.md） | 无需在每个文件里指路：`CLAUDE.md` 的「Key constraints」一节（每个 agent 会话都会读到）+ `docs/_manifest.yaml` 的维护规则第 4 条（新增文档时读到），两处都指向本文件 |
+| 跨 harness 入口（所有面） | 根目录 `AGENTS.md`：Codex 与 WorkBuddy 读它，Trae 需在设置里开启导入才读；`CLAUDE.md` 被 DSH 与 Claude Code 读。两份都只有指路，正文仍在 `CLAUDE.md` 与本文件 |
 
 ## 4 新面接入时怎么判：共用还是定制
 
