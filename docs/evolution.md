@@ -25,6 +25,7 @@
 | 你要做的事 | 权威文档 | 说明 |
 |---|---|---|
 | 判断某个设计/改动是否合规 | [design-principles.md](design-principles.md) | 十一条规范条文；不可追溯的变更是可疑的 |
+| 写给人看或给人审的文本（报告 / trace 字段 / 面板文案 / EV 卡 / 词条 / PR body） | [writing-norms.md](writing-norms.md) | 共用条目、必须保留的原值、各面共用与定制的判定、哪些能硬化 |
 | 改一个 skill 的行为 | `skills/<name>/SKILL.md` | skill 必须自包含：执行规则内联，不依赖 docs/ |
 | 改测评门禁 / 跑回归 | [eval.md](eval.md) | 门禁分级、对照集封存、判据强度如实标注 |
 | 走 PR / 门控 / 多人协作 | [git-workflow.md](git-workflow.md) | 含「评审把手」：reviewer 怎么判"该不该合" |
