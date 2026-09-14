@@ -1,0 +1,123 @@
+# ============================================================
+# Idea 卡（proposals/ideas/）——schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）
+# 校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+
+id: EV-2026-067
+layer: L2
+title: 面板验证进 CI：渲染、文案与数据口径契约从"人记得跑"变成门（顺带修好干净检出里那条腐烂断言）
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-14
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      面板的验证脚本（`panel_render_check.js` / `check_panel_tokens.py`）**不在任何 CI 里**：
+      `kb-checks.yml` 的 `paths` 不含 `dsh-plugins/**`，也不含这两个脚本名，所以改面板的 PR
+      跑不到任何一条断言。代价两次实测：①`metrics/timeline.yaml` 的期次解析器与真实文件结构
+      不符，文件里 8 期而面板读出 0 期（当时补了"与 PyYAML 逐条一致"的判据，但那条判据同样只在
+      人记得跑时才执行）；②trace 解析器把 9 条事件读成 1 条，用户在自己的机器上发现，面板显示
+      "诊断轨迹：1 步"而没有任何提示。两者都是"门存在但没通电"。
+    trajectory:
+      - ".github/workflows/kb-checks.yml（paths 与 jobs：无 dsh-plugins/**、无面板检查 job）"
+      - "scripts/panel_render_check.js（断言套件本体）"
+      - "dsh-plugins/ascend-panel/README.md（版本节：两处缺陷各自的记录）"
+  - signal: observability_gap
+    evidence: >-
+      改动的验证结果只有"记得在本机跑"才可见，于是**断言腐烂也不会被发现**：一条断言
+      （`内容流程收尾应先落一条 exec-log`）钉住的文案在"面板文案去 AI 味"那轮就被重写了，而这条
+      断言只在**没有 exec-log** 的分支里执行——开发机上 exec-log 一直在，这个分支永远走不到。
+      实测（2026-09-14）：`git archive HEAD` 出来的 CI 形态检出（无 `.git`、无 `traces/`、无
+      `metrics/skill-exec-log.yaml`）里，整套面板检查红且只红这一条。也就是说，把这份套件接进
+      CI 的那天就会是一条红门——这正是"从没通电"的直接证据。
+    trajectory:
+      - "scripts/panel_render_check.js（exec-log 退化分支的两条断言）"
+      - "dsh-plugins/ev-panel/panel-client.js（`无执行记录` 分支的实际文案）"
+hypothesis: >-
+  把 `dsh-plugins/**` 与两个面板检查脚本加进 `kb-checks.yml` 的触发路径，并新增 `panel-checks`
+  job（`check_panel_tokens.py` + `panel_render_check.js`，配 python3 与 node 两个 setup 步骤），
+  同时修好干净检出里那条腐烂断言——则"面板改动有没有破坏渲染、文案与数据口径契约"与"这套检查
+  自身在 CI 上是否绿"都不再依赖人记得跑，而是随 PR 自动可见；这一类"门存在但没通电"的缺陷从
+  "漏到用户才发现"变成"PR 上就红"。
+predicted_effect:
+  metric: kb-checks 里执行面板断言的 job 数（0 → 1）与 CI 形态检出下套件的退出码
+  from: "0：改面板的 PR 不触发任何 job；CI 形态检出（git archive HEAD，无 .git/traces/exec-log）里套件红 1 条"
+  to: "1：panel-checks job 随 dsh-plugins/** 与两个脚本的改动触发；同一形态检出里套件 `全部通过` 且 exit 0"
+  measure:
+    command: "python3 scripts/rehearse_evolve_loop.py"
+    expect_exit: 0
+    expect_stdout: "CI 命令通过 [panel-checks]"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前实测（同一台机器、同一份检出）：①`python3 -c` 读 `kb-checks.yml`：`jobs` 里没有
+    panel-checks，`paths` 里没有 `dsh-plugins/**`；②`git archive HEAD | tar -x` 到临时目录后跑
+    `node scripts/panel_render_check.js`，输出 `失败 1 项: 退化分支给出补救指引`（exit 非 0）；
+    ③`python3 scripts/check_panel_tokens.py` 同样不在 CI 里，改面板时无人执行它。
+  success_criteria: >-
+    ①`panel-checks` job 就位，两个脚本各一条 step；②触发路径含 `dsh-plugins/**` 与两个脚本名，
+    改面板能触发该 job；③CI 形态检出里 `check_panel_tokens.py` 与 `panel_render_check.js` 都
+    exit 0 且打印 `全部通过`；④那条腐烂断言按 `ev-panel` 现文案校正（不是改文案迁就断言）；
+    ⑤工作流仍是合法 YAML、既有 job 不变；⑥`python3 scripts/rehearse_evolve_loop.py` 全绿
+    （E6 把新增的两条面板命令在沙箱里逐条复跑）。
+  rollback: >-
+    单个提交内可 revert：`.github/workflows/kb-checks.yml`（新增 job 与四个路径项）+
+    `scripts/panel_render_check.js`（那条断言的一行）。无数据迁移，无运行时件改动。
+gate: "出现『改面板的 PR 上没有任何断言跑过』或『面板套件在干净检出里不绿而无人知』时，重跑 measure"
+risk: low
+principle_refs: [6, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: >-
+    本会话未接 tokenMeter 取数，按仓库口径写 0 并说明口径：这个 0 表示"未单独量化"，不表示零成本。
+decisions:
+  - who: agent
+    when: '2026-09-14'
+    type: proposal
+    conclusion: >-
+      识别：本轮本只该诊断并修一条面板缺陷（Windows 上的 trace 只剩第一步），但在"补判据"这一步
+      发现整个面板套件不在任何门里，且它在 CI 形态的检出下本来就是红的。两条信号（门未通电、
+      断言腐烂不可见）指向同一个结构问题：验证存在，但结果不可见。判据满足检查准入三条
+      （机械可判 / 后果确定 / 复发 ≥2：timeline 期次与 trace 事件两次漏到用户面前）。
+  - who: agent
+    when: '2026-09-14'
+    type: action
+    conclusion: >-
+      执行：①`.github/workflows/kb-checks.yml` 新增 `panel-checks` job（checkout、setup-python、
+      setup-node 20、`pip install pyyaml`、`python3 scripts/check_panel_tokens.py`、
+      `node scripts/panel_render_check.js`），并把 `dsh-plugins/**`、两个面板检查脚本、
+      `scripts/ev_board_data.py` / `metrics_health.py` / `trace_metrics.py` / `shared_dir.py`
+      与工作流自身加进 push / pull_request 的 `paths`；②按 `ev-panel` 现文案校正那条腐烂断言，
+      并在断言处写清它为什么能烂这么久。同分支的另一件事是用户报的缺陷本体（trace 解析器与
+      PyYAML 对齐 + 解析异常上屏），记录见 `dsh-plugins/ascend-panel/README.md` 版本节。
+  - who: agent
+    when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      验证：①`git archive HEAD` 到干净目录（无 `.git` / 无 `traces/` / 无 exec-log）后，
+      `check_panel_tokens.py` OK、`panel_render_check.js` 打印"全部通过"（改前同一形态红 1 条）；
+      ②工作流 YAML 解析通过，`jobs` 列出 8 个（含新增 panel-checks），steps 与预期一致；
+      ③`python3 scripts/rehearse_evolve_loop.py` 全绿，E6 把 `[panel-checks]` 两条命令在沙箱里
+      逐条复跑通过（measure 的判据即此）。
+  - who: agent
+    when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      PR 上补记（Actions 首次真实调度）：`panel-checks` 在 pull_request 与 push 两个 run 都通过
+      （25s），日志里可见 13 种形状的对照断言、渲染层那条异常断言，以及"真实 trace 对照：跳过
+      （本检出的 traces/ 里没有 .yaml）"——运行时件不进 git，这一半在 CI 上按预期缺席并如实打印。
+      另 `verify-template` 也通过（PR body 用了 methodology 模板）。上一轮"没跑过 Actions 调度"
+      的不确定到此消除。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      **采纳（validated）**：门接上了，而且接门的那天就能绿——因为顺手修掉了那条只有干净检出才
+      走得到的腐烂断言。刻意不做的事：①**不把面板检查并进已有 job**（index-freshness 等）——
+      那些 job 不带 node，混在一起会让"面板要不要 node"这件事读不出来；②**不给面板加 lint 或格式
+      门**——面板是零依赖单文件，格式类判据没有确定性后果（检查准入第②条不满足）；③**不动
+      `holdout` / `skill-self-contained` 等既有 job 的行为**，只加路径触发与一个新 job。

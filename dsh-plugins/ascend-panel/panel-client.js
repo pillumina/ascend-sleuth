@@ -454,6 +454,15 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       return s.feedbackPending ? 'case' : null
     }
 
+    // 解析异常的一句话（host 的 `parseAnomaly`）。两种成因分开说：行没被解析器收下 /
+    // 行内集合的括号没闭合。术语留原值：行号与行数都要给出，读者才能自己去核对。
+    function anomalyText(a) {
+      if (!a) return null
+      const at = a.firstLine ? '（第 ' + a.firstLine + ' 行起）' : ''
+      if (a.dropped) return '轨迹可能不完整：文件里还有 ' + a.dropped + ' 行没被解析' + at
+      return '轨迹可能不完整：这份 YAML 里有一个行内集合没有闭合' + at
+    }
+
     function SessionCard(props) {
       const s = props.session
       const ownerSessionId = props.sessionId
@@ -490,6 +499,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const timeline = (!fullTrace && shownIdx.at >= 0)
         ? shownIdx.shown.filter((st, i) => i !== shownIdx.at)
         : shownIdx.shown
+      // host 报的解析异常（轨迹里有没有没被读出来的行）。缺字段的老 host 按"没有异常"退化。
+      const anomaly = (steps && steps.parseAnomaly) ? steps.parseAnomaly : null
       // 没有结论时给一行说明，而不是让卡片默默以某个过程步骤收尾：读者要能分辨
       // "诊断还没收尾"与"这单本身没有结论"。resolved 的单不提示（已闭环，结论在 out 口述里）。
       const noConclusionHint = (steps && steps.list && steps.list.length && s.status !== 'resolved')
@@ -502,7 +513,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         setOpen(true)
         setSteps({ loading: true })
         host.call('ascend-traces-detail', { sessionId: ownerSessionId || null, traceFile: s.file })
-          .then(r => setSteps({ loading: false, list: r && r.ok ? r.steps : [], summary: r && r.summary, refCount: r && r.refCount, sedimented: r && r.sedimented, sedimentCandidates: r && r.sedimentCandidates, conclusionIndex: r && typeof r.conclusionIndex === 'number' ? r.conclusionIndex : -1, error: r && r.error }))
+          .then(r => setSteps({ loading: false, list: r && r.ok ? r.steps : [], summary: r && r.summary, refCount: r && r.refCount, sedimented: r && r.sedimented, sedimentCandidates: r && r.sedimentCandidates, conclusionIndex: r && typeof r.conclusionIndex === 'number' ? r.conclusionIndex : -1, parseAnomaly: r && r.parseAnomaly, error: r && r.error }))
           .catch(e => setSteps({ loading: false, list: [], error: 'RPC 失败: ' + String(e && e.message || e) }))
       }
       function doCopy(txt, key) { copyText(txt).then(ok => setCopied(ok ? key : 'fail')) }
@@ -598,10 +609,16 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                   React.createElement('span', { style: { fontSize: 12.5, color: T.text2 } },
                     fullTrace
                       ? '完整轨迹（' + all.length + ' 条原始事件，含推理与记录维护动作）'
-                      : ('诊断轨迹：' + shown.length + ' 步' + (hidden ? '（已收起 ' + hidden + ' 条记录维护动作）' : ''))),
+                      : ('诊断轨迹：' + shown.length + ' 步' + (anomaly ? '（可能不完整）' : '')
+                        + (hidden ? '（已收起 ' + hidden + ' 条记录维护动作）' : ''))),
                   React.createElement('button', { type: 'button', className: 'sleu-chip', onClick: () => setFullTrace(!fullTrace), style: btnGhost },
                     fullTrace ? '只看诊断' : '看完整轨迹'),
                 ),
+                // 轨迹解析没收下的行：**必须说出来**。少了事件而看不出来是最坏的一种——
+                // 读者会按上面那行"诊断轨迹：N 步"当成事实（实测症状：文件里 9 条、面板上 1 条，
+                // 文件本身完全正常）。这里给出成因与行号，让读者能自己去核对那几行。
+                anomaly ? React.createElement('div', { style: { marginBottom: 8, padding: '7px 10px', background: 'color-mix(in srgb, ' + T.warn + ' 10%, transparent)', border: '1px solid color-mix(in srgb, ' + T.warn + ' 45%, transparent)', borderRadius: 9, fontSize: 12.5, color: T.text, lineHeight: 1.65 } },
+                  anomalyText(anomaly) + '。面板按 YAML 结构读这份 trace，没被解析的行不在下面的步数里。请核对这几行的缩进与引号，或把该 trace 发回来核对。') : null,
                 shown.map((st, i) => {
                   const isUser = st.role === 'user'
                   const isRef = st.action === 'reference_lookup'
@@ -835,6 +852,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           ) : React.createElement('div', { style: { marginTop: 5, color: T.text2, fontSize: 12.5 } }, '未定位到知识库 case'),
           React.createElement('div', { style: { color: T.text2, fontSize: 13.5, marginTop: 4 } },
             '轨迹: ' + s.userSteps + ' 用户输入 / ' + s.agentSteps + ' agent 步骤'),
+          // 步数由同一份解析结果算出：解析少了就得说，否则"1 用户输入"看起来像这单只有一步。
+          s.parseAnomaly ? React.createElement('div', { style: { color: T.warn, fontSize: 13.5, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 } },
+            React.createElement(Dot, { color: T.warn }),
+            anomalyText(s.parseAnomaly)) : null,
           // 两条轴的**话术分开**：有可应用 fix 才叫"结果待回报"；没命中 case 的单等的是材料，
           // 而"等什么"trace 里已经写着（最近一条 `evidence.missing`，退到 `last_action`）——
           // 直接把它显示出来，读者不用展开轨迹去猜。这一类用中性色：它不是债。
