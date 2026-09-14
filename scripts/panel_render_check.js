@@ -1978,7 +1978,7 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
     const toR = hostSrc.indexOf('async function listTraces(')
     expect('host 的报告名/占位串判定可抽出（占位串词表 + 两个判定函数 → listTraces 区块存在）', fromR > 0 && toR > fromR)
     const helpers = new Function(hostSrc.slice(fromR, toR)
-      + '\nreturn { reportFileOf: reportFileOf, activeCaseKindOf: activeCaseKindOf };')()
+      + '\nreturn { reportFileOf: reportFileOf, activeCaseKindOf: activeCaseKindOf, normalizeReportName: normalizeReportName };')()
     const files = new Set(['s.yaml', 's.report.md', 'other.report.md'])
     const r1 = helpers.reportFileOf({ report_file: 'x.report.md' }, files, 's.yaml')
     expect('报告名：顶层 report_file 优先', !!r1 && r1.name === 'x.report.md' && r1.source === 'trace', JSON.stringify(r1))
@@ -1990,6 +1990,22 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       !!r3 && r3.name === 's.report.md' && r3.source === 'name', JSON.stringify(r3))
     const r4 = helpers.reportFileOf({ session_id: 's' }, new Set(['s.yaml']), 's.yaml')
     expect('报告名：同名文件不存在 → 不给入口（不编一个读不到的名字）', r4 === null, JSON.stringify(r4))
+    // 归一：契约是文件名，但 trace 里常写成带目录的路径，而面板读/开报告时统一在 traces/ 下拼路径
+    // ——不归一就会拼成 traces/traces/…（实测症状：点「打开报告」找的是 …\ascend-sleuth\traces\traces\…）
+    const norm = helpers.normalizeReportName
+    expect('报告名归一：带目录的四种写法都还原成文件名',
+      norm('traces/x.report.md') === 'x.report.md'
+      && norm('traces\\x.report.md') === 'x.report.md'
+      && norm('./traces/x.report.md') === 'x.report.md'
+      && norm('C:/repo/ascend-sleuth/traces/x.report.md') === 'x.report.md', JSON.stringify([
+        norm('traces/x.report.md'), norm('traces\\x.report.md'), norm('./traces/x.report.md'),
+        norm('C:/repo/ascend-sleuth/traces/x.report.md')]))
+    expect('报告名归一：文件名原样、别的目录不擅自改写、空值给 null',
+      norm('x.report.md') === 'x.report.md' && norm('reports/x.md') === 'reports/x.md'
+      && norm('') === null && norm(null) === null)
+    const r5 = helpers.reportFileOf({ trace: [{ action: 'report', report_file: 'traces/in-event.report.md' }] }, files, 's.yaml')
+    expect('报告名：事件里写了带 traces/ 前缀的路径也归一（读得到才算数）',
+      !!r5 && r5.name === 'in-event.report.md', JSON.stringify(r5))
     expect('占位串判定：pending-investigation 系（含带说明的写法）都不算 case',
       helpers.activeCaseKindOf('pending-investigation') === 'placeholder'
       && helpers.activeCaseKindOf('pending-investigation (upstream #14728)') === 'placeholder'
@@ -2043,6 +2059,9 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         '看报告=' + (ct.match(/看报告/g) || []).length)
       expect('报告名来自同名规则时说明来源（trace 未记报告名不许闷着）',
         /按同名规则找到/.test(ct) && /s-rep\.report\.md/.test(ct))
+      expect('「打开报告」给的是单层 traces/ 路径（拼两层会打开不存在的文件）',
+        /«title:traces\/s-rep\.report\.md»/.test(ct) && !/traces\/traces\//.test(ct),
+        (ct.match(/«title:[^»]*»/g) || []).join(' '))
     }
   }
 
