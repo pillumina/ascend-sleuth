@@ -1,0 +1,29 @@
+id: mx-quantized-matmul
+type: software-fact
+title: MX 量化矩阵乘约束（Cube 每拍 16×C0×16 / baseK 必须 64 倍数 / MXFP4 按 B8 搬 / scale L1 缓存 3 份）
+summary: "MX（microscaling）量化的 matmul 有四条硬约束：①Cube 每拍计算量是 `16 × C0 × 16`（MXFP8 的 C0=32、MXFP4 的 C0=64），算力下界据此估算；②MMAD 要求 `baseK` 是 **64 的整数倍**，K 非对齐要补零且补零方式随排布而异；③MXFP4 的 `ND2NZ` 不支持 B4 数据类型，必须按 **B8** 搬运、`stride`/`shape` 全部除以 2、输入内轴须为偶数；④scaleA/scaleB 由 MMAD 自动参与（`L0A_MX`/`L0B_MX`），可在 **L1 缓存 3 份**以减少 scale 搬运次数"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/matmul_story/docs/quant_matmul_mx_performance.md"
+    version: "cann-samples master（MX 量化 matmul 性能文档）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/grouped_matmul_story/docs/quant_grouped_matmul_mx_performance.md"
+    version: "cann-samples master（分组 MX 量化文档：NZ/ZN 私有格式与搬运）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision, interrupt, performance]
+
+related_references: [fractal-nz-layout, float8-cast-bit-mapping, operator-bottleneck-attribution, attention-precision-chains]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**①每拍计算量**：非量化 FP16/BF16 场景 Cube 核 MMAD 每拍为 `16×16×16`；MX 量化场景为 `16 × C0 × 16`，其中 **MXFP8 的 C0 = 32、MXFP4 的 C0 = 64**。据此估理论计算时间 `T_cube = M×K×N / (16×C0×16×核数×频率)`——这是判断是否 Cube Bound 的输入。**②K 对齐**：MX 量化下 MMAD 限制输入矩阵 K 方向长度为 **64 的倍数**，因此 **`baseK` 必须是 64 的整数倍**；同时 MMAD 需关闭 `gemv` 功能。K 轴非 64 对齐时分两类——输入排布为 `(m,k)` 或 `(n,k)`（K 在内轴）时 `ND2NZ` 可自动补零，**仅当 MXFP8 且 `Ceil(k/32)` 为奇数时需手动补零**；排布为 `(k,m)` 或 `(k,n)`（K 在外轴）时 `ND2NZ` 无法补零，**需在 k 对齐 16 后仍非 64 对齐时手动处理**（推荐 `SET2D` 对 L1 目标地址清零 + `ND2NZ` 跳写）。**③MXFP4 的搬运**：`ND2NZ` 指令不支持 `B4` 数据类型，需按 **B8** 搬运，指令的 `stride` 与 `shape` 配置**均除以 2**；并要求输入矩阵**内轴为偶数**（否则两个 B4 拼不成一个 B8）。**④scale 的参与方式与缓存**：`scaleA`/`scaleB` 先搬到 L1、再由 MTE1 的 `LoadData with Load2D_MX` 载入 `L0A_MX`/`L0B_MX`（Layout 保持 Zz/Nn）；通过约束 `L0A`/`L0B`/`L0A_MX`/`L0B_MX` 的地址映射关系，**MMAD 指令自动完成 MXFP4/MXFP8 矩阵乘**并把 FP32 结果写入 L0C，输出类型由 Fixpipe 的量化模式决定——**因此纯 MX 量化算子只依赖 CUBE 核、不涉及 MIX 场景**。scale 张量本身很小（其 size 只有 q/k/v 的 1/(128·D) 或 1/(256·D)），可在 **L1 中缓存 3 份**，让一次 scale 搬运对应 3 次输入搬运，减少指令数与启动开销。**⑤私有格式搬运更省带宽**：`NZ/ZN` 为 NPU 私有格式，用普通 `DataCopy` 搬运即可（相比带格式转换的 `ND2NZ` 带宽利用率更高）；标准 DN 排布 `(n,k)` → ZN `(k1,n1,n0,k0)` 的转换中 `n0 = 16`、`k0 = 32/sizeof(BType)`，MX 量化下 NZ/ZN 后两维为 `(16, 64)`（MXFP4）与 `(16, 32)`（MXFP8）。**注意区分**：MXFP8FP4 组合（权重与激活精度不同）**不支持 MMAD_MX 的混合精度**，属 MIX 算子，需 Vector 侧预处理——不要与上面的纯 MX 路径混为一族。"
+  evidence: "quant_matmul_mx_performance.md：『说明：以下公式统一采用16 × C0 × 16表示Cube核每拍计算量。其中，MXFP8场景下C0 = 32，MXFP4场景下C0 = 64。』『K维度对齐约束：由于MX量化场景下MMAD指令限制输入矩阵在K方向长度为64的倍数，要求baseK是64的整数倍。』『数据类型处理：对于MXFP4量化场景，由于ND2NZ指令不支持B4数据类型，需将输入按B8数据类型进行搬运，相应指令的stride和shape配置均需除以2。』『内轴对齐约束：…要求输入矩阵内轴为偶数，否则无法用2个B4拼成一个B8类型。』『因此算子实现仅依赖CUBE核，不涉及MIX场景。』『推荐补零方法：使用SET2D对L1缓冲区目标地址清零 + ND2NZ跳写目标地址。』；quant_grouped_matmul_mx_performance.md：『NZ/ZN为NPU私有格式数据。NZ/ZN格式的weight数据可通过普通的DataCopy搬运，相比带有格式转换的ND2NZ等指令具有更高的带宽利用率』"

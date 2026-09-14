@@ -1,0 +1,24 @@
+id: full-load-l1-condition
+type: software-fact
+title: 全载（FullLoad）把小矩阵常驻 L1 的判定条件与后果
+summary: "MTE2 Bound 场景下，若 A（或 B）矩阵能完整放进 L1，可一次性载入并常驻复用，把 MTE2 搬运次数从「与计算轮次成正比」降到**常数级**。判定条件三条：①分块数需超过可用核数（`tilesM=(m+255)/256`、`tilesN=(n+255)/256`，要求 `tilesM×tilesN ≥ numBlocks`）；②A 矩阵字节数 `k×m×sizeof(T)` 不超过 **L1 的一半**（`512×1024/2`，扣除自身占用后留余量）；③`m ≤ 256` 或（`m < n` 且 `tilesM×tilesN ≤ numBlocks`）。另有收益条件：`n ≥ 512` 时才显著。**条件不满足的后果被来源列为精度异常或性能退化**"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/memory_optimization/full_load/README.md"
+    version: "cann-samples master（全载样例；自述 Ascend 950）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance, precision]
+
+related_references: [l1-l0-bank-and-conflict, multicore-partitioning-and-template-selection, operator-bottleneck-attribution, transfer-granularity-thresholds]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**机制**：在 MTE2 Bound 场景下，对于能完整载入 L1 的矩阵，可以采用**全载模板策略**——一次性把整个矩阵加载到 L1 并使其常驻，在不同计算轮次中重复使用而无需反复从全局内存搬运；效果是 **MTE2 搬运次数由「与计算轮次成正比」降为常数级**，从而减少 MTE2 阶段耗时、缓解带宽压力。收益在 **N 较大**（重复利用率高）时明显。**判定条件（来源给出的完整判据）**：①**分块数需超过可用核数**——`tilesM = (m + 255) / 256`、`tilesN = (n + 255) / 256`，要求 `tilesM × tilesN ≥ numBlocks`；②**L1 容量限制**——A 矩阵字节数 `k × m × sizeof(T)` 不得超过 **L1 的一半**（`512 × 1024 / 2`，即扣除 A 矩阵存储开销后按半容量留余量）；③**特殊约束**——`m ≤ 256`，或（`m < n` 且 `tilesM × tilesN ≤ numBlocks`）。**可选收益条件**：`n ≥ 512` 时全载复用收益才显著（N 小时计算轮次少，节省的搬运次数有限）。**后果（关键）**：来源把「**全载条件不满足**」明确列为**精度异常或性能退化**的来源之一——也就是说全载不是纯性能开关，条件判断错会同时影响数值结果；诊断「加了全载模板后结果不对」时先回到这三条条件逐条核对。"
+  evidence: "full_load README：『对于能够完整载入L1缓存的矩阵，可以采用全载模板策略，即一次性将整个矩阵加载到L1缓存中并使其常驻，在不同计算轮次中重复使用该缓存数据而无需反复从全局内存搬运』『MTE2搬运次数由原来的与计算轮次成正比降低为常数级』；判定三条条件（`tilesM*tilesN >= numBlocks`、A 矩阵 ≤ L1 一半、`m <= 256` 或 `m < n` 且 `tilesM*tilesN <= numBlocks`）与 `n >= 512` 的收益条件"

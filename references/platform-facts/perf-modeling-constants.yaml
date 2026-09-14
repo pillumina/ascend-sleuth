@@ -1,0 +1,24 @@
+id: perf-modeling-constants
+type: platform-fact
+title: 性能建模参考常数（1.65GHz / 1µs=1650 cycle / MTE1 256BPC / L2 5.2TB/s / L2 命中率 28.9% 门槛）
+summary: "把 profiler 的 µs 换算成 cycle 与有效带宽、再与建模值比对的参考常数集：32 核、**1.65GHz**（故芯片上 **1 µs = 1650 cycle**）、HBM 1.6TB/s、L2 5.2TB/s、MTE1 **256BPC**（≈422.4GB/s）、L0C 256KiB；MTE2 综合带宽 `≈ (1−L2HitRatio)·HBM + L2HitRatio·L2`，`baseM=baseN=256` 时达成 Cube Bound 需 MTE2 ≥ **2.64TB/s**，**L2 命中率到 28.9% 时 MTE2 不再是主瓶颈**"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/matmul_story/docs/weight_quant_matmul_mxfp8fp4_performance.md"
+    version: "cann-samples master（MXFP8FP4 性能文档的建模参考数据节）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance]
+
+related_references: [a5-950pr-memory-spec, a5-l2-cache, transfer-granularity-thresholds, operator-bottleneck-attribution, multicore-partitioning-and-template-selection]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "性能建模的参考配置（来源明示为参考数据）：**32 核、1.65GHz、HBM 带宽 1.6TB/s、L2 带宽 5.2TB/s、MTE1 带宽 256BPC（约 422.4GB/s）、L0C 空间 256KiB**。换算关系：芯片上 **1 µs = 1650 cycle**（对应 1.65GHz）；`TB/s` 按**十进制口径**（`1TB/s = 10^12 B/s`）；`BPC` = Byte Per Cycle，换算成带宽需乘频率。**MTE2 综合带宽模型**：`BandWidth_MTE2 ≈ (1 − L2HitRatio) × BandWidth_HBM + L2HitRatio × BandWidth_L2`。**两个定量门槛**：当 `baseM = baseN = 256` 时，达成 Cube Bound 所需的最小 MTE2 带宽为 **2.64TB/s**；**L2 命中率达到 28.9% 时 MTE2 不会成为主瓶颈**。**用法**：把 profiler 实测的 µs 换成 cycle 与有效带宽，再与上面的建模值比对，才能判定当前是 Cube 还是 MTE2 Bound；「增大 tile 复用能否缓解 MTE2」这类判断也可以借 L2 命中率门槛定量化。**与既有词条的口径区分**：`1.6TB/s` 是该来源的建模取值，本库 `a5-950pr-memory-spec` 记录的 1.6TB/s 是平台规格值——两者数值一致但**出处不同**，引用时不要混为一条；`L0C 256KiB` 与 `l1-l0-bank-and-conflict` 记录的一致。"
+  evidence: "源文档：『以32核，1.65GHz，HBM带宽1.6TB/s，L2带宽5.2TB/s，MTE1带宽为256BPC（约422.4GB/s），L0C空间为256KiB为例，给出参考数据』（及同节的 `BandWidth_MTE2` 加权式、2.64TB/s 最小值、28.9% L2 命中率结论、TB/s 十进制与 BPC 换算说明）"

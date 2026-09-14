@@ -1,0 +1,31 @@
+id: transfer-granularity-thresholds
+type: platform-fact
+title: 搬运粒度阈值（单次总量 <20K 不友好、连续 <128B 浪费 Sector-Cache）
+summary: "两个搬运粒度阈值：单次搬运总量小于 **20K** 对芯片搬运不友好、速度下降；Ascend 950 支持 **128B Sector-Cache**，但为了用满核把连续搬运字节数降到 128B 以下会浪费有效带宽。可操作判据是 `N ≤ coreNum × 128` 的场景要检查任务是否被切得过碎（128 为 N 方向元素数）"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/matmul_story/docs/quant_matmul_mxfp4_tutorials.md"
+    version: "cann-samples master（MXFP4 量化教程：20K 阈值）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/grouped_matmul_story/docs/weight_quant_grouped_matmul_mxfp8fp4_performance.md"
+    version: "cann-samples master（MXFP8FP4 性能文档：128B Sector-Cache）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance]
+
+related_references: [perf-modeling-constants, operator-bottleneck-attribution, mx-quantized-matmul, multicore-partitioning-and-template-selection]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**阈值一：单次搬运总量 < 20K**——搬运指令若总数据量小于 20K，对芯片搬运不友好、会导致速度降低（来源原文未标注该 20K 的单位；同节其余量以 B 计，示例中单次 scaleA/scaleB 为 2048 B）。**阈值二：连续搬运 < 128B**——Ascend 950 支持 **128B 的 Sector-Cache**，但**为了用满核**而把连续搬运的字节数降到 128B 以下，会造成**有效带宽浪费**（切得越碎每个核的连续搬运越短）。**可操作判据**：`N <= coreNum * 128` 的场景要检查任务是否被切得过碎，其中 `128` 表示 N 方向的元素数。**诊断含义**：与「并行度优先」原则存在张力——为了用满多核而把任务切细，会与这两个粒度阈值打架；出现「核数用满了但带宽利用率上不去」时，按这两条先量一下单次搬运总量与每核连续字节数，再决定是加核还是并块。"
+  evidence: "quant_matmul_mxfp4_tutorials.md：『搬运指令，若总数据量小于20K的话，对芯片搬运不友好，会导致速度降低。』；weight_quant_grouped_matmul_mxfp8fp4_performance.md：『虽然Ascend950支持128B的Sector-Cache，但是为了用满核而将连续搬运字节数降低到128B以下，会导致有效带宽浪费。……适用场景：N <= coreNum * 128的场景，其中128表示N方向元素数。』"
+  pitfalls:
+    - "20K 这条来源未给单位与芯片标注——引用时按「量级判据」用，不要当成精确阈值"

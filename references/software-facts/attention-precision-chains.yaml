@@ -1,0 +1,35 @@
+id: attention-precision-chains
+type: software-fact
+title: Attention 两类精度损失链（FP8 per-block 量化的 P 压 fp8 / 衰减注意力的 exp 指数上溢）与验收判据
+summary: "量化与线性 attention 各有主要精度损失点：①FIA FP8 per-block 全量化里 **softmax 概率 P 被压到 fp8(E4M3)** 是最大损失点，且要求 block_size 与算子 tiling 块一致（scale shape 直接暴露粒度：query 沿 S1 每 128、key/value 沿 S2 每 256 一个 scale）；②门控/衰减类线性 attention 的 `exp(-G)` 因子在强衰减长 chunk 下会超出 BF16 安全范围（C64 平移后仍达 160）。验收判据可复用：`atol/rtol = 0.004 + 0.004·|golden|`、低精度基线 `E_npu ≤ 2·E_bf16`、`NRMSE < 0.006`"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/full_quant_fused_infer_attention_score_story/README.md"
+    version: "cann-samples master（FIA FP8 per-block 全量化）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/kimi_delta_attn_lite_story/README.md"
+    version: "cann-samples master（衰减注意力 anchor 平移与精度判据）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/flash_attn_lite_story/README.md"
+    version: "cann-samples master（FA 精度验收判据）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [pytorch]
+  categories: [precision]
+
+related_references: [mx-quantized-matmul, float8-cast-bit-mapping, long-vector-accumulation-error, msprobe-accuracy-compare, bf16-intermediate-precision]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**链一：FP8 per-block 全量化（FIA 类）**。per-block 量化要求按 `block_size` 对 q/k/v **分别**量化（per-tensor 则是三者共用一组量化参数），且**通常要求 block_size 与算子 tiling 块一致**。粒度从参数量化参数的 shape 就能读出来：`dequantScaleQuery` 为 `(B,N1,Ceil(S1/128),1)`、`dequantScaleKey`/`dequantScaleValue` 为 `(B,N2,Ceil(S2/256),1)`——即 **query 沿 S1 每 128、key/value 沿 S2 每 256 一个 scale**（dtype FLOAT32，q/k/v 本体 `FLOAT8_E4M3FN`、ND 排布）。数据流：fp8 Q/K → matmul 输出 fp32 → 用 dequantScaleQuery/Key 反量化 → softmax → **cast 成 fp8 的 P 矩阵** → fp8 P×V → fp32 输出 → 用 dequantScaleValue 反量化。**这条链路的主要精度损失点是 softmax 概率被压到 fp8(E4M3)**；诊断量化 attention 掉精度时先查三件事：块粒度是否与 tiling 对齐、P 是否被压到 fp8、输出 dtype 到底是 fp16 还是 bf16（该来源文档自身不一致——实现流程写 bf16、参数表 `attentionOut` 标 FLOAT16，**以实际算子签名/PTA 接口为准，不要只信文档一处**）。**链二：衰减/门控线性 attention 的指数上溢**。把逐 token 衰减移到 Q/K 缩放因子后会出现 `exp(-G)`（G 为累计 log 衰减），**衰减越强、chunk 越长，G 越负、`exp(-G)` 越大**。修法是对每个 chunk、每个 Dk 通道取区间中点做 **anchor 平移**（`a = G_tail / 2`），把两侧指数限制在 `[-|G_tail|/2, |G_tail|/2]`，**最大正指数减半**；因为 `a` 在同一通道内相消，矩阵乘的实数结果不变（`exp(G_i-a)·exp(a-G_j) = exp(G_i-G_j)`），只是改变了 Cube 两侧 BF16 输入的写法。**边界（测试范围 g ∈ [-5,0]）**：C32 最坏累计约 -160、平移后最大正指数约 80（可支持）；**C64 最坏累计约 -320、平移后仍可能达到 160，超出 BF16 输入路径的安全范围**——这正是某实现支持 C16/C32 而不支持 C64 的原因。注意 anchor 平移会**改变 BF16 舍入位置**，精度仍以逐 token FP32 递推结果为准。**验收判据（可复用）**：①FA 类——以 FP32 计算 golden 并以 FP32 落盘，NPU 的 BF16 输出转 FP32 后逐元素比较，判据 `abs(float(npu_bf16) - golden_fp32) <= 0.004 + 0.004 * abs(golden_fp32)`，全部元素通过才算成功，NaN/Inf 直接判失败；低精度基线倍率模式（`FA_VERIFY_LOW_PRECISION_BASELINE=1`）额外用 Torch BF16 算一份基线，要求 **`E_npu <= 2 * E_bf16`**（E 为相对 FP32 golden 的最大绝对误差）。②线性/递推 attention 类——`NRMSE = RMS(NPU_FP32 - Golden_FP32) / (RMS(Golden_FP32) + 1e-8)`，O 与末状态分别要求 **`NRMSE < 0.006`**（与该类算子上游单测口径一致，对比测试常用 0.005～0.006 阈值）。"
+  evidence: "FIA README：『相比于per-tensor全量化，对于query、key、value矩阵采用同一个量化参数进行计算，per-block全量化要求根据block_size对输入分开进行量化，通常要求block_size的值，与算子tiling块一致。』及 dequantScale* 的 shape 表；kimi_delta_attn_lite README：『O 和 final_state 分别要求 NRMSE < 0.006；NaN 或 Inf 直接判为失败。』与 anchor 平移推导（C32→-160→80；C64→-320→仍可能 160，超出 BF16 安全范围）；flash_attn_lite README 的 FA 验收判据与 `FA_VERIFY_LOW_PRECISION_BASELINE=1` 的 `E_npu <= 2 * E_bf16`"

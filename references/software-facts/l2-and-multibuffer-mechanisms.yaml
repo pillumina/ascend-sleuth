@@ -1,0 +1,29 @@
+id: l2-and-multibuffer-mechanisms
+type: software-fact
+title: matmul 的 L2 与多缓冲机制（SWAT 提命中率 / 只读权重绕过 L2 / K 尾轮 L0C 冲突 / 2-3-4 Buffer 条件）
+summary: "四个与 L2、多缓冲相关的机制：①**SWAT**（M 向固定窗口 + N 向 Z 型往复滑动）通过提高多核单次访问的 **L2 命中率**改善 MTE2，做到首轮搬运即可 MMAD 不断流，Cube 利用率可达 95%+；②**只读一次的 weight 可绕过 L2**（双页表），不适用的数据不必占 L2；③**K 尾轮会出现 L0C 读写冲突**，需在 N 方向**分步搬出**；④**2/3/4-Buffer 的使能条件**与 `cycle_wasted = cycle_vec + cycle_latency − (BufferNum−1)×cycle_datamove` 的定量判据"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/matmul_story/docs/matmul_performance.md"
+    version: "cann-samples master（matmul 性能文档：SWAT 与 L0C 冲突）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/matmul_story/docs/weight_quant_matmul_mxfp8fp4_performance.md"
+    version: "cann-samples master（多 Buffer 使能条件与定量判据）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance]
+
+related_references: [operator-bottleneck-attribution, n-buffer-multi-level-pingpong, perf-modeling-constants, multicore-partitioning-and-template-selection]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**①SWAT 提 L2 命中率**：SWAT（Slide Window Adaptive Template）通过提升多核单次访问的 **L2 命中率**来提高 MTE2 搬运效率，从而做到**首轮搬运即可 MMAD 指令不断流**，使算子在 Cube Bound 场景下计算单元利用率达到 **95%+**。核心逻辑是让每一轮多核计算的输出排布尽量方正：在 M 轴设固定窗口（如 `WINDOW_LEN=4`）、按 M 轴尾块大小灵活调整，再沿 N 方向做 **Z 型往复滑动**。典型触发条件是 `mCnt × nCnt` 较大（例如二者均不小于 4）——即同一轮内多核 tile 的空间分布对缓存/带宽行为敏感时。**②只读一次的数据绕过 L2（双页表）**：对只读一次的 weight 等数据，可用双页表机制**绕过 L2**，避免它们占据 L2 容量、把命中率让给真正复用的数据。**③K 尾轮的 L0C 读写冲突**：K 方向尾轮时 L0C 会出现读写冲突，处理办法是在 **N 方向分步搬出**（分批写出而不是一次全出）。**④多 Buffer 的使能条件与定量判据**：2-Buffer 覆盖「当前计算 / 下一轮准备」的基本重叠关系、资源开销小；**4-Buffer**（Grouped 场景为 3-Buffer，仅 L1 侧增加第三份 A/B）用于减少搬运抖动与带宽瞬时不足造成的断流风险，使能条件是**Profiling 显示存在明显流水停顿（计算等待搬运）且 L1/L0 空间评估后仍能保持目标 `base` 块大小、不引入新的 MTE1/FIXPIPE 瓶颈**。Grouped MXFP8 split-M 3-Buffer 需**同时**满足 `A1+B1+scaleA+scaleB+A3 ≤ HALF_L1_SIZE` 与 `A2+B2+scaleA+scaleB+B3 ≤ HALF_L1_SIZE`（其中 `A1=A2=A3`、`B1=B2=B3`），不满足则回退 2-Buffer。4-Buffer 的定量判据：`cycle_wasted = cycle_vec + cycle_latency − (BufferNum − 1) × cycle_datamove`，代入 `cycle_wasted ≤ 0` 可反解所需 buffer 数目。"
+  evidence: "matmul_performance.md：『SWAT(Slide Window Adaptive Template)通过提升多核单次访问的L2命中率来提高`MTE2`搬运效率，从而实现首轮搬运即可做到`MMAD`指令不断流，使算子在Cube Bound场景下计算单元利用率达到95%+。』；同文档的只读 weight 绕过 L2（双页表）与 K 尾轮 L0C 读写冲突→N 方向分步搬出；weight_quant_matmul_mxfp8fp4_performance.md：『$cycle_{wasted} = cycle_{vec} + cycle_{latency} - (BufferNum - 1) \\times cycle_{datamove}.$』与 3-Buffer 的 HALF_L1_SIZE 双条件"

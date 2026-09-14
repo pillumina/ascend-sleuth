@@ -1,0 +1,46 @@
+id: simt-vs-simd-selection
+type: methodology
+title: SIMT / SIMD 与 MemBase / RegBase 的选型判据（标量受限时先试纯 SIMT）
+summary: "选型不是偏好问题，按判据走：①出现**逐元素标量循环把算子锁在 Scalar 引擎**（`aiv_scalar_ratio≈0.999` 且 `aiv_vec_ratio≈0`）时，改纯 SIMT（grid-stride）是首选，实测主 Bound 切到 Vector、收益可达数十倍；②但纯 SIMT 在 **bins 超出 UB 容量**时会退到 GM 原子累加、代价极高，且 `innerDim` 大时 MTE+SIMD 更合适；③需要精细流水线控制时用 `__aicore__` + `__simt_vf__` 混合；④RegBase（`__simd_vf__`）用于消除 UB 往返，前提是尾块用 MaskReg、VF 内少用单发指令与 Membar"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/scalar_story/README.md"
+    version: "cann-samples master（ScalarBound 与纯 SIMT 改造；自述 Ascend 950 + CANN 9.0）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/simd_vf_story/README.md"
+    version: "cann-samples master（SIMT/SIMD 选型与混合编程判据）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/kv_rms_norm_rope_cache_story/README.md"
+    version: "cann-samples master（MemBase→RegBase 迁移边界）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance]
+
+related_references: [simt-execution-model, simd-vf-programming-constraints, regbase-execution-model, operator-bottleneck-attribution]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  flow:
+    - step: 1
+      action: "先判**是不是 Scalar 受限**：看 `aiv_scalar_ratio` 与 `aiv_vec_ratio`——若出现 `aiv_scalar_ratio ≈ 0.999` 而 `aiv_vec_ratio ≈ 0`，说明逐元素标量循环把算子锁死在 Scalar 引擎（计算根本没进 Vector 流水）"
+      check: "这条签名很硬：两个 ratio 同时取到极端值，不是「偏慢」而是「走错引擎」"
+    - step: 2
+      action: "首选改**纯 SIMT**：把串行 `for (i=0; i<N; i++)` 换成 grid-stride 循环、按 SIMT 线程模型重写（编译与 API 差异见 SIMT 执行模型词条）。来源实测改后主 Bound 从 Scalar 切到 Vector，收益 **46.3x**"
+      check: "改造后 `aiv_vec_ratio` 应显著上升、`aiv_scalar_ratio` 应大幅下降；若没动，先确认 kernel 真的按 SIMT 编译（`--enable-simt`、kernel 不带 `__aicore__`）"
+    - step: 3
+      action: "**纯 SIMT 的两个否决条件**：①**bins（分箱/直方图类）超出 UB 容量**时纯 SIMT 会退化成 GM 上的原子累加，代价极高——此时不要选纯 SIMT；②**`innerDim` 大**（内轴长）时 MTE + SIMD 的批量搬运更合适。需要精细流水线控制（手工流水、双缓冲）时改用 **`__aicore__` + `__simt_vf__` 混合**编程"
+      check: "选型前先算 bins 的 UB 占用与 innerDim 规模，这两个量决定结论"
+    - step: 4
+      action: "**RegBase（`__simd_vf__`）用于消除 UB 往返**：MemBase 下标准 Vector API 的抽象是 UB→UB（每次调用一次 UB 读 + 一次 UB 写），中间结果反复落 UB 时 `RVECLD + RVECST` 会远超 `RVECEX`（来源实测 naive 基线 123,392 + 131,648 = 255,040，是 `RVECEX` 147,968 的 **1.72x**）。迁移路线是「外层不动、热链下沉、寄存器串联、同源校验」：保留 GM tensor 绑定、tiling、`DataCopyPad`、cache 写回、双缓冲队列，只把最热的计算链换成 VF；`__aicore__` 侧只做 `LocalTensor.GetPhyAddr()` → `__ubuf__` 指针转换"
+      check: "VF 内三条禁忌：①能融尽融（融合越多 UB↔寄存器交互越少）；②少用 Reduce 类、非对齐访存、`Interleave`/`Deinterleave` 等**单发**指令；③少用 `Membar`（中断 VF 内流水、IPC 下降）。换编程模型必须**复跑同一套 golden** 逐输出校验"
+  verified_by_testing: "来源给出单样例实测（ScalarBound → 纯 SIMT 46.3x；MemBase → RegBase 指令数 −54.3%、时延 113.6 → 84.1 us），数字绑定各自样例的 shape，仅用于判据方向"

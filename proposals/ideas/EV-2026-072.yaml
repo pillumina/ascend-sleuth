@@ -1,0 +1,84 @@
+id: EV-2026-072
+layer: L1
+title: cann-samples 第二批吸收：MX 量化 / SIMT 与 RegBase / 精度链 / MoE 通信 / 主机内存直访（12 条）
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-14
+source_signals:
+  - signal: coverage_gap
+    evidence: >-
+      上一批（EV-2026-071）刻意留下的四类候选——MX 量化 matmul 约束、MoE dispatch/combine 机制、
+      SIMT/SIMD 选型判据、RegBase 执行模型——在候选池里质量足够但未入库。本批连同其同组的高价值条目
+      一并吸收：量化精度链（FP8 per-block 的 P 压 fp8、衰减 attention 的 exp 指数上溢、验收判据）、
+      主机内存直访（PCIe Through 三条件与强制 SIMD tiling）、多核切分优先原则与 Bound→策略映射表、
+      BF16 中间精度与 Scatter 覆盖语义。候选出处为 EV-2026-071 已登记的候选池（182 条中的剩余部分）。
+    trajectory:
+      - references/software-facts/mx-quantized-matmul.yaml 等 12 个新词条（本轮产出）
+      - "Samples/2_Performance/matmul_story/docs/quant_matmul_mx_performance.md（MX 约束来源）"
+      - "Samples/2_Performance/full_quant_fused_infer_attention_score_story/README.md（FP8 per-block 来源）"
+      - "Samples/1_Features/hardware_features/simt/README.md（SIMT 执行模型来源）"
+      - "Samples/2_Performance/moe_dispatch_and_combine_story/README.md（MoE 通信来源）"
+hypothesis: >-
+  「量化链路（MX 约束 + FP8 attention 精度损失点 + 验收判据）」「编程模型选型（SIMT/SIMD 与
+  MemBase/RegBase 的判据与迁移边界）」「通信与主机内存通路（MoE 单边写、PCIe Through 判定）」
+  三块补齐后，量化精度类与推理侧性能类问题在算子层有可查的判据；同时把上一批的
+  「算子瓶颈归因」从单点判据补成含**策略/模板选择表**与**多核优先原则**的完整路径。
+predicted_effect:
+  metric: 新增词条数、schema 与索引一致性、平台归属与来源缺口标注的完整性
+  from: 吸收前 150 条词条 / 背景 70 条 / 流程 16 条（MX、SIMT 执行模型、RegBase、MoE 通信、PCIe 直访零覆盖）
+  to: 162 条词条 / 背景 80 条 / 流程 18 条
+  measure:
+    command: "python3 scripts/verify_references.py --check && python3 scripts/build_ref_summary_index.py --check && python3 scripts/build_procedure_index.py --check && python3 scripts/verify_proposals.py --check"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 吸收前 references/（150 条；上述五类主题零命中）
+  success_criteria: >-
+    ①四道校验全通过；②12 条零注释、categories 取值合法；③来源逐字核验或如实降级（SIMT 寄存器堆图
+    标 auto-extracted）；④来源内部矛盾显式记录（FIA 输出 dtype 文档自相矛盾、aclrtHostRegister 与
+    aclrtHostRegisterV2 两处 API 名不一致、核数口径不一）；⑤走 reference 层人审
+  rollback: 删除本轮 12 个文件 + 重建两个索引
+gate:
+  condition: 本批合入后再评估候选池里剩余的低优先级内容（逐 story 调优数值、算子源码写法、HIF8 类型契约等）
+risk: low
+principle_refs: [2, 9, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 会话内联执行（复用上一轮的 7 组候选池，未再派读取者），按同批做法以 0 计并如实标注口径
+decisions:
+  - who: agent
+    when: '2026-09-14'
+    type: proposal
+    conclusion: >-
+      用户要求继续做上一批明确留出的四类 → 本批连同等组高价值条目共 12 条一次提交。聚合口径沿用：
+      MX 的「每拍计算量 / baseK 64 对齐 / MXFP4 按 B8 搬 / scale 缓存」合成一条（同一机制面），
+      两条精度链（FP8 量化 + 衰减指数上溢）合成 `attention-precision-chains`（同一场景：attention 精度）。
+  - who: agent
+    when: '2026-09-14'
+    type: action
+    conclusion: >-
+      写入 12 条：software-fact 8（mx-quantized-matmul / float8-cast-bit-mapping / attention-precision-chains /
+      moe-dispatch-combine / regbase-execution-model / cv-fusion-fixpipe-ub / bf16-intermediate-precision /
+      scatter-write-conflict / pcie-host-memory-access 中的 9 条按 type 分布为 software-fact 8 + platform-fact 1）、
+      platform-fact 1（simt-execution-model）、methodology 2（simt-vs-simd-selection、
+      multicore-partitioning-and-template-selection）。索引重建（背景 70 → 80、流程 16 → 18）。
+      本批**未修改**任何上一批已合入的 active 词条（避免触发 kb/high-risk 双签流程）。
+  - who: agent
+    when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      scan_review：measure 命令实跑通过（162 条词条 / 两索引新鲜 / 卡校验通过）；12 条零注释；
+      来源矛盾与缺口逐条写入词条（FIA dtype 自相矛盾、aclrtHostRegister 命名不一致、核数口径不一、
+      SIMT 寄存器堆图为 auto-extracted）。未跑检索 golden：本批为内容新增，不改变 case 候选选择。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      validated（采纳，改动保留进本批 PR 供人审）。人审关注点：①`attention-precision-chains` 把两条
+      不同机制（量化损失 vs 指数上溢）合成一条是否合适；②`simt-vs-simd-selection` 与
+      `regbase-execution-model` 存在内容邻接（选型判据 vs 模型细节），是否该合并；③是否有条目应把
+      `platforms` 从 cross 收窄到 A5-950。

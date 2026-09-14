@@ -7,7 +7,7 @@
 #   3) 按 file 打开该词条读 **content.flow[] 全文**——摘要行不承载判据，只读摘要等于没加载；
 #   4) 一轮诊断最多加载一条流程（成本有界）。
 #
-# 生成日期：2026-09-14    流程条数：16    本文件整体加载成本：约 2622 token（选择器每次都要整读，故单文件 + 记成本）
+# 生成日期：2026-09-14    流程条数：21    本文件整体加载成本：约 3477 token（选择器每次都要整读，故单文件 + 记成本）
 #
 # 增长闸门（原则十一：按闸门不按日历）：流程条数 > 25，或本文件 > 5K token → 按 category 分片
 #   （对齐 case 层 knowledge/_index/<ns>__<category>.yaml 的做法）。当前单文件即可。
@@ -83,6 +83,14 @@ entries:
   platforms:
   - cross
   file: references/methodologies/ascend-train-precision-triage.yaml
+- id: dma-granularity-and-pingpong-tuning
+  title: 搬运耗时压不动时的调参顺序（先保 ping-pong 重叠，再加大单次 DMA）
+  summary: 当 mte2/mte3 耗时在多个优化步骤后几乎不动（看着像「不可压缩的搬运底座」）时，先怀疑 **16KB 级小 DMA 的 ramp-up 损耗**没吃满带宽；手段是把单次 DMA 从 16KB 加到 32KB（实测 mte2 3.02→2.00µs、mte3 1.15→0.82µs）。但调参顺序有硬约束：**ping-pong 重叠（≥2 tile）比 DMA 尺寸更重要**——单缓冲下即…
+  categories:
+  - performance
+  platforms:
+  - A5-950
+  file: references/methodologies/dma-granularity-and-pingpong-tuning.yaml
 - id: glm-quantized-startup-triage
   title: GLM 系模型量化加载启动失败排查（按报错形态分类）
   summary: GLM 系模型（GLM-5/5.1/5.2）w8a8/w4a8/w4a8c8 量化权重拉起 vllm serve 启动失败时，先按报错形态分类定位——modelslim 描述缺失 / 版本错配 / 算子绑定 / 量化路由，各类修法不同
@@ -113,6 +121,14 @@ entries:
   platforms:
   - cross
   file: references/methodologies/msprof-comm-bottleneck-thresholds.yaml
+- id: multicore-partitioning-and-template-selection
+  title: 多核切分优先原则与算子模板/Bound 策略选择表
+  summary: 性能优化的第一动作是**查并行度**：来源实例中把只跑 1 个 Block（其余 63 个 Vector Core 空闲）改成按行切到 64 核，使 6790 → 113.6 µs（59.8x），占整条优化链 157x 的绝大部分，且判据是**各类 ratio 基本不变**（说明收益来自并行度而非单核实现变化）。定位到 Bound 类型后再按策略表选模板：Cube Bound → SWAT + …
+  categories:
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/multicore-partitioning-and-template-selection.yaml
 - id: operator-bottleneck-attribution
   title: 算子性能瓶颈归因（pipe 分解 → 流水模式 → Bound 分类 → 策略选择）
   summary: 把 profiling 的 pipe 数据变成「下一步动哪里」的判据链：先按七列（kernel / mac / scalar / mte1 / mte2 / fixpipe / icache_miss）分解，再用 `vec + mte2 ≈ 100%`（串行）还是 `≫ 100%`（重叠）判断流水是否并行，用主导流水占比 max(vec, mte2, mte3) 定 Bound 类型；主导占比降…
@@ -121,6 +137,14 @@ entries:
   platforms:
   - cross
   file: references/methodologies/operator-bottleneck-attribution.yaml
+- id: pipeline-slot-and-attribution-discipline
+  title: 流水空泡归因纪律（四层槽位检查顺序 / 预发射的边际收益 / 三类数据不可换算）
+  summary: 分析 CV 协作 kernel 的流水空泡时按固定顺序查：①先缩短中间数据搬运路径，再增加在途 item 数；②查双缓冲要**分开看 CV 核间槽 / AIC 内 L0 / task I/O 三层**——任一层还在复用单槽就能把前后阶段重新串起来；③加预发射数只能增加重叠机会、**不能缩短 Vector 自身**。配套三条归因口径：MFU 用整卡峰值做分母（未用核也计入）、并行 Pipe 的 a…
+  categories:
+  - performance
+  platforms:
+  - A5-950
+  file: references/methodologies/pipeline-slot-and-attribution-discipline.yaml
 - id: rl-train-infer-consistency-triage
   title: RL 训推一致性排查路径（先定分歧面，再选权重链路 / 概率偏移 / 阶段定界）
   summary: RL（GRPO/PPO）训推一致性问题的排查路径：先按现象定分歧面——输出崩溃（乱码/生僻字/重复）多指向权重同步链路，reward 下降 + logp_diff 上升多指向逐 token 概率偏移，整体效果差但难分训推则需阶段定界；再选手段（UWC 三段比对权重链路 / 逐 token probs_diff 看概率分布 / 交叉打桩定界训练还是推理），最后按各自容差判读
@@ -129,6 +153,22 @@ entries:
   platforms:
   - cross
   file: references/methodologies/rl-train-infer-consistency-triage.yaml
+- id: sentinel-precheck-data-movement
+  title: sentinel 预填校验法（无 profiler 时定位搬运类精度问题的最小实验）
+  summary: 验证一段搬运指令是否脏写/漏写的方法：把输出 buffer 预先填满统一 sentinel 值（如 -1），用**确定性输入**（如 `x[i]=i`、`x[i]=i·0.5`）跑一遍，再逐元素校验「该写的写了、不该写的仍是 sentinel」。它一次性暴露三类缺陷——**尾轮多写**（sentinel 被覆盖）、**尾轮漏写**（应写位置仍是 sentinel）、**位置错**（值出现在错误索…
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/sentinel-precheck-data-movement.yaml
+- id: simt-vs-simd-selection
+  title: SIMT / SIMD 与 MemBase / RegBase 的选型判据（标量受限时先试纯 SIMT）
+  summary: 选型不是偏好问题，按判据走：①出现**逐元素标量循环把算子锁在 Scalar 引擎**（`aiv_scalar_ratio≈0.999` 且 `aiv_vec_ratio≈0`）时，改纯 SIMT（grid-stride）是首选，实测主 Bound 切到 Vector、收益可达数十倍；②但纯 SIMT 在 **bins 超出 UB 容量**时会退到 GM 原子累加、代价极高，且 `innerDi…
+  categories:
+  - performance
+  platforms:
+  - A5-950
+  file: references/methodologies/simt-vs-simd-selection.yaml
 - id: vllm-infer-precision-triage
   title: vLLM 推理精度定位五步路径（前置对齐 → 首差异 token → dump → compare → 单算子确认）
   summary: vLLM 推理精度定位五步路径（单 case 可复现场景）：问题场景与标杆场景对齐（配置/超参/三方库/输入）并固定采样随机性（temperature=0）与算子确定性 → 打印输出 token_id 序列定位**首个差异 token**（把"整句不对"缩到"第 N 个 token 起不对"）→ 两侧使能 msprobe dump（推荐 mix+statistics）→ msprobe comp…

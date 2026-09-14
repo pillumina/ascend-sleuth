@@ -1,0 +1,26 @@
+id: elemwise-vs-reduce-bound
+type: software-fact
+title: elemwise 是 throughput-bound、归约是 latency-bound（判据：循环携带依赖）
+summary: "判断 Vector 算子该往哪优化，分水岭是**相邻迭代之间有没有循环携带依赖**：elemwise 每个 lane 只读写自己的位置、无依赖 → **throughput-bound**，基线已最优，手写展开或 `#pragma unroll` 基本无效（发射已打满，只多出标量地址指令）；归约是多对一、累加器要用上一步结果 → **latency-bound**，耗时 ≈ **串行步数 × 延迟**，优化方向是**多累加器展开**藏延迟、可结合时用**二分/树形折叠**减步数——而 `#pragma unroll` 对归约**基本无效**"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/simd_vf_story/README.md"
+    version: "cann-samples master（SIMD VF 常见范式：elemwise 与 reduce）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance]
+
+related_references: [operator-bottleneck-attribution, regbase-execution-model, long-vector-accumulation-error, multicore-partitioning-and-template-selection]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**判据（分水岭）**：相邻迭代之间**有没有循环携带依赖**。**①elemwise = throughput-bound**：每个 lane 只读写自己的位置、迭代之间无依赖，基线已最优——手写展开 ×4 或 `#pragma unroll 4` 实测 `PUSHQ VF cycles` 625 → 646（−3.4%）/ 640（−2.4%），几乎无差异；原因是相邻指令本就互不依赖、发射已打满，没有空泡可填、也没有串行依赖可缩，展开只多出标量地址指令。**在 elemwise 上做展开是无效优化**，精力应放到搬运、多核并行、Double Buffer 上。**②归约 = latency-bound**：reduce 是多对一，累加器 `acc` 要用上一步的结果，形成循环携带依赖，耗时 ≈ **串行步数 × 延迟 L**；**串行步数只数最长的那条顺序链**。优化判断：串行步数减不掉时用**多累加器手写展开**把延迟藏掉（步数越多收益越大）；归约可结合（求和、norm）时优先**二分/树形折叠**，既减步数又减量。实测：`reduce_max` 的 `ra`（跨行，串行步数 78）510 → 358（+29.8%）、`ar`（行内，步数 4）699 → 592（+15.3%）；`reduce_sum` 的 `ra` 757 → 364（+51.9%）、`ar` 二分折叠 792 → 384（约 2×，串行步数 4→2，`RV_VADD` 312 → 234）——**成对求和还同时降低舍入误差**（与长向量累加误差词条互为印证）。**③`#pragma unroll` 对归约基本无效**：它只复制循环体，所有 `Max`/`Add` 仍串在同一个 `acc` 上，串行步数不变、空泡照旧（编译器不会擅自重排归约顺序，因为浮点不可结合）。"
+  evidence: "simd_vf_story README：『归约 reduce 是多对一，累加器 `acc` 要用上一步的结果，带来循环携带依赖，属于 latency-bound（耗时 ≈ 串行步数 × 延迟 L），这也是它和第二部分 elemwise 的分界。』『**`#pragma unroll` 对归约无效**：它只复制循环体，串行依赖未断（编译器不会擅自重排归约顺序）。』及该文档给出的 elemwise 展开（625→646/640）与 reduce 多累加器/二分折叠的实测 cycle 表"
+  pitfalls:
+    - "「Vector Bound 就展开」是常见误判——先判有无循环携带依赖，再选手段"

@@ -1,0 +1,24 @@
+id: hif8-type-contract
+type: software-fact
+title: HiFloat8 的类型契约（hifloat8_t 建 tensor / Cast 直转 / 按 1 Byte 搬运）
+summary: "算子开发侧不需要感知 HiFloat8 的转换计算逻辑：把输入/输出数据类型设为 `hifloat8_t` 即可，支持创建该类型的 GM 与 UB（`GlobalTensor<hifloat8_t>` / `LocalTensor<hifloat8_t>`）；类型转换直接用 `AscendC::Cast<hifloat8_t, float>(dst, src, AscendC::RoundMode::CAST_ROUND, count)`，无需额外处理；`DataCopy` 按**每元素 1 Byte** 计算搬运量"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/hardware_features/hif8/README.md"
+    version: "cann-samples master（HIF8 量化样例；自述 Ascend 950 系列）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [precision, performance]
+
+related_references: [a5-hif8-format, a5-precision-format-support, mx-quantized-matmul, float8-cast-bit-mapping]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "在算子开发中**不感知** HiFloat8 类型转换的具体计算逻辑：根据实际需求把对应输入/输出的数据类型设置为 `hifloat8_t` 即可。具体契约三条——①支持创建数据类型为 `hifloat8_t` 的 GM 与 UB（`GlobalTensor<hifloat8_t>` / `LocalTensor<hifloat8_t>`）；②类型转换直接使用 `AscendC::Cast<hifloat8_t, float>(dst, src, AscendC::RoundMode::CAST_ROUND, count)`，**无需额外操作**；③`DataCopy` 时按**每个数据 1 Byte** 计算搬运量——算搬运量、UB 占用与带宽时按 1B/元素，不要沿用 fp16 的 2B。**与格式层的分工**：HiF8 的编码细节（指数位分布、与 MX 缩放因子的区别、特殊值编码）属平台格式事实，见 `a5-hif8-format`；本词条只覆盖**开发侧的 API 契约**（怎么建 tensor、怎么转、怎么算搬运量）。与 MXFP8 的路径区分：MX 量化走 `L0A_MX`/`L0B_MX` 由 MMAD 自动反量化（见 mx-quantized-matmul），而 HiF8 这里是常规 dtype + Cast 的用法，两者不要混。"
+  evidence: "hif8 README：『// 在算子开发中不感知 HIF8 类型转换的具体计算逻辑。根据实际需求，将对应输入/输出的数据类型设置为 hifloat8_t 即可。』及 `AscendC::Cast<hifloat8_t, float>(...)` 用法与「DataCopy 按每个数据 1 Byte 计算搬运量」的说明"

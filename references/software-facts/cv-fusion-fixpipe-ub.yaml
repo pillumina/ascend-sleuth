@@ -1,0 +1,29 @@
+id: cv-fusion-fixpipe-ub
+type: software-fact
+title: Cube-Vector 融合与 Fixpipe L0C→UB 直通（仅 Ascend 950；判据 aiv_mte2_time 趋零）
+summary: "Cube 累加结果默认在 L0C，传统通路是 Fixpipe 写到 GM、再由 AIV 用 MTE2 搬进 UB；**Ascend 950（dav-3510）的 Fixpipe 支持 L0C 直通 UB**，A2/A3 无此能力。融合算子（同一 launch 内 AIC 计算 + AIV 后处理）的收益判据有两条：`aic_cube_ratio` 上升（0.975 → 0.990）与 `aiv_mte2_time` 趋零（GM 中转时 57.4µs 可见，UB 直通后 ≈0.005µs）——**`aiv_mte2_time` 是否还在，就是两条通路的直接证据**"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/hardware_features/cv_datapath/README.md"
+    version: "cann-samples master（CV 数据通路样例；自述 Ascend 950）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/hardware_features/simd_vf_constraints/README.md"
+    version: "cann-samples master（CrossCore 同步语义）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance, interrupt]
+
+related_references: [regbase-execution-model, op-internal-sync-and-reduction, l1-l0-bank-and-conflict, operator-bottleneck-attribution]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**通路**：Cube 累加结果默认落在 L0C（CO1）；传统通路是 Fixpipe 写出到 GM，再由 AIV 用 MTE2 搬进 UB（多一次 GM 往返）。**Ascend 950 的 Fixpipe 支持 L0C 直通 UB**（通路 CO1→UB），**仅 `dav-3510` / Ascend 950 支持，A2/A3 无此能力**。启用配置为 `CFG_ROW_MAJOR_UB`（`{ROW_MAJOR, true}`，即 `isToUB=true`）；`dualDstCtl = 0b01` 表示双目标模式、按 **M 维**拆到两个 SubBlock 的 UB；按 M 拆分时 `mSize` 取 `DivCeilU32(baseM, 2) * 2`（对齐到 2 的倍数）、`srcStride = baseM`、`dstStride = baseN`（每个 AIV 子块 UB 内 ND 行宽）。目的端为 GM 时用 `CFG_ROW_MAJOR_GM`，此时 `dstStride` 是 GM 行宽 N 而不是 baseN。**收益判据（两条信号）**：①`aic_cube_ratio` 上升（来源实测 0.975 → 0.990）；②**`aiv_mte2_time` 趋零**——GM 中转通路下该指标必然存在（实测 57.4 µs 可见），UB 直通后 ≈ 0.005 µs。因为 UB 直通方案不再涉及 GM 通路搬运，**`aiv_mte2_time` 是否还在就是两条通路的直接证据**。**融合的动机与边界**：两个独立 kernel 先后 launch 时，AIC 上的 MatMul 全部结束后才开始 AIV 上的 ReLU，二者无法重叠（样例基线 MatMul 3891.2 µs + ReLU 302.0 µs = 4193.2 µs）；Mix 融合后若 AIV 的 Vector 时间能被 AIC 的 Cube 时间覆盖，融合算子总时长接近单独 MatMul（3909.7 / 3852.0 µs）。**同步语义**：AIC 写完用 `CrossCoreSetFlag<0x2, PIPE_FIX>(AIC_SYNC_AIV_FLAG)` 置位（`PIPE_FIX` 表示与 Fixpipe 流水绑定），AIV 侧用 `CrossCoreWaitFlag` 等待；**Set/Wait 必须成对**，任一执行路径提前 return 也要保证对侧不会永久等待（多核/空任务场景尤其重要）。两次独立 launch 之间由 Host 侧 `aclrtSynchronizeStream` 保证顺序，**不需要** CrossCore；单次 Mix launch 则在核内完成同步。"
+  evidence: "cv_datapath README：『Ascend 950 的 Fixpipe 支持把 L0C 直通 UB（文档称通路 CO1→UB）』『| dualDstCtl | 0b01 | 双目标模式，按 M 维拆到两个 SubBlock 的 UB |』『由于UB直通的方案中，数据搬运不再涉及GM通路搬运，Scenario2中aiv_mte2_time显著降低』（含 aic_cube_ratio 0.975→0.990、aiv_mte2_time 57.4µs → ≈0.005µs）；simd_vf_constraints README：CrossCore Set/Wait 成对语义与 `aclrtSynchronizeStream` 的分工"

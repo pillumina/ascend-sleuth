@@ -1,0 +1,41 @@
+id: multicore-partitioning-and-template-selection
+type: methodology
+title: 多核切分优先原则与算子模板/Bound 策略选择表
+summary: "性能优化的第一动作是**查并行度**：来源实例中把只跑 1 个 Block（其余 63 个 Vector Core 空闲）改成按行切到 64 核，使 6790 → 113.6 µs（59.8x），占整条优化链 157x 的绝大部分，且判据是**各类 ratio 基本不变**（说明收益来自并行度而非单核实现变化）。定位到 Bound 类型后再按策略表选模板：Cube Bound → SWAT + 尾轮负载均衡；MTE2 Bound → StreamK（非量化）或全载 + Scale 缓存（MX）；FIXPIPE Bound → UnitFlag；流水停顿 → Double Buffer"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/rms_norm_quant_story/Story.md"
+    version: "cann-samples master（多核切分与并行效率核算）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/matmul_story/docs/matmul_performance.md"
+    version: "cann-samples master（Bound → 策略映射与模板选择）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [performance]
+
+related_references: [operator-bottleneck-attribution, l1-l0-bank-and-conflict, mx-quantized-matmul, unit-flag-mmad-fixpipe, n-buffer-multi-level-pingpong]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  flow:
+    - step: 1
+      action: "**先查并行度，再谈别的**：确认 Block Num / 核切分是否用满（来源实例首轮只跑 1 个 Block，其余 63 个 Vector Core 空闲）。若算子本身可切（数据具行间独立性的形态：每行只依赖本行数据），按行均匀切到全部核，尾块用单独的分支处理"
+      check: "判据是**各类 ratio 基本不变**而耗时大幅下降——这证明收益来自并行度而不是单核实现变化（来源实例 6790 → 113.6 µs，59.8x）"
+    - step: 2
+      action: "核算**并行效率** = 加速比 / 核数。来源实例 `59.8 / 64 = 93.4%`，接近理想线性；效率明显偏低时先查尾块处理与核间负载是否均衡"
+      check: "**核数口径随来源不同**：同一仓库里既有『64 Vector Core』也有『32 AI Core（每核 …）』的写法，来源未给统一核数——引用时不要硬编码核数，以现场实测/文档为准"
+    - step: 3
+      action: "定位 Bound 类型后按**策略表**选方向：`Cube Bound` → SWAT + 尾轮负载均衡（优先级高）；`MTE2 Bound` → 非量化走 **StreamK**、MX 量化走全载优化 + Scale 缓存、MXFP8FP4 走 4-buffer / SWAT；`MTE1 Bound` → L1 Bank 冲突优化（MX 量化）或增大 `baseM`/`baseN`；`FIXPIPE Bound` → **UnitFlag**；`流水停顿` → **Double Buffer**"
+      check: "策略与模板要匹配输入特征：小规模且 A 可全载用 FullLoad；不规则形状/分核不均用 SWAT + 负载均衡；**大 K（`K ≥ 8192`）用 StreamK**；大规模矩阵用 SWAT"
+    - step: 4
+      action: "落地步骤固定为：**Profiling + 建模分析 Bound 类型 → 瓶颈识别 → 策略选择 → 模板选择 → tiling 参数调优 → 效果验证 → 迭代**。不要跳过建模直接试参数"
+      check: "每轮只改一个变量并复验（测量纪律见算子瓶颈归因词条）；tiling 上界受 L0C 限制（`baseM = baseN ≤ 256`），改动前先确认没有撞容量墙"
+  verified_by_testing: "来源给出单样例的完整优化链（1 核 → 64 核 59.8x，整链 157x）与策略表；数字绑定该样例 shape，判据方向可复用"

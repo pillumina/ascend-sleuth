@@ -1,0 +1,25 @@
+id: moe-dispatch-combine
+type: software-fact
+title: MoE Dispatch/Combine 的对等内存单边写机制（mte_put / K+1 状态位 / 通信前量化收益边界）
+summary: "EP 扩大后 MoE 推理的主瓶颈是 Dispatch/Combine 通信。替代传统 `alltoallv` 的做法是：基于对称共享内存按 token 逐个发送/接收，用 `mte_put` 跨 PE 单边写对端窗口偏移（`aclshmem_ptr(shmemCtx, pe) + offset`），并用 pipeline 把通信与数据整理重叠；每个 token 携带 `rank_id`/`bs_id`/`k_offset` 三元组用于算回程偏移；Combine 的同步语义是「等对应 batch 的 **K+1** 个状态位全为 1」。挂死的典型形态就是卡在等对端 flag"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/moe_dispatch_and_combine_story/README.md"
+    version: "cann-samples master（MoE dispatch/combine 机制与量化收益实测）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [pytorch]
+  categories: [interrupt, performance]
+
+related_references: [attention-precision-chains, mx-quantized-matmul, op-internal-sync-and-reduction, operator-bottleneck-attribution]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**问题形态**：MoE 的 Dispatch/Combine 在 EP 规模扩大后成为端到端推理主瓶颈；传统 `alltoallv` 流程链路长、同步点多（先交换各 rank 发送量信息 → 排序/重排把发往同一专家的数据聚集 → 再 `alltoallv` 发 token 数据）。**替代机制**：基于**对称共享内存**按 token 逐个发送/接收，并用 pipeline 把通信与数据整理重叠——用 `mte_put` **跨 PE 单边写**对方窗口内的偏移，对端地址按 `aclshmem_ptr(shmemCtx, pe) + offset` 计算。对称窗口分两段：**数据面**（样例为 `[0, 1022MB)`，含各专家栅格）与**状态面**（`1022MB+`，含 Dispatch 区与 Combine 区），状态面承载同步状态。**每个 token 携带三元组** `rank_id`、`bs_id`、`k_offset`，Combine 靠它算出回程对端地址偏移（三元组算错即 token 级乱序/错位）。**Combine 的同步语义**：等对应 batch 的 **K+1 个状态位全部为 1**（K 个 MoE 专家 + 1 个 shared FFN 结果）之后，才从共享内存搬运各 FFN 结果、乘 expert scale 求和并叠加 shared FFN 结果。**Dispatch 侧协议**：统计各 expert 的 token 数 → `SyncAll` 多核同步 → 把完成 flag 与 count 发到所有对端 → 分核读状态区 `flag` 直到全为 1 → 读 `count` 算输出偏移 → `SyncAll` → 本地整理。**诊断含义**：MoE 推理挂死的典型形态就是**卡在等对端 flag / 状态位不齐（K+1 不满足）**，检查面即上面这套状态协议；不要把这类挂死当成计算 hang。**通信前量化的收益边界（实测）**：把量化提到通信之前（Dispatch 用 MXFP8 动态量化、Combine 用 per-block int8）能降低传输字节数，但收益强依赖通信量——同规格（H=7168、K=8、8 卡、单卡 4 专家）下 **BS=8 时 dispatch 17.1→16.6us（1.03x）、combine 19.4→18.8us（1.03x），基本无收益**；**BS=256 时 dispatch 170→113us（1.50x）、combine 150.7→108us（1.40x）**。结论：低时延小 batch 场景量化通信不划算（量化/反量化开销吃掉省下的传输时间），高吞吐大 batch 才有 1.4~1.5x 量级收益。"
+  evidence: "源 README：『└───── mte_put 可以跨 PE 写对方窗口内的偏移 ───────┘ / 访问对端：aclshmem_ptr(shmemCtx, pe) + offset』；『| dispatch | 256 | 7168 | 8 | 8 | 4 | mxfp8量化 | 113 | 1.50 |』（及同表的 BS=8 行 17.1 → 16.6 / 1.03x）；K+1 状态位与 dispatch 同步协议描述（统计 token 数 → SyncAll → 发 flag/count → 读状态区 → 算偏移 → SyncAll → 整理）"
