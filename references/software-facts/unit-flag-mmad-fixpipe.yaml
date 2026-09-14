@@ -1,0 +1,30 @@
+id: unit-flag-mmad-fixpipe
+type: software-fact
+title: unit_flag：按 512B 块解绑 MMAD 与 FixPipe（尾轮取值 3 / 非尾轮 2）
+summary: "当计算基本块过大占满 L0C、无法开缓存机制时，MMAD（计算）与 Fixpipe（搬出）无法并行；`unit_flag` 是指令级的解绑手段：MMAD 与 FixPipe 两侧同时配置后，计算单元每完成 **512B** 数据块，FixPipe 立即搬出该块，不必等全部算完。MMAD 侧 `para.unitFlag` 取 **尾轮 3（FINAL_ACCUMULATION）/ 非尾轮 2（NO_FINAL_ACCUMULATION）/ 0（关闭）**，FixPipe 侧用 `FixpipeParams{UNITFLAG_EN_OUTER_LAST}`，并须**删掉 MMAD 与 Fixpipe 之间的 `SetFlag/WaitFlag<HardEvent::M_FIX>` 同步**——尾轮取值配错会改变累加语义，是数值错误的直接来源"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/instruction_optimization/unit_flag/README.md"
+    version: "cann-samples master（样例声明 NPU ARCH 3510）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/instruction_optimization/unit_flag/images/image-1.png"
+    version: "同上目录的 512B 拆块示意与流水对比图（画面内容核验）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance, precision]
+
+related_references: [op-internal-sync-fault-patterns, l1-l0-bank-and-conflict, operator-bottleneck-attribution]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "把计算基本块设计得较大（为降低重复搬运量）时，L0C 缓存块会被占满、无法开启缓存机制，导致计算流水 MMAD 与搬出流水 FixPipe 无法并行。`unit_flag` 是昇腾 NPU 提供的**指令级**解绑配置：对 MMAD 与 FixPipe 两侧参数同时配置后，计算单元**每完成一个 512B 数据块，FixPipe 就立即将其搬出**，无需等全部数据搬完即可开始下一块计算，从而实现两条流水的重叠。配置要点：①MMAD 侧 `para.unitFlag`，**尾块必须与中间块取不同值**——`FINAL_ACCUMULATION = 3`（尾轮）/ `NO_FINAL_ACCUMULATION = 2`（非尾轮）/ `UNITFLAG_DISABLE = 0`（不开启）；②FixPipe 侧使用 `AscendC::Te::FixpipeParams{UNITFLAG_EN_OUTER_LAST}`；③**删掉 MMAD 与 Fixpipe 之间的 `SetFlag/WaitFlag<HardEvent::M_FIX>` 同步**（两侧已由 unit_flag 机制保证顺序，多余的同步会重新把两条流水绑死）。**精度红线**：尾块配成非尾轮标志会改变累加语义，是数值结果错误的直接来源；`unitFlag` 各取值的完整语义表与「尾轮/512B 块」的量级关系**来源未声明**。"
+  evidence: "源 README §1.2『每当计算单元完成一个512b数据块的计算，FixPipe便立即将其搬出，无需等待全部数据搬运完成即可开始下一块数据的计算，从而实现计算与数据搬移的完全重叠执行。』；§2.1 改造后代码注释『关键改动2：删除 MMAD和Fixpipe之间的流水同步』；§2.2『最后一块尾块的UnitFlag参数配置与中间块不同』"
+  image_note: "同目录 images/image-1.png（已读图核对）：上半 `PIPE_M` 是一条整块 2048B、`PIPE_FIX` 在其后才开始 2048B；下半 `PIPE_M` 拆成 4×512B、`PIPE_FIX` 同样 4×512B 并与之交叠——**「512B 块怎么套在 2048B 计算块上」的拆法只存在于图里**，正文只说 512b。image-2.png 是真实流水对比（传统实现中 MMAD 结束后有一段标注『计算闲置』的空白等 MTE1；开启 UnitFlag 后 MMAD 被切成 512B 块并与 FIXP 交叠）"

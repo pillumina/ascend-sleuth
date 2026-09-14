@@ -80,3 +80,13 @@ decisions:
       三条各自补的是零覆盖主题。人审关注点：①npu-arch-token-map 归 platform-fact 还是 software-fact
       （token 由 CANN 定义、事实面向平台识别，本卡按后者判为 platform-fact，两者消费点相同）；
       ②mem_bandwidth 是否该绑进 performance-data 采集闸门（本卡明确不绑，留给后续单独决策）。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      用户 review 后**部分回退本批**：`ascend-membw-gm-ub`（mem_bandwidth 是该仓的样例 binary、不是昇腾工具）
+      与 `cann-samples-build-constraints`（讲的是这个仓怎么编译）判定为仓特定内容 → 两条均已删除；
+      `npu-arch-token-map` 重写，剥掉「CMake 静默跳过 / No rule to make target」这类仓特定叙事，只留
+      架构标识 ↔ 平台映射。原三条中真正是昇腾级的事实（UB 预算判据、带宽计量口径、进程内取文路径）
+      已按用途重新归位到后续词条（见 EV-2026-071）。教训：**判据是「该事实在 cann-samples 不存在时是否仍成立」，
+      而不是「它是否出现在官方仓里」**。

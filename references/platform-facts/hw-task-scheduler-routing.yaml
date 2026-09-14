@@ -1,0 +1,29 @@
+id: hw-task-scheduler-routing
+type: platform-fact
+title: 硬件任务调度模块分派（AICore / AICpu / Sdma 三条调度通道）
+summary: "昇腾芯片的系统任务调度模块把任务按类型分派到不同调度器：硬件队列 → 路由请求 → {AICore 调度器, AICpu 调度器, ……, Sdma 调度器} → {AIC, AIV, AICpu, ……, Sdma}。即 AIC/AIV 任务走 AICore 调度器，而 AICpu 任务与 Sdma 拷贝任务**各有独立调度通道**——AICPU / 拷贝类 hang 不应按 AICore 算子的排查路径走"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/0_Introduction/npu_execution/picture/stars.png"
+    version: "cann-samples master（系统任务调度模块结构图；画面内容逐字核验）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/0_Introduction/npu_execution/README.md"
+    version: "cann-samples master（任务调度器文字说明，§三.2）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [interrupt, performance]
+
+related_references: [aicore-task-duration-anatomy, exec-npu-cmd-async-launch]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "昇腾芯片有硬件『系统任务调度模块』负责任务分派，路径为：**硬件队列 → 路由请求 → 各类型调度器 → 对应执行单元**。图中给出的调度器与执行单元对应关系是：`AICore 调度器` → `AIC` 与 `AIV`（一个调度器分派两类 AI 核）、`AICpu 调度器` → `AICpu`、`Sdma 调度器` → `Sdma`，中间用省略号表示可扩展。文字侧对该模块的定位是：任务调度器是昇腾芯片特有的**硬件调度加速模块**，是芯片任务与资源调度的处理中心，支持调度多种计算引擎与搬运引擎、支持片上多模块调度，把传统的软件调度硬件化。诊断含义：**AIC/AIV 算子、AICPU 算子、SDMA 拷贝任务走互不相同的调度通道**，因此 AICPU 相关 hang 或拷贝类 hang 不能用 AICore 算子的排查路径去套；反过来，混布多类任务时某类任务排队不必然阻塞另一类。"
+  evidence: "读图（`picture/stars.png`）：`硬件队列 → 路由请求 → {AICore调度器 → AIC、AIV；AICpu调度器 → AICpu；……；Sdma调度器 → Sdma}`；源 README §三.2：『任务调度器：是昇腾芯片特有的硬件调度加速模块，芯片任务和资源调度的处理中心，支持调度多种计算引擎和搬运引擎，支持片上多模块的调度，将传统的软件调度硬件化，提高任务调度的效率。』"

@@ -1,0 +1,58 @@
+id: op-internal-sync-and-reduction
+type: fault-pattern
+title: 算子内同步与归约问题（跨核同步挂死 / 归约非确定 / 优化开关反降）
+summary: "算子内部（kernel 里）的同步与归约有三类典型故障：①跨核 CrossCore Set/Wait 未成对 → 对侧永久等待（表现为 hang）；②多核归约的累加顺序引入非确定性 → 同输入多次运行结果不一致；③归约沿尾维跨块折叠未显式 MERGING → 静默错值。另附一条「优化开关打开后反而变慢」的反直觉形态（unit_flag 使能后 fixpipe 段变长）"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/hardware_features/simd_vf_constraints/README.md"
+    version: "cann-samples master（CV 融合/跨核同步与 VF 约束；自述 Ascend 950 系列）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/matmul_story/docs/matmul_performance.md"
+    version: "cann-samples master（多核 K 轴切分与累加确定性）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/simd_vf_story/README.md"
+    version: "cann-samples master（VF 归约跨块折叠掩码模式）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/flash_attn_lite_story/README.md"
+    version: "cann-samples master（尾块空核必须参与同步）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [interrupt, precision, performance]
+
+related_references: [reg-data-movement-fault-patterns, unit-flag-mmad-fixpipe, operator-bottleneck-attribution, simd-vf-programming-constraints]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  patterns:
+    - pattern: CrossCore Set/Wait 未成对
+      symptoms: ["算子 hang", "对侧核永久等待", "CV 融合算子卡死"]
+      cause: AIC 与 AIV 之间的 CrossCore 同步是成对语义（一侧 Set、对侧 Wait），只写一侧或条件分支里漏写另一侧，对侧就永久等待
+      fix: 核对 AIC/AIV 两侧的 Set/Wait 配对（含所有条件分支路径）；同时确认核编号映射——`__mix__(1,2)` 下 AIC:AIV = 1:2，且 `GetBlockIdx()` 在 AIC 与 AIV 侧**独立编号**，AIV 侧直接用 AIC 的编号会越界或同步错对象
+    - pattern: 尾块空核未参与同步
+      symptoms: ["多核负载不均时挂死", "尾块阶段卡住"]
+      cause: 尾块阶段某些 AIV 没有实际工作（空核），若实现让它们提前退出而不参与同步，等待它们的核就永远等不到
+      fix: 让空核也走同步路径（参与 Set/Wait），只跳过计算与搬运
+    - pattern: 多核 K 轴切分后的累加顺序不确定
+      symptoms: ["同一输入多次运行结果不一致", "精度复现不了", "重跑数值抖动"]
+      cause: K 轴切分后各核把结果累加回同一地址（L0C→GM 同址累加走原子操作），而 AIC 的结束顺序是随机的，累加顺序随机即引入非确定性
+      fix: 改成确定性的累加路径——每核写自己的独立 workSpace，再由 AIV 搬到 UB 按固定顺序累加
+    - pattern: VF 归约沿尾维跨块折叠未指定掩码合并模式
+      symptoms: ["归约结果偏小", "静默错值", "不报错但结果不对"]
+      cause: 跨块折叠时掩码默认 ZEROING，会把前面已折进来的列清零
+      fix: 显式使用 MaskMergeMode::MERGING 累加折叠
+    - pattern: unit_flag 使能后 fixpipe 段反而变长
+      symptoms: ["优化开关打开后变慢", "fixpipe 时间异常膨胀", "kernel 总量没降"]
+      cause: fixpipe 与 mmad 流水解绑后，fixpipe 的**指令下发提前但数据搬运延迟到尾轮累加结束**才启动，下一轮 mmad 必须等 fixpipe 搬完才能开始，该轮 mmad 等待被拉长（样例实测 fixpipe 2.970 → 22.802 us，而 kernel 86.870 → 85.907 us 基本没变）
+      fix: 不要无条件开 unit_flag——它针对的是「双缓冲机制下 FixPipe 与计算单元串行执行」这一场景；判定要看 kernel 总量与 pipe 分解，而不是看某条流水是否变并行

@@ -1,0 +1,30 @@
+id: aicore-task-duration-anatomy
+type: software-fact
+title: AICore 算子 Task Duration 分段与首指令取指链（Icache/TLB/Dcache）
+summary: "profiling 里的单算子 Task Duration 由多段构成：AICore 调度器调度约 150ns、硬件初始化约 50ns、软件初始化约 1us、所有核执行结束到结果上报约 500ns，来源明写**这个时间不是固定的**——由 TilingData 大小、算子入参个数、算子初始化行为决定（复杂算子的 TilingData 初始化是软件头开销大头）。故不能拿 1us 当固定常量扣减；小算子的 Task Duration 里头开销占比可观。首次执行某 kernel 还会叠加取指冷启动：Icache Miss → 首次加载指令 TLB MISS → L2 查页表 → 可能到 GM"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/0_Introduction/npu_execution/README.md"
+    version: "cann-samples master（自述 CANN 社区版 9.0.0；§三 算子执行部分）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/0_Introduction/npu_execution/picture/aic_head.png"
+    version: "同上目录的 AICore 算子启动流程图（段划分与 Task Duration 覆盖边界逐字核验）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [performance]
+
+related_references: [msprof-collect-parse, hw-task-scheduler-routing, exec-npu-cmd-async-launch, msprof-comm-bottleneck-thresholds]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "算子从 runtime 下发到执行结束分两大阶段：**算子调度部分** = Runtime 下发（软件配置任务）+ 硬件调度；**算子执行部分** = 硬件初始化 + 软件初始化 + 计算（图为「执行结束/上报结果」单列一段）。调度部分可细分为五步：①任务下发（runtime 把算子任务写到软件任务队列——软件队列可初始化在 host 侧内存也可在 device 侧内存——并通知系统任务调度器）；②任务交换（系统任务调度器只能看到硬件队列中的任务，收到通知后把任务从软件队列交换到硬件队列）；③任务解析（读取并解析硬件任务队列中的任务）；④任务分发（按任务类型把 AICore 任务下发给 AICore 调度器）；⑤任务调度（AICore 调度器把任务调度给 AICore 执行单元）。**profiling 的 Task Duration 分段**：AICore 调度器调度时间约 150ns、硬件初始化约 50ns、软件初始化约 1us、所有核执行结束到结果上报约 500ns；来源明确『这个时间不是固定的』，由 TilingData 大小、算子入参个数、算子初始化行为（算子实现类成员变量初始化等）决定，并指出复杂算子的 TilingData 一般比较大、初始化 TilingData 的耗时是软件头开销的大头。**推论用法**：判断「算子数多但每个都很小」的 launch-bound 场景时，可先按这些段估下限（仅调度 + 硬/软初始化 + 上报已约 1.7us/算子），再看 kernel 自身耗时是否被头开销主导；**不要**把 1us 当固定常量去扣减。**取指冷启动链**：硬件读 kernel 第一条指令时，若指令已被 Preload 进 Icache 则直接交 Scalar Unit 解码执行；若 **Icache Miss**，硬件要去 Device 侧内存加载指令，首次加载指令的 **TLB 也 MISS**，需去 L2 查页表，L2 再 Miss 就去 GM，然后按取到的虚拟地址去 L2 查、Miss 再去 GM——来源称之为『比较大的性能损失』。故首次执行某 kernel、或频繁切换算子导致指令被挤出时，任务时长明显高于稳态；这是『首轮慢、次轮快』的机制性解释，不要当作 kernel 本身慢。**另外两个容量事实**：硬件初始化阶段的 Icache Preload『仅仅是将指令信息加载到内存，并不会去分析和执行』（所以 preload 了没执行不是异常）；AICore 内 **Dcache 大小为 32K**，存放算子运行中经 Scalar 加载/存储的数据（区别于内存搬运模块搬的数据），并可通过 Preload 指令手动加载——标量访问密集的算子受这条容量边界约束。**软件初始化中的 TilingData 初始化**把 device 内存上的 tilingData 初始化到寄存器，**超过寄存器上限就需要通过 Scalar Unit 的存储指令存到栈空间**——大 TilingData 算子因此在软件初始化阶段额外付出寄存器溢出到栈的代价。"
+  evidence: "源 README §三.1 两阶段表『算子调度部分 | 任务从 runtime 下发到调度到 AICore准备执行的过程 | Runtime下发（软件配置任务） + 硬件调度』『算子执行部分 | AICore 执行算子的完整过程（含硬件初始化、软件初始化、算子执行） | 硬件初始化 + 软件初始化 + 计算』；§三.1 备注『Task Duration：算子profiling采集的算子耗时, 其中AICore调度器调度时间大约150ns，硬件初始化大约50ns，软件初始化大约1us，这个时间不是固定的由算子的TilingData大小、算子入参的个数、算子初始化行为（算子实现类成员变量初始化等）的耗时决定（例如：复杂算子的TilingData一般比较大，初始化TilingData耗时是软件头开销耗时的大头），所有核执行结束到结果上报耗时约500ns。』；§三.2 五步表（任务下发/任务交换/任务解析/任务分发/任务调度）与『AI调度器：是任务调度器中的一个模块，专门负责AIC和AIV任务的调度。』；§三.3.1『如果出现了Miss，就会造成比较大的性能损失，硬件就要去Device侧内存去加载指令，由于是首次加载，指令的TLB会MISS，硬件需要去L2中查询页表，如果L2也Miss，则需要去GM获取…』『Icache Preload仅仅是将指令信息加载到内存，并不会去分析和执行』；§三.3.2『Dcache： data cache的简写，区别于Icache（专门存放指令），Dcache用来存放数据，大小为32K…』『TilingData初始化: 一算子初始化tilingData就是将在device内存上的tilingData信息初始化到寄存器，如果超过寄存器上限就需要通过scalar uint的存储指令，存储到栈空间。』"
+  flow_summary: "时间轴图（同目录 picture/aic_head.png，已读图核对）：方框依次为 `Runtime下发(任务下发) / 硬件调度(任务读取&解析、AICore调度器处理、高速总线调度) / 硬件初始化(系统初始化、首指令取指) / 软件初始化(参数地址拷贝、TilingData初始化、其他初始化操作) / 算子执行(数据搬入、计算、数据搬出) / 执行结束(上报结果)`；图上方括号把「算子调度」标在 Runtime下发 与 硬件调度 之上、「算子执行」标在硬件初始化及其右侧各段之上；**底部 `task Duration` 双向箭头的起点落在「硬件调度」段的后半（AICore 调度器处理 与 高速总线调度 之间）、终点在「执行结束/上报结果」之后**——即 Task Duration **不含 Runtime 下发与任务读取&解析**；该图未给刻度，边界按箭头相对位置判读。"

@@ -1,0 +1,31 @@
+id: exec-npu-cmd-async-launch
+type: software-fact
+title: EXEC_NPU_CMD 单算子下发（V1/V2 线程归属 + 十步异步提交 TaskQueue）
+summary: "torch_npu 每个算子下发的固定展开：`task_queue_enable == 2` 走 `EXEC_NPU_CMD_V2`（参数预拷贝），否则走 V1（直接转换）；两者**只差一阶段 `GetWorkspaceSize` 在哪个线程执行**——V1 在主线程、V2 在消费线程，二阶段 `aclnnXxx` 两者都在消费线程（所以只有 V1 会阻塞主线程、影响训练 step 时间）。V1 固定十步，最后一步 `OpCommand::RunOpApiV2` 提交到异步 TaskQueue。这套结构就是把「Host 侧 launch 开销」拆开归因的依据"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/0_Introduction/npu_execution/README.md"
+    version: "cann-samples master（自述 CANN 社区版 9.0.0；§一.3.2 代码锚 torch_npu op_plugin/utils/op_api_common.h）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/0_Introduction/npu_execution/picture/时序图.png"
+    version: "同上目录的十步时序图（泳道与线程归属逐字核验）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [pytorch]
+  categories: [performance, interrupt]
+
+related_references: [torch-npu-op-routing, aclnn-two-phase-contract, msprof-collect-parse]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "`EXEC_NPU_CMD(aclnn_api, ...)` 是 torch_npu 下发的统一入口，展开方式由 `c10_npu::option::OptionsManager::GetTaskQueueEnable()` 决定：取值等于 2 时走 `EXEC_NPU_CMD_V2`（参数预拷贝），否则走 `EXEC_NPU_CMD_V1`（直接转换）。**V1 与 V2 的差别只在一阶段 `aclnnXxxGetWorkspaceSize` 的执行线程**：V1 在主线程执行、V2 在消费线程执行；二阶段 `aclnnXxx` 两者都在消费线程执行。结论：**主线程被 launch 阻塞（进而抬高训练 step 时间）只在 V1 下发生**，task_queue_enable 是 host-bound 场景的主要可调点。V1 的固定十步：① `GetOpApiFuncAddr` 从 **libopapi.so** 动态加载 `aclnnMatmulGetWorkspaceSize` 与 `aclnnMatmul` 函数指针并判空（函数指针为 static，只有首次 dlsym，首次调用慢属正常）；② 取当前 NPU stream（`c10_npu::getCurrentNPUStream().stream(false)`）；③ 初始化 `workspace_size` 与 `aclOpExecutor *executor`；④ PTA 编译缓存初始化 `InitHugeMemThreadLocal`（避免重复编译相同算子）；⑤ `at_npu::native::SetDeterministic()` 设置确定性模式；⑥ `ConvertTypes` 做 `at::Tensor → aclTensor*`（`aclCreateTensor`）转换；⑦ 调用一阶段（编译算子、算 workspace、生成 executor）；⑧ `workspace_size != 0` 时分配 workspace；⑨ 构建执行 lambda（内部调二阶段并 `ReleaseConvertTypes`）；⑩ `at_npu::native::OpCommand::RunOpApiV2(\"aclnnMatmul\", acl_call)` **提交到异步 TaskQueue 执行**。配套的任务内容：一个算子执行任务一般对应一个硬件任务，内容包括算子类型（AIC/AIV/MIX）、使用核数、runtime 软件侧 stream id（Stream 是 Device 提供的逻辑任务执行队列）、AICore 执行期间的栈地址（运行时变量从寄存器溢出到内存的地址）、kernel 程序在内存中的位置。诊断用法：launch 开销按「dlsym / stream 获取 / 类型转换 / 一阶段编译或查缓存 / workspace 分配 / 异步提交」分段归因；一阶段编译失败的报错在 `NPU_CHECK_ERROR(workspace_status, \"call aclnnMatmul failed\")` 处抛出，可据此判定失败发生在「编译/tiling 阶段」而非「执行阶段」。"
+  evidence: "源 README §一.3.2（2）：`EXEC_NPU_CMD` 宏展开与 `task_queue_enable == 2` 分支；V1/V2 对照表『aclnnMatmulGetWorkspaceSize | 主线程执行 | 消费线程执行』『aclnnMatmul执行 | 消费线程执行 | 消费线程执行』；步骤 7 注释『第一阶段：GetWorkspaceSize / 编译算子，计算临时空间需求，生成 executor』、步骤 10 注释『提交到异步 TaskQueue 执行 / at_npu::native::OpCommand::RunOpApiV2(\"aclnnMatmul\", acl_call);』；§三.2『算子任务：一般一个算子的执行任务对应一个，任务内容包含了算子的类型（AIC/AIV/MIX），算子使用核数，runtime软件侧的stream id（Stream是Device提供的逻辑任务执行队列），AICore算子的执行过程中的栈地址（AICore运行时变量从寄存器溢出到内存中的地址），kernel程序在内存的位置等信息。』"
+  flow_summary: "十步泳道图（同目录 picture/时序图.png，已读图核对）：泳道为 `Caller / GetOpApiFuncAddr / ConvertTypes / aclnnMatmulGetWorkspaceSize / workspace_alloc / TaskQueue`；步骤 7（一阶段）与步骤 8（workspace 分配）都落在 **Caller（主线程）** 泳道，步骤 10 `OpCommand::RunOpApiV2` 之后才在 **TaskQueue 泳道**异步执行 `aclnnMatmul`、NPU 执行与 `ReleaseTypes`——即 workspace 分配在主线程、类型释放在异步侧"

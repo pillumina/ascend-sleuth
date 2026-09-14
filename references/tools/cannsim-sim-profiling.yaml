@@ -26,7 +26,7 @@ applies_to:
     cann: ">=9.0.0（cann-samples 根 README 已验证 9.0.0 / 9.1.0 社区版 Toolkit）"
   categories: [performance]
 
-related_references: [msprof-collect-parse, a5-simd-simt-mixed, ascend-membw-gm-ub, cann-samples-build-constraints]
+related_references: [msprof-collect-parse, a5-simd-simt-mixed]
 
 status: active
 last_verified: 2026-09-14

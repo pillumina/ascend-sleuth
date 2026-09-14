@@ -1,0 +1,88 @@
+id: EV-2026-071
+layer: L1
+title: cann-samples 系统性挖掘后的知识吸收（7 组并行读取 → 18 条 Ascend 级词条）
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-14
+source_signals:
+  - signal: coverage_gap
+    evidence: >-
+      用户对第一批吸收（4 条）提出两点判断：①`ascend-membw-gm-ub` / `cann-samples-build-constraints`
+      实际是这个样例仓自己的构建/运行知识，不是昇腾知识；②该仓 `Samples/1_Features` 与 `Samples/2_Performance`
+      下还有大量内容未被挖掘。核实成立：两条词条已删除（见 EV-2026-070 的后续 decision），随后按目录做
+      7 组并行系统挖掘，覆盖 1_Features（instruction_optimization / memory_optimization / hardware_features）、
+      2_Performance 全部 15 个 story、0_Introduction（执行模型 / SIMT / AI CPU / 自定义算子入图），
+      共得候选 182 条；按「用途面聚合 + 昇腾级判据（cann-samples 不存在时该事实是否仍成立）」筛出并写入 18 条。
+    trajectory:
+      - references/software-facts/aclnn-two-phase-contract.yaml 等 18 个新词条（本轮产出）
+      - "Samples/0_Introduction/npu_execution/README.md（1109 行）+ 其 11 张架构图（执行模型主线来源）"
+      - "Samples/1_Features/memory_optimization/reg_data_movement/Reg数据搬运场景选型指南.md（545 行，故障表来源）"
+      - "Samples/2_Performance/rms_norm_quant_story/Story.md（性能归因与精度优化来源）"
+      - "Samples/2_Performance/scalar_story/README.md（ScalarBound 统计与诊断流程来源）"
+hypothesis: >-
+  把「执行模型机制 / 片上存储与搬运机制 / 算子内同步与归约 / 性能归因判据 / 精度损失链」这五类昇腾级事实
+  写入 reference 后，性能类与精度类诊断在「瓶颈已落到算子/kernel 层」时有一组可执行判据（pipe 分解与
+  主导占比、Load/Store 占比、UB 与 L0C 容量上限、搬运静默出错速查、长向量累加误差界），而不是只能停在
+  框架层猜测；同时保留来源自身的缺口与矛盾（口径不一致、不可用的收益数字）作为显式标注。
+predicted_effect:
+  metric: 新增词条数、schema 与索引一致性、以及「来源缺口是否被显式标注」的可机械检查
+  from: 吸收前 132 条词条（该仓内容零覆盖：grep dav-3510 / cannsim / LocalMemBar / unit_flag / FRACTAL_NZ 等零命中）
+  to: 150 条词条、背景索引 70 条、流程索引 16 条；来源缺口以 source_note / pitfalls 显式落在词条内
+  measure:
+    command: "python3 scripts/verify_references.py --check && python3 scripts/build_ref_summary_index.py --check && python3 scripts/build_procedure_index.py --check && python3 scripts/verify_proposals.py --check"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 吸收前 references/（132 条；算子级机制与归因判据零覆盖）
+  success_criteria: >-
+    ①四道校验全通过；②18 条词条零注释行、applies_to.categories 取值合法；③每条词条的来源逐字核验或
+    如实标 auto-extracted（图像派生事实）；④来源缺口与矛盾显式记录（UB 容量四种口径、三个样例 README 的
+    收益数字不可用、来源自标 TODO 的实测缺口）；⑤走 reference 层人审
+  rollback: 删除本轮 18 个文件 + 重建两个索引（词条间只有 related_references 互链）
+gate:
+  condition: 本轮走通后再评估是否继续吸收候选池中剩余的低优先级条目（算子源码级写法、逐 story 调优链、被排除的样例构建面）
+risk: low
+principle_refs: [2, 9, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 会话内联执行 + 7 个委派读取者，未单独记账；按同批做法以 0 计并如实标注口径
+decisions:
+  - who: agent
+    when: '2026-09-14'
+    type: proposal
+    conclusion: >-
+      用户判定第一批两条词条是仓特定内容，并要求系统挖掘 1_Features 与 2_Performance → 先删除/重写那两条，
+      再按目录分 7 组并行读取，统一用「昇腾级判据」过滤（仓不存在时是否仍成立），要求每条候选附原文引文
+      与仓特定判定。聚合口径明确：候选不一对一录，同一用途面合成一条、故障速查合成表。
+  - who: agent
+    when: '2026-09-14'
+    type: action
+    conclusion: >-
+      7 组全部回收，候选 182 条（B 27 / C 36 / F 21 / G 21 / A 9 / E 25 / D 43）。写入 18 条词条：
+      执行模型线 5（aclnn 两段式、torch_npu 路由、EXEC_NPU_CMD、Task Duration 解剖、硬件调度器分派）、
+      搬运与指令线 5（MTE2 队列深度、N-Buffer 多级 ping/pong、unit_flag、FRACTAL_NZ、权重 NZ 仅推理）、
+      存储与容量线 3（UB 容量口径、L1/L0 bank 冲突、访存带宽测量并入归因方法）、
+      故障表 2（寄存器搬运静默出错 12 条、算子内同步与归约）、归因与精度 3（瓶颈归因流程、长向量累加误差、
+      SIMD VF 约束集），另有 msprof 时间线泳道读法 1 条。索引重建（56 → 70 条背景、14 → 16 条流程）。
+  - who: agent
+    when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      scan_review：measure 命令实跑通过（150 条词条 / 两索引新鲜 / 69 张卡通过）；18 条零注释；图像派生事实
+      按 auto-extracted 标注（simd-vf 打点图三处数值由委派读取者转录）。**来源质量核查**：发现 l1_bank_conflict /
+      scale_cache / slide_window_adaptive_template 三个 README 的 Profiling 表逐字节相同且结论段互相复制，
+      已在 l1-l0-bank-and-conflict 词条内以 source_note 记录并声明不引用其收益数字；UB 容量四种口径
+      （248KB 运行期 / 248KiB per AIV / 256KB SIMT 文档 / 512KB per AI Core 白皮书）在词条内并列并说明口径差异。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      validated（采纳，改动保留进本 PR 供人审）。依据：四道校验全通过、来源逐字核验或如实降级标注、
+      候选到词条的过滤口径可复核。未吸收部分的去向已记录（候选池文件 + EXCLUDED 段），其中
+      `507035` 作为错误码追加进 errors/cann-runtime.yaml 属修订已合入的 active 内容，需 kb/high-risk 双签，
+      **本轮不做**，留待单独 PR。人审关注点：①聚合粒度是否合适（182 → 18 是否压得过狠）；
+      ②image_note / source_note 这类新字段是否该进 schema 登记。

@@ -1,0 +1,25 @@
+id: torch-npu-op-routing
+type: software-fact
+title: torch_npu 算子路由（PrivateUse1 注册 / redispatch / 兼容实现开关 / aclnn-aclop 分支）
+summary: "PyTorch 张量在 NPU 上的算子调用要过三层路由：①Dispatcher 从参数提取 keyset（Autograd+PrivateUse1）并取最高优先级，Autograd 优先于 PrivateUse1，故先命中 VariableType；②redispatch 用 `ks & after_autograd_keyset` 剥离 Autograd key，下一个命中 PrivateUse1 的 `wrapper_NPU__<op>`；③wrapper 内 op_plugin 按 `CheckJitDisable()` 二选一——aclnn（主流）或 aclop（日落中）。另有 `TORCH_NPU_USE_COMPATIBLE_IMPL=1` 会让 matmul 系列不走 NPU 注册实现；matmul 的 ND/NZ × dtype × SoC 组合还会决定走 WeightNz API、标准 API 还是回退 aclop，最容易误判成 shape 问题"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/0_Introduction/npu_execution/README.md"
+    version: "cann-samples master（自述 CANN 社区版 9.0.0；§一 代码锚 pytorch_2.7.1 + torch_npu）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [pytorch]
+  categories: [interrupt, performance, precision]
+
+related_references: [aclnn-two-phase-contract, exec-npu-cmd-async-launch, operator-exec-fault-patterns]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "NPU 张量上的每次算子调用要过三层路由，任何一层都能产生「行为与预期不符」的现象。**第一层 Dispatcher**：`torch.xxx` → `THPVariable_xxx` → `at::_ops::xxx::call()` → `TypedOperatorHandle::call` → `Dispatcher::call`；Dispatcher 先遍历所有 Tensor 参数合并 `key_set()` 得到 keyset（NPU 张量上是 `{Autograd, PrivateUse1}`）、排除 fallthrough key，再用 `getDispatchTableIndexForDispatchKeySet()` **取最高优先级的 key** 作为下标查 `dispatchTable_` 数组；**Autograd 优先级高于 PrivateUse1**，所以 `torch.matmul` 首先命中的是注册在 Autograd 下的 `VariableType::matmul`（这层在 `requires_grad` 为真时会建反向节点、把输入存成 SavedVariable，是「训练比推理慢」的一个框架侧来源；`THPVariable_xxx` 在进 C++ 前会 `pybind11::gil_scoped_release` 释放 GIL）。**第二层 redispatch**：`VariableType::matmul` 前向时用 `at::redispatch::matmul(ks & c10::after_autograd_keyset, ...)` 剥离 Autograd key，`Dispatcher::redispatch` 不再从 Tensor 提取 key、直接用传入 keyset 查表，NPU 上下一个命中的 key 就是 `PrivateUse1`，落到 `wrapper_NPU__matmul`。**第三层 wrapper 内分流**：`op_plugin::matmul` 先判 `at_npu::native::env::CheckJitDisable()`——为真走 `op_api::matmul`（aclnn API，源码注释标注「主流场景」），为假走 `acl_op::matmul`（aclop API，注释标注「日落中」）；同一个算子因此有两条执行实现，按开关切换。与之并列的两个开关：`TORCH_NPU_USE_COMPATIBLE_IMPL` 存在且等于 `\"1\"` 时，matmul 系列（`matmul` / `matmul.out` / `matmul_backward`）的 NPU 注册**被跳过**（即换用兼容实现）；`wrapper_NPU__matmul` 自身还会做设备一致性检查、数据安全检查（`get_npu_data_unsafe_flag`）、profiling hook（`NPURecordFunction`）与可选 OpHook 拦截——这些都在 Host 侧逐算子叠加开销。**matmul 的实现路径还受格式与 dtype 支配**（`DO_MATMUL_COMPATIBILITY`）：两个输入都是 base format（ND）→ 标准 `aclnnMatmul`；一个 ND 一个 NZ 时需同时满足 SoC 在 `[Ascend910B1, Ascend310B1)` 或 `> Ascend310B4`、且两个输入 dtype 都不是 `at::ScalarType::Float`，才走 `aclnnMatmulWeightNz`；否则进入回退分支——`IsAclnnOnly()` 为假则回退 aclop，为真则 `TORCH_CHECK(false, \"matmul got not support format ...\")` 直接报错。**所以「matmul 报 not support format」或「换 NZ 权重后性能/精度变了」的根因在 format × dtype × SoC 的交集，不在 shape**；静默回退 aclop 还会带来与 aclnn 完全不同的性能特征，是「算子没报错但变慢」的候选根因。"
+  evidence: "源 README §一.2.3：『dispatchTable_ 是一个以 dispatch key 为索引的数组。Autograd 优先级高于 PrivateUse1，所以命中的是注册在 Autograd 下的 VariableType::matmul。』；§一.2.4：『ks & c10::after_autograd_keyset剥离autograd key』『不从Tensor提取key，直接用传入的key set查表』；§一.3.1：『if (std::getenv(\"TORCH_NPU_USE_COMPATIBLE_IMPL\") == nullptr || std::string(std::getenv(\"TORCH_NPU_USE_COMPATIBLE_IMPL\")) != \"1\")』『PrivateUse1 是 PyTorch 预留给第三方加速设备的 dispatch key』；§一.3.2.1：『if (is_jit_disable) { return op_api::matmul(self, other); // 主流场景：aclnn API } else { return acl_op::matmul(self, other); // 日落中：aclop API }』；§一.3.2 `DO_MATMUL_COMPATIBILITY` 三分支（情况 C：`TORCH_CHECK(false, \"matmul got not support format ...\")`）与 `is_support_soc` 判据"

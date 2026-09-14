@@ -1,0 +1,52 @@
+id: operator-bottleneck-attribution
+type: methodology
+title: 算子性能瓶颈归因（pipe 分解 → 流水模式 → Bound 分类 → 策略选择）
+summary: "把 profiling 的 pipe 数据变成「下一步动哪里」的判据链：先按七列（kernel / mac / scalar / mte1 / mte2 / fixpipe / icache_miss）分解，再用 `vec + mte2 ≈ 100%`（串行）还是 `≫ 100%`（重叠）判断流水是否并行，用主导流水占比 max(vec, mte2, mte3) 定 Bound 类型；主导占比降到约 55% 且 VEC≈MTE2 才是开双缓冲的最佳时机（重叠后目标 ≥80%）；ScalarBound 看 Load/Store 占比是否 >30%（根因是寄存器 Spill）"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/rms_norm_quant_story/Story.md"
+    version: "cann-samples master（性能建模与优化策略章节；样例自述 Ascend 950）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/scalar_story/README.md"
+    version: "cann-samples master（ScalarBound 实测统计与五步诊断流程；自述 Ascend 950 + CANN 9.0）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/instruction_optimization/n_buffer/README.md"
+    version: "cann-samples master（pipe 分解列名与 DB 决策依据）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [performance]
+
+related_references: [msprof-collect-parse, msprof-timeline-lane-reading, aicore-task-duration-anatomy, l1-l0-bank-and-conflict, simd-vf-programming-constraints]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  flow:
+    - step: 1
+      action: "采集硬件流水线执行状态并做 **pipe 分解**，七列为：`kernel(us)` / `mac(us)` / `scalar(us)` / `mte1(us)` / `mte2(us)` / `fixpipe(us)` / `icache_miss(%)`。原则：**不要只看 kernel 总量**——存在优化后 kernel 几乎不变而某条流水显著恶化的情形（实例：`unit_flag` 使能后 kernel 86.870 → 85.907 us 基本没降，而 `fixpipe` 从 2.970 涨到 22.802 us），只看总量会把结论读反。更细的逐指令读法见 msprof 时间线泳道读法词条"
+      check: "七列齐全且对比两侧的 shape / dtype / tiling 参数完全一致（见第 6 步测量纪律）"
+    - step: 2
+      action: "判**流水模式**：取 `aiv_vec_ratio` / `aiv_mte2_ratio` / `aiv_mte3_ratio` 三条流水耗时占比——`vec + mte2 ≈ 100%` 为**串行模式**（VEC 与 MTE2 交替、无时间重叠），`vec + mte2 ≫ 100%` 为**重叠模式**（二者并行推进，用一方耗时掩盖另一方）。再看**主导流水占比** = max(vec, mte2, mte3)"
+      check: "串行模式下主导流水直接指向瓶颈类型；重叠模式下它反映单位时间内最忙碌的流水"
+    - step: 3
+      action: "按 Bound 类型选策略：`aiv_vec_ratio` 显著最高 = **Compute Bound**（向量计算单元吞吐不足）→ 压计算链、提 IPC；`aiv_mte2_ratio` 显著最高 = **Memory Bound**（GM→UB 搬运能力不足）→ 改搬运路径/减少搬运量；搬运时间远大于计算时间时**优先尝试 Double Buffer**，并确认切分后 Tile 在开双缓冲后不超硬件资源、多核时注意线程同步"
+      check: "同期核对多核利用率：核数没用满时先解决并行度（样例中 Block 仅用 1 个、剩余 63 个 Vector Core 空闲就是首轮的头号问题）"
+    - step: 4
+      action: "**双缓冲的开启时机**：不要一开始就开。主导占比从约 67% 压到约 **54–55%、VEC 与 MTE2 占比趋近 1:1** 时才是开 Double Buffer 的最佳时机（此时收益最大）；开启后主导占比应**首次突破 80%**——重叠模式下两条流水同时饱和运行，各自占比都会大幅上升。若主导占比仍 >80% 且为某一条流水，说明还在串行主导，应继续压那条流水而不是加缓冲"
+      check: "开 DB 后若主导占比没有跃升，检查是否只开了一级缓冲或各级共用事件标志（见 N-Buffer 多级 ping/pong 词条）"
+    - step: 5
+      action: "**ScalarBound 专项**：若 scalar 时间突出，先看 **Load/Store 指令占比是否 >30%**——实测统计里 Cube 类与 Mix 类算子的 ScalarBound 最突出（1125 个 ScalarBound 用例中 FlashAttention + Matmul + Conv 占 1098 个，97.6%；Vector 类不到 3%），Load/Store 过多是主因，**根源是编译器的寄存器 Spill**（活跃变量超过可用寄存器时 Store 到栈、用时再 Load 回来）；栈内存在 Global Memory，**dcache miss 时一次 Load 需要几百 cycle**。因此优化方向是**减少内存访问（改代码结构、局部变量替代成员变量、静态创建 LocalTensor、消除多级指针）**，而不是单纯减少标量计算指令"
+      check: "按投入产出排序：减少内存访问 > 算法/循环结构 > icache/dcache 相关优化（后者需 PC-Cycle 图与 cache miss 统计，且调参需反复试）"
+    - step: 6
+      action: "**测量纪律（口径与前提）**：①两侧对比必须钉住输入规模、数据类型与 tiling 参数——同一个 kernel 改一个 tiling 参数（如 basek，它决定指令深度）就能让测量结论反转；②单变量归因，一次只改一处；③**核数口径不一**——同一批样例里出现过『64 Vector Core』与『32 AI Core』两种写法，引用时不要硬编码核数；④L2 计数器可能被 DCache 拦截，**命中率类计数器不可全信**，可用定向改动做假设检验（改一处看指标是否按预期移动）；⑤仿真与真机不可混用同一套结论；⑥不同 tutorial 的 cycles 数不可横向比较（来源自述口径不同）"
+      check: "报告结论时给出对照条件（shape / dtype / tiling / 核数），否则结论不可复现"
+  verified_by_testing: "来源给出单样例的端到端实测链（主导占比 67.2% → 69.0% → 65.8% → 54.5% → 开 DB 后 86.9%，对应耗时逐级下降），但**这些数字绑定该样例的 shape 与算子**，只用于理解判据方向，不作为平台指标引用"

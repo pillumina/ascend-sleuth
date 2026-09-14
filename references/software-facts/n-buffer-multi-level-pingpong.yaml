@@ -1,0 +1,30 @@
+id: n-buffer-multi-level-pingpong
+type: software-fact
+title: N-Buffer 多级 ping/pong（L1 / L0A-L0B / L0C 各级独立配缓冲+事件标志）
+summary: "双缓冲及以上不是只在某一级加一份缓冲，而是 L1、L0A/L0B、L0C **各级各自配一对 ping/pong**，各级用独立缓冲区索引（`l1BufId = l1PingPong & 1`、`l0BufId = l0PingPong & 1`）与**独立事件标志**循环切换，才使「搬运-计算」在每一级重叠。反过来说，各级共用同一组事件标志就是串行版——这解释了「开了 double buffer 但收益不达预期」"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/instruction_optimization/n_buffer/README.md"
+    version: "cann-samples master（样例声明 NPU ARCH 3510）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/instruction_optimization/n_buffer/images/image-1.png"
+    version: "同上目录的 DB 前后流水波形对比图（画面内容核验）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance]
+
+related_references: [mte2-preload-queue-depth, l1-l0-bank-and-conflict, operator-bottleneck-attribution]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "N-Buffer（双缓冲及以上）的作用粒度是**逐存储层级**的：L1、L0A/L0B、L0C 各级**各自**配置一对 ping/pong 缓冲区与**独立的事件标志**（源码中体现为 `l1BufId = l1PingPong & 1`、`l0BufId = l0PingPong & 1` 这样的独立索引循环切换），从而在每一级都能实现「搬运-计算」重叠。反例是串行版本：只 `SetFlag<HardEvent::MTE1_MTE2>(ZERO_FLAG)`，各级共用同一组事件标志，不同流水阶段就无法独立并行。**诊断含义**：客户说「已经开了 double buffer 但没效果」时，要区分两种形态——①只开了一级（例如仅 L1）而 L0/L0C 仍串行；②各级共用事件标志导致阶段间相互等待。缓冲大小的设置约束由来源给出：需根据硬件 L1/L2 缓存大小与算子 Tiling 参数合理设置以避免溢出（具体容量数值来源未声明）。"
+  evidence: "源 README §1.2『可以在流水图中看到，各级均配置了ping/pong双缓冲区，从而实现\"搬运-计算\"的无缝重叠。』；§2.2『缓冲区大小设置：需要根据硬件L1/L2缓存大小和算子Tiling参数合理设置，避免数据溢出』"
+  image_note: "同目录 images/image-1.png（已读图核对）：上半『开启 DB 前』给出 t1..t12 时间轴上 `GM搬至L1` / `L1搬至L0` / `MMAD计算` / `MMAD搬至Fixpipe` / `Fixpipe搬回GM` 五段串行链与两处『计算闲置』标记；下半『开启 DB 后』把每一级都拆成 ping/pong 两路（`GM_ping搬至L1_ping`、`L1_ping搬至L0_ping`、`MMAD_ping计算`、`Fixpipe_ping搬回GM` …）。『每一级都要配对』这一层级拆分事实文字未给"

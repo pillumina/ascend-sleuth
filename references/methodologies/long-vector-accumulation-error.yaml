@@ -1,0 +1,34 @@
+id: long-vector-accumulation-error
+type: methodology
+title: 长向量线性累加的浮点误差（O(n·ε) → 二分累加 / 迭代 rsqrt）
+summary: "行内/序列求和用线性累加时，float32 的相对误差界是 O(n·ε)（ε≈1.2e-7 = 2^-23）——n=8192 时误差上界约 1e-3，足以让归一化/量化结果在边界处偏移 1 个 quant level 并逐层累积。修法是二分累加（缩短累加链深度，误差界降到 O(log n·ε)）与用乘加链迭代替代硬件 Div/Sqrt；代价约 1%"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/rms_norm_quant_story/Story.md"
+    version: "cann-samples master（性能建模与精度优化章节；样例自述 Ascend 950）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [bf16-intermediate-fp32, msprobe-accuracy-compare, operator-bottleneck-attribution]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  flow:
+    - step: 1
+      action: "识别线性累加结构：算子内行内平方和/序列和若由寄存器上的逐次 `Add(acc, acc, x)` 构成（样例中一行 8192 个元素对应 128 次向量 Add），就是**线性累加**。判断依据：浮点加法不可结合——`(a⊕b)⊕c ≠ a⊕(b⊕c)`，线性累加每一步的舍入误差都被后续操作放大"
+      check: "float32 的机器精度 ε ≈ 1.2e-7（2^-23）；线性累加的相对误差界 O(n·ε)，n=8192 时约 1e-3——这个量级足以在量化边界附近让输出偏移 1 个 quant level，并在大规模推理中逐层累积"
+    - step: 2
+      action: "改**二分累加（Pairwise Summation）**：把待累加向量从折叠点（`binaryAddPoint`，n=8192 时取 4096）拆成前后两段分别求和再合并——理想的全递归二分累加把误差界从 O(n·ε) 降到 **O(log n·ε)**；本例的两阶段 ReduceSum 虽非完全递归树，但累加链深度已从 O(n) 量级大幅缩短"
+      check: "改完复测性能不劣化：来源实测该步耗时增加约 0.5 us（~1%），落在测量误差范围内；原因是前后段无依赖指令能在同一 VF 内双发射"
+    - step: 3
+      action: "归一化类算子里的**倒数平方根改迭代法**：先用硬件 `Div` + `Sqrt` 得初值 `y0 = sqrt(1/var)`，再用乘加链做两轮牛顿迭代（第一轮 Newton-Raphson；第二轮改用残差形式 `e = 1 - var·y1²`、`y2 = y1·(1 + e/2)`，代数等价但更适合寄存器操作）"
+      check: "两轮迭代共约 10 条 `Mul`/`Mula` 指令；硬件 `Div`/`Sqrt` 延迟通常 10+ cycle 且不可双发射，乘加链延迟低、可双发射，代价能在向量流水里被掩盖——**这同时消除了对硬件 Div/Sqrt 舍入误差的依赖**"
+  verified_by_testing: "来源给出同一样例的端到端对照（该步 49.5 us、相对前一步 ≈1.0x，即精度提升未付性能代价）；数字绑定该样例 shape，引用时只取判据方向"
+  note: "与「迭代 rsqrt」这一节相关的来源措辞是**两轮牛顿迭代（含残差形式修正）**，不是其他近似方法；落地时按来源写两轮迭代"

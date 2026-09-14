@@ -7,7 +7,7 @@
 #   3) 按 file 打开该词条读 **content.flow[] 全文**——摘要行不承载判据，只读摘要等于没加载；
 #   4) 一轮诊断最多加载一条流程（成本有界）。
 #
-# 生成日期：2026-09-14    流程条数：14    本文件整体加载成本：约 2297 token（选择器每次都要整读，故单文件 + 记成本）
+# 生成日期：2026-09-14    流程条数：16    本文件整体加载成本：约 2622 token（选择器每次都要整读，故单文件 + 记成本）
 #
 # 增长闸门（原则十一：按闸门不按日历）：流程条数 > 25，或本文件 > 5K token → 按 category 分片
 #   （对齐 case 层 knowledge/_index/<ns>__<category>.yaml 的做法）。当前单文件即可。
@@ -90,6 +90,14 @@ entries:
   - interrupt
   platforms: []
   file: references/methodologies/glm-quantized-startup-triage.yaml
+- id: long-vector-accumulation-error
+  title: 长向量线性累加的浮点误差（O(n·ε) → 二分累加 / 迭代 rsqrt）
+  summary: 行内/序列求和用线性累加时，float32 的相对误差界是 O(n·ε)（ε≈1.2e-7 = 2^-23）——n=8192 时误差上界约 1e-3，足以让归一化/量化结果在边界处偏移 1 个 quant level 并逐层累积。修法是二分累加（缩短累加链深度，误差界降到 O(log n·ε)）与用乘加链迭代替代硬件 Div/Sqrt；代价约 1%
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/long-vector-accumulation-error.yaml
 - id: msllm-startup-version-env-triage
   title: mindspeed-llm 训练启动失败排查（版本/环境配套面 + import 失败判别）
   summary: mindspeed-llm 训练启动即失败的常见根因分流：import 失败先判别"版本/安装面 vs 代码漂移面"（features_manager 缺符号=版本不配套；tasks.checkpoint.models 缺失=上游删模块未同步后端）；算子重复注册（CANN 版本过旧 vs 多版本 mindspeed）；特性未适配（batch_p2p_comm 等需升级 PTA 或关闭）。按报错签…
@@ -105,6 +113,14 @@ entries:
   platforms:
   - cross
   file: references/methodologies/msprof-comm-bottleneck-thresholds.yaml
+- id: operator-bottleneck-attribution
+  title: 算子性能瓶颈归因（pipe 分解 → 流水模式 → Bound 分类 → 策略选择）
+  summary: 把 profiling 的 pipe 数据变成「下一步动哪里」的判据链：先按七列（kernel / mac / scalar / mte1 / mte2 / fixpipe / icache_miss）分解，再用 `vec + mte2 ≈ 100%`（串行）还是 `≫ 100%`（重叠）判断流水是否并行，用主导流水占比 max(vec, mte2, mte3) 定 Bound 类型；主导占比降…
+  categories:
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/operator-bottleneck-attribution.yaml
 - id: rl-train-infer-consistency-triage
   title: RL 训推一致性排查路径（先定分歧面，再选权重链路 / 概率偏移 / 阶段定界）
   summary: RL（GRPO/PPO）训推一致性问题的排查路径：先按现象定分歧面——输出崩溃（乱码/生僻字/重复）多指向权重同步链路，reward 下降 + logp_diff 上升多指向逐 token 概率偏移，整体效果差但难分训推则需阶段定界；再选手段（UWC 三段比对权重链路 / 逐 token probs_diff 看概率分布 / 交叉打桩定界训练还是推理），最后按各自容差判读
