@@ -1,0 +1,29 @@
+id: bf16-intermediate-precision
+type: software-fact
+title: BF16 中间计算的精度处理（升 FP32 计算 / 等价重结合会改变 BF16 舍入位置）
+summary: "BF16 的尾数只有 8 位，两类精度事故有明确机制：①**中间结果在 BF16 上直接计算**会累积舍入误差（修法是 BF16 load → FP32 compute → BF16 store，来源实例最大偏差 0.0078125）；②**代数等价的重新结合**（如把 `(a+b)+c` 改成 `a+(b+c)`、或提前乘/除一个因子）在 BF16/FP16 上**改变舍入位置**，公式等价但结果不等——这是「改了实现方式后精度变了」的一类根因"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/rms_norm_quant_story/README.md"
+    version: "cann-samples master（BF16 中间计算的精度处理；自述 Ascend 950）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/kimi_delta_attn_lite_story/README.md"
+    version: "cann-samples master（等价重结合与 BF16 舍入位置）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [attention-precision-chains, long-vector-accumulation-error, msprobe-accuracy-compare, msprobe-accuracy-checker]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**①中间计算升精度**：BF16 尾数只有 8 位，中间结果若继续在 BF16 上计算，舍入误差会逐步累积；正确形态是 **BF16 load → FP32 compute → BF16 store**——只在进出时用 BF16，计算链全程 FP32（来源实例的最大绝对偏差为 0.0078125，量级即 BF16 的一个最小刻度）。诊断含义：量化/低精度算子的精度不达标时，先确认中间计算是否真的在 FP32 上完成，而不是看输入输出 dtype。**②等价重结合会移动 BF16 舍入位置**：代数上等价的改写（改变加法结合顺序、把公因子提前乘除、把归一化拆成两步）在**实数域**成立，但在 BF16/FP16 定点化的每一步都会重新舍入，改写后舍入发生的**位置与次数变了**，因此结果不同。这类改动在 FP32 上往往看不出差异，在 BF16 上却是可观测的偏差。**诊断纪律**：验证精度必须用**未量化的 FP32 golden** 对照（判据示例见 attention 精度链词条），不要用另一份低精度实现做基准；改动「只是换个写法」时也要复跑同一套 golden。"
+  evidence: "rms_norm_quant_story README（BF16 load → FP32 compute → BF16 store 的写法与实测最大偏差 0.0078125）；kimi_delta_attn_lite_story README（anchor/重结合改写只改变 Cube 两侧 BF16 输入的写法、实数结果不变，但**会改变 BF16 舍入位置**，精度仍须以逐 token FP32 递推为准）"

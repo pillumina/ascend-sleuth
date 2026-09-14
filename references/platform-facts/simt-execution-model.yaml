@@ -1,0 +1,32 @@
+id: simt-execution-model
+type: platform-fact
+title: SIMT 执行模型与硬件上限（Warp 32 / Block ≤2048 / 一个 AIV 同时只跑一个 Block）
+summary: "SIMT 线程层次为 Thread / Block / NumBlock 三层：Warp 固定 32 线程、一个 Block 的多个 Warp 依次调度到同一个 AIV；单 Block 最多 **2048 线程**（硬件当前上限），且**一次在一个 AIV 上只能运行一个 Block**（与 GPU 不同），NumBlock 只支持单维。用 `--enable-simt` 编译时 MTE 相关头文件不可用、数据必须 GM 直访（丧失批量 DMA 效率）——这两条决定了 SIMT 与 SIMD 的选型边界"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/hardware_features/simt/README.md"
+    version: "cann-samples master（SIMT 特性样例；自述 Ascend 950）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/hardware_features/simt/images/image-6.png"
+    version: "cann-samples master（SIMD RF 与 SIMT RF 两个寄存器堆、GM→SIMT DCACHE 直达通路示意；由委派读取者读图转录）"
+    fetched_at: 2026-09-14
+    verification: auto-extracted
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance, interrupt]
+
+related_references: [simd-vf-programming-constraints, simt-vs-simd-selection, ub-capacity-and-budget, operator-bottleneck-attribution]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**线程层次与上限**：SIMT 为 Thread / Block / NumBlock 三层；`blockDim.x/y/z` 三维乘积必须 ≤ 函数定义时 `__launch_bounds__` 指定的值。**一个 Warp 固定包含 32 个线程**，一个 Block 的多个 Warp **依次调度到同一个 AIV** 执行；**一个线程块最大 2048 线程（硬件当前上限）**；与大不同的是——**当前 SIMT VF 一次在一个 AIV 上只能运行一个 Block**；NumBlock 类似 GPU 的 grid 语义但**只支持单维**。**编译模型**：纯 SIMT kernel 用 `__global__`（**不带** `__aicore__`）并以 `--enable-simt` 编译；此时 **`kernel_operator.h`（MTE / `DataCopyPad` / `TPipe` 等）不可用**，**数据必须通过 GM 直接访问**（`float val = x[i]` 指针解引用，省去 UB 中转，代价是**丧失 MTE 的批量 DMA 效率**）。**编程要素替换关系**：线程索引用 `blockIdx.x * blockDim.x + threadIdx.x`（逻辑线程，而非 `GetBlockIdx`/`GetBlockNum` 的物理核）；UB 用 `__ubuf__[]` **静态数组**（编译期定大小，没有 `TPipe`/`TQue`/`AllocTensor` 的运行时管理）；同步用 `asc_syncthreads()` 线程栅栏（而非 `SetFlag`/`WaitFlag` 流水事件）；并发写同一地址用 `asc_atomic_add`（可对 UB 与 GM 做原子累加）。**并行范式**：核心是把串行 `for (i=0; i<N; i++)` 换成 **grid-stride 循环** `for (i=globalTid; i<N; i+=totalThreads)`。**资源边界**：UB 在该文档口径下为 256KB（与运行期查询的 248KB 是两处口径，见 UB 容量词条）；另有 DCache 32–128KB 的限制。**寄存器堆**：SIMD 与 SIMT 各有独立寄存器堆（来源图示意），且 GM→SIMT DCache 存在一条**绕开 DMA Unit / UB** 的直达通路——这是 GM 直访模型在硬件上的依据；SIMD 与 SIMT 共享同一个 AIV 的计算资源，同一时刻只能用其一。"
+  evidence: "simt README：『一个线程块最大支持2048线程(硬件当前上限)。需要注意，与GPU不同，当前SIMT VF一次在一个AIV上只能运行一个Block。』『每个Warp包含32个线程, 一个Block的多个Warp被依次调度到AI Core中的同一个AIV执行。』及 `--enable-simt` 下 MTE 头文件不可用、数据 GM 直访、`asc_syncthreads`/`asc_atomic_add`/`__ubuf__[]`/grid-stride 的对照说明；未读图部分（SIMD RF 与 SIMT RF 独立、GM→SIMT DCACHE 直达通路）来自 `images/image-6.png`，标注 auto-extracted"
+  pitfalls:
+    - "核数口径在不同来源间不一致（同仓既有『64 Vector Core』也有『32 AI Core』的写法）——不要引用时硬编码核数"
+    - "`--enable-simt` 下没有 `TPipe`/`TQue` 和 MTE 头文件，把 MemBase 的写法直接搬过来会编译失败；迁移是重写而非改开关"

@@ -1,0 +1,24 @@
+id: float8-cast-bit-mapping
+type: software-fact
+title: float4_e2m1 → float8_e4m3fn 无直接 Cast（位映射 + ×64 补偿，bias 需先 ÷64）
+summary: "Ascend 950 不支持从 `float4_e2m1` 直接转 `float8_e4m3fn`：需走 `float4_e2m1 → bfloat16 → float32 → float8_e4m3fn` 共 3 个 Cast。等效位操作是符号位不变、指数位高位补两个 0、尾数位低位补两个 0；该结果被解释为 e4m3fn 后数值是真实值的 1/64，**必须乘 2^6 = 64 补偿**（可借 FIXPIPE 随路乘缩放因子在搬出时完成）。bias 场景下该乘法把 bias 变成 64 倍，需先把 bias 搬进 Vector 核缩小为 1/64 再参与计算"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/matmul_story/docs/weight_quant_matmul_mxfp8fp4_performance.md"
+    version: "cann-samples master（MXFP8FP4 权重量化性能文档）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [precision, performance]
+
+related_references: [mx-quantized-matmul, attention-precision-chains, msprobe-accuracy-compare]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "Ascend 950 **不支持**从 `float4_e2m1` 到 `float8_e4m3fn` 的直接数据类型转换，必须按 `float4_e2m1` → `bfloat16` → `float32` → `float8_e4m3fn` 的路径转换（**共 3 个 Cast 指令**，代价见性能侧）。等价的位操作是：**符号位保持不变、指数位高位补两个 0、尾数位低位补两个 0**；把该结果直接当作 `float8_e4m3fn` 解释时，数值是真实值的 **1/64**，因此必须乘 `2^6 = 64` 补偿——补偿可借 FIXPIPE 对数据随路乘缩放因子的能力在**搬出时**完成，不必额外增加计算指令。**连带约定**：扩展到带 `bias` 的场景时，这次 ×64 会把 bias 也放大 64 倍，因此需要**先把 bias 搬入 Vector 核缩小为原先的 1/64**，再经 MTE3 进 Cube 参与计算。**诊断用法**：手写位操作版转换若漏掉 ×64 补偿，症状是**固定比例（1/64 量级）的整体偏差**，而不是随机误差——这是「数值整体偏小」类精度投诉的直接解释；同时 3 个 Cast 会造成 VF Bound，属性能侧的连带代价。"
+  evidence: "源文档：『Ascend950芯片不支持直接从float4_e2m1到float8_e4m3fn的数据类型转换，需要按照float4_e2m1 → bfloat16 → float32 → float8_e4m3fn的路径进行格式转换，共需3个Cast指令。』（及其后关于符号位/指数位/尾数位补 0、乘 2^6 补偿、bias 先缩小的说明）"

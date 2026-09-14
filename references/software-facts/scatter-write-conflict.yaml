@@ -1,0 +1,24 @@
+id: scatter-write-conflict
+type: software-fact
+title: Scatter 并发写同址的覆盖语义（last-writer-wins，结果随调度顺序变化）
+summary: "`Scatter` 的并发写是**覆盖语义**（last-writer-wins），不是可交换归约——多个 lane/线程命中同一目标地址时，最终值取决于执行顺序，**同输入多次运行结果可以不同**。修法是把写操作按 (目标地址, 组内位置) 排序后**只让组尾写**，把不确定的并发覆盖变成确定的单写"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/simt_scatter_story/README.md"
+    version: "cann-samples master（SIMT Scatter 的写冲突语义；自述 Ascend 950）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [precision]
+
+related_references: [long-vector-accumulation-error, reg-data-movement-fault-patterns, op-internal-sync-and-reduction, simt-execution-model]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "`Scatter` 把数据按索引写到目标地址时，**并发写同一地址是覆盖语义（last-writer-wins），不是可交换的归约**——与 `Gather`（逐 lane 独立读取、互不重复）不同，Scatter 的多个源写入同一目标时没有「累加」或「取最大」的约定，最终留下的是最后写入的那个值，而「最后」取决于线程/lane 的执行顺序，因此**同一输入多次运行的结果可以不同**，属非确定性来源之一。**修法**：把待写元素按 (目标地址, 组内位置) 排序，**只让每个目标地址的组尾元素执行写**，把不确定的并发覆盖转成确定的单次写；若语义上确实需要归约（相加/取最大），必须显式实现归约而不是依赖覆盖。**诊断含义**：「同一输入重跑结果不一致」且涉及 scatter/gather/histogram/embedding 累加类算子时，先确认写冲突是否被显式处理；这类问题用固定随机种子也复现不了。"
+  evidence: "simt_scatter_story README（Scatter 覆盖语义 = last-writer-wins、非可交换规约；按 (dst, 位置) 排序后只让组尾写以获得确定性；与 Gather 逐 lane 独立寻址的对比）"

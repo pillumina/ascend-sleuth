@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-14    词条数：70
+# 生成日期：2026-09-14    词条数：80
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -295,6 +295,26 @@ entries:
   applies_to:
     platforms:
     - cross
+- id: attention-precision-chains
+  type: software-fact
+  title: Attention 两类精度损失链（FP8 per-block 量化的 P 压 fp8 / 衰减注意力的 exp 指数上溢）与验收判据
+  summary: 量化与线性 attention 各有主要精度损失点：①FIA FP8 per-block 全量化里 **softmax 概率 P 被压到 fp8(E4M3)** 是最大损失点，且要求
+    block_size 与算子 tiling 块一致（scale shape 直接暴露粒度：query 沿 S1 每 128、key/va…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - precision
+- id: bf16-intermediate-precision
+  type: software-fact
+  title: BF16 中间计算的精度处理（升 FP32 计算 / 等价重结合会改变 BF16 舍入位置）
+  summary: BF16 的尾数只有 8 位，两类精度事故有明确机制：①**中间结果在 BF16 上直接计算**会累积舍入误差（修法是 BF16 load → FP32 compute → BF16
+    store，来源实例最大偏差 0.0078125）；②**代数等价的重新结合**（如把 `(a+b)+c` 改成 `a+(b+c)`、或…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - precision
 - id: cannsim-sim-profiling
   type: tool
   title: cannsim 仿真性能观测（VF/算子级 cycle Trace，非上板采集）
@@ -305,6 +325,17 @@ entries:
     - A5-950
     categories:
     - performance
+- id: cv-fusion-fixpipe-ub
+  type: software-fact
+  title: Cube-Vector 融合与 Fixpipe L0C→UB 直通（仅 Ascend 950；判据 aiv_mte2_time 趋零）
+  summary: Cube 累加结果默认在 L0C，传统通路是 Fixpipe 写到 GM、再由 AIV 用 MTE2 搬进 UB；**Ascend 950（dav-3510）的 Fixpipe 支持
+    L0C 直通 UB**，A2/A3 无此能力。融合算子（同一 launch 内 AIC 计算 + AIV 后处理）的收益判据有两条：`a…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
+    - interrupt
 - id: exec-npu-cmd-async-launch
   type: software-fact
   title: EXEC_NPU_CMD 单算子下发（V1/V2 线程归属 + 十步异步提交 TaskQueue）
@@ -316,6 +347,17 @@ entries:
     categories:
     - performance
     - interrupt
+- id: float8-cast-bit-mapping
+  type: software-fact
+  title: float4_e2m1 → float8_e4m3fn 无直接 Cast（位映射 + ×64 补偿，bias 需先 ÷64）
+  summary: Ascend 950 不支持从 `float4_e2m1` 直接转 `float8_e4m3fn`：需走 `float4_e2m1 → bfloat16 → float32 → float8_e4m3fn`
+    共 3 个 Cast。等效位操作是符号位不变、指数位高位补两个 0、尾数位低位补两个 0；该结果被解释为 e4m…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - precision
+    - performance
 - id: fractal-nz-layout
   type: platform-fact
   title: FRACTAL_NZ 分形排布（基本块 16×16 / FP32 16×8，K 对齐 32/sizeof(T)，N 对齐 16）
@@ -348,6 +390,17 @@ entries:
     platforms:
     - A5-950
     categories:
+    - performance
+- id: moe-dispatch-combine
+  type: software-fact
+  title: MoE Dispatch/Combine 的对等内存单边写机制（mte_put / K+1 状态位 / 通信前量化收益边界）
+  summary: EP 扩大后 MoE 推理的主瓶颈是 Dispatch/Combine 通信。替代传统 `alltoallv` 的做法是：基于对称共享内存按 token 逐个发送/接收，用 `mte_put`
+    跨 PE 单边写对端窗口偏移（`aclshmem_ptr(shmemCtx, pe) + offset`），并用 pipeli…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - interrupt
     - performance
 - id: msprobe-accuracy-checker
   type: tool
@@ -512,6 +565,18 @@ entries:
     - A5-950
     categories:
     - performance
+- id: mx-quantized-matmul
+  type: software-fact
+  title: MX 量化矩阵乘约束（Cube 每拍 16×C0×16 / baseK 必须 64 倍数 / MXFP4 按 B8 搬 / scale L1 缓存 3 份）
+  summary: MX（microscaling）量化的 matmul 有四条硬约束：①Cube 每拍计算量是 `16 × C0 × 16`（MXFP8 的 C0=32、MXFP4 的 C0=64），算力下界据此估算；②MMAD
+    要求 `baseK` 是 **64 的整数倍**，K 非对齐要补零且补零方式随排布而异；③MXFP4 的 `…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - precision
+    - interrupt
+    - performance
 - id: n-buffer-multi-level-pingpong
   type: software-fact
   title: N-Buffer 多级 ping/pong（L1 / L0A-L0B / L0C 各级独立配缓冲+事件标志）
@@ -535,6 +600,38 @@ entries:
     categories:
     - interrupt
     - performance
+- id: pcie-host-memory-access
+  type: software-fact
+  title: PCIe Through 判定（Host 内存直算强制 SIMD Tiling）与三条件检查
+  summary: PCIe Through 是零拷贝通路：Device 可直接访问 Host 内存（或反向），省掉显式 `Memcpy`。判定需**三个条件同时满足**——`OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE=1`
+    开启特性、`aclrtGetDeviceInfo(..., ACL_…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - performance
+    - interrupt
+- id: regbase-execution-model
+  type: software-fact
+  title: RegBase 执行模型与收益判据（UB 往返 1.72x / IPC 上限 2 / --cce-res-usage 读寄存器与 Stack）
+  summary: RegBase（`__simd_vf__` + `RegTensor`）与 MemBase（`LocalTensor` + 标准 Vector API）的差别只在 **UB 内计算方式**：MemBase
+    一步计算就是「UB 读 → 算 → 写回 UB」，中间结果反复落 UB 时 `RVECLD + RVECST` 可…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
+    - precision
+- id: scatter-write-conflict
+  type: software-fact
+  title: Scatter 并发写同址的覆盖语义（last-writer-wins，结果随调度顺序变化）
+  summary: '`Scatter` 的并发写是**覆盖语义**（last-writer-wins），不是可交换归约——多个 lane/线程命中同一目标地址时，最终值取决于执行顺序，**同输入多次运行结果可以不同**。修法是把写操作按
+    (目标地址, 组内位置) 排序后**只让组尾写**，把不确定的并发覆盖变成确定的单写'
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - precision
 - id: simd-vf-programming-constraints
   type: software-fact
   title: SIMD Vector Function 约束集（入参白名单 / 硬循环退化 / Aux Scalar 仅整数 / UnalignReg ≤4）
@@ -546,6 +643,17 @@ entries:
     categories:
     - interrupt
     - performance
+- id: simt-execution-model
+  type: platform-fact
+  title: SIMT 执行模型与硬件上限（Warp 32 / Block ≤2048 / 一个 AIV 同时只跑一个 Block）
+  summary: SIMT 线程层次为 Thread / Block / NumBlock 三层：Warp 固定 32 线程、一个 Block 的多个 Warp 依次调度到同一个 AIV；单 Block
+    最多 **2048 线程**（硬件当前上限），且**一次在一个 AIV 上只能运行一个 Block**（与 GPU 不同），NumBl…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
+    - interrupt
 - id: torch-npu-op-routing
   type: software-fact
   title: torch_npu 算子路由（PrivateUse1 注册 / redispatch / 兼容实现开关 / aclnn-aclop 分支）

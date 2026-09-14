@@ -1,0 +1,24 @@
+id: pcie-host-memory-access
+type: software-fact
+title: PCIe Through 判定（Host 内存直算强制 SIMD Tiling）与三条件检查
+summary: "PCIe Through 是零拷贝通路：Device 可直接访问 Host 内存（或反向），省掉显式 `Memcpy`。判定需**三个条件同时满足**——`OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE=1` 开启特性、`aclrtGetDeviceInfo(..., ACL_DEV_ATTR_HD_CONNECT_TYPE, ...)` 查得 `ACL_HOST_DEVICE_CONNECT_TYPE_PCIE`、`aclrtHostRegister(ptr, size, ACL_HOST_REGISTER_MAPPED, &devPtr)` 注册映射。命中后算子内部（如 GatherV2）**强制走 `TILING_SIMD`**，且结果直接写 Host 内存、无需 D2H 拷贝"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/hardware_features/pcie_through/README.md"
+    version: "cann-samples master（PCIe Through 特性样例）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [performance, interrupt]
+
+related_references: [simt-vs-simd-selection, operator-bottleneck-attribution, simt-execution-model, ascend-310p-known-limits]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**机制**：PCIe Through 是零拷贝技术，允许 Device 直接访问 Host 端内存（或 Host 直接访问 Device 内存），避免显式 `Memcpy` 调用。当算子的输入/输出 Tensor 地址**落在 Host 内存映射到的 Device 地址范围内**时，算子内部会**自动选择 PCIe 安全的 Tiling 路径**，避免不支持的 DMA 操作。**判定三条件（须同时满足）**：①`OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE=1` 开启该特性；②`aclrtGetDeviceInfo(devId, ACL_DEV_ATTR_HD_CONNECT_TYPE, &val)` 查得连接类型为 `ACL_HOST_DEVICE_CONNECT_TYPE_PCIE`；③`aclrtHostRegister(ptr, size, ACL_HOST_REGISTER_MAPPED, &devPtr)` 把 Host 内存注册并映射到 Device 地址空间。**命中后的行为**：GatherV2 等算子内部**强制走 `TILING_SIMD` 模式**（纯 SIMD、PCIe 安全），结果直接写入 Host 内存、**无需 `aclrtMemcpy` 做 D2H**。**诊断含义**：出现「Host 内存参与计算的算子性能异常 / 疑似额外拷贝」时，先按这三条确认是否真的进入了 PCIe Through 路径——没进就会走普通 DMA 通路，行为与耗时都会不同；反之确认命中后，性能特征应按「无 D2H 拷贝 + 强制 SIMD tiling」来解读。**来源提示**：该仓 `hardware_features/README.md` 写的是 `aclrtHostRegisterV2`，而 `pcie_through/README.md` 的调用与 API 表写的是 `aclrtHostRegister(ptr, size, ACL_HOST_REGISTER_MAPPED, &devPtr)`——两处 API 名不一致且来源未说明，引用时不要混写成一个名字，以现场环境的头文件/API 文档为准。"
+  evidence: "pcie_through README：『当算子的输入/输出 Tensor 地址落在 Host 内存映射到的 Device地址范围内时，算子内部自动选择 PCIe 安全的 Tiling 路径，避免不支持的 DMA 操作』『在 PCIe through 场景下，GatherV2 算子内部强制走 TILING_SIMD 模式（纯 SIMD 计算，PCIe 安全），避免不支持的 DMA 操作。』以及三条件判定（`OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE=1`、`aclrtGetDeviceInfo(..., ACL_DEV_ATTR_HD_CONNECT_TYPE, ...)`、`aclrtHostRegister(..., ACL_HOST_REGISTER_MAPPED, ...)`）"

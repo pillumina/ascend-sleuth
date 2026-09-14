@@ -7,7 +7,7 @@
 #   3) 按 file 打开该词条读 **content.flow[] 全文**——摘要行不承载判据，只读摘要等于没加载；
 #   4) 一轮诊断最多加载一条流程（成本有界）。
 #
-# 生成日期：2026-09-14    流程条数：16    本文件整体加载成本：约 2622 token（选择器每次都要整读，故单文件 + 记成本）
+# 生成日期：2026-09-14    流程条数：18    本文件整体加载成本：约 2962 token（选择器每次都要整读，故单文件 + 记成本）
 #
 # 增长闸门（原则十一：按闸门不按日历）：流程条数 > 25，或本文件 > 5K token → 按 category 分片
 #   （对齐 case 层 knowledge/_index/<ns>__<category>.yaml 的做法）。当前单文件即可。
@@ -113,6 +113,14 @@ entries:
   platforms:
   - cross
   file: references/methodologies/msprof-comm-bottleneck-thresholds.yaml
+- id: multicore-partitioning-and-template-selection
+  title: 多核切分优先原则与算子模板/Bound 策略选择表
+  summary: 性能优化的第一动作是**查并行度**：来源实例中把只跑 1 个 Block（其余 63 个 Vector Core 空闲）改成按行切到 64 核，使 6790 → 113.6 µs（59.8x），占整条优化链 157x 的绝大部分，且判据是**各类 ratio 基本不变**（说明收益来自并行度而非单核实现变化）。定位到 Bound 类型后再按策略表选模板：Cube Bound → SWAT + …
+  categories:
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/multicore-partitioning-and-template-selection.yaml
 - id: operator-bottleneck-attribution
   title: 算子性能瓶颈归因（pipe 分解 → 流水模式 → Bound 分类 → 策略选择）
   summary: 把 profiling 的 pipe 数据变成「下一步动哪里」的判据链：先按七列（kernel / mac / scalar / mte1 / mte2 / fixpipe / icache_miss）分解，再用 `vec + mte2 ≈ 100%`（串行）还是 `≫ 100%`（重叠）判断流水是否并行，用主导流水占比 max(vec, mte2, mte3) 定 Bound 类型；主导占比降…
@@ -129,6 +137,14 @@ entries:
   platforms:
   - cross
   file: references/methodologies/rl-train-infer-consistency-triage.yaml
+- id: simt-vs-simd-selection
+  title: SIMT / SIMD 与 MemBase / RegBase 的选型判据（标量受限时先试纯 SIMT）
+  summary: 选型不是偏好问题，按判据走：①出现**逐元素标量循环把算子锁在 Scalar 引擎**（`aiv_scalar_ratio≈0.999` 且 `aiv_vec_ratio≈0`）时，改纯 SIMT（grid-stride）是首选，实测主 Bound 切到 Vector、收益可达数十倍；②但纯 SIMT 在 **bins 超出 UB 容量**时会退到 GM 原子累加、代价极高，且 `innerDi…
+  categories:
+  - performance
+  platforms:
+  - A5-950
+  file: references/methodologies/simt-vs-simd-selection.yaml
 - id: vllm-infer-precision-triage
   title: vLLM 推理精度定位五步路径（前置对齐 → 首差异 token → dump → compare → 单算子确认）
   summary: vLLM 推理精度定位五步路径（单 case 可复现场景）：问题场景与标杆场景对齐（配置/超参/三方库/输入）并固定采样随机性（temperature=0）与算子确定性 → 打印输出 token_id 序列定位**首个差异 token**（把"整句不对"缩到"第 N 个 token 起不对"）→ 两侧使能 msprobe dump（推荐 mix+statistics）→ msprobe comp…

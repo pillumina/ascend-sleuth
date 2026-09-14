@@ -1,0 +1,36 @@
+id: regbase-execution-model
+type: software-fact
+title: RegBase 执行模型与收益判据（UB 往返 1.72x / IPC 上限 2 / --cce-res-usage 读寄存器与 Stack）
+summary: "RegBase（`__simd_vf__` + `RegTensor`）与 MemBase（`LocalTensor` + 标准 Vector API）的差别只在 **UB 内计算方式**：MemBase 一步计算就是「UB 读 → 算 → 写回 UB」，中间结果反复落 UB 时 `RVECLD + RVECST` 可达 `RVECEX` 的 1.72x；RegBase 用显式 `Reg::LoadAlign`/`StoreAlign` + `MaskReg` 尾块，消除这段往返。IPC 上限由指令发射能力决定（Add/Mul 双发 ≤2、ReduceSum 单发 ≤1，Membar 会打断 VF 流水）；寄存器与 Stack 用量可用 `--cce-res-usage` 直接读出"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/kv_rms_norm_rope_cache_story/README.md"
+    version: "cann-samples master（MemBase→RegBase 迁移；自述 Ascend 950PR/950DT + CANN 9.1.0 起）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/rms_norm_quant_story/Story.md"
+    version: "cann-samples master（IPC 上限与指令级归因）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/softmax_regbase_story/README.md"
+    version: "cann-samples master（reduce 标量跨 VF 可见性问题）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  versions:
+    cann: ">=9.1.0（RegBase 官方模式出自 9.2.0）"
+  categories: [performance, precision]
+
+related_references: [simt-vs-simd-selection, simd-vf-programming-constraints, cv-fusion-fixpipe-ub, operator-bottleneck-attribution, reg-data-movement-fault-patterns]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**模型差异**：MemBase 用 `LocalTensor` + 标准 Vector API，操作数在 UB 上，一步计算即「从 UB 读 → 算 → 写回 UB」（加载/写回隐含在 API 内），尾块用 count/repeat/mask 参数控制；RegBase 在 `__simd_vf__` 内用 `RegTensor`，UB→寄存器需显式 `Reg::LoadAlign`、寄存器→UB 需显式 `Reg::StoreAlign`，尾块用 `MaskReg` 控制，计算入口是 `__simd_vf__` 而非普通 `__aicore__` 成员函数。**两者在 GM/UB 搬运（`DataCopyPad`）与 UB staging（`TQue`/`TPipe`）两层完全一致**——这正是平滑迁移的落点。**收益判据（指令计数）**：中间结果反复落 UB 时 `RVECLD`（寄存器读回）+ `RVECST`（寄存器写回）远多于 `RVECEX`（真正计算）——来源实测 naive 基线 `RVECLD 123,392 + RVECST 131,648 = 255,040`，是 `RVECEX 147,968` 的 **1.72x**；改寄存器数据流后 `RVECST 102,913 → 14,905（−85.5%）`、`RVECLD −53.8%`、`RVECEX −29.3%`、`SCALAR −50.6%`，总指令 −54.3%，时延 113.6 → 84.1 us。MemBase 的连带标量开销：每步回写 UB + 每步 `PipeBarrier` + 地址计算，使 `aiv_scalar_ratio` 可达 20%（softmax 用例），VF 融合后 scalar 2.138 → 1.221 µs（−43%）。**IPC 上限**：`Add`/`Mul` 等支持**双发射**（IPC ≤ 2），`ReduceSum` 等**仅单发射**（IPC ≤ 1）；整体上限取决于指令混合比例。故 VF 内应少用单发指令（Reduce 类、非对齐访存、`Interleave`/`Deinterleave`），并少用 `Membar`——**`Membar` 会中断 VF 内流水**，使整体 IPC 不高。硬件 `Div`/`Sqrt` 延迟通常 10+ cycle，而 `Mul`/`Muls`/`Mula`/`Add` 链延迟低且可双发（这也是「迭代 rsqrt 替代硬件 Div/Sqrt」的动机）。**寄存器与栈用量**：用 `--cce-res-usage` 可读出寄存器上限/实际用量与 Stack 大小——来源实测 `__launch_bounds__` 512 → 64 regs / 实际 34 / stack 0；2048 → 16 regs / 16 / **stack 128（严重溢出）**；GridDim 扫描显示 32 是耗时拐点（40.5 µs），到 64 时 46.1 µs 反而被调度开销反超。**一条固有精度陷阱**：reduce 产生的标量（max/sum）必须经 UB 做一次 `DIST_BRC_B32` 广播才能被所有 lane 使用，而**同一个 VF 函数内「先 store 到某 UB 地址、再 load 同一地址」无可见性保证**，会读到旧值——症状是**输出全 inf 或每行相同**。修法：把 store 与 broadcast load 拆到**不同的 `asc_vf_call`**，或改用 `Reg::Duplicate(dst, src, mask)` 在寄存器内广播、让标量不落 UB。"
+  evidence: "kv_rms_norm_rope_cache_story README：『MemBase 和 RegBase 的核心区别不在 GM/UB 搬运，而在 UB 内计算方式』『一句话总结：RegBase 的平滑迁移路线是\"外层不动、热链下沉、寄存器串联、同源校验\"。』『VF内尽量少使用Reduce类，非对齐访存，Interleave，Deinterleave类单发指令。』『VF内尽量少使用Membar，Membar会导致VF内流水中断，使整体IPC不高。』；Story.md：『IPC（Instructions Per Cycle）：VEC 流水每周期处理的指令数。Add、Mul 等指令支持双发射，IPC 上限为 2；ReduceSum 等指令仅支持单发射，IPC 上限为 1。』；softmax_regbase_story README：『这是 reduce + element-wise 混合算子在 RegBase 下的固有特征：element-wise 部分受益于 VF 融合（省掉中间 UB 往返），但 reduce 标量必须经 UB 广播回去。』；指令计数与 `--cce-res-usage` 实测值取自该组样例的实测表（scalar_story / softmax_regbase_story）"
