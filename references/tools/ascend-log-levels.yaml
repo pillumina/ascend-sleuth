@@ -14,6 +14,7 @@ applies_to:
   platforms: [cross]
   versions:
     cann: "9.0.0"
+  categories: [interrupt]
 
 related_references: [ascend-slog-conf]
 

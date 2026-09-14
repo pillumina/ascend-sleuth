@@ -12,6 +12,7 @@ sources:
 
 applies_to:
   platforms: [A5-950]
+  categories: [interrupt]
 
 status: active
 last_verified: 2026-08-28
