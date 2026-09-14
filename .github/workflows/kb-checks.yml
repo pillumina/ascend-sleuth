@@ -2,9 +2,9 @@ name: kb-checks
 
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/build_docs_index.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", ".github/workflows/kb-checks.yml"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/build_docs_index.py"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", ".github/workflows/kb-checks.yml"]
 
 jobs:
   index-freshness:
@@ -132,6 +132,30 @@ jobs:
             *,holdout-change,*) echo "eval/holdout.yaml 已改动，且带 holdout-change 标签 ✓" ;;
             *) echo "eval/holdout.yaml 已改动但缺 holdout-change 标签——改量尺必须在评审面上可见"; exit 1 ;;
           esac
+
+  # 面板：两个面板的渲染、文案、色语与数据口径契约都由 `panel_render_check` 与
+  # `check_panel_tokens` 守着，但这两个脚本**此前不在任何 CI 里**（paths 不含 dsh-plugins/**），
+  # 只能靠人记得跑。代价实测过两次：`metrics/timeline.yaml` 的期次解析器与真实文件结构不符
+  # （文件里 8 期、面板读出 0 期）与 trace 解析器把 9 条事件读成 1 条，都是漏到用户面前才发现的；
+  # 另外在 CI 形态的干净检出里（无 traces/、无 exec-log）整套检查本来就是红的——一条断言在文案
+  # 重写后留在旧措辞上，而那条分支只在"没有 exec-log"的检出里跑，开发机上永远走不到。
+  # 准入判据（机械可判 + 确定性后果 + 复发 ≥2 次）：三条都满足。
+  panel-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # 渲染检查要用 node 跑面板两半的源码；面板本身零依赖，不必装包。
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: pip install pyyaml
+      - run: python3 scripts/check_panel_tokens.py
+      # 真实 trace 的对照走主检出那一份（`scripts/shared_dir.py traces`）；CI 检出里没有
+      # traces/（gitignore 运行时件），脚本会如实打印跳过，只跑形状夹具。
+      - run: node scripts/panel_render_check.js
 
   skill-self-contained:
     runs-on: ubuntu-latest
