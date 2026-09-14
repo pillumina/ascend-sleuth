@@ -1,0 +1,77 @@
+id: EV-2026-074
+layer: L1
+title: 修订已合入 active 词条：尾块空核「槽位未归还」补进 op-internal-sync-and-reduction
+status: validated
+authorization: dual
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-14
+source_signals:
+  - signal: knowledge_gap
+    evidence: >-
+      PR #207 合入时已知并登记的一处缺口：`op-internal-sync-and-reduction` 里的「尾块空核未参与同步」
+      只写了「参与 Set/Wait」，漏了**归还槽位（ready/free 配对）**与**奇数尾 chunk 中未被使用的固定槽
+      也必须配对**这两个细节——而来源（flash_attn_lite_story）明确把它们作为挂死根因的一部分，且给出了
+      更具体的症状（random hang / 跑到超时 / AIC 卡在等第二路通知）。当时未改是因为该词条已合入 main，
+      修订 active 内容属 kb/high-risk，需单独的高风险 PR。
+    trajectory:
+      - references/fault-patterns/op-internal-sync-and-reduction.yaml（被修订词条）
+      - "Samples/2_Performance/flash_attn_lite_story/README.md（『即使尾块中 AIV1 没有有效输出行，它仍须参与同步并归还槽位，只跳过最终写回。』）"
+      - proposals/ideas/EV-2026-073.yaml（同批吸收时登记的待补项）
+hypothesis: >-
+  补齐「归还槽位」与「奇数尾 chunk 槽位配对」后，尾块类偶发挂死的排查面从「有没有参与同步」扩展到
+  「有没有归还槽位」，与 CrossCore/Mutex 分工词条（跨核交接 vs 核内槽复用）形成完整判据链；
+  症状侧补入 random hang / 超时 / AIC 等第二路通知后，检索命中率也应提高。
+predicted_effect:
+  metric: 修订后词条在 schema/索引校验下的一致性，以及症状词可检索性
+  from: 该 pattern 的症状 2 条、cause/fix 未含槽位归还
+  to: 症状 6 条（含 random hang / 跑到超时 / AIC 卡在等第二路通知 / 奇数尾任务偶发挂死），cause/fix 含 ready/free 配对
+  measure:
+    command: "python3 scripts/verify_references.py --check && python3 scripts/build_ref_summary_index.py --check && python3 scripts/build_procedure_index.py --check && grep -q '归还槽位' references/fault-patterns/op-internal-sync-and-reduction.yaml && grep -q '奇数尾 chunk' references/fault-patterns/op-internal-sync-and-reduction.yaml"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 合入版本的该 pattern（ev-2026-073 时点）
+  success_criteria: >-
+    ①四道校验通过（本次为修订，索引重建后无差异）；②新增内容与来源逐字一致；
+    ③改动限定在该 pattern 一行内，不触碰同表其他 pattern（影响面最小）；
+    ④按 kb/high-risk 走**双签**流程（领域 owner + 体系维护人）
+  rollback: git revert 本 PR（单文件、单 pattern 行）
+gate:
+  condition: "双签完成后方可合入（本卡 authorization 记为 dual）"
+risk: medium
+principle_refs: [2, 6, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 会话内联执行，按同批做法以 0 计并如实标注口径
+decisions:
+  - who: agent
+    when: '2026-09-14'
+    type: proposal
+    conclusion: >-
+      #207 合入后处理登记的待补项 → 产本卡，按 kb/high-risk 修订；改动面刻意压到最小（一个 pattern 行），
+      不顺手改同表其他条目（避免把「补一处细节」扩大成「重写一张表」）。
+  - who: agent
+    when: '2026-09-14'
+    type: action
+    conclusion: >-
+      修订 `references/fault-patterns/op-internal-sync-and-reduction.yaml` 的尾块 pattern：pattern 名加
+      「/ 槽位未归还」；symptoms 由 2 条扩到 6 条；cause 补「奇数尾 chunk 未使用的固定槽也必须完成
+      ready/free 配对」；fix 补「1C2V 尾块只有一路有数据时，无数据那一路仍须参与同步并归还槽位」。
+      索引重建后与本 PR 前无差异（fault-pattern 不进背景索引）。
+  - who: agent
+    when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      scan_review：measure 命令实跑通过（174 条词条校验通过 / 两索引新鲜 / 两条新增关键词 grep 命中）；
+      逐字对照来源原文确认「归还槽位」「奇数尾 chunk 未使用槽位配对」两处表述；
+      `git diff --stat` 确认改动仅 4 行（单 pattern）。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      validated（采纳，改动保留进本 PR）。因属修订 active 内容，**合入需 kb/high-risk 双签**——本卡
+      authorization 记为 dual，agent 只完成产出与自验证，签字与人审由 owner 完成。人审关注点：
+      症状词扩到 6 条是否过宽（会不会把不相关挂死也匹配进来）。
