@@ -10,6 +10,7 @@ sources:
 applies_to:
   frameworks: [verl]
   platforms: [cross]
+  categories: [interrupt]
 related_references: [verl-runtime-env-hccl-port-range-auto]
 status: active
 last_verified: '2026-08-31'

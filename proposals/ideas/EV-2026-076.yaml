@@ -1,0 +1,88 @@
+id: EV-2026-076
+layer: L1
+title: 背景层 categories 补齐：36 条未登记条目按实际用途收窄（precision 层条数 −45%）
+status: validated
+authorization: dual
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-14
+source_signals:
+  - signal: capacity_pressure
+    evidence: >-
+      在「44 条 cann-samples 词条是否真会进上下文」的验证中发现：背景索引 89 条里有 **36 条未填
+      `applies_to.categories`**，按加载规则「缺省 = 不限定类别，照常加载」意味着它们在**任何类别**的
+      诊断里都会作为背景行注入。量级：性能类诊断的背景层已达 69 条 / 21,926 字符（吸收前为 37 条 /
+      9,694 字符）。逐条复核这 36 条的标题与 summary 后确认——多数是纯日志/故障收集类工具与
+      精度格式类平台事实，被无差别加载进与它们无关的类别（如日志工具出现在性能类诊断里）。
+    trajectory:
+      - references/_summary-index.yaml（生成物：补齐前后各一份，条数与字符数可直接对比）
+      - "references/tools/ascend-*.yaml 与 references/software-facts/ascend-log-*.yaml（日志/故障工具族）"
+      - "references/platform-facts/a5-*.yaml（平台事实族）"
+      - skills/diagnose/references/diagnosis-procedure.md（2.5② 的加载规则：缺省 = 照常加载）
+hypothesis: >-
+  按条目**实际用途**逐条登记 categories 后：①与类别无关的背景行不再注入（日志/故障工具只进错误与挂起
+  类、精度格式事实只进精度类）；②背景层体积显著下降而**不损失任何本该出现的背景**——判据是每条都单独
+  判断过，而不是按类型批量套用；③生成物（_summary-index.yaml）可直接对比，效果可复核。
+predicted_effect:
+  metric: 各问题类别下背景层的条数与字符数（同平台 A5-950）
+  from: performance 69 条 / 21,926 字符；interrupt 49 条 / 14,493 字符；precision 62 条 / 18,854 字符
+  to: performance 54 条 / 18,753 字符；interrupt 38 条 / 12,848 字符；precision 34 条 / 12,051 字符
+  measure:
+    command: "python3 -c \"import yaml;d=yaml.safe_load(open('references/_summary-index.yaml',encoding='utf-8'))['entries'];m=[e['id'] for e in d if not (e.get('applies_to') or {}).get('categories')];assert not m, m;print('OK', len(d))\""
+    expect_exit: 0
+    expect_stdout: "OK 89"
+validation:
+  method: scan_review
+  baseline: 补齐前 36 条未登记 categories（origin/main 的 _summary-index.yaml）
+  success_criteria: >-
+    ①36 条全部显式登记且取值合法（`_types.yaml` 校验通过）；②逐条按用途判断、不按类型批量套用
+    （日志/故障工具 → interrupt；精度格式事实 → precision；容量/带宽类 → interrupt + performance）；
+    ③precision 层条数下降最多（−45%），performance −22%、interrupt −22%，且**没有把本该加载的条目
+    挤出**（如 a5-memory-hierarchy 同时保留 interrupt 与 performance）；④索引重建、CI 全绿；
+    ⑤走 kb/high-risk 双签（修订已合入 active 内容）
+  rollback: git revert 本 PR（36 个文件的 applies_to 各增一行 + 索引重建）
+gate:
+  condition: owner 已指示「可以先填」；逐条分类结论随 PR 供复核
+risk: medium
+principle_refs: [6, 9, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 会话内联执行，按同批做法以 0 计并如实标注口径
+decisions:
+  - who: agent
+    when: '2026-09-14'
+    type: proposal
+    conclusion: >-
+      验证背景层加载效果时发现 36 条未登记 categories → 向 owner 报出量级（性能类 69 条 / 21.9K 字符）
+      与杠杆（纯数据层调整、不动机制），owner 指示「可以先填」→ 产本卡按第③类（修订已合入 active 内容）执行。
+  - who: agent
+    when: '2026-09-14'
+    type: action
+    conclusion: >-
+      逐条判断并写入 36 条的 categories：日志/故障收集与堆栈类工具（asys、device-log-ops、log-*、
+      msaicerr、restart-slogd、slog-conf、stack-view、trace-logs）→ `interrupt`；精度格式类
+      （hif8-format、precision-format-support）→ `precision`；容量与带宽类
+      （950PR/DT memory-spec、memory-hierarchy）→ `interrupt, performance`；
+      互联与调度类（interrupt/performance）；算力与缓存类 → `performance`；
+      `ascend-error-code-structure` → 三类显式登记（任何类别都可能遇到错误码，与不填等价但意图明确）；
+      `verl-official-image-no-hdk` → `interrupt`。索引重建后按类别统计前后体积。
+  - who: agent
+    when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      scan_review：measure 命令实跑通过（89 条背景条目**全部**已登记 categories）；
+      前后对照：performance 69→54 条 / 21,926→18,753 字符，interrupt 49→38 / 14,493→12,848，
+      precision 62→34 / 18,854→12,051；`verify_references.py --check` 174 条通过、两个索引新鲜。
+      逐条分类表见 PR body。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      validated（采纳）。依据：owner 指示 + 逐条判断可复核 + 校验全绿 + 不改变诊断流程本身。
+      人审关注点：①单类别收窄是否过紧——特别是日志族只给 `interrupt`，若认为精度类问题也常需读日志，
+      应补 `precision`（这会回吐一部分收益）；②`ascend-error-code-structure` 三类显式登记与不填等价，
+      是否该改为按"错误码出现"这一更细的触发条件（本期无此机制）。
+      另：本卡提出的 measure 断言（背景条目必须显式登记 categories）具备机械可判性，
+      但按"重复发生 ≥2 次才进 CI"的口径，本期**不进 CI**，留作候选。

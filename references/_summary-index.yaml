@@ -11,6 +11,9 @@ entries:
   applies_to:
     platforms:
     - A5-950DT
+    categories:
+    - interrupt
+    - performance
 - id: a5-950pr-memory-spec
   type: platform-fact
   title: A5 950PR 片上内存规格（128GB / 1.6TB/s）
@@ -18,6 +21,9 @@ entries:
   applies_to:
     platforms:
     - A5-950PR
+    categories:
+    - interrupt
+    - performance
 - id: a5-ai-subsystem-compute-spec
   type: platform-fact
   title: A5 AI 子系统数量与算力规格（Cube/Vector 数量 + TFLOPS 表）
@@ -25,6 +31,8 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - performance
 - id: a5-ccu
   type: platform-fact
   title: A5 CCU 集合通信计算加速单元
@@ -32,6 +40,9 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - interrupt
+    - performance
 - id: a5-ccu-algorithms
   type: platform-fact
   title: A5 CCU 集合通信算法支持（Broadcast/ReduceScatter/AllGather/AllReduce/All2All/All2Allv）
@@ -39,6 +50,9 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - interrupt
+    - performance
 - id: a5-cube-core-spec
   type: platform-fact
   title: A5 Cube Core 规格（数值格式算力倍率、L0C Buffer、随路量化）
@@ -46,6 +60,9 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - precision
+    - performance
 - id: a5-cv-fusion
   type: platform-fact
   title: A5 Cube-Vector 融合（CV 直连通道、FlashAttention 内部通路、随路转换）
@@ -53,6 +70,9 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - precision
+    - performance
 - id: a5-die-architecture
   type: platform-fact
   title: A5 多 Die 合封架构（2 AI Die + 2 IO Die + 片上内存模块）
@@ -60,6 +80,9 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - interrupt
+    - performance
 - id: a5-hif8-format
   type: platform-fact
   title: HiF8 精度格式细节（38 指数、无 MX 缩放因子、特殊值编码）
@@ -67,6 +90,8 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - precision
 - id: a5-interconnect-ub2
   type: platform-fact
   title: A5 灵衢 Unified Bus 2.0 互联（2TB/s，URMA/UB Memory/PCIe 5.0/UBoE）
@@ -75,6 +100,9 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - interrupt
+    - performance
 - id: a5-l2-cache
   type: platform-fact
   title: A5 全局 L2 Cache（128MB，Chiplet UMA）
@@ -82,6 +110,8 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - performance
 - id: a5-l2-cache-detail
   type: platform-fact
   title: A5 L2 Cache 微架构与 Cache 管理（512B Cache Line、L2 hint、CMO）
@@ -89,6 +119,8 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - performance
 - id: a5-memory-hierarchy
   type: platform-fact
   title: A5 Memory 层次与容量（表 4-2）
@@ -97,6 +129,9 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - interrupt
+    - performance
 - id: a5-memory-ras
   type: platform-fact
   title: A5 高速片上内存 RAS 特性
@@ -104,6 +139,8 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - interrupt
 - id: a5-nddma
   type: platform-fact
   title: A5 NDDMA 指令（多维数据排布转换、5 维重排、128B 读合并）
@@ -111,6 +148,8 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - performance
 - id: a5-pcie5-spec
   type: platform-fact
   title: A5 PCIe 5.0 规格（x16 128GB/s、EP/RC 静态选择、DMA/MCTP）
@@ -118,6 +157,9 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - interrupt
+    - performance
 - id: a5-precision-format-support
   type: platform-fact
   title: A5 精度格式支持（原生 MXFP4/MXFP8/HiF8，另含 FP8/INT8/TF32/FP16/BF16）
@@ -125,6 +167,8 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - precision
 - id: a5-simd-simt-mixed
   type: platform-fact
   title: A5 SIMD/SIMT 混合编程架构（SIMD 为主、SIMT 为辅）
@@ -132,6 +176,8 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - performance
 - id: a5-stars2-scheduler
   type: platform-fact
   title: A5 STARS 2.0 任务调度器（HSCB、任务流、Group、资源池）
@@ -139,6 +185,9 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - interrupt
+    - performance
 - id: a5-supernode-scale
   type: platform-fact
   title: A5 超节点规模（8K 卡）与集群规模（128K+ 卡）
@@ -146,6 +195,9 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - interrupt
+    - performance
 - id: a5-ub-onchip-switch
   type: platform-fact
   title: A5 UB On Chip Switch（IO Die 内 9×x4 Port 转发，不占 DRAM 带宽）
@@ -153,6 +205,8 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - performance
 - id: a5-urma-semantics
   type: platform-fact
   title: A5 URMA 异步通信语义（操作集、RTP/CTP 传输模式）
@@ -161,6 +215,9 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - interrupt
+    - performance
 - id: a5-vector-core-spec
   type: platform-fact
   title: A5 Vector Core 规格（BF16 原生支持、RegFile、算力翻倍）
@@ -168,6 +225,9 @@ entries:
   applies_to:
     platforms:
     - A5-950
+    categories:
+    - precision
+    - performance
 - id: aclnn-two-phase-contract
   type: software-fact
   title: aclnn 两段式接口契约（一阶段 GetWorkspaceSize / 二阶段执行）
@@ -207,6 +267,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: ascend-device-log-ops
   type: tool
   title: Device 日志排查操作（RAS 故障 ID / 资源占用 / 进程拉起与结束时间）
@@ -215,6 +277,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: ascend-error-code-structure
   type: software-fact
   title: 昇腾 6 位错误码结构（级别位 + 模块位 + 内部码规则）
@@ -223,6 +287,10 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
+    - precision
+    - performance
 - id: ascend-log-classification
   type: software-fact
   title: 昇腾日志分类与统一格式
@@ -231,6 +299,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: ascend-log-levels
   type: tool
   title: 设置日志级别（应用类环境变量 / 系统类 msnpureport 或 slog.conf）
@@ -239,6 +309,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: ascend-log-locations
   type: software-fact
   title: 昇腾日志存储路径（EP / RC / Control CPU 开放形态）
@@ -247,6 +319,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: ascend-log-modules
   type: software-fact
   title: 昇腾日志模块名字典（ModuleName 解码）
@@ -255,6 +329,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: ascend-msaicerr
   type: tool
   title: msaicerr AI Core Error 专项分析工具
@@ -263,6 +339,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: ascend-restart-slogd
   type: tool
   title: 重启 Device 侧日志进程 slogd
@@ -271,6 +349,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: ascend-slog-conf
   type: tool
   title: Device 侧日志配置文件 /etc/slog.conf
@@ -279,6 +359,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: ascend-stack-view
   type: tool
   title: 查看 Python / C&C++ 应用程序堆栈（py-spy / gdb）
@@ -287,6 +369,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: ascend-trace-logs
   type: software-fact
   title: trace 日志机制与落盘路径（仅 Ascend EP 标准形态）
@@ -295,6 +379,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: attention-precision-chains
   type: software-fact
   title: Attention 两类精度损失链（FP8 per-block 量化的 P 压 fp8 / 衰减注意力的 exp 指数上溢）与验收判据
@@ -788,6 +874,8 @@ entries:
   applies_to:
     platforms:
     - cross
+    categories:
+    - interrupt
 - id: verl-probs-diff-monitoring
   type: tool
   title: verl 逐 token prob diff 监控——rollout 与 actor 前向的概率差

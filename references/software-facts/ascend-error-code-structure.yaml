@@ -16,6 +16,7 @@ applies_to:
   platforms: [cross]
   versions:
     cann: "9.0.0"
+  categories: [interrupt, precision, performance]
 
 status: active
 last_verified: 2026-08-28
