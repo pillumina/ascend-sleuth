@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-14    词条数：80
+# 生成日期：2026-09-14    词条数：89
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -325,6 +325,17 @@ entries:
     - A5-950
     categories:
     - performance
+- id: crosscore-vs-mutex
+  type: software-fact
+  title: CrossCore 与核内 Mutex 的分工（跨核交接 vs 核内槽复用，不可互替、方向不对称）
+  summary: 1C2V Mix 核里有**两套互不替代**的同步机制：CrossCore 只传递「数据就绪」与「槽位可复用」两类状态、**不搬运数值**，负责 AIC/AIV 共享资源的所有权；核内
+    Mutex 负责单个核心内部物理槽的复用（分别约束 AIV 的 MTE2→Vector→MTE3、AIC 的 MTE1→Mmad 与 …
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - interrupt
+    - performance
 - id: cv-fusion-fixpipe-ub
   type: software-fact
   title: Cube-Vector 融合与 Fixpipe L0C→UB 直通（仅 Ascend 950；判据 aiv_mte2_time 趋零）
@@ -336,6 +347,16 @@ entries:
     categories:
     - performance
     - interrupt
+- id: elemwise-vs-reduce-bound
+  type: software-fact
+  title: elemwise 是 throughput-bound、归约是 latency-bound（判据：循环携带依赖）
+  summary: 判断 Vector 算子该往哪优化，分水岭是**相邻迭代之间有没有循环携带依赖**：elemwise 每个 lane 只读写自己的位置、无依赖 → **throughput-bound**，基线已最优，手写展开或
+    `#pragma unroll` 基本无效（发射已打满，只多出标量地址指令）；归约是多对一、累加器要用上一…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
 - id: exec-npu-cmd-async-launch
   type: software-fact
   title: EXEC_NPU_CMD 单算子下发（V1/V2 线程归属 + 十步异步提交 TaskQueue）
@@ -347,6 +368,16 @@ entries:
     categories:
     - performance
     - interrupt
+- id: flash-attention-stage-pipeline
+  type: software-fact
+  title: FlashAttention 四阶段的三条依赖与跨轮次错位（FIA_PRELOAD_TASK_CACHE_SIZE = 3）
+  summary: FA 的 mm1/vec1/mm2/vec2 四阶段由 Cube 核与 Vector 核分担，依赖关系**只有三条**：①同一轮次的四阶段顺序执行；②不同轮次之间的 vec1 顺序执行；③不同轮次之间的
+    vec2 顺序执行。因此**非同一轮次的 mm1 与 vec1/vec2、mm2 与 vec1/vec2 都可并行*…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - performance
 - id: float8-cast-bit-mapping
   type: software-fact
   title: float4_e2m1 → float8_e4m3fn 无直接 Cast（位映射 + ×64 补偿，bias 需先 ÷64）
@@ -370,6 +401,28 @@ entries:
     - precision
     - performance
     - interrupt
+- id: full-load-l1-condition
+  type: software-fact
+  title: 全载（FullLoad）把小矩阵常驻 L1 的判定条件与后果
+  summary: MTE2 Bound 场景下，若 A（或 B）矩阵能完整放进 L1，可一次性载入并常驻复用，把 MTE2 搬运次数从「与计算轮次成正比」降到**常数级**。判定条件三条：①分块数需超过可用核数（`tilesM=(m+255)/256`、`tilesN=(n+255)/256`，要求
+    `tilesM×tilesN ≥ n…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
+    - precision
+- id: hif8-type-contract
+  type: software-fact
+  title: HiFloat8 的类型契约（hifloat8_t 建 tensor / Cast 直转 / 按 1 Byte 搬运）
+  summary: 算子开发侧不需要感知 HiFloat8 的转换计算逻辑：把输入/输出数据类型设为 `hifloat8_t` 即可，支持创建该类型的 GM 与 UB（`GlobalTensor<hifloat8_t>`
+    / `LocalTensor<hifloat8_t>`）；类型转换直接用 `AscendC::Cast<hifloat…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - precision
+    - performance
 - id: hw-task-scheduler-routing
   type: platform-fact
   title: 硬件任务调度模块分派（AICore / AICpu / Sdma 三条调度通道）
@@ -386,6 +439,16 @@ entries:
   title: L1/L0 片上存储的 Bank 结构与冲突（L1 双 256KiB Bank、UB bank 交织公式）
   summary: 片上存储的内部划分决定了「搬运不快」的一类根因：L1 为 512 KiB、按 256 KiB 分成两个 Bank，跨 Bank 的访问模式会打断 MMAD；L0C 固定 256 KiB，直接决定
     `baseM = baseN = 256` 是 tiling 上限；UB 侧存在 bank 交织（`bank = (byte…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
+- id: l2-and-multibuffer-mechanisms
+  type: software-fact
+  title: matmul 的 L2 与多缓冲机制（SWAT 提命中率 / 只读权重绕过 L2 / K 尾轮 L0C 冲突 / 2-3-4 Buffer 条件）
+  summary: 四个与 L2、多缓冲相关的机制：①**SWAT**（M 向固定窗口 + N 向 Z 型往复滑动）通过提高多核单次访问的 **L2 命中率**改善 MTE2，做到首轮搬运即可 MMAD
+    不断流，Cube 利用率可达 95%+；②**只读一次的 weight 可绕过 L2**（双页表），不适用的数据不必占 L2；③**K …
   applies_to:
     platforms:
     - A5-950
@@ -611,6 +674,16 @@ entries:
     categories:
     - performance
     - interrupt
+- id: perf-modeling-constants
+  type: platform-fact
+  title: 性能建模参考常数（1.65GHz / 1µs=1650 cycle / MTE1 256BPC / L2 5.2TB/s / L2 命中率 28.9% 门槛）
+  summary: 把 profiler 的 µs 换算成 cycle 与有效带宽、再与建模值比对的参考常数集：32 核、**1.65GHz**（故芯片上 **1 µs = 1650 cycle**）、HBM
+    1.6TB/s、L2 5.2TB/s、MTE1 **256BPC**（≈422.4GB/s）、L0C 256KiB；MTE2 综合…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
 - id: regbase-execution-model
   type: software-fact
   title: RegBase 执行模型与收益判据（UB 往返 1.72x / IPC 上限 2 / --cce-res-usage 读寄存器与 Stack）
@@ -666,6 +739,16 @@ entries:
     - interrupt
     - performance
     - precision
+- id: transfer-granularity-thresholds
+  type: platform-fact
+  title: 搬运粒度阈值（单次总量 <20K 不友好、连续 <128B 浪费 Sector-Cache）
+  summary: 两个搬运粒度阈值：单次搬运总量小于 **20K** 对芯片搬运不友好、速度下降；Ascend 950 支持 **128B Sector-Cache**，但为了用满核把连续搬运字节数降到
+    128B 以下会浪费有效带宽。可操作判据是 `N ≤ coreNum × 128` 的场景要检查任务是否被切得过碎（128 为 N 方…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
 - id: ub-capacity-and-budget
   type: platform-fact
   title: UB 容量口径（每 AIV 248 KiB 可用 / 每 AI Core 512 KiB）与 buffer 预算
@@ -724,6 +807,18 @@ entries:
     platforms:
     - cross
     categories:
+    - precision
+- id: vf-call-and-barrier-rules
+  type: software-fact
+  title: asc_vf_call 的屏障语义与 UB 屏障规则（VF 期间 MTE2 被阻塞 / VF 内 LocalMemBar 会死锁）
+  summary: 两条容易踩的 VF 调用规则：①`asc_vf_call` 是**屏障**——VF 执行期间 MTE2 被阻塞，预取的 `DataCopyPad` 也得等 VF 结束才能执行，且**屏障时间守恒**（3
+    次短 VF 合并成 1 次长 VF 不减少总阻塞）；官方模式改用 `__no_simd_vf_fusion__` +…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
+    - interrupt
     - precision
 - id: weight-nz-inference-only
   type: software-fact

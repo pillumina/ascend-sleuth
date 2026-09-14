@@ -1,0 +1,44 @@
+id: pipeline-slot-and-attribution-discipline
+type: methodology
+title: 流水空泡归因纪律（四层槽位检查顺序 / 预发射的边际收益 / 三类数据不可换算）
+summary: "分析 CV 协作 kernel 的流水空泡时按固定顺序查：①先缩短中间数据搬运路径，再增加在途 item 数；②查双缓冲要**分开看 CV 核间槽 / AIC 内 L0 / task I/O 三层**——任一层还在复用单槽就能把前后阶段重新串起来；③加预发射数只能增加重叠机会、**不能缩短 Vector 自身**。配套三条归因口径：MFU 用整卡峰值做分母（未用核也计入）、并行 Pipe 的 active **不可相加**成 kernel 时间、真机/PipeTimeline/仿真三类数据不可换算"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/flash_attn_lite_story/README.md"
+    version: "cann-samples master（流水槽位检查与归因口径；自述 Ascend 950 + CANN 9.2）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/kimi_delta_attn_lite_story/README.md"
+    version: "cann-samples master（PipeTimeline 口径与真机/仿真不可混用）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance]
+
+related_references: [operator-bottleneck-attribution, cv-fusion-fixpipe-ub, msprof-timeline-lane-reading, flash-attention-stage-pipeline]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  flow:
+    - step: 1
+      action: "**先缩短中间数据的搬运路径，再增加同时在途的 item 数量**——顺序不能反：路径没缩短时加在途只会让搬运与等待互相挤"
+      check: "先确认中间结果是否还在反复落 UB/GM（UB 往返的判据见 regbase 词条的 RVECLD/RVECST 比）"
+    - step: 2
+      action: "**查双缓冲要分三层看**：CV 核间槽 / AIC 内的 L0 / task I/O——**任意一层还在复用单槽**，都能把前后阶段重新串起来，表现为「已经开了双缓冲但仍无重叠」"
+      check: "三层逐个确认都在交替使用（不是只看其中一层）"
+    - step: 3
+      action: "**预发射（增加在途 item 数）只增加重叠机会，不能缩短阶段本身**：Vector 路径过长时必须直接优化 Vector，而不是继续加深流水"
+      check: "更多在途 item 会占用更多片上 SRAM；当新 item 已无法覆盖原有等待区间时，继续加预发射数还可能**增加槽位复用等待**（边际收益转负）"
+    - step: 4
+      action: "**归因口径三条硬约束**：①用**整卡峰值**做 MFU 分母时，**未参与计算的核也计入分母**（只启动 1 个 AIC 的版本 MFU 因此极低，但可与多核版本直接比较）；实际 tile 利用率与有效 MFU 要分开看。②并行 Pipe 的忙碌时长**不能直接相加**成 kernel 时间（CANN 9.2 PipeTimeline 口径）——相加会得到「kernel 受限于某单一 Pipe」这类站不住的结论。③**真机耗时、PipeTimeline、仿真周期三类数据的规格与用途不同，数值不可直接换算或合并**，仿真周期不能替代真机耗时"
+      check: "归因前先钉住：分母口径（整卡峰值）＋不把 Pipe active 相加＋不混用三类数据"
+    - step: 5
+      action: "**版本相邻 ≠ 只改了一个变量**：比较两版性能前，先确认预发射数、L0C 槽数、Vector 通路三者是否一致——否则会把多个变量的效果记成单一优化的收益"
+      check: "来源实例中某两版只差一个参数却只有 0.08% 变化，正是这样被识别为「不是该变量的功劳」"
+  verified_by_testing: "来源给出 1C2V kernel 的多版本对照（含只启动 1 个 AIC 的 MFU 与多核版本）；判据与纪律可复用，具体数值绑定样例"

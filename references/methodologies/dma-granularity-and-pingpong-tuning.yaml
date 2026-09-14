@@ -1,0 +1,33 @@
+id: dma-granularity-and-pingpong-tuning
+type: methodology
+title: 搬运耗时压不动时的调参顺序（先保 ping-pong 重叠，再加大单次 DMA）
+summary: "当 mte2/mte3 耗时在多个优化步骤后几乎不动（看着像「不可压缩的搬运底座」）时，先怀疑 **16KB 级小 DMA 的 ramp-up 损耗**没吃满带宽；手段是把单次 DMA 从 16KB 加到 32KB（实测 mte2 3.02→2.00µs、mte3 1.15→0.82µs）。但调参顺序有硬约束：**ping-pong 重叠（≥2 tile）比 DMA 尺寸更重要**——单缓冲下即使 DMA 最大（64KB）也最慢"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/softmax_regbase_story/README.md"
+    version: "cann-samples master（小 DMA ramp-up 实验；自述 Ascend 950）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance]
+
+related_references: [operator-bottleneck-attribution, transfer-granularity-thresholds, n-buffer-multi-level-pingpong]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  flow:
+    - step: 1
+      action: "**先判是不是小 DMA 的 ramp-up**：症状是 mte2/mte3 在多个优化步骤后几乎不动（来源实测长期停在 ≈4.1–4.3 µs），看起来像「不可压缩的搬运底座」。判据：单次 DMA 尺寸偏小（来源例为 **16KB**），启动/爬坡损耗占比高、没吃满 HBM 带宽"
+      check: "不要把这时的搬运耗时当成硬件下限——先量单次 DMA 字节数，再决定加 tile 还是别动"
+    - step: 2
+      action: "**加大单次 DMA**：把 `tileLen` 翻倍（来源例 tileRow 2→4）使单次 DMA 16KB→32KB，实测 mte2 **3.02 → 2.00 µs（−34%）**、mte3 **1.15 → 0.82 µs（−29%）**"
+      check: "确认 ping-pong 结构未被动到（这一步只动 tile 大小）"
+    - step: 3
+      action: "**守住 ping-pong 重叠**：调参顺序上 **ping-pong 重叠（需 ≥2 tile）比 DMA 尺寸更重要**——来源实测 `tileRow 8` 虽有最大的单次 DMA（64KB），却因为退化成单缓冲丢掉重叠而**最慢**；`tileRow 7` 因尾 1 行摊销差而次差；**`tileRow 4` 已是拐点**，继续加 tile 无收益"
+      check: "加 tile 时先确认 buffer 数没被挤成 1（片上容量与 tile 大小是对冲关系）"
+  verified_by_testing: "来源给出同一算子的逐档 tile 实测（tileRow 2/4/7/8 的 mte2/mte3 与总耗时）；数字绑定该样例 shape，调参顺序可复用"

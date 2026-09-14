@@ -1,0 +1,32 @@
+id: vf-call-and-barrier-rules
+type: software-fact
+title: asc_vf_call 的屏障语义与 UB 屏障规则（VF 期间 MTE2 被阻塞 / VF 内 LocalMemBar 会死锁）
+summary: "两条容易踩的 VF 调用规则：①`asc_vf_call` 是**屏障**——VF 执行期间 MTE2 被阻塞，预取的 `DataCopyPad` 也得等 VF 结束才能执行，且**屏障时间守恒**（3 次短 VF 合并成 1 次长 VF 不减少总阻塞）；官方模式改用 `__no_simd_vf_fusion__` + 直接调用 VF 才能拿到重叠。②**在 `asc_vf_call` 内用 `Reg::LocalMemBar` 会死锁**——同一 UB 地址的先存后读本该插屏障，但在该调用形态下会 hang，必须先切成直接调用模式"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/softmax_regbase_story/README.md"
+    version: "cann-samples master（RegBase softmax 的 VF 调用实验；自述 Ascend 950）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/hardware_features/simd_vf_constraints/README.md"
+    version: "cann-samples master（UB 屏障方向的判定原则）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance, interrupt, precision]
+
+related_references: [reg-data-movement-fault-patterns, regbase-execution-model, simd-vf-programming-constraints, op-internal-sync-and-reduction]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**①`asc_vf_call` 是屏障**：经它调用 VF 时，**VF 执行期间 MTE2 引擎被阻塞**——即使 `load(t+1)` 的 `DataCopyPad` 指令已提前发射，实际执行仍要等 VF 结束。后果：「预取以重叠 MTE2 与 Vector」这条路在该调用模型下**不成立**（实测耗时不动、还多付 prologue 开销）；把 3 次短 `asc_vf_call` 合并成 1 次长 VF 也**不行**，因为**屏障时间守恒**（1 长 VF ≈ 3 短 VF 的总阻塞），MTE2 仍被挡整段。剩下的空泡要靠「VF 期间也能发 MTE2」的真并行来填——这属于 `asc_vf_call` 模型之外的 API 能力，**靠 tiling / 重组 / 合并解不了**。**②正解是官方模式**：`SoftMaxGenericNDVFImpl` 改用 `__no_simd_vf_fusion__` + **直接调用** VF（不经 `asc_vf_call`），此时 `LocalMemBar` 生效、多趟计算连续执行无屏障打断（来源实测 vec 1.635 → 1.483 µs、总 dur 7.476 → 7.284 µs，全场最低）。**③VF 内 `LocalMemBar` 会死锁**：在 `asc_vf_call` 调用的 VF 内用 `Reg::LocalMemBar`（用于保证 store→load 可见性）会**死锁**。绕行一（有代价）：不用 reload、改为**重算**上游表达式（softmax 案例重算 `Sub+Exp`，多付 +0.08 µs vec）；绕行二（正解）：去掉 `asc_vf_call`、改直接调用 VF，`LocalMemBar` 即可生效，第 3 趟直接 reload 上一趟存入的 buffer，重算代价归零。**④UB 屏障方向的判定原则**（与③配套，判据是地址而不是调用形态）：只要两个 SIMD VF 内存操作**访问同一 UB 地址**、且后一个访问必须在前一个之后发生，就要按**真实流水方向**插 `LocalMemBar<src, dst>()`——写后读用 `LocalMemBar<VEC_STORE, VEC_LOAD>`、读后写用 `LocalMemBar<VEC_LOAD, VEC_STORE>`（同名寄存器保序场景除外）、写后写用 `LocalMemBar<VEC_STORE, VEC_STORE>`，跨循环轮次的同地址依赖同样适用（不限相邻轮次）。**为什么需要**：Ascend 950 的 AIV Vector 单元**乱序发射**，Store 类、Load 类与计算类指令分属 `VEC_STORE` / `VEC_LOAD` / `VECEX` **三条独立流水**，同一地址上的先存后读在硬件上不保证顺序。跨轮次保序能保正确性但会**限制循环展开与并行发射**，应优先调整算法消除跨轮次依赖。**综合结论**：这两条规则合起来给出一条硬边界——**「必须插 UB 屏障」与「用了 `asc_vf_call`」不能同时成立**；现场若出现「精度需要屏障、加了屏障就 hang」，出路是换直接调用模式，而不是放弃屏障或改重算绕行。"
+  evidence: "softmax_regbase_story README：『**为什么没成**：`asc_vf_call` 是屏障——VF 调用期间 MTE2 引擎被阻塞，load(t+1) 的 `DataCopyPad` 虽然提前发了指令，但实际执行仍要等 VF 结束。』『**(b) 屏障时间守恒 → 重叠未发生**：3 次短 `asc_vf_call` 合成 1 次长 VF，但总阻塞时间不变（1 长 VF ≈ 3 短 VF 总阻塞）。』『**(a) LocalMemBar 死锁 → 重算**：…但 `Reg::LocalMemBar`（保证 store→load 可见性）在 `asc_vf_call` 内死锁，被迫改用 **重算 Sub+Exp** 绕开』；simd_vf_constraints README：『只要两个 SIMD VF 内存操作访问同一 UB 地址，且后一个 UB 访问必须在前一个 UB 访问之后发生，就需要按真实流水方向插入 `LocalMemBar<src, dst>()`。』『UB 写后读依赖不插入 `LocalMemBar`，后续 Load 可能早于前序 Store 生效。』"
+  pitfalls:
+    - "不要把「用了 `asc_vf_call`」当成默认写法——它在需要 UB 屏障或需要 MTE2 重叠的场景下都是错的形态"
+    - "VF 内同名寄存器保序、无需屏障；需要屏障的是**同一 UB 地址**的先存后读——判据是地址，不是调用形态"

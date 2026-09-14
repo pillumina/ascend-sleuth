@@ -1,0 +1,33 @@
+id: sentinel-precheck-data-movement
+type: methodology
+title: sentinel 预填校验法（无 profiler 时定位搬运类精度问题的最小实验）
+summary: "验证一段搬运指令是否脏写/漏写的方法：把输出 buffer 预先填满统一 sentinel 值（如 -1），用**确定性输入**（如 `x[i]=i`、`x[i]=i·0.5`）跑一遍，再逐元素校验「该写的写了、不该写的仍是 sentinel」。它一次性暴露三类缺陷——**尾轮多写**（sentinel 被覆盖）、**尾轮漏写**（应写位置仍是 sentinel）、**位置错**（值出现在错误索引）。适合作为「结果不一致」类投诉的最小复现要求"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/memory_optimization/reg_data_movement/Reg数据搬运场景选型指南.md"
+    version: "cann-samples master（场景校验法；自述适用 Ascend 950PR/950DT）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [reg-data-movement-fault-patterns, vf-call-and-barrier-rules, msprobe-accuracy-checker]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  flow:
+    - step: 1
+      action: "把输出 buffer **预先填满统一 sentinel 值**（来源示例用 `-1`），并让输入**确定性可预测**（如 `x[i] = i`、`x[i] = i * 0.5`）——避免随机输入让「该写没写」与「值算错」混在一起"
+      check: "输入必须能逐元素推出期望值；随机输入会使 sentinel 校验失去分辨力"
+    - step: 2
+      action: "跑一遍，然后**逐元素校验**三类缺陷：①**尾轮多写**——不该被覆盖的位置 sentinel 被改；②**尾轮漏写**——该写的位置仍是 sentinel；③**位置错**——期望值出现在错误的索引上"
+      check: "来源示例的判定输出形态：`z[150]= -1.000000 z[151]= -1.000000 (sentinel -1)` 这类打印，以及 host 侧逐元素校验的 `PASSED` / `FAILED`"
+    - step: 3
+      action: "按缺陷类型对号入座（判据与修法见寄存器数据搬运故障表）：尾轮多写 → mask 未收窄；尾轮漏写 → 非对齐三件套漏 `Post`；位置错 → 偏移单位错（`dataBlockStride` 按字节填）、`POST_MODE_UPDATE` 后重复推进、或索引位宽溢出"
+      check: "这套实验不需要 profiler，是搬运类精度问题的最便宜前置实验"
+  verified_by_testing: "来源在多个场景（scene1/4/6/9/10）用该方法定位缺陷，示例给出了 sentinel 打印与逐元素校验输出"

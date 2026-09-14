@@ -1,0 +1,24 @@
+id: crosscore-vs-mutex
+type: software-fact
+title: CrossCore 与核内 Mutex 的分工（跨核交接 vs 核内槽复用，不可互替、方向不对称）
+summary: "1C2V Mix 核里有**两套互不替代**的同步机制：CrossCore 只传递「数据就绪」与「槽位可复用」两类状态、**不搬运数值**，负责 AIC/AIV 共享资源的所有权；核内 Mutex 负责单个核心内部物理槽的复用（分别约束 AIV 的 MTE2→Vector→MTE3、AIC 的 MTE1→Mmad 与 Mmad→Fixpipe，且不使用 `PIPE_S`）。跨核方向也不对称：AIC 的一次 Set 是**一对二广播**（同组 AIV0/AIV1 都可等），而 AIV→AIC 方向 AIC 必须等两路都 Set 才能继续"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/flash_attn_lite_story/README.md"
+    version: "cann-samples master（1C2V 协作流水与同步机制；自述 Ascend 950）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [interrupt, performance]
+
+related_references: [cv-fusion-fixpipe-ub, op-internal-sync-and-reduction, flash-attention-stage-pipeline]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**两套机制的分工**：①**CrossCore**：协调**跨核**数据就绪——Fixpipe 写完 `S`/`DeltaO` 后通知 AIV；两路 AIV 的 MTE3 都写完 `P` 后 AIC 才能读取。它只传递『数据就绪』与『槽位可复用』两类状态，**不搬运数值**，负责 AIC/AIV 共享资源的所有权。②**核内 Mutex**：协调**本核物理槽**的复用——每个槽用同一个 ID 在相关 Pipe 间交接所有权，分别约束 AIV 的 `MTE2 → Vector → MTE3`、AIC 的 `MTE1 → Mmad` 与 `Mmad → Fixpipe`，**不使用 `PIPE_S`**。**两者不能相互替代**：用 Mutex 去等跨核数据、或用 CrossCore 去省核内槽，都会得到**错误结果或直接挂死**。**方向不对称（易错点）**：AIC 的一次 Set 是**一对二广播**（同组 AIV0/AIV1 都可等），而 **AIV→AIC 方向 AIC 必须等两路都 Set 才能继续**——把两个方向当成对称的会写成只等一路，症状是挂死或结果错位。**诊断用法**：跨核挂死/结果错位时先按这套分类定位——是同步语义用错了（跨核 vs 核内），还是槽位所有权没归还；同步粒度也直接决定 AIC/AIV 能否错位执行（粒度越细、两核越能错开）。"
+  evidence: "flash_attn_lite_story README：『- CrossCore：协调跨核数据就绪。Fixpipe 写完 `S`/`DeltaO` 后通知 AIV；两路 AIV 的 MTE3 都写完 `P` 后，AIC 才能读取。\\n- Mutex：协调本核物理槽的复用。每个槽用同一个 ID 在相关 Pipe 间交接所有权，不能替代 CrossCore。』（及该样例关于 AIC 一对二广播、AIV→AIC 需两路 Set 的说明）"

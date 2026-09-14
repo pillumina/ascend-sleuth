@@ -1,0 +1,84 @@
+id: EV-2026-073
+layer: L1
+title: cann-samples 第三批吸收：VF 屏障与死锁 / 调参与建模判据 / 同步分工与 L2 机制（12 条）
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-14
+source_signals:
+  - signal: coverage_gap
+    evidence: >-
+      用户问「没吸收的低优先级内容里有没有值得收的」，复查候选池后发现此前笼统归入「低优先级」的一批里
+      有多条**高价值**条目——它们落下的原因是批次规模而非质量。典型：①`asc_vf_call` 是屏障（VF 期间
+      MTE2 被阻塞、屏障时间守恒）与 **VF 内 `LocalMemBar` 会死锁**——分别解释「优化开关打开却无重叠」
+      与「加了屏障就 hang」；②小 DMA ramp-up 与 **ping-pong 重叠优先于 DMA 尺寸**；③CrossCore 与核内
+      Mutex 的**不可互替与方向不对称**；④全载条件不满足会同时导致精度异常。本批连同调参/建模判据、
+      L2 与多缓冲机制、elemwise/reduce 的分界一并吸收。
+    trajectory:
+      - references/software-facts/vf-call-and-barrier-rules.yaml 等 12 个新词条（本轮产出）
+      - "Samples/2_Performance/softmax_regbase_story/README.md（asc_vf_call 屏障与 LocalMemBar 死锁来源）"
+      - "Samples/2_Performance/flash_attn_lite_story/README.md（CrossCore/Mutex 分工与四层槽位来源）"
+      - "Samples/2_Performance/simd_vf_story/README.md（elemwise/reduce Bound 分界来源）"
+      - "候选池原始记录：/tmp/canns/findings/*.md（与 EV-2026-071 同一批）"
+hypothesis: >-
+  这批补的是「**优化动作本身出错**」与「**测量/归因口径出错**」两类空白：前者（VF 屏障、LocalMemBar
+  死锁、CrossCore/Mutex 误用、全载条件误判）此前库里没有对应事实，现场只能靠猜；后者（建模常数、
+  四层槽位检查顺序、Pipe active 不可相加、仿真≠真机、sentinel 校验法）把「怎么量、怎么比」写成了
+  可执行判据。两者合并后，算子层诊断的「改动方向」与「判定依据」都有出处。
+predicted_effect:
+  metric: 新增词条数、schema 与索引一致性、来源矛盾与缺口的标注完整性
+  from: 吸收前 162 条词条 / 背景 80 条 / 流程 18 条
+  to: 174 条词条 / 背景 89 条 / 流程 21 条
+  measure:
+    command: "python3 scripts/verify_references.py --check && python3 scripts/build_ref_summary_index.py --check && python3 scripts/build_procedure_index.py --check && python3 scripts/verify_proposals.py --check"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 吸收前 references/（162 条；VF 屏障语义、CrossCore/Mutex 分工、建模常数集均零覆盖）
+  success_criteria: >-
+    ①四道校验全通过；②12 条零注释、categories 合法；③来源逐字核验（本批全部 cross-checked-source，
+    无图像派生事实）；④与既有条目的口径差异显式标注（如 1.6TB/s 的规格值 vs 建模值出处不同、
+    L0C 256KiB 与既有词条一致）；⑤走 reference 层人审
+  rollback: 删除本轮 12 个文件 + 重建两个索引
+gate:
+  condition: 候选池至此仅剩低优先级内容（逐 story 数值、算子源码写法）；是否继续由用户决定
+risk: low
+principle_refs: [2, 9, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 会话内联执行（复用候选池），按同批做法以 0 计并如实标注口径
+decisions:
+  - who: agent
+    when: '2026-09-14'
+    type: proposal
+    conclusion: >-
+      用户问「低优先级里有什么值得吸收」→ 复查候选池并给出分级：真正值得收的是「优化动作出错」与
+      「测量/归因口径」两类共 12 条，明确不收逐 story 数值与算子源码写法。用户指示一并做 → 本卡承载。
+  - who: agent
+    when: '2026-09-14'
+    type: action
+    conclusion: >-
+      写入 12 条（software-fact 7 / platform-fact 3 / methodology 2）：vf-call-and-barrier-rules、
+      crosscore-vs-mutex、flash-attention-stage-pipeline、full-load-l1-condition、l2-and-multibuffer-mechanisms、
+      elemwise-vs-reduce-bound、hif8-type-contract；transfer-granularity-thresholds、perf-modeling-constants；
+      dma-granularity-and-pingpong-tuning、pipeline-slot-and-attribution-discipline、
+      sentinel-precheck-data-movement。索引重建（背景 80 → 89、流程 18 → 21）。
+      本批同样**未修改**任何已合入的 active 词条（`尾块空核归还槽位` 等补充细节改写为独立表述，避免
+      触发 kb/high-risk 双签）。因 PR #207 尚未合入，本批**追加到同一分支** `kb/ref-cannsim-2`，
+      该 PR 一并承载两批共 24 条。
+  - who: agent
+    when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      scan_review：measure 命令实跑通过（174 条词条 / 两索引新鲜 / 卡校验通过）；12 条零注释；
+      与既有条目的潜在重叠逐条处理（1.6TB/s 建模值 vs 规格值、L0C 256KiB 一致、HiF8 编码 vs 类型契约分工）。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      validated（采纳，改动保留在与 #207 同分支的 PR 中）。人审关注点：①「同一 PR 承载两批（24 条）」
+      是否可接受，若倾向拆开我可将第三批移出为独立分支；②vf-call-and-barrier-rules 同时写了调用语义与
+      屏障规则，是否该拆成两条。
