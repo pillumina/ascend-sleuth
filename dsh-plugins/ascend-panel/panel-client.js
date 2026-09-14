@@ -454,6 +454,17 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       return s.feedbackPending ? 'case' : null
     }
 
+    // `active_case` 的分型（host 的 `activeCaseKind`）：'case' = 真定位到某个 case（库里已有，
+    // 或库里还没有但形态是新的）；'placeholder' = 没命中时被写进这个字段的占位/说明串，
+    // 不是 case id。缺该字段的老 host 按旧口径退化（有值就当 case）。
+    // 为什么要分：占位串当 case 显示，读者会以为"定位到了 pending-investigation 这个 case"，
+    // 面板还会照它生成"该 case 的 fix 生效了吗"的指令——`feedback.case` 上踩过同一个坑。
+    function caseKindOf(s) {
+      if (!s) return null
+      if (s.activeCaseKind !== undefined) return s.activeCaseKind
+      return s.activeCase ? 'case' : null
+    }
+
     // 解析异常的一句话（host 的 `parseAnomaly`）。两种成因分开说：行没被解析器收下 /
     // 行内集合的括号没闭合。术语留原值：行号与行数都要给出，读者才能自己去核对。
     function anomalyText(a) {
@@ -698,7 +709,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       }
 
       let kbTag = null
-      if (s.activeCase) {
+      if (caseKindOf(s) === 'case') {
         // 徽章走统一形态（tinyBadge → --d-* 深档），亮/暗两套主题自动跟
         kbTag = s.activeCaseInKb
           ? React.createElement('span', { title: '该 case 已在 knowledge/ 中', style: tinyBadge('var(--d-green)') }, '库中已有')
@@ -715,7 +726,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // 混进 not_resolved 会冤枉命中的 case（把"没测"记成"误诊"）。词表见 `trace-status.yaml`。
       // 本阶段只生成指令（用户粘贴到对话执行），不改面板写入路径——写入是阶段二。
       const closeCmds = []
-      if (s.activeCase) {
+      // 占位串走「没命中」那一支：没有 case 可回写 confidence，指令里也不能出现占位串当 case 名
+      if (caseKindOf(s) === 'case') {
         closeCmds.push({
           key: 'close-fix', label: '已解决 · fix 生效', tone: 'success',
           cmd: '闭环诊断 ' + s.sessionId + '：fix 已应用且验证生效（' + s.activeCase + ' 命中）。'
@@ -793,6 +805,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               type: 'button', onClick: () => openFile(reportPath), title: reportPath,
               style: { background: 'transparent', border: '1px solid ' + T.brand, color: T.brand, borderRadius: 999, padding: '2px 11px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' },
             }, opening === reportPath ? '打开中…' : '打开报告') : null,
+            // 入口是**靠同名规则**找到的（trace 里没记 `report_file`）就说出来：报告明明落在
+            // traces/ 里而卡片上什么都不给，读者只会以为"面板读不到报告"（实测反馈）。
+            s.reportSource === 'name' ? React.createElement('span', { title: 'trace 里没有 report_file；这份报告是按 <trace 同名>.report.md 的规则找的', style: { color: T.text2, fontSize: 11.5 } },
+              '（trace 未记报告名，按同名规则找到）') : null,
             // 开没开成都要看得见：成功给「已打开（via X）」，失败给原因。
             // 旧版成功无反馈、失败静默 → 用户只看到"点了没反应"。
             copied === 'open:' + reportPath ? React.createElement('span', { style: { color: T.success, fontSize: 11.5 } }, openVia ? '已打开（' + openVia + '）' : '已打开') : null,
@@ -846,10 +862,16 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 )
               : React.createElement('span', null, [s.framework, s.platform, s.category].filter(Boolean).join(' · ') || '—'),
           ),
-          s.activeCase ? React.createElement('div', { style: { marginTop: 5, fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 6 } },
+          caseKindOf(s) === 'case' ? React.createElement('div', { style: { marginTop: 5, fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 6 } },
             React.createElement('span', { style: { color: T.text2 } }, '定位'),
             React.createElement('code', { style: { background: 'color-mix(in srgb, ' + T.success + ' 10%, transparent)', color: T.success, padding: '1px 7px', borderRadius: 5, fontSize: 12.5, fontFamily: 'var(--font-mono)' } }, s.activeCase),
-          ) : React.createElement('div', { style: { marginTop: 5, color: T.text2, fontSize: 12.5 } }, '未定位到知识库 case'),
+          ) : React.createElement('div', { style: { marginTop: 5, fontSize: 12.5, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' } },
+            React.createElement('span', { style: { color: T.text2 } }, '未定位到知识库 case'),
+            // trace 里要是写了占位串，就把它原样摆出来并说清它是什么——不显示会让读者以为面板
+            // 漏读了字段；当成 case 显示则会让人以为"定位到了这个名字的 case"（实测就是这么被问的）。
+            caseKindOf(s) === 'placeholder' ? React.createElement('span', { title: s.activeCase, style: { color: T.text2, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+              '· trace 里写的是「' + s.activeCase + '」——这是"没命中"的占位串，不是 case id') : null,
+          ),
           React.createElement('div', { style: { color: T.text2, fontSize: 13.5, marginTop: 4 } },
             '轨迹: ' + s.userSteps + ' 用户输入 / ' + s.agentSteps + ' agent 步骤'),
           // 步数由同一份解析结果算出：解析少了就得说，否则"1 用户输入"看起来像这单只有一步。
@@ -861,7 +883,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           // 直接把它显示出来，读者不用展开轨迹去猜。这一类用中性色：它不是债。
           fbKindOf(s) === 'case' ? React.createElement('div', { style: { color: T.warn, fontSize: 13.5, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 } },
             React.createElement(Dot, { color: T.warn }),
-            '结果待回报：' + (s.feedbackCase || s.activeCase || '命中 case') + '（下方可生成回报指令）') : null,
+            '结果待回报：' + (s.feedbackCase || (caseKindOf(s) === 'case' ? s.activeCase : '') || '命中 case') + '（下方可生成回报指令）') : null,
           fbKindOf(s) === 'no-case' ? React.createElement('div', { style: { color: T.text2, fontSize: 13.5, marginTop: 4, display: 'flex', alignItems: 'baseline', gap: 6 } },
             React.createElement('span', { style: { flexShrink: 0 } }, '等现场补材料：'),
             React.createElement('span', { title: s.waitingFor || '', style: { color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 } },
@@ -903,8 +925,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const nLooking = sessions.filter(s => s.status === 'in_progress' && fbKindOf(s) !== 'case' && !isClosedButOpen(s)).length
       const nAwaiting = sessions.filter(s => fbKindOf(s) === 'case').length
       const nClose = sessions.filter(isClosedButOpen).length
-      const nInKb = sessions.filter(s => s.activeCase && s.activeCaseInKb).length
-      const nNew = sessions.filter(s => s.activeCase && !s.activeCaseInKb).length
+      // 计数按 caseKindOf 算：占位串那一类归「未定位」，不该被算成"新形态待沉淀"
+      const nInKb = sessions.filter(s => caseKindOf(s) === 'case' && s.activeCaseInKb).length
+      const nNew = sessions.filter(s => caseKindOf(s) === 'case' && !s.activeCaseInKb).length
       const q = query.trim().toLowerCase()
       if (q) {
         sessions = sessions.filter(s =>
@@ -916,9 +939,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           (s.activeCase || '').toLowerCase().includes(q)
         )
       }
-      if (kbFilter === 'kb') sessions = sessions.filter(s => s.activeCase && s.activeCaseInKb)
-      if (kbFilter === 'new') sessions = sessions.filter(s => s.activeCase && !s.activeCaseInKb)
-      if (kbFilter === 'miss') sessions = sessions.filter(s => !s.activeCase)
+      if (kbFilter === 'kb') sessions = sessions.filter(s => caseKindOf(s) === 'case' && s.activeCaseInKb)
+      if (kbFilter === 'new') sessions = sessions.filter(s => caseKindOf(s) === 'case' && !s.activeCaseInKb)
+      if (kbFilter === 'miss') sessions = sessions.filter(s => caseKindOf(s) !== 'case')
       // 待跟进三类见上方计数处注释（互斥）；徽章与横幅都用这三个数
       const badge = [
         (r.sessions || []).length + ' 会话',

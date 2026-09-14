@@ -174,6 +174,45 @@ return {
       return n
     }
 
+    // `active_case` 有两种取值：真实 case id，或"没命中"时被写进去的占位/说明串
+    // （例 `pending-investigation (upstream #12345)`）。占位串不是 case id——把它当 case 显示，
+    // 读者会以为"定位到了 pending-investigation 这个 case"，并按它生成"该 case 的 fix 生效了吗"
+    // 这类指令。同一个坑在 `feedback.case` 上已经踩过一次（占位串被当成 case id，2026-09 修过），
+    // 这里按同一口径分开：host 出 `activeCaseKind`，原值照旧带出去（面板要能显示 trace 里写了什么）。
+    // 占位串词表：`pending-investigation` 是 `feedback.case` 里定义的那个占位串（"没命中 case、
+    // 只给了建议"），agent 有时把它连同说明一起写进 `active_case`（例
+    // `pending-investigation (upstream #12345)`）——所以按前缀判，而不是全等。
+    const PLACEHOLDER_CASE = /^pending[-_]investigation\b/i
+    // 字面量空值：等价于"没有 case"（面板按未定位显示，不必把 null/none 端上屏）
+    const EMPTY_CASE = /^(null|none|nil|n\/?a|unknown)$/i
+    function activeCaseKindOf(value) {
+      const v = value === null || value === undefined ? '' : String(value).trim()
+      if (!v || EMPTY_CASE.test(v)) return null
+      return PLACEHOLDER_CASE.test(v) ? 'placeholder' : 'case'
+    }
+    // 报告入口指向哪个文件：trace 里记的 `report_file`（**顶层与 report 事件里都认**）→ 退到同名规则。
+    //
+    // 为什么要认两种来源（2026-09-14 实测）：trace 写作文档给的是**事件内**写法
+    // （`- {step: 6, action: report, report_file: "<session>.report.md", …}`），而面板只读顶层字段
+    // ——于是报告明明落在 traces/ 里，卡片上却没有「看报告」入口。同名回退在 `readReport` 里一直
+    // 就有（真点得到），缺的是"入口先出现"这一步。`fileNames` 给 traces/ 的条目名集合；
+    // 传 null 表示不查存在性（读报告时用，真读不到会有明确的读失败）。
+    function reportFileOf(doc, fileNames, traceFile) {
+      const recorded = doc && doc.report_file ? String(doc.report_file) : null
+      if (recorded) return { name: recorded, source: 'trace' }
+      const events = doc && Array.isArray(doc.trace) ? doc.trace : []
+      for (let i = events.length - 1; i >= 0; i--) {
+        const ev = events[i]
+        if (ev && ev.report_file) return { name: String(ev.report_file), source: 'trace' }
+      }
+      const base = String(traceFile || '').replace(/\.yaml$/, '')
+      const sid = doc && doc.session_id ? String(doc.session_id) : ''
+      for (const cand of [base ? base + '.report.md' : null, sid ? sid + '.report.md' : null]) {
+        if (cand && fileNames && fileNames.has(cand)) return { name: cand, source: 'name' }
+      }
+      return null
+    }
+
     async function listTraces(cwd) {
       let base
       try {
@@ -194,6 +233,8 @@ return {
       const kbIds = await loadKbCaseIds(cwd)
       const out = []
       const basePath = fs.processPath(base)
+      // traces/ 的条目名：报告入口的同名回退要用它（见 reportFileOf）
+      const fileNames = new Set(entries.map(e => e && e.name).filter(Boolean))
       for (const ent of entries) {
         if (!ent.name.endsWith('.yaml')) continue
         try {
@@ -212,6 +253,7 @@ return {
           const createdAt = doc.created_at ? String(doc.created_at) : null
           const updatedAt = doc.updated_at ? String(doc.updated_at) : null
           const activeCase = doc.active_case && doc.active_case !== 'null' ? String(doc.active_case) : null
+          const rep = reportFileOf(doc, fileNames, ent.name)
           out.push({
             sessionId: doc.session_id ? String(doc.session_id) : ent.name.replace(/\.yaml$/, ''),
             file: ent.name,
@@ -274,7 +316,13 @@ return {
             updatedAt: updatedAt,
             // 人读定位报告与结构化沉淀候选（diagnose 步骤 6 产出）：报告名与 trace 同名不同后缀，
             // 面板给"打开报告"入口；候选条数给"待沉淀 N 条"，让"这单还能沉淀什么"在列表上就可见。
-            reportFile: doc.report_file ? String(doc.report_file) : null,
+            // 报告名的来源分两种（trace 记录 / 同名规则），client 据此说明入口是怎么来的。
+            reportFile: rep ? rep.name : null,
+            reportSource: rep ? rep.source : null,
+            // `active_case` 是 case id 还是"没命中"的占位/说明串（见 activeCaseKindOf）
+            activeCaseKind: activeCaseKindOf(activeCase),
+            // `active_case` 是 case id 还是"没命中"的占位/说明串（见 activeCaseKindOf）
+            activeCaseKind: activeCaseKindOf(activeCase),
             sedimentCandidates: Array.isArray(doc.sediment_candidates) ? doc.sediment_candidates.length : 0,
             // 轨迹解析没收下的行数（见 anomalyOf）：列表上的步数由同一份解析结果算出，
             // 解析少了就标在卡片上，别让"1 用户输入"看起来像这单真的只有一步。
@@ -544,7 +592,7 @@ return {
         return {
           ok: true, steps, summary: doc.summary ? String(doc.summary) : null, refCount, sedimented: sed,
           conclusionIndex: conclusionIndex,
-          reportFile: doc.report_file ? String(doc.report_file) : null,
+          reportFile: (function () { const r = reportFileOf(doc, null, traceFile); return r ? r.name : null })(),
           sedimentCandidates: cands.map(c => ({
             kind: c && c.kind ? String(c.kind) : '',
             summary: c && c.summary ? String(c.summary) : '',
@@ -660,9 +708,10 @@ return {
       try {
         const traceTarget = await fs.resolve('traces/' + traceFile, { cwd })
         const doc = parseYaml(await fs.readText(traceTarget))
-        const name = (doc && doc.report_file)
-          ? String(doc.report_file)
-          : String(traceFile).replace(/\.yaml$/, '') + '.report.md'
+        // 报告名与列表侧同一口径（trace 记录 → 同名规则），否则会出现"卡片上有入口、点开找的是
+        // 另一个文件名"。这里不查存在性：真读不到会由下面的 readText 如实报错。
+        const resolved = reportFileOf(doc, null, traceFile)
+        const name = resolved ? resolved.name : String(traceFile).replace(/\.yaml$/, '') + '.report.md'
         const rel = 'traces/' + name
         const target = await fs.resolve(rel, { cwd })
         const text = await fs.readText(target)
