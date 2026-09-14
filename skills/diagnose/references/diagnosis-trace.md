@@ -98,6 +98,18 @@ case 错 / 执行错判）——让 `component_tally.py` 能聚合出"被跟随�
 trace 特有的一条：**读者没有会话上下文，也没读过报告**。所以字段要能独立读懂——首次出现的简称当场展开，`output`（给用户）与 `reason`（决策依据）分开写；证据原值（case/issue 编号、`文件:行号`、命令、数字、报错原文）照抄，不翻译。
 
 
+## 值的写法（YAML 语法陷阱）
+
+值里**含 ` #`（空格 + 井号）或 `: `（冒号 + 空格）时必须加引号**——不加的话 YAML 从那里起当注释或当新键，
+值会被**静默截断**。实测：`active_case: pending-investigation (upstream #14728)` 读出来是
+`pending-investigation (upstream`（少一个反括号）；读到的人以为是"面板把反括号吃了"，
+而 PyYAML 与面板读到的其实是同一份被截断的值——根因在写侧。issue 号、带 `#` 的片段都属这一类，统一加引号。
+
+顶层 `active_case` 只写**命中的 case id**，没命中写 `null`。占位串 `pending-investigation` 是
+`feedback.case` 的取值（表示"没有 case 可回写 confidence"），不要写进 `active_case`——写进去面板会把它
+当 case 显示，并按它生成"该 case 的 fix 生效了吗"这类指令。要记"转上游 / 上游未修"这类说明，写进
+`summary` 或 `last_action`。
+
 ## 反馈闭环词表
 
 反馈确认后，顶层 `feedback: {case, outcome, confirmed_at}` 要填——`status=resolved 且 feedback.outcome=resolved` 是该 trace 升格为 fixture（强断言基准）的资格条件（`scripts/replay_trace.py --emit-fixtures` 只看这种）。

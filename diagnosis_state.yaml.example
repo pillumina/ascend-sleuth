@@ -46,7 +46,7 @@ feedback:                             # 反馈闭环结果（fixture 资格判�
 feedback_pending_since: ""            # outcome=pending 时填给出 fix 的日期（反馈债账龄，可空）
 
 excluded_cases: [ASCEND-EP-HANG-001, ASCEND-EP-HANG-002]
-active_case: MSLLM-EP-HANG-001
+active_case: MSLLM-EP-HANG-001          # 命中的 case id；没命中写 null（占位串 pending-investigation 只属于 feedback.case）
 last_action: "等待用户执行 env | grep HCCL_BUFFSIZE 并贴回输出"
 
 # trace = 完整交互轨迹（trajectory）。每条统一 {role, step, ...}：

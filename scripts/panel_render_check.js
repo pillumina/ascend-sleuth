@@ -1971,12 +1971,79 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
   // —— 人读定位报告与沉淀候选的入口（diagnose 步骤 6 产出）——
   {
     const hostSrc = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+    // 报告名的两种来源都要认（见 reportFileOf）。为什么这条判据从"断言某一行写法"改成"跑函数"：
+    // 实测缺陷（2026-09-14）正是"只读顶层 `report_file`"——而写作文档给的是 report 事件内写法，
+    // 于是报告落在 traces/ 里、卡片上却没有入口。断言源码里有没有某个字段名拦不住这类偏差。
+    const fromR = hostSrc.indexOf('const PLACEHOLDER_CASE')
+    const toR = hostSrc.indexOf('async function listTraces(')
+    expect('host 的报告名/占位串判定可抽出（占位串词表 + 两个判定函数 → listTraces 区块存在）', fromR > 0 && toR > fromR)
+    const helpers = new Function(hostSrc.slice(fromR, toR)
+      + '\nreturn { reportFileOf: reportFileOf, activeCaseKindOf: activeCaseKindOf };')()
+    const files = new Set(['s.yaml', 's.report.md', 'other.report.md'])
+    const r1 = helpers.reportFileOf({ report_file: 'x.report.md' }, files, 's.yaml')
+    expect('报告名：顶层 report_file 优先', !!r1 && r1.name === 'x.report.md' && r1.source === 'trace', JSON.stringify(r1))
+    const r2 = helpers.reportFileOf({ trace: [{ action: 'report', report_file: 'in-event.report.md' }] }, files, 's.yaml')
+    expect('报告名：只有 report 事件里记了也算（写作文档给的就是这种写法）',
+      !!r2 && r2.name === 'in-event.report.md' && r2.source === 'trace', JSON.stringify(r2))
+    const r3 = helpers.reportFileOf({ session_id: 's' }, files, 's.yaml')
+    expect('报告名：两处都没记 → 退到同名规则（报告确实在 traces/ 里就给入口）',
+      !!r3 && r3.name === 's.report.md' && r3.source === 'name', JSON.stringify(r3))
+    const r4 = helpers.reportFileOf({ session_id: 's' }, new Set(['s.yaml']), 's.yaml')
+    expect('报告名：同名文件不存在 → 不给入口（不编一个读不到的名字）', r4 === null, JSON.stringify(r4))
+    expect('占位串判定：pending-investigation 系（含带说明的写法）都不算 case',
+      helpers.activeCaseKindOf('pending-investigation') === 'placeholder'
+      && helpers.activeCaseKindOf('pending-investigation (upstream #14728)') === 'placeholder'
+      && helpers.activeCaseKindOf('pending_investigation') === 'placeholder')
+    expect('占位串判定：真实 case id 仍算 case，空值算没有',
+      helpers.activeCaseKindOf('VLLM-ASC-12989') === 'case'
+      && helpers.activeCaseKindOf(null) === null && helpers.activeCaseKindOf('') === null
+      && helpers.activeCaseKindOf('null') === null)
     expect('host 从 trace 读 report_file 与 sediment_candidates',
-      /reportFile: doc\.report_file/.test(hostSrc) && /sedimentCandidates: Array\.isArray\(doc\.sediment_candidates\)/.test(hostSrc))
+      /reportFileOf\(doc, fileNames, ent\.name\)/.test(hostSrc)
+      && /sedimentCandidates: Array\.isArray\(doc\.sediment_candidates\)/.test(hostSrc))
+    expect('读报告与列表用同一个报告名口径（否则"入口指向 A、点开读 B"）',
+      (hostSrc.match(/reportFileOf\(/g) || []).length >= 3)
     expect('client 给「打开报告」入口（复用证据打开通路，不新造 RPC）',
       /'traces\/' \+ s\.reportFile/.test(ascSrc) && /打开报告/.test(ascSrc))
+    expect('client 说明入口是"按同名规则找到"的（trace 未记报告名时不许闷着）',
+      /s\.reportSource === 'name'/.test(ascSrc) && /按同名规则找到/.test(ascSrc))
     expect('client 显示待沉淀条数', /待沉淀 ' \+ s\.sedimentCandidates/.test(ascSrc))
     expect('面板不写入报告内容（只读入口）', !/ascend-write-report/.test(ascSrc) && !/ascend-write-report/.test(hostSrc))
+
+    // 渲染层实测（收起态即可见）：三种卡片各一张——占位串单、真 case 单、报告靠同名规则找到的单
+    {
+      const base = {
+        file: 's.yaml', status: 'escalated', framework: 'vllm-ascend', platform: 'A2-910B',
+        category: 'interrupt', activeCaseInKb: false, feedbackPending: null,
+        summarySnippet: '问题背景：服务启动失败', userSteps: 2, agentSteps: 4,
+        lastRole: 'agent', lastOutput: null, updatedAt: new Date().toISOString(),
+      }
+      const placeholder = Object.assign({}, base, {
+        sessionId: 's-ph', activeCase: 'pending-investigation (upstream #14728)', activeCaseKind: 'placeholder',
+      })
+      const realCase = Object.assign({}, base, {
+        sessionId: 's-case', activeCase: 'VLLM-ASC-12989', activeCaseKind: 'case', activeCaseInKb: true,
+      })
+      const withReport = Object.assign({}, base, {
+        sessionId: 's-rep', activeCase: null, activeCaseKind: null,
+        reportFile: 's-rep.report.md', reportSource: 'name',
+      })
+      const host = (m) => m === 'ascend-traces-list'
+        ? { ok: true, sessions: [placeholder, realCase, withReport] }
+        : { ok: true, steps: [], summary: null }
+      const ct = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, host)).text
+      const lines = ct.split('\n').map(x => x.trim())
+      expect('占位串不当 case 显示：两张无命中单都给「未定位到知识库 case」，不给「定位」',
+        lines.filter(x => x === '未定位到知识库 case').length === 2 && lines.filter(x => x === '定位').length === 1,
+        '未定位=' + lines.filter(x => x === '未定位到知识库 case').length + ' 定位=' + lines.filter(x => x === '定位').length)
+      expect('占位串原样摆出来并说清它是什么（否则读者以为面板漏读了字段）',
+        /pending-investigation \(upstream #14728\)/.test(ct) && /不是 case id/.test(ct), ct.slice(0, 240))
+      expect('报告入口：有报告的那张卡给「看报告」「打开报告」，没有的不给',
+        (ct.match(/看报告/g) || []).length === 1 && (ct.match(/打开报告/g) || []).length === 1,
+        '看报告=' + (ct.match(/看报告/g) || []).length)
+      expect('报告名来自同名规则时说明来源（trace 未记报告名不许闷着）',
+        /按同名规则找到/.test(ct) && /s-rep\.report\.md/.test(ct))
+    }
   }
 
   // —— 词表口径：反馈债读 feedback.outcome（新口径）+ 兼容旧 trace 的 feedback_pending ——
