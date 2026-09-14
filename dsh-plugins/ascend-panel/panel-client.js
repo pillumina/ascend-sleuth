@@ -465,13 +465,13 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       return s.activeCase ? 'case' : null
     }
 
-    // 解析异常的一句话（host 的 `parseAnomaly`）。两种成因分开说：行没被解析器收下 /
-    // 行内集合的括号没闭合。术语留原值：行号与行数都要给出，读者才能自己去核对。
+    // 解析异常的一句话（host 的 `parseAnomaly`）。卡面只给"结论 + 行号"，成因与怎么办放 README——
+    // 面板读者只看界面，卡上多一句解释就把列表读成文档（实测反馈：这类说明性文字被点过两次）。
     function anomalyText(a) {
       if (!a) return null
       const at = a.firstLine ? '（第 ' + a.firstLine + ' 行起）' : ''
-      if (a.dropped) return '轨迹可能不完整：文件里还有 ' + a.dropped + ' 行没被解析' + at
-      return '轨迹可能不完整：这份 YAML 里有一个行内集合没有闭合' + at
+      if (a.dropped) return '轨迹可能不完整：还有 ' + a.dropped + ' 行没被解析' + at
+      return '轨迹可能不完整：有一处结构没闭合' + at
     }
 
     function SessionCard(props) {
@@ -629,7 +629,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 // 读者会按上面那行"诊断轨迹：N 步"当成事实（实测症状：文件里 9 条、面板上 1 条，
                 // 文件本身完全正常）。这里给出成因与行号，让读者能自己去核对那几行。
                 anomaly ? React.createElement('div', { style: { marginBottom: 8, padding: '7px 10px', background: 'color-mix(in srgb, ' + T.warn + ' 10%, transparent)', border: '1px solid color-mix(in srgb, ' + T.warn + ' 45%, transparent)', borderRadius: 9, fontSize: 12.5, color: T.text, lineHeight: 1.65 } },
-                  anomalyText(anomaly) + '。面板按 YAML 结构读这份 trace，没被解析的行不在下面的步数里。请核对这几行的缩进与引号，或把该 trace 发回来核对。') : null,
+                  anomalyText(anomaly) + '。请核对这几行的缩进与引号。') : null,
                 shown.map((st, i) => {
                   const isUser = st.role === 'user'
                   const isRef = st.action === 'reference_lookup'
@@ -867,10 +867,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             React.createElement('code', { style: { background: 'color-mix(in srgb, ' + T.success + ' 10%, transparent)', color: T.success, padding: '1px 7px', borderRadius: 5, fontSize: 12.5, fontFamily: 'var(--font-mono)' } }, s.activeCase),
           ) : React.createElement('div', { style: { marginTop: 5, fontSize: 12.5, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' } },
             React.createElement('span', { style: { color: T.text2 } }, '未定位到知识库 case'),
-            // trace 里要是写了占位串，就把它原样摆出来并说清它是什么——不显示会让读者以为面板
-            // 漏读了字段；当成 case 显示则会让人以为"定位到了这个名字的 case"（实测就是这么被问的）。
-            caseKindOf(s) === 'placeholder' ? React.createElement('span', { title: s.activeCase, style: { color: T.text2, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
-              '· trace 里写的是「' + s.activeCase + '」——这是"没命中"的占位串，不是 case id') : null,
+            // trace 里写了占位串就把它原样摆出来（不摆，读者会以为面板漏读了字段），但**卡面不解释**：
+            // 那句"这是什么、不是什么"是给改 trace 的人看的，放 tooltip 与 README。判据在
+            // panel_render_check：占位串只出原值，不出内部说法（占位串 / case id / 字段名）。
+            caseKindOf(s) === 'placeholder' ? React.createElement('span', { title: 'trace 里记的定位值（不是知识库里的 case）', className: 'sleu-mono', style: { color: T.text2, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, s.activeCase) : null,
           ),
           React.createElement('div', { style: { color: T.text2, fontSize: 13.5, marginTop: 4 } },
             '轨迹: ' + s.userSteps + ' 用户输入 / ' + s.agentSteps + ' agent 步骤'),

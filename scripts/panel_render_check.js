@@ -1902,8 +1902,9 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
     expect('host：异常带上行号与行数（读者要能自己去核对那几行）',
       /firstLine:/.test(hostSrc) && /dropped: dropped\.length/.test(hostSrc))
     expect('client：诊断轨迹那行在异常时标「可能不完整」', /（可能不完整）/.test(ascSrc))
-    expect('client：异常给出成因、行号与下一步（核对缩进 / 发回来核对）',
-      /function anomalyText\(a\)/.test(ascSrc) && /第 ' \+ a\.firstLine \+ ' 行起/.test(ascSrc))
+    expect('client：异常给出行号与一个动作（请核对缩进与引号）',
+      /function anomalyText\(a\)/.test(ascSrc) && /第 ' \+ a\.firstLine \+ ' 行起/.test(ascSrc)
+      && /请核对这几行的缩进与引号/.test(ascSrc))
     expect('client：会话列表的步数行同样报异常（"1 用户输入"不许看起来像真的）',
       /anomalyText\(s\.parseAnomaly\)/.test(ascSrc))
 
@@ -1927,8 +1928,10 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       const anomText = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, anomHost)).text
       const hits = (anomText.match(/轨迹可能不完整/g) || []).length
       expect('收起态就报异常，且只报那一张卡（另一张不误报）', hits === 1, '出现 ' + hits + ' 次')
-      expect('异常带上成因与行号（读者能去核对那几行）',
+      expect('异常带上行数与行号（读者能去核对那几行）',
         /还有 3 行没被解析（第 8 行起）/.test(anomText), anomText.slice(0, 200))
+      expect('异常只给"结论 + 行号 + 一个动作"，不把成因解释摊在卡上',
+        !/面板按 YAML 结构读|不在下面的步数里|发回来核对/.test(anomText), anomText.slice(0, 200))
     }
 
     // 真实 trace（主检出那一份，`scripts/shared_dir.py traces` 是它的解析入口；CI 里没有这个
@@ -2052,8 +2055,14 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       expect('占位串不当 case 显示：两张无命中单都给「未定位到知识库 case」，不给「定位」',
         lines.filter(x => x === '未定位到知识库 case').length === 2 && lines.filter(x => x === '定位').length === 1,
         '未定位=' + lines.filter(x => x === '未定位到知识库 case').length + ' 定位=' + lines.filter(x => x === '定位').length)
-      expect('占位串原样摆出来并说清它是什么（否则读者以为面板漏读了字段）',
-        /pending-investigation \(upstream #14728\)/.test(ct) && /不是 case id/.test(ct), ct.slice(0, 240))
+      expect('占位串把原值摆出来（不摆读者以为面板漏读了字段）',
+        /pending-investigation \(upstream #14728\)/.test(ct), ct.slice(0, 240))
+      // 卡面**不解释**：说明文字（占位串 / case id / 字段名）只进 tooltip 与 README。
+      // 为什么单钉一条：这类"给改 trace 的人看的解释"被摊到卡上过两次，列表被读成文档。
+      expect('卡面不出内部说法（占位串 / case id / 字段名）',
+        !/占位串/.test(ct) && !/case id/.test(ct) && !/active_case/.test(ct), ct.slice(0, 300))
+      expect('原值的解释放在 tooltip 里（hover 可查）',
+        /«title:trace 里记的定位值（不是知识库里的 case）»/.test(ct))
       expect('报告入口：有报告的那张卡给「看报告」「打开报告」，没有的不给',
         (ct.match(/看报告/g) || []).length === 1 && (ct.match(/打开报告/g) || []).length === 1,
         '看报告=' + (ct.match(/看报告/g) || []).length)
