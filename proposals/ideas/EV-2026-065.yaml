@@ -32,7 +32,7 @@ source_signals:
       - "CLAUDE.md（source_ref 段：原约定 src-code/<org>/<repo>/ 单目录 + 换版本用 checkout）"
       - "scripts/exec_log_path.py（同一克隆共享的既有范式：main_checkout + WHERE_LABEL + --local）"
       - "仓库现状实测：src-code/vllm-project/ 为空壳目录，主检出与 3 个 worktree 均无 clone"
-      - "scripts/rehearse_evolve_loop.py（E9 段：临时 git 仓库 + 两个真 worktree 的演练范式）"
+      - "scripts/rehearse_evolve_loop.py（既有「共享 exec-log」演练段：临时 git 仓库 + 两个真 worktree 的范式）"
 hypothesis: >-
   把三件事一起改——①缓存按版本平铺为 `src-code/<org>/<repo>/<解析后的 ref>/`，每个版本目录自包含、
   互不干扰；②缓存根解析到**主检出**（同一克隆的所有 worktree 共读共写，复用 exec_log_path 的既有
@@ -47,6 +47,7 @@ predicted_effect:
   measure:
     command: "python3 scripts/rehearse_evolve_loop.py"
     expect_exit: 0
+    # 字面量：演练输出里新增那一段的标题标记（非代号，不必登记 glossary）
     expect_stdout: "[E15]"
 validation:
   method: metrics_compare
