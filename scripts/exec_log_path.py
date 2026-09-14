@@ -33,6 +33,9 @@
 #   （EV 卡预测的实测记录，判据「声明了却没测」的数据源）有一模一样的两个约束：面板读主检出、
 #   worktree 清理不能丢数据。所以共享件路径解析与写锁原语都收在本模块，不再各写一份
 #   （抄两份 = 口径漂移的经典来源；本模块的注释已经因为同一原因被引用过多次）。
+#   `src-code/`（按版本平铺的上游源码缓存，见 scripts/src_fetch.py）是第三件：同样 .gitignore、
+#   同样"新 worktree 没有它、worktree 清理连它一起删"，而且**更贵**（一次 clone 是分钟级 + 上百 MB）。
+#   它多一层语义：缓存根共享，**版本目录各自独立**（并发诊断各读各版本，不共享可变检出）。
 
 import os
 import subprocess
@@ -43,12 +46,21 @@ from pathlib import Path
 LOG_REL = Path("metrics") / "skill-exec-log.yaml"
 # EV 卡预测的实测记录（reviewer 跑 ev_measure.py --run 时 append 一笔）
 MEASURE_LOG_REL = Path("metrics") / "ev-measure-log.yaml"
+# 按版本平铺的上游源码缓存根（scripts/src_fetch.py 用；版本目录在其下）
+SRC_CODE_REL = Path("src-code")
 
 # where 的含义（人读输出里直接标注，防止把"本地"读成"全系统"）
 WHERE_LABEL = {
     "explicit": "指定路径（--log）",
     "local": "检出内（--local 强制）",
     "shared": "同一克隆共享（主检出 metrics/；所有 worktree 共写共读）",
+    "fallback": "检出内（无 git 环境，退化）",
+}
+# src-code 的 where 标签（同一条语义，不同目录名——标签里点明目录，读的人不必回查代码）
+WHERE_LABEL_SRC = {
+    "explicit": "指定路径（--dest）",
+    "local": "检出内（--local 强制）",
+    "shared": "同一克隆共享（主检出 src-code/；所有 worktree 共读共写）",
     "fallback": "检出内（无 git 环境，退化）",
 }
 
@@ -109,6 +121,15 @@ def resolve_rel(root: Path, rel: Path, explicit: Path = None, local: bool = Fals
 def resolve(root: Path, explicit: Path = None, local: bool = False):
     """exec-log 的路径解析（保留原签名）。"""
     return resolve_rel(root, LOG_REL, explicit=explicit, local=local)
+
+
+def resolve_src_code(root: Path, explicit: Path = None, local: bool = False):
+    """源码缓存根的路径解析 → (cache_root, where)。语义与 resolve 完全同条（同一克隆共享）。"""
+    return resolve_rel(root, SRC_CODE_REL, explicit=explicit, local=local)
+
+
+def describe_src(path: Path, where: str) -> str:
+    return f"{path}（{WHERE_LABEL_SRC.get(where, where)}）"
 
 
 @contextmanager

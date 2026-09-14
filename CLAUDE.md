@@ -69,7 +69,7 @@ Each case file has: `id`, `title`, `category` (interrupt|precision|performance),
 
 Optional field — `validation_record`: {consistent, inconsistent, self_consistent, last_verified} — 内容被**外部验证**的累积记录（由 `scripts/settle_s2_feedback.py` 结算，非人设定）。与 confidence 分开：S2 issue-replay 对照的是外部 ground truth（issue resolution / 维护者 fix PR / committer 确认）。`consistent`=外部验证一致（同等 score 下排序优先）、`self_consistent`=自证命中（replay issue 即 case 来源——如实标注不虚增）、`inconsistent`=命中但结论与 resolution 不符（复审信号）。无 S2 验证不填。
 
-Optional field — `source_ref`: {repo, ref, file, line} — 根因定位到源码时的代码位置。**「源码不落库」= 源码不随仓库提交、也不写进知识库**——`.gitignore` 已忽略 `src-code/<org>/<repo>/`（本地分析缓存，按需 checkout、同版本复用）；知识库只记结论 + `source_ref` 指针。「不落库」≠ 分析不需要源码，深入排查**仍要 clone**。ref 用触发版本对应的 commit/tag。
+Optional field — `source_ref`: {repo, ref, file, line} — 根因定位到源码时的代码位置。**「源码不落库」= 源码不随仓库提交、也不写进知识库**——`.gitignore` 已忽略 `src-code/`（本地分析缓存，**按版本平铺**为 `src-code/<org>/<repo>/<tag>/`：版本目录自包含、互不干扰，多 agent 并发可各读各版本；缓存根锚到**主检出**，同一克隆的所有 worktree 共读共写，worktree 清理不丢；统一走 `scripts/src_fetch.py <repo> --ref <tag>` 按需拉取、同版本复用）。知识库只记结论 + `source_ref` 指针。「不落库」≠ 分析不需要源码，深入排查**仍要 clone**。ref 用触发版本对应的 commit/tag（与版本目录名同 token）。
 
 Optional field — `ref_knowledge`: 指向前验层词条的结构化关联，每条是 `ref: <reference-id>` + `role: signature-source | fix-methodology | root-cause-context`。`ref` 必须存在、`role` 必须合法，由 `scripts/verify_references.py` 校验。反向视图（哪些 case 引用了某词条）由该脚本派生，绝不存到词条侧——一条关系只存一次。
 

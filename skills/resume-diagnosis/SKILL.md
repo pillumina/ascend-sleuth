@@ -55,7 +55,7 @@ resume 只负责**恢复现场**——恢复后继续的是 `/diagnose` 的完�
 - 不要从头重新收集症状——state 文件里都有
 - 如果 `session_id` 和当前不匹配，提示"该问题可能已被其他人接手——是否继续？"（并发检测，脆弱机制，只作提示不硬阻塞）
 - **不要在这份 trace 里记录本 resume 期间发生的流程/设计讨论**（与 diagnose 的"trace 边界"一致——那是自演进信号，走 EV card / 自演进通道，不污染本问题的诊断 trace）。`resume` 事件只承载诊断状态（恢复到哪步、待办什么），不掺流程改进内容
-- 续接中若需源码分析，**用 `scripts/src_fetch.py <repo> --ref <tag>`**（复用 `src-code/<org>/<repo>/` 本地缓存，同版本不重复 clone，`git -C <path> log -1` 核对版本；`--list` 看已知仓库与 host），不自行决定 clone 到哪、不重复拉取
+- 续接中若需源码分析，**用 `scripts/src_fetch.py <repo> --ref <tag>`**（缓存按版本平铺在 `src-code/<org>/<repo>/<tag>/`、缓存根在主检出跨 worktree 共读；`--list-versions` 看本地已有版本，`--list` 看已知仓库与 host），不自行决定 clone 到哪、不重复拉取。**退出码即契约**：`0` = 该版本已产出并核对通过（stdout 末行 = 路径）；`3/4/5` = 没拿到（tag 名不对 / 拉取失败 / 本地目录核对不通过）——非零就别拿本地其他版本的目录去读，也不用 web 搜索代替源码
 
 ## 状态文件生命周期
 

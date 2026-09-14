@@ -496,6 +496,134 @@ def ex_shared_exec_log(root: Path):
         _sh.rmtree(p, ignore_errors=True)
 
 
+# ---------------------------------------------------------------- ⑮ 源码版本缓存
+def ex_src_code_versions(root: Path):
+    """源码缓存的版本语义（2026-09-14 修，两条缺陷叠在一起）。
+
+    缺陷本体：①`src_fetch.py` 的复用分支在版本不符时**无条件**打印路径并 exit 0（fetch/checkout
+    失败也走这条）——而 SKILL 的契约是"非零退出 = 未取得源码"，于是 agent 拿到 exit 0 + 一个**别的
+    版本**的路径 → grep 不到 → 判"本地没有这个版本" → 转 web 搜索；②缓存根取脚本所在的检出，而
+    src-code 是 .gitignore 件 → 新 worktree 没有它、worktree 清理连它一起删。
+    这里用本地假上游（两个 tag）+ 一个真 linked worktree 验证三条不变量，**全程离线**：
+    版本共存不互相污染 / 退出码与真实产出一致 / 缓存跨 worktree 共享。
+    """
+    print("\n[E15] 源码版本缓存 · 版本共存 + 退出码说真话 + 跨 worktree 共享")
+    if shutil.which("git") is None:
+        print("  — 跳过（无 git）")
+        return
+
+    def g(cwd, *args):
+        return subprocess.run(["git", *args], cwd=str(cwd), check=True,
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    base = root.parent / "srcdemo"
+    up, ws, wt = base / "upstream", base / "ws", base / "wt"
+    for p in (up, ws, wt):
+        shutil.rmtree(p, ignore_errors=True)
+    # 假上游：两个 tag（离线，不起网络）
+    up.mkdir(parents=True)
+    (up / "pkg").mkdir()
+    g(up, "init", "-q", ".")
+    g(up, "config", "user.email", "r@x")
+    g(up, "config", "user.name", "r")
+    (up / "pkg" / "mod.py").write_text("V1 = 1\n", encoding="utf-8")
+    g(up, "add", "-A")
+    g(up, "commit", "-qm", "v1")
+    g(up, "tag", "v0.1.0")
+    (up / "pkg" / "mod.py").write_text("V2 = 2\n", encoding="utf-8")
+    g(up, "add", "-A")
+    g(up, "commit", "-qm", "v2")
+    g(up, "tag", "v0.2.0")
+    # 工作区 + linked worktree（沙箱自己无 .git，测不到"缓存锚到主检出"这点）
+    ws.mkdir(parents=True)
+    shutil.copytree(root / "scripts", ws / "scripts")
+    shutil.copy(root / ".gitignore", ws / ".gitignore")
+    g(ws, "init", "-q", ".")
+    g(ws, "config", "user.email", "r@x")
+    g(ws, "config", "user.name", "r")
+    g(ws, "add", "-A")
+    g(ws, "commit", "-qm", "init")
+    g(ws, "worktree", "add", "-q", str(wt), "-b", "kb/srcver")
+
+    repo_dir = ws / "src-code" / "demo" / "demo-repo"
+    v1, v2 = repo_dir / "v0.1.0", repo_dir / "v0.2.0"
+    # 脚本给的是 **resolve 过**的绝对路径（macOS 上 /var 是 /private/var 的软链），比较前先归一
+    v1_abs = v1.resolve()
+
+    def fetch(*extra, url=None):
+        """返回 (rc, stdout, 合并输出)——**stdout 单独留一份**：契约是"stdout 末行 = 路径、非零时
+        stdout 不出现缓存路径"，合并流里混着 git 的 stderr 噪声就测不准这条。"""
+        r = subprocess.run([sys.executable, "scripts/src_fetch.py", "demo/demo-repo",
+                            "--url", url or str(up), *extra], cwd=str(wt), capture_output=True,
+                           text=True, encoding="utf-8", errors="replace")
+        return r.returncode, (r.stdout or ""), (r.stdout or "") + (r.stderr or "")
+
+    # ① 跨 worktree：缓存锚到主检出（修前：落在执行脚本的那个检出 → 别人看不见、清理即丢）
+    rc, out, both = fetch("--ref", "v0.1.0")
+    check("① worktree 里取 v0.1.0 → exit 0 且 stdout 末行是路径",
+          rc == 0 and out.strip().splitlines()[-1].strip() == str(v1_abs), both[-220:])
+    check("① 缓存落在主检出，worktree 内不产生 src-code",
+          v1.is_dir() and not (wt / "src-code").exists(), both[-220:])
+
+    # ② 版本共存：取第二版不得动第一版（单目录 + checkout 的旧布局会互相污染）
+    rc, out, both = fetch("--ref", "v0.2.0")
+    check("② 第二个版本取到（两个版本目录并存）", rc == 0 and v2.is_dir(), both[-220:])
+    check("② 第一版仍在原位、内容未变（版本目录互不干扰）",
+          v1.is_dir() and "V1 = 1" in (v1 / "pkg" / "mod.py").read_text(encoding="utf-8"))
+    check("② 两版内容各是各的",
+          "V2 = 2" in (v2 / "pkg" / "mod.py").read_text(encoding="utf-8"))
+
+    # ③ 退出码真相：解析不了该 ref 就必须非零，且 stdout 不留下任何缓存路径
+    rc, out, both = fetch("--ref", "v9.9.9")
+    check("③ 不存在的 ref → 非零退出（旧实现这里 exit 0）", rc == 3, both[-260:])
+    check("③  且 stdout 不出现任何缓存路径（不假装拿到了）", "src-code" not in out, out[-260:])
+    check("③  且 stdout 末行是显式失败声明（末行永远不会是路径）",
+          out.strip().splitlines()[-1].strip().startswith("✗ 未取得"), out[-260:])
+    check("③  且给出可用 tag 示例（agent 有可照做的下一步）", "v0.2.0" in out, out[-260:])
+
+    # ④ v 前缀容错 + 离线复用：源地址故意不可达，命中缓存就不该联网
+    rc, out, both = fetch("--ref", "0.1.0", url=str(base / "no-such-remote"))
+    check("④ 请求 0.1.0（真实 tag v0.1.0）→ 容错命中本地缓存，exit 0",
+          rc == 0 and out.strip().splitlines()[-1].strip() == str(v1_abs), both[-260:])
+    check("④  且明确标注是容错匹配的（不静默换版本）", "容错" in out, out[-260:])
+
+    # ⑤ 目录被外部改动过 → 不得静默复用；--force 才重拉
+    g(v2, "checkout", "-q", "v0.1.0")
+    rc, out, both = fetch("--ref", "v0.2.0")
+    check("⑤ 目录被外部 checkout 过 → 非零退出（不静默复用错版本）", rc == 5, both[-260:])
+    rc, out, both = fetch("--ref", "v0.2.0", "--force")
+    check("⑤  --force 重拉后内容回到该版本",
+          rc == 0 and "V2 = 2" in (v2 / "pkg" / "mod.py").read_text(encoding="utf-8"), both[-260:])
+
+    # ⑥ 并发同版本：两个进程抢同一版本 → 都成功、只产出一个目录、无残留临时克隆
+    shutil.rmtree(ws / "src-code", ignore_errors=True)
+    procs = [subprocess.Popen([sys.executable, "scripts/src_fetch.py", "demo/demo-repo",
+                               "--ref", "v0.2.0", "--url", str(up)], cwd=str(wt),
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE) for _ in range(2)]
+    outs = [p.communicate() for p in procs]
+    rcs = [p.returncode for p in procs]
+    dirs = sorted(d.name for d in repo_dir.iterdir() if d.is_dir()) if repo_dir.is_dir() else []
+    check("⑥ 并发同版本：两进程都 exit 0 且只产出一个版本目录",
+          rcs == [0, 0] and dirs == ["v0.2.0"], f"{rcs} {dirs}")
+    check("⑥  且无残留临时克隆（临时目录 + 原子 rename 生效）",
+          not list(repo_dir.glob(".tmp-*")))
+    check("⑥  且内容是请求的那个版本（半成品没被当成好版本）",
+          "V2 = 2" in (v2 / "pkg" / "mod.py").read_text(encoding="utf-8"))
+
+    # ⑦ 可观测：本地有哪些版本一眼可判定；旧布局单检出如实报告（不假装它是版本目录）
+    rc, out = py(wt, "scripts/src_fetch.py", "--list-versions")
+    check("⑦ --list-versions 报出本地已有版本（\"有没有这个版本\"可判定）",
+          rc == 0 and "v0.2.0" in out and "个版本" in out, out[-260:])
+    legacy = ws / "src-code" / "demo2" / "legacy-repo"
+    legacy.parent.mkdir(parents=True, exist_ok=True)
+    g(ws, "clone", "-q", str(up), str(legacy))
+    rc, out = py(wt, "scripts/src_fetch.py", "--list-versions")
+    check("⑦ 旧布局单检出被如实报告（不参与版本复用、也不被静默删除）",
+          "旧布局单检出" in out, out[-300:])
+
+    shutil.rmtree(base, ignore_errors=True)
+
+
 # ---------------------------------------------------------------- ⑧ metrics 闭环
 def ex_metrics_loop(root: Path):
     """metrics 的产出→入库→判据→检测→动作这条腿（2026-09-10 审计：原先只有"产出"和"入库"，
@@ -1027,6 +1155,7 @@ def main():
         ex_negative_rules(sandbox)
         ex_card_id_safety(sandbox)
         ex_shared_exec_log(sandbox)
+        ex_src_code_versions(sandbox)
         ex_metrics_loop(sandbox)
         ex_measure_path(sandbox)
         ex_holdout(sandbox)
