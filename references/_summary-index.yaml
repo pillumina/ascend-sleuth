@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-10    词条数：54
+# 生成日期：2026-09-14    词条数：70
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -168,6 +168,27 @@ entries:
   applies_to:
     platforms:
     - A5-950
+- id: aclnn-two-phase-contract
+  type: software-fact
+  title: aclnn 两段式接口契约（一阶段 GetWorkspaceSize / 二阶段执行）
+  summary: aclnn 单算子接口固定为两段：一阶段 `aclnnXxxGetWorkspaceSize` 做入参校验、动态 shape 推导、Tiling、构建 L0 计算图、算 workspace
+    大小；二阶段 `aclnnXxx` 由 nnopbase 按图选算子提交到 NPU。据此把报错与耗时按段归属：一阶段失败多为入参 …
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - interrupt
+    - performance
+- id: aicore-task-duration-anatomy
+  type: software-fact
+  title: AICore 算子 Task Duration 分段与首指令取指链（Icache/TLB/Dcache）
+  summary: profiling 里的单算子 Task Duration 由多段构成：AICore 调度器调度约 150ns、硬件初始化约 50ns、软件初始化约 1us、所有核执行结束到结果上报约
+    500ns，来源明写**这个时间不是固定的**——由 TilingData 大小、算子入参个数、算子初始化行为决定（复杂算子的 Til…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - performance
 - id: ascend-310p-known-limits
   type: platform-fact
   title: 310P（Atlas 300I Duo）平台已知限制
@@ -274,6 +295,60 @@ entries:
   applies_to:
     platforms:
     - cross
+- id: cannsim-sim-profiling
+  type: tool
+  title: cannsim 仿真性能观测（VF/算子级 cycle Trace，非上板采集）
+  summary: cannsim 以 cycle 级仿真输出 VectorFunction（VF）的执行 Trace 与 load / exec / store pipe 分布，用于上板 profiling
+    只见端到端耗时、无法归因到指令级时的进一步观测；仅支持 Ascend 950（dav-3510），且仿真的是独立最小 kernel…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
+- id: exec-npu-cmd-async-launch
+  type: software-fact
+  title: EXEC_NPU_CMD 单算子下发（V1/V2 线程归属 + 十步异步提交 TaskQueue）
+  summary: torch_npu 每个算子下发的固定展开：`task_queue_enable == 2` 走 `EXEC_NPU_CMD_V2`（参数预拷贝），否则走 V1（直接转换）；两者**只差一阶段
+    `GetWorkspaceSize` 在哪个线程执行**——V1 在主线程、V2 在消费线程，二阶段 `aclnnXxx` 两…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - performance
+    - interrupt
+- id: fractal-nz-layout
+  type: platform-fact
+  title: FRACTAL_NZ 分形排布（基本块 16×16 / FP32 16×8，K 对齐 32/sizeof(T)，N 对齐 16）
+  summary: NPU 内部计算亲和 **FRACTAL_NZ** 分形排布：基本块 FP16/BF16 为 16×16、FP32 为 16×8（M 维块恒 16，FP32 时 N 维减半）；块间按
+    N 字形（列优先）、块内按 Z 字形（Morton）排列，ND 则是行主序。对齐规则：K 维对齐到 `CUBE_SIZE/sizeof(…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - precision
+    - performance
+    - interrupt
+- id: hw-task-scheduler-routing
+  type: platform-fact
+  title: 硬件任务调度模块分派（AICore / AICpu / Sdma 三条调度通道）
+  summary: 昇腾芯片的系统任务调度模块把任务按类型分派到不同调度器：硬件队列 → 路由请求 → {AICore 调度器, AICpu 调度器, ……, Sdma 调度器} → {AIC, AIV,
+    AICpu, ……, Sdma}。即 AIC/AIV 任务走 AICore 调度器，而 AICpu 任务与 Sdma 拷贝任务**各有…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - interrupt
+    - performance
+- id: l1-l0-bank-and-conflict
+  type: platform-fact
+  title: L1/L0 片上存储的 Bank 结构与冲突（L1 双 256KiB Bank、UB bank 交织公式）
+  summary: 片上存储的内部划分决定了「搬运不快」的一类根因：L1 为 512 KiB、按 256 KiB 分成两个 Bank，跨 Bank 的访问模式会打断 MMAD；L0C 固定 256 KiB，直接决定
+    `baseM = baseN = 256` 是 tiling 上限；UB 侧存在 bank 交织（`bank = (byte…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
 - id: msprobe-accuracy-checker
   type: tool
   title: msprobe acc_check——离线精度预检（API 达标判定链路与阈值）
@@ -416,6 +491,95 @@ entries:
     - cross
     categories:
     - performance
+- id: msprof-timeline-lane-reading
+  type: tool
+  title: msprof 硬件流水时间线泳道读法（泳道名格式 / 指令名 / 时间轴三段式）
+  summary: 读 MindStudio 硬件流水时间线（Profiling 导出）的方法：每个 pipe 一条泳道，泳道名格式为 `0X.<PIPE>.<NN> [<kernel名>_<shape>_<子块>]
+    <core号>`，同一 pipe 会按子块/核拆成多条泳道；泳道上的指令块可直接读出指令名（`MOV_OUT_TO_L1`…
+  applies_to:
+    platforms:
+    - A5-950
+    - cross
+    categories:
+    - performance
+- id: mte2-preload-queue-depth
+  type: platform-fact
+  title: MTE2_PONG 指令队列深度阻塞（双缓冲下搬运流水断流）
+  summary: 启用双缓冲的矩阵乘里，每条 `MTE2_PONG` 必须等配对的 `MTE2_PING` 之后**所有指令发射完毕**才有发射机会；两条指令之间插入的指令数一旦超过芯片预设指令队列深度，即使二者无同步依赖，PONG
+    也发不出去，表现为 MTE2 流水断流。这与「搬运量大」是两回事——靠缩小 tiling 块治不好；解法…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
+- id: n-buffer-multi-level-pingpong
+  type: software-fact
+  title: N-Buffer 多级 ping/pong（L1 / L0A-L0B / L0C 各级独立配缓冲+事件标志）
+  summary: 双缓冲及以上不是只在某一级加一份缓冲，而是 L1、L0A/L0B、L0C **各级各自配一对 ping/pong**，各级用独立缓冲区索引（`l1BufId = l1PingPong
+    & 1`、`l0BufId = l0PingPong & 1`）与**独立事件标志**循环切换，才使「搬运-计算」在每一级重叠。反过来说…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
+- id: npu-arch-token-map
+  type: platform-fact
+  title: 架构标识 ↔ 平台映射（dav-3510 = Ascend 950 / dav-2201 = Ascend 910B,C）
+  summary: CANN 工具链用架构标识指定目标 NPU：`dav-3510` = Ascend 950（A5）、`dav-2201` = Ascend 910B/C（A2/A3）。该标识出现在构建配置（`NPU_ARCH`）与编译器参数（`bisheng
+    --npu-arch=dav-3510`）中——判断一份报错、一个二进制或一…
+  applies_to:
+    platforms:
+    - A5-950
+    - A2-910B
+    - A3-910C
+    categories:
+    - interrupt
+    - performance
+- id: simd-vf-programming-constraints
+  type: software-fact
+  title: SIMD Vector Function 约束集（入参白名单 / 硬循环退化 / Aux Scalar 仅整数 / UnalignReg ≤4）
+  summary: 自定义算子（Ascend C SIMD Vector Function）的一族硬约束，多数以**编译失败**或**静默退化**表现：入参类型有白名单、入参数量受 PUSH_PB 头开销限制、循环要能被识别成硬件循环否则退化为
+    software loop（控制流指令暴涨）、VF 内标量计算只允许 16/32 位整数（禁浮…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - interrupt
+    - performance
+- id: torch-npu-op-routing
+  type: software-fact
+  title: torch_npu 算子路由（PrivateUse1 注册 / redispatch / 兼容实现开关 / aclnn-aclop 分支）
+  summary: PyTorch 张量在 NPU 上的算子调用要过三层路由：①Dispatcher 从参数提取 keyset（Autograd+PrivateUse1）并取最高优先级，Autograd
+    优先于 PrivateUse1，故先命中 VariableType；②redispatch 用 `ks & after_autograd…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - interrupt
+    - performance
+    - precision
+- id: ub-capacity-and-budget
+  type: platform-fact
+  title: UB 容量口径（每 AIV 248 KiB 可用 / 每 AI Core 512 KiB）与 buffer 预算
+  summary: UB 预算判据是 `queBytes × bufNum × 队列数 ≤ UB 可用容量`，其中 `queBytes` 是**每个 buffer** 的字节数、单条队列实占 `bufNum
+    × queBytes`。dav-3510/Ascend 950 的可用值来自运行期查询：**每颗 AIV 独享 248 KiB 私有…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
+    - interrupt
+- id: unit-flag-mmad-fixpipe
+  type: software-fact
+  title: unit_flag：按 512B 块解绑 MMAD 与 FixPipe（尾轮取值 3 / 非尾轮 2）
+  summary: 当计算基本块过大占满 L0C、无法开缓存机制时，MMAD（计算）与 Fixpipe（搬出）无法并行；`unit_flag` 是指令级的解绑手段：MMAD 与 FixPipe 两侧同时配置后，计算单元每完成
+    **512B** 数据块，FixPipe 立即搬出该块，不必等全部算完。MMAD 侧 `para.unitFlag…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
+    - precision
 - id: verl-cross-validation
   type: tool
   title: verl 训推交叉打桩——Rollout Skip + 交叉验证（精度定界在训练还是推理）
@@ -453,3 +617,13 @@ entries:
     - cross
     categories:
     - precision
+- id: weight-nz-inference-only
+  type: software-fact
+  title: 权重预转 FRACTAL_NZ 只适用于推理（训练每步变权重无法预处理）
+  summary: Matmul 以 ND 传入权重时需在数据通路中**随路做格式转换**，引入额外带宽损耗；把权重提前转成 FRACTAL_NZ 可消除这部分开销、提高带宽利用率——但**只适用于推理**：训练场景权重每步变化，无法预处理，随路转换的额外耗时消不掉。收益随权重矩阵规模增大而变高。诊断含义：不要把推理侧的
+    NZ 优化建议套…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance

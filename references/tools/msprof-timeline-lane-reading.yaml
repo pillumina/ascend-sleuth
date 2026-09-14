@@ -1,0 +1,39 @@
+id: msprof-timeline-lane-reading
+type: tool
+title: msprof 硬件流水时间线泳道读法（泳道名格式 / 指令名 / 时间轴三段式）
+summary: "读 MindStudio 硬件流水时间线（Profiling 导出）的方法：每个 pipe 一条泳道，泳道名格式为 `0X.<PIPE>.<NN> [<kernel名>_<shape>_<子块>] <core号>`，同一 pipe 会按子块/核拆成多条泳道；泳道上的指令块可直接读出指令名（`MOV_OUT_TO_L1`、`MOV_SRC`、`MMAD`、`FIX_LOC_TO_DST` 等）；时间轴为 `时:分:秒.毫秒 微秒 纳秒` 三段式。判『计算闲置』只需看 `06.CUBE` 泳道是否空白而其相邻 MTE1/MTE2 段仍在活动"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/instruction_optimization/n_buffer/images/image-2.png"
+    version: "cann-samples master（Profiling 时间线截图；泳道名与指令名逐字核验）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/instruction_optimization/unit_flag/images/image-3.png"
+    version: "cann-samples master（同上，另一张时间线截图）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950, cross]
+  categories: [performance]
+
+related_references: [msprof-collect-parse, operator-bottleneck-attribution, aicore-task-duration-anatomy]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  tool_name: "msprof 导出的硬件流水时间线（MindStudio 时间线视图）的泳道读法"
+  invocation: "从 msprof 采集产物打开时间线（导出件为 trace_view.json / msprof.json，用 MindStudio Insight 或同类时间线视图打开），按泳道逐条读 pipe 占用；本词条只覆盖泳道命名与指令名的解读口径"
+  output_meaning:
+    - "泳道名格式：`0X.<PIPE>.<NN> [<kernel名>_<shape>_<子块>] <core号>`。实例：`04.MTE2.02 [n_buffer_48.4096] 1`、`06.CUBE.01 [unit_fl_...] 1`、`17.FIXP.01 [matmul_48.4096] 1`——方括号内是算子名与 shape（可据此在同一张图里区分不同算子的段），末尾是核号"
+    - "**同一 pipe 会按子块/核拆成多条泳道**：如 `03.MTE1.00` ~ `03.MTE1.03` 并列出现，读瓶颈时要看整组而不是单条"
+    - "泳道上的指令块名可直接读出执行的指令：`MOV_OUT_TO_L1`、`MOV_OUT_TO_L1_MUL`、`MOV_SRC`、`MMAD`、`FIX_LOC_TO_DST`"
+    - "时间轴标签为三段式 `时:分:秒.毫秒 微秒 纳秒`，如 `00:00:00 005 424 000` 即 5424.000 us"
+    - "判『计算闲置』的最短路径：看 `06.CUBE` 泳道是否出现空白，同时其相邻 `MTE1` / `MTE2` 段仍在活动——这就是计算等搬运（来源在 DB 样例里正是用这个特征标注『计算闲置』）"
+  pitfalls:
+    - "这套读法只解决『哪个 pipe 在等、哪条流水断了』；具体归因判据（主导占比阈值、双缓冲开启时机）见 operator-bottleneck-attribution"
+    - "看单条泳道容易被误导：`unit_flag` 样例里 kernel 总量几乎没变（86.870 → 85.907 us），只有按 pipe 分解才看得出 `fixpipe` 从 2.970 涨到 22.802 us——**不要只看 kernel 总量**"
+    - "时间线截图里同一张图可能混有多个算子的段（方括号标出算子名），跨算子比较前先按方括号筛同名 kernel"

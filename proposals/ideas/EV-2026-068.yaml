@@ -1,0 +1,86 @@
+id: EV-2026-068
+layer: L1
+title: 新知识来源首次吸收：cann-samples（GitCode）的 cannsim 仿真观测补进 reference tools 层
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-14
+source_signals:
+  - signal: new_source_type
+    evidence: >-
+      试点吸收 gitcode.com/cann/cann-samples（昇腾算子高性能样例仓）。吸收前全库 grep
+      `dav-3510|dav-2201|cannsim|NPU_ARCH` 零命中——该仓提供的**算子/VF 级性能观测**能力此前
+      不在任何层。产出 references/tools/cannsim-sim-profiling.yaml（type: tool，3 条 official-doc，
+      对样例 README、工具集总览、main.asc + CMakeLists 逐字核验）。
+    trajectory:
+      - references/tools/cannsim-sim-profiling.yaml（本轮产出）
+      - references/_summary-index.yaml（新增背景行，2.5 ② 消费点）
+      - "cann-samples Samples/3_Utilities/simulation-based-vf-profiling/README.md（来源）"
+hypothesis: >-
+  算子级观测进入 reference 后，性能类诊断在「瓶颈已收敛到自定义 Ascend C 算子 / VF」时有一条
+  可执行的观测路径（cycle 级 Trace + load/exec/store pipe 分布，补上板 profiling 只见端到端
+  耗时的盲区）；写入的四条测量前提（剥离 DataCopy、warmup 消 TLB、每个 VF 调 3 次、关闭 VF 自动
+  融合）针对的是「把搬运争用 / 冷启动噪声 / 融合改写误判成算子自身开销」这一类误诊。
+predicted_effect:
+  metric: cannsim 词条在 2.5 背景索引层的可检索性 + 内容与源的逐字一致性
+  from: 全库零 cannsim / dav-3510 命中（本轮 grep 实测）
+  to: 词条落 references/tools/ 并进入 _summary-index；检索键 cannsim 位于 title 与 summary 首部，索引行截断前可见
+  measure:
+    command: "python3 scripts/verify_references.py --check && python3 scripts/build_ref_summary_index.py --check && python3 scripts/build_procedure_index.py --check && grep -q 'title: cannsim' references/_summary-index.yaml"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 吸收前 references/tools/（24 条，无 cannsim 或算子级仿真观测相关词条）
+  success_criteria: >-
+    ①三处 CI 检查通过（verify_references + 两个索引新鲜度）；②词条在背景索引中截断前含检索键
+    cannsim；③内容与源逐字一致（三条来源均标 cross-checked-source 且在 PR 中可核）；④改动走
+    reference 层人审（review）
+  rollback: 删词条 + 重建 _summary-index（单文件回滚，无下游依赖）
+gate:
+  condition: 本卡走通全链（提取 → 核验 → 产词条 → 索引 → 验证）后，再评估其余候选（平台映射 / 版本表 / 带宽测试）是否批量吸收
+risk: low
+principle_refs: [2, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 会话内联执行，未单独记账；按同批做法以 0 计并如实标注口径
+decisions:
+  - who: agent
+    when: '2026-09-14'
+    type: proposal
+    conclusion: >-
+      用户要求试点一条验证 cann-samples 能否知识吸收 → 选 cannsim 仿真观测（候选里诊断相关度最高、
+      来源可逐字核验），产本卡并开始执行；明确不吸收算子样例代码与优化教程（属算子开发方法论，
+      混入会污染 case 的 category 与症状路由）。
+  - who: agent
+    when: '2026-09-14'
+    type: action
+    conclusion: >-
+      写入 references/tools/cannsim-sim-profiling.yaml（tool，applies_to: A5-950 / categories: performance，
+      related_references: msprof-collect-parse + a5-simd-simt-mixed）；重建 references/_summary-index.yaml
+      （55 条背景类）。源侧核验：样例 README、3_Utilities 总览、main.asc（warmup_kernel 用 Nop<8>、
+      pure_vf_kernel 无 DataCopy、每个 VF 三次调用）与 CMakeLists（cann_sample_check_arch(dav-3510)
+      + --cce-simd-vf-fusion=false）逐字对照。
+  - who: agent
+    when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      scan_review：measure 命令实跑通过（verify_references 131 条词条通过 / 两个索引新鲜 / 索引行含
+      title: cannsim）；词条零注释（grep -c '#' 为 0）；检索键前置已核（索引行的 title 与 summary 均以
+      cannsim 开头，截断发生在 pipe 分布描述之后）。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      validated（采纳，改动保留进攒批 PR 供人审）。依据：三处 CI 检查与 measure 全通、来源逐字核验、
+      该来源此前零覆盖。人审关注点：applies_to 的 platforms/categories 是否收窄过度、四条测量前提
+      是否该拆成独立 methodology。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      gate 条件已满足——本词条走通全链（提取 → 核验 → 产词条 → 索引 → 验证），按 gate 启动其余候选的
+      批量吸收，另开 EV-2026-070 承载（平台映射 / 访存带宽测试 / 样例仓构建约束）。本卡范围不扩，
+      保持"单来源试点"的边界。

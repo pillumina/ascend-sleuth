@@ -1,0 +1,30 @@
+id: mte2-preload-queue-depth
+type: platform-fact
+title: MTE2_PONG 指令队列深度阻塞（双缓冲下搬运流水断流）
+summary: "启用双缓冲的矩阵乘里，每条 `MTE2_PONG` 必须等配对的 `MTE2_PING` 之后**所有指令发射完毕**才有发射机会；两条指令之间插入的指令数一旦超过芯片预设指令队列深度，即使二者无同步依赖，PONG 也发不出去，表现为 MTE2 流水断流。这与「搬运量大」是两回事——靠缩小 tiling 块治不好；解法是 MTE2 预加载（首轮就把两组数据提前搬到 L1），让 PONG 提前发射"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/instruction_optimization/mte2_preload/README.md"
+    version: "cann-samples master（样例声明 NPU ARCH 3510）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/instruction_optimization/mte2_preload/images/image-1.png"
+    version: "同上目录的阻塞/预加载波形对比图（画面内容核验）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance]
+
+related_references: [n-buffer-multi-level-pingpong, operator-bottleneck-attribution, msprof-timeline-lane-reading]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "启用双缓冲（Double Buffer）的矩阵乘中，`MTE2_PONG` 指令的发射受一条**队列深度**约束：它必须等配对的 `MTE2_PING` 之后**所有指令全部发射完毕**才能获得发射机会。若这两条指令之间插入的指令数超过芯片预设的指令队列深度（插入量由 tiling 参数决定，如 `baseK`），**即使二者之间不存在同步依赖，`MTE2_PONG` 仍会因队列阻塞而无法发射**，表现为 MTE2 流水断流、kernel 时间明显长于按搬运量估算的值。识别要点：这不是「搬运量大」——来源明确该场景下 `KL1` 已无法进一步缩减，继续加大 tiling 块只会让插入指令更多、更糟。解法是 **MTE2 预加载**：首轮就把两组数据提前搬到 L1，使 `MTE2_PONG` 提前发射、下一轮 PING 无需等待，从而解耦这条依赖。附带一个实测对比（同 shape M=1024/K=2048/N=4096，basek=32，来源自测值，只用于理解量级）：基础 matmul `kernel=86.870us / mte2=51.857us` → n_buffer `66.000 / 37.595` → mte2_preload `53.328 / 38.916`。**芯片预设队列深度的具体数值来源未声明**，只能通过与 tiling 参数的关系做相对判断。"
+  evidence: "源 README §1.1『因此，若这两条指令之间插入的指令数量过多，超出了芯片预设的指令队列深度，即使不存在同步依赖，MTE2_PONG 指令仍会因队列阻塞而无法发射。』；§1.2『通过提前将两组数据搬运到 L1 缓存中，使 MTE2 指令得以提前发射，从而避免因指令堵塞而导致的流水线断流。』；§3.1『在相同输入规模（M=1024, K=2048, N=4096）下，将 basek 设为 32 以增加指令深度并进行性能测试』"
+  image_note: "同目录 images/image-1.png（已读图核对）：标注『指令超过队列深度，导致 Pong 指令发不出来』——`MTE2 Ping` 之后紧跟一条 `MTE2_MTE1 同步` 竖线，`MTE2 Pong` 被推到同步点之后才发射，下方 `MTE1 Ping` / `MMAD` 挤成一排；对应 image-2.png 是预加载后的同一张图，标注『优先发射 MTE2 Pong，保证指令不阻塞』，`MTE2 Pong` 紧贴 `MTE2 Ping` 之后开始。图给出的位置事实（阻塞发生在同步点之前、PONG 被后续指令挡在队列里）文字未给"

@@ -1,0 +1,32 @@
+id: aclnn-two-phase-contract
+type: software-fact
+title: aclnn 两段式接口契约（一阶段 GetWorkspaceSize / 二阶段执行）
+summary: "aclnn 单算子接口固定为两段：一阶段 `aclnnXxxGetWorkspaceSize` 做入参校验、动态 shape 推导、Tiling、构建 L0 计算图、算 workspace 大小；二阶段 `aclnnXxx` 由 nnopbase 按图选算子提交到 NPU。据此把报错与耗时按段归属：一阶段失败多为入参 / shape / tiling / workspace，二阶段失败多为 kernel 选择与 runtime 下发；Tiling 落在一阶段还是二阶段取决于该 L0 算子是否显式指定 workspace"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/0_Introduction/npu_execution/README.md"
+    version: "cann-samples master（自述 CANN 社区版 9.0.0；§二 单算子调用流程）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/0_Introduction/npu_execution/picture/aclnn二段式接口调用流程.png"
+    version: "同上目录的流程图（画面内容逐字核验）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  versions:
+    cann: "9.0.0（源文档自述）"
+  categories: [interrupt, performance]
+
+related_references: [torch-npu-op-routing, exec-npu-cmd-async-launch, msprof-collect-parse]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "CANN 单算子（aclnn）接口采用两段式，固定两个函数。**一阶段** `aclnnStatus aclnnXxxGetWorkspaceSize(const aclTensor *src, ..., aclTensor *out, ..., uint64_t *workspaceSize, aclOpExecutor **executor)` 完成四件事：入参校验、动态 shape 场景下推导输出 shape、数据切块（Tiling）、构建 L0 算子的计算图并计算执行所需 workspace 内存大小（aclnn 是 L2 接口，内部会调用多个 L0 算子接口）。**二阶段** `aclnnStatus aclnnXxx(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)` 由 nnopbase 框架按计算图选择正确的算子并提交到 NPU 执行。诊断用法：**报错与耗时就按这两段归属**——一阶段失败集中在入参 / shape 推导 / Tiling / workspace（workspace 不足类报错落在这里，且因内存复用策略，报错值不等于各 tensor 大小之和）；二阶段失败集中在 kernel 选择与 runtime 下发。两个附带的判定点：①**Tiling 的时机**由该 L0 算子是否显式指定 workspace 决定——没有显式指定且算子自身存在 workspace 时 Tiling 在一阶段完成，否则在二阶段（二阶段按 L0 算子队列依次 launch，若一阶段未做 tiling 则此时调用，否则从缓存取 tiling 结果，含 tiling key、block dim）；因此同一算子在**不同输入下「tiling 耗时算 host 侧还是下发侧」可以不同**。②**workspace 分两级**——L0 Workspace 是 L0 kernel 级、由 Tiling 计算、时机在 Tiling 阶段；L2 Workspace 是 L2 算子级、存储 aclnn 接口内部申请的 tensor 内存与 L0 Workspace、时机在 `aclOpExecutor::GetWorkspaceSize`。看到 workspace 变大要区分是 L0 tiling 结果变大还是 L2 层聚合变大，两者修法不同。"
+  evidence: "源 README §二.2：『第一阶段接口（aclnnXxxGetWorkspaceSize）：完成入参校验、动态Shape场景下推导输出Shape、数据切块（Tiling）、构建L0算子的计算图以及计算执行过程中算子所需的workspace内存大小等任务。』『第二阶段接口（aclnnXxx）：nnopbase框架按照计算图，选择正确的算子，提交到NPU上执行。』；§二.7.2：『若L0算子调用时，没有显式指定的workspace参数，且算子自身存在workspace，那么Tiling调用发生在aclnn一阶段流程中；否则Tiling发生在aclnn二阶段流程中。』；§二.4.1：『若一阶段未执行tiling，则调用tiling，否则从缓存中获取tiling结果（tiling key、block dim等）』；§二.8 两级 workspace 表（L0 Workspace → Tiling 阶段；L2 Workspace → aclOpExecutor::GetWorkspaceSize）；§二.3.2.5 workspace 计算『内存复用：生命周期不重叠的tensor共享内存』"
+  flow_summary: "流程图（同目录 picture/aclnn二段式接口调用流程.png，已读图核对）：初始化与资源申请 → 一阶段（创建 executor、构建计算图、计算 workspace 大小）→ **申请 workspace 内存** → 二阶段（执行计算图、Launch kernel、rts 模块下发 kernel 到 NPU 执行）→ 同步等待 / 释放内存 / 资源释放 / 去初始化。workspace 申请夹在两段之间，是判断 OOM 落在一阶段还是二阶段的关键位置"

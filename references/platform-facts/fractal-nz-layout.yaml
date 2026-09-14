@@ -1,0 +1,30 @@
+id: fractal-nz-layout
+type: platform-fact
+title: FRACTAL_NZ 分形排布（基本块 16×16 / FP32 16×8，K 对齐 32/sizeof(T)，N 对齐 16）
+summary: "NPU 内部计算亲和 **FRACTAL_NZ** 分形排布：基本块 FP16/BF16 为 16×16、FP32 为 16×8（M 维块恒 16，FP32 时 N 维减半）；块间按 N 字形（列优先）、块内按 Z 字形（Morton）排列，ND 则是行主序。对齐规则：K 维对齐到 `CUBE_SIZE/sizeof(T)`（即 32/sizeof(T)）、N 维对齐到 16——**对齐使实际存储大于原矩阵，GM 空间必须按对齐后尺寸分配**，否则越界；NZ 转换前必须做 Padding"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/instruction_optimization/weightnz/README.md"
+    version: "cann-samples master（样例声明 NPU ARCH 3510）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/instruction_optimization/weightnz/images/image-2.png"
+    version: "同上目录的 ND→NZ 排布与 padding 实例图（画面内容核验）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [precision, performance, interrupt]
+
+related_references: [weight-nz-inference-only, mx-quantized-matmul-constraints, operator-error-codes]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "昇腾 NPU 内部采用计算亲和的 **FRACTAL_NZ** 排布。**基本块尺寸随数据类型变化**：FP16 或 BF16 为 **16×16**；FP32 为 **16×8**（M 维块大小恒为 16，FP32 时 N 维块大小减半，K 维分块策略不变）。**排布组织**：基本块之间按 **N 字形（列优先）** 排列，块内部按 **Z 字形（Morton 顺序）** 排列；ND 排布则是行主序连续存储。**对齐规则**（代码侧）：K 维对齐到 `CUBE_SIZE / sizeof(T)`（即 **32/sizeof(T)**——FP16 时为 16、FP32 时为 8），N 维对齐到 **16**。**后果**：对齐使实际存储空间大于原始矩阵，**分配 GM 空间必须以对齐后的尺寸为准，否则越界访问**（可表现为非法地址类报错）；NZ 转换前必须做 Padding 对齐，写错会直接产生错误结果或偶发脏数据——这是「换了权重格式后精度不对」的典型来源。性能侧判据：随路 ND→NZ 转换会吃满 MTE2，预处理后该段应下降（样例 37.595 → 35.529 us 量级，源测值）。**来源未声明**其他架构上基本块尺寸是否不同。"
+  evidence: "源 README §1.2『NPU 内部计算的 FRACTAL_NZ 基本块大小根据数据类型调整：对于 FP16 或 BF16 格式，基本块大小为 16×16；对于 FP32 格式，则为 16×8。』；§2.2『内存大小变化：FRACTAL_NZ 排布因维度对齐会导致实际存储空间大于原始矩阵，分配 GM 空间时应以对齐后的尺寸为准，避免越界访问。』"
+  image_note: "同目录 images/image-2.png（已读图核对）：以 **4×4 基本块为示例**讲解转换——16×16 矩阵 ND 序号 `0 1 2 3 4 5 6 7 … 248 249 250 251 252 253 254 255` → NZ 序号 `0 1 2 3 4 16 17 18 19 … 240 241 242 243 5 6 7 8 …`；并给出 **15×14 非整倍数矩阵的 padding 实例**（ND `… 205 206 207 208 209` → NZ `… 0 0 0 0 4 5 6 7 … 12 13 0 0 26 27 0 0 …`），图上写明『当矩阵行数或列数不是4的倍数时，先 padding 到 4 对齐』。**padding 的具体实例只存在于图里**，正文只有一句『需在转换前进行 Padding 对齐』。注意图例用的是 4×4 基本块，与正文声明的基本块尺寸（16×16 / 16×8）不是同一组数字，引用时勿混"

@@ -1,0 +1,30 @@
+id: l1-l0-bank-and-conflict
+type: platform-fact
+title: L1/L0 片上存储的 Bank 结构与冲突（L1 双 256KiB Bank、UB bank 交织公式）
+summary: "片上存储的内部划分决定了「搬运不快」的一类根因：L1 为 512 KiB、按 256 KiB 分成两个 Bank，跨 Bank 的访问模式会打断 MMAD；L0C 固定 256 KiB，直接决定 `baseM = baseN = 256` 是 tiling 上限；UB 侧存在 bank 交织（`bank = (byte_offset / 32) % 16`），可用 DATA_BLOCK_COPY 的 stride padding 规避。典型表现是「MTE1 时间变短/变长与预期不符」「加块到 256 仍 MTE2 Bound」"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/matmul_story/docs/matmul_performance.md"
+    version: "cann-samples master（matmul 性能文档；自述 Ascend 950）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/memory_optimization/l1_bank_conflict/README.md"
+    version: "cann-samples master（L1 bank 冲突样例；注意该 README 的 Profiling 数字被判为不可用，只取其机制描述）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance]
+
+related_references: [ub-capacity-and-budget, operator-bottleneck-attribution, n-buffer-multi-level-pingpong]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**L1**：容量 512 KiB，按 **256 KiB 分成两个 Bank**；当访问模式使数据跨 Bank 分布不均时会产生 bank 冲突，表现为搬运流水被打断、MMAD 等待。常用规避手段是**双缓冲按半容量切分**（按 `TOTAL_L1_SIZE >> 1` 之类的半容量对齐切分 ping/pong），让每个 ping/pong 缓冲落在不同 Bank 上。**L0C**：固定 **256 KiB**，仅按单份结果空间估算 `256 × 256 × sizeof(float32) = 256KiB`，因此 **`baseM = baseN = 256` 是上限**；由于 L0C 容量限制，`baseM = baseN = 256` 时数据重复搬运量最少，但用满 L0C 就意味着**无法在 L0C 上开双缓冲**——这类场景改用 UnitFlag 提高指令并行度（见 unit_flag 词条）。诊断含义：若 tiling 的 `baseM/baseN` 已到 256 而仍然 MTE2 Bound，继续加块没有意义，要换方向。**UB 侧 bank 交织**：存在可按字节偏移计算的 bank 映射关系（形如 `bank = (byte_offset / 32) % 16`），同 bank 冲突会拖慢搬运；`DATA_BLOCK_COPY` 的 stride padding 是规避手段之一。**L0A/L0B**：各 64 KiB。**证据质量提示**：L1 bank 冲突这条机制来自该样例 README 的文字描述，但**该 README 内的 Profiling 收益数字不可用**（见本词条的 source_note）——只引用机制，不引用其收益幅度。"
+  evidence: "matmul_story/docs/matmul_performance.md：『仅按单份L0C结果空间估算，基于256KiB的L0C大小，256 × 256 × sizeof(float32) = 256KiB，最大baseM = baseN = 256』『由于L0C大小的限制，当baseM=baseN=256时数据重复搬运量最少』；l1_bank_conflict README（机制描述：L1 按 256KiB 分两个 Bank、双缓冲按半容量切分以避开冲突）；flash_attn_lite_story README 侧证容量划分：『L0C 使用 256/256 KiB』"
+  source_note: "来源质量警告（本库采集时实测）：l1_bank_conflict、scale_cache、slide_window_adaptive_template 三个样例 README 的 Profiling 表**逐字节相同**（声明了不同 shape 却共用同一基线行），scale_cache 的候选行与 l1_bank_conflict 完全相同、结论段逐字复制，且 l1_bank_conflict 的文字结论与其自身 mte1 列数字矛盾。因此本词条只保留机制，**不引用这三个样例的任何收益数字**"

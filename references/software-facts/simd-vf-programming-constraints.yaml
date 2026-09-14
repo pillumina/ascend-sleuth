@@ -1,0 +1,37 @@
+id: simd-vf-programming-constraints
+type: software-fact
+title: SIMD Vector Function 约束集（入参白名单 / 硬循环退化 / Aux Scalar 仅整数 / UnalignReg ≤4）
+summary: "自定义算子（Ascend C SIMD Vector Function）的一族硬约束，多数以**编译失败**或**静默退化**表现：入参类型有白名单、入参数量受 PUSH_PB 头开销限制、循环要能被识别成硬件循环否则退化为 software loop（控制流指令暴涨）、VF 内标量计算只允许 16/32 位整数（禁浮点）、非对齐暂存器 UnalignReg 上限 4 个、VF 内禁止直接访问 GM。遇到 VF 编译报错或「VF 明明是计算却慢」时按这张清单排查"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/hardware_features/simd_vf_constraints/README.md"
+    version: "cann-samples master（VF 约束样例；自述 Ascend 950 系列）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/hardware_features/simt/README.md"
+    version: "cann-samples master（SIMT VF 的定义、调用与传参限制）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/hardware_features/simd_vf_constraints/images/hwloop_bad_continue.png"
+    version: "cann-samples master（硬循环退化流的 Profiling 打点图；数值由委派读取者转录，未逐像素复核）"
+    fetched_at: 2026-09-14
+    verification: auto-extracted
+
+applies_to:
+  platforms: [A5-950]
+  categories: [interrupt, performance]
+
+related_references: [simt-execution-model, reg-data-movement-fault-patterns, operator-bottleneck-attribution, op-internal-sync-and-reduction]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "Ascend C 的 SIMD Vector Function（VF）有一族硬约束，按症状归类——**编译期直接失败**：①入参类型不在白名单内；②**非对齐暂存器 `UnalignReg` 最多 4 个，超出即编译失败**；③VF 内做标量/地址计算只允许 **16 位或 32 位整数**，用浮点会被拒；④**VF 内禁止直接访问 GM**（含隐式访问 Main Scalar 栈）。**性能静默退化**：①循环未被识别为**标准硬件循环**时退化成 software loop，控制流指令数暴涨（来源打点：退化版出现 `RV_SCBZI` 41ns / `RV_SJUMPI` 23ns 一类控制流指令、选区指令数 233；正常版是 `RV_VLOOPv2` 1ns / 指令数 44）——这是「VF 明明在做计算却很慢」的一类根因；②**入参数量影响 PUSH_PB 头开销**：参数压栈会占满 `PUSH_PB_SLOT0–3` 等槽位（来源打点：某 64 参数用例的 VF span 1.213 us 中 `RV_SLDI` 占 516ns / 52 次），参数越多头部开销越大。**这两个方向的判据不同**：编译失败看报错 API 名，性能退化要看 VF 打点图里的指令构成（控制流指令占比、`RV_SLDI` 次数），而不是只看耗时。**附带的可见性规则**：同一 VF 内**同名寄存器保序**、无需 `LocalMemBar`；但同一 UB 地址的先存后读**必须**插屏障（见寄存器数据搬运故障表的对应条目）——两条规则不矛盾，判据是「寄存器还是 UB 地址」。"
+  evidence: "simd_vf_constraints README（VF 入参类型白名单、`UnalignReg` 上限 4 超出即编译失败、VF 内标量仅 16/32 位整数且禁浮点、VF 内禁直访 GM 与隐式访问 Main Scalar 栈、标准硬件循环的生成要素与退化表现、入参数量与 PUSH_PB 头开销）；simt README（SIMT VF 的定义、调用与传参限制）；打点图 `images/hwloop_bad_continue.png` / `hwloop_good_standard.png` / `images/args_64float_sldi.png`（退化版与正常版的指令构成、参数槽位占用与 `RV_SLDI` 占比的量化值——这三处数值由委派读取者转录，本词条标注为 auto-extracted，reviewer 需 spot-check）"
+  pitfalls:
+    - "不要把「VF 内同名寄存器保序、无需屏障」推广成「VF 内都不需要屏障」——UB 地址上的先存后读仍必须 LocalMemBar"
+    - "硬循环退化的判据是**指令构成**（控制流指令与 `RV_SLDI` 类搬运指令占比），用总耗时会看不出来"

@@ -1,0 +1,71 @@
+id: reg-data-movement-fault-patterns
+type: fault-pattern
+title: 寄存器数据搬运静默出错速查表（12 条 + 同址读回可见性）
+summary: "「结果不对但编译通过、运行不崩」这类投诉的高命中入口：矢量寄存器与 UB 之间的搬运有一族静默错误，跨模式共性 12 条症状→根因→正解（对齐违例是唯一当场报错的一条，抛设备异常 507035），另有同一 UB 地址先存后读缺屏障的可见性问题。多数条目与「优化后精度变了」「同输入重跑结果不同」直接对应"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/memory_optimization/reg_data_movement/Reg数据搬运场景选型指南.md"
+    version: "cann-samples master（指南自述适用 Ascend 950PR/950DT，NpuArch DAV_3510）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [precision, interrupt]
+
+related_references: [operator-bottleneck-attribution, simd-vf-programming-constraints, cann-runtime-error-codes]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  patterns:
+    - pattern: 对齐搬入地址非 32B 对齐
+      symptoms: ["设备异常 507035", "507035"]
+      cause: 搬入地址未按 32B 对齐（读侧必须 32B 对齐，非对齐能力仅限写侧）
+      fix: 偏移按 VL 推进以保持 32B 对齐；变长收尾交给 mask 或 UnAlign 机制，不要靠加一个非对齐偏移
+    - pattern: 搬出尾轮 mask 全开
+      symptoms: ["输出尾部若干元素为垃圾值", "末尾数据被覆盖"]
+      cause: 尾轮未收窄 mask，垃圾 lane 覆盖了有效数据
+      fix: 用 UpdateMask<T>(count) 收窄尾轮
+    - pattern: 升降位场景按存储类型生成 mask
+      symptoms: ["开出并不存在的 lane", "升/降位结果错"]
+      cause: mask 应按计算类型生成，不是按存储类型
+      fix: mask 跟计算类型走（如 UpdateMask<float>）
+    - pattern: 降位 Cast 未显式给 SatMode
+      symptoms: ["编译失败 vcvt 静态断言", "SatMode::UNKNOWN"]
+      cause: 降位 Cast 要求显式饱和模式
+      fix: 显式指定 NO_SAT 或 SAT
+    - pattern: FIRST_ELEMENT 输出偏移按 VL 推进
+      symptoms: ["输出稀疏", "归并读到零", "方差/统计量恒 0"]
+      cause: 标量写出的偏移应按逐元素推进（+i），按 VL 推进会跳写
+      fix: 偏移改为 +i 逐元素推进
+    - pattern: dataBlockStride 按字节或元素填
+      symptoms: ["写到错误位置", "结果错位但不报错"]
+      cause: dataBlockStride 的单位是 32B 块（不是字节也不是元素，跳 64 字节填 2）
+      fix: 按 32B 块为单位换算；mask 仍是逐元素粒度（count=20 只写前 20 个元素）
+    - pattern: 把 BLOCK_COPY 的 mask 按块计算
+      symptoms: ["半块按整块处理", "多写或少写元素"]
+      cause: mask 是逐元素粒度，不是块粒度
+      fix: mask 按元素数给
+    - pattern: POST_MODE_UPDATE 之后又手动加偏移
+      symptoms: ["整段错位", "跳读"]
+      cause: UPDATE 模式地址按引用被改写，再手写 +offset 会双重推进
+      fix: UPDATE 与手动偏移二选一
+    - pattern: StoreUnAlign 漏 StoreUnAlignPost
+      symptoms: ["输出末尾少几个数", "不崩溃不报错", "尾部元素保持预填值"]
+      cause: 非对齐写出需三件套（声明 UnalignReg → 循环内 StoreUnAlign → 循环外 StoreUnAlignPost）；漏第三步则暂存器里的残余永不刷出
+      fix: 配齐三件套并让重载与 Post 配对
+    - pattern: 同一 UB 地址先存 mask 后立即读回
+      symptoms: ["概率性读到全 0", "同一输入重跑结果不同", "结果随机"]
+      cause: 缺少内存屏障，存与读之间无可见性保证
+      fix: 在同一地址的先存后读之间插 LocalMemBar<VEC_STORE, VEC_LOAD>，不可省
+    - pattern: mask 位流按「b32 每 lane 1 bit」解释
+      symptoms: ["位偏移错 4 倍", "mask 复用场景结果错"]
+      cause: MaskReg 存 UB 固定 32B（256 bit）、按 b8 粒度解释，b32 数据类型是每 4 bit 取 1
+      fix: 按固定 256 bit、b8 粒度读取；存取参数顺序相反（存时 UB 地址在前、读时 MaskReg 在前）
+    - pattern: 大张量 gather 使用 16 位索引
+      symptoms: ["高位段取到错数据", "索引溢出"]
+      cause: 索引位宽未随数据类型选择（b32/b64 数据需 u32 索引，b8/b16 才用 u16）
+      fix: b32/b64 数据配 u32 索引

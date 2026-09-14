@@ -1,0 +1,29 @@
+id: ub-capacity-and-budget
+type: platform-fact
+title: UB 容量口径（每 AIV 248 KiB 可用 / 每 AI Core 512 KiB）与 buffer 预算
+summary: "UB 预算判据是 `queBytes × bufNum × 队列数 ≤ UB 可用容量`，其中 `queBytes` 是**每个 buffer** 的字节数、单条队列实占 `bufNum × queBytes`。dav-3510/Ascend 950 的可用值来自运行期查询：**每颗 AIV 独享 248 KiB 私有 UB**（另见 SIMT 侧的『UB 总大小 256KB』与白皮书的『UB 512KB/AI Core』——三个数字是口径差异，落 buffer 数时必须用运行期查询值，不能用规格书值"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/2_Performance/flash_attn_lite_story/README.md"
+    version: "cann-samples master（SRAM 槽位占用表；自述 Ascend 950）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/hardware_features/mem_bandwidth/README.md"
+    version: "cann-samples master（环境要求与约束节；UB 容量由 GetCoreMemSize 运行期查得）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  categories: [performance, interrupt]
+
+related_references: [l1-l0-bank-and-conflict, simd-vf-programming-constraints, aicore-task-duration-anatomy]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "**UB 预算判据**：`queBytes × bufNum × 队列数 ≤ UB 可用容量`。三个易错点——①`queBytes` 是**每个 buffer** 的字节数（对应 `pipe.InitBuffer(que, bufNum, len)` 的 `len`），单条队列实际占用 `bufNum × queBytes`；②**队列数**因算子而异（例如访存测试的三个 kernel 中纯读与读写拷贝为 1、读-算-写为 2），双队列时总占用再乘 2；③`queBytes` 必须是 **32B 的正整数倍**，否则该组配置不成立。**容量口径（Ascend 950 / dav-3510）**：来源给出的数字有四个，要分清——`GetCoreMemSize` 运行期查询得 **248 KB**；flash attention 侧写明**每颗 AIV 独享 248 KiB 私有 UB（两路 AIV 各一份、不共享）**，并给出实测占用（单路 AIV 用到 225.75 / 248 KiB）；SIMT 侧写『UB 总大小为 256KB』；而平台规格层（白皮书）写的是 **UB 512KB / AI Core**。**这四个数字不矛盾但口径不同**：`/AI Core` 与 `/AIV` 是分母差异（一个 AI Core 含多路 AIV），256KB 与 248KB 之间约 8KB 的差额来源未声明。**结论（诊断口径）**：估算 buffer 数上限时**以运行期查询值为准**（248 KB 级），不要拿规格书的 512KB/AI Core 去除；UB 放不下时的典型症状是该组配置直接不成立（显式指定则报错/返回非零，批量扫描则被静默跳过）。另外，容量到顶时先到顶的往往不是 UB 而是 L0C 槽位（L0C 固定 256 KiB，放不下第 5 个 FP32 tile）。"
+  evidence: "flash_attn_lite_story README：『两路 AIV 各有 248 KiB 私有 UB，GM workspace 不计入 SRAM。』『四槽使 AIC L1 使用 384/512 KiB，L0C 使用 256/256 KiB；单路 AIV UB 使用 225.75/248 KiB。L0C 已没有继续增加完整 FP32 tile 的空间。』；mem_bandwidth README 约束条：『queBytes × bufNum × 队列数 ≤ UB 容量』『UB 容量由 GetCoreMemSize 运行期查得（dav-3510 为 248 KB）』『queBytes 为 32B 正整数倍』；口径差异对照：本库 platform-facts/a5-memory-hierarchy（白皮书：Unified Buffer 512KB/AI Core）与该样例的 SIMT 文档（UB 总大小 256KB）"

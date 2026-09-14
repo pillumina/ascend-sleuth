@@ -1,0 +1,25 @@
+id: weight-nz-inference-only
+type: software-fact
+title: 权重预转 FRACTAL_NZ 只适用于推理（训练每步变权重无法预处理）
+summary: "Matmul 以 ND 传入权重时需在数据通路中**随路做格式转换**，引入额外带宽损耗；把权重提前转成 FRACTAL_NZ 可消除这部分开销、提高带宽利用率——但**只适用于推理**：训练场景权重每步变化，无法预处理，随路转换的额外耗时消不掉。收益随权重矩阵规模增大而变高。诊断含义：不要把推理侧的 NZ 优化建议套到训练上"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/1_Features/instruction_optimization/weightnz/README.md"
+    version: "cann-samples master（样例声明 NPU ARCH 3510）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  frameworks: [pytorch, mindspore]
+  categories: [performance]
+
+related_references: [fractal-nz-layout, operator-bottleneck-attribution]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "Matmul 算子以传统 ND 排布传入权重时，需要在数据通路中**随路完成 ND→FRACTAL_NZ 的格式转换**，该过程引入额外的带宽损耗（表现为 MTE2 段被转换开销吃掉）。把自己的权重提前转换为 FRACTAL_NZ 排布可以消除这部分转换开销、充分发挥带宽利用率，且**收益随权重矩阵规模增大而变高**（大 weight 矩阵场景搬运优化收益更高）。**适用边界是这条事实的重点**：该做法**只适用于推理场景**——训练场景中权重每步更新、无法做预处理，实际把 ND 转 FRACTAL_NZ 会引入额外耗时。诊断含义：客户在**训练侧**看到 Matmul 吞吐低于推理侧、或同 shape 下训练 MTE2 偏高时，一个方向性解释就是「训练权重无法预转 NZ，随路转换开销不可消除」；反过来，**不要把推理侧的 NZ 预处理建议套到训练上**。"
+  evidence: "源 README §1.1『因此，在推理场景下，可对权重进行预处理，提前转换为FRACTAL_NZ排布，从而消除转换开销，充分发挥带宽利用率。』『但该方法仅适用于推理场景；在训练场景中，由于无法对权重进行预处理，实际将 ND 转换为FRACTAL_NZ 排布会引入额外的耗时。』"

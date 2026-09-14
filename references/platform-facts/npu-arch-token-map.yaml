@@ -1,0 +1,31 @@
+id: npu-arch-token-map
+type: platform-fact
+title: 架构标识 ↔ 平台映射（dav-3510 = Ascend 950 / dav-2201 = Ascend 910B,C）
+summary: "CANN 工具链用架构标识指定目标 NPU：`dav-3510` = Ascend 950（A5）、`dav-2201` = Ascend 910B/C（A2/A3）。该标识出现在构建配置（`NPU_ARCH`）与编译器参数（`bisheng --npu-arch=dav-3510`）中——判断一份报错、一个二进制或一条构建配置面向哪代芯片时按本表对照；本词条只登记来源明确声明的这两个取值，其他代际的标识不在其中"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/README.md"
+    version: "cann-samples master（根 README 快速入门：NPU 平台 ↔ NPU_ARCH 取值表）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/3_Utilities/simulation-based-vf-profiling/README.md"
+    version: "cann-samples master（样例编译命令行，含 bisheng --npu-arch 用法）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950, A2-910B, A3-910C]
+  versions:
+    cann: ">=9.0.0"
+  categories: [interrupt, performance]
+
+related_references: [a5-simd-simt-mixed, operator-compile-env]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "CANN 工具链用**架构标识**指定目标 NPU，两个取值与平台的对应关系是：`dav-3510` = Ascend 950（A5 代），`dav-2201` = Ascend 910B/C（A2/A3 代）。它出现在两个地方——构建配置里的 `NPU_ARCH`（`cmake -DNPU_ARCH=dav-3510`）与编译器的 `--npu-arch` 参数（`bisheng main.asc -o <out> --npu-arch=dav-3510`）。诊断用法：拿到一段面向特定代际的报错、一条构建配置或一个已编译二进制，用本表确认它面向哪代芯片，再决定注入哪个平台的先验；反过来，看到 `dav-3510` / `dav-2201` 就知道对话对象是 950 还是 910B/C。**本词条只登记来源明确声明的这两个取值**——其他代际（310P / 310B 系列等）有各自的标识、不在本表内，不要由这两个取值反推『标识只有两个』。"
+  evidence: "cann-samples 根 README『快速入门』的 NPU 平台 ↔ `NPU_ARCH` 取值表（Ascend950 → `dav-3510`；Ascend910B/C → `dav-2201`）；同仓样例 README 的独立编译命令行 `bisheng main.asc -o simulation_based_vf_profiling --npu-arch=dav-3510 -O3`，CMake 侧写法为 `--npu-arch=${NPU_ARCH}`"

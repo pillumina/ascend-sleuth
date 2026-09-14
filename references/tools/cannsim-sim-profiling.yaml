@@ -1,0 +1,51 @@
+id: cannsim-sim-profiling
+type: tool
+title: cannsim 仿真性能观测（VF/算子级 cycle Trace，非上板采集）
+summary: "cannsim 以 cycle 级仿真输出 VectorFunction（VF）的执行 Trace 与 load / exec / store pipe 分布，用于上板 profiling 只见端到端耗时、无法归因到指令级时的进一步观测；仅支持 Ascend 950（dav-3510），且仿真的是独立最小 kernel 工程——不能仿真客户的训练/推理作业"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/3_Utilities/simulation-based-vf-profiling/README.md"
+    version: "cann-samples master（样例文档，2026-06-02 提交 77e8549b）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/3_Utilities/README.md"
+    version: "cann-samples master（工具集总览）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/Samples/3_Utilities/simulation-based-vf-profiling/main.asc"
+    version: "cann-samples master（样例源码，同目录 CMakeLists.txt 一并逐字核验）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  versions:
+    cann: ">=9.0.0（cann-samples 根 README 已验证 9.0.0 / 9.1.0 社区版 Toolkit）"
+  categories: [performance]
+
+related_references: [msprof-collect-parse, a5-simd-simt-mixed]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  tool_name: "cannsim（昇腾算子仿真器；本词条覆盖其基于仿真的 VF 性能观测用途面）"
+  invocation: "先编出最小 VF kernel 可执行文件，再 `cannsim record <可执行> -s Ascend950 --gen-report` 运行并生成报告；产物为 `cannsim_<时间戳>_<可执行名>/` 目录，运行成功终端打印 `Kernel launched successfully!`"
+  commands:
+    env_check: "确认已安装 CANN Toolkit 并执行过 `${install_path}/ascend-toolkit/set_env.sh`、`cannsim` 可用、CMake 版本满足 cann-samples 根 README 要求"
+    build_cmake: "cmake -S . -B build -DNPU_ARCH=dav-3510 && cmake --build build --target simulation_based_vf_profiling"
+    record: "cannsim record ./build/Samples/3_Utilities/simulation-based-vf-profiling/simulation_based_vf_profiling -s Ascend950 --gen-report"
+    build_bisheng: "只想编单个样例时跳过 CMake：`bisheng main.asc -o simulation_based_vf_profiling --npu-arch=dav-3510 -O3 --cce-simd-vf-fusion=false`，再跑同一条 cannsim record"
+  output_meaning:
+    - "cycle 级仿真结果：VF 的执行 Trace、VF 执行周期、load / exec / store pipe 分布。它补的正是上板 profiling 的盲区——上板只能看到端到端耗时，难以判断瓶颈来自计算指令、load/store、标量控制，还是某类 single-issue 指令"
+    - "判断依据是 Trace 上的 pipe 分布与执行周期，不是端到端耗时数字：据此推断优化方向（哪条 pipe 打满、哪个 VF 周期异常）"
+  pitfalls:
+    - "平台限制：样例只支持 Ascend 950（`dav-3510`）；CMake 里的 `cann_sample_check_arch(dav-3510)` 会让其他 `NPU_ARCH` 直接跳过该样例，不是编译报错而是静默跳过——看不到目标就先用 `cmake --build build --target help` 确认目标是否存在"
+    - "测量对象边界（最易误用）：cannsim 仿真的是**独立最小 kernel 工程**，不是客户的训练/推理作业进程。客户作业没有现成 profiling 数据时，cannsim 不是替代采集手段；它只在「瓶颈已收敛到某个自定义 Ascend C 算子 / VF，需要指令级归因」时成立"
+    - "先剥离数据搬运再测：GM↔UB 的 DataCopy 与 VF 内部的 UB↔Reg 访存复用同一套 UB 读写端口，二者争用带宽、相互阻塞；测量路径里保留搬运指令，VF 实测开销会被争用污染，把搬运开销错记到 VF 头上（样例的 `pure_vf_kernel` 全程不做 DataCopy，原因即此）"
+    - "先 warmup 消 TLB 冷启动：首个 kernel 启动时其指令段与数据段尚未建立地址映射，首次访问触发 TLB Miss，这部分开销以噪声形式混入 Trace（样例先启动内部只执行 `AscendC::Nop<8>()` 的 `warmup_kernel` 完成一次页表建立）"
+    - "每个 VF 重复调用 3 次：首次调用时 VF 指令段可能尚未驻留 ICache，ICache Miss 会引入额外延迟；第 2、3 次调用才是排除 ICache Miss 的稳态干净值——只取首次调用会把冷启动算成 VF 开销"
+    - "必须关闭 VF 自动融合（编译选项 `--cce-simd-vf-fusion=false`）：编译器会依据 VF 代码内容自动合并可融合的 VF，源码里写了 3 段 VF，Trace 里可能只看到融合后的 1 段——测量对象与源码意图不一致；关闭后 Trace 才与源码一一对应"
