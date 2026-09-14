@@ -22,6 +22,7 @@ source_signals:
       - "Samples/1_Features/memory_optimization/reg_data_movement/Reg数据搬运场景选型指南.md（545 行，故障表来源）"
       - "Samples/2_Performance/rms_norm_quant_story/Story.md（性能归因与精度优化来源）"
       - "Samples/2_Performance/scalar_story/README.md（ScalarBound 统计与诊断流程来源）"
+      - "候选池原始记录（182 条 + 逐组 EXCLUDED 段，过程材料未入库）：/tmp/canns/findings/{A_instruction_optimization,B_memory_optimization,C_hardware_features,D_matmul_scalar,E_attention_moe,F_norm_simt,G_execution_model}.md"
 hypothesis: >-
   把「执行模型机制 / 片上存储与搬运机制 / 算子内同步与归约 / 性能归因判据 / 精度损失链」这五类昇腾级事实
   写入 reference 后，性能类与精度类诊断在「瓶颈已落到算子/kernel 层」时有一组可执行判据（pipe 分解与
