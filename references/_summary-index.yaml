@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-10    词条数：54
+# 生成日期：2026-09-14    词条数：55
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -274,6 +274,16 @@ entries:
   applies_to:
     platforms:
     - cross
+- id: cannsim-sim-profiling
+  type: tool
+  title: cannsim 仿真性能观测（VF/算子级 cycle Trace，非上板采集）
+  summary: cannsim 以 cycle 级仿真输出 VectorFunction（VF）的执行 Trace 与 load / exec / store pipe 分布，用于上板 profiling
+    只见端到端耗时、无法归因到指令级时的进一步观测；仅支持 Ascend 950（dav-3510），且仿真的是独立最小 kernel…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
 - id: msprobe-accuracy-checker
   type: tool
   title: msprobe acc_check——离线精度预检（API 达标判定链路与阈值）
