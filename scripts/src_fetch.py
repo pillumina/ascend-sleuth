@@ -226,15 +226,48 @@ def resolve_ref(url: str, ref: str):
     return None, f"源可达但找不到「{r}」对应的 tag/分支（已试 v 前缀容错）"
 
 
-def available_tags(url: str, limit: int = 10):
-    """可用 tag 示例（tag 名与预期不同时，给 agent 一个能照做的下一步，而不是让它去猜/去搜）。"""
+def numeric_version(name: str):
+    """tag/分支名里的前导数字版本 → (0, 26, 0)（`v0.26.0rc1` 与 `0.26.0` 都得到 (0,26,0)）。"""
+    m = re.match(r"[vV]?(\d+(?:\.\d+)*)", (name or "").strip())
+    return tuple(int(x) for x in m.group(1).split(".")) if m else ()
+
+
+def version_key(name: str):
+    """**版本序**排序 key：v0.26.0rc1 > v0.9.2rc1（按字典序则相反）。"""
+    parts = re.split(r"(\d+)", (name or "").lstrip("vV"))
+    return [(1, int(p)) if p.isdigit() else (0, p) for p in parts if p != ""]
+
+
+def available_tags(url: str):
+    """该源的全部 tag（不在这里筛选——怎么给由 tag_hint 按请求的 ref 决定）。"""
     p = git_out(["git", "ls-remote", "--tags", url])
     if p.returncode != 0:
         return []
-    tags = sorted({ln.split("\t", 1)[1].split("refs/tags/")[-1]
+    return sorted({ln.split("\t", 1)[1].split("refs/tags/")[-1]
                    for ln in p.stdout.splitlines()
                    if "\t" in ln and "refs/tags/" in ln and not ln.rstrip().endswith("^{}")})
-    return tags[-limit:]
+
+
+def tag_hint(ref: str, tags):
+    """解析不到该 ref 时给**一行能照做**的提示 → str（无话说则空串）。
+
+    真实世界发现（vllm-ascend）：0.26 系列只发了 rc，`v0.26.0` 不存在、真实 tag 是 `v0.26.0rc1`；
+    而"按字典序取末 10 个"会把 `v0.26.0rc1` 埋在 `v0.9.x` 之后——最需要它的时候恰恰没给出来。
+    所以先找**版本号相同**的（rc/后缀差异），再退到同 major.minor 系列，最后才是版本序最新若干。
+    """
+    if not tags:
+        return ""
+    base = numeric_version(ref)
+    if base:
+        same_num = sorted([t for t in tags if numeric_version(t) == base], key=version_key)
+        if same_num:
+            return f"版本号相同、只差后缀的可用 tag：{', '.join(same_num[:6])}（请求的 tag 本身不存在）"
+        if len(base) >= 2:
+            series = sorted([t for t in tags if numeric_version(t)[:2] == base[:2]], key=version_key)
+            if series:
+                return (f"同 {'.'.join(str(x) for x in base[:2])} 系列的可用 tag："
+                        f"{', '.join(series[-6:])}")
+    return f"该源版本序最新的 tag：{', '.join(sorted(tags, key=version_key)[-8:])}"
 
 
 def head_sha(path: Path):
@@ -535,9 +568,9 @@ def main() -> int:
             resolved, url_used = res, url
             break
         failures.append(f"{url}: {err}")
-        tags = available_tags(url)
-        if tags:
-            print(f"    该源可用 tag（末 {len(tags)} 个）：{', '.join(tags)}")
+        hint = tag_hint(args.ref, available_tags(url))
+        if hint:
+            print(f"    {hint}")
 
     if resolved is None:
         for line in failures:

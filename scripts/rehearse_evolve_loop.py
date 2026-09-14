@@ -534,6 +534,11 @@ def ex_src_code_versions(root: Path):
     g(up, "add", "-A")
     g(up, "commit", "-qm", "v2")
     g(up, "tag", "v0.2.0")
+    # 第三个 tag 只有 rc 形态（真实世界：vllm-ascend 的 0.26 系列只发了 rc，没有 v0.26.0）
+    (up / "pkg" / "mod.py").write_text("V3 = 3\n", encoding="utf-8")
+    g(up, "add", "-A")
+    g(up, "commit", "-qm", "v3rc")
+    g(up, "tag", "v0.3.0rc1")
     # 工作区 + linked worktree（沙箱自己无 .git，测不到"缓存锚到主检出"这点）
     ws.mkdir(parents=True)
     shutil.copytree(root / "scripts", ws / "scripts")
@@ -580,6 +585,11 @@ def ex_src_code_versions(root: Path):
     check("③  且 stdout 末行是显式失败声明（末行永远不会是路径）",
           out.strip().splitlines()[-1].strip().startswith("✗ 未取得"), out[-260:])
     check("③  且给出可用 tag 示例（agent 有可照做的下一步）", "v0.2.0" in out, out[-260:])
+
+    # ③b tag 名只差后缀（真实世界：vllm-ascend 的 0.26 系列只发了 rc）→ 提示必须点出那个 tag
+    rc, out, both = fetch("--ref", "v0.3.0")
+    check("③b 请求 v0.3.0（真实 tag 只有 v0.3.0rc1）→ 非零且提示里给出 v0.3.0rc1",
+          rc == 3 and "v0.3.0rc1" in out, both[-260:])
 
     # ④ v 前缀容错 + 离线复用：源地址故意不可达，命中缓存就不该联网
     rc, out, both = fetch("--ref", "0.1.0", url=str(base / "no-such-remote"))
