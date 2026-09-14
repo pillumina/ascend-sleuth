@@ -1,0 +1,82 @@
+id: EV-2026-070
+layer: L1
+title: cann-samples 吸收第二批：平台映射 + 访存带宽测试 + 样例仓构建约束（3 条词条）
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-14
+source_signals:
+  - signal: coverage_gap
+    evidence: >-
+      承接同轮试点（cannsim 词条）的候选清单，本轮吸收其余 3 条：①平台映射
+      （`NPU_ARCH` ↔ Ascend 950 / 910B,C，含"架构不匹配被静默跳过 → 编译期 No rule to make target"
+      这一易误判形态）；②访存带宽测试工具（GM↔UB 三条数据流逐组扫描 + msprof 换算，补
+      msprof-comm-bottleneck-thresholds 只有阈值、没有实测手段的缺口）；③样例仓构建约束
+      （Toolkit 已验证版本 + asc-devkit 子模块 pin → 头文件缺失/符号未定义类报错的成因）。
+      三条的吸收前状态：全库 grep `dav-3510|dav-2201|mem_bandwidth|asc-devkit` 零命中。
+    trajectory:
+      - references/platform-facts/npu-arch-token-map.yaml（本轮产出）
+      - references/tools/ascend-membw-gm-ub.yaml（本轮产出）
+      - references/software-facts/cann-samples-build-constraints.yaml（本轮产出）
+      - "cann-samples 根 README + mem_bandwidth README（来源，逐字核验）"
+hypothesis: >-
+  三条补入后，「构建/编译类报错」有了一条可判定的因果链（NPU_ARCH 不匹配 → 静默跳过 →
+  No rule to make target；Toolkit/子模块不符 → 头文件缺失/符号未定义），性能类问题在
+  「怀疑带宽打不满」时有一条可执行的实测路径，平台派发有了明确 token 依据。
+predicted_effect:
+  metric: 三条词条在背景索引层的可检索性 + 索引新鲜度 + 来源逐字一致性
+  from: 三条主题在全库零覆盖（本轮 grep 实测）
+  to: 三条落对应 type 目录并进入 _summary-index（58 条背景类）；检索键在 title 首部
+  measure:
+    command: "python3 scripts/verify_references.py --check && python3 scripts/build_ref_summary_index.py --check && python3 scripts/build_procedure_index.py --check && grep -q 'id: npu-arch-token-map' references/_summary-index.yaml && grep -q 'id: ascend-membw-gm-ub' references/_summary-index.yaml && grep -q 'id: cann-samples-build-constraints' references/_summary-index.yaml"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 吸收前 references/（131 条词条，三条主题零覆盖）
+  success_criteria: >-
+    ①三处 CI 检查通过；②三条词条均出现在背景索引且检索键位于 title 首部（截断前可见）；
+    ③来源逐字核验（标 cross-checked-source 且在 PR 中可核）；④来源自身的缺口如实记录
+    （mem_bandwidth README 自标 TODO：实测带宽数值 / 流水重叠深度 / 扫描耗时需真机补，
+    词条 pitfalls 明写"别引用典型带宽数值"）；⑤走 reference 层人审（review）
+  rollback: 删三个文件 + 重建 _summary-index 与 _procedure-index（词条间只有 related_references 互链，无下游依赖）
+gate:
+  condition: 三条走通全链后再评估是否把 mem_bandwidth 绑进 performance-data 采集闸门（属流程行为改动，需 ixn 门禁与单独决策，不在本卡范围）
+risk: low
+principle_refs: [2, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 会话内联执行，未单独记账；按同批做法以 0 计并如实标注口径
+decisions:
+  - who: agent
+    when: '2026-09-14'
+    type: proposal
+    conclusion: >-
+      用户要求把试点候选清单剩余项一并吸收后开一个 PR → 三条独立成词条（平台事实 / 工具 / 软件事实
+      各一条，type 判定按 _types.yaml：分别命中"平台硬事实""工具用法与输出解读""软件栈硬事实"），
+      不合并成一条大词条（合并会让 applies_to 与 categories 失去判别力）。
+  - who: agent
+    when: '2026-09-14'
+    type: action
+    conclusion: >-
+      写入三条词条并在 cannsim 词条的 related_references 补互链；重建 _summary-index（58 条）与
+      _procedure-index（14 条）。来源侧：cann-samples 根 README（快速入门表 / asc-devkit 约束节 /
+      环境部署表 / 环境自检节）与 mem_bandwidth README（数据流 / 多核 tiling / 环境要求 / 参数说明 /
+      预期输出 / 常见问题）逐字核验。
+  - who: agent
+    when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      scan_review：measure 命令实跑通过（verify_references 134 条通过 / 两索引新鲜 / 三条 id 均在背景索引）；
+      三条词条零注释（grep -c '#' 均为 0）；检索键前置已核（title 分别以 NPU_ARCH / mem_bandwidth /
+      cann-samples 开头）。未跑检索 golden：本批不改变 case 候选选择，按门禁分级属内容新增面。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      validated（采纳，改动保留进本次 PR 供人审）。依据：来源逐字核验、索引与 schema 检查全通、
+      三条各自补的是零覆盖主题。人审关注点：①npu-arch-token-map 归 platform-fact 还是 software-fact
+      （token 由 CANN 定义、事实面向平台识别，本卡按后者判为 platform-fact，两者消费点相同）；
+      ②mem_bandwidth 是否该绑进 performance-data 采集闸门（本卡明确不绑，留给后续单独决策）。

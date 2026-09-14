@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-14    词条数：55
+# 生成日期：2026-09-14    词条数：58
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -234,6 +234,16 @@ entries:
   applies_to:
     platforms:
     - cross
+- id: ascend-membw-gm-ub
+  type: tool
+  title: mem_bandwidth（NPU 访存带宽测试：GM↔UB 三条数据流逐组扫描 + msprof 换算带宽）
+  summary: mem_bandwidth：cann-samples 的最小 kernel 带宽测试样例，bw_read / bw_rw / bw_rcw 分别隔离纯读、读写拷贝、读+计算+写三条数据流，成对扫描
+    UB tile 大小与 buffer 数观察带宽随搬运粒度与缓冲深度的变化；kernel 自身不计时，带宽由 msprof…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - performance
 - id: ascend-msaicerr
   type: tool
   title: msaicerr AI Core Error 专项分析工具
@@ -274,6 +284,18 @@ entries:
   applies_to:
     platforms:
     - cross
+- id: cann-samples-build-constraints
+  type: software-fact
+  title: cann-samples 样例仓构建约束（Toolkit 版本 + asc-devkit 子模块 pin + 自检脚本）
+  summary: cann-samples 的构建受三条约束支配：社区版 CANN Toolkit 的已验证版本为 9.0.0 / 9.1.0；矩阵乘类样例依赖 asc-devkit 子模块（Ascend
+    C Tensor API 头文件）且仓库把它固定在某个 commit（不随上游自动跟进）；Tensor API 样例同时需要子模块头…
+  applies_to:
+    platforms:
+    - A5-950
+    - A2-910B
+    - A3-910C
+    categories:
+    - interrupt
 - id: cannsim-sim-profiling
   type: tool
   title: cannsim 仿真性能观测（VF/算子级 cycle Trace，非上板采集）
@@ -425,6 +447,19 @@ entries:
     platforms:
     - cross
     categories:
+    - performance
+- id: npu-arch-token-map
+  type: platform-fact
+  title: NPU_ARCH 取值 ↔ 平台映射（dav-3510 = Ascend 950 / dav-2201 = Ascend 910B,C）
+  summary: 构建与算子编译用的 NPU_ARCH 标识只有两个取值——dav-3510 对应 Ascend 950、dav-2201 对应 Ascend 910B/C；取值不合法时在 CMake
+    配置阶段以 Unsupported NPU_ARCH 报错中止，而架构不匹配的样例是**静默跳过**（配置日志一行 Skip sampl…
+  applies_to:
+    platforms:
+    - A5-950
+    - A2-910B
+    - A3-910C
+    categories:
+    - interrupt
     - performance
 - id: verl-cross-validation
   type: tool

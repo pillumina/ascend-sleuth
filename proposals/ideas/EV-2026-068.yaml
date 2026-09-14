@@ -77,3 +77,10 @@ decisions:
       validated（采纳，改动保留进攒批 PR 供人审）。依据：三处 CI 检查与 measure 全通、来源逐字核验、
       该来源此前零覆盖。人审关注点：applies_to 的 platforms/categories 是否收窄过度、四条测量前提
       是否该拆成独立 methodology。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      gate 条件已满足——本词条走通全链（提取 → 核验 → 产词条 → 索引 → 验证），按 gate 启动其余候选的
+      批量吸收，另开 EV-2026-070 承载（平台映射 / 访存带宽测试 / 样例仓构建约束）。本卡范围不扩，
+      保持"单来源试点"的边界。

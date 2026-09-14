@@ -1,0 +1,26 @@
+id: cann-samples-build-constraints
+type: software-fact
+title: cann-samples 样例仓构建约束（Toolkit 版本 + asc-devkit 子模块 pin + 自检脚本）
+summary: "cann-samples 的构建受三条约束支配：社区版 CANN Toolkit 的已验证版本为 9.0.0 / 9.1.0；矩阵乘类样例依赖 asc-devkit 子模块（Ascend C Tensor API 头文件）且仓库把它固定在某个 commit（不随上游自动跟进）；Tensor API 样例同时需要子模块头文件与 Toolkit 的 Ascend C 头文件——因此 Toolkit 版本过旧、只装 Run 包、或环境变量未 source 时会出现头文件缺失 / 符号未定义 / 编译选项报错，这三类报错先查这三条"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/cann-samples/blob/master/README.md"
+    version: "cann-samples master（环境部署版本表 / asc-devkit 子模块与 Toolkit 约束节 / 环境自检节 / 目录结构节）"
+    fetched_at: 2026-09-14
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950, A2-910B, A3-910C]
+  versions:
+    cann: "9.0.0 / 9.1.0（样例仓已验证的社区版 Toolkit）"
+  categories: [interrupt]
+
+related_references: [npu-arch-token-map, operator-compile-env]
+
+status: active
+last_verified: 2026-09-14
+
+content:
+  claim: "cann-samples 样例仓的构建由三条约束支配。①**Toolkit 版本**：仓库声明已验证通过的社区版 CANN Toolkit 为 `9.1.0`（多个时间戳构建）与 `9.0.0`，安装包形态为 `Ascend-cann-toolkit_<version>_linux-<arch>.run`（aarch64 / x86_64 各自选择），安装后必须 `source ${install_path}/ascend-toolkit/set_env.sh`。②**asc-devkit 子模块**：矩阵乘类样例引入 `third_party/asc-devkit` 子模块（Tensor API 头文件位于其 `include/tensor_api` 与 `impl/tensor_api`），仓库把子模块**固定在某个 commit**（`.gitmodules` 里记的 branch 只在维护者主动 `git submodule update --remote` 更新依赖指针时生效，普通使用禁止带 `--remote`，以免引入未经本仓适配验证的版本）；克隆时用 `--recurse-submodules`，已克隆未带子模块就 `git submodule update --init third_party/asc-devkit`。③**环境变量**：Tensor API 样例同时依赖子模块头文件与 Toolkit 的 Ascend C 头文件，故必须装**完整** Toolkit 并先 `source` 环境变量——Toolkit 版本过旧、只安装 Run 包、或环境变量未生效时，会出现**头文件缺失、符号未定义或编译选项报错**，这三类现象先按本条排查，不要当样例代码问题。仓库自带 `python3 scripts/check_env.py` 做构建前环境自检（只检查与提示，不改环境配置，也不替代正式构建）。"
+  evidence: "cann-samples 根 README：『环境部署』节列出已验证通过版本（`9.1.0` 多个时间戳 + `9.0.0`，均标 PASS）与安装/`set_env.sh` 步骤、前置依赖（cmake ≥ 3.16.0、python ≥ 3.8.0、zip、git）；『asc-devkit 子模块与 Toolkit 约束』节逐条写明子模块路径 `third_party/asc-devkit`、Tensor API 头文件位置、固定 commit 与 `--remote` 的风险、『普通执行 git submodule update --init 检出的是主仓固定的子模块 commit』、以及『Toolkit 版本过旧、仅安装 Run 包或环境变量未生效时，可能出现头文件缺失、符号未定义或编译选项报错』；『环境自检』节给出 `python3 scripts/check_env.py` 及其只检查不改环境的定位"
