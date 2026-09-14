@@ -1,0 +1,70 @@
+# ============================================================
+# EV-2026-077 —— 新诊断开屏不追旧单（相似检测改陈述、反馈债移出启动路径、三处口径收敛）
+# 来源：用户对 /diagnose 开屏体验的直接反馈 + traces/ 现状核查（aggregate only，无客户原文）
+# 触发：用户问"上一个问题未闭环进行中，现有问题分析中，会不会问？体验是不是不好"——核查后
+#       确认不是"会不会"的问题，而是三份文本互相矛盾导致行为不确定。
+# 脱敏：只含聚合计数与仓库内文件路径，不含客户现场原文。
+# ============================================================
+
+id: EV-2026-077
+layer: L2                          # 流程与 skill（diagnose / resume-diagnosis / 面板文案）
+title: "新诊断开屏不追旧单：trace 相似检测由提问改陈述、反馈债移出启动路径、三处口径收敛"
+status: validated
+authorization: review              # 触及核心 diagnose skill 行为提示与面板工具文案；可逆（git）→ review 级
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-14
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      用户反馈：开一个新 /diagnose 时会被问上一个问题的状态，用户体验不好。核查确认根因是三份文本口径不一致，而不是某一条规则本身：
+      diagnose 的脊梁已收紧为"只在同类命中时提示"，而它的步骤展开文档仍写"任何 diagnose/resume 启动先扫活跃 state 的 pending，有就先追问结果"，
+      面板注册的会话状态工具描述（常驻上下文）仍写"diagnose 流程启动时用于检查未完成 session 或 feedback 债"。
+      三者互斥 → 行为取决于本次是否加载了那份展开文档，即"有时问、有时不问"。
+      另两处加重体验问题：命中单可能没有判据（in_progress 单顶层无 summary、只有几步事件，提示会成为一句没有内容的问句）；
+      pending 的 feedback 可能积压多单（当前 10 单），逐单追问等于开屏审讯。
+    trajectory:
+      - "skills/diagnose/SKILL.md（先验 trace 相似检测一段）"
+      - "skills/diagnose/references/diagnosis-procedure.md（步骤 6 反馈捕获结构化末句）"
+      - "dsh-plugins/ascend-panel/panel-host.js（会话状态工具 description）"
+      - "skills/resume-diagnosis/SKILL.md（启动先清反馈债）"
+      - "traces/2026-08-30-13500-inprogress.yaml（in_progress、无 summary、4 条事件）"
+      - "traces/2026-08-30-15357-qwen3-precision.yaml（in_progress、feedback.case 为空值）"
+hypothesis: >-
+  把"追旧单"从新诊断的开屏移除、相似检测由阻塞式提问改为陈述加默认继续、反馈债归到续接与面板待办之后：
+  新问题的第一屏只服务新问题；同类旧单仍被发现（不丢跨会话复用），反馈债仍被清（不丢学习环），三处口径一致使行为可预期。
+predicted_effect:
+  metric: 开屏是否追问旧单 + 三处口径一致性
+  from: "三处文本互斥，行为不确定：加载了展开文档就会先追问上一单的 fix 结果，且命中单可能没有判据"
+  to: "三处一致：开屏不追问旧单；同类命中只陈述一行且不阻塞；反馈债由续接启动与面板待办承载"
+  measure:
+    command: |-
+      bash -c "if grep -rn '启动先扫\|流程启动时用于检查' skills/diagnose skills/resume-diagnosis dsh-plugins/ascend-panel/panel-host.js; then echo '仍有矛盾措辞（口径未收敛）'; exit 1; else echo '三处口径一致：无矛盾措辞'; fi"
+    expect_exit: 0
+    expect_stdout: "三处口径一致：无矛盾措辞"
+validation:
+  method: scan_review               # 指引面/文档面改动（不改变候选路由与 case 命中）→ scan + 人审，不跑检索 golden
+  baseline: "改前：三处文本互斥（grep 该判据会命中），开屏行为随展开文档是否加载而变"
+  success_criteria: >-
+    判据命令由非零转零（矛盾措辞清零）；skill 自包含与代号越界扫描仍绿；面板渲染检查与词表检查不回归。
+    行为面用**针对性探针**（门禁分级里"交互/追问/指引面"允许的形态）：同一场景（vllm-ascend 启动期超时 + 真实 traces/ 现场）各喂一次新旧文本，
+    旧文本 1/1 在开屏连问 10 笔历史 pending 反馈与"要续接吗"并停下等答复（与本卡要修的现象一致），新文本 2/2 未追问旧单、未阻塞、
+    只陈述一单可判断的同类记录后继续本次诊断。
+    强度如实标注：探针 N=3、结果由被测 agent 自报、且旧文本的行为本身就是不确定的（这正是要修的东西），因此它证明的是**方向**不是比率；
+    另**未附盲辨对照**——本次没有新增给用户看的输出文本，改的是"少问一句、不停下来"，盲辨对照（旧新两份输出择更清楚者）在这种"删除式"改动上无从判读，
+    理由记于此供 reviewer 核。判据命令只证明**文本口径收敛**，不证明体验变好——体验面靠人读措辞与后续诊断 session 的观察。
+  rollback: "skills/ 与面板文案均为单文件行内改动，git revert 即回到原措辞；相似检测是行为提示、非硬 gate，回退无功能副作用"
+gate:
+  condition: "后续诊断 session 在开屏再次追问无关旧单，或跨会话复用率因提示改陈述而下降"
+risk: medium                       # 改核心诊断流程的行为提示；可逆 → review 级，非结构级双签
+principle_refs: [5, 6, 8, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter，estimate；本次为 skill/文档/面板文案面改动，成本低。tokens: 0 只表示「未量化」，不表示零成本"
+decisions:
+  - {type: proposal, who: agent, when: "2026-09-14", conclusion: "把新诊断开屏的旧单追问改为陈述加默认继续；反馈债移出启动路径，归到续接启动与面板待办；三处口径收敛为一条"}
+  - {type: action, who: agent, when: "2026-09-14", conclusion: "改 skills/diagnose/SKILL.md（相似检测段）+ skills/diagnose/references/diagnosis-procedure.md（步骤 6 反馈债时点）+ skills/resume-diagnosis/SKILL.md（补 feedback.case 为空值这一路）+ diagnosis_state.yaml.example（case 三取值）+ dsh-plugins/ascend-panel/panel-host.js 与 README.md（工具描述与用途）+ docs/（evolution 流程图与注、git-workflow 通知机制、design-principles 硬化举例）"}
+  - {type: eval, who: agent, when: "2026-09-14", conclusion: "指引面/文档面改动——不跑检索 golden；scan + 人审。判据命令复跑为绿；行为面做针对性探针：旧文本开屏追问并阻塞，新文本未追问、未阻塞（N=3，如实标注低强度）；未附盲辨对照，理由记在 validation.success_criteria"}
+  - {type: decision, who: agent, when: "2026-09-14", conclusion: "validated（采纳）——按用户直接指示实施；判据命令已复跑为绿，三处文本一致"}

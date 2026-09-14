@@ -12,12 +12,15 @@ description: >
 
 ## 流程
 
-**先清反馈债——按 `feedback.case` 的取值分两种，别混**：扫到的 state 文件里若有 `feedback.outcome: pending`，先看 `feedback.case` 是**真实 case id** 还是占位串 `pending-investigation`（两种取值都合法，定义见 `diagnosis_state.yaml.example`）。
+**先清反馈债——按 `feedback.case` 的取值分三种，别混**：扫到的 state 文件里若有 `feedback.outcome: pending`，先看 `feedback.case` 是**真实 case id**、占位串 `pending-investigation`，还是**空值/缺失**（三种都出现过，定义见 `diagnosis_state.yaml.example`）。
 
 - **真实 case id**（上次命中 case 并给了可应用 fix）：追问“上次 <case-id> 的 fix 应用后解决了吗？（解决 / 没解决 / 部分解决）”——按结果回写该 case 的 confidence（hits/misdiagnoses/last_hit）、trace 记 `{action: feedback, case, outcome}`、把 `feedback.outcome` 从 `pending` 改成实际结果，再进入续接。
 - **占位串 `pending-investigation`**（没命中 case，只给了建议）：**不念这个占位串**（它不是 case id），也**不要求回写 confidence**（没有 case 可回写，结算脚本只会跳过它）。这类单等的是**现场材料**：按 trace 里最近一条 `evidence.missing` 与顶层 `last_action` 追问“上次要求的那几项材料拿到了吗”，把新证据接回诊断主循环。它**不是终态**——`status` 仍是 `in_progress`；结论出来时结果记在 `status` 与 `summary`，并把遗留的 `feedback.outcome: pending` 清掉（无命中单不用反馈轴承载结果，否则会出现“状态已结、反馈轴仍挂着”的两轴打架）。
+- **空值/缺失**（写了 `outcome: pending` 却没填 `case`）：**一个字都别念**——照字面追问会问出“上次 的 fix 应用后解决了吗”，读者无从判断你在指哪一单。按占位串那一路处理（问现场材料、不回写 confidence），并**顺手把这笔写清**：该单没命中就清掉 pending，确实在等材料就补成 `pending-investigation`。空值悬在那里，下次续接还得再猜一遍。
 
 状态与结局词表见仓库根的 `trace-status.yaml`（**不是** `feedback_pending` 那个旧说法）。
+
+**这份债为什么由续接来清、而不是由新诊断开屏来问**：续接续的正是那一单，问得其所；新问题的第一屏只服务新问题——`/diagnose` 若在开屏逐单追问历史 pending（积压时可能十几单），那是审讯，不是诊断。其他 pending 挂面板待办面（谁欠、哪一单、欠多久），人到那儿清。
 
 0. **先解析 trace 目录**：`python3 scripts/shared_dir.py traces` 打印的绝对路径就是本会话要读写的 `traces/`（锚在**主检出**、跨 worktree 共读）——下面所有 `traces/…` 读写都以它为准，别写相对 `traces/`。
 1. 读活跃的 `traces/*.yaml`（每个并发诊断一个文件；模板见 `diagnosis_state.yaml.example`，含 `trace` 数组）。**多个时列出让工程师选续接哪个**

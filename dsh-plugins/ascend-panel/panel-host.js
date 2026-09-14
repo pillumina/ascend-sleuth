@@ -1233,7 +1233,7 @@ return {
 
     const tool = harness.defineTool({
       name: 'ascend_trace_status',
-      description: '查询 ascend-sleuth 诊断系统当前 traces/ 状态：列出所有诊断会话（session_id/status/framework/category/active_case/feedback.outcome/步骤数/更新时间）。diagnose 流程启动时用于检查未完成 session 或 feedback 债。',
+      description: '查询 ascend-sleuth 诊断系统当前 traces/ 状态：列出所有诊断会话（session_id/status/framework/category/active_case/feedback.outcome/步骤数/更新时间）。用于诊断收尾核对、续接（/skill:resume-diagnosis）与面板待办时查看会话状态与待回报的反馈债。注意：它不是新诊断开屏的必查项——新问题的第一屏只服务新问题，别在开屏逐单追问历史 pending。',
       parameters: {
         type: 'object',
         properties: {
@@ -1295,7 +1295,9 @@ return {
         }
       },
     })
-    // 注册诊断状态工具（diagnose 启动时查未完成 session / feedback 债）。
+    // 注册会话状态工具（面板与诊断收尾/续接时核对会话状态与待回报的反馈债；
+    // **不是新诊断开屏的必查项**——旧描述把它说成"新诊断一启动就该查会话与反馈债"，
+    // 与 skill 里"开屏不追问旧单"的口径相反，会把 agent 带成开屏先审旧单）。
     // 重名必须降级而不是抛：registerTool 在名字已被占用时**同步抛错**，会把整个
     // apply() 打断——面板的 tab/RPC 全部注册不上，只因为一个顺手带的工具撞了名。
     // 占用者通常是上一次会话遗留的同类插件（host 侧已看不到、无法 stop），

@@ -29,7 +29,13 @@ description: >
 
 > 每步只写「做什么 + 何时用」；**子步骤与判定细节**见 `references/diagnosis-procedure.md` 对应「步骤 N」。核心循环 = 收集 →（数据缺口则取采集面）→ 路由 → 两阶段加载+2.5 reference → 验证 → (未命中)深度排查 → 产出。
 
-> **先验 trace 相似检测**（收集症状后、路由前）：扫 `traces/*.yaml`（**全部 status**——进行中+已闭环都留在 `traces/`），按症状里的模型/框架/配置名/category 对每个 state 文件的 `summary`/`detected_framework`/`detected_category` 做**词法 grep 匹配**。命中且 `status: in_progress` → "本地有同问题进行中 `<session_id>`（<summary>）。要 `/skill:resume-diagnosis` 续接吗？"；命中且已 `resolved`/`escalated`/`archived` → "上次同类 `<session_id>` 已定位（<summary>）。参考其结论还是重新定位？"；无匹配 → 正常从路由开始。**不再泛泛问"有未完成诊断要续接吗"**（旧提示对无关 session 是噪音）。状态词表见仓库根 `trace-status.yaml`。
+> **先验 trace 相似检测**（收集症状后、路由前）：扫 `traces/*.yaml`（**全部 status**——进行中+已闭环都留在 `traces/`），按症状里的模型/框架/配置名/category 对每个 state 文件的 `summary`/`detected_framework`/`detected_category` 做**词法 grep 匹配**。
+> - **陈述，不提问**：命中就**说一句**——"本地有 `<session_id>`，停在 <哪一步 / 结论一行>"——然后**在同一条消息里继续按本次问题往下走**。工程师回"就是这个"再切 `/skill:resume-diagnosis`。**不要写成"要续接吗？"**：那是把判断推给一个手上没有上下文的人，还把新问题卡在路由之前等答复。
+> - **有判据才提**：命中单的 `summary` 为空、或 trace 只有寥寥几步（裸 stub）时不提——念一个没有内容的 session，等于让工程师替你判断哪一单。
+> - **一轮最多提一次**，不随步骤重复。
+> - **只提同类**：匹配维度是模型/框架/配置名/category，同框架下的无关问题命中就是噪音；已 `resolved`/`escalated`/`archived` 的同类单同样只陈述（给结论一行供参考），不拦路、不泛泛问"有未完成诊断要续接吗"。
+> - **不在这里追旧单的反馈**：`feedback.outcome: pending` 是上一单的事，与本次问题无关——它挂在续接启动与面板待办上（口径见 `references/diagnosis-procedure.md` 步骤 6）。开屏先审旧单是审讯，不是诊断。
+> - 状态词表见仓库根 `trace-status.yaml`。
 
 1. **收集症状 + 确认框架**（全部来自工程师提供）：错误/环境变量/版本组合(引擎+CANN+HDK+架构)；**信息不全就主动问**；**主动裁剪日志**（失败 rank + 栈尾，绝不灌全量 profiler）。→ 展开见 reference 步骤 1。
 2. **分类 → `triage-tree.yaml`（Tier 1）**：症状匹配分支 → 路由 namespace；triage 决策记 trace；未命中 → 语义兜底 `triage_semantic`；无法分类 → Tier 3。→ 展开见 reference 步骤 2。
