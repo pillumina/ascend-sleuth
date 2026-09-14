@@ -1,11 +1,11 @@
 id: EV-2026-071
 layer: L1
 title: cann-samples 系统性挖掘后的知识吸收（7 组并行读取 → 18 条 Ascend 级词条）
-status: validated
+status: superseded
 authorization: review
 dimension: process
 supersedes: []
-superseded_by: null
+superseded_by: EV-2026-075
 created_at: 2026-09-14
 source_signals:
   - signal: coverage_gap

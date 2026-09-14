@@ -1,0 +1,85 @@
+id: EV-2026-075
+layer: L2
+title: EV 卡准入收窄为四类（常规 reference 导入豁免）+ cann-samples 吸收批次归档（汇总 5 张导入卡）
+status: validated
+authorization: review
+dimension: process
+supersedes: [EV-2026-068, EV-2026-070, EV-2026-071, EV-2026-072, EV-2026-073]
+superseded_by: null
+created_at: 2026-09-14
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      owner 提出「reference 合入也要开 EV，是不是太多了」——核实成立且问题比"多"更具体：
+      同一轮 cann-samples 吸收开出 6 张导入卡共 512 行 YAML，其中 **6 张的 `predicted_effect.measure`
+      是同一条命令**（`verify_references --check && build_ref_summary_index --check && ...`），
+      即预测退化成"CI 能过"。规则原文（本协议第 3.5 步）把范围写成"任何把执行结果固化为会进
+      诊断上下文的资产的动作"，按字面每条 reference 都命中；而它想治的病（归纳先执行后补卡）
+      只涉及**从数据推断**的动作。旁证：卡池 73 张里轨迹只指向 `references/` 的仅这 6 张
+      （全部来自本次吸收），说明历史上常规导入并不开卡——是规则扩写与执行口径一起放大了成本。
+    trajectory:
+      - skills/evolve-check/SKILL.md 第 3.5 步（规则原文与本次修订）
+      - "proposals/ideas/EV-2026-068|070|071|072|073.yaml（被本卡归档的 5 张导入卡）"
+      - "references/ 本批次新增词条 44 条（#206 的 20 条 + #207 的 24 条）"
+hypothesis: >-
+  把"必须产卡"限定为四类（从数据推断的归纳 / 改行为面 / 修订 active 内容 / 索引口径机制），
+  并豁免来源明确的常规参考知识导入后：①贡献者提一条 reference 只需 词条 + reference PR 模板
+  （该模板的五个区块本就是决策记录：变更类型 / 词条清单 / 来源与验证状态 / 聚类检查 / 预核意见）；
+  ②卡池不再被"预测＝CI 通过"的仪式卡稀释，面板上的卡重新对应真正做过取舍的演进动作；
+  ③规则只写在 `skills/evolve-check/SKILL.md` 一处，改一处即生效（已 grep 确认无第二处复述）。
+predicted_effect:
+  metric: 规则文本是否已收窄、卡池是否清掉导入类仪式卡、四道校验是否仍全绿
+  from: 规则含"任何…资产的动作"的宽口径；6 张导入卡（512 行）且 measure 同质
+  to: 规则限定四类 + 明写豁免与理由；5 张导入卡由 1 张批次卡汇总（净减 4 张）
+  measure:
+    command: "grep -q '豁免：来源明确的常规参考知识导入' skills/evolve-check/SKILL.md && ! grep -q '任何\"把执行结果固化为会进诊断上下文的资产\"' skills/evolve-check/SKILL.md && python3 scripts/verify_proposals.py --check && python3 scripts/verify_references.py --check"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 修订前规则文本 + 6 张导入卡（EV-2026-068/070/071/072/073/074）
+  success_criteria: >-
+    ①规则文本收窄且不含宽口径句；②`skills/` 卫生不变（零 ADR 编号 / 零日期 / 零 EV 卡号，与 CI
+    skill-self-contained 同判据）；③5 张导入卡标 superseded 并指向本卡，`EV-2026-074`（修订 active
+    内容的卡）**不并入**——它属于四类中的第③类，规则收窄后仍需卡；④卡校验与 reference 校验全绿；
+    ⑤doc 索引与 README 名单不因 skill 正文改动而红
+  rollback: git revert 本 PR（单文件规则段 + 卡状态改动，无下游依赖）
+gate:
+  condition: owner 已选「四类必须、其余豁免」+「存量合并成一张批次卡」，按要求执行
+risk: medium
+principle_refs: [4, 6, 9, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 会话内联执行，按同批做法以 0 计并如实标注口径
+decisions:
+  - who: agent
+    when: '2026-09-14'
+    type: proposal
+    conclusion: >-
+      owner 质疑「reference 合入也要开 EV」过重 → 先取证（6 张卡 measure 同质、规则仅一处、
+      CI 不强制、历史上常规导入不开卡），判定问题在**规则范围写宽**而非执行偏差；提出四类限定 +
+      导入豁免。owner 选定该方案并要求把存量合并成一张批次卡。
+  - who: agent
+    when: '2026-09-14'
+    type: action
+    conclusion: >-
+      ①修订 `skills/evolve-check/SKILL.md` 第 3.5 步的准入条：范围限定四类、明写导入豁免与理由
+      （并保留"有真信号才产卡"的收尾口径）；②本卡同时作为 cann-samples 吸收的**批次归档卡**，
+      supersedes EV-2026-068/070/071/072/073，五张卡置 `status: superseded` + 指向本卡；
+      ③`EV-2026-074` 保持独立（修订 active 内容属四类之③）。
+  - who: agent
+    when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      scan_review：measure 命令实跑通过（新规则句在位、宽口径句已消失、卡校验与 reference 校验全绿）；
+      `skills/evolve-check/SKILL.md` 卫生检查（ADR 编号 / 日期 / EV 卡号）零命中；`build_docs_index.py
+      --check` 不受影响；卡池由 73 张变为 69 张（-5 张归档 +1 张本卡），无悬挂 supersede 引用。
+      未跑检索 golden：本改动不触及 triage 分支、两阶段加载与候选选择。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      validated（采纳）。依据：owner 明确选定方案 + 规则只在一处 + 校验全绿 + 不改变诊断行为。
+      人审关注点：①豁免的边界是否够紧（"不改行为面"由谁判定——本卡按"是否改变命中/加载行为"给判据，
+      表族追加明确算行为面）；②是否需要给 reference PR 模板补一句"导入无需 EV 卡"的指引，
+      以免贡献者仍按旧口径开卡（本卡未改模板，留给 reviewer 决定）。

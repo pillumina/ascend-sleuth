@@ -1,11 +1,11 @@
 id: EV-2026-073
 layer: L1
 title: cann-samples 第三批吸收：VF 屏障与死锁 / 调参与建模判据 / 同步分工与 L2 机制（12 条）
-status: validated
+status: superseded
 authorization: review
 dimension: process
 supersedes: []
-superseded_by: null
+superseded_by: EV-2026-075
 created_at: 2026-09-14
 source_signals:
   - signal: coverage_gap
