@@ -190,6 +190,17 @@ return {
       if (!v || EMPTY_CASE.test(v)) return null
       return PLACEHOLDER_CASE.test(v) ? 'placeholder' : 'case'
     }
+    // 报告名的归一：契约是"文件名（与 trace 同目录）"，但 trace 里常被写成**带目录的路径**
+    // （`traces/x.report.md`、`traces\x.report.md`、`./traces/x.report.md`、`C:/repo/traces/x.report.md`）。
+    // 而面板读报告与"打开报告"时统一在 `traces/` 下拼路径——这类写法于是拼成 `traces/traces/…`
+    // （实测症状：点「打开报告」后资源管理器找的是 `…\ascend-sleuth\traces\traces\…`）。
+    // 所以这里把 `traces/` 及其之前的部分剥掉，只留 traces/ 内的相对名。
+    function normalizeReportName(value) {
+      const s = String(value == null ? '' : value).trim().replace(/\\/g, '/').replace(/^\.\//, '')
+      if (!s) return null
+      const m = /(?:^|\/)traces\/(.+)$/.exec(s)
+      return m ? m[1] : s
+    }
     // 报告入口指向哪个文件：trace 里记的 `report_file`（**顶层与 report 事件里都认**）→ 退到同名规则。
     //
     // 为什么要认两种来源（2026-09-14 实测）：trace 写作文档给的是**事件内**写法
@@ -198,12 +209,12 @@ return {
     // 就有（真点得到），缺的是"入口先出现"这一步。`fileNames` 给 traces/ 的条目名集合；
     // 传 null 表示不查存在性（读报告时用，真读不到会有明确的读失败）。
     function reportFileOf(doc, fileNames, traceFile) {
-      const recorded = doc && doc.report_file ? String(doc.report_file) : null
+      const recorded = normalizeReportName(doc && doc.report_file)
       if (recorded) return { name: recorded, source: 'trace' }
       const events = doc && Array.isArray(doc.trace) ? doc.trace : []
       for (let i = events.length - 1; i >= 0; i--) {
-        const ev = events[i]
-        if (ev && ev.report_file) return { name: String(ev.report_file), source: 'trace' }
+        const name = normalizeReportName(events[i] && events[i].report_file)
+        if (name) return { name: name, source: 'trace' }
       }
       const base = String(traceFile || '').replace(/\.yaml$/, '')
       const sid = doc && doc.session_id ? String(doc.session_id) : ''
