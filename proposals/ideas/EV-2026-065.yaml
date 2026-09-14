@@ -43,7 +43,7 @@ hypothesis: >-
 predicted_effect:
   metric: 源码缓存三条不变量的离线断言数（版本共存不互相污染 / 退出码与真实产出一致 / 跨 worktree 共享）
   from: "0 条：三条不变量此前无任何断言（演练断言总数 141，无一条触及 src_fetch）"
-  to: "19 条全绿（演练断言总数 141 → 160）"
+  to: "22 条全绿（演练断言总数 141 → 163）"
   measure:
     command: "python3 scripts/rehearse_evolve_loop.py"
     expect_exit: 0
@@ -63,7 +63,7 @@ validation:
     且内容未变；`--ref` 给不存在的 tag → exit 3 且 stdout 无任何路径、附可用 tag；目录被外部 checkout
     过 → exit 5（不再静默复用）。
   success_criteria: >-
-    ① measure 命令 exit 0 且新增 [E15] 段断言全绿（19 条）；②三条不变量各有正例与负例：两个版本先后
+    ① measure 命令 exit 0 且新增 [E15] 段断言全绿（22 条）；②三条不变量各有正例与负例：两个版本先后
     拉取后**前者仍在原位且内容未变**；请求不存在的 ref → **非零退出（3）且 stdout 不出现任何缓存路径**，
     并列出可用 tag；`--ref 0.1.0`（真实 tag `v0.1.0`）容错命中且**标注了是容错匹配**；目录被外部
     checkout 过 → 非零（5），`--force` 后内容回到该版本；③跨 worktree：从 linked worktree 拉取，缓存
@@ -107,7 +107,7 @@ decisions:
       原子 rename（并发同版本时失败者复用赢家）；新增 `--list-versions`（本地有哪些版本一眼可判定）
       与 `--prune`（手工删，无自动 GC）。②`scripts/exec_log_path.py` 增 `SRC_CODE_REL` /
       `resolve_src_code` / `describe_src`，复用既有 `main_checkout`——不新抄一份路径语义。
-      ③`scripts/rehearse_evolve_loop.py` 增 [E15] 段（19 条断言，本地假上游 + 真 linked worktree，全程离线）。
+      ③`scripts/rehearse_evolve_loop.py` 增 [E15] 段（22 条断言，本地假上游 + 真 linked worktree，全程离线）。
       ④`diagnose`/`resume-diagnosis` skill 的源码分析节改写为"按版本取 + 退出码即契约 + 别用 web 搜索
       代替源码"，`CLAUDE.md` 的 `source_ref` 段与 `docs/demo-walkthrough.md` 同步新布局。
   - who: agent
@@ -117,7 +117,7 @@ decisions:
       验证：①**行为复现（改前 vs 改后，本地假上游、不起网络）**：旧实现先拉 v0.1.0、再以 `--ref 0.2.0`
       请求（真实 tag v0.2.0）→ `couldn't find remote ref 0.2.0` + `pathspec 0.2.0 did not match` 两条
       失败，仍打印"复用 <路径>（当前检出 v0.1.0）"并 **exit 0**，而那个目录里确实是 v0.1.0；新实现同
-      命令解析到 v0.2.0、产出 v0.2.0 目录，v0.1.0 目录原位不动。②演练 [E15] 19/19，断言总数 141 → 160
+      命令解析到 v0.2.0、产出 v0.2.0 目录，v0.1.0 目录原位不动。②演练 [E15] 22/22，断言总数 141 → 163
       全绿（measure 命令；并经 `scripts/ev_measure.py EV-2026-065 --run` 实测判符合）。③本地复跑
       CI 全体：build_index / triage-tree / verify_references / build_ref_summary_index /
       build_procedure_index / verify_metrics / build_timeline / verify_proposals / build_docs_index /
@@ -136,6 +136,18 @@ decisions:
       → 把 `v0.26.0rc1` 埋在 `v0.9.x` 之后，等于在最需要它的时候没给答案；已改成"先找版本号相同、
       只差后缀的 tag"，并把这条差异补成断言 [E15]③b（请求 v0.3.0 → 提示必须给出 v0.3.0rc1）。
       这也解释了用户报的场景：`0.26.0` 对应上游 `v0.26.0rc1`。
+      ⑦**worktree 清理不丢缓存（本卡目标本身，改前改后各测一遍真仓库）**：先建一个取自未修复 main 的
+      一次性 worktree → 它把 vllm-ascend clone 进了**自己**的检出（57 MB，主检出缓存未见增长），
+      `git worktree remove` 之后那 57 MB **随之消失**；同一操作在修复后的分支上：一次性 worktree 里
+      请求 v0.23.0 → 命中主检出缓存（117 MB **未增长**、worktree 内不产生 src-code），删掉该 worktree 后
+      缓存仍在，**源不可达也能离线复用**（exit 0）。该不变量已固化为演练 [E15]⑧（3 条断言）。
+      ⑧**顺带更正一条会误导人的旧说法**：`exec_log_path.py` 原写"收工 remove 甚至要 `--force`，因为那份
+      未跟踪文件"——实测（git 2.39）gitignore 的未跟踪件**不计入 dirty，既不阻止 remove 也不报错**，随
+      worktree **静默**一并被删（对照：已跟踪且被修改的文件才会被 git 拦下并提示 `--force`）。即这条丢失
+      路径比原先以为的更安静，已按实测更正该注释并在 CLAUDE.md 的 worktree 纪律里写明分流规则
+      （跨 session 复用的锚到主检出；`traces/`、`proposals/` 运行时目录、`.s2-replay/` 等仍在检出内、随
+      worktree 静默消失）。**未在本卡范围内修的同类缺口**：那些"仍在检出内"的运行时件——它们的写侧是
+      agent 按 prose 写相对路径，修法与 owner 都不同，另立变更处理，不在本 PR 混入。
   - who: agent
     when: '2026-09-14'
     type: decision

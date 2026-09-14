@@ -109,7 +109,8 @@ Golden-case 回归套件在 `eval/golden/`：公开仓只放构造示例，真�
 
 - **必须在独立 worktree 中干活**：`git worktree add <路径> <自己的 kb/* 分支>`，禁止在主检出目录修改或提交；同一分支同时只能被一个 worktree 检出。
 - **不隔离的面在合流时显式解决**：refs（分支名 `kb/<用途>` 全局唯一）与共享状态文件（`ingest-state.json` 的 processed、`metrics/timeline.yaml`、`knowledge/_index.yaml`、`postmortems/inbox/`）在各分支各一份，靠 PR merge 合并，不靠覆盖。
-- **exec-log 是"同一克隆共享"的运行时件**：路径由 `scripts/exec_log_path.py` 解析到主检出，所有 worktree 共读共写；它是 read-modify-write，**写侧持 flock**（无锁实测：16 次写入只剩 3 条）。读法一律走 `scripts/tail_exec_log.py`，别直接改写。
+- **未进 git 的运行时件按"是否跨 session 复用"分流**（路径解析的单一事实源是 `scripts/exec_log_path.py`）：跨 session 复用的——exec-log、EV 卡实测记录、`src-code/` 源码缓存——**锚到主检出**，所有 worktree 共读共写；仍在检出内的——`traces/`、`diagnosis_state*.yaml`、`proposals/` 运行时目录、`.s2-replay/` 等——**随 worktree 一起消失**，且 `git worktree remove` 对 gitignore 件**无提示、也不需要 `--force`** 就直接删（把它想成"未跟踪文件会被 git 拦住"是错的），所以收工前先确认这些目录里没有还需要的东西。
+- **exec-log 的读写纪律**：路径解析到主检出、所有 worktree 共写共读；它是 read-modify-write，**写侧持 flock**（无锁实测：16 次写入只剩 3 条）。读法一律走 `scripts/tail_exec_log.py`，别直接改写。
 - **串行与收工纪律**：`ingest-state.json` 的 fetch / `--mark-imported` / 游标更新无锁，必须串行；groom 清空 inbox 前先确认无其他 session 未提交草稿；开工 `git fetch origin` 确认最新，收工前提交或 stash，不留未提交改动。
 
 完整约定（含多 session 并行的边界与锁原语）见 `docs/git-workflow.md`。

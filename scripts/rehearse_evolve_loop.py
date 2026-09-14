@@ -631,6 +631,18 @@ def ex_src_code_versions(root: Path):
     check("⑦ 旧布局单检出被如实报告（不参与版本复用、也不被静默删除）",
           "旧布局单检出" in out, out[-300:])
 
+    # ⑧ worktree 清理不丢缓存（**本卡的目标之一**：未进 git 的本地缓存不能随 worktree 一起消失）
+    #    修前实测：缓存落在执行脚本的那个检出里，worktree 一删（git 甚至要求 --force，正因为那份
+    #    未跟踪文件）缓存随之消失——下一次诊断得重新 clone。
+    g(ws, "worktree", "remove", "--force", str(wt))
+    check("⑧ worktree 已移除", not wt.exists())
+    check("⑧  且主检出里的版本目录仍在、内容未变（缓存没跟着走）",
+          v2.is_dir() and "V2 = 2" in (v2 / "pkg" / "mod.py").read_text(encoding="utf-8"))
+    rc, out = py(ws, "scripts/src_fetch.py", "demo/demo-repo", "--ref", "v0.2.0",
+                 "--url", str(base / "no-such-remote"))
+    check("⑧  且从主检出仍能离线复用该版本（源不可达也取得）",
+          rc == 0 and out.strip().splitlines()[-1].strip() == str(v2.resolve()), out[-260:])
+
     shutil.rmtree(base, ignore_errors=True)
 
 
