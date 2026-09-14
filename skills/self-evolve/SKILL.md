@@ -116,7 +116,7 @@ dual 双签 + kb/high-risk，步骤级小调 review。
 ## 报告
 
 本轮产出汇总：目标态 → 结果对照、产了几张卡（标注来源：evolve-check 伴随 vs 深度轮）、
-验证依据、成本、下一步建议。报告落 `proposals/reviews/`（运行时 gitignore）。
+验证依据、成本、下一步建议。报告落 `proposals/reviews/`（运行时 gitignore；**路径先 `python3 scripts/shared_dir.py proposals-reviews` 解析**——`proposals/{sessions,tasks,reviews,experiments}/` 锚在主检出、跨 worktree 共读，写相对路径的记录面板看不到、清 worktree 就丢）。
 
 ## 边界（不做）
 

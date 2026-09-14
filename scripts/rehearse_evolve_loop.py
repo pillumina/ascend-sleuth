@@ -492,7 +492,38 @@ def ex_shared_exec_log(root: Path):
     # ⑤ 无 git 环境退化为检出内路径（沙箱/CI 的隔离性）
     rc, out = py(root, "scripts/tail_exec_log.py")
     check("无 git 沙箱退化为检出内路径（隔离不被破坏）", "检出内" in out, out[-200:])
-    for p in (demo, wt2):
+
+    # ⑥ 检出侧运行时件（traces / inbox / proposals 运行时目录）：读写都锚到主检出。
+    #    这些件的写侧是 agent 按 prose 写相对路径（`traces/<session>.yaml`、`postmortems/inbox/…`），
+    #    所以在 worktree 里干活就会写进一个"主检出看不到、清 worktree 就丢"的地方——traces 尤其致命
+    #    （误诊归因的唯一依据）。这里用 shared_dir.py（agent 侧入口）+ 读侧脚本各验一遍。
+    sid = "probe-session"
+    (demo / "traces").mkdir(exist_ok=True)
+    (demo / "traces" / f"{sid}.yaml").write_text(
+        "session_id: probe\nstatus: in_progress\ntrace: []\n", encoding="utf-8")
+    want = str((demo / "traces").resolve())
+    rc, out = py(wt2, "scripts/shared_dir.py", "traces")
+    check("⑥ worktree 里解析 traces → 给出主检出那一份",
+          rc == 0 and out.strip().splitlines()[-1].strip() == want, out[-260:])
+    check("⑥  且 worktree 内不产生 traces/（没写进会被清掉的地方）", not (wt2 / "traces").exists())
+    rc, out = py(wt2, "scripts/shared_dir.py", "--list")
+    check("⑥ --list 一次列出全部运行时件与落点（inbox / proposals 运行时目录在内）",
+          rc == 0 and "inbox" in out and "proposals-sessions" in out and str(demo) in out, out[-260:])
+    rc, out = py(wt2, "scripts/trace_metrics.py", "--emit-yaml-only")
+    check("⑥ 读侧脚本在 worktree 里读到主检出的 trace（不是空跑成 0）",
+          rc == 0 and "sessions_total: 1" in out, out[-260:])
+    outside = root.parent / "outside-no-repo"
+    outside.mkdir(parents=True, exist_ok=True)
+    rc, out = py(wt2, "scripts/trace_metrics.py", "--emit-yaml-only", "--root", str(outside))
+    check("⑥ 对照：仓外目录（无 git）如实说没有 trace——不是把任何路径都读成主检出",
+          "未找到任何 traces" in out, out[-200:])
+    _sp.run(["git", "worktree", "remove", "--force", str(wt2)], cwd=demo, check=True)
+    rc, out = py(demo, "scripts/shared_dir.py", "traces")
+    check("⑥ worktree 被清后共享 traces 与解析结果都还在",
+          (demo / "traces" / f"{sid}.yaml").exists()
+          and out.strip().splitlines()[-1].strip() == want, out[-260:])
+
+    for p in (demo, wt2, outside):
         _sh.rmtree(p, ignore_errors=True)
 
 

@@ -35,8 +35,9 @@ from pathlib import Path
 import yaml
 
 from _stdio import write_text_lf
+from exec_log_path import resolve_traces
 
-TRACES_DIR = Path("traces")
+TRACES_DIR = Path("traces")   # 相对名；实际取哪一份由 resolve_traces() 决定（主检出共享侧）
 
 
 def iso_week_now():
@@ -182,7 +183,7 @@ def main():
     ap.add_argument("--apply", action="store_true", help="写回 case YAML（默认 dry-run）")
     ap.add_argument("--root", default="knowledge", help="knowledge 根目录（默认 knowledge/；测试用副本）")
     args = ap.parse_args()
-    settle(TRACES_DIR, Path(args.state), args.apply, Path(args.root))
+    settle(resolve_traces(Path.cwd()), Path(args.state), args.apply, Path(args.root))
 
 
 if __name__ == "__main__":

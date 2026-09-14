@@ -135,6 +135,50 @@ def describe_src(path: Path, where: str) -> str:
     return f"{path}（{WHERE_LABEL_SRC.get(where, where)}）"
 
 
+# ---------------------------------------------------------------- 检出侧运行时件的统一解析
+# 除上面三件**文件**外，还有若干**目录**级运行时件（下表）。它们与"跨 session 复用"同一条语义，
+# 但写侧常常是 agent 按 prose 写相对路径（`traces/<session>.yaml`、`postmortems/inbox/...`），
+# 于是同一克隆里"在哪个检出跑"决定了记录落在哪——worktree 里写的记录主检出读不到、worktree 一清
+# 就静默消失（`git worktree remove` 对 ignore 件不报错、不需 --force）。把它们收进同一张表 + 同一个
+# 解析入口（scripts/shared_dir.py 是对 agent 的 CLI），跨侧可见性就从"看人在哪跑"变成结构保证。
+CHECKOUT_DIRS = {
+    "traces": Path("traces"),                              # 诊断轨迹（误诊归因的唯一依据）
+    "inbox": Path("postmortems") / "inbox",                # to-postmortem / issue-ingest 草稿队列
+    "proposals-sessions": Path("proposals") / "sessions",  # 自演进会话进度
+    "proposals-tasks": Path("proposals") / "tasks",
+    "proposals-reviews": Path("proposals") / "reviews",
+    "proposals-experiments": Path("proposals") / "experiments",
+}
+
+
+def resolve_checkout_dir(name: str, root: Path, local: bool = False):
+    """上表某个目录 → (path, where, rel)。名字不认识 → (None, "unknown", None)。"""
+    rel = CHECKOUT_DIRS.get(name)
+    if rel is None:
+        return None, "unknown", None
+    path, where = resolve_rel(root, rel, explicit=None, local=local)
+    return path, where, rel
+
+
+def describe_checkout_dir(path: Path, rel: Path, where: str) -> str:
+    """人读一行：**点明它落在哪个检出**（防把"这份"读成"全系统"）。"""
+    if where == "shared":
+        return f"{path}（同一克隆共享：主检出 {rel}/，所有 worktree 共读共写）"
+    if where == "local":
+        return f"{path}（检出内 {rel}/，--local 强制）"
+    return f"{path}（检出内 {rel}/：无 git 环境，退化）"
+
+
+def resolve_traces(root: Path) -> Path:
+    """`traces/` 该读/写哪一份 = **主检出**那一份（worktree 里往往为空）。
+
+    写侧（诊断按 prose 写 trace）与读侧（面板 / 周批指标 / 结算脚本）必须指向同一份，否则
+    "记录了但看不见"与"读不到就当成没有"同时发生。无 git 环境退化为传入的 root。
+    """
+    main = main_checkout(Path(root))
+    return (main if main is not None else Path(root)) / CHECKOUT_DIRS["traces"]
+
+
 @contextmanager
 def log_lock(path: Path):
     """共享运行件的跨进程写锁。yield True=已持锁 / False=本平台连降级原语都没有。

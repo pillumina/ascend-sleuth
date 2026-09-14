@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 
 import yaml
+from exec_log_path import resolve_traces
 
 # trace action 固定词表（与 skills/diagnose/SKILL.md「每步必写 trace」一致）
 # 词表外 action = 诊断纪律违规，写入时靠 SKILL.md 约束，此处确定性检出
@@ -49,7 +50,7 @@ KNOWN_PURPOSES = {"collect", "signature", "fix", "background", "procedure"}
 
 def load_states(root: Path):
     # traces/ 是诊断状态目录（gitignored，含客户信息）——活跃 + 历史都归此
-    files = list((root / "traces").glob("*.yaml"))
+    files = list(resolve_traces(root).glob("*.yaml"))
     states = []
     for f in files:
         try:

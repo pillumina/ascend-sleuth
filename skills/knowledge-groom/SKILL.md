@@ -55,7 +55,7 @@ disable-model-invocation: true
 
 ## 流程（一次 groom 产出一个变更摘要）
 
-1. **intake 队列处理（升格的前置）**：处理 `postmortems/inbox/`（`/skill:to-postmortem` / `/skill:issue-ingest` 的产出都落这里）：
+1. **intake 队列处理（升格的前置）**：处理 `postmortems/inbox/`（`/skill:to-postmortem` / `/skill:issue-ingest` 的产出都落这里；**先解析一次**：`python3 scripts/shared_dir.py inbox` 给出主检出的绝对路径——草稿是锚在主检出的共享队列，在 worktree 里用相对 `postmortems/inbox/` 会读成一个空队列）：
    - **节律**：单仓集中可周批；**分布式（成员本地 inbox，远程仓不存）在提交主仓时处理**——产出时已做 pre-triage（见下），groom 复核确认而非重判；
    - 逐条**预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象：命中 namespace + `common/` 的现有 case——用**命中 (namespace × category) 的索引分片** `knowledge/_index/<ns>__<category>.yaml` 行（title/tags/symptoms 摘要/score）按 symptoms/tags 定位候选，
    只读 1-2 个最高分候选全文核对 root_cause/fix（M5 成本预算 #3，不全文重读全库）。**draft 头注释已带 to-postmortem/issue-ingest 产出的分诊建议 → 复核证据是否成立，不重判**（建议与决定分离：判断在产出时做，groom 是审核者）；

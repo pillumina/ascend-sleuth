@@ -106,6 +106,8 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 
 ## 产出落点
 
+**草稿落在哪个 inbox**：先 `python3 scripts/shared_dir.py inbox` 取绝对路径（锚在**主检出**、跨 worktree 共写；写相对 `postmortems/inbox/` 的草稿，转正时在 worktree 里读不到、清 worktree 就丢）。下面是相对仓库根的写法：
+
 - `postmortems/inbox/<case-id>.md`（postmortem 或指针）
 - `postmortems/inbox/<case-id>.case.yaml`（YAML 草稿）
 - inbox 是**待审队列**（见 `postmortems/inbox/README.md`）：每周 `/skill:knowledge-groom` 批处理三分类（new_pattern / variant_of / covered_by）后人审。审完：postmortem 转正 `../YYYY-QN/`（covered 也转正——Tier 3 语料，不是丢弃）、new 的草稿升格 `knowledge/<ns>/`

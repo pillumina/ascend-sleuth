@@ -29,11 +29,12 @@ from datetime import date
 from pathlib import Path
 
 import yaml
+from exec_log_path import resolve_traces
 
 
 def load_traces(root: Path):
     traces = []
-    for f in sorted((root / "traces").glob("*.yaml")):
+    for f in sorted(resolve_traces(root).glob("*.yaml")):
         try:
             doc = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
         except Exception as e:

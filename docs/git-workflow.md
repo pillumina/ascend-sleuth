@@ -24,9 +24,10 @@ git worktree remove ../ascend-sleuth-s<session>
 
 1. **工作区隔离**：worktree 隔离工作区文件 / index / HEAD / 未提交改动，各 session 在自己 worktree 内任意修改，不污染他人检出（`git checkout` 携带未提交改动的问题从根上消失）。
 2. **共享面（worktree 不隔离）**：`.git` 对象库与 refs 全局共享，分支名 `kb/<用途>` 必须全局唯一；共享状态文件（ingest-state.json 的 processed、metrics/timeline.yaml、knowledge/_index.yaml、postmortems/inbox/）在各 worktree 是各自分支的副本，合流时**显式解决 merge 冲突**：processed 数组合并、索引以最新重建为准、inbox 清空先确认无他人草稿。
-3. **未进 git 的运行时件：按"是否跨 session 复用"分流**（别再假设"未跟踪文件会被 git 拦住"）。实测（git 2.39）：`.gitignore` 覆盖的未跟踪件**不计入 dirty**，`git worktree remove` **不报错、也不需要 `--force`**，随 worktree **静默**一并删掉；只有"已跟踪且被修改"的文件才会被拦下并提示 `--force`。所以：
-   - **跨 session 复用的**（`metrics/skill-exec-log.yaml`、`metrics/ev-measure-log.yaml`、`src-code/` 源码缓存）路径一律解析到**主检出**（`scripts/exec_log_path.py` 是唯一事实源），各 worktree 共读共写，worktree 清理不丢；
-   - **仍在检出内的**（`traces/`、`diagnosis_state*.yaml`、`proposals/{sessions,tasks,reviews,experiments}/`、`.s2-replay/`、`.ixn-replay/`、`.flow-replay/`、`.auto-fetch/`、`eval-reports/`）**随 worktree 一起消失**：在 worktree 里跑这些流程会产生"只存在于该 worktree"的记录，读侧（面板 / 周批指标）看的是主检出那一份，收工前先确认其中没有还需要的东西。
+3. **未进 git 的运行时件：一律锚到主检出**（别再假设"未跟踪文件会被 git 拦住"）。实测（git 2.39）：`.gitignore` 覆盖的未跟踪件**不计入 dirty**，`git worktree remove` **不报错、也不需要 `--force`**，随 worktree **静默**一并删掉；只有"已跟踪且被修改"的文件才会被拦下并提示 `--force`。所以：
+   - **跨 session 复用的记录**（`metrics/skill-exec-log.yaml`、`metrics/ev-measure-log.yaml`、`src-code/` 源码缓存、`traces/`、`postmortems/inbox/` 草稿、`proposals/{sessions,tasks,reviews,experiments}/`）路径一律解析到**主检出**——`scripts/exec_log_path.py` 是唯一事实源，agent 侧入口是 **`python3 scripts/shared_dir.py <名字>`**（打印绝对路径；`--list` 看全部）。**写侧别用相对路径**：写进 worktree 的记录，主检出那一份读者（诊断面板 / 周批指标 / `settle_trace_feedback.py` 等结算脚本）看不到，而且 worktree 一清就没了——"记录了但没人看得见"与"读不到就当成没有"会同时发生。
+   - 读 `traces/` 的脚本（`trace_metrics.py` / `settle_trace_feedback.py` / `component_tally.py` / `replay_trace.py` / `metrics_snapshot.py`）默认就取主检出那一份，不必手工指定。
+   - **仍是检出内、会随 worktree 静默消失的**只剩 dev 期产物：`.s2-replay/`、`.ixn-replay/`、`.flow-replay/`、`.auto-fetch/`、`eval-reports/`（不是知识记录；要留就在收工前挪出来）。
 4. **串行操作**：涉及 ingest-state.json 的 fetch / `--mark-imported` / 游标更新必须串行（read-modify-write 无锁，并发写互相覆盖）；groom 清空 inbox 前先确认无其他 session 未提交草稿。
 5. **开工纪律**：`git fetch origin` 确认最新 → 确认自己在自己的 worktree 与分支 → 收工前提交或 stash 清空工作区，避免未提交改动滞留共享检出。
 
