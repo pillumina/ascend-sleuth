@@ -199,7 +199,8 @@ return {
         try {
           const target = await fs.resolve(ent.name, { cwd: basePath })
           const text = await fs.readText(target)
-          const doc = parseYaml(text)
+          const stats = {}
+          const doc = parseYaml(text, stats)
           if (!doc || typeof doc !== 'object') continue
           const trace = Array.isArray(doc.trace) ? doc.trace : []
           const userSteps = trace.filter(t => t && t.role === 'user').length
@@ -275,6 +276,9 @@ return {
             // 面板给"打开报告"入口；候选条数给"待沉淀 N 条"，让"这单还能沉淀什么"在列表上就可见。
             reportFile: doc.report_file ? String(doc.report_file) : null,
             sedimentCandidates: Array.isArray(doc.sediment_candidates) ? doc.sediment_candidates.length : 0,
+            // 轨迹解析没收下的行数（见 anomalyOf）：列表上的步数由同一份解析结果算出，
+            // 解析少了就标在卡片上，别让"1 用户输入"看起来像这单真的只有一步。
+            parseAnomaly: anomalyOf(stats),
           })
         } catch (e) {
         }
@@ -507,7 +511,8 @@ return {
       try {
         const target = await fs.resolve('traces/' + traceFile, { cwd })
         const text = await fs.readText(target)
-        const doc = parseYaml(text)
+        const stats = {}
+        const doc = parseYaml(text, stats)
         if (!doc || typeof doc !== 'object') return { ok: false, error: 'trace 解析失败' }
         const trace = Array.isArray(doc.trace) ? doc.trace : []
         const steps = trace.map((t, i) => ({
@@ -546,6 +551,7 @@ return {
             suggestedSkill: c && (c.suggested_skill || c.suggestedSkill) ? String(c.suggested_skill || c.suggestedSkill) : '',
             status: c && c.status ? String(c.status) : '',
           })).filter(c => c.kind || c.summary),
+          parseAnomaly: anomalyOf(stats),
         }
       } catch (e) {
         return { ok: false, error: '读取失败: ' + String(e && e.message || e) }
@@ -913,27 +919,110 @@ return {
       }
       return yamlUnquote(t)
     }
-    function parseYaml(text) {
+    // ---- 权威口径是 PyYAML，不是这个解析器 ------------------------------------
+    // 脚本侧读同一份 trace 用的是 PyYAML（`trace_metrics.py` / `settle_trace_feedback.py` /
+    // `replay_trace.py`），面板自己写的这个子集解析器必须与它**在事件这一层**给出同样的结果。
+    // 两者不一致的后果实测过：文件里 9 条事件、面板上只剩第一条，而文件本身完全正常
+    // （2026-09-14，Windows 上用户报的"卡片打开只有第一步用户"）。所以这里把"合法 YAML 的形状"
+    // 逐条对齐，并把**解析器没收下的行**计数出来交给面板上屏——宁可说"可能不完整"，不许
+    // 静默地把一条事件当成全部。
+
+    // 值是否以行内流集合开头（`{…}` / `[…]`）。判据要严：只有紧跟键冒号或序列 dash 的
+    // `{`/`[` 才是流集合；`summary: 文本里有 {` 里的花括号是标量内容，不能当作集合接下去。
+    function flowStartIndex(body) {
+      let m = /^-[ \t]+([{[])/.exec(body)
+      if (m) return m[0].length - 1
+      m = /^[A-Za-z_][A-Za-z0-9_.-]*:[ \t]*([{[])/.exec(body)
+      if (m) return m[0].length - 1
+      if (body[0] === '{' || body[0] === '[') return 0
+      return -1
+    }
+    // 从 from 起数括号深度；引号内的括号与 `\"` 转义不算（返回 0 表示已闭合）
+    function flowBalance(text, from) {
+      let depth = 0
+      let quote = null
+      for (let i = from; i < text.length; i++) {
+        const ch = text[i]
+        if (quote) {
+          if (ch === '\\' && quote === '"') { i++; continue }
+          if (ch === quote) quote = null
+          continue
+        }
+        if (ch === '"' || ch === "'") { quote = ch; continue }
+        if (ch === '{' || ch === '[') depth++
+        else if (ch === '}' || ch === ']') { depth--; if (depth <= 0) return 0 }
+      }
+      return depth
+    }
+    // 解析器没收下的行（跳过或吞掉）。stats 由调用方给；不给就只算不报。
+    function markDropped(cursor, row, why) {
+      if (!cursor.dropped || !row) return
+      cursor.dropped.push({ line: row.line, body: row.body, why: why })
+    }
+    // 解析器没收下的行 → 交给面板上屏的一行物证（没有就 null）。
+    // 为什么要它：解析器少读几条事件时，面板上看到的步数是**错的但看不出来**——
+    // 实测症状是"文件里 9 条、面板上 1 条"，读者没有任何线索知道少了。宁可说
+    // "可能不完整"并给出行号，也不许把一条事件当成全部。
+    function anomalyOf(stats) {
+      const dropped = (stats && stats.dropped) || []
+      const unbalanced = (stats && stats.unbalanced) || []
+      if (!dropped.length && !unbalanced.length) return null
+      return {
+        dropped: dropped.length,
+        firstLine: dropped.length ? (dropped[0].line || null) : (unbalanced[0] || null),
+        sample: dropped.length ? String(dropped[0].body || '').slice(0, 80) : '',
+        unbalancedFlow: unbalanced.length > 0,
+      }
+    }
+    function parseYaml(text, stats) {
       // 先折算成"去注释 + 带缩进"的行表，再按缩进递归收结构
+      const lines = String(text == null ? '' : text).replace(/^\uFEFF/, '').split(/\r?\n/)
       const rows = []
-      for (const raw of String(text == null ? '' : text).split(/\r?\n/)) {
-        const line = splitYamlLine(raw)
+      for (let i = 0; i < lines.length; i++) {
+        const line = splitYamlLine(lines[i])
         const body = line.trim()
         if (body === '' || body === '---') continue
-        rows.push({ indent: line.length - line.trimStart().length, body: body, raw: line })
+        // 缩进只数 ASCII 空格与制表符。别写 `line.length - line.trimStart().length`：
+        // `trimStart()` 连 U+00A0 / U+FEFF 一起吃掉，于是这类字符被算成缩进——实测（2026-09-14）
+        // 带 BOM 且首行不是注释的文件，第一个键的缩进算成 1、比兄弟深一格，解析器读完
+        // 第一个键就收工（整份文档只剩 `session_id`）。
+        rows.push({ indent: /^[ \t]*/.exec(line)[0].length, body: body, raw: line, line: i + 1 })
+      }
+      // 行内流集合跨行：`- {role: user, step: 1,` + 续行是合法 YAML（长行被折行时就是这样，
+      // PyYAML 照收 N 条），而旧实现逐行读，第一行之后的续行既不是新键也不是新 dash →
+      // 整段被跳过，序列到此为止。这里把未闭合的流集合与后续行并成一行再解析。
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i]
+        const from = flowStartIndex(row.body)
+        if (from < 0) continue
+        let depth = flowBalance(row.body, from)
+        if (depth <= 0) continue
+        let j = i + 1
+        while (depth > 0 && j < rows.length) {
+          row.body += ' ' + rows[j].body
+          depth = flowBalance(row.body, from)
+          j++
+        }
+        // 括号始终没闭合：这份文件不是合法 YAML（PyYAML 也会拒）。别把后续内容当它的内容吞掉，
+        // 如实记一行，让面板说"可能不完整"。
+        if (depth > 0 && stats) (stats.unbalanced = stats.unbalanced || []).push(row.line)
+        rows.splice(i + 1, j - i - 1)
       }
       if (!rows.length) return {}
-      const cursor = { rows: rows, i: 0 }
-      return readYamlMap(cursor, rows[0].indent)
+      if (stats && !stats.dropped) stats.dropped = []
+      const cursor = { rows: rows, i: 0, dropped: (stats && stats.dropped) || [] }
+      const doc = readYamlMap(cursor, rows[0].indent)
+      for (const left of rows.slice(cursor.i)) markDropped(cursor, left, '解析器没读到')
+      return doc
     }
     function readYamlMap(cursor, indent) {
       const obj = {}
       while (cursor.i < cursor.rows.length) {
         const row = cursor.rows[cursor.i]
         if (row.indent < indent) break
-        if (row.indent > indent) { cursor.i++; continue }        // 结构错位：跳过而不是崩
+        if (row.indent > indent) { markDropped(cursor, row, '缩进比同层更深的散行'); cursor.i++; continue }
         const m = /^([A-Za-z_][A-Za-z0-9_.-]*):(?:\s+(.*))?$/.exec(row.body)
-        if (!m) { cursor.i++; continue }
+        if (!m) { markDropped(cursor, row, '既不是键值行、也不是序列项'); cursor.i++; continue }
         cursor.i++
         obj[m[1]] = readYamlValue(cursor, indent, m[2] === undefined ? '' : String(m[2]).trim())
       }
@@ -948,10 +1037,26 @@ return {
             ? readYamlSeq(cursor, childIndent)
             : readYamlMap(cursor, childIndent)
         }
+        // 序列项与键**同缩进**：PyYAML 生成的 YAML 就是这个形状（`trace:` 的下一行直接是
+        // `- role: …`），YAML 规范也允许。旧实现只认"更深"，这种文件解析出 0 条事件。
+        if (cursor.i < cursor.rows.length && cursor.rows[cursor.i].indent === indent
+          && /^-(?:\s|$)/.test(cursor.rows[cursor.i].body)) return readYamlSeq(cursor, indent)
         return ''
       }
       if (/^[|>][-+]?$/.test(rest)) return readYamlBlockScalar(cursor, indent, rest)
       if (/^-(?:\s|$)/.test(rest)) return yamlScalar(rest.replace(/^-\s*/, ''))
+      // 标量续行：值非空时，比本键更深的后续行只能是这个标量的续行（YAML 里标量之后
+      // 不能再跟映射）。旧实现整段跳过：`output: 第一行` 换行 `  第二行` 只读出"第一行"，
+      // 而多行正文里若有一行以 `- ` 开头，还会被算成"被丢弃的事件行"。
+      // 与 PyYAML 的差别：换行在此保留（PyYAML 会把普通标量的换行折成空格），内容不丢。
+      if (cursor.i < cursor.rows.length && cursor.rows[cursor.i].indent > indent) {
+        const parts = [rest]
+        while (cursor.i < cursor.rows.length && cursor.rows[cursor.i].indent > indent) {
+          parts.push(cursor.rows[cursor.i].body)
+          cursor.i++
+        }
+        return yamlScalar(parts.join('\n'))
+      }
       return yamlScalar(rest)
     }
     function readYamlBlockScalar(cursor, indent, head) {
@@ -1007,14 +1112,27 @@ return {
             keyIndent = cursor.rows[k].indent
             break
           }
-          const subRows = [{ indent: keyIndent, body: rest, raw: ' '.repeat(keyIndent) + rest }]
+          const subRows = [{ indent: keyIndent, body: rest, raw: ' '.repeat(keyIndent) + rest, line: row.line }]
           while (cursor.i < cursor.rows.length && cursor.rows[cursor.i].indent > indent) {
             subRows.push(cursor.rows[cursor.i])
             cursor.i++
           }
-          arr.push(readYamlMap({ rows: subRows, i: 0 }, keyIndent))
+          // 子游标共用 dropped：这段收进来的行里若还有没人认领的（缩进既不属于本项的键、
+          // 也不构成合法结构），原来的写法是**静默丢掉**——症状就是"事件少了几条而没人知道"。
+          const sub = { rows: subRows, i: 0, dropped: cursor.dropped }
+          arr.push(readYamlMap(sub, keyIndent))
+          for (const left of subRows.slice(sub.i)) markDropped(cursor, left, '在本事件内没有归属')
           continue
         }
+        // 序列项是标量（普通标量 / 引号标量 / 行内集合）时的续行：比本层更深的后续行只能是
+        // 这个标量的续行（YAML 里标量之后不能再跟映射）。不并进来会有两个后果：值被截断，
+        // 且那几行会被算成"被丢弃的事件行"——`tool_calls` 里一条跨行的记录就够误报一次。
+        const parts = [rest]
+        while (cursor.i < cursor.rows.length && cursor.rows[cursor.i].indent > indent) {
+          parts.push(cursor.rows[cursor.i].body)
+          cursor.i++
+        }
+        if (parts.length > 1) { arr.push(yamlScalar(parts.join('\n'))); continue }
         arr.push(rest[0] === '{' ? parseInlineMap(rest) : yamlScalar(rest))
       }
       return arr

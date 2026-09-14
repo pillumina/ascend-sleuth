@@ -404,7 +404,12 @@ async function main() {
     expect('执行现场：标注共享范围（防读成全系统）', SHARE_RE.test(ev.text))
   } else {
     expect('无 exec-log 时走退化分支（不是空白也不是假数据）', /无执行记录/.test(ev.text))
-    expect('退化分支给出补救指引', /内容流程收尾应先落一条 exec-log/.test(ev.text))
+    // 断言必须跟着文案走：这行文案在"面板文案去 AI 味"那轮被重写过，而断言留在旧措辞上，
+    // 一年多没人发现——因为这条分支只在**没有 exec-log** 的检出里跑，开发机上（有记录）永远
+    // 走不到。实测（2026-09-14）：CI 形态的干净检出（`git archive HEAD`，无 traces/、无 exec-log）
+    // 里整套检查会红，且只红这一条。
+    expect('退化分支给出补救指引', /内容流程收尾时应写入一条 exec-log/.test(ev.text),
+      ev.text.slice(0, 200))
     expect('退化分支标注共享范围', SHARE_RE.test(ev.text))
   }
   // 合成数据分支：present + 有 evolve-check 记录（含无信号）→ 渲染运行次数与无信号计数
@@ -1769,6 +1774,190 @@ _MS._run_no_pipe = no_fallback`)
         /shown\.indexOf\(conclusionStep\)/.test(ascSrc) && /steps\.list\.indexOf\(conclusionStep\)/.test(ascSrc))
       expect('没有结论时给一行说明（读者能分辨"还没收尾"与"这单没有结论"）',
         /本单还没有定位结论/.test(ascSrc))
+    }
+  }
+
+  // —— 解析器与权威口径（PyYAML）逐条一致 + 没收下的行必须报出来 ——
+  // 为什么单列这一条：面板的 trace 解析器是**自己写的 YAML 子集**（动态插件不许 import，
+  // Host 也没有 YAML 服务），而读同一份 trace 的脚本全用 PyYAML（`trace_metrics.py` /
+  // `settle_trace_feedback.py` / `replay_trace.py`）。两者不一致的表现是**文件正常、面板少
+  // 事件、界面上没有任何提示**——2026-09-14 实测：一份 9 条事件的 trace 在面板上只剩第一条
+  // （行内集合被折行，`- {role: user, step: 1,` 的续行既不是新键也不是新 dash，序列到此为止）。
+  // 同一类缺陷在 `metrics/timeline.yaml` 上已发生过一次（真实文件解析出 0 期）。所以判据不写
+  // "能不能解析"，而是拿 PyYAML 当权威口径逐条比：事件数、每条的角色/步号/动作，以及
+  // output/content/evidence 的有无；再加一条"解析器没收下的行必须作为异常报出来"。
+  {
+    const hostSrc = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+    const from = hostSrc.indexOf('function readSedimented(')
+    const to = hostSrc.indexOf('const tool = harness.defineTool')
+    expect('host 解析器与异常出口可抽出（readSedimented → defineTool 区块存在）', from > 0 && to > from)
+    const parser = new Function(hostSrc.slice(from, to)
+      + '\nreturn { parseYaml: parseYaml, anomalyOf: anomalyOf };')()
+    const panelOf = (text) => {
+      const stats = {}
+      const doc = parser.parseYaml(text, stats)
+      const trace = Array.isArray(doc.trace) ? doc.trace : []
+      return {
+        rows: trace.map(t => ({
+          role: t && t.role !== undefined ? String(t.role) : null,
+          step: t && t.step !== undefined && t.step !== '' ? String(t.step) : null,
+          action: t && t.action !== undefined ? String(t.action) : null,
+          output: !!(t && t.output), content: !!(t && t.content), evidence: !!(t && t.evidence),
+        })),
+        anomaly: parser.anomalyOf(stats),
+      }
+    }
+    // 同一套取法喂给 PyYAML——两边取同一批字段，比的才是解析结果本身。
+    // PyYAML 也拒的形状（夹具自己写错、或本来就是非法 YAML）返回 null，由调用方分开处理。
+    const pyOf = (text) => {
+      try {
+        return JSON.parse(execFileSync(PY.cmd, [...PY.prefix, '-c', `
+import yaml, json, sys
+doc = yaml.safe_load(sys.stdin.read()) or {}
+trace = doc.get('trace') or []
+def s(v): return None if v is None else str(v)
+print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action': s(t.get('action')),
+                   'output': bool(t.get('output')), 'content': bool(t.get('content')),
+                   'evidence': bool(t.get('evidence'))} for t in trace], ensure_ascii=False))
+`], { input: text, encoding: 'utf8' }).toString())
+      } catch (e) {
+        return null
+      }
+    }
+
+    const userBlock = ['  - role: user', '    step: 1', '    content: "起不来"',
+      '    evidence:', '      inline: "ERR 507015"', '      files: ["a.log"]']
+    const agentBlock = ['  - role: agent', '    step: 2', '    action: hit', '    output: "命中"']
+    const shapes = [
+      ['块写法（2 空格缩进）', ['session_id: "s"', 'trace:', ...userBlock, ...agentBlock].join('\n')],
+      ['块写法（dash 4 空格 / 键 6 空格）', ['session_id: "s"', 'trace:',
+        '    - role: user', '      step: 1', '      content: "起不来"',
+        '    - role: agent', '      step: 2', '      action: hit', '      output: "命中"'].join('\n')],
+      ['内联写法（一行一事件）', ['session_id: "s"', 'trace:',
+        '  - {role: user, step: 1, content: "起不来", evidence: {inline: "ERR 507015", files: ["a.log"]}}',
+        '  - {role: agent, step: 2, action: hit, output: "命中"}'].join('\n')],
+      // 折行的行内集合：合法 YAML，PyYAML 收 N 条。旧实现只读出第一条 → 面板上"只有第一步"。
+      ['折行的行内映射', ['session_id: "s"', 'trace:',
+        '  - {role: user, step: 1,',
+        '     content: "起不来",',
+        '     evidence: {inline: "ERR 507015", files: ["a.log"]}}',
+        '  - {role: agent, step: 2,',
+        '     action: hit, output: "命中"}'].join('\n')],
+      ['折行的行内序列', ['session_id: "s"', 'trace: [{role: user, step: 1, content: "起不来"},',
+        '  {role: agent, step: 2, action: hit, output: "命中"}]'].join('\n')],
+      // PyYAML 自己生成的形状：序列项与键同缩进（`trace:` 下一行就是 `- role:`）
+      ['序列项与键同缩进', ['session_id: "s"', 'trace:',
+        '- role: user', '  step: 1', '  content: "起不来"',
+        '- role: agent', '  step: 2', '  action: hit', '  output: "命中"'].join('\n')],
+      ['文件带 BOM 且首行不是注释', '\uFEFF' + ['session_id: "s"', 'trace:', ...userBlock, ...agentBlock].join('\n')],
+      ['CRLF + BOM', ('\uFEFF' + ['session_id: "s"', 'trace:', ...userBlock, ...agentBlock].join('\n')).replace(/\n/g, '\r\n')],
+      ['块标量 output（>- / |）', ['session_id: "s"', 'trace:', ...userBlock.slice(0, 3),
+        '  - role: agent', '    step: 2', '    action: hit', '    output: >-', '      第一行', '      第二行',
+        '    reason: |', '      依据一行'].join('\n')],
+      ['多行普通标量（含以 - 开头的行）', ['session_id: "s"', 'trace:', ...userBlock.slice(0, 3),
+        '  - role: agent', '    step: 2', '    action: hit', '    output: 结论',
+        '      - 检查项 1', '      - 检查项 2'].join('\n')],
+      ['dash 单独一行、映射另起', ['session_id: "s"', 'trace:', ...userBlock, '  -',
+        '    role: agent', '    step: 2', '    action: hit', '    output: "命中"'].join('\n')],
+      // 序列项本身是标量时的跨行写法（`tool_calls` 里一条长记录折行就会长这样）：
+      // 续行既不是新项、也不是映射的键，旧实现把它整段丢掉，而它还会被算成"被丢弃的事件行"。
+      ['序列项是跨行标量（引号）', ['session_id: "s"', 'trace:', ...userBlock,
+        '    tool_calls:', '      - "gh api x: 事实"', '      - "另一条', '        续行"',
+        ...agentBlock].join('\n')],
+      ['序列项是跨行标量（普通）', ['session_id: "s"', 'trace:', ...userBlock,
+        '    tool_calls:', '      - 第一条', '        第二条', ...agentBlock].join('\n')],
+    ]
+    let shapeDiff = 0
+    for (const [name, text] of shapes) {
+      const mine = panelOf(text)
+      const want = pyOf(text)
+      if (want === null) {   // 夹具自己不是合法 YAML：这条判据失效，必须红（别让它冒充通过）
+        shapeDiff++
+        expect('夹具是合法 YAML（PyYAML 收）：' + name, false, 'PyYAML 拒了这份夹具')
+        continue
+      }
+      const same = JSON.stringify(mine.rows) === JSON.stringify(want)
+      if (!same) shapeDiff++
+      expect('解析口径与 PyYAML 一致：' + name, same,
+        '\n    面板: ' + JSON.stringify(mine.rows) + '\n    PyYAML: ' + JSON.stringify(want))
+      expect('合法 YAML 不报异常：' + name, mine.anomaly === null, JSON.stringify(mine.anomaly))
+    }
+    expect('形状夹具全部与 PyYAML 一致（' + shapes.length + ' 种）', shapeDiff === 0, '不一致 ' + shapeDiff + ' 种')
+
+    // 反方向：结构坏的 trace 不许静默少事件——必须报出异常（行号 + 行数）
+    const brokenIndent = ['session_id: "s"', 'trace:',
+      '  - role: user', '    step: 1', '    content: "起不来"',
+      '   - role: agent', '     step: 2', '     output: "命中"'].join('\n')
+    const brokenFlow = ['session_id: "s"', 'trace:', '  - {role: user, step: 1, content: "起不来"'].join('\n')
+    const bi = panelOf(brokenIndent)
+    const bf = panelOf(brokenFlow)
+    expect('缩进错乱：解析少事件时给出异常（不许静默）',
+      !!(bi.anomaly && bi.anomaly.dropped > 0 && bi.anomaly.firstLine > 0), JSON.stringify(bi.anomaly))
+    expect('行内集合没闭合：给出异常', !!(bf.anomaly && bf.anomaly.unbalancedFlow), JSON.stringify(bf.anomaly))
+
+    // 上屏通路：host 把异常放进 RPC 结果、client 把它渲染出来（两边都钉，缺一边等于没有）
+    expect('host：traces-detail 与 traces-list 都带解析异常字段',
+      /parseAnomaly: anomalyOf\(stats\)/.test(hostSrc)
+      && (hostSrc.match(/parseAnomaly: anomalyOf\(stats\)/g) || []).length === 2)
+    expect('host：异常带上行号与行数（读者要能自己去核对那几行）',
+      /firstLine:/.test(hostSrc) && /dropped: dropped\.length/.test(hostSrc))
+    expect('client：诊断轨迹那行在异常时标「可能不完整」', /（可能不完整）/.test(ascSrc))
+    expect('client：异常给出成因、行号与下一步（核对缩进 / 发回来核对）',
+      /function anomalyText\(a\)/.test(ascSrc) && /第 ' \+ a\.firstLine \+ ' 行起/.test(ascSrc))
+    expect('client：会话列表的步数行同样报异常（"1 用户输入"不许看起来像真的）',
+      /anomalyText\(s\.parseAnomaly\)/.test(ascSrc))
+
+    // 渲染层实测（不是只断言源码里有那句话）：异常至少要在**收起态**就说出来——展开态靠点击，
+    // mock 的 hook 槽位读不回展开内容（同"展开单卡"一节记的限制）。
+    {
+      const base = {
+        file: 'sess-anom.yaml', status: 'in_progress', framework: 'vllm-ascend',
+        platform: 'A2-910B', category: 'interrupt', activeCase: null, activeCaseInKb: false,
+        feedbackPending: null, summarySnippet: '问题背景：服务启动失败', userSteps: 1, agentSteps: 0,
+        lastRole: 'user', lastOutput: null, updatedAt: new Date().toISOString(),
+      }
+      const withAnomaly = Object.assign({}, base, {
+        sessionId: 'sess-anom',
+        parseAnomaly: { dropped: 3, firstLine: 8, sample: '- role: agent', unbalancedFlow: false },
+      })
+      const without = Object.assign({}, base, { sessionId: 'sess-clean', file: 'sess-clean.yaml', parseAnomaly: null })
+      const anomHost = (m) => m === 'ascend-traces-list'
+        ? { ok: true, sessions: [withAnomaly, without] }
+        : { ok: true, steps: [], summary: null }
+      const anomText = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, anomHost)).text
+      const hits = (anomText.match(/轨迹可能不完整/g) || []).length
+      expect('收起态就报异常，且只报那一张卡（另一张不误报）', hits === 1, '出现 ' + hits + ' 次')
+      expect('异常带上成因与行号（读者能去核对那几行）',
+        /还有 3 行没被解析（第 8 行起）/.test(anomText), anomText.slice(0, 200))
+    }
+
+    // 真实 trace（主检出那一份，`scripts/shared_dir.py traces` 是它的解析入口；CI 里没有这个
+    // 目录——运行时件不进 git——此时只跑形状夹具，如实说明跳过了什么）
+    const tracesDir = (() => {
+      try {
+        const out = pyRun(['scripts/shared_dir.py', 'traces'], { cwd: repo, env: PY_ENV }).toString().trim().split('\n')
+        return out[out.length - 1].trim()
+      } catch (e) { return null }
+    })()
+    const realFiles = tracesDir && fs.existsSync(tracesDir)
+      ? fs.readdirSync(tracesDir).filter(f => f.endsWith('.yaml')).sort()
+      : []
+    if (!realFiles.length) {
+      console.log('  · 真实 trace 对照：跳过（本检出的 traces/ 里没有 .yaml）')
+    }
+    let realDiff = 0
+    for (const f of realFiles) {
+      const text = fs.readFileSync(path.join(tracesDir, f), 'utf8')
+      const mine = panelOf(text)
+      const same = JSON.stringify(mine.rows) === JSON.stringify(pyOf(text))
+      const clean = mine.anomaly === null
+      if (!same || !clean) realDiff++
+      else continue
+      expect('真实 trace 与 PyYAML 一致且无异常：' + f, false,
+        '一致=' + same + ' 异常=' + JSON.stringify(mine.anomaly))
+    }
+    if (realFiles.length) {
+      expect('真实 trace 逐份与 PyYAML 一致（' + realFiles.length + ' 份）', realDiff === 0, '不符 ' + realDiff + ' 份')
     }
   }
 
