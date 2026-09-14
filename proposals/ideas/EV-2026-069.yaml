@@ -1,0 +1,75 @@
+id: EV-2026-069
+layer: L2
+title: reference 摄取（URL 模式）：正文内嵌图被静默丢弃 + 代码托管站点取文路径靠现场试错
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-14
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      本轮从 GitCode 摄取 cann-samples 文档，三处摩擦：①`<域名>/<org>/<repo>/raw/<ref>/<path>`
+      返回 HTML 页壳（抽出来是整页导航，不是文件内容），须换 raw 主机才拿到正文；②列目录 / 定位
+      图片路径要靠站点 contents API；③含图文档的图内容在文本通道里既无占位也无告警——
+      实测 flash_attn_lite_story 正文 45 处图片引用、rms_norm_quant_story 8 张 PNG、
+      reg_data_movement 选型指南 10 张 SVG，而 to-reference §1 的「截图」条款只覆盖**本地**
+      二进制文档（zip 取 media/），URL 模式无对应条款。
+    trajectory:
+      - skills/to-reference/SKILL.md §1（改动前：截图条款仅本地二进制文档）
+      - references/tools/cannsim-sim-profiling.yaml（本轮产出，来源侧逐字核验范围）
+      - "cann-samples Samples/2_Performance/flash_attn_lite_story/README.md（图片引用 45 处，grep 实测）"
+hypothesis: >-
+  §1 补入两条——「远程正文内嵌图不得静默丢（取图 → 读图 → 抽图上确有量 → 按核验程度标 verification）」
+  与「先确认拿到的是正文而非页壳（raw 主机 / contents API）」——之后含图官方来源可按统一路径处理，
+  不再出现「图里的 pipe 分布 / 带宽曲线被判为不存在」，也不必每次重新试错取文路径。
+predicted_effect:
+  metric: 条款是否落在 skill 正文且 skill 自包含卫生不变（可机械 scan）
+  from: URL 模式零图片条款；取文路径无记录，本轮实测换主机后才拿到正文
+  to: §1 明写远程图片处理与 raw 主机 / API 路径；纯文本通道丢图不再无告警
+  measure:
+    command: "grep -q '内嵌图' skills/to-reference/SKILL.md && grep -q '页壳' skills/to-reference/SKILL.md && ! grep -rqE '20[0-9]{2}-[0-9]{2}|EV-[0-9]{4}-[0-9]{3}|ADR-[0-9]{4}' skills/to-reference/SKILL.md"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: skills/to-reference/SKILL.md §1（改动前：official-doc 段只有 4 条 bullet，无取文路径与远程图片条款）
+  success_criteria: >-
+    ①两条条款在位；②skill 自包含卫生不变（零 ADR 编号 / 零日期 / 零 EV 卡号，与 CI 的
+    skill-self-contained job 同判据）；③docs 索引不因 skill 正文改动而红；④改动走人审（review）
+  rollback: 单文件 git revert，无下游依赖
+gate:
+  condition: 第二批含图来源（高清 Trace 截图类）实际吸收时，复核本条款是否够用——不够则补"图内容如何标注 verification"的判据
+risk: low
+principle_refs: [2, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 会话内联执行，未单独记账；按同批做法以 0 计并如实标注口径
+decisions:
+  - who: agent
+    when: '2026-09-14'
+    type: proposal
+    conclusion: >-
+      试点轮暴露的摄取摩擦（T3 手动动作重复 + 新来源形态）→ 产本卡，定位于 to-reference §1
+      official-doc 段：远程图片处理 + 取文路径确认。同类信号合并为一张卡（同一组件、同一动作面），
+      不拆两卡。
+  - who: agent
+    when: '2026-09-14'
+    type: action
+    conclusion: >-
+      在 skills/to-reference/SKILL.md §1 official-doc 段新增两条 bullet（正文与页壳的判别 + 远程内嵌图
+      的取图 / 读图 / verification 标注纪律）；条款为行为规则内联，不含 ADR 编号、日期与 EV 卡号。
+  - who: agent
+    when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      scan_review：measure 命令实跑通过（两条条款 grep 命中 + 自包含正则零命中）；纯文档面按
+      门禁分级不跑检索 golden（改动不改变候选选择，见 docs/eval.md 门禁分级表），词表 scan + 人审即本面门禁。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      validated（采纳，改动保留进攒批 PR 供人审）。依据：条款可机械 scan、与 CI 自包含判据同源、
+      摩擦有本轮实测出处。人审关注点：是否该把「读图后 verification 仍标 auto-extracted」的边界
+      写得更死（避免 agent 用读图结论冒充逐字核验）。
