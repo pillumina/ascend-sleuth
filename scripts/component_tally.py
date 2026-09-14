@@ -31,12 +31,13 @@ import sys
 from pathlib import Path
 
 import yaml
+from exec_log_path import resolve_traces
 
 
 def scan_traces(root: Path):
     """扫 traces/*.yaml 的 attribution 事件（硬归因，S1 侧）。"""
     entries = []
-    for f in sorted((root / "traces").glob("*.yaml")):
+    for f in sorted(resolve_traces(root).glob("*.yaml")):
         try:
             doc = yaml.safe_load(f.read_text(encoding="utf-8"))
         except Exception:

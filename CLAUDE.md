@@ -69,7 +69,7 @@ Each case file has: `id`, `title`, `category` (interrupt|precision|performance),
 
 Optional field — `validation_record`: {consistent, inconsistent, self_consistent, last_verified} — 内容被**外部验证**的累积记录（由 `scripts/settle_s2_feedback.py` 结算，非人设定）。与 confidence 分开：S2 issue-replay 对照的是外部 ground truth（issue resolution / 维护者 fix PR / committer 确认）。`consistent`=外部验证一致（同等 score 下排序优先）、`self_consistent`=自证命中（replay issue 即 case 来源——如实标注不虚增）、`inconsistent`=命中但结论与 resolution 不符（复审信号）。无 S2 验证不填。
 
-Optional field — `source_ref`: {repo, ref, file, line} — 根因定位到源码时的代码位置。**「源码不落库」= 源码不随仓库提交、也不写进知识库**——`.gitignore` 已忽略 `src-code/<org>/<repo>/`（本地分析缓存，按需 checkout、同版本复用）；知识库只记结论 + `source_ref` 指针。「不落库」≠ 分析不需要源码，深入排查**仍要 clone**。ref 用触发版本对应的 commit/tag。
+Optional field — `source_ref`: {repo, ref, file, line} — 根因定位到源码时的代码位置。**「源码不落库」= 源码不随仓库提交、也不写进知识库**——`.gitignore` 已忽略 `src-code/`（本地分析缓存，**按版本平铺**为 `src-code/<org>/<repo>/<tag>/`：版本目录自包含、互不干扰，多 agent 并发可各读各版本；缓存根锚到**主检出**，同一克隆的所有 worktree 共读共写，worktree 清理不丢；统一走 `scripts/src_fetch.py <repo> --ref <tag>` 按需拉取、同版本复用）。知识库只记结论 + `source_ref` 指针。「不落库」≠ 分析不需要源码，深入排查**仍要 clone**。ref 用触发版本对应的 commit/tag（与版本目录名同 token）。
 
 Optional field — `ref_knowledge`: 指向前验层词条的结构化关联，每条是 `ref: <reference-id>` + `role: signature-source | fix-methodology | root-cause-context`。`ref` 必须存在、`role` 必须合法，由 `scripts/verify_references.py` 校验。反向视图（哪些 case 引用了某词条）由该脚本派生，绝不存到词条侧——一条关系只存一次。
 
@@ -105,11 +105,13 @@ Golden-case 回归套件在 `eval/golden/`：公开仓只放构造示例，真�
 
 ## Multi-agent collaboration (worktree 约束)
 
-多 agent/session 可能并发操作同一仓库，共享检出目录是冲突根源。四条纪律：
+多 agent/session 可能并发操作同一仓库，共享检出目录是冲突根源。分工一句话：**改 tracked 文件的活进 worktree；只写"未进 git 的运行时件"的流程在主检出跑就行**（两类都碰的流程，跨侧那一半走解析器）。
 
 - **必须在独立 worktree 中干活**：`git worktree add <路径> <自己的 kb/* 分支>`，禁止在主检出目录修改或提交；同一分支同时只能被一个 worktree 检出。
-- **不隔离的面在合流时显式解决**：refs（分支名 `kb/<用途>` 全局唯一）与共享状态文件（`ingest-state.json` 的 processed、`metrics/timeline.yaml`、`knowledge/_index.yaml`、`postmortems/inbox/`）在各分支各一份，靠 PR merge 合并，不靠覆盖。
-- **exec-log 是"同一克隆共享"的运行时件**：路径由 `scripts/exec_log_path.py` 解析到主检出，所有 worktree 共读共写；它是 read-modify-write，**写侧持 flock**（无锁实测：16 次写入只剩 3 条）。读法一律走 `scripts/tail_exec_log.py`，别直接改写。
+- **不隔离的面在合流时显式解决**：refs（分支名 `kb/<用途>` 全局唯一）与**已跟踪的**共享状态文件（`ingest-state.json` 的 processed、`metrics/timeline.yaml`、`knowledge/_index.yaml`）在各分支各一份，靠 PR merge 合并，不靠覆盖。`postmortems/inbox/` 草稿**不在此列**——它是 gitignore 的本地队列，不随 PR 合并（见下两条）。
+- **未进 git 的运行时件一律锚到主检出**（路径解析的单一事实源是 `scripts/exec_log_path.py`，agent 侧入口是 `scripts/shared_dir.py`）：exec-log、EV 卡实测记录、`src-code/` 源码缓存、`traces/`、`postmortems/inbox/` 草稿、`proposals/{sessions,tasks,reviews,experiments}/`——**读写都用解析出的绝对路径**（`python3 scripts/shared_dir.py <名字>` 打印路径），同一克隆的所有 worktree 共读共写、worktree 清理不丢。
+- **别写相对路径**：`git worktree remove` 对 gitignore 件**无提示、也不需要 `--force`** 就直接删（把它想成"未跟踪文件会被 git 拦住"是错的）；而且写进 worktree 的记录，**主检出那一份读者（诊断面板 / 周批指标 / 结算脚本）根本看不到**——"记录了但没人看得见"与"读不到就当成没有"会同时发生。仍是检出内、会随 worktree 静默消失的只剩 dev 期产物：`.s2-replay/`、`.ixn-replay/`、`.flow-replay/`、`.auto-fetch/`、`eval-reports/`（不是知识记录；在 worktree 里跑这些流程，收工前先把要留的挪出来）。
+- **exec-log 的读写纪律**：路径解析到主检出、所有 worktree 共写共读；它是 read-modify-write，**写侧持 flock**（无锁实测：16 次写入只剩 3 条）。读法一律走 `scripts/tail_exec_log.py`，别直接改写。
 - **串行与收工纪律**：`ingest-state.json` 的 fetch / `--mark-imported` / 游标更新无锁，必须串行；groom 清空 inbox 前先确认无其他 session 未提交草稿；开工 `git fetch origin` 确认最新，收工前提交或 stash，不留未提交改动。
 
 完整约定（含多 session 并行的边界与锁原语）见 `docs/git-workflow.md`。

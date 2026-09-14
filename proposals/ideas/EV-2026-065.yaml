@@ -1,0 +1,162 @@
+# ============================================================
+# Idea 卡（proposals/ideas/）——schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）
+# 校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+
+id: EV-2026-065
+layer: L2
+title: 源码缓存按版本平铺 + 版本不符不再假装成功：缓存锚到主检出，退出码说真话
+status: validated
+authorization: review
+dimension: architecture
+supersedes: []
+superseded_by: null
+created_at: 2026-09-14
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      用户观察：新 issue 是 0.26.0，本地 src-code 只有此前定位留下的 0.23.0，**agent 没找到该版本就转去
+      web 搜索**。读码定位到这不是"目录结构不好用"这么轻：`src_fetch.py` 的复用分支在版本不符时
+      **无条件** `print("复用 <路径>")` + `return 0`——fetch/checkout 失败也走这条，于是脚本对外说
+      "取得源码成功"、给出的却是**另一个版本**的树。skill 的契约恰恰是"非零退出 = 未取得源码"
+      （SKILL.md 源码分析节），所以 agent 拿到 exit 0 + 一个路径，grep 不到预期符号 → 判定"本地没有
+      这个版本" → 转 web 搜索。**同样的失败在任何目录布局下都会复发**（布局只让"有没有这个版本"可
+      判定，不会让"版本不符"变成失败），故两者同批修。加剧因素二：`--ref 0.26.0` 与真实 tag
+      `v0.26.0` 只差一个前缀，脚本既不解析也不提示可用 tag，静默判不匹配。加剧因素三：缓存根是
+      `Path(__file__).parent.parent`（执行脚本的那个检出），而 `src-code/` 在 .gitignore 里——
+      新 worktree 天然没有它、`git worktree remove` 会连它一起删（仓库现状实测：`src-code/vllm-project/`
+      是空壳，四个检出里没有任何 clone），于是"平铺给多 agent 协作"在共享面根本不成立。
+    trajectory:
+      - "scripts/src_fetch.py（复用分支：if 分支不成立也 print + return 0；缓存根 = __file__ 上两级）"
+      - "skills/diagnose/SKILL.md（源码分析节 步骤 2 的契约：非零退出 = 未取得源码）"
+      - "CLAUDE.md（source_ref 段：原约定 src-code/<org>/<repo>/ 单目录 + 换版本用 checkout）"
+      - "scripts/exec_log_path.py（同一克隆共享的既有范式：main_checkout + WHERE_LABEL + --local）"
+      - "仓库现状实测：src-code/vllm-project/ 为空壳目录，主检出与 3 个 worktree 均无 clone"
+      - "scripts/rehearse_evolve_loop.py（既有「共享 exec-log」演练段：临时 git 仓库 + 两个真 worktree 的范式）"
+hypothesis: >-
+  把三件事一起改——①缓存按版本平铺为 `src-code/<org>/<repo>/<解析后的 ref>/`，每个版本目录自包含、
+  互不干扰；②缓存根解析到**主检出**（同一克隆的所有 worktree 共读共写，复用 exec_log_path 的既有
+  范式）；③`src_fetch.py` 的退出码只说真话（0 仅当该 ref 的树**已在本地产出并校验通过**，版本不符/
+  拉取失败/ref 解析不了一层一个非零码 + 各自的可执行下一步，并列出可用 tag）——则"本地有没有这个
+  版本"变成一次可判定的检查（进而 agent 的动作从"转 web 搜索"回到"拉取"），并发诊断不再互相污染
+  版本，且版本共存/退出码真相/跨 worktree 共享三条不变量都有离线断言兜住。
+predicted_effect:
+  metric: 源码缓存三条不变量的离线断言数（版本共存不互相污染 / 退出码与真实产出一致 / 跨 worktree 共享）
+  from: "0 条：三条不变量此前无任何断言（演练断言总数 141，无一条触及 src_fetch）"
+  to: "22 条全绿（演练断言总数 141 → 163）"
+  measure:
+    command: "python3 scripts/rehearse_evolve_loop.py"
+    expect_exit: 0
+    # 字面量：演练输出里新增那一段的标题标记（非代号，不必登记 glossary）
+    expect_stdout: "[E15]"
+validation:
+  method: metrics_compare
+  baseline: >-
+    ① 演练基线（本分支，未改动的 main）：`python3 scripts/rehearse_evolve_loop.py` → 断言 141/141 通过，
+    其中没有一条覆盖源码缓存（演练脚本里 src_fetch 出现 0 次）。
+    ② **行为基线用本地假上游复现了用户报的那条链**（不起网络，可重复）：上游有两个 tag
+    v0.1.0/v0.2.0，旧 `src_fetch.py` 先拉 v0.1.0，再用 `--ref 0.2.0`（真实 tag 是 v0.2.0，只差 v 前缀）
+    请求 → 输出 `fetch --depth 1 origin 0.2.0` → `fatal: couldn't find remote ref`、`checkout 0.2.0`
+    → `error: pathspec ... did not match`，**两条都失败**，但脚本仍打印
+    `复用 <路径>（当前检出 v0.1.0）` 并 **exit 0**；核对目录内容 = v0.1.0。这正是"agent 拿到 exit 0 +
+    一个路径、grep 不到 v0.2.0 的符号 → 判本地没有 → 转 web 搜索"的入口，且**与目录布局无关**。
+    ③ 同日同场景新实现：解析到真实 tag v0.2.0、产出 v0.2.0 目录（内容 = v0.2.0），v0.1.0 目录仍在原位
+    且内容未变；`--ref` 给不存在的 tag → exit 3 且 stdout 无任何路径、附可用 tag；目录被外部 checkout
+    过 → exit 5（不再静默复用）。
+  success_criteria: >-
+    ① measure 命令 exit 0 且新增 [E15] 段断言全绿（22 条）；②三条不变量各有正例与负例：两个版本先后
+    拉取后**前者仍在原位且内容未变**；请求不存在的 ref → **非零退出（3）且 stdout 不出现任何缓存路径**，
+    并列出可用 tag；`--ref 0.1.0`（真实 tag `v0.1.0`）容错命中且**标注了是容错匹配**；目录被外部
+    checkout 过 → 非零（5），`--force` 后内容回到该版本；③跨 worktree：从 linked worktree 拉取，缓存
+    落在主检出、worktree 内不产生 src-code；④并发同版本：两个进程都 exit 0、只产出一个版本目录、
+    无残留 `.tmp-*`、内容是请求的版本；⑤`--list-versions` 报出本地已有版本，旧布局单检出被如实报告
+    （不假装是版本目录、也不被静默删除）；⑥`kb-checks` 八条 + `verify_proposals --check` 仍绿；
+    ⑦skill/文档中不再有单目录约定残留（`src-code/<org>/<repo>/` 直用 checkout 的旧表述为 0 处）。
+  rollback: >-
+    单个提交内可 revert：scripts/src_fetch.py（布局与退出码）、scripts/exec_log_path.py（新增
+    src-code 的共享路径解析）、scripts/rehearse_evolve_loop.py（新增 E10 段）、skill 与文档措辞。
+    无数据迁移——src-code/ 是 .gitignore 的本地缓存，旧布局残留（空壳目录、手工 clone 的单检出）
+    既不影响新版本目录、也不需要转换；必要时 --force 重拉或手工删除。
+gate: "出现『本地无该版本』而转 web 搜索、或 source_ref 指向的版本与本地实际树不符时，重跑 measure"
+risk: low
+principle_refs: [2, 7, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: >-
+    本轮无独立读数（本会话未接 tokenMeter 取数）。按仓库口径"无法单独量化时写 0 并说明口径"——
+    这个 0 表示"未单独量化"，不表示零成本。
+decisions:
+  - who: agent
+    when: '2026-09-14'
+    type: proposal
+    conclusion: >-
+      识别：用户报的现象（"本地没有这个版本就去 web 搜索"）在代码层的直接成因是**闸门说了假话**——
+      src_fetch.py 的复用分支无论版本是否相符都 exit 0，而 skill 的契约把 exit 0 当作"已取得对应版本
+      源码"。这与本仓库此前的同类病灶一致（断言钉住已废弃的载体形态、能力只在单一平台成立却写成通用
+      承诺）：**量具坏了，而不是被测对象坏**。故按"先修闸门、再改结构"的顺序做：退出码真相是止血
+      （独立成立），版本平铺 + 缓存锚到主检出是让"多 agent 协作"在共享面真正成立。
+  - who: agent
+    when: '2026-09-14'
+    type: action
+    conclusion: >-
+      执行（本分支 kb/src-code-version-layout，独立 worktree）：①`scripts/src_fetch.py` 重写为
+      "版本平铺 + 退出码只说真话"——版本目录 `src-code/<org>/<repo>/<解析后的 ref>/`（commit 用
+      `sha-<12>`），目录内 `.git/src-fetch-meta.json` 记实际 HEAD 供**离线**核对；缓存根改走
+      `exec_log_path.resolve_src_code`（同一克隆共享，`--local` 可退回检出内）；ref 解析带 v 前缀容错，
+      解析不到时列可用 tag；退出码分层 2/3/4/5，**非零时 stdout 不出现任何缓存路径**；临时目录克隆 +
+      原子 rename（并发同版本时失败者复用赢家）；新增 `--list-versions`（本地有哪些版本一眼可判定）
+      与 `--prune`（手工删，无自动 GC）。②`scripts/exec_log_path.py` 增 `SRC_CODE_REL` /
+      `resolve_src_code` / `describe_src`，复用既有 `main_checkout`——不新抄一份路径语义。
+      ③`scripts/rehearse_evolve_loop.py` 增 [E15] 段（22 条断言，本地假上游 + 真 linked worktree，全程离线）。
+      ④`diagnose`/`resume-diagnosis` skill 的源码分析节改写为"按版本取 + 退出码即契约 + 别用 web 搜索
+      代替源码"，`CLAUDE.md` 的 `source_ref` 段与 `docs/demo-walkthrough.md` 同步新布局。
+  - who: agent
+    when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      验证：①**行为复现（改前 vs 改后，本地假上游、不起网络）**：旧实现先拉 v0.1.0、再以 `--ref 0.2.0`
+      请求（真实 tag v0.2.0）→ `couldn't find remote ref 0.2.0` + `pathspec 0.2.0 did not match` 两条
+      失败，仍打印"复用 <路径>（当前检出 v0.1.0）"并 **exit 0**，而那个目录里确实是 v0.1.0；新实现同
+      命令解析到 v0.2.0、产出 v0.2.0 目录，v0.1.0 目录原位不动。②演练 [E15] 22/22，断言总数 141 → 163
+      全绿（measure 命令；并经 `scripts/ev_measure.py EV-2026-065 --run` 实测判符合）。③本地复跑
+      CI 全体：build_index / triage-tree / verify_references / build_ref_summary_index /
+      build_procedure_index / verify_metrics / build_timeline / verify_proposals / build_docs_index /
+      holdout --check 全绿 + skill 自包含 grep 无越界锚点。④`grep -rn 'src-code/<org>/<repo>/'` 已无
+      单目录旧表述（skill/文档/CLAUDE.md 全部改为 `<tag>/` 形态）。⑤**指引面的配对文本探针**（两个
+      subagent，同一现场：issue 是 0.26.0、本地只有 v0.23.0；各只给旧/新措辞、不给仓库访问）：
+      **两侧第一步动作相同**（都选了取该版本源码，都没转 web 搜索）——即"第一步漂移"**不是措辞造成的**，
+      与本卡判断一致（成因是脚本谎报成功，措辞救不了）；差异出现在**失败分支**：旧措辞的读者提出
+      "tag 不存在就取最接近的真实 ref"（= 拿别的版本当证据，正是要防的那类错证据），新措辞的读者按
+      退出码 3/4/5 分别给出诚实动作并明确拒绝用其他版本替代。**强度如实**：文本探针 N=1/侧、非现场
+      ixn replay，故它只支持"措辞在失败分支上更硬"，不构成第一步行为改善的证据。
+      ⑥**真实仓库端到端（演练之外的一层，本轮实测）**：对 github 上的 vllm-ascend 实拉
+      `v0.23.0`（16s，50.3 MB）与 `v0.26.0rc1`（14s）→ 两版并存于主检出 `src-code/`，从
+      worktree 执行也落在共享缓存（跨 worktree 共享是实测而非推断）。**并暴露一处演练测不到的
+      缺陷**：`v0.26.0` 这个 tag 在上游**不存在**（0.26 系列只发了 rc），而旧提示按字典序取"末 10 个"
+      → 把 `v0.26.0rc1` 埋在 `v0.9.x` 之后，等于在最需要它的时候没给答案；已改成"先找版本号相同、
+      只差后缀的 tag"，并把这条差异补成断言 [E15]③b（请求 v0.3.0 → 提示必须给出 v0.3.0rc1）。
+      这也解释了用户报的场景：`0.26.0` 对应上游 `v0.26.0rc1`。
+      ⑦**worktree 清理不丢缓存（本卡目标本身，改前改后各测一遍真仓库）**：先建一个取自未修复 main 的
+      一次性 worktree → 它把 vllm-ascend clone 进了**自己**的检出（57 MB，主检出缓存未见增长），
+      `git worktree remove` 之后那 57 MB **随之消失**；同一操作在修复后的分支上：一次性 worktree 里
+      请求 v0.23.0 → 命中主检出缓存（117 MB **未增长**、worktree 内不产生 src-code），删掉该 worktree 后
+      缓存仍在，**源不可达也能离线复用**（exit 0）。该不变量已固化为演练 [E15]⑧（3 条断言）。
+      ⑧**顺带更正一条会误导人的旧说法**：`exec_log_path.py` 原写"收工 remove 甚至要 `--force`，因为那份
+      未跟踪文件"——实测（git 2.39）gitignore 的未跟踪件**不计入 dirty，既不阻止 remove 也不报错**，随
+      worktree **静默**一并被删（对照：已跟踪且被修改的文件才会被 git 拦下并提示 `--force`）。即这条丢失
+      路径比原先以为的更安静，已按实测更正该注释并在 CLAUDE.md 的 worktree 纪律里写明分流规则
+      （跨 session 复用的锚到主检出；`traces/`、`proposals/` 运行时目录、`.s2-replay/` 等仍在检出内、随
+      worktree 静默消失）。**未在本卡范围内修的同类缺口**：那些"仍在检出内"的运行时件——它们的写侧是
+      agent 按 prose 写相对路径，修法与 owner 都不同，另立变更处理，不在本 PR 混入。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      **采纳（validated）**：三条不变量都有正例与负例断言，改前的静默错证据可复现、改后不可复现。
+      刻意不做的事：①**不做自动 GC**——正在被另一个 agent 分析的版本目录不能自己消失，只给
+      `--list-versions` + `--prune` 让人显式决定；②**不自动"收养"旧布局单检出**（把它 mv 进版本目录）——
+      那是对别人目录的静默移动，改为在 `--list-versions` 里如实报告 + 说明手工处理；③**不引入
+      bare 镜像 + 共享对象库**（每版本一份浅克隆已经够用，磁盘升级留到真有仓痛了再说——避免过度设计）；
+      ④不改 CLAUDE.md「源码不落库」的口径（原文没写布局，新实现与它相符，只是把"按需 checkout"换成了
+      "按版本平铺 + 复用"）。

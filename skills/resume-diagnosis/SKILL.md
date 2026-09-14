@@ -19,6 +19,7 @@ description: >
 
 状态与结局词表见仓库根的 `trace-status.yaml`（**不是** `feedback_pending` 那个旧说法）。
 
+0. **先解析 trace 目录**：`python3 scripts/shared_dir.py traces` 打印的绝对路径就是本会话要读写的 `traces/`（锚在**主检出**、跨 worktree 共读）——下面所有 `traces/…` 读写都以它为准，别写相对 `traces/`。
 1. 读活跃的 `traces/*.yaml`（每个并发诊断一个文件；模板见 `diagnosis_state.yaml.example`，含 `trace` 数组）。**多个时列出让工程师选续接哪个**
    - **先看有没有配套的人读报告** `traces/<session_id>.report.md`（diagnose 步骤 6 产出）：它把结论、证据链、源码分析、机制图、修复方案、**当前状态与下一步**、**沉淀候选**集中在一处。先读报告能最快恢复"这单在查什么、停在哪、待回报什么"，也直接告诉你**这次能沉淀什么知识**（顶层 `sediment_candidates` 是同一份内容的结构化版本）。读报告**不替代**读 trace：报告的结论要用 trace 的 `reason`/证据核对，两者冲突时以 trace 的现场记录为准并记下冲突。
    - **报告是活件——续接中要顺手修订它**（不是只读）：把新证据并入第 3 节对应强度段、更新第 7 节"当前状态与下一步"、必要时补第 4/5 节、元信息"最后更新"与第 10 节追加一行修订记录；**同一份文件改到底，不另起一份**。规则见 `skills/diagnose/references/report-template.md` 第 2 节。
@@ -55,7 +56,7 @@ resume 只负责**恢复现场**——恢复后继续的是 `/diagnose` 的完�
 - 不要从头重新收集症状——state 文件里都有
 - 如果 `session_id` 和当前不匹配，提示"该问题可能已被其他人接手——是否继续？"（并发检测，脆弱机制，只作提示不硬阻塞）
 - **不要在这份 trace 里记录本 resume 期间发生的流程/设计讨论**（与 diagnose 的"trace 边界"一致——那是自演进信号，走 EV card / 自演进通道，不污染本问题的诊断 trace）。`resume` 事件只承载诊断状态（恢复到哪步、待办什么），不掺流程改进内容
-- 续接中若需源码分析，**用 `scripts/src_fetch.py <repo> --ref <tag>`**（复用 `src-code/<org>/<repo>/` 本地缓存，同版本不重复 clone，`git -C <path> log -1` 核对版本；`--list` 看已知仓库与 host），不自行决定 clone 到哪、不重复拉取
+- 续接中若需源码分析，**用 `scripts/src_fetch.py <repo> --ref <tag>`**（缓存按版本平铺在 `src-code/<org>/<repo>/<tag>/`、缓存根在主检出跨 worktree 共读；`--list-versions` 看本地已有版本，`--list` 看已知仓库与 host），不自行决定 clone 到哪、不重复拉取。**退出码即契约**：`0` = 该版本已产出并核对通过（stdout 末行 = 路径）；`3/4/5` = 没拿到（tag 名不对 / 拉取失败 / 本地目录核对不通过）——非零就别拿本地其他版本的目录去读，也不用 web 搜索代替源码
 
 ## 状态文件生命周期
 

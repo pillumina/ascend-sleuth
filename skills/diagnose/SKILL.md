@@ -134,6 +134,8 @@ reference 有三个消费点，都由流程里的**缺口**决定、都不参与
 
 每个 step 后往 `traces/<session_id>.yaml`（每个并发诊断一文件；模板见 `diagnosis_state.yaml.example`）的 `trace` 数组追加一条。**trace 是完整交互轨迹（trajectory）**——统一 `{role, ...}` 结构：
 
+- **先解析 trace 目录（一次，之后全程用它）**：`python3 scripts/shared_dir.py traces` 打印的绝对路径就是本次要读写的 `traces/`——它锚在**主检出**（同一克隆的所有 worktree 共读共写），所以从 worktree 干活也不会把记录写进一个主检出看不到、清理 worktree 就消失的地方。**本 skill 里所有 `traces/…` 的读写（含最前面的trace 相似检测）都以这个路径为准**，别写相对 `traces/`。
+
 - **agent 事件**：`{role: agent, step, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback|reference_lookup|triage_semantic|source_analysis|attribution|resume|procedure_follow|report, output, reason, ...}`。`output` 给用户（可精简）、`reason` 记决策依据（**关键决策必写**）；`source_analysis` 必记 `tool_calls`；`attribution` 执行错可加 `component`；`report` 记 `report_file`（人读报告产出，步骤 6 必写一条）。
 - **user 事件**：`{role: user, step, content, evidence}`——`content` 摘要（短）+ `evidence` 完整证据（`inline` 原文 / `files` 相对路径 / `sources` URL / `missing` 缺口）。
 - **证据落盘铁律（必走，无例外）**：短原文 → `inline` 存完整原文；长命令/配置/日志块/附件 → **先写 `traces/evidence/<session_id>/<名>.txt`** 完整原文、`evidence.files` 用相对路径引用、`inline` 只留一行"完整原文见 evidence.files" + 关键指纹。**禁止**只写摘要、或把原文压成指纹塞 `inline`。
@@ -148,7 +150,9 @@ reference 有三个消费点，都由流程里的**缺口**决定、都不参与
 报错签名指向框架代码/算子名/量化描述表（如 `fault kernel_name=QuantBatchMatMulV3`、`modelslim_config.py` 相关 KeyError）且 Tier 3 未覆盖时：
 
 1. **按报错背景确定是哪个源码仓，再向其确认版本**（`scripts/src_fetch.py --list` 看已支持仓库：如 vllm-ascend / torch-npu / CANN / mindspeed-* / verl 等，取决于报错签名指向哪——源码分析依赖对应版本，不要猜）。
-2. **获取源码（统一走 `scripts/src_fetch.py` 确定性入口——本地优先、复用优先）**：`python3 scripts/src_fetch.py <repo> --ref <tag>`（`--list` 看已知仓库与 host：vllm-ascend=GitHub、mindspeed-*=GitCode、torch-npu=GitCode、verl=GitHub；未知/私有 → `--url`）。脚本把「clone 到哪 / 同版本复用 / URL 来自哪」从 agent 自觉变成**确定性操作**——本地 `src-code/<org>/<repo>/` 已有则**复用**（`git -C log -1`/`describe` 核对版本），没有则按已知 host 拉取。**「不落库」= 源码不随仓库提交、也不写进知识库**；分析仍要保留源码（`src-code/` 本地缓存），知识库只记 `source_ref` 代码指针。
+2. **获取源码（统一走 `scripts/src_fetch.py` 确定性入口——按版本取，不是"本地有什么用什么"）**：`python3 scripts/src_fetch.py <repo> --ref <tag>`（`--list` 看已知仓库与 host：vllm-ascend=GitHub、mindspeed-*=GitCode、torch-npu=GitCode、verl=GitHub；未知/私有 → `--url`；`--list-versions` 看本地已有版本）。缓存**按版本平铺**在 `src-code/<org>/<repo>/<tag>/`（缓存根在主检出、跨 worktree 共读；各版本目录互不干扰，并发诊断各读各版本），命中即复用、该版本缺失即按已知 host 拉取。
+   **退出码就是契约，别只看输出里的路径**：`0` = 该版本已在本地产出**并核对通过**（stdout 末行 = 路径）；`3` = tag 解析不了（多半 tag 名不同，输出里有可用 tag 示例）；`4` = 拉取失败（网络/私网）；`5` = 本地该版本目录核对不通过（确认要它才 `--force` 重拉）。**非零退出 = 没拿到这个版本的源码**——不要拿本地其他版本的目录去读（那是错版本的证据），也不要拿 web 搜索结果当源码（搜上游 issue/PR 状态是步骤 5 的事，不是源码来源）。
+   **「不落库」= 源码不随仓库提交、也不写进知识库**；分析仍要保留源码（`src-code/` 本地缓存），知识库只记 `source_ref` 代码指针。
 3. **grep 定位**：搜报错签名/算子名/函数名（如 `grep -rn "QuantBatchMatMulV3" vllm_ascend/`）→ 读相关文件片段 → 分析根因。
 4. **追问用户验证**：对照预期/复现/补环境信息，验证根因假设。
 5. **follow-up**：查知识库是否已覆盖；`gh search issues/prs` 看上游是否已修复（已修复→fix=升级到修复版本；未修复→根因+workaround）；内网不可达→诚实说明无法查证。

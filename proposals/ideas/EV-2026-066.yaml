@@ -1,0 +1,129 @@
+# ============================================================
+# Idea 卡（proposals/ideas/）——schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）
+# 校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+
+id: EV-2026-066
+layer: L2
+title: 检出侧运行时件（traces / inbox / proposals 运行时目录）锚到主检出：记录不再只存在于某个 worktree
+status: validated
+authorization: review
+dimension: architecture
+supersedes: []
+superseded_by: null
+created_at: 2026-09-14
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      用户在确认源码缓存卡的"目标是否达成"时提出一个结构性疑问：既然诊断主流程本来就跑在主仓，是否
+      只要"提交 PR 时才进 worktree"就不必再管未进 git 的本地件？查证结论是**部分成立**：按产出面分，
+      `diagnose` / `resume-diagnosis` / `to-postmortem` 只写 gitignore 件（纯检出侧），而
+      `knowledge-groom` / `issue-ingest` / `self-evolve` **一次运行里同时写两侧**（groom：读+清 inbox、
+      写 `knowledge/`+`references/`；issue-ingest：写 inbox + 写 `ingest-state.json`；self-evolve：写
+      proposals 运行时目录 + 写 ideas 卡），cwd 放哪边都有一半不对。更硬的一处：to-postmortem 在主仓产出
+      草稿、而转正必须改 tracked `knowledge/`（只能进 worktree），worktree 里的 inbox 是空的 → "无草稿可
+      转正"，正是本仓库反复出现的"静默缺席被读成不存在"。另有两处实证说明"流程总在主仓跑"这条不变量靠
+      不住：共享 exec-log 那套机制本身就是因 agent 在 worktree 收尾导致记录看不见/丢而建的；源码缓存卡
+      里那次"0.23.0 本来在、后来没了"也是 worktree 内的缓存被清掉。
+    trajectory:
+      - "CLAUDE.md（Multi-agent collaboration：原把 postmortems/inbox/ 与已跟踪的共享状态文件并列）"
+      - "docs/git-workflow.md（worktree 约束：原只写了「共享面不隔离」，未区分 tracked 与 gitignore 件）"
+      - "skills/diagnose/SKILL.md（trace 段：写相对 traces/<session_id>.yaml）"
+      - "skills/resume-diagnosis/SKILL.md（读活跃 traces/*.yaml + 续接必写 trace）"
+      - "skills/to-postmortem/SKILL.md、skills/issue-ingest/SKILL.md、skills/knowledge-groom/SKILL.md（inbox 读写两侧）"
+      - "skills/self-evolve/SKILL.md（proposals/{sessions,tasks,reviews,experiments}/ 运行时目录）"
+      - "scripts/settle_trace_feedback.py / component_tally.py / trace_metrics.py / replay_trace.py（默认读 <检出>/traces）"
+      - "scripts/exec_log_path.py（既有范式：main_checkout + resolve_rel，exec-log/ev-measure-log/src-code 已锚）"
+hypothesis: >-
+  把"跨 session 复用的运行时件"全部收进同一张表与同一个解析入口——`exec_log_path.py` 加
+  `traces` / `inbox` / `proposals-{sessions,tasks,reviews,experiments}` 的注册与解析，agent 侧给一个
+  确定性 CLI（`scripts/shared_dir.py <名字>` 打印绝对路径、`--list` 一览），读 `traces/` 的四个脚本默认
+  改取主检出那一份，六个 skill 的 prose 改成"先解析、再用绝对路径"——则"这份记录落在哪"不再取决于
+  人在哪个检出干活：worktree 里写的记录主检出看得见、worktree 清理也不丢，"某流程只在某个 worktree 里有
+  记录"这一类静默丢失从结构上消失；剩下会随 worktree 消失的只有明确标注的 dev 期产物。
+predicted_effect:
+  metric: 检出侧运行时件的跨 worktree 不变量断言数（解析到主检出 / 读侧读到同一份 / 清理 worktree 不丢）
+  from: "0 条：traces / inbox / proposals 运行时目录此前无任何断言（只有 src-code 与其同类的 exec-log 有）"
+  to: "6 条全绿（演练断言总数 163 → 169）"
+  measure:
+    command: "python3 scripts/rehearse_evolve_loop.py"
+    expect_exit: 0
+    # 字面量：本卡断言挂在既有「共享 exec-log」段内，用该段标题做判据（避免与单字母记账号家族同形）
+    expect_stdout: "共享 exec-log"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前实测（本分支改动前）：`scripts/shared_dir.py` 不存在；四个读 `traces/` 的脚本按
+    `<脚本所在检出>/traces` 取数——从 worktree 跑 `trace_metrics.py` 得到"未找到任何 traces/*.yaml"
+    （主检出里当时有 12 个 trace 文件），即**同一份记录在写侧看得见、在另一检出读成空**。
+    `grep -rn 'postmortems/inbox\|proposals/{sessions' skills/` 显示 inbox 与 proposals 运行时目录
+    都是按相对路径约定写入，无解析入口。
+  success_criteria: >-
+    ① measure 命令 exit 0 且新增 6 条断言全绿；②worktree 里 `shared_dir.py traces` 给出主检出路径、
+    worktree 内不产生 `traces/`；③`--list` 一次列出六件运行时件及其落点；④读侧脚本在 worktree 里读到
+    主检出那份 trace（`sessions_total` 非 0，不是空跑）；⑤对照：仓外无 git 目录仍如实说"没有 trace"
+    （不是把任何路径都读成主检出——诚实退化）；⑥清理 worktree 后共享 traces 与解析结果都还在；
+    ⑦六个 skill 与 `CLAUDE.md` / `docs/git-workflow.md` 都写清"先解析、用绝对路径"，且
+    `CLAUDE.md` 不再把 gitignore 的 inbox 草稿与已跟踪共享状态文件并列；⑧`kb-checks` 八条 +
+    `verify_proposals --check` 仍绿。
+  rollback: >-
+    单个提交内可 revert：`scripts/exec_log_path.py`（新增注册表与解析）、`scripts/shared_dir.py`（新文件）、
+    四个读 traces 脚本的一行默认值、六个 skill 的措辞、两份文档。无数据迁移——解析只改变"新记录落在哪"，
+    已有记录原位不动（读侧在无 git 环境仍退化为检出内，历史 trace 不会因为改动而读不到）。
+gate: "出现『某流程的记录只在某个 worktree 里』或『面板/周批读到的 traces 少于实际写入数』时，重跑 measure"
+risk: low
+principle_refs: [2, 7, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: >-
+    本轮无独立读数（本会话未接 tokenMeter 取数）。按仓库口径"无法单独量化时写 0 并说明口径"——
+    这个 0 表示"未单独量化"，不表示零成本。
+decisions:
+  - who: agent
+    when: '2026-09-14'
+    type: proposal
+    conclusion: >-
+      识别：用户的"只把提交放进 worktree"方案对**纯检出侧流程**（诊断/续接/to-postmortem）成立，对
+      **横跨两侧的三条流程**不成立；而且"转正"这一步天然跨侧（草稿在主仓、写 tracked 在 worktree）。
+      所以选择"规范 + 机制并存"：规范层面写清"改 tracked 的进 worktree、只写运行时件的主仓跑"，机制层面
+      把跨侧可见性做成结构（同一张表 + 同一解析入口），不把安全寄托在"大家都会在主仓跑"这条不变量上
+      （它已被 exec-log 与源码缓存两次实测打破）。
+  - who: agent
+    when: '2026-09-14'
+    type: action
+    conclusion: >-
+      执行（与源码缓存卡同分支，同一条机制）：①`scripts/exec_log_path.py` 新增检出侧运行时件注册表
+      （`traces` / `inbox` / `proposals-{sessions,tasks,reviews,experiments}`）与
+      `resolve_checkout_dir` / `describe_checkout_dir` / `resolve_traces`；②新增 `scripts/shared_dir.py`
+      ——agent 侧入口，`--list` 一览全部运行时件的落点、单件解析打印绝对路径（stdout 末行 = 路径、
+      末行在失败时是显式声明、必要时 mkdir）；③读 `traces/` 的四个脚本
+      （`trace_metrics.py` / `settle_trace_feedback.py` / `component_tally.py` / `replay_trace.py`）
+      默认改取主检出那一份；④六个 skill（diagnose / resume-diagnosis / to-postmortem / issue-ingest /
+      knowledge-groom / self-evolve）的 prose 改为"先解析一次、之后用绝对路径"；⑤`CLAUDE.md` 与
+      `docs/git-workflow.md` 写清分工（改 tracked 进 worktree、只写运行时件在主检出跑、两类都碰的走解析器），
+      并修正"inbox 草稿与已跟踪共享状态文件并列"的分类错误。
+  - who: agent
+    when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      验证：①演练 169/169（新增 6 条挂在既有「共享 exec-log」段：worktree 里解析 traces 得到主检出路径、
+      worktree 内不产生 traces/、`--list` 列出六件、读侧脚本在 worktree 里读到 `sessions_total: 1`
+      而非空跑成 0、仓外无 git 目录仍如实说"没有 trace"、清理 worktree 后共享 traces 与解析结果都在）；
+      ②改前对照实测：改动前从 worktree 跑 `trace_metrics.py` 得到"未找到任何 traces/*.yaml"，而主检出当时
+      有 12 个 trace 文件——同一份记录在一侧看得见、在另一侧读成空；③真仓库实跑：worktree 里
+      `shared_dir.py --list` 六件全部解析到主检出，`--local` 能退回检出内（隔离仍在）；
+      ④CI 全体本地复跑全绿（含 `verify_proposals` 65 张卡）；⑤`render_review_summary --scan` 对本卡与
+      新增 prose 无未登记代号、无越界（`docs/git-workflow.md` 那处是既有的同形冲突登记说明，非本次引入）。
+  - who: agent
+    when: '2026-09-14'
+    type: decision
+    conclusion: >-
+      **采纳（validated）**：机制与规范并存——规范写清"哪类流程在哪跑"，机制保证跨侧可见性不依赖人记得住。
+      刻意不做的事：①**不给 dev 期产物（`.s2-replay/` / `.ixn-replay/` / `.flow-replay/` / `.auto-fetch/` /
+      `eval-reports/`）接线**——它们不是知识记录、脚本本身都接显式 `--root` / `--report` 参数，接线只增加
+      名字成本；在文档里如实标注为"仍会随 worktree 消失"。②**不把状态挪出仓库**（例如挪到 `~/.cache/`）——
+      解析到"主检出"保住了**按克隆隔离**这条隐私边界（`traces/` 含客户现场信息，两个克隆不该共享），
+      挪到机器级共享目录会打破它；换来的是"一份状态跟着克隆走"，这正是要的。③**不动读侧既有的"主检出优先、
+      否则当前检出"回退**（`metrics_snapshot.resolve_trace_root`）：它会把实际读的那一份打在输出里，
+      兼容历史 worktree 里遗留的 trace，属诚实退化。

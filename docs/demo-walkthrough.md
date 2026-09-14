@@ -171,7 +171,8 @@ aclnnScatterNdUpdate error 507011
    （会拉对应版本源码，可以吗？也可以说"跳过"）
 
 用户回应：可以，继续（客户确认愿意等源码分析）
-⑤ 版本 v0.22.1rc1 → src-code/ 无 → git clone -b v0.22.1rc1
+⑤ 版本 v0.22.1rc1 → src_fetch.py 取该版本（本地无此版本 → 拉取到
+   src-code/vllm-project/vllm-ascend/v0.22.1rc1/，其他版本目录不动）
 ⑥ grep 定位：vllm_ascend/device/device_op.py:528  dsa_kv_compress_scatter
    → npu_scatter_nd_update_v2(cache, slot_mapping, x)
    读码：SWA/Compressor 的 KV 压缩写入路径——长上下文（39K）触发 compressor

@@ -116,7 +116,7 @@ python3 scripts/issue_filter.py --state ingest-state.json \
 ### 6. 报告落点
 
 ```
-拉取 N 条 → 候选 M 条 → 评估通过 K 条 → 沉淀 case 草稿 K 条 → postmortems/inbox/（待审）
+拉取 N 条 → 候选 M 条 → 评估通过 K 条 → 沉淀 case 草稿 K 条 → inbox（待审；路径先 `python3 scripts/shared_dir.py inbox` 解析，锚主检出）
 已标记 J 条编号（含跳过）→ ingest-state.json（幂等）
 转正：维护者批量审 inbox（/skill:knowledge-groom）
 ```
