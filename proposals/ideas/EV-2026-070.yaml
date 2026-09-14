@@ -1,11 +1,11 @@
 id: EV-2026-070
 layer: L1
 title: cann-samples 吸收第二批：平台映射 + 访存带宽测试 + 样例仓构建约束（3 条词条）
-status: validated
+status: superseded
 authorization: review
 dimension: process
 supersedes: []
-superseded_by: null
+superseded_by: EV-2026-075
 created_at: 2026-09-14
 source_signals:
   - signal: coverage_gap
