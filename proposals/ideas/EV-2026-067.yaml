@@ -105,6 +105,15 @@ decisions:
       逐条复跑通过（measure 的判据即此）。
   - who: agent
     when: '2026-09-14'
+    type: eval
+    conclusion: >-
+      PR 上补记（Actions 首次真实调度）：`panel-checks` 在 pull_request 与 push 两个 run 都通过
+      （25s），日志里可见 13 种形状的对照断言、渲染层那条异常断言，以及"真实 trace 对照：跳过
+      （本检出的 traces/ 里没有 .yaml）"——运行时件不进 git，这一半在 CI 上按预期缺席并如实打印。
+      另 `verify-template` 也通过（PR body 用了 methodology 模板）。上一轮"没跑过 Actions 调度"
+      的不确定到此消除。
+  - who: agent
+    when: '2026-09-14'
     type: decision
     conclusion: >-
       **采纳（validated）**：门接上了，而且接门的那天就能绿——因为顺手修掉了那条只有干净检出才
