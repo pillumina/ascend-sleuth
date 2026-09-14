@@ -47,7 +47,7 @@
 
 ### 1. 置信度校准（每次 fix 应用后）
 
-case 的 confidence 不是人工设定而是在使用中习得：fix 被应用并确认解决，hits 加一；确认未解决，misdiagnoses 加一；score 随 last_hit 时间衰减。score 决定候选 case 的验证顺序，被反复验证的知识排到前面，被证伪的沉下去。结果捕获是结构化的：`feedback_pending` 标记写在状态文件里，任何一次 diagnose 或 resume 启动都会先追问未回报的结果，不依赖任何人的记性。
+case 的 confidence 不是人工设定而是在使用中习得：fix 被应用并确认解决，hits 加一；确认未解决，misdiagnoses 加一；score 随 last_hit 时间衰减。score 决定候选 case 的验证顺序，被反复验证的知识排到前面，被证伪的沉下去。结果捕获是结构化的：`feedback_pending` 标记写在状态文件里，续接启动与面板待办会追问未回报的结果，不依赖任何人的记性（各处时点见上方流程图与注）。
 
 feedback 是双通道的，按**反馈对象**分类而非按"谁给的"分级，两条通道分别结算、不混算：
 
@@ -68,7 +68,7 @@ feedback 是双通道的，按**反馈对象**分类而非按"谁给的"分级�
 state 文件（写 trace +                state 文件（trace 记             case 文件
 feedback_pending: CASE-ID）           feedback action + 清             （读 hits/mis）
    │        │                        feedback_pending）               │
-   │        └──下次 diagnose/resume ──► case 文件（更新                 ▼
+   │        └──下次 resume 续接 ────────► case 文件（更新                 ▼
    │            启动先扫它、追问结果     confidence: hits+1 /      build_index.py
    │                                   mis+1、score 重算、            重建索引
    │                                   last_hit）                    （score 同步）
@@ -80,6 +80,9 @@ feedback_pending: CASE-ID）           feedback action + 清             （读 
    │                    metrics/timeline.yaml（数据，人复核后 append）
    │                    docs/metrics.md（机制文档，机制变才变）
 ```
+
+> 反馈债由**续接启动与面板待办**清——`/diagnose` 不在开屏追问历史 pending：
+> 新问题的第一屏只服务新问题，逐单追问十几笔历史债是审讯不是诊断。
 
 各写入点归属：
 

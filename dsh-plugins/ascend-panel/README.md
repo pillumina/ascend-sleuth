@@ -135,7 +135,8 @@
 - **指标判决依赖 Python 3 + PyYAML**（跑 `scripts/metrics_health.py --json`）：解释器按
   `python3` → `python` → `py -3` 逐个探测；缺解释器/缺 PyYAML/超时/无输出都返回**可执行的提示**
   （例如 `pip install pyyaml`），面板显示「体检不可用」而**不是**假装闭环正常。
-- **工具重名降级**：host 会注册 `ascend_trace_status`（供 diagnose 查未完成 session / feedback 债）。
+- **工具重名降级**：host 会注册 `ascend_trace_status`（供诊断收尾核对、续接与面板待办时查会话状态与反馈债；
+  **不是新诊断开屏的必查项**——新问题的第一屏只服务新问题）。
   `harness.registerTool` 在名字已被占用时**同步抛错**——曾因此让整个 `apply()` 中断、面板完全加载不上。
   现在改为 try/catch 告警：同名工具仍可用（占用者通常是上次会话遗留的同类插件），面板其余功能照常。
 - 工作区：ascend-sleuth 仓库（Host 从 session.header.cwd 解析）。
@@ -158,7 +159,7 @@
 | 指标 tab · 存量体检 | 知识库健康（case 总数/低置信/category 分布 + reference 草稿/过期/type）+ 流程闭环（沉淀漏斗/续接/参考参与） |
 | 指标 tab · 趋势与快照 | 本期 vs 上期差分（只列动了的）+ timeline 期卡（live 置顶、默认展开**最新两期**、小样本/不可解读标注）+ 实时计算 |
 | 指标 tab · 数据源三态 | timeline **读不到** / **解析不出期次** / 正常，三种结局分开说：中间那一种是"结构与解析器不符"，明确写"这不是没有数据"，并给复现命令 |
-| 学习环提示 | 反馈债**按 `feedback.case` 的取值分两种**：真实 case id → 「结果待回报：<case>」+ 回报指令；占位串 `pending-investigation`（没命中 case，只给了建议）→ 「等现场补材料：<等什么>」并归入「在查」——占位串不是 case id，读成 case 会把它报成"有个 fix 等验证" |
+| 学习环提示 | 反馈债**按 `feedback.case` 的取值分型**：真实 case id → 「结果待回报：<case>」+ 回报指令；占位串 `pending-investigation`（没命中 case，只给了建议）与**空值/缺失**（写了 `outcome: pending` 却没填 `case`）→ 「等现场补材料：<等什么>」并归入「在查」——这两者都不是 case id，读成 case 会把它报成"有个 fix 等验证"，还会给一个不存在的 case 生成回报指令 |
 | 不可解读标记 | 分母为 0 的指标（误诊率/归因比）显示「不可解读」徽标而非 `0/N`；期卡头报该期有几项不可解读 |
 
 ## 回归闸门

@@ -40,7 +40,11 @@ sediment_candidates: []               # 结构化沉淀候选（与报告第 8 �
                                       #     suggested_skill: to-reference   # to-postmortem | to-reference | knowledge-groom
                                       #     status: proposed         # drafted（已起草）| proposed（建议做，未做）
 feedback:                             # 反馈闭环结果（fixture 资格判定用）
-  case: ""                            # 命中的 case id（或 pending-investigation）
+  case: ""                            # 命中的 case id，或占位串 pending-investigation（没命中 case、只给了建议）
+                                      # 三种取值：①真实 case id → 回报后回写它的 confidence；②pending-investigation
+                                      # → 等的是现场材料，不回写 confidence；③空值/缺失 → **不是合法终态**：
+                                      # outcome=pending 却没填 case 时，续接（resume-diagnosis）与面板都无从判断
+                                      # 你在等什么（面板按"等现场补材料"处理）。要么清掉 pending，要么补成上面两者之一。
   outcome: ""                         # pending | resolved | not_resolved | partial（见 trace-status.yaml）
   confirmed_at: ""                    # 反馈确认日期
 feedback_pending_since: ""            # outcome=pending 时填给出 fix 的日期（反馈债账龄，可空）
