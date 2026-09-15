@@ -1,0 +1,96 @@
+# ============================================================
+# EV-2026-087 —— 摄取台账加"仓级判定"：整仓纳不纳入一次记清，不再扫树逐篇标记
+# 来源：本轮全组织覆盖时实测——对整仓不纳入的仓（教学/竞赛/算子模板/行业 SIG/agent 知识仓）
+#       扫全树 + 逐文档标记要几分钟，而结论早由仓的类别确定
+# 触发：全组织 80 仓普查时，为把"识别合适的项目"落成可审计台账，需要给整仓一个结论；
+#       原机制只有文档级 mark，必须先 scan（拉全树）才能标记，对 rejected 仓是纯浪费
+# 脱敏：只含公开仓路径与聚合计数，不含客户数据
+# ============================================================
+
+id: EV-2026-087
+layer: L2                          # 摄取流程与脚本（skills/reference-ingest、scripts/gc_docs.py）
+title: "摄取台账加仓级判定：整仓纳不纳入一次记清（selected/candidate/rejected + 理由），不必扫树逐篇标记"
+status: validated
+authorization: review              # 改的是摄取流程工具与 skill 正文（行为面）→ review 级
+dimension: evolvability            # 让"全组织覆盖"这件事可收敛：仓级结论一次写完、下一轮直接读
+supersedes: []
+superseded_by: null
+created_at: 2026-09-15
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      全组织 80 仓普查时，用户要求把"识别合适的项目"落成可审计结论。原台账只有文档级 decision，
+      于是对整仓不纳入的仓也必须先 `scan`（拉全树、可能翻十几页）再逐篇 `mark`：实测 cann-launch-camp
+      502 篇、asc-devkit 685 篇、metadef 708 篇——每仓扫+标记要几十秒到几分钟，而结论（教学仓/语言工具仓/
+      元数据定义仓）早由仓的类别决定。更要紧的是这类记录**没有承载结论的地方**：文档级 skipped 只能表达
+      "这一篇不沉"，表达不了"这个仓整体不纳入、理由是类别"，下一轮选源时仍要从头判断。
+      过程中还暴露一个并发纪律问题：两次并行跑逐文档标记（无锁 read-modify-write）互相覆盖，
+      其中一次把已 harvested 的 5 条决策改判为 skipped（本次已从提交恢复）。
+    trajectory:
+      - "scripts/gc_docs.py（新增 cmd_triage 子命令 + status 展示 triage 字段）"
+      - "skills/reference-ingest/SKILL.md（第 0 步：选源与仓级判定；scan 只对 selected/candidate 做）"
+      - "docs/reference-ingest-pipeline.md（新增「两级判定：仓级 + 文档级」一节与 schema 示例）"
+      - "reference-ingest-state.json（80 仓写入 triage：11 selected / 19 candidate / 50 rejected）"
+hypothesis: >-
+  把台账分成两级——仓级 `triage`（selected/candidate/rejected + 理由，零网络一次写完）与文档级 `decision`
+  （harvested/skipped/pending，需 scan 后逐篇判）——之后：整仓不纳入的仓**不必扫树**即可留下可审计结论；
+  下一轮选源直接读仓级字段（candidate 池就是待评估清单），不会重复评估；两级并存互不覆盖，
+  一个 selected 仓里多数文档仍可以是 skipped。
+predicted_effect:
+  metric: 全组织仓级判定的覆盖与可读性
+  from: "台账只有文档级 decision：整仓结论无处承载；rejected 仓也必须先扫全树再逐篇标记（实测 502/685/708 篇的大仓各需数十秒到数分钟）"
+  to: "80 仓全部有仓级 triage（11 selected / 19 candidate / 50 rejected，每条带理由）；triage 零网络写入；status 一行展示 triage 与文档级分布"
+  measure:
+    command: >-
+      python3 -c "import json,collections,sys;d=json.load(open('reference-ingest-state.json'));c=collections.Counter((v.get('triage') or {}).get('decision','-') for v in d['sources'].values());print('repos',len(d['sources']));print('selected',c['selected'],'candidate',c['candidate'],'rejected',c['rejected']);print('no_triage',c['-']);sys.exit(1 if (c['-'] or len(d['sources'])<80) else 0)"
+    expect_exit: 0
+    expect_stdout: "no_triage 0"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：`gc_docs.py` 无 triage 子命令；state 里只有 sources[].docs[]（80 仓中大量仓因未扫而无记录），
+    仓级结论只能靠散文（PR body）表达。
+  success_criteria: >-
+    ① measure：80 个源全部带 triage，rejected 理由非空（判据命令）；
+    ② 零网络：triage 子命令不调用 GitCode API（实测对未扫过的仓也能立即写入）；
+    ③ 两级并存：仓级 triage 不覆盖文档级 decision（本次恢复被并发误改的 5 条 harvested 后复跑验证）；
+    ④ skill/doc 同步：SKILL 第 0 步写明三种取值与"scan 只对 selected/candidate 做"，管道文档补两级判定一节；
+    ⑤ CI 无回归：verify_references / 两索引 / docs 索引 / proposals 全绿。
+  rollback: >-
+    单次提交：删 cmd_triage 与 status 里的展示、回滚 SKILL/doc 两处、并把 state 里的 triage 字段删掉即回原状
+    （triage 是新增字段，删掉不影响文档级 decision）。
+gate:
+  condition: "再出现「整仓结论无处承载 / rejected 仓仍被重复扫」时，重跑 measure 并复查两级判定的边界"
+risk: low
+principle_refs: [2, 3, 10]
+decisions:
+  - who: agent
+    when: 2026-09-15
+    type: action
+    conclusion: >-
+      新增 `gc_docs.py triage <repo> --decision selected|candidate|rejected --note <理由>`（零网络，写
+      sources[].triage），status 行首展示 triage；SKILL 第 0 步改为"先仓级判定再决定要不要扫"，
+      管道文档补「两级判定」一节与 schema 示例。
+      并发纪律写进实测教训：逐文档 mark 是 read-modify-write，**必须串行**——本轮并行跑两份标记脚本
+      互相覆盖，其中一次把 5 条 harvested 改判为 skipped（已按提交恢复并加"只处理 pending"守卫）。
+  - who: agent
+    when: 2026-09-15
+    type: eval
+    conclusion: >-
+      measure 实跑：80 仓全部带 triage（11/19/50），no_triage 0；对未扫过的仓 triage 也立即可写（零网络）。
+      负向对照：改动前的提交上同一命令报 sources 仅 11 条、no_triage=11 → exit 1。
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      采纳并标 validated（效果层）。边界如实标注：本卡证明"仓级结论已可承载且覆盖全组织"，**不证明**
+      19 个 candidate 仓里没有值得沉淀的内容——它们被显式登记为候选（理由：文档面大或含工具/库文档），
+      下一轮按价值排序评估；50 个 rejected 仓的理由按类别给出（算子库/模板库、治理竞赛教学、行业 SIG、
+      agent 知识仓、框架适配、模板配置），是判断不是普查结论，若某仓后续出现诊断价值高的文档面可按
+      candidate 复议（仓级 triage 可覆盖重写）。
+actual_cost:
+  tokens: 25000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数，按仓库口径给估算：本轮含全组织普查与逐仓判定（网络为主）、4 条新词条的
+    正文通读与撰写、脚本与 skill/doc 扩展、以及一次并发误改的恢复与复盘。

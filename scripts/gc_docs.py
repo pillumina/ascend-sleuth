@@ -384,6 +384,23 @@ def cmd_mark(a) -> int:
     return 0
 
 
+def cmd_triage(a) -> int:
+    """仓级判定：这个仓整体纳不纳入先验层（不逐文档标记）。
+
+    为什么需要它：文档级 mark 要求先把仓扫进台账（拉全树 + 逐文档记账），对**整仓不纳入**的仓
+    （源码/模板/治理/行业/agent 知识仓）是纯浪费——扫大仓可能几分钟，而结论早就由仓的类别决定。
+    仓级判定把"这个仓不纳入，理由是什么"变成一条可审计记录，同样是幂等台账的一部分：
+    下一轮不必再扫、也不必再判。文档级 decision 与仓级 triage 并存，互不覆盖。
+    """
+    st = load_state()
+    src = get_src(st, a.owner, a.repo)
+    src["triage"] = {"decision": a.decision, "note": a.note,
+                     "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    save_state(st)
+    print(f"  {a.decision:9s} {a.owner}/{a.repo}" + (f"  [{a.note}]" if a.note else ""))
+    return 0
+
+
 def cmd_status(a) -> int:
     st = load_state()
     keys = [src_key(a.owner, a.repo)] if a.repo else sorted(st["sources"])
@@ -396,9 +413,10 @@ def cmd_status(a) -> int:
         counts = {}
         for e in docs.values():
             counts[e.get("decision", "pending")] = counts.get(e.get("decision", "pending"), 0) + 1
+        tri = (s.get("triage") or {}).get("decision")
         head = (s.get("head_sha") or "-")[:12]
         dist = " ".join(f"{d}={n}" for d, n in sorted(counts.items())) or "-"
-        print(f"{k:34s} {s.get('branch')}@{head:12s} 扫描={s.get('last_scan') or '-'} 文档={len(docs)} {dist}")
+        print(f"{k:34s} triage={tri or '-':10s} {s.get('branch')}@{head:12s} 扫描={s.get('last_scan') or '-'} 文档={len(docs)} {dist}")
         if a.decision:
             shown = 0
             for p, e in sorted(docs.items()):
@@ -456,6 +474,12 @@ def main() -> int:
     p.add_argument("--refs", help="逗号分隔的 reference id（harvested 时填）")
     p.add_argument("--note", help="一句话理由（skipped 必填，便于下一轮不复核）")
     p.set_defaults(fn=cmd_mark)
+
+    p = sub.add_parser("triage", help="仓级判定（整仓纳不纳入，不逐文档标记）")
+    p.add_argument("repo")
+    p.add_argument("--decision", required=True, choices=["selected", "candidate", "rejected"])
+    p.add_argument("--note", required=True, help="一句话理由（可审计：下一轮据此不再评估）")
+    p.set_defaults(fn=cmd_triage)
 
     p = sub.add_parser("status", help="各源决策分布 / 某源待评估清单")
     p.add_argument("repo", nargs="?")
