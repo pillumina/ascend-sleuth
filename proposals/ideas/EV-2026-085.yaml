@@ -1,0 +1,94 @@
+# ============================================================
+# EV-2026-085 —— 工具词条增补：把工具仓自带手册的用法/约束并入既有 tool 词条
+# 来源：reference-ingest 第四批（cann/oam-tools）——asys / msaicerr 两个工具仓自带使用手册
+# 触发：既有 tool 词条来自 CANN 9.0.0 troubleshooting 章的零散页面，而工具仓手册系统性给出
+#       收集面与权限、使用约束、五类解析的依赖与平台限制、目录约束与 dtype 取值范围
+# 脱敏：只含公开仓路径与工具参数，不含客户数据
+# ============================================================
+
+id: EV-2026-085
+layer: L1                          # 知识内容层：tool 词条的内容增补
+title: "工具词条增补：工具仓手册的用法/约束/参数口径并入既有 tool 词条（asys / msaicerr）"
+status: validated
+authorization: review              # 改 active 词条（tool 条目）→ 按 reference 模板属"修订"，需 kb/high-risk 双签
+dimension: maintainability         # 工具词条的可查性：一个工具一处，不按文档来源分家
+supersedes: []
+superseded_by: null
+created_at: 2026-09-15
+source_signals:
+  - signal: user_request
+    evidence: >-
+      用户对上一轮"错误码增量放哪"的裁决是"追加进既有族表 + 挂第二来源"，理由是别让同一族/同一工具的东西
+      分处两表。本轮遇到同类问题：oam-tools 仓的 asys/msaicerr 手册给出大量新增口径（收集面与 root 权限
+      要求、六条使用约束、五类解析各自的依赖工具与平台限制——coretrace 仅 950 支持、msaicerr 的 -p/-out
+      目录约束与 13 种 dtype 取值），而既有 references/tools/ascend-asys.yaml 与 ascend-msaicerr.yaml 正是
+      这两个工具的条目（tool 的组织单元 = 诊断用途面，同用途面的子命令应嵌套进 content.commands）。
+    trajectory:
+      - "reference-ingest-state.json（oam-tools 53 篇：25 harvested / 6 skipped / 22 pending）"
+      - "references/tools/ascend-asys.yaml（commands 9→11、output_meaning 3→7、pitfalls 3→9，sources 1→2）"
+      - "references/tools/ascend-msaicerr.yaml（commands 4→7、pitfalls 1→6，sources 1→2）"
+      - "references/methodologies/ascend-hardware-detect-triage.yaml（新条目：检测判读路径，承接检测口径）"
+      - "references/software-facts/msprof-collection-mechanism-and-metric-semantics.yaml（新条目：采集链路与指标口径）"
+hypothesis: >-
+  把工具仓手册的用法/约束/参数口径按「同工具同词条」并入既有 tool 词条之后：查一个工具的完整用法与坑
+  只需读一个条目；新增的平台限制（如 coretrace 仅 950、msaicerr 不支持 RC 与若干算子）与目录约束
+  （-p/-out 不能互为子目录、asys --output 不能是 --path 子目录）在诊断时可直接作为判据使用；
+  代价是这次改动落在 active 词条上，属修订，需双签。
+predicted_effect:
+  metric: 两个 tool 词条的增补字段与第二来源是否到位
+  from: "asys：commands 9 / output_meaning 3 / pitfalls 3 / sources 1；msaicerr：commands 4 / pitfalls 1 / sources 1（且缺收集面、平台限制与目录约束）"
+  to: "asys：commands 11 / output_meaning 7 / pitfalls 9 / sources 2；msaicerr：commands 7 / pitfalls 6 / sources 2；两条均含 collect_scope/env_dependencies/precheck/dump_parse_detail 等新增键"
+  measure:
+    command: >-
+      python3 -c "import yaml,sys;a=yaml.safe_load(open('references/tools/ascend-asys.yaml'));m=yaml.safe_load(open('references/tools/ascend-msaicerr.yaml'));ck=set(a['content']['commands'])|set(m['content']['commands']);need={'collect_scope','env_dependencies','precheck','dump_parse_detail'};print('sources',len(a['sources']),len(m['sources']));print('missing',sorted(need-ck));sys.exit(1 if need-ck else 0)"
+    expect_exit: 0
+    expect_stdout: "sources 2 2"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前两条 tool 词条的字段数如 from 所述（由 git show 改动前的 YAML 计数得到）；oam-tools 手册中
+    的收集面/约束/解析依赖/目录约束/dtype 取值等事实均不在其中。
+  success_criteria: >-
+    ① measure：两个条目均有两个来源、四个新增键在 commands 中可查（判据命令）；
+    ② 同工具同词条：未为 asys/msaicerr 新建文件（tool 组织单元 = 诊断用途面，同用途面子命令嵌套）；
+    ③ 平台限制入词条：coretrace 仅 950PR/950DT、aicore_stl_detect 仅 950、msaicerr 不支持 RC 与 8 类算子；
+    ④ 与新增的两条词条互链（ascend-hardware-detect-triage / msprof-collection-mechanism-and-metric-semantics），
+       检测口径只写在方法论、指标口径只写在事实里，工具条目不再复述（relate-don't-merge）；
+    ⑤ CI 无回归：verify_references 188 条 + 两个 reference 索引 + docs 索引 + proposals 全绿。
+  rollback: >-
+    单次提交的字段增补与来源追加：git revert 即回到变更前的两条 tool 词条；台账条目可 mark 回 pending
+    （正文仍在 ref-docs/ 缓存）。新增的两条词条（方法论/事实）独立存在，不受回退影响。
+gate:
+  condition: "再出现「同一工具的用法要跨两个文件找」或「工具条目里缺平台限制导致误判」时，重跑 measure 并复查同工具同词条规则"
+risk: medium
+principle_refs: [2, 3, 10]
+decisions:
+  - who: agent
+    when: 2026-09-15
+    type: action
+    conclusion: >-
+      按「同工具同词条」把 oam-tools 手册的增补内容并入 ascend-asys 与 ascend-msaicerr（新增 collect_scope /
+      env_dependencies / precheck / dump_parse_detail 等键 + 平台与目录约束进 pitfalls），两条均挂第二
+      official-doc 来源（oam-tools master commit f09d79bcbac3）并把 last_verified 推进到 2026-09-15；
+      与之配套新增两条词条承接"检测判读"与"采集机制/指标口径"，工具条目只留用法与坑。
+  - who: agent
+    when: 2026-09-15
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS（sources 2 2、四个新增键齐全）；verify_references 188 条通过、两个索引重建后 --check 绿。
+      负向对照：在本改动前的检出上跑同一命令，sources 打印 `1 1` 且 missing=[collect_scope, dump_parse_detail,
+      env_dependencies, precheck] → exit 1（证明判据测的是这次增补）。
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      采纳并标 validated（效果层）。边界如实标注：这是**修订**（改 active tool 词条）→ 按 reference 模板属
+      kb/high-risk，需第二个 owner 签名（PR body 已按高风险区块填写触发条款/变更依据/双签/影响与回退）。
+      本卡证明"增补已落进同一条目且可查"，不证明"手册口径一定比原 troubleshooting 页新"——两来源并列在
+      sources 里，若出现版本冲突以各自 version 字段为准。
+actual_cost:
+  tokens: 30000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数，按仓库口径给估算：asys+msaicerr+design 27 篇正文剥码块后 32KB 通读（约 15k）、
+    两条 tool 词条的字段增补与两条新词条撰写（约 11k）、校验与 measure 往返（约 4k）。

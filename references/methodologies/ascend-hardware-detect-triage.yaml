@@ -1,0 +1,75 @@
+id: ascend-hardware-detect-triage
+type: methodology
+title: 硬件与压力检测判读（asys diagnose 四模式 → Pass/Warn/Fail → [ERROR] AML 错误码前缀分流 → 电压恢复）
+summary: "怀疑硬件问题（或精度/中断问题排查到硬件层）时的检测与判读路径：①按目的选检测类型——综合检测（stress_detect 压力 / hbm_detect / cpu_detect / aicore_stl_detect，**须物理机 + root**，Atlas 200I/500 A2 推理、Atlas 推理系列、Atlas 训练系列不支持）与组件检测（仅 AI Vector、不支持并行）；②跑检测：stress_detect 需环境预装算子二进制包 `Ascend-cann-*-ops-*.run`，hbm/cpu 支持 `--timeout`（默认 600 秒，hbm 取值 [0,604800]、0 表示只跑一轮；cpu 取值 [1,604800]），aicore_stl_detect 仅 Ascend 950PR/950DT；③判读结果：Pass 正常、Warn 异常、Fail 硬件故障需联系技术支持；多 device 结果不一致时逐个列出（一致时显示 Pass-All/Warn-All/Fail-All）；④Warn 按 `[ERROR] AML` 日志里的错误码前缀分流——**1** 用例执行/任务下发失败、**2** 精度比对失败、**3** 硬件问题（压力检测）、**4** 硬件问题（HBM 检测）；⑤压测电压保护：stress_detect 会调整 device 侧电压，异常退出可能不自动恢复，检测前后用 asys config 获取/恢复；⑥HBM 检测返回数值 >0 表示检测后新增的 ECC 错误个数（用于提前激发风险地址报错并隔离）。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/asys/comprehensive_detection.md"
+    version: "oam-tools master（commit f09d79bcbac3，2026-09-15 抓取）：综合检测四模式、结果判读与 AML 错误码前缀、timeout 取值范围"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/asys/component_diagnostics.md"
+    version: "oam-tools master（commit f09d79bcbac3）：组件检测范围与 Fail 处置"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/asys/health_check.md"
+    version: "oam-tools master（commit f09d79bcbac3）：故障级别与 asys health 状态映射、打屏与落盘差异"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/asys/environment_configuration.md"
+    version: "oam-tools master（commit f09d79bcbac3）：stress_detect 配置的获取与恢复"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [asys]
+  categories: [interrupt, precision, performance]
+
+related_references: [ascend-asys, ascend-aicore-error-triage, ascend-device-log-ops, ascend-msaicerr]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  flow:
+    - step: 1
+      name: 选检测类型与前置条件
+      action: 硬件层问题先用综合检测（asys diagnose -r=<模式>），单组件问题用组件检测（-r=component）。综合检测**必须在物理机且 root 用户下执行**，且 Atlas 200I/500 A2 推理产品、Atlas 推理系列产品、Atlas 训练系列产品不支持该功能；组件检测当前只支持 AI Vector 组件且**不支持并行执行**。
+      check: "asys diagnose -r=stress_detect|hbm_detect|cpu_detect|aicore_stl_detect|component -d=<deviceId>"
+      when_to_use: 怀疑硬件故障，或定位已收敛到硬件层
+    - step: 2
+      name: 执行检测（注意模式专属前置与超时）
+      action: stress_detect（AI Core 压力检测）涉及执行算子，环境需提前安装算子二进制包（包名 `Ascend-cann-*-ops-*.run`）；hbm_detect 与 cpu_detect 支持 --timeout 指定硬件检测时间（单位秒，不传默认 600，hbm 取值 [0,604800] 且设 0 表示仅执行一轮，cpu 取值 [1,604800]）；aicore_stl_detect 仅支持 Ascend 950PR/950DT。
+      check: "asys diagnose -r=hbm_detect -d=0 --timeout=600 --output=<dir>"
+      when_to_use: 已选定模式
+    - step: 3
+      name: 判读结果（Pass / Warn / Fail 与汇总规则）
+      action: Pass 表示检测成功；Warn 表示检测异常（需按下一步分流）；Fail 表示检出硬件故障，需联系技术支持。多 device 场景：结果一致时直接显示汇总标签（Pass - All / Warn - All / Fail - All），不一致时依次列出每个 device 的状态（如 4 卡下的 `Pass, Warn, Warn, Fail`）。不指定 device 且只有一个 device 时只显示该 device。
+      check: 终端结果或 diagnose_result_<timestamp>.txt（--output 指定时落盘，不指定则仅打屏）
+      when_to_use: 检测执行完成
+    - step: 4
+      name: Warn 分流（[ERROR] AML 错误码前缀）
+      action: 结果为 Warn 时查 Host 侧 plog（默认 `$HOME/ascend/log/[run|debug]/plog/plog-pid_*.log`），按关键字 `[ERROR] AML` 筛出日志，再按错误码首位分流：**1** 开头 = 用例执行失败、任务下发失败等（软件/环境侧）；**2** 开头 = 精度比对失败；**3** 开头 = 硬件问题（压力检测）；**4** 开头 = 硬件问题（HBM 检测）。CPU 检测的 Warn 表示检测过程中任务调度出现问题，同样先按 `[ERROR] AML` 筛日志；Fail 则表示检出硬件故障。
+      check: "grep \"\\[ERROR\\] AML\" plog-*.log"
+      when_to_use: 检测结果非 Pass
+    - step: 5
+      name: 压测电压保护（stress_detect 的前后动作）
+      action: AI Core 压力检测会调整 device 侧部分电压；正常结束时电压可自行恢复，但**部分压力检测异常退出时电压不能自行恢复**。因此建议在压测前用 asys config -d <deviceId> --get --stress_detect 记录电压，压测后（尤其异常退出后）用 --restore --stress_detect 恢复，并据此判断电压是否异常。环境配置相关命令同样必须在物理机且 root 用户下执行。
+      check: "asys config -d 0 --get --stress_detect（压测前）；asys config -d 0 --restore --stress_detect（压测后/异常后）"
+      when_to_use: 执行 stress_detect 前后
+    - step: 6
+      name: 组件检测与健康检查作为旁路证据
+      action: 组件检测结果为 Fail 时查看 debug_info.txt 定位问题。健康检查（asys health）给出设备健康状态：故障级别 → 状态映射为 提示-Healthy（正常也显示 Healthy）、次要-Warning、重要-Alarm、紧急-Critical、未知-Unknown；打屏**只显示前 5 组故障**，全量故障码与故障信息在故障信息收集/业务复跑时写入 health_result.txt。HBM 检测返回数值 >0 表示检测后新增 ECC 错误个数（用于提前激发风险地址报错并隔离，保证后续业务正常运行）。
+      check: "asys health -d=<deviceId>；asys diagnose -r=component -d=<deviceId>"
+      when_to_use: 需要旁证或需要故障码列表
+    - step: 7
+      name: 收敛到硬件后的交接
+      action: 判定为硬件问题（如 Fail、或 3/4 开头的 AML 错误码）时按硬件故障处理——保留检测产物（diagnose_result_*.txt、plog 的 `[ERROR] AML` 段、health_result.txt），并走技术支持；软件侧结论（1/2 开头）转回对应问题类别（中断/精度）的定位路径，AI Core Error 类另见 ascend-aicore-error-triage 与 ascend-msaicerr。
+      check: 检测产物与 plog 段是否齐备
+      when_to_use: 硬件/软件结论已分出
+  verified_by_testing: false

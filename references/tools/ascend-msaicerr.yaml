@@ -1,7 +1,7 @@
 id: ascend-msaicerr
 type: tool
-title: msaicerr AI Core Error 专项分析工具
-summary: msaicerr 分析 AI Core Error 问题（输出 info.txt 分析报告）、解析 Dump 文件、转换 Dump 数据类型、检查环境；不支持 MatmulAllReduce 类算子（7 个）的 AI Core Error 分析
+title: msaicerr AI Core Error 专项分析工具（含功能约束、目录约束与四个子命令的参数口径）
+summary: msaicerr 分析 AI Core Error 问题（输出 info.txt 分析报告）、解析 Dump 文件（→.bin/.npy，含算子输入输出与 workspace）、转换 Dump 数据类型（13 种 dtype）、检查环境（-e 跑内置算子样例）；不支持 MatmulAllReduce 类算子（MatmulAllReduce 全类 + 7 个具体算子）的 AI Core Error 分析；仅本地分析（工具环境须与日志所在环境一致）、依赖 python3.7.5+、不支持 Ascend RC 形态
 
 sources:
   - type: official-doc
@@ -9,8 +9,13 @@ sources:
     version: "CANN 商用版 9.0.0（troubleshooting 章 0099/0531-0535）"
     fetched_at: 2026-08-28
     verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/tree/master/docs/zh/msaicerr"
+    version: "oam-tools master（commit f09d79bcbac3，2026-09-15 抓取）msaicerr 使用指导 6 篇：功能与约束、环境准备、分析 AI Core Error、解析 Dump、转换数据类型、检查环境"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
 
-related_references: [ascend-asys]
+related_references: [ascend-asys, ascend-hardware-detect-triage, ascend-aicore-error-triage]
 
 applies_to:
   platforms: [cross]
@@ -19,7 +24,7 @@ applies_to:
   categories: [interrupt]
 
 status: active
-last_verified: 2026-08-28
+last_verified: 2026-09-15
 
 content:
   tool_name: "msaicerr（AI Core Error 专项分析工具）"
@@ -28,6 +33,14 @@ content:
     analyze: "python3 msaicerr.py -p <path1> -out <path2> -dev <deviceId>（分析 AI Core Error 问题，适用于报错 there is an xx aicore/aivec error）"
     dump_parse: "python3 msaicerr.py -d <path1> -out <path2>（解析 Dump 文件，输出到指定目录）"
     dump_convert: "python3 msaicerr.py -d <path1> -out <path2> -dtype <int8 等>（转换 Dump 文件数据类型，bin→npy）"
-    env_check: "python3 msaicerr.py -e [-dev <deviceId>]（检查环境：设备有效性、soc_version、golden op 测试）"
+    env_check: "python3 msaicerr.py -e [-dev <deviceId>]（检查环境：设备有效性、soc_version、golden op 测试；-dev 默认 0）"
+    precheck: "分析 AI Core Error 前的前置检查（缺一即无法提取）：故障信息目录下 dfx/data-dump/ 需有 dump 文件、需存在算子编译 *.o 与 *.json、dfx/log/host/cann/ 需有日志文件"
+    dump_parse_detail: "-d/--data 指定 Dump 文件路径（含文件名，必选）；-out/--output_path 不指定时结果与 Dump 同路径；产物为 .bin 或 .npy，记录算子的输入、输出、workspace 等信息"
+    dump_convert_detail: "-dtype/--dest_dtype 必选，取值范围 float32/float16/float64/int8/int16/int32/int64/uint8/uint16/uint32/uint64/bool/bfloat16 共 13 种；与源 Dump 的数据类型不一致时会给出 Warning 并按用户指定的类型解析"
   pitfalls:
-    - "暂不支持分析以下算子的 AI Core Error：MatmulAllReduceAddRmsNorm、MatmulAllReduceInplaceAddRmsNorm、AllGatherMatmul、MatmulReduceScatter、GroupedMatmulAllReduce、MemSet、NonMaxSuppressionBucketize"
+    - "不支持分析以下算子的 AI Core Error：MatmulAllReduce 类算子，以及 MatmulAllReduceAddRmsNorm、MatmulAllReduceInplaceAddRmsNorm、AllGatherMatmul、MatmulReduceScatter、GroupedMatmulAllReduce、MemSet、NonMaxSuppressionBucketize"
+    - "仅支持**本地分析**使用——部署该工具的环境应与日志所在环境为同一运行环境；依赖 python 3.7.5 或以上版本；不支持在 Ascend RC 形态下使用"
+    - "不能进入 -p/--report_path 指定的目录或其子目录下执行 msaicerr，否则工具可能解析卡住或失败；-out/--output_path 也不能是 -p 目录或其子目录（-out 为空/无效字符串、目录无写权限、创建失败时工具退出并报错）"
+    - "每次执行 msaicerr.py 都会在脚本同级目录生成 debug_info.txt（或 info_<时间戳>/debug_info.txt）记录执行过程日志；解析 Dump 时若该文件提示 Can not read with dtype xxx，表示存在工具不能识别的数据类型，需自行安装第三方库（如提示 bfloat16 则需安装 bfloat16ext）"
+    - "故障信息中存在多个 AI Core Error 时，工具按日志时间只解析第一次出现的问题；分析模式下 -dev 指定的 device 上会运行一个内置算子样例用于检查软硬件环境是否正常"
+    - "使用前需先进入 msaicerr.py 所在目录（${install_path}/tools/msaicerr），并按 CANN 运行用户 source ${INSTALL_DIR}/set_env.sh 设置环境变量"

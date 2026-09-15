@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-15    词条数：96
+# 生成日期：2026-09-15    词条数：97
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -261,9 +261,9 @@ entries:
     - interrupt
 - id: ascend-asys
   type: tool
-  title: asys 故障信息收集与解析工具（仅 Ascend EP 形态）
-  summary: asys 一键式收集故障信息并解析 plog 伴侣文件：collect/launch 收集（含业务复跑）、info 状态展示、health 健康检查、diagnose 压测检测（stress/hbm/cpu）、analyze
-    解析（trace/coredump/stackcore/coretrace/ub/aicore…
+  title: asys 故障信息收集与解析工具（仅 Ascend EP 形态；含收集面/约束/五类解析/四类检测的完整口径）
+  summary: asys 一键式收集故障信息并解析 plog 伴侣文件：collect/launch 收集（含业务复跑）、info 状态展示、health 健康检查、diagnose 压测检测（stress/hbm/cpu/aicore_stl/component）、analyze
+    解析（trace/coredump/stackcor…
   applies_to:
     platforms:
     - cross
@@ -333,9 +333,9 @@ entries:
     - interrupt
 - id: ascend-msaicerr
   type: tool
-  title: msaicerr AI Core Error 专项分析工具
-  summary: msaicerr 分析 AI Core Error 问题（输出 info.txt 分析报告）、解析 Dump 文件、转换 Dump 数据类型、检查环境；不支持 MatmulAllReduce
-    类算子（7 个）的 AI Core Error 分析
+  title: msaicerr AI Core Error 专项分析工具（含功能约束、目录约束与四个子命令的参数口径）
+  summary: msaicerr 分析 AI Core Error 问题（输出 info.txt 分析报告）、解析 Dump 文件（→.bin/.npy，含算子输入输出与 workspace）、转换
+    Dump 数据类型（13 种 dtype）、检查环境（-e 跑内置算子样例）；不支持 MatmulAllReduce 类算子（Matmu…
   applies_to:
     platforms:
     - cross
@@ -723,6 +723,20 @@ entries:
     host/、device_<id>/ 原始数据、msprof_<ts>.db、mindstudio_profil…
   applies_to:
     platforms:
+    - cross
+    categories:
+    - performance
+- id: msprof-collection-mechanism-and-metric-semantics
+  type: software-fact
+  title: msprof 采集链路与指标口径（task-time 三级别与膨胀、task-based vs sample-based PMU、aicore_time 调频误差与 950 syscnt、l2
+    开关的 postp 中断）
+  summary: 读 msprof 数据前要知道的四件事：①**采集链路**——命令行/多种使能方式统一收敛为 `ProfileParams`，Host 侧由 runtime/GE/HCCL 回调上报（经无锁缓冲，上报与落盘解耦），AICPU
+    侧由 Device 上的 aicpu 进程与集合通信进程上报，Device 侧经 `prof_…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - A5-950
     - cross
     categories:
     - performance

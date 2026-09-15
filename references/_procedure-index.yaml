@@ -7,7 +7,7 @@
 #   3) 按 file 打开该词条读 **content.flow[] 全文**——摘要行不承载判据，只读摘要等于没加载；
 #   4) 一轮诊断最多加载一条流程（成本有界）。
 #
-# 生成日期：2026-09-15    流程条数：23    本文件整体加载成本：约 3821 token（选择器每次都要整读，故单文件 + 记成本）
+# 生成日期：2026-09-15    流程条数：24    本文件整体加载成本：约 4011 token（选择器每次都要整读，故单文件 + 记成本）
 #
 # 增长闸门（原则十一：按闸门不按日历）：流程条数 > 25，或本文件 > 5K token → 按 category 分片
 #   （对齐 case 层 knowledge/_index/<ns>__<category>.yaml 的做法）。当前单文件即可。
@@ -36,6 +36,16 @@ entries:
   platforms:
   - cross
   file: references/methodologies/ascend-garbled-output-triage.yaml
+- id: ascend-hardware-detect-triage
+  title: 硬件与压力检测判读（asys diagnose 四模式 → Pass/Warn/Fail → [ERROR] AML 错误码前缀分流 → 电压恢复）
+  summary: 怀疑硬件问题（或精度/中断问题排查到硬件层）时的检测与判读路径：①按目的选检测类型——综合检测（stress_detect 压力 / hbm_detect / cpu_detect / aicore_stl_detect，**须物理机 + root**，Atlas 200I/500 A2 推理、Atlas 推理系列、Atlas 训练系列不支持）与组件检测（仅 AI Vector、不支持并行）；②…
+  categories:
+  - interrupt
+  - precision
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/ascend-hardware-detect-triage.yaml
 - id: ascend-hccl-comm-fault-triage
   title: HCCL 集合通信故障定位（故障码/多级关键字分流三阶段 → 全量日志 → 根节点定位）
   summary: 多机 HCCL 报错的标准定位路径：①先确认是 HCCL 的问题（打屏日志出现 `EI****`/`EJ****` 故障码，或 CANN 日志中有 HCCL 组件 ERROR）——CANN 日志里没有 HCCL 报错时不要套用本流程，转查其他组件、脚本、core dump 或进程卡住；②收集**全量节点**的 debug+run 日志（报错 rank 常常只是在等对端超时）；③用多级检索关键字 …
