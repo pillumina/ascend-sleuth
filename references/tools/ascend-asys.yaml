@@ -1,7 +1,7 @@
 id: ascend-asys
 type: tool
-title: asys 故障信息收集与解析工具（仅 Ascend EP 形态）
-summary: asys 一键式收集故障信息并解析 plog 伴侣文件：collect/launch 收集（含业务复跑）、info 状态展示、health 健康检查、diagnose 压测检测（stress/hbm/cpu）、analyze 解析（trace/coredump/stackcore/coretrace/ub/aicore_error）、profiling 性能采集、实时堆栈导出；仅支持 Ascend EP 形态
+title: asys 故障信息收集与解析工具（仅 Ascend EP 形态；含收集面/约束/五类解析/四类检测的完整口径）
+summary: asys 一键式收集故障信息并解析 plog 伴侣文件：collect/launch 收集（含业务复跑）、info 状态展示、health 健康检查、diagnose 压测检测（stress/hbm/cpu/aicore_stl/component）、analyze 解析（trace/coredump/stackcore/coretrace/ub/aicore_error）、profiling 性能采集、实时堆栈导出、config 电压配置获取恢复；仅支持 Ascend EP 形态，集群/容器/虚拟机/云场景不支持一键式收集。本词条同时给出**收集面与权限要求**（哪些信息需 root、三类信息各自依赖哪个环境变量）、**六条使用约束**、**五类文件解析各自的依赖工具与平台限制**（coretrace 仅 950 支持）与**检测结果判读口径**（详见 ascend-hardware-detect-triage）
 
 sources:
   - type: official-doc
@@ -9,8 +9,13 @@ sources:
     version: "CANN 商用版 9.0.0（troubleshooting 章 0096/0097/0501-0517/0538）"
     fetched_at: 2026-08-28
     verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/tree/master/docs/zh/asys"
+    version: "oam-tools master（commit f09d79bcbac3，2026-09-15 抓取）asys 使用指导 19 篇：功能与约束、各类收集/解析/检测/配置"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
 
-related_references: [ascend-trace-logs, ascend-msaicerr]
+related_references: [ascend-trace-logs, ascend-msaicerr, ascend-hardware-detect-triage, ascend-device-log-ops]
 
 applies_to:
   platforms: [cross]
@@ -19,7 +24,7 @@ applies_to:
   categories: [interrupt]
 
 status: active
-last_verified: 2026-08-28
+last_verified: 2026-09-15
 
 content:
   tool_name: "asys（故障信息收集工具，一键式收集并解析故障信息）"
@@ -29,16 +34,28 @@ content:
     launch: "asys launch --task=\"sh app_run.sh\" --tar=True --output=<path>（业务复跑+故障信息收集）"
     info: "asys info -r=status -d=<deviceId>（软硬件、Device 状态展示：芯片型号/功率/温度/利用率）"
     health: "asys health -d=<deviceId>（健康检查，不健康时展示报错信息）"
-    diagnose: "asys diagnose -r={stress_detect|hbm_detect|cpu_detect|component} -d=<deviceId> --output=<path>（AI Core 压力/HBM/CPU/组件检测；stress 耗时可能较长）"
-    analyze: "asys analyze -r={trace|coredump|stackcore|coretrace|ub|aicore_error} --file=<path> --symbol_path=<path1,path2> --output=<path>（文件解析；coredump 需 --exe_file+--core_file；stackcore/coretrace 支持 --path 目录；aicore_error 用 --path 指定信息目录）"
+    diagnose: "asys diagnose -r={stress_detect|hbm_detect|cpu_detect|aicore_stl_detect|component} -d=<deviceId> --timeout=<秒> --output=<path>（压力/HBM/CPU/AI Core STL 硬件/组件检测；须物理机+root，部分产品不支持；stress 涉及执行算子故需预装 Ascend-cann-*-ops-*.run，且会调电压需配 config 备份恢复；--timeout 默认 600 秒，hbm 取值 [0,604800]（0=只跑一轮）、cpu 取值 [1,604800]；aicore_stl_detect 仅 Ascend 950PR/950DT；结果判读见 ascend-hardware-detect-triage）"
+    analyze: "asys analyze -r={trace|coredump|stackcore|coretrace|ub|aicore_error} --file=<path> --symbol_path=<path1,path2> --output=<path>（文件解析；trace 要求 asys 环境版本与产生 trace 的环境一致；coredump 需 --exe_file+--core_file 且两者必须匹配、依赖 gdb、reg 取 0/1/2、symbol 取 0/1；stackcore/coretrace 支持 --path 目录且与 --file 互斥、依赖 readelf+addr2line（coretrace 依赖 addr2line）、必须在获取文件的环境执行；coretrace 仅 Ascend 950PR/950DT 支持，A2/A3/910/310 不支持；ub 解析 path 下 6 类 bin：ubnl_dfx_config_item / ubnl_dfx_statistic / ubnl_dfx_ssu_schedule / ubmem_daw / ubtpl_acl_src / sl_to_vl；aicore_error 用 --path 指定信息目录）"
     profiling: "asys profiling -r=aicore -p=<time> -d=<deviceId> --output=./ --aic_metrics=PipeUtilization（AI Core 性能数据采集，底层调 msprof）"
-    stacktrace: "asys collect -r=stacktrace --remote=<pid> --all（实时堆栈导出，向目标进程发信号 35；ASCEND_COREDUMP_SIGNAL=none 时进程会被杀掉）"
-    config: "asys config -d=<deviceId> --get/--restore --stress_detect（压测相关配置查询与恢复）"
+    stacktrace: "asys collect -r=stacktrace --remote=<pid> --all [--quiet] [--timeout=<秒>]（实时堆栈导出，向目标进程发信号 35；--remote 进程 ID 须 ≥2、--all 导出该进程所有线程堆栈，两者在 stacktrace 模式下必选；--timeout 取值 [1,60]、默认 10 秒；--quiet 关闭交互确认；ASCEND_COREDUMP_SIGNAL=none 时会终止卡住进程）"
+    config: "asys config -d=<deviceId> --get|--restore --stress_detect（压测相关电压配置的获取与恢复；须物理机+root，Atlas 200I/500 A2 推理/Atlas 推理系列/Atlas 训练系列不支持）"
+    collect_scope: "收集面与权限：软件信息（包版本/环境变量/依赖/系统）、日志（Host CANN 日志、Host message、Device 固件 device-* 日志【需 root】、Device 系统 message/device-os【需 root】、黑匣子与 stackcore/coretrace【需 root】、任务打印日志、run 包安装日志【需安装用户与执行用户一致】）、dump（GE dump 图、TF Adapter dump 图、AI Core Error dump）、算子编译 *.o/*.json、算子编译过程信息、自定义算子配置、用户用例命令、调试版本二进制"
+    env_dependencies: "三类信息的收集取决于环境变量：算子编译过程信息需设置 NPU_COLLECT_PATH（系统在其目录下建 extra-info/ops/op_compile_stats.log，记录编译成功失败与结果来源）；自定义算子配置需 ASCEND_OPP_PATH（按其 vendors/config.ini 的 load_priority 收集 vendors 下 config/*.json）或 ASCEND_CUSTOM_OPP_PATH；调试版本二进制需 ASCEND_OPP_PATH 指向 ${ASCEND_OPP_PATH}/debug_kernel"
   output_meaning:
     - "collect 产物：software_info.txt（安装包版本/环境变量/依赖/系统信息）、hardware_info.txt（host+device 硬件信息）、status_info.txt（芯片型号/CPU 与 AI Core 利用率）、health_result.txt（故障码与故障信息）、dfx/"
     - "stackcore/coretrace 解析输出进程崩溃原因、pid/tid、栈帧与符号地址"
     - "ub 解析把 ubnl_dfx_statistic.bin 等转换为文本"
+    - "health：故障级别与状态映射为 提示-Healthy（正常也显示 Healthy）/次要-Warning/重要-Alarm/紧急-Critical/未知-Unknown；打屏只显示前 5 组故障码与故障信息，全量在 collect/launch 时写入 health_result.txt（故障码细节查《黑匣子异常错误码信息列表》与《健康管理故障定义》）"
+    - "software_info.txt 收集的第三方依赖版本可自定义：编辑工具目录下 ascend_system_advisor/conf/dependent_package.csv，每行一项、逗号分隔依赖名与查询指令（逗号后无空格）"
+    - "解析产物里的 `?` 与行号偏差有固定成因：动态库编译未加 -g（无调试信息）、链接未加 -rdynamic（符号未进动态符号表）、找不到匹配动态库；不同编译选项与较高优化级别会让行号与源码行有少许偏差。stackcore 输出以 `Thread <num> (<tid>，<名>)` 开头（名取不到显示 unknown），coretrace 以 `PID <num> (<tid>，<名>)` 开头并按 `{地址} {函数名} {二进制名}` 输出"
+    - "profiling 采集类型可多选（逗号分隔）：dvpp（执行时间/利用率）、aicore（cube 与 vector 指令耗时占比、计算/搬运单元耗时占比）、os（系统内存、AI CPU 与 Ctrl CPU 利用率）、memory（片上内存与三级缓存读写速率带宽）、link（集合通信与 PCIe 带宽）、power（低功耗）；-p 采集间隔单位秒、取值 [1, 30*24*3600]；--aic_metrics 取值 PipeUtilization(默认)/ArithmeticUtilization/Memory/MemoryL0/MemoryUB/ResourceConflictRatio/L2Cache/MemoryAccess"
   pitfalls:
     - "ctrl+z 中止业务复跑任务会残留任务进程（可能仍在重定向写文件），与后续 asys 复跑冲突——复跑前先查询并手工 kill 相关推理/训练进程"
     - "实时堆栈导出超时报 Generating the stackcore bin file timeout：初始化未完成（plog 搜 attr init success）、ASCEND_COREDUMP_SIGNAL=none 关闭信号集（plog 搜 close the signal capture function）、或业务已结束资源释放（plog 搜 unregister all signal handlers）"
-    - "仅 Ascend EP 形态支持，RC/Control CPU 开放形态不可用"
+    - "仅 Ascend EP 形态支持，RC/Control CPU 开放形态不可用；集群、容器、虚拟机、云场景不支持一键式工具收集故障信息"
+    - "同一用户、同一时间段、同一机器上同时作业时，收集到的数据会有交叉；非 root 用户获取的数据范围受限（见收集面里的权限要求）"
+    - "asys 涉及大量维测信息收集，有内存占用，不建议多进程并行执行（否则可能执行出错或环境异常）；它会检索 trace 日志目录（默认 $HOME/ascend/atrace/），trace 文件过多会显著拉长执行时间——做实时堆栈导出前建议先清理 trace 日志"
+    - "执行 asys 收集时环境变量值需与业务运行时的值保持一致，否则收集到的信息可能不准确；涉及的变量为 ASCEND_PROCESS_LOG_PATH、NPU_COLLECT_PATH、DUMP_GRAPH_PATH、ASCEND_WORK_PATH、ASCEND_CACHE_PATH、ASCEND_CUSTOM_OPP_PATH（都不存在时从执行 asys 的当前目录收集）"
+    - "asys launch 会为复跑临时开启 NPU_COLLECT_PATH / ASCEND_PROCESS_LOG_PATH / ASCEND_WORK_PATH 并在结束时关闭：用户执行前手工设置的这部分变量会被覆盖；反之若复跑脚本里再设置这些变量，也会覆盖 asys 的设置而导致收集不到对应信息。复跑默认开启算子编译文件、GE dump 图与 TF Adapter dump 图的收集，开关在 ascend_system_advisor/asys/conf/asys.ini"
+    - "asys launch 不支持「原执行脚本内部以 & 后台执行」的用例（无法感知结束点）；主动终止 launch 时业务子进程可能未退出，需要手工终止"
+    - "AI Core Error 解析前建议先清理日志以保证解析准确；--output 目录不能是 --path 目录或其子目录（避免循环拷贝）；故障信息中存在多个 AI Core Error 时，工具按日志时间只解析第一次出现的问题"

@@ -1,7 +1,7 @@
 id: msprof-collect-parse
 type: tool
-title: msprof 性能数据采集与解析（--application / --output，PROF_* 输出结构）
-summary: msprof 采集性能数据：`msprof --application="python3 train.py" --output=<dir>` 拉起业务并自动采集+解析导出，产物为 PROF_<时间戳>/（含 host/、device_<id>/ 原始数据、msprof_<ts>.db、mindstudio_profiler_output 汇总）；另提供解析/导出/查询数据文件信息/通信性能解析等子能力；与 msprobe 分工——msprobe 采精度数据、msprof 采性能数据
+title: msprof 性能数据采集与解析（命令行两种传参方式 / --type / --storage-limit / 动态与延迟采集 / PROF_* 输出结构）
+summary: msprof 采集性能数据：**方式一（推荐）** `msprof python3 train.py --output=<dir>` 在命令末尾直接跟用户程序，**方式二** `msprof --application="python3 train.py"`（参数含需加引号的符号时建议写进 Shell 脚本再传）；采集后自动解析导出到 PROF_<时间戳>/（含 host/、device_<id>/ 原始数据、msprof_<ts>.db、mindstudio_profiler_output 汇总）。另有 `--type=text|db` 选解析产物格式、`--environment` 传自定义环境变量、`--storage-limit` 防落盘占满、延迟采集（--delay/--duration）与动态采集（--dynamic + start/stop/quit 交互，launch 与 attach 两种方式），以及解析/导出/查询数据文件信息/通信性能解析等子能力；与 msprobe 分工——msprobe 采精度数据、msprof 采性能数据。采集方式选择与前置约束见 ascend-profiling-collection-planning，配置项语义见 msprof-configuration-options
 
 sources:
   - type: official-doc
@@ -14,15 +14,20 @@ sources:
     version: "MindStudio 26.2.0.B060_001（msprof docs/zh/user_guide）"
     fetched_at: 2026-09-09
     verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/tree/master/docs/zh/profiling/msprof_cmd"
+    version: "oam-tools master（commit f09d79bcbac3，2026-09-15 抓取）msprof_cmd 采集命令 7 篇（通用命令/延迟/动态/AI 任务/AI 处理器/Host 系统/msproftx）"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
 
 applies_to:
   platforms: [cross]
   categories: [performance]
 
-related_references: [msprof-tool-fault-patterns, msprof-comm-bottleneck-thresholds, msprobe-capability-limits]
+related_references: [msprof-tool-fault-patterns, msprof-comm-bottleneck-thresholds, msprobe-capability-limits, ascend-profiling-collection-planning, msprof-configuration-options, msprof-collection-mechanism-and-metric-semantics]
 
 status: active
-last_verified: 2026-09-09
+last_verified: 2026-09-15
 
 content:
   tool_name: "msprof（昇腾性能数据采集与分析工具）"
@@ -32,6 +37,13 @@ content:
     locate_output: "PROF_DIR=$(ls -dt <output>/PROF_* | head -n 1); tree -L 1 \"$PROF_DIR\"; tree -L 1 \"$PROF_DIR/mindstudio_profiler_output\""
     parse_export: "msprof 的解析与导出子能力（见解析指南）：解析并导出性能数据、查询性能数据文件信息、解析性能数据、**通信性能数据解析**"
     visualize: "可选：用 MindStudio Insight 打开导出的 msprof.json / trace_view.json 做可视化分析"
+    collect_style_a: "msprof <用户程序或脚本> [options]（方式一，推荐——命令末尾直接跟执行命令；若程序参数值需要加引号，先把命令写进 Shell 脚本再在 msprof 上附加该脚本）"
+    type: "msprof <app> --type=<text|db>（解析结果格式：text 默认，产出 .json/.csv 与 msprof_时间戳.db；db 只产出一个汇总 .db，用 MindStudio Insight 展示）"
+    environment: "msprof <app> --environment=\"${envKey}=${envValue}\"（多项用分号分隔；不建议用其他用户的目录覆盖原有环境变量）"
+    storage_limit: "msprof <app> --storage-limit=200MB（落盘目录允许的最大容量，范围 [200, 4294967295] MB 且须带单位；即将占满时老化删除最早文件）"
+    delayed: "msprof <app> --delay=<秒> --duration=<秒>（延迟采集：--delay 范围 [1,4294967295]、默认 0，delay 超过任务执行时间则任务期间不启动采集；--duration 默认未配置=从采集开始持续到任务结束，配了 delay 则从 delay 结束开始计时；仅采集 AI 任务运行性能数据时支持，与 --dynamic 互斥）"
+    dynamic: "msprof --application=<app> --dynamic=on（launch）或 PROFILING_MODE=dynamic + msprof --dynamic=on --pid=<pid>（attach）；进入交互模式后用 start / stop / quit 控制，每对 start/stop 生成一个 PROF_XXX 目录"
+    host_permission: "采集 Host 侧 disk/osrt 需先装 iotop（disk）与 perf+ltrace（osrt），并以 root 把 perf_event_paranoid 置 0（记原值）、配置 /usr/bin/msprof_data_collection.sh 与安装用户 sudo 权限；采集完成后必须清除（删 /etc/sudoers.d/{安装用户}_profiling、改回 sudoers 与 paranoid 原值）"
   output_meaning:
     - "`PROF_<时间戳>` 目录同时含原始数据与解析导出结果：`host/data`（Host 侧原始数据）、`device_<id>/data`（Device 侧原始数据）、`msprof_<timestamp>.db`（数据库格式性能数据）、`mindstudio_profiler_output/`（Host 与各 Device 汇总，日常分析看这里）"
     - "导出后常见交付件：`msprof.json` / `trace_view.json`（时间线，用 Insight 打开）、`op_statistic.csv`（算子耗时占比）、`api_statistic.csv`（API 调用统计）、`operator_memory.csv`（算子内存）、以及内存 `allocated` / `reserved` 跨 step 趋势"
@@ -42,3 +54,10 @@ content:
     - "超时先怀疑环境：若超过 5 分钟不完成，可能 NPU 异常或被抢占，换空闲卡重试"
     - "`PROF_*` 目录里 `host/`、`device_*/` 是**原始数据**，快速分析不必关注；看汇总走 `mindstudio_profiler_output/`"
     - "数据文件字段含义有独立参考手册（`profile_data_file_references.md`，篇幅很大）——查具体字段时按需查原文，不要试图整体载入"
+    - "同一 Device 不支持同时拉起多个采集任务，也不可同时开启两种及以上采集方式（例：msprof 命令行启动 Profiling 时 app 中不能再用 acl 接口启动采集）；**Ascend 950PR/950DT 例外**：支持同 Device 并发多个 task-time 采集，aic-mode=task-based 时可并发多个 aic-metrics 采集"
+    - "不建议采集与 Dump 同时开——Dump 影响系统性能，同开会造成采集的性能指标不准确，启动采集前先关掉数据 Dump"
+    - "落盘规格：单次采集建议 ≤5 分钟，预留 ≥20 倍原始数据大小的磁盘与内存；打开所有采集项时需保证磁盘读写速度（单 Device 推理 ≥50MB/s、训练 ≥60MB/s，多 Device 不低于「单 Device 规格 × Device 数」）；未配 --storage-limit 时磁盘可用 <20MB 则不落盘"
+    - "采集不完整/失败的两个高频原因：应用未成对调用 aclInit 与 aclFinalize（采集流程未正常结束，最后 1 秒内数据可能因未及时落盘丢失，但丢失量不大于 2M）；解析阶段落盘路径或用户目录空间已满（表现为解析失败或文件无法落盘）"
+    - "使用 pyACL API 开发的应用经 msprof 命令行采集时，**不支持在 Python 脚本中打开相对路径文件**（会导致采集报错）；昇腾虚拟化实例场景不支持从容器/虚拟机内发起对 SoC 的系统性能数据采集（NPU 内存占用数据除外）"
+    - "权限与安全：用普通用户执行（不建议 root）、umask 须 ≥ 0027（否则性能数据目录与文件权限过大）、数据保存在不含软链接的当前用户目录下；本工具是开发调测工具，不建议在生产环境使用"
+    - "动态采集的边界：进入交互模式后未启动采集 30 分钟自动退出；start 与 stop 执行次数合计上限 100 次（最多采 50 份，重连后重新计数）；反复 start/stop 时可能打印 ERROR 日志属正常；launch 方式下用户程序中不能设置 PROFILING_MODE 与 PROFILING_OPTIONS；业务在容器内启动时采集命令也要在该容器内执行；采集前建议先 rm -rf ~/dynamic_profiling_socket_* 清理残留"

@@ -333,6 +333,419 @@
    "head_sha": "8cbf54d35a6d57d643576a6fb3942d8c927bf785",
    "last_scan": "2026-09-15T15:34:35"
   },
+  "gitcode/cann/oam-tools": {
+   "branch": "master",
+   "docs": {
+    "docs/en/package_install.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "skipped",
+     "note": "安装类文档（包安装/快速安装），无诊断判据",
+     "sha": "b2bb7e02c3db70506250950e70d86d313b216e2b"
+    },
+    "docs/en/quick_install.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "skipped",
+     "note": "安装类文档（包安装/快速安装），无诊断判据",
+     "sha": "1a0b58c760dabc9e87c47cff6deef47e6258fcf4"
+    },
+    "docs/zh/asys/AI_Core_error_analysis.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-asys"
+     ],
+     "sha": "889c050f6ef961fba34d1bd1e4bcc5813cd61fb9"
+    },
+    "docs/zh/asys/FAQ.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-asys"
+     ],
+     "sha": "a75d372e604d73fdda9a97acec6ad2fb8fafebda"
+    },
+    "docs/zh/asys/README.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "skipped",
+     "note": "asys 使用指导索引页",
+     "sha": "1ce586f6861473d13544a09356256b73d051d90a"
+    },
+    "docs/zh/asys/UB_files_parsing.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-asys"
+     ],
+     "sha": "277bbe98116da5357a7c07b21eef49dd7da6ba52"
+    },
+    "docs/zh/asys/asys_environment_preparation.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-asys"
+     ],
+     "sha": "8e7e41d42da0f633002c3f2e1b96cc5ddc4e2744"
+    },
+    "docs/zh/asys/asys_functions_and_restrictions.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-asys"
+     ],
+     "sha": "501a32214e06bc072a9b53b66203d0dde8d117e8"
+    },
+    "docs/zh/asys/component_diagnostics.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-hardware-detect-triage",
+      "ascend-asys"
+     ],
+     "sha": "e1cd149e328b5327b90415347c814129bdd71ebd"
+    },
+    "docs/zh/asys/comprehensive_detection.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-hardware-detect-triage",
+      "ascend-asys"
+     ],
+     "sha": "c33a930ad58dccd0eefef07f4a65db7f7d96430b"
+    },
+    "docs/zh/asys/coredump_files_parsing.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-asys"
+     ],
+     "sha": "7231060a5f12bb98df1351e5852123b693e4b8a1"
+    },
+    "docs/zh/asys/coretrace_files_parsing.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-asys"
+     ],
+     "sha": "df813c87585ee98211e27b06f2b9f73caaa3ea6d"
+    },
+    "docs/zh/asys/environment_configuration.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-hardware-detect-triage",
+      "ascend-asys"
+     ],
+     "sha": "ec302834d4fce44cdee8c3f19901dbd83a95cbd9"
+    },
+    "docs/zh/asys/fault_information_collection.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-asys"
+     ],
+     "sha": "23a7be3f6c99c10852c4cbc9b6cf4fc2f2e69a72"
+    },
+    "docs/zh/asys/health_check.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-hardware-detect-triage",
+      "ascend-asys"
+     ],
+     "sha": "7a52320c0b8bea8a2ee24be71270a43675d1aba0"
+    },
+    "docs/zh/asys/profiling_collection.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-asys"
+     ],
+     "sha": "46bf8f272700d4eabebb44e22848e8322a5fa611"
+    },
+    "docs/zh/asys/rerun_fault_information_collection.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-asys"
+     ],
+     "sha": "5d7df10d7992ecebb6a33401f58b014dc642d523"
+    },
+    "docs/zh/asys/software_hardware_device_status_info_display.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-asys"
+     ],
+     "sha": "5ad2db54e2e7e3eec59ba514f836f7b26c0d902a"
+    },
+    "docs/zh/asys/stack_export.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-asys"
+     ],
+     "sha": "d11d2902d2d5c2ac3c3c1c0c48a1d8296b2dbff7"
+    },
+    "docs/zh/asys/stackcore_files_parsing.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-asys"
+     ],
+     "sha": "91ba8363265db4790c421865706ddd94b41afb11"
+    },
+    "docs/zh/asys/trace_files_parsing.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-asys"
+     ],
+     "sha": "5c397048d3b8415dc46a25bde043e5c19fcdce64"
+    },
+    "docs/zh/design/profiling/architecture.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "msprof-collection-mechanism-and-metric-semantics"
+     ],
+     "sha": "58ed2c1ed75bd942cd46c7ba487604d308d36cfe"
+    },
+    "docs/zh/env-vars/PROFILING_MODE.md": {
+     "at": "2026-09-15T16:14:46",
+     "decision": "skipped",
+     "note": "与既有 profiling-env.yaml 同源同内容（描述逐字一致）；其 PROFILING_OPTIONS 描述在既有条目中被截断，选项全表已由 msprof-configuration-options 承载",
+     "sha": "7175557c6b3e2f5d32ce7bcf5ea62a8dc37ca642"
+    },
+    "docs/zh/env-vars/PROFILING_OPTIONS.md": {
+     "at": "2026-09-15T16:14:46",
+     "decision": "skipped",
+     "note": "与既有 profiling-env.yaml 同源同内容（描述逐字一致）；其 PROFILING_OPTIONS 描述在既有条目中被截断，选项全表已由 msprof-configuration-options 承载",
+     "sha": "e09e62f957602b4bd5194b32c7955f4439edc66a"
+    },
+    "docs/zh/msaicerr/AI_Core_error_analysis.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-msaicerr"
+     ],
+     "sha": "fc985c8202be6bced0e67c4ec4d9d08c66cb2a7e"
+    },
+    "docs/zh/msaicerr/Dump_files_data_types_conversion.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-msaicerr"
+     ],
+     "sha": "9080aa2cc2ac3a16af89d6a7c52a00a32917c705"
+    },
+    "docs/zh/msaicerr/Dump_files_parsing.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-msaicerr"
+     ],
+     "sha": "3c1805a69f677f7f0aee22ab96b424962db16f88"
+    },
+    "docs/zh/msaicerr/README.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "skipped",
+     "note": "msaicerr 使用指导索引页",
+     "sha": "f7c207945dace9f920a783a7597aba8820be7624"
+    },
+    "docs/zh/msaicerr/environment_check.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-msaicerr"
+     ],
+     "sha": "28879877685d275bf2f144c7096ce75cb0d4d942"
+    },
+    "docs/zh/msaicerr/msaicerr_environment_preparation.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-msaicerr"
+     ],
+     "sha": "3c76db181c5352d2abbd62b7d7e9074c5a2e0b93"
+    },
+    "docs/zh/msaicerr/msaicerr_functions_and_restrictions.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "harvested",
+     "refs": [
+      "ascend-msaicerr"
+     ],
+     "sha": "82b52a0a560a4f1e85ea22039d5f79939a98c434"
+    },
+    "docs/zh/package_install.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "skipped",
+     "note": "安装类文档（包安装/快速安装），无诊断判据",
+     "sha": "b5f3936b478934238771d2c6ea6e7199bdd1e015"
+    },
+    "docs/zh/profiling/README.md": {
+     "at": "2026-09-15T16:14:46",
+     "decision": "skipped",
+     "note": "索引/导航页（正文在子页）",
+     "sha": "b5faaa39886865abd33e2fe65ab616ac589dc0df"
+    },
+    "docs/zh/profiling/appendices/appendices.md": {
+     "at": "2026-09-15T16:14:46",
+     "decision": "skipped",
+     "note": "索引/导航页（正文在子页）",
+     "sha": "7e6156c1eeed51b9606a68001a70dd24dc57b9fb"
+    },
+    "docs/zh/profiling/appendices/config_user_permission.md": {
+     "at": "2026-09-15T16:14:46",
+     "decision": "harvested",
+     "refs": [
+      "ascend-profiling-collection-planning",
+      "msprof-collect-parse"
+     ],
+     "sha": "18058d08f63582e1c229dc006ccae4d897a418a8"
+    },
+    "docs/zh/profiling/appendices/install_perf_iotop_ltrace.md": {
+     "at": "2026-09-15T16:18:38",
+     "decision": "harvested",
+     "refs": [
+      "msprof-enablement-methods",
+      "msprof-cli-collect-items"
+     ],
+     "sha": "af8b1a56e6b3d6c12b3b4fb8f0f4e29c922fdfe8"
+    },
+    "docs/zh/profiling/appendices/mstxapi_usage_example.md": {
+     "at": "2026-09-15T16:18:38",
+     "decision": "harvested",
+     "refs": [
+      "msprof-enablement-methods"
+     ],
+     "sha": "82f0eae0e7756c82e040ac1da2833e0050726561"
+    },
+    "docs/zh/profiling/appendices/profiling_options_parameter.md": {
+     "at": "2026-09-15T16:14:46",
+     "decision": "harvested",
+     "refs": [
+      "msprof-configuration-options"
+     ],
+     "sha": "227230203a78988bbd0ee0a4205582823a7d3050"
+    },
+    "docs/zh/profiling/msprof_cmd/ai_runtime_profile_data.md": {
+     "at": "2026-09-15T16:18:38",
+     "decision": "harvested",
+     "refs": [
+      "msprof-cli-collect-items"
+     ],
+     "sha": "ff54956619b276d13771c8d4c14b6077ef578bea"
+    },
+    "docs/zh/profiling/msprof_cmd/delayed_mode.md": {
+     "at": "2026-09-15T16:14:46",
+     "decision": "harvested",
+     "refs": [
+      "msprof-collect-parse",
+      "ascend-profiling-collection-planning"
+     ],
+     "sha": "df0c11d34230c0d50e05a071170337504d53047f"
+    },
+    "docs/zh/profiling/msprof_cmd/dynamically.md": {
+     "at": "2026-09-15T16:14:46",
+     "decision": "harvested",
+     "refs": [
+      "msprof-collect-parse",
+      "ascend-profiling-collection-planning"
+     ],
+     "sha": "28a20cb3364a7c6a59c17412f2e6f2dd87146433"
+    },
+    "docs/zh/profiling/msprof_cmd/general_collect_commands.md": {
+     "at": "2026-09-15T16:14:46",
+     "decision": "harvested",
+     "refs": [
+      "msprof-collect-parse",
+      "msprof-configuration-options"
+     ],
+     "sha": "7bd9576366a841481a50842243ca71dd89a0323d"
+    },
+    "docs/zh/profiling/msprof_cmd/host_system_data.md": {
+     "at": "2026-09-15T16:18:38",
+     "decision": "harvested",
+     "refs": [
+      "msprof-cli-collect-items"
+     ],
+     "sha": "4d7307e93dde6d1afcce8d588657a251d0cbc056"
+    },
+    "docs/zh/profiling/msprof_cmd/msprof_cmd.md": {
+     "at": "2026-09-15T16:14:46",
+     "decision": "skipped",
+     "note": "索引/导航页（正文在子页）",
+     "sha": "80a10e7bc252740a1717f7229c3bd0c8aa8e4e6c"
+    },
+    "docs/zh/profiling/msprof_cmd/msproftx_data.md": {
+     "at": "2026-09-15T16:18:38",
+     "decision": "harvested",
+     "refs": [
+      "msprof-enablement-methods",
+      "msprof-cli-collect-items"
+     ],
+     "sha": "889205d6ee3559ddb8cf771a145495378c3de7de"
+    },
+    "docs/zh/profiling/msprof_cmd/processorai_accelerator_system_data.md": {
+     "at": "2026-09-15T16:18:38",
+     "decision": "harvested",
+     "refs": [
+      "msprof-cli-collect-items"
+     ],
+     "sha": "8b38ce31b5753239a5f3b667f885809efb4ba544"
+    },
+    "docs/zh/profiling/other_method/other_method.md": {
+     "at": "2026-09-15T16:14:46",
+     "decision": "skipped",
+     "note": "索引/导航页（正文在子页）",
+     "sha": "f37b1a33ce71212291d320473a541d006c782537"
+    },
+    "docs/zh/profiling/other_method/with_acl_apis.md": {
+     "at": "2026-09-15T16:18:38",
+     "decision": "skipped",
+     "note": "C&C++ 接口清单面（API 简介表）：接口名与签名按官方 API 参考查；采集能力与开关口径已由 msprof-cli-collect-items / msprof-configuration-options / msprof-enablement-methods 承载（按仓库口径不整体载入接口清单面）",
+     "sha": "b051ad1f4aa0e5e527382cc4daa5a7bc3573252e"
+    },
+    "docs/zh/profiling/other_method/with_acljson_config_file.md": {
+     "at": "2026-09-15T16:18:38",
+     "decision": "skipped",
+     "note": "acl.json 字段与 PROFILING_OPTIONS 同构（标题逐项对应 switch/output/storage_limit/aicpu/aic_metrics/l2/hccl/task_time/ge_api/ascendcl），配置项语义已由 msprof-configuration-options 承载",
+     "sha": "6a68bb4b0a2b5aeb33211da9a5c31529c048b6db"
+    },
+    "docs/zh/profiling/other_method/with_ascendgraph_apis.md": {
+     "at": "2026-09-15T16:18:38",
+     "decision": "harvested",
+     "refs": [
+      "msprof-enablement-methods"
+     ],
+     "sha": "64833a87147959d34a70a003b657449f39e06f60"
+    },
+    "docs/zh/profiling/other_method/with_environment_variables.md": {
+     "at": "2026-09-15T16:14:46",
+     "decision": "harvested",
+     "refs": [
+      "msprof-configuration-options"
+     ],
+     "sha": "e323d4ed3fb304682b2f531df759ab75bf60f85e"
+    },
+    "docs/zh/profiling/preparation/before_you_start.md": {
+     "at": "2026-09-15T16:14:45",
+     "decision": "harvested",
+     "refs": [
+      "ascend-profiling-collection-planning"
+     ],
+     "sha": "adfd118edc564970097a6d18aa21f05f960b62c3"
+    },
+    "docs/zh/quick_install.md": {
+     "at": "2026-09-15T16:10:14",
+     "decision": "skipped",
+     "note": "安装类文档（包安装/快速安装），无诊断判据",
+     "sha": "b7546d9f294b7a5d67108e90542c11216b666e40"
+    }
+   },
+   "head_sha": "f09d79bcbac343b1ace712266bff1c4ffd0ec759",
+   "last_scan": "2026-09-15T16:07:18"
+  },
   "gitcode/cann/runtime": {
    "branch": "master",
    "docs": {

@@ -1,0 +1,94 @@
+# ============================================================
+# EV-2026-086 —— 性能采集面成条：采集规划方法论 + 配置项语义事实 + msprof 工具词条增补
+# 来源：reference-ingest 第四批后半（cann/oam-tools 的 profiling 采集面）
+# 触发：oam-tools 的 profiling 文档给出既有条目没有的判据——采集方式的选型规则（launch/attach 分岔）、
+#       前置与并发约束（同 Device 不可并发采集、采集与 Dump 不同开）、落盘规格（5 分钟/20 倍/磁盘速度）、
+#       以及 PROFILING_OPTIONS 全量选项与平台差异
+# 脱敏：只含公开仓路径与工具参数，不含客户数据
+# ============================================================
+
+id: EV-2026-086
+layer: L1                          # 知识内容层（新增两条 + tool 词条增补）
+title: "性能采集面成条：采集规划方法论 + 配置项语义事实，并把 msprof 工具词条的采集方式补齐"
+status: validated
+authorization: review              # 含 active 词条修订（msprof 工具条目）→ 需 kb/high-risk 双签
+dimension: architecture            # 知识结构：采集"怎么选/怎么配"与"工具怎么用"分置于方法论/事实/工具三层
+supersedes: []
+superseded_by: null
+created_at: 2026-09-15
+source_signals:
+  - signal: user_request
+    evidence: >-
+      用户的长程目标要求把文档仓里的专业内容沉淀为面向性能定位的先验词条。oam-tools profiling 面 20 篇里，
+      采集方式是**决策面**（launch vs attach 有明确分岔条件、延迟与动态互斥、同一 Device 并发约束与 950 例外），
+      配置项是**语义面**（task_time 级别、aic_metrics 七项与 Custom 寄存器、各 freq 范围与平台差异、
+      host_sys 依赖第三方工具），工具用法是**操作面**（两种传参方式、--type/--environment/--storage-limit）——
+      三者混在一条里会让"该采什么"和"怎么敲命令"互相淹没，故按三层分置。
+    trajectory:
+      - "reference-ingest-state.json（oam-tools：本批新增 harvested 7 篇、skipped 6 篇，余 9 篇使能方式留待下一批）"
+      - "references/methodologies/ascend-profiling-collection-planning.yaml（新，9 步）"
+      - "references/software-facts/msprof-configuration-options.yaml（新，配置项语义与平台差异）"
+      - "references/tools/msprof-collect-parse.yaml（commands 4→11、pitfalls 5→12、sources 2→3）"
+hypothesis: >-
+  把采集面按"方法论（怎么选）/事实（怎么配）/工具（怎么敲）"三层分置、并把工具条目的采集方式补齐之后：
+  遇到"采集没数据/数据不准/采集命令报错"这类问题时，能从方法论直接定位到约束（并发、Dump、落盘空间、
+  aclInit/aclFinalize 配对），从事实查到具体开关的取值与平台限制，而不必翻 20 篇文档；
+  代价是这次含 active 工具词条修订，需双签。
+predicted_effect:
+  metric: 采集面的三条词条是否就位且工具条目补齐采集方式
+  from: "msprof-collect-parse：commands 4 / pitfalls 5 / sources 2；且不存在采集规划方法论与配置项语义事实（PROFILING_OPTIONS 的选项全表只在 env 表里被截断保存）"
+  to: "msprof-collect-parse：commands 11 / pitfalls 12 / sources 3；新增 1 条方法论（9 步）与 1 条事实（配置项语义），索引 procedure 23→24、background 96→98"
+  measure:
+    command: >-
+      python3 -c "import yaml,sys;t=yaml.safe_load(open('references/tools/msprof-collect-parse.yaml'));c=t['content'];ok=len(c['commands'])>=11 and len(c['pitfalls'])>=12 and len(t['sources'])>=3;import os;m=os.path.exists('references/methodologies/ascend-profiling-collection-planning.yaml');f=os.path.exists('references/software-facts/msprof-configuration-options.yaml');print('commands',len(c['commands']),'pitfalls',len(c['pitfalls']));print('new_entries',m and f);sys.exit(0 if (ok and m and f) else 1)"
+    expect_exit: 0
+    expect_stdout: "new_entries True"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：工具条目 commands 4 / pitfalls 5 / sources 2（无采集方式传参、无 --type/--environment/--storage-limit、
+    无延迟与动态采集、无落盘与并发约束）；采集规划与配置项语义两条词条不存在。
+  success_criteria: >-
+    ① measure：commands ≥11、pitfalls ≥12、sources ≥3 且两条新词条存在（判据命令）；
+    ② 分层：选型/前置/约束进方法论，开关取值与平台差异进事实，命令与坑进工具条目（互不复述，用 related_references 串）；
+    ③ env 表重复判定：PROFILING_MODE/PROFILING_OPTIONS 两篇与既有 profiling-env 同源同内容 → skipped + 理由，
+       并如实记下"既有条目的 PROFILING_OPTIONS 描述被截断"这一观察（不擅自改 active env 表）；
+    ④ CI 无回归：verify_references 190 条 + 两个 reference 索引 + docs 索引 + proposals 全绿。
+  rollback: >-
+    单次提交：两条新文件 + 一处工具条目增补。git revert 即回原状；台账可 mark 回 pending（正文仍在 ref-docs/）。
+gate:
+  condition: "再出现「采集类问题要翻多篇文档才能定位约束」或「工具条目缺采集方式导致命令写错」时，重跑 measure 并复查分层规则"
+risk: medium
+principle_refs: [2, 3, 10]
+decisions:
+  - who: agent
+    when: 2026-09-15
+    type: action
+    conclusion: >-
+      按三层分置成条：新增方法论 ascend-profiling-collection-planning（采集方式选择 / 前置检查 / 并发与落盘约束 /
+      动态采集选型与 PID 获取 / Host 侧权限准备与收尾 / 采集后解析失败排查）与事实 msprof-configuration-options
+      （默认采集项、task_time 级别、aic_metrics 与 Custom 寄存器、l2、各 freq 范围与平台差异、host_sys 依赖、
+      output/storage_limit 语义）；msprof-collect-parse 工具条目补齐两种传参方式与 --type/--environment/--storage-limit、
+      延迟/动态采集、Host 侧权限准备，pitfalls 补并发与 Dump 互斥、落盘规格、aclInit/aclFinalize 配对、
+      pyACL 相对路径与虚拟化实例限制、权限与安全、动态采集边界。两篇 env-var 文档判为同源重复 → skipped。
+  - who: agent
+    when: 2026-09-15
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS（commands 11 / pitfalls 12 / sources 3，两条新词条在案）；verify_references 190 条通过、
+      索引重建后 --check 绿（procedure 索引 23→25、background 索引 96→98）。负向对照：改动前的检出上同一命令
+      exit 1（commands 4 / pitfalls 5、new_entries False）。
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      采纳并标 validated（效果层）。边界如实标注：本批含 active 工具词条修订 → 按 reference 模板属 kb/high-risk，
+      需第二个 owner 签名（PR body 按高风险区块填写）。观察项不擅自处置：既有 profiling-env 的 PROFILING_OPTIONS
+      描述被截断（缺选项清单），本批以新建事实条目承载全表而不改该 active env 表——是否把选项表折回 env 表
+      由 groom 周批或 reviewer 裁决。oam-tools 余 9 篇（各使能方式变体）仍 pending，留待下一批。
+actual_cost:
+  tokens: 25000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数，按仓库口径给估算：profiling 关键 9 篇正文剥码块后 19KB 通读（约 11k）、
+    两条新词条撰写（约 9k）、工具条目增补与 measure/校验往返（约 5k）。

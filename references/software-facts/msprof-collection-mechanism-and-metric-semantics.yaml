@@ -1,0 +1,25 @@
+id: msprof-collection-mechanism-and-metric-semantics
+type: software-fact
+title: msprof 采集链路与指标口径（task-time 三级别与膨胀、task-based vs sample-based PMU、aicore_time 调频误差与 950 syscnt、l2 开关的 postp 中断）
+summary: "读 msprof 数据前要知道的四件事：①**采集链路**——命令行/多种使能方式统一收敛为 `ProfileParams`，Host 侧由 runtime/GE/HCCL 回调上报（经无锁缓冲，上报与落盘解耦），AICPU 侧由 Device 上的 aicpu 进程与集合通信进程上报，Device 侧经 `prof_drv_start` 打开驱动通道、`ChannelPoll` 轮询；芯片差异由 Platform 抽象决定「支持哪些特性、哪些 metrics 对应哪些 PMU 事件」；部署上 `profapi.so` 是接口层（Host/Device 归一，dlopen 加载实现层 `profimpl.so`，生产态不采集时可只部署 profapi 以省体积）。②**task-time 的口径与膨胀**——op summary 的 task duration = `taskid` 关联的「host 下发上报（taskid/streamid/kernelname）」+「NPU 调度上报（调度开始/结束时间）」，因此**除算子实际执行时间外还含调度耗时**；`l0/l1/l2` 三级别按 host 上报的数据量分级（l0 仅 runtime 的 taskid/streamid/kernelname，l2 还含 aclnn/GE/hccl 上报的 shape/attr），上报越多打开 profiling 后的性能膨胀越大。③**AICore metrics 两种模式**——task based：算子执行结束后由调度单元读走 PMU 寄存器、下一个算子重新计数；sample based：PMU 持续累积、tsfw 周期采集。④**aicore_time 的误差来源与消除**——Ascend950 之前用总 cycle 数、AICore 频率与 block dim 计算，**执行过程中若 AICore 调频则误差较大**；950 起 AICore 新增记录起始 syscnt 的寄存器，用最早执行的 AICore 的 syscnt 与结束调度 syscnt 相减再除 NPU 频率，故不再因调频产生误差。另记一个会改变被测对象的开关：**l2** 采集打开后 runtime 会给 AICore 算子自动设置 postp 中断标志，调度单元执行完算子触发 postp 中断给 tsfw 读寄存器，**对调度性能有较大影响**。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/design/profiling/architecture.md"
+    version: "oam-tools master（commit f09d79bcbac3，2026-09-15 抓取）：msprof 架构、采集链路、task-time 三级别、task/sample based metrics、aicore_time 与 l2 开关说明"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A3-910C, A5-950, cross]
+  frameworks: [msprof]
+  categories: [performance]
+
+related_references: [msprof-collect-parse, msprof-timeline-lane-reading, msprof-comm-bottleneck-thresholds, operator-bottleneck-attribution, aicore-task-duration-anatomy]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "**① 采集链路与部署**：msprof 通过多种使能方式（命令行、acl prof 接口等）输入参数，统一经「开关处理」收敛为 `ProfileParams` 结构（多入口单收敛，后续采集链路只面向它编程）→ Host 侧采集由 runtime/GE/HCCL 等组件注册回调后上报 API 执行时长与算子/task 附加信息，数据进无锁缓冲 buffer、后台线程取走（上报接口低开销、上报与落盘解耦）→ AICPU 侧采集 Device 上 aicpu 进程与集合通信进程上报的数据及 AICPU/Ctrl CPU 占用率（Host 主进程 setdevice 后会在 Device 拉起一个执行 aicpu 算子的进程与一个执行集合通信算子的进程）→ Device 侧经驱动通道采集（Runtime 通知 setdevice 后调 `prof_drv_start` 打开通道，后台线程 `ChannelPoll` 轮询），不同类型数据封装在不同 profiling channel → 数据处理统一上传接口下、对上提供落盘/回调上报/在线解析；芯片形态差异由 Platform 管理（初始化查芯片类型，上层查询某特性是否支持、某组 metrics 对应哪些 PMU 事件，虚接口 + `PLATFORM_REGISTER` 注册）。部署上 `msprofiler.so` 提供 acl prof 接口能力，`profapi.so` 是采集的**接口层**（Host 与 Device 部署的是同一份），它通过 dlopen 加载实现层 `profimpl.so`——**对动态库大小敏感且生产态不做采集的场景可以不部署 profimpl.so，只部署 profapi.so**，保证上层组件正常加载。**② task-time 口径与膨胀**：op summary 表中的 task duration 由两部分经 `taskid` 关联——host 软件下发算子时上报的性能数据（taskid、streamid、kernelname）与 NPU 硬件调度单元调度算子时输出的性能数据（taskid、调度开始时间、调度结束时间）。所以 **task-time 除了算子实际执行时间，还包含调度耗时**。它提供 l0/l1/l2 三个级别，区别在于 host 上报数据的多少：l0 最少（仅 runtime 上报的 taskid/streamid/kernelname），l2 最多（额外含 aclnn/GE/hccl 上报的算子 shape、attr 等）；host 上报越多（NPU 调度上报的影响可忽略），**打开 profiling 后的性能膨胀越大**。**③ AICore metrics 两种模式**：task based——AICore 内部 PMU 统计寄存器在算子执行过程中累计指定指标，调度单元在算子执行结束后读出并记录到指定内存，下一个算子开始执行时寄存器重新计数；sample based——PMU 寄存器持续累积不随算子结束重置，tsfw 周期采集并记录。**④ aicore_time 的误差来源**：PMU 中有一个寄存器固定记录算子执行的总 cycle 数；**Ascend950 之前**的芯片用总 cycle 数、AICore 频率与 block dim 计算 op summary 表的 aicore_time，因此**算子执行过程中 AICore 若发生调频，算出的 aicore_time 会有较大误差**。**从 Ascend950 代际开始**，AICore 内部新增一个记录本 AICore 开始执行时刻 syscnt 的寄存器，调度单元在算子执行结束时把最早执行的 AICore 记录的 syscnt 与结束调度的 syscnt 记入 profiling 数据，op summary 表的 aicore_time 改为用这两个 syscnt 相减后除以 NPU 频率——syscnt 频率不变化，故 A5 代际的 aicore_time 不再因调频产生误差。**⑤ 会改变被测对象的开关**：`l2` 采集（L2 命中/miss/victim rate 与 tlb miss rate）打开后，runtime 下发 AICore 算子时会给算子自动设置 postp 中断标志，NPU 硬件调度单元执行完算子后基于该标志触发 postp 中断给 tsfw，tsfw 读取相关寄存器，因此**打开该开关对调度性能有较大影响**。其余特性开关：动态 profiling（程序执行过程中打开采集，区别于启动即采集）、acl 接口性能、runtime 接口性能、aicpu/ctrl cpu 利用率、memory（Device 整体与 module 级内存占用率）、互联带宽（nic/hccs/ub 等通道收发带宽）。"
+  evidence: "design/profiling/architecture.md：『把差异化输入转换为统一的 `ProfileParams`结构』『通过无锁队列实现上报接口低开销；上报与落盘解耦』『Runtime通知setdevice→调 用`prof_drv_start` 打开驱动通道 → 后台线程`ChannelPoll` 轮询数据』『Platform初始化查询芯片类型->上层模块查询是否支持某特性 → Platform返回支持情况』『profapi.so通过dlopen的方式加载profimpl.so，在对动态库大小敏感的场景下，如果生产态下不需要做profiling数据采集，用户可以不部署profimpl.so』；task-time 段『task-time（op summary表中的task duration）除了算子实际执行时间，还包含了调度的耗时。task-time提供了l0、l1和l2三个级别…l0上报的数据最少（仅包含runtime上报的taskid、streamid、kernelname），l2上报的数据最多（包含aclnn/GE/hccl上报的算子shape、attr等），host软件上报的数据越多…打开profiling后的性能膨胀越大』；task based AICore metrics 段『Ascend950之前的芯片就是利用总cycle数、AICore频率和block dim计算出了op summary表中aicore_time，所以如果算子的执行过程中AICore发生了调频，计算出来的aicore_time会有较大的误差。从Ascend950代际开始，AICore内部新增了一个寄存器记录本AICore开始执行的syscnt…Ascend950代际op summary表中aicore_time是利用这两个syscnt相减后除以NPU频率获得』；l2 段『打开此开关后，runtime下发AICore算子时，会给AICore算子自动设置postp中断标志…所以打开此开关后，对调度性能会有较大的影响』"

@@ -1,0 +1,40 @@
+id: msprof-enablement-methods
+type: software-fact
+title: 性能数据使能方式与 mstx 打点（msprof 命令行 / acl C&C++ 接口 / acl.json / Ascend Graph / 环境变量 + 依赖工具安装）
+summary: "采性能数据的五种使能方式与各自入口：①**msprof 命令行**（拉起业务采集，最常用）；②**acl C&C++ 接口**（应用内调用采集与落盘、msproftx 扩展接口、订阅算子信息，采集数据另有说明）；③**acl.json 配置文件**（字段与 PROFILING_OPTIONS 同构：switch/output/storage_limit/aicpu/aic_metrics/l2/hccl/task_time/ge_api/ascendcl）；④**Ascend Graph 接口**（构图时采集：GEInitialize 传 option `ge.exec.profilingMode`/`ge.exec.profilingOptions`，或 `aclgrphProfInit/Finalize/CreateConfig/DestroyConfig/Start/Stop` 六件套，产物落在 profiler_path）；⑤**环境变量**（TensorFlow 训练/在线推理：PROFILING_MODE + PROFILING_OPTIONS）。**mstx/msproftx 打点**：`--msproftx=on` 后用 `--mstx-domain-include` / `--mstx-domain-exclude` 按 domain 过滤（两者互斥、都不配则采全部 domain，domain 名填 `mstxDomainCreateA` 的 name、`default` 表示默认 domain，配了不存在的 domain 则结果无该数据），采集 mstx 数据**必须传入用户程序**；PyTorch 场景用 TorchNPU Profiler API。**依赖工具**：Host 侧 disk 需 iotop、osrt 需 perf 与 ltrace，装完须配用户权限且**每次重装 CANN 都要重配**；iotop 不支持容器内使用。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/profiling/msprof_cmd/msproftx_data.md"
+    version: "oam-tools master（commit f09d79bcbac3，2026-09-15 抓取）：msproftx/mstx 采集开关与 domain 过滤参数"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/profiling/other_method/with_ascendgraph_apis.md"
+    version: "oam-tools master（commit f09d79bcbac3）：Ascend Graph 两种启动方式与接口清单"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/profiling/appendices/mstxapi_usage_example.md"
+    version: "oam-tools master（commit f09d79bcbac3）：mstx API 样例位置与使用前提"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/profiling/appendices/install_perf_iotop_ltrace.md"
+    version: "oam-tools master（commit f09d79bcbac3）：perf/iotop/ltrace 各 OS 安装方式与限制"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msprof, ascendcl]
+  categories: [performance]
+
+related_references: [msprof-collect-parse, ascend-profiling-collection-planning, msprof-configuration-options, msprof-cli-collect-items, profiling-env]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "**① 使能方式与入口（五种，按业务形态选）**：**msprof 命令行**——拉起业务并采集，最常用（见 msprof-collect-parse）；**acl C&C++ 接口**——在应用内调用采集与落盘、msproftx 扩展接口、以及订阅算子信息（接口签名按官方 API 参考查）；**acl.json 配置文件**——通过配置文件开启，字段与 PROFILING_OPTIONS 同构（switch、output、storage_limit、aicpu、aic_metrics、l2、hccl、task_time、ge_api、ascendcl 等）；**Ascend Graph 接口**——在构图过程中采集，两种启动方式：①`GEInitialize` 接口传入 option 参数 `ge.exec.profilingMode`（是否开启）与 `ge.exec.profilingOptions`（可采迭代轨迹数据，字段含 training_trace、bp_point、fp_point），数据存放在 `ge.exec.profilingOptions` 的 output 配置路径下；②`aclgrph` 接口链路 `aclgrphProfInit` → `aclgrphProfCreateConfig` → `aclgrphProfStart`/`aclgrphProfStop` → `aclgrphProfDestroyConfig` → `aclgrphProfFinalize`，数据存放在 `aclgrphProfInit` 的 `profiler_path` 参数配置路径下（该方式支持的型号覆盖 Atlas 推理系列、Atlas 训练系列、A2、A3、Ascend 950PR/950DT）；**环境变量**——适用于 TensorFlow 训练与在线推理场景，在脚本里配 `PROFILING_MODE` 与 `PROFILING_OPTIONS`（其取值语义见 msprof-configuration-options）。无论哪种方式，采集完都走 msprof 的解析/查询/导出把原始数据转成可看的 timeline 与 summary。**② mstx / msproftx 打点（定位应用或上层框架自身耗时）**：需要先在用户程序里调用 mstx API（推荐）或 msproftx API 记录事件的起止时间跨度，PyTorch 场景用 TorchNPU Profiler API；采集时用 `--msproftx=on`（默认 off），**采集 mstx 数据必须传入用户程序**。按 domain 过滤用两个互斥参数：`--mstx-domain-include`（只输出配置的 domain 数据）与 `--mstx-domain-exclude`（过滤掉配置的 domain 数据），两者的取值都是用户程序里 `mstxDomainCreateA` 接口传入的 `name`，可配多个（逗号分隔），`default` 表示默认 domain；**两者都不配置时会采集所有 domain 数据**；配置了程序中不存在的 domain 则采集结果里没有该数据。mstx API 的样例代码集成在 Ascend-cann-toolkit 包内 `${INSTALL_DIR}/tools/mstx/samples`（按该目录 README 使用），使用前提是已装 toolkit。**③ 依赖的第三方工具（Host 侧数据采集）**：Host 侧 disk 数据依赖 iotop、osrt 数据依赖 perf 与 ltrace（各 OS 安装方式不同：Ubuntu 20.04/18.04、CentOS 7.6、EulerOS、OpenEuler 20.03/22.03、x86_64 KylinV10SP1；ARM 架构 KylinV10SP1 只需 iotop）；perf 安装后需按提示再装 linux-tools-x 与 linux-cloud-x；非 root 用户安装命令前加 sudo。装完**必须配置用户权限**（见 ascend-profiling-collection-planning 里 perf_event_paranoid 与 sudoers 的配置与清除），且**每次重新安装 CANN 软件包都需要重新配置**。已知限制：**iotop 不支持在容器内使用**；x86_64 架构 KylinV10SP1 支持 `--host-sys=osrt`，aarch64 架构下不支持；用 ltrace 采集 osrt 会导致 CPU 占用率过高并影响进程运行速度。"
+  evidence: "with_ascendgraph_apis.md：『GEInitialize接口传入option参数：ge.exec.profilingMode和ge.exec.profilingOptions…该方式采集的性能数据将存放在ge.exec.profilingOptions的output参数所配置的路径下』『aclgrph接口：aclgrphProfInit、aclgrphProfFinalize、aclgrphProfCreateConfig、aclgrphProfDestroyConfig、aclgrphProfStart和aclgrphProfStop…存放在aclgrphProfInit的profiler_path参数所配置的路径下』。msproftx_data.md：『通用场景：推荐使用mstx API（也可选msproftx API）』『PyTorch场景：使用TorchNPU Profiler API』『--msproftx：必选，控制msproftx用户应用程序和上层框架输出性能数据的开关，可选on或off，默认值为off』『--mstx-domain-include…开关内容填写 mstxDomainCreateA 接口的 name…与--mstx-domain-exclude参数互斥，不可同时配置。和--mstx-domain-exclude参数都不配置时，会采集所有domain数据』『采集mstx数据必须传入用户程序』。mstxapi_usage_example.md：『mstx API样例代码集成在Ascend-cann-toolkit包中，路径为${INSTALL_DIR}/tools/mstx/samples』。install_perf_iotop_ltrace.md：『perf、iotop、ltrace为第三方工具』『iotop工具不支持在容器内使用』『完成安装perf、iotop、ltrace工具后，需要配置用户权限』"
