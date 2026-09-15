@@ -1,0 +1,90 @@
+# ============================================================
+# EV-2026-088 —— driver 950 工具面沉淀：npu-smi 新词条 + hccn_tool 命令族与语法扩容
+# 来源：用户对"待评估候选里哪些值得沉淀"的追问 → 选 driver 950 工具面开批
+# 触发：全组织候选池核查发现 driver 的 950 工具文档（HCCN Tool 39 + npu-smi 29）是**真增量**——
+#       现有 hccn-tool 词条基于旧版命令集与旧语法，950 起改为三段式 `-g|-s|-t <cmd> -i -u -p`
+# 脱敏：只含公开仓路径、命令与工具输出字段，不含客户数据
+# ============================================================
+
+id: EV-2026-088
+layer: L1                          # 知识内容层（新增 tool 词条 + 既有 tool 词条扩容）
+title: "driver 950 工具面沉淀：npu-smi（950）新词条 + hccn_tool 三段式语法与命令族扩容"
+status: validated
+authorization: review              # 含 active 词条扩容（hccn-tool-network-diagnosis）→ 需 kb/high-risk 双签
+dimension: architecture            # 知识结构：同工具的 950 命令族并入既有工具词条，不另立"950 版"词条
+supersedes: []
+superseded_by: null
+created_at: 2026-09-15
+source_signals:
+  - signal: user_request
+    evidence: >-
+      用户问"接下来待评估的有哪些值得沉淀"，我按文档面精查后给出排序，用户指定先做 driver 950 工具面与
+      ops-ras context 面、分别开 PR 直接合入。driver 的核查结论：`docs/en/Ascend_950_HCCN_Tool` 39 篇 +
+      `Ascend_950_npu-smi` 29 篇是命令级操作面（端口链路/统计/误码/FEC/SerDes/带宽/UB ping/上下文/TLS/配置恢复；
+      设备健康/故障事件/ECC/温度电压功耗/TLS 证书/日志转储），而 DCMI API 参考 106 篇是接口清单面。
+    trajectory:
+      - "reference-ingest-state.json（driver 174 篇候选 = 68 harvested / 106 skipped；仓级 triage 置 selected）"
+      - "references/tools/npu-smi-950-device-ops.yaml（新词条，8 组命令 + 判读注意）"
+      - "references/tools/hccn-tool-network-diagnosis.yaml（commands 扩充至 10 组、pitfalls 补 4 条、sources 1→3）"
+      - "docs/en/Ascend_950_{HCCN_Tool,npu-smi} 68 篇（HTML 转 markdown，抽取前先剥 <table>/<p> 标签）"
+hypothesis: >-
+  把 950 的工具命令面按"同工具同词条"并入/新建之后：写 950 上的诊断命令不必再翻官方逐条页面，
+  且**语法版本差异被显式标注**（旧版 `hccn_tool -i <dev> -link -g` vs 950 的 `hccn_tool -g -link -i -u -p`）——
+  这条差异是"照抄旧文档命令直接报参数错误"的根因；同时三条独立证据（link_stat / down_data / adapt_status）
+  与 UB ping 用 EID 而非 IP 这两个判读要点被写进 pitfalls。
+predicted_effect:
+  metric: 950 工具命令面的词条覆盖与语法标注
+  from: "hccn-tool 词条只有旧版 4 组命令（-link_stat/-ip/-ping/-tls/-optical 等，语法为模式开关在尾）；npu-smi 无词条"
+  to: "hccn-tool 词条含 950 三段式语法与 5 组新命令；新增 npu-smi-950-device-ops（8 组命令 + 5 条判读注意）"
+  measure:
+    command: >-
+      python3 -c "import yaml,sys;h=yaml.safe_load(open('references/tools/hccn-tool-network-diagnosis.yaml'));n=yaml.safe_load(open('references/tools/npu-smi-950-device-ops.yaml'));import json;cs=json.dumps(h['content']['commands'],ensure_ascii=False);print('hccn950', all(k in cs for k in ['-ub_ping','-link_stat','-su_ber']));print('npusmi_cmds',len(n['content']['commands']));sys.exit(0 if (all(k in cs for k in ['-ub_ping','-link_stat','-su_ber']) and len(n['content']['commands'])>=8) else 1)"
+    expect_exit: 0
+    expect_stdout: "npusmi_cmds 8"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：hccn-tool 词条 4 组命令、无 950 语法说明；`tools/` 下无 npu-smi 词条；70 篇 950 工具文档未被
+    任何词条消费（台账 harvested 为 0）。
+  success_criteria: >-
+    ① measure：hccn 词条含 `-ub_ping`/`-link_stat`/`-su_ber` 三组 950 命令，npu-smi 词条 ≥8 组命令（判据命令）；
+    ② 台账：driver 68 篇 harvested（refs 分别指向两条词条）、106 篇 DCMI API 参考 skipped 带理由；
+    ③ 同工具同词条：未立"950 版 hccn_tool"新词条，950 命令族并入既有词条；
+    ④ 判读要点入 pitfalls：语法版本差异、清统计丢证据、三份独立证据、UB ping 用 EID；
+    ⑤ CI 无回归：verify_references 213 条 + 两索引 + docs 索引 + proposals 全绿。
+  rollback: >-
+    单次提交：删除 npu-smi 词条文件、回滚 hccn-tool 的 commands/pitfalls/sources 三段即回原状；
+    台账条目可 mark 回 pending。
+gate:
+  condition: "再出现「照抄旧文档命令在 950 上报参数错误」或「950 工具面缺命令」时，重跑 measure 并复查同工具同词条规则"
+risk: medium
+principle_refs: [2, 3, 10]
+decisions:
+  - who: agent
+    when: 2026-09-15
+    type: action
+    conclusion: >-
+      按"同工具同词条"把 950 的 hccn_tool 命令族并入既有 hccn-tool-network-diagnosis（补三段式语法、
+      5 组新命令、4 条 pitfalls、2 条来源），并新建 npu-smi-950-device-ops（950 的设备查询与维护面）；
+      DCMI API 参考 106 篇按"不整体载入 API 参考面"的口径 skipped 并写明理由。
+      抽取手法记一笔：driver 的文档是 HTML 转 markdown（正文在 `<table>/<p>/<a name>` 里），
+      必须先剥标签再抽命令清单，否则整篇是标记噪声。
+  - who: agent
+    when: 2026-09-15
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS（hccn950 True、npusmi_cmds 8）；verify_references 213 条通过、索引 --check 绿。
+      负向对照：在本改动前的检出上跑同一命令 → npu-smi 词条不存在（FileNotFoundError）→ exit 1。
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      采纳并标 validated（效果层）。边界如实标注：本卡证明"950 命令面已进词条且语法差异被显式标注"，
+      不证明命令清单穷尽——DCMI 的 950 API 面（87 篇）与 910B/910_93 的 DCMI（376 篇）按口径跳过，
+      若后续出现"必须查 DCMI 接口语义"的诊断场景，应把该仓从 skipped 复议为候选。
+actual_cost:
+  tokens: 22000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数，按仓库口径给估算：68 篇（HTML 转 markdown）剥标签后的命令清单抽取（约 8k）、
+    两条词条撰写与扩容（约 10k）、台账标记与 measure/校验往返（约 4k）。
