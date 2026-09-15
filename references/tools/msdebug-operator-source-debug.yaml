@@ -1,0 +1,40 @@
+id: msdebug-operator-source-debug
+type: tool
+title: msdebug 算子源码级调试（lldb 定制 + stub 劫持在 AiCore 上打断点；需 root 开 /proc/debug_switch 与 DWARF）
+summary: "MindStudio 的算子**源码级调试工具**（底层基于 lldb 定制）：通过注入 `libruntime_stub.so` 劫持库拦截运行时 `libruntime.so` 里的 kernel 启动调用，从而在 **AiCore 上**（不是宿主机 CPU 上）对核函数源码设置断点，做源码级断点/单步/变量查看，定位算子的行为错误与数据异常。**两个硬前提**：①待调试 kernel 的产物（`.o`/fatbin）必须带 DWARF（`.debug_info`/`.debug_line`）——用 TTK 时需让 kernel **自编译并带调试信息**（msdebug 下 TTK 会自动以 `-O0 -g` 自编译，但必须传 `-b=false`，若传 `-b=release` 会复用内置包、无 DWARF、无法源码断点）；②**需要 root 权限开启 `/proc/debug_switch`**（默认关闭），特权不足的共享开发机/普通容器可能开不了，需系统管理员处理；**容器/云环境 `/proc` 常被隔离，容器内看到 1 可能是虚假状态**，需在宿主机真实开启——开关置不上 1 则断点功能不可用。用法：`msdebug -- <cmd>` 进入 `(msdebug)` 交互提示符（对应 lldb 的 `(lldb)`），再 `run` 真正拉起被调试命令；自动化场景用 `msdebug-mi -- <cmd>`（输出结构化 MI 协议）。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-test-kit/blob/master/docs/Operator_Test_Guides/msdebug适配方法指南.md"
+    version: "ops-test-kit master（commit 37ec7234db08，2026-09-15 抓取）：msdebug 原理、内核调试开关、两种使用模式与 TTK 交互调试流程"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msdebug, ttk]
+  categories: [interrupt, precision]
+
+related_references: [mssanitizer, ttk-dump-and-performance-testing, ascend-aicore-error-triage, reg-data-movement-fault-patterns, ascend-stack-view]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  tool_name: "msdebug（MindStudio 算子源码级调试工具；基于 lldb 定制，工具的 Ascend 版本为 26.0.0 / lldb 19.1.7）"
+  invocation: "以**包裹**被调试命令的形式启动：`msdebug -- <被调试命令>`（进入 `(msdebug)` 交互提示符，再输入 `run` 或 `process launch` 真正启动）；脚本/工具自动化驱动改用 `msdebug-mi -- <被调试命令>`（输出结构化 MI 协议）。工具本体是 bash 包装脚本（设置 `LD_LIBRARY_PATH`、`TERMINFO` 后再调用 `msdebug.bin`），因此直接执行 `msdebug` 即可，无需手动设置工具自身库路径。环境要求：Python 3.8+、完成 CANN 包安装（含 firmware/driver 适配）、并安装 MindStudio 算子工具。"
+  commands:
+    enable_kernel_debug: "以 root 身份把 `/proc/debug_switch` 置为 1（默认关闭）——置不上则 msDebug 断点功能不可用；容器/云环境需在宿主机真实开启"
+    interactive: "msdebug -- python3 -m ttk kernel -i cases.csv -d=true -c=false -b=false -t=<用例名>（进入 (msdebug) 提示符后输入 run 启动）"
+    machine_interface: "msdebug-mi -- <被调试命令>（结构化 MI 协议输出，供脚本/工具驱动）"
+    set_breakpoint: "b <文件>:<行号>（`breakpoint set` 的简写）——须等 kernel 真正拉起后再设"
+    stub_log: "export DEBUGGER_RT_STUB_LOG=1（打印完整 stub 日志，用于确认劫持是否生效）"
+  output_meaning:
+    - "进入 `(msdebug)` 交互提示符等价于 lldb 的 `(lldb)`；`run` 之后 TTK 会先起主进程、再派 profiling 子进程编译并拉起 kernel，**等待约 60~100 秒**（含 `-O0 -g` 编译时间）才会到可打断点的时点"
+    - "断点命中标志：`stop reason = breakpoint`，且 `frame #0` 显示的是源码行"
+    - "`breakpoint 1: no locations (pending on future shared library load)` 表示断点设得太早、kernel 尚未拉起——属正常现象，待 kernel launch 后再重新 `b`，或用 `process interrupt` 强制停下再设"
+  pitfalls:
+    - "**`-b=false` 必须**：TTK 的 `-b=release` 会复用内置包（无 DWARF），无法做源码级断点；配合 msdebug 时用 `-d=true`（动态 kernel 编译 + 执行，自编译才能带调试信息）、`-c=false`（关闭 const 场景减少干扰）、`-t=<用例名>`（只跑指定用例）"
+    - "调试信息不需要手工注入：msdebug 下 TTK 会自动以 `-O0 -g` 自编译 kernel 使其带 DWARF"
+    - "看不到 stub 劫持日志说明劫持未生效，应先排查环境与补丁；需要完整日志时 `export DEBUGGER_RT_STUB_LOG=1`"
+    - "**root 与 `/proc` 的陷阱**：`/proc/debug_switch` 默认关闭且需 root 开启，容器/云环境 `/proc` 常被隔离——**容器内读到 1 可能是虚假状态**，真实能力要在宿主机确认"

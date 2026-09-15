@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-15    词条数：107
+# 生成日期：2026-09-15    词条数：112
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -628,6 +628,17 @@ entries:
     categories:
     - interrupt
     - performance
+- id: msdebug-operator-source-debug
+  type: tool
+  title: msdebug 算子源码级调试（lldb 定制 + stub 劫持在 AiCore 上打断点；需 root 开 /proc/debug_switch 与 DWARF）
+  summary: MindStudio 的算子**源码级调试工具**（底层基于 lldb 定制）：通过注入 `libruntime_stub.so` 劫持库拦截运行时 `libruntime.so`
+    里的 kernel 启动调用，从而在 **AiCore 上**（不是宿主机 CPU 上）对核函数源码设置断点，做源码级断点/单步/变量查看…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - interrupt
+    - precision
 - id: msprobe-accuracy-checker
   type: tool
   title: msprobe acc_check——离线精度预检（API 达标判定链路与阈值）
@@ -843,6 +854,17 @@ entries:
     - cross
     categories:
     - performance
+- id: mssanitizer
+  type: tool
+  title: mssanitizer 算子级异常检测（memcheck / racecheck / initcheck / synccheck 四子工具，可包裹 TTK 执行）
+  summary: MindStudio Sanitizer：算子级异常检测工具，四个子工具——**memcheck**（默认；非法读写、多核踩踏、非对齐访问、内存泄漏、非法释放、分配内存未使用）、**racecheck**（数据竞争
+    WAW/WAR/RAW）、**initcheck**（读取未初始化内存导致的脏数据）、**syncche…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - interrupt
+    - precision
 - id: mte2-preload-queue-depth
   type: platform-fact
   title: MTE2_PONG 指令队列深度阻塞（双缓冲下搬运流水断流）
@@ -1043,6 +1065,37 @@ entries:
     - A5-950
     categories:
     - performance
+- id: ttk-deterministic-levels-and-batch-consistency
+  type: software-fact
+  title: TTK 确定性等级 0–3 与 batch 一致性判据（batch relation 三字段齐全才进第二阶段）
+  summary: TTK 用 `--deterministic-level`（缩写 `--dl`）控制一次执行的确定性等级：**0** 不启用确定性选项（只做普通精度校验）；**1** 同一用例的确定性执行；**2**
+    编译期与执行期确定性选项（通路原有的强确定性检查）；**3** 确定性执行，**且只有在「完整声明 batch rel…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - precision
+- id: ttk-dump-and-performance-testing
+  type: software-fact
+  title: TTK 的 Dump 调试与性能测试口径（--dump/--dump-on-fail、warmup×run 冷热两模式、四条通路的采集差异）
+  summary: 两件在算子级定位里最常用的事：①**Dump 调试**——`--dump in|out|golden|full`（可组合，逗号分隔）分别在「输入生成后·设备执行前」「设备执行后·精度比对前」「Golden
+    生成后」保存张量；`--dump-format` 取 bin（默认、无 shape）/npy（推荐，numpy.l…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - precision
+    - performance
+- id: ttk-precision-comparison-methods
+  type: software-fact
+  title: TTK 算子精度比对的 8 种方法与各 dtype 阈值（mixed/stat_rel_err/close/cosine/binary/requant/quant/cross_check）
+  summary: 判「算子精度是否达标」时的判据表：默认方法 **mixed（混合容差）** 逐元素判 `|a-g| <= atol + rtol*|g|` 且要求通过率 ≥ **0.99**，另有绝对误差硬上限
+    `max_abs_error_limit`（与 `32*ULP` 取满足任一）拦灾难性离群点；dtype 阈值——float…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - precision
 - id: ub-capacity-and-budget
   type: platform-fact
   title: UB 容量口径（每 AIV 248 KiB 可用 / 每 AI Core 512 KiB）与 buffer 预算

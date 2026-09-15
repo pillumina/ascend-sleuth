@@ -1,0 +1,30 @@
+id: ttk-precision-comparison-methods
+type: software-fact
+title: TTK 算子精度比对的 8 种方法与各 dtype 阈值（mixed/stat_rel_err/close/cosine/binary/requant/quant/cross_check）
+summary: "判「算子精度是否达标」时的判据表：默认方法 **mixed（混合容差）** 逐元素判 `|a-g| <= atol + rtol*|g|` 且要求通过率 ≥ **0.99**，另有绝对误差硬上限 `max_abs_error_limit`（与 `32*ULP` 取满足任一）拦灾难性离群点；dtype 阈值——float16 rtol/atol 均 2^-9≈1.95e-3、bfloat16 均 2^-6≈1.56e-2、float32 rtol 2^-10≈9.77e-4 与 atol 2^-16≈1.53e-5、hifloat32 2^-9/2^-10、float8_e4m3fn 2^-2/2^-4、float8_e5m2 2^-1/2^-3，其他浮点回退 float32 档。**自动路由**：hifloat8 → requant（ULP 差 ≤1、ptol 0.001）、float4/int4 与 float8_e8m0 与整型/布尔 → binary（逐 bit SHA-256，无容差）、hifloat8 外的 float8 默认走 mixed。其余方法：stat_rel_err（mere 超阈值 FAIL，mare 超 10×阈值 FAIL）、close（np.isclose，rtol 0.001/0.0001、atol 1e-8）、cosine（1-cos ≤ 0.01，适合 embedding/attention 等大规模向量看趋势）、quant（浮点输入→int4/int8 输出，绝对误差 ≤1 LSB，ptol=0，只能由 Spec.tolerance 声明）、cross_check（NPU/Golden/第三方三方误差比值，L0/L1/L2 预设）。**特殊值**：双方同位同为 NaN、或同为同号 Inf → 视为一致；NaN/Inf 位置不一致 → 判无界误差直接 FAIL。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-test-kit/blob/master/docs/Precision_Comparison.md"
+    version: "ops-test-kit master（commit 37ec7234db08，2026-09-15 抓取）：8 种比对方法、公式、dtype 阈值表、自动切换与优先级路由"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-test-kit/blob/master/docs/XPU_Cross_Check.md"
+    version: "ops-test-kit master（commit 37ec7234db08）：三方交叉校验的 level 预设与适用场景"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [ttk]
+  categories: [precision]
+
+related_references: [ttk-deterministic-levels-and-batch-consistency, ttk-dump-and-performance-testing, amct-quantization-precision-tuning, ascend-om-infer-precision-triage, msprobe-accuracy-compare]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "**① 默认判据 mixed（混合容差，生态算子开源精度标准）**：逐元素判 `|a-g| <= atol + rtol*|g|`（a=NPU 输出、g=Golden），结合通过率要求；**required_matched_ratio 全 dtype 统一 0.99**；另有绝对误差硬上限 `max_abs_error_limit`（与 `32 * ULP` 取满足任一）拦灾难性离群点。atol 保证小值（golden 接近 0）场景合理误差且天然避免除零，rtol 保证大值场景相对精度。**dtype 阈值表（rtol / atol / max_abs_error_limit）**：`float16` 2^-9（≈1.95e-3）/ 2^-9 / 1e-1 or 32*ULP；`bfloat16` 2^-6（≈1.56e-2）/ 2^-6 / 1e-0 or 32*ULP；`float32` 2^-10（≈9.77e-4）/ 2^-16（≈1.53e-5）/ 1e-2 or 32*ULP；`hifloat32` 2^-9 / 2^-10 / 1e-1 or 32*ULP；`float8_e4m3fn` 2^-2（0.25）/ 2^-4（0.0625）/ 1e-0 or 32*ULP；`float8_e5m2` 2^-1（0.5）/ 2^-3（0.125）/ 1e-1 or 32*ULP；**其他浮点回退到 float32 档**（2^-10 / 2^-16 / 1e-2）。**② 特殊值判定**：双方同位置均为 NaN → 视为一致；双方同位置均为 Inf 且同号 → 视为一致；**NaN/Inf 位置不一致 → 视为无界误差、必超硬上限直接 FAIL**（两个特殊值不等于「不管」）。**③ 其余七种方法（按需 `--compare` 指定）**：`stat_rel_err` 统计相对误差 `|a-g|/(|g|+ε)` 的均值（mere）与最大值（mare），**mere 超 threshold 即 FAIL、mare 超 10×threshold 即 FAIL**（防止个别大误差被均值掩盖），阈值 float16 2^-10、bfloat16 2^-7、float32 2^-13、float8_e4m3fn 2^-3、float8_e5m2 2^-2、其他 2^-13；`close` 用 `np.isclose()` 逐元素比对，float16/bfloat16/complex32 的 rtol=ptol=0.001、float32 及其他浮点 0.0001，atol 统一 1e-8，ptol 表示允许的不匹配元素比例；`cosine` 余弦相似度，默认 rtol 0.01（即 cosine ≥ 0.99），适合 embedding、attention 输出这类大规模向量看整体趋势而非逐点精度；`binary` 逐 bit SHA-256 比对、无容差，适用纯搬移算子、纯比较算子（Equal/Less/Greater）、整型运算、索引/掩码输出、float4/int4 打包格式，**跨 dtype 仅支持整型间比对**（自动提升到公共类型），浮点 vs 整型等不兼容组合直接拒绝，不一致时按 itemsize 分组定位差异元素索引；`requant` 重量化以 ULP 为判据（hifloat8 自动路由；float8 e5m2/e4m3fn 可显式选），ptol=0.001（允许 0.1% 元素 ULP 差 > 1）；`quant` 用于浮点输入 + int4/int8 量化输出，判据**绝对误差 ≤ 1 LSB、ptol=0**（量化末步 `round(x/scale)` 是阶跃函数，浮点末位 1 ULP 差异会让结果跳到相邻整数格，逐位相等既不可能也无意义），且**只能通过 Spec.tolerance 声明、不能由 `--compare` 指定**（声明时校验输出 dtype 为 int4/int8 且输入至少含一个浮点）；`cross_check` 三方交叉校验（NPU 输出 / Golden / 第三方 XPU 输出）——大值域（`|g| ≥ small_value`）要求三个比值（mare_ratio/mere_ratio/rmse_ratio）均不超 limit，小值域（`|g| < small_value`）要求 NPU 误差计数 / XPU 误差计数 ≤ 2.0；**Level 预设** L0（mare 10.0 / mere 2.0 / rmse 2.0，宽松、初期对齐）、L1（5.0 / 1.5 / 1.5，默认）、L2（2.0 / 1.2 / 1.2，严格、接近对齐）；small_value 阈值 float16 2^-11（atol 2^-16）、bfloat16 2^-8（2^-16）、float32 2^-14（2^-30），**cross_check 仅支持 float16/bfloat16/float32**；特殊值规则是「NPU 与 third_party 一致，或 NPU 与 golden 一致」即通过，**仅当 NPU 与 golden、third_party 双方均不一致时才 FAIL**（竞品单方面产出 NaN/Inf 而 NPU 与 golden 一致不判失败）。**④ 自动切换**：hifloat8 → requant；float4/int4 → binary（打包格式需逐 bit）；float8_e8m0 → binary（无浮点语义）；整型/布尔 → binary（精确结果）。未显式指定 `--compare` 时按优先级路由逐输出决定方法。**⑤ 方法选择速查**：浮点算子常规 → mixed；统计均值/最大值 → stat_rel_err；逐点 isclose → close；大规模向量趋势 → cosine；整型/索引/掩码/纯搬移/纯比较 → binary；hifloat8 → requant（自动）；int4/int8 量化输出 → quant（Spec.tolerance）；多硬件精度对齐 → cross_check（需 XPU）。容差自定义：`close`/`cosine` 可读 CSV 的 `precision_tolerances`（每输出 rtol,ptol）与 `absolute_precision`（全局 atol），但**默认的 mixed 不读 CSV 字段**、需在 TestSpec 的 tolerance 中覆盖（需 `--plugin`）。"
+  evidence: "Precision_Comparison.md：方法总览表（mixed/stat_rel_err/close/cosine/binary/requant/quant/cross_check 的参数值、公式核心、适用场景与默认容差）与各节——『|a-g| <= atol + rtol*|g| 逐元素 + 通过率』『required_matched_ratio 全 dtype 统一为 0.99』dtype 阈值表逐行、『双方同位置均为 NaN → 视为一致』『NaN/Inf 位置不一致 → 视为无界误差，必超硬上限直接 FAIL』『mere 超过 threshold → FAIL』『mare 超过 10 * threshold → FAIL（防止个别大误差被均值掩盖）』『cosine…rtol 0.01（即 cosine ≥ 0.99）』『binary…逐 bit SHA-256 比对』『hifloat8 输出自动路由到重量化（requant）判据』『quant…ptol 0』『只能通过 Spec.tolerance 声明，不通过 --compare 指定』『cross_check…大值域（|g| ≥ small_value）：三个比值均不超过 limit → PASS；小值域（|g| < small_value）：NPU 误差计数 / XPU 误差计数 ≤ 2.0 → PASS』Level 预设表（L0 10.0/2.0/2.0、L1 5.0/1.5/1.5、L2 2.0/1.2/1.2）与 small_value 阈值表、自动切换规则表、方法选择建议表、容差自定义段（『默认 mixed 不读 CSV 字段，需在 TestSpec tolerance 中覆盖（需 --plugin）』）"

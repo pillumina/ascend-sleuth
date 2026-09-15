@@ -1,0 +1,42 @@
+id: mssanitizer
+type: tool
+title: mssanitizer 算子级异常检测（memcheck / racecheck / initcheck / synccheck 四子工具，可包裹 TTK 执行）
+summary: "MindStudio Sanitizer：算子级异常检测工具，四个子工具——**memcheck**（默认；非法读写、多核踩踏、非对齐访问、内存泄漏、非法释放、分配内存未使用）、**racecheck**（数据竞争 WAW/WAR/RAW）、**initcheck**（读取未初始化内存导致的脏数据）、**synccheck**（`SetFlag` 未配对、错误使用同步指令导致算子卡死）。随 CANN toolkit 自带安装，`--tool`/`-t` 指定子工具、可多次指定以同时开启（建议先 memcheck 确认无内存异常再跑其余三个）。**包裹 TTK 时必须关掉 TTK 自己的预热与 Profiling**（`--warmup=false --task-prof=false`）——否则 warmup kernel 会被插桩检测、Profiling 采集会与检测互相干扰；命令形如 `mssanitizer -t memcheck -- python3 -m ttk kernel -i cases.csv --warmup=false --task-prof=false`，**`--` 分隔是必需的**（TTK 自身参数如 `-i`、`--warmup` 会被 mssanitizer 误解析）。报告级别 **ERROR**（确定性错误：非法读写、内存泄漏、非对齐访问、内存未初始化、竞争异常）与 **WARNING**（不确定性风险：多核踩踏、内存分配未使用）。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-test-kit/blob/master/docs/Operator_Test_Guides/mssanitizer_guide.md"
+    version: "ops-test-kit master（commit 37ec7234db08，2026-09-15 抓取）：mssanitizer 四子工具、与 TTK 的配合方式、报告级别与异常类型表"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [mssanitizer, ttk]
+  categories: [interrupt, precision]
+
+related_references: [msdebug-operator-source-debug, ttk-precision-comparison-methods, ttk-dump-and-performance-testing, ascend-aicore-error-triage, reg-data-movement-fault-patterns, op-internal-sync-and-reduction-fault-patterns]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  tool_name: "mssanitizer（MindStudio Sanitizer，算子级异常检测；随 CANN toolkit 自带安装）"
+  invocation: "对算子的核函数做内存、竞争、未初始化与同步四类检测。**包裹 TTK 执行的推荐形态**：`mssanitizer [-t <子工具>] [mssanitizer 自身选项] -- python3 -m ttk <kernel|aclnn> -i <cases.csv> [TTK 筛选/编译参数] --warmup=false --task-prof=false`——`--warmup=false --task-prof=false` 用于关闭 TTK 内部预热与 Profiling 采集，原因是 TTK 自带 warmup 与 Profiling：预热会额外编译并执行一个 warmup kernel 被 mssanitizer 插桩检测，Profiling 采集会增加额外开销并与检测产生干扰。**`--` 分隔符必需**：TTK 命令带有自身参数（如 `-i`、`--warmup`），不加 `--` 会与 mssanitizer 的参数解析冲突。环境要求：Python 3.8+、完成 CANN 包安装，且 **firmware 与 driver 包需正确适配**。"
+  commands:
+    memcheck: "mssanitizer -t memcheck -- python3 -m ttk kernel -i cases.csv --warmup=false --task-prof=false（默认子工具，可省略 -t；检测非法读写、多核踩踏、非对齐访问、内存泄漏、非法释放、分配内存未使用）"
+    racecheck: "mssanitizer -t racecheck -- python3 -m ttk kernel -i cases.csv --warmup=false --task-prof=false（检测数据竞争 WAW / WAR / RAW）"
+    initcheck: "mssanitizer -t initcheck -- python3 -m ttk kernel -i cases.csv --warmup=false --task-prof=false（检测读取未初始化内存导致的脏数据）"
+    synccheck: "mssanitizer -t synccheck -- python3 -m ttk kernel -i cases.csv --warmup=false --task-prof=false（检测未配对的 SetFlag 与错误使用同步指令导致的算子卡死）"
+    multi_tool: "多次指定 --tool 同时开启多个子工具（建议顺序：先 memcheck 确认无内存异常，再按需跑 racecheck / initcheck / synccheck）"
+  output_meaning:
+    - "执行后在控制台输出异常报告，并在当前目录生成工具日志"
+    - "报告级别：**ERROR** = 涉及内存操作的确定性错误（非法读写、内存泄漏、非对齐访问、内存未初始化、竞争异常），强烈建议检查；**WARNING** = 不确定性风险（多核踩踏、内存分配未使用等），是否成问题取决于实际情况"
+    - "`mssanitizer_{TIMESTAMP}_{PID}.log`：工具运行日志，位于 `mindstudio_sanitizer_log` 目录下"
+    - "`kernel.{PID}.o`：算子缓存文件，用于解析异常调用栈——**正常退出时自动清理，异常退出（如 Ctrl+C 中止）时保留**"
+    - "`tmp_{PID}_{TIMESTAMP}`：生成算子 Kernel 二进制的临时文件夹，同样正常退出自动清理、异常退出保留"
+  pitfalls:
+    - "**不修改编译选项时异常报告不显示调用栈**（快速定界用）；需要全量检测并显示调用栈，须按官方指南的「算子编译选项配置」修改编译选项后重新编译算子"
+    - "异常退出（Ctrl+C 等）会残留 `kernel.{PID}.o` 与 `tmp_{PID}_{TIMESTAMP}`，建议及时手工删除"
+    - "mssanitizer 需要 firmware 与 driver 包的适配，检测异常先确认这两个包安装正确"
+    - "与 TTK 组合时若忘记 `--warmup=false --task-prof=false`，会把 warmup kernel 的插桩结果与 Profiling 开销混进报告，结论不可用"
