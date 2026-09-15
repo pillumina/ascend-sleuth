@@ -1,0 +1,85 @@
+# ============================================================
+# EV-2026-092 —— 实测记录写入：改用手工拼 YAML 为 safe_dump（含引号的命令行会毁掉整份记录）
+# 来源：候选仓批次收尾时核对 EV 实测记录，发现共享日志里只剩最后一笔且无法解析
+# 触发：measure.command 是任意命令行、常含单引号；`command: '...'` 手工拼接产出非法 YAML，
+#       下一次 append 时 load 抛错 → records 被当成空重开 →「append-only」的记录被静默清空
+# 脱敏：只含脚本行为与本地路径，不含客户数据
+# ============================================================
+
+id: EV-2026-092
+layer: L2                          # 机制层（运行件写入的正确性与可观测性）
+title: "EV 实测记录静默清空修复：手拼 YAML 换成 safe_dump，坏文件先另存再重开"
+status: validated
+authorization: auto              # 不改任何判定语义，只修运行件序列化
+dimension: observability           # 「声明了可复现判据却从没被测过」这一层原先在数据上不可区分
+supersedes: []
+superseded_by: null
+created_at: 2026-09-15
+source_signals:
+  - signal: data_anomaly
+    evidence: >-
+      批次收尾核对 `metrics/ev-measure-log.yaml`（同一克隆共享、面板读它出「预测实测记录」层）时发现：
+      文件只有 1 条记录（`seq: 1`）却**本身解析失败**（`ParserError ... expected <block end>, but found '<scalar>'`），
+      而本轮同一克隆内实际跑过多次 `--run`。成因：`append_run` 用 f-string 拼 `command: '{cmd}'`，
+      而 measure 的命令行按仓库口径写成 `python3 -c "...'scripts'..."`（含单引号）→ 产出非法 YAML →
+      下一次 `load_file` 抛错 → `records = []` 重开 → 历史被静默清空（且每次只留最后一笔，同样非法）。
+    trajectory:
+      - "scripts/ev_measure.py：`append_run` 改为 `yaml.safe_dump` 输出；坏文件分支改为先 `replace` 另存为 `<name>.bad-<时间戳>` 再重开"
+      - "metrics/ev-measure-log.yaml（git-ignored 运行件）：被毁的历史按新逻辑另存为 `.bad-*`，新记录从 seq 1 重新累积"
+hypothesis: >-
+  改掉序列化方式后：①含引号/冒号/中文的计量命令都能正确落盘并在下次读回（不再触发"坏文件重开"）；
+  ②历史不再被静默丢掉，坏文件另有副本可查；③面板的「预测实测记录」层（`runs` / `by_verdict` / `last`）
+  从此反映真实执行次数——这一层此前恒定显示 1 次（或直接读不出），等于该观测面失效。
+predicted_effect:
+  metric: 连续两次写入后记录条数与可解析性
+  from: "两次 append（命令含单引号）→ 文件只剩最后一笔且 YAML 解析失败 → 读回失败、runs 恒为 1"
+  to: "两次 append 后文件可解析且含 2 条记录（顺序与 seq 正确）"
+  measure:
+    command: >-
+      python3 -c "import sys;sys.path.insert(0,'scripts');from pathlib import Path;import ev_measure as m,yaml;p=Path('/tmp/ev-measure-logcheck.yaml');p.unlink(missing_ok=True);cmd='python3 -c \"import sys;sys.path.insert(0,\'scripts\');print(1)\"';[m.append_run(Path('.'),f'EV-CHECK-{i}',cmd,'PASS',0,explicit_log=p) for i in (1,2)];d=yaml.safe_load(p.read_text());n=len(d['records']);print('records',n);print('reload_ok',n==2);raise SystemExit(0 if n==2 else 1)"
+    expect_exit: 0
+    expect_stdout: "reload_ok True"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：两次 `append_run`（命令含单引号）后文件不可解析（实测 `ParserError`），只剩最后一笔；
+    共享日志因此只留 1 条记录，面板的实测记录层读不出真实次数。
+  success_criteria: >-
+    ① measure：两次写入后读回 2 条且可解析（判据命令）；
+    ② 坏文件不静默丢：旧逻辑读不出的文件按新逻辑另存 `.bad-<时间戳>`；
+    ③ 不改判定语义：只动写入序列化与坏文件处置，不影响 `--run` 的 verdict 判定；
+    ④ CI 无回归：proposals / metrics / 各索引 `--check` 全绿（`ev_measure.py` 不进 CI，本地复跑 `--audit` 通过）。
+  rollback: >-
+    单次提交：把 `safe_dump` 段换回手工拼接、去掉坏文件另存分支即回原状（会把同样的静默清空问题带回来）。
+gate:
+  condition: "再出现「实测记录条数与实际执行次数不符」或「面板实测记录层显示 1 次」时，重跑 measure 并检查写入序列化"
+risk: low
+principle_refs: [2, 6, 10]
+decisions:
+  - who: agent
+    when: 2026-09-15
+    type: action
+    conclusion: >-
+      两处一起修：**写入**改用 `yaml.safe_dump`（`sort_keys=False` 保持字段顺序、`width` 调大避免折行、
+      `allow_unicode` 保中文），**坏文件**改为一律 `replace` 另存 `.bad-<时间戳>` 再重开——
+      原注释写的"如实重开，不静默丢已有记录以外的数据"在实现上恰恰会丢掉读不出来的历史。
+  - who: agent
+    when: 2026-09-15
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS（`records 2` / `reload_ok True`）。
+      负向对照：在同一克隆的未改动检出上跑同一逻辑 → `ParserError`（文件不可解析、只剩最后一笔）→ exit 1。
+      修复后 `--run` 写入共享日志正常，被毁的历史已另存为 `metrics/ev-measure-log.yaml.bad-*`。
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      采纳并标 validated。边界如实标注：①**被清空的历史无法恢复**（原文件本身已不可解析），
+      本轮之前的实测记录只存在于各 EV 卡的决策链与 PR body 中；②该运行件是 git-ignored，
+      清理/迁移不会进 PR——"记录没了"这类问题只能靠本卡这种就地核对发现；
+      ③不改 `--audit` 的口径（它本来就从卡里读判据，与运行件无关）。
+actual_cost:
+  tokens: 7000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数：现象定位与负向复现（约 4k）、修复与文档/卡撰写（约 3k）。
