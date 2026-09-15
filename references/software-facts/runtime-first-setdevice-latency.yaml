@@ -1,0 +1,25 @@
+id: runtime-first-setdevice-latency
+type: software-fact
+title: 首次 aclrtSetDevice 秒级时延的构成（算子包搬移 + 每进程独立 aicpu_scheduler + 并发竞争）
+summary: "业务进程**首次**调用 aclrtSetDevice 有明显秒级时延、后续调用降到毫秒级，成因有三条且性质不同：①**算子包搬移**——首次调用时 Runtime 把业务所需算子包从 Host 侧传输并部署到 Device 侧，耗时与算子包大小正相关；搬移成功后结果缓存在 Device 侧，**版本一致的后续进程不重复搬移**（所以新进程首次调用会显著变快）；②**aicpu_scheduler 进程拉起**——首次调用时 Runtime 为该业务进程拉起 Device 侧的 AICPU 任务调度进程，各业务进程的 aicpu_scheduler **相互独立、不可共享**，每个进程都要各自拉起，这部分开销**无法靠其他进程预热消除**；③**并发与负载竞争**——多进程同时调用会让搬移与拉起相互竞争并受 Device 负载影响，耗时出现抖动。缓解：启动阶段用轻量进程先做一次 aclrtSetDevice 完成搬移预热（把成本前置到非关键路径）、错峰初始化、初始化前避免向 Device 下发大量计算。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/runtime/blob/master/docs/zh/FAQ/首次aclrtSetDevice耗时长.md"
+    version: "runtime master（commit f7edf263，2026-09-15 抓取）：首次 aclrtSetDevice 耗时构成与缓解手段"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [ascendcl]
+  categories: [performance]
+
+related_references: [runtime-api-call-failures, runtime-stream-event-device-semantics, runtime-memory-allocation-strategies]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "首次 aclrtSetDevice 的秒级时延由三段构成，**三段的可优化性不同**，这是判断『该优化谁』的关键：**① 算子包搬移（可共享）**——首次调用时 Runtime 将业务所需的算子包从 Host 侧传输到 Device 侧并部署，过程涉及文件 I/O 与 Device 侧写入，耗时与算子包大小正相关；搬移成功后**在 Device 侧缓存**，若不同业务进程使用版本一致的算子包，后续进程的首次 aclrtSetDevice 不涉及重复搬移、耗时显著缩短。因此实际现象是『首个进程慢、后续进程快』，且**只有当各进程的算子包版本一致时才享受这份缓存**。**② aicpu_scheduler 进程拉起（不可共享）**——首次 aclrtSetDevice 时 Runtime 会为该业务进程在 Device 侧拉起对应的 aicpu_scheduler（AICPU 任务调度进程），负责该进程的 AICPU 算子任务调度，进程创建、初始化与就绪确认都需要时间；**各业务进程的 aicpu_scheduler 相互独立、不可共享**，每个进程首次调用都要各自拉起，这部分开销**无法通过其他进程预热来消除**。**③ 并发与设备负载（可规避）**——多进程并发调用 aclrtSetDevice 时，算子包搬移与 aicpu_scheduler 拉起受 Device 侧资源竞争与负载影响，各进程首次调用耗时不一致、存在明显抖动，部分进程耗时进一步增大。缓解措施：在业务启动阶段安排一个轻量级进程优先执行 aclrtSetDevice 完成算子包搬移，让后续业务进程享受加速（把延迟前置到非关键路径）；对首次调用延迟敏感时在业务初始化阶段提前预热；多进程错峰启动、避免同一时刻集中调用；调用前避免向 Device 下发大量计算任务以降低竞争。"
+  evidence: "首次aclrtSetDevice耗时长.md：现象『业务进程首次调用 aclrtSetDevice 接口时耗时明显偏长（秒级时延），而后续再次调用同一接口耗时显著缩短（毫秒级）』『当已有进程完成 aclrtSetDevice 后，新启动的业务进程首次调用 aclrtSetDevice 耗时显著降低，因为算子包搬移成果可在进程间共享』；原因『算子包搬移开销：首次 aclrtSetDevice 时需要将算子包从 Host 侧搬移到 Device 侧，涉及文件传输和部署，是主要耗时来源之一』『aicpu_scheduler 进程拉起：首次 aclrtSetDevice 时需要在 Device 侧为该业务进程拉起对应的 aicpu_scheduler 调度进程。各业务进程的 aicpu_scheduler 进程相互独立、不可共享』；处置『预热策略：在业务启动阶段安排一个轻量级进程优先执行 aclrtSetDevice，完成算子包搬移，后续业务进程即可享受加速效果』『避免高并发同时初始化…错峰初始化』"

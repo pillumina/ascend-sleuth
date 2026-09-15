@@ -1,0 +1,35 @@
+id: runtime-memory-allocation-strategies
+type: software-fact
+title: Runtime 内存分配策略与页类型（4K/2M/1G、≤1M 时 HUGE_FIRST 退化普通页、P2P 后缀策略、IPC 页表对齐）
+summary: "选 aclrtMalloc 策略时的四条硬事实：①页类型——普通页 4K 适合小块/短生命周期/数量多的申请（减少对齐浪费），2M 大页适合大块/长期驻留/频繁访问（减少页表项、扩大 TLB 覆盖），1G 大页适合超大块、长期驻留、性能敏感场景（部分产品支持）；②策略语义——`ACL_MEM_MALLOC_HUGE_FIRST` 优先大页、不足退回普通页（推荐），`HUGE_ONLY` 仅大页、不足即报错，`NORMAL_ONLY` 仅普通页；按大小选（≤1M 用 NORMAL_ONLY 或 HUGE_FIRST，>1M 用 HUGE_FIRST）；**申请大小 ≤1M 时即使配 HUGE_FIRST 也走普通页**；③P2P 场景——跨 Device 复制要用带 `_P2P` 后缀的策略（HUGE_FIRST_P2P / HUGE_ONLY_P2P / NORMAL_ONLY_P2P），使内存属性与跨 Device 访问路径匹配；④IPC 共享——进程间共享内存要求页表对齐（普通页 4K、大页 2M/1G），aclrtMalloc 可能从更大底层块切分导致未对齐而被 IPC 接口拦截，需改用大页或 VMM。频繁申请释放会带来明显性能损耗，应预分配内存池复用。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/runtime/blob/master/docs/zh/FAQ/如何选择合适的内存分配策略.md"
+    version: "runtime master（commit f7edf263，2026-09-15 抓取）：页类型特性、策略选择、P2P 策略与预分配"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/runtime/blob/master/docs/zh/FAQ/进程间IPC内存共享的页表对齐要求.md"
+    version: "runtime master（commit f7edf263）：IPC 共享的页表对齐要求与 VMM 替代方案"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/runtime/blob/master/docs/zh/FAQ/aclrtMalloc内存申请失败常见原因.md"
+    version: "runtime master（commit f7edf263）：HUGE_ONLY 导致申请失败的策略处置"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [ascendcl]
+  categories: [performance, interrupt]
+
+related_references: [runtime-api-call-failures, runtime-stream-event-device-semantics, pcie-host-memory-access]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "**① 页类型与适用场景**：普通页（4K）适合小块、短生命周期、数量多的内存申请，减少对齐浪费；2M 大页适合大块、长期驻留、频繁访问的内存，减少页表项、扩大 TLB 覆盖；1G 大页适合超大块、长期驻留、性能敏感的内存（**部分产品支持**）。**② 策略语义与阈值**：`ACL_MEM_MALLOC_HUGE_FIRST` 优先大页、不足时退回普通页（推荐）；`ACL_MEM_MALLOC_HUGE_ONLY` 仅大页、不足即报错（这是 aclrtMalloc 返回 207001 的一个独立成因，与内存真的耗尽不同）；`ACL_MEM_MALLOC_NORMAL_ONLY` 仅普通页。按申请大小选：**≤1M 用 NORMAL_ONLY 或 HUGE_FIRST**（HUGE_FIRST 会自动降级为普通页），**>1M 用 HUGE_FIRST**。关键阈值：**申请大小 ≤1M 时，即使配置 HUGE_FIRST 也使用普通页**——所以小块的『用了大页』是错觉，不必按大页对齐预期去推算。**③ P2P 场景**：跨 Device 数据复制时内存需支持跨 Device 访问，应选带 `_P2P` 后缀的策略——`ACL_MEM_MALLOC_HUGE_FIRST_P2P`、`ACL_MEM_MALLOC_HUGE_ONLY_P2P`、`ACL_MEM_MALLOC_NORMAL_ONLY_P2P`，使内存属性匹配访问路径；用普通策略会性能不佳。**④ IPC 进程间共享的页表对齐**：`aclrtIpcMemGetExportKey` / `aclrtIpcMemImportByKey` 会检查共享内存是否页表对齐，未对齐即拦截（防止跨进程多映射导致信息泄露）；`aclrtMalloc` 出于性能考虑可能从更大的底层内存块中切分，导致返回地址未页表对齐——这也是『同一块内存本进程用得好好的、导出给别的进程就报错』的成因。对齐要求随页类型变化：普通页 4K、大页 2M 或 1G。处置顺序：按分配规则申请以保证对齐 → 需要共享时用大页分配标志 → 无法保证对齐时改用 VMM（虚拟内存管理）接口实现进程间共享 → 导出 IPC key 前先检查对齐状态。**⑤ 申请/释放频度**：频繁调用 aclrtMalloc/aclrtFree 有性能损耗，应在初始化阶段预分配固定大小内存池并在业务中复用。"
+  evidence: "如何选择合适的内存分配策略.md：『普通页（4K）：适合小块、短生命周期、数量多的内存申请，减少对齐浪费』『2M大页：适合大块、长期驻留、频繁访问的内存，减少页表项、扩大TLB覆盖』『1G大页：适合超大块、长期驻留、性能敏感的内存（部分产品支持）』『≤1M：使用 ACL_MEM_MALLOC_NORMAL_ONLY 或 HUGE_FIRST（自动降级为普通页）』『了解 HUGE_FIRST 机制：申请大小 ≤1M 时，即使配置 HUGE_FIRST 也使用普通页』『使用 P2P 策略：选择带 P2P 后缀的策略（HUGE_FIRST_P2P、HUGE_ONLY_P2P、NORMAL_ONLY_P2P）』『预分配内存池：初始化阶段预分配固定大小的内存』。aclrtMalloc内存申请失败常见原因.md：『强制使用大页策略（如 ACL_MEM_MALLOC_HUGE_ONLY）但大页内存不足』『调整策略为 HUGE_FIRST：避免强制大页导致的申请失败』。进程间IPC内存共享的页表对齐要求.md：『IPC接口会检查共享内存是否页表对齐，若未对齐，API将拦截并报错，以防止跨进程多映射内存导致的信息泄露风险』『不同内存类型页表大小不同：普通页内存的页表大小为4K，大页内存的页表大小支持2M或1G』『如果无法保证内存对齐，可以使用VMM（Virtual Memory Management）接口』"

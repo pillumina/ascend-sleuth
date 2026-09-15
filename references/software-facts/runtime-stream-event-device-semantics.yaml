@@ -1,0 +1,35 @@
+id: runtime-stream-event-device-semantics
+type: software-fact
+title: Runtime 的 Stream / Event / Device 语义（Device 归属、默认 Device 与默认 Stream 的创建销毁时机、同步范围与传参规则）
+summary: "三条决定定位方向的语义：①**Device 归属**——Stream 与 Event 在创建时绑定 Device，只能在该 Device 上使用，Event 只能关联到与其同 Device 的 Stream；跨 Device 协调要用 Event 同步，不能跨 Device 复用 Stream（否则 aclrtMemcpyAsync 报 107003、aclrtRecordEvent/aclrtStreamWaitEvent 失败）。②**默认 Device 与默认 Stream**——aclInit 默认不设 defaultDevice；默认 Stream 在 aclrtSetDevice 或 aclrtCreateContext 时自动创建、在 aclrtResetDevice/ResetDeviceForce 时自动销毁，不能显式销毁；显式创建的 Stream 必须 aclrtDestroyStream 配对销毁。③**同步范围与选择**——aclrtSynchronizeStream 阻塞整条 Stream 的全部任务，Event（aclrtRecordEvent / aclrtSynchronizeEvent / aclrtStreamWaitEvent）精确到时间点且支持跨 Stream；单 Stream 等待用 Stream 同步、跨 Stream 协调用 Event，单流场景用 Event 属过度设计，跨流不用 Event 会导致任务依赖关系错乱。需要 Stream 参数的接口默认 Stream 传 nullptr，同步接口不涉及默认 Stream。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/runtime/blob/master/docs/zh/FAQ/如何理解默认Device和默认Stream机制.md"
+    version: "runtime master（commit f7edf263，2026-09-15 抓取）：defaultDevice 配置、默认 Stream 创建销毁时机、传参规则"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/runtime/blob/master/docs/zh/FAQ/Stream同步与Event同步的区别与选择.md"
+    version: "runtime master（commit f7edf263）：两种同步的作用范围、适用场景与接口"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/runtime/blob/master/docs/zh/FAQ/多Device场景下Stream跨Device下发失败.md"
+    version: "runtime master（commit f7edf263）：Stream/Event 的 Device 归属约束与跨 Device 同步方案"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [ascendcl]
+  categories: [interrupt, performance, precision]
+
+related_references: [runtime-api-call-failures, runtime-async-error-triage, runtime-memory-allocation-strategies]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "**① Device 归属**：Stream 具有 Device 所属关系——在其所属 Device 上创建后只能在该 Device 上使用；Event 同样有 Device 归属，且只能关联到与其所属 Device 相同的 Stream 上。因此跨 Device 场景下：在非所属 Device 的 Stream 上下发算子、调 aclrtMemcpyAsync（返回 107003 ACL_ERROR_RT_STREAM_CONTEXT）、或让 Event 与 Stream 分属不同 Device 时调 aclrtRecordEvent/aclrtStreamWaitEvent 都会失败。正确做法是每个 Device 创建并维护自己的 Stream，需要跨 Device 协调任务时用 Event 同步而不是跨 Device 复用 Stream。**② 默认 Device 与默认 Stream**：aclInit 默认**不**设置 defaultDevice，未显式 aclrtSetDevice 时 aclrtMalloc 等接口会失败（返回 107001）；在 aclInit 的 json 里配置 `{\"defaultDevice\":{\"default_device\":\"0\"}}` 后，接口内部会隐式完成 aclrtSetDevice。默认 Stream 在 aclrtSetDevice 或 aclrtCreateContext 时自动创建、在 aclrtResetDevice 或 aclrtResetDeviceForce 时自动销毁——**不能显式销毁默认 Stream**；显式创建的 Stream 必须用 aclrtDestroyStream 配对销毁。需要 Stream 参数的接口（如 aclrtMemcpyAsync）：默认 Stream 传 nullptr，显式 Stream 传实际对象；不需要 Stream 参数的接口（如 aclrtMemcpy）是同步接口，不涉及默认 Stream。**③ 同步范围与选择**：aclrtSynchronizeStream(stream) 阻塞指定 Stream 上的**所有**任务直到全部完成，适合等待单条 Stream 的整批任务；Event 同步精确控制到某个时间点并支持跨 Stream，接口为 aclrtRecordEvent / aclrtSynchronizeEvent / aclrtStreamWaitEvent，适合跨 Stream 任务协调与精细时间点控制。选择规则：单 Stream 等待用 aclrtSynchronizeStream（简单直接），跨 Stream 协调用 Event（stream1 Record、stream2 Wait），需要精细时间点控制用 Event；单流场景用 Event 属过度设计，而跨 Stream 未用 Event 同步会导致任务依赖关系不正确。"
+  evidence: "如何理解默认Device和默认Stream机制.md：『aclInit 默认不设置 defaultDevice，需要显式调用 aclrtSetDevice』『启用后可不显式调用 aclrtSetDevice，接口内部自动进行隐式 aclrtSetDevice』『理解默认Stream创建时机：aclrtSetDevice 或 aclrtCreateContext 时自动创建默认Stream』『aclrtResetDevice 或 aclrtResetDeviceForce 时自动销毁默认Stream』『显式创建的Stream需调用 aclrtDestroyStream 销毁，默认Stream不能显式销毁』『需要Stream参数的接口（如 aclrtMemcpyAsync）：默认Stream传 nullptr，显式创建Stream传实际对象』。Stream同步与Event同步的区别与选择.md：『作用范围：阻塞指定 Stream 上的所有任务，直到全部完成』（aclrtSynchronizeStream）与『作用范围：精确控制到某个时间点，支持跨 Stream 同步』（aclrtRecordEvent、aclrtSynchronizeEvent、aclrtStreamWaitEvent），以及『单 Stream 等待：使用 aclrtSynchronizeStream，简单直接』『跨 Stream 协调：使用 Event，stream1 Record，stream2 Wait』『避免过度设计：单流场景不要用 Event 同步』。多Device场景下Stream跨Device下发失败.md：『Stream在其所属的Device上创建后，只能在该Device上使用』『Event也只能关联到与其所属Device相同的Stream上』"

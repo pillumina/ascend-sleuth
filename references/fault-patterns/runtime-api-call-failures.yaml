@@ -1,0 +1,90 @@
+id: runtime-api-call-failures
+type: fault-pattern
+title: Runtime（AscendCL）接口调用失败与资源不足（14 条，107xxx/207xxx/100002/EE1023/ACL Graph 捕获限制/输出全 0）
+summary: "Runtime 接口层的失败对照表。接口返回码：`aclInit` 107000（配置路径/权限/json 层级超 10 层）与 100002（重复初始化，可忽略）、`aclrtSetDevice` 107001（Device ID 越界或驱动未加载）、未 SetDevice 直接调运行时接口、`aclrtMalloc` 207001（内存不足或大页策略不当）、`aclrtMemcpyAsync` 107003（Stream 不属于当前 Device 的 Context）、跨 Device 用 Stream/Event、跨 Device P2P 未查能力/未开启/未用 P2P 策略、IPC 共享内存页表未对齐、`207000`（Runtime 与 CANN 版本不匹配）、EE1023 硬件资源不足（Stream/Notify/Event/异步拷贝队列四类，按 plog retCode 分流）、ACL Graph 捕获期三类限制（捕获区间内同步或查询、GLOBAL 模式调内存同步接口、用默认 Stream 捕获）、算子输出全 0。每条给出现场关键字、根因与处理动作。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/runtime/tree/master/docs/zh/FAQ"
+    version: "runtime master（commit f7edf263，2026-09-15 抓取）docs/zh/FAQ 全 18 篇（Runtime 接口常见问题）"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/runtime/blob/master/docs/zh/FAQ/EE1023资源不足问题.md"
+    version: "runtime master（commit f7edf263）：EE1023 四类资源不足的 plog retCode 映射与排查方法"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/runtime/blob/master/docs/zh/FAQ/ACLGraph捕获过程中任务提交限制.md"
+    version: "runtime master（commit f7edf263）：ACL Graph 捕获阶段三类限制与处置"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [ascendcl]
+  categories: [interrupt, precision]
+
+related_references: [runtime-async-error-triage, runtime-stream-event-device-semantics, runtime-memory-allocation-strategies, runtime-first-setdevice-latency, runtime-resource-fault-patterns, cann-runtime-error-codes, rts-error-codes, ascend-aicore-error-triage]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  patterns:
+    - pattern: aclInit 返回参数无效（107000，ACL_ERROR_RT_PARAM_INVALID）
+      symptoms: ["107000", "ACL_ERROR_RT_PARAM_INVALID"]
+      cause: aclInit 传入的配置文件路径不存在或不可读，或文件内容不符合 json 规范、字段拼写错误、括号层级超过限制
+      fix: 用绝对路径传入配置文件并确认可读；不需要配置时传 nullptr 或空 json `{}`；检查 json 内 `{` 与 `[` 的层级（各自最多 10 层）与字段拼写
+    - pattern: aclInit 返回重复初始化（100002，ACL_ERROR_REPEAT_INITIALIZE）
+      symptoms: ["100002", "ACL_ERROR_REPEAT_INITIALIZE"]
+      cause: 重复调用 aclInit；重复初始化本身是支持的，但多次调用的配置必须一致，否则后续调用报错或配置不生效
+      fix: 该错误可忽略并继续业务；保证每次 aclInit 使用相同的配置路径与内容，并按 `aclInit → 业务处理 → aclFinalize` 成对时序使用（支持 `aclInit → aclFinalize → aclInit` 重复循环）
+    - pattern: aclrtSetDevice 返回设备 ID 无效（107001，ACL_ERROR_RT_INVALID_DEVICEID）
+      symptoms: ["107001", "ACL_ERROR_RT_INVALID_DEVICEID"]
+      cause: 指定的 Device ID 超出系统实际可用设备数量（Device ID 从 0 开始，合法范围 [0, deviceCount-1]）
+      fix: 先用 aclrtGetDeviceCount 查设备总数，再按合法范围传 Device ID
+    - pattern: aclrtSetDevice 失败且 NPU 驱动未正确加载（同为 107001）
+      symptoms: ["107001", "ACL_ERROR_RT_INVALID_DEVICEID"]
+      cause: NPU 驱动未安装或未正确加载——此时即使 Device ID 合法，aclrtSetDevice 也会返回 107001
+      fix: 确认 CANN 驱动已正确安装、驱动已加载（npu-smi info 可查设备），必要时重装驱动。**与上一条同码不同因，先看 npu-smi 能否列出设备再判**
+    - pattern: 未调用 aclrtSetDevice 直接调用其他运行时接口失败
+      symptoms: ["aclrtMalloc", "ACL_ERROR_RT_INVALID_DEVICEID"]
+      cause: aclInit 默认**不**设置 defaultDevice；未显式 aclrtSetDevice 时，aclrtMalloc 等需要 Device 上下文的接口失败
+      fix: 显式调用 aclrtSetDevice；或在 aclInit 的 json 中配置 `{"defaultDevice":{"default_device":"0"}}`，由接口内部隐式完成 SetDevice。默认 Device 与默认 Stream 的机制见 runtime-stream-event-device-semantics
+    - pattern: aclrtMalloc 返回内存申请失败（207001，ACL_ERROR_RT_MEMORY_ALLOCATION）
+      symptoms: ["207001", "ACL_ERROR_RT_MEMORY_ALLOCATION"]
+      cause: Device 内存被大量占用、申请大小超过设备总容量、并发申请超系统上限；或强制大页策略（ACL_MEM_MALLOC_HUGE_ONLY）下大页内存不足
+      fix: 用 npu-smi 查设备内存占用；及时 aclrtFree 释放不再使用的内存；减小单次申请大小、初始化阶段预分配内存池并复用；把策略从 HUGE_ONLY 改为 HUGE_FIRST（优先大页、不足退回普通页）。策略语义与阈值见 runtime-memory-allocation-strategies；网络并行导致的 OOM 另见 runtime-resource-fault-patterns
+    - pattern: aclrtMemcpyAsync 返回 Stream 上下文错误（107003，ACL_ERROR_RT_STREAM_CONTEXT）
+      symptoms: ["107003", "ACL_ERROR_RT_STREAM_CONTEXT"]
+      cause: Stream 在创建时绑定到特定 Device，不能在该 Device 之外的 Context 上下发任务
+      fix: 在 Stream 所属 Device 上下发；切换 Device 后使用属于该 Device 的 Stream，每个 Device 创建各自的 Stream，避免跨 Device 混用
+    - pattern: 多 Device 场景下 Stream / Event 跨 Device 使用失败
+      symptoms: ["107003", "aclrtRecordEvent", "aclrtStreamWaitEvent"]
+      cause: Stream 与 Event 都有 Device 归属关系——Stream 只能在其所属 Device 上使用，Event 只能关联到与其所属 Device 相同的 Stream 上
+      fix: 在资源所属 Device 上操作；需要跨 Device 协调任务时用 Event 同步而不是跨 Device 复用 Stream；核对 Event 与 Stream 的 Device 归属一致
+    - pattern: 跨 Device P2P 数据交互配置失败
+      symptoms: ["aclrtDeviceEnablePeerAccess", "ACL_MEM_MALLOC_HUGE_FIRST_P2P"]
+      cause: 未先用 aclrtDeviceCanAccessPeer 查询 P2P 能力（并非所有 Device 组合都支持）、未显式 aclrtDeviceEnablePeerAccess 开启权限、跨 Device 内存未用带 P2P 后缀的分配策略，或 Device 之间不在 PCIe 等支持 P2P 的互联拓扑下
+      fix: 按顺序配置——先 aclrtDeviceCanAccessPeer(&canAccessPeer, i, j) 查能力，再 aclrtDeviceEnablePeerAccess(j, 0) 开启（双向各开一次），跨 Device 内存用 ACL_MEM_MALLOC_HUGE_FIRST_P2P 等 P2P 策略申请；不支持 P2P 时改用 Host 内存中转；仍失败则查硬件组网拓扑
+    - pattern: 进程间 IPC 内存共享报页表未对齐
+      symptoms: ["aclrtIpcMemGetExportKey", "aclrtIpcMemImportByKey"]
+      cause: IPC 接口会检查共享内存是否页表对齐，未对齐即拦截（防止跨进程多映射导致信息泄露）；aclrtMalloc 出于性能考虑可能从更大的底层内存块切分，导致返回地址未对齐；普通页页表 4K，大页 2M 或 1G
+      fix: 按内存分配规则申请保证对齐；需要共享的场景用大页内存分配标志；无法保证对齐时改用 VMM（虚拟内存管理）接口实现进程间共享；导出 IPC key 前可先检查对齐状态
+    - pattern: ACL Graph 捕获阶段任务提交受限（捕获失败）
+      symptoms: ["aclmdlRICaptureBegin", "aclmdlRICaptureEnd", "ACL_MODEL_RI_CAPTURE_MODE_GLOBAL"]
+      cause: 三类违规——①在 aclmdlRICaptureBegin/aclmdlRICaptureEnd 之间对 Stream/Event/Device/Context 做同步或查询；②GLOBAL 模式下调用内存同步类接口（aclrtMemset、aclrtMemcpy、aclrtMemcpy2d）；③用默认 Stream（传 nullptr）做捕获，可能失败或行为异常
+      fix: 把同步/查询操作移到捕获区间之外；确认内存同步不影响捕获时把模式切为 ACL_MODEL_RI_CAPTURE_MODE_RELAXED；创建并使用显式 Stream 而不是默认 Stream
+    - pattern: 接口返回功能不支持（207000，ACL_ERROR_RT_FEATURE_NOT_SUPPORT）
+      symptoms: ["207000", "ACL_ERROR_RT_FEATURE_NOT_SUPPORT"]
+      cause: Runtime 与 CANN 版本不匹配——新版本接口在旧版本不可用、编译时链接的库版本与运行时加载的库版本不同、ASCEND_HOME 或 LD_LIBRARY_PATH 指向了错误的版本目录
+      fix: 用 aclsysGetVersionNum 查当前 Runtime 版本，按需升/降 CANN 版本；用 ldd 确认实际加载的库路径与编译时链接的 libascendcl.so 一致；核对 ASCEND_HOME 与 LD_LIBRARY_PATH 指向同一套 CANN
+    - pattern: EE1023 硬件资源不足（Stream / Notify / Event / 异步拷贝队列）
+      symptoms: ["EE1023"]
+      cause: Runtime 向 Driver 申请 Stream、Event、Notify 所涉硬件调度资源失败；资源由同一 Device 上所有进程共享，未及时释放会逐渐耗尽；多个 ACL Graph 并发执行时，正在执行的图所占资源在其结束前无法回收
+      fix: 先按 plog 中的 retCode 确认资源类型（0x7020023 / Alloc Stream resource failed → Stream；0x702001b / Alloc Notify resource failed → Notify；0x7020019 / Alloc Event resource failed → Event；0x7110019 / The number of async copy tasks reaches the maximum limit → 异步拷贝队列），再检查创建与销毁是否配对（aclrtDestroyStream / aclrtDestroyEvent / aclrtDestroyNotify / aclmdlRIDestroy）、用 npu-smi info 看是否有其他进程占资源、多进程共用同一 Device 时减少并发。ACL Graph 场景还要减小单图规格或降低并发数（建议每批图执行完再执行下一批）；异步拷贝队列不足时减小 aclrtMemcpyBatchAsync 的 numBatches 或 aclrtMemcpy2dAsync 的 height
+    - pattern: 算子执行输出数据全为 0
+      symptoms: ["输出全0"]
+      cause: 输出内存未初始化就读取、算子输入输出数据类型不匹配（如 float32 与 float16 混用）、Host-Device 拷贝失败或未执行（Device 侧保持初值 0）、内核编译或执行异常（低版本内核 <5.10 用 asan、编译选项或内核启动参数不当）、算子访问非法地址触发 Device 侧异常
+      fix: 依次排查——确认输出内存已分配并初始化；核对输入输出 dtype 一致；验证 Host 与 Device 之间的拷贝确实执行成功；用 plog 中的错误码与异常信息定位（AI Core Error 的分流见 ascend-aicore-error-triage）；结合 `aclGetRecentErrMsg` 取详细错误描述
