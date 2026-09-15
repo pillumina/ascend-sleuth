@@ -7,7 +7,7 @@
 #   3) 按 file 打开该词条读 **content.flow[] 全文**——摘要行不承载判据，只读摘要等于没加载；
 #   4) 一轮诊断最多加载一条流程（成本有界）。
 #
-# 生成日期：2026-09-14    流程条数：21    本文件整体加载成本：约 3477 token（选择器每次都要整读，故单文件 + 记成本）
+# 生成日期：2026-09-15    流程条数：22    本文件整体加载成本：约 3649 token（选择器每次都要整读，故单文件 + 记成本）
 #
 # 增长闸门（原则十一：按闸门不按日历）：流程条数 > 25，或本文件 > 5K token → 按 category 分片
 #   （对齐 case 层 knowledge/_index/<ns>__<category>.yaml 的做法）。当前单文件即可。
@@ -36,6 +36,15 @@ entries:
   platforms:
   - cross
   file: references/methodologies/ascend-garbled-output-triage.yaml
+- id: ascend-hccl-comm-fault-triage
+  title: HCCL 集合通信故障定位（故障码/多级关键字分流三阶段 → 全量日志 → 根节点定位）
+  summary: 多机 HCCL 报错的标准定位路径：①先确认是 HCCL 的问题（打屏日志出现 `EI****`/`EJ****` 故障码，或 CANN 日志中有 HCCL 组件 ERROR）——CANN 日志里没有 HCCL 报错时不要套用本流程，转查其他组件、脚本、core dump 或进程卡住；②收集**全量节点**的 debug+run 日志（报错 rank 常常只是在等对端超时）；③用多级检索关键字 …
+  categories:
+  - interrupt
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/ascend-hccl-comm-fault-triage.yaml
 - id: ascend-log-troubleshooting
   title: 日志异常排查（不落盘 / 时间戳不对 / 多余打屏）
   summary: 日志故障按现象分流：不落盘按部署形态分支排查（EP/RC/Control CPU × 应用/系统：系统日志报错 → df -h 磁盘 → ldd 动态库 → ps 查 slogd → 重启日志进程）；时间戳不对是 AI 任务启动后改系统时区所致（重启任务或 timedatectl 改回）；多余打屏是日志模块与 slogd 建 Socket 失败降级打屏（fd 超限用 ulimit -n 调大）

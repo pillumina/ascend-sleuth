@@ -1,0 +1,30 @@
+id: hccl-log-key-info-fields
+type: software-fact
+title: HCCL 关键日志的检索关键字与字段含义（Communicator/LocalRank Key Info、HCCL_ENV、Entry- 算子入参、task exception 三段）
+summary: "从 CANN 日志里取 HCCL 证据的四个检索入口：①`Communicator Key Info` / `LocalRank Key Info`——一行的通信域关键信息（identifier/rankSize/serverNum/moduleNum/superPodNum 及两个「是否不一致」标志）与本端关键信息（userRank/hostIp/devicePhyId/server/deviceIp/superPodId/useSuperPodMode/isStandardCard），值为 1 表示是、0 表示否；②环境变量实际生效值——检索 `HCCL_ENV`（A3/A2/910/310P），Ascend 950PR/950DT 改为检索 `base_config`；③算子级下发入参——开启 `HCCL_ENTRY_LOG_ENABLE` 后 run/plog 每次下发打印 tag/sendBuf/recvBuf/count/dataType/op/localRank/streamId/comm/deviceLogicid，是比对 rank 间行为是否一致的唯一手段；④task exception 三段信息——base information(stream/taskid/tag)、groupRank information(group/rankSize/rankId)、opData information(deviceId/index/count/reduceType/src/dst)。另记通信域初始化/析构在 run 目录默认打印（ranks/rank/rootinfo/identifier）。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/hccl/blob/master/docs/zh/user_guide/fault_diagnosis/debug_thinking.md"
+    version: "hccl master（commit 8cbf54d3，2026-09-15 抓取）：HCCL 相关日志说明、Communicator/LocalRank Key Info 字段表、HCCL_ENV 与 base_config 检索"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/hccl/blob/master/docs/zh/user_guide/fault_diagnosis/task_exception_mechanism_troubleshooting.md"
+    version: "hccl master（commit 8cbf54d3）：task exception 日志三段信息与 HcclDiagnoseEnable 开关要求"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [hccl]
+  categories: [interrupt, performance, precision]
+
+related_references: [ascend-hccl-comm-fault-triage, hccl-op-exec-and-cluster-event-faults, hccl-cluster-heartbeat-and-link-probe, ascend-log-locations, ascend-log-modules, hccl-debug-env]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "HCCL 的诊断证据分四处落在 CANN 日志里，检索关键字与字段含义如下。**① 通信域与本端快照**：`grep -r \"Communicator Key Info\"` 得到通信域关键信息——`identifier`（通信域名，后续所有跨 rank 检索都靠它）、`rankSize`（通信域大小）、`serverNum`（节点数）、`moduleNum`（模组个数）、`superPodNum`（超节点个数）、`multiModuleDiffDeviceNumMode`（模组间卡数是否不一致）、`multiSuperPodDiffServerNumMode`（超节点间节点数是否不一致），后两个「1 表示是、0 表示否」；`grep -r \"LocalRank Key Info\"` 得到本端关键信息——`userRank`（通信域内 rank 号）、`hostIp`、`devicePhyId`（物理 ID）、`server`（节点信息）、`deviceIp`、`superPodId`、`useSuperPodMode`（是否超节点模式）、`isStandardCard`（是否标卡场景），同样 1/0 表示是否。**② 环境变量实际生效值**：A3/A2/910/310P 上 `grep -r \"HCCL_ENV\" run/plog/plog-_xxx_.log` 可查每个进程的环境变量实际生效值（配置值与生效值不一致的排查入口）；**Ascend 950PR/Ascend 950DT 改为检索关键字 `base_config`**。**③ 算子级下发入参**：run 目录默认记录通信域初始化与析构（含 ranks/rank/rootinfo/identifier 字段），通信算子的下发记录需显式开启 `HCCL_ENTRY_LOG_ENABLE`，开启后每次下发打印 `tag`（算子标识符）、`sendBuf`/`recvBuf`（输入/输出地址指针）、`count`（数据量）、`dataType`、`op`（reduce 类型）、`localRank`、`streamId`（执行流）、`comm`（通信域指针）、`deviceLogicid`——逐 rank 比对这几个字段是判定「集群行为是否一致」的唯一直接证据。**④ task exception 三段信息**：HCCL 任务的失败 task（stream 与 taskId）经回调通知后，HCCL 反查下发记录并打印 base information（算子所在 stream、taskid、算子 tag）、groupRank information（通信域名 group、通信域大小 rankSize、本端在该通信域内的 rankId）、opData information（所在 deviceId、该通信域内第几个算子 index、count、reduceType、输入 src 与输出 dst 地址）。注意 A3/A2 产品上要跟踪 task 级信息需先用 `HCCL_DIAGNOSE_ENABLE` 手动开启。"
+  evidence: "debug_thinking.md：『为了方便快速检索和识别通信域及本端的相关信息，HCCL提供了快速检索关键字：`Communicator Key Info`和`LocalRank Key Info`』并逐字段列出 identifier/rankSize/serverNum/moduleNum/superPodNum/multiModuleDiffDeviceNumMode/multiSuperPodDiffServerNumMode 与 userRank/hostIp/devicePhyId/server/deviceIp/superPodId/useSuperPodMode/isStandardCard（『信息中，“1”表示是，“0”表示否』）；『可以通过检索`HCCL_ENV`的关键字查询每个进程的环境变量实际生效值』『针对Ascend 950PR/Ascend 950DT，可通过检索关键字“base_config”查询当前已设置的环境变量』；算子下发字段表（tag/sendBuf/recvBuf/count/dataType/op/localRank/streamId/comm/deviceLogicid）与『通信域初始化与析构（默认打印）、通信算子的下发（需开启HCCL_ENTRY_LOG_ENABLE环境变量）』。task_exception_mechanism_troubleshooting.md：『base information：HCCL算子所在的stream、taskid，以及算子的tag』『groupRank information：通信域名（group）、通信域的大小（rankSize）以及当前卡在通信域内的rankId』『opData information：当前算子的入参信息，所在的deviceId，该通信域下的第几个算子（index）、数据量（count）、reduce类型（reduceType）以及输入（src）和输出（dst）的地址』"

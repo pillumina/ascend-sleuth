@@ -1,0 +1,338 @@
+{
+ "sources": {
+  "gitcode/cann/hccl": {
+   "branch": "master",
+   "docs": {
+    "docs/zh/user_guide/fault_diagnosis/README.md": {
+     "at": "2026-09-15T15:33:53",
+     "decision": "skipped",
+     "note": "导航/索引页，正文在子页（内容已由子页覆盖）",
+     "sha": "9a3b383047cb4d7482f5df53ff78425696d735fe"
+    },
+    "docs/zh/user_guide/fault_diagnosis/_dump_cluster_heartbeat_mechanism.md": {
+     "at": "2026-09-15T15:33:53",
+     "decision": "skipped",
+     "note": "导航/索引页，正文在子页（内容已由子页覆盖）",
+     "sha": "01dd75d399877a976d9d505369219ef9ebba68c9"
+    },
+    "docs/zh/user_guide/fault_diagnosis/_dump_cluster_info_nego.md": {
+     "at": "2026-09-15T15:33:53",
+     "decision": "skipped",
+     "note": "导航/索引页，正文在子页（内容已由子页覆盖）",
+     "sha": "77104e4f8c409476740a793f4be100550a908c86"
+    },
+    "docs/zh/user_guide/fault_diagnosis/_dump_cluster_info_verify_fail.md": {
+     "at": "2026-09-15T15:33:53",
+     "decision": "skipped",
+     "note": "导航/索引页，正文在子页（内容已由子页覆盖）",
+     "sha": "93b4f98f41173523c999a0b1d2a734350f00af1d"
+    },
+    "docs/zh/user_guide/fault_diagnosis/_dump_env_config_error_EI0001.md": {
+     "at": "2026-09-15T15:33:53",
+     "decision": "skipped",
+     "note": "导航/索引页，正文在子页（内容已由子页覆盖）",
+     "sha": "a1b302b5aab1ceb8b6be0e698c4ec56e53ad0246"
+    },
+    "docs/zh/user_guide/fault_diagnosis/_dump_param_link_stage.md": {
+     "at": "2026-09-15T15:33:53",
+     "decision": "skipped",
+     "note": "导航/索引页，正文在子页（内容已由子页覆盖）",
+     "sha": "0c600bab52d5b57132157242b70ffc87febfadae"
+    },
+    "docs/zh/user_guide/fault_diagnosis/_dump_rank_table_load_fail.md": {
+     "at": "2026-09-15T15:33:53",
+     "decision": "skipped",
+     "note": "导航/索引页，正文在子页（内容已由子页覆盖）",
+     "sha": "f408c50874d4be877059b656370ee51c5832f4ea"
+    },
+    "docs/zh/user_guide/fault_diagnosis/_dump_task_exception_mechanism.md": {
+     "at": "2026-09-15T15:33:53",
+     "decision": "skipped",
+     "note": "导航/索引页，正文在子页（内容已由子页覆盖）",
+     "sha": "0799b33bbdf857409adf9a8f805ed2aaed1fcf4f"
+    },
+    "docs/zh/user_guide/fault_diagnosis/_dump_task_exec_stage.md": {
+     "at": "2026-09-15T15:33:53",
+     "decision": "skipped",
+     "note": "导航/索引页，正文在子页（内容已由子页覆盖）",
+     "sha": "e4165fa563d6776c2e1b7b55a23739d574374ee0"
+    },
+    "docs/zh/user_guide/fault_diagnosis/aiv_comm_op_exec_fail.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-op-exec-and-cluster-event-faults"
+     ],
+     "sha": "743678e24304e48e55c09691d709b94c06a1eccb"
+    },
+    "docs/zh/user_guide/fault_diagnosis/cluster_heartbeat_mechanism_troubleshooting.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-cluster-heartbeat-and-link-probe",
+      "hccl-op-exec-and-cluster-event-faults"
+     ],
+     "sha": "8e2222c7a007e530287dd3a5ca4f35dfbd8ff029"
+    },
+    "docs/zh/user_guide/fault_diagnosis/cluster_info_nego_troubleshooting.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "921fd5e71bdb0387ef23bfe64b1d9b2ffe9ca5d6"
+    },
+    "docs/zh/user_guide/fault_diagnosis/cluster_info_verify_fail_troubleshooting.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "c47630dd428d9e8f353d9439ce587357f9963d2e"
+    },
+    "docs/zh/user_guide/fault_diagnosis/comm_domain_init_flow.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults",
+      "ascend-hccl-comm-fault-triage"
+     ],
+     "sha": "c2d199f08b0431a6b39aba602e2f6ac5d29cb35d"
+    },
+    "docs/zh/user_guide/fault_diagnosis/comm_domain_init_stage.md": {
+     "at": "2026-09-15T15:33:53",
+     "decision": "skipped",
+     "note": "导航/索引页，正文在子页（内容已由子页覆盖）",
+     "sha": "caf90a005b80d7d0290c084d6cc8ff4207e6be91"
+    },
+    "docs/zh/user_guide/fault_diagnosis/debug_thinking.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "ascend-hccl-comm-fault-triage",
+      "hccl-log-key-info-fields"
+     ],
+     "sha": "73dad8f85e16f5ba6e177518ab93ca920b066f21"
+    },
+    "docs/zh/user_guide/fault_diagnosis/env_config_error_EI0001_troubleshooting.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "9db0a7cf31639d07bd416ed8c864609cb60b77bd"
+    },
+    "docs/zh/user_guide/fault_diagnosis/error_cqe_report_EI0013.md": {
+     "at": "2026-09-15T15:33:53",
+     "decision": "harvested",
+     "refs": [
+      "hccl-op-exec-and-cluster-event-faults",
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "c7721404f8a550bea37790481711bf57fa26c6b0"
+    },
+    "docs/zh/user_guide/fault_diagnosis/hccl_rdma_sl_config_error_EI0001.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "111daf475cbbcbc395b587b5ee46ed52dd0d2768"
+    },
+    "docs/zh/user_guide/fault_diagnosis/hccl_socket_ifname_config_error_EI0001.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "c70b82f1defce3bcaad945525b38ab4f294b4ae6"
+    },
+    "docs/zh/user_guide/fault_diagnosis/ip_family_check_inconsistent_EI0001.md": {
+     "at": "2026-09-15T15:33:53",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults",
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "35f1e47d4b5484a4b873a222ef5b3e59a82c98ce"
+    },
+    "docs/zh/user_guide/fault_diagnosis/link_timeout_EI0006.md": {
+     "at": "2026-09-15T15:33:53",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults",
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "826b0ffcc25186ed1776acf7f02545fcb21d9884"
+    },
+    "docs/zh/user_guide/fault_diagnosis/notify_wait_timeout_EI0002.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-op-exec-and-cluster-event-faults"
+     ],
+     "sha": "3919a70369b16b0992693c2768bac3e61a94b991"
+    },
+    "docs/zh/user_guide/fault_diagnosis/param_consistency_check_EI0005.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "5ce69db78d0e03d622df0b7c964e25c2cae2028f"
+    },
+    "docs/zh/user_guide/fault_diagnosis/param_link_stage_troubleshooting.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults",
+      "ascend-hccl-comm-fault-triage"
+     ],
+     "sha": "82d8a99f5d75cedc893bf4c6e62ed5b1797b5d40"
+    },
+    "docs/zh/user_guide/fault_diagnosis/param_port_bind_fail_EI0019.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "908136a1a1eadc9f34a120305907ae20758da838"
+    },
+    "docs/zh/user_guide/fault_diagnosis/partial_rank_not_connect_to_server_EI0015.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "a6f0755b827732be29fb44453fd7d48b246efd91"
+    },
+    "docs/zh/user_guide/fault_diagnosis/process_hang_or_peer_heartbeat_loss_example.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-cluster-heartbeat-and-link-probe",
+      "hccl-op-exec-and-cluster-event-faults"
+     ],
+     "sha": "3d53216d560a29b3e97a9adb280fe8ffe74cfa40"
+    },
+    "docs/zh/user_guide/fault_diagnosis/qp_mem_resource_apply_EI0011.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-op-exec-and-cluster-event-faults"
+     ],
+     "sha": "08821c21cf6792e87283e2e72a1eca4f63e45b8c"
+    },
+    "docs/zh/user_guide/fault_diagnosis/rank_server_socket_timeout_EI0015.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "4bc7429b90ec25354b110519cc4123d3d18ca26e"
+    },
+    "docs/zh/user_guide/fault_diagnosis/rank_table_device_ip_field_validation_fail_EI0014.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "7d5c08ff45dd97efb749a952dba86738e257d71b"
+    },
+    "docs/zh/user_guide/fault_diagnosis/rank_table_field_config_error_EI0004.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "e75261f0c041309e4599ebbb7ff989b1e1fe1d74"
+    },
+    "docs/zh/user_guide/fault_diagnosis/rank_table_file_read_fail_EI0004.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "f63afd705e69cf4177b32872fb57b43c59ab92ce"
+    },
+    "docs/zh/user_guide/fault_diagnosis/rank_table_load_fail_troubleshooting.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "249e71fe6dcda74131c053ff1f00f905bea32679"
+    },
+    "docs/zh/user_guide/fault_diagnosis/sdma_error_EI0012.md": {
+     "at": "2026-09-15T15:37:11",
+     "decision": "harvested",
+     "refs": [
+      "hccl-op-exec-and-cluster-event-faults"
+     ],
+     "sha": "afed4fb6a3725eb856fb025bba9dcd42b0a30c33"
+    },
+    "docs/zh/user_guide/fault_diagnosis/server_node_port_bind_fail_EI0019.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "17ec4e591bdf99e5def9b13ed2344b5c7c7317b7"
+    },
+    "docs/zh/user_guide/fault_diagnosis/super_device_id_duplicate_EI0014.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "4dd44b693f2b43b97d0662ba378d7530bfdf8e4d"
+    },
+    "docs/zh/user_guide/fault_diagnosis/task_exception_mechanism_troubleshooting.md": {
+     "at": "2026-09-15T15:33:53",
+     "decision": "harvested",
+     "refs": [
+      "hccl-op-exec-and-cluster-event-faults",
+      "hccl-log-key-info-fields"
+     ],
+     "sha": "3ae33f3d1971328d0ae2ab687bc30bd2dc66aaea"
+    },
+    "docs/zh/user_guide/fault_diagnosis/task_exec_stage_troubleshooting.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-op-exec-and-cluster-event-faults"
+     ],
+     "sha": "c842b7972afa9cc6cb72673fe5bf33f47f4e3cc4"
+    },
+    "docs/zh/user_guide/fault_diagnosis/tls_info_config_inconsistent_EI0016.md": {
+     "at": "2026-09-15T15:33:53",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults",
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "3e3c159b4040a82ffb82cf8e8b1ed8cbd555adaa"
+    },
+    "docs/zh/user_guide/fault_diagnosis/topo_detect_timeout_EI0015.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "4cee350581e4f771dbee29211763f95ab356a7f8"
+    },
+    "docs/zh/user_guide/fault_diagnosis/typical_multi_node_comm_init_fail_EI0015.md": {
+     "at": "2026-09-15T15:33:52",
+     "decision": "harvested",
+     "refs": [
+      "hccl-comm-init-and-link-faults"
+     ],
+     "sha": "c5c22d8ba30dd8035f7eb92ab967eb46dbd8c5dd"
+    }
+   },
+   "head_sha": "8cbf54d35a6d57d643576a6fb3942d8c927bf785",
+   "last_scan": "2026-09-15T15:34:35"
+  }
+ },
+ "version": 1
+}

@@ -1,0 +1,103 @@
+id: hccl-comm-init-and-link-faults
+type: fault-pattern
+title: HCCL 通信域初始化与参数面建链阶段故障（16 条，EI0001/EI0004/EI0005/EI0006/EI0014/EI0015/EI0016/EI0019）
+summary: "HCCL 前两个阶段的故障对照表。通信域初始化：环境变量取值非法或 Host 网卡不存在（EI0001）、rank table 路径/字段/device_ip 校验失败（EI0004/EI0014）、superDeviceId 重复（EI0014，A3 逻辑超节点误配）、TLS 配置不一致（EI0016）、server 端口绑定失败（EI0019 socket type=2）、topo 探测超时（EI0015，未连接 rank 判定）；参数面建链：端口绑定失败（EI0019 socket type=0/1，默认 16666）、参数一致性校验失败（EI0005）、建链超时（EI0006，含沿算子依赖链级联传播与五个排查点）。每条给出现场关键字、根因与处理动作。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/hccl/tree/master/docs/zh/user_guide/fault_diagnosis"
+    version: "hccl master（commit 8cbf54d3，2026-09-15 抓取）fault_diagnosis 全 42 篇：通信域初始化阶段与参数面建链阶段各场景页"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/hccl/blob/master/docs/zh/user_guide/fault_diagnosis/link_timeout_EI0006.md"
+    version: "hccl master（commit 8cbf54d3）：EI0006 建链超时定位流程与五个排查点、HCCL_CONNECT_TIMEOUT 默认值"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/hccl/blob/master/docs/zh/user_guide/fault_diagnosis/topo_detect_timeout_EI0015.md"
+    version: "hccl master（commit 8cbf54d3）：EI0015 超时速查表、未连接 rank 判定、大集群内核参数限制"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/hccl/blob/master/docs/zh/user_guide/fault_diagnosis/param_consistency_check_EI0005.md"
+    version: "hccl master（commit 8cbf54d3）：EI0005 校验范围与 cmdType/op 枚举表"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [hccl]
+  categories: [interrupt]
+
+related_references: [ascend-hccl-comm-fault-triage, hccl-op-exec-and-cluster-event-faults, hccl-log-key-info-fields, hccn-tool-network-diagnosis, hccl-error-codes, hccl-network-env, hccl-debug-env]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  patterns:
+    - pattern: HCCL 环境变量取值非法（EI0001）
+      symptoms: ["EI0001", "Value *** for environment variable *** is invalid", "externalinput.cc"]
+      cause: HCCL 在读取环境变量配置时发现取值不在允许范围内，日志中会给出变量名、当前值与合理范围
+      fix: 按日志给出的取值范围修正该环境变量；变量的完整取值参考见 hccl-network-env / hccl-function-env / hccl-debug-env（HCCL_RDMA_SL 一类的取值错误即属本模式）
+    - pattern: HCCL_SOCKET_IFNAME 指定的 Host 网卡在当前环境不存在（EI0001）
+      symptoms: ["get host ip fail by socket Ifname", "EI0001"]
+      cause: 环境变量指定的 Host 网卡在本机（或容器内）找不到，日志会列出当前环境实际查到的网卡
+      fix: 将 HCCL_SOCKET_IFNAME 改为环境上真实存在的 Host 网卡名；容器场景必须指定容器内可见的网卡
+    - pattern: 同一作业各 rank 的 device IP 协议不一致（EI0001）
+      symptoms: ["device ip family[2] is not same as others", "EI0001"]
+      cause: 两个 rank 取到的 IP Family 不同（枚举值 2=IPv4、10=IPv6，一边 IPv4 一边 IPv6 即校验失败）
+      fix: 使同一次作业所有 rank 的 IP Family 一致；HCCL 默认先用 IPv4，Device 侧没有 IPv4 地址时才用 IPv6，可用 HCCL_SOCKET_FAMILY 显式指定。查本机地址：hccn_tool -i <deviceId> -ip -g / -ip -inet6 -g
+    - pattern: rank table 文件路径不存在或权限不足（EI0004）
+      symptoms: ["is not a valid real path", "EI0004"]
+      cause: 基于 rank table 文件初始化通信域时，传入的路径不存在或当前用户无读权限
+      fix: 修正 rank table 路径或补可读权限
+    - pattern: rank table 字段缺失导致校验失败（EI0004，A3）
+      symptoms: ["RanktableCheck", "EI0004"]
+      cause: rank table 的 version 字段为 1.2 时 super_device_id 字段必须非空，留空即校验失败
+      fix: 补齐 rank table 的 super_device_id 字段（配置说明见集群信息配置文档的 A3 rank table 章节）
+    - pattern: rank table 中 device_ip 与实机不一致（EI0014）
+      symptoms: ["the IP address(***) in the ranktable is inconsistent with the IP(***)address of the network adapter", "EI0014"]
+      cause: 校验发现当前 device 侧实际取到的 device IP 与 rank table 中给该 rank 配的 device IP 不同
+      fix: 逐 rank 核对 rank table 的 device_ip 与该 rank 实际执行 device 的 IP，使两者一致
+    - pattern: superDeviceId 重复（EI0014，A3 超节点）
+      symptoms: ["superDeviceId[***] in superPod[***]is already exist", "EI0014"]
+      cause: 同一超节点内出现相同的 superDeviceId；常见两种来源——硬件配置异常，或用 HCCL_LOGIC_SUPERPOD_ID 把不同物理超节点配进了同一个逻辑超节点
+      fix: 修正硬件配置或 HCCL_LOGIC_SUPERPOD_ID，保证同一超节点内 superDeviceId 唯一。superDeviceId 可用 npu-smi info -m 查询（回显 SDID 字段）
+    - pattern: 参数一致性校验失败（EI0005）
+      symptoms: ["The arguments for collective communication are inconsistent between ranks", "CMD information *** check fail", "Transport init error! createLink para:", "EI0005"]
+      cause: 参数面 socket 建好后两端做参数一致性校验失败——校验范围是算子标识符 tag、算子类型 cmdType、规约类型 op、数据量 count、HCCL Buffer 大小 cclbufferSize、数据类型 dataType
+      fix: 用关键字 `Transport init error! createLink para:` 定位不一致的两端（localUserrank/localIpAddr/remoteUserrank/remoteIpAddr/tag），再回到业务侧排查两端下发不一致的根因；若未启用 SuperKernel 时正常、启用后才出现，把 HCCL 算子移出 SuperKernel 的标定范围。日志中 cmdType/op 为枚举值（如 2=AllReduce、6=AllGather、8=AlltoAllV；op 0=SUM、1=PROD、2=MAX、3=MIN、255=非 Reduce）
+    - pattern: 参数面建链超时（EI0006）
+      symptoms: ["wait socket establish timeout", "LINK_ERROR_INFO", "Alloc transports failed", "EI0006"]
+      cause: 参数面 socket 建链在超时内未完成；HCCL 通信算子按业务顺序串行处理，一个算子建链阻塞会让后续算子依次超时，因此建链超时通常在多个 rank 之间**级联传播**，报错 rank 不是根节点
+      fix: 从 LINK_ERROR_INFO 取对端 dest_ip，用 `grep -rni "localIp[<对端ip>]"` 找到对端 run 日志再定位其 debug 日志，按五个排查点向前追踪到最早失败的 rank 对：①对端 debug 无任何 ERROR → 对端未下发通信算子，非 HCCL 问题，回业务侧；②对端首报错是别的错误 → 先解对端首报错；③对端也在与第三方建链超时 → 继续递归（最典型的级联）；④双方互等且报错时间差超过 HCCL_CONNECT_TIMEOUT（默认 120 秒）→ 业务执行不同步；⑤双方在超时内互等 → 依次查 TLS 配置一致性（device 日志 `TLS SWITCH`，0 关 1 开）、device 网络连通性（hccn_tool 按 IP 类型选 roce ping 或 hccs ping）、A3 逻辑超节点是否误配（不同物理超节点配成同一逻辑超节点会让 HCCL 选 VNIC 链路而互等超时，可取消或修正 HCCL_LOGIC_SUPERPOD_ID）
+    - pattern: TLS 配置在通信域内不一致（EI0016）
+      symptoms: ["All ranks are consistent", "EI0016"]
+      cause: server 节点收齐各 rank 信息后校验 TLS 配置一致性失败，日志会打印 Disable/Enable 节点列表，未打印的即为相反配置
+      fix: 用 `hccn_tool -i <device_id> -tls -g` 逐 device 查 TLS 开关与证书信息（tls switch[0]=关闭、[1]=开启），先用 `hccn_tool -i <device_id> -tls -s enable 1` 统一开启，再核对各 device 证书是否一致（不一致用 -tls -s 替换证书套件）。该校验仅 Ascend HDK 25.2.0 以上且以 root 信息协商方式初始化通信域时可用，Ascend 950PR/950DT 不支持
+    - pattern: 通信域创建阶段 server 节点 Host 端口绑定失败（EI0019）
+      symptoms: ["socket type[2]", "Please check the port status and whether the port is being used by other process", "EI0019"]
+      cause: 通信域创建阶段需要绑定 Host 网卡端口（默认 60000-60031），该端口已被占用
+      fix: 用 HCCL_IF_BASE_PORT 指定 Host 网卡起始端口与预留范围；单个 NPU 上要跑多进程时用 HCCL_HOST_SOCKET_PORT_RANGE 划分端口范围（A2/A3 训练与推理产品支持）。注意用报错日志中的 socket type 区分阶段：type=2 为通信域协商阶段 Host 侧绑定失败，type=0/1 为参数面绑定失败
+    - pattern: 参数面建链阶段 device 侧端口绑定失败（EI0019）
+      symptoms: ["socket type[0]", "socket type[1]", "Please check the port status and whether the port is being used by other process", "EI0019"]
+      cause: 参数面建链要绑定 device 侧网卡端口（默认 16666），同一 device 上多个进程同时调用 HCCL 通信算子时端口冲突
+      fix: 先从业务侧确认「多个进程跑在同一个 device 上」是否符合预期；符合预期则用 HCCL_NPU_SOCKET_PORT_RANGE 启用多进程端口范围
+    - pattern: topo 探测超时——部分 rank 未连接到 server 节点（EI0015）
+      symptoms: ["topo exchange server get socket timeout", "Failed to connect agent", "connectFailedAgentIdList", "topoinfo_exchange_server.cc", "EI0015"]
+      cause: server 节点拉起后台线程等待通信域内所有 rank 连接，超时时间内有 rank 未连上
+      fix: 先从报错日志反推未连接的 rank（server 侧打印已连接的 connected rankinfo，可从 [0, rankSize-1] 中算出缺失项；agent 侧从扩散信息中的 Failed to connect agent 读缺失 rank），再在整个集群日志中检索该 rank 是否有通信域创建下发记录（`grep -rn "<通信域名>" plog/ | grep -rn "Entry-HcclCommInit" | grep -rn "rank[<n>]"`）：没有下发记录 → 业务侧排查未下发原因；有记录 → 比对它与 server 节点的下发时间差是否超过 HCCL_CONNECT_TIMEOUT
+    - pattern: topo 探测超时——rank 与 server 节点建立 socket 超时（EI0015）
+      symptoms: ["topo exchange agent get socket timeout", "TopoExchangeAgent: connect server", "topoinfo_exchange_agent.cc", "EI0015"]
+      cause: rank 按 rootInfo 与 server 的 IP/端口建 socket 时连不通，常见于未指定 HCCL_SOCKET_IFNAME 时 HCCL 按字典序选到了不连通的 Host 网卡
+      fix: 用 ifconfig 查互联的 Host 网卡名并配置 HCCL_SOCKET_IFNAME 后重拉作业；网卡正确时再排查报错节点到 server 的 IP/端口连通性，以及各 agent 与 server 下发通信域创建的时间差是否超过超时时间（超时时间可用 `grep -rn "HCCL_CONNECT_TIMEOUT" run/plog` 查）
+    - pattern: topo 探测超时——client 接收 rank table 超时（EI0015）
+      symptoms: ["Wait timeout for sockets recv", "EI0015"]
+      cause: client 等待 server 下发完整 rank table 超时；大规模集群下还可能是 Master 节点并发建链数受 Linux 内核参数 net.core.somaxconn 与 net.ipv4.tcp_max_syn_backlog 限制，部分 client 概率性提前退出
+      fix: 先按通信域名找到 server 节点（一般 rank0），看它打印的未连接 rank 是否包含本端：不包含 → 本端连接正常，排查其他未连接 rank；包含 → 本端与 server 的 socket 异常（Host 侧网络异常，如 ARP 偏移、端口拦截）。大集群把所有机器的 net.core.somaxconn 与 net.ipv4.tcp_max_syn_backlog 调到 65535 后重试
+    - pattern: 通信域初始化阶段资源初始化失败（EI0007）或 HCCL 版本不一致（EI0008）
+      symptoms: ["EI0007", "EI0008"]
+      cause: 资源初始化失败的具体原因需按报错信息判断；EI0008 为建链两端 HCCL 版本不一致导致校验失败
+      fix: EI0007 按报错信息定位到具体资源；EI0008 按报错中的版本信息统一各节点的 HCCL/CANN 版本后重试

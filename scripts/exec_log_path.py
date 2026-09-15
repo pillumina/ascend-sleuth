@@ -51,6 +51,8 @@ LOG_REL = Path("metrics") / "skill-exec-log.yaml"
 MEASURE_LOG_REL = Path("metrics") / "ev-measure-log.yaml"
 # 按版本平铺的上游源码缓存根（scripts/src_fetch.py 用；版本目录在其下）
 SRC_CODE_REL = Path("src-code")
+# 文档面摄取的上游正文缓存根（scripts/gc_docs.py 用；<org>/<repo>/<commit12>/ 在其下）
+REF_DOCS_REL = Path("ref-docs")
 
 # where 的含义（人读输出里直接标注，防止把"本地"读成"全系统"）
 WHERE_LABEL = {
@@ -135,6 +137,28 @@ def describe_src(path: Path, where: str) -> str:
     return f"{path}（{WHERE_LABEL_SRC.get(where, where)}）"
 
 
+WHERE_LABEL_REF = {
+    "explicit": "指定路径（--dest）",
+    "local": "检出内（--local 强制）",
+    "shared": "同一克隆共享（主检出 ref-docs/；所有 worktree 共读共写）",
+    "fallback": "检出内（无 git 环境，退化）",
+}
+
+
+def describe_ref(path: Path, where: str) -> str:
+    return f"{path}（{WHERE_LABEL_REF.get(where, where)}）"
+
+
+def resolve_ref_docs(root: Path, explicit: Path = None, local: bool = False):
+    """上游文档正文缓存根的路径解析 → (cache_root, where)。语义与 src-code 完全同条。
+
+    为什么同条：抓下来的正文同样是 .gitignore 件，同样"新 worktree 没有它、worktree 清理连它
+    一起删"，而重新抓取要付网络与限流成本。锚到主检出后，同一克隆的所有 worktree 共读一份，
+    多个摄取批次不必各自重抓。
+    """
+    return resolve_rel(root, REF_DOCS_REL, explicit=explicit, local=local)
+
+
 # ---------------------------------------------------------------- 检出侧运行时件的统一解析
 # 除上面三件**文件**外，还有若干**目录**级运行时件（下表）。它们与"跨 session 复用"同一条语义，
 # 但写侧常常是 agent 按 prose 写相对路径（`traces/<session>.yaml`、`postmortems/inbox/...`），
@@ -148,6 +172,7 @@ CHECKOUT_DIRS = {
     "proposals-tasks": Path("proposals") / "tasks",
     "proposals-reviews": Path("proposals") / "reviews",
     "proposals-experiments": Path("proposals") / "experiments",
+    "ref-docs": Path("ref-docs"),                          # 上游文档正文缓存（scripts/gc_docs.py 的抓取面）
 }
 
 

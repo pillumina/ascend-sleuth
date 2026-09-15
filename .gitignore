@@ -50,6 +50,13 @@ postmortems/inbox/*
 src-code/
 
 # ============================================================
+# 上游文档正文缓存（reference-ingest 按需抓取，scripts/gc_docs.py 写）
+# 与 src-code/ 同一条语义：锚到主检出、不入版本库、worktree 清理不丢；
+# 路径解析的唯一事实源是 scripts/exec_log_path.py 的 resolve_ref_docs。
+# ============================================================
+ref-docs/
+
+# ============================================================
 # proposals/ 运行时状态（自演进会话/任务进度、token 账本、实验记录）——
 # 类比 traces/ 与 inbox 草稿：本地留存不进 git；稳态资产（ideas/ 卡、
 # 策略记忆）入 git，随 PR 进出（git-workflow 纪律，见 evolution-run.md §8）
