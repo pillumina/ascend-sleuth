@@ -1,0 +1,25 @@
+id: ascend-app-process-and-resource-constraints
+type: software-fact
+title: 应用侧进程与资源硬约束（单 Device 进程数上限 63/64、不支持 fork 后调 acl 接口、创建销毁配对、休眠前置）
+summary: "三类会直接表现为「进程起不来 / 报错 / 卡死」的应用侧硬约束：①**单 Device 用户进程数上限**（Host 上限 = Device 数 × 单卡上限）——Atlas 训练系列、Atlas 推理系列、Atlas 200I/500 A2 推理产品、Ascend 950PR/950DT 为**单卡 64 个**（Atlas 训练/推理系列在**虚拟机场景降为 32 个**），**Atlas A2 与 A3 为单卡 63 个**；②**不支持用 fork（及 system、posix_spawnp 等封装了 fork 的函数）创建多个子进程后在进程中调用 acl 接口**——否则进程运行时会报错或卡死；③**创建类与销毁类接口必须配对**（aclrtCreateStream/aclrtDestroyStream、aclrtCreateEvent/aclrtDestroyEvent、aclCreateDataBuffer/aclDestroyDataBuffer 等），销毁后不能继续使用已释放资源、建议置为无效值（NULL），否则程序可能异常。另记低功耗约束：进入系统休眠前必须确保不下发 AI 推理与媒体数据处理业务、或退出业务进程，唤醒成功后再继续下发或重启业务进程。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/constraints.md"
+    version: "cann/docs master（commit 38e6d3315a2c，2026-09-15 抓取）：使用约束（低功耗 / 进程 / 创建销毁接口 / 内存）"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A3-910C, A5-950, cross]
+  frameworks: [ascendcl]
+  categories: [interrupt, performance]
+
+related_references: [runtime-api-call-failures, runtime-resource-fault-patterns, ascend-process-hang-triage, runtime-stream-event-device-semantics, hccl-comm-init-and-link-faults]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "**① 单 Device 用户进程数上限（Host 上限 = Device 个数 × 单卡上限）**：Atlas 训练系列产品与 Atlas 推理系列产品——物理机场景单 Device 最多 **64** 个用户进程、Host 最多 Device 数 × 64，**虚拟机场景单 Device 最多 32 个**、Host 最多 Device 数 × 32；Atlas 200I/500 A2 推理产品——单 Device 最多 **64** 个、Host 最多 Device 数 × 64；**Atlas A2 训练/推理系列产品与 Atlas A3 训练/推理系列产品——单 Device 最多 63 个**、Host 最多 Device 数 × 63；Ascend 950PR/Ascend 950DT——单 Device 最多 **64** 个、Host 最多 Device 数 × 64。这条是「多进程/DL 框架多 worker 拉起后申请资源失败」类问题的第一个要核的预算约束（注意 A2/A3 是 63 而非 64）。**② fork 与 acl 接口互斥**：**不支持使用 fork 函数以及封装了 fork 的函数（如 system、posix_spawnp 等）创建多个子进程、且在进程中调用 acl 接口**的场景——否则进程运行时会报错或者卡死。子进程里出现无响应的场景应先核对这条（与进程卡住类问题的既有归因路径可互相印证）。**③ 创建类与销毁类接口配对**：用户调用创建类接口（例如 aclrtCreateStream、aclrtCreateEvent、aclCreateDataBuffer 等）创建资源后，资源使用完成建议**及时**调用对应销毁类接口（aclrtDestroyStream、aclrtDestroyEvent、aclDestroyDataBuffer 等），否则程序可能会异常；调用销毁类接口后**不能继续使用已释放或销毁的资源**，建议把相关资源置为无效值（例如 NULL）。**④ 低功耗（休眠）前置条件**：进入系统休眠前需要确保不下发 AI 推理、媒体数据处理等相关业务，或者退出业务进程；等待系统唤醒成功后，再继续下发业务或重启业务进程。"
+  evidence: "constraints.md：『## 关于低功耗 进入系统休眠前，需要确保不下发AI推理、媒体数据处理等相关业务，或者退出业务进程。等待系统唤醒成功后，再继续下发业务或重启业务进程』『## 关于进程 - 不支持使用fork函数以及封装了fork的函数（如system、posix_spawnp等）创建多个子进程，且在进程中调用acl接口的场景，否则进程运行时会报错或者卡死』以及逐平台进程数上限条目（『对于Atlas 训练系列产品，物理机场景下，一个Device上最多只能支持64个用户进程，Host最多只能支持Device个数*64个进程；虚拟机场景下，一个Device上最多只能支持32个用户进程』『对于Atlas A2 训练系列产品/Atlas A2 推理系列产品，一个Device上最多只能支持63个用户进程』『对于Atlas A3…63个』『对于Ascend 950PR/Ascend 950DT，一个Device上最多只能支持64个用户进程』『对于Atlas 200I/500 A2 推理产品，一个Device上最多只能支持64个用户进程』）；『## 关于创建类和销毁类接口 - 对于创建类接口（例如：aclrtCreateStream、aclrtCreateEvent、aclCreateDataBuffer等），用户调用该类接口创建对应的资源后，资源使用完成后，建议及时调用对应的销毁类接口…否则，程序可能会异常』『对于销毁类接口…用户调用该类接口后，不能继续使用已释放或销毁的资源，建议用户调用销毁类接口后，将相关资源设置为无效值（例如，置为NULL）』"

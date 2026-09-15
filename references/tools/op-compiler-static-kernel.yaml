@@ -1,0 +1,52 @@
+id: op-compiler-static-kernel
+type: tool
+title: op_compiler 静态 Kernel 编译（dump 算子信息 → 编译 run 包 → 安装 → 匹配性校验 → 卸载）
+summary: "用静态 Kernel 提升算子执行性能的工具链：**原理**——静态 Kernel 编译在编译时指定算子 shape、运行时不再指定 shape，算子编译工具按算子信息统计文件得到确定 shape 并为每个 shape 各编译一份算子二进制，从而提升执行效率（编译期已知 tensor 大小故存储利用率高、可针对实际 shape 优化、把标量计算前置到编译期以免 Scalar 操作打断并行指令、编译期知确切数据量故不额外插入同步）。**流程**：①dump 算子信息 json（PyTorch 走 Ascend PyTorch Profiler 的 `record_op_args=True`，产物默认在 `{worker_name}_{时间戳}_ascend_pt_op_args/{pid}`；acl 接口走 `aclopStartDumpArgs`/`aclopStopDumpArgs`）→ ②`op_compiler` 编译生成 `static_kernel_{datetime}_{pid}.run`（关键参数 `-p/--op_params_dir` 与 `-v/--soc_version` 必选、`-j/--job` 默认 16、`-l/--log` 默认 null、`-o/--output`）→ ③以运行用户安装 run 包（默认装到 `${install_path}/opp/static_kernel`，目录默认权限 770；多包同名算子以后装的为准）→ ④比较装前/装后的整网性能与单算子耗时验证。**适用范围**：纯静态 shape 或 shape 变化较少的动态 shape 网络；支持 Atlas 推理系列、Atlas 训练系列、A2、Ascend 950PR/950DT。**匹配性判据**：网络调整后若不再匹配，静态 Kernel 包对该算子无收益——用 `op_compiler --count -p <dir>` 统计 dump 出的 json 数目，调整后数目变大即说明有算子不再匹配。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/ops-lib/appendix/staticKernel_introduction.md"
+    version: "cann/docs master（commit 38e6d3315a2c，2026-09-15 抓取）：静态 Kernel 的使用场景、调优原理、支持型号与整体流程"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/ops-lib/appendix/staticKernel_tuning.md"
+    version: "cann/docs master（commit 38e6d3315a2c）：dump 算子信息的两种方式、op_compiler 参数、安装/权限/多包规则、--count 匹配性判据与卸载"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/ops-lib/appendix/staticKernel_env_setup.md"
+    version: "cann/docs master（commit 38e6d3315a2c）：软件包准备、PyTorch 版本要求与工具路径"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A5-950, cross]
+  frameworks: [op_compiler]
+  categories: [performance]
+
+related_references: [msprof-output-reading-and-performance-analysis, msprof-collect-parse, operator-bottleneck-attribution, atc-precision-mode-and-switches]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  tool_name: "op_compiler（算子编译工具：编译静态 Kernel 生成算子二进制/run 安装包，工具路径 `${INSTALL_DIR}/bin/op_compiler`）"
+  invocation: "适用场景：纯静态 shape 网络、或 shape 变化较少的动态 shape 网络，想快速提升网络执行性能时，在网络部署阶段用 op_compiler 编译静态 Kernel 包并安装。**调优原理**：静态 Kernel 编译指编译时指定算子 shape 大小、运行时不需要指定 shape；工具根据输入的算子信息统计文件得到确定的 shape 信息，**针对每一个 shape 编译出一个算子二进制**。优势：编译时已知所有 tensor 大小故存储空间利用率高；可针对实际 shape 做针对性优化；AI 处理器擅长并行指令而不擅长逻辑计算，**太多 Scalar 操作会打断并行指令运行，静态编译把标量计算在编译期完成**；编译期知道确切操作数据大小，**不会额外插入同步**，避免并行执行被变成串行。支持型号：Atlas 推理系列产品、Atlas 训练系列产品、Atlas A2 训练/推理系列产品、Ascend 950PR/Ascend 950DT。"
+  commands:
+    dump_op_info_pytorch: "PyTorch 的 Python 接口编程时，训练前把 Ascend PyTorch Profiler 扩展参数 experimental_config 的『算子信息统计功能』打开即 `record_op_args` 置 True；训练结束后 dump 的算子信息统计文件默认在 `{worker_name}_{时间戳}_ascend_pt_op_args/{pid}` 目录下"
+    dump_op_info_acl: "acl 接口编程时，调用 `aclopStartDumpArgs` 与 `aclopStopDumpArgs` 把算子信息统计文件 dump 到指定目录（接口见 Runtime 运行时 API 的 Dump 配置）"
+    compile: "以运行用户执行 op_compiler -p <dump目录> -v <soc_version> [-j 16] [-l null] [-o <路径/xxx.run>]；`-p/--op_params_dir` 必选（dump 出的统计数据目录，支持绝对/相对路径）；`-v/--soc_version` 必选，取值为 `npu-smi info` 查询到的 Name 前加 Ascend（Name 为 xxxyy 则填 Ascend_xxxyy）；`-j/--job` 编译工作进程数，最小 1、默认 16；`-l/--log` 取 debug/info/warning/error/null，默认 null；`-o/--output` 不输路径则生成在当前路径，不输名称则默认命名 `static_kernel_{datetime}_{pid}.run`"
+    count_check: "op_compiler --count -p <dump目录>（统计该目录下算子信息统计 json 文件的数目）——用于判断已安装的静态 Kernel 包与当前网络是否匹配"
+    install: "进入 run 包所在目录，以运行用户运行 `./static_kernel_{datetime}_{pid}.run`；暂不支持指定目录安装，默认装到 `${install_path}/opp/static_kernel`，该目录默认权限 770（本用户与同组用户可访问），权限不足导致安装失败时需请 CANN 安装用户调整该目录权限"
+    uninstall: "单包卸载：进入该 run 包的安装目录运行 uninstall.sh（对应 `static_kernel_{datetime}_{pid}` 文件夹被删除）；全量卸载：进入 `${install_path}/opp/static_kernel/ai_core` 运行 uninstall.sh（该目录下所有内容被删除，所有已安装 Kernel 包均被卸载）"
+    verify: "安装后重新运行目标网络，比较安装静态 Kernel 包与未安装时的整网运行性能与单算子运行耗时"
+  output_meaning:
+    - "编译成功有对应回显；生成物为 `static_kernel_{datetime}_{pid}.run` 安装包（可直接在目标服务器上运行完成安装）"
+    - "安装后同名算子多个包共存时**以后安装的 Kernel 包为准**"
+    - "只有**动态 shape** 才能 dump 出算子统计信息；安装静态 Kernel 包后，其对应算子的统计信息不会再被 dump 出来——这是 --count 判据成立的前提"
+  pitfalls:
+    - "网络调整后的匹配性判据：调整网络前后各执行一次 dump，用 `--count` 比较 dump 出的 json 数目——**调整后数目变大即说明静态 Kernel 包中有部分算子不再匹配当前网络**；此时要么卸载静态 Kernel 包重新走 dump→编译→安装流程，要么继续用当前包（不匹配的算子走动态流程，得不到性能收益）"
+    - "**不支持在 dump_dir 下执行编译命令**"
+    - "PyTorch 路径的版本要求：使用 PyTorch Python 接口编程时，PyTorch 相关软件版本建议 v5.0.rc2.1-pytorch1.11.0 及以上，否则影响后续 dump 算子 json 文件的能力"
+    - "该优化对 shape 频繁变化的网络收益有限（静态 Kernel 需为每个 shape 各编译一份），适用面是纯静态 shape 或 shape 变化较少的动态 shape 网络"

@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-15    词条数：100
+# 生成日期：2026-09-15    词条数：107
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -249,6 +249,26 @@ entries:
     - cross
     categories:
     - performance
+- id: amct-quantization-precision-tuning
+  type: software-fact
+  title: AMCT 量化的精度三手段（基于精度的自动量化 / 校准集 batch_num 建议 16 或 32 / skip_layers 跳过损失大的层）与损失层两步比对法
+  summary: 量化模型精度不够时的三条手段与一条定位法：①**基于精度的自动量化**——借助 AMCT 工具提供的 Python 接口，在保证用户所需模型精度前提下自动搜索模型的量化配置并执行**训练后量化**，生成满足精度要求的量化模型（当前
+    PyTorch、TensorFlow、Caffe 框架支持）。②**校准集规模**——基…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - precision
+- id: aoe-model-tuning
+  type: tool
+  title: AOE 模型调优（aoe 命令：先子图调优再算子调优 → 知识库/om/效果文件 → TUNE_BANK_PATH 指定后推理）
+  summary: 推理性能调优的关键工具之一（另一个是模型压缩工具 AMCT）：`aoe` 命令在 atc 参数基础上增加 `--job_type`，提供**子图调优**与**算子调优**；**一般建议先做子图调优再做算子调优**——子图调优会生成图的切分方式，之后算子已被切成最终
+    shape，再按最终 shape 做算子调优；顺序颠倒…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - performance
 - id: ascend-310p-known-limits
   type: platform-fact
   title: 310P（Atlas 300I Duo）平台已知限制
@@ -259,6 +279,20 @@ entries:
     - 310P
     categories:
     - interrupt
+- id: ascend-app-process-and-resource-constraints
+  type: software-fact
+  title: 应用侧进程与资源硬约束（单 Device 进程数上限 63/64、不支持 fork 后调 acl 接口、创建销毁配对、休眠前置）
+  summary: 三类会直接表现为「进程起不来 / 报错 / 卡死」的应用侧硬约束：①**单 Device 用户进程数上限**（Host 上限 = Device 数 × 单卡上限）——Atlas 训练系列、Atlas
+    推理系列、Atlas 200I/500 A2 推理产品、Ascend 950PR/950DT 为**单卡 64 个**（…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - A5-950
+    - cross
+    categories:
+    - interrupt
+    - performance
 - id: ascend-asys
   type: tool
   title: asys 故障信息收集与解析工具（仅 Ascend EP 形态；含收集面/约束/五类解析/四类检测的完整口径）
@@ -381,6 +415,16 @@ entries:
     - cross
     categories:
     - interrupt
+- id: atc-precision-mode-and-switches
+  type: software-fact
+  title: ATC 精度模式与两个默认开启的优化开关（默认 fp16 / allow_fp32_to_fp16 / keep_dtype 例外清单 / 数据缓存优化 / 融合规则）
+  summary: om 模型精度问题的三个配置面：①**精度模式**——模型转换不指定精度模式时**默认用 fp16** 计算；`--precision_mode=allow_fp32_to_fp16`
+    表示算子支持 fp32 就用 fp32、不支持才用 fp16（高精度模式，提升精度但可能影响性能）；`--keep_dtype` 配一…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - precision
 - id: attention-precision-chains
   type: software-fact
   title: Attention 两类精度损失链（FP8 per-block 量化的 P 压 fp8 / 衰减注意力的 exp 指数上溢）与验收判据
@@ -777,6 +821,17 @@ entries:
     - cross
     categories:
     - performance
+- id: msprof-output-reading-and-performance-analysis
+  type: software-fact
+  title: msprof 默认产物清单与性能分析路径（timeline 三区域 / 按 Total Time 与 Task Duration 排序 / prof_rule 调优建议 / fusion_op
+    融合前后）
+  summary: 拿到一次 msprof 采集结果后怎么读：**默认配置产出的 9 类文件**——`msprof_*.json`（timeline 总表）、`step_trace_*.json`（迭代轨迹，每轮迭代耗时；单算子场景无）、`op_summary_*.csv`（AI
+    Core 与 AI CPU 算子数据）、`op_stati…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - performance
 - id: msprof-timeline-lane-reading
   type: tool
   title: msprof 硬件流水时间线泳道读法（泳道名格式 / 指令名 / 时间轴三段式）
@@ -832,6 +887,30 @@ entries:
     - A3-910C
     categories:
     - interrupt
+    - performance
+- id: om-dynamic-shape-and-aipp-constraints
+  type: software-fact
+  title: 动态 Shape 输入与 AIPP 的组合约束（四种设置方式只能选一、AIPP 与动态维度互斥、内存按最大档申请、size=0 即动态）
+  summary: 动态 Shape 推理（动态 Batch / 动态分辨率 / 动态维度 / Shape 范围）与 AIPP 组合时的硬约束：①**同一模型四种动态设置方式只能选一种**——aclmdlSetDatasetTensorDesc
+    设 Shape 范围、aclmdlSetDynamicBatchSize 设动态 Batch、…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - interrupt
+    - precision
+    - performance
+- id: op-compiler-static-kernel
+  type: tool
+  title: op_compiler 静态 Kernel 编译（dump 算子信息 → 编译 run 包 → 安装 → 匹配性校验 → 卸载）
+  summary: 用静态 Kernel 提升算子执行性能的工具链：**原理**——静态 Kernel 编译在编译时指定算子 shape、运行时不再指定 shape，算子编译工具按算子信息统计文件得到确定
+    shape 并为每个 shape 各编译一份算子二进制，从而提升执行效率（编译期已知 tensor 大小故存储利用率高、可针对实际 s…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A5-950
+    - cross
+    categories:
     - performance
 - id: pcie-host-memory-access
   type: software-fact

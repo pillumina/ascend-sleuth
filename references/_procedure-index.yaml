@@ -7,7 +7,7 @@
 #   3) 按 file 打开该词条读 **content.flow[] 全文**——摘要行不承载判据，只读摘要等于没加载；
 #   4) 一轮诊断最多加载一条流程（成本有界）。
 #
-# 生成日期：2026-09-15    流程条数：25    本文件整体加载成本：约 4197 token（选择器每次都要整读，故单文件 + 记成本）
+# 生成日期：2026-09-15    流程条数：26    本文件整体加载成本：约 4377 token（选择器每次都要整读，故单文件 + 记成本）
 #
 # 增长闸门（原则十一：按闸门不按日历）：流程条数 > 25，或本文件 > 5K token → 按 category 分片
 #   （对齐 case 层 knowledge/_index/<ns>__<category>.yaml 的做法）。当前单文件即可。
@@ -70,6 +70,14 @@ entries:
   - interrupt
   platforms: []
   file: references/methodologies/ascend-moe-comm-triage.yaml
+- id: ascend-om-infer-precision-triage
+  title: om 离线模型推理精度定位（Dump + 高精度模式对照 → 逐个差异算子 keep_dtype → 关缓存优化/融合规则 → 数据与标杆比对）
+  summary: ATC 转换出的 om 离线模型推理精度不达标时的定位路径。先分形态：①**推理结果错误**（整网功能已调通但结果错，如检测网络 MAP 全 0、与标杆比对余弦相似度为 0）；②**推理精度不达标**（单次推理与标杆余弦相似度 95% 以上，但数据集精度差少量，如 Top1 0.90 vs 标杆 0.92、MAP 0.54 vs 0.55）。然后：打开 Dump 开关复现取模型 Dump → 用…
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/ascend-om-infer-precision-triage.yaml
 - id: ascend-oom-triage
   title: 内存 OOM 问题定位（C 接口 → CANN Host 内存 → CANN Device 内存 → 业务进程异常）
   summary: OOM 按申请方分流：C 标准接口 malloc/memset 申请 Host 内存→asan 检测；CANN 接口 aclrtMallocHost 申请 Host 内存→日志搜 mem_stats 看组件统计；aclrtMalloc/aclrtMallocPhysical/hi_mpi_dvpp_malloc 申请 Device 内存→mem_stats；其它报错→搜 DEV_PROC_MEM…

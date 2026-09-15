@@ -1,0 +1,75 @@
+id: ascend-om-infer-precision-triage
+type: methodology
+title: om 离线模型推理精度定位（Dump + 高精度模式对照 → 逐个差异算子 keep_dtype → 关缓存优化/融合规则 → 数据与标杆比对）
+summary: "ATC 转换出的 om 离线模型推理精度不达标时的定位路径。先分形态：①**推理结果错误**（整网功能已调通但结果错，如检测网络 MAP 全 0、与标杆比对余弦相似度为 0）；②**推理精度不达标**（单次推理与标杆余弦相似度 95% 以上，但数据集精度差少量，如 Top1 0.90 vs 标杆 0.92、MAP 0.54 vs 0.55）。然后：打开 Dump 开关复现取模型 Dump → 用 ATC 高精度模式（`--precision_mode=allow_fp32_to_fp16`）重新转换并推理再取 Dump 做对照（达标即转『配部分算子保持原始数据类型』以兼顾性能）→ 不达标则**逐个识别差异算子**（首个余弦相似度低于 **0.95** 的算子，一次只处理一个，配该算子 keep_dtype 后重推再取 Dump，循环到无差异算子）→ 仍不达标依次尝试关闭**数据缓存优化**、关闭**融合规则**（两个默认开启的优化；关闭后达标说明命中优化引入的场景，仍需识别问题算子交技术支持，问题解决后建议恢复开启）→ 检查数据处理与配置（数据集/AIPP/后处理）→ 与标杆网络 Dump 比对并把差异算子交技术支持。判据：精度比对工具的 CosineSimilarity 列范围为 [-1,1]，越接近 1 越相近，**大部分算子低于 0.95 即存在精度问题**。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/operator_precision_issues_positioning_process.md"
+    version: "cann/docs master（commit 38e6d3315a2c，2026-09-15 抓取）：推理精度问题定位流程 6 步"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/operator_precision_issues_desc.md"
+    version: "cann/docs master（commit 38e6d3315a2c）：推理结果错误与精度不达标两种形态的判别口径"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/operator_precision_issues_cases.md"
+    version: "cann/docs master（commit 38e6d3315a2c）：FastRCNN MAP=0 案例（fp16 值域溢出定位）与余弦相似度判据"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [atc]
+  categories: [precision]
+
+related_references: [atc-precision-mode-and-switches, amct-quantization-precision-tuning, vllm-infer-precision-triage, ascend-train-precision-triage, msprobe-accuracy-compare, ascend-determinism-triage]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  flow:
+    - step: 1
+      name: 分清是「结果错误」还是「精度不达标」
+      action: 推理**结果错误**指整网推理功能已调通但结果不对——典型如目标检测网络 MAP 结果全 0、om 模型推理结果与标杆网络比对余弦相似度为 0；推理**精度不达标**指单次 om 推理与标杆比对余弦相似度在 95% 以上，但数据集推理精度与标杆存在少量差距——如分类网络 Top1/Top5 为 0.90/0.70 而标杆为 0.92/0.71，或检测网络 MAP 0.54 而标杆 0.55。两类后续路径相同，但前者通常能定位到具体算子级别的偏差，后者更可能落在数据处理与配置上。
+      check: 与标杆网络的比对结果（余弦相似度、Top1/Top5、MAP）
+      when_to_use: 功能已通、推理精度不达标或结果明显错误
+    - step: 2
+      name: 复现并取默认配置下的模型 Dump
+      action: 重新执行一次推理用于获取模型 Dump 数据（用 acl 接口打开 Dump 开关）。这份 Dump 是后续所有对照的基线，必须与后续各步的输入数据、batch、配置保持一致。
+      check: Dump 数据是否完整（逐算子输入输出）
+      when_to_use: 定位开始
+    - step: 3
+      name: 配模型高精度模式对照
+      action: 用 ATC 高精度模式（`--precision_mode=allow_fp32_to_fp16`，即算子支持 fp32 就用 fp32、不支持才用 fp16）重新转换模型并推理，再取一份 Dump 与第 2 步比对。若这样精度就达标，说明是精度模式问题——此时若还要兼顾性能，不要停在整网高精度模式，转下一步做「部分算子保持原始数据类型」。若仍不达标，进第 5 步。
+      check: "atc --precision_mode=allow_fp32_to_fp16 …；精度比对两份 Dump"
+      when_to_use: 默认（fp16）推理精度不达标
+    - step: 4
+      name: 逐个识别差异算子并配 keep_dtype
+      action: 用精度比对工具比对高精度模式与默认模式的 Dump，找出计算有差异的算子——**一般每次只识别一个**（首个余弦相似度较低、例如低于 0.95 的算子），用 `--keep_dtype` 配该算子保持原始网络的数据类型后重新推理并取 Dump，再与高精度模式 Dump 比对找下一个差异算子，**循环执行直到没有差异算子**。这样能在保持性能的前提下把精度拉回。
+      check: "atc --precision_mode=<模式> --keep_dtype=<exceptionlist.cfg>（配置文件每行一个算子名）；比对走向：CosineSimilarity 列逐算子抬高"
+      when_to_use: 高精度模式可达标、需要兼顾性能
+    - step: 5
+      name: 关闭数据缓存优化后对照
+      action: 恢复模型原有精度模式，关闭数据缓存优化后推理——若精度达标，说明问题出在数据缓存优化覆盖的算子实现场景；此时仍需用比对工具把差异算子找出来交技术支持进一步分析解决，问题解决后建议恢复开启该优化（它提升计算效率与性能）。不达标进下一步。
+      check: 关闭数据缓存优化（见 atc-precision-mode-and-switches 的开关说明）+ 比对两份 Dump
+      when_to_use: 高精度模式无法解决
+    - step: 6
+      name: 关闭融合规则后对照
+      action: 恢复启用数据缓存优化，改关闭融合规则后推理再比对。融合规则默认开启、能提升效率，但算子融合后部分实现在未考虑的场景下会影响精度；注意**关闭时系统只在『不影响功能』的前提下关闭部分融合规则，而不是全部**。若关闭后精度达标，同样需要识别差异算子并交技术支持，问题解决后建议恢复开启。
+      check: 关闭融合规则 + 比对两份 Dump
+      when_to_use: 上一步未达标
+    - step: 7
+      name: 检查数据处理与配置
+      action: 恢复启用融合规则后，排查推理精度不达标的另一大类来源：数据集差异、AIPP 配置、后处理方式。数据处理逻辑或配置有问题就改后重推；没有问题则进最后一步。
+      check: 数据集对齐、AIPP 参数、后处理实现逐项核对
+      when_to_use: 算子侧未发现差异
+    - step: 8
+      name: 与标杆网络 Dump 逐层比对并交技术支持
+      action: 用精度比对工具把模型的 Dump 数据与**标杆网络**的 Dump 数据逐层对比，识别计算有差异的算子，连同 Dump、比对结果、复现脚本一起提交技术支持。若场景是「DVPP + AIPP + 模型推理」串联，优先排查串接处的接口参数与模型转换时的 AIPP 配置，再回到算子精度排查。
+      check: 标杆 Dump 比对结果（差异算子清单）
+      when_to_use: 前七步都未定位
+  verified_by_testing: false
