@@ -55,7 +55,7 @@ import re
 import sys
 from pathlib import Path
 
-import yaml
+from _yaml import load_file   # 解析后端单一事实源（快路径见 _yaml.py）
 
 # 「预测的出处」强制生效日（第 16 条，EV-2026-050 的迁移窗口）：本日及之后创建的卡必须带
 # 可复现测量口径。本日之前创建的卡豁免——它们已经是做完的决策，补写命令无法恢复当时的判断。
@@ -91,7 +91,7 @@ ID_RE = re.compile(r"^EV-\d{4}-\d{3,}$")
 
 def load_yaml(path: Path):
     try:
-        return yaml.safe_load(path.read_text(encoding="utf-8"))
+        return load_file(path)
     except Exception as e:
         return {"__yaml_error__": str(e)}
 

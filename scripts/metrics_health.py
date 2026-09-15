@@ -27,8 +27,7 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
-import yaml
-
+from _yaml import load_file   # 解析后端单一事实源（快路径见 _yaml.py）
 import metrics_snapshot as MS
 
 # 本体检器**实现了哪些判据 dimension / readability rule**——写成集合，用来对照 `gates.yaml`
@@ -48,7 +47,7 @@ def load_yaml(path: Path, errors: list = None):
     正是本卡要消灭的那类假绿（实测：一份被写坏缩进的 gates.yaml 让整轮体检全绿）。
     """
     try:
-        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        return load_file(path) or {}
     except Exception as e:
         if errors is not None:
             errors.append(f"{path.name} 读取/解析失败（{type(e).__name__}: {e}）——判据不可读，"

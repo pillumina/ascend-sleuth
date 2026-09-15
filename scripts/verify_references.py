@@ -30,6 +30,8 @@ try:
 except ImportError:
     sys.exit("需要 PyYAML：pip install pyyaml")
 
+from _yaml import load_file   # noqa: E402  （解析后端单一事实源，快路径见 _yaml.py）
+
 VALID_STATUSES = {"draft", "active", "pending-review", "deprecated"}
 VALID_SOURCE_TYPES = {"official-doc", "engineer-input", "case-derived"}
 VALID_ROLES = {"signature-source", "fix-methodology", "root-cause-context"}  # ADR-0008 §7
@@ -47,7 +49,7 @@ METHODOLOGY_MIN_CASE_REFS = 3
 
 def load_yaml(path: Path):
     try:
-        return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        return load_file(path) or {}
     except yaml.YAMLError as e:
         return {"__yaml_error__": str(e)}
 
