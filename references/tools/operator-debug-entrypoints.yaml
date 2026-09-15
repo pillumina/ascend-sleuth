@@ -1,0 +1,49 @@
+id: operator-debug-entrypoints
+type: tool
+title: 算子级调试与调优入口（plog 路径 / aclGetRecentErrMsg / AI Core printf·DumpTensor / AI CPU KERNEL_LOG / msprof op / cannsim record）
+summary: "算子执行失败或精度异常时，按『先拿 Host 侧日志与框架错误信息 → 再往 Kernel 里加打印 → 复杂场景升级到单步调试』的顺序取信息。**① Host 侧**：plog 默认落在 `$HOME/ascend/log/debug/plog/plog-pid_*.log`；`ASCEND_SLOG_PRINT_TO_STDOUT=1` 可直接打屏（0 关闭）。**② aclnn 调用异常**：用 `aclGetRecentErrMsg()` 取最近一次异常文本（形如 `AclNN_Parameter_Error(EZ1001): Expected a proper Tensor but got null for argument addmmTennsor.self.`），**这是 aclnn 参数/校验类报错的直接文本来源**。**③ AI Core Kernel**：`AscendC::PRINTF` 打 Scalar（整数/字符/布尔），`DumpTensor` 打指定 Tensor 内容并支持附加行号一类自定义信息；算子卡死、GM/UB 访问越界等复杂场景应转 **msDebug 单步调试**，而不是继续加打印。**④ AI CPU Kernel**：用 `KERNEL_LOG_DEBUG/INFO/WARN/ERROR` 宏，**默认只打印 ERROR 级别**，要打非 ERROR 级别必须**先配 `ASCEND_GLOBAL_LOG_LEVEL`**；AI CPU 算子的 Host 侧日志获取方式与 AI Core 相同。**⑤ 性能侧按产品分流**：A2/A3 用 `msprof op ./可执行文件` 采上板流水（结果落 `OPPROF_*`，看 `ArithmeticUtilization` 判 cube/vector 占比从而定 Bound 场景），要看仿真流水图再加 `msprof op simulator --output=... --kernel-name=\"...\"`，**且需先 export `LD_LIBRARY_PATH=${INSTALL_DIR}/tools/simulator/Ascendxxxyy/lib`**；**950PR/950DT 不走 msprof op 仿真，改用 `cannsim record ./可执行文件 -s Ascend950 --gen-report`**，产物为 `cannsim_*/trace_core0.json`，用 Chrome `chrome://tracing` 打开。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-ras/blob/master/docs/zh/debug/op_debug_prof.md"
+    version: "ops-ras master（commit cb8131978147，2026-09-15 抓取）：算子调试调优——Host 侧日志与 aclnn 异常信息、AI Core/AI CPU 的 Kernel 调试手段、A2/A3 与 950 两条性能采集路径"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A3-910C, A5-950, cross]
+  frameworks: [aclnn, ascendc]
+  categories: [interrupt, precision, performance]
+
+related_references: [asc-tools-ascendc-debug-suite, msdebug-operator-source-debug, mssanitizer, cannsim-sim-profiling, msprof-cli-collect-items, msprof-configuration-options, ascend-log-env, ascend-log-troubleshooting, runtime-async-error-triage, aclnn-return-codes, ai-cpu-error-codes]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  tool_name: "算子级调试与调优入口（算子开发/调用侧的日志与采集手段）"
+  invocation: "面向『单个算子执行失败 / 精度异常 / 卡死』的取信息路径，比整网 profiling 更贴近算子内部：**先看 Host 侧 plog 与 aclGetRecentErrMsg（零改动、不改 kernel）→ 不够再按算子类型加 Kernel 打印（AI Core 用 PRINTF/DumpTensor，AI CPU 用 KERNEL_LOG 宏）→ 涉及卡死/越界这类『打印看不出来』的场景改用 msDebug 单步 → 性能问题按产品选 msprof op（A2/A3）或 cannsim（950）**。前提是算子可由 aclnn 接口调用并有可执行样例（文中示例为仓库 `examples/add_example`）。"
+  commands:
+    host_plog: "算子程序执行结束后默认可在 `$HOME/ascend/log/debug/plog/plog-pid_*.log` 查看 Host 日志"
+    log_to_stdout: "`export ASCEND_SLOG_PRINT_TO_STDOUT=1`（1 开启打屏 / 0 关闭）把 log 直接打屏，免去翻文件"
+    aclnn_error_message: "`printf(aclGetRecentErrMsg());` 取 aclnn 接口调用过程中的异常信息（需配合 runtime 运行时 API 使用）"
+    aicore_printf: "`AscendC::PRINTF(\"Tiling blockLength is %llu\\n\", blockLength_);`——打 Scalar 类型数据（整数、字符、布尔等）"
+    aicore_dumptensor: "`DumpTensor(zLocal, 0, 128);`——Dump 指定 Tensor 内容，支持打印自定义附加信息（如当前行号）"
+    aicpu_kernel_log: "`KERNEL_LOG_DEBUG(fmt, …)` / `KERNEL_LOG_INFO` / `KERNEL_LOG_WARN` / `KERNEL_LOG_ERROR`——AI CPU 算子按级别打印，**默认打印 ERROR 级别**"
+    msprof_op: "进入算子可执行文件所在目录执行 `msprof op ./test_aclnn_add_example`（A2/A3 路径），结果落同目录 `OPPROF_*`"
+    msprof_op_simulator: "先 `export LD_LIBRARY_PATH=${INSTALL_DIR}/tools/simulator/Ascendxxxyy/lib:$LD_LIBRARY_PATH`（按实际安装路径与处理器型号改），再 `msprof op simulator --output=$PWD/pipeline_auto --kernel-name \"AddExample\" ./test_aclnn_add_example`；流水文件 `OPPROF**/simulator/visualize_data.bin`，借 MindStudio Insight 查看"
+    cannsim_record: "950PR/950DT：`cannsim record ./test_aclnn_add_example -s Ascend950 --gen-report`，结果落 `cannsim_*`，指令流水图文件为 `trace_core0.json`，在 Chrome `chrome://tracing` 拖入查看"
+  output_meaning:
+    - "**plog 是 Host 侧的第一手材料**：aclnn/算子下发失败时先在 `$HOME/ascend/log/debug/plog/plog-pid_*.log` 里找对应 pid 的日志；打屏模式（ASCEND_SLOG_PRINT_TO_STDOUT=1）适合复现一次就跑完的场景，长跑作业更适合读文件"
+    - "**aclGetRecentErrMsg 的文本可直接定位 aclnn 参数错误**：样例 `[PID:646612] … AclNN_Parameter_Error(EZ1001): Expected a proper Tensor but got null for argument addmmTennsor.self.` 说明是哪一次调用、哪个入参、什么类型问题——这是『算子报错但日志里只有一句 failed』时最值得先抓的一句"
+    - "**msprof op 的落盘摘要读三个字段**：`Task Duration(us)` 是当前算子 Kernel 耗时（A2/A3 上示例为 97.86us）、`Block Dim` 是执行核数、`Op Name` 带算子类型与编译 hash；更细的 cube/vector 占比看 `OPPROF_*` 下的 `ArithmeticUtilization`"
+    - "**两级性能观测对应两类问题**：上板采集（msprof op）看真实耗时分摊与 Bound 判别；仿真流水图（msprof op simulator / cannsim）看核内指令级流水排布，用于优化算子内部实现——上板耗时说不清时才下钻到仿真"
+  pitfalls:
+    - "**AI CPU 算子用错打印手段是白花时间**：AI CPU 侧没有 PRINTF/DumpTensor 那套，必须用 KERNEL_LOG_* 宏；反过来 AI Core Kernel 里也不该指望 KERNEL_LOG 宏"
+    - "**KERNEL_LOG 默认只出 ERROR**：打了 KERNEL_LOG_INFO/WARN/DEBUG 却什么都看不到时，先确认是否已配 `ASCEND_GLOBAL_LOG_LEVEL`，而不是怀疑宏没生效"
+    - "`KERNEL_LOG_ERROR` 之外的级别都需要显式配置日志级别才输出；`KERNEL_LOG_ERROR` 为默认打印级别"
+    - "**卡死与越界不要靠加打印硬扛**：算子卡死、GM/UB 访问越界这类问题，官方给的路径是改用 **msDebug** 单步调试（打印会扰动流水、也可能让越界表现消失）"
+    - "**950 上不要照抄 A2/A3 的 msprof op 仿真命令**：文中把产品分成了两条路径——A2/A3 用 `msprof op simulator`，950PR/950DT 用 `cannsim record -s Ascend950 --gen-report`；cannsim 的仿真面与限制另见 cannsim-sim-profiling"
+    - "`msprof op simulator` 必须先把仿真器库目录加进 `LD_LIBRARY_PATH`（`${INSTALL_DIR}/tools/simulator/Ascendxxxyy/lib`，`xxxyy` 按处理器型号替换），否则仿真起不来"
+    - "**来源文档自身的路径写法不一致（如实标注）**：该文档正文写『默认可在 `$HOME/ascendc/log` 下查看』，但紧随其后给出的实际路径是 `$HOME/ascend/log/debug/plog/plog-pid_*.log`；以给出的具体路径为准，`$HOME/ascendc/log` 疑为笔误"
+    - "该文档的仿真命令原文写作 `--kernel-name\"AddExample\"`（选项与取值之间缺空格），实际执行需写成 `--kernel-name \"AddExample\"`"

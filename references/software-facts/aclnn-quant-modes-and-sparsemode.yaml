@@ -1,0 +1,30 @@
+id: aclnn-quant-modes-and-sparsemode
+type: software-fact
+title: aclnn 量化模式与 sparseMode（T/C/K/G/B 五级与五种组合 / MX 的定义 / sparseMode 0-8 表与 varlen 限制）
+summary: "两块与『精度问题的成因判读』直接相关的语义。**① 量化模式（量化粒度）与 scale 的 shape**：pertensor（T）——左或右矩阵整张共用一个量化参数，左矩阵 (m,k) 时 scale 形状 (1,)；perchannel（C）——只能作用于**右矩阵**、每个 channel 独立，右矩阵 (k,n) 时 scale 形状 (n,)；pertoken（K）——只能作用于**左矩阵**、每个 token 独立，左矩阵 (m,k) 时 scale 形状 (m,)；pergroup（G）——在 **reduce 轴（k）** 上分组，group size 记 gs，左矩阵 scale 形状 (m, k/gs)、右矩阵 (k/gs, n)；perblock（B）——在所有轴上按 (bs, bs) 分块，左矩阵 scale 形状 (m/bs, k/bs)、右矩阵 (k/bs, n/bs)。**② 常见组合**：全量化（左右都量化）= T-C、K-C、G-B、T-CG、B-B；伪量化 = 只量化 weight 的 C；**MX 量化 = pergroup-pergroup（G-G）的特例：量化参数类型为 FLOAT8_E8M0 且 group size = 32**（本质是 Microscaling，靠动态调整缩放因子在极低比特下保精度）。**③ sparseMode 0-8 表**：0 defaultMask、1 allMask、2 leftUpCausal、3 rightDownCausal、4 band、5 prefix 非压缩（**varlen 场景不支持**）、6 prefix 压缩、7 varlen 外切 rightDownCausal（**仅 varlen**）、8 varlen 外切 leftUpCausal（**仅 varlen**）；attenMask 的原理是在 Mask 为 True 的位置遮蔽 QKᵀ 的值；sparseMode=0 时若 attenMask 未传入则不做 mask、**忽略 preTokens/nextTokens**；nextTokens 取负时要求 preTokens ≥ |nextTokens| 且 |nextTokens| < Skv，preTokens 取负时要求 nextTokens ≥ |preTokens| 且 |preTokens| < Sq。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-ras/blob/master/docs/zh/context/quant_mode_introduction.md"
+    version: "ops-ras master（commit cb8131978147，2026-09-15 抓取）：量化定义、静/动态量化、五种量化模式与五种组合、MX 定义"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-ras/blob/master/docs/zh/context/sparse_mode_introduction.md"
+    version: "ops-ras master（commit cb8131978147）：sparseMode 0-8 含义与 varlen 相关限制、preTokens/nextTokens 约束"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [aclnn, torch_npu]
+  categories: [precision]
+
+related_references: [aclnn-type-promotion-broadcast-and-format, batch-consistency-and-determinism-switches, aclnn-return-codes, mx-quantized-matmul, amct-quantization-precision-tuning, attention-precision-chains, hif8-type-contract]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "见 summary 的两块内容。三条判读要点：**① scale 的 shape 是判断『这条链路用的是哪种量化』的最快入口**——拿到一个量化算子调用，看它量化参数的形状就能反推粒度：(1,) 是 T、(n,) 是 C、(m,) 是 K、(m, k/gs) 或 (k/gs, n) 是 G、(m/bs, k/bs) 或 (k/bs, n/bs) 是 B；而 **MX 由两个特征唯一确定：scale 类型为 FLOAT8_E8M0 且 gs=32**。这条比读参数名更可靠。**② 静/动态量化的取舍与性能代价**：weight 一般用静态量化（性能更好）、activation 一般用动态量化（适应数据变化、精度更高，训练场景为提精度也用动态）——但**动态量化要在线算量化参数，性能略差**；遇到『开了量化反而变慢』时先分辨是静态还是动态路径。**③ sparseMode 的 varlen 限制是硬约束**：5（prefix 非压缩）不支持 varlen，而 7/8 只在 varlen 外切场景支持——混用会直接报参数错误；另外 sparseMode=0 且不传 attenMask 时 **preTokens/nextTokens 被忽略**，这是『明明设了 window 却没生效』的常见原因。"
+  evidence: "quant_mode_introduction.md：『静态量化：使用预先确定的量化参数进行量化。推理场景下对权重weight的量化一般采用静态量化，量化算子性能会更好些』『动态量化：使用输入数据在线计算量化参数进行量化…注意，动态量化因为在线生成量化参数，量化算子性能会略差些』；五种模式逐条（pertensor『每个Tensor共用一个相同的量化参数…生成量化参数的shape为(1, )』、perchannel『量化对象是右矩阵，每个channel分别使用独立的量化参数…shape为(n, )』、pertoken『量化对象是左矩阵，每个token分别使用独立的量化参数…shape为(m, )』、pergroup『在reduce轴上对数据分组…group size为gs，生成量化参数的shape为(m, k/gs)』/『(k/gs, n)』、perblock『按(bs, bs)块对数据分组…shape为(m/bs, k/bs)』/『(k/bs, n/bs)』）与常见组合段（全量化 T-C/K-C/G-B/T-CG/B-B、伪量化 C、『MX量化：本质是Microscaling量化…这里指pergroup-pergroup量化模式（简称G-G量化模式），是对于量化参数类型为FLOAT8_E8M0且group size为32的特例』）。sparse_mode_introduction.md：sparseMode 0-8 表（含『5｜prefix非压缩模式｜varlen场景不支持』『7｜varlen外切场景，rightDownCausal模式｜仅varlen场景支持』）、『attenMask的工作原理为，在Mask为True的位置遮蔽query(Q)与key(K)的转置矩阵乘积的值』、『不传mask：如果attenMask未传入则不做mask操作，attenMask取值为None，忽略preTokens和nextTokens取值』与 nextTokens/preTokens 取负时的约束原文。"

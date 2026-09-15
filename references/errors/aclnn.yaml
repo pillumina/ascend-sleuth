@@ -1,0 +1,132 @@
+id: aclnn-return-codes
+type: error-code
+title: aclnn（算子库接口）返回码（ACLNN_ERR_*，161xxx/361xxx/561xxx 共 26 条 + SUCCESS）
+summary: "aclnn 算子 API 的返回码表：161001（参数含 nullptr）、161002（参数非法，如两输入数据类型不满足推导关系）、361001（API 内部调 npu runtime 接口异常）、561000~561119（API 内部异常族）——其中多条直接给出定位方向：561003 查 npu kernel（**可能因为算子二进制包未安装**）、561107 查 **ASCEND_OPP_PATH** 未配置、561112 查算子二进制 kernel 库未加载、561114/561115 查算子属性个数与算子信息 json 不一致、561116 查算子输入个数超过 32 的限制。异常状态码可用 `aclGetRecentErrMsg` 取异常信息。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-ras/blob/master/docs/zh/context/aclnn_return_code.md"
+    version: "ops-ras master（commit cb8131978147，2026-09-15 抓取）：aclnn 返回码表 1/表 2 全量"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [aclnn]
+  categories: [interrupt, precision]
+
+related_references: [aclnn-two-phase-contract, aclnn-type-promotion-broadcast-and-format, cann-runtime-error-codes, ascend-error-code-structure, runtime-api-call-failures]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  errors:
+  - code: "0"
+    name: ACLNN_SUCCESS
+    meaning: "成功"
+    module: AclNN Errors
+  - code: "161001"
+    name: ACLNN_ERR_PARAM_NULLPTR
+    meaning: "参数校验错误，参数中存在非法的 nullptr"
+    module: AclNN Errors
+  - code: "161002"
+    name: ACLNN_ERR_PARAM_INVALID
+    meaning: "参数校验错误，如输入的两个数据类型不满足输入类型推导关系"
+    module: AclNN Errors
+  - code: "361001"
+    name: ACLNN_ERR_RUNTIME_ERROR
+    meaning: "API 内部调用 npu runtime 的接口异常"
+    module: AclNN Errors
+  - code: "561000"
+    name: ACLNN_ERR_INNER
+    meaning: "API 内部发生异常"
+    module: AclNN Errors
+  - code: "561001"
+    name: ACLNN_ERR_INNER_INFERSHAPE_ERROR
+    meaning: "API 内部做输出 shape 推导时发生错误"
+    module: AclNN Errors
+  - code: "561002"
+    name: ACLNN_ERR_INNER_TILING_ERROR
+    meaning: "API 内部做 npu kernel 的 tiling 时发生异常"
+    module: AclNN Errors
+  - code: "561003"
+    name: ACLNN_ERR_INNER_FIND_KERNEL_ERROR
+    meaning: "API 内部查找 npu kernel 异常（**可能因为算子二进制包未安装**）"
+    module: AclNN Errors
+  - code: "561101"
+    name: ACLNN_ERR_INNER_CREATE_EXECUTOR
+    meaning: "API 内部创建 aclOpExecutor 失败（可能因为操作系统异常）"
+    module: AclNN Errors
+  - code: "561102"
+    name: ACLNN_ERR_INNER_NOT_TRANS_EXECUTOR
+    meaning: "API 内部未调用 uniqueExecutor 的 ReleaseTo"
+    module: AclNN Errors
+  - code: "561103"
+    name: ACLNN_ERR_INNER_NULLPTR
+    meaning: "aclnn API 内部出现 nullptr 异常"
+    module: AclNN Errors
+  - code: "561104"
+    name: ACLNN_ERR_INNER_WRONG_ATTR_INFO_SIZE
+    meaning: "算子的属性个数异常"
+    module: AclNN Errors
+  - code: "561105"
+    name: ACLNN_ERR_INNER_KEY_CONFLICT
+    meaning: "算子 kernel 匹配的 hash key 发生冲突（旧名 ACLNN_ERR_INNER_KEY_CONFILICT 已废弃）"
+    module: AclNN Errors
+  - code: "561106"
+    name: ACLNN_ERR_INNER_INVALID_IMPL_MODE
+    meaning: "算子的实现模式参数错误"
+    module: AclNN Errors
+  - code: "561107"
+    name: ACLNN_ERR_INNER_OPP_PATH_NOT_FOUND
+    meaning: "没有检测到需要配置的环境变量 ASCEND_OPP_PATH"
+    module: AclNN Errors
+  - code: "561108"
+    name: ACLNN_ERR_INNER_LOAD_JSON_FAILED
+    meaning: "加载算子 kernel 库中算子信息 json 文件失败"
+    module: AclNN Errors
+  - code: "561109"
+    name: ACLNN_ERR_INNER_JSON_VALUE_NOT_FOUND
+    meaning: "加载算子信息 json 的某个字段失败"
+    module: AclNN Errors
+  - code: "561110"
+    name: ACLNN_ERR_INNER_JSON_FORMAT_INVALID
+    meaning: "算子信息 json 的 format 填写为非法值"
+    module: AclNN Errors
+  - code: "561111"
+    name: ACLNN_ERR_INNER_JSON_DTYPE_INVALID
+    meaning: "算子信息 json 的 dtype 填写为非法值"
+    module: AclNN Errors
+  - code: "561112"
+    name: ACLNN_ERR_INNER_OPP_KERNEL_PKG_NOT_FOUND
+    meaning: "没有加载到算子的二进制 kernel 库"
+    module: AclNN Errors
+  - code: "561113"
+    name: ACLNN_ERR_INNER_OP_FILE_INVALID
+    meaning: "加载算子 json 文件字段时发生异常"
+    module: AclNN Errors
+  - code: "561114"
+    name: ACLNN_ERR_INNER_ATTR_NUM_OUT_OF_BOUND
+    meaning: "算子属性个数与算子信息 json 不一致，超过了 json 中指定的 attr 个数"
+    module: AclNN Errors
+  - code: "561115"
+    name: ACLNN_ERR_INNER_ATTR_LEN_NOT_ENOUGH
+    meaning: "算子属性个数与算子信息 json 不一致，少于 json 中指定的 attr 个数"
+    module: AclNN Errors
+  - code: "561116"
+    name: ACLNN_ERR_INNER_INPUT_NUM_IN_JSON_TOO_LARGE
+    meaning: "算子的输入个数超出 32 的限制"
+    module: AclNN Errors
+  - code: "561117"
+    name: ACLNN_ERR_INNER_INPUT_JSON_IS_NULL
+    meaning: "算子信息 json 文件信息描述有缺失"
+    module: AclNN Errors
+  - code: "561118"
+    name: ACLNN_ERR_INNER_STATIC_WORKSPACE_INVALID
+    meaning: "解析静态二进制 json 文件中的 workspace 信息时发生异常"
+    module: AclNN Errors
+  - code: "561119"
+    name: ACLNN_ERR_INNER_STATIC_BLOCK_DIM_INVALID
+    meaning: "解析静态二进制 json 文件中的核数使用信息时发生异常"
+    module: AclNN Errors
