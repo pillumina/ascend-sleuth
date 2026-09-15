@@ -1,0 +1,30 @@
+id: hccl-cluster-heartbeat-and-link-probe
+type: software-fact
+title: HCCL 集群心跳维测链路与建链故障探测链路（事件类型、判据窗口、日志格式）
+summary: "HCCL 在两个阶段各自建了一条「自动指根节点」的旁路机制：①**集群心跳**——基于通信域信息与邻近 rank 建独立维测链路，把单点故障广播到通信域内每个 rank（HCCL 控制链路数量与数据量，不影响通信性能），探测三类事件：网络问题 ERROR CQE/Error cqe Occurred（轮询 ROCE 驱动重传超次，用 QPN 映射远端 IP）、进程卡死 STUCK/Stuck Occurred（每隔 1/3 的 HCCL_EXEC_TIMEOUT 轮询算子入/出次数）、进程退出 LOST/Heartbeat Lost Occurred（30 秒未收到远端心跳）；ERROR 日志只打印前三个有效事件，优先级 ERROR CQE > STUCK > LOST；②**建链故障探测链路**——建链失败后每个 rank 起 server 端接受探测、并向无响应的远端发起探测连接，探测失败事件沿已建链成功的链路扩散，据此直接定位故障点。两者的日志字段与「无事件时怎么办」的判据都在本条。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/hccl/blob/master/docs/zh/user_guide/fault_diagnosis/cluster_heartbeat_mechanism_troubleshooting.md"
+    version: "hccl master（commit 8cbf54d3，2026-09-15 抓取）：心跳机制原理、三类异常事件判据表、日志格式与两条注意项"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/hccl/blob/master/docs/zh/user_guide/fault_diagnosis/param_link_stage_troubleshooting.md"
+    version: "hccl master（commit 8cbf54d3）：建链根节点定位机制四步原理与无事件时的行为一致性判断"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [hccl]
+  categories: [interrupt]
+
+related_references: [ascend-hccl-comm-fault-triage, hccl-op-exec-and-cluster-event-faults, hccl-log-key-info-fields]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "**① 集群心跳（维测链路）**：HCCL 基于已有通信域信息与邻近 rank 建立独立的维测链路，以此获得集群的单点故障广播扩散能力，使**任意 rank 的 plog 日志中都包含故障根节点信息**（HCCL 会控制维测链路数量与通信数据量，用户不必担心其对通信链路的性能损失）。可探测的三类异常及其判据：网络问题 status=`ERROR CQE` / ExceptionType=`Error cqe Occurred`（定期轮询 ROCE 驱动重传超次事件，通过 QPN 映射远端 IP）；进程卡死 status=`STUCK` / `Stuck Occurred`（每隔 **1/3 的 HCCL_EXEC_TIMEOUT** 轮询所有算子的入/出次数分析是否卡住）；进程退出 status=`LOST` / `Heartbeat Lost Occurred`（**30s** 时间内未收到远端心跳报文）。为控制打印数量，Cluster Exception ERROR 日志只打印有效事件的前三个，优先级 **ERROR CQE > STUCK > LOST**；需要全量心跳事件时到 run 目录日志检索。日志格式：run 日志为 `[HeartbeatAbnormal]local rank[IP/ID]：crimer rank[IP/ID] status[4异常事件类型]by informer rank[IP/ID]`（local rank 本节点、crimer rank 根节点、by informer rank 上报者）；算子执行报错且 task exception 回调通知了 HCCL 时，会结合已收到的异常事件与 HCCL_EXEC_TIMEOUT 等配置推测最可能的单点故障原因，打印 `[TaskExecStage][HeartbeatAbnormal]Cluster Exception Location[IP/ID], Arrival Time:[...], Discoverer:[IP/ID], ExceptionType:[异常类型], Possible Reason:可能原因`。两条判据要注意：**STUCK 的检测时间为 (1/3~2/3)×HCCL_EXEC_TIMEOUT**；若训练/推理任务在 notify 超时前被提前杀掉，或 task exception 机制未及时回调，HCCL 不会打印异常信息，此时仍可从 run 日志定位根节点——一般取**系统卡住时间附近的 LOST / ERROR CQE 事件**为停止原因，且网络异常与进程退出都可能同时产生 LOST 与 ERROR CQE（例如两端 rank 互报对端 LOST）。**② 建链故障探测链路**：建链失败后 1) 每个 rank 启动一个能响应所有 rank 故障探测链路的 server 端；2) 向无法响应自己业务建链请求的远端发起故障探测链路连接；3) 若远端连探测请求都不响应，判定该链路或远端业务进程有问题，产生探测失败事件并向已建链成功的其他链路扩散；4) 若远端探测链路建立成功，则接收并转发对端发来的探测失败事件。于是任何单点问题导致的建链失败都能从日志快速定位到故障节点。**无任何探测事件时**，各 rank 其实都进入了建链阶段并响应了彼此的探测请求，属集群行为一致性问题（彼此调用的通信算子不一致导致链路互等超时），应优先排查脚本、环境、版本、数据集；需要证据时按建链失败报错日志中 `Alloc transports failed` 的 tag 信息遍历各 rank 的算子类型（例如 16 rank 通信域里 15 个是 allgather、1 个是 AllReduce，就重点分析这两个算子的调用逻辑差异）。"
+  evidence: "cluster_heartbeat_mechanism_troubleshooting.md：『HCCL会基于已有的通信域信息与邻近的rank建立起独立的维测链路，以此提供集群的单点故障广播扩散能力（注：HCCL会控制维测链路数量和通信数据量，用户不用担心其对通信链路的性能损失），使任意rank的plog日志中均包含故障根节点信息』；同文档三类异常判据表（网络问题/ERROR CQE、进程卡死 1/3 HCCL_EXEC_TIMEOUT/STUCK、进程退出 30s/LOST）、『只打印有效事件的前三个，且优先级为ERROR CQE > STUCK > LOST』、日志格式 `[HeartbeatAbnormal]local rank[IP/ID]：crimer rank[IP/ID] status[...]by informer rank[IP/ID]` 与 `[TaskExecStage][HeartbeatAbnormal]Cluster Exception Location...`；注意项『STUCK检测时间为（1/3\\~2/3 ）* HCCL_EXEC_TIMEOUT』『对于系统卡住时间附近的LOST/ERROR CQE事件即为导致系统停止的原因』。param_link_stage_troubleshooting.md：『建链根节点定位机制』四步（启动 server 端响应探测 → 向无响应远端发起探测连接 → 远端不响应则产生探测失败事件并向已建链成功链路扩散 → 远端建立成功则接收转发探测失败事件）与『如果经过探测无任何事件，则很有可能是行为一致性问题』"

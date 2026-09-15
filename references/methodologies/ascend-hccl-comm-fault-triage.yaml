@@ -1,0 +1,65 @@
+id: ascend-hccl-comm-fault-triage
+type: methodology
+title: HCCL 集合通信故障定位（故障码/多级关键字分流三阶段 → 全量日志 → 根节点定位）
+summary: "多机 HCCL 报错的标准定位路径：①先确认是 HCCL 的问题（打屏日志出现 `EI****`/`EJ****` 故障码，或 CANN 日志中有 HCCL 组件 ERROR）——CANN 日志里没有 HCCL 报错时不要套用本流程，转查其他组件、脚本、core dump 或进程卡住；②收集**全量节点**的 debug+run 日志（报错 rank 常常只是在等对端超时）；③用多级检索关键字 `InitGroupStage`/`InitChannelStage`/`TaskExecStage` 判定报错阶段（通信域初始化 / 参数面建链 / 算子执行，CANN 8.5.0 起支持），再进入对应故障表；④报错点不等于根节点——建链阶段沿算子依赖链向前找到**最早失败的 rank 对**，执行阶段靠集群心跳 `HeartbeatAbnormal` 与 task exception 信息定位根节点；⑤参数一致性校验与 `HCCL_ENTRY_LOG_ENABLE` 负责「各 rank 行为不一致」这一类。故障码为 `EI9999` 或无故障码时按少见场景处理，基于实际日志与源码分析，不做模式化外推。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/hccl/tree/master/docs/zh/user_guide/fault_diagnosis"
+    version: "hccl master（commit 8cbf54d3，2026-09-15 抓取）fault_diagnosis 全 42 篇：定位思路、三阶段流程与各故障场景页"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/hccl/blob/master/docs/zh/user_guide/fault_diagnosis/debug_thinking.md"
+    version: "hccl master（commit 8cbf54d3）：应知应会、多级检索关键字表、HCCL 故障码表"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [hccl]
+  categories: [interrupt, precision]
+
+related_references: [hccl-comm-init-and-link-faults, hccl-op-exec-and-cluster-event-faults, hccl-cluster-heartbeat-and-link-probe, hccl-log-key-info-fields, hccn-tool-network-diagnosis, hccl-error-codes, ascend-process-hang-triage]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  flow:
+    - step: 1
+      name: 确认是否为 HCCL 相关异常
+      action: 在业务打屏日志中找 `EI****` / `EJ****` 故障码（HCCL 对常见场景会直接上报故障码，按码进入对应场景页）；CANN 日志的 debug 目录下也有 HCCL 组件 ERROR 级日志。**若 CANN 日志中没有 HCCL 组件报错，不要继续走本流程**——转查其他组件报错、训练脚本本身异常、core dump 或进程卡住。
+      check: "grep -rnE \"(EI|EJ)[0-9]{4}\" <业务日志>；grep -rn \"\\[ERROR\\]\" <CANN日志>/debug | grep -i hccl"
+      when_to_use: 分布式任务报错、且怀疑集合通信
+    - step: 2
+      name: 收集全量节点的 CANN 日志
+      action: 收集集群**所有**节点的 CANN 日志（debug 目录 + run 目录）。HCCL 集合通信是通信域内全局协同行为，某个节点上的 HCCL 报错往往是在等某个对端超时，只看单节点日志会停在连带现象上。
+      check: 各节点 `${HOME}/ascend/log` 或安装目录下 debug/ 与 run/ 是否齐备
+      when_to_use: 已确认是 HCCL 问题
+    - step: 3
+      name: 判定报错阶段
+      action: 用多级检索关键字定位阶段——一级关键字 `InitGroupStage`（通信域初始化，二级 EnvConfig/RanktableConfig/RanktableCheck/RanktableDetect/Resource）、`InitChannelStage`（参数面建链，二级 ParameterConflict/VersionConflict/Timeout）、`TaskExecStage`（算子执行，二级 InvalidArgument/Not Supported/Timeout/RunFailed/HeartbeatAbnormal）。多级关键字仅 CANN 8.5.0 及以后版本支持；老版本或无关键字时按接口与关键字判断：通信域创建接口失败或日志有 `topoinfo`/`ranktable` → 初始化阶段；通信算子接口失败或日志有 `transport` → 建链阶段；两个接口都成功、在流同步时才失败，或日志有 `TaskExceptionHandler`、`FFTS+ run failed`、`Task run failed` → 算子执行阶段。
+      check: "grep -rnE \"InitGroupStage|InitChannelStage|TaskExecStage\" <CANN日志>/run/plog"
+      when_to_use: 已拿到全量日志、需要选排查方向
+    - step: 4
+      name: 按阶段进入对应故障表
+      action: 通信域初始化与参数面建链阶段（EI0001/EI0004/EI0005/EI0006/EI0014/EI0015/EI0016/EI0019）见 `hccl-comm-init-and-link-faults`；算子执行阶段与集群异常事件（EI0002/EI0011/EI0012/EI0013、集群心跳事件、task exception）见 `hccl-op-exec-and-cluster-event-faults`。故障码本身的含义与官方处理建议见 `hccl-error-codes`。
+      check: 按上一步命中的关键字选表
+      when_to_use: 阶段已判定
+    - step: 5
+      name: 找到根节点（报错点通常不是根节点）
+      action: 建链阶段：从 `LINK_ERROR_INFO` 取 `dest_ip` 找到对端日志，按「对端无任何 ERROR → 业务侧未下发算子；对端首报错是别的错 → 先解对端首报错；对端在与第三方建链超时 → 继续递归」向前追踪，直到最早失败的那一对 rank；HCCL 的建链故障探测链路会把探测失败事件扩散到已建链成功的链路，可据此直接定位故障点。执行阶段：在**任意**节点的 CANN 日志中检索集群心跳事件（`HeartbeatAbnormal`、`Cluster Exception Location`），按 `ExceptionType` 与 `Possible Reason` 定位异常节点。机制细节见 `hccl-cluster-heartbeat-and-link-probe`。
+      check: "grep -rn \"LINK_ERROR_INFO\" <CANN日志>/debug；grep -rn \"HeartbeatAbnormal\" <CANN日志>/run"
+      when_to_use: 报错 rank 有多个、或报错内容互相指向
+    - step: 6
+      name: 排查各 rank 行为不一致
+      action: 若各 rank 都在等彼此、且无心跳异常事件，多为**行为一致性问题**（脚本/环境/版本/数据集差异导致 rank 间下发不一致）。先看参数一致性校验结果（tag/cmdType/op/count/cclbufferSize/dataType 不一致会报 EI0005，用 `Transport init error! createLink para:` 定位不一致的两端）；仍无法锁定就开启 `HCCL_ENTRY_LOG_ENABLE` 复现一次，逐 rank 比对算子下发顺序、count、dataType、reduceType 与 streamId（同一通信域的两个算子被下发到不同 stream 并发执行，会因资源复用产生 notify 错误消耗，表现为执行超时或精度异常）。
+      check: "grep -rn \"Transport init error! createLink para:\" <CANN日志>；开 HCCL_ENTRY_LOG_ENABLE 后 grep -rn \"Entry-\" run/plog"
+      when_to_use: 全量超时、且心跳无异常事件
+    - step: 7
+      name: 兜底（EI9999 / 无故障码 / 无首报错的大集群）
+      action: 故障码为 EI9999 或没有故障码，说明是较为少见的场景或 HCCL 内部问题，基于实际 CANN 日志与源码分析，无法解决时联系技术支持。大集群无清晰首报错时，先梳理每个 rank 的行为、按 rank 之间的依赖关系找根节点。超时后未伴随任何异常事件时，优先排查脚本、版本、数据集等集群行为一致性因素。
+      check: 故障码取值与心跳事件检索结果
+      when_to_use: 前六步都未命中
+  verified_by_testing: false

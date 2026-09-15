@@ -1,0 +1,75 @@
+id: hccl-op-exec-and-cluster-event-faults
+type: fault-pattern
+title: HCCL 算子执行阶段故障与集群异常事件（9 条，EI0002/EI0011/EI0012/EI0013、task exception、心跳事件）
+summary: "HCCL 第三阶段（通信算子下发执行）故障对照表。执行超时 EI0002 先按「全量超时 vs 非全量超时」分流——非全量时无日志的 rank 或首报错是别的错的 rank 才是根因，全量时比对各 rank 算子参数与下发时间差；同一通信域算子被下发到不同 stream 并发执行会因通信域内资源复用导致 notify 被错误消耗，表现为超时或精度异常；另有 QP 内存 OOM（EI0011）、SDMA 页表转换失败（EI0012）、RoCE 重传超时（EI0013）、AIV 模式算子失败与 task exception（Notify/SDMA）失败类型判定。集群心跳事件（Stuck/Lost/Error CQE）用于在无首报错时定位根节点。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/hccl/tree/master/docs/zh/user_guide/fault_diagnosis"
+    version: "hccl master（commit 8cbf54d3，2026-09-15 抓取）fault_diagnosis 全 42 篇：任务下发执行阶段各场景页"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/hccl/blob/master/docs/zh/user_guide/fault_diagnosis/notify_wait_timeout_EI0002.md"
+    version: "hccl master（commit 8cbf54d3）：EI0002 前后同步机制、全量/非全量超时分流、HCCL_EXEC_TIMEOUT 默认 1836 秒"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/hccl/blob/master/docs/zh/user_guide/fault_diagnosis/task_exception_mechanism_troubleshooting.md"
+    version: "hccl master（commit 8cbf54d3）：task exception 日志字段与仅 Notify/SDMA 两类失败"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/hccl/blob/master/docs/zh/user_guide/fault_diagnosis/cluster_heartbeat_mechanism_troubleshooting.md"
+    version: "hccl master（commit 8cbf54d3）：心跳异常事件类型、判据与日志格式"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [hccl]
+  categories: [interrupt, precision]
+
+related_references: [ascend-hccl-comm-fault-triage, hccl-comm-init-and-link-faults, hccl-cluster-heartbeat-and-link-probe, hccl-log-key-info-fields, hccl-error-codes, hccl-debug-env]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  patterns:
+    - pattern: 通信算子执行超时且为**非全量超时**（EI0002）
+      symptoms: ["Task run failed", "task_exception_handler.cc", "EI0002"]
+      cause: 通信双方同步关系失配——某 rank 未下发该通信算子，或该 rank 的首报错是另一个错误（其余 rank 的超时都是连带现象）
+      fix: 检查通信域内所有 rank 的 debug 日志：某个 rank 没有 debug 日志或其中无 ERROR → 该 rank 未下发通信算子，非 HCCL 问题，回业务侧排查未下发原因；某个 rank 的首报错是其他错误 → 优先分析该 rank 的首报错
+    - pattern: 通信算子执行超时且为**全量超时**（EI0002）
+      symptoms: ["Task run failed", "task_exception_handler.cc", "EI0002"]
+      cause: 通信域内所有 rank 都报执行超时，常见为各 rank 下发的算子参数不一致，或算子下发时间差超过 HCCL_EXEC_TIMEOUT
+      fix: 先比对所有 rank 报错日志中的算子参数（通信算子、count、dataType、reduceType、通信域名）是否完全一致——不一致即非 HCCL 问题，回业务侧查下发不一致的根因；一致则比较各 rank 报错日志的 timeStamp，下发时间间隔超过 HCCL_EXEC_TIMEOUT（默认 1836 秒）时确认业务上该间隔是否符合预期，符合预期可用该环境变量调大超时时间
+    - pattern: 同一通信域的通信算子被下发到不同 stream 并发执行
+      symptoms: ["HCCL_ENTRY_LOG_ENABLE", "streamId[", "Task run failed", "精度异常"]
+      cause: 同一通信域下的两个算子下发在两条 stream 上（如 streamId[7] 与 streamId[2]），NPU 多流并发执行时通信域内资源复用，notify 等资源被错误消耗，产生无法预期的报错（执行超时）或精度异常
+      fix: 业务侧补齐流间同步，保证同一通信域的通信算子顺序执行；用 HCCL_ENTRY_LOG_ENABLE 打印每次算子下发的入参（tag/count/dataType/op/streamId），逐 rank 核对算子顺序、参数与 streamId 是否符合预期
+    - pattern: QP 内存资源申请失败（EI0011）
+      symptoms: ["EI0011", "Resource_Error_Insufficient_Device_Memory"]
+      cause: 参数面建链阶段创建 QP 时 device 侧内存不足（OOM）
+      fix: 调整业务配置（如 batchSize）、减少 ROCE 链路使用数量或释放部分内存。注意区分：HCCL 其他内存（如 cclBuffer）申请 OOM 由 drv 组件上报错误码，判定为 HCCL 内存申请失败时可用 HCCL_BUFFSIZE 调整申请大小
+    - pattern: 算子执行时发生 SDMA 任务异常（EI0012）
+      symptoms: ["EI0012", "Execution_Error_SDMA", "fftsplus sdma error"]
+      cause: SDMA 内存拷贝任务页表转换失败——拷贝的输入/输出地址未分配内存、分配的内存小于拷贝大小，或内存已被释放。最常见根因是下发通信算子后未做流同步就析构通信域（析构会释放集合通信的 HCCL Buffer 地址）
+      fix: 下发通信算子后先做流同步确认执行完成再析构通信域（通信域销毁时间可在 run 目录检索核对）；核对传入 count 与实际分配的内存大小；A3 训练/推理产品下网络链路故障也会以 SDMA ERROR 表现，需检查两端链路状态
+    - pattern: 算子执行时发生 RoCE CQE ERROR（EI0013）
+      symptoms: ["EI0013", "Error ROCE CQE", "error cqe status", "status[12]"]
+      cause: 本端向对端发包后在超时内没收到确认，本质是本端与对端之间网络通道异常、对端断开或连接状态差；对端进程异常退出也会导致同样表现。HCCL_RDMA_TIMEOUT 重传超时时间与 HCCL_RDMA_RETRY_CNT 重传次数配置偏小时，链路状态不佳时更易触发
+      fix: 从报错信息取 localIP/remoteIP 确认远端并对上 rank 与计算节点；用 hccn_tool -i <id> -link_stat -g 查网口是否有闪断记录（有则先查闪断原因）；确认对端业务进程是否在本端 ERROR CQE 之前已异常退出或进入资源销毁；链路状态不佳时调大 HCCL_RDMA_TIMEOUT 与 HCCL_RDMA_RETRY_CNT。status[12] 代表 RoCE 报文重传超时，其他状态码极少见
+    - pattern: AIV 模式下的通信算子执行失败
+      symptoms: ["fault kernel_name=aiv_all_reduce_", "EI0002"]
+      cause: 设置 HCCL_OP_EXPANSION_MODE=AIV 后，部分场景 HCCL 以 kernel 方式编排执行通信算子，通信算子执行异常时按任务的执行失败路径上报（A2 训练/推理产品）
+      fix: 按 notify wait 超时（EI0002）的思路分析根因——是否通信域内全量超时、集群中是否存在更早发生异常的节点，先定位根节点再判断是网络、进程还是下发不一致
+    - pattern: task exception 失败任务类型判定（Notify / SDMA）
+      symptoms: ["Task run failed", "TaskExecStage", "Notify", "SDMA"]
+      cause: 通信算子任务下发到 device 侧异步执行，失败时通过回调把异常 task（stream 与 taskId）通知 HCCL；实际只有两类 task 会失败——Notify（等待远端超时）与 SDMA（HCCS 链路异常、多 bit ECC，远端 core dump 时也可能触发）
+      fix: 从 task exception 日志读三类信息定位——base information（stream、taskid、算子 tag）、groupRank information（通信域名 group、rankSize、本端 rankId）、opData information（deviceId、该通信域内第几个算子 index、count、reduceType、输入输出地址）；Notify 失败转向对端卡死/退出排查，SDMA 失败转向链路与 ECC 排查
+    - pattern: 集群心跳异常事件（进程卡死 / 心跳丢失 / 网络丢包）
+      symptoms: ["HeartbeatAbnormal", "Cluster Exception Location", "Stuck Occurred", "Heartbeat Lost Occurred", "Error cqe Occurred"]
+      cause: 集群中某 rank 发生卡死、退出或网络异常，HCCL 通过独立维测链路把事件扩散到通信域内各 rank 的 run 日志；若任务在 notify 超时前被杀、或 task exception 回调未触发，则不会打印 Cluster Exception Location，只能从 run 日志的异常事件甄别
+      fix: 按 ExceptionType 定位并排查根节点——Heartbeat Lost Occurred（30 秒未收到心跳）：查该节点是否已提前退出或节点间网络不通；Stuck Occurred（进程卡死）：查该节点业务进程是否卡死或死锁；Error cqe Occurred：查该节点是否发生 CQE error。无 Cluster Exception Location 时取系统卡住时间附近的 LOST/ERROR CQE 事件作为根因（STUCK 的检测时间为 (1/3~2/3)×HCCL_EXEC_TIMEOUT）；若超时后完全无异常事件，优先排查脚本、版本、数据集等集群行为一致性因素

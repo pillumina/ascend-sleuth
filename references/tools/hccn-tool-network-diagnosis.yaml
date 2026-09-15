@@ -1,0 +1,56 @@
+id: hccn-tool-network-diagnosis
+type: tool
+title: hccn_tool（网口链路闪断 / device IP / ROCE 与 HCCS 连通性 / TLS 状态与证书）
+summary: "用 hccn_tool 检查 device 侧网络链路健康与 TLS 一致性的一套命令：`-link_stat -g` 查网口 up/down 次数与闪断时间点（ERROR CQE 的常见根因）、`-ip -g`/`-vnic -g`/`-ip -inet6 -g` 查 NIC/VNIC/IPv6 地址、`-ping -g address <ip>` 与 `-hccs_ping -g address <ip>` 按 IP 类型做 ROCE 或 HCCS ping（建链超时确认连通性）、`-tls -g`/`-tls -s enable <0|1>` 查改 TLS 开关与证书（EI0016 一致性校验失败）、`-optical -g`/`-lldp -g` 查光模块在位与交换机连通（EI0009 端口 down 排查）。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/hccl/tree/master/docs/zh/user_guide/fault_diagnosis"
+    version: "hccl master（commit 8cbf54d3，2026-09-15 抓取）：error_cqe_report_EI0013 / tls_info_config_inconsistent_EI0016 / link_timeout_EI0006 / ip_family_check_inconsistent_EI0001 / topo_detect_timeout_EI0015 各篇的 hccn_tool 用法"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html"
+    version: "CANN 商用版 9.0.0《错误码参考》EI0009 的 hccn_tool 排障建议（optical / ip / lldp）"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [hccl]
+  categories: [interrupt, performance]
+
+related_references: [hccl-comm-init-and-link-faults, ascend-hccl-comm-fault-triage, hccl-error-codes]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  tool_name: "hccn_tool（昇腾 device 侧网络链路与 TLS 状态检查工具；在计算节点上按 device 逻辑 ID 执行）"
+  invocation: "hccn_tool -i <device_id> <检查项参数> -g（查询）/ -s（设置）；<device_id> 为 NPU 逻辑 ID（npu-smi info -l 查出的 NPU ID，批量时用 for n in {0..7}; do hccn_tool -i $n ...; done）。用于集合通信故障中确认 device 侧链路、地址、连通性与 TLS 状态——链路闪断、网卡选错、TLS 不一致三类根因都靠它出证据。"
+  output_meaning:
+    - "-link_stat -g：网口 up/down 计数与 link change records 时间点（如 link down count 与 LINK DOWN 时间），用于把网口闪断时间与集合通信报错时间对齐——ERROR CQE（EI0013）的典型根因"
+    - "-ip -g / -vnic -g / -ip -inet6 -g：分别列出 NIC IP、VNIC IP 与 IPv6 地址；报错信息里的 src_ip/dest_ip 要先确认属于哪一类再决定怎么 ping"
+    - "-ping -g address <dest_ip>：ROCE ping（对端是 NIC IP）；-hccs_ping -g address <dest_ip>：HCCS ping（对端是 VNIC IP）——建链超时（EI0006）里判定两端是否真的连通"
+    - "-tls -g：逐个 device 输出 tls switch[0]（0 关闭 / 1 开启）、告警天数阈值与 pub cert/ca1/ca2 证书的 issuer 与有效期；-tls -s enable <0|1>：设置 TLS 开关"
+    - "-optical -g：光模块是否在位（grep present）；-lldp -g：与交换机的 LLDP 邻居是否连通——端口 down（EI0009）时的三段式排查"
+  pitfalls:
+    - "先确认报错里的 IP 属于 NIC 还是 VNIC（分别用 -ip 与 -vnic 查），再用对应的 ping 方式：NIC → roce ping，VNIC → hccs ping；用错会得到「ping 得通但业务仍超时」的假结论"
+    - "TLS 一致性校验（EI0016）要求报错的两端都查：日志只打印 Disable/Enable 列表中的一侧，未打印的节点即为相反配置；开关一致时还要继续比对证书是否一致"
+    - "同一 device 上多进程场景下端口冲突（EI0019，默认 device 侧 16666、Host 侧 60000-60031）不是 hccn_tool 能解决的，需用 HCCL_NPU_SOCKET_PORT_RANGE / HCCL_HOST_SOCKET_PORT_RANGE 划范围"
+  commands:
+    - name: 查网口闪断记录
+      cmd: "hccn_tool -i 0 -link_stat -g"
+      when: ERROR CQE（EI0013）报错后确认网口是否在该时间点断链
+    - name: 查 NIC / VNIC / IPv6 地址
+      cmd: "for n in {0..15}; do hccn_tool -i $n -ip -g ;done（VNIC 用 -vnic -g，IPv6 用 -ip -inet6 -g）"
+      when: 把报错里的 src_ip/dest_ip 对应到具体 device 与地址类型
+    - name: 按 IP 类型做连通性 ping
+      cmd: "hccn_tool -i <node> -ping -g address <dest_ip>（ROCE）；hccn_tool -i <node> -hccs_ping -g address <dest_ip>（HCCS）"
+      when: 建链超时（EI0006）双方互等、需判定链路是否连通
+    - name: 查 / 改 TLS 状态与证书
+      cmd: "for i in `seq 0 7`; do hccn_tool -i $i -tls -g; done；hccn_tool -i <device_id> -tls -s enable 1"
+      when: EI0016 TLS 配置不一致，或需要统一开启 TLS
+    - name: 查光模块与交换机连通
+      cmd: "for i in {0..7}; do hccn_tool -i $i -optical -g; done | grep present；for i in {0..7}; do hccn_tool -i $i -lldp -g; done"
+      when: EI0009 端口 down，逐层排除光模块未在位与交换机未连通

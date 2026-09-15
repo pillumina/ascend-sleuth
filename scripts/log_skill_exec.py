@@ -35,7 +35,7 @@ from exec_log_path import describe, log_lock, resolve
 
 VALID_SKILLS = {
     "diagnose", "resume-diagnosis", "to-postmortem", "to-reference",
-    "issue-ingest", "knowledge-groom", "s2-replay", "replay-golden",
+    "issue-ingest", "reference-ingest", "knowledge-groom", "s2-replay", "replay-golden",
     "evolve-check", "self-evolve", "capacity-health",
 }
 

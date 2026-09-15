@@ -1,0 +1,100 @@
+# ============================================================
+# EV-2026-083 —— 文档语料 → reference 的批量导入通道（幂等台账 + 三层成本结构）
+# 来源：用户下达的长程目标「在 gitcode cann 组织下识别合适项目与专业权威知识内容，沉淀 reference，
+#       要像 issue ingest 一样有状态文件防重复抓取、尽量省 token、先吃高价值仓」
+# 触发：开屏普查发现组织下 80 仓的 docs/ 里散着大量真正专业的定位手册，而现有两个入口都吃不下——
+#       issue-ingest 的单位是 issue、to-reference 是零散来源，成规模文档仓没有入口也没有台账
+# 脱敏：只含公开仓路径、公开文档路径与聚合计数，不含客户数据
+# ============================================================
+
+id: EV-2026-083
+layer: L2                          # 内容流程与脚本（skills/reference-ingest、scripts/gc_docs.py、状态文件）
+title: "文档语料 → reference 的批量导入通道：path×blob sha 幂等台账 + 扫描/筛选/抓取/抽取四层成本结构"
+status: validated
+authorization: review              # 新增流程与脚本、不改诊断行为面；可逆 → review 级
+dimension: evolvability            # 新增一条知识输入通道，且必须不重复烧 token、不重评已判过的文档
+supersedes: []
+superseded_by: null
+created_at: 2026-09-15
+source_signals:
+  - signal: user_request
+    evidence: >-
+      用户要求按 issue-ingest 的形态为「文档仓 → reference」建通道，并明确三条约束：状态文件防重复抓取、
+      尽量省 token、先吃高价值仓（cann-samples 已吃过）。普查（只拉目录树、不拉正文）证实可行且有必要：
+      cann 组织 80 仓，`hccl` 有 42 篇分级故障诊断手册、`runtime` 有 18 篇故障 FAQ + 89 篇错误码参考、
+      `oam-tools` 有 19 篇 asys 故障收集解析文档，而现有 references/ 的官方错误码族来自 hiascend 错误码参考、
+      env-var 族来自既有摄取，这些仓内手册的组织方式（现象/原因/解决 + 多级检索关键字）没有任何词条覆盖。
+    trajectory:
+      - "scripts/gc_docs.py（新增：repos/scan/fetch/mark/status 五条子命令）"
+      - "reference-ingest-state.json（新增台账：sources['gitcode/cann/hccl'] = 42 条 path×sha 记录）"
+      - "skills/reference-ingest/SKILL.md（新增入口）+ docs/reference-ingest-pipeline.md（机制与坑）"
+      - "references/ 6 条新词条（hccl 故障诊断子面：2 张故障表 + 1 条方法论 + 2 条事实 + 1 条工具）"
+hypothesis: >-
+  以 (path, blob sha) 为幂等键、并把「判过但不沉淀」（skipped + 理由）一并记账之后：
+  同一仓重复扫描得到的候选恒为「上游真正新增/变更的那些」，已判过的文档不再进入评估——
+  于是"防止重复抓取"与"防止重复评估"由同一份台账同时保证；正文只在筛选后按候选抓取并落到
+  主检出共享缓存（ref-docs/，与 src-code/ 同一语义），重跑复用缓存；抓取按 git blob sha 与目录树
+  逐字节校验，上游改过或抓到 HTML 页壳时当场报错而不是静默入库。
+predicted_effect:
+  metric: 同一子面重复扫描的候选数与判定分布
+  from: "首次扫描 42 篇全部为 NEW（无台账时每轮都会把 42 篇重新拿出来评估）"
+  to: "重复扫描 新增=0 变更=0 已定=42，未变待评=0；台账里 harvested=32 / skipped=10"
+  measure:
+    command: >-
+      python3 scripts/gc_docs.py scan hccl --prefix docs/zh/user_guide/fault_diagnosis --top 0 --dry-run
+    expect_exit: 0
+    expect_stdout: "新增=0 变更=0 已定=42"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前不存在该通道：文档仓只能人工翻，或整篇贴进会话。同类入口 issue-ingest 的台账只记 processed
+    issue 号（判过即封，无"文件会变"这一维、也没有 skipped 一半）——直接照搬会在两处失真：
+    上游改了已沉淀的文档不会重评；仓里 80% 的导航页/API 页每轮被重新评估。
+  success_criteria: >-
+    ① 幂等：`scan` 复跑输出 新增=0 变更=0 已定=42（同一 commit）；`fetch` 复跑走缓存复用、不重抓；
+    ② 完整性：抓取按 git blob sha 校验（实测本地可重算，与目录树一致）；HTML 页壳与 sha 不符均当场报错；
+    ③ 状态收口：doc 条目只留 sha/decision/at/refs/note 五个字段，废弃字段在写侧自动清掉；
+    ④ 成本：扫描/筛选/抓取三层零模型 token，抽取层用「剥日志码块」把 85KB 正文降到 42KB 后再读；
+    ⑤ CI 无回归：verify_references / 两个 reference 索引 / docs 索引 / build_index / metrics / proposals / holdout 全绿；
+    ⑥ skipped 必带理由（脚本强制），否则该文档下一轮会被重新评估——把"省 token"变成结构保证而不是自觉。
+  rollback: >-
+    单次提交、纯新增面：删 skills/reference-ingest/、scripts/gc_docs.py、docs/reference-ingest-pipeline.md、
+    reference-ingest-state.json、.gitignore 的 ref-docs 条目与 exec_log_path 的 REF_DOCS_REL/resolve_ref_docs
+    即回原状；已产出的 6 条词条是普通 references/ 内容，独立于通道存续。本地缓存 ref-docs/ 直接删即可
+    （git-ignored，重抓可恢复）。
+gate:
+  condition: "出现「同一文档被重复评估」或「上游改了已沉淀的文档但未被发现」时，重跑 measure 并复查 sha 判定链"
+risk: low
+principle_refs: [2, 3, 10]
+decisions:
+  - who: agent
+    when: 2026-09-15
+    type: action
+    conclusion: >-
+      建立独立台账 reference-ingest-state.json（不并入 ingest-state.json）：幂等键是 path×blob sha 而非
+      issue 号，且必须有 skipped 一半。附带四条实测坑写进 docs/reference-ingest-pipeline.md：
+      trees API 顶层 sha 是 ref 名不是 commit；目录树 md5 与内容对不上、完整性判据用 git blob sha；
+      trees API 默认每页 20 需显式 per_page=100；正文要用 raw.gitcode.com 主机（其余返回 HTML 页壳）。
+  - who: agent
+    when: 2026-09-15
+    type: eval
+    conclusion: >-
+      首批以 cann/hccl 的 fault_diagnosis 子面验证：42 篇 → harvested 32 / skipped 10（导航页），
+      产出 6 条 active 词条（2 张故障表 / 1 条方法论 / 2 条 software-fact / 1 条 tool），
+      verify_references 与全部索引检查绿；批次 token 量级约 35k（estimate，含 42KB 正文通读）。
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      采纳并标 validated：measure 实跑 PASS（重复扫描 新增=0 变更=0 已定=42），并做了负向对照——
+      把 sdma_error_EI0012.md 的判定改回 pending 后同一条命令输出变成 已定=41 未变待评=1，
+      恢复 harvested 后回到 已定=42（证明确实由台账驱动，不是打印常量）。
+      范围界定如实标注：本卡证明的是**幂等与增量判定**这条效果；「省 token」只做到结构保证
+      （扫描/筛选/抓取零模型 token、抽取层剥码块），没有独立量化基线，不冒充已验证的省量数字。
+      未覆盖：图片内容（figures/*.png）不进文本通道，PR body 如实声明。
+actual_cost:
+  tokens: 35000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数，按仓库口径给估算并说明构成：42 篇正文剥掉日志码块后 85KB→42KB 通读（约 20k）、
+    普查与候选表输出（约 5k）、词条撰写与校验往返（约 10k）。

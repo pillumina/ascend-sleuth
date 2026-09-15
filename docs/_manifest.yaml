@@ -86,6 +86,9 @@ docs:
   - path: docs/issue-ingest-pipeline.md
     layer: guide
     purpose: issue → case 的半自动导入管道
+  - path: docs/reference-ingest-pipeline.md
+    layer: guide
+    purpose: 文档仓 → reference 的导入管道（状态文件、成本结构、已知坑）
   - path: docs/windows-setup.md
     layer: guide
     purpose: Windows 下让 agent 发现 skills：三种状态的判别与两条修法
@@ -114,6 +117,8 @@ skills:
   - name: to-reference
     scope: 沉淀知识
   - name: issue-ingest
+    scope: 沉淀知识
+  - name: reference-ingest
     scope: 沉淀知识
   - name: knowledge-groom
     scope: 维护与演进

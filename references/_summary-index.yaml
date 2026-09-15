@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-14    词条数：89
+# 生成日期：2026-09-15    词条数：92
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -498,6 +498,39 @@ entries:
     categories:
     - performance
     - precision
+- id: hccl-cluster-heartbeat-and-link-probe
+  type: software-fact
+  title: HCCL 集群心跳维测链路与建链故障探测链路（事件类型、判据窗口、日志格式）
+  summary: HCCL 在两个阶段各自建了一条「自动指根节点」的旁路机制：①**集群心跳**——基于通信域信息与邻近 rank 建独立维测链路，把单点故障广播到通信域内每个 rank（HCCL 控制链路数量与数据量，不影响通信性能），探测三类事件：网络问题
+    ERROR CQE/Error cqe Occurred（轮询 ROCE 驱…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - interrupt
+- id: hccl-log-key-info-fields
+  type: software-fact
+  title: HCCL 关键日志的检索关键字与字段含义（Communicator/LocalRank Key Info、HCCL_ENV、Entry- 算子入参、task exception 三段）
+  summary: 从 CANN 日志里取 HCCL 证据的四个检索入口：①`Communicator Key Info` / `LocalRank Key Info`——一行的通信域关键信息（identifier/rankSize/serverNum/moduleNum/superPodNum
+    及两个「是否不一致」标志）与本端关键信息（…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - interrupt
+    - performance
+    - precision
+- id: hccn-tool-network-diagnosis
+  type: tool
+  title: hccn_tool（网口链路闪断 / device IP / ROCE 与 HCCS 连通性 / TLS 状态与证书）
+  summary: 用 hccn_tool 检查 device 侧网络链路健康与 TLS 一致性的一套命令：`-link_stat -g` 查网口 up/down 次数与闪断时间点（ERROR CQE
+    的常见根因）、`-ip -g`/`-vnic -g`/`-ip -inet6 -g` 查 NIC/VNIC/IPv6 地址、`-ping …
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - interrupt
+    - performance
 - id: hif8-type-contract
   type: software-fact
   title: HiFloat8 的类型契约（hifloat8_t 建 tensor / Cast 直转 / 按 1 Byte 搬运）

@@ -148,9 +148,9 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 ## skill 名单
 
 <!-- BEGIN generated: skill-roster (scripts/build_docs_index.py；由 docs/_manifest.yaml 生成，勿手改) -->
-本仓共 **10 个 skill**，按**你用不用得上**分三组：
+本仓共 **11 个 skill**，按**你用不用得上**分三组：
 - **你要用的**（2）：`diagnose` · `resume-diagnosis`
-- **沉淀知识**（3）：`to-postmortem` · `to-reference` · `issue-ingest`
+- **沉淀知识**（4）：`to-postmortem` · `to-reference` · `issue-ingest` · `reference-ingest`
 - **维护与演进**（5）：`knowledge-groom` · `self-evolve` · `evolve-check`（内部协议，由内容流程收尾自动转接，不单独调用） · `skill-review`（内部协议，由用户显式触发做 skill 质量审视） · `preload-panel`（仅 DSH——在会话中热加载可视化面板）
 <!-- END generated: skill-roster -->
 
@@ -256,6 +256,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 - [metrics.md](docs/metrics.md) — 指标口径与周批流程（数字以 metrics/timeline.yaml 为准）
 - [git-workflow.md](docs/git-workflow.md) — 审核、门控、合入与多人协作的落地（含评审把手）
 - [issue-ingest-pipeline.md](docs/issue-ingest-pipeline.md) — issue → case 的半自动导入管道
+- [reference-ingest-pipeline.md](docs/reference-ingest-pipeline.md) — 文档仓 → reference 的导入管道（状态文件、成本结构、已知坑）
 - [windows-setup.md](docs/windows-setup.md) — Windows 下让 agent 发现 skills：三种状态的判别与两条修法
 - [handoff.md](docs/handoff.md) — 把一单诊断交到另一台机器继续（交接包的布局、交接单字段、两条命令的契约与强度边界）
 
