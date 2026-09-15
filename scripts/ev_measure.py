@@ -38,11 +38,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-import yaml
-
 # 与校验器共用同一份定义（cutover / 归一 helper）。抄成两份 = 口径漂移的经典来源，
 # 所以这里 import 而不是复制。
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _yaml import load_file   # noqa: E402  （解析后端单一事实源，快路径见 _yaml.py）
 from exec_log_path import MEASURE_LOG_REL, log_lock, resolve_rel  # noqa: E402
 from exec_log_path import describe as describe_log_path  # noqa: E402
 # 注意：本模块自己的 describe() 是"打印一张卡的判据"，与 exec_log_path.describe 同名——
@@ -67,7 +66,7 @@ def load_cards(root: Path):
         return cards
     for f in sorted(ideas.glob("*.yaml")):
         try:
-            doc = yaml.safe_load(f.read_text(encoding="utf-8"))
+            doc = load_file(f)
         except Exception:
             continue
         if isinstance(doc, dict) and doc.get("id"):
@@ -114,7 +113,7 @@ def append_run(root: Path, card_id: str, command: str, verdict: str, exit_code: 
             records = []
             if path.exists():
                 try:
-                    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+                    doc = load_file(path) or {}
                     records = doc.get("records") or []
                 except Exception:
                     records = []          # 坏文件：如实重开，不静默丢已有记录以外的数据

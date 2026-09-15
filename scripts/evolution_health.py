@@ -27,9 +27,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
-import yaml
-
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _yaml import load_file                      # noqa: E402  （解析后端单一事实源）
 import ev_board_data as EBD                      # noqa: E402
 from ev_measure import classify as classify_measure, load_cards  # noqa: E402
 from verify_proposals import measure_enforced    # noqa: E402
@@ -69,7 +68,7 @@ RATIO_DIMS = {
 
 
 def load_yaml(path: Path):
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+    return load_file(path)
 
 
 def collect_capture(root: Path):

@@ -17,15 +17,15 @@ import re
 import sys
 from pathlib import Path
 
-import yaml
-
 # 允许 import 同目录脚本（component_tally 按需聚合复用）
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _yaml import load_file   # noqa: E402  （解析后端单一事实源，快路径见 _yaml.py）
 
 
 def load_yaml(path):
     try:
-        return yaml.safe_load(path.read_text(encoding="utf-8"))
+        return load_file(path)
     except Exception as e:
         return {"__error__": str(e)}
 

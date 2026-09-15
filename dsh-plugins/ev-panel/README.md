@@ -165,3 +165,9 @@ PANEL_DEBUG=1 node scripts/panel_render_check.js   # 打印渲染片段
 它是"渲染逻辑 + 数据契约"的离线闸门，不替代浏览器验证。视觉类指标（对比度、帧间隔、
 像素分布）在改样式时用浏览器实测过一次即可，不留常驻脚本——真正需要机械兜住的是
 "渲染没坏、配色角色没漂"，那两件事由本脚本 + `check_panel_tokens.py` 负责。
+
+**结果复用窗口**：本面板两条 RPC 各要起一次 Python（`ev_board_data.py` / `evolution_health.py`），
+而切走 tab 再切回会重新挂载组件、重新发起同一条 RPC。所以结果按 30 秒窗口复用，两个 RPC 各自
+一份缓存（不串台）；顶栏「刷新」按钮带 `refresh: true` 绕过窗口立即重跑。窗口数值只写在
+`panel-host.js`（`CACHE_TTL_MS`），client 的说明照它写。表头的「数据 <时间>」是脚本生成时刻，
+复用不会把它刷成"现在"——读者看到的时间就是这份数据的真实生成时刻。

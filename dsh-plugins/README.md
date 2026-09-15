@@ -10,9 +10,17 @@
 |---|---|---|
 | 颜色角色 | 每个 `panel-client.js` 的 `--c-*`（文字，需过 WCAG AA）/ `--acc-*`（装饰，两点面板逐色同值）/ `--fill-*`（实心徽标底）/ `--btn-*` | `python3 scripts/check_panel_tokens.py` |
 | 字号与行高 | 8 档 `--t-md2 10.5` → `--t-2xl 18`（基准 `--t-base` 14.5）；行高 `--lh-tight/base/prose`（中文需 ≥1.6） | `node scripts/panel_render_check.js`（断言：声明 8 档、无硬编码 font-size、最小档 ≥10、基准档 ≥14、两面板同值域） |
+| 结果复用窗口 | 每个 `panel-host.js` 的窗口常量（`VERDICT_TTL_MS` / `CACHE_TTL_MS`），client 的刷新说明照它写 | `node scripts/panel_render_check.js`（断言：窗口内复用不重跑脚本、`refresh: true` 绕过窗口、失败也能强制重跑、首屏那次不强制、两面板窗口同值且与 client 说明一致） |
 | 面板文案 | 共用条目见 `docs/writing-norms.md`（判定口径的权威）；面板特有的见下方「面板文案的定制条款」 | 同上（行文只有"无字面 Markdown 星号"一条可机械判） |
 | 只读边界 | 面板是只读可视化 + 指令生成器；不做决策与写入 | 人审（`skills/preload-panel/SKILL.md`） |
 | 依赖缺失时的退化 | 拿不到数据时给一行说明 + 可行的下一步，不占位、不拿别处的数据冒充 | `node scripts/panel_render_check.js`（退化路径一节，含 5 个缺件用例） |
+
+**结果复用窗口**（两个面板同一条约定）：面板取数要起 Python 子进程，而切走 tab 再切回会重新挂载
+组件、重新发起同一条 RPC，所以结果按短窗口复用（切回不必等进程）。三条约束一起成立才算守住：
+①窗口内复用不重跑脚本；②读者有显式出口——client 的刷新入口必须带 `refresh: true` 绕过窗口；
+③**失败结果同样按窗口复用、但同样能被强制重跑**（把"体检不可用"缓存住又不给重试，读者只能干等过期）。
+窗口数值只写在 host（机器落点），client 的说明与本节都以它为准；数值漂了由机械检查拦下。
+复用不等于实时：界面上的时间戳照旧是脚本生成时刻，不会因为复用被刷成"现在"。
 
 ## 面板文案的定制条款
 

@@ -2358,6 +2358,193 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
     }
   }
 
+  // ================= 面板结果复用窗口 · 窗口内复用 / refresh 绕过 / 失败也能强制重跑 =================
+  //
+  // 为什么单开一节：两个面板的取数都要起 Python 子进程（体检 0.68s、看板 0.36s、演进体检 0.32s），
+  // 而"切走 tab 再切回"会重新挂载组件、重新发起同一条 RPC。加缓存的收益是切回不再等，
+  // 代价是"面板显示的可能不是此刻的现实"——所以三件事必须一起钉住，缺一条都会退化成
+  // 假绿或另一种坑：①窗口内复用（不重跑脚本，收益成立）；②refresh 显式绕过（读者有出口）；
+  // ③**失败结果同样可强制重跑**（把体检不可用缓存住却不给重试，读者就只能干等窗口过期）。
+  // 手法：用真实 host 源文件 + 桩 shell 跑（不复制缓存逻辑），只数目标脚本起了几次进程。
+  console.log('\n[面板结果复用窗口 · 复用 / refresh 绕过 / 失败可重试]')
+  {
+    const mkFs = () => ({
+      resolve: async (p, opts) => path.resolve((opts && opts.cwd) || repo, p),
+      readText: async (t) => fs.readFileSync(t, 'utf8'),
+      listDir: async (t) => fs.readdirSync(t, { withFileTypes: true }).map(e => ({
+        name: e.name, type: e.isDirectory() ? 'directory' : 'file', target: path.join(t, e.name),
+      })),
+      processPath: (t) => t,
+    })
+    const mkSessions = (cwd) => ({ get: () => ({ header: { cwd: cwd } }), list: () => [{ header: { cwd: cwd } }] })
+    // 脚本桩：只回答"解释器探测"与四个真脚本；`fail` 控制脚本侧退出码与 stderr
+    const mkShell = (counter, fail) => ({
+      resolve: (x) => x,
+      run: async (spec) => {
+        const cmd = String(spec && spec.command || '')
+        if (/--version/.test(cmd)) {
+          return { exitCode: 0, stdout: { text: 'Python 3.11.0' }, stderr: { text: '' } }
+        }
+        for (const key of Object.keys(counter)) {
+          if (cmd.includes(key)) {
+            counter[key]++
+            if (fail) return { exitCode: 1, timedOut: false, stdout: { text: '' }, stderr: { text: 'stub: script failed' } }
+            const payload = key.includes('metrics_health')
+              ? { gates: {}, findings: [], capacity_cells: [], freshness: {}, readability: {}, coverage: {} }
+              : { check_verdict: 'clean', findings: [], errors: [] }
+            return { exitCode: 0, timedOut: false, stdout: { text: JSON.stringify(payload) }, stderr: { text: '' } }
+          }
+        }
+        return { exitCode: 1, timedOut: false, stdout: { text: '' }, stderr: { text: 'stub: unexpected command ' + cmd } }
+      },
+    })
+    const bootPanel = (rel, cwd, counter, fail) => {
+      // 与上一节同一套 driveHost/loadHost 手法：真 apply()、桩服务
+      const loadHost = (p) => fs.readFileSync(path.join(repo, p), 'utf8')
+      const regs = {}
+      const ctx = { get: (n) => n === 'fs' ? mkFs() : n === 'shell' ? mkShell(counter, fail) : n === 'sessions' ? mkSessions(cwd) : undefined }
+      const harness = {
+        handle: (name, fn) => { regs[name] = fn; return () => {} },
+        defineTool: (opts) => opts,
+        registerTool: () => () => {},
+      }
+      const plugin = new Function('harness', 'console', loadHost(rel))(harness, { error: () => {}, log: () => {} })
+      plugin.apply(ctx)
+      return regs
+    }
+    const CWD = repo
+
+    {
+      const counter = { 'metrics_health.py': 0 }
+      const regs = bootPanel('dsh-plugins/ascend-panel/panel-host.js', CWD, counter, false)
+      const call = (args) => regs['ascend-metrics-verdict'](args)
+      const r1 = await call({})
+      expect('ascend-panel 判决 · 首次调用真的跑脚本', counter['metrics_health.py'] === 1 && r1 && r1.ok === true,
+        'spawns=' + counter['metrics_health.py'] + ' ok=' + (r1 && r1.ok))
+      await call({})
+      expect('ascend-panel 判决 · 窗口内再调不重跑脚本（切走再切回不再等 Python）',
+        counter['metrics_health.py'] === 1, 'spawns=' + counter['metrics_health.py'])
+      await call({ refresh: true })
+      expect('ascend-panel 判决 · refresh:true 绕过窗口强制重跑（读者有出口）',
+        counter['metrics_health.py'] === 2, 'spawns=' + counter['metrics_health.py'])
+      await call({})
+      expect('ascend-panel 判决 · 强制重跑后的结果重新进入窗口（不每次都跑）',
+        counter['metrics_health.py'] === 2, 'spawns=' + counter['metrics_health.py'])
+    }
+
+    {
+      // 失败结果：按窗口返回，且 refresh 能立刻重试（不是"坏了就锁死 30 秒"）
+      const counter = { 'metrics_health.py': 0 }
+      const regs = bootPanel('dsh-plugins/ascend-panel/panel-host.js', CWD, counter, true)
+      const call = (args) => regs['ascend-metrics-verdict'](args)
+      const r1 = await call({})
+      expect('ascend-panel 判决 · 体检失败时如实返回失败（不伪装成通过）', r1 && r1.ok === false, JSON.stringify(r1).slice(0, 90))
+      await call({})
+      expect('ascend-panel 判决 · 失败结果同样按窗口复用（不反复起注定失败的进程）',
+        counter['metrics_health.py'] === 1, 'spawns=' + counter['metrics_health.py'])
+      await call({ refresh: true })
+      expect('ascend-panel 判决 · 失败也能 refresh 立刻重试（不被窗口锁死）',
+        counter['metrics_health.py'] === 2, 'spawns=' + counter['metrics_health.py'])
+    }
+
+    {
+      const counter = { 'ev_board_data.py': 0, 'evolution_health.py': 0 }
+      const regs = bootPanel('dsh-plugins/ev-panel/panel-host.js', CWD, counter, false)
+      const board = (args) => regs['ev-board-load'](args)
+      const health = (args) => regs['ev-health-load'](args)
+      await board({ sessionId: 'sess-1' })
+      await health({ sessionId: 'sess-1' })
+      expect('ev-panel · 两个 RPC 各跑各自的脚本（缓存不串台）',
+        counter['ev_board_data.py'] === 1 && counter['evolution_health.py'] === 1,
+        JSON.stringify(counter))
+      await board({ sessionId: 'sess-1' })
+      await health({ sessionId: 'sess-1' })
+      expect('ev-panel · 窗口内再调不重跑（切走再切回不再等 Python）',
+        counter['ev_board_data.py'] === 1 && counter['evolution_health.py'] === 1, JSON.stringify(counter))
+      await board({ sessionId: 'sess-1', refresh: true })
+      await health({ sessionId: 'sess-1', refresh: true })
+      expect('ev-panel · refresh:true 两条都绕过窗口强制重跑',
+        counter['ev_board_data.py'] === 2 && counter['evolution_health.py'] === 2, JSON.stringify(counter))
+    }
+
+    // 客户端侧：刷新入口必须真的带上 refresh:true（不然按钮点了还是吃缓存，等于没出口）
+    // 注意：直接调 comp() 前必须把 hookIdx 归零——renderAsync 每轮都归零，不归零就会读到别的
+    // useState 槽位，组件停在 loading 分支、按钮"不存在"（踩过一次，症状像"按钮没渲染"）。
+    const treeOf = (reg) => { hookIdx = 0; effectQueue = []; return reg.comp({ sessionId: 'sess-1' }) }
+    {
+      const seen = []
+      const hostImpl = (m, a) => {
+        seen.push({ m: m, a: a })
+        if (m === 'ev-board-load') return { ok: true, data: board }
+        if (m === 'ev-health-load') return { ok: true, data: { check_verdict: 'clean', findings: [] } }
+        return { ok: false, error: 'n/a' }
+      }
+      const rendered = await renderAsync(evSrc, { sessionId: 'sess-1' }, hostImpl)
+      const hs = []
+      collectHandlers(treeOf(rendered.regs[0]), hs)
+      const btn = hs.find(h => String(h.text).includes('刷新'))
+      expect('ev-panel 客户端 · 找到「刷新」按钮（找不到=渲染停在加载态）', !!btn,
+        rendered.text.slice(0, 100))
+      // 首次挂载那次必须**不带** refresh（否则切 tab 就每次都起 Python，缓存白加）
+      const first = seen.find(s => s.m === 'ev-board-load')
+      expect('ev-panel 客户端 · 首屏那次不强制刷新（窗口复用才有意义）',
+        !!first && !(first.a && first.a.refresh === true), JSON.stringify(first && first.a))
+      let clicked = 0
+      if (btn) { btn.fn({}); clicked = 1 }
+      await new Promise(r => setImmediate(r))
+      const forced = seen.filter(s => s.m === 'ev-board-load' && s.a && s.a.refresh === true)
+      expect('ev-panel 客户端 · 点「刷新」带 refresh:true（按钮真的绕过窗口）',
+        clicked === 1 && forced.length === 1, 'clicked=' + clicked + ' forced=' + forced.length)
+    }
+
+    {
+      const seen = []
+      const hostImpl = (m, a) => {
+        seen.push({ m: m, a: a })
+        return hostWithVerdict(m, a)
+      }
+      const rendered = await renderAsync(ascSrc, { sessionId: 'sess-1' }, hostImpl)
+      expect('ascend-panel 客户端 · 状态条出现「重新体检」入口', /重新体检/.test(rendered.text))
+      expect('ascend-panel 客户端 · 入口说明复用窗口（不把复用说成实时）',
+        /30 秒内复用/.test(rendered.text), rendered.text.match(/«title:[^»]*»/g) ? '' : rendered.text.slice(0, 120))
+      const metricsReg = rendered.regs.find(r => r.opts && r.opts.id === 'ascend-metrics')
+      const hs = []
+      if (metricsReg) collectHandlers(treeOf(metricsReg), hs)
+      const btn = hs.find(h => String(h.text).includes('重新体检'))
+      const first = seen.find(s => s.m === 'ascend-metrics-verdict')
+      expect('ascend-panel 客户端 · 首屏那次不强制刷新',
+        !!first && !(first.a && first.a.refresh === true), JSON.stringify(first && first.a))
+      let clicked = 0
+      if (btn) { btn.fn({}); clicked = 1 }
+      await new Promise(r => setImmediate(r))
+      const forced = seen.filter(s => s.m === 'ascend-metrics-verdict' && s.a && s.a.refresh === true)
+      expect('ascend-panel 客户端 · 点「重新体检」带 refresh:true',
+        clicked === 1 && forced.length === 1, 'clicked=' + clicked + ' forced=' + forced.length)
+    }
+
+    // 窗口数值只在 host（机器落点），client 的说明照它写。
+    // 这条断言的作用是：只改 host、忘了改面向读者的说明时变成红——否则文案会安静地说错窗口，
+    // 读者按错的窗口推断"这结论有多新"（原则十：复用不能读成实时）。
+    {
+      const ttlOf = (rel, re) => {
+        const m = re.exec(fs.readFileSync(path.join(repo, rel), 'utf8'))
+        return m ? Number(m[1]) : NaN
+      }
+      const ascTtl = ttlOf('dsh-plugins/ascend-panel/panel-host.js', /VERDICT_TTL_MS = (\d+)/)
+      const evTtl = ttlOf('dsh-plugins/ev-panel/panel-host.js', /CACHE_TTL_MS = (\d+)/)
+      expect('两个面板的复用窗口都从 host 源文件读得到（不散在面向读者的文案里）',
+        Number.isFinite(ascTtl) && Number.isFinite(evTtl), 'asc=' + ascTtl + ' ev=' + evTtl)
+      expect('两个面板的复用窗口同值（跨面板契约）', ascTtl === evTtl, 'asc=' + ascTtl + ' ev=' + evTtl)
+      const secs = String(ascTtl / 1000)
+      for (const [rel, name] of [['dsh-plugins/ascend-panel/panel-client.js', 'ascend-panel'],
+        ['dsh-plugins/ev-panel/panel-client.js', 'ev-panel']]) {
+        const t = fs.readFileSync(path.join(repo, rel), 'utf8')
+        expect(name + ' client 的刷新说明与 host 窗口同值（' + secs + ' 秒内复用）',
+          t.includes(secs + ' 秒内复用'), 'host=' + secs + ' 秒')
+      }
+    }
+  }
+
   console.log('\n' + (failures.length ? '失败 ' + failures.length + ' 项: ' + failures.join(' | ') : '全部通过'))
   process.exit(failures.length ? 1 : 0)
 }

@@ -769,15 +769,28 @@ return {
     // 脚本既有的三段式（结论 / 证据 / 下一步动作）正是"聚焦"本身；面板只负责把它端到人眼前。
     //
     // 诚实退化：脚本/解释器/依赖缺一不可，缺了就返回可执行的提示，而不是显示"一切正常"。
-    let metricsHealthCache = null
-    async function loadMetricsVerdict(cwd) {
+    //
+    // —— 结果复用（为什么不是"每挂载一次跑一次"，也不是"永久缓存"）——
+    // 面板切走再切回会重新挂载组件、重新发起这条 RPC，而体检要起一次 Python（实测冷启动 0.68 秒，
+    // 其中大部分是 verify_references 解析 351 个 YAML 文件）。原先这里按 cwd **永久**缓存：
+    // 切回确实不用等，但代价是改了脚本或数据后面板仍显示旧判决，直到插件重载——"看到的不等于现实"
+    // 且没有出口。现在两头都收掉：窗口内复用（切走再切回不重跑），窗口外自动重跑，
+    // 另接受 `refresh: true` 显式绕过（客户端的「重新体检」按钮走这条路，读者不必等窗口过期）。
+    // 窗口取 30 秒：覆盖"来回切 tab"这一动作，又把陈旧上限压到读者能感知的量级以内。
+    // 复用**失败结果**同样按窗口返回（体检不可用是稳定事实，重跑十次也是同一句提示），
+    // 读者要立刻重试就点「重新体检」。
+    const VERDICT_TTL_MS = 30000
+    const verdictCache = new Map()   // key(cwd) → { at, promise }；存 promise 让并发挂载共享同一次体检
+    function loadMetricsVerdict(cwd, force) {
       if (!shell) {
-        return { ok: false, error: '体检需要 shell 服务（当前不可用）——判据与命令见 metrics/gates.yaml 与 scripts/metrics_health.py' }
+        return Promise.resolve({ ok: false, error: '体检需要 shell 服务（当前不可用）——判据与命令见 metrics/gates.yaml 与 scripts/metrics_health.py' })
       }
-      if (metricsHealthCache && metricsHealthCache.cwd === cwd) return metricsHealthCache.value
-      const value = await buildMetricsVerdict(cwd)
-      metricsHealthCache = { cwd: cwd, value: value }
-      return value
+      const key = cwd || '?'
+      const hit = verdictCache.get(key)
+      if (!force && hit && (Date.now() - hit.at) < VERDICT_TTL_MS) return hit.promise
+      const promise = buildMetricsVerdict(cwd)
+      verdictCache.set(key, { at: Date.now(), promise: promise })
+      return promise
     }
     // drift：索引头注声明的 case 数 vs 磁盘实际 case 文件数。面板读的是生成物索引，
     // 索引落后于磁盘时面板会安静地显示旧数——这类"看到的不等于现实"必须被说出来。
@@ -1376,7 +1389,8 @@ return {
     const verdictDisposer = harness.handle('ascend-metrics-verdict', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const cwd = resolveCwd(sessionId)
-      return loadMetricsVerdict(cwd)
+      // `refresh: true` = 绕过复用窗口强制重跑（面板「重新体检」按钮）
+      return loadMetricsVerdict(cwd, !!(args && args.refresh === true))
     })
 
     const liveDisposer = harness.handle('ascend-metrics-live', async (args) => {
