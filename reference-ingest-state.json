@@ -198,7 +198,11 @@
      "sha": "4f06d3b04d78647c4dc01bbf11745bf3d4e38839"
     },
     "docs/zh/app-dev/collection_parsing_performance_data.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:42:37",
+     "decision": "harvested",
+     "refs": [
+      "msprof-output-reading-and-performance-analysis"
+     ],
      "sha": "b0e5891c4af6750a532bdc827e9a211f34661da2"
     },
     "docs/zh/app-dev/config_precision_mode.md": {
@@ -219,11 +223,19 @@
      "sha": "1202f6a54c8eaa284f7a6d8985c2ec1adff022dc"
     },
     "docs/zh/app-dev/disable_data_cache_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:42:37",
+     "decision": "harvested",
+     "refs": [
+      "atc-precision-mode-and-switches"
+     ],
      "sha": "40365860e2b1059bedf1445ecbeaae5ce3d41579"
     },
     "docs/zh/app-dev/disable_fusion_rules.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:42:37",
+     "decision": "harvested",
+     "refs": [
+      "atc-precision-mode-and-switches"
+     ],
      "sha": "ad155b1dee3030fa7db7f75dc295114e5d9edd76"
     },
     "docs/zh/app-dev/dynamic_AIPP_inference.md": {
@@ -271,7 +283,9 @@
      "sha": "40adb63844d58e0f7240b909a9188d50b903e4fe"
     },
     "docs/zh/app-dev/high_performance_programming_suggestions.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:42:37",
+     "decision": "skipped",
+     "note": "纯标题存根（正文在对应 _process/_overview 子页或专题章节）",
      "sha": "276e635f667b8eb9ccd8ac610beb6fdb05f3ac98"
     },
     "docs/zh/app-dev/hixl.md": {
@@ -311,11 +325,17 @@
      "sha": "d4cfa3388af8bb2a81cb108f9527796c52e31dd9"
     },
     "docs/zh/app-dev/model_inference_performance_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:42:37",
+     "decision": "skipped",
+     "note": "纯标题存根（正文在对应 _process/_overview 子页或专题章节）",
      "sha": "c6aad3fae47bbd6045bc39744e136c32a5fe6cd5"
     },
     "docs/zh/app-dev/model_inference_performance_optimization_process.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:42:37",
+     "decision": "harvested",
+     "refs": [
+      "msprof-output-reading-and-performance-analysis"
+     ],
      "sha": "f158ff40a1f5d86da06dbba3aa856cbe89e1021f"
     },
     "docs/zh/app-dev/model_inference_precision_optimization.md": {
@@ -381,7 +401,9 @@
      "sha": "4e60520f0260a7ebd04b9edc92a71be4f5ac54fd"
     },
     "docs/zh/app-dev/performance_analysis.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:42:37",
+     "decision": "skipped",
+     "note": "纯标题存根（正文在对应 _process/_overview 子页或专题章节）",
      "sha": "8fd4f56a8fda6ff9e4930fb5f97bf78c43318016"
     },
     "docs/zh/app-dev/precision_performance_optimization.md": {
@@ -553,7 +575,9 @@
      "sha": "34b5309a34b365192e85edda2f6bfc94e327de76"
     },
     "docs/zh/ops-lib/appendix/FAQ.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:42:37",
+     "decision": "skipped",
+     "note": "索引/导航页（正文在子页）",
      "sha": "ea754218b37a7e830a6f689e3677abac336856f3"
     },
     "docs/zh/ops-lib/appendix/appendix.md": {
@@ -563,31 +587,51 @@
      "sha": "89b95b5a837139889ab49384e6bfff51856f3459"
     },
     "docs/zh/ops-lib/appendix/faq_failure_cases.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:42:38",
+     "decision": "skipped",
+     "note": "指向官方故障案例集的外链页，无独立判据；日志获取口径已由 ascend-log-* 与 runtime 异步错误条目承载（该页提到的算子开发侧日志路径为 $HOME/ascendc/log，与既有 ascend-log-locations 记的 EP 路径不同，作为观察项交 groom/reviewer 裁决）",
      "sha": "7ab57d3768504933a7bba4a0334a92862859814a"
     },
     "docs/zh/ops-lib/appendix/faq_get_aclnn_call_logs.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:42:38",
+     "decision": "skipped",
+     "note": "指向官方故障案例集的外链页，无独立判据；日志获取口径已由 ascend-log-* 与 runtime 异步错误条目承载（该页提到的算子开发侧日志路径为 $HOME/ascendc/log，与既有 ascend-log-locations 记的 EP 路径不同，作为观察项交 groom/reviewer 裁决）",
      "sha": "676a0434a27a9161cc154f525ab530dc81b895b1"
     },
     "docs/zh/ops-lib/appendix/performance_improve_by_staticKernel.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:42:37",
+     "decision": "skipped",
+     "note": "索引/导航页（正文在子页）",
      "sha": "d6ff844f2a66c17a2e47fd1cfbda4e409d30cd92"
     },
     "docs/zh/ops-lib/appendix/performance_improve_series.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:42:37",
+     "decision": "skipped",
+     "note": "索引/导航页（正文在子页）",
      "sha": "822dbe5fd0b2b4d6e765a32c3551297dc30df45c"
     },
     "docs/zh/ops-lib/appendix/staticKernel_env_setup.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:42:37",
+     "decision": "harvested",
+     "refs": [
+      "op-compiler-static-kernel"
+     ],
      "sha": "343474106a874a66aaeab23cc94949fa0368c2c6"
     },
     "docs/zh/ops-lib/appendix/staticKernel_introduction.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:42:37",
+     "decision": "harvested",
+     "refs": [
+      "op-compiler-static-kernel"
+     ],
      "sha": "57a4acb0763feea6e4fdd79345c7b9a7d50473b5"
     },
     "docs/zh/ops-lib/appendix/staticKernel_tuning.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:42:37",
+     "decision": "harvested",
+     "refs": [
+      "op-compiler-static-kernel"
+     ],
      "sha": "1e90931a6a306ef900c7c37be7ed29a86edcba4a"
     }
    },

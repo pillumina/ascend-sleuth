@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-15    词条数：102
+# 生成日期：2026-09-15    词条数：104
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -797,6 +797,17 @@ entries:
     - cross
     categories:
     - performance
+- id: msprof-output-reading-and-performance-analysis
+  type: software-fact
+  title: msprof 默认产物清单与性能分析路径（timeline 三区域 / 按 Total Time 与 Task Duration 排序 / prof_rule 调优建议 / fusion_op
+    融合前后）
+  summary: 拿到一次 msprof 采集结果后怎么读：**默认配置产出的 9 类文件**——`msprof_*.json`（timeline 总表）、`step_trace_*.json`（迭代轨迹，每轮迭代耗时；单算子场景无）、`op_summary_*.csv`（AI
+    Core 与 AI CPU 算子数据）、`op_stati…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - performance
 - id: msprof-timeline-lane-reading
   type: tool
   title: msprof 硬件流水时间线泳道读法（泳道名格式 / 指令名 / 时间轴三段式）
@@ -852,6 +863,18 @@ entries:
     - A3-910C
     categories:
     - interrupt
+    - performance
+- id: op-compiler-static-kernel
+  type: tool
+  title: op_compiler 静态 Kernel 编译（dump 算子信息 → 编译 run 包 → 安装 → 匹配性校验 → 卸载）
+  summary: 用静态 Kernel 提升算子执行性能的工具链：**原理**——静态 Kernel 编译在编译时指定算子 shape、运行时不再指定 shape，算子编译工具按算子信息统计文件得到确定
+    shape 并为每个 shape 各编译一份算子二进制，从而提升执行效率（编译期已知 tensor 大小故存储利用率高、可针对实际 s…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A5-950
+    - cross
+    categories:
     - performance
 - id: pcie-host-memory-access
   type: software-fact

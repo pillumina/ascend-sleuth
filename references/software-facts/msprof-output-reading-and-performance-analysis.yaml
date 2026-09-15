@@ -1,0 +1,30 @@
+id: msprof-output-reading-and-performance-analysis
+type: software-fact
+title: msprof 默认产物清单与性能分析路径（timeline 三区域 / 按 Total Time 与 Task Duration 排序 / prof_rule 调优建议 / fusion_op 融合前后）
+summary: "拿到一次 msprof 采集结果后怎么读：**默认配置产出的 9 类文件**——`msprof_*.json`（timeline 总表）、`step_trace_*.json`（迭代轨迹，每轮迭代耗时；单算子场景无）、`op_summary_*.csv`（AI Core 与 AI CPU 算子数据）、`op_statistic_*.csv`（算子调用次数与耗时统计）、`step_trace_*.csv`、`task_time_*.csv`（Task Scheduler 任务调度信息）、`fusion_op_*.csv`（**算子融合前后信息**；单算子场景无）、`api_statistic_*.csv`（CANN 层 API 执行耗时）、`prof_rule_0_*.json`（**调优建议**）。**读法**：json 用 Chrome 打开 `chrome://tracing` 拖入（w 放大 / s 缩小 / a 左移 / d 右移），timeline 分三区域——区域 1 CANN 层（Runtime 等组件与 Node/算子耗时）、区域 2 底层 NPU（Ascend Hardware 下各 Stream 任务流耗时、迭代轨迹、AI 处理器系统数据）、区域 3 各色块明细；从耗时较长的 API/算子/任务流顺着箭头找下发关系，再用 csv 量化。`op_statistic_*.csv` **按 Total Time 排序**找出哪类算子总耗时长（判断该类是否有优化空间）；`op_summary_*.csv` **按 Task Duration 排序**找高耗时算子、**按 Task Type 排序**看不同核（AI Core / AI CPU）上的高耗时算子。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/collection_parsing_performance_data.md"
+    version: "cann/docs master（commit 38e6d3315a2c，2026-09-15 抓取）：推理场景 msprof 采集解析的默认产出文件清单与分析路径"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/model_inference_performance_optimization_process.md"
+    version: "cann/docs master（commit 38e6d3315a2c）：推理性能调优流程与涉及的工具链（AOE / AMCT / ATC / 性能采集 / 精度比对）"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msprof]
+  categories: [performance]
+
+related_references: [msprof-collect-parse, msprof-timeline-lane-reading, msprof-cli-collect-items, msprof-configuration-options, msprof-collection-mechanism-and-metric-semantics, operator-bottleneck-attribution]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "**① 默认配置采集得到的文件（在 `PROF_<时间戳>/mindstudio_profiler_output/` 下）**：`msprof_*.json` = timeline 数据总表；`step_trace_*.json` = 迭代轨迹数据（每轮迭代耗时；**单算子场景下没有这个文件**）；`op_summary_*.csv` = AI Core 与 AI CPU 算子数据；`op_statistic_*.csv` = AI Core 与 AI CPU 算子调用次数及耗时统计；`step_trace_*.csv` = 迭代轨迹数据（同样单算子场景没有）；`task_time_*.csv` = Task Scheduler 任务调度信息；`fusion_op_*.csv` = **模型中算子融合前后信息**（单算子场景没有）；`api_statistic_*.csv` = CANN 层 API 执行耗时统计；`prof_rule_0_*.json` = **调优建议**（工具直接给出的建议清单）。**② timeline（`msprof_*.json`）怎么读**：用 Chrome 浏览器访问 `chrome://tracing`、把文件拖到空白处打开，快捷键 w 放大 / s 缩小 / a 左移 / d 右移。界面分三块：**区域 1 = CANN 层数据**（Runtime 等组件以及 Node（算子）的耗时）；**区域 2 = 底层 NPU 数据**（`Ascend Hardware` 下各 Stream 任务流的耗时数据与迭代轨迹数据、AI 处理器系统数据）；**区域 3 = 各 timeline 色块的详细信息**（单击色块展示）。分析方法：先从整体时序找出耗时较长的 API、算子、任务流，顺着色块间的箭头找出下发关系（谁下发了谁），再进区域 3 看具体耗时较长的接口与算子，最后**回到 csv 做量化**——即「timeline 定位候选 → csv 量化确认」两步，不要只看 timeline 就下结论。**③ 两个 csv 的排序入口**：`op_statistic_*.csv` 按 **Total Time** 排序，找出哪一类算子总耗时较长（判断这类算子是否有优化空间，是『类别级』视角）；`op_summary_*.csv` 按 **Task Duration** 排序找出高耗时算子（单算子视角，Task Duration 字段即算子耗时信息），也可按 **Task Type** 排序查看不同核（AI Core 与 AI CPU）上运行的高耗时算子——用于判断瓶颈在哪种核上。**④ 推理性能调优的工具链**：关键工具是模型调优工具 **AOE**（Ascend Optimization Engine）与模型压缩工具 **AMCT**；在转换模型、记录模型推理耗时、分析性能瓶颈点时还会用到模型转换工具 **ATC**、性能数据采集工具与精度比对工具。调优前提是整网推理功能已调通（功能不阻塞，只是性能不符合预期或待提升）。**⑤ 判读顺序建议（按来源给出的路径）**：先看 `prof_rule_0_*.json` 的调优建议与 `msprof_*.json` 的整体时序定方向 → 用 `op_statistic_*.csv` 按 Total Time 找算子类别 → 用 `op_summary_*.csv` 按 Task Duration / Task Type 落到具体算子与核 → 需要迭代级视角时看 `step_trace_*`，需要确认融合是否引入问题时看 `fusion_op_*.csv`。"
+  evidence: "collection_parsing_performance_data.md：表 2『msprof默认配置采集的性能数据文件』逐项——『msprof_*.json：timeline数据总表』『step_trace_*.json：迭代轨迹数据，每轮迭代的耗时。单算子场景下无此性能数据文件』『op_summary_*.csv：AI Core和AI CPU算子数据』『op_statistic_*.csv：AI Core和AI CPU算子调用次数及耗时统计』『task_time_*.csv：Task Scheduler任务调度信息』『fusion_op_*.csv：模型中算子融合前后信息。单算子场景下无此性能数据文件』『api_statistic_*.csv：用于统计CANN层的API执行耗时信息』『prof_rule_0_*.json：调优建议』；『- json文件需要在Chrome浏览器中输入chrome://tracing，将文件拖到空白处进行打开，通过键盘上的快捷键（w：放大，s：缩小，a：左移，d：右移）』『区域1：CANN层数据，主要包含Runtime等组件以及Node（算子）的耗时数据。区域2：底层NPU数据，主要包含Ascend Hardware下各个Stream任务流的耗时数据和迭代轨迹数据、AI处理器系统数据等。区域3：展示timeline中各算子、接口的详细信息』『从上图可以大致分析出耗时较长的API、算子、任务流等，并且根据对应的箭头指向找出对应的下发关系…再结合csv文件进行量化分析』『通过op_statistic_*.csv文件分析各类算子的调用总时间、总次数等…可以按照Total Time排序，找出哪类算子耗时较长』『Task Duration字段为算子耗时信息，可以按照Task Duration排序，找出高耗时算子；也可以按照Task Type排序，查看不同核（AI Core和AI CPU）上运行的高耗时算子』。model_inference_performance_optimization_process.md：『涉及调优的关键工具为：模型调优工具AOE（Ascend Optimization Engine）、模型压缩工具AMCT（Ascend Model Compression Toolkit）。在调优过程中，涉及转换模型、记录模型推理耗时、分析性能瓶颈点等操作时，还会辅助使用模型转换工具ATC、性能数据采集工具、精度比对工具』"
