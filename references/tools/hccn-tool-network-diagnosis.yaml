@@ -1,12 +1,17 @@
 id: hccn-tool-network-diagnosis
 type: tool
 title: hccn_tool（网口链路闪断 / device IP / ROCE 与 HCCS 连通性 / TLS 状态与证书）
-summary: "用 hccn_tool 检查 device 侧网络链路健康与 TLS 一致性的一套命令：`-link_stat -g` 查网口 up/down 次数与闪断时间点（ERROR CQE 的常见根因）、`-ip -g`/`-vnic -g`/`-ip -inet6 -g` 查 NIC/VNIC/IPv6 地址、`-ping -g address <ip>` 与 `-hccs_ping -g address <ip>` 按 IP 类型做 ROCE 或 HCCS ping（建链超时确认连通性）、`-tls -g`/`-tls -s enable <0|1>` 查改 TLS 开关与证书（EI0016 一致性校验失败）、`-optical -g`/`-lldp -g` 查光模块在位与交换机连通（EI0009 端口 down 排查）。"
+summary: "用 hccn_tool 检查 device 侧网络链路健康与 TLS 一致性的一套命令。**旧版写法**（模式开关在尾）：`-link_stat -g` 查网口 up/down 次数与闪断时间点（ERROR CQE 的常见根因）、`-ip -g`/`-vnic -g`/`-ip -inet6 -g` 查 NIC/VNIC/IPv6 地址、`-ping -g address <ip>` 与 `-hccs_ping -g address <ip>` 按 IP 类型做 ROCE 或 HCCS ping、`-tls -g`/`-tls -s enable <0|1>` 查改 TLS 开关与证书（EI0016）、`-optical -g`/`-lldp -g` 查光模块在位与交换机连通（EI0009 端口 down 排查）。**Ascend 950 起为新的三段式语法**：`hccn_tool -g|-s|-t <命令> -i <dev> -u <unit> -p <port>`（**模式开关前置**），命令面扩展到链路历史与建链历史、端口统计/误码/FEC/SerDes/信用与带宽、UB 连通与 UB ping、queue/context 资源、配置恢复与 TLS 证书管理——详见 content 的 950 命令族。"
 
 sources:
   - type: official-doc
     url: "https://gitcode.com/cann/hccl/tree/master/docs/zh/user_guide/fault_diagnosis"
     version: "hccl master（commit 8cbf54d3，2026-09-15 抓取）：error_cqe_report_EI0013 / tls_info_config_inconsistent_EI0016 / link_timeout_EI0006 / ip_family_check_inconsistent_EI0001 / topo_detect_timeout_EI0015 各篇的 hccn_tool 用法"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/driver/tree/master/docs/en/Ascend_950_HCCN_Tool"
+    version: "driver master（commit d0cbbed08a33，2026-09-15 抓取）Ascend 950 HCCN Tool 命令参考 39 篇（查询/设置/测试三类）"
     fetched_at: 2026-09-15
     verification: cross-checked-source
   - type: official-doc
@@ -20,7 +25,7 @@ applies_to:
   frameworks: [hccl]
   categories: [interrupt, performance]
 
-related_references: [hccl-comm-init-and-link-faults, ascend-hccl-comm-fault-triage, hccl-error-codes]
+related_references: [hccl-comm-init-and-link-faults, ascend-hccl-comm-fault-triage, hccl-error-codes, npu-smi-950-device-ops, shmem-usage-limits-and-troubleshooting]
 
 status: active
 last_verified: 2026-09-15
@@ -38,6 +43,10 @@ content:
     - "先确认报错里的 IP 属于 NIC 还是 VNIC（分别用 -ip 与 -vnic 查），再用对应的 ping 方式：NIC → roce ping，VNIC → hccs ping；用错会得到「ping 得通但业务仍超时」的假结论"
     - "TLS 一致性校验（EI0016）要求报错的两端都查：日志只打印 Disable/Enable 列表中的一侧，未打印的节点即为相反配置；开关一致时还要继续比对证书是否一致"
     - "同一 device 上多进程场景下端口冲突（EI0019，默认 device 侧 16666、Host 侧 60000-60031）不是 hccn_tool 能解决的，需用 HCCL_NPU_SOCKET_PORT_RANGE / HCCL_HOST_SOCKET_PORT_RANGE 划范围"
+    - "**语法版本要分清**：950 的工具是 `hccn_tool -g|-s|-t <命令> -i -u -p`（模式开关前置、三级寻址），与旧版 `hccn_tool -i <dev> -link -g` 写法不同；照抄旧文档命令在 950 上会直接报参数错误，别把它当成『工具坏了』"
+    - "**`-s -stat -clear` / `-s -su_ber -clear` 会清零累计统计**（端口统计与 SU 误码）——排查前先记录原值，否则丢证据"
+    - "`-g -link_stat`（历史 up/down）与 `-g -down_data`（down 时刻的信息）、`-g -adapt_status`（历史建链过程）是三份不同的证据，端口闪断类问题要一起看：先看有没有 down 记录，再看 down 时刻的 down_data，最后看建链历史"
+    - "**UB ping 用 EID 而不是 IP**（`-src_eid/-dst_eid` 形如 `::40:10:0:dfdf:90`）；超节点场景排查连通性时它与 ROCE ping（-ping）和 HCCS ping（-hccs_ping）是三条不同的链路"
   commands:
     - name: 查网口闪断记录
       cmd: "hccn_tool -i 0 -link_stat -g"
@@ -51,6 +60,21 @@ content:
     - name: 查 / 改 TLS 状态与证书
       cmd: "for i in `seq 0 7`; do hccn_tool -i $i -tls -g; done；hccn_tool -i <device_id> -tls -s enable 1"
       when: EI0016 TLS 配置不一致，或需要统一开启 TLS
+    - name: "【950 新语法】查询端口链路与建链历史"
+      cmd: "hccn_tool -g -link -i <dev> -u <unit> -p <port>（当前链路状态 UP/DOWN）；-g -link_stat（历史 up/down 记录）；-g -down_data（**链路 down 时的信息**）；-g -adapt_status（历史建链过程状态）；-g -speed（端口速率）；-g -port_info（端口状态）"
+      when: 端口 down / 链路反复闪断 / 建链异常时定位
+    - name: "【950 新语法】查询端口质量与带宽"
+      cmd: "hccn_tool -g -fec / -g -serdes / -g -bit_err / -g -su_ber [-mode_status|-result] / -g -credit -i -u -p；-g -peak_bw [-time <秒>] 与 -g -bandwidth [-time <秒>] 查峰值/实时带宽"
+      when: 误码、FEC、SerDes 或带宽类性能问题
+    - name: "【950 新语法】查询 UB 连通与 UB ping"
+      cmd: "hccn_tool -g -ub_connect -i <dev>（NPU 间互联/断连状态）；hccn_tool -t -ub_ping -i <dev> -src_eid <eid> -dst_eid <eid> [-pkt <字节>] [-cnt <次数>] [-interval <秒>]"
+      when: 超节点 UB 链路连通性排查（与 -ping/-hccs_ping 并列的第三种探测）
+    - name: "【950 新语法】查询队列/上下文资源与设备信息"
+      cmd: "hccn_tool -g -show_list -i <dev> -d <dev_name>；-g -show_res -i <dev> -d <dev_name> -resource_type <n> -key_id <n>；-g -context -i <dev> -d <dev_name> -aeqc|-ceqc <n>；-g -dev_info / -g -process / -g -version / -g -vnic / -g -cfg_recovery -i <dev>"
+      when: 队列资源不足、AEQ/CEQ 上下文异常、需确认 DRV/固件版本或设备侧进程时
+    - name: "【950 新语法】端口与 TLS 的维护动作"
+      cmd: "hccn_tool -s -stat -clear -i -u -p（清端口统计）；-s -su_ber -clear（清 SU 误码统计）；-t -su_ber ... -mode rx_enable（设 SU 误码模式）；-t -dump -i -u -p（导出端口寄存器）；-s -upgrade_lane（端口 lane 扩展）；-s -cfg_recovery -i <dev>|-all（配置恢复）；-s -tls -i <dev> -enable <0|1> / -alarm <天数> / -path <路径> -pri <私钥> -pub <设备证书> -ca1.. -crl / -clear [-crl] [-host]"
+      when: 清理统计以重测、导出寄存器取证、TLS 开关与证书轮换（EI0016 相关）
     - name: 查光模块与交换机连通
       cmd: "for i in {0..7}; do hccn_tool -i $i -optical -g; done | grep present；for i in {0..7}; do hccn_tool -i $i -lldp -g; done"
       when: EI0009 端口 down，逐层排除光模块未在位与交换机未连通

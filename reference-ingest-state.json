@@ -14275,14 +14275,1195 @@
    }
   },
   "gitcode/cann/driver": {
-   "branch": null,
-   "docs": {},
-   "head_sha": null,
-   "last_scan": null,
+   "branch": "master",
+   "docs": {
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_clear_device_ecc_stats_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "6785f80a60ca64358cb7cdf3c2e9e7748257056e"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_clear_device_user_config.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "f8a5381db689708de13c7eeaefdc40e5d4b6da51"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_clear_pfc_duration.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "0b4fd94d576b1561aa252cb3a76ffa7f374e4ff3"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_exec_ub_ping.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "6b688f5efe24859a25a469b0f9e9cb0e2f46ae65"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_affinity_cpu_info_by_dev_id.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "63a5437e750b227565b775e99bdf750d86870d5b"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_all_device_count.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "bced7d2eda079fe1380f0fd520817eb99989bce7"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_attest_cert.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "356430aebb185921669293e7f5b4365b8eb2d102"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_attest_evidence.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "56cf5af59313e1ebe9717c4339450ce78ddb4611"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_chip_phy_id_by_dev_id.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "cfdc5a5c2287d8b95cedcb533e62019bbc38c176"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_computing_power_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "dd13bd4e078e65090d75db983cf9cbdc01ae3905"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_dcmi_version.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "0da5bad990c88caddd9316a926d2fca4ff308e1b"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_dev_id_by_chip_phy_id.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "3ce430bb19791cd59bb974d9ec7a7a62f6a4b724"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_dev_id_by_slot_id_and_chip_id.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "52e60ba1c7be4ce43131ade7fb516e460993df26"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_aicore_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "daf6cfc34669494cdee331839a033b01e56bf442"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_aicpu_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "1ef6aa7167aa539a0f65567e6b8adb3496a5c207"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_board_id.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "3ac0a82deae9596d76b18bc219ff4f73fadeec49"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_board_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "14c11067f36fe9757e1b54e22f5c91ef49b17eae"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_boot_status.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "dcee8a30f5979d92022232cd14199693a1c42765"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_cgroup_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "e01a888214ce75246707134745c22eae514f84af"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_chip_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "67f8a80387b020aa821da86974c849112341244a"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_compatibility.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "6eafa9eba1df7d91f418a237eb843364da6d5838"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_component_cnt.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "c3a4072db0a7ff6b7eb2f50138f6d8bad9fae8a0"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_component_list.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "5db47f77004fa39f9e8b3cff0d10292346947a88"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_component_static_version.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "792a5f53810417fd30efc0f6ff4775af08d37ede"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_current_fault_event.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "82b961d986025ac34152d880b6252387c9512099"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_die_id.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "be7f609b08a89927e0018c07f599c4879c55b136"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_ecc_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "9c7635284145a43ce8a5aa14910f7fe8e3ebdf41"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_elabel_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "fb435750b5d27f8a60ded3ce7e9c9249be042e37"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_error_code_list.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "99331d8d90543ae0e8ce7fc933a7b779b53e2416"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_error_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "c66fbbde502161010006392b87d8a3c7ab1baf87"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_flash_cnt.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "e167b147cc340687a40185729bd769a312ddb245"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_flash_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "d55dc83ec16a5e405fd5cf0e0f4a155eb79fb7e7"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_frequency.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "b94e772cdc3afa618a8e26054f01b22a587af658"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_hbm_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "2fe3a0e63b0b11c0c275f88552e116d0add599c7"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_hbm_product_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "fc322d52c8cd9b437b9a4ea42e82c065710b2443"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_health.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "5b3a4c7c97b25db0d6adf96ee4852435007c5c7c"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "fdf881be195989583bc471e33e3279734142941e"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_list.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "448ce6580cbd4770e5ca97cc6c445d6724fc99ec"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_llc_perf_para.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "e3aaf3ecf7856d47434dadeed6897a3e5a3e6fb8"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_mac_cnt.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "66b4b8fae7ae9b0d5309423fa4e53f0416836444"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_multi_utilization_rate.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "2ab3417e2b591f086ab4d2fb88963a85ddc0ec3e"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_outband_channel_state.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "634aaaff75655dfcaab92bd1f9ecea4ba3451c9a"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_pcie_error_cnt.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "0329cafbe54b570e3e9048e772f8e2c67b0e14ea"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_pcie_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "6c973bb5e4022bdc1f3ea07e9152dba20e6a308d"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_pcie_slot_id.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "56e575c8b2c60a39a4c5110055d281090429e10d"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_power_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "a4fb6e010abdfebce46f3494e536f76e1da3bbf8"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_proc_mem_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "5897509868b7103f2ddadee0fe291324d2860438"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_sensor_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "9d96b7987934bf662251b2ea98e40aedfcb5e625"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_system_time.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "350a2336e09ba8dffc7953bd2115040fee0f1a90"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_temperature.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "84cc860ecab75dc87a432a548d1a9933e5761b62"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_type.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "c217c67aa303d71a897131245c0362d6deea61eb"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_ub_slot_id.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "54af4ef453e2b6059a1b5a253a32a237ae1971e6"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_user_config.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "b9ee367b7ac191ff6927fe74a0f4e00f03a188da"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_utilization_rate.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "b76ef141f5ab4873fd1faf57c603e1d7ae18a35f"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_device_voltage.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "47e8f4d4ef95846a651d2fa03b1b122dbccd4955"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_driver_error_code_list.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "905b5d2a0c4e5d8c8f1d797adf7d2b122c572542"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_driver_health.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "6e2564d6965bd6e10aaabea881935e00d3fdf5e2"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_driver_version.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "09b284fae378c484c479ecfcbca84128f30ee61e"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_eid_list_by_urma_dev_index.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "75bde812453929ee06d4dcabc9487466ddb8fe8e"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_fault_event.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "b62711138488fa59776867fa096572031a9b7c8e"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_group_intra_id_by_dev_id.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "b09c980ae2be888408085624cc7ec6e61315e128"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_mainboard_id.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "cff293443dbc7ea4156198d3839fd78d14d7dd61"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_multi_ecc_record_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "1c325f5b97689fe26d8b06df738e947e1e347571"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_multi_ecc_time_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "de1038e5ecb0a906faab811d861c1f8379f624e6"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_netdev_pkt_stats_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "c0b7e94f7da50f23d0227e7897ae806529eb7c7b"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_pcie_link_bandwidth_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "ce08b90572864f0babbb71a061de58374e8869eb"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_pfc_duration_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "01039f7a1a3682e20580d49fe662403b87a97527"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_rdma_bandwidth_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "5b9bb5ef9c6459daaa072a4197cafea8b903d640"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_serdes_quality_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "b0f73a86263acb1a3d5a0b846c385f2f507de7c9"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_slot_id_and_chip_id_by_dev_id.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "9091bf6109d187887e1b79ba32ed9934cb0f91a3"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_topo_info_by_device_id.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "c08858a183ce03acbb6070e1bfca88bffeff232c"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_ub_port_link_status.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "cd2ff9862940a02e9afe5b3e3c90c3c5c34b785c"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_ub_realtime_bandwidth_info.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "dd78ed51611fe3eef8a9e26b43b24cac71cf95ee"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_urma_device_cnt.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "b522945089c2b1e4065193664b34e5af7125195a"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_get_vrd_version.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "118fd37c73b2d3aab1b0a1bbf5f6872b760f78ec"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_init.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "329da0184852fa1c9fe5e7b3528f2a7751fb6935"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_pre_reset_device.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "b9fe15ab88b647bf9a6a4ef28d2b77a4307dd797"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_rescan_device.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "7090f0aaefcea4d6c64ca179a21e5fc444fad4b7"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_reset_device.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "f29dd8e6f9f2597c2851afd638110a71aa34e27b"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_revoke_device_sec_key.md": {
+     "at": "2026-09-15T19:39:58",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "f93531862740333fa97a878975ff957771961efb"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_set_device_info.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "41712ab67ef98ae4b47dc2fd84a906d6c3608a2c"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_set_device_user_config.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "9c96ed83205637d270d5e4f0f2714123a17165c2"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_subscribe_fault_event.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "31297ea3875de54c4945a46c3efabe8b644fdb3c"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/dcmiv2_upgrade_vrd.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "0417d2a8f0da93d6510bbf71fa3605fe691e72fb"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/faq.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "0a31c3223bdcd8e137e6c2042b88fce99a6499d9"
+    },
+    "docs/en/Ascend_950_DCMI_API/Ascend_950_DCMI_API/return_codes.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "e84bf9dfe845b6f0db721c51d925d6cb7220c9d6"
+    },
+    "docs/en/Ascend_950_DCMI_API/README.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "6b37b9a39056bbe64fff7bcbe4a9d3a7cdd640b2"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/clearing-port-statistics.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "d8153c23cf90910b48cac4e5cad6310aefc52552"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/clearing-port-su-bit-error-statistics.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "ddb08ab4110181e38c615ffa2ca067e7c1aee9aa"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/clearing-the-tls-certificate-information-of-an-npu-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "e5c6671f1b87eb0321456756c2233c800a57e52a"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/configure-port-lane-expansion.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "2e9653a8338c1f9f2c45d8a9bb69329cef772022"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/configuring-the-tls-expiration-alarm-threshold-for-an-npu-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "3ff4ecec1e6681ce792ed800a53c007df7d394bc"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/configuring-tls-enable-status-of-an-npu-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "599c2877582898e0da798203689ecef53e0125a5"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/exporting-register-information-of-a-port.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "197bf3d8cf45d3c2ec925f86b284b919452165af"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-aeq-context-information-of-a-network-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "ed893c63e78be6242f380a9effbf3456cc1d11b5"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-device-side-process-information-of-an-npu-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "605a19df820803ea04b44c80ec04ae5512851305"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-hccn_tool-help-information.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "f61646ce541c088716b4355f77730128d20c222d"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-interconnect-or-disconnection-status-of-npu-devices.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "15e3364b822f8b05bcc10ff3136af82819075f8f"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-port-fec-information.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "c3854239ba571fe4c7dae4d69b94606da32cf3bb"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-port-link-information-when-the-link-is-down.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "1871e8a4ef37cf0aea9f8454dba062c8fef2304d"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-port-serdes-information.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "b7138731d0bc09a617265c37b04a108349928754"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-port-statistics.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "87b6596197762458f86af76673dca136bb48f345"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-queue-resource-attributes-for-a-network-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "d63f4f643f15b48c0613f43a7d8ea13ca3fe3fd8"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-ceq-context-information-of-a-network-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "7ac69ed25480f944f5d4f2b6f05008fef6759d4e"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-configuration-recovery-status-of-an-npu-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "401d29b3923248b876d70dff149f3479d7b0506a"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-drv-driver-package-and-firmware-version-information-of-an-npu-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "d31d3324c5287d5a06325e12bfc78e9d59634d07"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-historical-link-up-and-down-status-of-a-port.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "217aff89c59ec7f336355fb33eeaba3f3c7addd1"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-npu-device-information.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "b7d7856d9c96f0e1c9dcb78659865403ab1da5df"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-number-of-available-port-chip-credits.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "763cd0e9efcc86b66e713b0cd83f31d1a2b48160"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-number-of-port-bit-errors.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "df4e7f874c9c35837f4ba27f7736854936e79c57"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-peak-bandwidth-information-of-a-port.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "ff771fa126168efe9efb0537a6c5ccea2c407a5e"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-port-link-status.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "0bf448a05d2a604c8aa4cd298cd69313815d1785"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-port-rate.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "a61561c8e4cb31acd5fadbaf9450689166b3ab61"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-port-status.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "9b5f1d9e7ba6406121d596616044645bc40cfa23"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-queue-resource-list-for-a-network-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "e6c61ab773acb8922928c472d5a09d8e726ebadc"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-real-time-bandwidth-information-of-a-port.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "4ea8944a4f047f72a4458c5bb7ac62e7682db90b"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-result-of-a-ub-ping-from-a-specified-npu-device-to-a-destination-address.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "2a6976ad35a3e2ddfec93daf367d4b7f95edf385"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-status-information-of-a-historical-link-establishment-process-of-a-port.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "4cfc61439aea99260183a9d181fd9fbff352d26b"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-su-bit-error-mode-and-bit-error-statistics-of-a-port.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "2b4bc00b8ca37500a931b98a7c8b2e2068540543"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-tls-certificate-information-of-an-npu-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "17961c810a29fd4d32140cf0bf599de31987dea0"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/querying-the-vnic-ip-address-and-link-status-of-an-npu-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "ca9a8fc00af522be875057da11aa2f5293039f8b"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/replacing-the-tls-certificate-of-an-npu-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "2f07e3e935dec19ec61016a33508d409f88dfdb1"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/restoring-configuration-of-an-npu-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "75a8a4d48206d53feecb35c49d847fdf3cfcb9f0"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/restoring-configurations-of-all-npu-devices.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "175798d5443d1297eb8f01edd49e7f61261eab08"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/Ascend_950_HCCN_Tool/setting-the-su-bit-error-mode-of-a-port.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "4c37c16e206c6d9e01658c16a5329e6f14591e49"
+    },
+    "docs/en/Ascend_950_HCCN_Tool/README.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "hccn-tool-network-diagnosis"
+     ],
+     "sha": "f12d22502e0b5fdca3e2c6909afd0b4ff47ec0df"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/clearing-the-ecc-error-count-of-a-device-0.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "702bff8369773cd41c443da5f850c2b2b3186dd3"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/clearing-the-ecc-error-count-of-a-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "161ee5af574b6dcafdaca74a227903b49ae7d551"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/enabling-or-disabling-log-dumping-in-persistence-mode.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "bf65afcb8b80a263c49915cd83c096d5ca4598ab"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/obtaining-csr.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "8c8bf0110f18f2b9e50be62e746d1e1cae87284f"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/preconfiguring-or-updating-the-tls-certificate.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "63f75b7e6f29603906cf5e84ca023eb8fd2024df"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/printing-clearing-help.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "fba4d6180e51b625cb7446ded0667d6d0e5963fa"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/printing-information-query-help.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "0a17e4f9d45fa8c696c77b4dba379813cbbe8281"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/printing-settings-help.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "c29f40db75ff1c9c00c6451ab3040cae3fc4a3e1"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/printing-upgrade-help.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "8ec999ee0b5a058169df5cb77d2ae92fbb812ccb"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-all-npu-devices.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "9e4737bf2470a877cf77cfe497574769f4293f80"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-basic-information.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "f1547941e4fc922ffe016c7155b6a0f3c982d6b2"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-certificate-information.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "18c0026c7753f512f7479f24a9a0ff171a6bbe2e"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-device-monitoring-data.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "29fa2115982d3c1f83b47d30e40cbb7587555a0c"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-device-statistics.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "2f8334b8226137efe919580302e1fd15789009a7"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-help-information.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "e477543dba38a37a458986ae4754f8555348efd9"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-npu-details.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "409f15af82b210356452b7090828f7a3efdce894"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-alarm-information-of-a-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "498ee2a51ab96eab3283812bb8db1459c08538c5"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-certificate-expiration-threshold.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "005c8d7e3978031ca560405d7376e5661803d536"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-common-information-of-a-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "58d20cda281bb843647ffa87c9446b618eaca50d"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-device-health-status.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "5daa489d85e52dab8d26554845f27f1916f3717b"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-device-mapping-information.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "93130db50f09b60f7b77571415dbc2910b5661db"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-device-power.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "aa15bbd5775bb5f064e8dfb8339395105634d92f"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-device-temperature.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "a00c5b4f9e7d9c45d3eeefa8377724877b7819fd"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-device-voltage.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "c3dac5c1ae9aaa91d91f7167762b3db63bffbafe"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-ecc-enabling-status-of-a-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "f42f43d18f712edd24381404a5108fbbdc9719ec"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-ecc-error-count-of-a-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "9829dc35718ed40e1480a97c89e80b2bfa4b0a64"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-firmware-version.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "da3371e16c4f3f6367d844433d5c3782b9143242"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-flash-information-of-a-device.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "3bedf8f934f7a56aa035801926ef20fed8c304cf"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-log-dumping-configuration.md": {
+     "at": "2026-09-15T19:39:51",
+     "decision": "harvested",
+     "refs": [
+      "npu-smi-950-device-ops"
+     ],
+     "sha": "d78e6043e3fcce4b7ac86c355c39b858c172e9cf"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-memory-information-of-a-device.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "0e446aa2c8f644e9f4fc5e4533437b6816698adf"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-memory-usage-of-processes-on-a-device.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "9927f09f61e54a5280c9a96dd2bb2e0a467b8d17"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-npu-id-slot-id-and-chip-id-corresponding-to-a-physical-id.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "22002df7fc0ae21d903b3cf37afdb3fc60a91fb0"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-npu-smi-tool-version.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "1ad9fd75536e63daf04ca5a9f2e736e62defbe90"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-sensor-information-of-a-device.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "85be2c6630b08a071d14280e6a6c34347020e6f3"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-service-status-of-the-kmsagent-process.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "4a4f0c7ed2f2f7d9cc8a086b010046b26710aabb"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-sio-status-between-dies-of-a-device.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "e5ad91ac1d7ffc4c95ae820f628364c3d11ec2f1"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-superpod-information-of-a-device.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "d9e7d4005242d13536ffd75cc04d8d723052281e"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-system-time-of-a-device.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "f5bcb0be0d63212b9311183917c15539217636fe"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/querying-the-topology-of-multiple-npus.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "95c3434746a02e663869fd7d6918622165cbb347"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/resetting-an-npu.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "cb6a86de1921b3546b2528f1cfc1f5f9ffb8e786"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/restoring-the-default-certificate-expiration-threshold.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "af39b1d7768d40ad37739ac55b4f515c9946d473"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/setting-continuous-log-collection-for-all-devices.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "c9021f7f5fc1f0a40d279ca397e2db81262ed1df"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/setting-the-certificate-expiration-threshold.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "ce01c06a4b64bc8e40bd178c69617b8795379bbe"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/setting-the-service-status-of-the-kmsagent-process.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "0e77f090e55500c6d96ea65c381bdbd5630a6fac"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/terminating-the-log-process-and-clearing-the-configuration.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "8eeb6a328c0d8d30c400881829445674a31bd280"
+    },
+    "docs/en/Ascend_950_npu-smi/Ascend_950_npu-smi/upgrading-firmware.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "bb4ef036166ba5d452e2178dcdf656a98313df7d"
+    },
+    "docs/en/Ascend_950_npu-smi/README.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "493050b7cbaa144f6b79d3b64a33f57a11402851"
+    },
+    "docs/en/Ascend_950_upgrade-tool/upgrade-tool.md": {
+     "at": "2026-09-15T19:39:59",
+     "decision": "skipped",
+     "note": "DCMI / 工具命令的 API 参考面（接口签名/参数/返回码逐条罗列）——按仓库口径不整体载入 API 参考面；设备状态与故障查询已由 npu-smi-950-device-ops 与 hccn-tool-network-diagnosis 两条工具词条承载",
+     "sha": "b09bc42d6106b1c5d616ee294649d35213730895"
+    }
+   },
+   "head_sha": "d0cbbed08a33e65ca516781661954b3e514a517c",
+   "last_scan": "2026-09-15T19:39:47",
    "triage": {
-    "at": "2026-09-15T18:47:38",
-    "decision": "candidate",
-    "note": "候选待评估：该仓文档面较大或含工具/库文档，本轮优先覆盖 Tier1/Tier2，留待后续批次按价值排序评估"
+    "at": "2026-09-15T19:39:59",
+    "decision": "selected",
+    "note": "已纳入沉淀：950 的 npu-smi 与 HCCN Tool 命令面（68 篇）已沉淀为 npu-smi-950-device-ops + hccn-tool-network-diagnosis 扩容；DCMI API 参考面（106 篇）按口径跳过"
    }
   },
   "gitcode/cann/elec-ops-inspection": {

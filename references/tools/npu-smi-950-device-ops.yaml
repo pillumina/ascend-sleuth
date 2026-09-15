@@ -1,0 +1,47 @@
+id: npu-smi-950-device-ops
+type: tool
+title: npu-smi（Ascend 950 版）设备查询与维护（info -t 全族 / watch 实时监控 / ECC 与告警 / TLS 证书 / 持久化模式日志转储）
+summary: "950 平台 npu-smi 的查询与维护命令面。**查询**：`npu-smi info -l` 列全部设备（拿逻辑 ID）、`npu-smi info` 基本信息、`npu-smi info -m` 设备映射、`npu-smi info -t <topic> -i <dev_id>` 按主题查——`board`（NPU 详情）、`common`、`usages`（设备统计）、`health`（**健康状态**）、`power`/`temp`/`volt`（功耗/温度/电压）、`ecc`（**ECC 错误计数**）、`ecc-enable`（ECC 使能状态）、`flash`、`current-fault-event`（**当前故障事件**）、`tls-cert`/`tls-cert-period`/`tls-csr-get`（证书/到期阈值/CSR）、`sys-log-info`（日志转储配置）；`npu-smi info watch [-i <dev>] [-d <秒>] [-s <项>]` 实时监控。**维护**：`npu-smi clear -t ecc-info -i <dev>` 或 `npu-smi set -t clear-ecc-info -i <dev>` 清 ECC 计数（**两种形态**）、`npu-smi set -t clear-syslog-cfg` 把日志转储配置恢复默认并终止转储、`npu-smi set -t sys-log-enable -d <0|1>` 开关持久化模式日志转储、`npu-smi set -t tls-cert -i <dev> -f 『<device cert> <root CA> <level-2 CA>』` 预置/更新 TLS 证书、`npu-smi info -t tls-csr-get -i <dev>` 取 CSR；`upgrade`/`info`/`set`/`clear` 各有 `--help`。**判读注意**：多条告警并存时 **`health` 取最严重的那条**；**非 root 用户查 NPU 固件版本显示 `NA`**；`info -m` 的 **NPU ID 为 `-1` 表示该 NPU 不可用、映射信息无效**；温度在不同芯片间存在差异（芯片本体、TIM 材料形变、结构公差与上层应用都会影响），**没有过温告警即属正常范围**。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/driver/tree/master/docs/en/Ascend_950_npu-smi"
+    version: "driver master（commit d0cbbed08a33，2026-09-15 抓取）Ascend 950 npu-smi 命令参考 29 篇（查询/设置/清除/升级/帮助）"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950]
+  frameworks: [npu-smi]
+  categories: [interrupt, performance]
+
+related_references: [hccn-tool-network-diagnosis, ascend-device-log-ops, ascend-hardware-detect-triage, ascend-device-log-ops, ascend-log-locations]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  tool_name: "npu-smi（Ascend 950 版：设备信息查询、健康与故障事件、ECC 计数、TLS 证书、持久化模式日志转储）"
+  invocation: "以 `npu-smi <info|set|clear|upgrade> [选项]` 形式使用；子命令与主题用 `-t` 指定、设备用 `-i <dev_id>`（逻辑 ID 取自 `npu-smi info -l`）；各子命令支持 `-h`/`--help`。定位设备侧异常时先 `info -t health` 与 `info -t current-fault-event` 看健康与当前故障事件，再按需查 `ecc`/`temp`/`power`/`volt` 与 `info watch` 实时监控。"
+  commands:
+    list_devices: "npu-smi info -l（列出全部 NPU 设备与其逻辑 ID——后续所有 -i 取值都来自它）"
+    basic_and_mapping: "npu-smi info（工具版本与基本信息）；npu-smi info -m（设备映射信息，**NPU ID 为 -1 表示不可用、映射无效**）"
+    query_by_topic: "npu-smi info -t board|common|usages|health|power|temp|volt|ecc|ecc-enable|flash|current-fault-event|tls-cert|tls-cert-period|tls-csr-get|sys-log-info -i <dev_id>"
+    watch: "npu-smi info watch [-i <dev_id>] [-d <间隔秒>] [-s <监控项>]（实时监控设备数据）"
+    clear_ecc: "npu-smi clear -t ecc-info -i <dev_id>（或 npu-smi set -t clear-ecc-info -i <dev_id>——两种形态都存在，按官方对应页执行）"
+    log_dump: "npu-smi set -t sys-log-enable -d <0|1>（开关持久化模式下的日志转储）；npu-smi set -t clear-syslog-cfg（把日志转储配置恢复默认并终止转储）；npu-smi info -t sys-log-info（查当前转储配置）"
+    tls: "npu-smi set -t tls-cert -i <dev_id> -f 『<device cert> <root CA> <level-2 CA>』（预置/更新 TLS 证书）；npu-smi info -t tls-csr-get -i <dev_id>（获取 CSR）；npu-smi info -t tls-cert / -t tls-cert-period（查证书与到期阈值）"
+    help: "npu-smi info|set|clear|upgrade --help（各子命令帮助）"
+  output_meaning:
+    - "`info -t health`：设备健康状态；**同时上报多条告警时取最严重的一条**"
+    - "`info -t current-fault-event -i <dev>`：当前故障事件（定位设备侧异常首先看这个）"
+    - "`info -t ecc` / `-t ecc-enable`：ECC 错误计数与 ECC 使能状态——**计数清理是维护动作**（见 clear_ecc），清理前先记录数值，否则丢失证据"
+    - "`info -t power|temp|volt`：功耗/温度/电压；温度在不同芯片间有差异（芯片本体、TIM 材料形变、结构公差、上层应用都影响），**无过温告警即正常**"
+    - "`info -t board`：NPU 详情；**非 root 用户查 NPU 固件版本时显示 `NA`**（不是『没装固件』）"
+    - "`info watch`：实时监控（配合 `-d` 间隔与 `-s` 监控项）——用于观察负载/温度/功耗的动态变化"
+  pitfalls:
+    - "**非 root 查固件版本得 `NA`** 是权限现象，不要当成固件缺失去重装"
+    - "`info -m` 里 **NPU ID `-1` = 该 NPU 不可用**，此时映射信息无效，不要据此判断拓扑"
+    - "**清 ECC 计数（`clear -t ecc-info` / `set -t clear-ecc-info`）会抹掉累计证据**——先记录数值与时间点，再清理；排查精度/中断问题时尤其如此"
+    - "容器场景下 `npu-smi info` 若报驱动包未完整安装，需在宿主机侧确认驱动安装状态（容器内看到的现象不等于宿主机的状态）"
+    - "`set -t clear-syslog-cfg` 会**恢复默认并终止日志转储**——排查中断问题需要日志时不要先执行它"
