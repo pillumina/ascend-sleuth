@@ -1,5 +1,599 @@
 {
  "sources": {
+  "gitcode/cann/docs": {
+   "branch": "master",
+   "docs": {
+    "docs/zh/app-dev/00_acl_cpp_dev.md": {
+     "decision": "pending",
+     "sha": "b04710eccf5188674f0260a2ed01c816f2463ab6"
+    },
+    "docs/zh/app-dev/ACL_Graph.md": {
+     "decision": "pending",
+     "sha": "3b1f2d1911110f5b8147a95916f80cd622a33b8b"
+    },
+    "docs/zh/app-dev/AIPP_concepts_constraints.md": {
+     "decision": "pending",
+     "sha": "00c970c3ad68bd3245e4c6f09124f8e31c6ba068"
+    },
+    "docs/zh/app-dev/AMCT_compress_model.md": {
+     "decision": "pending",
+     "sha": "2bcd044804ede94fa237e770a688ce6c991eb9ed"
+    },
+    "docs/zh/app-dev/AOE_tune_model.md": {
+     "decision": "pending",
+     "sha": "8d6b1a10b187f6e419a94b114545ae1c3a2cea2f"
+    },
+    "docs/zh/app-dev/CANN_built_in_operators.md": {
+     "decision": "pending",
+     "sha": "9d957f385461e6854c0fc5edc080485820002484"
+    },
+    "docs/zh/app-dev/CANN_custom_operators.md": {
+     "decision": "pending",
+     "sha": "bd6e76f4ada9ffec14d69652f10c0da6bebe9dce"
+    },
+    "docs/zh/app-dev/Camera_video_obtaining_and_processing.md": {
+     "decision": "pending",
+     "sha": "8daca27dfcb016b6aa12addfba387942ed0950e1"
+    },
+    "docs/zh/app-dev/DVPP.md": {
+     "decision": "pending",
+     "sha": "2728934126e91e0b044083b9b02c064c65c4504f"
+    },
+    "docs/zh/app-dev/DVPP_V1.md": {
+     "decision": "pending",
+     "sha": "52aa4df16fe3f3a405095576f15766a89598c7bd"
+    },
+    "docs/zh/app-dev/DVPP_V1_JPEGD.md": {
+     "decision": "pending",
+     "sha": "e46db0c9bd36e8104459146ec42f20004da2fd91"
+    },
+    "docs/zh/app-dev/DVPP_V1_JPEGE.md": {
+     "decision": "pending",
+     "sha": "b427e33f234799173a620d95743d433b11b41079"
+    },
+    "docs/zh/app-dev/DVPP_V1_PNGD.md": {
+     "decision": "pending",
+     "sha": "6919e74c03fb3eee796b44d390cc3c002ac48431"
+    },
+    "docs/zh/app-dev/DVPP_V1_VDEC.md": {
+     "decision": "pending",
+     "sha": "a8918490610fb7c052bc5cfdbd1e0c19ad76c4bd"
+    },
+    "docs/zh/app-dev/DVPP_V1_VENC.md": {
+     "decision": "pending",
+     "sha": "3effead4bc587c2c5238b44778e0a4d4c93609a8"
+    },
+    "docs/zh/app-dev/DVPP_V1_VPC.md": {
+     "decision": "pending",
+     "sha": "79d8f5a6d691525eb985f70584401df128e19f1f"
+    },
+    "docs/zh/app-dev/DVPP_V1_VPC_multi_functional_combined_interface.md": {
+     "decision": "pending",
+     "sha": "268ece5010f40b6c5ebc7150943ba8e8cc8478f0"
+    },
+    "docs/zh/app-dev/DVPP_V1_VPC_properly_selecting_output_format.md": {
+     "decision": "pending",
+     "sha": "c56443baaef60e158c2407847f6a7b2767874d96"
+    },
+    "docs/zh/app-dev/DVPP_V1_properly_selecting_VDEC_output_format_resolution.md": {
+     "decision": "pending",
+     "sha": "12e3b08a8d26dc2d5b4056dae2fd28827a636525"
+    },
+    "docs/zh/app-dev/DVPP_V1_properly_using_VDEC_decoding_frame_skipping.md": {
+     "decision": "pending",
+     "sha": "fd3e77dbd415ac2a54712d6cd2d7efcf7d30f46d"
+    },
+    "docs/zh/app-dev/DVPP_V1_using_VPC_batch_processing_API.md": {
+     "decision": "pending",
+     "sha": "a23b8b5a49263ee9082ecdda6571e07e73088ff1"
+    },
+    "docs/zh/app-dev/DVPP_V2.md": {
+     "decision": "pending",
+     "sha": "488750f26a97c5302ae1afbdcb845a0b55f8aa73"
+    },
+    "docs/zh/app-dev/DVPP_V2_JPEGD.md": {
+     "decision": "pending",
+     "sha": "987ebb9860254c87f4557b59f48945ff74505cae"
+    },
+    "docs/zh/app-dev/DVPP_V2_JPEGE.md": {
+     "decision": "pending",
+     "sha": "9eb11ad955cc16d78a88722be1ebc12d1f2eb66f"
+    },
+    "docs/zh/app-dev/DVPP_V2_PNGD.md": {
+     "decision": "pending",
+     "sha": "193d712c65ddb0ec6ddfd07685428b06bc7368ed"
+    },
+    "docs/zh/app-dev/DVPP_V2_VDEC.md": {
+     "decision": "pending",
+     "sha": "049a41aaa42cbae631752dfdc85eecad130fa3e8"
+    },
+    "docs/zh/app-dev/DVPP_V2_VENC.md": {
+     "decision": "pending",
+     "sha": "8026fea791a1afe2ea6fc5b21c018f5377018730"
+    },
+    "docs/zh/app-dev/DVPP_V2_VPC.md": {
+     "decision": "pending",
+     "sha": "5cbad77460368eafab394f6aff076eac31be288f"
+    },
+    "docs/zh/app-dev/DVPP_V2_VPC_multi_functional_combined_interface.md": {
+     "decision": "pending",
+     "sha": "3d750e6b5b2f2c06cc79b20181812b9d33876d3c"
+    },
+    "docs/zh/app-dev/DVPP_V2_VPC_properly_selecting_output_format.md": {
+     "decision": "pending",
+     "sha": "b1407a3810e6dd0c242596c82053f8a8835a90a4"
+    },
+    "docs/zh/app-dev/DVPP_V2_properly_selecting_VDEC_output_format_resolution.md": {
+     "decision": "pending",
+     "sha": "55255f91fecece7f9f7ecf4b28a581d0d40e3ff5"
+    },
+    "docs/zh/app-dev/DVPP_V2_properly_set_queue_depth.md": {
+     "decision": "pending",
+     "sha": "70feda5a99ff57af0d56b858d8516f1e2ca50498"
+    },
+    "docs/zh/app-dev/DVPP_V2_properly_using_VDEC_decoding_frame_skipping.md": {
+     "decision": "pending",
+     "sha": "d4dbe17be27c60dad0f6490717e942da7b6b7214"
+    },
+    "docs/zh/app-dev/DVPP_V2_using_VPC_batch_processing_API.md": {
+     "decision": "pending",
+     "sha": "1741b16f2b330d4e8990de8278b9da03533cb370"
+    },
+    "docs/zh/app-dev/DVPP_image_video_processing.md": {
+     "decision": "pending",
+     "sha": "97b8f15d89cf17bacfbf8c3209eec4df430b3ade"
+    },
+    "docs/zh/app-dev/DVPP_multiple_versions_differences.md": {
+     "decision": "pending",
+     "sha": "2d4a54929dad86e9c0b8f741ebeff01ad4c75825"
+    },
+    "docs/zh/app-dev/DVPP_operators.md": {
+     "decision": "pending",
+     "sha": "45bf13f02d6cea2698dbe740f6f4a108a053984b"
+    },
+    "docs/zh/app-dev/DVPP_overview.md": {
+     "decision": "pending",
+     "sha": "f84ea5b564e26a40b28989b71a36affe8464cae9"
+    },
+    "docs/zh/app-dev/FAQ_cases.md": {
+     "decision": "pending",
+     "sha": "b05ecab424052c0516e34907f51febec801aa1ee"
+    },
+    "docs/zh/app-dev/NVR_video_decoding_processing_displaying.md": {
+     "decision": "pending",
+     "sha": "217364de037c7d1f3e6cdd01bce54751bfd925d1"
+    },
+    "docs/zh/app-dev/NVR_voice_intercom.md": {
+     "decision": "pending",
+     "sha": "6fb6a876eaa8ffd7bd8a0e72e587f12d5e3cc811"
+    },
+    "docs/zh/app-dev/accuracy_based_automatic_quantization.md": {
+     "at": "2026-09-15T16:26:01",
+     "decision": "harvested",
+     "refs": [
+      "amct-quantization-precision-tuning"
+     ],
+     "sha": "d65e5e6fb7fa6b8cc317ae662a3b58dcb9a8fb4c"
+    },
+    "docs/zh/app-dev/app_debug.md": {
+     "decision": "pending",
+     "sha": "29f45dd227be360aa5aa47ca2df318cee81a9552"
+    },
+    "docs/zh/app-dev/appendix.md": {
+     "at": "2026-09-15T16:26:01",
+     "decision": "skipped",
+     "note": "纯标题存根/索引页（正文在对应 _desc/_cases/_positioning_process/_overview 子页或专题章节）",
+     "sha": "83a54825aeb3f44311c78b19e45b497e0e0fbee5"
+    },
+    "docs/zh/app-dev/async_model_inference.md": {
+     "decision": "pending",
+     "sha": "a088f88de7f934784b1818805e58fea53dac29b8"
+    },
+    "docs/zh/app-dev/audio_obtaining_and_playback.md": {
+     "decision": "pending",
+     "sha": "2ebda251eb5541b8197d9215785f9f0a09ace525"
+    },
+    "docs/zh/app-dev/check_configuration.md": {
+     "decision": "pending",
+     "sha": "4f06d3b04d78647c4dc01bbf11745bf3d4e38839"
+    },
+    "docs/zh/app-dev/collection_parsing_performance_data.md": {
+     "decision": "pending",
+     "sha": "b0e5891c4af6750a532bdc827e9a211f34661da2"
+    },
+    "docs/zh/app-dev/config_precision_mode.md": {
+     "at": "2026-09-15T16:26:01",
+     "decision": "harvested",
+     "refs": [
+      "atc-precision-mode-and-switches",
+      "ascend-om-infer-precision-triage"
+     ],
+     "sha": "81f6f781c037bdc45d8ac35be84d4bcc81892328"
+    },
+    "docs/zh/app-dev/constraints.md": {
+     "decision": "pending",
+     "sha": "d69160a8dfeda52f9d2c2694c5fc6ff7db410f89"
+    },
+    "docs/zh/app-dev/dedicated_accelerators.md": {
+     "decision": "pending",
+     "sha": "1202f6a54c8eaa284f7a6d8985c2ec1adff022dc"
+    },
+    "docs/zh/app-dev/disable_data_cache_optimization.md": {
+     "decision": "pending",
+     "sha": "40365860e2b1059bedf1445ecbeaae5ce3d41579"
+    },
+    "docs/zh/app-dev/disable_fusion_rules.md": {
+     "decision": "pending",
+     "sha": "ad155b1dee3030fa7db7f75dc295114e5d9edd76"
+    },
+    "docs/zh/app-dev/dynamic_AIPP_inference.md": {
+     "decision": "pending",
+     "sha": "064fdee8ec4a73506bef10567ce775cdab186567"
+    },
+    "docs/zh/app-dev/dynamic_batch_resolution_dims.md": {
+     "decision": "pending",
+     "sha": "048b7446bbc4ee1516496b24a3f3e979ea3a5cf7"
+    },
+    "docs/zh/app-dev/dynamic_shape_concepts_constraints.md": {
+     "decision": "pending",
+     "sha": "233860ef9de58eae7c326cf68d758f9be65ff1ff"
+    },
+    "docs/zh/app-dev/dynamic_shape_model_inference.md": {
+     "decision": "pending",
+     "sha": "7868ba583c21229e1beb7ee0748762ed8bbadece"
+    },
+    "docs/zh/app-dev/dynamic_shape_range.md": {
+     "decision": "pending",
+     "sha": "a4aef86125c39a1a0b5920adf39f3a0d1afe5604"
+    },
+    "docs/zh/app-dev/environment_preparation.md": {
+     "decision": "pending",
+     "sha": "68b0f71ec2dbcf31d9fa2ffa5861005f6ceb8cde"
+    },
+    "docs/zh/app-dev/feature_vector_search.md": {
+     "decision": "pending",
+     "sha": "035ead214d613025f049aca81baff234e61560d9"
+    },
+    "docs/zh/app-dev/functions_supported_status.md": {
+     "decision": "pending",
+     "sha": "1e42a7cc6dbe97e23964e5504af6bd31dc7c1967"
+    },
+    "docs/zh/app-dev/getting_started_sample.md": {
+     "decision": "pending",
+     "sha": "556bb9bd7a75a9d19619143e8c7adee9afa54084"
+    },
+    "docs/zh/app-dev/hccl.md": {
+     "decision": "pending",
+     "sha": "d69d5609896fd3d46bb358691792ca4a6ef60d22"
+    },
+    "docs/zh/app-dev/header_and_library_files_desc.md": {
+     "decision": "pending",
+     "sha": "40adb63844d58e0f7240b909a9188d50b903e4fe"
+    },
+    "docs/zh/app-dev/high_performance_programming_suggestions.md": {
+     "decision": "pending",
+     "sha": "276e635f667b8eb9ccd8ac610beb6fdb05f3ac98"
+    },
+    "docs/zh/app-dev/hixl.md": {
+     "decision": "pending",
+     "sha": "c90d58b08da4f8d8a1bf2c7d912c8c106121d79d"
+    },
+    "docs/zh/app-dev/identify_quantization_precision_loss_layers.md": {
+     "at": "2026-09-15T16:26:01",
+     "decision": "harvested",
+     "refs": [
+      "amct-quantization-precision-tuning"
+     ],
+     "sha": "46f4797f9a7b43a2ccaef05f7c6a09c18cda428e"
+    },
+    "docs/zh/app-dev/increasing_calibration_set.md": {
+     "at": "2026-09-15T16:26:01",
+     "decision": "harvested",
+     "refs": [
+      "amct-quantization-precision-tuning"
+     ],
+     "sha": "86eea9bb61b6716798d765666815c5560f0aec31"
+    },
+    "docs/zh/app-dev/model_build.md": {
+     "decision": "pending",
+     "sha": "2c0ea8ecc83e30cbff6ebe0d1d20239ca89a1fbb"
+    },
+    "docs/zh/app-dev/model_execute.md": {
+     "decision": "pending",
+     "sha": "868f5848f0e586f3c84117202aa25f779c1beeab"
+    },
+    "docs/zh/app-dev/model_inference.md": {
+     "decision": "pending",
+     "sha": "4f48f1421b03a916c2ca7c5b8b9e06359e7da08c"
+    },
+    "docs/zh/app-dev/model_inference_overview.md": {
+     "decision": "pending",
+     "sha": "d4cfa3388af8bb2a81cb108f9527796c52e31dd9"
+    },
+    "docs/zh/app-dev/model_inference_performance_optimization.md": {
+     "decision": "pending",
+     "sha": "c6aad3fae47bbd6045bc39744e136c32a5fe6cd5"
+    },
+    "docs/zh/app-dev/model_inference_performance_optimization_process.md": {
+     "decision": "pending",
+     "sha": "f158ff40a1f5d86da06dbba3aa856cbe89e1021f"
+    },
+    "docs/zh/app-dev/model_inference_precision_optimization.md": {
+     "at": "2026-09-15T16:26:01",
+     "decision": "skipped",
+     "note": "纯标题存根/索引页（正文在对应 _desc/_cases/_positioning_process/_overview 子页或专题章节）",
+     "sha": "8c02a23777e34dd779644c45326d7e3c42953627"
+    },
+    "docs/zh/app-dev/model_inference_precision_optimization_overview.md": {
+     "at": "2026-09-15T16:26:01",
+     "decision": "harvested",
+     "refs": [
+      "ascend-om-infer-precision-triage"
+     ],
+     "sha": "b95c8ebd0d0c72045f2f7b4df4e6e81c0aee45e9"
+    },
+    "docs/zh/app-dev/model_load.md": {
+     "decision": "pending",
+     "sha": "4d77524338d021b5020330d89e3ad9ea869a4c5f"
+    },
+    "docs/zh/app-dev/model_unload.md": {
+     "decision": "pending",
+     "sha": "268d313e3a6068bc78b28342451b918bf66fe0a7"
+    },
+    "docs/zh/app-dev/multi_dynamic_AIPP_inputs.md": {
+     "decision": "pending",
+     "sha": "61c5be9f2aad6a54bc08e44d828b48cffb16042e"
+    },
+    "docs/zh/app-dev/multi_model_inference.md": {
+     "decision": "pending",
+     "sha": "5d4ae948108bcbb611c4190711abf816a687c224"
+    },
+    "docs/zh/app-dev/operator_precision_issues.md": {
+     "at": "2026-09-15T16:26:01",
+     "decision": "skipped",
+     "note": "纯标题存根/索引页（正文在对应 _desc/_cases/_positioning_process/_overview 子页或专题章节）",
+     "sha": "5617db4e5597c6f45cc0a8e4bd9b5d21f76785b4"
+    },
+    "docs/zh/app-dev/operator_precision_issues_cases.md": {
+     "at": "2026-09-15T16:26:00",
+     "decision": "harvested",
+     "refs": [
+      "ascend-om-infer-precision-triage",
+      "atc-precision-mode-and-switches"
+     ],
+     "sha": "f49fd27f9204022b0bee12e935501af160521394"
+    },
+    "docs/zh/app-dev/operator_precision_issues_desc.md": {
+     "at": "2026-09-15T16:26:01",
+     "decision": "harvested",
+     "refs": [
+      "ascend-om-infer-precision-triage"
+     ],
+     "sha": "56a8ff935a8dcb0c39227c0075c27838007d781e"
+    },
+    "docs/zh/app-dev/operator_precision_issues_positioning_process.md": {
+     "at": "2026-09-15T16:26:00",
+     "decision": "harvested",
+     "refs": [
+      "ascend-om-infer-precision-triage",
+      "atc-precision-mode-and-switches"
+     ],
+     "sha": "4e60520f0260a7ebd04b9edc92a71be4f5ac54fd"
+    },
+    "docs/zh/app-dev/performance_analysis.md": {
+     "decision": "pending",
+     "sha": "8fd4f56a8fda6ff9e4930fb5f97bf78c43318016"
+    },
+    "docs/zh/app-dev/precision_performance_optimization.md": {
+     "at": "2026-09-15T16:26:01",
+     "decision": "skipped",
+     "note": "纯标题存根/索引页（正文在对应 _desc/_cases/_positioning_process/_overview 子页或专题章节）",
+     "sha": "fbf9a442581b7b56ddeac9b7d863a051f57bf882"
+    },
+    "docs/zh/app-dev/precision_performance_optimization_overview.md": {
+     "at": "2026-09-15T16:26:01",
+     "decision": "harvested",
+     "refs": [
+      "ascend-om-infer-precision-triage"
+     ],
+     "sha": "656d74d49d8674e64c361631a5e94ff173051b18"
+    },
+    "docs/zh/app-dev/queue_model_inference.md": {
+     "decision": "pending",
+     "sha": "900d59436a0dd54aff6f956a0b6d23fb695e92f8"
+    },
+    "docs/zh/app-dev/quickstart.md": {
+     "decision": "pending",
+     "sha": "b8be99be81dd5844df3a3b27dae588b941b16ad4"
+    },
+    "docs/zh/app-dev/set_skip_layers.md": {
+     "at": "2026-09-15T16:26:01",
+     "decision": "harvested",
+     "refs": [
+      "amct-quantization-precision-tuning"
+     ],
+     "sha": "8ab0fa5aa8d4e8405e363d8d5505b87a28bf0e45"
+    },
+    "docs/zh/app-dev/single_dynamic_AIPP_input.md": {
+     "decision": "pending",
+     "sha": "defd1de35b71275bfe5aba0c8b90a5237fa65319"
+    },
+    "docs/zh/app-dev/single_operator_invoke.md": {
+     "decision": "pending",
+     "sha": "c511402cc4cc77b53754a1fc6f49fe506b6e4e42"
+    },
+    "docs/zh/app-dev/static_shape_model_inference.md": {
+     "decision": "pending",
+     "sha": "ff3f1be3ad1840f9af44bc5baefd39623fb33b99"
+    },
+    "docs/zh/app-dev/synchronization_management.md": {
+     "decision": "pending",
+     "sha": "d8b94bcc843868fcb31d1805e5cf11b1e79c12de"
+    },
+    "docs/zh/app-dev/system_tasks_random.md": {
+     "decision": "pending",
+     "sha": "ad681cd3ff652f3cd87360907024a81b55964cdd"
+    },
+    "docs/zh/app-dev/using_DVPP_V1_APIs.md": {
+     "decision": "pending",
+     "sha": "f6c645637613093d6993f2c1f0dfdd6dc1d49bd2"
+    },
+    "docs/zh/app-dev/using_DVPP_V2_APIs.md": {
+     "decision": "pending",
+     "sha": "8cce50e753fd9cb984de81b367c697d79af23977"
+    },
+    "docs/zh/app-dev/video_obtaining.md": {
+     "decision": "pending",
+     "sha": "b53988bf98620dc0f8dce54b28b68d4fab8a7121"
+    },
+    "docs/zh/app-dev/video_obtaining_VPSS_processing.md": {
+     "decision": "pending",
+     "sha": "95db968e48befcafbb8ba1dcca334ec1bca86ce8"
+    },
+    "docs/zh/app-dev/view_logs.md": {
+     "decision": "pending",
+     "sha": "047d592fe98f42f2e234247449f9414153507caa"
+    },
+    "docs/zh/app-dev/weight_update.md": {
+     "decision": "pending",
+     "sha": "5e1cb63d310c3cdb61c8a2969cf9af0a57f9af77"
+    },
+    "docs/zh/app-dev/weight_update_system_manages_memory.md": {
+     "decision": "pending",
+     "sha": "c683f7cde3efaa19ab5da873cda5d58a5c5add2c"
+    },
+    "docs/zh/app-dev/weight_update_user_manages_memory.md": {
+     "decision": "pending",
+     "sha": "08f9dcf91ed08f886170f2890d15ea5953b55887"
+    },
+    "docs/zh/env-vars/ACLNN_CACHE_LIMIT.md": {
+     "decision": "pending",
+     "sha": "cab997d160e72c3064d9a586e53d69dceb177da3"
+    },
+    "docs/zh/env-vars/ASCEND_CACHE_PATH.md": {
+     "decision": "pending",
+     "sha": "047d3692e64458c3cd91fe6bfa31d98bba82065a"
+    },
+    "docs/zh/env-vars/ASCEND_CUSTOM_OPP_PATH.md": {
+     "decision": "pending",
+     "sha": "eaf5b3e8b0c8e2897a9965949ea069019d68d41d"
+    },
+    "docs/zh/env-vars/ASCEND_DUMP_PATH.md": {
+     "decision": "pending",
+     "sha": "0f475bedcf3d1cd8e7e0153db0c55714bbd82cb9"
+    },
+    "docs/zh/env-vars/ASCEND_DUMP_SCENE.md": {
+     "decision": "pending",
+     "sha": "2f403eba928a43cb4d96e0ddf407cbc1885ea5c3"
+    },
+    "docs/zh/env-vars/ASCEND_WORK_PATH.md": {
+     "decision": "pending",
+     "sha": "091314049dfd42b723654d622c2ebfdde16acbb5"
+    },
+    "docs/zh/env-vars/CANN_KNOWLEDGE_BANK_PROCESS_NUM.md": {
+     "decision": "pending",
+     "sha": "12732b69933bc0c975c0f9dc9f7415bfff9550bf"
+    },
+    "docs/zh/env-vars/NPU_COLLECT_PATH.md": {
+     "decision": "pending",
+     "sha": "7e6d969b58047e5505f17edabd9a38ff965a74bd"
+    },
+    "docs/zh/env-vars/OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE.md": {
+     "decision": "pending",
+     "sha": "82c60ac4da232f53c174babba69e700aaea4297f"
+    },
+    "docs/zh/env-vars/README.md": {
+     "at": "2026-09-15T16:26:01",
+     "decision": "skipped",
+     "note": "纯标题存根/索引页（正文在对应 _desc/_cases/_positioning_process/_overview 子页或专题章节）",
+     "sha": "52c4bc9adcd6860b76cbb90a37d2ffddfbedad6b"
+    },
+    "docs/zh/env-vars/RESOURCE_CONFIG_PATH.md": {
+     "decision": "pending",
+     "sha": "54162cf76cdaf5dc73037e16c17aee69db481850"
+    },
+    "docs/zh/env-vars/_dump_fault_collect.md": {
+     "decision": "pending",
+     "sha": "87d0a4caa476570a26f0e69b4bc8fac0d05cd5af"
+    },
+    "docs/zh/env-vars/_dump_inst_config.md": {
+     "decision": "pending",
+     "sha": "782708d108956869540e8d3bb22b93485fd61aca"
+    },
+    "docs/zh/env-vars/_dump_log.md": {
+     "decision": "pending",
+     "sha": "3ebd014fd7c4832a891c429b020e35ecfbf9df46"
+    },
+    "docs/zh/env-vars/_dump_opexe.md": {
+     "decision": "pending",
+     "sha": "50df4f9b0f4c5025b9fe4d9b194ab8a9a93902b6"
+    },
+    "docs/zh/env-vars/_dump_profile.md": {
+     "decision": "pending",
+     "sha": "c2c518663db4997be1b4c4affc660d7c86f44e0a"
+    },
+    "docs/zh/env-vars/_dump_resource_config.md": {
+     "decision": "pending",
+     "sha": "98f91bc4a2284a3f0e6a7021b526b1ba41d59140"
+    },
+    "docs/zh/env-vars/hccl_env.md": {
+     "decision": "pending",
+     "sha": "298d012237510756978c6328fe23a68bdb8238e9"
+    },
+    "docs/zh/env-vars/install.md": {
+     "decision": "pending",
+     "sha": "f45f8b16741f2eb1d558cdb50d82fd3aec98d439"
+    },
+    "docs/zh/env-vars/intro.md": {
+     "decision": "pending",
+     "sha": "92df24156a7c3068bdda9b49faaa7650c52e036a"
+    },
+    "docs/zh/env-vars/pypto_env.md": {
+     "decision": "pending",
+     "sha": "34b5309a34b365192e85edda2f6bfc94e327de76"
+    },
+    "docs/zh/ops-lib/appendix/FAQ.md": {
+     "decision": "pending",
+     "sha": "ea754218b37a7e830a6f689e3677abac336856f3"
+    },
+    "docs/zh/ops-lib/appendix/appendix.md": {
+     "at": "2026-09-15T16:26:01",
+     "decision": "skipped",
+     "note": "纯标题存根/索引页（正文在对应 _desc/_cases/_positioning_process/_overview 子页或专题章节）",
+     "sha": "89b95b5a837139889ab49384e6bfff51856f3459"
+    },
+    "docs/zh/ops-lib/appendix/faq_failure_cases.md": {
+     "decision": "pending",
+     "sha": "7ab57d3768504933a7bba4a0334a92862859814a"
+    },
+    "docs/zh/ops-lib/appendix/faq_get_aclnn_call_logs.md": {
+     "decision": "pending",
+     "sha": "676a0434a27a9161cc154f525ab530dc81b895b1"
+    },
+    "docs/zh/ops-lib/appendix/performance_improve_by_staticKernel.md": {
+     "decision": "pending",
+     "sha": "d6ff844f2a66c17a2e47fd1cfbda4e409d30cd92"
+    },
+    "docs/zh/ops-lib/appendix/performance_improve_series.md": {
+     "decision": "pending",
+     "sha": "822dbe5fd0b2b4d6e765a32c3551297dc30df45c"
+    },
+    "docs/zh/ops-lib/appendix/staticKernel_env_setup.md": {
+     "decision": "pending",
+     "sha": "343474106a874a66aaeab23cc94949fa0368c2c6"
+    },
+    "docs/zh/ops-lib/appendix/staticKernel_introduction.md": {
+     "decision": "pending",
+     "sha": "57a4acb0763feea6e4fdd79345c7b9a7d50473b5"
+    },
+    "docs/zh/ops-lib/appendix/staticKernel_tuning.md": {
+     "decision": "pending",
+     "sha": "1e90931a6a306ef900c7c37be7ed29a86edcba4a"
+    }
+   },
+   "head_sha": "38e6d3315a2c4992548cda4e178e5fb4703c3b4b",
+   "last_scan": "2026-09-15T16:22:54"
+  },
   "gitcode/cann/hccl": {
    "branch": "master",
    "docs": {

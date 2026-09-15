@@ -1,0 +1,40 @@
+id: amct-quantization-precision-tuning
+type: software-fact
+title: AMCT 量化的精度三手段（基于精度的自动量化 / 校准集 batch_num 建议 16 或 32 / skip_layers 跳过损失大的层）与损失层两步比对法
+summary: "量化模型精度不够时的三条手段与一条定位法：①**基于精度的自动量化**——借助 AMCT 工具提供的 Python 接口，在保证用户所需模型精度前提下自动搜索模型的量化配置并执行**训练后量化**，生成满足精度要求的量化模型（当前 PyTorch、TensorFlow、Caffe 框架支持）。②**校准集规模**——基于精度的自动量化里手动改量化配置中的 `batch_num` 可调整校准使用的数据量，`batch_num = total_nums / batch_size`（total_nums 总图片数、batch_size 每 batch 图片数）；batch_num 越大样本越多、量化后精度损失越小，但样本过多不带来精度提升，反而占用更多内存、降低量化速度，并可能引起内存/显存/线程资源不足——**建议 batch_num × batch_size 取 16 或 32**。③**skip_layers 跳过量化损失大的层**——先用精度比对工具比对原始模型与量化后模型各层的精度，找出精度损失大的层，再在基于精度的自动量化里配 `skip_layers` 跳过（多层用逗号分隔）；若跳过某层影响模型推理结果数据，需自行调整模型再重新量化。④**量化场景精度损失层定位（两步比对，当前仅 Caffe）**——先『非量化原始模型（GPU/CPU） vs 量化原始模型（GPU/CPU）』定位**量化阶段**的精度问题，再『量化原始模型（GPU/CPU） vs 量化离线模型（关闭融合规则，NPU）』定位**模型转换阶段**的精度问题。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/identify_quantization_precision_loss_layers.md"
+    version: "cann/docs master（commit 38e6d3315a2c，2026-09-15 抓取）：量化场景精度损失层的两步比对法与框架限制"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/accuracy_based_automatic_quantization.md"
+    version: "cann/docs master（commit 38e6d3315a2c）：基于精度的自动量化与支持的框架"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/increasing_calibration_set.md"
+    version: "cann/docs master（commit 38e6d3315a2c）：校准集 batch_num 的计算与建议取值"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/set_skip_layers.md"
+    version: "cann/docs master（commit 38e6d3315a2c）：skip_layers 的用法与前提"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [amct, atc]
+  categories: [precision]
+
+related_references: [ascend-om-infer-precision-triage, atc-precision-mode-and-switches, mx-quantized-matmul, hif8-type-contract, ascend-determinism-triage]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "**① 基于精度的自动量化**：这是方便用户在对量化精度有要求时使用的功能，借助 **AMCT 工具提供的 Python 接口**实现——能够在保证用户所需模型精度的前提下，**自动搜索模型的量化配置**并执行**训练后量化**流程，最终生成满足精度要求的量化模型。当前支持 PyTorch、TensorFlow、Caffe 三个框架（详细使用指导见《AMCT 模型压缩工具》）。**② 校准集规模（batch_num）**：基于精度的自动量化中，手动修改量化配置里的 `batch_num` 可根据 batch 大小与量化所需图片数量调整校准使用的数据量，`batch_num = total_nums / batch_size`（`total_nums` 总图片数量、`batch_size` 每个 batch 使用的图片数量）。通常 batch_num 越大、量化过程使用的数据样本越多、量化后精度损失越小；但**过多的数据并不会带来精度的提升**，反而会占用较多内存、降低量化速度，并可能引起内存、显存、线程资源不足等情况。**建议 `batch_num × batch_size` 取 16 或 32**。**③ skip_layers（跳过量化损失大的层）**：先用精度比对工具比对**原始模型与量化后模型各层**的精度以查出精度损失大的层，再在基于精度的自动量化代码里增加 `skip_layers` 配置跳过这些层（单层写一个名字、多层用逗号分隔，如 `skip_layers=['op1','op2','op3']`），然后重新执行自动量化并重新推理；**若跳过不支持量化的层影响模型推理的结果数据，需要用户自行调整模型再重新量化**。**④ 量化场景精度损失层的定位方法（两步比对，当前仅支持 Caffe 框架模型）**：用精度比对工具做两次比对——第一步『**非量化原始模型（GPU/CPU） vs 量化原始模型（GPU/CPU）**』定位**量化阶段**引入的精度问题；第二步『**量化原始模型（GPU/CPU） vs 量化离线模型（关闭融合规则，NPU）**』定位**模型转换阶段**产生的精度问题（即量化离线模型在 NPU 上运行时的精度问题）。第二步刻意关闭融合规则，是为了把『融合』这个变量从对照中排除。"
+  evidence: "accuracy_based_automatic_quantization.md：『基于精度的自动量化是为了方便用户在对量化精度有一定要求时所使用的功能，是借助AMCT工具提供的Python接口实现。该方法能够在保证用户所需的模型精度前提下，自动搜索模型的量化配置并执行训练后量化的流程，最终生成满足精度要求的量化模型』『当前仅PyTorch框架、TensorFlow框架、Caffe框架支持使用基于精度的自动量化』。increasing_calibration_set.md：『batch_num控制量化使用数据的batch数目，batch_num = total_nums / batch_size』『batch_num越大，量化过程中使用的数据样本越多，量化后精度损失越小；但过多的数据并不会带来精度的提升，反而会占用较多的内存，降低量化的速度，并可能引起内存、显存、线程资源不足等情况；因此，建议batch_num*batch_size为16或32』。set_skip_layers.md：『使用精度比对工具比对原始模型、量化后模型各层的精度，查找精度损失大的层，在基于精度的自动量化时通过配置skip_layers跳过量化损失大的层』『如果涉及跳过多层，则每一层之间用逗号分隔』『如果跳过不支持量化的层影响模型推理的结果数据，则需要用户自行调整模型，再重新量化模型』。identify_quantization_precision_loss_layers.md：『当前仅支持Caffe框架模型』『1. 定位量化阶段的精度问题。执行非量化原始模型（GPU/CPU） vs 量化原始模型（GPU/CPU）』『2. 定位模型转换阶段产生的精度问题，即量化离线模型在NPU上运行时的精度问题。执行量化原始模型（GPU/CPU） vs 量化离线模型（关闭融合规则）（NPU）』"

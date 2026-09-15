@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-15    词条数：100
+# 生成日期：2026-09-15    词条数：102
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -249,6 +249,16 @@ entries:
     - cross
     categories:
     - performance
+- id: amct-quantization-precision-tuning
+  type: software-fact
+  title: AMCT 量化的精度三手段（基于精度的自动量化 / 校准集 batch_num 建议 16 或 32 / skip_layers 跳过损失大的层）与损失层两步比对法
+  summary: 量化模型精度不够时的三条手段与一条定位法：①**基于精度的自动量化**——借助 AMCT 工具提供的 Python 接口，在保证用户所需模型精度前提下自动搜索模型的量化配置并执行**训练后量化**，生成满足精度要求的量化模型（当前
+    PyTorch、TensorFlow、Caffe 框架支持）。②**校准集规模**——基…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - precision
 - id: ascend-310p-known-limits
   type: platform-fact
   title: 310P（Atlas 300I Duo）平台已知限制
@@ -381,6 +391,16 @@ entries:
     - cross
     categories:
     - interrupt
+- id: atc-precision-mode-and-switches
+  type: software-fact
+  title: ATC 精度模式与两个默认开启的优化开关（默认 fp16 / allow_fp32_to_fp16 / keep_dtype 例外清单 / 数据缓存优化 / 融合规则）
+  summary: om 模型精度问题的三个配置面：①**精度模式**——模型转换不指定精度模式时**默认用 fp16** 计算；`--precision_mode=allow_fp32_to_fp16`
+    表示算子支持 fp32 就用 fp32、不支持才用 fp16（高精度模式，提升精度但可能影响性能）；`--keep_dtype` 配一…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - precision
 - id: attention-precision-chains
   type: software-fact
   title: Attention 两类精度损失链（FP8 per-block 量化的 P 压 fp8 / 衰减注意力的 exp 指数上溢）与验收判据
