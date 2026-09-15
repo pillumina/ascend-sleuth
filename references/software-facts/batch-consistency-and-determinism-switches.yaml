@@ -1,0 +1,40 @@
+id: batch-consistency-and-determinism-switches
+type: software-fact
+title: 计算确定性开关（ACL_OPT_DETERMINISTIC 1 与 3 / torch 侧两个入口 / 逐比特一致与 batch 一致性的区别 / 版本门槛）
+summary: "昇腾上「结果不一致」分两级，开关也不同级。**① 确定性（determinism，`ACL_OPT_DETERMINISTIC=1`）**：解决同一算子在同一输入下多次运行结果不同——根源是算子实现内的异步多线程执行使浮点累加顺序变化；aclnn 路径用 `aclrtSetSysParamOpt`（进程级）设 1，PyTorch 路径用 `torch.use_deterministic_algorithms`。**② Batch 一致性（batch invariance，`ACL_OPT_DETERMINISTIC=3`）**：解决『同一个 Token 无论它在批次内所处位置、批次大小、与哪些其他 Token 一同批处理，输出必须逐比特完全一致』——即同一个 token 在不同 batch 组合下结果不能漂移；aclnn 路径同样用 `aclrtSetSysParamOpt`（进程级）设 **3**，PyTorch 路径用 **`torch_npu.npu.set_deterministic_level`**。**③ 版本门槛**：batch 一致性要求 **TorchNPU ≥ 26.2.0 且 CANN ≥ 9.2.0**。**④ 默认值不统一**：部分算子 API 默认就是 batch 一致性实现、部分不是，非默认实现的部分算子才可通过上述配置手动开启——**具体以该算子自己的 aclnn API / PyTorch API 文档为准**，不要假设全栈统一。**⑤ 两者通常都不建议默认开**：开启后相关算子有性能劣化、单次运行性能可能下降；只在实验、调试、回归测试这类『需要多次运行结果相同来定位问题』的场景开。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-ras/blob/master/docs/zh/context/determinism_compute.md"
+    version: "ops-ras master（commit cb8131978147，2026-09-15 抓取）：确定性计算的定义、成因、两种开启方式与线程限制"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-ras/blob/master/docs/zh/context/batch_consistency.md"
+    version: "ops-ras master（commit cb8131978147）：Batch 一致性定义、进程级开关、ACL_OPT_DETERMINISTIC=3、torch_npu.npu.set_deterministic_level、版本约束"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [aclnn, torch_npu]
+  versions:
+    cann: ">=9.2.0（仅 batch 一致性有此前置；确定性无版本门槛记载）"
+    torch_npu: ">=26.2.0（仅 batch 一致性）"
+  categories: [precision]
+
+related_references: [aclnn-quant-modes-and-sparsemode, ascend-determinism-triage, aclnn-type-promotion-broadcast-and-format, torch-npu-cann, aclnn-return-codes]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "排查『结果不可复现』前先分清要的是哪一级一致，两级对应的开关取值不同（**1 = 确定性，3 = Batch 一致性**，同一个 `aclrtSetSysParamOpt` / `ACL_OPT_DETERMINISTIC`）。判据：**同一输入重复跑不同 → 确定性级（1）**；**同输入换个 batch 位置/批量大小就变 → batch 一致性级（3）**，后者即使前者的开关开着也可能不满足（部分算子的默认实现只保证单点可复现、不保证跨 batch 组合逐比特一致）。两者都是**进程级**配置，都**默认不建议开**（有性能劣化）；batch 一致性另有 **TorchNPU ≥ 26.2.0、CANN ≥ 9.2.0** 的版本前置，且『哪些算子默认已是 batch 一致性实现』需按具体算子 API 文档确认。"
+  evidence: "determinism_compute.md：『同一算子多次运行结果可能不同』『由于算子实现中存在异步多线程执行，导致浮点数累加顺序变化』『通过…aclrtSetSysParamOpt接口（进程级）配置开启确定性计算…设置ACL_OPT_DETERMINISTIC=1』『通过PyTorch原生开关（torch.use_deterministic_algorithms）开启确定性计算』『同一线程中只能设置一次确定性状态，多次设置以最后一次有效设置为准。有效设置是指设置确定性状态后，真正执行了一次算子任务下发』『通常建议不开启确定性计算，因为同一算子采用确定性计算一般比非确定性计算执行更慢』。batch_consistency.md：『部分算子为了追求较高的性能，针对同一个Token在不同批次大小或者同一批次不同位置场景中，可能存在计算结果偏差』『batch一致性算法：对于给定的一个Token，无论该Token在批次内所处的位置、批次大小、或是和哪些其他Token一同被批处理，输出结果必须逐比特完全一致』『通过…aclrtSetSysParamOpt接口（进程级）配置开启Batch一致性。具体通过设置ACL_OPT_DETERMINISTIC=3开启Batch一致性计算』『通过TorchNPU自定义API中torch_npu.npu.set_deterministic_level接口开启Batch一致性计算』『版本约束：TorchNPU版本大于等于26.2.0，CANN版本大于等于9.2.0』『当前配置为进程级开关配置』『部分算子API默认Batch一致性实现，部分算子API默认非Batch一致性实现。对于非Batch一致性实现的算子，部分可通过手动配置开启Batch一致性』『对于不同框架的算子API，其默认的Batch一致性计算实现策略请以具体的aclnn API文档或PyTorch API文档描述为准』"
+  pitfalls:
+    - "**别把两级开关混成一个**：只设了确定性（=1）就去断言『同输入不同 batch 结果一致』，在默认非 batch 一致性实现的算子上仍会失败——这是把 batch invariance 误当 determinism 排查的典型绕圈"
+    - "**同一个 opt 的取值语义只能以文档为准**：已取来源只给出 1（确定性）与 3（Batch 一致性）两个取值，其他取值含义未在来源中说明，不要外推"
+    - "**同一线程内确定性状态只能设置一次、以最后一次有效设置为准**，且『有效』要求设置之后真正下发过一次算子任务（只设置不下发不算生效）——暂不推荐在同一线程里多次设置"
+    - "**版本门槛只作用于 batch 一致性**：CANN < 9.2.0 或 TorchNPU < 26.2.0 时 `torch_npu.npu.set_deterministic_level` 这条路径不存在，需按所在版本的能力择路"
+    - "**开关开着仍有差异时不要死磕开关**：先分『开关被业务代码中途重置』『算子内部数据竞争』『batch 组合漂移』三条机制，分流路径见 ascend-determinism-triage；该方法论中 batch invariance 一路给的是 Python 侧 `torch.use_deterministic_algorithms` 的做法（case-derived），与本文档的 `set_deterministic_level` / `ACL_OPT_DETERMINISTIC=3`（official-doc）**口径不同**，两处均按各自来源如实保留，未做统一推断——实际排查时以所在版本的算子 API 文档为准"
+    - "**别把两级开关当性能优化项常开**：两份来源都给出『性能劣化 / 可能下降』的提示，只在需要多次运行结果一致的实验、调试、回归测试场景开启"

@@ -1,0 +1,50 @@
+id: aclnn-type-promotion-broadcast-and-format
+type: software-fact
+title: aclnn 的张量语义约束（互推导/互转换/broadcast 的 <6 维限制/数据格式与维度要求/非连续 Tensor）
+summary: "写或排查 aclnn 调用时的四类张量语义约束。**① 互推导（type promotion，类比 PyTorch）**：输入 aclTensor 之间数据类型不一致时，API 内部推导出一个类型并把输入都转成它再算——规则是**整数类型间可推导、整数可往浮点与复数推、浮点间可推、浮点可往复数推、复数之间可推、BOOL 可往整数/浮点/复数推**；但 **u16/u32/u64 几乎与任何类型（除自身）都不能推导（×）**，且 f32×u16、f32×u32、f32×u64、以及多数**无符号整数×浮点**的组合都是 ×（例如 f32+s8= f32、f32+u16=×、s8+u8=s16、bf16+f16=f32、bool+f32=f32）。**Tensor×Scalar 是另一张表**（如 f32 Tensor 与 f16 Scalar → f16；bool Tensor 与 f32 Scalar → f32）。**② 互转换**：当 API 输出的 aclTensor 类型与输入推导后的计算类型不一致时，内部会把结果转成输出类型——浮点间、整数间、整数→浮点/复数、浮点→复数、复数间、BOOL→整数/浮点/复数可转，其余不支持（不满足即参数校验失败 161002）。**③ broadcast 规则与硬限制**：规则 1——维度数不一致时向最长看齐、**左侧补 1**；规则 2——维度相同且某维为 1 时拉伸匹配；规则 3——维度不一致且都没有 1 的维度则报错。**硬限制**：当参与 broadcast 的两输入（或推导后）类型属于 COMPLEX64、COMPLEX128、DOUBLE、INT16、UINT16、UINT64 时，除满足广播规则外还必须满足**『连续需要广播的轴与连续不需要广播的轴合并后的维度 < 6』**，否则广播失败、算子执行报错（示例：shape 6 维且无轴可合并 → 报错；合并后为 4 维 → 成功）。**④ 数据格式与维度要求**：多数 aclnn API 支持 ND；CNN 类 API（如 aclnnConvolution）要求带业务语义的格式（已知 N/H/W/C/D/L 的含义）。支持格式为 ND/NCHW/NHWC/HWCN/NDHWC/NCDHW/NC/NCL，且**维度要与 format 表述一致**（5D → NCDHW/NDHWC/ND；4D → NCHW/NHWC/HWCN/ND；3D → NCL/ND；2D → NC/ND；其他维度 → ND）；**私有格式**（NC1HWC0、FRACTAL_Z、NC1HWC0_C04、FRACTAL_NZ、NDC1HWC0、FRACTAL_Z_3D 等）绝大多数 aclnn API 不支持，个别 API 声明支持时以其文档为准。**⑤ 非连续 Tensor**：大部分 API 支持用 **(shape, strides, offset)** 表示的 Tensor——strides 描述该维相邻元素的间隔（等于 1 才连续），offset 是首元素相对 addr 的偏移；理解这一点是排查『同一份数据换一种切片/转置后结果不对』的前提。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-ras/blob/master/docs/zh/context/deduction_relationship.md"
+    version: "ops-ras master（commit cb8131978147，2026-09-15 抓取）：Tensor×Tensor 与 Tensor×Scalar 两张数据类型推导表与示例"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-ras/blob/master/docs/zh/context/broadcast_relationship.md"
+    version: "ops-ras master（commit cb8131978147）：broadcast 三条规则与『合并后维度 < 6』限制及示例"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-ras/blob/master/docs/zh/context/conversion_relationship.md"
+    version: "ops-ras master（commit cb8131978147）：互转换关系的允许组合"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-ras/blob/master/docs/zh/context/data_format.md"
+    version: "ops-ras master（commit cb8131978147）：支持的数据格式、维度与 format 的对应、私有格式"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-ras/blob/master/docs/zh/context/non_contiguous_tensor.md"
+    version: "ops-ras master（commit cb8131978147）：非连续 Tensor 的 (shape, strides, offset) 表示与示例"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-ras/blob/master/docs/zh/context/data_type.md"
+    version: "ops-ras master（commit cb8131978147）：数据类型简写表（ACL_FLOAT→FLOAT/FLOAT32 等，含 HIFLOAT8 与 FLOAT8/FLOAT6/FLOAT4 系列）"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [aclnn]
+  categories: [interrupt, precision]
+
+related_references: [aclnn-return-codes, aclnn-two-phase-contract, aclnn-quant-modes-and-sparsemode, hif8-type-contract, float8-cast-bit-mapping, bf16-intermediate-precision]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "见 summary 的四类约束。三条判读要点：**① 报 161002（参数非法）时先查两件事**——输入 dtype 组合是否在推导表的 ×（尤其 u16/u32/u64 组合与『无符号整数×浮点』），以及输出的 dtype 是否落在互转换允许的范围内；这两类是 aclnn 调用最常见的『参数校验失败』根因，且与精度问题相邻（推导出的计算类型决定了实际计算精度，例如 f16×f32 推导为 f32、而 f16×f16 就是 f16 计算）。**② INT16/UINT16/UINT64/DOUBLE/复数参与 broadcast 时多一条维度限制**（合并后 < 6 维），这条限制只在上述类型上生效、很容易被忽略——现象是『同样的广播逻辑改个数据类型就报错』。**③ 私有格式（FRACTAL_NZ/NC1HWC0 等）不是通用能力**：绝大多数 aclnn API 不支持，遇到时需要按具体 API 声明判读，不要用『格式转换一下就好』的思路处理。"
+  evidence: "deduction_relationship.md：『当一个API（如aclnnAdd、aclnnMul等）输入的aclTensor数据类型不一致时，API内部会推导出一个数据类型，将输入数据转换成该数据类型进行计算』与两张推导表（含 f32×u16=×、f32×s8=f32、s8×u8=s16、bf16×f16=f32、bool×f32=f32、u16/u32/u64 行几乎全为 × 等）及示例『如果输入参数的数据类型不一致，一个为float16，一个为float32，那么API内部就会将float16的数据类型转换成float32的数据类型然后进行计算』；Tensor×Scalar 示例『如果输入Tensor的数据类型为float16，输入Scalar的数据类型为float32，那么API内部就会将输入Scalar的float32数据类型转换成float16数据类型然后进行计算』。broadcast_relationship.md：三条规则与『当满足broadcast关系的两个输入a和b的数据类型或推导后的数据类型在COMPLEX64、COMPLEX128、DOUBLE、INT16、UINT16、UINT64中时…条件：连续的需要广播的轴和连续的不需要广播的轴合并之后的维度要求小于6』及两个示例。conversion_relationship.md：『当一个API（如aclnnAdd、aclnnMul等）输出的aclTensor数据类型与输入的数据类型推导后的计算类型不一致时，API内部就会将计算结果转换成输出类型对应的数据类型』与允许转换的类型清单。data_format.md：支持格式清单、维度与 format 的对应（5D/4D/3D/2D/其他）、私有格式清单与『当前绝大多数的aclnn API还不支持这些格式』。non_contiguous_tensor.md：『一个Tensor可以通过(shape, strides, offset)表示』『strides描述Tensor维度上相邻两个元素的间隔，如果在维度1上的stride为1，该维度是连续的…offset表示这个Tensor的首元素相对addr的偏移』"

@@ -16498,14 +16498,447 @@
    }
   },
   "gitcode/cann/ops-ras": {
-   "branch": null,
-   "docs": {},
-   "head_sha": null,
-   "last_scan": null,
+   "branch": "master",
+   "docs": {
+    "docs/QUICKSTART.md": {
+     "at": "2026-09-15T19:51:18",
+     "decision": "skipped",
+     "note": "快速开始导航（指向安装/调用/开发各篇），无独立先验内容",
+     "sha": "8c9987542ffc6e19c958dee6746c5db713f7e830"
+    },
+    "docs/QUICKSTART_en.md": {
+     "at": "2026-09-15T19:51:18",
+     "decision": "skipped",
+     "note": "英文版 QUICKSTART，无独立先验内容",
+     "sha": "06911191def3ce804deade8feadbf5a4665edbeb"
+    },
+    "docs/README.md": {
+     "at": "2026-09-15T19:51:18",
+     "decision": "skipped",
+     "note": "仓库 README：项目介绍与导航，无诊断先验内容",
+     "sha": "4369a764aa68ba7952e6ec1973817edef4d6f922"
+    },
+    "docs/README_en.md": {
+     "at": "2026-09-15T19:51:18",
+     "decision": "skipped",
+     "note": "英文版 README，无诊断先验内容",
+     "sha": "388e8bcc31fdd8d8a03199bf44f9057c0121f707"
+    },
+    "docs/en/context/aclnn_return_code.md": {
+     "at": "2026-09-15T19:51:11",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/context/aclnn_return_code.md 同内容，评估以中文版为准（结论见该路径的记录），英文版不重复评估",
+     "sha": "babe6673054469c4e4ec0387b05a4ba50604ffa6"
+    },
+    "docs/en/context/basic_concept.md": {
+     "at": "2026-09-15T19:51:13",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/context/basic_concept.md 同内容，评估以中文版为准（结论见该路径的记录），英文版不重复评估",
+     "sha": "58f5e3889c0ba8ae318281afa705f2d9eb355ea7"
+    },
+    "docs/en/context/batch_consistency.md": {
+     "at": "2026-09-15T19:51:13",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/context/batch_consistency.md 同内容，评估以中文版为准（结论见该路径的记录），英文版不重复评估",
+     "sha": "75d23b92d0a9f90c3767863ca24c2b1ab85b2324"
+    },
+    "docs/en/context/broadcast_relationship.md": {
+     "at": "2026-09-15T19:51:11",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/context/broadcast_relationship.md 同内容，评估以中文版为准（结论见该路径的记录），英文版不重复评估",
+     "sha": "cb0d9f0784a0da5fbbddd336c7e30d749cb2dab0"
+    },
+    "docs/en/context/compile_and_run_sample.md": {
+     "at": "2026-09-15T19:51:13",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/context/compile_and_run_sample.md 同内容，评估以中文版为准（结论见该路径的记录），英文版不重复评估",
+     "sha": "1bdf0f060c42e93cb26dab4b6af4cf75647dd121"
+    },
+    "docs/en/context/conversion_relationship.md": {
+     "at": "2026-09-15T19:51:11",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/context/conversion_relationship.md 同内容，评估以中文版为准（结论见该路径的记录），英文版不重复评估",
+     "sha": "a5a2231e0d762d86ca9c9959517498f1339b9652"
+    },
+    "docs/en/context/data_format.md": {
+     "at": "2026-09-15T19:51:11",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/context/data_format.md 同内容，评估以中文版为准（结论见该路径的记录），英文版不重复评估",
+     "sha": "b082edba2643add34411324f17dc43841b08c007"
+    },
+    "docs/en/context/data_structure.md": {
+     "at": "2026-09-15T19:51:12",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/context/data_structure.md 同内容，评估以中文版为准（结论见该路径的记录），英文版不重复评估",
+     "sha": "c37da051cd2ba54e4ad9bccb5d96ba80da4292c8"
+    },
+    "docs/en/context/data_type.md": {
+     "at": "2026-09-15T19:51:12",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/context/data_type.md 同内容，评估以中文版为准（结论见该路径的记录），英文版不重复评估",
+     "sha": "a8c0c61ffa2b4c2a75ea62d9f806adc506f7fb3c"
+    },
+    "docs/en/context/deduction_relationship.md": {
+     "at": "2026-09-15T19:51:12",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/context/deduction_relationship.md 同内容，评估以中文版为准（结论见该路径的记录），英文版不重复评估",
+     "sha": "060c97ed96364be3545ce14e742469482febba99"
+    },
+    "docs/en/context/determinism_compute.md": {
+     "at": "2026-09-15T19:51:13",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/context/determinism_compute.md 同内容，评估以中文版为准（结论见该路径的记录），英文版不重复评估",
+     "sha": "bbe6b8e1626112529aa42162b4e8f2e7718119df"
+    },
+    "docs/en/context/non_contiguous_tensor.md": {
+     "at": "2026-09-15T19:51:12",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/context/non_contiguous_tensor.md 同内容，评估以中文版为准（结论见该路径的记录），英文版不重复评估",
+     "sha": "cebe9cacccaec13f7bd5a60b75c3b27a29ec0d27"
+    },
+    "docs/en/context/quant_mode_introduction.md": {
+     "at": "2026-09-15T19:51:12",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/context/quant_mode_introduction.md 同内容，评估以中文版为准（结论见该路径的记录），英文版不重复评估",
+     "sha": "f31ead144faa117c7d5ef9d7c7de666afe46dae6"
+    },
+    "docs/en/context/sparse_mode_introduction.md": {
+     "at": "2026-09-15T19:51:12",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/context/sparse_mode_introduction.md 同内容，评估以中文版为准（结论见该路径的记录），英文版不重复评估",
+     "sha": "a34ea1fa467d95ff8943fac99894d3ceee4cd5c0"
+    },
+    "docs/en/context/two_phase_api.md": {
+     "at": "2026-09-15T19:51:13",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/context/two_phase_api.md 同内容，评估以中文版为准（结论见该路径的记录），英文版不重复评估",
+     "sha": "9a75a428823452d12d4b6e2a05ee76820a7aac26"
+    },
+    "docs/en/debug/cann_sim.md": {
+     "at": "2026-09-15T19:51:13",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/debug/cann_sim.md 同内容，已按中文版评估并增补进 cannsim-sim-profiling",
+     "sha": "eba96332d88259c09b233916e6dfd34fa57b40dd"
+    },
+    "docs/en/debug/op_debug_prof.md": {
+     "at": "2026-09-15T19:51:13",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/debug/op_debug_prof.md 同内容，已按中文版评估并沉淀为 operator-debug-entrypoints",
+     "sha": "a1be06b4f09455a978e4bb14f3ee2b6d9a9e4924"
+    },
+    "docs/en/develop/aicore_develop_guide.md": {
+     "at": "2026-09-15T19:51:14",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/develop/aicore_develop_guide.md 同内容，评估以中文版为准",
+     "sha": "444d9a775b8c5e5190767d69ab2b7d72a54f57b4"
+    },
+    "docs/en/develop/aicpu_develop_guide.md": {
+     "at": "2026-09-15T19:51:14",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/develop/aicpu_develop_guide.md 同内容，评估以中文版为准",
+     "sha": "67ee977461f82e710663b29ca11506c1353bdc5f"
+    },
+    "docs/en/develop/cross_platform_migration_guide.md": {
+     "at": "2026-09-15T19:51:14",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/develop/cross_platform_migration_guide.md 同内容，评估以中文版为准",
+     "sha": "efc18cf99eb3c019b5da3d0462fcee3162f2d95b"
+    },
+    "docs/en/develop/graph_develop_guide.md": {
+     "at": "2026-09-15T19:51:14",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/develop/graph_develop_guide.md 同内容，评估以中文版为准",
+     "sha": "3cf049ec53470e8050a15be684c963cc8bace58c"
+    },
+    "docs/en/install/build.md": {
+     "at": "2026-09-15T19:51:14",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/install/build.md 同内容，评估以中文版为准",
+     "sha": "d6f45307748ee42cdbc54a0d822e5a75d96bb540"
+    },
+    "docs/en/install/compile.md": {
+     "at": "2026-09-15T19:51:14",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/install/compile.md 同内容，评估以中文版为准",
+     "sha": "dbdcd49c0ea0b2b023e3c86e581c695f802db254"
+    },
+    "docs/en/install/dir_structure.md": {
+     "at": "2026-09-15T19:51:14",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/install/dir_structure.md 同内容，评估以中文版为准",
+     "sha": "368a7691816b2551d17ba80ef965b17d0fb1a7d3"
+    },
+    "docs/en/install/quick_install.md": {
+     "at": "2026-09-15T19:51:15",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/install/quick_install.md 同内容，评估以中文版为准",
+     "sha": "7d81beb034b144a7b69e2c5f1d1d7ae27cf052fc"
+    },
+    "docs/en/invocation/op_invocation.md": {
+     "at": "2026-09-15T19:51:15",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/invocation/op_invocation.md 同内容，评估以中文版为准",
+     "sha": "3f61e4e826f3b47a825cfe63dd25750aa78d2d81"
+    },
+    "docs/en/invocation/quick_op_invocation.md": {
+     "at": "2026-09-15T19:51:15",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/invocation/quick_op_invocation.md 同内容，评估以中文版为准",
+     "sha": "d8297b41bc752e46cbe7f5ece0d3b24dd1a51516"
+    },
+    "docs/en/menu_aclnn_api.md": {
+     "at": "2026-09-15T19:51:15",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/menu_aclnn_api.md 同内容；纯 API 目录导航，非先验知识",
+     "sha": "75b2085a9a7459817d9513720fbed3cd7aef99cb"
+    },
+    "docs/en/op_api_list.md": {
+     "at": "2026-09-15T19:51:15",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/op_api_list.md 同内容；纯 API 清单，非先验知识",
+     "sha": "95f642aa399e3d3fbe9accd521078179d14f0cd5"
+    },
+    "docs/en/op_list.md": {
+     "at": "2026-09-15T19:51:15",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh/op_list.md 同内容；纯算子清单，非先验知识",
+     "sha": "f983a2a04e062dc9eac903d537f7349a251feb92"
+    },
+    "docs/quant_mode_introduction.md": {
+     "at": "2026-09-15T19:51:19",
+     "decision": "skipped",
+     "note": "根目录下的 quant_mode_introduction.md，内容与 docs/zh/context/quant_mode_introduction.md 同源（后者已评估并沉淀），不重复评估",
+     "sha": "f31ead144faa117c7d5ef9d7c7de666afe46dae6"
+    },
+    "docs/zh/context/aclnn_return_code.md": {
+     "at": "2026-09-15T19:51:02",
+     "decision": "harvested",
+     "note": "aclnn 返回码总表（ACLNN_SUCCESS 与 161001/161002/361001/561xxx 等）已进 errors/aclnn.yaml 新族文件",
+     "refs": [
+      "aclnn-return-codes"
+     ],
+     "sha": "a61e12011fbd24f85530aa6d059c6126f623a0a6"
+    },
+    "docs/zh/context/basic_concept.md": {
+     "at": "2026-09-15T19:51:16",
+     "decision": "skipped",
+     "note": "aclTensor/aclScalar 等基础概念与 aclnn 接口分层，已由 aclnn-two-phase-contract 与 aclnn-type-promotion-broadcast-and-format 覆盖，无新增定位判据",
+     "sha": "e6c7cc4841617cd2649335d460a4a7f13be7d45a"
+    },
+    "docs/zh/context/batch_consistency.md": {
+     "at": "2026-09-15T19:51:03",
+     "decision": "harvested",
+     "note": "Batch 一致性=ACL_OPT_DETERMINISTIC 3 / set_deterministic_level / 版本门槛已进该词条（该文件 raw 取 403，经 git 稀疏检出读取同一 commit 的 blob 核对 sha 一致）",
+     "refs": [
+      "batch-consistency-and-determinism-switches"
+     ],
+     "sha": "e9d1eacf3e70da6f50a761dddf41b6f269d1b741"
+    },
+    "docs/zh/context/broadcast_relationship.md": {
+     "at": "2026-09-15T19:51:02",
+     "decision": "harvested",
+     "note": "broadcast 规则与合并后维度<6 的限制已进该词条",
+     "refs": [
+      "aclnn-type-promotion-broadcast-and-format"
+     ],
+     "sha": "a65ef794ff76f9eb9db54deefaff5056819054c7"
+    },
+    "docs/zh/context/compile_and_run_sample.md": {
+     "at": "2026-09-15T19:51:16",
+     "decision": "skipped",
+     "note": "算子编译与运行样例操作步骤（面向算子开发上手），非故障/精度/性能定位知识，且编译调用面已由 aclnn-two-phase-contract 覆盖",
+     "sha": "3ff92cb5d56d1983da0acb00dea597b38c4edea2"
+    },
+    "docs/zh/context/conversion_relationship.md": {
+     "at": "2026-09-15T19:51:02",
+     "decision": "harvested",
+     "note": "互转换规则已进该词条",
+     "refs": [
+      "aclnn-type-promotion-broadcast-and-format"
+     ],
+     "sha": "0961c57324bc29ba0b2522379cc24cdf628aa412"
+    },
+    "docs/zh/context/data_format.md": {
+     "at": "2026-09-15T19:51:02",
+     "decision": "harvested",
+     "note": "数据格式与维度对应、私有格式已进该词条",
+     "refs": [
+      "aclnn-type-promotion-broadcast-and-format"
+     ],
+     "sha": "d5bd26e4b1ed525d6e7e90091b7366f5daa6489c"
+    },
+    "docs/zh/context/data_structure.md": {
+     "at": "2026-09-15T19:51:03",
+     "decision": "harvested",
+     "note": "aclTensor 结构与 dtype 简写表已进该词条",
+     "refs": [
+      "aclnn-type-promotion-broadcast-and-format"
+     ],
+     "sha": "3ead2ca05e0654d98ecac2f7cb888f6d97d5f89e"
+    },
+    "docs/zh/context/data_type.md": {
+     "at": "2026-09-15T19:51:03",
+     "decision": "harvested",
+     "note": "数据类型支持面已进该词条",
+     "refs": [
+      "aclnn-type-promotion-broadcast-and-format"
+     ],
+     "sha": "be0e968f00edc49fd7336a6016dcaa20f809ce85"
+    },
+    "docs/zh/context/deduction_relationship.md": {
+     "at": "2026-09-15T19:51:02",
+     "decision": "harvested",
+     "note": "互推导规则（Tensor×Tensor 与 Tensor×Scalar）已进该词条",
+     "refs": [
+      "aclnn-type-promotion-broadcast-and-format"
+     ],
+     "sha": "5a2e0511094cad50d10c54c100b2fa266dc2c20b"
+    },
+    "docs/zh/context/determinism_compute.md": {
+     "at": "2026-09-15T19:51:03",
+     "decision": "harvested",
+     "note": "确定性=ACL_OPT_DETERMINISTIC 1 与线程限制已进该词条",
+     "refs": [
+      "batch-consistency-and-determinism-switches"
+     ],
+     "sha": "46b647d25b89e6c8c42009f07137976464632f50"
+    },
+    "docs/zh/context/non_contiguous_tensor.md": {
+     "at": "2026-09-15T19:51:03",
+     "decision": "harvested",
+     "note": "非连续 Tensor（shape/strides/offset）已进该词条",
+     "refs": [
+      "aclnn-type-promotion-broadcast-and-format"
+     ],
+     "sha": "3738bc21e73cb2fbf4089d79fea05460691135ce"
+    },
+    "docs/zh/context/quant_mode_introduction.md": {
+     "at": "2026-09-15T19:51:03",
+     "decision": "harvested",
+     "note": "五种量化模式/组合/MX 定义已进该词条",
+     "refs": [
+      "aclnn-quant-modes-and-sparsemode"
+     ],
+     "sha": "fb53beb4213230704c1597ccd12ab9b6ce72383a"
+    },
+    "docs/zh/context/sparse_mode_introduction.md": {
+     "at": "2026-09-15T19:51:03",
+     "decision": "harvested",
+     "note": "sparseMode 0-8 与 varlen 限制已进该词条",
+     "refs": [
+      "aclnn-quant-modes-and-sparsemode"
+     ],
+     "sha": "be6c09e9a8c303caad1823e23e792df6f4ebb977"
+    },
+    "docs/zh/context/two_phase_api.md": {
+     "at": "2026-09-15T19:51:16",
+     "decision": "skipped",
+     "note": "aclNN 两段式接口契约（GetWorkspaceSize + 执行、两段式调用纪律）已由既有词条 aclnn-two-phase-contract 覆盖，本篇为同一事实的官方表述，无新增判据",
+     "sha": "21f0c8188f67b1d940fd954cdc6fbbbb25af6325"
+    },
+    "docs/zh/debug/cann_sim.md": {
+     "at": "2026-09-15T19:51:04",
+     "decision": "harvested",
+     "note": "950 单卡/仅 AI Core 计算算子/不支持 MC2·HCCL·arm、bit 级精度仿真与 aclnn 入口已增补进既有词条（该文件 raw 取 403，同经 git 稀疏检出核对 blob sha）",
+     "refs": [
+      "cannsim-sim-profiling"
+     ],
+     "sha": "2972d291a06ee45bb7ef3b8cf0eba5a2ea0de2ec"
+    },
+    "docs/zh/debug/op_debug_prof.md": {
+     "at": "2026-09-15T19:51:04",
+     "decision": "harvested",
+     "note": "plog 路径、aclGetRecentErrMsg、AI Core printf/DumpTensor、AI CPU KERNEL_LOG、msprof op/cannsim 分流已进该词条",
+     "refs": [
+      "operator-debug-entrypoints"
+     ],
+     "sha": "07cc82fe278bc1d66223889a5b6500b182cb8c64"
+    },
+    "docs/zh/develop/aicore_develop_guide.md": {
+     "at": "2026-09-15T19:51:16",
+     "decision": "skipped",
+     "note": "AI Core 算子开发指南（tiling/kernel 编程教学），属开发教程；开发期的调试手段已由 operator-debug-entrypoints 与 asc-tools-ascendc-debug-suite 覆盖",
+     "sha": "a4bcce86adf0151a258a65e253d2f962f75dec60"
+    },
+    "docs/zh/develop/aicpu_develop_guide.md": {
+     "at": "2026-09-15T19:51:16",
+     "decision": "skipped",
+     "note": "AI CPU 算子开发指南（开发教程）；其中 KERNEL_LOG 打印面已由 operator-debug-entrypoints 抽取",
+     "sha": "826f9e61b789c7dd85d5da3e335a30d07ebdd105"
+    },
+    "docs/zh/develop/cross_platform_migration_guide.md": {
+     "at": "2026-09-15T19:51:17",
+     "decision": "skipped",
+     "note": "跨平台算子迁移指南（开发流程），非诊断先验；平台差异事实走 references/platform-facts/",
+     "sha": "b52bb1b1c281ceddc94f8dc355581c2a9af5a2b5"
+    },
+    "docs/zh/develop/graph_develop_guide.md": {
+     "at": "2026-09-15T19:51:17",
+     "decision": "skipped",
+     "note": "图模式算子开发指南（开发教程），非诊断先验",
+     "sha": "f42763f09c56e05d6ea5d1608ec4d845e47d4b17"
+    },
+    "docs/zh/install/build.md": {
+     "at": "2026-09-15T19:51:17",
+     "decision": "skipped",
+     "note": "算子工程编译说明（build.sh 参数），操作步骤；编译产物判读面已有 asc-tools-ascendc-debug-suite 的 msobjdump",
+     "sha": "1c67e7887d535baae1d6b814ffcadde0db1e2048"
+    },
+    "docs/zh/install/compile.md": {
+     "at": "2026-09-15T19:51:17",
+     "decision": "skipped",
+     "note": "算子编译说明，操作步骤，非故障定位知识",
+     "sha": "79591247fec227ea8b88eea8ab998e92103ae66c"
+    },
+    "docs/zh/install/dir_structure.md": {
+     "at": "2026-09-15T19:51:17",
+     "decision": "skipped",
+     "note": "算子工程目录结构说明，非先验知识",
+     "sha": "7344fbf4ae0749284d664849ec3ab13c9957f92d"
+    },
+    "docs/zh/install/quick_install.md": {
+     "at": "2026-09-15T19:51:17",
+     "decision": "skipped",
+     "note": "算子包安装说明（.run 安装），属安装流程；失败形态已在 references/errors/ 与 install 相关词条面覆盖",
+     "sha": "0aae1aecfa65fcd514023fc20c459bce7eae21de"
+    },
+    "docs/zh/invocation/op_invocation.md": {
+     "at": "2026-09-15T19:51:16",
+     "decision": "skipped",
+     "note": "算子调用方式总览（aclnn 调用与算子包安装），属开发上手流程，调用契约已在 aclnn-two-phase-contract",
+     "sha": "71a8355cb036a95e10a5320c9a8fe28283c54720"
+    },
+    "docs/zh/invocation/quick_op_invocation.md": {
+     "at": "2026-09-15T19:51:16",
+     "decision": "skipped",
+     "note": "快速调用样例步骤（编包/装包/编可执行文件），操作步骤非先验知识；其中 cannsim 需要的可执行文件编译面已进 cannsim-sim-profiling",
+     "sha": "0a578e9a658311eb0b9c02a25a06f8da758bdc76"
+    },
+    "docs/zh/menu_aclnn_api.md": {
+     "at": "2026-09-15T19:51:18",
+     "decision": "skipped",
+     "note": "aclnn API 目录导航（纯链接索引），非先验知识",
+     "sha": "1f873d13f5d66fea4e9c6cac773745ec54ba7f7c"
+    },
+    "docs/zh/op_api_list.md": {
+     "at": "2026-09-15T19:51:18",
+     "decision": "skipped",
+     "note": "aclnn 接口清单（纯列表），非先验知识；调用契约走 aclnn-two-phase-contract",
+     "sha": "f2c2b0848f504ea5d953794a60d164665db70dd4"
+    },
+    "docs/zh/op_list.md": {
+     "at": "2026-09-15T19:51:18",
+     "decision": "skipped",
+     "note": "算子清单（纯列表），非先验知识",
+     "sha": "9151f8c5da7d3a6b12af0835cb47fb8c22c76074"
+    }
+   },
+   "head_sha": "cb81319781473f9c330dafff3a3570f2b5b06770",
+   "last_scan": "2026-09-15T19:43:04",
    "triage": {
-    "at": "2026-09-15T18:47:36",
-    "decision": "candidate",
-    "note": "候选待评估：该仓文档面较大或含工具/库文档，本轮优先覆盖 Tier1/Tier2，留待后续批次按价值排序评估"
+    "at": "2026-09-15T19:51:26",
+    "decision": "selected",
+    "note": "本轮按用户指定批次完成评估：65 篇全部判定（harvested 14 / skipped 51）。沉淀为 4 个新词条（errors/aclnn 新错误码族、aclnn-type-promotion-broadcast-and-format、aclnn-quant-modes-and-sparsemode、batch-consistency-and-determinism-switches、operator-debug-entrypoints）、并增补既有 cannsim-sim-profiling 的 950 仿真边界面。开发者手册/安装/纯清单类文档已判 skipped（理由逐条记于 docs 记录）"
    }
   },
   "gitcode/cann/ops-solver": {

@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-15    词条数：120
+# 生成日期：2026-09-15    词条数：124
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -228,6 +228,16 @@ entries:
     categories:
     - precision
     - performance
+- id: aclnn-quant-modes-and-sparsemode
+  type: software-fact
+  title: aclnn 量化模式与 sparseMode（T/C/K/G/B 五级与五种组合 / MX 的定义 / sparseMode 0-8 表与 varlen 限制）
+  summary: 两块与『精度问题的成因判读』直接相关的语义。**① 量化模式（量化粒度）与 scale 的 shape**：pertensor（T）——左或右矩阵整张共用一个量化参数，左矩阵 (m,k)
+    时 scale 形状 (1,)；perchannel（C）——只能作用于**右矩阵**、每个 channel 独立，右矩阵 (k,n…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - precision
 - id: aclnn-two-phase-contract
   type: software-fact
   title: aclnn 两段式接口契约（一阶段 GetWorkspaceSize / 二阶段执行）
@@ -239,6 +249,16 @@ entries:
     categories:
     - interrupt
     - performance
+- id: aclnn-type-promotion-broadcast-and-format
+  type: software-fact
+  title: aclnn 的张量语义约束（互推导/互转换/broadcast 的 <6 维限制/数据格式与维度要求/非连续 Tensor）
+  summary: 写或排查 aclnn 调用时的四类张量语义约束。**① 互推导（type promotion，类比 PyTorch）**：输入 aclTensor 之间数据类型不一致时，API 内部推导出一个类型并把输入都转成它再算——规则是**整数类型间可推导、整数可往浮点与复数推、浮点间可推、浮点可往复数推、复数之间可推、BOOL…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - interrupt
+    - precision
 - id: aicore-task-duration-anatomy
   type: software-fact
   title: AICore 算子 Task Duration 分段与首指令取指链（Icache/TLB/Dcache）
@@ -476,6 +496,16 @@ entries:
     - cross
     categories:
     - precision
+- id: batch-consistency-and-determinism-switches
+  type: software-fact
+  title: 计算确定性开关（ACL_OPT_DETERMINISTIC 1 与 3 / torch 侧两个入口 / 逐比特一致与 batch 一致性的区别 / 版本门槛）
+  summary: 昇腾上「结果不一致」分两级，开关也不同级。**① 确定性（determinism，`ACL_OPT_DETERMINISTIC=1`）**：解决同一算子在同一输入下多次运行结果不同——根源是算子实现内的异步多线程执行使浮点累加顺序变化；aclnn
+    路径用 `aclrtSetSysParamOpt`（进程级）设 1，Py…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - precision
 - id: bf16-intermediate-precision
   type: software-fact
   title: BF16 中间计算的精度处理（升 FP32 计算 / 等价重结合会改变 BF16 舍入位置）
@@ -488,9 +518,9 @@ entries:
     - precision
 - id: cannsim-sim-profiling
   type: tool
-  title: cannsim 仿真性能观测（VF/算子级 cycle Trace，非上板采集）
-  summary: cannsim 以 cycle 级仿真输出 VectorFunction（VF）的执行 Trace 与 load / exec / store pipe 分布，用于上板 profiling
-    只见端到端耗时、无法归因到指令级时的进一步观测；仅支持 Ascend 950（dav-3510），且仿真的是独立最小 kernel…
+  title: cannsim 仿真观测（SoC 级指令流水 cycle Trace + bit 级精度仿真，非上板采集；单卡/仅 AI Core 计算算子/仅 950PR）
+  summary: cannsim 在 SoC 级仿真器上跑同一个 kernel（与上板二进制兼容），输出两类结果：**性能面**——cycle 级指令流水 Trace 与 VectorFunction（VF）的
+    load / exec / store pipe 分布；**精度面**——bit 级精度结果用于算子精度验证。它补的是上板 p…
   applies_to:
     platforms:
     - A5-950
@@ -1019,6 +1049,22 @@ entries:
     - A5-950
     - cross
     categories:
+    - performance
+- id: operator-debug-entrypoints
+  type: tool
+  title: 算子级调试与调优入口（plog 路径 / aclGetRecentErrMsg / AI Core printf·DumpTensor / AI CPU KERNEL_LOG / msprof
+    op / cannsim record）
+  summary: 算子执行失败或精度异常时，按『先拿 Host 侧日志与框架错误信息 → 再往 Kernel 里加打印 → 复杂场景升级到单步调试』的顺序取信息。**① Host 侧**：plog 默认落在
+    `$HOME/ascend/log/debug/plog/plog-pid_*.log`；`ASCEND_SLOG_PRINT_T…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - A5-950
+    - cross
+    categories:
+    - interrupt
+    - precision
     - performance
 - id: pcie-host-memory-access
   type: software-fact
