@@ -47,11 +47,21 @@ SOURCE_REQUIRED = {
 METHODOLOGY_MIN_CASE_REFS = 3
 
 
+# 解析结果按路径记忆：refs 在三处被解析（id 集、id 查重、逐条校验），而一次校验里文件不会变
+# ——实测 351 个文件被解析 699 次，多出来的那一半是纯粹的重复劳动（面板的判决要跑这条链路）。
+# 缓存只对**只读用法**成立：本脚本只读字段、只往 errors 追加，从不改写 doc（加字段/改字段前
+# 先想清楚共享同一份的后果）。错误文档同样进缓存：同一份坏文件的报错不会有第二次不同的样子。
+_parsed_cache = {}
+
+
 def load_yaml(path: Path):
-    try:
-        return load_file(path) or {}
-    except yaml.YAMLError as e:
-        return {"__yaml_error__": str(e)}
+    key = str(path)
+    if key not in _parsed_cache:
+        try:
+            _parsed_cache[key] = load_file(path) or {}
+        except yaml.YAMLError as e:
+            _parsed_cache[key] = {"__yaml_error__": str(e)}
+    return _parsed_cache[key]
 
 
 def check_case_ref_links(root: Path, ref_ids: set):
