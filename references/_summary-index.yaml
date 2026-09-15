@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-15    词条数：124
+# 生成日期：2026-09-15    词条数：131
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -496,6 +496,20 @@ entries:
     - cross
     categories:
     - precision
+- id: autofuse-fusion-enable-and-diagnostics
+  type: tool
+  title: AutoFuse 自动融合的使能与未融合原因判读（torch.compile 的 ascendc 后端 + autofused_ 产物 + Fallback 原因 + DFX 融合图）
+  summary: AutoFuse 是面向 Ascend C 的自动融合框架（把相邻算子合成一个、消掉中间的输入输出搬运，缓解 Vector 链路的 Memory Bound），在 PyTorch 侧通过
+    `torch.compile(model, dynamic=False, fullgraph=True, options={"npu…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - A5-950
+    - cross
+    categories:
+    - performance
+    - precision
 - id: batch-consistency-and-determinism-switches
   type: software-fact
   title: 计算确定性开关（ACL_OPT_DETERMINISTIC 1 与 3 / torch 侧两个入口 / 逐比特一致与 batch 一致性的区别 / 版本门槛）
@@ -569,6 +583,17 @@ entries:
     categories:
     - performance
     - interrupt
+- id: fabricmem-unified-addressing-and-transfer
+  type: software-fact
+  title: FabricMem 模式（超节点内 DRAM 统一编址 + D2RH/RH2D 单边传输：VMM 四步、开关与取值约束、依赖与硬件范围）
+  summary: HIXL 的 FabricMem 传输模式：在 Atlas 800T A3 超节点内把**所有计算节点的 DRAM 统一编址**，NPU 通过 HCCS 直接访问远程节点内存，从而走
+    **D2RH（设备→远程主机）/RH2D（远程主机→设备）** 高带宽通道——文档给出的动机是传统 RoCE 方案满载带宽约 20GB/…
+  applies_to:
+    platforms:
+    - A3-910C
+    categories:
+    - interrupt
+    - performance
 - id: flash-attention-stage-pipeline
   type: software-fact
   title: FlashAttention 四阶段的三条依赖与跨轮次错位（FIA_PRELOAD_TASK_CACHE_SIZE = 3）
@@ -668,6 +693,17 @@ entries:
     categories:
     - precision
     - performance
+- id: hixl-tool-route-and-comm-res
+  type: tool
+  title: hixl_tool（A5/950 通信资源生成：host_route 导 EID 清单 + local_comm_res 生成 LocalCommRes JSON）
+  summary: HIXL 附带的命令行工具，为分布式推理/AI 场景生成网络通信资源，**仅适用于 A5（Ascend 950）机型，不支持 A2/A3**。两个子命令：`host_route` 导出本机
+    Host/CPU 侧 EID（2 口 PG）与 NPU 侧 EID 到 `host_route.json`（默认 `/etc/`，…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - interrupt
+    - performance
 - id: hw-task-scheduler-routing
   type: platform-fact
   title: 硬件任务调度模块分派（AICore / AICpu / Sdma 三条调度通道）
@@ -699,6 +735,19 @@ entries:
     - A5-950
     categories:
     - performance
+- id: llm-datadist-link-and-kv-transfer-contract
+  type: software-fact
+  title: LLM-DataDist 建链与 KV Cache 传输契约（类 TCP 建链 / rets 逐个判 / Pull 与 Push 的层范围语义 / 角色切换前置）
+  summary: PD 分离里 LLM-DataDist 的传输面契约。**① 建链是类 TCP 流程**：Server 侧初始化时提供侦听信息（`OPTION_LISTEN_IP_INFO = ip:port`），Client
+    侧调 `LinkLlmClusters` 发起；**Server/Client 与 prompt/decod…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - cross
+    categories:
+    - interrupt
+    - precision
 - id: moe-dispatch-combine
   type: software-fact
   title: MoE Dispatch/Combine 的对等内存单边写机制（mte_put / K+1 状态位 / 通信前量化收益边界）
@@ -1202,6 +1251,47 @@ entries:
     - interrupt
     - performance
     - precision
+- id: torchtitan-npu-compile-backends-and-limits
+  type: software-fact
+  title: torchtitan-npu 的图编译契约（两级 backend 必须在 import torch 前定 / 按 Block 全图编译 / fallback 与动态 shape 边界 /
+    内核缓存与「训练成功≠融合生效」）
+  summary: 在 torchtitan-npu 上做 torch.compile 的性能与中断定位，先记住五条。**① 两级 backend 不能互相替代**：`compile.backend=inductor`
+    选 PyTorch Dynamo backend，`TORCHINDUCTOR_NPU_BACKEND=ascendc`…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - cross
+    categories:
+    - performance
+    - interrupt
+    - precision
+- id: torchtitan-npu-sdc-detection
+  type: software-fact
+  title: torchtitan-npu 的 SDC 检测（静默数据损坏：gradient / matmul checksum / HCCL 三路，typed 参数默认值与前置约束）
+  summary: torchtitan-npu 内置的 **SDC（Silent Data Corruption，静默数据损坏）检测**，检测 torch.compile + Inductor 编译训练中的
+    gradient、HCCL 与 matmul checksum 异常。**默认关闭**，通过 `TrainerEx.Config.…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - cross
+    categories:
+    - precision
+    - performance
+- id: torchtitan-npu-training-metrics-and-debugging
+  type: tool
+  title: torchtitan-npu 训练可观测面（Memory Snapshot 抓 OOM/泄漏 + NPU 适配 Profiling 的周期/绝对步数采集与离线解析）
+  summary: torchtitan-npu 的两条观测路径，都通过**分层 CLI 参数**（默认全关）启用。**① Memory Snapshot**（查 OOM 与内存泄漏）：`--profiler.enable-memory-snapshot`
+    定时采集（`--profiler.profile-freq` 默认 10 步一次，…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - cross
+    categories:
+    - performance
+    - interrupt
 - id: transfer-granularity-thresholds
   type: platform-fact
   title: 搬运粒度阈值（单次总量 <20K 不友好、连续 <128B 浪费 Sector-Cache）

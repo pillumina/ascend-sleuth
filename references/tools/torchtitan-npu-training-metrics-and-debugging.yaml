@@ -1,0 +1,40 @@
+id: torchtitan-npu-training-metrics-and-debugging
+type: tool
+title: torchtitan-npu 训练可观测面（Memory Snapshot 抓 OOM/泄漏 + NPU 适配 Profiling 的周期/绝对步数采集与离线解析）
+summary: "torchtitan-npu 的两条观测路径，都通过**分层 CLI 参数**（默认全关）启用。**① Memory Snapshot**（查 OOM 与内存泄漏）：`--profiler.enable-memory-snapshot` 定时采集（`--profiler.profile-freq` 默认 10 步一次，`--profiler.save-memory-snapshot-folder` 默认 `profiling/memory_snapshot`），产物是 `.pickle`，用 PyTorch 官方 **memory_viz** 打开；**发生 OOM 时会自动转储当前快照**（不必等下一个采集周期）。**② Profiling**（查性能瓶颈）：基于 `torch_npu.profiler`，采集 CPU/NPU 活动、内存、调用栈、张量形状并给出 AI 算力利用率。原生参数 `--profiler.enable-profiling`、`--profiler.save-traces-folder`（默认 `profiling/traces`）、`--profiler.profile-freq`（10）、`--profiler.profiler-warmup`（3）、`--profiler.profiler-active`（1）、`--profiler.profiler-repeat`、`--profiler.profiler-skip-first`；NPU 专属参数放在 `profiler.extension.*`：`--profiler.extension.profile-ranks`（默认 `[-1]` 表示所有 rank）、`--profiler.extension.profiler-start/end`（绝对步数窗口，含 start、不含 end，两者须同时设）、`--profiler.extension.profile-with-memory`、`--profiler.extension.profile-with-stack`、`--profiler.extension.enable-online-parse`（默认 true）。**离线解析**用 `scripts/parse_profiling_data.py <单个 *_ascend_pt 或其父目录>`，产出 `kernel_details.csv`、`api_statistic.csv`、`ascend_pytorch_profiler_0.db`（MindStudio Insight / Chrome Tracing 可开）、`trace_view.json`。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/torchtitan-npu/blob/master/docs/developer_guides/metrics_and_debugging.md"
+    version: "torchtitan-npu master（commit 8b0da62f16c7，2026-09-15 抓取）：调试支持特性——Memory Snapshot 与 Profiling 的参数表、示例命令、离线解析与产物清单"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A3-910C, cross]
+  frameworks: [torchtitan-npu, torch_npu]
+  categories: [performance, interrupt]
+
+related_references: [msprof-output-reading-and-performance-analysis, msprobe-capability-limits, torchtitan-npu-sdc-detection, ascend-oom-triage, runtime-memory-allocation-strategies, ascend-log-locations]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  tool_name: "torchtitan-npu 调试特性（Memory Snapshot / NPU Profiling）"
+  invocation: "训练命令后追加 Profiler 分层参数即可：内存问题加 `--profiler.enable-memory-snapshot`（可再配 `--profiler.profile-freq` 与保存目录）；性能问题加 `--profiler.enable-profiling` 并选择周期采集或绝对步数窗口。产物默认落 `profiling/` 下的 traces 与 memory_snapshot 子目录。"
+  commands:
+    memory_snapshot: "`--profiler.enable-memory-snapshot --profiler.save-memory-snapshot-folder profiling/memory_snapshot --profiler.profile-freq 10`"
+    profiling_periodic: "`--profiler.enable-profiling --profiler.save-traces-folder profiling/traces --profiler.profile-freq 10 --profiler.profiler-warmup 3 --profiler.profiler-active 1`"
+    profiling_absolute_steps: "`--profiler.enable-profiling --profiler.extension.profiler-start 5 --profiler.extension.profiler-end 6 --profiler.save-traces-folder profile_traces --profiler.extension.profile-ranks 0 --profiler.extension.profile-with-memory`"
+    offline_parse: "`python3 scripts/parse_profiling_data.py path/to/xxx_ascend_pt`（单目录）或 `python3 scripts/parse_profiling_data.py path/to/save_traces_folder`（父目录，自动扫描 `profiling_data/*_ascend_pt` 与 `*_ascend_pt` 两种布局，多 rank 各生成独立子目录）"
+  output_meaning:
+    - "内存快照 `.pickle` 交给 memory_viz 解读：看的是分配/释放与生命周期，用于区分「真的泄漏」与「碎片化/峰值过高」——OOM 现场不必等下一个 `profile-freq` 周期，OOM 会自动转储"
+    - "Profiling 产物按用途分工：`kernel_details.csv` 是 NPU kernel 级耗时统计、`api_statistic.csv` 是 PyTorch API 调用统计、`ascend_pytorch_profiler_0.db` 给 MindStudio Insight 或 Chrome Tracing 打开、`trace_view.json` 是完整 trace 视图；都在各 `*_ascend_pt/ASCEND_PROFILER_OUTPUT/` 下"
+    - "`profile_ranks` 的 `[-1]` 是**所有 rank**——只想抓某个 rank 的现场时必须显式写 rank list，否则多 rank 同时开采集会放大开销与数据量"
+  pitfalls:
+    - "**布尔参数是开关形式**：启用时直接写参数名、**不要在后面追加 `true`**；关闭已启用的布尔项要用对应的 `--profiler.no-...` 参数（如 `--profiler.extension.no-enable-online-parse`）"
+    - "**绝对步数窗口必须成对给**：`profiler-start`/`profiler-end` 需同时设置（含 start、不含 end）；设置后扩展会自动推导 `profiler-active`/`profiler-repeat`/`profiler-skip-first`——不要与手写的周期参数混着调，否则窗口与预期不一致"
+    - "**断点续训时绝对步数窗口按恢复后的全局步数继续对齐**；如果窗口已经结束，Profiler **不会重复启动**（这是「续训后没采到数据」的正常解释，不是采集失败）"
+    - "**离线解析与在线解析是两条路**：不关 `enable-online-parse`（默认 true）时训练中就解析；关掉后只转储原始数据到 `save_traces_folder/profiling_data/`，训练结束再用 `scripts/parse_profiling_data.py` 解析——只拿原始目录去找 csv 是找不到的"
+    - "**内存快照与 profiling 都会影响训练**：两者都改变执行时序与开销，遇到「开了采集问题不复现」时按采集行为影响时序判断（见 ascend-determinism-triage 的分流），不要直接当作问题消失"

@@ -1,0 +1,55 @@
+id: autofuse-fusion-enable-and-diagnostics
+type: tool
+title: AutoFuse 自动融合的使能与未融合原因判读（torch.compile 的 ascendc 后端 + autofused_ 产物 + Fallback 原因 + DFX 融合图）
+summary: "AutoFuse 是面向 Ascend C 的自动融合框架（把相邻算子合成一个、消掉中间的输入输出搬运，缓解 Vector 链路的 Memory Bound），在 PyTorch 侧通过 `torch.compile(model, dynamic=False, fullgraph=True, options={\"npu_backend\": \"ascendc\"})` 使能——**不需要单独导入 `inductor_npu_ext`**。判读融合有没有发生、为什么没发生靠三样：**① `TORCH_COMPILE_DEBUG=1` 后在当前目录 `torch_compile_debug/` 下，以 `autofused_` 为前缀的目录 = AscendC 后端生成的融合算子白盒产物（一个目录对应一个融合算子，可看融合范围与 codegen 结果），其余目录是 Inductor 原生产物——如果**没有** `autofused_` 目录，说明本次编译**没有产生任何融合算子**；② 终端里的 `Fallback aten.xxxx $reason: xx原因` 直接给出未融合的原因；③ `AUTOFUSE_DFX_FLAGS=\"--codegen_compile_debug=true;--debug_dir=/path/\"` 在指定路径落盘每个融合算子的**内部融合图 pbtxt**（可用 netron.app 打开），其中 `codegen_compile_debug=true` 还会输出每个 LLVM pass 的耗时（`-ftime-report=per-pass`）并生成编译器时间线 JSON（默认 `~/.cache/autofuse_compile_trace`，终端打印 `[CompileTrace] <路径>`）。**收益度量**：融合提升比 = (融合前所有算子耗时 − 融合后所有算子耗时) / 融合前所有算子耗时；可再对比融合算子相对单算子的 `aiv_mte2_time`（输入搬运）与 `aiv_mte3_time`（输出搬运）。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/graph-autofusion/blob/master/autofuse/README.md"
+    version: "graph-autofusion master（commit 9f9c797e0cb3，2026-09-15 抓取）：AutoFuse 简介、上板验证、调试环境变量（TORCH_COMPILE_DEBUG / TORCHINDUCTOR_FORCE_DISABLE_CACHES / ASCEND_LAUNCH_BLOCKING / AUTOFUSE_DFX_FLAGS）、结果分析、复杂网络使能"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/graph-autofusion/blob/master/README.md"
+    version: "graph-autofusion master（commit 9f9c797e0cb3）：项目概述、组件划分（SuperKernel / Autofuse）、生态集成路径（GE / PyTorch Inductor / TensorFlow Adapter）"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/graph-autofusion/blob/master/AGENTS.md"
+    version: "graph-autofusion master（commit 9f9c797e0cb3）：构建要求——并行度限制 `-j 8` 以避免 Autofuse 编译 OOM"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A3-910C, A5-950, cross]
+  frameworks: [torch_npu, torchair, ascendc]
+  categories: [performance, precision]
+
+related_references: [ascend-inference-multistream-and-graph-mode, npu-prefetch-and-superkernel, msprof-output-reading-and-performance-analysis, atc-precision-mode-and-switches, operator-compile-env, graph-compile-env]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  tool_name: "AutoFuse（Ascend C 自动融合框架；torch.compile 的 ascendc 后端 / GE 的自动融合后端）"
+  invocation: "网络里使能只需给 `torch.compile` 指定 AscendC 后端（`options={\"npu_backend\": \"ascendc\"}`，常配 `dynamic=False`、`fullgraph=True`）；排查未融合时再加 `TORCH_COMPILE_DEBUG=1`，需要看融合图时加 `AUTOFUSE_DFX_FLAGS`。"
+  commands:
+    enable: "`model = torch.compile(model, dynamic=False, fullgraph=True, options={\"npu_backend\": \"ascendc\"})`"
+    debug_dump: "`export TORCH_COMPILE_DEBUG=1`——调试信息输出到当前执行目录的 `torch_compile_debug/`；多次执行会因缓存跳过编译，需配合下面这条"
+    force_recompile: "`export TORCHINDUCTOR_FORCE_DISABLE_CACHES=1`——禁用 Inductor 缓存、每次重新编译（**会显著增加图启动耗时，实际部署请勿使用**）"
+    dfx_flags: "`export AUTOFUSE_DFX_FLAGS=\"--codegen_compile_debug=true;--debug_dir=/path-to-dump/\"`——落盘每个自动融合算子对应的内部融合图（pbtxt，netron.app 可打开）；`codegen_compile_debug=true` 另输出每个 LLVM pass 耗时与编译器时间线 JSON"
+    launch_blocking: "`export ASCEND_LAUNCH_BLOCKING=1`——Ascend 内核同步执行、每次下发都等完成，便于确定**首个报错的 kernel**（**会显著降低下发性能，部署勿用**）"
+    env_prepare: "`source /usr/local/Ascend/driver/bin/setenv.sh` + `source /usr/local/Ascend/ascend-toolkit/set_env.sh` + `export ASCEND_DEVICE_ID=0`；torch_npu 建议用仓库自带的 `scripts/env_install/pytorch/setup_torch_npu_daily.sh` 安装（与 AscendC 后端匹配），不建议直接走 PyPI"
+  output_meaning:
+    - "**`torch_compile_debug/` 下的目录前缀就是判据**：`autofused_` 前缀 = AscendC 后端生成的融合算子产物（一个目录一个融合算子，看融合范围与 codegen 结果）；其余目录 = PyTorch Inductor 原生产物；**完全没有 `autofused_` 目录 = 本次编译没产生融合算子**"
+    - "未融合时不要猜：终端 `Fallback aten.xxxx $reason: xx原因` 就是原因来源（先读 reason 再看图）"
+    - "`--debug_dir` 落盘的 pbtxt 是融合算子的**内部融合图**（不是整网图）——用来看「哪些算子被并进了同一个融合算子、融合边界在哪」"
+    - "性能收益的量化口径：融合提升比 = (融合前所有算子耗时 − 融合后所有算子耗时) / 融合前所有算子耗时；进一步看融合算子的 `aiv_mte2_time`（输入搬运）与 `aiv_mte3_time`（输出搬运）相对单算子的改善——AutoFuse 的收益来源正是消掉这些搬运"
+    - "对照组做法：把整个 `torch.compile(...)` 块注释掉，让模型以非编译模式执行，作为「未使能自动融合」的基线，再分别采 profiling 对比**相同计算范围内**相关算子的总耗时"
+  pitfalls:
+    - "**不是所有算子都能融合**：在 Inductor 层未被 lowering 的算子最后仍以单算子形式存在——所以「使能后算子数只降了一点」不一定是没生效，先看 Fallback 原因清单"
+    - "**开了 `TORCH_COMPILE_DEBUG` 但产物没更新**：多数是缓存命中跳过了编译，配 `TORCHINDUCTOR_FORCE_DISABLE_CACHES=1` 强制重编（该变量本身显著增加启动耗时，只用于调试）"
+    - "**`ASCEND_LAUNCH_BLOCKING=1` 是定位首个报错 kernel 的手段而不是部署选项**：它把异步下发改成同步等待，会显著降低下发性能"
+    - "**torch_npu 版本要匹配 AscendC 后端**：官方明确建议用仓库提供的 daily 安装脚本而不是 PyPI 直装——版本不匹配时融合行为与文档不一致"
+    - "**编译本身会 OOM**：仓库构建要求限制并行度（优先 `-j 8`）以避免 Autofuse 编译 OOM；切换 gcc 版本要显式设 `CC`/`CXX` 并**先清理 `build/`**（避免 CMake 缓存沿用旧编译器），且**不要用 `update-alternatives` 改系统默认 gcc**"
+    - "AutoFuse 是可独立选用的组件（与同仓的 SuperKernel 并列），集成路径有三条——GE 自动融合后端、PyTorch Inductor 的 Ascend C 后端（经 torch.compile/TorchAir）、TensorFlow Adapter 经 GE；**各路径以对应 CANN 版本与上层组件实际支持情况为准**，不要跨路径照搬开关"

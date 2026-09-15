@@ -1,0 +1,72 @@
+id: hixl-error-codes
+type: error-code
+title: HIXL（单边通信库）错误码（9 条，103900–103905 / 203900 / 503900）
+summary: HIXL 单边通信库的 Status 码（uint32，十进制）：SUCCESS=0、PARAM_INVALID=103900、TIMEOUT=103901、NOT_CONNECTED=103902、ALREADY_CONNECTED=103903、NOTIFY_FAILED=103904、UNSUPPORTED=103905、RESOURCE_EXHAUSTED=203900、FAILED=503900。SDK 文档给出每一码的**是否可恢复**与处理动作——不可恢复的四条（TIMEOUT、NOTIFY_FAILED、FAILED）动作统一是**保留现场 + 取 Host/Device 日志并备份**，可恢复的多为参数/链路类（排查建链情况）或资源类（等资源释放后重试）
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/hixl/blob/master/docs/zh/api/cpp/HIXL-error-code.md"
+    version: "hixl master（commit 3f38f679bc0f，2026-09-15 抓取）：C++ 头文件里的 Status 常量定义 + 逐码含义/可恢复性/解决办法表"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/hixl/blob/master/docs/zh/api/python/HIXL-error-code.md"
+    version: "hixl master（commit 3f38f679bc0f）：Python 侧同一码表（类型为 int，取值与 C++ 一致）"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A3-910C, cross]
+  frameworks: [hixl]
+  categories: [interrupt]
+
+related_references: [llm-datadist-error-codes, ascend-error-code-structure, ascend-mooncake-kv-transfer-triage, hccl-error-codes]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  errors:
+    - code: "0"
+      meaning: "SUCCESS：成功（文档『是否可恢复』列为无，解决办法：不涉及）。"
+      module: HIXL
+    - code: "103900"
+      meaning: "PARAM_INVALID：参数错误（可恢复）。解决办法：基于日志排查错误原因。"
+      solution: "基于日志排查错误原因——参数类问题不看网络与链路，先看调用入参。"
+      recoverable: 是
+      module: HIXL
+    - code: "103901"
+      meaning: "TIMEOUT：处理超时（**不可恢复**）。"
+      solution: "保留现场，获取 Host/Device 日志，并备份。"
+      recoverable: 否
+      module: HIXL
+    - code: "103902"
+      meaning: "NOT_CONNECTED：没有建链（可恢复）。"
+      solution: "上层排查建链情况。"
+      recoverable: 是
+      module: HIXL
+    - code: "103903"
+      meaning: "ALREADY_CONNECTED：已经建链（可恢复）。"
+      solution: "上层排查建链情况——重复建链属上层调用状态管理问题，不是链路故障。"
+      recoverable: 是
+      module: HIXL
+    - code: "103904"
+      meaning: "NOTIFY_FAILED：通知失败（文档列为不可恢复）。"
+      solution: "预留错误码，暂不会返回——**遇到它说明与文档版本不符**，先核对 HIXL 版本。"
+      recoverable: 否
+      module: HIXL
+    - code: "103905"
+      meaning: "UNSUPPORTED：不支持的参数或接口（可恢复）。"
+      solution: "根据接口返回信息确认是否支持当前配置或特性；若不支持，改用已支持的参数或接口。"
+      recoverable: 是
+      module: HIXL
+    - code: "203900"
+      meaning: "RESOURCE_EXHAUSTED：资源耗尽，**当前仅包含 stream 资源**（可恢复）。"
+      solution: "等待资源释放后再进行尝试。"
+      recoverable: 是
+      module: HIXL
+    - code: "503900"
+      meaning: "FAILED：通用失败（**不可恢复**）。"
+      solution: "保留现场，获取 Host/Device 日志，并备份。"
+      recoverable: 否
+      module: HIXL

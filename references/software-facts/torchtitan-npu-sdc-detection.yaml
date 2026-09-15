@@ -1,0 +1,38 @@
+id: torchtitan-npu-sdc-detection
+type: software-fact
+title: torchtitan-npu 的 SDC 检测（静默数据损坏：gradient / matmul checksum / HCCL 三路，typed 参数默认值与前置约束）
+summary: "torchtitan-npu 内置的 **SDC（Silent Data Corruption，静默数据损坏）检测**，检测 torch.compile + Inductor 编译训练中的 gradient、HCCL 与 matmul checksum 异常。**默认关闭**，通过 `TrainerEx.Config.sdc` 的 typed CLI 参数按需开（`--sdc.gradient-enabled`、`--sdc.with-checksum`、`--sdc.hccl-mode 0|1|2|3`），或走 torch-npu 原生变量 `NPU_ASD_CONFIG`/`NPU_ASD_ENABLE`（Eager 模式）。**有效开启条件是 `gradient_enabled or hccl_mode != 0`**；全部默认值时 SDC 不导入 torch-npu、也不校验编译兼容性；任一 gradient tuning 参数偏离默认值时必须同时开 `--sdc.gradient-enabled`。**compiled SDC 的前置**：`compile.enable=true` 且 `compile.components` 含 `model`、`compile.backend=inductor`、**`parallelism.pipeline_parallel_degree=1`（不支持流水线并行）**。**检测时机**：HCCL 检测在模型构建完成后一次性启用，覆盖此后的 forward/backward 与训练步骤间的 collective，**不覆盖 Trainer 构造期间的初始化通信**，且启用可能带来额外性能损耗；checksum 只对训练图中的 **BF16 `aten.mm`/`aten.matmul`/`aten.bmm`** 插入 checksum custom op（`nn.Linear` 可能被编译成尚未覆盖的 `aten.addmm`）。**改模式必须重启 worker**：SDC 用进程级 torch-npu 与 Inductor 状态，不提供运行期重配置或卸载接口。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/torchtitan-npu/blob/master/docs/feature_guides/sdc.md"
+    version: "torchtitan-npu master（commit 8b0da62f16c7，2026-09-15 抓取）：SDC 特性说明——启动入口、原生/typed 参数表与默认值、compiled SDC 前置、生命周期、模块职责、验证范围"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/torchtitan-npu/blob/master/docs/user-guides/sdc.md"
+    version: "torchtitan-npu master（commit 8b0da62f16c7）：在非 torchtitan 框架中接入 SDC 的最小示例（SDC.Config → build → finalize_sdc_step）"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A3-910C, cross]
+  frameworks: [torchtitan-npu, torch_npu]
+  categories: [precision, performance]
+
+related_references: [batch-consistency-and-determinism-switches, ascend-determinism-triage, msprobe-capability-limits, torchtitan-npu-training-metrics-and-debugging, hccl-op-exec-and-cluster-event-faults]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "SDC 是「训练结果偶发异常、又抓不到报错」时的一条**主动检测**路径，但它有三个必须前置的判据：①**入口必须是 `torchrun -m torchtitan_npu.train`**——直接用 `torchrun -m torchtitan.train` 会构造上游 `Trainer`，不支持作为 NPU SDC 入口（仓库自带 `scripts/run_train.sh`/`run_train_multinodes.sh` 默认已用对入口）；②**compiled 路径必须同时满足 compile 与并行约束**（inductor + components 含 model + **流水线并行度为 1**），否则 SDC 不生效；③**HCCL 检测有覆盖边界与代价**（模型构建后启用、覆盖 forward/backward 与 step 间 collective，**不覆盖初始化通信**；启用有额外性能损耗）。判据上还要注意 checksum 的覆盖面只到 BF16 的 mm/matmul/bmm——**`nn.Linear` 可能被编译成 `aten.addmm`，不在 checksum 覆盖内**（官方在接入示例里就以此为由只演示 gradient detection）。"
+  evidence: "feature_guides/sdc.md：『SDC（Silent Data Corruption，静默数据损坏）用于检测 Ascend NPU 编译训练中的 gradient、HCCL 和 matmul checksum 异常，适用于使用 torch.compile 与 Inductor 编译模型的标准 NPU Trainer。该能力默认关闭』；『直接使用 torchrun -m torchtitan.train 可能构造上游 Trainer，不支持作为 NPU SDC 入口』；typed 参数表逐项默认值与约束（gradient-enabled false、with-checksum false 且『依赖 gradient detection』、hccl-mode 0/1/2/3 且 0 关闭、cooldown 5 分钟、strikes-num 3、strikes-window 480 分钟、checksum-cooldown 180 分钟、upper-thresh1 1000000、upper-thresh2 100、grad-sample-interval 3）；『有效开启条件是 gradient_enabled or hccl_mode != 0』『任一 gradient tuning 参数偏离默认值时，必须启用 --sdc.gradient-enabled』；compiled SDC 要求『compile.enable=true，且 compile.components 包含 model』『compile.backend=inductor』『parallelism.pipeline_parallel_degree=1，不支持流水线并行』『HCCL 检测在模型构建完成后一次性启用，覆盖此后的 forward、backward 和训练步骤间 collective，不覆盖 Trainer 构造期间的初始化通信。启用 HCCL SDC 可能带来额外性能损耗』；『checksum pass 对训练图中的 BF16 NPU aten.mm.default、aten.matmul.default 和 aten.bmm.default 插入 checksum custom op』；『更改模式需要重启 worker』『SDC 使用进程级 torch-npu 和 Inductor 状态，不提供运行期重配置或卸载接口』；user-guides/sdc.md：`with_checksum=False` 的注释『nn.Linear 可能被编译为当前 checksum 尚未覆盖的 aten.addmm，因此该基础示例只演示 gradient detection 的接入』"
+  pitfalls:
+    - "**默认全默认值时 SDC 什么都不做**：既不导入 torch-npu 也不校验编译兼容性——「开了 SDC 却没检测」先看是否只停了默认值（有效条件是 `gradient_enabled or hccl_mode != 0`）"
+    - "**调 gradient 阈值必须同时开 `--sdc.gradient-enabled`**，且 7 个 tuning 参数都按整数解析，非法值直接报错"
+    - "**不支持流水线并行**（`pipeline_parallel_degree` 必须为 1）；也不支持运行期重配置——**改模式要重启 worker**"
+    - "**HCCL 检测不覆盖初始化通信**：模型构建前的建链/初始化 collective 不在检测范围内，那一段的静默错误别指望 SDC 抓到；反过来，构造 SDC 前**不能提前执行训练图**"
+    - "**不能在导入时已启用 Eager 后再改环境变量切换模式**：原生检测路径会缓存 HCCL 模式，首次导入后再改不生效；`NPU_ASD_ENABLE` 的读取与缓存顺序是这类「改了不生效」的根因"
+    - "**checksum 有覆盖类型与算子面**（仅 BF16 的 mm/matmul/bmm）：把 `nn.Linear` 写成 `aten.addmm` 时该项检测不生效，遇到「checksum 没报但结果还是错」先核对编译后的算子形态"
+    - "启用 HCCL SDC 有额外性能损耗；`--sdc.hccl-mode` 非零时若同时配了原生关闭值，SDC 会在导入 torch-npu 后覆盖为指定模式——两侧配置冲突时以 typed 参数为准"

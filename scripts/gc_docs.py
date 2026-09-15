@@ -68,11 +68,19 @@ DOC_EXTS = (".md", ".rst", ".txt")
 # 不排除 `docs/en/`（曾误列）：语言目录不是"重复内容"的同义词——实测 cann/runtime 的错误码参考
 # **只在 docs/en/error_code_ref 下有**（docs/zh 只有 FAQ 与 api_ref），按语言一刀切会把整族文档静默漏掉。
 # 真正的同内容双语重复由**每源 config.exclude** 处理（哪一侧是权威副本是逐仓事实，不是全局规则）。
+#
+# 另加两类"扩展名像文档、实际不是文档源"的噪音（两条都按实测数据定的，不是猜的）：
+#   ① 各仓自带的 agent 知识目录——按既有口径**只作线索、不作权威源**，故不进扫描面
+#      （实测：加排除前全台账 186 条此类条目，harvested 数为 0）；
+#   ② 构建/依赖清单（`CMakeLists.txt` / `requirements*.txt`）——按 basename 排除，不按目录
+#      （实测：加排除前全台账 491 条此类条目，harvested 数为 0）。
+AGENT_KB_DIRS = (".claude/", ".agents/", ".codex/", ".opencode/")
+NON_DOC_BASENAMES = re.compile(r"^(CMakeLists\.txt|requirements(-[\w.]+)?\.txt)$", re.I)
 DEFAULT_EXCLUDE = (
     ".gitcode/", ".github/", ".gitlab/", ".devcontainer/", "LICENSE", "SECURITY",
     "CHANGELOG", "CONTRIBUTING", "CODE_OF_CONDUCT", "third_party/", "cmake/", "tests/",
     "test/", "benchmark/", "translations/", "node_modules/", ".dsh/",
-)
+) + AGENT_KB_DIRS
 # 候选排序用的关键词（诊断相关性；命中即在路径层面已值得一看）。排序只影响"先看哪篇"，
 # 不构成沉淀判据——判定一律在读过正文之后。
 KW = re.compile(
@@ -223,7 +231,10 @@ def doc_exts(src: dict) -> tuple:
 
 def excluded(src: dict, path: str) -> bool:
     pats = tuple((src.get("config") or {}).get("exclude", DEFAULT_EXCLUDE))
-    return any(p in path for p in pats)
+    if any(p in path for p in pats):
+        return True
+    # 每源 config.exclude 可以显式放宽目录级排除，但构建/依赖清单永远不是文档源（与 exclude 无关）
+    return bool(NON_DOC_BASENAMES.match(path.rsplit("/", 1)[-1]))
 
 
 # ---------------------------------------------------------------- 子命令

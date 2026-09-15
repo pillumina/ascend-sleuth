@@ -93,6 +93,8 @@ python3 scripts/gc_docs.py mark hccl --decision skipped \
 
 判据：**这一页里有没有能当 grep 判据或处理动作的东西**。只有链接列表的伞页/索引页、只有日志 dump 的证据页、只有接口清单的 API 页 → skipped（理由写清，供人审回看）；带"现象/原因/解决"或"判据/阈值/命令"的页 → 进候选。
 
+两类东西不该出现在候选表里，脚本已按默认规则排除（`AGENT_KB_DIRS` 与 basename 规则）：**各仓自带的 agent 知识目录**（`.claude/`、`.agents/`、`.codex/`、`.opencode/`——只作线索、不作权威源）与**构建/依赖清单**（`CMakeLists.txt`、`requirements*.txt`）。若某个仓确有例外（例如正文就写在某清单里），用该仓的 `config.exclude` / `config.exts` 单独放宽，不要改全局默认。
+
 ### 3. fetch：按需抓正文（含逐字节校验）
 
 ```bash

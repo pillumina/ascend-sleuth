@@ -1,0 +1,112 @@
+id: llm-datadist-error-codes
+type: error-code
+title: LLM-DataDist（PD 分离 KV 传输）错误码（18 条，0x5010B001–0x5010B01C 段）
+summary: LLM-DataDist 的 Status 码（十六进制）：LLM_SUCCESS=0x0、LLM_FAILED=0xFFFFFFFF，业务码集中在 **0x5010B001–0x5010B01C**（文档只列 18 条，段内有空洞）。判读要点：**传输类接口（PullKvCache/PullKvBlocks）报 LLM_WAIT_PROC_TIMEOUT 时链路不可恢复、必须重新建链**，而其他接口报同一码只需加大超时重试；LLM_KV_CACHE_NOT_EXIST 的官方排查方向是 cache_id / Cache 是否已释放 / **对应全量（Prompt）侧日志中的请求是否完成** / 是否重复拉取；集群数量上限为 **16**（LLM_CLUSTER_NUM_EXCEED_LIMIT）；SetRole 前必须先 UnlinkLlmClusters 断掉所有链接，否则报 LLM_EXIST_LINK；LLM_NOTIFY_PROMPT_UNLINK_FAILED 需主动调 Prompt 侧 UnlinkLlmClusters 清残留资源。LLM_LINK_BUSY 与 HIXL 的 NOTIFY_FAILED 同类——**预留码，暂不会返回**
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/hixl/blob/master/docs/zh/api/cpp/LLM-DataDist-error-code.md"
+    version: "hixl master（commit 3f38f679bc0f，2026-09-15 抓取）：llm_datadist 命名空间 Status 常量定义 + 逐码含义/可恢复性/解决办法表"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A3-910C, cross]
+  frameworks: [llm-datadist, hixl]
+  categories: [interrupt, precision]
+
+related_references: [hixl-error-codes, ascend-error-code-structure, ascend-mooncake-kv-transfer-triage, hccl-error-codes, hixl-tool-route-and-comm-res]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  errors:
+    - code: "0x0"
+      meaning: "LLM_SUCCESS：成功。"
+      module: LLM-DataDist
+    - code: "0xFFFFFFFF"
+      meaning: "LLM_FAILED：通用失败（**不可恢复**）。"
+      solution: "保留现场，获取 Host/Device 日志，并备份。"
+      recoverable: 否
+      module: LLM-DataDist
+    - code: "0x5010B001"
+      meaning: "LLM_WAIT_PROC_TIMEOUT：处理超时（可恢复，但**分场景**）。"
+      solution: "如果是 PullKvCache、PullKvBlocks 等**传输相关接口**报该错误，该链路不可恢复、需重新建链；其他接口报该异常，加大超时时间并重试。"
+      recoverable: 视接口而定
+      module: LLM-DataDist
+    - code: "0x5010B002"
+      meaning: "LLM_KV_CACHE_NOT_EXIST：KV 不存在（可恢复）。"
+      solution: "①检查 cache_id 是否正确；②检查 Cache 是否已释放；③**检查对应全量侧（Prompt 侧）报错日志中的请求是否完成**；④检查是否存在重复拉取。"
+      recoverable: 是
+      module: LLM-DataDist
+    - code: "0x5010B005"
+      meaning: "LLM_PARAM_INVALID：参数错误（可恢复）。"
+      solution: "基于日志排查错误原因。"
+      recoverable: 是
+      module: LLM-DataDist
+    - code: "0x5010B007"
+      meaning: "LLM_NOT_YET_LINK：没有建链（可恢复）。"
+      solution: "上层排查 Decode 与 Prompt 建链情况。"
+      recoverable: 是
+      module: LLM-DataDist
+    - code: "0x5010B008"
+      meaning: "LLM_ALREADY_LINK：重复建链（可恢复）。"
+      solution: "上层排查 Decode 与 Prompt 建链情况。"
+      recoverable: 是
+      module: LLM-DataDist
+    - code: "0x5010B009"
+      meaning: "LLM_LINK_FAILED：建链失败（可恢复）。"
+      solution: "LinkLlmClusters 第二个返回值中有该错误码时，需检查对应集群之间的网络连接。"
+      recoverable: 是
+      module: LLM-DataDist
+    - code: "0x5010B00A"
+      meaning: "LLM_UNLINK_FAILED：断链失败（可恢复）。"
+      solution: "UnlinkLlmClusters 第二个返回值中有该错误码时，需检查对应集群之间的网络连接。"
+      recoverable: 是
+      module: LLM-DataDist
+    - code: "0x5010B00B"
+      meaning: "LLM_NOTIFY_PROMPT_UNLINK_FAILED：通知 Prompt 侧断链失败（可恢复）。"
+      solution: "①排查 Decode 与 Prompt 之间的网络连接；②主动调 Prompt 侧的 UnlinkLlmClusters 接口清理残留资源。"
+      recoverable: 是
+      module: LLM-DataDist
+    - code: "0x5010B00C"
+      meaning: "LLM_CLUSTER_NUM_EXCEED_LIMIT：集群数量超过限制（可恢复）。"
+      solution: "检查 LinkLlmClusters 和 UnlinkLlmClusters 传入参数，**clusters 数量不能超过 16**。"
+      recoverable: 是
+      module: LLM-DataDist
+    - code: "0x5010B00D"
+      meaning: "LLM_PROCESSING_LINK：正在处理建链（可恢复）。"
+      solution: "当前正在执行建链或断链操作，请稍后再试。"
+      recoverable: 是
+      module: LLM-DataDist
+    - code: "0x5010B00E"
+      meaning: "LLM_DEVICE_OUT_OF_MEMORY：Device 内存不足（可恢复）。"
+      solution: "检查申请的内存是否没有释放。"
+      recoverable: 是
+      module: LLM-DataDist
+    - code: "0x5010B018"
+      meaning: "LLM_EXIST_LINK：设置角色时，存在未释放的链接（可恢复）。"
+      solution: "检查在 SetRole 前是否已经调用 UnlinkLlmClusters 断开所有的链接。"
+      recoverable: 是
+      module: LLM-DataDist
+    - code: "0x5010B019"
+      meaning: "LLM_FEATURE_NOT_ENABLED：特性未使能（可恢复）。"
+      solution: "检查初始化 LLM-DataDist 时是否传入了必要 option；检查是否调用了不支持的接口。"
+      recoverable: 是
+      module: LLM-DataDist
+    - code: "0x5010B01A"
+      meaning: "LLM_TIMEOUT：处理超时（**不可恢复**）。"
+      solution: "保留现场，获取 Host/Device 日志，并备份。"
+      recoverable: 否
+      module: LLM-DataDist
+    - code: "0x5010B01B"
+      meaning: "LLM_LINK_BUSY：链路忙（文档列为可恢复）。"
+      solution: "预留错误码，暂不会返回——遇到它先核对 LLM-DataDist 版本。"
+      recoverable: 是
+      module: LLM-DataDist
+    - code: "0x5010B01C"
+      meaning: "LLM_OUT_OF_MEMORY：内存不足（可恢复）。"
+      solution: "检查内存池或系统内存是否充足。"
+      recoverable: 是
+      module: LLM-DataDist

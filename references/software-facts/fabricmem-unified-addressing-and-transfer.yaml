@@ -1,0 +1,34 @@
+id: fabricmem-unified-addressing-and-transfer
+type: software-fact
+title: FabricMem 模式（超节点内 DRAM 统一编址 + D2RH/RH2D 单边传输：VMM 四步、开关与取值约束、依赖与硬件范围）
+summary: "HIXL 的 FabricMem 传输模式：在 Atlas 800T A3 超节点内把**所有计算节点的 DRAM 统一编址**，NPU 通过 HCCS 直接访问远程节点内存，从而走 **D2RH（设备→远程主机）/RH2D（远程主机→设备）** 高带宽通道——文档给出的动机是传统 RoCE 方案满载带宽约 20GB/s、在超节点部署下成瓶颈，而 FabricMem 可把超节点内传输带宽提到百 GB/s 级。**底层是 CANN 的 Virtual Memory Manager（VMM）**：每个进程先 `aclrtMallocPhysical` 申请物理内存 → `aclrtReserveMemAddress` 申请虚拟内存 → `aclrtMapMem` 映射，然后交换物理地址、把物理地址映射到访问进程页表，最后发起 SDMA 访问（可读写任何进程的片上内存与 DRAM 内存）。**启用**：初始化引擎时 `options` 里配 `OPTION_ENABLE_USE_FABRIC_MEM=\"1\"`（`\"0\"` 关闭）。**取值约束**：`OPTION_GLOBAL_RESOURCE_CONFIG` 可配 Fabric 虚拟内存池容量、起始地址、单任务流数量以及 `transfer_config.max_transfer_count_per_batch`（默认 **1920**，FabricMem 取值范围 **[1, 1920]**，两种展开模式都做该范围校验）。**依赖**：HDK ≥ 25.5、灵衢计算网络（LingQu）≥ 1.5.0、CANN ≥ 9.0；**硬件范围仅 Atlas A3 训练系列与 Atlas A3 推理系列产品**。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/hixl/blob/master/docs/zh/FabricMem.md"
+    version: "hixl master（commit 3f38f679bc0f，2026-09-15 抓取）：FabricMem 模式背景/整体方案/VMM 内存管理四步/安装与运行依赖/启用方式与取值约束/硬件范围"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A3-910C]
+  frameworks: [hixl, llm-datadist]
+  versions:
+    hdk: ">=25.5"
+    cann: ">=9.0"
+  categories: [interrupt, performance]
+
+related_references: [hixl-tool-route-and-comm-res, hixl-error-codes, llm-datadist-error-codes, ascend-mooncake-kv-transfer-triage, runtime-memory-allocation-strategies, runtime-resource-fault-patterns]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "FabricMem 的判读要点是**三条边界 + 一个取值域**：①**硬件**只支持 Atlas A3 训练系列与 Atlas A3 推理系列（超节点内 DRAM 统一编址依赖 HCCS 与灵衢网络，A2 或非超节点部署不成立）；②**版本**要求 HDK ≥ 25.5、灵衢计算网络 ≥ 1.5.0、CANN ≥ 9.0；③**25.5 HDK 下有接口差异**——该版本**不支持 `aclrtMemRetainAllocationHandle`**，必须用 adxl 提供的 `MallocMem`/`FreeMem` 接口管理 HOST 内存，**26.0 以上 HDK 才可以直接调 acl 接口管理 HOST 内存**（遇到 HOST 内存相关接口在该版本不可用，先看 HDK 版本而不是怀疑 HIXL）。取值域：`transfer_config.max_transfer_count_per_batch` 默认 1920、FabricMem 下合法区间 [1,1920]，两个展开模式都校验该范围；`fabric_memory.enable_aicpu_unfold` 决定它的语义——`true` 时该值控制 AICPU 展开的**逻辑批次与 Notify 边界**、Kernel 不跨逻辑批次、**STARS 队列深度仍固定为 2K**；`false` 时 Host 为每个 buffer 连续提交 `aclrtMemcpyAsync`、**不按该值分批、也不在该值边界加同步**。"
+  evidence: "docs/zh/FabricMem.md：『在以DRAM构成的分布式内存池中，传统方案依赖 RoCE…其满载带宽约 20GB/s，在Atlas 800T A3 超节点的部署场景下会成为明显的性能瓶颈。为此，HIXL提供了 FabricMem模式，可以将Atlas 800T A3 超节点内的传输带宽提升至百 GB/s 级别』；『在Atlas 800T A3 超节点内，所有计算节点的 DRAM 内存被统一编址，NPU 可以通过 HCCS高速链路直接访问远程节点的内存』；『超节点内 DRAM 统一编址』『D2RH/RH2D 高带宽传输』『无需 CPU 介入的单边通信：源端主动发起传输，对端零开销』；VMM 四步原文『先通过调用aclrtMallocPhysical申请物理内存，再通过调用aclrtReserveMemAddress申请虚拟内存，最后通过调用aclrtMapMem将物理内存映射到虚拟内存』『进行物理地址的交换』『将物理地址映射到访问进程的页表中』『发起SDMA访问，可读写任何进程的片上内存和DRAM内存』；依赖表 HDK『25.5以上』、LingQu Computing Network『1.5.0以上』、CANN『9.0以上』；『25.5 HDK下不支持aclrtMemRetainAllocationHandle接口，必须使用adxl提供的MallocMem接口和FreeMem接口来管理HOST内存，26.0以上HDK可以直接调用acl接口管理HOST内存』；『初始化引擎时在 options 中配置 OPTION_ENABLE_USE_FABRIC_MEM，取值为\"1\"表示开启（取值为\"0\"表示关闭）』；『该传输配置默认值为1920，FabricMem取值范围为[1, 1920]，两种展开模式都会执行该范围校验』『fabric_memory.enable_aicpu_unfold=true时，配置值控制AICPU展开的逻辑批次和Notify边界，Kernel不会跨逻辑批次，STARS队列深度仍固定为2K。fabric_memory.enable_aicpu_unfold=false时，Host为每个buffer连续提交aclrtMemcpyAsync，不按该值分批，也不会在该值边界增加同步』；『硬件范围：仅支持 Atlas A3 训练系列产品、Atlas A3 推理系列产品』"
+  pitfalls:
+    - "**别把 FabricMem 当通用加速开关**：它绑定超节点（DRAM 统一编址 + HCCS + 灵衢网络）与 A3 硬件，在 A2/A3 非超节点形态下不成立"
+    - "**25.5 与 26.0 的 HDK 在 HOST 内存管理上走不同接口**：25.5 不支持 `aclrtMemRetainAllocationHandle`，必须用 adxl 的 `MallocMem`/`FreeMem`；报「接口不支持」先核对 HDK 版本"
+    - "`max_transfer_count_per_batch` 的语义随 `enable_aicpu_unfold` 变化：为 `true` 时是 AICPU 展开的逻辑批次/Notify 边界（Kernel 不跨逻辑批次、STARS 队列深度固定 2K），为 `false` 时该值不参与分批与同步——调它之前先确认展开模式，否则「改了没效果」"
+    - "需求/设计文档里的『其他模式限制』（如**底层调用 HCCL 接口的 HCCS 传输模式不支持 D2RH 传输**）说明模式之间存在能力差集：报「不支持 D2RH」时应回到所用传输模式，而不是链路本身"
+    - "启用后引擎路由由 `OPTION_ENABLE_USE_FABRIC_MEM=1` 决定（需由 `EngineFactory` 创建 `FabricMemEngine`）——这类『开关生效但走了别的引擎』的问题在需求文档的检查项里有明确记录"
