@@ -8,7 +8,7 @@
 id: EV-2026-081
 layer: L2                          # 面板（dsh-plugins/*）与其渲染检查
 title: "面板读 host 字段的成对断言：脚本 snake_case → UI camelCase 的缝在 host 收口"
-status: in_experiment
+status: validated
 authorization: review              # 触及面板可见文案与字段映射；可逆 → review 级
 dimension: observability           # 面板是观测面：数字错成 0 B 比不显示更坏
 supersedes: []
@@ -52,7 +52,7 @@ validation:
       readHandoffNote 都给；假 host 返回形状改成脚本真实形状（snake_case）；
     ③ 体量取不到时显示「未知」而不是 0 B（新增断言）；
     ④ 仓库既有检查无回归；
-    ⑤ 真机确认：重载面板后再点一次，结果行显示真实体量（**待用户确认**，本卡因此停在 in_experiment）。
+    ⑤ 真机确认：重载面板后再点一次，结果行显示真实体量——**已由用户确认**（见 decisions 最后一条）。
   rollback: >-
     单个提交、纯前端字段映射与断言：git revert 即回原状；面板代码在 Package 里是快照，重载即恢复上一版。
 gate:
@@ -75,3 +75,10 @@ decisions:
       ② `humanKB` 对非有限数返回「未知」而不是 0 B（0 B 读起来像空包，比不显示更坏）；
       ③ 渲染检查的假 host 改成照脚本真实输出形状给，并新增两条成对断言（state 9 个字段 /
       外来标记 6 个字段），任一侧改名即红。依据：脚本真实键集合 + 显示表达式模拟。
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      记实测结果并转 validated：用户在主检出重载后的面板上点「导出交接包」确认可用——结果行显示真实体量
+      （不再是 0 B），打开目录里仍只有一份产物（文件夹 + zip + md，没有 -1/-2 副本）。第 ⑤ 条判据满足，
+      把脚本的 snake_case 收口成 UI 的 camelCase 这条修复有效；成对断言同时把这类错配纳入了机械检查。
