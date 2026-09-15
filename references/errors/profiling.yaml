@@ -1,12 +1,17 @@
 id: profiling-error-codes
 type: error-code
-title: Profiling（性能分析） 错误码（EK，8 条）
-summary: CANN 商用版 9.0.0《错误码参考》Profiling（性能分析）族 8 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+title: Profiling（性能分析） 错误码（EK，12 条）
+summary: 两个官方来源合表共 12 条：CANN 商用版 9.0.0《错误码参考》Profiling（性能分析）族 8 条（EK0001-EK0006/EK0201/EK9999）+ cann/runtime 开源仓 docs/en/error_code_ref/Profiling-Errors 4 条（EK0007、EK0202-EK0204）；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
 sources:
 - type: official-doc
   url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
   version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
   fetched_at: '2026-08-28'
+  verification: cross-checked-source
+- type: official-doc
+  url: https://gitcode.com/cann/runtime/tree/master/docs/en/error_code_ref/Profiling-Errors
+  version: cann/runtime master（commit f7edf263，2026-09-15 抓取）Profiling-Errors 族：EK0007、EK0202-EK0204 增量 4 页
+  fetched_at: '2026-09-15'
   verification: cross-checked-source
 applies_to:
   platforms:
@@ -16,7 +21,7 @@ applies_to:
 related_references:
 - ascend-error-code-structure
 status: active
-last_verified: '2026-08-28'
+last_verified: '2026-09-15'
 content:
   errors:
   - code: EK0001
@@ -43,4 +48,22 @@ content:
     module: Profiling Errors
   - code: EK9999
     meaning: System_Terminated：An unknown error occurred. Please check the log.
+    module: Profiling Errors
+  - code: EK0007
+    meaning: 'Invalid_Argument：Failed to start Profiling in %s mode because it is already in %s mode.（已处于某种采集模式时不能再用另一种模式启动采集）'
+    solution: Change the Profiling startup mode as required. 不要同时启用两种采集模式——例如已用 msprof 命令行启动采集时，应用中就不要再调 acl API 启动采集。
+    related_signatures: ["Failed to start Profiling in", "because it is already in"]
+    module: Profiling Errors
+  - code: EK0202
+    meaning: 'Resource_Error_Insufficient_Host_Memory：Failed to allocate host memory by %s.'
+    solution: Stop unnecessary processes and ensure that the required memory is available.
+    module: Profiling Errors
+  - code: EK0203
+    meaning: 'Resource_Error：Failed to create host thread for Profiling. Reason: %s.'
+    solution: Stop unnecessary threads and ensure that the required resource is available.
+    module: Profiling Errors
+  - code: EK0204
+    meaning: 'Resource_Error：Insufficient disk space. Reason: %s.（Profiling 落盘空间不足，日志会给出剩余空间与阈值，如 The remaining disk space of the system is 19MB, which is less than 20MB）'
+    solution: At least 20MB storage space is required for Profiling flushing. Delete redundant files or change the flushing path.
+    related_signatures: ["Insufficient disk space"]
     module: Profiling Errors

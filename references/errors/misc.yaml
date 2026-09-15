@@ -1,12 +1,17 @@
 id: misc-error-codes
 type: error-code
-title: Dump / RLTune / 队列调度（极小族合并） 错误码（EP/ED/EM，9 条）
-summary: CANN 商用版 9.0.0《错误码参考》Dump / RLTune / 队列调度（极小族合并）族 9 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+title: Dump / RLTune / 队列调度（极小族合并） 错误码（EP/ED/EM，13 条）
+summary: 两个官方来源合表共 13 条：CANN 商用版 9.0.0《错误码参考》Dump / RLTune / 队列调度（极小族合并）族 9 条（ED/EM/EP0001-EP0004）+ cann/runtime 开源仓 docs/en/error_code_ref/Dump-Errors 4 条（EP0005-EP0008）；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
 sources:
 - type: official-doc
   url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
   version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
   fetched_at: '2026-08-28'
+  verification: cross-checked-source
+- type: official-doc
+  url: https://gitcode.com/cann/runtime/tree/master/docs/en/error_code_ref/Dump-Errors
+  version: cann/runtime master（commit f7edf263，2026-09-15 抓取）Dump-Errors 族：EP0005-EP0008 增量 4 页
+  fetched_at: '2026-09-15'
   verification: cross-checked-source
 applies_to:
   platforms:
@@ -16,7 +21,7 @@ applies_to:
 related_references:
 - ascend-error-code-structure
 status: active
-last_verified: '2026-08-28'
+last_verified: '2026-09-15'
 content:
   errors:
   - code: ED0000
@@ -48,4 +53,20 @@ content:
     module: DUMP Errors
   - code: EP0004
     meaning: 'File_Operation_Error_Parse：Failed to parse file %s. Reason: %s.'
+    module: DUMP Errors
+  - code: EP0005
+    meaning: 'Config_Error：Conflict of configuration items in configuration file %s. Reason: %s.（如 dump_scene 与 dump_stats 不能同时配置）'
+    solution: Please check and modify the value as prompted in the Reason.
+    module: DUMP Errors
+  - code: EP0006
+    meaning: 'Invalid_Argument：%s failed. Value %s for parameter %s is invalid. Reason: %s'
+    solution: Please check and modify the value as prompted in the Reason.
+    module: DUMP Errors
+  - code: EP0007
+    meaning: 'Invalid_Argument_Null_Pointer：%s failed because %s cannot be a NULL pointer.'
+    solution: Please check and modify the value as prompted in the Reason.
+    module: DUMP Errors
+  - code: EP0008
+    meaning: 'Invalid_Argument_API_Call_Sequence：%s failed. Reason: %s.（接口调用顺序错误，如 aclmdlInitDump 之前必须先 aclInit）'
+    solution: Please check and modify the value as prompted in the Reason.
     module: DUMP Errors
