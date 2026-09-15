@@ -20,6 +20,23 @@ return {
         + '指标 tab 的「闭环判决」「实时计算」不经 fs，仍然可用',
     })
 
+    // ── 跑子进程的沙箱写权限根（每个 shell.resolve 调用点都要带）──────────────────────
+    //
+    // 写法：`sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd }`——**不能省**。
+    //
+    // 为什么（实测）：`shell.resolve` 不给 `sandboxPolicy` 时，shell 实现自己的默认根是
+    // **DSH 自己的检出**（实测 workspaceRoot = …/deepseek-harness），于是子进程写仓库里的任何路径
+    // 都被沙箱拒掉，报出来只有一句 `[Errno 1] Operation not permitted`——读者从这句看不出是沙箱干的
+    // （文件权限与 ACL 都正常，`ls -lOe` 查下来毫无异常）。交接包导出是面板里第一个"子进程写文件"的
+    // 功能，一头撞上它；其余 RPC 当时只读，所以一直没暴露。
+    //
+    // `workspace-write` 是够用的最小一档：写只许落在检出内（导出写 `<检出>/traces/exports/`），
+    // 读不受限（解释器在别处、脚本要读仓库内文件都照常）。它比本会话自身的文件策略更窄，不是提权。
+    //
+    // 不抽成 helper 的原因：`panel_render_check` 会把下面几个函数**单独抽出来求值**（只注入
+    // shell / resolvePython），引外部 helper 会直接 ReferenceError。漏带的调用点由该检查的
+    // 源级断言兜（策略数 ≠ 脚本调用数即红）。
+
     // 工作区解析。**三处消费者的共同前提**：面板读 traces/ knowledge/ metrics/ scripts/ 全靠它。
     //
     // 兜底理由（2026-09-11 实测）：`sessions.get(sessionId)` 可能拿不到 header.cwd（会话标识形态变化、
@@ -902,6 +919,7 @@ return {
           stdoutMaxBytes: 65536,
           // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
           env: { PYTHONIOENCODING: 'utf-8' },
+          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },   // 见上面「跑子进程的沙箱写权限根」
         }))
       } catch (e) {
         return shellFail('体检脚本执行失败: ' + String(e && e.message || e), py, cwd, null, '')
@@ -945,6 +963,7 @@ return {
           stdoutMaxBytes: 16384,
           // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
           env: { PYTHONIOENCODING: 'utf-8' },
+          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },   // 见上面「跑子进程的沙箱写权限根」
         })
         const r = await shell.run(spec)
         let out = null
@@ -991,12 +1010,23 @@ return {
           stdoutMaxBytes: 262144,
           // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
           env: { PYTHONIOENCODING: 'utf-8' },
+          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },   // 见上面「跑子进程的沙箱写权限根」
         }))
       } catch (e) {
         return { ok: false, error: '导出脚本执行失败: ' + String(e && e.message || e), manual: manual }
       }
       if (r && r.timedOut) {
         return { ok: false, error: '导出超时（120s）——证据文件很大时会偏慢。手工复现：' + manual }
+      }
+      // 沙箱拒绝要单独说清：它表现为子进程一句 EPERM，读者从后半段看不出是沙箱干的
+      if (r && r.sandbox && r.sandbox.denied) {
+        return {
+          ok: false, manual: manual,
+          error: '导出被沙箱拒绝（mode=' + String(r.sandbox.mode)
+            + (r.sandbox.enforcement ? '，enforcement=' + String(r.sandbox.enforcement) : '')
+            + '）：写权限的 workspace 根不是本会话工作区时，子进程写 ' + cwd + '/traces/exports/ 会被拒。'
+            + '手工复现（不受面板沙箱限制）：' + manual,
+        }
       }
       const out = r && r.stdout && typeof r.stdout.text === 'string' ? r.stdout.text : ''
       const err = r && r.stderr && typeof r.stderr.text === 'string' ? r.stderr.text : ''

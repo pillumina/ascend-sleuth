@@ -61,6 +61,10 @@ return {
           stdoutMaxBytes: 4 * 1024 * 1024, // EV 卡聚合 JSON 随库增长（实测 89KB），防截断
           // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
           env: { PYTHONIOENCODING: 'utf-8' },
+          // 写权限的沙箱根要给成会话工作区：不给时 shell 默认根是 DSH 自己的检出，子进程写仓库
+          // 里任何路径都只报一句 EPERM（诊断面板的交接包导出实测踩过；这里两个脚本现在只读，
+          // 但同类陷阱不该在别的面板重演）
+          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },
         })
         const r = await shell.run(spec)
         const stdout = r && r.stdout && typeof r.stdout.text === 'string' ? r.stdout.text : ''
