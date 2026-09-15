@@ -1,12 +1,17 @@
 id: acl-error-codes
 type: error-code
-title: ACL（AscendCL） 错误码（EH，6 条）
-summary: CANN 商用版 9.0.0《错误码参考》ACL（AscendCL）族 6 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+title: ACL（AscendCL） 错误码（EH，14 条）
+summary: 两个官方来源合表共 14 条：CANN 商用版 9.0.0《错误码参考》ACL（AscendCL）族 6 条（EH0001-EH0006）+ cann/runtime 开源仓 docs/en/error_code_ref/ACL-Errors 8 条（EH0007-EH0014）；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
 sources:
 - type: official-doc
   url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
   version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
   fetched_at: '2026-08-28'
+  verification: cross-checked-source
+- type: official-doc
+  url: https://gitcode.com/cann/runtime/tree/master/docs/en/error_code_ref/ACL-Errors
+  version: cann/runtime master（commit f7edf263，2026-09-15 抓取）ACL-Errors 族：EH0007-EH0014 增量 8 页
+  fetched_at: '2026-09-15'
   verification: cross-checked-source
 applies_to:
   platforms:
@@ -16,7 +21,7 @@ applies_to:
 related_references:
 - ascend-error-code-structure
 status: active
-last_verified: '2026-08-28'
+last_verified: '2026-09-15'
 content:
   errors:
   - code: EH0001
@@ -37,4 +42,36 @@ content:
     module: ACL Errors
   - code: EH0006
     meaning: 'Not_Supported：%s is not supported. Reason: %s.'
+    module: ACL Errors
+  - code: EH0007
+    meaning: 'Invalid_Argument：%s failed because value %s for parameter %s is invalid. Expected value: %s.'
+    solution: '- Check the input parameter range of the function. - Check the function invocation relationship.'
+    module: ACL Errors
+  - code: EH0008
+    meaning: 'Invalid_Argument_Null_Pointer：%s failed because %s cannot be a NULL pointer.'
+    solution: Try again with a correct pointer argument.
+    module: ACL Errors
+  - code: EH0009
+    meaning: 'Invalid_Argument：%s failed. Value %s for parameter %s is invalid. Reason: %s.'
+    solution: '- Check the input parameter range of the function. - Check the function invocation relationship.'
+    module: ACL Errors
+  - code: EH0010
+    meaning: 'Resource_Error_Insufficient_Host_Memory：Failed to allocate %s bytes of host memory via %s to ACL.'
+    solution: Ensure that there is sufficient memory available. You can stop unnecessary processes to free up memory.
+    module: ACL Errors
+  - code: EH0011
+    meaning: 'Not_Supported：The current system or device does not support %s.'
+    solution: Please adjust the code logic according to the prompts in the error message.
+    module: ACL Errors
+  - code: EH0012
+    meaning: 'Invalid_Argument：%s failed. Parameter %s is invalid. Reason: %s.'
+    solution: Please adjust your parameter value based on the prompts in the Reason.
+    module: ACL Errors
+  - code: EH0013
+    meaning: 'Invalid_Argument：%s failed. Reason: Standard function %s failed. [Errno %s] %s. %s'
+    solution: Please locate the issue based on the prompts in the error message.
+    module: ACL Errors
+  - code: EH0014
+    meaning: 'Invalid_Argument_Null_Pointer：%s failed because %s cannot be NULL pointers at the same time.'
+    solution: Try again with correct pointer arguments.
     module: ACL Errors

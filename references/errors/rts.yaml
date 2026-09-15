@@ -1,12 +1,17 @@
 id: rts-error-codes
 type: error-code
-title: RTS（Runtime 运行时） 错误码（EE，16 条）
-summary: CANN 商用版 9.0.0《错误码参考》RTS（Runtime 运行时）族 16 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+title: RTS（Runtime 运行时） 错误码（EE/WE，29 条）
+summary: 两个官方来源合表共 29 条：CANN 商用版 9.0.0《错误码参考》RTS（Runtime 运行时）族 16 条（EE1001-EE1011/EE1015/EE2002/EE4001/EE4002/EE4004）+ cann/runtime 开源仓 docs/en/error_code_ref/RTS-Errors 13 条（EE1012-EE1024、WE0001）；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
 sources:
 - type: official-doc
   url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
   version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
   fetched_at: '2026-08-28'
+  verification: cross-checked-source
+- type: official-doc
+  url: https://gitcode.com/cann/runtime/tree/master/docs/en/error_code_ref/RTS-Errors
+  version: cann/runtime master（commit f7edf263，2026-09-15 抓取）RTS-Errors 族：EE1012-EE1024 与 WE0001 增量 13 页
+  fetched_at: '2026-09-15'
   verification: cross-checked-source
 applies_to:
   platforms:
@@ -15,8 +20,9 @@ applies_to:
     cann: 9.0.0
 related_references:
 - ascend-error-code-structure
+- runtime-api-call-failures
 status: active
-last_verified: '2026-08-28'
+last_verified: '2026-09-15'
 content:
   errors:
   - code: EE1001
@@ -82,6 +88,61 @@ content:
   - code: EE4004
     meaning: Profiling_Enable_Errors：Failed to enable profiling. %s
     solution: Do not enable profiling repeatedly.
+    module: RTS Errors
+
+  - code: EE1012
+    meaning: 'Invalid_Argument：%s failed. Value %s for %s is invalid. Reason: %s.'
+    solution: Please adjust the parameter value according to the prompts in the Reason.
+    module: RTS Errors
+  - code: EE1013
+    meaning: 'Resource_Error_Insufficient_Host_Memory：Failed to allocate %s bytes of host memory via %s to Runtime.'
+    solution: Ensure that there is sufficient memory available. You can stop unnecessary processes to free up memory.
+    module: RTS Errors
+  - code: EE1014
+    meaning: 'File_Operation_Error_Parse：Failed to parse the binary file of the operator. Reason: %s.'
+    solution: Rebuild and load the binary file of the operator.
+    module: RTS Errors
+  - code: EE1016
+    meaning: 'Not_Supported：%s failed. Reason: %s.'
+    solution: Please adjust the parameter value according to the prompts in the Reason.
+    module: RTS Errors
+  - code: EE1017
+    meaning: 'Invalid_Argument：%s failed. Parameter %s is invalid. Reason: %s.'
+    solution: Please adjust the parameter value according to the prompts in the Reason.
+    module: RTS Errors
+  - code: EE1018
+    meaning: 'Invalid_Argument_API_Call_Sequence：%s failed. Reason: %s.'
+    solution: Please locate the issue based on the prompts in the error message.
+    module: RTS Errors
+  - code: EE1019
+    meaning: 'Execution_Error：%s failed. Reason: %s.'
+    solution: '1. Reduce the number of tasks delivered to the same stream. 2. Use multiple streams to submit tasks in parallel.'
+    module: RTS Errors
+  - code: EE1020
+    meaning: 'Invalid_Argument：%s failed. Reason: Standard function %s failed. [Errno %s] %s. %s'
+    solution: Please locate the issue based on the prompts in the error message.
+    module: RTS Errors
+  - code: EE1021
+    meaning: 'Resource_Error：The runtime module failed to create host %s through API %s.'
+    solution: Stop unnecessary threads and ensure that the required resource is available.
+    module: RTS Errors
+  - code: EE1022
+    meaning: 'Invalid_Argument：%s failed. Values %s for parameters %s are invalid. Reason: %s.'
+    solution: '1. Check the input parameter value ranges of the function. 2. Check the function invocation relationship.'
+    module: RTS Errors
+  - code: EE1023
+    meaning: 'Resource_Error：%s failed. Reason: %s.（Device 上硬件调度资源不足：Stream / Notify / Event / 异步拷贝任务队列；具体是哪一类看 plog 的 retCode——0x7020023 Stream、0x702001b Notify、0x7020019 Event、0x7110019 异步拷贝队列）'
+    solution: '- 按 plog 中的 retCode 确认资源类型后排查：检查创建与销毁是否配对（aclrtDestroyStream / aclrtDestroyEvent / aclrtDestroyNotify / aclmdlRIDestroy）、用 npu-smi info 看是否有其他进程占用、多进程共用同一 Device 时减少并发。ACL Graph 场景减小单图规格或降低并发；异步拷贝队列不足时减小 aclrtMemcpyBatchAsync 的 numBatches 或 aclrtMemcpy2dAsync 的 height。四类资源的完整排查见 runtime-api-call-failures。'
+    related_signatures: ["EE1023", "Alloc Stream resource failed", "Alloc Notify resource failed", "Alloc Event resource failed", "The number of async copy tasks reaches the maximum limit"]
+    module: RTS Errors
+  - code: EE1024
+    meaning: 'Execution_Error_Stream_Synchronize_Timeout：%s failed. Reason: AI CPU operator execution timed out on device %s. In addition, an OOM event occurred on the device within %s seconds.（AI CPU 算子执行超时，且超时前后 %s 秒内在该 device 上发生过 OOM 事件）'
+    solution: '1. 检查 device 内存占用，减少算子占用内存或释放未使用内存。2. GetNext 算子：检查其预处理耗时，或用 aclrtSetOpExecuteTimeOut 调整超时。3. 自定义算子：检查实现逻辑是否存在超大循环，或修改 shape。4. 内置算子输入输出 shape 过大时修改 shape，或用 aclrtSetOpExecuteTimeOut 调整超时。'
+    related_signatures: ["Stream synchronize failed", "AI CPU operator execution timed out", "an OOM event occurred on the device"]
+    module: RTS Errors
+  - code: WE0001
+    meaning: 'Not_Supported：Failed to %s because %s is not supported.'
+    solution: Please adjust the code logic according to the prompts in the error message.
     module: RTS Errors
 
   - code: "507011"

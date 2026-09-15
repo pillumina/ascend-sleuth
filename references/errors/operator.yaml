@@ -1,12 +1,17 @@
 id: operator-error-codes
 type: error-code
-title: 算子公共错误码与算子 API（EZ） 错误码（EZ，16 条）
-summary: CANN 商用版 9.0.0《错误码参考》算子公共错误码与算子 API（EZ）族 16 条；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
+title: 算子公共错误码与算子 API（EZ） 错误码（EZ，17 条）
+summary: 两个官方来源合表共 17 条：CANN 商用版 9.0.0《错误码参考》算子公共错误码与算子 API（EZ）族 16 条 + cann/runtime 开源仓 docs/en/error_code_ref 的 EZ2001（AI Core 异常聚合报错格式）；meaning 取官方 symptom 原文模板（含 %s 占位符），solution 为官方处理建议；码结构与族文件定位见 ascend-error-code-structure
 sources:
 - type: official-doc
   url: https://www.hiascend.com/document/detail/zh/canncommercial/900/maintenref/troubleshooting/atlaserrorcode_15_0001.html
   version: CANN 商用版 9.0.0（错误码参考，atlaserrorcode_15_* 全量 307 页）
   fetched_at: '2026-08-28'
+  verification: cross-checked-source
+- type: official-doc
+  url: https://gitcode.com/cann/runtime/blob/master/docs/en/error_code_ref/EZ2001-Execution_Error.md
+  version: cann/runtime master（commit f7edf263，2026-09-15 抓取）EZ2001（Execution_Error）
+  fetched_at: '2026-09-15'
   verification: cross-checked-source
 applies_to:
   platforms:
@@ -15,8 +20,9 @@ applies_to:
     cann: 9.0.0
 related_references:
 - ascend-error-code-structure
+- ascend-aicore-error-triage
 status: active
-last_verified: '2026-08-28'
+last_verified: '2026-09-15'
 content:
   errors:
   - code: E76002
@@ -82,4 +88,9 @@ content:
   - code: EZ9999
     meaning: AclNN_Inner_Error：The error information is not fixed. Check the error information according to the specific prompt.
     solution: '- Check whether the CANN package is correct. - Check whether the environment variable is correct.'
+    module: AclNN Errors
+  - code: EZ2001
+    meaning: 'Execution_Error：AI Core 异常的聚合报错格式，形态为「<Device 侧异常信息>\nFault <fault type> occurs in the system: <fault information>」。Device 侧异常信息含 chipId/dieId、serial number、异常类型（如 aivec error error）、core id、error code、dump info（pc start/current、sc/su/mte/vec/cube/l1 error info、aic error mask、para base）与 extend info（errcode/errorStr/subErrType）；Fault 段落如 Fault RAS occurs in the system: [event_id:0x80e18400] New uncorrectable ECC / other uncorrectable memory error'
+    solution: 按报错内容分流：extend info 的 errorStr 给出直接原因（如 The DDR address of the MTE instruction is out of range → 查算子访存地址与越界）；Fault RAS 段的 event_id 指向硬件 RAS 故障（如 New uncorrectable ECC）→ 查 npu-smi health 与硬件侧；四层分流（RAS 硬件 / NPU 硬件 / 软件越界 / msaicerr 报告）见 ascend-aicore-error-triage。
+    related_signatures: ["aivec error error", "The extend info", "Fault RAS occurs", "New uncorrectable ECC", "error code ="]
     module: AclNN Errors

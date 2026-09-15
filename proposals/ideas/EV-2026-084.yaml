@@ -1,0 +1,91 @@
+# ============================================================
+# EV-2026-084 —— 开源仓错误码增量并入既有族表（而不是另立"增量表"）
+# 来源：用户对「30 个新码放哪」的直接裁决——三选项里选了"追加进既有族表 + 挂第二来源"
+# 触发：reference-ingest 第二批把 cann/runtime 的错误码参考扫入台账，机械差集发现 30 个码
+#       既有族表没有（另 50 个与既有族表同源同内容）
+# 脱敏：只含公开仓路径与聚合计数，不含客户数据
+# ============================================================
+
+id: EV-2026-084
+layer: L1                          # 知识内容层：错误码族表的组织与覆盖
+title: "开源仓错误码增量并入既有族表：一族一处，挂第二官方来源而非另立增量表"
+status: validated
+authorization: review              # 改的是知识内容（active 词条），按 reference 模板属"修订"→ 需 kb/high-risk 双签
+dimension: architecture            # 知识结构归属：同族码是否同处一表
+supersedes: []
+superseded_by: null
+created_at: 2026-09-15
+source_signals:
+  - signal: user_request
+    evidence: >-
+      文档摄取第二批（cann/runtime）扫到 docs/en/error_code_ref 全族 89 页。机械差集 + 抽样逐字核对后：
+      50 个码与既有 errors/ 族表同源同内容（EH0002/E20002 的 symptom 模板与 solution 逐字一致），
+      30 个码是既有族表没有的：EH0007-EH0014（ACL 8）、EE1012-EE1024（RTS 12）、EK0007/EK0202-EK0204（Profiling 4）、
+      EP0005-EP0008（Dump 4）、EZ2001（算子/AI Core 异常聚合格式）、WE0001（RTS 目录下）。三条路摆给用户后，
+      用户选择"追加进既有族表 + 挂第二来源"，理由是不让同族码分处两表（检索面碎片化）。
+    trajectory:
+      - "reference-ingest-state.json（runtime 108 篇：48 harvested / 60 skipped，skipped 带理由）"
+      - "references/errors/{acl,rts,profiling,misc,operator}.yaml（5 张族表追加 30 行 + 标题/summary/来源/last_verified 更新）"
+      - "机械差集脚本输出 + EH0002/E20002 两页与既有行的逐字比对（判定 50 页为同源重复）"
+hypothesis: >-
+  把开源仓错误码参考的增量码按"同族同表"并入既有 5 张族表，并在 sources 挂上第二个 official-doc
+  来源（cann/runtime master，commit 钉住）之后：查任一族码只需看一张表；同源重复的 50 页在台账里
+  被标 skipped + 理由，不会在下一轮被重新评估；代价是这次改动属"修订已生效知识"，必须走 kb/high-risk 双签。
+predicted_effect:
+  metric: 错误码族表覆盖的码数与增量码可见性
+  from: "5 张族表共 316 个码；EH0007/EH0012/EE1012/EE1023/EE1024/EK0202/EP0005/EZ2001/WE0001 等 30 个码查不到"
+  to: "5 张族表共 346 个码；上述增量码在所属族表内可查，无跨表重复，标题计数与表内 official-doc 行数一致"
+  measure:
+    command: >-
+      python3 -c "import yaml,glob,sys;c=set();[c.update(str(e['code']) for e in (yaml.safe_load(open(f)).get('content') or {}).get('errors') or []) for f in glob.glob('references/errors/*.yaml')];need={'EH0007','EH0014','EE1012','EE1024','EK0202','EP0005','EZ2001','WE0001'};print('codes',len(c));print('missing',sorted(need-c));sys.exit(1 if need-c else 0)"
+    expect_exit: 0
+    expect_stdout: "codes 346"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：5 张族表 316 个码（acl 6 / rts 16 official + 1 case-derived / profiling 8 / misc 9 / operator 16），
+    增量码全部查不到；同源重复的 50 页若不做判定，会在每一轮扫描里被重新评估（重复烧 token）。
+  success_criteria: >-
+    ① 覆盖：346 个码，8 个抽样码全部可见（measure 判据）；
+    ② 归族：30 个码各按来源仓的族目录落表（ACL-Errors→acl、RTS-Errors→rts、Profiling-Errors→profiling、
+       Dump-Errors→misc、EZ2001→operator），无跨表重复（verify_references 的 code 表内唯一 + 全局查重）；
+    ③ 出处：5 张表的 sources 都挂上第二 official-doc 来源并钉 commit，标题计数与表内 official-doc 行数一致；
+    ④ 台账：30 页 harvested（带 refs）、59 页 skipped（带理由：同源重复 / 族索引页）；
+    ⑤ CI 无回归：verify_references / 两个 reference 索引 / docs 索引 / build_index / metrics / proposals / holdout 全绿。
+  rollback: >-
+    单次提交、5 个 YAML 的追加与元信息更新：git revert 即回到 316 码状态。已标记的台账条目可直接
+    `mark --decision pending` 回退（不涉及删数据）；50 页 skipped 的判定即使回退也不影响内容（正文仍在缓存 ref-docs/）。
+gate:
+  condition: "再出现「同一族码要跨两张表找」或「族表计数与表内行数不符」时，重跑 measure 并复查归族规则"
+risk: medium
+principle_refs: [2, 3, 10]
+decisions:
+  - who: agent
+    when: 2026-09-15
+    type: action
+    conclusion: >-
+      30 个增量码按族目录并入 acl/rts/profiling/misc/operator 五张既有表（EZ2001 归 operator——该表本就是
+      EZ 族）；每张表补第二个 official-doc 来源（cann/runtime master commit f7edf263）、更新标题计数与 summary、
+      last_verified 推进到 2026-09-15；EE1023/EE1024/EK0007/EK0204/EZ2001 补 related_signatures（可 grep 的现场关键字）。
+      50 个同源重复页与 9 个族索引页标 skipped + 理由。
+  - who: agent
+    when: 2026-09-15
+    type: eval
+    conclusion: >-
+      measure 实跑：总码数 316→346，8 个抽样增量码全部可见；verify_references 186 个词条通过、两个索引重建后 --check 绿。
+      负向对照：同一条命令在改动前的树上跑得 `codes 316` + `missing [EE1012, EE1024, EH0007, EH0014, EK0202, EP0005, EZ2001, WE0001]`
+      且 exit 1——证明判据确实测的是这次改动，不是打印常量。
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      采纳并标 validated（效果层）。性质与边界如实标注：这是**修订已生效知识**——按 reference 模板属
+      kb/high-risk，需第二个 owner 签名后合入（本 PR 已按高风险区块填写触发条款/变更依据/双签/影响与回退）。
+      本卡只证明"增量码已并入并且可查"，不证明"归族选择最优"——若后续出现"同族跨表"或"计数与行数不符"，
+      按 gate 重跑 measure。
+actual_cost:
+  tokens: 30000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数，按仓库口径给估算：89 页目录面机械差集（零模型 token）+ 30 页正文
+    剥码块后通读（17KB，约 8k）+ 5 张表的追加与元信息更新（约 15k）+ 校验往返（约 7k）。
