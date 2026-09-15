@@ -1,0 +1,42 @@
+id: asc-tools-ascendc-debug-suite
+type: tool
+title: Ascend C 算子调试工具集（cpu_debug 的 CPU 域编译 + npu_check 的 Error* 判据表 + msobjdump 的 ELF 字段 + show_kernel_debug_data + optype_collector）
+summary: "asc-tools 这套工具解决算子级问题：**cpu_debug**——在 NPU 部署前先上 CPU 做功能与精度基本验证（bisheng 编译生成 CPU 域可执行程序，再用 gdb 常规调试；编译选项 `CMAKE_ASC_RUN_MODE=cpu` 与 `CMAKE_ASC_ARCHITECTURES=dav-2201`（A2/A3）/`dav-3510`（950）；**每个核函数起独立子进程模拟 NPU 执行，gdb 必须 `set follow-fork-mode child` 才能进核函数内部断点**；切回 NPU 只需清 build 重新 cmake，调试用 `#ifdef` 代码不必移除）。**npu_check**——孪生调试的检查半边，随 cpu_debug 在 CPU 域执行同步检查，产物 `*_npuchk.log` 落在可执行文件路径下 `npuchk/`；**只有 debug 阶段正常退出（无 ASSERT 校验失败）才输出完整校验日志**；判据是一套具名错误码：**ErrorRead1-4**（非法内存读取/可疑读无效数据/读越界/地址非 32 字节对齐）、**ErrorWrite1-4**（非法写/写越界/重复写未取走/地址非 32 字节对齐）、**ErrorSync1-4**（写缺 pipe barrier 或 set/wait、读同步问题、set/wait 不配对、eventID 重复）、**ErrorLeak**（申请未释放）、**ErrorFree**（重复释放）、**ErrorBuffer0-4**（未 InitBuffer 初始化、que 类型不一致、VECIN/VECOUT/VECCALC 操作不合规、操作内存不合法、TBufPool 未 InitBufPool）；另有 EnQue/DeQue 状态检查与 **GM 多核踩踏检查**（记录每核 GM 地址范围，重叠即报错，**Atomic add 场景对重叠地址不报错**）。**msobjdump**——解析/解压算子 ELF 并打印关键字段（`.ascend.meta.${id}` kernel 名、VERSION、**DEBUG 的 debugOptions 位值 0 关/1 DumpTensor·printf/2 assert/4 时间戳打点/8 内存越界检测**、DYNAMIC_PARAM、OPTIONAL_PARAM、KERNEL_TYPE、**CROSS_CORE_SYNC 硬同步（仅 A2/A3 生效）**、MIX_TASK_RATION、**DETERMINISTIC_INFO（0 非确定/1 确定）**、FUNCTION_ENTRY=TilingKey、BLOCK_NUM 暂不支持打印 0xFFFFFFFF）。**show_kernel_debug_data**——离线把 kernel 侧调试信息 bin 解析成可读格式（Dump 需 aclInit 配 `dump_kernel_data` = all/printf/tensor/assert/timestamp 与 `dump_path`，路径优先级 **ASCEND_DUMP_PATH > ASCEND_WORK_PATH > 配置文件的 dump_path**）。**optype_collector**——采集指定 SoC 的 OpType 并检测自定义算子包与内置包、自定义包之间的**重名冲突**。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/asc-tools/tree/master/docs"
+    version: "asc-tools master（commit 9ad0195ad2ab，2026-09-15 抓取）：cpu_debug / npu_check / msobjdump / show_kernel_debug_data / optype_collector 五篇使用文档"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A3-910C, A5-950, cross]
+  frameworks: [ascendc, asc-tools]
+  categories: [interrupt, precision, performance]
+
+related_references: [mssanitizer, msdebug-operator-source-debug, reg-data-movement-fault-patterns, op-internal-sync-and-reduction-fault-patterns, ascend-aicore-error-triage, ascend-error-code-structure]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  tool_name: "Ascend C Tools（cpu_debug / npu_check / msobjdump / show_kernel_debug_data / optype_collector）"
+  invocation: "面向 Ascend C 自研算子的调试与检查工具集：**先在 CPU 域验证功能与精度，再用 npu_check 检查内存/同步/队列使用，必要时用 msobjdump 反查编译产物字段、用 show_kernel_debug_data 解析 kernel 侧调测信息、用 optype_collector 排查算子重名**。调试前提是算子 Kernel 侧源码可用 bisheng 编译，且自行通过 CMake 构建（样例路径见仓库 examples/）。"
+  commands:
+    cpu_debug: "在调用核函数的源文件里加 `#ifdef ASCENDC_CPU_DEBUG` 头文件引用（bisheng 在 CPU 调试模式下会把 `<<<>>>` 形式的核函数调用转义到 CPU 上执行，不影响 NPU 模式编译），再以 `-DCMAKE_ASC_RUN_MODE=cpu -DCMAKE_ASC_ARCHITECTURES=dav-2201`（A2/A3；950 用 `dav-3510`）配置并编译，得到 CPU 域可执行程序"
+    cpu_debug_gdb: "gdb 调试 CPU 域程序：**先 `set follow-fork-mode child`**（每个核函数以独立子进程模拟 NPU 执行，不设则 gdb 跟踪父进程、进不了核函数内部），再做断点/查寄存器与内存/单步/看调用栈"
+    npu_check: "用 cpu_debug 在 CPU 域执行算子时自动同步检查，日志为执行路径下 `npuchk/` 中的 `*_npuchk.log`（多核用例每核一个，如 `add_custom_0_0_vec_npuchk.log`）；用工具一键生成检查结果时可只传目录，脚本自动检索 `_npuchk.log` 后缀文件"
+    msobjdump: "`--dump-elf <elf>` 解析并打印字段（加 `--verbose` 全量打印含 ELF Header/Section Headers/Key to Flags/Program Headers/Symbol 表）；`--extract-elf <elf> [--out-dir <dir>]` 解压；`--list-elf <elf>` 列出内含 device 信息文件清单"
+    show_kernel_debug_data: "show_kernel_debug_data <bin_file_path> [output_path]（或在 Python 中 `from show_kernel_debug_data import show_kernel_debug_data`）；bin_file_path 支持 bin 文件或目录（目录模式递归收集 `.bin` 统一解析），输出目录不存在时自动创建"
+    optype_collector: "optype_collector --soc-version=<soc_version> …（输出来源为 `<CANN安装目录>/cann/opp/built-in` 内置算子包、`.../cann/opp/vendors` 自定义算子包，以及 `ASCEND_CUSTOM_OPP_PATH` 指定的一个或多个路径；可分别输出内置清单、自定义清单或全部清单以查重名）"
+  output_meaning:
+    - "**npu_check 的错误码是算子级判据**：ErrorRead1 非法读（整段内存未经 AllocTensor 申请或已被 FreeTensor）、ErrorRead2［可疑］读从未写过的数据、ErrorRead3 读越界（超出 AllocTensor 实际有效数据）、ErrorRead4 读地址非 32 字节对齐；ErrorWrite1 非法写、ErrorWrite2 写越界、ErrorWrite3［可疑］重复写而前次数据未被取走、ErrorWrite4 写地址非 32 字节对齐；ErrorSync1/2 写/读存在同步问题（pipe 内缺 pipe barrier 或 pipe 间缺 set/wait）、ErrorSync3 set/wait 不配对、ErrorSync4 set/wait 的 eventID 重复；ErrorLeak 内存泄漏、ErrorFree 重复释放；ErrorBuffer0 tensor 内存未经 InitBuffer 初始化、ErrorBuffer1 tensor 的 que 类型与初始化不一致、ErrorBuffer2 VECIN/VECOUT/VECCALC 操作不合规、ErrorBuffer3 tensor 操作内存不合法（未分配或越界）、ErrorBuffer4 TBufPool 未经 InitBufPool 初始化"
+    - "**msobjdump 的字段可直接判读算子编译产物**：`DEBUG.debugOptions` 是位值——0 关闭、1 用 DumpTensor/printf 打印调试、2 用 assert 断言、4 用时间戳打点、8 用内存越界检测（即「为什么这个算子没打出调试信息」的答案在 ELF 里）；`DETERMINISTIC_INFO` 0 非确定/1 确定；`CROSS_CORE_SYNC` USE_SYNC/NO_USE_SYNC 且**仅 A2/A3 生效、其他产品不生效**；`FUNCTION_ENTRY` 即算子 TilingKey；`BLOCK_NUM`（执行核数）**当前暂不支持、只打印默认值 0xFFFFFFFF**"
+    - "show_kernel_debug_data 的 Dump 类型由 `dump_kernel_data` 指定且可多选逗号分隔：all / printf（AscendC::printf、PRINTF）/ tensor（AscendC::DumpTensor）/ assert（ascend_assert）/ timestamp（AscendC::PrintTimestamp）；Dump 落盘路径优先级为 **ASCEND_DUMP_PATH > ASCEND_WORK_PATH > 配置文件 dump_path**"
+  pitfalls:
+    - "**npu_check 的前置条件**：只有 debug 阶段正常退出（未触发 ASSERT 校验）时才会输出完整校验日志与分析——调试阶段本身报错时拿不到完整的 check 结论"
+    - "cpu_debug 的 gdb 必须 `set follow-fork-mode child`，否则跟踪的是父进程、断点进不到核函数内部（这是「明明加了断点却没停」的典型原因）"
+    - "CPU 调试完成后要**清除 build 目录并重新配置 cmake** 才切回 NPU 模式；`#ifdef` 调试代码不用移除（NPU 模式下无影响）"
+    - "GM 多核踩踏检查按 GM 地址范围重叠判错，但 **Atomic add 场景下对重叠地址不报错**——有原子加参与的地址重叠不算问题"
+    - "optype_collector 的用途是**安装/交付前**发现重名：内置包与自定义包、自定义包之间 OpType 冲突会导致算子被错误覆盖或路由不到，属『装完才发现』的典型坑"

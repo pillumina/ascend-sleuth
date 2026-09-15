@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-15    词条数：114
+# 生成日期：2026-09-15    词条数：116
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -268,6 +268,22 @@ entries:
     platforms:
     - cross
     categories:
+    - performance
+- id: asc-tools-ascendc-debug-suite
+  type: tool
+  title: Ascend C 算子调试工具集（cpu_debug 的 CPU 域编译 + npu_check 的 Error* 判据表 + msobjdump 的 ELF 字段 + show_kernel_debug_data
+    + optype_collector）
+  summary: asc-tools 这套工具解决算子级问题：**cpu_debug**——在 NPU 部署前先上 CPU 做功能与精度基本验证（bisheng 编译生成 CPU 域可执行程序，再用
+    gdb 常规调试；编译选项 `CMAKE_ASC_RUN_MODE=cpu` 与 `CMAKE_ASC_ARCHITECTURES=dav…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - A5-950
+    - cross
+    categories:
+    - interrupt
+    - precision
     - performance
 - id: ascend-310p-known-limits
   type: platform-fact
@@ -587,6 +603,17 @@ entries:
     - cross
     categories:
     - interrupt
+    - performance
+- id: hif8-and-mxfp8-low-precision-training
+  type: software-fact
+  title: HiF8 / MXFP8 低精度训练（格式特性、Per-Tensor vs Per-Block、Delayed vs Current Scaling、950DT 实测 29.5% 加速与参数组合支持范围）
+  summary: 训练低精度（8-bit）的选型与判据。**格式**：HiF8 由符号 S(1) + 点位 Dot(2~4) + 阶码 E(D 位，**符号-幅度编码**且幅值最高位为隐含位) + 尾数
+    M(1~3) 组成；Normal 模式下 Dot=1/2/3/4 分别编码 E=±1、±[2,3]…共覆盖指数 [-15,15] 且*…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - precision
     - performance
 - id: hif8-type-contract
   type: software-fact

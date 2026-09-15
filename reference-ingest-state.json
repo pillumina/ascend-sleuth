@@ -4,51 +4,85 @@
    "branch": "master",
    "docs": {
     "docs/00_quick_start.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "skipped",
+     "note": "环境准备/快速入门（云开发环境、CANN 镜像 Docker、DevContainer、CANN 包下载安装与验证）——部署面，无诊断判据；英文页为同内容副本",
      "sha": "d4db75705c9508a048510b7beb0441ea96a3bd20"
     },
     "docs/00_quick_start_en.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "skipped",
+     "note": "环境准备/快速入门（云开发环境、CANN 镜像 Docker、DevContainer、CANN 包下载安装与验证）——部署面，无诊断判据；英文页为同内容副本",
      "sha": "1a8fc4b0468aec355806dcf46b66c96b384b8119"
     },
     "docs/01_cpu_debug.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "harvested",
+     "refs": [
+      "asc-tools-ascendc-debug-suite"
+     ],
      "sha": "4393c1b42b1a94fd1c7e1447b307a332cd3e154c"
     },
     "docs/01_cpu_debug_en.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "skipped",
+     "note": "环境准备/快速入门（云开发环境、CANN 镜像 Docker、DevContainer、CANN 包下载安装与验证）——部署面，无诊断判据；英文页为同内容副本",
      "sha": "6f85d365fffef3cc7bf45cf51f26330e003123c4"
     },
     "docs/02_npu_check.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "harvested",
+     "refs": [
+      "asc-tools-ascendc-debug-suite"
+     ],
      "sha": "d450e9905967b9e13ec5b1c61c4dc5615bd2c679"
     },
     "docs/02_npu_check_en.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "skipped",
+     "note": "环境准备/快速入门（云开发环境、CANN 镜像 Docker、DevContainer、CANN 包下载安装与验证）——部署面，无诊断判据；英文页为同内容副本",
      "sha": "c724b970645900030fa2d7ef58473de2ca775222"
     },
     "docs/03_msobjdump.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "harvested",
+     "refs": [
+      "asc-tools-ascendc-debug-suite"
+     ],
      "sha": "18f455dc89817021c280da220d773e5f2a65a819"
     },
     "docs/03_msobjdump_en.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "skipped",
+     "note": "环境准备/快速入门（云开发环境、CANN 镜像 Docker、DevContainer、CANN 包下载安装与验证）——部署面，无诊断判据；英文页为同内容副本",
      "sha": "eba1c7bec44035497028873984b09ffb599836f8"
     },
     "docs/04_show_kernel_debug_data.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "harvested",
+     "refs": [
+      "asc-tools-ascendc-debug-suite"
+     ],
      "sha": "e8071f40dab83aa7e52ef55060c2fa31d4060a8b"
     },
     "docs/04_show_kernel_debug_data_en.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "skipped",
+     "note": "环境准备/快速入门（云开发环境、CANN 镜像 Docker、DevContainer、CANN 包下载安装与验证）——部署面，无诊断判据；英文页为同内容副本",
      "sha": "bfac3f587391c86ba5fdd0a6bd6957260f64d10d"
     },
     "docs/05_optype_collector.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "harvested",
+     "refs": [
+      "asc-tools-ascendc-debug-suite"
+     ],
      "sha": "3de66ea97b5221e7e346c7fa1b9ddead65759653"
     },
     "docs/05_optype_collector_en.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "skipped",
+     "note": "环境准备/快速入门（云开发环境、CANN 镜像 Docker、DevContainer、CANN 包下载安装与验证）——部署面，无诊断判据；英文页为同内容副本",
      "sha": "e4b793916e930f8f2ac9a5f3aa89ddeab5ec352b"
     }
    },
@@ -322,7 +356,11 @@
      "sha": "c843c2d587312018b6801398cf04976e7750f1e3"
     },
     "docs/llm_pretrain/deepseek-v3_pre_train_hif8_mxfp8.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:12",
+     "decision": "harvested",
+     "refs": [
+      "hif8-and-mxfp8-low-precision-training"
+     ],
      "sha": "85d8c2a651cc46b1130725e83c9d335738612968"
     },
     "docs/llm_pretrain/deepseek-v4_torchtitan_npu_autofuse.md": {
