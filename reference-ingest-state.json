@@ -32,127 +32,189 @@
      "sha": "bd6e76f4ada9ffec14d69652f10c0da6bebe9dce"
     },
     "docs/zh/app-dev/Camera_video_obtaining_and_processing.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "8daca27dfcb016b6aa12addfba387942ed0950e1"
     },
     "docs/zh/app-dev/DVPP.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "2728934126e91e0b044083b9b02c064c65c4504f"
     },
     "docs/zh/app-dev/DVPP_V1.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "52aa4df16fe3f3a405095576f15766a89598c7bd"
     },
     "docs/zh/app-dev/DVPP_V1_JPEGD.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "e46db0c9bd36e8104459146ec42f20004da2fd91"
     },
     "docs/zh/app-dev/DVPP_V1_JPEGE.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "b427e33f234799173a620d95743d433b11b41079"
     },
     "docs/zh/app-dev/DVPP_V1_PNGD.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "6919e74c03fb3eee796b44d390cc3c002ac48431"
     },
     "docs/zh/app-dev/DVPP_V1_VDEC.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "a8918490610fb7c052bc5cfdbd1e0c19ad76c4bd"
     },
     "docs/zh/app-dev/DVPP_V1_VENC.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "3effead4bc587c2c5238b44778e0a4d4c93609a8"
     },
     "docs/zh/app-dev/DVPP_V1_VPC.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "79d8f5a6d691525eb985f70584401df128e19f1f"
     },
     "docs/zh/app-dev/DVPP_V1_VPC_multi_functional_combined_interface.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "268ece5010f40b6c5ebc7150943ba8e8cc8478f0"
     },
     "docs/zh/app-dev/DVPP_V1_VPC_properly_selecting_output_format.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "c56443baaef60e158c2407847f6a7b2767874d96"
     },
     "docs/zh/app-dev/DVPP_V1_properly_selecting_VDEC_output_format_resolution.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "12e3b08a8d26dc2d5b4056dae2fd28827a636525"
     },
     "docs/zh/app-dev/DVPP_V1_properly_using_VDEC_decoding_frame_skipping.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "fd3e77dbd415ac2a54712d6cd2d7efcf7d30f46d"
     },
     "docs/zh/app-dev/DVPP_V1_using_VPC_batch_processing_API.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "a23b8b5a49263ee9082ecdda6571e07e73088ff1"
     },
     "docs/zh/app-dev/DVPP_V2.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "488750f26a97c5302ae1afbdcb845a0b55f8aa73"
     },
     "docs/zh/app-dev/DVPP_V2_JPEGD.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "987ebb9860254c87f4557b59f48945ff74505cae"
     },
     "docs/zh/app-dev/DVPP_V2_JPEGE.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "9eb11ad955cc16d78a88722be1ebc12d1f2eb66f"
     },
     "docs/zh/app-dev/DVPP_V2_PNGD.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "193d712c65ddb0ec6ddfd07685428b06bc7368ed"
     },
     "docs/zh/app-dev/DVPP_V2_VDEC.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "049a41aaa42cbae631752dfdc85eecad130fa3e8"
     },
     "docs/zh/app-dev/DVPP_V2_VENC.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "8026fea791a1afe2ea6fc5b21c018f5377018730"
     },
     "docs/zh/app-dev/DVPP_V2_VPC.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "5cbad77460368eafab394f6aff076eac31be288f"
     },
     "docs/zh/app-dev/DVPP_V2_VPC_multi_functional_combined_interface.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "3d750e6b5b2f2c06cc79b20181812b9d33876d3c"
     },
     "docs/zh/app-dev/DVPP_V2_VPC_properly_selecting_output_format.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "b1407a3810e6dd0c242596c82053f8a8835a90a4"
     },
     "docs/zh/app-dev/DVPP_V2_properly_selecting_VDEC_output_format_resolution.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "55255f91fecece7f9f7ecf4b28a581d0d40e3ff5"
     },
     "docs/zh/app-dev/DVPP_V2_properly_set_queue_depth.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "70feda5a99ff57af0d56b858d8516f1e2ca50498"
     },
     "docs/zh/app-dev/DVPP_V2_properly_using_VDEC_decoding_frame_skipping.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "d4dbe17be27c60dad0f6490717e942da7b6b7214"
     },
     "docs/zh/app-dev/DVPP_V2_using_VPC_batch_processing_API.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "1741b16f2b330d4e8990de8278b9da03533cb370"
     },
     "docs/zh/app-dev/DVPP_image_video_processing.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "97b8f15d89cf17bacfbf8c3209eec4df430b3ade"
     },
     "docs/zh/app-dev/DVPP_multiple_versions_differences.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "2d4a54929dad86e9c0b8f741ebeff01ad4c75825"
     },
     "docs/zh/app-dev/DVPP_operators.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "45bf13f02d6cea2698dbe740f6f4a108a053984b"
     },
     "docs/zh/app-dev/DVPP_overview.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "f84ea5b564e26a40b28989b71a36affe8464cae9"
     },
     "docs/zh/app-dev/FAQ_cases.md": {
@@ -160,11 +222,15 @@
      "sha": "b05ecab424052c0516e34907f51febec801aa1ee"
     },
     "docs/zh/app-dev/NVR_video_decoding_processing_displaying.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "217364de037c7d1f3e6cdd01bce54751bfd925d1"
     },
     "docs/zh/app-dev/NVR_voice_intercom.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "6fb6a876eaa8ffd7bd8a0e72e587f12d5e3cc811"
     },
     "docs/zh/app-dev/accuracy_based_automatic_quantization.md": {
@@ -190,7 +256,9 @@
      "sha": "a088f88de7f934784b1818805e58fea53dac29b8"
     },
     "docs/zh/app-dev/audio_obtaining_and_playback.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "2ebda251eb5541b8197d9215785f9f0a09ace525"
     },
     "docs/zh/app-dev/check_configuration.md": {
@@ -219,7 +287,9 @@
      "sha": "d69160a8dfeda52f9d2c2694c5fc6ff7db410f89"
     },
     "docs/zh/app-dev/dedicated_accelerators.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "领域特性/专用加速器介绍页，无诊断判据",
      "sha": "1202f6a54c8eaa284f7a6d8985c2ec1adff022dc"
     },
     "docs/zh/app-dev/disable_data_cache_optimization.md": {
@@ -239,7 +309,9 @@
      "sha": "ad155b1dee3030fa7db7f75dc295114e5d9edd76"
     },
     "docs/zh/app-dev/dynamic_AIPP_inference.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "064fdee8ec4a73506bef10567ce775cdab186567"
     },
     "docs/zh/app-dev/dynamic_batch_resolution_dims.md": {
@@ -263,7 +335,9 @@
      "sha": "68b0f71ec2dbcf31d9fa2ffa5861005f6ceb8cde"
     },
     "docs/zh/app-dev/feature_vector_search.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "领域特性/专用加速器介绍页，无诊断判据",
      "sha": "035ead214d613025f049aca81baff234e61560d9"
     },
     "docs/zh/app-dev/functions_supported_status.md": {
@@ -361,7 +435,9 @@
      "sha": "268d313e3a6068bc78b28342451b918bf66fe0a7"
     },
     "docs/zh/app-dev/multi_dynamic_AIPP_inputs.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "61c5be9f2aad6a54bc08e44d828b48cffb16042e"
     },
     "docs/zh/app-dev/multi_model_inference.md": {
@@ -437,7 +513,9 @@
      "sha": "8ab0fa5aa8d4e8405e363d8d5505b87a28bf0e45"
     },
     "docs/zh/app-dev/single_dynamic_AIPP_input.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "defd1de35b71275bfe5aba0c8b90a5237fa65319"
     },
     "docs/zh/app-dev/single_operator_invoke.md": {
@@ -457,19 +535,27 @@
      "sha": "ad681cd3ff652f3cd87360907024a81b55964cdd"
     },
     "docs/zh/app-dev/using_DVPP_V1_APIs.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "f6c645637613093d6993f2c1f0dfdd6dc1d49bd2"
     },
     "docs/zh/app-dev/using_DVPP_V2_APIs.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "8cce50e753fd9cb984de81b367c697d79af23977"
     },
     "docs/zh/app-dev/video_obtaining.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "b53988bf98620dc0f8dce54b28b68d4fab8a7121"
     },
     "docs/zh/app-dev/video_obtaining_VPSS_processing.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "DVPP/AIPP-视频图像音频与 NVR 类：媒体处理接口的使用面（各版本 API 选择、输出格式、队列深度等），与训练/推理的算子级中断·精度·性能定位弱相关；DVPP 类**故障**已由既有 fault-patterns/dvpp-* 表承载",
      "sha": "95db968e48befcafbb8ba1dcca334ec1bca86ce8"
     },
     "docs/zh/app-dev/view_logs.md": {
@@ -489,89 +575,129 @@
      "sha": "08f9dcf91ed08f886170f2890d15ea5953b55887"
     },
     "docs/zh/env-vars/ACLNN_CACHE_LIMIT.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "与既有 env 家族同源同内容（变量名逐一对应：ACLNN_CACHE_LIMIT→operator-exec-env、ASCEND_CACHE_PATH/ASCEND_CUSTOM_OPP_PATH/ASCEND_WORK_PATH/CANN_KNOWLEDGE_BANK_PROCESS_NUM→install-config-env、ASCEND_DUMP_PATH/ASCEND_DUMP_SCENE/NPU_COLLECT_PATH→fault-collect-env、RESOURCE_CONFIG_PATH→resource-config-env），已由对应族表承载",
      "sha": "cab997d160e72c3064d9a586e53d69dceb177da3"
     },
     "docs/zh/env-vars/ASCEND_CACHE_PATH.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "与既有 env 家族同源同内容（变量名逐一对应：ACLNN_CACHE_LIMIT→operator-exec-env、ASCEND_CACHE_PATH/ASCEND_CUSTOM_OPP_PATH/ASCEND_WORK_PATH/CANN_KNOWLEDGE_BANK_PROCESS_NUM→install-config-env、ASCEND_DUMP_PATH/ASCEND_DUMP_SCENE/NPU_COLLECT_PATH→fault-collect-env、RESOURCE_CONFIG_PATH→resource-config-env），已由对应族表承载",
      "sha": "047d3692e64458c3cd91fe6bfa31d98bba82065a"
     },
     "docs/zh/env-vars/ASCEND_CUSTOM_OPP_PATH.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "与既有 env 家族同源同内容（变量名逐一对应：ACLNN_CACHE_LIMIT→operator-exec-env、ASCEND_CACHE_PATH/ASCEND_CUSTOM_OPP_PATH/ASCEND_WORK_PATH/CANN_KNOWLEDGE_BANK_PROCESS_NUM→install-config-env、ASCEND_DUMP_PATH/ASCEND_DUMP_SCENE/NPU_COLLECT_PATH→fault-collect-env、RESOURCE_CONFIG_PATH→resource-config-env），已由对应族表承载",
      "sha": "eaf5b3e8b0c8e2897a9965949ea069019d68d41d"
     },
     "docs/zh/env-vars/ASCEND_DUMP_PATH.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "与既有 env 家族同源同内容（变量名逐一对应：ACLNN_CACHE_LIMIT→operator-exec-env、ASCEND_CACHE_PATH/ASCEND_CUSTOM_OPP_PATH/ASCEND_WORK_PATH/CANN_KNOWLEDGE_BANK_PROCESS_NUM→install-config-env、ASCEND_DUMP_PATH/ASCEND_DUMP_SCENE/NPU_COLLECT_PATH→fault-collect-env、RESOURCE_CONFIG_PATH→resource-config-env），已由对应族表承载",
      "sha": "0f475bedcf3d1cd8e7e0153db0c55714bbd82cb9"
     },
     "docs/zh/env-vars/ASCEND_DUMP_SCENE.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "与既有 env 家族同源同内容（变量名逐一对应：ACLNN_CACHE_LIMIT→operator-exec-env、ASCEND_CACHE_PATH/ASCEND_CUSTOM_OPP_PATH/ASCEND_WORK_PATH/CANN_KNOWLEDGE_BANK_PROCESS_NUM→install-config-env、ASCEND_DUMP_PATH/ASCEND_DUMP_SCENE/NPU_COLLECT_PATH→fault-collect-env、RESOURCE_CONFIG_PATH→resource-config-env），已由对应族表承载",
      "sha": "2f403eba928a43cb4d96e0ddf407cbc1885ea5c3"
     },
     "docs/zh/env-vars/ASCEND_WORK_PATH.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "与既有 env 家族同源同内容（变量名逐一对应：ACLNN_CACHE_LIMIT→operator-exec-env、ASCEND_CACHE_PATH/ASCEND_CUSTOM_OPP_PATH/ASCEND_WORK_PATH/CANN_KNOWLEDGE_BANK_PROCESS_NUM→install-config-env、ASCEND_DUMP_PATH/ASCEND_DUMP_SCENE/NPU_COLLECT_PATH→fault-collect-env、RESOURCE_CONFIG_PATH→resource-config-env），已由对应族表承载",
      "sha": "091314049dfd42b723654d622c2ebfdde16acbb5"
     },
     "docs/zh/env-vars/CANN_KNOWLEDGE_BANK_PROCESS_NUM.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "与既有 env 家族同源同内容（变量名逐一对应：ACLNN_CACHE_LIMIT→operator-exec-env、ASCEND_CACHE_PATH/ASCEND_CUSTOM_OPP_PATH/ASCEND_WORK_PATH/CANN_KNOWLEDGE_BANK_PROCESS_NUM→install-config-env、ASCEND_DUMP_PATH/ASCEND_DUMP_SCENE/NPU_COLLECT_PATH→fault-collect-env、RESOURCE_CONFIG_PATH→resource-config-env），已由对应族表承载",
      "sha": "12732b69933bc0c975c0f9dc9f7415bfff9550bf"
     },
     "docs/zh/env-vars/NPU_COLLECT_PATH.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "与既有 env 家族同源同内容（变量名逐一对应：ACLNN_CACHE_LIMIT→operator-exec-env、ASCEND_CACHE_PATH/ASCEND_CUSTOM_OPP_PATH/ASCEND_WORK_PATH/CANN_KNOWLEDGE_BANK_PROCESS_NUM→install-config-env、ASCEND_DUMP_PATH/ASCEND_DUMP_SCENE/NPU_COLLECT_PATH→fault-collect-env、RESOURCE_CONFIG_PATH→resource-config-env），已由对应族表承载",
      "sha": "7e6d969b58047e5505f17edabd9a38ff965a74bd"
     },
     "docs/zh/env-vars/OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE.md": {
+     "at": "2026-09-15T16:45:04",
      "decision": "pending",
+     "note": "已评估：docs 仓 env-vars 面 10 个变量中唯一未被既有表覆盖的一个（PCIe 直访 Host 内存检查开关）；单变量追加不值得单独开一次 kb/high-risk 修订，待与后续 env 增量合批追加",
      "sha": "82c60ac4da232f53c174babba69e700aaea4297f"
     },
     "docs/zh/env-vars/README.md": {
-     "at": "2026-09-15T16:26:01",
+     "at": "2026-09-15T16:45:04",
      "decision": "skipped",
-     "note": "纯标题存根/索引页（正文在对应 _desc/_cases/_positioning_process/_overview 子页或专题章节）",
+     "note": "env-vars 索引/汇总页（intro/install/README 与 _dump_* 分片页），正文在各变量页",
      "sha": "52c4bc9adcd6860b76cbb90a37d2ffddfbedad6b"
     },
     "docs/zh/env-vars/RESOURCE_CONFIG_PATH.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "与既有 env 家族同源同内容（变量名逐一对应：ACLNN_CACHE_LIMIT→operator-exec-env、ASCEND_CACHE_PATH/ASCEND_CUSTOM_OPP_PATH/ASCEND_WORK_PATH/CANN_KNOWLEDGE_BANK_PROCESS_NUM→install-config-env、ASCEND_DUMP_PATH/ASCEND_DUMP_SCENE/NPU_COLLECT_PATH→fault-collect-env、RESOURCE_CONFIG_PATH→resource-config-env），已由对应族表承载",
      "sha": "54162cf76cdaf5dc73037e16c17aee69db481850"
     },
     "docs/zh/env-vars/_dump_fault_collect.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "env-vars 索引/汇总页（intro/install/README 与 _dump_* 分片页），正文在各变量页",
      "sha": "87d0a4caa476570a26f0e69b4bc8fac0d05cd5af"
     },
     "docs/zh/env-vars/_dump_inst_config.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "env-vars 索引/汇总页（intro/install/README 与 _dump_* 分片页），正文在各变量页",
      "sha": "782708d108956869540e8d3bb22b93485fd61aca"
     },
     "docs/zh/env-vars/_dump_log.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "env-vars 索引/汇总页（intro/install/README 与 _dump_* 分片页），正文在各变量页",
      "sha": "3ebd014fd7c4832a891c429b020e35ecfbf9df46"
     },
     "docs/zh/env-vars/_dump_opexe.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "env-vars 索引/汇总页（intro/install/README 与 _dump_* 分片页），正文在各变量页",
      "sha": "50df4f9b0f4c5025b9fe4d9b194ab8a9a93902b6"
     },
     "docs/zh/env-vars/_dump_profile.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "env-vars 索引/汇总页（intro/install/README 与 _dump_* 分片页），正文在各变量页",
      "sha": "c2c518663db4997be1b4c4affc660d7c86f44e0a"
     },
     "docs/zh/env-vars/_dump_resource_config.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "env-vars 索引/汇总页（intro/install/README 与 _dump_* 分片页），正文在各变量页",
      "sha": "98f91bc4a2284a3f0e6a7021b526b1ba41d59140"
     },
     "docs/zh/env-vars/hccl_env.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "env-vars 索引/汇总页（intro/install/README 与 _dump_* 分片页），正文在各变量页",
      "sha": "298d012237510756978c6328fe23a68bdb8238e9"
     },
     "docs/zh/env-vars/install.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "env-vars 索引/汇总页（intro/install/README 与 _dump_* 分片页），正文在各变量页",
      "sha": "f45f8b16741f2eb1d558cdb50d82fd3aec98d439"
     },
     "docs/zh/env-vars/intro.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "env-vars 索引/汇总页（intro/install/README 与 _dump_* 分片页），正文在各变量页",
      "sha": "92df24156a7c3068bdda9b49faaa7650c52e036a"
     },
     "docs/zh/env-vars/pypto_env.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:45:04",
+     "decision": "skipped",
+     "note": "env-vars 索引/汇总页（intro/install/README 与 _dump_* 分片页），正文在各变量页",
      "sha": "34b5309a34b365192e85edda2f6bfc94e327de76"
     },
     "docs/zh/ops-lib/appendix/FAQ.md": {
