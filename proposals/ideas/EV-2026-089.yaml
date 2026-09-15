@@ -1,0 +1,102 @@
+# ============================================================
+# EV-2026-089 —— ops-ras context/debug 面沉淀：aclnn 错误码新族 + 三个 software-fact + 算子调试入口词条
+# 来源：用户指定「driver 950 工具面与 ops-ras 都做了，分别开 PR 直接合入」的第二批
+# 触发：ops-ras 的 docs/zh/context 与 docs/zh/debug 是**真增量**——aclnn 返回码表在库里没有对应族文件，
+#       而类型互推导/broadcast/量化模式/sparseMode/两级一致性开关都是「精度问题定位」缺的先验判据
+# 脱敏：只含公开仓路径、命令、返回码与工具字段，不含客户数据
+# ============================================================
+
+id: EV-2026-089
+layer: L1                          # 知识内容层（新增 error-code 族 + 三个 software-fact + 一个 tool 词条）
+title: "ops-ras 面沉淀：aclnn 错误码族新立 + 类型互推导/broadcast/量化模式/sparseMode + 确定性两级开关 + 算子调试入口"
+status: validated
+authorization: review              # 含 active 词条扩容（cannsim-sim-profiling）→ 需 kb/high-risk 双签
+dimension: architecture            # 知识结构：错误码进 errors/aclnn.yaml 新族（append-don't-create 的新族起点）；
+                                   # 确定性/一致性从"量化模式"词条中拆出独立词条（一个用途面一个文件）
+supersedes: []
+superseded_by: null
+created_at: 2026-09-15
+source_signals:
+  - signal: user_request
+    evidence: >-
+      用户在 driver 950 批次合入后指定「ops-ras 也做了，分别开 PR 直接合入」。ops-ras 的文档面 65 篇
+      （docs/zh 与 docs/en 各半），可沉淀面集中在两道：**context**（aclnn 返回码、类型互推导/互转换/broadcast、
+      数据格式与结构、量化模式、sparseMode、确定性计算、Batch 一致性、两段式接口）与 **debug**（算子调试调优、CANN Simulator）。
+    trajectory:
+      - "reference-ingest-state.json（ops-ras 65 篇 = 14 harvested / 51 skipped；仓级 triage 置 selected）"
+      - "references/errors/aclnn.yaml（新族文件，27 行含 ACLNN_SUCCESS 与 161001/161002/361001/561000–561119）"
+      - "references/software-facts/aclnn-type-promotion-broadcast-and-format.yaml（互推导/互转换/broadcast + 合并后维度<6 限制 + 私有格式 + 非连续 Tensor）"
+      - "references/software-facts/aclnn-quant-modes-and-sparsemode.yaml（T/C/K/G/B 与五种组合、MX=G-G/E8M0/gs=32、sparseMode 0-8 与 varlen 限制）"
+      - "references/software-facts/batch-consistency-and-determinism-switches.yaml（ACL_OPT_DETERMINISTIC 1 与 3、两个 torch 入口、版本门槛）"
+      - "references/tools/operator-debug-entrypoints.yaml（plog 路径/打屏、aclGetRecentErrMsg、AI Core printf·DumpTensor、AI CPU KERNEL_LOG、msprof op 与 cannsim 按产品分流）"
+      - "references/tools/cannsim-sim-profiling.yaml（扩容：950 单卡/仅 AI Core 计算算子/不支持 MC2·HCCL·arm、bit 级精度仿真、算子工程 aclnn 入口）"
+hypothesis: >-
+  把 ops-ras 的 context 面沉淀后，**精度类问题在候选加载前就有一层可判读的硬事实**：拿到一个算子调用，
+  看量化参数 shape 就能反推量化粒度（(1,)=T、(n,)=C、(m,)=K、(m,k/gs)=G、(m/bs,k/bs)=B）、看 scale 类型与
+  gs=32 就能认出 MX；「同输入不同 batch 结果波动」有独立开关（ACL_OPT_DETERMINISTIC=3）而不是与确定性（=1）
+  混为一谈；aclnn 报错有 561xxx 这类**可定位**（561003=算子二进制包未安装、561107=ASCEND_OPP_PATH 未配置）
+  而非只能贴给 owner 的返回码。算子级取信息也不再只有"加打印"一条路。
+predicted_effect:
+  metric: ops-ras 文档面可消费的判据型词条数与台账判定完整度
+  from: "aclnn 返回码在 references/errors/ 无族文件；类型互推导/量化模式/sparseMode/两级一致性开关/算子调试入口均无词条；ops-ras 65 篇全部 pending"
+  to: "errors/aclnn.yaml 27 行返回码；三个 software-fact + 一个 tool 新词条；cannsim 词条补 950 仿真边界面；ops-ras 65 篇判定完整（14 harvested / 51 skipped）"
+  measure:
+    command: >-
+      python3 -c "import yaml,json;b=lambda p: json.dumps(yaml.safe_load(open(p)),ensure_ascii=False,default=str);e=b('references/errors/aclnn.yaml');q=b('references/software-facts/aclnn-quant-modes-and-sparsemode.yaml');d=b('references/software-facts/batch-consistency-and-determinism-switches.yaml');o=b('references/tools/operator-debug-entrypoints.yaml');f=b('references/software-facts/aclnn-type-promotion-broadcast-and-format.yaml');s=json.load(open('reference-ingest-state.json'))['sources']['gitcode/cann/ops-ras'];from collections import Counter;c=Counter(v['decision'] for v in s['docs'].values());ok=(all(x in e for x in ['161001','561000','561116']) and all(x in q for x in ['sparseMode 0','varlen']) and all(x in d for x in ['ACL_OPT_DETERMINISTIC=3','set_deterministic_level','26.2.0']) and all(x in o for x in ['KERNEL_LOG_ERROR','plog','aclGetRecentErrMsg']) and all(x in f for x in ['broadcast','COMPLEX64']) and c['harvested']==14 and c['skipped']==51 and s['triage']['decision']=='selected');print('harvested',c['harvested'],'skipped',c['skipped'],'triage',s['triage']['decision']);print('entries_ok',ok);raise SystemExit(0 if ok else 1)"
+    expect_exit: 0
+    expect_stdout: "entries_ok True"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：`references/errors/` 无 aclnn 族文件；`references/software-facts/` 无类型互推导/量化模式/sparseMode/
+    一致性开关词条；`references/tools/` 无算子调试入口词条；ops-ras 的 65 篇在台账里全为 pending，
+    仓级 triage 为 candidate。
+  success_criteria: >-
+    ① measure：五条词条的关键判据齐备、台账 14/51 且 triage=selected（判据命令）；
+    ② 覆盖完整：分类面（返回码、类型规则、量化/sparse、一致性、调试入口）各自有落点，无遗漏的 harvested 面；
+    ③ 口径冲突如实保留：batch invariance 在既有方法论（case-derived，`torch.use_deterministic_algorithms`）与
+    官方文档（`set_deterministic_level`/`ACL_OPT_DETERMINISTIC=3`）之间的差异被显式标注，不做统一推断；
+    ④ 不重复建词条：确定性/一致性从量化词条拆出成独立词条（relate-don't-merge 的落地），两段式接口/基础概念
+    等已被既有词条覆盖的篇目判 skipped 并写明理由；
+    ⑤ CI 无回归：verify_references 218 条 + 三索引 + docs 索引 + proposals + holdout 全绿。
+  rollback: >-
+    单次提交：删除四个新词条文件与 errors/aclnn.yaml、回滚 cannsim-sim-profiling 的 summary/sources/commands/
+    output_meaning/pitfalls 五段即回原状；台账条目可 mark 回 pending，triage 可退回 candidate。
+gate:
+  condition: "再遇到「aclnn 报 561xxx 无处可查」或「同输入不同 batch 结果不一致被当成确定性问题排查」时，重跑 measure 并复查分词条规则"
+risk: low
+principle_refs: [2, 3, 10]
+decisions:
+  - who: agent
+    when: 2026-09-15
+    type: action
+    conclusion: >-
+      按"一个用途面一个文件"落五条：返回码进 errors/aclnn.yaml（新族起点，append-don't-create 的后续错误码应进该文件）、
+      类型规则合成一条 software-fact（互推导+互转换+broadcast+格式+非连续 Tensor 同属"入参合不合法/为什么报参数错"这一面）、
+      量化模式与 sparseMode 合一条（同为算子入参语义）、确定性与 Batch 一致性单独立一条（**从量化词条里拆出**：
+      原稿把确定性写进量化词条，但两级开关是独立用途面，留在量化词条里会与后续增量错位）。
+      调试入口立一条 tool（Host 日志 → 框架错误信息 → Kernel 打印 → 单步 → 性能采集的取信息顺序）。
+      同一批里顺手扩容 cannsim 词条（950 仿真边界面：单卡/仅 AI Core 计算算子/不支持 MC2·HCCL·arm 是选错手段就白跑的前置）。
+  - who: agent
+    when: 2026-09-15
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS（entries_ok True / harvested 14 / skipped 51 / triage selected）；
+      verify_references 218 条通过，四索引 --check 与 holdout、proposals、panel 检查全绿。
+      负向对照：在本改动前的检出上跑同一命令 → 词条文件不存在（FileNotFoundError）→ exit 1。
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      采纳并标 validated（效果层）。边界如实标注：①本卡证明"这些面的判据已进词条且台账判定完整"，
+      不证明算子文档面穷尽——ops-ras 是**算子库**，其 op_list/aclnn API 清单面（数十篇纯列表）与
+      develop/install 教程面按口径 skipped，若后续出现"某算子接口语义/约束"类诊断场景，应把对应篇目复议；
+      ②**摩擦记录（未改机制）**：`raw.gitcode.com` 对个别文件返回 403（zh/debug/cann_sim.md、
+      zh|en/context/batch_consistency.md），而同一 commit 的 blob 经 git 稀疏检出可读且 sha 与台账一致——
+      本轮用稀疏检出兜底完成取证，脚本未加兜底路径，留待下一轮摄取批次一并处理。
+actual_cost:
+  tokens: 26000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数，按仓库口径给估算：28 篇正文读取与裁剪（约 12k）、五条词条撰写与 cannsim 扩容（约 9k）、
+    台账 65 条判定与 measure/校验往返（约 5k）。
