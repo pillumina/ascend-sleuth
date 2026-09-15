@@ -1,0 +1,35 @@
+id: torchtitan-npu-compile-backends-and-limits
+type: software-fact
+title: torchtitan-npu 的图编译契约（两级 backend 必须在 import torch 前定 / 按 Block 全图编译 / fallback 与动态 shape 边界 / 内核缓存与「训练成功≠融合生效」）
+summary: "在 torchtitan-npu 上做 torch.compile 的性能与中断定位，先记住五条。**① 两级 backend 不能互相替代**：`compile.backend=inductor` 选 PyTorch Dynamo backend，`TORCHINDUCTOR_NPU_BACKEND=ascendc` 选 Inductor 内部的 NPU Codegen；`torch_npu._inductor` **在导入阶段完成 backend 注册，所以该环境变量必须在 `import torch` 之前设置**，同进程先导入再改环境变量无法可靠切换已初始化的 Codegen。`scripts/run_train.sh` 默认设 AscendC，**`run_train_multinodes.sh` 不补这个默认值**——多机必须在所有节点启动前显式导出同一变量，并保证所有 rank 的 backend 与 pattern 集合一致。**② 标准路径是按 TransformerBlock 编译**（上游 `apply_compile` 对每个 Block 用 `compile(..., fullgraph=True)`），Block 内无法被 Dynamo 捕获的 Python 行为会**直接报编译错误、不会静默拆图**；而 Inductor 对**已捕获图内**不支持的节点仍会用 fallback/extern kernel——**Dynamo graph break 与 Inductor fallback 是两个阶段的两种现象，排障必须区分**。**③ 「训练成功」不等于融合生效**：AscendC backend 保留不满足 lowering 条件的 fallback 节点，必须查 lowering 日志、Kernel 清单与 profiling。**④ 动态 shape 与 custom op 都有契约边界**：会打开 `capture_scalar_outputs`，但仍受 Dynamo guard/数据相关控制流/layout/stride/view/indirect indexing/SoC/dtype 限制——单一静态 shape 编译通过**不能**证明变长序列、packed layout 或不同路由 token 数能复用同一融合 Kernel。**⑤ 惰性编译与缓存隔离**：首次执行包含捕获、AOTAutograd、Inductor 调度、AutoFuse Codegen、C++ wrapper 与 AscendC Kernel 编译，**不能用于稳态性能结论**；融合 Kernel 默认缓存到 `/tmp/.npu_kernels_<user>`（可用 `TORCHINDUCTOR_NPU_EXT_CACHE_DIR` 指定），缓存依赖文件锁、不能放在无法保证锁语义的跨 OS 共享目录。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/torchtitan-npu/blob/master/docs/feature_guides/torch_compile.md"
+    version: "torchtitan-npu master（commit 8b0da62f16c7，2026-09-15 抓取）：图编译特性——启用方式、配置与环境变量、特殊背景与限制（两级 backend/按 Block 编译/动态 shape 与 fallback/首次编译与缓存）、验证顺序与支持边界"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A3-910C, cross]
+  frameworks: [torchtitan-npu, torch_npu, ascendc]
+  categories: [performance, interrupt, precision]
+
+related_references: [autofuse-fusion-enable-and-diagnostics, graph-compile-env, operator-compile-env, npu-prefetch-and-superkernel, msprof-enablement-methods, full-load-l1-condition, torchtitan-npu-training-metrics-and-debugging]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "定位『编译后没变快 / 编译报错 / 训练成功但结果不对』时，用这张判据表分流：**环境变量没生效** → 查 `TORCHINDUCTOR_NPU_BACKEND` 是否在 `import torch` 之前设置（多机还要查每个节点是否都显式导出、各 rank 的 backend/pattern 是否一致）；**编译直接失败** → 属 Dynamo 捕获失败（Block 内 `fullgraph=True`，Python 行为不被捕获即报错）；**编译通过但目标区域没融合** → 属 Inductor fallback（保留 extern kernel），需查 lowered/fallback summary 与 Kernel 清单；**性能结论不可信** → 查是否落在首次编译步（惰性编译）或是否开了会改变执行行为的调试变量。验收口径也要分清：融合会改变中间结果物化位置与浮点运算分组，**数值验收分 bit-wise 一致 / 容差一致 / 收敛一致三档**，不能只用「没有 NaN」当标准。"
+  evidence: "torch_compile.md：『compile.backend=inductor 选择 PyTorch Dynamo backend；TORCHINDUCTOR_NPU_BACKEND=ascendc 选择 Inductor 内部的 NPU Codegen。两者不能互相替代』『torch_npu._inductor 在导入阶段完成后端注册。环境变量必须在 import torch 之前设置；同一进程中先导入框架、再修改环境变量，不能可靠切换已经初始化的 Codegen』『scripts/run_train.sh 在启动 Python 前默认设置 AscendC。当前 scripts/run_train_multinodes.sh 不补充该默认值，多机任务必须在所有节点启动前显式导出同一变量，并确保所有 rank 使用相同 backend 和 pattern 集合』；『上游 torchtitan.distributed.compile.apply_compile 对每个 TransformerBlock 使用 compile(..., fullgraph=True)…Block 内无法被 Dynamo 捕获的 Python 行为会直接触发编译错误，不会静默拆成多个 Dynamo 图』『Inductor 对已经捕获图内不支持的节点仍可使用 fallback/extern kernel。Dynamo graph break 和 Inductor fallback 发生在不同阶段，排障时需要区分』；『上游会打开 capture_scalar_outputs…但动态 shape 仍受 Dynamo guard、数据相关控制流、layout、stride、view、indirect indexing、SoC 和 dtype 支持范围限制。单一静态 shape 编译通过，不能证明变长序列、packed layout 或不同路由 token 数都能复用同一个融合 Kernel』『AscendC backend 可以保留不满足 lowering 条件的 fallback 节点。因此训练成功只证明路径可执行，不证明目标区域已经融合；仍需检查 lowering 日志、Kernel 清单和 profiling』；『torch.compile 使用惰性编译。第一次执行可能包含 Dynamo 捕获、AOTAutograd、Inductor 调度、AutoFuse Codegen、C++ wrapper 和 AscendC Kernel 编译，不能用于稳态性能结论』『AscendC 融合 Kernel 默认缓存到 /tmp/.npu_kernels_<user>，也可通过 TORCHINDUCTOR_NPU_EXT_CACHE_DIR 指定。缓存目录依赖文件锁，不能放到无法保证锁语义的跨 OS 共享目录』；验证顺序 7 条（编译日志→pre-AOT pattern 日志→TORCH_COMPILE_DEBUG 查 lowered/fallback summary→真实输入验正反向与梯度→profiling 确认真实 autofused_* device Kernel→同 checkpoint/输入/并行/随机性比 loss 与 grad norm→关调试开关在 warmup 后稳定 step 测性能）；『数值验收应区分 bit-wise 一致、容差一致和收敛一致，不能只用训练是否出现 NaN 作为标准』；『训练 custom op 至少需要准确的 dispatcher schema、Fake/Meta 和 Autograd，并保持真实 mutation、alias、shape、dtype、device 与 layout 语义。torch.fx.wrap 只阻止 Python wrapper 被展开，不会自动提供这些契约』；『PGO 首次执行会自行采集 Kernel 性能，不能与外部 profiling 嵌套。需要评估性能时，应先完成编译并保留缓存，再在后续运行中开启 profiler』"
+  pitfalls:
+    - "**编译相关环境变量必须在 `import torch` 之前设置**：同进程后设无效（`torch_npu._inductor` 在导入阶段注册 backend）——「设了变量却还是旧路径」先查这条"
+    - "**多机默认值不会自动补**：`run_train.sh` 默认设 AscendC，`run_train_multinodes.sh` **不补**；多机每个节点都要显式导出，且各 rank 的 backend/pattern 集合必须一致"
+    - "**调试类变量不能用于正式性能结论**：`TORCHINDUCTOR_FORCE_DISABLE_CACHES=1`（强制重编、增加启动时间）、`TORCHINDUCTOR_NPU_EXT_LAYOUT_CHECK=1`（增运行时 layout 检查）、`ASCEND_LAUNCH_BLOCKING=1`（同步下发、破坏异步）、`TORCHINDUCTOR_NPU_EXT_DEBUG`（**可能改变 fallback 与融合结构**）、`TORCHINDUCTOR_NPU_EXT_AUTOTUNE_TOPN`（增加 PGO 搜索与首次编译成本）"
+    - "**PGO 首次执行会自行采性能，不能与外层 profiling 嵌套**：先完成编译并保留缓存，再在后续运行开 profiler"
+    - "**缓存切换要定向失效、不要无条件清空 `/tmp`**：软件版本、SoC、backend、模型图、shape 关键配置、pattern 或 custom op 变化后应使用隔离缓存或定向失效相关产物"
+    - "**Activation Checkpointing 下的反向重算不重放 Python 副作用**（标准路径启用了 `skip_fwd_side_effects_in_bwd_under_checkpoint`）：影响正确性的 cache/状态更新不能只依赖重算阶段的副作用，新增状态要同时审计 eager、AC 重算与 compiled forward 三条路径"
+    - "**`components` 写别的名字不代表已编译**：当前上游基线实际只消费 `model` 与 `loss`；用 `COMPILE_BACKEND` 便捷入口时它显式选 `model`，要同时编 loss 得追加 `--compile.components model,loss`"
+    - "**`aot_eager` 只验兼容性不验性能**：它可检查 Dynamo/AOTAutograd/FakeTensor 与反向是否可用，但不会把完整模型交给 AscendC AutoFuse；DeepSeek-V4 示例默认走 `aot_eager`，要验 AutoFuse 功能或性能必须显式设 `COMPILE_BACKEND=inductor`。含 FlexAttention 的模型在 `aot_eager` 下可能由上游 regional Inductor 单独编译该区域，这**不等同于**整个 TransformerBlock 用 `inductor` 编译"
+    - "PyTorch、`torch_npu`、CANN 与 torchtitan 必须整套配套：**只升级其中一个组件后继续复用旧缓存**是不成立的用法"

@@ -1,0 +1,84 @@
+# ============================================================
+# EV-2026-091 —— 文档摄取扫描面：排除 agent 知识目录与构建/依赖清单
+# 来源：候选仓批次（hixl / torchtitan-npu / graph-autofusion）评估中暴露的判定预算浪费
+# 触发：graph-autofusion 138 篇候选里 96 篇是 `.claude/skills/**`、19 篇是 `CMakeLists.txt`——
+#       高噪音仓的候选表 80% 是"判了也不会沉淀"的条目；实测全台账这类条目 677 条、harvested 为 0
+# 脱敏：只含公开仓路径与台账统计，不含客户数据
+# ============================================================
+
+id: EV-2026-091
+layer: L2                          # 机制层（扫描面规则，改 scripts/gc_docs.py 的默认排除）
+title: "文档摄取扫描面收窄：默认排除各仓 agent 知识目录与构建/依赖清单（实测 677 条零 harvest 的噪音）"
+status: validated
+authorization: auto              # 只改候选筛选口径（默认排除规则），不改判定语义、不改已有台账内容
+dimension: evolvability            # 让"判定预算"花在真候选上；同时把口径写进 skill 与管道文档
+supersedes: []
+superseded_by: null
+created_at: 2026-09-15
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      三仓评估时逐条统计：加排除前全台账的文档条目里，路径落在 `.claude/`、`.agents/`、`.codex/`、
+      `.opencode/` 的共 186 条、basename 为 `CMakeLists.txt` 或 `requirements*.txt` 的共 491 条，
+      合计 677 条（占全部文档条目约四分之一），**harvested 数为 0**。其中 graph-autofusion 一个仓就有
+      96 + 19 = 115 条，占该仓 138 篇候选的 83%。
+    trajectory:
+      - "scripts/gc_docs.py：新增 AGENT_KB_DIRS（并入 DEFAULT_EXCLUDE）与 NON_DOC_BASENAMES（按 basename 判，不受目录与每源 exclude 影响）"
+      - "skills/reference-ingest/SKILL.md：筛候选一节写明两类不入扫描面、例外走每源 config"
+      - "docs/reference-ingest-pipeline.md：已知坑表新增一行（带 186/491/677 与 harvested=0 的实测数据）"
+hypothesis: >-
+  把这两类移出扫描面后：①新仓的候选表只剩真文档，判定预算不再花在"判噪音"上（graph-autofusion 138→23）；
+  ②台账不再被零 harvest 的条目占据（未来批次不再新增这类条目）；③"agent 知识目录只作线索、不作权威源"
+  从一句口头口径变成脚本可执行、可复核的规则。
+predicted_effect:
+  metric: 扫描面的噪音排除是否生效（判定函数层面）
+  from: "`.claude/**`、`.agents/**`、`.codex/**`、`.opencode/**`、`CMakeLists.txt`、`requirements*.txt` 均会被扫成候选并占用判定"
+  to: "上述路径一律 excluded；普通文档路径（docs/**、README.md、脚本目录 readme、非清单类 .txt）不受影响；每源 config.exclude 仍可放宽目录级排除，但清单类 basename 永远排除"
+  measure:
+    command: >-
+      python3 -c "import sys,json;sys.path.insert(0,'scripts');import gc_docs as g;s={};noise=['CMakeLists.txt','autofuse/CMakeLists.txt','requirements.txt','requirements-dev.txt','.claude/skills/af-x/SKILL.md','.agents/skills/y/SKILL.md','.codex/AGENTS.md','.opencode/AGENTS.md'];keep=['docs/zh/context/data_type.md','autofuse/README.md','docs/README.txt','scripts/tools/hixl_tool/readme.md','AGENTS.md'];led=[p for r in json.load(open('reference-ingest-state.json'))['sources'].values() for p in r['docs']];nz=[p for p in led if any(x in p for x in g.AGENT_KB_DIRS) or g.NON_DOC_BASENAMES.match(p.rsplit('/',1)[-1])];ok=(all(g.excluded(s,p) for p in noise) and not any(g.excluded(s,p) for p in keep) and all(g.excluded(s,p) for p in nz) and len(nz)>=600);print('noise_excluded',all(g.excluded(s,p) for p in noise));print('docs_kept',not any(g.excluded(s,p) for p in keep));print('ledger_noise_now_excluded',len(nz));print('rule_ok',ok);raise SystemExit(0 if ok else 1)"
+    expect_exit: 0
+    expect_stdout: "rule_ok True"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：`gc_docs.py` 的 `DEFAULT_EXCLUDE` 只排除 .gitcode/.github/LICENSE/cmake/tests 等，
+    `.claude/`、`.agents/`、`.codex/`、`.opencode/` 与 `CMakeLists.txt`、`requirements*.txt` 都会被扫成候选。
+  success_criteria: >-
+    ① measure：八条噪音路径全部 excluded、五条真文档路径全部保留、台账里 ≥600 条同类路径在新规则下全部 excluded（下界而非精确值：台账随批次增长，精确值会腐烂）；
+    ② 不影响判定语义：只改"哪些路径进候选"，不改 harvested/skipped 的判据；已有台账条目按历史记录保留（本轮在评估时逐条 mark 为 skipped 并写明理由）；
+    ③ 口径落到写点：skill 的「筛候选」与管道文档的「已知坑」各记一处，例外路径明确指向每源 config。
+  rollback: >-
+    单次提交：删掉 `AGENT_KB_DIRS` 与 `NON_DOC_BASENAMES` 两处及 `excluded()` 里的 basename 分支即回原状；
+    台账无需改动（新增的 skipped 记录本身仍成立：那些条目确实不沉淀）。
+gate:
+  condition: "再出现「候选表里大量条目判了也不沉淀」或「某仓正文就写在被排除的清单里（误排除）」时，重跑 measure 并复核排除规则"
+risk: low
+principle_refs: [2, 6, 10]
+decisions:
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      两类分别用不同机制排除，理由不同：**agent 知识目录**按既有口径（只作线索、不作权威源）整体不入扫描面，
+      实现为并入 DEFAULT_EXCLUDE 的 AGENT_KB_DIRS；**构建/依赖清单**不是"文档"而是"扩展名恰好是 .txt 的构建文件"，
+      实现为按 basename 的正则（不受目录层级与每源 exclude 影响）。不用"排除所有 .txt"——有些仓的正文确实是 .txt
+      （`.txt` 留在 DOC_EXTS 里是既有决定）。
+  - who: agent
+    when: 2026-09-15
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS（noise_excluded True / docs_kept True / ledger_noise_now_excluded 677 / rule_ok True）。
+      负向对照：在本改动前的检出上跑同一命令 → 噪音路径的 excluded 为 False → rule_ok False → exit 1。
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      采纳并标 validated。边界如实标注：①本轮**不追溯清理**历史台账里的 677 条（它们作为"判过不沉淀"的记录仍在），
+      新规则只影响后续 `scan`；②`config.exclude` 为空元组的源（当前全库没有这类源）会整体放开目录级默认排除，
+      这是既有语义，未在本次改动；③判定语义未变，因此不触发 kb/high-risk。
+actual_cost:
+  tokens: 9000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数：噪音统计与验证脚本往返（约 4k）、规则与注释/文档/skill 三处写点（约 5k，含 measure 迭代一次）。

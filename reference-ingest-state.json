@@ -15522,14 +15522,852 @@
    }
   },
   "gitcode/cann/graph-autofusion": {
-   "branch": null,
-   "docs": {},
-   "head_sha": null,
-   "last_scan": null,
+   "branch": "master",
+   "docs": {
+    ".claude/CLAUDE.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "14fe11c2e9522e08519cba1930f498369e7191da"
+    },
+    ".claude/skills/af-build-runner/README.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "bc11ba94face6cb70ba8f1d048fb80f4df9848f8"
+    },
+    ".claude/skills/af-build-runner/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "e90bc08b129eac6f32c45fe394fc7796354c4335"
+    },
+    ".claude/skills/af-code-reviewer/README.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "59a2a65d474984f2f9c8a4c23f62647683ab6073"
+    },
+    ".claude/skills/af-code-reviewer/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "e97b5b1436b1af30cdabced878d986b88a05e8aa"
+    },
+    ".claude/skills/af-inductor-cv-validator/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "01b80b3782e22622a6e6747a20f10679cf101252"
+    },
+    ".claude/skills/af-inductor-cv-validator/inductor_cv_guide.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "91859b9fd12c2c9dc209dc000ee08246c03bdec0"
+    },
+    ".claude/skills/af-perf-modeler/README.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "5d52304da9c00923a9827e98f4a956c6c6d7ec55"
+    },
+    ".claude/skills/af-perf-modeler/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "2266ec5ba49640c9a829103aa02d35ee7682be7d"
+    },
+    ".claude/skills/af-prune-graph-metadef/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "b059623e006abb867818c77986d34265c2ac4c6a"
+    },
+    ".claude/skills/af-prune-graph-metadef/black-list-files.txt": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "cbf856192c4cce12a0f99e8fbb0edc2dcb717b69"
+    },
+    ".claude/skills/af-reg-ascir/README.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "1b20e903664cce431bf46e6eda8666fc2845c69f"
+    },
+    ".claude/skills/af-reg-ascir/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "314a5c3a9fc7396d14f9d77004e27fb5c244045b"
+    },
+    ".claude/skills/af-test-developer/README.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "1617238291c8770c1305e950040292aec574abf4"
+    },
+    ".claude/skills/af-test-developer/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "5d3cddbc3d723ae24763b9cca5d7d8235a3da570"
+    },
+    ".claude/skills/cann-toolkit-installer/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "b985310b5f3a8d5c3486d685cf0b94d3d99cb40d"
+    },
+    ".claude/skills/default-skills/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "bc5801b603a6a73ba8bad29334d379cd5d6c3d75"
+    },
+    ".claude/skills/sk-model-analysis/README.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "1ed612ea73c2aa0e14c15b7df35741c97af7ece5"
+    },
+    ".claude/skills/sk-model-analysis/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "652563d16e032fc1841ab762cd174843390c166c"
+    },
+    ".claude/skills/sk-model-analysis/references/artifact-contract.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "d38e83192dad52913ab8c67990d641a78fa0bdeb"
+    },
+    ".claude/skills/sk-model-analysis/references/dependencies.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "4d05f8cd71b89da8ae7041f9ad234cae8b263650"
+    },
+    ".claude/skills/sk-model-analysis/references/diagnosis-matrix.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "a1bbbecc443ae4342b49b2a14d1bbafc9b5ce145"
+    },
+    ".claude/skills/sk-model-analysis/references/script-index.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "df81980d27ea385ffec303d11a76acc48f9f939e"
+    },
+    ".claude/skills/sk-model-analysis/references/update-view-registry-guide.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "1c9421c8acf4965d86895f26ddd3b94d760e5dc8"
+    },
+    ".claude/skills/sk-model-analysis/references/workflow.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "f692697adffe921738f33b163f276cf6a169f5ab"
+    },
+    ".claude/skills/sk-operator-asset-adapter/README.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "f22bbaaceff46ba63d7288df38c653c17aaa78f0"
+    },
+    ".claude/skills/sk-operator-asset-adapter/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "b5974610e9fb71d76bd918831a9fd9ffacc744af"
+    },
+    ".claude/skills/sk-operator-build-package/README.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "da3cd12c933aeea2afa185a983610d350983a3ab"
+    },
+    ".claude/skills/sk-operator-build-package/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "8f830f33da82e937b10f20c23bf09aaf098004f7"
+    },
+    ".claude/skills/sk-operator-codegen/README.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "23209e8736a098348eff527c2bda2a7d2f7533cb"
+    },
+    ".claude/skills/sk-operator-codegen/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "80fb959007a983d87ed4fe7ee87e3098c359c694"
+    },
+    ".claude/skills/sk-operator-codegen/references/sk-adaptation-cookbook.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "1f52f19ba2b6c29d1a378d75b1531ab920d571aa"
+    },
+    ".claude/skills/sk-operator-pipeline/README.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "e353b022145a1819dd4a82bc1ad40ff526d4c78f"
+    },
+    ".claude/skills/sk-operator-pipeline/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "f23bdc993ff882c687474f8be21ee181b05ea4d4"
+    },
+    ".claude/skills/sk-operator-pipeline/references/dependencies.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "ef9949e4cd915d9b38c8333d9de965db375218c3"
+    },
+    ".claude/skills/sk-operator-pipeline/references/pipeline-state-machine.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "4efdbd1465a9d788edfb9e099eb9ceb0e03985ef"
+    },
+    ".claude/skills/sk-operator-pipeline/references/routing.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "9815a0193814853ae40a56de04c7114eb995e3ec"
+    },
+    ".claude/skills/sk-operator-pipeline/references/workflow.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "f705601541a9ebadefdeb7a58051933f1f63d92c"
+    },
+    ".claude/skills/sk-operator-sample-gen/README.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "1886040619662f0d1a9db034c05c5b2e3ced63d8"
+    },
+    ".claude/skills/sk-operator-sample-gen/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "257f45cfa687347f573520ccc47de73ef5e7daa9"
+    },
+    ".claude/skills/sk-operator-validate/README.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "b5bc99ce91eeb324edb92309ffa0330ae5058264"
+    },
+    ".claude/skills/sk-operator-validate/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "dc29d9e1172118cc7449adaf77fcbd011bfdd982"
+    },
+    ".claude/skills/superkernel-auto-tune/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "9ac7efeae025e539a21ea6b96eef1607d19bf787"
+    },
+    ".claude/skills/superkernel-auto-tune/references/adaptation-playbook.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "e78da413a35181cc364ce5c9a32dc4a67bedc80d"
+    },
+    ".claude/skills/superkernel-auto-tune/references/aot-internals.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "a33ffb1737bb0652ad93b4bb79fe9c4b2fb0bcaf"
+    },
+    ".claude/skills/superkernel-auto-tune/references/ascend-c-superkernel-adaptation.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "a42e4c5cd890a7dd487fa23fec5fb471dceecd7e"
+    },
+    ".claude/skills/superkernel-auto-tune/references/auto-tune-session.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "86f9993b8836aa81b518a751f8454b982f993c36"
+    },
+    ".claude/skills/superkernel-auto-tune/references/controller-legacy-contract.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "f74fcd9acc8c1fb97e9b64191b914317b1ac0e04"
+    },
+    ".claude/skills/superkernel-auto-tune/references/dcci-option-tuning.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "bdd5a72b5b9c3b4e3a1612040ca76d280c804984"
+    },
+    ".claude/skills/superkernel-auto-tune/references/debugging.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "9338eda15943e9406a7f61a840b7a22caf1fe6b2"
+    },
+    ".claude/skills/superkernel-auto-tune/references/experiment-agent-orchestration.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "788be232ded14a87aa9678d9667a9baa4212c08a"
+    },
+    ".claude/skills/superkernel-auto-tune/references/failure-scene-reporting.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "c446aafa0aa268a4b86fe999b8454497b400a6d6"
+    },
+    ".claude/skills/superkernel-auto-tune/references/final-report-template.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "45bb4e33057d390416d370ab45f72b24dfd79ab5"
+    },
+    ".claude/skills/superkernel-auto-tune/references/intake-checklist.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "612f6aa432553c5385a552a8053484a9e3b32e84"
+    },
+    ".claude/skills/superkernel-auto-tune/references/layer-and-pipeline-analysis.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "918ce2eb5ea585143643ae64aa0e3119c16a9f8d"
+    },
+    ".claude/skills/superkernel-auto-tune/references/profiling-fusion-analysis.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "2b866a4ec0cf0dc4b1b3aa18193d045b1dfdc7b1"
+    },
+    ".claude/skills/superkernel-auto-tune/references/report-summary.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "10dda00c796307e64e8d6259f494996be97e1bf3"
+    },
+    ".claude/skills/superkernel-auto-tune/references/shared-npu-lease.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "1ae04ae1fb14ccf1f1d47879bad3bb78d19b139b"
+    },
+    ".claude/skills/superkernel-auto-tune/references/static-compile-process-safety.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "e7590fff9afbb49f5c60eab041ce69630a265bd6"
+    },
+    ".claude/skills/superkernel-auto-tune/references/torchair-superkernel-reference.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "7e9c749e7d94fa674489b171e24c1b928c318603"
+    },
+    ".claude/skills/superkernel-auto-tune/references/winner-option-sweep.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "f64b46ab8ea22e67968a7296fd78ac102911a0d7"
+    },
+    ".claude/skills/superkernel-base-profile-source-mapping/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "affcfa984592384e2c538f24d098f27f6ce6f48a"
+    },
+    ".claude/skills/superkernel-final-e2e-report/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "ba74675a3f6c6c78f26f0914261a097a83405789"
+    },
+    ".claude/skills/superkernel-fusion-performance-analysis/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "329d686023f498e482d0c1d4be39b44f1908fbc8"
+    },
+    ".claude/skills/superkernel-fusion-performance-analysis/references/chinese-performance-analysis-report-template.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "475a4ffa69f4631bb159efe266b7a0fc693655ca"
+    },
+    ".claude/skills/superkernel-fusion-performance-analysis/references/cross-layer-family-analysis.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "1b2446dbd07c6c683408cdbce105d2e4a9a8593b"
+    },
+    ".claude/skills/superkernel-fusion-performance-analysis/references/performance-classification.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "b1820f02abf5a8a0457980645886bbcc54b031ac"
+    },
+    ".claude/skills/superkernel-fusion-performance-analysis/references/regression-diagnosis.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "4fc670254889d7a5d29260f2bc72b7847dd3a072"
+    },
+    ".claude/skills/superkernel-fusion-performance-analysis/references/source-calibration-mapping.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "3541e2257017fe7e9976ca395f95e46439791ca9"
+    },
+    ".claude/skills/superkernel-fusion-performance-analysis/references/structural-association.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "7dc3b40cfdd41abe612b1a6bc9820d84f18d54f7"
+    },
+    ".claude/skills/superkernel-intake-preparation/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "d3efbc15b33b1ce36ee1eaa7d62ac3b284a36f86"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "094f5e7bc4dc3c6616d1ead18e57857aad000e44"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/action-execution-and-handoff.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "a84dc1c1557d658cee5d8039bd190502131e9a26"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/adapter-capability-preflight.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "3b47699f58e4e0547480214eff18381ed0d72927"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/adapter-support-matrix.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "b33c61eb08e0b0143caeac30f88b19742f465178"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/automation-pipeline.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "6bf1ae0eb69795e82adb165f93273c528188b1ff"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/classification.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "8199a46c26093213d816aef2ee715e8ea786ba11"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/cleanup-and-rollback.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "e7cc32320d161366958476ee424972e7aceff092"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/component-overlap-reorder.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "9c82c18d4f763adb595825add59768d97f6892e9"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/critical-path-optimization.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "0d20194812a797ae423b86a4983fe7a5229a412a"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/dependency-provider.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "0969b92caca2df7e3a7e0fbd09f36ef4248fc192"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/evidence-contract.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "2faac37610ff22abc8e0518953815526457d64aa"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/experiment-lifecycle.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "fb8644c898ec40c725e04640d0b0d2de7de28691"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/identity-binding.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "75ac363592b648f5174486b68d0fb105b8f61c8e"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/model-adapter-schema.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "c00959bd3de294d901d81e585ac3dc666b115b69"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/network-conformance.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "8d2c47613c380a487c7320b1850b06cb07e466b4"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/real-npu-closure.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "c37c2dd5a05b5cca9e0a6894f5f2ba9056a1623b"
+    },
+    ".claude/skills/superkernel-multistream-performance-tuning/references/result-schema.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "d1d54da1b57ca3703c89b695edfa4986b5102c44"
+    },
+    ".claude/skills/superkernel-optional-experiments/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "8dd59d7e23106b3079c70aaea1da048dafb960f2"
+    },
+    ".claude/skills/superkernel-runtime-common/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "8bd6b63ee736c4b3cf1b77a8a32232ba19659712"
+    },
+    ".claude/skills/superkernel-s0-baseline/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "f271921c693fe315dde1f2ad48cf28d2eaa7c28d"
+    },
+    ".claude/skills/superkernel-sk-failure-isolation/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "89cce0b3b990aead041dc6240a8c5edd5a0d89ec"
+    },
+    ".claude/skills/superkernel-sk-prof-timeline/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "dd2d26f27d79a78df1db996e6f73baaa770ed556"
+    },
+    ".claude/skills/superkernel-source-range-from-smap/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "57a56c0f93f4a9c51fc0f19267df22f72544a7db"
+    },
+    ".claude/skills/superkernel-stage-a-scope-selection/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "224da258e41782820166515e9cffbd1f33f30ec2"
+    },
+    ".claude/skills/superkernel-stage-o-option-tuning/SKILL.md": {
+     "at": "2026-09-15T20:14:54",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "8526c372d3172d2ffad4e2d6cb9adffa0aacb981"
+    },
+    "AGENTS.md": {
+     "at": "2026-09-15T20:15:05",
+     "decision": "harvested",
+     "note": "构建要求（并行度 -j 8 避免 Autofuse 编译 OOM、gcc 切换须显式 CC/CXX 并清 build/）已进该词条 pitfalls",
+     "refs": [
+      "autofuse-fusion-enable-and-diagnostics"
+     ],
+     "sha": "18f1c32a95b1f8ee9d9a4d137078c5547cdde2dd"
+    },
+    "CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "8e7041f4bab5f47753efa546b57ecdce7ffdb9b8"
+    },
+    "README.md": {
+     "at": "2026-09-15T20:15:05",
+     "decision": "harvested",
+     "note": "autofuse 组件定位、生态集成三条路径（GE / PyTorch Inductor / TensorFlow Adapter）已进 autofuse-fusion-enable-and-diagnostics",
+     "refs": [
+      "autofuse-fusion-enable-and-diagnostics"
+     ],
+     "sha": "2db7de16638510e7dc22ccea29440f5764e90dd0"
+    },
+    "README_en.md": {
+     "at": "2026-09-15T20:15:05",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准，英文版不重复评估",
+     "sha": "8f42aae3a81b74f4ef2e64b59be9306b69d781fd"
+    },
+    "autofuse/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "5bf8fc9cbc038f871ec183fa76d69a5ee2232a34"
+    },
+    "autofuse/README.md": {
+     "at": "2026-09-15T20:15:05",
+     "decision": "harvested",
+     "note": "torch.compile ascendc 后端使能、TORCH_COMPILE_DEBUG/AUTOFUSE_DFX_FLAGS 等调试变量与 autofused_ 产物判读已进该词条",
+     "refs": [
+      "autofuse-fusion-enable-and-diagnostics"
+     ],
+     "sha": "e167fe5dca993ac6f6b93a0d9cffadbe1aa8b4f9"
+    },
+    "autofuse/README_en.md": {
+     "at": "2026-09-15T20:15:05",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准，英文版不重复评估",
+     "sha": "56a49ef51804d53982632cd4e5f7b623dfecb0ef"
+    },
+    "autofuse/ascendc/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "dcfdb8cf5792936281acbae699f3e026e7b9f25a"
+    },
+    "autofuse/ascendc/api/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "7aabb0513e97d8c9933464de88c58ebdde4cd9b5"
+    },
+    "autofuse/ascir/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "8a5970a7897b18771c44626ac6f536637c15dea5"
+    },
+    "autofuse/ascir/generator/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "566aa3c350bddc2b681c62ac824163b920be8fa1"
+    },
+    "autofuse/ascir/meta/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "28b3442e1d5d07f5e9ad0c043cea99968774ab61"
+    },
+    "autofuse/att/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "c5665da2b9dedbbc88c4f50c3c9173622815d7bd"
+    },
+    "autofuse/blacklist.txt": {
+     "at": "2026-09-15T20:15:06",
+     "decision": "skipped",
+     "note": "该 .txt 是代码文件清单（生成器/桩件的排除名单），不是文档正文，无先验内容",
+     "sha": "41ab86fce433b84d0455ae6e521dddf1e5dd371d"
+    },
+    "autofuse/codegen/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "003decae2f883f05eba779be4458d55e8ecd08c6"
+    },
+    "autofuse/common/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "64622a9b43362285286d6c66c9f464d86c218be0"
+    },
+    "autofuse/compiler/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "d4699c723b90319e35ca4fb36c98ca4e49aa60d8"
+    },
+    "autofuse/compiler/py_module/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "fab84f17f936c69ffc75ebbaaa75dea4a1002e20"
+    },
+    "autofuse/examples/af_sft_quickstart/README.md": {
+     "at": "2026-09-15T20:15:06",
+     "decision": "skipped",
+     "note": "示例/基准工程的运行与参数说明（环境检查、依赖安装、跑通步骤），属上手流程；判据面（使能方式与未融合原因判读）已由 autofuse-fusion-enable-and-diagnostics 覆盖，未逐篇读正文",
+     "sha": "51240254c0a61736e51884a5ea03e0ae8ab9af66"
+    },
+    "autofuse/examples/pytorch/README.md": {
+     "at": "2026-09-15T20:15:06",
+     "decision": "skipped",
+     "note": "示例/基准工程的运行与参数说明（环境检查、依赖安装、跑通步骤），属上手流程；判据面（使能方式与未融合原因判读）已由 autofuse-fusion-enable-and-diagnostics 覆盖，未逐篇读正文",
+     "sha": "5e6415a6617c74a80277e69087a3c4c87f193810"
+    },
+    "autofuse/examples/pytorch/README_en.md": {
+     "at": "2026-09-15T20:15:05",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准，英文版不重复评估",
+     "sha": "1fb53a7cf128cff04f7429b94f13d78e7c244d3b"
+    },
+    "autofuse/examples/pytorch/af_gather/README.md": {
+     "at": "2026-09-15T20:15:06",
+     "decision": "skipped",
+     "note": "示例/基准工程的运行与参数说明（环境检查、依赖安装、跑通步骤），属上手流程；判据面（使能方式与未融合原因判读）已由 autofuse-fusion-enable-and-diagnostics 覆盖，未逐篇读正文",
+     "sha": "de84fc9582a8cdf7cba7be341203a9c9dddefb20"
+    },
+    "autofuse/examples/pytorch/af_gather/README_en.md": {
+     "at": "2026-09-15T20:15:05",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准，英文版不重复评估",
+     "sha": "efbb56d59a3b5e805d60820c761a10f816d19ba2"
+    },
+    "autofuse/examples/pytorch/af_pointwise/README.md": {
+     "at": "2026-09-15T20:15:06",
+     "decision": "skipped",
+     "note": "示例/基准工程的运行与参数说明（环境检查、依赖安装、跑通步骤），属上手流程；判据面（使能方式与未融合原因判读）已由 autofuse-fusion-enable-and-diagnostics 覆盖，未逐篇读正文",
+     "sha": "894387e5b10aaae5111492bdbcf877e076d592eb"
+    },
+    "autofuse/examples/pytorch/af_pointwise/README_en.md": {
+     "at": "2026-09-15T20:15:05",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准，英文版不重复评估",
+     "sha": "07d5a9ccacf97b5c645424a92de7d7ff93315da6"
+    },
+    "autofuse/examples/pytorch/af_reduce/README.md": {
+     "at": "2026-09-15T20:15:06",
+     "decision": "skipped",
+     "note": "示例/基准工程的运行与参数说明（环境检查、依赖安装、跑通步骤），属上手流程；判据面（使能方式与未融合原因判读）已由 autofuse-fusion-enable-and-diagnostics 覆盖，未逐篇读正文",
+     "sha": "8a2d5cad45d705901be5b2493d615d9fe1d77575"
+    },
+    "autofuse/examples/pytorch/af_reduce/README_en.md": {
+     "at": "2026-09-15T20:15:05",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准，英文版不重复评估",
+     "sha": "001a3d872ed46d118a2de6e8ae9d9deec052302a"
+    },
+    "autofuse/examples/tensorflow/README.md": {
+     "at": "2026-09-15T20:15:06",
+     "decision": "skipped",
+     "note": "示例/基准工程的运行与参数说明（环境检查、依赖安装、跑通步骤），属上手流程；判据面（使能方式与未融合原因判读）已由 autofuse-fusion-enable-and-diagnostics 覆盖，未逐篇读正文",
+     "sha": "5b563a3af2c9f0095d90aba2506ad15668208524"
+    },
+    "autofuse/examples/tensorflow/README_en.md": {
+     "at": "2026-09-15T20:15:05",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准，英文版不重复评估",
+     "sha": "eda7485f6f5a6c9600bca32f936b5d6b3bc62976"
+    },
+    "autofuse/examples/tensorflow/af_tf_eleandbroadcast/README.md": {
+     "at": "2026-09-15T20:15:06",
+     "decision": "skipped",
+     "note": "示例/基准工程的运行与参数说明（环境检查、依赖安装、跑通步骤），属上手流程；判据面（使能方式与未融合原因判读）已由 autofuse-fusion-enable-and-diagnostics 覆盖，未逐篇读正文",
+     "sha": "48c8e7473e9ced3a0f6f5373be4f146f58dd8e8e"
+    },
+    "autofuse/examples/tensorflow/af_tf_eleandbroadcast/README_en.md": {
+     "at": "2026-09-15T20:15:05",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准，英文版不重复评估",
+     "sha": "b84f6c814b849d12060d4913706e389ff782b8e1"
+    },
+    "autofuse/examples/tensorflow/af_tf_eleandele/README.md": {
+     "at": "2026-09-15T20:15:06",
+     "decision": "skipped",
+     "note": "示例/基准工程的运行与参数说明（环境检查、依赖安装、跑通步骤），属上手流程；判据面（使能方式与未融合原因判读）已由 autofuse-fusion-enable-and-diagnostics 覆盖，未逐篇读正文",
+     "sha": "a62485a18c37a160ab130681e452a198f965221a"
+    },
+    "autofuse/examples/tensorflow/af_tf_eleandele/README_en.md": {
+     "at": "2026-09-15T20:15:05",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准，英文版不重复评估",
+     "sha": "f2789ea48f279dba2f2f1d767433561935aa2cfb"
+    },
+    "autofuse/examples/tensorflow/af_tf_eleandreduce/README.md": {
+     "at": "2026-09-15T20:15:06",
+     "decision": "skipped",
+     "note": "示例/基准工程的运行与参数说明（环境检查、依赖安装、跑通步骤），属上手流程；判据面（使能方式与未融合原因判读）已由 autofuse-fusion-enable-and-diagnostics 覆盖，未逐篇读正文",
+     "sha": "65dc4b33272d459e99d4768c8d9585cb7ba65f5f"
+    },
+    "autofuse/examples/tensorflow/af_tf_eleandreduce/README_en.md": {
+     "at": "2026-09-15T20:15:05",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准，英文版不重复评估",
+     "sha": "2f5faa287afb780cf7658e019104eecde221c19e"
+    },
+    "autofuse/graph_metadef/graph/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "c9dc305755e00a375200de9455a6302e9c814c37"
+    },
+    "autofuse/graph_metadef/graph/ascendc_ir/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "83f0f989552b8c64cb6e5a9df365d8db06232c01"
+    },
+    "autofuse/graph_metadef/graph/ascendc_ir/generator/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "ccad643150a31db1a8bed68796fcee5cb240f009"
+    },
+    "autofuse/graph_metadef/graph/expression/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "38eac616c70afec6f42498939ff7209d76ce7dab"
+    },
+    "autofuse/graph_metadef/proto/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "92b13a1c0472dfeb28719f1488109271fd633ed9"
+    },
+    "autofuse/inc/graph_metadef/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "fa41dd7e86ad2b05cb0b2216c6dfa11fbc345069"
+    },
+    "autofuse/optimize/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "68d19fa8cb4c7b9436ca276572312e145e20dedd"
+    }
+   },
+   "head_sha": "9f9c797e0cb38f0eece315cce98e20fff3f19553",
+   "last_scan": "2026-09-15T20:06:26",
    "triage": {
-    "at": "2026-09-15T18:47:40",
-    "decision": "candidate",
-    "note": "候选待评估：该仓文档面较大或含工具/库文档，本轮优先覆盖 Tier1/Tier2，留待后续批次按价值排序评估"
+    "at": "2026-09-15T20:15:17",
+    "decision": "selected",
+    "note": "本轮完成评估（138 篇全判：3 harvested / 135 skipped）。沉淀 AutoFuse 自动融合词条（使能 + 未融合原因判读 + DFX 融合图）；同时暴露两类噪音（.claude/skills 等 agent 知识目录 96 篇、CMakeLists.txt/requirements 19 篇）——已加进默认排除规则并记账"
    }
   },
   "gitcode/cann/hccl": {
@@ -15882,14 +16720,851 @@
    }
   },
   "gitcode/cann/hixl": {
-   "branch": null,
-   "docs": {},
-   "head_sha": null,
-   "last_scan": null,
+   "branch": "master",
+   "docs": {
+    ".agents/README.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "fceb9d0b9d2296baae27dd8d71ce262ed4cc991e"
+    },
+    ".agents/skills/api-doc-generator/SKILL.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "92c720115a75db1f56dafcbb073cac54f1cedf83"
+    },
+    ".agents/skills/cann-toolkit-installer/SKILL.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "3cf012bb813732f88104248b919bba1253f2b13c"
+    },
+    ".agents/skills/gitcode-issue/SKILL.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "1836c3285d7cbd287a79028f503ee213cffddca5"
+    },
+    ".agents/skills/gitcode-pipeline/SKILL.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "cc5b7da5eabd3263e996f6118ccb613506d3daf0"
+    },
+    ".agents/skills/gitcode-pipeline/references/gitcode_pipeline_api.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "79037bba6f5514ff62439ebe959d1171b078f7de"
+    },
+    ".agents/skills/gitcode-pr/SKILL.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "7a2fcfb6eff8cd8c56c4aecf970d822b4d901cf6"
+    },
+    ".agents/skills/gitcode-pr/references/gitcode_api.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "befb0f29a40e6c5e058ae4d5dba168150513dfdc"
+    },
+    ".agents/skills/hixl-dev/SKILL.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "0c7358cb2e486f67886a850ecf8b02b3b28c1941"
+    },
+    ".agents/skills/hixl-dev/references/openlibing.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "ac0a4d0db4a76ab281bd6067f8d55dcd6cc62236"
+    },
+    ".agents/skills/hixl-review/SKILL.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "a0b61d4aa92ba327157977dbbf4c76877fec63b4"
+    },
+    ".agents/skills/hixl-review/references/header-comment-spec.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "1c7a50f690c3e32272f8c42324012151ab58371c"
+    },
+    ".agents/skills/hixl-review/references/hixl-review-focus.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "f965a70018051fa56e03382289238d873a9ae93e"
+    },
+    ".agents/skills/hixl-srs-doc-generator/SKILL.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "bd40eb0a2f30d87e6eb563ec209fa6cc5c16966e"
+    },
+    ".agents/skills/hixl-srs-doc-generator/references/hixl-code-map.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "4da130e821857180b9ea2cb34b5968a6447e15ee"
+    },
+    ".agents/skills/hixl-srs-doc-generator/references/srs-template.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "e6b28daf0c511a95a5bc2b5accbc3f2828df14c1"
+    },
+    ".agents/skills/hixl-troubleshoot/SKILL.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "6e1d070a20067a274b9fc867da76fe31d15a4948"
+    },
+    ".agents/skills/hixl-troubleshoot/references/differential-diagnosis.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "0cb85fbffbcd83a09925f9866cff2bf38f1ce5c7"
+    },
+    ".agents/skills/hixl-troubleshoot/references/env-check.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "b57bc22f0ec48221c11cc7ebf04ce844ee31a86e"
+    },
+    ".agents/skills/hixl-troubleshoot/references/hixl-transfer-paths.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "c48bcc72949cc1b94079730e71fc58f1c55893e7"
+    },
+    ".agents/skills/hixl-ut-generator/SKILL.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "5e0d8560cc46262ba5acdb1399804146d9ddea9d"
+    },
+    ".claude/README.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "d6d760345c0e7c4ac402c9ce91e42173071cce32"
+    },
+    "AGENTS.md": {
+     "at": "2026-09-15T20:15:10",
+     "decision": "skipped",
+     "note": "仓内 agent 指令文件与基准说明（面向贡献者），非诊断先验",
+     "sha": "fb4b53f87043d4315ad8edec36d80ea4a98bd6d2"
+    },
+    "CLAUDE.md": {
+     "at": "2026-09-15T20:15:10",
+     "decision": "skipped",
+     "note": "仓内 agent 指令文件与基准说明（面向贡献者），非诊断先验",
+     "sha": "cd0e022a136f55ae0f65087cd9ad139c0996069a"
+    },
+    "CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "eb6dfbe90270097f6ab471cd9455ca4a25a7c04c"
+    },
+    "README.md": {
+     "decision": "pending",
+     "sha": "e0119a456148129c9d746960eb93ec1b0d9b2f49"
+    },
+    "README_en.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准",
+     "sha": "0f2d7cd357f54bb5bc5170ca05e069d20399d6d6"
+    },
+    "benchmarks/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "9c69f3d6184264cb138ebfee19d06491ad978e02"
+    },
+    "benchmarks/README.md": {
+     "at": "2026-09-15T20:15:10",
+     "decision": "skipped",
+     "note": "仓内 agent 指令文件与基准说明（面向贡献者），非诊断先验",
+     "sha": "cddae08ea45d024397190fa3f6c3e7603e4d3a1e"
+    },
+    "benchmarks/README_en.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准",
+     "sha": "ecc060bee0e184ac9beb46e973e546faed175e0e"
+    },
+    "benchmarks/performance.md": {
+     "decision": "pending",
+     "sha": "9cc54db7de5147f390a52023d34444a2ed98e021"
+    },
+    "benchmarks/performance_en.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准",
+     "sha": "e70c618b39b75d38554355cd0275ada92f1de42f"
+    },
+    "docs/README.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "文档导航与编译说明，属上手/导航类",
+     "sha": "6df86fd045432a119f1ebb95a72414e3b754bdd2"
+    },
+    "docs/README_en.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准",
+     "sha": "000e95de95275101a7ec4eb3b63d41bbce092406"
+    },
+    "docs/en/FabricMem.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh 同内容，评估以中文版为准，英文版不重复评估",
+     "sha": "6f4efcf140a676f689a282b7aefc54ad199ce07d"
+    },
+    "docs/en/api/python/HIXL-data-structure.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh 同内容，评估以中文版为准，英文版不重复评估",
+     "sha": "e4908ad6b5cb9a9bb7851db98e4d1f7648c3f822"
+    },
+    "docs/en/api/python/HIXL-error-code.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh 同内容，评估以中文版为准，英文版不重复评估",
+     "sha": "85f6d505e15e9709bf883fc8ca817ccb967dc40b"
+    },
+    "docs/en/api/python/HIXL-interface.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh 同内容，评估以中文版为准，英文版不重复评估",
+     "sha": "5f48cdce01f332f983d2a28da074b2830cd120d9"
+    },
+    "docs/en/api/python/README.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "API 面索引与简介（导航类），无独立判据",
+     "sha": "7b379f2b9a23b1583da9b1e7919794f1edd0a2e9"
+    },
+    "docs/en/build.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh 同内容，评估以中文版为准，英文版不重复评估",
+     "sha": "d10e5f105686eedf362bcea974a3221e5033097e"
+    },
+    "docs/en/contributions/coding_standards/cpp-abi.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh 同内容，评估以中文版为准，英文版不重复评估",
+     "sha": "235022c0389a5c351985786ed65a7f4b2ee1ca55"
+    },
+    "docs/en/contributions/coding_standards/cpp-general.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh 同内容，评估以中文版为准，英文版不重复评估",
+     "sha": "24fb2c00df3570fbf850a370ee9fe1a50c54b403"
+    },
+    "docs/en/contributions/coding_standards/cpp-param-validation.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh 同内容，评估以中文版为准，英文版不重复评估",
+     "sha": "7b47368e23009116274d3a89b163a3655ed7d774"
+    },
+    "docs/en/contributions/coding_standards/cpp-secure.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh 同内容，评估以中文版为准，英文版不重复评估",
+     "sha": "41ca302b53e375342be5973236a8404e4444a0a4"
+    },
+    "docs/en/contributions/coding_standards/cpp-style.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh 同内容，评估以中文版为准，英文版不重复评估",
+     "sha": "2019b8541a397983fc8e9273d9604ff29683a5cc"
+    },
+    "docs/en/contributions/coding_standards/docs_specification.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh 同内容，评估以中文版为准，英文版不重复评估",
+     "sha": "ce9014154e3666c0aa86180d9ee43391f3e9c8b8"
+    },
+    "docs/en/contributions/coding_standards/python-secure.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh 同内容，评估以中文版为准，英文版不重复评估",
+     "sha": "ec063e24e3bfb3cbcc4ff0bde61198eb44129398"
+    },
+    "docs/en/contributions/precommit_guide.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh 同内容，评估以中文版为准，英文版不重复评估",
+     "sha": "f627d0d0f6702a70bd51fa61e6819ebfbf9a3a92"
+    },
+    "docs/en/design/FabricMem.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh 同内容，评估以中文版为准，英文版不重复评估",
+     "sha": "60c7e7a66194ccb272a7f66875448eb30294104b"
+    },
+    "docs/en/design/llm-datadist_supporting_the_hixl_transfer_backend.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与 docs/zh 同内容，评估以中文版为准，英文版不重复评估",
+     "sha": "aa623e401f70aedb0c413c631205661345322716"
+    },
+    "docs/en/quick_start.md": {
+     "at": "2026-09-15T20:15:10",
+     "decision": "skipped",
+     "note": "快速开始流程（环境准备与样例运行），属上手步骤",
+     "sha": "2d68c1e19a08daec0919ef861ac127197884fca8"
+    },
+    "docs/zh/FabricMem.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "harvested",
+     "note": "FabricMem 的 VMM 机制、启用开关、传输批次取值域、依赖与硬件范围、25.5/26.0 HDK 接口差异已进该词条",
+     "refs": [
+      "fabricmem-unified-addressing-and-transfer"
+     ],
+     "sha": "092b7a1e101271631cc8bcff8697c962c651ae85"
+    },
+    "docs/zh/api/cpp/HIXL-data-structure.md": {
+     "decision": "pending",
+     "sha": "6ac4ae22e6582585a37d06608b46f2bbb5919181"
+    },
+    "docs/zh/api/cpp/HIXL-error-code.md": {
+     "at": "2026-09-15T20:15:07",
+     "decision": "harvested",
+     "note": "HIXL 九个 Status 码（103900–103905/203900/503900）与可恢复性/处理动作已进新族文件",
+     "refs": [
+      "hixl-error-codes"
+     ],
+     "sha": "2cc3b47cc696eed3a47301ca5e0d919a54252f9e"
+    },
+    "docs/zh/api/cpp/HIXL-interface.md": {
+     "decision": "pending",
+     "sha": "14e0d4284c2da360f2a0b60de8e5b6e9908f4ea8"
+    },
+    "docs/zh/api/cpp/HIXL_CS-interface.md": {
+     "decision": "pending",
+     "sha": "2e8cb43a3a89c48d6fa86823d07e9f58c36e3443"
+    },
+    "docs/zh/api/cpp/LLM-DataDist-data-structure.md": {
+     "decision": "pending",
+     "sha": "b93908bcfd5f429b81ba0c498f691073e9bfdad9"
+    },
+    "docs/zh/api/cpp/LLM-DataDist-error-code.md": {
+     "at": "2026-09-15T20:15:07",
+     "decision": "harvested",
+     "note": "LLM-DataDist 18 条码（0x5010B001–0x5010B01C 段）与分场景处置已进新族文件",
+     "refs": [
+      "llm-datadist-error-codes"
+     ],
+     "sha": "08e065af761c0d8f0e4e1e22334ecece359f8db7"
+    },
+    "docs/zh/api/cpp/LLM-DataDist-interface.md": {
+     "decision": "pending",
+     "sha": "38406c0c3134e0d09171982557ca9381cd9a291f"
+    },
+    "docs/zh/api/cpp/README.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "API 面索引与简介（导航类），无独立判据",
+     "sha": "4dc931afd0885d050630b9883b3ef1ac949dfcc1"
+    },
+    "docs/zh/api/cpp/brief.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "API 面索引与简介（导航类），无独立判据",
+     "sha": "3f3670232f0650e30594eacd1326bc8eb32a9e68"
+    },
+    "docs/zh/api/cpp/deprecated_ADXL-data-structure.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "已废弃接口（ADXL 旧名）的参考页，无诊断判据",
+     "sha": "4940ebf42b13ada0631df509712e30af246665c9"
+    },
+    "docs/zh/api/cpp/deprecated_ADXL-error-code.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "已废弃接口（ADXL 旧名）的参考页，无诊断判据",
+     "sha": "cae326a0f8abf2a78d8fdcf68d71792d50123383"
+    },
+    "docs/zh/api/cpp/deprecated_ADXL-interface.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "已废弃接口（ADXL 旧名）的参考页，无诊断判据",
+     "sha": "11d07c9987e487a6cb9bbedb61fe4859a55f890d"
+    },
+    "docs/zh/api/cpp/header_files_and_library_files.md": {
+     "decision": "pending",
+     "sha": "2f9c9174b60a971e26e44dc7a857ec32388b4069"
+    },
+    "docs/zh/api/cpp/unsupported-interface.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "不支持接口清单，无判据",
+     "sha": "38b80b22dc381701287fada31387e363b7a2c9d7"
+    },
+    "docs/zh/api/python/BlocksCacheKey.md": {
+     "decision": "pending",
+     "sha": "4ddec56b1b476ea3fe89e5b824d01a187e6f7864"
+    },
+    "docs/zh/api/python/Cache.md": {
+     "decision": "pending",
+     "sha": "3bcbde34e3225fdb081b8ac9b72a4a1b0ef7a358"
+    },
+    "docs/zh/api/python/CacheDesc.md": {
+     "decision": "pending",
+     "sha": "76ce2c5891eda3b69469d413d71b8ff9168f7480"
+    },
+    "docs/zh/api/python/CacheKey.md": {
+     "decision": "pending",
+     "sha": "f622153d10e466f18b0f7bc9883688e1f876cc03"
+    },
+    "docs/zh/api/python/CacheKeyByIdAndIndex.md": {
+     "decision": "pending",
+     "sha": "2095743e91edb124ffaf5ef9daf62fea7ff5a529"
+    },
+    "docs/zh/api/python/CacheManager.md": {
+     "decision": "pending",
+     "sha": "f914046b9932d8bde03881b7fee1d2f1da94649f"
+    },
+    "docs/zh/api/python/CacheTask.md": {
+     "decision": "pending",
+     "sha": "5f9b1809277830dbb3f0b4feda5d5afb4dd0f0cf"
+    },
+    "docs/zh/api/python/DataType.md": {
+     "decision": "pending",
+     "sha": "388b71ad96b49e5d918c47a453774aec290eea46"
+    },
+    "docs/zh/api/python/HIXL-data-structure.md": {
+     "decision": "pending",
+     "sha": "5c1aa41bc2c51103f4118090c71a04c802532735"
+    },
+    "docs/zh/api/python/HIXL-error-code.md": {
+     "at": "2026-09-15T20:15:07",
+     "decision": "harvested",
+     "note": "Python 侧同码表（int 取值与 C++ 一致）已核并进同一族文件",
+     "refs": [
+      "hixl-error-codes"
+     ],
+     "sha": "db78dca913fe853f4182c7e37b2605e54249077f"
+    },
+    "docs/zh/api/python/HIXL-interface.md": {
+     "decision": "pending",
+     "sha": "abe41134e6118415f5bb5603f6acb7e4e9600c93"
+    },
+    "docs/zh/api/python/HIXL_Engine.md": {
+     "decision": "pending",
+     "sha": "efcf0d45bc46a177f3e0782aba1b51511f3fa9bb"
+    },
+    "docs/zh/api/python/LLM-DataDist.md": {
+     "decision": "pending",
+     "sha": "79c63b3d134df7ffb8660cc19b248d8139995212"
+    },
+    "docs/zh/api/python/LLMClusterInfo.md": {
+     "decision": "pending",
+     "sha": "9c3945860d138d9c3de607d1e73f778076a9c023"
+    },
+    "docs/zh/api/python/LLMConfig.md": {
+     "decision": "pending",
+     "sha": "22a907da008146575e9698e9ba996a12e3c72672"
+    },
+    "docs/zh/api/python/LLMDataDist.md": {
+     "decision": "pending",
+     "sha": "3cc41a115cce5856c1c0669026985a63a48d0542"
+    },
+    "docs/zh/api/python/LLMException.md": {
+     "decision": "pending",
+     "sha": "2796d1917720697b9ab2774444abcf1651f1f7f1"
+    },
+    "docs/zh/api/python/LLMRole.md": {
+     "decision": "pending",
+     "sha": "6c61ea36cce9a61ccf9a8994d7d378e108b1972a"
+    },
+    "docs/zh/api/python/LLMStatusCode.md": {
+     "decision": "pending",
+     "sha": "82dc82c52e5271694c28a35f3b6d3a98dce02854"
+    },
+    "docs/zh/api/python/LayerSynchronizer.md": {
+     "decision": "pending",
+     "sha": "ca56a943c287436f714b0e52afe507c7f4da4346"
+    },
+    "docs/zh/api/python/MemInfo.md": {
+     "decision": "pending",
+     "sha": "9c4e0d1e9bbc44d29f0ae5332dbffda6ff5dc9ef"
+    },
+    "docs/zh/api/python/MemType.md": {
+     "decision": "pending",
+     "sha": "0b45c8e309d68de066f0484d47b4e56bf9f5e371"
+    },
+    "docs/zh/api/python/Placement.md": {
+     "decision": "pending",
+     "sha": "58f48b7796780809928f9ca8bc7fc15fb06aa5f7"
+    },
+    "docs/zh/api/python/README.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "API 面索引与简介（导航类），无独立判据",
+     "sha": "ae4fe81e359223ceaa961c9b9998cfa362eea9b6"
+    },
+    "docs/zh/api/python/RegisterMemStatus.md": {
+     "decision": "pending",
+     "sha": "ff7c1259e1f2b318129417ae1c49b4988d0f68b9"
+    },
+    "docs/zh/api/python/TransferConfig.md": {
+     "decision": "pending",
+     "sha": "4cf316d774a7582133fb91f48d8dbc7fff126860"
+    },
+    "docs/zh/api/python/TransferWithCacheKeyConfig.md": {
+     "decision": "pending",
+     "sha": "e2083908836c39c6836b0bd4264a020305f4afad"
+    },
+    "docs/zh/api/python/brief.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "API 面索引与简介（导航类），无独立判据",
+     "sha": "a81f607c76350c623c849a41574cb3d5a2cf4d77"
+    },
+    "docs/zh/api/python/deprecated.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "已废弃接口（ADXL 旧名）的参考页，无诊断判据",
+     "sha": "58aed4092d7bae0e36c5bd7d49246d9ffaca1136"
+    },
+    "docs/zh/build.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "文档导航与编译说明，属上手/导航类",
+     "sha": "1c557f131fa47c702a9c51691e0ebad4d2c12cb9"
+    },
+    "docs/zh/contributions/coding_standards/cpp-abi.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "贡献者编码规范（C++/Python 风格、安全、ABI、参数校验、precommit），非诊断先验",
+     "sha": "a0e972bf44157523323e4b855dd9af4b07863db1"
+    },
+    "docs/zh/contributions/coding_standards/cpp-general.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "贡献者编码规范（C++/Python 风格、安全、ABI、参数校验、precommit），非诊断先验",
+     "sha": "65a78ac11866f94155fbcca7daf437d3e350cedd"
+    },
+    "docs/zh/contributions/coding_standards/cpp-param-validation.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "贡献者编码规范（C++/Python 风格、安全、ABI、参数校验、precommit），非诊断先验",
+     "sha": "e6f4b701314edec7a45481822101334099fd5772"
+    },
+    "docs/zh/contributions/coding_standards/cpp-secure.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "贡献者编码规范（C++/Python 风格、安全、ABI、参数校验、precommit），非诊断先验",
+     "sha": "667afd3b40667ecab6238bd3626636017ef77077"
+    },
+    "docs/zh/contributions/coding_standards/cpp-style.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "贡献者编码规范（C++/Python 风格、安全、ABI、参数校验、precommit），非诊断先验",
+     "sha": "62cc8ed25b5a13b09c5dce0df6f52e0f0f5bc6fe"
+    },
+    "docs/zh/contributions/coding_standards/docs_specification.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "贡献者编码规范（C++/Python 风格、安全、ABI、参数校验、precommit），非诊断先验",
+     "sha": "f332de73cabc0b180dc39cb4d41c7290aa6d3b3c"
+    },
+    "docs/zh/contributions/coding_standards/python-secure.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "贡献者编码规范（C++/Python 风格、安全、ABI、参数校验、precommit），非诊断先验",
+     "sha": "55abbc833ae7680e51c5af7847b4957ce0549681"
+    },
+    "docs/zh/contributions/precommit_guide.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "贡献者编码规范（C++/Python 风格、安全、ABI、参数校验、precommit），非诊断先验",
+     "sha": "950a8280186773fa4ca041f070bc9803e05ffb03"
+    },
+    "docs/zh/design/FabricMem.md": {
+     "decision": "pending",
+     "sha": "1155aa466047251c26ba1422463690b678ebdf28"
+    },
+    "docs/zh/design/llm-datadist_supporting_the_hixl_transfer_backend.md": {
+     "decision": "pending",
+     "sha": "a98884a97a6a84911ccc5f8e906b2bdfc90bc395"
+    },
+    "docs/zh/guide/README.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "文档导航与编译说明，属上手/导航类",
+     "sha": "346f29b4e4efca604fb27613a48812f3b0e0ad49"
+    },
+    "docs/zh/guide/cpp/README.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "文档导航与编译说明，属上手/导航类",
+     "sha": "61f42bd5ac6c0d2b649053cf5721afae168d3616"
+    },
+    "docs/zh/guide/cpp/appendices.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "附录的基本概念与大模型推理流程/PD 分离背景介绍，属概念背景而非定位判据",
+     "sha": "c7d40b183c94b396927a0fd5bd912911c01ae80c"
+    },
+    "docs/zh/guide/cpp/hixl_develop.md": {
+     "decision": "pending",
+     "sha": "c63659dc20c3f6421ddfa734f009d9657e12607b"
+    },
+    "docs/zh/guide/cpp/introduction.md": {
+     "at": "2026-09-15T20:15:10",
+     "decision": "skipped",
+     "note": "库概述与应用场景介绍（概念面），非判据",
+     "sha": "c9e00d85bc76e90d9d5880c920f83d4d1636afae"
+    },
+    "docs/zh/guide/cpp/learning_wizard.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "学习向导（上手指引），非判据",
+     "sha": "eee39fb9ee815f3cc5d887430d721d42eda6c9c2"
+    },
+    "docs/zh/guide/cpp/llm-datadist_develop.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "harvested",
+     "note": "建链/断链（rets 逐个判、两侧强制断链）、KV Cache 注册与 Pull/Push 语义、KvCacheExtParam 层范围、角色切换前置已进该词条",
+     "refs": [
+      "llm-datadist-link-and-kv-transfer-contract"
+     ],
+     "sha": "e47d01c97e765da8c6a1fe8366b45e09396dd0bf"
+    },
+    "docs/zh/guide/introduction.md": {
+     "at": "2026-09-15T20:15:10",
+     "decision": "skipped",
+     "note": "库概述与应用场景介绍（概念面），非判据",
+     "sha": "ece94c7209a927c92f0f293fd227649afee624cd"
+    },
+    "docs/zh/guide/python/README.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "文档导航与编译说明，属上手/导航类",
+     "sha": "f695a9155d290a5217f217cac47d028d314f1bfe"
+    },
+    "docs/zh/guide/python/appendices.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "附录的基本概念与大模型推理流程/PD 分离背景介绍，属概念背景而非定位判据",
+     "sha": "c7d40b183c94b396927a0fd5bd912911c01ae80c"
+    },
+    "docs/zh/guide/python/functions.md": {
+     "decision": "pending",
+     "sha": "a09a0d65481ed3704d4a9d074cc82f1f1b175981"
+    },
+    "docs/zh/guide/python/introduction.md": {
+     "at": "2026-09-15T20:15:10",
+     "decision": "skipped",
+     "note": "库概述与应用场景介绍（概念面），非判据",
+     "sha": "15d22c342767265db126cf8a1c8a757422b12e26"
+    },
+    "docs/zh/guide/python/learning_wizard.md": {
+     "at": "2026-09-15T20:15:09",
+     "decision": "skipped",
+     "note": "学习向导（上手指引），非判据",
+     "sha": "664111f76858e248c69f6482cb1e266147d001bf"
+    },
+    "docs/zh/guide/python/quick_start.md": {
+     "at": "2026-09-15T20:15:10",
+     "decision": "skipped",
+     "note": "快速开始流程（环境准备与样例运行），属上手步骤",
+     "sha": "2d82df6b6ee3913e5b5b55c9db79094362f9bfaf"
+    },
+    "docs/zh/quick_start.md": {
+     "at": "2026-09-15T20:15:10",
+     "decision": "skipped",
+     "note": "快速开始流程（环境准备与样例运行），属上手步骤",
+     "sha": "73fd735d972e3ef9bf4d01609ce05b9e56d66cf8"
+    },
+    "examples/CMakeLists.txt": {
+     "at": "2026-09-15T20:15:10",
+     "decision": "skipped",
+     "note": "示例工程运行说明（含 Mooncake store 示例），属上手流程",
+     "sha": "1abc555f617417bf9cc8bf2aa9f71e04af5877a5"
+    },
+    "examples/README.md": {
+     "at": "2026-09-15T20:15:10",
+     "decision": "skipped",
+     "note": "示例工程运行说明（含 Mooncake store 示例），属上手流程",
+     "sha": "f2647bab28d08ac6fa2a59308ea68d7b9fbc8f4e"
+    },
+    "examples/README_en.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准",
+     "sha": "6c0b5e3bfb1f5dec09499a0df7eb488e85cb4f6e"
+    },
+    "examples/cpp/CMakeLists.txt": {
+     "at": "2026-09-15T20:15:10",
+     "decision": "skipped",
+     "note": "示例工程运行说明（含 Mooncake store 示例），属上手流程",
+     "sha": "9e3b3dcbca9ca73e1c825b5a3824cc8d2f4dccf1"
+    },
+    "examples/cpp/README.md": {
+     "at": "2026-09-15T20:15:10",
+     "decision": "skipped",
+     "note": "示例工程运行说明（含 Mooncake store 示例），属上手流程",
+     "sha": "fab55215bb5f1b0c8ef1ffae6ce1054313b179bb"
+    },
+    "examples/cpp/README_en.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准",
+     "sha": "b3e532abdf525ddaa3f0c4c7263a0cacdb32b7f9"
+    },
+    "examples/python/README.md": {
+     "at": "2026-09-15T20:15:10",
+     "decision": "skipped",
+     "note": "示例工程运行说明（含 Mooncake store 示例），属上手流程",
+     "sha": "1b765c427066d810c2298eb01672e8c3e0d54d69"
+    },
+    "examples/python/README_en.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准",
+     "sha": "98a167098988baa8542972dc80a81e2125f2a65c"
+    },
+    "examples/third_parties/mooncake_store/python/README.md": {
+     "at": "2026-09-15T20:15:10",
+     "decision": "skipped",
+     "note": "示例工程运行说明（含 Mooncake store 示例），属上手流程",
+     "sha": "abb0e2e0e899effa424f494af69462bbd9ec56b2"
+    },
+    "examples/third_parties/mooncake_store/python/README_en.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准",
+     "sha": "3ae2109027925ed053ea06568f329b976e0baac0"
+    },
+    "requirements.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "37945d53ede9022a2396b3b508914109e54fdbe2"
+    },
+    "scripts/tools/hixl_tool/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "ed8b8085911a8b529f56cedabbcf2d83465df08b"
+    },
+    "scripts/tools/hixl_tool/readme.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "harvested",
+     "note": "host_route 与 local_comm_res 两个子命令、产物格式与字段、协议取值与约束、A5-only 与版本同源要求已进该词条",
+     "refs": [
+      "hixl-tool-route-and-comm-res"
+     ],
+     "sha": "5b6b8ad58e221e085859265bf3faeff30593e91c"
+    },
+    "scripts/tools/hixl_tool/readme_en.md": {
+     "at": "2026-09-15T20:15:08",
+     "decision": "skipped",
+     "note": "英文版与同目录中文版内容一致，评估以中文版为准",
+     "sha": "9c4b62a01ecf3f5029daca067dd7c0bef926e1aa"
+    },
+    "scripts/tools/lcrgen/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "129e823decf759a1879d8deb35c53906df99f236"
+    },
+    "scripts/tools/lcrgen/README.md": {
+     "decision": "pending",
+     "sha": "ff1c8addcbba1e4954c0147c7c71d13d47011184"
+    },
+    "src/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "3073e6dd95362a8dafc37bd674d677559c3a0245"
+    },
+    "src/experimental/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "b9e51ddc0f4c4af66f9785a3ae344bcae107c553"
+    },
+    "src/hixl/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "90313185a0385ef21b5d59a02bbca3c3300c0d1c"
+    },
+    "src/hixl/proxy/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "4b847d284ebed5e0fc385fd8d55ccd50ccfba664"
+    },
+    "src/llm_datadist/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "34605d39303220c3951e98034eba5d95e267b041"
+    },
+    "src/ops/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "e9f42ea17ea80ef1beed2df88886219addfe976f"
+    },
+    "src/ops/hixl_kernel/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "815db8b19656574d4eaede9f9ea81680911b0974"
+    },
+    "src/python/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "3f0e3a71e2eab015bf88b461f2144cd21eb6f2b7"
+    },
+    "src/python/hixl_py/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "3ab7db6dde8112e7555426a9490b2ab9dbc58026"
+    },
+    "src/python/llm_datadist/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "d19b833ae55373c87e83bd5b19135b0584ce325b"
+    },
+    "src/python/llm_wrapper/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "7809c580c0a00fdb6a85e234cf179511cbcd6e8e"
+    },
+    "src/python/metadef_wrapper/CMakeLists.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "75511d2f3100f9635b7f158acfd654a174cfafb5"
+    }
+   },
+   "head_sha": "3f38f679bc0f6b15c40b349476170ea89a65f136",
+   "last_scan": "2026-09-15T20:06:54",
    "triage": {
-    "at": "2026-09-15T18:47:40",
-    "decision": "candidate",
-    "note": "候选待评估：该仓文档面较大或含工具/库文档，本轮优先覆盖 Tier1/Tier2，留待后续批次按价值排序评估"
+    "at": "2026-09-15T20:15:17",
+    "decision": "selected",
+    "note": "本轮评估 111/149：错误码两族（HIXL 9 条 + LLM-DataDist 18 条）新立、LLM-DataDist 建链与 KV 传输契约、FabricMem 机制、hixl_tool 工具面 6 篇 harvested；**38 篇仍 pending 未评估**（重点是 guide/cpp/hixl_develop.md 的链路/内存/中转传输面、HIXL 与 LLM-DataDist 的 cpp/python API 接口页、design/ 两篇、benchmarks/performance.md、lcrgen 工具），留待下一轮"
    }
   },
   "gitcode/cann/infrastructure": {
@@ -18320,14 +19995,285 @@
    }
   },
   "gitcode/cann/torchtitan-npu": {
-   "branch": null,
-   "docs": {},
-   "head_sha": null,
-   "last_scan": null,
+   "branch": "master",
+   "docs": {
+    ".agents/AGENTS.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "2ced1e07ad4d5ea7e975e0643cf97e38b420ce98"
+    },
+    ".agents/skills/developer-tests-review/SKILL.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "21ae4c70f954dc100592d946c2818b6c1a4bd927"
+    },
+    ".agents/skills/developer-tests-review/assets/report-template.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "ed3694dccd26be0c82eb25c6ddd0b5f9f2ccc787"
+    },
+    ".agents/skills/developer-tests-review/references/format-review.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "0094f1b8310aabc2e2f8db7a1e0104dc6d6d034e"
+    },
+    ".agents/skills/developer-tests-review/references/report-output.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "11a8783f4cfd86065fbf66edabb8532a71beeca6"
+    },
+    ".agents/skills/developer-tests-review/references/st-review.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "accf8efa50ec92d12393138033f2bd0241fa75d7"
+    },
+    ".agents/skills/developer-tests-review/references/terminology.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "ab161a9ed18dddcb1df7a9334ec3dae8c29ccd87"
+    },
+    ".agents/skills/developer-tests-review/references/ut-review.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "e202f1dddbd064f81cf77cf8f9cf66b65a552fd6"
+    },
+    ".agents/skills/numerics-debugging/SKILL.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "f28972d262be97be01a8a7230dbd01b14d2dbe01"
+    },
+    ".agents/skills/numerics-debugging/references/customization.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "8739609f9fc9387815c67192e6e64f9a83a7e290"
+    },
+    ".agents/skills/numerics-debugging/references/patching.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "611b263c0d304310bb3c56b737b3aea23c571599"
+    },
+    ".agents/skills/training-log-visualization/SKILL.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "28ec52e7786a86c693888f02d443d079f49c2f14"
+    },
+    ".agents/skills/write-torchtitan-npu-docs/SKILL.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "223aaf557a00ded9c9d06ae59aabc23ddcc08a89"
+    },
+    ".agents/skills/write-torchtitan-npu-docs/references/document-validation.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "847c1c36ec7437cba793ce434b295a9d86b1d710"
+    },
+    ".agents/skills/write-torchtitan-npu-docs/references/project-writing-contract.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "7164818066333e504643c852deac5ffa6ba824a0"
+    },
+    ".claude/CLAUDE.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "4ec9114fd0f33e37df0bac730ad12023e3eb721c"
+    },
+    ".codex/AGENTS.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "4ec9114fd0f33e37df0bac730ad12023e3eb721c"
+    },
+    ".opencode/AGENTS.md": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "仓内 agent 知识目录（自带的 SKILL/参考资料）：按既有口径只作线索、不作权威源，且已由默认排除规则移出扫描面",
+     "sha": "4ec9114fd0f33e37df0bac730ad12023e3eb721c"
+    },
+    "README.md": {
+     "decision": "pending",
+     "sha": "54d9618b3ece0217b736b23a5f2bf738766c4d30"
+    },
+    "docs/MTP.md": {
+     "decision": "pending",
+     "sha": "4d09746fc30096bdbf028035a5fb554ca3e0b465"
+    },
+    "docs/community/governance.md": {
+     "at": "2026-09-15T20:15:06",
+     "decision": "skipped",
+     "note": "社区治理说明（贡献与决策流程），非技术先验",
+     "sha": "be221e7e9937c0993958019c6f880b99b00ff4ba"
+    },
+    "docs/developer_guides/checkpoint.md": {
+     "decision": "pending",
+     "sha": "2f26528cb9bb720f8e4f393ccdc1c68b1cf86015"
+    },
+    "docs/developer_guides/config_extensions.md": {
+     "at": "2026-09-15T20:15:07",
+     "decision": "skipped",
+     "note": "面向贡献者的开发规范（配置扩展/静态检查/UT 原则与架构），非故障与精度定位先验",
+     "sha": "aa0550e4bd66d31b4a1dd6c41a2a595b82c463c5"
+    },
+    "docs/developer_guides/lint_guide.md": {
+     "at": "2026-09-15T20:15:07",
+     "decision": "skipped",
+     "note": "面向贡献者的开发规范（配置扩展/静态检查/UT 原则与架构），非故障与精度定位先验",
+     "sha": "4885e08920bef0ab7d259876073ba738c963f5fd"
+    },
+    "docs/developer_guides/low-value-ut-principles.md": {
+     "at": "2026-09-15T20:15:07",
+     "decision": "skipped",
+     "note": "面向贡献者的开发规范（配置扩展/静态检查/UT 原则与架构），非故障与精度定位先验",
+     "sha": "7cbd66f6e39ccfc0959f661734ae809c31ae18c6"
+    },
+    "docs/developer_guides/metrics_and_debugging.md": {
+     "at": "2026-09-15T20:15:06",
+     "decision": "harvested",
+     "note": "Memory Snapshot 与 NPU Profiling 的参数表、离线解析与产物清单已进该词条",
+     "refs": [
+      "torchtitan-npu-training-metrics-and-debugging"
+     ],
+     "sha": "fe2538f3d206260feb2c48a05c8cda16acd7bd38"
+    },
+    "docs/developer_guides/unit-test-architecture.md": {
+     "at": "2026-09-15T20:15:07",
+     "decision": "skipped",
+     "note": "面向贡献者的开发规范（配置扩展/静态检查/UT 原则与架构），非故障与精度定位先验",
+     "sha": "41699d8850db6d4d9addb42f4a611bcf904a1561"
+    },
+    "docs/feature_guides/deepseek_v4_cp.md": {
+     "decision": "pending",
+     "sha": "56d4b4dd1f9dde193847e611e6adf60d50578491"
+    },
+    "docs/feature_guides/deepseek_v4_graph_trainer.md": {
+     "decision": "pending",
+     "sha": "ea3203fe9ae0f8e7066fe28a632c663073bd3c4e"
+    },
+    "docs/feature_guides/deepseek_v4_graph_trainer_recompute.md": {
+     "decision": "pending",
+     "sha": "8da790363141ee72bd78b6c4c864dcba461aebf7"
+    },
+    "docs/feature_guides/deepseek_v4_tnd.md": {
+     "decision": "pending",
+     "sha": "3059229e4f7e883a1c8629318bb4e6ba9b066637"
+    },
+    "docs/feature_guides/ep_process_group.md": {
+     "decision": "pending",
+     "sha": "b4ab53d3f2bafc91f4a4e8ac45ef2adf0ab8dd54"
+    },
+    "docs/feature_guides/fused_ops.md": {
+     "decision": "pending",
+     "sha": "b13e64b0e9aedfca49754a1e49c3dad6abfedd05"
+    },
+    "docs/feature_guides/muon_optimizer.md": {
+     "decision": "pending",
+     "sha": "6c73c2a0135bce56a318cc6dc68ef0aed2cd6f52"
+    },
+    "docs/feature_guides/sdc.md": {
+     "at": "2026-09-15T20:15:06",
+     "decision": "harvested",
+     "note": "SDC 检测三路（gradient/checksum/HCCL）、typed 参数默认值与约束、compiled 前置与生命周期已进该词条",
+     "refs": [
+      "torchtitan-npu-sdc-detection"
+     ],
+     "sha": "b2c838a9f84b0a31711181a29ec74024337fa438"
+    },
+    "docs/feature_guides/torch_compile.md": {
+     "at": "2026-09-15T20:15:06",
+     "decision": "harvested",
+     "note": "两级 backend、按 Block 全图编译、fallback 与动态 shape 边界、缓存隔离与验收口径已进该词条",
+     "refs": [
+      "torchtitan-npu-compile-backends-and-limits"
+     ],
+     "sha": "91c4e96b15a5828a28b0c2ac67240c2bce2a1ca0"
+    },
+    "docs/feature_guides/virtual_optimizer.md": {
+     "decision": "pending",
+     "sha": "d76baba7dcd5debd5164954f13001786c9f2518f"
+    },
+    "docs/graph_pattern_fusion.md": {
+     "decision": "pending",
+     "sha": "1e94c9b9c1f19e7ecb7776586f174acef9b73e41"
+    },
+    "docs/user-guides/installation.md": {
+     "at": "2026-09-15T20:15:07",
+     "decision": "skipped",
+     "note": "软件安装与快速开始流程，属环境搭建步骤，非判据",
+     "sha": "372be5a52a800eb856d452433a781ae9c6e6eb3c"
+    },
+    "docs/user-guides/quickstart.md": {
+     "at": "2026-09-15T20:15:07",
+     "decision": "skipped",
+     "note": "软件安装与快速开始流程，属环境搭建步骤，非判据",
+     "sha": "9ab47e7fd7eb2c13f2a9a2a915daf5e9d6a4b854"
+    },
+    "docs/user-guides/sdc.md": {
+     "at": "2026-09-15T20:15:06",
+     "decision": "harvested",
+     "note": "在非 torchtitan 框架接入 SDC 的接口契约（SDC.Config.build → finalize_sdc_step）与 addmm 覆盖边界已进该词条",
+     "refs": [
+      "torchtitan-npu-sdc-detection"
+     ],
+     "sha": "44642a9f87dfd6ca9aa03866d7c21d592102f344"
+    },
+    "examples/deepseek_v4/readme.md": {
+     "at": "2026-09-15T20:15:07",
+     "decision": "skipped",
+     "note": "示例工程运行说明（模型配置与启动脚本），属上手流程",
+     "sha": "9d008c30208f0261a7730684e3b5ae0317128812"
+    },
+    "examples/deepseek_v41/readme.md": {
+     "at": "2026-09-15T20:15:07",
+     "decision": "skipped",
+     "note": "示例工程运行说明（模型配置与启动脚本），属上手流程",
+     "sha": "8e5c815806f5404ac1a278f5054183b0ebe9beb4"
+    },
+    "requirements-dev.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "693c225799c0a2dfed9794fff763733da37d4850"
+    },
+    "requirements.txt": {
+     "at": "2026-09-15T20:14:55",
+     "decision": "skipped",
+     "note": "构建/依赖清单文件（.txt），非文档正文；已由默认排除规则移出扫描面",
+     "sha": "778fbbc04a05df032f8d5f37c98e061d35a1ac6a"
+    },
+    "torchtitan_npu/compile/patterns/README.md": {
+     "decision": "pending",
+     "sha": "89f2a1a67e454615f69da8b21a19f52b895e1f6e"
+    },
+    "torchtitan_npu/override/README.md": {
+     "decision": "pending",
+     "sha": "608f11b190f3aed508fcf57ad37ecefa556fe0d6"
+    },
+    "torchtitan_npu/patches/torchtitan/README.md": {
+     "decision": "pending",
+     "sha": "3a9cf0947ead653fe1d4c600449dcafcc267c9dd"
+    }
+   },
+   "head_sha": "8b0da62f16c71dcbcc067867878c26e1604d90a5",
+   "last_scan": "2026-09-15T20:06:35",
    "triage": {
-    "at": "2026-09-15T18:47:36",
-    "decision": "candidate",
-    "note": "候选待评估：该仓文档面较大或含工具/库文档，本轮优先覆盖 Tier1/Tier2，留待后续批次按价值排序评估"
+    "at": "2026-09-15T20:15:17",
+    "decision": "selected",
+    "note": "本轮按用户批次评估：SDC 检测（feature_guides+sdc/user-guides+sdc）、训练可观测（metrics_and_debugging）、图编译契约（torch_compile）4 篇 harvested；开发规范/安装/示例 9 篇 skipped；**15 篇仍 pending 未评估**（MTP、graph_pattern_fusion、feature_guides 的 cp/graph_trainer×2/tnd/ep_process_group/fused_ops/muon/virtual_optimizer、developer_guides/checkpoint、三个代码目录 README、根 README），留待下一轮"
    }
   },
   "gitcode/cann/triton-inference-server-ge-backend": {
