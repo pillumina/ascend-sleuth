@@ -1049,7 +1049,18 @@ return {
       const cwdN = String(cwd).replace(/\\/g, '/').replace(/\/+$/, '')
       const dirN = String(doc.dir || '').replace(/\\/g, '/')
       const dirRel = dirN.indexOf(cwdN + '/') === 0 ? dirN.slice(cwdN.length + 1) : null
-      return Object.assign({}, doc, { dirRel: dirRel, manual: manual })
+      // **脚本吐 snake_case，面板 UI 用 camelCase——这条缝在这里收口**，别让 client 去认脚本的字段名。
+      // 实测踩过：client 读 `zipBytes`/`mdBytes` 而脚本吐 `zip_bytes`/`md_bytes`，于是结果行永远显示
+      // "zip 0 B + md 0 B"——文件其实是好的（196.8 KB / 71.0 KB），面板报了个假数字，读者会以为导出了空包。
+      // 更糟的是当初那条断言把**错误的字段名**钉死在源码上，绿着放过了它；现在改成"client 读的键
+      // host 必须都给"的成对断言（panel_render_check）。
+      return Object.assign({}, doc, {
+        zipBytes: doc.zip_bytes,
+        mdBytes: doc.md_bytes,
+        totalBytes: doc.total_bytes,
+        dirRel: dirRel,
+        manual: manual,
+      })
     }
 
     // 读取沉淀状态——兼容三种写法：块映射（doc.sedimented 为对象，schema 默认）、

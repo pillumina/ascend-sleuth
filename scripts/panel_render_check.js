@@ -1581,11 +1581,14 @@ _MS._run_no_pipe = no_fallback`)
       const hoHost = (m, a) => {
         if (m === 'ascend-export-trace') {
           hoCalls.push(a)
+          // **照脚本的真实输出形状给**（snake_case）：早先这里图省事写成 camelCase，于是
+          // client 读 `handoff.zipBytes` 而真 host 只吐 `zip_bytes` 的错配被"假 host"掩盖了，
+          // 断言绿着放过了线上那个 "zip 0 B + md 0 B"。
           return {
-            ok: true, sessionId: 'sess-2', intent: (a && a.intent) || 'continue',
-            dir: '/repo/traces/exports', dirRel: 'traces/exports',
-            zip: '/repo/traces/exports/handoff-sess-2.zip', zipBytes: 201704,
-            md: '/repo/traces/exports/handoff-sess-2.md', mdBytes: 72813,
+            ok: true, session_id: 'sess-2', intent: (a && a.intent) || 'continue',
+            dir: '/repo/traces/exports',
+            zip: '/repo/traces/exports/handoff-sess-2.zip', zip_bytes: 201704,
+            md: '/repo/traces/exports/handoff-sess-2.md', md_bytes: 72813,
             files: 9, total_bytes: 2737616,
             omitted: [{ path: 'evidence/sess-2/huge.bin', bytes: 99999999, reason: '超过单文件上限 20 MB' }],
             needs: ['缺 device 侧日志', '等回报 fix 结果'],
@@ -1642,8 +1645,10 @@ _MS._run_no_pipe = no_fallback`)
         const dh = drive(svc)
         fakeShell.reply = JSON.stringify({
           ok: true, session_id: 'sess-2', intent: 'escalate', dir: '/repo/traces/exports',
-          zip: '/repo/traces/exports/handoff-sess-2.zip', zipBytes: 201704,
-          md: '/repo/traces/exports/handoff-sess-2.md', mdBytes: 72813, files: 9,
+          // 照脚本真实输出形状（snake_case）——写成 camelCase 就等于用"假 host"掩盖字段名错配
+          zip: '/repo/traces/exports/handoff-sess-2.zip', zip_bytes: 201704,
+          md: '/repo/traces/exports/handoff-sess-2.md', md_bytes: 72813, files: 9,
+          total_bytes: 2737616,
           omitted: [{ path: 'evidence/sess-2/huge.bin', bytes: 1, reason: 'x' }],
           needs: ['缺 device 侧日志'], redaction: { state: 'raw-evidence' },
         })
@@ -1654,7 +1659,30 @@ _MS._run_no_pipe = no_fallback`)
         expect('交接包 host：意图进命令行（且只在白名单内）', /--intent escalate/.test(cmd), cmd)
         expect('交接包 host：要 JSON 结果（面板按 JSON 渲染，不解析人读行）', /--json/.test(cmd), cmd)
         expect('交接包 host：把脚本结果带给面板，并换成仓库内相对路径给「打开目录」',
-          r1 && r1.ok && r1.zipBytes === 201704 && r1.dirRel === 'traces/exports', JSON.stringify(r1 && { dirRel: r1.dirRel }))
+          r1 && r1.ok && r1.dirRel === 'traces/exports', JSON.stringify(r1 && { dirRel: r1.dirRel }))
+        expect('交接包 host：脚本的 zip_bytes/md_bytes 收口成面板读的 zipBytes/mdBytes（否则结果行报假体量）',
+          r1 && r1.zipBytes === 201704 && r1.mdBytes === 72813 && r1.totalBytes === 2737616,
+          JSON.stringify(r1 && { zipBytes: r1.zipBytes, mdBytes: r1.mdBytes }))
+        // 成对断言：**client 读的键，host 必须都给**。这条才是那个 bug 该被拦住的地方——
+        // 早先的断言把错误的字段名写进了源码正则，等于把 bug 钉死。局部状态（ok/busy/error）
+        // 是 client 自己造的，不在 RPC 契约里，排除。
+        {
+          const stateKeys = Array.from(new Set(
+            (ascSrc.match(/(?<!s\.)\bhandoff\.(\w+)/g) || []).map(x => x.replace('handoff.', ''))))
+            .filter(k => ['ok', 'busy', 'error'].indexOf(k) < 0)
+          const missing = stateKeys.filter(k => !(k in (r1 || {})))
+          expect('交接包：client 读的 ' + stateKeys.length + ' 个字段 host 全都给（缺一即红）',
+            stateKeys.length >= 6 && missing.length === 0, '缺：' + missing.join(','))
+          // 会话列表上那个外来标记（s.handoff.X）读的键，host 的 readHandoffNote 也必须都给
+          const markerKeys = Array.from(new Set(
+            (ascSrc.match(/s\.handoff\.(\w+)/g) || []).map(x => x.replace('s.handoff.', ''))))
+          const hostSrc3 = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+          const i = hostSrc3.indexOf('async function readHandoffNote')
+          const noteBody = i < 0 ? '' : hostSrc3.slice(i, hostSrc3.indexOf('\n    }', i))
+          const missMarker = markerKeys.filter(k => noteBody.indexOf(k + ':') < 0)
+          expect('交接包：外来标记读的 ' + markerKeys.length + ' 个字段 host 的 readHandoffNote 都给',
+            markerKeys.length >= 4 && missMarker.length === 0, '缺：' + missMarker.join(','))
+        }
         expect('交接包 host：顺带给出手工复现命令（Python 缺失时读者有出路）',
           r1 && /python3 scripts\/export_trace\.py/.test(String(r1.manual)), String(r1 && r1.manual))
 
@@ -1713,6 +1741,8 @@ _MS._run_no_pipe = no_fallback`)
         /const \[handoffIntent, setHandoffIntent\] = React\.useState\('continue'\)/.test(ascSrc))
       expect('交接包：导出中禁用按钮（防重复点击导出多份）', /disabled: !!\(handoff && handoff\.busy\)/.test(ascSrc))
       expect('交接包：失败时把错误显出来（不静默）', /handoff && handoff\.error \?/.test(ascSrc))
+      expect('交接包：体量取不到时说「未知」而不是 0 B（0 B 读起来像空包）',
+        /!Number\.isFinite\(v\)\) return '未知'/.test(ascSrc))
       expect('交接包：按钮说明里给出接收侧的那条命令', /import_trace\.py/.test(ascSrc))
       const hoBlock = ascSrc.slice(ascSrc.indexOf('// ---- 交接包'), ascSrc.indexOf('const actionArea'))
       expect('交接包：注明它是"直接动作"（与"生成指令"类按钮的分工）', /直接动作/.test(hoBlock), 'slice=' + hoBlock.length)

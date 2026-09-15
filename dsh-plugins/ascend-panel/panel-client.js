@@ -295,8 +295,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       { id: 'escalate', label: '转上游', why: '本地无法定位，转上游/技术支持跟进' },
     ]
     const HANDOFF_INTENT_LABEL = { continue: '继续定位', verify: '复核结论', escalate: '转上游' }
+    // 体量数字取不到时**如实说"未知"，不报 0 B**：0 B 读起来是"空文件"，会让读者以为导出失败
+    // （实测踩过：host 给的字段名与这里读的对不上，结果行列印 "zip 0 B + md 0 B"，而文件是好的）。
     function humanKB(n) {
-      const v = Number(n) || 0
+      const v = Number(n)
+      if (!Number.isFinite(v)) return '未知'
       if (v >= 1024 * 1024) return (v / 1024 / 1024).toFixed(1) + ' MB'
       if (v >= 1024) return (v / 1024).toFixed(0) + ' KB'
       return v + ' B'
