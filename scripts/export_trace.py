@@ -36,6 +36,7 @@
 退出码：0 = 产出成功；2 = 找不到会话 / 参数不合法；3 = 写盘失败。
 """
 import argparse
+import errno
 import json
 import re
 import socket
@@ -364,6 +365,19 @@ def list_sessions(traces_root: Path):
     return out
 
 
+def write_hint(e):
+    """写盘失败时补一句方向。
+
+    为什么值得单列：`[Errno 1] Operation not permitted` 在文件权限与 ACL 都正常时读起来毫无线索
+    （实测：面板子进程被沙箱拒写，`ls -lOe` 查下来一切正常）。这类拒绝多半来自**跑脚本的子进程所处的
+    沙箱**——写权限的根不是这个检出时，写进去就被拒。命令行直接跑通常不受此限，所以两句话就够读者分辨。
+    """
+    if getattr(e, "errno", None) in (errno.EPERM, errno.EACCES):
+        return ("——写入被拒。文件权限/ACL 正常时多半是**沙箱**：跑这个脚本的子进程若在受限环境里，"
+                "写权限的根可能不是本检出（面板侧要显式给沙箱策略；命令行直接跑不受此限）")
+    return ""
+
+
 def fail(msg, code=2, as_json=False):
     if as_json:
         print(json.dumps({"ok": False, "error": msg}, ensure_ascii=False))
@@ -564,7 +578,7 @@ def main() -> int:
         tree.mkdir(parents=True, exist_ok=True)
         (tree / "handoff").mkdir(exist_ok=True)
     except OSError as e:
-        return fail(f"无法创建产出目录 {tree}：{e}", 3, args.json)
+        return fail(f"无法创建产出目录 {tree}：{e}{write_hint(e)}", 3, args.json)
 
     manifest = build_manifest(doc, sid, traces_root, args, included, omitted, report_rel,
                               current_rev, src_refs)
@@ -614,7 +628,7 @@ def main() -> int:
         manifest["contents"]["total_bytes"] = sum(
             f["bytes"] or 0 for f in manifest["contents"]["files"])
     except OSError as e:
-        return fail(f"写交接包失败（{tree}）：{e}", 3, args.json)
+        return fail(f"写交接包失败（{tree}）：{e}{write_hint(e)}", 3, args.json)
 
     # ---- 投影一：zip（解压即落位到 traces/）----
     zip_path = None
@@ -626,7 +640,7 @@ def main() -> int:
                     if p.is_file():
                         z.write(p, p.relative_to(tree).as_posix())
         except OSError as e:
-            return fail(f"写 zip 失败（{zip_path}）：{e}", 3, args.json)
+            return fail(f"写 zip 失败（{zip_path}）：{e}{write_hint(e)}", 3, args.json)
 
     # ---- 投影二：单文件 md（走文本通道）----
     md_path, not_inlined = None, []
@@ -642,7 +656,7 @@ def main() -> int:
         try:
             md_path.write_text(md_text, encoding="utf-8")
         except OSError as e:
-            return fail(f"写 md 失败（{md_path}）：{e}", 3, args.json)
+            return fail(f"写 md 失败（{md_path}）：{e}{write_hint(e)}", 3, args.json)
         manifest["projection"]["md_not_inlined"] = not_inlined
         # 回写交接单里的投影事实（谁在哪个通道收到了哪份），一次导出只动自己这一份
         try:

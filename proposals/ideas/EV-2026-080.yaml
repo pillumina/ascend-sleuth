@@ -1,0 +1,80 @@
+# ============================================================
+# EV-2026-080 —— 面板子进程被沙箱拒写：写权限的根必须显式给成会话工作区
+# 来源：用户点刚上线的「导出交接包」按钮，报 [Errno 1] Operation not permitted（EV-2026-079 的实测环节）
+# 触发：用户贴回那条报错。文件权限与 ACL 全正常（ls -lOe 无异常），于是转向沙箱
+# 脱敏：只含仓库内路径、DSH 服务契约与探针输出；不含客户数据（探针只写了一个空标记文件）
+# ============================================================
+
+id: EV-2026-080
+layer: L2                          # 面板（dsh-plugins/*）与其渲染检查
+title: "面板跑子进程时的沙箱写权限根：显式给成会话工作区，并把沙箱拒绝单独报出来"
+status: in_experiment
+authorization: review              # 触及面板可见行为与两个面板的 shell 调用；可逆 → review 级
+dimension: observability           # 面板是观测面：报错要说清是「沙箱拒写」而不是让读者猜 EPERM
+supersedes: []
+superseded_by: null
+created_at: 2026-09-15
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      用户点面板卡片上的「导出交接包」，返回 `写交接包失败（…/traces/exports/<sid>）：[Errno 1]
+      Operation not permitted`。现场核对：目标文件 mode 644、无 macOS flags、无 ACL，同一路径用别的方式
+      重写成功——所以不是文件权限。查 shell 服务契约发现 `ShellExecRequest.sandboxPolicy`（read-only /
+      workspace-write / danger-full-access，带 workspaceRoot）与 `ShellRunResult.sandbox.{mode,denied}`，
+      面板调 `shell.resolve` 时**没传**该字段，走实现默认值。用一次性 host 探针（动态插件）实测三态：
+      不传 → 默认根是 **DSH 自己的检出**（…/deepseek-harness），写仓库路径 denied=true / enforcement=full；
+      显式 workspace-write + 根=会话工作区 → 写入成功；danger-full-access → 成功。交接包导出是面板里第一个
+      "子进程写文件"的 RPC，其余只读，所以这个陷阱一直没暴露。
+    trajectory:
+      - "dsh-plugins/ascend-panel/panel-host.js（exportHandoff 的 shell.resolve 调用，无 sandboxPolicy）"
+      - "dsh-plugins/ev-panel/panel-host.js（runScript 同一形状）"
+      - "Host Service 契约：shell.ShellExecRequest/ShellExecResult 与 fs 的 sandboxPolicy 参数"
+      - "一次性 host 探针（三次 shell.run：默认 / workspace-write / danger-full-access）"
+hypothesis: >-
+  面板跑脚本的每个调用点都显式给 `sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd }`
+  （够用的最小一档：写只许落在检出内、读不受限），导出交接包就能真正落盘；同时把
+  `ShellRunResult.sandbox.denied` 单独报出来，使「沙箱拒写」不再以一句 EPERM 的形式出现。
+predicted_effect:
+  metric: 面板导出交接包能否落盘（子进程在沙箱下的写权限）
+  from: "不给 sandboxPolicy → 沙箱根=DSH 检出 → 写 <检出>/traces/exports/ 被拒（denied=true，表现为 [Errno 1] Operation not permitted）"
+  to: "显式 workspace-write + 根=会话工作区 → 写入成功（探针实测 exit 0 / denied=false），且被拒时面板点明是沙箱干的"
+  measure:
+    command: "node scripts/panel_render_check.js"
+    expect_exit: 0
+    expect_stdout: "全部通过"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：面板侧 4 处 shell 调用无一带 sandboxPolicy；无"沙箱拒绝"分支；渲染检查里导出 RPC 的断言
+    不检查策略字段（把策略拿掉也不会红）。
+  success_criteria: >-
+    ① 探针三态可复现（默认根=DSH 检出且 denied=true；显式 workspace-write 根=会话工作区则成功）；
+    ② 渲染检查新增：导出子进程的 spec 带策略且根=会话工作区；沙箱拒绝时错误串点明沙箱并给手工复现；
+    ③ 源级断言按**调用点邻接**判（不是全文计数——脚本名在错误提示与注释里也出现，计数会得出假数字），
+      任一跑脚本的调用点漏带即红；ev-panel 同判；
+    ④ 仓库既有检查无回归；
+    ⑤ 真机确认：用户在面板上点一次「导出交接包」，zip + md 落到 traces/exports/。
+      这一条**待用户点击**，本卡因此停在 in_experiment。
+  rollback: >-
+    单个提交、以新增为主（策略字段 + 一个错误分支 + 断言）。git revert 即回原状；
+    面板代码在 Package 里是快照，重载即恢复上一版。
+gate:
+  condition: "再出现「面板里某个功能写文件失败、但报错看不出是沙箱」的反馈时，重跑 measure 并复查是否有新的 shell 调用点漏带策略"
+risk: low
+principle_refs: [2, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: >-
+    本会话未接 tokenMeter 取数，按仓库口径写 0 并说明口径：这个 0 表示"未单独量化"，
+    不表示零成本（本轮含一次动态插件探针、三态实测、两处面板 host 改动与四组断言）。
+decisions:
+  - who: agent
+    when: 2026-09-15
+    type: action
+    conclusion: >-
+      定位并修复：面板每个跑脚本的 `shell.resolve` 都显式给
+      `sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd }`（ascend-panel 三处 + ev-panel 一处；
+      不抽 helper —— 渲染检查会把函数单独抽出求值，引外部 helper 会 ReferenceError，漏带由邻接断言兜）；
+      导出 RPC 增加"沙箱拒绝"分支，报出 mode 与手工复现命令；`export_trace.py` 在 EPERM/EACCES 时补一句
+      "多半是沙箱"的方向。依据：探针三态实测 + 文件权限已排除。

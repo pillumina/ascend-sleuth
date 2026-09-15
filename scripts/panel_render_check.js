@@ -1658,6 +1658,28 @@ _MS._run_no_pipe = no_fallback`)
         expect('交接包 host：顺带给出手工复现命令（Python 缺失时读者有出路）',
           r1 && /python3 scripts\/export_trace\.py/.test(String(r1.manual)), String(r1 && r1.manual))
 
+        // 沙箱：写权限的根必须显式给成会话工作区。不给的话 shell 的默认根是 DSH 自己的检出，
+        // 子进程写仓库里任何路径都只报一句 EPERM（实测：导出交接包全失败，而文件权限一切正常）。
+        expect('交接包 host：导出子进程带沙箱写权限，根=会话工作区（否则被拒写）',
+          !!(seen[0] && seen[0].sandboxPolicy)
+          && seen[0].sandboxPolicy.mode === 'workspace-write'
+          && seen[0].sandboxPolicy.workspaceRoot === '/repo',
+          JSON.stringify(seen[0] && seen[0].sandboxPolicy))
+        {
+          const denyShell = {
+            resolve: (spec) => spec,
+            run: async (spec) => (/--version$/.test(String(spec && spec.command || ''))
+              ? { exitCode: 0, timedOut: false, aborted: false, stdout: { text: 'Python 3.11.9\n' }, stderr: { text: '' } }
+              : { exitCode: 1, timedOut: false, aborted: false, stdout: { text: '' }, stderr: { text: 'PermissionError: [Errno 1] Operation not permitted' },
+                  sandbox: { mode: 'workspace-write', denied: true, enforcement: 'full' } }),
+          }
+          const rDeny = await drive({ shell: denyShell, fs: undefined, sessions: svc.sessions })
+            .regs['ascend-export-trace']({ sessionId: 's', traceFile: 'sess-2.yaml', intent: 'continue' })
+          expect('交接包 host：沙箱拒绝时点明是沙箱干的（不是让读者去猜 EPERM）',
+            rDeny.ok === false && /沙箱/.test(String(rDeny.error)) && /手工复现/.test(String(rDeny.error)),
+            String(rDeny && rDeny.error))
+        }
+
         // 非法文件名不拼进命令行（面板自己的列表里拿到的值也要卡一道）
         seen.length = 0
         const rBad = await dh.regs['ascend-export-trace']({ sessionId: 's', traceFile: '../evil.yaml; rm -rf /' })
@@ -1694,6 +1716,31 @@ _MS._run_no_pipe = no_fallback`)
       expect('交接包：按钮说明里给出接收侧的那条命令', /import_trace\.py/.test(ascSrc))
       const hoBlock = ascSrc.slice(ascSrc.indexOf('// ---- 交接包'), ascSrc.indexOf('const actionArea'))
       expect('交接包：注明它是"直接动作"（与"生成指令"类按钮的分工）', /直接动作/.test(hoBlock), 'slice=' + hoBlock.length)
+      {
+        // 按**调用点邻接**判，不按全文计数：脚本名在错误提示与注释里也出现（手工复现那句就写着
+        // scripts/export_trace.py），按计数判会得出"15 处调用"这种假数字。
+        const countPolicy = (src) => {
+          const lines = src.split(/\r?\n/)
+          let sites = 0
+          let ok = 0
+          for (let i = 0; i < lines.length; i++) {
+            // 两个面板都是 `command: py + '…'` 这个形状（ev-panel 拼的是变量 scriptName）
+            if (!/command: py \+/.test(lines[i])) continue
+            sites++
+            for (let j = i + 1; j < Math.min(i + 10, lines.length); j++) {
+              if (/sandboxPolicy: \{ mode: 'workspace-write', workspaceRoot: cwd \}/.test(lines[j])) { ok++; break }
+              if (/^\s*\}\)\)?\s*$/.test(lines[j])) break   // shell.resolve({...}) 调用结束
+            }
+          }
+          return { sites: sites, ok: ok }
+        }
+        const asc = countPolicy(fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8'))
+        expect('沙箱策略：诊断面板每个跑脚本的调用点都带写权限根（' + asc.ok + '/' + asc.sites + '）',
+          asc.sites >= 3 && asc.ok === asc.sites, JSON.stringify(asc))
+        const ev = countPolicy(fs.readFileSync(path.join(repo, 'dsh-plugins/ev-panel/panel-host.js'), 'utf8'))
+        expect('沙箱策略：自演进面板的 runScript 也带（同类陷阱不在别的面板重演）',
+          ev.sites >= 1 && ev.ok === ev.sites, JSON.stringify(ev))
+      }
       expect('交接包：结果里回报体量、未纳入数、待补材料条数',
         /humanKB\(handoff\.zipBytes\)/.test(hoBlock) && /未纳入 /.test(hoBlock) && /待补材料/.test(hoBlock))
       expect('交接包：含原始证据只做标记（写明导出不脱敏、闸门在数据通道）',
