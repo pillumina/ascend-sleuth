@@ -9,7 +9,7 @@
 id: EV-2026-078
 layer: L2                          # 流程与面板（dsh-plugins/*）与脚本实现
 title: "面板数据链路提速：YAML 解析换 libyaml 后端 + 体检与看板结果按 TTL 复用"
-status: in_experiment
+status: validated
 authorization: review              # 触及面板可见行为（结果复用的新鲜度语义与刷新入口）；可逆 → review 级
 dimension: observability           # 面板是观测面：把"等 3.8 秒才看到判决"降到 1 秒内
 supersedes: []
@@ -64,7 +64,12 @@ gate:
   condition: "面板再次出现首屏等待超过 2 秒，或读者按复用窗口内的旧结论行动（反馈里出现『面板说没问题但其实…』）时重跑 measure"
 risk: low                          # 纯读侧改动：不动判据、不动知识内容、不动诊断流程；全部可逆
 principle_refs: [2, 9, 10]         # 二 不变量写进结构 / 九 稀缺资源显式预算 / 十 诚实退化
-actual_cost: null
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: >-
+    本会话未接 tokenMeter 取数，按仓库口径写 0 并说明口径：这个 0 表示"未单独量化"，
+    不表示零成本（本轮含三次计时实测、一次等价性比对与两次端到端演练）。
 decisions:
   - who: agent
     when: 2026-09-15
@@ -75,3 +80,38 @@ decisions:
       一处（libyaml 优先）；②verify_references 的重复解析按路径记忆；③面板体检/看板结果按 30 秒 TTL 复用
       并接受 refresh 参数强制重跑，刷新入口上屏。①属实现层改动，先按最小改动落地；②③触及面板可见行为，
       按本协议先产卡再执行。
+  - who: agent
+    when: 2026-09-15
+    type: action
+    conclusion: >-
+      三处落地：①新增 `scripts/_yaml.py`（libyaml 优先、缺席退回纯 Python），六个脚本的 load_yaml
+      漏斗改调它；②`verify_references.load_yaml` 按路径记忆解析结果（699 次解析降到 351 次，
+      注释里写明"缓存只对只读用法成立"）；③两个 panel-host 各自加窗口常量与 `refresh: true` 绕过，
+      asc-panel 状态条加「重新体检」、ev-panel 顶栏「刷新」改为强制，dsh-plugins/README.md 把这条
+      列为跨面板契约。三个 commit：9785054 / 741f26b / 7311da6。
+  - who: agent
+    when: 2026-09-15
+    type: eval
+    conclusion: >-
+      ①等价性：六个脚本在快路径与强制纯 Python 后端下 stdout 与退出码逐字节一致（同一检出、同一批数据）；
+      ②计时（3 次取最好）：verify_references 3.567s → 0.368s、metrics_health 3.732s → 0.522s、
+      evolution_health 1.090s → 0.322s、ev_board_data 0.756s → 0.369s、verify_proposals 0.959s → 0.220s、
+      ev_measure --audit 0.552s → 0.181s；面板 RPC ascend-metrics-verdict 冷启动 3805ms → 528ms（窗口内 3ms）；
+      ③CI 命令逐条复跑全绿（含 build_index / verify_references / 两个索引 / verify_metrics / build_timeline /
+      verify_proposals / build_docs_index / holdout / check_panel_tokens），端到端演练断言 172/172 通过；
+      ④面板渲染检查新增一节，用真实 host 源文件 + 桩 shell 数进程次数，钉住"窗口内复用 / refresh 绕过 /
+      失败也能强制重跑 / 首屏不强制 / 两面板窗口同值且与 client 说明一致"共 21 条断言；
+      ⑤本卡 measure 由 `scripts/ev_measure.py EV-2026-078 --run` 判 PASS（0.55s，期望 <1.5s）。
+      强度如实标注：等价性是逐字节比对（强）；计时是同机三次取最好（弱：机器负载会影响绝对值，
+      预测阈值留了约 3 倍余量）；缓存行为是桩环境下的进程计数（强）；"读者是否真的感到变快"未测——
+      面板的实际观感要等下一次人工打开。
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      validated（采纳）。依据：预测的六项指标全部落在区间内，等价性逐字节成立，CI 与演练全绿，
+      新增断言把复用窗口的四条约束钉成机械判据（含"只改 host 忘改文案"这一类漂移）。
+      人审重点：①`scripts/_yaml.py` 是否值得新增这个名字（替代方案是把 Loader 解析抄进六个脚本，
+      被否：那正是原则二要消灭的多份口径）；②窗口 30 秒是否合适（可改数值，契约与断言不随数值变）；
+      ③本卡按第 3.5 步的四类准入判断落在"行为面"边缘——面板可见行为确实变了（多一个入口、
+      结果可能来自窗口内的复用），若 reviewer 认为它该走 kb/high-risk 双签，本卡应改 authorization 并补签。
