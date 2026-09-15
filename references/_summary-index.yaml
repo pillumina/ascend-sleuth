@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-15    词条数：119
+# 生成日期：2026-09-15    词条数：120
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -608,8 +608,8 @@ entries:
 - id: hccn-tool-network-diagnosis
   type: tool
   title: hccn_tool（网口链路闪断 / device IP / ROCE 与 HCCS 连通性 / TLS 状态与证书）
-  summary: 用 hccn_tool 检查 device 侧网络链路健康与 TLS 一致性的一套命令：`-link_stat -g` 查网口 up/down 次数与闪断时间点（ERROR CQE
-    的常见根因）、`-ip -g`/`-vnic -g`/`-ip -inet6 -g` 查 NIC/VNIC/IPv6 地址、`-ping …
+  summary: 用 hccn_tool 检查 device 侧网络链路健康与 TLS 一致性的一套命令。**旧版写法**（模式开关在尾）：`-link_stat -g` 查网口 up/down 次数与闪断时间点（ERROR
+    CQE 的常见根因）、`-ip -g`/`-vnic -g`/`-ip -inet6 -g` 查 NIC/VNI…
   applies_to:
     platforms:
     - cross
@@ -984,6 +984,17 @@ entries:
     - A5-950
     - cross
     categories:
+    - performance
+- id: npu-smi-950-device-ops
+  type: tool
+  title: npu-smi（Ascend 950 版）设备查询与维护（info -t 全族 / watch 实时监控 / ECC 与告警 / TLS 证书 / 持久化模式日志转储）
+  summary: 950 平台 npu-smi 的查询与维护命令面。**查询**：`npu-smi info -l` 列全部设备（拿逻辑 ID）、`npu-smi info` 基本信息、`npu-smi
+    info -m` 设备映射、`npu-smi info -t <topic> -i <dev_id>` 按主题查——`board`（N…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - interrupt
     - performance
 - id: om-dynamic-shape-and-aipp-constraints
   type: software-fact
