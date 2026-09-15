@@ -147,6 +147,7 @@ reference 有三个消费点，都由流程里的**缺口**决定、都不参与
 - **证据落盘铁律（必走，无例外）**：短原文 → `inline` 存完整原文；长命令/配置/日志块/附件 → **先写 `traces/evidence/<session_id>/<名>.txt`** 完整原文、`evidence.files` 用相对路径引用、`inline` 只留一行"完整原文见 evidence.files" + 关键指纹。**禁止**只写摘要、或把原文压成指纹塞 `inline`。
 - **写前自检**：问"用户贴的原文现在在哪？"——答不出"已存在文件"的相对路径或完整 `inline` → 证据未落，先落盘再写 trace。
 - **时间戳**：建 session 写顶层 `created_at`；**每次写 trace 刷新顶层 `updated_at`**（含 resume 续接——置顶诊断面板）。
+- **知识库版本**：建 session 时写顶层 `kb_rev`（`python3 scripts/kb_rev.py` 的末行 = 检出 HEAD 短 sha），**一次写定、之后不改**。它记的是"这一单跑在哪一版 `knowledge/` 上"：跨机接手时接手方要拿它比对本机版本（不一致意味着候选集与 case id 可能对不上，接手侧会看到提示），事后误诊归因也要它（"当时为什么没命中"取决于当时库里有什么）。拿不到 git 就写 `unknown`，别编值。
 - **trace 边界（只记诊断轨迹 + 误诊归因，别混自演进）**：用户中途提出的**流程改进/设计讨论**不是本诊断输入（自演进信号）——走 `traces/evidence/<session_id>/<session_id>_evnote.md`（渐进式披露，正常定位不披露，真要改 SKILL/脚本时才升级为 EV 卡）；`attribution` 执行错归因**仅限"确实影响本次结论"**，纯流程改进走 EV 卡。**别把改进讨论写成 trace 的 user/agent 事件**，也别用 `source_analysis` 记 skill 编辑。
 
 > 完整细节（`KNOWN_ACTIONS` 词表、外部事实获取落盘、agent 事件两层、反馈闭环格式、词表同步纪律）见 `references/diagnosis-trace.md`。trace 是误诊归因的唯一依据：误诊先读 trace 断 **case 错**（改库）还是**执行错**（改 skill）。不写 trace → 无法归因 → 可能改坏正确的 case。

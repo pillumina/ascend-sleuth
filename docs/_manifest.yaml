@@ -89,6 +89,9 @@ docs:
   - path: docs/windows-setup.md
     layer: guide
     purpose: Windows 下让 agent 发现 skills：三种状态的判别与两条修法
+  - path: docs/handoff.md
+    layer: guide
+    purpose: 把一单诊断交到另一台机器继续（交接包的布局、交接单字段、两条命令的契约与强度边界）
   - path: docs/roadmap.md
     layer: plan
     purpose: 闸门驱动的演进计划（每个事项的入口条件与验收标准）

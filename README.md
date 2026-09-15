@@ -257,6 +257,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 - [git-workflow.md](docs/git-workflow.md) — 审核、门控、合入与多人协作的落地（含评审把手）
 - [issue-ingest-pipeline.md](docs/issue-ingest-pipeline.md) — issue → case 的半自动导入管道
 - [windows-setup.md](docs/windows-setup.md) — Windows 下让 agent 发现 skills：三种状态的判别与两条修法
+- [handoff.md](docs/handoff.md) — 把一单诊断交到另一台机器继续（交接包的布局、交接单字段、两条命令的契约与强度边界）
 
 **计划与就绪度（想知道"下一步做什么"时读）**
 *你要排下一步工作，或评估能不能推广给一个团队时*
