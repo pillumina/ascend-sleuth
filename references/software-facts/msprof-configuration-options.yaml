@@ -1,0 +1,35 @@
+id: msprof-configuration-options
+type: software-fact
+title: msprof / PROFILING_OPTIONS 配置项语义与平台差异（task_time 级别、aic_metrics 与 Custom 寄存器、l2、各 freq 范围、host_sys 依赖）
+summary: "配置采集项的语义与取值：**默认**——PROFILING_MODE=true 且未配 PROFILING_OPTIONS 时默认采 training_trace、task_trace、hccl、aicpu 与 aic_metrics(PipeUtilization)，数据存在 AI 任务所在目录。**关键开关**：`task_trace`/`task_time` 取 on(=l1，默认)/off/l0/l1（l0 不采算子基本信息、开销更小、耗时统计更准；l1 提供更全面数据），`training_trace` 采迭代轨迹且采正反向算子数据时必须 on（训练场景 task_trace=on 时 training_trace 也必须 on），`ge_api` 取 off/l0/l1 采动态 shape 的 Host 调度耗时，`aicpu`/`hccl`/`msproftx`/`runtime_api` 为 on/off，`hccl` 后续版本废弃、改由 task_time 控制。**aic_metrics** 七项（PipeUtilization 默认 / ArithmeticUtilization / Memory / MemoryL0 / MemoryUB / ResourceConflictRatio / L2Cache / MemoryAccess）带平台限制（L2Cache 在 Atlas 推理系列与 Atlas 训练系列不支持；MemoryAccess 在 Atlas 推理系列、Atlas 训练系列、Ascend 950PR/950DT 不支持），并支持 `Custom:0x49,0x8,...` 自定义寄存器（寄存器值范围 [0x1,0x6E]，最多 8 个、逗号分隔、支持十六/十进制）。**频率类**：sys_hardware_mem_freq [1,100]Hz（950 的 Qos 与 SoC 最大可配 10000，超出按 100 采）、sys_io_sampling_freq [1,100]Hz、sys_interconnection_freq [1,50]Hz、dvpp_freq [1,100]Hz、host_sys_usage_freq [1,50] 默认 50Hz、instr_profiling_freq [300,30000]Hz。**host_sys** 取 cpu/mem/disk/network/osrt（多选逗号分隔，disk 需 iotop、osrt 需 perf+ltrace）。**落盘**：output/storage_limit（[200,4294967295]MB 须带单位，未配置时磁盘可用 <20MB 不落盘）。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/profiling/appendices/profiling_options_parameter.md"
+    version: "oam-tools master（commit f09d79bcbac3，2026-09-15 抓取）：Profiling options 参数逐项解释与平台支持差异"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/profiling/other_method/with_environment_variables.md"
+    version: "oam-tools master（commit f09d79bcbac3）：PROFILING_MODE/PROFILING_OPTIONS 环境变量方式的默认采集项"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/profiling/msprof_cmd/general_collect_commands.md"
+    version: "oam-tools master（commit f09d79bcbac3）：msprof 通用命令的 --type/--environment/--storage-limit 参数"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A3-910C, A5-950, cross]
+  frameworks: [msprof]
+  categories: [performance]
+
+related_references: [msprof-collect-parse, ascend-profiling-collection-planning, msprof-collection-mechanism-and-metric-semantics, profiling-env]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "**① 默认采集项**：配置 `PROFILING_MODE=true` 但未配 `PROFILING_OPTIONS` 时，Profiling 默认执行 training_trace、task_trace、hccl、aicpu 与 aic_metrics(PipeUtilization)，采集数据保存在当前 AI 任务所在目录；一旦配置了 `PROFILING_OPTIONS` 的任意参数，默认值改按该参数表取。**② 迭代轨迹与算子耗时**：`training_trace` 采训练任务与 AI 软件栈的软件信息（前后向计算与梯度聚合更新），**采正向和反向算子数据时必须配 on**；`task_trace`/`task_time` 控制算子下发耗时、执行耗时与迭代轨迹数据（输出到 task_time/op_summary/op_statistic 等文件），取值 `on`（默认，等同 l1）/`off`/`l0`（不采算子基本信息、性能开销更小、耗时统计更准）/`l1`（含算子基本信息、数据更全面）；**训练 profiling 场景配 task_trace=on 时 training_trace 也必须 on**；`hccl` 开关后续版本会废弃，改用 task_time 控制。**③ 其余开关**：`ge_api`（off 默认 / l0 / l1）采动态 shape 算子在 Host 调度阶段的耗时；`aicpu`（on/off，默认 off）采 AICPU 算子执行时间与数据拷贝时间；`msproftx`（on/off，默认 off）采用户与上层框架打点，需先在应用中加 mstx API（推荐）或 msproftx API；`runtime_api`（on/off，默认 off）采 runtime API 性能数据（Host 与 Device 之间、Device 间的同步/异步内存复制时延）；`fp_point`/`bp_point` 指定训练网络迭代轨迹正向算子开始位置与反向算子结束位置（填算子名，或填空由系统自动识别），两者可算出正反向时间。**④ aic_metrics 与平台限制**：取 ArithmeticUtilization（各种计算类指标占比）、PipeUtilization（计算单元与搬运单元耗时占比，**默认值**）、Memory（外部内存读写类指令占比）、MemoryL0（内部 L0 内存）、MemoryUB（内部 UB 内存）、ResourceConflictRatio（流水线队列类指令占比）、L2Cache（读写 L2 命中次数与缺失后重新分配次数；**Atlas 推理系列产品与 Atlas 训练系列产品不支持**）、MemoryAccess（算子在核上访存带宽数据量；**Atlas 推理系列产品、Atlas 训练系列产品、Ascend 950PR/950DT 均不支持**）；支持 `\"aic_metrics\":\"Custom:0x49,0x8,0x15,0x1b,0x64,0x10\"` 形式自定义寄存器——寄存器值范围 [0x1,0x6E]、**最多 8 个**、以逗号分隔、支持十六进制或十进制。**⑤ l2 开关**：控制 L2 Cache 与 TLB 页表缓存命中率，on/off，默认 off；**在 aclgraph 场景执行模型阶段开启则不生效**；Atlas 推理系列与 Atlas 训练系列只支持 L2 Cache 命中率，Atlas A2/A3 与 Ascend 950PR/950DT 支持 L2 Cache 与 TLB 页表缓存命中率，**分析 AI Core 命中 L2 次数推荐用 aic-metrics=L2Cache**。**⑥ 频率类参数与范围**：`sys_hardware_mem_freq`（片上内存、QoS 传输带宽、LLC 三级缓存带宽、加速器带宽、SoC 传输带宽、组件内存占用等采集开关）范围 [1,100]Hz，Ascend 950PR/950DT 的 Qos 与 SoC 最大支持 10000（其他采集项仍按 100 上限，超出即按 100 采）；**glibc < 2.34 环境采集 memory 数据可能触发 glibc Bug 19329**（升级 glibc 可解）；Atlas A3/A2 与 Atlas 200I/500 A2 推理产品在采集任务结束后不建议增大采集频率（否则 SoC 传输带宽数据可能丢失）。`llc_profiling` 取 read（三级缓存读速率，默认）/write。`sys_io_sampling_freq`（NIC/ROCE/UB 带宽采集频率）范围 [1,100]Hz：Atlas 推理系列不支持，A2/A3 支持 NIC 与 ROCE，950 支持 UB。`sys_interconnection_freq`（集合通信 HCCS、CCU 带宽、SIO、PCIe、UB 及片间传输带宽）范围 [1,50]Hz：910 支持 HCCS/PCIe，A2 增加片间传输带宽，A3 增加 SIO，950 支持 PCIe/片间/CCU/SIO/UB。`dvpp_freq` 范围 [1,100]Hz。**⑦ instr_profiling**（AI Core 与 AI Vector 的带宽与延时采集，**仅单算子场景支持**）：Atlas 训练系列不支持；Atlas A2/A3 不支持该开关、改由 `instr_profiling_freq`（范围 [300,30000]Hz）控制；Ascend 950PR/950DT 支持 `instr_profiling`，但因最后一段指令统计时间可能超长导致统计不准，**建议改用 msprof op 方式采集**。**⑧ Host 侧数据**：`host_sys` 取 cpu（进程级 CPU 利用率）/mem（进程级内存）/disk（进程级磁盘 I/O，**需装 iotop**）/network（系统级网络 I/O）/osrt（进程级 syscall 与 pthreadcall，**需装 perf 与 ltrace**），多项用逗号分隔；`host_sys_usage` 采 Host 侧系统与所有进程的 CPU、内存数据（取 cpu/mem），频率由 `host_sys_usage_freq` 控制（范围 [1,50]，默认 50Hz）。**⑨ 落盘参数**：`output`（结果路径，支持绝对/相对路径，**路径中不能包含** `\\n`、`\\f`、`\\r`、`\\b`、`\\t`、`\\v`、`\\u007F`，优先级高于 ASCEND_WORK_PATH，无需预创建）；`storage_limit` 范围 [200, 4294967295] MB、**设置时必须带单位**（如 200MB），未配置时采集前磁盘可用空间 <20MB 则不落盘，数据文件即将占满设定的最大容量或剩余磁盘总空间将耗尽（剩余 ≤20MB）时**老化删除磁盘内最早的文件**。**⑩ msprof 命令行侧同名能力**：`--type=<text|db>` 设置自动解析的结果文件格式（text 默认：解析为 .json/.csv 与 msprof_时间戳.db；db：只解析为一个汇总 .db，供 MindStudio Insight 展示）；`--environment=\"${envKey}=${envValue}\"`（多项用分号分隔）传入采集时所需的自定义环境变量，**不建议用其他用户的目录覆盖原有环境变量**（提权风险）；`--storage-limit` 同 storage_limit。"
+  evidence: "profiling_options_parameter.md逐项：『output：Profiling采集结果文件保存路径…路径中不能包含特殊字符』『storage_limit…范围[200, 4294967295]，单位为MB，设置该参数时必须带单位』『training_trace…当采集正向和反向算子数据时该参数必须配置为on』『task_trace、task_time…on：开启，默认值，和配置为l1的效果一样。l0：采集算子下发耗时、算子执行耗时数据。与l1相比，由于不采集算子基本信息数据，采集时性能开销较小，可更精准统计相关耗时数据』『ge_api：采集动态shape算子在Host调度阶段的耗时数据』『hccl…此开关后续版本会废弃，请使用task_time开关控制相关数据采集』『aic_metrics…支持自定义需要采集的寄存器，例如：\"aic_metrics\":\"Custom:0x49,0x8,0x15,0x1b,0x64,0x10\"…配置的寄存器数最多不能超过8个』『l2…若在aclgraph场景执行模型阶段开启Profiling，则该采集项无法生效』『sys_hardware_mem_freq…范围[1,100]，单位Hz。Ascend 950PR/Ascend 950DT，Qos和SoC支持的采集频率最大支持配置10000』『已知在安装有glibc<2.34的环境上采集memory数据，可能触发glibc的一个已知Bug 19329』『sys_interconnection_freq…范围[1,50]，单位Hz』『instr_profiling…仅单算子场景支持…Ascend 950PR/Ascend 950DT：支持，但可能会因最后一段指令的统计时间超长导致统计不准确，建议使用msprof op方式采集』『host_sys…采集Host侧disk性能数据需要安装第三方开源工具iotop，采集osrt性能数据需要安装第三方开源工具perf和ltrace』。with_environment_variables.md：『配置PROFILING_MODE为true但未配置PROFILING_OPTIONS情况下Profiling默认会执行training_trace、task_trace、hccl、aicpu和aic_metrics（PipeUtilization）采集并将采集到的数据保存在当前AI任务所在目录』。general_collect_commands.md：『--type=<type>：可选，设置性能数据解析结果文件格式…text…db：仅解析为一个汇总所有性能数据的.db格式文件』『--environment=<env>…配置格式为--environment=\"${envKey}=${envValue}\"』『--storage-limit=<limit-value>…范围[200, 4294967295]，单位为MB』"

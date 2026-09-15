@@ -7,7 +7,7 @@
 #   3) 按 file 打开该词条读 **content.flow[] 全文**——摘要行不承载判据，只读摘要等于没加载；
 #   4) 一轮诊断最多加载一条流程（成本有界）。
 #
-# 生成日期：2026-09-15    流程条数：24    本文件整体加载成本：约 4011 token（选择器每次都要整读，故单文件 + 记成本）
+# 生成日期：2026-09-15    流程条数：25    本文件整体加载成本：约 4197 token（选择器每次都要整读，故单文件 + 记成本）
 #
 # 增长闸门（原则十一：按闸门不按日历）：流程条数 > 25，或本文件 > 5K token → 按 category 分片
 #   （对齐 case 层 knowledge/_index/<ns>__<category>.yaml 的做法）。当前单文件即可。
@@ -94,6 +94,14 @@ entries:
   platforms:
   - cross
   file: references/methodologies/ascend-process-interrupt-triage.yaml
+- id: ascend-profiling-collection-planning
+  title: 性能采集方案选择与前置约束（msprof 命令行/延迟/动态/接口/环境变量 → 前置检查 → 落盘规格 → 动态采集 launch vs attach）
+  summary: 采性能数据前的规划路径：①**选采集方式**——msprof 命令行（推荐在命令末尾直接跟用户程序；也可用 `--application`）、延迟采集（`--delay`/`--duration`）、动态采集（`--dynamic=on`，launch 或 attach）、其他方式（acl C&C++ 接口 / Ascend Graph 接口 / acl.json 配置 / PROFILING_…
+  categories:
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/ascend-profiling-collection-planning.yaml
 - id: ascend-train-precision-triage
   title: 大模型训练精度定位五步路径（CheckList → 复现前置 → 稳定/不稳定分流 → 分支排查 → 单算子确认与修复）
   summary: 训练侧精度问题定位五步路径：先做 CheckList 排除非算子因素（超参/环境变量/三方库/数据读取/模型结构/权重初始化/版本）→ 复现前置（固定随机性、打开确定性、seed_all、缩小规模）→ 按「能否稳定复现 + 现象」分流（溢出或NaN / 首Step Loss差异 / 长稳Loss差异 vs 内存踩踏/算子确定性/硬件/框架/版本）→ 分支排查 → 单算子三方比对确认后用「修复三板…

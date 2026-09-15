@@ -1,0 +1,85 @@
+id: ascend-profiling-collection-planning
+type: methodology
+title: 性能采集方案选择与前置约束（msprof 命令行/延迟/动态/接口/环境变量 → 前置检查 → 落盘规格 → 动态采集 launch vs attach）
+summary: "采性能数据前的规划路径：①**选采集方式**——msprof 命令行（推荐在命令末尾直接跟用户程序；也可用 `--application`）、延迟采集（`--delay`/`--duration`）、动态采集（`--dynamic=on`，launch 或 attach）、其他方式（acl C&C++ 接口 / Ascend Graph 接口 / acl.json 配置 / PROFILING_MODE+PROFILING_OPTIONS 环境变量，后者仅 TensorFlow 训练与在线推理）；②**前置检查**——用普通用户（不建议 root）、umask ≥ 0027、数据目录不含软链接、装齐 CANN 与驱动并 source set_env.sh、Python ≥ 3.7.5、msprof 在 `${INSTALL_DIR}/tools/profiler/bin`，且**不要在采集窗口内同时开 Dump**（Dump 影响系统性能，采集指标会不准）；③**并发约束**——同一 Device 不支持同时拉起多个采集任务、也不可同时开启两种及以上采集方式（例：msprof 命令行启动后 app 内再走 acl 接口）；Ascend 950PR/950DT 例外（同 Device 可并发多个 task-time 采集，aic-mode=task-based 时可并发多个 aic-metrics）；④**落盘准备**——采集时间建议 ≤5 分钟，预留 ≥20 倍原始数据大小的磁盘与内存；单 Device 推理磁盘读写 ≥50MB/s、训练 ≥60MB/s，多 Device 按单 Device 规格 × Device 数；用 `--storage-limit` 防占满（未配置时磁盘可用 <20MB 就不落盘）；⑤**动态采集选型**——msprof 拉起的进程即用卡业务进程时用 launch；`--application` 拉起的是脚本（脚本内部才拉业务进程）、多卡/集群、进程后台执行、或业务在容器内启动时改用 attach（attach 需先 `PROFILING_MODE=dynamic` 再启业务）；⑥**PID 获取与静态约束**（物理机/特权容器/非特权容器三种取法；多 Device 建议逐卡运行逐个取；暂不支持同时指定多 PID）；⑦**需要 Host 侧 disk/osrt 数据时的权限准备与收尾**（iotop/perf/ltrace + perf_event_paranoid + sudoers 授权，采集完必须清除 sudo 权限）。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/profiling/preparation/before_you_start.md"
+    version: "oam-tools master（commit f09d79bcbac3，2026-09-15 抓取）：环境准备、权限/执行/落盘/兼容性四类约束"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/profiling/msprof_cmd/dynamically.md"
+    version: "oam-tools master（commit f09d79bcbac3）：动态采集 launch/attach 选型、交互命令与 PID 获取"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/profiling/msprof_cmd/delayed_mode.md"
+    version: "oam-tools master（commit f09d79bcbac3）：延迟采集 --delay/--duration 取值范围与互斥约束"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/oam-tools/blob/master/docs/zh/profiling/appendices/config_user_permission.md"
+    version: "oam-tools master（commit f09d79bcbac3）：Host 侧数据采集的权限配置与清除步骤"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msprof]
+  categories: [performance]
+
+related_references: [msprof-collect-parse, msprof-configuration-options, msprof-collection-mechanism-and-metric-semantics, profiling-env, msprof-timeline-lane-reading]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  flow:
+    - step: 1
+      name: 选采集方式
+      action: 首选 msprof 命令行——**方式一（推荐）**在 msprof 命令末尾直接跟用户程序或脚本；方式二用 `--application` 传入（但参数值含需加引号的符号时可能识别不了，此时把命令写进 Shell 脚本再传入）。需要跳过启动阶段/只采一段区间用延迟采集（`--delay`/`--duration`，仅采集 AI 任务运行性能数据时支持，且与动态采集互斥）；需要采业务过程中的某个片段用动态采集；已有代码里已集成接口则走 acl C&C++ 接口、Ascend Graph 接口或 acl.json 配置；TensorFlow 训练/在线推理场景可用环境变量方式（PROFILING_MODE + PROFILING_OPTIONS）。
+      check: "msprof <app> ... / msprof --application=\"...\" ... / --delay + --duration / --dynamic=on"
+      when_to_use: 决定采集方式时
+    - step: 2
+      name: 前置检查（权限、环境、无冲突项）
+      action: 用普通用户执行（不建议 root，本工具是开发调测工具、不建议生产环境使用）；umask 须 ≥ 0027，否则性能数据目录与文件权限过大；性能数据保存在不含软链接的当前用户目录下；装齐 CANN 与对应驱动并 `source ${INSTALL_DIR}/set_env.sh`（source 后不要改动其中的环境变量）；Python ≥ 3.7.5；Ascend EP 下 msprof 路径为 `${INSTALL_DIR}/tools/profiler/bin`。**采集窗口内不要同时开 Dump**——Dump 影响系统性能，同时开会造成采集指标不准确。
+      check: "umask、python3 --version、ls -l 数据目录（无软链接）、确认 Dump 已关闭"
+      when_to_use: 采集前
+    - step: 3
+      name: 确认并发约束（否则采集失败或数据不可信）
+      action: 同一 Device **不支持同时拉起多个采集任务**，也**不可同时开启两种及以上采集方式**（例：msprof 命令行启动 Profiling 时，app 中不能再用 acl 接口启动采集）。例外：Ascend 950PR/950DT 场景下支持同一 Device 同时拉起多个 task-time 采集任务；当 aic-mode 取 task-based 时，支持同一 Device 同时拉起多个 aic-metrics 采集任务。
+      check: 同一 Device 上是否已有采集任务或另一种采集方式在运行
+      when_to_use: 多任务/多进程共用同一卡时
+    - step: 4
+      name: 落盘准备（时间窗、空间与磁盘速度）
+      action: 单次采集时间建议在 5 分钟以内；预留至少 20 倍于性能原始数据大小的内存与磁盘空间（原始数据大小 = 落盘后 data 目录下数据总大小）。打开所有采集项时须保证磁盘读写速度：单 Device 推理 ≥50MB/s、单 Device 训练 ≥60MB/s，多 Device 场景不低于「单 Device 规格 × Device 数」。用 `--storage-limit`（范围 [200, 4294967295] MB，须带单位如 `200MB`）防止落盘目录被占满——即将占满（剩余总空间 ≤20MB）时会老化删除最早的文件；**未配置该参数时，采集前磁盘可用空间小于 20MB 则不落盘**。
+      check: "df -h <落盘目录>；--storage-limit=200MB"
+      when_to_use: 长时间或全量采集项采集前
+    - step: 5
+      name: 动态采集：选 launch 还是 attach
+      action: 若 `msprof --application=<进程>` 拉起的进程**就是**实际用卡的业务进程（如 `--application=main`），用 **launch** 方式并进入交互模式；若 `--application` 拉起的是脚本、真正的业务进程由脚本内部拉起（如 `--application=run.sh`）、或**多卡/集群**场景、或用户的进程被设为后台执行（后台执行会让 launch 失效无法进入交互界面）、或业务在容器内启动，则**改用 attach** 方式。attach 需先设置 `PROFILING_MODE=dynamic` 再启动 AI 任务，然后执行采集命令。
+      check: "launch：msprof --application=<业务进程> --dynamic=on；attach：PROFILING_MODE=dynamic + msprof --dynamic=on --pid=<pid>"
+      when_to_use: 需要采集业务运行中的某一段
+    - step: 6
+      name: 动态采集的交互与约束
+      action: 采集前建议先清理残留（`rm -rf ~/dynamic_profiling_socket_*`）；进入交互模式后用 `start`/`stop`/`quit` 控制——每完成一对 start/stop 在 `--output` 下生成一个 `PROF_XXX` 目录，**start 与 stop 执行次数合计上限 100 次**（即最多采集 50 份，重连服务端后重新计数），反复 start/stop 时可能打印 ERROR 日志属正常现象；`quit` 停止采集并退出交互模式，AI 任务继续运行、可再次进入；**进入交互模式后若未启动采集，30 分钟后自动退出**；同一 AI 任务同一时间仅允许一个用户进入交互模式；launch 方式下用户程序中不能设置 PROFILING_MODE 与 PROFILING_OPTIONS；延迟采集（--delay/--duration）与动态采集不能同时配置；容器中启动业务进程时，采集命令也必须在该容器中执行。
+      check: "start / stop / quit；次数上限 100；30 分钟空闲自动退出"
+      when_to_use: 已进入动态采集交互模式
+    - step: 7
+      name: 取动态采集的 PID（按业务运行形态分支）
+      action: 先看当前环境可采集的 PID（`ls ~/dynamic_profiling_socket_* | awk -F '_' '{print $4}'`）。AI 任务在**物理机**直接运行：用 npu-smi 查该任务的 Process id。AI 任务在**特权容器**中运行：--pid 要填业务在容器内的 PID，而 `npu-smi info` 显示的是宿主机 PID，因此需在宿主机视图下查 PID 映射后取容器内 PID。AI 任务在**非特权容器**中运行：直接在容器视图下查，或按宿主机 PID 映射换算。多 Device 场景建议每个 Device 逐一运行 AI 任务并逐一取 PID；多 Device 同时运行时取任意一个 PID 采集（当前不支持同时指定多 PID 动态采集）。
+      check: "npu-smi info 的 Process id；`ls ~/dynamic_profiling_socket_*`"
+      when_to_use: attach 方式采集前
+    - step: 8
+      name: 需要 Host 侧 disk/osrt 数据时的权限准备与收尾
+      action: 采集 Host 侧 disk 需先装第三方工具 iotop，采集 osrt 需 perf 与 ltrace；随后以 root 把 `perf_event_paranoid` 配置为 0（允许非 root 访问，**改前记录原值**）、创建 `/usr/bin/msprof_data_collection.sh` 并收紧写权限、给安装用户授予 perf/iotop/ltrace 的运行权限（会使用户获得 sudo 权限，**属提权风险**）。**采集完成后必须清除**：删掉 `/etc/sudoers.d/{安装用户名}_profiling`、从 `/etc/sudoers` 移除对应内容、恢复文件权限并把 `perf_event_paranoid` 还原为原值。
+      check: "cat /proc/sys/kernel/perf_event_paranoid（改前记录）；采集后删除 sudoers.d 条目并还原 paranoid"
+      when_to_use: 需要 Host 侧系统级性能数据
+    - step: 9
+      name: 采集后解析与失败排查
+      action: 采集结束会自动解析导出，产物在 `PROF_<时间戳>/mindstudio_profiler_output/`；也可用解析命令对已有原始数据二次处理。解析失败或文件无法落盘时，先查落盘路径磁盘与用户目录空间是否已满——这是最常见原因。
+      check: "ls -dt <output>/PROF_* | head -1；df -h"
+      when_to_use: 采集完成后
+  verified_by_testing: false

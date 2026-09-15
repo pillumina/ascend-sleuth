@@ -511,11 +511,15 @@
      "sha": "58ed2c1ed75bd942cd46c7ba487604d308d36cfe"
     },
     "docs/zh/env-vars/PROFILING_MODE.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:14:46",
+     "decision": "skipped",
+     "note": "与既有 profiling-env.yaml 同源同内容（描述逐字一致）；其 PROFILING_OPTIONS 描述在既有条目中被截断，选项全表已由 msprof-configuration-options 承载",
      "sha": "7175557c6b3e2f5d32ce7bcf5ea62a8dc37ca642"
     },
     "docs/zh/env-vars/PROFILING_OPTIONS.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:14:46",
+     "decision": "skipped",
+     "note": "与既有 profiling-env.yaml 同源同内容（描述逐字一致）；其 PROFILING_OPTIONS 描述在既有条目中被截断，选项全表已由 msprof-configuration-options 承载",
      "sha": "e09e62f957602b4bd5194b32c7955f4439edc66a"
     },
     "docs/zh/msaicerr/AI_Core_error_analysis.md": {
@@ -579,15 +583,24 @@
      "sha": "b5f3936b478934238771d2c6ea6e7199bdd1e015"
     },
     "docs/zh/profiling/README.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:14:46",
+     "decision": "skipped",
+     "note": "索引/导航页（正文在子页）",
      "sha": "b5faaa39886865abd33e2fe65ab616ac589dc0df"
     },
     "docs/zh/profiling/appendices/appendices.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:14:46",
+     "decision": "skipped",
+     "note": "索引/导航页（正文在子页）",
      "sha": "7e6156c1eeed51b9606a68001a70dd24dc57b9fb"
     },
     "docs/zh/profiling/appendices/config_user_permission.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:14:46",
+     "decision": "harvested",
+     "refs": [
+      "ascend-profiling-collection-planning",
+      "msprof-collect-parse"
+     ],
      "sha": "18058d08f63582e1c229dc006ccae4d897a418a8"
     },
     "docs/zh/profiling/appendices/install_perf_iotop_ltrace.md": {
@@ -599,7 +612,11 @@
      "sha": "82f0eae0e7756c82e040ac1da2833e0050726561"
     },
     "docs/zh/profiling/appendices/profiling_options_parameter.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:14:46",
+     "decision": "harvested",
+     "refs": [
+      "msprof-configuration-options"
+     ],
      "sha": "227230203a78988bbd0ee0a4205582823a7d3050"
     },
     "docs/zh/profiling/msprof_cmd/ai_runtime_profile_data.md": {
@@ -607,15 +624,30 @@
      "sha": "ff54956619b276d13771c8d4c14b6077ef578bea"
     },
     "docs/zh/profiling/msprof_cmd/delayed_mode.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:14:46",
+     "decision": "harvested",
+     "refs": [
+      "msprof-collect-parse",
+      "ascend-profiling-collection-planning"
+     ],
      "sha": "df0c11d34230c0d50e05a071170337504d53047f"
     },
     "docs/zh/profiling/msprof_cmd/dynamically.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:14:46",
+     "decision": "harvested",
+     "refs": [
+      "msprof-collect-parse",
+      "ascend-profiling-collection-planning"
+     ],
      "sha": "28a20cb3364a7c6a59c17412f2e6f2dd87146433"
     },
     "docs/zh/profiling/msprof_cmd/general_collect_commands.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:14:46",
+     "decision": "harvested",
+     "refs": [
+      "msprof-collect-parse",
+      "msprof-configuration-options"
+     ],
      "sha": "7bd9576366a841481a50842243ca71dd89a0323d"
     },
     "docs/zh/profiling/msprof_cmd/host_system_data.md": {
@@ -623,7 +655,9 @@
      "sha": "4d7307e93dde6d1afcce8d588657a251d0cbc056"
     },
     "docs/zh/profiling/msprof_cmd/msprof_cmd.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:14:46",
+     "decision": "skipped",
+     "note": "索引/导航页（正文在子页）",
      "sha": "80a10e7bc252740a1717f7229c3bd0c8aa8e4e6c"
     },
     "docs/zh/profiling/msprof_cmd/msproftx_data.md": {
@@ -635,7 +669,9 @@
      "sha": "8b38ce31b5753239a5f3b667f885809efb4ba544"
     },
     "docs/zh/profiling/other_method/other_method.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:14:46",
+     "decision": "skipped",
+     "note": "索引/导航页（正文在子页）",
      "sha": "f37b1a33ce71212291d320473a541d006c782537"
     },
     "docs/zh/profiling/other_method/with_acl_apis.md": {
@@ -651,11 +687,19 @@
      "sha": "64833a87147959d34a70a003b657449f39e06f60"
     },
     "docs/zh/profiling/other_method/with_environment_variables.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:14:46",
+     "decision": "harvested",
+     "refs": [
+      "msprof-configuration-options"
+     ],
      "sha": "e323d4ed3fb304682b2f531df759ab75bf60f85e"
     },
     "docs/zh/profiling/preparation/before_you_start.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:14:45",
+     "decision": "harvested",
+     "refs": [
+      "ascend-profiling-collection-planning"
+     ],
      "sha": "adfd118edc564970097a6d18aa21f05f960b62c3"
     },
     "docs/zh/quick_install.md": {
