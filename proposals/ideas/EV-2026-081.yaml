@@ -1,0 +1,77 @@
+# ============================================================
+# EV-2026-081 —— 面板读 host 字段的成对断言：脚本 snake_case 与 UI camelCase 的缝在 host 收口
+# 来源：用户点「导出交接包」成功后的结果行显示 "zip 0 B + md 0 B"（文件完好，196.8 KB / 71.0 KB）
+# 触发：用户贴回该结果行并问"我发送的是 zip 包还是都发送"——数字不对，先得确认包是不是空的
+# 脱敏：只含仓库内路径与字段名，不含客户数据
+# ============================================================
+
+id: EV-2026-081
+layer: L2                          # 面板（dsh-plugins/*）与其渲染检查
+title: "面板读 host 字段的成对断言：脚本 snake_case → UI camelCase 的缝在 host 收口"
+status: in_experiment
+authorization: review              # 触及面板可见文案与字段映射；可逆 → review 级
+dimension: observability           # 面板是观测面：数字错成 0 B 比不显示更坏
+supersedes: []
+superseded_by: null
+created_at: 2026-09-15
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      用户点「导出交接包」成功后，结果行是 `已导出 zip 0 B + md 0 B｜9 个文件｜带 2 条待补材料`。
+      文件其实完好（zip 196.8 KB / md 71.0 KB，打开目录可见）。核对：脚本 `--json` 吐的是
+      `zip_bytes` / `md_bytes` / `total_bytes`（snake_case），而 client 读 `handoff.zipBytes` /
+      `handoff.mdBytes`（camelCase），host 只是 `Object.assign({}, doc, ...)` 原样透传——
+      于是两个值都是 undefined，被 `humanKB` 的 `Number(n) || 0` 兜成 0 B。
+      **更值得记的是它为什么没被检查拦住**：那条断言把错误的字段名（`humanKB(handoff.zipBytes)`）
+      写进了源码正则，且假 host 返回的是 camelCase —— 检查绿着把这个 bug 钉死了。
+    trajectory:
+      - "dsh-plugins/ascend-panel/panel-host.js（exportHandoff 的 Object.assign 透传）"
+      - "dsh-plugins/ascend-panel/panel-client.js（hoBlock 里的 humanKB(handoff.zipBytes) 与 humanKB）"
+      - "scripts/export_trace.py --json 的真实键集合（zip_bytes/md_bytes/total_bytes）"
+      - "scripts/panel_render_check.js（假 host 的返回形状）"
+hypothesis: >-
+  把这条缝收在 host（脚本 snake_case → UI camelCase），并给 client 读的每个字段加一条**成对断言**
+  （client 读的键，host 必须都给；会话列表那个外来标记同理）之后：结果行显示真实体量；
+  假 host 的返回形状改成照脚本真实输出给（snake_case），任何一侧改名都会立刻变红。
+predicted_effect:
+  metric: 面板导出结果行显示的体量是否为真实值
+  from: "zip 0 B + md 0 B（文件实际 196.8 KB / 71.0 KB）——0 B 读起来像导出了空包"
+  to: "已导出 zip 197 KB + md 71 KB｜9 个文件｜带 2 条待补材料"
+  measure:
+    command: "node scripts/panel_render_check.js"
+    expect_exit: 0
+    expect_stdout: "全部通过"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：host 原样透传脚本 JSON；client 读 zipBytes/mdBytes；渲染检查的假 host 返回 camelCase，
+    断言用源码正则钉住错误的字段名；`humanKB` 对 undefined 兜成 0 B。
+  success_criteria: >-
+    ① 用真实脚本输出跑一遍显示表达式，得到 `zip 197 KB + md 71 KB`（本次实测：是）；
+    ② 渲染检查新增成对断言：client 读的 9 个字段 host 全都给、外来标记读的 6 个字段
+      readHandoffNote 都给；假 host 返回形状改成脚本真实形状（snake_case）；
+    ③ 体量取不到时显示「未知」而不是 0 B（新增断言）；
+    ④ 仓库既有检查无回归；
+    ⑤ 真机确认：重载面板后再点一次，结果行显示真实体量（**待用户确认**，本卡因此停在 in_experiment）。
+  rollback: >-
+    单个提交、纯前端字段映射与断言：git revert 即回原状；面板代码在 Package 里是快照，重载即恢复上一版。
+gate:
+  condition: "再出现「面板显示的数字/路径与实际不符」的反馈时，重跑 measure 并检查是否又有一处 client 读的键没有成对断言覆盖"
+risk: low
+principle_refs: [2, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: >-
+    本会话未接 tokenMeter 取数，按仓库口径写 0 并说明口径：这个 0 表示"未单独量化"，
+    不表示零成本（本轮含一次真实输出的显示表达式模拟、两处假 host 形状修正与三组断言）。
+decisions:
+  - who: agent
+    when: 2026-09-15
+    type: action
+    conclusion: >-
+      定位并修复：① host 在返回处把 `zip_bytes`/`md_bytes`/`total_bytes` 收口成 `zipBytes`/
+      `mdBytes`/`totalBytes`（UI 侧一律 camelCase，别让 client 认脚本的字段名）；
+      ② `humanKB` 对非有限数返回「未知」而不是 0 B（0 B 读起来像空包，比不显示更坏）；
+      ③ 渲染检查的假 host 改成照脚本真实输出形状给，并新增两条成对断言（state 9 个字段 /
+      外来标记 6 个字段），任一侧改名即红。依据：脚本真实键集合 + 显示表达式模拟。

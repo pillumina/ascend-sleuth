@@ -8,7 +8,7 @@
 id: EV-2026-080
 layer: L2                          # 面板（dsh-plugins/*）与其渲染检查
 title: "面板跑子进程时的沙箱写权限根：显式给成会话工作区，并把沙箱拒绝单独报出来"
-status: in_experiment
+status: validated
 authorization: review              # 触及面板可见行为与两个面板的 shell 调用；可逆 → review 级
 dimension: observability           # 面板是观测面：报错要说清是「沙箱拒写」而不是让读者猜 EPERM
 supersedes: []
@@ -54,7 +54,7 @@ validation:
       任一跑脚本的调用点漏带即红；ev-panel 同判；
     ④ 仓库既有检查无回归；
     ⑤ 真机确认：用户在面板上点一次「导出交接包」，zip + md 落到 traces/exports/。
-      这一条**待用户点击**，本卡因此停在 in_experiment。
+      **已由用户点击确认**（见 decisions 最后一条：打开目录能看到 zip、md 与解包树）。
   rollback: >-
     单个提交、以新增为主（策略字段 + 一个错误分支 + 断言）。git revert 即回原状；
     面板代码在 Package 里是快照，重载即恢复上一版。
@@ -78,3 +78,13 @@ decisions:
       不抽 helper —— 渲染检查会把函数单独抽出求值，引外部 helper 会 ReferenceError，漏带由邻接断言兜）；
       导出 RPC 增加"沙箱拒绝"分支，报出 mode 与手工复现命令；`export_trace.py` 在 EPERM/EACCES 时补一句
       "多半是沙箱"的方向。依据：探针三态实测 + 文件权限已排除。
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      记实测结果并转 validated：用户在面板上点「导出交接包」成功，zip 与 md 落到
+      <检出>/traces/exports/（打开目录能看到 zip、md 与解包树），第 ⑤ 条判据满足，
+      写权限根这条修复有效。同一次点击暴露了一个**另外的**显示缺陷：结果行显示
+      "zip 0 B + md 0 B"，而文件是完好的（196.8 KB / 71.0 KB）。根因与沙箱无关——host 把脚本的
+      snake_case 字段原样透传给 client，client 却读 camelCase，humanKB 便把 undefined 兜成了 0 B。
+      该缺陷另立一张卡（面板读 host 字段的成对断言），不在本卡范围内。
