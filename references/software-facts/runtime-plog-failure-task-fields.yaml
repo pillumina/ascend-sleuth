@@ -1,0 +1,25 @@
+id: runtime-plog-failure-task-fields
+type: software-fact
+title: 从 plog 提取失败 task / 内核 / Device 异常的检索关键字与字段含义（Task run failed、fault kernel_name、The error from device）
+summary: "Device 侧任务失败的证据链在 plog 里按五个关键字逐段取出：`Task run failed`（失败任务：device_id/stream_id/task_id/sqe_type/errType/sqSwStatus）、`fault kernel_name`（失败内核名 + `_high_performance` 一类后缀 + tiling key）、`retCode` 与 `Kernel task happen error`（错误码）、`The error from device(chipId:..,dieId:..)`（Device 侧异常类型，如 aivec error exception=AI 向量核异常）、`The extend info` 与 `AIC_INFO`（扩展信息与内核参数）。三类典型异常特征分别对应不同的排查方向：aivec error exception → 数组越界/内存不足/tiling 参数；数据传输失败 → 地址对齐（通常 64 字节）/结构体定义/分配接口对齐参数；task timeout → 死循环/计算量过大/资源不足。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/runtime/blob/master/docs/zh/FAQ/如何通过plog日志定位Device侧异常.md"
+    version: "runtime master（commit f7edf263，2026-09-15 抓取）：plog 五段检索关键字、字段含义与三类异常特征"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [ascendcl]
+  categories: [interrupt, precision]
+
+related_references: [runtime-async-error-triage, ascend-aicore-error-triage, ascend-log-locations, ascend-log-levels, ascend-log-classification, runtime-api-call-failures]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "Device 侧任务失败时，plog（Host 应用类日志，默认路径 `$HOME/ascend/log/[run|debug]/plog/plog-pid_*.log`）里能按五个关键字逐段取出完整证据链。**① 失败任务**：`grep \"Task run failed\" plog.log` 得到一行形如 `ProcLogicCqReport:...Task run failed, device_id=0, stream_id=2, task_id=1, sqe_type=0(ffts), errType=0x1(task exception), sqSwStatus=0`——device_id 设备号、stream_id 流号、task_id 任务号、errType=0x1 表示 task exception。**② 失败内核**：`grep \"fault kernel_name\" plog.log` 得到 `fault kernel_name=Add_<hash>_high_performance_210000000`——内核名为 `Add_<hash>`、`_high_performance` 后缀表示高性能模式、`210000000` 为 tiling key（batch 1 的 HCCL AIV 场景里 `fault kernel_name=aiv_all_reduce_*` 即同一格式）。**③ 错误码**：`grep \"retCode\"`，或结合 `Kernel task happen error` 一起取。**④ Device 侧异常详情**：`grep \"The error from device\"` 得到 `The error from device(chipId:3, dieId:0), serial number is 20, there is an aivec error exception, core id is 4, error code = 0`——chipId/dieId 定位芯片与 Die，`aivec error exception` 表示 AI 向量核异常。**⑤ 扩展信息与内核参数**：`grep \"The extend info\"`、`grep \"AIC_INFO\"`（内核参数信息，取最后几条）。三类典型异常特征与对应排查方向：`aivec error exception`（AI 向量核异常）→ 查内核数组访问越界、内存分配大小是否足够、tiling 参数计算是否正确；数据传输失败 → 查内存地址是否满足对齐要求（通常需 64 字节对齐）、数据结构定义、内存分配接口的对齐参数；`task timeout`（任务执行时间过长）→ 查内核是否死循环、任务计算量是否过大、硬件资源是否充足。默认日志信息不足时提高日志级别复现：`export ASCEND_GLOBAL_LOG_LEVEL=0`（DEBUG，最详细）并可选 `ASCEND_LOG_PRINT_TO_STDOUT=1` 把日志打到标准输出（级别口径详见 ascend-log-levels）。"
+  evidence: "如何通过plog日志定位Device侧异常.md：步骤 1『从plog日志中提取关键信息，定位失败的任务』的 grep 示例与解读——『Task run failed, device_id=0, stream_id=2, task_id=1, sqe_type=0(ffts), errType=0x1(task exception)』『fault kernel_name=Add_ee98c6628030785f610b924ab1557b31_high_performance_210000000…内核名称为 Add_ee98c6628030785f610b924ab1557b31，后缀 _high_performance 表示高性能模式，210000000 为tiling key』；步骤 3『从plog日志中提取Device侧异常的详细信息』——『The error from device(chipId:3, dieId:0), serial number is 20, there is an aivec error exception, core id is 4, error code = 0』与解读『aivec error exception: AI向量核异常』；步骤 4 的三场景特征与诊断步骤（『检查内核代码中的数组访问是否越界』『检查内存地址是否满足对齐要求（通常需要64字节对齐）』『检查内核是否存在死循环』）；步骤 5『启用详细日志』的 `ASCEND_GLOBAL_LOG_LEVEL=0` 与日志级别说明（0 DEBUG / 1 INFO / 2 WARNING / 3 ERROR）"

@@ -7,7 +7,7 @@
 #   3) 按 file 打开该词条读 **content.flow[] 全文**——摘要行不承载判据，只读摘要等于没加载；
 #   4) 一轮诊断最多加载一条流程（成本有界）。
 #
-# 生成日期：2026-09-15    流程条数：22    本文件整体加载成本：约 3649 token（选择器每次都要整读，故单文件 + 记成本）
+# 生成日期：2026-09-15    流程条数：23    本文件整体加载成本：约 3821 token（选择器每次都要整读，故单文件 + 记成本）
 #
 # 增长闸门（原则十一：按闸门不按日历）：流程条数 > 25，或本文件 > 5K token → 按 category 分片
 #   （对齐 case 层 knowledge/_index/<ns>__<category>.yaml 的做法）。当前单文件即可。
@@ -162,6 +162,15 @@ entries:
   platforms:
   - cross
   file: references/methodologies/rl-train-infer-consistency-triage.yaml
+- id: runtime-async-error-triage
+  title: Runtime 异步错误定位（异步错误会延迟传播与覆盖 → 立即同步取首错 + 遇错即停/分段标记）
+  summary: Runtime 异步接口（aclrtMemcpyAsync、Kernel Launch 等）返回成功只代表 Host 侧参数校验与任务下发成功，Device 侧执行错误会**延迟到后续某个接口调用才返回**——于是报错的接口往往不是出错的接口；遇错继续模式下后发生的错误还会**覆盖**先前的错误信息，导致拿不到首错。定位路径：下发后立即用 aclrtSynchronizeStream / acl…
+  categories:
+  - interrupt
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/runtime-async-error-triage.yaml
 - id: sentinel-precheck-data-movement
   title: sentinel 预填校验法（无 profiler 时定位搬运类精度问题的最小实验）
   summary: 验证一段搬运指令是否脏写/漏写的方法：把输出 buffer 预先填满统一 sentinel 值（如 -1），用**确定性输入**（如 `x[i]=i`、`x[i]=i·0.5`）跑一遍，再逐元素校验「该写的写了、不该写的仍是 sentinel」。它一次性暴露三类缺陷——**尾轮多写**（sentinel 被覆盖）、**尾轮漏写**（应写位置仍是 sentinel）、**位置错**（值出现在错误索…

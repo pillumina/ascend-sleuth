@@ -1,0 +1,65 @@
+id: runtime-async-error-triage
+type: methodology
+title: Runtime 异步错误定位（异步错误会延迟传播与覆盖 → 立即同步取首错 + 遇错即停/分段标记）
+summary: "Runtime 异步接口（aclrtMemcpyAsync、Kernel Launch 等）返回成功只代表 Host 侧参数校验与任务下发成功，Device 侧执行错误会**延迟到后续某个接口调用才返回**——于是报错的接口往往不是出错的接口；遇错继续模式下后发生的错误还会**覆盖**先前的错误信息，导致拿不到首错。定位路径：下发后立即用 aclrtSynchronizeStream / aclrtSynchronizeDevice 取真实错误码 → 用 aclrtPeekAtLastError（查看不重置）或 aclrtGetLastError 加 aclGetRecentErrMsg() 取详细描述 → 对长任务序列用「分段同步 / 插入 Event 标记边界 / 插入 Host 回调」把失败任务夹出来 → 用 aclrtSetStreamFailureMode(stream, ACL_STOP_ON_FAILURE) 让首个错误即停（必要时临时切遇错继续以收集更多信息，权衡是现场保护 vs 信息量）→ 结合 plog 中的失败 task/错误码/异常详情定位。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/runtime/blob/master/docs/zh/FAQ/如何获取和解读Runtime异步错误码.md"
+    version: "runtime master（commit f7edf263，2026-09-15 抓取）：异步错误的延迟传播与覆盖、四个获取手段"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/runtime/blob/master/docs/zh/FAQ/遇错即停模式下错误定位方法.md"
+    version: "runtime master（commit f7edf263）：遇错即停模式下的五种定位方法"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [ascendcl]
+  categories: [interrupt, precision]
+
+related_references: [runtime-api-call-failures, runtime-stream-event-device-semantics, runtime-plog-failure-task-fields, ascend-aicore-error-triage, ascend-log-levels, ascend-log-locations]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  flow:
+    - step: 1
+      name: 认清异步语义（报错接口 ≠ 出错接口）
+      action: Runtime 异步接口在 Host 侧下发任务后立即返回，返回值只反映 Host 侧参数校验与下发是否成功，无法报告 Device 侧执行错误；Device 侧错误会延迟到后续某个 Runtime 接口调用时返回。因此看到某个接口报错时，不要直接认定是它出错。
+      check: 报错接口之后是否还有 aclrtSynchronize* 或其他同步类调用（错误可能由它们透出）
+      when_to_use: 异常接口返回值与日志内容对不上、或失败现象偶发
+    - step: 2
+      name: 立即同步，把首错取出来
+      action: 在异步接口调用后立即调用同步接口（aclrtSynchronizeStream 针对单条流、aclrtSynchronizeDevice 针对整个 Device），让 Device 侧的实际执行结果当场返回，而不是漂移到后续调用。
+      check: "aclError e = aclrtSynchronizeStream(stream); e != ACL_RT_SUCCESS"
+      when_to_use: 刚下发完一批异步任务、需要确认它们是否真的执行成功
+    - step: 3
+      name: 用错误查询接口与详细描述接口取错误细节
+      action: 用 aclrtPeekAtLastError 查看当前线程最后一次错误（**不重置**，可多次查看）或 aclrtGetLastError 取走错误；再用 aclGetRecentErrMsg() 拿到详细错误描述文本（返回 char*，可能为 nullptr，需判空）。错误码本身的定义参考头文件 rt_error_codes.h。
+      check: "aclGetRecentErrMsg() → printf 详细描述；aclrtPeekAtLastError() 多次读取不乱序"
+      when_to_use: 已拿到错误码、需要原因描述或需要在不破坏现场的前提下反复查看
+    - step: 4
+      name: 处理遇错继续模式的错误覆盖
+      action: 遇错继续模式下，同一条 Stream 上多个任务失败时**后发生的错误会覆盖先前的错误信息**，于是拿不到首次错误。要在首个错误即停，用 aclrtSetStreamFailureMode(stream, ACL_STOP_ON_FAILURE) 给该 Stream 配置遇错即停——失败后整个 Context 下所有 Stream 的任务停止。反过来，若遇错即停导致现场信息太少难以定位，可临时切换到遇错继续模式以收集更多信息（这是信息量与现场保护之间的取舍，取完信息应切回）。
+      check: "aclrtSetStreamFailureMode(stream, ACL_STOP_ON_FAILURE)"
+      when_to_use: 需要首错 / 需要更多现场信息
+    - step: 5
+      name: 长任务序列用分段或标记把失败任务夹出来
+      action: 单条 Stream 上排了很多任务时，把长序列切成若干小段、每段后做一次同步检查；或在关键任务之间插入 Event（aclrtRecordEvent 标记边界，用 aclrtSynchronizeEvent 判进度）；或在关键任务之间插入 Host 回调函数记录执行进度——三者都能把"哪个任务失败"从不可判变成可判。
+      check: 分段同步 / aclrtRecordEvent + aclrtSynchronizeEvent / Host 回调打点
+      when_to_use: 遇错即停已开启但仍不知是哪个任务失败
+    - step: 6
+      name: 结合 plog 与详细日志定位根因
+      action: 用错误查询接口拿到的错误码回到 plog（Host 应用类日志）中检索失败任务、错误码与 Device 侧异常详情；默认日志信息不够时提高日志级别复现（应用类走 ASCEND_GLOBAL_LOG_LEVEL，0=DEBUG 输出最详细；需要直接看到标准输出可开 ASCEND_LOG_PRINT_TO_STDOUT）。日志级别与路径口径见 ascend-log-levels 与 ascend-log-locations。
+      check: "export ASCEND_GLOBAL_LOG_LEVEL=0；grep 失败 task/错误码于 plog"
+      when_to_use: 已定位到失败任务、需要确定 Device 侧根因
+    - step: 7
+      name: 兜底（错误码不足以定位时）
+      action: 错误码不足以定位时按 Device 侧异常类型分流（向量核/立方核异常、内存访问、内核逻辑错误、资源限制）——AI Core Error 的分流与收集见 ascend-aicore-error-triage；仍无法定位则保留现场（plog + 复现脚本）联系技术支持。
+      check: 是否已排除参数、版本、资源三类常见因（见 runtime-api-call-failures）
+      when_to_use: 前六步都未命中
+  verified_by_testing: false

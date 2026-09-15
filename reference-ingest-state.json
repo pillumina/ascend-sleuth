@@ -332,6 +332,523 @@
    },
    "head_sha": "8cbf54d35a6d57d643576a6fb3942d8c927bf785",
    "last_scan": "2026-09-15T15:34:35"
+  },
+  "gitcode/cann/runtime": {
+   "branch": "master",
+   "docs": {
+    "docs/en/error_code_ref/ACL-Errors/ACL-Errors.md": {
+     "decision": "pending",
+     "sha": "3aab9b325fedf91318d7355af9d07d43dae40050"
+    },
+    "docs/en/error_code_ref/ACL-Errors/EH0001-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "c911e24a33b47dcdef5a418efb134fd69d417e7c"
+    },
+    "docs/en/error_code_ref/ACL-Errors/EH0002-Invalid_Argument_Null_Pointer.md": {
+     "decision": "pending",
+     "sha": "2bd80fe0670bf7f4465a1c4d6738ba2dacfda37b"
+    },
+    "docs/en/error_code_ref/ACL-Errors/EH0003-File_Operation_Error_Invalid_Path.md": {
+     "decision": "pending",
+     "sha": "d73a8d7fcbd98ed8130f945504ff0e644ef3da95"
+    },
+    "docs/en/error_code_ref/ACL-Errors/EH0004-File_Operation_Error.md": {
+     "decision": "pending",
+     "sha": "20eae7b5a48fcda255d00059b609cdacab7b8525"
+    },
+    "docs/en/error_code_ref/ACL-Errors/EH0005-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "55f01ffa00a89163cbd6223eee8b5aa73d7308c4"
+    },
+    "docs/en/error_code_ref/ACL-Errors/EH0006-Not_Supported.md": {
+     "decision": "pending",
+     "sha": "279cb8a37bc5eb0d6a32fadbb8b0fda947d97608"
+    },
+    "docs/en/error_code_ref/ACL-Errors/EH0007-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "d755479fc5d53386b26492410c8b6fddc9e46a69"
+    },
+    "docs/en/error_code_ref/ACL-Errors/EH0008-Invalid_Argument_Null_Pointer.md": {
+     "decision": "pending",
+     "sha": "6b9e6a1a2857bf073f5e138e26f35d759da92323"
+    },
+    "docs/en/error_code_ref/ACL-Errors/EH0009-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "f49c27ffaa883452f95559864b72c8a60c8052f1"
+    },
+    "docs/en/error_code_ref/ACL-Errors/EH0010-Resource_Error_Insufficient_Host_Memory.md": {
+     "decision": "pending",
+     "sha": "a81389725f6cecee924d01cc0e5192d870cc18dd"
+    },
+    "docs/en/error_code_ref/ACL-Errors/EH0011-Not_Supported.md": {
+     "decision": "pending",
+     "sha": "b8e1111af04caa472141681b3af84f20aec2bc59"
+    },
+    "docs/en/error_code_ref/ACL-Errors/EH0012-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "53d83990b7cc1e3b97a67dd6f36c5351aac09c13"
+    },
+    "docs/en/error_code_ref/ACL-Errors/EH0013-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "94f9759f037bb8a30a4af297fb8f36c2e9ecd7ea"
+    },
+    "docs/en/error_code_ref/ACL-Errors/EH0014-Invalid_Argument_Null_Pointer.md": {
+     "decision": "pending",
+     "sha": "07d8fb1e047534edf3d97a57b56b684b9eb0952d"
+    },
+    "docs/en/error_code_ref/Dump-Errors/DUMP-Errors.md": {
+     "decision": "pending",
+     "sha": "68b79e874859b6b503ec81009587cb825cbe8f7a"
+    },
+    "docs/en/error_code_ref/Dump-Errors/EP0001-Config_Error.md": {
+     "decision": "pending",
+     "sha": "59d7ba196f1d24a2b70757e66fcef6c79613330a"
+    },
+    "docs/en/error_code_ref/Dump-Errors/EP0002-Config_Error.md": {
+     "decision": "pending",
+     "sha": "037df31867cc267d15e3bc7f0b09c0fe5b7785c6"
+    },
+    "docs/en/error_code_ref/Dump-Errors/EP0003-Config_Error.md": {
+     "decision": "pending",
+     "sha": "80c427dbc0a0de7777c15283862d177e6ca35074"
+    },
+    "docs/en/error_code_ref/Dump-Errors/EP0004-File_Operation_Error_Parse.md": {
+     "decision": "pending",
+     "sha": "c86b72ac8723c52e07e20b40706efca9daffc72f"
+    },
+    "docs/en/error_code_ref/Dump-Errors/EP0005-Config_Error.md": {
+     "decision": "pending",
+     "sha": "2cfcd0eac749786bd06aafb8f844ef4e7158376d"
+    },
+    "docs/en/error_code_ref/Dump-Errors/EP0006-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "6b7a818489a5d750ef9e7a81efbbb7d4f5aaf854"
+    },
+    "docs/en/error_code_ref/Dump-Errors/EP0007-Invalid_Argument_Null_Pointer.md": {
+     "decision": "pending",
+     "sha": "e50ddcb6394eebb1e0d31358a8c86201d242be3b"
+    },
+    "docs/en/error_code_ref/Dump-Errors/EP0008-Invalid_Argument_API_Call_Sequence.md": {
+     "decision": "pending",
+     "sha": "e91076e1b024120ca5656ee731f8cf3b6b79cca4"
+    },
+    "docs/en/error_code_ref/EZ2001-Execution_Error.md": {
+     "decision": "pending",
+     "sha": "55838dc43b15af24b0f132380817b0886e3fd95e"
+    },
+    "docs/en/error_code_ref/FE-Errors/E20001-Compilation_Error.md": {
+     "decision": "pending",
+     "sha": "e16bddba52f67b712915f5e7c128d835be3d4ba6"
+    },
+    "docs/en/error_code_ref/FE-Errors/E20002-Config_Error_Invalid_Environment_Variable.md": {
+     "decision": "pending",
+     "sha": "219044c6e366f4241fa0c31384210ba4f9c6fb04"
+    },
+    "docs/en/error_code_ref/FE-Errors/E20003-Config_Error.md": {
+     "decision": "pending",
+     "sha": "d3effa076dec1ad75a10249dcdba5c191cb22e59"
+    },
+    "docs/en/error_code_ref/FE-Errors/E20007-Compilation_Error_Execute_Fusion_Pass.md": {
+     "decision": "pending",
+     "sha": "1c6a5629fd4fbc89b55cf606cbe053efb5a32892"
+    },
+    "docs/en/error_code_ref/FE-Errors/E20101-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "01dee265f2ee070540973528d28b1a236fe5229e"
+    },
+    "docs/en/error_code_ref/FE-Errors/E20103-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "d78f86cfb4a0a8fbd01fad2524f603842f9f4ae5"
+    },
+    "docs/en/error_code_ref/FE-Errors/E21001-File_Operation_Error_Open.md": {
+     "decision": "pending",
+     "sha": "80fcab443e6e79f8abf922863abf0f2ecabfa7a3"
+    },
+    "docs/en/error_code_ref/FE-Errors/E21002-File_Operation_Error_Parse.md": {
+     "decision": "pending",
+     "sha": "86aed3cc6f5c4368f5ddaccd05a2a036fc2adc2a"
+    },
+    "docs/en/error_code_ref/FE-Errors/E22001-Compilation_Error.md": {
+     "decision": "pending",
+     "sha": "775d1764cd261d5ea73580b407c49c682bc64263"
+    },
+    "docs/en/error_code_ref/FE-Errors/FE-Errors.md": {
+     "decision": "pending",
+     "sha": "5058d8b807e1e12f30e59dfe29fc9773281cd1ad"
+    },
+    "docs/en/error_code_ref/Profiling-Errors/EK0001-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "eae7ddaf6f5bc554429973f688e72633595d185f"
+    },
+    "docs/en/error_code_ref/Profiling-Errors/EK0002-Invalid_Argument_API_Call_Sequence.md": {
+     "decision": "pending",
+     "sha": "741a69ba3d170a4e48055232e0d1dc02d4caabd0"
+    },
+    "docs/en/error_code_ref/Profiling-Errors/EK0003-Config_Error.md": {
+     "decision": "pending",
+     "sha": "878d89c4bd145834e58308aebde988bffffbfff4"
+    },
+    "docs/en/error_code_ref/Profiling-Errors/EK0004-Not_Supported_API.md": {
+     "decision": "pending",
+     "sha": "8709759e18652bd3c54ddd05866927ec190f1b3a"
+    },
+    "docs/en/error_code_ref/Profiling-Errors/EK0005-Not_Supported.md": {
+     "decision": "pending",
+     "sha": "ece05c66c12d369be6b894978b76adc6716e7cb0"
+    },
+    "docs/en/error_code_ref/Profiling-Errors/EK0006-Invalid_Argument_Null_Pointer.md": {
+     "decision": "pending",
+     "sha": "b4aaca5be4d9620a772f3b2549605d94dc048844"
+    },
+    "docs/en/error_code_ref/Profiling-Errors/EK0007-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "0115a4bedd7df88970b33027311a1896ce78efa6"
+    },
+    "docs/en/error_code_ref/Profiling-Errors/EK0201-Resource_Error_Insufficient_Host_Memory.md": {
+     "decision": "pending",
+     "sha": "7da368c040de244893bd211e711ca03c2b676676"
+    },
+    "docs/en/error_code_ref/Profiling-Errors/EK0202-Resource_Error_Insufficient_Host_Memory.md": {
+     "decision": "pending",
+     "sha": "e7765a9279a6147a833ca50bbc1be17e038485f0"
+    },
+    "docs/en/error_code_ref/Profiling-Errors/EK0203-Resource_Error.md": {
+     "decision": "pending",
+     "sha": "3e1190c0c37c39381400a861f6291eb58ce2f142"
+    },
+    "docs/en/error_code_ref/Profiling-Errors/EK0204-Resource_Error.md": {
+     "decision": "pending",
+     "sha": "1a4b38e54d71a3782fa58ee3660522e309747312"
+    },
+    "docs/en/error_code_ref/Profiling-Errors/EK9999-System_Terminated.md": {
+     "decision": "pending",
+     "sha": "be743b5fbd43bcc9a6d17a2c1015b5f1379d5449"
+    },
+    "docs/en/error_code_ref/Profiling-Errors/Profiling-Errors.md": {
+     "decision": "pending",
+     "sha": "aa437920769780ac72bc0d2d16e06c605d6a1096"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1001-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "c1d956b8713e53441923384f2a5c7b7c325edea5"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1002-Execution_Error_Stream_Synchronize_Timeout.md": {
+     "decision": "pending",
+     "sha": "05d6247629f7c84a5e878e9d87aec27b6d128c43"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1003-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "d04bdba08c96278b2dde70d542ae8636d214a883"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1004-Invalid_Argument_Null_Pointer.md": {
+     "decision": "pending",
+     "sha": "71d94bbe864e567d27c565367d3cd7e36d779ea1"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1005-Not_Supported.md": {
+     "decision": "pending",
+     "sha": "de4a5602356b7076b38d81a3059f018bc8c585c5"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1006-Not_Supported.md": {
+     "decision": "pending",
+     "sha": "c91669d3c1f81b9923dc5667e35fc28434a571fe"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1007-Resource_Error_Bind_Stream.md": {
+     "decision": "pending",
+     "sha": "618aff0fc46ee651d1bdb0ca01cc834fc5cc5bee"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1009-Execution_Error_Model.md": {
+     "decision": "pending",
+     "sha": "32221d79d39d6f7ab7d2bebeb11a11703ad0599d"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1010-Execution_Error_Invalid_Context.md": {
+     "decision": "pending",
+     "sha": "b3666b0a622dbc6932d4280bbaebac60631c2ace"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1011-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "54aaff23ffbaab6b31dcb5eefb08bd86292f773a"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1012-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "508ce7695c64ad22c0af25204aea843dcdfc3bfa"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1013-Resource_Error_Insufficient_Host_Memory.md": {
+     "decision": "pending",
+     "sha": "04e781c137176aa1c25a2d13998f6715e01e57e1"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1014-File_Operation_Error_Parse.md": {
+     "decision": "pending",
+     "sha": "e56515e910d03d9a6d49765b91e08335a4858154"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1015-Package_Error_Incorrect_Driver_Version.md": {
+     "decision": "pending",
+     "sha": "f3c7eac07767a9b5f178f0b4503711225e449a81"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1016-Not_Supported.md": {
+     "decision": "pending",
+     "sha": "3e934d17bd66fca6341542472f7a28088e83aa31"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1017-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "396430a0455d1b58157b4f061d99dcdc32454782"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1018-Invalid_Argument_API_Call_Sequence.md": {
+     "decision": "pending",
+     "sha": "089b8d977827e59beec4a4a110b74883e3596f7e"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1019-Execution_Error.md": {
+     "decision": "pending",
+     "sha": "9012e8d85a89ed7c81139454a4937bd43db70285"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1020-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "259ad26b742db6073aa5b5bacd4cee36d55665d2"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1021-Resource_Error.md": {
+     "decision": "pending",
+     "sha": "9dd27fc633b7aab5546834a35ea52aa2fbe1cd64"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1022-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "2b73fdafbcef406204fa3a1fb0a6f82e58580f6e"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1023-Resource_Error.md": {
+     "decision": "pending",
+     "sha": "ac1e4587de3762140aca7002867c152b5649f758"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE1024-Execution_Error_Stream_Synchronize_Timeout.md": {
+     "decision": "pending",
+     "sha": "21a780e4bfe9856f9820a281c1fb9a4e6654988e"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE2002-Config_Error_Invalid_Environment_Variable.md": {
+     "decision": "pending",
+     "sha": "3f2cb9b4c02470655377477f02e293ecc1c91cf3"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE4001-Model_Binding_Errors.md": {
+     "decision": "pending",
+     "sha": "505710fe46bbd99c5c42c5da93b1f3575920c897"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE4002-Model_Unbinding_Errors.md": {
+     "decision": "pending",
+     "sha": "c8449884f16ad45007cf8e877d82eef581b05ee8"
+    },
+    "docs/en/error_code_ref/RTS-Errors/EE4004-Profiling_Enable_Errors.md": {
+     "decision": "pending",
+     "sha": "1a81a99b2fe411fd542d65a5ba949bf6a70251bb"
+    },
+    "docs/en/error_code_ref/RTS-Errors/RTS-Errors.md": {
+     "decision": "pending",
+     "sha": "fa0f1a16235f003a9d67b1705d55ce385d462d61"
+    },
+    "docs/en/error_code_ref/RTS-Errors/WE0001-Not_Supported.md": {
+     "decision": "pending",
+     "sha": "4ff958082577941eb02bd959b9eb44e9de5421f8"
+    },
+    "docs/en/error_code_ref/TEfusion-Errors/E40001-Config_Error_Invalid_Environment_Variable.md": {
+     "decision": "pending",
+     "sha": "b29708c9608a4bed95b177fe10509095de993ab4"
+    },
+    "docs/en/error_code_ref/TEfusion-Errors/E40002-Environment_Error_Incorrect_Python_Version.md": {
+     "decision": "pending",
+     "sha": "2fc740a832d937133fce29c1e9f05997b4b1a5c5"
+    },
+    "docs/en/error_code_ref/TEfusion-Errors/E40003-File_Operation_Error_Open.md": {
+     "decision": "pending",
+     "sha": "fbb92b4a1d1199c14085f29a687b43bb2dd01a86"
+    },
+    "docs/en/error_code_ref/TEfusion-Errors/E40020-Environment_Error_Import_Python_Module_Failed.md": {
+     "decision": "pending",
+     "sha": "db32d059772a064d2f4b07b736f06c5ff5b67ba0"
+    },
+    "docs/en/error_code_ref/TEfusion-Errors/E40021-Compilation_Error.md": {
+     "decision": "pending",
+     "sha": "e8f1a55ac8683c0d61517250776de5f1cc5e19fe"
+    },
+    "docs/en/error_code_ref/TEfusion-Errors/E40022-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "7c7b191e2c8d3296d45f0b7c44bc1fca6fee5978"
+    },
+    "docs/en/error_code_ref/TEfusion-Errors/E40023-File_Operation_Error_Invalid_Path.md": {
+     "decision": "pending",
+     "sha": "e2d64d30b723fcf59ce17a4c0695803db83d15d8"
+    },
+    "docs/en/error_code_ref/TEfusion-Errors/E40024-Environment_Error_Call_Python_Function_Failed.md": {
+     "decision": "pending",
+     "sha": "8c510d7eaa9f1cf9bef1e37c6f56a0bda7a31b0e"
+    },
+    "docs/en/error_code_ref/TEfusion-Errors/TEFusion-Errors.md": {
+     "decision": "pending",
+     "sha": "dfbd3dd93ce1d31aac0e6063fe9ebb4520b67d73"
+    },
+    "docs/en/error_code_ref/TEfusion-Errors/W40010-Config_Error_Invalid_Environment_Variable.md": {
+     "decision": "pending",
+     "sha": "9c40daafef0df59ddc29498d9c867286124b7f27"
+    },
+    "docs/en/error_code_ref/TEfusion-Errors/W40011-Directory_Operation_Error_Create_Failed.md": {
+     "decision": "pending",
+     "sha": "839382fbb1a496fa19422fe2ac9330955f365e9a"
+    },
+    "docs/en/error_code_ref/TEfusion-Errors/W40012-Invalid_Argument.md": {
+     "decision": "pending",
+     "sha": "d652d5fe427d49083fcbd8d3b5d03f518da9c7f2"
+    },
+    "docs/zh/FAQ/ACLGraph捕获过程中任务提交限制.md": {
+     "at": "2026-09-15T15:48:18",
+     "decision": "harvested",
+     "refs": [
+      "runtime-api-call-failures"
+     ],
+     "sha": "f53e6acf7d74c6e43dff20f340ef28881fd61b9b"
+    },
+    "docs/zh/FAQ/EE1023资源不足问题.md": {
+     "at": "2026-09-15T15:48:18",
+     "decision": "harvested",
+     "refs": [
+      "runtime-api-call-failures"
+     ],
+     "sha": "4fcfa6df9c8b06a9e4f51f50de779caf5c37fd60"
+    },
+    "docs/zh/FAQ/README.md": {
+     "at": "2026-09-15T15:48:19",
+     "decision": "skipped",
+     "note": "FAQ 索引页，正文在子页",
+     "sha": "eab4a8b135b72537e72f873348a595e9c9c300b4"
+    },
+    "docs/zh/FAQ/Runtime版本与CANN版本不匹配导致的问题.md": {
+     "at": "2026-09-15T15:48:18",
+     "decision": "harvested",
+     "refs": [
+      "runtime-api-call-failures"
+     ],
+     "sha": "474963d80ca3e369b2c371acb8a45e35f47d41e3"
+    },
+    "docs/zh/FAQ/Stream同步与Event同步的区别与选择.md": {
+     "at": "2026-09-15T15:48:18",
+     "decision": "harvested",
+     "refs": [
+      "runtime-stream-event-device-semantics"
+     ],
+     "sha": "c9af512aff6086a6c7733b1101047d1ffe7ecce0"
+    },
+    "docs/zh/FAQ/aclInit初始化失败常见原因排查.md": {
+     "at": "2026-09-15T15:48:18",
+     "decision": "harvested",
+     "refs": [
+      "runtime-api-call-failures"
+     ],
+     "sha": "ff7fd36ffd60e568bbc5cff178802f9fc0448af4"
+    },
+    "docs/zh/FAQ/aclrtMalloc内存申请失败常见原因.md": {
+     "at": "2026-09-15T15:48:18",
+     "decision": "harvested",
+     "refs": [
+      "runtime-api-call-failures",
+      "runtime-memory-allocation-strategies"
+     ],
+     "sha": "617e026b52de41ffa791811a3a11ef616e3ead78"
+    },
+    "docs/zh/FAQ/aclrtMemcpyAsync在错误的Stream上下发失败.md": {
+     "at": "2026-09-15T15:48:19",
+     "decision": "harvested",
+     "refs": [
+      "runtime-api-call-failures",
+      "runtime-stream-event-device-semantics"
+     ],
+     "sha": "7fa5efa1b8ee6f294311a4bbe22fd1eea030bc4b"
+    },
+    "docs/zh/FAQ/aclrtSetDevice调用失败.md": {
+     "at": "2026-09-15T15:48:18",
+     "decision": "harvested",
+     "refs": [
+      "runtime-api-call-failures"
+     ],
+     "sha": "c18b57869184dd46f91b15dcf89a95a5043571d3"
+    },
+    "docs/zh/FAQ/多Device场景下Stream跨Device下发失败.md": {
+     "at": "2026-09-15T15:48:18",
+     "decision": "harvested",
+     "refs": [
+      "runtime-stream-event-device-semantics"
+     ],
+     "sha": "f3dad07a7675824a51f21c8252864ea7f4f7499e"
+    },
+    "docs/zh/FAQ/如何理解默认Device和默认Stream机制.md": {
+     "at": "2026-09-15T15:48:18",
+     "decision": "harvested",
+     "refs": [
+      "runtime-stream-event-device-semantics"
+     ],
+     "sha": "257505b4958ff8a4be8f5504130737d2ed376e29"
+    },
+    "docs/zh/FAQ/如何获取和解读Runtime异步错误码.md": {
+     "at": "2026-09-15T15:48:19",
+     "decision": "harvested",
+     "refs": [
+      "runtime-async-error-triage"
+     ],
+     "sha": "2a3f9f7b40352250ad611276035e9c824d11355e"
+    },
+    "docs/zh/FAQ/如何选择合适的内存分配策略.md": {
+     "at": "2026-09-15T15:48:19",
+     "decision": "harvested",
+     "refs": [
+      "runtime-memory-allocation-strategies"
+     ],
+     "sha": "564c46f17276928f18b985974ad6bd0930324d96"
+    },
+    "docs/zh/FAQ/如何通过plog日志定位Device侧异常.md": {
+     "at": "2026-09-15T15:48:19",
+     "decision": "harvested",
+     "refs": [
+      "runtime-plog-failure-task-fields",
+      "runtime-async-error-triage"
+     ],
+     "sha": "4da17047b9b92e0545e61a1514fa88a2004e3de3"
+    },
+    "docs/zh/FAQ/算子执行输出全0的常见原因排查.md": {
+     "at": "2026-09-15T15:48:18",
+     "decision": "harvested",
+     "refs": [
+      "runtime-api-call-failures"
+     ],
+     "sha": "1192b7edde9810a18fea956163cb5f7ed09682ee"
+    },
+    "docs/zh/FAQ/跨DeviceP2P数据交互配置失败.md": {
+     "at": "2026-09-15T15:48:18",
+     "decision": "harvested",
+     "refs": [
+      "runtime-api-call-failures"
+     ],
+     "sha": "752b57dfd294706f59f276ccf8be749db16b8f18"
+    },
+    "docs/zh/FAQ/进程间IPC内存共享的页表对齐要求.md": {
+     "at": "2026-09-15T15:48:19",
+     "decision": "harvested",
+     "refs": [
+      "runtime-memory-allocation-strategies",
+      "runtime-api-call-failures"
+     ],
+     "sha": "4e6faa41b990cdde19f187cdc74867bb154dc4b9"
+    },
+    "docs/zh/FAQ/遇错即停模式下错误定位方法.md": {
+     "at": "2026-09-15T15:48:19",
+     "decision": "harvested",
+     "refs": [
+      "runtime-async-error-triage"
+     ],
+     "sha": "f27d2ba37477d15d27eec7077080ebad85deaf9e"
+    },
+    "docs/zh/FAQ/首次aclrtSetDevice耗时长.md": {
+     "at": "2026-09-15T15:48:19",
+     "decision": "harvested",
+     "refs": [
+      "runtime-first-setdevice-latency"
+     ],
+     "sha": "1bc4424dafc8b9f7f205454debf6df806fbf87a6"
+    }
+   },
+   "head_sha": "f7edf263d94bf3499774e8ee96aa391ddc78e823",
+   "last_scan": "2026-09-15T15:44:21"
   }
  },
  "version": 1

@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-15    词条数：92
+# 生成日期：2026-09-15    词条数：96
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -812,6 +812,51 @@ entries:
     platforms:
     - A5-950
     categories:
+    - performance
+    - precision
+- id: runtime-first-setdevice-latency
+  type: software-fact
+  title: 首次 aclrtSetDevice 秒级时延的构成（算子包搬移 + 每进程独立 aicpu_scheduler + 并发竞争）
+  summary: 业务进程**首次**调用 aclrtSetDevice 有明显秒级时延、后续调用降到毫秒级，成因有三条且性质不同：①**算子包搬移**——首次调用时 Runtime 把业务所需算子包从
+    Host 侧传输并部署到 Device 侧，耗时与算子包大小正相关；搬移成功后结果缓存在 Device 侧，**版本一致的后续进程不重…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - performance
+- id: runtime-memory-allocation-strategies
+  type: software-fact
+  title: Runtime 内存分配策略与页类型（4K/2M/1G、≤1M 时 HUGE_FIRST 退化普通页、P2P 后缀策略、IPC 页表对齐）
+  summary: 选 aclrtMalloc 策略时的四条硬事实：①页类型——普通页 4K 适合小块/短生命周期/数量多的申请（减少对齐浪费），2M 大页适合大块/长期驻留/频繁访问（减少页表项、扩大
+    TLB 覆盖），1G 大页适合超大块、长期驻留、性能敏感场景（部分产品支持）；②策略语义——`ACL_MEM_MALLOC_HUGE_F…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - performance
+    - interrupt
+- id: runtime-plog-failure-task-fields
+  type: software-fact
+  title: 从 plog 提取失败 task / 内核 / Device 异常的检索关键字与字段含义（Task run failed、fault kernel_name、The error from
+    device）
+  summary: Device 侧任务失败的证据链在 plog 里按五个关键字逐段取出：`Task run failed`（失败任务：device_id/stream_id/task_id/sqe_type/errType/sqSwStatus）、`fault
+    kernel_name`（失败内核名 + `_high_performanc…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - interrupt
+    - precision
+- id: runtime-stream-event-device-semantics
+  type: software-fact
+  title: Runtime 的 Stream / Event / Device 语义（Device 归属、默认 Device 与默认 Stream 的创建销毁时机、同步范围与传参规则）
+  summary: 三条决定定位方向的语义：①**Device 归属**——Stream 与 Event 在创建时绑定 Device，只能在该 Device 上使用，Event 只能关联到与其同 Device
+    的 Stream；跨 Device 协调要用 Event 同步，不能跨 Device 复用 Stream（否则 aclrtMemc…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - interrupt
     - performance
     - precision
 - id: scatter-write-conflict
