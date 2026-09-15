@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-15    词条数：116
+# 生成日期：2026-09-15    词条数：119
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -444,6 +444,18 @@ entries:
     - cross
     categories:
     - interrupt
+- id: atb-dispatch-bound-and-runtime-optimizations
+  type: software-fact
+  title: ATB 算子下发链与 Host/Device Bound 判据（下发六步、Tiling 影响可达 10×、Tiling Cache 与 Setup 复用、Workspace 省 50%）
+  summary: 判断推理性能瓶颈在 Host 还是 Device，以及 ATB 为此做什么。**两种瓶颈的判据**：Host Bound —— Host 下发较慢、Device 执行较快，**在 profiling
+    图上表现为 Stream 上的 Kernel 之间存在空泡**，此时设备算力未被充分利用、应优化 Host 端下发；De…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - cross
+    categories:
+    - performance
 - id: atc-precision-mode-and-switches
   type: software-fact
   title: ATC 精度模式与两个默认开启的优化开关（默认 fp16 / allow_fp32_to_fp16 / keep_dtype 例外清单 / 数据缓存优化 / 融合规则）
@@ -679,6 +691,16 @@ entries:
     categories:
     - interrupt
     - precision
+- id: msopprof
+  type: tool
+  title: msopprof 算子级性能采集（流水图 + 带宽类 CSV 指标，与 TTK 配合须关 Profiling 与预热）
+  summary: MindStudio 的**算子级性能采集与分析工具**：采集算子执行过程中的**硬件流水、带宽利用率**等细粒度数据，生成流水图 `visualize_data.bin`（供 MindStudio
+    Insight 查看）与 `L2Cache.csv`、`MemoryL0.csv` 等性能数据文件。**与 TTK 配合…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - performance
 - id: msprobe-accuracy-checker
   type: tool
   title: msprobe acc_check——离线精度预检（API 达标判定链路与阈值）
@@ -1074,6 +1096,21 @@ entries:
     - A5-950
     categories:
     - precision
+- id: shmem-usage-limits-and-troubleshooting
+  type: software-fact
+  title: SHMEM 使用限制与常见问题（对称内存分配、UB Buffer 预留、A2 16 卡跨组禁 MTE、端口桥、QP 建链超时、卡间同步须在 AIV）
+  summary: SHMEM（多机多卡内存通信库）的七条使用限制与常见问题的判据。**限制**：①GM2GM 高阶 RMA 用默认 buffer **不支持并发**（会覆盖数据，需并发就用低阶接口）；②`barrier`
+    当前**必须在 Mix Kernel（含 mmad 与 GM2UB/UB2GM 操作）中使用**；③RDMA 高阶接…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - A5-950
+    - cross
+    categories:
+    - interrupt
+    - precision
+    - performance
 - id: simd-vf-programming-constraints
   type: software-fact
   title: SIMD Vector Function 约束集（入参白名单 / 硬循环退化 / Aux Scalar 仅整数 / UnalignReg ≤4）
