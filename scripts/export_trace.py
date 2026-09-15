@@ -39,6 +39,7 @@ import argparse
 import errno
 import json
 import re
+import shutil
 import socket
 import sys
 import zipfile
@@ -574,6 +575,21 @@ def main() -> int:
     # ---- 产出目录 + 交接单 ----
     out_dir = Path(args.out).resolve() if args.out else (traces_root / "exports")
     tree = out_dir / sid
+    # **重复导出要先把上一次的树清掉**。不清的后果实测过：上家撤掉的文件（比如发现贴错了、要撤的证据）
+    # 会留在树里继续被 zip 收走，而交接单清单里没有它——包自相矛盾，而且等于**把已经决定不发的内容
+    # 又发了一遍**（这一条比"清单对不上"严重）。
+    # 只清**认得出来的**上一次产出（含 `<sid>.yaml` 或 `handoff/<sid>.yaml`）；认不出来就拒绝——
+    # `--out` 可以指到任何地方，不能对来路不明的目录 rmtree。
+    if tree.exists():
+        ours = (tree / f"{sid}.yaml").is_file() or (tree / "handoff" / f"{sid}.yaml").is_file()
+        if not ours:
+            return fail(f"{tree} 已存在，但它不像本脚本上一次的产出（既没有 {sid}.yaml，"
+                        f"也没有 handoff/{sid}.yaml）——不删来路不明的目录；换 --out 或手工处理",
+                        3, args.json)
+        try:
+            shutil.rmtree(tree)
+        except OSError as e:
+            return fail(f"清理上一次的产出目录失败（{tree}）：{e}{write_hint(e)}", 3, args.json)
     try:
         tree.mkdir(parents=True, exist_ok=True)
         (tree / "handoff").mkdir(exist_ok=True)
@@ -627,6 +643,15 @@ def main() -> int:
         manifest_path.write_text(m_text, encoding="utf-8")
         manifest["contents"]["total_bytes"] = sum(
             f["bytes"] or 0 for f in manifest["contents"]["files"])
+        # 内部一致性：树里实际有什么，清单就得写什么（反之亦然）。不一致就**当场失败**，
+        # 不发一个自相矛盾的包出去——接收侧的校验只看"清单列了但包里没有"，看不见"包里有但没列"。
+        on_disk = sorted(p.relative_to(tree).as_posix() for p in tree.rglob("*") if p.is_file())
+        listed_now = sorted(f["path"] for f in manifest["contents"]["files"])
+        if on_disk != listed_now:
+            extra = [x for x in on_disk if x not in listed_now]
+            lack = [x for x in listed_now if x not in on_disk]
+            return fail(f"导出内部不一致（清单 vs 树）：包里多出 {extra}；清单里的 {lack} 没落盘",
+                        3, args.json)
     except OSError as e:
         return fail(f"写交接包失败（{tree}）：{e}{write_hint(e)}", 3, args.json)
 

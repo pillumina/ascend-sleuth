@@ -369,6 +369,42 @@ def main() -> int:
               and not [m for m in odd_missing if m.endswith(".yaml")],
               json.dumps(odd_missing, ensure_ascii=False))
 
+        # ---------- ⑫ 重复导出：撤掉的文件不能留在包里 ----------
+        # 不清旧树的后果不只是"清单对不上"：上家撤掉的内容（比如发现贴错了要撤的证据）会继续随包
+        # 发出去，而清单里不列它——等于把已经决定不发的内容又发了一遍。
+        rx_sid = "reexport-001"
+        rx = make_fixture_root(tmp, rx_sid, kb_rev=rev_a, big=True)
+        rout = tmp / "rx-out"
+        code, _d1, raw = run_json(["scripts/export_trace.py", rx_sid, "--traces-root", str(rx),
+                                   "--out", str(rout), "--json"])
+        check("重复导出：首次导出成功", code == 0)
+        with __import__("zipfile").ZipFile(rout / f"handoff-{rx_sid}.zip") as z:
+            before = sorted(n for n in z.namelist() if not n.endswith("/"))
+        check("重复导出：首次包里含那个大证据文件", any("big-plog.txt" in n for n in before), str(before))
+        # 上家撤掉它（源里删掉），再导一次
+        (rx / "evidence" / rx_sid / "big-plog.txt").unlink()
+        code, _d2, raw = run_json(["scripts/export_trace.py", rx_sid, "--traces-root", str(rx),
+                                   "--out", str(rout), "--json"])
+        check("重复导出：撤掉文件后再导成功", code == 0, raw.strip()[-300:])
+        with __import__("zipfile").ZipFile(rout / f"handoff-{rx_sid}.zip") as z:
+            after = sorted(n for n in z.namelist() if not n.endswith("/"))
+        tree_now = sorted(str(x.relative_to(rout / rx_sid)).replace("\\", "/")
+                          for x in (rout / rx_sid).rglob("*") if x.is_file())
+        man_now = load_text((rout / rx_sid / "handoff" / f"{rx_sid}.yaml").read_text(encoding="utf-8"))
+        listed_now = sorted(f["path"] for f in man_now["contents"]["files"])
+        check("重复导出：撤掉的文件不再出现在 zip 里（否则等于把决定不发的内容又发一遍）",
+              not any("big-plog.txt" in n for n in after), str(after))
+        check("重复导出：清单 == 树 == zip（三方一致）",
+              listed_now == tree_now == after, json.dumps({"listed": listed_now, "tree": tree_now, "zip": after}, ensure_ascii=False)[:400])
+        # 拒绝清理来路不明的目录（--out 可以指到任何地方，不能对它 rmtree）
+        foreign = tmp / "rx-foreign" / rx_sid
+        foreign.mkdir(parents=True, exist_ok=True)
+        (foreign / "keepme.txt").write_text("别删我", encoding="utf-8")
+        code, _d3, _raw = run_json(["scripts/export_trace.py", rx_sid, "--traces-root", str(rx),
+                                    "--out", str(tmp / "rx-foreign"), "--json"])
+        check("重复导出：产出目录已存在但不像上次产出时拒收（不 rmtree 来路不明的目录）",
+              code == 3 and (foreign / "keepme.txt").is_file(), f"exit={code}")
+
         # ---------- ⑦ 本机真 trace 的端到端 ----------
         if not args.fixtures_only:
             print("\n[交接包 · 本机真 trace（traces/ 是 gitignore 的运行时件，CI 检出里没有）]")
