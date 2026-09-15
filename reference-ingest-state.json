@@ -4,31 +4,49 @@
    "branch": "master",
    "docs": {
     "docs/zh/app-dev/00_acl_cpp_dev.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "b04710eccf5188674f0260a2ed01c816f2463ab6"
     },
     "docs/zh/app-dev/ACL_Graph.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "3b1f2d1911110f5b8147a95916f80cd622a33b8b"
     },
     "docs/zh/app-dev/AIPP_concepts_constraints.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:10",
+     "decision": "harvested",
+     "refs": [
+      "om-dynamic-shape-and-aipp-constraints"
+     ],
      "sha": "00c970c3ad68bd3245e4c6f09124f8e31c6ba068"
     },
     "docs/zh/app-dev/AMCT_compress_model.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "2bcd044804ede94fa237e770a688ce6c991eb9ed"
     },
     "docs/zh/app-dev/AOE_tune_model.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:10",
+     "decision": "harvested",
+     "refs": [
+      "aoe-model-tuning"
+     ],
      "sha": "8d6b1a10b187f6e419a94b114545ae1c3a2cea2f"
     },
     "docs/zh/app-dev/CANN_built_in_operators.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "9d957f385461e6854c0fc5edc080485820002484"
     },
     "docs/zh/app-dev/CANN_custom_operators.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "bd6e76f4ada9ffec14d69652f10c0da6bebe9dce"
     },
     "docs/zh/app-dev/Camera_video_obtaining_and_processing.md": {
@@ -218,7 +236,9 @@
      "sha": "f84ea5b564e26a40b28989b71a36affe8464cae9"
     },
     "docs/zh/app-dev/FAQ_cases.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "b05ecab424052c0516e34907f51febec801aa1ee"
     },
     "docs/zh/app-dev/NVR_video_decoding_processing_displaying.md": {
@@ -242,7 +262,9 @@
      "sha": "d65e5e6fb7fa6b8cc317ae662a3b58dcb9a8fb4c"
     },
     "docs/zh/app-dev/app_debug.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "29f45dd227be360aa5aa47ca2df318cee81a9552"
     },
     "docs/zh/app-dev/appendix.md": {
@@ -252,7 +274,9 @@
      "sha": "83a54825aeb3f44311c78b19e45b497e0e0fbee5"
     },
     "docs/zh/app-dev/async_model_inference.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "a088f88de7f934784b1818805e58fea53dac29b8"
     },
     "docs/zh/app-dev/audio_obtaining_and_playback.md": {
@@ -262,7 +286,9 @@
      "sha": "2ebda251eb5541b8197d9215785f9f0a09ace525"
     },
     "docs/zh/app-dev/check_configuration.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "4f06d3b04d78647c4dc01bbf11745bf3d4e38839"
     },
     "docs/zh/app-dev/collection_parsing_performance_data.md": {
@@ -283,7 +309,11 @@
      "sha": "81f6f781c037bdc45d8ac35be84d4bcc81892328"
     },
     "docs/zh/app-dev/constraints.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:10",
+     "decision": "harvested",
+     "refs": [
+      "ascend-app-process-and-resource-constraints"
+     ],
      "sha": "d69160a8dfeda52f9d2c2694c5fc6ff7db410f89"
     },
     "docs/zh/app-dev/dedicated_accelerators.md": {
@@ -315,23 +345,39 @@
      "sha": "064fdee8ec4a73506bef10567ce775cdab186567"
     },
     "docs/zh/app-dev/dynamic_batch_resolution_dims.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:10",
+     "decision": "harvested",
+     "refs": [
+      "om-dynamic-shape-and-aipp-constraints"
+     ],
      "sha": "048b7446bbc4ee1516496b24a3f3e979ea3a5cf7"
     },
     "docs/zh/app-dev/dynamic_shape_concepts_constraints.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:10",
+     "decision": "harvested",
+     "refs": [
+      "om-dynamic-shape-and-aipp-constraints"
+     ],
      "sha": "233860ef9de58eae7c326cf68d758f9be65ff1ff"
     },
     "docs/zh/app-dev/dynamic_shape_model_inference.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "7868ba583c21229e1beb7ee0748762ed8bbadece"
     },
     "docs/zh/app-dev/dynamic_shape_range.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:10",
+     "decision": "harvested",
+     "refs": [
+      "om-dynamic-shape-and-aipp-constraints"
+     ],
      "sha": "a4aef86125c39a1a0b5920adf39f3a0d1afe5604"
     },
     "docs/zh/app-dev/environment_preparation.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "68b0f71ec2dbcf31d9fa2ffa5861005f6ceb8cde"
     },
     "docs/zh/app-dev/feature_vector_search.md": {
@@ -341,19 +387,27 @@
      "sha": "035ead214d613025f049aca81baff234e61560d9"
     },
     "docs/zh/app-dev/functions_supported_status.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "1e42a7cc6dbe97e23964e5504af6bd31dc7c1967"
     },
     "docs/zh/app-dev/getting_started_sample.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "556bb9bd7a75a9d19619143e8c7adee9afa54084"
     },
     "docs/zh/app-dev/hccl.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "d69d5609896fd3d46bb358691792ca4a6ef60d22"
     },
     "docs/zh/app-dev/header_and_library_files_desc.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "40adb63844d58e0f7240b909a9188d50b903e4fe"
     },
     "docs/zh/app-dev/high_performance_programming_suggestions.md": {
@@ -363,7 +417,9 @@
      "sha": "276e635f667b8eb9ccd8ac610beb6fdb05f3ac98"
     },
     "docs/zh/app-dev/hixl.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "c90d58b08da4f8d8a1bf2c7d912c8c106121d79d"
     },
     "docs/zh/app-dev/identify_quantization_precision_loss_layers.md": {
@@ -383,19 +439,27 @@
      "sha": "86eea9bb61b6716798d765666815c5560f0aec31"
     },
     "docs/zh/app-dev/model_build.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "2c0ea8ecc83e30cbff6ebe0d1d20239ca89a1fbb"
     },
     "docs/zh/app-dev/model_execute.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "868f5848f0e586f3c84117202aa25f779c1beeab"
     },
     "docs/zh/app-dev/model_inference.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "4f48f1421b03a916c2ca7c5b8b9e06359e7da08c"
     },
     "docs/zh/app-dev/model_inference_overview.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "d4cfa3388af8bb2a81cb108f9527796c52e31dd9"
     },
     "docs/zh/app-dev/model_inference_performance_optimization.md": {
@@ -427,11 +491,15 @@
      "sha": "b95c8ebd0d0c72045f2f7b4df4e6e81c0aee45e9"
     },
     "docs/zh/app-dev/model_load.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "4d77524338d021b5020330d89e3ad9ea869a4c5f"
     },
     "docs/zh/app-dev/model_unload.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "268d313e3a6068bc78b28342451b918bf66fe0a7"
     },
     "docs/zh/app-dev/multi_dynamic_AIPP_inputs.md": {
@@ -441,7 +509,9 @@
      "sha": "61c5be9f2aad6a54bc08e44d828b48cffb16042e"
     },
     "docs/zh/app-dev/multi_model_inference.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "5d4ae948108bcbb611c4190711abf816a687c224"
     },
     "docs/zh/app-dev/operator_precision_issues.md": {
@@ -497,11 +567,15 @@
      "sha": "656d74d49d8674e64c361631a5e94ff173051b18"
     },
     "docs/zh/app-dev/queue_model_inference.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "900d59436a0dd54aff6f956a0b6d23fb695e92f8"
     },
     "docs/zh/app-dev/quickstart.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "b8be99be81dd5844df3a3b27dae588b941b16ad4"
     },
     "docs/zh/app-dev/set_skip_layers.md": {
@@ -519,19 +593,27 @@
      "sha": "defd1de35b71275bfe5aba0c8b90a5237fa65319"
     },
     "docs/zh/app-dev/single_operator_invoke.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "c511402cc4cc77b53754a1fc6f49fe506b6e4e42"
     },
     "docs/zh/app-dev/static_shape_model_inference.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "ff3f1be3ad1840f9af44bc5baefd39623fb33b99"
     },
     "docs/zh/app-dev/synchronization_management.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "d8b94bcc843868fcb31d1805e5cf11b1e79c12de"
     },
     "docs/zh/app-dev/system_tasks_random.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "ad681cd3ff652f3cd87360907024a81b55964cdd"
     },
     "docs/zh/app-dev/using_DVPP_V1_APIs.md": {
@@ -559,19 +641,27 @@
      "sha": "95db968e48befcafbb8ba1dcca334ec1bca86ce8"
     },
     "docs/zh/app-dev/view_logs.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "047d592fe98f42f2e234247449f9414153507caa"
     },
     "docs/zh/app-dev/weight_update.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "存根页（仅标题或一句话+外链，正文在官方文档/子页）",
      "sha": "5e1cb63d310c3cdb61c8a2969cf9af0a57f9af77"
     },
     "docs/zh/app-dev/weight_update_system_manages_memory.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "c683f7cde3efaa19ab5da873cda5d58a5c5add2c"
     },
     "docs/zh/app-dev/weight_update_user_manages_memory.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:48:11",
+     "decision": "skipped",
+     "note": "应用开发接口面（模型加载/执行/卸载、多模型与队列推理、异步推理、权重更新、头文件与库文件说明、内置算子清单、开发入门），无诊断判据；与训练/推理的中断·精度·性能定位弱相关",
      "sha": "08f9dcf91ed08f886170f2890d15ea5953b55887"
     },
     "docs/zh/env-vars/ACLNN_CACHE_LIMIT.md": {
@@ -623,7 +713,7 @@
      "sha": "7e6d969b58047e5505f17edabd9a38ff965a74bd"
     },
     "docs/zh/env-vars/OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE.md": {
-     "at": "2026-09-15T16:45:04",
+     "at": "2026-09-15T16:48:21",
      "decision": "pending",
      "note": "已评估：docs 仓 env-vars 面 10 个变量中唯一未被既有表覆盖的一个（PCIe 直访 Host 内存检查开关）；单变量追加不值得单独开一次 kb/high-risk 修订，待与后续 env 增量合批追加",
      "sha": "82c60ac4da232f53c174babba69e700aaea4297f"

@@ -1,0 +1,40 @@
+id: om-dynamic-shape-and-aipp-constraints
+type: software-fact
+title: 动态 Shape 输入与 AIPP 的组合约束（四种设置方式只能选一、AIPP 与动态维度互斥、内存按最大档申请、size=0 即动态）
+summary: "动态 Shape 推理（动态 Batch / 动态分辨率 / 动态维度 / Shape 范围）与 AIPP 组合时的硬约束：①**同一模型四种动态设置方式只能选一种**——aclmdlSetDatasetTensorDesc 设 Shape 范围、aclmdlSetDynamicBatchSize 设动态 Batch、aclmdlSetDynamicHWSize 设动态分辨率、aclmdlSetInputDynamicDims 设动态维度维度值；②**AIPP（静态或动态）与动态维度（ND 格式）不能同时使用**；③**动态 AIPP + 动态 Batch**：aclmdlCreateAIPP 的 batchSize 要设为**最大 batch size**，需动态 AIPP 处理的 data 节点输入内存按**最大 Batch** 申请；④**动态 AIPP + 动态分辨率**：若开了抠图/缩放/补边则不能与动态分辨率同用；未开时 aclmdlSetAIPPSrcImageSize 的宽高必须与 aclmdlSetDynamicHWSize 的宽高相等且都取模型转换时动态分辨率**最大档位**，输入内存按最大分辨率申请；⑤**静态 AIPP + 动态分辨率**：ATC insert_op_conf 的 AIPP 配置不能开 Crop/Padding，且 src_image_size_w/h 需设为 0；⑥**动态 AIPP + 动态 Shape 范围**：动态 AIPP 的输出图片宽高要在所设 Shape 范围内。判据与阈值：aclmdlGetInputSizeByIndex / aclmdlGetOutputSizeByIndex 返回 **size 为 0 表示该输入/输出 Shape 是动态的**（可预估较大内存，或让系统内部申请输出内存，建议用 aclmdlGetOutputSizeByIndex 取到大小再申请以确保足够）。模型侧参数：动态 Batch 用 ATC `--dynamic_batch_size`、动态分辨率用 `--dynamic_image_size`、动态维度用 `--dynamic_dims`、Shape 范围用 `--input_shape`。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/dynamic_shape_concepts_constraints.md"
+    version: "cann/docs master（commit 38e6d3315a2c，2026-09-15 抓取）：动态 Batch/分辨率/维度概念与组合使用约束"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/AIPP_concepts_constraints.md"
+    version: "cann/docs master（commit 38e6d3315a2c）：静态/动态 AIPP 语义与使用约束"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/dynamic_shape_range.md"
+    version: "cann/docs master（commit 38e6d3315a2c）：设置 Shape 范围的关键接口流程与 size=0 判据"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/dynamic_batch_resolution_dims.md"
+    version: "cann/docs master（commit 38e6d3315a2c）：动态 Batch/分辨率/维度的接口调用流程与 ATC 侧配套参数"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [atc, ascendcl]
+  categories: [interrupt, precision, performance]
+
+related_references: [ascend-om-infer-precision-triage, atc-precision-mode-and-switches, runtime-api-call-failures, runtime-memory-allocation-strategies, ascend-app-process-and-resource-constraints]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "**① 四种动态设置方式互斥（同一模型只能选一种）**：调用 aclmdlSetDatasetTensorDesc 设置 Shape 范围、调用 aclmdlSetDynamicBatchSize 设置动态 Batch、调用 aclmdlSetDynamicHWSize 设置动态分辨率、调用 aclmdlSetInputDynamicDims 设置动态维度的维度值——四者**只能选择其中一种**。**② AIPP 与动态维度互斥**：对同一个模型执行推理时，**AIPP（包括静态 AIPP 和动态 AIPP）与动态维度（ND 格式）不能同时使用**。**③ 动态 AIPP + 动态 Batch**：调用 aclmdlCreateAIPP 设置 batchSize 时要**设置为最大 batch size**；模型中需要进行动态 AIPP 处理的 data 节点，其对应的**输入内存大小需按最大 Batch 申请**。**④ 动态 AIPP + 动态分辨率**：若设置动态 AIPP 参数时开启了抠图/缩放/补边功能，则**不能与动态分辨率同时使用**；若未开启这三项，则与动态分辨率同用时必须保证 aclmdlSetAIPPSrcImageSize 设置的宽高与 aclmdlSetDynamicHWSize 设置的宽高**相等**，且**都要设置成模型转换时动态分辨率最大档位的宽、高**；同时该 data 节点的**输入内存按最大分辨率（宽、高）申请**。**⑤ 静态 AIPP + 动态分辨率**：由于动态分辨率下输入图片宽高不确定，用 ATC 的 insert_op_conf 传入 AIPP 配置文件时，**配置文件中不能开启 Crop 与 Padding 功能**，并且需要把配置文件里的 `src_image_size_w` 与 `src_image_size_h` **设置为 0**。**⑥ 动态 AIPP + 动态 Shape 范围**：动态 AIPP 的输出图片宽、高要在所设置的 Shape 范围内。**⑦ 动静判据与内存申请建议**：aclmdlGetInputSizeByIndex 或 aclmdlGetOutputSizeByIndex 取到的 **size 为 0 即表示该输入/输出的 Shape 是动态的**——此时可自行预估一块较大的输入/输出内存，或让系统内部为对应 index 申请输出内存；**建议调用 aclmdlGetOutputSizeByIndex 获取内存大小后再申请**，以确保内存足够。**⑧ AIPP 自身语义**：AIPP（Artificial Intelligence Pre-Processing）在 AI Core 上完成图像预处理（色域转换、图像归一化（减均值/乘系数）、抠图）。**只能选择静态 AIPP 或动态 AIPP 之一，不能同时配置**；**静态 AIPP** 在模型转换时设置参数、生成后参数保存在 om 文件中、每次推理用固定参数（**多 Batch 共用同一份 AIPP 参数**）；**动态 AIPP** 在每次推理前设置参数，因此**多 Batch 可使用不同的 AIPP 参数**。**⑨ 模型侧配套参数**：动态 Batch 用 ATC 的 `--dynamic_batch_size`、动态分辨率用 `--dynamic_image_size`、动态维度（ND）用 `--dynamic_dims`、Shape 范围用 `--input_shape`——推理时模型支持的档位/范围由构建模型时预先配置，运行时只是从中选用。"
+  evidence: "dynamic_shape_concepts_constraints.md：『对同一个模型执行推理时｜AIPP（包括静态AIPP和动态AIPP）与动态维度（ND格式）不能同时使用』『对同一个模型执行推理时｜以下方式，只能选择其中一种：调用aclmdlSetDatasetTensorDesc接口设置Shape范围、调用aclmdlSetDynamicBatchSize接口设置动态Batch、调用aclmdlSetDynamicHWSize接口设置动态分辨率、调用aclmdlSetInputDynamicDims接口设置动态维度的维度值』『申请模型推理的输出内存时｜可以按照各档位的实际大小申请内存，也可以调用aclmdlGetOutputSizeByIndex接口获取内存大小后再申请内存（建议使用该方式，确保内存足够）』『静态AIPP和动态分辨率同时使用时｜…AIPP配置文件中不能开启Crop和Padding功能，并且需要将配置文件中的src_image_size_w和src_image_size_h取值设置为0』『动态AIPP和动态Batch同时使用时｜调用aclmdlCreateAIPP接口设置batchSize时，batchSize要设置为最大batch size』『动态AIPP和动态分辨率同时使用时｜若在设置动态AIPP参数时，开启了抠图或缩放或补边功能，则不能与动态分辨率同时使用』『动态AIPP和动态Shape输入（设置Shape范围）同时使用时｜动态AIPP的输出图片宽、高要在所设置的Shape范围内』。AIPP_concepts_constraints.md：『您只能选择静态AIPP或动态AIPP方式来处理图片，不能同时配置静态AIPP和动态AIPP两种方式』『静态AIPP…每次模型推理过程采用固定的AIPP预处理参数（无法修改）。如果使用静态AIPP方式，多Batch情况下共用同一份AIPP参数』『动态AIPP…每次模型推理前，根据需求，在执行模型前设置动态AIPP参数值…如果使用动态AIPP方式，多Batch可使用不同的AIPP参数』。dynamic_shape_range.md：『当调用aclmdlGetInputSizeByIndex获取到的size大小为0时，表示该输入的Shape是动态的，用户可根据实际情况预估一块较大的输入内存』『当调用aclmdlGetOutputSizeByIndex获取到的size大小为0时，表示该输出的Shape是动态的』"

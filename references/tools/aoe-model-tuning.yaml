@@ -1,0 +1,42 @@
+id: aoe-model-tuning
+type: tool
+title: AOE 模型调优（aoe 命令：先子图调优再算子调优 → 知识库/om/效果文件 → TUNE_BANK_PATH 指定后推理）
+summary: "推理性能调优的关键工具之一（另一个是模型压缩工具 AMCT）：`aoe` 命令在 atc 参数基础上增加 `--job_type`，提供**子图调优**与**算子调优**；**一般建议先做子图调优再做算子调优**——子图调优会生成图的切分方式，之后算子已被切成最终 shape，再按最终 shape 做算子调优；顺序颠倒会因调优时的 shape 不是最终切分后的 shape 而影响调优效果。aoe 生成三类产物：**适配 AI 处理器的 om 模型文件**（`{model_name}_{timestamp}/tunespace/result/{model_name}_{timestamp}_tune.om`，或带 `_{os}_{arch}` 后缀，默认在执行 aoe 命令的当前目录下）、**基于 AI 处理器的调优知识库**（子图调优默认存 `${HOME}/Ascend/latest/data/aoe/custom/graph/${soc_version}`、算子调优存 `.../custom/op/${soc_version}`）、**调优效果文件**（当前目录下 `aoe_result_opat_{timestamp}_{pid_xxx}.json`，记录被调优的算子信息，可查阅各算子的性能提升率）。调优后需**设置 `TUNE_BANK_PATH` 环境变量指定调优知识库**再执行模型推理。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/AOE_tune_model.md"
+    version: "cann/docs master（commit 38e6d3315a2c，2026-09-15 抓取）：aoe 命令的子图/算子调优顺序、三类产物与知识库路径"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/docs/blob/master/docs/zh/app-dev/model_inference_performance_optimization_process.md"
+    version: "cann/docs master（commit 38e6d3315a2c）：推理性能调优流程与工具链（AOE 与 AMCT 为关键工具）"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [aoe, atc]
+  categories: [performance]
+
+related_references: [msprof-output-reading-and-performance-analysis, op-compiler-static-kernel, amct-quantization-precision-tuning, atc-precision-mode-and-switches]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  tool_name: "AOE（Ascend Optimization Engine，模型调优工具；用 aoe 命令做子图调优与算子调优）"
+  invocation: "推理场景下对模型做性能调优：aoe 命令的参数一般是在 **atc 命令参数的基础上增加 `--job_type`**（因为 aoe 会生成 om 模型文件，本身包含模型转换功能），通过 --job_type 选择**子图调优**或**算子调优**。调优前需按《AOE 调优工具》准备好环境、了解使用约束与基本参数用法（本词条只覆盖调优顺序、产物与落地方式）。"
+  commands:
+    subgraph_tune: "aoe --job_type=1 <其余同 atc 参数>（子图调优，生成图的切分方式）"
+    op_tune: "aoe --job_type=2 <其余同 atc 参数>（算子调优，基于子图调优后的最终 shape 做算子级调优）"
+    use_tuned_bank: "export TUNE_BANK_PATH=<调优知识库路径>，再执行模型推理（让推理使用调优后的自定义知识库）"
+  output_meaning:
+    - "适配 AI 处理器的 om 模型：默认在执行 aoe 命令的当前目录下，路径形如 `{model_name}_{timestamp}/tunespace/result/{model_name}_{timestamp}_tune.om`（也可能是 `..._{os}_{arch}.om`）"
+    - "基于 AI 处理器的调优知识库：子图调优默认存 `${HOME}/Ascend/latest/data/aoe/custom/graph/${soc_version}`；算子调优默认存 `${HOME}/Ascend/latest/data/aoe/custom/op/${soc_version}`"
+    - "调优效果文件：执行 aoe 命令的当前目录下生成 `aoe_result_opat_{timestamp}_{pid_xxx}.json`，记录调优过程中被调优的算子信息——**通过该文件可查阅模型中各算子的性能提升率**，是判断调优是否生效、哪个算子获益的入口"
+  pitfalls:
+    - "**顺序不能颠倒**：一般建议先做子图调优、再做算子调优。原因是先做子图调优会生成图的切分方式、算子此时已被切成最终 shape，再做算子调优就是基于这个最终 shape 去调；若先做算子调优，调优的算子 shape 不是最终切分后的 shape，**可能会影响最终调优效果**"
+    - "调优产物不是自动生效：必须用 `TUNE_BANK_PATH` 指向调优后的知识库再推理，否则推理不会使用调优结果"
+    - "aoe 本身包含模型转换（生成 om），因此它接受 atc 的参数集合；转换相关的精度/开关参数（如 --precision_mode、--keep_dtype、--buffer_optimize、--fusion_switch_file）需与调优一并考虑，避免调优后精度回退（见 atc-precision-mode-and-switches）"
