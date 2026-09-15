@@ -1571,6 +1571,136 @@ _MS._run_no_pipe = no_fallback`)
         expect('报告是只读入口（没有写入报告的 RPC）', !/ascend-write-report/.test(ascSrc))
       }
     }
+    // —— 交接包：把这一单交到另一台机器（外网定位到一半、大日志在内网）——
+    // 这一行与卡片上其余按钮形态不同：那几个是"选一条指令 → 复制 → 粘到对话"，本行是**直接动作**
+    // （面板调脚本）。所以这里钉的是：意图真的被带进 RPC、结果如实回报（体量/未纳入/含原始证据）、
+    // 外来单在**收起态**就标出来、以及"打开目录"走的是仓库内相对路径（openEvidence 拒绝对路径）。
+    {
+      const hoCalls = []
+      const openedPaths = []
+      const hoHost = (m, a) => {
+        if (m === 'ascend-export-trace') {
+          hoCalls.push(a)
+          return {
+            ok: true, sessionId: 'sess-2', intent: (a && a.intent) || 'continue',
+            dir: '/repo/traces/exports', dirRel: 'traces/exports',
+            zip: '/repo/traces/exports/handoff-sess-2.zip', zipBytes: 201704,
+            md: '/repo/traces/exports/handoff-sess-2.md', mdBytes: 72813,
+            files: 9, total_bytes: 2737616,
+            omitted: [{ path: 'evidence/sess-2/huge.bin', bytes: 99999999, reason: '超过单文件上限 20 MB' }],
+            needs: ['缺 device 侧日志', '等回报 fix 结果'],
+            redaction: { state: 'raw-evidence', notes: ['包内含原始现场证据'] },
+            warnings: ['trace 缺 kb_rev 字段'],
+          }
+        }
+        if (m === 'ascend-open-evidence') { openedPaths.push(a); return { opened: true, via: 'macos-open' } }
+        if (m === 'ascend-traces-list') {
+          return { ok: true, sessions: [
+            // 外来单：host 从 traces/handoff/<sid>.yaml 读到的溯源
+            mkSession(2, { handoff: { host: 'outer-node-01.corp', intent: 'continue', exportedAt: '2026-01-02T09:00:00+08:00', importedAt: '2026-01-02T09:30:00+08:00', renamedFrom: null, kbRevMatch: false, needs: 2 } }),
+            mkSession(4),
+          ] }
+        }
+        return diagHost(m, a)
+      }
+      const hg = await renderAsync(ascSrc, { sessionId: 'sess-1' }, hoHost)
+      expect('交接包：外来单在收起态就标「外来」并给出源主机（短名）', /外来 · outer-node-01/.test(hg.text), hg.text.slice(0, 240))
+      expect('交接包：普通单不标外来（标记宁缺勿造）', (hg.text.match(/外来 ·/g) || []).length === 1)
+
+      // 运行时的导出链路**在 host 侧驱动**，不靠模拟点击：mock React 的 hook 槽是全局顺序计数，
+      // 点开卡片后多次重渲染会错位、展开态读不回来（同一限制在轨迹时间轴那段已如实记过）。
+      // host 侧这套驱动更强：命令怎么拼、stdout 怎么取 JSON、退出后的错误怎么上屏，都在真代码里跑。
+      {
+        const seen = []
+        const fakeShell = {
+          resolve: (spec) => spec,
+          run: async (spec) => {
+            const cmd = String(spec && spec.command || '')
+            // 解释器探活（resolvePython 先跑 `<py> --version`）必须给真版本串，否则测到的是"没有 Python"那条路
+            if (/--version$/.test(cmd)) {
+              return { exitCode: 0, timedOut: false, aborted: false, stdout: { text: 'Python 3.11.9\n' }, stderr: { text: '' } }
+            }
+            seen.push(spec)
+            return { exitCode: 0, timedOut: false, aborted: false, stdout: { text: fakeShell.reply }, stderr: { text: '' } }
+          },
+          reply: '',
+        }
+        // 就地驱动 host 源码（`loadHost`/`driveHost` 在本文件更靠后的作用域里，这段先用不了它们）
+        const hostSrc2 = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+        const drive = (svc) => {
+          const regs = {}
+          const ctx = { get: (n) => n === 'fs' ? svc.fs : n === 'shell' ? svc.shell : n === 'sessions' ? svc.sessions : undefined }
+          const harness = { handle: (name, fn) => { regs[name] = fn; return () => {} }, defineTool: (o) => o, registerTool: () => () => {} }
+          const plugin = new Function('harness', 'console', hostSrc2)(harness, { error: () => {}, log: () => {} })
+          if (plugin && typeof plugin.apply === 'function') plugin.apply(ctx)
+          return { regs }
+        }
+        const svc = {
+          shell: fakeShell, fs: undefined,
+          sessions: { list: () => [{ header: { cwd: '/repo' } }], get: () => ({ header: { cwd: '/repo' } }) },
+        }
+        const dh = drive(svc)
+        fakeShell.reply = JSON.stringify({
+          ok: true, session_id: 'sess-2', intent: 'escalate', dir: '/repo/traces/exports',
+          zip: '/repo/traces/exports/handoff-sess-2.zip', zipBytes: 201704,
+          md: '/repo/traces/exports/handoff-sess-2.md', mdBytes: 72813, files: 9,
+          omitted: [{ path: 'evidence/sess-2/huge.bin', bytes: 1, reason: 'x' }],
+          needs: ['缺 device 侧日志'], redaction: { state: 'raw-evidence' },
+        })
+        const r1 = await dh.regs['ascend-export-trace']({ sessionId: 's', traceFile: 'sess-2.yaml', intent: 'escalate' })
+        const cmd = seen.length ? String(seen[0].command) : ''
+        expect('交接包 host：以检出为工作目录跑导出脚本（相对路径才解析得到）',
+          /scripts\/export_trace\.py traces\/sess-2\.yaml/.test(cmd) && seen[0].workdir === '/repo', cmd)
+        expect('交接包 host：意图进命令行（且只在白名单内）', /--intent escalate/.test(cmd), cmd)
+        expect('交接包 host：要 JSON 结果（面板按 JSON 渲染，不解析人读行）', /--json/.test(cmd), cmd)
+        expect('交接包 host：把脚本结果带给面板，并换成仓库内相对路径给「打开目录」',
+          r1 && r1.ok && r1.zipBytes === 201704 && r1.dirRel === 'traces/exports', JSON.stringify(r1 && { dirRel: r1.dirRel }))
+        expect('交接包 host：顺带给出手工复现命令（Python 缺失时读者有出路）',
+          r1 && /python3 scripts\/export_trace\.py/.test(String(r1.manual)), String(r1 && r1.manual))
+
+        // 非法文件名不拼进命令行（面板自己的列表里拿到的值也要卡一道）
+        seen.length = 0
+        const rBad = await dh.regs['ascend-export-trace']({ sessionId: 's', traceFile: '../evil.yaml; rm -rf /' })
+        expect('交接包 host：非法 trace 文件名拒绝拼命令', rBad.ok === false && seen.length === 0, JSON.stringify(rBad))
+
+        // 脚本失败：把末几行错误带出来，不静默
+        fakeShell.reply = ''
+        const rFail = await (async () => {
+          const sh = {
+            resolve: (s) => s,
+            run: async (spec) => (/--version$/.test(String(spec && spec.command || ''))
+              ? { exitCode: 0, timedOut: false, aborted: false, stdout: { text: 'Python 3.11.9\n' }, stderr: { text: '' } }
+              : { exitCode: 1, timedOut: false, aborted: false, stdout: { text: '' }, stderr: { text: 'Traceback\nValueError: boom' } }),
+          }
+          const d2 = drive({ shell: sh, fs: undefined, sessions: svc.sessions })
+          return d2.regs['ascend-export-trace']({ sessionId: 's', traceFile: 'sess-2.yaml' })
+        })()
+        expect('交接包 host：脚本没给 JSON 时如实报错（并把最后几行带出来）',
+          rFail.ok === false && /ValueError: boom/.test(String(rFail.error)), String(rFail && rFail.error))
+        const rNoShell = await drive({ shell: undefined, fs: undefined, sessions: svc.sessions })
+          .regs['ascend-export-trace']({ sessionId: 's', traceFile: 'sess-2.yaml' })
+        expect('交接包 host：shell 不可用时给原因与手工复现命令（不假装成功）',
+          rNoShell.ok === false && /shell/.test(String(rNoShell.error)) && /手工复现/.test(String(rNoShell.error)),
+          String(rNoShell && rNoShell.error))
+      }
+      // 结构断言：运行时读不回来的那部分（措辞与形态）钉在源文件上
+      expect('交接包：意图词表与脚本一致（continue/verify/escalate 三值）',
+        /const HANDOFF_INTENTS = \[/.test(ascSrc) && /id: 'continue', label: '继续定位'/.test(ascSrc)
+        && /id: 'verify', label: '复核结论'/.test(ascSrc) && /id: 'escalate', label: '转上游'/.test(ascSrc))
+      expect('交接包：意图默认「继续定位」（不默认成会误导接收侧的值）',
+        /const \[handoffIntent, setHandoffIntent\] = React\.useState\('continue'\)/.test(ascSrc))
+      expect('交接包：导出中禁用按钮（防重复点击导出多份）', /disabled: !!\(handoff && handoff\.busy\)/.test(ascSrc))
+      expect('交接包：失败时把错误显出来（不静默）', /handoff && handoff\.error \?/.test(ascSrc))
+      expect('交接包：按钮说明里给出接收侧的那条命令', /import_trace\.py/.test(ascSrc))
+      const hoBlock = ascSrc.slice(ascSrc.indexOf('// ---- 交接包'), ascSrc.indexOf('const actionArea'))
+      expect('交接包：注明它是"直接动作"（与"生成指令"类按钮的分工）', /直接动作/.test(hoBlock), 'slice=' + hoBlock.length)
+      expect('交接包：结果里回报体量、未纳入数、待补材料条数',
+        /humanKB\(handoff\.zipBytes\)/.test(hoBlock) && /未纳入 /.test(hoBlock) && /待补材料/.test(hoBlock))
+      expect('交接包：含原始证据只做标记（写明导出不脱敏、闸门在数据通道）',
+        /含原始证据/.test(hoBlock) && /导出不做脱敏/.test(hoBlock))
+      // 把共享的 mock hook 槽复位：它按调用顺序计数，别把污染带给后面的用例（下面还有几段共用）
+      hookIdx = 0; hookState = []; depState = []; effectQueue = []
+    }
     // 展开视图分两档：人读视图（默认）只给"问题查到哪了"，完整轨迹才是原始事件（回放/归因用）
     {
       const hostSrc = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
@@ -2330,16 +2460,18 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       expect('ev-panel：代码里无「fs 缺失就整插件 return」', !/if \(fs === undefined\) return/.test(codeOf(evSrc)))
     }
 
-    // ② ascend-panel：fs 缺失时仍注册全部 RPC；依赖 fs 的七个给明确错误，不依赖的三个不受影响
+    // ② ascend-panel：fs 缺失时仍注册全部 RPC；依赖 fs 的七个给明确错误，不依赖的四个不受影响
     {
       const ascHostSrc = loadHost('dsh-plugins/ascend-panel/panel-host.js')
       const d = driveHost(ascHostSrc, NO_SVC)
       const needFsRpcs = ['ascend-traces-list', 'ascend-traces-detail', 'ascend-update-sedimented',
         'ascend-metrics-load', 'ascend-read-report', 'ascend-kb-health', 'ascend-process-health']
-      const noFsRpcs = ['ascend-open-evidence', 'ascend-metrics-verdict', 'ascend-metrics-live']
-      expect('ascend-panel：fs 缺失时仍注册全部 10 个 RPC',
-        Object.keys(d.regs).length === 10, Object.keys(d.regs).join(','))
+      const noFsRpcs = ['ascend-open-evidence', 'ascend-metrics-verdict', 'ascend-metrics-live',
+        'ascend-export-trace']
+      expect('ascend-panel：fs 缺失时仍注册全部 11 个 RPC',
+        Object.keys(d.regs).length === 11, Object.keys(d.regs).join(','))
       expect('ascend-panel：返回可用的 disposer', typeof d.disposer === 'function')
+      expect('ascend-panel：导出交接包的 RPC 已注册（fs 缺失不影响它）', !!d.regs['ascend-export-trace'])
       for (const rpc of needFsRpcs) {
         const r = await d.regs[rpc]({})
         expect('ascend-panel：' + rpc + ' 在 fs 缺失时报「需要 fs 服务」并指出指标 tab 仍可用',

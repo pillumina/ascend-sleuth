@@ -1,0 +1,103 @@
+# ============================================================
+# EV-2026-079 —— 诊断会话的跨机交接（把一单交到另一台机器接着定位）
+# 来源：用户的直接需求（外网机器上定位到一半，更多日志在内网，想把这一单"移植"过去继续）
+# 触发：用户问"定位的可移植性……整个流程从用户易用性角度可以怎么优化"，并选定按"方案 B"落地
+# 脱敏：只含仓库内路径、机制口径与合成夹具描述；涉及的本地真实 trace 不写会话名（那是客户侧信息）
+# ============================================================
+
+id: EV-2026-079
+layer: L2                          # 流程与面板（skills/ + dsh-plugins/ + scripts/ 实现）
+title: "诊断会话的跨机交接：交接包（zip 与单文件 md 两个投影）+ 导出/落位脚本 + 面板导出入口 + resume 接手节"
+status: validated
+authorization: review              # 触及 skill 行为与面板可见行为；改动可逆 → review 级
+dimension: process                 # 流程能力：一单诊断能否跨机器边界继续
+supersedes: []
+superseded_by: null
+created_at: 2026-09-15
+source_signals:
+  - signal: user_request
+    evidence: >-
+      用户提出：外网电脑用 diagnose 定位到一半，能否把这一单移植到内网机器继续（更多日志在内网）。
+      现状通路是"把报告邮件发到内网，内网再起一单继续补材料"，能接上是因为报告把现场写得够全。
+      会话内核对到的机制缺口有两处：trace 的 schema 本来就要求跨 agent 自包含（user 事件的
+      evidence.inline/files/missing、agent 事件的 output/reason、excluded_cases/active_case/
+      last_action），但**没有记知识库版本**；同时没有任何通路把 trace 与它的证据文件搬过机器边界
+      （traces/ 是 gitignore 的运行时件，且锚在主检出）。
+    trajectory:
+      - "skills/diagnose/references/diagnosis-trace.md（证据落盘铁律、user 事件结构、agent 事件两层）"
+      - "skills/resume-diagnosis/SKILL.md（恢复现场的步骤：复述 → 读全轨迹 → 证据确认 → 续接）"
+      - "diagnosis_state.yaml.example（顶层字段清单：此前无 kb_rev）"
+      - "scripts/exec_log_path.py 的 resolve_traces（traces/ 锚在主检出；会话发现是非递归 glob）"
+      - "dsh-plugins/ascend-panel/panel-host.js 的 listTraces 与 reportFileOf（面板读的也是顶层 *.yaml）"
+hypothesis: >-
+  把"交出一单"做成确定性脚本 + 一个固定包内布局（`traces/` 的子集）之后：接收侧一条命令即可落位，
+  trace 与会话字段逐字节保真、证据文件齐备（不齐时如实点名），知识库版本可比对，接手方第一屏就能
+  说出"这单是什么、停在哪、要什么材料"；并且不引入任何新的读取端——resume-diagnosis、诊断面板、
+  trace_metrics 都零改动就能看见这一单。
+predicted_effect:
+  metric: 跨机接手一单是否可行（zip 文件通道与单文件纯文本通道各一条）
+  from: >-
+    机制不存在：只能把报告邮件发过去，接收侧用 /diagnose 重新收集与路由，机器可读状态
+    （当前步、已排除候选、待补材料、知识库版本）不随包走
+  to: >-
+    交接包（zip + 单文件 md）可落位：trace 逐字节保真、同名冲突时内部引用一并改写、
+    缺件与知识库版本差异如实点名；python3 scripts/check_handoff.py 末行"全部通过"
+  measure:
+    command: "python3 scripts/check_handoff.py"
+    expect_exit: 0
+    expect_stdout: "全部通过"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前（同一检出）：没有导出/落位通路，面板卡片上也没有交出入口；面板注册 10 个 RPC；
+    trace schema 无 kb_rev 字段；跨机只能靠人读报告转述。
+  success_criteria: >-
+    ① 合成夹具把 zip 通道、单文件 md 通道、同名改名、重复落位、--no-rename、非法包、
+      知识库版本一致/不一致、全新机器（traces/ 不存在）、文件名与 session_id 不同的历史单
+      逐条真跑（当日 45 项断言全绿；条数随用例增长，判据是末行"全部通过"不是某个数字），
+      且人为破坏一次会红（做过负向对照）；
+    ② 同一份包落位后 trace 与上家**逐字节一致**（含注释与排版）；改名时 session_id、
+      evidence.files、report_file 一起改写，且改后的路径真的指向存在的文件；
+    ③ 本机一条真实 trace 端到端：导出 → 落位 → 关键字段与证据文件逐个可读；
+    ④ 元数据不被下游误读：落位后 traces/*.yaml 只有会话本体，handoff/ 不被当成一单会话；
+    ⑤ 面板：导出 RPC 在 fs 缺失时仍注册（现 11 个）；host 侧的命令构造、JSON 解析、
+      脚本失败、无 shell 四条路径由渲染检查驱动真代码；渲染检查与色语检查全绿；
+    ⑥ 仓库既有检查无回归（索引、引用、指标、提案、文档索引、对照集、skill 自包含、面板）。
+  rollback: >-
+    单个提交、以新增为主：3 个新脚本 + 1 篇文档 + 面板一个按钮与一个 RPC + 两处 skill 小节 +
+    trace 示例新增一个字段。git revert 即回原状。已产出的交接包在 traces/exports/
+    （gitignore 的运行时件），删目录即清；落位进来的外来单可单独删除。
+gate:
+  condition: >-
+    出现"包看着正常、但接手方读到的现场与上家不同"的反馈，或面板导出在真实机器上失败不是偶发时，
+    重跑 measure 并复查包内布局契约（逐字节保真是这条链的承重墙）
+risk: low
+principle_refs: [2, 7, 9, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: >-
+    本会话未接 tokenMeter 取数，按仓库口径写 0 并说明口径：这个 0 表示"未单独量化"，
+    不表示零成本（本轮含 45 项断言的自检编写与一次负向对照、真实 trace 的两次端到端、
+    面板渲染检查扩写与全量复跑）。
+decisions:
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      按用户选定的"方案 B"落地，并定下五条实现口径：① 包内布局取 traces/ 的子集，导入退化为落位，
+      读取端零改动；② 元数据放 traces/handoff/ 子目录——traces/*.yaml 的会话发现是非递归 glob，
+      放顶层会被当成一单没有轨迹的会话；③ 接手入口是 import 脚本 + /skill:resume-diagnosis，
+      **不是** /diagnose（那会把这单当新问题重新收集与路由，得到与上家不同的现场）；
+      ④ 输出 zip 与单文件 md 两个投影（同一份内容的两种形态，md 显式列出未内联项）；
+      ⑤ 同名冲突改名不合并、同一份包不重复落位，知识库版本写进 trace 顶层新字段 kb_rev
+      （会话级、一次写定），交接单只投影它。依据：现状缺口的核对结果 + 上面六条判据实测全过。
+  - who: agent
+    when: 2026-09-15
+    type: eval
+    conclusion: >-
+      measure 已跑并留痕：python3 scripts/check_handoff.py 输出末行"全部通过（45 项）"、exit 0；
+      把包内元数据目录改名后再跑同一命令 exit 1（证明它不是恒绿）。面板侧
+      node scripts/panel_render_check.js 全部通过、python3 scripts/check_panel_tokens.py 一致。
+      真实 trace（traces/ 里事件最多的一条，会话名不写入本卡）导出 9 个文件 / 2.6 MB，
+      zip 197 KB、md 71 KB；落位后与上家 hash 相同、5 个证据文件按 trace 里的相对路径全部可读。

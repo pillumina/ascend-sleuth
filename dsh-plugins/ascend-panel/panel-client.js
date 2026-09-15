@@ -287,6 +287,20 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     function pill(text, color) {
       return React.createElement('span', { style: { color: color, border: '1px solid ' + color, borderRadius: 999, padding: '1px 9px', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' } }, text)
     }
+    // 交接包的三个意图（与 `export_trace.py` / `import_trace.py` 的词表一致）与体积格式化。
+    // 意图标签是**给人读的**：接收侧第一屏据此知道上家期待什么（继续定位 / 复核结论 / 转上游）。
+    const HANDOFF_INTENTS = [
+      { id: 'continue', label: '继续定位', why: '上家没定完，交给另一台机器接着查（更多材料在那台机器上）' },
+      { id: 'verify', label: '复核结论', why: '上家已给结论，交给另一台机器对照更全的现场核对' },
+      { id: 'escalate', label: '转上游', why: '本地无法定位，转上游/技术支持跟进' },
+    ]
+    const HANDOFF_INTENT_LABEL = { continue: '继续定位', verify: '复核结论', escalate: '转上游' }
+    function humanKB(n) {
+      const v = Number(n) || 0
+      if (v >= 1024 * 1024) return (v / 1024 / 1024).toFixed(1) + ' MB'
+      if (v >= 1024) return (v / 1024).toFixed(0) + ' KB'
+      return v + ' B'
+    }
     function Dot({ color, size }) {
       return React.createElement('span', { style: { width: size || 8, height: size || 8, borderRadius: 999, background: color, display: 'inline-block', flexShrink: 0 } })
     }
@@ -491,6 +505,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const [reportOpen, setReportOpen] = React.useState(false)
       const [report, setReport] = React.useState(null)
       const [reportSec, setReportSec] = React.useState(null)
+      // 交接包（跨机）：把这一单交到另一台机器继续——外网定位到一半、大日志在内网时的通路。
+      // 意图默认"继续定位"：得先选一下才导出，是为了让接收侧第一屏就知道上家期待什么。
+      const [handoffIntent, setHandoffIntent] = React.useState('continue')
+      const [handoff, setHandoff] = React.useState(null)   // {busy} | {ok, …} | {error}
       const meta = statusMeta[s.status] || statusMeta.unknown
       const canResume = RESUMEABLE[s.status]
       // 定位结论：host 标 `isConclusion`（显式 `conclusion: true`，或"人读视图可见末条是 hit"这条约定）。
@@ -558,6 +576,16 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       function markSed(state) {
         host.call('ascend-update-sedimented', { sessionId: ownerSessionId || null, traceFile: s.file, state, caseId: s.sessionId })
           .then(r => { if (r && r.ok) { setSteps(prev => prev ? { ...prev, sedimented: { state } } : prev) } })
+      }
+      // 导出交接包：面板里唯一的"直接干活"入口（其余按钮只生成一条待复制的指令）。
+      // 它只读 trace 与证据、落一个 traces/exports/ 下的运行时件，不改知识库也不改 trace。
+      function doExportHandoff() {
+        setHandoff({ busy: true })
+        host.call('ascend-export-trace', {
+          sessionId: ownerSessionId || null, traceFile: s.file, intent: handoffIntent,
+        })
+          .then(r => setHandoff(r && r.ok ? Object.assign({ ok: true }, r) : { error: (r && r.error) || '无返回' }))
+          .catch(e => setHandoff({ error: 'RPC 失败: ' + String(e && e.message || e) }))
       }
 
       const rel = relTime(s.updatedAt || s.createdAt)
@@ -816,10 +844,51 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             openErr ? React.createElement('span', { style: { color: T.warn, fontSize: 11.5 } }, openErr) : null,
           )
         : null
+      // ---- 交接包：把这一单交到另一台机器（外网定位到一半、真正的大日志在内网）----
+      // 这一行与别的按钮组形态不同：那几个是"选一条指令 → 复制 → 粘到对话"，本行是**直接动作**
+      // （点了就导出）。理由：导出只读 trace 与证据、落一个 traces/exports/ 下的运行时件，
+      // 不改知识库也不改 trace，删掉目录即撤销——不需要经 agent 的语义判断，多绕两步只是摩擦。
+      // 意图必须先选：它会写进交接单，决定接收侧第一屏问什么。
+      const handoffRow = React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' } },
+        React.createElement('span', { style: { color: T.text2, fontSize: 11.5 } }, '交给另一台机器：'),
+        HANDOFF_INTENTS.map(it => React.createElement('button', {
+          key: it.id, type: 'button', title: it.why, onClick: () => setHandoffIntent(it.id),
+          style: handoffIntent === it.id
+            ? { ...btnPrimary, padding: '2px 9px', borderRadius: 999, fontSize: 11.5 }
+            : { ...btnGhost, padding: '2px 9px', borderRadius: 999, fontSize: 11.5 },
+        }, it.label)),
+        React.createElement('button', {
+          type: 'button', onClick: doExportHandoff, disabled: !!(handoff && handoff.busy),
+          title: '导出交接包（zip + 单文件 md）到 traces/exports/——拷到另一台机器后用 '
+            + 'python3 scripts/import_trace.py <包> 接手',
+          style: (handoff && handoff.busy)
+            ? { ...btnOutline(T.brand), opacity: 0.6, cursor: 'default' }
+            : btnOutline(T.brand),
+        }, (handoff && handoff.busy) ? '导出中…' : '导出交接包'),
+        handoff && handoff.ok ? React.createElement('button', {
+          type: 'button', onClick: () => openFile(handoff.dirRel || 'traces/exports'), title: handoff.dir,
+          style: { background: 'transparent', border: '1px solid ' + T.border, color: T.text2, borderRadius: 999, padding: '2px 9px', fontSize: 11.5, cursor: 'pointer' },
+        }, '打开目录') : null,
+        handoff && handoff.ok ? React.createElement('span', { style: { color: T.success, fontSize: 11.5 } },
+          '已导出 zip ' + humanKB(handoff.zipBytes)
+          + (handoff.md ? ' + md ' + humanKB(handoff.mdBytes) : '')
+          + '｜' + handoff.files + ' 个文件'
+          + ((handoff.omitted && handoff.omitted.length) ? '｜未纳入 ' + handoff.omitted.length + ' 个（体积上限）' : '')
+          + ((handoff.needs && handoff.needs.length) ? '｜带 ' + handoff.needs.length + ' 条待补材料' : '')) : null,
+        // 包内含原始现场证据：**标出来，不代替脱敏**——真正的闸门在数据通道上，不在面板上
+        handoff && handoff.ok && handoff.redaction && handoff.redaction.state === 'raw-evidence'
+          ? React.createElement('span', {
+              style: tinyBadge('var(--d-amber)'),
+              title: '交接单 redaction.state=raw-evidence：包内含原始现场证据（日志/配置原样）。'
+                + '导出不做脱敏；外发前按你们的数据通道规则处理。',
+            }, '含原始证据') : null,
+        handoff && handoff.error ? React.createElement('span', { style: { color: T.warn, fontSize: 11.5 } }, handoff.error) : null,
+      )
       // 展开的命令块只出现一次（谁被点开就显示谁），按钮本身用"未选中的淡一档"表达选中关系
       const actionArea = React.createElement('div', { style: { margin: '0 16px 12px', paddingTop: 10, borderTop: '1px dashed ' + T.border } },
         docRow,
         candList,
+        handoffRow,
         React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
           actions.map(a => React.createElement('button', {
             key: a.key, type: 'button', title: a.title,
@@ -845,6 +914,19 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               meta.label),
             React.createElement('span', { className: 'sleu-mono', style: { fontWeight: 700, fontSize: 14.5, letterSpacing: '.01em' } }, s.sessionId),
             kbTag,
+            // 外来单（从另一台机器接手来的）：标在收起来的卡片上，因为"这单不是本机开的"
+            // 会影响怎么读它的状态——比如知识库版本不一致时，候选集可能与 trace 记的对不上。
+            // 依据是 traces/handoff/<sid>.yaml（import_trace.py 落位时留档）；host 读不到就不给这个标记。
+            s.handoff ? React.createElement('span', {
+              style: tinyBadge('var(--d-blue)'),
+              title: '这一单是从另一台机器接手来的（traces/handoff/' + s.sessionId + '.yaml）：'
+                + '来源主机 ' + (s.handoff.host || '未记')
+                + ' · 交接意图 ' + (HANDOFF_INTENT_LABEL[s.handoff.intent] || '未记')
+                + (s.handoff.importedAt ? ' · 接手于 ' + String(s.handoff.importedAt).slice(0, 19).replace('T', ' ') : '')
+                + (s.handoff.renamedFrom ? ' · 本机已有同名单，落位时改名为 ' + s.sessionId : '')
+                + (s.handoff.kbRevMatch === false ? ' · 接手时本机知识库版本与上家不一致' : '')
+                + (s.handoff.needs ? ' · 上家留了 ' + s.handoff.needs + ' 条待补材料' : ''),
+            }, '外来 · ' + (s.handoff.host ? String(s.handoff.host).split('.')[0] : '别机')) : null,
             React.createElement('span', { style: { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 } },
               rel ? React.createElement('span', { style: { color: T.text2, fontSize: 12.5 } }, '更新 ' + rel) : null,
               React.createElement(Chevron, { open: open }),

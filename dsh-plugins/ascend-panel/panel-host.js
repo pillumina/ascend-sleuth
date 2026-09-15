@@ -224,6 +224,31 @@ return {
       return null
     }
 
+    // 外来单的交接单（`traces/handoff/<sid>.yaml`，`import_trace.py` 落位时留档，口径见 docs/handoff.md）。
+    // 读不到就返回 null——卡片按普通单显示，**不编造**"外来"标记（标错比不标更坏：读者会去追一个
+    // 不存在的上家）。
+    async function readHandoffNote(handoffDir, sid) {
+      if (!handoffDir || !sid) return null
+      try {
+        const doc = parseYaml(await fs.readText(await fs.resolve(sid + '.yaml', { cwd: handoffDir })))
+        if (!doc || typeof doc !== 'object') return null
+        const imp = (doc.imported && typeof doc.imported === 'object') ? doc.imported : {}
+        const intent = String(doc.intent || '')
+        return {
+          host: (doc.origin && doc.origin.host) ? String(doc.origin.host) : '',
+          // 词表与 export/import 脚本一致；不认识的取值留空，别把原始串当标签上屏
+          intent: { continue: 1, verify: 1, escalate: 1 }[intent] ? intent : '',
+          exportedAt: doc.exported_at ? String(doc.exported_at) : '',
+          importedAt: imp.imported_at ? String(imp.imported_at) : '',
+          renamedFrom: imp.renamed_from ? String(imp.renamed_from) : null,
+          kbRevMatch: typeof imp.kb_rev_match === 'boolean' ? imp.kb_rev_match : null,
+          needs: Array.isArray(doc.needs) ? doc.needs.length : 0,
+        }
+      } catch (e) {
+        return null
+      }
+    }
+
     async function listTraces(cwd) {
       let base
       try {
@@ -246,6 +271,18 @@ return {
       const basePath = fs.processPath(base)
       // traces/ 的条目名：报告入口的同名回退要用它（见 reportFileOf）
       const fileNames = new Set(entries.map(e => e && e.name).filter(Boolean))
+      // 外来单（从别的机器接手来的那一单）：交接单在 `traces/handoff/<sid>.yaml`。
+      // 一次 listDir 拿到全集，**不按单逐个 stat**；目录不存在（从没接手过外来单）是空集，不是错误。
+      let handoffDir = null
+      const handoffIds = new Set()
+      try {
+        const hbase = await fs.resolve('handoff', { cwd: basePath })
+        handoffDir = fs.processPath(hbase)
+        for (const e of (await fs.listDir(hbase)) || []) {
+          if (e && e.name && e.name.endsWith('.yaml')) handoffIds.add(e.name.replace(/\.yaml$/, ''))
+        }
+      } catch (e) {
+      }
       for (const ent of entries) {
         if (!ent.name.endsWith('.yaml')) continue
         try {
@@ -265,8 +302,13 @@ return {
           const updatedAt = doc.updated_at ? String(doc.updated_at) : null
           const activeCase = doc.active_case && doc.active_case !== 'null' ? String(doc.active_case) : null
           const rep = reportFileOf(doc, fileNames, ent.name)
+          const sessionId = doc.session_id ? String(doc.session_id) : ent.name.replace(/\.yaml$/, '')
+          // 外来标记按 session_id 与文件名两种键查（两者通常相同，但不保证——trace 文件名与
+          // 它里面的 session_id 是两件事）
+          const isForeign = handoffIds.has(sessionId) || handoffIds.has(ent.name.replace(/\.yaml$/, ''))
           out.push({
-            sessionId: doc.session_id ? String(doc.session_id) : ent.name.replace(/\.yaml$/, ''),
+            sessionId: sessionId,
+            handoff: isForeign ? await readHandoffNote(handoffDir, sessionId) : null,
             file: ent.name,
             status: doc.status ? String(doc.status) : 'unknown',
             framework: doc.detected_framework ? String(doc.detected_framework) : '',
@@ -915,6 +957,71 @@ return {
       }
     }
 
+    // 交接包（跨机）：把这一单打包给另一台机器接着定位（外网定位到一半、真正的大日志在内网）。
+    //
+    // 与卡片上其余按钮的分工不同：那些是"生成一条复制到对话的指令"（面板不改状态），这个按钮
+    // **直接干活**——它只读 trace 与证据、落一个 gitignore 的运行时件（`traces/exports/`），
+    // 不动知识库、不改 trace 内容，不想要了删掉那个目录即撤销。既然可逆、又不需要语义判断，
+    // 让它绕 agent 一圈（复制指令 → 粘到对话 → agent 跑脚本）只是多两步。
+    async function exportHandoff(cwd, traceFile, intent) {
+      const rel = 'traces/' + String(traceFile || '')
+      // 文件名来自面板自己的列表，仍然按白名单卡一道：它要拼进命令行
+      if (!/^traces\/[^\/\\"']+\.yaml$/.test(rel)) {
+        return { ok: false, error: '非法 trace 文件名（拒绝拼命令）：' + String(traceFile) }
+      }
+      const wanted = String(intent || 'continue')
+      const safeIntent = ['continue', 'verify', 'escalate'].indexOf(wanted) >= 0 ? wanted : 'continue'
+      const manual = 'python3 scripts/export_trace.py ' + rel + ' --intent ' + safeIntent
+      if (!shell) return { ok: false, error: '导出需要 shell 服务（当前不可用）。手工复现：' + manual }
+      if (!cwd) {
+        return { ok: false, error: '拿不到会话工作区（session.header.cwd），定位不到 scripts/export_trace.py。'
+          + '手工复现：在 ascend-sleuth 检出根目录跑 ' + manual }
+      }
+      const py = await resolvePython()
+      if (!py) {
+        return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）。'
+          + '手工复现：' + manual }
+      }
+      let r = null
+      try {
+        r = await shell.run(shell.resolve({
+          command: py + ' scripts/export_trace.py ' + rel + ' --intent ' + safeIntent + ' --json',
+          workdir: cwd,
+          timeoutMs: 120000,
+          stdoutMaxBytes: 262144,
+          // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
+          env: { PYTHONIOENCODING: 'utf-8' },
+        }))
+      } catch (e) {
+        return { ok: false, error: '导出脚本执行失败: ' + String(e && e.message || e), manual: manual }
+      }
+      if (r && r.timedOut) {
+        return { ok: false, error: '导出超时（120s）——证据文件很大时会偏慢。手工复现：' + manual }
+      }
+      const out = r && r.stdout && typeof r.stdout.text === 'string' ? r.stdout.text : ''
+      const err = r && r.stderr && typeof r.stderr.text === 'string' ? r.stderr.text : ''
+      // 脚本的 stdout 末行就是 JSON（人读那几行在它前面）；逐行从后往前找第一段 '{'
+      let doc = null
+      const lines = out.trim().split('\n')
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const t = lines[i].trim()
+        if (t.indexOf('{') === 0) {
+          try { doc = JSON.parse(t) } catch (e) { doc = null }
+          break
+        }
+      }
+      if (!doc || typeof doc !== 'object') {
+        const tail = (err || out).trim().split('\n').slice(-4).join(' / ')
+        return { ok: false, error: '导出脚本没有给出 JSON 结果：' + (tail || '（无输出）'), manual: manual }
+      }
+      if (!doc.ok) return { ok: false, error: String(doc.error || '导出失败'), manual: manual }
+      // 面板的「打开目录」走 openEvidence，它拒绝绝对路径——这里换成仓库内相对路径（不在检出内就不给）
+      const cwdN = String(cwd).replace(/\\/g, '/').replace(/\/+$/, '')
+      const dirN = String(doc.dir || '').replace(/\\/g, '/')
+      const dirRel = dirN.indexOf(cwdN + '/') === 0 ? dirN.slice(cwdN.length + 1) : null
+      return Object.assign({}, doc, { dirRel: dirRel, manual: manual })
+    }
+
     // 读取沉淀状态——兼容三种写法：块映射（doc.sedimented 为对象，schema 默认）、
     // 内联流映射字符串（面板写入形态 sedimented: {state:…, caseId:…}）、纯字符串。
     function readSedimented(doc) {
@@ -1399,6 +1506,15 @@ return {
       return runLiveMetrics(cwd)
     })
 
+    // 导出交接包（跨机继续定位）。与 open-evidence 一样只依赖 shell，不需要 fs 服务。
+    const exportDisposer = harness.handle('ascend-export-trace', async (args) => {
+      const sessionId = args && args.sessionId ? String(args.sessionId) : null
+      const traceFile = args && args.traceFile ? String(args.traceFile) : null
+      if (!traceFile) return { ok: false, error: '缺 traceFile' }
+      const cwd = resolveCwd(sessionId)
+      return exportHandoff(cwd, traceFile, args && args.intent)
+    })
+
     return () => {
       if (disposer) disposer()
       if (handleDisposer) handleDisposer()
@@ -1411,6 +1527,7 @@ return {
       if (processDisposer) processDisposer()
       if (verdictDisposer) verdictDisposer()
       if (liveDisposer) liveDisposer()
+      if (exportDisposer) exportDisposer()
     }
   },
 }
