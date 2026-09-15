@@ -1135,19 +1135,22 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
 
       // 判决与数据分两次拉：判决来自 evolution_health.py（与「指标」tab 拉 metrics_health 同形），
       // 一次失败不影响另一块——判决拿不到时如实缺省，不拿卡数冒充判决。
-      const load = React.useCallback(() => {
+      // `force`：host 侧结果在 30 秒窗口内复用（切走再切回不重跑脚本），
+      // 「刷新」按钮走 force=true 显式绕过窗口；首屏那次不强制。
+      const load = React.useCallback((force) => {
+        const refresh = force === true
         setState({ loading: true, data: null, error: null })
         setHealth(null)
-        host.call('ev-board-load', { sessionId: sessionId }).then(r => {
+        host.call('ev-board-load', { sessionId: sessionId, refresh: refresh }).then(r => {
           if (r && r.ok) setState({ loading: false, data: r.data, error: null })
           else setState({ loading: false, data: null, error: (r && r.error) || '读取失败' })
         }).catch(e => setState({ loading: false, data: null, error: String(e && e.message || e) }))
-        host.call('ev-health-load', { sessionId: sessionId }).then(r => {
+        host.call('ev-health-load', { sessionId: sessionId, refresh: refresh }).then(r => {
           if (r && r.ok) setHealth(r.data)
         }).catch(() => {})
       }, [sessionId])
 
-      React.useEffect(() => { load() }, [load])
+      React.useEffect(() => { load(false) }, [load])
 
       if (state.loading) return React.createElement('div', { className: 'ev-root' },
         React.createElement('div', { className: 'ev-empty', style: { textAlign: 'center', padding: 24 } }, '加载自演进数据…'))
@@ -1165,7 +1168,9 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
             'EV 卡 ', React.createElement('b', null, data.idea_count || 0), ' 张 · 数据 ',
             (data.generated_at || '').replace('T', ' ')),
           React.createElement('button', {
-            type: 'button', className: 'ev-btn', onClick: load, style: { marginLeft: 'auto' },
+            type: 'button', className: 'ev-btn', onClick: () => load(true), style: { marginLeft: 'auto' },
+            title: '重跑 scripts/ev_board_data.py 与 evolution_health.py。数据在 30 秒内复用上次结果'
+              + '（切走再切回不重跑），点此绕过窗口立即重跑',
           }, '刷新'),
         ),
         // ① 判决（要处理的）+ 结论条

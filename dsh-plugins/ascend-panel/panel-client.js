@@ -1222,7 +1222,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                note: '判据全部评过且无越界' }
     }
 
-    function StatusBar({ verdict, error }) {
+    function StatusBar({ verdict, error, onRefresh, refreshing }) {
       const f = (verdict && verdict.freshness) || {}
       const cur = (verdict && verdict.current) || {}
       const drift = verdict && verdict.drift
@@ -1275,6 +1275,14 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         React.createElement('span', { title: st.note, style: { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 } },
           pill(st.label, st.color),
           hot.length ? pill('容量越界 ' + hot.length + ' 格', T.error) : null,
+          // 重跑入口：**体检结果在 30 秒窗口内复用**（切走再切回不重跑 Python），窗口过期自动重跑。
+          // 这一行必须说清窗口的存在——否则读者会把复用结果读成实时（原则十）。
+          React.createElement('button', {
+            type: 'button', onClick: onRefresh, disabled: !!refreshing,
+            title: '体检跑 scripts/metrics_health.py（约 1 秒）。结果在 30 秒内复用上次的，'
+              + '切走再切回不重跑；点此绕过窗口立即重跑',
+            style: refreshing ? { ...btnGhost, opacity: .6, cursor: 'default' } : btnGhost,
+          }, refreshing ? '体检中…' : '重新体检'),
         ),
       )
     }
@@ -1584,6 +1592,18 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // 展开的期（默认只展开最近 2 个 live 期——"变了什么"优先，历史期收起来）
       const [openPeriods, setOpenPeriods] = React.useState(null)
       const [histOpen, setHistOpen] = React.useState(false)
+      // 体检中：只在**显式重跑**时为真（首屏那次由 verdict 为 null 表达"读取中"，见 verdictPending）
+      const [verdictBusy, setVerdictBusy] = React.useState(false)
+      // 重跑体检：`refresh: true` 让 host 绕过复用窗口（窗口内切走再切回不重跑，见 panel-host.js）。
+      // 原先读者没有任何出口——host 按 cwd 永久缓存，改了脚本或数据也只能重载插件。
+      const refreshVerdict = () => {
+        setVerdictBusy(true)
+        setVerdict(null)
+        host.call('ascend-metrics-verdict', { sessionId: sessionId || null, refresh: true })
+          .then(r => setVerdict(r && r.ok ? r.verdict : { __error: (r && r.error) || '体检无返回' }))
+          .catch(e => setVerdict({ __error: 'RPC 失败: ' + String(e && e.message || e) }))
+          .then(() => setVerdictBusy(false))
+      }
       React.useEffect(() => {
         let alive = true
         host.call('ascend-metrics-load', { sessionId: sessionId || null })
@@ -1755,7 +1775,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 : (periods.length + ' 期 · live ' + liveCount))),
         ),
         // ① 状态条：快照新鲜度 + 索引/磁盘 drift + 一句判读
-        React.createElement(StatusBar, { verdict: vd, error: verdictErr }),
+        React.createElement(StatusBar, { verdict: vd, error: verdictErr, onRefresh: refreshVerdict, refreshing: verdictBusy }),
         // ② 判决：只列要处理的，附证据 + 下一步 + 可复制指令
         React.createElement(VerdictCard, { verdict: vd, error: verdictErr, pending: verdictPending, copiedKey: copied, onCopy: doCopy }),
         // ③ 闭环检验（判据全貌，含正常项）+ 容量台账（**逐格**，与判据同口径）

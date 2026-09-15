@@ -1,0 +1,77 @@
+# ============================================================
+# EV-2026-078 —— 面板数据链路提速（解析后端换 libyaml + 体检/看板结果按 TTL 复用）
+# 来源：用户对面板「加载打开比较慢」的直接反馈 + host 侧逐条 RPC 计时与 cProfile（aggregate only，无客户原文）
+# 触发：用户问"当前面板插件有性能优化的空间吗，感觉有时候加载打开会比较慢"——实测确认瓶颈集中在
+#       一条 RPC（判决）的 Python 子进程链路上，其余四条都是 10-20ms 级。
+# 脱敏：只含聚合耗时与仓库内文件路径，不含客户现场原文。
+# ============================================================
+
+id: EV-2026-078
+layer: L2                          # 流程与面板（dsh-plugins/*）与脚本实现
+title: "面板数据链路提速：YAML 解析换 libyaml 后端 + 体检与看板结果按 TTL 复用"
+status: in_experiment
+authorization: review              # 触及面板可见行为（结果复用的新鲜度语义与刷新入口）；可逆 → review 级
+dimension: observability           # 面板是观测面：把"等 3.8 秒才看到判决"降到 1 秒内
+supersedes: []
+superseded_by: null
+created_at: 2026-09-15
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      用户反馈面板加载打开有时较慢。实测面板 host 的五条 RPC：traces-list 17ms、metrics-load 10ms、
+      kb-health 19ms、process-health 18ms，唯独 metrics-verdict 冷启动 3805ms（其余四条合计 64ms）。
+      拆开看，3.5 秒是 metrics_health.py 子进程跑 verify_references.py，而后者几乎全部时间花在
+      PyYAML 纯 Python 后端解析 351 个词条与 case 文件上（同一批文件换 libyaml 后端：2.21s → 0.24s），
+      且同一批文件被解析 699 次。ev-panel 侧则是另一种浪费：两条 RPC 每次挂载各起一次 Python
+      （0.86s + 1.07s），没有任何缓存，切走再切回就重跑。
+    trajectory:
+      - "dsh-plugins/ascend-panel/panel-host.js（loadMetricsVerdict 与 metricsHealthCache：按 cwd 永久缓存）"
+      - "dsh-plugins/ev-panel/panel-host.js（runScript：无缓存，每次挂载各跑一次脚本）"
+      - "scripts/verify_references.py（load_yaml 漏斗 + 三处重复解析）"
+      - "scripts/metrics_health.py（collect_structural 子进程调 verify_references）"
+      - "面板 host RPC 计时（stub ctx 直连真实 fs 与 shell 跑 panel-host.js）"
+hypothesis: >-
+  把解析后端收到一处（libyaml 优先、缺失时退回纯 Python）并复用到面板链路的所有脚本，
+  再让体检与看板结果在短 TTL 内复用、刷新入口显式绕过缓存之后：
+  指标 tab 首屏判决从 3.8 秒降到 1 秒内；切走再切回不再各跑一次 Python；
+  读者能看到"这是复用结果、什么时候可以强制重跑"，而不会把复用读成实时。
+predicted_effect:
+  metric: 体检脚本耗时与面板判决 RPC 冷启动耗时
+  from: "verify_references --check 3.567s；metrics_health --json 3.732s；evolution_health --json 1.090s；ev_board_data 0.756s；面板 ascend-metrics-verdict 冷启动 3805ms"
+  to: "verify_references --check < 1.5s（实测 0.52s）；面板 ascend-metrics-verdict 冷启动 < 1s（实测 677ms）；ev-panel 两条 RPC 在 30 秒窗口内切回不重跑脚本"
+  measure:
+    command: >-
+      python3 -c "import subprocess,time;t=time.time();r=subprocess.run(['python3','scripts/verify_references.py','--check'],capture_output=True,text=True);d=time.time()-t;print(r.stdout.strip());print('%.2fs'%d);assert r.returncode==0 and d<1.5"
+    expect_exit: 0
+    expect_stdout: "references 校验通过"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前（同一检出、同一批数据，每命令 3 次取最好）：verify_references 3.567s / metrics_health 3.732s /
+    evolution_health 1.090s / ev_board_data 0.756s / verify_proposals 0.959s / ev_measure --audit 0.552s；
+    面板 RPC ascend-metrics-verdict 冷启动 3805ms（缓存命中 3ms）。
+  success_criteria: >-
+    ① 六个脚本在快路径与强制纯 Python 后端下 stdout 与退出码逐字节一致（等价性，非"看起来一样"）；
+    ② CI 命令逐条复跑全绿，端到端演练 172/172 通过；
+    ③ 计时落在预测区间（同机复跑）；
+    ④ 缓存行为可判：窗口内复用、refresh 显式绕过、失败结果同样按窗口返回且可强制重跑；
+    ⑤ 面板文案明说复用窗口是什么（原则十：不把复用说成实时）；
+    ⑥ 面板渲染检查与词表检查不回归。
+  rollback: >-
+    单个 commit，git revert 即回到逐脚本 safe_load 与无缓存；缓存是纯内存态，插件重载即清空，
+    不需要数据迁移。
+gate:
+  condition: "面板再次出现首屏等待超过 2 秒，或读者按复用窗口内的旧结论行动（反馈里出现『面板说没问题但其实…』）时重跑 measure"
+risk: low                          # 纯读侧改动：不动判据、不动知识内容、不动诊断流程；全部可逆
+principle_refs: [2, 9, 10]         # 二 不变量写进结构 / 九 稀缺资源显式预算 / 十 诚实退化
+actual_cost: null
+decisions:
+  - who: agent
+    when: 2026-09-15
+    type: proposal
+    conclusion: >-
+      用户反馈面板打开慢 → 实测定位到唯一瓶颈是判决 RPC 的 Python 解析链路（3.8 秒里 3.5 秒在
+      verify_references 解析 YAML），ev-panel 则是每次挂载重跑脚本。方案：①解析后端收到 scripts/_yaml.py
+      一处（libyaml 优先）；②verify_references 的重复解析按路径记忆；③面板体检/看板结果按 30 秒 TTL 复用
+      并接受 refresh 参数强制重跑，刷新入口上屏。①属实现层改动，先按最小改动落地；②③触及面板可见行为，
+      按本协议先产卡再执行。

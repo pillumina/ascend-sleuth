@@ -106,6 +106,24 @@ return {
       return runScript(sessionId, HEALTH_SCRIPT, '--json')
     }
 
+    // —— 结果复用：两个脚本各自要起一次 Python（实测 0.76 秒 / 1.09 秒，换 libyaml 后端后
+    // 0.36 秒 / 0.32 秒），而面板每次切回 tab 都会重新挂载组件、重新发起这两条 RPC。
+    // 同一份数据在几十秒内不会变，重复起进程只是让读者等。
+    // 窗口取 30 秒：覆盖"切走再切回"，又把陈旧上限压在读者能感知的量级以内；
+    // `refresh: true`（面板「刷新」按钮）显式绕过窗口。
+    // 缓存的是结果本身，**含失败**——失败同样按窗口返回（脚本缺依赖是稳定事实），
+    // 要立刻重试就点「刷新」。界面上的数据时间戳（`generated_at`）照旧是脚本生成时刻，
+    // 复用不会把它刷新成"现在"，读者看到的时间就是这份数据的真实生成时刻。
+    const CACHE_TTL_MS = 30000
+    const resultCache = new Map()   // key → { at, promise }；存 promise 让并发挂载共享同一次执行
+    function cached(key, force, run) {
+      const hit = resultCache.get(key)
+      if (!force && hit && (Date.now() - hit.at) < CACHE_TTL_MS) return hit.promise
+      const promise = run()
+      resultCache.set(key, { at: Date.now(), promise: promise })
+      return promise
+    }
+
     // 单卡全文：面板点开某张卡时才拉（列表页只带摘要，不把 36 张卡的完整决策链
     // 一次性塞进客户端）。id 只放行 EV-YYYY-NNN 形状，防 shell 注入。
     function loadIdeaDetail(sessionId, ideaId) {
@@ -116,12 +134,14 @@ return {
 
     const handleDisposer = harness.handle('ev-board-load', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
-      return loadBoard(sessionId)
+      return cached('board|' + (resolveCwd(sessionId) || '?'), !!(args && args.refresh === true),
+        () => loadBoard(sessionId))
     })
 
     const healthDisposer = harness.handle('ev-health-load', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
-      return loadHealth(sessionId)
+      return cached('health|' + (resolveCwd(sessionId) || '?'), !!(args && args.refresh === true),
+        () => loadHealth(sessionId))
     })
 
     const detailDisposer = harness.handle('ev-idea-detail', async (args) => {
