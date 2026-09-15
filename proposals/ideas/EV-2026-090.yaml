@@ -1,0 +1,101 @@
+# ============================================================
+# EV-2026-090 —— 候选仓批次沉淀：hixl（错误码两族 + KV 传输契约 + FabricMem + 工具）、
+#                torchtitan-npu（SDC/可观测/图编译）、graph-autofusion（AutoFuse 判读）
+# 来源：用户「继续，新增的开 PR，不自动合入」——延续 driver 950 与 ops-ras 两批之后的候选仓清理
+# 触发：三个候选仓的文档面经精查确认是真增量——HIXL/LLM-DataDist 错误码在 errors/ 无族文件、
+#       LLM-DataDist 建链与 KV 传输契约无词条、torchtitan-npu 的 SDC 与图编译契约无词条、
+#       AutoFuse 的「未融合原因判读」只能靠翻官方页面
+# 脱敏：只含公开仓路径、命令、错误码与工具字段，不含客户数据
+# ============================================================
+
+id: EV-2026-090
+layer: L1                          # 知识内容层（两个 error-code 新族 + 若干 fact/tool 词条）
+title: "候选仓批次沉淀：hixl 错误码两族与 KV 传输契约、torchtitan-npu 的 SDC/可观测/图编译、AutoFuse 融合判读"
+status: validated
+authorization: review
+dimension: architecture            # 知识结构：错误码按模块新立两族（HIXL / LLM-DataDist）；工具与事实按用途面成条
+supersedes: []
+superseded_by: null
+created_at: 2026-09-15
+source_signals:
+  - signal: user_request
+    evidence: >-
+      用户指令「继续，新增的开 PR，不自动合入」。按此前给出的候选池排序，本轮做 hixl、torchtitan-npu、
+      graph-autofusion 三仓（各仓自带 agent 知识目录按既有口径只作线索、不作权威源）。
+    trajectory:
+      - "reference-ingest-state.json（三仓判定：hixl 6 harvested + 105 skipped + 38 pending；torchtitan-npu 4/29/15；graph-autofusion 3/135/0）"
+      - "references/errors/hixl.yaml（新族，9 条 103900–103905 / 203900 / 503900）"
+      - "references/errors/llm-datadist.yaml（新族，18 条 0x5010B001–0x5010B01C 段）"
+      - "references/software-facts/llm-datadist-link-and-kv-transfer-contract.yaml（类 TCP 建链 / rets 逐个判 / KV 注册与 Pull·Push / KvCacheExtParam / 角色切换前置）"
+      - "references/software-facts/fabricmem-unified-addressing-and-transfer.yaml（VMM 四步 / 开关 / 批次取值域 / 硬件范围 / 25.5 与 26.0 HDK 接口差异）"
+      - "references/tools/hixl-tool-route-and-comm-res.yaml（host_route 与 local_comm_res）"
+      - "references/software-facts/torchtitan-npu-sdc-detection.yaml（gradient / checksum / HCCL 三路与 typed 参数约束）"
+      - "references/tools/torchtitan-npu-training-metrics-and-debugging.yaml（Memory Snapshot 与 NPU Profiling）"
+      - "references/software-facts/torchtitan-npu-compile-backends-and-limits.yaml（两级 backend / 按 Block 全图编译 / fallback 与动态 shape 边界 / 缓存隔离）"
+      - "references/tools/autofuse-fusion-enable-and-diagnostics.yaml（ascendc 后端使能 / autofused_ 产物 / Fallback 原因 / DFX 融合图）"
+hypothesis: >-
+  三个仓的面各补一个**原本无落点**的判断缺口：①PD 分离的 KV 传输报错此前只能靠 HCCl/机内故障类词条猜，
+  现在有 HIXL 与 LLM-DataDist 两族码表且**带「可恢复性」与分场景处置**（尤其 LLM_WAIT_PROC_TIMEOUT 在传输接口
+  上等于链路必须重建）；②训练侧「结果偶发异常」多了一条主动检测路径（SDC）与它的三条前置约束（入口必须
+  `-m torchtitan_npu.train`、compiled 需 inductor+PP=1、HCCL 检测不覆盖初始化通信）；③「编译后没变快/融合没生效」
+  有了可判读产物（`torch_compile_debug` 下 `autofused_` 目录有无 + `Fallback aten.xxx $reason` + DFX 融合图）。
+predicted_effect:
+  metric: 三仓文档面可消费的判据型词条数与"没有落点的判断缺口"数
+  from: "errors/ 无 HIXL 与 LLM-DataDist 族；KV 传输契约/FabricMem/hixl_tool 无词条；torchtitan-npu 的 SDC、可观测、图编译契约无词条；AutoFuse 未融合原因无判据；references 218 条"
+  to: "新增 9 条词条（2 error-code 族 + 4 software-fact + 3 tool）；references 218→227；background 索引 124→131；三仓仓级 triage 全部 selected"
+  measure:
+    command: >-
+      python3 -c "import yaml,json;b=lambda p: json.dumps(yaml.safe_load(open(p)),ensure_ascii=False,default=str);ids=['references/errors/hixl.yaml','references/errors/llm-datadist.yaml','references/software-facts/llm-datadist-link-and-kv-transfer-contract.yaml','references/software-facts/fabricmem-unified-addressing-and-transfer.yaml','references/tools/hixl-tool-route-and-comm-res.yaml','references/software-facts/torchtitan-npu-sdc-detection.yaml','references/tools/torchtitan-npu-training-metrics-and-debugging.yaml','references/software-facts/torchtitan-npu-compile-backends-and-limits.yaml','references/tools/autofuse-fusion-enable-and-diagnostics.yaml'];blob=' '.join(b(p) for p in ids);s=json.load(open('reference-ingest-state.json'))['sources'];st={r:s['gitcode/cann/'+r] for r in ['hixl','torchtitan-npu','graph-autofusion']};ok=(all(k in blob for k in ['LLM_WAIT_PROC_TIMEOUT','103900','sdc.hccl-mode','gradient_enabled','TORCHINDUCTOR_NPU_BACKEND','autofused_','local_comm_res','OPTION_ENABLE_USE_FABRIC_MEM']) and all(v['triage']['decision']=='selected' for v in st.values()) and sum(x for v in st.values() for x in [sum(1 for d in v['docs'].values() if d['decision']=='harvested')])==13);print('harvested_total',sum(1 for v in st.values() for d in v['docs'].values() if d['decision']=='harvested'));print('entries_ok',ok);raise SystemExit(0 if ok else 1)"
+    expect_exit: 0
+    expect_stdout: "entries_ok True"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：`references/errors/` 无 hixl/llm-datadist 族文件；KV 传输契约、FabricMem、hixl_tool、
+    torchtitan-npu 的 SDC/可观测/图编译、AutoFuse 判读均无词条（对应主题只能翻官方页面或靠既有
+    hccl/cann-runtime 族间接猜）；三仓仓级 triage 为 candidate。
+  success_criteria: >-
+    ① measure：九条词条的关键判据齐备、三仓 triage=selected、三仓 harvested 合计 13（判据命令）；
+    ② 错误码族两族分列且**保留可恢复性与分场景处置**（LLM_WAIT_PROC_TIMEOUT 在传输接口上不可恢复这条必须在内）；
+    ③ 边界如实标注：hixl 38 篇、torchtitan-npu 15 篇 pending 明确写进 triage note（不是"判过不沉淀"的 skipped）；
+    ④ 口径差异如实保留：SDC 的 native/typed 双入口与"改模式需重启"、AutoFuse 的"训练成功≠融合生效"；
+    ⑤ CI 无回归：verify_references 227 条 + 各索引 + holdout + proposals 全绿。
+  rollback: >-
+    单次提交：删除九条词条文件即回原状（不涉及既有 active 词条修订）；台账条目可 mark 回 pending，
+    triage 可退回 candidate。
+gate:
+  condition: "再出现「PD 分离 KV 传输报错无处可查」「训练偶发异常但无检测手段」「使能自动融合后不知为何没融合」时，重跑 measure 并复查是否已有对应词条"
+risk: low
+principle_refs: [2, 3, 10]
+decisions:
+  - who: agent
+    when: 2026-09-15
+    type: action
+    conclusion: >-
+      错误码按**模块**分两族（HIXL 十进制码面、LLM-DataDist 十六进制 0x5010B 段），不合并成一个文件——
+      两者的码空间、可恢复性语义与使用场景（单边通信库 vs PD 分离 KV 传输）都不同。
+      事实类按用途面成条：链路与 KV 传输契约一条、FabricMem 一条、SDC 一条、图编译契约一条；
+      工具类两条（hixl_tool、torchtitan-npu 的 Memory Snapshot/Profiling）与 AutoFuse 判读一条。
+      三仓的 agent 知识目录与构建清单按新口径移出扫描面（见同期机制卡）。
+  - who: agent
+    when: 2026-09-15
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS（entries_ok True / harvested_total 13）；verify_references 227 条通过，
+      各索引 --check、holdout、proposals（88 张）、panel 检查全绿。
+      负向对照：在本改动前的检出上跑同一命令 → 词条文件不存在（FileNotFoundError）→ exit 1。
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      采纳并标 validated（效果层）。边界如实标注：①**未覆盖面明确留 pending**（hixl 38 篇：hixl_develop 的
+      链路/内存/中转传输面、HIXL 与 LLM-DataDist 的 cpp/python API 接口页、design 两篇、benchmarks/performance.md、
+      lcrgen；torchtitan-npu 15 篇：MTP、graph_pattern_fusion、cp/graph_trainer×2/tnd/ep/fused_ops/muon/
+      virtual_optimizer、checkpoint、三个代码目录 README），下一轮从这里续；②内容均为文档级核验，命令未实测；
+      ③triage note 与台账逐条记录了"哪些篇目按类别判 skipped、哪些仍未评估"，不做假覆盖。
+actual_cost:
+  tokens: 41000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数，按仓库口径给估算：38 篇正文（含 19KB 的 torch_compile 与 17KB 的 llm-datadist 开发指南
+    节选）读取与裁剪（约 24k）、九条词条撰写（约 13k）、台账 335 条判定与校验往返（约 4k）。
