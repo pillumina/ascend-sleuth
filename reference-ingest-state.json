@@ -604,11 +604,20 @@
      "sha": "18058d08f63582e1c229dc006ccae4d897a418a8"
     },
     "docs/zh/profiling/appendices/install_perf_iotop_ltrace.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:18:38",
+     "decision": "harvested",
+     "refs": [
+      "msprof-enablement-methods",
+      "msprof-cli-collect-items"
+     ],
      "sha": "af8b1a56e6b3d6c12b3b4fb8f0f4e29c922fdfe8"
     },
     "docs/zh/profiling/appendices/mstxapi_usage_example.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:18:38",
+     "decision": "harvested",
+     "refs": [
+      "msprof-enablement-methods"
+     ],
      "sha": "82f0eae0e7756c82e040ac1da2833e0050726561"
     },
     "docs/zh/profiling/appendices/profiling_options_parameter.md": {
@@ -620,7 +629,11 @@
      "sha": "227230203a78988bbd0ee0a4205582823a7d3050"
     },
     "docs/zh/profiling/msprof_cmd/ai_runtime_profile_data.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:18:38",
+     "decision": "harvested",
+     "refs": [
+      "msprof-cli-collect-items"
+     ],
      "sha": "ff54956619b276d13771c8d4c14b6077ef578bea"
     },
     "docs/zh/profiling/msprof_cmd/delayed_mode.md": {
@@ -651,7 +664,11 @@
      "sha": "7bd9576366a841481a50842243ca71dd89a0323d"
     },
     "docs/zh/profiling/msprof_cmd/host_system_data.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:18:38",
+     "decision": "harvested",
+     "refs": [
+      "msprof-cli-collect-items"
+     ],
      "sha": "4d7307e93dde6d1afcce8d588657a251d0cbc056"
     },
     "docs/zh/profiling/msprof_cmd/msprof_cmd.md": {
@@ -661,11 +678,20 @@
      "sha": "80a10e7bc252740a1717f7229c3bd0c8aa8e4e6c"
     },
     "docs/zh/profiling/msprof_cmd/msproftx_data.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:18:38",
+     "decision": "harvested",
+     "refs": [
+      "msprof-enablement-methods",
+      "msprof-cli-collect-items"
+     ],
      "sha": "889205d6ee3559ddb8cf771a145495378c3de7de"
     },
     "docs/zh/profiling/msprof_cmd/processorai_accelerator_system_data.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:18:38",
+     "decision": "harvested",
+     "refs": [
+      "msprof-cli-collect-items"
+     ],
      "sha": "8b38ce31b5753239a5f3b667f885809efb4ba544"
     },
     "docs/zh/profiling/other_method/other_method.md": {
@@ -675,15 +701,23 @@
      "sha": "f37b1a33ce71212291d320473a541d006c782537"
     },
     "docs/zh/profiling/other_method/with_acl_apis.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:18:38",
+     "decision": "skipped",
+     "note": "C&C++ 接口清单面（API 简介表）：接口名与签名按官方 API 参考查；采集能力与开关口径已由 msprof-cli-collect-items / msprof-configuration-options / msprof-enablement-methods 承载（按仓库口径不整体载入接口清单面）",
      "sha": "b051ad1f4aa0e5e527382cc4daa5a7bc3573252e"
     },
     "docs/zh/profiling/other_method/with_acljson_config_file.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:18:38",
+     "decision": "skipped",
+     "note": "acl.json 字段与 PROFILING_OPTIONS 同构（标题逐项对应 switch/output/storage_limit/aicpu/aic_metrics/l2/hccl/task_time/ge_api/ascendcl），配置项语义已由 msprof-configuration-options 承载",
      "sha": "6a68bb4b0a2b5aeb33211da9a5c31529c048b6db"
     },
     "docs/zh/profiling/other_method/with_ascendgraph_apis.md": {
-     "decision": "pending",
+     "at": "2026-09-15T16:18:38",
+     "decision": "harvested",
+     "refs": [
+      "msprof-enablement-methods"
+     ],
      "sha": "64833a87147959d34a70a003b657449f39e06f60"
     },
     "docs/zh/profiling/other_method/with_environment_variables.md": {

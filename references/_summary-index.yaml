@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-15    词条数：98
+# 生成日期：2026-09-15    词条数：100
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -716,6 +716,19 @@ entries:
     - cross
     categories:
     - precision
+- id: msprof-cli-collect-items
+  type: software-fact
+  title: msprof 命令行采集项开关与频率语义（task-time l0-l3、aic-mode/aic-freq、sys-* 系列范围与默认值、host-sys 依赖）
+  summary: msprof 命令行采集项的取值与默认值：`--task-time` 支持 l0/l1/l2/l3（l3 为 PyPTO 算子试用特性）；`--ai-core` 默认随 `--task-time`
+    联动（on/l1→on，off/l0→off）；`--aic-mode` 取 task-based（**采集 AI 任务性…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - A5-950
+    - cross
+    categories:
+    - performance
 - id: msprof-collect-parse
   type: tool
   title: msprof 性能数据采集与解析（命令行两种传参方式 / --type / --storage-limit / 动态与延迟采集 / PROF_* 输出结构）
@@ -751,6 +764,16 @@ entries:
     - A2-910B
     - A3-910C
     - A5-950
+    - cross
+    categories:
+    - performance
+- id: msprof-enablement-methods
+  type: software-fact
+  title: 性能数据使能方式与 mstx 打点（msprof 命令行 / acl C&C++ 接口 / acl.json / Ascend Graph / 环境变量 + 依赖工具安装）
+  summary: 采性能数据的五种使能方式与各自入口：①**msprof 命令行**（拉起业务采集，最常用）；②**acl C&C++ 接口**（应用内调用采集与落盘、msproftx 扩展接口、订阅算子信息，采集数据另有说明）；③**acl.json
+    配置文件**（字段与 PROFILING_OPTIONS 同构：switch/out…
+  applies_to:
+    platforms:
     - cross
     categories:
     - performance
