@@ -1,0 +1,30 @@
+id: ttk-dump-and-performance-testing
+type: software-fact
+title: TTK 的 Dump 调试与性能测试口径（--dump/--dump-on-fail、warmup×run 冷热两模式、四条通路的采集差异）
+summary: "两件在算子级定位里最常用的事：①**Dump 调试**——`--dump in|out|golden|full`（可组合，逗号分隔）分别在「输入生成后·设备执行前」「设备执行后·精度比对前」「Golden 生成后」保存张量；`--dump-format` 取 bin（默认、无 shape）/npy（推荐，numpy.load 直读）/pt（需 torch 语义，含自定义 dtype）/print（小数据目视）；**`--dump-on-fail` 在精度比对失败时自动保存该用例全量数据（文件名带 `fail_` 前缀），通过时不保存**，与 `--dump` 可叠加；`--seed` 固定输入生成与 Golden 计算的随机性以保证可复现。约束：`--no-prof` 只允许 `--dump in,golden`，与 print 格式、`--dump-on-fail` 均不兼容；`--dump-on-fail` 与 `--validate` 不兼容。②**性能测试口径**——`--warmup`（默认 true）与 `--run`（默认 3，仿真模式 1）区分**稳态性能**（预热后采集 run 次取平均）与**冷启动性能**（`--warmup false --run 1`，反映首次执行全部开销）；**四条通路的 warmup 与统计方式各不相同**：e2e 把算子跑 1 次丢弃（预热 dispatch/autograd/首次加载/workspace 分配/SMMU·TLB），`--run` 次全部进 torch profiler 窗口取平均、读 `kernel_details.csv` 的 Duration 累加后除 run_count；kernel 与 aclnn 是 launch 空 helper kernel 预热硬件层，kernel 读 `op_summary/task_time.csv` 的 `Task Duration(us)/task_time(us)` 取 **median**，aclnn 的 `--run > 1` 时 `start_step=1` **跳过首次**（首次含 workspace 等一次性 HBM 申请开销，不计入稳态）、读 `api_statistic/op_statistic.csv` 的 Avg 列——因此 `--warmup false --run 3` 仍会跳首次，要采首次必须 `--run 1`；geir 无 warmup（每次全新子进程、冷热等价），默认只跑 1 次取 median（`--dl 1` 时跑 run 次做 MD5 校验）。读原始数据时按 `Task Type`/`kernel_type` 过滤，只保留 `KERNEL_AICORE/AIVEC` 等真实 NPU kernel 记录，排除 `MODEL_EXECUTE/NOTIFY_*` 等框架开销。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-test-kit/blob/master/docs/Dump_Debug.md"
+    version: "ops-test-kit master（commit 37ec7234db08，2026-09-15 抓取）：Dump 类别/格式/命名/失败自动 Dump 与参数约束"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-test-kit/blob/master/docs/Performance_Testing.md"
+    version: "ops-test-kit master（commit 37ec7234db08）：冷热两模式、四条通路的 warmup/采集/统计差异与结果字段"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [ttk]
+  categories: [precision, performance]
+
+related_references: [ttk-precision-comparison-methods, ttk-deterministic-levels-and-batch-consistency, msprof-output-reading-and-performance-analysis, msprof-collect-parse]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "**① Dump 调试**：`--dump` 按类别保存——`in` 输入 tensor（含 tiling data，保存于输入生成后、设备执行前）、`out` NPU 输出 tensor（设备执行后、精度比对前）、`golden` Golden tensor（Golden 生成后）、`full` 以上全部；可组合（`--dump in,golden`）。`--dump-format` 取 `bin`（默认，原始字节无 shape 信息，需按 dtype 手动解析）、`npy`（**最推荐**，含 dtype 与 shape，`numpy.load()` 直读）、`pt`（含 dtype 与 shape，需要 Torch 张量语义时用）、`print`（直接打终端，仅小规模数据目视）；特殊 dtype：`complex32` 在 npy/pt 下按 float16 存储，`int4`/`float4` 在 bin 下是打包字节、npy/pt 下自动解包。文件默认落在 TTK 工作目录（`root_path`），E2E 模式可用环境变量 `NPU_DUMP_PATH` 覆盖；命名含用例名/阶段（input|output|golden）/tensor 序号/后缀，Kernel 模式额外保存 tiling data、GEIR 模式带 `geir` 前缀、失败自动 dump 带 `fail_` 前缀。**`--dump-on-fail`**：精度比对**失败**时自动保存该用例的输入+输出+Golden，**通过时不保存**，无需同时指定 `--dump`；与 `--dump full` 叠加时所有用例保存正常数据、失败用例另存一份 `fail_` 副本。**`--seed`** 固定输入数据生成与 Golden 计算的随机性，是「同一次对比可复现」的前提（冷热性能对比时的标准做法是两次运行都加同一个 seed，使差异只反映预热差异）。**参数约束**：`--no-prof` 模式下只允许 `--dump in,golden`（prepare 用途），且与 `--dump-format print`（prepare 需要可回读格式）和 `--dump-on-fail`（跳过比对）都不兼容；`--dump-on-fail` 与 `--validate`（跳过执行与比对）也不兼容。四条通路（Kernel/ACLNN/GEIR/E2E）都支持 `--dump` 与 `--dump-on-fail`。**② 性能测试口径（四通路差异是判读关键）**：核心参数 `--warmup`（默认 true）与 `--run`（默认 3；仿真模式默认 1）。**e2e（框架 API）**：warmup 把被测算子本身跑 1 次并丢弃结果（预热框架 dispatch、autograd、NPU kernel 首次加载、workspace 分配、SMMU/TLB），采集时 `--run` 次全部进入 torch profiler 采集窗口取平均，读 `kernel_details.csv` 的 `Duration(us)` 累加后除以 run_count，性能列 `eager_device_perf_us`/`eager_cpu_perf_us`/`eager_kernel_count`/`eager_kernel_details`。**kernel（AscendC 内核）**：warmup 是 launch 一个空的 helper kernel `warmup.o`（每个 core 只 `tik_return`，无实际计算）预热 SMMU/BIU/TLB/cores；采集 `start_step=0`、`--run` 次全部采集，读 `op_summary_*.csv` 的 `Task Duration(us)` 或 `task_time_*.csv` 的 `task_time(us)` 取 **median**，结果列 `dyn_perf_us`/`cst_perf_us`/`bin_perf_us`。**aclnn（aclnn C API）**：warmup 同 kernel（launch 空 helper kernel，仅预热硬件层）；**`--run > 1` 时 `start_step=1` 跳过首次**（首次执行要分配 workspace 等 HBM 内存，`aclnnAddGetWorkspaceSize` 首次耗时远高于后续，属一次性开销、不计入稳态），读 `api_statistic_*.csv` 的 `Avg(us)` 或 `op_statistic_*.csv` 的 `Avg Time(us)`（msprof 内部按采集次数取平均），结果列 `api_perf_us`/`op_perf_us`；**注意 `--warmup false --run 3` 仍会跳首次**（因 run_time > 1），要采首次必须 `--run 1`。**geir（GE 图编译执行）**：无 warmup（每次都是全新子进程执行编译好的二进制，冷热启动等价、`--warmup` 开关无效）；非确定性模式默认只跑 1 次子进程取 median，确定性模式（`--dl 1`）跑 `--run` 次做 MD5 校验。**统计过滤**：kernel/aclnn/geir 读取时按 `Task Type`/`kernel_type` 过滤，仅保留 `KERNEL_AICORE`/`KERNEL_AIVEC` 等实际 NPU kernel 执行记录，**排除 `MODEL_EXECUTE`/`NOTIFY_*` 等框架开销**——跨通路比较耗时前必须先确认口径一致。"
+  evidence: "Dump_Debug.md：Dump 类别表（in/out/golden/full 及保存时机）、Dump 格式表（bin/npy/pt/print 与适用分析方式）、『npy：最推荐，Python 生态通用，numpy.load() 即可用』『complex32 在 npy/pt 格式下按 float16 存储；int4/float4 在 bin 格式下为打包字节，npy/pt 格式下自动解包』『Dump 文件默认保存到 TTK 工作目录（root_path）。E2E 模式可通过环境变量 NPU_DUMP_PATH 覆盖』『精度比对失败时自动保存该用例的全部数据（输入+输出+Golden）』『比对通过时不保存』『文件名带 fail_ 前缀』『--no-prof 只允许 --dump in,golden（prepare 模式）』『--dump-format print 与 --no-prof 不兼容』『--dump-on-fail 与 --validate 不兼容』『--seed 固定输入数据生成和 Golden 计算的随机性，确保可复现』。Performance_Testing.md：核心参数表（--warmup 默认 true、--run 默认 3）、两种性能模式表、各通路机制（e2e/kernel/aclnn/geir）、『aclnn…--run > 1 时 start_step=1 跳过首次，采后 N-1 次取平均。首次执行需分配 workspace 等 HBM 内存（aclnnAddGetWorkspaceSize 首次耗时远高于后续），属于一次性内存申请开销，不计入稳态性能』『注意：--warmup false --run 3 仍会跳首次（start_step=1），因为 run_time > 1；若要采首次需用 --run 1』『geir…每次都是全新子进程执行编译好的二进制，冷热启动等价，--warmup 开关无效』采集次数与统计方式表（读哪个文件哪一列、median/平均、实际采集次数）与『kernel/aclnn/geir 读取时均按 Task Type / kernel_type 过滤，仅保留 KERNEL_AICORE/KERNEL_AIVEC 等实际 NPU kernel 执行记录，排除 MODEL_EXECUTE/NOTIFY_* 等框架开销』"

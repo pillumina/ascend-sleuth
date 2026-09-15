@@ -1,0 +1,30 @@
+id: ttk-deterministic-levels-and-batch-consistency
+type: software-fact
+title: TTK 确定性等级 0–3 与 batch 一致性判据（batch relation 三字段齐全才进第二阶段）
+summary: "TTK 用 `--deterministic-level`（缩写 `--dl`）控制一次执行的确定性等级：**0** 不启用确定性选项（只做普通精度校验）；**1** 同一用例的确定性执行；**2** 编译期与执行期确定性选项（通路原有的强确定性检查）；**3** 确定性执行，**且只有在「完整声明 batch relation」时才进入第二阶段**（第二阶段用 raw dump slice 比对做 FA 算子的 case 内/跨 case batch 一致性，第一阶段仍是普通精度）。**batch relation 的构成**：`batch_axis`、`batch_slice_info`、`batch_seed` **三个字段都存在且可解析**才构成；三者都没填或只填一部分时，level 3 仍正常执行确定性与精度流程、**不进入第二阶段、也不因缺字段失败**，只在执行前按用例输出一次 warning 列出缺少的字段（prepare/validate 不执行主算子，不输出该提示）。**优先级**：可在 CSV 的 `attributes` 里给单个用例写 `'batch_deterministic_level': 3`；当命令行 `--dl` 为 0（默认）时它与该用例指定 `--dl=3` 等价，**非零命令行值始终优先**（例如 `--dl=1` 会覆盖 CSV 的 level 3）；该属性只决定确定性执行等级，**不会自动构成 batch relation**。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-test-kit/blob/master/docs/Deterministic_Compute.md"
+    version: "ops-test-kit master（commit 37ec7234db08，2026-09-15 抓取）：确定性等级 0-3、batch relation 三字段与命令行/CSV 优先级"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-test-kit/blob/master/docs/FAQ/faq_guide.md"
+    version: "ops-test-kit master（commit 37ec7234db08）：精度比对失败排查与容差调整的常见问答"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [ttk]
+  categories: [precision]
+
+related_references: [ttk-precision-comparison-methods, ttk-dump-and-performance-testing, ascend-determinism-triage, msprobe-accuracy-compare]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "**① 四个确定性等级的语义与判据**：`--dl 0`（默认）不启用确定性选项、只做普通精度校验；`--dl 1` 同一用例的确定性执行，判据为通路原有的同用例确定性检查；`--dl 2` 编译期与执行期确定性选项，判据为通路原有的**强确定性检查**；`--dl 3` 确定性执行，第一阶段仍是普通精度，**只有在完整声明 batch relation 时才进入第二阶段**——第二阶段由 dump 驱动做 FA 算子的 case 内/跨 case batch 一致性（raw dump slice 比对），这样设计是为了避免把「没有可切片输出的框架摘要」误判为一致。**② batch relation 的构成与缺字段行为**：只有 `batch_axis`、`batch_slice_info`、`batch_seed` **三个字段都存在且可解析**时才构成 batch relation；三者都没有、或只填了一部分时，level 3 **仍正常执行确定性/精度流程**，只是不进入第二阶段、**也不会因为缺字段而失败**——执行前会按用例输出一次 warning，列出缺少哪些字段并提示将继续普通 level-3 执行（prepare/validate 阶段不执行主算子，因此不输出该提示）。**③ 命令行与 CSV 的优先级**：可在 CSV 的 `attributes` 中为单个用例写 `'batch_deterministic_level': 3`；当命令行 `--dl` 为 0（默认值）时，它与给该用例指定 `--dl=3` 等价；**非零的命令行值始终优先**（例如 `--dl=1` 会覆盖 CSV 里写的 level 3）。该属性**只决定确定性执行等级，不会自动构成 batch relation**——即『我想做 batch 一致性』与『我声明了切片关系』是两件独立的事。"
+  evidence: "Deterministic_Compute.md：『--deterministic-level（缩写 --dl）控制一次 TTK 执行的确定性等级。level 3 仍先执行普通精度校验；FA 算子的 case 内/跨 case batch 一致性则由 dump 驱动的第二阶段单独完成，避免把没有可切片输出的框架摘要误判为一致』；等级表逐行（0 不启用确定性选项/普通精度；1 同一用例的确定性执行/通路原有的同用例确定性检查；2 编译期与执行期确定性选项/通路原有的强确定性检查；3 确定性执行；若完整声明 batch relation，则可进入第二阶段/第一阶段普通精度；第二阶段 raw dump slice 比对）；『可以在 CSV 的 attributes 中为单个用例写 batch_deterministic_level: 3。当命令行 --dl 为 0（默认）时，它与该用例指定 --dl=3 等价；非零命令行值始终优先，例如 --dl=1 会覆盖 CSV 的 level 3。该属性只决定确定性执行等级，不会自动构成 batch relation』『只有 batch_axis、batch_slice_info、batch_seed 三个字段都存在且可解析时，才构成 batch relation。三者都没有或只填了其中一部分时，level 3 仍正常执行确定性/精度流程，但不进入第二阶段，也不会因为缺字段失败；执行前会按用例输出一次 warning，列出缺少的字段并提示继续普通 level-3 执行。prepare/validate 不执行主算子，不输出该执行提示』"
