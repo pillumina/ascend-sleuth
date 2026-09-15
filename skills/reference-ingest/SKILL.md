@@ -47,7 +47,19 @@ description: >
 
 ## 流程
 
-### 0. 选源（哪些仓值得吃）
+### 0. 选源与**仓级判定**（先给整仓一个结论，再决定要不要扫）
+
+整仓不纳入的仓（算子库/模板库、治理与竞赛、行业 SIG、agent 知识仓、框架适配仓）**不需要扫树**——扫大仓可能几分钟，而结论早由仓的类别确定。用仓级判定记账，下一轮不必再扫、也不必再判：
+
+```bash
+python3 scripts/gc_docs.py triage <repo> --decision rejected --note "算子库/模板库：文档以 API 参考与样例为主，非独立于事故的先验知识"
+python3 scripts/gc_docs.py triage <repo> --decision candidate --note "文档面大或含工具/库文档，留待后续批次按价值排序评估"
+python3 scripts/gc_docs.py triage <repo> --decision selected --note "已按价值优先级纳入并完成沉淀"
+```
+
+三种取值：`selected`（已纳入并沉淀）/ `candidate`（候选待评估，进下一轮选源池）/ `rejected`（不纳入，理由必填）。**仓级判定与文档级 `mark` 并存、互不覆盖**：仓级说"这个仓要不要看"，文档级说"这一篇沉不沉"。
+
+### 0.1 选源排序（哪些仓值得吃）
 
 判据是"仓里有没有面向问题定位的**文档**"，不是 star 数：
 
@@ -59,6 +71,8 @@ description: >
 **已确认的优先级**（前批已吃 `cann/cann-samples`）：`hccl`（通信故障诊断手册）→ `runtime`（FAQ + 错误码参考）→ `oam-tools`（asys 故障收集与解析）→ `docs`（CANN 公共文档仓，按判据摘取）→ cann-recipes-\* / asc-tools / ops-test-kit / shmem / cann-learning-hub。
 
 ### 1. scan：增量扫描（零模型成本）
+
+> 只对 `selected`/`candidate` 的仓做这一步；`rejected` 的仓在第 0 步就结束了。
 
 ```bash
 python3 scripts/gc_docs.py scan hccl --prefix docs/zh/user_guide/fault_diagnosis --top 40
