@@ -4,274 +4,966 @@
    "branch": "master",
    "docs": {
     "docs/00_quick_start.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "skipped",
+     "note": "环境准备/快速入门（云开发环境、CANN 镜像 Docker、DevContainer、CANN 包下载安装与验证）——部署面，无诊断判据；英文页为同内容副本",
      "sha": "d4db75705c9508a048510b7beb0441ea96a3bd20"
     },
     "docs/00_quick_start_en.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "skipped",
+     "note": "环境准备/快速入门（云开发环境、CANN 镜像 Docker、DevContainer、CANN 包下载安装与验证）——部署面，无诊断判据；英文页为同内容副本",
      "sha": "1a8fc4b0468aec355806dcf46b66c96b384b8119"
     },
     "docs/01_cpu_debug.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "harvested",
+     "refs": [
+      "asc-tools-ascendc-debug-suite"
+     ],
      "sha": "4393c1b42b1a94fd1c7e1447b307a332cd3e154c"
     },
     "docs/01_cpu_debug_en.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "skipped",
+     "note": "环境准备/快速入门（云开发环境、CANN 镜像 Docker、DevContainer、CANN 包下载安装与验证）——部署面，无诊断判据；英文页为同内容副本",
      "sha": "6f85d365fffef3cc7bf45cf51f26330e003123c4"
     },
     "docs/02_npu_check.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "harvested",
+     "refs": [
+      "asc-tools-ascendc-debug-suite"
+     ],
      "sha": "d450e9905967b9e13ec5b1c61c4dc5615bd2c679"
     },
     "docs/02_npu_check_en.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "skipped",
+     "note": "环境准备/快速入门（云开发环境、CANN 镜像 Docker、DevContainer、CANN 包下载安装与验证）——部署面，无诊断判据；英文页为同内容副本",
      "sha": "c724b970645900030fa2d7ef58473de2ca775222"
     },
     "docs/03_msobjdump.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "harvested",
+     "refs": [
+      "asc-tools-ascendc-debug-suite"
+     ],
      "sha": "18f455dc89817021c280da220d773e5f2a65a819"
     },
     "docs/03_msobjdump_en.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "skipped",
+     "note": "环境准备/快速入门（云开发环境、CANN 镜像 Docker、DevContainer、CANN 包下载安装与验证）——部署面，无诊断判据；英文页为同内容副本",
      "sha": "eba1c7bec44035497028873984b09ffb599836f8"
     },
     "docs/04_show_kernel_debug_data.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "harvested",
+     "refs": [
+      "asc-tools-ascendc-debug-suite"
+     ],
      "sha": "e8071f40dab83aa7e52ef55060c2fa31d4060a8b"
     },
     "docs/04_show_kernel_debug_data_en.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "skipped",
+     "note": "环境准备/快速入门（云开发环境、CANN 镜像 Docker、DevContainer、CANN 包下载安装与验证）——部署面，无诊断判据；英文页为同内容副本",
      "sha": "bfac3f587391c86ba5fdd0a6bd6957260f64d10d"
     },
     "docs/05_optype_collector.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "harvested",
+     "refs": [
+      "asc-tools-ascendc-debug-suite"
+     ],
      "sha": "3de66ea97b5221e7e346c7fa1b9ddead65759653"
     },
     "docs/05_optype_collector_en.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:45",
+     "decision": "skipped",
+     "note": "环境准备/快速入门（云开发环境、CANN 镜像 Docker、DevContainer、CANN 包下载安装与验证）——部署面，无诊断判据；英文页为同内容副本",
      "sha": "e4b793916e930f8f2ac9a5f3aa89ddeab5ec352b"
     }
    },
    "head_sha": "9ad0195ad2ab5aabc48460817cadde762ef26390",
    "last_scan": "2026-09-15T17:08:55"
   },
+  "gitcode/cann/ascend-transformer-boost": {
+   "branch": "master",
+   "docs": {
+    "docs/ATB_mechanisms.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "0c4f525e3324bcb230667b3c01b27fc12eced4cf"
+    },
+    "docs/ATB加速原理.md": {
+     "at": "2026-09-15T17:35:24",
+     "decision": "harvested",
+     "refs": [
+      "atb-dispatch-bound-and-runtime-optimizations"
+     ],
+     "sha": "c9fd4a64299a0815eac194a2c100f4d7676395dd"
+    },
+    "docs/ATB加速库对外头文件和库文件说明.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "9daab08082fcce38e8244ea41c1e4a0d08bf9967"
+    },
+    "docs/compile_and_build.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "e648189cc266f07989ab31d9d420485622b6b275"
+    },
+    "docs/contributing.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "c5fd3a948ed33034d2d10599b2c6b8ed098fb356"
+    },
+    "docs/contributors/code-of-conduct.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "26503b290138124e57cd402a8173eec63f1109a7"
+    },
+    "docs/contributors/code_of_conduct_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "c2bcbadf3cdfbacf3196b44468c1ef8a57c16670"
+    },
+    "docs/contributors/gitcode-workflow.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "8661fddcc87f8656a8641d3af438d6b2c9e5b28d"
+    },
+    "docs/contributors/gitcode_workflow_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "b0d39b6be51d32829b8f238d2128234fcc5e2965"
+    },
+    "docs/contributors/infra-command.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "3d123d9becd0b5f44426acac1762e0159d29336a"
+    },
+    "docs/contributors/infra-faqs.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "c7a6c58b27fe74498613e81ded5104f614662b7e"
+    },
+    "docs/contributors/infra_command_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "35f55144259419866cbcec436aaf8e243d72b2f4"
+    },
+    "docs/contributors/infra_faqs_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "8b59ba0691cb87896a4187b8da4ea9eab1c495e2"
+    },
+    "docs/contributors/issue-submit.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "5e00d52bd07daa18ad067ce9ff563f5ca9b54cff"
+    },
+    "docs/contributors/issue_submit_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "1f0630d5fb79bbb104f7a82e24e0649e04ba86d9"
+    },
+    "docs/cpp_api.rst": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "bd52c68c26972428c10e30ff559fe4502933643c"
+    },
+    "docs/development_guide.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "eabc2dd6d96f2b11e3506db9e51b9ee160e163fa"
+    },
+    "docs/doxygen/atb_document.txt": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "3b20f7cd0abac2cd27720b669e5b38478d910a97"
+    },
+    "docs/faq.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "a7156abd90a8dbb774e0447a985b04ff3846d3a5"
+    },
+    "docs/index.rst": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "06ff30f8c025a94120ab3260affef2314436aeab"
+    },
+    "docs/logging_and_debugging.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "f6c7634b983a0e02f8daa849e2d48bd71a7a840c"
+    },
+    "docs/pre-commit配置指导书.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "a24df1311999a1657d9a1880b838ffd6758b6e2e"
+    },
+    "docs/starting_from_a_simple_operator.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "61d1e4eee369da39248903b52ada3c1711d64c3a"
+    },
+    "docs/从开发一个简单算子出发.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "372e6e495540520595fcfc379d3edea8ece741b7"
+    },
+    "docs/常见问题与回答.md": {
+     "at": "2026-09-15T17:35:24",
+     "decision": "harvested",
+     "refs": [
+      "atb-dispatch-bound-and-runtime-optimizations"
+     ],
+     "sha": "21c22ebba5253cdae5e38fa652743ffdc3876dce"
+    },
+    "docs/开发指南.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "a4f9ab33f52ab0199f3e9fd1b20fc254b894fabb"
+    },
+    "docs/日志与调试.md": {
+     "at": "2026-09-15T17:35:24",
+     "decision": "harvested",
+     "refs": [
+      "atb-dispatch-bound-and-runtime-optimizations"
+     ],
+     "sha": "0505175d7a18c22573de886bbe0230d4235efb7d"
+    },
+    "docs/测试框架指南.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "6cdecf8210b8b5d44298670ab502289294b9b9f1"
+    },
+    "docs/编译与构建.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "ad949619c976ab7e5afdd6c54bf9669e4e8a3245"
+    },
+    "docs/贡献指南.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "ATB 开发/贡献/API 参考面（编译构建、测试框架指南、开发指南、从零写算子、贡献与社区流程、doxygen 与 cpp_api、pre-commit 配置、索引页、ATB_mechanisms 英文版）——非诊断先验知识；原理与调试面已由 atb-dispatch-bound-and-runtime-optimizations 与该仓日志与调试文档承载",
+     "sha": "14ca04682cf78d5846c41684c2ea18b956868ba0"
+    }
+   },
+   "head_sha": "a5a1028221bf73579dc6808885641f0e10dd2126",
+   "last_scan": "2026-09-15T17:32:19"
+  },
+  "gitcode/cann/cann-learning-hub": {
+   "branch": "master",
+   "docs": {
+    "blogs/README.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "99d7154dd5dc997408a2d957975926cac806de04"
+    },
+    "blogs/inference/aot_superkernel_graph_execution/aot_superkernel_graph_execution.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "47971114e2db0cc53edd81656124e33b5c36b9a7"
+    },
+    "blogs/inference/autofuse_torchinductor_deepseek_fusion/autofuse_torchinductor_deepseek_fusion.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "669762cc2d34055e6fecb6ca1563c802caa558fd"
+    },
+    "blogs/inference/deepseek_r1_superpod_inference_optimization/基于Atlas 900 A3 SuperPoD推理部署Deepseek-R1性能优化实践.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "a0987e5b2071f272df19b76e01aace311faa1d67"
+    },
+    "blogs/inference/deepseek_v4_npu_inference_optimization/deepseek_v4_npu_inference_optimization.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "06395d7dc1309a7c1880497e164e473df0f267f7"
+    },
+    "blogs/inference/deepseek_v4_supernode_support/deepseek_v4_supernode_support.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "5a596f1b30e8f86ea02c5dd672231a9625b4662d"
+    },
+    "blogs/inference/hixl_fabricmem_kv_cache_transfer/hixl_fabricmem_kv_cache_transfer.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "6be8555ae8879477f8110a47807f47f216ac1692"
+    },
+    "blogs/inference/hixl_mooncake_vllm_kv_cache_pooling/HIXL、Mooncake与vLLM的KV Cache池化与传输.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "719f0d3721a6a4d81741d7da6f858ee5eb554f66"
+    },
+    "blogs/inference/hixl_nixl_ascend_backend/hixl_nixl_ascend_backend.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "b64970b6b93c42d74a6215084dd5b1333c691c93"
+    },
+    "blogs/inference/hixl_rl_tail_latency_optimization/HIXL在RL推理中的长尾时延优化.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "e47a2c21c4ff4291ab7b2be44f7f4b4e50c5d4c2"
+    },
+    "blogs/inference/longcat_flash_lite_inference_optimization/longcat_flash_lite_inference_optimization.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "3656d7ea64fccb0b1e39b51186b76d8be0871e6f"
+    },
+    "blogs/inference/longcat_flash_superpod_inference_optimization/基于Atlas 900 A3 SuperPoD的LongCat-Flash模型推理性能优化实践.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "d8e14f5a90002ea4dca2ad84a607613ab51664dd"
+    },
+    "blogs/inference/npugraph_ex_aclgraph_graph_mode/CANN npugraph_ex图模式优化.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "5aacfeaf9fadb9995e68ef16934eb5a753cabe6d"
+    },
+    "blogs/inference/npugraph_ex_third_party_framework_integration/practice/README.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "c82841feb070bc4ee033ffd05348d99843e5024b"
+    },
+    "blogs/inference/npugraph_ex_third_party_framework_integration/第三方框架集成npugraph_ex.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "ddccacdac136b2adf1d74d6227c7d888dec32c95"
+    },
+    "blogs/inference/overlap_scheduling_throughput_optimization/Overlap Scheduling吞吐优化.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "dc78ca38180689f94c3ea6442b86bab4a39ee617"
+    },
+    "blogs/inference/sals_long_sequence_inference/sals_long_sequence_inference.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "1a8bbcc3d3b855541bc6623ef7229b9ab4a280c0"
+    },
+    "blogs/inference/sglang_mooncake_hixl_pd_separation_d2d/SGLang、Mooncake与CANN HIXL的PD分离D2D部署.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "224f2fff7866cf292de6f10fc28b9cbb7879a275"
+    },
+    "blogs/inference/spark_model_cluster_throughput_optimization/spark_model_cluster_throughput_optimization.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "755b924c25e253bbd681bd9afc3d7d4d37543b4d"
+    },
+    "blogs/inference/superkernel_inference_acceleration/SuperKernel技术综述.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "9bacec0abaa780d1f7ed8d48ec75ea5aadbc309d"
+    },
+    "blogs/inference/tensorflow_autofuse_recommendation_fusion/tensorflow_autofuse_recommendation_fusion.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "bddc5f2c79774387ef1ab87c69435895d0085bb5"
+    },
+    "blogs/inference/torch_npu_ipc/基于torch_npu的IPC特性介绍.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "ff21fd809a3c754301ed8ff3ce830d4ee38109ea"
+    },
+    "blogs/inference/torchair_fx_pass_multi_stream/TorchAir自定义FX Pass.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "b370dc2e9575a5654ca8dce742886d808da6892f"
+    },
+    "blogs/inference/vllm_ascend_inference_optimization/vLLM-Ascend推理优化.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "79b604d11a66bb7a07b7f90f88ed410bfb414c30"
+    },
+    "blogs/inference/xllm_inference_performance_optimization/xllm_inference_performance_optimization.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "9802bac376d66c2d1d90ddcc79cd68336f469649"
+    },
+    "blogs/operator/aicpu_tiling_sink/AICPU Tiling下沉编程.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "0af2ea32ca612008bee13b9192f984208f567fb8"
+    },
+    "blogs/operator/ascend950_aiv_urma_shmem_communication/ascend950_aiv_urma_shmem_communication.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "977a0973c63a273e2f3fa02ed13994702331cf05"
+    },
+    "blogs/operator/ascend950_rmsnormquant_optimization/ascend950_rmsnormquant_optimization.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "4746f9e03f55334fffd6561c8cc103f7f7fd9a7e"
+    },
+    "blogs/operator/ascend_c_mmad_selection_guide/Ascend C矩阵乘接口选型指南-从场景到API的快速决策.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "aec08699c6c615792907f8afd787f00a450c563a"
+    },
+    "blogs/operator/ascendc_rtc_compilation/自定义算子开发系列：Ascend C RTC即时编译.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "6e0556e1a1887ec9414a70e8fa57ba89194fccab"
+    },
+    "blogs/operator/cross_entropy_zloss_fusion/CrossEntropyLoss与Zloss融合算子开发.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "2598c32ba60560b11591b33559e48d81d8ee6949"
+    },
+    "blogs/operator/deepxtrace_moe_slow_card_detection/基于昇腾的DeepXTrace推理集群快慢卡在线检测.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "34e17d67935e4d463f815402b3aecfa4bdcbcb18"
+    },
+    "blogs/operator/dsa_operator_open_source_contribution/dsa_operator_open_source_contribution.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "b99061f5041a89ee53cd194593d35d202bbdca96"
+    },
+    "blogs/operator/dumptensor_operator_debugging/dumptensor_operator_debugging.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "4925a062375075888fc3b2c8e148f3a81a183c37"
+    },
+    "blogs/operator/hccl_custom_operator_aicpu_p2p/基于AICPU引擎的HCCL点对点通信算子开发.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "23ceecce66b3359594f6c53a808fc29fa98bbd73"
+    },
+    "blogs/operator/hccl_reducescatter_high_precision_redevelopment/HCCL ReduceScatter精度优化.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "730e40365b6b47bcf9b578aaba5a9fecc4ad7ccd"
+    },
+    "blogs/operator/kernel_direct_call_programming/算子Kernel直调编程.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "7c749dae72f0238a0e2a932700f7c0ccd80bf55d"
+    },
+    "blogs/operator/moe_dispatch_combine_optimization/moe_dispatch_combine_optimization.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "b5b5c6d2024436cc8ff96d30aea3f22a6797ae5a"
+    },
+    "blogs/operator/ms_sanitizer/算子开发的守护神-深度解析msSanitizer异常检测工具.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "15a1c72dd2601ac01ff635d40eea0acf1aca28fa"
+    },
+    "blogs/operator/multi_vendor_operator_parallel_compilation/multi_vendor_operator_parallel_compilation.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "6a6cb68c0f67d64ae67adbf3e0b015a38fa4ae13"
+    },
+    "blogs/operator/mx_quantized_matmul_optimization/mx_quantized_matmul_optimization.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "0ac5072e0baebb10130272fa0558160df18b203b"
+    },
+    "blogs/operator/nddma_introduction/深入理解NDDMA多维数据搬运-昇腾算子开发性能优化利器.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "963ec8b1adc253e27ac3b6525662355c8d5f3bcc"
+    },
+    "blogs/operator/regbase_vec_add/从一个向量加法出发，深入理解Regbase编程范式.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "a55d06b0b13c57b04d5d1f0ee1b3d6ec60e3b06d"
+    },
+    "blogs/operator/scalar_npu_operator_performance_optimization/scalar_npu_operator_performance_optimization.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "c4f87a0a37d4c6bddc7b3f818aa81576b827815e"
+    },
+    "blogs/operator/tilelang_ascend_operator_optimization/tilelang_ascend_operator_optimization.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "f55dd11182a14673db3e6068504a8e9bac925063"
+    },
+    "blogs/operator/tilelang_xllm_qwen35_operator_adaptation/tilelang_xllm_qwen35_operator_adaptation.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "945499fbdbdbfe652c63e9a7f5f76c70786ecdca"
+    },
+    "blogs/operator/tilingkey_template_programming/TilingKey模板化编程.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "885a6b0b1906d11a02e2601690199c80e8494a91"
+    },
+    "blogs/operator/transformer_experimental_mix_operator/transformer仓experimental路径MIX算子开发贡献.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "09f3c8f8cad432852b7659c221a593252a05aaa5"
+    },
+    "blogs/training/areal_async_rl_training/practice/README.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "a531932ed9787c039889bd368cb3553a21cdbb46"
+    },
+    "blogs/training/areal_async_rl_training/基于昇腾的AReaL全异步RL训练.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "2ed79185b840085f8e266141dee522906c565def"
+    },
+    "blogs/training/flashrecovery_training_fault_recovery/大模型训练故障恢复方案FlashRecovery.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "9a67f8f6871ee19c648b1f89fdee17f632b599cd"
+    },
+    "blogs/training/sam_speculative_decoding_rl_training/基于昇腾的SAM投机解码长序列强化学习训练.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "优化博客/教程体文章（推理与算子优化实践，教程体而非判据体）——可复用的机制结论已由多流/图模式/预取/SuperKernel、msprof 判读、精度判据等词条承载；台账保留路径供诊断时按需查阅",
+     "sha": "fc98d3389d0d6c2f4fdc445110675ed00f6ea91b"
+    },
+    "docs/CANNLab_course_development_guide.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "CANNLab 教学平台文档（课程开发指南、环境体验、提交标准、测试分支体验）——教学与课程管理面",
+     "sha": "fcc0ca1500cb9aad4907041cbb99105ffc77d641"
+    },
+    "docs/CANNLab_env_experience_guide.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "CANNLab 教学平台文档（课程开发指南、环境体验、提交标准、测试分支体验）——教学与课程管理面",
+     "sha": "37a30d11ecf4a52e50692b3f2ab4f91a3d9edf4a"
+    },
+    "docs/README.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "CANNLab 教学平台文档（课程开发指南、环境体验、提交标准、测试分支体验）——教学与课程管理面",
+     "sha": "5e7d4b83642e586883311956d3598f4fa363f2a0"
+    },
+    "docs/course_submission_criteria.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "CANNLab 教学平台文档（课程开发指南、环境体验、提交标准、测试分支体验）——教学与课程管理面",
+     "sha": "b481756dce18aa5b1ac0f156536a193e23940867"
+    },
+    "docs/test_branch_course_experience_guide.md": {
+     "at": "2026-09-15T17:37:57",
+     "decision": "skipped",
+     "note": "CANNLab 教学平台文档（课程开发指南、环境体验、提交标准、测试分支体验）——教学与课程管理面",
+     "sha": "4692bdfee5c27def7a66feab14c4777f6e8979f8"
+    }
+   },
+   "head_sha": "d06fd81728655e7bc516d380b679d64081c1a75c",
+   "last_scan": "2026-09-15T17:37:56"
+  },
   "gitcode/cann/cann-recipes-infer": {
    "branch": "master",
    "docs": {
     "docs/agent/model-infer-optimize-design.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "30e9033a025da368d54eccce82847ed7cac4677f"
     },
     "docs/agent/sota-approach-skill-design.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "cb2b62a2c1bb698e9bd9fb32b729ec42355844ba"
     },
     "docs/cann/en/multi_stream_principles.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "289382940055cd288ed3c66965166649476251f4"
     },
     "docs/cann/en/npu_graph_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "926fe99e9a272f2f8d7da0e8e34ea39ad17cf77b"
     },
     "docs/cann/en/prefetch_principles.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "b4288331eed0968f11705b08a871290e82aa2c95"
     },
     "docs/cann/en/super_kernel.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "2fafe6a71166f23cc39976ed7a3b853c5dd4b36d"
     },
     "docs/cann/zh/multi_stream_principles.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:19:43",
+     "decision": "harvested",
+     "refs": [
+      "ascend-inference-multistream-and-graph-mode"
+     ],
      "sha": "c52892771a90ce918e60846154d47aa199c82096"
     },
     "docs/cann/zh/npu_graph_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:19:43",
+     "decision": "harvested",
+     "refs": [
+      "ascend-inference-multistream-and-graph-mode"
+     ],
      "sha": "88b3e93183d0c5323c8ae5bc61a6695b544a84f0"
     },
     "docs/cann/zh/prefetch_principles.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:19:43",
+     "decision": "harvested",
+     "refs": [
+      "npu-prefetch-and-superkernel"
+     ],
      "sha": "bf8ae7d02110eb710b6145fbcb46cbd9caa44cd1"
     },
     "docs/cann/zh/super_kernel.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:19:43",
+     "decision": "harvested",
+     "refs": [
+      "npu-prefetch-and-superkernel"
+     ],
      "sha": "197affd6dbc6abe729d47793abf74505e856b7fa"
     },
     "docs/common/inference_config_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "d62376a7d632891709eeba294450077928faf03e"
     },
     "docs/common/mtp_model_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "b6c946f375d6a8a8edb19941233f928fc3979eac"
     },
     "docs/common/new_model_checklist.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "08601589523554a0898f0633d598d20b8e083c17"
     },
     "docs/common/online_split_weight_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "3c93dde00eee1f1c10b30811635323f411603453"
     },
     "docs/design/executor_design.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "d606601d763ad4a8acd626eddfa90d44e84e8ef3"
     },
     "docs/design/kv_cache_design.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "716ad44761067b324ea3e80731c23d113ff459bd"
     },
     "docs/design/mm_inference_design.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "a66a00dbc375e6d9b26226ffb2b982ed684475ef"
     },
     "docs/design/mtp_design.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "6a5430469c3a6bb652a177f0459a51b23e2ac59c"
     },
     "docs/design/online_inference_design.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "e059c1326307185361ee86e05179c94fb2ede3b3"
     },
     "docs/design/packed_sequence_design.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "本仓自有执行框架的设计与配置文档（executor/kv cache/MTP/packed sequence/在线推理与多模态设计、InferenceConfig 与模型适配清单）——描述该框架的实现约定，属框架文档而非 CANN 先验知识",
      "sha": "90da8fca78d945d36e72133879054dcf0e7b60a2"
     },
     "docs/integration/ling-3.0-flash/bailing_v3_pypto_operator_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "7e7ff83dd9f4d22bb013afc6ace6c3c62fdf261c"
     },
     "docs/integration/sglang/dsv4-flash-single-npu-moe-offload/dsv4_flash_single_card_design.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "f7028ea0b18cf8af53eb26d554cfeb4bc11ba4e8"
     },
     "docs/integration/sglang/dsv4-flash-single-npu-moe-offload/dsv4_flash_single_card_inference_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "98c075423e2edeaf788bb1abd0c760d10ecdda16"
     },
     "docs/integration/sglang/qwen3-next/qwen3_next_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "298b6dcd49ce8654051e2ee0f201ca7591d83c86"
     },
     "docs/models/davinci-magihuman/davinci-magihuman_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "f2d42aa3267be2e776aba6a1c88880f58ceaf750"
     },
     "docs/models/deepseek_r1/deepseek_r1_decode_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "f04b692491d5a8f058d564c4bfe74f4b7cf32df0"
     },
     "docs/models/deepseek_r1/deepseek_r1_prefill_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "97771313c1cfad311a50026e18566d7ea61d7154"
     },
     "docs/models/deepseek_v3_2_exp/deepseek_v3.2_exp_ascendc_operator_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "b6c4674cca0e69b2575ed884c66fa83be7e66df2"
     },
     "docs/models/deepseek_v3_2_exp/deepseek_v3.2_exp_inference_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "676449bd65e9da4e95dcb08c014c7165553051ed"
     },
     "docs/models/deepseek_v3_2_exp/deepseek_v3.2_exp_pypto_operator_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "034741d0d1f20841274b52c7d4c52818f8c17cc3"
     },
     "docs/models/deepseek_v3_2_exp/deepseek_v3.2_exp_tilelang_operator_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "9d8bb44eddc985059385e14e450a6e37b77bca62"
     },
     "docs/models/deepseek_v4/deepseek_v4_ascendc_operator_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "031930f4b842e77388d676e3e352e3c7560e9278"
     },
     "docs/models/deepseek_v4/deepseek_v4_autofuse_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "d98941bdb1a2470c02a535959e1fd715d83e9a99"
     },
     "docs/models/deepseek_v4/deepseek_v4_inference_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "80d57205155ff5da6a5f12afe58cb9407e9f9d58"
     },
     "docs/models/deepseek_v4/deepseek_v4_mHC_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "2838010cfd5b2263b3bbdb3ae1c18348fc0f7c80"
     },
     "docs/models/deepseek_v4/deepseek_v4_pypto_operator_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "385f617ded9e50026f52f8f4eef40e07deeb5a9a"
     },
     "docs/models/deepseek_v4/deepseek_v4_shmem_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "3312ce7f421daca48d1b1c6d7d0f3bddd1140551"
     },
     "docs/models/deepseek_v4/deepseek_v4_tilelang_operator_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "4e3bc2014b2eb8e08d18092c4ff8bbf28a157fab"
     },
     "docs/models/deepseek_v4_1/deepseek_v4.1_flash_cann_tech_report.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "9250e9d5d1750d788b9b6f94e737fca6d6b649b0"
     },
     "docs/models/glm_5_2/glm_5_2_offload_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "376c5cd722523702fdbe875a629dec0073c5948c"
     },
     "docs/models/gpt-oss/gpt_oss_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "acf64d2618da53e609c2274a7284229cd794ce25"
     },
     "docs/models/hstu/hstu_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "8c43dc796f28d9d2de56f7c229f44c25cdd032c1"
     },
     "docs/models/hunyuan-image-3.0/hunyuan_image_3_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "eb2009ae98bcf6cf3c2a57da71777ce4b4607ff3"
     },
     "docs/models/hunyuan-video/hunyuan_video_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "8eb245bfeb00c3df645f6937aa094d698d56359f"
     },
     "docs/models/hy3/hy3_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "ac84247ac92f107abde988039ac358521d51fd58"
     },
     "docs/models/kimi_k2_thinking/kimi_k2_thinking_inference_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "ffc384d8a8242eb3dde7f33207819d1d9acb7bf5"
     },
     "docs/models/kimi_k3/kimi_k3_inference_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "aad619c520587ad93e7737dc81f2ac7a5e1a6d20"
     },
     "docs/models/longcat-2.0/longcat_2.0_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "4254660113efe1d38e326b3151b234cb53006d92"
     },
     "docs/models/longcat_flash/longcat_flash_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "42dd989cf3799e4e827c87a454a2f6aa13c5983e"
     },
     "docs/models/qwen/qwen_dense_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "4e904d5cbde8b3fd30db8ddbcb9cbe2b6f1d023a"
     },
     "docs/models/qwen3_5/qwen3_5_moe_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "f378307526490e308848436f30734aa4e5e57a1d"
     },
     "docs/models/qwen3_moe/qwen3_moe_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "2a4e0450e3a2f52ac94f9be75a87938bd95b76f7"
     },
     "docs/models/sana-video/SANA-Video_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "ee5a9d447b37d055569231a26b78d9aaddb136fe"
     },
     "docs/models/wan2.2-i2v/wan2.2-i2v_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "按模型的推理优化配方与集成样例（每个模型/集成场景一篇）——绑模型+版本+硬件的调优配方，不是独立于具体事故的先验知识；可复用的机制部分（多流/图模式/预取/SuperKernel）已单独沉淀为词条",
      "sha": "9ba3b51bff1a4e9616b20a0f4a8610f002838699"
     }
    },
@@ -282,51 +974,77 @@
    "branch": "master",
    "docs": {
     "docs/cann_capability_overview.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "模型/任务级优化实践报告（长文，绑模型+硬件+版本）——属调优配方而非独立于具体事故的先验知识；判据层面已由已沉淀的机制/精度/性能词条承载（多流·图模式·预取·SuperKernel、HiF8/MXFP8、确定性、精度判据），台账保留路径供诊断时按需查阅",
      "sha": "87fb026d32d3716f5e379f044f16adc0d972a89a"
     },
     "docs/features/history_tree_dynamic_rl.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "模型/任务级优化实践报告（长文，绑模型+硬件+版本）——属调优配方而非独立于具体事故的先验知识；判据层面已由已沉淀的机制/精度/性能词条承载（多流·图模式·预取·SuperKernel、HiF8/MXFP8、确定性、精度判据），台账保留路径供诊断时按需查阅",
      "sha": "e75cb3fab997e6f3cdd03874aa67a8e024ebbbd4"
     },
     "docs/features/length_aware_resampler.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "模型/任务级优化实践报告（长文，绑模型+硬件+版本）——属调优配方而非独立于具体事故的先验知识；判据层面已由已沉淀的机制/精度/性能词条承载（多流·图模式·预取·SuperKernel、HiF8/MXFP8、确定性、精度判据），台账保留路径供诊断时按需查阅",
      "sha": "b0de0dc277c47e907cbb9fa06cbe6e412e4743ba"
     },
     "docs/features/rollout_rebalance.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "模型/任务级优化实践报告（长文，绑模型+硬件+版本）——属调优配方而非独立于具体事故的先验知识；判据层面已由已沉淀的机制/精度/性能词条承载（多流·图模式·预取·SuperKernel、HiF8/MXFP8、确定性、精度判据），台账保留路径供诊断时按需查阅",
      "sha": "be9692e135b59e29cb5888bcf2d7b619aef7f9ca"
     },
     "docs/features/sam_speculative_decoding.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "模型/任务级优化实践报告（长文，绑模型+硬件+版本）——属调优配方而非独立于具体事故的先验知识；判据层面已由已沉淀的机制/精度/性能词条承载（多流·图模式·预取·SuperKernel、HiF8/MXFP8、确定性、精度判据），台账保留路径供诊断时按需查阅",
      "sha": "a12fd34e36766e7c793231459fce94b30f83a216"
     },
     "docs/llm_pretrain/deepseek-v32_pre_train_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "模型/任务级优化实践报告（长文，绑模型+硬件+版本）——属调优配方而非独立于具体事故的先验知识；判据层面已由已沉淀的机制/精度/性能词条承载（多流·图模式·预取·SuperKernel、HiF8/MXFP8、确定性、精度判据），台账保留路径供诊断时按需查阅",
      "sha": "c843c2d587312018b6801398cf04976e7750f1e3"
     },
     "docs/llm_pretrain/deepseek-v3_pre_train_hif8_mxfp8.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:21:12",
+     "decision": "harvested",
+     "refs": [
+      "hif8-and-mxfp8-low-precision-training"
+     ],
      "sha": "85d8c2a651cc46b1130725e83c9d335738612968"
     },
     "docs/llm_pretrain/deepseek-v4_torchtitan_npu_autofuse.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "模型/任务级优化实践报告（长文，绑模型+硬件+版本）——属调优配方而非独立于具体事故的先验知识；判据层面已由已沉淀的机制/精度/性能词条承载（多流·图模式·预取·SuperKernel、HiF8/MXFP8、确定性、精度判据），台账保留路径供诊断时按需查阅",
      "sha": "dd2a62518a439df48db961a4e2002b5dfe4906a7"
     },
     "docs/llm_rl/deepseek_rl_train_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "模型/任务级优化实践报告（长文，绑模型+硬件+版本）——属调优配方而非独立于具体事故的先验知识；判据层面已由已沉淀的机制/精度/性能词条承载（多流·图模式·预取·SuperKernel、HiF8/MXFP8、确定性、精度判据），台账保留路径供诊断时按需查阅",
      "sha": "7edcec5bbd486f0ff9fe1c06e46044e0cec87944"
     },
     "docs/llm_rl/qwen3_235B_32k_longseq_rl_train_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "模型/任务级优化实践报告（长文，绑模型+硬件+版本）——属调优配方而非独立于具体事故的先验知识；判据层面已由已沉淀的机制/精度/性能词条承载（多流·图模式·预取·SuperKernel、HiF8/MXFP8、确定性、精度判据），台账保留路径供诊断时按需查阅",
      "sha": "28f1317fa3e77e33412f08b11eb0179f6e8ad1d3"
     },
     "docs/llm_rl/sam_decoding.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "模型/任务级优化实践报告（长文，绑模型+硬件+版本）——属调优配方而非独立于具体事故的先验知识；判据层面已由已沉淀的机制/精度/性能词条承载（多流·图模式·预取·SuperKernel、HiF8/MXFP8、确定性、精度判据），台账保留路径供诊断时按需查阅",
      "sha": "0cf1b8f370aa6afb43538989ca94d5907e036a9f"
     },
     "docs/llm_sft/qwen36_ascendc/qwen36_ascendc_sft_report.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "模型/任务级优化实践报告（长文，绑模型+硬件+版本）——属调优配方而非独立于具体事故的先验知识；判据层面已由已沉淀的机制/精度/性能词条承载（多流·图模式·预取·SuperKernel、HiF8/MXFP8、确定性、精度判据），台账保留路径供诊断时按需查阅",
      "sha": "8193c3c274001795968078d968d14ce05a147f80"
     }
    },
@@ -1962,47 +2680,69 @@
      "sha": "e5bbbdceee4a7f59f757fa77a93155e4a4b1fce9"
     },
     "docs/NPUSim/npusim_design.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "测试框架使用面（用例 CSV 编写规范、各通路测试指南、任务执行命令行、离线数据准备与 NPUSim 仿真）——工具怎么用而非诊断判据；判据型内容（精度阈值、确定性等级、Dump、性能口径）已由本批 5 条词条承载",
      "sha": "5fb62de83f45335ff623a62d4b48014cd9c87ffd"
     },
     "docs/NPUSim/npusim_usage.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "测试框架使用面（用例 CSV 编写规范、各通路测试指南、任务执行命令行、离线数据准备与 NPUSim 仿真）——工具怎么用而非诊断判据；判据型内容（精度阈值、确定性等级、Dump、性能口径）已由本批 5 条词条承载",
      "sha": "d5bdab41b009de6fbec2de5f13011a2dab39b317"
     },
     "docs/Offline_Data_Prepare_and_Import.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "测试框架使用面（用例 CSV 编写规范、各通路测试指南、任务执行命令行、离线数据准备与 NPUSim 仿真）——工具怎么用而非诊断判据；判据型内容（精度阈值、确定性等级、Dump、性能口径）已由本批 5 条词条承载",
      "sha": "722650c1b75137899aedb36f1546327e021fc3db"
     },
     "docs/Operator_Test_Guides/ACLNN_Case_Writing.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "测试框架使用面（用例 CSV 编写规范、各通路测试指南、任务执行命令行、离线数据准备与 NPUSim 仿真）——工具怎么用而非诊断判据；判据型内容（精度阈值、确定性等级、Dump、性能口径）已由本批 5 条词条承载",
      "sha": "77eddb50abc83aca7bce6c4d1b839b0e38e8ce76"
     },
     "docs/Operator_Test_Guides/ACLNN_Test_Guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "测试框架使用面（用例 CSV 编写规范、各通路测试指南、任务执行命令行、离线数据准备与 NPUSim 仿真）——工具怎么用而非诊断判据；判据型内容（精度阈值、确定性等级、Dump、性能口径）已由本批 5 条词条承载",
      "sha": "151a6a304f85d3855f5603aba993c7be0ba08d1e"
     },
     "docs/Operator_Test_Guides/E2E_Case_Writing.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "测试框架使用面（用例 CSV 编写规范、各通路测试指南、任务执行命令行、离线数据准备与 NPUSim 仿真）——工具怎么用而非诊断判据；判据型内容（精度阈值、确定性等级、Dump、性能口径）已由本批 5 条词条承载",
      "sha": "54b159fb35ecd3e1a21244270abb9884f73cf0cf"
     },
     "docs/Operator_Test_Guides/E2E_Test_Guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "测试框架使用面（用例 CSV 编写规范、各通路测试指南、任务执行命令行、离线数据准备与 NPUSim 仿真）——工具怎么用而非诊断判据；判据型内容（精度阈值、确定性等级、Dump、性能口径）已由本批 5 条词条承载",
      "sha": "518de64a72c7123c55e0cd4d1e21eeb8b341147c"
     },
     "docs/Operator_Test_Guides/GEIR_Case_Writing.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "测试框架使用面（用例 CSV 编写规范、各通路测试指南、任务执行命令行、离线数据准备与 NPUSim 仿真）——工具怎么用而非诊断判据；判据型内容（精度阈值、确定性等级、Dump、性能口径）已由本批 5 条词条承载",
      "sha": "44047fa5582ffcdf09576f12e89180f9c76ca332"
     },
     "docs/Operator_Test_Guides/GEIR_Test_Guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "测试框架使用面（用例 CSV 编写规范、各通路测试指南、任务执行命令行、离线数据准备与 NPUSim 仿真）——工具怎么用而非诊断判据；判据型内容（精度阈值、确定性等级、Dump、性能口径）已由本批 5 条词条承载",
      "sha": "6da7edaf50040fe5b4410125c56bf0b988cf5c1e"
     },
     "docs/Operator_Test_Guides/Kernel_Case_Writing.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "测试框架使用面（用例 CSV 编写规范、各通路测试指南、任务执行命令行、离线数据准备与 NPUSim 仿真）——工具怎么用而非诊断判据；判据型内容（精度阈值、确定性等级、Dump、性能口径）已由本批 5 条词条承载",
      "sha": "b0d703bd1f22b0dedc4f07a4235f98ada4db69f9"
     },
     "docs/Operator_Test_Guides/Kernel_Test_Guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "测试框架使用面（用例 CSV 编写规范、各通路测试指南、任务执行命令行、离线数据准备与 NPUSim 仿真）——工具怎么用而非诊断判据；判据型内容（精度阈值、确定性等级、Dump、性能口径）已由本批 5 条词条承载",
      "sha": "0001e2945f2f89bde2650aa0ed96062e9baa21db"
     },
     "docs/Operator_Test_Guides/msdebug适配方法指南.md": {
@@ -2014,7 +2754,11 @@
      "sha": "8a4359bcb0bceda96bdf56a53298d48b0485fbb2"
     },
     "docs/Operator_Test_Guides/msopprof_guide.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "harvested",
+     "refs": [
+      "msopprof"
+     ],
      "sha": "365c2073bd40a0d3de629ddf1baddd90099df9c4"
     },
     "docs/Operator_Test_Guides/mssanitizer_guide.md": {
@@ -2042,11 +2786,15 @@
      "sha": "3cb08dd44decd0f7c29857ab7c477c8803404e04"
     },
     "docs/Task_Execution.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "测试框架使用面（用例 CSV 编写规范、各通路测试指南、任务执行命令行、离线数据准备与 NPUSim 仿真）——工具怎么用而非诊断判据；判据型内容（精度阈值、确定性等级、Dump、性能口径）已由本批 5 条词条承载",
      "sha": "557e462a10ead885ee244d81a353fbf35d23a3d5"
     },
     "docs/Test_Case_Generation.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:23:42",
+     "decision": "skipped",
+     "note": "测试框架使用面（用例 CSV 编写规范、各通路测试指南、任务执行命令行、离线数据准备与 NPUSim 仿真）——工具怎么用而非诊断判据；判据型内容（精度阈值、确定性等级、Dump、性能口径）已由本批 5 条词条承载",
      "sha": "acfee9d75a8d235778f51a5a9b84a7e0b2aa6f1f"
     },
     "docs/XPU_Cross_Check.md": {
@@ -2845,6 +3593,305 @@
    },
    "head_sha": "f7edf263d94bf3499774e8ee96aa391ddc78e823",
    "last_scan": "2026-09-15T15:44:21"
+  },
+  "gitcode/cann/shmem": {
+   "branch": "master",
+   "docs": {
+    "docs/api/atomic_api_sync_async_comparison.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "API 参考面（host/device/python/stream/atomic 等接口与 .rst 索引）——接口签名按官方 API 参考查，非诊断判据",
+     "sha": "218d470ca14824aa274b569085b992da2efc7960"
+    },
+    "docs/api/def.rst": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "API 参考面（host/device/python/stream/atomic 等接口与 .rst 索引）——接口签名按官方 API 参考查，非诊断判据",
+     "sha": "62b9a640887329eb155b895261e513c3ee5af5e5"
+    },
+    "docs/api/device_api.rst": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "API 参考面（host/device/python/stream/atomic 等接口与 .rst 索引）——接口签名按官方 API 参考查，非诊断判据",
+     "sha": "b5830c564d6bc6f6b4e878dca043fb4fc2921d00"
+    },
+    "docs/api/env_vars_intro.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "SHMEM 环境变量清单——关键三项（SHMEM_UID_SESSION_ID / SHMEM_UID_SOCK_IFNAME / SHMEM_INSTANCE_PORT_RANGE）的用法与约束已写进 shmem-usage-limits-and-troubleshooting；完整变量表按官方 API 参考查",
+     "sha": "2a808468311aa33e99ed090e1f35bf12414810e3"
+    },
+    "docs/api/env_vars_intro_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "76e6d8580297cfab58ade2f7319ffd9b11247be6"
+    },
+    "docs/api/host_api.rst": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "API 参考面（host/device/python/stream/atomic 等接口与 .rst 索引）——接口签名按官方 API 参考查，非诊断判据",
+     "sha": "0a753fa3250bf4325217be12b26af6a22e699970"
+    },
+    "docs/api/pythonAPI.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "API 参考面（host/device/python/stream/atomic 等接口与 .rst 索引）——接口签名按官方 API 参考查，非诊断判据",
+     "sha": "b7dbcc27188c16dc0b001e36012de5fd735d95c1"
+    },
+    "docs/api/pythonAPI_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "053ad9d5f63a5ecba74823d3e24476ea85128643"
+    },
+    "docs/api/stream_api_usage.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "API 参考面（host/device/python/stream/atomic 等接口与 .rst 索引）——接口签名按官方 API 参考查，非诊断判据",
+     "sha": "53e1061f1a7610c5687d477aa5f218be53772ad4"
+    },
+    "docs/api/stream_api_usage_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "9702bf53d1f4226f9ca3bc77ed8c62c0ebf37a5e"
+    },
+    "docs/code_organization.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "开发面文档（代码组织、编码规范、编译构建指南、SO 依赖、样例与术语表）——开发/部署面，无诊断判据",
+     "sha": "c0c32528b92ec7e23ab0412c47d2866c3061b83c"
+    },
+    "docs/code_organization_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "7d4ce339c82fb4d6795f5145d191c47ecf0c97de"
+    },
+    "docs/coding_style_guide.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "开发面文档（代码组织、编码规范、编译构建指南、SO 依赖、样例与术语表）——开发/部署面，无诊断判据",
+     "sha": "0009295966aead9af7213f22037208d509418351"
+    },
+    "docs/compilation_build_guide.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "开发面文档（代码组织、编码规范、编译构建指南、SO 依赖、样例与术语表）——开发/部署面，无诊断判据",
+     "sha": "db2c2aeb70d71d69473e2eed601fdedaa6785773"
+    },
+    "docs/compilation_build_guide_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "e9f7a2ec7f2793d593c1f33cf17fdc62701ed9a0"
+    },
+    "docs/debug/Troubleshooting_FAQs.md": {
+     "at": "2026-09-15T17:35:24",
+     "decision": "harvested",
+     "refs": [
+      "shmem-usage-limits-and-troubleshooting"
+     ],
+     "sha": "a634e6c923b22f7ff94e647fd4c94c74eb0043a9"
+    },
+    "docs/debug/Troubleshooting_FAQs_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "9c0fdce1812724677fe836dabf0b4dca12f95b91"
+    },
+    "docs/debug/dump_debug.md": {
+     "at": "2026-09-15T17:35:24",
+     "decision": "harvested",
+     "refs": [
+      "shmem-usage-limits-and-troubleshooting"
+     ],
+     "sha": "d36aad6ecbbdd8d17235ea5fbe11930c8e7b1d82"
+    },
+    "docs/debug/dump_debug_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "d23c27cc9c0142719eb92d00553104c8ea8fdadf"
+    },
+    "docs/debug/log_debug.md": {
+     "at": "2026-09-15T17:35:24",
+     "decision": "harvested",
+     "refs": [
+      "shmem-usage-limits-and-troubleshooting"
+     ],
+     "sha": "2f34a93ea5bc75a90428f106dc9dcd087fb322d0"
+    },
+    "docs/debug/log_debug_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "7fc366e4ea96056c4a7024ea9c5c46735500e172"
+    },
+    "docs/debug/profiling.md": {
+     "at": "2026-09-15T17:35:24",
+     "decision": "harvested",
+     "refs": [
+      "shmem-usage-limits-and-troubleshooting"
+     ],
+     "sha": "84cfc5dece14ddf314831678621219f7f29a85f3"
+    },
+    "docs/debug/profiling_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "ae53ff5d62ee2e6e97d1c890fb6b1d2f466b29fc"
+    },
+    "docs/debug/tools_debug.md": {
+     "at": "2026-09-15T17:35:24",
+     "decision": "harvested",
+     "refs": [
+      "shmem-usage-limits-and-troubleshooting"
+     ],
+     "sha": "6e5e66770cddc75413ebd5b86d55fefd9cc20e8b"
+    },
+    "docs/debug/tools_debug_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "757303511f26535d2698befed73be2ad1f3c80fe"
+    },
+    "docs/deployment/shmem_so_library_dependencies.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "开发面文档（代码组织、编码规范、编译构建指南、SO 依赖、样例与术语表）——开发/部署面，无诊断判据",
+     "sha": "e1364f02e2030884895b1e8c5d4ec05c273844c4"
+    },
+    "docs/deployment/shmem_so_library_dependencies_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "96868215b0a3526440b02b1deb13749c7d5325a1"
+    },
+    "docs/example/api_demo.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "开发面文档（代码组织、编码规范、编译构建指南、SO 依赖、样例与术语表）——开发/部署面，无诊断判据",
+     "sha": "56fd7e1fb73eaf24f9205c6ec53807da0efcca33"
+    },
+    "docs/example/api_demo_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "86c5d28853d546a437d2c09fd1cad27b0dd28141"
+    },
+    "docs/example/example.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "开发面文档（代码组织、编码规范、编译构建指南、SO 依赖、样例与术语表）——开发/部署面，无诊断判据",
+     "sha": "0b5daba00964e78fa7cea201f36a1a5a99763ec4"
+    },
+    "docs/example/example_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "a4ac6d31ee9a363f4b40a8e71af4a18c110ca770"
+    },
+    "docs/glossary.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "开发面文档（代码组织、编码规范、编译构建指南、SO 依赖、样例与术语表）——开发/部署面，无诊断判据",
+     "sha": "d8527b9fdf7c061b8e2ea63d35761cb74ba514bb"
+    },
+    "docs/index.rst": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "开发面文档（代码组织、编码规范、编译构建指南、SO 依赖、样例与术语表）——开发/部署面，无诊断判据",
+     "sha": "e68f2b65ab153760d4cdf44323b48e59faef7f5f"
+    },
+    "docs/multi_instance_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "afffe61fc0166863cd961ab229bca5db1cf51100"
+    },
+    "docs/principles/config_store_bootstrap.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "SHMEM 内部原理文档（配置引导/启动流程等实现说明）——实现面文档",
+     "sha": "e0d91cfe1ed070af6ca6e74dc3d4fb106e9b4007"
+    },
+    "docs/principles/init_finalize.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "SHMEM 内部原理文档（配置引导/启动流程等实现说明）——实现面文档",
+     "sha": "1e5d36c97d1f99dd3441fa31f7304d0a607ebb24"
+    },
+    "docs/principles/multi_instance.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "SHMEM 内部原理文档（配置引导/启动流程等实现说明）——实现面文档",
+     "sha": "9c5744c9e21efbc222d0d8275cc15d6dc1213d74"
+    },
+    "docs/principles/team.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "SHMEM 内部原理文档（配置引导/启动流程等实现说明）——实现面文档",
+     "sha": "2a335d2ed59674fcb575dc7ac845a461f3f4f5c4"
+    },
+    "docs/principles_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "d5b1980bf5de44baa61bf1a428e8cd1411f44736"
+    },
+    "docs/public-headers-and-libraries.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "开发面文档（代码组织、编码规范、编译构建指南、SO 依赖、样例与术语表）——开发/部署面，无诊断判据",
+     "sha": "3314953d41c0e398bbdadf583568ae12810aa0d7"
+    },
+    "docs/quickstart.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "开发面文档（代码组织、编码规范、编译构建指南、SO 依赖、样例与术语表）——开发/部署面，无诊断判据",
+     "sha": "5f75e9490631c6590102f3bc8a8bd5d36e002d14"
+    },
+    "docs/quickstart_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "34c7c65d71dddb28e63cf245ae4fb14006e5889c"
+    },
+    "docs/tools/pre-commit_guide.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "开发面文档（代码组织、编码规范、编译构建指南、SO 依赖、样例与术语表）——开发/部署面，无诊断判据",
+     "sha": "2dcd062b02d09851ff32e49c7c5481ed0a523851"
+    },
+    "docs/tools/pre-commit_guide_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "be83d271bdc88e7e53a6ff18efd571bd3a404c42"
+    },
+    "docs/tools/root_info_generate_user_guide.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "开发面文档（代码组织、编码规范、编译构建指南、SO 依赖、样例与术语表）——开发/部署面，无诊断判据",
+     "sha": "eb661c3d689146e11c36d0178dea9f57ccbab448"
+    },
+    "docs/tools/root_info_generate_user_guide_en.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "英文副本（同内容英文页）",
+     "sha": "bcf9d750796c60f54c94f9eeee99c8c89a88d3e3"
+    },
+    "docs/tools/shmem_config_guide.md": {
+     "at": "2026-09-15T17:37:56",
+     "decision": "skipped",
+     "note": "开发面文档（代码组织、编码规范、编译构建指南、SO 依赖、样例与术语表）——开发/部署面，无诊断判据",
+     "sha": "63e2539495794726d898badc37cedfabfef8162a"
+    }
+   },
+   "head_sha": "9a1cc1e492e09b3cca6d78843cad2060b783de92",
+   "last_scan": "2026-09-15T17:24:16"
   }
  },
  "version": 1

@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-15    词条数：112
+# 生成日期：2026-09-15    词条数：119
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -269,6 +269,22 @@ entries:
     - cross
     categories:
     - performance
+- id: asc-tools-ascendc-debug-suite
+  type: tool
+  title: Ascend C 算子调试工具集（cpu_debug 的 CPU 域编译 + npu_check 的 Error* 判据表 + msobjdump 的 ELF 字段 + show_kernel_debug_data
+    + optype_collector）
+  summary: asc-tools 这套工具解决算子级问题：**cpu_debug**——在 NPU 部署前先上 CPU 做功能与精度基本验证（bisheng 编译生成 CPU 域可执行程序，再用
+    gdb 常规调试；编译选项 `CMAKE_ASC_RUN_MODE=cpu` 与 `CMAKE_ASC_ARCHITECTURES=dav…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - A5-950
+    - cross
+    categories:
+    - interrupt
+    - precision
+    - performance
 - id: ascend-310p-known-limits
   type: platform-fact
   title: 310P（Atlas 300I Duo）平台已知限制
@@ -324,6 +340,19 @@ entries:
     categories:
     - interrupt
     - precision
+    - performance
+- id: ascend-inference-multistream-and-graph-mode
+  type: software-fact
+  title: 推理侧多流并行与 NPU 图模式（两种并行的成立条件、三模式接口不可混用、Guards 命中是收益前提、9 条图模式高频问题）
+  summary: 推理性能定位里最常被误解的两块机制。**多流**：Device 侧物理单元 Cube（大矩阵乘）、Vector（向量/激活/规约）、HCCL（集合通信）可独立调度，Stream 是
+    Host 向 Device 下发任务的队列（同流串行、跨流由 Event 与调度器定序）；三种并行形态——**Cube↔Vector 互补…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - A5-950
+    - cross
+    categories:
     - performance
 - id: ascend-log-classification
   type: software-fact
@@ -415,6 +444,18 @@ entries:
     - cross
     categories:
     - interrupt
+- id: atb-dispatch-bound-and-runtime-optimizations
+  type: software-fact
+  title: ATB 算子下发链与 Host/Device Bound 判据（下发六步、Tiling 影响可达 10×、Tiling Cache 与 Setup 复用、Workspace 省 50%）
+  summary: 判断推理性能瓶颈在 Host 还是 Device，以及 ATB 为此做什么。**两种瓶颈的判据**：Host Bound —— Host 下发较慢、Device 执行较快，**在 profiling
+    图上表现为 Stream 上的 Kernel 之间存在空泡**，此时设备算力未被充分利用、应优化 Host 端下发；De…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - cross
+    categories:
+    - performance
 - id: atc-precision-mode-and-switches
   type: software-fact
   title: ATC 精度模式与两个默认开启的优化开关（默认 fp16 / allow_fp32_to_fp16 / keep_dtype 例外清单 / 数据缓存优化 / 融合规则）
@@ -575,6 +616,17 @@ entries:
     categories:
     - interrupt
     - performance
+- id: hif8-and-mxfp8-low-precision-training
+  type: software-fact
+  title: HiF8 / MXFP8 低精度训练（格式特性、Per-Tensor vs Per-Block、Delayed vs Current Scaling、950DT 实测 29.5% 加速与参数组合支持范围）
+  summary: 训练低精度（8-bit）的选型与判据。**格式**：HiF8 由符号 S(1) + 点位 Dot(2~4) + 阶码 E(D 位，**符号-幅度编码**且幅值最高位为隐含位) + 尾数
+    M(1~3) 组成；Normal 模式下 Dot=1/2/3/4 分别编码 E=±1、±[2,3]…共覆盖指数 [-15,15] 且*…
+  applies_to:
+    platforms:
+    - A5-950
+    categories:
+    - precision
+    - performance
 - id: hif8-type-contract
   type: software-fact
   title: HiFloat8 的类型契约（hifloat8_t 建 tensor / Cast 直转 / 按 1 Byte 搬运）
@@ -639,6 +691,16 @@ entries:
     categories:
     - interrupt
     - precision
+- id: msopprof
+  type: tool
+  title: msopprof 算子级性能采集（流水图 + 带宽类 CSV 指标，与 TTK 配合须关 Profiling 与预热）
+  summary: MindStudio 的**算子级性能采集与分析工具**：采集算子执行过程中的**硬件流水、带宽利用率**等细粒度数据，生成流水图 `visualize_data.bin`（供 MindStudio
+    Insight 查看）与 `L2Cache.csv`、`MemoryL0.csv` 等性能数据文件。**与 TTK 配合…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - performance
 - id: msprobe-accuracy-checker
   type: tool
   title: msprobe acc_check——离线精度预检（API 达标判定链路与阈值）
@@ -910,6 +972,19 @@ entries:
     categories:
     - interrupt
     - performance
+- id: npu-prefetch-and-superkernel
+  type: software-fact
+  title: NPU 权重预取（npu_prefetch 的四个前提、size 估算、npugraph_ex 需显式预取流）与 SuperKernel（二进制融合的四类算子级优化与五条约束）
+  summary: 两项 Decode 性能优化的机制与判据。**Prefetch**：Decode 小 batch 下 MatMul/QBMM/GMM 常是 memory-bound（耗时为读权重主导，weight
+    常驻 HBM 数十 MB、激活很小），`torch_npu.npu_prefetch(weight, depend, si…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - A5-950
+    - cross
+    categories:
+    - performance
 - id: om-dynamic-shape-and-aipp-constraints
   type: software-fact
   title: 动态 Shape 输入与 AIPP 的组合约束（四种设置方式只能选一、AIPP 与动态维度互斥、内存按最大档申请、size=0 即动态）
@@ -1021,6 +1096,21 @@ entries:
     - A5-950
     categories:
     - precision
+- id: shmem-usage-limits-and-troubleshooting
+  type: software-fact
+  title: SHMEM 使用限制与常见问题（对称内存分配、UB Buffer 预留、A2 16 卡跨组禁 MTE、端口桥、QP 建链超时、卡间同步须在 AIV）
+  summary: SHMEM（多机多卡内存通信库）的七条使用限制与常见问题的判据。**限制**：①GM2GM 高阶 RMA 用默认 buffer **不支持并发**（会覆盖数据，需并发就用低阶接口）；②`barrier`
+    当前**必须在 Mix Kernel（含 mmad 与 GM2UB/UB2GM 操作）中使用**；③RDMA 高阶接…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - A5-950
+    - cross
+    categories:
+    - interrupt
+    - precision
+    - performance
 - id: simd-vf-programming-constraints
   type: software-fact
   title: SIMD Vector Function 约束集（入参白名单 / 硬循环退化 / Aux Scalar 仅整数 / UnalignReg ≤4）

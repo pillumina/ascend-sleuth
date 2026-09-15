@@ -1,0 +1,39 @@
+id: msopprof
+type: tool
+title: msopprof 算子级性能采集（流水图 + 带宽类 CSV 指标，与 TTK 配合须关 Profiling 与预热）
+summary: "MindStudio 的**算子级性能采集与分析工具**：采集算子执行过程中的**硬件流水、带宽利用率**等细粒度数据，生成流水图 `visualize_data.bin`（供 MindStudio Insight 查看）与 `L2Cache.csv`、`MemoryL0.csv` 等性能数据文件。**与 TTK 配合时必须关掉 TTK 自带的 Profiling 采集与预热**（`--task-prof=false --warmup=false`），因为 TTK 内部自带采集流程会与 msopprof 的采集冲突；命令形如 `msopprof [msopprof 自身参数] python3 -m ttk kernel -i cases.csv --task-prof=false --warmup=false`（msopprof 自身参数放在 `msopprof` 与 `python3` 之间，TTK 侧仍可用自己的用例筛选与编译参数）。**CSV 关键指标口径**：`aic_main_mem_read_bw(GB/s)` 是从 GM 往外搬运的带宽（**不只是 GM 到 L1 这部分**）、`GM_to_L1_datas(KB)` 是 GM 到 L1 的搬运数据量、`GM_to_L1_bw_usage_rate(%)` 是 GM 到 L1 的带宽利用率、`aic_L1_read_bw(GB/s)` 是 L1 到 L0A/L0B 的带宽（**目前无途径分别采集这两个带宽**）；**`task duration` 与 `aiv time` 的关系**——`task duration` 一般大于 `aiv time`，因为前者含硬件调度时间、后者是纯核执行时间；两者来源不同：**`task duration` 由 stars 采集、`aiv time` 由 ffts 采集**（`aiv time` 为 Block 级子核时间）。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-test-kit/blob/master/docs/Operator_Test_Guides/msopprof_guide.md"
+    version: "ops-test-kit master（commit 37ec7234db08，2026-09-15 抓取）：msopprof 与 TTK 的配合方式、输出文件与 CSV 指标解读"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msopprof, ttk]
+  categories: [performance]
+
+related_references: [msprof-collect-parse, msprof-output-reading-and-performance-analysis, msprof-timeline-lane-reading, aicore-task-duration-anatomy, operator-bottleneck-attribution, ttk-dump-and-performance-testing]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  tool_name: "msopprof（MindStudio 算子级性能采集与分析工具，算子级 profiling）"
+  invocation: "对单个算子做细粒度性能采集（硬件流水、带宽利用率），产物用于 MindStudio Insight 看流水图或读 CSV 做量化分析。**包裹 TTK 时务必关闭 TTK 内部 Profiling 与预热**：`msopprof <msopprof 参数> python3 -m ttk kernel -i cases.csv --task-prof=false --warmup=false`——TTK 自带 Profiling 采集流程，与 msopprof 的数据采集存在冲突；TTK 侧仍可使用自己的用例筛选与编译参数，msopprof 自身参数放在 `msopprof` 与 `python3` 之间（例如采集时序数据）。环境要求：Python 3.8+、完成 CANN 包安装、安装 MindStudio 算子工具（**建议使用 7 月以后的 RUN 包，更早的包可能存在适配问题**），并确保 **firmware 与 driver 包适配正确**。"
+  commands:
+    basic: "msopprof <可选 msopprof 参数> python3 -m ttk kernel -i cases.csv --task-prof=false --warmup=false"
+    with_filters: "在 TTK 侧继续传用例筛选与编译参数（如 `-t=<用例名>`、动态编译等），msopprof 只负责外层采集"
+    own_options: "msopprof 自身的参数写在 `msopprof` 与 `python3` 之间（如采集时序数据）"
+  output_meaning:
+    - "输出目录下生成性能数据文件：**`visualize_data.bin` 是流水图文件**（用 MindStudio Insight 查看，建议 Insight 版本与 MindStudio 算子工具保持一致），以及 `L2Cache.csv`、`MemoryL0.csv` 等性能数据"
+    - "`aic_main_mem_read_bw(GB/s)`：从 GM 往外搬运的带宽——**注意它不只是 GM 到 L1 这部分带宽**"
+    - "`GM_to_L1_datas(KB)`：GM 到 L1 的搬运数据量；`GM_to_L1_bw_usage_rate(%)`：GM 到 L1 的带宽利用率"
+    - "`aic_L1_read_bw(GB/s)`：L1 到 L0A 与 L0B 的带宽（**目前暂无途径分别采集这两个带宽的数据**）"
+    - "`aiv time`：Block 级子核时间，**由 ffts 采集**；`task duration`：算子 task 粒度的实际耗时，**包含硬件调度、不包含软件调度**，**由 stars 采集**——因此 `task duration` 一般大于 `aiv time`（差值主要是硬件调度时间）"
+  pitfalls:
+    - "忘记 `--task-prof=false --warmup=false` 会让 TTK 内部采集与 msopprof 冲突，采集结果不可用"
+    - "MindStudio 算子工具的 RUN 包版本建议 7 月以后，更早版本可能有适配问题；同时需 firmware/driver 包适配"
+    - "`aic_L1_read_bw` 无法拆分 L0A/L0B 两个带宽；`aic_main_mem_read_bw` 的语义范围比字面更宽——跨工具比较带宽前先确认口径"

@@ -1,0 +1,30 @@
+id: atb-dispatch-bound-and-runtime-optimizations
+type: software-fact
+title: ATB 算子下发链与 Host/Device Bound 判据（下发六步、Tiling 影响可达 10×、Tiling Cache 与 Setup 复用、Workspace 省 50%）
+summary: "判断推理性能瓶颈在 Host 还是 Device，以及 ATB 为此做什么。**两种瓶颈的判据**：Host Bound —— Host 下发较慢、Device 执行较快，**在 profiling 图上表现为 Stream 上的 Kernel 之间存在空泡**，此时设备算力未被充分利用、应优化 Host 端下发；Device Bound —— Host 下发快、Device 执行慢，设备算力已充分利用，**继续优化只能改 kernel**。**单个算子的下发六步**：①合法性检查（校验输入输出与参数，避免错误参数提交到 Device）→ ②InferShape（由输入 shape/dtype 推输出 shape/dtype，如 M×K 与 K×N 推出 M×N）→ ③**计算 Tiling**（单核一次处理的数据有限，需把输入切块计算：先按核数对 M/K/N 做**多核切分**得 singleCoreM/N/K，再按 Local Memory 约束做**核内切分**得一次矩阵乘指令的 baseM/baseN/baseK，结果存进自定义 Tiling 结构体；**Tiling 策略对复杂算子性能影响巨大，同一算子在不同 Tiling 策略下可能有 10 倍性能差异**）→ ④获取 Workspace 大小（算子内部借 HBM 做数据交换或缓存的空间）→ ⑤分配 Workspace（**ATB 与 aclnn 这类两段式算子接口由执行框架如 TorchNPU 分配**，以便统一管理整模型执行期的 HBM、提高分配效率）→ ⑥封装 argument list（输入输出 Tensor 地址、Tiling、Workspace 地址与其他参数）并调 Launch Kernel。**ATB 的三类针对性优化**：**定制化融合算子**（PageAttention、Linear 等面向主流模型设计的高性能融合算子）；**轻量级组图**（用这些或第三方算子组图后像操作单算子一样操作『图算子』，便于跨模型/跨 layer 复用；图算子只是单算子组合、**不涉及 Kernel 融合**，因此 Setup/Execute 与单算子类似，区别仅在 Setup 阶段做 Workspace 优化）；**运行时优化**——**Tiling Cache**（缓存算好的 Tiling 以存代算，**默认每个算子保存 10 份**；Shape 相同即避免重复计算）、**Setup 复用**（每算子执行上下文保存上次的 Tensor/Tiling/Workspace size 信息，**某次执行 Shape 与上次完全相同则直接复用上下文、跳过整个 Setup 阶段**；两种优化对图算子与单算子都适用）、**内存优化**（Setup 阶段尽可能复用 HBM——同流内算子顺序执行所以前一个的 Workspace 可给后一个用；图算子内部中间 Tensor 只要最后一个使用者执行完即可释放——**平均节省 Workspace 50%**，提升大模型推理 batch size 上限）、**下发优化**（图算子批量 Setup 与批量下发减少 NPU 空泡，组图模式自动生效；**进一步用双线程分别做批量 Setup 与批量 Execute，同时减少 host 时间与 NPU 空泡，官方推荐**）。另记一条构建期常见问题：提示 `libtbe_adapter.so does not exist` 需安装 **nnal** 软件包（版本须与 toolkit/kernels 一致），并设置 `ATB_BUILD_DEPENDENCY_PATH` 指向 `cxx_abi_0` 或 `cxx_abi_1`——**未安装 PyTorch 用 `cxx_abi_1`；已安装 PyTorch 时按 torch 的 C++ ABI 探测结果（输出 1 用 abi_1、输出 0 用 abi_0）**，且必须与编译实际使用的 ABI 一致。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/ascend-transformer-boost/blob/master/docs/ATB加速原理.md"
+    version: "ascend-transformer-boost master（commit a5a1028221bf，2026-09-15 抓取）：算子下发原理、Host/Device Bound 判据、ATB 工作原理与运行时优化"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/ascend-transformer-boost/blob/master/docs/常见问题与回答.md"
+    version: "ascend-transformer-boost master（commit a5a1028221bf）：libtbe_adapter.so 缺失与 nnal / cxx_abi 选择"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A3-910C, cross]
+  frameworks: [atb, torch_npu]
+  categories: [performance]
+
+related_references: [ascend-inference-multistream-and-graph-mode, npu-prefetch-and-superkernel, msprof-output-reading-and-performance-analysis, operator-bottleneck-attribution, msprof-collect-parse]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "见 summary。三条判读要点：**① Host Bound 的唯一图面证据是「Stream 上 Kernel 之间的空泡」**——在 profiling 时间线上看到 Kernel 块之间有间隙，就应先怀疑 Host 下发（Python 前向、算子 Setup、Tiling 计算、Workspace 分配等链路），而不是先改 kernel；反过来 Device Bound 时改 Host 无益。这与图模式（消除逐算子下发）和 ATB 的批量下发优化针对的是同一件事，可互相印证。**② Tiling 是算子侧最大的单点变量**——同一算子在**不同 Tiling 策略下可能有 10 倍性能差异**，因此「同一个 kernel 在两处跑出差异很大的耗时」应先查 Tiling 是否随 shape/核数变化（多核切分与核内切分两层的取值），而不是怀疑硬件。**③ Tiling Cache 与 Setup 复用的判据是 Shape 稳定性**——默认每算子缓存 10 份 Tiling、上下文复用要求「某次 Shape 与上次完全相同」，因此**shape 抖动会直接击穿这两项优化**（每次都要重算 Tiling 甚至走完整 Setup）；这与图模式要求输入 shape 与常驻 buffer 地址稳定的结论一致。"
+  evidence: "ATB加速原理.md：『Host Bound：Host下发较慢， 设备侧（NPU）执行算子较快， Host执行效率成为整体性能瓶颈。在profiling图上， 表现为Stream上的Kernel间存在空泡』『Device Bound： Host下发较快， Device执行较慢， Device执行效率成为性能瓶颈…则需要考虑优化kernel』下发六步逐条（合法性检查 / Infer Shape / 计算 Tiling（『首先要进行多核切分…接着要进行核内切分…得到A、B、C矩阵参与一次矩阵乘指令的Shape大小baseM、baseN、baseK』）/ 获取 Workspace 大小 / 分配 Workspace（『对于ATB和aclnn这样的两段式算子接口来说， 这个步骤一般由执行框架（如TorchNPU）进行分配』）/ 算子下发）、『Tiling策略对复杂算子的性能影响巨大， 同一个算子在不同Tiling策略下可能有10倍性能差异』；ATB 工作原理三条（定制化融合算子 / 轻量级组图 / 运行时优化）与『由于ATB中图算子只是单算子的组合，不涉及Kernel融合， 因此图算子的Setup和Execute过程与单算子类似， 区别仅在于Setup阶段进行了Workspace优化』；运行时优化段『使用一个Cache保存一个算子常用的多份Tiling信息（默认每个算子保存10份）』『如果某次执行的Shape与上次完全相同，则可以直接复用上下文， 跳过整个Setup阶段』『图算子的Workspace size比内部单算子Workspace size的总和要小』『一个流中的算子Kernel是顺序执行的， 所以前一个算子的Workspace可以给后一个算子使用』『平均节省Workspace 50%，提升大模型推理Batch Size上限』『基础优化：ATB通过图算子批量进行算子Setup和任务下发，可有效减少NPU空泡』『双线程下发优化（推荐使用）：通过双线程分别进行算子批量Setup和批量任务下发，可以同时减少host执行时间和NPU空泡』。常见问题与回答.md：『提示libtbe_adapter.so does not exist 您可通过安装nnal软件包解决该问题』『nnal软件包需保持和toolkit及kernels软件包版本一致』『未安装 PyTorch：使用cxx_abi_1』『已安装 PyTorch：运行下面命令，输出1用cxx_abi_1，输出0用cxx_abi_0』"

@@ -1,0 +1,30 @@
+id: shmem-usage-limits-and-troubleshooting
+type: software-fact
+title: SHMEM 使用限制与常见问题（对称内存分配、UB Buffer 预留、A2 16 卡跨组禁 MTE、端口桥、QP 建链超时、卡间同步须在 AIV）
+summary: "SHMEM（多机多卡内存通信库）的七条使用限制与常见问题的判据。**限制**：①GM2GM 高阶 RMA 用默认 buffer **不支持并发**（会覆盖数据，需并发就用低阶接口）；②`barrier` 当前**必须在 Mix Kernel（含 mmad 与 GM2UB/UB2GM 操作）中使用**；③RDMA 高阶接口需先用 `aclshmemx_rdma_config` 配 UB Buffer 与 sync_id，预留 **≥128 字节**（不配则用默认 **190KB 处**的 UB Buffer 与 EVENT_ID0；RDMA 接口内部用 `PipeBarrier<PIPE_MTE3>` 阻塞 MTE3 流水以确保任务下发完成，**RDMA 专用 Put/Get 的 src/dst 都必须指向对称内存且各自完整传输范围不得越出所在内存分配**）；④SDMA 高阶接口经 `aclshmemx_sdma_config` 预留 **≥64 字节**（默认 191KB 处）；⑤UDMA 经 `aclshmemx_set_udma_config` 预留 **≥128 字节**（默认 189KB 处，用于经 `PIPE_MTE3` staging 暂存完整 WQE）；⑥**A2 16 卡机型**分前后两个 8P Fullmesh 组、组间仅 PCIe-SW 互连，**不支持用 MTE 接口跨组搬运**（单机用例勿跨组指定 NPU，否则可能出现流同步失败等未知报错）；⑦**A3 的 D2H/D2rH 要求 Host DRAM 可用空间大于 local_mem_size**——HCCS 总线上的 DRAM 地址范围固定，可用空间 = `lsmem` 查到的本机物理地址范围与四个固定区间（0x29580000000-0x34000000000、0xa9580000000-0xb4000000000、0x129580000000-0x134000000000、0x1a9580000000-0x1b4000000000）的**交集**，无交集则不支持该功能。**典型问题的判据**：算子**精度异常但无 error 日志**时先怀疑 **`aclshmem_malloc` 分配了非对称共享内存**（每个 rank 必须分配相同大小），开 debug 模式即可复现（A2/A3：`bash scripts/build.sh -examples -debug`；950：加 `-soc_type Ascend950`）；日志提示 `local size diffs` 说明各 PE 的 `local_mem_size` 不一致（**日志中的实际分配大小比 local_mem_size 多 6MB 是框架内部使用**；local_mem_size 需 **2MB 对齐**，否则报不同错误）；端口/网口问题按「`netstat -tuln | grep <端口>` 查占用 → 调整 `SHMEM_UID_SESSION_ID` 与实际 IP/端口」排查，default 模式（`ACLSHMEMX_INIT_WITH_DEFAULT`）每次初始化都绑定独立端口，**多实例场景用 `SHMEM_INSTANCE_PORT_RANGE=start:end` 且 ip_port 端口设 0**（框架按 instance_id 分配 start_port+instance_id），单实例多次初始化需保证上次已 finalize 或换端口；未配 `SHMEM_UID_SESSION_ID`/`SHMEM_UID_SOCK_IFNAME` 时框架自动搜索可用网口（排除 lo/docker/veth/br-/virbr/tun/tap），失败需手动配置（**两者同时配只读 SESSION_ID**；IFNAME 支持 `enpxxxx:inet4`/`inet6`/`eth0` 自动探测优先 IPv4）。**网络与建链**：**1825 网卡单机多 NPU 共用同一物理端口**时，NPU 间 RDMA 流量从同一端口出、经交换机又从同一端口回，**交换机默认丢弃此类同源同宿报文 → 必须在交换机对应接口开启端口桥 port bridge**（8 卡机型参考 NPU0/1→hrn5_1、2/3→hrn5_0、4/5→hrn5_3、6/7→hrn5_2；用 `ibv_devinfo`/`hiroce5 gids` 查 net_dev、`ifconfig <net_dev>` 查 MAC、再在交换机按 MAC 查端口，开启后 `commit` 并以 `display current-configuration | include port bridge` 验证）；**RDMA 丢包先查交换机与端侧的 TC/SL 配置是否一致**（对应 `HCCL_RDMA_TC`/`HCCL_RDMA_SL`）；**Ascend950 RDMA V2 的建链监听端口由系统自动分配、用户无需配置**（同 IP 多进程/多 instance 无需手工分配；建链端口与初始化通信端口是两回事）；建链报 `HcommChannelCreate failed: 19`（HCCL_E_NETWORK）通常是 **QP 状态迁移 INIT→RTR 超时**，依次查两端 `gid_idx` 是否一致、`ping <对端RDMA_IP>`、交换机 PFC/ECN 无损网络配置；**卡间同步接口 `aclshmemx_roce_sync_all`/`roce_barrier_all`/`roce_barrier`/`roce_team_sync` 出现某几个 PE 卡死时，要确保调用它们的算子只在 AIV 上执行**。**自建调试的坑**：加 `-O0 -g` 编译被 `-Werror` 拦下（报 `will be ignored [-Werror -Woption-ignored]`）→ 注释掉 SHMEM 根 CMakeLists.txt 的 `-Werror`；加 `-O0 -g` 后运行报 `min stack size is xxx, larger than current process default size 32768` → 在 aclInit 的 json 中配置更大的栈空间。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/cann/shmem/blob/master/docs/debug/Troubleshooting_FAQs.md"
+    version: "shmem master（commit 9a1cc1e492e0，2026-09-15 抓取）：使用限制 7 条 + 内存分配/IP·PORT/RDMA/调试四类常见问题"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/shmem/tree/master/docs/debug"
+    version: "shmem master（commit 9a1cc1e492e0）debug 目录：dump_debug / log_debug / profiling / tools_debug（msprof 与 mssanitizer 使能）"
+    fetched_at: 2026-09-15
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A2-910B, A3-910C, A5-950, cross]
+  frameworks: [shmem]
+  categories: [interrupt, precision, performance]
+
+related_references: [moe-dispatch-combine, hccn-tool-network-diagnosis, hccl-comm-init-and-link-faults, mssanitizer, ascend-hardware-detect-triage, process-hang-or-peer-heartbeat-loss-example]
+
+status: active
+last_verified: 2026-09-15
+
+content:
+  claim: "见 summary 中逐条列出的七条使用限制与各类问题的判据。补充三条诊断要点：**① 精度问题无 error 日志是 SHMEM 的典型形态**——共享内存访问到异常数据往往源于分配不对称，因此「算子结果不对但没有任何 ERROR」时优先按 debug 模式复现（A2/A3 `bash scripts/build.sh -examples -debug`；Ascend950 `bash scripts/build.sh -soc_type Ascend950 -examples -debug`），让框架把不对称分配当场报出来，而不是继续往算子实现里找。**② 内存与端口的三个数字要记住**：RDMA/UDMA 预留 **128 字节**、SDMA **64 字节**（分别落在默认 190KB / 189KB / 191KB 处，sync EVENT_ID 默认 EVENT_ID0）；`local_mem_size` **2MB 对齐**，且日志中的实际分配比它多 **6MB**（框架内部使用）——把这两个差值当成 bug 会白查一轮。**③ 网络侧的三类根因要分开**：同源同宿报文被交换机丢弃（需端口桥）属**拓扑/交换侧**；TC/SL 不一致丢包属**QoS 配置侧**；`HcommChannelCreate failed: 19` 的 QP INIT→RTR 超时属**建链与无损网络配置侧**（gid_idx、IP 可达、PFC/ECN）——三者的检查顺序与责任方不同，混在一起查会绕远。"
+  evidence: "Troubleshooting_FAQs.md：使用限制段逐条（『GM2GM的高阶 RMA 操作使用默认buffer，不支持并发操作，否则可能造成数据覆盖』『barrier接口当前必须在Mix Kernel（包含mmad和GM2UB/UB2GM操作）中使用』『使用RDMA的高阶接口前，需要先使用aclshmemx_rdma_config接口配置UB Buffer和sync_id等信息，且需要保证预留UB Buffer大小大于等于128字节。若不配置，则使用默认的190KB处的UB Buffer和EVENT_ID0』『RDMA相关接口内部使用PipeBarrier<PIPE_MTE3>阻塞MTE3流水以确保RDMA任务下发完成。RDMA 引擎专用 Put/Get 接口的 src、dst 都必须指向对称内存』『使用SDMA的高阶接口前…大于等于64字节…默认的191KB处』『使用UDMA的高阶接口前…大于等于128字节…默认的189KB处』『A2 16卡机型：NPU分为前八卡后八卡两个8P Fullmesh组…不支持直接使用MTE接口在跨组NPU间完成数据搬运』『A3 D2H/D2rH等功能，需要确保Host内存（DRAM）可用空间大于aclshmemx_init_attr_t初始化过程中pe分配的local_mem_size大小…通过lsmem查询本机物理地址范围，和如下4个地址区间取交集』）；常见问题段（『算子精度问题，无error日志，发现共享内存访问到的数据异常』→ debug 模式命令与『确保每个rank分配相同大小的共享内存』『日志中显示的实际分配大小和local_mem_size大小有6MB的差异为shmem框架内部使用空间』『此处local_mem_size大小为2MB对齐』『netstat -tuln | grep <端口号>』『SHMEM_INSTANCE_PORT_RANGE=start:end…将ip_port中的端口设为0』『同时配置时只读取SHMEM_UID_SESSION_ID』『1825 网卡在单机多 NPU 场景下…交换机默认丢弃此类同源同宿报文…需在交换机对应接口开启端口桥』8 卡机型 NPU↔网卡对应表与交换机操作步骤『display current-configuration | include port bridge』『通信丢包…检查交换机和端侧的TC与SL配置是否正确，如果不一致会出现丢包现象…HCCL_RDMA_TC和HCCL_RDMA_SL』『Ascend950 RDMA V2 建链监听端口由系统自动分配，用户无需配置』『HcommChannelCreate failed: 19（HCCL_E_NETWORK）…通常为 RDMA QP 状态迁移（INIT→RTR）超时…1. 确认 GID index 两端一致…2. 确认 RDMA 网卡间 IP 层可达…3. 检查交换机 PFC/ECN 无损网络配置』『确保当前调用上述接口的算子只在AIV上执行』『SHMEM根目录的CMakeLists.txt的-Werror选项…注释掉-Werror编译选项即可』『min stack size is xxx, larger than current process default size 32768. Please modify aclInit json』）"
