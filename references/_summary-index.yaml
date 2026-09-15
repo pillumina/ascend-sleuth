@@ -2,7 +2,7 @@
 # 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。
 # 只含背景类 + status=active；查表类走 2.5 ③ 按需 grep（口径同 diagnose SKILL）。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-15    词条数：112
+# 生成日期：2026-09-15    词条数：114
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -324,6 +324,19 @@ entries:
     categories:
     - interrupt
     - precision
+    - performance
+- id: ascend-inference-multistream-and-graph-mode
+  type: software-fact
+  title: 推理侧多流并行与 NPU 图模式（两种并行的成立条件、三模式接口不可混用、Guards 命中是收益前提、9 条图模式高频问题）
+  summary: 推理性能定位里最常被误解的两块机制。**多流**：Device 侧物理单元 Cube（大矩阵乘）、Vector（向量/激活/规约）、HCCL（集合通信）可独立调度，Stream 是
+    Host 向 Device 下发任务的队列（同流串行、跨流由 Event 与调度器定序）；三种并行形态——**Cube↔Vector 互补…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - A5-950
+    - cross
+    categories:
     - performance
 - id: ascend-log-classification
   type: software-fact
@@ -909,6 +922,19 @@ entries:
     - A3-910C
     categories:
     - interrupt
+    - performance
+- id: npu-prefetch-and-superkernel
+  type: software-fact
+  title: NPU 权重预取（npu_prefetch 的四个前提、size 估算、npugraph_ex 需显式预取流）与 SuperKernel（二进制融合的四类算子级优化与五条约束）
+  summary: 两项 Decode 性能优化的机制与判据。**Prefetch**：Decode 小 batch 下 MatMul/QBMM/GMM 常是 memory-bound（耗时为读权重主导，weight
+    常驻 HBM 数十 MB、激活很小），`torch_npu.npu_prefetch(weight, depend, si…
+  applies_to:
+    platforms:
+    - A2-910B
+    - A3-910C
+    - A5-950
+    - cross
+    categories:
     - performance
 - id: om-dynamic-shape-and-aipp-constraints
   type: software-fact

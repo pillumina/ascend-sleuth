@@ -83,19 +83,35 @@
      "sha": "2fafe6a71166f23cc39976ed7a3b853c5dd4b36d"
     },
     "docs/cann/zh/multi_stream_principles.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:19:43",
+     "decision": "harvested",
+     "refs": [
+      "ascend-inference-multistream-and-graph-mode"
+     ],
      "sha": "c52892771a90ce918e60846154d47aa199c82096"
     },
     "docs/cann/zh/npu_graph_optimization.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:19:43",
+     "decision": "harvested",
+     "refs": [
+      "ascend-inference-multistream-and-graph-mode"
+     ],
      "sha": "88b3e93183d0c5323c8ae5bc61a6695b544a84f0"
     },
     "docs/cann/zh/prefetch_principles.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:19:43",
+     "decision": "harvested",
+     "refs": [
+      "npu-prefetch-and-superkernel"
+     ],
      "sha": "bf8ae7d02110eb710b6145fbcb46cbd9caa44cd1"
     },
     "docs/cann/zh/super_kernel.md": {
-     "decision": "pending",
+     "at": "2026-09-15T17:19:43",
+     "decision": "harvested",
+     "refs": [
+      "npu-prefetch-and-superkernel"
+     ],
      "sha": "197affd6dbc6abe729d47793abf74505e856b7fa"
     },
     "docs/common/inference_config_guide.md": {
