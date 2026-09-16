@@ -62,7 +62,7 @@ cases:
 
     severity: service-affecting        # 投机失效 = 吞吐/有效加速比明显下降，服务可用
     fix_side_effects: [requires-restart]
-    fix_type: upgrade
+    fix_type: code-patch
 
     root_cause: >
       SFA（speculative 前端）后端在按 draft step 构建 attention metadata 时，把

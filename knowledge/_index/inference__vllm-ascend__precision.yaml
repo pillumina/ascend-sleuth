@@ -179,7 +179,7 @@ namespaces:
       symptoms:
       - v0.26.0rc GLM-5.2 + MTP（deepseek_mtp spec-decode）投机接受率相对 v0.23（50%+）大幅劣化
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-14265.yaml
-      hash: e01ccf6f85e6
+      hash: 7530ef3a3338
     - id: VLLM-ASC-14363
       title: DeepSeek V4 adapter 构造 routed FusedMoE 时漏传 swiglu_limit（config=10.0）→ routed expert 以默认 None
         运行、无 SwiGLU clamp → 敏感前缀处 next-token logit/ranking 漂移 → 异常中文/特殊 tok…

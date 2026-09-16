@@ -509,7 +509,7 @@ namespaces:
       symptoms:
       - Elastic NetLoader P2P 加载 GLM5.1-W8A8（INT8_CACHE=dram 或 memcache 同开）时 hang/deadlock：加载不完成、无报错退出
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12933.yaml
-      hash: 8e4ba0a0bd33
+      hash: 505109aca88b
     - id: VLLM-ASC-12983
       title: 310P MTP 与图模式无法同时开启：镜像缺 free-mask 算子，pageattention-splitfuse 变化 shape mask 不入图
       category: interrupt
@@ -704,7 +704,7 @@ namespaces:
       - TP 推理图捕获失败：AclmdlRICaptureEnd 报 107025 / “capture model contains a stream that was not joined
         to the original stream”
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13792.yaml
-      hash: c3d343d720ab
+      hash: b4fa1206ab73
     - id: VLLM-ASC-13934
       title: v0.26 新增 AscendSFAIndexerCacheSpec 使 1 个 KV cache group 拆成 2 个 Mooncake transfer group，而
         vllm 侧 remote_block_ids 仍按 1 组索引，D 侧 _get_kv_split_metadata 访问 remote_b…

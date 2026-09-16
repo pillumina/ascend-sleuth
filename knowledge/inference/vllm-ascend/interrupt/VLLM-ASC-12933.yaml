@@ -63,7 +63,7 @@ cases:
 
     severity: service-affecting        # 加载卡死 = 服务无法就绪
     fix_side_effects: [requires-restart]
-    fix_type: upgrade                  # 修复在框架侧（PR #12885）
+    fix_type: code-patch               # 修复在框架侧（PR #12885）
 
     root_cause: >
       Elastic NetLoader P2P 权重加载路径把未处理（非 processed-layout）的 tensor 直接做

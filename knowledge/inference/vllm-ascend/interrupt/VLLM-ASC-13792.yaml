@@ -54,7 +54,7 @@ cases:
   severity: service-affecting
   fix_side_effects:
   - requires-restart
-  fix_type: upgrade
+  fix_type: code-patch
   root_cause: 'torchair 的 capture stream 管控（PR 2781）使捕获流与通信流冲突，AclmdlRICaptureEnd
     报 stream not joined(107025)；vllm-ascend 原有 mitigation 因配置只改进程内 AscendConfig、spawn
     的 EngineCore 从陈旧 additional_config 重建而失效。PR #13692 改为修改 additional_config 使 mitigation

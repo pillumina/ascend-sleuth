@@ -509,7 +509,7 @@ namespaces:
       symptoms:
       - Elastic NetLoader P2P 加载 GLM5.1-W8A8（INT8_CACHE=dram 或 memcache 同开）时 hang/deadlock：加载不完成、无报错退出
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12933.yaml
-      hash: 8e4ba0a0bd33
+      hash: 505109aca88b
     - id: VLLM-ASC-12983
       title: 310P MTP 与图模式无法同时开启：镜像缺 free-mask 算子，pageattention-splitfuse 变化 shape mask 不入图
       category: interrupt
@@ -704,7 +704,7 @@ namespaces:
       - TP 推理图捕获失败：AclmdlRICaptureEnd 报 107025 / “capture model contains a stream that was not joined
         to the original stream”
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13792.yaml
-      hash: c3d343d720ab
+      hash: b4fa1206ab73
     - id: VLLM-ASC-13934
       title: v0.26 新增 AscendSFAIndexerCacheSpec 使 1 个 KV cache group 拆成 2 个 Mooncake transfer group，而
         vllm 侧 remote_block_ids 仍按 1 组索引，D 侧 _get_kv_split_metadata 访问 remote_b…
@@ -1680,7 +1680,7 @@ namespaces:
       - GLM-5.2 全图/MRV1 + MTP num_spec≥2：投机接受率明显低于预期（acceptance_per_pos≈0.45/0.34/0.25、acceptance_len
         偏低），对照 v0.23 正常
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-14306.yaml
-      hash: 476e34bf900b
+      hash: 9309ba887394
     - id: VLLM-ASC-14448
       title: 'GLM-5.2 单 D MTP（4 并发长输入 20-40k）TPOT 极差：MTP 路径 host 侧长 copy 同步点推迟算子下发、呈 host-bound（PR #14103/#14554
         优化 DCP drafting metadata 消除多余 CPU↔NPU 拷贝）'
@@ -1698,7 +1698,7 @@ namespaces:
       symptoms:
       - GLM-5.2 单 D（PD 分离 decode 侧）+ MTP 服务，4 并发长输入（20-40k tokens）：TPOT 明显劣化
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-14448.yaml
-      hash: d39653d1ec9f
+      hash: 880aac508d5c
     precision:
     - id: VLLM-ASC-10524
       title: 'GLM-5.1-w8a8 PD 分离偶现精度问题（Claude Code 多并发长请求）：graph-capture/dummy run 未走 _prepare_inputs()
@@ -1874,7 +1874,7 @@ namespaces:
       symptoms:
       - v0.26.0rc GLM-5.2 + MTP（deepseek_mtp spec-decode）投机接受率相对 v0.23（50%+）大幅劣化
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-14265.yaml
-      hash: e01ccf6f85e6
+      hash: 7530ef3a3338
     - id: VLLM-ASC-14363
       title: DeepSeek V4 adapter 构造 routed FusedMoE 时漏传 swiglu_limit（config=10.0）→ routed expert 以默认 None
         运行、无 SwiGLU clamp → 敏感前缀处 next-token logit/ranking 漂移 → 异常中文/特殊 tok…
