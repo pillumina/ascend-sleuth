@@ -69,3 +69,16 @@ plog 定位 fault kernel = `MoeDistributeDispatchV2`（MC2 融合 MoE 分发）�
 - **本案 plog 全文未获取**（issue 正文只给摘要）。要把机制从推断变实证，需在 plog 里 grep `driver error`（对应 #4914 的 `rtMemcpy ... [driver error:internal error]`）。
 - **`npu-smi info` 原始输出未获取**，driver 24.1.0.3 取自 issue 正文自述。
 - **升级后重跑结果未获取**，故本案未闭环。
+
+## 闭环（2026-09-16）
+
+工程师回报本问题闭环，诊断 trace 的 `feedback.outcome` 置 `resolved`（session `2026-09-16-12430-dsv4pro-mc2`），由 `scripts/settle_trace_feedback.py` 结算 → `confidence.hits: 0→1`。
+
+沉淀与演进均已合入：case 与 postmortem 经 PR [#230](https://github.com/pillumina/ascend-sleuth/pull/230) 进 main；本次诊断顺带产出的两条流程改进（版本组合键点明先验层具体文件、case 草稿结构校验进 CI）走 EV-2026-094 / EV-2026-095，经 PR [#231](https://github.com/pillumina/ascend-sleuth/pull/231) 与 [#232](https://github.com/pillumina/ascend-sleuth/pull/232) 落位。
+
+**闭环口径的强度如实标注**：现场给出的是「本问题闭环」，**未附带「升级 HDK 后 507014 消失」的直接实测对照**。因此本条的 `verification` 仍为 `investigation`，`root_cause` 仍是三方证据收敛的推断。若日后拿到升级前后对照、或 plog 里的 `driver error` 行，再据此升 `verification` 档并考虑记 `validation_record`。
+
+## 修订记录
+
+- 2026-09-16 初稿（据 issue #12430 与上游先例 #4914/#5468/#6875/#8960/#15985 + 本库 `cann-hdk` 配套矩阵 + vllm-ascend `v0.23.0rc1` 源码）
+- 2026-09-16 补「闭环」节与修订记录：记现场闭环回报、结算结果与合入落点，并标注闭环口径未含升级实测

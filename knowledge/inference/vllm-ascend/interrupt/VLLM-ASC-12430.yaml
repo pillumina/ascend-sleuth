@@ -14,6 +14,13 @@
 #   仅记共用根因区（root_cause 已互指）。tier 关系：sibling_of VLLM-ASC-9005（同根因区，不同可观测面）。
 
 # pre-triage: variant_of VLLM-ASC-9005 → groom 复核改判 sibling_of（同上）
+
+# 闭环记录（2026-09-16 合入后）：现场回报本问题闭环，`feedback.outcome: resolved`，由
+#   `scripts/settle_trace_feedback.py` 结算 → `confidence.hits: 0→1`（结算游标见 ingest-state.json）。
+#   **归因强度如实标注**：现场给出的闭环口径**未附带「升级 HDK 后 507014 消失」的直接实测证据**；
+#   `verification` 仍为 `investigation`（三方证据收敛的推断，非代码级定位、无上游 fix PR）。
+#   若日后拿到升级前后对照或 plog 的 `driver error` 行，再据此升 verification 档并考虑记
+#   `validation_record`（外部验证面，与 confidence 的 S1 口径分开）。
 #   同：平台 A2-910B、部署形态（≥4 机多节点 + DeepSeek-V4-Pro + 大通信量 MoE）、根因方向（HDK 版本低于 CANN 配套要求）、
 #       修复动作（升级 firmware + npu driver，上层 CANN 不动）。
 #   异：① 报错形态——9005 报 'Memory resources are exhausted'（显存耗尽误报），本案报 AICore timeout 507014（kernel 卡死）；
@@ -51,7 +58,7 @@ cases:
     # 根因由「配套矩阵越界 + 同 driver 同签名先例 + 维护者 CANN↔driver 口径」三方收敛推出，非代码级定位。
 
     confidence:
-      hits: 0
+      hits: 1
       misdiagnoses: 0
 
     verification:
@@ -143,3 +150,4 @@ cases:
       或 CANN 9.0.1 release note。升级需节点级操作并重启，建议升级前后各跑一次 `npu-smi info` 留档。
       验证：4×A2 多节点 EP=32 拉起 DeepSeek-V4-Pro-w4a8，走过 profile_run 进入正常服务。
     rollback: "降回低版本 HDK 即复现（多节点 EP 拉起在 profile_run 报 507014）"
+
