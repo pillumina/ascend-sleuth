@@ -343,8 +343,8 @@ entries:
 - id: ascend-device-log-ops
   type: tool
   title: Device 日志排查操作（RAS 故障 ID / 资源占用 / 进程拉起与结束时间）
-  summary: 三组常用 Device 日志操作：①msnpureport -f 导出后在 event_*.log 搜 event_id 查 RAS 故障码（npu-smi info -t health
-    兜底查最近 8 次故障）；②Device 日志 SYSMONITOR 看 fd usage（阈值 90%）与僵尸进程（阈值 5）；③…
+  summary: 三组 Device 日志操作：①msnpureport -f 导出后 event_*.log 搜 event_id 取 RAS 故障码（npu-smi info -t health
+    兜底 8 次）；②SYSMONITOR 看 fd usage（阈值 90%）与僵尸进程（阈值 5）；③slog/dev-os-id/[de…
   applies_to:
     platforms:
     - cross
@@ -397,9 +397,9 @@ entries:
     - interrupt
 - id: ascend-log-locations
   type: software-fact
-  title: 昇腾日志存储路径（EP / RC / Control CPU 开放形态）
-  summary: 应用类日志 Ascend EP 默认在 $HOME/ascend/log、Ascend RC 与 Control CPU 开放形态在 /var/log/npu/slog 按 debug/run/security
-    分目录；EP 无 Device 登录权限、系统类日志须用 msnpureport 导出；日志支持老化自动删除
+  title: 昇腾日志存储路径（EP / RC / Control CPU 开放形态，含 EP 现场采集包 npu_log_collect 布局）
+  summary: 昇腾日志存储路径：EP 应用类 $HOME/ascend/log、系统类走 msnpureport 导出或现场采集包 npu_log_collect（driver_log/<时间戳>/slog/dev-os-id/，debug
+    下有 device-id 与 device-os 两级）；event 文件名时间戳是创建时间…
   applies_to:
     platforms:
     - cross
