@@ -97,6 +97,7 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
    - 能 → 无需动作（路由已覆盖）；
    - 不能（新形态 OOD，正则没识别）→ 在产出报告里给出**路由症状建议**（新正则追加到对应分支的 `symptoms`，如 "过度思考" → inference_precision），随 case PR 一并提交（structure 部分，人审确认）——**triage 随知识入库增长，不靠手工补**；拿不准放哪个分支 → 建议标 `needs-review`，groom 定夺。
 4. **语义校验**（关键，区别于格式校验）：
+   - **先跑结构校验的确定性工具**：`python3 scripts/verify_case_draft.py <草稿路径>`——它管机械可判的那一半（YAML 可解析、必需字段非空、`category`/`severity`/`fix_type` 取值合法、`ref_knowledge` 不悬挂且指向 active 词条、`quickly_check.expected` 的 regex 可编译且无空分支、`diagnosis` 无空步）。草稿在 inbox 期间没有任何门（CI 的 `build_index` 只在 case 进 `knowledge/` 后才解析它），所以这一步是它唯一的确定性检查点；也支持 `--all` 校全库。
    - regex 在输入附的真实日志片段上能否匹配
    - `expected` 值类型/数量级合理性
    - `command_template` 里的路径在已知部署模板里是否存在

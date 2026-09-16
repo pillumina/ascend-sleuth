@@ -1,0 +1,130 @@
+# ============================================================
+# EV-2026-095 —— case 草稿的结构校验：补确定性 checker + 进 CI
+# 来源：诊断 2026-09-16-12430-dsv4pro-mc2 写 VLLM-ASC-12430 草稿时连犯三类字段级
+#       错误且都逃过产出；groom 复核时又暴露一批既存 schema 违规
+# 脱敏：只含仓库内文件位置、case id 与聚合计数，不含客户现场原文
+# ============================================================
+
+id: EV-2026-095
+layer: L2                          # 机制层（知识产出的质量门）
+title: "case 草稿的结构校验补位：verify_case_draft（字段/枚举/悬挂 ref/regex 空分支）+ 进 CI case-structure job"
+status: validated
+authorization: auto                # 新增校验脚本 + 修 5 处枚举违规；不改判定语义、可逆
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-16
+source_signals:
+  - signal: execution_error
+    evidence: >-
+      本次写 VLLM-ASC-12430 草稿时连犯三类**机械可判**的字段级缺陷，且都逃过产出环节：
+      ① 正文把 CANN 打成 "CANNN"（错别字）；② YAML 双引号标量内嵌裸引号，整份草稿解析失败
+      （直到 groom 复核才暴露）；③ `diagnosis` 漏了「前提核验」这一步，是复核时补的。
+      三者的共同后果是确定性的：解析失败 → 索引重建整条链红；字段缺失 → 阶段一筛不到、
+      阶段二判不了。
+    trajectory:
+      - "postmortems/inbox/VLLM-ASC-12430.case.yaml（产出物；上述三类缺陷现场）"
+      - "traces/2026-09-16-12430-dsv4pro-mc2.yaml#report（沉淀动作与复核补正记录）"
+  - signal: mechanism_gap
+    evidence: >-
+      to-postmortem 流程有「步骤 4 语义校验」，但**没有对应的确定性工具**——scripts/ 下无任何
+      case schema 校验脚本。CI 的 `build_index` 只在 case 进 `knowledge/` 之后才解析它，
+      **草稿在 inbox 期间没有任何门**。既存卡（019/036/050/061/063）经查询无一覆盖
+      「case 字段结构校验」这一面。
+    trajectory:
+      - "skills/to-postmortem/SKILL.md:99-103（步骤 4 语义校验：只有判断性口径，无工具）"
+      - ".github/workflows/kb-checks.yml（改动前的 job 集：无 case 结构校验）"
+      - "scripts/ev_proposal.py --list 检索『校验/schema』（无相关卡）"
+  - signal: schema_violation
+    evidence: >-
+      新 checker 对全库（159 条）首跑暴露两类**既存**违规：① 5 个 case 的 `fix_type: upgrade`
+      ——schema（CLAUDE.md case schema 节 + examples/sample-case.yaml）只有
+      env-var / config-change / code-patch / pending-investigation 四值；`git log -S` 追溯该值
+      出自 2 个 PR，且无任何卡讨论过扩枚举（属静默漂移，不是有意的扩值）。
+      ② VLLM-ASC-11312 的判别式恒真（`capacity_health.py` 独立报出，推高 interrupt 候选
+      溢出率至 43%），本 checker 的 regex 空分支判据同样能拦。
+    trajectory:
+      - "scripts/verify_case_draft.py --all 首跑输出（5 条 fix_type 非法）+ git log -S 'fix_type: upgrade'"
+      - "scripts/capacity_health.py 输出：『1 条 case 的判别式恒真 … VLLM-ASC-11312』，interrupt 溢出率 43%"
+hypothesis: >-
+  把 case 的机械可判面（可解析 / 必需字段 / 三个枚举 / ref_knowledge 悬挂与 active /
+  expected 的 regex 可编译且无空分支 / diagnosis 无空步）做成确定性判据，并在产出时
+  （to-postmortem 步骤 4）与合入时（CI）各挡一次：草稿缺陷在写的时候就红，不再走到 groom
+  复核或索引重建才暴露；既存的枚举漂移也一次性收敛。
+predicted_effect:
+  metric: case 结构与字段值的机械可判违规数
+  from: "全库 5 条 fix_type 非法（+ 本次草稿 3 类缺陷需靠复核发现）；草稿期无任何门"
+  to: "全库 0 条；产出时与 CI 各一次确定性检查"
+  measure:
+    command: "python3 scripts/verify_case_draft.py --all"
+    expect_exit: 0
+    expect_stdout: "verify_case_draft: 通过"
+    # 反向判据（证明 checker 不是恒真假绿）：对含 5 类缺陷的夹具必须非零退出，
+    # 见 validation.success_criteria ③
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：`scripts/` 无 case 结构校验脚本；`build_index.py` 只保证可解析、不看字段值，
+    于是 `fix_type: upgrade` 跨 4 个 PR 静默存活；草稿在 inbox 期间不可被任何门覆盖。
+  success_criteria: >-
+    ① measure 通过（全库 159 条 exit 0）；
+    ② 5 处 fix_type 违规收敛为 schema 合法值，并重跑 `build_index.py` 使索引 hash 一致；
+    ③ **反向判据**：对含 5 类缺陷的自造夹具，checker 必须 exit 1 并逐条报出（防「恒真假绿」
+    ——这正是本轮另一个缺陷 VLLM-ASC-11312 的形态）；
+    ④ 判据不误报：全库 159 条零失败（首版曾把「命令式诊断步」误判为缺 check 而产生 13 条
+    误报，已按 schema 的双形态修正）；
+    ⑤ enforcement 接线：to-postmortem 步骤 4 点明该命令；CI 新增 case-structure job 且
+    workflow 的 paths 过滤含新脚本（否则改了脚本不触发）；
+    ⑥ CI 无回归：build_index / verify_references / 两个 reference 索引 / verify_metrics /
+    build_timeline / docs 索引 / holdout / verify_proposals 全绿。
+  rollback: >-
+    单脚本 + 一处 skill 文字 + 一个 CI job + 5 处字段值；`git revert` 或删 job 即回原状，
+    无数据迁移（case 内容只改了 fix_type 字段值，未动判别式与 fix 文本）。
+gate:
+  condition: "case 草稿结构缺陷再次在 groom 复核阶段才被发现 ≥2 次（说明产出时的检查未被执行）"
+risk: low                          # 新增只读校验 + 枚举收敛；不触碰 expected/fix_on_mismatch/compat
+principle_refs: [2, 6, 8]          # 二 不变量写进结构 / 六 不机械硬化（只做机械可判项）/ 八 可观测先于改进
+actual_cost:
+  tokens: 9000
+  source: estimate
+  note: >-
+    checker 实现与两轮判据修正（含一次误报收敛，约 5k）、夹具反向验证与接线（约 2k）、
+    建卡与全 CI 复跑（约 2k）。
+decisions:
+  - who: agent
+    when: 2026-09-16
+    type: proposal
+    conclusion: >-
+      产卡即执行。范围刻意收窄到**机械可判**的一面：不做「症状是否写得像 grep 判据」「root_cause
+      是否成立」这类判断性检查（那是人审与语义校验的事，进 CI 会逼出套话——原则六）。
+  - who: agent
+    when: 2026-09-16
+    type: action
+    conclusion: >-
+      新增 `scripts/verify_case_draft.py`（复用 `_yaml.load_file` / `_stdio.pin_utf8_stdio`，
+      支持单文件、目录与 `--all`）；`skills/to-postmortem/SKILL.md` 步骤 4 首条点明该命令并说明
+      「草稿在 inbox 期间无门」的理由；`.github/workflows/kb-checks.yml` 新增 `case-structure`
+      job 并把新脚本加进 paths 过滤。
+  - who: agent
+    when: 2026-09-16
+    type: action
+    conclusion: >-
+      顺带收敛既存违规：5 个 case 的 `fix_type: upgrade` → `code-patch`（其 fix 均为「升级到
+      含 fix PR 的版本」，即打了补丁的版本，归 code-patch 而非 config-change）；重建索引使 hash 一致。
+  - who: agent
+    when: 2026-09-16
+    type: eval
+    conclusion: >-
+      measure 通过（`--all` exit 0，159 文件零误报）；反向判据通过（夹具 5 类缺陷逐条报出、
+      exit 1）；接线确认（paths 过滤含新脚本，workflow YAML 可解析）；九项 CI 全绿。
+      未处理并如实记录：VLLM-ASC-11312 的恒真判别式**本轮不改**（修判别式属 case 内容变更，
+      走 knowledge_modification；本卡只证明判据能拦住它，已由 capacity_health 单独报出）。
+  - who: agent
+    when: 2026-09-16
+    type: decision
+    conclusion: >-
+      采纳（validated）。依据：① 信号有据——本次三类缺陷 + 既存 5 处违规 + 无任何既有 checker；
+      ② 判据可复现且经反向夹具验证，不是恒真假绿；③ 误报已收敛到零（首版 13 条误报的成因与
+      修法都记在 success_criteria ④）；④ 改动可逆且不触碰高风险字段（expected / fix_on_mismatch /
+      compat 区间均未动）。保留的不确定：CI 对 `--all` 的门是否会在未来某次合并中因新 case 报红
+      而被绕过——gate 字段即为此设的观测条件。
