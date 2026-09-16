@@ -425,6 +425,10 @@
       "2026-09-08-ascendstore-pd-prefill-hang": {
         "events": "1850a89fcff41567",
         "settled_at": "2026-08-31"
+      },
+      "2026-09-16-12430-dsv4pro-mc2": {
+        "events": "fa39250fbede3fe5",
+        "settled_at": "2026-08-31"
       }
     }
   }
