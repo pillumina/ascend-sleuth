@@ -43,6 +43,7 @@ except ImportError:
 
 from _yaml import load_file  # noqa: E402  （解析后端单一事实源）
 from _stdio import pin_utf8_stdio  # noqa: E402
+from exec_log_path import resolve_traces  # noqa: E402  （traces/ 锚主检出，worktree 里没有）
 
 VALID_ROLES = {"signature-source", "fix-methodology", "root-cause-context"}
 VALID_CATEGORIES = {"interrupt", "precision", "performance"}
@@ -51,6 +52,14 @@ VALID_FIX_TYPES = {"env-var", "config-change", "code-patch", "pending-investigat
 
 REQUIRED_FIELDS = ("id", "title", "category", "symptoms", "quickly_check",
                    "diagnosis", "root_cause", "fix", "severity", "fix_type")
+
+# 升格闸门（EV-2026-097）：自诊断 case 默认须反馈闭环，未闭环则只认强外部证据并走 owner 双签。
+# 为什么按来源分：issue-ingest 管道 case 的"闭环"是维护者结论 / fix PR 已经替它确认过
+# （其 verification 档位即证明），现场没有 session 可闭环；自诊断 case 没有任何外部验证，
+# 纯推断档（investigation）升格等于把猜测写进知识库。
+STRONG_EVIDENCE = {"upstream-fix-merged", "upstream-maintainer-confirmed",
+                   "upstream-official-doc", "engineer-report"}
+WEAK_EVIDENCE = {"investigation", None, ""}
 
 
 def load_reference_index(root: Path):
@@ -149,6 +158,54 @@ def check_case(case, path: Path, ref_index: dict, fail, warn):
             fail(f"{where}: ref_knowledge 指向非 active 词条 `{rid}`（status={ref_index[rid][0]}）")
 
 
+def case_source_session_of(case):
+    """草稿的 source_session；缺则 None（→ 视为管道 case，升格闸门不适用）。"""
+    v = case.get("source_session")
+    return v if isinstance(v, str) and v else None
+
+
+def trace_feedback_outcome(root: Path, sid: str):
+    """来源 trace 的 feedback.outcome；取不到返回 None。
+
+    traces/ 是 gitignored 的共享运行时件、锚在主检出——worktree 里通常不存在，故必须走
+    `resolve_traces()` 解析，不能假定 `<root>/traces/`。
+    """
+    traces_dir = resolve_traces(root)
+    p = Path(traces_dir) / (sid + ".yaml")
+    if not p.exists():
+        return None
+    try:
+        d = load_file(p) or {}
+    except Exception:
+        return None
+    return (d.get("feedback") or {}).get("outcome")
+
+
+def gate_case(case, path: Path, root: Path, fail, warn):
+    """升格闸门（EV-2026-097）。返回 'pass' | 'cosign' | 'block' | 'skip'。"""
+    cid = case.get("id") or "<无 id>"
+    where = f"{path.name}#{cid}"
+    sid = case_source_session_of(case)
+    if not sid:
+        # 管道 case：外部验证已构成闭环证据，闸门不适用（保持既有行为）
+        return "skip"
+
+    outcome = trace_feedback_outcome(root, sid)
+    ver = (case.get("verification") or {}).get("source")
+
+    if outcome == "resolved":
+        return "pass"
+    if ver in STRONG_EVIDENCE:
+        warn(f"{where}: 自诊断且未闭环（来源 trace feedback.outcome={outcome}），"
+             f"但 verification={ver} 属强外部证据档 → **需 owner 双签**方可升格（C 方案例外）")
+        return "cosign"
+    fail(f"{where}: 自诊断且未闭环（来源 trace feedback.outcome={outcome}）、verification={ver} 为纯推断档 "
+         f"——升格被拦。三选一：① 等 fix 应用且问题消失后把来源 trace 的 feedback.outcome 置 resolved；"
+         f"② 补强外部证据（上游 fix PR / 维护者确认 / 官方文档 / 工程师实测回报）；"
+         f"③ 走 owner 双签例外。**别把未验证的推断当已验证知识入库。**")
+    return "block"
+
+
 def check_file(path: Path, ref_index: dict, fail, warn):
     try:
         data = load_file(path)
@@ -195,7 +252,11 @@ def main():
     ap = argparse.ArgumentParser(description="case 草稿/知识库结构校验")
     ap.add_argument("targets", nargs="*", help="草稿文件或目录（缺省配合 --all）")
     ap.add_argument("--all", action="store_true", help="校验 knowledge/ 全库")
+    ap.add_argument("--root", default=None, help="仓库根（闸门读 traces/ 用；默认当前目录）")
     ap.add_argument("--check", action="store_true", help="CI 模式（输出口径与其他校验脚本一致）")
+    ap.add_argument("--gate", action="store_true",
+                    help="升格闸门（用 --root 指定仓库根以读 traces/；默认当前目录）。"
+                         "只对带 source_session 的自诊断草稿生效，管道 case 跳过")
     args = ap.parse_args()
 
     if not args.all and not args.targets:
@@ -219,13 +280,32 @@ def main():
     for path in targets:
         check_file(path, ref_index, fail, warn)
 
+    # 升格闸门（EV-2026-097）：结构检查之外，另判「自诊断 case 是否够格升格」
+    gate_stats = None
+    if args.gate:
+        gate_root = Path(args.root).resolve() if getattr(args, "root", None) else Path.cwd()
+        stats = {"pass": 0, "cosign": 0, "block": 0, "skip": 0}
+        for path in targets:
+            try:
+                data = load_file(path)
+            except Exception:
+                continue
+            for case in (data or {}).get("cases") or []:
+                if isinstance(case, dict):
+                    stats[gate_case(case, path, gate_root, fail, warn)] += 1
+        gate_stats = stats
+
     for w in warns:
         print(f"  ⚠ {w}")
     for m in fails:
         print(f"  ✗ {m}")
 
+    if gate_stats is not None:
+        print(f"  升格闸门：通过 {gate_stats['pass']} · 需双签 {gate_stats['cosign']} · "
+              f"拦下 {gate_stats['block']} · 跳过（管道 case）{gate_stats['skip']}")
+
     if fails:
-        print(f"verify_case_draft: {len(fails)} 个结构问题（{len(targets)} 个文件）")
+        print(f"verify_case_draft: {len(fails)} 个问题（{len(targets)} 个文件）")
         return 1
     print(f"verify_case_draft: 通过（{len(targets)} 个文件；references 索引 {len(ref_index)} 条）")
     return 0

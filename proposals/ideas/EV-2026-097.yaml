@@ -1,0 +1,111 @@
+# ============================================================
+# EV-2026-097 —— 自诊断 case 的升格闸门（C 方案）+ hits 口径澄清
+# 来源：用户复核「自己定位的 case 该不该无条件升格」——核心主张：
+#       自诊断的问题应当是**真正 resolved** 才进知识库，没解决的留在本地。
+# 脱敏：只含仓库内文件位置与聚合计数，不含客户现场原文
+# ============================================================
+
+id: EV-2026-097
+layer: L2                          # 机制层（知识入库闸门 + 指标口径）
+title: "自诊断 case 升格闸门：默认须反馈闭环（resolved），强外部证据可走 owner 双签例外；并澄清 hits ≠ 被引用次数"
+status: validated
+authorization: review              # 改知识入库闸门（影响哪些草稿能升格）；可逆
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-16
+source_signals:
+  - signal: user_correction
+    evidence: >-
+      用户指出「自己诊断的问题，to-postmortem + groom 应该是明确问题解决的案例，也就是真正
+      resolved 的，不然就没有任何意义（没解决的完全可以不进知识库，就留在本地，PR 审核时也会
+      问这个事）」。此前 agent 的反对意见（7635 的 hits=0 / 53 条管道 case / 闭环不提供升格所需
+      信息）**只对 issue-ingest 管道成立**——管道的"闭环"是维护者结论或 fix PR 已经替它确认过
+      （该来源的 verification 档位即 `upstream-fix-merged` / `upstream-maintainer-confirmed`）。
+      故闸门应**按来源分**：外部已验证的管道 case 不需要现场闭环，自诊断 case 需要。
+    trajectory:
+      - "用户本会话第 N 轮：『groom 是不是应该更严格一些？因为闭环的案例才有价值升格』"
+      - "knowledge/ 的 verification 档位分布实测：upstream-fix-merged 61 / upstream-maintainer-confirmed 60 / upstream-official-doc 28 / investigation 5 / engineer-report 4 / 无 1"
+  - signal: stale_assertion
+    evidence: >-
+      用户对 `hits` 的理解是「其他诊断检索关联到并且又 resolved 的次数，增加结论可信度、影响排序」。
+      实测该理解**与机制现状有偏差但方向正确**：现状 `hits` 只数「某 session 的反馈事件为 resolved」，
+      且脚本注释明确「不读 hit 事件（命中不计数）」——于是 `hit` 事件（6 次）从不进 `hits`，
+      而"被别的诊断引用"这个语义**没有任何脚本产出**。全库 159 条只有 2 条 hits>0。
+      用户表述的指标是**该有而未有**的：数据都在 traces 里（quickly_check 匹配 + 该 session 的 feedback），
+      缺的是统计。本卡只做**口径澄清**（写清 hits 现口径），不新增指标。
+    trajectory:
+      - "scripts/settle_trace_feedback.py:9-14（结算规则：只有 feedback.resolved 才 hits+1；不读 hit 事件）"
+      - "knowledge/ 全库 hits 分布实测：159 条中仅 2 条 >0"
+      - "traces/ 的 action 分布实测：hit 6 次、feedback 2 次"
+hypothesis: >-
+  给自诊断 case 的升格加一道闸门：**默认要求来源 trace 的 `feedback.outcome: resolved`**
+  （即 fix 被应用且问题消失）；未闭环的**不强留本地**，但只认强外部证据
+  （`upstream-fix-merged` / `upstream-maintainer-confirmed` / `upstream-official-doc` /
+  `engineer-report`）并走 owner 双签例外；纯 `investigation` 推断档需另行说明理由。
+  issue-ingest 管道 case 不受此闸门约束（其外部验证已构成闭环证据）。
+predicted_effect:
+  metric: 升格进 Tier 2 的自诊断 case 中，带闭环或强外部证据的占比
+  from: "无闸门——自诊断草稿只要有分诊判定与语义校验即可升格，verification 可为纯 investigation 推断档"
+  to: "自诊断草稿升格须满足：反馈 resolved，或强外部证据档，或 owner 双签例外（三者之一，且可机械判）"
+  measure:
+    command: "python3 scripts/verify_case_draft.py --gate postmortems/inbox/ 2>&1 | tail -4"
+    expect_exit: 0
+    reason: >-
+      闸门是确定性判据（读草稿的 verification 档 + 来源 trace 的 feedback.outcome），
+      可对任意草稿机械判定。空 inbox 时输出「无待判草稿」并 exit 0。
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：groom 的 new_pattern 处置只有「结构化 + 语义校验 → 升格」，无来源/闭环维度；
+    自诊断 case 若 verification 为 `investigation`（无外部验证）也能升格。
+  success_criteria: >-
+    ① `--gate` 判据实现且可机械判定：自诊断草稿在三类情形下分别判
+    「闭环 → 通过」「无闭环 + 强证据档 → 需 owner 双签」「无闭环 + 纯 investigation → 拦下并提示」；
+    ② 管道 case（无 `source_session`）不受影响——用既有 158 条回归验证不误拦；
+    ③ 文档同步：groom 的 new_pattern 处置段写清闸门与例外；to-postmortem 写清产出时的
+    `verification` 如实标注要求；两处 `hits` 口径澄清（它记的是「人报告 resolved」，
+    不是「被引用次数」，后者无脚本产出）；
+    ④ CI 无回归：十项全绿（`--gate` 不在 CI 路径上，只作 groom 的手动步骤）。
+  rollback: >-
+    闸门是新增的手动步骤与文档，`git revert` 即回原状；不改任何既有 case 的字段，
+    无数据迁移。
+gate:
+  condition: "自诊断 case 因闸门被拦下后，实际仍有价值却长期无闭环的实例 ≥2 次（说明闸门过严，需扩例外）"
+risk: medium                        # 改知识入库闸门；可逆、有既有 158 条回归对照
+principle_refs: [1, 6, 10]          # 一 验证先于交付 / 六 闸门分级不机械硬化 / 十 诚实退化
+actual_cost:
+  tokens: 9000
+  source: estimate
+  note: >-
+    两种来源的闸门论证与用户往复（约 3k）；--gate 实现与既有 158 条回归（约 3k）；
+    三处文档同步与建卡（约 3k）。
+decisions:
+  - who: user
+    when: 2026-09-16
+    type: decision
+    conclusion: >-
+      选 **C 方案**：A（自诊断必须闭环才升格）为默认，B（未闭环但强外部证据）走显式例外 + owner 双签。
+      理由由用户给出：自诊断的问题应"真正 resolved"才有升格意义，没解决的留在本地；
+      但不能因此挡住"新根因当天发现、修复尚未应用"这一知识增长主路径。
+  - who: agent
+    when: 2026-09-16
+    type: action
+    conclusion: >-
+      `knowledge-groom`：new_pattern 处置段加升格闸门（按来源分 + 三类判定）；
+      `to-postmortem`：产出时 `verification` 如实标注的要求写进步骤 2 的档位表附近；
+      `settle_trace_feedback.py` 与 groom 3.5：澄清 `hits` 口径（记「人报告 resolved」，
+      不等同"被引用次数"）；新增 `verify_case_draft.py --gate`。
+  - who: agent
+    when: 2026-09-16
+    type: eval
+    conclusion: >-
+      三类判定逐条用夹具验过；既有 158 条 case 回归不误拦（管道 case 无 `source_session` 即跳过闸门）；
+      十项 CI 全绿。
+  - who: agent
+    when: 2026-09-16
+    type: decision
+    conclusion: >-
+      采纳（validated）。保留的不确定：`source_session` 目前只有极少数 case 有，故"自诊断"的
+      识别在历史 case 上不完整——闸门只对**新产出的草稿**生效（那时 to-postmortem 会回写该字段），
+      对历史 case 不追溯。这一取舍已写入 success_criteria 与文档。

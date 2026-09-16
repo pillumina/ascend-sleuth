@@ -13,6 +13,11 @@
 #   - 同步更新 last_hit（最近一次有反馈的日期）
 #   - 不读 hit 事件（命中不计数，见上）
 #
+# **hits 的口径澄清（EV-2026-097）**：hits 记的是「**有人报告这条 case 的 fix 在这个环境解决了**」，
+#   不是「这条 case 被别的诊断引用了几次」。后者是另一件事（检索关联 + 该 session 又 resolved），
+#   数据都在 traces 里，但**目前没有任何脚本产出它**——别把 hits 读成引用次数。
+#   两者都影响候选排序，但语义不同：前者是现场有效性，后者是使用频度。
+#
 # 幂等：结算状态记录在 ingest-state.json 的 sources.<key>.trace_feedback 下
 #   （与 issue-ingest 的 processed 同一哲学——read-modify-write 无锁，串行运行）。
 #   已结算的 session_id + feedback 事件列表 hash 不再重复累积。

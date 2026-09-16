@@ -82,7 +82,7 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 3. **输出结构化 YAML 草稿 + postmortem.md**：
    - **postmortem 策略**：源是混乱对话/手工笔记 → 写完整 postmortem.md（提炼+结构化）；**源已经是结构化文档**（调查报告/issue/wiki）→ postmortem.md 只写指针（`# 原文见：<source-url/path>`），不重写。YAML case 草稿两种情况都照常产出。
    - 标 `confidence: high | medium | low`——**人的调查质量判断**（五天详查 vs 随手记录），不是来源验证
-   - 标 `verification: {source: <档>, detail: <引用>}`——**来源验证状态**（与 confidence 区分：confidence=内容判断质量，verification=外部证据强度）。**档位按「来源形态」分，不按 issue 分**——issue 只是外部来源之一，官方案例文档与本地闭环同样是来源：
+   - 标 `verification: {source: <档>, detail: <引用>}`——**这一档决定草稿能不能升格**：自诊断的问题（带 `source_session`）**默认要等来源 trace 的 `feedback.outcome: resolved`** 才会被 groom 升格；没闭环就该如实标 `investigation`，并知道它会被闸门拦下（除非补强外部证据并走 owner 双签）。别为了让草稿过关而抬高档位——档位是外部证据强度，不是主观评价——**来源验证状态**（与 confidence 区分：confidence=内容判断质量，verification=外部证据强度）。**档位按「来源形态」分，不按 issue 分**——issue 只是外部来源之一，官方案例文档与本地闭环同样是来源：
      - `upstream-fix-merged`：来源是上游 issue 且关联 fix PR 已合入（references 含 `pull/<n>` 或确认 merged）——内容被外部验证（根因+修复代码合入），最强档；
      - `upstream-official-doc`：来源是**上游官方发布的案例/指南文档**（如框架仓库 `best_practices/` 下的定位实践、官方 troubleshooting 指南），含完整定位链与验证结论——内容被上游发布验证，但无指向本问题的 fix PR；
      - `upstream-maintainer-confirmed`：上游 issue 维护者确认 resolution 但无 fix PR 引用；
