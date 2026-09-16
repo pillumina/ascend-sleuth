@@ -114,6 +114,13 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 - `postmortems/inbox/<case-id>.case.yaml`（YAML 草稿）
 - inbox 是**待审队列**（见 `postmortems/inbox/README.md`）：每周 `/skill:knowledge-groom` 批处理三分类（new_pattern / variant_of / covered_by）后人审。审完：postmortem 转正 `../YYYY-QN/`（covered 也转正——Tier 3 语料，不是丢弃）、new 的草稿升格 `knowledge/<ns>/`
 
+**同一个问题只沉淀一次**——本 skill **只有新增路径、没有更新模式**，重复调用不会改已有条目：
+
+- 闭环结果不走这里。它通过来源 trace 的 `feedback` 事件流转（`pending` → 现场确认 `resolved`），结算读 trace、不读 inbox 草稿，**所以闭环不需要第二次沉淀、也不需要第二个 PR**。
+- 再调一次只会新增草稿，且分诊时被 novelty 判成 `covered_by`（因为知识库已有这条）→ 被当已覆盖处理，属空转。
+- 若后来拿到更强的证据（实测对照、上游 fix PR 等），要改的是**已升格 case 的 `verification` 档位**，直接编辑该文件走知识修改流程——不经过本 skill。
+- 已经重复沉淀了：删掉 inbox 里那份重复草稿即可，别让它进 groom。
+
 **生成后明确告诉用户存哪了**——报出具体路径（如 `postmortems/inbox/custA-ep-hang.md`）和 YAML 草稿位置，说明"周审后转正"，别让工程师去找自己的产出。
 
 **写草稿时的行文**：postmortem 与 case 词条都是给人读、给人审的文本，按 `docs/writing-norms.md` 写（可选论证层，不影响本 skill 执行）；本面的定制条款见该文件 §3 的「case / reference 词条」与「postmortem」两行——症状句要能直接当 grep 判据，`root_cause` / `fix` 只写结论与依据，时间线只放可观察事实。
