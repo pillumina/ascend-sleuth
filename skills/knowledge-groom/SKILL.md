@@ -62,7 +62,12 @@ disable-model-invocation: true
    - 产出**批审清单**交 owner 处理（像清 PR inbox，~30 秒/条）：
      - `covered_by` → 建议关闭升格；postmortem 转正 `postmortems/YYYY-QN/`（Tier 3 语料，**不是丢弃**）
      - `variant_of` → 建议并入已有 case（扩 compat 区间、补 symptoms）；若要动 `expected`/`fix_on_mismatch` 按高风险变更走双签
-     - `new_pattern` → 结构化 + 语义校验 → 升格 `knowledge/<ns>/`。校验失败标 `needs-structurer-review`，语义不明标 `needs-human-review`
+     - `new_pattern` → 结构化 + 语义校验 → **过升格闸门** → 升格 `knowledge/<ns>/`。校验失败标 `needs-structurer-review`，语义不明标 `needs-human-review`
+     - **升格闸门（按来源分，不是一刀切）**：跑 `python3 scripts/verify_case_draft.py --gate <草稿路径>`。
+       - **外部来源（issue-ingest / reference-ingest 管道、无 `source_session`）→ 跳过闸门**。这类 case 的"闭环"是维护者结论 / fix PR 已经替它确认过的（其 `verification` 档位即证明），现场没有 session 可闭环；对它们要求现场闭环等于把知识注入的主通道堵死。
+       - **自诊断来源（带 `source_session`）→ 默认须反馈闭环**：来源 trace 的 `feedback.outcome: resolved`（即 fix 被应用且问题消失）才升格。没解决的不必进知识库，留在本地即可。
+       - **例外（未闭环但已有强外部证据）**：`verification` ∈ {`upstream-fix-merged`、`upstream-maintainer-confirmed`、`upstream-official-doc`、`engineer-report`} → **需 owner 双签**方可升格。理由：新根因当天发现、修复尚未应用是知识增长的主路径，不能一律挡掉；但这档必须是**外部验证**，不接受 `investigation` 纯推断。
+       - `verification: investigation` 且未闭环 → **拦下**，提示三条出路（等闭环 / 补强外部证据 / 走双签例外）。
    - **转正后回写来源 trace 的沉淀状态（闭环，动作发生时写）**：每条被 accept 的草稿，若来源是诊断 trace（头注释记了 `traces/<session_id>.yaml`），转正落位后**回写该 trace 的 `sedimented.state`**——`new_pattern`/`variant_of` 升格 Tier 2 → `{state: knowledge, caseId: <case-id>}`；`covered_by` 仅 postmortem 转正 → `{state: archived, caseId: <case-id>}`。教训：曾因 groom 转正后未回写，trace 停留 `submitted`，诊断面板"沉淀漏斗"显示 4 沉淀 → 0 转正（数据滞后于实际入库）——零推断纪律同样约束转正侧：**转正是动作，发生时必须写**。
    - inbox 停留 >2 周的条目在摘要里标红（队列不是档案）
    - **建议与决定分离**：预分诊只排序注意力，accept / adjust / reject 由人

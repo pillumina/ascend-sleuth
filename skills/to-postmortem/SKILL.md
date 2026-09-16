@@ -82,7 +82,7 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 3. **输出结构化 YAML 草稿 + postmortem.md**：
    - **postmortem 策略**：源是混乱对话/手工笔记 → 写完整 postmortem.md（提炼+结构化）；**源已经是结构化文档**（调查报告/issue/wiki）→ postmortem.md 只写指针（`# 原文见：<source-url/path>`），不重写。YAML case 草稿两种情况都照常产出。
    - 标 `confidence: high | medium | low`——**人的调查质量判断**（五天详查 vs 随手记录），不是来源验证
-   - 标 `verification: {source: <档>, detail: <引用>}`——**来源验证状态**（与 confidence 区分：confidence=内容判断质量，verification=外部证据强度）。**档位按「来源形态」分，不按 issue 分**——issue 只是外部来源之一，官方案例文档与本地闭环同样是来源：
+   - 标 `verification: {source: <档>, detail: <引用>}`——**这一档决定草稿能不能升格**：自诊断的问题（带 `source_session`）**默认要等来源 trace 的 `feedback.outcome: resolved`** 才会被 groom 升格；没闭环就该如实标 `investigation`，并知道它会被闸门拦下（除非补强外部证据并走 owner 双签）。别为了让草稿过关而抬高档位——档位是外部证据强度，不是主观评价——**来源验证状态**（与 confidence 区分：confidence=内容判断质量，verification=外部证据强度）。**档位按「来源形态」分，不按 issue 分**——issue 只是外部来源之一，官方案例文档与本地闭环同样是来源：
      - `upstream-fix-merged`：来源是上游 issue 且关联 fix PR 已合入（references 含 `pull/<n>` 或确认 merged）——内容被外部验证（根因+修复代码合入），最强档；
      - `upstream-official-doc`：来源是**上游官方发布的案例/指南文档**（如框架仓库 `best_practices/` 下的定位实践、官方 troubleshooting 指南），含完整定位链与验证结论——内容被上游发布验证，但无指向本问题的 fix PR；
      - `upstream-maintainer-confirmed`：上游 issue 维护者确认 resolution 但无 fix PR 引用；
@@ -113,6 +113,13 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 - `postmortems/inbox/<case-id>.md`（postmortem 或指针）
 - `postmortems/inbox/<case-id>.case.yaml`（YAML 草稿）
 - inbox 是**待审队列**（见 `postmortems/inbox/README.md`）：每周 `/skill:knowledge-groom` 批处理三分类（new_pattern / variant_of / covered_by）后人审。审完：postmortem 转正 `../YYYY-QN/`（covered 也转正——Tier 3 语料，不是丢弃）、new 的草稿升格 `knowledge/<ns>/`
+
+**同一个问题只沉淀一次**——本 skill **只有新增路径、没有更新模式**，重复调用不会改已有条目：
+
+- 闭环结果不走这里。它通过来源 trace 的 `feedback` 事件流转（`pending` → 现场确认 `resolved`），结算读 trace、不读 inbox 草稿，**所以闭环不需要第二次沉淀、也不需要第二个 PR**。
+- 再调一次只会新增草稿，且分诊时被 novelty 判成 `covered_by`（因为知识库已有这条）→ 被当已覆盖处理，属空转。
+- 若后来拿到更强的证据（实测对照、上游 fix PR 等），要改的是**已升格 case 的 `verification` 档位**，直接编辑该文件走知识修改流程——不经过本 skill。
+- 已经重复沉淀了：删掉 inbox 里那份重复草稿即可，别让它进 groom。
 
 **生成后明确告诉用户存哪了**——报出具体路径（如 `postmortems/inbox/custA-ep-hang.md`）和 YAML 草稿位置，说明"周审后转正"，别让工程师去找自己的产出。
 
