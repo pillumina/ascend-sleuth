@@ -18,13 +18,7 @@ from pathlib import Path
 import yaml
 
 from exec_log_path import describe, resolve
-from log_skill_exec import git_head
-
-VALID_SKILLS = {
-    "diagnose", "resume-diagnosis", "to-postmortem", "to-reference",
-    "issue-ingest", "knowledge-groom", "s2-replay", "replay-golden",
-    "evolve-check", "self-evolve", "capacity-health",
-}
+from log_skill_exec import git_head, valid_skills
 
 
 def main():
@@ -41,6 +35,11 @@ def main():
         return
 
     errors = []
+    # skill 词表与写侧同源（log_skill_exec.valid_skills）：两份名单必然漂移，
+    # 实测漂移过一次——写侧认 reference-ingest、校验侧不认，15 条记录让自查常红。
+    vocab = valid_skills(root)
+    if vocab is None:
+        print("skills/ 目录不可读——跳过 skill 词表校验")
     try:
         doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     except Exception as e:
@@ -60,7 +59,7 @@ def main():
         if not isinstance(r, dict):
             errors.append(f"{rel}: 必须是 mapping"); continue
         skill = r.get("skill")
-        if skill not in VALID_SKILLS:
+        if vocab is not None and skill not in vocab:
             errors.append(f"{rel}: skill '{skill}' 非法")
         for k in ("at", "version", "source"):
             if not r.get(k):

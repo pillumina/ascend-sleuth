@@ -33,11 +33,27 @@ import yaml
 
 from exec_log_path import describe, log_lock, resolve
 
-VALID_SKILLS = {
-    "diagnose", "resume-diagnosis", "to-postmortem", "to-reference",
-    "issue-ingest", "reference-ingest", "knowledge-groom", "s2-replay", "replay-golden",
-    "evolve-check", "self-evolve", "capacity-health",
-}
+# 非 skill 的流程名：它们也往 exec-log 落记录（跑的是脚本而非 skills/ 下的 skill）。
+NON_SKILL_FLOWS = {"s2-replay", "replay-golden", "capacity-health"}
+
+
+def valid_skills(root: Path):
+    """合法 skill 名 = `skills/` 下的目录名 ∪ 非 skill 的流程名。
+
+    为什么从目录派生而不硬编码：写侧（本文件）与校验侧（verify_exec_log）原先各持一份名单，
+    两份必然漂移——实测本文件认 `reference-ingest`（照写不误）而同期的校验器不认，
+    于是 15 条既有记录让收尾自查常年报红；两份名单又都落后于 `skills/` 新增的
+    `preload-panel` / `skill-review`。词表从结构派生后，新增 skill 不必记得改脚本
+    （与 verify_references 的 legal_categories 从 triage-tree 派生同法）。
+
+    `skills/` 不可读或为空时返回 None：调用方**跳过**词表校验并提示，而不是拿空集
+    把所有记录判红——与「exec-log 不存在即跳过」同一种退化口径。
+    """
+    sdir = root / "skills"
+    if not sdir.is_dir():
+        return None
+    names = {p.name for p in sdir.iterdir() if p.is_dir()}
+    return (names | NON_SKILL_FLOWS) if names else None
 
 
 def git_head(root: Path) -> str:
@@ -111,8 +127,11 @@ def main():
     args = ap.parse_args()
     root = args.root.resolve()
 
-    if args.skill not in VALID_SKILLS:
-        print(f"skill '{args.skill}' 不在合法集合 {sorted(VALID_SKILLS)}"); sys.exit(1)
+    vocab = valid_skills(root)
+    if vocab is None:
+        print("skills/ 目录不可读——跳过 skill 词表校验")
+    elif args.skill not in vocab:
+        print(f"skill '{args.skill}' 不在合法集合 {sorted(vocab)}"); sys.exit(1)
 
     log_path, where = resolve(root, explicit=args.log, local=args.local)
     log_path.parent.mkdir(parents=True, exist_ok=True)   # 空 metrics/ 的检出也能落（实测曾 FileNotFoundError）
