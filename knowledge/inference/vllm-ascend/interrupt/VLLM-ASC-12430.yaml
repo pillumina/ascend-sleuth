@@ -45,6 +45,9 @@ cases:
         cann: [">=8.5.1"]
     # 触发条件：多节点（≥4 机）+ EP=32 大通信量 MoE + 单卡专家数未超 MC2 上限（本案 384/32=12 ≤ 24，故 MC2 必被选中）
 
+    source_session: "2026-09-16-12430-dsv4pro-mc2"   # 产出本 case 的诊断 session；结算据此判「自证」
+                                                      # （该 session 自己的 resolve 记 confidence.self_resolved，不计入 hits）
+
     investigation_quality: medium
     # 现场排查质量高（HCCL 自证组网、dummy 复现、单机对照、CANN 三版对照、四项环境变量消融全为负），
     # 但**机制为推断**：plog 只有摘要，未拿到 #4914 那行 `rtMemcpy ... [driver error:internal error]` 的直接证据；
@@ -53,7 +56,6 @@ cases:
     confidence:
       hits: 0
       misdiagnoses: 0
-
     verification:
       source: investigation
       detail: "issue #12430（OPEN，无维护者结论、无 fix PR）。根因证据为：① CANN 9.0.1 ↔ HDK 官方配套矩阵（cann-hdk.yaml，引 CANN release-note）显示 24.1.x 越界；② 同 driver 24.1.0.3 的完全同签名先例 #4914（同 507014、同 subErrType:4、同 retCode=0x25，其 plog 含 rtMemcpy [driver error:internal error]，发帖人判为驱动）；③ #5468 维护者口径 CANN 8.5.0 即要求 driver >=25.0；④ #6875 同 4×A2 同错误码先例。**尚未在本案闭环**（现场未回报升级结果）"
@@ -143,3 +145,4 @@ cases:
       或 CANN 9.0.1 release note。升级需节点级操作并重启，建议升级前后各跑一次 `npu-smi info` 留档。
       验证：4×A2 多节点 EP=32 拉起 DeepSeek-V4-Pro-w4a8，走过 profile_run 进入正常服务。
     rollback: "降回低版本 HDK 即复现（多节点 EP 拉起在 profile_run 报 507014）"
+

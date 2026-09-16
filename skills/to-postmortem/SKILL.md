@@ -93,6 +93,7 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
    - 标 `category: interrupt | precision | performance` **三选一，无 other**（按症状判断——interrupt 是 hang/crash/OOM/启动失败、precision 是 NaN/数值发散/输出错误/乱码、performance 是吞吐/延迟）。分不进去 → 由人确认归入最接近的分类，不设 other
    - 标 `tags`（sub-type，如 `oom`、`kv-cache`、`precision.convergence`）
    - 根因定位到源码时（如 vllm-ascend 某文件某行），标 `source_ref: {repo, ref, file, line}`——`ref` 用触发版本对应的 commit/tag，`line` 可选。源码不落库，只记代码指针（诊断按需取该版本片段）
+   - **来源是诊断 session 时，标 `source_session: <session_id>`**（case 内字段，非注释）——它是反馈结算判定「自证」的唯一依据：来源 session 自己回报的 resolve 记 `confidence.self_resolved`、不计入 `hits`（同一份证据不数两次）。不写这个字段，结算只能退回「计入 hits」，等于让产地自证冒充独立命中。
 3.5. **triage 路由同步（知识增长自动补全路由）**：产出 case 草稿后，检查该 case 的 `symptoms` 关键词能否被 `triage-tree.yaml` 正则路由到正确 namespace：
    - 能 → 无需动作（路由已覆盖）；
    - 不能（新形态 OOD，正则没识别）→ 在产出报告里给出**路由症状建议**（新正则追加到对应分支的 `symptoms`，如 "过度思考" → inference_precision），随 case PR 一并提交（structure 部分，人审确认）——**triage 随知识入库增长，不靠手工补**；拿不准放哪个分支 → 建议标 `needs-review`，groom 定夺。
@@ -116,6 +117,8 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 **生成后明确告诉用户存哪了**——报出具体路径（如 `postmortems/inbox/custA-ep-hang.md`）和 YAML 草稿位置，说明"周审后转正"，别让工程师去找自己的产出。
 
 **写草稿时的行文**：postmortem 与 case 词条都是给人读、给人审的文本，按 `docs/writing-norms.md` 写（可选论证层，不影响本 skill 执行）；本面的定制条款见该文件 §3 的「case / reference 词条」与「postmortem」两行——症状句要能直接当 grep 判据，`root_cause` / `fix` 只写结论与依据，时间线只放可观察事实。
+
+**结算与提 PR 的粒度（别每次闭环都开 PR）**：诊断现场回报 fix 结果后，trace 里记 `feedback` 事件即可（`feedback.outcome: pending` → 现场确认后置 `resolved`）。**confidence 的结算与入库按周批走一次**——groom 的结算步骤跑 `settle_trace_feedback.py`，一个 knowledge_modification PR 覆盖当期全部变更。本地连着定位多个问题时，不要每闭环一个就提一个 PR：`hits` 只影响候选排序（排序对时效不敏感），而结算游标是 gitignored 的共享运行时件、不进 git。依据见 `docs/evolution.md` 的写入点表。
 
 **回写来源 trace 的沉淀状态（诊断闭环）**：若本次沉淀来源是一个诊断 trace（输入提到 `traces/<session_id>.yaml`，或用户从诊断面板"沉淀此案例"触发），产出草稿落 inbox 后**回写该 trace 的 `sedimented.state: submitted`**（动作发生时写，零推断）——诊断面板据此显示"已提交沉淀待审"，不再重复提示沉淀。转正（`knowledge`/`archived`）由用户在面板/对话确认时更新，本 skill 不写。
 

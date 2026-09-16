@@ -35,7 +35,7 @@ from pathlib import Path
 import yaml
 
 from _stdio import write_text_lf
-from exec_log_path import resolve_traces
+from exec_log_path import resolve_rel, resolve_traces
 
 TRACES_DIR = Path("traces")   # 相对名；实际取哪一份由 resolve_traces() 决定（主检出共享侧）
 
@@ -52,11 +52,137 @@ def load_case(path: Path):
     doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     return doc, doc["cases"][0], str(path)
 
+# 结算游标：登记的共享运行时件（锚主检出、跨 worktree 共读共写、gitignored）。
+# 为什么不写 ingest-state.json：那份是摄取台账（要跨机同步故 tracked、走 PR）；
+# 游标只是本地幂等状态，进 git 会让每次结算都变成一次 PR（见 EV-2026-096）。
+SETTLE_STATE_REL = Path(".settle-state.json")
+LEGACY_CURSOR_KEYS = ("_trace_feedback", "_s2_feedback")
 
-def settle(traces_dir: Path, state_path: Path, apply: bool, kb_root: Path = Path("knowledge")):
-    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {"sources": {}}
-    # 结算游标：sources.<key>.trace_feedback = {session_id: {"events": hash, "settled_at": iso}}
-    settled = state.setdefault("sources", {}).setdefault("_trace_feedback", {})
+# 来源 session 自己的 resolve 属「自证」，落 confidence 的这个键下，不计入 hits。
+# 与 S2 的 validation_record.self_consistent 同一条纪律——如实标注、不虚增置信度。
+SELF_RESOLVED_KEY = "self_resolved"
+
+
+def resolve_default_state(root: Path):
+    """默认游标路径 → (path, where)。显式 --state 由调用方覆盖。"""
+    return resolve_rel(root, SETTLE_STATE_REL)
+
+
+def load_cursors(state_path: Path, migrate_from=None):
+    """读游标。新文件不存在时，从 legacy tracked 文件（ingest-state.json）迁移既有游标。"""
+    if state_path.exists():
+        try:
+            return json.loads(state_path.read_text(encoding="utf-8")), None
+        except Exception as exc:
+            print(f"[warn] 游标文件解析失败（{exc}）——按空游标处理（幂等靠 events hash，不重复计数）")
+            return {}, None
+    migrated = {}
+    if migrate_from and Path(migrate_from).exists():
+        try:
+            old = json.loads(Path(migrate_from).read_text(encoding="utf-8"))
+            for key in LEGACY_CURSOR_KEYS:
+                for k, v in (old.get("sources", {}).get(key) or {}).items():
+                    migrated.setdefault(key, {})[k] = v
+        except Exception:
+            pass
+    return migrated, (Path(migrate_from) if migrated else None)
+
+
+def case_source_session(doc):
+    """case 的「来源 session」——由 to-postmortem / diagnose 回写；缺则 None。
+
+    无法判定时退回原行为（计入 hits），这是刻意的保守取舍：宁可少识别自证，不误判独立命中。
+    """
+    try:
+        return doc["cases"][0].get("source_session")
+    except Exception:
+        return None
+
+
+def is_self_settle(doc, case_id, sid, traces_dir: Path):
+    """这笔 feedback 是否「来源 session 自证」——该 session 正是这条 case 的产地。
+
+    两条互证来源（任一成立即算）：case 的 `source_session` 字段；或该 session trace 的
+    `sedimented.case_id` 与该 case 相同。
+    """
+    if case_source_session(doc) == sid:
+        return True
+    try:
+        st = yaml.safe_load((traces_dir / f"{sid}.yaml").read_text(encoding="utf-8"))
+        sed = st.get("sedimented") or {}
+        # 两种写法都认：schema 文档写 case_id，历史 trace 里有写 caseId 的
+        return case_id in (sed.get("case_id"), sed.get("caseId"))
+    except Exception:
+        return False
+
+
+def write_self_resolved(case_f: Path, sid: str, week: str):
+    """把自证写进 case 的 `confidence.self_resolved`——如实记录，**不动 hits**。"""
+    text = case_f.read_text(encoding="utf-8")
+    nl = chr(10)
+    lines = text.split(nl)
+    conf_idx = next((i for i, ln in enumerate(lines) if ln.strip() == "confidence:"), None)
+    if conf_idx is None:
+        return False
+
+    start = end = None
+    i = conf_idx + 1
+    while i < len(lines):
+        ln = lines[i]
+        if ln.strip() and not ln.startswith("      "):
+            break
+        if ln.strip().startswith(SELF_RESOLVED_KEY + ":"):
+            start = i
+            j = i + 1
+            while j < len(lines) and (not lines[j].strip() or lines[j].startswith("        ")):
+                j += 1
+            end = j
+            break
+        i += 1
+
+    count, examples = 0, []
+    if start is not None:
+        vals = {}
+        for ln in lines[start:end]:
+            t = ln.strip()
+            for k in ("count", "last", "examples"):
+                if t.startswith(k + ":"):
+                    vals[k] = t[len(k) + 1:].strip()
+        try:
+            count = int(vals.get("count", "0") or 0)
+        except ValueError:
+            count = 0
+        try:
+            examples = yaml.safe_load(vals.get("examples", "[]")) or []
+        except Exception:
+            examples = []
+    if sid not in examples:
+        examples.append(sid)
+
+    block = [
+        "      " + SELF_RESOLVED_KEY + ":  # 来源 session 自己的 resolve（自证）——如实标注、不计入 hits",
+        "        count: " + str(count + 1),
+        '        last: "' + week + '"',
+        "        examples: [" + ", ".join(examples) + "]",
+    ]
+    if start is not None:
+        new_lines = lines[:start] + block + lines[end:]
+    else:
+        j = conf_idx + 1
+        while j < len(lines) and (not lines[j].strip() or lines[j].startswith("      ")):
+            j += 1
+        new_lines = lines[:j] + block + lines[j:]
+    write_text_lf(case_f, nl.join(new_lines) + nl, encoding="utf-8")
+    return True
+
+
+def settle(traces_dir: Path, state_path: Path, apply: bool, kb_root: Path = Path("knowledge"),
+           migrate_from=None):
+    state, migrated = load_cursors(state_path, migrate_from)
+    # 结算游标：{session_id: {"events": hash, "settled_at": iso}}（旧格式在 sources._trace_feedback 下）
+    settled = state.setdefault("_trace_feedback", {})
+    if migrated:
+        print(f"[migrate] 从 {migrated} 迁入 {len(settled)} 条既有游标（防迁移后重复计数）\n")
 
     # 收集所有 feedback 事件（按 session 聚合）
     pending = []  # (session_id, case_id, outcome, events_hash)
@@ -115,6 +241,23 @@ def settle(traces_dir: Path, state_path: Path, apply: bool, kb_root: Path = Path
             case_f, doc, c, rel = target
             conf = c.setdefault("confidence", {})
             old_h, old_m = conf.get("hits", 0), conf.get("misdiagnoses", 0)
+
+            # 来源 session 自证：如实记 self_resolved，**不计入 hits**（同一证据不数两次）。
+            # 依据见 EV-2026-096：hits 的口径是「这条知识的消费者环境是否解决」。
+            if outcome == "resolved" and is_self_settle(doc, case_id, sid, traces_dir):
+                selfr = conf.get(SELF_RESOLVED_KEY) or {}
+                old_s = selfr.get("count", 0)
+                delta = (f"{rel}: self_resolved {old_s}→{old_s + 1}（来源 session 自证），"
+                         f"hits 保持 {old_h}，outcome={outcome}")
+                print(f"  [self] {delta}")
+                all_diffs.append((case_f, doc, delta))
+                if apply:
+                    if write_self_resolved(case_f, sid, iso_week_now()):
+                        print(f"  [apply] {rel}: 已写 confidence.{SELF_RESOLVED_KEY}")
+                    else:
+                        print(f"  [warn] {rel}: 未找到 confidence: 块——自证未写回（仅记录 diff）")
+                continue
+
             if outcome == "resolved":
                 conf["hits"] = old_h + 1
             else:
@@ -166,9 +309,10 @@ def settle(traces_dir: Path, state_path: Path, apply: bool, kb_root: Path = Path
                     write_text_lf(case_f, "\n".join(new_lines) + "\n", encoding="utf-8")
 
         if apply:
-            settled[sid] = {"events": h, "settled_at": "2026-08-31"}
-            state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-            print(f"  [settled] {sid}（hash {h}）→ ingest-state.json")
+            settled[sid] = {"events": h, "settled_at": iso_week_now()}
+            state_path.parent.mkdir(parents=True, exist_ok=True)
+            write_text_lf(state_path, json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+            print(f"  [settled] {sid}（hash {h}）→ {state_path}")
 
     print(f"\n共 {len(all_diffs)} 条 confidence 变更。")
     if not apply:
@@ -179,11 +323,16 @@ def settle(traces_dir: Path, state_path: Path, apply: bool, kb_root: Path = Path
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--state", default="ingest-state.json", help="结算状态文件（幂等游标）")
+    default_state, where = resolve_default_state(Path.cwd())
+    ap.add_argument("--state", default=str(default_state),
+                    help=f"结算游标文件（默认落登记的共享运行时件：{default_state}；{where}）")
+    ap.add_argument("--migrate-from", default="ingest-state.json",
+                    help="游标文件不存在时，从这里迁移既有游标（默认 ingest-state.json）")
     ap.add_argument("--apply", action="store_true", help="写回 case YAML（默认 dry-run）")
     ap.add_argument("--root", default="knowledge", help="knowledge 根目录（默认 knowledge/；测试用副本）")
     args = ap.parse_args()
-    settle(resolve_traces(Path.cwd()), Path(args.state), args.apply, Path(args.root))
+    settle(resolve_traces(Path.cwd()), Path(args.state), args.apply, Path(args.root),
+           migrate_from=Path(args.migrate_from))
 
 
 if __name__ == "__main__":

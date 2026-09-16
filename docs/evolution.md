@@ -47,7 +47,7 @@
 
 ### 1. 置信度校准（每次 fix 应用后）
 
-case 的 confidence 不是人工设定而是在使用中习得：fix 被应用并确认解决，hits 加一；确认未解决，misdiagnoses 加一；score 随 last_hit 时间衰减。score 决定候选 case 的验证顺序，被反复验证的知识排到前面，被证伪的沉下去。结果捕获是结构化的：`feedback_pending` 标记写在状态文件里，续接启动与面板待办会追问未回报的结果，不依赖任何人的记性（各处时点见上方流程图与注）。
+case 的 confidence 不是人工设定而是在使用中习得：fix 被应用并确认解决，hits 加一；确认未解决，misdiagnoses 加一；score 随 last_hit 时间衰减。**来源 session 自己的确认不计入 hits**（同一份证据不数两次，见 `docs/design-theory.md` 的独立性假设限制），单独记 `confidence.self_resolved`——与 S2 的 `self_consistent` 同样的「如实标注不虚增」。score 决定候选 case 的验证顺序，被反复验证的知识排到前面，被证伪的沉下去。结果捕获是结构化的：`feedback_pending` 标记写在状态文件里，续接启动与面板待办会追问未回报的结果，不依赖任何人的记性（各处时点见上方流程图与注）。
 
 feedback 是双通道的，按**反馈对象**分类而非按"谁给的"分级，两条通道分别结算、不混算：
 
@@ -89,7 +89,7 @@ feedback_pending: CASE-ID）           feedback action + 清             （读 
 | 写入点 | 内容 | 进 git? | 原因 |
 |---|---|---|---|
 | `traces/*.yaml` | trace + feedback_pending | 否（gitignored） | 含客户现场信息；运行时状态，终态后留在本地 |
-| case 文件 `confidence` | hits/mis/score/last_hit | 是（走知识修改 PR） | 学习环的持久知识：hits+1 必须入库才能改变下次候选排序 |
+| case 文件 `confidence` | hits/mis/score/last_hit/self_resolved | 是（走知识修改 PR） | 学习环的持久知识：hits+1 必须入库才能改变下次候选排序。**但"必须入库"不等于"每单立刻入库"**——结算与入库按周批走一次 PR（groom 3.5），单次闭环不开 PR |
 | `_index.yaml` | score（仅 score） | 是（生成物） | case 变 → 重建 → 随同一 PR；CI `--check` 强制同步 |
 | `metrics/timeline.yaml` | 指标时序数据（每期一条） | 是 | **周节奏、人复核**：脚本产出骨架，人看分母后 append；结构由 `verify_metrics.py --check` 校验 |
 | `docs/metrics.md` | metrics 机制文档 | 是 | **稳定层**：只承载机制解释，不随每期数据变动 |

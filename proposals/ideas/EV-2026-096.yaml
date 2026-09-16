@@ -1,0 +1,133 @@
+# ============================================================
+# EV-2026-096 —— 结算的两条修正：自证不计入 hits + 游标移出 tracked 状态文件
+# 来源：用户复核本单（vllm-ascend#12430）刚提交的 confidence 结算 PR 时提出两问——
+#       ①「hits 不是沉淀进 kb 后、别的问题引用到才加吗？自己加自己符合设计不？」
+#       ②「回报闭环就自动开 PR，用户本地定位很多问题时体验不好吧？」
+# 脱敏：只含仓库内文件位置、case id 与聚合计数，不含客户现场原文
+# ============================================================
+
+id: EV-2026-096
+layer: L2                          # 机制层（学习环的计数语义与提交粒度）
+title: "反馈结算两条修正：来源 session 自证不计入 confidence.hits（对称 S2 的 self_consistent）+ 结算游标移出 tracked 的 ingest-state.json、回归周批"
+status: validated
+authorization: review              # 改 confidence 计数语义（学习环口径）+ 游标落点；可逆
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-16
+source_signals:
+  - signal: user_correction
+    evidence: >-
+      用户对本单刚提交的结算 PR 提出两问，两问都成立：
+      **① 自证计入 hits 与设计口径冲突。** `docs/evolution.md:56` 把 hits 的口径写成「fix 在
+      **这个用户环境**是否解决」——指这条知识的**消费者**环境。而本 session 是 VLLM-ASC-12430 的
+      **来源 session**：case 由它产出、fix 由它给出、环境同一个，等于同一份证据被数两次；
+      且该 case 的 `verification` 仍是 `investigation`（推断档、未闭环实测）。
+      机制在内容验证层（S2）早已做对称区分——`validation_record.self_consistent` = 自证命中，
+      `docs/mechanism/eval-arena.md:21` 明写纪律「self_consistent 不虚增」；**S1 这条路径缺这个区分**
+      （`settle_trace_feedback.py` 全文无来源判定）。
+      `docs/design-theory.md:234` 把这件事列为已知缺陷：「**独立性假设过强**……同一根因的多份记录……
+      后果是 confidence 的收敛速度被高估」。本单是该缺陷的第一个实证实例。
+      **旁证**：既有 case 的 hits 全为 0（`VLLM-ASC-12989/13050/10122` 的来源 session 反馈仍 pending），
+      即「来源 session 自证计入 hits」此前从未发生过，非既有惯例。
+      **② 每单开 PR 的粒度与设计不符。** `docs/evolution.md:92` 只说 confidence 变更**必须入库**
+      （否则不改候选排序），未要求**每单立刻入库**。而 groom 的 3.5 步本就是「跑 settle → 确认 diff →
+      `--apply`」，然后走**一个** knowledge_modification PR——周批一次才是设计粒度。本单绕过了 groom
+      自己单开 PR。成本实测：本地挂 N 个问题全闭环 → N 个 PR + N 次索引重建；周批只需 1 个。
+    trajectory:
+      - "docs/evolution.md:56（hits 口径=现场 resolve）、:92（confidence 必须入库，未说每单）"
+      - "docs/design-theory.md:234（独立性假设过强 → 收敛被高估）"
+      - "docs/mechanism/eval-arena.md:21 与 docs/mechanism/execution.md:59（S2 的 self_consistent 不虚增）"
+      - "scripts/settle_trace_feedback.py（查无来源 session 判定）"
+      - "已关闭的 PR pillumina/ascend-sleuth#233（本单的 self-settle）+ #83（结算脚本引入）"
+  - signal: mechanism_gap
+    evidence: >-
+      游标与摄取台账挤在同一个 tracked 文件里，导致运行时状态被迫走 PR。
+      `ingest-state.json` 同时承载两类东西：`sources.github/<repo>` 等**摄取台账**（54 条，跨机同步
+      靠 PR merge，属设计）与 `sources._trace_feedback` / `_s2_feedback` 的**结算游标**（9 条，
+      纯本地幂等状态）。`docs/evolution.md` 的写入点表把 `traces/*.yaml` 标为「否（gitignored）——
+      运行时状态」，结算游标与它同类，却因同文件而变成 tracked。
+    trajectory:
+      - "ingest-state.json 的段分布（sources.github/* 54 条台账 vs _trace_feedback 2 + _s2_feedback 7 游标）"
+      - "docs/evolution.md 写入点表（traces 为 gitignored 运行时状态）"
+      - "scripts/exec_log_path.py 的 CHECKOUT_DIRS（共享运行时件的既有登记处）"
+hypothesis: >-
+  ① 给结算加来源 session 判定：来源 session 自己的 resolved 记入 `confidence.self_resolved`
+  （含示例 id、日期、次数），**不计入 hits**；只有非来源 session 的 resolve 才 hits+1。来源
+  出处由 case 的新字段 `source_session` 承载（to-postmortem/diagnose 回写）。
+  ② 把结算游标移到一个 gitignored 的共享运行时件（登记进 CHECKOUT_DIRS，同 traces/exec-log 的
+  锚主检出语义），摄取台账留在 ingest-state.json 不动——于是本地闭环不再触发 PR，confidence
+  变更回归 groom 周批一个 PR。
+predicted_effect:
+  metric: 自证结算的计数落点 + 本地闭环触发的 PR 数
+  from: "自证 resolved → hits+1（同一证据数两次）；每闭环一个问题即一个 confidence PR"
+  to: "自证 resolved → 记 confidence.self_resolved、hits 不变；游标 gitignored，本地闭环 0 个 PR"
+  measure:
+    command: "python3 scripts/settle_trace_feedback.py --state /tmp/ev096-measure.json 2>&1 | tail -6"
+    expect_exit: 0
+    reason: >-
+      判据是「同一份 feedback 在 self/hits 之间的落点」，手上有可复现实例（session
+      2026-09-16-12430-dsv4pro-mc2 的 resolved，其 trace 的 sedimented.case_id = 该 case id）。
+      改动前它落 hits 0→1；改动后应落 self_resolved 0→1 且 hits 保持 0。命令的输出即判据。
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：`settle_trace_feedback.py` 无来源判定 → 上例落 hits 0→1；游标写 `ingest-state.json`
+    （tracked）→ 每次结算都是 tracked 改动。`--state` 是必填的 tracked 文件路径。
+  success_criteria: >-
+    ① 上例在改动后落 `self_resolved`、`hits` 保持 0（同一实例的前后对照，非构造用例）；
+    ② 非来源 session 的 resolved 仍 hits+1（用既有 pending 样本或构造 trace 验证，防改坏主路径）；
+    ③ 无 `source_session` 的 case（历史 158 条里绝大多数、53 条走 issue-ingest 管道）行为不变——
+    不误判、不报错；
+    ④ 游标默认落 gitignored 共享件：跑 `--apply` 后 `git status` 干净（不再出现 tracked 改动）；
+    ⑤ 旧游标迁移：ingest-state.json 里既有 9 条游标迁入新文件后，那些 session 仍被判「已结算」
+    （防迁移导致重复计数）；
+    ⑥ CI 无回归：build_index / verify_case_draft / verify_references / verify_proposals / docs 索引
+    等十项全绿，且 `verify_case_draft.py` 对新增字段 `source_session` / `self_resolved` 不报错。
+  rollback: >-
+    游标文件删掉即回到「全量重扫」语义（幂等靠 hash，不会重复计数已有 trace——它们已在案）；
+    脚本改动 `git revert` 即回原状；case 侧只动了「未入库的本地结算效果」，无数据迁移。
+gate:
+  condition: "出现「非来源 session 才计 hits」把真实独立命中漏掉的可复现实例（连续 ≥2 次），或自证记录长期无人读"
+risk: medium                        # 改学习环的计数语义（影响候选排序先验）；可逆、有同实例前后对照
+principle_refs: [8, 10, 11]         # 八 可观测先于改进 / 十 诚实退化（自证如实标注不虚增）/ 十一 按闸门不按日历（周批）
+actual_cost:
+  tokens: 12000
+  source: estimate
+  note: >-
+    归因与设计复核（读 evolution/design-theory/eval-arena 三处口径、查既有 case 的 hits 分布，
+    约 5k）；实现两处脚本改动 + CHECKOUT_DIRS 登记 + schema 两字段 + 文档同步（约 5k）；
+    前后对照与迁移验证、建卡（约 2k）。
+decisions:
+  - who: agent
+    when: 2026-09-16
+    type: proposal
+    conclusion: >-
+      产卡即执行，两条一起做（同一函数、同一根因：把「运行时状态」误当「持久知识」对待）。
+      范围收窄：不动 `hits` 对**非来源** session 的现有语义，不动 `score` 计算规则，不动
+      ingest-state.json 的摄取台账部分。
+  - who: agent
+    when: 2026-09-16
+    type: action
+    conclusion: >-
+      先关 PR #233（本单那笔自证结算），并在关闭说明里写清理由与后续动作。
+      实现：① `settle_trace_feedback.py` 加来源判定（case 的 `source_session` 匹配 session、
+      或 trace 的 `sedimented.case_id` 匹配）→ 自证落 `confidence.self_resolved`；
+      ② 两个 settle 脚本的游标默认写登记的共享运行时件，`--state` 保留为显式覆盖；
+      ③ `exec_log_path.CHECKOUT_DIRS` + `.gitignore` + `shared_dir.py` 登记该件。
+  - who: agent
+    when: 2026-09-16
+    type: eval
+    conclusion: >-
+      同一实例前后对照成立（该 session 由 hits 0→1 改为 self_resolved 0→1、hits 保持 0）；
+      既有 9 条游标迁移后仍判「已结算」；`--apply` 后 `git status` 干净；全库无 `source_session`
+      的 case 行为不变；十项 CI 全绿。
+  - who: agent
+    when: 2026-09-16
+    type: decision
+    conclusion: >-
+      采纳（validated）。依据：① 用户复核指出的两条都与设计文档口径直接冲突（evolution.md 的
+      hits 定义、design-theory.md 的已知缺陷、groom 的周批粒度），不是风格偏好；
+      ② 同一实例可前后对照，非构造用例；③ 改动可逆、不触高风险字段（expected / fix_on_mismatch /
+      compat / severity 均未动）。保留的不确定：`source_session` 是新字段，历史 158 条无此值，
+      故对历史 case「来源 session 无法判定」——此时退回原行为（计入 hits），这是刻意的保守取舍。

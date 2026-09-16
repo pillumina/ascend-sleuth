@@ -173,6 +173,10 @@ CHECKOUT_DIRS = {
     "proposals-reviews": Path("proposals") / "reviews",
     "proposals-experiments": Path("proposals") / "experiments",
     "ref-docs": Path("ref-docs"),                          # 上游文档正文缓存（scripts/gc_docs.py 的抓取面）
+    # 结算游标（settle_trace_feedback / settle_s2_feedback 的幂等状态）——纯本地运行时件，
+    # 与摄取台账（ingest-state.json 的 sources.<repo>）分家：台账要跨机同步故 tracked 走 PR，
+    # 游标只在本地判「这个 session 结算过没有」，进 git 只会让每次结算都变成一次 PR。
+    "settle-state": Path(".settle-state.json"),
 }
 
 
