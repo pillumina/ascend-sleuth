@@ -50,5 +50,5 @@ docs/kb-explorer/
 ## Demo 边界（同 v1）
 
 - **不含 knowledge/（case 层）**——case 含客户数据（private），只做 references（public 方法论）。
-- **case↔reference 反链（ref_knowledge）**：schema 已定义但全库暂无 case 填充，随沉淀累积后加「被哪些 case 引用」视图。
+- **case↔reference 反链（ref_knowledge）**：schema 已定义且已有 case 开始填充（判读类 / 确定性类为主），视图仍未做——反链要等这条关系在诊断里被实际消费过一轮（读得到 ≠ 用得上），再决定值不值得做一个视图。
 - 本目录产物未接 CI；定型后再决定沉淀载体（docs 静态站 vs DSH 面板知识 tab）。

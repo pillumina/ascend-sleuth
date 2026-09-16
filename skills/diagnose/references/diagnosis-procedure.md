@@ -23,7 +23,7 @@
 - `kind: probe`（precision / performance）→ 先问一句，按回答走「已有 → 分析路径」「没有 → 采集指引」；
 - `kind: conditional`（interrupt）→ 不预先问，缺口出现（现有日志不足以定位）才给采集指引。
 
-三条纪律（只问一次 / 区分改谁 / 命令以客户环境为准 + 先排除采集副作用）见 SKILL 同名节，不在此重复。**采集面被消费时记 trace**：`{action: reference_lookup, ref_id, purpose: collect}`——采集面此前无 purpose 可记，等于零观测。
+三条纪律（只问一次 / 区分改谁 / 命令以客户环境为准 + 先排除采集副作用）见 SKILL 同名节，不在此重复。**采集面被消费时记 trace**：`{action: reference_lookup, ref_id, purpose: collect, outcome: hit|miss}`——采集面此前无 purpose 可记，等于零观测。精度 / 性能单无论如何留一条：给了采集指引记 `hit`，探询后对方已有数据（不需要采集面）记 `miss`。interrupt 单不记（本触发点不在该路径上）。
 
 ## 步骤 2：分类 → triage-tree
 
@@ -41,6 +41,19 @@
 - 无法分类 → 直接 Tier 3 关键词检索
 
 **路由准确率**依赖这步的 trace：最终 root cause 所在 namespace 是否在被加载集合里（指标定义见 docs/metrics.md）。路由错（分错桶）和 KB 空（分对了没 case）修复动作相反，必须分开测。
+
+**先验键触发（本步骤收尾，先于候选加载）**：把证据里**能当检索键的东西**当场查掉——错误码（`E1xxxx` / `EIxxxx` / `507xxx` / `0x……`）、可 grep 的故障签名（`fault kernel_name=`、`event_id`）、具体环境变量名、要核对的版本组合。查法与阶段 2.5 的查表路径同形态，只是**时点提前到这里**：
+
+- 错误码 → 读 `ascend-error-code-structure` 的 `module_files` 前缀映射定位族文件（`references/errors/<族>.yaml`），族内 grep code 读 meaning / solution；
+- 故障签名 → 按域定位 `references/fault-patterns/<域>.yaml`，域内 grep symptoms 读 cause / fix；
+- 环境变量 → `references/env-vars/<表>.yaml` 内 grep name；
+- 版本组合 → `references/compat-matrices/` 按传导链分层（framework 层 → adapter 层 torch-npu↔CANN → base 层 CANN↔HDK）。
+
+**为什么提前到这里**：码 / 签名 / 名的**语义**与"命中哪条 case"无关——不知道 `507903` 是什么意思时，case 层给不出解释，而这个解释正是判断候选真假的输入。排在候选加载之后，等于让判断先于理解。
+
+**为什么必须有负记录**：这个触发点的价值一半在"查到了什么"，另一半在"**没有可查的键**"。证据里没有可检索键（报错是框架自定义断言文本、Python traceback、业务日志）时记 `outcome: skipped` 并写明理由——不记的话，"库不覆盖这个键"与"根本没查"在数据上完全同形。
+
+trace 记：`{step: 2, action: reference_lookup, purpose: signature, outcome: hit|miss|skipped, ref_id, platform, output, reason}`（`outcome` 三态词表见 `diagnosis-trace.md`）。**每次诊断都留一条**（含 `skipped`）——它是"这一单到底有没有可查的键"的唯一数据源。
 
 ## 步骤 3：两阶段加载 Tier 2
 
@@ -64,26 +77,27 @@
 
 **多条候选时明示**：“匹配到 N 条，先验证最可能的 `<id>`（confidence `<score>`）”，工程师可说“跳过这条试下一条”。
 
-**阶段二.5：reference 辅助查询（「判断缺口」消费点）**——候选加载后、验证前，按需取先验知识辅助诊断（**只读 `status: active`**）。reference 的另两个消费点是**数据缺口**（步骤 1 的采集面，候选加载前）与**方法缺口**（候选全未命中后的流程加载，步骤 5）——三处都不参与候选路由/排序，路由与筛排只看 case：
+**阶段二.5：reference 辅助查询（「判断缺口」消费点）**——**候选命中后固定执行，不写成"按需"**：命中只说明"这条 case 像"，不说明"该补的先验已经在手上了"。把"需不需要先验"交给当场自评，等于让最顺的那条路径永远不读先验。执行顺序（**只读 `status: active`**）：
 
-- **② 平台/类别匹配的 summary 层（只限背景类 type）**：读 `references/_summary-index.yaml`（生成索引，背景类+active 词条）→ 过滤 `applies_to.platforms` 匹配客户平台（含 `cross` 或未填 platforms 视为跨平台）；**该行 `applies_to.categories` 有值时，再按本轮 category 收窄**（缺省 = 不限定类别，照常加载）→ 得候选词条列表，**行内 summary 即背景提示**（不读全文）；确需细节再按 `id` 读单文件。**查表类（error-code / fault-pattern / env-var-table / compat-matrix）不进 summary 层**——它们是码/签名/组件名/版本检索键，按需走 ③。**流程类（methodology）也不进背景层**——它要的是"选中一条读全文"，不是"读一行背景"；走 ④ 的流程选择器索引。
-- **③ 签名/查表类检索（不走 summary 层——签名/名是检索键不是摘要）**：错误码（E1xxxx/EIxxxx/507xxx 等）→ 查 `ascend-error-code-structure` 的 `module_files` 前缀映射定位族文件（`references/errors/<族>.yaml`）族内 grep code 读 meaning/solution；可 grep 的故障签名（"0x800000"、fault kernel_name、event_id）→ 按域定位 `references/fault-patterns/<域>.yaml` 域内 grep symptoms 读 cause/fix；具体环境变量 → `references/env-vars/<表>.yaml` 内 grep name；版本组合需核对 → `references/compat-matrices/` 按传导链分层（framework 层→adapter 层 torch-npu↔CANN→base 层 CANN↔HDK）。
+1. **候选带 `ref_knowledge` → 必读**：按每条 `role` 用——`signature-source`（签名的含义与判别面）、`fix-methodology`（修复路径的方法依据）、`root-cause-context`（根因成立的背景）。这是最精准的入口：关系是沉淀时写下的，不需要当场猜。
+2. **候选不带 `ref_knowledge` → 取背景 summary 层**：`references/_summary-index.yaml`（生成索引，背景类 + active）按 `applies_to.platforms` 匹配客户平台（含 `cross` 或未填 platforms 视为跨平台），该行 `applies_to.categories` 有值时再按本轮 category 收窄；**再用本次症状里的组件 / 工具 / 平台 / 版本词在 `title` 上收窄**，取最相关的 **≤5 行**，行内 `summary` 即背景提示（不读全文），确需细节再按 `id` 读单文件。
+   **用 grep 取行，别整读索引**：索引随词条数增长，整读等于把全库背景一次性注入上下文——本触发点的成本上限就是这 5 行加一次 grep。
+3. **查表类（error-code / fault-pattern / env-var-table / compat-matrix）不在这里**：它们是码 / 签名 / 名 / 版本检索键，键来自证据而不是来自候选，已在步骤 2 收尾的「先验键触发」按检索键取过，此处不重复查。
+4. **流程类（methodology）也不在这里**：它要的是"选中一条读全文"，走步骤 5 的流程选择器索引；摘要行承载不了判据。
 
-- **只读 `status: active` 词条**——draft / pending-review / deprecated 一律不加载（未验证知识不进上下文——这是"agent 不引用错误先验"的机制化，不是自觉）；
-- **两条加载路径**：
-  1. 候选 case 有 `ref_knowledge` → 加载引用的 reference 全文（最精准；当前 case 尚无此字段，未来路径）；
-  2. 否则/同时：读 `references/_summary-index.yaml` 中 `applies_to.platforms` 匹配（并按 `applies_to.categories` 收窄）且 active 的词条，**只读行内 `summary` + `applies_to`**（每条一行；A5 全量 ~700 token 内）；
-- **按需全文**：验证具体事实需要细节（如 950DT 内存规格、HiF8 指数范围）才读全文；
-- **token 纪律**：只在命中候选后查询，summary 层先于全文层，平台/类别不匹配不加载（当前仅 A5 有词条，A2/A3 场景自然跳过）；
-- **trace 必记**：每次查询记 `{action: reference_lookup, ref_id, platform, purpose: collect|signature|fix|background|procedure}`——reference 命中统计（hits/last_hit）的数据源。`collect` = 步骤 1 的数据缺口采集面（在 2.5 之外发生，同样要记）。
+- **只读 `status: active`**——draft / pending-review / deprecated 一律不加载（未验证知识不进上下文——这是"agent 不引用错误先验"的机制化，不是自觉）；
+- **trace 三态必记**：`{action: reference_lookup, purpose: background|fix, outcome: hit|miss|skipped, ref_id, platform, output, reason}`——`hit` 读到并用了、`miss` 查了没有相关词条、`skipped` 没查（**写明为什么**，例："候选全未命中，本触发点不适用"）。没走到这一步（无候选命中）就记一条 `skipped`，别假装查过。
 
 trace 记：
 ```yaml
-- {step: 1, action: reference_lookup, ref_id: msprobe-data-dump, purpose: collect}
+- {step: 1, action: reference_lookup, ref_id: msprobe-data-dump, purpose: collect, outcome: hit}
+- {step: 2, action: reference_lookup, purpose: signature, outcome: hit, ref_id: runtime-resource-fault-patterns, platform: A3-910C}
+- {step: 2, action: reference_lookup, purpose: signature, outcome: skipped, ref_id: null, reason: "报错是框架自定义断言文本，无错误码 / event_id / env 名可作检索键"}
 - {step: 2, action: load_index, namespaces: [...], n_cases: 34}
 - {step: 3, action: quickly_check, case: MSLLM-EP-HANG-001, primary: pass}
 - {step: 3, action: load_full, candidates: [...], order: by_confidence_score}
-- {step: 3, action: reference_lookup, ref_id: a5-950dt-memory-spec, platform: A5-950DT, purpose: background}
+- {step: 3, action: reference_lookup, purpose: background, outcome: hit, ref_id: aclnn-two-phase-contract, platform: A3-910C}
+- {step: 3, action: reference_lookup, purpose: background, outcome: miss, ref_id: null, reason: "背景层按平台+组件词取 5 行，无与本签名相关的词条"}
 ```
 
 ## 步骤 4：验证 diagnosis checks
@@ -114,7 +128,9 @@ trace 记：
 2. 按该行的 `file` 打开词条，读 **`content.flow[]` 全文**（step / action / check / when_to_use）——**摘要行不算加载**：实测只读摘要与不读等效，决定性判据会被截断；
 3. 按流程执行：用每步的 `check` 当判定口径（阈值、分流条件），跳步要说明理由；
 4. 某步所需数据不在手上（如流程要看"逐卡计算耗时"而导出里没有）→ **如实记 `gap`**，不臆断分支结论；
-5. 记 trace：`{action: reference_lookup, ref_id, purpose: procedure}` + `{action: procedure_follow, ref_id, steps_executed, branch_taken, gap, conflict}`（字段见 `diagnosis-trace.md`）。
+5. 记 trace：`{action: reference_lookup, ref_id, purpose: procedure, outcome: hit|miss}` + `{action: procedure_follow, ref_id, steps_executed, branch_taken, gap, conflict}`（字段见 `diagnosis-trace.md`）。选择器里没有本 category 的流程 → `outcome: miss` 并写明"流程层无此类流程"，**不静默跳过**——静默跳过让"没有可用流程"与"忘了取流程"同形。
+
+> **别把这一步与下面的 Tier 3 检索合成一次宽检索**：`rg '<症状词>' references/ postmortems/` 看着省事，但它把"按流程查"与"按关键词翻历史记录"压成一个动作——trace 里只剩一条 `tier3`，流程层看不见自己被加载过。**两件事、两条事件**：流程取用记 `reference_lookup`（purpose: `procedure`）+ `procedure_follow`，历史检索记 `tier3`。
 
 > **为什么必须全文**：流程携带的是**反直觉判据**（例："等得最久的卡不是慢卡，等得最少的那张才是"）。摘要会把它压没，agent 于是回到直觉判断——实测 4/4 判错；给全文 2/2 判对。
 

@@ -14,6 +14,25 @@ triage | load_index | quickly_check | load_full | run_check | hit | miss | tier3
 
 user 事件无 `action`，不参与词表检查。**新增 action 时同步改 `trace_metrics.py` 的 `KNOWN_ACTIONS` 与本文**（单一数据源纪律）。
 
+### `reference_lookup` 事件（四触发点 + 三态）
+
+先验层的四个触发点各记一条，字段 `{action, purpose, outcome, ref_id, platform, output, reason}`：
+
+| `purpose` | 触发点（时点） | `ref_id` |
+|---|---|---|
+| `collect` | 数据缺口：采集面（步骤 1，精度 / 性能单必留一条） | 采集面词条 id，或 `null` |
+| `signature` | 键触发：证据里的错误码 / 故障签名 / 环境变量名 / 版本组合（步骤 2 收尾，**先于候选加载**） | 命中的族表 / 词条 id |
+| `background` \| `fix` | 判断缺口：候选命中后的背景与修复依据（步骤 3 阶段 2.5） | 读到的词条 id，或 `null` |
+| `procedure` | 方法缺口：候选全未命中后的流程取用（步骤 5，与 `procedure_follow` 成对） | 流程词条 id |
+
+`outcome` 三态（词表与 `scripts/trace_metrics.py` 的 `KNOWN_OUTCOMES` 一致）：
+
+- `hit`：查到并用于本次推理（`output` 记"用了哪个事实"，不是"读了整页"）；
+- `miss`：查了，但没有相关词条（`reason` 写清按什么键查的、为何无关）——它记的是**知识库的覆盖缺口**；
+- `skipped`：**没有查**（`reason` 必写为什么）。两种常见情形：本触发点不在本轮路径上（如候选全未命中时的 2.5）、证据里没有可检索键（框架自定义断言文本、Python traceback、业务日志）。
+
+**为什么要有 `skipped`**：不查不留痕时，"查了没命中"与"根本没查"在数据上完全同形——消费率无法归因，也就分不清该改知识库（覆盖缺口）还是改流程（执行错）。`skipped` 不计入 reference 引用次数（那是"查过"的口径）。
+
 ### `report` 事件（人读定位报告产出，步骤 6 必写一条）
 
 报告是 diagnose 的三份产出之一（另两份是 trace 与对话输出）：trace 管过程可回放，对话输出管现场能行动，
@@ -128,4 +147,4 @@ trace 特有的一条：**读者没有会话上下文，也没读过报告**。�
 
 ## 词表同步纪律
 
-`trace` 的 action 词表与 `scripts/trace_metrics.py` 的 `KNOWN_ACTIONS` 保持一致；新增 action 必须两处同步（本文 + 脚本）。user 事件无 action，不参与词表检查。
+`trace` 的 action 词表与 `scripts/trace_metrics.py` 的 `KNOWN_ACTIONS` 保持一致；`reference_lookup` 的 `purpose` 与 `outcome` 分别与 `KNOWN_PURPOSES` / `KNOWN_OUTCOMES` 保持一致；新增取值必须两处同步（本文 + 脚本）。user 事件无 action，不参与词表检查。

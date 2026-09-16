@@ -89,6 +89,6 @@
 
 ## 与其他机制的关系
 
-- **诊断消费**：词条落 `references/`（`status: active`）后进诊断阶段 2.5 的两个缺口点，与 case 层并列；本管道不改诊断流程。
+- **诊断消费**：词条落 `references/`（`status: active`）后进诊断的四个触发点（数据缺口 / 键触发 / 判断缺口 / 方法缺口），与 case 层并列；本管道不改诊断流程。
 - **演进**：批次收尾走 `/skill:evolve-check`；本管道自身的摩擦（筛不准、主题切分差、缓存失效）作为信号进 EV 卡。
 - **人审**：与 issue 面不同，文档面的产出**没有 draft 中间态**——`status: active` 随 PR 提交，PR 合入即生效（`docs/adr/0008`）。因此 `verification` 要如实标：逐字核验过源才写 `cross-checked-source`，只做了一次性抽取就写 `auto-extracted`。
