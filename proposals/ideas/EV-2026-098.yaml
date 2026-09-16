@@ -1,0 +1,106 @@
+# ============================================================
+# EV-2026-098 —— Device 日志布局修订：卡级前缀统一 dev-os-id + 补 EP 现场采集包形态与 event 文件名时间戳陷阱
+# 来源：2026-09-15 一次 910B 训练故障诊断中用户提供的 EP 现场采集包
+#       （根目录 var/log/ascend-hardware/npu_log_collect/），按真实目录结构逐条比对 references 现有描述
+# 触发：同一层两条 active 词条对同一层级用两种前缀（logreference 原文的 device-os vs 实测与
+#       troubleshooting 文档的 dev-os-id），且采集包形态与 event 文件名时间戳陷阱在词条中缺失
+# 脱敏：只含公开仓路径与目录形态，不含客户数据
+# ============================================================
+
+id: EV-2026-098
+layer: L1                          # 知识内容层（两条既有 software-fact / tool 词条修订）
+title: "Device 日志布局修订：卡级前缀统一为 dev-os-id，补 EP 现场采集包形态与 event 文件名时间戳陷阱"
+status: validated
+authorization: review              # 修订 active 词条内容 → kb/high-risk 双签
+dimension: architecture            # 知识结构：同层级名在两词条间统一，采集包形态并入既有 ep.system 而不新立词条
+supersedes: []
+superseded_by: null
+created_at: 2026-09-16
+source_signals:
+  - signal: user_correction
+    evidence: >-
+      同一层两条 active 词条对 Device 日志的卡级目录用了两种前缀：ascend-log-locations 的 rc.system /
+      control_cpu.system 与 claim 写作 device-os（来源是官方 logreference 0003/0004 的原文），而
+      ascend-device-log-ops 的 commands.ras_fault_id 与 fault-patterns/process-interrupt、
+      methodologies/ascend-aicore-error-triage 已用 slog/dev-os-id/run/event/。诊断时按哪一种硬拼路径没有依据。
+    trajectory:
+      - "references/software-facts/ascend-log-locations.yaml（修订前 locations.rc.system / control_cpu.system 为 device-os）"
+      - "references/tools/ascend-device-log-ops.yaml（修订前 commands.process_lifetime 的 EP 路径为 slog/device-os-0/[run|debug]/device-0，与同文件 ras_fault_id 的 dev-os-id 自相矛盾）"
+      - "references/fault-patterns/process-interrupt.yaml、references/methodologies/ascend-aicore-error-triage.yaml（均已用 slog/dev-os-id/run/event/）"
+  - signal: knowledge_gap
+    evidence: >-
+      EP 现场采集包实测给出两条词条未记的事实：①采集包形态（根目录 var/log/ascend-hardware/npu_log_collect/，
+      driver_log/<采集时间戳>/ 内含 slog/message/hisi_logs/stackcore/system_info，顶层另有 hccn_log、npu_smi_log、
+      pcie_log、os_info、version_log、install_log 与 log_messages.tar.gz；slog/dev-os-id 下 debug/ 的 device-N
+      设备日志与 device-os 系统进程日志两级并存，run/ 含 device-app-<pid>、device-os、event/；message/dev-os-id/
+      messages[.0] 与 slog/ 平级按卡分目录）。②event_*.log 的文件名时间戳是文件创建时间，不是内容时间范围：
+      实测 event_20260625170411100.log 创建于 2026-06-25，内容覆盖 2026-08-10~09-16（HBM scrub ECC serial 2→1642）。
+      检索词条里此前只有 ascend-oom-triage 用对了 message/dev-os-{id}/messages.* 这一前缀。
+    trajectory:
+      - "EP 现场采集包目录形态（2026-09-15 诊断，var/log/ascend-hardware/npu_log_collect/）"
+      - "ref-docs/cann/oam-tools 的 asys 收集面文档（dfx/log/device/dev-os-{id}）——同为官方文档但用 dev-os 前缀，与 logreference 的 device-os 不一致"
+hypothesis: >-
+  把两条 active 词条的卡级前缀统一为 dev-os-id，并把采集包形态与 event 文件名时间戳陷阱写进词条之后：
+  写 Device 日志检索路径不再依赖现场试错（前缀只有一种写法），「按 event 文件名判断覆盖窗口」这一类误判有显式判据
+  （看行内时间戳），EP 形态缺采集包路径的缺口被补上。
+predicted_effect:
+  metric: 两条词条的卡级前缀一致性与新增事实面落位
+  from: "ascend-log-locations 的 rc/control_cpu 前缀为 device-os，无采集包形态与 event 文件名陷阱；ascend-device-log-ops 的 process_lifetime EP 路径为 slog/device-os-0/[run|debug]/device-0"
+  to: "两词条前缀统一 dev-os-id；log-locations 补 ep.system 采集包形态与 message 布局 + 2 条 pitfalls；device-log-ops 的 process_lifetime 改为 slog/dev-os-id/[debug|run]/device-id/ + 1 条 pitfalls"
+  measure:
+    command: >-
+      python3 -c "import yaml,sys;l=yaml.safe_load(open('references/software-facts/ascend-log-locations.yaml'));t=yaml.safe_load(open('references/tools/ascend-device-log-ops.yaml'));loc=l['content']['locations'];pit=' '.join(l['content'].get('pitfalls',[]));pl=t['content']['commands'].get('process_lifetime','');ok=('dev-os-id' in loc['rc']['system']) and ('dev-os-id' in loc['control_cpu']['system']) and ('device-os-id' not in loc['rc']['system']) and all(k in loc['ep']['system'] for k in ['npu_log_collect','message/dev-os-id/messages']) and ('创建时间' in pit) and ('slog/dev-os-id' in pl) and ('device-os-0' not in pl);print('layout_ok', ok);sys.exit(0 if ok else 1)"
+    expect_exit: 0
+    expect_stdout: "layout_ok True"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：两条词条的卡级前缀分别为 device-os（log-locations）与 dev-os-id（device-log-ops 的 ras_fault_id），
+    同一仓内无单一写法；log-locations 的 ep.system 只有「用 msnpureport 导出」一句，无采集包布局；
+    两条词条的 pitfalls 都没有 event 文件名时间戳这一条。
+  success_criteria: >-
+    ① measure 判据命令 exit 0 且输出 layout_ok True（前缀、采集包形态、时间戳陷阱、process_lifetime 路径四项同时成立）；
+    ② 前缀在仓内自洽：除 asys 与 slog.conf 两条按各自工具的原文命名外，Device 日志卡级前缀统一为 dev-os-id；
+    ③ 官方文档的两种写法如实保留在 evidence 与 pitfalls（logreference 的 device-os、CANN 9.0.0 troubleshooting 的 dev-os-id、
+    Ascend 950 HCCN Tool 文档的 device-os-X 三处差异写明），不静默抹平；
+    ④ CI 无回归：verify_references、两个索引 --check、docs 索引、proposals 全绿；两词条 grep -c 为 0。
+  rollback: >-
+    单次提交：git revert 即回原状（两条词条文本 + 生成物 references/_summary-index.yaml）。
+    不改 id / type / 文件归属 / related_references，无数据迁移。
+gate:
+  condition: "再出现「按某份文档的层级名硬拼 Device 日志路径失败」或「按 event 文件名判断覆盖窗口出错」时，重跑 measure 并复查两条词条的前缀口径"
+risk: medium
+principle_refs: [1, 6, 10]
+actual_cost:
+  tokens: 16000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数，按仓库口径给估算：实测包目录逐层比对与两词条差异定位（约 5k）、
+    两词条改写与措辞收敛（summary 需在索引的 160 字符内前置新事实，约 5k）、
+    兼容性核查（官方文档两种前缀写法、同层其他词条口径、生成物重建与全量 --check，约 4k）、建卡与判据实跑（约 2k）。
+decisions:
+  - who: agent
+    when: 2026-09-16
+    type: action
+    conclusion: >-
+      按 append-don't-create 修订两条既有词条，不新建文件：ascend-log-locations 的 rc/control_cpu 前缀改 dev-os-id、
+      claim 同步、ep.system 补采集包形态与 message 布局、新增 2 条 pitfalls（event 文件名时间戳、前缀来源不一致）；
+      ascend-device-log-ops 的 process_lifetime 路径改 slog/dev-os-id/[debug|run]/device-id/ 并补第 3 条 pitfalls。
+      两处写法取舍：①路径模板用 `dev-os-id`（与同文件 device-id、同层 device-app-pid 的占位风格一致，也与
+      troubleshooting 文档一致），实测的具体目录另写为 dev-os-0..7；②采集包形态并入既有 ep.system 而不新立词条或新字段。
+  - who: agent
+    when: 2026-09-16
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS（layout_ok True）；verify_references 227 条通过；summary / procedure / docs 三个索引 --check 绿；
+      两词条 grep -c 为 0。负向对照：改动前的检出上跑同一判据 → rc.system 命中 device-os-id、ep.system 无 npu_log_collect、
+      两条词条均无 pitfalls → layout_ok False → exit 1。
+  - who: agent
+    when: 2026-09-16
+    type: decision
+    conclusion: >-
+      采纳（validated）。保留的不确定已如实标注在 evidence 与 pitfalls：①前缀来自 2026-09-15 的 EP 采集包实测，
+      agent 按目录结构抽取、未逐字核验原始文档，reviewer 需 spot-check；②RC 板端路径无法从 EP 实测确证，
+      词条内已注明「RC 板端路径以现场为准，前缀参考 EP 实测为 dev-os」；③官方文档自身有三种写法
+      （logreference 的 device-os、troubleshooting 的 dev-os-id、Ascend 950 HCCN Tool 的 device-os-X），
+      本卡只统一仓内写法并写明差异，不判定哪份文档正确。
