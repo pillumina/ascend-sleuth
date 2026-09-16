@@ -1,0 +1,112 @@
+# ============================================================
+# EV-2026-094 —— 先验键触发的「版本组合」路径补文件名提示
+# 来源：诊断 vllm-ascend#12430（多节点 MC2 507014）时，把现场 driver+CANN 版本组合
+#       当成了待验证假设而非检索键，跳过本库 compat-matrices 转向外网查证
+# 脱敏：只含仓库内文件位置与聚合计数，不含客户现场原文
+# ============================================================
+
+id: EV-2026-094
+layer: L2                          # 机制层（诊断流程的检索提示可执行性）
+title: "版本组合键触发补文件名：compat-matrices 三条路径点明到具体词条文件"
+status: validated
+authorization: auto                # 改可执行性提示（非判定语义），单文件、可逆、低风险
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-16
+source_signals:
+  - signal: execution_error
+    evidence: >-
+      诊断 2026-09-16-12430-dsv4pro-mc2 一单里，`diagnosis-procedure.md:50` 已写明
+      「版本组合 → references/compat-matrices/ 按传导链分层（framework 层 → adapter 层
+      torch-npu↔CANN → base 层 CANN↔HDK）」，现场证据里 driver 24.1.0.3 + CANN 9.0.1
+      正是"要核对的版本组合"，属步骤 2 收尾的键触发。但本轮把它当成待验证假设而非检索键，
+      直接转向外网：抓 hiascend 固件驱动下载页与 release-note 页（均 JS 渲染，正文表格取不到），
+      最后引第三方整理，拿到 25.5.1/25.5.2/26.0.RC1——比本库矩阵少 26.0.RC3。
+      结论方向未受影响（24.1.x 两种来源下都越界），但成本与完整度都亏。
+    trajectory:
+      - "traces/2026-09-16-12430-dsv4pro-mc2.yaml#attribution（component: skill:diagnose，execution）"
+      - "traces/2026-09-16-12430-dsv4pro-mc2.yaml#reference_lookup（purpose: signature，补读 compat-matrix 后 hit）"
+      - "skills/diagnose/references/diagnosis-procedure.md:50"
+      - "references/compat-matrices/cann-hdk.yaml:42（CANN 9.0.1 → HDK [26.0.RC3, 26.0.RC1, 25.5.2, 25.5.1]）"
+  - signal: mechanism_gap
+    evidence: >-
+      同一段键触发的四条路径里，可执行性不一致：错误码给了族文件名与定位法
+      （`references/errors/<族>.yaml`）、故障签名给了域文件名（`references/fault-patterns/<域>.yaml`）、
+      环境变量给了表名（`references/env-vars/<表>.yaml`），只有版本组合停在目录名 +
+      「按传导链分层」这种需要现场再推一层目录结构才落地的说法。前三条是"照着 grep"，
+      第四条是"先想清楚分层再自己找文件"——同一位置的纪律落差。
+    trajectory:
+      - "skills/diagnose/references/diagnosis-procedure.md:47-50（四条路径逐条对照）"
+      - "ls references/compat-matrices/（cann-hdk / torch-npu-cann / verl-npu / vllm-ascend-torch-npu，四文件均为既有）"
+hypothesis: >-
+  在 procedure 的版本组合一条上点明 base 层文件名 `compat-matrices/cann-hdk.yaml`（与另三条同形态），
+  检索键与文件之间的那一步推断被消除，版本组合类问题先查本库矩阵、不再外溢到外网查证。
+predicted_effect:
+  metric: 版本组合键的查表落点
+  from: "procedure 只给目录名 + 传导链分层说法；本轮实测外溢到外网且取值不全"
+  to: "procedure 点明 base 层文件名；版本组合键先落 references/compat-matrices/cann-hdk.yaml"
+  measure:
+    command: >-
+      python3 -c "import pathlib,sys;
+      p=pathlib.Path('skills/diagnose/references/diagnosis-procedure.md').read_text(encoding='utf-8');
+      s=pathlib.Path('references/compat-matrices/cann-hdk.yaml').read_text(encoding='utf-8');
+      named='compat-matrices/cann-hdk.yaml' in p;
+      layers=all(k in p for k in ('framework 层','adapter 层','base 层'));
+      row='26.0.RC3, 26.0.RC1, 25.5.2, 25.5.1' in s;
+      print('base_file_named',named);print('chain_layers_kept',layers);print('matrix_row_ok',row);
+      ok=named and layers and row;print('measure_ok',ok);raise SystemExit(0 if ok else 1)"
+    expect_exit: 0
+    expect_stdout: "measure_ok True"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：`diagnosis-procedure.md:50` 的版本组合一条只给目录名 `references/compat-matrices/`
+    与「按传导链分层」的说明，未点名任何文件名；同段另三条（错误码/故障签名/环境变量）均给了
+    族或域的具体文件名。实测后果见 source_signals 第一条。
+  success_criteria: >-
+    ① measure：procedure 含 `compat-matrices/cann-hdk.yaml`、三层传导链表述保留、
+    矩阵 CANN 9.0.1 行值不变（判据命令）；
+    ② 一致：改动只补文件名，不改查表时机与三态留痕口径（EV-2026-093 定的行为面不动）；
+    ③ CI 无回归：verify_references / docs 索引 / 两个 reference 索引 / proposals 全绿；
+    ④ 行为面待真实确认：本卡只改提示可执行性，真实「少走外网」需下一单版本组合类问题验证。
+  rollback: >-
+    单文件一处改动，`git revert` 即回原状；不涉及 case 与 reference 内容，无数据迁移。
+gate:
+  condition: "后续版本组合类诊断仍出现「procedure 已规定但未查本库矩阵」的执行错 ≥2 次"
+risk: low                          # 改提示措辞，不触碰判定语义与数据
+principle_refs: [6, 8, 11]         # 六 不机械硬化 / 八 可观测先于改进 / 十一 按闸门不按日历
+actual_cost:
+  tokens: 4000
+  source: estimate
+  note: >-
+    改动一行提示 + 同步 min 验证；主要成本在前序诊断（外网查证与漏读定位），已计入该单。
+decisions:
+  - who: agent
+    when: 2026-09-16
+    type: proposal
+    conclusion: >-
+      产卡即执行（authorization: auto）。范围刻意收窄到"补一个文件名"，不动步骤 2 的触发时机
+      （那是 EV-2026-093 已定的行为面），也不给 compat-matrices 增条目——矩阵现有内容本轮已够用
+      （cann-hdk.yaml 已含 CANN 9.0.1 行）。
+  - who: agent
+    when: 2026-09-16
+    type: action
+    conclusion: >-
+      `diagnosis-procedure.md` 先验键触发的版本组合一条：由「`references/compat-matrices/`
+      按传导链分层（framework 层 → adapter 层 torch-npu↔CANN → base 层 CANN↔HDK）」
+      改为在保留分层说明的同时点明 base 层词条文件名 `compat-matrices/cann-hdk.yaml`。
+  - who: agent
+    when: 2026-09-16
+    type: eval
+    conclusion: >-
+      measure 命令通过：`base_file_named True` / `chain_layers_kept True` / `matrix_row_ok True`
+      / `measure_ok True`；改动落在单文件一处，不动判定语义与数据。
+  - who: agent
+    when: 2026-09-16
+    type: decision
+    conclusion: >-
+      采纳（validated）。依据：① 证据明确——本单实测外溢到外网查证且取值缺 26.0.RC3，
+      成因是可执行性落差而非设计缺陷；② 改动单点、可逆、不触碰 EV-2026-093 定的触发时机与三态口径；
+      ③ measure 可复现且已通过。不采纳的部分如实记：未给 compat-matrices 增条目（本轮矩阵内容已够用），
+      未加 CI 门（改措辞类判断不进 CI，原则六）。
