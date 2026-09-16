@@ -42,6 +42,8 @@ from pathlib import Path
 import yaml
 
 from _stdio import write_text_lf
+from settle_trace_feedback import SETTLE_STATE_REL, load_cursors, resolve_default_state  # noqa: E402
+from exec_log_path import resolve_rel  # noqa: E402
 
 REPLAY_DIR = Path(".s2-replay")
 
@@ -87,10 +89,14 @@ def case_issue_sources(case) -> set:
     return nums
 
 
-def settle(root: Path, state_path: Path, apply: bool):
+def settle(root: Path, state_path: Path, apply: bool, migrate_from=None):
     state_path = Path(state_path)
-    state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {"sources": {}}
-    settled = state.setdefault("sources", {}).setdefault("_s2_feedback", {})
+    # 游标：登记的共享运行时件（gitignored，锚主检出）。与 S1 结算同一条落点纪律——
+    # 进 git 会让每次结算都变成一次 PR（EV-2026-096）。
+    state, migrated = load_cursors(state_path, migrate_from)
+    settled = state.setdefault("_s2_feedback", {})
+    if migrated:
+        print(f"[migrate] 从 {migrated} 迁入 {len(settled)} 条既有游标\n")
     replay_dir = root / REPLAY_DIR
     kb_root = root / "knowledge"
 
@@ -198,7 +204,8 @@ def settle(root: Path, state_path: Path, apply: bool):
         for r in recheck:
             print(f"  - {r['case']}（replay issue #{r['issue']}，{r['path']}）")
     if apply:
-        state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        write_text_lf(state_path, json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         print("\n--apply：case YAML 已写回 + 游标已更新。请走 knowledge_modification PR 提交。")
     else:
         print("\n--dry-run（默认）：未写任何文件。确认后加 --apply，再走 knowledge_modification PR。")
@@ -206,11 +213,15 @@ def settle(root: Path, state_path: Path, apply: bool):
 
 def main():
     ap = argparse.ArgumentParser(description="S2 replay 结果结算到 case 内容验证记录")
-    ap.add_argument("--state", default="ingest-state.json")
+    default_state, where = resolve_default_state(Path.cwd())
+    ap.add_argument("--state", default=str(default_state),
+                    help=f"结算游标文件（默认落登记的共享运行时件：{default_state}；{where}）")
+    ap.add_argument("--migrate-from", default="ingest-state.json",
+                    help="游标文件不存在时，从这里迁移既有游标（默认 ingest-state.json）")
     ap.add_argument("--apply", action="store_true", help="写回 case YAML（默认 dry-run 只输出 diff）")
     ap.add_argument("--root", type=Path, default=Path("."))
     args = ap.parse_args()
-    settle(args.root.resolve(), args.state, args.apply)
+    settle(args.root.resolve(), args.state, args.apply, migrate_from=Path(args.migrate_from))
 
 
 if __name__ == "__main__":

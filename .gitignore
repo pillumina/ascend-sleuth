@@ -55,6 +55,9 @@ src-code/
 # 路径解析的唯一事实源是 scripts/exec_log_path.py 的 resolve_ref_docs。
 # ============================================================
 ref-docs/
+# 结算游标：本地幂等状态（哪些 session 的 feedback 已结算），与 traces/ 同类——
+# 锚主检出、共读共写、不进版本库。摄取台账仍在 ingest-state.json（那份要跨机同步、走 PR）。
+.settle-state.json
 
 # ============================================================
 # proposals/ 运行时状态（自演进会话/任务进度、token 账本、实验记录）——
