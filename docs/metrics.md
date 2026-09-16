@@ -61,7 +61,7 @@
 | trace 完整性 | 有 trace 记录的 step / 实际执行 step | proxy：含 triage + 过滤步 |
 | Tier 3 挽救率 | 走 Tier 3 兜底检索且最终 resolved 的比例 | trace `tier3` action |
 | 反馈捕获率 | 回报 fix 结果的 session / 给出 fix 的 session | trace `feedback` action |
-| reference 引用 | 引用次数 / 引用后 resolve 率 / 平台分布 / 消费点分布（collect / signature / fix / background） | trace `reference_lookup` 事件（引用后 outcome 从 session 最终 status 派生；消费点看 `purpose`——`collect` 是数据缺口的采集面，此前无该值可记，等于零观测） |
+| reference 引用 | 引用次数 / 引用后 resolve 率 / 平台分布 / 消费点分布（collect / signature / fix / background）/ **触发三态分布（hit / miss / skipped）** | trace `reference_lookup` 事件（引用后 outcome 从 session 最终 status 派生；消费点看 `purpose`——`collect` 是数据缺口的采集面，此前无该值可记，等于零观测）。**触发三态**（EV-2026-093）看 `outcome`：`hit` 用到、`miss` 查了没命中（指向知识库覆盖缺口）、`skipped` 没查且写了理由（指向流程执行）。三态缺一，"没查"与"查了没命中"同形，消费率无法归因。**`skipped` 不计入「引用次数」**——那个口径是"查过" |
 | 流程加载与跟随 | 流程加载率（`purpose: procedure` 的会话占比）/ 每条流程的加载次数与跟随深度（`procedure_follow` 的 `steps_executed` 长度 / `branch_taken` 分布）/ 跟随后 resolve 率 | trace `reference_lookup`（purpose=procedure）+ `procedure_follow` 事件。**这是流程层唯一的可观测面**——没有它就无法判断某条流程该留、该改、该摘（EV-2026-038）。注意：加载率是**活动**度量不是**价值**度量（加了触发点必然接近 100%），必须与"跟随后 resolve 率"配对读。注意 `purpose: procedure` 也会计入上表的"reference 引用次数"——该口径自此混装四个消费点，看消费点构成请用 `purpose` 分布，不要只看总数。**强度如实标注（原则十）**：加载率是**确定性**的（来自 `reference_lookup` 事件）；
 跟随深度（`steps_executed` / `branch_taken` / `conflict`）是**agent 自报**——属弱观测，只可作趋势与异常信号，
 不可当验收证据；跟随后 resolve 率来自工程师反馈闭环（S1），是本行唯一较强的效果信号 |

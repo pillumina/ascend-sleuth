@@ -1,0 +1,137 @@
+# ============================================================
+# EV-2026-093 —— reference 消费：由「按需自评」改为四个事件触发 + 三态留痕
+# 来源：用户读诊断思考过程的观察（"从 reference 取信息的次数不多，基本都是 Tier2/Tier3"）
+#       → 复查 trace / 周批指标 / 会话记录，定位到三类成因：结构闸门（按需=自评）、
+#         两处腐烂断言（写于引入 2.5 的那次提交，当时为真、现已为假）、观测面缺口（不查不记）
+# 脱敏：只含聚合计数与仓库内文件位置，不含客户现场原文
+# ============================================================
+
+id: EV-2026-093
+layer: L2                          # 机制层（诊断流程的触发时机与观测面）
+title: "reference 消费改为事件触发 + 三态留痕：键触发提前到候选加载前、命中后必查、删两处腐烂断言"
+status: validated
+authorization: review              # 改 skill 行为面（触发时机 + trace 口径）
+dimension: process                 # 触发时机与留痕纪律
+supersedes: []
+superseded_by: null
+created_at: 2026-09-15
+source_signals:
+  - signal: mechanism_gap
+    evidence: >-
+      13 个 trace 里 reference_lookup 共 7 条（signature 5、background 1、procedure 1，collect 0），
+      同期 load_index 出现在 12 单、tier3 出现在 3 单。先验层被读到的场合多数不是走设计的门，
+      而是被 Tier 3 的宽 grep 顺手读掉——2026-09-14 那单的 tier3 事件 query 原文即
+      "postmortems/ 与 references/ 检索 halSqCqAllocate|LogicCq|0x7020010|507899|esched|Resources are exhausted"，
+      而同单的策略性查询（purpose 分别为 procedure / signature / background）只有 3 条。
+      5 单有 Tier2 命中，其中 0 单留下过 2.5 消费的记录。
+    trajectory:
+      - "traces/*.yaml（13 单）的 action 与 purpose 分布"
+      - "traces/2026-09-14-telechat-cq-alloc-dev5.yaml#tier3 与 #reference_lookup"
+      - "traces/2026-09-01-10562-lora-hidden.yaml#reference_lookup（ref_id: null，签名是框架断言文本，无键可查）"
+      - "metrics/timeline.d/2026-W37-live.yaml 的 reference 段（hits 4 / refs 3）"
+  - signal: stale_assertion
+    evidence: >-
+      `diagnosis-procedure.md` 阶段 2.5 的两句括号断言与引入该阶段的提交同时写下，当时为真、现已为假：
+      「当前仅 A5 有词条，A2/A3 场景自然跳过」（实测背景索引 131 条里 82 条对 A2-910B/A3-910C 可匹配）
+      与「当前 case 尚无此字段，未来路径」（实测 8 个 case 已填 ref_knowledge）。
+      两句都在教 agent 跳过消费点。没有任何 CI 会报：`verify_references.py` 校验的是数据面（ref-id 存在、
+      role 合法），散文里的事实断言不在其覆盖面内——与 `collect-gates.yaml` 头注写过的
+      "散文里硬编码会静默腐化"是同一类病，只是这次腐化的不是 id，是事实。
+    trajectory:
+      - "skills/diagnose/references/diagnosis-procedure.md（阶段 2.5 的两处括号断言）"
+      - "references/_summary-index.yaml 按 applies_to.platforms 计数（131 条 / 82 条可匹配 A2·A3）"
+      - "knowledge/ 下含 ref_knowledge 字段的 case（8 条）"
+hypothesis: >-
+  把触发条件从"agent 自评缺不缺"换成确定性事件（证据里出现检索键 / 候选命中 / 候选全未命中 /
+  精度性能需测量数据），并让每次触发留 hit|miss|skipped 三态：命中单里判断缺口的消费从"零记录"
+  变成有迹可循；"没查"不再与"查了没命中"同形，消费率首次可归因（执行错 vs 设计使然可分开）。
+predicted_effect:
+  metric: reference 触发三态留痕与命中单的判断缺口消费
+  from: "13 单合计 reference_lookup 7 条且无一条 outcome；5 个命中单里 0 单记过 2.5 消费；collect 0"
+  to: "每单至少一条键触发三态记录；命中单有 2.5 的 hit|miss|skipped 之一；trace_metrics 输出三态分布"
+  measure:                           # 预测的出处（可复现）
+    command: >-
+      python3 -c "import pathlib,subprocess,sys,tempfile;
+      p=pathlib.Path('skills/diagnose/references/diagnosis-procedure.md').read_text(encoding='utf-8');
+      s=pathlib.Path('skills/diagnose/SKILL.md').read_text(encoding='utf-8');
+      t=pathlib.Path('skills/diagnose/references/diagnosis-trace.md').read_text(encoding='utf-8');
+      rot=[k for k in ('当前仅 A5 有词条','当前 case 尚无此字段') if k in p];
+      wired=all(k in p for k in ('先验键触发','必读','outcome')) and 'skipped' in t and 'outcome' in s;
+      d=pathlib.Path(tempfile.mkdtemp());(d/'traces').mkdir();
+      (d/'traces'/'fx.yaml').write_text('session_id: fx\nstatus: resolved\ndetected_category: interrupt\ntrace:\n  - {role: agent, step: 2, action: triage, branch: b, category: interrupt, routed: [common/]}\n  - {role: agent, step: 2, action: reference_lookup, purpose: signature, outcome: hit, ref_id: x}\n  - {role: agent, step: 2, action: reference_lookup, purpose: signature, outcome: miss, ref_id: null}\n  - {role: agent, step: 3, action: reference_lookup, purpose: background, outcome: skipped, ref_id: null}\n  - {role: agent, step: 3, action: hit, case: C1}\n',encoding='utf-8');
+      out=subprocess.run([sys.executable,'scripts/trace_metrics.py','--root',str(d)],capture_output=True,text=True).stdout;
+      three='hit 1、miss 1、skipped 1' in out;
+      print('rot_left',rot);print('wired',wired);print('three_state',three);
+      ok=(not rot) and wired and three;print('measure_ok',ok);raise SystemExit(0 if ok else 1)"
+    expect_exit: 0
+    expect_stdout: "measure_ok True"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：`diagnosis-procedure.md` 的阶段 2.5 写"按需"，两条加载路径各带一句过期断言；
+    键/签名/码的查表动作排在候选加载之后（步骤 2.5 ③）；trace 只在查询发生时记
+    `reference_lookup`，无 outcome 字段——跳过与未查在数据上同形。
+  success_criteria: >-
+    ① measure：两处腐烂断言为 0、四处接线齐备、`trace_metrics.py` 对一个含三态事件的夹具 trace
+    输出 `hit 1、miss 1、skipped 1`（判据命令）；
+    ② 口径修正：`skipped` 不计入 reference 引用次数（"没查"不得被读成"查了没命中"）；
+    ③ 成本有界：背景层按 grep 取行 + ≤5 行上限写进正文（索引整读等于注入全库背景），
+    并把原句里那个会腐烂的存量 token 数删掉；
+    ④ CI 无回归：verify_references / 两个 reference 索引 / docs 索引 / proposals / holdout 全绿；
+    ⑤ 行为面待真实确认：本卡只改"何时触发 + 如何留痕"，真实消费率变化需下一单诊断的 trace 验证。
+  rollback: >-
+    单次提交，`git revert` 即回原状：改动只落在 skills/diagnose/ 三个文件、
+    scripts/trace_metrics.py 与两处口径文字；不涉及 case 与 reference 内容，无数据迁移。
+gate:
+  condition: "命中单的判断缺口消费连续两期仍为 0，或三态记录里 skipped 占比 ≥90% 而无理由字段"
+risk: medium                       # 改诊断流程的触发时机；可逆、不改判定语义
+principle_refs: [2, 8, 9, 10]       # 二 不变量写进结构 / 八 可观测先于改进 / 九 稀缺资源显式预算 / 十 诚实退化
+actual_cost:
+  tokens: 26000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数：现象定位与证据核对（trace 动作分布、周批指标、会话记录扫描，约 15k）、
+    改动与文档同步（约 6k）、验证与建卡（约 5k）。
+decisions:
+  - who: agent
+    when: 2026-09-15
+    type: proposal
+    conclusion: >-
+      产卡即执行。方案取自与用户确认的 A 路线：四个触发点全部接线 + trace 三态留痕，
+      先不动 reference 词条 schema（背景层检索键不足是下一个问题，不在本卡）。
+  - who: agent
+    when: 2026-09-15
+    type: action
+    conclusion: >-
+      `diagnosis-procedure.md`：步骤 2 收尾新增「先验键触发」（码/签名/名/版本组合先于候选加载查）、
+      阶段 2.5 由"按需"改为"候选命中后固定执行"（`ref_knowledge` 必读 → 否则 grep 背景层 ≤5 行）、
+      步骤 5 拆开流程取用与 Tier 3 检索并各自留痕、步骤 1 采集面记 outcome。
+      `SKILL.md`：核心循环与步骤 2/3 接线、消费点改为"三缺口四触发点"表、trace 词表补 `outcome`。
+      `diagnosis-trace.md`：新增 `reference_lookup` 事件小节（四触发点 + 三态词表与各自何时记）。
+      `trace_metrics.py`：新增 `KNOWN_OUTCOMES` 与三态计数、`skipped` 不计入引用次数、快照加
+      `reference_outcomes`。口径同步：`references/README.md`、`docs/metrics.md`、
+      `docs/reference-ingest-pipeline.md`、`build_ref_summary_index.py`（生成物头注含读法）。
+  - who: agent
+    when: 2026-09-15
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS（`rot_left []` / `wired True` / `three_state True` / exit 0）。
+      负向对照：改动前同一命令 exit 1、`rot_left` 列出两句腐烂断言——判据确实在测变动本身。
+      另做三个针对性探针（改动的对口面是触发时机与取数方式）：①键触发在真实键上落点正确
+      （`507899` 进 `references/fault-patterns/runtime-resource.yaml` 的 ErrCode 条目、`207005` 进
+      `references/errors/cann-runtime.yaml`）；②A3 单在背景层用组件词能 grep 到相关行（含 MC2/流 语义），
+      ≤5 行上限可执行；③`ref_knowledge` 路径真实可用——8 条 case 全部带该字段（role 均为
+      `fix-methodology`），阶段二载入全文时即在上下文内。按门禁分级（改的是交互/指引面，
+      不改变候选选择）**不跑检索 golden**；CI 逐条复跑全绿（build_index / verify_references /
+      两个 reference 索引 / verify_metrics / build_timeline / verify_proposals / build_docs_index /
+      holdout / check_panel_tokens / panel_render_check）。
+  - who: agent
+    when: 2026-09-15
+    type: decision
+    conclusion: >-
+      采纳并标 validated。边界如实标注：①**行为面未即时判定**——本卡只改"何时触发 + 如何留痕"，
+      真实消费率变化要等下一单诊断的 trace，届时看三态分布里 `collect` / `background` 是否出现、
+      `skipped` 是否都带得动理由（gate 已写死这个检查）；②判据是结构性的，不证明诊断质量提升；
+      ③背景层检索键不足这一物理前提未解决（触发点 2 的"组件词收窄"是权宜），
+      留待观测到 `background` 命中率后另立卡。
+

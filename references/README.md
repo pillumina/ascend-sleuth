@@ -9,8 +9,8 @@
 ```
 references/
 ├── _types.yaml               # type 注册表（渐进登记；CI 强校验的 schema 依据）
-├── _summary-index.yaml       # 生成物：背景类（platform-fact/software-fact/tool）行化索引（diagnose 2.5 ②）
-├── _procedure-index.yaml     # 生成物：流程选择器索引（methodology；diagnose 2.5 ④）
+├── _summary-index.yaml       # 生成物：背景类（platform-fact/software-fact/tool）行化索引（diagnose 步骤 3 阶段 2.5）
+├── _procedure-index.yaml     # 生成物：流程选择器索引（methodology；diagnose 步骤 5）
 
 ├── errors/                   # type: error-code（表形态，按组件分族：cann-runtime/hccl/aicpu/driver）
 ├── fault-patterns/           # type: fault-pattern（表形态，按主题域成表：现象→根因→处理）
@@ -77,7 +77,7 @@ status: active | pending-review | deprecated | draft   # 新产出即 active（P
 实测：只读摘要行与不读等效（决定性判据会被截断），给全文才改变结论；只给 id/title/summary 索引让 agent
 自己挑则 7/7 选对。生成：`python3 scripts/build_procedure_index.py`（`--check` 校验新鲜度，随 CI）。
 
-**两个消费点**：reference 不参与候选路由/排序（不是第四检索层），但按流程里的**缺口**在两个时点被消费——**数据缺口**（缺测量数据 → tool 的采集面，`skills/diagnose/references/collect-gates.yaml` 绑定，诊断步骤 1）与**判断缺口**（有候选、缺签名/背景/修复依据 → 诊断步骤 2.5）。两处都只读 `active`。
+**三个缺口、四个触发点**：reference 不参与候选路由/排序（不是第四检索层），但按流程里的**缺口**在四个确定的时点被消费——**数据缺口**（缺测量数据 → tool 的采集面，`skills/diagnose/references/collect-gates.yaml` 绑定，诊断步骤 1）、**判断缺口的理解侧**（证据里有错误码 / 故障签名 / 环境变量名 / 版本组合 → 查表族，诊断步骤 2 收尾，**先于候选加载**）、**判断缺口的背景侧**（候选命中 → 带 `ref_knowledge` 的候选按 role 必读，否则取背景层 ≤5 行，诊断步骤 3 阶段 2.5）、**方法缺口**（候选全未命中 → 流程选择器，诊断步骤 5）。四处都只读 `active`，且每次触发都留 `hit|miss|skipped` 三态（`skipped` 写理由）——不查不留痕时，消费率无法归因。
 
 生成物校验（CI）：`build_ref_summary_index.py --check`（背景索引新鲜度）+
 `build_procedure_index.py --check`（流程索引新鲜度 **且可解析**——只比文本的自证式校验发现不了结构损坏，已踩过）。
