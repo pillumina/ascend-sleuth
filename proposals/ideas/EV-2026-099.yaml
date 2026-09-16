@@ -1,0 +1,100 @@
+# ============================================================
+# EV-2026-099 —— exec-log 的 skill 词表同源：写侧与校验侧各自硬编码名单，已经漂移
+# 来源：EV-2026-098 那轮修订的收尾自查（verify_exec_log.py --check）报 15 条红
+# 触发：写侧 log_skill_exec.py 认 reference-ingest（照写 15 条），校验侧 verify_exec_log.py 不认；
+#       两份名单又都落后于 skills/ 新增的 preload-panel / skill-review
+# 脱敏：只含仓库内文件位置与记录条数，不含客户数据
+# ============================================================
+
+id: EV-2026-099
+layer: L2                          # 流程与校验器（skill 词表的单一事实源）
+title: "exec-log 的 skill 词表同源：写侧与校验侧改用 skills/ 目录派生，修 15 条既有记录让收尾自查常年报红"
+status: validated
+authorization: review              # 改校验器与写侧守卫；不影响知识内容
+dimension: evolvability            # 新增 skill 不再需要记得改脚本
+supersedes: []
+superseded_by: null
+created_at: 2026-09-16
+source_signals:
+  - signal: mechanism_gap
+    evidence: >-
+      exec-log 的合法 skill 名单被硬编码成两份：写侧 log_skill_exec.py 认 reference-ingest（于是照写不误），
+      校验侧 verify_exec_log.py 不认（于是同一条记录被判非法）。实测差异：写侧独有 reference-ingest，
+      两侧共同缺 skills/ 下真实存在的 preload-panel 与 skill-review，两侧共同多出三个并非 skill 的流程名
+      （s2-replay / replay-golden / capacity-health）。后果是读者看到的自查常年报红：本轮收尾跑
+      `verify_exec_log.py --check` 报 15 条错、exit 1，全部来自 seq 19..33 的 reference-ingest 记录，
+      与当轮改动无关——红项一多，收尾自查就从信号退化成噪声。
+    trajectory:
+      - "scripts/log_skill_exec.py 的 VALID_SKILLS（写侧，含 reference-ingest）"
+      - "scripts/verify_exec_log.py 的 VALID_SKILLS（校验侧，不含 reference-ingest）"
+      - "metrics/skill-exec-log.yaml 的 seq 19..33（reference-ingest 记录 15 条）"
+      - "skills/ 目录实测 11 个：diagnose / evolve-check / issue-ingest / knowledge-groom / preload-panel / reference-ingest / resume-diagnosis / self-evolve / skill-review / to-postmortem / to-reference"
+hypothesis: >-
+  把合法 skill 名改成从 `skills/` 目录派生（并显式声明非 skill 的流程名 s2-replay / replay-golden /
+  capacity-health），写侧与校验侧共用同一个函数之后：既有记录不再被误判（自查回到绿），
+  新增 skill 也不必记得同步两处名单——词表与结构同源，漂移无从发生。
+predicted_effect:
+  metric: exec-log 收尾自查的判决与词表覆盖率
+  from: "verify_exec_log.py --check 报 15 条 skill 非法、exit 1；两份硬编码名单互不相同且都落后于 skills/"
+  to: "同一命令 exit 0 且全绿；合法集合 = skills/ 目录名 ∪ 三个非 skill 流程名，写侧与校验侧共用该函数"
+  measure:
+    command: >-
+      python3 scripts/verify_exec_log.py --check && python3 -c "import sys,pathlib;sys.path.insert(0,'scripts');from log_skill_exec import valid_skills;v=valid_skills(pathlib.Path('.'));have={p.name for p in pathlib.Path('skills').iterdir() if p.is_dir()};print('vocab_covers_skills', have<=v);sys.exit(0 if have<=v else 1)"
+    expect_exit: 0
+    expect_stdout: "vocab_covers_skills True"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：`verify_exec_log.py --check` 输出 15 条「skill 'reference-ingest' 非法」并 exit 1；
+    写侧与校验侧两份 VALID_SKILLS 集合互不相等（写侧多 reference-ingest），两侧都缺 skills/ 下的
+    preload-panel 与 skill-review。
+  success_criteria: >-
+    ① measure 判据命令 exit 0，且输出 vocab_covers_skills True（词表覆盖 skills/ 全部目录）；
+    ② 负例仍被拦：`log_skill_exec.py --skill bogus-skill` exit 1，提示列出合法集合；
+    ③ 正例恢复：`--skill reference-ingest` 写侧接受、校验侧不再判非法（此前写侧认、校验侧不认）；
+    ④ 退化路径如实提示：`skills/` 不可读时校验器打印「跳过 skill 词表校验」并 exit 0，
+    不拿空集把所有记录判红（与「exec-log 不存在即跳过」同口径）；
+    ⑤ 校验器其余判据无回归（at 形态 / version 退化 / seq 唯一 / products 撕裂四条仍在）。
+  rollback: >-
+    单次提交：git revert 即回原状（两个脚本各自恢复硬编码名单）。不改 exec-log 文件本身，
+    append-only 记录一条不动，无数据迁移。
+gate:
+  condition: "再出现「收尾自查的红项与本轮改动无关」或「新增 skill 后记录被判非法」时，复查词表是否又出现第二份硬编码名单"
+risk: low
+principle_refs: [2, 6, 10]
+actual_cost:
+  tokens: 7000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数，按仓库口径给估算：定位两份名单的差异与受影响记录范围（约 2k）、
+    两个脚本的改动与退化路径设计（约 2k）、四条验证（自查 / 负例 / 正例 / skills 缺失退化，约 2k）、建卡与判据实跑（约 1k）。
+decisions:
+  - who: agent
+    when: 2026-09-16
+    type: proposal
+    conclusion: >-
+      收尾自查报 15 条与本轮无关的红项，归因到「合法 skill 名单被硬编码两份且已漂移」，
+      方案定为词表从 `skills/` 目录派生 + 显式声明非 skill 流程名，写侧与校验侧共用同一函数
+      （与 verify_references 的 legal_categories 从 triage-tree 派生同法）。
+  - who: agent
+    when: 2026-09-16
+    type: action
+    conclusion: >-
+      `log_skill_exec.py` 新增 `NON_SKILL_FLOWS` 与 `valid_skills(root)`，写侧守卫改用它；
+      `verify_exec_log.py` 删掉自己那份 `VALID_SKILLS`，改为 `from log_skill_exec import valid_skills`
+      （该文件本就已 import 同模块的 git_head，不新增模块依赖）。
+  - who: agent
+    when: 2026-09-16
+    type: eval
+    conclusion: >-
+      判据实跑 PASS（自查 exit 0 且 vocab_covers_skills True；修复前同一命令 exit 1）。
+      负例 `--skill bogus-skill` exit 1；正例 `--skill reference-ingest` 写侧接受、校验侧不再报非法；
+      `skills/` 缺失时校验器打印跳过提示并 exit 0（用 `--root` 指向无 skills/ 的目录实测）。
+  - who: agent
+    when: 2026-09-16
+    type: decision
+    conclusion: >-
+      采纳（validated）。边界如实标注：①本次只统一 skill 词表，不把 verify_exec_log 纳入 CI
+      （它读的是 gitignored 运行件，进 CI 只会空转——该取舍是既有的，本卡不改）；
+      ②词表从目录派生后，一个**拼错**的 skill 名仍会被拦（不在目录里即非法），但一个**新建目录**
+      即刻合法——这正是想要的：新增 skill 不必改脚本，写错名字仍然报错。
