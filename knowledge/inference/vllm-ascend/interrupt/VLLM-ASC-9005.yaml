@@ -11,6 +11,12 @@
 #   是 MoE dispatch 算子申请 HCCL 通信 QP 超预算、关 EP 规避，机制/报错/修复全异；VERL-5074 仅提词辨析——均不构成覆盖）
 # 脱敏：issue 无内网 IP/token（env 省略），无替换
 
+# 兄弟 case（同根因区，不同可观测面）：VLLM-ASC-12430 —— 同平台 A2-910B + 同多节点形态 + 同模型族
+#   （DeepSeek-V4-Pro）+ 同根因区（HDK 低于 CANN 配套要求）+ 同修复动作（升级 firmware/npu driver，CANN 不动）；
+#   但报错形态与判别式不同：本条是通信 qp 申请失败被误报为显存耗尽（'Memory resources are exhausted'，
+#   显存实际充足），12430 是 MC2 融合算子 MoeDistributeDispatchV2 在 profile_run 阶段 AICore 超时 507014。
+#   二者 quickly_check 不通用，各自判各自的场景；同 HDK 低配下可能只触发其一（取决于模型通信量与触发时机）。
+
 # groom 升格：2026-W36 round3（vllm-ascend 第 2 轮全自动沉淀）——schema 校验通过
 
 cases:

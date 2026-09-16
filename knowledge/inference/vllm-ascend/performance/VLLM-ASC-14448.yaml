@@ -63,7 +63,7 @@ cases:
 
     severity: service-affecting        # TPOT 明显劣化 = 服务质量下降，服务可用
     fix_side_effects: [requires-restart]
-    fix_type: upgrade
+    fix_type: code-patch
 
     root_cause: >
       D 节点 MTP 路径的 drafting metadata 准备存在多余 CPU↔NPU 拷贝与同步点，host 侧

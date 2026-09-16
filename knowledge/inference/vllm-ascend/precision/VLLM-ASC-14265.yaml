@@ -54,7 +54,7 @@ cases:
   severity: service-affecting
   fix_side_effects:
   - requires-restart
-  fix_type: upgrade
+  fix_type: code-patch
   root_cause: 'v0.26.0rc 在 enable_prefill_mc2 关闭时，MegaMoe 对称通信 buffer 按 decode graph
     大小而非 max_num_batched_tokens 分配；较大 prefill batch 容量溢出 → 错误输出 → MTP 投机接受率大幅劣化。PR
     #14358 修复 buffer 分配，#14730 提供 mega_moe_max_tokens 可配置上限与超限告警。'

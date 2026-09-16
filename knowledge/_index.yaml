@@ -5,10 +5,10 @@
 # 按 file 字段定位做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-09-13    case 总数：158
+# 生成日期：2026-09-16    case 总数：159
 #   容量(common): performance=15/30, precision=6/30
 #   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=85/30, performance=8/30, precision=21/30
+#   容量(inference/vllm-ascend): interrupt=86/30, performance=8/30, precision=21/30
 #   容量(training/mindspeed-llm): interrupt=11/30, precision=4/30
 #   容量(training/verl): interrupt=6/30, precision=1/30
 namespaces:
@@ -840,6 +840,25 @@ namespaces:
       - DeepSeek V4 Pro 部署 Ascend A3/A5，PD 分离 与 prefill/decode 合部 两种模式均出现内存持续增长
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12345.yaml
       hash: fc913ca8fac6
+    - id: VLLM-ASC-12430
+      title: 4×A2 多节点 A2-910B 拉起 DeepSeek-V4-Pro-w4a8（dp4/tp8 + --enable-expert-parallel，EP=32）固定在 determine_available_memory
+        → profile_run 崩：AICore timeout 507014（subErrTyp…
+      category: interrupt
+      tags:
+      - mc2
+      - moe-dispatch
+      - aicore-timeout
+      - hdk
+      - firmware-driver
+      - multi-node
+      compat: '? (hdk:<25.5.1); vllm-ascend 0.22.1rc1 – 0.23.0rc1 (cann:>=8.5.1)'
+      confidence:
+        score: null
+      symptoms:
+      - 4×A2（Atlas A2 aarch64，8×64GB/节点）+ DeepSeek-V4-Pro-w4a8（MTP，384 专家，num_experts_per_tok=6）dp4/tp8
+        + --enable-expert-parall…
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12430.yaml
+      hash: 532f1744e309
     - id: VLLM-ASC-12461
       title: 多节点 EP + FusedMoE MC2 通信算子（MoeDistributeDispatchV2）在 ROCE 网络触发 aicore exception（MTE DDR 越界）→
         SUSPECT REMOTE ERROR 507057 启动失败；HCCS 可跑通，升级 0.20.2rc1+ 修复
@@ -909,7 +928,7 @@ namespaces:
       symptoms:
       - Elastic NetLoader P2P 加载 GLM5.1-W8A8（INT8_CACHE=dram 或 memcache 同开）时 hang/deadlock：加载不完成、无报错退出
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12933.yaml
-      hash: 8e4ba0a0bd33
+      hash: 505109aca88b
     - id: VLLM-ASC-12983
       title: 310P MTP 与图模式无法同时开启：镜像缺 free-mask 算子，pageattention-splitfuse 变化 shape mask 不入图
       category: interrupt
@@ -1104,7 +1123,7 @@ namespaces:
       - TP 推理图捕获失败：AclmdlRICaptureEnd 报 107025 / “capture model contains a stream that was not joined
         to the original stream”
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13792.yaml
-      hash: c3d343d720ab
+      hash: b4fa1206ab73
     - id: VLLM-ASC-13934
       title: v0.26 新增 AscendSFAIndexerCacheSpec 使 1 个 KV cache group 拆成 2 个 Mooncake transfer group，而
         vllm 侧 remote_block_ids 仍按 1 组索引，D 侧 _get_kv_split_metadata 访问 remote_b…
@@ -1674,7 +1693,7 @@ namespaces:
       - 4×A2 按 DeepSeek-V4-Pro 部署文档拉起（CANN 8.5.1、firmware 7.0.1.3.220、npu driver 23.0.7）：每卡显存约 40G 时即报
         'Memory resources are exh…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9005.yaml
-      hash: b852339375ca
+      hash: f43930d57ada
     - id: VLLM-ASC-9024
       title: MTP 投机解码 + --enable-prefix-caching 同时开启（服务能拉起、首条 curl 即崩）：model_runner_v1.execute_model 把
         Transformer（Qwen3.5-27B-w8a8-mtp 等）状态盲目路由进 vllm mamba_utils.preprocess…
@@ -2080,7 +2099,7 @@ namespaces:
       - GLM-5.2 全图/MRV1 + MTP num_spec≥2：投机接受率明显低于预期（acceptance_per_pos≈0.45/0.34/0.25、acceptance_len
         偏低），对照 v0.23 正常
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-14306.yaml
-      hash: 476e34bf900b
+      hash: 9309ba887394
     - id: VLLM-ASC-14448
       title: 'GLM-5.2 单 D MTP（4 并发长输入 20-40k）TPOT 极差：MTP 路径 host 侧长 copy 同步点推迟算子下发、呈 host-bound（PR #14103/#14554
         优化 DCP drafting metadata 消除多余 CPU↔NPU 拷贝）'
@@ -2098,7 +2117,7 @@ namespaces:
       symptoms:
       - GLM-5.2 单 D（PD 分离 decode 侧）+ MTP 服务，4 并发长输入（20-40k tokens）：TPOT 明显劣化
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-14448.yaml
-      hash: d39653d1ec9f
+      hash: 880aac508d5c
     precision:
     - id: VLLM-ASC-10524
       title: 'GLM-5.1-w8a8 PD 分离偶现精度问题（Claude Code 多并发长请求）：graph-capture/dummy run 未走 _prepare_inputs()
@@ -2274,7 +2293,7 @@ namespaces:
       symptoms:
       - v0.26.0rc GLM-5.2 + MTP（deepseek_mtp spec-decode）投机接受率相对 v0.23（50%+）大幅劣化
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-14265.yaml
-      hash: e01ccf6f85e6
+      hash: 7530ef3a3338
     - id: VLLM-ASC-14363
       title: DeepSeek V4 adapter 构造 routed FusedMoE 时漏传 swiglu_limit（config=10.0）→ routed expert 以默认 None
         运行、无 SwiGLU clamp → 敏感前缀处 next-token logit/ranking 漂移 → 异常中文/特殊 tok…

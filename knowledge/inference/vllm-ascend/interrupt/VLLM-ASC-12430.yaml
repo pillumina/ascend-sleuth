@@ -1,0 +1,145 @@
+# VLLM-ASC-12430 —— 4×A2 多节点 DSV4-Pro-w4a8（dp4/tp8 EP=32）profile_run 阶段 MoeDistributeDispatchV2 AICore 超时 507014：
+#   HDK（driver 24.1.0.3 / firmware 7.5.0.5.220）低于 CANN 9.0.1 配套，MC2 融合分发算子卡死触发看门狗超时
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12430（issue OPEN；无维护者根因结论、无 fix PR）
+# fix 跟踪：无代码 PR；环境级修复 = 升级 firmware + npu driver 到 CANN 9.0.1 配套版本（25.5.1/25.5.2/26.0.RC1），CANN 9.0.1 不动
+# 建议命名空间：inference/vllm-ascend/interrupt/
+#
+# groom 升格：2026-09-16 单条 groom（诊断 2026-09-16-12430-dsv4pro-mc2 的沉淀）——schema 校验通过
+# 分诊决定（预分诊建议 variant_of，groom 复核后**改为独立成条 sibling_of**，理由如下）：
+#   预分诊据「根因机制同源（HDK 低于 CANN 配套）」建议并入 VLLM-ASC-9005。复核后不采纳并入，因为
+#   可判别面完全不重叠：9005 的 quickly_check 锚显存误报签名、判「别按 OOM 查」；本案锚 507014 错误码与
+#   fault kernel 名、判「别按越界/组网查」。并入会让 9005 的判别式变成二义，两场景都判不准。
+#   且经复核，两者**不是同一故障的两种表现**：同一 HDK 低配上，9005 是通信 qp 申请失败被上层误报为显存
+#   耗尽，本案是 MC2 融合算子在 AIV 上不返回被看门狗判超时——两个不同的子故障。故按独立 case 升格，
+#   仅记共用根因区（root_cause 已互指）。tier 关系：sibling_of VLLM-ASC-9005（同根因区，不同可观测面）。
+
+# pre-triage: variant_of VLLM-ASC-9005 → groom 复核改判 sibling_of（同上）
+#   同：平台 A2-910B、部署形态（≥4 机多节点 + DeepSeek-V4-Pro + 大通信量 MoE）、根因方向（HDK 版本低于 CANN 配套要求）、
+#       修复动作（升级 firmware + npu driver，上层 CANN 不动）。
+#   异：① 报错形态——9005 报 'Memory resources are exhausted'（显存耗尽误报），本案报 AICore timeout 507014（kernel 卡死）；
+#       ② 触发位置——9005 在显存探测/拉起阶段，本案固定在 profile_run（KV-cache profiling）；
+#       ③ 涉及算子——9005 未点名算子，本案 plog 明确 fault kernel = MoeDistributeDispatchV2（MC2 融合分发）；
+#       ④ 判别入口——9005 的 quickly_check 是显存误报 grep，本案是错误码 + fault kernel grep，两者不通用。
+#   增量证据（本库 9005 未含）：CANN↔HDK 官方配套矩阵（cann-hdk.yaml 已含 CANN 9.0.1 行）；507014 = aicore timeout 的
+#       错误码语义与 retCode 0x25 映射；同 driver 24.1.0.3 的完全同签名先例（#4914）；4×A2 同错误码先例（#6875）。
+#
+# 脱敏：issue 正文无内网 IP / token；已省略
+# 导入管道：诊断 2026-09-16-12430-dsv4pro-mc2（人工起点为外部 issue）→ postmortems/inbox 草稿 → 2026-09-16 groom 升格
+
+cases:
+  - id: VLLM-ASC-12430
+    title: "4×A2 多节点 A2-910B 拉起 DeepSeek-V4-Pro-w4a8（dp4/tp8 + --enable-expert-parallel，EP=32）固定在 determine_available_memory → profile_run 崩：AICore timeout 507014（subErrType:4，plog retCode=0x25 aicore timeout），fault kernel = MoeDistributeDispatchV2（MC2 融合 MoE 分发）——HDK（npu driver 24.1.0.3 / firmware 7.5.0.5.220）低于 CANN 9.0.1 配套（25.5.1/25.5.2/26.0.RC1）；纯 HCCL 跨 32 卡正常、单机可过、dummy 权重可复现，指向环境而非模型；升级 HDK 到配套版本（CANN 不动）"
+
+    category: interrupt
+    tags: [mc2, moe-dispatch, aicore-timeout, hdk, firmware-driver, multi-node, expert-parallel, deepseek-v4, version-upgrade]
+
+    platforms: ["A2-910B"]            # Atlas A2（aarch64）8×64GB × 4 节点；同 issue 亦有 A3 侧 GLM5.2 复现报告（未验证同一根因）
+
+    compat:
+      - hdk: ["<25.5.1"]              # 判据：CANN 9.0.1 官方配套 HDK = 26.0.RC3 / 26.0.RC1 / 25.5.2 / 25.5.1
+                                      #   （references/compat-matrices/cann-hdk.yaml，来源 CANN release-note）
+                                      #   现场 24.1.0.3 不在配套表内，且低于整表最小值 25.0.X（25.0.X 仅见 CANN 9.0.0 / 8.5.2 行）
+      - framework: vllm-ascend
+        ranges: ["0.22.1rc1 – 0.23.0rc1"]   # 现场实测两版均复现；版本相关性**未确认**（CANN 8.5.1/9.0.0/9.0.1 三版同崩，
+                                            #   故框架/CANN 都不是变量，本区间只记观测，不作判别依据）
+        cann: [">=8.5.1"]
+    # 触发条件：多节点（≥4 机）+ EP=32 大通信量 MoE + 单卡专家数未超 MC2 上限（本案 384/32=12 ≤ 24，故 MC2 必被选中）
+
+    investigation_quality: medium
+    # 现场排查质量高（HCCL 自证组网、dummy 复现、单机对照、CANN 三版对照、四项环境变量消融全为负），
+    # 但**机制为推断**：plog 只有摘要，未拿到 #4914 那行 `rtMemcpy ... [driver error:internal error]` 的直接证据；
+    # 根因由「配套矩阵越界 + 同 driver 同签名先例 + 维护者 CANN↔driver 口径」三方收敛推出，非代码级定位。
+
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+
+    verification:
+      source: investigation
+      detail: "issue #12430（OPEN，无维护者结论、无 fix PR）。根因证据为：① CANN 9.0.1 ↔ HDK 官方配套矩阵（cann-hdk.yaml，引 CANN release-note）显示 24.1.x 越界；② 同 driver 24.1.0.3 的完全同签名先例 #4914（同 507014、同 subErrType:4、同 retCode=0x25，其 plog 含 rtMemcpy [driver error:internal error]，发帖人判为驱动）；③ #5468 维护者口径 CANN 8.5.0 即要求 driver >=25.0；④ #6875 同 4×A2 同错误码先例。**尚未在本案闭环**（现场未回报升级结果）"
+
+    symptoms:
+      - "4×A2（Atlas A2 aarch64，8×64GB/节点）+ DeepSeek-V4-Pro-w4a8（MTP，384 专家，num_experts_per_tok=6）dp4/tp8 + --enable-expert-parallel（EP=32，12 专家/卡）拉起，32 rank 权重加载全部成功"
+      - "固定死在 determine_available_memory → profile_run（KV-cache 显存探测）阶段，不是运行期：RuntimeError: ACL stream synchronize failed, error code:507014"
+      - "plog：aicore timeout，fault kernel_name=MoeDistributeDispatchV2（MC2 融合 MoE 分发）；device error: fftsplus aivector error，subErrType:4"
+      - "纯 HCCL 脚本（all_reduce + all_to_all）跨 4 节点 / 32 卡正常（约 16 GB/s，数据正确）——组网与跨节点集合通信无罪"
+      - "对照：单节点少层数 dummy 可通过 profiling；--load-format dummy --enforce-eager 仍复现同一 507014 → 与权重/量化数值无关，且是多节点 MC2 专属"
+      - "CANN 8.5.1 / 9.0.0 / 9.0.1 三版同样崩溃且 fault kernel hash 一致 → 上层 CANN 版本不是变量"
+      - "无效项：HCCL_OP_EXPANSION_MODE=AIV、enable_mc2_hierarchy_comm=true（HCCL_INTRA_PCIE_ENABLE=1 / HCCL_INTRA_ROCE_ENABLE=0）、切换 ASCEND_LAUNCH_BLOCKING"
+      - "同 issue 评论另报 GLM5.2-w8a8 在 v0.23.0rc1-a3 官方 tutorial 配置下同样复现（同错误码，A3 平台，是否同根因未验证）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12430"
+      - "https://github.com/vllm-project/vllm-ascend/issues/4914"
+      - "https://github.com/vllm-project/vllm-ascend/issues/5468"
+      - "https://github.com/vllm-project/vllm-ascend/issues/6875"
+
+    ref_knowledge:
+      - ref: cann-hdk
+        role: root-cause-context          # CANN 9.0.1 那一行直接给出配套 HDK 列表，是本案「越界」判据的权威处
+      - ref: cann-runtime-error-codes
+        role: signature-source            # 507xxx 语义（超时 / 越界 / aicpu 异常分流）
+      - ref: ascend-moe-comm-triage
+        role: root-cause-context          # MoE 分发算子故障的形态分流；本案是它**未覆盖**的第五形态（见 probe）
+
+    quickly_check:
+      primary:
+        command_template: "grep -aE '507014|aicore timeout|fftsplus aivector' {{plog_path}}"
+        rank_selector: all_failed
+        expected: "regex:.*(507014|aicore timeout|fftsplus aivector)"
+        note: "507014 = aicore timeout（plog retCode=0x25, errType=0x4 task timeout）；与 507057（SUSPECT REMOTE ERROR / MTE DDR 越界）分属不同族"
+      fallback:
+        command_template: "grep -aE 'MoeDistributeDispatchV2|Moe comm method selected' {{plog_path}} {{engine_log}}"
+        rank_selector: all_failed
+        expected: "regex:.*(MoeDistributeDispatchV2|MoE comm method selected)"
+
+    diagnosis:
+      - step: 0
+        check: "前提核验：`npu-smi info` 的 npu driver / firmware 版本是多少？是否低于 CANN 版本对应的配套 HDK？"
+        expected: "regex:Version: 2[0-4]\\."
+        command_template: "npu-smi info"
+        rank_selector: coordinator
+        note: "**先核这个**。CANN 9.0.1 配套 HDK = 26.0.RC3 / 26.0.RC1 / 25.5.2 / 25.5.1（查 references/compat-matrices/cann-hdk.yaml）。若 driver 已 ≥25.5.1 仍报 507014 → 本 case 不适用，转 plan B（见 step 4）"
+      - step: 1
+        check: "签名判别：报 507014（aicore timeout）还是 507057（SUSPECT REMOTE ERROR / MTE DDR 越界）？"
+        expected: "507014 且 subErrType:4、errorStr: timeout or trap error → 属超时族，**不要按越界/组网方向查**（越界族对应 VLLM-ASC-12461）"
+        note: "两族修复方向不同：越界查 RoCE 组网与算子兼容版本；超时查版本配套与执行环境"
+      - step: 2
+        check: "组网排除：纯 HCCL 脚本（all_reduce + all_to_all）跨全部节点全部卡是否正常？"
+        expected: "正常 → 组网无罪，问题在 MC2 融合算子（`MoeDistributeDispatchV2` 把通信织进 AIV 核内执行）；若也失败则转 RoCE 链路排查"
+      - step: 3
+        check: "形态判别：单节点是否可通过 profiling？关掉 EP 后能否起来？"
+        expected: "单节点通过、多节点 EP 必现 → 多节点 MC2 专属。注：关 EP 后 A2 走 AllGather（每卡持有全部专家权重），384 专家的 DSV4-Pro 在 64GB A2 上很可能 OOM，**该动作只作判别实验，不作部署建议**"
+      - step: 4
+        check: "plan B（step 0 前提不成立时）：driver 已 ≥25.5.1 仍报 507014 怎么办？"
+        expected: "不属本 case——转查已在新驱动上复现的同族 MC2/AIV 超时（#8960 / #15985 一族，上游在查），用单算子用例压 MC2 路径并收集全部 rank plog 找首报错"
+      - step: 5
+        check: "fix 验证：升级 firmware + npu driver 到配套版本后重新拉起"
+        expected: "走过 determine_available_memory → profile_run，服务正常启动"
+        fix_on_mismatch: "升级后仍 507014 → 排除本 case，转 step 4 的 plan B"
+        rollback: "降回低版本 HDK 即复现（多节点 EP 拉起在 profile_run 报 507014）"
+
+    severity: service-affecting          # 服务起不来；未观察到数据损坏
+    fix_side_effects: [requires-restart] # firmware/driver 升级为节点级操作，需停机窗口与重启
+    fix_type: config-change              # 环境版本升级型（HDK firmware + npu driver），非代码/非 env-var
+
+    root_cause: >
+      多节点（4×A2）以 EP=32 拉起 DeepSeek-V4-Pro-w4a8 时，MC2 融合 MoE 分发算子
+      （MoeDistributeDispatchV2，把跨卡通信织进 AIV 核内执行）在 profile_run 阶段无法完成：
+      现场 host HDK（npu driver 24.1.0.3 / firmware 7.5.0.5.220）低于 CANN 9.0.1 的官方配套要求
+      （配套为 25.5.1/25.5.2/26.0.RC1，24.1.x 不在表内且低于整表最小值 25.0.X），AIV 任务不返回，
+      看门狗按超时上报 AICore timeout（507014，plog retCode=0x25）。三点支持该判断：① CANN 8.5.1/9.0.0/9.0.1
+      三版同样崩溃且 fault kernel hash 一致，框架与 CANN 版本都不构成变量；② 纯 HCCL 跨 32 卡正常、单节点可通过，
+      故组网与算子选择无误（384 专家 / EP=32 = 12 专家每卡，未超 A2 的 MC2 上限 24，MC2 被选中是预期行为）；
+      ③ 同 driver 24.1.0.3 存在完全同签名的先例（#4914：同 507014、同 subErrType:4、同 retCode=0x25，
+      其 plog 含 `rtMemcpy execute failed, reason=[driver error:internal error]`）。
+      **注：机制为推断。** 本案未拿到该 `driver error` 行的直接证据，也未在本案闭环（现场未回报升级结果）。
+      反证面：driver 25.5.2 上仍有同族 MC2/AIV 超时（#8960），说明「MC2 超时」是一族问题，
+      本 case 只覆盖「HDK 低于 CANN 配套」这一支。
+
+    fix: >
+      升级 HDK：firmware + npu driver 升到 CANN 9.0.1 的配套版本（25.5.1 / 25.5.2 / 26.0.RC1，建议 25.5.2 或 26.0.RC1）；
+      上层 CANN 9.0.1 无需变动。配套取值查 `references/compat-matrices/cann-hdk.yaml` 的 `cann: 9.0.1` 行，
+      或 CANN 9.0.1 release note。升级需节点级操作并重启，建议升级前后各跑一次 `npu-smi info` 留档。
+      验证：4×A2 多节点 EP=32 拉起 DeepSeek-V4-Pro-w4a8，走过 profile_run 进入正常服务。
+    rollback: "降回低版本 HDK 即复现（多节点 EP 拉起在 profile_run 报 507014）"

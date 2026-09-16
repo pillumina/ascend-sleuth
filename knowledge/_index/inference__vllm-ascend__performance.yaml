@@ -133,7 +133,7 @@ namespaces:
       - GLM-5.2 全图/MRV1 + MTP num_spec≥2：投机接受率明显低于预期（acceptance_per_pos≈0.45/0.34/0.25、acceptance_len
         偏低），对照 v0.23 正常
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-14306.yaml
-      hash: 476e34bf900b
+      hash: 9309ba887394
     - id: VLLM-ASC-14448
       title: 'GLM-5.2 单 D MTP（4 并发长输入 20-40k）TPOT 极差：MTP 路径 host 侧长 copy 同步点推迟算子下发、呈 host-bound（PR #14103/#14554
         优化 DCP drafting metadata 消除多余 CPU↔NPU 拷贝）'
@@ -151,4 +151,4 @@ namespaces:
       symptoms:
       - GLM-5.2 单 D（PD 分离 decode 侧）+ MTP 服务，4 并发长输入（20-40k tokens）：TPOT 明显劣化
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-14448.yaml
-      hash: d39653d1ec9f
+      hash: 880aac508d5c
