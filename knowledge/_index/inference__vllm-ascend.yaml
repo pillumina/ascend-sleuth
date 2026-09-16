@@ -1,7 +1,7 @@
 # GENERATED FILE —— 分片（knowledge/_index.yaml 的 inference/vllm-ascend 子集），不要手改。
 # 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。
 # 阶段一加载协议（F1 EV-2026-022）：category 未定 / 类分片缺失时 diagnose 回退读本 namespace 分片，不读整库总表。
-# 本分片：inference/vllm-ascend（114 条 case）
+# 本分片：inference/vllm-ascend（115 条 case）
 namespaces:
   inference/vllm-ascend:
     interrupt:
@@ -440,6 +440,25 @@ namespaces:
       - DeepSeek V4 Pro 部署 Ascend A3/A5，PD 分离 与 prefill/decode 合部 两种模式均出现内存持续增长
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12345.yaml
       hash: fc913ca8fac6
+    - id: VLLM-ASC-12430
+      title: 4×A2 多节点 A2-910B 拉起 DeepSeek-V4-Pro-w4a8（dp4/tp8 + --enable-expert-parallel，EP=32）固定在 determine_available_memory
+        → profile_run 崩：AICore timeout 507014（subErrTyp…
+      category: interrupt
+      tags:
+      - mc2
+      - moe-dispatch
+      - aicore-timeout
+      - hdk
+      - firmware-driver
+      - multi-node
+      compat: '? (hdk:<25.5.1); vllm-ascend 0.22.1rc1 – 0.23.0rc1 (cann:>=8.5.1)'
+      confidence:
+        score: null
+      symptoms:
+      - 4×A2（Atlas A2 aarch64，8×64GB/节点）+ DeepSeek-V4-Pro-w4a8（MTP，384 专家，num_experts_per_tok=6）dp4/tp8
+        + --enable-expert-parall…
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12430.yaml
+      hash: 532f1744e309
     - id: VLLM-ASC-12461
       title: 多节点 EP + FusedMoE MC2 通信算子（MoeDistributeDispatchV2）在 ROCE 网络触发 aicore exception（MTE DDR 越界）→
         SUSPECT REMOTE ERROR 507057 启动失败；HCCS 可跑通，升级 0.20.2rc1+ 修复
@@ -1274,7 +1293,7 @@ namespaces:
       - 4×A2 按 DeepSeek-V4-Pro 部署文档拉起（CANN 8.5.1、firmware 7.0.1.3.220、npu driver 23.0.7）：每卡显存约 40G 时即报
         'Memory resources are exh…
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9005.yaml
-      hash: b852339375ca
+      hash: f43930d57ada
     - id: VLLM-ASC-9024
       title: MTP 投机解码 + --enable-prefix-caching 同时开启（服务能拉起、首条 curl 即崩）：model_runner_v1.execute_model 把
         Transformer（Qwen3.5-27B-w8a8-mtp 等）状态盲目路由进 vllm mamba_utils.preprocess…
