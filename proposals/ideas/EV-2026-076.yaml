@@ -31,7 +31,10 @@ predicted_effect:
   measure:
     command: "python3 -c \"import yaml;d=yaml.safe_load(open('references/_summary-index.yaml',encoding='utf-8'))['entries'];m=[e['id'] for e in d if not (e.get('applies_to') or {}).get('categories')];assert not m, m;print('OK', len(d))\""
     expect_exit: 0
-    expect_stdout: "OK 89"
+    # 期望断言**属性**，不钉总数：命令自己 assert 了「没有缺 categories 的条目」，
+    # 再钉一个总数（OK 89）会随索引增长必然失效——实测该命令今天打印 OK 132，属性一直成立，
+    # 是期望写坏了。计数类期望一律不写（口径：断言性质，不断言规模）。
+    expect_stdout: "OK"
 validation:
   method: scan_review
   baseline: 补齐前 36 条未登记 categories（origin/main 的 _summary-index.yaml）
