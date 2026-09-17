@@ -43,7 +43,7 @@ source_signals:
       - "proposals/ideas/EV-2026-032/033/034/035/036.yaml（5 张在实验卡）"
       - "scripts/verify_proposals.py:127-133（原规则只覆盖终态卡）"
       - ".github/workflows/kb-checks.yml（无 proposal 校验步骤；paths 无 proposals/**）"
-      - "docs/evolution-run.md:155「已落地（…+ groom）」，但 skills/knowledge-groom 零处提及 evolve-check"
+      - "docs/mechanism/run.md:155「已落地（…+ groom）」，但 skills/knowledge-groom 零处提及 evolve-check"
 hypothesis: >-
   把"收尾读现场"从 agent 现场重写命令变成确定性脚本入口（`tail_exec_log.py`，缺失/空表 = 正常退化
   exit 0），把"evolve-check 跑没跑"从不可观测变成落进 exec-log（含无信号）并在面板可见，把

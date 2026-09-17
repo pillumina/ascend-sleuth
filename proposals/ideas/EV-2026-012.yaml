@@ -20,7 +20,7 @@ source_signals:
     trajectory:
       - "docs/evolution-ixn-replay.md（口径内联 §4/§7；本地 pilot N=3 验证，运行留档不入库）"
       - "ingest-state.json + .s2-replay/（现成 issue 池与 S2 数据源）"
-      - "docs/evolution-pipeline.md §2.1（S2 口径与诚实化）"
+      - "docs/mechanism/pipeline.md §2.1（S2 口径与诚实化）"
 hypothesis: >-
   用分期披露脚本（筛选渐进披露 issue + 详 body 人为切段）驱动 diagnose 交互，并按
   "追问字段 ∩ 后续披露 ∩ 被结论使用 + 决定性字段是否在链内 + 是否过早下结论"评分，

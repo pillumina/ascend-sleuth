@@ -17,7 +17,7 @@ source_signals:
   - signal: human_review_feedback
     evidence: "审核疑问：'很多蓝图说要数据积累，但 S2 replay 与 skill 使用 trace 难道不能作为数据？'——盘点后确认：多数闸门未解锁不是'没记录'，而是量/事件未发生/可判性/独立性四类性质限制；且文档 §11.1 状态描述（feedback≈0、S2 未建、无 EV 卡）已与 2026-09 现状脱节"
     trajectory:
-      - "docs/evolution-pipeline.md §11.1（2026-09 重构前状态快照，已过时）"
+      - "docs/mechanism/pipeline.md §11.1（2026-09 重构前状态快照，已过时）"
       - "docs/roadmap.md E2 闸门（计数口径未定义 replay 是否计入）"
       - "实测：traces/ 12（齐全 5）、.s2-replay/ 9 result、skill-exec-log 3、golden 23、EV 卡 10"
 hypothesis: >-

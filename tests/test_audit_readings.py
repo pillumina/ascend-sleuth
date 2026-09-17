@@ -217,3 +217,24 @@ decisions:
     def test_card_before_cutover_is_exempt(self):
         rc, out = self._run("2026-09-10")
         self.assertNotIn("target_component", out, out[-300:])
+
+
+class DeadRefsSkipDecisionsTest(unittest.TestCase):
+    """decisions 是只追加的审计链：那里的历史路径不算「腐烂」（判据 action 与 append-only 规则冲突过）。"""
+
+    def test_path_only_in_decisions_is_not_rot(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        (root / "docs").mkdir()
+        doc = {"id": "EV-2026-901", "title": "t",
+               "decisions": [{"who": "agent", "conclusion": "当时引用的是 `docs/gone.md` §4（现已迁移）"}]}
+        self.assertEqual(ebd.scan_dead_refs(root, doc), [])
+
+    def test_path_in_other_fields_is_still_rot(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        (root / "docs").mkdir()
+        doc = {"id": "EV-2026-902", "title": "t", "hypothesis": "见 `docs/gone.md`"}
+        self.assertEqual(ebd.scan_dead_refs(root, doc), ["docs/gone.md"])
