@@ -3,6 +3,8 @@
   about: 先验知识层（references/）的词条导入、转正或修订
   labels: []（按需 gh pr create --label）
 PR body 正文从首个 "## " 区块开始。
+  首屏一个视图的写法见 methodology.md 的「变更内容」一节；本模板的证据与合入风险由
+  「来源与验证状态」与「高风险检查」两节承担。
 -->
 
 ## 变更类型

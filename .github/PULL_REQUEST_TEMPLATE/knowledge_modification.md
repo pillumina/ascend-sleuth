@@ -3,6 +3,8 @@
   about: 修改 expected / fix_on_mismatch / compat / severity 等高风险字段，或合并 case
   labels: [kb/high-risk]（需 gh pr create --label kb/high-risk 显式打）
 PR body 正文从首个 "## " 区块开始。
+  首屏一个视图的写法见 methodology.md 的「变更内容」一节；本模板的证据与合入风险由
+  「变更依据」与「影响与回退」两节承担。
 -->
 
 > 高风险变更：错误修改会污染后续所有诊断。需领域 owner + 体系维护人双签（原则六：代价大的变更多一道闸）。
