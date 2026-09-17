@@ -28,7 +28,7 @@ source_signals:
       - "grep -rl 'predicted_effect' proposals/ideas/*.yaml | wc -l → 48/48 张卡都有预测"
       - "grep -A4 'predicted_effect' proposals/ideas/*.yaml | grep -c 'python3|npm|bash' → 0/48 张带可执行命令"
       - "grep -rh 'method:' proposals/ideas/*.yaml | sort | uniq -c → scan_review 16、metrics_compare 18、golden_replay 8、issue_replay 6"
-      - "docs/evolution-execution.md:173（评审供给清单：30s 判定 / 失效形态=橡皮图章）"
+      - "docs/mechanism/execution.md:173（评审供给清单：30s 判定 / 失效形态=橡皮图章）"
       - "scripts/verify_proposals.py：REQUIRED 不含 predicted_effect；全脚本无 measure 相关校验（grep predicated_effect → 0 命中）"
   - signal: process_friction
     evidence: >-

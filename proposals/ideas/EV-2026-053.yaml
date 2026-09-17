@@ -156,3 +156,7 @@ decisions:
     when: 2026-09-17
     type: action
     conclusion: "合入指针回写：本卡（及其结论）随 PR #179 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "路径更正（只追加，不改上一条）：上一条写「自演进元机制的唯一技术入口改为 docs/rsi-mechanism.md」——同一个 PR 随后把这一篇移到了 docs/mechanism/rsi-mechanism.md（文档按层分目录）。上一条记录的是当时的动作，保留原样；今日本卡的扫描目标与断言的正确位置是 docs/mechanism/rsi-mechanism.md。"

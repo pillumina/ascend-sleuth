@@ -1,7 +1,7 @@
 # ============================================================
 # Idea 卡模板（proposals/ideas/EV-YYYY-NNN.yaml）
 # 自演进候选 idea 的 schema 参考——新建卡时复制本文件改字段。
-# 完整 schema 与状态机定义见 docs/evolution-pipeline.md §7（权威）。
+# 完整 schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）。
 # 校验：python3 scripts/verify_proposals.py --check
 # 脱敏纪律：只含聚合值与证据引用，不含客户现场原文（同 eval fixture）。
 # ============================================================

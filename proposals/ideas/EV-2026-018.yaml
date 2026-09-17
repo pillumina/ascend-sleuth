@@ -19,7 +19,7 @@ source_signals:
     trajectory:
       - "eval/ixn-arena/（registry v1 → v2，新增 3 样本 + feed）"
       - ".ixn-replay/*/score.yaml（本地 n=10）"
-      - "docs/evolution-ixn-replay.md §8（≥10 门）"
+      - "docs/mechanism/ixn-replay.md §8（≥10 门）"
 hypothesis: >-
   n=10（带分母、split 标注 held_out/self）后交互面分数可按口径进 timeline；第 2 批
   规格入库使评测集 14 条目持久
