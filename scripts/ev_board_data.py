@@ -266,7 +266,13 @@ def scan_dead_refs(root, doc):
     收紧前实测：6 个报出的路径里 4 个属上面这几类假红（真腐烂只有 2 个），判据的可信度被噪声吃掉。
     强度如实标注：本判据只说明"卡点名的文件不在了"，**不**断言卡的结论因此失效。
     """
-    text = " ".join(_all_strings(doc))
+    # **decisions 是只追加的审计链**（写进去的是"当时发生了什么"，包括当时的路径）——
+    # 那里的历史路径不是"腐烂"，是记录。判据据此**只扫决策链之外**的字段；否则它的 action
+    # （"更新路径引用"）会与"decisions 只追加不修改"直接冲突（实测 3 张卡的死引用全在 decisions 里）。
+    # 注意实现方式：整段**先剔除**再拼串。先拼后 replace 是不行的——拼接会把换行折成空格，
+    # 决策串的原文在拼好的文本里根本匹配不到（实测：改了却没生效）。
+    body = {k: v for k, v in doc.items() if k != "decisions"} if isinstance(doc, dict) else doc
+    text = " ".join(_all_strings(body))
     basenames = _repo_basenames(root)
     dead = []
     for p in scan_refs(text):
