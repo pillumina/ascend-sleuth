@@ -102,6 +102,10 @@ dual 双签 + kb/high-risk，步骤级小调 review。
   实际只有 60 条"）/ 深度轮停止条件触发 / 攒够 10 卡；
 - **聚合 PR**：每卡独立 commit（可逐卡 revert）；PR body 按卡列 EV id + 验证 + 授权
   级别，dual 标 kb/high-risk；模板按批内最高风险选；
+- **提完 PR 立刻回写合入指针**：`python3 scripts/ev_proposal.py --mark-merged <PR号> --all-pending`
+  ——把 PR 号追加进卡的 decisions（只追加、保留注释、可重复执行）。**不回写的代价是判据读数反向**：
+  「已验证卡缺合入指针」那条判据数的就是这个指针，实测有一批 7 张卡随同一个 PR 合入、7 张全无指针，
+  判据把它读成"没合入"，进而把人引向"暂停产卡"这个错方向。回写后同类读数才是真的；
 - 人审可整体合入或按卡打回（打回卡 revert 其 commit，其余照常）。
 
 ## 验证先于判断

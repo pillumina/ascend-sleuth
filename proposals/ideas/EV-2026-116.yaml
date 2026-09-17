@@ -1,0 +1,61 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+# schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
+id: EV-2026-116
+layer: L2
+title: 三条判据的分子在量错东西——指针回写与水位读数 + 死引用收紧 + 信号口径统一
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: design_gap
+    evidence: "审计交叉核对：判据「待合入积压」报 85，而 105 张已验证卡里 104 张见于已合入 PR（#4–#247）、100 张见于提交信息——它数的是「卡文本有没有抄 PR 号」，不是「改动有没有合入」；同一份 payload 里信号计数出现两个数（面板 40 / 体检判决 35）；死引用 6 个路径里 4 个是假红（相对路径 2、否定语境 1、仓外路径 1），真腐烂只有 2 个"
+    trajectory:
+      - "research/lit-review-rsi-2026-09.md#6"
+      - "交叉核对：gh pr list --state merged 与卡文本 pr_refs"
+      - "前后对照：node scripts/panel_render_check.js / python3 scripts/component_tally.py"
+hypothesis: 给三条判据补缺失的机制、不动阈值：①回写合入指针成为一条命令（--mark-merged），候选水位成为读数与退出码（--waterline）；②死引用检测器加三条机械排除（父目录须存在、同名文件在仓内别处即相对路径、否定语境不算）；③信号计数改用全量信号，与体检判决同源。
+predicted_effect:
+  metric: 三条判据读数的真假与口径自洽性
+  from: "死引用 6 个（4 个假红）；信号计数 40 与判决 35 不一致；水位只有 prose 无数值无读数"
+  to: "死引用 2 个（全为真腐烂）；信号计数与判决同源同值；水位一条命令 + 退出码"
+  measure:
+    command: "python3 -m unittest tests.test_audit_readings"
+    expect_exit: 0
+    expect_stdout: "OK"
+validation:
+  method: metrics_compare
+  baseline: "改前：scan_dead_refs 只判存在性；by_signal 读截断到前 3 条的 source_signals；无水位读数与回写命令"
+  success_criteria: |
+    ① 死引用读数 = 2（docs/evolution-run.md、docs/evolution-pipeline.md），测试覆盖四类假红各一例；
+    ② 信号计数与体检判决同源（同一张 4 条同族信号的卡按卡去重记 1）；
+    ③ --waterline 输出读数、超限退 1；--mark-merged 追加指针且保留注释、可重复执行（幂等）；
+    ④ 全量单测通过；⑤ 演练脚本的容量断言改为读索引头注，不再因数据增长而失败。
+  rollback: "单文件可整体 revert（ev_board_data / ev_proposal / gates.yaml / 两处 skill / roadmap / rehearse）；阈值未动，回退后读数回到旧口径（原则七）"
+gate:
+  condition: "不等数据触发：本条修的是判据分子与读数口径，属机制修正"
+risk: medium
+principle_refs: [2, 8, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：三条判据的分子口径修复（指针回写与水位读数、死引用收紧、信号口径统一）"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：ev_proposal 增 --mark-merged / --waterline；ev_board_data 的 scan_dead_refs 加三条机械排除、by_signal 改全量；gates.yaml 的积压判据文案与 action 改为「先回写指针」；orchestration 的候选积压治理从蓝图态改为已启用（第一条），pipeline 蓝图表同步；evolve-check 产卡前加水位步骤、self-evolve 攒批加回写步骤；rehearse 容量断言改读索引头注；新增 3 个测试文件"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "实测：死引用 6→2（与审计判定的真腐烂一致）；信号计数 40→35（与判决同口径）；全量单测通过；--waterline 输出「待回写/待合入 79（上限 20）」并退 1；--mark-merged 在已合入批次的卡上回写成功且幂等"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）：三处都是「读数与事实对齐」，阈值未动、判据强度只增不减。残余如实标注：存量数十张卡的指针需按批回写，本卡只提供命令与流程接线，不回填历史"

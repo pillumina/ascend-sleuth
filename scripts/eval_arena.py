@@ -212,10 +212,15 @@ def cmd_stats(root, pool_file):
             continue
         r = load(rp) or {}
         expected_ns = it.get("expected_ns", "")
+        # result 文件有两套字段写法并存，两套都认——实测代价：只认旧写法时，盘上全部
+        # result 的结论一致（root_cause_ok）读不到，rc_match 恒为 None，判定少一路证据、
+        # 账本里也看不出"没数据"和"结论不一致"的区别（诚实退化要求这两者可区分）。
+        #   hit_case ↔ tier2_hit ；route ↔ routing_ok ；rc_match ↔ root_cause_ok
         route = str(r.get("route") or "")
-        route_ok = (route == "ok") or (expected_ns and expected_ns in str(r.get("namespace") or ""))
-        hit_ok = bool(r.get("hit_case"))
-        rc = r.get("rc_match")
+        route_ok = ((route == "ok") or bool(r.get("routing_ok"))
+                    or (expected_ns and expected_ns in str(r.get("namespace") or "")))
+        hit_ok = bool(r.get("hit_case")) or bool(r.get("tier2_hit"))
+        rc = r.get("rc_match", r.get("root_cause_ok"))
         # 逐条向量：配对检验的输入。没有它，判定只能退回点估计（判词上限 weak_accept）。
         stats["issues"].append({"id": str(it["id"]), "hit": bool(hit_ok),
                                 "route_ok": bool(route_ok),
@@ -470,6 +475,13 @@ def main():
         return cmd_rc_check(root, pool_path(root, args.rc_check))
     if args.self_test:
         return cmd_self_test()
+    if not args.baseline or not args.candidate:
+        # 明确退化：无池/无 stats 时不要静默拿空路径去读（会把仓库根当文件读，报"Is a directory"）
+        print("eval_arena: --gate 需要 --baseline <stats.yaml> 与 --candidate <stats.yaml>。\n"
+              "  还没有数据时：先按 docs/mechanism/eval-arena.md §2 建池（.s2-replay/arena/pool-*.yaml），\n"
+              "  跑 replay 出 .s2-replay/<issue>.result.yaml，再各跑一次 --stats 得到两侧 stats。\n"
+              "  只验证判据本身用 --self-test（不需要任何本地数据）。", file=sys.stderr)
+        return 2
     return cmd_gate(root, pool_path(root, args.baseline), pool_path(root, args.candidate),
                     args.component, args.candidate_ref, args.note, args.alpha)
 

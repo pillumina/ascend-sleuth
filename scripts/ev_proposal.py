@@ -20,6 +20,8 @@
 # 判断，decisions 追加由 agent/人写入。
 
 import argparse
+import json
+import re
 import shutil
 import sys
 from datetime import datetime
@@ -107,11 +109,137 @@ def list_cards(root: Path):
         print(f"{cid:<14} {status:<14} {auth:<8} {title}")
 
 
+# ---------------------------------------------------------------- 合入指针回写
+# 为什么需要它：判据「待合入积压」数的是"已验证但没有合入指针的卡"，而**指针只能靠人/agent
+# 在卡文本里写一句 PR 号**。实测代价：一批 7 张卡随同一个 PR 合入 main，7 张全部无指针——
+# 判据读出来的是"未合入"，实际是"已合入但没人回写"，读数与事实方向都反了（判据的 action
+# 会把人引向"暂停产卡"，而真正缺的动作是回写）。回写因此不能停在纪律上：写进脚本，一条命令。
+def _top_level_keys(text: str):
+    """按出现顺序取顶层 key（只认行首无缩进的 `key:`）。"""
+    keys = []
+    for line in text.splitlines():
+        if line and not line[0].isspace() and not line.startswith("#") and ":" in line:
+            k = line.split(":", 1)[0].strip()
+            if k and " " not in k:
+                keys.append(k)
+    return keys
+
+
+def _has_ref(text: str, pr):
+    return bool(re.search(r"(?:PR|#)\s?#?" + re.escape(str(pr)) + r"\b", text))
+
+
+def _has_any_ref(text: str):
+    """卡文本里有没有任何合入指针（与 ev_board_data.extract_pr_refs 同一形态）。"""
+    return bool(re.search(r"(?:PR|#)\s?#?\d{2,6}", text))
+
+
+def mark_merged(root: Path, pr, card_ids, all_pending: bool, dry_run: bool):
+    """把合入指针追加进卡的 decisions（只追加、不动既有内容、保留注释）。
+
+    拒绝条件（宁可失败不猜）：卡不存在 / 顶层最后一个 key 不是 decisions（追加会破坏结构）。
+    """
+    if not pr:
+        print("ev_proposal: --mark-merged 需要 PR 号（如 --mark-merged 242）", file=sys.stderr)
+        return 2
+    targets = []
+    if all_pending:
+        targets = [f for f in sorted((root / IDEAS_DIR).glob("EV-*.yaml"))
+                   if (load_yaml(f) or {}).get("status") == "validated"
+                   and not _has_ref(f.read_text(encoding="utf-8"), pr)]
+    for cid in card_ids or []:
+        p = root / IDEAS_DIR / f"{cid}.yaml"
+        if not p.exists():
+            print(f"ev_proposal: 卡不存在 {cid}（{p}）", file=sys.stderr)
+            return 2
+        if p not in targets:
+            targets.append(p)
+    if not targets:
+        print("ev_proposal: 没有可回写的卡（--all-pending 只选「已验证且无该 PR 指针」的卡）")
+        return 0
+
+    block_tpl = ("  - who: agent\n"
+                 "    when: {when}\n"
+                 "    type: action\n"
+                 "    conclusion: \"合入指针回写：本卡（及其结论）随 PR #{pr} 进入 main"
+                 "（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）\"\n")
+    when = datetime.now().date().isoformat()
+    marked, skipped = [], []
+    for p in targets:
+        text = p.read_text(encoding="utf-8")
+        if _has_ref(text, pr):
+            skipped.append((p.stem, "已有该 PR 指针"))
+            continue
+        keys = _top_level_keys(text)
+        if keys and keys[-1] != "decisions":
+            skipped.append((p.stem, f"顶层最后一段是 {keys[-1]} 而不是 decisions——追加会破坏结构，需人处理"))
+            continue
+        if dry_run:
+            marked.append((p.stem, "dry-run"))
+            continue
+        new = text if text.endswith("\n") else text + "\n"
+        new += block_tpl.format(when=when, pr=pr)
+        write_text_lf(p, new, encoding="utf-8")
+        marked.append((p.stem, "已回写"))
+
+    for cid, why in marked:
+        print(f"  ✓ {cid}: {why}")
+    for cid, why in skipped:
+        print(f"  — {cid}: 跳过（{why}）")
+    print(f"ev_proposal --mark-merged {pr}: 回写 {len(marked)} 张、跳过 {len(skipped)} 张"
+          + ("（dry-run，未落盘）" if dry_run else ""))
+    return 2 if any("破坏结构" in w for _c, w in skipped) else 0
+
+
+# ---------------------------------------------------------------- 候选水位（积压治理）
+# 设计处（orchestration §2.4）把「候选水位上限」标为蓝图态，启用条件是"候选积压真实发生
+# （>20 在池）"。实测该条件早已满足（积压单调上升到数十张、日均产卡近十张），而 skill 正文
+# 那句"水位超限时只记信号不产卡"没有数值也没有读数——规则只在 prose 里，等于没有。
+# 本命令把它变成一条可机械读取的读数 + 退出码：≥上限退 1（下游按"只记信号不产卡"处理）。
+WATERLINE_DEFAULT = 20
+
+
+def waterline(root: Path, limit: int, as_json: bool = False):
+    pending, in_pool, other = [], [], 0
+    for f in sorted((root / IDEAS_DIR).glob("EV-*.yaml")):
+        doc = load_yaml(f)
+        if not isinstance(doc, dict):
+            other += 1
+            continue
+        cid = str(doc.get("id") or f.stem)
+        status = doc.get("status")
+        if status == "in_experiment":
+            in_pool.append(cid)
+        elif status == "validated" and not _has_any_ref(f.read_text(encoding="utf-8")):
+            pending.append(cid)
+    over = len(pending) >= limit
+    if as_json:
+        print(json.dumps({"limit": limit, "pending_review": len(pending), "in_pool": len(in_pool),
+                          "over": over, "pending_ids": pending, "in_pool_ids": in_pool},
+                         ensure_ascii=False, indent=2))
+    else:
+        print(f"候选水位：待回写/待合入 {len(pending)}（上限 {limit}）· 未闭合在池 {len(in_pool)}")
+        print(f"  读数 = 「已验证且无合入指针」的卡数（回写指针后该数即真实待合入量；见 --mark-merged）")
+        if over:
+            print(f"  ✗ 超限：本轮**只记信号不产卡**，先消化积压（设计处 orchestration §2.4）")
+        else:
+            print("  ✓ 未超限")
+    return 1 if over else 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="self-evolve 产卡辅助")
     ap.add_argument("--next", action="store_true", help="打印下一个卡号")
     ap.add_argument("--new", action="store_true", help="生成新卡骨架")
     ap.add_argument("--list", action="store_true", help="列现有卡")
+    ap.add_argument("--mark-merged", metavar="PR", help="把合入指针回写进卡的 decisions（追加，保留注释）")
+    ap.add_argument("--card", action="append", default=[], help="配合 --mark-merged：指定卡号（可多次）")
+    ap.add_argument("--all-pending", action="store_true",
+                    help="配合 --mark-merged：选全部「已验证且无该 PR 指针」的卡")
+    ap.add_argument("--dry-run", action="store_true", help="配合 --mark-merged：只打印不落盘")
+    ap.add_argument("--waterline", action="store_true", help="打印候选水位（超限退 1）")
+    ap.add_argument("--limit", type=int, default=WATERLINE_DEFAULT, help="配合 --waterline：上限")
+    ap.add_argument("--json", action="store_true", help="配合 --waterline：机器可读")
     ap.add_argument("--root", type=Path, default=Path("."))
     args = ap.parse_args()
     root = args.root.resolve()
@@ -128,6 +256,10 @@ def main():
         print(f"ID: {p.stem} —— 按 examples/sample-idea.yaml 填字段后跑 verify_proposals.py")
     elif args.list:
         list_cards(root)
+    elif args.mark_merged:
+        sys.exit(mark_merged(root, args.mark_merged, args.card, args.all_pending, args.dry_run))
+    elif args.waterline:
+        sys.exit(waterline(root, args.limit, args.json))
     else:
         ap.print_help()
 

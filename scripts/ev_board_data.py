@@ -13,6 +13,7 @@ import argparse
 import datetime
 import glob
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -233,18 +234,53 @@ def _all_strings(obj, out=None, depth=0):
     return out
 
 
+NEGATION_CUES = ("不存在", "已删", "已废", "未生成", "没有生成", "废除", "不要", "不再是")
+_BASENAME_CACHE = {}
+
+
+def _repo_basenames(root):
+    """仓内全部文件/目录名（判"相对路径引用"用；按 root 缓存一次）。"""
+    key = str(root)
+    if key not in _BASENAME_CACHE:
+        names = set()
+        for dirpath, dirnames, filenames in os.walk(root):
+            if dirpath.endswith("/.git") or "/.git/" in dirpath:
+                continue
+            names.update(dirnames)
+            names.update(filenames)
+        _BASENAME_CACHE[key] = names
+    return _BASENAME_CACHE[key]
+
+
 def scan_dead_refs(root, doc):
     """卡文本点名、但检出里已不存在**且不受 git 跟踪**的字面路径。
 
-    口径两处刻意收紧（否则判据全是假红，实测过）：
+    口径刻意收紧，五条（每条都是实测假红喂出来的）：
       - 运行时/被忽略件不算腐烂（`SURFACE_SKIP_PREFIX`）；
-      - 目录引用去尾斜杠后判存在性（`references/methodologies/` 是目录，不是死指针）。
+      - 目录引用去尾斜杠后判存在性（`references/methodologies/` 是目录，不是死指针）；
+      - **父目录必须存在**：父目录都不在的路径（如 `docs/en/…` 这种上游/仓外路径）不是"被删"；
+      - **同名文件在仓内别处存在 → 判为相对路径引用**：`references/diagnosis-trace.md` 的真实位置是
+        `skills/diagnose/references/diagnosis-trace.md`，卡是按那个 skill 的视角写的——不是腐烂；
+      - **否定语境不算**：卡本身在陈述"某路径不存在"时（"与 `references/_index.yaml` 均不存在"），
+        把它读成死指针是极性判错。
+    收紧前实测：6 个报出的路径里 4 个属上面这几类假红（真腐烂只有 2 个），判据的可信度被噪声吃掉。
     强度如实标注：本判据只说明"卡点名的文件不在了"，**不**断言卡的结论因此失效。
     """
+    text = " ".join(_all_strings(doc))
+    basenames = _repo_basenames(root)
     dead = []
-    for p in scan_refs(" ".join(_all_strings(doc))):
-        if not (root / p).exists():
-            dead.append(p)
+    for p in scan_refs(text):
+        if (root / p).exists():
+            continue
+        if not (root / Path(p).parent).exists():          # 父目录不存在 → 不是"被删/改名"
+            continue
+        if Path(p).name in basenames:                     # 同名文件在仓内别处 → 相对路径引用
+            continue
+        idx = text.find(p)
+        window = text[max(0, idx - 80): idx + len(p) + 40] if idx >= 0 else ""
+        if any(cue in window for cue in NEGATION_CUES):
+            continue
+        dead.append(p)
     return dead
 
 
@@ -522,10 +558,15 @@ def collect_stats(ideas):
 
     by_signal = {}
     for c in ok:
-        for s in c.get("source_signals") or []:
-            name = (s or {}).get("signal")
-            if name:
-                by_signal[name] = by_signal.get(name, 0) + 1
+        # **全量信号**，不是列表页那份截断到前 3 条的 `source_signals`（`collect_ideas` 里截断
+        # 是为面板列表页省地方）。实测代价：用截断列表时同一份 payload 里出现两个数——面板
+        # 「信号来源」显示 process_friction 40，而体检判决（走 signals_all）说 35，差 5 条来自
+        # 两张卡的多条同族信号。同一个概念在同一个 UI 里有两个数，读数就没法用（原则八）。
+        names = c.get("signals_all")
+        if names is None:      # 兜底：外部构造的 idea dict（无 signals_all）走截断列表
+            names = [(s or {}).get("signal") for s in (c.get("source_signals") or [])]
+        for name in dict.fromkeys(n for n in names if n):
+            by_signal[name] = by_signal.get(name, 0) + 1
 
     costs = []
     for c in ok:

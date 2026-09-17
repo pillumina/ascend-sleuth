@@ -76,14 +76,19 @@ description: >
 
 **第 3 步：产卡 + 自行验证（有信号时，agent 自动完成，不等用户）**：
 
-1. 查重 + **同组件先例咨询**（防重提被拒方案——skill-impact 咨询语义；
+1. **先读候选水位**（产卡前的机械检查，别靠自觉）：`python3 scripts/ev_proposal.py --waterline`
+   ——输出「待回写/待合入 N（上限 20）」，**超限退 1**；退 1 时本轮**只记信号不产卡**，先消化积压
+   （信号照记在收尾说明里，条件到了再产）。读数含"指针没回写"的成分，超限时先按
+   `--mark-merged <PR号> --all-pending` 把上一批的指针补齐再看剩余量——把已合入的卡读成未合入，
+   会让动作走成"停产"而真正该做的是回写；
+2. 查重 + **同组件先例咨询**（防重提被拒方案——skill-impact 咨询语义；
    论证可选层 docs/mechanism/pipeline.md §12a）：`python3 scripts/ev_proposal.py --list`
-   ——同 trajectory/同 target 已有在池卡 → 合并不新建（候选水位超限时只记信号不产卡）；
+   ——同 trajectory/同 target 已有在池卡 → 合并不新建；
    同时查本卡要改的组件（skill 步骤 / triage 分支 / script）在历史卡里的结局：
    `--list` 定位同组件卡 → 读其 decisions——该组件被改过 / 回滚过 / 有 rejected 结论 =
    该方向已试过 → 不重复方案（改提新方向，或记信号不产卡）；E6 落地后改用
    `scripts/ev_proposal.py --impact` 聚合视图（组件×尝试×结局）一次查全；
-2. 产骨架：`python3 scripts/ev_proposal.py --new` → 填字段（layer / title /
+3. 产骨架：`python3 scripts/ev_proposal.py --new` → 填字段（layer / title /
    source_signals 带 trajectory / hypothesis / predicted_effect / validation /
    risk / principle_refs），trajectory 必须指到本轮执行出处（产出文件 id / replay
    结果 / trace）；
@@ -93,7 +98,7 @@ description: >
    符合 / 被证伪 / 无法判定）。真不可度量时如实声明 `reason`，不要编一条命令。
    预测写不出可复现口径，通常说明它还不是一个可证伪的假设——先改预测。
    与 `trajectory` 的分工：trajectory 管**问题可回放**，measure 管**预测可复现**；
-3. **自行验证执行**（评估自动化的核心——agent 自己验证，不把验证推给人）：
+4. **自行验证执行**（评估自动化的核心——agent 自己验证，不把验证推给人）：
    - 按**影响面分级**选门禁（docs/eval.md「门禁分级」可选论证层，下述为执行值）：
      **检索/路由/候选选择面**改动 → golden 子集前后对照（2-5 条受影响 fixture，
      非全量；基线缓存复用，只跑改后侧）或 S2 replay（`scripts/replay_golden.py` /
@@ -114,7 +119,7 @@ description: >
      "已实现待真实确认"（现场有效性进观察窗，事后结算）；
    - **先跑一遍自己的 `measure`**（`scripts/ev_measure.py <卡号> --run`）：判据跑不通
      或期望对不上的预测，不算验证——先修判据或如实改预测，别把不可复现的预期留在卡上；
-4. **agent 判断（EV 卡 = agent 决策档案，不含 git 合入态/待办态）**：
+5. **agent 判断（EV 卡 = agent 决策档案，不含 git 合入态/待办态）**：
    - eval solid → `validated`（采纳：改动保留，进流程层攒批/PR 供人审）；
    - eval 不成立 / 实验失败 → `rejected`（不采纳：留结论，改动不保留）；
    - 发现更好方向 → 新卡 supersede 本卡（`superseded`）；

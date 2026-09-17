@@ -414,7 +414,8 @@ $B_{\text{attn}}$）。**结论：卡面主要供 agent（下一轮起草查同�
 | **蓝图** | stale 候选过期态 | 候选积压真实发生（>20 在池）后（先用 inbox 式标红） |
 | **蓝图** | 策略记忆独立文件（strategy-memory.yaml） | 季度自评跑通 ≥1 轮后（此前并入 session context） |
 | **蓝图** | reviews/experiments 独立目录 | 有真实归档需求后（此前并入 session state，运行时载体） |
-| **蓝图** | 稳态降频（steady）、候选积压治理水位 | scope 真实收敛或积压出现后 |
+| **已落地** | 候选水位治理（orchestration §2.4 第一条：水位读数 + 合入指针回写） | 触发条件「积压真实发生」已满足；落地形态是 `ev_proposal.py --waterline`（读数 + 退出码）与 `--mark-merged`（指针回写）。候选过期态仍为蓝图 |
+| **蓝图** | 稳态降频（steady） | scope 真实收敛后 |
 | **蓝图** | 运行模式细化（任务级攒批跨轮） | 用户真实要求"跨多轮攒批"后（默认批边界 = 一轮已够） |
 | **蓝图** | proposal 影响视图（同组件先例咨询的聚合形态：`ev_proposal.py --impact` 按 target_component 聚合尝试×diff×eval×decision，skill-impact 语义，见 §12a） | 首个 L2 rejected/回滚簇出现后（roadmap E6；此前"查同组件先例"为 evolve-check/self-evolve 产卡步骤，手工执行） |
 | **蓝图** | 成功模式提取信号（evolve-check T8，见 §12a） | 常态运行中首次出现可复述成功模式（roadmap E7；无信号即止，不预设轮次） |
