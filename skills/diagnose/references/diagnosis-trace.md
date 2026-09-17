@@ -14,6 +14,15 @@ triage | load_index | quickly_check | load_full | run_check | hit | miss | tier3
 
 user 事件无 `action`，不参与词表检查。**新增 action 时同步改 `trace_metrics.py` 的 `KNOWN_ACTIONS` 与本文**（单一数据源纪律）。
 
+### `triage` 事件（Tier-1 路由决策）
+
+字段 `{action: triage, routed, category, output, reason}`：
+
+- **`routed` 必写**，值是被路由到的 namespace 列表（按 `search_namespaces` 的顺序，如 `["inference/vllm-ascend", "common"]`）。
+- **没命中任何分支也要写 `routed: []`，不要省略这个字段**——省略会被结算读成「未记录」，而「未记录」与「没错」在数据上同形（路由准确率的分母与 router 错例池都取这个字段）。
+- 命中分支后走了语义兜底，另记 `triage_semantic`（带 `namespace` + `category`）：它同样计入路由准确率，**不要只留 triage 而不带 routed**。
+- 完全无法分类时写 `routed: []`，并在 `reason` 里写明「无可用 namespace（原因）」，然后按流程走 Tier 3。
+
 ### `reference_lookup` 事件（四触发点 + 三态）
 
 先验层的四个触发点各记一条，字段 `{action, purpose, outcome, ref_id, platform, output, reason}`：

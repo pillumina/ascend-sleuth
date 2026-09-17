@@ -1,0 +1,68 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演进决策档案
+# schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+id: EV-2026-115
+layer: L2
+title: triage 事件的字段契约补进 trace schema——`routed` 必须写，省略即与"路由没错"同形
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: measurement
+    evidence: "本机 14 条历史 session 里 **3 条（21%）的 `triage` 事件没有任何字段**（`load_index` 也是空的，无处可转录）。两个消费者因此读不到路由决策：① 路由准确率（`trace_metrics.py` 比 `triage.routed` / `triage_semantic.namespace` 与命中 case 的实际 namespace）→ 该单既不算对也不算错，不进分母；② E2 的错例池就从 `routed` 里取「路由错了」的单 → 该单永远进不了池。于是仓库里「当前路由错例 = 0」的读数，是在『有的单压根没记』的前提下数出来的。"
+    trajectory:
+      - "traces/2026-08-31-msllm-1801-cann-ops-transformer.yaml#triage（空事件）"
+      - "scripts/trace_metrics.py#triage_miss_classes.routed_unrecorded（读数 3）"
+      - "docs/metrics.md#路由准确率口径"
+  - signal: design_gap
+    evidence: "`skills/diagnose/references/diagnosis-trace.md` 定义了 action 词表与 `reference_lookup` / `procedure_follow` / `sediment_candidates` 的字段契约，**唯独没写 `triage` 事件必须带什么**；SKILL 正文只有一句『triage 决策记 trace』。即：指标在消费一个 schema 从未规定的字段——契约缺口，不是执行者疏忽。"
+    trajectory:
+      - "skills/diagnose/references/diagnosis-trace.md#KNOWN_ACTIONS 之后（改前无 triage 段）"
+hypothesis: "把 `triage` 事件的字段契约写进 trace schema（命中分支必须带 `routed`；未命中写 `routed: []` 而不是省略字段；走语义兜底另记 `triage_semantic` 带 `namespace`）后，路由决策在每一单上都可见——「没记」不再与「没错」同形，E2 的错例池不再按记录缺口漏单。"
+predicted_effect:
+  metric: triage 路由决策的可归因率（每单是否留下路由落点）
+  from: "本机 14 单里 3 单无任何路由落点（21%）；`trace_metrics.py` 记为 routed_unrecorded"
+  to: "新单的 `triage` 事件一律带 `routed`（未命中写 `routed: []`）；`routed_unrecorded` 只反映契约生效前的历史单"
+  measure:
+    command: null
+    reason: "被测对象是**未来诊断**写 trace 的行为，本仓没有可机械复现的判据（历史单不可回填：那 3 条事件为空、回填只能靠猜）。可核的是观察窗——下一批真实 trace 里 `trace_metrics.py` 的 `triage_miss_classes.routed_unrecorded` 不再增长，且未命中单出现在 lexical_gap / semantic_path 两类里（说明写的是 `routed: []` 而非省略字段）。"
+validation:
+  method: scan_review
+  baseline: 改前 trace schema 无 `triage` 字段契约；实测 3/14 单无路由落点
+  success_criteria: |
+    ① `skills/diagnose/references/diagnosis-trace.md` 新增 `triage` 事件段：命中分支带 `routed`（namespace 列表）；
+       未命中写 `routed: []` 并说明"省略字段 = 记为未记录，与路由没错同形"；语义兜底另记 `triage_semantic`（带 namespace + category）；
+    ② SKILL 正文对应步骤（步骤 2 与「每步必写 trace」事件清单）各补一句，使不读展开文档也照做；
+    ③ 与 `trace_metrics.py` 现有判据一致（省略 → routed_unrecorded；`routed: []` → lexical_gap / semantic_path），两处口径不打架；
+    ④ 不回填历史 trace（无信息可转录，回填即编数据）——历史缺口由读数如实承担；
+    ⑤ skill 外部锚卫生绿（无日期 / ADR 号 / 卡号）。
+  rollback: 两处文档改动可整体 revert，无代码与数据副作用（原则七）
+gate:
+  condition: "不等数据触发：补的是 schema 缺失的字段契约（观测面完整性），随 PR 合入"
+risk: low
+principle_refs: [2, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径记 0"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：triage 事件字段契约进 trace schema。来源：实装 `trace_metrics.py` 的 triage-miss 归类时发现 3/14 单无路由落点，追到 schema 从未规定该字段——指标在消费一个未定义的字段"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：`skills/diagnose/references/diagnosis-trace.md` 新增「`triage` 事件（Tier-1 路由决策）」段（`routed` 必写；未命中写 `routed: []` 而非省略；语义兜底另记 `triage_semantic` 带 namespace；无法分类写 `[]` + reason）；`skills/diagnose/SKILL.md` 步骤 2 与「每步必写 trace」事件清单各补一句，使不读展开文档也照做。**不回填历史 trace**——那 3 条事件为空、回填即编数据。"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "① 口径一致性自查：契约与 `trace_metrics.py` 的现有判据对得上——省略字段 → `routed_unrecorded`；显式 `routed: []` → 进 lexical_gap / semantic_path（即「真 miss」）；② skill 外部锚卫生绿（零日期 / 零 ADR 号 / 零卡号）；③ 全套 13 项 CI 命令 + 52 条单测在本地全绿；④ 效果层按卡内声明不可机械度量，留观察窗：下一批真实 trace 里 `triage_miss_classes.routed_unrecorded` 不再增长。"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated，形式可核 + 效果进观察窗）。残余：①历史 3 单的路由落点永久缺失（无信息可转录），由读数 `routed_unrecorded: 3` 如实承担；②契约靠执行者照做，本仓没有能机械校验 trace 字段的门（trace 是 gitignored 运行时件、CI 里不存在），故不假装硬化，只把口径写进 schema 并让 `trace_metrics.py` 持续报读数。"
