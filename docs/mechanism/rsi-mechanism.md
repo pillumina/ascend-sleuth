@@ -26,29 +26,30 @@
 三条环路共用一条链：前两条产生数据，演进读数据改机制，改完回落到前两条。链条每一段都要能回答"凭什么说它变好了"，这是第 5 节的内容。
 
 ```mermaid
-flowchart TD
-    P["工程师贴日志"] --> D["诊断：路由 → 载入候选 → 逐条核验"]
-    D --> FIX["修复建议"]
-    D -->|命中与未命中都是数据| EV
-    FIX --> SM["沉淀：笔记 / 上游 issue / 官方文档"]
-    SM --> Q["待审草稿"]
-    Q --> GR["每周批审：分流 + 升格"]
-    GR --> KB[("知识库")]
-    KB --> D
-    GR -->|批审中发现的缺口与摩擦| EV
-    EV{{"演进：检查有没有可改进的地方"}}
-    EV --> CARD["记一条改进项：方案 + 可验证的预期"]
-    CARD --> RUN["执行改动并验证"]
-    RUN --> PR["合并成一个 PR"]
-    PR --> HUMAN["人审合入"]
-    HUMAN --> KB
-    HUMAN -->|合入后回写指针| CARD
-    J["定期体检：判据越界就报警"] --> EV
-    J --> HUMAN
+%%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':40,'rankSpacing':50,'padding':10}}}%%
+flowchart LR
+    DX["诊断环<br/>每次出问题，分钟级<br/>产出：修复建议 + 诊断记录"]
+    CJ["沉淀环<br/>定位结束或每周批量<br/>产出：审核后的知识条目"]
+    YJ["演进环<br/>内容流程收尾或全库体检<br/>产出：改进项 → 改动 → 合入"]
+    KB[("知识库")]
+    DX -.->|"数据：命中、未命中、流程摩擦"| YJ
+    CJ -.->|"数据：覆盖缺口、重复动作"| YJ
+    YJ -->|"回到诊断"| DX
+    YJ -->|"回到沉淀"| CJ
+    CJ --> KB
+    KB --> DX
 
-    classDef human fill:#ffe8cc,stroke:#d9480f,stroke-width:2px
-    class HUMAN human
+    classDef dx fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px,color:#0b3d66
+    classDef cj fill:#e6fcf5,stroke:#0ca678,stroke-width:1.5px,color:#0b4f3a
+    classDef yj fill:#fff4e6,stroke:#e8590c,stroke-width:1.5px,color:#7a2e00
+    classDef store fill:#f1f3f5,stroke:#868e96,stroke-width:1.5px,color:#343a40
+    class DX dx
+    class CJ cj
+    class YJ yj
+    class KB store
 ```
+
+蓝色是诊断，绿色是沉淀，橙色是演进。虚线是交给演进的数据，实线是改完之后的回落。
 
 ---
 
@@ -86,37 +87,43 @@ flowchart TD
 ### 4.1 主线
 
 全流程的交互图在 [自演进机制全流程](../diagrams/self-evolve-flow.html)（可切主题、可导出 PNG）。下面是同一条线，只标出每一步由谁做。
+颜色：蓝框由系统自动执行，黄框是判断点，红框需要人，灰框是终态。
 
 ```mermaid
+%%{init: {'themeVariables':{'fontSize':'14px'},'flowchart':{'curve':'basis','nodeSpacing':40,'rankSpacing':46,'padding':10}}}%%
 flowchart TD
-    subgraph AUTO["系统自动执行"]
-        A1["收尾检查：读本轮记录，对照信号表"] --> A2{"积压量超上限？"}
-        A2 -->|超限| A3["只记信号，不立改进项"]
-        A2 -->|未超限| A4["立改进项：方案 + 可验证的预期"]
-        A4 --> A5["按影响面选检查手段"]
-        A5 --> A6["执行改动并验证"]
-        A6 --> A7{"预期成立？"}
-        A7 -->|成立| A8["记采纳"]
-        A7 -->|不成立| A9["记不采纳，保留结论"]
-        A7 -->|发现更好的方向| A10["记换方向，新项替代"]
-        A8 --> A11["合并成一个 PR"]
-    end
-    subgraph MAN["需要人"]
-        M1["下内容目标，或要求做全库体检"]
-        M2["改输出形态时：新旧输出对照，人判哪份更清楚"]
-        M3["审查合并"]
-        M4["定期跑体检"]
-    end
-    M1 --> A1
-    M4 --> A1
-    A5 --> M2
-    A11 --> M3
-    M3 -->|合入| DONE["落地，回写指针，判据读数回落"]
-    M3 -->|按项打回| A9
-    DONE --> A1
+    T(["触发：内容流程收尾 / 全库体检 / 判据越界"]) --> A1["收尾检查<br/>读本轮记录，对照信号表"]
+    A1 -->|无信号| Z1(["一行记录即止"])
+    A1 -->|有信号| Q2{"积压量超上限？"}
+    Q2 -->|超限| Z2(["只记信号，不立改进项"])
+    Q2 -->|未超限| A4["立改进项<br/>方案 + 可验证的预期"]
+    A4 --> A5["按影响面选检查手段"] --> A6["执行改动并验证"] --> Q3{"预期成立？"}
+    Q3 -->|不成立| Z3["记不采纳，保留结论"]
+    Q3 -->|更好方向| Z4["记换方向，新项替代本项"]
+    Q3 -->|成立| A11["记采纳，合并成一个 PR"] --> M3["审查合并"]
+    M3 -->|打回| Z3
+    M3 -->|合入| DONE(["回写合入记录，判据读数回落"]) --> A1
+    M1["人：下内容目标 / 要求全库体检 / 定期跑体检"] -.-> A1
+    M2["人：改输出形态时，新旧输出对照"] -.-> A5
 
-    classDef human fill:#ffe8cc,stroke:#d9480f,stroke-width:2px
-    class M1,M2,M3,M4 human
+    classDef auto fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px,color:#0b3d66
+    classDef dec fill:#fff9db,stroke:#f08c00,stroke-width:1.5px,color:#664d03
+    classDef human fill:#ffe3e3,stroke:#c92a2a,stroke-width:2px,color:#7a1c1c
+    classDef term fill:#f1f3f5,stroke:#868e96,stroke-width:1.5px,color:#343a40
+    class A1,A4,A5,A6,A11 auto
+    class Q2,Q3 dec
+    class M1,M2,M3 human
+    class T,Z1,Z2,Z3,Z4,DONE term
+```
+
+```mermaid
+%%{init: {'themeVariables':{'fontSize':'13px'},'flowchart':{'curve':'basis','nodeSpacing':14,'rankSpacing':24,'padding':6}}}%%
+flowchart LR
+    L1["系统自动执行"]:::auto ~~~ L2["判断点"]:::dec ~~~ L3["需要人"]:::human ~~~ L4["终态"]:::term
+    classDef auto fill:#e7f5ff,stroke:#1971c2,stroke-width:1.5px,color:#0b3d66
+    classDef dec fill:#fff9db,stroke:#f08c00,stroke-width:1.5px,color:#664d03
+    classDef human fill:#ffe3e3,stroke:#c92a2a,stroke-width:2px,color:#7a1c1c
+    classDef term fill:#f1f3f5,stroke:#868e96,stroke-width:1.5px,color:#343a40
 ```
 
 三种终局的比例本身就是一条读数。如果只有采纳和换方向、从来没有不采纳，那么采纳记录不能单独作为质量结论——它说明这个系统缺一种拒绝的出口。外部研究把这件事说得很直接，见第 7 节。
