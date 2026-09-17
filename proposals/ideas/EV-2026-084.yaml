@@ -39,7 +39,9 @@ predicted_effect:
     command: >-
       python3 -c "import yaml,glob,sys;c=set();[c.update(str(e['code']) for e in (yaml.safe_load(open(f)).get('content') or {}).get('errors') or []) for f in glob.glob('references/errors/*.yaml')];need={'EH0007','EH0014','EE1012','EE1024','EK0202','EP0005','EZ2001','WE0001'};print('codes',len(c));print('missing',sorted(need-c));sys.exit(1 if need-c else 0)"
     expect_exit: 0
-    expect_stdout: "codes 346"
+    # 期望断言**属性**（必需码齐全，命令里已断言），不钉总数：实测今天为 codes 397，
+    # 346 是当时的规模、已腐烂。
+    expect_stdout: "codes"
 validation:
   method: metrics_compare
   baseline: >-
