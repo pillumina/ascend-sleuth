@@ -5,10 +5,10 @@
 # 按 file 字段定位做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-09-17    case 总数：163
+# 生成日期：2026-09-17    case 总数：166
 #   容量(common): performance=15/30, precision=6/30
 #   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=89/30, performance=8/30, precision=22/30
+#   容量(inference/vllm-ascend): interrupt=91/30, performance=8/30, precision=23/30
 #   容量(training/mindspeed-llm): interrupt=11/30, precision=4/30
 #   容量(training/verl): interrupt=6/30, precision=1/30
 namespaces:
@@ -1048,6 +1048,33 @@ namespaces:
       - MXFP4
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-11924.yaml
       hash: 2643f04bfe54
+    - id: VLLM-ASC-12211
+      title: 'Anthropic /v1/messages 每次请求 500：patch_anthropic_system_message 的两参 monkey-patch 与打包上游 vLLM
+        的 merge_inline_system= 调用点错配（TypeError: _patched_convert_system_messa…'
+      category: interrupt
+      tags:
+      - patch
+      - monkey-patch
+      - anthropic-api
+      - messages-api
+      - signature-mismatch
+      - typeerror
+      compat: vllm-ascend 0.21.0rc1,>=0.21.0rc1,<0.23.0rc1; vllm >0.21.0
+      confidence:
+        score: 0.6
+      symptoms:
+      - Ascend vllm-ascend 0.21.0rc1 官方镜像上，每一条 POST /v1/messages 请求都返回 HTTP 500，开箱即现、无需任何改动（与模型/权重无关）
+      sig:
+      - merge_inline_system
+      tok:
+      - 0.21.0rc1
+      - ERROR
+      - _patched_convert_system_message()
+      - api_router.py
+      - serving.py
+      - v0.23.0rc1
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12211.yaml
+      hash: 9433227e557d
     - id: VLLM-ASC-12226
       title: camem sleep/wake 是字节级 memcpy（恢复后权重已是 forward READY 方向），NPUWorker.wake_up 又对 MoE w13/w2 transpose(1,2)
         一次构成双重转置，纯推理 wake_up 后 K 维错位（3072 vs 2048）→ npu_grouped_ma…
@@ -1159,6 +1186,31 @@ namespaces:
       - kernel_name=MoeDistributeDispatchV2
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12461.yaml
       hash: b9283513da03
+    - id: VLLM-ASC-12640
+      title: DSpark V1（method=dspark + DP>1）在 DP 补齐 drafter token 时崩溃：draft attention metadata 先于 positions/slot
+        buffer 哨兵构建、非因果 DSA decode token 计数与 num_input_tokens 口径不一致 …
+      category: interrupt
+      tags:
+      - dspark
+      - spec-decode
+      - drafter
+      - dp
+      - data-parallel
+      - metadata-padding
+      compat: vllm-ascend 含 DP 补齐口径不一致的 DSpark 构建（现场 main f5b5514afdb9ed53e7382ce8abdefec0bd0e5c62；读码版本
+        v0.26.0rc1，同代结构）; vllm 54503ecec0f3ac31e5ecfc5f28652e4cc42307b5
+      confidence:
+        score: 0.3
+      symptoms:
+      - DSpark 投机解码（--speculative-config '{"method":"dspark","num_speculative_tokens":N}' + DP>1，现场 TP4/DP4/EP
+        共 16 NPU、V1 model…
+      sig: []
+      tok:
+      - EZ9999
+      - VLLM_USE_V2_MODEL_RUNNER
+      - aclnnInplacePartialRotaryMul
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12640.yaml
+      hash: 140fa0ab660f
     - id: VLLM-ASC-12685
       title: 非量化模型被自动路由进 AscendFp8Config：fp8_config.py get_quant_method 硬编码 ds_linear scheme，MiniMax-M2.7
         启动即 AttributeError 'o_groups'
@@ -3191,6 +3243,28 @@ namespaces:
       - sfa_v1.py
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12957.yaml
       hash: 606f692ec5b9
+    - id: VLLM-ASC-13070
+      title: thinking 开启时 usage.completion_tokens_details.reasoning_tokens 恒为 0（reasoning 字段内容正常、finish_reason
+        正常）：reasoning parser 未覆写 count_reasoning_tokens 的计数路径缺位 → 计量失真
+      category: precision
+      tags:
+      - reasoning-tokens
+      - usage-accounting
+      - thinking
+      - reasoning-parser
+      - glm
+      - tool-call
+      compat: vllm-ascend 0.20
+      confidence:
+        score: 0.3
+      symptoms:
+      - thinking 开启时，响应正常返回 message.reasoning（完整思考文本）、finish_reason 正常（如 tool_calls），但 usage.completion_tokens_details.reasoning…
+      sig: []
+      tok:
+      - '5.1'
+      - '5.2'
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-13070.yaml
+      hash: b6f7fdf89be5
     - id: VLLM-ASC-14265
       title: v0.26.0rc GLM-5.2+MTP 投机接受率相对 v0.23 大幅劣化：MegaMoe 对称通信 prefill buffer 按 decode graph 大小分配（enable_prefill_mc2
         关闭时）致大 prefill batch 容量溢出产生错误输出

@@ -1,0 +1,121 @@
+# VLLM-ASC-12211 —— Anthropic /v1/messages 每个请求 500：patch_anthropic_system_message 的
+#   旧两参 monkey-patch 与打包上游 vLLM 的调用点（merge_inline_system=）错配 → TypeError
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12211
+# fix：该补丁在 v0.23.0rc1 起已从 vllm_ascend/patch/platform/ 移除（上游已具备 inline system
+#   合并能力）→ 升级到较新版本，或从构建里去掉该补丁文件
+# verification: upstream-maintainer-confirmed（维护者：该补丁在最新代码已移除，请用最新代码）
+#   + 本地读码复核（v0.21.0rc1 补丁两参签名 ↔ 打包上游 vllm/entrypoints/anthropic/serving.py
+#   调用点传 merge_inline_system=）
+# pre-triage: variant_of VLLM-ASC-9056 / VLLM-ASC-7823 —— 同族「patch 层与上游源码漂移」：
+#   9056=上游新增关键字 hash_block_size、7823=上游改写后补丁定位失败；本条=上游新增关键字
+#   merge_inline_system。三者签名不同（quickly_check 不互命中），维护者处置同为「删补丁/升级」
+# 脱敏：无内网 IP/账号/主机名；镜像名、端口、910B2 机型为公开材料原值
+# 建议命名空间：inference/vllm-ascend/interrupt/
+
+cases:
+  - id: VLLM-ASC-12211
+    title: "Anthropic /v1/messages 每次请求 500：patch_anthropic_system_message 的两参 monkey-patch 与打包上游 vLLM 的 merge_inline_system= 调用点错配（TypeError: _patched_convert_system_message() got an unexpected keyword argument）——该补丁在 v0.23.0rc1 起已移除，升级/去补丁即修复"
+
+    category: interrupt
+    tags: [patch, monkey-patch, anthropic-api, messages-api, signature-mismatch, typeerror, http-500, upstream-drift]
+    # 机制与硬件平台无关（纯 patch 层与打包上游 vLLM 的签名错配，同版本/同镜像在任何平台同触发）——
+    # 此处列平台仅为字段完整性，不设平台分支
+    platforms: ["A2-910B", "A3-910C", "A5-950"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.21.0rc1", ">=0.21.0rc1,<0.23.0rc1"]   # 现场=0.21.0rc1；v0.23.0rc1 起该补丁已移除（已核）；区间下界未逐版本核
+      - framework: vllm
+        ranges: [">0.21.0"]        # 该镜像打包的上游 vLLM 比 v0.21.0 tag 新——v0.21.0 tag 的 serving.py 尚无该关键字，精确引入版本待确认
+
+    investigation_quality: high   # 错配两侧（补丁签名 / 上游调用点）均在公开源码核对；维护者处置一致
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                  # 保守取值：groom 先验表 upstream-maintainer-confirmed × high = 0.65，此处不取高
+      last_hit: ""
+
+    symptoms:
+      - "Ascend vllm-ascend 0.21.0rc1 官方镜像上，每一条 POST /v1/messages 请求都返回 HTTP 500，开箱即现、无需任何改动（与模型/权重无关）"
+      - "服务端日志：ERROR api_router.py:72 Error in create_messages: _patched_convert_system_message() got an unexpected keyword argument 'merge_inline_system'"
+      - "栈指向上游 vllm/entrypoints/anthropic/serving.py 的 _convert_anthropic_to_openai_request → cls._convert_system_message(anthropic_request, openai_messages, merge_inline_system=merge_inline_system)"
+      - "OpenAI 风格接口（/v1/chat/completions 等）不受影响——只有 Anthropic 消息转换路径经过被 patch 的两个方法"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12211"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "issue #12211 维护者结论：该补丁在最新代码里已移除，请用最新代码（无 fix PR——是删补丁而非改补丁）；另经本地读码核对 v0.21.0rc1 的 vllm_ascend/patch/platform/patch_anthropic_system_message.py 为旧两参签名（cls, anthropic_request, openai_messages，第 61-65/79-83 行，第 99-100 行做 classmethod 赋值），而该镜像打包的上游 vLLM serving.py 已以 merge_inline_system= 调用这两个方法；该补丁文件在 v0.23.0rc1 起已从 patch/platform/ 消失"
+
+    quickly_check:
+      primary:
+        command_template: 'grep -aE "_patched_convert_[a-z_]+\(\) got an unexpected keyword argument" {{server_log}}'
+        rank_selector: coordinator      # 报错端是承载 /v1/messages 的 API 前端（api_router）
+        expected: 'regex:_patched_convert_\w+\(\) got an unexpected keyword argument .+merge_inline_system'
+        note: "命中即本条签名（被 patch 的函数名 + TypeError 措辞 + 上游新增关键字名），无需再看栈"
+      fallback:
+        command_template: 'grep -aE "merge_inline_system|Error in create_messages" {{server_log}} {{launch_log}}'
+        rank_selector: coordinator
+        expected: 'regex:merge_inline_system'
+        note: "日志被裁剪/格式变化时用上游关键字名兜底；该名只出现在这条错配链上（补丁侧或上游 serving 侧）"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：Anthropic 接口（POST /v1/messages）每条请求 500，报 `_patched_convert_system_message() got an unexpected keyword argument 'merge_inline_system'`？"
+        expected: "是——服务端 TypeError（接口级失败、与模型/权重无关），属 interrupt 面"
+        fix_on_mismatch: "若报的是另一个「unexpected keyword argument」（如 hash_block_size）→ 转 VLLM-ASC-9056（patch_balance_schedule 遇上游新增关键字）；若报 patch 定位失败 → 转 VLLM-ASC-7823"
+        rollback: "无（只读检查）"
+      - step: 2
+        command_template: "python3 -c \"import vllm_ascend, vllm; print(vllm_ascend.__version__, vllm.__version__)\""
+        rank_selector: coordinator
+        expected: "regex:0\\.21\\.0rc1"
+        fix_on_mismatch: "版本不在受影响区间（>=v0.23.0rc1 该补丁已移除）却仍报同一签名 → 说明是自建构建里额外打回了旧补丁，检查构建脚本/patch 清单而不是升级"
+        rollback: "无（只读检查）"
+      - step: 3
+        command_template: "grep -n 'def _patched_convert_system_message' -A6 vllm_ascend/patch/platform/patch_anthropic_system_message.py"
+        rank_selector: coordinator
+        expected: "regex:def _patched_convert_system_message"
+        fix_on_mismatch: "无此文件（v0.23.0rc1 起已移除）→ 该版本不含这条错配，按 step 6 用最新代码验证；若函数签名已带 merge_inline_system/**kwargs → 补丁已修，按其它 500 原因继续排查"
+        rollback: "无（只读检查）"
+        note: "两参签名（cls, anthropic_request, openai_messages）才触发本条；._convert_messages 同样被该关键字调用，两个方法都受影响"
+      - step: 4
+        command_template: "grep -n 'merge_inline_system' $(python3 -c \"import vllm,os;print(os.path.dirname(vllm.__file__))\")/entrypoints/anthropic/serving.py"
+        rank_selector: coordinator
+        expected: "regex:merge_inline_system"
+        fix_on_mismatch: "上游 serving.py 无该关键字 → 打包的是旧 vLLM，本条错配不成立，回到「500 的其它原因」排查"
+        rollback: "无（只读检查）"
+        note: "两侧同时成立才是本条：补丁侧旧签名 + 打包上游侧新调用点"
+      - step: 5
+        check: "修复方案选择：(a) 升级到 v0.23.0rc1 及以上（补丁已移除，上游自带 inline system 合并能力）；(b) 无法升级时，从构建里去掉该补丁文件；或 (c) 让两个补丁函数接受并尊重 merge_inline_system（并加 **kwargs 兜后续签名变化）"
+        expected: "三条任选其一；改动后重启服务"
+        fix_on_mismatch: "只改 _convert_system_message、漏改 _convert_messages → 仍会 500（两个方法都在调用点被传该关键字）"
+        rollback: "回退到原版本/恢复原补丁（问题复现）"
+      - step: 6
+        command_template: "curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8000/v1/messages -H 'Content-Type: application/json' -d '{\"model\": \"<model>\", \"max_tokens\": 32, \"messages\": [{\"role\": \"user\", \"content\": \"Hi\"}]}'"
+        rank_selector: coordinator
+        expected: "regex:^200$"
+        fix_on_mismatch: "仍为 500 → 取新的服务端栈，确认是否同一签名（同一签名说明补丁未真正去除/未重启生效）"
+        rollback: "无（只读验证）"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      vllm-ascend 的 patch 层与它打包的上游 vLLM 之间发生方法签名错配：
+      vllm_ascend/patch/platform/patch_anthropic_system_message.py 把
+      AnthropicServingMessages._convert_system_message 与 ._convert_messages 都替换成旧的两参形式
+      （cls, anthropic_request, openai_messages），而该版本镜像打包的上游 vLLM 已在
+      vllm/entrypoints/anthropic/serving.py 的 _convert_anthropic_to_openai_request /
+      to_chat_completion_request 里以 merge_inline_system= 关键字调用这两个方法——补丁函数不接该
+      关键字 → TypeError: _patched_convert_system_message() got an unexpected keyword argument
+      'merge_inline_system' → /v1/messages 每次请求 500。属 patch 层「上游源码漂移」家族：上游给
+      方法加了关键字参数，vllm-ascend 的整函数替换补丁没跟上。根治形态是删掉已被上游吸收的补丁
+      （该补丁在 v0.23.0rc1 起已从 vllm_ascend/patch/platform/ 移除）。
+
+    fix: >
+      优先升级到 v0.23.0rc1 及以上（该补丁已被上游能力吸收并移除，无需任何额外改动）；若必须留在
+      0.21.0rc1：从构建里去掉 patch_anthropic_system_message.py（会失去 inline system 合并行为），
+      或让两个补丁函数接受并尊重 merge_inline_system（并加 **kwargs 兜住后续签名变化），两个方法
+      都要改。改完重启服务，用同一 curl 复测应得 200。
+    rollback: "回退到原版本/恢复原补丁文件并重启（问题复现）"

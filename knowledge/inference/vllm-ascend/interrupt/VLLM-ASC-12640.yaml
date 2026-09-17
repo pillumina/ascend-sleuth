@@ -1,0 +1,129 @@
+# VLLM-ASC-12640 —— DSpark V1（DP>1）在 DP 补齐 drafter token 时崩溃：draft attention metadata
+#   早于 positions/slot buffer 的补齐哨兵构建、非因果 DSA 的 decode token 计数与 num_input_tokens
+#   两个口径不一致 → 算子首维不符（aclnnInplacePartialRotaryMul / EZ9999: dim0 must be equal）
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/12640
+# fix：DSpark/DSA metadata 构造侧把 DP 补齐契约统一——先补 token buffer 哨兵再建 draft metadata、
+#   非因果 DSA decode token 计数对齐 num_input_tokens、SWA 补齐行 lens=0/slots=-1；
+#   报者关联上游修复 PR（[Bugfix] Fix DSpark DP-padded metadata），合入状态与首个含修复版本未确认
+# verification: investigation（三处口径不一致已按源码读到；issue 自述根因与关联修复面一致，
+#   但缺现场完整栈、无 NPU 复现环境 → 方向明确、未钉到具体失配行）
+# pre-triage: new_pattern —— 与 VLLM-ASC-13710（pcp_utils MTP 形状失配 expanded size ...
+#   must match existing size）、VLLM-ASC-9887（MoE 分发 error code 507034）、VLLM-ASC-12723
+#   （DSpark rope 精度劣化，不崩）签名与形态均不同，quickly_check 不互命中
+# 脱敏：模型名去掉本地挂载路径，无内网 IP/账号/主机名
+# 建议命名空间：inference/vllm-ascend/interrupt/
+
+cases:
+  - id: VLLM-ASC-12640
+    title: "DSpark V1（method=dspark + DP>1）在 DP 补齐 drafter token 时崩溃：draft attention metadata 先于 positions/slot buffer 哨兵构建、非因果 DSA decode token 计数与 num_input_tokens 口径不一致 → RuntimeError: call aclnnInplacePartialRotaryMul failed / EZ9999: dim0 must be equal / CheckInputShapes is failed"
+
+    category: interrupt
+    tags: [dspark, spec-decode, drafter, dp, data-parallel, metadata-padding, dsa, swa, aclnn, dim-mismatch]
+    platforms: ["A3-910C"]        # 现场未标机型（16×NPU / TP4·DP4·EP，CANN 9.0.1 + torch-npu 2.10.0.post2）；按 DSpark 部署形态取 A3-910C，待确认
+    compat:
+      - framework: vllm-ascend
+        ranges: ["含 DP 补齐口径不一致的 DSpark 构建（现场 main f5b5514afdb9ed53e7382ce8abdefec0bd0e5c62；读码版本 v0.26.0rc1，同代结构）"]   # 首个含修复的 release/commit 待确认
+      - framework: vllm
+        ranges: ["54503ecec0f3ac31e5ecfc5f28652e4cc42307b5"]   # 现场配对的上游 vLLM commit（公开材料原值）
+
+    investigation_quality: medium  # 源码三处口径不一致已读通、与 issue 自述根因及关联修复面一致；但无现场完整栈/可复现环境 → 分析级
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3                  # groom 先验表：investigation × medium
+      last_hit: ""
+
+    symptoms:
+      - "DSpark 投机解码（--speculative-config '{\"method\":\"dspark\",\"num_speculative_tokens\":N}' + DP>1，现场 TP4/DP4/EP 共 16 NPU、V1 model runner）下，一批异构请求成批失败：completed 4 / failed 12，引擎在 DP rank 完成时刻不一致时退出"
+      - "栈尾：RuntimeError: call aclnnInplacePartialRotaryMul failed / EZ9999: dim0 must be equal / CheckInputShapes is failed"
+      - "关掉 graph capture（--enforce-eager、VLLM_USE_V2_MODEL_RUNNER=0）仍复现 → 与 ACLGraph 无关；rotary 只是最先做形状校验的算子，不是根因位置"
+      - "DP 同步后 num_input_tokens 被抬到跨 rank 对齐的更大值，而本 rank 实际 drafter token 数更小——被 DP 补出来的那段尾部 token 没有一致的 metadata 契约"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/12640"
+
+    verification:
+      source: investigation
+      detail: "issue #12640 自述根因（DP 补齐尾部 token 未被应用同一契约）+ 报者关联的修复 PR（[Bugfix] Fix DSpark DP-padded metadata）；本地读码核对 v0.26.0rc1 的 vllm_ascend/spec_decode/dspark_proposer.py（set_inputs_first_pass 与 dummy_run 的 _pad_draft_buffers/_get_positions 两个 token 口径不一致）、vllm_ascend/attention/dsa_v1.py（build_dspark_swa_indices 的 repeat_interleave(output_size=num_decode_tokens) 与 build_decode_metadata_for_drafting 的 num_decode_tokens_typed 切片）确认三处口径问题；该 PR 合入状态与首个含修复版本未在材料中确认（fix_commit 空），故按 investigation 记而非 upstream-fix-merged"
+
+    quickly_check:
+      primary:
+        command_template: 'grep -aE "aclnnInplacePartialRotaryMul|dim0 must be equal" {{engine_log}}'
+        rank_selector: all_failed
+        expected: 'regex:call aclnnInplacePartialRotaryMul failed'
+        note: "算子名 + failed 是这条崩溃的字面签名；rotary 是首个报形状错的算子，命中后按 diagnosis 追 metadata 侧"
+      fallback:
+        command_template: 'grep -aE "CheckInputShapes is failed|num_decode_tokens|_pad_draft_buffers|dspark" {{engine_log}} {{launch_log}}'
+        rank_selector: all_failed
+        expected: 'regex:(CheckInputShapes is failed|dspark)'
+        note: "引擎日志被裁剪时用形状校验文案或 dspark 配置名兜底；命中后须用 diagnosis step 3 确认 DP>1 才属本条"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：DSpark（speculative-config method=dspark）+ DP>1 下请求成批失败，栈尾 `call aclnnInplacePartialRotaryMul failed` / `EZ9999: dim0 must be equal` / `CheckInputShapes is failed`？"
+        expected: "是——rotary 只是最先做形状校验的算子；根因在 DSpark/DSA 的 DP 补齐契约，不在 rotary/SAS 算子本身"
+        fix_on_mismatch: "若关掉 graph capture 后不再复现 → 是 ACLGraph 捕获导致，另立方向（本条报者实测关图仍复现）"
+        rollback: "无（只读检查）"
+      - step: 2
+        command_template: 'grep -aE "aclnnInplacePartialRotaryMul|CheckInputShapes|dim0 must be equal" {{engine_log}}'
+        rank_selector: all_failed
+        expected: 'regex:(aclnnInplacePartialRotaryMul|CheckInputShapes|dim0 must be equal)'
+        fix_on_mismatch: "报的是 expanded size of the tensor (N) must match the existing size (M)（PCP/DCP + MTP 形状失配）→ 转 VLLM-ASC-13710；报 error code 507034 → 转 VLLM-ASC-9887（MoE 分发容量/分支）"
+        rollback: "无（只读检查）"
+      - step: 3
+        check: "触发面核对：是否 dp-size>1（现场 DP4）且开启 draft（num_speculative_tokens>0），并且失败请求在不同 DP rank 上完成时刻不一致（现场 completed 4 / failed 12）？"
+        expected: "是——DP 同步后 num_input_tokens 被抬到跨 rank 对齐值、比本 rank 实际 drafter token 数更大，补齐出的尾部 token 才进入算子"
+        fix_on_mismatch: "dp-size=1 也复现 → 与 DP 补齐无关，另查 draft 侧 token 口径（如 positions 视图，见上游 #12612 一类改动）"
+        rollback: "无（只读检查）"
+        note: "补齐哨兵口径见 llm_base_proposer 的 _pad_draft_buffers：input_ids=parallel_drafting_token_id、positions=0、slot_mapping=-1"
+      - step: 4
+        command_template: "grep -n 'num_input_tokens\\|_pad_draft_buffers\\|num_decode_tokens' vllm_ascend/spec_decode/dspark_proposer.py vllm_ascend/attention/dsa_v1.py | head -40"
+        rank_selector: coordinator
+        expected: 'regex:(num_input_tokens|_pad_draft_buffers|num_decode_tokens)'
+        fix_on_mismatch: "若手上构建里 draft attention metadata 已在 token buffer 补齐之后构建、且 DSA decode 计数与 num_input_tokens 对齐 → 说明已含修复，回到「是否还有别的补齐口径遗漏（如 SWA 补齐行 lens/slots）」"
+        rollback: "无（只读检查）"
+        note: "三处需同时一致：①补哨兵早于建 draft metadata；②非因果 DSA decode token 计数 = num_input_tokens；③SWA 补齐行 lens=0/slots=-1"
+      - step: 5
+        check: "修复方向核对：改动是否只落在 DSpark/DSA metadata 构造（dspark_proposer / llm_base_proposer._pad_draft_buffers / dsa_v1 的 build_dspark_swa_indices、build_decode_metadata_for_drafting）？"
+        expected: "是——rotary、SAS 等算子无需改动；按此方向打补丁或升级到含该修复的版本"
+        fix_on_mismatch: "若修复试图改算子侧形状校验/放宽 dim0 检查 → 方向错（只是把一致的错误后移），不要采纳"
+        rollback: "回退到修复前版本（复现）"
+      - step: 6
+        command_template: 'grep -acE "failed" {{bench_report}}'
+        rank_selector: coordinator
+        expected: 'regex:^0$'
+        fix_on_mismatch: "仍有失败 → 保留完整栈（含张量维度值）再判是 positions/slot_mapping 少补了行还是 DSA decode 计数未对齐"
+        rollback: "无（只读验证）"
+        note: "回归口径：同一 eager workload 修复前 completed 4 / failed 12 / 输出 813 token，修复后 completed 16 / failed 0 / 4096 token"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart, requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      DSpark 投机解码的 draft 阶段，DP 同步后把 num_input_tokens 抬到跨 rank 对齐的（更大的）值，
+      而 DSpark/DSA 的 draft attention metadata 与 positions/slot_mapping/SWA 索引没有对「被 DP 补
+      出来的那段尾部 token」应用同一份契约，算子拿到的张量首维不一致 →
+      RuntimeError: call aclnnInplacePartialRotaryMul failed / EZ9999: dim0 must be equal /
+      CheckInputShapes is failed。rotary 只是最先做形状校验的算子，不是根因位置（关图仍复现，
+      与 ACLGraph 无关）。三处口径问题（读码 v0.26.0rc1，与现场 main 同代）：
+      (1) dspark_proposer 的 set_inputs_first_pass 用未补的 draft 实际 token 数产出 draft 侧
+      CommonAttentionMetadata，而同一 proposer 的 dummy_run 走 _pad_draft_buffers(num_query_total,
+      num_input_tokens) 与 _get_positions(num_input_tokens)——metadata 构造与 buffer 填充的 token
+      口径不统一，漏填哨兵的尾部行会带旧值进算子；
+      (2) dsa_v1 的 build_dspark_swa_indices 用 repeat_interleave(..., output_size=
+      num_decode_tokens) 生成 per_token_slots/per_token_lens，而 num_decode_tokens 与可能已被 DP
+      补齐的 common_attn_metadata.positions 是两个口径——补齐行没有定义好的 SWA 元数据；
+      (3) build_decode_metadata_for_drafting 里 positions、spec_slot_mapping、dspark_swa_indices
+      全按 num_decode_tokens_typed 切片，未与非因果 DSA 的补齐口径对齐。
+      （限定：以上为源码阅读结论——现场只给了栈尾三行、无张量实际维度值，也无 NPU 环境复现，
+      故「方向」确定、「具体是哪一处先把首维拉不一致」未闭合。）
+
+    fix: >
+      把 DP 补齐契约在 DSpark/DSA metadata 构造侧统一（其余算子不动）：①在构建 draft attention
+      metadata 之前先补 DSpark token buffer，非活动行写哨兵 positions=0 / slot_mapping=-1；
+      ②非因果 DSA 的 decode token 计数对齐 num_input_tokens；③SWA 补齐行生成 lens=0 / slots=-1。
+      落地形式：升级到含该修复的版本（报者关联的修复 PR 为 [Bugfix] Fix DSpark DP-padded
+      metadata，首个含修复 release 待确认），或按上述三点自打补丁；单测应覆盖「实际 token 数 <
+      DP 补齐 token 数」时 positions / slot_mapping / DSA decode 计数 / SWA 哨兵四条路径。
+    rollback: "回退到修复前版本并重启（同一 eager workload 下 completed 4 / failed 12 复现）"

@@ -1,7 +1,7 @@
 # GENERATED FILE —— 分片（knowledge/_index.yaml 的 inference/vllm-ascend__precision 子集），不要手改。
 # 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。
 # 阶段一加载协议（F1 EV-2026-022 + F4 EV-2026-025）：category 已定时 diagnose 只读命中 (namespace×category) 的类分片，不读整库总表。
-# 本分片：inference/vllm-ascend__precision（22 条 case）
+# 本分片：inference/vllm-ascend__precision（23 条 case）
 namespaces:
   inference/vllm-ascend__precision:
     precision:
@@ -222,6 +222,28 @@ namespaces:
       - sfa_v1.py
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12957.yaml
       hash: 606f692ec5b9
+    - id: VLLM-ASC-13070
+      title: thinking 开启时 usage.completion_tokens_details.reasoning_tokens 恒为 0（reasoning 字段内容正常、finish_reason
+        正常）：reasoning parser 未覆写 count_reasoning_tokens 的计数路径缺位 → 计量失真
+      category: precision
+      tags:
+      - reasoning-tokens
+      - usage-accounting
+      - thinking
+      - reasoning-parser
+      - glm
+      - tool-call
+      compat: vllm-ascend 0.20
+      confidence:
+        score: 0.3
+      symptoms:
+      - thinking 开启时，响应正常返回 message.reasoning（完整思考文本）、finish_reason 正常（如 tool_calls），但 usage.completion_tokens_details.reasoning…
+      sig: []
+      tok:
+      - '5.1'
+      - '5.2'
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-13070.yaml
+      hash: b6f7fdf89be5
     - id: VLLM-ASC-14265
       title: v0.26.0rc GLM-5.2+MTP 投机接受率相对 v0.23 大幅劣化：MegaMoe 对称通信 prefill buffer 按 decode graph 大小分配（enable_prefill_mc2
         关闭时）致大 prefill batch 容量溢出产生错误输出

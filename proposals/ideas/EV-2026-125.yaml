@@ -1,0 +1,60 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-125
+layer: L1
+target_component: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12211.yaml
+title: S2 盲测缺口沉淀首批 3 条 case（补丁签名错配 / DSpark DP 补齐契约 / reasoning_tokens 计量）
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: coverage_gap
+    evidence: "S2 池 20 条全量盲测命中 2/20，其中 11 条为本轮新跑：全部 Tier-2 miss（库里没有对应知识）。选其中根因已诊断清楚、且证据强度足够的 3 条沉淀成 case：12211（补丁两参签名 ↔ 上游调用点带 merge_inline_system=，维护者确认该补丁已在最新代码移除）、12640（DSpark DP 补齐 draft token 的 metadata 契约，源码三处口径不一致已读通）、13070（thinking 开启时 reasoning_tokens 恒 0，机制方向清楚但类归属存疑已如实打折）"
+    trajectory:
+      - ".s2-replay/12211.result.yaml、12640.result.yaml、13070.result.yaml（本轮盲测结论与证据缺口）"
+      - "eval-reports/s2-batch-2026-09-17.md（20 条重放评分）"
+      - "docs/mechanism/eval-arena.md（缺口探针口径）"
+hypothesis: 把 S2 盲测的 miss 转成 case 后，同类症状的下一次诊断不再 miss（缺口被补上）；且三条各自带可执行的 quickly_check 签名，能被词法层直接判出。
+predicted_effect:
+  metric: 三条 case 的结构校验与签名正则对源材料的命中
+  from: "三条主题在库内零覆盖（Tier-2 全 miss）"
+  to: "三条 case 入库并通过结构校验；primary 正则对源 issue 原文命中"
+  measure:
+    command: "python3 scripts/verify_case_draft.py --all"
+    expect_exit: 0
+validation:
+  method: metrics_compare
+  baseline: "改前：knowledge/ 无 VLLM-ASC-12211/12640/13070 三条（库内相关族只有邻近签名，主判据均不符）"
+  success_criteria: |
+    ① 三条 case 通过 verify_case_draft --all 与 build_index --check；② 三条的 primary + fallback
+    正则对各自 .s2-replay/<issue>.md 原文实测命中（6/6，独立复核过，不看起草方结论）；
+    ③ 证据强度如实分层：12211 维护者确认档、12640/13070 investigation 档并写明缺口；
+    ④ platforms 按部署形态推断的处已标注待确认（交 reviewer 判断是否改为跨平台）。
+  rollback: "三条 case 是新增文件，git revert 即整体撤回；索引是生成物、重建即回（原则七）"
+gate:
+  condition: "不等数据触发：缺口由 S2 盲测实测得出"
+risk: medium
+principle_refs: [1, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计；起草由子代理完成、复核与落地在本轮"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：S2 盲测缺口沉淀首批 3 条 case"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：新建三条 case（VLLM-ASC-12211 / 12640 / 13070），按来源 issue 的真实错误签名写 quickly_check；重建索引；另在评测台文档写清「外部验证不会从当前池长出来」的结构性成因（未沉淀全 miss / 已沉淀只能自证 / 需第三类非来源同签名样本）"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "实测：verify_case_draft --all 通过（166 文件）、build_index --check 绿（166 条 case / 15 分片）；6 条正则对源材料 6/6 命中（本 agent 独立复跑）；三条的 verification 分档与 investigation_quality 已按证据强度如实标注"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）：缺口 → 沉淀的闭环首次在本仓跑通（此前 miss 只留在报告里）。残余如实标注：①三条的 platforms 属推断（待 reviewer 判断是否改跨平台）；②12640 未钉到具体失配行、13070 类归属存疑——两条都写成限定语，不做强结论；③其余 8 条 miss 未沉淀（缺 fix 结论或属非诊断样本）"
