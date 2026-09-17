@@ -1,7 +1,7 @@
 # GENERATED FILE —— 分片（knowledge/_index.yaml 的 inference/vllm-ascend__interrupt 子集），不要手改。
 # 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。
 # 阶段一加载协议（F1 EV-2026-022 + F4 EV-2026-025）：category 已定时 diagnose 只读命中 (namespace×category) 的类分片，不读整库总表。
-# 本分片：inference/vllm-ascend__interrupt（88 条 case）
+# 本分片：inference/vllm-ascend__interrupt（89 条 case）
 namespaces:
   inference/vllm-ascend__interrupt:
     interrupt:
@@ -2285,3 +2285,27 @@ namespaces:
       - '65535'
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-HCCL-BIND-IP-PORT.yaml
       hash: 399f6eca234c
+    - id: VLLM-ASC-ZMQ-HANDSHAKE-PORT-OVERFLOW
+      title: PD 分离 + Mooncake KV 传输：握手端口按 rank 偏移累加越界（kv_port 基址 + dp_rank×tp×pp×pcp + device_index ≥
+        65536）→ ZMQ bind 到非法端口，报 port 65536 have already been bound
+      category: interrupt
+      tags:
+      - mooncake
+      - kv-transfer
+      - pd-separation
+      - zmq
+      - port-overflow
+      - handshake-port
+      compat: vllm-ascend 0.22.1rc1,0.23.0rc1
+      confidence:
+        score: 0.6
+      symptoms:
+      - PD 分离部署 + Mooncake KV 传输（`kv_transfer_config.kv_port` 已配）时，某节点服务拉起失败或运行中退出，报 `port 65536 have
+        already been bound`（或其它 >6…
+      sig:
+      - already been bound
+      tok:
+      - '65535'
+      - '65536'
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-ZMQ-HANDSHAKE-PORT-OVERFLOW.yaml
+      hash: 3c0772368877

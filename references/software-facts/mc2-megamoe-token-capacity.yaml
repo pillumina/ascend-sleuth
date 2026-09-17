@@ -1,0 +1,34 @@
+id: mc2-megamoe-token-capacity
+type: software-fact
+title: MC2 / MegaMoe 的 token 容量与 dispatch_ffn_combine 的 workspace 构成（含 mega_moe_max_tokens 默认值）
+summary: "**① MC2 token 容量是算出来的，不是一个固定值**：`set_mc2_tokens_capacity()` 按三分支取 `max_num_tokens`——开了 `enable_prefill_mc2` 取 `max_num_batched_tokens`；否则若有 cudagraph 捕获尺寸取 `max_cudagraph_capture_size`；都没有才回退 `max_num_reqs × uniform_decode_query_len`。然后 `每 rank = ceil(max_num_tokens / tp_size)`，**再统一 cap 到 512**，最后 `容量 = 每 rank × tp_size`。所以「每 rank 512」是**上限**而不是固定配置值；容量随 tp / 捕获尺寸 / 调度参数变化——这正是同一份容器换配置后『有时崩有时不崩』的来源。**② `mega_moe_max_tokens` 默认 65536**（`additional_config` 可覆盖），它被直接当作 mega_moe 分发算子的 `max_output_size` 传入。**③ `dispatch_ffn_combine` 的 workspace 按 `maxOutputSize` 线性预留**：routing 项（按 M 对齐到 256）× topK + 若干 `maxOutputSize × 常量` 项累加，因此调大上限会等比例抬高单算子 workspace 需求（本项目 GLM-5.1 量级下可达 GB 级）。"
+
+sources:
+  - type: official-doc
+    url: "https://github.com/vllm-project/vllm-ascend/blob/v0.23.0rc1/vllm_ascend/ascend_forward_context.py"
+    version: "vllm-ascend v0.23.0rc1（本地缓存检出 HEAD=f4a08bddd0cc）· set_mc2_tokens_capacity / get_mc2_tokens_capacity"
+    fetched_at: 2026-09-17
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://github.com/vllm-project/vllm-ascend/blob/v0.23.0rc1/vllm_ascend/ascend_config.py"
+    version: "vllm-ascend v0.23.0rc1 · mega_moe_max_tokens 默认值（另与 v0.23.0、v0.26.0rc1 三版本比对一致）"
+    fetched_at: 2026-09-17
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://github.com/vllm-project/vllm-ascend/blob/v0.23.0rc1/csrc/mc2/dispatch_ffn_combine/op_host/dispatch_ffn_combine_tiling.cpp"
+    version: "vllm-ascend v0.23.0rc1 · dispatch_ffn_combine tiling 的 workspace 计算段"
+    fetched_at: 2026-09-17
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [vllm-ascend]
+  categories: [interrupt, performance]
+
+status: active
+last_verified: 2026-09-17
+
+content:
+  claim: "三条可直接用于判读的硬事实。**① 判『这次崩是不是容量问题』要先把容量算出来，不能拿 512 当配置值**：容量 = `min(ceil(max_num_tokens / tp_size), 512) × tp_size`，其中 `max_num_tokens` 按三分支取（`enable_prefill_mc2` → `max_num_batched_tokens`；有 cudagraph 捕获尺寸 → `max_cudagraph_capture_size`；否则 → `max_num_reqs × uniform_decode_query_len`）。因此**改了 `max-num-batched-tokens`、tp、或图捕获尺寸，容量就跟着变**；『同一个镜像，换个配置就崩』的形态要先怀疑这里。**② 容量上限与分发算子 workspace 是两件事、两个旋钮**：token 容量决定『多少 token 能走 MC2 路径』（超了会落到别的分支，可能造成 rank 间分支不一致）；`dispatch_ffn_combine` 的 workspace 则由 `maxOutputSize`（mega_moe 场景即 `mega_moe_max_tokens`，默认 65536）线性决定——两者都随批量参数放大，但**调小后者不影响前者**，排查时别混。**③ 常见误读两条**：把『每 rank 512』当成固定的每 rank 上限（实际是 `ceil(max_num_tokens / tp_size)` 之后再 cap）；把 `mega_moe_max_tokens` 默认值记成 131072（实测 v0.23.0rc1 / v0.23.0 / v0.26.0rc1 三版本均为 **65536**）——报现场数字前先按部署版本核一遍。"
+
+  evidence: "`vllm_ascend/ascend_forward_context.py:202-217`（v0.23.0rc1）逐字：`if get_ascend_config().enable_prefill_mc2:` → `max_num_tokens = vllm_config.scheduler_config.max_num_batched_tokens`；`elif vllm_config.compilation_config.cudagraph_capture_sizes:` → `max_num_tokens = vllm_config.compilation_config.max_cudagraph_capture_size`；`else:` → `max_num_tokens = max_num_reqs * uniform_decode_query_len`；其后 `num_tokens_per_tp_rank = (max_num_tokens + tp_size - 1) // tp_size`，注释原文 `NOTE: To save memory, we cap the max number of tokens to 512.`，`num_tokens_per_tp_rank = min(num_tokens_per_tp_rank, 512)`，`_mc2_tokens_capacity = num_tokens_per_tp_rank * tp_size`。单元测试侧为该口径提供佐证：`tests/ut/test_ascend_forward_context.py` 中 `set_mc2_tokens_capacity(vllm_config, max_num_reqs=200, uniform_decode_query_len=3)` → `get_mc2_tokens_capacity() == 600`（无 cudagraph 时走回退分支），并有『with_cudagraph_uses_capture_size_and_aligns』『without_cudagraph_aligns_per_tp_rank』两个用例。`vllm_ascend/ascend_config.py:306` 逐字：`self.mega_moe_max_tokens = additional_config.get(\"mega_moe_max_tokens\", 65536)`（v0.23.0rc1 / v0.23.0 / v0.26.0rc1 三版本同值）；消费点 `vllm_ascend/ops/fused_moe/moe_comm_method.py:321`：`max_output_size=get_ascend_config().mega_moe_max_tokens`。`csrc/mc2/dispatch_ffn_combine/op_host/dispatch_ffn_combine_tiling.cpp:300-308` 的 workspace 段：`uint64_t cocWorkspace = (info.M + 256 - 1) / 256 * 256 * info.topK * sizeof(int32_t) + … info.maxOutputSize * sizeof(float) * 2 + info.maxOutputSize * n2 * sizeof(int16_t) + info.maxOutputSize * info.K * sizeof(int8_t) + …`，末行 `workSpaces[0] = SYSTEM_NEED_WORKSPACE + std::max(cocWorkspace, initRoutingWorkspace)`。容量口径的另一消费点 `vllm_ascend/ops/fused_moe/token_dispatcher.py:125-126`：`mc2_tokens_capacity = get_mc2_tokens_capacity()` / `num_tokens_per_tp_rank = mc2_tokens_capacity // tp_size`。"

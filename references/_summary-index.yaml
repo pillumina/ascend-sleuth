@@ -3,7 +3,7 @@
 # 只含背景类 + status=active；查表类走步骤 2 收尾的键触发 grep（口径同 diagnose SKILL）。
 # 读法：grep 取行 + ≤5 行上限——索引随词条数增长，整读等于注入全库背景。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-17    词条数：131
+# 生成日期：2026-09-17    词条数：132
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -749,6 +749,17 @@ entries:
     categories:
     - interrupt
     - precision
+- id: mc2-megamoe-token-capacity
+  type: software-fact
+  title: MC2 / MegaMoe 的 token 容量与 dispatch_ffn_combine 的 workspace 构成（含 mega_moe_max_tokens 默认值）
+  summary: '**① MC2 token 容量是算出来的，不是一个固定值**：`set_mc2_tokens_capacity()` 按三分支取 `max_num_tokens`——开了 `enable_prefill_mc2`
+    取 `max_num_batched_tokens`；否则若有 cudagraph 捕获尺寸取 `max…'
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - interrupt
+    - performance
 - id: moe-dispatch-combine
   type: software-fact
   title: MoE Dispatch/Combine 的对等内存单边写机制（mte_put / K+1 状态位 / 通信前量化收益边界）
