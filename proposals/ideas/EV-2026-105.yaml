@@ -66,3 +66,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated）：判据变严方向明确、可自检、可整体 revert，不改变既有判据读数口径。残余如实标注——本地无池文件与账本，本改动是口径前置修正，首次真实门控判定前无历史数据可回归，故验证方式记 scan_review（自审、不计外部验证）"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "随 PR #241 供人审（本批聚合 PR：接受判据 v2 + groom 协议两处，批内 2 卡）"

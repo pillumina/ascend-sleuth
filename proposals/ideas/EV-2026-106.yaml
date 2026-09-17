@@ -64,3 +64,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated）：低成本、可整体 revert、方向与既有原则一致（八可观测、九预算、十诚实退化）；效果不可即时度量，如实记 scan_review 并进观察窗，不声称已证明变准"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "随 PR #241 供人审（本批聚合 PR：接受判据 v2 + groom 协议两处，批内 2 卡）"
