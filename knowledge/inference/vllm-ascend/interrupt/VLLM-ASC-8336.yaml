@@ -49,9 +49,9 @@ cases:
         expected: "regex:AttributeError: WAITING_FOR_FSM"
         note: "该行是 EngineCore fatal 栈尾（enum.py:786 raise AttributeError(name) from None）"
       fallback:
-        command_template: "grep -E 'RequestStatus\\.WAITING_FOR_FSM|EngineDeadError' {{log_path}}"
-        expected: "regex:RequestStatus\\.WAITING_FOR_FSM|EngineDeadError"
-        note: "服务已退出、只剩级联段时用：命中 :297 比较行或 APIServer 侧 EngineDeadError"
+        command_template: "grep -aE 'RequestStatus\\.WAITING_FOR_FSM|patch_balance_schedule\\.py:[0-9]+' {{log_path}}"
+        expected: "regex:RequestStatus\\.WAITING_FOR_FSM|patch_balance_schedule\\.py:[0-9]+"
+        note: "服务已退出、只剩级联段时用：命中 patch_balance_schedule 的比较行（现场 :297）。**不要**把 EngineDeadError 放进 expected——它是任何 EngineCore 死亡的通用级联，放进来会让本条对**所有** engine 崩溃的现场恒真（实测：507034 拉起期挂死、scheduler 抛 Invalid request status 这两类现场，级联段都含 EngineDeadError）"
 
     diagnosis:
       - step: 1

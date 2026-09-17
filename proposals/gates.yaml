@@ -54,14 +54,13 @@ gates:
     meaning: "已声明可复现判据（measure 含 command 与期望）但从未执行过 ev_measure.py --run 的卡数。本判据只统计判据命令是否被执行，不判断预测对错。"
     action: "复核这些卡片时执行一次：python3 scripts/ev_measure.py <卡号> --run。执行记录写入 metrics/ev-measure-log.yaml。"
 
-  - id: evidence_weak
-    dimension: external_ground_truth_ratio
-    op: "<"
-    value: 0.333
-    min_sample: 10
-    title: 外部验证占比不足
-    meaning: "终态卡的验证方式来自系统之外（golden 回放 / issue-replay 对照）的比例过低；其余为自定口径的机械测量（metrics_compare）或自审（scan_review）。按本仓库「客观评分源优先」的排序，自证占比过高时趋势读数不可作为效果证据。"
-    action: "优先把候选改写为可在 golden 或 S2 上判定的形态。只能自证的卡片，在结论中标注来源，不计入外部验证。"
+  - id: evidence_stale
+    dimension: external_verification_stall
+    op: ">"
+    value: 20
+    title: 外部验证停滞
+    meaning: "最近一张「验证来自系统之外」（golden 回放 / issue-replay 对照）的终态卡之后，又产出的终态卡数超过上限。它问的是**通道还在不在用**，不是自证的比例高低——实测原判据（外部占比下限 1/3）在本仓库的卡构成下不可达，见替换说明。"
+    action: "跑一次外部验证并从它产出一张卡：把一条 case 的签名拿到 issue 池里找同签名的非来源 issue 回放（第三类样本），或对改动跑一次 golden 回放；拿回放结果做判据的卡把 validation.method 记成 issue_replay / golden_replay。替换说明：本判据原先数的是 external_ground_truth_ratio（外部验证卡占比，下限 1/3），实测不可达——123 张终态卡里只有 14 张方法能走外部，其余 66 张是 metrics_compare（可复现命令，客观但非外部）、43 张是 scan_review（自审），而这两类被改的组件能由回放「碰到」的只有个位数，可达上限约 18%；且原 action 文案自己就写着「只能自证的卡片…不计入外部验证」，即把这些卡排除出分子却留在分母里，无论怎么处置都到不了下限。占比降为读数（可复现证据占比一并列出）。"
 
   - id: component_repeat_dominant
     dimension: top_component_share

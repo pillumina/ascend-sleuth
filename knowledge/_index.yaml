@@ -5,10 +5,10 @@
 # 按 file 字段定位做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-09-17    case 总数：166
+# 生成日期：2026-09-17    case 总数：168
 #   容量(common): performance=15/30, precision=6/30
 #   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=91/30, performance=8/30, precision=23/30
+#   容量(inference/vllm-ascend): interrupt=93/30, performance=8/30, precision=23/30
 #   容量(training/mindspeed-llm): interrupt=11/30, precision=4/30
 #   容量(training/verl): interrupt=6/30, precision=1/30
 namespaces:
@@ -1752,6 +1752,61 @@ namespaces:
       - pool_scheduler.py
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-15087.yaml
       hash: 5d0ed58a05f7
+    - id: VLLM-ASC-16446
+      title: DP>1 + FlashComm1(SP) + multistream_overlap_shared_expert 三者同时开启时 vllm serve 拉起期挂死：507034
+        vector core execution timed out（任一因素去掉即起得来）——SP 通信与共享专家侧流次序无保证
+      category: interrupt
+      tags:
+      - flashcomm1
+      - sequence-parallel
+      - multistream-overlap
+      - shared-expert
+      - moe
+      - dp
+      compat: vllm-ascend 0.28
+      confidence:
+        score: 0.6
+      symptoms:
+      - 'DP>1（现场 --data-parallel-size 2 --tensor-parallel-size 8）时 vllm serve 在**拉起期**挂死，约 13 分钟后报 `RuntimeError:
+        synchronize:...…'
+      sig:
+      - '507034'
+      - Vector core execution timed out
+      - HCCL watchdog thread terminated
+      tok:
+      - '507034'
+      - NPUEvent.cpp
+      - VLLM_ASCEND_ENABLE_FLASHCOMM1
+      - model_runner_v1.py
+      - synchronize_input_prep()
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-16446.yaml
+      hash: a847c204d2c8
+    - id: VLLM-ASC-1767
+      title: '带 guided decoding / response_format（结构化输出）的请求打到 AscendScheduler（ascend_scheduler_config.enabled=true
+        或该版本默认启用）上时整服务崩溃：RuntimeError: Invalid request status: WAIT…'
+      category: interrupt
+      tags:
+      - ascend-scheduler
+      - waiting-for-fsm
+      - guided-decoding
+      - structured-output
+      - response-format
+      - tool-call
+      compat: vllm-ascend 0.11,0.1; vllm 0.9,0.10,0.11
+      confidence:
+        score: 0.6
+      symptoms:
+      - 服务**启动正常**、普通请求也正常；一旦发来带结构化输出约束的请求（response_format / guided_decoding，如 json_object），服务随即整体崩溃——不是该请求失败，是
+        EngineCore fatal…
+      sig:
+      - EngineDeadError
+      tok:
+      - WAITING
+      - WAITING_FOR_FSM
+      - schedule()
+      - scheduler.py
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-1767.yaml
+      hash: 1c4b9e8a4653
     - id: VLLM-ASC-1991
       title: 'Qwen3-Embedding-4B（pooling 模型）在 300I Duo/310P3 上无法启动：模型加载报 ValueError: no module or parameter
         named ''layers'' in CustomQwen3ForCausalLM（或 worker init 报 ACL SetPr…'
@@ -2172,8 +2227,7 @@ namespaces:
       symptoms:
       - Qwen3.5-35B-A3B-w8a8-mtp（ascend 量化 + auto tool choice/reasoning parser）vllm-ascend main/dev +
         配套 vLLM v0.19.0，导出 VLLM_AS…
-      sig:
-      - EngineDeadError
+      sig: []
       tok:
       - 0.19.0
       - VLLM_ASCEND_BALANCE_SCHEDULING
@@ -2184,7 +2238,7 @@ namespaces:
       - serving.py
       - v0.19.0
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-8336.yaml
-      hash: 88092b38b043
+      hash: 9990658b04d5
     - id: VLLM-ASC-8587
       title: DS-V3.2-w4a8（QuaRot）双机 DP2×TP8 EP + FULL_DECODE_ONLY + deepseek_mtp + layer_sharding，压测 cc=4
         时 node1 全 8 worker 崩：EE9999 rtMemcpy execution failed（107030，captur…

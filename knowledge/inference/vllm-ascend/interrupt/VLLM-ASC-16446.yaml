@@ -1,0 +1,129 @@
+# VLLM-ASC-16446 —— DP>1 上 FlashComm1(SP) 与 multistream_overlap_shared_expert 同时开启时
+#   拉起期挂死（507034 vector core timeout）：SP 通信路径与共享专家侧流在同一 dummy run 内
+#   次序无保证，跨 DP rank 集合通信后不再自行收敛
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/16446
+# fix：上游已修——① PR #15352「[Refactor][MoE] Clarify shared expert multistream scheduling」
+#   （MERGE 2026-09-15，与 issue 关联），② PR #16450「[BugFix][Core] Disable
+#   multistream_overlap_shared_expert with FlashComm1 on DP>1」补互斥校验
+# verification: upstream-maintainer-confirmed（Angazenn 判词给出机制：SP 生效 + shared expert TP
+#   + multi-stream moe 同时开启 → 通信次序可能出错；zhenwenqi2024 指向修复 PR）
+# pre-triage: variant —— 与 VLLM-ASC-9887 同为 507034，但那条是 num_batch_tokens 超 MC2 容量致
+#   DP 间 MoE 分发分支分叉（MoeDistributeDispatchV2/repeat_interleave 签名）；本条签名是三因素
+#   同时在场 + 拉起期 profile_run/_dummy_run 挂死，两条的 primary 正则不互命中
+# 脱敏：模型名/机型/commit 均为公开材料原值；未引用账号、内网 IP、客户名
+# 建议命名空间：inference/vllm-ascend/interrupt/
+
+cases:
+  - id: VLLM-ASC-16446
+    title: "DP>1 + FlashComm1(SP) + multistream_overlap_shared_expert 三者同时开启时 vllm serve 拉起期挂死：507034 vector core execution timed out（任一因素去掉即起得来）——SP 通信与共享专家侧流次序无保证"
+
+    category: interrupt
+    tags: [flashcomm1, sequence-parallel, multistream-overlap, shared-expert, moe, dp, startup-hang, 507034, aclrtSynchronizeEvent, vector-core-timeout, dsa-cp]
+    platforms: ["A3-910C"]        # 现场：单节点 Atlas 800 A3（910B x16），DP2 x TP8
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.28"]          # 现场 vLLM 0.28.0；vllm-ascend main @ d4d2957e5 与 f640d1348 均复现
+
+    investigation_quality: high   # 现场给了 12 组消融矩阵 + 三个 commit 的版本面，维护者判词与修复 PR 都有
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                  # groom 先验表：upstream-maintainer-confirmed × high
+      last_hit: ""
+
+
+    validation_record:  # S2/外部验证累积（settle_s2_feedback 结算；与 confidence 分开：confidence=现场 resolve S1，validation=内容被外部验证）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W38
+    symptoms:
+      - "DP>1（现场 --data-parallel-size 2 --tensor-parallel-size 8）时 vllm serve 在**拉起期**挂死，约 13 分钟后报 `RuntimeError: synchronize:...NPUEvent.cpp:215 ... aclrtSynchronizeEvent(event_), error code is 507034` + `[Error]: Vector core execution timed out.`"
+      - "栈落在 determine_available_memory → profile_run → _dummy_run（model_runner_v1.py）的 synchronize_input_prep() 上——是拉起期的 dummy run，不是运行期推理"
+      - "三因素同时在场才复现：`VLLM_ASCEND_ENABLE_FLASHCOMM1=1`（SP 生效）+ `--additional-config '{\"multistream_overlap_shared_expert\":true}'` + `--data-parallel-size > 1`；去掉任一条服务正常启动"
+      - "两个 DP rank 的 worker 在同一秒失败；常伴随 `HCCL watchdog thread terminated with exception`（同一挂死的连带现象，不是独立故障）"
+      - "同一配置在 DP=1（TP16）下正常启动——这条把'模型/量化/CANN 版本坏了'一类解释直接排除"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/16446"
+      - "https://github.com/vllm-project/vllm-ascend/pull/15352"
+      - "https://github.com/vllm-project/vllm-ascend/pull/16450"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "issue #16446（2026-09-15 关闭 COMPLETED）：维护者 Angazenn 判词「I think it is caused under the setting that SP enabled, shared expert TP and multi-stream moe enabled. The communications might occur in wrong order.」，zhenwenqi2024 指向修复 PR #15352；#15352（[Refactor][MoE] Clarify shared expert multistream scheduling）已于 2026-09-15 合入并与本 issue 关联，另有 #16450（[BugFix][Core] Disable multistream_overlap_shared_expert with FlashComm1 on DP>1）补条件互斥校验。现场自带 12 组消融矩阵与 3 个 vllm-ascend commit 的复现记录。"
+
+    quickly_check:
+      primary:
+        command_template: 'grep -aE "507034|Vector core execution timed out" {{engine_log}}'
+        rank_selector: all_failed
+        expected: 'regex:507034|Vector core execution timed out'
+        note: "命中后必须核两件事才算这条：① 栈在拉起期（profile_run/_dummy_run/determine_available_memory），不是运行期推理；② 三因素同时在场（FLASHCOMM1 + multistream_overlap_shared_expert + DP>1）"
+      fallback:
+        command_template: 'grep -aE "npu_stream_switch|shared_experts_calculation_stream|multistream_overlap_shared_expert|HCCL watchdog thread terminated" {{engine_log}} {{plog}}'
+        rank_selector: all_failed
+        expected: 'regex:multistream_overlap_shared_expert|shared_experts_calculation_stream|HCCL watchdog thread terminated'
+        note: "engine 日志被裁剪、只剩 HCCL watchdog 级联段时用；命中后仍要回到启动命令核对那三个开关"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：失败点在**拉起期**（determine_available_memory / profile_run / _dummy_run）而不是运行期，且错误码是 507034（vector core 执行超时）而不是显存不足/量化算子报错？"
+        expected: "是——拉起期 + 507034 + synchronize 等待不到，属本条面（通信次序问题，不是算子或内存问题）"
+        fix_on_mismatch: "若失败在运行期首个请求之后 → 先按 VLLM-ASC-9887 那条查（num_batch_tokens 超 MC2 容量致 DP 间 MoE 分发分支分叉，签名是 MoeDistributeDispatchV2/repeat_interleave）"
+        rollback: "无（只读检查）"
+      - step: 2
+        command_template: 'grep -aoE "VLLM_ASCEND_ENABLE_FLASHCOMM1=[01]|multistream_overlap_shared_expert|data-parallel-size [0-9]+" {{launch_config}}'
+        rank_selector: coordinator
+        expected: 'regex:multistream_overlap_shared_expert'
+        fix_on_mismatch: "启动命令里没有 multistream_overlap_shared_expert → 本条不成立，先找现场真正的 additional-config"
+        rollback: "无（只读检查）"
+        note: "三个开关都要从启动命令（或 additional-config JSON）里读出来，别从日志推断——现场实测这条最关键"
+      - step: 3
+        check: "三因素核对：VLLM_ASCEND_ENABLE_FLASHCOMM1 生效（=1，或用 enable_dsa_cp 间接要求 SP）+ multistream_overlap_shared_expert: true + data_parallel_size > 1，三者是否同时在场？"
+        expected: "三者同时在场 → 就是本条；维护者判词与消融矩阵都指向这个组合（去掉任一条即起得来）"
+        fix_on_mismatch: "只有两个在场 → 换查其他面：只有 SP+multistream 而 DP=1 时按官方默认行为正常；只有 multistream+DP>1 而无 SP 时也正常"
+        rollback: "无（只读检查）"
+        note: "注意 enable_fused_mc2=1 会 force-disable multistream_overlap_shared_expert（ascend_config.py 带告警），所以开了 fused_mc2 的现场不会走到本条"
+      - step: 4
+        command_template: 'grep -aE "npu_stream_switch|shared_experts_calculation_stream|fused_moe" {{plog}} {{engine_log}}'
+        rank_selector: all_failed
+        expected: 'regex:npu_stream_switch|shared_experts_calculation_stream'
+        fix_on_mismatch: "plog 里拿到 507034 的 subErrType/retCode 且指向某个确定性算子 → 那时应按算子/CANN 版本面另查（本条机制链没有代码级定位，只有维护者判词 + 消融）"
+        rollback: "无（只读查证）"
+        note: "这一步是加深证据，不是判本条的必需条件——现场没有 plog 时如实记证据缺口"
+      - step: 5
+        check: "落地：升级到含 #15352 的版本（或应用条件互斥——FlashComm1 生效且 DP>1 时禁用 multistream_overlap_shared_expert 并打告警）；无法升级时按规避处置"
+        expected: "同一启动命令能起得来（现场修复后约 4 分钟进入服务就绪），且日志里有互斥告警；无 507034"
+        fix_on_mismatch: "升级后仍挂 → 确认版本真含 #15352（或 #16450 的互斥校验），并核对是否还有别的 multistream 开关（enable_fused_mc2 与它互斥、DSA-CP 依赖 SP）"
+        rollback: "回退到升级前版本并重启（同一命令再次拉起期挂死）"
+        note: "规避（无法升级时）：从 additional-config 里去掉 multistream_overlap_shared_expert（或关 VLLM_ASCEND_ENABLE_FLASHCOMM1）。注意代价不对称：enable_dsa_cp **要求** SP 生效（vllm_ascend/utils.py 会抛 ValueError），所以需要 DSA-CP 的现场只能牺牲共享专家侧流重叠，不能关 SP"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart, performance-tradeoff]
+    fix_type: code-patch
+
+    root_cause: >
+      vllm-ascend 未对「FlashComm1（SP）生效 × multistream_overlap_shared_expert 开启 ×
+      data_parallel_size > 1」这个组合做互斥校验（同类先例：enable_fused_mc2 会 force-disable
+      multistream_overlap_shared_expert 并告警）。三因素同时成立时，拉起期
+      determine_available_memory → profile_run → _dummy_run 内的通信次序错乱：SP 路径的通信算子
+      与共享专家侧流（npu_stream_switch(shared_experts_calculation_stream())，落在
+      vllm_ascend/ops/fused_moe/fused_moe.py）在同一 dummy run 内的执行顺序无保证；DP>1 引入跨
+      DP rank 的集合通信之后不再能自行收敛 → 该流上的任务不推进 → aclrtSynchronizeEvent 等不到
+      → 507034「Vector core execution timed out」（HCCL watchdog terminated 是同一挂死的连带现象）。
+      维护者判词：「I think it is caused under the setting that SP enabled, shared expert TP and
+      multi-stream moe enabled. The communications might occur in wrong order.」
+      （限定：机制链由维护者判词 + 现场 12 组消融矩阵支撑，没有 plog/device 侧日志做代码级定位；
+      507034 的 subErrType/retCode 未取到，因此「卡住的是哪条流上的哪个 task」未确证。）
+
+    fix: >
+      升级到含 PR #15352（[Refactor][MoE] Clarify shared expert multistream scheduling，2026-09-15
+      合入）的版本；该 PR 与 #16450（[BugFix][Core] Disable multistream_overlap_shared_expert with
+      FlashComm1 on DP>1）一起把组合处置成条件互斥——FlashComm1 生效且 data_parallel_size > 1 时
+      禁用 multistream_overlap_shared_expert 并打告警，需要 FlashComm1 的现场（如 DSA-CP）继续可用，
+      只牺牲共享专家侧流重叠。无法升级时就地规避：从 --additional-config 去掉
+      multistream_overlap_shared_expert；**不要**优先去关 VLLM_ASCEND_ENABLE_FLASHCOMM1——
+      enable_dsa_cp 要求 SP 生效（vllm_ascend/utils.py 会抛 ValueError），关 SP 等于连带砍掉 DSA-CP。
+      改完重启服务，用原失败命令复测启动即可（无需复现业务负载）。
+    rollback: "回退到升级前版本并重启（同一命令在拉起期再次挂死，约 13 分钟）"
+

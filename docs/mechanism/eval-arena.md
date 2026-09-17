@@ -33,11 +33,16 @@ expected 标注（namespace/category/fix_ref）由 agent 读 issue 线程产出�
 ## 3. 评分口径（复用 S2 result schema）
 
 每条 issue 一次 diagnose replay 写 `.s2-replay/<issue>.result.yaml`（已有 schema：
-namespace/category/hit_case/root_cause/rc_match/route）。聚合指标（带分母，口径纪律）：
+namespace/category/hit_case/root_cause/rc_match/route，另见下条 `ground_truth`）。聚合指标（带分母，口径纪律）：
 
 - **命中率** hit_rate = hit_case 非空比例（tier2 命中）；
 - **路由正确率** route_ok = route 与 expected_ns 一致比例；
-- **结论一致率** rc_match = 结论与 resolution 一致比例（rc_match 字段，人工核验兜底）。
+- **结论一致率** rc_match = 结论与 resolution 一致比例（rc_match 字段，人工核验兜底）；
+- **可证伪性**（2026-09 加的声明字段）`ground_truth`：这个 issue 的外部结论是什么形态——
+  `maintainer-conclusion`（维护者判词）/ `fix-merged`（已合入 fix PR）/ `both` / **`none`（无外部结论）**。
+  写 `none` 的样本在结算时**整体跳过**：结论一致与否在这类样本上没有真值，记 `consistent` 无从判对，
+  记 `inconsistent` 则会把一条假复审信号压到 case 上（实测 #10913 命中 VLLM-ASC-8646 但该 issue 以
+  NOT_PLANNED 关闭、无维护者结论）。字段缺席按旧行为（存量 result 不受影响）。
 
 `--stats` 除聚合指标外还写**逐条判决向量**（每条 issue 的 hit/route_ok/rc_match）与**池内容哈希**：
 前者是配对检验的输入（没有它，判定只能退回点估计，判词上限降为 weak_accept），后者是"量尺身份"
@@ -52,7 +57,8 @@ test/selection 分离前单池运行，分数标注 source: issue-replay。
 
 **本轮全量重放结果（20/20 条已评分）**：路由 9/9（只有 9 条有路由真值）、命中 **2/20**、结论一致（root_cause_ok）13/20。命中低是**符合预期**的：S2 池从"未沉淀的 closed issue"里选样，池本身就是**覆盖缺口的探针**——它按设计就该大量 miss（miss 即"库里没有这条知识"的缺口信号，走补 case 候选）；它不是"已有 case 的外部验证通道"。
 
-**为什么"外部验证"不会从这个池里长出来（实测推出来的结构，别再按旧假设期待它）**：结算规则把 `consistent`（内容被外部验证）与 `self_consistent`（replay 的 issue 就是该 case 的来源）分开。当前池的两类样本都产不出 `consistent`——① 未沉淀 issue：全 miss，没有 case 可结算；② 把**已沉淀** issue 放进池（设计里预留的 self 层）：命中的必是它自己派生的那条 case → 只能记 `self_consistent`。要产出 `consistent`，需要的是**第三类样本**：与某条 case 的来源 issue **不同**、但根因/错误签名与该 case 对得上的 issue（即"另一个现场撞上同一条知识"）。这类样本的构造方式（按 case 的 quickly_check 签名去 issue 池里找同签名的非来源 issue）尚未落地——**在那之前，"外部验证占比"这条判据的分子只能靠 golden 回放与现场反馈来抬，S2 抬不动它**。
+**第三类样本已落地（2026-09 新增，`eval/s2/vllm-ascend-cross.yaml`）**：第三类样本 = 与某条 case 的来源 issue **不同**、但错误签名与该 case 对得上的 issue（"另一个现场撞上同一条知识"）。构造方式是机械的：拿 case 的 quickly_check 签名去 issue 池里搜**同签名的非来源 issue**，只收**已关闭且有维护者结论**（维护者判词 / 已合入 fix PR）的条目——没有外部结论的样本产不出可证伪的 `consistent`，收了也只会变成不可判读的记录。样本的 `expected` 里记 `target_case`（该签名期望撞上的 case）与 `cross_ref`；判定口径是"是否命中目标 case 且结论与 issue 实际处置一致"，命中且一致 → 该 case 的 `validation_record.consistent`（非来源 issue，不是自证）。**独立性守卫（半硬）**：结算前先查该 case 正文有没有引用这个 issue 号（`#N` / `issues/N` / `pulls/N`），引用了就按非独立记 `self_consistent`——实测第一批三条 cross 样本**全都不独立**：#16446、#1767 是各自 case 的来源，#2723 虽然与 VLLM-ASC-1767 无来源关系，但那条 case 的 `verification.detail` 里就写着「#2723 上同一维护者记为…」，命中的结论正是撰写时从它那儿读来的。守卫只挡「正文点名」这一种，同一族判词/同一 fix PR 的关联识别不了，所以 `consistent` 的语义只能是「不是来源、也未在正文被引用」。**选样纪律（本轮实测推出来的）**：下一个 cross 样本必须挑**既非该 case 来源、又未被该 case 引用**的同签名 issue，否则样本再多也只会累积 `self_consistent`。
+**外部验证占比不再是判据**：原判据（外部验证卡占比下限 1/3）实测**不可达**——123 张终态卡里只有 14 张的方法能走外部，其余 66 张是 metrics_compare（可复现命令）、43 张是 scan_review（自审），而被这两类改的组件能由回放"碰到"的只有个位数，可达上限约 18%；且原 action 文案自己就写着"只能自证的卡片…不计入外部验证"，即把它们排除出分子却留在分母里。占比降为体检器的读数（外部回放 11.4% · 可复现证据 68.3%，见 `evolution_health.py` 的读数节），判据改问**通道还在不在用**（`external_verification_stall`：最近一次外部验证之后又产出 20 张以上终态卡即报警）。理由是：这个通道缺的是"跑"，不是"改口径"——判据要能被人一次动作清掉。
 
 ## 4. 门控协议（候选改动 → 接受/回滚）
 
