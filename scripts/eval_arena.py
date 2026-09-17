@@ -266,7 +266,7 @@ def cmd_stats(root, pool_file):
              "pool_hash": file_hash(pool_file),
              "source": "issue-replay", "generated": datetime.now().isoformat(timespec="minutes"),
              "metrics": {}, "issues": []}
-    n_route = n_route_ok = n_hit = n_hit_ok = n_rc = n_rc_ok = 0
+    n_route = n_route_ok = n_route_skip = n_hit = n_hit_ok = n_rc = n_rc_ok = 0
     missing = []
     for it in pool["issues"]:
         rp = root / S2_RESULT_REL.format(it["id"])
@@ -280,16 +280,19 @@ def cmd_stats(root, pool_file):
         # 账本里也看不出"没数据"和"结论不一致"的区别（诚实退化要求这两者可区分）。
         #   hit_case ↔ tier2_hit ；route ↔ routing_ok ；rc_match ↔ root_cause_ok
         route = str(r.get("route") or "")
-        route_ok = ((route == "ok") or bool(r.get("routing_ok"))
-                    or (expected_ns and expected_ns in str(r.get("namespace") or "")))
+        route_ok = bool(route == "ok") or bool(r.get("routing_ok")) \
+            or (bool(expected_ns) and expected_ns in str(r.get("namespace") or ""))
         hit_ok = bool(r.get("hit_case")) or bool(r.get("tier2_hit"))
         rc = r.get("rc_match", r.get("root_cause_ok"))
         # 逐条向量：配对检验的输入。没有它，判定只能退回点估计（判词上限 weak_accept）。
         stats["issues"].append({"id": str(it["id"]), "hit": bool(hit_ok),
                                 "route_ok": bool(route_ok),
                                 "rc_match": None if rc is None else bool(rc)})
-        n_route += 1
-        n_route_ok += int(route_ok)
+        if expected_ns:
+            n_route += 1
+            n_route_ok += int(route_ok)
+        else:
+            n_route_skip += 1
         n_hit += 1
         n_hit_ok += int(hit_ok)
         if rc is not None:
@@ -299,7 +302,8 @@ def cmd_stats(root, pool_file):
     stats["issues_scored"] = n_hit
     stats["missing_results"] = missing
     stats["metrics"]["route_ok"] = {"n": n_route, "ok": n_route_ok,
-                                    "rate": round(n_route_ok / n_route, 3) if n_route else None}
+                                    "rate": round(n_route_ok / n_route, 3) if n_route else None,
+                                    "unjudgeable": n_route_skip}
     stats["metrics"]["hit"] = {"n": n_hit, "ok": n_hit_ok,
                                "rate": round(n_hit_ok / n_hit, 3) if n_hit else None}
     stats["metrics"]["rc_match"] = {"n": n_rc, "ok": n_rc_ok,
@@ -307,6 +311,8 @@ def cmd_stats(root, pool_file):
     out = pool_file.parent / f"stats-{pool.get('name', 'pool')}.yaml"
     out.write_text(yaml.safe_dump(stats, allow_unicode=True, sort_keys=False), encoding="utf-8")
     print(f"== stats：{stats['issues_scored']}/{stats['issues_total']} 条已评分 ==")
+    if n_route_skip:
+        print(f"  路由面：{n_route_skip} 条无真值（池条目未标 expected_ns）——不计入路由率分母")
     if missing:
         print(f"  缺 result（未跑）: {missing}")
     for k, m in stats["metrics"].items():

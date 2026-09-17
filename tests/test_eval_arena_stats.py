@@ -132,3 +132,32 @@ calibration:
     def test_missing_source_exits_2(self):
         self.assertEqual(ea.build_pool(self.root, "eval/s2/nope.yaml", "x", "selection", False,
                                        str(self.root / "o.yaml")), 2)
+
+
+class EmptyExpectedNsTest(unittest.TestCase):
+    """池条目没有 expected_ns 时不得崩，也不得把"无从对照"算成路由成功/失败。
+
+    实测来源：真实池里 11 条 expected 没写 namespace，`(expected_ns and ...)` 返回空串，
+    一路传到 int('') 让 --stats 崩掉——fixture 里 expected_ns 都有值，所以之前没暴露。
+    """
+
+    def test_stats_survives_empty_expected_ns(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        arena = root / ".s2-replay" / "arena"
+        arena.mkdir(parents=True)
+        (arena / "pool-e.yaml").write_text("""\
+name: pool-e
+split: selection
+issues:
+  - {id: "901", expected_ns: "", category: "", fix_ref: ""}
+""", encoding="utf-8")
+        (root / ".s2-replay" / "901.result.yaml").write_text(
+            "namespace: inference/vllm-ascend\nroute: ''\nrouting_ok: false\n"
+            "hit_case: ''\ntier2_hit: false\nroot_cause_ok: false\n", encoding="utf-8")
+        self.assertEqual(ea.cmd_stats(root, arena / "pool-e.yaml"), 0)
+        s = yaml.safe_load((arena / "stats-pool-e.yaml").read_text(encoding="utf-8"))
+        self.assertFalse(s["issues"][0]["route_ok"])          # 缺真值 → 不判为通过
+        self.assertIsNone(s["metrics"]["route_ok"]["rate"])   # 分母为 0 → 不编造路由率
+        self.assertEqual(s["metrics"]["route_ok"]["unjudgeable"], 1)
