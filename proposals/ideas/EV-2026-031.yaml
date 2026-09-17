@@ -51,3 +51,7 @@ decisions:
   - {type: action, who: agent, when: "2026-09-08", conclusion: "改 skills/diagnose/SKILL.md（证据落盘铁律/两种缺信息/外部事实落盘/trace边界/相似检测/trace生命周期/改进先产EV卡护栏）+ skills/resume-diagnosis/SKILL.md（status 原位闭环）+ diagnosis_state.yaml.example（证据落盘示例）+ scripts/verify_proposals.py（VALID_METHOD 补 scan_review）+ 新增本卡"}
   - {type: eval, who: agent, when: "2026-09-08", conclusion: "指引面/文档面改动——不跑检索 golden（gradation），scan + 人审；trace 完整性/词表合规不回归"}
   - {type: decision, who: agent, when: "2026-09-08", conclusion: "validated（采纳）——改动已实现且用户确认；补卡以恢复决策链（供人审有据），避免'先执行后补卡'无据；validation.method 用 scan_review（补 verify_proposals 枚举支持，指引面/文档面不跑检索 golden）"}
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #140 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

@@ -73,3 +73,7 @@ decisions:
       采纳（validated）：评测规格入库随 methodology PR 送人审。观察窗：后续新增样本
       走 eval/ixn-arena PR；出分 ≥10 带分母后进 timeline；正文拉取失败（上游删除）时
       样本标"源不可达"降级（诚实标注，不硬凑）。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #118 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

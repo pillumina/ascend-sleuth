@@ -82,6 +82,10 @@ decisions:
       采纳并标 validated（效果层）。边界如实标注：本卡证明"950 命令面已进词条且语法差异被显式标注"，
       不证明命令清单穷尽——DCMI 的 950 API 面（87 篇）与 910B/910_93 的 DCMI（376 篇）按口径跳过，
       若后续出现"必须查 DCMI 接口语义"的诊断场景，应把该仓从 skipped 复议为候选。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #226 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
 actual_cost:
   tokens: 22000
   source: estimate

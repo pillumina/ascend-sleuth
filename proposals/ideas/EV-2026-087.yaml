@@ -88,6 +88,10 @@ decisions:
       下一轮按价值排序评估；50 个 rejected 仓的理由按类别给出（算子库/模板库、治理竞赛教学、行业 SIG、
       agent 知识仓、框架适配、模板配置），是判断不是普查结论，若某仓后续出现诊断价值高的文档面可按
       candidate 复议（仓级 triage 可覆盖重写）。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #225 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
 actual_cost:
   tokens: 25000
   source: estimate

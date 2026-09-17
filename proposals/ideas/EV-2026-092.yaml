@@ -78,6 +78,10 @@ decisions:
       本轮之前的实测记录只存在于各 EV 卡的决策链与 PR body 中；②该运行件是 git-ignored，
       清理/迁移不会进 PR——"记录没了"这类问题只能靠本卡这种就地核对发现；
       ③不改 `--audit` 的口径（它本来就从卡里读判据，与运行件无关）。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #228 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
 actual_cost:
   tokens: 7000
   source: estimate

@@ -57,3 +57,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated）。残余如实标注：另有若干判据的期望值钉在会漂移的计数上（今天跑会假红），本卡只把「依赖已蒸发」这一类分开；「期望值随数据漂移」那一类需要逐卡改写成结构性断言，属后续工作"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #250 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

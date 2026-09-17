@@ -109,3 +109,7 @@ decisions:
       采纳（validated）。保留的不确定：`source_session` 目前只有极少数 case 有，故"自诊断"的
       识别在历史 case 上不完整——闸门只对**新产出的草稿**生效（那时 to-postmortem 会回写该字段），
       对历史 case 不追溯。这一取舍已写入 success_criteria 与文档。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #235 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

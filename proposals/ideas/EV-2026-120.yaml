@@ -56,3 +56,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated）。残余如实标注：组件键目前以「改动落点」代理（target_component 全库仍为 0），因此同一逻辑组件的多次尝试可能落在不同文件上；要让键真正稳定，需要在卡 schema 层面把该字段填起来（下一步）"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #249 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

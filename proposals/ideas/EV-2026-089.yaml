@@ -94,6 +94,10 @@ decisions:
       ②**摩擦记录（未改机制）**：`raw.gitcode.com` 对个别文件返回 403（zh/debug/cann_sim.md、
       zh|en/context/batch_consistency.md），而同一 commit 的 blob 经 git 稀疏检出可读且 sha 与台账一致——
       本轮用稀疏检出兜底完成取证，脚本未加兜底路径，留待下一轮摄取批次一并处理。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #227 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
 actual_cost:
   tokens: 26000
   source: estimate

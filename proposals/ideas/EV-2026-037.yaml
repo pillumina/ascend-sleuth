@@ -125,3 +125,7 @@ decisions:
       ⑤2.5 ③ 的散文 ref-id（如 `ascend-error-code-structure`）仍无 CI 校验——通用「散文 ref-id 扫描」
       需维护 ~39 项白名单（脚本名/枚举/标签），维护成本 > 收益（原则九），不做；**受校验的绑定路径
       是 `*-gates.yaml`**，新增绑定类内容应走它。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #162 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

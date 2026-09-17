@@ -128,3 +128,7 @@ decisions:
       修法都记在 success_criteria ④）；④ 改动可逆且不触碰高风险字段（expected / fix_on_mismatch /
       compat 区间均未动）。保留的不确定：CI 对 `--all` 的门是否会在未来某次合并中因新 case 报红
       而被绕过——gate 字段即为此设的观测条件。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #230 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

@@ -148,3 +148,7 @@ decisions:
       ④**更正本卡残留 ④ 的依据**：残留④前半句成立（当时 CLAUDE.md 确未同步），**后半句不成立**
       ——核验后 CLAUDE.md 零处引用 evolution 文档。CLAUDE.md 已在 commit `ec1ba16` 同步。
       按只追加纪律不改原文，以本条为准。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #179 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

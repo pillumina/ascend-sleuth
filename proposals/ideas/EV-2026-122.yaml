@@ -56,3 +56,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated）。残余如实标注：存量卡里生效日之前的仍未填（豁免是刻意的——补写会形成事后叙述），因此历史同组件统计仍部分依赖落点代理"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #250 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

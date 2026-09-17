@@ -58,3 +58,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated）：缺口 → 沉淀的闭环首次在本仓跑通（此前 miss 只留在报告里）。残余如实标注：①三条的 platforms 属推断（待 reviewer 判断是否改跨平台）；②12640 未钉到具体失配行、13070 类归属存疑——两条都写成限定语，不做强结论；③其余 8 条 miss 未沉淀（缺 fix 结论或属非诊断样本）"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #253 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

@@ -135,3 +135,7 @@ decisions:
       ③背景层检索键不足这一物理前提未解决（触发点 2 的"组件词收窄"是权宜），
       留待观测到 `background` 命中率后另立卡。
 
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #229 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

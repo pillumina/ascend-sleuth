@@ -121,3 +121,7 @@ decisions:
       那些 job 不带 node，混在一起会让"面板要不要 node"这件事读不出来；②**不给面板加 lint 或格式
       门**——面板是零依赖单文件，格式类判据没有确定性后果（检查准入第②条不满足）；③**不动
       `holdout` / `skill-self-contained` 等既有 job 的行为**，只加路径触发与一个新 job。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #202 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

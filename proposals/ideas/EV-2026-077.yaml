@@ -68,3 +68,7 @@ decisions:
   - {type: action, who: agent, when: "2026-09-14", conclusion: "改 skills/diagnose/SKILL.md（相似检测段）+ skills/diagnose/references/diagnosis-procedure.md（步骤 6 反馈债时点）+ skills/resume-diagnosis/SKILL.md（补 feedback.case 为空值这一路）+ diagnosis_state.yaml.example（case 三取值）+ dsh-plugins/ascend-panel/panel-host.js 与 README.md（工具描述与用途）+ docs/（evolution 流程图与注、git-workflow 通知机制、design-principles 硬化举例）"}
   - {type: eval, who: agent, when: "2026-09-14", conclusion: "指引面/文档面改动——不跑检索 golden；scan + 人审。判据命令复跑为绿；行为面做针对性探针：旧文本开屏追问并阻塞，新文本未追问、未阻塞（N=3，如实标注低强度）；未附盲辨对照，理由记在 validation.success_criteria"}
   - {type: decision, who: agent, when: "2026-09-14", conclusion: "validated（采纳）——按用户直接指示实施；判据命令已复跑为绿，三处文本一致"}
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #211 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

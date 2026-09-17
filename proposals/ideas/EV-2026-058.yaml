@@ -83,3 +83,7 @@ decisions:
       **格式修复**（products 撕裂 + at 引号 + version 回填）——不改任何判断内容（skill/时间/理由/成本原样保留），
       并在对话里明示；若维护者认为"历史件一律不碰"，可只保留写侧与校验器改动，把运行件改回原样。
       另：该文件是 gitignored 运行件，**不会**随 PR 进仓；跨机口径仍走 `--summary` → `metrics/timeline.yaml`。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #184 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

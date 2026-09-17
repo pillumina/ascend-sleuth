@@ -111,3 +111,7 @@ decisions:
       Windows 上 reseal 出来的封存集在 Linux CI 上会红**。
       ③"检查判据"这类改动仍无独立评审路径——本次之所以能自己修，是因为我判断"改夹具不改判据"；
       若判据确实需要改，本仓目前没有"谁批"的答案（CODEOWNERS 未落实）。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #183 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

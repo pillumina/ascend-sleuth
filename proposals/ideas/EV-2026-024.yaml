@@ -69,3 +69,7 @@ decisions:
       挂再拆闸门：溢出率 ≥40% 或 med >5 或 vllm-ascend 命中分片读入 >60KB → 启动子族
       拆分评估（映射已备）+ kb/high-risk 双签。观察窗：capacity_health 随 groom 复测；
       阈值固化待 metrics 复核（owner）。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #125 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

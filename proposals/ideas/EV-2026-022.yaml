@@ -72,3 +72,7 @@ decisions:
       采纳（validated）：F1 分片随 methodology PR 送人审。观察窗：F2（行瘦身，
       quickly_check 后置）待阶段一 token 实测后评估；F3（vllm-ascend interrupt 拆族）
       在 F1+F2 落地后重评（ADR-0004/A2 数据刷新）。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #123 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

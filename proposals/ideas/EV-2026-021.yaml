@@ -69,3 +69,7 @@ decisions:
       采纳（validated，dual）：分级门禁随 methodology PR 送人审。观察窗：下张
       交互面 skill 改动按新门禁走 ixn（不再跑检索 golden），记录 token 前后对比；
       基线缓存落 .s2-replay/gates/（本地），跨改动复用。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #122 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

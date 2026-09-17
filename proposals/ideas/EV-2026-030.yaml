@@ -58,3 +58,7 @@ decisions:
   type: decision
   conclusion: 采纳（validated）：F5 行宽压缩随 methodology PR 送人审。观察窗：interrupt cell <60KB（F3
     闸门解除）；若库持续增长再次超 60KB → 回到子族拆分评估（EV-2026-029 已记）；groom 的 R8 聚类仍可用（tags≤6 保留）。
+- who: agent
+  when: 2026-09-17
+  type: action
+  conclusion: "合入指针回写：本卡（及其结论）随 PR #132 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

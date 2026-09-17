@@ -70,3 +70,7 @@ decisions:
       采纳（validated）：实测回填 + 闸门状态随 PR 送人审。下一步（数据已触发）：①子族
       拆分评估（F3 闸门，需双签）或 ②行宽压缩 F5（title 截断/去 tags 全文，检索面 golden
       子集）——两者择一，倾向先 F5 行宽（成本低、不动目录结构），评估后再定拆分。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #131 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

@@ -52,3 +52,7 @@ decisions:
     who: agent
     when: 2026-09-03
     conclusion: "采纳。triage 路由缺口修复真实生效（13446/13639 从 0/误吸 → inference_interrupt 命中），仅正则追加未删改现有行（EV-005 ValueError 补录同路径先例），无 golden 回归风险。变更随 S2 补 case PR 合入（kb/s2-gap-cases）。"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #105 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

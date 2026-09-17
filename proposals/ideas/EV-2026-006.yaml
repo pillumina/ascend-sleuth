@@ -68,3 +68,7 @@ decisions:
       持续观测"（interrupt 76 的 25K token 对单次诊断可接受）。建议：持续观测溢出率趋势
       （下轮沉淀后复测），若升破 30% 再评估阶段一加载协议优化；本卡 validated（评估完成，
       数据驱动结论：暂不拆）。脚本 capacity_health.py 保留供后续复测。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #99 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

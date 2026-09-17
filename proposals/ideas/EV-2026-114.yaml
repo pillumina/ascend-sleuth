@@ -61,3 +61,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated，形式与结构可核、效果进观察窗）。放置决定按 owner 口径执行：**细节放 skill 自己的 references（渐进式披露），不放仓库根先验层**——先验层的 methodology 是「从症状到根因的排查流程」，进的是方法缺口选择器；而本条是「给出结论前的验证纪律」，触发点是判断缺口，放进去属语义错位（先前那一版已按此撤回）。残余：①规则是否真被执行，只能靠真实 trace 观察（无机械判据）；②它不改变任何检索/路由行为。"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #244 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

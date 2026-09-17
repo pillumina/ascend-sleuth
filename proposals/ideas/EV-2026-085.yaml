@@ -86,6 +86,10 @@ decisions:
       kb/high-risk，需第二个 owner 签名（PR body 已按高风险区块填写触发条款/变更依据/双签/影响与回退）。
       本卡证明"增补已落进同一条目且可查"，不证明"手册口径一定比原 troubleshooting 页新"——两来源并列在
       sources 里，若出现版本冲突以各自 version 字段为准。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #221 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
 actual_cost:
   tokens: 30000
   source: estimate

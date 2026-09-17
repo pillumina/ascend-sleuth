@@ -74,3 +74,7 @@ decisions:
       validated（采纳，改动保留进本 PR）。修订 active 内容**合入需 kb/high-risk 双签**——
       本卡 authorization 记为 dual，agent 只完成产出与自验证。人审关注点：工具词条的比对面清单
       来自输出截图（auto-extracted），是否与 `-vc`/`-vv` 的实际覆盖面一致，需 spot-check。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #240 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

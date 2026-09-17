@@ -127,3 +127,7 @@ decisions:
       挪到机器级共享目录会打破它；换来的是"一份状态跟着克隆走"，这正是要的。③**不动读侧既有的"主检出优先、
       否则当前检出"回退**（`metrics_snapshot.resolve_trace_root`）：它会把实际读的那一份打在输出里，
       兼容历史 worktree 里遗留的 trace，属诚实退化。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #201 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

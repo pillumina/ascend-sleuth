@@ -68,3 +68,7 @@ decisions:
       采纳（validated，dual）：groom 协议改造随 methodology PR 送人审。观察窗：下次真实
       groom 按新协议执行并记录 token（对照 roadmap 基线）；若仍超 <30K，继续砍（如
       inbox 分页/候选项摘要化）。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #130 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

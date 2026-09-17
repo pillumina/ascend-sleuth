@@ -101,3 +101,7 @@ decisions:
       node scripts/panel_render_check.js 全部通过、python3 scripts/check_panel_tokens.py 一致。
       真实 trace（traces/ 里事件最多的一条，会话名不写入本卡）导出 9 个文件 / 2.6 MB，
       zip 197 KB、md 71 KB；落位后与上家 hash 相同、5 个证据文件按 trace 里的相对路径全部可读。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #213 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
