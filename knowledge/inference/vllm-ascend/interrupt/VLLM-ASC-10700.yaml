@@ -1,0 +1,76 @@
+# VLLM-ASC-10700 —— GLM5.1 + MTP 投机解码（未设 enforce_eager）推理十余次请求后崩溃：
+#   507011 + MTE DDR 越界（fftsplus aivector error / fixp_error0=0x600005f / subErrType=4）；
+#   同配置加 enforce_eager: true 后稳定运行 → 指向图模式（ACLGraph）路径
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/10700（OPEN，无 fix PR）
+# pre-triage: variant_of VLLM-ASC-9887 —— 同族「GLM5.1 + MoE 分发/MTP 路径运行期崩溃 + MTE DDR 越界」，
+#   但触发条件不同：9887 是 MC2 容量不足（num_batch_tokens > 容量，FusedMC2=1），
+#   本条是 **图模式捕获/回放**（未 enforce_eager）下运行多次后越界；两条的 fix 面不同（容量 vs 图模式开关）。
+# 脱敏：内网 IP/主机名未引用。
+
+cases:
+  - id: VLLM-ASC-10700
+    title: "GLM5.1 + MTP 投机解码未设 enforce_eager 时推理十余次请求后崩溃：507011 + MTE DDR 越界（fftsplus aivector error）——加 enforce_eager 后稳定，指向图模式路径"
+
+    category: interrupt
+    tags: [glm5, mtp, spec-decode, aclgraph, graph-mode, mte, ddr-out-of-range, 507011]
+    platforms: ["A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.21.0rc1"]        # 现场实测版本（rc）
+
+    investigation_quality: medium   # 现场 A/B（enforce_eager）指明方向，上游无根因结论
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3
+      last_hit: ""
+
+    symptoms:
+      - "GLM5.1（双节点 A2 16 卡）启用 MTP 投机解码（`--speculative-config '{\"num_speculative_tokens\":3,\"method\":\"mtp\"}'`）且**未设 enforce_eager** 时，推理十余次请求后 vLLM 进程崩溃（非启动即失败）"
+      - "框架侧：`NPU function error: call failed, error code is 507011` / `aclrtLaunchKernelWithHostArgs failed: 507011` / `Kernel launch from cache failed`（走的是算子缓存/图路径）"
+      - "device 侧：fftsplus aivector error，`errorStr: The DDR address of the MTE instruction is out of range`，`fixp_error0 info: 0x600005f`，`subErrType:4`"
+      - "**同配置把 enforce_eager 置 true（放在 --speculative-config 里）后稳定运行**——只是推理变慢，崩溃消失"
+
+    references:
+      - https://github.com/vllm-project/vllm-ascend/issues/10700
+
+    verification:
+      source: investigation
+      detail: "issue #10700 仍 OPEN、无维护者根因结论、无 fix PR。现场提供 A/B 证据（enforce_eager=true 稳定 / 不设则崩溃）与完整 device 侧报错；本 case 的根因方向（图捕获/回放路径）由该 A/B 与 'Kernel launch from cache failed' 共同指向，未做代码级定位。"
+
+    quickly_check:
+      primary:
+        command_template: grep -aE '507011' {{server_log}}
+        rank_selector: all_failed
+        expected: "regex:507011"
+      fallback:
+        command_template: grep -aE 'MTE instruction is out of range|fixp_error0' {{plog_dir}}/*.log
+        rank_selector: all_failed
+        expected: "regex:MTE instruction is out of range|fixp_error0"
+
+    diagnosis:
+      - step: 1
+        check: "故障是否发生在启用 MTP 投机解码（method=mtp）且**未设 enforce_eager** 的 GLM5.1 服务上，且是运行若干次请求后才崩（非启动即失败）？"
+        expected: "是——图捕获/回放路径嫌疑（区别于启动期配置错误）"
+      - step: 2
+        check: "服务日志是否出现 507011（aclrtLaunchKernelWithHostArgs failed / Kernel launch from cache failed），plog 是否 MTE DDR 越界（fixp_error + subErrType:4）？"
+        expected: "是——判为 device 侧访存越界，不是通信/精度问题"
+        fix_on_mismatch: "若报的是 MoeDistributeDispatch 相关 error code（如 507034/561000）→ 转 MC2 容量/分发族（见 VLLM-ASC-9887 / 10944）"
+        rollback: "无（只读检查）"
+      - step: 3
+        check: "对照实验：把 enforce_eager 置 true（放进 --speculative-config）后长跑，是否不再复现？"
+        expected: "是——确认触发面在图模式（ACLGraph）路径，可先用它做业务止损"
+        fix_on_mismatch: "若加 enforce_eager 仍崩 → 跳出本 case，转 MTE 越界家族排查（容量/索引越界）"
+        rollback: "去掉 enforce_eager 即回到原行为"
+      - step: 4
+        check: "现场版本是否为 rc（0.21.0rc1 等）？"
+        expected: "是——建议在正式版上复测（图路径修复通常只进正式版），不复现则按版本差异结案"
+        rollback: "回退镜像"
+
+    severity: service-affecting
+    fix_side_effects:
+      - requires-restart
+    fix_type: config-change
+    root_cause: "未闭环。方向：MTP 投机解码在**图模式**（未设 enforce_eager → ACLGraph 捕获/回放）下，运行若干次请求后 device 侧出现 MTE 访存越界（DDR address out of range, fixp_error0=0x600005f, subErrType:4），kernel 从缓存启动失败（507011）。加 enforce_eager=true 走 eager 执行即不复现，说明触发面在图捕获/回放路径而非算子本身。"
+    fix: "止损：在 --speculative-config 里加 \"enforce_eager\": true（现场已验证稳定，代价是推理变慢）。定位：在正式版上复测并确认版本差异；仍复现则收集崩溃前最后一次图回放的输入规模与 plog，交维护者（上游 issue 仍 OPEN）。"
+    rollback: "移除 enforce_eager 即回到原行为；升级/回退镜像可控"

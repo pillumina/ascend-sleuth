@@ -5,10 +5,10 @@
 # 按 file 字段定位做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-09-17    case 总数：159
+# 生成日期：2026-09-17    case 总数：161
 #   容量(common): performance=15/30, precision=6/30
 #   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=86/30, performance=8/30, precision=21/30
+#   容量(inference/vllm-ascend): interrupt=88/30, performance=8/30, precision=21/30
 #   容量(training/mindspeed-llm): interrupt=11/30, precision=4/30
 #   容量(training/verl): interrupt=6/30, precision=1/30
 namespaces:
@@ -671,6 +671,32 @@ namespaces:
       - v0.19.1rc1
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10626.yaml
       hash: 248e109d1118
+    - id: VLLM-ASC-10700
+      title: GLM5.1 + MTP 投机解码未设 enforce_eager 时推理十余次请求后崩溃：507011 + MTE DDR 越界（fftsplus aivector error）——加
+        enforce_eager 后稳定，指向图模式路径
+      category: interrupt
+      tags:
+      - glm5
+      - mtp
+      - spec-decode
+      - aclgraph
+      - graph-mode
+      - mte
+      compat: vllm-ascend 0.21.0rc1
+      confidence:
+        score: 0.3
+      symptoms:
+      - GLM5.1（双节点 A2 16 卡）启用 MTP 投机解码（`--speculative-config '{"num_speculative_tokens":3,"method":"mtp"}'`）且**未设
+        enforce_eager*…
+      sig:
+      - '507011'
+      - MTE instruction is out of range
+      - fixp_error0
+      tok:
+      - '0x600005f'
+      - '507011'
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10700.yaml
+      hash: 828feae40b3b
     - id: VLLM-ASC-10758
       title: 'minimax-m2.5（v0.20.2rc1）流式工具调用末尾拼接 </parameter> 残缺尾片致路径识别失败：增量 tool-call parser 在参数未闭合时输出
         delta，需参数完整闭合后再发（vllm-ascend #10817 backport / vLLM 上游 #45701 parser e…'
@@ -2685,6 +2711,32 @@ namespaces:
       - error code 507034
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9887.yaml
       hash: 99d58030828a
+    - id: VLLM-ASC-HCCL-BIND-IP-PORT
+      title: 多 P 节点独立启动（无 Ray）的 MoE 专家并行长稳运行后 P 节点崩溃：plog 报 Communication_Error_Bind_IP_Port（HCCL 建链 bind
+        IP:Port 失败，src_port 越界）——与 kv_port/Mooncake 端口无关
+      category: interrupt
+      tags:
+      - hccl
+      - moe-dispatch
+      - pd-separation
+      - bind-ip-port
+      - port-overflow
+      - multi-node
+      compat: vllm-ascend 0.22.1rc1
+      confidence:
+        score: 0.3
+      symptoms:
+      - PD 分离多机部署（如 4 机 A3 3×1P + 1×1D），各 P 节点**独立启动、不使用 Ray**，服务长稳运行（数小时~两天半）后某 P 节点崩溃退出
+      sig:
+      - Communication_Error_Bind_IP_Port
+      - hccl_socket_manager
+      - aclnnMoeDistributeDispatchV4
+      - hccl_ret
+      - src_port
+      tok:
+      - '65535'
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-HCCL-BIND-IP-PORT.yaml
+      hash: 399f6eca234c
     performance:
     - id: VLLM-ASC-10710
       title: DSV4-Flash-w8a8-mtp 完全相同串行请求 Prefix Cache 命中率恒 0%：混合压缩 KV（compression_ratio=128）最小命中长度=block_size×128（block128→16k、投机/MTP→32k），10k

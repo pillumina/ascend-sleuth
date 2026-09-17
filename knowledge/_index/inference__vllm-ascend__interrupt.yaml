@@ -1,7 +1,7 @@
 # GENERATED FILE —— 分片（knowledge/_index.yaml 的 inference/vllm-ascend__interrupt 子集），不要手改。
 # 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。
 # 阶段一加载协议（F1 EV-2026-022 + F4 EV-2026-025）：category 已定时 diagnose 只读命中 (namespace×category) 的类分片，不读整库总表。
-# 本分片：inference/vllm-ascend__interrupt（86 条 case）
+# 本分片：inference/vllm-ascend__interrupt（88 条 case）
 namespaces:
   inference/vllm-ascend__interrupt:
     interrupt:
@@ -219,6 +219,32 @@ namespaces:
       - v0.19.1rc1
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10626.yaml
       hash: 248e109d1118
+    - id: VLLM-ASC-10700
+      title: GLM5.1 + MTP 投机解码未设 enforce_eager 时推理十余次请求后崩溃：507011 + MTE DDR 越界（fftsplus aivector error）——加
+        enforce_eager 后稳定，指向图模式路径
+      category: interrupt
+      tags:
+      - glm5
+      - mtp
+      - spec-decode
+      - aclgraph
+      - graph-mode
+      - mte
+      compat: vllm-ascend 0.21.0rc1
+      confidence:
+        score: 0.3
+      symptoms:
+      - GLM5.1（双节点 A2 16 卡）启用 MTP 投机解码（`--speculative-config '{"num_speculative_tokens":3,"method":"mtp"}'`）且**未设
+        enforce_eager*…
+      sig:
+      - '507011'
+      - MTE instruction is out of range
+      - fixp_error0
+      tok:
+      - '0x600005f'
+      - '507011'
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10700.yaml
+      hash: 828feae40b3b
     - id: VLLM-ASC-10758
       title: 'minimax-m2.5（v0.20.2rc1）流式工具调用末尾拼接 </parameter> 残缺尾片致路径识别失败：增量 tool-call parser 在参数未闭合时输出
         delta，需参数完整闭合后再发（vllm-ascend #10817 backport / vLLM 上游 #45701 parser e…'
@@ -2233,3 +2259,29 @@ namespaces:
       - error code 507034
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9887.yaml
       hash: 99d58030828a
+    - id: VLLM-ASC-HCCL-BIND-IP-PORT
+      title: 多 P 节点独立启动（无 Ray）的 MoE 专家并行长稳运行后 P 节点崩溃：plog 报 Communication_Error_Bind_IP_Port（HCCL 建链 bind
+        IP:Port 失败，src_port 越界）——与 kv_port/Mooncake 端口无关
+      category: interrupt
+      tags:
+      - hccl
+      - moe-dispatch
+      - pd-separation
+      - bind-ip-port
+      - port-overflow
+      - multi-node
+      compat: vllm-ascend 0.22.1rc1
+      confidence:
+        score: 0.3
+      symptoms:
+      - PD 分离多机部署（如 4 机 A3 3×1P + 1×1D），各 P 节点**独立启动、不使用 Ray**，服务长稳运行（数小时~两天半）后某 P 节点崩溃退出
+      sig:
+      - Communication_Error_Bind_IP_Port
+      - hccl_socket_manager
+      - aclnnMoeDistributeDispatchV4
+      - hccl_ret
+      - src_port
+      tok:
+      - '65535'
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-HCCL-BIND-IP-PORT.yaml
+      hash: 399f6eca234c
