@@ -179,12 +179,33 @@ def gh_api(path: str, timeout: int = 40):
     return json.loads(out.stdout)
 
 
+# 中段裁剪时**必须留住的触发参数**：实测一次盲测里，崩溃请求的
+# `guided_decoding=GuidedDecodingParams(json_object=True, ...)` 正好落在被裁掉的中段，
+# 触发证据在输入里根本不可见（结论仍靠推理得出，但证据强度被无谓削弱）。
+# 口径：裁剪前把中段里带这些键的行捞出来另附，不整段保留（token 预算不变）。
+TRIGGER_KEYS = ("guided_decoding", "sampling_params", "temperature", "max_tokens", "top_p",
+                "response_format", "enable_", "speculative", "quantization", "tp_size",
+                "dp_size", "ep_size", "world_size", "cuda_graph", "graph_mode")
+
+
 def clip_text(body: str, limit: int = BODY_CLIP) -> str:
     if not body:
         return ""
     if len(body) <= limit:
         return body
-    return body[: limit * 2 // 3] + "\n\n……（中段裁剪）……\n\n" + body[-limit // 3:]
+    head, middle, tail = body[: limit * 2 // 3], body[limit * 2 // 3: -limit // 3], body[-limit // 3:]
+    keep = [ln.strip() for ln in middle.splitlines()
+            if ln.strip() and any(k in ln for k in TRIGGER_KEYS)]
+    kept = ""
+    if keep:
+        # 去重保序 + 每条限长（避免"保留"变成"换个地方塞回全量"）
+        seen, uniq = set(), []
+        for ln in keep:
+            if ln not in seen:
+                seen.add(ln)
+                uniq.append(ln[:300])
+        kept = "\n\n……（中段裁剪；以下是被裁中段里与触发相关的行，逐行保留）……\n" + "\n".join(uniq[:20])
+    return head + "\n\n……（中段裁剪）……" + kept + "\n\n" + tail
 
 
 def load_processed(state_file: Path):
