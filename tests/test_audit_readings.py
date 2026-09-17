@@ -121,7 +121,7 @@ if __name__ == "__main__":
 
 
 class StaleMeasureDepTest(unittest.TestCase):
-    """判据点到已蒸发的仓库文件 → 单列一档，不与"从未执行"混算。"""
+    """判据依赖只认「读取语境」——实测两类假阳性都要挡住（它们曾进健康判据的读数）。"""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -133,19 +133,39 @@ class StaleMeasureDepTest(unittest.TestCase):
     def _card(self, cmd):
         return {"predicted_effect": {"measure": {"command": cmd, "expect_exit": 0}}}
 
-    def test_missing_repo_file_is_stale(self):
+    def test_missing_read_file_is_stale(self):
         import ev_measure as em
-        self.assertEqual(em.stale_deps(self.root, self._card("python3 -c 1 docs/gone.md")),
+        self.assertEqual(em.stale_deps(self.root, self._card("python3 -c \"open('docs/gone.md')\"")),
                          ["docs/gone.md"])
 
-    def test_existing_repo_file_is_not_stale(self):
+    def test_existing_read_file_is_not_stale(self):
         import ev_measure as em
-        self.assertEqual(em.stale_deps(self.root, self._card("grep -c x docs/alive.md")), [])
+        self.assertEqual(em.stale_deps(self.root, self._card("cat docs/alive.md")), [])
 
-    def test_runtime_paths_are_not_stale(self):
-        """traces/ 与 /tmp 下的文件不存在是正常的（运行时件），不算判据失效。"""
+    def test_noise_sample_list_is_not_a_dependency(self):
+        """命令里当「期望不存在的噪音样本」列出的字符串不是依赖（实测 EV-2026-091 就是这么被误判的）。"""
         import ev_measure as em
-        self.assertEqual(em.stale_deps(self.root, self._card("python3 x.py traces/a.yaml /tmp/b.json")), [])
+        cmd = "python3 -c \"noise=['CMakeLists.txt','autofuse/README.md'];print(noise)\""
+        self.assertNotIn("autofuse/README.md", em.stale_deps(self.root, self._card(cmd)))
+
+    def test_string_literal_comparison_is_not_a_dependency(self):
+        """代码里当字面量比较的路径不是依赖（实测 EV-2026-094：`'compat-matrices/cann-hdk.yaml' in p`）。"""
+        import ev_measure as em
+        cmd = "python3 -c \"p=open('docs/alive.md').read();named='compat-matrices/cann-hdk.yaml' in p\""
+        self.assertNotIn("compat-matrices/cann-hdk.yaml", em.stale_deps(self.root, self._card(cmd)))
+
+    def test_runtime_paths_count_as_dependencies(self):
+        """运行时件（traces/、/tmp）缺失同样是依赖蒸发——判据跑不起来就是跑不起来。"""
+        import ev_measure as em
+        self.assertEqual(
+            em.stale_deps(self.root, self._card("python3 scripts/x.py traces/gone.md")),
+            ["traces/gone.md"])
+
+    def test_script_argument_path_is_a_dependency(self):
+        import ev_measure as em
+        self.assertEqual(
+            em.stale_deps(self.root, self._card("python3 scripts/report_lint.py docs/gone.md")),
+            ["docs/gone.md"])
 
     def test_declared_unmeasurable_has_no_deps(self):
         import ev_measure as em
