@@ -1,0 +1,65 @@
+id: rl-inference-precision-triage
+type: methodology
+title: RL 推理精度定位（纯服务化 / RL 场景乱码 / 长跑异象，含 Resharding 组合定界）
+summary: RL 推理精度问题的三形态分流：先按现象归形态（纯服务化推理乱码 / 纯服务化正常但 RL 场景乱码 / 长跑才有的异象），再各走一条路——dump 精准定位与 GPU 复测、对齐服务化参数后用 dummy 与 safetensors+skip_update_weight 组合定界 Resharding、单步权重纯服务化回放区分训歪与 kvcache 问题
+
+sources:
+  - type: engineer-input
+    engineer: "RL 精度调优经验分享（提供者匿名）"
+    document: "强化学习精度调优方法总结分享（PDF，12 页）"
+    input_session: "session-f7e8b681-6bdc-4f2d-9e7b-0d0cb466de9b"
+    confirmed_at: 2026-09-17
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  frameworks: [verl, vllm-ascend, sglang]
+  categories: [precision]
+
+related_references: [rl-precision-alignment-overview, vllm-infer-precision-triage, ascend-garbled-output-triage, msprobe-data-dump, verl-probs-diff-monitoring]
+
+status: active
+last_verified: 2026-09-17
+
+content:
+  flow:
+    - step: 1
+      name: 先分形态——三种推理精度问题各走一条路
+      action: "①纯服务化推理：模型输出乱码、输出片段重复、下游评测得分偏低、语义断裂与逻辑不连贯、局部异常案例；②RL 场景推理：纯服务化推理回答正常，RL 场景下乱码；③长跑场景：长跑过程中出现乱码或幅度等异常。形态决定后续路径，先归形态再动手。"
+      check: "明确归到三形态之一（纯服务化 / RL 场景 / 长跑）"
+      when_to_use: 拿到 RL 推理精度问题的第一步
+    - step: 2
+      name: 纯服务化推理——dump 精准定位 + 局部 bad case 送 GPU 复测
+      action: "用数据转储（dump）精准定位到出错的算子或层；对局部异常案例，推荐把 bad case 拿到 GPU 上复测，先排除模型自身能力问题再往下查。"
+      check: "dump 是否收敛到具体算子或层；GPU 复测是否复现同一 bad case"
+      when_to_use: 现象落在纯服务化推理（不走 RL 训练链路）
+    - step: 3
+      name: RL 场景推理第一步——对齐服务化推理参数及环境变量
+      action: "RL 场景乱码时先做对齐：把 RL 推理与纯服务化推理的参数、环境变量逐项对齐，排除「同一模型在两套配置下跑」这类差异。"
+      check: "两侧推理参数与环境变量逐项一致"
+      when_to_use: 纯服务化推理正常、RL 场景乱码
+    - step: 4
+      name: RL 场景推理第二步——Resharding 组合定界
+      action: "用两组权重加载方式跑同一份输入做组合定界（skip_update_weight：RL 框架下模拟纯服务化场景推理，专门用来定界 resharding 问题）：①dummy 乱码、safetensors+skip_update_weight 吐字正常 → sharding 有问题；②dummy 乱码、safetensors+skip_update_weight 乱码 → 权重或 verl 层处理有问题；③dummy 吐字正常、safetensors+skip_update_weight 吐字正常 → 这一项没问题，去查其它问题。"
+      check: "三种组合落在哪一种，据此判定 sharding、权重或 verl 层处理是否有问题"
+      when_to_use: 参数与环境变量已对齐，仍怀疑权重切分（resharding）
+    - step: 5
+      name: RL 场景推理第三步——采集 RL 推理数据正向定位
+      action: "打开 RL 场景的推理数据采集，拿到实际的 generate 配置与输入输出，从数据上正向定位差异来源，而不是继续猜。"
+      check: "采集产物里有本轮推理的 generate 配置与实际输入输出"
+      when_to_use: 前两步未定位，或需要证据支撑结论时
+    - step: 6
+      name: 长跑场景——保存 n-1 步权重做纯服务化单步测试
+      action: "保存第 n-1 步的权重，基于纯服务化推理验证同一份输入。若复现问题，怀疑训歪或权重保存问题；若单步测试正常，说明问题来自长跑特有场景，进入下一步。"
+      check: "n-1 步权重在纯服务化推理下是否复现现象"
+      when_to_use: 只有长跑才出现的推理异常
+    - step: 7
+      name: 长跑场景——仅长跑复现时优先排查 kvcache
+      action: "单步测试正常而长跑复现，优先排查 kvcache：缓存清理延迟或失效、缓存复用逻辑错误。"
+      check: "kvcache 的清理时机与复用逻辑是否有误"
+      when_to_use: 单步权重测试 ok，问题只在长跑中出现
+    - step: 8
+      name: 采集使能——把三处的开关开起来
+      action: "①dump 推理结果：trainer.rollout_data_dir='/path/dump/data_json'，结果 jsonl 含 response、gts 及 score；②RL 场景 vLLM 推理数据采集：++actor_rollout_ref.rollout.engine_kwargs.vllm.additional_config.dump_config_path=\"xx/generate_config.json\"；③纯服务化推理数据采集：VLLM 与 SGLang 各自有对应采集方式（见 msprobe 侧 dump 采集说明）。"
+      check: "开关打开后产物落到预期目录，且含响应、标准答案与分数"
+      when_to_use: 要走 dump / 采集路线时（第 2、5、6 步都会用到）

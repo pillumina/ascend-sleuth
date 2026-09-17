@@ -52,6 +52,8 @@ status: active | pending-review | deprecated | draft   # 新产出即 active（P
 | `engineer-input` | 0.3 | 标准双签 |
 | `case-derived` | 0.3–0.6 | 深审（+ methodology 需 ≥3 条 case 引用才可 active，产出时 CI 把关） |
 
+`engineer-input` 的 `engineer` 字段承载**来源描述**（真实姓名与部门不入库；匿名化材料写角色化描述，如「……经验分享（提供者匿名）」），来源文档的标题与形态写 `sources[].document`（无公开 URL 时由它承载出处）。非公开链接不进词条。
+
 ## 核验约定
 
 词条 `verification` 的两种声明（ADR-0008 §4.2）：

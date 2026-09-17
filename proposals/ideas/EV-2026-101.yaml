@@ -1,0 +1,81 @@
+id: EV-2026-101
+layer: L2
+title: 流程选择器索引越自述增长闸门（32 条 / 约 5387 token）→ 按 category 分片评估
+status: in_experiment
+authorization: dual
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: capacity
+    evidence: >-
+      `references/_procedure-index.yaml` 自述的增长闸门是「流程条数 > 25，或本文件 > 5K token →
+      按 category 分片」。本批 6 条 RL 精度词条落库后，索引由 26 条 / 约 4377 token 变为
+      32 条 / 约 5387 token，两道闸门同时越过。选择器是每次进入方法缺口时整读的单文件，
+      越界成本的承担者是每一轮诊断，不是索引维护者。
+    trajectory:
+      - references/_procedure-index.yaml（生成物表头：流程条数 32 / 约 5387 token + 闸门原文）
+      - references/methodologies/rl-precision-alignment-overview.yaml（本批新增词条之一）
+      - proposals/ideas/EV-2026-040.yaml（闸门与成本口径的出处：17 条 = 2.9K token，选择器整读）
+hypothesis: >-
+  按 category 分片（precision / interrupt / performance 各一份）后，单轮诊断只需整读本轮类别
+  对应的分片，选择器成本从整库降到该类别占比；诊断侧消费点（方法缺口闸门的 selector）需要
+  从「一个索引」改为「按本轮 category 选分片」，这与既有做法（case 层 `knowledge/_index/<ns>__<category>.yaml`
+  同形）是同一条结构约定。
+predicted_effect:
+  metric: 流程选择器单轮整读成本 + 闸门状态
+  from: 26 条 / 约 4377 token（本批之前，闸门未越界）
+  to: >-
+    32 条 / 约 5387 token（两道闸门均已越界）→ 分片后 precision 轮约 2.6K token、
+    interrupt 轮约 1.6K token、performance 轮约 1.2K token（按各类别 title+summary 字符占比折算）
+  measure:
+    command: "python3 scripts/build_procedure_index.py --check && python3 -c \"import re; t=open('references/_procedure-index.yaml').read(); n=int(re.search('流程条数：([0-9]+)', t).group(1)); tok=int(re.search('约 ([0-9]+) token', t).group(1)); print('流程条数=%d token=%d 闸门=25/5000' % (n, tok)); raise SystemExit(0 if n > 25 or tok > 5000 else 1)\""
+    expect_exit: 0
+    expect_stdout: "闸门=25/5000"
+validation:
+  method: scan_review
+  baseline: 本批之前的 procedure 索引（26 条 / 4377 token）
+  success_criteria: >-
+    ①越界可复现（measure 命令给出条数与 token 两个读数）；②分片方案给出各类别的条数与成本折算，
+    且不改变词条本体（只改生成物与消费点）；③落地改动属结构级（`build_procedure_index.py` +
+    `procedure-gates.yaml` 的 selector + `--check` 的分片路径）→ 需双签，本卡只完成评估与方案
+  rollback: 本卡不直接改生成物；落地方案如合入，回滚方式为 git revert 分片改动并重建单文件索引
+gate:
+  condition: "闸门越界已实测（32 条 > 25 且 5387 token > 5000）——按闸门不按日历，条件已满足"
+risk: medium
+principle_refs: [4, 9, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 评估在本轮收尾内联完成，以 0 计并如实标注口径；落地实现的成本不计在本卡
+decisions:
+  - who: agent
+    when: '2026-09-17'
+    type: proposal
+    conclusion: >-
+      越闸门的直接触发者是本批 6 条 RL 词条（26 → 32 条），但闸门本身写在生成物表头、
+      由机制轮设计，越界不是本批的口径问题——产本卡做拆分评估，不在本 PR 内直改机制
+      （结构级改动走双签，本协议只产候选不直改）。
+  - who: agent
+    when: '2026-09-17'
+    type: action
+    conclusion: >-
+      完成评估数据：索引 32 条；按 category 计 interrupt 11 / precision 17 / performance 8；
+      按各类别 title+summary 字符占比折算约 1.6K / 2.6K / 1.2K token（整库 5387 token）。
+      方案形态：生成物按 category 分片（与 case 层分片同形），`build_procedure_index.py` 增加分片输出，
+      `--check` 校验各分片新鲜度与可解析性，诊断侧方法缺口闸门的 selector 由「固定文件」改为
+      「按本轮 category 选分片」。
+  - who: agent
+    when: '2026-09-17'
+    type: eval
+    conclusion: >-
+      scan_review：measure 命令实跑给出 `流程条数=32 token=5387`，两道闸门（25 条 / 5000 token）
+      均已越过——越界是实测而非估算。落地方案的正确性未验证（未实现），如实标注。
+  - who: agent
+    when: '2026-09-17'
+    type: decision
+    conclusion: >-
+      方向采纳（按 category 分片），但落地改动触及生成物与 skill 侧 selector 绑定 =
+      结构级行为面，本协议只产候选不直改，也不在本批 reference 导入 PR 内混改——本卡停在
+      in_experiment，待独立一轮实现 + 双签 + 跑通 measure 后转终态。

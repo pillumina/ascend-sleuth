@@ -1,0 +1,65 @@
+id: rl-training-precision-triage
+type: methodology
+title: RL 训练精度定位（pg_loss / kl_loss / ppo_kl / grad_norm 分流 + 优化特性对齐表）
+summary: RL 训练精度（GPU 对照 NPU）的分流：前提是打桩输入相同推理结果、训练配置一致、固定随机性（SkipRollout 缓存并复用已生成序列）；按现象归到 pg_loss 差异、首步 kl_loss 非零、ppo_kl 量级差异、grad_norm 对不齐四类，各自采集对应阶段数据比对；不稳定复现查多流内存踩踏；优化特性按历史经验表逐项对齐
+
+sources:
+  - type: engineer-input
+    engineer: "RL 精度调优经验分享（提供者匿名）"
+    document: "强化学习精度调优方法总结分享（PDF，12 页）"
+    input_session: "session-f7e8b681-6bdc-4f2d-9e7b-0d0cb466de9b"
+    confirmed_at: 2026-09-17
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  frameworks: [verl]
+  categories: [precision]
+
+related_references: [rl-precision-alignment-overview, ascend-train-precision-triage, msprobe-data-dump, msprobe-monitor, msprobe-visualization, mssanitizer, verl-cross-validation]
+
+status: active
+last_verified: 2026-09-17
+
+content:
+  flow:
+    - step: 1
+      name: 前提与打桩——先把输入固定住
+      action: "前提三条：打桩输入的推理结果相同、训练配置一致、随机性固定。打桩用 SkipRollout：缓存并复用之前生成的序列，跳过 rollout 阶段，用于问题定界与快速复现（需要重复相同推理配置的实验时用；用法见 verl 仓库的 rollout skip 说明文档）。"
+      check: "同一份打桩输入、同一份配置，且随机性已固定"
+      when_to_use: RL 训练侧精度问题的第一步（不固定输入，后面的比对没有意义）
+    - step: 2
+      name: 现象归类——四类训练侧不齐
+      action: "四种现象分别对应不同的后续采集：①第一步或前几步 pg_loss 出现差异（大于 1%）；②ppo_kl 与 GPU 存在量级差异；③第一步（step=0）kl_loss 不为零；④第一步 pg_loss 已对齐，但 grad_norm 对不齐（大于 1%）。"
+      check: "明确归到哪一类（可多类并存，逐类走对应步骤）"
+      when_to_use: 拿到训练侧指标对比结果后
+    - step: 3
+      name: pg_loss 差异定位——采集最先出现差异的步数
+      action: "①用精度采集工具采集最先出现差异的步数；模型较大时可减少层数复现（MoE 场景保留 Dense 层与 MoE 层即可）；②采集 GPU 与 NPU 的 actor_updated 精度数据；③用分析工具比对，找可疑算子；④未定界到可疑算子时，用精度预检工具辅助。pg_loss 公式（PPO clip loss）：A 大于 0 时 loss = -min(r_t, clip(r_t))·A_t；A 小于 0 时 loss = -max(r_t, clip(r_t))·A_t。"
+      check: "差异是否收敛到具体算子；减少层数后是否仍能复现"
+      when_to_use: 现象是 pg_loss 差异（第 2 步第 ① 类）
+    - step: 4
+      name: kl_loss 差异定位——首步比对 logits
+      action: "第一步（step=0）采集 actor_update 与 ref_compute_log_prob 数据，比对两者的输入输出 logits 是否相等。公式 kld = log p0 - log pref。"
+      check: "两侧 logits 是否相等；不相等落在哪个阶段的输入输出"
+      when_to_use: 现象是首步 kl_loss 不为零（第 2 步第 ③ 类）
+    - step: 5
+      name: ppo_kl 差异定位——采集两侧 compute_log_prob 数据
+      action: "ppo_kl = log π_new(a|s) - log π_old(a|s)（单 token approx-kl），最终 ppo_kl = E_valid_token[log π_new - log π_old]；采集 actor_compute_log_prob 与 ref_compute_log_prob 数据比对。"
+      check: "两侧 compute_log_prob 的输出差异是否解释量级差"
+      when_to_use: 现象是 ppo_kl 与 GPU 存在量级差异（第 2 步第 ② 类）
+    - step: 6
+      name: grad_norm 定位——分首步异常与长跑异常
+      action: "①首步 grad_norm 异常而 loss 正常：按精度数据采集方法采集 NPU 与标杆的反向数据，用可视化工具比对；②长跑过程中 grad_norm 异常而反向数据无明显怀疑对象：用 Monitor 训练状态监控工具采集 NPU 与标杆的激活值、权重梯度、优化器状态、通信算子中间值。"
+      check: "反向数据或监控数据里能否指到具体算子或通信环节"
+      when_to_use: 现象是 grad_norm 对不齐（第 2 步第 ④ 类）
+    - step: 7
+      name: 不稳定复现——排除多流内存踩踏
+      action: "开启 blocking 同步后问题依旧，怀疑多流内存踩踏，用 _sanitizer 流同步检测工具检测（添加方式见工具文档）。"
+      check: "开启 blocking 同步后现象是否消失；_sanitizer 是否报流同步问题"
+      when_to_use: 现象不稳定、无法稳定复现时
+    - step: 8
+      name: 优化特性对精度的影响与操作
+      action: "按历史经验逐项处理：①切分策略——Megatron 切分与 FSDP 切分一般不应影响精度，但需与 GPU 保持一致，否则可能引入累积误差或走入不同代码分支；②通信优化 moe_shared_expert_overlap——overlap 类参数风险较高，精度比对阶段可先关闭；③融合算子 FA / Rms_Norm / moe_premute_fusion——复杂度高，精度比对阶段建议 GPU 与 NPU 都关闭以对齐；④混合精度 mixed_precision / mp_policy——大模型训练一般是 BF16/FP32 混合精度，需关注是否被特意修改过，保持两侧对齐；⑤参数同步 sync_module_states——初始化模型时是否从 rank0 广播，关系到参数一致性；⑥版本适配三情形：GPU 不支持而 NPU 支持 → NPU 也不使能，两边一致；GPU 支持而 NPU 不支持 → NPU 不使能以对齐 pg_loss；双方都支持 → 保持一致。"
+      check: "六项特性逐条核对过两侧取值，不一致项已按上面规则处理"
+      when_to_use: 比对前先做一轮特性对齐；或前面几步定位到特性相关差异时
