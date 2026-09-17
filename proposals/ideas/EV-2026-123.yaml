@@ -1,0 +1,59 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-123
+layer: L2
+target_component: skills/evolve-check/SKILL.md
+title: 触发条件表补齐真实在用但表里没有的三个族（T9–T11）+ 三处文档数字改为指向事实源
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: documentation_drift
+    evidence: "审计实测：117 张卡共 43 个信号名，只有 26 张卡的信号能落进表里的 T1–T6，88 张（77%）落在表外；且集中在三个表里根本没设过的族——人给的反馈 23 张、自审发现的缺口 26 张、审计体检型 15 张。另有三处文档把易腐烂的数字写死（容量 83 条、case 128、S2 池 9 条、ixn 5 条出分），实测均已过期"
+    trajectory:
+      - "审计实测：按卡去重统计信号分布与表内占比"
+      - "audit 实测：knowledge/_index.yaml 头注 vs 文档数字；ixn_replay --aggregate 输出"
+hypothesis: 把三个真实族写进表（T9 人给的反馈 / T10 自审缺口 / T11 审计体检），并声明"本表是现场清单、不是信号名枚举"；同时把三处写死的数字改成指向事实源，文档不再与实现对不上。
+predicted_effect:
+  metric: 表内可归类的产卡占比 + 文档里易腐烂数字的处数
+  from: "77% 的卡触发在表外；三处文档数字过期"
+  to: "三个真实族有明确行与动作；文档不再写死会腐烂的数字"
+  measure:
+    command: "grep -c '^| T1[01] ' skills/evolve-check/SKILL.md"
+    expect_exit: 0
+    expect_stdout: "2"
+validation:
+  method: scan_review
+  baseline: "改前：表只有 T1–T8，三个真实族无行；roadmap/ixn-replay/run 各写死过期数字"
+  success_criteria: |
+    ① 表新增 T9–T11 三行且各带动作；② 表头声明"现场清单、不是信号名枚举"与"新增一类先补表"；
+    ③ roadmap 的容量/case 数、ixn-replay 的出分条数、run 的 S2 池条数改为指向事实源（不再写死）；
+    ④ 词表 scan 与 skill 自包含两条 grep 仍绿。
+  rollback: "单文件 revert（evolve-check 表 + 三处文档）；纯文本，无数据副作用（原则七）"
+gate:
+  condition: "不等数据触发：表与行为脱钩是已实测的事实"
+risk: low
+principle_refs: [8, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：触发条件表补三个真实族 + 文档数字去硬编码"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：evolve-check 信号表增 T9/T10/T11 并加表头说明；roadmap 容量与 case 数、ixn-replay 出分条数、run 的 S2 池条数改为指向事实源"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "scan_review：表三行已就位（grep 命中）；三处文档不再含会腐烂的数字；docs-index 与 skill 自包含 grep 全绿"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）。残余如实标注：卡里的历史信号名仍是自由文本（存量 43 个名字未归一），本卡只补表与声明；是否把自由文本收成词表由 owner 决定（收窄会让存量卡需要迁移）"
