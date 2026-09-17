@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # render_review_summary.py —— 审读面渲染：把"含代号的人读文本"渲染成"首次出现即解码"。
 #
-# 目的（docs/git-workflow.md「人读性与代号约定」）：
+# 目的（docs/guide/git-workflow.md「人读性与代号约定」）：
 #   源文件（YAML 机器字段、docs、SKILL.md）保持词法不变；人审时读**解码视图**而非
 #   裸文本——审读面与存储面分离（原则三的延伸：底座词法、人读视图承担解码）。
 #
@@ -12,7 +12,7 @@
 #       把一段 git diff 中出现的代号按文件列成"代号×次数×解码"表 + 未登记告警
 #   python3 scripts/render_review_summary.py --scan <path>... [--root <repo>]
 #       扫描文件的人读文本，列出未登记代号（渲染告警，非 CI 硬门——可读性是
-#       判断性规范，见 docs/git-workflow.md；告警用于"先登记再使用"的自我约束）
+#       判断性规范，见 docs/guide/git-workflow.md；告警用于"先登记再使用"的自我约束）
 #
 # 词表唯一数据源：docs/glossary.yaml（新增代号先在这里登记，并同时定它的生存范围 scope）。
 # 注意：markdown 反引号内的内容不解码（命令/字段名保持原样）。
@@ -161,9 +161,9 @@ def unknown_tokens(text, gl):
 
 
 # 越界用途的严重度：新人/维护者第一眼就会读到的文件，越界代价最高。
-# 清单跟着「新人第一眼读哪篇」走——自演进元机制的唯一技术入口在 docs/rsi-mechanism.md，
+# 清单跟着「新人第一眼读哪篇」走——自演进元机制的唯一技术入口在 docs/mechanism/rsi-mechanism.md，
 # 所以它在册；docs/evolution.md 已降为一页指路（无 prose），不再单列。
-NEWCOMER_FACING = {"README.md", "CONTEXT.md", "docs/rsi-mechanism.md"}
+NEWCOMER_FACING = {"README.md", "CONTEXT.md", "docs/mechanism/rsi-mechanism.md"}
 # 越界检查的豁免面：
 #   - proposals/ ：**只追加的审计档案**（EV 卡记的是当时的决策与 roadmap 事项引用），
 #     按今天的范围规则去改历史卡等于篡改审计链；

@@ -33,7 +33,7 @@ source_signals:
     trajectory:
       - "skills/diagnose/references/diagnosis-procedure.md:79"
       - "traces/*.yaml（4 次 reference_lookup，purpose 全为 signature）"
-      - "docs/metrics.md:32（reference 引用指标口径）"
+      - "docs/guide/metrics.md:32（reference 引用指标口径）"
   - signal: process_friction
     evidence: "索引缺维度：_summary-index.yaml 每行只带 applies_to.platforms，不带 categories；tool 类 23 条里 20 条标了 categories，但按 category 触发采集面查询时索引里看不见该字段（且 ascend-log-levels / ascend-device-log-ops / ascend-asys 等 interrupt 侧采集词条一条 categories 都没标）"
     trajectory:

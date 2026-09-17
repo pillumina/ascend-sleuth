@@ -78,7 +78,7 @@ disable-model-invocation: true
 3.5. **反馈结算（confidence 输入，先于重算）**：跑 `python3 scripts/settle_trace_feedback.py`（游标默认落 gitignored 的共享运行时件 `.settle-state.json`，故本步**不进 git、也不该由单次诊断自己开 PR**——这里是 confidence 变更入库的**唯一入口**，一次覆盖当期全部 case；`--state` 仅用于显式指定/测试） 把 traces/ 里的 `feedback` 事件确定性结算进 case 的 `confidence.hits`/`misdiagnoses`/`last_hit`（脚本默认 dry-run，确认 diff 后 `--apply`）。**幂等口径（按 session 逐事件记已落地）**：补一条新 feedback 只结算新增的那条，**不重放**已落地事件（重放会虚增）；事件未落地（case 还没落 knowledge/、或写回后复核没过）**保持待结算**并在下次重跑时补上，游标不越过它前进；事件序列被改写（非追加）时脚本拒绝结算并告警，不猜。**只读复核**：`python3 scripts/settle_trace_feedback.py --audit` 交叉核对"游标说已结算"与"case 里看得见痕迹"，报出「已结算但无效果」的条目（这是发现证据静默丢失的唯一手段，出条目就删该 session 的游标条目后重跑）。**结算规则（owner 设计决策）**：只有 `feedback.resolved` 才 `hits += 1`——命中（hit 事件）是系统检索行为，不代表 case 有效；可信反馈（用户确认"诊断解决了问题"）才是置信度信号。`not_resolved`/`partial` → `misdiagnoses += 1`。结算产出的 confidence 变更走 knowledge_modification PR（脚本本身不改 git）。**无 feedback 事件时如实跳过**（反馈闭环未发生=现状，不编造）。
 
 3.5b. **S2 验证结算（validation_record 输入，与 3.5 并行）**：跑 `python3 scripts/settle_s2_feedback.py`（游标与 3.5 同一份 gitignored 共享件） 把 `.s2-replay/*.result.yaml` 的 S2 replay 结果确定性结算进 case 的 `validation_record`（幂等同 3.5；默认 dry-run，确认 diff 后 `--apply`）。**语义（selfevolve-loop 重构）**：S2 对照的是外部 ground truth（issue resolution / 维护者 fix PR / committer 确认），结果即 feedback——只是反馈对象是"内容被外部验证"（`consistent`/`self_consistent`），与 confidence 的 S1 现场 resolve 口径**分开、不混算**（resolve 仍只认 S1；S2 另立验证记录，不再被降格为无落点的旁证）。`inconsistent`（命中 case 但结论与 resolution 不符）是**复审信号**——按脚本输出候选清单走 case 复审（内容错/过时/判别力不足 → 改 case 或 rejected，走 knowledge_modification PR）。排序提示：`validation_record.consistent > 0` 的 case 在同等 score 下优先（内容被外部验证）。**无 result 文件时如实跳过**。
-4. **置信度重算（M5：只对有变化的 case）**：从 `hits`/`misdiagnoses`/`last_hit` 重算 `confidence.score`（按时间衰减）——范围 = 3.5/3.5b 结算 diff 涉及的 case + 本轮新升格 case；无变化不重算（不每周全量扫 128 case 的 hits/mis 字段）。**新升格的 case 初始 score 不设 0**——由 `verification`（来源验证强度）与 `confidence`（调查质量）联合决定（Beta 先验超参 $(\alpha,\beta)$ 的实例化；参数治理见 roadmap 待定池，理论推导见 docs/design-theory.md §4.1——该文档为可选论证层，本参数为执行值）：
+4. **置信度重算（M5：只对有变化的 case）**：从 `hits`/`misdiagnoses`/`last_hit` 重算 `confidence.score`（按时间衰减）——范围 = 3.5/3.5b 结算 diff 涉及的 case + 本轮新升格 case；无变化不重算（不每周全量扫 128 case 的 hits/mis 字段）。**新升格的 case 初始 score 不设 0**——由 `verification`（来源验证强度）与 `confidence`（调查质量）联合决定（Beta 先验超参 $(\alpha,\beta)$ 的实例化；参数治理见 roadmap 待定池，理论推导见 docs/spec/design-theory.md §4.1——该文档为可选论证层，本参数为执行值）：
 
    | verification \ confidence | high | medium | low |
    |---|---|---|---|
@@ -157,7 +157,7 @@ disable-model-invocation: true
 - 改 `compat` 区间
 - `confidence.score` 被手动覆盖
 
-高风险变更要求两个 owner 签字（领域 owner + 体系维护人）。变更在 session 内**随机排序**审，对抗疲劳——一个 session 审 30 条变更，第 30 条得到的 scrutiny 远少于第 1 条，随机化缓解这个偏差。git 落地：变更走 PR 并打 `kb/high-risk` 标签，`CODEOWNERS` 双组路径强制对应 owner 审批（owner 未定前用 `CODEOWNERS.example` 占位，机制先跑；流程细节见 docs/git-workflow.md——可选论证层）。
+高风险变更要求两个 owner 签字（领域 owner + 体系维护人）。变更在 session 内**随机排序**审，对抗疲劳——一个 session 审 30 条变更，第 30 条得到的 scrutiny 远少于第 1 条，随机化缓解这个偏差。git 落地：变更走 PR 并打 `kb/high-risk` 标签，`CODEOWNERS` 双组路径强制对应 owner 审批（owner 未定前用 `CODEOWNERS.example` 占位，机制先跑；流程细节见 docs/guide/git-workflow.md——可选论证层）。
 
 ## 复核注意力的排序：按"对本改动声明了限制"排，不按新旧排
 
@@ -174,7 +174,7 @@ disable-model-invocation: true
 |---|---|
 | 单 namespace 超 30 条 | 给拆分建议（首选 category 轴） |
 | 两个框架 namespace 各有条 case 指向同 root cause | 在 `common/` 建权威记录，框架层加 `references` |
-| Tier 2 未命中率 > 60% 持续两周 | **先看路由准确率**（见 docs/metrics.md）：路由准确率低→改 triage-tree；路由准但未命中→加 case |
+| Tier 2 未命中率 > 60% 持续两周 | **先看路由准确率**（见 docs/guide/metrics.md）：路由准确率低→改 triage-tree；路由准但未命中→加 case |
 | 某 case `score` 高且命中频繁 | 进候选优先验证队列 |
 | 某 case `score` 低仍被加载 | 标待复审；命中一次失败即转人工 |
 | 某案例 `needs-structurer-review` 超 14 天 | 提醒领域 owner |

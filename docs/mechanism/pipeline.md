@@ -1,12 +1,12 @@
 # 演进流水线（v2）：三层自演进闭环与自演进执行流程
 
 > **给谁读**：要改演进机制本身的人（机制定义、proposal 状态机、卡 schema）；**什么时候读**：你要动机制定义时；**读完能做什么**：能说清一条改进从 idea 卡到合入要过哪几道状态、每道由谁裁决、卡 schema 的必填字段从哪来。
-> **论证层——日常不必读。** 执行规则与机制地图见 [../rsi-mechanism.md](../rsi-mechanism.md)。
+> **论证层——日常不必读。** 执行规则与机制地图见 [rsi-mechanism.md](rsi-mechanism.md)。
 
 > 本文回答一个问题：系统如何闭环地改进自己的三层资产（知识内容、流程/skill、工作流本身），并把"人的参与"从逐条执行上移到流程审视。
-> v1（本文件旧版）只覆盖知识内容层的候选 idea 闭环；v2 扩展为三层模型（L1 知识内容 / L2 流程与 skill / L3 工作流与编排），并新增第 6 节「自演进执行流程」，一个降低人工参与度、但每次改动可追溯、每次合入必须由实验数据驱动的专门流程。执行级信息契约（proposal 要记录什么、验证如何区分合入前可判与合入后需真实反馈、沉淀效果怎么度量、agent 拿到什么）见 [execution.md](execution.md)；编排与治理层（会话如何启动、目标函数与停止条件、token 预算、自我指涉治理）见 [orchestration.md](orchestration.md)；从一条指令到持续运行的运行视图（长期任务、issue 评测循环、执行记录、可视化）见 [run.md](run.md)；面向使用者的指令/报告/干预语言见 [evolution-user-guide.md](../evolution-user-guide.md)。
+> v1（本文件旧版）只覆盖知识内容层的候选 idea 闭环；v2 扩展为三层模型（L1 知识内容 / L2 流程与 skill / L3 工作流与编排），并新增第 6 节「自演进执行流程」，一个降低人工参与度、但每次改动可追溯、每次合入必须由实验数据驱动的专门流程。执行级信息契约（proposal 要记录什么、验证如何区分合入前可判与合入后需真实反馈、沉淀效果怎么度量、agent 拿到什么）见 [execution.md](execution.md)；编排与治理层（会话如何启动、目标函数与停止条件、token 预算、自我指涉治理）见 [orchestration.md](orchestration.md)；从一条指令到持续运行的运行视图（长期任务、issue 评测循环、执行记录、可视化）见 [run.md](run.md)；面向使用者的指令/报告/干预语言见 [evolution-user-guide.md](../guide/evolution-user-guide.md)。
 > 实现分级声明：本文是**完整设计蓝图**，非全部待办。落地时只实现 §11.1「必需」列的机制；「蓝图」列（超时降级态、stale、策略记忆、稳态降频等）是预测性设计，触发条件（数据/用户诉求）出现才激活，不为未发生的问题预建全量机制（防过度设计，仓库原则十一）。
-> 对象层闭环（case 越用越准）已在 [../rsi-mechanism.md](../rsi-mechanism.md) 落地；理论推导见 [design-theory.md](../design-theory.md) §4.2–4.4（元层信念、自演进闭环、演化即假设检验）；原则依据见 [design-principles.md](../design-principles.md)。本文自身的修订走 methodology PR + 体系维护人审（它属于 L3 结构，受本文第 5.2 节管辖）。
+> 对象层闭环（case 越用越准）已在 [rsi-mechanism.md](rsi-mechanism.md) 落地；理论推导见 [design-theory.md](../spec/design-theory.md) §4.2–4.4（元层信念、自演进闭环、演化即假设检验）；原则依据见 [design-principles.md](../spec/design-principles.md)。本文自身的修订走 methodology PR + 体系维护人审（它属于 L3 结构，受本文第 5.2 节管辖）。
 
 ## 1. 三层模型
 
@@ -48,7 +48,7 @@ S2 补 S1 空缺的关键机制，对应"仅根据用户的现象 replay diagnos
 
 S2 miss 的归因边界要守住（防越权）：一次 S2 miss（未命中）有三种可能：(a) 路由错、(b) 缺 case、(c) case 内容错。S2 无法区分三者（它只看到"没命中"）。因此 S2 miss 只能产出检索层候选（查路由 / 查覆盖缺口），不能据此判定 case 内容错。但 hit-with-wrong-conclusion（命中了 case A、结论却与 resolution 不符）不是 miss，它有区分力：说明 A 的内容/判别力有问题，是 case 复审的合法证据（settle_s2_feedback 的 inconsistent 通道，2026-09 新增）。区分检索有效与现场有效：consistent = 内容与外部 resolution 一致（检索+归因正确），而现场 resolve 仍只认 S1（confidence 口径不变）。
 
-S2 的边界应诚实标注，防止过度承诺：它以 issue 的 resolution 为基准，校准的是系统的检索与内容是否正确；现场 fix 有效性（severity 语义、环境特异性）仍只能靠 S1。S2 分数进入指标时标注 `source: issue-replay`，不与 S1 混淆（口径见 docs/metrics.md）。若某 issue 的 resolution 仅是 workaround 而非根因修复，标记后降权或剔除（issue 池筛选规则：优先 state_reason=completed + 维护者 closed + fix commit 可溯的）。
+S2 的边界应诚实标注，防止过度承诺：它以 issue 的 resolution 为基准，校准的是系统的检索与内容是否正确；现场 fix 有效性（severity 语义、环境特异性）仍只能靠 S1。S2 分数进入指标时标注 `source: issue-replay`，不与 S1 混淆（口径见 docs/guide/metrics.md）。若某 issue 的 resolution 仅是 workaround 而非根因修复，标记后降权或剔除（issue 池筛选规则：优先 state_reason=completed + 维护者 closed + fix commit 可溯的）。
 
 S2 校准集当前单池运行，selection/test 分离是规模闸门（2026-09 降级）：原设计分 selection（gate 用）/ test（validated 终判用，防对校准集过拟合，对应 SkillOpt held-out）。池子小，撑不起两半：test 半要求"从未被本系统沉淀过的历史 issue"，而沉淀会消耗池子，小池下 test 半无法成立还自相矛盾。降级规则是单池运行直到有真实 held-out 需求（原"≥30"是参数估计而非硬门槛，theory §7：常数接受实测重校；2026-Q3 自评确认：单池 + self-referential 隔离已覆盖防过拟合主威胁，扩池是 issue 流自然流入的持续动作，不是前置阻塞）。当前 20 条（11 high）单池，replay 分数标注 `source: issue-replay`，validated 终判诚实标注"无 held-out test（池小），依赖 selection 对照 + 人工抽审"。self-referential 隔离（任何规模都执行）：case 的 validation_record 结算时检查两件事——replay issue 是否正是该 case 的沉淀来源（references 含该 issue URL），以及 replay issue 是否在 case 正文里被引用（`#N` / `issues/N` / `pulls/N`）；命中任一即记 `self_consistent`（非独立，如实标注不虚增外部验证权重）。后一条是 2026-09 加的：cross 样本的第一批实测显示，同签名但被 case 正文引用过的 issue，其结论就是撰写该 case 时读来的，记 consistent 等于一份证据数两次。token 影响经 2026-Q3 核实：eval/s2/*.yaml 虽随池增长（20 条 83KB），但从不整文件喂给 LLM。s2_replay prepare 逐条生成 `.s2-replay/<issue>.md`（单条 ~2KB），诊断 LLM 只读单条 md；s2_calibration 增量只提取 issue 号集合去重。文件大仅影响脚本处理（Python 解析，无 token 成本），对 LLM 上下文无影响。"先评测后沉淀"的纪律（run §3）持续执行：新 closed issue 先过 S2 评测再允许沉淀为 case。
 
@@ -211,7 +211,7 @@ hands-off 需要用户明确要求，防止"自动 = 失控"。它有几条硬�
 
 ## 7. Idea 卡 schema（v2）与状态机
 
-**卡是写给人审的文本**：`title` / `hypothesis` / `decisions[].conclusion` 按 `docs/writing-norms.md` 写（可选论证层）；本面的定制条款见该文件 §3 的「EV 卡」一行——判据与结论要让评审不开全文即可判定。
+**卡是写给人审的文本**：`title` / `hypothesis` / `decisions[].conclusion` 按 `docs/spec/writing-norms.md` 写（可选论证层）；本面的定制条款见该文件 §3 的「EV 卡」一行——判据与结论要让评审不开全文即可判定。
 
 ```yaml
 id: EV-2026-XXX                 # 示例占位（真实卡号由 ev_proposal --new 分配）

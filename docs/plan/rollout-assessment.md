@@ -1,7 +1,7 @@
 # 推广就绪度评估（Rollout Assessment）
 
 > 评估基线：main HEAD（四章官方材料导入完成、reference 全 active、token 成本修复）。实时词条数以 `verify_references.py` 为准，不在此硬编码。
-> 方法：对照 `docs/design-principles.md` 十一条原则逐条核对实现证据；按"机制 / 内容 / 数据 / 运维"四层评估。
+> 方法：对照 `docs/spec/design-principles.md` 十一条原则逐条核对实现证据；按"机制 / 内容 / 数据 / 运维"四层评估。
 > 本文是向团队交付前的依据文档，不是一次性报告。每次重大演进后应重估（原则十一：数据触发演进）。
 >
 > **2026-09 状态更新**：本文主体是 2026-08 基线的评估，重估条件已触发（training namespace 已填充、groom 多轮运行、metrics 至 6 期）。自基线以来：knowledge/ 38→123 条 case（含 training/mindspeed-llm 与自动化 ingest 升格 5 条）、S2 校准集建立（20 条）、self-evolve 机制工程面重构（PR #104）落地。数据层"真实 live trace 缺失"依旧（S1 反馈仍 0），是继续推广前的最大前提。完整重估留待首个真实团队使用后执行。
@@ -23,7 +23,7 @@
 | 五 建议与决定分离 | 预分诊三分类 + 人审、高风险双签 + 随机审序、to-reference grill→active 直进→**PR review 即审核闸门（合入即生效）** | ✅ 完整 |
 | 六 闸门硬度匹配 | compat 软匹配（ADR-0001）、severity 硬闸、CI 硬门、语义闸门保持约定强度 | ✅ 完整 |
 | 七 变更可逆 | fix 带 rollback、`_archive/` 可复活、索引可重建 | ⚠️ case 层完整；自动变更可逆性在 roadmap v2 未实现 |
-| 八 可观测先于改进 | trace 硬要求 + 固定词表（含 reference_lookup）、`trace_metrics.py`（case + reference 指标）、`metrics/timeline.yaml` 数据 + `docs/metrics.md` 机制文档 | ⚠️ **机制完整（reference 观测管道已通）但数据只有 W35 一期** |
+| 八 可观测先于改进 | trace 硬要求 + 固定词表（含 reference_lookup）、`trace_metrics.py`（case + reference 指标）、`metrics/timeline.yaml` 数据 + `docs/guide/metrics.md` 机制文档 | ⚠️ **机制完整（reference 观测管道已通）但数据只有 W35 一期** |
 | 九 稀缺资源显式预算 | 三层加载 + 日志裁剪、inbox 批处理 30 秒/条、reference summary 层先于全文、词条零注释、skill 去 ADR 锚定 | ✅ 完整且精细 |
 | 十 诚实退化 | 空库提示三出路、Script 未接明说、机制强度如实标注、reference 只读 active、verification 状态、来源链诚实、无数据如实显示 | ✅ **体系最强项** |
 | 十一 数据触发演进 | roadmap 闸门驱动、8 个 ADR 留痕、索引触发检测（groom R7）、参考线留待实测 | ⚠️ 机制完整，**实测数据不足以支撑闸门** |
@@ -55,8 +55,8 @@
 
 | 项 | 现状 |
 |---|---|
-| metrics 数据 | `metrics/timeline.yaml` 有 2 期 replay 快照（迁移自原 metrics.md）；**真实 live trace 数据仍缺**（38 条 case 仅 12723 有 hits=1，其余初始值）；机制文档见 docs/metrics.md |
-| golden 套件 | 23 条 fixture，**无自动 replay**（docs/eval.md 自承依赖人手动） |
+| metrics 数据 | `metrics/timeline.yaml` 有 2 期 replay 快照（迁移自原 metrics.md）；**真实 live trace 数据仍缺**（38 条 case 仅 12723 有 hits=1，其余初始值）；机制文档见 docs/guide/metrics.md |
+| golden 套件 | 23 条 fixture，**无自动 replay**（docs/guide/eval.md 自承依赖人手动） |
 | 闸门数值 | 路由准确率/命中率/过滤率仍是假设值（诚实标注"待 metrics 复核"） |
 | reference 命中统计 | 观测管道已通（trace_metrics 支持 reference_lookup，groom R6 回写），数据待 trace 积累（当前如实接近 0） |
 

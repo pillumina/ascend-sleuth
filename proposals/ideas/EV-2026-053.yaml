@@ -22,7 +22,7 @@ source_signals:
       即机制在引导人制造下一次撞车。
     trajectory:
       - "docs/glossary.yaml 头部（改前）：'未登记代号在渲染时告警，倒逼先登记再使用'"
-      - "grep -n '理论 A[123]（' docs/design-principles.md → 公理用法；docs/roadmap.md 表格 A1/A2/A3 → 事项用法；A2-910B/A3-910C/A5-950 → 平台用法"
+      - "grep -n '理论 A[123]（' docs/spec/design-principles.md → 公理用法；docs/plan/roadmap.md 表格 A1/A2/A3 → 事项用法；A2-910B/A3-910C/A5-950 → 平台用法"
       - "python3 scripts/render_review_summary.py --scan docs/ → 仅报 '未登记代号 P0'（真问题一条不报）"
       - "README.md:26 'A2/A3/A5 平台差异'；CONTEXT.md:36 'Platform（A2/A3/A5）'——裸平台写法"
 hypothesis: >-
@@ -41,7 +41,7 @@ predicted_effect:
     新人可见面（README / CONTEXT / docs/evolution.md）零越界；三组同形冲突各在词表中
     登记并用 scope 消歧；扫描器接受目录、分两档报越界（新人可见面单列 / 其余按文件计数）
   measure:
-    command: python3 scripts/render_review_summary.py --scan README.md CONTEXT.md docs/rsi-mechanism.md
+    command: python3 scripts/render_review_summary.py --scan README.md CONTEXT.md docs/mechanism/rsi-mechanism.md
     expect_exit: 0
     expect_stdout: "新人可见面干净"
 validation:

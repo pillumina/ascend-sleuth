@@ -11,7 +11,7 @@
 #      groom R9 做语义预核（期望正确性/输入充分性/脱敏），人确认后入 eval/golden/。
 #
 # 输入源：traces/*.yaml（gitignored，含客户现场信息；本脚本只读不写原文）
-# 断言口径：LLM 非确定性 → top-3 命中（docs/eval.md），不要求必须第一。
+# 断言口径：LLM 非确定性 → top-3 命中（docs/guide/eval.md），不要求必须第一。
 #
 # 用法：
 #   python3 scripts/replay_trace.py                  # 弱断言回归报告（全部 trace）

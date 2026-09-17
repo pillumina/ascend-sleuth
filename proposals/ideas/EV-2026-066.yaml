@@ -27,7 +27,7 @@ source_signals:
       里那次"0.23.0 本来在、后来没了"也是 worktree 内的缓存被清掉。
     trajectory:
       - "CLAUDE.md（Multi-agent collaboration：原把 postmortems/inbox/ 与已跟踪的共享状态文件并列）"
-      - "docs/git-workflow.md（worktree 约束：原只写了「共享面不隔离」，未区分 tracked 与 gitignore 件）"
+      - "docs/guide/git-workflow.md（worktree 约束：原只写了「共享面不隔离」，未区分 tracked 与 gitignore 件）"
       - "skills/diagnose/SKILL.md（trace 段：写相对 traces/<session_id>.yaml）"
       - "skills/resume-diagnosis/SKILL.md（读活跃 traces/*.yaml + 续接必写 trace）"
       - "skills/to-postmortem/SKILL.md、skills/issue-ingest/SKILL.md、skills/knowledge-groom/SKILL.md（inbox 读写两侧）"
@@ -63,7 +63,7 @@ validation:
     worktree 内不产生 `traces/`；③`--list` 一次列出六件运行时件及其落点；④读侧脚本在 worktree 里读到
     主检出那份 trace（`sessions_total` 非 0，不是空跑）；⑤对照：仓外无 git 目录仍如实说"没有 trace"
     （不是把任何路径都读成主检出——诚实退化）；⑥清理 worktree 后共享 traces 与解析结果都还在；
-    ⑦六个 skill 与 `CLAUDE.md` / `docs/git-workflow.md` 都写清"先解析、用绝对路径"，且
+    ⑦六个 skill 与 `CLAUDE.md` / `docs/guide/git-workflow.md` 都写清"先解析、用绝对路径"，且
     `CLAUDE.md` 不再把 gitignore 的 inbox 草稿与已跟踪共享状态文件并列；⑧`kb-checks` 八条 +
     `verify_proposals --check` 仍绿。
   rollback: >-

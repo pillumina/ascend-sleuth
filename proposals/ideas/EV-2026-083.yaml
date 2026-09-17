@@ -27,7 +27,7 @@ source_signals:
     trajectory:
       - "scripts/gc_docs.py（新增：repos/scan/fetch/mark/status 五条子命令）"
       - "reference-ingest-state.json（新增台账：sources['gitcode/cann/hccl'] = 42 条 path×sha 记录）"
-      - "skills/reference-ingest/SKILL.md（新增入口）+ docs/reference-ingest-pipeline.md（机制与坑）"
+      - "skills/reference-ingest/SKILL.md（新增入口）+ docs/guide/reference-ingest-pipeline.md（机制与坑）"
       - "references/ 6 条新词条（hccl 故障诊断子面：2 张故障表 + 1 条方法论 + 2 条事实 + 1 条工具）"
 hypothesis: >-
   以 (path, blob sha) 为幂等键、并把「判过但不沉淀」（skipped + 理由）一并记账之后：
@@ -58,7 +58,7 @@ validation:
     ⑤ CI 无回归：verify_references / 两个 reference 索引 / docs 索引 / build_index / metrics / proposals / holdout 全绿；
     ⑥ skipped 必带理由（脚本强制），否则该文档下一轮会被重新评估——把"省 token"变成结构保证而不是自觉。
   rollback: >-
-    单次提交、纯新增面：删 skills/reference-ingest/、scripts/gc_docs.py、docs/reference-ingest-pipeline.md、
+    单次提交、纯新增面：删 skills/reference-ingest/、scripts/gc_docs.py、docs/guide/reference-ingest-pipeline.md、
     reference-ingest-state.json、.gitignore 的 ref-docs 条目与 exec_log_path 的 REF_DOCS_REL/resolve_ref_docs
     即回原状；已产出的 6 条词条是普通 references/ 内容，独立于通道存续。本地缓存 ref-docs/ 直接删即可
     （git-ignored，重抓可恢复）。

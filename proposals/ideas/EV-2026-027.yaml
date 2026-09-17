@@ -5,7 +5,7 @@
 # ============================================================
 
 id: EV-2026-027
-layer: L3                          # 评估门禁工具（docs/eval.md + 脚本）
+layer: L3                          # 评估门禁工具（docs/guide/eval.md + 脚本）
 title: "B3 gate_diff.py：gated 基线缓存落地（.s2-replay/gates/<面>-baseline|after + 机械对照）"
 status: validated
 authorization: review               # 脚本 + eval.md 配套纪律
@@ -17,7 +17,7 @@ source_signals:
   - signal: token_audit
     evidence: "审计 B3：每次检索面 skill 改动 = 2-4 replay agent ×改前+改后两侧；EV-2026-021 已把'基线缓存/子集'写进政策但未成工具（各次手工 /tmp 目录、无对照器）"
     trajectory:
-      - "docs/eval.md 门禁分级配套纪律①（政策态）"
+      - "docs/guide/eval.md 门禁分级配套纪律①（政策态）"
       - "本会话多轮 golden 手工对照（/tmp/golden-* 各目录）"
 hypothesis: >-
   基线目录约定 + gate_diff 机械对照后，检索面改动只需跑改后侧，回归判定从"手工 diff"

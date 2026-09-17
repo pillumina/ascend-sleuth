@@ -2,7 +2,7 @@
 # metrics_health.py —— 指标闭环体检（新鲜度 / 越界 / 可解读性）
 #
 # 为什么需要（2026-09-10 审计实测）：
-#   `docs/metrics.md` 的周批流程是「跑 metrics_snapshot → 人复核 → 写当期源文件 → build_timeline → verify_metrics」。
+#   `docs/guide/metrics.md` 的周批流程是「跑 metrics_snapshot → 人复核 → 写当期源文件 → build_timeline → verify_metrics」。
 #   实测按这个流程走一遍，**不会**被告知三类真问题：
 #     ① 结构指标（容量/条数）已 10 天没进快照：快照 `case_total 52` vs 现实 **158**；
 #        某格 `interrupt=85/30`（soft_cap 的 2.8 倍），而快照里那次还是 `36/30`；

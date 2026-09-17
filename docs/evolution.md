@@ -1,16 +1,18 @@
-# 演进机制（已并入唯一技术入口）
+# 演进机制（已并入机制层）
 
-> **本文的内容已并入 [rsi-mechanism.md](rsi-mechanism.md)。** 保留这个文件只是为了让旧链接（笔记、PR body、
-> 别处的文档）不至于失效——**不要在这里继续写东西**，否则同一件事会有两处说法，而两处说法迟早不一致。
->
-> 你要找的东西在这里：
+这个文件只为旧链接保留。内容已经并入 [mechanism/rsi-mechanism.md](mechanism/rsi-mechanism.md)。
+
+不要在这里继续写东西。同一件事有两处说法，两处迟早会不一致。
 
 | 你找什么 | 去哪 |
 |---|---|
-| 三条环路是什么、演进什么时候触发 | [rsi-mechanism.md](rsi-mechanism.md) §1、§4.1 |
-| 黑话（夹具 / 回放 / 判词…）看不懂 | [rsi-mechanism.md](rsi-mechanism.md) §2 |
-| 哪些地方要人参与、哪些以后可以交给 agent | [rsi-mechanism.md](rsi-mechanism.md) §6 |
-| 评估怎么做才叫闭环 | [rsi-mechanism.md](rsi-mechanism.md) §5 |
-| 每周具体做什么 | [rsi-mechanism.md](rsi-mechanism.md) §9 |
-| 改哪件事读哪篇（权威归属） | [rsi-mechanism.md](rsi-mechanism.md) §8 |
-| 当前还缺什么 | [rsi-mechanism.md](rsi-mechanism.md) §10 |
+| 三条环路是什么、什么时候会发生演进 | [mechanism/rsi-mechanism.md](mechanism/rsi-mechanism.md) 第 1、2 节 |
+| 从触发到落地每一步怎么走 | 第 4 节 |
+| 验证怎么才算闭环 | 第 5 节 |
+| 哪一步需要人、哪一步可以交给 agent | 第 6 节 |
+| 内部简称看不懂（回归样本、用历史问题重跑、对照样本集…） | 第 9 节 |
+| 每周具体做什么 | 第 10 节 |
+| 改哪件事读哪篇 | 第 11 节 |
+| 现在还缺什么 | 第 8 节 |
+
+文档怎么分层、每层给谁看，见 [README.md](README.md)。

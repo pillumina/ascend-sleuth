@@ -26,7 +26,7 @@ updated_at: "2026-07-09T10:22:00+08:00"  # 最近一次写 trace 时间（resume
 kb_rev: "a1b2c3d"                       # 建 session 时那份 knowledge/ 的版本（检出 HEAD 短 sha；
                                         # `python3 scripts/kb_rev.py` 的末行即取值）。一次写定、之后不改。
                                         # 两个用途：① 跨机接手时对方拿它比对本机版本——不一致意味着
-                                        # 同一条 case 的 id 可能不存在、候选排序可能不同（见 docs/handoff.md）；
+                                        # 同一条 case 的 id 可能不存在、候选排序可能不同（见 docs/guide/handoff.md）；
                                         # ② 事后误诊归因——"当时为什么没命中"取决于当时库里有什么。
                                         # 拿不到 git 就如实写 unknown，别编值
 detected_framework: mindspeed-llm

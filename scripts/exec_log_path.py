@@ -214,7 +214,7 @@ def log_lock(path: Path):
 
     read-modify-write 无锁 = 后写覆盖先写（丢记录）或算出重复 seq。原先只实现了 flock，
     于是"无 fcntl 的平台（Windows）退化为不加锁"——而 Windows 是本仓明确支持的开发平台
-    （见 docs/windows-setup.md），等价于**在 Windows 上静默丢记录**：端到端演练实测
+    （见 docs/guide/windows-setup.md），等价于**在 Windows 上静默丢记录**：端到端演练实测
     10 条并发写入只落 2 条（rehearse_evolve_loop 的共享 exec-log 段）。现在补上
     Windows 的等价原语（msvcrt.locking），两平台都真持锁；都没有的罕见平台才如实
     yield False（不假装有互斥）。

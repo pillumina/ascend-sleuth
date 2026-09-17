@@ -1,9 +1,9 @@
 # 持续运行：长期任务、issue 评测循环、执行记录与可视化
 
 > **给谁读**：要改长期运行、统一执行记录与可视化的人；**什么时候读**：你要改「长期任务怎么排、执行记录怎么留、面板看什么」时；**读完能做什么**：能说清执行记录的统一口径，以及它喂给哪些视图。
-> **论证层——日常不必读。** 执行规则与机制地图见 [../rsi-mechanism.md](../rsi-mechanism.md)。
+> **论证层——日常不必读。** 执行规则与机制地图见 [rsi-mechanism.md](rsi-mechanism.md)。
 
-> 四份文档的分工：**[pipeline.md](pipeline.md)** 机制总览；**[execution.md](execution.md)** 单卡执行契约；**[orchestration.md](orchestration.md)** 单轮会话编排；**本文是运行视图**，回答"我下一条指令后，系统作为**持续自演进系统**怎么跑、跑到什么时候停、我怎么看到它在跑"。它把前三份的单轮/单卡机制装配成用户可下指令、可观察、可干预的长期运行形态。使用者侧的一句话指令/报告/干预语言见 **[evolution-user-guide.md](../evolution-user-guide.md)**（UX 规格）。
+> 四份文档的分工：**[pipeline.md](pipeline.md)** 机制总览；**[execution.md](execution.md)** 单卡执行契约；**[orchestration.md](orchestration.md)** 单轮会话编排；**本文是运行视图**，回答"我下一条指令后，系统作为**持续自演进系统**怎么跑、跑到什么时候停、我怎么看到它在跑"。它把前三份的单轮/单卡机制装配成用户可下指令、可观察、可干预的长期运行形态。使用者侧的一句话指令/报告/干预语言见 **[evolution-user-guide.md](../guide/evolution-user-guide.md)**（UX 规格）。
 > 推导依据：原则一/五/七/八/九/十/十一；理论见 design-theory §4.2–4.4 与 §6。**本文自身修订 = L3 结构（methodology PR + 体系维护人审）。**
 
 ## 1. 从一条指令到持续自演进（愿景总览）

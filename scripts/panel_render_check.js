@@ -2542,16 +2542,16 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       expect('人读文案无字面 Markdown 星号 · ' + rel.split('/')[1] + '/' + path.basename(rel),
         bad.length === 0, bad.join(' | '))
     }
-    // 文案规范只有一个权威处：**共用条目**归 docs/writing-norms.md，面板 README 只保留自己的
+    // 文案规范只有一个权威处：**共用条目**归 docs/spec/writing-norms.md，面板 README 只保留自己的
     // 定制条款。原先这里钉的是"面板 README 里恰好有 8 行编号表"——那是规范合并进唯一权威处
     // （并拆成 15 个共用条目 + 各面定制条款）**之后恒红的旧断言**：断言钉的是它当年的载体形态，
     // 不是不变量。现在钉不变量本身：权威处存在且被本文件指向、权威处非空、定制条款成条。
     const sharedReadme = path.join(repo, 'dsh-plugins/README.md')
     expect('面板共通约定有唯一权威处（dsh-plugins/README.md）', fs.existsSync(sharedReadme))
     const sharedText = fs.existsSync(sharedReadme) ? fs.readFileSync(sharedReadme, 'utf8') : ''
-    const normsDoc = path.join(repo, 'docs/writing-norms.md')
-    expect('文案共用条目归唯一权威处（docs/writing-norms.md 存在且被面板约定指向）',
-      fs.existsSync(normsDoc) && /docs\/writing-norms\.md/.test(sharedText))
+    const normsDoc = path.join(repo, 'docs/spec/writing-norms.md')
+    expect('文案共用条目归唯一权威处（docs/spec/writing-norms.md 存在且被面板约定指向）',
+      fs.existsSync(normsDoc) && /docs\/spec\/writing-norms\.md/.test(sharedText))
     const normRows = fs.existsSync(normsDoc)
       ? (fs.readFileSync(normsDoc, 'utf8').match(/^\| \d+ \|/gm) || []).length : 0
     expect('唯一权威处确有条目表（指向的不是空文件）', normRows >= 10, String(normRows))

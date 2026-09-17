@@ -12,7 +12,7 @@ Each case file has: `id`, `title`, `category` (interrupt|precision|performance),
 
 Optional field — `source_session`: 该 case 由哪个诊断 session 沉淀而来（如 `2026-09-16-12430-dsv4pro-mc2`）。用途只有一个：**反馈结算时判定「自证」**——来源 session 自己回报的 resolve 记入 `confidence.self_resolved`（见下），不计入 `hits`。缺该字段时结算退回原行为（计入 hits），这是刻意的保守取舍：宁可少识别自证，不误判独立命中。
 
-`confidence.self_resolved`: {count, last, examples} — **来源 session 自己的 resolve 累积**（自证）。与 `hits` 分开的理由：`hits` 的口径是「这条知识的**消费者**环境是否解决」，而来源 session 是产地——同一份证据不能数两次（`docs/design-theory.md` 的「独立性假设过强」即指此）。与 S2 的 `validation_record.self_consistent` 同一条纪律：如实标注、不虚增。由 `scripts/settle_trace_feedback.py` 结算。
+`confidence.self_resolved`: {count, last, examples} — **来源 session 自己的 resolve 累积**（自证）。与 `hits` 分开的理由：`hits` 的口径是「这条知识的**消费者**环境是否解决」，而来源 session 是产地——同一份证据不能数两次（`docs/spec/design-theory.md` 的「独立性假设过强」即指此）。与 S2 的 `validation_record.self_consistent` 同一条纪律：如实标注、不虚增。由 `scripts/settle_trace_feedback.py` 结算。
 
 Optional field — `validation_record`: {consistent, inconsistent, self_consistent, last_verified} — 内容被**外部验证**的累积记录（由 `scripts/settle_s2_feedback.py` 结算，非人设定）。与 confidence 分开：S2 issue-replay 对照的是外部 ground truth（issue resolution / 维护者 fix PR / committer 确认）。`consistent`=外部验证一致（同等 score 下排序优先）——语义是「该 issue 既不是它的来源、也未在正文被引用」，**不是**「信息独立」（case 与样本出自同一族判词/同一 fix PR 的关联无法机械识别，这点是半硬的）；`self_consistent`=非独立命中，两种：replay issue 即 case 来源（自证），或 replay issue 在 case 正文里被引用（是该 case 的撰写依据——命中结论就是写 case 时从它那儿读来的，记 consistent 等于一份证据数两次）；`inconsistent`=命中但结论与 resolution 不符（复审信号）。无 S2 验证不填。
 

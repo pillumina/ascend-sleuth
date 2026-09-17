@@ -46,7 +46,7 @@ source_signals:
       即：这不是"没有能力"，而是"能力没接线"，属于典型的接线缺口而非新机制需求。
     trajectory:
       - "metrics/gates.yaml: 每条 gate 带 meaning 与 action，但只有 metrics_health.py 读它"
-      - "docs/metrics.md 周批第 2 步：人跑体检 → 与面板看的不是同一条路径"
+      - "docs/guide/metrics.md 周批第 2 步：人跑体检 → 与面板看的不是同一条路径"
 hypothesis: >-
   **判据只能有一份，且必须被渲染而不是被重算**。面板若自己算阈值/自己聚合口径，就必然与
   `gates.yaml` 漂移（本轮两处：写死 `/30`、加总到 namespace）；反过来，面板只渲染

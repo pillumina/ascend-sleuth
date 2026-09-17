@@ -18,7 +18,7 @@
 #   - **硬门（契约冲突）**：fixture 的 assertion 是 `top-3`（不含 or-miss-documented）、
 #     账本却记着 miss → 红。这是夹具自述期望与观测的矛盾，改哪一侧都是人的决定，机器只负责喊。
 #   - **不判准确率**：账本记的是"上次观测到什么"，不是"现在能不能命中"。
-#     准确率门禁仍要 agent 跑回放（docs/eval.md 门禁分级），本脚本不假装它是硬门。
+#     准确率门禁仍要 agent 跑回放（docs/guide/eval.md 门禁分级），本脚本不假装它是硬门。
 #
 # 已知局限（不掩盖）：账本读的是 fixture 头注与 expected 块。若有人重跑了回放却没更新
 # fixture 头注，本脚本无法发现（观测与现实的差在头注这一层就丢了）——这正是记账流程
@@ -245,7 +245,7 @@ def cmd_check(root: Path) -> int:
                        "（放宽断言或修命中，二者都要人决定）")
         cid = str(e.get("case_id") or "")
         if cid and cid not in hashes:
-            # 构造示例（example.*）按 docs/eval.md 的分类天然指向不存在的 case，不报——
+            # 构造示例（example.*）按 docs/guide/eval.md 的分类天然指向不存在的 case，不报——
             # 常驻噪声会被读成"总是红的"，反而盖掉真信号。真实 case 投影指向未收录 case 才是信号。
             if not name.startswith("example."):
                 warn.append(f"{name}: 目标 case {cid} 不在 knowledge/ 索引中（夹具指向已退休/未收录的 case）")

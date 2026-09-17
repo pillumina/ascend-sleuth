@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **常驻上下文的取舍**：本文件每次会话整份注入，成本与"这次用不用得上"无关。所以这里只放**每次都要遵守的约束**与**指路**；细节放各自的权威处，让需要它的那一刻去读。新增内容前先问：这条是每次都需要的吗？不是就放到写点（见 `docs/writing-norms.md` §3）。
+> **常驻上下文的取舍**：本文件每次会话整份注入，成本与"这次用不用得上"无关。所以这里只放**每次都要遵守的约束**与**指路**；细节放各自的权威处，让需要它的那一刻去读。新增内容前先问：这条是每次都需要的吗？不是就放到写点（见 `docs/spec/writing-norms.md` §3）。
 
 ## Overview
 
@@ -22,7 +22,7 @@ This is a **knowledge/skills repo** — there is no build, no lint, no test suit
 | **沉淀闭环** | 定位结束 / 定期批量 | `to-postmortem`、`to-reference`、`issue-ingest` | `postmortems/inbox/` 草稿 → groom 升格为 case / reference |
 | **演进闭环** | 内容流程收尾 / 全库体检轮 | `evolve-check`（伴随）、`self-evolve`（深度轮） | EV 卡 → 执行 → 验证 → 攒批 PR（人审） |
 
-三者共用一条链：前两个产生数据，演进读数据改机制，改完回落。**机制地图、权威归属（每件事由哪篇文档说了算）与周度 runbook 在 `docs/rsi-mechanism.md`——那是自演进元机制的唯一技术入口**。
+三者共用一条链：前两个产生数据，演进读数据改机制，改完回落。**机制地图、权威归属（每件事由哪篇文档说了算）与周度 runbook 在 `docs/mechanism/rsi-mechanism.md`——那是自演进元机制的唯一技术入口**。
 
 ### 两套传递机制（决定内容该放哪）
 
@@ -63,7 +63,7 @@ skill 的名单、分组与"谁用得上"**不在此处维护**：由 `docs/_man
 
 ### Case schema (YAML in `knowledge/<ns>/`)
 
-字段定义、口径与"哪些内容不允许进库"见 [`docs/case-schema.md`](docs/case-schema.md)（canonical 示例：`examples/sample-case.yaml`）。
+字段定义、口径与"哪些内容不允许进库"见 [`docs/spec/case-schema.md`](docs/spec/case-schema.md)（canonical 示例：`examples/sample-case.yaml`）。
 每次会话只需记住三条跨切面约束：
 
 - `knowledge/` 与 `postmortems/` 含客户数据，属私有面，入库前脱敏；
@@ -94,7 +94,7 @@ skill 的名单、分组与"谁用得上"**不在此处维护**：由 `docs/_man
 
 Golden-case 回归套件在 `eval/golden/`：公开仓只放构造示例，真实夹具进私有仓；LLM 非确定性 → 断言"top-3 命中"而非"必须第一"。
 
-- **门禁分级（改哪里测哪里，不机械全量）**与判据强度：`docs/eval.md`。
+- **门禁分级（改哪里测哪里，不机械全量）**与判据强度：`docs/guide/eval.md`。
 - **封存对照集** `eval/holdout.yaml` 按内容哈希钉住（`scripts/holdout.py --check`，CI `holdout-integrity`）：改内容或删除即红，合法改需维护者 `--reseal` 且 PR 带 `holdout-change` 标签。**强度注意**：哈希是硬门，但"谁有权 reseal"在 CODEOWNERS 落实前是半硬（有写权限者仍可打标签），别读成"已有人把关"。
 - **评审把手**：EV 卡的 `predicted_effect.measure` 给"一条命令 + 期望"，`python3 scripts/ev_measure.py <卡号> --run` 打印实测并判三态。它证明**效果**，不证明价值。
 
@@ -107,20 +107,20 @@ Golden-case 回归套件在 `eval/golden/`：公开仓只放构造示例，真�
 3. **别写相对路径**：worktree 清理对 gitignore 件无提示、不报错（不是"会被 git 拦住"），而面板/周批/结算脚本读的是主检出那一份——"记录了但没人看得见"与"读不到就当成没有"会同时发生。
 4. **串行与收工**：`ingest-state.json` 的游标更新无锁，必须串行；开工先 `git fetch origin`，收工前提交或 stash，不留未提交改动。
 
-完整约定（不隔离的面如何在合流时解决、锁原语、worktree 清理）见 [`docs/git-workflow.md`](docs/git-workflow.md)。
+完整约定（不隔离的面如何在合流时解决、锁原语、worktree 清理）见 [`docs/guide/git-workflow.md`](docs/guide/git-workflow.md)。
 
 ## Key constraints
 
-- **Normative foundation:** all design/implementation/evolution changes must be traceable to `docs/design-principles.md` (the normative articles); the derivation chain lives in `docs/design-theory.md` (four axioms → formulas → principles). An untraceable rule is suspect; an unexplainable real-world choice indicts the theory.
+- **Normative foundation:** all design/implementation/evolution changes must be traceable to `docs/spec/design-principles.md` (the normative articles); the derivation chain lives in `docs/spec/design-theory.md` (four axioms → formulas → principles). An untraceable rule is suspect; an unexplainable real-world choice indicts the theory.
 - **Diagnose does not access customer environments.** All info (logs, versions, errors) comes from the engineer pasting it. The agent's role is to ask for what's missing when information is insufficient.
 - **Agent never applies fixes to production.** Fixes are suggestions for the human to apply.
-- **知识库结构性状态**：实时数字（各 namespace 条数/容量，含 soft_cap 容量治理信号）以 `scripts/build_index.py` 生成的 `knowledge/_index.yaml` 头注为准，**不在此硬编码**（条数随 KB 增长腐烂）；指标时序数据的**源**在 `metrics/timeline.d/<期号>.yaml`、**生成物** `metrics/timeline.yaml` 由 `scripts/build_timeline.py` 重建（读侧只读它），口径见 `docs/metrics.md`。
+- **知识库结构性状态**：实时数字（各 namespace 条数/容量，含 soft_cap 容量治理信号）以 `scripts/build_index.py` 生成的 `knowledge/_index.yaml` 头注为准，**不在此硬编码**（条数随 KB 增长腐烂）；指标时序数据的**源**在 `metrics/timeline.d/<期号>.yaml`、**生成物** `metrics/timeline.yaml` 由 `scripts/build_timeline.py` 重建（读侧只读它），口径见 `docs/guide/metrics.md`。
 - **人读面的名单与数字同样不硬编码**：skill 名单、文档目录由 `docs/_manifest.yaml` 生成到 README（`scripts/build_docs_index.py`；`--check` 进 CI `docs-index`，**生成物不一致或 `docs/` 下有未登记文档即红**）。手写数字会腐烂且不报错。
-- **人读文本的行文规范**：写任何给人看或给人审的文本——定位报告、trace 的 `summary`/`output`/`reason`、面板文案、EV 卡、case/reference 词条、postmortem、诊断对话输出、PR body、`docs/` 与 skill 正文——按 `docs/writing-norms.md`：共用条目、必须保留的原值、每一面"共用还是定制"的判定都在那一篇，各面的写点见其 §3。行文是判断性规范，**不进 CI**；由 PR 人读性自查 + review spot-check 保证。机械可判的切片已有门：`build_docs_index.py --check` 与 `render_review_summary.py --scan`（代号未登记与越界）。
+- **人读文本的行文规范**：写任何给人看或给人审的文本——定位报告、trace 的 `summary`/`output`/`reason`、面板文案、EV 卡、case/reference 词条、postmortem、诊断对话输出、PR body、`docs/` 与 skill 正文——按 `docs/spec/writing-norms.md`：共用条目、必须保留的原值、每一面"共用还是定制"的判定都在那一篇，各面的写点见其 §3。行文是判断性规范，**不进 CI**；由 PR 人读性自查 + review spot-check 保证。机械可判的切片已有门：`build_docs_index.py --check` 与 `render_review_summary.py --scan`（代号未登记与越界）。
 - **代号有生存范围**：`docs/glossary.yaml` 每条带 `scope`。记账号（roadmap 事项、治理缺口、触发信号、落地阶段）**只在各自的计划文档里裸用**；PR body / EV 卡 prose / 机制文档要引用就写中文含义（`scripts/render_review_summary.py --scan <文件或目录>` 会报越界）。`docs/adr/` 与 `proposals/` 是只追加档案，豁免且不追溯。
 - **Public/private separation:** `skills/`, `references/`, `examples/` are methodology (public). `knowledge/` and `postmortems/` with real content contain customer data and must stay private. `.gitignore` enforces this boundary for `traces/` files.
 - **Index freshness:** `knowledge/_index.yaml` is generated by `scripts/build_index.py` and committed. After changing any case YAML, regenerate it; `--check` (run by groom and the kb-checks CI) fails on staleness. Retrieval is deliberately lexical/structural — no vector RAG (see `docs/adr/0002`).
-- **Git gating:** KB changes land via PR — triage labels (`kb/new-pattern|variant|covered`), `kb/high-risk` dual sign-off, CODEOWNERS-based review (see `docs/git-workflow.md`; `CODEOWNERS.example` is a placeholder until owners are named). Deployable centralized or as a framework fork — knowledge dirs never merge from upstream.
+- **Git gating:** KB changes land via PR — triage labels (`kb/new-pattern|variant|covered`), `kb/high-risk` dual sign-off, CODEOWNERS-based review (see `docs/guide/git-workflow.md`; `CODEOWNERS.example` is a placeholder until owners are named). Deployable centralized or as a framework fork — knowledge dirs never merge from upstream.
 - **Skill self-containment (CI-enforced):** skill files (`skills/**`) must not reference ADR numbers (`ADR-\d{4}`), dates (`20\d\d-\d\d`), or EV card numbers (`EV-\d{4}-\d{3}`) — ADRs get revised/absorbed; a number anchor makes skill behavior look externally defined; dates read as facts; card numbers rot. Behavior rules must be inline; traceability belongs to git/PR/card history.
 - **EV 卡的预测必须可复现 (CI-enforced):** `predicted_effect.measure` 要带一条命令 + 期望（`expect_exit` / `expect_stdout` 至少一项），或如实声明 `reason`（不可度量）。缺它则"评审 30 秒判定"无从执行；产卡骨架的占位 `measure` 会被 CI 拦下。判 `validated` 前先跑一遍自己的 measure。
 - **Check-admission criterion (what deserves CI):** only rules that are ①mechanically checkable, ②have deterministic consequences, ③proven recurrent (failed ≥2×) go into CI. Judgmental norms stay as execution instructions + review spot-checks — never fake-hardened (原则六).

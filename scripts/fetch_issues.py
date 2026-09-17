@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """fetch_issues.py —— 从 GitHub 拉取 issue 元数据缓存（精简字段，不含 body）
 
-设计（与 issue_filter.py 配套，见 docs/issue-ingest-pipeline.md）：
+设计（与 issue_filter.py 配套，见 docs/guide/issue-ingest-pipeline.md）：
   - 只拉元数据（number/title/comments/closed_at/labels/state_reason），**不含 body**——
     body 是最大字段，评估候选时才按需单条取（gh api issues/<n>），拉取本身不占 context
   - 拉取是无状态动作，结果即缓存（JSON），后续 issue_filter.py 做硬过滤

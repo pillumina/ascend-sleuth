@@ -11,7 +11,7 @@
 | 颜色角色 | 每个 `panel-client.js` 的 `--c-*`（文字，需过 WCAG AA）/ `--acc-*`（装饰，两点面板逐色同值）/ `--fill-*`（实心徽标底）/ `--btn-*` | `python3 scripts/check_panel_tokens.py` |
 | 字号与行高 | 8 档 `--t-md2 10.5` → `--t-2xl 18`（基准 `--t-base` 14.5）；行高 `--lh-tight/base/prose`（中文需 ≥1.6） | `node scripts/panel_render_check.js`（断言：声明 8 档、无硬编码 font-size、最小档 ≥10、基准档 ≥14、两面板同值域） |
 | 结果复用窗口 | 每个 `panel-host.js` 的窗口常量（`VERDICT_TTL_MS` / `CACHE_TTL_MS`），client 的刷新说明照它写 | `node scripts/panel_render_check.js`（断言：窗口内复用不重跑脚本、`refresh: true` 绕过窗口、失败也能强制重跑、首屏那次不强制、两面板窗口同值且与 client 说明一致） |
-| 面板文案 | 共用条目见 `docs/writing-norms.md`（判定口径的权威）；面板特有的见下方「面板文案的定制条款」 | 同上（行文只有"无字面 Markdown 星号"一条可机械判） |
+| 面板文案 | 共用条目见 `docs/spec/writing-norms.md`（判定口径的权威）；面板特有的见下方「面板文案的定制条款」 | 同上（行文只有"无字面 Markdown 星号"一条可机械判） |
 | 只读边界 | 面板是只读可视化 + 指令生成器；不做决策与写入 | 人审（`skills/preload-panel/SKILL.md`） |
 | 依赖缺失时的退化 | 拿不到数据时给一行说明 + 可行的下一步，不占位、不拿别处的数据冒充 | `node scripts/panel_render_check.js`（退化路径一节，含 5 个缺件用例） |
 
@@ -25,7 +25,7 @@
 ## 面板文案的定制条款
 
 行文规范的**共用条目**与**必须保留的原值**（枚举、路径、命令、证据原值）写在
-[`docs/writing-norms.md`](../docs/writing-norms.md)——那是唯一权威，本文件不复制。
+[`docs/spec/writing-norms.md`](../docs/spec/writing-norms.md)——那是唯一权威，本文件不复制。
 **不复写条数**：那份文件的条目会被增补（实测从八条涨到二十二条），手写的数字只会腐烂。
 
 面板额外要守的是下面四条，它们都由同一个事实决定：**面板的读者只看界面，不看正文。**
@@ -41,5 +41,5 @@
 专有名词用术语而非修辞：说"零否决记录""外部验证停滞""引用路径失效"，不说"从未说过不""自证过多"
 "依据已消失"——后者读着顺口，但没法当判据名引用，也容易被读成价值判断。
 
-**哪些规则能硬化**：见 `docs/writing-norms.md` 的「哪些能硬化」一节。面板侧实测的结论是：全部条目里只有
+**哪些规则能硬化**：见 `docs/spec/writing-norms.md` 的「哪些能硬化」一节。面板侧实测的结论是：全部条目里只有
 "无字面 Markdown 星号"一条合格，其余留人审——不为"AI 味"造硬门（原则六）。

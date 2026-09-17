@@ -6,7 +6,7 @@
 # 而实际十个；README 写"八个 skill"（本意是用户面子集）却无从判断是总数还是某一面；
 # 文档目录是 17 条平铺，读者看不出"我现在该读哪篇"。这类数字没有理由手写。
 #
-# 分工（分层先例同 metrics/timeline.yaml vs docs/metrics.md）：
+# 分工（分层先例同 metrics/timeline.yaml vs docs/guide/metrics.md）：
 #   docs/_manifest.yaml  = 数据（人工维护的唯一处：分层 + 一句话用途 + skill 归属）
 #   README.md 标记区块    = 生成物（本脚本写；不要手改）
 #
@@ -93,22 +93,32 @@ def render_docs(root: Path, doc) -> str:
     return "\n".join(out).rstrip()
 
 
+# 素材与应用目录：自带 README，不是阅读顺序里的文档，不参与"未登记即红"。
+ASSET_DIRS = {"assets", "diagrams", "demo-assets", "kb-explorer"}
+
+
 def missing_docs(root: Path, doc) -> list:
-    """docs/ 下未登记进清单的 .md（含 ADR 与 mechanism：ADR 以目录条目 `docs/adr/`
-    整体登记；mechanism 逐篇登记，故逐文件比对）。"""
+    """docs/ 下未登记进清单的 .md。
+
+    递归扫 `docs/**`，不再逐个目录列举。为什么改：原实现只扫 `docs/*.md`、
+    `docs/adr/*.md`、`docs/mechanism/*.md` 三处，于是文档一旦下沉到别的子目录
+    （spec/、guide/、plan/），**"未登记即红"这条检查会静默漏掉它们** —— 检查还在跑、
+    却已经不看新增的那一层，比没有检查更难发现（实测：本仓文档按层分目录时才发现）。
+    目录条目（如 `docs/adr/`）整体覆盖其下文件；素材与应用目录自带 README，不是阅读顺序
+    里的文档，按 ASSET_DIRS 排除。
+    """
     listed = {e["path"] for e in (doc.get("docs") or [])}
+    dir_entries = {p for p in listed if p.endswith("/")}
     missing = []
-    for f in sorted((root / "docs").glob("*.md")):
-        rel = f"docs/{f.name}"
-        if rel not in listed:
-            missing.append(rel)
-    if "docs/adr/" not in listed:
-        for f in sorted((root / "docs" / "adr").glob("*.md")):
-            missing.append(f"docs/adr/{f.name}")
-    for f in sorted((root / "docs" / "mechanism").glob("*.md")):
-        rel = f"docs/mechanism/{f.name}"
-        if rel not in listed:
-            missing.append(rel)
+    for f in sorted((root / "docs").rglob("*.md")):
+        rel = f.relative_to(root).as_posix()
+        if rel in listed:
+            continue
+        if any(rel.startswith(d) for d in dir_entries):
+            continue
+        if rel.split("/")[1] in ASSET_DIRS:
+            continue
+        missing.append(rel)
     return missing
 
 

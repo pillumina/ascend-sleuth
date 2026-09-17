@@ -35,7 +35,7 @@ source_signals:
     trajectory:
       - "eval/golden/*.fixture.yaml（expected.namespace 逐条统计）"
       - "eval/s2/vllm-ascend.yaml（calibration 20 条）"
-      - "docs/eval.md:81（能力边界：小样本只能捕捉回归与大的改动）"
+      - "docs/guide/eval.md:81（能力边界：小样本只能捕捉回归与大的改动）"
   - signal: process_friction
     evidence: "构造实验（12 次盲测，3 场景 × 3 臂）：R=flow[] YAML / S=同内容散文 skill / N=不给流程。G2 保真度 R=S=100%（差 0）；G3 正确性 R=S=N 全对（4/4 格）；唯一可测差异 = F2 的下一步工具（R/S 给出 ASCEND_LAUNCH_BLOCKING=1 与 mssanitizer，N 未给出）。成本：单条流程 413–790 tok，散文比词条全文省 200–400 tok"
     trajectory:

@@ -25,7 +25,7 @@ source_signals:
     trajectory:
       - "scripts/gc_docs.py：新增 AGENT_KB_DIRS（并入 DEFAULT_EXCLUDE）与 NON_DOC_BASENAMES（按 basename 判，不受目录与每源 exclude 影响）"
       - "skills/reference-ingest/SKILL.md：筛候选一节写明两类不入扫描面、例外走每源 config"
-      - "docs/reference-ingest-pipeline.md：已知坑表新增一行（带 186/491/677 与 harvested=0 的实测数据）"
+      - "docs/guide/reference-ingest-pipeline.md：已知坑表新增一行（带 186/491/677 与 harvested=0 的实测数据）"
 hypothesis: >-
   把这两类移出扫描面后：①新仓的候选表只剩真文档，判定预算不再花在"判噪音"上（graph-autofusion 138→23）；
   ②台账不再被零 harvest 的条目占据（未来批次不再新增这类条目）；③"agent 知识目录只作线索、不作权威源"

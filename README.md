@@ -60,7 +60,7 @@ python3 scripts/enable_agent_skills.py    # 检测已安装 agent，建项目级
 (Get-Item .dsh\skills -Force).PSIsContainer   # True = 正常；False = 需要修
 ```
 
-两条修法（优先开真 symlink）、三种状态的判别（含破损 reparse 点）、junction 与 `skip-worktree` 的取舍，见 **[docs/windows-setup.md](docs/windows-setup.md)**。
+两条修法（优先开真 symlink）、三种状态的判别（含破损 reparse 点）、junction 与 `skip-worktree` 的取舍，见 **[docs/guide/windows-setup.md](docs/guide/windows-setup.md)**。
 
 加载后在 agent 里以 `/skill:<name>` 调用。
 
@@ -127,7 +127,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 发生什么：agent 按 `skills/self-evolve/SKILL.md` 跑一轮——读信号 → 产候选 idea 卡（`proposals/ideas/EV-*.yaml`）→ `verify_proposals.py` 校验 → 攒批成聚合 PR 给你审（每卡独立 commit，可单独回滚）。改动的合入始终以 PR 人审为闸点，不自动合入；路由与结构类改动额外双签。
 
-可随时干预："停一下"（本轮停止，出中间报告）/ "这条改动有问题，回滚"（该卡回滚）。机制细节与使用说明见 [自演进用户指南](docs/evolution-user-guide.md)。
+可随时干预："停一下"（本轮停止，出中间报告）/ "这条改动有问题，回滚"（该卡回滚）。机制细节与使用说明见 [自演进用户指南](docs/guide/evolution-user-guide.md)。
 
 ## 知识获取
 
@@ -183,7 +183,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 诊断过程全程记录 trace：加载了哪些命名空间、按什么顺序执行了哪些检查。trace 用于事后归因。一次误诊，究竟是知识库里的 case 写错了，还是 agent 执行流程走偏了，两者的修复路径完全不同——混在一起会把本来正确的东西改坏。
 
-三个闭环驱动整个系统，分清它们各自消费什么、产出什么，是理解这套机制的前提（**全图与权威归属见 [自演进元机制](docs/rsi-mechanism.md)**）：
+三个闭环驱动整个系统，分清它们各自消费什么、产出什么，是理解这套机制的前提（**全图与权威归属见 [自演进元机制](docs/mechanism/rsi-mechanism.md)**）：
 
 | 闭环 | 什么时候发生 | 入口 | 产出 |
 |---|---|---|---|
@@ -191,7 +191,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 | **沉淀闭环** | 定位结束后 / 定期批量 | `/skill:to-postmortem`、`/skill:to-reference`、`/skill:issue-ingest` | 待审队列 → 升格为 case / reference 词条 |
 | **演进闭环** | 内容流程收尾 / 全库体检轮 | `/skill:evolve-check`、`/skill:self-evolve` | 改进卡 → 验证 → 攒批 PR（人审）→ 回到前两个闭环 |
 
-完整全景见下方架构图（[交互版](docs/diagrams/ascend-sleuth-architecture.html?theme=light)，支持主题切换与 PNG 导出）；每个机制配什么护栏防止越学越错、以及每周实际要做什么，见 [docs/rsi-mechanism.md](docs/rsi-mechanism.md)。
+完整全景见下方架构图（[交互版](docs/diagrams/ascend-sleuth-architecture.html?theme=light)，支持主题切换与 PNG 导出）；每个机制配什么护栏防止越学越错、以及每周实际要做什么，见 [docs/mechanism/rsi-mechanism.md](docs/mechanism/rsi-mechanism.md)。
 
 ![ascend-sleuth 架构](docs/diagrams/ascend-sleuth-architecture.png)
 
@@ -201,7 +201,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 ## 核心设计原则
 
-面向使用者的节选；完整的规范性原文（十一条，各含推导与禁止项）见 [docs/design-principles.md](docs/design-principles.md)。
+面向使用者的节选；完整的规范性原文（十一条，各含推导与禁止项）见 [docs/spec/design-principles.md](docs/spec/design-principles.md)。
 
 **用结构承载规则，不依赖执行自觉。** 凡是能写进文件结构的约定，就不放在 prompt 里靠模型遵守：阶段一加载固定为读生成的索引文件，反馈追踪落在状态文件的标记位上，索引新鲜度由脚本硬校验。写进结构的规则不会随执行质量波动。
 
@@ -209,7 +209,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 **语义判断交给 agent，知识底座保持词法。** 工程师的模糊描述由 agent 归一为可检索的错误签名；知识库本身始终是 YAML 和 git，可 diff、可审计、可回滚。这是不引入向量检索的直接原因，完整论证与重评条件见 [ADR-0002](docs/adr/0002-retrieval-no-rag-lightweight-index.md)。
 
-**规模上限是一项架构承诺。** 每个 `(框架 × 类别)` 格子 30 条 case 的软上限并非洁癖：正是这个上限保证了命中分片能在单次加载里暴力过滤。上限先于任何检索基础设施存在；超软上限触发拆分评估，超 60 条强制拆分（口径与拆分轴见 [ADR-0004](docs/adr/0004-capacity-governance.md)，各格子当前实测值与拆分裁决见 [roadmap.md](docs/roadmap.md) 的容量治理条目）。
+**规模上限是一项架构承诺。** 每个 `(框架 × 类别)` 格子 30 条 case 的软上限并非洁癖：正是这个上限保证了命中分片能在单次加载里暴力过滤。上限先于任何检索基础设施存在；超软上限触发拆分评估，超 60 条强制拆分（口径与拆分轴见 [ADR-0004](docs/adr/0004-capacity-governance.md)，各格子当前实测值与拆分裁决见 [roadmap.md](docs/plan/roadmap.md) 的容量治理条目）。
 
 **自动化产出建议，人做决定。** 预分诊、候选 case 起草、置信度重算都只给出建议和依据，采纳、调整或驳回由维护者判定。人的工作从结构化整理上移为快速审批，单条成本从二十分钟降到半分钟以内。
 
@@ -221,28 +221,29 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 ## 文档
 
-> 别从头读。先问"我现在要干什么"，再按下表找那一篇——**日常只需要 [自演进元机制](docs/rsi-mechanism.md) 一篇**，
+> 别从头读。先问"我现在要干什么"，再按下表找那一篇——**日常只需要 [自演进元机制](docs/mechanism/rsi-mechanism.md) 一篇**，
 > 其余是改机制本身时才读的论证层。名单由 `docs/_manifest.yaml` 生成（`scripts/build_docs_index.py --check` 防漏登记）。
 
 <!-- BEGIN generated: docs-index (scripts/build_docs_index.py；由 docs/_manifest.yaml 生成，勿手改) -->
 **入门（第一次接触先读这篇）**
 *你还不清楚这套系统在做什么、数据怎么流动*
 
+- [README.md](docs/README.md) — docs 怎么读：分层表（每一层给谁、什么时候读）+ 入口指路
 - [demo-walkthrough.md](docs/demo-walkthrough.md) — 从一次诊断到知识演化的可读演示：两分钟架构总览 + 术语与 skill 速览 + 全流程示例（不需要动手）
 
 **规范（约束一切设计与演进；改机制前必读）**
 *你要判断某个设计/改动是否合规，或要挑战一条既有规则时*
 
-- [case-schema.md](docs/case-schema.md) — 
-- [design-principles.md](docs/design-principles.md) — 十一条规范性条文——一切设计、实现、修复与演进的依据
-- [design-theory.md](docs/design-theory.md) — 四公理 → 公式 → 原则的完整推导链（原则的生成处）
-- [writing-norms.md](docs/writing-norms.md) — 人读/审阅文本的行文规范（唯一权威）：共用条目、必须保留的原值、各面的共用与定制判定、哪些能硬化
+- [case-schema.md](docs/spec/case-schema.md) — 
+- [design-principles.md](docs/spec/design-principles.md) — 十一条规范性条文——一切设计、实现、修复与演进的依据
+- [design-theory.md](docs/spec/design-theory.md) — 四公理 → 公式 → 原则的完整推导链（原则的生成处）
+- [writing-norms.md](docs/spec/writing-norms.md) — 人读/审阅文本的行文规范（唯一权威）：共用条目、必须保留的原值、各面的共用与定制判定、哪些能硬化
 
 **演进机制（改机制本身才读；日常不必读）**
-*你要改演进/评测/编排机制本身时——日常只读 docs/rsi-mechanism.md 一篇，论证层在 docs/mechanism/*
+*你要改演进/评测/编排机制本身时——日常只读 docs/mechanism/rsi-mechanism.md 一篇，论证层在 docs/mechanism/*
 
-- [rsi-mechanism.md](docs/rsi-mechanism.md) — **自演进元机制唯一技术入口**：主线流程图、名词对照、人参与点与可退出条件、外部依据、周度 runbook
-- [evolution.md](docs/evolution.md) — 旧入口（保留以免旧链接失效）：内容已并入 rsi-mechanism.md，本文只是一页指路
+- [evolution.md](docs/evolution.md) — 旧链接入口（保留以免旧链接失效）：内容已并入 mechanism/rsi-mechanism.md，本文只是一页指路，不要在此续写
+- [rsi-mechanism.md](docs/mechanism/rsi-mechanism.md) — 机制技术说明（这一层的入口）：三环主线、什么时候触发、验证怎么闭环、哪一步需要人、每周做什么
 - [pipeline.md](docs/mechanism/pipeline.md) — 三层闭环（知识 / 流程 / 编排）与 proposal 状态机、卡 schema
 - [execution.md](docs/mechanism/execution.md) — proposal 信息契约、评审判据、follow-up 验证、指标分层
 - [orchestration.md](docs/mechanism/orchestration.md) — 自演进会话协议、目标函数与停止条件、token 预算
@@ -253,20 +254,20 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 **操作指南（用到那个环节时才读）**
 *你要装环境（Windows skills 使能）、跑评测、看指标、走 git 门控、或做 issue 导入时*
 
-- [evolution-user-guide.md](docs/evolution-user-guide.md) — 使用者侧：能说什么、一句话后发生什么、怎么读进度
-- [eval.md](docs/eval.md) — 改 skill 前后跑什么（门禁分级）、对照集封存与已冻结的判据
-- [metrics.md](docs/metrics.md) — 指标口径与周批流程（数字以 metrics/timeline.yaml 为准）
-- [git-workflow.md](docs/git-workflow.md) — 审核、门控、合入与多人协作的落地（含评审把手）
-- [issue-ingest-pipeline.md](docs/issue-ingest-pipeline.md) — issue → case 的半自动导入管道
-- [reference-ingest-pipeline.md](docs/reference-ingest-pipeline.md) — 文档仓 → reference 的导入管道（状态文件、成本结构、已知坑）
-- [windows-setup.md](docs/windows-setup.md) — Windows 下让 agent 发现 skills：三种状态的判别与两条修法
-- [handoff.md](docs/handoff.md) — 把一单诊断交到另一台机器继续（交接包的布局、交接单字段、两条命令的契约与强度边界）
+- [evolution-user-guide.md](docs/guide/evolution-user-guide.md) — 使用者侧：能说什么、一句话后发生什么、怎么读进度
+- [eval.md](docs/guide/eval.md) — 改 skill 前后跑什么（门禁分级）、对照集封存与已冻结的判据
+- [metrics.md](docs/guide/metrics.md) — 指标口径与周批流程（数字以 metrics/timeline.yaml 为准）
+- [git-workflow.md](docs/guide/git-workflow.md) — 审核、门控、合入与多人协作的落地（含评审把手）
+- [issue-ingest-pipeline.md](docs/guide/issue-ingest-pipeline.md) — issue → case 的半自动导入管道
+- [reference-ingest-pipeline.md](docs/guide/reference-ingest-pipeline.md) — 文档仓 → reference 的导入管道（状态文件、成本结构、已知坑）
+- [windows-setup.md](docs/guide/windows-setup.md) — Windows 下让 agent 发现 skills：三种状态的判别与两条修法
+- [handoff.md](docs/guide/handoff.md) — 把一单诊断交到另一台机器继续（交接包的布局、交接单字段、两条命令的契约与强度边界）
 
 **计划与就绪度（想知道"下一步做什么"时读）**
 *你要排下一步工作，或评估能不能推广给一个团队时*
 
-- [roadmap.md](docs/roadmap.md) — 闸门驱动的演进计划（每个事项的入口条件与验收标准）
-- [rollout-assessment.md](docs/rollout-assessment.md) — 对照原则的四层就绪度评估与推广动作清单
+- [roadmap.md](docs/plan/roadmap.md) — 闸门驱动的演进计划（每个事项的入口条件与验收标准）
+- [rollout-assessment.md](docs/plan/rollout-assessment.md) — 对照原则的四层就绪度评估与推广动作清单
 
 **决策留痕（查"当初为什么这样选"时读）**
 *你想推翻某个既有选择，需要先看它当时的论证与重评条件*
@@ -309,7 +310,7 @@ CODEOWNERS.example           owner 落实后启用
 .github/                     kb-checks CI + 分场景 PR 模板
 ```
 
-修改 skill 本身之前，先按 [docs/eval.md](docs/eval.md) 跑一遍 golden 回归套件，确认原本能正确命中的场景没有被改坏。
+修改 skill 本身之前，先按 [docs/guide/eval.md](docs/guide/eval.md) 跑一遍 golden 回归套件，确认原本能正确命中的场景没有被改坏。
 
 ## 部署模式
 
@@ -318,7 +319,7 @@ CODEOWNERS.example           owner 落实后启用
 - **集中式**：训练与推理团队共用一个仓库，`CODEOWNERS` 按命名空间划分审批权，`common/` 与 `triage-tree.yaml` 的变更需要双 owner 签署。
 - **框架式**：团队 fork 本仓库后自行积累或导入知识，上游只同步方法论目录（`skills/ scripts/ docs/ examples/ eval/ .github/`），知识目录不参与上游合并，因此没有冲突面。
 
-审核、分发与合入的 git 落地细节见 [docs/git-workflow.md](docs/git-workflow.md)。
+审核、分发与合入的 git 落地细节见 [docs/guide/git-workflow.md](docs/guide/git-workflow.md)。
 
 ## 日常工作流
 
@@ -346,4 +347,4 @@ fix 应用后 → 回报结果（diagnose/resume 启动时会主动追问）→ 
 - **v2**：trace 结构挖掘、可信自动晋升。
 - **明确不做**：向量检索/RAG、ANN、跨组织联邦（论证见 [ADR-0002](docs/adr/0002-retrieval-no-rag-lightweight-index.md)）。
 
-各事项的需求、验收标准、入口闸门与常设检查点见 [docs/roadmap.md](docs/roadmap.md)。
+各事项的需求、验收标准、入口闸门与常设检查点见 [docs/plan/roadmap.md](docs/plan/roadmap.md)。

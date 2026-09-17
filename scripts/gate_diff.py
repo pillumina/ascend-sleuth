@@ -21,7 +21,7 @@
 #   退出码：0=无回归（after 每个 fixture 的 top3 与 base 一致，或 expected case 仍在 top-3）；
 #           1=有回归/缺结果
 #
-# 口径（docs/eval.md 断言分层）：LLM 非确定性 → 断言 top-3 命中而非 must-first；
+# 口径（docs/guide/eval.md 断言分层）：LLM 非确定性 → 断言 top-3 命中而非 must-first；
 # base 为 documented miss 的 fixture 在 after 也须 miss（或同样 documented）。
 
 import argparse

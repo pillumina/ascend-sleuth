@@ -5,7 +5,7 @@
 # ============================================================
 
 id: EV-2026-021
-layer: L3                          # 评估机制分级（docs/eval.md + skills 门禁措辞）
+layer: L3                          # 评估机制分级（docs/guide/eval.md + skills 门禁措辞）
 title: "skill 改动门禁分级：影响面×门禁矩阵 + 基线缓存（golden 子集 / ixn 对口 / 文档免跑）"
 status: validated
 authorization: dual                # eval.md + 两个 skill 的门禁措辞（L2/L3 交叉）
@@ -17,7 +17,7 @@ source_signals:
   - signal: human_review_feedback
     evidence: "审核顾虑：'改 skill 都跑 fixture/ixn？刚才 fixture 跑很久、token 很大'——EV-2026-016/020 属交互/指引面改动却机械跑了检索 golden（3 fixture ×2 侧，重上下文回合；cross_category_used 0/3 证低信号）"
     trajectory:
-      - "docs/eval.md（原：改 skill 跑全量 golden，无分级）"
+      - "docs/guide/eval.md（原：改 skill 跑全量 golden，无分级）"
       - "skills/evolve-check/SKILL.md / self-evolve/SKILL.md（门禁措辞）"
       - "EV-2026-016/020（交互/指引面改动实例）"
 hypothesis: >-

@@ -43,5 +43,5 @@ PR body 正文从首个 "## " 区块开始。
 
 ## 关联更新（如适用）
 
-- [ ] 对应 golden fixture 的 expected 已同步（否则回归假失败，docs/eval.md）
+- [ ] 对应 golden fixture 的 expected 已同步（否则回归假失败，docs/guide/eval.md）
 - [ ] 引用本 case 的 references 已检查

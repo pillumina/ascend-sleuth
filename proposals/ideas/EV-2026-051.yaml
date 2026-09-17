@@ -18,13 +18,13 @@ source_signals:
     evidence: >-
       承接 EV-2026-050 的诊断：那张卡让"改动声称的效果"可复核，但**没有**解决"无回归"
       这件事本身是否独立。缺口是结构性的——`eval/golden/` 在改动者可写面内，而且
-      `docs/eval.md`「套件如何演化」一节**要求 groom 跟着 case 改夹具**（case 的 fix 变了，
+      `docs/guide/eval.md`「套件如何演化」一节**要求 groom 跟着 case 改夹具**（case 的 fix 变了，
       夹具期望要同步）。于是同一双手既改被测对象、也改对照标准："golden 无回归"是**可控
       信号**。判据独立性的唯一标准是：改动者不能靠写文字（或改夹具）通过检查。
       实测还暴露一个更基础的问题：**夹具根本没有覆盖全部知识**。
     trajectory:
-      - "docs/eval.md「套件如何演化」：case 的 fix 变了，夹具的期望同步更新（groom 自动检测）"
-      - "docs/eval.md「门禁分级」：检索/路由面改动的门禁 = golden 子集对照（对照标准在同仓可写面）"
+      - "docs/guide/eval.md「套件如何演化」：case 的 fix 变了，夹具的期望同步更新（groom 自动检测）"
+      - "docs/guide/eval.md「门禁分级」：检索/路由面改动的门禁 = golden 子集对照（对照标准在同仓可写面）"
       - "scripts/holdout.py --list（首跑）：夹具覆盖 4 个格子；有 case 却无夹具的格子 6 个"
       - "24 个 fixture 覆盖 inference/vllm-ascend 的 interrupt/precision/performance 与 inference/sglang/interrupt；training/mindspeed-llm、training/verl、common 共 6 个格子为 0"
   - signal: process_friction

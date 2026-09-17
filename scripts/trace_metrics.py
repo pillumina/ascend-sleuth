@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-# trace_metrics.py —— 从 traces/*.yaml 的 trace 计算指标（metrics/timeline.yaml 数据 + docs/metrics.md 机制）
+# trace_metrics.py —— 从 traces/*.yaml 的 trace 计算指标（metrics/timeline.yaml 数据 + docs/guide/metrics.md 机制）
 #
 # 目的（ADR-0002）：过滤率/退休率/命中率/路由准确率从"假设"变"实测"。
 # 数据源：traces/ 目录（gitignored，活跃 + 历史都归此）。
-# 输出：markdown 指标表（stdout），人复核后追加进 docs/metrics.md。
+# 输出：markdown 指标表（stdout），人复核后追加进 docs/guide/metrics.md。
 #
 # 依赖的 trace action（词表见 skills/diagnose/SKILL.md「每步必写 trace」）：
 #   triage / load_index / quickly_check / load_full / run_check / hit / miss
@@ -47,7 +47,7 @@ KNOWN_ACTIONS = {
 #   fix        修复依据（command-side-effect / 工具解读，步骤 3 阶段 2.5）
 #   background 平台 / 软件背景 summary（步骤 3 阶段 2.5）
 #   procedure  方法缺口的流程加载（步骤 5，EV-2026-038）——**只读全文**，摘要行不算加载
-# 词表外的 purpose → 消费点分布指标（docs/metrics.md）不可算，此处确定性检出。
+# 词表外的 purpose → 消费点分布指标（docs/guide/metrics.md）不可算，此处确定性检出。
 KNOWN_PURPOSES = {"collect", "signature", "fix", "background", "procedure"}
 
 # reference_lookup 的 outcome 三态（词表与 skills/diagnose/references/diagnosis-trace.md 一致）：
@@ -140,7 +140,7 @@ def main():
     ref_hits = {}
     ref_resolved = {}
     ref_platforms = {}
-    # 消费点分布（docs/metrics.md「reference 引用」口径）：purpose ∈ collect/signature/fix/background
+    # 消费点分布（docs/guide/metrics.md「reference 引用」口径）：purpose ∈ collect/signature/fix/background
     ref_purposes = {}
     purpose_bad = []
     # 触发三态（EV-2026-093）：hit / miss / skipped——三态缺一，"没查"与"查了没命中"同形

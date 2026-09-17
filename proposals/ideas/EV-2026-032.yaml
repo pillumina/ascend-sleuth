@@ -56,7 +56,7 @@ decisions:                         # 审计链：谁/何时/依据/结论（只�
   - who: agent（同轮补录）
     when: 2026-09-10
     type: eval
-    conclusion: "scan_review（指引面/改动按 docs/eval.md 分级不跑检索 golden）：①`python3 scripts/src_fetch.py --list` 实跑 exit 0，输出 7 个已知 repo→host 映射；②`grep -rn src_fetch skills/` 命中 diagnose 3 处 + resume-diagnosis 2 处，无「自行 clone 到 /tmp」的旧表述残留；③CLAUDE.md 的 source_ref 段同步（866dee2 含 CLAUDE.md 改动）"
+    conclusion: "scan_review（指引面/改动按 docs/guide/eval.md 分级不跑检索 golden）：①`python3 scripts/src_fetch.py --list` 实跑 exit 0，输出 7 个已知 repo→host 映射；②`grep -rn src_fetch skills/` 命中 diagnose 3 处 + resume-diagnosis 2 处，无「自行 clone 到 /tmp」的旧表述残留；③CLAUDE.md 的 source_ref 段同步（866dee2 含 CLAUDE.md 改动）"
   - who: agent（同轮补录）
     when: 2026-09-10
     type: decision
