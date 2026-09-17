@@ -36,8 +36,11 @@ predicted_effect:
   from: 无持久人读件；结论/机制/证据/沉淀建议分散在对话与 trace 事件里；resume 需重读全部 trace 事件
   to: 每次诊断产出 traces/<session>.report.md（TL;DR / 背景 / 依据链 / 源码分析 / 机制图 / 修复 / 当前状态与下一步 / 沉淀建议 / 附录），且 trace 里有 sediment_candidates
   measure:
-    command: "python scripts/report_lint.py traces/2026-09-12-dsv4-a3-hcpre-16379.report.md"
-    expect_exit: 0
+    # 原判据依赖某一份本地 traces 报告（运行时件，随检出清理而消失）——它在干净检出上
+    # 不可复现。要保留这条结构自检，应新增一份随仓的示例报告夹具（已记为本卡残余）；
+    # 在此之前如实声明不可度量，而不是编一条跑不通的命令（原则十）。
+    command: null
+    reason: "判据原本跑在 traces/ 下的一份历史报告上；traces/ 是运行时件（不进版本库、随检出清理消失），干净检出上无此文件、判据不可复现。真正该做的是补一份随仓的示例报告夹具，再把它做成可复现判据。"
 validation:
   method: scan_review
   baseline: 本轮诊断（DSV4/A3 hc_pre）的对话输出 + traces/2026-09-12-dsv4-a3-hcpre-16379.yaml
