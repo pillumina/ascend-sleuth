@@ -817,6 +817,9 @@ def ex_measure_path(root: Path):
         return {
             "id": cid, "layer": "L2", "title": f"演练卡 {cid}", "status": "in_experiment",
             "authorization": "review", "dimension": "observability", "created_at": created,
+            # 目标组件键：对 cutover 之后的卡是必填（它是"同组件先例咨询"的键）。
+            # 演练夹具也要跟着填——契约变了夹具不同步，演练就会以"卡结构不合法"的方式红。
+            "target_component": "scripts/example.py",
             "source_signals": [{"signal": "observability_gap", "evidence": "e", "trajectory": ["t"]}],
             "hypothesis": "h", "validation": {"method": "scan_review"}, "risk": "low",
             "principle_refs": [8], "decisions": [], "supersedes": [], "superseded_by": None,
@@ -1046,8 +1049,23 @@ def ex_ci_parity(root: Path):
           any("verify_proposals.py --check" in c for j, c in cmds if j == "proposal-audit"))
     check("CI 不跑 verify_exec_log（运行时件，CI 上不存在，跑了只会空转）",
           not any("verify_exec_log" in c for _, c in cmds))
+    # 环境相关的 CI 步骤：它的本地结果取决于**运行时数据是否存在**，而不是代码对不对。
+    # 例：`node scripts/panel_render_check.js` 的"空区块不占位"断言在 CI 的干净检出里
+    # （无 traces → 归因聚合为空）成立，而在有真实归因数据的工作检出里必然不成立——
+    # 本地复跑它得到的红是环境差异，不是回归。这类步骤**跳过并说明**，同时断言它确实在 CI 里
+    # （跳过不能变成"把这道门删掉"）。
+    ENV_DEPENDENT_CI = {
+        "node scripts/panel_render_check.js":
+            "面板的空态断言取决于本检出有没有真实归因数据（CI 干净检出为空）",
+    }
     posix_shell = shutil.which("bash") or shutil.which("sh")
     for jname, cmd in cmds:
+        first = cmd.strip().splitlines()[0].strip()
+        if first in ENV_DEPENDENT_CI:
+            check(f"环境相关步骤仍在 CI 里（本地跳过不隐藏门）：{first}",
+                  any(first in c for _j, c in cmds))
+            print(f"  — 跳过（环境相关）：[{jname}] {first} —— {ENV_DEPENDENT_CI[first]}")
+            continue
         argv = ci_local_argv(cmd)
         if argv is not None:
             rc, out = run(argv, cwd=root)        # 单行命令：本机原生执行（见 ci_local_argv）
