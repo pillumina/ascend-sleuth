@@ -57,3 +57,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated）。残余如实标注：卡里的历史信号名仍是自由文本（存量 43 个名字未归一），本卡只补表与声明；是否把自由文本收成词表由 owner 决定（收窄会让存量卡需要迁移）"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #251 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

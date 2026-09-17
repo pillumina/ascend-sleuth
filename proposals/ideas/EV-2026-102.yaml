@@ -75,3 +75,7 @@ decisions:
       validated（采纳，改动保留进本 PR）。口径本身是判断性规范、不进 CI（不新增机械门）：
       `document` 保持可选字段，不改 `verify_references.py` 的必填集，避免把一次使用经验硬化成对所有人的约束。
       人审关注点：这条口径是否该更进一步——把「可公开化要求」的判定权交给词条作者还是 PR reviewer。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #240 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

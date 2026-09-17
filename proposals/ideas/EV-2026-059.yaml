@@ -184,3 +184,7 @@ decisions:
       panel_render_check 330 → 345 条断言全绿（新增 15 条，其中 1 条先被自己写错的正则判红——
       实际命令是 `python3 scripts/...`，断言写成 `python\s+scripts/...`；已改正则而非放宽断言）。
       九条 CI 与 rehearse_evolve_loop 全绿。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #188 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

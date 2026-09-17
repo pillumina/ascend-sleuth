@@ -56,3 +56,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated）。残余如实标注：池虽有 20 条但只有 9 条有 replay result，配对检验的可用样本仍偏小（11 条待 replay）——门控可跑，但判词很可能落在 weak_accept，属数据量问题不是机制问题"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #249 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

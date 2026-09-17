@@ -93,6 +93,10 @@ decisions:
       lcrgen；torchtitan-npu 15 篇：MTP、graph_pattern_fusion、cp/graph_trainer×2/tnd/ep/fused_ops/muon/
       virtual_optimizer、checkpoint、三个代码目录 README），下一轮从这里续；②内容均为文档级核验，命令未实测；
       ③triage note 与台账逐条记录了"哪些篇目按类别判 skipped、哪些仍未评估"，不做假覆盖。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #228 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
 actual_cost:
   tokens: 41000
   source: estimate

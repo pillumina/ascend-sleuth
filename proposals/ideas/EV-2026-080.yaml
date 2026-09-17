@@ -88,3 +88,7 @@ decisions:
       "zip 0 B + md 0 B"，而文件是完好的（196.8 KB / 71.0 KB）。根因与沙箱无关——host 把脚本的
       snake_case 字段原样透传给 client，client 却读 camelCase，humanKB 便把 undefined 兜成了 0 B。
       该缺陷另立一张卡（面板读 host 字段的成对断言），不在本卡范围内。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #214 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

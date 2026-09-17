@@ -66,3 +66,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated）：判据把「该不该往 triage 加词」从判断题变成读数题，且落地成本为零 trace schema 变更。残余如实标注：①判据有假阳性（自由语言里恰好出现的 5-6 位数字）与假阴性（只用领域名词不引字面量），它是入场券不是判词，规则清单在脚本内可读可改；②routed_unrecorded=3 那三单需要回填或补记，属 trace 纪律与 E2 取数的独立问题，本卡只把它变成可见的数；③样本仅 14 条真实 session，读数不进 metrics 时间线（口径先立，量到再说）。"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #242 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

@@ -70,3 +70,7 @@ decisions:
       采纳（validated，dual）：字面覆盖增强随 methodology PR 送人双签（triage 结构级，
       门控通过不替代人闸）。观察窗：后续 triage 修订持续以 pool 字面/路由覆盖复测
       （E2 通道数据源）；季度自评复核本增强是否随语料漂移需回收。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #116 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

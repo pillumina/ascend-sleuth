@@ -60,3 +60,7 @@ decisions:
   when: '2026-09-10'
   type: decision
   conclusion: "**状态推进补录**：本卡上一条 decision 已判「采纳」，但 status 未随之推进（面板口径 status_lag）。本次只把 status 置 validated，不新增判断；残留观察项如实保留——检索/路由面 golden 子集前后对照未跑，按 docs/eval.md 属观察窗（改动均为加法、不删候选）"
+- who: agent
+  when: 2026-09-17
+  type: action
+  conclusion: "合入指针回写：本卡（及其结论）随 PR #144 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

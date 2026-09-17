@@ -101,13 +101,15 @@ class MarkMergedTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertNotIn("PR #242", self.card.read_text(encoding="utf-8"))
 
-    def test_refuses_when_decisions_is_not_last(self):
-        """顶层最后一段不是 decisions 时拒绝（追加会破坏结构），并给出非零退出。"""
-        self.card.write_text(CARD + "extra_key: 1\n", encoding="utf-8")
-        rc = ep.mark_merged(self.root, "242", [self.card.stem] if False else ["EV-2026-900"],
-                            all_pending=False, dry_run=False)
-        self.assertEqual(rc, 2)
-        self.assertNotIn("PR #242", self.card.read_text(encoding="utf-8"))
+    def test_inserts_inside_decisions_when_other_keys_follow(self):
+        """decisions 之后还有别的顶层键时，指针插进 decisions 块末尾（不是文件末尾）。"""
+        self.card.write_text(CARD + "template_index: [1, 2]\n", encoding="utf-8")
+        rc = ep.mark_merged(self.root, "242", ["EV-2026-900"], all_pending=False, dry_run=False)
+        self.assertEqual(rc, 0)
+        doc = ep.load_yaml(self.card)
+        self.assertEqual(doc["decisions"][-1]["type"], "action")          # YAML 仍合法
+        self.assertEqual(doc["template_index"], [1, 2])                    # 后面的键没被吃掉
+        self.assertIn("PR #242", self.card.read_text(encoding="utf-8"))
 
     def test_unknown_card_is_an_error(self):
         self.assertEqual(ep.mark_merged(self.root, "242", ["EV-9999-999"], False, False), 2)
@@ -174,3 +176,145 @@ class ImpactViewTest(unittest.TestCase):
 
     def test_unknown_component_exits_2(self):
         self.assertEqual(ep.impact(self.root, component="不存在的组件"), 2)
+
+
+class ImpactViewTest(unittest.TestCase):
+    """同组件先例视图：按组件聚合尝试与结局（有否决/换方向的组件才让"先例咨询"有信息量）。"""
+
+    def _card(self, cid, status, component):
+        return (CARD.replace("EV-2026-900", cid)
+                    .replace("layer: L2", f"layer: L2\ntarget_component: {component}")
+                    .replace("status: validated", f"status: {status}"))
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        d = self.root / "proposals" / "ideas"
+        d.mkdir(parents=True)
+        (d / "EV-2026-901.yaml").write_text(self._card("EV-2026-901", "validated", "scripts/same.py"),
+                                            encoding="utf-8")
+        (d / "EV-2026-902.yaml").write_text(self._card("EV-2026-902", "rejected", "scripts/same.py"),
+                                            encoding="utf-8")
+        (d / "EV-2026-903.yaml").write_text(self._card("EV-2026-903", "validated", "scripts/other.py"),
+                                            encoding="utf-8")
+
+    def test_aggregates_by_target_component_and_flags_divergence(self):
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = ep.impact(self.root)
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("scripts/same.py：2 次", out)
+        self.assertIn("有结局分歧", out)
+        self.assertIn("1 个有结局分歧", out)
+
+    def test_unknown_component_exits_2(self):
+        self.assertEqual(ep.impact(self.root, component="不存在的组件"), 2)
+
+
+class ImpactViewTest(unittest.TestCase):
+    """同组件先例视图：按组件聚合尝试与结局（有否决/换方向的组件才让"先例咨询"有信息量）。"""
+
+    def _card(self, cid, status, component):
+        return (CARD.replace("EV-2026-900", cid)
+                    .replace("layer: L2", f"layer: L2\ntarget_component: {component}")
+                    .replace("status: validated", f"status: {status}"))
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        d = self.root / "proposals" / "ideas"
+        d.mkdir(parents=True)
+        (d / "EV-2026-901.yaml").write_text(self._card("EV-2026-901", "validated", "scripts/same.py"),
+                                            encoding="utf-8")
+        (d / "EV-2026-902.yaml").write_text(self._card("EV-2026-902", "rejected", "scripts/same.py"),
+                                            encoding="utf-8")
+        (d / "EV-2026-903.yaml").write_text(self._card("EV-2026-903", "validated", "scripts/other.py"),
+                                            encoding="utf-8")
+
+    def test_aggregates_by_target_component_and_flags_divergence(self):
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = ep.impact(self.root)
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("scripts/same.py：2 次", out)
+        self.assertIn("有结局分歧", out)
+        self.assertIn("1 个有结局分歧", out)
+
+    def test_unknown_component_exits_2(self):
+        self.assertEqual(ep.impact(self.root, component="不存在的组件"), 2)
+
+
+class MarkMergedFromPrsTest(unittest.TestCase):
+    """按 PR 逐卡匹配回写：不用一个号刷全部；插入点与缩进跟卡自身风格走。"""
+
+    CARD = """id: {cid}
+layer: L2
+target_component: scripts/x.py
+title: t
+status: validated
+authorization: review
+dimension: evolvability
+created_at: 2026-09-17
+source_signals:
+  - {{signal: process_friction, evidence: e, trajectory: [t]}}
+hypothesis: h
+predicted_effect:
+  metric: m
+  from: a
+  to: b
+  measure: {{command: "true", expect_exit: 0}}
+validation: {{method: scan_review, baseline: b, success_criteria: s, rollback: r}}
+gate: {{condition: c}}
+risk: low
+principle_refs: [10]
+decisions:
+{dec}{tail}"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / "proposals" / "ideas").mkdir(parents=True)
+
+    def _write(self, cid, indent, tail=""):
+        d = " " * indent
+        dec = (f"{d}- who: agent\n{d}  when: 2026-09-17\n{d}  type: proposal\n"
+               f"{d}  conclusion: p\n")
+        (self.root / "proposals" / "ideas" / f"{cid}.yaml").write_text(
+            self.CARD.format(cid=cid, dec=dec, tail=tail), encoding="utf-8")
+
+    def _prs(self, body):
+        f = self.root / "prs.json"
+        f.write_text('[{"number": 77, "title": "batch", "body": "%s"}]' % body, encoding="utf-8")
+        return str(f)
+
+    def test_matches_by_pr_body_for_both_indent_styles(self):
+        self._write("EV-2026-901", 2)
+        self._write("EV-2026-902", 0, tail="template_index: [1, 2]\n")
+        rc = ep.mark_merged_from_prs(self.root, 500, dry_run=False,
+                                     prs_file=self._prs("含 EV-2026-901 与 EV-2026-902"))
+        self.assertEqual(rc, 0)
+        for cid in ("EV-2026-901", "EV-2026-902"):
+            p = self.root / "proposals" / "ideas" / f"{cid}.yaml"
+            doc = ep.load_yaml(p)
+            self.assertEqual(doc["decisions"][-1]["type"], "action", cid)
+            self.assertIn("PR #77", p.read_text(encoding="utf-8"))
+        tail = (self.root / "proposals" / "ideas" / "EV-2026-902.yaml").read_text(encoding="utf-8")
+        self.assertIn("template_index: [1, 2]", tail)
+
+    def test_unmatched_cards_are_not_fabricated(self):
+        self._write("EV-2026-903", 2)
+        self.assertEqual(ep.mark_merged_from_prs(self.root, 500, dry_run=False,
+                                                 prs_file=self._prs("别的批，不含卡号")), 0)
+        self.assertNotIn("PR #77",
+                         (self.root / "proposals" / "ideas" / "EV-2026-903.yaml").read_text(encoding="utf-8"))
+
+

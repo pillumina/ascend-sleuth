@@ -92,6 +92,10 @@ decisions:
       范围界定如实标注：本卡证明的是**幂等与增量判定**这条效果；「省 token」只做到结构保证
       （扫描/筛选/抓取零模型 token、抽取层剥码块），没有独立量化基线，不冒充已验证的省量数字。
       未覆盖：图片内容（figures/*.png）不进文本通道，PR body 如实声明。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #218 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
 actual_cost:
   tokens: 35000
   source: estimate

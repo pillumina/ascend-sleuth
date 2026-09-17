@@ -78,3 +78,7 @@ decisions:
       池 expected 标注 + baseline replay（subagent 批量）→ stats 落地；②端到端运转一次
       （真实 miss → 候选 → gate → 合入）验证门控可用；③test/selection 分离按规模闸门
       （selection ≥20）启用；④分数进 timeline 前提样本 ≥10 带分母（口径纪律）。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #115 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

@@ -62,3 +62,7 @@ decisions:
   type: decision
   conclusion: 采纳（validated）：F2 随 methodology PR 送人审。观察窗：F3（vllm-ascend interrupt 81/30
     拆族）在 F1+F2 token 实测后重评（ADR-0004/A2 刷新）；后续可按需再压缩 title/tags 行宽。
+- who: agent
+  when: 2026-09-17
+  type: action
+  conclusion: "合入指针回写：本卡（及其结论）随 PR #124 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

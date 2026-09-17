@@ -170,15 +170,34 @@ def mark_merged(root: Path, pr, card_ids, all_pending: bool, dry_run: bool):
         if _has_ref(text, pr):
             skipped.append((p.stem, "已有该 PR 指针"))
             continue
-        keys = _top_level_keys(text)
-        if keys and keys[-1] != "decisions":
-            skipped.append((p.stem, f"顶层最后一段是 {keys[-1]} 而不是 decisions——追加会破坏结构，需人处理"))
+        # 插入点：decisions 块的**末尾**（不是文件末尾）——有的卡在 decisions 之后还有
+        # 别的顶层键（actual_cost / template_index…），追加到 EOF 会挂到那段里、把 YAML 写坏。
+        lines = text.splitlines(keepends=True)
+        di = next((i for i, ln in enumerate(lines) if ln.startswith("decisions:")), None)
+        if di is None:
+            skipped.append((p.stem, "找不到 decisions 块——交人处理"))
             continue
+        end = di + 1
+        def _in_block(ln):
+            # 块内行 = 缩进行 / 空行 / **0 缩进的列表项**（有的卡把 decisions 条目写在列 0，
+            # 只判缩进会把块在第一个条目处截断，插入点就落到块中间 → 写坏 YAML）
+            return ln.startswith((" ", "\t", "- ")) or not ln.strip()
+        while end < len(lines) and _in_block(lines[end]):
+            end += 1
+        block_end = end
         if dry_run:
             marked.append((p.stem, "dry-run"))
             continue
-        new = text if text.endswith("\n") else text + "\n"
-        new += block_tpl.format(when=when, pr=pr)
+        # 追加块的缩进必须**跟卡自己的列表风格**：有的卡把 decisions 的条目写在 0 缩进
+        # （`- who: agent`），有的写 2 缩进（`  - who: agent`）。写死一种就会让另一种卡
+        # 解析失败——实测一次回写把 4 张卡写坏（YAML 解析失败）。
+        m_indent = re.search(r"(?m)^(\s*)- ", "".join(lines[di:block_end]))
+        indent = m_indent.group(1) if m_indent else "  "
+        block = block_tpl.format(when=when, pr=pr)
+        if indent != "  ":
+            block = "".join((indent + ln[2:] if ln.startswith("  ") else ln) + "\n"
+                            for ln in block.rstrip("\n").split("\n"))
+        new = "".join(lines[:block_end]) + block + "".join(lines[block_end:])
         write_text_lf(p, new, encoding="utf-8")
         marked.append((p.stem, "已回写"))
 
@@ -269,6 +288,82 @@ def impact(root: Path, component: str = "", min_attempts: int = 2):
     return 0
 
 
+def mark_merged_from_prs(root: Path, limit: int, dry_run: bool, prs_file: str = ""):
+    """按已合入的 PR 列表**逐卡匹配**回写指针。
+
+    为什么不能一条命令刷全部：`--all-pending <PR号>` 会把同一个号写给所有待回写卡——那是假数据
+    （一张卡的真实出处只有一个批 PR）。本模式只为**在 PR 标题/正文里被点名**的卡回写，
+    没被点名的如实报出来（不猜、不编），剩下的由人按 commit 信息补。
+    """
+    import json as _json
+    import subprocess
+    if prs_file:
+        prs = _json.loads(Path(prs_file).read_text(encoding="utf-8"))
+    else:
+        r = subprocess.run(["gh", "pr", "list", "--state", "merged", "--limit", str(limit),
+                            "--json", "number,title,body"], capture_output=True, text=True)
+        if r.returncode != 0:
+            print(f"ev_proposal: 取 PR 列表失败（gh 未登录？）：{r.stderr.strip()[:160]}", file=sys.stderr)
+            return 2
+        prs = _json.loads(r.stdout or "[]")
+    # 每张卡取**最早**点名它的 PR（批次按时间推进，后来的 PR 不会回溯引用旧卡）
+    by_card = {}
+    for pr in sorted(prs, key=lambda x: x.get("number") or 0):
+        blob = f"{pr.get('title') or ''}\n{pr.get('body') or ''}"
+        for m in re.finditer(r"EV-\d{4}-\d{3,}", blob):
+            cid = m.group(0)
+            by_card.setdefault(cid, pr.get("number"))
+    pending, matched, unmatched = [], {}, []
+    for f in sorted((root / IDEAS_DIR).glob("EV-*.yaml")):
+        doc = load_yaml(f) or {}
+        if doc.get("status") != "validated":
+            continue
+        txt = f.read_text(encoding="utf-8")
+        if _has_any_ref(txt):
+            continue
+        cid = str(doc.get("id") or f.stem)
+        pending.append(cid)
+        if cid in by_card:
+            matched.setdefault(by_card[cid], []).append(cid)
+        else:
+            unmatched.append(cid)
+    # 第二遍：按 commit 追溯——历史卡早于"卡内写 PR 号"的约定，但它们的改动commit 在 main 上。
+    # 取最早点名该卡的非 merge commit，再取**最早包含它的 merge**（= 带它进 main 的那个 PR）。
+    import subprocess as _sp
+    traced, still = {}, []
+    for cid in unmatched:
+        r = _sp.run(["git", "log", "--all", "--no-merges", "--grep", cid, "--format=%H"],
+                    capture_output=True, text=True)
+        shas = [x for x in (r.stdout or "").split() if x]
+        if not shas:
+            still.append(cid)
+            continue
+        sha = shas[-1]                      # 最早的一次提交
+        m = _sp.run(["git", "log", "--merges", "--ancestry-path", f"{sha}..origin/main",
+                     "--format=%s", "--reverse"], capture_output=True, text=True)
+        first_merge = next((ln for ln in (m.stdout or "").splitlines() if ln.strip()), "")
+        pm = re.search(r"pull request #(\d+)", first_merge)
+        if pm:
+            traced.setdefault(int(pm.group(1)), []).append(cid)
+        else:
+            still.append(cid)
+    for pr_no, cards in traced.items():
+        matched.setdefault(pr_no, []).extend(cards)
+    unmatched = still
+    print(f"待回写 {len(pending)} 张：按 PR 点名 {sum(len(v) for k, v in matched.items() if k in by_card.values())} 张"
+          f" + 按 commit 追溯 {sum(len(v) for v in traced.values())} 张"
+          f"（合计落在 {len(matched)} 个 PR）、仍未匹配 {len(unmatched)} 张")
+    if unmatched:
+        print("  未匹配（不猜、不编，交人按 commit 信息补）：" + "、".join(unmatched[:12])
+              + ("…" if len(unmatched) > 12 else ""))
+    rc = 0
+    for pr_no, cards in sorted(matched.items()):
+        if pr_no is None:
+            continue
+        rc |= mark_merged(root, pr_no, cards, all_pending=False, dry_run=dry_run)
+    return rc
+
+
 def main():
     ap = argparse.ArgumentParser(description="self-evolve 产卡辅助")
     ap.add_argument("--next", action="store_true", help="打印下一个卡号")
@@ -279,6 +374,9 @@ def main():
     ap.add_argument("--all-pending", action="store_true",
                     help="配合 --mark-merged：选全部「已验证且无该 PR 指针」的卡")
     ap.add_argument("--dry-run", action="store_true", help="配合 --mark-merged：只打印不落盘")
+    ap.add_argument("--from-prs", action="store_true",
+                    help="配合 --mark-merged：按已合入 PR 逐卡匹配回写（不用一个号刷全部）")
+    ap.add_argument("--prs-file", default="", help="配合 --from-prs：从 JSON 文件读 PR 列表（默认用 gh 拉）")
     ap.add_argument("--impact", metavar="组件", nargs="?", const="", default=None,
                     help="同组件先例视图（给组件名则只看它，不给则列尝试≥2 次的全部）")
     ap.add_argument("--waterline", action="store_true", help="打印候选水位（超限退 1）")
@@ -300,6 +398,8 @@ def main():
         print(f"ID: {p.stem} —— 按 examples/sample-idea.yaml 填字段后跑 verify_proposals.py")
     elif args.list:
         list_cards(root)
+    elif args.mark_merged and args.from_prs:
+        sys.exit(mark_merged_from_prs(root, args.limit, args.dry_run, args.prs_file))
     elif args.mark_merged:
         sys.exit(mark_merged(root, args.mark_merged, args.card, args.all_pending, args.dry_run))
     elif args.impact is not None:

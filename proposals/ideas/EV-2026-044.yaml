@@ -125,3 +125,7 @@ decisions:
       多分支 append 的合流冲突；改为在 CLAUDE.md 登记为本地件 + 面板可见 + 收尾自查。
       人审边界：本卡改动含 skill 协议文本与 CI，按 evolve-check 授权边界属 review 级（非 kb/high-risk）——
       结构级（triage/skill 骨架）未动，信号表 T1–T8 语义未动。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #173 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

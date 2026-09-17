@@ -65,6 +65,10 @@ decisions:
   when: '2026-09-10'
   type: decision
   conclusion: "**状态推进补录**：本卡上一条 decision 已判「采纳」，但 status 未随之推进（面板口径 status_lag）。本次只把 status 置 validated，不新增判断；残留观察项如实保留——golden-replay 全量回归仍未跑（不改变候选选择语义的输出节改动，按 docs/eval.md 分级的观察窗处理）"
+- who: agent
+  when: 2026-09-17
+  type: action
+  conclusion: "合入指针回写：本卡（及其结论）随 PR #144 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
 template_index:
   - section: 1. 结论先行
     content: "一句话=现象+根因+改哪个开关；不含内部词表。规范：人能不看下文先抓'哪里坏了、改一个开关'。"

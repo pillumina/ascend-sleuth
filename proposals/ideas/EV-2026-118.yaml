@@ -56,3 +56,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated）。残余如实标注：评测台的池与账本仍不存在（重建需真实 replay，属数据工作），本卡只消除「已完成」这个不可复核的声明"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #248 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

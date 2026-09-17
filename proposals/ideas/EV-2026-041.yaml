@@ -81,3 +81,7 @@ decisions:
       **实施中自查发现并修掉一处回归**：新契约丢了旧模板的"命中 `<CASE-ID>`（confidence/hits/misdiagnoses）"锚点——
       两份新渲染里只有一份写了 case id。已在依据链子清单里把它写成**必写项**（它是回溯知识库与回写 confidence 的锚点）。
       不取：①直接删掉 5 项（会丢独特价值）；②保持 18 段只改措辞；③做成硬门（输出形态是判断性规范）。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #170 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

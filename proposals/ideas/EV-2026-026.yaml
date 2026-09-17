@@ -69,3 +69,7 @@ decisions:
     conclusion: >-
       采纳（validated）：summary 索引随 methodology PR 送人审。观察窗：to-reference 新增
       背景词条时重建索引（CI 兜底）；2.5 ② 加载 token 实测可后续补数。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #127 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

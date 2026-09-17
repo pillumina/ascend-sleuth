@@ -67,3 +67,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated，形式可核 + 效果进观察窗）。残余：①历史 3 单的路由落点永久缺失（无信息可转录），由读数 `routed_unrecorded: 3` 如实承担；②契约靠执行者照做，本仓没有能机械校验 trace 字段的门（trace 是 gitignored 运行时件、CI 里不存在），故不假装硬化，只把口径写进 schema 并让 `trace_metrics.py` 持续报读数。"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #245 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

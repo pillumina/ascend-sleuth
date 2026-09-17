@@ -56,3 +56,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated）：最小闭环修复，不引入新阈值。残余如实标注：归因比仍不可解读——它要「未解决反馈之后有归因」的配对，而现场反馈捕获仍为 0，属数据缺口不是实现缺陷"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #248 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

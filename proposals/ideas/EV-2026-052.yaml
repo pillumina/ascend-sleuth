@@ -136,3 +136,7 @@ decisions:
       那些文档，真实缺口是缺三闭环定位、Eval 节缺 holdout 与门禁分级、约束段缺本次新增项。
       CLAUDE.md 已在 commit `ec1ba16` 同步（补三闭环节 + CI 清单 + 四条约束）。按只追加纪律
       不改原文，以本条为准。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #179 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

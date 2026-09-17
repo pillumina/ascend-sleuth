@@ -61,3 +61,7 @@ decisions:
   type: decision
   conclusion: 采纳（validated）：加载预算包随 methodology PR 送人审。观察窗：实测单次诊断阶段一/二 token 前后对照（补
     EV 数字）；top-2 扩展率（溢出族需扩展比例）入 capacity 类观测。
+- who: agent
+  when: 2026-09-17
+  type: action
+  conclusion: "合入指针回写：本卡（及其结论）随 PR #126 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

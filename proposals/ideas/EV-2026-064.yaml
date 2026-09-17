@@ -99,3 +99,7 @@ decisions:
       **采纳（validated）**：两条都按根因修。刻意不做的事：不给并发断言加"Windows 跳过"豁免
       （那会把一个真实的数据丢失变成平台差异，掩盖缺陷）；不改 CLAUDE.md 的"写侧持锁"措辞
       （原文没写平台限定，修完才与它相符）。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #195 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

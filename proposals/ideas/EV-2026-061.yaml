@@ -188,3 +188,7 @@ decisions:
       闸门：`build_docs_index.py --check`、`verify_proposals.py --check` 绿。
       **诚实边界**：measure 证明的是常驻字符数下降，不证明"agent 行为未变"——后者需要一次 diagnose 演练或
       `rehearse_evolve_loop.py` 全量复跑，本卡不声明已验证，留 `in_experiment`。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #255 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

@@ -104,3 +104,7 @@ decisions:
       词条内已注明「RC 板端路径以现场为准，前缀参考 EP 实测为 dev-os」；③官方文档自身有三种写法
       （logreference 的 device-os、troubleshooting 的 dev-os-id、Ascend 950 HCCN Tool 的 device-os-X），
       本卡只统一仓内写法并写明差异，不判定哪份文档正确。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #237 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

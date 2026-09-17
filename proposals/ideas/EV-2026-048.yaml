@@ -111,3 +111,7 @@ decisions:
       flock 语义不保证，多机共享同一目录的场景不在支持范围（本地克隆是主场景）；
       ③`.lock` 文件与日志同目录、留空文件，属预期产物（已 ignore）。
       人审边界：改的是 exec-log 归属与三个脚本 + 文档，按授权边界属 review 级。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #177 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

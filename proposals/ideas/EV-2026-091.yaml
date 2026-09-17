@@ -77,6 +77,10 @@ decisions:
       采纳并标 validated。边界如实标注：①本轮**不追溯清理**历史台账里的 677 条（它们作为"判过不沉淀"的记录仍在），
       新规则只影响后续 `scan`；②`config.exclude` 为空元组的源（当前全库没有这类源）会整体放开目录级默认排除，
       这是既有语义，未在本次改动；③判定语义未变，因此不触发 kb/high-risk。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #256 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
 actual_cost:
   tokens: 9000
   source: estimate

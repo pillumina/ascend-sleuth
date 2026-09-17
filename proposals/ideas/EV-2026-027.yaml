@@ -66,3 +66,7 @@ decisions:
       采纳（validated）：工具 + 约定随 methodology PR 送人审。观察窗：后续检索面改动
       按此走（baseline 入 .s2-replay/gates/，附 gate_diff 输出路径到 EV 卡）；expected
       map 由 fixture expected 生成可后续脚本化。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #128 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

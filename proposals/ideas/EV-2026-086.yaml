@@ -86,6 +86,10 @@ decisions:
       需第二个 owner 签名（PR body 按高风险区块填写）。观察项不擅自处置：既有 profiling-env 的 PROFILING_OPTIONS
       描述被截断（缺选项清单），本批以新建事实条目承载全表而不改该 active env 表——是否把选项表折回 env 表
       由 groom 周批或 reviewer 裁决。oam-tools 余 9 篇（各使能方式变体）仍 pending，留待下一批。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #221 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
 actual_cost:
   tokens: 25000
   source: estimate

@@ -174,3 +174,7 @@ decisions:
       无法量化时写 0 加 note 说明口径）。发现路径：核对另一张卡时注意到"in_experiment 却带 decision 类型"
       这一形态，逐卡区分后确认本卡是真滞后（那张是中途判断被记成了 decision，形态不同）。
       若作者本意是"还有下一轮"，把 status 改回 `in_experiment` 即可，历史条目仍然完整。
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #256 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
