@@ -3,6 +3,7 @@
 # schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
 # ============================================================
 id: EV-2026-107
+target_component: scripts/eval_scorecard.py
 layer: L2
 title: eval 回放观测的结构化账本与新鲜度卡口（eval/scorecard.yaml）
 status: validated

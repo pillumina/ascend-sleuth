@@ -4,6 +4,7 @@
 # ============================================================
 id: EV-2026-114
 layer: L2
+target_component: skills/diagnose/SKILL.md
 title: 「上游修复是否已落地」的实证规则进诊断流程——skill 步骤 5 一句前提 + 流程文档展开
 status: validated
 authorization: review

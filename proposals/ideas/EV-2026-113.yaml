@@ -4,6 +4,7 @@
 # ============================================================
 id: EV-2026-113
 layer: L2
+target_component: scripts/rank_candidates.py
 title: 机械筛选的天花板是结构性的——内容侧批量补证据与机械调参均零收益（recall@5 稳定 14/25）
 status: rejected
 authorization: review

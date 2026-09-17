@@ -1,4 +1,5 @@
 id: EV-2026-101
+target_component: references/_procedure-index.yaml
 layer: L2
 title: 流程选择器索引越自述增长闸门（32 条 / 约 5387 token）→ 按 category 分片评估
 status: in_experiment

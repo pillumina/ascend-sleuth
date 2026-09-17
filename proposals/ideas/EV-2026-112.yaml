@@ -4,6 +4,7 @@
 # ============================================================
 id: EV-2026-112
 layer: L2
+target_component: scripts/rank_candidates.py
 title: 机械「筛选兜底」被数据否定——筛漏的成因是 case 行内没有字面量，不是筛选规则不够聪明
 status: rejected
 authorization: review

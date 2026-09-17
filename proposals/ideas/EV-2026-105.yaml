@@ -3,6 +3,7 @@
 # schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
 # ============================================================
 id: EV-2026-105
+target_component: scripts/eval_arena.py
 layer: L2
 title: arena 接受判据 v2 —— 配对检验 + 复用折减 + 三态判词（weak_accept 不算门控通过）
 status: validated

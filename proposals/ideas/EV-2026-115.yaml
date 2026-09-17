@@ -4,6 +4,7 @@
 # ============================================================
 id: EV-2026-115
 layer: L2
+target_component: skills/diagnose/references/diagnosis-trace.md
 title: triage 事件的字段契约补进 trace schema——`routed` 必须写，省略即与"路由没错"同形
 status: validated
 authorization: review

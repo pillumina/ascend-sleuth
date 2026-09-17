@@ -1,4 +1,5 @@
 id: EV-2026-104
+target_component: skills/resume-diagnosis/SKILL.md
 layer: L2
 title: 公开面措辞中性化：skill 正文去掉环境类描述（跨机交接 / 联网查证），语义与行为不变
 status: validated

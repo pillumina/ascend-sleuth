@@ -165,7 +165,7 @@ entries:
     short: 信号：成功模式可复述→L2 卡
     family: 触发信号
     scope: ["docs/roadmap.md", "skills/evolve-check/SKILL.md"]
-    meaning: evolve-check 信号（EV-2026-009 拟新增）：同流程成功路径可复述 → L2 成功模式卡
+    meaning: 同流程成功路径可复述 → L2 成功模式卡（成功侧信号）。注意与 evolve-check 信号表里的同名编号区分：那张表的 T8 是「体验/质量信号 → 记入评审报告、不产卡」，两者是不同的事，引用时必须写中文含义而不是裸编号
     see: skills/evolve-check/SKILL.md
   - token: evolve-check
     short: skill：收尾评估协议
@@ -228,37 +228,37 @@ entries:
     family: 触发信号
     scope: ["docs/roadmap.md", "skills/evolve-check/SKILL.md"]
     short: 信号：同根因沉淀≥3条→归纳 reference
-    meaning: 信号：同根因沉淀≥3条→归纳 reference（详见 evolve-check 信号表 T1–T7 全表）
+    meaning: 信号：同根因沉淀≥3条→归纳 reference（详见 evolve-check 信号表（编号会随表增行而变，引用写中文含义））
     see: skills/evolve-check/SKILL.md
   - token: T2
     family: 触发信号
     scope: ["docs/roadmap.md", "skills/evolve-check/SKILL.md"]
     short: 信号：miss 某 issue 族→补 case
-    meaning: 信号：miss 某 issue 族→补 case（详见 evolve-check 信号表 T1–T7 全表）
+    meaning: 信号：miss 某 issue 族→补 case（详见 evolve-check 信号表（编号会随表增行而变，引用写中文含义））
     see: skills/evolve-check/SKILL.md
   - token: T3
     family: 触发信号
     scope: ["docs/roadmap.md", "skills/evolve-check/SKILL.md"]
     short: 信号：同一手动动作重复≥2次→固化流程
-    meaning: 信号：同一手动动作重复≥2次→固化流程（详见 evolve-check 信号表 T1–T7 全表）
+    meaning: 信号：同一手动动作重复≥2次→固化流程（详见 evolve-check 信号表（编号会随表增行而变，引用写中文含义））
     see: skills/evolve-check/SKILL.md
   - token: T5
     family: 触发信号
     scope: ["docs/roadmap.md", "skills/evolve-check/SKILL.md"]
     short: 信号：新源/新类型首次出现→扩覆盖
-    meaning: 信号：新源/新类型首次出现→扩覆盖（详见 evolve-check 信号表 T1–T7 全表）
+    meaning: 信号：新源/新类型首次出现→扩覆盖（详见 evolve-check 信号表（编号会随表增行而变，引用写中文含义））
     see: skills/evolve-check/SKILL.md
   - token: T6
     family: 触发信号
     scope: ["docs/roadmap.md", "skills/evolve-check/SKILL.md"]
     short: 信号：容量超 soft_cap→拆分评估
-    meaning: 信号：容量超 soft_cap→拆分评估（详见 evolve-check 信号表 T1–T7 全表）
+    meaning: 信号：容量超 soft_cap→拆分评估（详见 evolve-check 信号表（编号会随表增行而变，引用写中文含义））
     see: skills/evolve-check/SKILL.md
   - token: T7
     family: 触发信号
     scope: ["docs/roadmap.md", "skills/evolve-check/SKILL.md"]
     short: 信号：可复用链路跑通→沉淀 skill 候选
-    meaning: 信号：可复用链路跑通→沉淀 skill 候选（详见 evolve-check 信号表 T1–T7 全表）
+    meaning: 信号：可复用链路跑通→沉淀 skill 候选（详见 evolve-check 信号表（编号会随表增行而变，引用写中文含义））
     see: skills/evolve-check/SKILL.md
   - token: A1
     family: roadmap 架构

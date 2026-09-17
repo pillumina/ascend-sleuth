@@ -1,0 +1,58 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-122
+layer: L2
+target_component: scripts/verify_proposals.py
+title: target_component 成为生效日后的必填键（先例视图的键落地）+ 四处「声明与实现不符」的文档口径修正
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: mechanism_gap
+    evidence: "审计实测：卡契约把 target_component 定为必填，而全库 0 张卡有它——先例视图只能退化到「改动落点」代理，同一逻辑组件的多次尝试可能落在不同文件上；另核到四处声明与实现不符：CI 描述写成「等价两条命令」（实际 12 个 job）、groom 写「连续四周无新 postmortem 则自动切双周」（无实现）、流水线文档写「3 内容 skill 接入」（实际 4）、术语表的 T8 与 skill 表的 T8 是两件事且仍写「T1–T7 全表」"
+    trajectory:
+      - "审计实测：target_component 0/117；--impact 只能按 surface_basis.path 聚合"
+      - "审计实测：kb-checks.yml 的 job 数、grep log_skill_exec、glossary 与 skill 的 T8 对照"
+hypothesis: 把键写成结构（模板带字段 + 生效日后的卡 CI 强制）+ 把四处过期声明改写成与实现一致的说法，先例视图的键就会随时间自然填满，文档也不再教人按错误的方式复跑。
+predicted_effect:
+  metric: 新卡的键覆盖率与过期声明的数量
+  from: "target_component 0/117；四处声明与实现不符"
+  to: "生效日后的卡强制填键（存量按标题回填）；四处声明改写为与实现一致"
+  measure:
+    command: "python3 -m unittest tests.test_audit_readings.TargetComponentGateTest"
+    expect_exit: 0
+validation:
+  method: metrics_compare
+  baseline: "改前：模板无该字段、CI 无该门、文档四处过期"
+  success_criteria: |
+    ① 模板带 target_component 与填写说明；② verify_proposals 对生效日之后的卡强制（生效日前豁免，
+    实测生效日前的卡不报）；③ 存量卡按标题回填（本批回填至 0 缺口）；④ 四处声明改写为与实现一致；
+    ⑤ 两个 skill 的产卡步骤写清该填什么；⑥ 单测覆盖生效日前后两侧。
+  rollback: "单文件 revert（verify_proposals 的 TARGET_CUTOVER 门 + 模板 + 四处文档）；键是卡的普通字段，无数据副作用（原则七）"
+gate:
+  condition: "闸门已满足（先例视图已落地，键是其输入）"
+risk: low
+principle_refs: [2, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：target_component 必填键落地 + 四处文档口径修正"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：verify_proposals 增 TARGET_CUTOVER 门；examples/sample-idea.yaml 与 evolve-check 产卡步骤带字段说明；按标题回填存量卡（生效日当天的卡）；改 git-workflow 的 CI 描述、groom 的「自动切双周」措辞、pipeline 的内容 skill 数、glossary 的 T8 与「全表」表述；.gitignore 补回放产物"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "实测：verify_proposals 报 119 张卡通过（回填后 0 缺口）；--impact 的组件键从「落点代理」变为「填写的键优先」，同组件查询一次列出同组件 3 次尝试（1 采纳 2 否决）；单测 2 项覆盖生效日前后"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）。残余如实标注：存量卡里生效日之前的仍未填（豁免是刻意的——补写会形成事后叙述），因此历史同组件统计仍部分依赖落点代理"

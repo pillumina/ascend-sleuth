@@ -90,6 +90,43 @@ def classify(doc):
     return "missing", m
 
 
+# 运行时件/仓外路径：这些"不存在"是正常的，不算判据失效
+DEP_SKIP_PREFIX = ("traces/", ".s2-replay/", ".ixn-replay/", ".flow-replay/", ".auto-fetch/",
+                   "eval-reports/", "src-code/", "postmortems/inbox/", "/tmp/", "/private/tmp/")
+DEP_PATH_RE = None
+
+
+def _dep_paths(cmd: str):
+    """命令里点到的仓库内路径（粗取，宁可少报）。"""
+    import re as _re
+    out = []
+    for m in _re.finditer(r"[A-Za-z0-9_./-]+\.(?:yaml|yml|md|json|py|js|txt)", cmd or ""):
+        cand = m.group(0)
+        if not cand.startswith("/"):
+            cand = cand[2:] if cand.startswith("./") else cand
+        # 只认带目录的路径：命令里的裸文件名（x.py）不是"仓库内位置"，判它无意义
+        if "/" not in cand.strip("/") and not cand.startswith("/"):
+            continue
+        if any(cand.startswith(p) for p in DEP_SKIP_PREFIX):
+            continue
+        if cand not in out:
+            out.append(cand)
+    return out
+
+
+def stale_deps(root: Path, doc):
+    """判据命令点到的仓库路径里，已经不在检出内的那些。
+
+    为什么单列：判据"可复现判据从未执行"数的是"跑没跑过"，**不区分"跑了还有没有意义"**。
+    实测抽查 6 张未执行的卡，有 2 张的判据依赖已蒸发的本地件（traces 里的报告、/tmp 状态文件）
+    ——这类卡跑一次只会把噪声当信号。本函数把它们挑出来，让"该跑"和"不必跑"分开。
+    """
+    kind, m = classify(doc)
+    if kind != "runnable":
+        return []
+    return [p for p in _dep_paths(m.get("command") or "") if not (root / p).exists()]
+
+
 def clip(text: str) -> str:
     lines = text.rstrip("\n").split("\n") if text.strip() else ["（无输出）"]
     if len(lines) <= CLIP_HEAD + CLIP_TAIL + 2:
@@ -275,11 +312,13 @@ def cmd_card(root: Path, args, card_id: str) -> int:
 
 
 def cmd_audit(root: Path, as_json: bool) -> int:
-    buckets = {"runnable": [], "declared": [], "missing": [], "legacy": []}
+    buckets = {"runnable": [], "declared": [], "missing": [], "legacy": [], "stale_dep": []}
     for cid, doc, _p in load_cards(root):
         kind, _m = classify(doc)
         if kind == "missing" and not measure_enforced(doc):
             buckets["legacy"].append(cid)
+        elif kind == "runnable" and stale_deps(root, doc):
+            buckets["stale_dep"].append(cid)
         else:
             buckets[kind].append(cid)
 
@@ -289,13 +328,15 @@ def cmd_audit(root: Path, as_json: bool) -> int:
         print(json.dumps({
             "cutover": MEASURE_CUTOVER.isoformat(),
             "total": total, "enforced": enforced,
-            "runnable": buckets["runnable"], "declared": buckets["declared"],
+            "runnable": buckets["runnable"], "stale_dep": buckets["stale_dep"], "declared": buckets["declared"],
             "missing": buckets["missing"], "legacy": buckets["legacy"],
         }, ensure_ascii=False, indent=2))
     else:
         print("EV 卡预测可复现性盘点（proposals/ideas/，口径 EV-2026-050）")
         print(f"  强制范围: created_at >= {MEASURE_CUTOVER.isoformat()} 的卡（{enforced}/{total} 张在范围内）")
         print(f"  可复现（command + 期望） : {len(buckets['runnable']):>3d}")
+        print(f"  可跑但依赖已蒸发         : {len(buckets['stale_dep']):>3d}   ← "
+              f"判据点到的仓库文件已不在（跑它只会把噪声当信号）：先修判据或改预测")
         print(f"  声明不可度量（reason）   : {len(buckets['declared']):>3d}   ← 如实退化，按约定强度")
         print(f"  缺口（强制卡缺 measure） : {len(buckets['missing']):>3d}   ← CI 应红")
         print(f"  存量豁免                 : {len(buckets['legacy']):>3d}   ← "

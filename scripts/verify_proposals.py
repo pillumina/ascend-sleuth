@@ -62,6 +62,11 @@ from _yaml import load_file   # 解析后端单一事实源（快路径见 _yaml
 # 缺口可见性由 scripts/ev_measure.py --audit 提供。存量迁移完成后删除本常量与豁免分支。
 MEASURE_CUTOVER = datetime.date(2026, 9, 11)
 
+# 目标组件键的生效日：卡契约里 `target_component` 一直是必填（execution.md），
+# 但全库 0 张卡填过它，于是"同组件先例咨询"没有任何可查的键（聚合只能退化到"改动落点"）。
+# 与 measure 同一条纪律：**只对生效日之后的卡强制**，存量不追溯（补写会形成事后叙述）。
+TARGET_CUTOVER = datetime.date(2026, 9, 17)
+
 # 占位符检测：产卡骨架（examples/sample-idea.yaml）刻意留占位 measure，让"忘了填"在 CI 上
 # 响亮失败，而不是带着一条假命令过审（假 command + 自洽的期望 = 假绿，原则十）。
 # 只认显式占位词，不收 `[<>]`——shell 重定向与进程替换（`> out`、`<(a)`）是合法命令形态。
@@ -216,6 +221,12 @@ def check_idea(path: Path, ids: dict, errors: list):
         errors.append(f"{rel}: layer '{doc.get('layer')}' 非法（L1/L2/L3）")
     # validation.method
     v = doc.get("validation")
+    tc = doc.get("target_component")
+    created = as_date(doc.get("created_at"))
+    if created is not None and created >= TARGET_CUTOVER and not (isinstance(tc, str) and tc.strip()):
+        errors.append(f"{rel}: 缺 target_component——它是「这个组件改过几次、结局如何」的键"
+                      f"（聚合视图 ev_proposal.py --impact 与同组件先例咨询都靠它；"
+                      f"生效日 {TARGET_CUTOVER.isoformat()} 之后的卡强制）")
     if isinstance(v, dict) and v.get("method") not in VALID_METHOD:
         errors.append(f"{rel}: validation.method '{v.get('method')}' 非法")
     # principle_refs：必须是 1-11 的整数列表（设计原则编号）

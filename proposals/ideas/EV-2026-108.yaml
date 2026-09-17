@@ -3,6 +3,7 @@
 # schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
 # ============================================================
 id: EV-2026-108
+target_component: tests/
 layer: L2
 title: 四个口径脚本的单元测试与 CI 回归 job（tests/ 首建）
 status: validated

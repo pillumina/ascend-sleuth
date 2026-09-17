@@ -1,6 +1,7 @@
 # EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
 id: EV-2026-120
 layer: L2
+target_component: scripts/ev_proposal.py
 title: 同组件先例视图落地——「别重复被拒方案」从纪律变成一条命令
 status: validated
 authorization: review

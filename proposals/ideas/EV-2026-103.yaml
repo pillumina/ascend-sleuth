@@ -1,4 +1,5 @@
 id: EV-2026-103
+target_component: skills/to-reference/SKILL.md
 layer: L2
 title: 无读图能力时，图片内容用系统自带 OCR 提取并写明口径（to-reference）
 status: validated
