@@ -1,0 +1,85 @@
+# VLLM-ASC-ZMQ-HANDSHAKE-PORT-OVERFLOW —— PD 分离 + Mooncake KV 传输：握手端口按 rank 偏移累加越界
+#   （kv_port 基址 + dp_rank×tp×pp×pcp + device_index ≥ 65536）→ ZMQ bind 非法端口，
+#   报 `port 65536 have already been bound` 一类错误
+# 来源：上游 issue #8938（同族：多 P 节点 ZMQ 端口冲突）+ 源码级核验（v0.23.0rc1 的 mooncake_connector.py）
+# pre-triage: new_pattern —— 与 VLLM-ASC-8938（两台服务抢同一端口，报 Address already in use）**不同机制**：
+#   8938 是"端口被别人占了（值合法）"；本条是"算出来的端口号本身越界（值非法）"。
+#   与 VLLM-ASC-11343（D 侧用 P0 的 base kv_port 反推 remote ranks）同族但不同：那条是**选错基址**，本条是**偏移累加溢出**。
+#   与 VLLM-ASC-HCCL-BIND-IP-PORT 分层：那条失败在 HCCL 集合通信自分配的端口，本条失败在 Mooncake KV 传输的 ZMQ 握手端口（用户 kv_port 决定基址）。
+# verification: investigation（**代码级已核**：公式与"无端口范围校验"两点均在 v0.23.0rc1 源码里逐行确认；无上游 fix PR）
+# 脱敏：内网 IP/主机名未引用（保留端口数值与公式——它们是判别签名）。
+
+cases:
+  - id: VLLM-ASC-ZMQ-HANDSHAKE-PORT-OVERFLOW
+    title: "PD 分离 + Mooncake KV 传输：握手端口按 rank 偏移累加越界（kv_port 基址 + dp_rank×tp×pp×pcp + device_index ≥ 65536）→ ZMQ bind 到非法端口，报 port 65536 have already been bound"
+
+    category: interrupt
+    tags: [mooncake, kv-transfer, pd-separation, zmq, port-overflow, handshake-port, kv-port]
+    platforms: ["A2-910B", "A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.22.1rc1", "0.23.0rc1"]   # v0.22.1rc1 为现场报告版本；v0.23.0rc1 为本次源码核验版本（公式一致）
+
+    investigation_quality: high   # 公式与"无范围校验"两点已按源码逐行核验（source_ref）
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6
+      last_hit: ""
+
+    source_ref:
+      repo: vllm-ascend
+      ref: v0.23.0rc1
+      file: vllm_ascend/distributed/kv_transfer/kv_p2p/mooncake_connector.py
+      line: 1971                      # "Handshake base port" 赋值段（另见 1592、1978-1979）
+
+    symptoms:
+      - "PD 分离部署 + Mooncake KV 传输（`kv_transfer_config.kv_port` 已配）时，某节点服务拉起失败或运行中退出，报 `port 65536 have already been bound`（或其它 >65535 的端口值）"
+      - "65536 = 2^16 是**越界值**（合法端口 0~65535）——不是『端口被占用』，是端口号本身非法；同一现象在只有该节点单独拉起时也可能不复现"
+      - "多 P 节点（如 3×1P + 1×1D）**各节点配了相同或相邻的 kv_port 基址**时更易出现：各 rank 的偏移量在各自节点上累加，跨节点算出的握手端口相同或越界"
+      - "与 kv_port 是否被占用无关：`Address already in use` 是另一条（值合法但被占，见 VLLM-ASC-8938）"
+
+    references:
+      - https://github.com/vllm-project/vllm-ascend/issues/8938
+
+    verification:
+      source: investigation
+      detail: "代码级核验（v0.23.0rc1，`mooncake_connector.py`）：`self.side_channel_port = kv_port + data_parallel_rank * tensor_parallel_size * pipeline_parallel_size * pcp_size`（L1592-1598 与 L1971-1977 两处，注释原文 `# Handshake base port`）；`device_index = (pp_rank * pcp_size + pcp_rank) * tp_size + tp_rank`；`handshake_port = side_channel_port + device_index`（L1978-1979，另见 L299）。全文件**无端口范围校验**（grep `65535|65536|port range` 零命中）——越界值直接进 `make_zmq_path(\"tcp\", host, handshake_port)`。上游无 fix PR。"
+
+    quickly_check:
+      primary:
+        command_template: grep -aE 'already been bound|have already been bound' {{server_log}}
+        rank_selector: all_failed
+        expected: "regex:already been bound"
+        note: "非法端口 bind 失败的字面文案（ZMQ assert）；不用宽词如 ported（会命中 imported/supported 一类），端口数值一律走 fallback 提取后再判是否越界"
+      fallback:
+        command_template: grep -aoE 'port [0-9]{4,6}' {{server_log}} {{launch_log}}
+        rank_selector: coordinator
+        expected: "regex:port [0-9]{4,6}"
+        note: "命中端口数值后按 diagnosis 步骤 2 判是否 >65535——只有越界值才属本条"
+
+    diagnosis:
+      - step: 1
+        check: "报错端口值是否 **>65535**（如 65536）？"
+        expected: "是——端口号本身非法（越界），不是被占用"
+        fix_on_mismatch: "若端口值合法（≤65535）而报 Address already in use → 转 VLLM-ASC-8938（端口被占/多服务抢同一端口）"
+        rollback: "无（只读检查）"
+      - step: 2
+        check: "按现场参数复算握手端口：`kv_port + dp_rank×tp×pp×pcp + ((pp_rank×pcp_size + pcp_rank)×tp + tp_rank)`（pcp_size=1 时退化为 `kv_port + dp_rank×tp×pp + (pp_rank×tp + tp_rank)`）"
+        expected: "复算值等于报错值且 ≥65536 → 判为本条（偏移累加溢出）"
+      - step: 3
+        check: "各节点（P/D）的 kv_port 基址是否相同或相邻？"
+        expected: "相同/相邻 → 各节点算出的握手端口会重叠或越界；应给**每个节点组分配独立且留有足够余量的端口段**"
+        fix_on_mismatch: "为每个节点组分配独立 kv_port 基址，并保证 `基址 + dp_size×tp×pp×pcp ≤ 65535`（留至少一个 tp×pp×pcp 的余量给 device_index）"
+        rollback: "恢复原 kv_port 配置并重启服务"
+      - step: 4
+        check: "长稳场景下是否『运行一段时间后』才出现（进程/线程重建时重新算端口）？"
+        expected: "是——与启动即失败不同，属重建时端口分配错位；此时按 step 3 的余量规则收紧端口段"
+
+    severity: service-affecting
+    fix_side_effects:
+      - requires-restart
+    fix_type: config-change
+    root_cause: "Mooncake KV 传输握手端口由**基址 + rank 偏移**算出：`side_channel_port = kv_port + dp_rank × tp × pp × pcp_size`，`handshake_port = side_channel_port + ((pp_rank × pcp_size + pcp_rank) × tp_size + tp_rank)`；代码**没有端口范围校验**，越界值直接交给 ZMQ bind → 报非法端口（65536 型）。触发面：多节点部署 + 各节点 kv_port 基址相同/相邻 + dp/tp/pp 乘积较大时，基址加偏移越过 65535。"
+    fix: "① 按公式复算并给**每个节点组**分配独立 kv_port 基址，保证 `基址 + dp_size × tp × pp × pcp ≤ 65535` 且留出 `tp × pp × pcp` 余量；② 部署文档/编排模板里把『每节点组不同端口段』写成硬要求（不是建议）；③ 复现与验证：拉起后 `grep -aoE 'port [0-9]{4,6}'` 看实际握手端口是否全部 ≤65535。"
+    rollback: "改回原 kv_port 并重启服务；本 case 不涉及代码改动"

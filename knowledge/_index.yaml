@@ -5,10 +5,10 @@
 # 按 file 字段定位做阶段二全量加载。
 # 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
 # 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 生成日期：2026-09-17    case 总数：161
+# 生成日期：2026-09-17    case 总数：162
 #   容量(common): performance=15/30, precision=6/30
 #   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=88/30, performance=8/30, precision=21/30
+#   容量(inference/vllm-ascend): interrupt=89/30, performance=8/30, precision=21/30
 #   容量(training/mindspeed-llm): interrupt=11/30, precision=4/30
 #   容量(training/verl): interrupt=6/30, precision=1/30
 namespaces:
@@ -2737,6 +2737,30 @@ namespaces:
       - '65535'
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-HCCL-BIND-IP-PORT.yaml
       hash: 399f6eca234c
+    - id: VLLM-ASC-ZMQ-HANDSHAKE-PORT-OVERFLOW
+      title: PD 分离 + Mooncake KV 传输：握手端口按 rank 偏移累加越界（kv_port 基址 + dp_rank×tp×pp×pcp + device_index ≥
+        65536）→ ZMQ bind 到非法端口，报 port 65536 have already been bound
+      category: interrupt
+      tags:
+      - mooncake
+      - kv-transfer
+      - pd-separation
+      - zmq
+      - port-overflow
+      - handshake-port
+      compat: vllm-ascend 0.22.1rc1,0.23.0rc1
+      confidence:
+        score: 0.6
+      symptoms:
+      - PD 分离部署 + Mooncake KV 传输（`kv_transfer_config.kv_port` 已配）时，某节点服务拉起失败或运行中退出，报 `port 65536 have
+        already been bound`（或其它 >6…
+      sig:
+      - already been bound
+      tok:
+      - '65535'
+      - '65536'
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-ZMQ-HANDSHAKE-PORT-OVERFLOW.yaml
+      hash: 3c0772368877
     performance:
     - id: VLLM-ASC-10710
       title: DSV4-Flash-w8a8-mtp 完全相同串行请求 Prefix Cache 命中率恒 0%：混合压缩 KV（compression_ratio=128）最小命中长度=block_size×128（block128→16k、投机/MTP→32k），10k
