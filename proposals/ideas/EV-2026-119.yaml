@@ -1,0 +1,57 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-119
+layer: L2
+title: 门控池可从已跟踪数据机械重建——评测台从"规则在跑、数据不存在"变为可复核
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: eval_asset_flaw
+    evidence: "审计实测：元层评测台的池、聚合结果、影响账本在检出里全都不存在（.s2-replay/ 是本地运行件），判据层因此报「数据源缺失、本期未评估」——'已达成'那套读数在干净克隆上无法复核；而盘上有 9 个 result 与声明里的池零交集"
+    trajectory:
+      - "审计实测：eval_arena.py --stats 读取池文件失败；evolution_health 报该判据 evaluated=false"
+      - "eval/s2/vllm-ascend.yaml（已跟踪，20 条带 expected.namespace/category/fix_commit）"
+hypothesis: 池不必手工建、也不必进仓：从已跟踪的 S2 校准集机械派生（一条命令），门控就从"某次会话留下的文件"变成"任何人可重建的数据面"。
+predicted_effect:
+  metric: 门控池与 stats 的可重建性
+  from: "池不存在；--stats 读取失败；判据层报数据源缺失"
+  to: "--build-pool 从 S2 校准集派生池（默认 selection）；--stats 出分；判据层可读"
+  measure:
+    command: "python3 -m unittest tests.test_eval_arena_stats.ArenaPoolBuildTest"
+    expect_exit: 0
+validation:
+  method: metrics_compare
+  baseline: "改前：池文件不存在，arena 门控无数据可跑"
+  success_criteria: |
+    ① --build-pool 从 eval/s2/vllm-ascend.yaml 生成池（默认只取 selection，test 标 held_out 不进 gate）；
+    ② 生成后 --pool 校验通过、--stats 出分（实测 9/20 条已评分：route 9/9、命中 2/9、结论一致 6/9）；
+    ③ 测试覆盖来源缺失（退 2）、--only-scored 过滤、test 排除；④ 文档给出重建命令。
+  rollback: "单文件 revert（eval_arena.py 的 build_pool + 文档一段）；池是本地运行件，删掉即回到改前（原则七）"
+gate:
+  condition: "不等数据触发：属评测数据面的可复核性修复"
+risk: medium
+principle_refs: [7, 8, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：池可从已跟踪的 S2 校准集机械重建"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：eval_arena.py 增 --build-pool（--source/--name/--split/--only-scored/--out），默认只取 selection、test 条目标 held_out:true；docs/mechanism/eval-arena.md 工具段与 roadmap 重评方式同步；新增 3 项测试"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "实测：生成池 20 条（其中 9 条已有 result），--pool 校验通过，--stats 出分 route 9/9、命中 2/9、结论一致 6/9；单测 3 项通过"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）。残余如实标注：池虽有 20 条但只有 9 条有 replay result，配对检验的可用样本仍偏小（11 条待 replay）——门控可跑，但判词很可能落在 weak_accept，属数据量问题不是机制问题"

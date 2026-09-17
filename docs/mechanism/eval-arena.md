@@ -81,6 +81,9 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 ## 5. 工具
 
 `scripts/eval_arena.py`：
+- `--build-pool`：**从已跟踪的 S2 校准集派生池**（`eval/s2/vllm-ascend.yaml` → `.s2-replay/arena/pool-*.yaml`），
+  确定性、可复核——池是本地运行件，靠这条命令任何人都能重建，不必依赖"某次会话留下的文件"。
+  默认只取 `split=selection`（test 条目标 `held_out: true`，不参与 gate 决策）；`--only-scored` 只收已有 result 的条目；
 - `--pool <yaml>`：校验池文件结构；
 - `--stats <pool>`：聚合各 issue 的 result → 指标 + 逐条向量 + 池哈希（写 .s2-replay/arena/stats-*.yaml）。
   **先复制一份 baseline stats 再跑改后侧**——两次 `--stats` 写同一个文件名，覆盖掉 baseline

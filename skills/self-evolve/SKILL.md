@@ -57,7 +57,7 @@ disable-model-invocation: true
 1. 查重 + **同组件先例咨询**（规则同 /skill:evolve-check 第 3 步，两 skill 共用产卡链）：
    `scripts/ev_proposal.py --list`——同 trajectory/同 target 已有在池卡 → 合并；同
    target_component 历史结局（被改过/回滚过/有 rejected 结论）先读其 decisions，不重复
-   被拒方案（E6 落地后改用 `--impact` 聚合视图）；
+   被拒方案（`python3 scripts/ev_proposal.py --impact [组件]` 一次查全组件×尝试×结局）；
 2. 产骨架：`scripts/ev_proposal.py --new` → 填字段（layer / title / source_signals 带
    trajectory / hypothesis / predicted_effect / validation / risk / principle_refs）；
    `predicted_effect` 须带 `measure`（预测的出处：命令 + 期望，或如实声明不可度量）——
