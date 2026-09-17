@@ -30,6 +30,10 @@ cases:
     source: upstream-fix-merged
     detail: 'PR #14358（enable_prefill_mc2 关闭时 MegaMoe 对称通信 buffer 按 decode graph 分配致较大
       prefill batch 容量溢出产生错误输出）+ PR #14730（mega_moe_max_tokens 可配置化分配、超限告警）修复'
+  ref_knowledge:
+    - ref: mc2-megamoe-token-capacity
+      role: root-cause-context      # 容量/workspace 怎么算出来的——判断『buffer 该多大』的前提
+
   quickly_check:
     primary:
       command_template: grep -aoE 'acceptance_per_pos|acceptance_rate|接受率' {{server_log}}

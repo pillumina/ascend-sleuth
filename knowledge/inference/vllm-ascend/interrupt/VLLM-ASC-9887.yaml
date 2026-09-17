@@ -44,6 +44,10 @@ cases:
       source: investigation
       detail: "issue #9887（closed completed）；根因与规避为用户收尾分析（MTP 阶段某 DP token 超 MC2 容量走 alltoallv 分支、其余走 MC2 → 分支不一致崩溃），无官方 fix PR"
 
+    ref_knowledge:
+      - ref: mc2-megamoe-token-capacity
+        role: root-cause-context      # MC2 容量口径（含 512 上限与 tp 对齐）——判断 num_batch_tokens 有没有超容的前提
+
     quickly_check:
       primary:
         command_template: "grep -aE 'error code 507034|507034' {{engine_log}}"

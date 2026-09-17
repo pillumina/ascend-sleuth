@@ -312,7 +312,7 @@ entries:
     raw: 回放结果（确定性排序器 + quickly_check）：candidates=Y rank=1 path=fallback
     recorded_before: '2026-09-17'
   fixture_sha256: 755f86889d30335a446949b2dfe58bdadae351f228a6ee7964a3909925b5468e
-  case_sha256: 99d58030828a
+  case_sha256: 0549bd476493
 - fixture: VLLM-PD-PORT-65536.fixture.yaml
   case_id: VLLM-ASC-8938
   covers: inference/vllm-ascend/interrupt

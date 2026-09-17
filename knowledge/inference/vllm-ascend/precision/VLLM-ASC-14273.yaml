@@ -1,0 +1,88 @@
+# VLLM-ASC-14273 —— CANN 9.1.0 下 DeepSeek-V4 PD 分离输出损坏（content:null / 多语言乱码 / NaN → 507035 → EngineDead），
+#   同配置 CANN 9.0.1 正常：CANN 9.1 装 cann_ops_transformer 后 MegaMoe 路径被激活，暴露 buffer sizing 违约
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/14273（CLOSED；维护者给出根因 + A/B 矩阵）
+# 修复：PR #14358 / #14439（MegaMoe prefill buffer sizing）
+# pre-triage: variant_of VLLM-ASC-14265 —— **同一个 buffer sizing 违约**，两种表现：
+#   14265 = 大 prefill 超容量 → 溢出产错 → 投机接受率劣化（静默）；
+#   本条 = 同因在 CANN 9.1 下被激活（MegaMoe 取代 legacy dispatch_ffn_combine）→ NaN → 全 -1 token → 507035 → EngineDead（显式崩溃）。
+#   表现面与判别面都不同（一个看指标、一个看崩溃签名），故单列 variant 而不是并入。
+# 脱敏：客户环境的地址与路径未引用（issue 正文本身已做 sanitize）。
+
+cases:
+  - id: VLLM-ASC-14273
+    title: "CANN 9.1.0 下 DeepSeek-V4 PD 分离输出损坏（content:null / 多语言乱码 reasoning / NaN→token 全 -1→507035→EngineDead），同配置 CANN 9.0.1 正常：CANN 9.1 的 cann_ops_transformer 激活 MegaMoe 路径，暴露 prefill buffer 按 decode graph 尺寸分配、超容却仍走 MegaMoe"
+
+    category: precision
+    tags: [cann-9.1, mega-moe, buffer-sizing, capacity, pd-separation, mooncake, deepseek-v4, dspark, output-corruption, 507035, engine-dead]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.25.1rc"]         # 受影响 v0.25 栈（releases/v0.25.1rc）；修复在 #14358/#14439
+      - framework: cann
+        ranges: ["9.1.0"]            # 触发面：9.1 装了 cann_ops_transformer；9.0.1 不触发
+
+    investigation_quality: high   # 维护者给出根因 + 四格 A/B 矩阵（含强制 legacy 路径与提容量两组对照）
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.65
+      last_hit: ""
+
+    symptoms:
+      - "PD 分离 + Mooncake（KV 传输）+ DeepSeek-V4-Flash-W8A8 + 投机解码（DSpark，5 draft tokens）部署，**CANN 9.1.0** 镜像下输出损坏：`content: null`、`reasoning_content` 为多语言乱码、`finish_reason: length`"
+      - "同模型、同 vLLM/vllm-ascend 代码与启动参数，换 **CANN 9.0.1** 镜像即正确——**HTTP 200、无 traceback、无 Mooncake 传输错误**（表现为『跑通了但答案是垃圾』）"
+      - "显式崩溃序列（复现态）：`P 返回 token 0` → `D target logits 含 904960 个 NaN` → 恢复出的 token 全为 `-1` → `NPU error 507035` → `EngineDeadError`"
+      - "触发条件：CANN 9.1 安装 `cann_ops_transformer` 使 `_MEGA_MOE_SUPPORTED` 由 false 变 true → 同一份代码改选 CANN MegaMoe（legacy `dispatch_ffn_combine` 路径不再是自动选择）；而 `enable_prefill_mc2=false` 时容量仍按 decode graph 尺寸分配（复现态 32 tokens/rank、MC2 容量 128），eager prefill 的 batch（477 tokens）超容仍被送给 MegaMoe"
+
+    references:
+      - https://github.com/vllm-project/vllm-ascend/issues/14273
+      - https://github.com/vllm-project/vllm-ascend/pull/14358
+      - https://github.com/vllm-project/vllm-ascend/pull/14439
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "维护者在 issue 内给出根因（CANN 9.1 的 cann_ops_transformer 把 `_MEGA_MOE_SUPPORTED` 翻成 true → 改走 MegaMoe → 暴露 buffer sizing 违约）与四格 A/B 矩阵：① 自动 MegaMoe + 32 tokens/rank buffer → 复现损坏与 EngineDead；② 强制 legacy dispatch_ffn_combine → 3×并发 16，48/48 HTTP 200；③ 原生 MegaMoe + 容量提到 2048 tokens/rank → 48/48 通过；④ 32 tokens/rank 但超容 prefill 路由到 ALLTOALL → 48/48 通过。并指出算子文档要求 `bs <= num_max_tokens_per_rank`，集成侧违约；修复在 PR #14358/#14439。"
+
+    ref_knowledge:
+      - ref: mc2-megamoe-token-capacity
+        role: root-cause-context      # 容量怎么算出来的、为什么 32 tokens/rank 是这个值——本条的判别前提
+
+    quickly_check:
+      primary:
+        command_template: grep -aE '507035|EngineDeadError|target logits' {{server_log}}
+        rank_selector: all_failed
+        expected: "regex:507035|EngineDeadError"
+      fallback:
+        command_template: grep -iE 'version' /usr/local/Ascend/ascend-toolkit/latest/version.cfg
+        rank_selector: coordinator
+        expected: "regex:9\\.1\\.0"
+        note: "版本面判据：CANN 9.1.0（且装了 cann_ops_transformer）才走这条；9.0.1 不触发"
+
+    diagnosis:
+      - step: 1
+        check: "输出是否『形状对、内容是垃圾』（content 为 null / reasoning 多语言乱码 / finish_reason=length），且 HTTP 200、无 traceback、无 KV 传输报错？"
+        expected: "是——精度面（不是中断面），先别按通信/传输查"
+        fix_on_mismatch: "若有 Mooncake 传输报错或进程退出 → 转中断类（KV 传输/端口族）"
+      - step: 2
+        check: "服务日志/plog 是否出现 `507035` / `EngineDeadError`，或『token 全 -1』的序列？"
+        expected: "是——与『P 返回 token 0 → D logits 大量 NaN → 507035』的失效序列一致"
+      - step: 3
+        check: "CANN 版本是否为 9.1.0（`/usr/local/Ascend/ascend-toolkit/latest/version.cfg`），且环境里存在 `cann_ops_transformer`？"
+        expected: "是——MegaMoe 路径被激活（`_MEGA_MOE_SUPPORTED` 变 true）；CANN 9.0.1 缺该组件故走 legacy 路径、不触发"
+        fix_on_mismatch: "若 CANN 为 9.0.1 或未装 cann_ops_transformer → 不是本条，按其它精度路径查"
+      - step: 4
+        check: "是否 `enable_prefill_mc2=false` 且 prefill batch 明显大于 MC2 容量（容量按下面的公式算，见 ref: mc2-megamoe-token-capacity）？"
+        expected: "是——容量按 decode graph 尺寸分配却仍把大 prefill 送给 MegaMoe，违反算子 `bs <= num_max_tokens_per_rank` 契约"
+        fix_on_mismatch: "容量足够仍复现 → 转其它 MegaMoe/量化精度路径（如 DP token 不均匀，见 #14304/#14305）"
+        rollback: "恢复原启动参数"
+      - step: 5
+        check: "对照实验（任选其一即可确认触发面）：① 强制 legacy `dispatch_ffn_combine`；② 把 MegaMoe 容量提到 ≥ prefill batch；③ P 节点开 `enable_prefill_mc2=true`"
+        expected: "三者在维护者复现里均转为 48/48 通过——任一成立即确认『buffer 容量 < prefill batch』这条链路"
+        rollback: "去掉对照开关、恢复原配置"
+
+    severity: service-affecting
+    fix_side_effects:
+      - requires-restart
+    fix_type: code-patch
+    root_cause: "CANN 9.1 升级是**触发**不是根因：它带来 `cann_ops_transformer`，使 `_MEGA_MOE_SUPPORTED` 由 false 变 true，于是同一份 vLLM-Ascend 代码在原本走 legacy `dispatch_ffn_combine` 的场景改选 CANN MegaMoe，暴露了『`enable_prefill_mc2=false` 时 MegaMoe 对称通信 buffer 按 decode graph 尺寸分配、却仍接收更大 eager-prefill batch』的 buffer sizing 违约。算子文档要求 `bs <= num_max_tokens_per_rank`，集成侧未满足；且该违约不以清晰的容量错误暴露，而是先产生无效输出（NaN / token 全 -1），后报 NPU `507035` 与 EngineDead。CANN 9.0.1 因缺 `cann_ops_transformer` 走 legacy 路径而隐藏该 bug。"
+    fix: "升级到含 PR #14358 / #14439（MegaMoe prefill buffer sizing）的 vllm-ascend 版本（并提供 fail-fast 容量校验）；无法升级时的对照规避（任选其一，维护者复现均为 48/48 通过）：① 强制 legacy `dispatch_ffn_combine` 路径；② 提高 MegaMoe 容量至 ≥ prefill batch（复现里提到 2048 tokens/rank）；③ P 节点开 `enable_prefill_mc2=true`，让容量按 `max_num_batched_tokens` 推导。同时把『容量 ≥ prefill batch』写成上线前检查项。"
+    rollback: "回退镜像/版本即回到原行为；开关类规避去掉即可复原"
