@@ -1,0 +1,91 @@
+# VLLM-ASC-HCCL-BIND-IP-PORT —— 多 P 节点独立启动 + MoE 分发长稳后 P 节点崩溃：
+#   plog 报 Communication_Error_Bind_IP_Port（HCCL 建链 bind IP:Port 失败，src_port 越界如 344832056）
+# 来源：① 上游同签名 issue #9447（GLM-5.1 0.18 双机 aclnnMoeDistributeDispatchV4 报错，plog src_port=344832056）；
+#       ② 一份外部现场定位记录（4×A3 3×1P+1×1D，v0.22.1rc1，运行两天半后 P 节点崩溃；原文未公开引用）
+# pre-triage: new_pattern —— 本库无 Communication_Error_Bind_IP_Port / hccl_ret 9 的条目；
+#   与 VLLM-ASC-8938（ZMQ kv_port 端口冲突）**不同层**：那条是 Mooncake KV 传输端口（用户配置），
+#   本条是 HCCL 集合通信建链端口（HCCL 自行分配），排查面与修复面都不同。
+#   与 VLLM-ASC-12461（多节点 EP/MC2 MoeDistributeDispatchV2 aicore exception）同属"多节点 MoE 分发通信失败"，
+#   但报错层不同（那条是算子 aicore exception，本条是 HCCL socket 建链失败）。
+# verification: investigation —— 根因是那份现场记录给出的**最可能结论**（长稳后通信资源释放-重建时端口分配异常），
+#   上游 issue #9447 仅提供同签名 plog 证据，无维护者根因结论、无 fix PR。
+# 脱敏：内网 IP/主机名未引用（保留端口数值与错误码——它们是判别签名）。
+
+cases:
+  - id: VLLM-ASC-HCCL-BIND-IP-PORT
+    title: "多 P 节点独立启动（无 Ray）的 MoE 专家并行长稳运行后 P 节点崩溃：plog 报 Communication_Error_Bind_IP_Port（HCCL 建链 bind IP:Port 失败，src_port 越界）——与 kv_port/Mooncake 端口无关"
+
+    category: interrupt
+    tags: [hccl, moe-dispatch, pd-separation, bind-ip-port, port-overflow, multi-node, long-run, ep]
+    platforms: ["A3-910C"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.22.1rc1"]        # 现场实测版本（rc；正式版 0.23.0 含若干端口/MTP 修复）
+
+    investigation_quality: medium   # 根因未闭环：同签名 plog 证据 + 机制推演，无维护者结论
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.3
+      last_hit: ""
+
+    symptoms:
+      - "PD 分离多机部署（如 4 机 A3 3×1P + 1×1D），各 P 节点**独立启动、不使用 Ray**，服务长稳运行（数小时~两天半）后某 P 节点崩溃退出"
+      - "崩溃点常在 MoE 分发路径之后：python 栈尾在 token_dispatcher 的 torch.repeat_interleave → npu_moe_distribute_dispatch（MC2 跨节点分发）"
+      - "HCCL/plog 报 Communication_Error_Bind_IP_Port：hccl_socket_manager 建链失败，dest/src_port 出现**越界数值**（如 src_port=344832056，正常端口范围 0~65535）"
+      - "hccl_test 等链路自测正常；kv_port 无异常——失败的是 HCCL 集合通信**自行分配**的端口，不是 Mooncake KV 传输端口"
+
+    references:
+      - https://github.com/vllm-project/vllm-ascend/issues/9447
+      - https://github.com/vllm-project/vllm-ascend/issues/13527
+      - https://github.com/vllm-project/vllm-ascend/issues/8938
+
+    verification:
+      source: investigation
+      detail: "同签名证据来自 #9447（plog src_port=344832056）；机制（长稳后通信资源释放-重建时端口分配异常）来自一份外部现场定位记录（原文未公开引用），其自述为『最可能根因』。#13527（PD 分离运行一段时间后 p0 因 HCCL 失败挂死）为同类现象。无上游 fix PR。"
+
+    quickly_check:
+      primary:
+        command_template: grep -aE 'Communication_Error_Bind_IP_Port|hccl_socket_manager' {{plog_dir}}/*.log
+        rank_selector: all_failed
+        expected: "regex:Communication_Error_Bind_IP_Port|hccl_socket_manager"
+      fallback:
+        command_template: grep -aE 'aclnnMoeDistributeDispatchV4|hccl_ret|src_port' {{plog_dir}}/*.log
+        rank_selector: all_failed
+        expected: "regex:aclnnMoeDistributeDispatchV4|hccl_ret|src_port"
+        note: "同族签名（MoE 分发算子报错 + HCCL 端口字段）；命中后仍需看是否出现越界端口值"
+
+    diagnosis:
+      - step: 1
+        check: "崩溃是否发生在多 P 节点独立启动（无 Ray）的 PD 分离部署，且长稳运行后才出现（非启动即失败）？"
+        expected: "是——独立启动的 P 节点各自初始化 HCCL 通信组，时序不同步是可疑条件"
+      - step: 2
+        check: "崩溃节点 plog 是否出现 Communication_Error_Bind_IP_Port / hccl_socket_manager 建链失败，且 src_port/dest_port 是越界值（>65535）？"
+        expected: "是——判为 HCCL 建链端口分配异常（不是链路不通：hccl_test 正常）"
+        fix_on_mismatch: "若端口正常而是 Address already in use → 转端口冲突族（对照 ZMQ/Mooncake kv_port 配置，见排除链）"
+        rollback: "无（只读检查）"
+      - step: 3
+        check: "确认是哪个通信组失败（EP / TP / DP）——看失败点附近的通信组名"
+        expected: "MoE 专家并行（EP）组失败更符合'分发算子之后崩溃'的栈形"
+      - step: 4
+        check: "三个 P 节点的 HCCL 相关环境变量是否一致：HCCL_SOCKET_IFNAME / HCCL_IF_IP / HCCL_OP_EXPANSION_MODE（独立启动最易配置漂移）"
+        expected: "不一致 → 先统一后重跑（这是独立启动场景最便宜的排除项）"
+        fix_on_mismatch: "统一各 P 节点的网卡/IP/通信域相关环境变量后重跑；注意 HCCL_OP_EXPANSION_MODE=AIV 在多通信域有抢核问题"
+        rollback: "恢复原环境变量"
+      - step: 5
+        check: "现场版本是否为 rc（如 v0.22.1rc1）？"
+        expected: "是——rc 版 backport 不全（MTP/DCP、ZMQ 端口映射、Mooncake PP 端口等修复在正式版才有），建议升级到正式版后长稳复现"
+        fix_on_mismatch: "升级到对应正式版（如 v0.23.0）后再压长稳；仍复现则按 step 6 采集"
+        rollback: "回退镜像"
+      - step: 6
+        check: "加 HCCL_DEBUG=INFO 复现，取崩溃前最后一次 HCCL 建链的 IP:Port 与通信组，跨节点比对"
+        expected: "得到可复现的端口分配异常证据（本 case 的根因尚未闭环，这一步是补齐证据的入口）"
+        rollback: "去掉调试开关"
+
+    severity: service-affecting
+    fix_side_effects:
+      - requires-restart
+    fix_type: pending-investigation
+    root_cause: "最可能（未闭环）：多 P 节点独立启动下，MoE 专家并行的跨节点 HCCL 通信链路在长稳运行后通信资源（socket/通信组）释放-重建时端口分配异常——HCCL socket 端口计算出越界值（如 344832056）→ bind IP:Port 失败 → P 节点崩溃。与 kv_port / Mooncake 无关：那是 KV 传输端口（用户配置），本条是 HCCL 集合通信自行分配的端口。"
+    fix: "① 先统一各 P 节点的 HCCL 环境变量（HCCL_SOCKET_IFNAME / HCCL_IF_IP / HCCL_OP_EXPANSION_MODE）后重跑——独立启动最常见的配置漂移；② 确认失败的是哪个通信组（EP/TP/DP），缩小到 MoE 分发路径；③ rc 版本升级到正式版（backport 更全）；④ 复现采集：HCCL_DEBUG=INFO 抓崩溃前最后一次建链的 IP:Port 与组名，交维护者。"
+    rollback: "环境变量与镜像均可回退；本 case 不涉及代码改动"
