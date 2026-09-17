@@ -41,6 +41,9 @@ docs:
   - path: docs/demo-walkthrough.md
     layer: intro
     purpose: 从一次诊断到知识演化的可读演示：两分钟架构总览 + 术语与 skill 速览 + 全流程示例（不需要动手）
+  - path: docs/case-schema.md
+    layer: spec
+    when: 你要新增/修改一条 case、或要解释某个字段口径时
   - path: docs/design-principles.md
     layer: spec
     purpose: 十一条规范性条文——一切设计、实现、修复与演进的依据
