@@ -1,0 +1,70 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-129
+layer: L2
+target_component: scripts/rename_ref.py
+title: 重命名一次 = 一条命令（含审计链豁免）+ 组件键别名归一
+status: validated
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: maintenance_cost
+    evidence: "文档按层分目录那一次移动，牵出三类连带改动：全仓路径引用（含注释与 markdown 相对链接）、改进项卡里的路径、以及判据的组件键。手工做完之后复盘发现，其中只有第一类该由人做一次、其余两类都能机械化——现在没有这个工具，于是每次搬家都要重来一遍霰弹式修改。"
+    trajectory:
+      - "本批移动 17 篇文档：43 张卡的 55 处路径引用靠一次性脚本回写；相对链接 136 条里有 10 条因为脚本只处理'目标也移动了'的情形而漏改（坏链检查才发现）"
+      - "`docs/mechanism/eval-arena.md` 与 `docs/guide/eval.md` 的路径引用散在 49/127 张卡里（去重 75 个路径），字段是 source_signals 53 处、surface_basis 19 处"
+      - "探针实测：若把死引用扫描面拓宽到含 YAML 注释与无反引号散文，今天的数据上是真腐烂 0 / 误报 0——收紧扫描面的假红风险比原先估计的小"
+  - signal: reading_diluted
+    evidence: "同一处改动被不同时期的卡记成两个组件键：`surface_basis.path` 的取值优先级最高来自 `decisions[type=action].conclusion`，而 decisions 是只追加的审计链、按纪律不能回写路径。文档一搬家，历史卡留在旧键、新卡落在新键——判据「同一组件重复做功」因此少报，而它不会报错。实测：6 张卡仍挂在旧键上，其中 `docs/guide/eval.md` 被拆成旧键 1 张 + 新键 1 张。"
+    trajectory:
+      - "scripts/ev_board_data.py 的 SURFACE_FIELD_ORDER 首项是 action（decisions[type=action].conclusion），扫描只认反引号内路径"
+      - "本批移动后按现址归并统计：docs/guide/eval.md 旧 1 + 新 1、docs/spec/writing-norms.md 旧 1、docs/mechanism/rsi-mechanism.md 旧 1 等共 6 张"
+      - "同一份键还被 `ev_proposal.py --impact` 用（组件×尝试×结局），拆开即读数稀释"
+hypothesis: 把"搬家"变成一条命令（自动改引用、自动记别名、自动跳过审计链）之后，同一类移动的连带改动从三类手工动作降为一次命令；组件键经别名归一回当前路径，判据读数不再因搬家而稀释。
+predicted_effect:
+  metric: 搬家的连带改动是否可机械化，及组件键是否归一到现址
+  from: "移动 17 篇文档要手工回写 55 处卡引用 + 10 条相对链接；6 张卡留在旧组件键上，判据少报"
+  to: "一条命令改写全部可改引用并记录别名；组件键归一后旧键并入现址，判据读数恢复为一个键"
+  measure:
+    command: "python3 -m unittest tests.test_rename_ref"
+    expect_exit: 0
+validation:
+  method: metrics_compare
+  baseline: "改前：无重命名工具；引用靠一次性脚本手改（漏掉了'目标未移动'的相对链接）；组件键按字面路径取，搬家即分叉"
+  success_criteria: |
+    ① `rename_ref.py` 默认只报不改（dry-run），`--apply` 才写；对已搬完的当前检出跑一次应报"无需改动"（幂等）；
+    ② 它能改写四类引用：仓库根相对路径、markdown 相对链接（按该文件所在目录重算，含标签是旧路径的情形）、
+       YAML 注释、以及非反引号散文；
+    ③ **审计链豁免**：`proposals/ideas/*.yaml` 的 `decisions` 块与 `docs/adr/**` 一个字不改——
+       这两处记的是"当时发生了什么"，改它等于篡改记录；
+    ④ 每次搬家把 旧路径→新路径 追加进 `proposals/component-aliases.yaml`，组件键解析时归一，
+       6 张旧键卡并入现址键（判据读数不再稀释）；
+    ⑤ 新路径不存在时拒绝执行（防手误搬错）。
+  rollback: "新脚本与新数据文件可整体删除；别名归一接在 derive_surface 的一处调用上，revert 即回到字面路径（原则七）"
+gate:
+  condition: "data-triggered：本批搬家的连带改动量已实测（55 处卡引用 + 10 条漏改链接 + 6 张卡键分叉），不是预判"
+risk: low
+principle_refs: [8, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：重命名工具 + 组件键别名归一"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：新增 scripts/rename_ref.py（默认 dry-run；改四类引用；审计链豁免 decisions 块与 docs/adr/；冻结件默认跳过）；新增 proposals/component-aliases.yaml 并在 ev_board_data.derive_surface 接入归一；新增 tests/test_rename_ref.py（10 项）；CI 触发 paths 补 scripts/rename_ref.py"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "实测：①单测 109 项通过（新增 10 项）；②对已搬完的检出跑工具报「无需改动」——可改引用为 0、审计链豁免 14 个文件、冻结件跳过 26 个；③别名归一后组件键不再分叉：docs/guide/eval.md 由旧 1 张 + 新 1 张并为 2 张，docs/mechanism/pipeline.md 3 张、docs/mechanism/ixn-replay.md 2 张、docs/plan/roadmap.md 2 张"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）。过程中的两处实测教训已固化成守卫：①做幂等回测时用 --apply 跑了一次，顺手改掉了 eval/golden 下 25 个夹具的注释路径，holdout 与 scorecard 同时红 —— 因此加了冻结件默认跳过 + --include-frozen 显式承担；②标签是人读名字时不该跟着路径改（[eval.md](…) 曾被改成 [deep/eval.md](…)），已收紧为「标签含 / 且解到旧路径才改」。残余：别名表本身没有 CI 校验（目标路径写错会静默归一到不存在的键），按准入判据（未复发）先不加门，记在此处。"
