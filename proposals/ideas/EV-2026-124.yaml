@@ -1,0 +1,59 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-124
+layer: L2
+target_component: scripts/eval_arena.py
+title: S2 池 11 条盲测补完（20/20 已评分）+ 两条读数口径收口（路由真值分母、非诊断样本）
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: data_evidence
+    evidence: "评测面审计报「S2 池 20 条里 11 条从未 replay、已跑的 9 条里 7 条 hit_case 为空」——S2 是唯一不依赖人的外部对照源，却只用了不到一半。本轮把 11 条补完，并暴露两条口径问题：①11/20 条池条目只有 resolution、没有 expected_ns，路由率却被按全池分母算（凭空造失败）；②12980 是非诊断样本（标题 `[Bug]: wait`、正文空白），任何诊断都不可能有结论，混进命中率会同时高估分母与低估命中率"
+    trajectory:
+      - "审计实测：s2_replay --todo 报 11 条待 replay"
+      - "本轮实测：20/20 已评分；池条目 11 条缺 expected_ns；12980 正文为空"
+      - "运行暴露的缺陷：--stats 在 expected_ns 为空时 int('') 崩溃"
+hypothesis: 补完 11 条盲测后，S2/门控台的样本量从 9 增到 20；同时把路由率分母收口到"有真值"的条目、把非诊断样本单列，读数才可用。
+predicted_effect:
+  metric: S2/门控台的可用样本量与读数口径正确性
+  from: "9/20 已评分；路由率按全池分母；非诊断样本混入"
+  to: "20/20 已评分；路由率只算有真值的 9 条并报 unjudgeable；非诊断样本单列"
+  measure:
+    command: "python3 -m unittest tests.test_eval_arena_stats.EmptyExpectedNsTest"
+    expect_exit: 0
+validation:
+  method: metrics_compare
+  baseline: "改前：11 条未 replay；--stats 在缺 expected_ns 的条目上崩（int('')）"
+  success_criteria: |
+    ① 11 条盲测结果文件字段齐全（11 字段）；② --stats 在 20 条上跑通，输出「路由面 11 条无真值，
+    不计入分母」、route 9/9、hit 2/20、rc_match 13/20；③ 路由分母只算有真值条目，缺真值时报
+    unjudgeable 且 rate 不为编造值；④ 两条口径写进评测台文档；⑤ 单测覆盖缺 expected_ns 的池条目。
+  rollback: "单文件 revert（eval_arena 的两处口径 + 文档一段 + 一个测试类）；结果文件是本地运行件，删掉即回到改前（原则七）"
+gate:
+  condition: "不等数据触发：样本量与口径都是已实测的缺口"
+risk: medium
+principle_refs: [8, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计；本轮 11 条盲测由三个子代理并行执行"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：补完 S2 池 11 条盲测 + 两条读数口径收口"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：三条并行子代理按盲测协议（诊断结论先落，再读 expected 对照）完成 11 条；eval_arena 的 route_ok 强制布尔并把路由分母收口到有真值的条目、新增 unjudgeable 读数；评测台文档写明两条口径与本轮全量结果；新增回归测试"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "实测：20/20 已评分（route 9/9、hit 2/20、rc_match 13/20）；命中低符合池的设计（池=覆盖缺口探针，不是已有 case 的验证通道）；根因对 13/20；本轮 11 条里 1 条因输入缺关键配置（DCP）而不可收敛、1 条正文空白属非诊断样本——两者都已如实记录"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）。残余与后续：①11 条全部 miss = 覆盖缺口信号，补 case 属内容工作（本轮只产出缺口清单，不造 case）；②12980 这类非诊断样本建议在池里单列标注；③#14378 的输入可能漏了 DCP 配置，需回看 fixture 保真度"
