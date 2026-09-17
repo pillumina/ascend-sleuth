@@ -69,10 +69,14 @@ return {
       const cwd = resolveCwd(sessionId)
       if (!cwd) return { opened: false, error: '无法解析工作区' }
       const p = String(path)
-      if (p.startsWith('/') || p.includes('..')) return { opened: false, error: '拒绝非仓库路径' }
+      // 外部 URL 走同一条打开通路（trace 里 agent 查到的资料就是 http(s) 链接，读者要能一键打开）。
+      // URL **不能拼 cwd**——拼了会去开一个不存在的本地路径；仓库内相对路径的守卫（拒绝绝对路径与 ..）
+      // 也只对文件成立，所以先分流再各自校验。
+      const isUrl = /^https?:\/\//i.test(p)
+      if (!isUrl && (p.startsWith('/') || p.includes('..'))) return { opened: false, error: '拒绝非仓库路径' }
       if (p.indexOf("'") >= 0 || p.indexOf('"') >= 0) return { opened: false, error: '路径含引号，拒绝拼命令' }
       if (!shell) return { opened: false, error: 'shell 不可用' }
-      const full = cwd + '/' + p
+      const full = isUrl ? p : cwd + '/' + p
       const q = "'" + full.replace(/'/g, "''") + "'"
       // **不能假设 shell 是 bash**：DSH 在 Windows 上把 `ctx.shell` 接到 **PowerShell 5.1**（实测）。
       // 旧实现写的是 `(open X || xdg-open X) >/dev/null 2>&1 &`——`||` 在 PowerShell 5.1 是语法错误，
@@ -385,12 +389,11 @@ return {
             createdAt: createdAt,
             updatedAt: updatedAt,
             // 人读定位报告与结构化沉淀候选（diagnose 步骤 6 产出）：报告名与 trace 同名不同后缀，
-            // 面板给"打开报告"入口；候选条数给"待沉淀 N 条"，让"这单还能沉淀什么"在列表上就可见。
+            // 面板给"打开报告"入口；候选条数给"沉淀建议 N 条"，让"这单还能沉淀什么"在列表上就可见
+            // （明细含 case 与先验两类，在展开后的沉淀区分家呈现）。
             // 报告名的来源分两种（trace 记录 / 同名规则），client 据此说明入口是怎么来的。
             reportFile: rep ? rep.name : null,
             reportSource: rep ? rep.source : null,
-            // `active_case` 是 case id 还是"没命中"的占位/说明串（见 activeCaseKindOf）
-            activeCaseKind: activeCaseKindOf(activeCase),
             // `active_case` 是 case id 还是"没命中"的占位/说明串（见 activeCaseKindOf）
             activeCaseKind: activeCaseKindOf(activeCase),
             sedimentCandidates: Array.isArray(doc.sediment_candidates) ? doc.sediment_candidates.length : 0,
@@ -600,6 +603,11 @@ return {
     // 对象（块写法 `evidence:` 换行展开）。旧实现只吃字符串，块写法 trace 的证据会被整条丢掉。
     function parseEvidence(ev) {
       if (!ev) return null
+      // 内联证据的渲染上限，与 output/reason 同口径（见 traceDetail）。
+      // **必须同时给出原文长度**：卡面「证据 N 字」那个徽标读的是 inlineChars——只切片不给长度，
+      // 徽标就会说"证据 3000 字"，而原文可能是 4 万字（面板在"不静默截断"上已有先例：报告超限时
+      // 如实说"还有 N 块未渲染"）。
+      const INLINE_MAX = 3000
       const asList = (v) => {
         // 内联写法里 `files: [a, b]` 到这一步还是"带方括号的字符串"（parseInlineMap 不做流式展开），
         // 先过一遍 yamlScalar 才能得到数组；块写法给的是真数组。
@@ -608,7 +616,11 @@ return {
       }
       const out = {}
       if (typeof ev === 'object') {
-        if (ev.inline) out.inline = String(ev.inline)
+        if (ev.inline) {
+          const raw = String(ev.inline)
+          out.inline = raw.slice(0, INLINE_MAX)
+          out.inlineChars = raw.length
+        }
         if (ev.files) out.files = asList(ev.files)
         if (ev.sources) out.sources = asList(ev.sources)
         if (ev.missing) out.missing = String(ev.missing)
@@ -616,14 +628,41 @@ return {
       }
       if (typeof ev !== 'string') return null
       const raw = ev.trim()
-      if (!/^\{[\s\S]*\}$/.test(raw)) return { inline: ev }
+      if (!/^\{[\s\S]*\}$/.test(raw)) return { inline: ev.slice(0, INLINE_MAX), inlineChars: ev.length }
       const inner = parseInlineMap(raw)
       for (const key of ['inline', 'files', 'sources', 'missing']) {
         if (inner[key] === undefined || inner[key] === '') continue
-        out[key] = (key === 'inline' || key === 'missing') ? String(inner[key]) : asList(yamlScalar(String(inner[key])))
+        if (key === 'inline') {
+          const s0 = String(inner[key])
+          out.inline = s0.slice(0, INLINE_MAX)
+          out.inlineChars = s0.length
+        } else {
+          out[key] = (key === 'missing') ? String(inner[key]) : asList(yamlScalar(String(inner[key])))
+        }
       }
       return Object.keys(out).length ? out : null
     }
+
+    // ── 事件的"关联面"字段（这一步用到/查到了什么外部东西）──────────────────────────
+    // 与"证据"分开：证据是现场材料（日志/文件），关联是外部知识（KB case / 先验词条 / 外部资料）。
+    // 为什么要提：trace 里这些字段一直在写，而 traceDetail 只提 7 个字段，全被丢掉了——
+    // 读者想回答"这单关联了哪些 case / 哪些 reference / 查了哪些外部资料"只能去翻 YAML。
+    //
+    // **两种写法都要吃**（schema 漂移，实测）：
+    //   reference 单条：`ref_id: <id>`（旧 13 份都是这个）
+    //   reference 多条：`ref_ids: [a, b, c]`（最新一份起）
+    //   只看一种，最丰富的那份反而读不出来。
+    function eventList(v) {
+      if (v === undefined || v === null) return []
+      if (Array.isArray(v)) return v.map(x => String(x)).filter(Boolean)
+      const s = String(v).trim()
+      if (!s) return []
+      if (/^\[[\s\S]*\]$/.test(s)) {
+        return s.slice(1, -1).split(',').map(x => x.trim().replace(/^["']|["']$/g, '')).filter(Boolean)
+      }
+      return [s]
+    }
+    const eventStr = (v, max) => (v === undefined || v === null || v === '' ? null : String(v).slice(0, max || 300))
 
     async function traceDetail(cwd, traceFile) {
       try {
@@ -642,6 +681,25 @@ return {
           reason: t && t.reason ? String(t.reason).slice(0, 3000) : null,
           content: t && t.role === 'user' && t.content ? String(t.content).slice(0, 500) : null,
           evidence: t && t.role === 'user' && t.evidence ? parseEvidence(t.evidence) : null,
+          // 关联面（见 eventList/eventStr 的注释）：这一步用到/查到了什么外部东西。
+          // `outcome` 只对 reference_lookup 有意义——feedback 事件也有 outcome（resolved/pending），
+          // 那是**回报结果**不是"先验命中"，所以 client 只在参考层步骤上渲染它（这里照原样带出）。
+          caseId: eventStr(t && t.case, 80),
+          candidates: eventList(t && t.candidates),
+          refs: eventList(t && (t.ref_ids !== undefined ? t.ref_ids : t.ref_id)),
+          purpose: eventStr(t && t.purpose, 40),
+          outcome: eventStr(t && t.outcome, 20),
+          note: eventStr(t && t.note, 500),
+          toolCalls: eventList(t && t.tool_calls).map(x => x.slice(0, 400)),
+          // 外部资料链接：**两种位置都要吃**——user 事件写在 evidence.sources 里，
+          // agent 事件写成顶层 `sources:`（实测：agent 的 gh issue view / web_fetch 走后者）。
+          // 只吃前者等于 agent 查到的资料一条都看不到。
+          sources: (function () {
+            const top = eventList(t && t.sources)
+            const ev = (t && t.role === 'user' && t.evidence) ? parseEvidence(t.evidence) : null
+            const inner = (ev && ev.sources) ? ev.sources : []
+            return top.concat(inner).filter((u, k, a) => a.indexOf(u) === k)
+          })(),
         }))
         const refCount = trace.filter(t => t && t.action === 'reference_lookup').length
         const sed = readSedimented(doc)

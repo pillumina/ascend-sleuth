@@ -133,6 +133,28 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // **记录维护类**动作（产出报告 / 续接 / 回报 / 归因）回答的是"记录被改了什么"，不是"问题查到哪了"。
     // 实测反馈：展开后"带了很多和问题无关的记录"——人读视图默认收起它们，完整轨迹里仍可见。
     const PROC_ACTIONS = { report: true, resume: true, feedback: true, attribution: true }
+    // 先验引用的**消费点**（trace 的 `reference_lookup.purpose`，词表见 diagnosis-trace.md）：
+    // 它回答"为什么要查这条"，是判断检索是否对路的一半信息，所以给人读名而不是原词。
+    const PURPOSE_LABELS = {
+      collect: '采集面', signature: '签名触发', fix: '修复依据', background: '背景', procedure: '流程',
+    }
+    // 先验引用的**三态**（trace 的 `reference_lookup.outcome`）：命中 / 查了没命中 / 没查（并写了理由）。
+    // 三态是这块界面的主角——"查了没命中"与"根本没查"在纯列表里同形，而它们指向完全不同的改进动作
+    // （前者是知识库覆盖缺口，后者是流程执行问题）。
+    const REF_OUTCOME = {
+      hit: { label: '命中', color: 'var(--d-green)' },
+      miss: { label: '未命中', color: 'var(--d-amber)' },
+      skipped: { label: '未查', color: 'var(--c-gray)' },
+    }
+    // 外部资料链接的短标签：域名 + 最后一段路径（全 URL 在 title 里，点击打开）。
+    // 为什么不一整条铺开：github 的 issue 链接有 60+ 字符，三四个就把一行撑爆，而读者要认的
+    // 恰恰是"哪个站、哪一条"这两件事。
+    function shortUrl(u) {
+      const s = String(u).replace(/^https?:\/\//i, '')
+      const seg = s.split('/').filter(Boolean)
+      if (seg.length <= 1) return s.slice(0, 34)
+      return (seg[0] + '/…/' + seg[seg.length - 1]).slice(0, 36)
+    }
     const sedMeta = {
       none: { label: '未沉淀', color: T.text2 },
       submitted: { label: '已提交待审', color: 'var(--c-blue)' },
@@ -499,11 +521,15 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const [showCmd, setShowCmd] = React.useState(false)
       const [copied, setCopied] = React.useState(null)
       const [evOpen, setEvOpen] = React.useState(null)
+      const [tcOpen, setTcOpen] = React.useState(null)   // 关联面：展开哪一步的工具调用清单
       const [opening, setOpening] = React.useState(null)
       const [openErr, setOpenErr] = React.useState(null)
       const [openVia, setOpenVia] = React.useState(null)
-      const [sedCmd, setSedCmd] = React.useState(false)
+      // 沉淀区的**唯一展开位**：值是命令行的 key（'case' / 'cand:<候选下标>'），null = 展开位收起。
+      // 与指令区同一条纪律：点谁显示谁，展开体只有一处（多候选时不铺一屏命令）。
+      const [sedCmd, setSedCmd] = React.useState(null)
       const [fullTrace, setFullTrace] = React.useState(false)   // 人读视图（默认）⇄ 完整轨迹
+      const [showAllSteps, setShowAllSteps] = React.useState(false)   // 轨迹区：前 8 步 ⇄ 全部步
       // 报告在面板里读（只读）：报告是交付物，读它不该先落进外部编辑器
       const [reportOpen, setReportOpen] = React.useState(false)
       const [report, setReport] = React.useState(null)
@@ -541,7 +567,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         : null
 
       function toggle() {
-        if (open) { setOpen(false); setSteps(null); setEvOpen(null); return }
+        if (open) { setOpen(false); setSteps(null); setEvOpen(null); setTcOpen(null); return }
         setOpen(true)
         setSteps({ loading: true })
         host.call('ascend-traces-detail', { sessionId: ownerSessionId || null, traceFile: s.file })
@@ -595,9 +621,47 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const sed = steps && steps.sedimented
       const sedState = sed && sed.state ? sed.state : 'none'
       const sedInfo = sedMeta[sedState] || sedMeta.none
-      // 报告与沉淀候选入口（diagnose 步骤 6 的产出）：报告是人读件的落点；沉淀候选除了条数，
-      // **展开卡片时把每条列出来**（kind + 一句话）——只给一个数字，读者没法判断"这 3 条要不要做、
-      // 各是什么"（实测反馈："沉淀3条我也挺奇怪的，为啥是3条"）。明细来自 detail RPC，只在展开时取。
+      // —— 沉淀候选：**case 与先验候选分家**（2026-09 重做）——
+      // 为什么分（实测误读）：`sediment_candidates` 里 `kind: reference` 是先验知识候选，走
+      // to-reference，与 case 的沉淀状态**互不影响**——case 沉淀（to-postmortem → groom）不产出
+      // reference 词条。旧版把「引用计数 + case 沉淀状态 + 两类候选」挤在一个块里，读者读成
+      // "reference 也跟着沉淀了"。
+      // 分家后两段各带自己的入口；**面板只产指令、不产内容**——候选摘要只是引子，口径（范围/归类）
+      // 在对话里由 to-reference 的 grill 对齐，那是它唯一的入口，所以这里没有编辑器。
+      const cands = (steps && steps.sedimentCandidates) ? steps.sedimentCandidates : []
+      const refCands = cands.filter(c => c.kind === 'reference')
+      const caseCands = cands.filter(c => c.kind && c.kind !== 'reference')
+      const sedLabel = (text, tip) => React.createElement('span',
+        { title: tip || '', style: { color: T.text2, fontSize: 12.5, minWidth: 52, flexShrink: 0 } }, text)
+      // 候选行：kind 徽标 + 一句话（超长省略，全文在 title）；只有先验候选带独立入口。
+      // key 用候选在 cands 里的**原下标**，避免过滤后错位。
+      const candRow = (c, ci, withAction) => {
+        const key = 'cand:' + ci
+        return React.createElement('div', { key: key, style: { display: 'flex', alignItems: 'center', gap: 6, marginLeft: 60, marginTop: 5, minWidth: 0 } },
+          React.createElement('span', { style: tinyBadge(c.kind === 'reference' ? 'var(--d-purple)' : 'var(--d-green)') }, c.kind || '?'),
+          React.createElement('span', { title: c.summary || '', style: { flex: 1, minWidth: 0, color: T.text, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, c.summary || '(无摘要)'),
+          withAction ? React.createElement('button', {
+            type: 'button',
+            onClick: () => { setSedCmd(sedCmd === key ? null : key); setCopied(null) },
+            style: btnGhost,
+            title: '生成 to-reference 指令：复制后粘到对话。范围不对就在对话里改——先验词条的口径在那一步对齐',
+          }, sedCmd === key ? '隐藏指令' : '沉淀此条') : null,
+        )
+      }
+      // 命令文本：case 走 to-postmortem，先验候选走 to-reference（把候选摘要当引子、trace 当出处）。
+      // **先验候选不给 trace 路径当输入**——to-reference 没有"读 trace"这种输入模式，它的入口是
+      // 内联内容 + 出处说明，所以这条指令必须把摘要原样带上。
+      const sedCmdText = (function () {
+        if (sedCmd === 'case') {
+          return '用 /skill:to-postmortem 沉淀 ' + s.sessionId
+            + '（症状/根因/fix 在 traces/' + s.file + '，证据在 traces/evidence/）'
+        }
+        const m = /^cand:(\d+)$/.exec(String(sedCmd || ''))
+        const c = m ? cands[Number(m[1])] : null
+        if (!c) return null
+        return '用 /skill:to-reference 沉淀一条 reference：' + (c.summary || '(候选摘要见 trace)')
+          + '（来源：traces/' + s.file + '，本单定位过程见该 trace）'
+      })()
       const reportPath = s.reportFile ? 'traces/' + s.reportFile : null
       // 报告块：卡片展开时置顶（它是"这单的结论"，轨迹是过程记录）
       const reportBlock = reportOpen
@@ -616,28 +680,41 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               React.createElement(SectionLabel, { color: T.brand }, '问题背景'),
               React.createElement('div', { style: { fontSize: 13.5, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.68 } }, steps.summary),
             ) : null,
-            steps.refCount > 0 ? React.createElement('div', { style: { marginBottom: 10, fontSize: 12.5, color: T.text2, display: 'flex', alignItems: 'center', gap: 6 } },
-              React.createElement(Dot, { color: 'var(--acc-purple)' }),
-              '本次诊断使用 reference ' + steps.refCount + ' 次') : null,
-            React.createElement('div', { style: { marginBottom: 10, padding: 8, border: '1px solid ' + T.border, borderRadius: 9, fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-              React.createElement('span', { style: { fontWeight: 600, color: T.text2 } }, '沉淀状态'),
-              React.createElement('span', { style: { color: sedInfo.color, fontWeight: 600 } }, sedInfo.label),
-              sedState === 'none' ? React.createElement('button', { onClick: () => { setSedCmd(!sedCmd); setCopied(null) }, style: btnPurple }, sedCmd ? '隐藏指令' : '沉淀此案例') : null,
-              sedState === 'submitted' ? React.createElement(React.Fragment, null,
-                React.createElement('button', { onClick: () => markSed('knowledge'), style: btnSuccess }, '已升 Tier 2'),
-                React.createElement('button', { onClick: () => markSed('archived'), style: btnOutline(T.warn) }, '仅 Tier 3'),
-              ) : null,
-              sedState === 'archived' ? React.createElement('button', { onClick: () => markSed('knowledge'), style: btnOutline(T.success) }, '改标 Tier 2') : null,
-            ),
-            sedCmd && sedState === 'none' ? React.createElement('div', { style: { marginBottom: 10, background: 'color-mix(in srgb, ' + T.brand + ' 8%, transparent)', border: '1px solid ' + T.brand, borderRadius: 9, padding: 8, fontSize: 12.5 } },
-              React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 } },
-                React.createElement('span', { style: { color: T.brand, fontWeight: 600 } }, '粘贴到对话即可沉淀'),
-                React.createElement('button', { onClick: () => doCopy('用 /skill:to-postmortem 沉淀 ' + s.sessionId + '（症状/根因/fix 在 traces/' + s.file + '，证据在 traces/evidence/）', 'sed'), style: copied === 'fail' ? { ...btnRed, background: 'var(--d-red)' } : btnPurple },
-                  copied === 'sed' ? '已复制' : (copied === 'fail' ? '失败' : '复制')),
+            // —— 沉淀区：case 与先验候选**分家**（2026-09 重做，修两个实测误读）——
+            // ① 引用计数不再贴在这里：`reference N 次` 是"用了几次"，与"沉淀了几条"无关，
+            //    贴在沉淀块正上方正是误读的来源；它已移到轨迹标题行（那里才是它的出处）。
+            // ② 两段各带自己的入口：case 段给 to-postmortem 指令，先验段每条给 to-reference 指令。
+            React.createElement('div', { style: { marginBottom: 10, border: '1px solid ' + T.border, borderRadius: 9, background: T.bg, overflow: 'hidden' } },
+              React.createElement('div', { style: { padding: '8px 10px' } },
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+                  sedLabel('本单沉淀'),
+                  React.createElement('span', { style: { color: sedInfo.color, fontWeight: 600, fontSize: 12.5 } }, sedInfo.label),
+                  sedState === 'none' ? React.createElement('button', {
+                    type: 'button', onClick: () => { setSedCmd(sedCmd === 'case' ? null : 'case'); setCopied(null) },
+                    style: btnPurple, title: '生成 to-postmortem 指令：复制后粘到对话',
+                  }, sedCmd === 'case' ? '隐藏指令' : '沉淀此案例') : null,
+                  sedState === 'submitted' ? React.createElement(React.Fragment, null,
+                    React.createElement('button', { onClick: () => markSed('knowledge'), style: btnSuccess }, '已升 Tier 2'),
+                    React.createElement('button', { onClick: () => markSed('archived'), style: btnOutline(T.warn) }, '仅 Tier 3'),
+                  ) : null,
+                  sedState === 'archived' ? React.createElement('button', { onClick: () => markSed('knowledge'), style: btnOutline(T.success) }, '改标 Tier 2') : null,
+                ),
+                caseCands.map(c => candRow(c, cands.indexOf(c), false)),
               ),
-              React.createElement('code', { style: { userSelect: 'all', background: T.bg, border: '1px solid ' + T.border, borderRadius: 6, padding: '5px 8px', display: 'block', fontSize: 12.5, fontFamily: 'var(--font-mono)' } },
-                '用 /skill:to-postmortem 沉淀 ' + s.sessionId),
-            ) : null,
+              refCands.length ? React.createElement('div', { style: { borderTop: '1px solid ' + T.border, padding: '8px 10px' } },
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+                  sedLabel('先验候选',
+                    '这些候选沉淀的是先验知识（走 to-reference），与上面本单 case 的沉淀状态互不影响'),
+                ),
+                refCands.map(c => candRow(c, cands.indexOf(c), true)),
+              ) : null,
+              sedCmdText ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px 9px' } },
+                React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg2, border: '1px solid ' + T.border, borderRadius: 6, padding: '5px 8px', fontSize: 12.5, fontFamily: 'var(--font-mono)', color: T.text, wordBreak: 'break-word', lineHeight: '18px' } },
+                  sedCmdText),
+                React.createElement('button', { onClick: () => doCopy(sedCmdText, 'sed'), style: copied === 'fail' ? { ...btnRed, background: 'var(--d-red)' } : btnPurple },
+                  copied === 'sed' ? '已复制' : (copied === 'fail' ? '失败' : '复制')),
+              ) : null,
+            ),
             // 轨迹区：**人读视图（默认）** 只给"问题查到哪了"——记录维护类动作收起、推理不铺开、
             // action 用中文标签；「看完整轨迹」回到逐条原始事件（回放/归因用）。
             // 收尾：结论块排在轨迹**之后**——卡片从现象读到过程、以定位结论落底，
@@ -645,7 +722,16 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             (function () {
               const all = shownIdx.all
               const shown = timeline
-              const hidden = all.length - shown.length
+              // 收起条数取 **shownIdx.hidden（被 PROC_ACTIONS 过滤掉的条数）**，不是 all − timeline：
+              // 人读视图还会把结论那条从列表里去掉（它在下方单独成块），用差值会把它算成
+              // "已收起 1 条记录维护动作"——那句话是假的，而读者会拿它推断"藏了什么"。
+              const hidden = shownIdx.hidden
+              // 步数多时**默认只铺前 8 步**：读者要的是"查到哪了"，而 30 步的 trace 全铺开是一屏
+              // 读不完的过程记录（实测反馈："带了很多和问题无关的记录"——同一病因，上一轮修的是
+              // 记录维护类动作与 reason）。折叠只影响列表：结论块在轨迹之后单独一块，不受它影响。
+              const STEP_PREVIEW = 8
+              const visible = showAllSteps ? shown : shown.slice(0, STEP_PREVIEW)
+              const moreSteps = shown.length - visible.length
               return React.createElement('div', null,
                 React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' } },
                   React.createElement('span', { style: { fontSize: 12.5, color: T.text2 } },
@@ -653,6 +739,14 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                       ? '完整轨迹（' + all.length + ' 条原始事件，含推理与记录维护动作）'
                       : ('诊断轨迹：' + shown.length + ' 步' + (anomaly ? '（可能不完整）' : '')
                         + (hidden ? '（已收起 ' + hidden + ' 条记录维护动作）' : ''))),
+                  // 引用计数归这里：它是 trace 事件的统计（reference_lookup 的条数），
+                  // 与卡上任何一块"沉淀"都不是一回事——放沉淀块旁边会被读成"reference 也沉淀了"。
+                  steps.refCount > 0 ? React.createElement('span', {
+                    title: 'trace 里取用先验知识的次数（reference_lookup 事件条数）——这是"用了几次"，不是"沉淀了几条"',
+                    style: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: T.text2 },
+                  },
+                    React.createElement(Dot, { color: 'var(--acc-purple)' }),
+                    '先验引用 ' + steps.refCount + ' 次') : null,
                   React.createElement('button', { type: 'button', className: 'sleu-chip', onClick: () => setFullTrace(!fullTrace), style: btnGhost },
                     fullTrace ? '只看诊断' : '看完整轨迹'),
                 ),
@@ -661,7 +755,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 // 文件本身完全正常）。这里给出成因与行号，让读者能自己去核对那几行。
                 anomaly ? React.createElement('div', { style: { marginBottom: 8, padding: '7px 10px', background: 'color-mix(in srgb, ' + T.warn + ' 10%, transparent)', border: '1px solid color-mix(in srgb, ' + T.warn + ' 45%, transparent)', borderRadius: 9, fontSize: 12.5, color: T.text, lineHeight: 1.65 } },
                   anomalyText(anomaly) + '。请核对这几行的缩进与引号。') : null,
-                shown.map((st, i) => {
+                // 渲染上限：单步 output/reason 各可到 3000 字、证据原文另有上限，一条长轨迹全铺开
+                // 会把卡片撑到没法读，所以列表自己滚（与报告区同一手法：maxHeight + overflowY）。
+                // 短轨迹够不到上限，不会长出滚动条。
+                React.createElement('div', { style: { maxHeight: 620, overflowY: 'auto' } },
+                visible.map((st, i) => {
                   const isUser = st.role === 'user'
                   const isRef = st.action === 'reference_lookup'
                   const ev = st.evidence
@@ -672,7 +770,68 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                   const hasEv = hasInline || hasFiles || hasMissing
                   // 刻度点颜色 = 这一步在流程里扮演什么角色：用户输入 / 参考层 / 有证据的 agent 步 / 普通步
                   const dotColor = isUser ? 'var(--acc-blue)' : (isRef ? 'var(--acc-purple)' : (hasEv ? 'var(--acc-green)' : null))
-                  const last = i === shown.length - 1
+                  // 竖轨连的是"下一步"：后面还有没铺开的步时，最后一条可见步也要留轨（否则看起来像到头了）
+                  const last = i === visible.length - 1 && moreSteps === 0
+                  // —— 关联面：这一步"用到/查到了什么外部东西" ——
+                  // 与「证据」分开：证据是现场材料（日志/文件），关联是外部知识（KB case / 先验词条 /
+                  // 外部资料）。四类各一行、标签定宽，扫读时标签列能对齐；颜色按类型分，
+                  // 且**只有真能点的才画成可点**（带边框 + 品牌色）——不可点的画成可点是最坏的误导。
+                  const refOutcome = (st.action === 'reference_lookup' && st.outcome) ? REF_OUTCOME[st.outcome] : null
+                  const tcOpenHere = tcOpen === i
+                  const assocRows = []
+                  // 只读 chip 用**填充式**（与 tinyBadge 同一配方：12% 底 + 同色字），可点的用**描边式**
+                  // （透明底 + 链接色 + pointer）。这不是装饰：两类 chip 挨着出现，形状一样而一个能点
+                  // 一个不能点，是读者最容易踩的误导——"填的是标签、描的是能点的"是一眼可分的规则。
+                  const assocChip = (text, colorVar, title) => React.createElement('span', {
+                    key: text, title: title || '',
+                    style: { background: 'color-mix(in srgb, ' + colorVar + ' 12%, transparent)', color: colorVar, borderRadius: 5, padding: '1px 7px', fontSize: 11.5, fontFamily: 'var(--font-mono)', fontWeight: 600, whiteSpace: 'nowrap' },
+                  }, text)
+                  const assocRow = (key, label, children) => React.createElement('div', {
+                    key: key, style: { display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap', marginTop: 5 },
+                  },
+                    React.createElement('span', { style: { color: T.text2, fontSize: 11.5, minWidth: 28, flexShrink: 0 } }, label),
+                    children)
+                  const capped = (arr, n) => ({ head: arr.slice(0, n), rest: arr.length - n })
+                  if (st.caseId) {
+                    assocRows.push(assocRow('case', 'case',
+                      assocChip(st.caseId, 'var(--d-green)', '这一步核验/读到的那条 case')))
+                  }
+                  if (st.candidates && st.candidates.length) {
+                    const c = capped(st.candidates, 6)
+                    assocRows.push(assocRow('cand', '候选',
+                      c.head.map(x => assocChip(x, T.text2, '本轮载入的候选 case'))
+                        .concat(c.rest > 0 ? [React.createElement('span', { key: 'more', style: { color: T.text2, fontSize: 11.5 } }, '等 ' + c.rest + ' 条')] : [])))
+                  }
+                  if (st.refs && st.refs.length) {
+                    assocRows.push(assocRow('refs', '先验',
+                      (PURPOSE_LABELS[st.purpose]
+                        ? [React.createElement('span', { key: 'p', style: { color: T.text2, fontSize: 11.5 } }, PURPOSE_LABELS[st.purpose])]
+                        : []).concat(st.refs.map(r => assocChip(r, 'var(--d-purple)', '本轮取用的先验词条 id（可在 references/ 里按它回查）')))))
+                  }
+                  // 甄别理由：**这一行是全块最值钱的**——它区分"命中"与"有用"
+                  // （实测例："命中但判为不同族：越界 vs 超时的 errorStr 不同"）。
+                  if (st.note) {
+                    assocRows.push(React.createElement('div', { key: 'note', style: { display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 5 } },
+                      React.createElement('span', { style: { color: T.text2, fontSize: 11.5, minWidth: 28, flexShrink: 0 } }, '甄别'),
+                      React.createElement('span', { style: { flex: 1, minWidth: 0, color: T.text2, fontSize: 12.5, lineHeight: 1.65, wordBreak: 'break-word' } }, st.note)))
+                  }
+                  if (st.sources && st.sources.length) {
+                    assocRows.push(assocRow('src', '资料',
+                      st.sources.map(u => React.createElement('button', {
+                        key: u, type: 'button', onClick: () => openFile(u), title: u, className: 'sleu-chip',
+                        style: { background: 'transparent', border: '1px solid ' + T.border, borderRadius: 999, padding: '1px 9px', fontSize: 11.5, cursor: 'pointer', color: T.brand, fontFamily: 'var(--font-mono)' },
+                      }, opening === u ? '打开中…' : shortUrl(u)))))
+                  }
+                  if (st.toolCalls && st.toolCalls.length) {
+                    assocRows.push(React.createElement('div', { key: 'tc', style: { marginTop: 5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' } },
+                      React.createElement('span', { style: { color: T.text2, fontSize: 11.5, minWidth: 28, flexShrink: 0 } }, '调用'),
+                      React.createElement('button', { type: 'button', className: 'sleu-chip', onClick: () => setTcOpen(tcOpenHere ? null : i), style: btnGhost },
+                        tcOpenHere ? '收起' : '看 ' + st.toolCalls.length + ' 条命令'),
+                      tcOpenHere ? st.toolCalls.map((c, k) => React.createElement('div', { key: k, style: { flexBasis: '100%', color: T.text2, fontSize: 11.5, fontFamily: 'var(--font-mono)', lineHeight: 1.6, wordBreak: 'break-word' } }, '· ' + c)) : null))
+                  }
+                  const assocBlock = assocRows.length
+                    ? React.createElement('div', { style: { marginTop: 2, paddingLeft: 9, borderLeft: '2px solid var(--hair)' } }, assocRows)
+                    : null
                   return React.createElement('div', { key: i, className: 'sleu-tl-row' },
                     // 左侧：刻度点 + 竖轨（"第几步"能一眼数出来；最后一步不画轨）
                     React.createElement('div', { className: 'sleu-tl-mk' },
@@ -687,10 +846,33 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                           ? React.createElement('span', { className: 'sleu-mono', style: { background: T.bg2, padding: '1px 7px', borderRadius: 5, fontSize: 11.5, color: T.text2 } }, st.action)
                           : React.createElement('span', { title: st.action, style: { background: T.bg2, padding: '1px 7px', borderRadius: 5, fontSize: 11.5, color: T.text2 } }, STEP_LABELS[st.action] || st.action)) : null,
                         isRef ? React.createElement('span', { className: 'sleu-chip', style: { background: 'var(--tint-purple)', color: 'var(--d-purple)', borderRadius: 999, padding: '1px 8px', fontSize: 11.5, fontWeight: 600 } }, '参考层') : null,
+                        // 先验引用的三态徽标：**只挂参考层步骤**——feedback 事件也带 `outcome`
+                        // （resolved/pending），那是"回报结果"，挂成"命中/未命中"会读反。
+                        // 位置紧跟「参考层」：读作"参考层 · 命中"。
+                        refOutcome ? React.createElement('span', {
+                          title: 'trace 的 reference_lookup.outcome：命中 = 查到并用于本次推理；'
+                            + '未命中 = 查了但没有相关词条（记的是知识库覆盖缺口）；未查 = 没查，理由见本步',
+                          style: tinyBadge(refOutcome.color),
+                        }, refOutcome.label) : null,
+                        // 关联面的**存在性**提到步骤行：扫轨迹时先看哪几步带了候选/外部资料，
+                        // 不必逐个展开（长 output 会把下方的行推到折叠线下）。
+                        // 徽标**用行的名字、不发明伞形词**：曾叫「关联 N」「外部 N」，两个都含糊——
+                        // "关联"没说清关联什么；"外部"更错（先验词条就在库里，凭什么叫外部）。
+                        // 参考层步骤已有「参考层 + 三态」，不重复给徽标；候选与资料才需要计数。
+                        st.candidates && st.candidates.length ? React.createElement('span', {
+                          title: '本步载入了 ' + st.candidates.length + ' 条候选 case（明细在本步下方）——"看过但没选"的那一面',
+                          style: tinyBadge('var(--c-gray)'),
+                        }, '候选 ' + st.candidates.length) : null,
+                        st.sources && st.sources.length ? React.createElement('span', {
+                          title: '本步查到 ' + st.sources.length + ' 条外部资料（知识库以外的链接，明细在本步下方可点开）',
+                          style: tinyBadge('var(--d-blue)'),
+                        }, '资料 ' + st.sources.length) : null,
                     // 证据存在性**提到步骤行**：扫轨迹时先看哪几步带证据，不必逐个展开
                     hasEv ? React.createElement('span', { style: { display: 'flex', gap: 4, alignItems: 'center' } },
+                      // 字数读 **inlineChars（原文长度）**：inline 已被 host 切片，直接量它会说"3000 字"，
+                      // 而原文可能长得多——徽标是读者判断"要不要点开看"的依据，不能说小。
                       React.createElement('span', { style: tinyBadge('var(--d-green)') }, '证据' +
-                        (hasInline ? ' ' + ev.inline.length + '字' : '') +
+                        (hasInline ? ' ' + (ev.inlineChars || ev.inline.length) + '字' : '') +
                         (hasFiles ? ' ' + ev.files.length + '文件' : '')),
                       hasMissing ? React.createElement('span', { style: tinyBadge('var(--d-amber)') }, '缺 ' + ev.missing) : null,
                     ) : null,
@@ -701,6 +883,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                   fullTrace && st.reason ? React.createElement('div', { style: { marginTop: 3, color: T.text2, fontSize: 13.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontStyle: 'italic', lineHeight: 1.68 } },
                     '推理: ' + st.reason) : null,
                   st.content ? React.createElement('div', { style: { marginTop: 4, color: T.text2, fontSize: 14.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.75 } }, st.content) : null,
+                  // 关联面排在证据之前：读序是"这一步说了什么 → 用了什么外部东西 → 留下了什么现场材料"
+                  assocBlock,
                   // 证据明细（可点开原文 / 打开文件）——存在性已在上面标了，这里给操作
                   ev ? React.createElement('div', { style: { marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, flexWrap: 'wrap' } },
                     ev.inline ? React.createElement('button', { type: 'button', onClick: () => setEvOpen(evOpenHere ? null : i), className: 'sleu-chip', style: btnGhost }, evOpenHere ? '收起原文' : '看原文') : null,
@@ -712,9 +896,19 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                     !hasInline && !hasFiles && hasMissing ? React.createElement('span', { style: { color: T.text2 } }, '这一步没有留证据') : null,
                   ) : null,
                   evOpenHere && ev.inline ? React.createElement('pre', { style: { marginTop: 6, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 8, padding: 10, fontSize: 12.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: T.text, lineHeight: 1.7, maxHeight: 320, overflowY: 'auto' } }, ev.inline) : null,
+                  // 原文超长时**如实说**：徽标上的"证据 N 字"读的是原文长度（host 给 inlineChars），
+                  // 而这里显示的是截断后的前 N 字——不说出来就成了静默截断（与报告区同一条纪律）。
+                  evOpenHere && ev.inline && ev.inlineChars > ev.inline.length
+                    ? React.createElement('div', { style: { marginTop: 4, color: T.text2, fontSize: 11.5 } },
+                        '原文 ' + ev.inlineChars + ' 字，此处显示前 ' + ev.inline.length + ' 字' + (hasFiles ? '——完整原文见上方证据文件' : ''))
+                    : null,
                   ),
                 )
-              })
+                })
+                ),
+                shown.length > STEP_PREVIEW ? React.createElement('div', { style: { marginTop: 8, display: 'flex', justifyContent: 'center' } },
+                  React.createElement('button', { type: 'button', className: 'sleu-chip', onClick: () => setShowAllSteps(!showAllSteps), style: btnGhost },
+                    showAllSteps ? '收起，只看前 ' + STEP_PREVIEW + ' 步' : '展开剩余 ' + moreSteps + ' 步')) : null,
               )
             })(),
             // —— 定位结论落底 —— //
@@ -811,21 +1005,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       })
       for (const c of closeCmds) actions.push({ key: c.key, label: c.label, style: toneStyle(c.tone), title: '生成闭环指令（复制后粘到对话执行）', cmd: c.cmd })
       const openedCmd = actions.filter(a => a.key === showCmd)[0] || null
-      // 报告与沉淀候选入口（diagnose 步骤 6 的产出）：报告是人读件的落点；沉淀候选除了条数，
-      // **展开卡片时把每条列出来**（kind + 一句话）——只给一个数字，读者没法判断"这 3 条要不要做、
-      // 各是什么"（实测反馈："沉淀3条我也挺奇怪的，为啥是3条"）。明细来自 detail RPC，只在展开时取。
-      const cands = (open && steps && steps.sedimentCandidates) ? steps.sedimentCandidates : []
-      const candList = cands.length
-        ? React.createElement('div', { style: { marginTop: 6, display: 'flex', flexDirection: 'column', gap: 4 } },
-            React.createElement('div', { style: { fontSize: 11.5, color: T.text2 } },
-              '沉淀候选（' + cands.length + ' 条，与报告第 8 节同源）——值不值得做由你判断：'),
-            cands.map((c, i) => React.createElement('div', { key: i, style: { display: 'flex', alignItems: 'baseline', gap: 6, fontSize: 11.5 } },
-              React.createElement('span', { style: tinyBadge(c.kind === 'case' ? 'var(--d-green)' : 'var(--d-purple)') }, c.kind || '?'),
-              React.createElement('span', { title: c.summary, style: { flex: 1, minWidth: 0, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, c.summary || '(无摘要)'),
-              c.suggestedSkill ? React.createElement('span', { className: 'sleu-mono', style: { color: T.text2, flexShrink: 0 } }, c.suggestedSkill) : null,
-            )),
-          )
-        : null
+      // 报告入口（diagnose 步骤 6 的产出）。**沉淀候选的明细不在这里**——它归展开态的沉淀区
+      // （case 与先验候选分家、各带入口，见上方「沉淀区」）：候选与"本单沉淀状态"是同一件事的两面，
+      // 拆到卡头下方与卡体深处两处，读者接不上各自的入口（旧版就是这么散的）。
       const docRow = (reportPath || s.sedimentCandidates)
         ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' } },
             reportPath ? React.createElement('button', {
@@ -843,7 +1025,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             // 开没开成都要看得见：成功给「已打开（via X）」，失败给原因。
             // 旧版成功无反馈、失败静默 → 用户只看到"点了没反应"。
             copied === 'open:' + reportPath ? React.createElement('span', { style: { color: T.success, fontSize: 11.5 } }, openVia ? '已打开（' + openVia + '）' : '已打开') : null,
-            s.sedimentCandidates ? React.createElement('span', { style: tinyBadge('var(--d-purple)'), title: 'trace.sediment_candidates（与报告第 8 节同源）' }, '待沉淀 ' + s.sedimentCandidates + ' 条') : null,
+            // 收起态只报条数（明细在展开态的沉淀区）。措辞是「建议」不是「待沉淀」：
+            // 它既不是债务、也不一定会被做——尤其先验候选，要不要沉淀由人判断（诊断抛出的只是建议）。
+            s.sedimentCandidates ? React.createElement('span', { style: tinyBadge('var(--d-purple)'), title: 'trace.sediment_candidates（与报告第 8 节同源）：含本单 case 与先验知识两类候选，明细见展开后的沉淀区' }, '沉淀建议 ' + s.sedimentCandidates + ' 条') : null,
             openErr ? React.createElement('span', { style: { color: T.warn, fontSize: 11.5 } }, openErr) : null,
           )
         : null
@@ -890,7 +1074,6 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // 展开的命令块只出现一次（谁被点开就显示谁），按钮本身用"未选中的淡一档"表达选中关系
       const actionArea = React.createElement('div', { style: { margin: '0 16px 12px', paddingTop: 10, borderTop: '1px dashed ' + T.border } },
         docRow,
-        candList,
         handoffRow,
         React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
           actions.map(a => React.createElement('button', {

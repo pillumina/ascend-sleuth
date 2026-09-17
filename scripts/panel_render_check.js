@@ -1493,11 +1493,31 @@ _MS._run_no_pipe = no_fallback`)
       expect('diagnose 写明未命中时的 case 填占位串（不是 case id）',
         /未命中但给了建议 → 占位串/.test(procMd))
     }
-    // 沉淀候选**展开即列出明细**（只给一个数字读者无从判断"为啥是 3 条"）
+    // 沉淀候选**展开即列出明细**（只给一个数字读者无从判断"为啥是 3 条"），
+    // 且 **case 与先验候选分家**（2026-09 重做，起因是实测误读）。
     {
       expect('detail 数据把沉淀候选带回客户端', /sedimentCandidates: r && r\.sedimentCandidates/.test(ascSrc))
-      expect('面板列出候选明细（kind + 摘要 + 建议 skill）',
-        /cands\.map\(\(c, i\)/.test(ascSrc) && /c\.suggestedSkill/.test(ascSrc) && /沉淀候选（/.test(ascSrc))
+      expect('面板列出候选明细（kind 徽标 + 一句摘要，全文在 title）',
+        /candRow\(c, cands\.indexOf\(c\)/.test(ascSrc) && /tinyBadge\(c\.kind === 'reference'/.test(ascSrc)
+        && /c\.summary \|\| '\(无摘要\)'/.test(ascSrc))
+      expect('case 与先验候选分家：两段各有自己的标签与入口（不挤在一个"沉淀状态"块里）',
+        /const refCands = cands\.filter\(c => c\.kind === 'reference'\)/.test(ascSrc)
+        && /sedLabel\('本单沉淀'\)/.test(ascSrc) && /sedLabel\('先验候选'/.test(ascSrc)
+        && /caseCands\.map\(c => candRow/.test(ascSrc) && /refCands\.map\(c => candRow/.test(ascSrc))
+      expect('先验候选可执行：每条给独立入口（不是只读文本）',
+        /'沉淀此条'/.test(ascSrc))
+      // 指令形态：先验候选**不带 trace 路径当输入**——to-reference 没有"读 trace"这种输入模式，
+      // 它的入口是内联内容 + 出处说明，所以摘要必须原样带上。
+      expect('先验候选的指令走 to-reference，且把候选摘要当引子、trace 当出处',
+        /用 \/skill:to-reference 沉淀一条 reference：/.test(ascSrc) && /来源：traces\//.test(ascSrc))
+      // 误读的直接来源：引用计数（用了几次）贴在沉淀块正上方，读者读成"reference 也沉淀了"。
+      expect('引用计数移出沉淀区（改挂轨迹标题行，措辞点明"用了几次"）',
+        !/本次诊断使用 reference/.test(ascSrc) && /'先验引用 ' \+ steps\.refCount \+ ' 次'/.test(ascSrc)
+        && /不是"沉淀了几条"/.test(ascSrc))
+      // 面板只产指令、不产内容：口径（范围/归类）在对话里由 to-reference 的 grill 对齐。
+      // 断言"没有编辑入口"，防止后来有人把候选摘要做成可编辑字段（那会与 grill 后的实际产出分叉）。
+      expect('沉淀候选没有编辑入口（面板产指令，内容归对话与 skill）',
+        !/ascend-update-candidate/.test(ascSrc))
     }
     // —— 报告进面板：只读渲染 + 复制全文（2026-09-13 补）——
     // 之前面板只有「打开报告」（落到外部编辑器）：36KB 的报告要交给客户/回贴上游，得自己翻文件找
@@ -2176,6 +2196,131 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
     expect('指令区：按钮为横向 flex 换行（竖排会撑高卡片）', /display: 'flex', flexWrap: 'wrap', gap: 8/.test(ascSrc))
     expect('指令区：卡片内不再逐卡复读提示文案', !/['"]这一单结束了/.test(ascSrc) && !/['"]这单已闭环\.要更正/.test(ascSrc))
     expect('指令区：展开的命令块只有一处（点谁显示谁）', (ascSrc.match(/openedCmd \? React\.createElement/g) || []).length === 1)
+    // 沉淀区同一条纪律：多候选时也只有一个展开位（铺一屏命令等于没折叠）
+    expect('沉淀区：展开的命令行同样只有一处（多候选也点谁显示谁）',
+      (ascSrc.match(/sedCmdText \? React\.createElement/g) || []).length === 1)
+  }
+
+  // —— 长输入不把卡片撑爆（2026-09 重做）：轨迹默认只铺前 8 步 + 列表自带渲染上限 + 证据切片 ——
+  // 为什么单列这一条：实测最大的 trace 32 事件 / 22KB、单步 output 上限 3000 字，全铺开是一屏
+  // 读不完的过程记录（"打开慢"其实是"读不动"）；而 evidence.inline 此前**没有上限**——一次 issue
+  // 粘贴就能塞进几万字。两处都要有上限，且**截断必须说出来**（不静默截断是本仓库的既有纪律：
+  // 报告区超限时说"还有 N 块未渲染"）。
+  {
+    const hostSrc = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+    expect('host：证据原文有渲染上限（与 output/reason 同口径 3000 字）',
+      /const INLINE_MAX = 3000/.test(hostSrc))
+    // 关键的一半：切片之外**必须给出原文长度**。徽标读的是它——只说 3000 会把 4 万字的原文说小，
+    // 而徽标正是读者决定"要不要点开看"的依据。
+    expect('host：切片同时给出原文长度（inlineChars），两种证据写法都要给',
+      (hostSrc.match(/inlineChars = /g) || []).length === 2)
+    expect('client：证据徽标读原文长度而不是被切片后的长度',
+      /\(ev\.inlineChars \|\| ev\.inline\.length\)/.test(ascSrc))
+    expect('client：原文被截断时如实说（不静默截断）',
+      /此处显示前 ' \+ ev\.inline\.length \+ ' 字'/.test(ascSrc))
+    expect('client：轨迹默认只铺前 8 步',
+      /const STEP_PREVIEW = 8/.test(ascSrc) && /showAllSteps \? shown : shown\.slice\(0, STEP_PREVIEW\)/.test(ascSrc))
+    expect('client：展开/收起是一处开关（不是两个各自为政的按钮）',
+      /'展开剩余 ' \+ moreSteps \+ ' 步'/.test(ascSrc) && /'收起，只看前 ' \+ STEP_PREVIEW \+ ' 步'/.test(ascSrc))
+    expect('client：轨迹列表自带渲染上限（与报告区同手法）', /maxHeight: 620, overflowY: 'auto'/.test(ascSrc))
+    // 折叠不能把"还有下一步"画成终点：竖轨连的是下一步，后面还有没铺开的步时最后一条可见步也要留轨
+    expect('client：折叠时竖轨留到边界（不把折叠点画成轨迹终点）',
+      /const last = i === visible\.length - 1 && moreSteps === 0/.test(ascSrc))
+  }
+
+  // —— 关联面：这一步用到/查到了什么外部东西（2026-09-17）——
+  // 为什么单列：这些字段（ref_ids/outcome/note/case/candidates/sources/tool_calls）**trace 里一直在写**，
+  // 而 host 的 traceDetail 只提 7 个字段，全被丢掉——于是"这单关联了哪些 case / 哪些 reference /
+  // 查了哪些外部资料"只能去翻 YAML。判据分两半：host 提得出来（真跑解析器）+ client 画得出来。
+  {
+    const hostSrc = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+    expect('host：关联面字段都在 traceDetail 的映射里',
+      /caseId: eventStr\(/.test(hostSrc) && /candidates: eventList\(/.test(hostSrc)
+      && /refs: eventList\(/.test(hostSrc) && /purpose: eventStr\(/.test(hostSrc)
+      && /outcome: eventStr\(/.test(hostSrc) && /note: eventStr\(/.test(hostSrc)
+      && /toolCalls: eventList\(/.test(hostSrc))
+    // schema 漂移：旧 trace 写单数 `ref_id`，新 trace 写数组 `ref_ids`——只吃一种，最丰富的那份读不出来
+    expect('host：先验引用两种写法都吃（ref_id 单数 / ref_ids 数组）',
+      /t\.ref_ids !== undefined \? t\.ref_ids : t\.ref_id/.test(hostSrc))
+    // 外部链接有两种位置：user 事件在 evidence.sources，agent 事件在顶层 sources。
+    // 只吃前者等于 **agent 查到的资料一条都看不到**（实测：gh issue view / web_fetch 走后者）。
+    expect('host：外部链接两种位置都吃（顶层 sources + evidence.sources）且去重',
+      /const top = eventList\(t && t\.sources\)/.test(hostSrc) && /ev\.sources\) \? ev\.sources : \[\]/.test(hostSrc)
+      && /a\.indexOf\(u\) === k/.test(hostSrc))
+    // 真跑一遍解析器 + 提取逻辑（不复制逻辑：直接抽 host 的函数体）
+    {
+      const from = hostSrc.indexOf('function eventList(')
+      const to = hostSrc.indexOf('async function traceDetail(')
+      expect('host：事件字段提取器可抽出（eventList → traceDetail 区块存在）', from > 0 && to > from)
+      const m = new Function(hostSrc.slice(from, to)
+        + '\nreturn { eventList: eventList, eventStr: eventStr };')()
+      expect('eventList：数组原样、单值成单元素、空值给空数组',
+        JSON.stringify(m.eventList(['a', 'b'])) === '["a","b"]' && JSON.stringify(m.eventList('x')) === '["x"]'
+        && m.eventList(null).length === 0 && m.eventList('').length === 0 && m.eventList(undefined).length === 0)
+      expect('eventList：行内写法（`[a, b]` 字符串）也展开',
+        JSON.stringify(m.eventList('[a, b]')) === '["a","b"]'
+        && JSON.stringify(m.eventList('["a", "b"]')) === '["a","b"]')
+      expect('eventStr：空值给 null（不是空串——空串会让"没有"与"写了空"同形）',
+        m.eventStr('') === null && m.eventStr(null) === null && m.eventStr('x') === 'x')
+    }
+    // client 渲染：四类节点 + 三态徽标 + 甄别理由
+    expect('client：先验三态徽标**只挂参考层步骤**（feedback 的 outcome 是回报结果，挂成命中会读反）',
+      /const refOutcome = \(st\.action === 'reference_lookup' && st\.outcome\) \? REF_OUTCOME\[st\.outcome\] : null/.test(ascSrc))
+    expect('client：三态词表给中文名（命中 / 未命中 / 未查）',
+      /hit: \{ label: '命中'/.test(ascSrc) && /miss: \{ label: '未命中'/.test(ascSrc) && /skipped: \{ label: '未查'/.test(ascSrc))
+    expect('client：四类节点各一行（case / 候选 / 先验 / 资料）',
+      /assocRow\('case', 'case'/.test(ascSrc) && /assocRow\('cand', '候选'/.test(ascSrc)
+      && /assocRow\('refs', '先验'/.test(ascSrc) && /assocRow\('src', '资料'/.test(ascSrc))
+    // "甄别"是全块最值钱的一行：它把"命中"与"有用"分开（实测例：命中但判为不同族）
+    expect('client：甄别理由单独成行（区分"命中"与"有用"）', /'甄别'/.test(ascSrc) && /st\.note/.test(ascSrc))
+    expect('client：消费点给人读名（签名触发 / 修复依据 …）而不是原词',
+      /const PURPOSE_LABELS = \{/.test(ascSrc) && /signature: '签名触发'/.test(ascSrc))
+    // 可点性必须诚实：能点的才画成可点（边框 + 品牌色），不可点的是灰底只读 chip
+    expect('client：外部链接可点（走同一条打开通路）', /onClick: \(\) => openFile\(u\)/.test(ascSrc))
+    expect('client：链接标签是"域名 + 末段"（全 URL 在 title，三四个就把一行撑爆）',
+      /function shortUrl\(u\)/.test(ascSrc) && /seg\[0\] \+ '\/…\/' \+ seg\[seg\.length - 1\]/.test(ascSrc))
+    // 徽标**用行的名字、不发明伞形词**：曾叫「关联 N」「外部 N」，两个都含糊——
+    // "关联"没说清关联什么；"外部"更错（先验词条就在库里）。所以只给候选/资料两个计数，
+    // 参考层步骤已由「参考层 + 三态」覆盖，不重复给。
+    expect('client：徽标用行的名字（候选 N / 资料 N），不用「关联/外部」这类伞形词',
+      /'候选 ' \+ st\.candidates\.length/.test(ascSrc) && /'资料 ' \+ st\.sources\.length/.test(ascSrc)
+      && !/'关联 ' \+/.test(ascSrc) && !/外部条数/.test(ascSrc))
+  }
+
+  // —— 打开通路：外部 URL 与仓库内文件走同一条，但 URL **不能拼 cwd** ——
+  // 实测风险：openEvidence 原先无条件 `cwd + '/' + path`，把 https://… 拼成本地路径去找文件——
+  // 表现为"点了链接没反应"。所以先分流再各自校验；仓库内相对路径的守卫（拒绝对路径与 ..）保持。
+  {
+    const hostSrc = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+    const regs = {}
+    const seen = []
+    const shell = {
+      resolve: (x) => x,
+      run: async (spec) => {
+        seen.push(String(spec.command))
+        return { exitCode: 0, timedOut: false, aborted: false, stdout: { text: '' }, stderr: { text: '' } }
+      },
+    }
+    const ctx = { get: (n) => n === 'fs' ? undefined : n === 'shell' ? shell : n === 'sessions' ? { get: () => ({ header: { cwd: '/repo' } }), list: () => [{ header: { cwd: '/repo' } }] } : undefined }
+    const harness = { handle: (name, fn) => { regs[name] = fn; return () => {} }, defineTool: (o) => o, registerTool: () => () => {} }
+    new Function('harness', 'console', hostSrc)(harness, { error: () => {}, log: () => {} }).apply(ctx)
+    const U = 'https://github.com/vllm-project/vllm-ascend/issues/4914'
+    // isTab: 每种方言试一次后成功即返回，所以只跑第一条
+    seen.length = 0
+    const rUrl = await regs['ascend-open-evidence']({ sessionId: 's', path: U })
+    expect('打开外部链接：不拼 cwd（把 URL 当本地路径就永远点不开）',
+      rUrl && rUrl.opened === true && seen.length === 1 && seen[0].indexOf(U) >= 0 && seen[0].indexOf('/repo/https') < 0,
+      JSON.stringify(seen))
+    seen.length = 0
+    const rFile = await regs['ascend-open-evidence']({ sessionId: 's', path: 'traces/evidence/x.log' })
+    expect('打开仓库内文件：仍按 cwd 拼相对路径（原有行为不变）',
+      rFile && rFile.opened === true && seen[0].indexOf('/repo/traces/evidence/x.log') >= 0, JSON.stringify(seen))
+    seen.length = 0
+    const rAbs = await regs['ascend-open-evidence']({ sessionId: 's', path: '/etc/passwd' })
+    expect('打开仓库外绝对路径：仍然拒绝（URL 分流没有把这道守卫放开）',
+      rAbs && rAbs.opened === false && seen.length === 0, JSON.stringify({ r: rAbs, seen: seen }))
+    const rDot = await regs['ascend-open-evidence']({ sessionId: 's', path: '../../etc/passwd' })
+    expect('打开 .. 路径：仍然拒绝', rDot && rDot.opened === false && seen.length === 0, JSON.stringify(rDot))
   }
 
   // —— 人读定位报告与沉淀候选的入口（diagnose 步骤 6 产出）——
@@ -2233,7 +2378,8 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       /'traces\/' \+ s\.reportFile/.test(ascSrc) && /打开报告/.test(ascSrc))
     expect('client 说明入口是"按同名规则找到"的（trace 未记报告名时不许闷着）',
       /s\.reportSource === 'name'/.test(ascSrc) && /按同名规则找到/.test(ascSrc))
-    expect('client 显示待沉淀条数', /待沉淀 ' \+ s\.sedimentCandidates/.test(ascSrc))
+    expect('client 显示沉淀建议条数（措辞是"建议"不是"待沉淀"——它不是债务）',
+      /沉淀建议 ' \+ s\.sedimentCandidates/.test(ascSrc))
     expect('面板不写入报告内容（只读入口）', !/ascend-write-report/.test(ascSrc) && !/ascend-write-report/.test(hostSrc))
 
     // 渲染层实测（收起态即可见）：三种卡片各一张——占位串单、真 case 单、报告靠同名规则找到的单
