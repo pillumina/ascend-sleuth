@@ -69,6 +69,69 @@ def pool_path(root, arg):
     return p
 
 
+# ---------------------------------------------------------------- 池派生（从跟踪进仓的 S2 校准集）
+# 为什么需要它：池原本是"手工建、放本地"的（.s2-replay/ 是 gitignore 运行件），于是出现
+# 一种最尴尬的状态——**门控规则在跑、判据层却报"数据源缺失"，"已达成"那套读数在干净克隆上
+# 无法复核**（实测：声明里的池文件、stats、影响账本在检出里全都不存在，且与盘上的 result 零交集）。
+# 修法不是把本地件塞进仓，而是让池**可从已跟踪的数据机械重建**：S2 校准集（eval/s2/*.yaml）
+# 本身带 issue/expected.namespace/category/fix_commit，正是池需要的字段。一条命令重建池 →
+# `--stats` 出分 → `--gate` 可用；且重建是确定性的，谁都能复核。
+S2_CALIBRATION_DEFAULT = "eval/s2/vllm-ascend.yaml"
+
+
+def build_pool(root, source, name, split, only_scored, out):
+    src = pool_path(root, source)
+    if not src.exists():
+        print(f"eval_arena: 源校准集不存在：{src}", file=sys.stderr)
+        return 2
+    doc = load(src) or {}
+    cal = doc.get("calibration") or doc.get("issues") or []
+    if not isinstance(cal, list) or not cal:
+        print(f"eval_arena: 源文件里没有 calibration/issues 列表：{src}", file=sys.stderr)
+        return 2
+    issues, from_test = [], 0
+    for c in cal:
+        if not isinstance(c, dict):
+            continue
+        cid = c.get("issue") or c.get("id")
+        if cid is None:
+            continue
+        csplit = str(c.get("split") or "selection")
+        if split != "all" and csplit != split:
+            continue
+        exp = c.get("expected") or {}
+        is_test = csplit == "test"
+        from_test += int(is_test)
+        if only_scored and not (root / S2_RESULT_REL.format(cid)).exists():
+            continue
+        issues.append({
+            "id": str(cid),
+            "expected_ns": exp.get("namespace") or "",
+            "category": exp.get("category") or "",
+            "fix_ref": exp.get("fix_commit") or "",
+            "held_out": is_test,      # 终判集：**不参与 gate 决策**（设计纪律）
+        })
+    if not issues:
+        print(f"eval_arena: 按 split={split} 过滤后没有条目（源 {len(cal)} 条）", file=sys.stderr)
+        return 1
+    pool = {"name": name, "split": split, "source": str(src.relative_to(root)) if src.is_relative_to(root) else str(src),
+            "_comment": "由 eval_arena.py --build-pool 从已跟踪的 S2 校准集派生（确定性，可复核）。"
+                        "held_out=true 的条目只用于终判，不参与 gate 决策。",
+            "issues": issues}
+    out_p = pool_path(root, out)
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+    out_p.write_text(yaml.safe_dump(pool, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    scored = sum(1 for it in issues if (root / S2_RESULT_REL.format(it["id"])).exists())
+    print(f"池已生成：{out_p}")
+    print(f"  条目 {len(issues)}（split={split}）· 其中已有 replay result 的 {scored} 条"
+          + (f" · 源里被过滤掉的 test 条目 {from_test}" if from_test else ""))
+    if scored == 0:
+        print("  ⚠ 没有任何 result：先跑 replay 产出 .s2-replay/<issue>.result.yaml，再 --stats")
+    else:
+        print(f"  下一步：python3 scripts/eval_arena.py --stats {out_p}")
+    return 0
+
+
 def file_hash(path):
     """池内容哈希 = 量尺的身份。换量尺（重新选样）→ 哈希变 → 同池复用计数归零。"""
     try:
@@ -455,6 +518,8 @@ def main():
     g.add_argument("--stats", metavar="YAML", help="聚合池内 result → stats")
     g.add_argument("--rc-check", metavar="YAML", help="结论一致离线对照（agent rc vs 标注 resolution）")
     g.add_argument("--gate", action="store_true", help="baseline vs candidate 门控判定（配对 + 复用折减）")
+    g.add_argument("--build-pool", dest="build_pool", action="store_true",
+                   help="从已跟踪的 S2 校准集派生 arena 池（确定性、可复核）")
     g.add_argument("--self-test", dest="self_test", action="store_true",
                    help="复现判词（合成样本；CI 跑它）")
     ap.add_argument("--baseline", default="", help="--gate: baseline stats yaml")
@@ -464,9 +529,20 @@ def main():
     ap.add_argument("--note", default="", help="--gate: 备注")
     ap.add_argument("--alpha", type=float, default=ALPHA_DEFAULT,
                     help=f"--gate: 每个接受决定的假接受预算（默认 {ALPHA_DEFAULT}）")
+    ap.add_argument("--source", default=S2_CALIBRATION_DEFAULT,
+                    help="--build-pool: 源校准集（默认 eval/s2/vllm-ascend.yaml）")
+    ap.add_argument("--name", default="val", help="--build-pool: 池名（文件名 pool-<name>.yaml）")
+    ap.add_argument("--split", default="selection",
+                    help="--build-pool: 只取哪个 split（selection|test|all，默认 selection——test 不参与 gate）")
+    ap.add_argument("--only-scored", action="store_true",
+                    help="--build-pool: 只收已有 replay result 的条目")
+    ap.add_argument("--out", default="", help="--build-pool: 输出路径（默认 .s2-replay/arena/pool-<name>.yaml）")
     ap.add_argument("--root", default=".", help="仓库根目录（默认当前目录）")
     args = ap.parse_args()
     root = Path(args.root).resolve()
+    if args.build_pool:
+        out = args.out or f"{ARENA_SUBDIR}/pool-{args.name}.yaml"
+        return build_pool(root, args.source, args.name, args.split, args.only_scored, out)
     if args.pool:
         return cmd_pool(root, pool_path(root, args.pool))
     if args.stats:

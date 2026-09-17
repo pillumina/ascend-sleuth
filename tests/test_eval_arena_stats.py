@@ -87,3 +87,48 @@ class GateArgValidationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ArenaPoolBuildTest(unittest.TestCase):
+    """池可从已跟踪的 S2 校准集机械重建——这是"门控数据不可复核"的结构性修法。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        d = self.root / "eval" / "s2"
+        d.mkdir(parents=True)
+        (d / "pool.yaml").write_text("""\
+calibration:
+- issue: 111
+  split: selection
+  expected: {namespace: inference/vllm-ascend, category: interrupt, fix_commit: "PR #1"}
+- issue: 222
+  split: test
+  expected: {namespace: training/verl, category: precision, fix_commit: "PR #2"}
+- issue: 333
+  split: selection
+  expected: {namespace: common, category: performance, fix_commit: ""}
+""", encoding="utf-8")
+
+    def test_builds_selection_pool_and_excludes_test(self):
+        out = self.root / ".s2-replay" / "arena" / "pool-val.yaml"
+        rc = ea.build_pool(self.root, "eval/s2/pool.yaml", "val", "selection", False, str(out))
+        self.assertEqual(rc, 0)
+        pool = yaml.safe_load(out.read_text(encoding="utf-8"))
+        ids = [it["id"] for it in pool["issues"]]
+        self.assertEqual(ids, ["111", "333"], "test 条目不得进 gate 池")
+        self.assertEqual(pool["issues"][0]["expected_ns"], "inference/vllm-ascend")
+        self.assertEqual(pool["issues"][0]["fix_ref"], "PR #1")
+
+    def test_only_scored_filters_unscored(self):
+        (self.root / ".s2-replay").mkdir(parents=True, exist_ok=True)
+        (self.root / ".s2-replay" / "111.result.yaml").write_text("namespace: x\n", encoding="utf-8")
+        out = self.root / ".s2-replay" / "arena" / "pool-s.yaml"
+        self.assertEqual(ea.build_pool(self.root, "eval/s2/pool.yaml", "s", "selection", True, str(out)), 0)
+        pool = yaml.safe_load(out.read_text(encoding="utf-8"))
+        self.assertEqual([it["id"] for it in pool["issues"]], ["111"])
+
+    def test_missing_source_exits_2(self):
+        self.assertEqual(ea.build_pool(self.root, "eval/s2/nope.yaml", "x", "selection", False,
+                                       str(self.root / "o.yaml")), 2)

@@ -86,8 +86,9 @@ description: >
    ——同 trajectory/同 target 已有在池卡 → 合并不新建；
    同时查本卡要改的组件（skill 步骤 / triage 分支 / script）在历史卡里的结局：
    `--list` 定位同组件卡 → 读其 decisions——该组件被改过 / 回滚过 / 有 rejected 结论 =
-   该方向已试过 → 不重复方案（改提新方向，或记信号不产卡）；E6 落地后改用
-   `scripts/ev_proposal.py --impact` 聚合视图（组件×尝试×结局）一次查全；
+   该方向已试过 → 不重复方案（改提新方向，或记信号不产卡）；一次查全走
+   `python3 scripts/ev_proposal.py --impact [组件关键词]`（组件×尝试×结局；**有结局分歧的组件会被标出**
+   ——只有那些组件的先例能告诉你"别重试"，其余是"改完又改"的累积）；
 3. 产骨架：`python3 scripts/ev_proposal.py --new` → 填字段（layer / title /
    source_signals 带 trajectory / hypothesis / predicted_effect / validation /
    risk / principle_refs），trajectory 必须指到本轮执行出处（产出文件 id / replay

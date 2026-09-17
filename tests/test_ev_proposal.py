@@ -137,3 +137,40 @@ class WaterlineTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ImpactViewTest(unittest.TestCase):
+    """同组件先例视图：按组件聚合尝试与结局（有否决/换方向的组件才让"先例咨询"有信息量）。"""
+
+    def _card(self, cid, status, component):
+        return (CARD.replace("EV-2026-900", cid)
+                    .replace("layer: L2", f"layer: L2\ntarget_component: {component}")
+                    .replace("status: validated", f"status: {status}"))
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        d = self.root / "proposals" / "ideas"
+        d.mkdir(parents=True)
+        (d / "EV-2026-901.yaml").write_text(self._card("EV-2026-901", "validated", "scripts/same.py"),
+                                            encoding="utf-8")
+        (d / "EV-2026-902.yaml").write_text(self._card("EV-2026-902", "rejected", "scripts/same.py"),
+                                            encoding="utf-8")
+        (d / "EV-2026-903.yaml").write_text(self._card("EV-2026-903", "validated", "scripts/other.py"),
+                                            encoding="utf-8")
+
+    def test_aggregates_by_target_component_and_flags_divergence(self):
+        import io
+        import contextlib
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            rc = ep.impact(self.root)
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("scripts/same.py：2 次", out)
+        self.assertIn("有结局分歧", out)
+        self.assertIn("1 个有结局分歧", out)
+
+    def test_unknown_component_exits_2(self):
+        self.assertEqual(ep.impact(self.root, component="不存在的组件"), 2)

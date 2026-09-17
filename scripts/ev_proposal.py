@@ -227,6 +227,48 @@ def waterline(root: Path, limit: int, as_json: bool = False):
     return 1 if over else 0
 
 
+def impact(root: Path, component: str = "", min_attempts: int = 2):
+    """同组件先例视图：按组件聚合历史尝试 × 验证方式 × 结局（同组件先例咨询的聚合形态）。
+
+    为什么要有它：产卡前那句"别重复被拒方案"此前只是一句纪律——卡 schema 里没有
+    `target_component` 字段（实测 0 张有），于是没有任何地方能按组件查历史。本视图用
+    **确定性派生的改动落点**（卡文本里指到的仓库路径，来自面板同源归因）当组件键，
+    `target_component` 存在时优先用它。有了它，"这个组件改过几次、结局如何"是一条命令。
+    """
+    import ev_board_data as EBD          # 同目录，复用归因口径（避免双源漂移）
+    ideas = EBD.collect_ideas(root)
+    rows = {}
+    for c in ideas:
+        key = str(c.get("target_component") or (c.get("surface_basis") or {}).get("path") or "（未归因）")
+        r = rows.setdefault(key, {"attempts": 0, "by_status": {}, "cards": []})
+        r["attempts"] += 1
+        st = str(c.get("status"))
+        r["by_status"][st] = r["by_status"].get(st, 0) + 1
+        r["cards"].append((c.get("id"), st, str(c.get("created_at"))[:10], str(c.get("title"))[:52]))
+
+    if component:
+        picked = {k: v for k, v in rows.items() if component in k}
+        if not picked:
+            print(f"ev_proposal: 没有组件匹配「{component}」——用不带参数的 --impact 看全表", file=sys.stderr)
+            return 2
+    else:
+        picked = {k: v for k, v in rows.items() if v["attempts"] >= min_attempts}
+
+    print(f"同组件先例视图（共 {len(rows)} 个组件 / {len(ideas)} 张卡；下表列尝试 ≥{min_attempts} 次的）\n")
+    for key, r in sorted(picked.items(), key=lambda kv: -kv[1]["attempts"]):
+        outs = "、".join(f"{k}×{v}" for k, v in sorted(r["by_status"].items()))
+        flag = "  ← 有结局分歧（先例可查）" if (r["by_status"].get("rejected") or r["by_status"].get("superseded")) else ""
+        print(f"  {key}：{r['attempts']} 次（{outs}）{flag}")
+        if component:
+            for cid, st, day, title in sorted(r["cards"]):
+                print(f"      {cid} {day} {st:<12} {title}")
+    multi = [k for k, v in rows.items() if v["attempts"] >= 2]
+    divergent = [k for k in multi if rows[k]["by_status"].get("rejected") or rows[k]["by_status"].get("superseded")]
+    print(f"\n  汇总：{len(multi)} 个组件被 ≥2 张卡改过，其中 {len(divergent)} 个有结局分歧"
+          "（只有这些组件的先例能告诉你「别重试」，其余是「改完又改」的累积）")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser(description="self-evolve 产卡辅助")
     ap.add_argument("--next", action="store_true", help="打印下一个卡号")
@@ -237,6 +279,8 @@ def main():
     ap.add_argument("--all-pending", action="store_true",
                     help="配合 --mark-merged：选全部「已验证且无该 PR 指针」的卡")
     ap.add_argument("--dry-run", action="store_true", help="配合 --mark-merged：只打印不落盘")
+    ap.add_argument("--impact", metavar="组件", nargs="?", const="", default=None,
+                    help="同组件先例视图（给组件名则只看它，不给则列尝试≥2 次的全部）")
     ap.add_argument("--waterline", action="store_true", help="打印候选水位（超限退 1）")
     ap.add_argument("--limit", type=int, default=WATERLINE_DEFAULT, help="配合 --waterline：上限")
     ap.add_argument("--json", action="store_true", help="配合 --waterline：机器可读")
@@ -258,6 +302,8 @@ def main():
         list_cards(root)
     elif args.mark_merged:
         sys.exit(mark_merged(root, args.mark_merged, args.card, args.all_pending, args.dry_run))
+    elif args.impact is not None:
+        sys.exit(impact(root, args.impact))
     elif args.waterline:
         sys.exit(waterline(root, args.limit, args.json))
     else:

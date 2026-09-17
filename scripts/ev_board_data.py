@@ -453,6 +453,10 @@ def collect_ideas(root):
             "id": d.get("id"),
             "title": d.get("title"),
             "layer": d.get("layer"),
+            # 卡契约里要求的目标组件（execution.md 定为必填）。历史上 0 张卡有它，
+            # 于是"同组件先例咨询"没有可查的键——本字段透出后，--impact 与面板都能按它聚合；
+            # 缺失时回退到 surface_basis.path（卡文本指到的落点），仍然可查。
+            "target_component": d.get("target_component"),
             "status": d.get("status"),
             "authorization": d.get("authorization"),
             "dimension": d.get("dimension"),

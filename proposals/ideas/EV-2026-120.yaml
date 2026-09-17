@@ -1,0 +1,57 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-120
+layer: L2
+title: 同组件先例视图落地——「别重复被拒方案」从纪律变成一条命令
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: mechanism_gap
+    evidence: "审计实测：卡 schema 的 target_component 在契约里是必填（execution.md），但 117 张卡 0 张有它；于是产卡前那句「读同组件历史结局、不重复被拒方案」没有任何可查的键，`--impact` 也不存在——而同组件重复确已发生：89 个组件里 20 个被 ≥2 张卡改过（32 张卡），最重的 skills/diagnose/SKILL.md 被改 6 次"
+    trajectory:
+      - "审计实测：--impact 不存在（unrecognized arguments）；target_component 0/117"
+      - "审计实测：按 surface_basis.path 聚合 → 20 个组件尝试 ≥2 次"
+hypothesis: 用确定性派生的改动落点当组件键（target_component 优先、缺失回退），把"这个组件改过几次、结局如何"变成一条命令；有否决/换方向的组件会被标出——只有那些组件的先例能说"别重试"。
+predicted_effect:
+  metric: 同组件先例的可查性
+  from: "无 --impact；target_component 0/117；先例咨询只能靠人工翻卡"
+  to: "一条命令列组件×尝试×结局并标出结局分歧；target_component 透出给聚合与面板"
+  measure:
+    command: "python3 -m unittest tests.test_ev_proposal.ImpactViewTest"
+    expect_exit: 0
+validation:
+  method: metrics_compare
+  baseline: "改前：ev_proposal.py 无 --impact；ev_board_data 不透出 target_component"
+  success_criteria: |
+    ① --impact 输出组件×尝试×结局，≥2 次的组件与「有结局分歧」被标出；
+    ② 组件键优先 target_component、缺省回退卡文本落点；③ ev_board_data 透出 target_component；
+    ④ 测试覆盖按组件聚合与未知组件退 2；⑤ 两个 skill 的产卡步骤改为调用它。
+  rollback: "单文件 revert（ev_proposal.py 的 impact + ev_board_data 一个字段 + 两处 skill 措辞）；无数据副作用（原则七）"
+gate:
+  condition: "闸门已满足（首个 L2 rejected 簇：同组件上的 validated+rejected 并存）"
+risk: low
+principle_refs: [8, 9, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：同组件先例视图落地（--impact）"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：ev_proposal.py 增 --impact（组件键优先 target_component、缺省回退 surface_basis.path）；ev_board_data 透出 target_component；evolve-check / self-evolve 的先例咨询步骤改为调用它；roadmap 与 pipeline 的蓝图行同步为已落地；新增 2 项测试"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "实测：--impact 输出「89 个组件 / 117 张卡、20 个被 ≥2 张卡改过、其中 1 个有结局分歧」；单组件查询（候选排序脚本）列出 validated 与 rejected 各一张并标注「先例可查」；单测 2 项通过"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）。残余如实标注：组件键目前以「改动落点」代理（target_component 全库仍为 0），因此同一逻辑组件的多次尝试可能落在不同文件上；要让键真正稳定，需要在卡 schema 层面把该字段填起来（下一步）"
