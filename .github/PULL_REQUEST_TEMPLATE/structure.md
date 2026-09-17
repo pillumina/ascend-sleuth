@@ -3,6 +3,8 @@
   about: 修改路由表、拆分/新建 namespace、调整目录结构
   labels: [kb/high-risk]（需 gh pr create --label kb/high-risk 显式打）
 PR body 正文从首个 "## " 区块开始。
+  首屏一个视图的写法见 methodology.md 的「变更内容」一节；本模板的证据与合入风险由
+  「依据」与「迁移完整性检查单」两节承担。
 -->
 
 > 路由是共享资产：变更影响两个团队所有诊断的命中率。需双签；目录迁移必须同一 PR 完成全部关联更新（roadmap A2）。

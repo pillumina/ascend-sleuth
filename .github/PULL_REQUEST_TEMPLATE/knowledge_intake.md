@@ -3,6 +3,8 @@
   about: 新知识经 to-postmortem 沉淀、groom 预分诊后的升格 PR
   labels: []（按需 gh pr create --label）
 PR body 正文从首个 "## " 区块开始。
+  首屏一个视图的写法见 methodology.md 的「变更内容」一节；本模板的证据与合入风险由
+  「完整性」与「高风险检查」两节承担。
 -->
 
 ## 预分诊结论（groom 周批审产出，机器可填）
