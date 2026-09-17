@@ -26,7 +26,7 @@ layers:
     when: 你要判断某个设计/改动是否合规，或要挑战一条既有规则时
   - id: mechanism
     title: 演进机制（改机制本身才读；日常不必读）
-    when: 你要改演进/评测/编排机制本身时——日常只读 docs/evolution.md 一篇，论证层在 docs/mechanism/
+    when: 你要改演进/评测/编排机制本身时——日常只读 docs/rsi-mechanism.md 一篇，论证层在 docs/mechanism/
   - id: guide
     title: 操作指南（用到那个环节时才读）
     when: 你要装环境（Windows skills 使能）、跑评测、看指标、走 git 门控、或做 issue 导入时
@@ -53,9 +53,12 @@ docs:
   - path: docs/writing-norms.md
     layer: spec
     purpose: 人读/审阅文本的行文规范（唯一权威）：共用条目、必须保留的原值、各面的共用与定制判定、哪些能硬化
+  - path: docs/rsi-mechanism.md
+    layer: mechanism
+    purpose: "**自演进元机制唯一技术入口**：主线流程图、名词对照、人参与点与可退出条件、外部依据、周度 runbook"
   - path: docs/evolution.md
     layer: mechanism
-    purpose: "**演进机制入口**：机制地图、权威归属、周度 runbook——日常只读这一篇"
+    purpose: "旧入口（保留以免旧链接失效）：内容已并入 rsi-mechanism.md，本文只是一页指路"
   - path: docs/mechanism/pipeline.md
     layer: mechanism
     purpose: 三层闭环（知识 / 流程 / 编排）与 proposal 状态机、卡 schema

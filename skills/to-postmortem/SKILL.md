@@ -125,7 +125,7 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 
 **写草稿时的行文**：postmortem 与 case 词条都是给人读、给人审的文本，按 `docs/writing-norms.md` 写（可选论证层，不影响本 skill 执行）；本面的定制条款见该文件 §3 的「case / reference 词条」与「postmortem」两行——症状句要能直接当 grep 判据，`root_cause` / `fix` 只写结论与依据，时间线只放可观察事实。
 
-**结算与提 PR 的粒度（别每次闭环都开 PR）**：诊断现场回报 fix 结果后，trace 里记 `feedback` 事件即可（`feedback.outcome: pending` → 现场确认后置 `resolved`）。**confidence 的结算与入库按周批走一次**——groom 的结算步骤跑 `settle_trace_feedback.py`，一个 knowledge_modification PR 覆盖当期全部变更。本地连着定位多个问题时，不要每闭环一个就提一个 PR：`hits` 只影响候选排序（排序对时效不敏感），而结算游标是 gitignored 的共享运行时件、不进 git。依据见 `docs/evolution.md` 的写入点表。
+**结算与提 PR 的粒度（别每次闭环都开 PR）**：诊断现场回报 fix 结果后，trace 里记 `feedback` 事件即可（`feedback.outcome: pending` → 现场确认后置 `resolved`）。**confidence 的结算与入库按周批走一次**——groom 的结算步骤跑 `settle_trace_feedback.py`，一个 knowledge_modification PR 覆盖当期全部变更。本地连着定位多个问题时，不要每闭环一个就提一个 PR：`hits` 只影响候选排序（排序对时效不敏感），而结算游标是 gitignored 的共享运行时件、不进 git。理由是三条写入点的**git 归属刻意不同**：现场记录含客户信息故不进 git，置信度是学习环的持久知识故必须入库，指标时序是周节奏的人复核汇总故不等每次反馈。
 
 **回写来源 trace 的沉淀状态（诊断闭环）**：若本次沉淀来源是一个诊断 trace（输入提到 `traces/<session_id>.yaml`，或用户从诊断面板"沉淀此案例"触发），产出草稿落 inbox 后**回写该 trace 的 `sedimented.state: submitted`**（动作发生时写，零推断）——诊断面板据此显示"已提交沉淀待审"，不再重复提示沉淀。转正（`knowledge`/`archived`）由用户在面板/对话确认时更新，本 skill 不写。
 
