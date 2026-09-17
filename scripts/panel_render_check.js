@@ -2288,7 +2288,15 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       && /openLabel\(u, shortUrl\(u\)\)/.test(ascSrc) && /openLabel\(f, baseName\(f\)\)/.test(ascSrc)
       && /setOpenErr\(\{ at: f, msg:/.test(ascSrc) && /setOpenDone, \{ at: f, via:/.test(ascSrc))
     expect('client：成功也是反馈（打了浏览器而面板不吭声，读者同样判成"没反应"）',
-      /'已打开'/.test(ascSrc) && /'打不开'/.test(ascSrc))
+      /'已交给浏览器'/.test(ascSrc) && /'打不开'/.test(ascSrc))
+    // 措辞只讲证据支持的那一半：host 只证明了"URL 交给了浏览器"（退出码 0），验证不了浏览器
+    // 有没有到前台。实测（用户报"显示已打开但没打开"）：从 DSH 的 shell 打开时浏览器不到前台——
+    // 本地 http 探针证明 URL 确实被浏览器取走了，而屏幕上什么都没有。所以不许写"已打开"。
+    expect('client：不用"已打开"这种面板验证不了的措辞（只说"已交给浏览器"）',
+      !/'已打开'/.test(ascSrc))
+    // 另一半用「复制链接」兜住：它不依赖浏览器焦点，是这条反馈里真正能兑现"拿到资料"的动作
+    expect('client：反馈里带「复制链接」（不依赖浏览器焦点的兜底）',
+      /'link:' \+ f/.test(ascSrc) && /'复制链接'/.test(ascSrc))
     // 徽标**用行的名字、不发明伞形词**：曾叫「关联 N」「外部 N」，两个都含糊——
     // "关联"没说清关联什么；"外部"更错（先验词条就在库里）。所以只给候选/资料两个计数，
     // 参考层步骤已由「参考层 + 三态」覆盖，不重复给。
@@ -2481,7 +2489,7 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       /Start-Process -FilePath/.test(hostSrc) && /'open ' \+ q/.test(hostSrc)
       && /'xdg-open ' \+ q/.test(hostSrc) && /explorer\.exe ' \+ q/.test(hostSrc))
     expect('host 打开结果按 exit code 判定并回报 via', /via: a\.via/.test(hostSrc) && /okCodes/.test(hostSrc))
-    expect('client 打开成功有反馈（已打开）', /'已打开'/.test(ascSrc))
+    expect('client 打开成功有反馈（措辞只说"已交给浏览器"）', /'已交给浏览器'/.test(ascSrc))
     expect('client 打开失败显原因', /打开失败（无返回）/.test(ascSrc))
   }
 

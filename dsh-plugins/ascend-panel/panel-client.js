@@ -596,14 +596,27 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       function openLabel(f, fallback) {
         if (opening === f) return '打开中…'
         if (openErr && openErr.at === f) return '打不开'
-        if (openDone && openDone.at === f) return '已打开'
+        // **不说"已打开"**：host 只证明了"URL 交给了浏览器"（退出码 0），它无法验证浏览器
+        // 是否到前台、是否真显示了那一页。实测：从 DSH 的 shell 打开时浏览器不到前台，
+        // 读者看到的是"面板说打开了、屏幕上什么都没有"。措辞只讲证据支持的那一半，
+        // 另一半用「复制链接」兜住（不依赖浏览器焦点）。
+        if (openDone && openDone.at === f) return '已交给浏览器'
         return fallback
       }
       function openNote(f) {
-        if (openErr && openErr.at === f) return React.createElement('span', { style: { color: T.warn, fontSize: 11.5 } }, openErr.msg)
+        const copyBtn = React.createElement('button', {
+          type: 'button', className: 'sleu-chip', title: f,
+          onClick: () => doCopy(f, 'link:' + f),
+          style: { background: 'transparent', border: '1px solid ' + T.border, borderRadius: 999, padding: '0 8px', fontSize: 11.5, cursor: 'pointer', color: T.brand, fontFamily: 'var(--font-mono)' },
+        }, copied === 'link:' + f ? '已复制' : '复制链接')
+        if (openErr && openErr.at === f) {
+          return React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0 } },
+            React.createElement('span', { style: { color: T.warn, fontSize: 11.5 } }, openErr.msg), copyBtn)
+        }
         if (openDone && openDone.at === f) {
-          return React.createElement('span', { style: { color: T.success, fontSize: 11.5 } },
-            openDone.via ? '已打开（' + openDone.via + '）' : '已打开')
+          return React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+            React.createElement('span', { style: { color: T.success, fontSize: 11.5 } },
+              openDone.via ? '已交给浏览器（' + openDone.via + '）' : '已交给浏览器'), copyBtn)
         }
         return null
       }
