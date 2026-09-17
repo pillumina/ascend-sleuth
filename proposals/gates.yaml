@@ -63,14 +63,14 @@ gates:
     meaning: "终态卡的验证方式来自系统之外（golden 回放 / issue-replay 对照）的比例过低；其余为自定口径的机械测量（metrics_compare）或自审（scan_review）。按本仓库「客观评分源优先」的排序，自证占比过高时趋势读数不可作为效果证据。"
     action: "优先把候选改写为可在 golden 或 S2 上判定的形态。只能自证的卡片，在结论中标注来源，不计入外部验证。"
 
-  - id: signal_dominant
-    dimension: top_signal_share
+  - id: component_repeat_dominant
+    dimension: top_component_share
     op: ">="
     value: 0.25
     min_sample: 20
-    title: 信号来源过度集中
-    meaning: "单一触发信号占全部卡数的比例过高（全部信号均匀分布时每类约占 2%）。集中说明假设空间由一个来源主导，演进在同一处反复做功。"
-    action: "复核该信号的触发条件，判断是确有大量同类问题，还是阈值过松。信号误报率的校准见 orchestration §5.1。"
+    title: 同一组件重复做功
+    meaning: "被改得最多的那个组件，占全部卡的比例达到阈值。判据问的是「演进是否在同一处反复做功」——组件键取卡里填的 target_component，缺省回退到卡文本指到的改动落点（与面板同源归因）。替换说明：本判据原先数的是「单一触发信号占比」，实测该读数不成立——最高信号 process_friction 的 35 张卡散在 27 个组件上（脚本 12 / skill 正文 10 / 文档 7 / CI 2 / 面板 2），它是语义剩桶而不是同一假设空间被主导；信号分布仍作为读数保留在面板，不再当判据。"
+    action: "先看该组件上各次尝试的结局：`python3 scripts/ev_proposal.py --impact <组件>`——有结局分歧（有否决/换向）说明方向已被否过，别重提；全是 adopted 则是同一处在持续打磨，考虑把该组件拆细或改成结构性方案，而不是继续逐次小改。"
 
   - id: pointer_rot
     dimension: dead_ref_count
