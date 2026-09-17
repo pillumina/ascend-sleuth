@@ -60,8 +60,9 @@ STALE_DAYS = 14
 # 编一个批概念只会引入不可核对的数字；滚动窗口人人能自己验算。
 SURFACE_WINDOW_DAYS = 7
 # 外部 ground truth 的验证方式（仓库"客观评分源优先"排序的前两档）：golden 回放与
-# issue-replay 对照，其判据来自系统之外；其余（metrics_compare 自定口径、scan_review 自审）
-# 不算外部证据。判据 evidence_weak 用它算占比。
+# issue-replay 对照，其判据来自系统之外；其余（metrics_compare 可复现命令、scan_review 自审）
+# 不算外部证据。体检器用 external_ground_truth_ratio 出**读数**（原判据"占比下限 1/3"实测不可
+# 达，已替换为 external_verification_stall，见 proposals/gates.yaml 的替换说明）。
 EXTERNAL_METHODS = ("golden_replay", "issue_replay")
 
 PR_RE = re.compile(r"(?:PR|#)\s?#?(\d{2,6})")
@@ -624,7 +625,7 @@ def collect_stats(ideas):
     backlog = [c.get("id") for c in ok
                if c.get("status") == "validated" and not c.get("pr_refs")]
 
-    # ---- 验证证据强度：外部 ground truth 占比（判据 evidence_weak 的分母/分子） ----
+    # ---- 验证证据强度：外部 ground truth 占比（体检器读数，不再是判据的分母/分子） ----
     # 口径来自仓库自己的"客观评分源优先"排序：golden / issue-replay 是**系统之外**的
     # ground truth；metrics_compare 是自定口径的机械测量；scan_review 是自审。
     external = sum(1 for c in ok

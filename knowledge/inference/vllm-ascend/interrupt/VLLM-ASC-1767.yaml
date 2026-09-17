@@ -1,0 +1,139 @@
+# VLLM-ASC-1767 —— 带 guided decoding（结构化输出）的请求打到 AscendScheduler 上时整服务崩溃：
+#   RuntimeError: Invalid request status: WAITING_FOR_FSM
+# 来源：https://github.com/vllm-project/vllm-ascend/issues/1767
+# fix：上游已修——PR #3967「[Core] Restore scheduling logic under default configuration」revert #2894
+#   （取消"默认强制用 AscendScheduler 以关掉 chunked prefill"这一拦截），2025-11-10 合入；
+#   另有 PR #10509 从另一侧对齐自定义 scheduler 与 vLLM 的 skipped_waiting 队列
+# verification: upstream-maintainer-confirmed（维护者在同签名 issue #3979 上给出结论：reproduced
+#   on main，wrong logic in Ascend Scheduler，由 PR #3967 关闭该行为）
+# pre-triage: variant —— 与 VLLM-ASC-8336 共享 WAITING_FOR_FSM 这个 token，但那条是 balance
+#   scheduling patch 引用配套 vLLM 缺失的枚举成员（AttributeError，签名是
+#   `AttributeError: WAITING_FOR_FSM`）；本条是 scheduler 缺 FSM 状态迁移分支（RuntimeError
+#   `Invalid request status:`），两条 primary 正则不互命中
+# 脱敏：模型名/机型/版本号为公开材料原值；未引用账号、内网 IP、客户名
+# 建议命名空间：inference/vllm-ascend/interrupt/
+
+cases:
+  - id: VLLM-ASC-1767
+    title: "带 guided decoding / response_format（结构化输出）的请求打到 AscendScheduler（ascend_scheduler_config.enabled=true 或该版本默认启用）上时整服务崩溃：RuntimeError: Invalid request status: WAITING_FOR_FSM —— scheduler 缺 WAITING_FOR_FSM → WAITING 的状态迁移分支"
+
+    category: interrupt
+    tags: [ascend-scheduler, waiting-for-fsm, guided-decoding, structured-output, response-format, tool-call, engine-dead, chunked-prefill, dp, startup-ok-runtime-crash]
+    platforms: ["A2-910B"]        # 现场：A2 双节点（910B2 x8），DP4 x TP4；同签名 issue 亦见于单机 TP4
+    compat:
+      - framework: vllm-ascend
+        ranges: ["0.11", "0.1"]   # 现场 vLLM Ascend 0.1.dev1+ge4e9ea0（vLLM 0.9.2）；同签名 issue 见于 v0.11.0
+      - framework: vllm
+        ranges: ["0.9", "0.10", "0.11"]
+
+    investigation_quality: high   # 上游源码逐版本核对 + 维护者结论 + 修复 PR，机制链闭合
+    confidence:
+      hits: 0
+      misdiagnoses: 0
+      score: 0.6                  # groom 先验表：upstream-maintainer-confirmed × high
+      last_hit: ""
+
+
+    validation_record:  # S2/外部验证累积（settle_s2_feedback 结算；与 confidence 分开：confidence=现场 resolve S1，validation=内容被外部验证）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 2
+      last_verified: 2026-W38
+    symptoms:
+      - "服务**启动正常**、普通请求也正常；一旦发来带结构化输出约束的请求（response_format / guided_decoding，如 json_object），服务随即整体崩溃——不是该请求失败，是 EngineCore fatal 后 EngineDeadError"
+      - "失败签名：`RuntimeError: Invalid request status: WAITING_FOR_FSM`，抛在 vllm_ascend/core/scheduler.py 的 schedule() 里（现场 :236）"
+      - "伴随 `EngineCore encountered a fatal error` → `EngineDeadError` → APIServer 侧该请求 500；同时 worker 侧报 gloo `Connection closed by peer`（**连带噪声**，不是根因）"
+      - "启动命令里带 `--additional-config '{\"ascend_scheduler_config\":{\"enabled\":true}}'`，或该版本在默认路径上强制启用了 AscendScheduler（历史上为关掉 chunked prefill 而默认启用）"
+      - "同服务在崩溃前处理的 guided_decoding=None 的请求全部正常——『普通请求没事、结构化输出请求一打就崩』是这条最省事的判别特征"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/1767"
+      - "https://github.com/vllm-project/vllm-ascend/issues/3979"
+      - "https://github.com/vllm-project/vllm-ascend/pull/3967"
+      - "https://github.com/vllm-project/vllm-ascend/pull/10509"
+
+    verification:
+      source: upstream-maintainer-confirmed
+      detail: "同签名 issue #3979（2025-12-15 关闭 COMPLETED）上维护者 shen-shanshan 给出结论：「I have reproduced this issue on main branch, and find that this is due to the wrong logic in Ascend Scheduler. Currently, we enabled Ascend Scheduler by default in some cases, but this is wrong, and we will disable this behaviour by this PR #3967.」#3967「[Core] Restore scheduling logic under default configuration」（revert #2894，取消默认强制 AscendScheduler）已于 2025-11-10 合入；#2723（同签名，2025-12-15 关闭 COMPLETED）上同一维护者记为「known issue of v0.11.0, resolved in latest main」。本 issue #1767 自身以'请用最新版本再试'关闭（COMPLETED，无逐条根因确认），故本条的依据是**同签名 issue 的维护者结论 + 已合入修复 PR**，不是 #1767 的逐条确认。"
+
+    quickly_check:
+      primary:
+        command_template: 'grep -aE "Invalid request status: WAITING_FOR_FSM" {{log_path}}'
+        rank_selector: all_failed
+        expected: 'regex:Invalid request status: WAITING_FOR_FSM'
+        note: "抛点在 vllm_ascend/core/scheduler.py 的 schedule()。命中后要区分同 token 的另一条：`AttributeError: WAITING_FOR_FSM`（枚举成员缺失）走 VLLM-ASC-8336，不是本条"
+      fallback:
+        command_template: 'grep -aE "RequestStatus.WAITING_FOR_FSM|EngineDeadError|core/scheduler.py.*Invalid request status" {{log_path}} {{engine_log}}'
+        rank_selector: all_failed
+        expected: 'regex:EngineDeadError|core/scheduler\.py.*Invalid request status'
+        note: "engine 日志只剩级联段（EngineDeadError / gloo Connection closed by peer）时用；命中后必须回查崩溃前那几条请求是否带 response_format / guided_*"
+
+    diagnosis:
+      - step: 1
+        check: "症状判别：服务是**运行期**（收到某类请求后）整体崩溃、而非拉起期失败？且栈里出现 `Invalid request status: WAITING_FOR_FSM`？"
+        expected: "是——属本条面（scheduler 状态机缺分支）；拉起期失败或 507034 走别的条目"
+        fix_on_mismatch: "若报的是 `AttributeError: WAITING_FOR_FSM`（enum.py raise AttributeError）→ 走 VLLM-ASC-8336（balance scheduling patch 引用了配套 vLLM 缺失的枚举成员）"
+        rollback: "无（只读检查）"
+      - step: 2
+        command_template: 'grep -aE "acquire_request|guided_decoding|GuidedDecodingParams|response_format|json_object" {{log_path}}'
+        rank_selector: coordinator
+        expected: 'regex:guided_decoding|response_format|json_object'
+        fix_on_mismatch: "崩溃前没有带 guided_decoding 的请求 → 本条不成立，先核对现场真正触发的那类请求参数（把崩溃前最后几条请求的 params 段拉全）"
+        rollback: "无（只读检查）"
+        note: "关键证据在请求的 SamplingParams 里：`guided_decoding=GuidedDecodingParams(json_object=True, ...)`。普通请求是 `guided_decoding=None`——这正是'普通请求没事'的原因"
+      - step: 3
+        command_template: 'grep -aE "ascend_scheduler_config|ascend-scheduler|AscendScheduler" {{launch_config}} {{log_path}}'
+        rank_selector: coordinator
+        expected: 'regex:ascend_scheduler_config|AscendScheduler'
+        fix_on_mismatch: "启动命令与日志都没有 AscendScheduler 痕迹 → 确认该版本是否在默认路径上就启用了它（历史上为规避旧版 chunked prefill 性能问题而默认启用、由 #3967 取消）"
+        rollback: "无（只读检查）"
+        note: "这一步决定修复方向：显式开了开关 → 可关；默认启用 → 必须升级"
+      - step: 4
+        check: "机制核对：请求在 _create_request 时就落成 RequestStatus.WAITING_FOR_FSM（带结构化输出约束的请求，上游完成 grammar 编译前处于该状态），而 AscendScheduler 的 schedule() 没有上游那段 FSM → WAITING（或放回 skipped_waiting 队列）的迁移分支，于是请求带着该状态落进 else: raise『Invalid request status』？"
+        expected: "是——上游 vllm/v1/core/sched/scheduler.py 的 waiting 循环里有该分支，ascend fork 里没有；这就是'缺分支'而非'状态非法'"
+        fix_on_mismatch: "fork 里已有该分支仍报错 → 查 AscendScheduler 与所用 vLLM 版本的 skipped_waiting 队列语义是否对齐（PR #10509 就是这类对齐）"
+        rollback: "无（只读查证）"
+      - step: 5
+        check: "落地：升级到含 PR #3967（[Core] Restore scheduling logic under default configuration，revert #2894）的版本；无法升级时关掉 AscendScheduler"
+        expected: "升级（或从 additional-config 去掉 ascend_scheduler_config.enabled）后重启：带 response_format/guided_* 的请求正常返回，不再出现 WAITING_FOR_FSM / EngineDeadError"
+        fix_on_mismatch: "升级后仍崩 → 确认版本是否真含 #3967，以及是否仍有其他路径强制启用 AscendScheduler；另可核对是否命中 #10509 那个方向（0.18 起自定义 scheduler 与 skipped_waiting 队列对齐）"
+        rollback: "重新打开 ascend_scheduler_config.enabled 并重启（结构化输出请求再次把服务打崩）"
+        note: "无法升级时的规避：不要向该服务发带 guided decoding / response_format 的请求（去掉 response_format、guided_choice 等结构化输出参数），或关掉 ascend_scheduler_config.enabled 改走 vLLM 默认 scheduler"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart]
+    fix_type: code-patch
+
+    root_cause: >
+      AscendScheduler（vllm_ascend/core/scheduler.py 的 schedule()）缺了上游 vLLM scheduler 的
+      WAITING_FOR_FSM 状态迁移分支。带结构化输出约束的请求（guided_decoding / response_format）
+      在构造时就落成 RequestStatus.WAITING_FOR_FSM（上游 vllm/v1/request.py），上游的 waiting
+      循环里有「grammar 就绪 → 置 WAITING，否则放回 skipped_waiting 队列」这一段；该分支在 ascend
+      fork 中不存在，于是请求带着 WAITING_FOR_FSM 进入状态分支的 else: raise RuntimeError
+      (f"Invalid request status: {request.status}") → EngineCore fatal → EngineDeadError，
+      EngineCore 与 worker 同崩（worker 侧的 gloo「Connection closed by peer」是连带噪声）。
+      触发条件里 AscendScheduler 必须在位：现场是启动命令显式带
+      `ascend_scheduler_config.enabled=true`；历史上它还在部分情况下被**默认启用**（为规避旧版
+      chunked prefill 性能问题而拦截），维护者判定这一默认行为本身就是错的。
+      维护者结论（同签名 issue #3979，2025-12-15）：「I have reproduced this issue on main branch,
+      and find that this is due to the wrong logic in Ascend Scheduler. Currently, we enabled Ascend
+      Scheduler by default in some cases, but this is wrong, and we will disable this behaviour by
+      this PR #3967.」
+      （限定：本条依据的是同签名 issue 的维护者结论 + 已合入的 PR #3967，本 issue #1767 自身只以
+      「请用最新版本再试」关闭，没有逐条根因确认；另外回放时输入把日志按行裁剪，触发参数
+      guided_decoding 落在被裁掉的中段，是回到 issue 原文才看到的。）
+
+    fix: >
+      升级到含 PR #3967（[Core] Restore scheduling logic under default configuration，2025-11-10
+      合入，revert #2894）的版本——该 PR 取消了「默认强制用 AscendScheduler 来关掉 chunked prefill」
+      这一拦截，此后同类结构化输出请求不再默认踩到这条路径。无法升级时就地规避：从
+      --additional-config 去掉 `ascend_scheduler_config.enabled`（改走 vLLM 默认 scheduler），
+      或约定不向该服务发带 guided decoding / response_format 的请求（去掉 response_format、
+      guided_choice 等参数）。改完重启服务，用一条带 response_format（type=json_object）
+      的普通请求复测即可（无需复现业务负载）。
+      版本面提示：v0.11.0 上同一维护者记为 known issue、latest main 已解；0.18 起还有一处对齐
+      自定义 scheduler 与 skipped_waiting 队列的修复（PR #10509），若所用版本介于两者之间，
+      按各自分支确认。
+    rollback: "重新打开 ascend_scheduler_config.enabled 并重启（结构化输出请求再次把服务打崩）"
+
+

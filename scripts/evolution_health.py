@@ -43,7 +43,7 @@ OPS = {">": operator.gt, ">=": operator.ge, "<": operator.lt, "<=": operator.le,
 # gates.yaml 里声明了但这里没有的 dimension → 覆盖面对比时点名 → exit 2，防"声明了没实现"假绿。
 IMPLEMENTED_GATE_DIMENSIONS = {
     "negative_terminal", "backlog_count", "runnable_never_measured",
-    "external_ground_truth_ratio", "top_component_share", "dead_ref_count",
+    "external_verification_stall", "top_component_share", "dead_ref_count",
     "unfalsifiable_enforced", "arena_pool_reuse", "stale_measure_deps",
 }
 IMPLEMENTED_READABILITY_RULES = {"source_nonzero", "any_gt_0"}
@@ -55,7 +55,7 @@ GATE_READINGS = {
     "no_negative_feedback": "终态 {terminal_cards} 张全部采纳，否决 0 张",
     "backlog_over": "{backlog_count} 张已验证卡无合入指针（批上限 {value}）",
     "measure_never_run": "{runnable_never_measured} 张已声明可复现判据，从未执行",
-    "evidence_weak": "外部验证占比 {external_ratio_pct}（下限 {value_pct}）",
+    "evidence_stale": "最近一次外部验证（{external_newest}）之后又产出 {external_verification_stall} 张终态卡（上限 {value} 张）",
     "component_repeat_dominant": "改动最多的组件「{top_component_name}」占 {top_component_share_pct}（{top_component_cards} 张卡；阈值 {value_pct}）",
     "pointer_rot": "卡片引用的 {dead_ref_count} 个文件已不存在：{dead_ref_sample}",
     "unfalsifiable": "强制范围内缺可复现判据 {unfalsifiable_enforced} 张",
@@ -145,6 +145,45 @@ def _top_component_share(ideas):
     return {"name": name, "cards": cards, "share": cards / max(len(ideas), 1)}
 
 
+def _reproducible_ratio(ideas, runnable, measured):
+    """可复现证据占比（读数，非判据）：终态卡里"别人能重跑一遍拿到同一结论"的比例。
+
+    两类算数：① 外部回放（golden_replay / issue_replay）；② 有可跑判据命令**且实际跑过**
+    （命令与期望由卡在改动前声明，记录在 metrics/ev-measure-log.yaml，任何人可复跑）。
+    「有命令但没跑过」不算——那时它的期望值还只是自述，`measure_never_run` 判据单独盯它。
+    """
+    term = [c for c in ideas if c.get("id") and c.get("status") in EBD.TERMINAL_STATUS]
+    if not term:
+        return None
+    ok = [c for c in term
+          if ((c.get("validation") or {}).get("method") in EBD.EXTERNAL_METHODS)
+          or (c.get("id") in runnable and c.get("id") in measured)]
+    return round(len(ok) / len(term), 3)
+
+
+def _external_stall(ideas):
+    """外部验证停滞：最近一次「验证来自系统之外」的终态卡之后，又产出了多少张终态卡。
+
+    为什么用「停滞」而不是「占比」，替换记录：原判据数的是 external_ratio（外部验证卡 /
+    全部终态卡，下限 1/3）。实测该下限在本仓库的卡构成下**不可达**，而且它的 action 文案
+    自己就写明了这一点——"只能自证的卡片…不计入外部验证"，即那些卡被排除出分子却仍留在
+    分母里，于是无论怎么处置都到不了 1/3。实测依据（123 张终态卡）：只有 14 张的方法能走
+    外部（golden_replay / issue_replay）；其余 109 张里，66 张是 metrics_compare（可复现
+    命令，客观但非外部），43 张是 scan_review（人/agent 自审），而这两类里被改的组件能由
+    回放"碰到"的只有个位数（triage-tree / knowledge / rank_candidates 等），因此可达上限
+    ≈ 18%，远低于 33.3%。占比因此降为读数（reproducible_evidence_ratio 一并列出），判据
+    改问**通道是否还在用**：一张外部验证之后又攒了多少张卡没再做过一次外部验证。
+    口径：终态卡按 created_at 排序，与最新一张外部验证卡的 created_at 严格比较（同日期不
+    重复计）；从未有过外部验证时，全部有 created_at 的终态卡都计入（如实报"从未"）。
+    """
+    term = [c for c in ideas if c.get("id") and c.get("status") in EBD.TERMINAL_STATUS]
+    ext = [str(c.get("created_at") or "") for c in term
+           if ((c.get("validation") or {}).get("method") in EBD.EXTERNAL_METHODS)]
+    newest = max(ext) if ext else ""
+    stall = len([c for c in term if str(c.get("created_at") or "") > newest])
+    return {"stall": stall, "newest": newest[:10] if newest else ""}
+
+
 def collect_dimensions(root: Path):
     """一次算齐全部判据维度。缺失的维度**不进** dims（覆盖面对比据此点名 → exit 2）。"""
     ideas = EBD.collect_ideas(root)
@@ -175,7 +214,10 @@ def collect_dimensions(root: Path):
         "terminal_cards": stats["terminal_count"],
         "backlog_count": stats["backlog_count"],
         "runnable_never_measured": len([c for c in runnable if c not in measured]),
+        "external_verification_stall": _external_stall(ideas)["stall"],
+        "external_newest": _external_stall(ideas)["newest"] or "从未",
         "external_ground_truth_ratio": stats["external_ratio"],
+        "reproducible_evidence_ratio": _reproducible_ratio(ideas, runnable, measured),
         "top_signal_share": stats["top_signal_share"],
         "dead_ref_count": stats["dead_ref_count"],
         "dead_ref_paths": stats["dead_ref_paths"],
@@ -338,7 +380,7 @@ def evaluate(root: Path):
         row["evaluated"] = True
         sample = g.get("min_sample")
         sample_dim = dims.get("terminal_cards") if dim_name in (
-            "negative_terminal", "external_ground_truth_ratio") else dims.get("cards_total")
+            "negative_terminal", "external_verification_stall") else dims.get("cards_total")
         if isinstance(sample, (int, float)) and isinstance(sample_dim, (int, float)) \
                 and sample_dim < sample:
             findings.append({"level": "note", "face": "越界", "id": gid,
@@ -481,6 +523,13 @@ def render(p: dict) -> str:
         out.append(f"  触及面（累计 {ro.get('cards_total')} 张）：{surf or '—'}")
         out.append(f"  触及面（近 {ro.get('surface_window_days')} 天）：{rec or '—'}")
         out.append(f"  证据强度：{' · '.join(f'{k} {v}' for k, v in (ro.get('surface_basis_strength') or {}).items()) or '—'}")
+        _ext = p["dimensions"].get("external_ground_truth_ratio")
+        _rep = p["dimensions"].get("reproducible_evidence_ratio")
+        _ext_s = f"{_ext:.1%}" if isinstance(_ext, (int, float)) else "—"
+        _rep_s = f"{_rep:.1%}" if isinstance(_rep, (int, float)) else "—"
+        out.append(f"  验证来源：外部回放 {_ext_s} · 可复现证据 {_rep_s}"
+                   "（两者都是读数，不当判据——外部回放下限 1/3 在本仓库的卡构成下不可达，"
+                   "见判据「外部验证停滞」的替换说明）")
         out.append(f"  预测口径：可复现 {ro.get('runnable_cards')} · 自称不可度量 "
                    f"{ro.get('declared_unmeasurable')} · 存量无口径 {ro.get('legacy_no_measure')} · "
                    f"实测过 {ro.get('measured_cards')}（记录 {ro.get('measure_runs')} 笔）")

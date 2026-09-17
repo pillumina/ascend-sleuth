@@ -1,0 +1,61 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-128
+layer: L2
+target_component: scripts/settle_s2_feedback.py
+title: cross 样本的独立性守卫——case 正文引用过的 issue 不得记 consistent
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: eval_design_flaw
+    evidence: "第三类样本（cross-validation）落地后，第一批三条样本查下来**全都不独立**：两条（#16446/#1767）是各自 case 的来源；第三条 #2723 与 VLLM-ASC-1767 无来源关系，看起来合格，但那条 case 的 verification.detail 里就写着「#2723（同签名，2025-12-15 关闭 COMPLETED）上同一维护者记为…」——命中的结论正是撰写该 case 时从它那儿读来的。记成 consistent 等于把同一份证据数两次（与自证同一条纪律，但原判定只看 references 里的 issue URL，看不到正文引用）"
+    trajectory:
+      - "原 self-referential 判定只看 references/sources/urls 里的 issues/<n>（settle_s2_feedback.case_issue_sources）"
+      - "实测：#2723 不在这三处，却在 verification.detail 里被点名 → 原判定漏过"
+      - "本轮 replay 的子代理也独立报告了同一处（其 root_cause 声明「该 case 的 verification.detail 自身就引用了 #2723，盲诊阶段已被 KB 记录部分告知答案」）"
+hypothesis: 把「replay issue 在 case 正文里被引用」并入非独立判定后，consistent 只会由"既非来源、又未被正文引用"的样本产生，外部验证权重不再被同一份证据重复计入。
+predicted_effect:
+  metric: 独立性守卫对"被引用样本"的识别
+  from: "只认 references 里的 issue URL；正文引用（#N / issues/N / pulls/N）漏过，consistent 可被虚增"
+  to: "正文引用的三种写法都认；被引用样本记 self_consistent 并在 diff 里点名理由"
+  measure:
+    command: "python3 -m unittest tests.test_audit_readings.S2SampleIndependenceTest"
+    expect_exit: 0
+validation:
+  method: metrics_compare
+  baseline: "改前：case_issue_sources 只扫 references/sources/urls；#2723 会按 consistent 结算"
+  success_criteria: |
+    ① 守卫认三种引用写法（`issues/N`、`pulls/N`、`#N`，含 `issue #N` / `PR #N`）；
+    ② 裸数字不认（否则行号、版本号、容量值会把独立样本误判成非独立——实测用例：`num_batch_tokens(2723)`）；
+    ③ 真实数据上生效：#2723 → VLLM-ASC-1767 的结算被标为「非独立：replay issue 在 case 正文里被引用」，不进 consistent；
+    ④ 守卫强度如实标注为**半硬**：只挡「正文点名」这一种，同一族判词/同一 fix PR 的关联识别不了——所以 consistent 的语义是
+       「不是来源、也未在正文被引用」，不是「信息独立」，这点写进 case-schema.md 与 eval-arena.md。
+  rollback: "单文件改动可 revert；已写回的 validation_record 由 settle 游标决定是否重算（原则七）"
+gate:
+  condition: "不等数据触发：第一批 cross 样本的实测结果直接暴露了判定漏口"
+risk: low
+principle_refs: [8, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：cross 样本独立性守卫（正文引用 → 非独立）"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：settle_s2_feedback 新增 case_cites_issue（扫 case 全部字符串叶子）+ 结算分支与理由标签；新增 3 项单测；docs/case-schema.md、docs/mechanism/{eval-arena,pipeline}.md 记入口径与半硬强度"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "实测：守卫对 VLLM-ASC-1767 判定 #2723 为被引用（True）、对未引用的 #9999 为 False；单测 3/3 通过；真实结算把 #2723 记为 self_consistent"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）。连带结论：本轮外部验证通道**仍未产出 consistent**——三条样本两条是来源、一条被引用，全数非独立。下一个 cross 样本的选样纪律改为「既非该 case 的来源、又未被该 case 正文引用」，已写进 docs/mechanism/eval-arena.md"

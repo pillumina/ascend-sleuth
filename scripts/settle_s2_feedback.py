@@ -89,6 +89,36 @@ def case_issue_sources(case) -> set:
     return nums
 
 
+def _strings(node):
+    """递归取一条 case 里所有字符串叶子（用于"正文有没有引用某个 issue 号"的扫描）。"""
+    if isinstance(node, str):
+        yield node
+    elif isinstance(node, dict):
+        for v in node.values():
+            yield from _strings(v)
+    elif isinstance(node, (list, tuple)):
+        for v in node:
+            yield from _strings(v)
+
+
+def case_cites_issue(case, issue_no) -> bool:
+    """case 正文里是否**引用**了这个 issue 号（作为来源或作为旁证）。
+
+    独立性判据（2026-09 加，起因是一次实测）：cross 样本要当"独立"外部验证，前提是这个
+    issue 没有参与该 case 的撰写。实测教训——#2723（同签名、有维护者结论）一度被当成
+    VLLM-ASC-1767 的合格 cross 样本，但那条 case 的 verification.detail 里就写着
+    「#2723（同签名，2025-12-15 关闭 COMPLETED）上同一维护者记为…」：命中的结论正是写 case
+    时从它那儿读来的，记成 consistent 等于把同一份证据数两次（与自证同一条纪律）。
+    识别形态：`issues/<n>`、`pull/<n>`、`#<n>`（含 `issue #<n>` / `PR #<n>`）。
+
+    **强度如实标注（半硬）**：它只挡得住"正文点名了这个号"这一种。case 与样本出自同一族
+    判词、同一 fix PR 的关联无法机械识别——所以 `consistent` 的语义只能是"该 issue 不是它的
+    来源、也未在正文被引用"，**不是**"信息独立"。别把它读成后者。
+    """
+    pats = (rf"issues?/{issue_no}\b", rf"pulls?/{issue_no}\b", rf"#{issue_no}\b")
+    return any(re.search(p, s) for s in _strings(case) for p in pats)
+
+
 def settle(root: Path, state_path: Path, apply: bool, migrate_from=None):
     state_path = Path(state_path)
     # 游标：登记的共享运行时件（gitignored，锚主检出）。与 S1 结算同一条落点纪律——
@@ -102,6 +132,7 @@ def settle(root: Path, state_path: Path, apply: bool, migrate_from=None):
 
     diffs = []
     recheck = []  # inconsistent → 复审候选
+    skip_none = []  # 不可证伪样本（issue 无外部结论）→ 不结算
     for f in sorted(replay_dir.glob("*.result.yaml")):
         res = load_yaml(f)
         if not isinstance(res, dict):
@@ -115,6 +146,18 @@ def settle(root: Path, state_path: Path, apply: bool, migrate_from=None):
         hit_case = res.get("hit_case") or ""
         tier2_hit = res.get("tier2_hit")
         rc_ok = res.get("root_cause_ok")
+        # 可证伪性闸门：样本的 issue 若**没有外部结论**（维护者判词 / 已合入 fix PR 都没有），
+        # 那么"结论是否一致"这个判断本身就没有真值——既不能记 consistent（无从判对），
+        # 也不能记 inconsistent（会把一个假复审信号压到 case 上）。
+        # 声明方式：result 里的 `ground_truth`（none | maintainer-conclusion | fix-merged | both）。
+        # 缺席按现状（向后兼容：23 条存量 result 没这个字段）。
+        # 实测起因：#10913 命中 VLLM-ASC-8646 但该 issue 以 NOT_PLANNED 关闭、无维护者结论，
+        # 一旦结算就会给 VLLM-ASC-8646 打进"结论不符、请复审"——一条它无从反驳的指控。
+        gt = str(res.get("ground_truth") or "").strip().lower()
+        if gt == "none":
+            settled[issue] = content_hash
+            skip_none.append((issue, hit_case))
+            continue
         if not tier2_hit or not hit_case:
             # 覆盖缺口信号（无 case 命中）——不结算 case；但记游标避免重扫
             settled[issue] = content_hash
@@ -129,22 +172,38 @@ def settle(root: Path, state_path: Path, apply: bool, migrate_from=None):
             continue
         case_f, doc, case = found
 
-        # self-referential 判定：replay issue 正是该 case 的沉淀来源
-        self_ref = int(issue) in case_issue_sources(case)
+        # 独立性判定（两条）：① replay issue 正是该 case 的沉淀来源（自证）；
+        # ② replay issue 在 case 正文里被引用（撰写依据）——都不能算独立的"外部验证"。
+        src_ref = int(issue) in case_issue_sources(case)
+        cited = (not src_ref) and case_cites_issue(case, int(issue))
+        self_ref = src_ref or cited
         rec = case.setdefault("validation_record", {
             "consistent": 0, "inconsistent": 0, "self_consistent": 0, "last_verified": "",
         })
         if rc_ok is True:
             field = "self_consistent" if self_ref else "consistent"
             rec[field] = rec.get(field, 0) + 1
-            tag = f"{field}（自证：replay issue = case 来源）" if self_ref else f"{field}（外部验证）"
+            if src_ref:
+                tag = f"{field}（自证：replay issue = case 来源）"
+            elif cited:
+                tag = f"{field}（非独立：replay issue 在 case 正文里被引用，属该 case 的撰写依据）"
+            else:
+                tag = f"{field}（外部验证）"
         else:
             rec["inconsistent"] = rec.get("inconsistent", 0) + 1
             tag = "inconsistent（复审信号：命中但结论与 resolution 不符）"
             recheck.append({"case": hit_case, "issue": issue, "path": str(case_f)})
         rec["last_verified"] = iso_week_now()
         old = dict(rec)
-        old[field] = old.get(field, 0) - 1 if rc_ok is True else old["inconsistent"] - 1
+        # diff 的"改前"值：加的是哪个计数就减哪个。**别写成 `old[field] = A if rc_ok else B`**——
+        # 赋值目标 `old[field]` 在 RHS 之后求值，inconsistent 分支里 `field` 从未被赋值，
+        # 于是只要真出现一次"命中但结论不符"就 UnboundLocalError（实测：本轮第一次遇到
+        # inconsistent 结算时脚本直接崩）。inconsistent 这条正是**复审信号**的唯一入口，
+        # 它崩掉等于这条通道从未可用。
+        if rc_ok is True:
+            old[field] = old.get(field, 0) - 1
+        else:
+            old["inconsistent"] = old.get("inconsistent", 0) - 1
         diffs.append((case_f, doc, f"{case_f.name}: {tag} → validation_record {old} → {rec}"))
 
         if apply:
@@ -196,6 +255,12 @@ def settle(root: Path, state_path: Path, apply: bool, migrate_from=None):
             write_text_lf(case_f, "\n".join(lines) + "\n", encoding="utf-8")
             settled[issue] = content_hash
 
+    if skip_none:
+        print(f"[skip] {len(skip_none)} 条样本不可证伪（issue 无维护者结论 / 已合入 fix PR）——不结算，"
+              "既不记 consistent 也不记 inconsistent（后者会制造假复审信号）：")
+        for iss, hc in skip_none:
+            print(f"  - issue #{iss} → {hc}")
+        print()
     print(f"发现 {len(diffs)} 条 S2 结算变更（{len(recheck)} 条复审候选）。\n")
     for _, _, delta in diffs:
         print(f"  [diff] {delta}")

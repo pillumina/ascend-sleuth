@@ -253,3 +253,92 @@ class S2ClipKeepsTriggerParamsTest(unittest.TestCase):
     def test_short_body_untouched(self):
         import s2_calibration as sc
         self.assertEqual(sc.clip_text("短正文", 900), "短正文")
+
+
+class S2SampleIndependenceTest(unittest.TestCase):
+    """cross 样本的独立性守卫：case 正文引用了这个 issue → 不能算独立的「外部验证」。
+
+    为什么值得单测：这是 `validation_record.consistent` 的唯一来源，错了不会崩、只会虚增
+    外部验证权重（与自证同一条纪律）。实测起因：#2723（同签名、有维护者结论）一度被当作
+    VLLM-ASC-1767 的合格 cross 样本，但该 case 的 verification.detail 里就写着
+    「#2723（同签名，2025-12-15 关闭 COMPLETED）上同一维护者记为…」——结论正是写 case 时
+    从它那儿读来的。守卫只挡「正文点名」这一种，半硬，别读成「信息独立」。
+    """
+
+    def setUp(self):
+        import settle_s2_feedback as ssf
+        self.ssf = ssf
+
+    def test_cited_forms_are_detected(self):
+        case = {
+            "verification": {"detail": "#2723 上同一维护者记为 known issue"},
+            "references": ["https://github.com/vllm-project/vllm-ascend/issues/2723"],
+            "fix": "见 PR #3967（与本号无关的另一处引用）",
+            "diagnosis": [{"step": 1, "note": "对照 pulls/2723 的改动"}],
+        }
+        self.assertTrue(self.ssf.case_cites_issue(case, 2723))
+
+    def test_uncited_neighbour_is_independent(self):
+        case = {"verification": {"detail": "同签名 issue #3979 上维护者给出结论"},
+                "references": ["https://github.com/vllm-project/vllm-ascend/issues/1767"]}
+        self.assertFalse(self.ssf.case_cites_issue(case, 2723))
+        self.assertTrue(self.ssf.case_cites_issue(case, 3979))
+
+    def test_bare_number_is_not_a_citation(self):
+        """裸数字不算引用——否则行号 / 版本号 / 容量值会把独立样本误判成非独立。"""
+        case = {"root_cause": "num_batch_tokens(2723) 超 MC2 容量", "fix": "见 v0.2723"}
+        self.assertFalse(self.ssf.case_cites_issue(case, 2723))
+
+
+class S2SettleGatesTest(unittest.TestCase):
+    """结算的两个闸门：不可证伪的样本不结算；命中但结论不符要能真的记下来（不崩）。
+
+    为什么值得单测：`inconsistent` 是**复审信号**的唯一入口——它出错不会崩、只会安静地不产生信号，
+    或者反过来给一条 case 打进它无从反驳的指控。实测两处：① 不可证伪样本（issue 无外部结论）
+    一旦结算，会按 root_cause_ok=false 记 inconsistent；② inconsistent 分支本身从未被执行过，
+    一跑就 UnboundLocalError（diff 的"改前"值那行在目标里引用了未赋值的 field）。
+    """
+
+    def _fixture(self, result: dict, case_extra: dict | None = None):
+        import yaml
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        (root / "knowledge" / "inference" / "x").mkdir(parents=True)
+        (root / ".s2-replay").mkdir()
+        case = {"id": "TEST-1", "title": "t", "category": "interrupt", "symptoms": ["s"],
+                "quickly_check": {}, "diagnosis": [], "root_cause": "rc", "fix": "f",
+                "severity": "benign", "fix_type": "config-change", "confidence": {"score": 0.3}}
+        case.update(case_extra or {})
+        (root / "knowledge" / "inference" / "x" / "TEST-1.yaml").write_text(
+            yaml.safe_dump({"cases": [case]}, allow_unicode=True), encoding="utf-8")
+        (root / ".s2-replay" / "4242.result.yaml").write_text(
+            yaml.safe_dump(result, allow_unicode=True), encoding="utf-8")
+        return root
+
+    def test_unfalsifiable_sample_is_not_settled(self):
+        import settle_s2_feedback as ssf
+        root = self._fixture({"hit_case": "TEST-1", "tier2_hit": True, "root_cause_ok": False,
+                              "ground_truth": "none"})
+        ssf.settle(root, root / "state.json", apply=False, migrate_from=Path("/nonexistent"))
+        text = (root / "knowledge" / "inference" / "x" / "TEST-1.yaml").read_text(encoding="utf-8")
+        self.assertNotIn("validation_record", text)
+
+    def test_inconsistent_is_recorded_without_crashing(self):
+        import settle_s2_feedback as ssf
+        root = self._fixture({"hit_case": "TEST-1", "tier2_hit": True, "root_cause_ok": False,
+                              "ground_truth": "fix-merged"})
+        ssf.settle(root, root / "state.json", apply=True, migrate_from=Path("/nonexistent"))
+        text = (root / "knowledge" / "inference" / "x" / "TEST-1.yaml").read_text(encoding="utf-8")
+        self.assertIn("inconsistent: 1", text)
+        self.assertIn("consistent: 0", text)
+
+    def test_cited_sample_lands_on_self_consistent(self):
+        import settle_s2_feedback as ssf
+        root = self._fixture({"hit_case": "TEST-1", "tier2_hit": True, "root_cause_ok": True,
+                              "ground_truth": "maintainer-conclusion"},
+                             case_extra={"verification": {"detail": "同签名 issue #4242 上维护者给出结论"}})
+        ssf.settle(root, root / "state.json", apply=True, migrate_from=Path("/nonexistent"))
+        text = (root / "knowledge" / "inference" / "x" / "TEST-1.yaml").read_text(encoding="utf-8")
+        self.assertIn("self_consistent: 1", text)
+        self.assertIn("consistent: 0", text)

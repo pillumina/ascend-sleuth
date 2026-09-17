@@ -34,7 +34,7 @@
 | 做评测机制（元层 / 交互面） | [mechanism/eval-arena.md](mechanism/eval-arena.md)、[mechanism/ixn-replay.md](mechanism/ixn-replay.md) | 论证层，稳定性要求高 |
 | 排下一步工作 / 评估能否推广 | [roadmap.md](roadmap.md)、[rollout-assessment.md](rollout-assessment.md) | 闸门驱动，不按日历 |
 | 查"当初为什么这样选" | `docs/adr/` | 决策留痕，含被否决的替代方案与重评条件 |
-| 演进闭环自身健不健康（积压 / 可证伪面 / 自证比例 / 指路腐烂） | [mechanism/pipeline.md](mechanism/pipeline.md) §7.1（判据定义） | 判据数据在 `proposals/gates.yaml`，判决命令 `scripts/evolution_health.py`；判据落成数据、面板只渲染不重算（与 metrics 侧同一分工） |
+| 演进闭环自身健不健康（积压 / 可证伪面 / 外部验证停滞 / 指路腐烂） | [mechanism/pipeline.md](mechanism/pipeline.md) §7.1（判据定义） | 判据数据在 `proposals/gates.yaml`，判决命令 `scripts/evolution_health.py`；判据落成数据、面板只渲染不重算（与 metrics 侧同一分工） |
 
 > **关于代号**：本目录曾有一张"指代速查"表，把 L/S/A#/E#/M#/O#/P#/G#/T#/Phase 等设计层代号集中登记。
 > 那张表本身是负担——读者要先学会一整套内部台账才能读机制文档，而**机制文档里本来不需要它们**。
@@ -153,7 +153,7 @@ to-postmortem 接受任意来源的调查记录（本地 session、外部对话�
 | 每周 | 产出指标快照并落一期（**任何人跑周批时都可做**；期号默认生成、一期一个源文件） | `python3 scripts/metrics_snapshot.py --kind live` → 人复核 → 写 `metrics/timeline.d/` → `build_timeline.py` → `metrics_health.py` | `metrics/timeline.d/` 一个源文件 + 重建的 `metrics/timeline.yaml` |
 | 每周 | 批量拉取上游 issue | `/skill:issue-ingest` | inbox 草稿 + 导入游标 |
 | 随时 | reviewer 判定一张卡 | `python3 scripts/ev_measure.py <卡号> --run` | 符合 / 被证伪 / 无法判定（并落一笔实测记录） |
-| 每周 | 演进闭环体检（积压 / 可证伪面 / 自证比例 / 指路腐烂） | `python3 scripts/evolution_health.py` | 逐条判据的 ✓/✗ + 下一步动作（判据在 `proposals/gates.yaml`） |
+| 每周 | 演进闭环体检（积压 / 可证伪面 / 外部验证停滞 / 指路腐烂） | `python3 scripts/evolution_health.py` | 逐条判据的 ✓/✗ + 下一步动作（判据在 `proposals/gates.yaml`） |
 | 全库体检时 | 深度观测轮 | `/skill:self-evolve` | 候选卡 + 攒批 PR |
 | 每季度 | 闸门数值复核 + 四层就绪度重估 | [roadmap.md](roadmap.md)、[rollout-assessment.md](rollout-assessment.md) | 闸门数值修正 |
 
@@ -164,7 +164,7 @@ to-postmortem 接受任意来源的调查记录（本地 session、外部对话�
   报的是终态卡里 `rejected`+`superseded` 合计。该合计**当前为 5（全部来自 superseded，rejected 为 0）**，
   即判据本身已不越界，但"换方向"与"不采纳"是两种不同的结局——用"有 5 张 superseded"读成
   "否决记录已存在"会掩盖真正缺的那一种：**没有一次是"试了、评估不成立、不采纳"**。另有待合入积压、
-  可复现判据大量未测、外部 ground truth 占比过低等。这些不是"系统做得不好"的指控，而是
+  可复现判据大量未测、外部验证通道久未使用等。这些不是"系统做得不好"的指控，而是
   **假设检验缺少一种拒绝域**在数据上的直接读数——一个只采纳与换向、从不判"不成立"的生成器，
   其采纳记录不能单独作为质量结论。
 - **数据侧最大的前提未满足**：现场反馈捕获率≈0——即机制 1 的输入是空的。这是继续推广前最关键的一条，也是"机制齐备"与"系统在变准"之间的差距所在。补它的动作不在机制侧，而在让真实工程师跑完一次诊断并回报结果。

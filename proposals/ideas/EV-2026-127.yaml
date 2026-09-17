@@ -1,0 +1,62 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-127
+layer: L1
+target_component: knowledge/inference/vllm-ascend/interrupt/
+title: 补两条由 cross replay 暴露的覆盖缺口 case（SP×multistream 拉起期挂死 / AscendScheduler 丢 FSM 迁移）
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: coverage_gap
+    evidence: "cross replay 的三条样本里有两条 miss，但两条**独立复现出的根因都与上游维护者结论一致**（#16446 的「SP 生效 + shared expert TP + multi-stream moe → 通信次序错乱」与 PR #15352 同向；#1767 的「AscendScheduler 缺 WAITING_FOR_FSM→WAITING 迁移分支」与 PR #3967 同向）——即库里缺的正是这两条知识，而不是 agent 判错"
+    trajectory:
+      - "baseline replay（补 case 前）：#16446 / #1767 / #2723 三条全 miss（.s2-replay/arena/runs/2723-baseline.result.yaml）"
+      - "candidate replay（补 case + 重建索引后）：三条全部经正规路径（triage → 分片 sig/tok → case 本体 quickly_check）命中"
+      - "同为 507034 的 VLLM-ASC-9887 在两条 replay 里都被正确**排除**（它是运行期 MC2 容量口径），说明新 case 没抢走旧 case 的命中"
+hypothesis: 把这两条沉淀为 case，且索引随之重建后，cross 池的命中率从 1/4 升到 4/4，而路由与结论一致率不倒退。
+predicted_effect:
+  metric: 两条新 case 的结构校验与索引收录
+  from: "两条主题在库内零覆盖（Tier-2 全 miss）；索引 91 条不含它们"
+  to: "两条 case 入库、索引 93 条含它们，且结构校验通过"
+  measure:
+    command: "python3 scripts/build_index.py --check"
+    expect_exit: 0
+validation:
+  method: issue_replay
+  baseline: "cross 池 4 条（#16446 / #10913 / #1767 / #2723）在补 case 前：命中 1/4、路由 4/4、结论一致 3/4"
+  success_criteria: |
+    ① 两条 case 过结构校验并进索引（93 条分片含 VLLM-ASC-16446 / VLLM-ASC-1767）；
+    ② cross 池 candidate 侧命中 4/4（三条原本 miss 的样本里两条由新 case 命中、一条 #2723 命中同签名的 VLLM-ASC-1767），
+       路由 4/4、结论一致 3/4——**无回归**；
+    ③ 两条 case 的 quickly_check 与被排除的既有 case（VLLM-ASC-9887 / VLLM-ASC-8336）不互命中，逐条 replay 里都有明确的排除理由；
+    ④ arena 门控判词如实记录：配对 3/0、p=0.125 > α_eff=0.1 → **weak_accept（不算门控通过）**，不得据此宣称"门控已通过"；
+       池仅 4 条的配对可判力不足，如实写进卡而不是调阈值。
+  rollback: "两条 case 是新增文件、可整体删除；索引重建可 revert（原则七）"
+gate:
+  condition: "data-triggered：cross replay 的 miss + 独立复现的根因与维护者结论一致（覆盖缺口信号，不是主观判断）"
+risk: low
+principle_refs: [3, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计；两轮共 7 次盲测由子代理执行"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：cross replay 暴露的两个覆盖缺口 → 补 case"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：新增 knowledge/inference/vllm-ascend/interrupt/{VLLM-ASC-16446,VLLM-ASC-1767}.yaml；重建索引（168 条 case / 15 分片）"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "实测：baseline 命中 1/4 → candidate 命中 4/4（配对 c→b 3/0，p=0.125）；路由 4/4、结论一致 3/4 不倒退。门控判词 weak_accept（证据不足，非通过）。"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated，按 replay 证据）。残余如实标注：①pool 只有 4 条，配对检验够不到 α_eff，所以这条提升只能记为 weak；②candidate 侧三条命中里有两条本质是「本 issue 的 case 被本 issue 命中」（自证类），只有 #2723→VLLM-ASC-1767 是跨 issue 命中，且它在本轮被查出**非独立**（见 EV-2026-128），所以本轮**没有**产出 validation_record.consistent；③上一轮 candidate replay 是在索引未重建的快照上跑的（靠全目录 grep 才捞到 case），本轮已在重建索引后重跑，结果以本轮为准"
