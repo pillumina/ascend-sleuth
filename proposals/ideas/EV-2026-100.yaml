@@ -1,0 +1,75 @@
+id: EV-2026-100
+layer: L1
+title: 修订已合入 active 词条：RL 面两条（新旧训推词条互链 + config_check 的 RL 比对面）
+status: validated
+authorization: dual
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: knowledge_gap
+    evidence: >-
+      同批导入 6 条 RL 精度词条时暴露出两处已合入词条的缺口：①`rl-train-infer-consistency-triage`
+      （讲怎么定界）与新增的 `rl-train-infer-divergence-metrics`（讲判据阈值与三种手段）是同一问题的两个面，
+      单向链接会让「先读到哪条」决定能否发现另一条；②`msprobe-config-check` 只写了 `-vc`/`-vv` 的动作，
+      没写它们在 RL 场景实际比对哪些参数族，对齐前置检查时看不出「这条命令能不能回答我的问题」。
+    trajectory:
+      - references/methodologies/rl-train-infer-consistency-triage.yaml（被修订词条）
+      - references/methodologies/rl-train-infer-divergence-metrics.yaml（同批新增词条）
+      - references/tools/msprobe-config-check.yaml（被修订词条）
+hypothesis: >-
+  两条互为补充的词条互相指向后，从任一条进入都能发现另一条（定界路径 ↔ 判据阈值与手段）；
+  把 config_check 在 RL 场景的比对面（`actor_rollout_ref` 前缀族与开关类生效值）写进工具词条后，
+  RL 精度对齐的前置检查阶段不必再靠试跑一次才知道它覆盖什么。
+predicted_effect:
+  metric: 两条 active 词条的内容与互链在索引/校验下的可达性
+  from: 旧词条 related_references 不含新词条；工具词条 output_meaning 无 RL 比对面说明
+  to: 互链双向可达；工具词条列出两族参数（actor_rollout_ref 系列 + VLLM_ASCEND_ENABLE_NZ / use_mc2 等生效值）
+  measure:
+    command: "python3 scripts/verify_references.py --check && grep -q 'rl-train-infer-divergence-metrics' references/methodologies/rl-train-infer-consistency-triage.yaml && grep -q 'VLLM_ASCEND_ENABLE_NZ' references/tools/msprobe-config-check.yaml"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 合入版本的这两条词条（本批之前的 main）
+  success_criteria: >-
+    ①`verify_references.py --check` 通过（id 唯一、schema、索引新鲜）；②改动限定在两行内
+    （一条 related_references、一条 output_meaning 条目），不触碰同文件其他断言；
+    ③新增表述与来源材料一致（RL 比对面来自工具输出的截图，属 auto-extracted，reviewer 可 spot-check）；
+    ④按 kb/high-risk 走双签（领域 owner + 体系维护人）
+  rollback: git revert 本 PR（两文件各一行）
+gate:
+  condition: "双签完成后方可合入（本卡 authorization 记为 dual）"
+risk: medium
+principle_refs: [2, 6, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 会话内联执行，与同批导入共用一轮上下文；按同批做法以 0 计并如实标注口径
+decisions:
+  - who: agent
+    when: '2026-09-17'
+    type: proposal
+    conclusion: >-
+      两条都属「修订已合入的 active 词条」，按 EV 卡准入第三条产本卡。改动面刻意压到最小：
+      互链只加一个 id、工具词条只加一条 output_meaning，不顺手重排同文件的既有条目。
+  - who: agent
+    when: '2026-09-17'
+    type: action
+    conclusion: >-
+      ①`references/methodologies/rl-train-infer-consistency-triage.yaml` 的 related_references
+      追加 `rl-train-infer-divergence-metrics`；②`references/tools/msprobe-config-check.yaml`
+      的 output_meaning 追加「RL 场景的比对面」一条（actor_rollout_ref 前缀族 + 开关类生效值）。
+  - who: agent
+    when: '2026-09-17'
+    type: eval
+    conclusion: >-
+      scan_review：measure 命令实跑通过（词条校验通过 + 两处 grep 命中）；
+      `git diff --stat` 确认改动为两行；procedure 索引随新词条增长已另行立卡（EV-2026-101）。
+  - who: agent
+    when: '2026-09-17'
+    type: decision
+    conclusion: >-
+      validated（采纳，改动保留进本 PR）。修订 active 内容**合入需 kb/high-risk 双签**——
+      本卡 authorization 记为 dual，agent 只完成产出与自验证。人审关注点：工具词条的比对面清单
+      来自输出截图（auto-extracted），是否与 `-vc`/`-vv` 的实际覆盖面一致，需 spot-check。

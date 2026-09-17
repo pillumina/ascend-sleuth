@@ -1,0 +1,76 @@
+id: EV-2026-102
+layer: L2
+title: engineer-input 来源首次落库：匿名材料的字段口径写进 to-reference 与 reference README
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: knowledge_gap
+    evidence: >-
+      `engineer-input` 是登记在案的来源类型，但本批 6 条 RL 词条是它**首次**被实际使用
+      （此前 references/ 下 0 条）。首次使用即撞上两处未定义：①`engineer` 字段的语义是「谁提供的」，
+      而材料要求可公开化（不带部门与人名），填真实身份违规、留空则 CI 红；②来源文档的标题
+      无处安放（engineer-input 的必填子字段里没有承载文档标题的位置），现场发明了一个未登记字段
+      `sources[].document`。两处都是执行者即兴约定，下一个 session 会各写各的。
+    trajectory:
+      - skills/to-reference/SKILL.md（§1 提取与 §5 词条模板的 sources 注释）
+      - references/README.md（来源类型表）
+      - references/methodologies/rl-precision-alignment-overview.yaml（首条 engineer-input 词条，含 document 字段）
+hypothesis: >-
+  把口径写进 skill 正文与 reference README 后，后两处即兴约定变成可查的规则：
+  `engineer` 写角色化来源描述（真实身份留会话侧）、文档标题进 `sources[].document`、非公开链接不写；
+  下一个 engineer-input 来源不必再发明一次字段用法。
+predicted_effect:
+  metric: engineer-input 来源的标注口径是否成文且首条词条符合之
+  from: skill 正文与 README 未定义匿名材料的写法；首条 engineer-input 词条用未登记的 document 字段承载文档标题
+  to: 两处文档写明口径，且首条词条与之一致（校验仍绿）
+  measure:
+    command: "grep -q '来源身份按可公开化要求处理' skills/to-reference/SKILL.md && grep -q 'sources\\[\\].document' references/README.md && python3 scripts/verify_references.py --check"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 本批之前的 to-reference SKILL.md 与 references/README.md
+  success_criteria: >-
+    ①两处文档写明口径（engineer 承载来源描述 / document 承载文档标题 / 非公开链接不写）；
+    ②首条 engineer-input 词条与新口径一致，`verify_references.py --check` 通过；
+    ③不新增必填字段（`document` 为可选，缺失不影响既有词条与校验）；
+    ④skill 自包含卫生检查（无 ADR 号、无日期锚）通过
+  rollback: git revert 本 PR 的两处文档改动（词条不受影响）
+gate:
+  condition: "无（本轮已完成执行与自验证，改动随本 PR 送审）"
+risk: low
+principle_refs: [2, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 与同批导入共用一轮上下文，以 0 计并如实标注口径
+decisions:
+  - who: agent
+    when: '2026-09-17'
+    type: proposal
+    conclusion: >-
+      首次使用一个已登记来源类型时撞上未定义的口径，属可固化的一类摩擦（同一处约定下一次还会被
+      各写各的），故产卡并把口径落到 skill 正文与 reference README 两处写点，而不是只在本次词条里
+      用一次即兴写法。
+  - who: agent
+    when: '2026-09-17'
+    type: action
+    conclusion: >-
+      ①`skills/to-reference/SKILL.md` §1 的 engineer-input 一节增「来源身份按可公开化要求处理」一条，
+      §5 词条模板的 sources 注释补 `[+ document]`；②`references/README.md` 的来源类型表下补一行口径说明。
+  - who: agent
+    when: '2026-09-17'
+    type: eval
+    conclusion: >-
+      scan_review：measure 命令实跑通过（两处 grep 命中 + 词条校验通过）；skill 自包含检查
+      （`grep -rnE 'ADR-[0-9]{4}|20[0-9]{2}-[0-9]{2}' skills/`）无新增命中。
+  - who: agent
+    when: '2026-09-17'
+    type: decision
+    conclusion: >-
+      validated（采纳，改动保留进本 PR）。口径本身是判断性规范、不进 CI（不新增机械门）：
+      `document` 保持可选字段，不改 `verify_references.py` 的必填集，避免把一次使用经验硬化成对所有人的约束。
+      人审关注点：这条口径是否该更进一步——把「可公开化要求」的判定权交给词条作者还是 PR reviewer。

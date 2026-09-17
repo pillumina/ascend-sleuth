@@ -1,0 +1,79 @@
+id: EV-2026-103
+layer: L2
+title: 无读图能力时，图片内容用系统自带 OCR 提取并写明口径（to-reference）
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      本轮来源是一份 12 页 PDF，关键内容有一半只在图上（流程图、架构图、表格、代码 diff），
+      文本层取不到；执行环境的模型不支持图片输入。SKILL §1 当时只有两条路——
+      「模型支持图片输入时直接读图」与「读不了图 → 不提取、不推测」——实际走的是第三条：
+      操作系统自带 OCR（Windows.Media.Ocr）。这条做法既不在 skill 里，也没有口径：
+      OCR 把 `0.05` 读成 `0.5%`（阈值量级错 10 倍），最后由提供者在 grill 阶段更正；
+      若不写明，下一个同类来源要么白丢图上的判据，要么各自发明一遍做法与标注口径。
+    trajectory:
+      - skills/to-reference/SKILL.md（§1「二进制文档与截图」的「截图」与「读不了图」两条 bullet）
+      - references/methodologies/rl-precision-alignment-overview.yaml（阈值 0.05 由 OCR 取到后经人工更正）
+      - "PR #240「来源与验证状态」区块（OCR 阈值待抽查项 + 未提取图清单）"
+hypothesis: >-
+  把「无读图能力 → 系统自带 OCR」写进 §1 并写明三条口径（OCR 取到的阈值与参数值必须在 grill
+  逐项与提供者确认；verification 仍标 `auto-extracted`；PR body 标注「来自 OCR、建议抽查」）后，
+  无读图能力时的图上判据不再默认被丢掉，且 OCR 的字准风险落在流程的确认点上，而不是留给 reviewer 猜。
+predicted_effect:
+  metric: 无读图能力环境下图片类内容（流程图 / 表格 / 截图）的提取路径与标注口径是否成文
+  from: skill 只有「模型能读图」与「不提取」两条路；系统自带 OCR 的做法只在会话里发生，未成文，也无标注口径
+  to: §1 增「系统自带 OCR」一条（含 Windows / macOS / Linux 三个入口）+ 阈值人工确认与 verification 口径；「读不了图」改写为「读图与 OCR 都走不通」
+  measure:
+    command: "grep -q '系统自带 OCR' skills/to-reference/SKILL.md && grep -q 'Windows.Media.Ocr' skills/to-reference/SKILL.md && grep -q '必须在 grill 阶段逐项与提供者确认' skills/to-reference/SKILL.md && ! grep -rqE '20[0-9]{2}-[0-9]{2}|EV-[0-9]{4}-[0-9]{3}' skills/to-reference/SKILL.md && python3 scripts/verify_references.py --check"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 改动前的 §1「二进制文档与截图」bullet 集（两条路：读图 / 不提取）
+  success_criteria: >-
+    ①三条口径都在（OCR 路径三平台入口 / OCR 阈值需逐项人工确认 / verification 标 auto-extracted 且 PR body 标注待抽查）；
+    ②既有两条路的语义不变（模型能读图仍优先，真取不到仍不推测）——本改动只补第三条与它的口径；
+    ③skill 自包含卫生通过（skills/ 下无日期与 EV 卡号锚），`verify_references.py --check` 仍绿
+  rollback: git revert 本 PR 的这一节改动（仅 SKILL.md 三处）
+gate:
+  condition: "无（本轮已完成执行与自验证，随 PR #240 送审）"
+risk: low
+principle_refs: [2, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 与同批导入共用一轮上下文，以 0 计并如实标注口径
+decisions:
+  - who: agent
+    when: '2026-09-17'
+    type: proposal
+    conclusion: >-
+      改 skill 正文属行为面（改动面限定在 §1 的图片提取一节），按 EV 卡准入第二条产本卡再改。
+      取舍：写「系统自带 OCR」而不是「装一个 OCR 依赖」——系统自带 OCR 不依赖安装，材料也不外传
+      （`--ocr hosted` 已被本 skill 禁止），是这条约束下可用的路。
+  - who: agent
+    when: '2026-09-17'
+    type: action
+    conclusion: >-
+      `skills/to-reference/SKILL.md`：①§1「二进制文档与截图」新增「没有读图能力时，先用系统自带
+      OCR 兜一层」一条（Windows `Windows.Media.Ocr` / macOS Vision 或实时文本 / Linux `tesseract`
+      + 字准风险与三条口径）；②原「读不了图 → 不提取、不推测」改写为「读图与 OCR 都走不通」；
+      ③「截图」与 URL 模式「远程正文里的内嵌图」两处补指向该条的指引。
+  - who: agent
+    when: '2026-09-17'
+    type: eval
+    conclusion: >-
+      scan_review：measure 命令实跑通过（三处 grep 命中 + skill 内无日期/卡号锚 + 词条校验绿）；
+      `git diff` 确认只改 SKILL.md 三处、未触碰同节其他约束（不外传、出处可移植两条保持原样）。
+  - who: agent
+    when: '2026-09-17'
+    type: decision
+    conclusion: >-
+      validated（采纳，改动保留进 PR #240）。口径强度如实标注：OCR 的字准风险无法机械拦住
+      （判不了"这个数字读对没有"），所以规则落在流程的确认点（grill 逐项确认）与来源标注
+      （auto-extracted + PR body 待抽查）上，不冒充硬门。人审关注点：三平台入口是否写得过细
+      （可在 review 时收敛为「用操作系统自带的 OCR」+ 一个 Windows 例）。

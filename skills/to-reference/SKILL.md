@@ -68,7 +68,7 @@ description: >
 **official-doc（URL 爬取 / 本地官方文档文件）**：
 - 抓取/读取目标章节（只读相关部分，不全量载入——日志裁剪原则的翻版；本地 PDF 用工具提取文本如 `pymupdf`）；
 - **先确认拿到的是正文、不是页壳**：代码托管站点的正文页面路径常在 `/raw/` 之后返回 HTML 页壳（抽出来是整页导航与脚本，不是文件内容）。同一文件通常另有 raw 主机（形态如 `raw.<域名>/<org>/<repo>/raw/<ref>/<path>`）；换主机仍拿不到，就换站点的 contents API 列目录定位真实路径。把页壳当正文抽取会产出通篇无正文的"摘要"，而且不报错；
-- **远程正文里的内嵌图不能静默丢**：URL 模式（以及抓到的 md / html）常以内嵌图承载关键内容——架构图、Trace / 时间线截图、带宽曲线。文本通道只出文字，`![](...)` 与 `<img src=...>` 被无声丢掉（无占位、无告警）。发现正文引用了图，就按相对路径把图取到本地，再用**自己的图片识别能力直接读**（模型支持图片输入时），把图上确有的量（pipe 占用、耗时、带宽、调用序）与文字结论一并抽取；图片地址定位不到、或格式读不了（矢量图等）→ **不提取、不推测**，把未提取的图列进 PR body 的「来源与验证状态」交 reviewer 补。图上读到内容、又逐字对照过正文的才可标 `cross-checked-source`；只读图、未核验源文本的仍标 `auto-extracted`；
+- **远程正文里的内嵌图不能静默丢**：URL 模式（以及抓到的 md / html）常以内嵌图承载关键内容——架构图、Trace / 时间线截图、带宽曲线。文本通道只出文字，`![](...)` 与 `<img src=...>` 被无声丢掉（无占位、无告警）。发现正文引用了图，就按相对路径把图取到本地，再用**自己的图片识别能力直接读**（模型支持图片输入时；不支持则走本节「二进制文档与截图」的系统自带 OCR 一条），把图上确有的量（pipe 占用、耗时、带宽、调用序）与文字结论一并抽取；图片地址定位不到、或格式读不了（矢量图等）→ **不提取、不推测**，把未提取的图列进 PR body 的「来源与验证状态」交 reviewer 补。图上读到内容、又逐字对照过正文的才可标 `cross-checked-source`；只读图、未核验源文本的仍标 `auto-extracted`；
 - **长字段（description/meaning）不硬截断**——截断到字符数会产生不完整句子（"在第一…"式残缺），语义完整性优先于体积；需要精简时提炼要点而非截断原文；
 - 抽取为 reference 草稿，**保留原文出处**：`url`（来源定位符——公开 URL 优先；本地文档无公开 URL 时用**可移植文档引用**如"昇腾950 NPU 架构白皮书（华为技术有限公司）"，**禁止写 `~/` 或绝对路径**，CI 会红）+ `version`（文档版本 / CANN 版本，从页面元数据或内容推断，拿不准就标 unknown）+ `fetched_at`；
 - **必须标注 `sources[].verification`，二选一**：
@@ -78,8 +78,9 @@ description: >
 **二进制文档与截图（本地官方文档）**：约束是不变量、不是工具——词条只写源里确有的内容、出处可核验可移植、材料不外传。工具选择（含装不上时的替代路线）都在这个约束之下。
 - **文本提取（首选）**：`.docx`/`.doc`/`.pptx`/`.xlsx`/`.rtf`/`.epub` 用 `npx -y @firecrawl/anydoc <file> -o <file>.md`（Node ≥ 20，首次自动下载，保留表格/公式）；无 Node 但有 Python ≥ 3.10 → `pip install firecrawl-anydoc` + `python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>`；PDF 用 `pymupdf`。
 - **首选装不上就自己找路，别直接判失败**：这些格式本质是 zip + XML——`.docx` 读 `word/document.xml` 的 `<w:t>`；`.pptx` 读 `ppt/slides/slide*.xml`；`.xlsx` 读 `xl/sharedStrings.xml` + `xl/worksheets/sheet*.xml`；`.odt`/`.ods`/`.odp` 读 `content.xml`（`python -m zipfile -e <file> out/` 解包，Windows 无 Python 用 `[System.IO.Compression.ZipFile]::ExtractToDirectory`）。丢掉的表格/排版如实记进 PR body，不假装完整。探索出的新路线跑通了值得固化 → 交给收尾的伴随演进评估（见 `/skill:evolve-check`），**不要在这里自己加卡**。真的都抽不出来 → 请用户转成 md 或贴文本，**不静默跳过附件**。
-- **截图**：纯文本通道（anydoc 或 XML 提取）只出文字，架构图 / 报错截图会被丢掉（anydoc 无占位、无告警）。`.docx`/`.pptx`/`.xlsx`/`.odt` 都是 zip，用 `python -m zipfile -e <file> out/` 取 `word/media/`（pptx 为 `ppt/media/`，xlsx 为 `xl/media/`），再用**自己的图片识别能力直接读图**（模型支持图片输入时）。
-- **读不了图 → 不提取、不推测**：词条只写文本里确有的内容，未提取的截图列进 PR body 的「来源与验证状态」区块交 reviewer 补——**不要从截图的标题或上下文反推内容**。
+- **截图**：纯文本通道（anydoc 或 XML 提取）只出文字，架构图 / 报错截图会被丢掉（anydoc 无占位、无告警）。`.docx`/`.pptx`/`.xlsx`/`.odt` 都是 zip，用 `python -m zipfile -e <file> out/` 取 `word/media/`（pptx 为 `ppt/media/`，xlsx 为 `xl/media/`），再用**自己的图片识别能力直接读图**（模型支持图片输入时；模型不支持则见下一条的系统自带 OCR）。
+- **没有读图能力时，先用系统自带 OCR 兜一层，再判「不提取」**：模型不支持图片输入时（读图工具用不了），用**操作系统自带的 OCR** 取字：Windows 用 `Windows.Media.Ocr`（PowerShell 可调，中文需先装语言包）、macOS 用 Vision 框架（`VNRecognizeTextRequest`）或「实时文本」、Linux 已装 `tesseract` 就用它。OCR 是工具、不是模型判断，但**字准不保证**：数字与单位最易错（`0.5%` 与 `0.05`、`0.01` 与 `0.1` 这类阈值尤其），流程图箭头与连线走向基本会丢。所以 OCR 取到的**阈值与参数值必须在 grill 阶段逐项与提供者确认**，确认不下来就按「未提取」处理；`verification` 仍标 `auto-extracted`（未经逐字核验），并在 PR body 的「来源与验证状态」写明「来自 OCR、建议抽查」。
+- **读图与 OCR 都走不通 → 不提取、不推测**：词条只写文本里确有的内容，未提取的截图列进 PR body 的「来源与验证状态」区块交 reviewer 补——**不要从截图的标题或上下文反推内容**。
 - **确定性提取才可逐字核验**：anydoc 或 XML 直读都是确定性解析（不经模型改写），逐字对照原文后可标 `cross-checked-source`；未逐字对照的仍标 `auto-extracted`。
 - **出处仍须可移植**：本地 docx 的 `sources[].url` 用可移植文档引用（标题 + 出品方 + 版本），**禁止写 `~/` 或绝对路径**（CI 会红）。
 - **不外传**：不要用 `--ocr hosted`（把整份文档上传第三方服务）；内部文档一律本地处理。
@@ -88,6 +89,7 @@ description: >
 - 从工程师描述中抽取事实/方法论，判断 type（见 §2）；
 - 判断它**独立于具体事故**（是 reference）还是**绑定事故**（是 case，引导走 `/skill:to-postmortem`）；
 - 缺失的信息（适用平台？适用版本？出处？）记下来，grill 阶段逐项问。
+- **来源身份按可公开化要求处理**：`engineer` 承载**来源描述**，不必是真实姓名——材料要求匿名（不带部门与人名）时写角色化的来源描述（如「RL 精度调优经验分享（提供者匿名）」），真实身份留在会话侧不入库；来源文档的标题与形态写进 `sources[].document`（无公开 URL 时由它承载出处）。非公开链接、部门名与人名一律不写进词条——出处要可核验，但不以暴露未公开信息为代价。
 
 **case 归纳（case-derived）**：
 - 读取指定 case 的 `root_cause` / `diagnosis` / `fix`；
@@ -179,7 +181,7 @@ summary: <one-liner>
 sources:
   - type: <official-doc | engineer-input | case-derived>
     # official-doc: url + version + fetched_at [+ verification]
-    # engineer-input: engineer + input_session + confirmed_at
+    # engineer-input: engineer + input_session + confirmed_at [+ document]
     # case-derived: cases + extracted_at
     # verification（official-doc 必填，其余可选）:
     #   auto-extracted | cross-checked-source
