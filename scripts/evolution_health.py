@@ -43,7 +43,7 @@ OPS = {">": operator.gt, ">=": operator.ge, "<": operator.lt, "<=": operator.le,
 # gates.yaml 里声明了但这里没有的 dimension → 覆盖面对比时点名 → exit 2，防"声明了没实现"假绿。
 IMPLEMENTED_GATE_DIMENSIONS = {
     "negative_terminal", "backlog_count", "runnable_never_measured",
-    "external_ground_truth_ratio", "top_signal_share", "dead_ref_count",
+    "external_ground_truth_ratio", "top_component_share", "dead_ref_count",
     "unfalsifiable_enforced", "arena_pool_reuse", "stale_measure_deps",
 }
 IMPLEMENTED_READABILITY_RULES = {"source_nonzero", "any_gt_0"}
@@ -56,7 +56,7 @@ GATE_READINGS = {
     "backlog_over": "{backlog_count} 张已验证卡无合入指针（批上限 {value}）",
     "measure_never_run": "{runnable_never_measured} 张已声明可复现判据，从未执行",
     "evidence_weak": "外部验证占比 {external_ratio_pct}（下限 {value_pct}）",
-    "signal_dominant": "最高信号「{top_signal_name}」占 {top_signal_share_pct}（阈值 {value_pct}）",
+    "component_repeat_dominant": "改动最多的组件「{top_component_name}」占 {top_component_share_pct}（{top_component_cards} 张卡；阈值 {value_pct}）",
     "pointer_rot": "卡片引用的 {dead_ref_count} 个文件已不存在：{dead_ref_sample}",
     "unfalsifiable": "强制范围内缺可复现判据 {unfalsifiable_enforced} 张",
     "pool_reuse_uncontrolled": "同一份对照池（{arena_pool_name}）上已做 {arena_pool_reuse} 次判定未换池（阈值 {value}）",
@@ -66,7 +66,7 @@ GATE_READINGS = {
 # 值是占位符名 → 模板里用短名，避免 `{external_ground_truth_ratio_pct}` 这种长占位符。
 RATIO_DIMS = {
     "external_ground_truth_ratio": "external_ratio_pct",
-    "top_signal_share": "top_signal_share_pct",
+    "top_component_share": "top_component_share_pct",
 }
 
 
@@ -128,6 +128,23 @@ def collect_capture(root: Path):
     return {"present": True, "total": total, "period": last.get("period"), "raw": fc}
 
 
+def _top_component_share(ideas):
+    """改动最多的组件占比（判据「同一组件重复做功」的分子）。
+
+    组件键：优先卡里填的 target_component，缺省回退到卡文本指到的改动落点（与面板同源归因）。
+    原先数的是「单一信号占比」，实测那个读数不成立——最高信号 process_friction 的 35 张卡
+    散在 27 个组件上（脚本 12 / skill 正文 10 / 文档 7 / CI 2 / 面板 2），是语义剩桶，
+    不是同一假设空间被主导；信号分布仍作读数保留。
+    """
+    from collections import Counter
+    c = Counter(str(x.get("target_component") or (x.get("surface_basis") or {}).get("path") or "（未归因）")
+                for x in ideas if x.get("id"))
+    if not c:
+        return {"name": "—", "cards": 0, "share": 0.0}
+    name, cards = c.most_common(1)[0]
+    return {"name": name, "cards": cards, "share": cards / max(len(ideas), 1)}
+
+
 def collect_dimensions(root: Path):
     """一次算齐全部判据维度。缺失的维度**不进** dims（覆盖面对比据此点名 → exit 2）。"""
     ideas = EBD.collect_ideas(root)
@@ -163,6 +180,10 @@ def collect_dimensions(root: Path):
         "dead_ref_count": stats["dead_ref_count"],
         "dead_ref_paths": stats["dead_ref_paths"],
         "unfalsifiable_enforced": len(missing_enforced),
+        # 判据「同一组件重复做功」的分子（信号集中降为读数，见 gates.yaml 的替换说明）
+        "top_component_share": _top_component_share(ideas)["share"],
+        "top_component_name": _top_component_share(ideas)["name"],
+        "top_component_cards": _top_component_share(ideas)["cards"],
         "stale_measure_deps": len(stale),
         "stale_measure_ids": "、".join(stale[:3]) + ("…" if len(stale) > 3 else "") if stale else "—",
     }
