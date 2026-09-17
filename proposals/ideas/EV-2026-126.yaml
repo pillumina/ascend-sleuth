@@ -1,0 +1,60 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-126
+layer: L2
+target_component: eval/s2/vllm-ascend-cross.yaml
+title: cross-validation 样本类落地（第三类样本）+ 夹具裁剪保留触发参数
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: eval_design_flaw
+    evidence: "判据「外部验证占比不足」（11.5%，下限 33.3%）的根因已查清：现有 S2 池两类样本都产不出 consistent——未沉淀 issue 全 miss（无 case 可结算）、已沉淀 issue 命中的必是它自己派生的 case（只能记自证）。需要第三类样本：与某条 case 的来源 issue **不同**、但错误签名与该 case 对得上的 issue。本轮按「case 的 quickly_check 签名 → GitHub 搜索同签名的非来源 issue」构造了首批 3 条（507034 / 107030 / WAITING_FOR_FSM）"
+    trajectory:
+      - "盘上实测：validation_record 全库 consistent=0（只有 2 例 self_consistent）"
+      - "本轮三次盲测结果：.s2-replay/{16446,10913,1767}.result.yaml"
+      - "docs/mechanism/eval-arena.md §3 的结构性说明（第三类样本）"
+hypothesis: 落一类 cross-validation 样本后，「内容被外部验证」（consistent）这条通道第一次有了可用于构造的样本类；同时夹具裁剪不得吃掉触发参数（实测 #1767 的 guided_decoding 落在被裁中段）。
+predicted_effect:
+  metric: cross-validation 样本类的存在与夹具保真度
+  from: "无 cross 样本；夹具裁剪会吃掉中段里的触发行"
+  to: "eval/s2/vllm-ascend-cross.yaml 存在且被 --prepare 自动收录；裁剪时逐行保留触发参数"
+  measure:
+    command: "python3 -m unittest tests.test_audit_readings.S2ClipKeepsTriggerParamsTest"
+    expect_exit: 0
+validation:
+  method: metrics_compare
+  baseline: "改前：eval/s2/ 只有 vllm-ascend.yaml 一个池；clip_text 只保留头尾，中段里的触发行不可见"
+  success_criteria: |
+    ① cross 池文件落地且 s2_replay --prepare 自动收录（实测 3 条一起产出 23 个输入）；
+    ② 三条盲测跑完（结论先落 /tmp，再对照），结果文件 11 字段齐全；
+    ③ clip_text 保留中段触发行且仍显著短于原文（实测 900 限额下输出 1050 字符、含 guided_decoding）；
+    ④ 记录"样本必须可falsify"的口径：无维护者结论的样本不得算 inconsistent。
+  rollback: "池文件是新增、可整体删除；clip 行为改动单文件可 revert（原则七）"
+gate:
+  condition: "不等数据触发：外部验证通道的结构性缺口已由判据读数与结构分析共同确认"
+risk: medium
+principle_refs: [8, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计；三条盲测由子代理执行"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：cross-validation 样本类 + 夹具裁剪保真"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：新增 eval/s2/vllm-ascend-cross.yaml（3 条，标 split=cross-validation + target_case）；s2_calibration.clip_text 裁剪时逐行保留中段触发行；新增 2 项测试"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "实测：三条盲测完成，命中 1/3（#10913 命中 VLLM-ASC-8646 但该 issue 以 NOT_PLANNED 关闭、无维护者结论 → 不可证伪，标 root_cause_ok=false 且**不**按 inconsistent 结算）；另两条 miss 但根因与维护者判词一致（#16446 与官方修法 PR #15352 同向；#1767 定位到 AscendScheduler 丢掉 WAITING_FOR_FSM 状态转移、对应上游 PR #3967）→ 两条都是强新 case 候选；夹具裁剪实测保真（含 guided_decoding）"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）。残余如实标注：①本轮**没有**产出 consistent——唯一命中样本不可证伪，说明 cross 样本必须挑「有维护者结论的已关闭 issue」才能进外部验证统计，这条口径已记入卡与池文件；②两条 miss 的补 case 属内容工作（候选已列出，未造 case）；③cross 池目前 3 条、样本量不足以让占比过线"

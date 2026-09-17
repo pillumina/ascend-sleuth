@@ -238,3 +238,18 @@ class DeadRefsSkipDecisionsTest(unittest.TestCase):
         (root / "docs").mkdir()
         doc = {"id": "EV-2026-902", "title": "t", "hypothesis": "见 `docs/gone.md`"}
         self.assertEqual(ebd.scan_dead_refs(root, doc), ["docs/gone.md"])
+
+
+class S2ClipKeepsTriggerParamsTest(unittest.TestCase):
+    """夹具裁剪不得吃掉触发参数（实测：guided_decoding 落在被裁中段 → 触发证据不可见）。"""
+
+    def test_middle_trigger_params_are_preserved(self):
+        import s2_calibration as sc
+        body = "A" * 3000 + "\nguided_decoding=GuidedDecodingParams(json_object=True)\n" + "x" * 5000
+        out = sc.clip_text(body, 900)
+        self.assertIn("guided_decoding=GuidedDecodingParams", out)
+        self.assertLess(len(out), len(body))          # 仍然裁了，不是全量塞回
+
+    def test_short_body_untouched(self):
+        import s2_calibration as sc
+        self.assertEqual(sc.clip_text("短正文", 900), "短正文")
