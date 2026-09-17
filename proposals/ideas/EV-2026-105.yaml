@@ -1,0 +1,72 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演进决策档案
+# schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+id: EV-2026-105
+layer: L2
+title: arena 接受判据 v2 —— 配对检验 + 复用折减 + 三态判词（weak_accept 不算门控通过）
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: external_reference
+    evidence: "外部调研：自演化系统的薄弱环节是接受者而非提议者——反复对同一个小 dev 集做接受决定是不受控的适应性检验（噪声提案下假接受 30–42%、有害编辑 10–33%；无真实增益时每轮仍提交 13–21 次虚假自改），配对 + anytime-valid 判据可把每个决定的假接受控制在设定水平"
+    trajectory:
+      - "research/lit-review-rsi-2026-09.md#2.1"
+      - "research/lit-review-rsi-2026-09.md#5"
+  - signal: design_gap
+    evidence: "本台 v1 判据 = 命中率或路由率点估计上升即 accept，无配对、无样本量、无复用控制；本地 .s2-replay/arena/ 只有两份笔记、无池文件与账本，即该口径从未被真实数据检验过"
+    trajectory:
+      - "scripts/eval_arena.py#cmd_gate（改前）"
+      - "docs/mechanism/eval-arena.md#4（改前门控协议）"
+hypothesis: 把接受判据从"点估计涨了就收"改成"配对检验 + 复用折减"、判词分 accept/weak_accept/reject 三态后，门控不再会因单条样本翻转而通过；同一份池被反复用于判定这一事实变成可读的账本字段与判据（复用超限 → 重新选样），避免拿同一个小池反复刷接受。
+predicted_effect:
+  metric: 接受判据的行为可复现性与门控判词分布
+  from: "点估计二态（accept/reject），单次翻转即 accept"
+  to: "配对三态；单次翻转 → weak_accept；复用 k 次后同一提升降级"
+  measure:
+    command: "python3 scripts/eval_arena.py --self-test"
+    expect_exit: 0
+    expect_stdout: "全部断言通过（判词可复现）"
+validation:
+  method: scan_review
+  baseline: 改前 --gate 的点估计判据（同池一次翻转即 accept）
+  success_criteria: |
+    ① --self-test 全绿，含六类判词断言（单次翻转降级、复用折减、回归 reject、跨池不可比、
+    无向量降级、复用计数按池哈希归零）；② 端到端两跑账本 reuse_index 0→1、α_eff 0.1→0.05，
+    同一提升在 k=0 为 accept、k≥1 降为 weak_accept；③ 旧 stats（无向量）仍可判但判词上限
+    weak_accept；④ CI 新增 arena-gate-rule job 跑 --self-test；⑤ evolve-check / self-evolve
+    的验证门写明"只有 accept 算门控通过"；⑥ 复用判据进判据层（声明与实现面同增，覆盖面不报 broken）。
+  rollback: 单文件可整体 revert（eval_arena.py / kb-checks 一个 job / 两处 skill 段落 / 一条判据）；账本是本地运行件，删掉即回到改前状态（原则七）
+gate:
+  condition: "不等数据触发：本卡修的是接受者本身，属口径修正，随 PR 合入"
+risk: medium
+principle_refs: [1, 6, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按 sk 计 0（口径同既有卡）"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：接受判据 v2（配对 + 复用折减 + 三态判词）+ 自检进 CI + 复用判据。来源：外部调研的接受者结论 + 本台 v1 的点估计缺口"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：eval_arena.py 增逐条向量与池哈希（--stats）、配对判定与复用折减（--gate 三态）、--self-test；kb-checks 增 arena-gate-rule job 与 paths；gates.yaml 增 pool_reuse_uncontrolled；evolution_health.py 增 arena_pool_reuse 维度与读数；evolve-check / self-evolve 验证门写 accept-only；docs/mechanism/eval-arena.md §3/§4/§5/§7/§8 同步"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "自检 12 项断言全过；合成池 4 条端到端跑通（stats 写出 issues 向量与 pool_hash、旧 stats 无向量降为 weak_accept、账本记 reuse_index/alpha_eff/paired(b,c,p)）；判据层 evolution_health 报 8 条判据 7 条已评估，pool_reuse_uncontrolled 因本地无账本如实报数据源缺失（不报 0）"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）：判据变严方向明确、可自检、可整体 revert，不改变既有判据读数口径。残余如实标注——本地无池文件与账本，本改动是口径前置修正，首次真实门控判定前无历史数据可回归，故验证方式记 scan_review（自审、不计外部验证）"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "随 PR #241 供人审（本批聚合 PR：接受判据 v2 + groom 协议两处，批内 2 卡）"

@@ -88,6 +88,14 @@ gates:
     meaning: "预测口径强制生效（created_at 不早于 measure cutover）之后产出的卡中，既无 command 也无 reason 的卡数。CI（verify_proposals --check）已对此设硬门，本判据是面板侧复核；早于该时间点的存量卡不计入，也不补写（补写会形成事后叙述，见原则十）。"
     action: "此类卡不应进入 main：补上判据命令与期望值，或声明不可度量，再送审。"
 
+  - id: pool_reuse_uncontrolled
+    dimension: arena_pool_reuse
+    op: ">="
+    value: 10
+    title: 对照池复用未轮换
+    meaning: "同一份对照池（同名 + 同内容哈希）上已做过的接受判定次数达到阈值。池内容不变＝同一批样本被反复用于判定，历次提升共用同一批对子；工具的判定阈值按复用序号折减（α/(k+1)），因此复用越多，同一份提升越难通过——但池本身也在被反复优化，折减只压住判定错误率，不消除对同一批样本的过拟合。数据源是本地影响账本（.s2-replay/arena/impact.yaml，gitignore 运行件），缺席时本判据报数据源缺失，不报 0。"
+    action: "重新选样：把新闭环的 issue 补进池（池内容变即换量尺，复用计数自动归零），或先扩池再做下一次门控判定；轮换后重跑一次 baseline，避免新旧量尺混用。"
+
 # ---- 可解读性：该读数是否可信 ----
 # rule: source_nonzero（分母来源必须非 0）| any_gt_0（至少一项非 0）
 readability:

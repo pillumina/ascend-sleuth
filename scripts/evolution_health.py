@@ -43,7 +43,7 @@ OPS = {">": operator.gt, ">=": operator.ge, "<": operator.lt, "<=": operator.le,
 IMPLEMENTED_GATE_DIMENSIONS = {
     "negative_terminal", "backlog_count", "runnable_never_measured",
     "external_ground_truth_ratio", "top_signal_share", "dead_ref_count",
-    "unfalsifiable_enforced",
+    "unfalsifiable_enforced", "arena_pool_reuse",
 }
 IMPLEMENTED_READABILITY_RULES = {"source_nonzero", "any_gt_0"}
 
@@ -58,6 +58,7 @@ GATE_READINGS = {
     "signal_dominant": "最高信号「{top_signal_name}」占 {top_signal_share_pct}（阈值 {value_pct}）",
     "pointer_rot": "卡片引用的 {dead_ref_count} 个文件已不存在：{dead_ref_sample}",
     "unfalsifiable": "强制范围内缺可复现判据 {unfalsifiable_enforced} 张",
+    "pool_reuse_uncontrolled": "同一份对照池（{arena_pool_name}）上已做 {arena_pool_reuse} 次判定未换池（阈值 {value}）",
 }
 # 比例型维度：读数与阈值都按百分比渲染（"0.246（下限 0.333）"不如"24.6%（下限 33.3%）"可读）。
 # 值是占位符名 → 模板里用短名，避免 `{external_ground_truth_ratio_pct}` 这种长占位符。
@@ -69,6 +70,36 @@ RATIO_DIMS = {
 
 def load_yaml(path: Path):
     return load_file(path)
+
+
+ARENA_IMPACT_REL = ".s2-replay/arena/impact.yaml"
+
+
+def collect_arena_reuse(root: Path):
+    """对照池复用：同一份池（同名 + 同内容哈希）上已做过的判定次数。
+
+    为什么单列一维：门控判定的阈值由工具按复用序号折减（同一个池被反复用来做接受
+    决定＝反复对同一批样本做检验），复用次数就是这个折减的输入。读数只在本地账本
+    存在时有意义——账本是 gitignore 运行件，缺席时如实报"数据源缺失"，不报 0
+    （0 会被读成"没有复用"，而真相是"没数据"）。
+    """
+    path = root / ARENA_IMPACT_REL
+    if not path.exists():
+        return None, None
+    try:
+        doc = load_yaml(path) or {}
+    except Exception:
+        return None, None
+    counts = {}
+    for r in doc.get("records") or []:
+        if not isinstance(r, dict):
+            continue
+        key = (str(r.get("pool") or ""), r.get("pool_hash") or None)
+        counts[key] = counts.get(key, 0) + 1
+    if not counts:
+        return 0, None
+    (name, _h), n = max(counts.items(), key=lambda kv: kv[1])
+    return n, (name or "—")
 
 
 def collect_capture(root: Path):
@@ -126,6 +157,10 @@ def collect_dimensions(root: Path):
         "dead_ref_paths": stats["dead_ref_paths"],
         "unfalsifiable_enforced": len(missing_enforced),
     }
+
+    reuse_n, reuse_pool = collect_arena_reuse(root)
+    dims["arena_pool_reuse"] = reuse_n
+    dims["arena_pool_name"] = reuse_pool
 
     ages = [d for d in (EBD.days_since(c.get("created_at")) for c in ideas) if isinstance(d, int)]
     dims["newest_card_age_days"] = min(ages) if ages else None

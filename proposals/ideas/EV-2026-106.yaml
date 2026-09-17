@@ -1,0 +1,70 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演进决策档案
+# schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+id: EV-2026-106
+layer: L2
+title: groom 预分诊改"先判后看"，复核注意力按"对本次改动声明了限制"分派（不按新旧）
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: external_reference
+    evidence: "外部调研两条：①无参考 judge 在候选条件下打的是可信度不是正确性——让它先独立作答再看候选，假阳性率 0.719→0.012（三家独立结果一致：改 rubric/提示词会 plateau，增益来自顺序与准入规则）；②陈旧条目的复核不因'新鲜度提示'改善，而按'该条目是否对当前改动方向声明了限制'分派注意力时挽回 +89.3 分"
+    trajectory:
+      - "research/lit-review-rsi-2026-09.md#2.4"
+      - "research/lit-review-rsi-2026-09.md#2.5"
+  - signal: process_friction
+    evidence: "groom 预分诊现流程是'先按 symptoms/tags 定位候选索引行 → 只读 1-2 个最高分候选全文核对'，判断发生在候选可见之后；复核排序现只有随机审序与'last_verified 超期标 needs-review'两类信号"
+    trajectory:
+      - "skills/knowledge-groom/SKILL.md#流程步骤1（改前）"
+      - "skills/knowledge-groom/SKILL.md#信号→动作（改前）"
+hypothesis: 预分诊改成"先写自己的判断（症状签名/根因假设/修复族方向）再看候选"，并把复核顺序从"标陈旧"改为"按对本次改动面声明了限制的条目优先"，可减少'措辞相近但根因不同'的候选误并，并让高风险变更（改 compat/expected/fix_on_mismatch）的双签依据先被核到。
+predicted_effect:
+  metric: 预分诊判断与候选对照结论的一致性（agent 预核意见被人推翻的比例）
+  from: "无法度量（当前不收该口径，人审推翻率没有分母）"
+  to: "不设数值目标"
+  measure:
+    command: null
+    reason: "该改动的效果是判断顺序（人/agent 的复核行为），本仓库没有对应观测面——预分诊意见是否被 owner 推翻没有结构化记录。如实声明不可度量，不编一条命令凑判据（原则十）；证据强度按自审计（scan_review），不计外部验证"
+validation:
+  method: scan_review
+  baseline: 改前 groom 流程（先定位候选再判断；复核排序只有随机审序 + last_verified 超期标记）
+  success_criteria: |
+    ① 预分诊步骤写明顺序纪律（先写自己的判断行，再与候选对照；不一致以证据为准）且不自相
+    矛盾于既有"draft 已带分诊建议 → 复核不重判"条款；② 新增复核注意力排序节，明确"新鲜度
+    提示不是有效分派信号、内容型规则才是"，并给出落点（批审清单单列段）；③ 两处均为判断性
+    规范，如实标注不进 CI、不改闸门硬度；④ 词表 scan 与 skill 自包含 CI 两条 grep 仍绿。
+  rollback: 单文件两处段落可整体 revert（skills/knowledge-groom/SKILL.md），无数据/生成物联动（原则七）
+gate:
+  condition: "不等数据触发：判断顺序与复核排序属执行协议修正，随 PR 合入；效果进观察窗（下一轮真实 groom 的人审推翻率）"
+risk: low
+principle_refs: [8, 9, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按 sk 计 0（口径同既有卡）"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：groom 预分诊先判后看 + 复核注意力按内容分派。来源：外部调研的顺序效应与陈旧条目分派结论；落点是 groom 流程步骤 1 与复核排序"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：skills/knowledge-groom/SKILL.md 步骤 1 增顺序纪律（先写症状签名/根因假设/修复族方向，再看候选取证；不一致以证据为准）；新增「复核注意力的排序」节（按'对本改动声明了限制'排，不按新旧排；附落点与强度标注）"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "自审：改动为判断性规范（不进 CI），核对无矛盾——与'建议与决定分离（draft 已带分诊建议时不重判）'并存（顺序纪律约束 agent 自判的取证方式，不改变决定权在人）；skill 自包含两条 grep 与文档词表 scan 均绿"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）：低成本、可整体 revert、方向与既有原则一致（八可观测、九预算、十诚实退化）；效果不可即时度量，如实记 scan_review 并进观察窗，不声称已证明变准"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "随 PR #241 供人审（本批聚合 PR：接受判据 v2 + groom 协议两处，批内 2 卡）"
