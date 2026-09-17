@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Ascend-Sleuth 架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1060, 800],
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "backend": { "label": "流程步骤" },
+        "database": { "label": "知识产物" },
+        "cloud": { "label": "评审闸门" },
+        "external": { "label": "人工参与者" }
+      }
+    }
+  },
+  "components": [
+    { "id": "engineer", "type": "external", "label": "工程师", "sublabel": "症状 · 日志 · 版本", "pos": [30, 130], "size": [140, 64] },
+    { "id": "diagnose", "type": "backend", "label": "diagnose", "sublabel": "诊断编排 · trace", "pos": [196, 130], "size": [140, 64] },
+    { "id": "tier1", "type": "database", "label": "Tier 1 · triage-tree", "sublabel": "症状路由", "pos": [362, 130], "size": [140, 64] },
+    { "id": "tier2", "type": "database", "label": "Tier 2 · knowledge", "sublabel": "case 候选 ≤5", "pos": [528, 130], "size": [140, 64] },
+    { "id": "verify", "type": "backend", "label": "验证与产出", "sublabel": "checks → severity 闸门", "pos": [694, 130], "size": [140, 64] },
+    { "id": "trace", "type": "backend", "label": "trace / 反馈", "sublabel": "learning loop", "pos": [860, 130], "size": [140, 64] },
+    { "id": "refs", "type": "database", "label": "Tier 2.5 · references", "sublabel": "错误码 · 故障模式", "pos": [694, 250], "size": [140, 56] },
+    { "id": "intake", "type": "backend", "label": "intake", "sublabel": "to-postmortem · to-reference", "pos": [30, 560], "size": [160, 64] },
+    { "id": "inbox", "type": "database", "label": "inbox 待审", "sublabel": "inbox · ingest-state", "pos": [216, 560], "size": [140, 64] },
+    { "id": "groom", "type": "backend", "label": "groom 周批", "sublabel": "预分诊三分类", "pos": [382, 560], "size": [140, 64] },
+    { "id": "pr", "type": "cloud", "label": "PR 门控", "sublabel": "git · 双签", "pos": [548, 560], "size": [140, 64] },
+    { "id": "promote", "type": "database", "label": "转正", "sublabel": "knowledge · references", "pos": [714, 560], "size": [150, 64] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "诊断循环 · 每次问题", "wraps": ["engineer", "diagnose", "tier1", "tier2", "verify", "trace", "refs"] },
+    { "kind": "region", "label": "演化循环 · 每周 · git 门控", "wraps": ["intake", "inbox", "groom", "pr", "promote"] }
+  ],
+  "connections": [
+    { "id": "symptom", "from": "engineer", "to": "diagnose", "label": "症状 · 日志", "labelAt": [152, 110] },
+    { "id": "route", "from": "diagnose", "to": "tier1", "label": "症状路由", "labelAt": [325, 110] },
+    { "id": "ns", "from": "tier1", "to": "tier2", "label": "namespace", "labelAt": [488, 110] },
+    { "id": "cand", "from": "tier2", "to": "verify", "label": "候选验证", "labelAt": [657, 110] },
+    { "id": "out", "from": "verify", "to": "trace", "label": "结果 · 置信度", "labelAt": [811, 110] },
+    {
+      "id": "ref-lookup", "from": "tier2", "to": "refs", "label": "2.5 辅助", "variant": "dashed",
+      "fromSide": "bottom", "toSide": "top", "via": [[598, 222], [764, 222]], "labelAt": [521, 204]
+    },
+    {
+      "id": "fix", "from": "verify", "to": "engineer", "label": "fix 建议（人应用）", "variant": "dashed",
+      "fromSide": "top", "toSide": "top", "via": [[764, 60], [100, 60]], "labelAt": [384, 54]
+    },
+    {
+      "id": "distill", "from": "diagnose", "to": "intake", "label": "沉淀",
+      "fromSide": "bottom", "toSide": "top", "via": [[266, 460], [110, 460]], "labelAt": [173, 440]
+    },
+    { "id": "queue", "from": "intake", "to": "inbox", "label": "draft", "labelAt": [186, 540] },
+    { "id": "pre-triage", "from": "inbox", "to": "groom", "label": "预分诊", "labelAt": [350, 540] },
+    { "id": "review", "from": "groom", "to": "pr", "label": "变更 PR", "labelAt": [513, 540] },
+    { "id": "merge", "from": "pr", "to": "promote", "label": "审核合并", "labelAt": [677, 540] },
+    {
+      "id": "writeback-k", "from": "promote", "to": "tier2", "label": "升格 case", "variant": "dashed",
+      "fromSide": "top", "toSide": "bottom",
+      "via": [[789, 470], [980, 470], [980, 350], [598, 350]], "labelAt": [858, 450]
+    },
+    {
+      "id": "writeback-r", "from": "promote", "to": "refs", "label": "提炼 reference", "variant": "dashed",
+      "fromSide": "right", "toSide": "bottom",
+      "via": [[1010, 592], [1010, 410], [764, 410]], "labelAt": [880, 396]
+    }
+  ]
+}
