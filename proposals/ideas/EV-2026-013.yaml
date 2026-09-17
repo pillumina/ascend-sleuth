@@ -19,7 +19,7 @@ source_signals:
     evidence: "审核链路'与 WikiSkill 元层差什么数据、现成 issue 能否建 eval'——盘点确认检索/路由层材料齐（123 已沉淀 + 325 processed 中 233 未沉淀 + golden 23），缺的是 train/val 分离与门控动作；用户指示按目标全量构建并运转元层 self-evolve"
     trajectory:
       - "docs/mechanism/pipeline.md §2.1（S2 口径）/ §11.2（闸门盘点）/ §12a（WikiSkill 采纳）"
-      - "docs/evolution-ixn-replay.md（交互层兄弟台）"
+      - "docs/mechanism/ixn-replay.md（交互层兄弟台）"
       - "ingest-state.json + .s2-replay/（现成 issue 池与 S2 数据）"
 hypothesis: >-
   selection 池（未沉淀 closed/completed issue + expected 标注）提供 held-out 评分面，

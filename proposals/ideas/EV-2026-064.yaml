@@ -17,17 +17,17 @@ source_signals:
     evidence: >-
       在 worktree 上跑 `python3 scripts/rehearse_evolve_loop.py` 得两处红，逐一定位后都不是"被测对象坏了"，
       而是"量具坏了"：①`panel_render_check.js` 断言「共通约定含文案规范八条」钉的是面板 README 里
-      **恰好 8 行 `| N |` 编号表**——而文案规范后来合并进唯一权威处（共用条目归 `docs/writing-norms.md`，
+      **恰好 8 行 `| N |` 编号表**——而文案规范后来合并进唯一权威处（共用条目归 `docs/spec/writing-norms.md`，
       面板 README 只留 4 条定制条款），该形态被刻意废弃，断言于是**在未改动的 main 上恒红**
       （实测：`git stash` 前后同一失败项）。②演练的共享 exec-log 段实测「10 条并发写入
       全部落盘（1 → 2）」——`exec_log_path.log_lock` 只实现了 flock，注释写着"无 fcntl 的平台
-      （Windows）退化为不加锁"，而 Windows 是本仓明确支持的开发平台（`docs/windows-setup.md`），
+      （Windows）退化为不加锁"，而 Windows 是本仓明确支持的开发平台（`docs/guide/windows-setup.md`），
       等价于在 Windows 上**静默丢记录**（一个只在该平台复现的数据丢失）。
       两处都是"闸门没在说真话"这一类，与上一张卡同一病灶。
     trajectory:
       - "scripts/panel_render_check.js（断言：共通约定含文案规范八条）"
       - "dsh-plugins/README.md（规范并入唯一权威处后的现状：4 条定制条款 + 指针）"
-      - "docs/writing-norms.md（15 个共用条目的唯一权威处）"
+      - "docs/spec/writing-norms.md（15 个共用条目的唯一权威处）"
       - "scripts/exec_log_path.py（log_lock：只有 flock 分支）"
       - "scripts/rehearse_evolve_loop.py（E9：临时 git 仓库 + 两个 worktree，10 条并发写入）"
       - "CLAUDE.md（写侧持 flock 的纪律：无锁实测 16 次写入只剩 3 条）"

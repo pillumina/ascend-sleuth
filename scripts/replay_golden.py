@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# replay_golden.py —— golden 套件 replay 编排（roadmap M2 雏形，docs/eval.md）
+# replay_golden.py —— golden 套件 replay 编排（roadmap M2 雏形，docs/guide/eval.md）
 #
 # M2 目标：skill 改动前后跑 golden 回放，比对"路由/命中是否倒退"——产出改前/改后报告。
 # replay 的**执行**由 diagnose 的 replay 模式完成（agent 读 fixture 输入跑诊断），
@@ -7,7 +7,7 @@
 #   1. 扫描 eval/golden/*.fixture.yaml，产出 replay 输入清单（每 fixture 一个输入文件，
 #      供 diagnose replay 模式消费；也可直接喂给 agent 手跑）
 #   2. 收集 replay 结果（诊断输出），与 fixture 的 expected 比对（top-3 命中断言，
-#      容忍 LLM 非确定性——docs/eval.md 断言分层）
+#      容忍 LLM 非确定性——docs/guide/eval.md 断言分层）
 #   3. 产出改前/改后对照报告
 #
 # 用法：

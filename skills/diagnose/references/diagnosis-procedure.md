@@ -40,7 +40,7 @@
 - **优雅退化**：多个分支弱匹配 / 置信度低 → 加载**所有 namespace 的索引**让 quickly_check 筛（索引便宜，退化最坏 ~20K token 仍可控）。这救冷启动——triage-tree 第一周是猜的。
 - 无法分类 → 直接 Tier 3 关键词检索
 
-**路由准确率**依赖这步的 trace：最终 root cause 所在 namespace 是否在被加载集合里（指标定义见 docs/metrics.md）。路由错（分错桶）和 KB 空（分对了没 case）修复动作相反，必须分开测。
+**路由准确率**依赖这步的 trace：最终 root cause 所在 namespace 是否在被加载集合里（指标定义见 docs/guide/metrics.md）。路由错（分错桶）和 KB 空（分对了没 case）修复动作相反，必须分开测。
 
 **先验键触发（本步骤收尾，先于候选加载）**：把证据里**能当检索键的东西**当场查掉——错误码（`E1xxxx` / `EIxxxx` / `507xxx` / `0x……`）、可 grep 的故障签名（`fault kernel_name=`、`event_id`）、具体环境变量名、要核对的版本组合。查法与阶段 2.5 的查表路径同形态，只是**时点提前到这里**：
 
@@ -156,7 +156,7 @@ Tier 3 关键词检索（骨架阶段真正能用的兜底）：
 rg -l '<症状关键词>' postmortems/    # top-3，读片段；含 inbox/ 未审草稿（标注未经人审）
 ```
 
-trace 记 `{action: tier3, keyword: <kw>, files_read: [...]}`——Tier 3 挽救率（docs/metrics.md）靠这条统计。
+trace 记 `{action: tier3, keyword: <kw>, files_read: [...]}`——Tier 3 挽救率（docs/guide/metrics.md）靠这条统计。
 
 都没有 → 诚实说“知识库没覆盖，需手动排查；定位完用 `/skill:to-postmortem` 沉淀”。人 + agent 联合分析。
 

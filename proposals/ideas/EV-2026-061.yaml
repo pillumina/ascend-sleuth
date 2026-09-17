@@ -42,7 +42,7 @@ validation:
   success_criteria: >-
     ① measure 命令 exit 0（同量具实测 11,981 字符，22214 → 11981，降幅 46.1%）；
     ② 逐条抽查被移出内容的可达性：skills 名单与分组 → README 的 skill 名单节（生成物）+ 各 SKILL.md 的
-    description；门禁分级与 holdout → `docs/eval.md`；worktree/exec-log/串行纪律 → `docs/git-workflow.md`；
+    description；门禁分级与 holdout → `docs/guide/eval.md`；worktree/exec-log/串行纪律 → `docs/guide/git-workflow.md`；
     trace schema 与证据落盘 → `skills/diagnose/references/diagnosis-trace.md`；CI 清单 → `scripts/rehearse_evolve_loop.py`；
     ③ 未新增硬编码数字或名单（含删掉原文里的 "Ten skills"）；
     ④ `build_docs_index.py --check`、`verify_proposals.py --check` 绿。

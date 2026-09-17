@@ -53,7 +53,7 @@ validation:
     seq 唯一 / 聚合视图可用 / 清理 worktree 后记录仍在 / 无 git 沙箱退化为检出内路径；
     ②并发对照：无锁版本同条件 16 次写入**只剩 3 条**（证明锁不是装饰）；
     ③既有链路零回归（[E1]–[E8] 全绿，含 CI parity 与面板渲染断言）；
-    ④文档口径同步（CLAUDE.md / .gitignore / docs/evolution-run.md §4 / ev-panel README / evolve-check SKILL）。
+    ④文档口径同步（CLAUDE.md / .gitignore / docs/mechanism/run.md §4 / ev-panel README / evolve-check SKILL）。
   rollback: 改动集中在路径解析 + 锁 + 文档；git revert（原则七）
 gate:
   condition: "用户 review 明确指出（已发生），且缺陷已实测复现（worktree 写入 → 主检出读不到）"

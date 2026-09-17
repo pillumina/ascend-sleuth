@@ -39,7 +39,7 @@ description: >
 
 ## 状态文件是唯一台账（`reference-ingest-state.json`）
 
-结构与字段含义见 `docs/reference-ingest-pipeline.md`。执行侧只需记住三条：
+结构与字段含义见 `docs/guide/reference-ingest-pipeline.md`。执行侧只需记住三条：
 
 1. **写入口只有 `mark`**，别手工编辑 JSON（`scan` 会更新扫描游标，`mark` 写判定）；
 2. **`skipped` 必须带 `--note`**：一句话理由，下一轮不再复核这篇（脚本强制，缺 note 直接报错退出）；

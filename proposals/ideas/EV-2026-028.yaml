@@ -17,7 +17,7 @@ source_signals:
   - signal: token_audit
     evidence: "审计：groom 全量扫 knowledge(128 case ~47K)+references(106 词条 ~82K)≈129K token/次——最大剩余显性成本；roadmap M5 已登记（闸门 >150K 或库≥60 case：128 case 已达）"
     trajectory:
-      - "docs/roadmap.md M5（roadmap 行）"
+      - "docs/plan/roadmap.md M5（roadmap 行）"
       - "skills/knowledge-groom/SKILL.md（步骤 1 预分诊/R3/R4/R8/references 维护段）"
 hypothesis: >-
   确定性环节（引用校验/容量/可观测性/tag 聚类）脚本先行、agent 只读输出摘要；全量

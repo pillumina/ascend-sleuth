@@ -174,4 +174,4 @@ fixture 头部的 `candidates=Y/N`、`eval/s2` 的 `tier2_hit` 记的是**那一
 - fixture 自动生成：groom 从 resolved+feedback 确认的 trace 派生真实夹具（`replay_trace.py --emit-fixtures` 产出候选，人确认入仓）；
 - eval 覆盖报告：覆盖矩阵进入 groom 例行产出。
 
-详见 [roadmap.md](roadmap.md)。
+详见 [roadmap.md](../plan/roadmap.md)。

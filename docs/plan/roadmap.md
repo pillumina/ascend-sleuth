@@ -1,6 +1,6 @@
 # ascend-sleuth Roadmap
 
-> Roadmap 采用闸门驱动而非日期驱动：每个事项定义入口条件（数据或事件触发）与验收标准，解锁与否由 metrics 和 trace 数据判定，不按日历排期。这与 [ADR-0002](adr/0002-retrieval-no-rag-lightweight-index.md) 的原则一致：升级由数据触发，而非由技术趋势触发。全部事项的立项依据与闸门设计派生自[设计原则](design-principles.md)第八、十一条。
+> Roadmap 采用闸门驱动而非日期驱动：每个事项定义入口条件（数据或事件触发）与验收标准，解锁与否由 metrics 和 trace 数据判定，不按日历排期。这与 [ADR-0002](../adr/0002-retrieval-no-rag-lightweight-index.md) 的原则一致：升级由数据触发，而非由技术趋势触发。全部事项的立项依据与闸门设计派生自[设计原则](../spec/design-principles.md)第八、十一条。
 >
 > 阅读方式：五个维度回答"哪类改进"（架构 / 可演进性 / 可维护性 / 可观测性 / 流程合理性），阶段视图回答"何时做"（落地阶段〔Phase〕0 → 1 → 2，由闸门衔接），阶段语义速查回答"现在该做哪些"（闸门快照，季度刷新），完成账本回答"已做到哪"（落地即登记）。事项 ID 稳定，供 groom 报告和 issue 引用。
 
@@ -13,7 +13,7 @@
 | 架构 | 三层检索、生成索引 `_index.yaml`、triage-tree 路由、字段级平台分发、软版本匹配、双部署模式 |
 | 可演进性 | confidence 反馈闭环（`feedback_pending` 结构化捕获）、intake 队列、三分类预分诊 |
 | 可维护性 | groom 周批处理、git 门控（标签/CODEOWNERS/双签）、kb-checks CI、golden eval 框架 |
-| 可观测性 | trace 词表、`trace_metrics.py`、`metrics/timeline.yaml` 数据、`docs/metrics.md` 指标定义、容量表 |
+| 可观测性 | trace 词表、`trace_metrics.py`、`metrics/timeline.yaml` 数据、`docs/guide/metrics.md` 指标定义、容量表 |
 | 流程 | severity 闸门、串联保护（两次未解决转人工）、日志裁剪、脱敏、随机审序 |
 
 ---
@@ -160,7 +160,7 @@
 
 ## 明确不做
 
-向量检索 / RAG 基础设施、ANN 索引、跨组织联邦协议：论证与重评触发条件见 [ADR-0002](adr/0002-retrieval-no-rag-lightweight-index.md)。触发条件命中前不进任何阶段池。
+向量检索 / RAG 基础设施、ANN 索引、跨组织联邦协议：论证与重评触发条件见 [ADR-0002](../adr/0002-retrieval-no-rag-lightweight-index.md)。触发条件命中前不进任何阶段池。
 
 ## 待定的人事决策（阻塞 Phase 0 出口）
 
@@ -185,7 +185,7 @@
 
 ### 待定（理论预言、未达立项条件）
 
-由 [设计理论](design-theory.md) §8 生成的设计标准（依设计原则修订门槛，需先有使用检验）：
+由 [设计理论](../spec/design-theory.md) §8 生成的设计标准（依设计原则修订门槛，需先有使用检验）：
 
 - **VPI 序提问**：信息不全时按期望信息价值/成本比排序提问
 - **校准度量**：confidence 的 reliability 式校准指标进 metrics
@@ -202,7 +202,7 @@
 - **回放 harness 的 metric-form 分支**：performance 类 metric 断言需数值提取比对，regex 回放测不了
 - **variant 签名追加进主 case fallback**：防签名微变（交叉回放改进项）
 
-由 [设计理论](design-theory.md) §10（选型与规模推演）生成的工程预备项（带触发闸门）：
+由 [设计理论](../spec/design-theory.md) §10（选型与规模推演）生成的工程预备项（带触发闸门）：
 
 - **索引分片**：`_index.yaml` 拆为每命名空间一个（单文件在 ~60 个命名空间时逼近上下文预算）。闸门：活跃命名空间 ≥40，或优雅退化触发频率连续两月上升
 - **分层 triage**：两级路由（category → framework），路由容量 30×30。闸门：单级分支触及 30 上限且路由准确率开始下降（配合 E2 错例数据）

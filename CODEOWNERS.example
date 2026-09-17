@@ -2,7 +2,7 @@
 #
 # 作用：受保护分支上，命中路径的变更必须由对应 owner 批（配合分支保护 required review）。
 # owner 未定前保持 TODO 占位——CI 与标签流程先跑通，机制先行、权限后紧。
-# 详见 docs/git-workflow.md
+# 详见 docs/guide/git-workflow.md
 
 # ---- 共享资产：高风险双签（两组各至少一人批）----
 /triage-tree.yaml      @todo-domain-owner @todo-system-maintainer

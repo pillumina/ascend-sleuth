@@ -1,0 +1,35 @@
+# 组件别名（数据）——EV-2026-129
+#
+# 用途只有一个：路径搬家之后，**历史引用仍要解析到同一个组件**。
+# `surface_basis.path` 的取值优先级最高来自 `decisions[type=action].conclusion`，
+# 而 decisions 是只追加的审计链、不许回写路径——不归一的话，同一处改动会被
+# 搬家前/后的卡拆成两个组件键，判据「同一组件重复做功」就会少报且不报错。
+#
+# 由 `scripts/rename_ref.py` 自动追加，不手写。语义是"这个旧键要并到那个新键"。
+#
+# 本表头一批 21 条是**事后补登记**：文档按层分目录那一次工具还不存在，
+# 卡里的历史路径（尤其 decisions 内）留在旧键上，靠这张表归一到现址。
+
+aliases:
+  docs/case-schema.md: docs/spec/case-schema.md
+  docs/design-principles.md: docs/spec/design-principles.md
+  docs/design-theory.md: docs/spec/design-theory.md
+  docs/eval.md: docs/guide/eval.md
+  docs/evolution-eval-arena.md: docs/mechanism/eval-arena.md
+  docs/evolution-execution.md: docs/mechanism/execution.md
+  docs/evolution-ixn-replay.md: docs/mechanism/ixn-replay.md
+  docs/evolution-orchestration.md: docs/mechanism/orchestration.md
+  docs/evolution-pipeline.md: docs/mechanism/pipeline.md
+  docs/evolution-run.md: docs/mechanism/run.md
+  docs/evolution-user-guide.md: docs/guide/evolution-user-guide.md
+  docs/git-workflow.md: docs/guide/git-workflow.md
+  docs/handoff.md: docs/guide/handoff.md
+  docs/issue-ingest-pipeline.md: docs/guide/issue-ingest-pipeline.md
+  docs/metrics.md: docs/guide/metrics.md
+  docs/reference-ingest-pipeline.md: docs/guide/reference-ingest-pipeline.md
+  docs/roadmap.md: docs/plan/roadmap.md
+  docs/rollout-assessment.md: docs/plan/rollout-assessment.md
+  docs/rsi-mechanism.md: docs/mechanism/rsi-mechanism.md
+  docs/windows-setup.md: docs/guide/windows-setup.md
+  docs/writing-norms.md: docs/spec/writing-norms.md
+version: 1

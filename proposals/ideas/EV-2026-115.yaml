@@ -18,7 +18,7 @@ source_signals:
     trajectory:
       - "traces/2026-08-31-msllm-1801-cann-ops-transformer.yaml#triage（空事件）"
       - "scripts/trace_metrics.py#triage_miss_classes.routed_unrecorded（读数 3）"
-      - "docs/metrics.md#路由准确率口径"
+      - "docs/guide/metrics.md#路由准确率口径"
   - signal: design_gap
     evidence: "`skills/diagnose/references/diagnosis-trace.md` 定义了 action 词表与 `reference_lookup` / `procedure_follow` / `sediment_candidates` 的字段契约，**唯独没写 `triage` 事件必须带什么**；SKILL 正文只有一句『triage 决策记 trace』。即：指标在消费一个 schema 从未规定的字段——契约缺口，不是执行者疏忽。"
     trajectory:

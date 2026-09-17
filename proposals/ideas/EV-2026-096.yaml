@@ -26,7 +26,7 @@ source_signals:
       机制在内容验证层（S2）早已做对称区分——`validation_record.self_consistent` = 自证命中，
       `docs/mechanism/eval-arena.md:21` 明写纪律「self_consistent 不虚增」；**S1 这条路径缺这个区分**
       （`settle_trace_feedback.py` 全文无来源判定）。
-      `docs/design-theory.md:234` 把这件事列为已知缺陷：「**独立性假设过强**……同一根因的多份记录……
+      `docs/spec/design-theory.md:234` 把这件事列为已知缺陷：「**独立性假设过强**……同一根因的多份记录……
       后果是 confidence 的收敛速度被高估」。本单是该缺陷的第一个实证实例。
       **旁证**：既有 case 的 hits 全为 0（`VLLM-ASC-12989/13050/10122` 的来源 session 反馈仍 pending），
       即「来源 session 自证计入 hits」此前从未发生过，非既有惯例。
@@ -36,7 +36,7 @@ source_signals:
       自己单开 PR。成本实测：本地挂 N 个问题全闭环 → N 个 PR + N 次索引重建；周批只需 1 个。
     trajectory:
       - "docs/evolution.md:56（hits 口径=现场 resolve）、:92（confidence 必须入库，未说每单）"
-      - "docs/design-theory.md:234（独立性假设过强 → 收敛被高估）"
+      - "docs/spec/design-theory.md:234（独立性假设过强 → 收敛被高估）"
       - "docs/mechanism/eval-arena.md:21 与 docs/mechanism/execution.md:59（S2 的 self_consistent 不虚增）"
       - "scripts/settle_trace_feedback.py（查无来源 session 判定）"
       - "已关闭的 PR pillumina/ascend-sleuth#233（本单的 self-settle）+ #83（结算脚本引入）"

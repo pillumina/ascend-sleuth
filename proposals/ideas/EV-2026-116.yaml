@@ -30,7 +30,7 @@ validation:
   method: metrics_compare
   baseline: "改前：scan_dead_refs 只判存在性；by_signal 读截断到前 3 条的 source_signals；无水位读数与回写命令"
   success_criteria: |
-    ① 死引用读数 = 2（docs/evolution-run.md、docs/evolution-pipeline.md），测试覆盖四类假红各一例；
+    ① 死引用读数 = 2（docs/mechanism/run.md、docs/mechanism/pipeline.md），测试覆盖四类假红各一例；
     ② 信号计数与体检判决同源（同一张 4 条同族信号的卡按卡去重记 1）；
     ③ --waterline 输出读数、超限退 1；--mark-merged 追加指针且保留注释、可重复执行（幂等）；
     ④ 全量单测通过；⑤ 演练脚本的容量断言改为读索引头注，不再因数据增长而失败。

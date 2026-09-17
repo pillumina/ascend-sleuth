@@ -62,7 +62,7 @@ disable-model-invocation: true
    trajectory / hypothesis / predicted_effect / validation / risk / principle_refs）；
    `predicted_effect` 须带 `measure`（预测的出处：命令 + 期望，或如实声明不可度量）——
    reviewer 靠 `scripts/ev_measure.py <卡号> --run` 机械复核预测，规则同 evolve-check 产卡链；
-3. **agent 自行验证执行**：按影响面分级选门禁（docs/eval.md「门禁分级」可选层）——
+3. **agent 自行验证执行**：按影响面分级选门禁（docs/guide/eval.md「门禁分级」可选层）——
    检索/路由/候选选择面 → golden 子集（2-5 条，基线缓存复用）或 S2 replay
    （replay_golden.py / s2_replay.py）；检索/路由层候选在 arena selection 池可用时
    加跑 val 前后对照（eval_arena.py --stats/--gate：golden 无回归 + 门控判词 **accept**

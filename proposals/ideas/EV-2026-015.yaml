@@ -19,7 +19,7 @@ source_signals:
     trajectory:
       - "triage-tree.yaml inference_performance/inference_precision 词条"
       - ".s2-replay/arena/pool-val.yaml + baseline replay（本地）"
-      - "docs/evolution-eval-arena.md（arena 门控）"
+      - "docs/mechanism/eval-arena.md（arena 门控）"
 hypothesis: >-
   triage 词条补字面词（tpot/acceptance_per_pos/接受率低 等，纯增不改结构）后，
   池内字面路由覆盖提升且 0 回归（语义兜底不变）

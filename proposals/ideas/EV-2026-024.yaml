@@ -18,7 +18,7 @@ source_signals:
     evidence: "用户'推进 F3'。capacity_health.py 复测（128 case）：interrupt 83/30（超 hard_cap 60）、候选溢出率 33%（14/43 >5 候选，med 4/max 14，超 20% 恶化阈）；precision/performance 0% 健康。EV-006 原判'暂不拆'主因=阶段一全读 token——F1/F2 已消（master 203.5→104KB、分片+瘦身）"
     trajectory:
       - "scripts/capacity_health.py 输出（2026-09-04 复测）"
-      - "docs/roadmap.md A2（原 81/30 记录 → 本卡刷新 83/30 + 33%）"
+      - "docs/plan/roadmap.md A2（原 81/30 记录 → 本卡刷新 83/30 + 33%）"
       - "EV-2026-006/008（原评估与阈值）、EV-2026-022/023（F1/F2）"
 hypothesis: >-
   区分两个独立维度后重判：①token 维度（F1/F2 已解——即"升破 30% 再评估加载协议优化"

@@ -2,9 +2,9 @@ name: kb-checks
 
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", ".github/workflows/kb-checks.yml"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", ".github/workflows/kb-checks.yml"]
 
 jobs:
   index-freshness:
@@ -159,7 +159,7 @@ jobs:
   # `--build` 一条自动命令修（不需重跑回放），误红代价≈10 秒。评审若认为该按第三条严格执行，
   # 把它退回成 groom 收尾自查即可（卡 EV-2026-107 记了这条判断）。
   # 强度如实标注：**本门不判准确率**——账本记的是上次观测，不是现在能不能命中；
-  # 准确率仍要 agent 跑回放（docs/eval.md 门禁分级），不把不确定的东西硬门化。
+  # 准确率仍要 agent 跑回放（docs/guide/eval.md 门禁分级），不把不确定的东西硬门化。
   eval-scorecard:
     runs-on: ubuntu-latest
     steps:

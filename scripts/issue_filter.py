@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # issue_filter.py —— 从 issue 拉取缓存中做硬过滤（纯本地，不碰网络/认证）
 #
-# 设计（docs/issue-ingest-pipeline.md）：
+# 设计（docs/guide/issue-ingest-pipeline.md）：
 #   - 拉取由 scripts/fetch_issues.py（GitHub 专用，精简字段）或 agent 现成工具
 #     （GitCode 等）完成；拉取是无状态动作，结果即缓存
 #   - 硬过滤脚本化：已处理编号排除、label 池、评论数门槛、标题规则——

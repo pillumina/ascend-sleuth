@@ -20,7 +20,7 @@ source_signals:
     trajectory:
       - "EV-2026-022/023/025/026/028（观察窗承诺）"
       - "knowledge/_index*.yaml（实测字节）"
-      - "docs/roadmap.md A2（F3 再拆闸门）"
+      - "docs/plan/roadmap.md A2（F3 再拆闸门）"
 hypothesis: >-
   回填真数字并记录闸门状态：索引治理确实降了 master（203.5KB→104.1KB），但典型
   vllm-ascend interrupt 路由的阶段一读仍 ~21K tok（83 行×行宽），>60KB 闸门触发子族

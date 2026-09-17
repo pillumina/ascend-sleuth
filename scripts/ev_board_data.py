@@ -175,6 +175,29 @@ def scan_refs_loose(text):
     return out
 
 
+ALIAS_REL = Path("proposals") / "component-aliases.yaml"
+
+
+def load_component_aliases(root: Path) -> dict:
+    """组件别名表：`{旧路径: 现路径}`，由 scripts/rename_ref.py 随搬家自动追加。
+
+    为什么需要（实测）：`surface_basis.path` 的取值优先级最高来自
+    `decisions[type=action].conclusion`，而 decisions 是只追加的审计链、按纪律不许回写路径。
+    于是文件一搬家，**搬家前的卡永久挂在旧键上、搬家后的卡落在新键上**——同一处改动被拆成
+    两个组件键，判据「同一组件重复做功」随之少报，而它不会报错（实测：17 篇文档按层分目录后，
+    6 张卡留在旧键上，`docs/guide/eval.md` 被拆成旧 1 张 + 新 1 张）。
+    修法不是回写历史（那会篡改审计链），而是解析时归一：历史文本一个字不动，键归到现址。
+    """
+    path = root / ALIAS_REL
+    if not path.exists():
+        return {}
+    doc = load_yaml(path) or {}
+    aliases = doc.get("aliases") if isinstance(doc, dict) else None
+    if not isinstance(aliases, dict):
+        return {}
+    return {str(k): str(v) for k, v in aliases.items() if k and v}
+
+
 def axis_of_paths(paths):
     """路径集 → (轴, 依据路径)；全不命中返回 (None, None)。"""
     for p in paths:
@@ -201,18 +224,27 @@ def _surface_field_texts(doc):
     }
 
 
-def derive_surface(doc):
-    """卡 → {surface, basis_field, basis_path, basis_strength}（确定性，无 LLM）。"""
+def derive_surface(doc, aliases=None):
+    """卡 → {surface, basis_field, basis_path, basis_strength}（确定性，无 LLM）。
+
+    `aliases` 是组件别名表：搬家后把历史路径归一到现址，避免同一处改动被拆成两个键
+    （见 load_component_aliases 的说明）。只归一 `basis_path`，不改卡里的原文。
+    """
+    aliases = aliases or {}
+
+    def canon(p):
+        return aliases.get(p, p)
+
     texts = _surface_field_texts(doc)
     for field, strength in SURFACE_FIELD_ORDER:
         axis, path = axis_of_paths(scan_refs_loose(texts.get(field)))
         if axis:
-            return {"surface": axis, "basis_field": field, "basis_path": path,
+            return {"surface": axis, "basis_field": field, "basis_path": canon(path),
                     "basis_strength": strength}
     # 兜底：全卡文本（强度最弱，如实标注为弱归因）
     axis, path = axis_of_paths(scan_refs_loose(" ".join(texts.values())))
     if axis:
-        return {"surface": axis, "basis_field": "card-text", "basis_path": path,
+        return {"surface": axis, "basis_field": "card-text", "basis_path": canon(path),
                 "basis_strength": "弱"}
     return {"surface": UNATTRIBUTED, "basis_field": None, "basis_path": None,
             "basis_strength": None}
@@ -444,6 +476,7 @@ def audit_gaps(doc, days_open):
 
 def collect_ideas(root):
     ideas = []
+    aliases = load_component_aliases(root)
     for f in sorted((root / "proposals" / "ideas").glob("*.yaml")):
         d = load_yaml(f)
         if not isinstance(d, dict) or "__error__" in d:
@@ -454,7 +487,7 @@ def collect_ideas(root):
         # 决策链全文参与 PR 号提取（「随 PR #97 供人审」这类追溯指针只在结论里）
         blob = " ".join(str(x.get("conclusion") or "") for x in decisions if isinstance(x, dict))
         validation = d.get("validation") or {}
-        surface = derive_surface(d)
+        surface = derive_surface(d, aliases)
         dead_refs = scan_dead_refs(root, d)
         ideas.append({
             "id": d.get("id"),

@@ -1,6 +1,6 @@
 # 文档语料 → reference 的导入管道
 
-上游**文档仓**里有大量真正专业的昇腾知识（分级故障诊断手册、错误码参考、FAQ、调优指南），而它们不在案例库也不在先验库里。本管道把它们批量吸收成 `references/` 词条，与 `docs/issue-ingest-pipeline.md`（issue → case）并列。
+上游**文档仓**里有大量真正专业的昇腾知识（分级故障诊断手册、错误码参考、FAQ、调优指南），而它们不在案例库也不在先验库里。本管道把它们批量吸收成 `references/` 词条，与 `docs/guide/issue-ingest-pipeline.md`（issue → case）并列。
 
 - **执行规则**在 `skills/reference-ingest/SKILL.md`（何时扫、怎么筛、token 怎么省、批怎么收尾）——本文件只讲**机制**：状态文件为什么长这样、成本结构、失败模式。
 - **产出规则**在 `skills/to-reference/SKILL.md`（归类、schema、grill、深审）——本文件不重复。

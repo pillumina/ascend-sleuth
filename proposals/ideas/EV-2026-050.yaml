@@ -19,7 +19,7 @@ source_signals:
       maintainer 反馈"check CI 是否过、测试是否跑就合入了；判断不了这个 PR 是不是真的能合"。
       量化后不是错觉，而是结构性的：**PR 里每一个命题都由制造改动的同一个过程写成**——
       success_criteria 由 agent 写、由 agent 判定达成；验证断言（rehearse 81/81）由 agent 写；
-      golden fixture 是 groom 被规定要跟着 case 改的（docs/eval.md §套件如何演化）；
+      golden fixture 是 groom 被规定要跟着 case 改的（docs/guide/eval.md §套件如何演化）；
       CI 检查的是索引新鲜度 / YAML 合法性 / 模板结构齐全 = 全部内部自洽。于是
       **"CI 绿 + 测试过"对"该不该合"携带的信息量接近零**。
       而 execution §7 早已把评审设计成「predicted_effect vs verification 结果（30s 判定）」，
@@ -28,7 +28,7 @@ source_signals:
       - "grep -rl 'predicted_effect' proposals/ideas/*.yaml | wc -l → 48/48 张卡都有预测"
       - "grep -A4 'predicted_effect' proposals/ideas/*.yaml | grep -c 'python3|npm|bash' → 0/48 张带可执行命令"
       - "grep -rh 'method:' proposals/ideas/*.yaml | sort | uniq -c → scan_review 16、metrics_compare 18、golden_replay 8、issue_replay 6"
-      - "docs/evolution-execution.md:173（评审供给清单：30s 判定 / 失效形态=橡皮图章）"
+      - "docs/mechanism/execution.md:173（评审供给清单：30s 判定 / 失效形态=橡皮图章）"
       - "scripts/verify_proposals.py：REQUIRED 不含 predicted_effect；全脚本无 measure 相关校验（grep predicated_effect → 0 命中）"
   - signal: process_friction
     evidence: >-

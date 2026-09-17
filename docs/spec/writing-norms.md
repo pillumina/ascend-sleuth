@@ -46,7 +46,7 @@
    需要时在展开的技术视图或 tooltip 里给出，不替换正文用词。
 2. **仓库内路径与命令**：`scripts/metrics_health.py`、`traces/`、`python3 scripts/...`。
    原样给出，可复制即其价值。
-3. **已成术语的比喻**："体检"（`metrics_health.py` / `evolution_health.py` 的输出、`docs/metrics.md` 与面板正文都在用）。
+3. **已成术语的比喻**："体检"（`metrics_health.py` / `evolution_health.py` 的输出、`docs/guide/metrics.md` 与面板正文都在用）。
    改它要连脚本输出与文档一起动，收益为零。
 4. **证据原值**：`文件:行号`、issue / case 编号、报错原文、数字、算子里程碑名。
    这些是复核锚点——读者要能拿它去重跑一遍。把 `token_dispatcher.py:629` 讲成"某处一段通信代码"，
@@ -112,7 +112,7 @@
 - 本文件是**判定口径的权威**：共用条目有哪些、哪些原值必须保留、每一面共用还是定制、哪些能硬化——以本文件为准。
   各面文档不再各写一份"自己的规范版本"。
 - **skill 与 skill 支撑文件是例外，而且必须内联完整条目**。仓库约定 `skills/**` 要自包含到"没有 `docs/` 也能正确执行"，
-  `docs/` 只是可选论证层（见 `docs/git-workflow.md` 的「Skill 自包含边界」）。所以进 agent 上下文的面
+  `docs/` 只是可选论证层（见 `docs/guide/git-workflow.md` 的「Skill 自包含边界」）。所以进 agent 上下文的面
   （报告、trace、case 词条、诊断对话输出）在自己的 skill 或 `references/` 里内联**完整的共用条目**
   （二十二条 + 必须保留的四类原值），并把本文件标成"可选论证层"。
   同一 skill 内的多个支撑文件之间可以互相指路——它们总是一起分发，例如 trace 的行文口径指向同目录的报告模板。
@@ -122,7 +122,7 @@
   ```bash
   # 把 <关键短语> 换成改动那条的核心词，例如 "空泛大词"、"破折号"、"自造代称"
   grep -rn "<关键短语>" docs skills
-  # Windows 上没有 grep（本仓库支持 Windows，见 docs/windows-setup.md）：
+  # Windows 上没有 grep（本仓库支持 Windows，见 docs/guide/windows-setup.md）：
   Get-ChildItem docs,skills -Recurse -File | Select-String "<关键短语>"
   ```
 

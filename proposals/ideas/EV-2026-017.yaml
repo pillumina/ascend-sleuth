@@ -19,7 +19,7 @@ source_signals:
     trajectory:
       - "eval/s2/vllm-ascend.yaml（同型先例：规格入库、结果本地）"
       - ".ixn-replay/（本地重建经验：素材 /tmp 幸存、gold/feed 需重写）"
-      - "docs/evolution-ixn-replay.md §3/§5/§8"
+      - "docs/mechanism/ixn-replay.md §3/§5/§8"
 hypothesis: >-
   gold（held_out/resolution/decisive）与 stage feed 是"我们产出的评测规格"（非真实语料
   全文），入库 eval/ixn-arena/ 后测试集随 PR 持久、跨机器/agent 可复用不重建；真实正文

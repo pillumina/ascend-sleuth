@@ -2,7 +2,7 @@
 # metrics_snapshot.py —— 一期快照的**单一产出命令**（覆盖全部来源，每块标出处）
 #
 # 为什么需要（2026-09-10 审计实测）：
-#   `docs/metrics.md` 写"所有指标由 trace_metrics.py 计算（单一数据源）"——**不成立**：
+#   `docs/guide/metrics.md` 写"所有指标由 trace_metrics.py 计算（单一数据源）"——**不成立**：
 #   timeline 里的指标实际来自四类来源：
 #     ① 诊断侧   `trace_metrics.py`（traces/*.yaml）
 #     ② 结构侧   `build_index.py` 头注（容量格子 / case 总数）+ `verify_references.py`（词条数）

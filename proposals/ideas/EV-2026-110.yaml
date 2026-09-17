@@ -40,7 +40,7 @@ validation:
     ④ 判据自身的强度如实标注（假阳性：自由语言里恰好出现的数字；假阴性：只用领域名词而不用字面量的输入）——
        结论是"该不该补词"的入场券，不是判词；
     ⑤ 真实 traces 上跑得出现读数（读数写进本卡 eval，不进 metrics 时间线——口径先立，样本量到再说）。
-  rollback: 单文件可整体 revert（trace_metrics.py + 测试 + docs/metrics.md 一行 + triage-tree 头注 + roadmap E2 一行）；不改任何路由行为、不改既有指标口径（只新增字段）
+  rollback: 单文件可整体 revert（trace_metrics.py + 测试 + docs/guide/metrics.md 一行 + triage-tree 头注 + roadmap E2 一行）；不改任何路由行为、不改既有指标口径（只新增字段）
 gate:
   condition: "不等数据触发：E2 错例池当前读数被两类混杂污染，属口径前置修正"
 risk: low

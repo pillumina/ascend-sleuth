@@ -16,7 +16,7 @@ created_at: 2026-09-10
 source_signals:
   - signal: observability_gap
     evidence: >-
-      用户提问"metrics 各指标是否可以闭环运作"。按 `docs/metrics.md` 的周批流程（trace_metrics →
+      用户提问"metrics 各指标是否可以闭环运作"。按 `docs/guide/metrics.md` 的周批流程（trace_metrics →
       人复核 → append → verify_metrics）**实跑一遍**，三类真问题一个都不会被告知：
       ①**陈旧**：结构指标最后进快照是 2026-08-31（`case_total 52`），而现实是 **158**；
       ②**越界无人喊**：`inference/vllm-ascend · interrupt = 85/30`（soft_cap 的 2.8 倍、已超 hard_cap 60），
@@ -33,12 +33,12 @@ source_signals:
       - "grep -rn 'action: feedback' traces/*.yaml → 0 命中（反馈闭环零数据）"
   - signal: documentation_drift
     evidence: >-
-      `docs/metrics.md` 写"所有指标由 `trace_metrics.py` 计算（单一数据源）"——**不成立**：
+      `docs/guide/metrics.md` 写"所有指标由 `trace_metrics.py` 计算（单一数据源）"——**不成立**：
       timeline 里的指标实际来自四类来源（诊断侧 trace / 结构侧 build_index+verify_references /
       内容流程侧 exec-log / 评测侧 ixn·golden·S2）。这句错话直接导致周批第 1 步只跑一个脚本、
       其余靠人手工搬运（于是有了上面 10 天的陈旧）。文档错一句，流程就少一半。
     trajectory:
-      - "docs/metrics.md 指标定义节（原文：单一数据源）"
+      - "docs/guide/metrics.md 指标定义节（原文：单一数据源）"
       - "metrics/timeline.yaml 各期 source 字段（实际四类来源）"
 hypothesis: >-
   把指标链路补齐成六段可判：**产出**（单一命令组装三来源，逐块标 sources）→ **入库**（append）

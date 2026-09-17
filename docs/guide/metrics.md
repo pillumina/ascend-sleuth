@@ -1,6 +1,6 @@
 # ascend-sleuth Metrics
 
-> 本文是 **metrics 机制的文档化解释**（人读理解用），不是数据存储。指标**数据**在 [`metrics/timeline.yaml`](../metrics/timeline.yaml)（生成物；源是 `metrics/timeline.d/<期号>.yaml`，一期一个文件）；机制文档只在机制变化时更新（指标定义、口径、流程），不随每期数据变动。
+> 本文是 **metrics 机制的文档化解释**（人读理解用），不是数据存储。指标**数据**在 [`metrics/timeline.yaml`](../../metrics/timeline.yaml)（生成物；源是 `metrics/timeline.d/<期号>.yaml`，一期一个文件）；机制文档只在机制变化时更新（指标定义、口径、流程），不随每期数据变动。
 
 ## 角色分工
 
@@ -9,7 +9,7 @@
 | `metrics/timeline.d/<期号>.yaml` | **时序数据的源**：一期一个文件（period / kind / metrics / sources / notes） | 每期（谁跑周批谁写一个） |
 | `metrics/timeline.yaml` | **生成物**：由源重建的聚合（`periods:` 列表，读侧的唯一入口） | 每次源变化后重建（**不要手改**） |
 | `scripts/build_timeline.py` | 聚合重建 / `--check` 校验生成物与源一致（CI 强制） | 随机制 |
-| `docs/metrics.md`（本文） | 机制文档：指标定义、口径、汇总流程、示例 | 机制变化时 |
+| `docs/guide/metrics.md`（本文） | 机制文档：指标定义、口径、汇总流程、示例 | 机制变化时 |
 | `metrics/gates.yaml` | **阈值与可解读性下限（数据）**：新鲜度上限、格子 soft/hard cap、反馈下限、哪些指标分母为 0 即"不可解读" | 判据变化时 |
 | `scripts/metrics_snapshot.py` | **一期快照的单一产出命令**：组装诊断侧 + 结构侧 + 内容流程侧（逐块标 `sources`）；撞号自动加后缀 | 随机制 |
 | `scripts/metrics_health.py` | **闭环检测器**：读 timeline + gates，判新鲜度 / 越界 / 可解读性；`--check` 三态（0 判据全评过且无越界 / 1 有违反 / 2 有判据未被评估）；`--json` 是诊断面板的数据契约 | 随机制 |
@@ -193,7 +193,7 @@ metrics 在**周批时机**生成并 append（每期一条，团队共享）—�
 
 ## 季度回顾（固定动作）
 
-用 `metrics/timeline.yaml` 中连续 live 快照：核对命中率/误诊率/路由准确率趋势，校准 [roadmap](roadmap.md) 闸门数值，确认学习闭环在数据上成立。趋势直接从 YAML 读取，不需人眼 diff。
+用 `metrics/timeline.yaml` 中连续 live 快照：核对命中率/误诊率/路由准确率趋势，校准 [roadmap](../plan/roadmap.md) 闸门数值，确认学习闭环在数据上成立。趋势直接从 YAML 读取，不需人眼 diff。
 
 **回顾前先跑一次体检**：`python3 scripts/metrics_health.py` —— 它把"哪些指标超期没更新、
 哪些闸门越界没人处理、哪些指标本期不可解读"直接列出来，避免回顾时对着过期快照讨论趋势。

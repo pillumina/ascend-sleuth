@@ -1,7 +1,7 @@
 # 元层 eval 台（arena）——WikiSkill 式 train/val 分离 + 门控自演进
 
 > **给谁读**：要改元层 eval 台（train/val 分离、门控协议、影响账本）的人；**什么时候读**：你要改评测机制本身的稳定性判据时；**读完能做什么**：能说清 train/val 分离怎么防「拿同一批数据自证」，门控协议在哪一层生效。
-> **论证层——日常不必读。** 执行规则与机制地图见 [../rsi-mechanism.md](../rsi-mechanism.md)。
+> **论证层——日常不必读。** 执行规则与机制地图见 [rsi-mechanism.md](rsi-mechanism.md)。
 
 > 机制决议：EV-2026-013。对应 WikiSkill（arXiv 2608.27454）的元层：候选改动在
 > held-out 评测集上**严格提升才接受**、否则回滚、结果留影响账本。本台把 S2 replay

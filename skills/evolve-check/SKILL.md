@@ -105,7 +105,7 @@ description: >
    预测写不出可复现口径，通常说明它还不是一个可证伪的假设——先改预测。
    与 `trajectory` 的分工：trajectory 管**问题可回放**，measure 管**预测可复现**；
 4. **自行验证执行**（评估自动化的核心——agent 自己验证，不把验证推给人）：
-   - 按**影响面分级**选门禁（docs/eval.md「门禁分级」可选论证层，下述为执行值）：
+   - 按**影响面分级**选门禁（docs/guide/eval.md「门禁分级」可选论证层，下述为执行值）：
      **检索/路由/候选选择面**改动 → golden 子集前后对照（2-5 条受影响 fixture，
      非全量；基线缓存复用，只跑改后侧）或 S2 replay（`scripts/replay_golden.py` /
      `scripts/s2_replay.py`），数据通过才算 eval solid；检索/路由层候选在 **arena

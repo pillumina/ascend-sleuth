@@ -18,7 +18,7 @@ source_signals:
     evidence: "PR #112 审核中，体系维护人对 L/S/A–P/G/T/EV/Phase 等代号系列失去跟随（'人看充斥大量代号的产物会 lost'）；且本 PR 初稿 G1/G2/G3 与既有 G1–G8 治理缺口编号撞车，暴露无代号登记处的结构缺口"
     trajectory:
       - "PR #112 审核对话（2026-09-04）"
-      - "docs/evolution-orchestration.md 引言（G1–G8 既有系列）"
+      - "docs/mechanism/orchestration.md 引言（G1–G8 既有系列）"
       - "docs/evolution.md 顶部指代速查（EV-2026-009 初版）"
 hypothesis: >-
   把人读视图与词法存储分离——机器字段保持词法（脚本/CI 契约），人读 prose 首次出现即解码、

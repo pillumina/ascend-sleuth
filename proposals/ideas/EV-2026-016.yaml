@@ -13,7 +13,7 @@ source_signals:
     issue，agent 问 env/对照/复现却未问'是否已在最新版本/镜像复现'）——对'升级即修复'类是标准一问，诊断 skill 交互缺口
   trajectory:
   - .ixn-replay/*/（本地 5 条 score + result）
-  - docs/evolution-ixn-replay.md §4（gold 校准）+ §8（指标门）
+  - docs/mechanism/ixn-replay.md §4（gold 校准）+ §8（指标门）
   - skills/diagnose/SKILL.md 信息收集节（line 38 追问清单）
 hypothesis: '把"是否已在最新版本/镜像复现"补为 diagnose 标准追问（加到信息不足追问清单）， 可修 #3325 型交互缺口；gold 校准两条（决定性字段须向报告者可问得、keywords
   含别名） 使评分不失真；改动经 golden 前后对照无回归'

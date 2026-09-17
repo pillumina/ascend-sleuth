@@ -15,7 +15,7 @@
 | Tier 1 | `triage-tree.yaml` 路由表 | 症状 → 命名空间（约 30 个分支） |
 | Tier 2 | `knowledge/<ns>/*.yaml` case 规则 | 结构化诊断案例（症状/检查/fix） |
 | Tier 3 | `postmortems/` 原始记录 | 未结构化的排查底稿，关键词兜底 |
-| 先验知识（非检索层）| `references/` 事实与方法论 | 独立于事故；在"缺测量数据"与"缺签名/背景/修复依据"两个缺口处被读（机制见 `docs/rsi-mechanism.md`）|
+| 先验知识（非检索层）| `references/` 事实与方法论 | 独立于事故；在"缺测量数据"与"缺签名/背景/修复依据"两个缺口处被读（机制见 `docs/mechanism/rsi-mechanism.md`）|
 
 诊断时 Tier 2 命中直接给结论，未命中走 Tier 3 或源码分析，定位完沉淀成新知识。这就是"知识随使用变厚"：每次兜底后沉淀，下次同类问题直接命中。
 
@@ -409,7 +409,7 @@ sedimented: {state: submitted}   # none→submitted→knowledge/archived（零�
 | 预分诊 variant 示例（9503 并入 12461）| PR #45 |
 | 提炼示例（MoE 方法论）| `references/methodologies/ascend-moe-comm-triage.yaml` |
 | 置信度学习环（反馈结算）| `scripts/settle_trace_feedback.py`（groom §3.5 结算 → §4 重算 score）|
-| issue-ingest 输出格式 | `docs/issue-ingest-pipeline.md`（GitCode 源差异见 skill 文档）|
+| issue-ingest 输出格式 | `docs/guide/issue-ingest-pipeline.md`（GitCode 源差异见 skill 文档）|
 | 交互架构图 | `docs/diagrams/ascend-sleuth-architecture.html` |
 | DSH 面板（诊断/resume/沉淀/证据）| 动态 Cordis 插件（`conversation.view`"诊断"tab）。traces/ 为数据源；trace schema 见 `diagnosis_state.yaml.example` |
 | 面板界面演示（对话+轨迹回放动画）| `docs/demo-assets/ascend-replay-hd.gif`（§4.5，基于 `traces/2026-09-01-10562-lora-hidden.yaml`）|

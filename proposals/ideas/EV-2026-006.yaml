@@ -18,7 +18,7 @@ source_signals:
     evidence: "knowledge/_index.yaml 头注：inference/vllm-ascend interrupt=76/30"
     trajectory:
       - "knowledge/_index.yaml（2026-09-03 生成，118 case）"
-      - "docs/roadmap.md A2（interrupt 36→50→76 两轮沉淀记录）"
+      - "docs/plan/roadmap.md A2（interrupt 36→50→76 两轮沉淀记录）"
 hypothesis: >-
   超 hard_cap 触发"强制拆"前，ADR-0004 要求先看健康指标（候选溢出率 >20% 才恶化）——
   若溢出率实际健康（多数诊断过滤后候选 ≤5），则 76 条不构成检索退化，不应盲目迁目录

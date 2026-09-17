@@ -245,7 +245,7 @@ return {
       return null
     }
 
-    // 外来单的交接单（`traces/handoff/<sid>.yaml`，`import_trace.py` 落位时留档，口径见 docs/handoff.md）。
+    // 外来单的交接单（`traces/handoff/<sid>.yaml`，`import_trace.py` 落位时留档，口径见 docs/guide/handoff.md）。
     // 读不到就返回 null——卡片按普通单显示，**不编造**"外来"标记（标错比不标更坏：读者会去追一个
     // 不存在的上家）。
     async function readHandoffNote(handoffDir, sid) {

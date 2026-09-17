@@ -18,7 +18,7 @@ source_signals:
     trajectory:
       - "eval/golden/VLLM-ASC-12685.fixture.yaml#头注"
       - "eval/holdout.yaml#VLLM-ASC-12685 的 why 字段"
-      - "docs/eval.md#怎么跑（v1 手动）"
+      - "docs/guide/eval.md#怎么跑（v1 手动）"
       - ".gitignore（eval-reports/ 与 .s2-replay/ 均为运行时件）"
 hypothesis: 把回放观测从 fixture 头注散文搬进结构化账本、并按「夹具内容哈希 + 目标 case 内容哈希」双判新鲜度后，"这条夹具上次记录的是第几名、那次记录之后夹具与目标 case 有没有变过"变成可查的事实；"改了夹具不重跑"由静默变为 CI 报红，"改了 case 没重跑"进待复核清单，聚合命中构成也不再依赖读 24 个文件的散文。
 predicted_effect:
@@ -39,8 +39,8 @@ validation:
        case 的合法内容变更不该阻塞无关 PR（闸门硬度与错误代价匹配，原则六）；
     ③ 账本自身不自相矛盾：条目的 fixture 与 case 都必须存在，case_id 必须与 fixture 的 expected 一致；
     ④ 聚合数随 --check 打印（有记录 N / 命中第一 / 命中前三 / 未命中 / 未记录 / 待复核），人不必读散文；
-    ⑤ CI 新增 eval-scorecard job；docs/eval.md 写明"账本记观测、卡口只判夹具新鲜度、不判准确率"——
-       准确率门禁仍需 agent 跑回放，不假硬化为 CI 门（docs/eval.md 门禁分级与 CLAUDE.md 准入判据）。
+    ⑤ CI 新增 eval-scorecard job；docs/guide/eval.md 写明"账本记观测、卡口只判夹具新鲜度、不判准确率"——
+       准确率门禁仍需 agent 跑回放，不假硬化为 CI 门（docs/guide/eval.md 门禁分级与 CLAUDE.md 准入判据）。
   rollback: 两文件（脚本 + 账本）+ 一个 CI job 可整体 revert；账本是记录文件，删除即回到改前状态（原则七）
 gate:
   condition: "不等数据触发：本卡补的是回放观测的落点（此前观测无结构化落点），属口径前置修正，随 PR 合入"

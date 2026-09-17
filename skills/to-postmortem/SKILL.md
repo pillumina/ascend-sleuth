@@ -123,7 +123,7 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 
 **生成后明确告诉用户存哪了**——报出具体路径（如 `postmortems/inbox/custA-ep-hang.md`）和 YAML 草稿位置，说明"周审后转正"，别让工程师去找自己的产出。
 
-**写草稿时的行文**：postmortem 与 case 词条都是给人读、给人审的文本，按 `docs/writing-norms.md` 写（可选论证层，不影响本 skill 执行）；本面的定制条款见该文件 §3 的「case / reference 词条」与「postmortem」两行——症状句要能直接当 grep 判据，`root_cause` / `fix` 只写结论与依据，时间线只放可观察事实。
+**写草稿时的行文**：postmortem 与 case 词条都是给人读、给人审的文本，按 `docs/spec/writing-norms.md` 写（可选论证层，不影响本 skill 执行）；本面的定制条款见该文件 §3 的「case / reference 词条」与「postmortem」两行——症状句要能直接当 grep 判据，`root_cause` / `fix` 只写结论与依据，时间线只放可观察事实。
 
 **结算与提 PR 的粒度（别每次闭环都开 PR）**：诊断现场回报 fix 结果后，trace 里记 `feedback` 事件即可（`feedback.outcome: pending` → 现场确认后置 `resolved`）。**confidence 的结算与入库按周批走一次**——groom 的结算步骤跑 `settle_trace_feedback.py`，一个 knowledge_modification PR 覆盖当期全部变更。本地连着定位多个问题时，不要每闭环一个就提一个 PR：`hits` 只影响候选排序（排序对时效不敏感），而结算游标是 gitignored 的共享运行时件、不进 git。理由是三条写入点的**git 归属刻意不同**：现场记录含客户信息故不进 git，置信度是学习环的持久知识故必须入库，指标时序是周节奏的人复核汇总故不等每次反馈。
 

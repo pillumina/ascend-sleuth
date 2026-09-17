@@ -637,7 +637,7 @@ def main() -> int:
             if f["kind"] == "readme":
                 f["bytes"] = (tree / f["path"]).stat().st_size if (tree / f["path"]).exists() else 0
         m_text = ("# 交接单（export_trace.py 生成，导入侧 import_trace.py 读）\n"
-                  "# 字段口径见 docs/handoff.md\n"
+                  "# 字段口径见 docs/guide/handoff.md\n"
                   + yaml.safe_dump(manifest, allow_unicode=True, sort_keys=False,
                                    default_flow_style=False))
         manifest_path.write_text(m_text, encoding="utf-8")
@@ -687,7 +687,7 @@ def main() -> int:
         try:
             manifest_path.write_text(
                 "# 交接单（export_trace.py 生成，导入侧 import_trace.py 读）\n"
-                "# 字段口径见 docs/handoff.md\n"
+                "# 字段口径见 docs/guide/handoff.md\n"
                 + yaml.safe_dump(manifest, allow_unicode=True, sort_keys=False,
                                  default_flow_style=False), encoding="utf-8")
         except OSError:

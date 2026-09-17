@@ -1,16 +1,16 @@
 # metrics 阈值与可解读性下限（**数据，不是散文**）
 #
-# 谁读：`scripts/metrics_health.py`（闭环检测器）；`docs/metrics.md` 的周批流程第 2 步。
+# 谁读：`scripts/metrics_health.py`（闭环检测器）；`docs/guide/metrics.md` 的周批流程第 2 步。
 #
 # 为什么单独成文件（2026-09-10 审计）：
-#   阈值原先散在 `docs/roadmap.md`（闸门叙述）、ADR-0004（容量数值）、`docs/metrics.md`（口径）
+#   阈值原先散在 `docs/plan/roadmap.md`（闸门叙述）、ADR-0004（容量数值）、`docs/guide/metrics.md`（口径）
 #   与 groom 的信号表里，**没有任何一处能被脚本读** —— 于是"指标越界"永远不会自己喊：
 #   实测某格 `interrupt=85/30`（soft_cap 的 2.8 倍）、结构快照 10 天没更新、反馈捕获为 0
 #   （命中/误诊没有分母），而周批第 4 步 `verify_metrics.py --check` 照样 exit 0
 #   （它只验结构：period 唯一 / 字段白名单 / 比例字段合法）。
 #   阈值落成数据 = 检测器有判据可读（原则二：不变量写进结构），且改判据只改一处。
 #
-# 改这里 = 改判据：同步 `docs/metrics.md` 的「闸门与可解读性」节、`docs/roadmap.md` 的闸门描述。
+# 改这里 = 改判据：同步 `docs/guide/metrics.md` 的「闸门与可解读性」节、`docs/plan/roadmap.md` 的闸门描述。
 
 freshness:
   # 诊断侧 live 快照：超期 = 趋势断档（季度回顾要读连续 live 快照）

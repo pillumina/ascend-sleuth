@@ -29,7 +29,7 @@ source_signals:
     trajectory:
       - "scripts/gc_docs.py（新增 cmd_triage 子命令 + status 展示 triage 字段）"
       - "skills/reference-ingest/SKILL.md（第 0 步：选源与仓级判定；scan 只对 selected/candidate 做）"
-      - "docs/reference-ingest-pipeline.md（新增「两级判定：仓级 + 文档级」一节与 schema 示例）"
+      - "docs/guide/reference-ingest-pipeline.md（新增「两级判定：仓级 + 文档级」一节与 schema 示例）"
       - "reference-ingest-state.json（80 仓写入 triage：11 selected / 19 candidate / 50 rejected）"
 hypothesis: >-
   把台账分成两级——仓级 `triage`（selected/candidate/rejected + 理由，零网络一次写完）与文档级 `decision`
