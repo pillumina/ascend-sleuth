@@ -2,6 +2,7 @@
 # schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
 id: EV-2026-116
 layer: L2
+target_component: scripts/ev_board_data.py
 title: 三条判据的分子在量错东西——指针回写与水位读数 + 死引用收紧 + 信号口径统一
 status: validated
 authorization: review

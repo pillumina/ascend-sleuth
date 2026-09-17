@@ -88,6 +88,15 @@ gates:
     meaning: "预测口径强制生效（created_at 不早于 measure cutover）之后产出的卡中，既无 command 也无 reason 的卡数。CI（verify_proposals --check）已对此设硬门，本判据是面板侧复核；早于该时间点的存量卡不计入，也不补写（补写会形成事后叙述，见原则十）。"
     action: "此类卡不应进入 main：补上判据命令与期望值，或声明不可度量，再送审。"
 
+  - id: stale_measure_deps
+    dimension: stale_measure_deps
+    op: ">"
+    value: 0
+    min_sample: 1
+    title: 判据点到已蒸发的文件
+    meaning: "可复现判据的命令里点到的仓库路径已不在检出内（如 traces 里的报告、/tmp 状态件）。这类判据跑起来只会把噪声当信号（实测抽查 6 张未执行的卡，有 2 张属此类），因此它们不计入「从未执行」的分子——两类要分开处置，混在一起会把动作引向「全部跑一遍」。"
+    action: "逐条处置：判据仍有效 → 改成不依赖本地运行时件的形态（用仓内文件或结构性断言）；判据已无意义 → 如实改预测或把卡标 superseded。不跑它。"
+
   - id: pool_reuse_uncontrolled
     dimension: arena_pool_reuse
     op: ">="

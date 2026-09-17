@@ -3,6 +3,7 @@
 # schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
 # ============================================================
 id: EV-2026-111
+target_component: scripts/rank_candidates.py
 layer: L2
 title: 候选排序改词法相关性优先——行内签名字面量 + token 交集，score 退居破平
 status: validated

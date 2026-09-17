@@ -144,7 +144,10 @@ owner 尚未确定时，`CODEOWNERS.example` 保留 TODO 占位，CI 与标签�
 
 ## CI
 
-`.github/workflows/kb-checks.yml` 已提供，内容等价于：
+`.github/workflows/kb-checks.yml` 已提供，**job 清单以该文件为准**（数量与名字随机制增长而变，
+不在本文抄一份——抄了就会腐烂且不报错）。本地等价复跑的唯一可靠方式是逐条读那里的 `run:`；
+更重的端到端演练见 `python3 scripts/rehearse_evolve_loop.py`（它会把 kb-checks 的每条命令逐条复跑，
+但**不走 pr-template 那条**）。至少要跑的一条起手式：
 
 ```bash
 pip install pyyaml

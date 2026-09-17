@@ -1,6 +1,7 @@
 # EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
 id: EV-2026-118
 layer: L2
+target_component: docs/roadmap.md
 title: 两处「已完成/已达标」不可复核——评测台数据文件不存在、演练容量断言写死会腐烂的数字
 status: validated
 authorization: review

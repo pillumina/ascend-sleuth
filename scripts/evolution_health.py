@@ -30,7 +30,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _yaml import load_file                      # noqa: E402  （解析后端单一事实源）
 import ev_board_data as EBD                      # noqa: E402
-from ev_measure import classify as classify_measure, load_cards  # noqa: E402
+from ev_measure import (classify as classify_measure, load_cards,  # noqa: E402
+                        stale_deps)
 from verify_proposals import measure_enforced    # noqa: E402
 
 GATES_REL = Path("proposals") / "gates.yaml"
@@ -43,7 +44,7 @@ OPS = {">": operator.gt, ">=": operator.ge, "<": operator.lt, "<=": operator.le,
 IMPLEMENTED_GATE_DIMENSIONS = {
     "negative_terminal", "backlog_count", "runnable_never_measured",
     "external_ground_truth_ratio", "top_signal_share", "dead_ref_count",
-    "unfalsifiable_enforced", "arena_pool_reuse",
+    "unfalsifiable_enforced", "arena_pool_reuse", "stale_measure_deps",
 }
 IMPLEMENTED_READABILITY_RULES = {"source_nonzero", "any_gt_0"}
 
@@ -59,6 +60,7 @@ GATE_READINGS = {
     "pointer_rot": "卡片引用的 {dead_ref_count} 个文件已不存在：{dead_ref_sample}",
     "unfalsifiable": "强制范围内缺可复现判据 {unfalsifiable_enforced} 张",
     "pool_reuse_uncontrolled": "同一份对照池（{arena_pool_name}）上已做 {arena_pool_reuse} 次判定未换池（阈值 {value}）",
+    "stale_measure_deps": "{stale_measure_deps} 张卡的判据点到已不存在的仓库文件：{stale_measure_ids}",
 }
 # 比例型维度：读数与阈值都按百分比渲染（"0.246（下限 0.333）"不如"24.6%（下限 33.3%）"可读）。
 # 值是占位符名 → 模板里用短名，避免 `{external_ground_truth_ratio_pct}` 这种长占位符。
@@ -133,11 +135,16 @@ def collect_dimensions(root: Path):
     runs = EBD.collect_measure_runs(root)
 
     # 预测口径：可复现 / 自称不可度量 / 强制卡缺 measure / 存量豁免
-    runnable, declared, missing_enforced, legacy = [], [], [], []
+    runnable, declared, missing_enforced, legacy, stale = [], [], [], [], []
     for cid, doc, _p in load_cards(root):
         kind, _m = classify_measure(doc)
         if kind == "runnable":
-            runnable.append(cid)
+            # 判据点到已蒸发的仓库文件（traces 里的报告、/tmp 状态件…）→ 单独一档：
+            # 它们"跑一次"只会把噪声当信号，混进"从未执行"里会把动作指向错的方向。
+            if stale_deps(root, doc):
+                stale.append(cid)
+            else:
+                runnable.append(cid)
         elif kind == "declared":
             declared.append(cid)
         elif measure_enforced(doc):
@@ -156,6 +163,8 @@ def collect_dimensions(root: Path):
         "dead_ref_count": stats["dead_ref_count"],
         "dead_ref_paths": stats["dead_ref_paths"],
         "unfalsifiable_enforced": len(missing_enforced),
+        "stale_measure_deps": len(stale),
+        "stale_measure_ids": "、".join(stale[:3]) + ("…" if len(stale) > 3 else "") if stale else "—",
     }
 
     reuse_n, reuse_pool = collect_arena_reuse(root)

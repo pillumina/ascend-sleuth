@@ -98,3 +98,7 @@ metrics/skill-exec-log.yaml.lock
 metrics/ev-measure-log.yaml
 metrics/ev-measure-log.yaml.lock
 .flow-replay/
+# 回放夹具的输入与报告（replay_golden.py 在检出根写出；此前未被忽略，
+# 跑一次 --prepare 就留下未跟踪目录。要留档请先挪出检出）。
+.replay-input/
+.replay-report.md

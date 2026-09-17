@@ -89,10 +89,12 @@ description: >
    该方向已试过 → 不重复方案（改提新方向，或记信号不产卡）；一次查全走
    `python3 scripts/ev_proposal.py --impact [组件关键词]`（组件×尝试×结局；**有结局分歧的组件会被标出**
    ——只有那些组件的先例能告诉你"别重试"，其余是"改完又改"的累积）；
-3. 产骨架：`python3 scripts/ev_proposal.py --new` → 填字段（layer / title /
-   source_signals 带 trajectory / hypothesis / predicted_effect / validation /
+3. 产骨架：`python3 scripts/ev_proposal.py --new` → 填字段（layer / **target_component** /
+   title / source_signals 带 trajectory / hypothesis / predicted_effect / validation /
    risk / principle_refs），trajectory 必须指到本轮执行出处（产出文件 id / replay
-   结果 / trace）；
+   结果 / trace）。**target_component = 本卡要改的那个组件**（仓库内路径或组件名）：它是
+   「同组件改过几次、结局如何」的键，缺了先例咨询就无从查起（先例视图 `ev_proposal.py --impact`
+   读它；CI 对生效日之后的卡强制）；
    `predicted_effect` 必须带 **`measure`——预测的出处**：一条命令 + 期望
    （`expect_exit` 或 `expect_stdout` 至少一项），让**任何** reviewer 一条命令就能
    复核预测是否成立（`scripts/ev_measure.py <卡号> --run`；三态退出码 =

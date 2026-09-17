@@ -8,6 +8,9 @@
 
 id: EV-2026-001                    # 稳定 ID（EV-年-序号）
 layer: L2                          # L1 知识内容 | L2 流程与 skill | L3 工作流编排
+target_component: scripts/example.py   # 本卡要改的组件（仓库内路径或组件名）。必填：
+                                   #   它是「同组件改过几次、结局如何」的键——
+                                   #   `ev_proposal.py --impact` 与产卡前的先例咨询都靠它
 title: triage 分支 vllm-ascend 启动参数族执行错率 0.6 → 修订该分支
 status: in_experiment             # EV 卡 = agent 决策档案（不含 git 合入态/待办态），词表见 pipeline §7：
                                    #   产卡即执行（方案成形才产卡，无 candidate 待办态）

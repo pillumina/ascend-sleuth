@@ -3,6 +3,7 @@
 # schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
 # ============================================================
 id: EV-2026-109
+target_component: scripts/settle_trace_feedback.py
 layer: L2
 title: 结算完整性三修——按事件增量结算 + 未落地不静默丢证据 + 序列改写拒绝猜
 status: validated

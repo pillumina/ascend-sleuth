@@ -1,6 +1,7 @@
 # EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
 id: EV-2026-117
 layer: L2
+target_component: scripts/component_tally.py
 title: 归因事件两端字段名漂移——生产端写 attribution_kind、消费端只认 verdict，硬归因通道从未有数据
 status: validated
 authorization: review

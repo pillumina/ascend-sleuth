@@ -17,7 +17,7 @@ disable-model-invocation: true
 
 ## 触发
 
-手动运行，建议每周一次（连续四周无新 postmortem 则自动切双周）。
+手动运行，建议每周一次；连续四周无新 postmortem 时可改双周——**这是人的节奏判断，不是脚本行为**（本仓没有 cadence 实现，别把它读成自动调度）。
 
 **触发场景区分**：
 - **人工使用场景（默认周批）**：人通过 diagnose/to-postmortem 等沉淀的草稿——攒 inbox

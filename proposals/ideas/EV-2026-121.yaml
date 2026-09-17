@@ -1,0 +1,59 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-121
+layer: L2
+target_component: scripts/ev_measure.py
+title: 「可复现判据从未执行」与「判据依赖已蒸发」分开——两类动作不同，混算会把动作引向"全部跑一遍"
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: data_anomaly
+    evidence: "审计实测：判据「可复现判据从未执行」只数「跑没跑过」，不区分「跑了还有没有意义」。抽查 6 张未执行的卡，2 张的判据依赖已蒸发的本地件（traces 里的报告、/tmp 状态件），3 张的期望值钉在会漂移的计数上（今天跑会给出错误结论）——把它们混在一个分子里，动作会变成「把几十张全跑一遍」，而其中一部分跑一次只会制造噪声"
+    trajectory:
+      - "审计实测：抽查 6 张未执行卡的判据命令与依赖"
+      - "scripts/ev_measure.py --audit 的分档"
+hypothesis: 判据命令里点到的仓库路径已不存在时，单列一档（依赖已蒸发）；「从未执行」的分子排除这一档，并新增一条判据盯它。两类各自有明确动作：前者修判据或改预测，后者去跑。
+predicted_effect:
+  metric: 「从未执行」的分子构成与两类判据的可分性
+  from: "单一数字（含依赖已蒸发的卡）；动作只有「全跑一遍」"
+  to: "「从未执行」排除已蒸发档；新增判据「判据点到已蒸发的文件」= 2 张，各自给动作"
+  measure:
+    command: "python3 -m unittest tests.test_audit_readings.StaleMeasureDepTest"
+    expect_exit: 0
+validation:
+  method: metrics_compare
+  baseline: "改前：--audit 只有 runnable/declared/missing/legacy 四档；判据层只报「从未执行」一个数"
+  success_criteria: |
+    ① --audit 新增「可跑但依赖已蒸发」档并列出卡号（实测 2 张）；
+    ② 判据「可复现判据从未执行」的分子排除该档（实测 51 → 49）；
+    ③ 新增判据「判据点到已蒸发的文件」（阈值 0）并在判据层可评估；
+    ④ 单测覆盖：仓库文件缺失算、仓内存在不算、运行时件（traces//tmp）不算、不可度量卡不算。
+  rollback: "单文件 revert（ev_measure.py 的 stale_deps + evolution_health 一维 + gates.yaml 一条）；阈值口径回到旧版（原则七）"
+gate:
+  condition: "不等数据触发：属读数可分性修复"
+risk: low
+principle_refs: [8, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：判据「从未执行」与「依赖已蒸发」分开"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：ev_measure 增 stale_deps() 与 audit 新档；evolution_health 的 runnable_never_measured 排除该档并新增维度 stale_measure_deps；gates.yaml 增判据；新增 4 项单测"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "实测：--audit 报「可跑但依赖已蒸发 2」；判据层报 9 条判据 8 条已评估、新判据命中并列卡号；单测 4 项通过"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）。残余如实标注：另有若干判据的期望值钉在会漂移的计数上（今天跑会假红），本卡只把「依赖已蒸发」这一类分开；「期望值随数据漂移」那一类需要逐卡改写成结构性断言，属后续工作"

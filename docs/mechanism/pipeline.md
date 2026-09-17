@@ -430,7 +430,7 @@ $B_{\text{attn}}$）。**结论：卡面主要供 agent（下一轮起草查同�
 | execution §10：沉淀效果字段（predicted_value/first_hit） | Phase B（归因事件/首条 L2 卡后，随首批沉淀） |
 | execution §10：follow-up 观察窗常态化 | Phase C（依赖 M2/S2 的即时判定） |
 | execution §10：回滚率等机制指标进 timeline | Phase D 试点 ≥1 轮后 |
-| run §9：统一执行记录（机制 C） | 第一批已完成（schema+脚本+3 内容 skill 收尾接入）；**2026-09 收敛：只覆盖内容 skill 收尾，diagnose 走 trace 不重复落**（见 run §4） |
+| run §9：统一执行记录（机制 C） | 第一批已完成（schema+脚本+4 内容 skill 收尾接入（issue-ingest / to-reference / to-postmortem / knowledge-groom，另 evolve-check 自身也落记录））；**2026-09 收敛：只覆盖内容 skill 收尾，diagnose 走 trace 不重复落**（见 run §4） |
 | run §9：supersede 字段 + 回滚语义 | Phase D（出现首个替代场景时，schema 已含字段） |
 | run §9：长期任务层试点 | Phase D（试点即含轮间调度） |
 | run §9：可视化 | Phase E 后 / 常设（任务层跑通 ≥1 轮） |

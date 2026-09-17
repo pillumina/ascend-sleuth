@@ -3,6 +3,7 @@
 # schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
 # ============================================================
 id: EV-2026-106
+target_component: skills/knowledge-groom/SKILL.md
 layer: L2
 title: groom 预分诊改"先判后看"，复核注意力按"对本次改动声明了限制"分派（不按新旧）
 status: validated

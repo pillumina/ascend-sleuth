@@ -1,6 +1,7 @@
 # EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
 id: EV-2026-119
 layer: L2
+target_component: scripts/eval_arena.py
 title: 门控池可从已跟踪数据机械重建——评测台从"规则在跑、数据不存在"变为可复核
 status: validated
 authorization: review

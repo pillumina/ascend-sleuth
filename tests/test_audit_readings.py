@@ -118,3 +118,82 @@ class AttributionVocabularyTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class StaleMeasureDepTest(unittest.TestCase):
+    """判据点到已蒸发的仓库文件 → 单列一档，不与"从未执行"混算。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / "docs").mkdir()
+        (self.root / "docs" / "alive.md").write_text("x", encoding="utf-8")
+
+    def _card(self, cmd):
+        return {"predicted_effect": {"measure": {"command": cmd, "expect_exit": 0}}}
+
+    def test_missing_repo_file_is_stale(self):
+        import ev_measure as em
+        self.assertEqual(em.stale_deps(self.root, self._card("python3 -c 1 docs/gone.md")),
+                         ["docs/gone.md"])
+
+    def test_existing_repo_file_is_not_stale(self):
+        import ev_measure as em
+        self.assertEqual(em.stale_deps(self.root, self._card("grep -c x docs/alive.md")), [])
+
+    def test_runtime_paths_are_not_stale(self):
+        """traces/ 与 /tmp 下的文件不存在是正常的（运行时件），不算判据失效。"""
+        import ev_measure as em
+        self.assertEqual(em.stale_deps(self.root, self._card("python3 x.py traces/a.yaml /tmp/b.json")), [])
+
+    def test_declared_unmeasurable_has_no_deps(self):
+        import ev_measure as em
+        self.assertEqual(em.stale_deps(self.root, {"predicted_effect": {"measure": {"command": None, "reason": "r"}}}), [])
+
+
+class TargetComponentGateTest(unittest.TestCase):
+    """target_component 对生效日之后的卡强制——它是同组件先例咨询的键。"""
+
+    def _run(self, created):
+        import subprocess
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        d = root / "proposals" / "ideas"
+        d.mkdir(parents=True)
+        (d / "EV-2026-901.yaml").write_text(f"""\
+id: EV-2026-901
+layer: L2
+title: t
+status: in_experiment
+authorization: review
+dimension: evolvability
+created_at: {created}
+source_signals:
+  - {{signal: process_friction, evidence: e, trajectory: [traces/x.yaml]}}
+hypothesis: h
+predicted_effect:
+  metric: m
+  from: a
+  to: b
+  measure: {{command: "true", expect_exit: 0}}
+validation: {{method: scan_review, baseline: b, success_criteria: s, rollback: r}}
+gate: {{condition: c}}
+risk: low
+principle_refs: [10]
+decisions:
+  - {{who: agent, when: 2026-09-17, type: proposal, conclusion: p}}
+""", encoding="utf-8")
+        p = subprocess.run([sys.executable, str(ROOT / "scripts" / "verify_proposals.py"), "--check",
+                            "--root", str(root)], capture_output=True, text=True)
+        return p.returncode, p.stdout + p.stderr
+
+    def test_card_after_cutover_requires_component(self):
+        rc, out = self._run("2026-09-18")
+        self.assertNotEqual(rc, 0)
+        self.assertIn("target_component", out)
+
+    def test_card_before_cutover_is_exempt(self):
+        rc, out = self._run("2026-09-10")
+        self.assertNotIn("target_component", out, out[-300:])

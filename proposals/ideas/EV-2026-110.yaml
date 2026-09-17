@@ -3,6 +3,7 @@
 # schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
 # ============================================================
 id: EV-2026-110
+target_component: scripts/trace_metrics.py
 layer: L2
 title: triage miss 分两类记——token 在场而词法层没接住（真缺陷）vs 本来就没 token（级联正常换挡）
 status: validated
