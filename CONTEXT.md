@@ -112,7 +112,7 @@ _避免_：隐含价格、机会成本（语义近但不等）
 |---|---|---|
 | `A2-910B` / `A3-910C` / `A5-950` | 昇腾三代硬件平台标识；case 的 `platforms` 字段与各自的 diagnosis 分支按它分派 | `skills/diagnose/references/platform-dispatch.md` |
 | `DSH` | DeepSeek Harness：本仓的 agent 运行环境与零配置主路径；`.dsh/skills` 与诊断面板仅在 DSH 下生效 | 本仓 README「快速开始」 |
-| `S1` / `S2` | 反馈的两条通道：S1 = 现场 resolve（工程师回报 fix 是否解决）；S2 = 内容验证（issue-replay 对照外部 ground truth） | `docs/evolution.md` |
+| `S1` / `S2` | 反馈的两条通道：S1 = 现场 resolve（工程师回报 fix 是否解决）；S2 = 内容验证（issue-replay 对照外部 ground truth） | `docs/rsi-mechanism.md` |
 | `EV 卡` | 演进提案卡（`proposals/ideas/EV-*.yaml`），演进闭环的改进单元 | `docs/mechanism/pipeline.md` |
 | `F1`–`F5` | 阶段一索引加载协议的优化子项编号 | `docs/roadmap.md` 的「加载协议子流」条目 |
 | 格子 | 容量治理单元 = (框架 × 类别)；软上限 30、硬上限 60 | `docs/adr/0004-capacity-governance.md` |
@@ -126,6 +126,6 @@ _避免_：隐含价格、机会成本（语义近但不等）
 
 本表**不定义机制**。此前这里堆了十几条机制定义（eval 台、交互型 replay、门禁分级、索引分片、容量闸门……），每条还挂着决议卡号——结果是：一份**术语表**被当成了**机制注册表**，读者要先在这里学会一整套机制才能去读机制文档，而机制文档本来才是它们该待的地方。
 
-每件事只有一个权威处，按"你要做什么"查 [docs/evolution.md](docs/evolution.md) 的**权威归属**表（那张表也说明每篇文档什么时候该读）。
+每件事只有一个权威处，按"你要做什么"查 [docs/rsi-mechanism.md](docs/rsi-mechanism.md) 的**权威归属**表（那张表也说明每篇文档什么时候该读）。
 
 术语表只回答"**这个词是什么意思**"——case / postmortem / groom / trace / reference / 分诊树 / 严重度闸门 等。机制怎么运作、由谁裁决、什么时候改，不在这里。

@@ -183,7 +183,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 诊断过程全程记录 trace：加载了哪些命名空间、按什么顺序执行了哪些检查。trace 用于事后归因。一次误诊，究竟是知识库里的 case 写错了，还是 agent 执行流程走偏了，两者的修复路径完全不同——混在一起会把本来正确的东西改坏。
 
-三个闭环驱动整个系统，分清它们各自消费什么、产出什么，是理解这套机制的前提（**全图与权威归属见 [docs/evolution.md](docs/evolution.md)**）：
+三个闭环驱动整个系统，分清它们各自消费什么、产出什么，是理解这套机制的前提（**全图与权威归属见 [自演进元机制](docs/rsi-mechanism.md)**）：
 
 | 闭环 | 什么时候发生 | 入口 | 产出 |
 |---|---|---|---|
@@ -191,7 +191,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 | **沉淀闭环** | 定位结束后 / 定期批量 | `/skill:to-postmortem`、`/skill:to-reference`、`/skill:issue-ingest` | 待审队列 → 升格为 case / reference 词条 |
 | **演进闭环** | 内容流程收尾 / 全库体检轮 | `/skill:evolve-check`、`/skill:self-evolve` | 改进卡 → 验证 → 攒批 PR（人审）→ 回到前两个闭环 |
 
-完整全景见下方架构图（[交互版](docs/diagrams/ascend-sleuth-architecture.html?theme=light)，支持主题切换与 PNG 导出）；每个机制配什么护栏防止越学越错、以及每周实际要做什么，见 [docs/evolution.md](docs/evolution.md)。
+完整全景见下方架构图（[交互版](docs/diagrams/ascend-sleuth-architecture.html?theme=light)，支持主题切换与 PNG 导出）；每个机制配什么护栏防止越学越错、以及每周实际要做什么，见 [docs/rsi-mechanism.md](docs/rsi-mechanism.md)。
 
 ![ascend-sleuth 架构](docs/diagrams/ascend-sleuth-architecture.png)
 
@@ -221,7 +221,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 ## 文档
 
-> 别从头读。先问"我现在要干什么"，再按下表找那一篇——**日常只需要 [演进机制入口](docs/evolution.md) 一篇**，
+> 别从头读。先问"我现在要干什么"，再按下表找那一篇——**日常只需要 [自演进元机制](docs/rsi-mechanism.md) 一篇**，
 > 其余是改机制本身时才读的论证层。名单由 `docs/_manifest.yaml` 生成（`scripts/build_docs_index.py --check` 防漏登记）。
 
 <!-- BEGIN generated: docs-index (scripts/build_docs_index.py；由 docs/_manifest.yaml 生成，勿手改) -->
@@ -239,9 +239,10 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 - [writing-norms.md](docs/writing-norms.md) — 人读/审阅文本的行文规范（唯一权威）：共用条目、必须保留的原值、各面的共用与定制判定、哪些能硬化
 
 **演进机制（改机制本身才读；日常不必读）**
-*你要改演进/评测/编排机制本身时——日常只读 docs/evolution.md 一篇，论证层在 docs/mechanism/*
+*你要改演进/评测/编排机制本身时——日常只读 docs/rsi-mechanism.md 一篇，论证层在 docs/mechanism/*
 
-- [evolution.md](docs/evolution.md) — **演进机制入口**：机制地图、权威归属、周度 runbook——日常只读这一篇
+- [rsi-mechanism.md](docs/rsi-mechanism.md) — **自演进元机制唯一技术入口**：主线流程图、名词对照、人参与点与可退出条件、外部依据、周度 runbook
+- [evolution.md](docs/evolution.md) — 旧入口（保留以免旧链接失效）：内容已并入 rsi-mechanism.md，本文只是一页指路
 - [pipeline.md](docs/mechanism/pipeline.md) — 三层闭环（知识 / 流程 / 编排）与 proposal 状态机、卡 schema
 - [execution.md](docs/mechanism/execution.md) — proposal 信息契约、评审判据、follow-up 验证、指标分层
 - [orchestration.md](docs/mechanism/orchestration.md) — 自演进会话协议、目标函数与停止条件、token 预算

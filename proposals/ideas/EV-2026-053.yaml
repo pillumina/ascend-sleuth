@@ -41,9 +41,9 @@ predicted_effect:
     新人可见面（README / CONTEXT / docs/evolution.md）零越界；三组同形冲突各在词表中
     登记并用 scope 消歧；扫描器接受目录、分两档报越界（新人可见面单列 / 其余按文件计数）
   measure:
-    command: python3 scripts/render_review_summary.py --scan README.md CONTEXT.md docs/evolution.md
+    command: python3 scripts/render_review_summary.py --scan README.md CONTEXT.md docs/rsi-mechanism.md
     expect_exit: 0
-    expect_stdout: "新人可见面（README / CONTEXT / docs/evolution.md）干净"
+    expect_stdout: "新人可见面干净"
 validation:
   method: scan_review
   baseline: >-
@@ -64,6 +64,10 @@ actual_cost:
   source: estimate
   note: "单会话内联执行，未单独记账；口径同前三张卡"
 decisions:
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "判据维护（非改写结论）：本卡的扫描目标与断言跟着「新人第一眼读哪篇」搬家——自演进元机制的唯一技术入口改为 docs/rsi-mechanism.md，故命令里换成它；断言从钉死的路径枚举改成属性「新人可见面干净」，理由是脚本原先手写第二份清单（与 NEWCOMER_FACING 集合镜像）→ 集合一变输出就撒谎，现已改为从集合派生。原断言在集合变更后必然失效，属陈旧断言而非预测被证伪。"
   - who: agent
     when: 2026-09-10
     type: proposal
