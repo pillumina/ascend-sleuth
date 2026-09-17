@@ -233,6 +233,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 **规范（约束一切设计与演进；改机制前必读）**
 *你要判断某个设计/改动是否合规，或要挑战一条既有规则时*
 
+- [case-schema.md](docs/case-schema.md) — 
 - [design-principles.md](docs/design-principles.md) — 十一条规范性条文——一切设计、实现、修复与演进的依据
 - [design-theory.md](docs/design-theory.md) — 四公理 → 公式 → 原则的完整推导链（原则的生成处）
 - [writing-norms.md](docs/writing-norms.md) — 人读/审阅文本的行文规范（唯一权威）：共用条目、必须保留的原值、各面的共用与定制判定、哪些能硬化
