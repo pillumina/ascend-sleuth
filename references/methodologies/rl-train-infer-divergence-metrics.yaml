@@ -1,0 +1,55 @@
+id: rl-train-infer-divergence-metrics
+type: methodology
+title: RL 训推一致性指标判据与三种手段（diff_mean / pearson / KL 阈值 → fp32 升精 / router replay / rollout correction）
+summary: RL 训推一致性的指标判据与三种手段：rollout_probs_diff_mean 大于 0.01x 存疑、rollout_actor_probs_pearson_corr 需 0.99x 及以上、|KL| 小于 0.1；手段为训推差异正向定位（fp32 升精）、MoE router replay、rollout correction（IS/RS）
+
+sources:
+  - type: engineer-input
+    engineer: "RL 精度调优经验分享（提供者匿名）"
+    document: "强化学习精度调优方法总结分享（PDF，12 页）"
+    input_session: "session-f7e8b681-6bdc-4f2d-9e7b-0d0cb466de9b"
+    confirmed_at: 2026-09-17
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  frameworks: [verl, vllm-ascend]
+  categories: [precision]
+
+related_references: [rl-train-infer-consistency-triage, verl-probs-diff-monitoring, rl-precision-alignment-overview, rl-training-precision-triage]
+
+status: active
+last_verified: 2026-09-17
+
+content:
+  flow:
+    - step: 1
+      name: 先建立判断——为什么训推必须一致
+      action: "On-Policy RL 要求采样策略 π_sampler（推理引擎）与目标策略 π_learner（训练引擎）一致。三类训推差异：算子实现的精度不一致、训推量化精度不一致（FP8/BF16）、异步 RL 中训推模型不处于同一状态。差异会变成 Off-Policy 陷阱，后果两条：训练不稳定、reward 崩溃；收敛效果差。"
+      check: "能说清本问题的差异属于三类中的哪一类（或尚不确定）"
+      when_to_use: 怀疑训推不一致、需要先判断值不值得查时
+    - step: 2
+      name: 读指标判据——rollout_corr 一组指标
+      action: "verl 用 rollout_corr 一组指标暴露训推差异，前提是 actor_rollout_ref.rollout.calculate_log_probs=True。判据：rollout_probs_diff_mean 小于 0.01 视为正常，大于 0.01x 怀疑实现问题或训推不一致；rollout_actor_probs_pearson_corr 接近 1.0 表示高度一致，明显低于 1 说明训推分布对不齐，经验值需 0.99x 及以上；training/rollout_ppl 是训练参考策略困惑度 exp(-mean(log_probs))，越低置信度越高，与 rollout_ppl 对比看；log_ppl_diff = mean(log_ppl_rollout - log_ppl_training)，约等于 0 为理想；KL(π_rollout‖π_training) 的 |kl| 小于 0.1 较健康，可以为负。公式与配置见 verl 仓库 docs/algo/rollout_corr.md 与 rollout_corr_math.md。"
+      check: "calculate_log_probs 是否已开；diff_mean、pearson、ppl 差、KL 四项读数是否落在阈值内"
+      when_to_use: 有训练日志、要判断训推是否一致时
+    - step: 3
+      name: 定界——diff_mean 普遍超阈值即归类训推不一致
+      action: "rollout_probs_diff_mean 普遍大于 0.01x，初步归类为训推不一致，启动推理侧与训练侧的对齐排查：两侧分别把参数、精度实现对齐后再看指标是否回落。"
+      check: "diff_mean 是普遍超阈值还是只有个别 token / 个别步"
+      when_to_use: 第 2 步读数超阈值，需要决定查哪一侧时
+    - step: 4
+      name: 手段一：训推差异分析——正向定位差异来源
+      action: "已有关键经验三条：①softmax 使用 fp32；②Router logits 计算使用 fp32；③hidden_states 升精到 fp32。对应代码改动：select_experts 中 router logits 走 softmax(dim=-1, dtype=torch.float32)；unquantized_gemm 中权重升精（weight.float()）等。"
+      check: "三处升精是否已落地；落地后 diff_mean / pearson 是否回落"
+      when_to_use: 定界为训推不一致，先从精度实现差异入手
+    - step: 5
+      name: 手段二：router replay（面向 MoE）
+      action: "RL 训练中记录并复用各层 MoE router 的 top-k 专家选择，使训练阶段与参考前向使用相同的路由决策，降低 rollout 与 actor 路由不一致带来的梯度噪声与不稳定。启用（R3）：actor_rollout_ref.actor.megatron.router_replay.mode=R3、actor_rollout_ref.rollout.enable_rollout_routing_replay=True。最低版本：verl 0.7.x 及以上、vLLM 0.17 及以上、vllm-ascend 0.15 及以上。"
+      check: "两侧配置项已开且版本满足下限；开启后路由不一致相关的噪声是否下降"
+      when_to_use: MoE 模型，且差异与专家路由（router）相关
+    - step: 6
+      name: 手段三：rollout correction（IS / RS）
+      action: "使能 Rollout correction（IS 重要性采样 / RS 拒绝采样）：重要性加权与拒绝采样目前在昇腾上暂无具体实践案例与明确效果结论，涉及训推不一致时可尝试开启，配置参考 verl 的 rollout correction 说明。已知经验：DAPO 上用 fp32 lm-head 加 TIS（prob-diff aware）相比 prob-diff agnostic 可提升 AIME 2024 pass@1。"
+      check: "开启后训练指标是否稳定；效果以实测为准（昇腾侧无既有结论）"
+      when_to_use: 前两种手段不足以消除训推差异，且愿意尝试采样侧校正时

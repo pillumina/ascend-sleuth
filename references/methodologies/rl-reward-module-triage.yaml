@@ -1,0 +1,44 @@
+id: rl-reward-module-triage
+type: methodology
+title: RL Reward 模块定位（按数据集类型定打分方式 → 分数为 0 / 与 GPU 有分差 / 自定义打分）
+summary: RL reward 对不齐的分流：先按数据集类型定打分方式与常见对不齐原因（Math 规则打分 / Code 沙箱打分 / 通用理解类模型打分），再按现象走——分数为 0 时用 GPU 推理数据单测打分器、与 GPU 存在分差 GAP 时先对齐 reward model 权重与服务化参数并固定输入（temperature=0）、客户自定义打分直接比对打分逻辑代码与传参
+
+sources:
+  - type: engineer-input
+    engineer: "RL 精度调优经验分享（提供者匿名）"
+    document: "强化学习精度调优方法总结分享（PDF，12 页）"
+    input_session: "session-f7e8b681-6bdc-4f2d-9e7b-0d0cb466de9b"
+    confirmed_at: 2026-09-17
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  categories: [precision]
+
+related_references: [rl-precision-alignment-overview, rl-inference-precision-triage]
+
+status: active
+last_verified: 2026-09-17
+
+content:
+  flow:
+    - step: 1
+      name: 先按数据集类型定打分方式与对不齐原因
+      action: "reward 对不齐的排查方向由打分方式决定：Math（规则打分）→ 打分相关代码实现不同；Code（沙箱打分）→ 沙箱运行逻辑有差异；通用（理解类，模型打分）→ 四种可能：外部模型调用的 api 不一致、本地部署的打分模型有问题、两侧没有用相同的模型打分、打分模型温度过高导致输出不固定。"
+      check: "已确认本数据集用哪种打分方式，并列出该方式下的对不齐原因清单"
+      when_to_use: reward 与 GPU 对不齐时的第一步（选错方向会在打分实现之外空转）
+    - step: 2
+      name: 场景一：分数为 0——用 GPU 推理数据单测打分器
+      action: "①获取 GPU 的推理 jsonl 数据（含 response、gts 及 score 分数）；②确认 data source；③用 GPU 的推理数据单测打分器，比对两侧分数结果是否一致。"
+      check: "同一份 GPU 推理数据在两侧打分器上的分数是否逐条一致"
+      when_to_use: 现象是 reward 恒为 0 或大面积 0
+    - step: 3
+      name: 场景二：与 GPU 存在分差 GAP——基于 reward model 的打分定位
+      action: "①对齐 reward model 的权重及推理服务化参数；②固定 RM 输入，验证模型本身是否有问题（temperature=0）；③两侧输出结果应整体一致，若出现明显差异，优先界定为 reward model 本身的问题；④（可选）前几步都没问题时，排查对应的后处理与打分体系。"
+      check: "固定输入下两侧 RM 输出是否整体一致；不一致是否可归到 RM 本身"
+      when_to_use: 现象是两侧分数存在稳定 GAP（不是全 0）
+    - step: 4
+      name: 自定义打分逻辑——直接比对代码与传参
+      action: "客户自定义打分场景，取 GPU 侧的打分逻辑代码，直接 compare 比对代码与传参，不靠现象反推。"
+      check: "两侧打分代码与传参逐项比对完毕"
+      when_to_use: 打分逻辑由客户自定义，或前三步未能解释分差

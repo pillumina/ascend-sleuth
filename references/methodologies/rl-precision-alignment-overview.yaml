@@ -1,0 +1,80 @@
+id: rl-precision-alignment-overview
+type: methodology
+title: RL 精度对齐总体定位流程（指标口径 → 前置 CheckList → 首步 bad case → 训练/训推分流 → 长跑异象）
+summary: RL 训练与推理精度对齐（GPU 对照 NPU）的总体流程：先约定八项指标口径，再做前置 CheckList（环境与三方库版本、权重与数据集 MD5、关 shuffle、balance_batch 与超长处理两边一致、固定随机数、日志参数一键比对），再按纯服务化推理 → 首步 bad case → RL 场景指标判据 → 训练块与训推一致性分流 → 长跑异象逐段收窄
+
+sources:
+  - type: engineer-input
+    engineer: "RL 精度调优经验分享（提供者匿名）"
+    document: "强化学习精度调优方法总结分享（PDF，12 页）"
+    input_session: "session-f7e8b681-6bdc-4f2d-9e7b-0d0cb466de9b"
+    confirmed_at: 2026-09-17
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  frameworks: [verl, vllm-ascend, sglang]
+  categories: [precision]
+
+related_references: [rl-reward-module-triage, rl-training-precision-triage, rl-inference-precision-triage, rl-train-infer-divergence-metrics, msprobe-config-check]
+
+status: active
+last_verified: 2026-09-17
+
+content:
+  flow:
+    - step: 1
+      name: 先约定指标口径——八项指标各说明什么
+      action: "对齐前先把看哪些指标、每个指标异常说明什么定下来，否则两侧各看各的、结论对不上。reward＝奖励模块（RM）打分，RL 优化的核心目标；response length＝答案回复长度；rollout_probs_diff_mean＝Rollout 与 Actor 概率差的均值 |p_rollout − p_actor|，训推一致性的关键指标；ppo_kl＝当前策略与旧策略的 KL 散度（PPO 实际 KL）；pg_loss＝策略梯度损失（PPO clip loss），基于优势函数的策略梯度目标函数值；grad_norm＝训练时参数梯度向量大小；rollout_actor_probs_pearson_corr＝Rollout 与 Actor 概率的 Pearson 系数；acc＝基于标准答案的正确性。"
+      check: "指标清单落到具体指标名（不是「看 loss」这类笼统说法）"
+      when_to_use: RL 精度对齐的第一步，任何一轮 GPU 与 NPU 对比都用
+    - step: 2
+      name: 前置 CheckList 之一——代码与环境版本对齐
+      action: "对齐三层的版本：CANN 环境（ascend-toolkit、kernel、nnal）、关键三方库（torch、torch-npu、transformers、megatron、tensordict、mindspeed、megatron-mbridge）、RL 框架代码（VeRL、vLLM、vllm-ascend、SGLang）。版本不一致是「启动脚本看起来一样却对不齐」的常见来源。"
+      check: "三层版本逐项列出并与标杆一致"
+      when_to_use: 任何一轮 RL 精度比对之前
+    - step: 3
+      name: 前置 CheckList 之二——权重与数据集 MD5 校验
+      action: "对权重文件与数据集分别做 MD5 校验，确认两侧用的是同一份权重、同一份数据。"
+      check: "两侧权重与数据集 MD5 相同"
+      when_to_use: 比对开始前；权重或数据集被替换过时必查
+    - step: 4
+      name: 前置 CheckList 之三——超参设置对齐
+      action: "四件事：①关闭数据 shuffle（verl 训练脚本加 data.shuffle=False）；②balance batch 策略对齐（trainer.balance_batch=False，同框架两边保持一致，跨框架建议关闭）；③超长数据处理方式一致（过滤或截断，data.max_prompt_length / data.filter_overlong_prompts / data.truncation 两边保持一致）；④固定随机数。"
+      check: "四项两侧取值相同，且 shuffle 已关"
+      when_to_use: 准备跑比对实验时
+    - step: 5
+      name: 前置 CheckList 之四——用训练日志做参数一键比对
+      action: "有标杆：msprobe config_check -vc NPU_log bench_log -o ./compare_result，基于训后 GPU/NPU 日志全量比对运行时使能参数并输出 csv。无标杆：msprobe config_check -vv [<bench_config>] <tgt_log> [-o <compare_result>]，用历史经验关键参数列表加训练日志，判断参数实际生效值与建议值是否一致。"
+      check: "csv 中每一项差异要么被解释、要么已改齐"
+      when_to_use: 启动参数看起来一样、需要确认实际生效值是否一样时
+    - step: 6
+      name: 固定随机性与确定性；可选小模型或整数复现
+      action: "比对实验先固定随机性与算子确定性，让同一份输入产生同一份输出；再视需要做小模型或整数复现，把问题压到可反复跑的最小实验上。小模型 / 整数复现是可选项，用在现象偶发、大模型一轮太贵的场景。"
+      check: "同一配置重复跑两次，首步指标可复现"
+      when_to_use: 现象不稳定，或需要反复复现同一现象时
+    - step: 7
+      name: 定位首步 bad case——先问纯服务化推理是否也有问题
+      action: "在首步（step=0）看指标是否已经与 GPU 对不齐。首步就错说明问题不在训练累积，先分叉：纯服务化推理（只做推理、不走 RL 训练链路）也有同一现象，走推理侧定位；纯服务化推理正常而只有 RL 场景异常，走 RL 场景的逐步检查。"
+      check: "明确回答「纯服务化推理是否复现同一现象」"
+      when_to_use: 拿到 RL 精度问题、还没定位到哪一侧时
+    - step: 8
+      name: RL 场景逐步检查——按偏差判是否为精度问题
+      action: "逐指标算 NPU 与 GPU 的偏差：平均绝对误差大于 0.05，或平均相对误差大于 5%，判为精度问题并进入下一步收窄；两个阈值都没超时不要凭单点波动下结论。"
+      check: "偏差是否超过 平均绝对误差 0.05 / 平均相对误差 5%"
+      when_to_use: 已确认是 RL 场景而非纯服务化推理的问题
+    - step: 9
+      name: 判问题块——grad_norm 与 loss 的误差阈值
+      action: "grad_norm 误差大于 4%，或 grad_norm 出现明显尖刺，或 loss 误差大于 1%，据此判断问题落在哪一块；先定位到块，再进该块的详细流程。"
+      check: "grad_norm 误差是否大于 4% / 有无尖刺 / loss 误差是否大于 1%"
+      when_to_use: 第 8 步判定确有精度问题之后
+    - step: 10
+      name: 把 ppo_kl 与 GPU 比对，分训练块问题与训推一致性问题
+      action: "用 ppo_kl 划界：训练侧指标（pg_loss / kl_loss / grad_norm）对不齐走训练精度定位；训练侧指标一致而 ppo_kl 与 GPU 存在量级差异，走训推一致性问题定位。训推面先确认已开 actor_rollout_ref.rollout.calculate_log_probs=True，判据是 log_p_diff 不大于 0.01x 且皮尔森系数不小于 0.99（达到即视为对齐）。"
+      check: "ppo_kl 是否存在量级差异；开了 calculate_log_probs 后 log_p_diff 与皮尔森系数是否落在阈值内"
+      when_to_use: 训练侧指标已比对完，需要判断是否训推不一致时
+    - step: 11
+      name: 长跑异象根因定位
+      action: "短跑正常、跑长了才出现的异常（乱码、指标跳变、幅度异常）单独走长跑路径：优先怀疑 kvcache（缓存清理延迟或失效、缓存复用逻辑错误）与长跑特有的状态累积，用单步权重回放把「训歪」与「长跑场景特有」分开。"
+      check: "用 n-1 步权重做纯服务化推理能否复现"
+      when_to_use: 只有长跑才复现的问题

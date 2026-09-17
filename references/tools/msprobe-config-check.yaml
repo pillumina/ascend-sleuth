@@ -35,6 +35,7 @@ content:
     - "pass_check 取值：pass=通过；error=不通过；warning=存在对 msProbe 后续操作无影响的非关键第三方库版本不一致，建议看详情分析"
     - "**前五项（env/pip/dataset/weights/hyperparameters）在精度比对前必须保证 pass**——不通过就先解释差异，别急着比 dump"
     - "**verl / slime 超参面（同一 CLI 下的另两个动作）**：`-vc` 比对两台服务器训练日志中**真实生效**的超参（不是启动脚本里写的，而是日志里跑出来的），`-vv` 输出关键超参实际生效值并判定是否满足要求，`-sc` 是 slime 版比对。适合 RL 场景「怀疑两侧超参不一致但启动参数看起来一样」——比逐行 diff 启动脚本更准"
+    - "**RL 场景的比对面（`-vc` / `-vv` 覆盖的参数族）**：`actor_rollout_ref` 前缀族（actor 与 `*_target_*` 两侧、calculate_entropy、calculate_sum_pl_squared、checkpoint 系列、clip_ratio、data_loader_seed、entropy_coeff 等），以及开关类参数的生效值（VLLM_ASCEND_ENABLE_NZ、use_mc2、token_loss、shuffle、use_dynamic_bsz、load_weight、bf16 等）。RL 精度对齐的前置检查按这两族逐项看差异"
   pitfalls:
     - "静态采集只拿到**系统中的环境变量**，且 shell 脚本里解析的超参不支持复杂运算的数据还原——有这类情况改用动态采集"
     - "动态采集在 MindSpeed-LLM 场景下，`apply_patches` 必须在框架 pretrain_gpt.py 的 megatron_adaptor 函数**导入之后**执行，否则不生效"

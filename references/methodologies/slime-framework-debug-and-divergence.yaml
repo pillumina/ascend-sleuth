@@ -1,0 +1,45 @@
+id: slime-framework-debug-and-divergence
+type: methodology
+title: Slime 框架定位（训推分离架构 → 自带 DEBUG 开关 → 数据采集面 → 与 verl 的差异点）
+summary: Slime 训推分离 RL 框架（SGLang 采样 / Megatron 训练 / Ray 调度，每轮 rollout 结束经 update_weights 把权重同步回推理引擎）的定位：自带五类 DEBUG 开关（数据缓存复用、训练数据留存、单推调试、权重一致性核对、细节 dump）；与 verl 比对前先处理两处差异（dynamic_bsz、grpo 的 dual_clip）
+
+sources:
+  - type: engineer-input
+    engineer: "RL 精度调优经验分享（提供者匿名）"
+    document: "强化学习精度调优方法总结分享（PDF，12 页）"
+    input_session: "session-f7e8b681-6bdc-4f2d-9e7b-0d0cb466de9b"
+    confirmed_at: 2026-09-17
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  frameworks: [slime, verl]
+  categories: [precision]
+
+related_references: [rl-precision-alignment-overview, rl-training-precision-triage, msprobe-config-check, verl-cross-validation]
+
+status: active
+last_verified: 2026-09-17
+
+content:
+  flow:
+    - step: 1
+      name: 先建立架构认知——问题出在哪一侧
+      action: "Slime 是训推分离架构：推理侧 SGLang 完成 rollout 采样，训练侧 Megatron 重算 log prob 并执行策略更新（FSDP 已废弃），Ray 负责调度与资源放置；每个 rollout 周期结束后，训练权重经 update_weights API 同步回推理引擎。定位时先分清问题落在推理侧、训练侧还是两侧的权重同步上。"
+      check: "能说清本问题在采样、训练还是权重同步环节"
+      when_to_use: 在 Slime 上排查 RL 精度问题的第一步
+    - step: 2
+      name: 用框架自带的 DEBUG 开关把现场固定下来
+      action: "五个开关：①推理数据缓存与复用：--save-debug-rollout-data 落盘，再用 --load-debug-rollout-data 加 --debug-train-only 固定输入只训不重推（作用同 verl 的 RolloutSkip）；②训练侧数据留存：--save-debug-train-data 按步数与 rank 保存训练 batch（只存不载）；③单推调试：--debug-rollout-only 只起 SGLang 不启 Megatron；④训推权重一致性：--check-weight-update-equal 在同步后核对两边权重；⑤其他：--dump-details 一键 dump，--load-debug-rollout-data-subsample 缩小规模做实验。"
+      check: "本轮要用的开关已开，产物落到预期位置"
+      when_to_use: 需要固定输入复现、或要把训练与推理某一侧单独拉起来时
+    - step: 3
+      name: 数据采集面——推理走 SGLang，训练取三处
+      action: "推理数据采集走 SGLANG；训练数据采集取 ref_compute_log_prob、old_log_prob、actor_train 三处。采集面与上一步的开关配合使用，先有数据再谈比对。"
+      check: "推理侧与训练侧三处数据都能取到且步数对齐"
+      when_to_use: 需要两侧逐阶段比对时
+    - step: 4
+      name: 与 verl 的差异点——比对前先处理掉
+      action: "两条：①dynamic_bsz 实现不一致，建议比对时双方都不使用该特性；②grpo 的 loss 算法实现不同：Slime 未采用 dual_clip，verl 默认采用该规则，对齐时需要改 Slime 侧的 grpo loss 实现使其与 verl 的规则一致（具体改动点以两侧代码为准）。"
+      check: "dynamic_bsz 两侧是否都已关闭；grpo loss 的 dual_clip 规则是否已对齐"
+      when_to_use: Slime 与 verl 跨框架比对之前（不处理这两条，比对结果不可比）
