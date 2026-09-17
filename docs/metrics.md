@@ -56,6 +56,7 @@
 | 路由准确率 | 最终 root cause 所在 namespace 是否在被加载集合内 | triage `routed` / triage_semantic `namespace` vs hit case 实际 namespace |
 | 执行-误诊归因比 | 误诊中 case 错与执行错的比例 | trace `attribution` 事件 verdict（diagnose 反馈 not_resolved 后自动归因） |
 | 按类命中 | interrupt / precision / performance 各自的命中率 | trace triage/triage_semantic 的 category vs hit |
+| triage miss 归类 | 未命中里「token 在场而词法层没接住」（真缺陷，进 E2 错例池）/「本来无 token」（级联换挡）/「routed 未记录」（取数字段缺口）各多少 | 每个 session 的 user 文本是否含 token 类信号（错误码/环境变量名/算子名/文件名/版本）与 triage / triage_semantic 事件形态 |
 | 置信度分布 | 低置信（score<0.5）case 占比 | `knowledge/_index.yaml` score 统计 |
 | 自起草采纳率 | groom 验证通过的草案 / agent 起草总数 | **暂无数据源**（E1 agent 自起草未落地，E1 落地后补） |
 | trace 完整性 | 有 trace 记录的 step / 实际执行 step | proxy：含 triage + 过滤步 |

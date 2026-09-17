@@ -1,0 +1,12 @@
+session_id: ev110-hit
+status: resolved
+trace:
+  - role: user
+    content: "报错 aclnnMoeDistributeDispatchV4 failed, error code is 561000"
+  - role: agent
+    action: triage
+    routed: [inference/vllm-ascend]
+    category: interrupt
+  - role: agent
+    action: hit
+    case: VLLM-ASC-10944

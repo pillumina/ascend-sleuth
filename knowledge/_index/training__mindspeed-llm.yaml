@@ -20,6 +20,8 @@ namespaces:
         score: 0.6
       symptoms:
       - 昇腾环境执行训练脚本 examples/mcore/qwen3/pretrain_qwen3_8b_4K_ptd.sh 启动即失败
+      sig: []
+      tok: []
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1459.yaml
       hash: 6057d5fae0f5
     - id: MSLLM-1465
@@ -38,6 +40,11 @@ namespaces:
       symptoms:
       - '执行 examples/mcore/qwen3/data_convert_qwen3_pretrain.sh 做 Qwen3 预训练数据预处理时，preprocess_data.py 报
         FileNotFoundError: Couldn''…'
+      sig: []
+      tok:
+      - '00000'
+      - '00042'
+      - preprocess_data.py
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1465.yaml
       hash: 36cf3046a188
     - id: MSLLM-1525
@@ -57,6 +64,9 @@ namespaces:
       symptoms:
       - DeepSeek-V4 整网训练开启 config.batch_p2p_comm（mindspeed/core/pipeline_parallel/optimize_p2p_comm/adaptor.py）后
         rank 报错崩溃，栈崩在 m…
+      sig: []
+      tok:
+      - adaptor.py
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1525.yaml
       hash: 2ff53140990d
     - id: MSLLM-1526
@@ -74,6 +84,9 @@ namespaces:
         score: 0.6
       symptoms:
       - dsv4 整网训练将 step 从 2000 改为 20000（数据总量变化）后启动训练报错
+      sig: []
+      tok:
+      - '20000'
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1526.yaml
       hash: 07266a591f03
     - id: MSLLM-1550
@@ -92,6 +105,9 @@ namespaces:
       symptoms:
       - 8 卡 910B4（openEuler，CANN 8.5.0，master 分支）运行 Qwen3-8B 预训练脚本，环境校验（torch_npu/torchair 导入、8 卡 NPU
         可用）均正常通过
+      sig: []
+      tok:
+      - 8.5.0
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1550.yaml
       hash: ade92fc921e9
     - id: MSLLM-1554
@@ -111,6 +127,12 @@ namespaces:
       symptoms:
       - A3 节点按指导文档用 MindSpeed-LLM master + mindspeed 0.12.1 拉起 dsv4 训练（pretrain_deepseek4.py → import
         mindspeed_llm → megatron_a…
+      sig: []
+      tok:
+      - 0.12.1
+      - ERR99999
+      - UNKNOWN
+      - pretrain_deepseek4.py
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1554.yaml
       hash: 7427cec06575
     - id: MSLLM-1555
@@ -130,6 +152,10 @@ namespaces:
       symptoms:
       - A3 节点 Atlas A3 训练镜像上按 install_guide.md 手动安装 MindSpeed(Master)+MindSpeed-LLM+Megatron core_v0.12.1
         后，拉起 dsv4 训练（pretrain_…
+      sig: []
+      tok:
+      - '12.1'
+      - pretrain_deepseek4.py
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1555.yaml
       hash: 906ca991f2cc
     - id: MSLLM-1655
@@ -149,6 +175,11 @@ namespaces:
       symptoms:
       - '预训练 gemma-2-9b 时框架无法识别 architectures: Gemma2ForCausalLM，报 RuntimeError: Cannot infer model type
         from architectures of Hu…'
+      sig: []
+      tok:
+      - CKPT_LOAD_DIR
+      - convert_checkpoint.py
+      - pretrain_gpt.py
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1655.yaml
       hash: e2f7077d65c2
     - id: MSLLM-1667
@@ -167,6 +198,11 @@ namespaces:
       symptoms:
       - A2 上运行 fsdp2 训练减层版 gpt-oss-20b（mindspeed-llm 26.1.0 + transformers 5.2.0），在模型构建/加载阶段（ModelFactory.create
         → model_loader.…
+      sig:
+      - ModelFactory.create
+      tok:
+      - 26.1.0
+      - 5.2.0
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1667.yaml
       hash: b156763cbbd5
     - id: MSLLM-1707
@@ -186,6 +222,16 @@ namespaces:
       symptoms:
       - Atlas 800I A3 + CANN 9.0.0 + MindSpeed-LLM 26.0.0 镜像内源码安装最新版，deepseek-v4-flash 做 LoRA 微调（posttrain_gpt.py
         launch）启动即失败
+      sig:
+      - Duplicate registration
+      - npu_ops_transformer
+      - cann_ops_transformer
+      tok:
+      - 26.0.0
+      - 9.0.0
+      - '9.1'
+      - npu_mhc.py
+      - posttrain_gpt.py
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1707.yaml
       hash: 9edb22936e2f
     - id: MSLLM-1805
@@ -205,6 +251,15 @@ namespaces:
       symptoms:
       - 'master 分支用 --ai-framework mindspore 启动（pretrain_gpt.py）稳定失败：ModuleNotFoundError: No module named
         ''mindspeed_llm.tasks.ch…'
+      sig: []
+      tok:
+      - __init__.py
+      - execute()
+      - megatron_adaptor_v2.py
+      - mindspore_adaptor_v2.py
+      - models.py
+      - ms_patch_feature.py
+      - pretrain_gpt.py
       file: knowledge/training/mindspeed-llm/interrupt/MSLLM-1805.yaml
       hash: 9c900d8e2d3e
     precision:
@@ -224,6 +279,10 @@ namespaces:
       symptoms:
       - qwen3-14b-64k-lora 微调开启 uniform 重计算时，grad norm 恒为 0、loss 不收敛（lm loss 停滞在 ~1.22e1 附近），num zeros/nan
         均为 0 但训练无进展
+      sig: []
+      tok:
+      - 26.0.0
+      - '5.2'
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1437.yaml
       hash: b30a52d8269f
     - id: MSLLM-1532
@@ -242,6 +301,10 @@ namespaces:
         score: 0.6
       symptoms:
       - Qwen3-0.6B 用 convert_ckpt_v2.py 做 HF→MCore→HF 无训练 round-trip 转换，导出的 HF 模型生成乱码碎片（如 'aseñaGLISHATUREATURE...'）
+      sig: []
+      tok:
+      - '0.03'
+      - convert_ckpt_v2.py
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1532.yaml
       hash: b7b18dd4f964
     - id: MSLLM-1780
@@ -260,6 +323,15 @@ namespaces:
       symptoms:
       - FSDP2 断点续训（resume_from_checkpoint）后第一步日志三项指标同时异常：lm loss 显示 0.247（×31 还原 = 7.66 与相邻步 7.74 一致）、elapsed
         time 34.55ms（正常 90…
+      sig: []
+      tok:
+      - '0.247'
+      - '6.94'
+      - '7.66'
+      - '7.74'
+      - '90.11'
+      - FSDP2
+      - trainer.py
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1780.yaml
       hash: 544219f96b15
     - id: MSLLM-FA-MASK-GRADNAN
@@ -278,5 +350,10 @@ namespaces:
         score: 0.7
       symptoms:
       - GradNorm 出现 NaN/Inf（256 卡 Qwen3-235B 长序列 SFT，序列长度 131072，TP4/PP4/EP16/CP16/VPP3）
+      sig: []
+      tok:
+      - '131072'
+      - '65536'
+      - ASCEND_LAUNCH_BLOCKING
       file: knowledge/training/mindspeed-llm/precision/MSLLM-FA-MASK-GRADNAN.yaml
       hash: e68c03f8b425

@@ -1,0 +1,42 @@
+# eval/golden/VLLM-PD-MTE-REPEAT.fixture.yaml
+# 真实 fixture（跨队语料）：输入取自外部同类知识库项目的定位报告
+#   （Mitchellax/vllm-kb 的 docs/analysis/vllm-ascend-analysis-mte-repeat.md「场景 + 报错签名」段）。
+# 与既有 fixture 的差别如实标注：**输入不是 GitHub 首帖**，而是另一团队的现场记录片段
+#   （场景 + 报错签名 + python 栈尾），措辞分布不同——本条测的是换一支队伍的写法能否归到同一条。
+# expected 的依据（有出处）：该报告把崩溃点定在 token_dispatcher 路径的 torch.repeat_interleave
+#   且报 MTE DDR 越界；本库内该代码路径族只有 VLLM-ASC-9887 一条（其 symptoms 明写
+#   「token_dispatcher._preprocess → torch.repeat_interleave → … MTE DDR 越界」）。
+#   两例的阶段/缓存组件不同（本条 P 节点 prefill + 元戎多级缓存；9887 decode 节点 + Mooncake），
+#   故断言只到 top-3，不得读成"同一根因"。
+# 回放结果（确定性排序器 + quickly_check）：candidates=Y rank=1 path=fallback
+#   排序口径改词法相关性后重跑（EV-2026-111）：期望 case 由第 17 名升到 **第 1 名**（86 条候选池内）。
+#   回放口径与发现（如实记，别读成 top-3 通过）：
+#   ① tier-1 triage **零分支命中**（同前条：中文场景描述无对应中文症状词）→ 语义兜底。
+#   ② **索引只留症状首条**：本条期望的 9887，其判别信号（token_dispatcher → torch.repeat_interleave
+#      → MTE DDR 越界）全在 symptoms 第二条，而索引行只留首条（首条是「GLM-5.1-w8a8 PD 分离…运行期崩溃」）。
+#      于是**按签名筛候选时它根本不出现**；只有叠加模型/部署面 tag（glm5 / pd-separation / mc2 / moe-dispatch）
+#      才进得来——组合过滤得 36 条候选，按 score 降序 9887（0.4）排第 17。
+#   ③ 36 条里只有 2 条通过 quickly_check（9887 与 10322，均 fallback），9887 是其中之一 → 可达。
+#      故本条同样是「可达但排序靠后」：**未达 top-3 断言**。
+#   结论：这两条 fixture 现在的价值在**记录排序与可见性缺口**（低分 case 在自身症状族里排到 6/17），
+#   而不是「证明路由能用」。要让它们承担回归断言，先得有 agent 主导的相关性排序回放定终值。
+
+case_id: VLLM-ASC-9887   # 顶层 = 被测 case（同 case 多输入的既有约定，见 VLLM-ASC-13379）
+
+input:
+  symptoms: |
+    4 机 A3 PD 分离，GLM-5.1 W8A8，vllm-ascend 0.18.0-a3 镜像 + 对应补丁，
+    配 openYuanrong 多级缓存（非 Mooncake）。压测 64K 输入 / 16K 输出 / 40~60 并发，P 节点崩溃。
+
+    报错：
+    `errorStr: The DDR address of the MTE instruction is out of range.`
+    `fixp_error0 info: 0x3000012e, fixp_error1 info: 0x34, fsmld:1, tslot:3`
+    python 栈尾在 `torch.repeat_interleave`（token_dispatcher 路径）；plog 无报错。
+
+    池化分配的 DDR 池过大；把多级缓存内存从 800G 降到 500G 后未复现。
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/interrupt/
+  case_id: VLLM-ASC-9887
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）

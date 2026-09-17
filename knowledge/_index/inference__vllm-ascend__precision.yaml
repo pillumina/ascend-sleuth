@@ -22,6 +22,14 @@ namespaces:
       symptoms:
       - GLM-5.1-w8a8 PD 分离（P:TP16/DP2，D:TP4/DP8 FULL_DECODE_ONLY 图模式+MTP，Mooncake KV transfer）+ Claude
         Code（转 completions 接口）压测偶…
+      sig: []
+      tok:
+      - '11774'
+      - '5.1'
+      - FULL_DECODE_ONLY
+      - _prepare_inputs()
+      - v0.18.0
+      - v0.20.2
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-10524.yaml
       hash: 59ee44653ce5
     - id: VLLM-ASC-10892
@@ -41,6 +49,12 @@ namespaces:
       symptoms:
       - 310P 上 MoE 模型（Qwen3.6-35B-A3B-w8a8）长请求（~2700 token 等 >1024 路由 token 场景）输出劣化：要求只输出 JSON/答案却输出大段中英混杂逐步分析、thinking
         失控（'过度思考…
+      sig: []
+      tok:
+      - 0.23.0rc1
+      - '11391'
+      - 9.1.0
+      - v0.21.0rc1
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-10892.yaml
       hash: 59443ce84108
     - id: VLLM-ASC-11127
@@ -58,6 +72,12 @@ namespaces:
         score: null
       symptoms:
       - GLM-5.1（w8a8）MTP/spec-decode 开启，PD 分离 decode 节点多 DP 压测 1-2 小时后接受率不足 1% 且无法恢复
+      sig:
+      - acceptance
+      tok:
+      - '0.20'
+      - '10117'
+      - '5.1'
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11127.yaml
       hash: 9d4f9b0e7043
     - id: VLLM-ASC-11169
@@ -75,6 +95,11 @@ namespaces:
         score: 0.1
       symptoms:
       - A2 双机（DP=2 双节点）GLM-5.2 w8a8 + UCMConnector external kv connector 拉起推理，发送中文请求返回乱码
+      sig:
+      - 返回结果为乱码
+      tok:
+      - '5.2'
+      - VLLM_ASCEND_ENABLE_FLASHCOMM1
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11169.yaml
       hash: b15c8257b170
     - id: VLLM-ASC-11824
@@ -91,6 +116,10 @@ namespaces:
         score: 0.3
       symptoms:
       - batch invariance 测试（如 Qwen3-30B）断言同输入、不同 batch 输出一致，在 Ascend NPU 上随 batch 波动、测试失败
+      sig: []
+      tok:
+      - '11824'
+      - override_envs_for_invariance()
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11824.yaml
       hash: 9ebe5c5e844d
     - id: VLLM-ASC-12030
@@ -108,6 +137,13 @@ namespaces:
         score: 0.3
       symptoms:
       - vllm-ascend 0.20 + GLM-5.1 w8a8 910C PD 分离，特定请求（tools + tool_choice=auto）流式响应经常出现单词最后 1 个字符重复
+      sig:
+      - 单词最后1个字符重复
+      tok:
+      - '0.20'
+      - 0.23.0
+      - '5.1'
+      - glm4_moe_tool_parser.py
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12030.yaml
       hash: 20f3331624ac
     - id: VLLM-ASC-12642
@@ -125,6 +161,13 @@ namespaces:
         score: 0.6
       symptoms:
       - 'Ascend 950PR (A5) 上 Qwen3.5-4B (bf16, partial RoPE: rope_dim=64 < head_size=256) 输出错误'
+      sig:
+      - variance
+      tok:
+      - '1.05'
+      - '1.19'
+      - 3.2.1
+      - 3.2.2
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12642.yaml
       hash: f3a58a52d7df
     - id: VLLM-ASC-12723
@@ -142,6 +185,18 @@ namespaces:
         score: 0.73
       symptoms:
       - GLM-5.2 DSpark 投机解码（bf16, NeoX, head_dim=rotary_dim=192）在线 accept_len 从 ~5.6 崩到 ~3.0
+      sig:
+      - accept_len
+      - Acceptance rate
+      tok:
+      - '0.73'
+      - '1.000'
+      - '3.0'
+      - '5.2'
+      - '5.4'
+      - '5.5'
+      - '5.6'
+      - forward_native()
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12723.yaml
       hash: da449e293210
     - id: VLLM-ASC-12957
@@ -160,6 +215,11 @@ namespaces:
         score: 0.6
       symptoms:
       - PD 分离（use_ascend_direct=true RDMA/ADXL）+ PP=4 + DP=8 decode 下，服务拉起后首个请求输出与 prompt 无关的随机乱码
+      sig:
+      - garbled
+      tok:
+      - PREFILL_PP_LAYER_PARTITION
+      - sfa_v1.py
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-12957.yaml
       hash: 606f692ec5b9
     - id: VLLM-ASC-14265
@@ -178,6 +238,14 @@ namespaces:
         score: null
       symptoms:
       - v0.26.0rc GLM-5.2 + MTP（deepseek_mtp spec-decode）投机接受率相对 v0.23（50%+）大幅劣化
+      sig:
+      - acceptance
+      - enable_prefill_mc2
+      - mega_moe_max_tokens
+      tok:
+      - '5.2'
+      - v0.23
+      - v0.26
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-14265.yaml
       hash: 7530ef3a3338
     - id: VLLM-ASC-14363
@@ -195,6 +263,15 @@ namespaces:
         score: null
       symptoms:
       - 'DeepSeek V4 部署后输出异常中文/特殊 token（关联 #13615），BF16 与量化 checkpoint 均受影响'
+      sig:
+      - swiglu_limit
+      - DeepseekV4MoE
+      - FusedMoE
+      tok:
+      - '10.0'
+      - '11081'
+      - '13615'
+      - v0.25
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-14363.yaml
       hash: 2dfa63656d4d
     - id: VLLM-ASC-5725
@@ -214,6 +291,14 @@ namespaces:
       symptoms:
       - embedding 服务（Qwen3-Embedding-0.6B，--convert embed）同一字符串首次与二次请求返回向量不一致：Cosine ~0.585；首算与原生 vLLM
         ~0.9997（对），二次起命中 prefix c…
+      sig:
+      - --convert embed
+      - pooling_type
+      tok:
+      - '0.581'
+      - '0.585'
+      - '0.9997'
+      - v0.18.0
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-5725.yaml
       hash: bcb606e4411d
     - id: VLLM-ASC-7854
@@ -233,6 +318,15 @@ namespaces:
       symptoms:
       - Qwen3.5-397B-A17B-w8a8（--quantization ascend）混部 TP4×DP4 + --enable-expert-parallel + --speculative-config
         '{"method":"qw…
+      sig:
+      - qwen3_5_mtp
+      - enable-expert-parallel
+      - FULL_DECODE_ONLY
+      tok:
+      - '87.9'
+      - '95.6'
+      - FULL_DECODE_ONLY
+      - TP16DP1
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-7854.yaml
       hash: 9b6e1885679f
     - id: VLLM-ASC-7856
@@ -252,6 +346,16 @@ namespaces:
       symptoms:
       - GLM-4.7-W8A8-floatmtp（--tool-call-parser glm47 等官方部署）opencode/webfetch 场景（如'洛杉矶天气怎么样'）模型输出 tool_calls
         格式不正确、arguments js…
+      sig:
+      - glm47
+      tok:
+      - '0.18'
+      - 0.18.0
+      - '29947'
+      - '4.7'
+      - v0.17.0rc1
+      - v0.18.0
+      - v0.18.0rc1
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-7856.yaml
       hash: 3376fb4abc06
     - id: VLLM-ASC-8798
@@ -270,6 +374,8 @@ namespaces:
       symptoms:
       - Qwen3.5-27B/35B-A3B/397B-A17B-W4A8（enable_thinking=true，MTP/async-scheduling 可开）请求概率性输出无限自我重复：thinking
         段同一句/思路重复直到 max_c…
+      sig: []
+      tok: []
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-8798.yaml
       hash: 5d1a354db1ab
     - id: VLLM-ASC-8844
@@ -289,6 +395,14 @@ namespaces:
       symptoms:
       - GLM 5/5.1（GLM-new-w8a8，--quantization ascend）+ 四节点 PD 分离（P/D 侧 --data-parallel-size 2 --tensor-parallel-size
         16 --enable…
+      sig:
+      - accuracy
+      - recompute
+      tok:
+      - 0.18.0
+      - '0.92'
+      - '5.1'
+      - '67.8'
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-8844.yaml
       hash: 327b9ed54925
     - id: VLLM-ASC-ALLREDUCE-NUMERIC-DRIFT
@@ -305,6 +419,10 @@ namespaces:
         score: 0.7
       symptoms:
       - CANN 从 9.0.0 升级到 9.1.0 后，vLLM 推理请求回复乱码（正常场景回复正常文本，异常场景回复乱码数据）
+      sig: []
+      tok:
+      - 9.0.0
+      - 9.1.0
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-ALLREDUCE-NUMERIC-DRIFT.yaml
       hash: ecb8df212d0e
     - id: VLLM-ASC-GPQA-OPERATOR-CLAMP
@@ -323,6 +441,8 @@ namespaces:
         score: 0.7
       symptoms:
       - DeepSeek-V4 Pro 在 Atlas 800I A3 环境下 GPQA 数据集评分明显偏低；同模型其他环境、以及 DeepSeek-V4 Flash 在同环境下评分均正常
+      sig: []
+      tok: []
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-GPQA-OPERATOR-CLAMP.yaml
       hash: 29c154d87058
     - id: VLLM-ASC-KVMIRROR-MISSING
@@ -341,6 +461,9 @@ namespaces:
         score: 0.7
       symptoms:
       - VL 模型从 H20 + transformers 迁到昇腾 + vLLM 后，第 7 个 token 开始 NPU 输出与 GPU 对不上，随后出现乱码
+      sig: []
+      tok:
+      - Module.language_model.transformer.h
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-KVMIRROR-MISSING.yaml
       hash: a859bdcbe51a
     - id: VLLM-ASC-ROPE-CFG-MISMATCH
@@ -358,6 +481,16 @@ namespaces:
         score: 0.7
       symptoms:
       - tora 模型 + vllm（vllm-ascend）推理，统一数据集下游评分 NPU 54.4 明显差于 GPU 80.6
+      sig:
+      - '16384'
+      - '1000000'
+      tok:
+      - 0.1.4
+      - 0.9.1
+      - '10000'
+      - '16384'
+      - '54.4'
+      - '80.6'
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-ROPE-CFG-MISMATCH.yaml
       hash: 26faa41918ee
     - id: VLLM-ASC-XGRAMMAR-REPEAT
@@ -375,5 +508,7 @@ namespaces:
         score: 0.7
       symptoms:
       - 昇腾 + vLLM 部署 Qwen2.5-7B-Instruct，某推理用例偶现持续输出换行符、回复不终止
+      sig: []
+      tok: []
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-XGRAMMAR-REPEAT.yaml
       hash: 1ce41de12ce0

@@ -16,10 +16,12 @@
 
 import argparse
 import hashlib
+import re
 import sys
 from datetime import date
 from pathlib import Path
 
+from _lexical import tokens_of
 from _stdio import write_text_lf
 
 try:
@@ -39,6 +41,30 @@ def case_hash(path: Path) -> str:
     # `--check` 判 STALE（红），而失败信息只说"过期"，看不出是行尾所致。
     # LF 文件归一后不变，故对已有索引是无操作。
     return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()[:12]
+
+
+# 签名面字面量（EV-2026-111）：从 quickly_check 的 expected 正则里挑**纯字面量**分支放进行内，
+# 让阶段一能在不读 case 本体的情况下按"报错原文命中"排序（此前行内只有 score，排序只能按分数，
+# 而实测 score 与相关性无关：25 条 fixture 上 top3 只有 5/25）。
+_SIG_RE = re.compile(r"^[\w.\- ]{5,32}$")
+
+
+def sig_literals(case) -> list:
+    """quickly_check.expected 的字面量分支 → 去重、上限 6 条。
+
+    只收纯字面量（字母/数字/下划线/点/连字符/空格，5~32 字符）：带正则元字符的分支
+    （`\\(\\d+\\)`、`.*`）在输入里匹配不到字面量，放进行里只是噪音。取不到就返回空。
+    """
+    out = []
+    for group in (case.get("quickly_check") or {}).values():
+        exp = str((group or {}).get("expected") or "")
+        if not exp.startswith("regex:"):
+            continue
+        for alt in exp[len("regex:"):].split("|"):
+            alt = alt.strip()
+            if _SIG_RE.match(alt) and alt not in out:
+                out.append(alt)
+    return out[:6]
 
 
 def compat_summary(compat) -> str:
@@ -128,6 +154,15 @@ def collect(root: Path):
                     (s[:120] + ("…" if len(s) > 120 else ""))
                     for s in (case.get("symptoms") or [])[:1]
                 ],
+                # EV-2026-111：签名面字面量 + token 集合入行——阶段一按"报错原文命中 → token 交集
+                # → score"排序的唯一依据。实测（25 条 fixture）：只有 score 时 top3=5；只加 sig=10；
+                # sig+tok=13（中位名次 20 → 3）。tok 取全部症状的 token（上限 12），因为判别信号
+                # 常只在第二条症状里，而 symptoms 摘要只留首条 120 字（实测后者会漏掉一半信号）。
+                "sig": sig_literals(case),
+                "tok": sorted(tokens_of(
+                    str(case.get("title", "")) + " "
+                    + " ".join(str(x) for x in (case.get("symptoms") or []))
+                ))[:12],
                 "file": (Path("knowledge") / rel).as_posix(),
                 "hash": case_hash(path),
             })

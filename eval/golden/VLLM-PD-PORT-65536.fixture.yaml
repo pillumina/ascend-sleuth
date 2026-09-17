@@ -1,0 +1,37 @@
+# eval/golden/VLLM-PD-PORT-65536.fixture.yaml
+# 真实 fixture（跨队语料）：输入取自外部同类知识库项目的定位报告
+#   （Mitchellax/vllm-kb 的 docs/analysis/vllm-ascend-analysis-port-65536.md「场景」段）。
+# 与既有 fixture 的差别如实标注：**输入不是 GitHub 首帖**，而是另一团队的现场记录片段
+#   （场景 + 报错原文），措辞分布不同——这正是本条要测的东西：换一支队伍的写法还能不能归到同一条。
+# expected 的依据（不是我的判断，有出处）：该报告自述本现象与 #8938 同源
+#   （「have already been bound」与 #8938 的 Address already in use 同族）；本库内该族只有
+#   VLLM-ASC-8938 一条。mechanism 有差（端口溢出 vs 端口冲突），故断言只到 top-3。
+# 回放结果（确定性排序器 + quickly_check）：candidates=Y rank=1 path=primary
+#   排序口径改词法相关性后重跑（EV-2026-111）：期望 case 由第 6 名升到 **第 1 名**（86 条候选池内）。
+#   复跑（8938 的 primary 正则补入 `already been bound` 文案族后）：path 由 fallback 升为 **primary**，rank 仍为 6——正则扩的是形态覆盖，不改阶段一的候选排序。
+#   回放口径与发现（如实记，别读成 top-3 通过）：
+#   ① tier-1 triage **零分支命中**——输入是中文场景描述 + 报错串，树里 interrupt 分支的中文词只有
+#      「超时/挂死/死锁/启动失败/内存泄漏」等，「崩溃」「报错」没有对应词（英文 \bcrash\b 有）→ 只能走语义兜底。
+#   ② 阶段一按端口族信号（port/端口/zmq/kv_port/kv-pool/bound/handshake/65536）筛出 10 条候选；
+#      按 score 降序加载，本条期望的 8938（score 0.4）排第 6——弱相关的 0.6 档候选全排在它前面。
+#   ③ 10 条里**只有 8938 通过 quickly_check**（首轮只有 fallback 的 `kv_port` 命中：primary 的
+#      `ZMQError|Address already in use` 接不住输入的 `have already been bound`——同族文案不同；
+#      补齐文案族后 primary 直接命中）。故本条是「可达但排序靠后」：**未达 top-3 断言**。
+
+case_id: VLLM-ASC-8938   # 顶层 = 被测 case（同 case 多输入的既有约定，见 VLLM-ASC-13379）
+
+input:
+  symptoms: |
+    PD 分离部署，4 机 A3，3×1P + 1×1D（多节点独立启动，不使用 Ray），vllm-ascend v0.22.1rc1。
+    已对齐最佳实践配置，服务正常运行两天半后 P 节点崩溃退出。
+
+    报错：
+    `port 65536 have already been bound`
+
+    kv_port 本身无异常。单节点/短时间运行不复现，运行两天半后出现。
+  framework: vllm-ascend
+
+expected:
+  namespace: inference/vllm-ascend/interrupt/
+  case_id: VLLM-ASC-8938
+  assertion: top-3   # LLM 非确定性口径（docs/eval.md）

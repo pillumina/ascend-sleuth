@@ -39,9 +39,12 @@ cases:
 
     quickly_check:
       primary:
-        command_template: "grep -E 'ZMQError|Address already in use' {{log_path}}"
+        # 形态覆盖（设计原则三：形态的模糊归正则）：同一类 ZMQ bind 失败有三种报错文案——
+        # EADDRINUSE「Address already in use」、ZMQ 重复 bind「... have already been bound」、
+        # 越界端口（65536 型）。三族都是"服务拉起时端口不可用"，判据是文案不是你见过哪种。
+        command_template: "grep -E 'ZMQError|Address already in use|already been bound' {{log_path}}"
         rank_selector: all_failed
-        expected: "regex:ZMQError|Address already in use"
+        expected: "regex:ZMQError|Address already in use|already been bound"
       fallback:
         command_template: "grep -iE 'kv_port|kv-pool|ZMQ' {{log_path}}"
         rank_selector: all_failed

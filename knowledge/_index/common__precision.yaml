@@ -21,6 +21,9 @@ namespaces:
         score: 0.7
       symptoms:
       - 训练出现 loss NaN，打印 grad 信息后首个 NaN 出现在 embedding（wte）层的梯度
+      sig: []
+      tok:
+      - 8.0.0
       file: knowledge/common/precision/COMMON-EMBEDDING-BWD-EMPTY.yaml
       hash: 479dc0c7ebaa
     - id: COMMON-FA-RACE-DETERMINISM
@@ -38,6 +41,10 @@ namespaces:
         score: 0.7
       symptoms:
       - 80 卡大规模训练任务结果确定性无法固定（重复运行 Loss 曲线不一致）
+      sig: []
+      tok:
+      - 8.0.0
+      - 8.1.0
       file: knowledge/common/precision/COMMON-FA-RACE-DETERMINISM.yaml
       hash: aafe17712015
     - id: COMMON-FSDP-OFFLOAD-SYNC-NAN
@@ -55,6 +62,10 @@ namespaces:
         score: 0.7
       symptoms:
       - MOVA 模型训练出现 NaN：L0 dump 发现 step 2 前向权重已为 NaN
+      sig: []
+      tok:
+      - reciprocal()
+      - to()
       file: knowledge/common/precision/COMMON-FSDP-OFFLOAD-SYNC-NAN.yaml
       hash: 13f63bba0157
     - id: COMMON-RMSNORM-WEIGHT-SCALE
@@ -72,6 +83,8 @@ namespaces:
         score: 0.7
       symptoms:
       - 随机初始化权重时两遍训练 Loss 对齐；加载权重时两遍 Loss 差异偏大，但两侧加载的权重确实完全一致
+      sig: []
+      tok: []
       file: knowledge/common/precision/COMMON-RMSNORM-WEIGHT-SCALE.yaml
       hash: c644ba21b030
     - id: COMMON-SEED-RESET-DETERMINISM
@@ -90,6 +103,9 @@ namespaces:
         score: 0.7
       symptoms:
       - 同一模型重复训练，loss 与 grad_norm 不一致（偶现，非每次）
+      sig: []
+      tok:
+      - seed_all()
       file: knowledge/common/precision/COMMON-SEED-RESET-DETERMINISM.yaml
       hash: 536a763fc302
     - id: COMMON-TP-SEED-UNSYNCED
@@ -108,5 +124,7 @@ namespaces:
         score: 0.7
       symptoms:
       - TP=8 时跑多个请求，第 3 张生成图片必然花图；TP=1 时低分辨率推理跑 100 个实例未发现花图
+      sig: []
+      tok: []
       file: knowledge/common/precision/COMMON-TP-SEED-UNSYNCED.yaml
       hash: 4fd55e475f23

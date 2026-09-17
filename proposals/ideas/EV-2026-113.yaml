@@ -1,0 +1,56 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演进决策档案
+# schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+id: EV-2026-113
+layer: L2
+title: 机械筛选的天花板是结构性的——内容侧批量补证据与机械调参均零收益（recall@5 稳定 14/25）
+status: rejected
+authorization: review
+dimension: architecture
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: measurement
+    evidence: "上卡（机械筛选兜底被证伪）把方向指向内容侧。本卡先做证据审计，再试四种机械变体，全部无收益：**recall@5 在 cap=12/20/30 与「版本号优先/垫底」四种组合下都是 14/25**（用全症状 token 不设上限亦然）。审计同时显示：**11 条筛漏里 4 条**是本体内有字面量而行内丢了（曾疑为 tok 上限所致，实测提高上限无效——因为竞争候选同步获益）；**另 11 条**期望 case 的输入字面量与 case 内容零交集，且这些字面量以环境模板噪声为主（collect_env 的版本号/OS/CPU/环境变量清单）。"
+    trajectory:
+      - "scripts/rank_candidates.py --eval（同子集 recall@5 读数）"
+      - "eval/golden/*.fixture.yaml（逐条证据审计）"
+hypothesis: 给行内证据补全（提高 tok 上限 / 让非版本号 token 优先 / 去掉版本号噪声）或给高价值 case 批量补字面量，能把机械筛选 recall@5 从 14/25 推高。
+predicted_effect:
+  metric: 机械筛选 recall@5（25 条 fixture）
+  from: "14/25"
+  to: "≥18/25"
+  measure:
+    command: "python3 scripts/rank_candidates.py --eval"
+    expect_exit: 0
+    expect_stdout: "recall@5"
+validation:
+  method: metrics_compare
+  baseline: 现行配置 recall@5 14/25（cap=12、字母序、含版本号）
+  success_criteria: |
+    任一机械变体（tok 上限、token 优先级、token 集构成）或批量内容补齐后，recall@5 显著高于 14/25
+    （≥18/25），且不引入"返回整格"这类退化解。
+  rollback: 无代码改动需回退（本卡未改任何机制；实测变体只在评测脚本里跑过）
+gate:
+  condition: "不等数据触发：本卡是对既有方向的第二次证伪，随记录合入"
+risk: low
+principle_refs: [3, 6, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径记 0"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：内容侧补证据 + 机械调参（目标 recall@5 ≥18/25）"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "**证伪（四变体同值）**：cap=12/20/30 × 字母序/版本号垫底 = 14/25；用全症状 token 不设上限同样 14/25。逐条审计：筛漏的 11 条里 4 条属「本体内有字面量、行内丢了」，但提高上限不解决（竞争候选同步获益）；另 11 条期望 case 与输入字面量零交集，且输入侧字面量以 collect_env 模板（版本号/OS/CPU/环境变量清单）为主——批量补进 case 只会把模板噪声固化进行内。"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "**rejected（不采纳内容侧批量补齐，也不采纳机械调参）**：机械筛选的 recall@5 ≈ 14/25 是**这套索引结构的稳定天花板**，与调参无关；超出部分只能由 agent 的语义阅读承担——而它本来就承担着（同子集 19/19）。这与设计原则三一致：字面量面拿不到的东西，不该由它负责。落地两个小产出：①本卡把「天花板 + 四组同值变体」记成数据，避免以后第三次来试同一件事；②docs/eval.md 写明「不要再调机械侧」。**唯一保留的杠杆**是 groom 的逐案判断（新 case 升格时，若证据里有可提炼的报错字面量——错误码/算子名/函数名/`file:line`——让它进 quickly_check 或症状首条），但不做批量、不设配额：审计显示大多数输入侧字面量是模板噪声，批量补会稀释行内信号。"

@@ -22,6 +22,10 @@ namespaces:
       symptoms:
       - DSV4-Flash（w8a8-mtp 等混合模型）本地 prefix cache 开启：cache_config_info enable_prefix_caching=True、prefix_cache_queries_total
         正常增…
+      sig: []
+      tok:
+      - '0.00'
+      - v0.23.0rc1
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-10710.yaml
       hash: fecf7f0e069c
     - id: VLLM-ASC-10876
@@ -41,6 +45,15 @@ namespaces:
       symptoms:
       - serve DeepSeek-V4-Flash（TP8 chunked prefill + prefix cache + enable-dsa-cp/flashcomm1）：多轮长对话 prefill
         偶发超长——forward_ms 40…
+      sig: []
+      tok:
+      - '11211'
+      - '4381.53'
+      - TOTAL_BATCH
+      - rms_norm.py
+      - v0.21
+      - v0.23
+      - v0.23.0rc1
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-10876.yaml
       hash: eb35eb2d2c1e
     - id: VLLM-ASC-10970
@@ -60,6 +73,14 @@ namespaces:
       symptoms:
       - PD 分离 P 节点跑 DeepSeek-V4-Flash（MTP/EP），多并发 prefix hit rate 仅 ~10%；设 VLLM_PREFIX_CACHE_RETENTION_INTERVAL
         后两条相同请求也不命中（归 0）
+      sig:
+      - use_eagle
+      - drop_eagle_block
+      - eagle_group
+      tok:
+      - '11107'
+      - EAGLE
+      - VLLM_PREFIX_CACHE_RETENTION_INTERVAL
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-10970.yaml
       hash: 3229ba554fc3
     - id: VLLM-ASC-12241
@@ -77,6 +98,12 @@ namespaces:
         score: 0.1
       symptoms:
       - v0.23.0 图模式（cudagraph）+ MTP/投机推理开启下，混部脚本采集 profiling 解析后无 kernel_details.csv
+      sig:
+      - enforce-eager
+      tok:
+      - 9.0.0
+      - 9.1.0
+      - v0.23.0
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-12241.yaml
       hash: 6a568de79e5a
     - id: VLLM-ASC-13356
@@ -94,6 +121,9 @@ namespaces:
       symptoms:
       - PD 分离下开启 memcache（AscendStoreConnector/MultiConnector，backend=memcache）性能劣化：128K 输入序列时 lookup
         与本地 prefix cache 重叠
+      sig: []
+      tok:
+      - lookup()
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-13356.yaml
       hash: 2089b748e083
     - id: VLLM-ASC-13973
@@ -113,6 +143,18 @@ namespaces:
       symptoms:
       - GLM-5.2 w4a8 PD 分离 P 节点（kv_role=kv_producer），v0.23→v0.26 相同 DCP=8/TP=8/EP=32 拓扑下 prefill 吞吐 38811→29911
         tok/s
+      sig: []
+      tok:
+      - '1.14'
+      - '1.58'
+      - '1.69'
+      - '29911'
+      - '38811'
+      - '5.2'
+      - '8.19'
+      - unique()
+      - v0.23
+      - v0.26
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-13973.yaml
       hash: dc4764c15678
     - id: VLLM-ASC-14306
@@ -132,6 +174,21 @@ namespaces:
       symptoms:
       - GLM-5.2 全图/MRV1 + MTP num_spec≥2：投机接受率明显低于预期（acceptance_per_pos≈0.45/0.34/0.25、acceptance_len
         偏低），对照 v0.23 正常
+      sig:
+      - acceptance_per_pos
+      - acceptance_len
+      - full_graph
+      - speculative-config
+      tok:
+      - '0.25'
+      - '0.34'
+      - '0.45'
+      - '11127'
+      - '12723'
+      - '14236'
+      - '14306'
+      - '5.2'
+      - v0.23
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-14306.yaml
       hash: 9309ba887394
     - id: VLLM-ASC-14448
@@ -150,5 +207,12 @@ namespaces:
         score: null
       symptoms:
       - GLM-5.2 单 D（PD 分离 decode 侧）+ MTP 服务，4 并发长输入（20-40k tokens）：TPOT 明显劣化
+      sig:
+      - throughput
+      - speculative-config
+      tok:
+      - '14103'
+      - '14554'
+      - '5.2'
       file: knowledge/inference/vllm-ascend/performance/VLLM-ASC-14448.yaml
       hash: 880aac508d5c

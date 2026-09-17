@@ -14,12 +14,58 @@
 
 ## 怎么跑（v1 手动）
 
-套件规模按周 append 在 `metrics/timeline.yaml`（数据，搜 "golden_suite"），机制文档见 [metrics.md](metrics.md)。本节只讲结构与机制，fixture 形态两类：①**真实 case 投影**（可运行，来自已解决 postmortem，脱敏后入仓；多数真实 fixture 是这种），②**构造示例**（`example.fixture.yaml` 等，演示格式 + 困难路径，按需保留）。**强度分层**：检索/路由/候选选择面与交互/指引面仍是"约定"；**输出契约/交互形态**这类主观成败的改动，门禁是"盲辨对照"（同上表）——同样**不进 CI**（判断性规范，硬门化＝假硬化），但要在 PR 里附对照或说明为何不需要（见 methodology 模板）。本机制在 git 门控中的强度是"约定"：CI 不执行 replay，依赖改动人自觉执行（见 [git-workflow.md](git-workflow.md) 门控映射表；脚本化并入 CI 是 roadmap 事项 M2）。路由与匹配的判别力随真实 fixture 规模扩展。
+套件规模按周 append 在 `metrics/timeline.yaml`（数据，搜 "golden_suite"），机制文档见 [metrics.md](metrics.md)。本节只讲结构与机制，fixture 形态两类：①**真实 case 投影**（可运行，来自已解决 postmortem，脱敏后入仓；多数真实 fixture 是这种），②**构造示例**（`example.fixture.yaml` 等，演示格式 + 困难路径，按需保留）。**强度分层**：检索/路由/候选选择面与交互/指引面仍是"约定"；**输出契约/交互形态**这类主观成败的改动，门禁是"盲辨对照"（同上表）——同样**不进 CI**（判断性规范，硬门化＝假硬化），但要在 PR 里附对照或说明为何不需要（见 methodology 模板）。本机制在 git 门控中的强度是"约定"：CI 不执行 replay，依赖改动人自觉执行（见 [git-workflow.md](git-workflow.md) 门控映射表；replay 本身脚本化并入 CI 属 roadmap 里「fixture replay 半自动化」一项）。**但"跑过什么"的记账侧已进 CI**：观测落 `eval/scorecard.yaml`，夹具改了不重建账本即红（下节）——门控的是记录不陈旧，不是命中率达标。路由与匹配的判别力随真实 fixture 规模扩展。
 
 1. 改动 skill 之前，按**影响面分级**（见下表）确定门禁；需要 golden 的面先跑相应子集记录基线（**基线缓存**：复用上一次干净运行的结果文件，不重复跑改前侧）；
 2. 实施改动；
 3. 改动后跑改后侧，与基线对照。判定标准只有一条：此前通过的条目不能变为失败；
 4. 把改前与改后的报告附在变更摘要里，交 owner 审阅。
+
+### 观测账本（`eval/scorecard.yaml`：跑过什么、上次跑到第几名）
+
+回放结果此前只写在 fixture 的头注散文里（形如「本条回放结果：candidates=Y rank=2 path=primary」），完整报告落 gitignore 的 `eval-reports/`。于是「夹具改过而没人重跑」与「跑过了、结果就是这样」在数据上不可区分，仓库里也没有「当前命中构成」这个数。账本把观测搬进结构化字段，一条命令可读：
+
+```
+python3 scripts/eval_scorecard.py --check   # 覆盖 + 夹具哈希 + 断言冲突（红）；case 漂移只提示
+python3 scripts/eval_scorecard.py --list    # 只打印聚合（命中第一 / 前三 / 未命中 / 未记录）
+python3 scripts/eval_scorecard.py --build   # 重建账本（写文件）
+```
+
+**记账流程**：跑完回放 → 更新该 fixture 头注的「回放结果」行 → `--build` → 连同夹具一起提交。
+
+**强度分层（如实标注，同 holdout 的写法）**：
+
+- **硬门（CI `eval-scorecard`）**：①每条 fixture 必须入账本（新夹具没跑过就记 `not_recorded`，别空着）；②夹具字节哈希与账本不符 → 红——夹具就是量尺，被改过就该重跑一次；③`assertion` 要求命中（不含 `or-miss-documented`）而账本记着 miss → 红（这是夹具自述期望与观测的矛盾，放宽哪一侧都要人决定）。过期由 `--build` 一条自动命令修，不需重跑回放。
+- **软信号（不红）**：目标 case 的内容哈希变了 → 进「待复核」清单。case 的合法内容变更不该阻塞无关 PR（改 `fix`/`symptoms` 是 groom 的日常动作）。
+- **不判准确率**：账本记的是**上次观测到什么**，不是**现在能不能命中**。准确率仍要 agent 跑回放——本门不假装它是准确率门（不硬门化不确定的东西）。
+- **已知上界（不掩盖）**：账本读的是 fixture 头注与 `expected` 块。重跑了回放却没更新头注，账本发现不了——观测与现实的差在头注那一层就丢了。这是「先更新头注、再 `--build`」这条流程存在的原因。
+
+### 排序/筛选类改动的量尺（必须与管线同构）
+
+管线是「按相关性**筛 ≤5** 候选 → 只加载这 5 条 → `quickly_check` 验证」。所以量尺也必须两步：
+**recall@5**（期望 case 有没有进候选）与 **top3|≤5**（进去之后排第几）——两件事、两种修法。
+
+```
+python3 scripts/rank_candidates.py --eval
+```
+
+输出三行，且**同子集对照**：agent 的历史记录（来自 `eval/scorecard.yaml`）与两个机械键（score-only / 词法）。
+**别用"整格内全量排序"的口径**论证收益：那个口径与管线不同构，曾据此得出"机械词法键把 top3 从 5 提到 13"，
+而同构口径下同一份数据是「agent 19/19、词法 12/19、score 3/19」——机械键会替掉一个更好的判断者。
+现状读数（2026-09-17，19 条同子集）：agent 19/19 进候选、机械词法 12/19、score-only 3/19；
+**瓶颈在"筛"不在"排"**——候选一旦进池，两种键的 top3|≤5 分别是 5/5 与 11/12。
+
+**为什么不去补机械筛选**（已证伪，别重复试）：逐条看过 11 条筛漏，**10 条的期望 case 行内对输入零字面量证据**
+（`sig=0` 且 `tok=0`）——输入里的报错/版本/算子一个都不在该 case 里，兜底规则再怎么写也拿不到，
+除非返回整格（那就等于取消筛选）。全库 **22/159（14%）** 的 case 行内无字面量证据，集中在
+performance 与 precision——这两类按设计就不靠报错字面量判别。故方向在**内容侧**：审计「工程师会粘贴什么」
+与「行内有什么」的交集，给能提炼出字面量的高价值 case 补行内证据。
+
+**天花板是结构性的**（实测，别再审第三遍）：提高行内 token 上限（12/20/30）、改 token 优先级（非版本号优先）、
+用全症状 token 不设上限——四组变体的 recall@5 **全部是 14/25**。超出这部分由 agent 的语义阅读承担（同子集 19/19），
+这与设计原则三一致：字面量面拿不到的东西不该由它负责。可行且不批量做的只有一条：groom 逐案判断时，
+若 case 证据里有可提炼的报错字面量（错误码/算子名/函数名/`file:line`），让它进 `quickly_check` 或症状首条；
+**不做批量补齐**——审计显示输入侧字面量以环境模板噪声（版本号/OS/CPU/环境变量清单）为主，补进去是稀释。
 
 ### 门禁分级（2026-09，控制验证成本——改哪里测哪里，不机械全量）
 
@@ -124,8 +170,8 @@ fixture 头部的 `candidates=Y/N`、`eval/s2` 的 `tier2_hit` 记的是**那一
 
 ## 与 roadmap 的衔接
 
-- M2（fixture replay 半自动化）：脚本编排 replay 与期望比对，产出改前/改后报告；
-- M3（fixture 自动生成）：groom 从 resolved+feedback 确认的 trace 派生真实夹具（`replay_trace.py --emit-fixtures` 产出候选，人确认入仓）；
-- O4（eval 覆盖报告）：覆盖矩阵进入 groom 例行产出。
+- fixture replay 半自动化：脚本编排 replay 与期望比对，产出改前/改后报告；
+- fixture 自动生成：groom 从 resolved+feedback 确认的 trace 派生真实夹具（`replay_trace.py --emit-fixtures` 产出候选，人确认入仓）；
+- eval 覆盖报告：覆盖矩阵进入 groom 例行产出。
 
 详见 [roadmap.md](roadmap.md)。

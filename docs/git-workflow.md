@@ -73,7 +73,9 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 | 命名空间变更审批 | `CODEOWNERS` + 分支保护 required review | 硬 |
 | 高风险双签 | `kb/high-risk` 标签 + CODEOWNERS 双组路径（每组至少一人批） | 半硬（"恰好两个 approval"需人核验，见下） |
 | 脱敏 / severity 纪律 | to-postmortem 流程 + groom 周批审抽查 | 约定 |
-| eval 回归（改 skill 时） | 按 [eval.md](eval.md) 分级手动 replay；**触及输出契约/交互形态时另出盲辨对照**（同问题新旧输出各一份、交不知情者判），M2 脚本化后并入 CI | 约定 → 半硬 |
+| eval 回归（改 skill 时） | 按 [eval.md](eval.md) 分级手动 replay；**触及输出契约/交互形态时另出盲辨对照**（同问题新旧输出各一份、交不知情者判）；replay 脚本化后并入 CI（属 roadmap 里「fixture replay 半自动化」一项） | 约定 → 半硬 |
+| eval 观测不陈旧 | CI：`scripts/eval_scorecard.py --check`（`eval/scorecard.yaml` 记"上次回放观测到什么"；夹具字节哈希变了而账本没重建即红） | 硬（夹具哈希）/ 软（目标 case 内容变了只进「待复核」，不挡 merge）；**不判准确率**——命中率仍要 agent 跑回放 |
+| 口径脚本算得对 | CI：`python3 -m unittest discover tests`（`build_index` / `trace_metrics` / `settle_trace_feedback` / `build_timeline` 的口径与边界） | 硬（红即挡 merge）；"断言是否真打在口径上"仍是约定 |
 | EV 卡预测可复现 | CI：`scripts/verify_proposals.py --check`（`predicted_effect.measure` 必须有命令 + 期望，或如实声明不可度量） | 硬（结构）/ 约定（命令是否有意义） |
 | 面板契约（渲染 / 文案 / 数据口径） | CI：`panel-checks` job 跑 `scripts/check_panel_tokens.py` + `scripts/panel_render_check.js`（触发路径含 `dsh-plugins/**`） | 硬（红即挡 merge）；"判据是否真在测那件事"仍是约定 |
 | 对照集不被改动者削弱 | CI：`scripts/holdout.py --check`（封存夹具按哈希钉住）+ `holdout-change` 标签闸门；CODEOWNERS 保护 `eval/holdout.yaml` | 硬（哈希）/ 半硬（谁有权 reseal——CODEOWNERS 落实前不是人把关） |

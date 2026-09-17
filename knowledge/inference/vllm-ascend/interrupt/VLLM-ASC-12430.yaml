@@ -56,6 +56,10 @@ cases:
     confidence:
       hits: 0
       misdiagnoses: 0
+      self_resolved:  # 来源 session 自己的 resolve（自证）——如实标注、不计入 hits
+        count: 1
+        last: "2026-W38"
+        examples: [2026-09-16-12430-dsv4pro-mc2]
     verification:
       source: investigation
       detail: "issue #12430（OPEN，无维护者结论、无 fix PR）。根因证据为：① CANN 9.0.1 ↔ HDK 官方配套矩阵（cann-hdk.yaml，引 CANN release-note）显示 24.1.x 越界；② 同 driver 24.1.0.3 的完全同签名先例 #4914（同 507014、同 subErrType:4、同 retCode=0x25，其 plog 含 rtMemcpy [driver error:internal error]，发帖人判为驱动）；③ #5468 维护者口径 CANN 8.5.0 即要求 driver >=25.0；④ #6875 同 4×A2 同错误码先例。**尚未在本案闭环**（现场未回报升级结果）"
@@ -145,4 +149,5 @@ cases:
       或 CANN 9.0.1 release note。升级需节点级操作并重启，建议升级前后各跑一次 `npu-smi info` 留档。
       验证：4×A2 多节点 EP=32 拉起 DeepSeek-V4-Pro-w4a8，走过 profile_run 进入正常服务。
     rollback: "降回低版本 HDK 即复现（多节点 EP 拉起在 profile_run 报 507014）"
+
 

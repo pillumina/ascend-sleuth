@@ -1,0 +1,341 @@
+version: 1
+note: 回放观测账本（生成物，由 scripts/eval_scorecard.py --build 重建）。observed 记的是「上次回放观测到什么」，不是「现在能不能命中」；fixture_sha256 用于判定夹具是否在观测之后被改过，case_sha256 用于标出目标 case 是否已变（待复核，不阻塞）。
+entries:
+- fixture: SGL-PD-HEAP-001.fixture.yaml
+  case_id: SGL-PD-HEAP-001
+  covers: inference/sglang
+  assertion: ''
+  observed:
+    status: not_recorded
+    rank: null
+    path: null
+    candidates: null
+    raw: ''
+    recorded_before: '2026-08-25'
+  fixture_sha256: ce6f326efa3d7e6e7e99d08fb12e75f81e9d2dba45b76c2e1ce5607311fa31d4
+  case_sha256: 3576617fec9c
+- fixture: VLLM-ASC-12461.fixture.yaml
+  case_id: VLLM-ASC-12461
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3-or-miss-documented
+  observed:
+    status: miss
+    rank: null
+    path: miss
+    candidates: false
+    raw: 本条回放结果：candidates=N rank=None path=miss
+    recorded_before: '2026-08-27'
+  fixture_sha256: 19993ad7846728c954239368712397c59acd99eafc4ee6b45ae0efdc4f070f31
+  case_sha256: b9283513da03
+- fixture: VLLM-ASC-12642.fixture.yaml
+  case_id: VLLM-ASC-12642
+  covers: inference/vllm-ascend/precision
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: fallback
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=1 path=fallback
+    recorded_before: '2026-08-27'
+  fixture_sha256: 43d2edd911eeaa2b54f0e9e7eb58ba877eebe730e80dc4139d181ab40f512cb9
+  case_sha256: f3a58a52d7df
+- fixture: VLLM-ASC-12685.fixture.yaml
+  case_id: VLLM-ASC-12685
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3-or-miss-documented
+  observed:
+    status: miss
+    rank: null
+    path: miss
+    candidates: false
+    raw: 本条回放结果：candidates=N rank=None path=miss
+    recorded_before: '2026-08-27'
+  fixture_sha256: 8b365ff3e5ce157fa8bc4f6e5df19255b377b7f681028cdb53bbadf18d67ea7a
+  case_sha256: cd1f2e88d61f
+- fixture: VLLM-ASC-12723.fixture.yaml
+  case_id: VLLM-ASC-12723
+  covers: inference/vllm-ascend/precision
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: primary
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=1 path=primary
+    recorded_before: '2026-08-27'
+  fixture_sha256: f202f0399984900447b3a14d4feeee4a8e614ea945b4762bf1f90673d461ff30
+  case_sha256: da449e293210
+- fixture: VLLM-ASC-12901.fixture.yaml
+  case_id: VLLM-ASC-12901
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: primary
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=1 path=primary
+    recorded_before: '2026-08-27'
+  fixture_sha256: d3e1c908352292ac3e00dab53bc0287a86d1a26c1c7cb8d99518bda5eb60b4c4
+  case_sha256: 9cb393fd26da
+- fixture: VLLM-ASC-12957.fixture.yaml
+  case_id: VLLM-ASC-12957
+  covers: inference/vllm-ascend/precision
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: primary
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=1 path=primary
+    recorded_before: '2026-08-27'
+  fixture_sha256: 271152dc17b208fcf3723e1726b682277e356ad197fe7d23353d1aa40f2e3c11
+  case_sha256: 606f692ec5b9
+- fixture: VLLM-ASC-12983.fixture.yaml
+  case_id: VLLM-ASC-12983
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: primary
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=1 path=primary
+    recorded_before: '2026-08-28'
+  fixture_sha256: 4487d9234b6850c15a7aab66c30daea72fe4398ea312871cd9cf871abf42df3f
+  case_sha256: dde1adfdd1fd
+- fixture: VLLM-ASC-12989.fixture.yaml
+  case_id: VLLM-ASC-12989
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3-or-miss-documented
+  observed:
+    status: miss
+    rank: null
+    path: miss
+    candidates: false
+    raw: 本条回放结果：candidates=N rank=None path=miss
+    recorded_before: '2026-08-27'
+  fixture_sha256: 59a5c11d4a89ba4cf4c2aa149731d6324463ed741f4242076fbb6bbd953d8b01
+  case_sha256: b42bfd9fb09f
+- fixture: VLLM-ASC-13050.fixture.yaml
+  case_id: VLLM-ASC-13050
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: primary
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=1 path=primary
+    recorded_before: '2026-08-27'
+  fixture_sha256: 28e7dc074c3f0682a8dce30c84f48b37eb45abf4f1404da6a7b84530ab91ee2c
+  case_sha256: 7c4784597989
+- fixture: VLLM-ASC-13086.fixture.yaml
+  case_id: VLLM-ASC-13086
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: primary
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=1 path=primary
+    recorded_before: '2026-08-28'
+  fixture_sha256: 92a1c91846226d96767a3e0b5ef7c9b8641b091695cce60b23296486541c5cf7
+  case_sha256: eb19ba996b33
+- fixture: VLLM-ASC-13329.fixture.yaml
+  case_id: VLLM-ASC-13329
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 2
+    path: primary
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=2 path=primary
+    recorded_before: '2026-08-28'
+  fixture_sha256: e30662a57d134f12375dfb4298efd8bb7c64a32bb76decfa4eda74d1d10f5c26
+  case_sha256: ab785ed7de9c
+- fixture: VLLM-ASC-13356.fixture.yaml
+  case_id: VLLM-ASC-13356
+  covers: inference/vllm-ascend/performance
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: primary
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=1 path=primary
+    recorded_before: '2026-08-27'
+  fixture_sha256: 89c9a0bee4491529d77ef70a03de8d540b4917fa1f51544f72c818a5cd4424cb
+  case_sha256: 2089b748e083
+- fixture: VLLM-ASC-13379.fixture.yaml
+  case_id: VLLM-ASC-13329
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: primary
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=1 path=primary
+    recorded_before: '2026-08-28'
+  fixture_sha256: 87dc88adbdf19acfd383fc4a775ec88be0668467f5f419ed02816d868431f324
+  case_sha256: ab785ed7de9c
+- fixture: VLLM-ASC-13446.fixture.yaml
+  case_id: VLLM-ASC-13446
+  covers: inference/vllm-ascend/interrupt
+  assertion: ''
+  observed:
+    status: hit
+    rank: 1
+    path: null
+    candidates: true
+    raw: 回放结果（F5 后首跑）：candidates=Y rank=1 hit（fallback quickly_check 命中；
+    recorded_before: '2026-09-04'
+  fixture_sha256: 6d75ff76c67b6a51be428235a5fc3ef4e3ebab29e02befdf78cdb7f434e92812
+  case_sha256: 919ae7f5d4b7
+- fixture: VLLM-ASC-13508.fixture.yaml
+  case_id: VLLM-ASC-13508
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: primary
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=1 path=primary
+    recorded_before: '2026-08-27'
+  fixture_sha256: 4f943a073a1c3cbeb8e7560f1ae591f85d06107e1b4a77157e8be9ae516d4e6f
+  case_sha256: 945222e075d3
+- fixture: VLLM-ASC-13710.fixture.yaml
+  case_id: VLLM-ASC-13710
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: primary
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=1 path=primary
+    recorded_before: '2026-08-27'
+  fixture_sha256: 6fa1f2b0d2b2617485d31de29e64b7552b5eba68b8d4eeae6dd347ae18a6066a
+  case_sha256: 931166fa5549
+- fixture: VLLM-ASC-13934.fixture.yaml
+  case_id: VLLM-ASC-13934
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 2
+    path: fallback
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=2 path=fallback
+    recorded_before: '2026-08-27'
+  fixture_sha256: 09f3e21c289a7a4fdca5787d2ccc1b19a841610c72eed6da1f05fb0e797dd33f
+  case_sha256: 43ee119f1ecd
+- fixture: VLLM-ASC-13964.fixture.yaml
+  case_id: VLLM-ASC-13964
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3-or-miss-documented
+  observed:
+    status: miss
+    rank: null
+    path: miss
+    candidates: false
+    raw: 本条回放结果：candidates=N rank=None path=miss
+    recorded_before: '2026-08-27'
+  fixture_sha256: 39a515f6c9592b89bd09039818d0e5b4f355025218bd313f12bdd6e3c269f0da
+  case_sha256: 432d03458220
+- fixture: VLLM-ASC-13973.fixture.yaml
+  case_id: VLLM-ASC-13973
+  covers: inference/vllm-ascend/performance
+  assertion: top-3-or-miss-documented
+  observed:
+    status: miss
+    rank: null
+    path: semantic-obs
+    candidates: false
+    raw: 本条回放结果：candidates=N rank=None path=semantic-obs
+    recorded_before: '2026-08-27'
+  fixture_sha256: cb48ff5620a82da1ec2a59eae02885f59a061779592f243e8058659bf4d3575d
+  case_sha256: dc4764c15678
+- fixture: VLLM-ASC-14166.fixture.yaml
+  case_id: VLLM-ASC-14166
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: fallback
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=1 path=fallback
+    recorded_before: '2026-08-27'
+  fixture_sha256: fafe5320beefb473eaf59b88efa9cefed7921284601c01eee366330ad5723d76
+  case_sha256: 3deee3596648
+- fixture: VLLM-ASC-14320.fixture.yaml
+  case_id: VLLM-ASC-14320
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 2
+    path: primary
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=2 path=primary
+    recorded_before: '2026-08-27'
+  fixture_sha256: a2b7f125ee29eb7dc2200b05470ad7dd6157dbe8498a6d73f39c4f2f253b01f5
+  case_sha256: bbc8e17b53fc
+- fixture: VLLM-ASC-14467.fixture.yaml
+  case_id: VLLM-ASC-12685
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: primary
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=1 path=primary
+    recorded_before: '2026-08-27'
+  fixture_sha256: 6a30f914e9f4ec59ad8a829ca5d8d8779c19d553eb79836da2a3556e3a9c8caa
+  case_sha256: cd1f2e88d61f
+- fixture: VLLM-PD-MTE-REPEAT.fixture.yaml
+  case_id: VLLM-ASC-9887
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: fallback
+    candidates: true
+    raw: 回放结果（确定性排序器 + quickly_check）：candidates=Y rank=1 path=fallback
+    recorded_before: '2026-09-17'
+  fixture_sha256: 755f86889d30335a446949b2dfe58bdadae351f228a6ee7964a3909925b5468e
+  case_sha256: 99d58030828a
+- fixture: VLLM-PD-PORT-65536.fixture.yaml
+  case_id: VLLM-ASC-8938
+  covers: inference/vllm-ascend/interrupt
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: primary
+    candidates: true
+    raw: 回放结果（确定性排序器 + quickly_check）：candidates=Y rank=1 path=primary
+    recorded_before: '2026-09-17'
+  fixture_sha256: 6c3b45e209ee66fd7745602134c011adf8f88d6b8bd238fc21ab86e91f52b60a
+  case_sha256: 87d37abe7c7d
+- fixture: example.fixture.yaml
+  case_id: MSLLM-EP-HANG-001
+  covers: training/mindspeed-llm
+  assertion: ''
+  observed:
+    status: not_recorded
+    rank: null
+    path: null
+    candidates: null
+    raw: ''
+    recorded_before: '2026-08-25'
+  fixture_sha256: 72ee3f2149b513794fbc5ce1a09c98a33d946ce70a4a693976aa55df4f0f2fef
+  case_sha256: null
