@@ -173,7 +173,7 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
    **「不落库」= 源码不随仓库提交、也不写进知识库**；分析仍要保留源码（`src-code/` 本地缓存），知识库只记 `source_ref` 代码指针。
 3. **grep 定位**：搜报错签名/算子名/函数名（如 `grep -rn "QuantBatchMatMulV3" vllm_ascend/`）→ 读相关文件片段 → 分析根因。
 4. **追问用户验证**：对照预期/复现/补环境信息，验证根因假设。
-5. **follow-up**：查知识库是否已覆盖；`gh search issues/prs` 看上游是否已修复（已修复→fix=升级到修复版本；未修复→根因+workaround）；内网不可达→诚实说明无法查证。
+5. **follow-up**：查知识库是否已覆盖；`gh search issues/prs` 看上游是否已修复（已修复→fix=升级到修复版本；未修复→根因+workaround）；联网不可达→诚实说明无法查证。
 6. **多层级**：根因指向更底层开源仓（torch-npu）→ 同样流程分析其源码（`source_ref` 指向该仓）；CANN 等未开源 → **承认局限**，给方向 + 建议联系华为。
 7. **沉淀**：根因清楚且知识库未覆盖 → `/skill:to-postmortem` 记 `source_ref: {repo, ref, file, line}`；**顺手**沉淀跨事故稳定的结构事实 → `/skill:to-reference`（software-fact / env-var-table / compat-matrix，判据："6 个月后/跨版本是否仍成立"）。
 

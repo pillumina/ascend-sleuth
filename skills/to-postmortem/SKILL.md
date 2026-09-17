@@ -32,7 +32,7 @@ agent 读取文件，后续流程同内联。
 /skill:to-postmortem ~/cases/custA/notes.md ~/cases/custB/hang.md
 ```
 
-**4. 目录**（批量导入历史案例，如内网 wiki 导出）：
+**4. 目录**（批量导入历史案例，如从团队 wiki 导出的记录）：
 
 ```
 /skill:to-postmortem ~/cases/wiki-export/

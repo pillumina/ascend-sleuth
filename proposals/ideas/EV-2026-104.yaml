@@ -1,0 +1,76 @@
+id: EV-2026-104
+layer: L2
+title: 公开面措辞中性化：skill 正文去掉环境类描述（跨机交接 / 联网查证），语义与行为不变
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: process_friction
+    evidence: >-
+      本轮沉淀 RL 材料时新写的措辞里带了执行环境描述，复查判为不该出现在公开面（`skills/` 可 fork）。
+      顺着 grep 发现既有 skill 正文也有同类：`resume-diagnosis` 用「哪台机器联哪个网」描述跨机交接、
+      `diagnose` 的上游查证分支用网络可达性描述、`diagnose` 的支撑文件用「外网查证」、
+      `to-postmortem` 的批量导入举例同形。五处承载的都是流程含义，与网络拓扑无关。
+    trajectory:
+      - skills/resume-diagnosis/SKILL.md:7,16（跨机接手的适用场景与「不要重开一单」的典型）
+      - skills/diagnose/SKILL.md:176（上游查证分支）
+      - skills/diagnose/references/diagnosis-procedure.md:50（版本组合查证面）
+      - skills/to-postmortem/SKILL.md:35（批量导入目录的举例）
+hypothesis: >-
+  改用「前一台机器 / 另一台机器」「联网不可达」这类表述后，skill 行为不变（跨机交接仍指同一分支、
+  上游查证仍以能否联网分流），而公开面不再出现可被读成组织网络拓扑的描述。两处脱敏规则里的同类词
+  保留——那里它是脱敏对象（要被 redact 的东西），删掉会让规则失去可执行对象。
+predicted_effect:
+  metric: skills/ 正文里环境类描述的残留数 + skill 行为不变
+  from: resume-diagnosis 两处、diagnose 两处、to-postmortem 一处含环境类描述
+  to: 五处改为中性表述；仅保留脱敏规则里的两处（脱敏对象，非环境描述）
+  measure:
+    command: "if grep -rn '外网' skills/ --include='*.md' | grep -q .; then exit 1; fi; test \"$(grep -rn '内网' skills/ --include='*.md' | wc -l | tr -d ' ')\" = 2 && python3 scripts/verify_references.py --check"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 改动前这四个 skill 文件的措辞
+  success_criteria: >-
+    ①五处改为中性表述，且逐句对照确认语义不变（跨机交接的判定条件、上游查证的分流条件均未变）；
+    ②脱敏规则里的同类词保留，并在 PR body 说明理由；③skill 自包含卫生通过（无 ADR 号、无日期与卡号锚）；
+    ④不动 references/ 与 knowledge/（纯措辞，索引无变化）
+  rollback: git revert 本 PR 的这五行
+gate:
+  condition: "无（本轮已完成执行与自验证，随 PR 送审）"
+risk: low
+principle_refs: [4, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 与同批导入共用一轮上下文，以 0 计并如实标注口径
+decisions:
+  - who: agent
+    when: '2026-09-17'
+    type: proposal
+    conclusion: >-
+      属「公开面／私有面分离」这条既有约束的一次落实（`skills/` 是可公开、可 fork 的方法论），
+      且改动面是措辞而非流程，按 methodology 模板 + 卡双轨记录：卡记决策与判据，PR 正文记人读说明。
+  - who: agent
+    when: '2026-09-17'
+    type: action
+    conclusion: >-
+      `resume-diagnosis`（frontmatter 的适用场景 + 「不要重开一单」的典型）改为「前一台机器 / 另一台机器」；
+      `diagnose` SKILL.md 的 upstream 分支改为「联网不可达」、其 `references/diagnosis-procedure.md` 改为「联网查证」；
+      `to-postmortem` 批量导入举例改为「从团队 wiki 导出的记录」。脱敏规则（knowledge-groom 的敏感信息清单、
+      to-postmortem 的脱敏扫描项）保持原样。
+  - who: agent
+    when: '2026-09-17'
+    type: eval
+    conclusion: >-
+      scan_review：measure 命令实跑通过（`skills/` 下已无该词、另一词仅剩脱敏规则两处、词条校验绿）；
+      逐句对照确认语义等价（交接分支的判定条件、查证分支的分流条件均未变）；skill 自包含卫生检查无新增命中。
+  - who: agent
+    when: '2026-09-17'
+    type: decision
+    conclusion: >-
+      validated（采纳，改动保留）。判据强度如实标注：措辞是否"中性"是判断性规范、不进 CI——
+      measure 只钉住"这五处不再出现该表述、脱敏两处仍在"，不宣称这等于信息不外泄。
+      人审关注点：脱敏规则里的同类词是否也该换成更一般的说法（本轮判断为应保留，理由是它是脱敏对象）。

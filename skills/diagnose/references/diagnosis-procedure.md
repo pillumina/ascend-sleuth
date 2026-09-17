@@ -47,7 +47,7 @@
 - 错误码 → 读 `ascend-error-code-structure` 的 `module_files` 前缀映射定位族文件（`references/errors/<族>.yaml`），族内 grep code 读 meaning / solution；
 - 故障签名 → 按域定位 `references/fault-patterns/<域>.yaml`，域内 grep symptoms 读 cause / fix；
 - 环境变量 → `references/env-vars/<表>.yaml` 内 grep name；
-- 版本组合 → `references/compat-matrices/` 按传导链分层，按要核对的层直接读该层文件：framework 层 `references/compat-matrices/vllm-ascend-torch-npu.yaml` / `references/compat-matrices/verl-npu.yaml`、adapter 层 `references/compat-matrices/torch-npu-cann.yaml`、base 层 `references/compat-matrices/cann-hdk.yaml`（CANN↔驱动/固件，如 `cann: 9.0.1` 一行直接给配套 `hdk` 列表）——**先落本库矩阵，再考虑外网查证**（厂商文档站多为 JS 渲染，正文表格常取不到）。
+- 版本组合 → `references/compat-matrices/` 按传导链分层，按要核对的层直接读该层文件：framework 层 `references/compat-matrices/vllm-ascend-torch-npu.yaml` / `references/compat-matrices/verl-npu.yaml`、adapter 层 `references/compat-matrices/torch-npu-cann.yaml`、base 层 `references/compat-matrices/cann-hdk.yaml`（CANN↔驱动/固件，如 `cann: 9.0.1` 一行直接给配套 `hdk` 列表）——**先落本库矩阵，再考虑联网查证**（厂商文档站多为 JS 渲染，正文表格常取不到）。
 
 **为什么提前到这里**：码 / 签名 / 名的**语义**与"命中哪条 case"无关——不知道 `507903` 是什么意思时，case 层给不出解释，而这个解释正是判断候选真假的输入。排在候选加载之后，等于让判断先于理解。
 
