@@ -90,36 +90,40 @@ def classify(doc):
     return "missing", m
 
 
-# 运行时件/仓外路径：这些"不存在"是正常的，不算判据失效
-DEP_SKIP_PREFIX = ("traces/", ".s2-replay/", ".ixn-replay/", ".flow-replay/", ".auto-fetch/",
-                   "eval-reports/", "src-code/", "postmortems/inbox/", "/tmp/", "/private/tmp/")
-DEP_PATH_RE = None
+# 判据依赖的识别：**只在"读取语境"里认路径**。
+# 上一版按"命令里出现过的文件后缀 token"认，实测两类假阳性（都进了健康判据的读数）：
+#   ① 命令里当**期望不存在的噪音样本**列出的字符串（如过滤器测试的 noise 列表）被当成依赖；
+#   ② 代码里当**字面量**比较的字符串（`'compat-matrices/cann-hdk.yaml' in p`）被当成依赖。
+# 两类都不是"这条命令要打开它"。收紧为四种读取语境后，判据只认真正会被读的路径。
+_DEP_PATTERNS = (
+    r"(?:open|read_text|read_bytes|Path|load|safe_load)\s*\(\s*['\"]([A-Za-z0-9_./-]+\.\w+)['\"]",
+    r"\b(?:cat|head|tail|less)\s+['\"]?([A-Za-z0-9_./-]+\.\w+)",
+    r"scripts/[\w./-]+\.(?:py|js|sh)\s+(?:-\S+\s+)*([A-Za-z0-9_./-]+\.\w+)",
+    r"--[A-Za-z-]+\s+['\"]?([A-Za-z0-9_./-]+\.\w+)",
+)
 
 
 def _dep_paths(cmd: str):
-    """命令里点到的仓库内路径（粗取，宁可少报）。"""
+    """命令**会读取**的路径（只认读取语境，宁可少报）。"""
     import re as _re
     out = []
-    for m in _re.finditer(r"[A-Za-z0-9_./-]+\.(?:yaml|yml|md|json|py|js|txt)", cmd or ""):
-        cand = m.group(0)
-        if not cand.startswith("/"):
-            cand = cand[2:] if cand.startswith("./") else cand
-        # 只认带目录的路径：命令里的裸文件名（x.py）不是"仓库内位置"，判它无意义
-        if "/" not in cand.strip("/") and not cand.startswith("/"):
-            continue
-        if any(cand.startswith(p) for p in DEP_SKIP_PREFIX):
-            continue
-        if cand not in out:
-            out.append(cand)
+    for pat in _DEP_PATTERNS:
+        for m in _re.finditer(pat, cmd or ""):
+            cand = m.group(1).strip("'\"")
+            if cand.startswith("./"):
+                cand = cand[2:]
+            if cand and cand not in out:
+                out.append(cand)
     return out
 
 
 def stale_deps(root: Path, doc):
-    """判据命令点到的仓库路径里，已经不在检出内的那些。
+    """判据命令要读、但检出里已不存在的路径。
 
     为什么单列：判据"可复现判据从未执行"数的是"跑没跑过"，**不区分"跑了还有没有意义"**。
     实测抽查 6 张未执行的卡，有 2 张的判据依赖已蒸发的本地件（traces 里的报告、/tmp 状态文件）
     ——这类卡跑一次只会把噪声当信号。本函数把它们挑出来，让"该跑"和"不必跑"分开。
+    强度如实标注：只认读取语境，命令里当样本/字面量出现的路径不算依赖。
     """
     kind, m = classify(doc)
     if kind != "runnable":
