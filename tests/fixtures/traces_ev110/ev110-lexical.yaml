@@ -1,0 +1,12 @@
+session_id: ev110-lexical
+status: unresolved
+trace:
+  - role: user
+    content: "推理拉起就崩，报错 error code 507014，环境变量 VLLM_ASCEND_ENABLE_FUSED_MC2=1"
+  - role: agent
+    action: triage
+    routed: []
+  - role: agent
+    action: triage_semantic
+    namespace: inference/vllm-ascend
+    category: interrupt

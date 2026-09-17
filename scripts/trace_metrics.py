@@ -10,6 +10,7 @@
 #   / tier3（Tier 3 兜底检索）/ feedback（结果反馈：resolved|not_resolved|partial）
 # 字段缺失时降级计算，不硬崩。小样本时比例波动大——解读前先看分母。
 
+import re
 import sys
 from pathlib import Path
 
@@ -59,9 +60,16 @@ KNOWN_PURPOSES = {"collect", "signature", "fix", "background", "procedure"}
 KNOWN_OUTCOMES = {"hit", "miss", "skipped"}
 
 
-def load_states(root: Path):
-    # traces/ 是诊断状态目录（gitignored，含客户信息）——活跃 + 历史都归此
-    files = list(resolve_traces(root).glob("*.yaml"))
+# triage miss 归类用的 token 判据见 scripts/_lexical.py（单一事实源：rank_candidates.py 共用同一组模式）
+from _lexical import has_lexical_signal  # noqa: E402
+
+
+def load_states(root: Path, traces_dir: Path | None = None):
+    # traces/ 是诊断状态目录（gitignored，含客户信息）——活跃 + 历史都归此。
+    # traces_dir 显式给了就用它（单元测试的合成 trace / 读另一份检出）；
+    # 不给则沿用共享侧语义（resolve_traces 解析到主检出），既有调用面行为不变。
+    base = Path(traces_dir) if traces_dir else resolve_traces(root)
+    files = list(base.glob("*.yaml"))
     states = []
     for f in files:
         try:
@@ -106,11 +114,14 @@ def main():
                     help="仓库根（默认：脚本上两级）。**traces/ 是各检出各一份的运行时件**——"
                          "在 worktree 里跑本脚本读不到主检出的 trace，需显式传主检出根；"
                          "metrics_snapshot.py 会自动解析并标注读的是哪一份")
+    ap.add_argument("--traces-dir", default=None,
+                    help="显式指定 traces/ 目录（默认由 resolve_traces(root) 解析到主检出）。"
+                         "用于单元测试的合成 trace 与「读另一份检出」的场景；不传即保持共享侧语义")
     args = ap.parse_args()
 
     root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[1]
     by_case = ns_map_from_index(root)
-    states = load_states(root)
+    states = load_states(root, Path(args.traces_dir) if args.traces_dir else None)
     if not states:
         print("未找到任何 traces/*.yaml。先跑 /skill:diagnose 产生 trace。")
         return
@@ -145,6 +156,8 @@ def main():
     # 执行-误诊归因比（metrics.md 定义）：attribution 事件 verdict 分布——case 错 vs 执行错。
     # 归因由 diagnose 在反馈 not_resolved 后读 trace 判定（SKILL 硬要求），此处只统计落点。
     attr = {"case_error": 0, "execution_error": 0}
+    # triage miss 两类（EV-2026-110）——两类同形就没法判断"该不该补词"，这里把它们分开记
+    miss_lex, miss_sem, miss_unrec, miss_notriage = [], [], [], []
 
     for st in states:
         trace = st.get("trace") or []
@@ -230,6 +243,28 @@ def main():
                 routed_total += 1
                 if any(r == ns or r.endswith("/" + ns) or ns.endswith("/" + r) for r in routed):
                     routed_ok += 1
+        sid = str(st.get("session_id") or "?")
+        # triage miss 归类（EV-2026-110）。先分清两件被混在一起的事：
+        #   ① 真 miss：trace 里有 triage_semantic（语义兜底被触发）或 triage 明确记了空 routed；
+        #   ② **记录缺口**：有 triage 事件但 routed 字段没记——E2 的错例池正是靠这个字段取数，
+        #      没记就等于"这一单没进池"，与"路由没错"在数据上同形。
+        has_semantic = any(t.get("action") == "triage_semantic" for t in trace)
+        triage_events = [t for t in trace if t.get("action") == "triage"]
+        routed_ok_ = any(t.get("routed") for t in triage_events)
+        explicit_miss = any(t.get("action") == "triage" and t.get("routed") == [] for t in trace)
+        if not routed_ok_:
+            user_text = " ".join(
+                str(t.get("content") or "") + " "
+                + str((t.get("evidence") or {}).get("inline") or "")
+                for t in trace if t.get("role") == "user"
+            )
+            if has_semantic or explicit_miss:
+                (miss_lex if has_lexical_signal(user_text) else miss_sem).append(sid)
+            elif triage_events:
+                miss_unrec.append(sid)
+            else:
+                miss_notriage.append(sid)
+
         if "tier3" in actions:
             tier3_used += 1
             if st.get("status") == "resolved" and not hit_case:
@@ -255,6 +290,14 @@ def main():
         "trace_completeness": {"ok": complete, "total": n},
         "vocab_compliance": {"ok": vocab_total - len(vocab_bad), "total": vocab_total},
         "tier3": {"used": tier3_used, "saved": tier3_saved},
+        # triage miss 两类（EV-2026-110）：lexical_gap 进 E2 错例池，semantic_path 是级联正常换挡
+        "triage_miss_classes": ({"lexical_gap": len(miss_lex), "semantic_path": len(miss_sem),
+                                 "routed_unrecorded": len(miss_unrec),
+                                 "no_triage_event": len(miss_notriage)}
+                                if (miss_lex or miss_sem or miss_unrec or miss_notriage) else None),
+        "triage_miss_sessions": ({"lexical_gap": miss_lex[:5], "semantic_path": miss_sem[:5],
+                                  "routed_unrecorded": miss_unrec[:5]}
+                                 if (miss_lex or miss_sem or miss_unrec) else None),
         "reference": {"hits": sum(ref_hits.values()), "refs": len(ref_hits)} if ref_hits else None,
         # 触发三态（EV-2026-093）：三态都进快照——消费率要能与"没查"区分才可归因
         "reference_outcomes": ref_outcomes or None,
@@ -287,6 +330,12 @@ def main():
         f"| trace 词表合规（词表外 action） | {vocab_total - len(vocab_bad)}/{vocab_total}"
         + (f"（违规：{'、'.join(vocab_bad[:5])}{'…' if len(vocab_bad) > 5 else ''}）" if vocab_bad else ""),
         f"| Tier 3 兜底使用 / 其中挽救（resolved 且无 Tier 2 命中） | {tier3_used} / {tier3_saved} |",
+        (f"| triage miss 归类 | lexical_gap {len(miss_lex)}（token 在场却没接住→进 E2 错例池）"
+         f"；semantic_path {len(miss_sem)}（本来无 token，级联正常换挡）"
+         f"；routed 未记录 {len(miss_unrec)}（E2 取数字段缺口）"
+         + (f"；无 triage 事件 {len(miss_notriage)}" if miss_notriage else "")
+         if (miss_lex or miss_sem or miss_unrec or miss_notriage)
+         else "| triage miss 归类 | 本批无 miss（routed 全记录） |"),
     ]
     # reference 指标（ADR-0008 观测性）——无引用时如实显示为空（reference 刚建立是现状）
     if ref_hits or ref_outcomes:

@@ -21,6 +21,10 @@ namespaces:
       symptoms:
       - qwen3-14b-64k-lora 微调开启 uniform 重计算时，grad norm 恒为 0、loss 不收敛（lm loss 停滞在 ~1.22e1 附近），num zeros/nan
         均为 0 但训练无进展
+      sig: []
+      tok:
+      - 26.0.0
+      - '5.2'
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1437.yaml
       hash: b30a52d8269f
     - id: MSLLM-1532
@@ -39,6 +43,10 @@ namespaces:
         score: 0.6
       symptoms:
       - Qwen3-0.6B 用 convert_ckpt_v2.py 做 HF→MCore→HF 无训练 round-trip 转换，导出的 HF 模型生成乱码碎片（如 'aseñaGLISHATUREATURE...'）
+      sig: []
+      tok:
+      - '0.03'
+      - convert_ckpt_v2.py
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1532.yaml
       hash: b7b18dd4f964
     - id: MSLLM-1780
@@ -57,6 +65,15 @@ namespaces:
       symptoms:
       - FSDP2 断点续训（resume_from_checkpoint）后第一步日志三项指标同时异常：lm loss 显示 0.247（×31 还原 = 7.66 与相邻步 7.74 一致）、elapsed
         time 34.55ms（正常 90…
+      sig: []
+      tok:
+      - '0.247'
+      - '6.94'
+      - '7.66'
+      - '7.74'
+      - '90.11'
+      - FSDP2
+      - trainer.py
       file: knowledge/training/mindspeed-llm/precision/MSLLM-1780.yaml
       hash: 544219f96b15
     - id: MSLLM-FA-MASK-GRADNAN
@@ -75,5 +92,10 @@ namespaces:
         score: 0.7
       symptoms:
       - GradNorm 出现 NaN/Inf（256 卡 Qwen3-235B 长序列 SFT，序列长度 131072，TP4/PP4/EP16/CP16/VPP3）
+      sig: []
+      tok:
+      - '131072'
+      - '65536'
+      - ASCEND_LAUNCH_BLOCKING
       file: knowledge/training/mindspeed-llm/precision/MSLLM-FA-MASK-GRADNAN.yaml
       hash: e68c03f8b425

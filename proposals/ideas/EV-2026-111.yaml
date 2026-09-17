@@ -1,0 +1,97 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演进决策档案
+# schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+id: EV-2026-111
+layer: L2
+title: 候选排序改词法相关性优先——行内签名字面量 + token 交集，score 退居破平
+status: validated
+authorization: review
+dimension: architecture
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: measurement
+    evidence: "在 25 条有 expected case 的 golden fixture 上、于各自 ns×category 格子内排序，实测四种排序键的命中分布：**score（现状）top1 2 / top3 5 / 中位名次 20**；词法相关性（case 的 quickly_check 字面量命中数 → 输入 token 与 case token 交集数 → score）**top1 9 / top3 13 / 中位名次 3**。拆分看：只用字面量 top3 9、只用 token 交集 top3 11，两者相加 13——两半各自有效、互补。score 补全（49 条可机械补）反而更差（top3 2、中位 33），证明「排序的问题不是分数缺，而是 score 不是相关性信号」。"
+    trajectory:
+      - "eval/golden/*.fixture.yaml（25 条有 expected case）"
+      - "knowledge/_index/inference__vllm-ascend__interrupt.yaml（候选池）"
+  - signal: design_gap
+    evidence: "diagnose 的 SKILL 正文早已写着「报错原文在场 → signature 立即查」的策略，但**索引行里没有任何签名面字段**（行只有 id/title/tags/symptoms 首条/category/score/file），于是阶段一的排序只能按 score——策略在散文里、排序在数据里，两者不一致。实测两条跨队语料 fixture 的期望 case 因此排到第 6 / 第 8。"
+    trajectory:
+      - "skills/diagnose/SKILL.md#步骤 3（阶段一按 score 筛候选）"
+      - "eval/golden/VLLM-PD-PORT-65536.fixture.yaml#回放结果"
+hypothesis: 把 case 的 quickly_check 签名字面量（正则里的纯字面量分支）放进索引行（新字段 sig，上限 6 条 / 每条 ≤32 字符），并让阶段一按「字面量命中数 → token 交集数 → score」排序后，命中 case 的名次分布显著前移（top3 5 → 13），且阶段一不需要额外读 case 本体（字面量就在行内）。
+predicted_effect:
+  metric: golden fixture 上期望 case 的排序命中分布（格子内）
+  from: "top1 2 / top3 5 / 中位名次 20（只按 score）"
+  to: "top1 9 / top3 13 / 中位名次 3（字面量 + token 交集 + score）"
+  measure:
+    command: "python3 scripts/rank_candidates.py --eval"
+    expect_exit: 0
+    expect_stdout: "top3=13"
+validation:
+  method: metrics_compare
+  baseline: 改前只按 confidence.score 排序（本卡 source_signals 的 measured 读数）
+  success_criteria: |
+    ① 索引行新增 `sig`（quickly_check 字面量分支，≥5 字符、去正则元字符、上限 6）与 `tok`
+       （全部症状的 token，上限 12）；**行宽增量实测 68 字符/case（最大 322）——高于预期的 <40，如实修正**；
+       覆盖：sig 74/159、tok 133/159；
+    ①b 拆分实测（同一 25 条 fixture）：只加 sig → top3=10；**sig + tok → top3=13**。差异来自行内摘要
+       截断（title 160 / 症状首条 120）会漏掉判别 token，故 tok 必须取全部症状——这是本卡实装时才量到的；
+    ② 排序器 `rank_candidates.py` 为纯函数 + CLI，`--eval` 在 25 条 fixture 上可复现 top3=13（reviewer 一条命令复核）；
+    ③ 单测覆盖三顺位与 tie-break（同分按 id 稳定），以及 sig 提取的边界（元字符剔除、上限、去重）；
+    ④ diagnose 步骤 3 写明排序口径（skill 改动走 methodology 门禁，行为面变更）；
+    ⑤ fixture 自己的 assertion 一个都不放松——本卡只改排序，不改期望；
+    ⑥ 两条跨队 fixture 用新口径重跑并重新记账（rank 前移后写回账本）。
+  rollback: 单文件可整体 revert（build_index.py 的 sig 字段 + rank_candidates.py + skill 一段 + 重建索引）；索引是生成物，revert 后重跑 build_index 即回到改前
+gate:
+  condition: "不等数据触发：本卡依据实测排序对照（top3 5 → 13），并已获 owner 按 review 级放行"
+risk: medium
+principle_refs: [1, 3, 6, 8]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径记 0"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：候选排序改词法相关性优先。来源：对「score 缺失/不区分」的复核——补分反而更差，而词法相关性在 25 条 fixture 上把 top3 从 5 提到 13；策略早写在 SKILL 散文里，索引行却没有对应字段（散文与数据不一致）"
+  - who: human
+    when: 2026-09-17
+    type: decision
+    conclusion: "owner 放行：按数据最优方案走，authorization 定为 review（非双签）"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：build_index 行内新增 sig（_SIG_RE 纯字面量提取，上限 6）与 tok（_lexical.token_of 全症状 token，上限 12，排序后取前 12 保证确定性）；新增 scripts/rank_candidates.py（三顺位排序 + --eval + --json + --list-ns，纯函数 rank_rows 可测）；token 判据抽到 scripts/_lexical.py 单一事实源（trace_metrics 与本排序器共用，防两份模式清单漂移）；diagnose 步骤 3 写明排序口径；CLAUDE.md 的 Tier 2 行字段说明同步；两条跨队 fixture 用新口径重跑并重新记账"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "① `rank_candidates.py --eval` 复现 top1=8 / **top3=13** / median=3.0（卡片 measure 的期望值 top3=13 命中；基线只按 score 是 2 / 5 / 20.0）；② 拆分实测：只加 sig top3=10、sig+tok 13 —— 行内摘要截断会漏判别 token，已如实修正卡内预期；③ 两条跨队 fixture 的期望 case 由 rank 6 / 17 升到 **并列第 1**（86 条候选池内），账本聚合随之变为 命中第一 16 / 前三 19 / 前三外 0；④ 单测 50 条全绿（新增 rank_candidates 7 条 + build_index 的 sig/tok 2 条）；⑤ 全套 CI 绿（索引按新字段重建，scorecard 因夹具重记账而更新）"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）：排序收益是实测的（top3 5→13、中位名次 20→3、两条 fixture 进第 1），成本是行宽 +68 字符均值（最大 322，如实标注高于预估）。残余：①sig 只覆盖 74/159、tok 133/159——其余 case 的行内没有字面量可取，排序对它们只能靠 token 与 score；②本排序器只解决**排序**，不判相关性（那是 quickly_check 的事），也不改任何期望；③`--eval` 的样本是 25 条 golden fixture（格子内排序口径），不是线上分布；真实验证要看 diagnose 的 hit 名次是否随之下移（进观察窗）。"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "**全量机械重放（25 条 fixture）揭穿本卡判据的口径问题**：本卡的 measure 与生产管线不是一回事——`--eval` 是**格子内全量排序**，而生产是「agent 按 title/tag/symptom 相关性筛 ≤5 → 只加载这 5 条」。按同一格子内口径三比：历史记录（agent 回放）**19/19 在 top-3**；机械 score-only 5/25；机械词法键 13/25。即：**agent 的相关性判断优于两个机械键**，我原先用来论证的 5/25 基线是稻草人（它从来不是生产行为）。另有 8 条历史命中项在机械词法键下掉出 top-3（如 13710 +1→39、12461 →32）。"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "**部分撤回**：①**保留**行内 `sig`/`tok`（纯增量证据：agent 不必读 case 本体就能看到签名字面量，成本 +68 字符/行，无行为副作用）；②**撤回**「阶段一排序改词法相关性优先、score 退居破平」这条指令——数据说机械键会替掉一个更好的判断者（19/19 vs 13/25），用它覆盖 agent 判断有实际退化风险。skill 步骤 3 改为「排序仍由 agent 判断，sig/tok 是证据，score 只破平」，并写明历史比例作为依据；`rank_candidates.py` 保留为**对照工具**（不是规定动作）。卡状态保持 validated 仅就「行内证据字段」而言——排序键的替换部分按本条撤回。③后续：若仍想引入机械排序，先做 agent 驱动的子集回放（5-8 条，含上表掉出 top-3 的条目）对比 hit 名次，再定；不得再用格子内全量口径论证生产收益。"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "量尺口径修正（落实上一条 decision 的后续要求）：`rank_candidates.py --eval` 改为**管线同构**——先按筛选键取 ≤5 候选，再报 recall@5 与 top3|≤5 两个数；`evaluate()` 抽成纯函数并加单测（筛漏与排后分开计数、未入库 expected 不计入分母）；输出增加「同子集对照」段（agent 历史记录 / score-only / 词法三行同分母）；文件头注写明旧口径已废弃及废弃理由；docs/eval.md 新增「排序/筛选类改动的量尺」一节。"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "同构口径下的读数（19 条三者都有记录的子集）：**agent 历史记录 recall@5 19/19**；机械词法 12/19；机械 score-only 3/19。而 top3|≤5 分别是 19/19、11/12、3/3——**瓶颈在「筛」不在「排」**：候选一旦进池，两种机械键都几乎必进前三。故本卡此前「排序键替换」的方向从一开始就瞄错了阶段。"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳为新量尺（此后所有排序/筛选类改动一律用它，禁止再用整格全量口径论证收益）。由此得出的方向修正：**`sig`/`tok` 的价值在「筛」不在「排」**——它们把机械筛选的 recall@5 从 3/19 提到 12/19，这是本卡真正的净收益；而 agent 的 19/19 说明人的相关性判断仍不可替代，故 skill 保持「排序由 agent 判断、sig/tok 作为证据」。下一步（另卡）：把 sig/tok 明确写成筛选阶段的**兜底规则**（agent 判断之外再按字面量命中补一层），目标把机械 recall@5 从 12/19 推向 19/19；这一步需要 agent 驱动的子集回放验证，不得再用机械口径自证。"

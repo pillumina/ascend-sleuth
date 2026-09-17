@@ -1,0 +1,68 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演进决策档案
+# schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+id: EV-2026-107
+layer: L2
+title: eval 回放观测的结构化账本与新鲜度卡口（eval/scorecard.yaml）
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: design_gap
+    evidence: "回放结果目前只写在 fixture 头注的散文里（22/24 条，形如「本条回放结果：candidates=Y rank=2 path=primary」）——无日期、无结构化字段、无聚合、无人校验；完整报告落 gitignore 的 eval-reports/。后果有二：①仓库里不存在「当前命中构成」这个数；②夹具改动后没重跑，在数据上不可检出。实测 5 条夹具记为 miss，其 assertion 均为 `top-3-or-miss-documented`（允许记录在案的 miss），套件本身自洽；但 VLLM-ASC-12685 在封存对照集里的封存理由写的是「高频命中路径」，与它自己头注记的 miss 对不上——这类散文与记录的错位在账本化之前无法一眼看出（而该条属封存面，误读它等于误读量尺）。"
+    trajectory:
+      - "eval/golden/VLLM-ASC-12685.fixture.yaml#头注"
+      - "eval/holdout.yaml#VLLM-ASC-12685 的 why 字段"
+      - "docs/eval.md#怎么跑（v1 手动）"
+      - ".gitignore（eval-reports/ 与 .s2-replay/ 均为运行时件）"
+hypothesis: 把回放观测从 fixture 头注散文搬进结构化账本、并按「夹具内容哈希 + 目标 case 内容哈希」双判新鲜度后，"这条夹具上次记录的是第几名、那次记录之后夹具与目标 case 有没有变过"变成可查的事实；"改了夹具不重跑"由静默变为 CI 报红，"改了 case 没重跑"进待复核清单，聚合命中构成也不再依赖读 24 个文件的散文。
+predicted_effect:
+  metric: 回放观测的可校验性（账本覆盖 + 双哈希新鲜度检出 + 聚合可读）
+  from: "0 条结构化记录、0 个卡口、聚合数不存在（只在散文里）"
+  to: "24 条 fixture 全部有账本条目（未回放者如实记 not_recorded）；夹具变动即红、case 变动进待复核清单；聚合命中构成一条命令可读"
+  measure:
+    command: "python3 scripts/eval_scorecard.py --check"
+    expect_exit: 0
+    expect_stdout: "scorecard："
+validation:
+  method: scan_review
+  baseline: 改前：观测只写在 fixture 头注（22/24 条），无脚本、无卡口、无聚合；陈旧观测不可检出
+  success_criteria: |
+    ① 覆盖：eval/golden/*.fixture.yaml 每条都有账本条目，缺则红并逐条列出（新夹具至少要记 not_recorded）；
+    ② 新鲜度：夹具字节哈希与账本不符 → 红（夹具即量尺，被改过就该重跑一次）；
+       目标 case 的内容哈希（取自 knowledge/_index.yaml）不符 → 进「待复核」清单并计入聚合，**不判红**——
+       case 的合法内容变更不该阻塞无关 PR（闸门硬度与错误代价匹配，原则六）；
+    ③ 账本自身不自相矛盾：条目的 fixture 与 case 都必须存在，case_id 必须与 fixture 的 expected 一致；
+    ④ 聚合数随 --check 打印（有记录 N / 命中第一 / 命中前三 / 未命中 / 未记录 / 待复核），人不必读散文；
+    ⑤ CI 新增 eval-scorecard job；docs/eval.md 写明"账本记观测、卡口只判夹具新鲜度、不判准确率"——
+       准确率门禁仍需 agent 跑回放，不假硬化为 CI 门（docs/eval.md 门禁分级与 CLAUDE.md 准入判据）。
+  rollback: 两文件（脚本 + 账本）+ 一个 CI job 可整体 revert；账本是记录文件，删除即回到改前状态（原则七）
+gate:
+  condition: "不等数据触发：本卡补的是回放观测的落点（此前观测无结构化落点），属口径前置修正，随 PR 合入"
+risk: medium
+principle_refs: [2, 6, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径记 0"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：回放观测结构化账本 + 双哈希新鲜度卡口。来源：对比外部同类知识库项目（其测试数与库容量在四份文档间漂移、无卡口）后回查本仓，发现同类缺口——回放结论只存在于散文与 gitignore 运行件里，仓库面无观测"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：新增 scripts/eval_scorecard.py（--build / --check / --list）与生成物 eval/scorecard.yaml（24 条条目）；kb-checks 新增 eval-scorecard job 与 scripts/eval_scorecard.py 触发路径；docs/eval.md 新增「观测账本」节并改掉 M2 那句「观测无处可查」的现状描述；git-workflow 门控映射表加一行；methodology 模板回归清单加一行记账自查"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "① measure 实跑 PASS（ev_measure --run：exit 0、stdout 含 scorecard：）；② 账本从 22/24 条 fixture 头注 + expected + 生成索引重建，聚合如实报出：有观测 22（命中第一 14／前三 17、未命中 5）、未记录 2（SGL-PD-HEAP-001 与 example 构造示例）；③ 四条判据路径逐一实测：夹具漂移→红 exit 1、新夹具未入账→红、assertion=top-3 却记 miss→红、目标 case 内容变→仅警告 exit 0；④ 16 条 CI 检查全绿。"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）：账本把「观测到什么」从散文变成可读可校验的仓内事实，且四条判据的误红代价都可控（--build 一条命令修）。残余如实标注：①账本是读 fixture 头注的，重跑了回放却没更新头注时发现不了（强度上界写进脚本头注与 docs/eval.md）；②CI 准入第三条「复发」无本产物历史失败，入 CI 的依据是同类生成物门的先例，已在 workflow 注释里写明这是判断而非既定事实；③把账本接进 groom / evolve-check 的步骤清单（行为面）未做——本卡不含 skill 改动，避免把口径修正与流程改动混在一个 PR。"

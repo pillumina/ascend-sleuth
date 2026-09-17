@@ -1,0 +1,69 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演进决策档案
+# schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+id: EV-2026-109
+layer: L2
+title: 结算完整性三修——按事件增量结算 + 未落地不静默丢证据 + 序列改写拒绝猜
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: design_gap
+    evidence: "口径脚本单测首建（EV-2026-108 的执行过程）即发现：settle_trace_feedback 的幂等键是整个 session 的 feedback 事件列表 hash，列表一变就**整段重放**——补一条新反馈会让旧事件被二次计入 hits（实测 1→3，期望 1→2），与该脚本自述的「同一份证据不能数两次」矛盾（它是 hits 与 self_resolved 分离的依据）。"
+    trajectory:
+      - "tests/test_settle_trace_feedback.py#test_known_defect_recounts_prior_events_on_sequence_change"
+      - "scripts/settle_trace_feedback.py#settle()（改前游标逻辑）"
+  - signal: data_evidence
+    evidence: "实测已发生一例**真实证据丢失**：trace 2026-09-16-12430-dsv4pro-mc2 有 feedback{case: VLLM-ASC-12430, outcome: resolved}，case 的 source_session 正是该 session（应为自证），但 ①case 的 confidence 里没有 self_resolved，②游标却已记该 session 为已结算。原因同一处：**游标先于落地推进**——事件被跳过（当时 case 尚未落 knowledge/）或写回未生效时，游标照样前进，于是这笔证据永久不再重试。"
+    trajectory:
+      - ".settle-state.json#_trace_feedback['2026-09-16-12430-dsv4pro-mc2']"
+      - "knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12430.yaml#confidence（无 self_resolved）"
+hypothesis: 把游标从「整段 hash」改成「逐事件已落地记录」，并让写回先复核再记落地，结算对已应用事件不再重放（不虚增 hits）、对未落地事件不静默丢弃（下次重试）；序列被改写（非追加）时拒绝猜测并告警。再加一个只读的 --audit 交叉复核「游标说已结算」与「case 里看得见效果」，让这类丢失在数据上可见而不是靠人偶然发现。
+predicted_effect:
+  metric: 结算的幂等性与证据不丢失（可机械复核）
+  from: "整段重放（补一条新反馈 → 旧事件二次计数）+ 写回失败/事件跳过仍推进游标（证据永久丢失，0 个检出手段）"
+  to: "append 一条 → 只有新事件生效；未落地事件保持待结算并逐次告警；序列改写拒绝结算不猜测；--audit 报出「游标已结算但 case 无对应效果」的条目"
+  measure:
+    command: "python3 scripts/settle_trace_feedback.py --audit"
+    expect_exit: 0
+    expect_stdout: "settle --audit"
+validation:
+  method: metrics_compare
+  baseline: 改前 --audit（本卡实现）报出 1 处「游标已结算但 case 无效果」（VLLM-ASC-12430 自证丢失）；单测 test_known_defect_* 实测 hits 1→3
+  success_criteria: |
+    ① append 新 feedback 后重跑：只有新事件生效（单测断言 hits 1→2，known_defect 断言改为期望值）；
+    ② case 找不到 / 写回复核失败 → 该事件不记落地、保持待结算、每次运行都告警（单测覆盖）；
+    ③ 事件序列被改写（非追加）→ 拒绝结算并告警，不重放不猜测（单测覆盖）；
+    ④ --audit 对「游标已结算但 case 无对应效果」逐条报出，退出码非 0；
+    ⑤ 实测修复真实丢失的那一笔（VLLM-ASC-12430 的 self_resolved 落盘），--audit 转为干净；
+    ⑥ 旧格式游标（整段 hash）迁移保守：视为已落地不重放，迁移时打印提示并指出旧格式无法区分「已落地」与「当初被跳过」。
+  rollback: 单文件可整体 revert（settle_trace_feedback.py + 一个测试模块）；游标是本地运行件，改回 schema 需删 .settle-state.json（幂等靠事件记录，删了会重放——故 revert 需同时说明，见卡内 decision 如实标注）
+gate:
+  condition: "不等数据触发：已有真实证据丢失实例（VLLM-ASC-12430）与单测复现的二次计数；属学习环口径修正，随 PR 合入"
+risk: medium
+principle_refs: [1, 2, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径记 0"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：结算完整性三修（增量结算 / 未落地不丢 / 改写不猜）+ --audit 交叉复核。来源：口径脚本单测发现的二次计数缺陷（EV-2026-108 执行过程）+ 实测一例真实自证丢失（游标已推进而 case 无 self_resolved）"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：settle_trace_feedback.py 游标改 v2（per session 记 events 序列 + applied 下标）——只结算新增/未落地事件，序列被改写则拒绝并告警；写回一律**先复核再记落地**（_write_conf_fields / _self_resolved_landed 读盘回验）；新增只读 `--audit` 交叉核对「游标说已结算」与「case 里看得见痕迹」。顺带修一处崩溃：case 的 confidence 块缺 misdiagnoses 时 f-string KeyError 会崩掉整轮结算。skill §3.5 的幂等口径同步改写（去掉已过时的 'ingest-state.json 里按整段 hash' 表述）"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "① measure 实跑 PASS（--audit exit 0、stdout 含 settle --audit）；② **真实数据上抓到了丢失**：修复前 --audit 报「2026-09-16-12430-dsv4pro-mc2 → VLLM-ASC-12430.yaml: 自证未落地」exit 1；删该 session 的游标条目后 --apply，self_resolved count=1 / examples=[该 session] 落盘（复核通过），--audit 转 exit 0；③ 单测 41 条全绿（settle 模块 18 条），改前实测的二次计数 1→3 现为 1→2；④ 全套 CI 绿，其中 case 变更触发索引重建（本 PR 含 _index 重生成）"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）：两个缺陷都是「学习环静默说谎」——一个虚增 hits（二次计数）、一个静默丢证据（游标越过未落地事件，实测已发生一例），修法与防线都可机械复核。残余如实标注：①v1 游标迁移保守视为已落地——旧格式无法区分「当初落地」与「当初被跳过」，迁移只能不重放（防虚增），这类 session 的落地情况交给 --audit 的弱信号口径（查「有没有痕迹」不查条数）；②主检出那份 case 要等本 PR 合入才与共享游标一致，合入前从主检出跑 --audit 仍会报这一条（预期行为，不是回归）；③跨机结算的 session 本机无 trace，audit 如实打印「无法复核」而不猜。"

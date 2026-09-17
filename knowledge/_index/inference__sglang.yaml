@@ -20,5 +20,7 @@ namespaces:
         score: 0.6
       symptoms:
       - PD 分离 --disaggregation-transfer-backend ascend，KV cache 跨 NPU 传输偶发失败
+      sig: []
+      tok: []
       file: knowledge/inference/sglang/SGL-PD-HEAP-001.yaml
       hash: 3576617fec9c

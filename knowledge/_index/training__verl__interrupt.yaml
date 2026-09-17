@@ -22,6 +22,11 @@ namespaces:
       symptoms:
       - 'A2 上按 verl ascend_quick_start 跑 GRPO 启动即失败：RuntimeError: create_config:...HCCL function error:
         hcclCommInitRootInfoConfi…'
+      sig: []
+      tok:
+      - HCCL_HOST_SOCKET_PORT_RANGE
+      - HCCL_NPU_SOCKET_PORT_RANGE
+      - error code 5
       file: knowledge/training/verl/interrupt/VERL-5074.yaml
       hash: bde444a7681e
     - id: VERL-6608
@@ -41,6 +46,13 @@ namespaces:
       symptoms:
       - 'verl GRPO + vllm-ascend rollout，TP2/N_GPUS_PER_NODE=2 训练 qwen 4B VL：vLLMHttpServer WorkerProc
         崩溃，RuntimeError: create_co…'
+      sig: []
+      tok:
+      - 0.8.0
+      - 25.5.1
+      - '26.0'
+      - N_GPUS_PER_NODE
+      - error code 7
       file: knowledge/training/verl/interrupt/VERL-6608.yaml
       hash: '750895819031'
     - id: VERL-6707
@@ -58,6 +70,12 @@ namespaces:
         score: 0.6
       symptoms:
       - verl 0.8.0.dev 跑 Qwen3-MoE GRPO（910B）：npu fused kernel for Qwen3-MoE patch failed
+      sig:
+      - npu_patch
+      tok:
+      - 0.8.0
+      - '4.57'
+      - npu_patch.py
       file: knowledge/training/verl/interrupt/VERL-6707.yaml
       hash: b216286b7389
     - id: VERL-6741
@@ -75,6 +93,8 @@ namespaces:
       symptoms:
       - VERL + Ray + Ascend NPU 训练启动后 warning：Platform 'huawei' (PlatformNPU) is registered but not available.
         This may be due t…
+      sig: []
+      tok: []
       file: knowledge/training/verl/interrupt/VERL-6741.yaml
       hash: fe25a2f1e992
     - id: VERL-6756
@@ -91,6 +111,11 @@ namespaces:
         score: 0.6
       symptoms:
       - verl v0.7.1 在 NPU device ID 非 1 的机器（如 chip ID 0 或 7）上 get_npu_versions() 检测失败/返回错误版本
+      sig:
+      - dev_id
+      tok:
+      - get_npu_versions()
+      - v0.7.1
       file: knowledge/training/verl/interrupt/VERL-6756.yaml
       hash: 395e0196d29f
     - id: VERL-6885
@@ -109,5 +134,13 @@ namespaces:
         score: 0.3
       symptoms:
       - verl 0.8.0.dev0 + vllm-ascend 0.18.1 + CANN 8.5.0 跑 Qwen3-VL GRPO（vision, vLLM rollout, FSDP）反向阶段崩溃：aclnnConvolutionBack…
+      sig: []
+      tok:
+      - 0.18.1
+      - 0.8.0
+      - 8.5.0
+      - '9.0'
+      - 9.0.0
+      - aclnnConvolutionBackwardGetWorkspaceSize
       file: knowledge/training/verl/interrupt/VERL-6885.yaml
       hash: 79633be350ad

@@ -1,0 +1,67 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演进决策档案
+# schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+id: EV-2026-110
+layer: L2
+title: triage miss 分两类记——token 在场而词法层没接住（真缺陷）vs 本来就没 token（级联正常换挡）
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: design_gap
+    evidence: "triage 未命中目前只有一种记录（走语义兜底），于是「token 在场而分支没接住」与「输入本来就没有 token 信号、该走语义」在数据上同形。后果：①E2（router 从 trace 错例演进）的错例池把两类混在一起——pipeline 里如实写着「当前路由错例 = 0」，但那是在两类没分开的前提下数出来的；②每次遇到新措辞，人会回到「要不要再加一个中文词」这个问题，而数据给不出答案。实测：跨队语料两条 fixture 的输入（中文场景 + 字面报错串）**零分支命中**，但它们的 namespace 路由本来就对——按现有口径既不进错例池，也说不清该不该补词。"
+    trajectory:
+      - "eval/golden/VLLM-PD-PORT-65536.fixture.yaml#回放结果（rank=6 path=fallback）"
+      - "eval/golden/VLLM-PD-MTE-REPEAT.fixture.yaml#回放结果（rank=17 path=fallback）"
+      - "docs/mechanism/pipeline.md（E2 门槛读数那一行）"
+hypothesis: 用 token 类信号（错误码 / 环境变量名 / 算子与符号名 / 文件名 / 函数调用 / 版本号——不会因语言与措辞而变的字面量）给每个 triage miss 自动归类后，「词法层该接住却没接住」变成可数的数（真缺陷，进 E2 错例池），「本来就没 token」如实记为语义路径（不进池）；于是"要不要往 triage 加词"从判断题变成读数题，且不需要新增 trace 字段——两类都能从已记录的 user 文本与 triage 事件上重算。
+predicted_effect:
+  metric: triage miss 的可归因率（两类可分辨 + 真缺陷可数）
+  from: "1 类（未命中），两类同形；错例池读数受两类混杂污染，加词的收益无法判断"
+  to: "2 类 + 逐 session 清单；lexical_gap 进 E2 错例池，semantic_path 如实记为级联正常换挡"
+  measure:
+    command: "python3 scripts/trace_metrics.py --traces-dir tests/fixtures/traces_ev110 --root . --emit-yaml-only"
+    expect_exit: 0
+    expect_stdout: "triage_miss_classes"
+validation:
+  method: metrics_compare
+  baseline: 改前：triage miss 无分类，metrics 快照里没有任何相关字段
+  success_criteria: |
+    ① `trace_metrics.py` 快照新增 `triage_miss_classes`（**四计数**：lexical_gap / semantic_path /
+       routed_unrecorded / no_triage_event）与逐 session 清单（每类最多 5 条，防快照膨胀）——
+       第四类是本卡实装时从真实数据里拆出来的（见 eval 的发现②）；
+    ② 判据实现为纯函数 `has_lexical_signal(text)`，模式清单在脚本内可读、可测；
+    ③ 单测覆盖四态：token 在场→lexical_gap、纯自由语言→semantic_path、无 user 文本→no_user_text、分支命中→不计；
+    ④ 判据自身的强度如实标注（假阳性：自由语言里恰好出现的数字；假阴性：只用领域名词而不用字面量的输入）——
+       结论是"该不该补词"的入场券，不是判词；
+    ⑤ 真实 traces 上跑得出现读数（读数写进本卡 eval，不进 metrics 时间线——口径先立，样本量到再说）。
+  rollback: 单文件可整体 revert（trace_metrics.py + 测试 + docs/metrics.md 一行 + triage-tree 头注 + roadmap E2 一行）；不改任何路由行为、不改既有指标口径（只新增字段）
+gate:
+  condition: "不等数据触发：E2 错例池当前读数被两类混杂污染，属口径前置修正"
+risk: low
+principle_refs: [3, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径记 0"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：triage miss 两类判据 + 指标。来源：用户对「多语种/换词导致 triage 与语义天然 mismatch，是否每次都要改路由层」的质疑 → 回查设计：原则三已把「含义的模糊归模型、形态的模糊归正则」写死，级联第三级（agent 语义）本就是多样性放大器；真正的洞是**没有判据区分两类 miss**，于是加词与否无法由数据裁决"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：trace_metrics.py 新增 LEXICAL_SIGNAL_PATTERNS + has_lexical_signal()（纯函数，可从已记录数据重算，不新增 trace 字段）与 triage_miss_classes / triage_miss_sessions 两组快照字段（含人读行）；测试 fixtures 与单测覆盖四态；docs/metrics.md 加口径行；triage-tree.yaml 头注写入「加词/改分支的入场判据」（三种证据才支持改路由层，且写明「没见过这种写法」不是证据）；roadmap E2 行写明错例池只收 lexical_gap 类。不改任何路由行为、不改既有指标口径（只新增字段）"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "① measure 实跑 PASS（合成 fixtures：lexical_gap 1 / semantic_path 1 / routed_unrecorded 1 / 分支命中不计）；② **真实 14 条 trace 上的读数**：lexical_gap 2、semantic_path 0、routed_unrecorded 3、其余 9 条分支命中——即 21% 的 session 有 triage 事件却**没记 routed**（E2 错例池的取数字段），这是本卡实装时才显形的一处独立缺口：原先「路由错例 = 0」的读数里混着「没记」这一情形；③ 单测 7 条全绿（trace_metrics 模块），全套 CI 绿"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）：判据把「该不该往 triage 加词」从判断题变成读数题，且落地成本为零 trace schema 变更。残余如实标注：①判据有假阳性（自由语言里恰好出现的 5-6 位数字）与假阴性（只用领域名词不引字面量），它是入场券不是判词，规则清单在脚本内可读可改；②routed_unrecorded=3 那三单需要回填或补记，属 trace 纪律与 E2 取数的独立问题，本卡只把它变成可见的数；③样本仅 14 条真实 session，读数不进 metrics 时间线（口径先立，量到再说）。"

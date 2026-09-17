@@ -21,6 +21,8 @@ namespaces:
         score: 0.7
       symptoms:
       - 对标 A+X 平台，A+K 平台 TPOT（单 Token 耗时）、TTFT（首 Token 延迟）显著劣化，整体推理吞吐偏低、请求延迟抖动大
+      sig: []
+      tok: []
       file: knowledge/common/performance/COMMON-CPU-CACHE-MISS.yaml
       hash: 48de99bf2375
     - id: COMMON-CPU-THREAD-SWITCH
@@ -39,6 +41,9 @@ namespaces:
         score: 0.7
       symptoms:
       - 每个训练迭代均有某一张卡 PyTorch 框架侧队列取出（Dequeue）耗时过长，最长可达 7.9 秒
+      sig: []
+      tok:
+      - '7.9'
       file: knowledge/common/performance/COMMON-CPU-THREAD-SWITCH.yaml
       hash: b2dfa8798e7f
     - id: COMMON-DISPATCH-BATCH-SMALL
@@ -56,6 +61,8 @@ namespaces:
         score: 0.55
       symptoms:
       - Insight 打开 msprof.json / trace_view.json 可观察到业务整体 free 时间占比偏高
+      sig: []
+      tok: []
       file: knowledge/common/performance/COMMON-DISPATCH-BATCH-SMALL.yaml
       hash: b5d6786b471e
     - id: COMMON-GIL-PREEMPTION
@@ -74,6 +81,8 @@ namespaces:
         score: 0.7
       symptoms:
       - Python 模型业务迁移至 Ascend 平台后运行耗时偏高、任务吞吐率不足
+      sig: []
+      tok: []
       file: knowledge/common/performance/COMMON-GIL-PREEMPTION.yaml
       hash: 1082a56c130c
     - id: COMMON-HCCL-ADDR-ALIGN
@@ -92,6 +101,9 @@ namespaces:
         score: 0.7
       symptoms:
       - 8 卡训练（约 70B）单 step 通信耗时占比超过 40%，AllReduce 算子耗时波动大——部分 step 的通信耗时是其他 step 的 2~3 倍
+      sig: []
+      tok:
+      - empty()
       file: knowledge/common/performance/COMMON-HCCL-ADDR-ALIGN.yaml
       hash: 1317ac58b285
     - id: COMMON-IRQ-IMBALANCE
@@ -109,6 +121,8 @@ namespaces:
         score: 0.7
       symptoms:
       - A+K 平台业务吞吐、延迟等核心性能指标明显劣化，达不到预期
+      sig: []
+      tok: []
       file: knowledge/common/performance/COMMON-IRQ-IMBALANCE.yaml
       hash: ff3c28dbcbec
     - id: COMMON-KERNEL-THREAD-SWITCH
@@ -126,6 +140,8 @@ namespaces:
         score: 0.7
       symptoms:
       - 运行延迟波动大、任务吞吐不稳定、实时响应超时、CPU 有效算力利用率偏低、系统 sys 开销偏高
+      sig: []
+      tok: []
       file: knowledge/common/performance/COMMON-KERNEL-THREAD-SWITCH.yaml
       hash: 46900c50abd7
     - id: COMMON-KVCACHE-REFCOUNT-LEAK
@@ -144,6 +160,8 @@ namespaces:
         score: 0.7
       symptoms:
       - 稳定复现：B 版本运行约 12 小时后第 471 个 step 出现 OOM；A 版本与 GPU 均未复现
+      sig: []
+      tok: []
       file: knowledge/common/performance/COMMON-KVCACHE-REFCOUNT-LEAK.yaml
       hash: 86c901e3e672
     - id: COMMON-NONZERO-ACCESS-HEAVY
@@ -161,6 +179,8 @@ namespaces:
         score: 0.7
       symptoms:
       - Insight 打开 msprof.json / trace_view.json 可观察到某些算子执行时间较长
+      sig: []
+      tok: []
       file: knowledge/common/performance/COMMON-NONZERO-ACCESS-HEAVY.yaml
       hash: d9d7dc5d9dc5
     - id: COMMON-NPU-MEM-FRAGMENTATION
@@ -179,6 +199,8 @@ namespaces:
         score: 0.7
       symptoms:
       - 推理经过几次图推后显存缓慢增长（每次上涨十几 MB），约 10 小时后 OOM；GPU 上未复现，仅 NPU 出现
+      sig: []
+      tok: []
       file: knowledge/common/performance/COMMON-NPU-MEM-FRAGMENTATION.yaml
       hash: 20458247164a
     - id: COMMON-OP-COMPILE-LATENCY
@@ -197,6 +219,8 @@ namespaces:
         score: 0.7
       symptoms:
       - 从 api_statistic.csv 可见 aclopCompile 相关编译 API 调用频繁
+      sig: []
+      tok: []
       file: knowledge/common/performance/COMMON-OP-COMPILE-LATENCY.yaml
       hash: 338c401223f8
     - id: COMMON-PTHREAD-LOCK-WAIT
@@ -215,6 +239,8 @@ namespaces:
         score: 0.7
       symptoms:
       - NPU 利用率降低、Device 空闲时间增加，等待 Host 下发计算任务
+      sig: []
+      tok: []
       file: knowledge/common/performance/COMMON-PTHREAD-LOCK-WAIT.yaml
       hash: 920660e68fa7
     - id: COMMON-PY-GC-LATENCY
@@ -232,6 +258,8 @@ namespaces:
         score: 0.7
       symptoms:
       - 稳定复现：长跑分析显示各节点单步耗时抖动趋势与发生频率高度一致
+      sig: []
+      tok: []
       file: knowledge/common/performance/COMMON-PY-GC-LATENCY.yaml
       hash: baa0d1b70efc
     - id: COMMON-SYNC-API-FREQ
@@ -249,6 +277,8 @@ namespaces:
         score: 0.7
       symptoms:
       - 可视化打开 msprof.json / trace_view.json 发现较多算子执行伴随 aclrtSynchronizeStreamWithTimeout 等同步接口
+      sig: []
+      tok: []
       file: knowledge/common/performance/COMMON-SYNC-API-FREQ.yaml
       hash: 66a5dc76bd68
     - id: COMMON-SYSCALL-THP
@@ -267,6 +297,8 @@ namespaces:
         score: 0.7
       symptoms:
       - 稳定复现：训练启动后前 500 步性能正常，第 500 步保存 Checkpoint 后性能下降 20%+，之后缓慢恢复
+      sig: []
+      tok: []
       file: knowledge/common/performance/COMMON-SYSCALL-THP.yaml
       hash: 2325e90a18e3
     precision:
@@ -286,6 +318,9 @@ namespaces:
         score: 0.7
       symptoms:
       - 训练出现 loss NaN，打印 grad 信息后首个 NaN 出现在 embedding（wte）层的梯度
+      sig: []
+      tok:
+      - 8.0.0
       file: knowledge/common/precision/COMMON-EMBEDDING-BWD-EMPTY.yaml
       hash: 479dc0c7ebaa
     - id: COMMON-FA-RACE-DETERMINISM
@@ -303,6 +338,10 @@ namespaces:
         score: 0.7
       symptoms:
       - 80 卡大规模训练任务结果确定性无法固定（重复运行 Loss 曲线不一致）
+      sig: []
+      tok:
+      - 8.0.0
+      - 8.1.0
       file: knowledge/common/precision/COMMON-FA-RACE-DETERMINISM.yaml
       hash: aafe17712015
     - id: COMMON-FSDP-OFFLOAD-SYNC-NAN
@@ -320,6 +359,10 @@ namespaces:
         score: 0.7
       symptoms:
       - MOVA 模型训练出现 NaN：L0 dump 发现 step 2 前向权重已为 NaN
+      sig: []
+      tok:
+      - reciprocal()
+      - to()
       file: knowledge/common/precision/COMMON-FSDP-OFFLOAD-SYNC-NAN.yaml
       hash: 13f63bba0157
     - id: COMMON-RMSNORM-WEIGHT-SCALE
@@ -337,6 +380,8 @@ namespaces:
         score: 0.7
       symptoms:
       - 随机初始化权重时两遍训练 Loss 对齐；加载权重时两遍 Loss 差异偏大，但两侧加载的权重确实完全一致
+      sig: []
+      tok: []
       file: knowledge/common/precision/COMMON-RMSNORM-WEIGHT-SCALE.yaml
       hash: c644ba21b030
     - id: COMMON-SEED-RESET-DETERMINISM
@@ -355,6 +400,9 @@ namespaces:
         score: 0.7
       symptoms:
       - 同一模型重复训练，loss 与 grad_norm 不一致（偶现，非每次）
+      sig: []
+      tok:
+      - seed_all()
       file: knowledge/common/precision/COMMON-SEED-RESET-DETERMINISM.yaml
       hash: 536a763fc302
     - id: COMMON-TP-SEED-UNSYNCED
@@ -373,5 +421,7 @@ namespaces:
         score: 0.7
       symptoms:
       - TP=8 时跑多个请求，第 3 张生成图片必然花图；TP=1 时低分辨率推理跑 100 个实例未发现花图
+      sig: []
+      tok: []
       file: knowledge/common/precision/COMMON-TP-SEED-UNSYNCED.yaml
       hash: 4fd55e475f23

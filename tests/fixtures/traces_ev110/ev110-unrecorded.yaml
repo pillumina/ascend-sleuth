@@ -1,0 +1,11 @@
+session_id: ev110-unrecorded
+status: resolved
+trace:
+  - role: user
+    content: "拉起时 warning PlatformNPU is registered but not available，跑成 CPU-only"
+  - role: agent
+    action: triage
+  - role: agent
+    action: load_index
+  - role: agent
+    action: quickly_check

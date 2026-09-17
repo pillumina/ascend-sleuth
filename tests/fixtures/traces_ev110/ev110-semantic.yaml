@@ -1,0 +1,12 @@
+session_id: ev110-semantic
+status: resolved
+trace:
+  - role: user
+    content: "训练跑着跑着就变慢了，也说不上哪里不对"
+  - role: agent
+    action: triage
+    routed: []
+  - role: agent
+    action: triage_semantic
+    namespace: training/verl
+    category: performance

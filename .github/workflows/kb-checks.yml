@@ -2,9 +2,9 @@ name: kb-checks
 
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", ".github/workflows/kb-checks.yml"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", ".github/workflows/kb-checks.yml"]
 
 jobs:
   index-freshness:
@@ -149,6 +149,46 @@ jobs:
             *,holdout-change,*) echo "eval/holdout.yaml 已改动，且带 holdout-change 标签 ✓" ;;
             *) echo "eval/holdout.yaml 已改动但缺 holdout-change 标签——改量尺必须在评审面上可见"; exit 1 ;;
           esac
+
+  # 回放观测账本：`eval/scorecard.yaml` 记「上次回放观测到什么」。此前这些观测只写在
+  # fixture 头注散文里（22/24 条），完整报告落 gitignore 的 eval-reports/——于是「夹具改了
+  # 没重跑」与「跑过了、结果就是这样」在数据上不可区分，仓库里也没有「当前命中构成」这个数。
+  # 准入判据（CLAUDE.md）：①机械可判、②确定性后果成立；③复发——本条**没有本产物的历史
+  # 失败**（账本此前不存在），入 CI 的依据是同类「生成物新鲜度」门的先例（index-freshness /
+  # docs-index / metrics-validation / holdout-integrity 四道）与修法成本：账本过期由
+  # `--build` 一条自动命令修（不需重跑回放），误红代价≈10 秒。评审若认为该按第三条严格执行，
+  # 把它退回成 groom 收尾自查即可（卡 EV-2026-107 记了这条判断）。
+  # 强度如实标注：**本门不判准确率**——账本记的是上次观测，不是现在能不能命中；
+  # 准确率仍要 agent 跑回放（docs/eval.md 门禁分级），不把不确定的东西硬门化。
+  eval-scorecard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      # fixture 字节哈希对不上 = 夹具改过而账本没跟着重建（真红）；
+      # 目标 case 内容变了只进「待复核」清单不红（case 的合法变更不该阻塞无关 PR）。
+      - run: python3 scripts/eval_scorecard.py --check
+
+  # 口径脚本的单元测试：既有 12 个 --check 卡口验的是「仓库自洽」（索引新鲜、schema 合法、
+  # id 唯一、生成物一致），不验「算得对」——build_index / trace_metrics / settle_trace_feedback /
+  # build_timeline 的口径写错时，CI 全绿、而面板读数与 case 置信度静默报错数。
+  # 首建即发现一处真实缺陷：settle 在事件序列变化时整段重放旧事件 → hits 重复计数
+  # （测试里以 known_defect 断言钉住现状，修复需单独产卡——本 job 只保证口径不再无声漂移）。
+  # 准入判据（CLAUDE.md）：①机械可判 ②确定性后果（纯 stdlib + PyYAML，不联网、不读真实 traces/）
+  # ③复发：本套件无历史失败记录，入 CI 依据同类门先例与「口径错了没人知道」的代价，
+  # EV-2026-108 记了这条判断；评审若按第三条严格执行，退回成收尾自查即可。
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      - run: python3 -m unittest discover tests
 
   # 面板：两个面板的渲染、文案、色语与数据口径契约都由 `panel_render_check` 与
   # `check_panel_tokens` 守着，但这两个脚本**此前不在任何 CI 里**（paths 不含 dsh-plugins/**），

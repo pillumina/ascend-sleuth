@@ -1,0 +1,57 @@
+# ============================================================
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演进决策档案
+# schema 权威：docs/mechanism/pipeline.md §7；校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+id: EV-2026-112
+layer: L2
+title: 机械「筛选兜底」被数据否定——筛漏的成因是 case 行内没有字面量，不是筛选规则不够聪明
+status: rejected
+authorization: review
+dimension: architecture
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: measurement
+    evidence: "上卡（候选排序/筛选量尺）留下的方向：把机械筛选 recall@5 从 12/19 推向 agent 的 19/19。逐条诊断 11 条筛漏 fixture 发现：**其中 10 条的期望 case 行内对输入毫无字面量证据（sig=0 且 tok=0）**——输入里的报错/版本/算子一个都不在该 case 的 title/symptoms/quickly_check 里，任何机械键都排不进它。全库口径：159 条 case 里 **22 条（14%）行内既无 sig 也无 tok**，且集中在 performance（13 条）与 precision（3 条）——这两类本来靠指标/数值判别，不靠报错字面量。"
+    trajectory:
+      - "eval/golden/*.fixture.yaml（11 条筛漏条目）"
+      - "knowledge/_index.yaml（行内 sig/tok 覆盖）"
+      - "scripts/rank_candidates.py --eval（同子集读数 agent 19/19、词法 12/19、score 3/19）"
+hypothesis: 给机械筛选加一层"兜底规则"（如字面量命中即保底入池）能把 recall@5 推向 agent 水平。
+predicted_effect:
+  metric: 机械筛选 recall@5（同子集 19 条）
+  from: "12/19"
+  to: "≥18/19"
+  measure:
+    command: "python3 scripts/rank_candidates.py --eval"
+    expect_exit: 0
+    expect_stdout: "lexical"
+validation:
+  method: metrics_compare
+  baseline: 词法筛选 12/19（同子集）
+  success_criteria: |
+    兜底规则须在同子集上把 recall@5 提到 ≥18/19，且不引入"全池返回"这类退化解
+    （直接返回整格 = recall 满分但筛选失去意义——判据必须同时看 ≤5 的规模约束）。
+  rollback: 无代码改动可回退（本卡未落地兜底规则）
+gate:
+  condition: "不等数据触发：本卡是对既有方向的证伪，随记录合入"
+risk: low
+principle_refs: [3, 6, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径记 0"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：机械筛选兜底规则（目标把 recall@5 从 12/19 推向 19/19）"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "**证伪**：11 条筛漏里 10 条的期望 case 行内 sig=0 且 tok=0——输入的字面量与 case 内容零交集，兜底规则无论怎么写都拿不到它们（除非返回整个格子，那就等于取消筛选）。剩下 1 条（12642）是 tok=0、被同为 tok=1 的候选挤出，边际收益极小。全库 22/159（14%）的 case 行内无字面量证据，集中在 performance/precision——这两类按设计就不靠报错字面量判别。"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "**rejected（不采纳机械兜底）**：结论与设计原则三一致——含义的模糊归 agent 语义层，字面量面本来就不该承担它拿不到的东西。改为采纳一个小而实的产出：①`rank_candidates.py --eval` 常驻一行读数「行内无字面量证据的 case N/159」——它量化机械筛选的硬天花板，避免以后又有人来试同一件事；②docs/eval.md 写明筛漏的成因是 case 行内缺字面量、不是筛选规则不够聪明。真正的提升方向在内容侧（另卡）：审计「工程师会粘贴什么」与「行内有什么」的交集，给有字面量可提炼的高价值 case 补行内证据（VLLM-ASC-8938 是本卡链路上的实例）。"

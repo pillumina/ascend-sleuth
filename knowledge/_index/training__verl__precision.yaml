@@ -21,5 +21,7 @@ namespaces:
         score: 0.7
       symptoms:
       - RL 训练中 log_prob 指数首 step 差异较大（超出预期范围）
+      sig: []
+      tok: []
       file: knowledge/training/verl/precision/VERL-LOGPROB-CONFIG-MISMATCH.yaml
       hash: 49220befe2f1

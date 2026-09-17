@@ -39,7 +39,7 @@ This is a **knowledge/skills repo** — there is no build, no lint, no test suit
 | Tier | Content | When loaded |
 |------|---------|-------------|
 | Tier 1 | `triage-tree.yaml` — symptom → namespace routing (≤30 branches) | Always |
-| Tier 2 | `knowledge/<ns>/*.yaml` — structured case rules | Two-phase: read the **命中 (namespace × category) 的索引分片** `knowledge/_index/<ns>__<category>.yaml` first (行已瘦身: id/title/tags/symptoms 首条摘要/category/score + file；完整 symptoms/quickly_check 在 case 本体), filter candidates ≤5 by title/tag/symptom-summary/score, then load the full body to verify with quickly_check. category 未定才回退 `<ns>.yaml`；全库总表 `_index.yaml` 只在跨库比对时读。Rebuild index (master + shards) after any case change via `scripts/build_index.py` |
+| Tier 2 | `knowledge/<ns>/*.yaml` — structured case rules | Two-phase: read the **命中 (namespace × category) 的索引分片** `knowledge/_index/<ns>__<category>.yaml` first (行已瘦身: id/title/tags/symptoms 首条摘要/category/score/file + 签名面 `sig`(quickly_check 字面量分支, ≤6) 与 `tok`(全症状 token, ≤12)；完整 symptoms/quickly_check 在 case 本体), filter candidates ≤5 by title/tag/symptom-summary（`sig`/`tok` 是判断证据；**排序仍由 agent 的相关性判断**，score 只破平——历史回放 agent 判断 top-3 19/19，优于任何机械排序键）, then load the full body to verify with quickly_check. category 未定才回退 `<ns>.yaml`；全库总表 `_index.yaml` 只在跨库比对时读。Rebuild index (master + shards) after any case change via `scripts/build_index.py` |
 | Tier 3 | `postmortems/` — raw investigation records | Keyword grep fallback when Tier 2 misses |
 
 ### Two orthogonal problem dimensions
