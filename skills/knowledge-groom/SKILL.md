@@ -59,6 +59,7 @@ disable-model-invocation: true
    - **节律**：单仓集中可周批；**分布式（成员本地 inbox，远程仓不存）在提交主仓时处理**——产出时已做 pre-triage（见下），groom 复核确认而非重判；
    - 逐条**预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象：命中 namespace + `common/` 的现有 case——用**命中 (namespace × category) 的索引分片** `knowledge/_index/<ns>__<category>.yaml` 行（title/tags/symptoms 摘要/score）按 symptoms/tags 定位候选，
    只读 1-2 个最高分候选全文核对 root_cause/fix（M5 成本预算 #3，不全文重读全库）。**draft 头注释已带 to-postmortem/issue-ingest 产出的分诊建议 → 复核证据是否成立，不重判**（建议与决定分离：判断在产出时做，groom 是审核者）；
+   **先判后看（顺序纪律，改不了的自觉就别指望）**：读候选之前，先从草稿本身写出自己的判断——症状签名（错误码/关键日志行/数值阈值）、根因假设、修复族方向。看候选是**取证**（我这条假设能否被候选解释，还是只是"看起来像"）。先看候选再判断，判的是**像不像**而不是**对不对**：候选一旦在眼前，语义相近就会把判断拉过去（尤其是措辞相似但根因不同的 draft）。判断行写进批审清单：先写自己的判断，再写与候选的对照结论；两者不一致时**以证据为准**，别用"候选里有类似的"当理由；
    - 产出**批审清单**交 owner 处理（像清 PR inbox，~30 秒/条）：
      - `covered_by` → 建议关闭升格；postmortem 转正 `postmortems/YYYY-QN/`（Tier 3 语料，**不是丢弃**）
      - `variant_of` → 建议并入已有 case（扩 compat 区间、补 symptoms）；若要动 `expected`/`fix_on_mismatch` 按高风险变更走双签
@@ -157,6 +158,15 @@ disable-model-invocation: true
 - `confidence.score` 被手动覆盖
 
 高风险变更要求两个 owner 签字（领域 owner + 体系维护人）。变更在 session 内**随机排序**审，对抗疲劳——一个 session 审 30 条变更，第 30 条得到的 scrutiny 远少于第 1 条，随机化缓解这个偏差。git 落地：变更走 PR 并打 `kb/high-risk` 标签，`CODEOWNERS` 双组路径强制对应 owner 审批（owner 未定前用 `CODEOWNERS.example` 占位，机制先跑；流程细节见 docs/git-workflow.md——可选论证层）。
+
+## 复核注意力的排序：按"对本改动声明了限制"排，不按新旧排
+
+批审清单与变更摘要的复核顺序有一条落点：**把注意力放在"对本次正在改的那一面声明了限制"的条目上**，而不是放在"看起来旧"的条目上。
+
+- **"这条 last_verified 过期了"不是有效的分派信号**：标出陈旧只让人知道它旧，不产生"必须去看"的动作——实测里，读起来已经定论的条目被复核的概率显著更低，而一旦它的来源被取代，基于它的判断会一致地错下去（错得还很有信心）。
+- **有效的是内容型规则**：本改动触及哪一面（某 case 的 `compat` 区间 / `expected` 阈值 / `fix_on_mismatch` / 某 reference 的命令副作用或数值上限），就把**对该面声明了阈值、区间或限制**的条目排在前面复核——它们与改动直接冲突或直接支持，是真正会改变结论的那些。同 namespace 同 category 的条目优先于全库扫描；无此类条目的改动不进这条排序（不为排序而排序）。
+- **落到哪个动作**：groom 的批审清单里，把这类条目单列一段（"本次改动面上声明了限制的条目"），排在常规清单之前；改 `compat`/`expected`/`fix_on_mismatch` 时，先把这些条目核完再签字（它们是高风险变更的双签依据）。
+- 强度如实标注：这是**判断性规范**（哪些条目"声明了限制"要人判断），不进 CI；它约束的是复核顺序，不改变任何闸门的硬度。
 
 ## 信号 → 动作（演化信号表）
 

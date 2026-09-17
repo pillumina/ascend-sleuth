@@ -99,8 +99,14 @@ description: >
      非全量；基线缓存复用，只跑改后侧）或 S2 replay（`scripts/replay_golden.py` /
      `scripts/s2_replay.py`），数据通过才算 eval solid；检索/路由层候选在 **arena
      selection 池可用时**（`scripts/eval_arena.py --stats/--gate`，论证见
-     docs/mechanism/eval-arena.md 可选层）：golden 无回归 + val 命中/路由严格提升
-     才判 solid（门控判定是数据门槛，不替代 dual 双签）；
+     docs/mechanism/eval-arena.md 可选层）：golden 无回归 + 门控判词为 **accept**
+     才判 solid（门控判定是数据门槛，不替代 dual 双签）。
+     **判词三态，只有 accept 算通过**：`weak_accept` 表示"看起来涨了但证据不够"
+     （池子里翻转的对子太少，或 stats 缺逐条向量）——**不得据此判 validated**：
+     要么补样本/扩池后重跑，要么如实把卡记为证据不足（诚实退化，不虚报门控通过）。
+     判据自带复用折减：同一个池被反复拿来做接受决定时，工具的判定阈值按复用序号收紧
+     （池内容变了＝换了量尺，复用计数自动归零）。所以**别把同一个小池当无限量尺**——
+     连续几次判 weak 就是该重新选样或扩充池的信号，而不是把标准说松；
      **交互/追问/指引面**改动（不改变候选选择）→ 跑 ixn 对口样本（`scripts/ixn_replay.py`，
      2-3 条针对性）或小型探针，**不跑检索 golden**；
      纯文档/注释 → 不跑 replay，scan + 人审；

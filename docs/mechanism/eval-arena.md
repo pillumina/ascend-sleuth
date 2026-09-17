@@ -39,6 +39,10 @@ namespace/category/hit_case/root_cause/rc_match/route）。聚合指标（带分
 - **路由正确率** route_ok = route 与 expected_ns 一致比例；
 - **结论一致率** rc_match = 结论与 resolution 一致比例（rc_match 字段，人工核验兜底）。
 
+`--stats` 除聚合指标外还写**逐条判决向量**（每条 issue 的 hit/route_ok/rc_match）与**池内容哈希**：
+前者是配对检验的输入（没有它，判定只能退回点估计，判词上限降为 weak_accept），后者是"量尺身份"
+（池内容变＝换量尺，复用计数归零）。
+
 test/selection 分离前单池运行，分数标注 source: issue-replay。
 
 ## 4. 门控协议（候选改动 → 接受/回滚）
@@ -47,18 +51,43 @@ test/selection 分离前单池运行，分数标注 source: issue-replay。
 
 1. 候选 = EV 卡（前置元流程，带 before 反例）；
 2. **无回归**：golden 全部通过（改动不倒退）；
-3. **提升门**：在 selection 池上候选侧 vs baseline 重放对照——命中率提升 或（持平 + 反例命中且归因闭合）才接受；否则 **回滚**（git revert / 分支丢弃）；
-4. **账本**：`scripts/eval_arena.py --gate` 把 候选 id / 组件 / 分数对照 / 结局 append 进 `.s2-replay/arena/impact.yaml`（本地；结论随方法论 PR 投影）；
+3. **提升门（配对 + 复用折减）**：在 selection 池上候选侧 vs baseline 重放对照。判定不是
+   "两个比例各看一遍、涨了就收"，而是只数**同一批 issue 上方向不一致的对子**（candidate
+   独家命中 b / baseline 独家命中 c）做精确单侧检验，并与阈值比：**判定阈值 α_eff = α/(k+1)**，
+   k 是同一份池（同名 + 同内容哈希）上已做过的判定次数。三态判词：
+   - `accept`：无回归 + 方向性提升 + p ≤ α_eff → 门控通过；
+   - `weak_accept`：无回归 + 提升，但证据不足（p > α_eff，或缺逐条向量）→ **不算门控通过**，
+     改动可以留，但不能据此把卡判 validated（补样本/扩池重跑，或如实记证据不足）；
+   - `reject`：有回归、无提升，或 baseline 与 candidate 的池哈希不同（跨池纪元不可比）。
+   为什么不是"涨了就收"：反复对**同一个池**做接受决定是一串不受控的适应性检验，每次单独看
+   都"涨了"，合起来假接受会累积；池越小越严重（16 条池一次翻转就是 +6.25 个百分点，一次翻转
+   即可判"提升"）。配对检验让"一次翻转"不再自动成立，复用折减让"反复用同一个池刷通过"自动变难。
+   不通过则 **回滚**（git revert / 分支丢弃）；
+4. **账本**：`scripts/eval_arena.py --gate` 把 候选 id / 组件 / 分数对照 / 配对读数（b、c、p）/
+   复用序号 k / α 与 α_eff / 判词 append 进 `.s2-replay/arena/impact.yaml`（本地；结论随方法论
+   PR 投影）。同一份池复用次数达阈值由判据层报出（`proposals/gates.yaml` 的
+   `pool_reuse_uncontrolled`，读数见 `scripts/evolution_health.py`）——**复用超限的动作是重新选样
+   （换量尺、计数归零）或扩池**，不是把标准说松；
 5. 高风险的 dual 级改动（triage 结构等）门控通过后仍按 kb/high-risk 双签送人审——门控是"数据门槛"，不替代人闸（原则五/六）。
 
-golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 语义同构（pipeline §12 已吸收）。
+判词本身也要有牙齿：`--self-test` 用合成样本复现三态（单次翻转只给 weak_accept、复用 k 次后
+同一提升降级、回归必 reject、跨池不可比、无向量降级、复用计数按池哈希归零），CI 跑它
+（`kb-checks` 的 arena-gate-rule）。判据写坏了、只会判 accept 了，CI 就红。
+
+golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 语义同构（pipeline §12 已吸收）；
+本节的配对/复用折减是在此之上的**统计口径收紧**：那些工作的闸门语义是"val 上更好就接受"，
+本台进一步要求"更好"在配对意义上达到证据门槛。
 
 ## 5. 工具
 
 `scripts/eval_arena.py`：
 - `--pool <yaml>`：校验池文件结构；
-- `--stats <pool>`：聚合各 issue 的 result → 指标（写 .s2-replay/arena/stats-*.yaml）；
-- `--gate --baseline <stats-a> --candidate <stats-b>`：对照判定 + 追加影响账本；
+- `--stats <pool>`：聚合各 issue 的 result → 指标 + 逐条向量 + 池哈希（写 .s2-replay/arena/stats-*.yaml）。
+  **先复制一份 baseline stats 再跑改后侧**——两次 `--stats` 写同一个文件名，覆盖掉 baseline
+  就没有配对数据了（`cp stats-pool-val.yaml baseline.yaml` 之后才重跑）；
+- `--gate --baseline <stats-a> --candidate <stats-b> [--alpha 0.1]`：配对判定（accept /
+  weak_accept / reject）+ 追加影响账本；
+- `--self-test`：复现判词（合成样本，无需本地池数据；CI 跑它）；
 - `--rc-check <pool>`：结论一致离线对照（agent root_cause vs 标注 resolution_summary，
   启发式信号 + 人工核验清单——归因层/结论一致的评分件，auto 不终判）。
 
@@ -74,6 +103,7 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 | 分级 | 内容 | 何时 |
 |---|---|---|
 | **第一批（本 PR）** | 设计文档 + eval_arena.py v1（pool/stats/gate）+ EV-2026-013 | 现在 |
+| **落地** | 接受判据 v2（配对 + 复用折减 + 三态判词）+ `--self-test` 进 CI（arena-gate-rule）+ 复用判据（`pool_reuse_uncontrolled`） | 随本机制变更 |
 | 推进 | selection 池 expected 标注 + baseline replay（首批 17 条） | 池文件落地后下一批（subagent 执行） |
 | 推进 | 门控端到端运转一次（真实 miss → 候选 → gate → 合入） | baseline 可用后 |
 | 蓝图 | test 分离（selection ≥20）、归因/交互层入台、分数进 timeline（样本 ≥10 带分母） | 规模/数据触发 |
@@ -85,4 +115,5 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 | val 永不沉淀、self_consistent 不虚增、分数带分母 | 十（诚实退化）、三 |
 | golden 无回归 + val 严格提升 + 回滚 | 一（验证先于交付）、七（变更可逆） |
 | 门控是数据门槛不替代人闸（dual 仍双签） | 五（建议与决定分离）、六（闸门硬度） |
+| 配对 + 复用折减 + 三态判词（weak_accept 不算通过） | 十（诚实退化：证据不足就说不足，不把"看起来涨了"当门控通过）、十一（判据本身也要可证伪——`--self-test` 进 CI） |
 | 池从 ingest 候选按规则选、test 分离按规模闸门 | 十一（数据触发） |

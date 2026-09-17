@@ -2,9 +2,9 @@ name: kb-checks
 
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", ".github/workflows/kb-checks.yml"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", ".github/workflows/kb-checks.yml"]
 
 jobs:
   index-freshness:
@@ -202,4 +202,18 @@ jobs:
             exit 1
           fi
           echo "skill 外部锚卫生 OK（零日期 / 零 EV 卡号锚）"
+
+  # 门控判据自身的牙齿：接受判词（配对 + 复用折减 + 无回归）用合成样本复现三态。
+  # 为什么值得一道硬门：判据是"数据门槛"，若它只会判 accept，门控等于没有——而判词
+  # 逻辑写在脚本里，改坏了没有任何信号（arena 的池与账本都是本地运行件，CI 里不存在，
+  # 所以能进 CI 的只有判据本身）。准入判据（机械可判 + 确定性后果 + 复发）三条都满足。
+  arena-gate-rule:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      - run: python3 scripts/eval_arena.py --self-test
 
