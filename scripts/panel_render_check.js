@@ -2279,6 +2279,16 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
     expect('client：外部链接可点（走同一条打开通路）', /onClick: \(\) => openFile\(u\)/.test(ascSrc))
     expect('client：链接标签是"域名 + 末段"（全 URL 在 title，三四个就把一行撑爆）',
       /function shortUrl\(u\)/.test(ascSrc) && /seg\[0\] \+ '\/…\/' \+ seg\[seg\.length - 1\]/.test(ascSrc))
+    // 打开反馈必须落在**点击处**：成功与失败都按目标就地显示。
+    // 实测踩过（用户报"资料链接点了没反应"）：反馈只渲染在卡头的 docRow 上，而证据文件与资料链接
+    // 都在展开后的轨迹里——点完那一行什么都不变，成功与失败同形。这与 2026-09 修报告入口时同一个坑
+    // （当时的注释就写着"静默失败等于点了没反应"），所以这次把"按目标就地显示"钉成判据。
+    expect('client：打开反馈按目标就地显示（chip 文案 + 明细都在点击处）',
+      /function openLabel\(f, fallback\)/.test(ascSrc) && /function openNote\(f\)/.test(ascSrc)
+      && /openLabel\(u, shortUrl\(u\)\)/.test(ascSrc) && /openLabel\(f, baseName\(f\)\)/.test(ascSrc)
+      && /setOpenErr\(\{ at: f, msg:/.test(ascSrc) && /setOpenDone, \{ at: f, via:/.test(ascSrc))
+    expect('client：成功也是反馈（打了浏览器而面板不吭声，读者同样判成"没反应"）',
+      /'已打开'/.test(ascSrc) && /'打不开'/.test(ascSrc))
     // 徽标**用行的名字、不发明伞形词**：曾叫「关联 N」「外部 N」，两个都含糊——
     // "关联"没说清关联什么；"外部"更错（先验词条就在库里）。所以只给候选/资料两个计数，
     // 参考层步骤已由「参考层 + 三态」覆盖，不重复给。

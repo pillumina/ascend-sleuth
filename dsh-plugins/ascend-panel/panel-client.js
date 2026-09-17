@@ -523,8 +523,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const [evOpen, setEvOpen] = React.useState(null)
       const [tcOpen, setTcOpen] = React.useState(null)   // 关联面：展开哪一步的工具调用清单
       const [opening, setOpening] = React.useState(null)
-      const [openErr, setOpenErr] = React.useState(null)
-      const [openVia, setOpenVia] = React.useState(null)
+      // 打开反馈按**目标**记：谁被点，明细就显示在谁旁边（不再只落在卡头那一行）
+      const [openErr, setOpenErr] = React.useState(null)    // {at, msg}
+      const [openDone, setOpenDone] = React.useState(null)  // {at, via}
       // 沉淀区的**唯一展开位**：值是命令行的 key（'case' / 'cand:<候选下标>'），null = 展开位收起。
       // 与指令区同一条纪律：点谁显示谁，展开体只有一处（多候选时不铺一屏命令）。
       const [sedCmd, setSedCmd] = React.useState(null)
@@ -581,11 +582,30 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         host.call('ascend-open-evidence', { sessionId: ownerSessionId || null, path: f })
           .then(r => {
             setOpening(null)
-            if (r && r.opened) { setOpenVia(r.via ? String(r.via) : ''); flashState(setCopied, 'open:' + f, 3000) }
-            // 静默失败等于"点了没反应"：把原因显出来（旧版这里直接 reset，用户只能猜）
-            else setOpenErr((r && r.error) ? String(r.error) : '打开失败（无返回）')
+            // 成功也要看得见（3 秒后自动复位）：打了浏览器但面板一声不吭，读者同样会判成"没反应"
+            if (r && r.opened) flashState(setOpenDone, { at: f, via: r.via ? String(r.via) : '' }, 3000)
+            // 静默失败等于"点了没反应"：把原因显出来（旧版这里直接 reset，用户只能猜）。
+            // **原因带上是哪个目标**：不然它只能渲染在卡头那一行，而点击发生在轨迹里。
+            else setOpenErr({ at: f, msg: (r && r.error) ? String(r.error) : '打开失败（无返回）' })
           })
-          .catch(e => { setOpening(null); setOpenErr('RPC 失败: ' + String(e && e.message || e)) })
+          .catch(e => { setOpening(null); setOpenErr({ at: f, msg: 'RPC 失败: ' + String(e && e.message || e) }) })
+      }
+      // 打开状态的**就地**呈现：chip 文案按目标切，明细紧跟在它旁边（见 openNote）。
+      // 为什么必须就地：旧版把结果只渲染在卡头的 docRow 上，而证据文件与资料链接都在展开后的
+      // 轨迹里——点完那一行什么都不变，读者只会说"点了没反应"（与 2026-09 修报告入口时同一个坑）。
+      function openLabel(f, fallback) {
+        if (opening === f) return '打开中…'
+        if (openErr && openErr.at === f) return '打不开'
+        if (openDone && openDone.at === f) return '已打开'
+        return fallback
+      }
+      function openNote(f) {
+        if (openErr && openErr.at === f) return React.createElement('span', { style: { color: T.warn, fontSize: 11.5 } }, openErr.msg)
+        if (openDone && openDone.at === f) {
+          return React.createElement('span', { style: { color: T.success, fontSize: 11.5 } },
+            openDone.via ? '已打开（' + openDone.via + '）' : '已打开')
+        }
+        return null
       }
       function baseName(f) { return String(f).split('/').pop() }
       // 报告入口：点「看报告」= 展开卡片 + 取报告正文（一次取，之后只切章节）
@@ -820,7 +840,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                       st.sources.map(u => React.createElement('button', {
                         key: u, type: 'button', onClick: () => openFile(u), title: u, className: 'sleu-chip',
                         style: { background: 'transparent', border: '1px solid ' + T.border, borderRadius: 999, padding: '1px 9px', fontSize: 11.5, cursor: 'pointer', color: T.brand, fontFamily: 'var(--font-mono)' },
-                      }, opening === u ? '打开中…' : shortUrl(u)))))
+                      }, openLabel(u, shortUrl(u)))).concat([openNote(st.sources[0]) || null].filter(Boolean))))
                   }
                   if (st.toolCalls && st.toolCalls.length) {
                     assocRows.push(React.createElement('div', { key: 'tc', style: { marginTop: 5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' } },
@@ -891,8 +911,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                     hasFiles ? React.createElement(React.Fragment, null,
                       React.createElement('span', { style: { color: T.text2 } }, '文件'),
                       ev.files.map(f => React.createElement('button', { key: f, type: 'button', onClick: () => openFile(f), title: f, className: 'sleu-chip', style: { background: 'transparent', border: '1px solid ' + T.border, borderRadius: 999, padding: '1px 9px', fontSize: 11.5, cursor: 'pointer', color: T.brand, fontFamily: 'var(--font-mono)' } },
-                        opening === f ? '打开中…' : baseName(f)),
-                    )) : null,
+                        openLabel(f, baseName(f)))),
+                      openNote(ev.files[0]),
+                    ) : null,
                     !hasInline && !hasFiles && hasMissing ? React.createElement('span', { style: { color: T.text2 } }, '这一步没有留证据') : null,
                   ) : null,
                   evOpenHere && ev.inline ? React.createElement('pre', { style: { marginTop: 6, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 8, padding: 10, fontSize: 12.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: T.text, lineHeight: 1.7, maxHeight: 320, overflowY: 'auto' } }, ev.inline) : null,
@@ -1024,11 +1045,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               '（trace 未记报告名，按同名规则找到）') : null,
             // 开没开成都要看得见：成功给「已打开（via X）」，失败给原因。
             // 旧版成功无反馈、失败静默 → 用户只看到"点了没反应"。
-            copied === 'open:' + reportPath ? React.createElement('span', { style: { color: T.success, fontSize: 11.5 } }, openVia ? '已打开（' + openVia + '）' : '已打开') : null,
+            reportPath ? openNote(reportPath) : null,
             // 收起态只报条数（明细在展开态的沉淀区）。措辞是「建议」不是「待沉淀」：
             // 它既不是债务、也不一定会被做——尤其先验候选，要不要沉淀由人判断（诊断抛出的只是建议）。
             s.sedimentCandidates ? React.createElement('span', { style: tinyBadge('var(--d-purple)'), title: 'trace.sediment_candidates（与报告第 8 节同源）：含本单 case 与先验知识两类候选，明细见展开后的沉淀区' }, '沉淀建议 ' + s.sedimentCandidates + ' 条') : null,
-            openErr ? React.createElement('span', { style: { color: T.warn, fontSize: 11.5 } }, openErr) : null,
+
           )
         : null
       // ---- 交接包：把这一单交到另一台机器（外网定位到一半、真正的大日志在内网）----
