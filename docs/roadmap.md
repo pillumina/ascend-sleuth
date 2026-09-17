@@ -25,8 +25,8 @@
 | ID | 事项 | 需求 / 验收标准 | 入口闸门 | 阶段 |
 |---|---|---|---|---|
 | A1 | Tier 3 postmortem frontmatter 结构化 | `postmortems/**/*.md` 加 frontmatter（framework / category / platform / case-id / keywords）；诊断 Tier 3 检索先按字段过滤再 grep；to-postmortem 产出自动带 frontmatter；存量文件一次性补齐 | Tier 3 语料 >300 篇，或 tier3 检索频繁但挽救率指标偏低 | v1.5 |
-| A2 | 格子容量治理与拆分（ADR-0004：category 子层 + 参数化 cap，拒目录深度 +2） | cap 按 (framework×category) 格子计：soft_cap 30 触发评估（健康指标：候选溢出 / 重复率 / 维护时长），hard_cap 60 强制拆；拆分建议 → 人确认，目录迁移 + `_index.yaml` 重建 + fixture namespace 断言同步，**同一 PR 完成**。**2026-09-04 状态**：vllm-ascend interrupt **83/30（超 hard_cap 60）**；F1–F5 加载协议优化落地后，命中 category 分片读入由 68.9KB（EV-2026-029）降至 **~60.2–60.6KB**（F4/F5 后复测，128 case）——贴 60KB 线，**拆评估不启动、转观察窗**。**owner 待办**：统一口径（含头与否、估 tok 系数 bytes/3.4）复测后裁决，不自动执行。**再拆闸门（任一触发即评估子族拆分）**：溢出率 ≥40% / med >5 / 统一口径后命中分片读入 >60KB；子族映射（moe / startup-failure / mtp / mooncake+kv / patch-layer / 310P / cudagraph）与容量健康复测历史见 EV-2026-006/022~025/029/030 + 完成账本，此处不重复搬运 | 格子超 soft_cap 且健康指标恶化 / 超 hard_cap | 按闸门 |
-| A3 | 第二拆分轴（硬件 platform）ADR | 若 (framework×category) 格子拆分后仍超限，写**新 ADR（编号 0009+——ADR-0003 已被「平台可移植性（git 托管平台）」占用，勿复用号）**，论证**硬件平台**轴（A2-910B / A3-910C / A5-950…，与 ADR-0003 的 platform 术语区分）或索引分片的取舍 | 某 (framework×category) 格子 >100 条（vllm-ascend interrupt 现 83 条，W36/37 两周净增 ~47，按此增速数周内触顶；**触发单位按 ADR-0004 格子口径计，非整 namespace**——vllm-ascend 整 ns 107 条已达字面 >100，勿误触发） | v2 |
+| A2 | 格子容量治理与拆分（ADR-0004：category 子层 + 参数化 cap，拒目录深度 +2） | cap 按 (framework×category) 格子计：soft_cap 30 触发评估（健康指标：候选溢出 / 重复率 / 维护时长），hard_cap 60 强制拆；拆分建议 → 人确认，目录迁移 + `_index.yaml` 重建 + fixture namespace 断言同步，**同一 PR 完成**。**状态**：vllm-ascend interrupt 已超 hard_cap（实时条数见 `knowledge/_index.yaml` 头注，别引用本文的数字）；F1–F5 加载协议优化落地后，命中 category 分片读入由 68.9KB（EV-2026-029）降至 **~60.2–60.6KB**（F4/F5 后复测，128 case）——贴 60KB 线，**拆评估不启动、转观察窗**。**owner 待办**：统一口径（含头与否、估 tok 系数 bytes/3.4）复测后裁决，不自动执行。**再拆闸门（任一触发即评估子族拆分）**：溢出率 ≥40% / med >5 / 统一口径后命中分片读入 >60KB；子族映射（moe / startup-failure / mtp / mooncake+kv / patch-layer / 310P / cudagraph）与容量健康复测历史见 EV-2026-006/022~025/029/030 + 完成账本，此处不重复搬运 | 格子超 soft_cap 且健康指标恶化 / 超 hard_cap | 按闸门 |
+| A3 | 第二拆分轴（硬件 platform）ADR | 若 (framework×category) 格子拆分后仍超限，写**新 ADR（编号 0009+——ADR-0003 已被「平台可移植性（git 托管平台）」占用，勿复用号）**，论证**硬件平台**轴（A2-910B / A3-910C / A5-950…，与 ADR-0003 的 platform 术语区分）或索引分片的取舍 | 某 (framework×category) 格子 >100 条（vllm-ascend interrupt 增速见 `metrics/timeline.yaml` 的容量期，别引用本文的数字；**触发单位按 ADR-0004 格子口径计，非整 namespace**——vllm-ascend 整 ns 107 条已达字面 >100，勿误触发） | v2 |
 | A4 | 非单调版本兼容实测 | 真实非单调 case（如 2.7 失效、2.8 恢复）出现时，groom 的 `_archive/` 复活检查跑通全流程，结论记录进 ADR | 首个真实非单调 case 被 groom 处理 | 按事件 |
 | A5 | 容量推演重算 | 用实测过滤率、退休率、增速重算 ADR-0002 的稳态规模与容量结论；确认或修订"不上 RAG"决策及触发条件 | 第 6 个月，或 metrics 首次给出完整过滤/退休数据 | 常设 |
 
@@ -98,7 +98,7 @@
 - [ ] 分支保护与 CODEOWNERS 硬门生效（M1）
 - [ ] 指标双周节奏建立（O1）
 
-> 现状注（2026-09-04）：① 128 case ≥20 ✓；② W36/37 多轮 issue-ingest → to-postmortem → groom 转正已跑通 ✓；④ 指标行 W35–W37 已按批回填（live / replay / 容量），双周节奏待更长观察窗确认；**剩余阻塞 = ③ M1（CODEOWNERS / 分支保护），依赖下方人事决策**——建议季度校准将出口判据收敛为「M1 + 人事决策落地」，避免已满足的数据项长期悬空。
+> 现状注：① case 总数已远超 20 ✓（实时数以 `knowledge/_index.yaml` 头注为准）；② W36/37 多轮 issue-ingest → to-postmortem → groom 转正已跑通 ✓；④ 指标行 W35–W37 已按批回填（live / replay / 容量），双周节奏待更长观察窗确认；**剩余阻塞 = ③ M1（CODEOWNERS / 分支保护），依赖下方人事决策**——建议季度校准将出口判据收敛为「M1 + 人事决策落地」，避免已满足的数据项长期悬空。
 
 **Phase 1 · v1.5 池**：各事项由自身闸门独立解锁，无统一开始时间。**开放中**：E1（事件）、E2（trace ≥20；检索层前置通道已启动：.s2-replay/arena/e2-candidates.md，EV-2026-019/020）、M2（fixture ≥5——golden 已 24 条，与 arena golden 无回归共用 replay 工具链）、O2、A1、A4、M3、M4、O4、O5、P2，及 v1.5 登记行 O6、O7（此前漏列于池清单；闸门均已开——真实诊断与 live 指标期已积累）。**落地/完成即移出池**：M5（EV-2026-028，观察窗中）、E8、O8（首级）——见完成账本；A2 的 F1–F5 子流已落地，A2 整体转观察窗。建议顺序：先 E1/M2（学习与安全网），后 A2（统一口径复测后再拆）。
 
