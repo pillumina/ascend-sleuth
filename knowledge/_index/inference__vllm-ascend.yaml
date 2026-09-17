@@ -1,7 +1,7 @@
 # GENERATED FILE —— 分片（knowledge/_index.yaml 的 inference/vllm-ascend 子集），不要手改。
 # 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。
 # 阶段一加载协议（F1 EV-2026-022）：category 未定 / 类分片缺失时 diagnose 回退读本 namespace 分片，不读整库总表。
-# 本分片：inference/vllm-ascend（118 条 case）
+# 本分片：inference/vllm-ascend（119 条 case）
 namespaces:
   inference/vllm-ascend:
     interrupt:
@@ -2258,7 +2258,7 @@ namespaces:
       - MLAPO
       - error code 507034
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9887.yaml
-      hash: 99d58030828a
+      hash: 0549bd476493
     - id: VLLM-ASC-HCCL-BIND-IP-PORT
       title: 多 P 节点独立启动（无 Ray）的 MoE 专家并行长稳运行后 P 节点崩溃：plog 报 Communication_Error_Bind_IP_Port（HCCL 建链 bind
         IP:Port 失败，src_port 越界）——与 kv_port/Mooncake 端口无关
@@ -2764,7 +2764,35 @@ namespaces:
       - v0.23
       - v0.26
       file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-14265.yaml
-      hash: 7530ef3a3338
+      hash: 9634c0afb64a
+    - id: VLLM-ASC-14273
+      title: CANN 9.1.0 下 DeepSeek-V4 PD 分离输出损坏（content:null / 多语言乱码 reasoning / NaN→token 全 -1→507035→EngineDead），同配置
+        CANN 9.0.1 正常：CANN 9.1 的 cann_ops_transformer 激活 MegaM…
+      category: precision
+      tags:
+      - cann-9.1
+      - mega-moe
+      - buffer-sizing
+      - capacity
+      - pd-separation
+      - mooncake
+      compat: vllm-ascend 0.25.1rc; cann 9.1.0
+      confidence:
+        score: 0.65
+      symptoms:
+      - 'PD 分离 + Mooncake（KV 传输）+ DeepSeek-V4-Flash-W8A8 + 投机解码（DSpark，5 draft tokens）部署，**CANN 9.1.0**
+        镜像下输出损坏：`content: null`、`…'
+      sig:
+      - '507035'
+      - EngineDeadError
+      tok:
+      - '507035'
+      - 9.0.1
+      - '9.1'
+      - 9.1.0
+      - '904960'
+      file: knowledge/inference/vllm-ascend/precision/VLLM-ASC-14273.yaml
+      hash: 73ba711a4836
     - id: VLLM-ASC-14363
       title: DeepSeek V4 adapter 构造 routed FusedMoE 时漏传 swiglu_limit（config=10.0）→ routed expert 以默认 None
         运行、无 SwiGLU clamp → 敏感前缀处 next-token logit/ranking 漂移 → 异常中文/特殊 tok…

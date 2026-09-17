@@ -2258,7 +2258,7 @@ namespaces:
       - MLAPO
       - error code 507034
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9887.yaml
-      hash: 99d58030828a
+      hash: 0549bd476493
     - id: VLLM-ASC-HCCL-BIND-IP-PORT
       title: 多 P 节点独立启动（无 Ray）的 MoE 专家并行长稳运行后 P 节点崩溃：plog 报 Communication_Error_Bind_IP_Port（HCCL 建链 bind
         IP:Port 失败，src_port 越界）——与 kv_port/Mooncake 端口无关
