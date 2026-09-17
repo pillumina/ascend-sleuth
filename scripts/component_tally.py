@@ -51,6 +51,11 @@ def scan_traces(root: Path):
                     "source": "trace",
                     "trace": f.name,
                     "verdict": ev.get("verdict"),
+                    # 生产端实际写的是 `attribution_kind`（execution|improvement|design，见
+                    # skills/diagnose 的 diagnosis-procedure 与 trace schema），消费端此前只认
+                    # `verdict`——于是"硬归因"这条腿从来没有数据（实测：4 条 attribution 事件、
+                    # 0 条含 verdict → 合计恒为「硬 0」）。两种写法都收，映射见 is_hard()。
+                    "attribution_kind": ev.get("attribution_kind"),
                     "component": ev.get("component"),
                     "evidence": str(ev.get("evidence", ""))[:120],
                 })
@@ -80,6 +85,17 @@ def scan_replay_attributions(root: Path):
     return entries
 
 
+def is_hard(e):
+    """这条 trace 归因算不算"硬归因"（可指向组件修复的）。
+
+    两套词表都收：`verdict == execution_error`（早期 schema）与
+    `attribution_kind == execution`（生产端现在实际写的）。只认一套的代价是整条腿静默为零。
+    """
+    if e.get("source") != "trace":
+        return False
+    return e.get("verdict") == "execution_error" or e.get("attribution_kind") == "execution"
+
+
 def aggregate(entries):
     """按 component 聚合（含来源拆分与硬/候选标注）。"""
     from collections import defaultdict
@@ -87,7 +103,7 @@ def aggregate(entries):
     for e in entries:
         comp = e.get("component") or "(未归因)"
         agg = by_comp[comp]
-        if e["source"] == "trace" and e.get("verdict") == "execution_error":
+        if is_hard(e):
             agg["trace_mis"] += 1
             agg["traces"].add(e["trace"])
         elif e["source"] == "s2-replay":
@@ -125,9 +141,16 @@ def main():
         tag = "硬归因(S1)" if data["trace_mis"] else "候选(S2)"
         print(f"  {comp}: {tag} mis={data['trace_mis']} 候选={data['s2_candidate']}")
         print(f"     来源: {', '.join(sorted(data['traces'])[:5])}{'…' if len(data['traces']) > 5 else ''}")
-    hard = sum(1 for e in entries if e["source"] == "trace" and e.get("verdict") == "execution_error")
+    hard = sum(1 for e in entries if is_hard(e))
     cand = sum(1 for e in entries if e["source"] == "s2-replay")
-    print(f"\n  合计: {len(entries)} 条归因（硬 {hard} / 候选 {cand}）")
+    other = len(entries) - hard - cand
+    # 口径自洽：合计必须等于三项之和（此前"合计 4 条（硬 0 / 候选 0）"里那 4 条既不硬也不候选，
+    # 读数自相矛盾——读者无法判断"没有归因"和"归因都不算数"）。
+    tail = f" / 其他 {other}" if other else ""
+    print(f"\n  合计: {len(entries)} 条归因（硬 {hard} / 候选 {cand}{tail}）")
+    if other:
+        print("  注: 「其他」= 归因事件存在但不属硬归因（如 attribution_kind 为 improvement/design、"
+              "或组件不可指认）——它们不指向组件修复，不计入失败簇")
     if hard == 0 and cand > 0:
         print("  注: 仅有 S2 候选——组件归因是推断，需从对应 trace 确认后才可指向修复")
     if hard > 0:

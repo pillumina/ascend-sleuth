@@ -62,3 +62,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated）：四个口径脚本从「零回归保护」到有边界断言，且真发现了缺陷（这也回答本卡的核心假设——口径确有可能出错且此前无人可见）。残余如实标注：①known_defect 未修——修它等于改学习环口径、会变更既有 case 的 hits，须单独产卡并按 knowledge_modification 流程走，本卡只记录现状；②trace_metrics 的口径仍在 main() 内，测试走 CLI 契约（断言 YAML 快照字段）而非函数级调用，未做重构；③测试只覆盖四个脚本，其余 70+ 脚本仍无回归保护。"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡改动随 PR #242 合入（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

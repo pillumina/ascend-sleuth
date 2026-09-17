@@ -1,0 +1,57 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-117
+layer: L2
+title: 归因事件两端字段名漂移——生产端写 attribution_kind、消费端只认 verdict，硬归因通道从未有数据
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: mechanism_gap
+    evidence: "审计实测：全库 4 条 attribution 事件、0 条含 verdict，全部写 attribution_kind（execution 1 / improvement 2 / design 1）→ 聚合恒报「硬 0」，归因比恒为「无归因落点」，即「误诊归因 → 组件失败簇 → 修订 skill」这条腿自建成起没有数据"
+    trajectory:
+      - "递归解析 traces/*.yaml 的 attribution 事件（4 条 / verdict 全为 None）"
+      - "scripts/component_tally.py 的消费端判定"
+      - "skills/diagnose/references/diagnosis-procedure.md 的生产端写法"
+hypothesis: 消费端同时认两套词表（verdict 的 execution_error 与 attribution_kind 的 execution），并把合计改成自洽口径（硬/候选/其他之和），硬归因通道即可用，且不改变任何既有计数语义。
+predicted_effect:
+  metric: 硬归因条数与合计口径自洽性
+  from: "硬归因恒 0；合计「4 条（硬 0 / 候选 0）」自相矛盾"
+  to: "硬归因 ≥1；合计 = 硬 + 候选 + 其他"
+  measure:
+    command: "python3 -m unittest tests.test_audit_readings.AttributionVocabularyTest"
+    expect_exit: 0
+validation:
+  method: metrics_compare
+  baseline: "改前：聚合只认 verdict == execution_error；归因比不可解读"
+  success_criteria: |
+    ① 聚合报出硬归因 1 条（组件 skill:diagnose），并说明其余条目不属硬归因；
+    ② 合计三项之和等于条目总数；③ 单测覆盖两套词表与聚合；④ 旧写法语义不变。
+  rollback: "单文件 revert（component_tally.py）；读数是聚合输出，无持久化副作用（原则七）"
+gate:
+  condition: "不等数据触发：两端字段名漂移是确定性缺陷"
+risk: medium
+principle_refs: [2, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：归因事件两端字段名漂移（生产端 attribution_kind / 消费端 verdict）"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：component_tally 增 is_hard()（两套词表）、scan_traces 收 attribution_kind、合计口径改为硬/候选/其他三项并说明「其他」语义"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "实测：改后报「skill:diagnose: 硬归因(S1) mis=1」、合计「4 条归因（硬 1 / 候选 0 / 其他 3）」；单测覆盖两套词表与聚合"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）：最小闭环修复，不引入新阈值。残余如实标注：归因比仍不可解读——它要「未解决反馈之后有归因」的配对，而现场反馈捕获仍为 0，属数据缺口不是实现缺陷"

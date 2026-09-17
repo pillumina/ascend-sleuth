@@ -66,3 +66,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated）：账本把「观测到什么」从散文变成可读可校验的仓内事实，且四条判据的误红代价都可控（--build 一条命令修）。残余如实标注：①账本是读 fixture 头注的，重跑了回放却没更新头注时发现不了（强度上界写进脚本头注与 docs/eval.md）；②CI 准入第三条「复发」无本产物历史失败，入 CI 的依据是同类生成物门的先例，已在 workflow 注释里写明这是判断而非既定事实；③把账本接进 groom / evolve-check 的步骤清单（行为面）未做——本卡不含 skill 改动，避免把口径修正与流程改动混在一个 PR。"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "合入指针回写：本卡改动随 PR #242 合入（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

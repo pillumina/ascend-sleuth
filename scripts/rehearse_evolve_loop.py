@@ -723,7 +723,19 @@ def ex_metrics_loop(root: Path):
     except Exception:
         h = {}
     texts = " ".join(f.get("text", "") for f in (h.get("findings") or []))
-    check("检测器报出容量越界（真实 85/30）", "interrupt = 85/30" in texts, texts[:200])
+    # 容量数字从索引头注现读，不硬编码：写死 85/30 时，知识库一长这条断言就常年失败
+    # （实测漂到 89/30），而失败的是一条"断言自己腐烂"的噪声——本脚本存在的意义恰恰是
+    # "断言不随当天数据漂移"。断言的是**检测器报出了头注里面那个数**，不是某个固定数。
+    note = ""
+    try:
+        for line in (root / "knowledge" / "_index.yaml").read_text(encoding="utf-8").splitlines():
+            if "容量(inference/vllm-ascend)" in line:
+                note = line.split("interrupt=", 1)[1].split(",")[0].strip()
+                break
+    except Exception:
+        note = ""
+    check(f"检测器报出容量越界（与头注一致：{note or '头注未读到'}）",
+          bool(note) and f"interrupt = {note}" in texts, texts[:200])
     check("检测器报出反馈下限被触发", "捕获反馈 0 条" in texts or "feedback" in texts.lower(), texts[:200])
     check("检测器把 misdiagnosis_rate 标为不可解读", "misdiagnosis_rate：不可解读" in texts, texts[:200])
     check("真实数据上 --check 非零（有 ✗ 未处理）", py(root, "scripts/metrics_health.py", "--check")[0] != 0)

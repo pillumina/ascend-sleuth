@@ -1,0 +1,57 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-118
+layer: L2
+title: 两处「已完成/已达标」不可复核——评测台数据文件不存在、演练容量断言写死会腐烂的数字
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-17
+source_signals:
+  - signal: stale_assertion
+    evidence: "审计实测：路线图把元层评测台标「已达成」并以本地池文件为口径，而池、聚合结果与影响账本都不在检出里（gitignore 本地件）→ 判据层读数「数据源缺失、本期未评估」，干净克隆上无法复核那句「已完成」；另演练脚本硬编码容量断言 85/30，实际已 89/30 → 演练常年一红，红的是断言自己腐烂"
+    trajectory:
+      - "审计实测：.s2-replay/arena/ 目录只有两份笔记；评测台 --stats 读取池文件失败"
+      - "审计实测：演练断言文本 vs knowledge/_index.yaml 头注 interrupt=89/30"
+hypothesis: 把「不可复核的已完成」改写成可复核的形态：路线图该行如实拆成「工具已完成 / 数据不可复核」并给出重建方式；演练的容量断言改为从索引头注现读数字再断言检测器报出同一个数——断言不再随数据增长而漂移。
+predicted_effect:
+  metric: 两处读数的可复核性
+  from: "路线图标「已完成」而判据文件缺失；演练断言硬编码数字、常红"
+  to: "路线图如实分层标注；演练断言与头注同源、不再因数据增长而失败"
+  measure:
+    command: null
+    reason: "可复核性是文档与断言维护性的属性，没有一条命令能判「这句声明是否可复核」；演练本身可跑但耗分钟级且会建临时副本，不适合作为卡片判据。如实声明不可度量，不编命令凑判据（原则十）"
+validation:
+  method: scan_review
+  baseline: "改前：路线图该行标「已完成」；演练容量断言写死 85/30"
+  success_criteria: |
+    ① 路线图该行不再声明不可复核的「已完成」，并给出重建或替代路径；
+    ② 演练脚本的容量断言以索引头注为期望值，本次实测该断言转绿；
+    ③ 属文档与演练脚本的措辞/口径修正，不改变任何判据阈值。
+  rollback: "两处单文件 revert；无数据副作用（原则七）"
+gate:
+  condition: "不等数据触发：属可复核性与断言维护性修正"
+risk: low
+principle_refs: [8, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计"
+decisions:
+  - who: agent
+    when: 2026-09-17
+    type: proposal
+    conclusion: "产卡：两处已完成/已达标读数的可复核性（评测台声明与演练硬编码断言）"
+  - who: agent
+    when: 2026-09-17
+    type: action
+    conclusion: "落地：路线图该行改写为「工具已完成 · 数据待重建」并点明池与账本是本地件；演练容量断言改为现读 knowledge/_index.yaml 头注再比对检测器输出"
+  - who: agent
+    when: 2026-09-17
+    type: eval
+    conclusion: "实测：演练该断言转绿（改前因 85/30 与实际 89/30 不符必红）；其余断言无回归"
+  - who: agent
+    when: 2026-09-17
+    type: decision
+    conclusion: "采纳（validated）。残余如实标注：评测台的池与账本仍不存在（重建需真实 replay，属数据工作），本卡只消除「已完成」这个不可复核的声明"
