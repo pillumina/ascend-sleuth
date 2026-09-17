@@ -63,7 +63,8 @@ predicted_effect:
   from: "自证 resolved → hits+1（同一证据数两次）；每闭环一个问题即一个 confidence PR"
   to: "自证 resolved → 记 confidence.self_resolved、hits 不变；游标 gitignored，本地闭环 0 个 PR"
   measure:
-    command: "python3 scripts/settle_trace_feedback.py --state /tmp/ev096-measure.json 2>&1 | tail -6"
+    command: >-
+      python3 -c 'import tempfile,subprocess,sys;fd,st=tempfile.mkstemp(suffix=".json");sys.exit(subprocess.run([sys.executable,"scripts/settle_trace_feedback.py","--state",st,"--root","."]).returncode)'
     expect_exit: 0
     reason: >-
       判据是「同一份 feedback 在 self/hits 之间的落点」，手上有可复现实例（session
