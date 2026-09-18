@@ -65,6 +65,7 @@
 | case / reference 词条 | `knowledge/**`、`references/**` | 工程师检索；agent 载入上下文 | 症状句要能直接当 grep 判据（保留报错原文与算子名）；`root_cause` / `fix` 只写结论与依据，不写推理过程 | `build_index.py`、`verify_references.py`（解析与引用） |
 | postmortem | `postmortems/**` | 复盘，并供后续沉淀 | 可观察事实与推断分开写：时间线只放事实，判断另起 | 无 |
 | 诊断对话输出 | 会话里 | 现场工程师，要立刻行动 | 4 段必需 + 2 个按需块（见 `skills/diagnose/SKILL.md`）；一件事只说一遍；结论先行 | 无 |
+| 对话回复 | 会话里 | 没读过本仓文档，也不在诊断现场 | 内部代号先给中文含义、代号放括号；必须保留的原值见 §2，本行不复写那份清单 | 无 |
 | PR body / 评审摘要 | `.github/PULL_REQUEST_TEMPLATE.md`、`scripts/render_review_summary.py` | 评审人 | 结构按模板的 `##` 区块；代号写中文含义（`docs/glossary.yaml` 的 `scope` 规则） | `pr-template`、`render_review_summary.py --scan` |
 | 指标注记 | `metrics/timeline.d/*.yaml`、exec-log | 看面板趋势 | 读数带分母；趋势不可读时明说不可读，不画等高柱充数 | `verify_metrics.py`、`build_timeline.py --check` |
 | skill 与 docs 正文 | `skills/**`、`docs/**`、`README.md`、`CLAUDE.md`、`CONTEXT.md` | agent 载入 + 人读 | skill 正文的行为规则要内联（自包含）；不能出现 ADR 号、日期、卡号这类外部锚点；仓库根的人读文档与 `docs/` 正文同样适用 §1 的共用条目与 §2 的原值例外 | `skill-self-contained`、`docs-index`、`render_review_summary.py --scan`（代号未登记与越界） |
@@ -79,6 +80,7 @@
 | 定位报告 | `skills/diagnose/references/report-template.md` |
 | trace 人读字段 | `skills/diagnose/references/diagnosis-trace.md`（共用条目指向同目录的报告模板，再指向本文件） |
 | 诊断对话输出 | `skills/diagnose/SKILL.md` 的「命中时的输出格式」一节 |
+| 对话回复 | `CLAUDE.md` 的「对话回复写人话」条（每个会话整份注入，会话开始即读到；本面不另设文件） |
 | case 词条 / postmortem | `skills/to-postmortem/SKILL.md` 的「产出落点」一节 |
 | reference 词条 | `skills/to-reference/SKILL.md` 的「产出词条」一节 |
 | EV 卡 | `docs/mechanism/pipeline.md` 的「Idea 卡 schema」一节 |
