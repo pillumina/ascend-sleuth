@@ -1,0 +1,62 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-130
+layer: L2
+target_component: skills/diagnose/references/diagnosis-trace.md
+title: 有原件的引文机械核过，核不过的结论降级（无原件不假装核过）
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-18
+source_signals:
+  - signal: external_reference
+    evidence: "对照同域外部工具（同事的 ascend-field-issue-analyzer）：它把证据写成 {file,line,quote} 三元组，verify 子命令重读原文件逐字比对，FAIL 即把相关结论降级。本地没有对应能力——诊断报告契约把「结论可核对」列为判断项，机械检查只到「文件存在 / 字段配对」这一层。"
+    trajectory:
+      - "外部实现：github.com/hu669293657/skills 的 ascend-field-issue-analyzer/scripts/log_analyzer.py cmd_verify（PASS 逐字相等；PARTIAL 子串或超集；FAIL 降级）"
+      - "本地零命中：诊断侧无引文一致性脚本、无对应字段；report-template.md §3b 把「源码分析是可复核的」写成人审项，§7 自检只有结构项"
+      - "本地证据字段现状：user 事件 evidence 只有 inline / files / sources / missing 四键，引用原文与原件之间没有任何机械关系"
+hypothesis: 给 user 事件加可选的 quotes[{file,line,quote}]（只在工程师交了原件时填），并用脚本重读原件逐字比对之后，「引文被改写 / 行号漂移」从无人可见变成脚本可判；核对不过的结论被强制降级，而核不成的场合（无原件）不新增任何读者可见的噪声。
+predicted_effect:
+  metric: 引文一致性是否可被脚本判定，以及无原件场合的读者可见变化
+  from: "引文一致性靠 reviewer 逐条回原文件；工具看不见，也无字段可承载"
+  to: "python3 scripts/verify_evidence.py <trace> --root <原件根> 逐条给 PASS / MISMATCH / NO-ORIGIN，MISMATCH 非零退出"
+  measure:
+    command: "python3 -m unittest tests.test_verify_evidence"
+    expect_exit: 0
+validation:
+  method: metrics_compare
+  baseline: "改前：无核对工具、无 quotes 字段（证据只有 inline / files / sources / missing）"
+  success_criteria: |
+    ① quotes 是**可选**字段：只有工程师交了原件（日志文件 / 日志包 / handoff 包）时才填；粘贴场景保持现状；
+    ② 判据**只认逐字相等**（空白归一化后比较）——不采用外部实现的 PARTIAL（子串或超集算过，
+       引文里混进编造内容也能蒙过）；
+    ③ 文件不存在 / 行号越界 / 文本不一致 → 非零退出，报告侧规则要求该条结论降级；
+    ④ 无原件的证据记 NO-ORIGIN：不降级，也不进报告读者视野（避免"满屏未验证"的体验退化）；
+    ⑤ 报告依据链只在核过时加标注，缺省不显示。
+  rollback: "新脚本与新单测可整体删除；quotes 是可选字段，老 trace 不受影响；skill 侧是措辞增量，git revert 即回到改前（原则七）"
+gate:
+  condition: "一次外部对照（同域工具已有机械回验）+ 本地现状当场核对（报告契约把可核对列为判断项、证据字段无承载位）。不是预判。"
+risk: low
+principle_refs: [1, 2, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计"
+decisions:
+  - who: agent
+    when: 2026-09-18
+    type: proposal
+    conclusion: "产卡：证据回验（原件判据 + 逐字核对 + 核不过降级 + 无原件不假装）"
+  - who: agent
+    when: 2026-09-18
+    type: action
+    conclusion: "落地：新增 scripts/verify_evidence.py（逐条重读原件比对；六态 PASS / MISMATCH / NOFILE / NOLINE / READ-ERROR / NO-ORIGIN；退出码 0/1/2）与 tests/test_verify_evidence.py（13 项）；skill 侧三处措辞增量——SKILL.md 证据落盘铁律加一条、diagnosis-trace.md 新增 quotes 段（字段、判据、六态处理表）、report-template.md 第 3 节标注规则与第 7 节自检项"
+  - who: agent
+    when: 2026-09-18
+    type: eval
+    conclusion: "实测：①单测 122 项全绿（新增 13 项）；②合成样例（原件 3 行 + 3 条引文）得 PASS 1 / MISMATCH 1 / NOLINE 1、退出 1——MISMATCH 那条是「引文比原件多出编造内容」，正是外部实现 PARTIAL 档会放过的形态；③diagnose skill 按需面 26038 B → 27216 B（+1178 B ≈ +346 tok），常驻面不变（description 未动）"
+  - who: agent
+    when: 2026-09-18
+    type: decision
+    conclusion: "采纳（validated）。刻意不搬外部实现的 PARTIAL 档（子串或超集算过）——超集就是「引文里混进原件没有的内容」；本地判据只认逐字相等与显式 `...` 截断的分段按序命中。体验侧按会话判断收窄：无原件不降级（粘贴为主的现场不该满屏「未验证」），报告只在核过时加标注。残余：本脚本不进 CI（判断性产出，与 report_lint 同级），有原件却没跑它时仍然无声——靠报告第 7 节自检兜底。"

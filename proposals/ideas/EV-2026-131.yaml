@@ -1,0 +1,62 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-131
+layer: L2
+target_component: references/tools/host-kernel-log-collection.yaml
+title: 补 host 内核日志这一层证据面（dmesg / journalctl / messages）
+status: validated
+authorization: review
+dimension: architecture
+supersedes: []
+superseded_by: null
+created_at: 2026-09-18
+source_signals:
+  - signal: coverage_gap
+    evidence: "dmesg 在 references/、skills/、knowledge/ 三处 grep 零命中。我们的证据面覆盖 CANN plog 与 device 日志（含日志级别、device 日志操作、堆栈、msaicerr），但 host 内核事件（OOM killer、设备复位、磁盘满、网卡 link flap、内核 panic、重启）既没有判读落点，也没有采集入口。"
+    trajectory:
+      - "grep -rln dmesg references/ skills/ knowledge/ → 0 命中（只有 ref-docs/ 的 npu-smi 日志转储文档提到 syslog，是另一个现象）"
+      - "skills/diagnose/references/collect-gates.yaml 的 interrupt-evidence-gap 现有 refs 全在 CANN / device 侧：ascend-log-levels / ascend-device-log-ops / ascend-asys / ascend-stack-view / ascend-msaicerr"
+      - "外部对照：ascend-field-issue-analyzer 的 fault-patterns.md 把 dmesg 作为 host 侧故障第一入口，log-structure.md 给出 dmesg -T / journalctl --since --until / find -newermt 裁剪打包"
+hypothesis: 新增一条 host 内核日志的采集与判读词条、并挂到 interrupt 采集闸门之后，「进程被 OOM killer 杀掉」「设备被内核复位」这类根因在缺证据时会被显式索取，而不是只在 CANN 日志的下游连锁报错（各 rank 超时）里打转。
+predicted_effect:
+  metric: host 内核证据面是否有落点，且能被 interrupt 采集闸门取到
+  from: "dmesg 与内核事件零落点；interrupt 闸门只指向 CANN / device 侧采集"
+  to: "词条 host-kernel-log-collection 存在且 active；闸门 gap 分支 refs 含它（由 verify_references 校验 id 存在且 active）"
+  measure:
+    command: "python3 scripts/verify_references.py --check && python3 scripts/build_ref_summary_index.py --check"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: "改前：grep dmesg 零命中；闸门 refs 不含 host 侧入口"
+  success_criteria: |
+    ① 词条按 tool 类型登记（tool_name / invocation 必填），判读面写进 output_meaning，每条事实带 sources 与 evidence；
+    ② 来源类型与 verification 如实标——不编造 engineer-input 的 engineer 与 input_session 字段；
+    ③ 闸门 refs 增加该 id，skill 侧绑定校验通过（id 不存在或非 active 即 CI 红）；
+    ④ 采集入口至少含：dmesg -T（可按时间窗）、journalctl --since/--until、/var/log/messages、uptime / last reboot；
+    ⑤ pitfalls 写清「取不到不等于没有事件」（环形缓冲被覆盖、容器内 dmesg 受限、-T 的时间随本机时区）；
+    ⑥ 本轮不编造「内核事件 → 昇腾根因」的因果族表——那部分需要现场来源，留给 engineer-input 或 case-derived 沉淀。
+  rollback: "删除词条文件与闸门那一行 refs，重建两个生成索引；无其他引用（原则七）"
+gate:
+  condition: "全库零覆盖已实测（grep 0 命中）+ 闸门 refs 不含 host 侧已核对。数据来自当场核对，不是预判。"
+risk: low
+principle_refs: [2, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计"
+decisions:
+  - who: agent
+    when: 2026-09-18
+    type: proposal
+    conclusion: "产卡：补 host 内核日志采集与判读面，并挂进 interrupt 采集闸门"
+  - who: agent
+    when: 2026-09-18
+    type: action
+    conclusion: "落地：新增 references/tools/host-kernel-log-collection.yaml（tool 类型；三条 official-doc 来源：dmesg(1) / journalctl(1) / 内核 mm/oom_kill.c）；collect-gates.yaml 的 interrupt-evidence-gap 增加该 ref 并补 trigger 描述；重建 references/_summary-index.yaml（132 → 133 条）"
+  - who: agent
+    when: 2026-09-18
+    type: eval
+    conclusion: "实测：改前 `grep -rln dmesg references/ skills/ knowledge/` 零命中 → 改后命中新词条；`verify_references.py --check` 通过（235 词条，id 唯一）；`build_ref_summary_index.py --check` 新鲜（133 条）；`verify_case_draft.py --all` 通过。词条中可逐字核验的部分（dmesg 的 -T 与 SUSPEND/RESUME 时间告诫、环形缓冲与 dmesg_restrict、journalctl -k 隐含 --boot=0 与 -b -1、OOM 三条打印格式）均来自本轮抓取的原文"
+  - who: agent
+    when: 2026-09-18
+    type: decision
+    conclusion: "采纳（validated）。刻意不编「内核事件 → 昇腾根因」的因果族表：那部分没有可核来源，写成事实违反原则十；词条只登记采集入口与可逐字核验的消息格式，PCIe AER / 网卡 link / kernel panic 只给检索前缀、不给格式。外部实现里的 dmesg 采集速查（含按时间窗裁剪打包）已折入 invocation 与 commands。残余：昇腾官方侧的 host 日志采集要求（若官方文档有独立页）未纳入，等有官方来源时补。"
