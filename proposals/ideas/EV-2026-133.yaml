@@ -1,0 +1,112 @@
+# ============================================================
+# Idea 卡（proposals/ideas/）——schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）
+# 校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+
+id: EV-2026-133
+layer: L3
+title: token 固定面棘轮 + 逐步归因表：把「花费涨了没有」从散文变成一条可跑的判定
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-18
+target_component: scripts/audit_skill_cost.py
+source_signals:
+  - signal: token_audit
+    evidence: >-
+      全量账单实测（355 个会话，node scripts/session_cost.mjs --all）：billed 合计 6,176,238,234，
+      其中缓存重读 6,111,109,639（98.9%），未缓存输入 44,752,948（0.72%）。步数 p50=17 / p90=116；
+      billed 最大的 5 个会话步数 605–2407、平均每步上下文 378K–485K，是本仓自述「~120K 推理舒适区」
+      的 3–4 倍。固定面（每个会话都付的指令与 skill 摘要）实测 22,412 B ≈6,592 tok。
+      两条结论：花费主项是「步数 × 每步上下文规模」，不是文档体积；固定面占 p50 会话未缓存输入
+      （47,799）约 14%。
+    trajectory:
+      - node scripts/session_cost.mjs --all（355 会话汇总，本机 DSH_HOME/sessions）
+      - python3 scripts/audit_skill_cost.py --json
+      - docs/spec/design-theory.md §6 附录 A（B_ctx ~120K token 舒适区）
+  - signal: observability_gap
+    evidence: >-
+      这一维此前没有判定端：metrics/timeline.d 无 token 指标，gates.yaml 无 token 判据，
+      exec-log 54 条记录里 0 条 measured，131 张卡里只有 1 张 actual_cost 是 measured。
+      「没涨」与「没被检查」在数据上无法区分；卡在 2026-09-14 已落地两个量具（真实账单、
+      skill 成本审计），但读数没接进任何判定。
+    trajectory:
+      - metrics/gates.yaml（无 token 判据）
+      - scripts/audit_skill_cost.py（无 --check，只打印不判）
+      - metrics/skill-exec-log.yaml（54 条记录里 0 条 measured）
+      - proposals/ideas/EV-2026-063.yaml（两个量具的落地卡）
+hypothesis: >-
+  给固定面加一条棘轮（只允许变小、放大要改基线并写理由）+ 给逐步读数补上「这一步用了什么工具、
+  返回多大」，则「花费涨了没有」在内容流程收尾时由一条命令回答，流程面的可疑步骤能落到具体一步；
+  机制的自身代价是 skill 正文 +405 B（只在 evolve-check 被读时付）。
+predicted_effect:
+  metric: 固定面棘轮的三态判定（常驻合计 / 按需正文合计 对基线）
+  from: 无判定端（gates.yaml 无 token 判据；audit_skill_cost.py 只打印不判，「涨了没有」靠人看）
+  to: python3 scripts/audit_skill_cost.py --check 三态可跑，退出码 0/1/2 各自可复现
+  measure:
+    command: python3 scripts/audit_skill_cost.py --check
+    expect_exit: 0
+    expect_stdout: "判据覆盖面"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前：gates.yaml 无 token_budget 节；audit_skill_cost.py 无 --check；session_cost.mjs 的逐步
+    读数只有 prompt/uncached/output，没有工具与返回大小；eval_arena.py 的账本无成本字段。
+  success_criteria: >-
+    ① measure 命令 exit 0（基线内）；② 三态各自可复现——把 --gates 指到不含 token_budget 的文件
+    得 2，涨过基线得 1（本次实测由本卡自己的 T12 行触发过一次：183,157 → 183,562，报"超 405 B
+    ≈119 tok"）；③ `node scripts/session_cost.mjs --steps` 能打印每步的工具名与返回字节（本会话
+    161 步可复现）；④ `python3 scripts/eval_arena.py --self-test` 仍全绿（成本字段只记录，
+    不改质量判词）；⑤ 逐条 CI 检查全绿。
+  rollback: >-
+    单个提交内：audit_skill_cost.py 与 eval_arena.py 的改动 git revert 即可（都只读，无数据迁移）；
+    gates.yaml 删 token_budget 节即回到原状；skill 与 docs 为纯文本。
+gate: >-
+  再出现「某维度的读数落地了但没接判定端」时，先按本卡的两段式接线（量具 → 判定 + 触发点），
+  不要先建新的量具。
+risk: low
+principle_refs: [9, 2, 10]
+actual_cost:
+  tokens: 172472
+  source: measured
+  note: >-
+    口径 = 本次会话未缓存输入（node scripts/session_cost.mjs 的 totals.uncachedInput），
+    写卡时实测 172,472；同次读数里 cacheRead 28,578,944、峰值 prompt 273,058。
+    取未缓存输入而不是 billed：billed 被缓存重读主导（98.9%），用它当分母会让"改了常驻面"
+    这类改动的效果在数上消失。
+decisions:
+  - who: agent
+    when: '2026-09-18'
+    type: proposal
+    conclusion: >-
+      识别：token 这一维的量具已落地但没接判定端，且逐步读数缺「这一步为什么大」。
+      方案评估三选项——①只做记账（成本字段填实测值）：最便宜，但"涨了没有"仍靠人看，不构成判定；
+      ②记账 + 固定面棘轮 + 逐步归因：判定与定位都有，代价是 405 B skill 正文；
+      ③在 ② 之上再改 eval_arena 的判词为质量与成本两维联合：要动 --self-test 与 CI 判据，
+      属独立改动，本卡不做。采纳 ②，并把 ③ 记为后续。
+  - who: agent
+    when: '2026-09-18'
+    type: action
+    conclusion: >-
+      执行：①audit_skill_cost.py 加 --check（读 gates.yaml 的 token_budget，三态退出码）；
+      ②gates.yaml 加 token_budget.baseline（棘轮基线，含 note 说明本次 +405 B 的来源）；
+      ③session_cost.mjs 把轨迹里本来就有的 tool/call 与 tool/result 与逐步上下文增量对齐，
+      新增 --steps 逐步表；④eval_arena.py --gate 加 --cost-baseline/--cost-candidate
+      （只记录、只打印第二轴，不改质量判词）；⑤evolve-check 触发表加 T12（本轮花销信号），
+      让"收尾跑一次棘轮 + 看逐步表"进流程；⑥metrics.md 补判定端与两把尺的说明。
+  - who: agent
+    when: '2026-09-18'
+    type: eval
+    conclusion: >-
+      实测：棘轮三态可复现（0 基线内 / 1 由本卡 T12 行的 +405 B 真实触发 / 2 指向不含
+      token_budget 的文件）；逐步表在本会话 161 步上打印出每步工具；arena 自检全绿。
+      未做：流程面的质量-成本联合判定仍是"记录 + 人读"，因为本机没有可跑的对照池
+      （.s2-replay/arena 下无 pool-*.yaml，建池要逐条 replay）。这条如实记为未验证部分。
+  - who: agent
+    when: '2026-09-18'
+    type: decision
+    conclusion: >-
+      采纳（validated）：随 methodology PR 送人审。观察窗：下一期周批若棘轮报 1，按 T12 处置；
+      若连续两期报 0 且流程面 T12 一直无信号，说明棘轮定得太松或信号面没接上，按实测重校。

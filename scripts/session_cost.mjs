@@ -13,6 +13,10 @@
 //   uncachedInput / cacheRead / cacheWrite / output（其中 reasoning）。
 // 同一 (turn, step) 会同时出现流式与定稿两份，按**定稿优先**去重，避免重复计数。
 //
+// 逐步归因（--steps）：轨迹里本来就有 tool/call 与 tool/result，本脚本把「这一步多花了多少
+//   上下文」与「这一步调了什么工具、返回多大」对齐——没有这一列，读者只知道某一步变大了，
+//   不知道大在哪。工具返回大小按 content 里的文本字节数算（估算，不是计费）。
+//
 // 用途：给 skill/内容流程的收尾提供 measured 口径的数字——exec-log 的
 // `--tokens N --cost-source measured` 就该填这里读出来的值，而不是估算。
 //
@@ -21,6 +25,7 @@
 //   node scripts/session_cost.mjs --session <id>       # 按会话 id 在 $DSH_HOME/sessions 下找
 //   node scripts/session_cost.mjs --file <path.jsonl.zstd>
 //   node scripts/session_cost.mjs --all [--workspace <子串>]   # 逐会话汇总（回填历史账单）
+//   node scripts/session_cost.mjs --steps              # 逐步表：上下文增量 × 工具与返回大小
 //   加 --json 输出机器可读结果。
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs'
@@ -65,9 +70,30 @@ function usageOf(event) {
   return null
 }
 
+// 工具返回进入上下文的文本字节数（估算）：content 里 tool-result 块的嵌套文本 + 其他块的 text。
+function resultBytes(message) {
+  let n = 0
+  const blocks = message?.content ?? []
+  for (const b of blocks) {
+    if (b?.type === 'tool-result') {
+      for (const c of b.content ?? []) n += typeof c?.text === 'string' ? c.text.length : 0
+    } else if (typeof b?.text === 'string') {
+      n += b.text.length
+    }
+  }
+  return n
+}
+
 function summarize(file) {
   const text = readSessionLog(file)
   const attempts = new Map()
+  const calls = new Map()   // callId -> 该次调用的记录
+  const steps = new Map()   // "turn/step" -> { calls: [...], resultBytes }
+  const stepOf = (turn, step) => {
+    const k = `${turn}/${step}`
+    if (!steps.has(k)) steps.set(k, { calls: [], resultBytes: 0 })
+    return steps.get(k)
+  }
   let provider = '-', model = '-', bad = 0, lines = 0
   const turns = new Map()
   for (const line of text.split('\n')) {
@@ -75,6 +101,21 @@ function summarize(file) {
     lines++
     let event
     try { event = JSON.parse(line) } catch { bad++; continue }
+    if (event.type === 'tool/call') {
+      const d = event.data ?? {}
+      const rec = { name: d.name ?? '?', argBytes: (d.arguments ?? '').length, outBytes: 0 }
+      calls.set(d.callId, rec)
+      stepOf(d.turn, d.step).calls.push(rec)
+      continue
+    }
+    if (event.type === 'tool/result') {
+      const d = event.data ?? {}
+      const n = resultBytes(d.message)
+      const rec = calls.get(d.callId)
+      if (rec) rec.outBytes = n
+      stepOf(d.turn, d.step).resultBytes += n
+      continue
+    }
     const hit = usageOf(event)
     if (!hit) continue
     const { usage, kind, d } = hit
@@ -93,6 +134,12 @@ function summarize(file) {
     attempts.set(key, row)
   }
   const rows = [...attempts.values()].sort((a, b) => (a.turn - b.turn) || (a.step - b.step))
+  for (const r of rows) {
+    const st = steps.get(`${r.turn}/${r.step}`)
+    r.tools = st ? st.calls : []
+    r.resultBytes = st ? st.resultBytes : 0
+    r.prompt = r.input + r.cacheRead + r.cacheWrite
+  }
   const sum = k => rows.reduce((t, r) => t + r[k], 0)
   const promptOf = r => r.input + r.cacheRead + r.cacheWrite
   for (const r of rows) {
@@ -113,6 +160,11 @@ function summarize(file) {
     finalPrompt: rows.length ? promptOf(rows[rows.length - 1]) : 0,
     totals,
     turns: [...turns.values()],
+    steps: rows.map(r => ({
+      turn: r.turn, step: r.step, prompt: r.prompt, uncached: r.input, output: r.output,
+      resultBytes: r.resultBytes,
+      tools: r.tools.map(t => ({ name: t.name, outBytes: t.outBytes })),
+    })),
     top: [...rows].sort((a, b) => promptOf(b) - promptOf(a)).slice(0, 5)
       .map(r => ({ ...r, prompt: promptOf(r) })),
   }
@@ -193,6 +245,19 @@ console.log('')
 console.log(`TOTAL uncachedInput=${fmt(s.totals.uncachedInput)}  cacheRead=${fmt(s.totals.cacheRead)}  cacheWrite=${fmt(s.totals.cacheWrite)}  output=${fmt(s.totals.output)} (reasoning ${fmt(s.totals.reasoning)})`)
 console.log(`INPUT SIDE=${fmt(s.totals.inputSide)}  BILLED=${fmt(s.totals.billed)}  cache-read share=${(100 * s.totals.cacheRead / (s.totals.inputSide || 1)).toFixed(1)}%`)
 console.log(`final prompt=${fmt(s.finalPrompt)}  peak prompt=${fmt(s.peakPrompt)}`)
+const toolBrief = r => r.tools.length
+  ? r.tools.map(t => `${t.name}${t.outBytes ? '(' + fmt(t.outBytes) + 'B)' : ''}`).join(' + ')
+  : '-'
 console.log('')
 console.log('top 5 steps by prompt size:')
-for (const r of s.top) console.log(`  turn ${r.turn} step ${r.step}: prompt=${fmt(r.prompt)} (uncached ${fmt(r.input)} + cacheRead ${fmt(r.cacheRead)}) out=${fmt(r.output)}`)
+for (const r of s.top) {
+  console.log(`  turn ${r.turn} step ${r.step}: prompt=${fmt(r.prompt)} (uncached ${fmt(r.input)} + cacheRead ${fmt(r.cacheRead)}) out=${fmt(r.output)}  工具=${toolBrief(r)}`)
+}
+if (process.argv.includes('--steps')) {
+  console.log('')
+  console.log('逐步表（prompt=该步上下文规模；uncached=新进上下文；返回=工具返回的文本字节，估算）')
+  console.log(`  ${'turn'.padStart(4)} ${'step'.padStart(4)} ${'prompt'.padStart(12)} ${'uncached'.padStart(12)} ${'返回'.padStart(11)}  工具`)
+  for (const r of s.steps) {
+    console.log(`  ${String(r.turn).padStart(4)} ${String(r.step).padStart(4)} ${fmt(r.prompt).padStart(12)} ${fmt(r.uncached).padStart(12)} ${fmt(r.resultBytes).padStart(11)}  ${r.tools.map(t => t.name).join(' + ') || '-'}`)
+  }
+}

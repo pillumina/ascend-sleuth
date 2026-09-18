@@ -326,7 +326,8 @@ def _rate(m):
     return m.get("rate") if isinstance(m, dict) else None
 
 
-def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note, alpha):
+def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note, alpha,
+             cost_baseline=None, cost_candidate=None, cost_note=""):
     b = load(baseline_file)
     c = load(candidate_file)
     if not b or not c:
@@ -343,6 +344,20 @@ def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note, alp
     alpha_eff = alpha / (k + 1)
 
     res = decide(b, c, alpha_eff)
+    # 成本轴（可选）：两臂的花费由 scripts/session_cost.mjs 从会话日志读出。
+    # **它不改质量判词**——判词仍是配对检验那一条；成本只作为第二轴记录下来，
+    # 供人按「质量不降 且 花费下降」的合并规则读。把它并进判词要动 --self-test
+    # 与 CI 的判据，属独立改动，不在这件里做。
+    cost = None
+    if cost_baseline is not None and cost_candidate is not None:
+        ratio = (cost_candidate / cost_baseline) if cost_baseline else None
+        cost = {
+            "baseline_tokens": int(cost_baseline),
+            "candidate_tokens": int(cost_candidate),
+            "delta_ratio": round(ratio, 4) if ratio is not None else None,
+            "source": "scripts/session_cost.mjs（提供方 usage）",
+            "note": cost_note or "",
+        }
     record = {
         "ts": datetime.now().isoformat(timespec="minutes"),
         "candidate_ref": cand_ref or "",
@@ -361,6 +376,8 @@ def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note, alp
         "note": note or "",
         "reason": res["reason"],
     }
+    if cost:
+        record["cost"] = cost
     records.append(record)
     imp.parent.mkdir(parents=True, exist_ok=True)
     imp.write_text(yaml.safe_dump(ledger, allow_unicode=True, sort_keys=False), encoding="utf-8")
@@ -376,6 +393,15 @@ def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note, alp
         p = res["paired"]
         print(f"  配对（{p['n_common']} 条）: 命中 c→b {p['hit_c_only']}/{p['hit_b_only']}"
               f"、路由 {p['route_c_only']}/{p['route_b_only']}、p={p['p_value']}")
+    if cost:
+        d = cost["delta_ratio"]
+        trend = "降" if (d is not None and d < 1) else ("涨" if d is not None else "—")
+        print(f"  成本轴（不改上面的判词）: {cost['baseline_tokens']:,} → {cost['candidate_tokens']:,} tok"
+              f"（{trend}{'' if d is None else f' {(d - 1) * 100:+.1f}%'}）")
+        print("  合并读法：质量 accept 且花费下降 = 两轴都过；质量 accept 但花费没降 = 收益在质量不在成本；"
+              "质量降了一律不留。")
+        if not cost_note:
+            print("  提示：用 --cost-note 写清两臂的口径（分母是什么、哪个值），否则几个月后读不出这行数的含义。")
     if res["verdict"] != "accept":
         print("  → 该判词**不构成**门控通过：不得据此把卡判 validated；"
               "补配对证据/扩池后重跑，或如实按 weak 记入卡。")
@@ -543,6 +569,12 @@ def main():
     ap.add_argument("--only-scored", action="store_true",
                     help="--build-pool: 只收已有 replay result 的条目")
     ap.add_argument("--out", default="", help="--build-pool: 输出路径（默认 .s2-replay/arena/pool-<name>.yaml）")
+    ap.add_argument("--cost-baseline", type=int, default=None,
+                    help="--gate: 基线臂花费（token，由 scripts/session_cost.mjs 读出；只记录，不改质量判词）")
+    ap.add_argument("--cost-candidate", type=int, default=None,
+                    help="--gate: 候选臂花费（token，口径同上）")
+    ap.add_argument("--cost-note", default="",
+                    help="--gate: 花费两臂的口径说明（分母是什么、取的是哪个值）")
     ap.add_argument("--root", default=".", help="仓库根目录（默认当前目录）")
     args = ap.parse_args()
     root = Path(args.root).resolve()
@@ -565,7 +597,8 @@ def main():
               "  只验证判据本身用 --self-test（不需要任何本地数据）。", file=sys.stderr)
         return 2
     return cmd_gate(root, pool_path(root, args.baseline), pool_path(root, args.candidate),
-                    args.component, args.candidate_ref, args.note, args.alpha)
+                    args.component, args.candidate_ref, args.note, args.alpha,
+                    args.cost_baseline, args.cost_candidate, args.cost_note)
 
 
 if __name__ == "__main__":

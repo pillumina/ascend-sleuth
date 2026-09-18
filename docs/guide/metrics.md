@@ -16,7 +16,7 @@
 | `scripts/trace_metrics.py` | 诊断侧指标（markdown 概览 + `--emit-yaml` 骨架 + `--emit-yaml-only` 供组装） | 随机制 |
 | `scripts/verify_metrics.py` | 校验聚合结构（period 唯一 / kind 合法 / live 期号命名 / 比例字段合法 / live 字段白名单），CI 强制 | 随机制 |
 | `scripts/session_cost.mjs` | **真实账单（提供方 usage）**：解析 DSH 会话日志（多帧 zstd + JSONL），按 (turn, step) 去重后给出未缓存输入 / 缓存读取 / 缓存写入 / 输出与逐轮汇总；`--session <id>` / `--file` / `--all`；exec-log 的 `--cost-source measured` 就该填它读出来的值 | 需要 measured 口径时 |
-| `scripts/audit_skill_cost.py` | **skill 上下文成本审计**：常驻面（CLAUDE.md/AGENTS.md/被注入的 description）、按需面（正文 + 本地 references）、重复面（同一行出现在 ≥2 skill）、强制词密度与输出段数；skill-review 的 A 静态审计调它 | skill 改动前后 |
+| `scripts/audit_skill_cost.py` | **skill 上下文成本审计**：常驻面（CLAUDE.md/AGENTS.md/被注入的 description）、按需面（正文 + 本地 references）、重复面（同一行出现在 ≥2 skill）、强制词密度与输出段数；skill-review 的 A 静态审计调它。`--check` 是**固定面棘轮**：比对上 `metrics/gates.yaml` 的 `token_budget.baseline`，三态退出码（0 两项都在基线内 / 1 有一项超基线 / 2 判据没被评估），读法同 `metrics_health.py --check` | skill 改动前后；内容流程收尾 |
 
 **为什么源与生成物分开**（2026-09-13，起因是提问"两个 PR 都生成了这个文件、同名怎么办"）：
 `timeline.yaml` 原先**既是源、又是所有人 append 的目标**，而它是一个**列表文件**——任意两人各加一期
@@ -131,6 +131,13 @@ periods:
 | 新鲜度 | `live_snapshot_max_age_days` / `structural_max_age_days` | 超期 = 趋势断档（实测：结构侧 10 天没进快照） |
 | 越界 | `cell_soft_cap`(>30) / `cell_hard_cap`(>=60) / `feedback_capture_floor`(<=0) | 每条带 `meaning` 与 `action`，报告直接给下一步 |
 | 可解读性 | `readability` 规则（如 `source_nonzero`） | 分母/来源无数据时把指标标成**不可解读**，禁止把 `0/N` 读成"零问题" |
+| 固定面（token） | `token_budget.baseline` + `tolerance_ratio` | 由 `audit_skill_cost.py --check` 判，不走 `metrics_health.py`：它比的是**文件字节**，与 timeline 无关。棘轮只允许变小；放大要改基线并在 PR 写明理由。**为什么是棘轮不是绝对阈值**：这两项不买判别力（索引行内上限从 12 提到 30 再放开，四种改法的召回都是 14/25），所以只需要一个方向；绝对上限要多期数据才敢定 |
+
+**token 这一维的读数在哪**：固定面看 `audit_skill_cost.py --check`；逐个会话的真实账单看
+`node scripts/session_cost.mjs`（`--all` 汇总历史、`--steps` 出逐步表：上下文增量 × 工具与返回大小）。
+**两把尺不要混**：棘轮量的是文件字节（≈tok = B/3.4，估算），账单量的是提供方 usage。
+实测（355 个会话）账单里缓存重读占 98.9%、未缓存输入占 0.72%，而花费的主项是**步数 × 每步上下文规模**——
+所以"文档瘦 5%"在账单上几乎看不见，要省得从步数与每步上下文入手。
 
 **为什么必须单独有这一层**：`verify_metrics.py` 只验**结构**（period 唯一/字段合法），
 它不判"该更新的没更新""越界了""这个 0 是没数据还是真没问题"——实测按旧流程走一遍
