@@ -18,17 +18,17 @@
 #   日志里取提供方 usage。换算尺子本身有两套说法（bytes/3.4 与 len/2.6），本脚本只用前者
 #   并把它写在输出里；混用两把尺会让两次审计的数字不可比。
 #
-# --check（固定面棘轮）：比对上 `metrics/gates.yaml` 的 `token_budget.baseline`，三态退出码
+# --check（固定面基线比对：只降不升）：比对上 `metrics/gates.yaml` 的 `token_budget.baseline`，三态退出码
 #   （与 metrics_health.py / ev_measure.py 同形）：
 #     0  两项都在基线内（且都评过）——本期确实没涨
 #     1  有一项超基线——固定面涨了，按报告的差值处置
 #     2  判据没被评估（gates.yaml 缺 token_budget 节 / 解析失败）——**结论不可用**
 #   为什么要有 2：「没涨」与「没被检查」必须是两件事。本仓已有一次假绿教训——判据读到坏配置
-#   时报了 clean。棘轮只回答"比上次记录时涨了没有"，不回答"这个数是否合理"。
+#   时报了 clean。基线比对只回答"比上次记录时涨了没有"，不回答"这个数是否合理"。
 #
 # 用法：
 #   python3 scripts/audit_skill_cost.py [--root .] [--skill <name>] [--dups] [--json]
-#   python3 scripts/audit_skill_cost.py --check [--gates metrics/gates.yaml]   # 棘轮三态
+#   python3 scripts/audit_skill_cost.py --check [--gates metrics/gates.yaml]   # 基线比对三态
 
 import argparse
 import glob
@@ -176,9 +176,9 @@ def load_token_budget(gates_path):
 
 
 def run_check(root, measured, gates_path):
-    """固定面棘轮三态。measured = {'resident_total_bytes':…, 'skill_body_total_bytes':…}"""
+    """固定面基线比对（只降不升）三态。measured = {'resident_total_bytes':…, 'skill_body_total_bytes':…}"""
     budget, why = load_token_budget(gates_path)
-    print("=== 固定面棘轮（基线：gates.yaml 的 token_budget.baseline）===")
+    print("=== 固定面基线比对：只降不升（基线：gates.yaml 的 token_budget.baseline）===")
     if budget is None:
         print(f"  判据没有被评估：{why}")
         print("  结论不可用——「没涨」与「没被检查」是两件事。")
@@ -211,11 +211,11 @@ def run_check(root, measured, gates_path):
     if unevaluated:
         return 2
     if violated:
-        print("  处置：固定面只允许变小（棘轮）。")
+        print("  处置：固定面基线只允许下降——要么把这次涨幅收回去，要么显式改基线（唯一例外路径）。")
         print(f"  要放行这次放大：改 {gates_path} 的 token_budget.baseline（连 recorded_at 一起）并在 PR 里写明理由。")
         print("  先看能不能省回去：--dups 看重复面；常驻项里 skill 的 description 与根指令各占多少见上面清单。")
         return 1
-    print(f"  基线记录于 {base.get('recorded_at', '—')}；棘轮只回答「比那次涨了没有」。")
+    print(f"  基线记录于 {base.get('recorded_at', '—')}；基线比对只回答「比那次涨了没有」。")
     return 0
 
 
@@ -225,7 +225,7 @@ def main():
     ap.add_argument("--skill", default="", help="只看某个 skill（重复面仍按全库算）")
     ap.add_argument("--dups", action="store_true", help="列出重复行明细")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--check", action="store_true", help="固定面棘轮：比对上 gates.yaml 的 token_budget.baseline（三态退出码）")
+    ap.add_argument("--check", action="store_true", help="固定面基线比对（只降不升）：比对上 gates.yaml 的 token_budget.baseline（三态退出码）")
     ap.add_argument("--gates", type=Path, default=None, help="判据数据文件（默认 <root>/metrics/gates.yaml）")
     args = ap.parse_args()
     root = args.root.resolve()

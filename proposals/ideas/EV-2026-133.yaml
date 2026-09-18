@@ -5,7 +5,7 @@
 
 id: EV-2026-133
 layer: L3
-title: token 固定面棘轮 + 逐步归因表：把「花费涨了没有」从散文变成一条可跑的判定
+title: token 固定面基线比对（只降不升）+ 逐步归因表：把「花费涨了没有」从散文变成一条可跑的判定
 status: validated
 authorization: review
 dimension: process
@@ -38,11 +38,11 @@ source_signals:
       - metrics/skill-exec-log.yaml（54 条记录里 0 条 measured）
       - proposals/ideas/EV-2026-063.yaml（两个量具的落地卡）
 hypothesis: >-
-  给固定面加一条棘轮（只允许变小、放大要改基线并写理由）+ 给逐步读数补上「这一步用了什么工具、
+  给固定面加一条只降不升的基线比对（放大要改基线并写理由）+ 给逐步读数补上「这一步用了什么工具、
   返回多大」，则「花费涨了没有」在内容流程收尾时由一条命令回答，流程面的可疑步骤能落到具体一步；
   机制的自身代价是 skill 正文 +405 B（只在 evolve-check 被读时付）。
 predicted_effect:
-  metric: 固定面棘轮的三态判定（常驻合计 / 按需正文合计 对基线）
+  metric: 固定面基线比对的三态判定（常驻合计 / 按需正文合计 对基线）
   from: 无判定端（gates.yaml 无 token 判据；audit_skill_cost.py 只打印不判，「涨了没有」靠人看）
   to: python3 scripts/audit_skill_cost.py --check 三态可跑，退出码 0/1/2 各自可复现
   measure:
@@ -83,7 +83,7 @@ decisions:
     conclusion: >-
       识别：token 这一维的量具已落地但没接判定端，且逐步读数缺「这一步为什么大」。
       方案评估三选项——①只做记账（成本字段填实测值）：最便宜，但"涨了没有"仍靠人看，不构成判定；
-      ②记账 + 固定面棘轮 + 逐步归因：判定与定位都有，代价是 405 B skill 正文；
+      ②记账 + 固定面基线比对 + 逐步归因：判定与定位都有，代价是 405 B skill 正文；
       ③在 ② 之上再改 eval_arena 的判词为质量与成本两维联合：要动 --self-test 与 CI 判据，
       属独立改动，本卡不做。采纳 ②，并把 ③ 记为后续。
   - who: agent
@@ -91,16 +91,16 @@ decisions:
     type: action
     conclusion: >-
       执行：①audit_skill_cost.py 加 --check（读 gates.yaml 的 token_budget，三态退出码）；
-      ②gates.yaml 加 token_budget.baseline（棘轮基线，含 note 说明本次 +405 B 的来源）；
+      ②gates.yaml 加 token_budget.baseline（基线，含 note 说明本次 +405 B 的来源）；
       ③session_cost.mjs 把轨迹里本来就有的 tool/call 与 tool/result 与逐步上下文增量对齐，
       新增 --steps 逐步表；④eval_arena.py --gate 加 --cost-baseline/--cost-candidate
       （只记录、只打印第二轴，不改质量判词）；⑤evolve-check 触发表加 T12（本轮花销信号），
-      让"收尾跑一次棘轮 + 看逐步表"进流程；⑥metrics.md 补判定端与两把尺的说明。
+      让"收尾跑一次基线比对 + 看逐步表"进流程；⑥metrics.md 补判定端与两把尺的说明。
   - who: agent
     when: '2026-09-18'
     type: eval
     conclusion: >-
-      实测：棘轮三态可复现（0 基线内 / 1 由本卡 T12 行的 +441 B 真实触发 / 2 指向不含
+      实测：基线比对三态可复现（0 基线内 / 1 由本卡 T12 行的 +441 B 真实触发 / 2 指向不含
       token_budget 的文件）；逐步表在本会话 161 步上打印出每步工具；arena 自检全绿。
       未做：流程面的质量-成本联合判定仍是"记录 + 人读"，因为本机没有可跑的对照池
       （.s2-replay/arena 下无 pool-*.yaml，建池要逐条 replay）。这条如实记为未验证部分。
@@ -118,5 +118,5 @@ decisions:
     when: '2026-09-18'
     type: decision
     conclusion: >-
-      采纳（validated）：随 methodology PR 送人审。观察窗：下一期周批若棘轮报 1，按 T12 处置；
-      若连续两期报 0 且流程面 T12 一直无信号，说明棘轮定得太松或信号面没接上，按实测重校。
+      采纳（validated）：随 methodology PR 送人审。观察窗：下一期周批若基线比对报 1，按 T12 处置；
+      若连续两期报 0 且流程面 T12 一直无信号，说明基线定得太松或信号面没接上，按实测重校。
