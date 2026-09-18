@@ -1,0 +1,59 @@
+# EV 卡（proposals/ideas/EV-YYYY-NNN.yaml）—— 自演化决策档案
+id: EV-2026-132
+layer: L2
+target_component: skills/diagnose/references/diagnosis-procedure.md
+title: 跨机时间戳比较前先核时钟，漂移则降级「谁先挂」的结论
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-09-18
+source_signals:
+  - signal: coverage_gap
+    evidence: "跨机时钟对齐在 references/ 与 skills/ 无落点。ascend-log-troubleshooting 覆盖的是「任务启动后改时区导致时间戳不对」（单机、另一个现象）；hccl 家族要求「向前追踪到最早失败的 rank」，整条推理建立在跨机时间戳可比这个未验证的前提下。"
+    trajectory:
+      - "grep 时钟|NTP|时区|时钟漂移 references/ skills/ knowledge/ → 仅 ascend-log-troubleshooting（时区）与一条 hccn_tool 的「网口闪断时间与报错时间对齐」（用词撞车，不是时钟校准）"
+      - "外部对照：ascend-field-issue-analyzer 的 log-structure.md 第四节给基准事件法 + 偏差分档（秒级以内可直接排序 / 数十秒标注偏差 / 方向颠倒则结论降级）"
+hypothesis: 把「跨机时间戳可比」这条隐含前提显式化之后，时钟漂移导致的「谁先挂」误判在执行路径上被挡住，而不是等复盘时才发现顺序反了。
+predicted_effect:
+  metric: 本条纪律是否进入执行路径（其判别力不可机械度量）
+  from: "无此检查；跨机排序结论建立在一个未被验证的前提上"
+  to: "深度排查与时间线重建处显式要求核时钟，明显漂移时把顺序结论降级为不确定"
+  measure:
+    command: null
+    reason: "执行纪律的量尺是真实跨机现场，本轮没有该形态的 trace 可回放。按原则十如实声明不可度量，不编一条只证明「这段文本存在」的命令。"
+validation:
+  method: scan_review
+  baseline: "改前：无跨机时钟前提检查"
+  success_criteria: |
+    ① 纪律落在诊断执行路径上（通用坑位 + 深度排查的时间线重建处），不是只写进先验层等被 grep 到；
+    ② 给出可判方向：取各机共有的同一事件（任务启动 / HCCL 初始化 / 集群心跳）比对时间差，秒级以内可直接排序，明显漂移或顺序颠倒则把「谁先」降级为不确定；
+    ③ 不编造阈值来源——外部实现的秒级阈值无出处，本条只写「秒级」与「明显漂移」两个方向；
+    ④ 不改 active 先验词条（避免触发双签）：它是行为规则，按 skill 自包含纪律内联。
+  rollback: "删两处措辞增量即回到改前（原则七）"
+gate:
+  condition: "对照外部实现发现本地无此检查（当场 grep 零命中）；改动可逆，成本为两处措辞。"
+risk: low
+principle_refs: [1, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "无 tokenMeter 读数，按既有卡口径以 0 计"
+decisions:
+  - who: agent
+    when: 2026-09-18
+    type: proposal
+    conclusion: "产卡：跨机时间戳比较前核时钟，漂移则降级顺序结论"
+  - who: agent
+    when: 2026-09-18
+    type: action
+    conclusion: "落地：skills/diagnose/SKILL.md 的「始终要避的坑」加一条（跨机比时间先核时钟）；references/diagnosis-procedure.md 步骤 5 新增小节「跨机时间线：先核时钟，再排先后」，含基准事件法、秒级/明显漂移/整数小时三档分流与 run_check 留痕字段"
+  - who: agent
+    when: 2026-09-18
+    type: eval
+    conclusion: "无法机械度量（measure.reason 已如实声明）。已核：改前 `grep 时钟|NTP|时区|时钟漂移 references/ skills/ knowledge/` 只命中时区一条与 hccn_tool 的用词撞车；改后纪律出现在诊断执行路径两处（常驻坑位 + 步骤 5 展开）；skill 卫生检查全绿（零 ADR 编号、零日期、零 EV 卡号）；`python3 -m unittest discover tests` 122 项通过"
+  - who: agent
+    when: 2026-09-18
+    type: decision
+    conclusion: "采纳（validated）。落点选 skill 内联而非新建 active 先验词条：外部实现的秒级阈值没有出处，写成先验事实会逼出一条无来源的词条并触发双签，而它是行为规则（什么时候停手、什么时候降级）。残余：判别力要在真实跨机现场才显现，本轮无该形态 trace 可回放——不进 CI，靠现场与复盘检验。"

@@ -1,0 +1,59 @@
+id: host-kernel-log-collection
+type: tool
+title: Host 内核日志采集与判读（dmesg / journalctl -k / /var/log/messages）
+summary: Host 侧内核日志三条入口（dmesg -T 与时间窗、journalctl -k 与 -b -1、/var/log/messages）+ 判读面（OOM killer 的 Out of memory / Memory cgroup out of memory 消息格式、重启与链路事件入口）+ 四个坑（环形缓冲被覆盖、SUSPEND 后 -T 时间不准、dmesg_restrict 权限、journal 覆盖范围）
+
+sources:
+  - type: official-doc
+    url: "https://man7.org/linux/man-pages/man1/dmesg.1.html"
+    version: "util-linux dmesg(1)（man-pages 快照）"
+    fetched_at: 2026-09-18
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://man7.org/linux/man-pages/man1/journalctl.1.html"
+    version: "systemd journalctl(1)（man-pages 快照）"
+    fetched_at: 2026-09-18
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/plain/mm/oom_kill.c"
+    version: "Linux 内核 mm/oom_kill.c（torvalds 主线）"
+    fetched_at: 2026-09-18
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [interrupt]
+
+related_references: [ascend-device-log-ops, ascend-log-levels]
+
+status: active
+last_verified: 2026-09-18
+
+content:
+  tool_name: "Host 内核日志采集（dmesg / journalctl -k / /var/log/messages）"
+  invocation: >-
+    按现场有无 systemd 与权限选入口：`dmesg -T` 取内核环形缓冲（可带 `--since/--until` 收时间窗）；
+    `journalctl -k --since ... --until ...` 取内核消息（`-k` 等价于匹配 `_TRANSPORT=kernel`，并隐含 `--boot=0`），
+    上一次启动的内核消息用 `journalctl -k -b -1`；没有 systemd 或 journal 未覆盖目标时段时取 `/var/log/messages`。
+    按问题时间窗裁剪成文本文件随日志包交回，交片段时要带文件与行号。
+  commands:
+    kernel_ring_buffer: "dmesg -T > dmesg_<时间>.log（-T 打印人类可读时间戳；其时间源在系统 SUSPEND/RESUME 后不再更新，休眠过的机器上时间可能不准）"
+    kernel_window: "dmesg -T --since \"<开始>\" --until \"<结束>\"（可给秒以下精度，也支持相对写法如 '1 hour ago'；时间不准的告诫同样适用）"
+    full_buffer: "dmesg -s <字节数>（内核环形缓冲大于 dmesg 默认查询缓冲 16392 字节时，用它取全量）"
+    journal_kernel: "journalctl -k --since \"<开始>\" --until \"<结束>\" --no-pager；上一轮启动：journalctl -k -b -1"
+    syslog_file: "/var/log/messages（无 systemd 或 journal 未持久化时的替代入口；按发行版也可能是 /var/log/syslog）"
+    uptime_reboot: "uptime；last reboot（确认问题时段内是否发生过重启）"
+  output_meaning: >-
+    判读按消息域分流。**进程被杀**：`Out of memory: Killed process <pid> (<comm>) total-vm:<kB>, anon-rss:<kB>,
+    file-rss:<kB>, shmem-rss:<kB>, UID:<u> pgtables:<kB> oom_score_adj:<d>` 表示 host 内存耗尽触发 OOM killer；
+    由 cgroup 限额触发时前缀换成 `Memory cgroup out of memory`；没有可杀进程时打
+    `Out of memory and no killable processes...`。这类事件要去对齐框架日志的中断时刻，确认"训练进程是被内核杀的"
+    而不是自己退出——CANN 日志里通常只留下游连锁报错。**重启**：日志时间出现大段空洞后从头开始、
+    `uptime` 的运行时间远短于问题时段 → 期间重启过，先查重启原因。**设备与链路**：PCIe AER、网卡 link 状态、
+    内核 panic 按消息前缀搜（`pcieport`/`AER`、`link is down`、`Kernel panic`），含义以对应内核文档为准——
+    本词条只登记入口，未逐条核验的消息格式不写成事实。
+  pitfalls:
+    - "环形缓冲会被覆盖：dmesg 读的是内核环形缓冲，久远事件已经不在里面——取不到不等于当时没有事件，先看时间覆盖再下结论"
+    - "-T 的时间在 SUSPEND/RESUME 之后可能不准（时间源不再更新）：多机排先后之前先核时钟，别默认时间戳可比"
+    - "权限：dmesg 可能因内核 dmesg_restrict 设置报 permission denied；容器场景另有安全配置限制（按现场版本确认）。报错是采集受限，不是'没有事件'"
+    - "journal 的覆盖范围取决于存储配置：--user 一类选项只在持久化日志打开（journald.conf 的 Storage=）时有效——只看得到本次启动的日志时，明确说明覆盖范围"

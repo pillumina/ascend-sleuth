@@ -68,18 +68,20 @@ gates:
     kind: conditional
     trigger: >-
       已提供的日志不足以定位——缺另一层日志（级别不够 / 只有 Host 侧 / 需按时间找首报错 rank）
-      或需卡住进程的调用栈
+      或需卡住进程的调用栈；或现象指向内核级事件（进程被 OOM killer 杀掉 / 节点重启 / 掉卡复位）
+      而手上只有 CANN 侧日志
     question: null
     branches:
       - when: gap
         action: >-
           给采集方式并说明需复跑与影响面：提日志级别重跑；导出 Device 侧日志按时间找首报错；
-          一键收集故障信息；卡住进程取堆栈（不中断进程）
+          一键收集故障信息；卡住进程取堆栈（不中断进程）；现象指向内核级事件时另取 Host 内核日志
         refs:
           - ascend-log-levels
           - ascend-device-log-ops
           - ascend-asys
           - ascend-stack-view
           - ascend-msaicerr
+          - host-kernel-log-collection
     caveat_refs:
       - ascend-log-troubleshooting   # 日志量级/裁剪纪律：只贴失败 rank + 栈尾，别灌全量
