@@ -60,9 +60,10 @@ token_budget:
   baseline:
     recorded_at: '2026-09-18'
     resident_total_bytes: 22412        # CLAUDE.md + AGENTS.md + 各 skill 的 description（每个会话都付）
-    skill_body_total_bytes: 183562     # 全部 SKILL.md 正文（触发后才读）
+    skill_body_total_bytes: 183598     # 全部 SKILL.md 正文（触发后才读）
     note: >-
-      183157 → 183562（+405 B ≈119 tok）：本次新增 evolve-check 的 T12 触发行（花销信号）。
+      183157 → 183598（+441 B ≈130 tok）：本次新增 evolve-check 的 T12 触发行（花销信号，
+      措辞按实测改过一次：主因是调用次数与目标重复，不是单条返回特别大）。
       这是机制自身的价格——只在 evolve-check 被读时付。若要再放大，先看能不能从 --dups
       的重复面或某条 skill 正文里省回来。
   tolerance_ratio: 1.0                 # 允许等于基线；大于 1 表示容忍一定比例的漂移

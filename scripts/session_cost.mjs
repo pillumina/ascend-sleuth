@@ -84,11 +84,29 @@ function resultBytes(message) {
   return n
 }
 
+// 工具调用的「同一目标」键：优先文件/路径/模式，其次命令前 60 字符。
+function targetKey(name, argsJson) {
+  let a = {}
+  try { a = JSON.parse(argsJson || '{}') } catch { a = {} }
+  const t = a.file_path ?? a.path ?? a.pattern ?? (typeof a.command === 'string' ? a.command.slice(0, 60) : null)
+  return t ? `${name} ${t}` : null
+}
+
+// 参数完全相同的判据：FNV-1a 取整串（不截断），避免把"长参数前缀相同"误判为同一次调用。
+function sigOf(s) {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
+  return h.toString(16)
+}
+
 function summarize(file) {
   const text = readSessionLog(file)
   const attempts = new Map()
   const calls = new Map()   // callId -> 该次调用的记录
   const steps = new Map()   // "turn/step" -> { calls: [...], resultBytes }
+  const toolStats = new Map()   // 工具名 -> {calls, resultBytes}
+  const sigCount = new Map()    // 参数哈希 -> 次数（完全相同调用）
+  const targetCount = new Map() // 同一目标 -> 次数
   const stepOf = (turn, step) => {
     const k = `${turn}/${step}`
     if (!steps.has(k)) steps.set(k, { calls: [], resultBytes: 0 })
@@ -106,13 +124,26 @@ function summarize(file) {
       const rec = { name: d.name ?? '?', argBytes: (d.arguments ?? '').length, outBytes: 0 }
       calls.set(d.callId, rec)
       stepOf(d.turn, d.step).calls.push(rec)
+      const t = toolStats.get(rec.name) ?? { calls: 0, resultBytes: 0 }
+      t.calls++
+      toolStats.set(rec.name, t)
+      const s = sigOf(d.arguments ?? '')
+      sigCount.set(s, (sigCount.get(s) ?? 0) + 1)
+      const tk = targetKey(rec.name, d.arguments)
+      if (tk) targetCount.set(tk, (targetCount.get(tk) ?? 0) + 1)
       continue
     }
     if (event.type === 'tool/result') {
       const d = event.data ?? {}
       const n = resultBytes(d.message)
-      const rec = calls.get(d.callId)
-      if (rec) rec.outBytes = n
+      // callId 在 tool/call 上是顶层的；在 tool/result 上落在 message.source.callId（schema 如此）
+      const cid = d.callId ?? d.message?.source?.callId
+      const rec = calls.get(cid)
+      if (rec) {
+        rec.outBytes = n
+        const t = toolStats.get(rec.name)
+        if (t) t.resultBytes += n
+      }
       stepOf(d.turn, d.step).resultBytes += n
       continue
     }
@@ -167,6 +198,24 @@ function summarize(file) {
     })),
     top: [...rows].sort((a, b) => promptOf(b) - promptOf(a)).slice(0, 5)
       .map(r => ({ ...r, prompt: promptOf(r) })),
+    toolTraffic: (() => {
+      const all = [...calls.values()]
+      const total = all.reduce((s, r) => s + r.outBytes, 0)
+      const dup = m => [...m.values()].reduce((s, n) => s + Math.max(0, n - 1), 0)
+      const topTargets = [...targetCount.entries()].filter(([, n]) => n > 1)
+        .sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, n]) => ({ target: k, calls: n }))
+      return {
+        calls: all.length,
+        resultBytes: total,
+        meanResultBytes: all.length ? Math.round(total / all.length) : 0,
+        maxResultBytes: all.length ? Math.max(...all.map(r => r.outBytes)) : 0,
+        byTool: [...toolStats.entries()].map(([name, v]) => ({ name, ...v }))
+          .sort((a, b) => b.resultBytes - a.resultBytes),
+        repeatedCalls: dup(sigCount),      // 参数完全相同的重复次数（多出来的那几次）
+        repeatedTargets: dup(targetCount), // 同一目标被重复访问的次数
+        topTargets,
+      }
+    })(),
   }
 }
 
@@ -252,6 +301,25 @@ console.log('')
 console.log('top 5 steps by prompt size:')
 for (const r of s.top) {
   console.log(`  turn ${r.turn} step ${r.step}: prompt=${fmt(r.prompt)} (uncached ${fmt(r.input)} + cacheRead ${fmt(r.cacheRead)}) out=${fmt(r.output)}  工具=${toolBrief(r)}`)
+}
+if (process.argv.includes('--tools')) {
+  const tr = s.toolTraffic
+  console.log('')
+  console.log('工具流量（返回字节 = 进入上下文的文本量，估算；不是计费值）')
+  console.log(`  调用 ${fmt(tr.calls)} 次，返回累计 ${fmt(tr.resultBytes)} 字符 ≈${fmt(Math.round(tr.resultBytes / 3.4))} tok`
+    + `（平均 ${fmt(tr.meanResultBytes)} / 条，最大 ${Math.round(tr.maxResultBytes / 1024)} KB）`)
+  console.log(`  重复：参数完全相同的调用多出 ${fmt(tr.repeatedCalls)} 次；同一目标被重复访问 ${fmt(tr.repeatedTargets)} 次`)
+  console.log('  按返回量排的前几位工具：')
+  for (const t of tr.byTool.slice(0, 6)) {
+    console.log(`    ${t.name.padEnd(16)} 调用 ${String(t.calls).padStart(5)}  返回 ${fmt(t.resultBytes).padStart(10)} 字符`
+      + `  均 ${fmt(Math.round(t.resultBytes / Math.max(t.calls, 1))).padStart(7)}`)
+  }
+  if (tr.topTargets.length) {
+    console.log('  被重复访问最多的目标：')
+    for (const x of tr.topTargets) console.log(`    ${String(x.calls).padStart(4)} × ${x.target.slice(0, 96)}`)
+  }
+  console.log('  读法：单条特别大的返回少见（实测最大的 5 个会话里单条上限 27–48 KB，没有 ≥50 KB 的），'
+    + '花费来自**次数 × 每次累计**；所以要省，先看调用次数与重复目标，不要只盯最大的那一条。')
 }
 if (process.argv.includes('--steps')) {
   console.log('')
