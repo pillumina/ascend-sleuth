@@ -1,0 +1,79 @@
+# ============================================================
+# Idea 卡（proposals/ideas/EV-YYYY-NNN.yaml）
+# 完整 schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）。
+# 校验：python3 scripts/verify_proposals.py --check
+# 脱敏纪律：只含聚合值与证据引用，不含客户现场原文（同 eval fixture）。
+# ============================================================
+
+id: EV-2026-133
+layer: L2
+target_component: references/software-facts/atc-kernel-cache-stale-hit.yaml
+title: 归纳「编译/算子缓存残留致失败」族（MSLLM-1526/1550 + COMMON-ATC-KERNEL-CACHE-STUB）-> 新增 ATC kernel 编译缓存 software-fact 词条
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-18
+source_signals:
+  - signal: T1 同族归纳
+    evidence: "同族 3 条：MSLLM-1526（helpers_cpp 编译缓存未清理致数据集构建失败）、MSLLM-1550（算子缓存/编译目录残留为排查方向）、COMMON-ATC-KERNEL-CACHE-STUB（ATC kernel 缓存脏命中致自定义算子 kernel 未执行→CPU stub abort）。共性：旧编译产物/缓存残留命中→启动或执行失败，动作=清缓存强制重新编译，与报错面无关。"
+    trajectory:
+      - "traces/2026-09-17-sfps-all2allshmswap-cpu-stub.yaml（本次诊断+闭环，feedback.outcome=resolved）"
+      - "postmortems/inbox/COMMON-ATC-KERNEL-CACHE-STUB.case.yaml"
+      - "knowledge/training/mindspeed-llm/interrupt/MSLLM-1526.yaml"
+      - "knowledge/training/mindspeed-llm/interrupt/MSLLM-1550.yaml"
+hypothesis: 新增 ACTIVE software-fact 词条（ATC kernel 编译缓存脏命中行为：kernel 不执行→CPU stub/误导性报错文案、清理面与验证判据）后，此类问题在诊断的「背景/修复」缺口消费点有先验可读，不再四层全 miss；检索键 kernel_cache / CPU stub / custom opp not installed 有归属。
+predicted_effect:
+  metric: references/ 对 'kernel_cache|atc_data|CPU stub' 签名族的 active 覆盖条数
+  from: 0
+  to: ">=1"
+  measure:
+    command: "python3 -c \"import re;t=open('references/software-facts/atc-kernel-cache-stale-hit.yaml',encoding='utf-8').read();assert re.search(r'kernel_cache|atc_data',t),'no keys';assert 'status: active' in t,'not active';print('active-keys-ok')\""
+    expect_exit: 0
+    expect_stdout: "active-keys-ok"
+validation:
+  method: issue_replay
+  baseline: 当前 references/ 无 ATC kernel 缓存词条（grep kernel_cache 0 条 active）
+  success_criteria: 词条 status=active 且 verify_references --check 通过；measure 命令 expect 达成（ev_measure 三态=符合）；检索键可命中的事实链与现场结论一致（同族对照 MSLLM-1526/1550 无冲突）
+  rollback: 词条未合入（PR 前丢弃）；合入后 git revert（原则七）
+gate:
+  condition: "同族 case >=3（满足：MSLLM-1526/1550 + 本轮 COMMON-ATC-KERNEL-CACHE-STUB）且词条内容可跨事故复述（不绑定本次个案）"
+risk: low
+principle_refs: [6, 8, 11]
+actual_cost:
+  tokens: 5000
+  source: estimate            # 无 token 记账环境的估算（DSH 环境可经 tokenMeter.measure 查真实值写回）
+decisions:
+  - who: agent（to-postmortem 收尾，evolve-check T1 信号）
+    when: "2026-09-18"
+    type: proposal
+    conclusion: >-
+      本轮沉淀 COMMON-ATC-KERNEL-CACHE-STUB 时盘点发现「编译/算子缓存残留致失败」同族累计 3 条
+      （MSLLM-1526 helpers_cpp 编译缓存、MSLLM-1550 算子缓存残留排查方向、本轮 ATC kernel 缓存脏命中），
+      共性稳定：旧编译产物/缓存残留命中 → 启动或执行失败，动作=清缓存强制重新编译。提议产一条
+      software-fact 词条归纳 ATC kernel 编译缓存行为（失效形态、误导性文案、清理面、验证判据），
+      让此类问题在诊断的缺口消费点有先验可读。
+  - who: agent（执行归纳）
+    when: "2026-09-18"
+    type: action
+    conclusion: >-
+      产出 references/software-facts/atc-kernel-cache-stale-hit.yaml（status: active，来源=engineer-input
+      现场确认 + 2 条 case-derived），并重建 references/_summary-index.yaml（133 条背景类词条）。
+      同步：trace 2026-09-17-sfps-all2allshmswap-cpu-stub 的 reference 沉淀候选 proposed → drafted。
+  - who: agent（验证）
+    when: "2026-09-18"
+    type: eval
+    conclusion: >-
+      verify_references --check 通过（235 词条，id 全部唯一，来源子字段与 verification 枚举合规）；
+      measure 实测 PASS（词条含 kernel_cache|atc_data 键且 status=active）；summary 索引重建后 --check 新鲜；
+      verify_proposals --check 通过（129 张卡）。首跑 measure 曾 FAIL——原因是卡命令含两个 python3 调用、
+      Windows 上本地化只替换首个 token（exit 9009 环境问题），已改为单次 python3 -c 断言后通过，
+      非预测证伪。
+  - who: agent（生命周期闭合）
+    when: "2026-09-18"
+    type: decision
+    conclusion: >-
+      采纳。同族 3 条与词条事实链一致（清缓存重编译的恢复形态跨报错面成立），校验全通过，无理由不采纳。
+      卡状态推进为 validated（agent 决策）；成本约 5000 token（估算，source: estimate）。词条随攒批
+      PR 提交——按 to-reference 闸门，PR review 合入后才进入诊断上下文。
