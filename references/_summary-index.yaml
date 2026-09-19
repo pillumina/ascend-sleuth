@@ -3,7 +3,7 @@
 # 只含背景类 + status=active；查表类走步骤 2 收尾的键触发 grep（口径同 diagnose SKILL）。
 # 读法：grep 取行 + ≤5 行上限——索引随词条数增长，整读等于注入全库背景。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-18    词条数：133
+# 生成日期：2026-09-18    词条数：134
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact
@@ -477,6 +477,16 @@ entries:
     - cross
     categories:
     - performance
+- id: atc-kernel-cache-stale-hit
+  type: software-fact
+  title: ATC kernel 编译缓存（/root/atc_data/kernel_cache/）脏/失效命中：自定义算子 kernel 不执行，可表现为 CPU stub 与误导性报错文案
+  summary: ATC 静态 kernel 编译产物缓存位于 /root/atc_data/kernel_cache/（每执行节点本地目录）。缓存命中旧或不完整的编译产物时，自定义算子的 kernel
+    可能不执行——图编译照常完成（该节点落 CPU 侧/mixed 模式），运行期框架回退执行 CPU stub 并主动 abort（TF…
+  applies_to:
+    platforms:
+    - A2-910B
+    categories:
+    - interrupt
 - id: atc-precision-mode-and-switches
   type: software-fact
   title: ATC 精度模式与两个默认开启的优化开关（默认 fp16 / allow_fp32_to_fp16 / keep_dtype 例外清单 / 数据缓存优化 / 融合规则）

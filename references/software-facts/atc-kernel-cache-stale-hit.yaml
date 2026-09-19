@@ -1,0 +1,36 @@
+id: atc-kernel-cache-stale-hit
+type: software-fact
+title: ATC kernel 编译缓存（/root/atc_data/kernel_cache/）脏/失效命中：自定义算子 kernel 不执行，可表现为 CPU stub 与误导性报错文案
+summary: "ATC 静态 kernel 编译产物缓存位于 /root/atc_data/kernel_cache/（每执行节点本地目录）。缓存命中旧或不完整的编译产物时，自定义算子的 kernel 可能不执行——图编译照常完成（该节点落 CPU 侧/mixed 模式），运行期框架回退执行 CPU stub 并主动 abort（TF 侧典型报错 'custom opp not installed or op not in NPU graph'，文案误导：opp 在位也触发）。恢复动作=逐节点清理该目录强制重新编译；验证判据=重跑后日志出现 LaunchKernelWithHandle + kernel_name。同族：数据集 helpers_cpp 编译缓存残留（MSLLM-1526）、算子缓存/编译目录残留排查方向（MSLLM-1550）。"
+
+sources:
+  - type: engineer-input
+    engineer: "客户现场工程师（转达华为侧结论）"
+    input_session: "2026-09-17-sfps-all2allshmswap-cpu-stub"
+    confirmed_at: '2026-09-18'
+    verification: cross-checked-source
+  - type: case-derived
+    cases: [COMMON-ATC-KERNEL-CACHE-STUB]
+    extracted_at: '2026-09-18'
+    extraction_method: to-reference
+  - type: case-derived
+    cases: [MSLLM-1526, MSLLM-1550]
+    extracted_at: '2026-09-18'
+    extraction_method: to-reference --ingest-cases
+
+applies_to:
+  platforms: [A2-910B]
+  categories: [interrupt]
+
+related_references: [install-config-env]
+
+status: active
+last_verified: 2026-09-18
+
+content:
+  claim: "ATC 静态 kernel 编译产物缓存位于 `/root/atc_data/kernel_cache/`（每执行节点本地目录，非共享）。失效形态：缓存命中旧/不完整的编译产物时（版本、shape、环境或自定义算子更新后缓存未失效），自定义算子的 kernel 不执行——GE 图编译仍可完成（该节点落 CPU 侧，图编译为 mixed 模式），运行期框架回退执行该算子的 CPU stub 并主动 abort。TF 侧典型报错 `custom opp not installed or op not in NPU graph` 是误导性文案：opp 包在位时同样触发，真因在 kernel 编译缓存而不在 opp 部署。恢复动作=逐节点 `rm -rf /root/atc_data/kernel_cache/` 强制重新编译 kernel；验证判据=重跑后日志出现 `LaunchKernelWithHandle: kernel_name=te_<op>_…`（kernel 真实下发）。同一族：数据集 helpers_cpp 编译缓存未清理致启动失败（MSLLM-1526）、算子编译缓存/目录残留的排查方向（MSLLM-1550）——共同处理形态是「清旧编译产物、强制重新编译」，与报错面（数据集构建 vs 算子执行）无关。"
+  evidence: "客户现场回报（华为侧，2026-09-18）：运行走缓存致 kernel 函数未执行；`rm -rf /root/atc_data/kernel_cache/` 后重跑恢复，客户确认解决（trace 2026-09-17-sfps-all2allshmswap-cpu-stub，feedback.outcome=resolved）。对照 run（同环境、opp 在位：run.log 见 Plugin load libcust_tf_parsers.so success 与 InitCustomOpStore 路径 vendors/customize）：`LaunchKernelWithHandle: kernel_name=te_all2allshmswap_…` 正常下发、训练完成——判别维度是 kernel 编译缓存状态而非 opp 包（证据文件 run_log_key_lines.txt、ge_graph_build_node_evidence.txt）。同族：MSLLM-1526（helpers_cpp 旧编译缓存未删致数据集构建失败）、MSLLM-1550（算子缓存/编译目录残留为排查方向）。"
+  pitfalls:
+    - "'custom opp not installed' 文案不指向 opp 缺失——先试清 ATC kernel 编译缓存，别把排查花在 opp 部署/ASCEND_CUSTOM_OPP_PATH 上"
+    - "清缓存是每节点本地动作（/root/atc_data/kernel_cache/），分布式任务要逐台清理，漏台等于没清"
+    - "清缓存只强制重新编译，不丢训练状态，可安全重试；重跑首轮有重新编译耗时"
