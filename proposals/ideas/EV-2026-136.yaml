@@ -1,0 +1,50 @@
+id: EV-2026-136
+layer: L2
+status: in_experiment
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: '2026-09-21'
+risk: low
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 同一批 5 张卡的编辑合并在一轮会话内完成，未单独计量；按既有卡口径以 0 计（真值由 tokenMeter 读数回写）
+title: 数据探询锚在缺口上：候选加载后再问，问句带具体要确认的字段
+target_component: skills/diagnose/references/collect-gates.yaml
+source_signals:
+- signal: process_friction
+  evidence: 精度 / 性能单在候选加载之前就问「你已经有 dump 数据 / 分析结果了吗？」，工程师此刻不知道这次要 dump 什么，只能猜着答；答错了还得第二轮。闸门表本身（问句 / 分支 / 词条绑定）没有问题，问题在触发时点。
+  trajectory:
+  - skills/diagnose/references/collect-gates.yaml（gates[].trigger）
+  - skills/diagnose/SKILL.md（数据资产探询节的时点列）
+  - skills/diagnose/references/diagnosis-procedure.md（步骤 1 探询段）
+hypothesis: 把探询挪到候选加载之后、问句带上具体缺口，工程师的回答变成可用的（有 / 没有某个具体产物），而不是先猜类别再猜产物。
+predicted_effect:
+  metric: 探询时点与问句锚点在执行路径上的落点（行为规则，判别力不可机械度量）
+  from: trigger 写「下一步需要测量数据」；步骤 1 就问；问句无锚点
+  to: trigger 写「候选加载后、发现某个具体测量值才能验证或继续」；问句带要确认的字段或产物名
+  measure:
+    command: grep -q '候选加载后' skills/diagnose/references/collect-gates.yaml && grep -q '探询锚点' skills/diagnose/references/diagnosis-procedure.md
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 改前：探询时点标注在步骤 1（候选加载前）
+  success_criteria: '① 闸门表 schema 不变（kind / question / branches / refs 仍由 verify_references.py 校验）；
+
+    ② 两个 probe 闸门的 trigger 写明候选加载后触发；
+
+    ③ interrupt 的 conditional 闸门不受影响（它本来就不预先问）；
+
+    ④ 三态记录要求保留（skipped 必写理由），不因挪时点丢观测'
+  rollback: 恢复 trigger 原文即回到改前
+gate:
+  condition: 探询发生在工程师无从判断的时刻，属可验证的流程摩擦；改动只动时点与问句，不动 schema
+principle_refs:
+- 9
+decisions:
+- who: agent
+  when: '2026-09-21'
+  type: proposal
+  conclusion: 产卡：数据探询锚在缺口上

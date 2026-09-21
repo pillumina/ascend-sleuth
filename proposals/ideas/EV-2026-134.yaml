@@ -1,0 +1,50 @@
+id: EV-2026-134
+layer: L2
+status: in_experiment
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: '2026-09-21'
+risk: low
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 同一批 5 张卡的编辑合并在一轮会话内完成，未单独计量；按既有卡口径以 0 计（真值由 tokenMeter 读数回写）
+title: 诊断开屏做一次流程选择（快速定位 / 完整闭环 / 紧急稳定），后续步骤不再逐段追问
+target_component: skills/diagnose/SKILL.md
+source_signals:
+- signal: process_friction
+  evidence: 一单问题里工程师要停下 4 次回答（收集症状时问环境与版本、数据探询问有没有 dump、验证候选时问精确配置值、给完 fix 再问结果），每次都在他看不到全貌时被问；而「只问思路的咨询」与「生产中断先 stabilize」两条路径现在只有 agent 临时判断，工程师没有选择权。
+  trajectory:
+  - skills/diagnose/SKILL.md（步骤 1 收集、数据资产探询节、步骤 4 验证、步骤 6 反馈）
+  - skills/diagnose/references/diagnosis-procedure.md（步骤 1 / 步骤 6）
+hypothesis: 开屏一次问清这次要走到多深，把「要不要继续深挖」「要不要沉淀」「要不要追反馈」在入场时一次定完，后续步骤不再逐段要求工程师表态。
+predicted_effect:
+  metric: 流程选择章节是否进入诊断执行路径（行为规则，判别力不可机械度量）
+  from: 无流程选择；深挖、沉淀、追反馈三处各自临时决定或默认走完
+  to: 开屏一次三选一并写进 trace；后续按所选路径执行，不再逐段追问
+  measure:
+    command: grep -q '## 流程选择（开屏一次，决定这次走到多深）' skills/diagnose/SKILL.md && grep -q '快路' skills/diagnose/SKILL.md && grep -q '全路' skills/diagnose/SKILL.md
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 改前：无流程选择章节，三条路径靠 agent 当场判断
+  success_criteria: '① 开屏给三个口子（快路 / 全路 / 紧急），并写清各自在深度排查与步骤 6 上走到哪一步；
+
+    ② 咨询口径不变（不建 session、不写 trace），紧急口径仍指向既有「紧急情况」一节；
+
+    ③ 三个词在 SKILL.md 与 diagnosis-procedure.md 用同一套，工程师看得懂；
+
+    ④ 不新增 trace 词表取值'
+  rollback: 删该节与步骤 1 / 6 的引用行即回到改前
+gate:
+  condition: 同一轮审视里确认 4 处停顿（实测走查 SKILL.md 步骤 1、数据探询节、步骤 4、步骤 6），改动可逆、成本为两处措辞
+principle_refs:
+- 5
+- 9
+decisions:
+- who: agent
+  when: '2026-09-21'
+  type: proposal
+  conclusion: 产卡：诊断开屏做一次流程选择

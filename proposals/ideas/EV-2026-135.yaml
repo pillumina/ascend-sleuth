@@ -1,0 +1,49 @@
+id: EV-2026-135
+layer: L2
+status: in_experiment
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: '2026-09-21'
+risk: low
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 同一批 5 张卡的编辑合并在一轮会话内完成，未单独计量；按既有卡口径以 0 计（真值由 tokenMeter 读数回写）
+title: 收集症状改成先从已提供材料提取，只问提取不到的那几项
+target_component: skills/diagnose/references/diagnosis-procedure.md
+source_signals:
+- signal: process_friction
+  evidence: 步骤 1 把环境变量值与版本组合写成「必收（都从客户那要来）」，但工程师贴的日志里栈尾有框架版本、启动横幅有 CANN / HDK、plog 有架构——一半必收项本来就在手上，再问一遍是让工程师重复劳动，也多一次往返。
+  trajectory:
+  - skills/diagnose/references/diagnosis-procedure.md（步骤 1 必收块）
+  - skills/diagnose/SKILL.md（步骤 1 一行摘要）
+hypothesis: 把提取放在提问之前，首轮往返从两次降到一次，且提取出的值进 trace 的 summary，跨机接手的人不必再问一遍。
+predicted_effect:
+  metric: 执行路径是否写明「先提取、只问缺口」（行为规则，判别力不可机械度量）
+  from: 必收清单把环境变量值与版本组合写成要向客户索取的项
+  to: 先从已提供的日志 / 配置 / 命令输出里提，只问提取不到的，并列出提取结果让人核对一次
+  measure:
+    command: grep -q '先提取，再问缺口' skills/diagnose/references/diagnosis-procedure.md && grep -q '一次问全' skills/diagnose/references/diagnosis-procedure.md
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 改前：必收块要求向客户索取环境变量值与版本组合
+  success_criteria: '① 必收块改成「先提取、再问缺口」，并写明具体从哪里提（栈尾 / 启动横幅 / 配置 / plog）；
+
+    ② 保留原有边界：不跑 pip list（那是本地环境）、不访问客户环境、日志裁剪纪律不变；
+
+    ③ 提取到的值让人核对一次，不等默认正确；
+
+    ④ 步骤 1 摘要与 SKILL.md 步骤 1 一行同步，不自相矛盾'
+  rollback: 恢复必收块原文即回到改前
+gate:
+  condition: 必收清单与环境变量的真实来源不符（栈尾与启动横幅即可得），属可验证的流程摩擦
+principle_refs:
+- 9
+decisions:
+- who: agent
+  when: '2026-09-21'
+  type: proposal
+  conclusion: 产卡：收集症状先提取后提问
