@@ -7,8 +7,12 @@
 > 你不访问任何环境。所有信息（日志、版本、报错、环境变量值）由工程师从客户那提供。信息不够时，明确提示需要向客户要什么。case 里的 `command` 是“要确认的检查”——对照已提供信息判断，或让客户跑后贴回，不是你执行 pip/env/grep。
 
 ```
-必收（都从客户那要来）：错误信息、HCCL_*/ASCEND_*/NPU_* 环境变量的值、版本组合
-  （引擎版本 + CANN 版本 + HDK/驱动版本 + 架构 A2/A3/A5）
+必收项（错误信息、HCCL_*/ASCEND_*/NPU_* 环境变量的值、版本组合：引擎版本 + CANN 版本
+  + HDK/驱动版本 + 架构 A2/A3/A5）——**先提取，再问缺口**，顺序不能反：
+  1) 先在他已经贴进来的日志 / 报错 / 配置 / 命令输出里找：栈尾常带框架版本，启动横幅带
+     CANN 与 HDK 版本，plog 与 npu-smi 输出带架构，启动脚本带环境变量——**别整份索要**
+  2) 只问提取不到的那几项，一次问全（别挤牙膏式一轮一项）
+  3) 把提取到的值列给他核对一次（日志里的版本可能被容器覆盖，提出来不等于事实）
 框架：从提供的信息/报错判断（日志里 mindspeed/vllm 字样等）；判断不了就问工程师
   “客户跑的什么框架”——不要跑 pip list（那是你本地环境，跟客户无关）
 ```
@@ -18,12 +22,7 @@
 - 只贴报错**栈尾**（最后 N 行，含第一个 ERROR）
 - profiler 数据先过 `ascend-profile-analyze` 出 `report.md`，只读报告不读原始数据
 
-**数据资产探询（「数据缺口」消费点——精度 / 性能类必做，见 SKILL「数据资产探询」节）**：症状收齐、确定下一步需要**测量数据**后，按本 skill 的 `references/collect-gates.yaml`（与本文同级，**不是仓库根 references/**）执行闸门——问句、分支动作、词条绑定都在表里（id 受 CI 校验），本文不重复：
-
-- `kind: probe`（precision / performance）→ 先问一句，按回答走「已有 → 分析路径」「没有 → 采集指引」；
-- `kind: conditional`（interrupt）→ 不预先问，缺口出现（现有日志不足以定位）才给采集指引。
-
-三条纪律（只问一次 / 区分改谁 / 命令以客户环境为准 + 先排除采集副作用）见 SKILL 同名节，不在此重复。**采集面被消费时记 trace**：`{action: reference_lookup, ref_id, purpose: collect, outcome: hit|miss}`——采集面此前无 purpose 可记，等于零观测。精度 / 性能单无论如何留一条：给了采集指引记 `hit`，探询后对方已有数据（不需要采集面）记 `miss`。interrupt 单不记（本触发点不在该路径上）。
+**数据资产探询不在这里**——时点在**步骤 3 候选加载之后**（缺哪个具体值要看过候选才知道）。本步只把"他手上可能有什么测量产物"记一笔到 user 事件。
 
 ## 步骤 2：分类 → triage-tree
 
@@ -37,6 +36,7 @@
 路由规则：
 - 框架检测到 → `search_namespaces` 先 `training|inference/<framework>/`，再 `common/`
 - 框架未检测到 → 只 `common/`
+- **冲突时先单选，不要求工程师表态**：日志签名与症状性质指向不同 category 时（详见 SKILL「始终要避的坑」），**自动单选**并在一句话里说清两条线——先走症状那条，日志那条写明它需要什么信息才走得通；给一句覆盖点让他能改向。**不要把"你觉得这是哪类问题"抛回去**：那是要他做他做不了的判断。两条线的按需参考入口各走各的（精度 / 性能走数据探询闸门，中断走条件型闸门），不因为先走一条就跳过另一条的记录。
 - **优雅退化**：多个分支弱匹配 / 置信度低 → 加载**所有 namespace 的索引**让 quickly_check 筛（索引便宜，退化最坏 ~20K token 仍可控）。这救冷启动——triage-tree 第一周是猜的。
 - 无法分类 → 直接 Tier 3 关键词检索
 
@@ -91,9 +91,18 @@ trace 记：`{step: 2, action: reference_lookup, purpose: signature, outcome: hi
 - **只读 `status: active`**——draft / pending-review / deprecated 一律不加载（未验证知识不进上下文——这是"agent 不引用错误先验"的机制化，不是自觉）；
 - **trace 三态必记**：`{action: reference_lookup, purpose: background|fix, outcome: hit|miss|skipped, ref_id, platform, output, reason}`——`hit` 读到并用了、`miss` 查了没有相关词条、`skipped` 没查（**写明为什么**，例："候选全未命中，本触发点不适用"）。没走到这一步（无候选命中）就记一条 `skipped`，别假装查过。
 
+**数据资产探询（「数据缺口」消费点——时点：候选加载后）**：候选读完、**发现某个具体测量值（或产物）不在手上、而它决定下一步能不能走**时，按本 skill 的 `references/collect-gates.yaml`（与本文同级，**不是仓库根 references/**）执行闸门——问句、分支动作、词条绑定都在表里（id 受 CI 校验），本文不重复：
+
+- `kind: probe`（precision / performance）→ 先问一句，按回答走「已有 → 分析路径」「没有 → 采集指引」；
+- `kind: conditional`（interrupt）→ 不预先问，缺口出现（现有日志不足以定位）才给采集指引。
+
+**探询锚点**：问句要落到这个具体缺口上（「这条 case 要确认 X，你手上有 dump 吗？」），不是开放式的「你有没有数据」——后者逼工程师先猜类别再猜产物，答错了还得第二轮。**边界（别混淆）**：锚点是"这次缺的这个值叫什么"，**不是把问句形态改成体检式的清单**；闸门表里 `question` 的措辞照旧，只是补上这次要确认的字段名或产物名。
+
+三条纪律（只问一次 / 区分改谁 / 命令以客户环境为准 + 先排除采集副作用）见 SKILL 同名节，不在此重复。**采集面被消费时记 trace**：`{action: reference_lookup, ref_id, purpose: collect, outcome: hit|miss}`——采集面此前无 purpose 可记，等于零观测。精度 / 性能单无论如何留一条：给了采集指引记 `hit`，探询后对方已有数据（不需要采集面）记 `miss`。interrupt 单不记（本触发点不在该路径上）。
+
 trace 记：
 ```yaml
-- {step: 1, action: reference_lookup, ref_id: msprobe-data-dump, purpose: collect, outcome: hit}
+- {step: 3, action: reference_lookup, ref_id: msprobe-data-dump, purpose: collect, outcome: hit}
 - {step: 2, action: reference_lookup, purpose: signature, outcome: hit, ref_id: runtime-resource-fault-patterns, platform: A3-910C}
 - {step: 2, action: reference_lookup, purpose: signature, outcome: skipped, ref_id: null, reason: "报错是框架自定义断言文本，无错误码 / event_id / env 名可作检索键"}
 - {step: 2, action: load_index, namespaces: [...], n_cases: 34}
@@ -183,8 +192,12 @@ trace 记 `{action: tier3, keyword: <kw>, files_read: [...]}`——Tier 3 挽救
 - **写 `sediment_candidates`**（顶层字段，与报告第 8 节同源）：把"这单能沉淀什么"结构化——报告给人读，trace 给机器与 resume 读；trace 记一条 `{action: report, report_file, sediment_candidates: N}` 事件。
 - **Tier-2 命中**：常规 postmortem 草稿
 - **Tier-2 未命中但最终解决**：postmortem 含一段 agent 起草的候选 case（标 `confidence.score` 初始低值），交 groom 验证。人的角色从“结构化”上移到“验证草案”。
-- **结果反馈闭环（闭合学习环，关键）**：给完 fix 后，**等工程师应用并回来报告结果**——问“应用后解决了吗？（解决 / 没解决 / 部分解决）”。解决 → 该 case `hits += 1`；没解决 → `misdiagnoses += 1`、更新 `last_hit`。不问这步，confidence 永远是初始值、学习机制空转。
-- **反馈捕获结构化**：给完 fix、session 收尾前往 state 文件写 `feedback: {case, outcome: pending}`（口径见 `diagnosis_state.yaml.example` 与 `trace-status.yaml`；**不再写 `feedback_pending`**，那是面板口头沿用的旧说法，脚本读不到）。`case` 按是否命中填两种之一：命中 → **真实 case id**（回报后能回写它的 confidence）；未命中但给了建议 → 占位串 `pending-investigation`，它表示"**没有 case 可回写 confidence**"，不是 case id——后续追问这类单时问的是"上次要求的材料拿到了吗"，不是"那个 case 的 fix 生效了吗"。**这笔 pending 谁在什么时候追**（债挂在待办面上，不挂在新诊断的开屏上）：`/skill:resume-diagnosis` 启动先清——它续的正是那一单，问得其所；`/diagnose` **不在开屏追问别的单**，新问题的第一屏只服务新问题；只有手上这笔与本次问题**同源**（同一个 case、或同一现场接着查）时，才在本次结论之后顺带一问。其余的由面板待办面承载（谁欠、哪一单、欠多久），人去清。追问时回写 confidence、trace 记 `{action: feedback, case, outcome: resolved|not_resolved|partial}`、清 pending。反馈捕获是学习环的吞吐上限，靠文件标记而非记性。
+- **结果反馈：挂账 + 回报指令，不在这里当场追问**：给完 fix 那一刻，工程师还没应用、也没跑验证命令，此时问"解决了吗"只会得到一句"还没试"——这一问把债的产生点当成清偿点。正确顺序是：
+  1. **立刻写**：`feedback: {case: <真实 case id 或占位串 pending-investigation>, outcome: pending}` + `feedback_pending_since: <当天日期>`（顶层字段，口径见 `diagnosis_state.yaml.example` 与 `trace-status.yaml`；**不再写 `feedback_pending`**，那是面板口头沿用的旧说法，脚本读不到）。写账龄是为了让这笔债可排序、可催——没有它，"挂了两周的反馈"与"昨天刚挂的"在面板上一样。
+  2. **对话里给一条可复制的回报指令**，三选一、话术照抄可用：「应用后解决了吗？回我一句就行——`解决` / `没解决` / `部分解决`」。
+  3. **有人回来回报时才回写**：解决 → 该 case `hits += 1`；没解决 → `misdiagnoses += 1`；两者都更新 `last_hit`，trace 记 `{action: feedback, case, outcome: resolved|not_resolved|partial}`，清 `pending`。not_resolved / partial 自动进入误诊归因（见文末）。
+- **这笔债谁追**：`/skill:resume-diagnosis` 续那一单时问得其所；`/diagnose` **不在新诊断的开屏逐单念**（新问题的第一屏只服务新问题，积压时那是审讯）；面板待办面承载其余（谁欠、哪一单、欠多久），人去清。
+- **`case` 按是否命中填两种之一**：命中 → **真实 case id**（回报后能回写它的 confidence）；未命中但给了建议 → 占位串 `pending-investigation`，表示"**没有 case 可回写 confidence**"——后续追问这类单时问的是"上次要求的材料拿到了吗"，不是"那个 case 的 fix 生效了吗"。反馈捕获是学习环的吞吐上限，靠文件标记而非记性。
 - **沉淀已含在本步骤**：命中=常规 postmortem、未命中=含候选 case 的 postmortem，已生成。只有非 /diagnose 定位的（Kimi/手工、或没配 session-end hook 导致没生成）才需 `/skill:to-postmortem` 手动沉淀。
 
 ## 误诊归因（每次误诊必做）

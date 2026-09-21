@@ -1,11 +1,17 @@
 # 采集闸门表（diagnose 的「数据缺口」消费点）——结构化绑定，不写散文
 #
 # 为什么存在：reference 的检索层定位是「候选命中后的辅助查询」（不参与候选路由/排序，
-# 这一不变量不变）。但 tool 类里有一组内容服务的是**数据缺口**——把数据拿回来本身，
-# 它的消费时机在 Tier2 候选加载**之前**。这段绑定过去只写在 SKILL.md 散文里（硬编码
+# 这一不变量不变）。但 tool 类里有一组内容服务的是**数据缺口**——把数据拿回来本身。
+# 这段绑定过去只写在 SKILL.md 散文里（硬编码
 # ref-id 字符串），已发生静默腐化：`profiling-performance-fault-patterns` 全库不存在
 # （真 id `msprof-tool-fault-patterns`）。现在绑定落成数据，由 verify_references.py
 # 校验（id 必须存在于 references/ 且 status: active），腐化从静默变为 CI 红。
+#
+# **时点：候选加载后**（原设计写"Tier2 候选加载之前"，改动的理由记在这里，不让它变成
+# 无从追溯的口径）：候选加载前问「你有数据吗」，问句只能停在类别层面（"你有 dump 吗"），
+# 而工程师此刻还不知道这次要 dump 什么，他答的是猜的类别；加载后缺口已经具体到某个值的
+# 名字（"这条 case 要确认 optimizer 的 exp_avg 是否溢出，你手上有 dump 吗"），他答的是事实。
+# 路由与候选筛选本身不依赖测量数据（候选按症状与签名匹配），所以把探询放到加载后不丢信息。
 #
 # 分工：**形态归 SKILL，内容归 reference**——本表只决定「问什么、按什么分支、取哪些词条」；
 # 探询只问一次、只问一句，采集面只在 no_data / gap 分支展开（原则九），
@@ -18,7 +24,7 @@
 # 且 probe 必带 question、conditional 必不带；**branches[].refs 与 caveat_refs 的每个 id
 # 都必须存在且 status: active**（不只是被引用，还要被绑定，见下面那条覆盖环）。
 #
-# kind 两种：
+# kind 两种（两种都发生在候选加载后：探询的问题要带这次缺的具体值）：
 #   probe       探询型——先问一句，按对方回答分支（精度/性能：有数据就不讲采集）
 #   conditional 条件型——不预先问；仅当缺口出现（现有材料不足以定位）才给采集指引
 #
@@ -34,7 +40,7 @@ gates:
   - id: precision-data
     category: precision
     kind: probe
-    trigger: 下一步需要测量数据（数值比对 / 溢出检测 / 精度预检）
+    trigger: 候选加载后、某个具体测量值不在手上（数值比对 / 溢出检测 / 精度预检）而它决定下一步能不能走
     question: "你已经有 dump 数据 / 分析结果了吗？还是要我给到代码级接入步骤？"
     branches:
       - when: has_data
@@ -84,7 +90,7 @@ gates:
   - id: performance-data
     category: performance
     kind: probe
-    trigger: 下一步需要测量数据（指标阈值 / 时间线 / 通信占比）
+    trigger: 候选加载后、某个具体测量数据不在手上（指标阈值 / 时间线 / 通信占比）而它决定下一步能不能走
     question: "你已经有 profiling 数据了吗（采集产物）？还是要我给采集指引？"
     branches:
       - when: has_data

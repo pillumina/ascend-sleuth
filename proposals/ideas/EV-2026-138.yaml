@@ -1,0 +1,50 @@
+id: EV-2026-138
+layer: L2
+status: in_experiment
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: '2026-09-21'
+risk: low
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 同一批 5 张卡的编辑合并在一轮会话内完成，未单独计量；按既有卡口径以 0 计（真值由 tokenMeter 读数回写）
+title: 类别冲突不要求用户二选一：按症状定类别、自动单选，日志线作备选并标覆盖点
+target_component: skills/diagnose/SKILL.md
+source_signals:
+- signal: process_friction
+  evidence: 「类别冲突不得二选一」现在只写了「不得二选一、各自走各自的消费点」，执行形态落成了两条线都走或 agent 自己挑一条——用户被要求回答「你觉得这是哪类问题」，而那正是他答不了的判断。
+  trajectory:
+  - skills/diagnose/SKILL.md（始终要避的坑：类别冲突不得二选一）
+  - skills/diagnose/references/diagnosis-procedure.md（步骤 2 路由规则）
+hypothesis: 把冲突处理写成「按症状自动单选 + 标明另一条线 + 给覆盖点」，既不替用户决定根因，也不把分类判断推给用户。
+predicted_effect:
+  metric: 冲突处理在避坑清单里的形态（行为规则，判别力不可机械度量）
+  from: 写「不得二选一」，未写自动单选与覆盖点
+  to: 写明按症状性质定 category、自动单选、日志线写清作为备选（换向需要什么）、并给一句覆盖点让工程师可改向
+  measure:
+    command: grep -q '症状的性质定' skills/diagnose/SKILL.md && grep -q '若你更关心' skills/diagnose/SKILL.md && grep -q '候选加载后' skills/diagnose/references/collect-gates.yaml
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 改前：只写不得二选一，单选规则与覆盖点缺位
+  success_criteria: '① 与既有一致：category 由症状性质定、不由日志签名定，这条不弱化；
+
+    ② 单选后两条线的信息需求各写一句（改向时不必重新问一轮）；
+
+    ③ 覆盖点是推进式的（默认按 A 线走，你改向我就切），不是「要不要继续」的确认题；
+
+    ④ 步骤 2 路由规则处同步一句，避免两处口径漂移'
+  rollback: 恢复避坑清单该条原文、删除步骤 2 那句即回到改前
+gate:
+  condition: 冲突处理在真实 session 里落成两条线都走或替用户选，属可验证的流程摩擦
+principle_refs:
+- 5
+- 10
+decisions:
+- who: agent
+  when: '2026-09-21'
+  type: proposal
+  conclusion: 产卡：类别冲突改为自动单选 + 覆盖点

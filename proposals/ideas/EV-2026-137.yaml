@@ -1,0 +1,51 @@
+id: EV-2026-137
+layer: L2
+status: in_experiment
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: '2026-09-21'
+risk: low
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 同一批 5 张卡的编辑合并在一轮会话内完成，未单独计量；按既有卡口径以 0 计（真值由 tokenMeter 读数回写）
+title: 反馈闭环从「当场追问」改成「挂账 + 一句回报指令」
+target_component: skills/diagnose/references/diagnosis-procedure.md
+source_signals:
+- signal: process_friction
+  evidence: 步骤 6 现在写「给完 fix 后等工程师应用并回来报告结果——问『应用后解决了吗？』」，但 fix 刚给出去、工程师还没应用，这一问注定得到空答案；而模板里的 feedback_pending_since 在既有 trace 里几乎不写，债没有账龄、没有归还路径。
+  trajectory:
+  - skills/diagnose/references/diagnosis-procedure.md（步骤 6 结果反馈闭环段）
+  - skills/resume-diagnosis/SKILL.md（流程：先清反馈债）
+  - diagnosis_state.yaml.example（feedback_pending_since 字段）
+hypothesis: 把「问一句」换成「挂一笔债 + 给一条可复制的回报指令」，债由续接与面板追，反馈捕获的吞吐不再依赖工程师记住回来。
+predicted_effect:
+  metric: 执行路径是否禁止当场追问结果、要求挂账并给回报指令（行为规则，判别力不可机械度量）
+  from: 给完 fix 后当场追问结果；pending 与账龄字段可写可不写
+  to: 给完 fix 即写 feedback（含 pending-investigation 或真实 case id + 账龄），对话里给一条可复制的三选一回报指令，不在当场追问
+  measure:
+    command: grep -q '不在这里当场追问' skills/diagnose/references/diagnosis-procedure.md && grep -q '回报指令' skills/diagnose/references/diagnosis-procedure.md && grep -q '不在新诊断的开屏逐单念' skills/resume-diagnosis/SKILL.md
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 改前：当场追问 fix 结果；无回报指令；续接只处理被续那一单
+  success_criteria: '① 写 pending 的时机改到给出结论之后立即写，并写 feedback_pending_since；
+
+    ② 对话里给可复制回报指令（解决 / 没解决 / 部分解决），文案不含内部词表；
+
+    ③ 续接清债的分工不变，且不扩到「所有历史 pending」——否则新诊断开屏变审讯；
+
+    ④ 不新增 trace 词表取值（仍用 feedback 事件与 confirmation 字段）'
+  rollback: 恢复步骤 6 反馈段原文、删除续接对账句即回到改前
+gate:
+  condition: 当场追问在时序上不可能得到答案（fix 尚未应用），且债无归还路径，属复发型流程摩擦
+principle_refs:
+- 5
+- 8
+decisions:
+- who: agent
+  when: '2026-09-21'
+  type: proposal
+  conclusion: 产卡：反馈闭环改成挂账 + 回报指令
