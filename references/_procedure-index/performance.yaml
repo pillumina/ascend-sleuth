@@ -1,0 +1,76 @@
+# GENERATED FILE —— 流程选择器分片（category = performance），不要手改。
+# 由 scripts/build_procedure_index.py 生成；--check 校验新鲜度 + 可解析性（CI）。
+#
+# 用法：按 file 打开词条读 **content.flow[] 全文**——摘要行不承载判据，只读摘要等于没加载
+#   （反直觉判据会被截断，例：摘要写"同步比例 > 0.2 则存在慢卡"，漏掉"慢卡 = WTR 最小的卡"）。
+#   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：
+#   references/_procedure-index.yaml
+#
+# 生成日期：2026-09-21    本片流程条数：8    本片加载成本：约 1360 token
+entries:
+- id: ascend-hardware-detect-triage
+  title: 硬件与压力检测判读（asys diagnose 四模式 → Pass/Warn/Fail → [ERROR] AML 错误码前缀分流 → 电压恢复）
+  summary: 怀疑硬件问题（或精度/中断问题排查到硬件层）时的检测与判读路径：①按目的选检测类型——综合检测（stress_detect 压力 / hbm_detect / cpu_detect / aicore_stl_detect，**须物理机 + root**，Atlas 200I/500 A2 推理、Atlas 推理系列、Atlas 训练系列不支持）与组件检测（仅 AI Vector、不支持并行）；②…
+  categories:
+  - interrupt
+  - precision
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/ascend-hardware-detect-triage.yaml
+- id: ascend-profiling-collection-planning
+  title: 性能采集方案选择与前置约束（msprof 命令行/延迟/动态/接口/环境变量 → 前置检查 → 落盘规格 → 动态采集 launch vs attach）
+  summary: 采性能数据前的规划路径：①**选采集方式**——msprof 命令行（推荐在命令末尾直接跟用户程序；也可用 `--application`）、延迟采集（`--delay`/`--duration`）、动态采集（`--dynamic=on`，launch 或 attach）、其他方式（acl C&C++ 接口 / Ascend Graph 接口 / acl.json 配置 / PROFILING_…
+  categories:
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/ascend-profiling-collection-planning.yaml
+- id: dma-granularity-and-pingpong-tuning
+  title: 搬运耗时压不动时的调参顺序（先保 ping-pong 重叠，再加大单次 DMA）
+  summary: 当 mte2/mte3 耗时在多个优化步骤后几乎不动（看着像「不可压缩的搬运底座」）时，先怀疑 **16KB 级小 DMA 的 ramp-up 损耗**没吃满带宽；手段是把单次 DMA 从 16KB 加到 32KB（实测 mte2 3.02→2.00µs、mte3 1.15→0.82µs）。但调参顺序有硬约束：**ping-pong 重叠（≥2 tile）比 DMA 尺寸更重要**——单缓冲下即…
+  categories:
+  - performance
+  platforms:
+  - A5-950
+  file: references/methodologies/dma-granularity-and-pingpong-tuning.yaml
+- id: msprof-comm-bottleneck-thresholds
+  title: 通信瓶颈判定阈值（Wait Time Ratio / 传输前同步比例 / 带宽使用率）
+  summary: msprof 官方的通信瓶颈判定口径：①一个迭代内是否存在「等待时长比例（Wait Time Ratio）> 0.2」的卡——有则通信瓶颈；②找 WTR 最大的卡看「传输前同步时长比例 > 0.2」——大于则存在慢卡（查慢卡前反向计算时间与数据预处理），否则链路异常；③通信矩阵：带宽使用率 > 0.8 说明链路正常、通信包比例 > 0.8 指向链路配置/劣化、包尺寸过小指向带宽瓶颈
+  categories:
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/msprof-comm-bottleneck-thresholds.yaml
+- id: multicore-partitioning-and-template-selection
+  title: 多核切分优先原则与算子模板/Bound 策略选择表
+  summary: 性能优化的第一动作是**查并行度**：来源实例中把只跑 1 个 Block（其余 63 个 Vector Core 空闲）改成按行切到 64 核，使 6790 → 113.6 µs（59.8x），占整条优化链 157x 的绝大部分，且判据是**各类 ratio 基本不变**（说明收益来自并行度而非单核实现变化）。定位到 Bound 类型后再按策略表选模板：Cube Bound → SWAT + …
+  categories:
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/multicore-partitioning-and-template-selection.yaml
+- id: operator-bottleneck-attribution
+  title: 算子性能瓶颈归因（pipe 分解 → 流水模式 → Bound 分类 → 策略选择）
+  summary: 把 profiling 的 pipe 数据变成「下一步动哪里」的判据链：先按七列（kernel / mac / scalar / mte1 / mte2 / fixpipe / icache_miss）分解，再用 `vec + mte2 ≈ 100%`（串行）还是 `≫ 100%`（重叠）判断流水是否并行，用主导流水占比 max(vec, mte2, mte3) 定 Bound 类型；主导占比降…
+  categories:
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/operator-bottleneck-attribution.yaml
+- id: pipeline-slot-and-attribution-discipline
+  title: 流水空泡归因纪律（四层槽位检查顺序 / 预发射的边际收益 / 三类数据不可换算）
+  summary: 分析 CV 协作 kernel 的流水空泡时按固定顺序查：①先缩短中间数据搬运路径，再增加在途 item 数；②查双缓冲要**分开看 CV 核间槽 / AIC 内 L0 / task I/O 三层**——任一层还在复用单槽就能把前后阶段重新串起来；③加预发射数只能增加重叠机会、**不能缩短 Vector 自身**。配套三条归因口径：MFU 用整卡峰值做分母（未用核也计入）、并行 Pipe 的 a…
+  categories:
+  - performance
+  platforms:
+  - A5-950
+  file: references/methodologies/pipeline-slot-and-attribution-discipline.yaml
+- id: simt-vs-simd-selection
+  title: SIMT / SIMD 与 MemBase / RegBase 的选型判据（标量受限时先试纯 SIMT）
+  summary: 选型不是偏好问题，按判据走：①出现**逐元素标量循环把算子锁在 Scalar 引擎**（`aiv_scalar_ratio≈0.999` 且 `aiv_vec_ratio≈0`）时，改纯 SIMT（grid-stride）是首选，实测主 Bound 切到 Vector、收益可达数十倍；②但纯 SIMT 在 **bins 超出 UB 容量**时会退到 GM 原子累加、代价极高，且 `innerDi…
+  categories:
+  - performance
+  platforms:
+  - A5-950
+  file: references/methodologies/simt-vs-simd-selection.yaml

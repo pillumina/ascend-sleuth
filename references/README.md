@@ -10,9 +10,11 @@
 references/
 ├── _types.yaml               # type 注册表（渐进登记；CI 强校验的 schema 依据）
 ├── _summary-index.yaml       # 生成物：背景类（platform-fact/software-fact/tool）行化索引（diagnose 步骤 3 阶段 2.5）
-├── _procedure-index.yaml     # 生成物：流程选择器索引（methodology；diagnose 步骤 5）
+├── _procedure-index.yaml     # 生成物：流程选择器（methodology；diagnose 步骤 5）——只有 category→分片一行
+├── _procedure-index/         # 生成物：^^ 的分片（按 category 一片，本轮只读自己那片）
 
 ├── errors/                   # type: error-code（表形态，按组件分族：cann-runtime/hccl/aicpu/driver）
+│   └── _code-gaps.yaml       # 生成物：错误表**缺行**但库里有事实的码（键触发未命中时的跳板）
 ├── fault-patterns/           # type: fault-pattern（表形态，按主题域成表：现象→根因→处理）
 ├── tools/                    # type: tool
 ├── platform-facts/           # type: platform-fact（硬件平台/芯片规格）
@@ -73,16 +75,24 @@ status: active | pending-review | deprecated | draft   # 新产出即 active（P
 - 按来源类型强校验子字段；`sources[].verification`（可选）填了必须合法（`auto-extracted` / `cross-checked-source`，ADR-0008 §4.2）；
 - 深审：case-derived + methodology 的提炼来源 case 数（`sources[].cases` 长度）<3 不允许 `status: active`；
 - **skill 侧绑定**：skill 支撑文件里引用的 ref-id（`skills/diagnose/references/collect-gates.yaml` 的采集闸门表）必须存在且 `status: active`——散文里硬编码 ref-id 会静默腐化（曾把不存在的 `profiling-performance-fault-patterns` 当已有落点写进 SKILL），绑定落成数据后由 CI 兜住。
+- **工具词条的覆盖环**（反方向的那一半）：每条声明了 category 的 active `tool` 词条**必须被某个闸门绑定**——tool 不进候选路由、背景层也不按工具名收窄到具体命令，**闸门是它进诊断上下文的唯一入口**，未绑定等于永不加载且无任何信号。实测 38 条 tool 里 24 条未绑定（含取调用栈、看日志配置、多机网络诊断）。
+- **互链不悬挂**：`related_references` 必须指向存在的词条 id（实测 6 处悬挂 + 5 处指向已归档的 deprecated 词条——链接不报错，只是点不动）。
+- **错误码缺口的两个视图一致**：族文件里的 `content.code_gaps`（节选）必须都在 `_code-gaps.yaml`（生成台账）里。
 
 **流程类的消费方式与事实类不同**（三轮盲测结论）：`methodology` 不进背景 summary 层，
-走独立的 `_procedure-index.yaml` 选择器——**只用来挑"本轮读哪条流程"，选定后必须读 `content.flow[]` 全文**。
+走独立的流程选择器——**只用来挑"本轮读哪条流程"，选定后必须读 `content.flow[]` 全文**。
 实测：只读摘要行与不读等效（决定性判据会被截断），给全文才改变结论；只给 id/title/summary 索引让 agent
-自己挑则 7/7 选对。生成：`python3 scripts/build_procedure_index.py`（`--check` 校验新鲜度，随 CI）。
+自己挑则 7/7 选对。**选择器按 category 分片**：`_procedure-index.yaml` 只有一张
+`category → 分片 + 条数 + 成本` 表（每次整读，故须小），本轮按 category 打开自己那一片；
+分片是完整的选择器行（title/summary 不截断），多 category 的流程有意出现在多片。
+生成：`python3 scripts/build_procedure_index.py`（`--check` 校验新鲜度、可解析、**分片与词条集合一一对应**
+——"某条流程既不在这片也不在那片"是分片最危险的失败模式：索引全绿而流程静默消失）。
 
 **三个缺口、四个触发点**：reference 不参与候选路由/排序（不是第四检索层），但按流程里的**缺口**在四个确定的时点被消费——**数据缺口**（缺测量数据 → tool 的采集面，`skills/diagnose/references/collect-gates.yaml` 绑定，诊断步骤 1）、**判断缺口的理解侧**（证据里有错误码 / 故障签名 / 环境变量名 / 版本组合 → 查表族，诊断步骤 2 收尾，**先于候选加载**）、**判断缺口的背景侧**（候选命中 → 带 `ref_knowledge` 的候选按 role 必读，否则取背景层 ≤5 行，诊断步骤 3 阶段 2.5）、**方法缺口**（候选全未命中 → 流程选择器，诊断步骤 5）。四处都只读 `active`，且每次触发都留 `hit|miss|skipped` 三态（`skipped` 写理由）——不查不留痕时，消费率无法归因。
 
 生成物校验（CI）：`build_ref_summary_index.py --check`（背景索引新鲜度）+
-`build_procedure_index.py --check`（流程索引新鲜度 **且可解析**——只比文本的自证式校验发现不了结构损坏，已踩过）。
+`build_procedure_index.py --check`（流程索引新鲜度 **且可解析**——只比文本的自证式校验发现不了结构损坏，已踩过）+
+`build_error_gap_index.py --check`（错误码缺口索引新鲜度）。
 
 **修订走 PR**（ADR-0008 §1.7）：内容修订 active 词条 = 修改已生效知识 → **methodology 模板 + `kb/high-risk` 双签**（小修直接改 YAML + PR；大修用 `/skill:to-reference --update <ref-id>`）。
 

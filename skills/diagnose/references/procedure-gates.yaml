@@ -20,8 +20,11 @@
 #   归因是"错流程"（内容面）而非"时机"（顺序面）。
 #
 # 分工（形态归 SKILL，内容归词条）：本表只决定「何时该取流程、取到后怎么用」；
-#   具体是哪一条流程由**仓库根先验层**的 `references/_procedure-index.yaml`（选择器）按 category + title/summary 选出
-#   （注意：本文件在 `skills/diagnose/references/`，选择器在仓库根 `references/`——两处同名不同目录）。
+#   具体是哪一条流程由**仓库根先验层**的流程选择器选出：先读 `references/_procedure-index.yaml`
+#   （只有 `category → 分片` 一张小表），再打开 `references/_procedure-index/<category>.yaml`
+#   那片，按 title/summary 选一条（注意：本文件在 `skills/diagnose/references/`，选择器在仓库根
+#   `references/`——两处同名不同目录）。**分片在本轮 category 下不存在时读全部分片**，不要
+#   空手进深度排查。
 #   **本表不写症状关键词分支**——关键词写在闸门里等于与 triage-tree 双源，必漂移。
 #   **默认一条**；前提与现场证据明确矛盾时可换一条（受"连续失败 <=2"约束，记 conflict）。
 #   流程与证据冲突时以证据为准——流程是"这类问题怎么查"的参考，不是"这次就是这个"的判词。

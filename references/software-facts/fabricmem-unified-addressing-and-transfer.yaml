@@ -18,7 +18,7 @@ applies_to:
     cann: ">=9.0"
   categories: [interrupt, performance]
 
-related_references: [hixl-tool-route-and-comm-res, hixl-error-codes, llm-datadist-error-codes, ascend-mooncake-kv-transfer-triage, runtime-memory-allocation-strategies, runtime-resource-fault-patterns]
+related_references: [hixl-tool-route-and-comm-res, hixl-error-codes, llm-datadist-error-codes, runtime-memory-allocation-strategies, runtime-resource-fault-patterns]
 
 status: active
 last_verified: 2026-09-15

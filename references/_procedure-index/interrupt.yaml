@@ -1,0 +1,99 @@
+# GENERATED FILE —— 流程选择器分片（category = interrupt），不要手改。
+# 由 scripts/build_procedure_index.py 生成；--check 校验新鲜度 + 可解析性（CI）。
+#
+# 用法：按 file 打开词条读 **content.flow[] 全文**——摘要行不承载判据，只读摘要等于没加载
+#   （反直觉判据会被截断，例：摘要写"同步比例 > 0.2 则存在慢卡"，漏掉"慢卡 = WTR 最小的卡"）。
+#   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：
+#   references/_procedure-index.yaml
+#
+# 生成日期：2026-09-21    本片流程条数：11    本片加载成本：约 1763 token
+entries:
+- id: ascend-aicore-error-triage
+  title: AI Core Error 问题定位（RAS → NPU 硬件 → 软件 → msaicerr 分析）
+  summary: AI Core Error 按四层分流：①event 日志搜 event_id 查 RAS 硬件故障（npu-smi health 兜底）→ ②plog 搜 ECC/同 chipId 多次报错，ascend-dmi 压测核验 NPU 硬件 → ③索引类算子 0x800000 报错查软件越界 → ④msaicerr 输出分析报告；收集阶段框架业务免复跑、非框架业务复跑+设 NPU_COLLECT_…
+  categories:
+  - interrupt
+  platforms:
+  - cross
+  file: references/methodologies/ascend-aicore-error-triage.yaml
+- id: ascend-hardware-detect-triage
+  title: 硬件与压力检测判读（asys diagnose 四模式 → Pass/Warn/Fail → [ERROR] AML 错误码前缀分流 → 电压恢复）
+  summary: 怀疑硬件问题（或精度/中断问题排查到硬件层）时的检测与判读路径：①按目的选检测类型——综合检测（stress_detect 压力 / hbm_detect / cpu_detect / aicore_stl_detect，**须物理机 + root**，Atlas 200I/500 A2 推理、Atlas 推理系列、Atlas 训练系列不支持）与组件检测（仅 AI Vector、不支持并行）；②…
+  categories:
+  - interrupt
+  - precision
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/ascend-hardware-detect-triage.yaml
+- id: ascend-hccl-comm-fault-triage
+  title: HCCL 集合通信故障定位（故障码/多级关键字分流三阶段 → 全量日志 → 根节点定位）
+  summary: 多机 HCCL 报错的标准定位路径：①先确认是 HCCL 的问题（打屏日志出现 `EI****`/`EJ****` 故障码，或 CANN 日志中有 HCCL 组件 ERROR）——CANN 日志里没有 HCCL 报错时不要套用本流程，转查其他组件、脚本、core dump 或进程卡住；②收集**全量节点**的 debug+run 日志（报错 rank 常常只是在等对端超时）；③用多级检索关键字 …
+  categories:
+  - interrupt
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/ascend-hccl-comm-fault-triage.yaml
+- id: ascend-log-troubleshooting
+  title: 日志异常排查（不落盘 / 时间戳不对 / 多余打屏）
+  summary: 日志故障按现象分流：不落盘按部署形态分支排查（EP/RC/Control CPU × 应用/系统：系统日志报错 → df -h 磁盘 → ldd 动态库 → ps 查 slogd → 重启日志进程）；时间戳不对是 AI 任务启动后改系统时区所致（重启任务或 timedatectl 改回）；多余打屏是日志模块与 slogd 建 Socket 失败降级打屏（fd 超限用 ulimit -n 调大）
+  categories:
+  - interrupt
+  platforms:
+  - cross
+  file: references/methodologies/ascend-log-troubleshooting.yaml
+- id: ascend-moe-comm-triage
+  title: MoE 通信/路由算子故障排查（MoeDistributeDispatch / MoeInitRouting / QuantBatchMatMul）
+  summary: MoE 相关算子（aclnnMoeDistributeDispatchV2/V4、MoeInitRoutingV3、QuantBatchMatMulV3）执行报错按形态分流：507057 SUSPECT REMOTE ERROR + MTE 越界 → ROCE 组网兼容性（升级 0.20.2rc1+ / HCCS 退避）；561000 Cannot find binary → torch-npu…
+  categories:
+  - interrupt
+  platforms: []
+  file: references/methodologies/ascend-moe-comm-triage.yaml
+- id: ascend-oom-triage
+  title: 内存 OOM 问题定位（C 接口 → CANN Host 内存 → CANN Device 内存 → 业务进程异常）
+  summary: OOM 按申请方分流：C 标准接口 malloc/memset 申请 Host 内存→asan 检测；CANN 接口 aclrtMallocHost 申请 Host 内存→日志搜 mem_stats 看组件统计；aclrtMalloc/aclrtMallocPhysical/hi_mpi_dvpp_malloc 申请 Device 内存→mem_stats；其它报错→搜 DEV_PROC_MEM…
+  categories:
+  - interrupt
+  platforms:
+  - cross
+  file: references/methodologies/ascend-oom-triage.yaml
+- id: ascend-process-hang-triage
+  title: 进程卡住问题定位（调用栈定位下发/执行阶段 → 卡住任务 → 编译耗时）
+  summary: 进程卡住先用 asys collect -r=stacktrace 取调用栈：栈无 CANN 内部函数→任务未下发查客户脚本；有 SendTask→卡在任务下发；有 Synchronize→卡在任务执行，用 trace 日志 stream_id+head/pos 定位卡住任务；plog 有 watchdog timeout 或算子停留 Compile process status/init di…
+  categories:
+  - interrupt
+  platforms:
+  - cross
+  file: references/methodologies/ascend-process-hang-triage.yaml
+- id: ascend-process-interrupt-triage
+  title: 进程中断问题定位（首报错 → 接口错误 → 任务执行错误 → 心跳丢失 → 资源未释放）
+  summary: 进程异常退出按五层排查：①plog 首报错有错误码（非 E*9***）查错误码参考；②acl***/rt*** 接口报错（对外接口查 API 参考，内部接口联系技术支持）；③fault kernel_name 算子执行报错 / Task run failed 内部任务报错（ascend-dmi 压测）；④Device lost heartbeat+HEARTBEAT EXCEPTION 或 fa…
+  categories:
+  - interrupt
+  platforms:
+  - cross
+  file: references/methodologies/ascend-process-interrupt-triage.yaml
+- id: glm-quantized-startup-triage
+  title: GLM 系模型量化加载启动失败排查（按报错形态分类）
+  summary: GLM 系模型（GLM-5/5.1/5.2）w8a8/w4a8/w4a8c8 量化权重拉起 vllm serve 启动失败时，先按报错形态分类定位——modelslim 描述缺失 / 版本错配 / 算子绑定 / 量化路由，各类修法不同
+  categories:
+  - interrupt
+  platforms: []
+  file: references/methodologies/glm-quantized-startup-triage.yaml
+- id: msllm-startup-version-env-triage
+  title: mindspeed-llm 训练启动失败排查（版本/环境配套面 + import 失败判别）
+  summary: mindspeed-llm 训练启动即失败的常见根因分流：import 失败先判别"版本/安装面 vs 代码漂移面"（features_manager 缺符号=版本不配套；tasks.checkpoint.models 缺失=上游删模块未同步后端）；算子重复注册（CANN 版本过旧 vs 多版本 mindspeed）；特性未适配（batch_p2p_comm 等需升级 PTA 或关闭）。按报错签…
+  categories:
+  - interrupt
+  platforms: []
+  file: references/methodologies/msllm-startup-version-env-triage.yaml
+- id: runtime-async-error-triage
+  title: Runtime 异步错误定位（异步错误会延迟传播与覆盖 → 立即同步取首错 + 遇错即停/分段标记）
+  summary: Runtime 异步接口（aclrtMemcpyAsync、Kernel Launch 等）返回成功只代表 Host 侧参数校验与任务下发成功，Device 侧执行错误会**延迟到后续某个接口调用才返回**——于是报错的接口往往不是出错的接口；遇错继续模式下后发生的错误还会**覆盖**先前的错误信息，导致拿不到首错。定位路径：下发后立即用 aclrtSynchronizeStream / acl…
+  categories:
+  - interrupt
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/runtime-async-error-triage.yaml

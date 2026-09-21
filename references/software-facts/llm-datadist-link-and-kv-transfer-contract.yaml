@@ -20,7 +20,7 @@ applies_to:
   frameworks: [llm-datadist, hixl, vllm-ascend]
   categories: [interrupt, precision]
 
-related_references: [llm-datadist-error-codes, hixl-error-codes, hixl-tool-route-and-comm-res, ascend-mooncake-kv-transfer-triage, hccl-cluster-heartbeat-and-link-probe, fabricmem-unified-addressing-and-transfer]
+related_references: [llm-datadist-error-codes, hixl-error-codes, hixl-tool-route-and-comm-res, hccl-cluster-heartbeat-and-link-probe, fabricmem-unified-addressing-and-transfer]
 
 status: active
 last_verified: 2026-09-15

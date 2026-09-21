@@ -15,7 +15,7 @@ applies_to:
   frameworks: [hixl, llm-datadist]
   categories: [interrupt, performance]
 
-related_references: [llm-datadist-error-codes, hixl-error-codes, npu-smi-950-device-ops, hccn-tool-network-diagnosis, fabricmem-unified-addressing-and-transfer, ascend-mooncake-kv-transfer-triage]
+related_references: [llm-datadist-error-codes, hixl-error-codes, npu-smi-950-device-ops, hccn-tool-network-diagnosis, fabricmem-unified-addressing-and-transfer]
 
 status: active
 last_verified: 2026-09-15

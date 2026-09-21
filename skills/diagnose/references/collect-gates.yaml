@@ -14,12 +14,21 @@
 # 改词条、改分支只改本表一处（散文与数据双源必漂移，改一处即生效）。
 #
 # 校验（verify_references.py，随 CI）：文件必须存在（约定 <skill>/references/*-gates.yaml）；
-# gate id 唯一；category ∈ triage-tree 取值；kind ∈ {probe, conditional} 且 probe 必带
-# question、conditional 必不带；branches[].refs / caveat_refs 的每个 id 存在且 status: active。
+# gate id 唯一；category / categories ∈ triage-tree 取值；kind ∈ {probe, conditional}
+# 且 probe 必带 question、conditional 必不带；**branches[].refs 与 caveat_refs 的每个 id
+# 都必须存在且 status: active**（不只是被引用，还要被绑定，见下面那条覆盖环）。
 #
 # kind 两种：
 #   probe       探询型——先问一句，按对方回答分支（精度/性能：有数据就不讲采集）
 #   conditional 条件型——不预先问；仅当缺口出现（现有材料不足以定位）才给采集指引
+#
+# 覆盖环（为什么本表要收全，而不是"用到再补"）：tool 类词条 38 条里，靠这条闸门进来的
+# 是**唯一**入口——它们不进候选路由（不是 case），背景 summary 层也不按工具名收窄到具体命令。
+# 于是"某条工具词条没被任何闸门绑定"在运行时的唯一表现就是**它永远不会出现在诊断上下文**，
+# 而没有任何信号会报这件事。CI 因此加一条：**每条声明了 category 的 active tool 词条，
+# 必须出现在本表的某个 branches[].refs 或 caveat_refs 里**——漏绑定即红（原则二：把不变量
+# 写进结构；原则八：不可观测的机制无法证明它没有在腐化）。
+# 边界如实标注：该检查保证"有入口"，**不保证入口在对的分支上**（分支语义归人审）。
 
 gates:
   - id: precision-data
@@ -43,6 +52,35 @@ gates:
     caveat_refs:
       - msprobe-tool-side-effect-fault-patterns   # 工具介入可能让同步/踩踏类问题消失——先排除再下结论
 
+  - id: precision-analysis-tools
+    category: precision
+    kind: probe
+    trigger: 手上已有精度数据（dump / 比对结果 / 训练曲线），要判断"下一步看哪一份"
+    question: "你手上有哪些精度的数据产物（dump 目录 / 比对结果 / 逐 step 曲线）？"
+    branches:
+      - when: has_data
+        action: >-
+          按产物选读法：先确认配置与数据本身没读错（config 检查、数据加载面），再看单步比对与
+          编译期精度预检，长跑看趋势、异常值看 response anomaly；可视化只用来定位可疑层，
+          结论仍要回到数值
+        refs:
+          - msprobe-config-check
+          - msprobe-data-load
+          - msprobe-checkpoint-compare
+          - msprobe-compile-precision-checker
+          - msprobe-response-anomaly
+          - msprobe-trend-visualization
+          - msprobe-visualization
+          - verl-cross-validation
+          - verl-probs-diff-monitoring
+          - verl-uwc-weight-consistency
+      - when: no_data
+        action: 不展开分析路径——回到本 category 的采集探询（precision-data 闸门）
+        refs:
+          - msprobe-data-dump
+    caveat_refs:
+      - msprobe-tool-side-effect-fault-patterns
+
   - id: performance-data
     category: performance
     kind: probe
@@ -63,6 +101,34 @@ gates:
           - msprof-collect-parse
           - msprof-tool-fault-patterns
 
+  - id: performance-analysis-tools
+    category: performance
+    kind: probe
+    trigger: 手上已有 profiling 产物，要判断"下一步看哪一份 / 动哪个算子"
+    question: "你的 profiling 产物是哪种（timeline / kernel_details / 通信矩阵 / 仿真报告）？"
+    branches:
+      - when: has_data
+        action: >-
+          按产物选读法：timeline 横条读法（µs 级归因、区分计算与空泡）、算子内部 pipe 分解、
+          仿真报告（无上板条件时）、静态编译视角看搬运与切分、融合类看编译策略是否生效；
+          具体调优动作落到对应的流程词条，不在这里展开
+        refs:
+          - msprof-timeline-lane-reading
+          - msopprof
+          - cannsim-sim-profiling
+          - op-compiler-static-kernel
+          - autofuse-fusion-enable-and-diagnostics
+          - aoe-model-tuning
+          - msprobe-monitor
+          - msprobe-trend-visualization
+          - torchtitan-npu-training-metrics-and-debugging
+      - when: no_data
+        action: 不展开分析路径——回到 performance-data 闸门先拿产物
+        refs:
+          - msprof-collect-parse
+    caveat_refs:
+      - msprof-tool-fault-patterns   # 采集行为本身可能改变现象——先排除再下结论
+
   - id: interrupt-evidence-gap
     category: interrupt
     kind: conditional
@@ -75,7 +141,9 @@ gates:
       - when: gap
         action: >-
           给采集方式并说明需复跑与影响面：提日志级别重跑；导出 Device 侧日志按时间找首报错；
-          一键收集故障信息；卡住进程取堆栈（不中断进程）；现象指向内核级事件时另取 Host 内核日志
+          一键收集故障信息；卡住进程取堆栈（不中断进程）；现象指向内核级事件时另取 Host 内核日志。
+          日志面还有两个高频自伤要一起给：日志不落盘 / 时间戳不对 / 多余打屏的分流，
+          以及日志模块配置本身（改配置要给回滚）
         refs:
           - ascend-log-levels
           - ascend-device-log-ops
@@ -83,5 +151,33 @@ gates:
           - ascend-stack-view
           - ascend-msaicerr
           - host-kernel-log-collection
+          - ascend-slog-conf
+          - ascend-restart-slogd
     caveat_refs:
       - ascend-log-troubleshooting   # 日志量级/裁剪纪律：只贴失败 rank + 栈尾，别灌全量
+
+  - id: interrupt-deep-debug-gap
+    category: interrupt
+    kind: conditional
+    trigger: >-
+      日志与栈已够定位到"哪一层"但还缺"哪一行"——疑似算子内部 / 框架适配层问题
+      （越界、踩踏、竞争、精度与执行耦合），需要源码级或工具级手段；或多机通信类问题
+      已排除日志面、要收网络与链路面
+    question: null
+    branches:
+      - when: gap
+        action: >-
+          给源码级 / 工具级手段并标注影响面：调试算子与 kernel（可断点、可看中间值）、
+          竞争与内存类问题走 sanitizer、算子编译期问题看调试套件；多机通信问题收敛到
+          网络诊断与通信链路资源两面。这些手段多数需要**重跑或改变执行方式**，
+          给之前先说清楚影响（可能让复现消失）
+        refs:
+          - msdebug-operator-source-debug
+          - operator-debug-entrypoints
+          - mssanitizer
+          - asc-tools-ascendc-debug-suite
+          - hccn-tool-network-diagnosis
+          - hixl-tool-route-and-comm-res
+          - npu-smi-950-device-ops
+    caveat_refs:
+      - msprobe-tool-side-effect-fault-patterns   # 工具介入改变时序——先排除工具副作用再下结论

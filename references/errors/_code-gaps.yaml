@@ -1,0 +1,115 @@
+# 错误码缺口索引（键触发查错误码表**未命中**时的下一步）——结构化绑定，不写散文
+#
+# 为什么存在（实测）：步骤 2 收尾的键触发只在 `references/errors/<族>.yaml` 里按 code 查。
+# 查不到就记 `miss` 收场，而**同一个码往往已在故障模式表里有完整的症状→根因→修法**。
+# 实测交叉核对：故障模式表（references/fault-patterns/）里出现的错误码中，有 16 个
+# 全库错误表都没有行。于是"这张表没收录"被读成"库里没有"，agent 转去源码或常识，
+# 而答案一直在隔壁那张表里——两次真实诊断各撞上一次（507014 表缺行、507035 表缺行）。
+#
+# 本文件的两个作用，都只做一次动作：
+#   ① **检索跳板**：错误表未命中 → 按本表查一行 → 直接打开 `seen_in` 指的故障模式词条；
+#   ② **覆盖债台账**：哪些码"官方表没有行但我们有事实"被显式列出，而不是散落在各种 miss 里。
+#
+# **不是第二份错误码表**：本文件不复制 meaning/fix（那是 seen_in 词条的内容，抄一遍必漂移）。
+# 它只记"这个码在哪能看到"，即一次跳转。
+#
+# 本文件整体由 `scripts/build_error_gap_index.py` 生成（--check 校验新鲜度，CI）；
+# `note` 一句是人读词条后的判断，手工维护在脚本的 NOTES 表里——**留空不报错**，
+# 但 `verify_references.py --check` 会把留空的条数列出来当待办（不逼人写废话糊过去）。
+#
+# 口径：只收 6 位数字码与 E*#### 码（官方错误码参考的两种可检索键）；`0x…` 设备异常码
+# 归属与查法不同（在故障模式表内按域查），不在本索引内。
+
+generated_at: 2026-09-21
+source: references/fault-patterns/*.yaml 中出现的错误码 − references/errors/*.yaml 已有行
+code_gaps:
+- code: '100002'
+  belongs_to: acl-error-codes
+  seen_in:
+  - references/fault-patterns/runtime-api-call-failures.yaml
+  note: aclInit 重复初始化——可忽略并继续（该码的官方行为在故障模式表里，不在错误表）
+- code: '107000'
+  belongs_to: acl-error-codes
+  seen_in:
+  - references/fault-patterns/process-interrupt.yaml
+  - references/fault-patterns/runtime-api-call-failures.yaml
+  note: aclInit 参数无效（配置路径 / 权限 / json 层级）
+- code: '107001'
+  belongs_to: acl-error-codes
+  seen_in:
+  - references/fault-patterns/runtime-api-call-failures.yaml
+  note: aclrtSetDevice 设备 ID 无效（越界 / 驱动未加载）——同码不同因，先看 npu-smi 能否列出设备
+- code: '107002'
+  belongs_to: acl-error-codes
+  seen_in:
+  - references/fault-patterns/msprobe-tool-side-effect.yaml
+  - references/fault-patterns/process-interrupt.yaml
+  note: 进程中断与 msprobe 工具副作用两处出现（同一码两个场景）
+- code: '107003'
+  belongs_to: acl-error-codes
+  seen_in:
+  - references/fault-patterns/runtime-api-call-failures.yaml
+  note: aclrtMemcpyAsync 的 Stream 上下文错误 / 多 Device 跨用 Stream、Event
+- code: '107012'
+  belongs_to: acl-error-codes
+  seen_in:
+  - references/fault-patterns/dvpp-decode.yaml
+  - references/fault-patterns/runtime-resource.yaml
+  note: aclrtProcessReport failed——进程异常退出后资源未释放一类
+- code: '207000'
+  belongs_to: cann-runtime-error-codes
+  seen_in:
+  - references/fault-patterns/runtime-api-call-failures.yaml
+  note: 接口返回功能不支持（ACL_ERROR_RT_FEATURE_NOT_SUPPORT）——先核对实际加载的库与版本
+- code: '207001'
+  belongs_to: cann-runtime-error-codes
+  seen_in:
+  - references/fault-patterns/runtime-api-call-failures.yaml
+  - references/fault-patterns/runtime-resource.yaml
+  note: aclrtMalloc 内存申请失败（ACL_ERROR_RT_MEMORY_ALLOCATION）——与 OOM 一类同看
+- code: '207007'
+  belongs_to: cann-runtime-error-codes
+  seen_in:
+  - references/fault-patterns/runtime-resource.yaml
+  note: Event 超上限（Event id alloc error / no event resource）——与 507903 同族但机制不同
+- code: '207008'
+  belongs_to: cann-runtime-error-codes
+  seen_in:
+  - references/fault-patterns/runtime-resource.yaml
+  note: halResourceIdAlloc streamid failed——同上族
+- code: '507008'
+  belongs_to: cann-runtime-error-codes
+  seen_in:
+  - references/fault-patterns/compile-exec.yaml
+  note: 编译执行域（compile-exec）——见该词条的症状面
+- code: '507017'
+  belongs_to: cann-runtime-error-codes
+  seen_in:
+  - references/fault-patterns/operator-exec.yaml
+  note: 算子执行域（operator-exec）——见该词条的症状面
+- code: '507032'
+  belongs_to: cann-runtime-error-codes
+  seen_in:
+  - references/fault-patterns/model-inference.yaml
+  note: 模型推理域（model-inference）——见该词条的症状面
+- code: '507035'
+  belongs_to: cann-runtime-error-codes
+  seen_in:
+  - references/fault-patterns/reg-data-movement.yaml
+  note: UB 寄存器/搬运族的症状面——**先核对病因**：现场撞见的 507035 是索引 buffer 取值越界，与本族症状不是同一病因，命中不等于可套用
+- code: '507899'
+  belongs_to: cann-runtime-error-codes
+  seen_in:
+  - references/fault-patterns/runtime-resource.yaml
+  note: 异步拷贝查询接口时序（Set free error / Devmm_iotcl_free failed）
+- code: '768032'
+  belongs_to: cann-runtime-error-codes
+  seen_in:
+  - references/fault-patterns/model-inference.yaml
+  note: 模型推理域（model-inference）——见该词条的症状面
+no_home:
+- code: '507014'
+  seen_scene: MC2 融合算子（MoeDistributeDispatchV2）aicore/AIV timeout，驱动 24.1.x + CANN 9.0.1
+  next: 查官方错误码参考 507xxx 族是否有此行；有则补进 cann-runtime.yaml 的 errors，没有则补进同一文件的 content.code_gaps
+# 无归属：全库任何表都没有这个码，只有现场撞见过——记的是覆盖缺口本身（原则十：诚实退化）。
+# 补进错误表（errors）或给出 seen_in 之后从本段移出。

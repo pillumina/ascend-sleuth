@@ -9,6 +9,15 @@ sources:
     extracted_at: 2026-08-28
     extraction_method: to-reference --ingest-cases
 
+related_references:
+  - runtime-api-call-failures      # 同族码在故障模式表里的症状→根因→修法
+  - runtime-resource-fault-patterns
+  - operator-exec-fault-patterns
+  - compile-exec-fault-patterns
+  - model-inference-fault-patterns
+  - reg-data-movement-fault-patterns
+  - ascend-error-code-structure
+
 applies_to:
   platforms: [A2-910B, A3-910C, A5-950, 310P]
   frameworks: [vllm-ascend]
@@ -20,6 +29,36 @@ last_hit: "2026-W36"
 last_verified: 2026-08-28
 
 content:
+  # 族内缺行视图（生成的完整版在 references/errors/_code-gaps.yaml）：这些码**本族表里没有行，
+  # 但库里有事实**——查不到时按 code 跳过去，别把"表没收录"读成"库里没有"。
+  # 为什么不直接补进 errors：本表的行以官方错误码参考为来源（sources 写得很清楚），
+  # 混入手写行会让"哪些是官方原文"不可分辨；缺口走索引，来源与覆盖债都还看得见。
+  code_gaps:
+    - code: "207007"
+      seen_in: references/fault-patterns/runtime-resource.yaml
+      note: Event 超上限（Event id alloc error / no event resource）——与 507903 同族但机制不同
+    - code: "207008"
+      seen_in: references/fault-patterns/runtime-resource.yaml
+      note: halResourceIdAlloc streamid failed——同上族
+    - code: "507008"
+      seen_in: references/fault-patterns/compile-exec.yaml
+      note: 编译执行域——见该词条症状面
+    - code: "507017"
+      seen_in: references/fault-patterns/operator-exec.yaml
+      note: 算子执行域——见该词条症状面
+    - code: "507032"
+      seen_in: references/fault-patterns/model-inference.yaml
+      note: 模型推理域——见该词条症状面
+    - code: "507035"
+      seen_in: references/fault-patterns/reg-data-movement.yaml
+      note: UB 寄存器/搬运族的症状面——先核对病因（现场撞见的那单是索引 buffer 越界，不同病因）
+    - code: "507899"
+      seen_in: references/fault-patterns/runtime-resource.yaml
+      note: 异步拷贝查询接口时序（Set free error / Devmm_iotcl_free failed）
+    - code: "768032"
+      seen_in: references/fault-patterns/model-inference.yaml
+      note: 模型推理域——见该词条症状面
+
   errors:
     - code: "507903"
       meaning: "Insufficient_Event_Resources——cudagraph 图模式捕获阶段 event/SQ-CQ 资源超硬件预算（Create capture event failed / capture_end error）。规避：--enforce-eager 或缩小 cudagraph_capture_sizes；310P 硬件 event 资源尤其有限。注意：AIV+RIC 组合冲突（task_group 包 HCCL all_reduce，A3-910C）也以 capture_end 507903 表现——先判别资源不足 vs 组合冲突，勿一律按资源不足处理（13688 最小复现矩阵证明）。"

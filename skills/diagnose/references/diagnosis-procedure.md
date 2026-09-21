@@ -44,10 +44,12 @@
 
 **先验键触发（本步骤收尾，先于候选加载）**：把证据里**能当检索键的东西**当场查掉——错误码（`E1xxxx` / `EIxxxx` / `507xxx` / `0x……`）、可 grep 的故障签名（`fault kernel_name=`、`event_id`）、具体环境变量名、要核对的版本组合。查法与阶段 2.5 的查表路径同形态，只是**时点提前到这里**：
 
-- 错误码 → 读 `ascend-error-code-structure` 的 `module_files` 前缀映射定位族文件（`references/errors/<族>.yaml`），族内 grep code 读 meaning / solution；
+- 错误码 → 读 `ascend-error-code-structure` 的 `module_files` 前缀映射定位族文件（`references/errors/<族>.yaml`），族内 grep code 读 meaning / solution。**族文件里查不到这个码时不要就此收场**——`references/errors/_code-gaps.yaml` 是"错误表缺行但库里有事实"的索引：按 code 查一行，`seen_in` 直接指出该码在哪个故障模式词条里有症状→根因→修法（实测有十余个码属于这种：官方表没有行，隔壁表有答案）。也没有 → 才是真的没有，把码写进 `_code-gaps.yaml` 的 `no_home` 段（覆盖缺口要留痕，下次遇到能省一次全库翻找）；
 - 故障签名 → 按域定位 `references/fault-patterns/<域>.yaml`，域内 grep symptoms 读 cause / fix；
 - 环境变量 → `references/env-vars/<表>.yaml` 内 grep name；
 - 版本组合 → `references/compat-matrices/` 按传导链分层，按要核对的层直接读该层文件：framework 层 `references/compat-matrices/vllm-ascend-torch-npu.yaml` / `references/compat-matrices/verl-npu.yaml`、adapter 层 `references/compat-matrices/torch-npu-cann.yaml`、base 层 `references/compat-matrices/cann-hdk.yaml`（CANN↔驱动/固件，如 `cann: 9.0.1` 一行直接给配套 `hdk` 列表）——**先落本库矩阵，再考虑联网查证**（厂商文档站多为 JS 渲染，正文表格常取不到）。
+
+**命中了不等于能套用**：故障模式表按**域**组织，同一个码可以在不同病因下出现（如 `507035` 一家讲 UB 对齐违例、现场那单是索引 buffer 取值越界）。读到词条后先核对它的症状面与**本次证据**是否同一病因，不同就写明"命中但不作根因依据"再继续——把命中当结论是把检索当确诊（原则一）。
 
 **为什么提前到这里**：码 / 签名 / 名的**语义**与"命中哪条 case"无关——不知道 `507903` 是什么意思时，case 层给不出解释，而这个解释正是判断候选真假的输入。排在候选加载之后，等于让判断先于理解。
 
@@ -79,11 +81,12 @@ trace 记：`{step: 2, action: reference_lookup, purpose: signature, outcome: hi
 
 **阶段二.5：reference 辅助查询（「判断缺口」消费点）**——**候选命中后固定执行，不写成"按需"**：命中只说明"这条 case 像"，不说明"该补的先验已经在手上了"。把"需不需要先验"交给当场自评，等于让最顺的那条路径永远不读先验。执行顺序（**只读 `status: active`**）：
 
-1. **候选带 `ref_knowledge` → 必读**：按每条 `role` 用——`signature-source`（签名的含义与判别面）、`fix-methodology`（修复路径的方法依据）、`root-cause-context`（根因成立的背景）。这是最精准的入口：关系是沉淀时写下的，不需要当场猜。
-2. **候选不带 `ref_knowledge` → 取背景 summary 层**：`references/_summary-index.yaml`（生成索引，背景类 + active）按 `applies_to.platforms` 匹配客户平台（含 `cross` 或未填 platforms 视为跨平台），该行 `applies_to.categories` 有值时再按本轮 category 收窄；**再用本次症状里的组件 / 工具 / 平台 / 版本词在 `title` 上收窄**，取最相关的 **≤5 行**，行内 `summary` 即背景提示（不读全文），确需细节再按 `id` 读单文件。
+1. **候选带 `ref_knowledge` → 先读它**：按每条 `role` 用——`signature-source`（签名的含义与判别面）、`fix-methodology`（修复路径的方法依据）、`root-cause-context`（根因成立的背景）。这是最精准的入口：关系是沉淀时写下的，不需要当场猜。
+2. **然后一律取背景 summary 层**（**不是"没有 `ref_knowledge` 才取"，两者并列，不是二选一**）：`references/_summary-index.yaml`（生成索引，背景类 + active）按 `applies_to.platforms` 匹配客户平台（含 `cross` 或未填 platforms 视为跨平台），该行 `applies_to.categories` 有值时再按本轮 category 收窄；**再用本次症状里的组件 / 工具 / 平台 / 版本词在 `title` 上收窄**，取最相关的 **≤5 行**，行内 `summary` 即背景提示（不读全文），确需细节再按 `id` 读单文件。
+   **为什么并列而不是"否则"**：`ref_knowledge` 是少数 case 才有的手写回链，绝大多数候选没有它——写成"否则"时，这一分支在多数单子上就被读到的人当作可省，而它恰恰是**唯一**能覆盖背景类的入口（背景类词条不参与候选路由，没有别的路径能读进来）。代价侧有界：grep 一次 + ≤5 行。**查了没有相关词条就记 `miss`**——`miss` 是覆盖缺口的信号（说明库缺这一族背景），比不查有信息。
    **用 grep 取行，别整读索引**：索引随词条数增长，整读等于把全库背景一次性注入上下文——本触发点的成本上限就是这 5 行加一次 grep。
 3. **查表类（error-code / fault-pattern / env-var-table / compat-matrix）不在这里**：它们是码 / 签名 / 名 / 版本检索键，键来自证据而不是来自候选，已在步骤 2 收尾的「先验键触发」按检索键取过，此处不重复查。
-4. **流程类（methodology）也不在这里**：它要的是"选中一条读全文"，走步骤 5 的流程选择器索引；摘要行承载不了判据。
+4. **流程类（methodology）也不在这里**：它要的是"选中一条读全文"，走步骤 5 的流程选择器；摘要行承载不了判据。
 
 - **只读 `status: active`**——draft / pending-review / deprecated 一律不加载（未验证知识不进上下文——这是"agent 不引用错误先验"的机制化，不是自觉）；
 - **trace 三态必记**：`{action: reference_lookup, purpose: background|fix, outcome: hit|miss|skipped, ref_id, platform, output, reason}`——`hit` 读到并用了、`miss` 查了没有相关词条、`skipped` 没查（**写明为什么**，例："候选全未命中，本触发点不适用"）。没走到这一步（无候选命中）就记一条 `skipped`，别假装查过。
@@ -124,7 +127,7 @@ trace 记：
 
 **先取流程（方法缺口消费点）**：所有候选未命中、进入本步时，按 `references/procedure-gates.yaml` 的 `kind: procedure` 闸门取流程：
 
-1. 读 `references/_procedure-index.yaml`（**选择器**，按 category 过滤 `categories`），用 `title`/`summary` 选**一条**最贴合的流程——**默认一条**（前提与现场证据明确矛盾时可换一条，受"连续失败 ≤2"约束并记冲突理由）；
+1. 读 `references/_procedure-index.yaml`（**选择器**：总条数 + `category → shard + 条数 + 成本`），找本轮 category 那一行，按 `shard` 打开该分片；选择器里若另有 `_cross` 片（不限定类别），任何 category 都要一并打开；用 `title`/`summary` 选**一条**最贴合的流程——**默认一条**（前提与现场证据明确矛盾时可换一条，受"连续失败 ≤2"约束并记冲突理由）。**本 category 无对应分片** → 打开选择器列出的全部分片再选并写明这一点；
 2. 按该行的 `file` 打开词条，读 **`content.flow[]` 全文**（step / action / check / when_to_use）——**摘要行不算加载**：实测只读摘要与不读等效，决定性判据会被截断；
 3. 按流程执行：用每步的 `check` 当判定口径（阈值、分流条件），跳步要说明理由；
 4. 某步所需数据不在手上（如流程要看"逐卡计算耗时"而导出里没有）→ **如实记 `gap`**，不臆断分支结论；

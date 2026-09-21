@@ -40,8 +40,8 @@ description: >
 > - 状态词表见仓库根 `trace-status.yaml`。
 
 1. **收集症状 + 确认框架**（全部来自工程师提供）：错误/环境变量/版本组合(引擎+CANN+HDK+架构)；**信息不全就主动问**；**主动裁剪日志**（失败 rank + 栈尾，绝不灌全量 profiler）。→ 展开见 reference 步骤 1。
-2. **分类 → `triage-tree.yaml`（Tier 1）**：症状匹配分支 → 路由 namespace；triage 决策记 trace（**`triage` 事件必须带 `routed`**，没命中就写 `routed: []` 而不是省略字段——省略与「路由没错」在指标上同形）；未命中 → 语义兜底 `triage_semantic`（带 namespace）；无法分类 → Tier 3。**收尾做键触发**：证据里的错误码 / 故障签名 / 环境变量名 / 版本组合当场查先验查表族（**先于候选加载**，每次必留一条 trace，含"没有可查的键"）。→ 展开见 reference 步骤 2。
-3. **两阶段加载 Tier 2**：阶段一读命中 category 分片索引筛候选(≤5)，**排序仍由你按相关性判断**——行内 `sig`（该 case 的报错签名字面量）与 `tok`（其 token 集合）是判断的**证据**：输入里的报错原文若与某条的 `sig` 逐字命中，那条就是强候选；`tok` 交集用于次一级比较；`confidence.score` 只作破平（它 calibrate 的是现场解决率，不是本次相关性——实测按 score 单独排序会把期望 case 压到中位第 20 名）。**不要用机械计数替代你的判断**：历史回放里 agent 的相关性判断把期望 case 放进 top-3 的比例（19/19）高于任何机械排序键。需要机械序做对照时可跑 `python3 scripts/rank_candidates.py`（工具，不是规定动作）；阶段二载全文 + `quickly_check`(primary→fallback) 验证；**阶段 2.5** 候选命中后**必做**——带 `ref_knowledge` 的候选按 role 必读，否则 grep 背景 summary 层取 ≤5 行（只读 `active`）。→ 展开见 reference 步骤 3。
+2. **分类 → `triage-tree.yaml`（Tier 1）**：症状匹配分支 → 路由 namespace；triage 决策记 trace（**`triage` 事件必须带 `routed`**，没命中就写 `routed: []` 而不是省略字段——省略与「路由没错」在指标上同形）；未命中 → 语义兜底 `triage_semantic`（带 namespace）；无法分类 → Tier 3。**收尾做键触发**：证据里的错误码 / 故障签名 / 环境变量名 / 版本组合当场查先验查表族（**先于候选加载**，每次必留一条 trace，含"没有可查的键"）；**错误码在族表里没有行 → 查 `references/errors/_code-gaps.yaml`（缺行索引，`seen_in` 直接给到有修法的那张表），再报"没有"**。→ 展开见 reference 步骤 2。
+3. **两阶段加载 Tier 2**：阶段一读命中 category 分片索引筛候选(≤5)，**排序仍由你按相关性判断**——行内 `sig`（该 case 的报错签名字面量）与 `tok`（其 token 集合）是判断的**证据**：输入里的报错原文若与某条的 `sig` 逐字命中，那条就是强候选；`tok` 交集用于次一级比较；`confidence.score` 只作破平（它 calibrate 的是现场解决率，不是本次相关性——实测按 score 单独排序会把期望 case 压到中位第 20 名）。**不要用机械计数替代你的判断**：历史回放里 agent 的相关性判断把期望 case 放进 top-3 的比例（19/19）高于任何机械排序键。需要机械序做对照时可跑 `python3 scripts/rank_candidates.py`（工具，不是规定动作）；阶段二载全文 + `quickly_check`(primary→fallback) 验证；**阶段 2.5** 候选命中后**必做**——先读候选自带的 `ref_knowledge`（按 role），**再一律 grep 背景 summary 层取 ≤5 行**（两者并列，不是"没有前者才做后者"；只读 `active`）。→ 展开见 reference 步骤 3。
 4. **验证 diagnosis checks**：顺序**对照已提供信息**验证；缺信息→追问；mismatch 且有 `fix_on_mismatch`→提示 fix（**先看 severity**）；无 `fix_on_mismatch`→标 `excluded_cases` 试下一个。→ 展开见 reference 步骤 4。
 5. **深度排查（未命中）**：**先取流程（方法缺口，见下节）** → Tier 3 grep `postmortems/`；**源码分析**（疑似框架/算子层且 Tier 3 未覆盖）走 `scripts/src_fetch.py`（见源码分析小节）；都没有→诚实说"知识库未覆盖"，建议 `/skill:to-postmortem`。→ 展开见 reference 步骤 5。
 6. **产出**：`resolution` + 顶层 `summary` + **人读定位报告**（`traces/<session_id>.report.md`，结构与行文见 `references/report-template.md`；**报告是活件**——后续回报/resume/新证据到达时修订同一份并追加修订记录，不另起）+ **`sediment_candidates`**（结构化沉淀候选，与报告第 8 节同源）+ 沉淀状态(`sedimented`) + trace；**结果反馈闭环**（问 fix 结果回写 confidence + 把 `feedback.outcome` 置为 `pending` 表示待回报）。→ 展开见 reference 步骤 6。
@@ -65,11 +65,13 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
 
 | category | 探询问句 | 闸门形态 |
 |---|---|---|
-| **precision** | 「你已经有 dump 数据 / 分析结果了吗？还是要我给到代码级接入步骤？」 | 探询型：按回答分支 |
-| **performance** | 「你已经有 profiling 数据了吗（采集产物）？还是要我给采集指引？」 | 探询型：按回答分支 |
-| **interrupt** | —（不预先问） | 条件型：日志不足以定位时才给采集指引 |
+| **precision** | 「你已经有 dump 数据 / 分析结果了吗？还是要我给到代码级接入步骤？」 | 探询型：按回答分支（有数据 → 比对 / 分析路径，无数据 → 接入步骤） |
+| **performance** | 「你已经有 profiling 数据了吗（采集产物）？还是要我给采集指引？」 | 探询型：按回答分支（同上） |
+| **interrupt** | —（不预先问） | 条件型：日志不足以定位（缺层 / 缺栈 / 内核级事件）**或**已定位到层但缺源码级手段（竞争 / 越界 / 多机网络）时才展开 |
 
-**分支动作与词条不在此重复**（改一处即生效，避免散文与数据双源漂移）：走闸表的 `branches[].action` / `refs`。
+**探询型闸门的两半都要走完**：对方答"有数据"不等于这一步结束——闸表里"有数据"那半挂的是**读法**（看哪一份产物、按什么顺序看、哪些是定位面哪些只是现象）。只给"那你去分析吧"等于把这一步留空；那半的 `refs` 与"无数据"半同样要给。
+
+**分支动作与词条不在此重复**（改一处即生效，避免散文与数据双源漂移）：走闸表的 `branches[].action` / `refs`。每条声明了 category 的工具词条都必须被某个闸门绑定（CI 校验"有入口"），所以"这个工具我该什么时候用"的答案**只在闸表里**——不要凭记忆给命令。
 
 三条纪律：
 
@@ -98,12 +100,13 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
 
 **怎么做**（绑定在**本 skill 的** `references/procedure-gates.yaml` 的 `kind: procedure` 闸门，id 由 `verify_references.py` 校验）：
 
-1. 读**仓库根先验层的** `references/_procedure-index.yaml`（**选择器**，不是内容；注意与上面那句的
-   `references/` 不是同一个目录——skill 支撑文件在 `skills/diagnose/references/`，先验层在仓库根 `references/`）：按本轮 category 过滤 `categories`（**该列为空 = 不限定类别**），用 `title`/`summary` 选**一条**最贴合的流程——**默认一条**。若该流程的前提与现场证据**明确矛盾**（如它要求的数据形态在你手上根本不成立），可换一条：同样受"连续失败 ≤2"约束，并在 trace 记冲突理由；
-2. 按该行的 `file` 打开词条，读 **`content.flow[]` 全文**（step / action / check / when_to_use）——**摘要行不算加载**：实测只读摘要与不读等效，流程的反直觉判据会被摘要截断（例：摘要写"同步比例 > 0.2 则存在慢卡"，漏掉"慢卡 = WTR 最小的卡"）；
-3. 按流程执行：用每步的 `check` 当判定口径（阈值、分流条件），**跳步要说明理由**；
-4. 某步所需数据不在手上（流程要看"逐卡计算耗时"而导出里没有）→ 如实记 `gap`，**不臆断分支结论**；
-5. 记 trace：`{action: reference_lookup, ref_id, purpose: procedure}` + `{action: procedure_follow, ref_id, steps_executed, branch_taken, gap}`（字段见 `references/diagnosis-trace.md`）。
+1. 读**仓库根先验层的** `references/_procedure-index.yaml`（**选择器**，只有几十行：总条数 + `category → 分片文件 + 条数 + 成本`；注意与上面那句的
+   `references/` 不是同一个目录——skill 支撑文件在 `skills/diagnose/references/`，先验层在仓库根 `references/`）：从中找**本轮 category 那一行**，按 `shard` 打开**该分片**；选择器里若另有 `_cross` 片（不限定类别），任何 category 都要一并打开。**本 category 没有对应分片** → 打开选择器列出的**全部分片**再选，并在 trace 写明"本 category 无专用分片"——空手去深度排查与"库中没有可用流程"是两件事，不能让前者冒充后者。**不要为了省事整读全部分片**：选择器分片的意义就是本轮只付自己那一片的成本。
+2. 在分片里用 `title`/`summary` 选**一条**最贴合的流程（分片行是完整的选择器行，不截断）——**默认一条**。若该流程的前提与现场证据**明确矛盾**（如它要求的数据形态在你手上根本不成立），可换一条：同样受"连续失败 ≤2"约束，并在 trace 记冲突理由；
+3. 按该行的 `file` 打开词条，读 **`content.flow[]` 全文**（step / action / check / when_to_use）——**摘要行不算加载**：实测只读摘要与不读等效，流程的反直觉判据会被摘要截断（例：摘要写"同步比例 > 0.2 则存在慢卡"，漏掉"慢卡 = WTR 最小的卡"）；
+4. 按流程执行：用每步的 `check` 当判定口径（阈值、分流条件），**跳步要说明理由**；
+5. 某步所需数据不在手上（流程要看"逐卡计算耗时"而导出里没有）→ 如实记 `gap`，**不臆断分支结论**；
+6. 记 trace：`{action: reference_lookup, ref_id, purpose: procedure}` + `{action: procedure_follow, ref_id, steps_executed, branch_taken, gap}`（字段见 `references/diagnosis-trace.md`）。
 
 > **流程是参考，不是判词**：流程给的是"这类问题怎么查"，不是"这次就是这个"。**它与现场证据冲突时以证据为准**（记 `conflict` 字段），
 > 分支结论仍需数据支撑才进结论；

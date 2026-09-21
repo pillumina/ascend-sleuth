@@ -77,7 +77,7 @@ def check_case_ref_links(root: Path, ref_ids: set):
     if not kdir.exists():
         return counts, errors
     for path in sorted(kdir.rglob("*.yaml")):
-        if path.name.startswith("_"):   # _types.yaml 与生成物 _summary-index.yaml 非词条
+        if not is_entry_file(path):      # 生成物 / 下划线目录非词条
             continue
         rel = str(path.relative_to(root))
         doc = load_yaml(path)
@@ -115,6 +115,18 @@ def check_case_ref_links(root: Path, ref_ids: set):
 SKILL_BINDING_GLOB = "skills/**/references/*-gates.yaml"
 VALID_GATE_KINDS = {"probe", "conditional", "procedure"}
 FALLBACK_CATEGORIES = {"interrupt", "precision", "performance"}
+
+
+def is_entry_file(path: Path) -> bool:
+    """词条文件判定：跳过 `_` 前缀（`_types.yaml` 与生成物）与生成物分片目录。
+
+    为什么单列一个函数而不是在两处各写一遍 `startswith("_")`：分片目录
+    （`_procedure-index/`）是**本仓唯一一处"生成物在子目录里"**——原先只判文件名前缀，
+    它一出现就被当成词条文件校验（21 处"缺少 id/type/title…"），而真正的修法不是把
+    这些报错逐个压掉，是让"什么算词条"只有一处定义。"""
+    if path.name.startswith("_"):
+        return False
+    return not any(part.startswith("_") for part in path.parts[:-1])
 
 
 def legal_categories(root: Path) -> set:
@@ -162,14 +174,25 @@ def check_skill_ref_bindings(root: Path, ref_ids: set, active_ids: set, legal_ca
                 errors.append(f"{rel_file}: gate id '{gid}' 重复")
             else:
                 seen_gate_ids.add(gid)
+            # category 单值 / categories 列表两种写法（2026-09 加列表）：一个闸门可能对多个
+            # category 都成立（如"已有 profiling 产物时读哪一份"同时服务 performance 与 precision）。
+            # 与其复制两份闸门（两份必漂移），不如让数据形态直接表达"多类别共用"。
             cat = gate.get("category")
-            if not cat:
-                errors.append(f"{rel_file} ({gid}): 缺少 category")
-            elif cat not in legal_cats:
-                errors.append(
-                    f"{rel_file} ({gid}): category '{cat}' 不在 triage-tree 取值内"
-                    f"（{'/'.join(sorted(legal_cats))}）——拼错会让闸门静默不触发"
-                )
+            cats = gate.get("categories")
+            if cat and cats:
+                errors.append(f"{rel_file} ({gid}): category 与 categories 只能给一个（避免两份真值）")
+            declared = cats if cats else ([cat] if cat else [])
+            if not declared:
+                errors.append(f"{rel_file} ({gid}): 缺少 category（或 categories）")
+            elif not isinstance(declared, list):
+                errors.append(f"{rel_file} ({gid}): categories 必须是列表")
+            else:
+                for c in declared:
+                    if c not in legal_cats:
+                        errors.append(
+                            f"{rel_file} ({gid}): category '{c}' 不在 triage-tree 取值内"
+                            f"（{'/'.join(sorted(legal_cats))}）——拼错会让闸门静默不触发"
+                        )
             kind = gate.get("kind")
             if kind not in VALID_GATE_KINDS:
                 errors.append(
@@ -239,6 +262,124 @@ def check_skill_ref_bindings(root: Path, ref_ids: set, active_ids: set, legal_ca
                     errors.append(f"{rel_file} ({gid}): caveat_ref '{rid}' 不存在于 references/（悬挂引用）")
                 elif rid not in active_ids:
                     errors.append(f"{rel_file} ({gid}): caveat_ref '{rid}' 非 status: active")
+    return errors
+
+
+def check_related_references(root: Path, ref_ids: set, errors: list):
+    """`related_references` 必须指向真实存在的词条 id（防悬挂）。
+
+    为什么值得一道门：这个字段是"词条之间不合并、只互链"的落地（relate-don't-merge），
+    也是错误码表在**缺行**时唯一的跳板来源。实测 6 处悬挂（如
+    `op-internal-sync-and-reduction-fault-patterns` 真 id 是 `op-internal-sync-and-reduction`）
+    ——悬挂的链接不会报错，只是点不动：读者按它去找，得到的是一次静默失败。"""
+    refs_dir = root / "references"
+    for path in sorted(refs_dir.rglob("*.yaml")):
+        if not is_entry_file(path):
+            continue
+        doc = load_yaml(path)
+        if not isinstance(doc, dict):
+            continue
+        rel = path.relative_to(root).as_posix()
+        for rid in doc.get("related_references") or []:
+            if rid not in ref_ids:
+                errors.append(
+                    f"{rel}: related_references 里的 '{rid}' 不存在于 references/（悬挂引用——点不动）"
+                )
+    return errors
+
+
+def check_error_gap_views(root: Path, errors: list):
+    """错误码缺口的两个视图必须一致：族内视图（`content.code_gaps`）⊆ 生成索引（`_code-gaps.yaml`）。
+
+    为什么需要：族内视图让"在这个族里没查到"的当下就能看到"这个码我知道但官方表没有行"，
+    它离读者最近；生成索引是完整台账。两份表达同一件事——手工维护的那一份（族内）一旦与
+    生成的台账漂移，最小代价的修法不是"记得两边都改"，是让它红。方向只查**族内 ⊆ 台账**：
+    族内视图是**节选**（只收本族的码），比台账少是正常的，多出来才是漂移。"""
+    gap_path = root / "references" / "errors" / "_code-gaps.yaml"
+    if not gap_path.exists():
+        errors.append("references/errors/_code-gaps.yaml 不存在——运行 scripts/build_error_gap_index.py 生成")
+        return errors
+    index = load_yaml(gap_path)
+    known = {}
+    if isinstance(index, dict):
+        for g in index.get("code_gaps") or []:
+            if isinstance(g, dict) and g.get("code"):
+                known[str(g["code"])] = g
+        for g in index.get("no_home") or []:
+            if isinstance(g, dict) and g.get("code"):
+                known.setdefault(str(g["code"]), None)
+    for path in sorted((root / "references" / "errors").glob("*.yaml")):
+        if not is_entry_file(path):
+            continue
+        doc = load_yaml(path)
+        if not isinstance(doc, dict):
+            continue
+        rel = path.relative_to(root).as_posix()
+        for i, g in enumerate(((doc.get("content") or {}).get("code_gaps") or [])):
+            if not isinstance(g, dict) or not g.get("code"):
+                errors.append(f"{rel}: content.code_gaps[{i}] 缺少 code")
+                continue
+            code = str(g["code"])
+            if not (g.get("seen_in") or g.get("no_home")):
+                errors.append(
+                    f"{rel}: content.code_gaps[{i}]（{code}）既没给 seen_in 也没标 no_home——"
+                    f"缺行条目必须指向一个能看的地方，否则与「没有」同形"
+                )
+            if code not in known:
+                errors.append(
+                    f"{rel}: content.code_gaps 里的 {code} 不在 references/errors/_code-gaps.yaml"
+                    f"（生成索引）中——两个视图漂移了，补进索引或重跑 build_error_gap_index.py"
+                )
+    return errors
+
+
+def check_tool_binding_coverage(root: Path, errors: list):
+    """**覆盖环**：每条声明了 category 的 active tool 词条，必须被某个诊断闸门绑定。
+
+    为什么需要：tool 类词条不进候选路由（它们不是 case），背景 summary 层也不按工具名
+    收窄到"该跑哪条命令"——**闸门绑定是它们进诊断上下文的唯一入口**。于是"某条工具词条
+    没被任何闸门引用"在运行时的唯一表现就是它永远不出现，而没有任何信号会报这件事：
+    `check_skill_ref_bindings` 只查"被引用的是否存在且 active"（方向相反）。
+    实测（2026-09）38 条 tool 词条里 10 条 interrupt、14 条 performance 未绑定任何闸门——
+    其中包含取调用栈、看日志配置、多机网络诊断这类现场最常用的手段。
+
+    边界如实标注（原则十）：本检查保证"有入口"，**不保证入口在对的分支上**（分支语义
+    是人的判断）；也不检查非 tool 类词条的消费路径（它们的入口形态不同）。"""
+    refs_dir = root / "references"
+    bound = set()
+    declared = {}          # tool id -> 声明的 categories（供报错时指出该往哪个 category 挂）
+    for path in sorted(root.glob(SKILL_BINDING_GLOB)):
+        doc = load_yaml(path)
+        if not isinstance(doc, dict):
+            continue
+        for gate in doc.get("gates") or []:
+            if not isinstance(gate, dict):
+                continue
+            for br in gate.get("branches") or []:
+                if isinstance(br, dict):
+                    bound.update(br.get("refs") or [])
+            bound.update(gate.get("caveat_refs") or [])
+            bound.update(gate.get("refs") or [])
+    for path in sorted((refs_dir / "tools").glob("*.yaml")) if (refs_dir / "tools").exists() else []:
+        doc = load_yaml(path)
+        if not isinstance(doc, dict) or doc.get("status") != "active":
+            continue
+        cats = (doc.get("applies_to") or {}).get("categories") or []
+        if not cats:
+            # 没声明 category 的工具词条无法被"按 category 触发"的闸门取到——它自己就该红。
+            errors.append(
+                f"{path.relative_to(root)}: tool 词条未声明 applies_to.categories——"
+                f"闸门按 category 触发，未声明 = 没有任何触发点能取到它"
+            )
+            continue
+        declared[doc.get("id")] = cats
+    for tid, cats in sorted(declared.items()):
+        if tid not in bound:
+            errors.append(
+                f"tool 词条 '{tid}'（categories: {'/'.join(cats)}）未被任何诊断闸门绑定——"
+                f"闸门是工具词条进诊断上下文的唯一入口，未绑定等于永不加载。"
+                f"在 skills/diagnose/references/collect-gates.yaml 的对应 category 分支里挂上"
+            )
     return errors
 
 
@@ -495,14 +636,14 @@ def check_reference(path: Path, refs_dir: Path, types_registry: dict, case_ref_c
 
 
 def count_entries(refs_dir: Path) -> int:
-    """词条计数（**唯一口径**）：`references/**/*.yaml` 递归，跳过 `_` 开头的文件。
+    """词条计数（**唯一口径**）：`references/**/*.yaml` 递归，跳过生成物（`_` 前缀文件与 `_` 前缀目录）。
 
     单独成函数是给"降级路径"复用的：`metrics_health.py` 在子进程跑不动时（受限执行环境）
     需要不启子进程就得到词条数。降级值必须与权威值**同口径**——实测教训：那边自己写了一份
     "只数直接子目录"的规则，漏掉 `references/<type>/<family>/x.yaml` 这一层嵌套，得到 127
     而权威是 130。避免漂移的办法不是"对齐两份规则"，是**只留一份**。
     """
-    return len([p for p in refs_dir.rglob("*.yaml") if not p.name.startswith("_")])
+    return len([p for p in refs_dir.rglob("*.yaml") if is_entry_file(p)])
 
 
 def main():
@@ -528,7 +669,7 @@ def main():
     ref_ids = set()
     active_ids = set()
     for path in sorted(refs_dir.rglob("*.yaml")):
-        if path.name.startswith("_"):   # _types.yaml / 生成物 _summary-index.yaml 非词条
+        if not is_entry_file(path):      # 生成物 / 下划线目录非词条
             continue
         doc = load_yaml(path)
         rid = doc.get("id") if isinstance(doc, dict) else None
@@ -543,9 +684,16 @@ def main():
     # 3) skill 侧绑定：采集闸门表里的 ref-id 必须存在且 active；category 取值合法
     legal_cats = legal_categories(root)
     errors = list(case_errors) + check_skill_ref_bindings(root, ref_ids, active_ids, legal_cats)
+    # 3b) 覆盖环（方向相反的那一半）：每条声明了 category 的 tool 词条都要有闸门入口——
+    #     "引用了不存在的东西"（3 查）与"存在但没人引用"（3b 查）是两种不同的静默失效
+    errors += check_tool_binding_coverage(root, [])
+    # 3c) related_references 悬挂：互链是"缺行时的跳板"的来源，断了只是静默点不动
+    errors = check_related_references(root, ref_ids, errors)
+    # 3d) 错误码缺口的两个视图（族内节选 vs 生成台账）不得漂移
+    errors = check_error_gap_views(root, errors)
     seen_ids = {}
     for path in sorted(refs_dir.rglob("*.yaml")):
-        if path.name.startswith("_"):
+        if not is_entry_file(path):
             continue
         rel = str(path.relative_to(refs_dir))
         doc = load_yaml(path)

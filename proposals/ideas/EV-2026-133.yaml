@@ -1,0 +1,194 @@
+# ============================================================
+# EV-2026-133 —— 让 reference 在流程里"用得起也接得住"：四处消费点的成本、终点与入口补齐
+# 来源：用户在内网机器上跑 diagnose 后读思考过程（"从 reference 取信息的次数不多"）
+#       → 复查 trace 事件分布、四触发点文本、闸门绑定表与索引成本，定位到四类成因：
+#         ① 判断缺口（背景侧）写成"否则"分支，而 93% 的候选没有 ref_knowledge（该分支多数单子上被读成可省）；
+#         ② 方法缺口的选择器已越过它自己写下的扩容闸门（32 条 / 约 5.4K token 整读才挑 1 条）；
+#         ③ 工具词条的入口只覆盖了采集面的一部分（38 条里 24 条未绑定任何闸门）；
+#         ④ 错误表未命中即收场，而同码往往在故障模式表里有完整修法（实测 16 个码如此）。
+# 脱敏：只含聚合计数与仓库内文件位置，不含客户现场原文
+# ============================================================
+
+id: EV-2026-133
+layer: L2                          # 机制层（reference 消费点的成本、终点与绑定）
+title: "reference 消费点补齐：背景层去「否则」分叉、流程选择器分片、工具词条覆盖环、错误码缺口跳板"
+status: validated
+authorization: review              # 改 skill 行为面（触发形态）+ reference 元数据与索引形态
+dimension: process                 # 触发形态、成本预算与入口覆盖
+supersedes: []
+superseded_by: null
+created_at: 2026-09-21
+target_component: skills/diagnose/references/collect-gates.yaml
+source_signals:
+  - signal: mechanism_gap
+    evidence: >-
+      四个消费点在真实单子上的到达率与终点都不理想，且各有确定成因（不是"agent 偷懒"）：
+      ① 背景侧写成"带 ref_knowledge → 必读，**否则** grep 背景层"——而 168 条 case 里只有 12 条
+      填了 ref_knowledge，即 93% 的命中单会掉进那个"否则"分叉；实测三个历史命中 case
+      （VLLM-ASC-12989/13050/9005）全部 ref_knowledge=0，但背景层按平台+组件词能收窄到相关行
+      （如 ascend-310p-known-limits 与 12989 交集 2 个词），说明这一分支不是没东西可查，是没被读。
+      ② 流程选择器整读 32 条 / 约 5387 token 才挑 1 条，而已越过它自己写下的闸门（"流程条数 > 25
+      或 > 5K token → 按 category 分片"）——越过闸门而无人报，因为闸门只写在头注散文里。
+      ③ 工具词条是"不进候选路由、背景层也不按工具名收窄"的一类，闸门绑定是它们唯一的入口；
+      实测 38 条里 24 条未绑定任何闸门（interrupt 10 / performance 14 / precision 16），
+      含取调用栈、日志配置、多机网络诊断这类现场最常用的手段。
+      ④ 键触发的错误码只在错误表里查，查不到即记 miss 收场；交叉核对故障模式表，**16 个码
+      全库错误表都没有行**（507008/507017/507032/507035/507899/207007/207008/107000/107001/
+      107002/107003/107012/207000/207001/100002/768032），而它们在故障模式表里都有症状→根因→修法。
+      两单真实诊断各撞上一次（507014、507035）。
+    trajectory:
+      - "traces/2026-09-16-12430-dsv4pro-mc2.yaml#reference_lookup（507014 表未收录 → miss，转源码查证）"
+      - "traces/2026-09-18-dsv4flash-dspark-indexcheck.yaml#reference_lookup（507035 命中搬运族但病因不同，不作根因依据）"
+      - "traces/*.yaml 的 purpose 分布（signature 9 / procedure 4 / background 3 / collect 1 / fix 1）"
+      - "references/_procedure-index.yaml 头注（流程条数 32、约 5387 token、增长闸门 >25 或 >5K）"
+      - "python3 -c 交叉核对 fault-patterns 的错误码 vs errors/ 的行（16 个缺口）"
+  - signal: doc_drift
+    evidence: >-
+      机制自己写下的闸门被判为"当前单文件即可"（与实际数值相反），属"散文里的数值断言无 CI 覆盖"
+      ——与 collect-gates 头注写过的"散文里硬编码会静默腐化"是同一类病。另有一处同源腐化：
+      `related_references` 悬挂 6 处（如 `op-internal-sync-and-reduction-fault-patterns` 真 id 是
+      `op-internal-sync-and-reduction`）+ 5 处指向已归档（deprecated）的 `ascend-mooncake-kv-transfer-triage`。
+      字段没校验 → 链接点不动 → 读者按它去找，得到一次静默失败。
+    trajectory:
+      - "references/_procedure-index.yaml 头注 vs 实测 32 条 / 5387 token"
+      - "全库 related_references 悬挂扫描（11 处，含指向 _archive/ 的 deprecated 词条）"
+hypothesis: >-
+  把四个消费点各自补成"到得了、付得起、接得住"：①背景层与 ref_knowledge 由"二选一"改为并列
+  （那 93% 的单子才有背景入口）；②流程选择器按 category 分片（本轮只付自己那片，interrupt 约 1.8K
+  而原来是 5.4K 整读）；③工具词条加覆盖环 CI（"未绑定任何闸门"从无声变红）；④错误表未命中时按
+  缺口索引跳到故障模式表。预期：tool 词条未绑定数 → 0；流程选择器成本 ≤ 选择器上限（判据命令），
+  且每条 active methodology 在它声明的每个分片里；错误码缺口有台账、两视图不漂移。
+predicted_effect:
+  metric: reference 消费点的入口覆盖与固定成本（机制可判部分）
+  from: >-
+    工具词条未绑定闸门 24 条；流程选择器整读 32 条 / 约 5387 token；错误码缺口无台账
+    （16 个码在故障模式表有修法而错误表无行）；related_references 悬挂 11 处
+  to: >-
+    工具词条未绑定 0 条（CI 硬门）；选择器 ≤ 其自身上限且分片每条流程恰好可寻；错误码缺口
+    16 条入台账且族内视图与台账一致；related_references 悬挂 0 处
+  measure:
+    command: |
+      python3 - <<'PY'
+      import subprocess, sys, pathlib, yaml
+      sys.path.insert(0, 'scripts')
+      import build_procedure_index as bp
+      
+      runs = [
+          ['python3','scripts/verify_references.py','--check'],
+          ['python3','scripts/build_procedure_index.py','--check'],
+          ['python3','scripts/build_error_gap_index.py','--check'],
+          ['python3','scripts/build_ref_summary_index.py','--check'],
+          ['python3','scripts/verify_case_draft.py','--all'],
+      ]
+      codes = [subprocess.run(c, capture_output=True, text=True) for c in runs]
+      exp, entries, keys = bp.expected_outputs(pathlib.Path('.').resolve())
+      per_key_ok = all(
+          len(yaml.safe_load(exp[f'{bp.SHARD_DIR_NAME}/{k}.yaml'])['entries']) == len(bp.entries_for(entries, k))
+          for k in keys
+      )
+      slots = sum(len(yaml.safe_load(exp[f'{bp.SHARD_DIR_NAME}/{k}.yaml'])['entries']) for k in keys)
+      ingap = yaml.safe_load(open('references/errors/_code-gaps.yaml'))
+      fam = yaml.safe_load(open('references/errors/cann-runtime.yaml'))['content']['code_gaps']
+      gap_views = all(any(g['code'] == f['code'] for g in ingap['code_gaps']) for f in fam)
+      txt = pathlib.Path('skills/diagnose/references/diagnosis-procedure.md').read_text(encoding='utf-8')
+      no_else = ('\u5e76\u5217' in txt) and ('\u4e00\u5f8b' in txt)
+      sel_tokens = bp._tokens(pathlib.Path('references/_procedure-index.yaml').read_text(encoding='utf-8'))
+      selector_small = sel_tokens < bp.SELECTOR_CAP_TOKENS
+      print('gates_all_green', all(c.returncode == 0 for c in codes))
+      print('shards_cover', per_key_ok, 'scheduled_slots', slots)
+      print('gap_views_consistent', gap_views)
+      print('background_no_else', no_else)
+      print('selector_small', selector_small, sel_tokens)
+      ok = all(c.returncode == 0 for c in codes) and per_key_ok and gap_views and no_else and selector_small
+      print('measure_ok', ok)
+      raise SystemExit(0 if ok else 1)
+      PY
+    expect_exit: 0
+    expect_stdout: "measure_ok True"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前：阶段 2.5 分两步二选一（`ref_knowledge` 必读 / **否则** grep 背景层）；流程索引单文件
+    32 条 / 约 5387 token 整读（越过了自己头注写的 >25 或 >5K 闸门）；`collect-gates.yaml` 只绑定了
+    14 条工具词条（38 条 active tool 里 24 条无入口）；错误表未命中即 miss，无缺口台账；
+    `related_references` 无悬挂校验（实测 11 处点不动）。
+  success_criteria: >-
+    ① measure 命令 exit 0 且打印 `measure_ok True`（四道索引/引用校验全绿 + 分片覆盖完整 +
+    选择器在上限内 + 背景层不再二选一 + 错误码两视图一致）；
+    ② 覆盖环有效：临时摘掉任一已绑定工具词条 → `verify_references.py --check` 红（已实测一次）；
+    ③ 缺口的可见性：错误表未命中时读侧有确定下一步（缺口索引的 `seen_in`），且族内视图与
+    生成台账漂移即红（已实测一次）；
+    ④ 成本有界：选择器约 430 token（原 5387），本轮按 category 只读一片（interrupt 约 1.8K）；
+    ⑤ 无回归：CI 逐条全绿 + `python3 -m unittest discover tests` 133 项通过（含 11 项新增）；
+    ⑥ 行为面待真实确认（诚实标注）：本卡只改"到得了 / 付得起 / 接得住"三件结构事，
+    **不证明诊断质量提升**——真实消费率要看下一单诊断的 trace（四个 purpose 是否都出现、
+    background 的 miss 是否带得出"库缺这一族"的信号）。
+  rollback: >-
+    单次提交，`git revert` 即回原状：改动落在 skills/diagnose/ 三个文件、references/ 的索引形态
+    与元数据（无词条内容删除，5 处 related_references 只删了指向 deprecated 词条的失效链接）、
+    scripts/ 三个脚本与 CI 一个 job；错题分片由 `build_procedure_index.py` 幂等重建（原则七）。
+gate:
+  condition: >-
+    下一批诊断 trace 里 background 的 `skipped` 占比仍 ≥90% 且 review 未记录到既定场景时，
+    回看本卡结论；或工具词条覆盖环出现"为过门而绑到错分支"的实例
+risk: medium                       # 改消费点形态与索引结构；可逆、不改判定语义与 severity
+principle_refs: [2, 7, 8, 9]       # 二 不变量写进结构 / 七 变更可逆 / 八 可观测先于改进 / 九 稀缺资源显式预算
+actual_cost:
+  tokens: 42000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数：成因定位（trace 事件分布、四触发点文本、闸门绑定与索引成本核对，约 14k）、
+    四处改动与脚本（约 20k）、验证与建卡（约 8k）。
+decisions:
+  - who: agent
+    when: 2026-09-21
+    type: proposal
+    conclusion: >-
+      产卡即执行。范围取用户确认的四点，**不动 reference 词条 schema、不批量补错误码**：
+      缺行是"官方表没有行"的事实，批量手写进 `errors` 会让"哪些是官方原文"不可分辨；
+      改走缺口索引（跳板 + 覆盖债台账），把"补哪一行"留成可核查的待办。
+  - who: agent
+    when: 2026-09-21
+    type: action
+    conclusion: >-
+      `diagnosis-procedure.md`：阶段 2.5 的 1/2 步由"必读 / 否则"改为"先读 ref_knowledge，
+      **再一律**取背景 summary 层"（`miss` 记覆盖缺口）；步骤 2 键触发补"错误表缺行 →
+      按 `_code-gaps.yaml` 跳转，再报没有"与"命中不等于可套用（同码不同病因）"；步骤 5 改为
+      读选择器 → 打开本轮分片 → 分片缺失则读全部分片。
+      `SKILL.md`：核心循环步骤 2/3/5 同步；闸表形态表补"探询型两半都要走完"与
+      "工具入口只在闸表里，不要凭记忆给命令"。
+      `collect-gates.yaml`：新增 precision-analysis-tools / performance-analysis-tools /
+      interrupt-deep-debug-gap 三个闸门，把 24 条未绑定工具词条全部接上；闸门支持
+      `categories` 列表（一个闸门服务多类别，避免复制两份必漂移）。
+      `scripts/build_procedure_index.py`：选择器 + `_procedure-index/<category>.yaml` 分片；
+      `--check` 增分片完整性、残留分片、选择器成本上限、形态区分四道判据。
+      `scripts/build_error_gap_index.py`（新）：生成 `references/errors/_code-gaps.yaml`。
+      `scripts/verify_references.py`：新增工具覆盖环、related_references 悬挂、错误码缺口两视图
+      一致性三道检查；把"什么算词条"抽成 `is_entry_file`（分片目录曾让 21 处误报）。
+      `verify_case_draft.py` / `build_procedure_index.py` 两处同源口径同步；
+      CI 加 `build_error_gap_index.py --check`，并把两个新脚本加入 paths 触发。
+      附带修复实测到的存量问题：`related_references` 6 处悬挂 + 5 处指向已归档 deprecated 词条。
+  - who: agent
+    when: 2026-09-21
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS（`measure_ok True`，五道校验全绿、分片覆盖完整、选择器 430 token）。
+      负向对照（本地探针）：①摘掉 `ascend-stack-view` 的闸门绑定 → `verify_references.py` 红
+      （"未被任何诊断闸门绑定"），恢复后绿；②把族内 `code_gaps` 改成台账里没有的码 → 红
+      （"两个视图漂移了"），恢复后绿；③旧单文件索引形态喂给 `parses_selector` → 判定为不合格形态
+      （两者不同形，只判"能解析"会漏）。门禁分级（docs/guide/eval.md）：本卡改的是
+      **交互/指引面 + 选择器结构**，不改变候选选择 → 按该表**不跑检索 golden**（golden 测的是
+      路由与候选命中，对 reference 消费点无信号）；改的是索引结构，故以结构判据 + 定向探针替代。
+      CI 逐条复跑：build_index / triage-tree / verify_case_draft / verify_references /
+      三个 reference 索引 / verify_metrics / build_timeline / verify_proposals / build_docs_index /
+      holdout / eval_scorecard / unittest（133 项）/ check_panel_tokens / eval_arena --self-test 全绿。
+  - who: agent
+    when: 2026-09-21
+    type: decision
+    conclusion: >-
+      采纳并标 validated。边界如实标注：①**不证明诊断变好**——本卡解决的是"到不了、付不起、
+      接不住"三件结构事，真实消费率与质量要等下一单诊断的 trace（gate 已写死检查项）；
+      ②工具覆盖环保证"有入口"，**不保证入口在对的分支上**（分支语义是人的判断，README 已注明）；
+      ③`no_home` 段当前 1 条（507014），它记的是"官方表与故障模式表都没有"这一事实，
+      补进任一表后从该段移出——这不是待办清单，是覆盖缺口的留痕；
+      ④错误码缺口只覆盖 6 位码与 E*#### 形态，`0x…` 设备异常码的归属与查法不同，未纳入。

@@ -1,0 +1,150 @@
+# GENERATED FILE —— 流程选择器分片（category = precision），不要手改。
+# 由 scripts/build_procedure_index.py 生成；--check 校验新鲜度 + 可解析性（CI）。
+#
+# 用法：按 file 打开词条读 **content.flow[] 全文**——摘要行不承载判据，只读摘要等于没加载
+#   （反直觉判据会被截断，例：摘要写"同步比例 > 0.2 则存在慢卡"，漏掉"慢卡 = WTR 最小的卡"）。
+#   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：
+#   references/_procedure-index.yaml
+#
+# 生成日期：2026-09-21    本片流程条数：17    本片加载成本：约 2809 token
+entries:
+- id: ascend-determinism-triage
+  title: 确定性失效排查路径（开关被重置 / 算子内部竞争 / batch invariance 三路分流）
+  summary: 训练或推理结果不可复现时的分流路径：先确认确定性开关是否**真的**开着（易被业务代码中途重置）→ 再看「全量 dump 是否让问题消失」（消失=采集行为影响时序，指向竞争）→ 三路分流：①plog 看 aclnn deterministic 标识是否中途变 0（业务代码重置开关）②ASCEND_LAUNCH_BLOCKING=1 后消失 + mssanitizer 报竞争（算子内部数据竞争）③…
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/ascend-determinism-triage.yaml
+- id: ascend-garbled-output-triage
+  title: 乱码类「无报错错误输出」分流路径（权重错位 / 模块未移植 / 算子数值偏差 / KV 传输时序 / 传输路径未定位）
+  summary: 推理或训练输出乱码且**无报错**时的分流路径：先按「三段定界」（输入预处理 / 前向计算 / 传输与后处理）判断问题落在哪一段，再按五条机制分流——①权重转换/加载后逐 tensor 错位 ②模型模块未移植（分层分界，如第 N 层后异常）③算子数值偏差（版本绑定，回退版本即消失）④KV 传输/流同步时序（首请求、跨 PP stage 边界）⑤传输路径缺陷未定位（切换通信路径可规避）；乱码没有签…
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/ascend-garbled-output-triage.yaml
+- id: ascend-hardware-detect-triage
+  title: 硬件与压力检测判读（asys diagnose 四模式 → Pass/Warn/Fail → [ERROR] AML 错误码前缀分流 → 电压恢复）
+  summary: 怀疑硬件问题（或精度/中断问题排查到硬件层）时的检测与判读路径：①按目的选检测类型——综合检测（stress_detect 压力 / hbm_detect / cpu_detect / aicore_stl_detect，**须物理机 + root**，Atlas 200I/500 A2 推理、Atlas 推理系列、Atlas 训练系列不支持）与组件检测（仅 AI Vector、不支持并行）；②…
+  categories:
+  - interrupt
+  - precision
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/ascend-hardware-detect-triage.yaml
+- id: ascend-hccl-comm-fault-triage
+  title: HCCL 集合通信故障定位（故障码/多级关键字分流三阶段 → 全量日志 → 根节点定位）
+  summary: 多机 HCCL 报错的标准定位路径：①先确认是 HCCL 的问题（打屏日志出现 `EI****`/`EJ****` 故障码，或 CANN 日志中有 HCCL 组件 ERROR）——CANN 日志里没有 HCCL 报错时不要套用本流程，转查其他组件、脚本、core dump 或进程卡住；②收集**全量节点**的 debug+run 日志（报错 rank 常常只是在等对端超时）；③用多级检索关键字 …
+  categories:
+  - interrupt
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/ascend-hccl-comm-fault-triage.yaml
+- id: ascend-om-infer-precision-triage
+  title: om 离线模型推理精度定位（Dump + 高精度模式对照 → 逐个差异算子 keep_dtype → 关缓存优化/融合规则 → 数据与标杆比对）
+  summary: ATC 转换出的 om 离线模型推理精度不达标时的定位路径。先分形态：①**推理结果错误**（整网功能已调通但结果错，如检测网络 MAP 全 0、与标杆比对余弦相似度为 0）；②**推理精度不达标**（单次推理与标杆余弦相似度 95% 以上，但数据集精度差少量，如 Top1 0.90 vs 标杆 0.92、MAP 0.54 vs 0.55）。然后：打开 Dump 开关复现取模型 Dump → 用…
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/ascend-om-infer-precision-triage.yaml
+- id: ascend-train-precision-triage
+  title: 大模型训练精度定位五步路径（CheckList → 复现前置 → 稳定/不稳定分流 → 分支排查 → 单算子确认与修复）
+  summary: 训练侧精度问题定位五步路径：先做 CheckList 排除非算子因素（超参/环境变量/三方库/数据读取/模型结构/权重初始化/版本）→ 复现前置（固定随机性、打开确定性、seed_all、缩小规模）→ 按「能否稳定复现 + 现象」分流（溢出或NaN / 首Step Loss差异 / 长稳Loss差异 vs 内存踩踏/算子确定性/硬件/框架/版本）→ 分支排查 → 单算子三方比对确认后用「修复三板…
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/ascend-train-precision-triage.yaml
+- id: long-vector-accumulation-error
+  title: 长向量线性累加的浮点误差（O(n·ε) → 二分累加 / 迭代 rsqrt）
+  summary: 行内/序列求和用线性累加时，float32 的相对误差界是 O(n·ε)（ε≈1.2e-7 = 2^-23）——n=8192 时误差上界约 1e-3，足以让归一化/量化结果在边界处偏移 1 个 quant level 并逐层累积。修法是二分累加（缩短累加链深度，误差界降到 O(log n·ε)）与用乘加链迭代替代硬件 Div/Sqrt；代价约 1%
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/long-vector-accumulation-error.yaml
+- id: rl-inference-precision-triage
+  title: RL 推理精度定位（纯服务化 / RL 场景乱码 / 长跑异象，含 Resharding 组合定界）
+  summary: RL 推理精度问题的三形态分流：先按现象归形态（纯服务化推理乱码 / 纯服务化正常但 RL 场景乱码 / 长跑才有的异象），再各走一条路——dump 精准定位与 GPU 复测、对齐服务化参数后用 dummy 与 safetensors+skip_update_weight 组合定界 Resharding、单步权重纯服务化回放区分训歪与 kvcache 问题
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/rl-inference-precision-triage.yaml
+- id: rl-precision-alignment-overview
+  title: RL 精度对齐总体定位流程（指标口径 → 前置 CheckList → 首步 bad case → 训练/训推分流 → 长跑异象）
+  summary: RL 训练与推理精度对齐（GPU 对照 NPU）的总体流程：先约定八项指标口径，再做前置 CheckList（环境与三方库版本、权重与数据集 MD5、关 shuffle、balance_batch 与超长处理两边一致、固定随机数、日志参数一键比对），再按纯服务化推理 → 首步 bad case → RL 场景指标判据 → 训练块与训推一致性分流 → 长跑异象逐段收窄
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/rl-precision-alignment-overview.yaml
+- id: rl-reward-module-triage
+  title: RL Reward 模块定位（按数据集类型定打分方式 → 分数为 0 / 与 GPU 有分差 / 自定义打分）
+  summary: RL reward 对不齐的分流：先按数据集类型定打分方式与常见对不齐原因（Math 规则打分 / Code 沙箱打分 / 通用理解类模型打分），再按现象走——分数为 0 时用 GPU 推理数据单测打分器、与 GPU 存在分差 GAP 时先对齐 reward model 权重与服务化参数并固定输入（temperature=0）、客户自定义打分直接比对打分逻辑代码与传参
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/rl-reward-module-triage.yaml
+- id: rl-train-infer-consistency-triage
+  title: RL 训推一致性排查路径（先定分歧面，再选权重链路 / 概率偏移 / 阶段定界）
+  summary: RL（GRPO/PPO）训推一致性问题的排查路径：先按现象定分歧面——输出崩溃（乱码/生僻字/重复）多指向权重同步链路，reward 下降 + logp_diff 上升多指向逐 token 概率偏移，整体效果差但难分训推则需阶段定界；再选手段（UWC 三段比对权重链路 / 逐 token probs_diff 看概率分布 / 交叉打桩定界训练还是推理），最后按各自容差判读
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/rl-train-infer-consistency-triage.yaml
+- id: rl-train-infer-divergence-metrics
+  title: RL 训推一致性指标判据与三种手段（diff_mean / pearson / KL 阈值 → fp32 升精 / router replay / rollout correction）
+  summary: RL 训推一致性的指标判据与三种手段：rollout_probs_diff_mean 大于 0.01x 存疑、rollout_actor_probs_pearson_corr 需 0.99x 及以上、|KL| 小于 0.1；手段为训推差异正向定位（fp32 升精）、MoE router replay、rollout correction（IS/RS）
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/rl-train-infer-divergence-metrics.yaml
+- id: rl-training-precision-triage
+  title: RL 训练精度定位（pg_loss / kl_loss / ppo_kl / grad_norm 分流 + 优化特性对齐表）
+  summary: RL 训练精度（GPU 对照 NPU）的分流：前提是打桩输入相同推理结果、训练配置一致、固定随机性（SkipRollout 缓存并复用已生成序列）；按现象归到 pg_loss 差异、首步 kl_loss 非零、ppo_kl 量级差异、grad_norm 对不齐四类，各自采集对应阶段数据比对；不稳定复现查多流内存踩踏；优化特性按历史经验表逐项对齐
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/rl-training-precision-triage.yaml
+- id: runtime-async-error-triage
+  title: Runtime 异步错误定位（异步错误会延迟传播与覆盖 → 立即同步取首错 + 遇错即停/分段标记）
+  summary: Runtime 异步接口（aclrtMemcpyAsync、Kernel Launch 等）返回成功只代表 Host 侧参数校验与任务下发成功，Device 侧执行错误会**延迟到后续某个接口调用才返回**——于是报错的接口往往不是出错的接口；遇错继续模式下后发生的错误还会**覆盖**先前的错误信息，导致拿不到首错。定位路径：下发后立即用 aclrtSynchronizeStream / acl…
+  categories:
+  - interrupt
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/runtime-async-error-triage.yaml
+- id: sentinel-precheck-data-movement
+  title: sentinel 预填校验法（无 profiler 时定位搬运类精度问题的最小实验）
+  summary: 验证一段搬运指令是否脏写/漏写的方法：把输出 buffer 预先填满统一 sentinel 值（如 -1），用**确定性输入**（如 `x[i]=i`、`x[i]=i·0.5`）跑一遍，再逐元素校验「该写的写了、不该写的仍是 sentinel」。它一次性暴露三类缺陷——**尾轮多写**（sentinel 被覆盖）、**尾轮漏写**（应写位置仍是 sentinel）、**位置错**（值出现在错误索…
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/sentinel-precheck-data-movement.yaml
+- id: slime-framework-debug-and-divergence
+  title: Slime 框架定位（训推分离架构 → 自带 DEBUG 开关 → 数据采集面 → 与 verl 的差异点）
+  summary: Slime 训推分离 RL 框架（SGLang 采样 / Megatron 训练 / Ray 调度，每轮 rollout 结束经 update_weights 把权重同步回推理引擎）的定位：自带五类 DEBUG 开关（数据缓存复用、训练数据留存、单推调试、权重一致性核对、细节 dump）；与 verl 比对前先处理两处差异（dynamic_bsz、grpo 的 dual_clip）
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/slime-framework-debug-and-divergence.yaml
+- id: vllm-infer-precision-triage
+  title: vLLM 推理精度定位五步路径（前置对齐 → 首差异 token → dump → compare → 单算子确认）
+  summary: vLLM 推理精度定位五步路径（单 case 可复现场景）：问题场景与标杆场景对齐（配置/超参/三方库/输入）并固定采样随机性（temperature=0）与算子确定性 → 打印输出 token_id 序列定位**首个差异 token**（把"整句不对"缩到"第 N 个 token 起不对"）→ 两侧使能 msprobe dump（推荐 mix+statistics）→ msprobe comp…
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/vllm-infer-precision-triage.yaml

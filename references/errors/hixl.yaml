@@ -20,7 +20,7 @@ applies_to:
   frameworks: [hixl]
   categories: [interrupt]
 
-related_references: [llm-datadist-error-codes, ascend-error-code-structure, ascend-mooncake-kv-transfer-triage, hccl-error-codes]
+related_references: [llm-datadist-error-codes, ascend-error-code-structure, hccl-error-codes]
 
 status: active
 last_verified: 2026-09-15
