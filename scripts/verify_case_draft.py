@@ -69,7 +69,10 @@ def load_reference_index(root: Path):
     if not refs.is_dir():
         return index
     for path in sorted(refs.rglob("*.yaml")):
-        if path.name.startswith("_"):
+        # 生成物：`_` 前缀文件（_types / _summary-index / _code-gaps）与 `_` 前缀目录
+        # （`_procedure-index/` 的流程分片）。分片里也有 `id`/`type` 字段（它们是选择器行），
+        # 混进词条索引会让词条数与 ref_knowledge 校验都指向不该进诊断上下文的东西。
+        if path.name.startswith("_") or any(part.startswith("_") for part in path.parts[:-1]):
             continue
         try:
             data = load_file(path)

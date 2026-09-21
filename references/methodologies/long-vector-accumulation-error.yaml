@@ -14,7 +14,7 @@ applies_to:
   platforms: [cross]
   categories: [precision]
 
-related_references: [bf16-intermediate-fp32, msprobe-accuracy-compare, operator-bottleneck-attribution]
+related_references: [bf16-intermediate-precision, msprobe-accuracy-compare, operator-bottleneck-attribution]
 
 status: active
 last_verified: 2026-09-14

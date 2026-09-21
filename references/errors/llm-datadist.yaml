@@ -15,7 +15,7 @@ applies_to:
   frameworks: [llm-datadist, hixl]
   categories: [interrupt, precision]
 
-related_references: [hixl-error-codes, ascend-error-code-structure, ascend-mooncake-kv-transfer-triage, hccl-error-codes, hixl-tool-route-and-comm-res]
+related_references: [hixl-error-codes, ascend-error-code-structure, hccl-error-codes, hixl-tool-route-and-comm-res]
 
 status: active
 last_verified: 2026-09-15

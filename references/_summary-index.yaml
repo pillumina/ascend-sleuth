@@ -3,7 +3,7 @@
 # 只含背景类 + status=active；查表类走步骤 2 收尾的键触发 grep（口径同 diagnose SKILL）。
 # 读法：grep 取行 + ≤5 行上限——索引随词条数增长，整读等于注入全库背景。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 生成日期：2026-09-18    词条数：133
+# 生成日期：2026-09-21    词条数：133
 entries:
 - id: a5-950dt-memory-spec
   type: platform-fact

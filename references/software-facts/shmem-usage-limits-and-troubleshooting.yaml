@@ -20,7 +20,7 @@ applies_to:
   frameworks: [shmem]
   categories: [interrupt, precision, performance]
 
-related_references: [moe-dispatch-combine, hccn-tool-network-diagnosis, hccl-comm-init-and-link-faults, mssanitizer, ascend-hardware-detect-triage, process-hang-or-peer-heartbeat-loss-example]
+related_references: [moe-dispatch-combine, hccn-tool-network-diagnosis, hccl-comm-init-and-link-faults, mssanitizer, ascend-hardware-detect-triage, process-hang-fault-patterns]
 
 status: active
 last_verified: 2026-09-15

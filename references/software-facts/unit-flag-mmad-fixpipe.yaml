@@ -19,7 +19,7 @@ applies_to:
   platforms: [A5-950]
   categories: [performance, precision]
 
-related_references: [op-internal-sync-fault-patterns, l1-l0-bank-and-conflict, operator-bottleneck-attribution]
+related_references: [op-internal-sync-and-reduction, l1-l0-bank-and-conflict, operator-bottleneck-attribution]
 
 status: active
 last_verified: 2026-09-14

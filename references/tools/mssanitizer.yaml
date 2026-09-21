@@ -15,7 +15,7 @@ applies_to:
   frameworks: [mssanitizer, ttk]
   categories: [interrupt, precision]
 
-related_references: [msdebug-operator-source-debug, ttk-precision-comparison-methods, ttk-dump-and-performance-testing, ascend-aicore-error-triage, reg-data-movement-fault-patterns, op-internal-sync-and-reduction-fault-patterns]
+related_references: [msdebug-operator-source-debug, ttk-precision-comparison-methods, ttk-dump-and-performance-testing, ascend-aicore-error-triage, reg-data-movement-fault-patterns, op-internal-sync-and-reduction]
 
 status: active
 last_verified: 2026-09-15

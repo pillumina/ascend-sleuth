@@ -19,7 +19,7 @@ applies_to:
   platforms: [A5-950]
   categories: [precision, performance, interrupt]
 
-related_references: [weight-nz-inference-only, mx-quantized-matmul-constraints, operator-error-codes]
+related_references: [weight-nz-inference-only, mx-quantized-matmul, operator-error-codes]
 
 status: active
 last_verified: 2026-09-14

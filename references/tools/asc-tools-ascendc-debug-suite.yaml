@@ -15,7 +15,7 @@ applies_to:
   frameworks: [ascendc, asc-tools]
   categories: [interrupt, precision, performance]
 
-related_references: [mssanitizer, msdebug-operator-source-debug, reg-data-movement-fault-patterns, op-internal-sync-and-reduction-fault-patterns, ascend-aicore-error-triage, ascend-error-code-structure]
+related_references: [mssanitizer, msdebug-operator-source-debug, reg-data-movement-fault-patterns, op-internal-sync-and-reduction, ascend-aicore-error-triage, ascend-error-code-structure]
 
 status: active
 last_verified: 2026-09-15
