@@ -1,0 +1,61 @@
+id: EV-2026-141
+layer: L2
+target_component: skills/diagnose/references/diagnosis-procedure.md
+title: 步骤 1 改信息覆盖表：固定九行、缺项即问句、逐值标来源、按主题分组报
+status: in_experiment
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: '2026-09-21'
+risk: low
+source_signals:
+- signal: process_friction
+  evidence: 必收项是一份变长清单，缺哪一项靠 agent 当场自评——三处固定缺口由此产生：①平台（步骤 1 只写确认框架，平台分支在平台缺失时被静默跳过）；②场景词（触发位置 / 必现偶发 / 单机多机不在必收项里，却是 triage 换分支的判据）；③已试过什么（全库无一处收集）。
+  trajectory:
+  - skills/diagnose/references/diagnosis-procedure.md（步骤 1 必收块）
+  - skills/diagnose/SKILL.md（步骤 1 摘要 / 两种缺信息两个时机一处）
+  - skills/diagnose/references/platform-dispatch.md（平台缺失时回退跨平台）
+- signal: process_friction
+  evidence: 新旧步骤 1 契约的对照探针（同一份真实 issue 首帖）暴露第二处：新契约把提取值压成三行 ✓，丢掉旧契约的逐项来源标注。来源决定这条值要不要打折——探针输入里CANN / HDK / 驱动只出现在工程师的自由描述里，日志与启动横幅都没给；不标来源时下游会把「他说的版本」当成「日志里的版本」。旧契约在同一输入上漏问「已试过什么」（九行覆盖 6/9）。
+  trajectory:
+  - 本 PR 的对照探针评论一（新契约输出原文）与评论二（逐项打分表）
+  - eval/flow/vllm-ascend.yaml 的 FLOW-2026-001 首帖（上游 issue 10524，脱敏入仓）
+hypothesis: 把必收项从变长清单改成固定行、缺项由空白行暴露，三处结构性漏项不再依赖自评；每个值标来源，下游才知道哪条值需要打折。
+predicted_effect:
+  metric: 覆盖表三件事是否进入执行路径（行为规则，判别力不可机械度量）
+  from: 变长必收清单 + 自评缺项；来源只是建议；输出压成一行三项
+  to: 固定九行覆盖表（缺项即问句）；来源逐值必填（含「他的描述」这一弱档）；✓ 行按主题分组
+  measure:
+    command: grep -q '覆盖表' skills/diagnose/references/diagnosis-procedure.md && grep -q '只报确认行与待补项' skills/diagnose/references/diagnosis-procedure.md && grep -q '来源是逐值必填' skills/diagnose/references/diagnosis-procedure.md && grep -q '按主题分组' skills/diagnose/references/diagnosis-procedure.md
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 改前：变长必收清单 + 自评缺项；无来源标注；输出压行
+  success_criteria: '① 固定九行（错误原文 / 触发位置 / 引擎 / CANN / HDK / 平台 / 必现偶发 / 单机多机 / 已试过什么），值按提交材料填；
+
+    ② 提取不到的行留空即待问项，不靠自评；已提取的不复述原文，只报确认行与待补项；
+
+    ③ 来源四档（日志 / 命令输出 / 配置 / 他的描述）逐值必填，标明「他的描述」弱于日志、涉及版本与平台要复核；
+
+    ④ ✓ 行按主题分组（平台与卡数 / 版本三件套 / 框架与部署），逐项可核；
+
+    ⑤ 覆盖表同时作为 user 事件 evidence 的骨架，续接不重问已给过的信息'
+  rollback: 恢复必收块原文、删除来源与分组两处措辞即回到改前
+gate:
+  condition: 三处缺口与一处来源缺失均可用全库 grep 与对照探针复现；改动可逆、成本为四处措辞
+principle_refs:
+- 1
+- 5
+- 8
+- 9
+- 10
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 与本批其余卡在同一轮会话内完成，未单独计量；按既有卡口径以 0 计
+decisions:
+- who: agent
+  when: '2026-09-21'
+  type: proposal
+  conclusion: 产卡：覆盖表固定九行 + 缺项即问句 + 逐值标来源 + ✓ 行分组（原两张卡合并为本卡）
