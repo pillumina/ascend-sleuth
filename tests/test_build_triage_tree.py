@@ -80,7 +80,7 @@ class TriageTreeSplitTest(unittest.TestCase):
         self.assertEqual(rc, 0, out)
         rc, out = run_main("--check", "--root", str(self.root))
         self.assertEqual(rc, 0, out)
-        self.assertIn("与源一致", out)
+        self.assertIn("逐字节相同", out)
 
     def test_check_red_and_says_rerun_when_source_changed(self):
         """改了源没重建 → 红，且给的动作是"重跑一次"，不是让人去比对生成物。"""
@@ -91,6 +91,51 @@ class TriageTreeSplitTest(unittest.TestCase):
         rc, out = run_main("--check", "--root", str(self.root))
         self.assertEqual(rc, 1)
         self.assertIn("build_triage_tree.py", out)
+
+    # ---------------------------------------------------------------- 覆盖检查（门）
+    def test_coverage_green_and_red_on_missing_word(self):
+        """门是覆盖检查：源里每条症状组都在聚合里。缺一条 → 红（改名/改词/手改聚合都落这条）。"""
+        self.write_protocol()
+        self.write_family("10-a.yaml", "a_branch", syms=["boom", "bang"])
+        self.build()
+        rc, out = run_main("--check-coverage", "--root", str(self.root))
+        self.assertEqual(rc, 0, out)
+        agg = self.root / "triage-tree.yaml"
+        agg.write_text(agg.read_text(encoding="utf-8").replace('      - ["bang"]\n', ""),
+                       encoding="utf-8")
+        rc, out = run_main("--check-coverage", "--root", str(self.root))
+        self.assertEqual(rc, 1)
+        self.assertIn("缺症状组", out)
+
+    def test_union_merged_aggregate_is_green(self):
+        """**关键一条**：两人同一天给同一族加词，union 合并出来的聚合（两句都在、顺序可能不是
+        重新拼接的顺序）必须是**绿的**——否则 union 换来的"谁都不用跑命令"就白拿了。
+        逐字节自检（--check）此时会红，那是可选的归一化提示，不作门。"""
+        self.write_protocol()
+        self.write_family("10-a.yaml", "a_branch", syms=["boom", "mine", "theirs"])
+        self.build()
+        agg = self.root / "triage-tree.yaml"
+        lines = agg.read_text(encoding="utf-8").split("\n")
+        i_mine = next(i for i, l in enumerate(lines) if '"mine"' in l)
+        i_theirs = next(i for i, l in enumerate(lines) if '"theirs"' in l)
+        lines[i_mine], lines[i_theirs] = lines[i_theirs], lines[i_mine]   # 顺序被 union 换过
+        agg.write_text("\n".join(lines), encoding="utf-8")
+        rc, out = run_main("--check-coverage", "--root", str(self.root))
+        self.assertEqual(rc, 0, out)
+        rc, _out = run_main("--check", "--root", str(self.root))
+        self.assertEqual(rc, 1, "逐字节自检应当报非规范（这是可选的归一化提示）")
+
+    def test_coverage_reports_branch_missing_from_aggregate(self):
+        self.write_protocol()
+        self.write_family("10-a.yaml", "a_branch")
+        self.write_family("20-b.yaml", "b_branch")
+        self.build()
+        agg = self.root / "triage-tree.yaml"
+        text = agg.read_text(encoding="utf-8")
+        agg.write_text(text[:text.index("  - id: b_branch")], encoding="utf-8")
+        rc, out = run_main("--check-coverage", "--root", str(self.root))
+        self.assertEqual(rc, 1)
+        self.assertIn("缺分支", out)
 
     def test_branch_order_follows_filename(self):
         """diagnose 按顺序匹配分支 → 顺序是语义的一部分，必须由文件名（序号前缀）决定。"""
@@ -200,8 +245,9 @@ class RealRepoTest(unittest.TestCase):
     """真实仓库上的断言：读侧不变、生成物与源一致、路由面就是那 7 个分支。"""
 
     def test_check_green_on_repo(self):
-        rc, out = run_main("--check", "--root", str(ROOT))
-        self.assertEqual(rc, 0, out)
+        for flag in ("--check", "--check-coverage", "--check-sources"):
+            rc, out = run_main(flag, "--root", str(ROOT))
+            self.assertEqual(rc, 0, f"{flag}: {out}")
 
     def test_aggregate_is_parseable_and_covers_expected_branches(self):
         doc = yaml.safe_load((ROOT / "triage-tree.yaml").read_text(encoding="utf-8"))

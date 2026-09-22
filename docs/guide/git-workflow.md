@@ -31,43 +31,43 @@ git worktree remove ../ascend-sleuth-s<session>
 4. **串行操作**：涉及 ingest-state.json 的 fetch / `--mark-imported` / 游标更新必须串行（read-modify-write 无锁，并发写互相覆盖）；groom 清空 inbox 前先确认无其他 session 未提交草稿。
 5. **开工纪律**：`git fetch origin` 确认最新 → 确认自己在自己的 worktree 与分支 → 收工前提交或 stash 清空工作区，避免未提交改动滞留共享检出。
 
-## 生成物与源：谁提交什么（多人同时提交不撞的规则）
+## 生成物与源：多人同时提交不撞的规则
 
-判据只有一条：**这个文件是不是"谁改内容都得重写它一遍"**。是 → 它不能由 PR 提交，否则每个人的 PR 都会去改它，合流时全撞在同一个文件上；不是（按框架/分支族切开的）→ 留在 PR 里当评审面。
+判据只有一条：**这个文件的内容里有没有"会变的数字"，以及它是不是一层平铺的追加型结构**。
 
-| 文件 | 谁提交 | PR 门 | 主干门 |
+- 有数字（条数 / 容量 / 日期）→ 数字一进 git，两人并发合并时要么撞同一行、要么漂移成错的数。
+  **所以生成物里不写数字**：要数字就现算（`python3 scripts/index_counts.py`）。
+- 一层平铺的追加型结构（每条 case 一段、每个分支一段）→ 可以配 `merge=union`：两边新增的都留住。
+- 嵌套结构（索引就是：namespaces → ns → category → 条目）→ **不能** union（实测会把 YAML 拼坏），
+  同一个格子的两人并发仍会撞一次，解决动作是重跑生成器。
+
+| 文件 | 谁提交 | 提交前跑什么 | 门（PR 与主干同一条） |
 |---|---|---|---|
-| case 本体 `knowledge/<ns>/<cat>/*.yaml` | 人（PR） | `verify_case_draft.py --all` | — |
-| 索引分片 `knowledge/_index/<ns>[_<cat>].yaml` | 人（PR，跑 `scripts/build_index.py`） | `build_index.py --check`（逐字节比 + case 内容 hash） | 逐字节 |
-| 路由源 `triage-tree.d/<族>.yaml` | 人（PR） | `build_triage_tree.py --check-sources`（分支 id 唯一 / category 合法 / ≤30 分支） | — |
-| 索引总表 `knowledge/_index.yaml` | 合并者（合并后跑一次重建，约 30 秒） | **不得进 PR**（CI 有门拦） | `build_index.py --check --master` |
-| 路由聚合 `triage-tree.yaml` | 合并者（合并后跑一次重建） | **不得进 PR**（CI 有门拦） | `build_triage_tree.py --check` |
+| case 本体 `knowledge/<ns>/<cat>/*.yaml` | 人（PR） | — | `verify_case_draft.py --all` |
+| 索引分片 + 总表 `knowledge/_index/…` | 人（PR） | `python3 scripts/build_index.py` | `build_index.py --check`（覆盖检查：每条 case 的行都在、与内容对得上） |
+| 路由族文件 `triage-tree.d/<族>.yaml` | 人（PR） | — | `build_triage_tree.py --check-sources`（id 唯一 / category 合法 / ≤30 分支 / 一族一文件） |
+| 路由聚合 `triage-tree.yaml` | 人（PR） | `python3 scripts/build_triage_tree.py` | `build_triage_tree.py --check-coverage`（源里每条症状组都在聚合里） |
+
+**合并完没有任何收尾动作**——不需要谁再跑一次命令。这是"生成物里不写数字 + 路由层可 union +
+门改成覆盖检查"三件事一起买来的：
+
+- 覆盖检查问的是"条目都在吗、与内容对得上吗"，不问"是否与重新生成一遍逐字节相同"。
+  逐字节会把 union 合并出来的、内容正确的文件判红，于是又逼人跑一遍命令——收益就还回去了。
+- 想归一化（顺序/注释回到生成器口径）随时跑一次生成器，那是可选的：
+  `build_index.py --check --canonical` 与 `build_triage_tree.py --check` 是那两个自检，**不作门**。
 
 撞车了怎么办——按文件类型处理，不需要判断"留哪份"：
 
 | 冲突文件 | 动作 |
 |---|---|
-| 索引总表 / 分片 / 路由聚合（生成物） | 重跑生成器后 `git add`：`python3 scripts/build_index.py`（+ `python3 scripts/build_triage_tree.py`）。**不要逐行解**——解出来的既不是源也不是生成物。 |
-| `triage-tree.d/<族>.yaml`（路由源） | 通常不会冲突：`merge=union` 会自动把两边新增的症状词都留住。若真出现冲突标记，把两份症状都留下、删掉三行标记，再跑一次聚合。 |
+| `triage-tree.d/<族>.yaml`、`triage-tree.yaml` | 通常不会冲突（配了 `merge=union`）。若真出现冲突标记：把两份都留下、删掉三行标记，再跑一次聚合。 |
+| 索引分片 / 总表（嵌套结构，故意没配 union） | 重跑一条命令后 `git add`：`python3 scripts/build_index.py`。**不要逐行解**——解出来的既不是源也不是生成物。 |
 | case 本体 | 真正需要人判断的只剩这里（同一 case 两人改）——按内容合。 |
 
-为什么这么切（可复跑的实验在 `tests/test_concurrent_submit.py`，`python3 tests/test_concurrent_submit.py` 会打印一张对比表）：三人并发、同一个框架时，改前会撞在总表 + 分片 + 路由文件上，其中路由文件的冲突要人判断留哪份；改后判断冲突为 0（只剩生成物冲突，重跑一条命令即解）。三人各改不同框架（常见形态）时，改后一次都不撞。实验还钉住了一件事：**改前用最省事的办法解冲突（手写面取自己那份）会静默少一条路由词**，改后这条路不存在（union 合并两边都留）。
-
-### 合并者收尾（本平台没有 CI 推主干权限时的替代）
-
-合并完，跑这三行（约 30 秒，机械动作、无需判断）：
-
-```bash
-python3 scripts/build_index.py && python3 scripts/build_triage_tree.py
-git add knowledge/_index.yaml knowledge/_index triage-tree.yaml
-git commit -m 'chore(generated): 主干重建' && git push
-```
-
-忘了也不要紧，但**不会静默**：主干上有一条一致性检查，跑不齐会红，日志里直接打印上面这三行。红着的时候，刚合进来的路由词还没生效——`triage-tree.yaml` 是 diagnose 实际读的那份，聚合不重建就等于那个词加了没用。
-
-为什么不做成 CI 机器人：本平台不允许 CI 向主干推提交。为什么不干脆让 PR 带这两张表：它们是"谁改内容都得重写它一遍"的文件，每个 PR 只要更新分支到主干就会再撞一次——那就成了每个 PR 都撞。
-
-如果哪天平台放开了 CI 写权限：把 `generated-consistency` job 的校验步换成"重建 + `git add/commit/push`"，其余不变。
+为什么这么做（可复跑的实验在 `tests/test_concurrent_submit.py`，`python3 tests/test_concurrent_submit.py`
+会打印一张对比表）：三人并发、同一个框架时，改前撞在总表 + 分片 + 路由单文件上，其中路由文件的冲突
+**要人判断留哪份**（判断错就静默少一条路由词）；改后判断冲突为 0。三人各改不同框架（常见形态）时，
+改后一次都不撞。同一个格子的并发仍会撞索引文件，但那一类冲突的动作是**重跑一条命令**（机械、无判断）。
 
 ## 部署形态
 

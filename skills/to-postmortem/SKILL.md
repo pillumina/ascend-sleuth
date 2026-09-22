@@ -94,7 +94,7 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
    - 标 `tags`（sub-type，如 `oom`、`kv-cache`、`precision.convergence`）
    - 根因定位到源码时（如 vllm-ascend 某文件某行），标 `source_ref: {repo, ref, file, line}`——`ref` 用触发版本对应的 commit/tag，`line` 可选。源码不落库，只记代码指针（诊断按需取该版本片段）
    - **来源是诊断 session 时，标 `source_session: <session_id>`**（case 内字段，非注释）——它是反馈结算判定「自证」的唯一依据：来源 session 自己回报的 resolve 记 `confidence.self_resolved`、不计入 `hits`（同一份证据不数两次）。不写这个字段，结算只能退回「计入 hits」，等于让产地自证冒充独立命中。
-3.5. **triage 路由同步（知识增长自动补全路由）**：产出 case 草稿后，检查该 case 的 `symptoms` 关键词能否被路由正则（`triage-tree.yaml`，生成物）路由到正确 namespace。**加词改的是源**：`triage-tree.d/<族>.yaml`（一族一文件，如 `40-inference-interrupt.yaml`），改完跑 `python3 scripts/build_triage_tree.py`——聚合的 `triage-tree.yaml` 不进 PR，不要提交它（CI 有门拦；合并后由合并者重建）：
+3.5. **triage 路由同步（知识增长自动补全路由）**：产出 case 草稿后，检查该 case 的 `symptoms` 关键词能否被路由正则（`triage-tree.yaml`，生成物）路由到正确 namespace。**加词改的是源**：`triage-tree.d/<族>.yaml`（一族一文件，如 `40-inference-interrupt.yaml`），改完跑 `python3 scripts/build_triage_tree.py`，把聚合一起提交（门是覆盖检查：源里每条症状组都得在聚合里；同族两人并发由 union 自动两边都留）：
    - 能 → 无需动作（路由已覆盖）；
    - 不能（新形态 OOD，正则没识别）→ 在产出报告里给出**路由症状建议**（新正则追加到对应**族文件**里该分支的 `symptoms`，如 "过度思考" → `50-inference-precision.yaml`），随 case PR 一并提交（structure 部分，人审确认）——**triage 随知识入库增长，不靠手工补**；拿不准放哪个分支 → 建议标 `needs-review`，groom 定夺。同一族两人同一天加词不会冲突（该目录配了 union 合并，两边都留住）。
 4. **语义校验**（关键，区别于格式校验）：

@@ -723,18 +723,19 @@ def ex_metrics_loop(root: Path):
     except Exception:
         h = {}
     texts = " ".join(f.get("text", "") for f in (h.get("findings") or []))
-    # 容量数字从索引头注现读，不硬编码：写死 85/30 时，知识库一长这条断言就常年失败
-    # （实测漂到 89/30），而失败的是一条"断言自己腐烂"的噪声——本脚本存在的意义恰恰是
-    # "断言不随当天数据漂移"。断言的是**检测器报出了头注里面那个数**，不是某个固定数。
+    # 容量数字从 case 文件**现算**（index_counts），不硬编码也不读索引头注：写死数字时，
+    # 知识库一长这条断言就常年失败（实测漂到 89/30），而失败的是一条"断言自己腐烂"的噪声——
+    # 本脚本存在的意义恰恰是"断言不随当天数据漂移"。断言的是**检测器报出了现算的那个数**。
     note = ""
     try:
-        for line in (root / "knowledge" / "_index.yaml").read_text(encoding="utf-8").splitlines():
-            if "容量(inference/vllm-ascend)" in line:
-                note = line.split("interrupt=", 1)[1].split(",")[0].strip()
+        data = json.loads(py(root, "scripts/index_counts.py", "--json")[1])
+        for c in data["cells"]:
+            if c["namespace"] == "inference/vllm-ascend" and c["category"] == "interrupt":
+                note = f"{c['count']}/{c['soft_cap']}"
                 break
     except Exception:
         note = ""
-    check(f"检测器报出容量越界（与头注一致：{note or '头注未读到'}）",
+    check(f"检测器报出容量越界（与现算一致：{note or '现算未读到'}）",
           bool(note) and f"interrupt = {note}" in texts, texts[:200])
     check("检测器报出反馈下限被触发", "捕获反馈 0 条" in texts or "feedback" in texts.lower(), texts[:200])
     check("检测器把 misdiagnosis_rate 标为不可解读", "misdiagnosis_rate：不可解读" in texts, texts[:200])
@@ -742,11 +743,7 @@ def ex_metrics_loop(root: Path):
 
     # ③ 两份合成数据：健康的不许哭狼；崩坏的必须全中
     tl_path = root / "metrics" / "timeline.yaml"
-    idx_path = root / "knowledge" / "_index.yaml"
-    tl_backup, idx_backup = tl_path.read_text(encoding="utf-8"), idx_path.read_text(encoding="utf-8")
-    idx_small = ("# GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。\n"
-                 "# 生成日期：2026-09-10    case 总数：20\n"
-                 "#   容量(inference/vllm-ascend): interrupt=5/30\n")
+    tl_backup = tl_path.read_text(encoding="utf-8")
     from datetime import date, timedelta
 
     def make_timeline(recorded, feedback, cell_count, case_total=20, attr_case=1):
@@ -764,33 +761,43 @@ def ex_metrics_loop(root: Path):
         }]}, allow_unicode=True, sort_keys=False)
 
     try:
-        # ③a 健康：今天的一期、有反馈、有归因、格子未越界 → 不许有 ✗（不哭狼）
-        idx_path.write_text(idx_small, encoding="utf-8")
+        # ③a 健康：今天的一期、有反馈、有归因 → 不许有 ✗（不哭狼）。
+        #     注意：结构数字（条数/容量）现在**从 case 文件现算**（scripts/index_counts.py），
+        #     不再是索引头注里的一份副本——"现实"没法再靠改一个文件伪造（那正是这次改动的目的：
+        #     数字进 git 就会撞行或漂移）。所以这里不再伪造现实，改用它**应该**报的那一格做对照。
         tl_path.write_text(make_timeline(date.today().isoformat(), 1, 5), encoding="utf-8")
         rc, out = py(root, "scripts/metrics_health.py", "--json", "--check")
         h2 = json.loads(out)
-        check("健康数据上不哭狼（0 项 ✗，--check 为 0）", h2.get("fail_count") == 0 and rc == 0,
-              json.dumps([f for f in h2.get("findings") or [] if f.get("level") != "ok"], ensure_ascii=False)[:300])
-        # ③b 崩坏：30 天前的一期 + **现实格子 70**（超 hard_cap）+ 反馈 0 + 无归因 → 必须全中且非零。
-        #     注意容量越界判的是"当前现实"（_index 头注），不是快照旧值——头注也要跟着坏（测试口径）
-        idx_path.write_text(idx_small.replace("interrupt=5/30", "interrupt=70/30"), encoding="utf-8")
+        t2 = " ".join(f.get("text", "") for f in (h2.get("findings") or []))
+        # 不哭狼的口径收窄到"容量格子"这一维：真实数据里有一格确实超了 hard_cap
+        # （inference/vllm-ascend/interrupt），所以整体 fail_count 不为 0 是**对的**；
+        # 该断言的是"报出来的格子 = 现算出来的超限格子"，即检出的精度与召回都对得上。
+        real = json.loads(py(root, "scripts/index_counts.py", "--json")[1])
+        over_hard = [c for c in real["cells"] if c["over_hard"]]
+        over_soft = [c for c in real["cells"] if c["over_soft"]]
+        # 召回：每个超限格子都得被报出来（体检的文案形态是"<category> = <count>/<soft_cap>"）
+        recall = bool(over_hard) and all(
+            f"{c['category']} = {c['count']}/{c['soft_cap']}" in t2 and c["namespace"] in t2
+            for c in over_hard)
+        # 精度（不哭狼）：报出来的每一处越界都必须对应一个真超限的格子
+        import re as _re
+        named = _re.findall(r"([a-z_]+) = (\d+)/(\d+)", t2)
+        precision = all(any(c["category"] == cat and str(c["count"]) == cnt
+                            for c in over_soft) for cat, cnt, _cap in named)
+        check(f"容量检出与现算一致（超 hard_cap：{[c['namespace'] + '/' + c['category'] for c in over_hard]}）",
+              recall and precision, f"recall={recall} precision={precision} named={named[:4]} | {t2[:200]}")
+        # ③b 崩坏：30 天前的一期 + 反馈 0 + 无归因 → 必须报陈旧/不可解读，且 --check 非零。
+        #     （容量越界这条现在由上面那条"与现算一致"覆盖——它本来就该跟着真实数据走。）
         tl_path.write_text(make_timeline((date.today() - timedelta(days=30)).isoformat(), 0, 70, attr_case=0),
                            encoding="utf-8")
         rc, out = py(root, "scripts/metrics_health.py", "--json", "--check")
         h3 = json.loads(out)
         t3 = " ".join(f.get("text", "") for f in (h3.get("findings") or []))
         check("崩坏数据：报陈旧", "超期" in t3, t3[:200])
-        # 容量**一个格子只报一条**（2026-09 七轮的设计）：格子同时越过 soft/hard 时合成一条，
-        # 在判据出处里点名越过了哪两条判据。所以断言从"同一格出现两行"（旧渲染的产物）
-        # 改为"格子被报到 + 两种判据都点名"——两条判据都得浮出来，重复行不该回来。
-        check("崩坏数据：报 soft_cap 与 hard_cap 越界（一格子一条，两种判据都点名）",
-              t3.count("interrupt = 70/30") >= 1 and "cell_soft_cap" in t3 and "cell_hard_cap" in t3,
-              t3[:200])
         check("崩坏数据：报反馈下限 + 不可解读", "不可解读" in t3, t3[:200])
         check("崩坏数据：--check 非零", rc != 0, f"rc={rc}")
     finally:
         tl_path.write_text(tl_backup, encoding="utf-8")
-        idx_path.write_text(idx_backup, encoding="utf-8")
     rc, out = py(root, "scripts/verify_metrics.py", "--check")
     check("还原后 timeline 结构仍合法", rc == 0, out[-200:])
 
@@ -1055,10 +1062,10 @@ def ex_ci_parity(root: Path):
     # 但根因已修——那条断言现在跟着数据走（tally 为空则期待空态文案、有非零计数则期待表格），
     # 因此它在干净检出与工作检出里都成立，本地复跑与 CI 等价。
     #
-    # 唯一按**工作流自己的条件**跳过的是"只在主干 push 上跑"的步骤（generated-consistency 那类）：
-    # 演练场是**没有 .git 的副本**（make_copy 不带 .git/），也没有远端，这类步骤在这里必然失败，
-    # 而失败不说明代码有问题，只说明场景不对。跳过一律**打印出来**并说明原因（同"跑了无信号
-    # 与没跑 可分"的要求）——不假装通过，也不静默略过。
+    # 按**工作流自己的条件**跳过的步骤（`if:` 里带事件判断的那类，例如只在主干 push 上跑的
+    # job）：演练场是**没有 .git 的副本**（make_copy 不带 .git/），也不模拟 push 事件，
+    # 这类步骤在这里必然失败，而失败不说明代码有问题，只说明场景不对。跳过一律**打印出来**
+    # 并说明原因（同"跑了无信号 与 没跑 可分"的要求）——不假装通过，也不静默略过。
     def event_gated(cond):
         return bool(cond) and ("github.event_name" in str(cond) or "refs/heads/" in str(cond))
 

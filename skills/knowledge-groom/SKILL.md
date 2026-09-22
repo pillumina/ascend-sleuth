@@ -37,7 +37,7 @@ disable-model-invocation: true
 
 1. **确定性环节一律跑脚本、只读输出摘要，不读全量原文**：
    - 引用完整性/悬挂/role：`scripts/verify_references.py --check`（输出进摘要）；
-   - 索引/容量：`scripts/build_index.py`（头注容量）+ `scripts/capacity_health.py`（溢出/健康）输出进摘要；
+   - 索引/容量：`scripts/index_counts.py`（条数与逐格容量，现算）+ `scripts/capacity_health.py`（溢出/健康）输出进摘要；
    - 引用可观测性：`scripts/trace_metrics.py`（R6）；tag 聚类：读 `_index` tags 聚合（R8，零 token 机械）；
    - reference 规模/退化（R7）：按文件数/metrics 判断，不逐文件读。
 2. **全量重扫默认关闭，改信号触发**：
@@ -96,7 +96,7 @@ disable-model-invocation: true
    - 检查 `_archive/` 中 case 是否因新 `compat` 区间该复活（2.7 退休、2.8 恢复）
 6. **容量治理与拆分建议**：cap 按 **(framework × category) 格子**计，执行参数：**soft_cap=30**（触发拆分评估）、**hard_cap=60**（信道物理上限，强制拆）；健康指标阈值：候选溢出率 >20%、同根因重复率连续两轮上升、维护时长 >30 分钟/周。每次 groom 附**容量表**：各格子条数 / soft_cap、三项健康指标。任一格子超 soft_cap 即**触发拆分评估**（不是立即拆）：查健康指标，任一恶化 → 报告内容分布 + 拆分建议（首选 category 轴深化或按 platform 轴）；超 hard_cap 无论健康指标**强制拆**。拆分被数据预告，不被卡住才想起（论证见 docs/adr/0004——可选论证层，上述数值为执行值，参数待 metrics 复核）。**越界清单与行动走 `python3 scripts/metrics_health.py`**（判据数值在 `metrics/gates.yaml`，与本节一致）——别只看 `_index.yaml` 头注的数字：头注只列数，不判越界，也不告诉你这条闸门已经越了多久。
 7. **同 namespace 合并建议**：相似 case 对自动提示。
-8. **索引维护（收尾必做）**：所有 KB 变更（升格/合并/退休/改 confidence）完成后，运行 `python3 scripts/build_index.py`。它写两样东西，**提交面不同**：分片 `knowledge/_index/<ns>__<category>.yaml` 随本次变更提交（它是 PR 的评审面，`--check` 比的就是它）；总表 `knowledge/_index.yaml` **不提交**——PR 里带它会被"生成物不得进 PR"那道门拦下，合并后由合并者跑一次重建（CI 在主干上校验并打印这条命令）。`--check` 报过期 = 变更不完整（忘了重建分片）。软退休的 case 移 `_archive/` 后自动从活跃索引消失。
+8. **索引维护（收尾必做）**：所有 KB 变更（升格/合并/退休/改 confidence）完成后，运行 `python3 scripts/build_index.py`，把分片与总表一起提交。门是**覆盖检查**（每条 case 的索引行都在、与内容对得上）：`--check` 报问题 = 变更不完整，或索引行被手改过。要归一化（顺序/注释回到生成器口径）就重跑一次；`--canonical` 是那个自检（不作门）。软退休的 case 移 `_archive/` 后自动从活跃索引消失。
 
 ## reference 维护（先验知识层——与 case 流程并行；M5：本轮 references 无变更则整段跳过并在摘要说明）
 

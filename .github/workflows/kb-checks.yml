@@ -15,82 +15,20 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install pyyaml
-      # 两道检查合一：build_index 会解析全部 case YAML（语法错即红），
-      # --check 比的是**分片**（人提交面）与 case 内容 hash 一致（改了 case 忘重建即红）。
-      # 总表 knowledge/_index.yaml **不在本条**：它不进 PR（由合并者在合并后重建一次），
-      # 主干上的 `--check --master` 由下面的 generated-consistency job 兜。原先把总表也塞进
-      # PR 门，等于逼每个改 case 的人在自己的 PR 里重写全库那一张表——三个人并发就撞在同一个文件上。
-      # 这一分工有测试钉住：tests/test_build_index.py::test_pr_gate_ignores_master_and_main_gate_requires_it。
+      # 一致性门是**覆盖检查**（每条 case 的索引行都在、且与 case 内容对得上），不是逐字节相同。
+      # 为什么：索引与路由聚合都配了 merge=union——两人同一天改同一格/同一族时两边都留住，
+      # 那份文件**内容是对的**（顺序可能与重新生成不同）。逐字节的门会把它判红，于是又逼人
+      # 跑一遍收尾命令，把 union 的收益还回去。数字（条数/容量/日期）已从生成物里拿掉，
+      # 改成现算（scripts/index_counts.py），所以 union 之后不会有漂移的错数。
+      # 这条既跑 PR 也跑主干——主干上红了说明真丢条目（union 极少见的落空），修法照报错跑一次生成器。
       - run: python3 scripts/build_index.py --check
       # triage-tree 语法检查：曾因 pipe-or 写法长期不可解析而无人发现（原则二教训），
       # 结构化工具化（路由统计/学习型路由）前必须堵住。
       - run: python3 -c "import yaml; yaml.safe_load(open('triage-tree.yaml')); print('triage-tree ok')"
-      # Tier 1 路由的**源文件**校验（分支 id 唯一、category 合法、症状组形态、≤30 分支）+
-      # 一族一文件的约束。这里比的是源，不是生成物：聚合 triage-tree.yaml 不进 PR
-      # （由合并者重建），主干上由 generated-consistency job 比。
+      # Tier 1 路由：源文件校验（分支 id 唯一 / category 合法 / 症状组形态 / ≤30 分支 / 一族一文件）
+      # + 覆盖检查（源里每条症状组都在聚合里）。两条都跑 PR 与主干：源是提交面，聚合也是提交面。
       - run: python3 scripts/build_triage_tree.py --check-sources
-      # 生成物不许进 PR：`knowledge/_index.yaml`（全库一张表）与 `triage-tree.yaml`（全路由一张表）
-      # 是**谁都得重写一遍**的文件，谁提交它们，谁就把别人的那份也拖进冲突里——而且每次
-      # "更新分支到主干"都会再撞一次（每个 PR 都要更新，就成了每个 PR 都撞）。分片
-      # `knowledge/_index/*.yaml` 不在此列：它按 (框架 × 性质) 切开，只被碰同一框架的人改，
-      # 留在 PR 里当评审面（"索引随 case 变更一起评审"靠它保住）。
-      # 本步在本地复跑（无 GITHUB_BASE_REF）时走跳过分支。
-      - name: 生成物不得进 PR（总表与 triage 聚合）
-        env:
-          BASE_REF: ${{ github.base_ref }}
-        run: |
-          if [ -z "$BASE_REF" ]; then
-            echo "非 PR 环境（本地复跑 / push）——跳过生成物闸门"
-            exit 0
-          fi
-          git fetch --no-tags origin "$BASE_REF" >/dev/null 2>&1 || true
-          if ! git rev-parse --verify --quiet "origin/$BASE_REF" >/dev/null; then
-            echo "取不到 origin/$BASE_REF——无法判定，按动了生成物处理（宁可要人看一眼）"
-            exit 1
-          fi
-          bad=$(git diff --name-only "origin/$BASE_REF...HEAD" -- knowledge/_index.yaml triage-tree.yaml || true)
-          if [ -n "$bad" ]; then
-            echo "这两个文件不进 PR（由合并者在合并后重建一次）："
-            echo "$bad"
-            echo
-            echo "改法（把工作树里那份还原成主干版本，合并后由合并者重建）："
-            echo "  git checkout origin/$BASE_REF -- knowledge/_index.yaml triage-tree.yaml"
-            echo "本地生成物脏着没关系——只要不提交它。"
-            exit 1
-          fi
-          echo "未改动生成物"
-
-  # 生成物一致性（**主干**）：只**校验**并给出动作，不做提交。
-  # 为什么不做机器人：本平台不允许 CI 向主干推提交（用户确认"先还是不允许吧"），
-  # 那就在合并后由**合并者**补一次——约 30 秒的机械动作。为什么不能改成"PR 里带生成物"：
-  # 那两个文件谁都得重写一遍，且每个 PR 更新分支到主干时都会再撞一次（见上面那道 PR 门）。
-  # 本 job 红了 = 这次合并前没跑重建（或上游又落了一次合并），日志里给出可直接复制的命令。
-  generated-consistency:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: pip install pyyaml
-      # 只校验 + 给动作，**不提交**（本平台不允许 CI 推主干）。重建由合并者做一次。
-      - name: 生成物与源是否一致（不一致则打印重建命令并红）
-        run: |
-          rc=0
-          python3 scripts/build_index.py --check --master || rc=1
-          python3 scripts/build_triage_tree.py --check || rc=1
-          if [ "$rc" -ne 0 ]; then
-            echo
-            echo "主干上的生成物与源不一致——谁合并谁补一次（约 30 秒，机械动作，无需判断）："
-            echo "  python3 scripts/build_index.py && python3 scripts/build_triage_tree.py"
-            echo "  git add knowledge/_index.yaml knowledge/_index triage-tree.yaml"
-            echo "  git commit -m 'chore(generated): 主干重建' && git push"
-            echo
-            echo "（合并时跑过就不该红；红了说明这次合并前没跑，或期间又落了别的合并。）"
-            exit 1
-          fi
-          echo "生成物与源一致 ✓"
+      - run: python3 scripts/build_triage_tree.py --check-coverage
 
   case-structure:
     runs-on: ubuntu-latest

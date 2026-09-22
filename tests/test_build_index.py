@@ -111,10 +111,12 @@ class BuildIndexTest(unittest.TestCase):
         self.assertEqual(len(row["symptoms"][0]), 121)    # 120 + 省略号
         self.assertEqual(row["file"], "knowledge/inference/vllm-ascend/interrupt/T.yaml")
 
-    # ---------------------------------------------------------------- 新鲜度口径
-    # 判据的来源是**分片**（人提交面），不是总表（主干重建面）：PR 门与主干门比的东西不同，
-    # 所以下面既测"四种漂移都红"，也测"总表在不在不影响 PR 门"。
-    def generate_shards(self, ns=None):
+    # ---------------------------------------------------------------- 一致性门口径
+    # 门是**覆盖检查**（每条 case 的索引行都在、与内容对得上），不是逐字节相同：
+    # 生成物配了 merge=union，合并出来的文件内容对、顺序可能与重新生成不同。
+    # 所以下面既测"五种漂移都红"，也测"union 合并的结果不许红"。
+    def generate_all(self, ns=None):
+        """分片 + 总表都写出来（模拟一次完整的"跑了一遍生成器"）。"""
         ns = bi.collect(self.root) if ns is None else ns
         (self.root / "knowledge" / "_index").mkdir(parents=True, exist_ok=True)
         for nsk, cells in ns.items():
@@ -122,93 +124,107 @@ class BuildIndexTest(unittest.TestCase):
             for cat, cases in cells.items():
                 bi.shard_path(self.root, f"{nsk}__{cat}").write_text(
                     bi.render_shard(f"{nsk}__{cat}", {cat: cases}), encoding="utf-8")
-        return ns
-
-    def write_master(self, ns=None):
-        ns = bi.collect(self.root) if ns is None else ns
         (self.root / "knowledge" / "_index.yaml").write_text(bi.render(ns), encoding="utf-8")
         return ns
 
-    def test_freshness_green_when_shards_match(self):
+    def problems(self):
+        return bi.coverage_problems(self.root, bi.collect(self.root))
+
+    def test_coverage_green_after_generate(self):
         self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
-        ns = self.generate_shards()
-        self.assertEqual(bi.stale_entries(self.root, ns), [])
-        self.assertEqual(bi.shard_dirty(self.root, "inference/vllm-ascend",
-                                        ns["inference/vllm-ascend"]), [])
+        self.generate_all()
+        self.assertEqual(self.problems(), [])
+        self.assertEqual(bi.canonical_dirty(self.root, bi.collect(self.root)), [])
 
-    def test_freshness_flags_changed_case(self):
+    def test_coverage_flags_changed_case(self):
         p = self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
-        ns = self.generate_shards()
-        self.assertEqual(bi.stale_entries(self.root, ns), [])
-
+        self.generate_all()
+        self.assertEqual(self.problems(), [])
         p.write_text(p.read_text(encoding="utf-8").replace("score: 0.6", "score: 0.9"),
                      encoding="utf-8")
-        stale = bi.stale_entries(self.root, bi.collect(self.root))
-        self.assertEqual(len(stale), 1)
-        self.assertEqual(stale[0][1], "S-1")
+        probs = self.problems()
+        # 分片与总表各报一次（两处都存着这条 case 的旧行）——这正是"两层都得跟上"的意思
+        self.assertEqual(len(probs), 2, probs)
+        self.assertTrue(all("S-1" in p for p in probs), probs)
+        self.assertTrue(any("过期" in p for p in probs), probs)
 
-    def test_freshness_flags_added_case(self):
-        """新增 case 未重建分片 → 红（旧行为由"索引里有、库里没有"覆盖，新增靠 hash 缺失）。"""
+    def test_coverage_flags_added_case(self):
         self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
-        self.generate_shards()
+        self.generate_all()
         self.write_case("inference/vllm-ascend/interrupt/B.yaml", cid="B-1")
-        stale = bi.stale_entries(self.root, bi.collect(self.root))
-        self.assertEqual([s[1] for s in stale], ["B-1"])
+        probs = self.problems()
+        self.assertTrue(any("B-1" in p and "缺条目" in p for p in probs), probs)
 
-    def test_freshness_flags_deleted_case(self):
-        """分片里有、库里没有（case 被删）→ 也要报，否则 --check 静默留旧条目。"""
+    def test_coverage_flags_deleted_case(self):
         p = self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
-        ns = self.generate_shards()
-        self.assertEqual(bi.stale_entries(self.root, ns), [])
+        self.generate_all()
         p.unlink()
-        stale = bi.stale_entries(self.root, bi.collect(self.root))
-        self.assertTrue(any(s[1] == "S-1" and "库里没有" in s[2] for s in stale), stale)
+        probs = self.problems()
+        self.assertTrue(any("S-1" in p and "库里没有" in p for p in probs), probs)
 
-    def test_freshness_red_when_shard_missing(self):
+    def test_coverage_flags_hand_edited_row(self):
+        """手改索引行（case 内容没动）→ 红。hash 查不出这种改动，行级比对能——这是覆盖检查比
+        "只比 hash"强的地方。"""
         self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
-        ns = self.generate_shards()
+        self.generate_all()
+        p = bi.shard_path(self.root, "inference/vllm-ascend__interrupt")
+        p.write_text(p.read_text(encoding="utf-8").replace("title: t", "title: 手改过的标题"),
+                     encoding="utf-8")
+        probs = self.problems()
+        self.assertTrue(any("不一致" in x for x in probs), probs)
+
+    def test_union_merged_index_is_green(self):
+        """**关键一条**：两人同一天各加一条 case，union 合并出来的分片/总表（两条目都在、
+        顺序可能与重新生成不同）必须是**绿的**——否则 union 换来的"不用任何人跑命令"就白拿了。
+        内容出错（丢条目）仍然红，见上面几条。"""
+        self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
+        self.write_case("inference/vllm-ascend/interrupt/B.yaml", cid="B-1")
+        ns = bi.collect(self.root)
+        self.generate_all(ns)
+        # 模拟 union：把 B 的条目从分片里挪到 A 前面（顺序非规范，内容齐全）
+        p = bi.shard_path(self.root, "inference/vllm-ascend__interrupt")
+        text = p.read_text(encoding="utf-8")
+        rows = text.split("\n    - id: ")
+        self.assertEqual(len(rows), 3, rows)
+        p.write_text(rows[0] + "\n    - id: " + rows[2] + "\n    - id: " + rows[1],
+                     encoding="utf-8")
+        self.assertEqual(self.problems(), [])                      # 门：绿（内容齐全）
+        self.assertTrue(bi.canonical_dirty(self.root, ns))         # 逐字节自检：非规范（可选归一）
+
+    def test_coverage_red_when_shard_missing(self):
+        self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
+        self.generate_all()
         bi.shard_path(self.root, "inference/vllm-ascend__interrupt").unlink()
-        dirty = bi.shard_dirty(self.root, "inference/vllm-ascend__interrupt",
-                               {"interrupt": ns["inference/vllm-ascend"]["interrupt"]})
-        self.assertEqual(dirty, [("inference/vllm-ascend__interrupt", "(分片缺失)")])
+        probs = self.problems()
+        # 少了类分片：条目还在 ns 分片里（覆盖不破），但阶段一命中该类分片的路径读不到了 → 必须报
+        self.assertTrue(any("分片缺失" in p and "inference__vllm-ascend__interrupt" in p for p in probs), probs)
 
     def test_shard_with_conflict_markers_is_reported_not_merged(self):
-        """两人改同一个 ns → 两边都重生成同一个分片。冲突标记必须被点名，且给的动作是"重跑"，
-        不是让读的人去判断留哪一份（分片是生成物，判断没有意义）。"""
+        """分片里出现冲突标记（不该有——本目录配了 union）→ 点名，动作是重跑生成器。"""
         self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
-        self.generate_shards()
+        self.generate_all()
         p = bi.shard_path(self.root, "inference/vllm-ascend__interrupt")
         p.write_text("<<<<<<< HEAD\nnamespaces: {}\n=======\nnamespaces: {}\n>>>>>>> other\n",
                      encoding="utf-8")
-        recorded, broken = bi.shard_hashes(self.root)
+        _rows, broken = bi.shard_hashes(self.root)
         self.assertTrue(broken and "冲突标记" in broken[0], broken)
-        stale = bi.stale_entries(self.root, bi.collect(self.root))
-        self.assertTrue(any("分片不可读" in s[1] for s in stale), stale)
+        self.assertTrue(any("冲突标记" in x for x in self.problems()), self.problems())
 
-    def test_pr_gate_ignores_master_and_main_gate_requires_it(self):
-        """分工的核心断言：PR 门（--check）不看总表；主干门（--check --master）逐字节要它。
-        没有这条，改完之后"总表交给主干重建"就只是口头约定。"""
-        ns = self.generate_shards()                      # 只提交分片，总表根本没写
-        self.assertFalse((self.root / "knowledge" / "_index.yaml").exists())
-        self.assertEqual(bi.stale_entries(self.root, ns), [])        # PR 门：绿
-        self.assertEqual(bi.master_dirty(self.root, ns), "总表不存在")  # 主干门：红
-
-        self.write_master(ns)
-        self.assertIsNone(bi.master_dirty(self.root, ns))            # 主干门：绿
-        out = self.root / "knowledge" / "_index.yaml"
-        out.write_text(out.read_text(encoding="utf-8").replace("case 总数", "case 总数量"),
-                       encoding="utf-8")
-        self.assertEqual(bi.master_dirty(self.root, ns), "总表与重建结果不同")
-
-    def test_master_header_has_no_generation_date(self):
-        """头注不含生成日期：跨天各重建一次 → 字节相同（否则每天一行无意义 diff，
-        主干门的逐字节比对也会在跨天时假红）。"""
+    def test_header_has_no_numbers(self):
+        """生成物头注里不留数字（条数/容量/日期）：数字一进 git，两人并发合并时要么撞同一行、
+        要么漂移成错的数。数字改成现算（scripts/index_counts.py）。"""
         self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
         text = bi.render(bi.collect(self.root))
         self.assertEqual(text, bi.render(bi.collect(self.root)))
-        self.assertNotIn("生成日期：", text)
-        self.assertNotRegex(text.split("namespaces:")[0], r"20\d\d-\d\d-\d\d")
-        self.assertIn("case 总数：1", text)
+        head = text.split("namespaces:")[0]
+        self.assertNotIn("生成日期：", head)
+        self.assertNotIn("case 总数：", head)
+        self.assertNotIn("容量(", head)
+        self.assertNotRegex(head, r"20\d\d-\d\d-\d\d")
+        shard_head = bi.render_shard("inference/vllm-ascend__interrupt",
+                                     {"interrupt": bi.collect(self.root)["inference/vllm-ascend"]["interrupt"]}
+                                     ).split("namespaces:")[0]
+        self.assertNotRegex(shard_head, r"（\d+ 条 case）")
 
     def test_sig_and_tok_fields_for_phase_one_ranking(self):
         """行内签名面字段（EV-2026-111）：sig 只收纯字面量、tok 覆盖全部症状且上限 12。"""

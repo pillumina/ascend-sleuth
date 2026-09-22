@@ -17,10 +17,17 @@
 *.mp4 binary
 *.webm binary
 
-# Tier 1 路由的源文件：一族一个文件，编辑形态是"往 symptoms 列表追加症状词"（追加型）。
+# Tier 1 路由：一个分支族一个文件、聚合是一层平铺列表——**追加型**结构。
 # merge=union（git 内建驱动，不需要任何本地配置）= 两边新增的行都留住：两人同一天给同一族加词，
-# 合流不产生冲突标记，也不需要判断"留哪一份"——判断错就是静默丢一条路由词，而丢词没有任何报错。
-# 代价说清：union 对**结构性**改动也是"两边都留"（两人同时改同一分支的 id/category 会拼出重复分支）。
-# 那种情况由聚合器 scripts/build_triage_tree.py 的校验兜住（重复 id、非法 category 直接红并点名文件），
-# 修法是删掉其中一份。所以这条只给 d/ 目录，不给生成物 triage-tree.yaml——生成物不需要合并，重建即可。
+# 合流不产生冲突标记，也不需要判断"留哪一份"（判断错就是静默丢一条路由词，而丢词没有报错）。
+# 这个目录里也没有数字（条数/日期已从生成物拿掉，改成现算 scripts/index_counts.py），
+# 所以 union 之后不会出现"漂移的错数"。
+triage-tree.yaml merge=union
 triage-tree.d/*.yaml merge=union
+
+# 索引（knowledge/_index.yaml 与 knowledge/_index/*.yaml）**故意不给 union**：它是**嵌套**结构
+# （namespaces → ns → category → 条目列表），union 是行级文本合并——两人在同一格各加一条时，
+# 两段插入会被拼成不合法的 YAML（实测：parser 报 "expected <block end>"）。
+# 所以索引的同一格并发仍会撞一次，解决动作是重跑生成器（`python3 scripts/build_index.py`，
+# 机械、无判断）；不同格子的两人并发不碰同一个文件，本来就不撞。
+# 想彻底消掉它得先把索引改成一层平铺列表（条目自带 namespace/category）——那是另一件事。

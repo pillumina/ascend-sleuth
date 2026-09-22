@@ -1,10 +1,10 @@
-"""生成物分工的端到端测试：人交什么、合并者补什么、哪道门在哪个面上红。
+"""生成物与源的端到端：人交什么、门在什么时候红、union 合并的结果算不算通过。
 
-这次改动的主张有三条，每条都得能被一条命令证伪：
-  ① **改了 case 忘重建分片 → PR 门红**（安全网还在，没有因为"生成物不进 PR"就丢掉校验）；
-  ② **PR 不带生成物（总表 / triage 聚合）也能过 PR 门**（人不必碰那两张"谁都得重写一遍"的表）；
-  ③ **合并者收尾跑完，两张表与源逐字节一致、并且能看到新内容**
-     （本平台不允许 CI 推主干，这一步由合并者一条命令完成；忘了会在主干上红并打印这条命令）。
+这次改动的三条主张，每条都得能被一条命令证伪：
+  ① **改了 case / 加了路由词却忘重建 → 门红**，且报错给出重跑命令（安全网没丢）；
+  ② **PR 带上生成物（分片、总表、聚合）→ 门绿**（生成物随 PR 走，谁都不需要在合并后再跑命令）；
+  ③ **union 合并出来的生成物（内容齐全、顺序非规范）→ 覆盖门绿**，逐字节自检红但只是提示——
+     它逼不出"再跑一次收尾命令"。
 """
 
 import shutil
@@ -34,7 +34,7 @@ def sh(cwd: Path, *args):
 
 
 class GeneratedPlaneTest(unittest.TestCase):
-    """一个临时仓库：模拟「一个人改完 case 与路由词，合并者收尾补生成物」的全过程。"""
+    """一个临时仓库：模拟"一个人改完 case 与路由词，把生成物一起提交"的全过程。"""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="generated-plane-")
@@ -61,10 +61,11 @@ class GeneratedPlaneTest(unittest.TestCase):
         p = self.repo / "knowledge" / "inference" / "vllm-ascend" / "interrupt" / f"{cid}.yaml"
         p.write_text(CASE.format(cid=cid), encoding="utf-8")
 
-    def add_route_word(self, word="gpWordE2E"):
-        p = self.repo / "triage-tree.d" / "40-inference-interrupt.yaml"
+    def add_route_word(self, word="gpWordE2E", family="40-inference-interrupt.yaml",
+                       branch="inference_interrupt"):
+        p = self.repo / "triage-tree.d" / family
         lines = p.read_text(encoding="utf-8").split("\n")
-        start = next(i for i, l in enumerate(lines) if l.strip() == "- id: inference_interrupt")
+        start = next(i for i, l in enumerate(lines) if l.strip() == f"- id: {branch}")
         si = next(i for i in range(start, len(lines)) if lines[i].strip() == "symptoms:")
         at = si + 1
         while at < len(lines) and (not lines[at].strip() or lines[at].startswith("      ")):
@@ -72,92 +73,95 @@ class GeneratedPlaneTest(unittest.TestCase):
         lines.insert(at, f'      - ["{word}"]')
         p.write_text("\n".join(lines), encoding="utf-8")
 
+    def regenerate(self):
+        """改完内容后跑一次生成器（这是提交前唯一的固定动作）。"""
+        self.gate("scripts/build_index.py")
+        self.gate("scripts/build_triage_tree.py")
+
     def gate(self, *args):
         return sh(self.repo, "python3", *args)
 
-    def merger_rebuild(self):
-        """合并者收尾：重建两张生成物表并提交（一条命令的机械动作）。"""
-        self.gate("scripts/build_index.py")
-        self.gate("scripts/build_triage_tree.py")
-        sh(self.repo, "git", "add", "knowledge/_index.yaml", "knowledge/_index", "triage-tree.yaml")
-        sh(self.repo, "git", "commit", "-qm", "chore(generated): 主干重建")
-
     # ---------------------------------------------------------------- ① 安全网还在
-    def test_forgetting_to_rebuild_shards_is_red_with_actionable_message(self):
+    def test_forgetting_to_regenerate_is_red_with_actionable_message(self):
         self.add_case()
-        rc = self.gate("scripts/build_index.py", "--check").returncode
-        self.assertEqual(rc, 1)
-        out = self.gate("scripts/build_index.py", "--check").stdout
-        self.assertIn("TEST-GP-1", out)
-        self.assertIn("build_index.py", out)      # 报错里给的动作就是那条命令
+        p = self.gate("scripts/build_index.py", "--check")
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("TEST-GP-1", p.stdout)
+        self.assertIn("build_index.py", p.stdout)      # 报错里给的动作就是那条命令
 
-    def test_forgetting_to_rebuild_shards_also_makes_main_gate_red(self):
-        """分片没重建时，主干门也是红的——所以"忘了重建"不会静默留下不一致。"""
-        self.add_case()
-        self.assertNotEqual(self.gate("scripts/build_index.py", "--check", "--master").returncode, 0)
+    def test_forgetting_the_route_word_rebuild_is_red(self):
+        self.add_route_word()
+        p = self.gate("scripts/build_triage_tree.py", "--check-coverage")
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("缺症状组", p.stdout)
 
-    # ---------------------------------------------------------------- ② PR 不必带生成物
-    def test_pr_gates_pass_without_touching_generated_tables(self):
-        """人改了 case + 路由词、重建了分片，但**没碰**总表与 triage 聚合 → PR 门绿。
-
-        这是本次改动的核心：那两张"谁都得重写一遍"的表不再出现在 PR 里，也就不再撞。
-        """
+    # ---------------------------------------------------------------- ② PR 带生成物就绿
+    def test_pr_with_generated_files_passes_all_gates(self):
         self.add_case()
         self.add_route_word()
-        self.gate("scripts/build_index.py")                  # 本地重建（分片要提交）
-        # 把两张生成物表退回主干版本，模拟"PR 里不带它们"
-        (self.repo / "knowledge" / "_index.yaml").unlink()
-        sh(self.repo, "git", "checkout", "--", "triage-tree.yaml")
+        self.regenerate()
         self.assertEqual(self.gate("scripts/build_index.py", "--check").returncode, 0)
+        self.assertEqual(self.gate("scripts/build_index.py", "--check", "--canonical").returncode, 0)
         self.assertEqual(self.gate("scripts/build_triage_tree.py", "--check-sources").returncode, 0)
-        # 而主干门此刻应当是红的——它由合并者的收尾负责，不是由这个 PR 负责
-        self.assertNotEqual(self.gate("scripts/build_index.py", "--check", "--master").returncode, 0)
+        self.assertEqual(self.gate("scripts/build_triage_tree.py", "--check-coverage").returncode, 0)
+        self.assertEqual(self.gate("scripts/build_triage_tree.py", "--check").returncode, 0)
+
+    # ---------------------------------------------------------------- ③ union 的结果算通过
+    def test_union_merged_files_pass_coverage_but_flag_canonical(self):
+        """模拟平台上的 union 合并：分片里两条 case 的顺序被换过、聚合里两句路由词的顺序被换过。
+        内容齐全 → 门绿；逐字节自检红（可选归一化），**不许**因此逼人再跑一遍。"""
+        self.add_case("TEST-GP-A")
+        self.add_case("TEST-GP-B")
+        self.add_route_word("gpWordMine", branch="inference_interrupt")
+        self.add_route_word("gpWordTheirs", branch="inference_interrupt")
+        self.regenerate()
+
+        cell = self.repo / "knowledge" / "_index" / "inference__vllm-ascend__interrupt.yaml"
+        rows = cell.read_text(encoding="utf-8").split("\n    - id: ")
+        self.assertGreaterEqual(len(rows), 3)
+        cell.write_text("\n    - id: ".join([rows[0]] + list(reversed(rows[1:]))), encoding="utf-8")
+
+        agg = self.repo / "triage-tree.yaml"
+        lines = agg.read_text(encoding="utf-8").split("\n")
+        i_mine = next(i for i, l in enumerate(lines) if '"gpWordMine"' in l)
+        i_theirs = next(i for i, l in enumerate(lines) if '"gpWordTheirs"' in l)
+        lines[i_mine], lines[i_theirs] = lines[i_theirs], lines[i_mine]
+        agg.write_text("\n".join(lines), encoding="utf-8")
+
+        self.assertEqual(self.gate("scripts/build_index.py", "--check").returncode, 0)
+        self.assertEqual(self.gate("scripts/build_triage_tree.py", "--check-coverage").returncode, 0)
+        self.assertNotEqual(self.gate("scripts/build_index.py", "--check", "--canonical").returncode, 0)
         self.assertNotEqual(self.gate("scripts/build_triage_tree.py", "--check").returncode, 0)
 
-    def test_triage_pr_gate_does_not_need_the_aggregate(self):
-        """triage 的 PR 门比的是源（一族一文件），不是聚合——否则人人都得改那张聚合表。"""
-        self.add_route_word()
-        (self.repo / "triage-tree.yaml").unlink()
-        self.assertEqual(self.gate("scripts/build_triage_tree.py", "--check-sources").returncode, 0)
-
-    # ---------------------------------------------------------------- ③ 合并者收尾后就一致
-    def test_merger_rebuild_brings_both_generated_tables_back_in_sync(self):
-        self.add_case()
-        self.add_route_word()
-        self.gate("scripts/build_index.py")
-        (self.repo / "knowledge" / "_index.yaml").unlink()
-
-        self.merger_rebuild()
-
-        self.assertEqual(self.gate("scripts/build_index.py", "--check", "--master").returncode, 0)
+    def test_regenerate_normalizes_after_union(self):
+        """归一化是可选动作：跑一次生成器，逐字节自检就绿了。"""
+        self.add_case("TEST-GP-A")
+        self.add_route_word("gpWordMine", branch="inference_interrupt")
+        self.regenerate()
+        agg = self.repo / "triage-tree.yaml"
+        agg.write_text(agg.read_text(encoding="utf-8").replace("#\nbranches:", "#\n\nbranches:", 1),
+                       encoding="utf-8")
+        self.assertNotEqual(self.gate("scripts/build_triage_tree.py", "--check").returncode, 0)
+        self.gate("scripts/build_triage_tree.py")
         self.assertEqual(self.gate("scripts/build_triage_tree.py", "--check").returncode, 0)
-        # 新内容必须真的进了两张表（不然"门绿"只是自己跟自己一致）
-        idx = (self.repo / "knowledge" / "_index.yaml").read_text(encoding="utf-8")
-        tri = (self.repo / "triage-tree.yaml").read_text(encoding="utf-8")
-        self.assertIn("TEST-GP-1", idx)
-        self.assertIn("gpWordE2E", tri)
-        # 分片也看得到（阶段一真读的是它，不是总表）
-        cell = (self.repo / "knowledge" / "_index" / "inference__vllm-ascend__interrupt.yaml")
-        self.assertIn("TEST-GP-1", cell.read_text(encoding="utf-8"))
 
-    def test_generated_tables_are_reproducible(self):
-        """同一份源重建两次 → 字节相同。主干门敢逐字节比，就靠这条。"""
-        self.add_case()
-        self.merger_rebuild()
-        first = (self.repo / "knowledge" / "_index.yaml").read_bytes(), \
-                (self.repo / "triage-tree.yaml").read_bytes()
-        self.merger_rebuild()
-        second = (self.repo / "knowledge" / "_index.yaml").read_bytes(), \
-                 (self.repo / "triage-tree.yaml").read_bytes()
-        self.assertEqual(first, second)
-
-    def test_aggregate_still_readable_by_consumers(self):
-        """读侧不变：聚合仍是合法 YAML，分支结构照旧（diagnose / verify_references 读它）。"""
-        self.add_route_word()
-        self.merger_rebuild()
+    # ---------------------------------------------------------------- 读侧不变
+    def test_aggregate_still_readable_and_complete(self):
+        self.add_route_word("gpWordE2E")
+        self.regenerate()
         doc = yaml.safe_load((self.repo / "triage-tree.yaml").read_text(encoding="utf-8"))
         self.assertEqual([b["id"] for b in doc["branches"]][0], "training_interrupt")
         self.assertIn("gpWordE2E", (self.repo / "triage-tree.yaml").read_text(encoding="utf-8"))
+
+    def test_counts_are_computed_not_stored(self):
+        """结构数字不再落进生成物：要数字就现算（这也是 union 能用的前提）。"""
+        self.add_case("TEST-GP-A")
+        self.regenerate()
+        head = (self.repo / "knowledge" / "_index.yaml").read_text(encoding="utf-8").split("namespaces:")[0]
+        self.assertNotIn("case 总数：", head)
+        self.assertNotIn("容量(", head)
+        out = sh(self.repo, "python3", "scripts/index_counts.py", "--json").stdout
+        self.assertEqual(yaml.safe_load(out)["total"], 169)
 
 
 if __name__ == "__main__":

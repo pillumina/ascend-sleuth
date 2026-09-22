@@ -2,7 +2,7 @@
 # ev_board_data.py —— 自演进看板数据汇总（EV 卡 + timeline + 容量 + 归因聚合）
 #
 # 供 DSH 面板（dsh-plugins/ev-panel）host 侧调用：一次性汇总 proposals/ideas/、
-# metrics/timeline.yaml、knowledge/_index.yaml 头注、归因事件按需聚合
+# metrics/timeline.yaml、case 文件现算的结构数字（index_counts）、归因事件按需聚合
 # （component_tally 逻辑：trace attribution + .s2-replay/attributions.yaml）、
 # .s2-replay/attributions.yaml 为 JSON，stdout 输出。确定性逻辑（原则二）：解析与
 # 聚合进脚本，agent/面板只读聚合结果。
@@ -32,22 +32,18 @@ def load_yaml(path):
         return {"__error__": str(e)}
 
 
-def parse_index_header(text):
-    """knowledge/_index.yaml 头注容量行：'#   容量(inference/vllm-ascend): interrupt=36/30, ...'"""
-    caps = {}
-    for line in text.splitlines():
-        m = re.match(r"#\s*容量\(([^)]+)\):\s*(.*)$", line.strip())
-        if not m:
-            continue
-        ns = m.group(1)
-        cells = {}
-        for part in m.group(2).split(","):
-            cm = re.match(r"\s*(\w+)=(\d+)/(\d+)", part)
-            if cm:
-                cells[cm.group(1)] = {"count": int(cm.group(2)), "cap": int(cm.group(3))}
-        if cells:
-            caps[ns] = cells
-    return caps
+def capacity_cells(root: Path):
+    """逐格容量 {ns: {cat: {count, cap}}} —— **现算**（index_counts），不再解析索引头注。
+
+    原先这里解析 `knowledge/_index.yaml` 头注里的「容量(...)=N/30」行。那几个数字后来从生成物里
+    拿掉了：它们是共享热点，两人并发改不同框架时会撞同一段、或写出漂移的数（根因见
+    scripts/index_counts.py 头注）。现在数字从 case 文件现算，没有会腐烂的副本。
+    """
+    try:
+        import index_counts
+        return index_counts.capacity_by_ns(index_counts.counts(root))
+    except Exception:
+        return {}
 
 
 # EV 卡状态词表 v5（schema 校验源：scripts/verify_proposals.py VALID_STATUS）。
@@ -859,8 +855,7 @@ def main():
 
     ideas = collect_ideas(root)
     timeline = collect_timeline(root)
-    index_path = root / "knowledge" / "_index.yaml"
-    capacity = parse_index_header(index_path.read_text(encoding="utf-8")) if index_path.exists() else {}
+    capacity = capacity_cells(root)
     tally = collect_tally(root)
     s2_attrib = collect_s2_attrib(root)
     skill_exec = collect_skill_exec(root)

@@ -1,8 +1,8 @@
 # GENERATED FILE —— 分片（knowledge/_index.yaml 的 common 子集），不要手改。
-# 人提交面：改 case 的人在**自己 PR 里提交本文件**（`build_index.py --check` 比的正是它）；
-# 总表 knowledge/_index.yaml 不进 PR（合并后由合并者重建一次）。撞车时重跑生成器即可，不必手判留哪份。
+# 随 PR 提交（改 case 的人跑 `python3 scripts/build_index.py`）；
+# 本目录配了 merge=union：两人同一天改同一格时，两边的条目都会留住，不产生冲突标记。
 # 阶段一加载协议（F1 EV-2026-022）：category 未定 / 类分片缺失时 diagnose 回退读本 namespace 分片，不读整库总表。
-# 本分片：common（21 条 case）
+# 本分片：common
 namespaces:
   common:
     performance:

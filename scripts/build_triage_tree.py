@@ -170,11 +170,56 @@ def render(protocol_text: str, blocks) -> str:
     return header + "#\n" + "branches:\n" + "".join(blocks)
 
 
+def coverage_problems(root: Path, blocks):
+    """**覆盖检查**（这是门）：源里每个分支的每条症状组，是否都在聚合里。
+
+    为什么门不是"逐字节与重新拼接的结果相同"：`triage-tree.yaml` 配了 merge=union
+    （两人同一天给同一族加词时两边都留住），那种合并结果**内容是对的**、只是顺序可能与
+    重新拼接不同。逐字节的门会把正确的合并判红，等于把 union 的收益还回去。
+    要归一化随时跑一次生成器（那是可选的）。
+    """
+    out = root / OUT_REL
+    if not out.exists():
+        return [f"{OUT_REL} 不存在——跑 `python3 scripts/build_triage_tree.py`"]
+    try:
+        doc = yaml.safe_load(out.read_text(encoding="utf-8")) or {}
+    except Exception as e:
+        return [f"{OUT_REL} YAML 解析失败（{e}）——重跑 `python3 scripts/build_triage_tree.py`"]
+    got = {b.get("id"): b for b in (doc.get("branches") or []) if isinstance(b, dict)}
+    problems = []
+    for block in blocks:
+        src = yaml.safe_load("branches:\n" + block)["branches"][0]
+        bid = src["id"]
+        have = got.get(bid)
+        if have is None:
+            problems.append(f"聚合里缺分支 {bid}——重跑 `python3 scripts/build_triage_tree.py`（union 合并偶尔会丢一段）")
+            continue
+        for key in ("category", "search_namespaces", "fallback"):
+            if JSONish(have.get(key)) != JSONish(src.get(key)):
+                problems.append(f"分支 {bid} 的 {key} 与源不一致——重跑 `python3 scripts/build_triage_tree.py`")
+        have_groups = [tuple(g) for g in (have.get("symptoms") or [])]
+        for group in src.get("symptoms") or []:
+            if tuple(group) not in have_groups:
+                problems.append(f"分支 {bid} 里缺症状组 {group}——重跑 `python3 scripts/build_triage_tree.py`")
+    src_ids = {yaml.safe_load('branches:\n' + b)['branches'][0]['id'] for b in blocks}
+    for bid in sorted(set(got) - src_ids):
+        problems.append(f"聚合里有、源里没有的分支 {bid}——重跑 `python3 scripts/build_triage_tree.py`")
+    return problems
+
+
+def JSONish(v):
+    """把 None/列表拉到同一个可比较形态（None 与 [] 在这里语义不同，不合并）。"""
+    return v
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="重建生成的 triage-tree.yaml（源：triage-tree.d/）")
-    ap.add_argument("--check", action="store_true", help="校验生成物与源一致（主干门用）")
+    ap.add_argument("--check", action="store_true",
+                    help="逐字节自检（不作门）：确认聚合与「重新拼接一遍」完全相同")
+    ap.add_argument("--check-coverage", action="store_true",
+                    help="覆盖检查（门）：源里每个分支的每条症状组都在聚合里")
     ap.add_argument("--check-sources", action="store_true",
-                    help="只校验源文件本身（PR 门用：生成物不进 PR，所以 PR 上没有可比的生成物）")
+                    help="只校验源文件本身（分支 id 唯一 / category 合法 / ≤30 分支 / 一族一文件）")
     ap.add_argument("--print", dest="do_print", action="store_true", help="只打印，不写文件")
     ap.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     args = ap.parse_args()
@@ -200,17 +245,29 @@ def main() -> int:
         return 0
 
     if args.check_sources:
-        print(f"路由源文件合法（{len(blocks)} 个分支 ← {SRC_DIR_REL}/）；"
-              f"生成物 {OUT_REL} 不进 PR（合并后由合并者重建），这里不比对")
+        print(f"路由源文件合法（{len(blocks)} 个分支 ← {SRC_DIR_REL}/）")
+        return 0
+
+    if args.check_coverage:
+        problems = coverage_problems(root, blocks)
+        if problems:
+            for p in problems:
+                print(f"路由覆盖问题：{p}")
+            print(f"\n{len(problems)} 处。跑一次重建即可（聚合随 PR 提交）：")
+            print("  python3 scripts/build_triage_tree.py")
+            return 1
+        n_groups = sum(len(yaml.safe_load('branches:\n' + b)['branches'][0].get("symptoms") or [])
+                       for b in blocks)
+        print(f"路由覆盖完整：{len(blocks)} 个分支 / {n_groups} 组症状都在聚合 {OUT_REL} 里。")
         return 0
 
     if args.check:
         current = out_path.read_text(encoding="utf-8") if out_path.exists() else None
         if current == wanted:
-            print(f"triage-tree 生成物与源一致（{len(blocks)} 个分支 ← {SRC_DIR_REL}/）")
+            print(f"triage-tree 聚合与「重新拼接一遍」逐字节相同（{len(blocks)} 个分支 ← {SRC_DIR_REL}/）")
             return 0
-        print(f"{OUT_REL} 与源不一致——**不要手工改生成物**，跑一次重建即可：")
-        print("  python3 scripts/build_triage_tree.py")
+        print(f"{OUT_REL} 与重新拼接的结果不同（内容可能已齐全，只是顺序/注释未归一）：")
+        print("  归一化（可选，随时可跑）：python3 scripts/build_triage_tree.py")
         if current is None:
             print(f"  （原因：{OUT_REL} 不存在）")
         else:
@@ -220,10 +277,8 @@ def main() -> int:
                 cur_ids = None
             src_ids = [b.get("id") for b in (yaml.safe_load(wanted) or {}).get("branches", [])]
             if cur_ids is not None and cur_ids != src_ids:
-                print(f"  生成物分支：{cur_ids}")
-                print(f"  源    分支：{src_ids}")
-            else:
-                print("  （分支相同、内容有差异：多半是源文件改了没重建）")
+                print(f"  聚合分支：{cur_ids}")
+                print(f"  源  分支：{src_ids}")
         return 1
 
     out_path.write_text(wanted, encoding="utf-8", newline="\n")

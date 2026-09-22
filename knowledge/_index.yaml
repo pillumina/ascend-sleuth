@@ -1,19 +1,14 @@
 # GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。
-# 本文件不进 PR：合并后由合并者跑一次 `python3 scripts/build_index.py` 重建并提交——
-# **不要在功能 PR 里改它**（改了也只是把全库那一张表拖进每个人的冲突里）。
-# 改 case 的人在 PR 里提交的是分片 knowledge/_index/<ns>__<category>.yaml + case 本体。
-# 阶段一加载协议：本文件是总表（容量/头注视图 + 兜底）；diagnose 只读命中的最小分片
+# 随 PR 提交（谁都能改到它，但本文件配了 merge=union：两边新增的条目都会留住，不产生冲突标记）。
+# 阶段一加载协议：本文件是总表（兜底 + 跨库比对）；diagnose 只读命中的最小分片
 # （knowledge/_index/<ns>__<category>.yaml；category 未定回退 <ns>.yaml），候选 ≤5 过滤后
 # 按 file 字段定位做阶段二全量加载。
-# 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，
-# 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。
-# 头注不写日期：跨天重建会多出一行无意义 diff，逐字节比对随之失效。
-# case 总数：168
-#   容量(common): performance=15/30, precision=6/30
-#   容量(inference/sglang): interrupt=1/30
-#   容量(inference/vllm-ascend): interrupt=93/30, performance=8/30, precision=23/30
-#   容量(training/mindspeed-llm): interrupt=11/30, precision=4/30
-#   容量(training/verl): interrupt=6/30, precision=1/30
+# 本文件**不写数字**（条数 / 容量 / 日期）：数字一进 git，两人并发合并时要么撞同一行、
+# 要么漂移成错的数。要看数字就现算：`python3 scripts/index_counts.py`
+# （容量治理的格子口径见该脚本与 docs/adr/0004）。
+# 一致性门是**覆盖检查**（每条 case 的索引行都在、且与 case 内容对得上），不是逐字节相同——
+# 逐字节的门会让 union 合并出来的、内容正确的文件变红。要归一化就重跑一次生成器。
+# `--canonical` 是那个「重跑后应当逐字节相同」的自检，供收尾/排查用，不作门。
 namespaces:
   common:
     performance:

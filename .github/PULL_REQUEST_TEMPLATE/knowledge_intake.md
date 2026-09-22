@@ -37,7 +37,7 @@ PR body 正文从首个 "## " 区块开始。
 
 ## 完整性（机器校验）
 
-- [ ] CI 绿：`build_index.py --check`（索引分片已随本 PR 重建；总表不进 PR，合并后由合并者重建）
+- [ ] CI 绿：`build_index.py --check`（索引已随本 PR 重建：分片 + 总表）
 - [ ] postmortem 落位 `postmortems/YYYY-QN/`（covered 也转正，不是丢弃）
 - [ ] 新 case 照 `examples/sample-case.yaml` 模板，category 形态未混用
 

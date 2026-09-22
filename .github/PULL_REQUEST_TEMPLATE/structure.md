@@ -33,7 +33,7 @@ PR body 正文从首个 "## " 区块开始。
 
 - [ ] case 文件迁移完成，`_archive/` 处置明确
 - [ ] 路由 `search_namespaces` 同步（改的是 `triage-tree.d/<族>.yaml`，不是生成的 `triage-tree.yaml`）
-- [ ] 索引分片 `knowledge/_index/` 随本 PR 重建（CI 会验）；总表 `_index.yaml` 与 `triage-tree.yaml` **不进 PR**（合并后由合并者重建一次）
+- [ ] 生成物随本 PR 一起提交（跑 `python3 scripts/build_index.py` 与 `python3 scripts/build_triage_tree.py` 后 `git add`）：索引分片、总表、路由族文件、路由聚合
 - [ ] golden fixture 的 namespace 断言同步
 - [ ] 受影响 case 的 references 路径修正
 
