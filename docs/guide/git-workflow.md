@@ -38,14 +38,46 @@ git worktree remove ../ascend-sleuth-s<session>
 | 模式 | 形态 | 适用场景 |
 |---|---|---|
 | 集中式 | 训练与推理团队共用一个仓库，`CODEOWNERS` 按命名空间划分审批权 | 团队规模小，问题域重叠多 |
-| 框架式（fork） | 团队 fork 本仓库，自行积累或导入知识；上游只同步方法论目录 | 团队自治，知识含敏感数据 |
-
-fork 模式下的目录归属：
-
-- 上游（方法论）：`skills/ scripts/ docs/ examples/ eval/ .github/ README.md CLAUDE.md CONTEXT.md triage-tree.yaml`。triage-tree 是共享资产，修改它属于高风险变更；`.github/` 含 CI 与 PR 模板，随方法论同步。
-- fork 自有（知识）：`knowledge/ postmortems/`（含 `inbox/`），不参与上游合并，因此不存在冲突面。
+| 框架式（fork） | 团队 fork 本仓库，自行积累或导入知识；方法论与机制账本随上游同步，少数共享文件两边都写 | 团队自治，知识含敏感数据 |
 
 同步方式为 `git fetch upstream && git merge upstream/main`。对框架的改进以 PR 形式反提上游；知识内容不回流，脱敏后的构造示例除外。
+
+### 目录归属（按"fork 会不会写"分档）
+
+同步时要回答的问题只有一个：这个冲突按哪条规则处理。所以分档判据是 fork 会不会写它。
+
+**只接收**（fork 不写，改进以 PR 反提上游）：`skills/ scripts/ docs/ examples/ tests/ dsh-plugins/`、`.github/workflows/ .github/PULL_REQUEST_TEMPLATE/`、根人读文档（`README.md CLAUDE.md AGENTS.md CONTEXT.md LICENSE CODEOWNERS.example diagnosis_state.yaml.example`）、机制账本（`proposals/ideas/ proposals/gates.yaml proposals/component-aliases.yaml`）、评测夹具与账本（`eval/holdout.yaml eval/flow/ eval/ixn-arena/ eval/s2/`）。
+出现冲突说明 fork 改过只接收面：还原上游那份，把改动挪进反提 PR。
+
+**只在本仓**（上游不合并）：`knowledge/ postmortems/`（含 `inbox/` 草稿）、`eval/golden/` 里的真实夹具、`traces/`。
+
+**两边都写**（正常合并）：`triage-tree.yaml`、`references/`、`metrics/gates.yaml`、`trace-status.yaml`。
+这四个路径 fork 会因为自己的知识面、阈值与词表去改，上游也在改。冲突按文件类型处理：追加型（`references/` 下的家族表、`trace-status.yaml` 的词表）两边都保留；键控结构（`triage-tree.yaml` 的分支）按语义合，不机械取一边。
+
+**每部署一份**（不参与合并）：`metrics/timeline.d/`、`metrics/timeline.yaml`、`ingest-state.json`、`reference-ingest-state.json`、`eval/scorecard.yaml`、`.github/CODEOWNERS`（owner 名单各仓不同）。
+冲突时保留本仓那份。同期名的指标文件也按本仓处理——两份部署的读数混进一条趋势线本身不成立。
+
+**生成物**（重新生成，不逐行解）：`knowledge/_index.yaml` 与 `knowledge/_index/`、`references/_summary-index.yaml`、`references/_procedure-index.yaml` 与 `references/_procedure-index/`。
+
+本节没列到的路径按只接收处理；要写它就先在本节加一行。
+
+**仍混装两边内容的文件**（靠合并策略只能缓解，按来源拆文件才根治）：`ingest-state.json` 一个文件装所有来源的游标、`eval/scorecard.yaml` 一个账本装两边夹具的哈希、`metrics/timeline.d/` 按自然周命名。这三件属机制改动，等第二个部署真实摄取数据时再做。
+
+### fork 侧不产 EV 卡
+
+idea 卡（`proposals/ideas/`）是机制账本，归上游。两条原因：
+
+- 卡号在本地递增分配（`scripts/ev_proposal.py` 只扫自己检出里的卡），两个仓库各产各的必然撞号；撞号后同一个文件路径两边内容不同，冲突无法机械解决；
+- 上游 `docs/mechanism/`、`docs/plan/` 里引用的卡号会随合并落进 fork，在那里指向另一张卡——这种错不报错。
+
+fork 侧的机制缺口写进 MR 描述或 issue，由维护者拿到上游产卡。内容产出（补 case、补词条、扩错误码家族、从 case 归纳 reference）不产卡，产卡范围见 `skills/evolve-check/SKILL.md`。fork 长期无法访问上游、又确实需要本地决策档案时，用与上游不重叠的号段或前缀，并让该目录归 fork 独占——复用 `proposals/ideas/` 的号段会让撞号问题原样保留。
+
+### fork 侧首次同步的检查单
+
+1. `git fetch upstream && git merge upstream/main`，合并后 `git status`：冲突应只出现在「两边都写」那四个路径上；
+2. 只接收面出现冲突，说明 fork 改过它——还原上游那份，改动挪进反提 PR；
+3. 「每部署一份」保留本仓那份，「生成物」重新生成，都不逐行解；
+4. `python3 scripts/build_index.py --check` 与 `python3 scripts/verify_proposals.py --check` 应绿。
 
 ## inbox 条目状态机与标签集
 

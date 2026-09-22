@@ -317,7 +317,7 @@ CODEOWNERS.example           owner 落实后启用
 两种部署方式都支持，inbox、groom、索引与 CI 机制在两种模式下工作方式相同：
 
 - **集中式**：训练与推理团队共用一个仓库，`CODEOWNERS` 按命名空间划分审批权，`common/` 与 `triage-tree.yaml` 的变更需要双 owner 签署。
-- **框架式**：团队 fork 本仓库后自行积累或导入知识，上游只同步方法论目录（`skills/ scripts/ docs/ examples/ eval/ .github/`），知识目录不参与上游合并，因此没有冲突面。
+- **框架式**：团队 fork 本仓库后自行积累或导入知识。方法论、机制账本与评测夹具随上游同步（`skills/ scripts/ docs/ examples/ tests/ dsh-plugins/ eval/ .github/ proposals/ideas/`；真实 golden 夹具留在本仓），知识面留在本仓；少数共享文件（`triage-tree.yaml`、`references/`、`metrics/gates.yaml`、`trace-status.yaml`）两边都写，按正常合并处理。分档与冲突处理见 [docs/guide/git-workflow.md](docs/guide/git-workflow.md) 的「目录归属」一节。
 
 审核、分发与合入的 git 落地细节见 [docs/guide/git-workflow.md](docs/guide/git-workflow.md)。
 
