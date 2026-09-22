@@ -102,6 +102,11 @@ _DEP_PATTERNS = (
     r"--[A-Za-z-]+\s+['\"]?([A-Za-z0-9_./-]+\.\w+)",
 )
 
+# "这条命令自己会写"的迹象（不认 `open(`——读也用它）。用于第三条排除：
+# 命令在仓外（/tmp 之类）自建暂存件再读它，那不是"依赖蒸发"，是自给自足。
+_SELF_WRITE_CUES = ("write_text", "write_bytes", "unlink(", "mkdir(", "append_run(",
+                    "safe_dump(", "json.dump(", "shutil.copy(", "touch ", "tee ")
+
 
 def _dep_paths(cmd: str):
     """命令**会读取**的路径（只认读取语境，宁可少报）。"""
@@ -123,12 +128,29 @@ def stale_deps(root: Path, doc):
     为什么单列：判据"可复现判据从未执行"数的是"跑没跑过"，**不区分"跑了还有没有意义"**。
     实测抽查 6 张未执行的卡，有 2 张的判据依赖已蒸发的本地件（traces 里的报告、/tmp 状态文件）
     ——这类卡跑一次只会把噪声当信号。本函数把它们挑出来，让"该跑"和"不必跑"分开。
-    强度如实标注：只认读取语境，命令里当样本/字面量出现的路径不算依赖。
+    强度如实标注：只认读取语境，命令里当样本/字面量出现的路径不算依赖；另有第三条排除——
+    **命令自己会写、且路径在仓外**（如 `/tmp/x.yaml` 建好再读）时不算依赖（实测 EV-2026-092 的
+    判据跑起来 PASS，却被报成"依赖已蒸发"，体检因此常年挂着一项无法处理的红）。
     """
     kind, m = classify(doc)
     if kind != "runnable":
         return []
-    return [p for p in _dep_paths(m.get("command") or "") if not (root / p).exists()]
+    cmd = m.get("command") or ""
+    self_writes = any(cue in cmd for cue in _SELF_WRITE_CUES)
+    out = []
+    for p in _dep_paths(cmd):
+        if (root / p).exists():
+            continue
+        if self_writes and _outside_repo(p):
+            continue
+        out.append(p)
+    return out
+
+
+def _outside_repo(p: str) -> bool:
+    """仓外路径：绝对路径，或指到检出之外的相对路径。"""
+    path = Path(p)
+    return path.is_absolute() or p.startswith("..")
 
 
 def clip(text: str) -> str:
