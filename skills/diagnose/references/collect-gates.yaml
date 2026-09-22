@@ -207,14 +207,12 @@ gates:
           比不取更糟（与"没拿到该版本"等价）。私有仓/内网镜像才直接要 clone 地址（`--url`），
           镜像内代码按冻结 commit 取，不能按 tag 推断
         refs:
-          - src-code-discovery
-          - cann-source-location
+          - cann-source-location   # 仓在哪一层（平台结构事实）；怎么调脚本见本 skill 的 src-fetch.md
       - when: repo_resolved
         action: >-
           按版本取源码（`src_fetch.py <org/repo> --ref <版本>`）后 grep 报错签名/算子名定位到文件与行；
           退出码非零就是没拿到，如实把结论写成"无法判定"，不要用其他版本或 web 搜索结果顶替
         refs:
-          - src-code-discovery
           - cann-source-location
           - operator-debug-entrypoints
     caveat_refs:

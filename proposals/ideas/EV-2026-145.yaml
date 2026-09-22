@@ -137,3 +137,15 @@ decisions:
       理由：原规则是"条件型不预先问"，写成了"不许有 question"，把**时机**约束错当成**存在**约束；
       源码位置发现只在缺口出现时问，那一刻必须有一句能照问的话，否则 agent 现场自编问句、
       质量无从校验。predefined 的 probe 形态与"探询只问一次、只问一句"的纪律不变。
+  - who: agent
+    when: 2026-09-22
+    type: action
+    conclusion: >-
+      落点修正（review 反馈）：脚本用法契约原写成先验层词条 `references/tools/src-code-discovery`，
+      与 skill 正文开头立的规则冲突——"skill 支撑文件一律放本 skill 的 `references/`，不放仓库根
+      `references/`（那是知识库/先验层）"。已移到 `skills/diagnose/references/src-fetch.md`，
+      仓库根只留 `cann-source-location`（它符合 source-fact 的门槛：**独立于本仓工具链**、可验证、
+      有外部来源——CANN 的仓库架构与文件布局，属源码知识里唯一值得主动沉淀的"稳定结构事实"，
+      定位是导航辅助）。判据一句话：**写我们工具怎么用 → skill 支撑文件；写外面的系统是什么样 → 先验层。**
+      闸门 `source-location` 的两条分支随之只挂 `cann-source-location`，脚本用法靠 SKILL 正文指向
+      `references/src-fetch.md`（skill 支撑文件按需加载，不占常驻）。

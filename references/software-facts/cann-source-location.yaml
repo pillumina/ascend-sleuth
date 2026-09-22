@@ -24,7 +24,7 @@ applies_to:
   platforms: [cross]
   frameworks: [aclnn, ascendc, ascendcl, hccl, ge]
 
-related_references: [src-code-discovery, operator-debug-entrypoints, runtime-async-error-triage, ascend-log-locations]
+related_references: [operator-debug-entrypoints, runtime-async-error-triage, ascend-log-locations]
 
 status: active
 last_verified: 2026-09-22
