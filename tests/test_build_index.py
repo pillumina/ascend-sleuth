@@ -191,6 +191,18 @@ class BuildIndexTest(unittest.TestCase):
         self.assertEqual(self.problems(), [])                      # 门：绿（内容齐全）
         self.assertTrue(bi.canonical_dirty(self.root, ns))         # 逐字节自检：非规范（可选归一）
 
+    def test_coverage_flags_duplicate_rows(self):
+        """同一条 case 在索引里出现两次（行级合并/重复 rebase 的产物，内容完全相同 → git 不报冲突，
+        hash 与行比对也一致）→ 必须报出来。只按 id 建字典的话第二份被静静吃掉（评审抓到的洞）。"""
+        self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
+        self.generate_all()
+        p = bi.shard_path(self.root, "inference/vllm-ascend__interrupt")
+        text = p.read_text(encoding="utf-8")
+        i = text.index("    - id: ")
+        p.write_text(text + text[i:], encoding="utf-8")      # 同一条目块再来一份（内容完全相同）
+        probs = self.problems()
+        self.assertTrue(any("出现 2 次" in x for x in probs), probs)
+
     def test_coverage_red_when_shard_missing(self):
         self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
         self.generate_all()

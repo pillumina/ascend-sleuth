@@ -160,7 +160,7 @@ agent 决策终态；观察窗是流程层效果结算）。与 §4.3"到窗标�
 | 层 | 指标 | 回答的决策问题 | 数据源 |
 |---|---|---|---|
 | 机制健康（流水线自身） | 候选→采纳率、实验→通过率、信号误报率、抽审发现率、**回滚率** | 流水线是否在做对的事？信号是否误报？auto 授权是否过宽？ | proposals/ideas、decisions、回测记录 |
-| 知识质量（库整体） | 命中率、resolve 率（S1）、误诊率、路由准确率、判别力、覆盖缺口 | 知识库整体在变准吗？哪个格子弱？ | trace_metrics + _index 头注 |
+| 知识质量（库整体） | 命中率、resolve 率（S1）、误诊率、路由准确率、判别力、覆盖缺口 | 知识库整体在变准吗？哪个格子弱？ | trace_metrics + index_counts |
 | 单次沉淀效果 | validation_record（S2 内容验证一致/不一致）+ confidence（S1 resolve） | 每次沉淀是否有效？哪个来源产低质沉淀？ | settle_s2_feedback + groom |
 | skill 组件质量 | 归因事件簇（按需聚合）、每次 skill 变更前后差 | 哪个组件反复错？这次 skill 改动有效吗？ | component_tally 聚合 + 回测 |
 

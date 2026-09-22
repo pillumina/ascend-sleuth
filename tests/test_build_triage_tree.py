@@ -125,6 +125,23 @@ class TriageTreeSplitTest(unittest.TestCase):
         rc, _out = run_main("--check", "--root", str(self.root))
         self.assertEqual(rc, 1, "逐字节自检应当报非规范（这是可选的归一化提示）")
 
+    def test_coverage_flags_reordered_branches(self):
+        """**顺序也是判据**：diagnose 按分支顺序匹配、先命中先路由——把两个分支块对调就是改了
+        路由优先级，而集合相等的检查看不出来（这条是独立评审抓到的洞）。"""
+        self.write_protocol()
+        self.write_family("10-a.yaml", "a_branch")
+        self.write_family("20-b.yaml", "b_branch")
+        self.build()
+        agg = self.root / "triage-tree.yaml"
+        text = agg.read_text(encoding="utf-8")
+        i_a = text.index("  - id: a_branch")
+        i_b = text.index("  - id: b_branch")
+        head, block_a, block_b = text[:i_a], text[i_a:i_b], text[i_b:]
+        agg.write_text(head + block_b + block_a, encoding="utf-8")
+        rc, out = run_main("--check-coverage", "--root", str(self.root))
+        self.assertEqual(rc, 1)
+        self.assertIn("顺序与源不一致", out)
+
     def test_coverage_reports_branch_missing_from_aggregate(self):
         self.write_protocol()
         self.write_family("10-a.yaml", "a_branch")

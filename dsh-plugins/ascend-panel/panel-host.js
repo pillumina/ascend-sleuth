@@ -161,34 +161,6 @@ return {
     // 数字从生成物里拿掉之后，面板读的是 case 文件本身，没有会腐烂的第二份副本。
     // 上一次的教训也在：loadHealth 曾把格子加总到 namespace 再比 /30，于是 vllm-ascend 显示 114/30，
     // 读者推不出"interrupt 是唯一爆掉的格子"——判据逐格计，面板就必须逐格显。
-    async function loadIndexCounts(cwd) {
-      if (!shell || !cwd) {
-        return { ok: false, error: '容量数字是现算的，需要 shell 服务与检出路径——'
-          + '手工复现：在检出根目录跑 python3 scripts/index_counts.py' }
-      }
-      const py = await resolvePython()
-      if (!py) return { ok: false, error: '未找到可用的 Python 3 解释器——手工复现：python3 scripts/index_counts.py' }
-      try {
-        const r = await shell.run(shell.resolve({
-          command: py + ' scripts/index_counts.py --json',
-          workdir: cwd,
-          timeoutMs: 30000,
-          stdoutMaxBytes: 262144,
-          env: { PYTHONIOENCODING: 'utf-8' },
-          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },
-        }))
-        const text = r && r.stdout && typeof r.stdout.text === 'string' ? r.stdout.text.trim() : ''
-        const doc = JSON.parse(text)
-        const cells = (doc.cells || []).map(c => ({
-          namespace: c.namespace, category: c.category, count: c.count,
-          cap: c.soft_cap, hardCap: c.hard_cap,
-        }))
-        return { ok: true, total: doc.total, cells: cells }
-      } catch (e) {
-        return { ok: false, error: '容量现算失败: ' + String(e && e.message || e) }
-      }
-    }
-
     // 索引条目数（生成物里真实列了几条）——与磁盘 case 文件数对照，索引陈旧/丢条目时立刻可见。
     // 面板读的是索引，不是磁盘：两者不等就得说出来（这类"看到的不等于现实"是面板最容易骗人的地方）。
     async function countIndexEntries(cwd) {
@@ -503,12 +475,10 @@ return {
           out.cases.total = total
           out.cases.lowConfidence = low
           out.cases.byCategory = catTotal
-          // 逐格容量（判据口径）：由 scripts/index_counts.py 从 case 文件现算，逐格带 soft/hard cap。
-          // 刻意**不**再给 namespace 加总值——判据逐格计，加总口径会让读者看不出是哪一格爆了。
-          const counts = await loadIndexCounts(cwd)
-          out.cases.byCell = counts.ok ? counts.cells : []
-          out.cases.liveTotal = counts.ok ? counts.total : null
-          out.cases.countsError = counts.ok ? null : counts.error
+          // 逐格容量**不在这里**：判据逐格计，真值走 metrics_health 那条链（capacity_cells，
+          // 由 scripts/index_counts.py 现算）。这里曾顺手也调一次 index_counts 填 byCell/liveTotal，
+          // 但全仓没有读者、每次渲染多付约 1 秒，而且失败时只写了一个没人读的字段
+          // （countsError）——"统计读不到"在界面上长得和"本来就没数据"一样。删掉。
           // drift：索引里**真实列出的条目数** vs 磁盘 case 文件数（面板读索引，索引丢了条目就报出来）
           out.cases.declaredTotal = total
           out.cases.diskTotal = await countCaseFiles(cwd)

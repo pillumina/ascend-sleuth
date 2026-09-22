@@ -298,6 +298,29 @@ def shard_hashes(root: Path):
     return {cid: (row or {}).get("hash") for cid, row in rows.items()}, broken
 
 
+def duplicate_ids(root: Path):
+    """(文件名, id, 次数)：同一条 case 在一个索引文件里出现多次。
+
+    为什么单列：行级合并/重复 rebase 会把同一段**原样保留两份**（内容完全相同 → git 不报冲突，
+    hash 与行比对也一致），只按 id 建字典的话第二份被静静吃掉——文件里那条重复就一直留着。
+    """
+    out = []
+    for p in sorted([root / "knowledge" / "_index.yaml"] + list((root / "knowledge" / "_index").glob("*.yaml"))):
+        if not p.exists():
+            continue
+        seen = {}
+        try:
+            # 条目是缩进的（总表里还多一层），所以不能用 ^- id:
+            for cid in re.findall(r"^\s*- id:\s*(\S+)", p.read_text(encoding="utf-8"), re.M):
+                seen[cid] = seen.get(cid, 0) + 1
+        except Exception:
+            continue
+        for cid, n in sorted(seen.items()):
+            if n > 1:
+                out.append((p.name, cid, n))
+    return out
+
+
 def _rows_of(path: Path):
     """一个索引文件里的 {case id: 索引行}（总表与分片同构）。读不动就抛——调用侧给可执行的话。"""
     doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -325,6 +348,9 @@ def coverage_problems(root: Path, namespaces):
     problems = []
     rows, broken = shard_rows(root)
     problems += broken
+    dup = duplicate_ids(root)
+    for name, cid, n in dup:
+        problems.append(f"{name} 里 {cid} 出现 {n} 次（重复条目）——重跑 `python3 scripts/build_index.py`")
     expected = {}
     for ns, cells in namespaces.items():
         for cat, cases in cells.items():

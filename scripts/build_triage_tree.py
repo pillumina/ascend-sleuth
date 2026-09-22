@@ -201,9 +201,18 @@ def coverage_problems(root: Path, blocks):
         for group in src.get("symptoms") or []:
             if tuple(group) not in have_groups:
                 problems.append(f"分支 {bid} 里缺症状组 {group}——重跑 `python3 scripts/build_triage_tree.py`")
-    src_ids = {yaml.safe_load('branches:\n' + b)['branches'][0]['id'] for b in blocks}
+    src_seq = [yaml.safe_load('branches:\n' + b)['branches'][0]['id'] for b in blocks]
+    src_ids = set(src_seq)
     for bid in sorted(set(got) - src_ids):
         problems.append(f"聚合里有、源里没有的分支 {bid}——重跑 `python3 scripts/build_triage_tree.py`")
+    # **顺序也是判据**：diagnose 按分支顺序匹配、先命中先路由，所以把两个分支块对调就是改了
+    # 路由优先级。集合相等 ≠ 行为相同——只看"在不在"漏掉的正是这条（实测：对调 inference_interrupt
+    # 与 inference_precision 后旧版覆盖检查 exit 0）。症状组之间的顺序不查：同分支内哪条先命中
+    # 都路由到同一个分支，是外观。
+    got_seq = [b.get("id") for b in (doc.get("branches") or []) if isinstance(b, dict)]
+    if got_seq != src_seq:
+        problems.append(f"聚合的分支顺序与源不一致（源：{' → '.join(src_seq)}；聚合：{' → '.join(got_seq)}）"
+                        "——顺序决定先命中先路由，重跑 `python3 scripts/build_triage_tree.py`")
     return problems
 
 

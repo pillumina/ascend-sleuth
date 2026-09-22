@@ -107,10 +107,6 @@ class Experiment:
         self.repo = Path(self.tmp.name) / "repo"
 
     # ---------------------------------------------------------------- 搭台
-    # 合并后是否由"最后一个人"补一次重建。改后纪律**不需要**它：union 保证两边条目都在，
-    # 覆盖门算这份文件通过。现状纪律里它是人肉动作（谁记得谁跑），实验里也照实模拟。
-    merger_rebuild_after_merge = False
-
     def setup(self):
         r = self.repo
         r.mkdir(parents=True)
@@ -259,20 +255,6 @@ class Experiment:
         git(r, "commit", "-qm", f"merge kb/{tag}（取自己那份）")
         return files
 
-    def merger_rebuild_on_main(self):
-        """合并者收尾：跑一次重建并提交。
-
-        本平台不允许 CI 向主干推提交，所以这一步**由人做**（合并完花 30 秒）；动作与机器人
-        完全相同，所以实验里照跑——要量的是「生成物有没有人对齐」，不是谁来敲。
-        """
-        if self.policy != "after":
-            return
-        py(self.repo, "scripts/build_index.py")
-        py(self.repo, "scripts/build_triage_tree.py")
-        git(self.repo, "add", "knowledge/_index.yaml", "knowledge/_index", "triage-tree.yaml")
-        if git(self.repo, "diff", "--cached", "--quiet", check=False).returncode != 0:
-            git(self.repo, "commit", "-qm", "chore(generated): 主干重建 [skip ci]")
-
     # ---------------------------------------------------------------- 收尾断言
     def gates(self):
         # 门统一用**覆盖检查**（两种纪律跑同一个门，只是生成物不同）：这样对比的是
@@ -300,8 +282,6 @@ class Experiment:
         for i, (tag, _cid, _word, _day) in enumerate(CONTRIB):
             git(self.repo, "checkout", "-q", "main")
             self.merge(tag, SCENARIOS[self.scenario][i][1])
-            if self.merger_rebuild_after_merge:
-                self.merger_rebuild_on_main()
         git(self.repo, "checkout", "-q", "main")
         # 只看**提交内容**：CI 与读侧看到的是主干检出，不是谁工作树里那份脏生成物。
         # 不还原的话，本地跑过的重建会留在工作树里，把"忘了收尾"这条路径量成绿的

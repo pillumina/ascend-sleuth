@@ -4,7 +4,7 @@
 > 想看系统整体在做什么，先读 [demo-walkthrough.md](../demo-walkthrough.md)。要改机制本身，再看本文末尾指向的几篇。
 >
 > 正文不用内部简称。你需要去改脚本、查数据文件时，用 [名词对照](#9-名词对照) 那张表换名字。
-> 本文不写会过期的数字：知识库条数看 `knowledge/_index.yaml` 头注，改进项看 `python3 scripts/ev_measure.py --audit`，
+> 本文不写会过期的数字：知识库条数现算（`python3 scripts/index_counts.py`），改进项看 `python3 scripts/ev_measure.py --audit`，
 > 指标看 `metrics/timeline.yaml`，判据阈值看 `proposals/gates.yaml` 与 `metrics/gates.yaml`。
 
 ---

@@ -203,7 +203,7 @@ python3 scripts/ev_measure.py --audit            # 全库盘点：可复现 / �
 落地步骤：
 
 1. groom 在变更 PR 上打 `kb/high-risk` 标签，PR 描述列出触发的条款；
-2. `CODEOWNERS` 将 `knowledge/common/` 与 `triage-tree.yaml` 指向两组评审人（领域 owner 组与体系维护人组），配合分支保护的 required review，使两组各至少一人批准；
+2. `CODEOWNERS` 将 `knowledge/common/` 与 `triage-tree.d/` 指向两组评审人（领域 owner 组与体系维护人组），配合分支保护的 required review，使两组各至少一人批准；
 3. 平台限制：GitHub 与 GitLab 原生不强制"批准者来自不同小组"。CODEOWNERS 的多组配置可以逼近这一要求，最终的数量核验写入 groom-report 检查单，由开 PR 的人自查勾选。
 
 owner 尚未确定时，`CODEOWNERS.example` 保留 TODO 占位，CI 与标签流程照常运转；owner 落实后将占位文件复制为 `.github/CODEOWNERS` 并填入真实账号，硬门随即生效。

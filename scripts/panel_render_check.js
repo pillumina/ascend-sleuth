@@ -970,18 +970,19 @@ print(json.dumps(n))
   // —— 渲染：判决条 / 不可解读 / 容量台账 ——
   const healthCases = {
     total: declared, lowConfidence: 12, byCategory: { interrupt: 30, performance: 10, precision: 12 },
-    byCell: cells.slice(0, 4), liveTotal: declared, declaredTotal: declared, diskTotal: diskCount,
+    declaredTotal: declared, diskTotal: diskCount,
   }
-  // 统计读不到时必须**说出来**（索引头注里的数字已改成现算，现算失败时会走 c.error 这条）：
-  // 面板最容易骗人的地方就是"看到的不等于现实"——少一块和读不到长得一样。
-  const healthErr = { cases: { error: '结构数字现算失败（演练）' }, references: {} }
+  // 统计读不到时必须**说出来**（面板最容易骗人的地方是"看到的不等于现实"）。
+  // 形状取 host 的真实产出：`loadHealth` 的外层 catch 写 `cases.error`（曾经的 countsError
+  // 是另一个没人读的字段，已删——断言喂不存在的形状就是假绿，这次修的就是那件事）。
+  const healthErr = { cases: { error: '统计读取失败（演练）' }, references: {} }
   const ascErrHealth = await renderAsync(ascSrc, { sessionId: 'sess-1' }, (method, args) => {
     if (method === 'ascend-kb-health') return { ok: true, ...healthErr }
     if (method === 'ascend-metrics-verdict') return { ok: true, verdict: Object.assign({}, verdict, { drift: { declared: declared, disk: diskCount } }) }
     return ascHost(method, args)
   })
   expect('统计读不到时面板说出来（不是少一块）',
-    ascErrHealth.text.includes('读不到') && ascErrHealth.text.includes('结构数字现算失败（演练）'),
+    ascErrHealth.text.includes('读不到') && ascErrHealth.text.includes('统计读取失败（演练）'),
     ascErrHealth.text.slice(0, 200))
 
   const hostWithVerdict = (method, args) => {

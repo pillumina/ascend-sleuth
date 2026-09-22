@@ -11,7 +11,7 @@
 id: EV-2026-146
 layer: L2
 target_component: scripts/build_index.py
-title: "生成物的两个提交面：总表与路由聚合由主干重建，分片与族文件留在 PR（并发提交的判断冲突归零）"
+title: "生成物里不写数字 + 路由层 union + 门改覆盖检查：并发提交不冲突，也不需要任何合并后收尾"
 status: validated
 authorization: review
 dimension: maintainability
@@ -52,7 +52,7 @@ predicted_effect:
     三人各改不同框架也仍会撞总表（生成日期那行），并且**合并完主干门还是红的**
     （"最后一个人重建过索引"在旧流程里是人的记忆责任，无人记得就红着）。
   to: >-
-    同 namespace（同一个格子）：判断冲突 0（只剩索引这一类"重跑即解"的机械冲突）；
+    同格子：判断冲突 0（只剩索引这一类"重跑即解"的机械冲突）；
     改不同框架（常见形态）：一次都不撞；两种场景下合并完门都是绿的，**没有任何收尾动作**。
     路由层（族文件 + 聚合）配了 union → 两人同一天给同一族加词不产生冲突标记、两边都留住；
     生成物里没有数字 → 不存在"合并完文件里那个数是旧的"这种静默腐烂。
@@ -96,7 +96,8 @@ gate:
     同一框架的两人并发提交，每周出现 ≥2 次分片冲突、且出现"有人手改分片逐行解冲突"的迹象
     （说明重跑一条命令这件事没有被接受）——那时考虑 ADR-0004 的格子拆分
     （vllm-ascend/interrupt 现 93 条、超 hard_cap 3 倍，拆开也就拆开了那个共享分片），
-    或给生成物加 union 合并（代价是主干短暂非规范，需主干 job 兜住）。
+    或把索引改成一层平铺列表（条目自带 namespace/category）——那时行级 union 才安全
+    （嵌套结构实测会被拼坏），索引冲突也就归零。
 risk: low
 principle_refs: [2, 6, 8, 10]
 actual_cost:
@@ -117,6 +118,7 @@ decisions:
       ②索引新鲜度改以**分片**为准，总表退出 PR 门、改由主干 job 重建（`--check --master` 当主干门）；
       ③`triage-tree.yaml` 拆成 `triage-tree.d/<序号>-<族>.yaml`（一族一文件，拼接逐字节保留），
       聚合由 `scripts/build_triage_tree.py` 重建，族文件配 `merge=union`。
+      （后又收敛两轮，最终形态见 decisions：生成物**随 PR 提交**，数字现算，门是覆盖检查。）
       **不做**：不删总表（diagnose 在 category 未定/分片缺失时回退读它，容量头注也是它）；
       不改读侧（5 个读点继续读聚合，所以路由行为由"body 字节不变"保证，不靠"应该没变"）；
       不拆 vllm-ascend/interrupt 格子（93 条超 hard_cap，是另一件事，已写进 gate 条件）。
@@ -126,9 +128,11 @@ decisions:
     conclusion: >-
       落地：`scripts/build_index.py`（去日期 + 新鲜度读分片 + `--master`）、
       `scripts/build_triage_tree.py`（新增）、`triage-tree.d/`（7 族 + 说明）、
-      `.gitattributes`（族文件 union）、`.github/workflows/kb-checks.yml`（PR 门改 `--check-sources`
-      + 新增"生成物不得进 PR" + 新增 generated-consistency 主干校验 job，只校验不提交）、
-      `scripts/rehearse_evolve_loop.py`（演练按工作流 `if:` 条件跳过主干专用步骤并逐条打印原因）、
+      `.gitattributes`（路由层 union；索引**故意不配**——嵌套结构行级 union 会拼坏 YAML）、
+      `.github/workflows/kb-checks.yml`（门只剩覆盖检查，PR 与主干同一条）、
+      `scripts/index_counts.py`（数字现算，面板/体检/快照共用）、
+      `scripts/rehearse_evolve_loop.py`（容量断言改成"检出与现算一致"）、
+      面板 `panel-host.js`/`panel-client.js`（去掉那次没人读、每次还多付约 1 秒的容量现算调用）、
       `tests/test_build_index.py`（扩）、`tests/test_build_triage_tree.py`（新）、
       `tests/test_generated_plane.py`（新）、`tests/test_concurrent_submit.py`（新，本卡的 measure）。
   - who: agent
@@ -165,10 +169,25 @@ decisions:
       那是另一件事，没做。
   - who: agent
     when: 2026-09-22
+    type: action
+    conclusion: >-
+      第三轮（最终形态）落地并**删掉前两轮的临时件**，避免读者以为仓库里还有它们：
+      `build_index.py` 的 `--master` 主干门 → 改名 `--canonical`（逐字节自检，不作门）；
+      CI 的"生成物不得进 PR"那道门与 `generated-refresh` 主干 job → 都删（生成物现在随 PR 提交，
+      门只剩覆盖检查，PR 与主干同一条）；"合并者收尾三行" → 删（不再需要）。
+      新增：`scripts/index_counts.py`（数字现算：条数 + 逐格 soft/hard 越界）；门补两条判据
+      （独立评审抓到的洞）——聚合的**分支顺序**必须与源一致（顺序决定先命中先路由）、
+      同一条目在一个索引文件里出现两次要报出来；面板去掉一次没人读、每次多付约 1 秒的容量现算调用。
+      评审方式：自审 + 一个独立 subagent 对抗评审（它抓到 P0 顺序洞与 P1 面板假绿，均已修并补测试）。
+  - who: agent
+    when: 2026-09-22
     type: decision
     conclusion: >-
       判 validated：measure 打出 VERDICT PASS（四格数字见 predicted_effect.to），
       `tests/` 188 项全绿，kb-checks 逐条命令本机复跑全绿。
-      残留如实标注：同 namespace 的两人并发**仍会撞分片**（每对分支 2 个文件），
-      解决动作是 `python3 scripts/build_index.py` 后重提交——机械、无判断，但不是零摩擦；
-      这一条不靠文档掩盖，写在 docs/guide/git-workflow.md 的冲突处理表里，并作为 gate 的触发条件。
+      残留如实标注：同一个**格子**（框架 × 性质）的两人并发仍会撞索引文件（实测 3 个文件、
+      每个 2 处冲突段，且冲突段**交错在条目块内部**——手删标记会拼出非法 YAML），动作是三行命令
+      重生成（`git checkout --theirs` → `build_index.py` → `git add`），机械、无判断；
+      不同格子不碰同一个文件，本来就不撞。这条不靠文档掩盖，写进了 docs/guide/git-workflow.md
+      的冲突处理表，也作为本卡 gate 的触发条件。**没有合并后收尾这一步**（原设计的"合并者跑一遍"
+      已被否掉，见 decisions）。

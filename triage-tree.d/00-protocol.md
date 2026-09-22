@@ -13,7 +13,7 @@ Tier 1: 症状 → namespace 路由
 
 common/：跨框架/框架未登记的共性 case 落入此处（框架无关根因）。README + ADR-0005 的"common/ 必拉"
 已从设计承诺变为可消费资产；search_namespaces 中的 common/ 一项已生效（框架检测失败或首个
-namespace 未命中时查它）。条数与容量见 knowledge/_index.yaml 头注；新共性 case 的提炼触发条件见
+namespace 未命中时查它）。条数与容量现算：`python3 scripts/index_counts.py`（生成物里不写数字——写进去就会在并发合并时撞行或漂移）；新共性 case 的提炼触发条件见
 skills/knowledge-groom/SKILL.md。（本文件是 Tier 1 数据，不承载运行时状态播报。）
 
 加词/改分支的入场判据（判据本身见 scripts/trace_metrics.py 的 triage_miss_classes）：
