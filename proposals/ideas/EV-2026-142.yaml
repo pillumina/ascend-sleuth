@@ -1,0 +1,118 @@
+# ============================================================
+# Idea 卡（proposals/ideas/）——schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）
+# 校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+
+id: EV-2026-142
+layer: L3
+title: 诊断流程的 token 读数面：逐步表 + 工具流量表（不含固定面判定）
+status: validated
+authorization: review
+dimension: process
+target_component: scripts/session_cost.mjs
+supersedes: []
+superseded_by: null
+created_at: 2026-09-18
+source_signals:
+  - signal: token_audit
+    evidence: >-
+      全量账单实测（355 个会话，node scripts/session_cost.mjs --all）：billed 合计 6,176,238,234，
+      其中缓存重读 6,111,109,639（98.9%），未缓存输入 44,752,948（0.72%）。步数 p50=17 / p90=116。
+      最大的会话（2407 步）实测：工具调用 2,277 次、工具返回累计 1,909,906 字符 ≈561,737 tok、
+      单条最大 48 KB、参数完全相同的调用多出 74 次、**同一目标被重复访问 1,348 次**。
+      结论：花费主项是「步数 × 每步上下文规模」，而定位它需要的两个读数（哪一步大、这一步调了什么）
+      此前都不存在。
+    trajectory:
+      - node scripts/session_cost.mjs --all（355 会话汇总）
+      - node scripts/session_cost.mjs --tools --file（最大会话，2407 步）
+      - python3 scripts/audit_skill_cost.py --json
+  - signal: observability_gap
+    evidence: >-
+      诊断流程的 token 此前只有两个读数：会话总量，与按上下文规模排的最大 5 步（且不带工具信息）。
+      「哪一步大、大在什么工具上、有没有重复访问」无法回答。而诊断流程确认不跑内容流程的收尾评估，
+      所以任何挂在内容流程收尾上的成本判定都覆盖不到它。
+    trajectory:
+      - scripts/session_cost.mjs（改前的 top 5 输出只有 prompt/uncached/output 三列）
+      - skills/evolve-check/SKILL.md（diagnose 不强制跑本协议）
+hypothesis: >-
+  把逐步上下文增量与该步的工具调用、返回大小对齐，再补一张工具流量表（次数、累计、单条上限、
+  重复调用与重复目标），则诊断流程的 token 花费能定位到具体一步与具体工具；这是"优化诊断流程
+  token"的前置——没有它，任何 token 相关改动都无法验证省了没有。
+predicted_effect:
+  metric: 单次会话的 token 逐步归因与工具流量可读
+  from: >-
+    只有会话总量与最大 5 步（无工具信息）：无法回答"这一步为什么大"
+  to: >-
+    --steps 输出逐步表（上下文增量 × 工具与返回字节）；--tools 输出工具流量（次数/累计/单条上限/
+    重复调用/重复目标），并在输出里写明读法
+  measure:
+    command: >-
+      node scripts/session_cost.mjs --tools --file "$(ls -S ~/.dsh/sessions/*/*/session.jsonl.zstd | head -1)"
+    expect_exit: 0
+    expect_stdout: "工具流量"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前 --steps / --tools 两个开关都不存在；top 5 只有 prompt/uncached/cacheRead/output。
+  success_criteria: >-
+    ① measure 命令 exit 0 且输出含「工具流量」；② 逐步表在本会话 161 步上可复现（每步带工具名）；
+    ③ 工具流量表在最大的 5 个真实会话上给出次数/累计/单条上限/重复调用/重复目标五列；
+    ④ `python3 scripts/eval_arena.py --self-test` 全绿（成本字段只记录，不改质量判词）；
+    ⑤ 逐条 CI 检查全绿。
+  rollback: >-
+    可 revert 单条提交：两个文件都只读，无数据迁移。session_cost.mjs 删两个开关即回到原状；
+    eval_arena.py 删 --cost-* 三个参数即回到原状（账本里已写的历史记录不受影响）。
+gate: >-
+  再出现"要给某个流程做 token 优化"的需求时，先确认该流程有没有逐步与工具级读数；没有就先补读数，
+  不要在只有总量的情况下开始改流程。
+risk: low
+principle_refs: [8, 9, 11]
+actual_cost:
+  tokens: 172472
+  source: measured
+  note: >-
+    口径 = 本次会话未缓存输入（node scripts/session_cost.mjs 的 totals.uncachedInput），
+    写卡时实测 172,472；同次读数里 cacheRead 28,578,944、峰值 prompt 273,058。
+    取未缓存输入而不是 billed：billed 被缓存重读主导（98.9%）。
+decisions:
+  - who: agent
+    when: '2026-09-18'
+    type: proposal
+    conclusion: >-
+      识别：token 这一维的量具已落地两个（真实账单、skill 成本审计），但诊断流程缺"逐步 + 工具"级
+      读数；而诊断流程不跑内容流程的收尾评估，所以挂在收尾上的判定覆盖不到它。
+  - who: agent
+    when: '2026-09-18'
+    type: decision
+    conclusion: >-
+      曾提出并已撤回：给固定面（根指令 + skill 摘要 + 正文）加一条只降不升的基线比对，把判定挂在
+      内容流程收尾。撤回理由四条，都有读数支撑——①对象错：diagnose 不跑收尾评估，覆盖不到最想优化的
+      那个流程；②只够得着小头：固定面实测 6,592 tok/会话，占诊断会话未缓存输入中位数（47,799）约 14%，
+      其中大头还是必须付的根指令；③基线要手工维护：提出后一小时内就抬过两次（+405 B → +441 B），
+      多用户克隆下人人要改同一个文件，摩擦与冲突都不小；④没有对照：它只能回答"比上次涨了没"，
+      回答不了"这次改动省了没有"。
+  - who: agent
+    when: '2026-09-18'
+    type: action
+    conclusion: >-
+      执行：①session_cost.mjs 解析轨迹里本来就有的 tool/call 与 tool/result，把每步的上下文增量与
+      该步工具、返回字节对齐，新增 --steps；②同一脚本新增 --tools（按返回量排的工具、重复调用、
+      重复目标、单条上限），并在输出里写明读法；③eval_arena.py --gate 加 --cost-baseline /
+      --cost-candidate / --cost-note，把两臂花费记进影响账本作为第二轴（不改质量判词）；
+      ④metrics.md 补 token 读数在哪与两把尺的说明。
+  - who: agent
+    when: '2026-09-18'
+    type: eval
+    conclusion: >-
+      实测：逐步表在本会话 161 步上打印出每步工具；工具流量表在最大的 5 个真实会话上给出五列读数
+      （调用 578–2312 次、返回累计 12.8 万–75.3 万 tok、平均单条 751–1942 字符、单条最大 27–48 KB、
+      重复调用多出 11–74 次、重复目标 50–1348 次）。**5 个会话里单条返回 ≥50 KB 的 0 条**——
+      浪费的主因是次数与目标重复，不是某一次拉了巨大输出。arena 的成本轴本机只做了接线演示
+      （合成 16 条对子），真实对照留待 replay 用例落地后跑。
+  - who: agent
+    when: '2026-09-18'
+    type: decision
+    conclusion: >-
+      采纳（validated）：随 methodology PR 送人审。下一步（不在本卡内）：诊断流程的 replay 用例——
+      取 eval/golden 的夹具子集，跑改前改后两臂，同时记质量（排名或 documented miss）与成本
+      （未缓存输入 / 峰值上下文 / 步数），逐条比后再决定采纳。本卡只提供它需要的读数与记录位。
