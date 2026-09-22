@@ -230,8 +230,13 @@ async function main() {
     expect('① 要处理的：给出下一步动作', ev.text.includes(failWithAction.action.slice(0, 40)),
       failWithAction.action.slice(0, 60))
   }
-  expect('① 要处理的：不把 0 项渲染成"没问题"（明示覆盖面才是结论）',
-    nFails > 0 || /没有需要动作的判据/.test(ev.text))
+  // 0 项时的合理渲染 = 明说"本期无判据越界"并把覆盖面交给上方结论条（不是静默、也不是"没问题"）。
+  // 为什么改：旧断言里的措辞（"没有需要动作的判据"）客户端早已不用了，而这条断言只在
+  // **有真实数据且判决干净**的检出上才会走到 0 项分支——CI 检出没有运行时数据（判决 1 项 fail），
+  // 于是它在 CI 永远绿、在开发机（全量数据）永远红：一条长期假绿 + 本地常红的断言。
+  const emptyOk = nFails > 0 || /本期无判据越界/.test(ev.text)
+  expect('① 要处理的：0 项时明说无越界并把覆盖面交给结论条（不静默、不说"没问题"）',
+    emptyOk, ev.text.slice(ev.text.indexOf('① 要处理的'), ev.text.indexOf('① 要处理的') + 200))
   // 预测实测记录：唯一真实的负反馈读数（0 笔时必须明说"一次都没被复现过"，不静默）
   const nMv = (health.readouts && health.readouts.measure_runs) || 0
   const mv = (health.readouts && health.readouts.measure_by_verdict) || {}
@@ -382,7 +387,11 @@ async function main() {
   expect('展开用 grid-template-rows 过渡（不动画 height）', /grid-template-rows/.test(css))
   expect('等宽数字对齐（tabular-nums）', /tabular-nums/.test(css))
   // 首屏无卡时（无实验中的卡 + 无缺口）这里没有卡片可查——改到"展开单卡"节断言（那边会先开抽屉）
-  expect('渲染用 class 而非全内联（判决面）', /«cls:ev-verdict/.test(ev.text) && /«cls:ev-find/.test(ev.text))
+  // 行级 class 只在**有 fail 判据**时才出现；判决干净时没有行可查——那就只查判决条本身，
+  // 行级断言交给有行的那两处（展开态 / 合成数据）。旧写法在干净检出上恒红（同上）。
+  expect('渲染用 class 而非全内联（判决面）',
+    /«cls:ev-verdict/.test(ev.text) && (nFails === 0 || /«cls:ev-find/.test(ev.text)),
+    'nFails=' + nFails)
   // 判决面的视觉契约：结论条按状态取色（ok/warn/broken 三态各自成类）
   expect('结论条三态配色类存在', /\.ev-verdict\.ok/.test(css) && /\.ev-verdict\.warn/.test(css) && /\.ev-verdict\.broken/.test(css))
   expect('触及面条用两段（累计暗 / 本期亮）表示增量', /\.ev-surf-track i\.now/.test(css))
