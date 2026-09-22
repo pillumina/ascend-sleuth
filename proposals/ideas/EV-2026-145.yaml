@@ -1,0 +1,151 @@
+# ============================================================
+# EV-2026-145 —— 源码位置发现：从"给 --url"到"枚举组织仓给候选 + 唯一候选自动取"
+# 来源：用户问「遇到新开源框架，当前 skill 能不能自动识别并下载源码？boundary 在哪？」
+#       → 核查发现三处失真：①已知仓表硬编码、未知仓只能要 --url；②诊断正文说"CANN 未开源"，
+#       而 CANN 在 gitcode 上是 82 仓的公开组织、清单可匿名枚举；③正文说 --list 支持 CANN，
+#       实际表里没有。本轮把「哪个仓」这一步做成可复现的一步。
+# 脱敏：只含仓库内路径、脚本行号、公开 API 与聚合数字，不含客户现场原文
+# ============================================================
+
+id: EV-2026-145
+layer: L2
+target_component: scripts/src_fetch.py
+title: "源码位置发现：签名 → 组织仓候选 → 唯一候选自动取、歧义交回工程师（CANN 82 仓可匿名枚举）"
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: '2026-09-22'
+source_signals:
+  - signal: mechanism_gap
+    evidence: >-
+      「报错签名属于哪个源码仓」这一步过去没有可复现的机制，只有三条出口：已知表命中、
+      人工给 `--url`、或 exit 3 收尾。核查实测：
+      ①`scripts/src_fetch.py` 的 KNOWN_REPOS 只覆盖 vllm-ascend / MindSpeed-LLM/MM /
+      torch-npu / verl，无 CANN 任何一层；未知 `org/repo` 一律默认走 GitHub（line 535），
+      GitCode/Gitee 上的仓拿不到；
+      ②`skills/diagnose/SKILL.md:205` 写「CANN 等未开源 → 承认局限」，而实测
+      `https://gitcode.com/api/v5/orgs/cann/repos?per_page=100` 匿名返回 82 个公开仓
+      （ops-nn / ops-transformer / hccl / ge / metadef / runtime / driver / asc-devkit /
+      oam-tools …），全部可 clone；
+      ③同一处正文写 `--list` 支持 CANN，表里实际没有——照它走会得到 exit 2。
+    trajectory:
+      - "python3 scripts/src_fetch.py --list（输出 5 个仓族，无 CANN）"
+      - "curl 'https://gitcode.com/api/v5/orgs/cann/repos?per_page=100'（匿名，82 仓）"
+      - "skills/diagnose/SKILL.md:198,205（两处与实际不符）"
+  - signal: user_feedback
+    evidence: >-
+      用户要求按上一轮的诊断结论执行优化：「遇到新开源框架能不能自动识别源码位置、boundary 在哪、
+      最佳体验是什么」→ 定下的方向是「能自动发现就不问；问也只问选哪个，不问『你给我地址』」。
+      本轮实现该方向并补齐数据侧绑定（新 reference 词条 + 闸门 + 匹配表自测）。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+hypothesis: >-
+  把「签名 → 候选仓」做成数据（候选表 + 关键词规则 + 主候选判据）、把组织仓库清单做成一次匿名枚举、
+  并把「候选 ≥2 时问一句」写进闸门之后：源码位置不再依赖人的记忆或 URL；唯一候选的签名
+  自动取回（exit 0），歧义签名给出带理由的候选表并要求工程师选一个（exit 3），
+  匹配表本身有自测兜住静默失效。
+predicted_effect:
+  metric: 源码位置发现的可复现性（唯一候选自动取回 / 歧义给候选 / 表坏了会红）
+  from: >-
+    未知仓只能 exit 2/3 + 要 --url；CANN 各层取不到（正文说未开源）；匹配规则若有也无自测，
+    写错只会表现为"没找到源码"
+  to: >-
+    `--find <签名>` 成为统一入口：唯一候选自动取回（实测 HcclAllReduce → cann/hccl v9.1.1 exit 0）；
+    歧义签名给候选表 + 每个候选的解析结果并 exit 3（实测 aclnnBatchMatMul → ops-math 与兜底
+    ops-nn，脚本不替人选）；只命中公共前缀（aclnn 无算子名）时**兜底候选也不算唯一**，仍 exit 3；
+    `--self-test` 12 条真实签名覆盖大小写、复合词与假阳性（geometry 不得命中 ge）
+  measure:
+    command: |
+      python3 - <<'PY'
+      import subprocess, sys
+      checks = [
+          ['python3', 'scripts/src_fetch.py', '--self-test'],
+          ['python3', 'scripts/verify_references.py', '--check'],
+          ['python3', 'scripts/build_ref_summary_index.py', '--check'],
+          ['python3', 'scripts/build_procedure_index.py', '--check'],
+          ['python3', 'scripts/build_docs_index.py', '--check'],
+          ['python3', 'scripts/verify_proposals.py', '--check'],
+          ['python3', '-m', 'unittest', 'discover', 'tests'],
+      ]
+      bad = 0
+      for c in checks:
+          r = subprocess.run(c, capture_output=True, text=True)
+          print(('PASS' if r.returncode == 0 else 'FAIL'), ' '.join(c[1:3]))
+          if r.returncode:
+              bad += 1
+              print((r.stdout + r.stderr)[-400:])
+      # 离线候选（不联网也必须有候选）
+      off = subprocess.run(['python3', 'scripts/src_fetch.py', '--find', 'HcclAllReduce failed',
+                            '--offline'], capture_output=True, text=True)
+      print('offline_candidates', 'hccl' in off.stdout)
+      # 歧义签名必须 exit 3 且不自动取（--dest 指向空目录，绝不 clone）
+      amb = subprocess.run(['python3', 'scripts/src_fetch.py', '--find', 'aclnnBatchMatMul failed',
+                            '--ref', 'v9.1.1', '--dest', '/tmp/ev145-empty'], capture_output=True, text=True)
+      print('ambiguous_exit3', amb.returncode == 3, 'no_auto_fetch', '/tmp/ev145-empty' not in amb.stdout)
+      # 假阳性回归：geometry 不该命中 ge 层
+      geo = subprocess.run(['python3', 'scripts/src_fetch.py', '--find', 'geometry error', '--offline'],
+                           capture_output=True, text=True)
+      import re as _re
+      # 只看候选行（"  1) cann/ge"），不看判据文案里的路径写法示例
+      print('no_substring_false_positive', not _re.search(r'^\s+\d+\)\s+cann/ge', geo.stdout, _re.M))
+      print('FAILED', bad if bad else 'none')
+      PY
+    expect_exit: 0
+    expect_stdout: "offline_candidates True"
+validation:
+  method: golden_replay
+  baseline: 现 src_fetch + diagnose 源码分析节 + collect-gates
+  success_criteria: >-
+    上述 measure 全 PASS；`--self-test` 12/12；歧义签名 exit 3 且不自动取；
+    离线候选仍给出 hccl；references/gates/索引三类 --check 全绿
+  rollback: 分支合入前整体丢弃；合入后 git revert（原则七）
+gate:
+  condition: "深度排查里再出现「知道签名但不知道仓」而脚本零候选或取错仓 ≥2 次"
+risk: low
+principle_refs: [5, 6, 8, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: "与本轮其余改动在同一会话内完成，未单独计量；按既有卡口径以 0 计。规模：src_fetch 约 220 行新增（候选表 + 匹配 + 自测 + --find 接线）、1 条闸门、2 条 reference 词条、SKILL 与 walkthrough 各一处改口径"
+decisions:
+  - who: agent
+    when: 2026-09-22
+    type: proposal
+    conclusion: >-
+      产卡即执行，范围限定在三件事：①`--find` 把"哪个仓"变成可复现的一步（枚举组织仓 → 候选表 →
+      逐个试 ref；唯一候选自动取回，歧义 exit 3）；②补数据侧绑定（1 条闸门 + 2 条 reference 词条，
+      让"什么时候问、问哪一句"落在闸表而不是散文里）；③修正诊断正文两处与实际不符的口径。
+      **不做**：不把 CANN 82 仓全表搬进 KNOWN_REPOS（会随上游增减腐烂，只收错误签名会点到名字的层）、
+      不引入向量检索式的仓名相似度匹配（判据是接口前缀与算子名，词元边界匹配已够且可解释）。
+  - who: agent
+    when: 2026-09-22
+    type: decision
+    conclusion: >-
+      采纳。依据：完整 measure（7 条 CI 门 + 离线候选 + 歧义签名不自动取）全绿，且两个关键判定
+      都有实测支撑——唯一候选签名 `HcclCommInitRootInfo failed` 自动取回 `cann/hccl@v9.1.1`（exit 0）；
+      歧义签名 `aclnnBatchMatMul` 给出 ops-math 与兜底 ops-nn、脚本 exit 3 并交回候选表（不替人选）；
+      只命中公共前缀的 `aclnn error` 同样 exit 3（兜底候选不算唯一候选）；子串假阳性 `geometry error`
+      不再命中 `ge`。新增 `tests/test_src_fetch.py` 13 条用例把这三类行为钉进 CI。
+      改动只增不改判据强度：既有 `--list` / `--list-versions` / 退出码契约与缓存布局不变。
+  - who: agent
+    when: 2026-09-22
+    type: action
+    conclusion: >-
+      `scripts/verify_references.py` 的 conditional question 校验从"不许有"改为"给了必须是字符串"。
+      理由：原规则是"条件型不预先问"，写成了"不许有 question"，把**时机**约束错当成**存在**约束；
+      源码位置发现只在缺口出现时问，那一刻必须有一句能照问的话，否则 agent 现场自编问句、
+      质量无从校验。predefined 的 probe 形态与"探询只问一次、只问一句"的纪律不变。
+  - who: agent
+    when: 2026-09-22
+    type: action
+    conclusion: >-
+      落点修正（review 反馈）：脚本用法契约原写成先验层词条 `references/tools/src-code-discovery`，
+      与 skill 正文开头立的规则冲突——"skill 支撑文件一律放本 skill 的 `references/`，不放仓库根
+      `references/`（那是知识库/先验层）"。已移到 `skills/diagnose/references/src-fetch.md`，
+      仓库根只留 `cann-source-location`（它符合 source-fact 的门槛：**独立于本仓工具链**、可验证、
+      有外部来源——CANN 的仓库架构与文件布局，属源码知识里唯一值得主动沉淀的"稳定结构事实"，
+      定位是导航辅助）。判据一句话：**写我们工具怎么用 → skill 支撑文件；写外面的系统是什么样 → 先验层。**
+      闸门 `source-location` 的两条分支随之只挂 `cann-source-location`，脚本用法靠 SKILL 正文指向
+      `references/src-fetch.md`（skill 支撑文件按需加载，不占常驻）。

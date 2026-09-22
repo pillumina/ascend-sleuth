@@ -192,7 +192,7 @@ aclnnScatterNdUpdate error 507011
    trace: {action: source_analysis, repo, ref, files_read, followup: unfixed}
 ```
 
-根因不在 vllm-ascend 时，agent 继续往下看。torch-npu 等底层开源仓用同样流程分析（`source_ref` 指向该仓）；CANN 未开源则承认局限，给根因方向 + 建议联系华为。
+根因不在 vllm-ascend 时，agent 继续往下看。torch-npu 与 CANN 各层（gitcode 的 cann 组织）用同样流程分析（`source_ref` 指向该仓）；仓定不下来时先按签名枚举组织仓给候选，候选 ≥2 才问工程师一句；**闭源的商业发布形态二进制包**才承认局限，给根因方向 + 建议联系华为。
 
 诊断是"词法检索提名 + agent 语义判断放行"。路由/候选/签名 grep 是结构化的，但症状归一、候选比对、缺信息追问、验证逐条、fix 综合、未命中转深度排查，全是 agent 的理解与判断。它是一个会追问、会解释、会承认不知道的排查协作者，不是查表器。
 
