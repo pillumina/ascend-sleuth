@@ -1044,17 +1044,32 @@ def ex_ci_parity(root: Path):
     for jname, job in jobs.items():
         for step in job.get("steps") or []:
             if step.get("run"):
-                cmds.append((jname, step["run"].strip()))
+                # 步骤自己的 if 优先；没有就看 job 的（主干专用的 job 会在 job 上写条件）
+                cmds.append((jname, step["run"].strip(), step.get("if") or job.get("if")))
     check("proposal-audit 跑 verify_proposals --check",
-          any("verify_proposals.py --check" in c for j, c in cmds if j == "proposal-audit"))
+          any("verify_proposals.py --check" in c for j, c, _ in cmds if j == "proposal-audit"))
     check("CI 不跑 verify_exec_log（运行时件，CI 上不存在，跑了只会空转）",
-          not any("verify_exec_log" in c for _, c in cmds))
+          not any("verify_exec_log" in c for _, c, _ in cmds))
     # 注意：这里**不再**有"环境相关步骤"的跳过名单。曾经的候选是
     # `node scripts/panel_render_check.js`（它的空态断言取决于本检出有没有真实归因数据），
     # 但根因已修——那条断言现在跟着数据走（tally 为空则期待空态文案、有非零计数则期待表格），
     # 因此它在干净检出与工作检出里都成立，本地复跑与 CI 等价。
+    #
+    # 唯一按**工作流自己的条件**跳过的是"只在主干 push 上跑"的步骤（generated-refresh 那类）：
+    # 演练场是**没有 .git 的副本**（make_copy 不带 .git/），也没有远端，这类步骤在这里必然失败，
+    # 而失败不说明代码有问题，只说明场景不对。跳过一律**打印出来**并说明原因（同"跑了无信号
+    # 与没跑 可分"的要求）——不假装通过，也不静默略过。
+    def event_gated(cond):
+        return bool(cond) and ("github.event_name" in str(cond) or "refs/heads/" in str(cond))
+
     posix_shell = shutil.which("bash") or shutil.which("sh")
-    for jname, cmd in cmds:
+    skipped = 0
+    for jname, cmd, cond in cmds:
+        if event_gated(cond):
+            skipped += 1
+            print(f"  — 跳过（该步的工作流条件是 {str(cond).strip()}——演练场没有 .git 远端、"
+                  f"也不模拟 push 事件）：[{jname}] {cmd.splitlines()[0][:60]}")
+            continue
         argv = ci_local_argv(cmd)
         if argv is not None:
             rc, out = run(argv, cwd=root)        # 单行命令：本机原生执行（见 ci_local_argv）
@@ -1067,6 +1082,8 @@ def ex_ci_parity(root: Path):
             continue
         label = f"[{jname}] {cmd.splitlines()[0][:70]}"
         check(f"CI 命令通过 {label}", rc == 0, out[-260:])
+    if skipped:
+        print(f"  （另有 {skipped} 步按工作流条件跳过，见上方逐条说明）")
     return cmds
 
 

@@ -1,0 +1,145 @@
+# ============================================================
+# EV-2026-146 —— 生成物的两个提交面：谁都得重写一遍的表不进 PR
+# 来源：用户问「现在索引路由层会经常变吗？最关键的是 triage 这个会经常变吗？还是比较稳定？
+#       我希望大家一起用并且一起往内网平台提交的时候，能尽可能稳定不要冲突一大堆」
+#       → 量了三件事：①近 4 周 triage 改了 20 次（约每周 5 次）；②改 case 的提交里 89%
+#       （49/55）会重写索引总表；③总表头注带生成日期，三人跨天各自重建 → 这一行必撞。
+#       用户随后确认「1、2、3 都可以搞」，并要求用严谨的测试或分析证明能解决这个问题。
+# 脱敏：只含仓库内路径、命令与聚合数字，不含客户现场原文
+# ============================================================
+
+id: EV-2026-146
+layer: L2
+target_component: scripts/build_index.py
+title: "生成物的两个提交面：总表与路由聚合由主干重建，分片与族文件留在 PR（并发提交的判断冲突归零）"
+status: validated
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: '2026-09-22'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户的目标是一句体验话：多人一起用、一起往内网平台提交时"别冲突一大堆"。
+      这决定了方向：不是提高解冲突的技巧，而是让两个人**根本不去改同一个文件**。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+      - "用户追问「第二点是什么意思我没搞懂」→ 说明「生成物退出 PR」这条不直观，文档里要写清谁提交什么"
+  - signal: mechanism_gap
+    evidence: >-
+      三处实测，构成同一条缺口（"谁都得重写一遍"的文件被放进了每个 PR）：
+      ①`triage-tree.yaml` 一处 141 行、7 个分支、60 组症状，近 4 周改 20 次（08-26 起），
+      加词集中在 `training_interrupt`（25–45 行）与 `inference_interrupt`（82–99 行）两段尾部——
+      两人同一天给同一分支加词就落在同一段文本上，冲突要人判断"留哪份"，判断错就静默少一条路由词；
+      ②索引总表被 89%（49/55）的 case 提交重写，因为 `build_index.py` 每次都同时写总表与分片；
+      ③总表头注写 `# 生成日期：{date.today()}`，而 `--check` 只按 case 内容 hash 校验总表
+      （不逐字节比），所以日期漂移无人发现，却让三人跨天的每次重建都在同一行上撞。
+    trajectory:
+      - "git log --date=short --numstat -- triage-tree.yaml（近 4 周 20 次；最大 +16/-0）"
+      - "git log --no-merges --count HEAD -- knowledge/_index.yaml（49）vs -- knowledge/（55）"
+      - "python3 scripts/build_index.py --check（当日 exit 0，而总表头注仍是 5 天前的日期）"
+hypothesis: >-
+  把"谁都得重写一遍"的两张表（索引总表、路由聚合）移出 PR、由主干 job 在合并后重建并提交，
+  同时把"按切片切开"的源（索引分片、路由族文件）留在 PR 当评审面（族文件配 union 合并）之后：
+  并发提交不再需要人判断"留哪份"；改不同框架的两人一次都不撞；合并完主干门由 job 自己变绿，
+  不再依赖"最后一个人记得重建"。
+predicted_effect:
+  metric: 并发提交的冲突数 / 需要人判断留哪份的冲突数 / 合并后主干门是否自己变绿
+  from: >-
+    同 namespace 三人并发：撞在总表 + 分片 + 路由单文件上，其中路由文件的冲突要人判断留哪份；
+    三人各改不同框架也仍会撞总表（生成日期那行），并且**合并完主干门还是红的**
+    （"最后一个人重建过索引"在旧流程里是人的记忆责任，无人记得就红着）。
+  to: >-
+    同 namespace：判断冲突 0（只剩分片这一类生成物冲突，动作是重跑一条命令，无判断）；
+    改不同框架：一次都不撞；两种场景下合并完主干门都是绿的（主干 job 重建并提交）。
+  measure:
+    command: |
+      python3 - <<'PY'
+      import sys
+      sys.path.insert(0, 'tests')
+      from test_concurrent_submit import run_matrix
+      rows = {(r['scenario'], r['policy']): r for r in run_matrix()}
+      same_before, same_after = rows[('same-ns', 'before')], rows[('same-ns', 'after')]
+      diff_before, diff_after = rows[('diff-ns', 'before')], rows[('diff-ns', 'after')]
+      print('判断冲突 同ns 改前/改后 =', same_before['judgment_conflicts'], '/', same_after['judgment_conflicts'])
+      print('撞的合并 不同ns 改前/改后 =', diff_before['conflicted_merges'], '/', diff_after['conflicted_merges'])
+      print('合完后门绿 改前/改后 =', (same_before['gates_green'], diff_before['gates_green']),
+            '/', (same_after['gates_green'], diff_after['gates_green']))
+      ok = (same_before['judgment_conflicts'] > 0 and same_after['judgment_conflicts'] == 0
+            and diff_after['conflicted_merges'] == 0
+            and not same_before['gates_green'] and not diff_before['gates_green']
+            and same_after['gates_green'] and diff_after['gates_green']
+            and same_after['all_present'] and diff_after['all_present'])
+      print('VERDICT', 'PASS' if ok else 'FAIL')
+      PY
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: scan_review
+  baseline: 改前的提交面（总表 + 分片 + triage 单文件；`build_index.py` 头注带生成日期；无 union 规则）
+  success_criteria: >-
+    ①上述 measure 打 VERDICT PASS（四格对比表由真 git 合并量出来，不是论证）；
+    ②`tests/` 全绿（188 项），其中新增三块：索引新鲜度四种漂移 + 两张表的门分工、
+    triage 源到聚合的往返与校验、生成物分工的端到端（含"忘记重建分片 → PR 门红"这条安全网）；
+    ③kb-checks 的每一条命令在本机复跑全绿（含 docs-index / holdout / panel / arena 自测）；
+    ④`triage-tree.yaml` 迁移那次**正文逐字节不变**（7668B，body 字节相同 + 解析结果深度相同），
+    读侧 5 个读点一行未改。
+  rollback: 分支合入前整体丢弃；合入后 git revert（原则七）。分片与总表内容未变（只变了头注与提交面），回滚无数据风险。
+gate:
+  condition: >-
+    同一框架的两人并发提交，每周出现 ≥2 次分片冲突、且出现"有人手改分片逐行解冲突"的迹象
+    （说明重跑一条命令这件事没有被接受）——那时考虑 ADR-0004 的格子拆分
+    （vllm-ascend/interrupt 现 93 条、超 hard_cap 3 倍，拆开也就拆开了那个共享分片），
+    或给生成物加 union 合并（代价是主干短暂非规范，需主干 job 兜住）。
+risk: low
+principle_refs: [2, 6, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: >-
+    同一会话内完成，未单独计量（按既有卡口径以 0 计）。规模：改 `scripts/build_index.py`
+    （头注去日期、新鲜度改读分片、拆出 `--master` 主干门）、新增 `scripts/build_triage_tree.py`
+    （约 230 行，含源校验与拼接）、把 141 行 `triage-tree.yaml` 拆成 7 个族文件 + 1 份说明、
+    CI 加"生成物不得进 PR"门与 generated-refresh 主干 job、新增 3 个测试文件
+    （188 项测试总时长约 128s，其中并发实验本身约 75s）、文档 6 处改口径。
+decisions:
+  - who: agent
+    when: 2026-09-22
+    type: proposal
+    conclusion: >-
+      范围限定在三件事：①去掉总表头注的生成日期（它让跨天重建必撞一行，也让逐字节比对失去意义）；
+      ②索引新鲜度改以**分片**为准，总表退出 PR 门、改由主干 job 重建（`--check --master` 当主干门）；
+      ③`triage-tree.yaml` 拆成 `triage-tree.d/<序号>-<族>.yaml`（一族一文件，拼接逐字节保留），
+      聚合由 `scripts/build_triage_tree.py` 重建，族文件配 `merge=union`。
+      **不做**：不删总表（diagnose 在 category 未定/分片缺失时回退读它，容量头注也是它）；
+      不改读侧（5 个读点继续读聚合，所以路由行为由"body 字节不变"保证，不靠"应该没变"）；
+      不拆 vllm-ascend/interrupt 格子（93 条超 hard_cap，是另一件事，已写进 gate 条件）。
+  - who: agent
+    when: 2026-09-22
+    type: action
+    conclusion: >-
+      落地：`scripts/build_index.py`（去日期 + 新鲜度读分片 + `--master`）、
+      `scripts/build_triage_tree.py`（新增）、`triage-tree.d/`（7 族 + 说明）、
+      `.gitattributes`（族文件 union）、`.github/workflows/kb-checks.yml`（PR 门改 `--check-sources`
+      + 新增"生成物不得进 PR" + 新增 generated-refresh 主干 job）、
+      `tests/test_build_index.py`（扩）、`tests/test_build_triage_tree.py`（新）、
+      `tests/test_generated_plane.py`（新）、`tests/test_concurrent_submit.py`（新，本卡的 measure）。
+  - who: agent
+    when: 2026-09-22
+    type: eval
+    conclusion: >-
+      实测四格：同 ns 判断冲突 2 → 0（撞的合并仍 2，但全是生成物、重跑即解）；
+      不同 ns 撞的合并 2 → 0；合完后门红 → 绿（两种场景）。迁移一致性：body 7668B 字节相同、
+      解析结果深度相同、分支 id 顺序不变。安全网未丢：改了 case 忘重建分片 → PR 门红且报错给出命令。
+      实验过程中被自己的测试纠正过两次（分类把聚合当手写面、基线误用新生成器），
+      两次都修在测试里而不是放宽断言——基线必须真等于"今天的仓库"，否则对比没有意义。
+  - who: agent
+    when: 2026-09-22
+    type: decision
+    conclusion: >-
+      判 validated：measure 打出 VERDICT PASS（四格数字见 predicted_effect.to），
+      `tests/` 188 项全绿，kb-checks 逐条命令本机复跑全绿。
+      残留如实标注：同 namespace 的两人并发**仍会撞分片**（每对分支 2 个文件），
+      解决动作是 `python3 scripts/build_index.py` 后重提交——机械、无判断，但不是零摩擦；
+      这一条不靠文档掩盖，写在 docs/guide/git-workflow.md 的冲突处理表里，并作为 gate 的触发条件。

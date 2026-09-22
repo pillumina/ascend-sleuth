@@ -2,9 +2,9 @@ name: kb-checks
 
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/build_index.py", "scripts/build_triage_tree.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/build_index.py", "scripts/build_triage_tree.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
 
 jobs:
   index-freshness:
@@ -16,11 +16,91 @@ jobs:
           python-version: "3.11"
       - run: pip install pyyaml
       # 两道检查合一：build_index 会解析全部 case YAML（语法错即红），
-      # --check 校验 _index.yaml 与文件 hash 一致（改了 case 忘重建即红）。
+      # --check 比的是**分片**（人提交面）与 case 内容 hash 一致（改了 case 忘重建即红）。
+      # 总表 knowledge/_index.yaml **不在本条**：它是主干重建面，由下面的 generated-refresh job
+      # 重建并提交（`--check --master`）。原先把总表也塞进 PR 门，等于逼每个改 case 的人在自己的
+      # PR 里重写全库那一张表——三个人并发就撞在同一个文件上。这一分工有测试钉住：
+      # tests/test_build_index.py::test_pr_gate_ignores_master_and_main_gate_requires_it。
       - run: python3 scripts/build_index.py --check
       # triage-tree 语法检查：曾因 pipe-or 写法长期不可解析而无人发现（原则二教训），
       # 结构化工具化（路由统计/学习型路由）前必须堵住。
       - run: python3 -c "import yaml; yaml.safe_load(open('triage-tree.yaml')); print('triage-tree ok')"
+      # Tier 1 路由的**源文件**校验（分支 id 唯一、category 合法、症状组形态、≤30 分支）+
+      # 一族一文件的约束。这里比的是源，不是生成物：生成物 triage-tree.yaml 由主干重建
+      # （下面的 generated-refresh job），不在 PR 里比——理由与总表同，见 --check-sources 的说明。
+      - run: python3 scripts/build_triage_tree.py --check-sources
+      # 生成物不许进 PR：`knowledge/_index.yaml`（全库一张表）与 `triage-tree.yaml`（全路由一张表）
+      # 是**谁都得重写一遍**的文件，谁提交它们，谁就把别人的那份也拖进冲突里。主干 job 会在合并后
+      # 重建并提交；PR 里带它们只会制造冲突。分片 `knowledge/_index/*.yaml` 不在此列——它按
+      # (框架 × 性质) 切开，只被碰同一框架的人改，留在 PR 里当评审面（ADR-0002 的"索引随 case
+      # 变更一起评审"靠它保住）。本步在本地复跑（无 GITHUB_BASE_REF）时走跳过分支。
+      - name: 生成物不得进 PR（总表与 triage 聚合）
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ -z "$BASE_REF" ]; then
+            echo "非 PR 环境（本地复跑 / push）——跳过生成物闸门"
+            exit 0
+          fi
+          git fetch --no-tags origin "$BASE_REF" >/dev/null 2>&1 || true
+          if ! git rev-parse --verify --quiet "origin/$BASE_REF" >/dev/null; then
+            echo "取不到 origin/$BASE_REF——无法判定，按动了生成物处理（宁可要人看一眼）"
+            exit 1
+          fi
+          bad=$(git diff --name-only "origin/$BASE_REF...HEAD" -- knowledge/_index.yaml triage-tree.yaml || true)
+          if [ -n "$bad" ]; then
+            echo "这两个文件是主干重建面，不由 PR 提交："
+            echo "$bad"
+            echo
+            echo "改法（把工作树里那份还原成主干版本，它会在合并后被主干 job 重建）："
+            echo "  git checkout origin/$BASE_REF -- knowledge/_index.yaml triage-tree.yaml"
+            echo "本地生成物脏着没关系——只要不提交它。"
+            exit 1
+          fi
+          echo "未改动生成物"
+
+  # 生成物重建（**主干**）：索引总表 + triage 聚合都由本 job 在合并后重建并提交。
+  # 为什么不让功能 PR 提交它们：两者都是"全库/全路由一张表"，谁都得重写它一遍，
+  # 并发提交必然撞在同一个文件上。人提交面 = case 本体 + 分片 + triage-tree.d/。
+  # 本 job 用 [skip ci] 提交，避免自我触发（重建后无 diff 时自然收敛）。
+  generated-refresh:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pyyaml
+      # ① 先报一句现状（不拦）：刚合进来的 PR 不带生成物，这里本来就该是过期的。
+      #    这一步的意义是让日志里看得见"这次重建到底改了哪些东西"。
+      - name: 重建前现状（信息性，不拦）
+        run: |
+          python3 scripts/build_index.py --check --master || echo "总表过期——下面重建"
+          python3 scripts/build_triage_tree.py --check || echo "triage 聚合过期——下面重建"
+      # ② 重建 + 提交（机器人）。重建前**不能**跑会失败的门：PR 不带生成物，
+      #    合并进来的那一刻生成物必然是旧的，先拦就把自己的修复步骤拦死了。
+      - name: 重建生成物并提交（机器人）
+        run: |
+          python3 scripts/build_index.py
+          python3 scripts/build_triage_tree.py
+          git add knowledge/_index.yaml knowledge/_index triage-tree.yaml
+          if git diff --cached --quiet; then
+            echo "生成物已是最新——无需提交"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore(generated): 主干重建索引总表与 triage 聚合 [skip ci]"
+          git push
+      # ③ 合完必须逐字节一致：证明生成器是确定性的（同内容重建两次结果相同），
+      #    也是"主干上的索引永远与 case 一致"这条不变量的落点。
+      - name: 主干门（重建后必须与源逐字节一致）
+        run: |
+          python3 scripts/build_index.py --check --master
+          python3 scripts/build_triage_tree.py --check
 
   case-structure:
     runs-on: ubuntu-latest

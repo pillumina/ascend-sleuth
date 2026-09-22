@@ -7,9 +7,20 @@
 #     的最小分片（总表 + ns 分片 + 类分片均由本脚本生成，见 render_shard/render）
 #   - 每条 case 记 content hash，--check 校验新鲜度（groom 每次跑，可挂 CI）
 #
+# 人提交面 / 主干重建面（2026-09-22 起；起因：并发提交时总表必撞同一行）：
+#   分片 `knowledge/_index/<ns>__<cat>.yaml` —— **人提交面**：改 case 的人在自己 PR 里提交；
+#   总表 `knowledge/_index.yaml`            —— **主干重建面**：合并后由主干 job 重跑本脚本提交。
+#   为什么这么分：总表是全库一张表，三个人各加一条 case 就得各自重写它一遍，合流时撞在同一个
+#   文件上；分片按 (框架 × 性质) 切开，两个人改不同框架根本不碰同一个文件。
+#   `--check` 只比分片与 case 内容（PR 门）；`--check --master` 才连总表一起比（主干门）。
+#   头注不含生成日期：日期会让每次跨天重建都产生一行无意义 diff（另两个生成物索引
+#   build_procedure_index / build_ref_summary_index 用 `_DATE_RE` 把日期剔出比对；本文件不写，
+#   于是"内容没变 → 重建后字节不变"成立，主干门的逐字节比对才敢做）。
+#
 # 用法：
-#   python3 scripts/build_index.py           # 重新生成 knowledge/_index.yaml
-#   python3 scripts/build_index.py --check   # 只校验新鲜度，过期则 exit 1
+#   python3 scripts/build_index.py                  # 重新生成总表 + 全部分片
+#   python3 scripts/build_index.py --check          # PR 门：分片新鲜 + hash 对得上（过期 exit 1）
+#   python3 scripts/build_index.py --check --master # 主干门：额外要求总表与重建结果逐字节相同
 #
 # 依赖：PyYAML（pip install pyyaml）。_archive/ 下的退休 case 不进活跃索引
 # （复活检查由 groom 直接读目录完成）。
@@ -18,7 +29,6 @@ import argparse
 import hashlib
 import re
 import sys
-from datetime import date
 from pathlib import Path
 
 from _lexical import tokens_of
@@ -192,7 +202,8 @@ def render_shard(ns, cells) -> str:
     )
     header = "\n".join([
         "# GENERATED FILE —— 分片（knowledge/_index.yaml 的 " + ns + " 子集），不要手改。",
-        "# 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。",
+        "# 人提交面：改 case 的人在**自己 PR 里提交本文件**（`build_index.py --check` 比的正是它）；",
+        "# 总表 knowledge/_index.yaml 由主干重建，不在功能 PR 里改。撞车时重跑生成器即可，不必手判留哪份。",
         proto,
         f"# 本分片：{ns}（{n} 条 case）",
         "",
@@ -239,13 +250,16 @@ def render(namespaces) -> str:
     )
     header = "\n".join([
         "# GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。",
-        "# case 变更后重新生成并提交；`build_index.py --check` 校验新鲜度（groom/CI）。",
+        "# 本文件是主干重建面：合并后由主干 job 重跑 `python3 scripts/build_index.py` 提交——",
+        "# **不要在功能 PR 里改它**（改了也只是把全库那一张表拖进每个人的冲突里）。",
+        "# 改 case 的人在 PR 里提交的是分片 knowledge/_index/<ns>__<category>.yaml + case 本体。",
         "# 阶段一加载协议：本文件是总表（容量/头注视图 + 兜底）；diagnose 只读命中的最小分片",
         "# （knowledge/_index/<ns>__<category>.yaml；category 未定回退 <ns>.yaml），候选 ≤5 过滤后",
         "# 按 file 字段定位做阶段二全量加载。",
         "# 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，",
         "# 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。",
-        f"# 生成日期：{date.today().isoformat()}    case 总数：{n}",
+        "# 头注不写日期：跨天重建会多出一行无意义 diff，逐字节比对随之失效。",
+        f"# case 总数：{n}",
         cap_lines,
         "",
     ])
@@ -257,30 +271,74 @@ def render(namespaces) -> str:
 
 
 def stale_entries(root: Path, namespaces):
-    """当前文件 hash ≠ 索引记录 → 过期。返回过期列表；索引不存在返回 None。"""
-    idx_path = root / "knowledge" / "_index.yaml"
-    if not idx_path.exists():
+    """分片记录的 hash ≠ 当前 case 内容 → 过期。返回 [(ns, id, file)]；分片目录不存在返回 None。
+
+    新鲜度**只以分片为准**，不看总表：分片是人提交面（PR 门比的是它），总表由主干重建——
+    拿总表的新旧判"改了 case 忘重建"会在总表尚未被主干重建时误绿（它旧不代表分片对），
+    也会在总表刚被重建而分片没提交时误红（那是另一个错，报错要说得出是哪一种）。
+    判据覆盖四种漂移：改了内容 / 新增 case / 删了 case / 分片本身缺失或过期（后者见 shard_dirty）。
+    """
+    shard_dir = root / "knowledge" / "_index"
+    if not shard_dir.is_dir():
         return None
-    idx = yaml.safe_load(idx_path.read_text(encoding="utf-8")) or {}
-    recorded = {}
-    for cells in (idx.get("namespaces") or {}).values():
-        for cases in cells.values():
-            for c in cases:
-                recorded[c.get("id")] = c.get("hash")
+    recorded, broken = shard_hashes(root)
     stale = []
     for ns, cells in namespaces.items():
         for cases in cells.values():
             for c in cases:
                 if recorded.get(c["id"]) != c["hash"]:
                     stale.append((ns, c["id"], c["file"]))
-    for cid in set(recorded) - {c["id"] for cells in namespaces.values() for cases in cells.values() for c in cases}:
-        stale.append(("-", cid, "(索引里有、库里没有)"))
+    current_ids = {c["id"] for cells in namespaces.values() for cases in cells.values() for c in cases}
+    for cid in sorted(set(recorded) - current_ids):
+        stale.append(("-", cid, "(分片里有、库里没有)"))
+    for msg in broken:
+        stale.append(("-", "(分片不可读)", msg))
     return stale
+
+
+def shard_hashes(root: Path):
+    """已提交分片里记录的 {case id: hash} → (recorded, broken)。
+
+    broken 收集两类"不能挑一份信"的情况：① 分片里有 git 冲突标记（两人改了同一个 ns，
+    两边都重生成同一个分片 → 手动合并这类文件没有意义）；② 同一条 case 在两个分片里
+    hash 不同（说明有一片没重建）。两种情况都只需重跑生成器。
+    """
+    recorded, broken = {}, []
+    for p in sorted((root / "knowledge" / "_index").glob("*.yaml")):
+        raw = p.read_text(encoding="utf-8")
+        if any(m in raw for m in ("<<<<<<<", ">>>>>>>")):
+            broken.append(f"{p.name}: 有 git 冲突标记——重跑 `python3 scripts/build_index.py`（分片是生成物，不必手判留哪份）")
+            continue
+        try:
+            doc = yaml.safe_load(raw) or {}
+        except Exception as e:
+            broken.append(f"{p.name}: YAML 解析失败（{e}）——重跑 `python3 scripts/build_index.py`")
+            continue
+        for cells in (doc.get("namespaces") or {}).values():
+            for cases in cells.values():
+                for c in cases:
+                    cid, h = c.get("id"), c.get("hash")
+                    if cid in recorded and recorded[cid] != h:
+                        broken.append(f"{p.name}: {cid} 的 hash 与别的分片不一致——有分片没重建，重跑 `python3 scripts/build_index.py`")
+                    recorded[cid] = h
+    return recorded, broken
+
+
+def master_dirty(root: Path, namespaces):
+    """总表与重建结果是否逐字节相同（主干门用）。返回寻因说明字符串；相同返回 None。"""
+    out = root / "knowledge" / "_index.yaml"
+    if not out.exists():
+        return "总表不存在"
+    if out.read_text(encoding="utf-8") != render(namespaces):
+        return "总表与重建结果不同"
+    return None
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--check", action="store_true", help="只校验新鲜度，不写文件")
+    ap.add_argument("--check", action="store_true", help="只校验新鲜度，不写文件（PR 门：只比分片）")
+    ap.add_argument("--master", action="store_true",
+                    help="连总表一起逐字节比（主干重建 job 用；PR 上不要加——总表由主干重建）")
     ap.add_argument("--root", default=None, help="仓库根目录（默认：脚本上两级）")
     args = ap.parse_args()
     root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[1]
@@ -289,12 +347,12 @@ def main():
     if args.check:
         stale = stale_entries(root, ns)
         if stale is None:
-            print("索引不存在 —— 先运行 scripts/build_index.py 生成")
+            print("分片目录不存在（knowledge/_index/）——先运行 scripts/build_index.py 生成")
             sys.exit(1)
         if stale:
             for s in stale:
                 print(f"STALE: {s[0]} / {s[1]} ({s[2]})")
-            print(f"\n{len(stale)} 条过期。运行 `python3 scripts/build_index.py` 重新生成后提交。")
+            print(f"\n{len(stale)} 条过期。运行 `python3 scripts/build_index.py` 重新生成后提交分片。")
             sys.exit(1)
         n_cases = sum(len(cases) for cells in ns.values() for cases in cells.values())
         dirty = []
@@ -305,10 +363,17 @@ def main():
         if dirty:
             for s in dirty:
                 print(f"SHARD STALE: {s[0]} {s[1]}")
-            print("运行 `python3 scripts/build_index.py` 重新生成后提交。")
+            print("运行 `python3 scripts/build_index.py` 重新生成后提交分片。")
             sys.exit(1)
+        if args.master:
+            why = master_dirty(root, ns)
+            if why:
+                print(f"{why}——总表是主干重建面，跑一次重建并提交它：")
+                print("  python3 scripts/build_index.py")
+                sys.exit(1)
         n_shards = len(ns) + sum(len(c) for c in ns.values())
-        print(f"索引新鲜，与 knowledge/ 一致（{n_cases} 条 case；分片 {n_shards} 个）。")
+        scope = "总表 + 分片" if args.master else "分片"
+        print(f"索引新鲜（{scope}）：与 knowledge/ 一致（{n_cases} 条 case；分片 {n_shards} 个）。")
         return
 
     out = root / "knowledge" / "_index.yaml"

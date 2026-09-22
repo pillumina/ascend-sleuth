@@ -112,12 +112,33 @@ class BuildIndexTest(unittest.TestCase):
         self.assertEqual(row["file"], "knowledge/inference/vllm-ascend/interrupt/T.yaml")
 
     # ---------------------------------------------------------------- 新鲜度口径
-    def test_stale_entries_flags_changed_case(self):
+    # 判据的来源是**分片**（人提交面），不是总表（主干重建面）：PR 门与主干门比的东西不同，
+    # 所以下面既测"四种漂移都红"，也测"总表在不在不影响 PR 门"。
+    def generate_shards(self, ns=None):
+        ns = bi.collect(self.root) if ns is None else ns
+        (self.root / "knowledge" / "_index").mkdir(parents=True, exist_ok=True)
+        for nsk, cells in ns.items():
+            bi.shard_path(self.root, nsk).write_text(bi.render_shard(nsk, cells), encoding="utf-8")
+            for cat, cases in cells.items():
+                bi.shard_path(self.root, f"{nsk}__{cat}").write_text(
+                    bi.render_shard(f"{nsk}__{cat}", {cat: cases}), encoding="utf-8")
+        return ns
+
+    def write_master(self, ns=None):
+        ns = bi.collect(self.root) if ns is None else ns
+        (self.root / "knowledge" / "_index.yaml").write_text(bi.render(ns), encoding="utf-8")
+        return ns
+
+    def test_freshness_green_when_shards_match(self):
+        self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
+        ns = self.generate_shards()
+        self.assertEqual(bi.stale_entries(self.root, ns), [])
+        self.assertEqual(bi.shard_dirty(self.root, "inference/vllm-ascend",
+                                        ns["inference/vllm-ascend"]), [])
+
+    def test_freshness_flags_changed_case(self):
         p = self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
-        ns = bi.collect(self.root)
-        doc = {"namespaces": ns}
-        (self.root / "knowledge" / "_index.yaml").write_text(
-            __import__("yaml").safe_dump(doc, allow_unicode=True), encoding="utf-8")
+        ns = self.generate_shards()
         self.assertEqual(bi.stale_entries(self.root, ns), [])
 
         p.write_text(p.read_text(encoding="utf-8").replace("score: 0.6", "score: 0.9"),
@@ -126,19 +147,68 @@ class BuildIndexTest(unittest.TestCase):
         self.assertEqual(len(stale), 1)
         self.assertEqual(stale[0][1], "S-1")
 
-    def test_stale_entries_reports_index_only_case(self):
-        """索引里有、库里没有（case 被删）→ 也要报，否则 --check 静默留旧条目。"""
-        import copy
-        import yaml
+    def test_freshness_flags_added_case(self):
+        """新增 case 未重建分片 → 红（旧行为由"索引里有、库里没有"覆盖，新增靠 hash 缺失）。"""
+        self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
+        self.generate_shards()
+        self.write_case("inference/vllm-ascend/interrupt/B.yaml", cid="B-1")
+        stale = bi.stale_entries(self.root, bi.collect(self.root))
+        self.assertEqual([s[1] for s in stale], ["B-1"])
+
+    def test_freshness_flags_deleted_case(self):
+        """分片里有、库里没有（case 被删）→ 也要报，否则 --check 静默留旧条目。"""
+        p = self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
+        ns = self.generate_shards()
+        self.assertEqual(bi.stale_entries(self.root, ns), [])
+        p.unlink()
+        stale = bi.stale_entries(self.root, bi.collect(self.root))
+        self.assertTrue(any(s[1] == "S-1" and "库里没有" in s[2] for s in stale), stale)
+
+    def test_freshness_red_when_shard_missing(self):
         self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
-        ns = bi.collect(self.root)
-        doc = {"namespaces": copy.deepcopy(ns)}   # 深拷贝：只让索引多出这条，库侧仍没有
-        doc["namespaces"]["inference/vllm-ascend"]["interrupt"].append(
-            {"id": "GONE-1", "hash": "deadbeef", "file": "knowledge/x.yaml"})
-        (self.root / "knowledge" / "_index.yaml").write_text(
-            yaml.safe_dump(doc, allow_unicode=True), encoding="utf-8")
-        stale = bi.stale_entries(self.root, ns)
-        self.assertTrue(any(s[1] == "GONE-1" for s in stale))
+        ns = self.generate_shards()
+        bi.shard_path(self.root, "inference/vllm-ascend__interrupt").unlink()
+        dirty = bi.shard_dirty(self.root, "inference/vllm-ascend__interrupt",
+                               {"interrupt": ns["inference/vllm-ascend"]["interrupt"]})
+        self.assertEqual(dirty, [("inference/vllm-ascend__interrupt", "(分片缺失)")])
+
+    def test_shard_with_conflict_markers_is_reported_not_merged(self):
+        """两人改同一个 ns → 两边都重生成同一个分片。冲突标记必须被点名，且给的动作是"重跑"，
+        不是让读的人去判断留哪一份（分片是生成物，判断没有意义）。"""
+        self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
+        self.generate_shards()
+        p = bi.shard_path(self.root, "inference/vllm-ascend__interrupt")
+        p.write_text("<<<<<<< HEAD\nnamespaces: {}\n=======\nnamespaces: {}\n>>>>>>> other\n",
+                     encoding="utf-8")
+        recorded, broken = bi.shard_hashes(self.root)
+        self.assertTrue(broken and "冲突标记" in broken[0], broken)
+        stale = bi.stale_entries(self.root, bi.collect(self.root))
+        self.assertTrue(any("分片不可读" in s[1] for s in stale), stale)
+
+    def test_pr_gate_ignores_master_and_main_gate_requires_it(self):
+        """分工的核心断言：PR 门（--check）不看总表；主干门（--check --master）逐字节要它。
+        没有这条，改完之后"总表交给主干重建"就只是口头约定。"""
+        ns = self.generate_shards()                      # 只提交分片，总表根本没写
+        self.assertFalse((self.root / "knowledge" / "_index.yaml").exists())
+        self.assertEqual(bi.stale_entries(self.root, ns), [])        # PR 门：绿
+        self.assertEqual(bi.master_dirty(self.root, ns), "总表不存在")  # 主干门：红
+
+        self.write_master(ns)
+        self.assertIsNone(bi.master_dirty(self.root, ns))            # 主干门：绿
+        out = self.root / "knowledge" / "_index.yaml"
+        out.write_text(out.read_text(encoding="utf-8").replace("case 总数", "case 总数量"),
+                       encoding="utf-8")
+        self.assertEqual(bi.master_dirty(self.root, ns), "总表与重建结果不同")
+
+    def test_master_header_has_no_generation_date(self):
+        """头注不含生成日期：跨天各重建一次 → 字节相同（否则每天一行无意义 diff，
+        主干门的逐字节比对也会在跨天时假红）。"""
+        self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
+        text = bi.render(bi.collect(self.root))
+        self.assertEqual(text, bi.render(bi.collect(self.root)))
+        self.assertNotIn("生成日期：", text)
+        self.assertNotRegex(text.split("namespaces:")[0], r"20\d\d-\d\d-\d\d")
+        self.assertIn("case 总数：1", text)
 
     def test_sig_and_tok_fields_for_phase_one_ranking(self):
         """行内签名面字段（EV-2026-111）：sig 只收纯字面量、tok 覆盖全部症状且上限 12。"""

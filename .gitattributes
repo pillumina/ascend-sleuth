@@ -16,3 +16,11 @@
 *.gz binary
 *.mp4 binary
 *.webm binary
+
+# Tier 1 路由的源文件：一族一个文件，编辑形态是"往 symptoms 列表追加症状词"（追加型）。
+# merge=union（git 内建驱动，不需要任何本地配置）= 两边新增的行都留住：两人同一天给同一族加词，
+# 合流不产生冲突标记，也不需要判断"留哪一份"——判断错就是静默丢一条路由词，而丢词没有任何报错。
+# 代价说清：union 对**结构性**改动也是"两边都留"（两人同时改同一分支的 id/category 会拼出重复分支）。
+# 那种情况由聚合器 scripts/build_triage_tree.py 的校验兜住（重复 id、非法 category 直接红并点名文件），
+# 修法是删掉其中一份。所以这条只给 d/ 目录，不给生成物 triage-tree.yaml——生成物不需要合并，重建即可。
+triage-tree.d/*.yaml merge=union

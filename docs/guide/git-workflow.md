@@ -23,13 +23,35 @@ git worktree remove ../ascend-sleuth-s<session>
 约束（机制边界 + 协作约定）：
 
 1. **工作区隔离**：worktree 隔离工作区文件 / index / HEAD / 未提交改动，各 session 在自己 worktree 内任意修改，不污染他人检出（`git checkout` 携带未提交改动的问题从根上消失）。
-2. **共享面（worktree 不隔离）**：`.git` 对象库与 refs 全局共享，分支名 `kb/<用途>` 必须全局唯一；共享状态文件（ingest-state.json 的 processed、metrics/timeline.yaml、knowledge/_index.yaml、postmortems/inbox/）在各 worktree 是各自分支的副本，合流时**显式解决 merge 冲突**：processed 数组合并、索引以最新重建为准、inbox 清空先确认无他人草稿。
+2. **共享面（worktree 不隔离）**：`.git` 对象库与 refs 全局共享，分支名 `kb/<用途>` 必须全局唯一；共享状态文件（ingest-state.json 的 processed、metrics/timeline.yaml、index 分片、postmortems/inbox/）在各 worktree 是各自分支的副本，合流时**显式解决 merge 冲突**：processed 数组合并、索引分片重跑一次生成器即可（它是生成物，不必逐行解）、inbox 清空先确认无他人草稿。
 3. **未进 git 的运行时件：一律锚到主检出**（别再假设"未跟踪文件会被 git 拦住"）。实测（git 2.39）：`.gitignore` 覆盖的未跟踪件**不计入 dirty**，`git worktree remove` **不报错、也不需要 `--force`**，随 worktree **静默**一并删掉；只有"已跟踪且被修改"的文件才会被拦下并提示 `--force`。所以：
    - **跨 session 复用的记录**（`metrics/skill-exec-log.yaml`、`metrics/ev-measure-log.yaml`、`src-code/` 源码缓存、`traces/`、`postmortems/inbox/` 草稿、`proposals/{sessions,tasks,reviews,experiments}/`）路径一律解析到**主检出**——`scripts/exec_log_path.py` 是唯一事实源，agent 侧入口是 **`python3 scripts/shared_dir.py <名字>`**（打印绝对路径；`--list` 看全部）。**写侧别用相对路径**：写进 worktree 的记录，主检出那一份读者（诊断面板 / 周批指标 / `settle_trace_feedback.py` 等结算脚本）看不到，而且 worktree 一清就没了——"记录了但没人看得见"与"读不到就当成没有"会同时发生。
    - 读 `traces/` 的脚本（`trace_metrics.py` / `settle_trace_feedback.py` / `component_tally.py` / `replay_trace.py` / `metrics_snapshot.py`）默认就取主检出那一份，不必手工指定。
    - **仍是检出内、会随 worktree 静默消失的**只剩 dev 期产物：`.s2-replay/`、`.ixn-replay/`、`.flow-replay/`、`.auto-fetch/`、`eval-reports/`（不是知识记录；要留就在收工前挪出来）。
 4. **串行操作**：涉及 ingest-state.json 的 fetch / `--mark-imported` / 游标更新必须串行（read-modify-write 无锁，并发写互相覆盖）；groom 清空 inbox 前先确认无其他 session 未提交草稿。
 5. **开工纪律**：`git fetch origin` 确认最新 → 确认自己在自己的 worktree 与分支 → 收工前提交或 stash 清空工作区，避免未提交改动滞留共享检出。
+
+## 生成物与源：谁提交什么（多人同时提交不撞的规则）
+
+判据只有一条：**这个文件是不是"谁改内容都得重写它一遍"**。是 → 它不能由 PR 提交，否则每个人的 PR 都会去改它，合流时全撞在同一个文件上；不是（按框架/分支族切开的）→ 留在 PR 里当评审面。
+
+| 文件 | 谁提交 | PR 门 | 主干门 |
+|---|---|---|---|
+| case 本体 `knowledge/<ns>/<cat>/*.yaml` | 人（PR） | `verify_case_draft.py --all` | — |
+| 索引分片 `knowledge/_index/<ns>[_<cat>].yaml` | 人（PR，跑 `scripts/build_index.py`） | `build_index.py --check`（逐字节比 + case 内容 hash） | 逐字节 |
+| 路由源 `triage-tree.d/<族>.yaml` | 人（PR） | `build_triage_tree.py --check-sources`（分支 id 唯一 / category 合法 / ≤30 分支） | — |
+| 索引总表 `knowledge/_index.yaml` | 主干 job（合并后重建提交） | **不得进 PR**（CI 有门拦） | `build_index.py --check --master` |
+| 路由聚合 `triage-tree.yaml` | 主干 job（合并后重建提交） | **不得进 PR**（CI 有门拦） | `build_triage_tree.py --check` |
+
+撞车了怎么办——按文件类型处理，不需要判断"留哪份"：
+
+| 冲突文件 | 动作 |
+|---|---|
+| 索引总表 / 分片 / 路由聚合（生成物） | 重跑生成器后 `git add`：`python3 scripts/build_index.py`（+ `python3 scripts/build_triage_tree.py`）。**不要逐行解**——解出来的既不是源也不是生成物。 |
+| `triage-tree.d/<族>.yaml`（路由源） | 通常不会冲突：`merge=union` 会自动把两边新增的症状词都留住。若真出现冲突标记，把两份症状都留下、删掉三行标记，再跑一次聚合。 |
+| case 本体 | 真正需要人判断的只剩这里（同一 case 两人改）——按内容合。 |
+
+为什么这么切（可复跑的实验在 `tests/test_concurrent_submit.py`，`python3 tests/test_concurrent_submit.py` 会打印一张对比表）：三人并发、同一个框架时，改前会撞在总表 + 分片 + 路由文件上，其中路由文件的冲突要人判断留哪份，且合并完主干门还是红的（"最后一个人记得重建"是人的记忆责任）；改后判断冲突为 0，主干门由 job 自己变绿。三人各改不同框架（常见形态）时，改后一次都不撞。实验还钉住了一件事：**改前用最省事的办法解冲突（手写面取自己那份）会静默少一条路由词**，改后这条路不存在（union 合并两边都留）。
 
 ## 部署形态
 
@@ -51,13 +73,13 @@ git worktree remove ../ascend-sleuth-s<session>
 
 **只在本仓**（上游不合并）：`knowledge/ postmortems/`（含 `inbox/` 草稿）、`eval/golden/` 里的真实夹具、`traces/`。
 
-**两边都写**（正常合并）：`triage-tree.yaml`、`references/`、`metrics/gates.yaml`、`trace-status.yaml`。
-这四个路径 fork 会因为自己的知识面、阈值与词表去改，上游也在改。冲突按文件类型处理：追加型（`references/` 下的家族表、`trace-status.yaml` 的词表）两边都保留；键控结构（`triage-tree.yaml` 的分支）按语义合，不机械取一边。
+**两边都写**（正常合并）：`triage-tree.d/`、`references/`、`metrics/gates.yaml`、`trace-status.yaml`。
+这四个路径 fork 会因为自己的知识面、阈值与词表去改，上游也在改。冲突按文件类型处理：追加型（`references/` 下的家族表、`trace-status.yaml` 的词表、`triage-tree.d/` 的族文件——后者还配了 `merge=union`，两边新增的词自动都留住）两边都保留；键控结构（族文件里 `category` / `id` 这类字段）按语义合，不机械取一边。
 
 **每部署一份**（不参与合并）：`metrics/timeline.d/`、`metrics/timeline.yaml`、`ingest-state.json`、`reference-ingest-state.json`、`eval/scorecard.yaml`、`.github/CODEOWNERS`（owner 名单各仓不同）。
 冲突时保留本仓那份。同期名的指标文件也按本仓处理——两份部署的读数混进一条趋势线本身不成立。
 
-**生成物**（重新生成，不逐行解）：`knowledge/_index.yaml` 与 `knowledge/_index/`、`references/_summary-index.yaml`、`references/_procedure-index.yaml` 与 `references/_procedure-index/`。
+**生成物**（重新生成，不逐行解）：`knowledge/_index.yaml` 与 `knowledge/_index/`、`triage-tree.yaml`、`references/_summary-index.yaml`、`references/_procedure-index.yaml` 与 `references/_procedure-index/`。
 
 本节没列到的路径按只接收处理；要写它就先在本节加一行。
 

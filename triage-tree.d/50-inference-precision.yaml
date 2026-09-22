@@ -1,0 +1,23 @@
+# 推理侧精度（乱码、输出为空、非确定、图像异常）
+# 本文件是 Tier 1 路由数据的一族（分支 id: inference_precision）；改词只改这里，不要改 triage-tree.yaml。
+# 聚合：python3 scripts/build_triage_tree.py（生成 triage-tree.yaml；--check 校验一致）。
+# 合并：本目录在 .gitattributes 里配了 merge=union——两人同一天给同一族加词会自动都留住（行级并集），
+#       无需人工判断留哪份；重复行由聚合器报出来，删掉其中一行即可。
+
+branches:
+  - id: inference_precision
+    category: precision
+    symptoms:
+      - ["garbled", "乱码", "output.*wrong", "输出错误", "输出异常"]
+      - ["字符重复", "character.*repeat", "重复输出", "回复不终止", "输出不终止", "持续输出.*换行"]   # 重复/不终止类（VLLM-ASC-XGRAMMAR-REPEAT 结构化输出约束与内容冲突）
+      - ["speculative.*wrong", "投机.*错误", "投机.*输出"]      # 投机输出内容错误（精度）。注意：接受率下降是"双面"——无输出内容错误=性能（走 inference_performance）；伴随输出错误/乱码=精度面（inference_precision 族 11127/12723 等）。命中 performance 接受率族不符时交叉查 precision 族
+      - ["overthinking", "过度思考", "reasoning.*过长"]        # 输出冗余（精度/输出形态异常）
+      - ["输出.*为空", "empty.*output", "result.*empty", "输出为空", "结果为空"]
+      - ["batch.*invariant", "deterministic", "非确定"]
+      - ['\bNAN\b', '\bNaN\b', "loss.*nan", '\binf\b']      # 推理侧精度（输出含 NaN/Inf）
+      - ["花图", "图像.*(异常|畸变|错乱)", "评分.*(低|下降|不达标)", "score.*(low|drop)"]   # 生成图像异常 / 下游评分下降（COMMON-TP-SEED-UNSYNCED TP 组内种子未同步花图 / VLLM-ASC-GPQA-OPERATOR-CLAMP 评分偏低）
+    search_namespaces:
+      - inference/<detected_framework>/
+      - common/
+    fallback: Tier 3
+

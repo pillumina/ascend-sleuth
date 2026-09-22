@@ -96,7 +96,7 @@ disable-model-invocation: true
    - 检查 `_archive/` 中 case 是否因新 `compat` 区间该复活（2.7 退休、2.8 恢复）
 6. **容量治理与拆分建议**：cap 按 **(framework × category) 格子**计，执行参数：**soft_cap=30**（触发拆分评估）、**hard_cap=60**（信道物理上限，强制拆）；健康指标阈值：候选溢出率 >20%、同根因重复率连续两轮上升、维护时长 >30 分钟/周。每次 groom 附**容量表**：各格子条数 / soft_cap、三项健康指标。任一格子超 soft_cap 即**触发拆分评估**（不是立即拆）：查健康指标，任一恶化 → 报告内容分布 + 拆分建议（首选 category 轴深化或按 platform 轴）；超 hard_cap 无论健康指标**强制拆**。拆分被数据预告，不被卡住才想起（论证见 docs/adr/0004——可选论证层，上述数值为执行值，参数待 metrics 复核）。**越界清单与行动走 `python3 scripts/metrics_health.py`**（判据数值在 `metrics/gates.yaml`，与本节一致）——别只看 `_index.yaml` 头注的数字：头注只列数，不判越界，也不告诉你这条闸门已经越了多久。
 7. **同 namespace 合并建议**：相似 case 对自动提示。
-8. **索引维护（收尾必做）**：所有 KB 变更（升格/合并/退休/改 confidence）完成后，运行 `python3 scripts/build_index.py` 重新生成 `knowledge/_index.yaml` 并随变更摘要一起提交。`--check` 报过期 = 变更不完整（忘了重建索引）。软退休的 case 移 `_archive/` 后自动从活跃索引消失。
+8. **索引维护（收尾必做）**：所有 KB 变更（升格/合并/退休/改 confidence）完成后，运行 `python3 scripts/build_index.py`。它写两样东西，**提交面不同**：分片 `knowledge/_index/<ns>__<category>.yaml` 随本次变更提交（它是 PR 的评审面，`--check` 比的就是它）；总表 `knowledge/_index.yaml` **不提交**——它由主干重建（CI 的 generated-refresh 会在合并后重建并提交，PR 里带它会被"生成物不得进 PR"那道门拦下）。`--check` 报过期 = 变更不完整（忘了重建分片）。软退休的 case 移 `_archive/` 后自动从活跃索引消失。
 
 ## reference 维护（先验知识层——与 case 流程并行；M5：本轮 references 无变更则整段跳过并在摘要说明）
 
