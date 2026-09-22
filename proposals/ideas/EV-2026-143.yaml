@@ -1,0 +1,173 @@
+# ============================================================
+# EV-2026-143 —— 回写合入指针钉在批收尾：命令与技能对齐、免占位号、回溯深度与水位数解耦
+# 来源：用户 review 上一张卡时问「每次有 EV 卡合入以后还要开新 PR 去更新？机制用户体验会不会差」
+#       → 核查发现：标准动作其实是搭批，但技能教的是被工具标为假数据的命令，时机也写成合入之前。
+# 脱敏：只含仓库内路径、行号、PR 号与聚合计数，不含客户现场原文
+# ============================================================
+
+id: EV-2026-143
+layer: L2
+target_component: scripts/ev_proposal.py
+title: "回写合入指针钉在批收尾：命令与技能对齐、--from-prs 免占位号、回溯深度与水位上限解耦"
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: '2026-09-22'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户问「每次有 EV 卡合入以后，还要开新的 PR 去更新？这个机制用户体验会不会差了点」。
+      核查结果：设计上回写属批收尾（指针只有几行 diff，搭下一个批的聚合 PR），不需要每卡一个 PR；
+      但读起来像"每次都要开 PR"，因为技能把它写成「提完 PR 立刻回写」单独一条动作，且用的命令
+      与工具自身的告警相冲突。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: rule_conflict
+    evidence: >-
+      同一条命令在两处打架：`skills/self-evolve/SKILL.md:105` 教
+      `--mark-merged <PR号> --all-pending`，而 `scripts/ev_proposal.py:294` 写着
+      「`--all-pending <PR号>` 会把同一个号写给所有待回写卡——那是假数据（一张卡的真实出处只有
+      一个批 PR）」。后者是后来那次修复（提交 408b6d1，同日）加的，它没有回头改技能里那行；
+      `skills/evolve-check/SKILL.md:84` 与 `docs/mechanism/orchestration.md:92` 也教同一条命令。
+    trajectory:
+      - "skills/self-evolve/SKILL.md:105（改动前）"
+      - "scripts/ev_proposal.py:294（mark_merged_from_prs 的 docstring）"
+      - "git log -S 'all-pending' -- skills/self-evolve/SKILL.md（ccfd50d）与 408b6d1 的 --stat（未碰 skills/）"
+  - signal: design_gap
+    evidence: >-
+      两处命令行形态的缺口：①`--mark-merged` 强制要一个 PR 号，于是标准动作
+      `--from-prs` 必须带一个假参数（实测要写 `--mark-merged 0 --from-prs`）；
+      ②`--limit` 同时当水位上限（默认 20 张卡）与 PR 列表深度（默认 20 个 PR），两个量纲不同却共用一个
+      默认值——实测按 20 个 PR 回溯，存量 9 张只匹配上 4 张（漏掉更早的批 PR #194），
+      被漏掉的卡在读数里显示成"没合入"。
+    trajectory:
+      - "python3 scripts/ev_proposal.py --mark-merged 0 --from-prs --dry-run --limit 40（匹配 4 张）"
+      - "scripts/ev_proposal.py:373（--limit 的 args 定义）与 :218（WATERLINE_DEFAULT=20）"
+hypothesis: >-
+  把回写钉在批收尾（合入确认后做，改动搭下一个批的聚合 PR、不为它单独开 PR）、命令统一改成
+  `--mark-merged --from-prs`（逐卡匹配、匹配不上如实报出）、并让 PR 回溯深度与水位数上限各自取默认值
+  之后：日常不再产生额外 PR，存量积压一条命令清空，水位读数不再因漏回写而反向。
+predicted_effect:
+  metric: 回写动作的形态（命令与时机）与存量待回写量
+  from: >-
+    三处文本（self-evolve ／ evolve-check ／ orchestration）教 `--mark-merged <PR号> --all-pending`
+    （工具自己标为假数据）；时机写成「提完 PR 立刻」（早于合入）；`--from-prs` 要带占位号、默认只回溯
+    20 个 PR（实测存量 9 张只匹配上 4 张）；存量待回写 9 张
+  to: >-
+    三处改教 `--mark-merged --from-prs`，时机钉在批收尾并写明不为它单独开 PR（pipeline 批提交节同）；
+    `--from-prs` 免占位、默认回溯 200 个 PR；`--all-pending` 在用的那一刻打印风险与它将要盖章的卡号；
+    存量 9 张按真实 PR 逐卡回写完毕（水位读数 0）
+  measure:
+    command: |
+      python3 - <<'PY'
+      import json, subprocess, pathlib
+
+      checks = [
+          ['python3', 'scripts/verify_proposals.py', '--check'],
+          ['python3', 'scripts/build_docs_index.py', '--check'],
+          ['python3', 'scripts/render_review_summary.py', '--scan', 'docs/', 'README.md', 'CONTEXT.md'],
+          ['python3', '-m', 'unittest', 'discover', '-s', 'tests', '-p', 'test_ev_proposal.py'],
+      ]
+      codes = [subprocess.run(c, capture_output=True, text=True) for c in checks]
+
+      se = pathlib.Path('skills/self-evolve/SKILL.md').read_text(encoding='utf-8')
+      ec = pathlib.Path('skills/evolve-check/SKILL.md').read_text(encoding='utf-8')
+      orc = pathlib.Path('docs/mechanism/orchestration.md').read_text(encoding='utf-8')
+      pipe = pathlib.Path('docs/mechanism/pipeline.md').read_text(encoding='utf-8')
+
+      # 不再有"教 --all-pending"的形态（风险提示那句不算教学：它带"混入旧批的卡即假数据"）
+      no_teaching = all('mark-merged` <PR号> --all-pending' not in t for t in (se, ec, orc))
+      teach_from_prs = all('--mark-merged --from-prs' in t for t in (se, ec, orc))
+      rides_batch = ('不为它单独开 PR' in se) and ('不为它单独开 PR' in pipe)
+      # CLI：不传 PR 号也能跑；--all-pending 会打印风险
+      cli_free = subprocess.run(['python3', 'scripts/ev_proposal.py', '--mark-merged', '--from-prs',
+                                 '--dry-run'], capture_output=True, text=True)
+      cli_warn = subprocess.run(['python3', 'scripts/ev_proposal.py', '--mark-merged', '9999',
+                                 '--all-pending', '--dry-run'], capture_output=True, text=True)
+      cli_ok = cli_free.returncode == 0 and '别的批' in cli_warn.stderr
+      # 存量 9 张指针都在
+      ids = ['EV-2026-033', 'EV-2026-036', 'EV-2026-038', 'EV-2026-062',
+             'EV-2026-129', 'EV-2026-130', 'EV-2026-131', 'EV-2026-132', 'EV-2026-142']
+      backlog = all('合入指针回写' in pathlib.Path(f'proposals/ideas/{i}.yaml').read_text(encoding='utf-8')
+                    for i in ids)
+
+      print('gates_all_green', all(c.returncode == 0 for c in codes))
+      print('no_all_pending_teaching', no_teaching, 'teach_from_prs', teach_from_prs)
+      print('rides_batch', rides_batch, 'cli_without_dummy_pr', cli_ok)
+      print('backlog_backfilled', backlog)
+      ok = (all(c.returncode == 0 for c in codes) and no_teaching and teach_from_prs
+            and rides_batch and cli_ok and backlog)
+      print('measure_ok', ok)
+      raise SystemExit(0 if ok else 1)
+      PY
+    expect_exit: 0
+    expect_stdout: "measure_ok True"
+validation:
+  method: scan_review
+  baseline: >-
+    改动前：三处文本教 `--all-pending`（工具在 docstring 里标为假数据）；回写时机写成「提完 PR 立刻」；
+    `--from-prs` 需占位号、默认回溯 20 个 PR；存量待回写 9 张（水位读数 9）。
+  success_criteria: >-
+    ① measure 命令 exit 0 且打印 `measure_ok True`（三道校验 + 新增测试全绿 + 三处文本命令与时机一致 +
+    CLI 免占位可用且 `--all-pending` 打印风险 + 存量 9 张指针在）；② 全量 CI 逐条复跑绿；
+    ③ 不跑检索 golden——改的是脚本命令行形态与机制文档文本，不改变候选选择与路由。
+  rollback: 单次提交，`git revert` 回到改动前的文本与脚本（指针回写本身是纯追加，revert 不回滚既有卡）。
+gate:
+  condition: >-
+    若批频率高到「回写搭批」也跟不上（日均多批、水位读数持续因漏回写而反向），再评估两条更重的路：
+    读数时推导"已合入"（不把可推导的事实存进文件）或合入后自动回写（需要机器人账号绕过分支保护）；
+    在此之前不加机制。
+risk: low
+principle_refs: [2, 7, 10, 11]
+actual_cost:
+  tokens: 30000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数：命令与技能对齐的核查（两处文本、工具 docstring、两个提交的引入关系，约 9k）、
+    脚本与文档四处改动 + 三项测试（约 12k）、存量回写与逐条核对 PR body（约 5k）、验证与建卡（约 4k）。
+decisions:
+  - who: agent
+    when: 2026-09-22
+    type: proposal
+    conclusion: >-
+      产卡即执行。范围限定在三件事：①命令与技能对齐（不再教 `--all-pending`）；②时机钉在批收尾并
+      写明不为它单独开 PR；③两处命令行形态缺口（免占位号、回溯深度与水位数解耦）。**不动**水位判据的
+      阈值与分母口径（那是 EV-2026-116 已定的），也不做"读时推导"或"自动回写"（前者的匹配是模糊的、
+      后者要绕过分支保护的权限，都等 gate 条件出现再说）。
+  - who: agent
+    when: 2026-09-22
+    type: action
+    conclusion: >-
+      `scripts/ev_proposal.py`：`--mark-merged` 的 PR 号改可选（`--from-prs` 时省略），
+      `--limit` 默认值按模式取（水位 20 ／ PR 列表 200，新增 `PRS_LIMIT_DEFAULT` 并写明两个量纲
+      不同不能共用一个默认值），`--all-pending` 在盖章前把风险与将要盖章的卡号打到 stderr。
+      `skills/self-evolve/SKILL.md`：回写一条由「提完 PR 立刻」改为「合入后、属批收尾」，命令换成
+      `--mark-merged --from-prs`，写明指针搭下一个批的聚合 PR、不为它单独开 PR，保留原判据反例。
+      `skills/evolve-check/SKILL.md` 与 `docs/mechanism/orchestration.md`：水位步骤里那条命令同步替换。
+      `docs/mechanism/pipeline.md`：批提交节加一条「合入后回写指针，搭下一个批，不单独开 PR」。
+      `tests/test_ev_proposal.py`：新增三项 CLI 级测试（免占位号可用、dry-run 不落盘、
+      `--all-pending` 打印风险）。
+      存量回写：`--mark-merged --from-prs` 一次补齐 9 张（EV-2026-033←#142、036←#154、038←#169、
+      062←#194、129←#266、130/131/132←#269、142←#278），逐条核对过对应 PR 的 body 里确实点名了该卡；
+      水位读数 9 → 0。
+  - who: agent
+    when: 2026-09-22
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS（四道校验/测试全绿 + 三处文本不再教 `--all-pending` 且都改教 `--from-prs` +
+      self-evolve 与 pipeline 都写明"不为它单独开 PR" + CLI 不传 PR 号可用且 `--all-pending` 打印风险 +
+      9 张存量指针都在）。全量 CI 复跑绿，`python3 -m unittest discover tests` 136 项通过（新增 3 项）。
+      过程中被自己的门拦下一次：measure 命令里写了一个含 "placeholder" 的变量名与一处"占位"注释，
+      `verify_proposals` 的占位符检测直接报红（占位符不靠自觉）。
+      门禁分级：改的是脚本命令行形态与机制文档文本，不改变候选选择与路由，不跑检索 golden。
+  - who: agent
+    when: 2026-09-22
+    type: decision
+    conclusion: >-
+      采纳并标 validated。边界如实标注：①**不为回写单独开 PR 是纪律，不是机制强制**——没有检查阻止
+      有人为它开一个 PR，靠批收尾纪律与这条文档；②`--from-prs` 的匹配依据是"PR 标题/正文里点名了卡号"，
+      所以聚合 PR 的 body 必须点名卡号（既有要求，本卡未新增门禁）；点不到名的卡仍要人按 commit 补，
+      不猜不编；③本次只补"没有指针"的卡，**不复查已有指针是否写错**——历史卡里若指针有误，需另开一张卡；
+      ④"读时推导"与"合入后自动回写"都没做，gate 已写明触发条件。

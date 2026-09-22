@@ -157,6 +157,13 @@ def mark_merged(root: Path, pr, card_ids, all_pending: bool, dry_run: bool):
     if not targets:
         print("ev_proposal: 没有可回写的卡（--all-pending 只选「已验证且无该 PR 指针」的卡）")
         return 0
+    if all_pending:
+        # 不加门禁、也不静默：这条命令在"这一批就是全部待回写卡"时是对的，混入旧批的卡就是假数据。
+        # 把风险在读的那一刻说出来（原先只有 --from-prs 的 docstring 里写了，用户看不到）。
+        print(f"注意：--all-pending 把 PR #{pr} 写给 {len(targets)} 张卡"
+              f"（{'、'.join(p.stem for p in targets)}）——"
+              "若其中有属于别的批的卡，那个指针就是假的（一张卡的真实出处只有一个批 PR）；"
+              "拿不准时用 --mark-merged --from-prs（按已合入 PR 逐卡匹配）", file=sys.stderr)
 
     block_tpl = ("  - who: agent\n"
                  "    when: {when}\n"
@@ -216,6 +223,11 @@ def mark_merged(root: Path, pr, card_ids, all_pending: bool, dry_run: bool):
 # 那句"水位超限时只记信号不产卡"没有数值也没有读数——规则只在 prose 里，等于没有。
 # 本命令把它变成一条可机械读取的读数 + 退出码：≥上限退 1（下游按"只记信号不产卡"处理）。
 WATERLINE_DEFAULT = 20
+
+# --from-prs 的 PR 列表深度：批量回写要够回溯到旧批。与水位上限（候选张数上限）不是一回事，
+# 共用一个 --limit 时两者的默认值必然有一个是错的——实测默认 20 会漏掉更早的批 PR，
+# 于是"已合入但指针没回写"的卡被读成未合入。两个默认值分开。
+PRS_LIMIT_DEFAULT = 200
 
 
 def waterline(root: Path, limit: int, as_json: bool = False):
@@ -369,10 +381,13 @@ def main():
     ap.add_argument("--next", action="store_true", help="打印下一个卡号")
     ap.add_argument("--new", action="store_true", help="生成新卡骨架")
     ap.add_argument("--list", action="store_true", help="列现有卡")
-    ap.add_argument("--mark-merged", metavar="PR", help="把合入指针回写进卡的 decisions（追加，保留注释）")
+    ap.add_argument("--mark-merged", metavar="PR", nargs="?", const="",
+                    help="把合入指针回写进卡的 decisions（追加，保留注释）；"
+                         "配 --from-prs 时可省略 PR 号（按已合入 PR 逐卡匹配）")
     ap.add_argument("--card", action="append", default=[], help="配合 --mark-merged：指定卡号（可多次）")
     ap.add_argument("--all-pending", action="store_true",
-                    help="配合 --mark-merged：选全部「已验证且无该 PR 指针」的卡")
+                    help="配合 --mark-merged：选全部「已验证且无该 PR 指针」的卡"
+                         "（会把同一个号写给全部；混入旧批的卡即假数据，优先 --from-prs）")
     ap.add_argument("--dry-run", action="store_true", help="配合 --mark-merged：只打印不落盘")
     ap.add_argument("--from-prs", action="store_true",
                     help="配合 --mark-merged：按已合入 PR 逐卡匹配回写（不用一个号刷全部）")
@@ -380,7 +395,9 @@ def main():
     ap.add_argument("--impact", metavar="组件", nargs="?", const="", default=None,
                     help="同组件先例视图（给组件名则只看它，不给则列尝试≥2 次的全部）")
     ap.add_argument("--waterline", action="store_true", help="打印候选水位（超限退 1）")
-    ap.add_argument("--limit", type=int, default=WATERLINE_DEFAULT, help="配合 --waterline：上限")
+    ap.add_argument("--limit", type=int, default=None,
+                    help=f"配合 --waterline：候选上限（默认 {WATERLINE_DEFAULT}）；"
+                         f"配合 --from-prs：拉取多少个已合入 PR（默认 {PRS_LIMIT_DEFAULT}）")
     ap.add_argument("--json", action="store_true", help="配合 --waterline：机器可读")
     ap.add_argument("--root", type=Path, default=Path("."))
     args = ap.parse_args()
@@ -398,14 +415,16 @@ def main():
         print(f"ID: {p.stem} —— 按 examples/sample-idea.yaml 填字段后跑 verify_proposals.py")
     elif args.list:
         list_cards(root)
-    elif args.mark_merged and args.from_prs:
-        sys.exit(mark_merged_from_prs(root, args.limit, args.dry_run, args.prs_file))
-    elif args.mark_merged:
+    elif args.mark_merged is not None and args.from_prs:
+        # PR 号可省略（--mark-merged --from-prs）：逐卡匹配的出处由 PR 列表决定，不是一个号
+        sys.exit(mark_merged_from_prs(root, args.limit or PRS_LIMIT_DEFAULT,
+                                      args.dry_run, args.prs_file))
+    elif args.mark_merged is not None:
         sys.exit(mark_merged(root, args.mark_merged, args.card, args.all_pending, args.dry_run))
     elif args.impact is not None:
         sys.exit(impact(root, args.impact))
     elif args.waterline:
-        sys.exit(waterline(root, args.limit, args.json))
+        sys.exit(waterline(root, args.limit or WATERLINE_DEFAULT, args.json))
     else:
         ap.print_help()
 

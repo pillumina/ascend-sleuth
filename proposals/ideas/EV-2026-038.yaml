@@ -213,3 +213,7 @@ decisions:
       `ascend-garbled-output-triage`、`msllm-startup-version-env-triage`、`glm-quantized-startup-triage`、
       `ascend-moe-comm-triage`——其中前两条被 8 条 case 的 `ref_knowledge` 引用。
       结果：methodologies 17 → 14。
+  - who: agent
+    when: 2026-09-22
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #169 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

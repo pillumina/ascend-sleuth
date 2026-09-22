@@ -162,6 +162,7 @@ hands-off 需要用户明确要求，防止"自动 = 失控"。它有几条硬�
 聚合 PR 的结构与可追溯性如下：
 - 批内每卡**独立 commit**（保卡级回滚粒度）；PR body 按卡列出 EV id、实验记录引用、授权级别、验证结果；
 - 人审时可整体合入，也可按卡打回（打回的卡 revert 其 commit，其余照常），打回不阻塞批内其他卡；
+- **合入后回写指针**（`python3 scripts/ev_proposal.py --mark-merged --from-prs`）：指针只有几行 diff，随**下一个批**的聚合 PR 进 main，不为它单独开 PR——它是"这张卡进了 main"的记录，不是一次独立变更；
 - 聚合 PR 的模板按批内最高风险选（批内含 structure 改动 → structure 模板；否则按主要变更类型选），`kb/high-risk` 标在 dual 卡对应 commit；
 - 可追溯链不变：卡 → 实验 → 批 PR → 合入 → 观察窗 → 回测（§6.4）。批不削弱追溯，只是把多卡的追溯打包在一个 PR 里。
 

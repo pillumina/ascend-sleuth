@@ -68,3 +68,7 @@ decisions:
     when: 2026-09-17
     type: decision
     conclusion: "采纳（validated）。过程中的两处实测教训已固化成守卫：①做幂等回测时用 --apply 跑了一次，顺手改掉了 eval/golden 下 25 个夹具的注释路径，holdout 与 scorecard 同时红 —— 因此加了冻结件默认跳过 + --include-frozen 显式承担；②标签是人读名字时不该跟着路径改（[eval.md](…) 曾被改成 [deep/eval.md](…)），已收紧为「标签含 / 且解到旧路径才改」。残余：别名表本身没有 CI 校验（目标路径写错会静默归一到不存在的键），按准入判据（未复发）先不加门，记在此处。"
+  - who: agent
+    when: 2026-09-22
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #266 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
