@@ -38,14 +38,37 @@ git worktree remove ../ascend-sleuth-s<session>
 | 模式 | 形态 | 适用场景 |
 |---|---|---|
 | 集中式 | 训练与推理团队共用一个仓库，`CODEOWNERS` 按命名空间划分审批权 | 团队规模小，问题域重叠多 |
-| 框架式（fork） | 团队 fork 本仓库，自行积累或导入知识；上游只同步方法论目录 | 团队自治，知识含敏感数据 |
-
-fork 模式下的目录归属：
-
-- 上游（方法论）：`skills/ scripts/ docs/ examples/ eval/ .github/ README.md CLAUDE.md CONTEXT.md triage-tree.yaml`。triage-tree 是共享资产，修改它属于高风险变更；`.github/` 含 CI 与 PR 模板，随方法论同步。
-- fork 自有（知识）：`knowledge/ postmortems/`（含 `inbox/`），不参与上游合并，因此不存在冲突面。
+| 框架式（fork） | 团队 fork 本仓库，自行积累或导入知识；上游只同步方法论与机制账本目录 | 团队自治，知识含敏感数据 |
 
 同步方式为 `git fetch upstream && git merge upstream/main`。对框架的改进以 PR 形式反提上游；知识内容不回流，脱敏后的构造示例除外。
+
+### 目录归属（按"谁写"划分）
+
+合并冲突只有一个来源：同一个路径两边都写。所以归属的判据是这个路径在两边的写入者是不是同一个，四类各自一条纪律：
+
+| 归属 | 路径 | 纪律 |
+|---|---|---|
+| 上游独占 | `skills/ scripts/ docs/ examples/ eval/ .github/ README.md CLAUDE.md CONTEXT.md triage-tree.yaml proposals/ideas/` | fork 只读，随上游合并更新；fork 侧的机制改进以 PR 反提上游，不在本地留一份。`.github/` 含 CI 与 PR 模板，随方法论同步；`triage-tree.yaml` 是共享资产，修改属高风险变更 |
+| fork 独占 | `knowledge/ postmortems/ references/ eval/golden/ traces/` | 不参与上游合并，因此没有冲突面。`postmortems/inbox/` 同此 |
+| 每部署一份 | `metrics/timeline.d/`、`metrics/timeline.yaml`、`ingest-state.json`、`reference-ingest-state.json` | 读数与游标属于这份部署。同期名的指标文件两边都写必然冲突，而且来自两个部署的读数混进一条趋势线本身就不成立。不做自动合并；确需并集时由人确认 |
+| 生成物 | `knowledge/_index.yaml`、`knowledge/_index/`、`references/_summary-index.yaml`、`references/_procedure-index.yaml` 与 `references/_procedure-index/` | 不算内容。合流后重新生成，冲突不逐行解，新鲜度由 `scripts/build_*.py --check` 判 |
+
+`references/` 归 fork 独占的理由：团队会用自己的文档源摄取词条，那是内容面。要让 fork 的词条反哺上游，走单独的回流 PR，不靠合并目录。
+
+### fork 侧不产 EV 卡
+
+idea 卡（`proposals/ideas/`）是机制账本，归上游。两条原因：
+
+- 卡号在本地递增分配（`scripts/ev_proposal.py` 只扫自己检出里的卡），两个仓库各产各的必然撞号；撞号后同一个文件路径两边内容不同，冲突无法机械解决；
+- 上游 `docs/mechanism/`、`docs/plan/` 里引用的卡号会随合并落进 fork，在那里指向另一张卡——这种错不报错。
+
+fork 侧的机制缺口写进 MR 描述或 issue，由维护者拿到上游产卡。内容产出（补 case、补词条、扩错误码家族、从 case 归纳 reference）不产卡，产卡范围见 `skills/evolve-check/SKILL.md`。fork 长期无法访问上游、又确实需要本地决策档案时，用与上游不重叠的号段或前缀，并让该目录归 fork 独占——复用 `proposals/ideas/` 的号段会让撞号问题原样保留。
+
+### fork 侧首次同步的检查单
+
+1. `git fetch upstream && git merge upstream/main` 后 `git status` 在知识面之外应无冲突；
+2. `python3 scripts/build_index.py --check` 与 `python3 scripts/verify_proposals.py --check` 应绿；生成物按重建处理；
+3. 冲突若落在上表的「每部署一份」或「生成物」两行，按该行纪律处理，不逐行解。
 
 ## inbox 条目状态机与标签集
 

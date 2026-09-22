@@ -1,0 +1,182 @@
+# ============================================================
+# EV-2026-142 —— fork 部署的写入权边界 + 内容产出免除产卡
+# 来源：用户提问——内网 CodeHub 与 GitHub 两侧并行运行，内网沉淀 reference 会产 EV 卡、
+#       卡号各自递增，机制改进从 GitHub 同步到内网时冲突难解；并追问内容沉淀是否该产卡。
+#       经核查：归属清单只覆盖知识面两项，产卡范围在同一个文件里既豁免又强制。
+# 脱敏：只含仓库内路径、脚本行号与聚合计数，不含客户现场原文
+# ============================================================
+
+id: EV-2026-142
+layer: L2
+target_component: docs/guide/git-workflow.md
+title: "fork 部署按「谁写」划分目录归属（卡账本归上游），内容产出不再产卡"
+status: validated
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: '2026-09-22'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户提出两个问题：①内网 CodeHub 与 GitHub 两侧并行时，内网沉淀 reference 会产生 EV 卡、
+      号码各自递增，机制改进从 GitHub 同步到内网要解冲突，成本高；②沉淀 reference 与产 case
+      是否本来就不该产卡。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: design_gap
+    evidence: >-
+      fork 模式的归属清单只列了两项知识面（改动前 `docs/guide/git-workflow.md` 的部署形态节只有
+      `knowledge/ postmortems/` 一条「fork 自有」），而卡账本 `proposals/ideas/`、两个游标文件
+      （`ingest-state.json`、`reference-ingest-state.json`）、指标期文件 `metrics/timeline.d/`
+      与多个生成物索引都在两侧可写。卡号由 `scripts/ev_proposal.py:69` 在本地取最大值加一
+      （不查远端、无锁），实测 `proposals/ideas/` 138 张卡集中在 2026-09-02 至 09-21
+      （单日最多 30 张；`scripts/ev_proposal.py:215` 记「日均产卡近十张」），两个仓库并行时撞号
+      必发。撞号后同一路径两边内容不同，冲突无法机械解决；上游 `docs/` 里 131 处卡号引用还会
+      随合并落进 fork，在那里指向另一张卡。
+    trajectory:
+      - "docs/guide/git-workflow.md 部署形态节（改动前 43-48 行）"
+      - "scripts/ev_proposal.py:69（next_id）与 :215（水位注释里的产卡速率）"
+      - "proposals/ideas/ 138 张卡的 created_at 分布（2026-09-02 → 09-21）"
+      - "docs/ 与 README.md 里 131 处 EV 卡号引用"
+  - signal: rule_conflict
+    evidence: >-
+      产卡范围自相矛盾：同一份 `skills/evolve-check/SKILL.md` 既写「常规参考知识导入豁免」
+      （改动前 :165，理由在 :168「给每条导入配卡只会产出预测＝CI 能过的仪式卡」），又在触发
+      条件表 :68 / :72 与强制产卡范围第①类（改动前 :160-161）里要求为「归纳 reference /
+      补 reference 家族」产卡；两个内容流程的收尾节（`skills/issue-ingest/SKILL.md:130`、
+      `skills/to-postmortem/SKILL.md:138`）把它落成「agent 自动产 idea 卡」。落在边界上的动作
+      两边都能找到依据，所以同一类工作有时产卡、有时不产。
+    trajectory:
+      - "skills/evolve-check/SKILL.md:68, 72, 160-168（改动前）"
+      - "skills/issue-ingest/SKILL.md:129-134（改动前）"
+      - "skills/to-postmortem/SKILL.md:137-142（改动前）"
+hypothesis: >-
+  按写入者划分归属（机制面与卡账本归上游、内容面归 fork、读数与游标每部署一份、生成物按重建
+  处理），并把内容动作从产卡范围里摘出去之后：fork 侧不再新建与上游同号段的卡，同步时的冲突
+  面落进「每部署一份」与「生成物」两类，而这两类的处理动作是确定的（人确认并集 / 重新生成）；
+  内容 MR 也不再夹带机制物件。
+predicted_effect:
+  metric: 两侧都可写的路径数，与内容动作触发产卡的处数
+  from: >-
+    归属清单覆盖 2 项（知识面）；另有 5 类路径无归属（卡账本、两个游标文件、指标期文件、
+    生成物索引）。内容动作在 5 处被要求或暗示产卡（强制产卡范围第①类、触发条件表的同族归纳
+    与覆盖扩展两行、issue-ingest 收尾节、to-postmortem 收尾节）
+  to: >-
+    归属表点名上述全部路径并各给一条纪律；内容动作在同样 5 处均标「不产卡」，只在信号连带
+    要求改行为面时产卡
+  measure:
+    command: |
+      python3 - <<'PY'
+      import subprocess, pathlib
+
+      runs = [
+          ['python3', 'scripts/verify_proposals.py', '--check'],
+          ['python3', 'scripts/build_docs_index.py', '--check'],
+          ['python3', 'scripts/render_review_summary.py', '--scan', 'docs/', 'README.md', 'CONTEXT.md'],
+      ]
+      codes = [subprocess.run(c, capture_output=True, text=True) for c in runs]
+      gw = pathlib.Path('docs/guide/git-workflow.md').read_text(encoding='utf-8')
+      rd = pathlib.Path('README.md').read_text(encoding='utf-8')
+      ec = pathlib.Path('skills/evolve-check/SKILL.md').read_text(encoding='utf-8')
+      ii = pathlib.Path('skills/issue-ingest/SKILL.md').read_text(encoding='utf-8')
+      tp = pathlib.Path('skills/to-postmortem/SKILL.md').read_text(encoding='utf-8')
+
+      named = ['proposals/ideas/', 'ingest-state.json', 'reference-ingest-state.json',
+               'metrics/timeline.d/', 'eval/golden/', 'knowledge/_index.yaml']
+      ownership_named = all(p in gw for p in named)
+      four_classes = all(k in gw for k in ['上游独占', 'fork 独占', '每部署一份', '生成物'])
+      no_local_cards = 'fork 侧不产 EV 卡' in gw
+      readme_synced = ('proposals/ideas/' in rd) and ('目录归属' in rd)
+      scope_three = ('范围限定为三类' in ec) and ('从数据推断' not in ec.split('范围限定为三类')[1][:400])
+      content_exempt = '内容面产出不产卡' in ec
+      rows_exempt = all('不产卡' in line for line in ec.splitlines()
+                        if line.startswith('| T1 ') or line.startswith('| T2 ') or line.startswith('| T5 '))
+      tails_exempt = ('内容动作直接执行、不产卡' in ii) and ('内容动作直接执行、不产卡' in tp)
+
+      print('gates_all_green', all(c.returncode == 0 for c in codes))
+      print('ownership_named', ownership_named, 'four_classes', four_classes)
+      print('fork_no_local_cards', no_local_cards, 'readme_synced', readme_synced)
+      print('scope_three', scope_three, 'content_exempt', content_exempt)
+      print('signal_rows_exempt', rows_exempt, 'content_tails_exempt', tails_exempt)
+      ok = (all(c.returncode == 0 for c in codes) and ownership_named and four_classes
+            and no_local_cards and readme_synced and scope_three and content_exempt
+            and rows_exempt and tails_exempt)
+      print('measure_ok', ok)
+      raise SystemExit(0 if ok else 1)
+      PY
+    expect_exit: 0
+    expect_stdout: "measure_ok True"
+validation:
+  method: scan_review
+  baseline: >-
+    改动前：`docs/guide/git-workflow.md` 的部署形态节只有「上游（方法论）」与「fork 自有
+    （知识）」两条；`skills/evolve-check/SKILL.md` 的强制产卡范围是四类且第①类是「从数据推断
+    的归纳」，触发条件表的同族归纳与覆盖扩展两行候选动作都是「产卡」；两个内容流程的收尾节
+    写「agent 自动产 idea 卡」。
+  success_criteria: >-
+    ① measure 命令 exit 0 且打印 `measure_ok True`（三道校验全绿 + 归属表点名 6 条关键路径 +
+    四类归属齐备 + README 同步 + 产卡范围收为三类且不再含「从数据推断」+ 信号表三行与两个
+    内容流程收尾节均标不产卡）；② CI 逐条复跑全绿；③ 不跑检索 golden——本轮改的是部署文档与
+    收尾协议文本，不改变候选选择与路由（门禁分级见 docs/guide/eval.md）。
+  rollback: 单次提交，`git revert` 回到改动前的文本（纯文本改动，无数据迁移与生成物依赖）。
+gate:
+  condition: >-
+    首个 fork 完成一次上游同步后，若仍出现归属表未覆盖的冲突路径，补表；若 fork 侧出现
+    「机制缺口无处留痕」的实际困境，复核信号留存通道，而不是恢复 fork 本地产卡。
+risk: low
+principle_refs: [2, 7, 10, 11]
+actual_cost:
+  tokens: 55000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数：仓库勘查与冲突面定位（归属清单、卡号分配、共享文件、引文计数，约 25k）、
+    两个问题的评估与方案对比（约 10k）、五处文本改动（约 8k）、CI 复跑与建卡验证（约 12k）。
+decisions:
+  - who: agent
+    when: 2026-09-22
+    type: proposal
+    conclusion: >-
+      产卡即执行。范围取用户确认的方案：内容面不产卡、目录归属按写入者划分。边界如实标注：
+      本轮只改文本与规则，不证明真实同步无冲突——首个 fork 的上游同步演练才是实测；本卡也不
+      动 `ingest-state.json` 的实际拆分与指标期文件的命名，那两件等出现第二个部署时按闸门做。
+  - who: agent
+    when: 2026-09-22
+    type: action
+    conclusion: >-
+      `docs/guide/git-workflow.md`：部署形态节改写为「目录归属（按谁写划分）」四类表（上游独占 /
+      fork 独占 / 每部署一份 / 生成物，卡账本 `proposals/ideas/` 明文进上游独占），新增「fork 侧
+      不产 EV 卡」（撞号不可机械解、上游卡号引用会在 fork 里指向另一张卡），新增「fork 侧首次
+      同步的检查单」三条。
+      `README.md`：框架式部署一行同步为方法论与机制账本目录，并指向归属表。
+      `skills/evolve-check/SKILL.md`：强制产卡范围由四类收为三类（第①类「从数据推断的归纳」
+      移出），新增「内容面产出不产卡」一条并写明理由；触发条件表的同族归纳、覆盖缺口、覆盖扩展
+      三行候选动作改为「不产卡，连带改行为面才产卡」。
+      `skills/issue-ingest/SKILL.md` 与 `skills/to-postmortem/SKILL.md` 的收尾节：由「agent 自动产
+      idea 卡」改为内容动作直接执行、不产卡，行为面改动才产卡。
+      未改：`ingest-state.json` 的实际拆分与指标期文件命名（属机制改动，等第二个部署出现再按闸门做）；
+      `docs/plan/roadmap.md` 的 fork 同步演练项（原样成立，本卡只是把它的检查单写进了归属表）。
+  - who: agent
+    when: 2026-09-22
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS（八项断言全 True：三道校验全绿、归属表点名 6 条关键路径、四类归属齐备、
+      fork 不产卡一节在、README 同步、产卡范围收为三类且不再含「从数据推断」、信号表三行与两个
+      内容流程收尾节均标不产卡）。负向对照（未改动的检出跑同一段断言）：ownership_named False、
+      fork_no_local_cards False、产卡范围仍是四类、无内容豁免条款——判据能区分改前改后。
+      CI 逐条复跑（kb-checks 全部 job，pr-template 属 PR 事件跳过）：build_index / triage-tree /
+      verify_case_draft / verify_references / 三个 reference 索引 / verify_metrics / build_timeline /
+      verify_proposals（139 张卡）/ build_docs_index / holdout / eval_scorecard / unittest（133 项）/
+      check_panel_tokens / panel_render_check.js / eval_arena --self-test / skill 自包含两道 grep 全绿；
+      `render_review_summary.py --scan` 输出与改动前逐字一致（未新增未登记或越界代号）。
+      门禁分级：本轮改部署文档与收尾协议文本，不改变候选选择与路由，按 docs/guide/eval.md 不跑检索
+      golden。
+  - who: agent
+    when: 2026-09-22
+    type: decision
+    conclusion: >-
+      采纳并标 validated。边界如实标注：①本卡**不证明**真实同步无冲突——归属表把冲突面压到
+      「每部署一份」与「生成物」两类，实测要等首个 fork 完成一次上游合并（检查单已写在归属表里）；
+      ②「不产卡」只针对内容动作，改行为面仍必须产卡（范围三类），防绕过的前置流程没有被削弱；
+      ③fork 若要本地决策档案，本卡给的是「独立号段 + 该目录归 fork 独占」这一条最低要求，
+      没有为它建目录与脚本支持——等真有这种部署再按闸门做，不为未发生的形态预建机制。
