@@ -82,8 +82,8 @@ description: >
 1. **先读候选水位**（产卡前的机械检查，别靠自觉）：`python3 scripts/ev_proposal.py --waterline`
    ——输出「待回写/待合入 N（上限 20）」，**超限退 1**；退 1 时本轮**只记信号不产卡**，先消化积压
    （信号照记在收尾说明里，条件到了再产）。读数含"指针没回写"的成分，超限时先按
-   `--mark-merged <PR号> --all-pending` 把上一批的指针补齐再看剩余量——把已合入的卡读成未合入，
-   会让动作走成"停产"而真正该做的是回写；
+   `python3 scripts/ev_proposal.py --mark-merged --from-prs` 把上一批的指针补齐再看剩余量——
+   把已合入的卡读成未合入，会让动作走成"停产"而真正该做的是回写；
 2. 查重 + **同组件先例咨询**（防重提被拒方案——skill-impact 咨询语义；
    论证可选层 docs/mechanism/pipeline.md §12a）：`python3 scripts/ev_proposal.py --list`
    ——同 trajectory/同 target 已有在池卡 → 合并不新建；

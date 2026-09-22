@@ -55,3 +55,7 @@ decisions:
     when: 2026-09-10
     type: decision
     conclusion: "**validated**（采纳，改动保留）。产出的结构被后续三张卡（037/040/041）继续承载使用；本卡此前只记 proposal 属审计链缺口，本轮按真实证据补齐并置终态"
+  - who: agent
+    when: 2026-09-22
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #142 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

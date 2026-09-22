@@ -60,3 +60,7 @@ decisions:
     when: 2026-09-18
     type: decision
     conclusion: "采纳（validated）。刻意不编「内核事件 → 昇腾根因」的因果族表：那部分没有可核来源，写成事实违反原则十；词条只登记采集入口与可逐字核验的消息格式，PCIe AER / 网卡 link / kernel panic 只给检索前缀、不给格式。外部实现里的 dmesg 采集速查（含按时间窗裁剪打包）已折入 invocation 与 commands。残余：昇腾官方侧的 host 日志采集要求（若官方文档有独立页）未纳入，等有官方来源时补。"
+  - who: agent
+    when: 2026-09-22
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #269 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

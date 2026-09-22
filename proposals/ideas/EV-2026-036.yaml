@@ -48,6 +48,10 @@ decisions:
   when: '2026-09-10'
   type: decision
   conclusion: "**validated**（采纳，改动保留）。本卡此前只记 proposal 属审计链缺口，本轮按真实证据补齐并置终态；actual_cost 缺失按同批做法以 tokens: 0 + 口径说明补写"
+- who: agent
+  when: 2026-09-22
+  type: action
+  conclusion: "合入指针回写：本卡（及其结论）随 PR #154 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
 actual_cost:
   tokens: 0
   source: estimate

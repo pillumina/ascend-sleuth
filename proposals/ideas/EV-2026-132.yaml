@@ -57,3 +57,7 @@ decisions:
     when: 2026-09-18
     type: decision
     conclusion: "采纳（validated）。落点选 skill 内联而非新建 active 先验词条：外部实现的秒级阈值没有出处，写成先验事实会逼出一条无来源的词条并触发双签，而它是行为规则（什么时候停手、什么时候降级）。残余：判别力要在真实跨机现场才显现，本轮无该形态 trace 可回放——不进 CI，靠现场与复盘检验。"
+  - who: agent
+    when: 2026-09-22
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #269 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

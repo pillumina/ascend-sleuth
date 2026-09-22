@@ -8,6 +8,7 @@
    该条件早已满足，而 skill 正文那句"超限只记信号不产卡"既无数值也无读数。水位是一条读数 + 退出码。
 """
 
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -316,5 +317,73 @@ decisions:
                                                  prs_file=self._prs("别的批，不含卡号")), 0)
         self.assertNotIn("PR #77",
                          (self.root / "proposals" / "ideas" / "EV-2026-903.yaml").read_text(encoding="utf-8"))
+
+
+class CliWritebackTest(unittest.TestCase):
+    """批收尾那条命令的形态：`--mark-merged --from-prs`。
+
+    护两件事：
+    ① **免占位号**——批收尾的标准动作是按已合入 PR 逐卡匹配，PR 号由匹配决定；原先 argparse 强制
+       要一个 PR 号，于是标准动作要带一个假参数（`--mark-merged 0 --from-prs`），多一处可错的地方；
+    ② **--all-pending 的风险要说在读的那一刻**——它把同一个号写给所有待回写卡，混入旧批的卡就是
+       假数据；原先这条只写在 `mark_merged_from_prs` 的 docstring 里，用它的人看不到。
+    """
+
+    CARD = """id: EV-2026-911
+layer: L2
+target_component: scripts/ev_proposal.py
+title: t
+status: validated
+authorization: review
+dimension: process
+created_at: 2026-09-22
+source_signals:
+  - {signal: process_friction, evidence: e, trajectory: [t]}
+hypothesis: h
+predicted_effect:
+  metric: m
+  from: a
+  to: b
+  measure: {command: "true", expect_exit: 0}
+validation: {method: scan_review, baseline: b, success_criteria: s, rollback: r}
+gate: {condition: c}
+risk: low
+principle_refs: [10]
+decisions:
+  - who: agent
+    when: 2026-09-22
+    type: proposal
+    conclusion: p
+"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / "proposals" / "ideas").mkdir(parents=True)
+        self.card = self.root / "proposals" / "ideas" / "EV-2026-911.yaml"
+        self.card.write_text(self.CARD, encoding="utf-8")
+        self.prs = self.root / "prs.json"
+        self.prs.write_text('[{"number": 88, "title": "批", "body": "含 EV-2026-911"}]', encoding="utf-8")
+
+    def _run(self, *args):
+        return subprocess.run([sys.executable, str(ROOT / "scripts" / "ev_proposal.py"),
+                               "--root", str(self.root), *args],
+                              capture_output=True, text=True)
+
+    def test_from_prs_needs_no_pr_placeholder(self):
+        r = self._run("--mark-merged", "--from-prs", "--prs-file", str(self.prs))
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("PR #88", self.card.read_text(encoding="utf-8"))
+
+    def test_from_prs_dry_run_writes_nothing(self):
+        r = self._run("--mark-merged", "--from-prs", "--prs-file", str(self.prs), "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertNotIn("PR #88", self.card.read_text(encoding="utf-8"))
+
+    def test_all_pending_names_the_risk(self):
+        r = self._run("--mark-merged", "77", "--all-pending")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertIn("别的批", r.stderr)
 
 
