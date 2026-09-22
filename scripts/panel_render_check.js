@@ -972,6 +972,18 @@ print(json.dumps(n))
     total: declared, lowConfidence: 12, byCategory: { interrupt: 30, performance: 10, precision: 12 },
     byCell: cells.slice(0, 4), liveTotal: declared, declaredTotal: declared, diskTotal: diskCount,
   }
+  // 统计读不到时必须**说出来**（索引头注里的数字已改成现算，现算失败时会走 c.error 这条）：
+  // 面板最容易骗人的地方就是"看到的不等于现实"——少一块和读不到长得一样。
+  const healthErr = { cases: { error: '结构数字现算失败（演练）' }, references: {} }
+  const ascErrHealth = await renderAsync(ascSrc, { sessionId: 'sess-1' }, (method, args) => {
+    if (method === 'ascend-kb-health') return { ok: true, ...healthErr }
+    if (method === 'ascend-metrics-verdict') return { ok: true, verdict: Object.assign({}, verdict, { drift: { declared: declared, disk: diskCount } }) }
+    return ascHost(method, args)
+  })
+  expect('统计读不到时面板说出来（不是少一块）',
+    ascErrHealth.text.includes('读不到') && ascErrHealth.text.includes('结构数字现算失败（演练）'),
+    ascErrHealth.text.slice(0, 200))
+
   const hostWithVerdict = (method, args) => {
     if (method === 'ascend-metrics-verdict') return { ok: true, verdict: Object.assign({}, verdict, {
       drift: { declared: declared, disk: diskCount },
