@@ -11,7 +11,8 @@
 两种提交纪律（`POLICIES`）：
   before    「现状」：每个 PR 都提交生成物；总表头注带生成日期（三人跨天各自重建 → 日期行必撞）
   after     「改后」：PR 只提交 case 本体 + 分片 + triage-tree.d/（**生成物不进 PR**——
-            总表与 triage 聚合由主干 job 重建，CI 有门拦着）；triage-tree.d/ 走 merge=union，
+            总表与 triage 聚合不进 PR，合并后由合并者重建一次（CI 有门拦着并给出命令）；
+            triage-tree.d/ 走 merge=union，
             两边新增的症状词都留住
 """
 import re
@@ -105,6 +106,10 @@ class Experiment:
         self.repo = Path(self.tmp.name) / "repo"
 
     # ---------------------------------------------------------------- 搭台
+    # 合并后是否做收尾重建。默认做（本平台不允许 CI 推主干，这一步由合并者一条命令完成）；
+    # 置 False 用来量"忘了收尾"的后果——那条路径必须**可见地红**，不能静默留下不一致。
+    merger_rebuild_after_merge = True
+
     def setup(self):
         r = self.repo
         r.mkdir(parents=True)
@@ -254,8 +259,12 @@ class Experiment:
         git(r, "commit", "-qm", f"merge kb/{tag}（取自己那份）")
         return files
 
-    def robot_on_main(self):
-        """主干 job：重建生成物并提交（改后才有；现状靠人）。"""
+    def merger_rebuild_on_main(self):
+        """合并者收尾：跑一次重建并提交。
+
+        本平台不允许 CI 向主干推提交，所以这一步**由人做**（合并完花 30 秒）；动作与机器人
+        完全相同，所以实验里照跑——要量的是「生成物有没有人对齐」，不是谁来敲。
+        """
         if self.policy != "after":
             return
         py(self.repo, "scripts/build_index.py")
@@ -290,8 +299,14 @@ class Experiment:
         for i, (tag, _cid, _word, _day) in enumerate(CONTRIB):
             git(self.repo, "checkout", "-q", "main")
             self.merge(tag, SCENARIOS[self.scenario][i][1])
-            self.robot_on_main()
+            if self.merger_rebuild_after_merge:
+                self.merger_rebuild_on_main()
         git(self.repo, "checkout", "-q", "main")
+        # 只看**提交内容**：CI 与读侧看到的是主干检出，不是谁工作树里那份脏生成物。
+        # 不还原的话，本地跑过的重建会留在工作树里，把"忘了收尾"这条路径量成绿的
+        # （实测踩过：生成物随 `git checkout` 流动，门读到的是没提交的那份）。
+        git(self.repo, "checkout", "--", ".")
+        git(self.repo, "clean", "-qfd")
         if not self.gates():
             self.stale_gates += 1
         self.result = {
@@ -380,8 +395,8 @@ class ConcurrentSubmitTest(unittest.TestCase):
                                  f"{scenario}: before={b} after={a}")
 
     def test_before_policy_leaves_main_gate_red(self):
-        """现状最烦人的一点：三人合并完，主干门还是红的——因为"最后一个人重建过索引"
-        在旧流程里是人的记忆责任。改后由主干 job 负责，门自己变绿（同一实验里量出来）。"""
+        """现状最烦人的一点：三人合并完，主干门还是红的——因为「最后一个人重建过索引」
+        在旧流程里是人的记忆责任。改后这一步是合并者的一条命令（机械动作），跑了就绿。"""
         for scenario in SCENARIOS:
             self.assertFalse(self.by(scenario, "before")["gates_green"],
                              f"{scenario}：预期现状合完后门是红的")
@@ -390,6 +405,31 @@ class ConcurrentSubmitTest(unittest.TestCase):
         """常见的并发形态（各人改各自的框架）：改后应当**一次都不撞**。"""
         r = self.by("diff-ns", "after")
         self.assertEqual(r["conflicted_merges"], 0, r)
+
+    def test_forgetting_the_merge_time_rebuild_shows_up_as_red_main(self):
+        """忘了收尾重建 → 主干门红，且**新加的路由词在主干上还没生效**。
+
+        这是"没有 CI 推主干权限"时必须付出的代价，所以它值得一条测试：`triage-tree.yaml`
+        是 diagnose 实际读的那份，聚合不重建就等于那个词加了没用；门红了才知道跑那一条命令。
+        用不同 namespace 场景量——它没有冲突，所以没有人会因为解冲突而顺手重建
+        （同一个 namespace 场景里解冲突会顺带重建，因此那条路径反而不会留下不一致）。
+        """
+        e = Experiment("diff-ns", "after")
+        e.merger_rebuild_after_merge = False
+        try:
+            r = e.run()
+            triage = (e.repo / "triage-tree.yaml").read_text(encoding="utf-8")
+            # case 本体与分片都已进主干（PR 带的就是它们）；滞后的只有那两张生成物表。
+            # 这个判断必须在 close() 之前做——临时目录一清，断言就变成"文件当然是没了"。
+            cases_on_main = [(cid, (e.repo / "knowledge" / SCENARIOS["diff-ns"][i][0] / f"{cid}.yaml").exists())
+                             for i, (_tag, cid, _word, _day) in enumerate(CONTRIB)]
+        finally:
+            e.close()
+        self.assertFalse(r["gates_green"], r)                       # 门红：可见
+        self.assertEqual(r["conflicted_merges"], 0, r)               # 没有冲突，所以没人顺手重建
+        for _tag, _cid, word, _day in CONTRIB:
+            self.assertNotIn(word, triage, "收尾没做 → 路由词还没进 diagnose 读的那份文件")
+        self.assertTrue(all(ok for _cid, ok in cases_on_main), cases_on_main)
 
     def test_casual_resolution_loses_a_route_word(self):
         """改前的风险上限：手忙脚乱地解冲突（手写面取自己那份）会**少一条路由词**。

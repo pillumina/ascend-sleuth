@@ -201,7 +201,7 @@ def main() -> int:
 
     if args.check_sources:
         print(f"路由源文件合法（{len(blocks)} 个分支 ← {SRC_DIR_REL}/）；"
-              f"生成物 {OUT_REL} 由主干重建，不在 PR 里比")
+              f"生成物 {OUT_REL} 不进 PR（合并后由合并者重建），这里不比对")
         return 0
 
     if args.check:

@@ -1,5 +1,5 @@
 # GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。
-# 本文件是主干重建面：合并后由主干 job 重跑 `python3 scripts/build_index.py` 提交——
+# 本文件不进 PR：合并后由合并者跑一次 `python3 scripts/build_index.py` 重建并提交——
 # **不要在功能 PR 里改它**（改了也只是把全库那一张表拖进每个人的冲突里）。
 # 改 case 的人在 PR 里提交的是分片 knowledge/_index/<ns>__<category>.yaml + case 本体。
 # 阶段一加载协议：本文件是总表（容量/头注视图 + 兜底）；diagnose 只读命中的最小分片

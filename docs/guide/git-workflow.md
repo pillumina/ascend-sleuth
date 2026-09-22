@@ -40,8 +40,8 @@ git worktree remove ../ascend-sleuth-s<session>
 | case 本体 `knowledge/<ns>/<cat>/*.yaml` | 人（PR） | `verify_case_draft.py --all` | — |
 | 索引分片 `knowledge/_index/<ns>[_<cat>].yaml` | 人（PR，跑 `scripts/build_index.py`） | `build_index.py --check`（逐字节比 + case 内容 hash） | 逐字节 |
 | 路由源 `triage-tree.d/<族>.yaml` | 人（PR） | `build_triage_tree.py --check-sources`（分支 id 唯一 / category 合法 / ≤30 分支） | — |
-| 索引总表 `knowledge/_index.yaml` | 主干 job（合并后重建提交） | **不得进 PR**（CI 有门拦） | `build_index.py --check --master` |
-| 路由聚合 `triage-tree.yaml` | 主干 job（合并后重建提交） | **不得进 PR**（CI 有门拦） | `build_triage_tree.py --check` |
+| 索引总表 `knowledge/_index.yaml` | 合并者（合并后跑一次重建，约 30 秒） | **不得进 PR**（CI 有门拦） | `build_index.py --check --master` |
+| 路由聚合 `triage-tree.yaml` | 合并者（合并后跑一次重建） | **不得进 PR**（CI 有门拦） | `build_triage_tree.py --check` |
 
 撞车了怎么办——按文件类型处理，不需要判断"留哪份"：
 
@@ -51,7 +51,23 @@ git worktree remove ../ascend-sleuth-s<session>
 | `triage-tree.d/<族>.yaml`（路由源） | 通常不会冲突：`merge=union` 会自动把两边新增的症状词都留住。若真出现冲突标记，把两份症状都留下、删掉三行标记，再跑一次聚合。 |
 | case 本体 | 真正需要人判断的只剩这里（同一 case 两人改）——按内容合。 |
 
-为什么这么切（可复跑的实验在 `tests/test_concurrent_submit.py`，`python3 tests/test_concurrent_submit.py` 会打印一张对比表）：三人并发、同一个框架时，改前会撞在总表 + 分片 + 路由文件上，其中路由文件的冲突要人判断留哪份，且合并完主干门还是红的（"最后一个人记得重建"是人的记忆责任）；改后判断冲突为 0，主干门由 job 自己变绿。三人各改不同框架（常见形态）时，改后一次都不撞。实验还钉住了一件事：**改前用最省事的办法解冲突（手写面取自己那份）会静默少一条路由词**，改后这条路不存在（union 合并两边都留）。
+为什么这么切（可复跑的实验在 `tests/test_concurrent_submit.py`，`python3 tests/test_concurrent_submit.py` 会打印一张对比表）：三人并发、同一个框架时，改前会撞在总表 + 分片 + 路由文件上，其中路由文件的冲突要人判断留哪份；改后判断冲突为 0（只剩生成物冲突，重跑一条命令即解）。三人各改不同框架（常见形态）时，改后一次都不撞。实验还钉住了一件事：**改前用最省事的办法解冲突（手写面取自己那份）会静默少一条路由词**，改后这条路不存在（union 合并两边都留）。
+
+### 合并者收尾（本平台没有 CI 推主干权限时的替代）
+
+合并完，跑这三行（约 30 秒，机械动作、无需判断）：
+
+```bash
+python3 scripts/build_index.py && python3 scripts/build_triage_tree.py
+git add knowledge/_index.yaml knowledge/_index triage-tree.yaml
+git commit -m 'chore(generated): 主干重建' && git push
+```
+
+忘了也不要紧，但**不会静默**：主干上有一条一致性检查，跑不齐会红，日志里直接打印上面这三行。红着的时候，刚合进来的路由词还没生效——`triage-tree.yaml` 是 diagnose 实际读的那份，聚合不重建就等于那个词加了没用。
+
+为什么不做成 CI 机器人：本平台不允许 CI 向主干推提交。为什么不干脆让 PR 带这两张表：它们是"谁改内容都得重写它一遍"的文件，每个 PR 只要更新分支到主干就会再撞一次——那就成了每个 PR 都撞。
+
+如果哪天平台放开了 CI 写权限：把 `generated-consistency` job 的校验步换成"重建 + `git add/commit/push`"，其余不变。
 
 ## 部署形态
 

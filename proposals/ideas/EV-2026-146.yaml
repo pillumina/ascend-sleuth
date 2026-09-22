@@ -40,10 +40,10 @@ source_signals:
       - "git log --no-merges --count HEAD -- knowledge/_index.yaml（49）vs -- knowledge/（55）"
       - "python3 scripts/build_index.py --check（当日 exit 0，而总表头注仍是 5 天前的日期）"
 hypothesis: >-
-  把"谁都得重写一遍"的两张表（索引总表、路由聚合）移出 PR、由主干 job 在合并后重建并提交，
-  同时把"按切片切开"的源（索引分片、路由族文件）留在 PR 当评审面（族文件配 union 合并）之后：
-  并发提交不再需要人判断"留哪份"；改不同框架的两人一次都不撞；合并完主干门由 job 自己变绿，
-  不再依赖"最后一个人记得重建"。
+  把"谁都得重写一遍"的两张表（索引总表、路由聚合）移出 PR，同时把"按切片切开"的源（索引分片、
+  路由族文件）留在 PR 当评审面（族文件配 union 合并）之后：并发提交不再需要人判断"留哪份"；
+  改不同框架的两人一次都不撞。两张表的对齐由**合并者收尾一条命令**完成（本平台不允许 CI 推主干，
+  所以这一步由人做）；忘了会在主干上红并打印那条命令，不静默。
 predicted_effect:
   metric: 并发提交的冲突数 / 需要人判断留哪份的冲突数 / 合并后主干门是否自己变绿
   from: >-
@@ -52,7 +52,8 @@ predicted_effect:
     （"最后一个人重建过索引"在旧流程里是人的记忆责任，无人记得就红着）。
   to: >-
     同 namespace：判断冲突 0（只剩分片这一类生成物冲突，动作是重跑一条命令，无判断）；
-    改不同框架：一次都不撞；两种场景下合并完主干门都是绿的（主干 job 重建并提交）。
+    改不同框架：一次都不撞；两种场景下收尾跑完主干门都是绿的（合并者一条命令重建并提交）。
+    收尾没跑时不静默：门红，且新加的路由词还没进 diagnose 读的那份聚合（这条也进了测试）。
   measure:
     command: |
       python3 - <<'PY'
@@ -79,7 +80,8 @@ validation:
   method: scan_review
   baseline: 改前的提交面（总表 + 分片 + triage 单文件；`build_index.py` 头注带生成日期；无 union 规则）
   success_criteria: >-
-    ①上述 measure 打 VERDICT PASS（四格对比表由真 git 合并量出来，不是论证）；
+    ①上述 measure 打 VERDICT PASS（四格对比表由真 git 合并量出来，不是论证；门比的是**提交内容**
+    ——实验里踩过一次"工作树里跑过重建把'忘了收尾'量成绿的"，已在实验里还原提交态再判）；
     ②`tests/` 全绿（188 项），其中新增三块：索引新鲜度四种漂移 + 两张表的门分工、
     triage 源到聚合的往返与校验、生成物分工的端到端（含"忘记重建分片 → PR 门红"这条安全网）；
     ③kb-checks 的每一条命令在本机复跑全绿（含 docs-index / holdout / panel / arena 自测）；
@@ -122,7 +124,8 @@ decisions:
       落地：`scripts/build_index.py`（去日期 + 新鲜度读分片 + `--master`）、
       `scripts/build_triage_tree.py`（新增）、`triage-tree.d/`（7 族 + 说明）、
       `.gitattributes`（族文件 union）、`.github/workflows/kb-checks.yml`（PR 门改 `--check-sources`
-      + 新增"生成物不得进 PR" + 新增 generated-refresh 主干 job）、
+      + 新增"生成物不得进 PR" + 新增 generated-consistency 主干校验 job，只校验不提交）、
+      `scripts/rehearse_evolve_loop.py`（演练按工作流 `if:` 条件跳过主干专用步骤并逐条打印原因）、
       `tests/test_build_index.py`（扩）、`tests/test_build_triage_tree.py`（新）、
       `tests/test_generated_plane.py`（新）、`tests/test_concurrent_submit.py`（新，本卡的 measure）。
   - who: agent
@@ -134,6 +137,15 @@ decisions:
       解析结果深度相同、分支 id 顺序不变。安全网未丢：改了 case 忘重建分片 → PR 门红且报错给出命令。
       实验过程中被自己的测试纠正过两次（分类把聚合当手写面、基线误用新生成器），
       两次都修在测试里而不是放宽断言——基线必须真等于"今天的仓库"，否则对比没有意义。
+  - who: human
+    when: 2026-09-22
+    type: decision
+    conclusion: >-
+      平台约束：**本平台先不允许 CI 向主干推提交**（用户确认）。据此把原设计里的"主干 job 重建并提交"
+      换成"合并者收尾一条命令"（约 30 秒），主干 job 只校验并打印这条命令。
+      据此**不做**的事：不改回"让 PR 带生成物"——那两个文件谁都得重写一遍，且每个 PR 更新分支到主干
+      时都会再撞一次，等于每个 PR 都撞。平台开放 CI 写权限时，把校验步换成"重建 + git add/commit/push"
+      即可，其余不变（写在 docs/guide/git-workflow.md 的合并者收尾一节）。
   - who: agent
     when: 2026-09-22
     type: decision

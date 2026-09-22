@@ -33,7 +33,7 @@ PR body 正文从首个 "## " 区块开始。
 
 - [ ] case 文件迁移完成，`_archive/` 处置明确
 - [ ] 路由 `search_namespaces` 同步（改的是 `triage-tree.d/<族>.yaml`，不是生成的 `triage-tree.yaml`）
-- [ ] 索引分片 `knowledge/_index/` 随本 PR 重建（CI 会验）；总表 `_index.yaml` 与 `triage-tree.yaml` 由主干重建，**不进 PR**
+- [ ] 索引分片 `knowledge/_index/` 随本 PR 重建（CI 会验）；总表 `_index.yaml` 与 `triage-tree.yaml` **不进 PR**（合并后由合并者重建一次）
 - [ ] golden fixture 的 namespace 断言同步
 - [ ] 受影响 case 的 references 路径修正
 

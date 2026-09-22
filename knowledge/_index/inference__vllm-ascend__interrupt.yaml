@@ -1,6 +1,6 @@
 # GENERATED FILE —— 分片（knowledge/_index.yaml 的 inference/vllm-ascend__interrupt 子集），不要手改。
 # 人提交面：改 case 的人在**自己 PR 里提交本文件**（`build_index.py --check` 比的正是它）；
-# 总表 knowledge/_index.yaml 由主干重建，不在功能 PR 里改。撞车时重跑生成器即可，不必手判留哪份。
+# 总表 knowledge/_index.yaml 不进 PR（合并后由合并者重建一次）。撞车时重跑生成器即可，不必手判留哪份。
 # 阶段一加载协议（F1 EV-2026-022 + F4 EV-2026-025）：category 已定时 diagnose 只读命中 (namespace×category) 的类分片，不读整库总表。
 # 本分片：inference/vllm-ascend__interrupt（93 条 case）
 namespaces:

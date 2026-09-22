@@ -7,9 +7,10 @@
 #     的最小分片（总表 + ns 分片 + 类分片均由本脚本生成，见 render_shard/render）
 #   - 每条 case 记 content hash，--check 校验新鲜度（groom 每次跑，可挂 CI）
 #
-# 人提交面 / 主干重建面（2026-09-22 起；起因：并发提交时总表必撞同一行）：
+# 人提交面 / 合并后重建面（2026-09-22 起；起因：并发提交时总表必撞同一行）：
 #   分片 `knowledge/_index/<ns>__<cat>.yaml` —— **人提交面**：改 case 的人在自己 PR 里提交；
-#   总表 `knowledge/_index.yaml`            —— **主干重建面**：合并后由主干 job 重跑本脚本提交。
+#   总表 `knowledge/_index.yaml`            —— **合并后重建面**：合并后由合并者跑一次本脚本重建
+#      （本平台不允许 CI 推主干；CI 在主干上校验一致性并打印这条命令）。
 #   为什么这么分：总表是全库一张表，三个人各加一条 case 就得各自重写它一遍，合流时撞在同一个
 #   文件上；分片按 (框架 × 性质) 切开，两个人改不同框架根本不碰同一个文件。
 #   `--check` 只比分片与 case 内容（PR 门）；`--check --master` 才连总表一起比（主干门）。
@@ -203,7 +204,7 @@ def render_shard(ns, cells) -> str:
     header = "\n".join([
         "# GENERATED FILE —— 分片（knowledge/_index.yaml 的 " + ns + " 子集），不要手改。",
         "# 人提交面：改 case 的人在**自己 PR 里提交本文件**（`build_index.py --check` 比的正是它）；",
-        "# 总表 knowledge/_index.yaml 由主干重建，不在功能 PR 里改。撞车时重跑生成器即可，不必手判留哪份。",
+        "# 总表 knowledge/_index.yaml 不进 PR（合并后由合并者重建一次）。撞车时重跑生成器即可，不必手判留哪份。",
         proto,
         f"# 本分片：{ns}（{n} 条 case）",
         "",
@@ -250,7 +251,7 @@ def render(namespaces) -> str:
     )
     header = "\n".join([
         "# GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。",
-        "# 本文件是主干重建面：合并后由主干 job 重跑 `python3 scripts/build_index.py` 提交——",
+        "# 本文件不进 PR：合并后由合并者跑一次 `python3 scripts/build_index.py` 重建并提交——",
         "# **不要在功能 PR 里改它**（改了也只是把全库那一张表拖进每个人的冲突里）。",
         "# 改 case 的人在 PR 里提交的是分片 knowledge/_index/<ns>__<category>.yaml + case 本体。",
         "# 阶段一加载协议：本文件是总表（容量/头注视图 + 兜底）；diagnose 只读命中的最小分片",
@@ -273,8 +274,8 @@ def render(namespaces) -> str:
 def stale_entries(root: Path, namespaces):
     """分片记录的 hash ≠ 当前 case 内容 → 过期。返回 [(ns, id, file)]；分片目录不存在返回 None。
 
-    新鲜度**只以分片为准**，不看总表：分片是人提交面（PR 门比的是它），总表由主干重建——
-    拿总表的新旧判"改了 case 忘重建"会在总表尚未被主干重建时误绿（它旧不代表分片对），
+    新鲜度**只以分片为准**，不看总表：分片是人提交面（PR 门比的是它），总表合并后由合并者重建——
+    拿总表的新旧判"改了 case 忘重建"会在总表尚未重建时误绿（它旧不代表分片对），
     也会在总表刚被重建而分片没提交时误红（那是另一个错，报错要说得出是哪一种）。
     判据覆盖四种漂移：改了内容 / 新增 case / 删了 case / 分片本身缺失或过期（后者见 shard_dirty）。
     """
@@ -338,7 +339,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true", help="只校验新鲜度，不写文件（PR 门：只比分片）")
     ap.add_argument("--master", action="store_true",
-                    help="连总表一起逐字节比（主干重建 job 用；PR 上不要加——总表由主干重建）")
+                    help="连总表一起逐字节比（主干上用；PR 上不要加——总表不进 PR）")
     ap.add_argument("--root", default=None, help="仓库根目录（默认：脚本上两级）")
     args = ap.parse_args()
     root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[1]
@@ -368,7 +369,7 @@ def main():
         if args.master:
             why = master_dirty(root, ns)
             if why:
-                print(f"{why}——总表是主干重建面，跑一次重建并提交它：")
+                print(f"{why}——总表不进 PR，合并后跑一次重建并提交它：")
                 print("  python3 scripts/build_index.py")
                 sys.exit(1)
         n_shards = len(ns) + sum(len(c) for c in ns.values())

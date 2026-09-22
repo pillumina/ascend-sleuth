@@ -1,9 +1,10 @@
-"""生成物分工的端到端测试：人交什么、机器人补什么、哪道门在哪个面上红。
+"""生成物分工的端到端测试：人交什么、合并者补什么、哪道门在哪个面上红。
 
 这次改动的主张有三条，每条都得能被一条命令证伪：
-  ① **改了 case 忘重建分片 → PR 门红**（安全网还在，没有因为"生成物交给机器人"就丢掉校验）；
+  ① **改了 case 忘重建分片 → PR 门红**（安全网还在，没有因为"生成物不进 PR"就丢掉校验）；
   ② **PR 不带生成物（总表 / triage 聚合）也能过 PR 门**（人不必碰那两张"谁都得重写一遍"的表）；
-  ③ **主干 job 跑完，两张表与源逐字节一致、并且能看到新内容**（不靠"最后一个人记得重建"）。
+  ③ **合并者收尾跑完，两张表与源逐字节一致、并且能看到新内容**
+     （本平台不允许 CI 推主干，这一步由合并者一条命令完成；忘了会在主干上红并打印这条命令）。
 """
 
 import shutil
@@ -33,7 +34,7 @@ def sh(cwd: Path, *args):
 
 
 class GeneratedPlaneTest(unittest.TestCase):
-    """一个临时仓库：模拟"一个人改完 case 与路由词，机器人补生成物"的全过程。"""
+    """一个临时仓库：模拟「一个人改完 case 与路由词，合并者收尾补生成物」的全过程。"""
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="generated-plane-")
@@ -74,8 +75,8 @@ class GeneratedPlaneTest(unittest.TestCase):
     def gate(self, *args):
         return sh(self.repo, "python3", *args)
 
-    def robot(self):
-        """主干 job 干的事：重建两张生成物表并提交。"""
+    def merger_rebuild(self):
+        """合并者收尾：重建两张生成物表并提交（一条命令的机械动作）。"""
         self.gate("scripts/build_index.py")
         self.gate("scripts/build_triage_tree.py")
         sh(self.repo, "git", "add", "knowledge/_index.yaml", "knowledge/_index", "triage-tree.yaml")
@@ -109,7 +110,7 @@ class GeneratedPlaneTest(unittest.TestCase):
         sh(self.repo, "git", "checkout", "--", "triage-tree.yaml")
         self.assertEqual(self.gate("scripts/build_index.py", "--check").returncode, 0)
         self.assertEqual(self.gate("scripts/build_triage_tree.py", "--check-sources").returncode, 0)
-        # 而主干门此刻应当是红的——它由机器人负责，不是由这个 PR 负责
+        # 而主干门此刻应当是红的——它由合并者的收尾负责，不是由这个 PR 负责
         self.assertNotEqual(self.gate("scripts/build_index.py", "--check", "--master").returncode, 0)
         self.assertNotEqual(self.gate("scripts/build_triage_tree.py", "--check").returncode, 0)
 
@@ -119,14 +120,14 @@ class GeneratedPlaneTest(unittest.TestCase):
         (self.repo / "triage-tree.yaml").unlink()
         self.assertEqual(self.gate("scripts/build_triage_tree.py", "--check-sources").returncode, 0)
 
-    # ---------------------------------------------------------------- ③ 机器人补完就一致
-    def test_robot_brings_both_generated_tables_back_in_sync(self):
+    # ---------------------------------------------------------------- ③ 合并者收尾后就一致
+    def test_merger_rebuild_brings_both_generated_tables_back_in_sync(self):
         self.add_case()
         self.add_route_word()
         self.gate("scripts/build_index.py")
         (self.repo / "knowledge" / "_index.yaml").unlink()
 
-        self.robot()
+        self.merger_rebuild()
 
         self.assertEqual(self.gate("scripts/build_index.py", "--check", "--master").returncode, 0)
         self.assertEqual(self.gate("scripts/build_triage_tree.py", "--check").returncode, 0)
@@ -142,10 +143,10 @@ class GeneratedPlaneTest(unittest.TestCase):
     def test_generated_tables_are_reproducible(self):
         """同一份源重建两次 → 字节相同。主干门敢逐字节比，就靠这条。"""
         self.add_case()
-        self.robot()
+        self.merger_rebuild()
         first = (self.repo / "knowledge" / "_index.yaml").read_bytes(), \
                 (self.repo / "triage-tree.yaml").read_bytes()
-        self.robot()
+        self.merger_rebuild()
         second = (self.repo / "knowledge" / "_index.yaml").read_bytes(), \
                  (self.repo / "triage-tree.yaml").read_bytes()
         self.assertEqual(first, second)
@@ -153,7 +154,7 @@ class GeneratedPlaneTest(unittest.TestCase):
     def test_aggregate_still_readable_by_consumers(self):
         """读侧不变：聚合仍是合法 YAML，分支结构照旧（diagnose / verify_references 读它）。"""
         self.add_route_word()
-        self.robot()
+        self.merger_rebuild()
         doc = yaml.safe_load((self.repo / "triage-tree.yaml").read_text(encoding="utf-8"))
         self.assertEqual([b["id"] for b in doc["branches"]][0], "training_interrupt")
         self.assertIn("gpWordE2E", (self.repo / "triage-tree.yaml").read_text(encoding="utf-8"))
