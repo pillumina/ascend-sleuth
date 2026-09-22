@@ -1,0 +1,171 @@
+# ============================================================
+# EV-2026-144 —— 三处读数与事实不一致（第三轮）
+# 来源：用户要求审视产卡机制是否已稳定 → 跑体检（scripts/evolution_health.py）与两个读侧，
+#       发现三处不一致：积压分子有两份实现、判据文案教被工具标为假数据的命令、
+#       判据自建的仓外暂存件被当成"依赖蒸发"。
+# 脱敏：只含仓库内路径、脚本行号、PR 号与聚合计数，不含客户现场原文
+# ============================================================
+
+id: EV-2026-144
+layer: L2
+target_component: scripts/ev_proposal.py
+title: "三处读数与事实不一致：积压分子双实现（0 vs 8）、判据文案教错命令、自建暂存件被当依赖蒸发"
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: '2026-09-22'
+source_signals:
+  - signal: mechanism_gap
+    evidence: >-
+      同一时刻三个读数各自与事实不一致：
+      ①「待合入积压」有两个实现——`ev_proposal --waterline` 扫**全卡文本**（实测 0 张）、
+      `ev_board_data.collect_stats` 只扫**决策链结论**（实测 8 张），两处都自称是判据
+      `backlog_over` 的分子；技能让 agent 读前者、面板与体检显示后者，于是"该不该停产"
+      在两处会得到不同答案；
+      ②`proposals/gates.yaml:47` 的 backlog_over.action 仍教
+      `--mark-merged <PR号> --all-pending`——工具自己在 `mark_merged_from_prs` 的 docstring 里
+      标它是假数据，上一轮改了三处技能与文档**漏了这份判据文件**（当时的 grep 只扫
+      `.md/.py/.js`，没扫 `.yaml`）；
+      ③体检报 1 项越界「判据点到已蒸发的文件」（EV-2026-092），但该判据实跑 **PASS**
+      ——命令自己 `unlink` + `write_text` 建 `/tmp/ev-measure-logcheck.yaml` 再读它，
+      不是依赖蒸发。体检因此常年挂着一项无法处理的红，而它的处置建议会让人去改一条好判据。
+    trajectory:
+      - "python3 scripts/ev_board_data.py（backlog_count 8）与 python3 scripts/ev_proposal.py --waterline（0）"
+      - "python3 scripts/evolution_health.py（越界：判据点到已蒸发的文件 —— EV-2026-092）"
+      - "python3 scripts/ev_measure.py EV-2026-092 --run（PASS：records 2 / reload_ok True）"
+      - "proposals/gates.yaml:47（action 里的 --all-pending）"
+  - signal: user_feedback
+    evidence: >-
+      用户要求审视产卡机制是否已稳定、是否不需要其他优化。核查结论：骨架已稳（判据 9/9 条有评估、
+      140 张卡全过结构校验、0 僵尸卡、0 缺 measure、水位与回写已对齐），但上面三处读数不一致
+      属"确定性问题"，不是判断问题。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+hypothesis: >-
+  把积压分子归到一个实现（扫全卡文本，松匹配）、把判据文案的命令改成 `--mark-merged --from-prs`、
+  把"命令自建的仓外暂存件"从依赖识别里排除之后：三处读数与事实一致（依赖蒸发 0 张、
+  两个积压读数同为 0、判据动作不再教假数据命令），且不会把早已合入的老卡重新计入积压。
+predicted_effect:
+  metric: 三处读数的数值/文案与事实是否一致
+  from: >-
+    体检报 1 项越界（EV-2026-092 被判"依赖已蒸发"，实跑 PASS）；待合入积压两处不等
+    （`--waterline` 0 ／ 面板与体检 8）；`proposals/gates.yaml` 的处置动作教 `--all-pending`
+  to: >-
+    三处一致：依赖蒸发 0 张；积压两处同为 0（同一实现 `has_merge_pointer`）；判据动作教
+    `--mark-merged --from-prs` 并写明为什么不能用 `--all-pending`
+  measure:
+    command: |
+      python3 - <<'PY'
+      import pathlib, subprocess, sys
+      sys.path.insert(0, 'scripts')
+      import ev_measure as em, ev_board_data as EBD, ev_proposal as ep
+
+      checks = [
+          ['python3', 'scripts/verify_proposals.py', '--check'],
+          ['python3', 'scripts/build_docs_index.py', '--check'],
+          ['python3', 'scripts/render_review_summary.py', '--scan', 'docs/', 'README.md', 'CONTEXT.md'],
+          ['python3', '-m', 'unittest', 'discover', 'tests'],
+      ]
+      codes = [subprocess.run(c, capture_output=True, text=True) for c in checks]
+
+      root = pathlib.Path('.').resolve()
+      stale = [cid for cid, doc, _p in em.load_cards(root) if em.stale_deps(root, doc)]
+      stats = EBD.collect_stats(EBD.collect_ideas(root))
+      wl = [f.stem for f in sorted((root / 'proposals' / 'ideas').glob('EV-*.yaml'))
+            if (ep.load_yaml(f) or {}).get('status') == 'validated'
+            and not ep.has_merge_pointer(f.read_text(encoding='utf-8'))]
+      gates = pathlib.Path('proposals/gates.yaml').read_text(encoding='utf-8')
+      board_src = pathlib.Path('scripts/ev_board_data.py').read_text(encoding='utf-8')
+      prop_src = pathlib.Path('scripts/ev_proposal.py').read_text(encoding='utf-8')
+
+      single = ('def has_merge_pointer' in prop_src
+                and 'from ev_proposal import has_merge_pointer' in board_src)
+      agree = stats['backlog_count'] == len(wl)
+      # 判据文案：教的是新命令，且不再出现旧的"一个号刷全部"形态
+      gates_ok = ('--mark-merged --from-prs' in gates
+                  and 'mark-merged <PR号> --all-pending' not in gates)
+      print('gates_all_green', all(c.returncode == 0 for c in codes))
+      print('no_stale_dep', stale == [], stale)
+      print('readouts_agree', agree, stats['backlog_count'], len(wl))
+      print('gates_action_fixed', gates_ok)
+      print('single_predicate', single)
+      ok = (all(c.returncode == 0 for c in codes) and stale == [] and agree
+            and gates_ok and single)
+      print('measure_ok', ok)
+      raise SystemExit(0 if ok else 1)
+      PY
+    expect_exit: 0
+    expect_stdout: "measure_ok True"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改动前（主检出实测）：体检 1 项越界（EV-2026-092 依赖已蒸发）；`--waterline` 0 ／ 面板
+    backlog_count 8；`gates.yaml` 的 action 教 `--all-pending`；stale_deps 只看读取语境，
+    不区分"自建"与"依赖"。
+  success_criteria: >-
+    ① measure 命令 exit 0 且打印 `measure_ok True`（四道校验/测试全绿 + 依赖蒸发 0 张 +
+    两处积压读数相等 + 判据动作教新命令且不再出现旧的"一个号刷全部"形态 + 分子只有一个实现）；
+    ② 主检出上实跑：`stale_deps` 对全部 140 张卡返回空、`backlog_count` 与 `--waterline` 同为 0；
+    ③ 新增测试覆盖两个方向（自建暂存件不算依赖／同一仓外路径不写它仍算依赖；发过 issue 号的卡
+    不计积压、完全无出处的卡计 1 张）；④ 不跑检索 golden——改的是读侧分子与判据文案，不改候选选择。
+  rollback: 单次提交 revert（三个脚本 + 一份判据文件 + 测试；无数据迁移）。
+gate: >-
+  若将来有人给积压分子再写一份实现，或把"自建暂存件"排除放宽到仓内路径，会复现同一类漂移；
+  可机械检查的那条已经被测试钉住（两处读数相等、自建暂存件不算依赖），放宽时要改测试，得表态。
+risk: low
+principle_refs: [2, 8, 10]
+actual_cost:
+  tokens: 26000
+  source: estimate
+  note: >-
+    未接 tokenMeter 取数：体检 + 三个读侧逐一复核与定位（约 11k）、四处代码/文案改动 + 三项测试
+    （约 10k）、验证与建卡（约 5k）。含一次自我纠正：先把体检那项红读成"卡坏了"，实跑该卡判据
+    才发现是读侧过报。
+decisions:
+  - who: agent
+    when: 2026-09-22
+    type: proposal
+    conclusion: >-
+      产卡即执行。范围限定在三处"确定性问题"，不动任何阈值与判据强度：①积压分子归一到
+      `has_merge_pointer`（松匹配语义保持不变，收紧会把 32 张早已合入的老卡重新计入积压）；
+      ②判据文案的命令改对；③stale_deps 加"命令自建的仓外暂存件不算依赖"。**不做**：判据常驻
+      复跑（新卡当轮已跑，老卡腐烂由体检的指针检查覆盖，91 条命令常驻复跑成本大于收益）。
+  - who: agent
+    when: 2026-09-22
+    type: action
+    conclusion: >-
+      `scripts/ev_proposal.py`：`_has_any_ref` 提为公开的 `has_merge_pointer()`（口径的**唯一
+      实现**，docstring 写明松匹配的理由与已知假阳性方向），旧名保留为别名。
+      `scripts/ev_board_data.py`：`collect_ideas` 增 `has_pointer`（扫全卡文本，经 import 复用
+      同一实现，不再自己写一份正则）；`collect_stats` 的 backlog 改读它（原先只扫决策链结论）。
+      `scripts/ev_measure.py`：新增 `_SELF_WRITE_CUES` 与 `_outside_repo()`，`stale_deps` 对
+      "命令会写 + 路径在仓外"的暂存件不再计为依赖；docstring 补第三条排除的实测来历。
+      `proposals/gates.yaml`：`backlog_over` 的 action 改教 `python3 scripts/ev_proposal.py
+      --mark-merged --from-prs` 并写明为什么不能用 `--all-pending`；meaning 注明分子口径的唯一
+      实现处（上一轮改漏这一份，因为当时的 grep 只扫 .md/.py/.js）。
+      `tests/test_audit_readings.py`：新增三项——自建暂存件不算依赖（含"同一仓外路径不写它仍算
+      依赖"的对照组）、两处积压判定同源、完全无出处的卡计 1 张。
+  - who: agent
+    when: 2026-09-22
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS（四道校验/测试全绿 + 依赖蒸发 0 张 + 两处积压读数相等 0/0 + 判据动作教
+      新命令 + 分子只有一个实现）。成对对照：**旧代码**在删掉 `/tmp/ev-measure-logcheck.yaml`
+      后报"依赖已蒸发 1 张"，**新代码**在同一状态下报 0；board backlog_count 8 → 0，与
+      `--waterline` 一致。`python3 -m unittest discover tests` 139 项通过（新增 3 项）。
+      一次自我纠正记在案：体检那项红我先读成"卡的判据坏了"，实跑 `ev_measure.py EV-2026-092 --run`
+      是 PASS——是读侧过报，不是卡有问题。
+      门禁分级：改的是读侧分子与判据文案，不改变候选选择与路由，不跑检索 golden。
+  - who: agent
+    when: 2026-09-22
+    type: decision
+    conclusion: >-
+      采纳并标 validated。边界如实标注：①松匹配的已知假阳性方向（提过 issue 号的卡被当成已回写）
+      保留——收紧会让 32 张早已合入的老卡重新计入积压并把闸门引向"停产"，方向更坏；
+      ②"自建暂存件不算依赖"只对仓外路径生效，仓内缺失文件仍报（那才是真腐烂）；
+      ③判据常驻复跑不做，触发条件是出现"判据腐烂而无人发现"的实例再次发生（本次是第 1 次）；
+      ④两处结构性缺口不在本卡范围、也不由本卡缓解：弱证据 63/140（行为规则类改动判别力不可机械
+      度量，属如实退化）与现场反馈捕获为 0（"判断更准"轴没有分母）——后者要等真实回报，不是机制
+      能补的。

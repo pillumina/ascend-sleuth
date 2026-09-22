@@ -43,8 +43,8 @@ gates:
     op: ">"
     value: 20
     title: 已验证卡缺合入指针
-    meaning: "已验证但卡文本里没有任何合入指针（PR/issue 号）的卡数超过上限。批上限为 10 卡/PR，此阈值等于「已攒满两批仍未送审」。注意读数口径：它数的是**指针有没有回写**，不等于「改动有没有合入」——实测一批 7 张卡随同一个 PR 合入 main，7 张全部无指针；因此超限时的第一动作是回写指针把读数与事实对齐，回写后仍高的部分才是真未合入。"
-    action: "先回写指针：python3 scripts/ev_proposal.py --mark-merged <PR号> --all-pending（写进卡的 decisions，保留注释、可重复执行）；再跑一次本命令确认剩余量。剩余量仍超上限时按 orchestration §2.4 处置（停产新候选、先消化积压）。"
+    meaning: "已验证但卡文本里没有任何合入指针（PR/issue 号）的卡数超过上限。批上限为 10 卡/PR，此阈值等于「已攒满两批仍未送审」。注意读数口径：它数的是**指针有没有回写**，不等于「改动有没有合入」——实测一批 7 张卡随同一个 PR 合入 main，7 张全部无指针；因此超限时的第一动作是回写指针把读数与事实对齐，回写后仍高的部分才是真未合入。分子口径的**唯一实现**是 scripts/ev_proposal.py 的 has_merge_pointer()（扫全卡文本，`--waterline` 与该函数同源；面板与体检经 ev_board_data 也走它）——此前两处各写一份、日常读数不等（实测同一时刻 0 张 vs 8 张）。"
+    action: "先回写指针：python3 scripts/ev_proposal.py --mark-merged --from-prs（按已合入 PR 逐卡匹配、匹配不上的如实报出；写进卡的 decisions，保留注释、可重复执行）；再跑一次 python3 scripts/ev_proposal.py --waterline 确认剩余量。剩余量仍超上限时按 orchestration §2.4 处置（停产新候选、先消化积压）。不要用 --all-pending：它把同一个 PR 号写给所有待回写卡，混入旧批的卡就是假数据。"
 
   - id: measure_never_run
     dimension: runnable_never_measured

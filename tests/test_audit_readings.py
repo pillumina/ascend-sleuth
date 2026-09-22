@@ -161,6 +161,18 @@ class StaleMeasureDepTest(unittest.TestCase):
             em.stale_deps(self.root, self._card("python3 scripts/x.py traces/gone.md")),
             ["traces/gone.md"])
 
+    def test_self_created_outside_path_is_not_a_dependency(self):
+        """命令**自己会写**的仓外暂存件不算依赖（实测 EV-2026-092：判据跑起来 PASS，
+        却被报成"依赖已蒸发"，体检因此常年挂着一项无法处理的红）。"""
+        import ev_measure as em
+        cmd = ("python3 -c \"from pathlib import Path;p=Path('/tmp/check.yaml');"
+               "p.unlink(missing_ok=True);p.write_text('a');print(p.read_text())\"")
+        self.assertEqual(em.stale_deps(self.root, self._card(cmd)), [])
+        # 对照组：同一个仓外路径，命令不写它 → 仍然是依赖蒸发
+        self.assertEqual(
+            em.stale_deps(self.root, self._card("python3 -c \"print(open('/tmp/check.yaml').read())\"")),
+            ["/tmp/check.yaml"])
+
     def test_script_argument_path_is_a_dependency(self):
         import ev_measure as em
         self.assertEqual(
@@ -342,3 +354,66 @@ class S2SettleGatesTest(unittest.TestCase):
         text = (root / "knowledge" / "inference" / "x" / "TEST-1.yaml").read_text(encoding="utf-8")
         self.assertIn("self_consistent: 1", text)
         self.assertIn("consistent: 0", text)
+
+
+class BacklogPredicateTest(unittest.TestCase):
+    """「待合入积压」的分子只有一个口径。
+
+    为什么值得单测：它原先有两份实现——`ev_proposal --waterline` 扫全卡文本、
+    `ev_board_data.collect_stats` 只扫决策链结论。同一时刻两个读数不等（实测 0 张 vs 8 张），
+    而技能让 agent 读前者、面板与体检显示后者，两处都自称是判据 backlog_over 的分子。
+    读数不等不会崩，只会让"该不该停产"这个动作在两处得到不同答案。
+    """
+
+    CARD = """id: EV-2026-950
+layer: L2
+title: 示例
+status: validated
+authorization: review
+dimension: process
+created_at: 2026-09-22
+source_signals:
+  - signal: coverage_gap
+    evidence: "上游 issue #14363 复现"
+    trajectory: [t]
+hypothesis: h
+predicted_effect:
+  metric: m
+  from: a
+  to: b
+  measure: {command: "true", expect_exit: 0}
+validation: {method: scan_review, baseline: b, success_criteria: s, rollback: r}
+gate: {condition: c}
+risk: low
+principle_refs: [10]
+actual_cost: {tokens: 0, source: estimate, note: n}
+decisions:
+  - who: agent
+    when: 2026-09-22
+    type: proposal
+    conclusion: p
+"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / "proposals" / "ideas").mkdir(parents=True)
+        self.card = self.root / "proposals" / "ideas" / "EV-2026-950.yaml"
+        self.card.write_text(self.CARD, encoding="utf-8")
+
+    def test_board_and_waterline_share_the_predicate(self):
+        import ev_proposal as ep
+        text = self.card.read_text(encoding="utf-8")
+        ideas = ebd.collect_ideas(self.root)
+        card = [c for c in ideas if c.get("id") == "EV-2026-950"][0]
+        # 同一段文本，两处判定必须一致（issue 号也算指针：松匹配的已知方向）
+        self.assertEqual(card["has_pointer"], ep.has_merge_pointer(text))
+        stats = ebd.collect_stats(ideas)
+        self.assertEqual(stats["backlog_count"], 0)
+
+    def test_card_without_any_ref_counts_as_backlog(self):
+        self.card.write_text(self.CARD.replace("上游 issue #14363 复现", "复现"),
+                             encoding="utf-8")
+        stats = ebd.collect_stats(ebd.collect_ideas(self.root))
+        self.assertEqual(stats["backlog_count"], 1)

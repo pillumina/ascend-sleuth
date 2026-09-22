@@ -129,9 +129,28 @@ def _has_ref(text: str, pr):
     return bool(re.search(r"(?:PR|#)\s?#?" + re.escape(str(pr)) + r"\b", text))
 
 
-def _has_any_ref(text: str):
-    """卡文本里有没有任何合入指针（与 ev_board_data.extract_pr_refs 同一形态）。"""
-    return bool(re.search(r"(?:PR|#)\s?#?\d{2,6}", text))
+_MERGE_POINTER_RE = re.compile(r"(?:PR|#)\s?#?\d{2,6}")
+
+
+def has_merge_pointer(text: str) -> bool:
+    """卡文本里有没有任何 PR/issue 号——判据「待合入积压」分子的**唯一实现**。
+
+    为什么口径定义在这里，而不是各读侧各写一份：它原先有两份——`ev_proposal --waterline` 扫全卡
+    文本，`ev_board_data.collect_stats` 只扫决策链结论。于是同一时刻两个读数不等（实测 0 张 vs
+    8 张），而技能让 agent 读前一个、面板与体检显示后一个：同一件事两个数，且都自称是判据
+    `backlog_over` 的分子。口径只在这里定义一次，两边 import 它。
+
+    为什么松匹配（任意 PR/issue 号即算有指针）：指针的历史写法不止一种——正式的一条
+    （`合入指针回写：本卡随 PR #278 进入 main`）、结论里的散文（`改动随 PR #97 供人审`）、
+    以及正文提到的 issue 号。收紧到"只认正式形态"会把 32 张早已合入的老卡重新计进积压
+    （实测），把闸门引向"停产新候选"这个错动作；松匹配的代价是"提过 issue 号的卡被当成
+    已回写"，那个方向只让读数偏乐观，不触发错误动作。
+    """
+    return bool(_MERGE_POINTER_RE.search(str(text or "")))
+
+
+# 旧名保留：面板与既有脚本沿用它，行为与 has_merge_pointer 完全一致。
+_has_any_ref = has_merge_pointer
 
 
 def mark_merged(root: Path, pr, card_ids, all_pending: bool, dry_run: bool):

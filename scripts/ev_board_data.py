@@ -22,6 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _yaml import load_file   # noqa: E402  （解析后端单一事实源，快路径见 _yaml.py）
+from ev_proposal import has_merge_pointer   # noqa: E402  （积压分子的唯一实现，别在这里另写一份）
 
 
 def load_yaml(path):
@@ -486,6 +487,12 @@ def collect_ideas(root):
         decisions = d.get("decisions") or []
         # 决策链全文参与 PR 号提取（「随 PR #97 供人审」这类追溯指针只在结论里）
         blob = " ".join(str(x.get("conclusion") or "") for x in decisions if isinstance(x, dict))
+        # 合入指针判据扫**全卡文本**（口径与 --waterline 同源，见 has_merge_pointer 的 docstring）；
+        # 只扫决策链会让同一时刻的两个"待合入积压"读数不等。
+        try:
+            full_text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            full_text = ""
         validation = d.get("validation") or {}
         surface = derive_surface(d, aliases)
         dead_refs = scan_dead_refs(root, d)
@@ -532,6 +539,8 @@ def collect_ideas(root):
             "pr_refs": extract_pr_refs(blob),
             "supersedes": d.get("supersedes") or [],
             "superseded_by": d.get("superseded_by"),
+            # 合入指针（判据 backlog_over 的分子；口径与 --waterline 同源）
+            "has_pointer": has_merge_pointer(full_text),
             # 派生：面板"待办优先"与自审用
             "gaps": audit_gaps(d, days_open),
             # 派生（确定性）：触及面 + 依据字段强度 + 已消失的点名路径
@@ -654,9 +663,11 @@ def collect_stats(ideas):
     dead_cards = [(c.get("id"), c.get("dead_refs") or []) for c in ok if c.get("dead_refs")]
     dead_paths = sorted({p for _cid, ps in dead_cards for p in ps})
 
-    # ---- 待合入积压：已验证但决策链里没有合入指针（判据 backlog 的分子） ----
+    # ---- 待合入积压：已验证但卡文本里没有合入指针（判据 backlog 的分子） ----
+    # 口径来自 ev_proposal.has_merge_pointer（唯一实现，扫**全卡文本**）。此前这里只扫决策链结论，
+    # 与 `--waterline` 读数不等（实测同一时刻 8 张 vs 0 张），而两处都自称是 backlog_over 的分子。
     backlog = [c.get("id") for c in ok
-               if c.get("status") == "validated" and not c.get("pr_refs")]
+               if c.get("status") == "validated" and not c.get("has_pointer")]
 
     # ---- 验证证据强度：外部 ground truth 占比（体检器读数，不再是判据的分母/分子） ----
     # 口径来自仓库自己的"客观评分源优先"排序：golden / issue-replay 是**系统之外**的
