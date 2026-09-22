@@ -61,8 +61,10 @@ git worktree remove ../ascend-sleuth-s<session>
 | 冲突文件 | 动作 |
 |---|---|
 | `triage-tree.d/<族>.yaml`、`triage-tree.yaml` | 通常不会冲突（配了 `merge=union`）。若真出现冲突标记：把两份都留下、删掉三行标记，再跑一次聚合。 |
-| 索引分片 / 总表（嵌套结构，故意没配 union） | 重跑一条命令后 `git add`：`python3 scripts/build_index.py`。**不要逐行解**——解出来的既不是源也不是生成物。 |
+| 索引分片 / 总表（嵌套结构，故意没配 union） | **不要逐行解**（实测：那些冲突段是交错在条目块内部的，删标记会拼出非法 YAML）。正确动作是三行：`git checkout --theirs -- knowledge/_index.yaml knowledge/_index` → `python3 scripts/build_index.py` → `git add` 后提交。约 5 秒、无判断——两边都不接受，重生成一份对的。 |
 | case 本体 | 真正需要人判断的只剩这里（同一 case 两人改）——按内容合。 |
+
+**建议在平台上开启"合并前分支必须最新到主干"**（设置项名字各平台不同）：这样索引冲突会落在**提交者本地**——他有检出、能跑生成器；不开启的话，冲突会落到**合并者的网页冲突编辑器**上，而网页上跑不了生成器，只能先选一边落下、再去本地重生成一次（多一次往返，且主干会短暂红）。
 
 为什么这么做（可复跑的实验在 `tests/test_concurrent_submit.py`，`python3 tests/test_concurrent_submit.py`
 会打印一张对比表）：三人并发、同一个框架时，改前撞在总表 + 分片 + 路由单文件上，其中路由文件的冲突
