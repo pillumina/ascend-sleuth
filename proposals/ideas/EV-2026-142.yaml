@@ -63,8 +63,11 @@ predicted_effect:
     生成物索引）。内容动作在 5 处被要求或暗示产卡（强制产卡范围第①类、触发条件表的同族归纳
     与覆盖扩展两行、issue-ingest 收尾节、to-postmortem 收尾节）
   to: >-
-    归属表点名上述全部路径并各给一条纪律；内容动作在同样 5 处均标「不产卡」，只在信号连带
-    要求改行为面时产卡
+    分档按 fork 会不会写重切：只接收 ／ 只在本仓 ／ 两边都写（`triage-tree.yaml`、`references/`、
+    `metrics/gates.yaml`、`trace-status.yaml`）／ 每部署一份 ／ 生成物；上一版漏掉的 `dsh-plugins/`、
+    `tests/`、`trace-status.yaml`、`metrics/gates.yaml`、`.github/CODEOWNERS` 进表，并加一条
+    「表外路径按只接收处理」的默认规则；内容动作在 5 处均标「不产卡」，只在信号连带要求改行为面
+    时产卡
   measure:
     command: |
       python3 - <<'PY'
@@ -82,12 +85,25 @@ predicted_effect:
       ii = pathlib.Path('skills/issue-ingest/SKILL.md').read_text(encoding='utf-8')
       tp = pathlib.Path('skills/to-postmortem/SKILL.md').read_text(encoding='utf-8')
 
-      named = ['proposals/ideas/', 'ingest-state.json', 'reference-ingest-state.json',
-               'metrics/timeline.d/', 'eval/golden/', 'knowledge/_index.yaml']
-      ownership_named = all(p in gw for p in named)
-      four_classes = all(k in gw for k in ['上游独占', 'fork 独占', '每部署一份', '生成物'])
+      def seg(text, start, end):
+          return text[text.index(start):text.index(end)]
+
+      receive_seg = seg(gw, '**只接收**', '**只在本仓**')
+      shared_seg = seg(gw, '**两边都写**', '**每部署一份**')
+      deploy_seg = seg(gw, '**每部署一份**', '**生成物**')
+
+      shared_only = all(p in shared_seg for p in ['triage-tree.yaml', 'references/',
+                                                  'metrics/gates.yaml', 'trace-status.yaml'])
+      not_misplaced = ('triage-tree.yaml' not in receive_seg) and ('metrics/gates.yaml' not in receive_seg)
+      per_deploy = all(p in deploy_seg for p in ['metrics/timeline.d/', 'ingest-state.json',
+                                                 'reference-ingest-state.json', 'eval/scorecard.yaml',
+                                                 '.github/CODEOWNERS'])
+      gap_paths = all(p in gw for p in ['dsh-plugins/', 'tests/', 'trace-status.yaml',
+                                        'metrics/gates.yaml', '.github/CODEOWNERS'])
+      default_rule = '本节没列到的路径按只接收处理' in gw
+      mixed_note = '仍混装两边内容的文件' in gw
       no_local_cards = 'fork 侧不产 EV 卡' in gw
-      readme_synced = ('proposals/ideas/' in rd) and ('目录归属' in rd)
+      readme_synced = ('目录归属' in rd) and ('triage-tree.yaml' in rd)
       scope_three = ('范围限定为三类' in ec) and ('从数据推断' not in ec.split('范围限定为三类')[1][:400])
       content_exempt = '内容面产出不产卡' in ec
       rows_exempt = all('不产卡' in line for line in ec.splitlines()
@@ -95,11 +111,14 @@ predicted_effect:
       tails_exempt = ('内容动作直接执行、不产卡' in ii) and ('内容动作直接执行、不产卡' in tp)
 
       print('gates_all_green', all(c.returncode == 0 for c in codes))
-      print('ownership_named', ownership_named, 'four_classes', four_classes)
+      print('shared_two_way', shared_only, 'not_misplaced', not_misplaced)
+      print('per_deploy', per_deploy, 'gap_paths', gap_paths)
+      print('default_rule', default_rule, 'mixed_note', mixed_note)
       print('fork_no_local_cards', no_local_cards, 'readme_synced', readme_synced)
       print('scope_three', scope_three, 'content_exempt', content_exempt)
       print('signal_rows_exempt', rows_exempt, 'content_tails_exempt', tails_exempt)
-      ok = (all(c.returncode == 0 for c in codes) and ownership_named and four_classes
+      ok = (all(c.returncode == 0 for c in codes) and shared_only and not_misplaced
+            and per_deploy and gap_paths and default_rule and mixed_note
             and no_local_cards and readme_synced and scope_three and content_exempt
             and rows_exempt and tails_exempt)
       print('measure_ok', ok)
@@ -115,10 +134,11 @@ validation:
     的归纳」，触发条件表的同族归纳与覆盖扩展两行候选动作都是「产卡」；两个内容流程的收尾节
     写「agent 自动产 idea 卡」。
   success_criteria: >-
-    ① measure 命令 exit 0 且打印 `measure_ok True`（三道校验全绿 + 归属表点名 6 条关键路径 +
-    四类归属齐备 + README 同步 + 产卡范围收为三类且不再含「从数据推断」+ 信号表三行与两个
-    内容流程收尾节均标不产卡）；② CI 逐条复跑全绿；③ 不跑检索 golden——本轮改的是部署文档与
-    收尾协议文本，不改变候选选择与路由（门禁分级见 docs/guide/eval.md）。
+    ① measure 命令 exit 0 且打印 `measure_ok True`（三道校验全绿 + 四个共享路径落在「两边都写」
+    档且不在「只接收」档 + 「每部署一份」点名五个路径 + 上一版漏掉的五条路径已进表 + 表外默认
+    只接收规则在 + 混装文件一段在 + README 同步 + 产卡范围收为三类且不再含「从数据推断」+
+    信号表三行与两个内容流程收尾节均标不产卡）；② CI 逐条复跑全绿；③ 不跑检索 golden——本轮
+    改的是部署文档与收尾协议文本，不改变候选选择与路由（门禁分级见 docs/guide/eval.md）。
   rollback: 单次提交，`git revert` 回到改动前的文本（纯文本改动，无数据迁移与生成物依赖）。
 gate:
   condition: >-
@@ -127,11 +147,13 @@ gate:
 risk: low
 principle_refs: [2, 7, 10, 11]
 actual_cost:
-  tokens: 55000
+  tokens: 67000
   source: estimate
   note: >-
     未接 tokenMeter 取数：仓库勘查与冲突面定位（归属清单、卡号分配、共享文件、引文计数，约 25k）、
-    两个问题的评估与方案对比（约 10k）、五处文本改动（约 8k）、CI 复跑与建卡验证（约 12k）。
+    两个问题的评估与方案对比（约 10k）、五处文本改动（约 8k）、CI 复跑与建卡验证（约 12k）；
+    第二轮（用户 review 归属分档后重切）约 12k：清点顶层 tracked 路径、核对四个共享路径的实际写入者、
+    分档改写与卡上判据同步。
 decisions:
   - who: agent
     when: 2026-09-22
@@ -180,3 +202,38 @@ decisions:
       ②「不产卡」只针对内容动作，改行为面仍必须产卡（范围三类），防绕过的前置流程没有被削弱；
       ③fork 若要本地决策档案，本卡给的是「独立号段 + 该目录归 fork 独占」这一条最低要求，
       没有为它建目录与脚本支持——等真有这种部署再按闸门做，不为未发生的形态预建机制。
+  - who: agent
+    when: 2026-09-22
+    type: action
+    conclusion: >-
+      用户 review 归属分档后重切（第二轮）。原四类里三处分错、一片漏项：①`triage-tree.yaml`
+      被放进「上游独占」，而 fork 的路由必然按自己的知识面改它（同一格自己还写着「修改属高风险
+      变更」，前后打架）；②`references/` 被放进「fork 独占」，但它是公开方法论面，上游一直在加
+      词条，独占意味着 fork 收不到上游新词条、自己的沉淀也不回流；③`eval/golden/` 里混着上游的
+      构造示例与 fork 的真实夹具，两类方向相反；④漏项：`dsh-plugins/`、`tests/`、`trace-status.yaml`、
+      `metrics/gates.yaml`、`.github/CODEOWNERS` 都不在表内。
+      改法：档位判据由「谁写」改为「fork 会不会写」，四类重切为五档——只接收 ／ 只在本仓 ／
+      **两边都写**（新增，装 `triage-tree.yaml`、`references/`、`metrics/gates.yaml`、
+      `trace-status.yaml`，追加型文件两边都保留、键控结构按语义合）／ 每部署一份（补
+      `eval/scorecard.yaml`、`.github/CODEOWNERS`）／ 生成物；漏掉的路径按档归位；加一条默认规则
+      「本节没列到的路径按只接收处理」；加一段如实标注仍混装两边内容的三个文件（游标、评测账本、
+      指标期文件，根治要按来源拆文件，属机制改动，未做）。README 的框架式一行同步。
+      检查单由三条改四条，把「冲突应只出现在两边都写那四个路径」写成第一条可核对的动作。
+      未改：「fork 侧不产 EV 卡」一节与产卡范围（第一轮结论不变）；未新建脚本——表外默认规则与
+      检查单用现成 git 命令即可执行，不为它加一个长期维护的名字。
+  - who: agent
+    when: 2026-09-22
+    type: eval
+    conclusion: >-
+      重切后 measure 实跑 PASS（新断言：四个共享路径落在「两边都写」且不在「只接收」、每部署一份
+      五个路径齐、上一版漏掉的五条路径进表、表外默认规则在、混装一段在；原有八项断言保留）。
+      逐条 CI 复跑全绿，`render_review_summary.py --scan` 输出与改动前一致。
+  - who: agent
+    when: 2026-09-22
+    type: decision
+    conclusion: >-
+      采纳，随同一 PR 追加一个提交（未合并分支，不重写历史）。边界如实标注：①新增的「两边都写」
+      一档承认了冲突会发生，只规定处理动作，不声称能消除冲突；②`metrics/gates.yaml` 与
+      `trace-status.yaml` 归「两边都写」是判断，不是实测——若首个 fork 事实上不调阈值与词表，
+      它们应退回「只接收」，由首次同步演练的读数裁决；③混装文件的根治（按来源拆）没有做，
+      在文档里标为待做，触发条件是第二个部署真实摄取数据。
