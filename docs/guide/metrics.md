@@ -38,7 +38,7 @@
 | 来源 | 谁产出 | 指标 |
 |---|---|---|
 | 诊断侧 | `trace_metrics.py`（读 `traces/*.yaml`） | 命中率、误诊率、路由准确率、归因比、按类命中、置信度分布、trace 完整性、Tier 3、反馈捕获、reference 引用/消费点、流程加载与跟随 |
-| 结构侧 | `build_index.py` 头注 + `verify_references.py` | `case_total`、`reference_total`、`capacity_by_ns`（每格 `count/cap`） |
+| 结构侧 | `index_counts.py`（从 case 文件现算）+ `verify_references.py` | `case_total`、`reference_total`、`capacity_by_ns`（每格 `count/cap`） |
 | 内容流程侧 | `log_skill_exec.py` → `tail_exec_log.py --summary` | `content_flow_runs`、`evolve_check_runs`、`evolve_check_no_signal` |
 | 评测侧 | ixn / golden / S2 等按需 | `ixn_*`、`golden_suite`、S2 内容验证（口径见下） |
 
@@ -81,7 +81,7 @@ periods:
     source: "metrics_snapshot.py 组装（诊断侧+结构侧+内容流程侧）"
     sources:                        # 逐块出处（组装命令写入；手写快照可省）
       diagnose_side: "trace_metrics.py（traces/*.yaml ← 主检出，12 个 session）"
-      structural_side: "build_index.py 头注 + verify_references.py"
+      structural_side: "index_counts.py 现算 + verify_references.py"
       content_flow_side: "log_skill_exec.py → tail_exec_log.py"
     metrics:
       sessions_total: 12

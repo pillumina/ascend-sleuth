@@ -5,7 +5,7 @@
 #   `docs/guide/metrics.md` 写"所有指标由 trace_metrics.py 计算（单一数据源）"——**不成立**：
 #   timeline 里的指标实际来自四类来源：
 #     ① 诊断侧   `trace_metrics.py`（traces/*.yaml）
-#     ② 结构侧   `build_index.py` 头注（容量格子 / case 总数）+ `verify_references.py`（词条数）
+#     ② 结构侧   `index_counts.py` 现算（容量格子 / case 总数）+ `verify_references.py`（词条数）
 #     ③ 内容流程 `log_skill_exec.py` → `tail_exec_log.py --summary`（收尾次数 / 无信号次数）
 #     ④ 评测侧   ixn / golden / S2 等按需产出（本命令不臆造，缺就如实不写）
 #   周批流程第 1 步只跑 trace_metrics → ②③④ 全靠人手工搬运 → 实测结构指标 10 天没进快照
@@ -124,25 +124,22 @@ def collect_trace(root: Path):
 
 
 def collect_structural(root: Path):
-    """结构侧：容量格子 / case 总数（build_index 头注）+ 词条数（verify_references 的权威计数）。"""
+    """结构侧：容量格子 / case 总数（**现算**，见 index_counts）+ 词条数（verify_references）。
+
+    为什么不再读 `_index.yaml` 头注：那几个数字原先写在生成物头注里，是**共享热点**——
+    两人各改一个框架并发提交就会撞同一行、或写出漂移的数（根因见 scripts/index_counts.py 头注）。
+    数字改成现算之后，这里读的是 case 文件本身，没有会腐烂的副本。
+    """
     out = {"case_total": None, "reference_total": None, "capacity_by_ns": {}}
     notes = []
-    index_path = root / "knowledge" / "_index.yaml"
-    if index_path.exists():
-        text = index_path.read_text(encoding="utf-8")
-        m = re.search(r"case 总数：\s*(\d+)", text)
-        if m:
-            out["case_total"] = int(m.group(1))
-        else:
-            notes.append("_index.yaml 头注里没有 'case 总数'（格式变了？）")
-        try:
-            # 复用面板侧的解析实现（同一格式，避免第三份正则副本）
-            import ev_board_data
-            out["capacity_by_ns"] = ev_board_data.parse_index_header(text)
-        except Exception as e:
-            notes.append(f"容量头注解析失败：{e}")
-    else:
-        notes.append("knowledge/_index.yaml 不存在（先跑 build_index.py）")
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import index_counts
+        data = index_counts.counts(root)
+        out["case_total"] = data["total"]
+        out["capacity_by_ns"] = index_counts.capacity_by_ns(data)
+    except Exception as e:
+        notes.append(f"结构数字现算失败（{type(e).__name__}: {str(e)[:200]}）——本轮容量判据未被评估")
 
     rc, vout = _run(root, ["scripts/verify_references.py", "--check"])
     if rc == 0:
@@ -215,7 +212,7 @@ def build_metrics(root: Path):
         metrics["reference_total"] = structural["reference_total"]
     if structural["capacity_by_ns"]:
         metrics["capacity_by_ns"] = structural["capacity_by_ns"]
-    sources["structural_side"] = "build_index.py 头注（容量/case 总数）+ verify_references.py（词条数）"
+    sources["structural_side"] = "case 文件现算（scripts/index_counts.py：条数/逐格容量）+ verify_references.py（词条数）"
     missing.extend(s_notes)
 
     flow, flow_meta = collect_content_flow(root)

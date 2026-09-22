@@ -154,24 +154,27 @@ return {
       }
     }
 
-    // —— 索引头注解析：容量**逐格**（framework × category）+ 声明总数 ——
-    // 原先 loadHealth 把格子加总到 namespace 再比 /30，于是 vllm-ascend 显示 114/30，
-    // 读者推不出"interrupt 是唯一爆掉的格子"。判据（gates.yaml）逐格计，面板就必须逐格显。
-    function parseIdxHeader(text) {
-      const head = text.split(/\r?\n/).filter(l => l.startsWith('#')).join('\n')
-      const totalM = /case 总数：\s*(\d+)/.exec(head)
-      const genM = /生成日期：\s*(\d{4}-\d{2}-\d{2})/.exec(head)
-      const cells = []
-      const re = /^#\s*容量\(([^)]+)\):\s*(.+)$/gm
-      let m
-      while ((m = re.exec(head)) !== null) {
-        const ns = m[1].trim()
-        for (const part of m[2].split(',')) {
-          const cm = /^\s*([a-zA-Z_]+)\s*=\s*(\d+)\/(\d+)\s*$/.exec(part)
-          if (cm) cells.push({ namespace: ns, category: cm[1], count: Number(cm[2]), cap: Number(cm[3]) })
+    // —— 逐格容量与条数：**现算**（scripts/index_counts.py），不再解析索引头注 ——
+    //
+    // 为什么改：那几个数字原先写在生成物（knowledge/_index.yaml）头注里，是**共享热点**——
+    // 两人并发改不同框架时会撞同一段文本，或各自写出漂移的数（根因见 scripts/index_counts.py 头注）。
+    // 数字从生成物里拿掉之后，面板读的是 case 文件本身，没有会腐烂的第二份副本。
+    // 上一次的教训也在：loadHealth 曾把格子加总到 namespace 再比 /30，于是 vllm-ascend 显示 114/30，
+    // 读者推不出"interrupt 是唯一爆掉的格子"——判据逐格计，面板就必须逐格显。
+    // 索引条目数（生成物里真实列了几条）——与磁盘 case 文件数对照，索引陈旧/丢条目时立刻可见。
+    // 面板读的是索引，不是磁盘：两者不等就得说出来（这类"看到的不等于现实"是面板最容易骗人的地方）。
+    async function countIndexEntries(cwd) {
+      try {
+        const target = await fs.resolve('knowledge/_index.yaml', { cwd })
+        const text = await fs.readText(target)
+        let n = 0
+        for (const line of text.split(/\r?\n/)) {
+          if (/^- id:\s*\S/.test(line.trim())) n++
         }
+        return n
+      } catch (e) {
+        return null
       }
-      return { caseTotal: totalM ? Number(totalM[1]) : null, generatedAt: genM ? genM[1] : null, cells: cells }
     }
     // 磁盘上的 case 文件数——与索引头注对照，索引陈旧时立刻可见（面板读的是索引，不是磁盘）
     async function countCaseFiles(cwd) {
@@ -472,13 +475,12 @@ return {
           out.cases.total = total
           out.cases.lowConfidence = low
           out.cases.byCategory = catTotal
-          // 逐格容量（判据口径）：头注里的 count/cap 已带 cap，直接透传。
-          // 刻意**不**再给 namespace 加总值——判据逐格计，加总口径会让读者看不出是哪一格爆了。
-          const hdr = parseIdxHeader(text)
-          out.cases.byCell = hdr.cells
-          out.cases.indexGeneratedAt = hdr.generatedAt
-          // drift：索引头注声明的条数 vs 磁盘实际 case 文件数（面板读索引，索引陈了就报旧数）
-          out.cases.declaredTotal = hdr.caseTotal
+          // 逐格容量**不在这里**：判据逐格计，真值走 metrics_health 那条链（capacity_cells，
+          // 由 scripts/index_counts.py 现算）。这里曾顺手也调一次 index_counts 填 byCell/liveTotal，
+          // 但全仓没有读者、每次渲染多付约 1 秒，而且失败时只写了一个没人读的字段
+          // （countsError）——"统计读不到"在界面上长得和"本来就没数据"一样。删掉。
+          // drift：索引里**真实列出的条目数** vs 磁盘 case 文件数（面板读索引，索引丢了条目就报出来）
+          out.cases.declaredTotal = total
           out.cases.diskTotal = await countCaseFiles(cwd)
         } catch (e) {
           out.cases.error = String(e && e.message || e)
@@ -916,11 +918,7 @@ return {
       if (!res.ok) return res
       const v = res.verdict
       try {
-        const target = await fs.resolve('knowledge/_index.yaml', { cwd })
-        const text = await fs.readText(target)
-        const hdr = parseIdxHeader(text)
-        const disk = await countCaseFiles(cwd)
-        v.drift = { declared: hdr.caseTotal, disk: disk, generatedAt: hdr.generatedAt }
+        v.drift = { declared: await countIndexEntries(cwd), disk: await countCaseFiles(cwd) }
       } catch (e) {
         v.drift = { declared: null, disk: null, error: String(e && e.message || e) }
       }

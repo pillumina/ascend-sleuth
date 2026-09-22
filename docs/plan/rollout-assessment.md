@@ -85,7 +85,7 @@
 
 向团队交付时表述建议：
 
-> 机制已就绪：这套系统把"理论（四公理）→ 原则（十一）→ 实现（skill + CI + 校验）"的链走通了。先验知识（错误码/故障模式/工具/方法论/环境变量）支撑诊断的"日志在哪、码什么意思、故障怎么定位"前置层。case 层待积累（实时条数以 `knowledge/_index.yaml` 头注为准）：当前以 inference 场景为主，training 场景尚未完全覆盖，第一个团队的 training 诊断会触发"空库提示 / Tier 3 兜底"，这是设计预期，每次兜底后沉淀（`/skill:to-postmortem`、`/skill:to-reference`），知识库随使用变厚。
+> 机制已就绪：这套系统把"理论（四公理）→ 原则（十一）→ 实现（skill + CI + 校验）"的链走通了。先验知识（错误码/故障模式/工具/方法论/环境变量）支撑诊断的"日志在哪、码什么意思、故障怎么定位"前置层。case 层待积累（实时条数现算：`python3 scripts/index_counts.py`）：当前以 inference 场景为主，training 场景尚未完全覆盖，第一个团队的 training 诊断会触发"空库提示 / Tier 3 兜底"，这是设计预期，每次兜底后沉淀（`/skill:to-postmortem`、`/skill:to-reference`），知识库随使用变厚。
 
 ## 重估条件
 

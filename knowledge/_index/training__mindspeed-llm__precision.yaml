@@ -1,7 +1,8 @@
 # GENERATED FILE —— 分片（knowledge/_index.yaml 的 training/mindspeed-llm__precision 子集），不要手改。
-# 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。
+# 随 PR 提交（改 case 的人跑 `python3 scripts/build_index.py`）；
+# 本目录配了 merge=union：两人同一天改同一格时，两边的条目都会留住，不产生冲突标记。
 # 阶段一加载协议（F1 EV-2026-022 + F4 EV-2026-025）：category 已定时 diagnose 只读命中 (namespace×category) 的类分片，不读整库总表。
-# 本分片：training/mindspeed-llm__precision（4 条 case）
+# 本分片：training/mindspeed-llm__precision
 namespaces:
   training/mindspeed-llm__precision:
     precision:

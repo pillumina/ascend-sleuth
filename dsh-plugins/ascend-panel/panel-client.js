@@ -1336,12 +1336,22 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const c = health.cases || {}
       const r = health.references || {}
       const caseRows = []
-      if (c.total) {
+      // 索引头注里不再写日期与条数（数字一进 git 就会在并发合并时撞行/漂移，改成现算：
+      // scripts/index_counts.py）。所以这里不再有"索引生成于 X"可显；改显**索引条目数 vs 磁盘**，
+      // 两者不等才是真要处理的事（索引丢了条目 → 跑 build_index.py）。
+      if (c.error) {
+        // 用 total（不是 value）走"带结构"那条渲染分支：MetricRow 只在带 total/node 时才渲染 sub，
+        // 用 value 的话原因会被静静丢掉——那正好又是"读不到和少一块长得一样"。
+        caseRows.push(React.createElement(MetricRow, {
+          key: 'cerr', label: '知识库统计', total: '读不到', warn: true,
+          sub: '原因：' + String(c.error) + ' · 手工复现：python3 scripts/index_counts.py',
+        }))
+      } else if (c.total) {
         const drift = (typeof c.diskTotal === 'number' && typeof c.declaredTotal === 'number') ? c.diskTotal - c.declaredTotal : 0
         caseRows.push(React.createElement(MetricRow, {
           key: 'ct', label: 'case 总数', value: c.total,
-          sub: (c.indexGeneratedAt ? '索引生成于 ' + c.indexGeneratedAt : '索引无生成日期')
-            + (drift ? ' · 磁盘 ' + c.diskTotal + ' 条，索引落后 ' + drift + ' 条 → 跑 build_index.py' : ''),
+          sub: '磁盘 ' + c.diskTotal + ' 条'
+            + (drift ? '，索引落后 ' + drift + ' 条 → 跑 build_index.py' : '，索引与磁盘一致'),
         }))
       }
       if (c.lowConfidence) caseRows.push(React.createElement(MetricRow, { key: 'lc', label: '低置信占比（评分 <0.5）', value: c.lowConfidence + ' / ' + c.total + ' (' + pct(c.lowConfidence, c.total) + ')', warn: (c.lowConfidence / c.total) > 0.4 }))

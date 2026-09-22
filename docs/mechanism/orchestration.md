@@ -171,7 +171,7 @@ agent 执行自演进前必须加载的**系统运行状态页**（替代每轮�
 ```
 proposals/sessions/<SESSION-ID>.context.yaml    # 会话级快照（运行时状态，gitignore）
   每会话开头由观测 agent 生成（~2K token 内）：
-  - 当前 KB 规模（_index 头注）与覆盖缺口
+  - 当前 KB 规模（`python3 scripts/index_counts.py`）与覆盖缺口
   - 处于观察窗/实验期的组件与卡（谁在动、别冲突）
   - 最近 N 轮会话结论（采纳/回滚/稳态标记）
   - 当前授权白名单（哪些类目 auto 可用）

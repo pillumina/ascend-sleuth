@@ -1,0 +1,12 @@
+# 兜底（症状无法分类时只查 common/）
+# 本文件是 Tier 1 路由数据的一族（分支 id: uncategorized）；改词只改这里，不要改 triage-tree.yaml。
+# 聚合：python3 scripts/build_triage_tree.py（生成 triage-tree.yaml；--check 校验一致）。
+# 合并：本目录在 .gitattributes 里配了 merge=union——两人同一天给同一族加词会自动都留住（行级并集），
+#       无需人工判断留哪份；重复行由聚合器报出来，删掉其中一行即可。
+
+branches:
+  - id: uncategorized
+    category: null
+    symptoms: []
+    search_namespaces: [common/]
+    fallback: Tier 3

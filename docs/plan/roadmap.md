@@ -98,7 +98,7 @@
 - [ ] 分支保护与 CODEOWNERS 硬门生效（M1）
 - [ ] 指标双周节奏建立（O1）
 
-> 现状注：① case 总数已远超 20 ✓（实时数以 `knowledge/_index.yaml` 头注为准）；② W36/37 多轮 issue-ingest → to-postmortem → groom 转正已跑通 ✓；④ 指标行 W35–W37 已按批回填（live / replay / 容量），双周节奏待更长观察窗确认；**剩余阻塞 = ③ M1（CODEOWNERS / 分支保护），依赖下方人事决策**——建议季度校准将出口判据收敛为「M1 + 人事决策落地」，避免已满足的数据项长期悬空。
+> 现状注：① case 总数已远超 20 ✓（实时数现算：`python3 scripts/index_counts.py`）；② W36/37 多轮 issue-ingest → to-postmortem → groom 转正已跑通 ✓；④ 指标行 W35–W37 已按批回填（live / replay / 容量），双周节奏待更长观察窗确认；**剩余阻塞 = ③ M1（CODEOWNERS / 分支保护），依赖下方人事决策**——建议季度校准将出口判据收敛为「M1 + 人事决策落地」，避免已满足的数据项长期悬空。
 
 **Phase 1 · v1.5 池**：各事项由自身闸门独立解锁，无统一开始时间。**开放中**：E1（事件）、E2（trace ≥20；检索层前置通道已启动：.s2-replay/arena/e2-candidates.md，EV-2026-019/020）、M2（fixture ≥5——golden 已 24 条，与 arena golden 无回归共用 replay 工具链）、O2、A1、A4、M3、M4、O4、O5、P2，及 v1.5 登记行 O6、O7（此前漏列于池清单；闸门均已开——真实诊断与 live 指标期已积累）。**落地/完成即移出池**：M5（EV-2026-028，观察窗中）、E8、O8（首级）——见完成账本；A2 的 F1–F5 子流已落地，A2 整体转观察窗。建议顺序：先 E1/M2（学习与安全网），后 A2（统一口径复测后再拆）。
 

@@ -950,10 +950,11 @@ print(json.dumps({
   })())
 
   // —— drift：面板读的是生成物索引，必须能与磁盘对照 ——
+  // 数的是**索引里真实列出的条目**（不是头注里的一个数字）：头注那几个数已经拿掉了——它们进 git
+  // 就会在两人并发合并时撞行或漂移（现算：scripts/index_counts.py）。数条目反而更准：
+  // 索引丢了一条，这里就少一条。
   const idxText = fs.readFileSync(path.join(repo, 'knowledge/_index.yaml'), 'utf8')
-  // 不能带 '#' 前缀锚：真实头注是「生成日期：2026-09-10    case 总数：158」——'#' 与 'case'
-  // 之间隔着日期，带 '#' 的正则永远匹配不到（实测：这条断言曾算出 NaN）
-  const declared = Number((/case 总数：\s*(\d+)/.exec(idxText) || [])[1])
+  const declared = idxText.split(/\r?\n/).filter(l => /^- id:\s*\S/.test(l.trim())).length
   const diskCount = JSON.parse(pyRun(['-c', `
 import json, pathlib
 n = 0
@@ -963,17 +964,30 @@ for p in pathlib.Path('knowledge').rglob('*.yaml'):
     n += 1
 print(json.dumps(n))
 `], { cwd: repo, env: PY_ENV }).toString())
-  expect('索引头注声明条数可解析（' + declared + '）', Number.isFinite(declared) && declared > 0)
+  expect('索引里列出的条目数可数（' + declared + '）', Number.isFinite(declared) && declared > 0)
   expect('磁盘 case 文件数可扫描（' + diskCount + '）', diskCount > 0)
 
   // —— 渲染：判决条 / 不可解读 / 容量台账 ——
   const healthCases = {
     total: declared, lowConfidence: 12, byCategory: { interrupt: 30, performance: 10, precision: 12 },
-    byCell: cells.slice(0, 4), indexGeneratedAt: '2026-09-10', declaredTotal: declared, diskTotal: diskCount,
+    declaredTotal: declared, diskTotal: diskCount,
   }
+  // 统计读不到时必须**说出来**（面板最容易骗人的地方是"看到的不等于现实"）。
+  // 形状取 host 的真实产出：`loadHealth` 的外层 catch 写 `cases.error`（曾经的 countsError
+  // 是另一个没人读的字段，已删——断言喂不存在的形状就是假绿，这次修的就是那件事）。
+  const healthErr = { cases: { error: '统计读取失败（演练）' }, references: {} }
+  const ascErrHealth = await renderAsync(ascSrc, { sessionId: 'sess-1' }, (method, args) => {
+    if (method === 'ascend-kb-health') return { ok: true, ...healthErr }
+    if (method === 'ascend-metrics-verdict') return { ok: true, verdict: Object.assign({}, verdict, { drift: { declared: declared, disk: diskCount } }) }
+    return ascHost(method, args)
+  })
+  expect('统计读不到时面板说出来（不是少一块）',
+    ascErrHealth.text.includes('读不到') && ascErrHealth.text.includes('统计读取失败（演练）'),
+    ascErrHealth.text.slice(0, 200))
+
   const hostWithVerdict = (method, args) => {
     if (method === 'ascend-metrics-verdict') return { ok: true, verdict: Object.assign({}, verdict, {
-      drift: { declared: declared, disk: diskCount, generatedAt: '2026-09-10' },
+      drift: { declared: declared, disk: diskCount },
       // 三态取真实体检的输出（真实数据是 violations/exit 1）；drift 由 host 现算，这里补上
       check_verdict: verdict.check_verdict || 'violations',
       coverage: verdict.coverage || { gates_total: 3, gates_evaluated: 3 },

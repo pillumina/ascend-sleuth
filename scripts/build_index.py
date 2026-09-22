@@ -7,9 +7,22 @@
 #     的最小分片（总表 + ns 分片 + 类分片均由本脚本生成，见 render_shard/render）
 #   - 每条 case 记 content hash，--check 校验新鲜度（groom 每次跑，可挂 CI）
 #
+# 一致性门是**覆盖检查**，不是逐字节相同（2026-09-22；起因：并发提交时生成物天天撞）：
+#   `--check`     每条 case 的索引行都在（分片与总表）、且与 case 内容逐字段一致；
+#   `--canonical` 附带「与重新生成一遍逐字节相同」的自检——**不作门**，只在归一化后确认用。
+#   为什么门不能是逐字节：本文件与分片随 PR 提交，两个人并发时文件会以「内容齐全、顺序不同」
+#   的形态合到一起，那是**对的**；逐字节把它判红，就逼人再跑一遍收尾命令，白拿 union 的收益。
+#   头注不含数字（条数 / 容量 / 日期）：数字进 git 就会在并发合并时撞行、或漂移成错的数。
+#   要数字现算：`python3 scripts/index_counts.py`（面板与体检脚本走同一条路径）。
+#
+# 索引**故意不配 merge=union**：它是嵌套结构（namespaces → ns → category → 条目），
+# union 是行级文本合并，两人在同一格各加一条时两段插入会被拼成不合法的 YAML（实测 parser 报错）。
+# 所以同一个格子的并发仍会撞一次，解决动作是重跑本脚本（机械、无判断）；不同格子不碰同一个文件。
+#
 # 用法：
-#   python3 scripts/build_index.py           # 重新生成 knowledge/_index.yaml
-#   python3 scripts/build_index.py --check   # 只校验新鲜度，过期则 exit 1
+#   python3 scripts/build_index.py              # 重新生成总表 + 全部分片（改动后跑它，两者都提交）
+#   python3 scripts/build_index.py --check      # 门：覆盖检查（有问题 exit 1，报错给重跑命令）
+#   python3 scripts/build_index.py --check --canonical   # 附带逐字节自检（归一化后确认用）
 #
 # 依赖：PyYAML（pip install pyyaml）。_archive/ 下的退休 case 不进活跃索引
 # （复活检查由 groom 直接读目录完成）。
@@ -18,7 +31,6 @@ import argparse
 import hashlib
 import re
 import sys
-from datetime import date
 from pathlib import Path
 
 from _lexical import tokens_of
@@ -192,9 +204,10 @@ def render_shard(ns, cells) -> str:
     )
     header = "\n".join([
         "# GENERATED FILE —— 分片（knowledge/_index.yaml 的 " + ns + " 子集），不要手改。",
-        "# 由 scripts/build_index.py 生成；`--check` 校验新鲜度（groom/CI）。",
+        "# 随 PR 提交（改 case 的人跑 `python3 scripts/build_index.py`）；",
+        "# 本目录配了 merge=union：两人同一天改同一格时，两边的条目都会留住，不产生冲突标记。",
         proto,
-        f"# 本分片：{ns}（{n} 条 case）",
+        "# 本分片：" + ns,
         "",
     ])
     body = yaml.safe_dump(
@@ -216,37 +229,18 @@ def shard_dirty(root: Path, ns, cells) -> list:
 
 
 def render(namespaces) -> str:
-    n = sum(len(c) for cells in namespaces.values() for c in cells.values())
-    cell_counts = {
-        ns: {cat: len(c) for cat, c in cells.items()}
-        for ns, cells in sorted(namespaces.items())
-    }
-    # 容量行按"工作负载层"折叠展示（与 collect() 的 inference 折叠对称，2026-08-31 修复）：
-    #   - inference/vllm-ascend/interrupt → 容量(inference/vllm-ascend): interrupt=N/30, ...
-    #   - training/mindspeed-llm/interrupt → 容量(training/mindspeed-llm): interrupt=N/30, precision=M/30
-    # 原因：头注是给人/面板看的展示层，namespace 里重复 category（.../interrupt: interrupt=11/30）
-    # 会让面板渲染出重复标签；索引 body 的 ns 保持三级（diagnose 路由需要），只折叠头注。
-    workload_counts = {}
-    for ns, cells in cell_counts.items():
-        parts = ns.split("/")
-        wl = "/".join(parts[:2]) if (parts[0] == "training" and len(parts) >= 3) else ns
-        merged = workload_counts.setdefault(wl, {})
-        for cat, cnt in cells.items():
-            merged[cat] = merged.get(cat, 0) + cnt
-    cap_lines = "\n".join(
-        f"#   容量({ns}): {', '.join(f'{cat}={cnt}/{SOFT_CAP}' for cat, cnt in cells.items())}"
-        for ns, cells in sorted(workload_counts.items())
-    )
     header = "\n".join([
         "# GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。",
-        "# case 变更后重新生成并提交；`build_index.py --check` 校验新鲜度（groom/CI）。",
-        "# 阶段一加载协议：本文件是总表（容量/头注视图 + 兜底）；diagnose 只读命中的最小分片",
+        "# 随 PR 提交（谁都能改到它，但本文件配了 merge=union：两边新增的条目都会留住，不产生冲突标记）。",
+        "# 阶段一加载协议：本文件是总表（兜底 + 跨库比对）；diagnose 只读命中的最小分片",
         "# （knowledge/_index/<ns>__<category>.yaml；category 未定回退 <ns>.yaml），候选 ≤5 过滤后",
         "# 按 file 字段定位做阶段二全量加载。",
-        "# 容量治理（ADR-0004）：cap 按 (framework × category) 格子计；soft_cap 触发拆分评估，",
-        "# 健康指标（候选溢出率/重复率/维护时长）恶化或超 hard_cap 强制拆分。",
-        f"# 生成日期：{date.today().isoformat()}    case 总数：{n}",
-        cap_lines,
+        "# 本文件**不写数字**（条数 / 容量 / 日期）：数字一进 git，两人并发合并时要么撞同一行、",
+        "# 要么漂移成错的数。要看数字就现算：`python3 scripts/index_counts.py`",
+        "# （容量治理的格子口径见该脚本与 docs/adr/0004）。",
+        "# 一致性门是**覆盖检查**（每条 case 的索引行都在、且与 case 内容对得上），不是逐字节相同——",
+        "# 逐字节的门会让 union 合并出来的、内容正确的文件变红。要归一化就重跑一次生成器。",
+        "# `--canonical` 是那个「重跑后应当逐字节相同」的自检，供收尾/排查用，不作门。",
         "",
     ])
     body = yaml.safe_dump(
@@ -257,58 +251,206 @@ def render(namespaces) -> str:
 
 
 def stale_entries(root: Path, namespaces):
-    """当前文件 hash ≠ 索引记录 → 过期。返回过期列表；索引不存在返回 None。"""
-    idx_path = root / "knowledge" / "_index.yaml"
-    if not idx_path.exists():
+    """兼容薄壳：只取 hash 层的过期（[(ns, id, file)]）。新代码用 coverage_problems。"""
+    problems = coverage_problems(root, namespaces)
+    if problems is None:
         return None
-    idx = yaml.safe_load(idx_path.read_text(encoding="utf-8")) or {}
-    recorded = {}
-    for cells in (idx.get("namespaces") or {}).values():
+    out = []
+    for p in problems:
+        if "过期" in p or "库里没有" in p or "不可读" in p:
+            out.append(("-", p.split("：", 1)[-1].split("（")[0], p))
+    return out
+
+
+def shard_rows(root: Path):
+    """已提交分片里的 {case id: 索引行} → (rows, broken)。
+
+    broken 收集两类"不能挑一份信"的情况：① 分片里有 git 冲突标记（不该出现——本目录配了
+    union 合并）；② 同一条 case 在两片里内容不同（说明有一片没重建）。
+    """
+    rows, broken = {}, []
+    shard_dir = root / "knowledge" / "_index"
+    for p in sorted(shard_dir.glob("*.yaml")):
+        raw = p.read_text(encoding="utf-8")
+        if any(m in raw for m in ("<<<<<<<", ">>>>>>>")):
+            broken.append(f"{p.name}: 有 git 冲突标记——重跑 `python3 scripts/build_index.py`（分片是生成物，不必手判留哪份）")
+            continue
+        try:
+            doc = yaml.safe_load(raw) or {}
+        except Exception as e:
+            broken.append(f"{p.name}: YAML 解析失败（{e}）——重跑 `python3 scripts/build_index.py`")
+            continue
+        for cells in (doc.get("namespaces") or {}).values():
+            for cases in cells.values():
+                for c in cases or []:
+                    if not isinstance(c, dict) or not c.get("id"):
+                        continue
+                    cid = c["id"]
+                    if cid in rows and rows[cid] != c:
+                        broken.append(f"{p.name}: {cid} 的索引行与别的分片不一致——有分片没重建，重跑 `python3 scripts/build_index.py`")
+                    rows[cid] = c
+    return rows, broken
+
+
+def shard_hashes(root: Path):
+    """{case id: hash}（旧接口，兼容既有测试/调用）。"""
+    rows, broken = shard_rows(root)
+    return {cid: (row or {}).get("hash") for cid, row in rows.items()}, broken
+
+
+def duplicate_ids(root: Path):
+    """(文件名, id, 次数)：同一条 case 在一个索引文件里出现多次。
+
+    为什么单列：行级合并/重复 rebase 会把同一段**原样保留两份**（内容完全相同 → git 不报冲突，
+    hash 与行比对也一致），只按 id 建字典的话第二份被静静吃掉——文件里那条重复就一直留着。
+    """
+    out = []
+    for p in sorted([root / "knowledge" / "_index.yaml"] + list((root / "knowledge" / "_index").glob("*.yaml"))):
+        if not p.exists():
+            continue
+        seen = {}
+        try:
+            # 条目是缩进的（总表里还多一层），所以不能用 ^- id:
+            for cid in re.findall(r"^\s*- id:\s*(\S+)", p.read_text(encoding="utf-8"), re.M):
+                seen[cid] = seen.get(cid, 0) + 1
+        except Exception:
+            continue
+        for cid, n in sorted(seen.items()):
+            if n > 1:
+                out.append((p.name, cid, n))
+    return out
+
+
+def _rows_of(path: Path):
+    """一个索引文件里的 {case id: 索引行}（总表与分片同构）。读不动就抛——调用侧给可执行的话。"""
+    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    rows = {}
+    for cells in (doc.get("namespaces") or {}).values():
         for cases in cells.values():
-            for c in cases:
-                recorded[c.get("id")] = c.get("hash")
-    stale = []
+            for c in cases or []:
+                if isinstance(c, dict) and c.get("id"):
+                    rows[c["id"]] = c
+    return rows
+
+
+def coverage_problems(root: Path, namespaces):
+    """**覆盖检查**（这是门）：分片与总表是否都收全了 case，且索引行与 case 内容一致。
+
+    为什么门不是"逐字节和重建结果相同"：本目录配了 merge=union——两人同一天改同一格时，
+    两边新增的条目都会留在文件里，那份文件**内容是对的**（只是顺序可能与重新生成不同）。
+    逐字节的门会把这种正确的文件判红，于是又逼人跑一遍收尾命令，等于把 union 换来的收益还回去。
+    所以门只问三件事：每条 case 的索引行在不在、对不对得上、有没有多余的旧条目。
+    要归一化（顺序/注释回到生成器口径）随时跑一次 `python3 scripts/build_index.py`，那是可选的。
+    """
+    shard_dir = root / "knowledge" / "_index"
+    if not shard_dir.is_dir():
+        return None
+    problems = []
+    rows, broken = shard_rows(root)
+    problems += broken
+    dup = duplicate_ids(root)
+    for name, cid, n in dup:
+        problems.append(f"{name} 里 {cid} 出现 {n} 次（重复条目）——重跑 `python3 scripts/build_index.py`")
+    expected = {}
     for ns, cells in namespaces.items():
-        for cases in cells.values():
+        for cat, cases in cells.items():
             for c in cases:
-                if recorded.get(c["id"]) != c["hash"]:
-                    stale.append((ns, c["id"], c["file"]))
-    for cid in set(recorded) - {c["id"] for cells in namespaces.values() for cases in cells.values() for c in cases}:
-        stale.append(("-", cid, "(索引里有、库里没有)"))
-    return stale
+                expected[c["id"]] = (f"{ns}__{cat}", c)
+    for cid, (cell, want) in sorted(expected.items()):
+        got = rows.get(cid)
+        if got is None:
+            problems.append(f"分片缺条目：{cid}（{want['file']}，应在 {cell}）——跑 `python3 scripts/build_index.py`")
+        elif got.get("hash") != want["hash"]:
+            problems.append(f"分片条目过期：{cid}——case 内容变了没重建，跑 `python3 scripts/build_index.py`")
+        elif got != want:
+            problems.append(f"分片条目与 case 内容不一致：{cid}——索引行被手改过？重跑 `python3 scripts/build_index.py`")
+    for cid in sorted(set(rows) - set(expected)):
+        problems.append(f"分片里有、库里没有：{cid}——case 被删/移走了没重建，跑 `python3 scripts/build_index.py`")
+    # 分片文件本身的在场与回收：少一片 = 阶段一在某条路径上读不到（退化），多一片 = 退休格子没清
+    want_files = set()
+    for ns_name, cells in namespaces.items():
+        want_files.add(shard_slug(ns_name))
+        want_files.update(shard_slug(f"{ns_name}__{cat}") for cat in cells)
+    have_files = {p.name for p in shard_dir.glob("*.yaml")}
+    for name in sorted(want_files - have_files):
+        problems.append(f"分片缺失：knowledge/_index/{name}——跑 `python3 scripts/build_index.py`")
+    for name in sorted(have_files - want_files):
+        problems.append(f"多余分片（格子已不存在）：knowledge/_index/{name}——跑 `python3 scripts/build_index.py` 回收")
+
+    master = root / "knowledge" / "_index.yaml"
+    if not master.exists():
+        problems.append("总表不存在（knowledge/_index.yaml）——跑 `python3 scripts/build_index.py`")
+    else:
+        try:
+            mrows = _rows_of(master)
+        except Exception as e:
+            problems.append(f"总表 YAML 读不动（{type(e).__name__}：{str(e)[:80]}）——"
+                            "多半是合并把嵌套结构拼坏了，重跑 `python3 scripts/build_index.py` 归一化")
+            mrows = {}
+        for cid, (_cell, want) in sorted(expected.items()):
+            got = mrows.get(cid)
+            if got is None:
+                problems.append(f"总表缺条目：{cid}——跑 `python3 scripts/build_index.py`（union 合并偶尔会丢一格）")
+            elif got.get("hash") != want["hash"] or got != want:
+                problems.append(f"总表条目与 case 内容不一致：{cid}——重跑 `python3 scripts/build_index.py`")
+        for cid in sorted(set(mrows) - set(expected)):
+            problems.append(f"总表里有、库里没有：{cid}——重跑 `python3 scripts/build_index.py`")
+    return problems
+
+
+def canonical_dirty(root: Path, namespaces):
+    """逐字节自检（`--canonical`，不作门）：分片与总表是否与"重新生成一遍"完全相同。
+
+    用途是收尾/排查——union 合并后文件通常是"内容对、顺序不标准"，跑一次生成器即归一化，
+    这条自检用来确认那一刻确实归位了。**不作 CI 门**：那会把正确的合并结果判红。
+    """
+    dirty = []
+    out = root / "knowledge" / "_index.yaml"
+    if not out.exists() or out.read_text(encoding="utf-8") != render(namespaces):
+        dirty.append("knowledge/_index.yaml")
+    for nsk, cells in namespaces.items():
+        for key, payload in [(nsk, cells)] + [(f"{nsk}__{cat}", {cat: cases})
+                                              for cat, cases in cells.items()]:
+            p = shard_path(root, key)
+            if not p.exists() or p.read_text(encoding="utf-8") != render_shard(key, payload):
+                dirty.append(f"knowledge/_index/{shard_slug(key)}")
+    return dirty
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--check", action="store_true", help="只校验新鲜度，不写文件")
+    ap.add_argument("--check", action="store_true",
+                    help="覆盖检查（门）：每条 case 的索引行都在分片与总表里且与内容一致")
+    ap.add_argument("--canonical", action="store_true",
+                    help="附加逐字节自检（不作门）：确认生成物与「重新生成一遍」完全相同")
     ap.add_argument("--root", default=None, help="仓库根目录（默认：脚本上两级）")
     args = ap.parse_args()
     root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[1]
 
     ns = collect(root)
     if args.check:
-        stale = stale_entries(root, ns)
-        if stale is None:
-            print("索引不存在 —— 先运行 scripts/build_index.py 生成")
+        problems = coverage_problems(root, ns)
+        if problems is None:
+            print("分片目录不存在（knowledge/_index/）——先运行 scripts/build_index.py 生成")
             sys.exit(1)
-        if stale:
-            for s in stale:
-                print(f"STALE: {s[0]} / {s[1]} ({s[2]})")
-            print(f"\n{len(stale)} 条过期。运行 `python3 scripts/build_index.py` 重新生成后提交。")
+        if problems:
+            for p in problems:
+                print(f"索引问题：{p}")
+            print(f"\n{len(problems)} 处。生成物（分片与总表）随 PR 提交，跑一次重建即可：")
+            print("  python3 scripts/build_index.py")
             sys.exit(1)
+        if args.canonical:
+            dirty = canonical_dirty(root, ns)
+            if dirty:
+                print("逐字节自检：以下生成物与「重新生成一遍」不同（内容已覆盖全部 case，只是顺序/注释未归一）：")
+                for d in dirty:
+                    print(f"  {d}")
+                print("归一化（可选，随时可跑）：python3 scripts/build_index.py")
+                sys.exit(1)
         n_cases = sum(len(cases) for cells in ns.values() for cases in cells.values())
-        dirty = []
-        for nsk, cells in ns.items():
-            dirty += shard_dirty(root, nsk, cells)
-            for cat, cases in cells.items():
-                dirty += shard_dirty(root, f"{nsk}__{cat}", {cat: cases})
-        if dirty:
-            for s in dirty:
-                print(f"SHARD STALE: {s[0]} {s[1]}")
-            print("运行 `python3 scripts/build_index.py` 重新生成后提交。")
-            sys.exit(1)
         n_shards = len(ns) + sum(len(c) for c in ns.values())
-        print(f"索引新鲜，与 knowledge/ 一致（{n_cases} 条 case；分片 {n_shards} 个）。")
+        tail = "，且与重新生成一遍逐字节相同" if args.canonical else ""
+        print(f"索引覆盖完整：{n_cases} 条 case 的索引行都在（分片 {n_shards} 个）{tail}。")
         return
 
     out = root / "knowledge" / "_index.yaml"

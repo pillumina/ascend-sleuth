@@ -143,7 +143,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 三种形态共用同一套 skill 与机制，且可递进：自积累的团队脱敏后可选回馈上游，让公开库渐厚（见 [部署模式](#部署模式) 的框架式）。`-g` 与 `-s` 的确切行为以 `npx skills add --help` 为准——不同版本的安装器对"仓库整体 vs 指定 skill"的粒度有差异。
 
-**稀疏拉取注意**：sparse-checkout 只收窄 case 数据，白名单必含方法论/工具全量（`skills/` `scripts/` `references/` `triage-tree.yaml` `postmortems/` `ingest-state.json` `.dsh/` 等，否则 agent 无 skill 可用），`knowledge/` 按需收窄（如 `vllm-ascend/` + `common/`）。`_index.yaml` 是全量生成物，收窄后重跑 `scripts/build_index.py` 重建；`common/` 必留占位（ADR-0005）。当前规模用全量 clone，稀疏拉取是知识库长大后的带宽优化。
+**稀疏拉取注意**：sparse-checkout 只收窄 case 数据，白名单必含方法论/工具全量（`skills/` `scripts/` `references/` `triage-tree.d/` `postmortems/` `ingest-state.json` `.dsh/` 等，否则 agent 无 skill 可用），`knowledge/` 按需收窄（如 `vllm-ascend/` + `common/`）。两张生成物表都能重建：收窄后跑 `scripts/build_index.py` 重建索引总表；路由改过就跑 `scripts/build_triage_tree.py` 重建 `triage-tree.yaml`（它要求 `triage-tree.d/` 全在，所以白名单里那个目录不能省）；`common/` 必留占位（ADR-0005）。当前规模用全量 clone，稀疏拉取是知识库长大后的带宽优化。
 
 ## skill 名单
 
@@ -317,7 +317,7 @@ CODEOWNERS.example           owner 落实后启用
 两种部署方式都支持，inbox、groom、索引与 CI 机制在两种模式下工作方式相同：
 
 - **集中式**：训练与推理团队共用一个仓库，`CODEOWNERS` 按命名空间划分审批权，`common/` 与 `triage-tree.yaml` 的变更需要双 owner 签署。
-- **框架式**：团队 fork 本仓库后自行积累或导入知识。方法论、机制账本与评测夹具随上游同步（`skills/ scripts/ docs/ examples/ tests/ dsh-plugins/ eval/ .github/ proposals/ideas/`；真实 golden 夹具留在本仓），知识面留在本仓；少数共享文件（`triage-tree.yaml`、`references/`、`metrics/gates.yaml`、`trace-status.yaml`）两边都写，按正常合并处理。分档与冲突处理见 [docs/guide/git-workflow.md](docs/guide/git-workflow.md) 的「目录归属」一节。
+- **框架式**：团队 fork 本仓库后自行积累或导入知识。方法论、机制账本与评测夹具随上游同步（`skills/ scripts/ docs/ examples/ tests/ dsh-plugins/ eval/ .github/ proposals/ideas/`；真实 golden 夹具留在本仓），知识面留在本仓；少数共享文件（`triage-tree.d/`、`references/`、`metrics/gates.yaml`、`trace-status.yaml`）两边都写，按正常合并处理。分档与冲突处理见 [docs/guide/git-workflow.md](docs/guide/git-workflow.md) 的「目录归属」一节。
 
 审核、分发与合入的 git 落地细节见 [docs/guide/git-workflow.md](docs/guide/git-workflow.md)。
 

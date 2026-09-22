@@ -2,9 +2,13 @@ name: kb-checks
 
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**",
+    "scripts/_lexical.py", "scripts/_stdio.py", "scripts/_yaml.py", "scripts/exec_log_path.py", "scripts/build_index.py", "scripts/build_triage_tree.py", "scripts/index_counts.py",
+    "scripts/metrics_snapshot.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", "triage-tree.yaml", "dsh-plugins/**", "scripts/build_index.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**",
+    "scripts/_lexical.py", "scripts/_stdio.py", "scripts/_yaml.py", "scripts/exec_log_path.py", "scripts/build_index.py", "scripts/build_triage_tree.py", "scripts/index_counts.py",
+    "scripts/metrics_snapshot.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
 
 jobs:
   index-freshness:
@@ -15,12 +19,20 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install pyyaml
-      # 两道检查合一：build_index 会解析全部 case YAML（语法错即红），
-      # --check 校验 _index.yaml 与文件 hash 一致（改了 case 忘重建即红）。
+      # 一致性门是**覆盖检查**（每条 case 的索引行都在、且与 case 内容对得上），不是逐字节相同。
+      # 为什么：索引与路由聚合都配了 merge=union——两人同一天改同一格/同一族时两边都留住，
+      # 那份文件**内容是对的**（顺序可能与重新生成不同）。逐字节的门会把它判红，于是又逼人
+      # 跑一遍收尾命令，把 union 的收益还回去。数字（条数/容量/日期）已从生成物里拿掉，
+      # 改成现算（scripts/index_counts.py），所以 union 之后不会有漂移的错数。
+      # 这条既跑 PR 也跑主干——主干上红了说明真丢条目（union 极少见的落空），修法照报错跑一次生成器。
       - run: python3 scripts/build_index.py --check
       # triage-tree 语法检查：曾因 pipe-or 写法长期不可解析而无人发现（原则二教训），
       # 结构化工具化（路由统计/学习型路由）前必须堵住。
       - run: python3 -c "import yaml; yaml.safe_load(open('triage-tree.yaml')); print('triage-tree ok')"
+      # Tier 1 路由：源文件校验（分支 id 唯一 / category 合法 / 症状组形态 / ≤30 分支 / 一族一文件）
+      # + 覆盖检查（源里每条症状组都在聚合里）。两条都跑 PR 与主干：源是提交面，聚合也是提交面。
+      - run: python3 scripts/build_triage_tree.py --check-sources
+      - run: python3 scripts/build_triage_tree.py --check-coverage
 
   case-structure:
     runs-on: ubuntu-latest
