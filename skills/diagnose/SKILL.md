@@ -195,14 +195,17 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
 
 报错签名指向框架代码/算子名/量化描述表（如 `fault kernel_name=QuantBatchMatMulV3`、`modelslim_config.py` 相关 KeyError）且 Tier 3 未覆盖时：
 
-1. **按报错背景确定是哪个源码仓，再向其确认版本**（`scripts/src_fetch.py --list` 看已支持仓库：如 vllm-ascend / torch-npu / CANN / mindspeed-* / verl 等，取决于报错签名指向哪——源码分析依赖对应版本，不要猜）。
-2. **获取源码（统一走 `scripts/src_fetch.py` 确定性入口——按版本取，不是"本地有什么用什么"）**：`python3 scripts/src_fetch.py <repo> --ref <tag>`（`--list` 看已知仓库与 host：vllm-ascend=GitHub、mindspeed-*=GitCode、torch-npu=GitCode、verl=GitHub；未知/私有 → `--url`；`--list-versions` 看本地已有版本）。缓存**按版本平铺**在 `src-code/<org>/<repo>/<tag>/`（缓存根在主检出、跨 worktree 共读；各版本目录互不干扰，并发诊断各读各版本），命中即复用、该版本缺失即按已知 host 拉取。
-   **退出码就是契约，别只看输出里的路径**：`0` = 该版本已在本地产出**并核对通过**（stdout 末行 = 路径）；`3` = tag 解析不了（多半 tag 名不同，输出里有可用 tag 示例）；`4` = 拉取失败（网络/私网）；`5` = 本地该版本目录核对不通过（确认要它才 `--force` 重拉）。**非零退出 = 没拿到这个版本的源码**——不要拿本地其他版本的目录去读（那是错版本的证据），也不要拿 web 搜索结果当源码（搜上游 issue/PR 状态是步骤 5 的事，不是源码来源）。
+1. **先定"哪个仓"，再向其确认版本**（源码分析依赖对应版本，不要猜）：
+   - 已知表里有 → 直接用（`python3 scripts/src_fetch.py --list`：vllm-ascend / torch-npu / mindspeed-* / verl / CANN 常用层如 `cann/ops-nn`、`cann/hccl`、`cann/ge`）。
+   - 已知表里没有 → **枚举组织仓给候选，不要直接问人要地址**：`python3 scripts/src_fetch.py --find "<报错签名>" --ref <版本>`。脚本按签名里的接口前缀与算子名给带理由的候选（默认 3 个），并**逐个试该版本**：只有一个候选能解析就自动取回（exit 0）；多个就 exit 3 交回候选表。候选 ≥2 时按闸表 `source-location` 的那一句问工程师（"这个报错在你们那的 CANN 安装目录里落在哪个子目录？"，让他回候选编号）——**别猜仓**：取错仓产出的是错版本的证据，比不取更糟。CANN 各仓共用同一套 CANN 发布号，所以"tag 能解析"不构成定位证据。
+   - **两条例外**：①签名只命中公共前缀（`aclnn xxx` 没有算子名）时候选是**兜底**的，脚本仍 exit 3——补上算子名/接口名再试，或问一句；②已确认是哪个仓时把它写在签名后面（`--find "<签名>" cann/ops-nn`）以它为准，别让候选盖掉你的判断。断网现场加 `--offline`：只给候选、绝不联网。
+2. **获取源码（统一走 `scripts/src_fetch.py` 确定性入口——按版本取，不是"本地有什么用什么"）**：`python3 scripts/src_fetch.py <repo> --ref <tag>`（`--list` 看已知仓库与 host：vllm-ascend=GitHub、mindspeed-*=GitCode、torch-npu=GitCode、verl=GitHub、CANN=gitcode 的 cann 组织；私有/未知 → `--url`；`--list-versions` 看本地已有版本；改过匹配表后跑 `--self-test`）。缓存**按版本平铺**在 `src-code/<org>/<repo>/<tag>/`（缓存根在主检出、跨 worktree 共读；各版本目录互不干扰，并发诊断各读各版本），命中即复用、该版本缺失即按已知 host 拉取。
+   **退出码就是契约，别只看输出里的路径**：`0` = 该版本已在本地产出**并核对通过**（stdout 末行 = 路径）；`3` = tag 解析不了（多半 tag 名不同，输出里有可用 tag 示例）**或候选 ≥2 未定仓**（输出里有候选表 → 按闸表 `source-location` 问一句）；`4` = 拉取失败（网络/私网）；`5` = 本地该版本目录核对不通过（确认要它才 `--force` 重拉）。**非零退出 = 没拿到这个版本的源码**——不要拿本地其他版本的目录去读（那是错版本的证据），也不要拿 web 搜索结果当源码（搜上游 issue/PR 状态是步骤 5 的事，不是源码来源）。
    **「不落库」= 源码不随仓库提交、也不写进知识库**；分析仍要保留源码（`src-code/` 本地缓存），知识库只记 `source_ref` 代码指针。
 3. **grep 定位**：搜报错签名/算子名/函数名（如 `grep -rn "QuantBatchMatMulV3" vllm_ascend/`）→ 读相关文件片段 → 分析根因。
 4. **追问用户验证**：对照预期/复现/补环境信息，验证根因假设。
 5. **follow-up**：查知识库是否已覆盖；`gh search issues/prs` 看上游是否已修复——**「已修复」不是结论、是待验证的假设**：上游有 PR / issue 已 closed 都不等于**你的部署版本里有这个修复**（PR 可能只进主干未 backport；镜像 / fork / 定制构建不能按版本号推断）。给「升级即可」之前必须做**落地实证**：从修复 PR 提取修复特征行 → 在你部署的那份代码里确认它在（做法、反证规则与结论分档见 `references/diagnosis-procedure.md` 步骤 5 的「上游修复的落地实证」）。未修复→根因+workaround；联网不可达→诚实说明无法查证。
-6. **多层级**：根因指向更底层开源仓（torch-npu）→ 同样流程分析其源码（`source_ref` 指向该仓）；CANN 等未开源 → **承认局限**，给方向 + 建议联系华为。
+6. **多层级**：根因指向更底层开源仓（torch-npu、CANN 各层）→ 同样流程分析其源码（`source_ref` 指向该仓）。CANN 已开源（gitcode 的 cann 组织，常用层与定位判据见 `references/software-facts/cann-source-location.yaml`），所以"未开源"不再是结论；**闭源的只有商业发布形态的二进制/驱动包**——那种情况下**承认局限**，给方向 + 建议联系华为。
 7. **沉淀**：根因清楚且知识库未覆盖 → `/skill:to-postmortem` 记 `source_ref: {repo, ref, file, line}`；**顺手**沉淀跨事故稳定的结构事实 → `/skill:to-reference`（software-fact / env-var-table / compat-matrix，判据："6 个月后/跨版本是否仍成立"）。
 
 ## 不要做

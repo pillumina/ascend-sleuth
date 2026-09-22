@@ -187,3 +187,35 @@ gates:
           - npu-smi-950-device-ops
     caveat_refs:
       - msprobe-tool-side-effect-fault-patterns   # 工具介入改变时序——先排除工具副作用再下结论
+
+  - id: source-location
+    categories: [interrupt, precision, performance]
+    kind: conditional
+    trigger: >-
+      走到源码分析、但报错签名指向的仓不能从已知表直接定下来（签名像 aclnn*/Hccl*/ge::/aclrt*/drv*/
+      AscendC:: 这类接口前缀，或报错文本里有算子名而没有仓名）
+    question: >-
+      "这个报错在你们那的 CANN 安装目录里落在哪个子目录？"——附上脚本给的候选表让他选一个
+      （别的问法都不如这一句准，因为装目录的子目录名就是仓名）
+    branches:
+      - when: repo_ambiguous
+        action: >-
+          先枚举组织仓给**带理由的候选**（`python3 scripts/src_fetch.py --find "<签名>" --ref <版本>`：
+          脚本会逐个试该 ref，只有一个候选能解析就自动取回，多个则 exit 3 交回候选表）——
+          别把"源码在哪个仓"当问题直接问人，那是可枚举的事实；候选 ≥2 或全试不通时，
+          按 question 问一句并要求他回候选编号。**不许猜仓**：取错仓会产出错版本的证据，
+          比不取更糟（与"没拿到该版本"等价）。私有仓/内网镜像才直接要 clone 地址（`--url`），
+          镜像内代码按冻结 commit 取，不能按 tag 推断
+        refs:
+          - src-code-discovery
+          - cann-source-location
+      - when: repo_resolved
+        action: >-
+          按版本取源码（`src_fetch.py <org/repo> --ref <版本>`）后 grep 报错签名/算子名定位到文件与行；
+          退出码非零就是没拿到，如实把结论写成"无法判定"，不要用其他版本或 web 搜索结果顶替
+        refs:
+          - src-code-discovery
+          - cann-source-location
+          - operator-debug-entrypoints
+    caveat_refs:
+      - cann-source-location   # 各仓共用 CANN 发布号：tag 能解析不构成定位证据

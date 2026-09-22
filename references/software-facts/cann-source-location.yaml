@@ -1,0 +1,34 @@
+id: cann-source-location
+type: software-fact
+title: CANN 源码位置（gitcode 的 cann 组织：82 仓、匿名可枚举的清单 API、仓与层的对应、版本号即 CANN 发布号）
+summary: "CANN 已开源，源码在 **gitcode 的 cann 组织**（https://gitcode.com/cann/）：2026-09 实测 **82 个公开仓**，且仓库清单**匿名可枚举**——`https://gitcode.com/api/v5/orgs/cann/repos&page=N`（无需 token，`per_page` 上限 100，超出报 `PARAMETER_EXCEEDED`）。**这条决定了『源码在哪』是可以查的，不是只能问人**。按报错签名定位到层的对应关系：`aclnn*` 算子接口 → 四条算子库 `ops-nn`（神经网络）/`ops-transformer`/`ops-math`/`ops-cv`；`Hccl*`、通信域/rank 表 → `hccl`（集合通信库），更底层通信资源 → `hcomm`；`ge::` → `ge`（图编译器与执行器）；算子原型/属性注册 → `metadef`；`aclrt*`/`plog` → `runtime`；`drv*` → `driver`；`AscendC::`/`atvc`/`atvoss` → `asc-devkit`；Python 算子接口 → `pyasc`；AI Core Error 分析工具 → `oam-tools`。**版本 tag 就是 CANN 发布号**（`v9.1.1`、`v9.2.0-beta.1`），且**各仓共用同一套版本号**——所以『tag 能解析』只能证明版本存在，**不能唯一定位到哪个仓**；定位靠报错栈里的命名空间/接口前缀。镜像内改过的代码按冻结 commit 取，不能按 tag 推断。"
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/api/v5/orgs/cann/repos"
+    version: "cann 组织仓库清单 API，匿名访问（2026-09-22 实测返回 82 个仓，含 path/description/default_branch/pushed_at）"
+    fetched_at: 2026-09-22
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/"
+    version: "CANN 组织门户；仓描述用于判断某一层属于哪个仓（如 ops-nn『CANN提供的神经网络类计算算子库』、hccl『集合通信库 HCCL』、ge『图编译器和执行器』、oam-tools『故障定位工具…AI core error 报错分析』）"
+    fetched_at: 2026-09-22
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/cann/ops-math.git"
+    version: "git ls-remote --tags：v9.1.0-beta.1…v9.1.1、v9.2.0-beta.1/2（2026-09-22 实测）；driver 同源实测到 v8.5.0 与 v9.0.0-rc.1——各仓 tag 命名一致，均为 CANN 发布号加 v 前缀"
+    fetched_at: 2026-09-22
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [aclnn, ascendc, ascendcl, hccl, ge]
+
+related_references: [src-code-discovery, operator-debug-entrypoints, runtime-async-error-triage, ascend-log-locations]
+
+status: active
+last_verified: 2026-09-22
+
+content:
+  claim: "把『源码在哪』拆成三个可判定的事实。**① 组织与清单**：cann 组织的仓库清单可匿名枚举（`/orgs/cann/repos`，`per_page` 最大 100，分页取全），所以『这个签名属于哪个仓』有可复现的答案来源，而不是只能靠记忆或问人。**② 层 → 仓的对应**：错误签名里的接口前缀/命名空间比算子名硬——`aclnn` 前缀只说明是 aclnn 接口层，落到哪条算子库要看算子名（`ops-nn` 含 Conv/MatMul/Attention 类，`ops-transformer` 的仓描述即『transformer 类大模型算子库』）；`ge::`、`aclrt*`、`drv*`、`AscendC::`、`Hccl*` 这些前缀各自只有一个对应仓，可以直接定。**③ 版本号不是定位键**：各仓共用 CANN 发布号（`v9.1.1` 在 ops-math / ops-nn / runtime 同时存在），所以『能解析出该 tag』不能排除其他仓；`v9.2.0-beta.*` 是 beta 号，生产部署的版本多半落在 `v9.1.x` 这类发布号上。"
+  evidence: "①`curl https://gitcode.com/api/v5/orgs/cann/repos` 匿名返回 82 条，字段含 `path`/`description`/`default_branch`/`pushed_at`；`per_page=200` 返回 `PARAMETER_ERROR: exceeded limit for per_page`（上限即 100）。②仓描述原文：「ops-nn 本项目是CANN提供的神经网络类计算算子库，实现网络在NPU上加速计算」「ops-transformer 本项目是CANN提供的transformer类大模型算子库」「ops-math 本项目是CANN提供的数学类基础计算算子库」「ops-cv 本项目是CANN提供的图像处理、目标检测相关的算子库」「hccl 集合通信库（Huawei Collective Communication Library，简称HCCL）」「hcomm HCOMM（Huawei Communication）是HCCL的通信基础库，提供通信域以及通信资源」「ge GE（Graph Engine）是面向昇腾的图编译器和执行器」「metadef Ascend Metadata Definition」「runtime 本项目提供CANN运行时组件和维测功能组件」「driver 本项目是CANN提供的驱动模块，实现基础驱动和资源管理及调度等功能」「asc-devkit 本项目是CANN 推出的昇腾AI处理器专用的算子程序开发语言」「pyasc 本项目为Python用户提供算子编程接口，支持在昇腾AI处理器上加速计算，接口与Ascend C一一对应」「oam-tools 本项目为开发者提供故障定位工具，包含故障信息收集，软硬件信息展示，AI core error报错分析」。③`git ls-remote --tags https://gitcode.com/cann/ops-math.git` 实测 tag：v9.1.0-beta.1/2/2.pre/3、v9.1.0.pre、v9.1.1、v9.2.0-beta.1/2；`https://gitcode.com/cann/driver.git` 实测：v8.5.0、v9.0.0-rc.1。实测同一 ref `v9.1.1` 在 cann/ops-math、cann/ops-nn、cann/runtime 三仓均可解析（同名 tag 不构成定位证据）。"

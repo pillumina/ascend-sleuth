@@ -222,8 +222,13 @@ def check_skill_ref_bindings(root: Path, ref_ids: set, active_ids: set, legal_ca
                 q = gate.get("question")
                 if kind == "probe" and not q:
                     errors.append(f"{rel_file} ({gid}): kind=probe 必须给 question（探询型闸门的形态就是问一句）")
-                if kind == "conditional" and q:
-                    errors.append(f"{rel_file} ({gid}): kind=conditional 不应有 question（条件型闸门不预先问）")
+                if q is not None and not isinstance(q, str):
+                    errors.append(f"{rel_file} ({gid}): question 只能是字符串或省略（不要写 null 占位）")
+                # conditional 允许带 question（2026-09 解禁，原规则是「条件型不预先问」→ 写成了
+                # 「不许有 question」，把**时机**约束错当成**存在**约束）：两种形态的区别是
+                # **何时问**，不是**有没有问**——probe 在候选加载后立刻问，conditional 只在缺口
+                # 出现时才问。源码位置发现正是后者：只有走到源码分析、且候选 ≥2 时才需要问，
+                # 而那一刻它必须有一句能照问的话（否则 agent 现场自己编，问句质量无从校验）。
             if kind == "procedure":
                 # procedure 闸门不做 refs 绑定（选择器产出的是"本轮该读哪条流程"，非预置清单）
                 for rid in gate.get("caveat_refs") or []:
