@@ -2,8 +2,9 @@
 name: preload-panel
 description: >
   在 DSH 会话中热加载 ascend-sleuth 面板插件：先查 panel_from_file 工具在不在（它按进程
-  全局注册，通常已在；DSH 重启后第一次才需用 codeFile 加载 dsh-plugins/loader/panel-from-file.js，
-  host-only 免审批），再用它按路径加载 dsh-plugins/<panel>/ 下的 panel-host.js 与
+  全局注册，通常已在；DSH 重启后第一次才需装 dsh-plugins/loader/panel-from-file.js——
+  host-only 免审批的小加载器，~3K token，两种装法见正文），再用它按路径加载
+  dsh-plugins/<panel>/ 下的 panel-host.js 与
   panel-client.js——**只发两个路径，不转写 ~70KB 源码**，最后 cordis_run 激活，
   对话视图出现对应 tab。加载本身只值几千 token、约 30 秒；会话累计到几十万 token
   是上下文重发，与面板无关——用户问"加载面板是不是很贵"时按此回答。面板选择：
@@ -69,13 +70,21 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 
 2. **确保 `panel_from_file` 工具可用**：
    - 已有（第 0 步查到 `panel_from_file`）→ 跳到第 3 步。
-   - 没有（DSH 刚重启、本进程还没注册过）→ 用 `codeFile` 加载 loader：
-     `cordis_define`（kind: new，idPrefix `ldr`，`codeFile.host` =
-     `dsh-plugins/loader/panel-from-file.js`）→ `cordis_run`（mode: run）。
-     **host-only 包，免审批**，几秒完成。
-     **不要 `read` 这个文件**——`codeFile` 自己读盘；先读一遍只是白烧 ~3K token。
+   - 没有（DSH 刚重启、本进程还没注册过）→ 加载 loader，**按 `cordis_define` 的能力二选一**：
+
+     | 你的 `cordis_define` | 怎么发 loader 源码 | 成本 |
+     |---|---|---|
+     | 有 `codeFile` | `codeFile.host: 'dsh-plugins/loader/panel-from-file.js'` | ~3K token |
+     | 只有 `code`（官方发布版） | `read` 该文件全文 → `code.host` 原样粘贴 | ~6K token，多 20 秒 |
+
+     判法：`cordis_define` 的**参数表**里有没有 `codeFile`；不确定就直接按 `codeFile` 发一次，
+     报"参数不认识 / 缺 code"就换 `read` + `code.host`。**别为此重试第三次**。
+
+     两条路都走同一个 loader：`cordis_define`（kind: new，idPrefix `ldr`）→
+     `cordis_run`（mode: run）。**host-only 包，免审批**，几秒完成。
      该 loader 只用 `harness.registerTool` + `ctx.get('dynamicCordisRunner')` 两个
-     公开机制，不依赖任何 DSH 补丁。
+     公开机制，不依赖任何 DSH 补丁——所以两条路都能装上。
+     `codeFile` 机器上**不要**先 `read`（白烧 ~3K）；只有 `code` 的机器上 `read` 是**必需**的一步。
 
 3. **加载面板**：调 `panel_from_file`（不要用 `cordis_define` 转写源码）：
 
@@ -105,8 +114,9 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 
 ## 回退（DSH 版本差异）
 
-- **`cordis_define` 不带 `codeFile`** → 没有 `panel_from_file` 时退回内联：读 loader
-  全文 → `code.host` 原样粘贴。**先试 `codeFile`**，报参数错再退回内联，别默认内联。
+- **`cordis_define` 不带 `codeFile`**（官方发布版都没有它；带它的是本机检出）→ 见第 2 步
+  的两行表：`read` loader 全文 → `code.host` 原样粘贴即可，功能完全相同，只多 ~3K token。
+  **先试 `codeFile`，报参数错再退回内联；默认内联在带 `codeFile` 的机器上白烧 3K。**
 - **loader 也注册不了工具**（`harness.registerTool` 缺失）→ 内联面板本身：读两个文件
   全文 → `code.host` / `code.client` 原样粘贴。文件是函数体形态
   （`return { apply(ctx) {...} }`），别改形态——动态插件不经过打包器，

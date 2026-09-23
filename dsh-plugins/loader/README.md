@@ -1,6 +1,6 @@
 # loader —— 一次性加载器（`panel_from_file` 工具）
 
-`panel-from-file.js` 是一个 **host-only 动态插件**（11.7KB / 198 行），加载后注册 `panel_from_file`
+`panel-from-file.js` 是一个 **host-only 动态插件**（~12KB / 200 行），加载后注册 `panel_from_file`
 工具：按工作区路径读 Host/Client 两半源码 → `dynamicCordisRunner.define()` → `run()`。
 
 **为什么需要它**：面板两个文件合计 ~70KB。旧流程要求 agent 把全文重新输出进
@@ -22,12 +22,13 @@
 1) 先查工具在不在（跨 session 复用；只有 DSH 重启后的第一个会话会缺）
    cordis_inspect_self()          # 工具目录里有 panel_from_file → 直接跳到第 2 步
 
-2) 没有才加载 loader（host-only，免审批，几秒；合计 ~3K token）
-   cordis_define(kind: new, idPrefix: 'ldr',
-                 codeFile.host: 'dsh-plugins/loader/panel-from-file.js')
-   cordis_run(mode: run)
-   —— 别先 read 这个文件：codeFile 自己读盘，先读一遍只多烧 ~3K token。
-      cordis_define 报参数错（无 codeFile）的发布版上才退回内联 code.host ← 全文。
+2) 没有才加载 loader（host-only，免审批，几秒）——按 cordis_define 的能力二选一：
+   有 codeFile：cordis_define(kind: new, idPrefix: 'ldr',
+                              codeFile.host: 'dsh-plugins/loader/panel-from-file.js')
+               —— 别先 read 这个文件，codeFile 自己读盘，先读一遍只多烧 ~3K token
+   只有 code（官方发布版都没有 codeFile）：read 该文件全文 → code.host ← 原样粘贴
+               —— 多花 ~3K token / ~20 秒，功能完全相同
+   然后统一：cordis_run(mode: run)
 
 3) 加载面板
    panel_from_file(host:   dsh-plugins/<面板>/panel-host.js,

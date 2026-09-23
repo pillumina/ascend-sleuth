@@ -8,16 +8,21 @@
 // 只用两个公开机制（harness.registerTool / ctx.get('dynamicCordisRunner')），
 // 因此在任何带 Cordis 工具的 DSH 版本上都能用；真实面板源码仍进不可变 Package
 // （可被 cordis_inspect_self 审计），审批流不变。
+// 注意 codeFile 本身是 cordis_define 的能力，**官方发布版没有它**（只在带该提交的检出里）——
+// 所以本文件的装法有两条，功能相同，按手头 cordis_define 的参数表选：
+//   有 codeFile：cordis_define(kind: new, idPrefix: 'ldr', codeFile.host ← 本文件路径)
+//   只有 code ：read 本文件全文 → code.host ← 原样粘贴（多 ~3K token，别为此重试第三次）
 //
-// **幂等（2026-09）**：改完面板代码再调一次是常事，所以重复调用不再新建插件——
+// **幂等**：改完面板代码再调一次是常事，所以重复调用不再新建插件——
 // 先查 inventory 找本 session 已存在的同前缀插件，找到就复用（追加新 Package +
 // mode update），返回 reused: true。不传 pluginId 也不会再堆出重复插件。
 // 归属约束：DSH 的 define(kind: 'existing') 要求插件属于当前 session，因此只在
 // 本 session 内查找；跨 session（如 DSH 重启后）会新建一个同 tab id 的插件，
 // 新 tab 覆盖旧 tab 的显示（旧插件的 RPC 仍在，只是不再被 tab 使用）。
 //
-// 用法（一个 DSH 会话一次）：
-//   cordis_define(kind: new, idPrefix: 'ldr', code.host ← 本文件全文)  →  cordis_run（host-only，免审批）
+// 用法（每个 DSH **进程**一次——工具注册是进程全局的，只有 DSH 重启后的第一个会话会缺）：
+//   cordis_inspect_self()  查工具目录：已有 panel_from_file 就直接用，别重复装 loader
+//   cordis_define(kind: new, idPrefix: 'ldr', …见上两条装法…)  →  cordis_run（host-only，免审批）
 //   panel_from_file(host: 'dsh-plugins/ev-panel/panel-host.js',
 //                   client: 'dsh-plugins/ev-panel/panel-client.js',
 //                   idPrefix: 'evbd', name: '…', purpose: '…')
