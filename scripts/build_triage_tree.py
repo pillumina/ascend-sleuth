@@ -205,10 +205,14 @@ def coverage_problems(root: Path, blocks):
     src_ids = set(src_seq)
     for bid in sorted(set(got) - src_ids):
         problems.append(f"聚合里有、源里没有的分支 {bid}——重跑 `python3 scripts/build_triage_tree.py`")
-    # **顺序也是判据**：diagnose 按分支顺序匹配、先命中先路由，所以把两个分支块对调就是改了
-    # 路由优先级。集合相等 ≠ 行为相同——只看"在不在"漏掉的正是这条（实测：对调 inference_interrupt
-    # 与 inference_precision 后旧版覆盖检查 exit 0）。症状组之间的顺序不查：同分支内哪条先命中
-    # 都路由到同一个分支，是外观。
+    # **顺序也是判据**，两条理由：
+    #   ① 忠实性：聚合必须忠实渲染源（源才是评审面，一族一文件）；手改聚合的分支顺序，等于让
+    #      评审过的那份与跑起来的那份不是同一个东西。集合相等 ≠ 忠实。
+    #   ② 路由确有顺序效应：诊断用正则模糊匹配、多个分支弱匹配时按树的先后取用（见
+    #      skills/diagnose/references/diagnosis-procedure.md 步骤 2），而宽词（`\btimeout\b`、
+    #      `RuntimeError`）在训推两侧都出现——顺序决定谁先接住（`scripts/route_check.py --wide-words`
+    #      现在列得出这些词）。
+    #   症状组之间的顺序不查：同分支内哪条先命中都路由到同一个分支，是外观。
     got_seq = [b.get("id") for b in (doc.get("branches") or []) if isinstance(b, dict)]
     if got_seq != src_seq:
         problems.append(f"聚合的分支顺序与源不一致（源：{' → '.join(src_seq)}；聚合：{' → '.join(got_seq)}）"
