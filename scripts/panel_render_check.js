@@ -31,7 +31,10 @@ if (!PY) {
     + 'scripts/panel_render_check.js 要用它跑 scripts/ev_board_data.py 与读 metrics/timeline.yaml')
   process.exit(2)
 }
-const pyRun = (args, opts) => execFileSync(PY.cmd, [...PY.prefix, ...args], opts)
+// 每次起 Python 都自动带上 UTF-8 环境（见下面「真实数据」那段的原因）；调用点显式传的
+// env 仍然生效、可以再补变量，但补不了 UTF-8 这一层就漏了——所以默认值在这里，不在调用点。
+const pyRun = (args, opts) => execFileSync(PY.cmd, [...PY.prefix, ...args],
+  { ...opts, env: { ...PY_ENV, ...(opts && opts.env) } })
 
 // ---- mock React ----
 function flatten(node, out) {
@@ -142,11 +145,15 @@ async function renderAsync(clientSrc, slotProps, hostImpl, { settle = 8 } = {}) 
 }
 
 // ---- 真实数据 ----
-// 子进程一律带上 UTF-8 环境（Windows 兼容）：这几个调用要把中文数据（周期 notes、卡片
-// 标题…）经 stdout 传回来，而 Windows 上子进程 Python 的 stdout 默认按 locale 编码
-// （中文系统 = cp936）——字节是 GBK、这边按 UTF-8 解码 → 中文全变乱码。症状很隐蔽：
-// 渲染不报错，只是文案烂掉，于是"按其内容做的断言"无理由失败（实测正是它让
-// 「期卡收起态带指标摘要」在 Windows 上失败，而 Linux 上通过）。
+// 子进程一律带上 UTF-8 环境（Windows 兼容）：这些调用要把中文数据（周期 notes、卡片
+// 标题…）经 stdout 传回来，而 Windows 上子进程 Python 的 stdout **与 stdin** 默认按
+// locale 编码（中文系统 = cp936）——字节是 GBK、这边按 UTF-8 解码 → 中文全变乱码。症状
+// 很隐蔽：渲染不报错，只是文案烂掉，于是"按其内容做的断言"无理由失败（实测正是它让
+// 「期卡收起态带指标摘要」在 Windows 上失败，而 Linux 上通过）。反方向（stdin）更硬：
+// 送进去的是 UTF-8，Python 按 GBK 解 → `UnicodeDecodeError: 'gbk' codec can't decode
+// byte 0xa5`，读夹具的 pyOf 直接抛错被 catch 成 null，上屏却是「夹具是合法 YAML」失败
+// ——把环境问题说成夹具问题。这层默认值钉在 pyRun / pyOf 的**定义处**，不再靠每个调用点
+// 自己记得传（原先靠记性，pyOf 就漏了一处）。
 const PY_ENV = { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' }
 const board = JSON.parse(pyRun(['scripts/ev_board_data.py'], { cwd: repo, maxBuffer: 32 * 1024 * 1024, env: PY_ENV }).toString())
 const detailCache = {}
@@ -2101,7 +2108,7 @@ def s(v): return None if v is None else str(v)
 print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action': s(t.get('action')),
                    'output': bool(t.get('output')), 'content': bool(t.get('content')),
                    'evidence': bool(t.get('evidence'))} for t in trace], ensure_ascii=False))
-`], { input: text, encoding: 'utf8' }).toString())
+`], { input: text, encoding: 'utf8', env: PY_ENV }).toString())
       } catch (e) {
         return null
       }
@@ -2971,6 +2978,47 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
           t.includes(secs + ' 秒内复用'), 'host=' + secs + ' 秒')
       }
     }
+  }
+
+  // ================= 本脚本自己起 Python 的编码（Windows 中文区域的复发点）=================
+  // 为什么单开一节：这个洞已经复发两次——第一次是经 stdout 传回中文（cp936 字节按 UTF-8
+  // 解 → 乱码），第二次是 pyOf 经 stdin 送 UTF-8 进去被按 GBK 解（`'gbk' codec can't decode
+  // byte 0xa5`）。两次的根因同一个：UTF-8 环境原先靠调用点自己记得传。所以钉在定义处，并且
+  // 由这条断言保证"没有第二个绕过它的启动点"。
+  console.log('\n[本脚本起 Python 的编码 · UTF-8 环境钉在定义处]')
+  {
+    const selfSrc = fs.readFileSync(__filename, 'utf8')
+    const selfLines = selfSrc.split(/\r?\n/)
+    // 唯一豁免：`--version` 探活只有 ASCII，locale 对它没有影响（且它跑在 PY_ENV 之前）
+    const sites = []
+    const missing = []
+    for (let i = 0; i < selfLines.length; i++) {
+      if (/^\s*\/\//.test(selfLines[i])) continue
+      if (!/execFileSync\(/.test(selfLines[i])) continue
+      if (/PY\.cmd, \[\.\.\.PY\.prefix, \.\.\.args\]/.test(selfLines[i])) continue   // pyRun 本体，默认值在这
+      if (/--version/.test(selfLines[i])) continue
+      sites.push(selfLines[i].trim())
+      // 调用点跨多行书写（Python 代码块 + opts），env 可能落在十几行之后；窗口找
+      // `env: PY_ENV`，或撞上调用结束就判缺。
+      let hit = /env: PY_ENV/.test(selfLines[i])
+      for (let j = i + 1; !hit && j < Math.min(i + 20, selfLines.length); j++) {
+        if (/env: PY_ENV/.test(selfLines[j])) { hit = true; break }
+        if (/^\s*\]\)\.toString\(\)|^\s*\}\)/.test(selfLines[j])) break
+      }
+      if (!hit) missing.push('L' + (i + 1) + ': ' + selfLines[i].trim().slice(0, 50))
+    }
+    // 这道检查的意义是"没有绕过默认值的启动点"，不是数够几个：pyRun 的常规调用点由函数自己
+    // 兜住，这里要拦的是直接 execFileSync（pyOf 就是那么漏的）。
+    expect('不经过 pyRun 的 Python 启动点（= 会漏掉默认值的形状）都自己带了环境',
+      sites.length >= 2 && missing.length === 0,
+      '直接启动 ' + sites.length + ' 处' + (missing.length ? '；缺：' + missing.join(' ;; ') : ''))
+    // 默认值钉在定义处：stdout 与 stdin 两条路都得盖住。pyOf 走的是 execFileSync 而不是
+    // pyRun，所以它得自己带——这正是原先漏掉的那一处。
+    expect('pyRun 自己合并 UTF-8 环境（调用点忘了传也不会踩）',
+      /const pyRun = \(args, opts\) => execFileSync\(PY\.cmd, \[\.\.\.PY\.prefix, \.\.\.args\],\s*\{[^}]*env: \{ \.\.\.PY_ENV/.test(selfSrc))
+    const pyOfBody = (selfSrc.match(/const pyOf = \(text\) => \{[\s\S]{0,900}?\n    \}/) || [''])[0]
+    expect('pyOf 给 stdin 那份输入也带 UTF-8 环境（读夹具不再按 locale 解）',
+      /env: PY_ENV/.test(pyOfBody), 'pyOf 未带 env')
   }
 
   console.log('\n' + (failures.length ? '失败 ' + failures.length + ' 项: ' + failures.join(' | ') : '全部通过'))
