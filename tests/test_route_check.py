@@ -112,6 +112,36 @@ class RouteCheckTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("inference_interrupt", r.stdout)
 
+    def test_cli_reports_every_case_in_a_multi_case_file(self):
+        """一个文件多条 cases 时逐条报——只报第一条会让后面那些静默漏过（草稿文件常是多条）。"""
+        p = self.root / "knowledge" / "inference" / "vllm-ascend" / "interrupt" / "M.yaml"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        # 注意不能拼两份含 `cases:` 头的文档——YAML 会按重复键取后一份，夹具自己先坏了
+        # （实测：那样写只会得到 M-2 一条，测试却以为在测"逐条报"）。
+        p.write_text(
+            "cases:\n"
+            "  - id: M-1\n"
+            '    title: t\n'
+            "    category: interrupt\n"
+            "    tags: [t]\n"
+            "    confidence: {score: 0.5}\n"
+            "    symptoms:\n"
+            '      - "\\btimeout\\b 了"\n'
+            "  - id: M-2\n"
+            '    title: t\n'
+            "    category: interrupt\n"
+            "    tags: [t]\n"
+            "    confidence: {score: 0.5}\n"
+            "    symptoms:\n"
+            '      - "EE9999 报错"\n', encoding="utf-8")
+        r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"),
+                            "knowledge/inference/vllm-ascend/interrupt/M.yaml", "--root", str(self.root)],
+                           capture_output=True, text=True, cwd=self.root)
+        self.assertIn("M-1", r.stdout)
+        self.assertIn("M-2", r.stdout)
+        self.assertIn("第 2/2 条", r.stdout)
+        self.assertEqual(r.returncode, 1, r.stdout)      # M-1 会误吸到 training 分支
+
     def test_cli_wide_words_mode(self):
         r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"), "--wide-words",
                             "--root", str(self.root)], capture_output=True, text=True, cwd=self.root)

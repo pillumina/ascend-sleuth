@@ -173,9 +173,10 @@ PR body 里的「Agent 预核意见」**由新上下文的 agent 产出**（看�
 实测差距：一次结构改动的作者自评漏了 1 条阻断级问题（聚合分支顺序静默改路由优先级）与 2 条重要级问题（重复条目静默通过、
 面板「读不到」是假绿），独立 agent 评出来了。差别不在模型强弱，在两点：**新上下文**，以及**被要求构造反例并跑出来**。
 
-**不重复跑 CI 已经跑的**：`verify_case_draft --all`、`verify_references --check`、`build_index --check`、
-`build_triage_tree --check-sources` / `--check-coverage`、`holdout --check`、`docs-index`、`metrics-validation`、
-`panel-checks`、`unit-tests`、`arena-gate-rule`。预核只做这些判不了的。
+**不重复跑 CI 已经跑的**：PR 上的门以 `.github/workflows/` 下两个工作流为准——
+`kb-checks.yml` 十二个 job（索引覆盖、case 结构、reference、metrics、提案审计、docs 名单、封存集、
+评分卡、单测、面板、skill 自包含、arena 自测）与 `pr-template.yml`（模板结构）。
+**不在这里抄命令清单**——抄了会腐烂且不报错（CLAUDE.md 同一条理由）。预核只做这两类门判不了的。
 
 | 改动类型 | 预核查什么 | 要跑反例吗 | 耗时 |
 |---|---|---|---|
@@ -190,7 +191,8 @@ PR body 里的「Agent 预核意见」**由新上下文的 agent 产出**（看�
    **不要用 `P0`/`P1`**——那两个在词表里已经是优先级与流程事项族的代号，撞了会歧义；结论行给 `MERGE_READY: yes/no`。
 
 **为什么不进 CI**：预核是判断性工作（非确定性、无机械判据），一旦成门就会变成「CI 能过的仪式」；它也不替代双签。
-CI 侧只做机械切片：模板结构（`pr-template`）、代号未登记与越界（`render_review_summary.py --scan`）、skill 自包含。
+CI 侧只有机械切片：模板结构（`pr-template.yml`）、docs 名单与未登记文档（`docs-index`）、skill 自包含（`skill-self-contained`）。
+代号未登记与越界的 `python3 scripts/render_review_summary.py --scan` 是**手工命令**，同样不进 CI（`writing-norms.md` §8）。
 
 **抽审纪律（约定，同"渐进审序"的用意）**：reviewer 每轮**自行随机点一处**核对，**不从改动者列的 spot-check 清单里挑**。不指望抓全，目的是让"如实标注"成为改动侧的占优策略。
 

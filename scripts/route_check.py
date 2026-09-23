@@ -119,27 +119,30 @@ def main() -> int:
     if not cases:
         print(f"{path} 里没有 cases", file=sys.stderr)
         return 2
-    case = cases[0]
-    text = case_text(case)
-    hits = hits_for(text, branches)
     exp = expected_branch(path, root)
-
-    print(f"case：{case.get('id')}（{path.relative_to(root) if path.is_relative_to(root) else path}）")
-    print(f"期望分支：{exp or '（common/ 或路径不在 knowledge/<训推>/<框架>/<性质>/，本条不判）'}")
-    print(f"命中分支（按聚合顺序）：{', '.join(f'{bid}←{pat}' for bid, pat in hits) or '（无命中 → 诊断时走语义兜底）'}")
-    dup = [(pat, ids) for pat, ids in wide_words(branches) if any(pat == p for _b, p in hits)]
-    if dup:
-        print("本条用的宽词跨分支重复（顺序先到者接住）：")
-        for pat, ids in dup:
-            print(f"  {pat!r} → {', '.join(ids)}")
-    if exp and hits and hits[0][0] != exp:
-        print(f"⚠ 首个命中是 {hits[0][0]}，不是期望的 {exp}——症状里可能缺该分支独有的签名（错误码/算子名/框架特有措辞），"
-              f"或该补一条更窄的变体")
-        return 1
-    if exp and not hits:
-        print("（无命中：诊断时会走语义兜底；若这是新形态，按路由入场判据考虑给对应族补词）")
-        return 0
-    return 0
+    rel = path.relative_to(root) if path.is_relative_to(root) else path
+    all_wide = wide_words(branches)
+    mismatch = 0
+    for i, case in enumerate(cases):
+        hits = hits_for(case_text(case), branches)
+        head = f"case：{case.get('id')}" + (f"（{rel} 第 {i + 1}/{len(cases)} 条）" if len(cases) > 1 else f"（{rel}）")
+        print(head)
+        print(f"期望分支：{exp or '（common/ 或路径不在 knowledge/<训推>/<框架>/<性质>/，本条不判）'}")
+        print(f"命中分支（按聚合顺序）：{', '.join(f'{bid}←{pat}' for bid, pat in hits) or '（无命中 → 诊断时走语义兜底）'}")
+        dup = [(pat, ids) for pat, ids in all_wide if any(pat == p for _b, p in hits)]
+        if dup:
+            print("本条用的宽词跨分支重复（顺序先到者接住）：")
+            for pat, ids in dup:
+                print(f"  {pat!r} → {', '.join(ids)}")
+        if exp and hits and hits[0][0] != exp:
+            print(f"⚠ 首个命中是 {hits[0][0]}，不是期望的 {exp}——症状里可能缺该分支独有的签名（错误码/算子名/框架特有措辞），"
+                  f"或该补一条更窄的变体")
+            mismatch += 1
+        elif exp and not hits:
+            print("（无命中：诊断时会走语义兜底；若这是新形态，按路由入场判据考虑给对应族补词）")
+        if i + 1 < len(cases):
+            print()
+    return 1 if mismatch else 0
 
 
 if __name__ == "__main__":
