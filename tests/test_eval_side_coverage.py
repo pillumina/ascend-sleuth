@@ -154,6 +154,20 @@ class EvalSideCoverageTest(unittest.TestCase):
         self.assertEqual(self.run_cli("--check-cells").returncode, 1)
         self.assertEqual(self.run_cli("--check", "--check-cells").returncode, 1)
 
+    def test_side_layer_ignores_sides_without_cases(self):
+        """侧层只对**库里有 case 的侧**要求量尺。
+
+        "新侧先在后端声明、下一条 PR 才补 case 与夹具"是正常顺序（路由协议文件的侧列表可扩张），
+        那时拦下来是拦错了对象——判据是"这一侧没有回归保护"，没有 case 就没有需要保护的东西。
+        """
+        self.write_case("training/mindspeed-llm/interrupt/T-1.yaml", "T-1")
+        self.write_fixture("T-1.fixture.yaml", "T-1", "training/mindspeed-llm/interrupt/")
+        # inference 侧此时既无 case 也无夹具：不该被侧层当成缺口
+        self.assertEqual(self.run_cli("--check").returncode, 0)
+        # 但一旦落了 case，就必须有夹具
+        self.write_case("inference/vllm-ascend/interrupt/I-1.yaml", "I-1")
+        self.assertEqual(self.run_cli("--check").returncode, 1)
+
     def test_check_green_when_both_layers_are_clean(self):
         self.seed_both_sides_covered()
         r = self.run_cli("--check", "--check-cells")
@@ -165,7 +179,8 @@ class EvalSideCoverageTest(unittest.TestCase):
         """`--require-side` 把侧层判据限定到点名的侧——没点名的侧就算归零也不拦。"""
         self.write_case("training/mindspeed-llm/interrupt/T-1.yaml", "T-1")
         self.write_fixture("T-1.fixture.yaml", "T-1", "training/mindspeed-llm/interrupt/")
-        # inference 侧这时有 case、无夹具：不点它名则不管，点了才红
+        # inference 侧这时**有 case、无夹具**：这才是"归零"该判的场景（没 case 的侧已被跳过）
+        self.write_case("inference/vllm-ascend/interrupt/I-1.yaml", "I-1")
         self.assertEqual(self.run_cli("--check").returncode, 1)
         self.assertEqual(self.run_cli("--check", "--require-side", "training").returncode, 0)
         self.assertEqual(self.run_cli("--check", "--require-side", "training",

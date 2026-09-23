@@ -268,6 +268,11 @@ decisions:
       CI 那一步保持不变（`--check --require-side training --require-side inference`）。
       这样三处文档写的机制第一次成真；格层门随时可用 `--check-cells` 打开。
       实测两层独立触发（见 `success_criteria` ②′）；测试相应重写为标定两层分界的四条。
+      **定向复验判 `MERGE_READY: yes`**，只余一条建议级（F4）：侧层原先把"已声明但还没有 case 的侧"
+      也算缺口——本仓现状无碍，但路由协议文件预告了侧列表可扩张，"新侧先声明、下一条 PR 才补
+      case 与夹具"会被拦一次。已按"只对有 case 的侧要求量尺"收窄（并补测试
+      `test_side_layer_ignores_sides_without_cases`），这与该层判据的本意（"这一侧没有回归保护"）
+      一致：没有 case 就没有需要保护的东西。
   - who: agent
     when: 2026-09-23
     type: decision
