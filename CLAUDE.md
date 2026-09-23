@@ -38,14 +38,14 @@ This is a **knowledge/skills repo** — there is no build, no lint, no test suit
 
 | Tier | Content | When loaded |
 |------|---------|-------------|
-| Tier 1 | `triage-tree.yaml` — symptom → namespace routing (≤30 branches)。**聚合是生成物**：加词改 `triage-tree.d/<族>.yaml`（一族一文件）后跑 `scripts/build_triage_tree.py` 并把聚合一起提交；该目录与聚合都走 `merge=union`，两人同一天加词不冲突 | Always |
+| Tier 1 | `triage-tree.yaml` — routing in two layers: `sides:`（合法侧 + 每侧目录面）then `natures:`（interrupt / precision / performance，性质词表**训推共用**，≤30 natures）。**聚合是生成物**：改词改 `triage-tree.d/<性质>.yaml`（一性质一文件，清单在 `00-protocol.md` 的 `sources:`）后跑 `scripts/build_triage_tree.py` 并把聚合一起提交；该目录与聚合都走 `merge=union`，两人同一天加词不冲突 | Always |
 | Tier 2 | `knowledge/<ns>/*.yaml` — structured case rules | Two-phase: read the **命中 (namespace × category) 的索引分片** `knowledge/_index/<ns>__<category>.yaml` first (行已瘦身: id/title/tags/symptoms 首条摘要/category/score/file + 签名面 `sig`(quickly_check 字面量分支, ≤6) 与 `tok`(全症状 token, ≤12)；完整 symptoms/quickly_check 在 case 本体), filter candidates ≤5 by title/tag/symptom-summary（`sig`/`tok` 是判断证据；**排序仍由 agent 的相关性判断**，score 只破平——历史回放 agent 判断 top-3 19/19，优于任何机械排序键）, then load the full body to verify with quickly_check. category 未定才回退 `<ns>.yaml`；全库总表 `_index.yaml` 只在跨库比对时读。改 case 后跑 `scripts/build_index.py`（分片 + 总表一起提交；门是覆盖检查） |
 | Tier 3 | `postmortems/` — raw investigation records | Keyword grep fallback when Tier 2 misses |
 
 ### Two orthogonal problem dimensions
 
-- **Where** (training vs inference × framework) — determines which namespace directory to search. Encoded in `triage-tree.yaml`'s `search_namespaces`.
-- **What** (interrupt / precision / performance) — determines the diagnosis path and `quickly_check` shape. Interrupt uses error-signature grep, precision uses numeric threshold assertions, performance uses profiler metric comparisons. **Do not mix these.**
+- **Where** (training vs inference × framework) — determines which namespace directory to search. **侧不由症状词判，由工程师的事实确定**（材料里写着→直接用；没写→第 1 步问一句；给了框架名→对到库里目录；一时不答→两侧都查并记 `side: unknown`）。落在 `triage-tree.yaml` 的 `sides:`，与 trace 的 `side` / `side_source` 一起可观测。
+- **What** (interrupt / precision / performance) — determines the diagnosis path and `quickly_check` shape. Interrupt uses error-signature grep, precision uses numeric threshold assertions, performance uses profiler metric comparisons. **Do not mix these.** 这三个性质就是 `triage-tree.yaml` 的 `natures:` 分支：症状匹配只判性质，词表训推共用一份，所以同一个宽词不再需要在两侧各写一遍、也不用靠分支顺序决定谁先接住。
 
 ### Skills
 

@@ -130,14 +130,17 @@ def is_entry_file(path: Path) -> bool:
 
 
 def legal_categories(root: Path) -> set:
-    """合法 category 取值 = triage-tree 分支的取值（单一数据源，防手写集合漂移）。
+    """合法 category 取值 = triage-tree 性质层的取值（单一数据源，防手写集合漂移）。
 
     category 是闸门与词条加载的检索键——拼错一个字母会让闸门静默不触发、
     或让词条在对应类别下静默不加载，两者都是无声失效，必须机械校验。"""
     doc = load_yaml(root / "triage-tree.yaml")
     cats = set()
     if isinstance(doc, dict):
-        for b in doc.get("branches") or []:
+        # 顶层键是 `sides:`（侧，不带 category）与 `natures:`（性质，带 category）。
+        # 退休的 `branches:` 桶读起来会静默返回空集，然后整批校验退回 FALLBACK——
+        # 那正是"拼错一个字母却没人报"的形态，所以这里点名读 `natures`。
+        for b in doc.get("natures") or []:
             if isinstance(b, dict) and b.get("category"):
                 cats.add(str(b["category"]))
     return cats or set(FALLBACK_CATEGORIES)

@@ -1,0 +1,30 @@
+# 性质：精度（precision）——训推共用一份词表，侧由工程师的事实确定，不由症状词判。
+# 合并自 training_precision（原 20-training-precision.yaml）与 inference_precision
+# （原 50-inference-precision.yaml）。加词判据见 00-protocol.md；加词只碰本文件。
+
+natures:
+  - id: precision
+    category: precision
+    symptoms:
+      # ---- 自 training_precision ----
+      - ['\bnan\b', "loss.*nan", '\binf\b']
+      - ["fp8.*precision", '\boverflow\b', '\bunderflow\b']
+      - ["bf16.*mismatch", "allreduce.*round"]
+      - ['\bdiverg', "not converg"]        # 收敛问题走 precision.convergence 子类型
+      - ["乱码", "garbled", "weight.*mismatch", "权重.*错位"]   # 权重错位/输出乱码（MSLLM-1532 mg2hf GQA 拆分 / MSLLM-1437 grad norm 0）
+      - ["日志.*异常", "统计失真", "被错误除以", "除以.*global_step", "日志失真"]   # 日志统计/数值呈现异常（MSLLM-1780 FSDP2 续训首步 lm loss 被除 global_step）
+      - ["重复训练.*(不一致|差异)", "确定性.*(不一致|失效|无法固定)", "grad_norm.*(偏大|异常)"]   # 重复训练/确定性类（COMMON-SEED-RESET-DETERMINISM 业务装饰器重置确定性开关 / COMMON-RMSNORM-WEIGHT-SCALE 加载权重数值放大 / COMMON-FA-RACE-DETERMINISM 算子数据竞争）
+      - ["log_?prob.*(差异|不一致)", "训推.*(不一致|差异|对齐)", "reward.*(下降|崩溃)"]   # 训推一致性类（VERL-LOGPROB-CONFIG-MISMATCH）
+      # ---- 自 inference_precision ----
+      - ["garbled", "乱码", "output.*wrong", "输出错误", "输出异常"]
+      - ["字符重复", "character.*repeat", "重复输出", "回复不终止", "输出不终止", "持续输出.*换行"]   # 重复/不终止类（VLLM-ASC-XGRAMMAR-REPEAT 结构化输出约束与内容冲突）
+      - ["speculative.*wrong", "投机.*错误", "投机.*输出"]      # 投机输出内容错误（精度）。注意：接受率下降是"双面"——无输出内容错误=性能（走 performance）；伴随输出错误/乱码=精度面。命中 performance 接受率族不符时交叉查 precision 族
+      - ["overthinking", "过度思考", "reasoning.*过长"]        # 输出冗余（精度/输出形态异常）
+      - ["输出.*为空", "empty.*output", "result.*empty", "输出为空", "结果为空"]
+      - ["batch.*invariant", "deterministic", "非确定"]
+      - ['\bNAN\b', '\bNaN\b', "loss.*nan", '\binf\b']      # 输出含 NaN/Inf
+      - ["花图", "图像.*(异常|畸变|错乱)", "评分.*(低|下降|不达标)", "score.*(low|drop)"]   # 生成图像异常 / 下游评分下降（COMMON-TP-SEED-UNSYNCED TP 组内种子未同步花图 / VLLM-ASC-GPQA-OPERATOR-CLAMP 评分偏低）
+    search_namespaces:            # 按顺序搜索，最多加载 3 个；<side> 由工程师的事实定（见 00-protocol.md 的 sides）
+      - <side>/<detected_framework>/
+      - common/
+    fallback: Tier 3

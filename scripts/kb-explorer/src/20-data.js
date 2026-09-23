@@ -1,5 +1,9 @@
 /* ============ 20 · data：KB 索引 / 类型元信息 / 检索 ============ */
-var TYPES=KB.types, ENTRIES=KB.entries, TRIAGE=(KB.triage&&KB.triage.branches)||[];
+var TYPES=KB.types, ENTRIES=KB.entries;
+/* 路由分两层：SIDES 是合法侧（哪一侧查，由工程师的事实定），TRIAGE 是性质分支（什么性质，
+   词表训推共用）。生成物只给 `sides:` 与 `natures:` 两个顶层键（退休的 `branches:` 桶不留别名）。 */
+var SIDES=(KB.triage&&KB.triage.sides)||[];
+var TRIAGE=(KB.triage&&(KB.triage.natures||KB.triage.branches))||[];
 var byId={}, byType={};
 ENTRIES.forEach(function(e){byId[e.id]=e;(byType[e.type]=byType[e.type]||[]).push(e);});
 var TYPE_META={};TYPES.forEach(function(t){TYPE_META[t.type]=t;});

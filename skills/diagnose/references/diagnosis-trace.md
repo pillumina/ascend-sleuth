@@ -16,12 +16,34 @@ user 事件无 `action`，不参与词表检查。**新增 action 时同步改 `
 
 ### `triage` 事件（Tier-1 路由决策）
 
-字段 `{action: triage, routed, category, output, reason}`：
+字段 `{action: triage, side, side_source, branch, category, routed, output, reason}`：
 
-- **`routed` 必写**，值是被路由到的 namespace 列表（按 `search_namespaces` 的顺序，如 `["inference/vllm-ascend", "common"]`）。
+- **`routed` 必写**，值是被路由到的 namespace 列表（按该侧 `search_namespaces` 的顺序，如 `["inference/vllm-ascend", "common"]`）。侧必须在 `routed` 的目录前缀里看得到。
 - **没命中任何分支也要写 `routed: []`，不要省略这个字段**——省略会被结算读成「未记录」，而「未记录」与「没错」在数据上同形（路由准确率的分母与 router 错例池都取这个字段）。
 - 命中分支后走了语义兜底，另记 `triage_semantic`（带 `namespace` + `category`）：它同样计入路由准确率，**不要只留 triage 而不带 routed**。
 - 完全无法分类时写 `routed: []`，并在 `reason` 里写明「无可用 namespace（原因）」，然后按流程走 Tier 3。
+
+**`side` 与 `side_source`（"负载类型"这一步可观测的唯一来源）**：路由先分侧（训练 / 推理）、再在侧内判性质，所以"这一单在哪一侧"必须落进 trace——它是这一层唯一的证据面，不记就回答不了"侧是怎么定下来的、有多少单要问一句"。
+
+```yaml
+- {step: 2, action: triage, side: training, side_source: framework,
+   branch: interrupt, category: interrupt, routed: [training/mindspeed-llm/, common/]}
+```
+
+- `side`：`training` / `inference` / `unknown`（他一时没答、材料也没写——那就不猜，两侧都查）
+- `side_source` 四档，收敛写、别自造：
+
+  | 值 | 含义 | 例 |
+  |---|---|---|
+  | `evidence` | 材料里读到的 | 贴的是训练脚本 / loss 曲线；贴的是 `vllm serve` 启动命令 |
+  | `user` | 问了、他答的 | 追问「这单是训练还是推理」后他回答 |
+  | `framework` | 由框架名对到库里目录 | 框架是 verl → `knowledge/training/verl/` |
+  | `unknown` | 一时拿不到（`side` 同时为 `unknown`） | 他没回、材料里也没有线索 |
+
+  中途证据与他的说法相反时以证据为准：`side_source: evidence`，并在 `reason` 里写明改向的理由与回给他那句话。
+- `branch` 现在是**性质**名（`interrupt` / `precision` / `performance`），不再带 `training_` / `inference_` 前缀——侧已经在 `side` 里，分支名再带一次就是两处记同一件事。**分层前写下的历史 trace 保持原样、不改写**（那时的分支 id 是当时口径的真实记录）。
+
+**`side: unknown` 的占比是这一层的体检读数**：它按设计是保底路径（两侧都查），占比持续偏高说明步骤 1 那句问话没问出去，而不是"侧判不出来"——那时的修法是改流程，不是加词。
 
 ### `reference_lookup` 事件（四触发点 + 三态）
 

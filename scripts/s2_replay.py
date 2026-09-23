@@ -136,7 +136,10 @@ def collect(root: Path, report_path: Path):
                 # triage 正则错 / agent 推理错 / 优雅退化，S2 无法区分——归因需人/trace 确认。
                 # selfevolve-loop 重构：不硬标 execution_error（那是 diagnose S1 侧职权），
                 # verdict=candidate，component_tally 聚合时如实标注"候选(S2)"，不冒充硬归因。
-                got_branch = f"triage:inference_{got_cat}" if got_cat else "triage:未归因"
+                # 组件名 = triage:<性质>：路由分层后分支 id 就是性质名（interrupt / precision /
+                # performance），侧不进分支名——它在 trace 的 side 字段里，且是工程师给的事实，
+                # 不是这一层要修的东西。原先写死 "inference_" 前缀是为了对准老的分支 id 形状。
+                got_branch = f"triage:{got_cat}" if got_cat else "triage:未归因"
                 attribution_entries.append({
                     "issue": issue,
                     "component": got_branch,          # 候选指向（got 分支），非定论

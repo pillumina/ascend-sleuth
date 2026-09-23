@@ -1,23 +1,35 @@
-# 本文件是 Tier 1 路由数据的**说明与入场判据**（人读面）；分支本体在 triage-tree.d/*.yaml。
+# 本文件是 Tier 1 路由数据的**说明与入场判据**（人读面）；侧与性质两层本体在 triage-tree.d/*.yaml。
 # triage-tree.yaml 是生成物（scripts/build_triage_tree.py 拼出来），**不要直接编辑它**——
-# 加词 / 改分支请改 triage-tree.d/ 下对应那一族的文件，然后跑一次：
+# 改侧或改词请改 triage-tree.d/ 下的对应文件，然后跑一次：
 #   python3 scripts/build_triage_tree.py
 # Tier 1: 症状 → namespace 路由
 #
-# 两个正交轴（别混）：
-#   轴 1（在哪查）= 训推 × 框架 → search_namespaces 指向的目录
-#   轴 2（什么性质）= category → 决定诊断路径 + quickly_check 形态 + 默认工具
+# 路由分两步，**侧与性质互不竞争**：
+#
+#   侧（在哪一侧查）= training / inference —— **由工程师的事实确定，不由症状词判**：
+#     他贴的材料里写着（训练中 / 推理请求中 / 服务命令）→ 直接用；
+#     没写 → 在诊断第 1 步问一句（他一定知道）；
+#     他顺手给了框架名 → 按库里目录对（knowledge/training/<fw>/ 或 knowledge/inference/<fw>/）；
+#     他一时不答 → 侧未知：两侧都查，trace 标 side: unknown（保底，不阻塞诊断）；
+#     中途证据与他说法相反 → 以证据为准，回一句「你说训练、日志是 vllm serve，我按推理走」。
+#     规模在每侧内部的框架上扩张（新框架 = 该侧目录下加一层），侧本身不因新框架而增加。
+#
+#   性质（什么性质）= interrupt / precision / performance —— **在侧内按症状判**：
+#     决定诊断路径 + quickly_check 形态 + 默认工具。三个性质各一份词表、**训推共用**：
+#     同一个宽词（`\btimeout\b`、`\bOOM\b`、`RuntimeError`）只写一次，不再出现
+#     「同一正则写在两个分支里、靠分支顺序决定谁先接住」。
+#     性质判不了 → 该侧三个性质的索引一起加载（优雅退化）。
+#
+# 组合出检索面：`knowledge/<侧>/<框架>/<性质>/`，外加框架无关的 `knowledge/common/`（必拉）。
 #
 # <detected_framework>：工程师提供的框架（/diagnose 从客户提供的信息/报错判断，不跑 pip list）。
-# 分支数 ≤ 30。框架检测失败时只用 common/。
-#
 # common/：跨框架/框架未登记的共性 case 落入此处（框架无关根因）。README + ADR-0005 的"common/ 必拉"
 # 已从设计承诺变为可消费资产；search_namespaces 中的 common/ 一项已生效（框架检测失败或首个
 # namespace 未命中时查它）。条数与容量现算：`python3 scripts/index_counts.py`（生成物里不写数字——写进去就会在并发合并时撞行或漂移）；新共性 case 的提炼触发条件见
 # skills/knowledge-groom/SKILL.md。（本文件是 Tier 1 数据，不承载运行时状态播报。）
 #
-# 加词/改分支的入场判据（判据本身见 scripts/trace_metrics.py 的 triage_miss_classes）：
-#   分支只承担两件事——**作用域路由**（症状 → search_namespaces）与**常见措辞的省一步捷径**。
+# 加词/改词/改分支的入场判据（判据本身见 scripts/trace_metrics.py 的 triage_miss_classes）：
+#   分支只承担两件事——**作用域路由**（侧 × 性质 → search_namespaces）与**常见措辞的省一步捷径**。
 #   它不承担语义覆盖：含义的模糊归 agent（级联第三级），形态的模糊归正则（设计原则三）。
 #   故只有三种证据支持改本文件：① 输入里有 token 类信号（错误码/算子名/env 名/文件名/版本）
 #   而没有任何分支接住；② 加载集合错了（命中的 case 不在被路由到的 namespace 里）；
@@ -25,10 +37,33 @@
 #   **「没见过这种写法」不是证据**——多语种与换词属语义面，补词不收敛（补的是措辞，不是能力）。
 #   分支里已有的中文症状词按「捷径」读：它们省一次语义判定，不作为完整性判据。
 #
-branches:
-  - id: training_interrupt
+#   性质词表**训推共用**，所以加词时多一条判据：**token 类的侧专属词可以进，措辞类的侧专属词不行**。
+#   token 类（`build_train_valid_test_data`、`recv_forward`、`tpot`、`accept_len` 这类函数名/字段名/
+#   配置名）只在那一侧的输入文本里出现，留在共用词表不会误吸别侧的 case；
+#   措辞类（`vllm serve`、`训练无法启动` 这类按某一侧的说法写的句式）会——另一侧的同性质 case
+#   会掉到别的性质或没命中，而**这种错不会报错**（占位都在、门全绿），只能靠人判断。
+#   拿不准是哪一类就标 `needs-review` 交人定。
+#
+sides:
+- id: training
+  label: 训练
+  namespaces:
+  - training/<detected_framework>/
+  - common/
+  fallback: Tier 3
+- id: inference
+  label: 推理
+  namespaces:
+  - inference/<detected_framework>/
+  - common/
+  fallback: Tier 3
+
+# 性质层（训推共用一份词表；侧由 `sides:` 给，不由症状词判）
+natures:
+  - id: interrupt
     category: interrupt
     symptoms:
+      # ---- 自 training_interrupt ----
       - ['\btimeout\b', '\bhang\b', "stuck at step"]
       - ["NCCL.*timeout", "HCCL.*timeout", "all_to_all.*timeout"]
       - ['\bOOM\b', "out of memory", '\bkilled\b']
@@ -36,58 +71,15 @@ branches:
       - ["HCCL.*(error|fail)", "hcclCommInit"]                      # HCCL 通信初始化错误（VERL-5074 error code 5 / VERL-6608 error code 7）
       - ["aclnn\\w+"]                                               # aclnn 算子调用错误（VERL-6885 ConvolutionBackward）
       - ["CPU-only actor", "registered but not available"]          # 设备平台注册失败（VERL-6741 Ray actor CPU-only）
-      - ["RuntimeError", "AssertionError", "patch.*fail"]           # 训练期异常（VERL-6707 npu_patch / VERL-6756 设备检测兜底）
+      - ["RuntimeError", "AssertionError", "patch.*fail"]           # 运行期异常（VERL-6707 npu_patch / VERL-6756 设备检测兜底）
       - ["ImportError", "ModuleNotFoundError", "FileNotFoundError"]  # 启动期 import/文件错误（MSLLM-1554/1555 features_manager 缺符号 / MSLLM-1465 数据预处理路径）
-      - ["cannot start", "启动失败", "failed to start", "训练无法启动", "训练无法拉起", "启动即失败"]   # 训练启动失败类（MSLLM-1459/1667 等）
+      - ["cannot start", "启动失败", "failed to start", "无法启动", "无法拉起", "启动即失败"]   # 启动失败类（MSLLM-1459/1667 等；原为「训练无法启动 / 训练无法拉起」，去侧后作一般写法）
       - ["重复注册", "register.*multiple times"]                     # 算子重复注册（MSLLM-1550 GMMOpBuilder / MSLLM-1707 npu_moe 算子）
       - ["build_train_valid_test_data"]                              # 数据集构建阶段（MSLLM-1526 helpers_cpp 缓存）
       - ["recv_forward", "p2p_communication"]                        # p2p 通信路径（MSLLM-1525 batch_p2p_comm）
-    search_namespaces:            # 按顺序搜索，最多加载 3 个
-      - training/<detected_framework>/
-      - common/
-    fallback: Tier 3
-
-  - id: training_precision
-    category: precision
-    symptoms:
-      - ['\bnan\b', "loss.*nan", '\binf\b']
-      - ["fp8.*precision", '\boverflow\b', '\bunderflow\b']
-      - ["bf16.*mismatch", "allreduce.*round"]
-      - ['\bdiverg', "not converg"]        # 收敛问题走 precision.convergence 子类型
-      - ["乱码", "garbled", "weight.*mismatch", "权重.*错位"]   # 权重错位/输出乱码（MSLLM-1532 mg2hf GQA 拆分 / MSLLM-1437 grad norm 0）
-      - ["日志.*异常", "统计失真", "被错误除以", "除以.*global_step", "日志失真"]   # 日志统计/数值呈现异常（MSLLM-1780 FSDP2 续训首步 lm loss 被除 global_step）
-      - ["重复训练.*(不一致|差异)", "确定性.*(不一致|失效|无法固定)", "grad_norm.*(偏大|异常)"]   # 重复训练/确定性类（COMMON-SEED-RESET-DETERMINISM 业务装饰器重置确定性开关 / COMMON-RMSNORM-WEIGHT-SCALE 加载权重数值放大 / COMMON-FA-RACE-DETERMINISM 算子数据竞争）
-      - ["log_?prob.*(差异|不一致)", "训推.*(不一致|差异|对齐)", "reward.*(下降|崩溃)"]   # 训推一致性类（VERL-LOGPROB-CONFIG-MISMATCH）
-    search_namespaces:
-      - training/<detected_framework>/
-      - common/
-    fallback: Tier 3
-
-  - id: training_performance
-    category: performance
-    symptoms:
-      - ["throughput.*drop", "throughput.*low"]
-      - ["step.*time.*slow", "step.*time.*波动"]
-      - ["comm.*ratio.*high", "communication.*overhead"]
-      - ["tflops.*low", '\bidle\b', "util.*low"]
-      # Host/Device 侧性能指标形态（profiling 驱动；2026-09-09 msprof 案例沉淀时补录，
-      # 覆盖「吞吐/延迟族」之外的系统层与采集层判据）
-      - ["利用率.*(低|偏低)", "util.*low", "idle.*(高|占比)", "free.*(占比|时间)", "无效空闲", "空档"]
-      - ["上下文切换", "context.?switch", "锁等待", "lock.*wait", "\\bGIL\\b", "GC.*(抖动|耗时|回收)", "syscall", "malloc.*耗时", "中断.*(偏高|集中|次数)", "\\bIRQ\\b", "cache miss", "透明大页", "\\bTHP\\b"]
-      - ["通信.*耗时.*占比", "AllReduce.*(波动|耗时)", "慢卡", "快等慢", "带宽使用率", "等待时长比例"]
-      - ["显存.*(缓慢|持续).*(增长|上涨)", "reserved.*(上涨|增长)", "allocated.*不涨", "显存.*(累积|泄漏)", "显存.*OOM"]
-      - ["op_statistic", "aclopCompile", "算子编译", "访存密集", "\\bNonZero\\b", "batch.*(过小|偏小)"]
-      - ["dequeue", "同步接口", "aclrtSynchronizeStream", "耗时.*抖动", "吞吐.*(不足|偏低|下降)"]
-    search_namespaces:
-      - training/<detected_framework>/
-      - common/
-    fallback: Tier 3
-
-  - id: inference_interrupt
-    category: interrupt
-    symptoms:
-      - ["\\btimeout\\b", "超时", "synchronize.*timeout", "广播.*超时", "timed out", "TimeoutError"]   # 推理侧通信/同步超时（timed out/TimeoutError 补录：2026-W37 #13639 sample_tokens RPC 超时）
-      - ["\\bhang\\b", "\\bstuck\\b", "死锁", "挂起", "deadlock"]   # 推理侧 hang/死锁（2026-W37 #13639 fullgraph deadlock 补录——原只有 timeout 变体，hang 被 training 分支独占）
+      # ---- 自 inference_interrupt ----
+      - ["\\btimeout\\b", "超时", "synchronize.*timeout", "广播.*超时", "timed out", "TimeoutError"]   # 通信/同步超时（timed out/TimeoutError 补录：2026-W37 #13639 sample_tokens RPC 超时）
+      - ["\\bhang\\b", "\\bstuck\\b", "死锁", "挂起", "deadlock"]   # hang/死锁（2026-W37 #13639 fullgraph deadlock 补录——原只有 timeout 变体，hang 被 training 分支独占）
       - ["\\bpreempt\\b", "抢占", "无法.*调度", "调度.*(卡|死锁|楔)", "admission.*fail", "排队.*堆积", "waiting.*递增"]   # 调度/接纳层（preemption/admission）——PD 分离静默冻结/调度楔（2026-09-08 ascend_store PD prefill hang；真实支点常是调度/控制循环层而非 load/传输组件）
       - ["kv.*cache.*full", "out of memory", "\\bOOM\\b", "内存泄漏", "memory leak", "内存.*持续增长"]   # 长跑内存泄漏/OOM（#12345：CANN host buffer 不驱逐，中文/大写 OOM 补录）
       - ["serving.*crash", "engine.*error"]
@@ -96,50 +88,57 @@ branches:
       - ["failed to start", "cannot start", "unable to start", "启动失败", "service.*start.*fail"]   # 启动失败类（10610/11208/13508/9167 等）
       - ["ModuleNotFoundError", "ImportError", "KeyError", "AttributeError", "RuntimeError", "AssertionError", "ValueError", "TypeError"]   # 启动期异常类（ValueError 补录：2026-W36 #7023；TypeError 补录：2026-W37 #13446 Reranker config 类型错配——原缺 TypeError 致被 training 的 failed to start 误吸）
       - ["are not supported for now", "not supported for now", "Model architectures.*not supported"]   # 架构不支持（#15086：K3 版本错位，OOD 补录）
-    search_namespaces:
-      - inference/<detected_framework>/
+    search_namespaces:            # 按顺序搜索，最多加载 3 个；<side> 由工程师的事实定（见 00-protocol.md 的 sides）
+      - <side>/<detected_framework>/
       - common/
     fallback: Tier 3
-
-  - id: inference_precision
+  - id: precision
     category: precision
     symptoms:
+      # ---- 自 training_precision ----
+      - ['\bnan\b', "loss.*nan", '\binf\b']
+      - ["fp8.*precision", '\boverflow\b', '\bunderflow\b']
+      - ["bf16.*mismatch", "allreduce.*round"]
+      - ['\bdiverg', "not converg"]        # 收敛问题走 precision.convergence 子类型
+      - ["乱码", "garbled", "weight.*mismatch", "权重.*错位"]   # 权重错位/输出乱码（MSLLM-1532 mg2hf GQA 拆分 / MSLLM-1437 grad norm 0）
+      - ["日志.*异常", "统计失真", "被错误除以", "除以.*global_step", "日志失真"]   # 日志统计/数值呈现异常（MSLLM-1780 FSDP2 续训首步 lm loss 被除 global_step）
+      - ["重复训练.*(不一致|差异)", "确定性.*(不一致|失效|无法固定)", "grad_norm.*(偏大|异常)"]   # 重复训练/确定性类（COMMON-SEED-RESET-DETERMINISM 业务装饰器重置确定性开关 / COMMON-RMSNORM-WEIGHT-SCALE 加载权重数值放大 / COMMON-FA-RACE-DETERMINISM 算子数据竞争）
+      - ["log_?prob.*(差异|不一致)", "训推.*(不一致|差异|对齐)", "reward.*(下降|崩溃)"]   # 训推一致性类（VERL-LOGPROB-CONFIG-MISMATCH）
+      # ---- 自 inference_precision ----
       - ["garbled", "乱码", "output.*wrong", "输出错误", "输出异常"]
       - ["字符重复", "character.*repeat", "重复输出", "回复不终止", "输出不终止", "持续输出.*换行"]   # 重复/不终止类（VLLM-ASC-XGRAMMAR-REPEAT 结构化输出约束与内容冲突）
-      - ["speculative.*wrong", "投机.*错误", "投机.*输出"]      # 投机输出内容错误（精度）。注意：接受率下降是"双面"——无输出内容错误=性能（走 inference_performance）；伴随输出错误/乱码=精度面（inference_precision 族 11127/12723 等）。命中 performance 接受率族不符时交叉查 precision 族
+      - ["speculative.*wrong", "投机.*错误", "投机.*输出"]      # 投机输出内容错误（精度）。注意：接受率下降是"双面"——无输出内容错误=性能（走 performance）；伴随输出错误/乱码=精度面。命中 performance 接受率族不符时交叉查 precision 族
       - ["overthinking", "过度思考", "reasoning.*过长"]        # 输出冗余（精度/输出形态异常）
       - ["输出.*为空", "empty.*output", "result.*empty", "输出为空", "结果为空"]
       - ["batch.*invariant", "deterministic", "非确定"]
-      - ['\bNAN\b', '\bNaN\b', "loss.*nan", '\binf\b']      # 推理侧精度（输出含 NaN/Inf）
+      - ['\bNAN\b', '\bNaN\b', "loss.*nan", '\binf\b']      # 输出含 NaN/Inf
       - ["花图", "图像.*(异常|畸变|错乱)", "评分.*(低|下降|不达标)", "score.*(low|drop)"]   # 生成图像异常 / 下游评分下降（COMMON-TP-SEED-UNSYNCED TP 组内种子未同步花图 / VLLM-ASC-GPQA-OPERATOR-CLAMP 评分偏低）
-    search_namespaces:
-      - inference/<detected_framework>/
+    search_namespaces:            # 按顺序搜索，最多加载 3 个；<side> 由工程师的事实定（见 00-protocol.md 的 sides）
+      - <side>/<detected_framework>/
       - common/
     fallback: Tier 3
-
-  - id: inference_performance
+  - id: performance
     category: performance
     symptoms:
+      # ---- 自 training_performance ----
+      - ["throughput.*drop", "throughput.*low"]
+      - ["step.*time.*slow", "step.*time.*波动"]
+      - ["comm.*ratio.*high", "communication.*overhead"]
+      - ["tflops.*low", '\bidle\b', "util.*low"]
+      # ---- 自 inference_performance ----
       - ["latency.*high", "p99.*slo", "qps.*low", "吞吐.*下降", "throughput.*drop", "tpot", "TPOT.*劣化", "tpot.*劣化"]
       - ["cold.*start.*slow", "first.*token.*slow"]
-      - ["accept.*rate.*drop", "accept_len.*下降", "acceptance.*rate.*drop", "acceptance_per_pos", "接受率低", "接受率.*低", "投机.*接受率"]   # 投机接受率下降=生成效率退化（性能；无输出内容错误前提——伴随输出错误/乱码走 inference_precision，见 precision 分支注释）
+      - ["accept.*rate.*drop", "accept_len.*下降", "acceptance.*rate.*drop", "acceptance_per_pos", "接受率低", "接受率.*低", "投机.*接受率"]   # 投机接受率下降=生成效率退化（性能；无输出内容错误前提——伴随输出错误/乱码走 precision，见 20-precision.yaml 的注释）
       - ["cache.*hit.*0", "命中.*为0", "prefix.*cache.*miss", "缓存命中.*0"]    # 前缀缓存失效=性能退化
       - ["generation.*stall", "generation.*slow", "卡住.*生成"]
-      # Host/Device 侧性能指标形态（profiling 驱动；2026-09-09 msprof 案例沉淀时补录，
-      # 覆盖「吞吐/延迟族」之外的系统层与采集层判据）
+      # ---- 两侧各写过一遍、合并后只留一份（Host/Device 侧性能指标形态；profiling 驱动）----
       - ["利用率.*(低|偏低)", "util.*low", "idle.*(高|占比)", "free.*(占比|时间)", "无效空闲", "空档"]
       - ["上下文切换", "context.?switch", "锁等待", "lock.*wait", "\\bGIL\\b", "GC.*(抖动|耗时|回收)", "syscall", "malloc.*耗时", "中断.*(偏高|集中|次数)", "\\bIRQ\\b", "cache miss", "透明大页", "\\bTHP\\b"]
       - ["通信.*耗时.*占比", "AllReduce.*(波动|耗时)", "慢卡", "快等慢", "带宽使用率", "等待时长比例"]
       - ["显存.*(缓慢|持续).*(增长|上涨)", "reserved.*(上涨|增长)", "allocated.*不涨", "显存.*(累积|泄漏)", "显存.*OOM"]
       - ["op_statistic", "aclopCompile", "算子编译", "访存密集", "\\bNonZero\\b", "batch.*(过小|偏小)"]
       - ["dequeue", "同步接口", "aclrtSynchronizeStream", "耗时.*抖动", "吞吐.*(不足|偏低|下降)"]
-    search_namespaces:
-      - inference/<detected_framework>/
+    search_namespaces:            # 按顺序搜索，最多加载 3 个；<side> 由工程师的事实定（见 00-protocol.md 的 sides）
+      - <side>/<detected_framework>/
       - common/
-    fallback: Tier 3
-
-  - id: uncategorized
-    category: null
-    symptoms: []
-    search_namespaces: [common/]
     fallback: Tier 3
