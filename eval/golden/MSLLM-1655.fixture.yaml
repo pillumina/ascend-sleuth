@@ -1,7 +1,7 @@
 # eval/golden/MSLLM-1655.fixture.yaml
 # 真实夹具：源自 MindSpeed-LLM issue #1655（公开 issue；输入 = 用户首帖原文，剥掉平台自动附的安全提醒样板与页脚，
 # 唯一删改是把模型 config.json 的附件链接（含上传 id 与哈希）换成占位）。
-# 训练侧夹具（interrupt 面）：与上一条同一侧、不同性质，故两条一起才盖住训练侧的性质判别。
+# 训练侧夹具（interrupt 面）：与上一条同一负载类型、不同性质，故两条一起才盖住训练侧的性质判别。
 # 症状里同时有 "if __name__" 之外的宽词（RuntimeError）与栈尾签名，测的是"宽词之下仍落到 interrupt"。
 # 本条回放结果：candidates=Y rank=1 path=primary
 

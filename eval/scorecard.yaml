@@ -11,8 +11,8 @@ entries:
     path: primary
     candidates: true
     raw: 本条回放结果：candidates=Y rank=1 path=primary
-    recorded_before: null
-  fixture_sha256: fc8cb6208bcff87125e8d8426dd11a820377d36d639cd29b538ba0617afefbd1
+    recorded_before: '2026-09-23'
+  fixture_sha256: 0b8d9e3f75523d1bda26930d6a8e2bb2b166e8753f9060698c0ed85d0a95006e
   case_sha256: e2f7077d65c2
 - fixture: MSLLM-1780.fixture.yaml
   case_id: MSLLM-1780
@@ -24,8 +24,8 @@ entries:
     path: primary
     candidates: true
     raw: 本条回放结果：candidates=Y rank=1 path=primary
-    recorded_before: null
-  fixture_sha256: 55323222cc857bbfda1888377ab46dbf7ba7960e384679feb9814aeba8d88c7d
+    recorded_before: '2026-09-23'
+  fixture_sha256: ee557862e133f4696b7cf58a0acd03f0ec4dfe33a8f19a2f6f05904f96503eb6
   case_sha256: 544219f96b15
 - fixture: SGL-PD-HEAP-001.fixture.yaml
   case_id: SGL-PD-HEAP-001

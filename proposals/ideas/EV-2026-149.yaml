@@ -1,6 +1,6 @@
 # ============================================================
-# EV-2026-149 —— 训练侧回放覆盖：路由分侧之后，"这一侧没有量尺"要能现算、且不许再掉回零
-# 来源：承接 EV-2026-148（路由拆成"侧 × 性质"两层）。分侧把"侧"变成了**量尺单位**，
+# EV-2026-149 —— 训练侧回放覆盖：路由分负载类型之后，"这一种负载类型没有量尺"要能现算、且不许再掉回零
+# 来源：承接 EV-2026-148（路由拆成"负载类型 × 性质"两层）。分负载类型把"负载类型"变成了**量尺单位**，
 #       于是暴露出一件此前没人能一眼看见的事：`eval/golden/` 的真实夹具 25 条全在推理侧，
 #       唯一写着训练侧的那条是对着"从未入库的 case"写的构造示例（它自己的头注就写明
 #       "当前不可作为可运行回归"）。训练侧 22 条 case，0 条有夹具。
@@ -11,7 +11,7 @@
 id: EV-2026-149
 layer: L2
 target_component: eval/golden/
-title: "训练侧回放覆盖：分侧后侧才是量尺单位——把「哪一侧没有量尺」做成可现算的报告，补训练侧真实夹具，并钉住它不再掉回零"
+title: "训练侧回放覆盖：分负载类型后负载类型才是量尺单位——把「哪一种负载类型没有量尺」做成可现算的报告，补训练侧真实夹具，并钉住它不再掉回零"
 status: validated
 authorization: review
 dimension: observability
@@ -22,7 +22,7 @@ source_signals:
   - signal: user_feedback
     evidence: >-
       用户给的判据不是"补几条夹具"，而是"训练侧整条链没有量尺"：无论谁把训练侧的性质词表改坏、
-      或把侧的处理写坏，`eval/` 全绿都测不出来。同时明确两条纪律：①两条候选量尺都要给取舍与证据，
+      或把负载类型的处理写坏，`eval/` 全绿都测不出来。同时明确两条纪律：①两条候选量尺都要给取舍与证据，
       别默认选第一条；②如果两条路都拿不到有意义的判据，就如实说"这条路现在走不通"，
       不要为了交差挑一条弱判据硬门化——本仓对这类动作的定性是"把不确定的东西硬门化 = 假硬化"。
     trajectory:
@@ -32,7 +32,7 @@ source_signals:
       三组现算读数（本次在 origin/main 的新 worktree 上重算，不引用他人数字）：
       ①夹具 26 条，期望命名空间分布 19 inference/vllm-ascend/interrupt、3 inference/vllm-ascend/precision、
       2 inference/vllm-ascend/performance、1 inference/sglang、1 training/mindspeed-llm；
-      按侧 25 推理 / 1 训练，而那条训练侧的是 `example.fixture.yaml`——它的 `case_id`
+      按负载类型 25 推理 / 1 训练，而那条训练侧的是 `example.fixture.yaml`——它的 `case_id`
       （MSLLM-EP-HANG-001）**不在 knowledge/ 索引里**，按文件自己的头注"当前不可作为可运行回归"。
       ②按 case 覆盖：训练侧 0/22、推理侧 22/124（`knowledge/inference/` 下共 125 条，其中
       `inference/sglang/SGL-PD-HEAP-001.yaml` 路径没有性质段、现有判据不判它，故分母 124）。
@@ -41,16 +41,16 @@ source_signals:
       另：`python3 scripts/holdout.py --list` 早已报出"有 case 但没有夹具的格子"六个，
       其中四个属训练侧——但它报的是 (namespace × 性质) 格子（结果），读不出"训练侧 0/22"（量尺单位）。
     trajectory:
-      - "python3 scripts/eval_side_coverage.py（本卡新增；改前基线：training 0/22 = 0%、inference 22/124 = 18%）"
+      - "python3 scripts/eval_workload_type_coverage.py（本卡新增；改前基线：training 0/22 = 0%、inference 22/124 = 18%）"
       - "逐条读 eval/golden/*.fixture.yaml 的 expected.namespace 与 input.framework"
       - "python3 scripts/holdout.py --list"
 hypothesis: >-
-  分侧之后，"侧"成了量尺单位，因此覆盖报告也要按侧算——否则"训练侧没有量尺"这件事只能靠人肉数，
+  分负载类型之后，"负载类型"成了量尺单位，因此覆盖报告也要按负载类型算——否则"训练侧没有量尺"这件事只能靠人肉数，
   而人肉数出来的东西既不会随 PR 更新、也不会在夹具被删时报警。把这份报告做成一条命令 +
   两档门（任一含 case 的格子缺夹具 = 报告为缺口；训练侧不许掉回零 = 硬门），
   再用两条**真实来源**的训练侧夹具把缺口补上：训练侧从"0 条可运行夹具"变成"两个性质面各有 1 条"。
-  **同时如实标注这条判据的强度上界**：夹具钉的是"某一侧的某一条真实输入"，
-  不是那一侧整份词表——别把"补齐了"读成"训练侧词表被改坏会被测出来"。
+  **同时如实标注这条判据的强度上界**：夹具钉的是"某一种负载类型的某一条真实输入"，
+  不是那一种负载类型整份词表——别把"补齐了"读成"训练侧词表被改坏会被测出来"。
 predicted_effect:
   metric: 训练侧真实夹具条数；以及这份覆盖报告是否真在 CI 里拦得住"训练侧掉回零"
   from: >-
@@ -58,8 +58,8 @@ predicted_effect:
     不可运行）；"训练侧 0/22"这个数只能靠人肉数夹具并逐条看 `case_id` 在不在库里。
   to: >-
     训练侧真实夹具 2 条（`training/mindspeed-llm/interrupt` 与 `training/mindspeed-llm/precision`
-    各 1 条，来源为公开 issue 首帖）；新增 `scripts/eval_side_coverage.py` 一条命令现算按侧覆盖，
-    CI 里钉住 `--require-side training --require-side inference`（某一侧量尺归零即红）；
+    各 1 条，来源为公开 issue 首帖）；新增 `scripts/eval_workload_type_coverage.py` 一条命令现算按负载类型覆盖，
+    CI 里钉住 `--require-workload-type training --require-workload-type inference`（某一种负载类型量尺归零即红）；
     并新增 `--nature-evidence` 一栏读出「哪几条夹具真钉着词表」（实测 26 条里 10 条词法锚定，
     两条训练侧夹具都在其中）。
   measure:
@@ -67,15 +67,15 @@ predicted_effect:
       python3 - <<'PY'
       import pathlib, subprocess, sys
       wf = pathlib.Path('.github/workflows/kb-checks.yml').read_text(encoding='utf-8')
-      gate = ('eval_side_coverage.py --check --require-side training --require-side inference' in wf)
-      r = subprocess.run([sys.executable, 'scripts/eval_side_coverage.py',
-                          '--check', '--require-side', 'training'],
+      gate = ('eval_workload_type_coverage.py --check --require-workload-type training --require-workload-type inference' in wf)
+      r = subprocess.run([sys.executable, 'scripts/eval_workload_type_coverage.py',
+                          '--check', '--require-workload-type', 'training'],
                          capture_output=True, text=True)
-      rep = subprocess.run([sys.executable, 'scripts/eval_side_coverage.py'],
+      rep = subprocess.run([sys.executable, 'scripts/eval_workload_type_coverage.py'],
                            capture_output=True, text=True).stdout
-      doc = 'eval_side_coverage.py' in pathlib.Path('docs/guide/eval.md').read_text(encoding='utf-8')
+      doc = 'eval_workload_type_coverage.py' in pathlib.Path('docs/guide/eval.md').read_text(encoding='utf-8')
       # 新的 `--nature-evidence` 也必须被钉住：to 段用它支撑"哪几条夹具真钉着词表"。
-      nev = subprocess.run([sys.executable, 'scripts/eval_side_coverage.py',
+      nev = subprocess.run([sys.executable, 'scripts/eval_workload_type_coverage.py',
                             '--nature-evidence'], capture_output=True, text=True).stdout
       nev_ok = ('带性质段的夹具' in nev and '不参与本栏的' in nev
                 and 'interrupt←RuntimeError' in nev
@@ -97,7 +97,7 @@ validation:
   method: golden_replay
   baseline: >-
     **改前基线（本次在 `origin/main` = 07c84fc 的新 worktree 上现算，不引用他人数字）**：
-    `python3 scripts/eval_side_coverage.py` → `training 按 case 覆盖 0/22 = 0%`、
+    `python3 scripts/eval_workload_type_coverage.py` → `training 按 case 覆盖 0/22 = 0%`、
     `inference 按 case 覆盖 22/124 = 18%`；训练侧两个格子（interrupt 17 条 case、
     precision 5 条 case）都是"缺"。夹具总表 26 条，其中真实投影 24 条、
     构造示例或指向未入库 case 的 2 条。
@@ -106,38 +106,38 @@ validation:
     本次现算是 `knowledge/inference/` 共 125 条、其中 `inference/sglang/SGL-PD-HEAP-001.yaml`
     路径没有性质段（现有判据不判它），故可判分母是 124——两个数都站得住，差的 1 条是它。
   success_criteria: >-
-    ①`python3 scripts/eval_side_coverage.py --require-side training` 退出 0，报告里训练侧
+    ①`python3 scripts/eval_workload_type_coverage.py --require-workload-type training` 退出 0，报告里训练侧
     interrupt / precision 两格都是"有"；②把两条新夹具任一删掉，同一条命令退出 1（门有牙齿）；
-    ②′CI 那一步是 `--check --require-side training --require-side inference`——**侧层判据**
-    （某一侧一条真实夹具都不剩即红）；格层是**另一个开关** `--check-cells`，默认只报不拦
+    ②′CI 那一步是 `--check --require-workload-type training --require-workload-type inference`——**负载类型层判据**
+    （某一种负载类型一条真实夹具都不剩即红）；格层是**另一个开关** `--check-cells`，默认只报不拦
     （取舍与代价写在 `docs/guide/eval.md` 与门控映射表里）。
     实测两层各自独立触发（合成用例）：现仓 `--check`/`--check-cells` 都 0；某格有 case 无夹具时
-    `--check` 0 而 `--check-cells` 1；某侧归零时两者都 1；`--check --require-side training`
-    在某侧归零但训练侧有覆盖时 0。
+    `--check` 0 而 `--check-cells` 1；某负载类型归零时两者都 1；`--check --require-workload-type training`
+    在某负载类型归零但训练侧有覆盖时 0。
     ③`python3 scripts/eval_scorecard.py --check` 绿（账本随夹具重建：26 → 28 条，
     命中第一 16 → 18、前三 19 → 21）；④`.github/workflows/kb-checks.yml` 逐条本机复跑全绿
     （含 `--check-sources` / `--check-coverage` / `verify_case_draft --all` / `holdout --check` /
     `-m unittest discover tests`）；⑤`python3 scripts/rehearse_evolve_loop.py` 绿。
     **`eval/holdout.yaml` 一字未改**（新夹具默认不进封存集，`holdout --check` 11 条全绿）。
     **这条判据的适用范围（本次实测出的上界，写窄比写宽诚实）**：
-    它判的是"**覆盖**"——某个 (侧 × 性质) 格子有没有真实夹具钉住它。它**不判保护强度**：
+    它判的是"**覆盖**"——某个 (负载类型 × 性质) 格子有没有真实夹具钉住它。它**不判保护强度**：
     夹具钉的是一条真实输入，不是整份词表。实测把训练侧的性质词从一处挪到另一处
     （`build_train_valid_test_data`、`recv_forward`、`重复注册` 等训练专属 token），
     语料级判据与夹具级判据**都可能零检出**——因为这些词都不是任何一条 case 的"唯一证据"，
-    别的正则仍先接住它。所以"训练侧有夹具了"只证明该侧链路接得通、且那一条 case 的性质判对了。
+    别的正则仍先接住它。所以"训练侧有夹具了"只证明该负载类型链路接得通、且那一条 case 的性质判对了。
     **独立预核把这一段的强度测得更准（修正本卡原先偏保守的说法）**：`--nature-evidence` 实测
     26 条夹具里只有 10 条的输入**词法上**命中期望性质（两条训练侧夹具都在其中），另外 16 条
     输入对三个性质零命中、靠流程写明的语义兜底——**改坏词表那 16 条也照样通过**。
     反过来，两条训练侧夹具**确实**钉着词表：把 `RuntimeError` 从 interrupt 挪到别的性质，
     `MSLLM-1655` 当场报（全库新增 2 条、训练侧 1 条）；而挪一条与它们无关的正则
     （`日志.*异常`、`重复注册`、`recv_forward` 等 8 个变体）全部零检出。
-    所以准确的说法是"**钉住了它输入里那几个正则**"，不是"守住了这一侧的词表"。
+    所以准确的说法是"**钉住了它输入里那几个正则**"，不是"守住了这一种负载类型的词表"。
   rollback: 分支丢弃或 git revert；两条夹具与账本条目、新脚本与 CI 那一行同一次提交内整体可退（无数据迁移）。
 gate: >-
   若将来训练侧 case 增长而夹具补不上（例如真实训练侧输入只有这 4 条 session、再无可脱敏的材料），
-  说明训练侧的量尺确实到顶了——那时把 `--require-side training` 保留为"不许掉回零"，
+  说明训练侧的量尺确实到顶了——那时把 `--require-workload-type training` 保留为"不许掉回零"，
   而**不要**把它扩成"每个含 case 的格子都要有夹具"：后者凭空造不出来，做成硬门就是假硬化。
-  （这一条已落进代码：侧层是 `--check`，格层是单独开关 `--check-cells`、默认不开。
+  （这一条已落进代码：负载类型层是 `--check`，格层是单独开关 `--check-cells`、默认不开。
   第一版把两层压在一个 `--check` 里，被独立预核实测出"文档描述的门与实际跑的门不是同一个"，
   已拆开——见下一条 decision。）
   **另一件不要做的事**：别把 `--nature-evidence` 直接做成门。它现在是读数不是判据——
@@ -164,17 +164,17 @@ decisions:
     type: eval
     conclusion: >-
       **两条候选量尺的取舍（都实测了，证据如下）**。
-      ①**端到端回放（golden 路径）**：夹具里加期望的侧，跑 replay 看侧与性质是否都对。
+      ①**端到端回放（golden 路径）**：夹具里加期望的负载类型，跑 replay 看负载类型与性质是否都对。
       实测可行——训练侧不是没有回放样本，主检出 `traces/*.yaml` 里有 4 条 resolved、
       且都已沉淀成 case 的训练侧 session（MSLLM-1655 / MSLLM-1780 / MSLLM-1707 / MSLLM-1805）。
       取其中 2 条造夹具；拿它们的**首帖原文**跑 `rank_candidates.py` 复核检索面：
       MSLLM-1780 在 `training/mindspeed-llm` precision 面排第 1（token 交集 6），
       MSLLM-1655 在 interrupt 面排第 1（token 交集 2）；再用 `route_check.effective_branches`
       逐条算首个命中的性质，两条都是**唯一命中**（`全部命中` 只有一条）、与期望一致。
-      力度上限：回放喂的是固定输入 + 固定 `framework`，侧由"框架名对到库里目录"这一档确定，
-      所以它断言的是"**正确侧的知识被检索到 + 侧内性质判对**"，**不是**"侧是怎么判出来的"。
+      力度上限：回放喂的是固定输入 + 固定 `framework`，负载类型由"框架名对到库里目录"这一档确定，
+      所以它断言的是"**正确负载类型的知识被检索到 + 负载类型内性质判对**"，**不是**"负载类型是怎么判出来的"。
       ②**结构级判据（`scripts/route_check.py` 那条路）**：不改夹具，对全库 case 跑检查。
-      实测它的现状读数：147 个文件里 7 个非零退出；按侧算可判 146 条（training 22 / inference 124），
+      实测它的现状读数：147 个文件里 7 个非零退出；按负载类型算可判 146 条（training 22 / inference 124），
       其中"明确判错"6 条（inference 5 / **training 1** —— `MSLLM-FA-MASK-GRADNAN`）、
       "零命中"22 条（inference 21 / training 1 —— `VERL-6756`）。
       它的**强度上限实测出来了**（构造 12 个变体逐条跑）：把训练侧性质词挪走/删掉，
@@ -191,8 +191,8 @@ decisions:
     when: 2026-09-23
     type: action
     conclusion: >-
-      实施两件：①新增 `scripts/eval_side_coverage.py`——按侧现算覆盖，`--check` 报任一缺口、
-      `--require-side <侧>` 钉住指定侧不许掉回零；CI 只接 `--require-side training` 这一档，
+      实施两件：①新增 `scripts/eval_workload_type_coverage.py`——按负载类型现算覆盖，`--check` 报任一缺口、
+      `--require-workload-type <负载类型>` 钉住指定负载类型不许掉回零；CI 只接 `--require-workload-type training` 这一档，
       **不接**"每个格子都要有夹具"（那需要真实来源的夹具、凭空造不出来，做成硬门即假硬化；
       与 `docs/guide/eval.md` 对 holdout 缺口用的"软信号、不红"保持一致）。
       ②补两条真实来源的训练侧夹具 `eval/golden/MSLLM-1780.fixture.yaml`（precision 面）与
@@ -208,14 +208,14 @@ decisions:
     conclusion: >-
       **夹具字段的核对结论（第 4 步要求先确认谁消费）**：**两条新夹具都不加 `side` / `side_source` 期望字段**，
       理由是机械核对出来的——`scripts/eval_scorecard.py` 只读 `expected` 里的 `namespace` / `case_id` /
-      `assertion`（`load_fixture` 只取这三个），额外字段不报错但**没人读**；而侧已经能从
+      `assertion`（`load_fixture` 只取这三个），额外字段不报错但**没人读**；而负载类型已经能从
       `expected.namespace` 的第一段读出来，单独再写一遍就是两处记同一件事。
       `side_source` 更是不能在夹具里固定：它的值取决于**输入材料里有没有写**（材料里写着 = `evidence`、
       问他 = `user`、给框架名对目录 = `framework`），不是由夹具选定的，硬写一个值等于伪造观测。
       另外核清了 `side` / `side_source` 的**现行消费者**：全仓只有两处——`skills/diagnose/references/
       diagnosis-procedure.md` 与 `diagnosis-trace.md` 要求"写进 trace"，**没有任何代码读它们**
       （`scripts/trace_metrics.py` 不消费、面板读 `routed` 不读 `side`）。也就是说 EV-2026-148 的
-      `gate` 里写的那件观测（"'侧要问一句'的真实比例只有上线后的 trace ≈ `side_source` 分布能回答"）
+      `gate` 里写的那件观测（"'负载类型要问一句'的真实比例只有上线后的 trace ≈ `side_source` 分布能回答"）
       **当前没有任何一条命令能算**。这是本次发现的**残余缺口，如实标注、不在本卡范围**：
       要让它可测，得让 `side_source` 进 `trace_metrics` 的产出，那属观测层的改动（本卡只到"补量尺"）。
   - who: agent
@@ -236,7 +236,7 @@ decisions:
       避免"读起来比实际弱"的反向误读。
       ⑤修 `docs/guide/eval.md` 里"六个格子"这个改动前的旧读数（`holdout --list` 现报 4 个），
       并改成不写死数字。
-      修 ② 时自己踩到一次真回归：根存在性检查抢在参数校验前面，把"侧名写错"的报错盖成了
+      修 ② 时自己踩到一次真回归：根存在性检查抢在参数校验前面，把"负载类型名写错"的报错盖成了
       "读不到 knowledge"——已被既有单测 `test_require_side_rejects_unknown_side` 当场抓住，
       已把参数校验提到读取检查之前。
   - who: agent
@@ -249,30 +249,56 @@ decisions:
       价值层不由此卡证明：这两条夹具只证明训练侧链路接得通、且这两条 case 的性质判对了。
       **本段末尾那句"训练侧词表被改坏会被测出来 = 本次实测证伪"的措辞已被下一条 decision 取代**
       （措辞留在这里不改，只追加档案）：准确说法是"夹具钉住的是它输入里命中的那几个正则，
-      不是整侧词表"，而不是"测不出来"——把 `RuntimeError` 挪走时 `MSLLM-1655` 是会报的。
+      不是整条负载类型词表"，而不是"测不出来"——把 `RuntimeError` 挪走时 `MSLLM-1655` 是会报的。
       词表层仍靠路由表里 `needs-review` 那条标法 + 人审，不在本卡的可达面内。
   - who: agent
     when: 2026-09-23
     type: action
     conclusion: >-
-      **独立预核第三轮查出一条阻断级，已修**：本卡声称"门只保某一侧量尺不归零"，但代码里
-      `--check` 仍把格级缺口当阻断项（`bad = list(gaps)` 无条件生效），`--require-side` 只是在它
-      之上**追加**一条——所以真实机制是"`--check` = 格级门 + `--require-side` = 额外的单侧门"，
+      **独立预核第三轮查出一条阻断级，已修**：本卡声称"门只保某一种负载类型量尺不归零"，但代码里
+      `--check` 仍把格级缺口当阻断项（`bad = list(gaps)` 无条件生效），`--require-workload-type` 只是在它
+      之上**追加**一条——所以真实机制是"`--check` = 格级门 + `--require-workload-type` = 额外的单一负载类型门"，
       而三处文档（`kb-checks.yml` 注释、`docs/guide/eval.md`、门控映射表）都把这个开关认反了：
-      写的是"要改成格级门就**去掉** `--require-side`"，照做之后格级门一点没变、被削掉的恰恰是
-      唯一的单侧保护（实测：`--check` / `--check --require-side training` 都是 exit 1，
-      `--require-side training` 单独才是 exit 0）。
+      写的是"要改成格级门就**去掉** `--require-workload-type`"，照做之后格级门一点没变、被削掉的恰恰是
+      唯一的单一负载类型保护（实测：`--check` / `--check --require-workload-type training` 都是 exit 1，
+      `--require-workload-type training` 单独才是 exit 0）。
       另外文档里用来证明这条分界的例子（"把 vllm 夹具全删、只剩一条别的框架夹具 → 两档都放行"）
-      **结构上不可能发生**：覆盖格子是 (侧 × 性质)、**不含框架**（实测两个框架共用一格）。
-      修法：让两个开关各管一层——`--check` 只判侧层，新增 `--check-cells` 判格层（默认不开），
-      CI 那一步保持不变（`--check --require-side training --require-side inference`）。
+      **结构上不可能发生**：覆盖格子是 (负载类型 × 性质)、**不含框架**（实测两个框架共用一格）。
+      修法：让两个开关各管一层——`--check` 只判负载类型层，新增 `--check-cells` 判格层（默认不开），
+      CI 那一步保持不变（`--check --require-workload-type training --require-workload-type inference`）。
       这样三处文档写的机制第一次成真；格层门随时可用 `--check-cells` 打开。
       实测两层独立触发（见 `success_criteria` ②′）；测试相应重写为标定两层分界的四条。
-      **定向复验判 `MERGE_READY: yes`**，只余一条建议级（F4）：侧层原先把"已声明但还没有 case 的侧"
-      也算缺口——本仓现状无碍，但路由协议文件预告了侧列表可扩张，"新侧先声明、下一条 PR 才补
-      case 与夹具"会被拦一次。已按"只对有 case 的侧要求量尺"收窄（并补测试
-      `test_side_layer_ignores_sides_without_cases`），这与该层判据的本意（"这一侧没有回归保护"）
+      **定向复验判 `MERGE_READY: yes`**，只余一条建议级（F4）：负载类型层原先把"已声明但还没有 case 的负载类型"
+      也算缺口——本仓现状无碍，但路由协议文件预告了负载类型列表可扩张，"新负载类型先声明、下一条 PR 才补
+      case 与夹具"会被拦一次。已按"只对有 case 的负载类型要求量尺"收窄（并补测试
+      `test_side_layer_ignores_sides_without_cases`），这与该层判据的本意（"这一种负载类型没有回归保护"）
       一致：没有 case 就没有需要保护的东西。
+  - who: agent
+    when: 2026-09-23
+    type: action
+    conclusion: >-
+      **术语统一：路由那一轴从"侧"改名为"负载类型"（用户要求）**。理由：同一件事在两个面上有两个
+      名字——路由层说"侧"（讲去库里哪一半找），诊断步骤 1 说"负载类型"（讲问工程师的那一件事），
+      读者要自己翻译一次，且"侧"离开上下文就不知道在说什么。改成"负载类型"（值仍是 training /
+      inference）后三者同名。
+      改动面（人读文本 + 标识符，保留原值是硬约束的是 YAML 记号与历史 trace）：
+      ①叙事：`triage-tree.d/00-protocol.md`、生成物头注、`skills/diagnose/SKILL.md` 与两个
+      reference、`CLAUDE.md`、`docs/guide/{eval,git-workflow}.md`；
+      ②标识符：`sides:` → `workload_types:`（生成器 / 聚合 / kb-explorer 两处 / 测试）、
+      `side_source` → `workload_type_source`、`--show-sides` → `--show-workload-types`、
+      `--require-side` → `--require-workload-type`、`case_side_and_nature` →
+      `case_workload_type_and_nature`、脚本与测试文件本身改名
+      （`scripts/eval_side_coverage.py` → `scripts/eval_workload_type_coverage.py`，
+      连带 CI 的 paths 与门的命令行）；
+      ③**不动**：`<side>/` 这个字面记号（占位符改了要动 3 个路由源文件 + 校验 + 聚合，收益只是
+      名字好看）、历史 trace 的 `side` / `side_source` 键（运行时件，回填等于改写当时的记录——
+      诊断正文写明"两种键名都认、新写入用新名"）、`fix_side_effects` 与"读侧/写侧/客户端侧"这类
+      无关义、`references/software-facts/ascend-log-modules.yaml` 里同名但无关的 `side:` 字段。
+      保留 `训练侧` / `推理侧` 作为**具体方向**的命名（与"负载类型"这个轴名不同层，混改会读着别扭）。
+      **过程中踩到并修好的两个坑**：①批量替换误伤了"记账侧/改前侧/输入侧/内容侧"，回退重做时改用
+      "先占位保护复合词、再替换轴义、最后还原"的三段式；②改 `route_check.py` 时把占位符**常量名**
+      改了而字面值仍是 `<side>/`，于是 `in` 判定失配、检索面替换**静默不发生**（打印出未展开的
+      `<side>`）——正是本卡一路在强调的"静默跳过"同形问题，靠对比改前输出发现。
   - who: agent
     when: 2026-09-23
     type: decision
@@ -284,5 +310,5 @@ decisions:
       且零检出的原因是它们挪的词与这两条夹具无关（`日志.*异常`、`重复注册`、`recv_forward`、
       `build_train_valid_test_data`、`抢占` 等）；③还有一层更细的：同一个词可能出现在多个症状组
       （`RuntimeError` 在 interrupt 的两组各一次），**只挪一处夹具照样是"词法命中"**。
-      所以准确口径是"夹具钉住它输入里命中的那几个正则，不钉整侧词表"，由新增的
+      所以准确口径是"夹具钉住它输入里命中的那几个正则，不钉整条负载类型词表"，由新增的
       `--nature-evidence` 现算现读；`predicted_effect.measure` 已同步钉住这一栏的读数。

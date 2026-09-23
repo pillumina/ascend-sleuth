@@ -2,9 +2,9 @@
 # build_triage_tree.py —— 重建 triage-tree.yaml（生成物）← triage-tree.d/*.yaml（源，一性质一文件）
 #
 # 路由分两层（本脚本守的就是这条分层）：
-#   侧（training / inference）—— 由工程师的事实确定，**不由症状词判**，所以不进这一层的数据。
-#     合法侧与各自的目录面在 protocol 的 `sides:` 里，诊断时先定侧再取候选分支。
-#   性质（interrupt / precision / performance）—— 在侧内按症状判，**训推共用一份词表**，
+#   负载类型（training / inference）—— 由工程师的事实确定，**不由症状词判**，所以不进这一层的数据。
+#     合法负载类型与各自的目录面在 protocol 的 `workload_types:` 里，诊断时先定负载类型再取候选分支。
+#   性质（interrupt / precision / performance）—— 在负载类型内按症状判，**训推共用一份词表**，
 #     一性质一个源文件，落进生成物的 `natures:`。
 #
 # 为什么要有源/生成物这一层（2026-09-22，起因：并发提交时路由层总撞在同一个文件上）：
@@ -21,9 +21,9 @@
 #   合流不需要人工判断（重复行由本脚本报出来，删一行即可）。
 #
 #   拼接**逐字保留**：每个源文件里 `natures:` 之后的文本原样进入生成物（含行内注释与对齐）。
-#   生成物的两个顶层键是 `sides:`（侧层）与 `natures:`（性质层）。原先的 `branches:` 桶
+#   生成物的两个顶层键是 `workload_types:`（负载类型层）与 `natures:`（性质层）。原先的 `branches:` 桶
 #   随分层退休——不再给别名：YAML 别名会让那份列表在文件里出现两遍（读的人以为有两结构），
-#   而它换来的只是"读侧一个字都不用改"。路由数据每次诊断现读，改两处读点比留一份看起来
+#   而它换来的只是"读负载类型一个字都不用改"。路由数据每次诊断现读，改两处读点比留一份看起来
 #   像双源的东西便宜（同一条道理也写在 `00-protocol.md` 里）。
 #
 # 用法：
@@ -48,11 +48,11 @@ PROTOCOL_NAME = "00-protocol.md"
 NATURE_CAP = 30          # 性质数上限（文件头长期写着 ≤30；此前无人守，现在由本脚本守）
 CATEGORIES = ("interrupt", "precision", "performance")
 REQUIRED_NATURE_KEYS = ("id", "category", "symptoms", "search_namespaces", "fallback")
-SIDE_PREFIX = "<side>/"   # 性质层检索面里表示"由哪一侧展开"的记号（侧不在症状层判）
-REQUIRED_SIDE_KEYS = ("id", "label", "namespaces", "fallback")
+SIDE_PREFIX = "<side>/"   # 性质层检索面里表示"由哪种负载类型展开"的记号（负载类型不在症状层判）
+REQUIRED_WORKLOAD_TYPE_KEYS = ("id", "label", "namespaces", "fallback")
 
-# git 冲突标记：源文件里出现它几乎只有一个原因——这一性质在两边各被改过，且平台那侧没走 union 驱动
-# （例如本地手抄合并、或 .gitattributes 没进那一侧）。不特判的话只会报"YAML 解析失败：..."，
+# git 冲突标记：源文件里出现它几乎只有一个原因——这一性质在两边各被改过，且平台那负载类型没走 union 驱动
+# （例如本地手抄合并、或 .gitattributes 没进那一负载类型）。不特判的话只会报"YAML 解析失败：..."，
 # 而人要的答案是"把两份症状都留下"。
 CONFLICT_MARKERS = ("<<<<<<<", ">>>>>>>")
 
@@ -62,7 +62,7 @@ def conflict_marked(text: str) -> bool:
 
 
 def split_protocol(raw: str):
-    """protocol 的正文与结构化部分分开：`sources:` / `sides:` 之后是数据，之前是散文。
+    """protocol 的正文与结构化部分分开：`sources:` / `workload_types:` 之后是数据，之前是散文。
 
     → (prose, data, errors)。散文进生成物的注释头；数据用来驱动拼接与校验。
     为什么不让本脚本自己去 glob 文件名：那样「哪个文件出哪个性质」会分散在文件名约定里，
@@ -74,7 +74,7 @@ def split_protocol(raw: str):
             if ln.split("#")[0].rstrip() and not ln.startswith((" ", "\t", "#"))
             and ln.split("#")[0].rstrip().endswith(":")]
     if not keys:
-        return raw, {}, ["protocol 里没有任何顶层键——至少要有 `sources:`（源文件清单）与 `sides:`（合法侧）"]
+        return raw, {}, ["protocol 里没有任何顶层键——至少要有 `sources:`（源文件清单）与 `workload_types:`（合法负载类型）"]
     head = keys[0]
     prose = "\n".join(lines[:head])
     data_text = "\n".join(lines[head:])
@@ -82,9 +82,9 @@ def split_protocol(raw: str):
         data = yaml.safe_load(data_text) or {}
     except Exception as e:
         return prose, {}, [f"{PROTOCOL_NAME}: 结构化部分 YAML 解析失败（{e}）"
-                           "——`sources:` 与 `sides:` 之后必须是合法 YAML"]
+                           "——`sources:` 与 `workload_types:` 之后必须是合法 YAML"]
     if not isinstance(data, dict):
-        return prose, {}, [f"{PROTOCOL_NAME}: `sources:` / `sides:` 之后应当是 YAML mapping"]
+        return prose, {}, [f"{PROTOCOL_NAME}: `sources:` / `workload_types:` 之后应当是 YAML mapping"]
     return prose, data, errors
 
 
@@ -134,8 +134,8 @@ def load_source(path: Path, expected_nature: str):
 def validate_nature(nature, path, seen_ids, public):
     """性质字段的确定性校验 → errors / warnings。
 
-    `public` = 侧无关的公共目录集合（从 `sides:` 各份 namespaces 的交集里取，如 `common/`）：
-    性质层的检索面只允许 `<side>/…` 与这些目录，别的写法都算把侧塞回症状层。
+    `public` = 负载类型无关的公共目录集合（从 `workload_types:` 各份 namespaces 的交集里取，如 `common/`）：
+    性质层的检索面只允许 `<side>/…` 与这些目录，别的写法都算把负载类型塞回症状层。
     """
     errors, warnings = [], []
     nid = nature.get("id")
@@ -164,7 +164,7 @@ def validate_nature(nature, path, seen_ids, public):
         errors.append(
             f"{path.name}: 性质 '{nid}' 的 category {cat!r} 非法——"
             f"合法取值只有 {' / '.join(CATEGORIES)}（other 已废弃；`uncategorized` 兜底分支已随分层取消："
-            "性质判不了时该侧三个性质的索引一起加载，见 00-protocol.md 与 diagnosis-procedure.md）"
+            "性质判不了时该负载类型三个性质的索引一起加载，见 00-protocol.md 与 diagnosis-procedure.md）"
         )
     syms = nature.get("symptoms")
     if not isinstance(syms, list):
@@ -191,71 +191,71 @@ def validate_nature(nature, path, seen_ids, public):
     sn = nature.get("search_namespaces")
     if not isinstance(sn, list) or not sn or not all(isinstance(x, str) and x for x in sn):
         errors.append(f"{path.name}: 性质 '{nid}' 的 search_namespaces 应为非空字符串列表"
-                      "（分层后第一条是 `<side>/<detected_framework>/`：侧由工程师的事实定，"
+                      "（分层后第一条是 `<side>/<detected_framework>/`：负载类型由工程师的事实定，"
                       "不在症状层判）")
     else:
         # **逐条判**，不是"有一条带 `<side>` 就算过"。只判"存在"会留一个绕过口（独立预核实测）：
         # `['training/<detected_framework>/', '<side>/common/']` 里有 `<side>`，检查放行，
         # 而推理侧展开后变成 `['training/<detected_framework>/', 'inference/common/']`——
         # 推理诊断去查训练目录，这一层要防的机制原样回来，且全套门都是绿的。
-        # 判据：每条 namespace 要么是 `<side>/…` 形，要么是一条**侧无关**的公共目录
-        # （值必须在 `sides:` 的某一份 namespaces 里出现过——`common/` 因此自动被允许，
-        #  而任何写死某一侧的目录都不是"侧无关"，因为它们没进过任何侧目录面的公共部分）。
+        # 判据：每条 namespace 要么是 `<side>/…` 形，要么是一条**负载类型无关**的公共目录
+        # （值必须在 `workload_types:` 的某一份 namespaces 里出现过——`common/` 因此自动被允许，
+        #  而任何写死某一负载类型的目录都不是"负载类型无关"，因为它们没进过任何负载类型目录面的公共部分）。
         pinned = [x for x in sn if not x.startswith(SIDE_PREFIX) and x not in public]
         if pinned:
             errors.append(
-                f"{path.name}: 性质 '{nid}' 的 search_namespaces 里有写死某一侧的目录 {pinned}——"
-                "分层后性质层不知道自己在哪一侧，侧由 `sides:` 给出；只要列表里有一条写死侧，"
+                f"{path.name}: 性质 '{nid}' 的 search_namespaces 里有写死某一负载类型的目录 {pinned}——"
+                "分层后性质层不知道自己在哪一种负载类型下，负载类型由 `workload_types:` 给出；只要列表里有一条写死某一种负载类型，"
                 "另一侧的诊断就会去查这一侧的目录（把一个带 `<side>` 的项混在同一条列表里也绕不过，"
-                "本检查逐条判）。改成 `<side>/<detected_framework>/`，公共目录只留 `common/` 这类侧无关项。"
+                "本检查逐条判）。改成 `<side>/<detected_framework>/`，公共目录只留 `common/` 这类负载类型无关项。"
             )
     return errors, warnings
 
 
-def validate_side(side, where, seen_ids):
+def validate_workload_type(wt, where, seen_ids):
     errors = []
-    sid = side.get("id") if isinstance(side, dict) else None
-    if not sid:
-        return [f"{PROTOCOL_NAME} {where}: 侧缺少 id"]
-    if sid in seen_ids:
-        errors.append(f"{PROTOCOL_NAME} {where}: 侧 id '{sid}' 重复")
+    wid = wt.get("id") if isinstance(wt, dict) else None
+    if not wid:
+        return [f"{PROTOCOL_NAME} {where}: 负载类型缺少 id"]
+    if wid in seen_ids:
+        errors.append(f"{PROTOCOL_NAME} {where}: 负载类型 id '{wid}' 重复")
     else:
-        seen_ids[sid] = where
-    for k in REQUIRED_SIDE_KEYS:
-        if k not in side:
-            errors.append(f"{PROTOCOL_NAME} {where}: 侧 '{sid}' 缺少必填键 {k}")
-    ns = side.get("namespaces")
+        seen_ids[wid] = where
+    for k in REQUIRED_WORKLOAD_TYPE_KEYS:
+        if k not in wt:
+            errors.append(f"{PROTOCOL_NAME} {where}: 负载类型 '{wid}' 缺少必填键 {k}")
+    ns = wt.get("namespaces")
     if not isinstance(ns, list) or not ns or not all(isinstance(x, str) and x for x in ns):
-        errors.append(f"{PROTOCOL_NAME} {where}: 侧 '{sid}' 的 namespaces 应为非空字符串列表")
-    elif not any(str(x).startswith(str(sid) + "/") for x in ns):
+        errors.append(f"{PROTOCOL_NAME} {where}: 负载类型 '{wid}' 的 namespaces 应为非空字符串列表")
+    elif not any(str(x).startswith(str(wid) + "/") for x in ns):
         errors.append(
-            f"{PROTOCOL_NAME} {where}: 侧 '{sid}' 的 namespaces 里没有以 '{sid}/' 打头的目录——"
-            "侧的目录面必须落在它自己的 knowledge/<侧>/ 下，否则这一侧与另一侧查同一批目录，"
+            f"{PROTOCOL_NAME} {where}: 负载类型 '{wid}' 的 namespaces 里没有以 '{wid}/' 打头的目录——"
+            "负载类型的目录面必须落在它自己的 knowledge/<负载类型>/ 下，否则两种负载类型会查同一批目录，"
             "分层就白做了。"
         )
     return errors
 
 
-def public_namespaces(sides) -> set:
-    """侧无关的公共目录 = 每个侧的 namespaces 里都出现过的那些（`common/` 就是靠这个进来的）。
+def public_namespaces(workload_types) -> set:
+    """负载类型无关的公共目录 = 每个负载类型的 namespaces 里都出现过的那些（`common/` 就是靠这个进来的）。
 
-    为什么取交集而不是写死 `{"common/"}`：侧层是合法侧与目录面的唯一写点，公共面由它派生；
-    写死一份等于又开了第二个写点，`sides:` 改了它不跟着动。
+    为什么取交集而不是写死 `{"common/"}`：负载类型层是合法负载类型与目录面的唯一写点，公共面由它派生；
+    写死一份等于又开了第二个写点，`workload_types:` 改了它不跟着动。
     """
     sets = [set(str(x) for x in (s.get("namespaces") or []))
-            for s in sides if isinstance(s, dict)]
+            for s in workload_types if isinstance(s, dict)]
     sets = [x for x in sets if x]
     return set.intersection(*sets) if sets else set()
 
 
 def collect_sources(root: Path):
-    """→ (prose, natures, sides, blocks, errors, warnings)。"""
+    """→ (prose, natures, workload_types, blocks, errors, warnings)。"""
     src_dir = root / SRC_DIR_REL
     if not src_dir.is_dir():
         return None, [], [], [], [f"源目录不存在：{SRC_DIR_REL}（Tier 1 路由以它为源）"], []
     proto_path = src_dir / PROTOCOL_NAME
     if not proto_path.exists():
-        return None, [], [], [], [f"缺少 {SRC_DIR_REL}/{PROTOCOL_NAME}（路由说明、侧层与源清单的写点）"], []
+        return None, [], [], [], [f"缺少 {SRC_DIR_REL}/{PROTOCOL_NAME}（路由说明、负载类型层与源清单的写点）"], []
     prose, data, errs = split_protocol(proto_path.read_text(encoding="utf-8"))
     errors, warnings = list(errs), []
 
@@ -264,21 +264,21 @@ def collect_sources(root: Path):
         errors.append(f"{PROTOCOL_NAME}: 缺少非空的 `sources:` 清单（哪个源文件出哪个性质）"
                       "——拼接顺序与校验都读它，不能省。")
         manifest = []
-    sides = data.get("sides")
-    if not isinstance(sides, list) or not sides:
-        errors.append(f"{PROTOCOL_NAME}: 缺少非空的 `sides:` 清单（合法侧 + 每侧的目录面与检索顺序）")
-        sides = []
-    seen_sides = {}
-    for i, side in enumerate(sides):
-        if not isinstance(side, dict):
-            errors.append(f"{PROTOCOL_NAME} sides[{i}]: 不是 mapping")
+    workload_types = data.get("workload_types")
+    if not isinstance(workload_types, list) or not workload_types:
+        errors.append(f"{PROTOCOL_NAME}: 缺少非空的 `workload_types:` 清单（合法负载类型 + 每种负载类型的目录面与检索顺序）")
+        workload_types = []
+    seen_workload_types = {}
+    for i, wt in enumerate(workload_types):
+        if not isinstance(wt, dict):
+            errors.append(f"{PROTOCOL_NAME} workload_types[{i}]: 不是 mapping")
             continue
-        errors += validate_side(side, f"sides[{i}]", seen_sides)
-    if len(seen_sides) < 2:
-        errors.append(f"{PROTOCOL_NAME}: 侧少于 2 个（实际 {sorted(seen_sides)}）——"
-                      "「先分侧」这一步没有可选项时不存在，检查 `sides:` 是不是被误删了。")
+        errors += validate_workload_type(wt, f"workload_types[{i}]", seen_workload_types)
+    if len(seen_workload_types) < 2:
+        errors.append(f"{PROTOCOL_NAME}: 负载类型少于 2 个（实际 {sorted(seen_workload_types)}）——"
+                      "「先分负载类型」这一步没有可选项时不存在，检查 `workload_types:` 是不是被误删了。")
 
-    public = public_namespaces(sides)
+    public = public_namespaces(workload_types)
     natures, blocks, seen_ids, seen_files = [], [], {}, {}
     declared = []
     for i, item in enumerate(manifest):
@@ -314,22 +314,22 @@ def collect_sources(root: Path):
                           "——未登记的文件不会被拼进生成物，等于加了词但没生效。")
     if len(seen_ids) > NATURE_CAP:
         errors.append(f"性质数 {len(seen_ids)} 超过上限 {NATURE_CAP}——路由层超限后匹配成本与误吸都会上升")
-    return prose, natures, sides, blocks, errors, warnings
+    return prose, natures, workload_types, blocks, errors, warnings
 
 
-def render(prose: str, blocks, sides) -> str:
-    """protocol 散文的每行前加 '# '（空行加 '#'）；再出 `sides:` 与 `natures:`（+ branches 别名）。"""
+def render(prose: str, blocks, workload_types) -> str:
+    """protocol 散文的每行前加 '# '（空行加 '#'）；再出 `workload_types:` 与 `natures:`（+ branches 别名）。"""
     lines = prose.rstrip("\n").split("\n")
     header = "".join(("# " + ln if ln.strip() else "#") + "\n" for ln in lines)
-    sides_text = yaml.safe_dump({"sides": sides}, allow_unicode=True, sort_keys=False,
+    sides_text = yaml.safe_dump({"workload_types": workload_types}, allow_unicode=True, sort_keys=False,
                                 default_flow_style=False, width=100)
-    return (header + "#\n" + "sides:\n" + sides_text.split("\n", 1)[1]
-            + "\n# 性质层（训推共用一份词表；侧由 `sides:` 给，不由症状词判）\n"
+    return (header + "#\n" + "workload_types:\n" + sides_text.split("\n", 1)[1]
+            + "\n# 性质层（训推共用一份词表；负载类型由 `workload_types:` 给，不由症状词判）\n"
             + "natures:\n" + "".join(blocks))
 
 
-def coverage_problems(root: Path, natures, sides, public):
-    """**覆盖检查**（这是门）：每个源性质的每条症状组、侧层每个字段，是否都在聚合里。
+def coverage_problems(root: Path, natures, workload_types, public):
+    """**覆盖检查**（这是门）：每个源性质的每条症状组、负载类型层每个字段，是否都在聚合里。
 
     为什么门不是"逐字节与重新拼接的结果相同"：`triage-tree.yaml` 配了 merge=union
     （两人同一天给同一性质加词时两边都留住），那种合并结果**内容是对的**、只是顺序可能与
@@ -344,7 +344,7 @@ def coverage_problems(root: Path, natures, sides, public):
     except Exception as e:
         return [f"{OUT_REL} YAML 解析失败（{e}）——重跑 `python3 scripts/build_triage_tree.py`"]
     got = {b.get("id"): b for b in (doc.get("natures") or []) if isinstance(b, dict)}
-    got_sides = {s.get("id"): s for s in (doc.get("sides") or []) if isinstance(s, dict)}
+    got_workload_types = {s.get("id"): s for s in (doc.get("workload_types") or []) if isinstance(s, dict)}
     problems = []
     for nature in natures:
         nid = nature["id"]
@@ -359,26 +359,26 @@ def coverage_problems(root: Path, natures, sides, public):
         agg_pinned = [x for x in (have.get("search_namespaces") or [])
                       if not str(x).startswith(SIDE_PREFIX) and str(x) not in public]
         if agg_pinned:
-            problems.append(f"聚合里性质 {nid} 的检索面写死了某一侧 {agg_pinned}"
+            problems.append(f"聚合里性质 {nid} 的检索面写死了某一负载类型 {agg_pinned}"
                             "——重跑 `python3 scripts/build_triage_tree.py`")
         have_groups = [tuple(g) for g in (have.get("symptoms") or [])]
         for group in nature.get("symptoms") or []:
             if tuple(group) not in have_groups:
                 problems.append(f"性质 {nid} 里缺症状组 {group}——重跑 `python3 scripts/build_triage_tree.py`")
-    for side in sides:
-        sid = side.get("id")
-        have = got_sides.get(sid)
+    for wt in workload_types:
+        wid = wt.get("id")
+        have = got_workload_types.get(wid)
         if have is None:
-            problems.append(f"聚合里缺侧 {sid}——重跑 `python3 scripts/build_triage_tree.py`")
+            problems.append(f"聚合里缺负载类型 {wid}——重跑 `python3 scripts/build_triage_tree.py`")
             continue
-        for key in REQUIRED_SIDE_KEYS:
-            if have.get(key) != side.get(key):
-                problems.append(f"侧 {sid} 的 {key} 与源不一致——重跑 `python3 scripts/build_triage_tree.py`")
+        for key in REQUIRED_WORKLOAD_TYPE_KEYS:
+            if have.get(key) != wt.get(key):
+                problems.append(f"负载类型 {wid} 的 {key} 与源不一致——重跑 `python3 scripts/build_triage_tree.py`")
     src_ids = {n["id"] for n in natures}
     for nid in sorted(set(got) - src_ids):
         problems.append(f"聚合里有、源里没有的性质 {nid}——重跑 `python3 scripts/build_triage_tree.py`")
-    for sid in sorted(set(got_sides) - {s.get("id") for s in sides}):
-        problems.append(f"聚合里有、源里没有的侧 {sid}——重跑 `python3 scripts/build_triage_tree.py`")
+    for wid in sorted(set(got_workload_types) - {s.get("id") for s in workload_types}):
+        problems.append(f"聚合里有、源里没有的负载类型 {wid}——重跑 `python3 scripts/build_triage_tree.py`")
     # **顺序也是判据**，两条理由：
     #   ① 忠实性：聚合必须忠实渲染源（源才是评审面）；手改聚合的性质顺序，等于让评审过的那份
     #      与跑起来的那份不是同一个东西。集合相等 ≠ 忠实。
@@ -391,7 +391,7 @@ def coverage_problems(root: Path, natures, sides, public):
         problems.append(f"聚合的性质顺序与源不一致（源：{' → '.join(src_seq)}；聚合：{' → '.join(got_seq)}）"
                         "——顺序决定先命中先归哪一类，重跑 `python3 scripts/build_triage_tree.py`")
     if doc.get("branches") is not None:
-        problems.append("聚合里有退休的 `branches:` 桶——分层后只有 `sides:` 与 `natures:` 两个顶层键，"
+        problems.append("聚合里有退休的 `branches:` 桶——分层后只有 `workload_types:` 与 `natures:` 两个顶层键，"
                         "重跑 `python3 scripts/build_triage_tree.py` 归一（留着它读的人会以为有两套结构）")
     return problems
 
@@ -401,7 +401,7 @@ def main() -> int:
     ap.add_argument("--check", action="store_true",
                     help="逐字节自检（不作门）：确认聚合与「重新拼接一遍」完全相同")
     ap.add_argument("--check-coverage", action="store_true",
-                    help="覆盖检查（门）：源里每个性质的每条症状组、侧层每个字段都在聚合里")
+                    help="覆盖检查（门）：源里每个性质的每条症状组、负载类型层每个字段都在聚合里")
     ap.add_argument("--check-sources", action="store_true",
                     help="只校验源文件本身（性质 id 唯一 / category 合法 / <side> 占位 / ≤30 性质 / "
                          "一性质一文件 / 源清单无遗漏）")
@@ -410,7 +410,7 @@ def main() -> int:
     args = ap.parse_args()
     root = args.root.resolve()
 
-    prose, natures, sides, blocks, errors, warnings = collect_sources(root)
+    prose, natures, workload_types, blocks, errors, warnings = collect_sources(root)
     for w in warnings:
         print(f"WARN: {w}")
     if errors:
@@ -422,7 +422,7 @@ def main() -> int:
         print(f"{SRC_DIR_REL} 里没有可拼接的性质——路由层未落地")
         return 1
 
-    wanted = render(prose, blocks, sides)
+    wanted = render(prose, blocks, workload_types)
     out_path = root / OUT_REL
 
     if args.do_print:
@@ -430,11 +430,11 @@ def main() -> int:
         return 0
 
     if args.check_sources:
-        print(f"路由源文件合法（{len(blocks)} 个性质 × {len(sides)} 个侧 ← {SRC_DIR_REL}/）")
+        print(f"路由源文件合法（{len(blocks)} 个性质 × {len(workload_types)} 个负载类型 ← {SRC_DIR_REL}/）")
         return 0
 
     if args.check_coverage:
-        problems = coverage_problems(root, natures, sides, public_namespaces(sides))
+        problems = coverage_problems(root, natures, workload_types, public_namespaces(workload_types))
         if problems:
             for p in problems:
                 print(f"路由覆盖问题：{p}")
@@ -442,7 +442,7 @@ def main() -> int:
             print("  python3 scripts/build_triage_tree.py")
             return 1
         n_groups = sum(len(n.get("symptoms") or []) for n in natures)
-        print(f"路由覆盖完整：{len(natures)} 个性质 / {len(sides)} 个侧 / {n_groups} 组症状"
+        print(f"路由覆盖完整：{len(natures)} 个性质 / {len(workload_types)} 个负载类型 / {n_groups} 组症状"
               f"都在聚合 {OUT_REL} 里。")
         return 0
 
@@ -467,9 +467,9 @@ def main() -> int:
         return 1
 
     out_path.write_text(wanted, encoding="utf-8", newline="\n")
-    print(f"已重建 {OUT_REL}（{len(blocks)} 个性质 × {len(sides)} 个侧 ← {SRC_DIR_REL}/）")
-    for side in sides:
-        print(f"  侧 {side.get('id'):<12} {side.get('namespaces')}")
+    print(f"已重建 {OUT_REL}（{len(blocks)} 个性质 × {len(workload_types)} 个负载类型 ← {SRC_DIR_REL}/）")
+    for wt in workload_types:
+        print(f"  负载类型 {wt.get('id'):<12} {wt.get('namespaces')}")
     for b in (yaml.safe_load(wanted) or {}).get("natures", []):
         print(f"  - {b.get('id'):<22} category={b.get('category')}  症状组 {len(b.get('symptoms') or [])}")
     return 0

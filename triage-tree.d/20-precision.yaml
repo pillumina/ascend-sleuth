@@ -24,7 +24,7 @@ natures:
       - ["batch.*invariant", "deterministic", "非确定"]
       - ['\bNAN\b', '\bNaN\b', "loss.*nan", '\binf\b']      # 输出含 NaN/Inf
       - ["花图", "图像.*(异常|畸变|错乱)", "评分.*(低|下降|不达标)", "score.*(low|drop)"]   # 生成图像异常 / 下游评分下降（COMMON-TP-SEED-UNSYNCED TP 组内种子未同步花图 / VLLM-ASC-GPQA-OPERATOR-CLAMP 评分偏低）
-    search_namespaces:            # 按顺序搜索，最多加载 3 个；<side> 由工程师的事实定（见 00-protocol.md 的 sides）
+    search_namespaces:            # 按顺序搜索，最多加载 3 个；<side> 由工程师的事实定（见 00-protocol.md 的 workload_types）
       - <side>/<detected_framework>/
       - common/
     fallback: Tier 3

@@ -1,7 +1,7 @@
 # eval/golden/MSLLM-1780.fixture.yaml
 # 真实夹具：源自 MindSpeed-LLM issue #1780（公开 issue；输入 = 用户首帖原文，剥掉平台自动附的安全提醒样板与页脚，
 # 唯一删改是把模型 config.json 的附件链接（含上传 id 与哈希）换成占位）。
-# 训练侧夹具（precision 面）：路由分侧前，训练侧有 0 条真实夹具。
+# 训练侧夹具（precision 面）：路由分负载类型前，训练侧有 0 条真实夹具。
 # 本条的关节点在"性质判对"：症状不带报错码/崩溃，是数值呈现异常（lm loss 被除以 global_step），
 # 若不落 precision 而落到 interrupt，本条即失败——这正是训练侧此前没有量尺的那一层。
 # 本条回放结果：candidates=Y rank=1 path=primary

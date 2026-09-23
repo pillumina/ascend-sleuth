@@ -1,13 +1,13 @@
 """Tier 1 路由层「源 → 生成物」的口径回归测试。
 
 这一层存在的理由是可验证的：路由数据原先放在一个文件里，谁加词都得改它，两个人撞在同一段文本上
-就要人判断"留哪一份"。拆成一性质一文件 + 生成物之后，**读侧完全不变**（diagnose /
+就要人判断"留哪一份"。拆成一性质一文件 + 生成物之后，**读负载类型完全不变**（diagnose /
 verify_references / kb-explorer 读的还是 triage-tree.yaml），所以本测试要钉住的正是
 "生成物与源一致、拼接不丢内容、不改顺序"这三件事。
 
-分层（先分侧、再分性质）加进来之后，还要钉住两件**只有分层才有**的事：
-  ① 性质文件里的 `search_namespaces` 必须带 `<side>/` 占位——写死某一侧等于把侧又塞回症状层，
-     跨侧碰撞会随这一行回来；
+分层（先分负载类型、再分性质）加进来之后，还要钉住两件**只有分层才有**的事：
+  ① 性质文件里的 `search_namespaces` 必须带 `<side>/` 占位——写死某一负载类型等于把负载类型又塞回症状层，
+     跨负载类型碰撞会随这一行回来；
   ② `00-protocol.md` 的 `sources:` 是拼接口径的唯一写点——目录里存在但没登记的文件不会被拼进
      生成物，等于加了词却没生效，必须红。
 """
@@ -42,7 +42,7 @@ PROTOCOL = """路由说明第一行
 
 sources:
 {manifest}
-sides:
+workload_types:
   - id: training
     label: 训练
     namespaces:
@@ -100,7 +100,7 @@ class TriageTreeSplitTest(unittest.TestCase):
         self.files.append({"file": name, "nature": bid})
         return name
 
-    def write_protocol(self, text=None, manifest=None, sides=2):
+    def write_protocol(self, text=None, manifest=None, workload_types=2):
         if text is not None:
             (self.root / "triage-tree.d" / btt.PROTOCOL_NAME).write_text(text, encoding="utf-8")
             return
@@ -108,7 +108,7 @@ class TriageTreeSplitTest(unittest.TestCase):
         m = ("".join(f"  - file: {it['file']}\n    nature: {it['nature']}\n" for it in items)
              or "  []\n")
         block = PROTOCOL.format(manifest=m)
-        if sides == 1:
+        if workload_types == 1:
             block = block.split("  - id: inference")[0].rstrip("\n") + "\n"
         (self.root / "triage-tree.d" / btt.PROTOCOL_NAME).write_text(block, encoding="utf-8")
 
@@ -151,7 +151,7 @@ class TriageTreeSplitTest(unittest.TestCase):
         self.assertIn("缺症状组", out)
 
     def test_coverage_flags_side_layer_drift(self):
-        """侧层也进覆盖检查：`sides:` 是分层的一半，掉了它"先分侧"就无从落地。"""
+        """负载类型层也进覆盖检查：`workload_types:` 是分层的一半，掉了它"先分负载类型"就无从落地。"""
         self.write_family("10-interrupt.yaml", "interrupt")
         self.write_protocol()
         self.build()
@@ -162,7 +162,7 @@ class TriageTreeSplitTest(unittest.TestCase):
                        encoding="utf-8")
         rc, out = run_main("--check-coverage", "--root", str(self.root))
         self.assertEqual(rc, 1)
-        self.assertIn("侧 inference 的 namespaces 与源不一致", out)
+        self.assertIn("负载类型 inference 的 namespaces 与源不一致", out)
 
     def test_retired_branches_key_is_flagged(self):
         """`branches:` 桶随分层退休：留着它读的人会以为有两套结构（一份还会漂移）。"""
@@ -237,15 +237,15 @@ class TriageTreeSplitTest(unittest.TestCase):
         self.assertEqual([b["id"] for b in doc["natures"]], ["performance", "interrupt"])
 
     def test_protocol_becomes_comment_header(self):
-        """说明与入场判据（散文）进生成物的注释头，正文只有 sides / natures。"""
+        """说明与入场判据（散文）进生成物的注释头，正文只有 workload_types / natures。"""
         self.write_family("10-interrupt.yaml", "interrupt")
         self.write_protocol()
         self.build()
         text = (self.root / "triage-tree.yaml").read_text(encoding="utf-8")
-        head = text[:text.index("sides:")]
+        head = text[:text.index("workload_types:")]
         self.assertIn("# 路由说明第一行", head)
         self.assertIn("#\n", head)          # 空行 → 裸 '#'
-        self.assertNotIn("路由说明第一行", text[text.index("sides:"):])
+        self.assertNotIn("路由说明第一行", text[text.index("workload_types:"):])
 
     def test_body_is_verbatim_splice_of_sources(self):
         """拼接逐字保留（含行内注释与对齐）：路由行为不变的证据是 diff，不是"应该没变"。"""
@@ -301,7 +301,7 @@ class TriageTreeSplitTest(unittest.TestCase):
         self.assertIn("对不上", out)
 
     def test_missing_side_placeholder_is_rejected(self):
-        """**分层之后最要紧的一条**：性质层的检索面写死某一侧 = 把侧塞回症状层。"""
+        """**分层之后最要紧的一条**：性质层的检索面写死某一负载类型 = 把负载类型塞回症状层。"""
         self.write_family("10-interrupt.yaml", "interrupt", ns_side="training/<detected_framework>/")
         self.write_protocol()
         rc, out = self.build()
@@ -309,7 +309,7 @@ class TriageTreeSplitTest(unittest.TestCase):
         self.assertIn("<side>", out)
 
     def test_one_pinned_namespace_among_placeholder_ones_is_rejected(self):
-        """**逐条判**，不是"有一条带 `<side>` 就算过"。独立预核实测的绕过口：列表里混一条写死侧的
+        """**逐条判**，不是"有一条带 `<side>` 就算过"。独立预核实测的绕过口：列表里混一条写死负载类型的
         目录 + 一条带 `<side>` 的项，只判存在就放行，而推理侧展开后会去查训练目录——
         这一层要防的机制原样回来，且全套门都是绿的。"""
         self.write_family("10-interrupt.yaml", "interrupt",
@@ -317,11 +317,11 @@ class TriageTreeSplitTest(unittest.TestCase):
         self.write_protocol()
         rc, out = self.build()
         self.assertEqual(rc, 1, out)
-        self.assertIn("写死某一侧", out)
+        self.assertIn("写死某一负载类型", out)
 
     def test_side_agnostic_namespace_must_be_in_the_side_layer(self):
-        """公共目录由 `sides:` 派生（各侧 namespaces 的交集），不是写死一份 `common/`：
-        协议里没进过任何侧目录面的项，性质层也不许用。"""
+        """公共目录由 `workload_types:` 派生（各侧 namespaces 的交集），不是写死一份 `common/`：
+        协议里没进过任何负载类型目录面的项，性质层也不许用。"""
         self.write_family("10-interrupt.yaml", "interrupt", extra_ns=["shared/"])
         self.write_protocol()
         rc, out = self.build()
@@ -330,10 +330,10 @@ class TriageTreeSplitTest(unittest.TestCase):
 
     def test_missing_side_layer_is_rejected(self):
         self.write_family("10-interrupt.yaml", "interrupt")
-        self.write_protocol(sides=1)
+        self.write_protocol(workload_types=1)
         rc, out = self.build()
         self.assertEqual(rc, 1)
-        self.assertIn("侧少于", out)
+        self.assertIn("负载类型少于", out)
 
     def test_side_namespace_outside_its_own_dir_is_rejected(self):
         self.write_family("10-interrupt.yaml", "interrupt")
@@ -404,7 +404,7 @@ class TriageTreeSplitTest(unittest.TestCase):
 
 
 class RealRepoTest(unittest.TestCase):
-    """真实仓库上的断言：读侧不变、生成物与源一致、路由面就是那三个性质 × 两个侧。"""
+    """真实仓库上的断言：读负载类型不变、生成物与源一致、路由面就是那三个性质 × 两个负载类型。"""
 
     def test_check_green_on_repo(self):
         for flag in ("--check", "--check-coverage", "--check-sources"):
@@ -412,14 +412,14 @@ class RealRepoTest(unittest.TestCase):
             self.assertEqual(rc, 0, f"{flag}: {out}")
 
     def test_aggregate_has_only_two_top_level_keys(self):
-        """生成物只有侧层与性质层两个顶层键——`branches:` 桶已退休，不留别名。"""
+        """生成物只有负载类型层与性质层两个顶层键——`branches:` 桶已退休，不留别名。"""
         doc = yaml.safe_load((ROOT / "triage-tree.yaml").read_text(encoding="utf-8"))
-        self.assertEqual(sorted(doc), ["natures", "sides"])
+        self.assertEqual(sorted(doc), ["natures", "workload_types"])
 
     def test_aggregate_has_side_layer_and_three_natures(self):
         doc = yaml.safe_load((ROOT / "triage-tree.yaml").read_text(encoding="utf-8"))
-        self.assertEqual([s["id"] for s in doc["sides"]], ["training", "inference"])
-        for s in doc["sides"]:
+        self.assertEqual([s["id"] for s in doc["workload_types"]], ["training", "inference"])
+        for s in doc["workload_types"]:
             self.assertTrue(s["namespaces"])
             self.assertTrue(any(str(n).startswith(s["id"] + "/") for n in s["namespaces"]))
         self.assertEqual([b["id"] for b in doc["natures"]],
@@ -431,11 +431,11 @@ class RealRepoTest(unittest.TestCase):
                             f"{b['id']} 的检索面缺 <side> 占位")
 
     def test_no_nature_id_carries_a_side(self):
-        """分层之后分支名就是性质名——带 `training_` / `inference_` 前缀等于把侧记两遍。"""
+        """分层之后分支名就是性质名——带 `training_` / `inference_` 前缀等于把负载类型记两遍。"""
         doc = yaml.safe_load((ROOT / "triage-tree.yaml").read_text(encoding="utf-8"))
         for b in doc["natures"]:
             self.assertNotIn(str(b["id"]).split("_")[0], ("training", "inference"),
-                             f"{b['id']} 的分支名里带着侧")
+                             f"{b['id']} 的分支名里带着负载类型")
 
     def test_sources_and_aggregate_agree_on_every_symptom(self):
         """逐条比对：源里每条症状组都在生成物里出现，数量一致（拼接不丢内容）。"""

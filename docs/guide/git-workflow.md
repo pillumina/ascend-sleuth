@@ -25,7 +25,7 @@ git worktree remove ../ascend-sleuth-s<session>
 1. **工作区隔离**：worktree 隔离工作区文件 / index / HEAD / 未提交改动，各 session 在自己 worktree 内任意修改，不污染他人检出（`git checkout` 携带未提交改动的问题从根上消失）。
 2. **共享面（worktree 不隔离）**：`.git` 对象库与 refs 全局共享，分支名 `kb/<用途>` 必须全局唯一；共享状态文件（ingest-state.json 的 processed、metrics/timeline.yaml、index 分片、postmortems/inbox/）在各 worktree 是各自分支的副本，合流时**显式解决 merge 冲突**：processed 数组合并、索引分片重跑一次生成器即可（它是生成物，不必逐行解）、inbox 清空先确认无他人草稿。
 3. **未进 git 的运行时件：一律锚到主检出**（别再假设"未跟踪文件会被 git 拦住"）。实测（git 2.39）：`.gitignore` 覆盖的未跟踪件**不计入 dirty**，`git worktree remove` **不报错、也不需要 `--force`**，随 worktree **静默**一并删掉；只有"已跟踪且被修改"的文件才会被拦下并提示 `--force`。所以：
-   - **跨 session 复用的记录**（`metrics/skill-exec-log.yaml`、`metrics/ev-measure-log.yaml`、`src-code/` 源码缓存、`traces/`、`postmortems/inbox/` 草稿、`proposals/{sessions,tasks,reviews,experiments}/`）路径一律解析到**主检出**——`scripts/exec_log_path.py` 是唯一事实源，agent 侧入口是 **`python3 scripts/shared_dir.py <名字>`**（打印绝对路径；`--list` 看全部）。**写侧别用相对路径**：写进 worktree 的记录，主检出那一份读者（诊断面板 / 周批指标 / `settle_trace_feedback.py` 等结算脚本）看不到，而且 worktree 一清就没了——"记录了但没人看得见"与"读不到就当成没有"会同时发生。
+   - **跨 session 复用的记录**（`metrics/skill-exec-log.yaml`、`metrics/ev-measure-log.yaml`、`src-code/` 源码缓存、`traces/`、`postmortems/inbox/` 草稿、`proposals/{sessions,tasks,reviews,experiments}/`）路径一律解析到**主检出**——`scripts/exec_log_path.py` 是唯一事实源，agent 负载类型入口是 **`python3 scripts/shared_dir.py <名字>`**（打印绝对路径；`--list` 看全部）。**写侧别用相对路径**：写进 worktree 的记录，主检出那一份读者（诊断面板 / 周批指标 / `settle_trace_feedback.py` 等结算脚本）看不到，而且 worktree 一清就没了——"记录了但没人看得见"与"读不到就当成没有"会同时发生。
    - 读 `traces/` 的脚本（`trace_metrics.py` / `settle_trace_feedback.py` / `component_tally.py` / `replay_trace.py` / `metrics_snapshot.py`）默认就取主检出那一份，不必手工指定。
    - **仍是检出内、会随 worktree 静默消失的**只剩 dev 期产物：`.s2-replay/`、`.ixn-replay/`、`.flow-replay/`、`.auto-fetch/`、`eval-reports/`（不是知识记录；要留就在收工前挪出来）。
 4. **串行操作**：涉及 ingest-state.json 的 fetch / `--mark-imported` / 游标更新必须串行（read-modify-write 无锁，并发写互相覆盖）；groom 清空 inbox 前先确认无其他 session 未提交草稿。
@@ -46,8 +46,8 @@ git worktree remove ../ascend-sleuth-s<session>
 | case 本体 `knowledge/<ns>/<cat>/*.yaml` | 人（PR） | — | `verify_case_draft.py --all` |
 | 索引分片 + 总表 `knowledge/_index/…` | 人（PR） | `python3 scripts/build_index.py` | `build_index.py --check`（覆盖检查：每条 case 的行都在、与内容对得上） |
 | 路由性质文件 `triage-tree.d/<性质>.yaml` | 人（PR） | — | `build_triage_tree.py --check-sources`（性质 id 唯一 / category 合法 / ≤30 性质 / 一性质一文件 / `<side>` 占位在 / 源清单无遗漏） |
-| 路由协议与清单 `triage-tree.d/00-protocol.md` | 人（PR） | — | 同上（`sources:` 决定拼接顺序与归属，`sides:` 是侧层的唯一写点） |
-| 路由聚合 `triage-tree.yaml` | 人（PR） | `python3 scripts/build_triage_tree.py` | `build_triage_tree.py --check-coverage`（源里每条症状组、侧层每个字段都在聚合里） |
+| 路由协议与清单 `triage-tree.d/00-protocol.md` | 人（PR） | — | 同上（`sources:` 决定拼接顺序与归属，`workload_types:` 是负载类型层的唯一写点） |
+| 路由聚合 `triage-tree.yaml` | 人（PR） | `python3 scripts/build_triage_tree.py` | `build_triage_tree.py --check-coverage`（源里每条症状组、负载类型层每个字段都在聚合里） |
 
 **合并完没有任何收尾动作**——不需要谁再跑一次命令。这是"生成物里不写数字 + 路由层可 union +
 门改成覆盖检查"三件事一起买来的：
@@ -104,16 +104,16 @@ git worktree remove ../ascend-sleuth-s<session>
 
 **仍混装两边内容的文件**（靠合并策略只能缓解，按来源拆文件才根治）：`ingest-state.json` 一个文件装所有来源的游标、`eval/scorecard.yaml` 一个账本装两边夹具的哈希、`metrics/timeline.d/` 按自然周命名。这三件属机制改动，等第二个部署真实摄取数据时再做。
 
-### fork 侧不产 EV 卡
+### fork 负载类型不产 EV 卡
 
 idea 卡（`proposals/ideas/`）是机制账本，归上游。两条原因：
 
 - 卡号在本地递增分配（`scripts/ev_proposal.py` 只扫自己检出里的卡），两个仓库各产各的必然撞号；撞号后同一个文件路径两边内容不同，冲突无法机械解决；
 - 上游 `docs/mechanism/`、`docs/plan/` 里引用的卡号会随合并落进 fork，在那里指向另一张卡——这种错不报错。
 
-fork 侧的机制缺口写进 MR 描述或 issue，由维护者拿到上游产卡。内容产出（补 case、补词条、扩错误码家族、从 case 归纳 reference）不产卡，产卡范围见 `skills/evolve-check/SKILL.md`。fork 长期无法访问上游、又确实需要本地决策档案时，用与上游不重叠的号段或前缀，并让该目录归 fork 独占——复用 `proposals/ideas/` 的号段会让撞号问题原样保留。
+fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到上游产卡。内容产出（补 case、补词条、扩错误码家族、从 case 归纳 reference）不产卡，产卡范围见 `skills/evolve-check/SKILL.md`。fork 长期无法访问上游、又确实需要本地决策档案时，用与上游不重叠的号段或前缀，并让该目录归 fork 独占——复用 `proposals/ideas/` 的号段会让撞号问题原样保留。
 
-### fork 侧首次同步的检查单
+### fork 负载类型首次同步的检查单
 
 1. `git fetch upstream && git merge upstream/main`，合并后 `git status`：冲突应只出现在「两边都写」那四个路径上；
 2. 只接收面出现冲突，说明 fork 改过它——还原上游那份，改动挪进反提 PR；
@@ -152,13 +152,13 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 | EV 卡预测可复现 | CI：`scripts/verify_proposals.py --check`（`predicted_effect.measure` 必须有命令 + 期望，或如实声明不可度量） | 硬（结构）/ 约定（命令是否有意义） |
 | 面板契约（渲染 / 文案 / 数据口径） | CI：`panel-checks` job 跑 `scripts/check_panel_tokens.py` + `scripts/panel_render_check.js`（触发路径含 `dsh-plugins/**`） | 硬（红即挡 merge）；"判据是否真在测那件事"仍是约定 |
 | 对照集不被改动者削弱 | CI：`scripts/holdout.py --check`（封存夹具按哈希钉住）+ `holdout-change` 标签闸门；CODEOWNERS 保护 `eval/holdout.yaml` | 硬（哈希）/ 半硬（谁有权 reseal——CODEOWNERS 落实前不是人把关） |
-| 回放量尺的按侧覆盖 | CI：`scripts/eval_side_coverage.py --check --require-side training --require-side inference`（路由分侧后，侧是量尺单位；训练侧曾在 22 条 case 上 0 条夹具） | 硬，但**只保单侧量尺不归零**（侧层由 `--check` 判；某一侧一条真实夹具都不剩即红）。**格级缺口（某个 (侧 × 性质) 格子有 case 没夹具）默认只在报告里出现，不拦**——格层门是另一个开关 `--check-cells`（审计轮用），默认不开的代价是"某格缺夹具"与"某格的非最后一条夹具被删"不会自动喊；开了的代价是"新 case 落到尚无夹具的格子会被拦下"。两代价择一，本仓选前者（同 `holdout.py --list` 的空缺格子：如实报而不假装覆盖）。**它钉的是覆盖不是保护强度**：实测 26 条夹具里 16 条的输入对性质正则零命中（靠语义兜底），改坏词表它们照样过；哪几条真钉着词表用 `--nature-evidence` 现算现看 |
+| 回放量尺的按负载类型覆盖 | CI：`scripts/eval_workload_type_coverage.py --check --require-workload-type training --require-workload-type inference`（路由分负载类型后，负载类型是量尺单位；训练侧曾在 22 条 case 上 0 条夹具） | 硬，但**只保单一负载类型量尺不归零**（负载类型层由 `--check` 判；某一种负载类型一条真实夹具都不剩即红）。**格级缺口（某个 (负载类型 × 性质) 格子有 case 没夹具）默认只在报告里出现，不拦**——格层门是另一个开关 `--check-cells`（审计轮用），默认不开的代价是"某格缺夹具"与"某格的非最后一条夹具被删"不会自动喊；开了的代价是"新 case 落到尚无夹具的格子会被拦下"。两代价择一，本仓选前者（同 `holdout.py --list` 的空缺格子：如实报而不假装覆盖）。**它钉的是覆盖不是保护强度**：实测 26 条夹具里 16 条的输入对性质正则零命中（靠语义兜底），改坏词表它们照样过；哪几条真钉着词表用 `--nature-evidence` 现算现看 |
 
 ## 评审把手（reviewer 怎么判"该不该合"）
 
 判据的独立性只有一条标准：**改动者不能靠"写文字"通过它**。PR 里的命题（success_criteria 达成、无回归、断言全过）多由制造改动的同一过程写成，而 CI 检查的是内部自洽（索引新鲜度、YAML 合法性、模板结构齐全）——因此"CI 绿 + 测试过"对"该不该合"的信息量接近于零，reviewer 会被逼在"开全文"与"直接批"之间二选一（`mechanism/execution.md` §7 把这一失效形态命名为"橡皮图章"）。
 
-改动侧义务：EV 卡带 `predicted_effect.measure`。reviewer 侧动作：
+改动负载类型义务：EV 卡带 `predicted_effect.measure`。reviewer 负载类型动作：
 
 ```
 python3 scripts/ev_measure.py <card-id> --run    # 打印判据命令 + 期望，执行并比对
@@ -194,10 +194,10 @@ PR body 里的「Agent 预核意见」由**与作者不同的会话**产出：�
    结论行给 `MERGE_READY: yes/no`。
 
 **为什么不进 CI**：预核是判断性工作（非确定性、无机械判据），一旦成门就会变成「CI 能过的仪式」；它也不替代双签。
-CI 侧只有机械切片：模板结构（`pr-template.yml`）、docs 名单与未登记文档（`docs-index`）、skill 自包含（`skill-self-contained`）。
+CI 负载类型只有机械切片：模板结构（`pr-template.yml`）、docs 名单与未登记文档（`docs-index`）、skill 自包含（`skill-self-contained`）。
 代号未登记与越界的 `python3 scripts/render_review_summary.py --scan` 是手工命令，同样不进 CI（`writing-norms.md` §8）。
 
-**抽审纪律（约定，同"渐进审序"的用意）**：reviewer 每轮**自行随机点一处**核对，**不从改动者列的 spot-check 清单里挑**。不指望抓全，目的是让"如实标注"成为改动侧的占优策略。
+**抽审纪律（约定，同"渐进审序"的用意）**：reviewer 每轮**自行随机点一处**核对，**不从改动者列的 spot-check 清单里挑**。不指望抓全，目的是让"如实标注"成为改动负载类型的占优策略。
 
 ## PR 模板
 

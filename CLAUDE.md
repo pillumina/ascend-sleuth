@@ -38,14 +38,14 @@ This is a **knowledge/skills repo** — there is no build, no lint, no test suit
 
 | Tier | Content | When loaded |
 |------|---------|-------------|
-| Tier 1 | `triage-tree.yaml` — routing in two layers: `sides:`（合法侧 + 每侧目录面）then `natures:`（interrupt / precision / performance，性质词表**训推共用**，≤30 natures）。**聚合是生成物**：改词改 `triage-tree.d/<性质>.yaml`（一性质一文件，清单在 `00-protocol.md` 的 `sources:`）后跑 `scripts/build_triage_tree.py` 并把聚合一起提交；该目录与聚合都走 `merge=union`，两人同一天加词不冲突 | Always |
+| Tier 1 | `triage-tree.yaml` — routing in two layers: `workload_types:`（合法负载类型 + 每种负载类型目录面）then `natures:`（interrupt / precision / performance，性质词表**训推共用**，≤30 natures）。**聚合是生成物**：改词改 `triage-tree.d/<性质>.yaml`（一性质一文件，清单在 `00-protocol.md` 的 `sources:`）后跑 `scripts/build_triage_tree.py` 并把聚合一起提交；该目录与聚合都走 `merge=union`，两人同一天加词不冲突 | Always |
 | Tier 2 | `knowledge/<ns>/*.yaml` — structured case rules | Two-phase: read the **命中 (namespace × category) 的索引分片** `knowledge/_index/<ns>__<category>.yaml` first (行已瘦身: id/title/tags/symptoms 首条摘要/category/score/file + 签名面 `sig`(quickly_check 字面量分支, ≤6) 与 `tok`(全症状 token, ≤12)；完整 symptoms/quickly_check 在 case 本体), filter candidates ≤5 by title/tag/symptom-summary（`sig`/`tok` 是判断证据；**排序仍由 agent 的相关性判断**，score 只破平——历史回放 agent 判断 top-3 19/19，优于任何机械排序键）, then load the full body to verify with quickly_check. category 未定才回退 `<ns>.yaml`；全库总表 `_index.yaml` 只在跨库比对时读。改 case 后跑 `scripts/build_index.py`（分片 + 总表一起提交；门是覆盖检查） |
 | Tier 3 | `postmortems/` — raw investigation records | Keyword grep fallback when Tier 2 misses |
 
 ### Two orthogonal problem dimensions
 
-- **Where** (training vs inference × framework) — determines which namespace directory to search. **侧不由症状词判，由工程师的事实确定**（材料里写着→直接用；没写→第 1 步问一句；给了框架名→对到库里目录；一时不答→两侧都查并记 `side: unknown`）。落在 `triage-tree.yaml` 的 `sides:`，与 trace 的 `side` / `side_source` 一起可观测。
-- **What** (interrupt / precision / performance) — determines the diagnosis path and `quickly_check` shape. Interrupt uses error-signature grep, precision uses numeric threshold assertions, performance uses profiler metric comparisons. **Do not mix these.** 这三个性质就是 `triage-tree.yaml` 的 `natures:` 分支：症状匹配只判性质，词表训推共用一份，所以同一个宽词不再需要在两侧各写一遍、也不用靠分支顺序决定谁先接住。
+- **Where** (training vs inference × framework) — determines which namespace directory to search. **负载类型不由症状词判，由工程师的事实确定**（材料里写着→直接用；没写→第 1 步问一句；给了框架名→对到库里目录；一时不答→训练与推理都查并记 `workload_type: unknown`）。落在 `triage-tree.yaml` 的 `workload_types:`，与 trace 的 `workload_type` / `workload_type_source` 一起可观测（早期 trace 里这两个字段叫 `side` / `side_source`，两种都认）。
+- **What** (interrupt / precision / performance) — determines the diagnosis path and `quickly_check` shape. Interrupt uses error-signature grep, precision uses numeric threshold assertions, performance uses profiler metric comparisons. **Do not mix these.** 这三个性质就是 `triage-tree.yaml` 的 `natures:` 分支：症状匹配只判性质，词表训推共用一份，所以同一个宽词不再需要在两负载类型各写一遍、也不用靠分支顺序决定谁先接住。
 
 ### Skills
 
@@ -114,7 +114,7 @@ Golden-case 回归套件在 `eval/golden/`：公开仓只放构造示例，真�
 - **Normative foundation:** all design/implementation/evolution changes must be traceable to `docs/spec/design-principles.md` (the normative articles); the derivation chain lives in `docs/spec/design-theory.md` (four axioms → formulas → principles). An untraceable rule is suspect; an unexplainable real-world choice indicts the theory.
 - **Diagnose does not access customer environments.** All info (logs, versions, errors) comes from the engineer pasting it. The agent's role is to ask for what's missing when information is insufficient.
 - **Agent never applies fixes to production.** Fixes are suggestions for the human to apply.
-- **知识库结构性状态**：实时数字（各 namespace 条数/容量，含 soft_cap 容量治理信号）**现算**：`python3 scripts/index_counts.py`（生成物里不写数字——数字进 git 就会在并发合并时撞行或漂移；面板与体检脚本走同一条现算路径），**不在此硬编码**（条数随 KB 增长腐烂）；指标时序数据的**源**在 `metrics/timeline.d/<期号>.yaml`、**生成物** `metrics/timeline.yaml` 由 `scripts/build_timeline.py` 重建（读侧只读它），口径见 `docs/guide/metrics.md`。
+- **知识库结构性状态**：实时数字（各 namespace 条数/容量，含 soft_cap 容量治理信号）**现算**：`python3 scripts/index_counts.py`（生成物里不写数字——数字进 git 就会在并发合并时撞行或漂移；面板与体检脚本走同一条现算路径），**不在此硬编码**（条数随 KB 增长腐烂）；指标时序数据的**源**在 `metrics/timeline.d/<期号>.yaml`、**生成物** `metrics/timeline.yaml` 由 `scripts/build_timeline.py` 重建（读负载类型只读它），口径见 `docs/guide/metrics.md`。
 - **人读面的名单与数字同样不硬编码**：skill 名单、文档目录由 `docs/_manifest.yaml` 生成到 README（`scripts/build_docs_index.py`；`--check` 进 CI `docs-index`，**生成物不一致或 `docs/` 下有未登记文档即红**）。手写数字会腐烂且不报错。
 - **人读文本的行文规范**：写任何给人看或给人审的文本——定位报告、trace 的 `summary`/`output`/`reason`、面板文案、EV 卡、case/reference 词条、postmortem、诊断对话输出、PR body、`docs/` 与 skill 正文——按 `docs/spec/writing-norms.md`：共用条目、必须保留的原值、每一面"共用还是定制"的判定都在那一篇，各面的写点见其 §3。行文是判断性规范，**不进 CI**；由 PR 人读性自查 + review spot-check 保证。机械可判的切片已有门：`build_docs_index.py --check` 与 `render_review_summary.py --scan`（代号未登记与越界）。
 - **代号有生存范围**：`docs/glossary.yaml` 每条带 `scope`。记账号（roadmap 事项、治理缺口、触发信号、落地阶段）**只在各自的计划文档里裸用**；PR body / EV 卡 prose / 机制文档要引用就写中文含义（`scripts/render_review_summary.py --scan <文件或目录>` 会报越界）。`docs/adr/` 与 `proposals/` 是只追加档案，豁免且不追溯。

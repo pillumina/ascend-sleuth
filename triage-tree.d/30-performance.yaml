@@ -1,7 +1,7 @@
 # 性质：性能（performance）——训推共用一份词表，侧由工程师的事实确定，不由症状词判。
 # 合并自 training_performance（原 30-training-performance.yaml）与 inference_performance
 # （原 60-inference-performance.yaml）：后者有 6 组词与前者的字面量完全相同（Host/Device 侧
-# 系统层与采集层判据，2026-09-09 msprof 案例沉淀时两侧各补了一次），合并后只留一份。
+# 系统层与采集层判据，2026-09-09 msprof 案例沉淀时两处各补了一次），合并后只留一份。
 # 加词判据见 00-protocol.md；加词只碰本文件。
 
 natures:
@@ -19,14 +19,14 @@ natures:
       - ["accept.*rate.*drop", "accept_len.*下降", "acceptance.*rate.*drop", "acceptance_per_pos", "接受率低", "接受率.*低", "投机.*接受率"]   # 投机接受率下降=生成效率退化（性能；无输出内容错误前提——伴随输出错误/乱码走 precision，见 20-precision.yaml 的注释）
       - ["cache.*hit.*0", "命中.*为0", "prefix.*cache.*miss", "缓存命中.*0"]    # 前缀缓存失效=性能退化
       - ["generation.*stall", "generation.*slow", "卡住.*生成"]
-      # ---- 两侧各写过一遍、合并后只留一份（Host/Device 侧性能指标形态；profiling 驱动）----
+      # ---- 原先两侧各写过一遍、合并后只留一份（Host/Device 侧性能指标形态；profiling 驱动）----
       - ["利用率.*(低|偏低)", "util.*low", "idle.*(高|占比)", "free.*(占比|时间)", "无效空闲", "空档"]
       - ["上下文切换", "context.?switch", "锁等待", "lock.*wait", "\\bGIL\\b", "GC.*(抖动|耗时|回收)", "syscall", "malloc.*耗时", "中断.*(偏高|集中|次数)", "\\bIRQ\\b", "cache miss", "透明大页", "\\bTHP\\b"]
       - ["通信.*耗时.*占比", "AllReduce.*(波动|耗时)", "慢卡", "快等慢", "带宽使用率", "等待时长比例"]
       - ["显存.*(缓慢|持续).*(增长|上涨)", "reserved.*(上涨|增长)", "allocated.*不涨", "显存.*(累积|泄漏)", "显存.*OOM"]
       - ["op_statistic", "aclopCompile", "算子编译", "访存密集", "\\bNonZero\\b", "batch.*(过小|偏小)"]
       - ["dequeue", "同步接口", "aclrtSynchronizeStream", "耗时.*抖动", "吞吐.*(不足|偏低|下降)"]
-    search_namespaces:            # 按顺序搜索，最多加载 3 个；<side> 由工程师的事实定（见 00-protocol.md 的 sides）
+    search_namespaces:            # 按顺序搜索，最多加载 3 个；<side> 由工程师的事实定（见 00-protocol.md 的 workload_types）
       - <side>/<detected_framework>/
       - common/
     fallback: Tier 3
