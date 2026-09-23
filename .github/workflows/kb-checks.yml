@@ -5,12 +5,12 @@ on:
     paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**",
     "scripts/_lexical.py", "scripts/_stdio.py", "scripts/_yaml.py", "scripts/exec_log_path.py",
     "scripts/route_check.py", "scripts/build_index.py", "scripts/build_triage_tree.py", "scripts/index_counts.py",
-    "scripts/metrics_snapshot.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
+    "scripts/metrics_snapshot.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/eval_workload_type_coverage.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
   pull_request:
     paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**",
     "scripts/_lexical.py", "scripts/_stdio.py", "scripts/_yaml.py", "scripts/exec_log_path.py",
     "scripts/route_check.py", "scripts/build_index.py", "scripts/build_triage_tree.py", "scripts/index_counts.py",
-    "scripts/metrics_snapshot.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
+    "scripts/metrics_snapshot.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/eval_workload_type_coverage.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
 
 jobs:
   index-freshness:
@@ -189,6 +189,18 @@ jobs:
       # fixture 字节哈希对不上 = 夹具改过而账本没跟着重建（真红）；
       # 目标 case 内容变了只进「待复核」清单不红（case 的合法变更不该阻塞无关 PR）。
       - run: python3 scripts/eval_scorecard.py --check
+      # 按负载类型覆盖：路由分负载类型之后，负载类型是量尺单位——训练侧曾在 22 条 case 上 0 条夹具。
+      # **两层判据、两个开关各管一层**（`scripts/eval_workload_type_coverage.py` 头注有完整口径）：
+      #   `--check`      负载类型层：某一负载类型一条真实夹具都不剩 → 红（本行跑的就是这一层）
+      #   `--check-cells` 格层：某个 (负载类型 × 性质) 格子有 case 没夹具 → 红（**本行故意不加**）
+      # 格层默认不做成门是取舍：本仓对这类缺口的既定动作是**如实报出**（同 `holdout.py --list`
+      # 对空缺格子的处理），补夹具需要真实来源、凭空造不出来；做成门等于要求"新 case 落到
+      # 尚无夹具的格子必须先补一条夹具"，而那时确实拿不出。代价写清：格级缺口与"某格的非最后
+      # 一条夹具被删"不会自动喊，只在有人主动跑报告时可见。要那一层保护就在本行加 `--check-cells`。
+      # **另：它钉的是覆盖（有没有夹具），不是保护强度**——实测 26 条夹具里 16 条的输入对三个
+      # 性质的正则零命中（靠流程写明的语义兜底），改坏词表它们照样通过；哪几条真钉着词表，
+      # 用 `python3 scripts/eval_workload_type_coverage.py --nature-evidence` 现算现看（不进 CI 结论）。
+      - run: python3 scripts/eval_workload_type_coverage.py --check --require-workload-type training --require-workload-type inference
 
   # 口径脚本的单元测试：既有 12 个 --check 卡口验的是「仓库自洽」（索引新鲜、schema 合法、
   # id 唯一、生成物一致），不验「算得对」——build_index / trace_metrics / settle_trace_feedback /

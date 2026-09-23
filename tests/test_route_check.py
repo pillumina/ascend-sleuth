@@ -3,7 +3,7 @@
 为什么值得测：这个脚本是**内容类 PR 预核**里唯一能跑的动作，而它的结论会被写进 PR 的
 「Agent 预核意见」。它错两边的代价不对称——误报（把正常的顺序差异说成问题）会让人忽略它，
 漏报（本该报的性质误吸不报）等于这个动作不存在。所以下面钉四件事：
-期望性质怎么推、首个命中怎么判、跨性质重复词怎么列、**侧不参与症状判定**（分层之后
+期望性质怎么推、首个命中怎么判、跨性质重复词怎么列、**负载类型不参与症状判定**（分层之后
 候选分支里只有本侧的目录面，另一侧的性质词取不到）。
 """
 
@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import route_check as RC  # noqa: E402
 
-TRIAGE = """sides:
+TRIAGE = """workload_types:
   - id: training
     label: 训练
     namespaces:
@@ -75,7 +75,7 @@ class RouteCheckTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         (self.root / "triage-tree.yaml").write_text(TRIAGE, encoding="utf-8")
-        self.branches, self.sides = RC.load_tree(self.root)
+        self.branches, self.workload_types = RC.load_tree(self.root)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -103,44 +103,44 @@ class RouteCheckTest(unittest.TestCase):
         self.assertEqual(hits, [])
         self.assertEqual(broken, [])
 
-    # ---------------------------------------------------------------- 分层：侧在候选集之外
-    def test_effective_branches_expand_side_placeholder(self):
-        """侧已知 → 只拿本侧目录面；侧不在性质里判，所以展开后**看不到另一侧**。"""
-        cand = RC.effective_branches(self.branches, "inference", sides=self.sides)
+    # ---------------------------------------------------------------- 分层：负载类型在候选集之外
+    def test_effective_branches_expand_workload_type_placeholder(self):
+        """负载类型已知 → 只拿本侧目录面；负载类型不在性质里判，所以展开后**看不到另一侧**。"""
+        cand = RC.effective_branches(self.branches, "inference", workload_types=self.workload_types)
         self.assertEqual(cand[0]["search_namespaces"],
                          ["inference/<detected_framework>/", "common/"])
         for b in cand:
             self.assertNotIn("training/", " ".join(b["search_namespaces"]))
 
-    def test_effective_branches_unknown_side_searches_both(self):
-        """侧未知 → 所有已声明的侧都查（保底路径）；目录面去重，common/ 只出现一次。"""
-        cand = RC.effective_branches(self.branches, None, sides=self.sides)
+    def test_effective_branches_unknown_workload_type_searches_both(self):
+        """负载类型未知 → 所有已声明的负载类型都查（保底路径）；目录面去重，common/ 只出现一次。"""
+        cand = RC.effective_branches(self.branches, None, workload_types=self.workload_types)
         self.assertEqual(cand[0]["search_namespaces"],
                          ["training/<detected_framework>/", "inference/<detected_framework>/",
                           "common/"])
 
-    def test_unknown_side_covers_every_declared_side(self):
-        """**加侧不漏查**：侧列表从聚合现取，不写死两个——多一个侧时"侧未知"必须把它也查上，
-        否则新侧的 case 在侧未知路径上静默漏掉（没命中与漏查在输出上同形）。"""
-        sides = self.sides + [{"id": "edge", "label": "边侧", "namespaces": ["edge/<f>/", "common/"],
+    def test_unknown_workload_type_covers_every_declared_side(self):
+        """**加负载类型不漏查**：负载类型列表从聚合现取，不写死两个——多一个负载类型时"负载类型未知"必须把它也查上，
+        否则新负载类型的 case 在负载类型未知路径上静默漏掉（没命中与漏查在输出上同形）。"""
+        workload_types = self.workload_types + [{"id": "edge", "label": "边负载类型", "namespaces": ["edge/<f>/", "common/"],
                                "fallback": "Tier 3"}]
-        cand = RC.effective_branches(self.branches, None, sides=sides)
+        cand = RC.effective_branches(self.branches, None, workload_types=workload_types)
         self.assertIn("edge/<detected_framework>/", cand[0]["search_namespaces"])
-        known = RC.effective_branches(self.branches, "edge", sides=sides)
+        known = RC.effective_branches(self.branches, "edge", workload_types=workload_types)
         self.assertEqual(known[0]["search_namespaces"], ["edge/<detected_framework>/", "common/"])
 
-    def test_effective_branches_without_side_layer_refuses_to_guess(self):
-        """聚合没给 `sides:` 时报错，不退回一对写死的侧——"读不到就悄悄用旧口径"正是
+    def test_effective_branches_without_workload_type_layer_refuses_to_guess(self):
+        """聚合没给 `workload_types:` 时报错，不退回一对写死的负载类型——"读不到就悄悄用旧口径"正是
         删掉 `branches:` 别名时不要的形态。"""
         with self.assertRaises(ValueError):
             RC.effective_branches(self.branches, None)
 
     def test_effective_branches_inlines_detected_framework(self):
         cand = RC.effective_branches(self.branches, "training", framework="verl",
-                                     sides=self.sides)
+                                     workload_types=self.workload_types)
         self.assertEqual(cand[0]["search_namespaces"][0], "training/verl/")
 
-    def test_nature_id_is_the_branch_id_not_side_plus_nature(self):
+    def test_nature_id_is_the_branch_id_not_workload_type_plus_nature(self):
         """分层之后分支名就是性质名——`training_interrupt` 这种形状不该再出现。"""
         self.assertEqual([b["id"] for b in self.branches],
                          ["interrupt", "performance", "precision"])
@@ -152,7 +152,7 @@ class RouteCheckTest(unittest.TestCase):
 
         跳过的后果是"该性质根本没参与判定"，而输出读起来像"这条 case 没命中任何性质"——
         两者同形，等于脚本在真空通过（独立预核实测：把某性质的正则写成 `[` 后，
-        该侧 case 被报成"无命中"并 exit 0）。
+        该负载类型的 case 被报成"无命中"并 exit 0）。
         """
         bad = [{"id": "interrupt", "category": "interrupt", "symptoms": [["x"]],
                 "search_namespaces": ["<side>/<f>/"], "fallback": "Tier 3"},
@@ -164,7 +164,7 @@ class RouteCheckTest(unittest.TestCase):
 
     def test_cli_exits_nonzero_when_tree_has_uncompilable_regex(self):
         (self.root / "triage-tree.yaml").write_text(
-            "sides:\n"
+            "workload_types:\n"
             "  - {id: inference, label: 推理, namespaces: [inference/<f>/], fallback: Tier 3}\n"
             "natures:\n"
             "  - id: interrupt\n"
@@ -198,19 +198,19 @@ class RouteCheckTest(unittest.TestCase):
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
         self.assertIn("不是任何路由性质", r.stderr)
 
-    def test_case_side_and_nature_from_path(self):
+    def test_case_workload_type_and_nature_from_path(self):
         p = self.write_case("inference/vllm-ascend/interrupt/X.yaml")
-        self.assertEqual(RC.case_side_and_nature(p, self.root), ("inference", "interrupt"))
+        self.assertEqual(RC.case_workload_type_and_nature(p, self.root), ("inference", "interrupt"))
         p2 = self.write_case("training/verl/precision/X.yaml")
-        self.assertEqual(RC.case_side_and_nature(p2, self.root), ("training", "precision"))
+        self.assertEqual(RC.case_workload_type_and_nature(p2, self.root), ("training", "precision"))
 
     def test_common_case_is_not_judged(self):
-        """common/ 的共性 case 不参与路由（框架无关）→ 不该硬套一个期望性质，也不判侧。"""
+        """common/ 的共性 case 不参与路由（框架无关）→ 不该硬套一个期望性质，也不判负载类型。"""
         p = self.write_case("common/performance/X.yaml")
-        self.assertEqual(RC.case_side_and_nature(p, self.root), ("", ""))
+        self.assertEqual(RC.case_workload_type_and_nature(p, self.root), ("", ""))
 
     def test_wide_words_lists_cross_nature_patterns(self):
-        """分层后这个词单的形状变了：列的是**同一形态被两个性质同时认领**（跨侧重复已不存在）。"""
+        """分层后这个词单的形状变了：列的是**同一形态被两个性质同时认领**（跨负载类型重复已不存在）。"""
         branches = self.branches + [{"id": "performance2", "category": "performance",
                                      "symptoms": [["\\btimeout\\b"]],
                                      "search_namespaces": ["<side>/<f>/"], "fallback": "Tier 3"}]
@@ -230,16 +230,16 @@ class RouteCheckTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("首个命中是 performance", r.stdout)
 
-    def test_cli_shows_only_own_side_search_face(self):
-        """报告里给出本条实际检索面——它只含本侧，侧不在症状层判，读报告的人要看得见这件事。"""
+    def test_cli_shows_only_own_workload_type_search_face(self):
+        """报告里给出本条实际检索面——它只含本侧，负载类型不在症状层判，读报告的人要看得见这件事。"""
         self.write_case("inference/vllm-ascend/interrupt/X.yaml", cid="T-SIDE", sym="RuntimeError 超时")
         r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"),
                             "knowledge/inference/vllm-ascend/interrupt/X.yaml",
                             "--root", str(self.root)],
                            capture_output=True, text=True, cwd=self.root)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("侧：inference", r.stdout)
-        self.assertIn("只含本侧", r.stdout)
+        self.assertIn("负载类型：inference", r.stdout)
+        self.assertIn("只含本条负载类型", r.stdout)
         self.assertIn("inference/<detected_framework>/", r.stdout)
 
     def test_cli_passes_when_expected_nature_hits_first(self):
@@ -294,7 +294,7 @@ class RouteCheckTest(unittest.TestCase):
 
     def test_unreadable_tree_is_usage_error_not_mismatch(self):
         """读不到表 → 2（读取错误），与 1（期望性质对不上）分开。"""
-        r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"), "--show-sides",
+        r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"), "--show-workload-types",
                             "--root", str(self.root / "nope")], capture_output=True, text=True,
                            cwd=self.root)
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
@@ -305,23 +305,23 @@ class RouteCheckTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0)
         self.assertIn("跨性质重复的正则", r.stdout)
 
-    def test_cli_show_sides_mode(self):
-        r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"), "--show-sides",
+    def test_cli_show_workload_types_mode(self):
+        r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"), "--show-workload-types",
                             "--root", str(self.root)], capture_output=True, text=True, cwd=self.root)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("合法侧：2 个", r.stdout)
+        self.assertIn("合法负载类型：2 个", r.stdout)
         self.assertIn("training", r.stdout)
         self.assertIn("inference", r.stdout)
 
-    def test_cli_show_sides_red_when_layer_missing(self):
-        """侧层没落地时 --show-sides 要红（-1），不能静默说什么都没有。"""
+    def test_cli_show_workload_types_red_when_layer_missing(self):
+        """负载类型层没落地时 --show-workload-types 要红（-1），不能静默说什么都没有。"""
         (self.root / "triage-tree.yaml").write_text(
             "natures:\n  - {id: interrupt, category: interrupt, symptoms: [[x]],"
             " search_namespaces: [common/], fallback: Tier 3}\n", encoding="utf-8")
-        r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"), "--show-sides",
+        r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"), "--show-workload-types",
                             "--root", str(self.root)], capture_output=True, text=True, cwd=self.root)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("sides", r.stdout)
+        self.assertIn("workload_types", r.stdout)
 
 
 if __name__ == "__main__":

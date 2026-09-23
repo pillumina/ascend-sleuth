@@ -24,7 +24,7 @@
 # 所以 union 之后不会出现"漂移的错数"。
 triage-tree.yaml merge=union
 triage-tree.d/*.yaml merge=union
-# 协议文件也配 union：它的 `sources:`（源清单）与 `sides:`（合法侧）是追加型的短列表，两人各加
+# 协议文件也配 union：它的 `sources:`（源清单）与 `workload_types:`（合法负载类型）是追加型的短列表，两人各加
 # 一项时两边都留住；只有散文段落被两边同时改才真冲突，那时按语义合。
 triage-tree.d/00-protocol.md merge=union
 

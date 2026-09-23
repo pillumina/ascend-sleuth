@@ -77,7 +77,7 @@ trace:
   #       missing: "P1/D1 未贴差异；缺 P 节点 hang 时日志栈"}}
   #  ❌ 错误（勿写）：把配置原文压成指纹塞进 inline，而文件未落盘、files 缺失 —— 跨 agent resume 无法重建现场
   #     禁止只写 content 摘要或压指纹。
-  - {role: agent, step: 2, action: triage, side: training, side_source: framework, branch: interrupt, category: interrupt, routed: [training/mindspeed-llm/, common/], output: "判断为训练侧中断类，加载 training/mindspeed-llm 与 common 候选", reason: "负载类型来自框架名对到的库里目录（mindspeed-llm 在 knowledge/training/ 下）；症状含 HCCL 通信关键词与超时 → 性质 interrupt；同域候选可能跨 framework → 带 common"}
+  - {role: agent, step: 2, action: triage, workload_type: training, workload_type_source: framework, branch: interrupt, category: interrupt, routed: [training/mindspeed-llm/, common/], output: "判断为训练侧中断类，加载 training/mindspeed-llm 与 common 候选", reason: "负载类型来自框架名对到的库里目录（mindspeed-llm 在 knowledge/training/ 下）；症状含 HCCL 通信关键词与超时 → 性质 interrupt；同域候选可能跨 framework → 带 common"}
   - {role: agent, step: 3, action: load_index, namespaces: [training/mindspeed-llm/, common/], n_cases: 34}
   - {role: agent, step: 4, action: quickly_check, case: MSLLM-EP-HANG-001, primary: pass, output: "候选 1 命中主检查", reason: "日志 grep 'HCCL' 命中该 case primary 正则且版本兼容"}
   - {role: agent, step: 4, action: quickly_check, case: MSLLM-EP-HANG-007, primary: fail, fallback: pass, marked: low_confidence, reason: "primary 未命中（无该 case 的特定码），fallback 宽匹配通过但置信低"}

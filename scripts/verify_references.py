@@ -7,9 +7,9 @@
 #   - 按来源类型强校验子字段（official-doc / engineer-input / case-derived）
 #   - 深审：case-derived + methodology 从全库 case 的 ref_knowledge 派生计数，
 #     < 3 条引用时不允许 status: active（引用数不存储于 reference 本体）
-#   - case 侧 ref_knowledge 强校验（ADR-0008 §7）：ref 必须存在于 references/（防
+#   - case 负载类型 ref_knowledge 强校验（ADR-0008 §7）：ref 必须存在于 references/（防
 #     悬挂引用）、role 必须合法（signature-source / fix-methodology / root-cause-context）
-#   - skill 侧绑定强校验（EV-2026-037）：skill 支撑文件里的 ref-id 绑定
+#   - skill 负载类型绑定强校验（EV-2026-037）：skill 支撑文件里的 ref-id 绑定
 #     （skills/diagnose/references/collect-gates.yaml）必须指向存在且 active 的词条——
 #     散文里硬编码 ref-id 会静默腐化（曾把不存在的 profiling-performance-fault-patterns
 #     当已有落点写进 SKILL），绑定落成数据后由 CI 兜住
@@ -65,9 +65,9 @@ def load_yaml(path: Path):
 
 
 def check_case_ref_links(root: Path, ref_ids: set):
-    """扫描 case 侧 ref_knowledge：派生引用计数 + 校验 ref 存在性与 role 合法性。
+    """扫描 case 负载类型 ref_knowledge：派生引用计数 + 校验 ref 存在性与 role 合法性。
 
-    ADR-0008 §7：一条关系只存一处（case 侧），反向视图（哪些 case 引用了某
+    ADR-0008 §7：一条关系只存一处（case 负载类型），反向视图（哪些 case 引用了某
     reference）是派生的、不存储——counts 供深审（case-derived methodology
     引用数 <3 不允许 active）使用。ref 存在性与 role 合法性是 CI 强校验：
     悬挂引用与非法 role 直接红。"""
@@ -109,7 +109,7 @@ def check_case_ref_links(root: Path, ref_ids: set):
     return counts, errors
 
 
-# skill 侧 ref-id 绑定（EV-2026-037）：`<skill>/references/*-gates.yaml` 把
+# skill 负载类型 ref-id 绑定（EV-2026-037）：`<skill>/references/*-gates.yaml` 把
 # 「category → 采集面词条」的绑定从 SKILL 散文搬成数据。校验：**至少一个绑定文件存在**
 # （约定后缀发现——删掉文件不等于检查静默消失）+ 结构合法 + 每个 id 存在且 active。
 SKILL_BINDING_GLOB = "skills/**/references/*-gates.yaml"
@@ -137,7 +137,7 @@ def legal_categories(root: Path) -> set:
     doc = load_yaml(root / "triage-tree.yaml")
     cats = set()
     if isinstance(doc, dict):
-        # 顶层键是 `sides:`（侧，不带 category）与 `natures:`（性质，带 category）。
+        # 顶层键是 `workload_types:`（负载类型，不带 category）与 `natures:`（性质，带 category）。
         # 退休的 `branches:` 桶读起来会静默返回空集，然后整批校验退回 FALLBACK——
         # 那正是"拼错一个字母却没人报"的形态，所以这里点名读 `natures`。
         for b in doc.get("natures") or []:
@@ -673,7 +673,7 @@ def main():
         print(f"FATAL: references/_types.yaml 无法解析或 types 为空")
         sys.exit(1)
 
-    # 1) reference 词条 ID 集 + active 集（先于 case/skill 侧校验；_types.yaml 不是词条）
+    # 1) reference 词条 ID 集 + active 集（先于 case/skill 负载类型校验；_types.yaml 不是词条）
     ref_ids = set()
     active_ids = set()
     for path in sorted(refs_dir.rglob("*.yaml")):
@@ -686,10 +686,10 @@ def main():
             if doc.get("status") == "active":
                 active_ids.add(rid)
 
-    # 2) case 侧 ref_knowledge：派生计数（深审用）+ ref 存在性/role 合法性强校验
+    # 2) case 负载类型 ref_knowledge：派生计数（深审用）+ ref 存在性/role 合法性强校验
     case_ref_counts, case_errors = check_case_ref_links(root, ref_ids)
 
-    # 3) skill 侧绑定：采集闸门表里的 ref-id 必须存在且 active；category 取值合法
+    # 3) skill 负载类型绑定：采集闸门表里的 ref-id 必须存在且 active；category 取值合法
     legal_cats = legal_categories(root)
     errors = list(case_errors) + check_skill_ref_bindings(root, ref_ids, active_ids, legal_cats)
     # 3b) 覆盖环（方向相反的那一半）：每条声明了 category 的 tool 词条都要有闸门入口——

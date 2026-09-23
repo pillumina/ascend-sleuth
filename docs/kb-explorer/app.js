@@ -60,9 +60,9 @@ function revealScope(root){
 
 /* ============ 20 · data：KB 索引 / 类型元信息 / 检索 ============ */
 var TYPES=KB.types, ENTRIES=KB.entries;
-/* 路由分两层：SIDES 是合法侧（哪一侧查，由工程师的事实定），TRIAGE 是性质分支（什么性质，
-   词表训推共用）。生成物只给 `sides:` 与 `natures:` 两个顶层键（退休的 `branches:` 桶不留别名）。 */
-var SIDES=(KB.triage&&KB.triage.sides)||[];
+/* 路由分两层：WORKLOAD_TYPES 是合法负载类型（训推哪一侧查，由工程师的事实定），TRIAGE 是性质分支（什么性质，
+   词表训推共用）。生成物只给 `workload_types:` 与 `natures:` 两个顶层键（退休的 `branches:` 桶不留别名）。 */
+var WORKLOAD_TYPES=(KB.triage&&KB.triage.workload_types)||[];
 var TRIAGE=(KB.triage&&(KB.triage.natures||KB.triage.branches))||[];
 var byId={}, byType={};
 ENTRIES.forEach(function(e){byId[e.id]=e;(byType[e.type]=byType[e.type]||[]).push(e);});
@@ -795,9 +795,9 @@ function viewTriage(){
   var h='<div class="triage container"><div class="triage-head">'
     +'<div class="kicker">triage-tree</div>'
     +'<h1>症状 → 检索路由图</h1>'
-    +'<p>路由分两步、互不竞争：<b>先定侧</b>（训练 / 推理——由工程师给的事实确定，不由症状词判，见下表）；'
-    +'<b>再在侧内判性质</b>（中断 / 精度 / 性能——这一层由症状词匹配，词表训推共用一份）。'
-    +'组合出检索面 <code>knowledge/&lt;侧&gt;/&lt;框架&gt;/&lt;性质&gt;/</code>，另加框架无关的 <code>common/</code>（本界面不含私有 case）。'
+    +'<p>路由分两步、互不竞争：<b>先定负载类型</b>（训练 / 推理——由工程师给的事实确定，不由症状词判，见下表）；'
+    +'<b>再在负载类型内判性质</b>（中断 / 精度 / 性能——这一层由症状词匹配，词表训推共用一份）。'
+    +'组合出检索面 <code>knowledge/&lt;负载类型&gt;/&lt;框架&gt;/&lt;性质&gt;/</code>，另加框架无关的 <code>common/</code>（本界面不含私有 case）。'
     +"把现场报错里的关键词对照下方各性质的症状词，理解「这类问题该往哪个方向查」。</p>";
   h+='<div class="triage-stats">'
     +'<div class="bar-dist" title="按 category 分布">'+Object.keys(cats).map(function(c){
@@ -806,14 +806,14 @@ function viewTriage(){
       return '<span><i style="background:'+CAT_COLOR[c]+'"></i>'+esc(CAT_LABEL[c]||c)+" "+cats[c]+"</span>";}).join("")+"</div></div>";
   h+='<div class="b-filters" style="margin-top:14px"><button class="ftag on" data-cf="all">全部性质 '+total+"</button>"
     +Object.keys(cats).map(function(c){return '<button class="ftag" data-cf="'+esc(c)+'">'+esc(CAT_LABEL[c]||c)+" "+cats[c]+"</button>";}).join("")+"</div>";
-  if(SIDES.length){
-    h+='<div class="branches" style="margin-top:14px">'+SIDES.map(function(s){
+  if(WORKLOAD_TYPES.length){
+    h+='<div class="branches" style="margin-top:14px">'+WORKLOAD_TYPES.map(function(s){
       return '<div class="branch"><div class="b-head" style="cursor:default">'
         +'<span class="b-id">'+esc(s.id)+"</span>"
         +chip(s.label||"","chip-cat")
         +'<span class="b-ns">'+(s.namespaces||[]).map(function(n){return chip(n,"chip-plat");}).join("")+"</span>"
         +'</div><div class="b-region"><div class="inner"><div class="lbl" style="font-size:10px;letter-spacing:.14em;color:var(--ink-3);font-weight:700">'
-        +"侧由工程师的事实确定（材料里写着 / 第 1 步问一句 / 框架名对到库里目录）；一时不答则两侧都查并记 side: unknown</div></div></div></div>";}).join("")+"</div>";
+        +"负载类型由工程师的事实确定（材料里写着 / 第 1 步问一句 / 框架名对到库里目录）；一时不答则两种都查并记 workload_type: unknown</div></div></div></div>";}).join("")+"</div>";
   }
   h+='</div><div class="branches" data-branches></div></div>';
   $view.innerHTML=h;
@@ -829,7 +829,7 @@ function renderBranches(cf){
   var el=$view.querySelector("[data-branches]");
   el.innerHTML=TRIAGE.filter(function(b){return cf==="all"||b.category===cf;}).map(function(b){
     var syms=b.symptoms||[];
-    // 性质层的检索面带 <side> 记号：侧不在症状层判，由 SIDES 展开成 knowledge/<侧>/<框架>/
+    // 性质层的检索面带 <side> 记号：负载类型不在症状层判，由 WORKLOAD_TYPES 展开成 knowledge/<负载类型>/<框架>/
     var ns=(b.search_namespaces||[]).map(function(n){return chip(n,"chip-plat");}).join("");
     return '<div class="branch"><div class="b-head" data-branch-head>'
       +'<span class="b-id">'+esc(b.id)+"</span>"

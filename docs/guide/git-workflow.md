@@ -46,8 +46,8 @@ git worktree remove ../ascend-sleuth-s<session>
 | case 本体 `knowledge/<ns>/<cat>/*.yaml` | 人（PR） | — | `verify_case_draft.py --all` |
 | 索引分片 + 总表 `knowledge/_index/…` | 人（PR） | `python3 scripts/build_index.py` | `build_index.py --check`（覆盖检查：每条 case 的行都在、与内容对得上） |
 | 路由性质文件 `triage-tree.d/<性质>.yaml` | 人（PR） | — | `build_triage_tree.py --check-sources`（性质 id 唯一 / category 合法 / ≤30 性质 / 一性质一文件 / `<side>` 占位在 / 源清单无遗漏） |
-| 路由协议与清单 `triage-tree.d/00-protocol.md` | 人（PR） | — | 同上（`sources:` 决定拼接顺序与归属，`sides:` 是侧层的唯一写点） |
-| 路由聚合 `triage-tree.yaml` | 人（PR） | `python3 scripts/build_triage_tree.py` | `build_triage_tree.py --check-coverage`（源里每条症状组、侧层每个字段都在聚合里） |
+| 路由协议与清单 `triage-tree.d/00-protocol.md` | 人（PR） | — | 同上（`sources:` 决定拼接顺序与归属，`workload_types:` 是负载类型层的唯一写点） |
+| 路由聚合 `triage-tree.yaml` | 人（PR） | `python3 scripts/build_triage_tree.py` | `build_triage_tree.py --check-coverage`（源里每条症状组、负载类型层每个字段都在聚合里） |
 
 **合并完没有任何收尾动作**——不需要谁再跑一次命令。这是"生成物里不写数字 + 路由层可 union +
 门改成覆盖检查"三件事一起买来的：
@@ -111,7 +111,7 @@ idea 卡（`proposals/ideas/`）是机制账本，归上游。两条原因：
 - 卡号在本地递增分配（`scripts/ev_proposal.py` 只扫自己检出里的卡），两个仓库各产各的必然撞号；撞号后同一个文件路径两边内容不同，冲突无法机械解决；
 - 上游 `docs/mechanism/`、`docs/plan/` 里引用的卡号会随合并落进 fork，在那里指向另一张卡——这种错不报错。
 
-fork 侧的机制缺口写进 MR 描述或 issue，由维护者拿到上游产卡。内容产出（补 case、补词条、扩错误码家族、从 case 归纳 reference）不产卡，产卡范围见 `skills/evolve-check/SKILL.md`。fork 长期无法访问上游、又确实需要本地决策档案时，用与上游不重叠的号段或前缀，并让该目录归 fork 独占——复用 `proposals/ideas/` 的号段会让撞号问题原样保留。
+fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到上游产卡。内容产出（补 case、补词条、扩错误码家族、从 case 归纳 reference）不产卡，产卡范围见 `skills/evolve-check/SKILL.md`。fork 长期无法访问上游、又确实需要本地决策档案时，用与上游不重叠的号段或前缀，并让该目录归 fork 独占——复用 `proposals/ideas/` 的号段会让撞号问题原样保留。
 
 ### fork 侧首次同步的检查单
 
@@ -152,6 +152,7 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 | EV 卡预测可复现 | CI：`scripts/verify_proposals.py --check`（`predicted_effect.measure` 必须有命令 + 期望，或如实声明不可度量） | 硬（结构）/ 约定（命令是否有意义） |
 | 面板契约（渲染 / 文案 / 数据口径） | CI：`panel-checks` job 跑 `scripts/check_panel_tokens.py` + `scripts/panel_render_check.js`（触发路径含 `dsh-plugins/**`） | 硬（红即挡 merge）；"判据是否真在测那件事"仍是约定 |
 | 对照集不被改动者削弱 | CI：`scripts/holdout.py --check`（封存夹具按哈希钉住）+ `holdout-change` 标签闸门；CODEOWNERS 保护 `eval/holdout.yaml` | 硬（哈希）/ 半硬（谁有权 reseal——CODEOWNERS 落实前不是人把关） |
+| 回放量尺的按负载类型覆盖 | CI：`scripts/eval_workload_type_coverage.py --check --require-workload-type training --require-workload-type inference`（路由分负载类型后，负载类型是量尺单位；训练侧曾在 22 条 case 上 0 条夹具） | 硬，但**只保单一负载类型量尺不归零**（负载类型层由 `--check` 判；某一种负载类型一条真实夹具都不剩即红）。**格级缺口（某个 (负载类型 × 性质) 格子有 case 没夹具）默认只在报告里出现，不拦**——格层门是另一个开关 `--check-cells`（审计轮用），默认不开的代价是"某格缺夹具"与"某格的非最后一条夹具被删"不会自动喊；开了的代价是"新 case 落到尚无夹具的格子会被拦下"。两代价择一，本仓选前者（同 `holdout.py --list` 的空缺格子：如实报而不假装覆盖）。**它钉的是覆盖不是保护强度**：实测 26 条夹具里 16 条的输入对性质正则零命中（靠语义兜底），改坏词表它们照样过；哪几条真钉着词表用 `--nature-evidence` 现算现看 |
 
 ## 评审把手（reviewer 怎么判"该不该合"）
 
