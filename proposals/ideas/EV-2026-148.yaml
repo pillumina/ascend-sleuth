@@ -1,0 +1,128 @@
+# ============================================================
+# EV-2026-148 —— 路由先分侧再分性质：把"训练/推理"从症状词里拿出来，改由工程师的事实确定
+# 来源：用户连着三轮追问路由层——
+#   ①「宽词顺序又是什么」→ 实测路由表里 57 条正则在训推两侧各写一遍，顺序先到者接住；
+#   ②「这个得优化吧，不能撞在一起啊，而且得先判断是训练还是推理的类型吧」→ 实测全库 146 条
+#      可判 case 里 76 条被别的分支先接住，其中 72 条是跨侧（训练分支抢推理 case）；
+#   ③「训练推理是不是也不能这么死？比如 mindie 这种新的框架，也是推理呀」+「判不出来得和用户
+#      确认吧」+「不要耗费大量思考在这个判断上，到底是训练还是推理肯定是用户知道的」
+#      → 否掉了"框架→侧"硬映射表与"证据判侧"判据体系：侧是用户的环境事实，问一句就有。
+# 脱敏：只含仓库内路径、命令与聚合数字
+# ============================================================
+
+id: EV-2026-148
+layer: L2
+target_component: triage-tree.yaml
+title: "路由先分侧再分性质：训练/推理由工程师的事实确定（材料里读得到就用，读不到问一句），宽词归性质层"
+status: in_experiment
+authorization: review
+dimension: architecture
+supersedes: []
+superseded_by: null
+created_at: '2026-09-23'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户三轮追问收敛到一条设计：训练/推理这一轴不该由症状词判，也不该靠"框架名到侧"的映射表
+      （MindIE 这类新框架就是反例），更不该让模型花力气去推——它是工程师手上就有的事实。
+      同时否掉了我提出的"证据判侧判据体系"：为省一句话去造两层机制，是把模型当猜谜机。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      两条独立实测，指向同一个结构缺陷：`triage-tree.yaml` 把"哪一侧"和"什么性质"压进同一个分支
+      选择里（`training_interrupt` / `inference_interrupt` …），于是同一个宽词必须在两侧各写一遍，
+      而分支顺序决定谁先接住。
+      ①全库 146 条可判 case（`knowledge/<side>/<fw>/<cat>/*.yaml` 逐条拿 title+symptoms 当代理输入）：
+      **76 条**被别的分支先接住，其中**72 条是跨侧**（如 `aclnn\w+`、`\btimeout\b`、`\bOOM\b`、
+      `启动即失败` 由 `training_interrupt` 接住 `inference_interrupt` 的 case），同侧跨性质只有 4 条。
+      ②16 个 trace 里 11 个有 triage 记录，其中 **1 条真发生跨侧误吸**：
+      `2026-09-14-telechat-cq-alloc-dev5.yaml` 的 `VLLM-ASC-9596`（推理侧 case）被路由到
+      `[common, training]`、branch 记为 `training_interrupt`。
+      口径说明：76 是**上限**（拿 case 自己的症状当输入、按首个命中算），真实诊断喂的是工程师贴的
+      文本，agent 还会模糊判断并可在多分支弱匹配时退化加载全部 namespace；所以别读成"一半诊断都错了"。
+    trajectory:
+      - "遍历 knowledge/*/*/*/*.yaml，用 scripts/route_check.py 的 hits_for 逐条算首个命中"
+      - "遍历 traces/*.yaml，比对 triage 事件的 routed 与 active_case 所在侧"
+hypothesis: >-
+  把"哪一侧"从症状匹配里拿出来、改由工程师给的事实确定（材料里写着训练中/推理请求中/服务命令就用，
+  没写就在第一步问一句；他给了框架名就顺手对到库里目录），性质仍在侧内按症状判，并把两侧共用的宽词
+  归到性质层之后：跨侧碰撞在结构上不可能发生（训练分支对推理任务根本不参与）；同一性质只需一份词表，
+  不再出现"同一正则写在两个分支里、靠顺序决定谁赢"。侧判不出来时不猜：两侧都查，trace 标 `side: unknown`。
+predicted_effect:
+  metric: 跨侧碰撞的 case 数（代理输入口径）与"同一正则出现在多个分支"的正则数
+  from: >-
+    76 条 case 被别的分支先接住（72 条跨侧、4 条同侧跨性质）；57 条正则跨分支重复；
+    trace 实测 1/11 真跨侧误吸。侧信息目前埋在第 1 步覆盖表的"触发位置"行里，没有被当成路由输入。
+  to: >-
+    路由表拆成"侧 × 性质"：侧来自工程师的事实（材料 / 问他 / 框架名对目录），性质在侧内判；
+    跨侧碰撞归零；跨分支重复的正则降到"同性质内共享"这一档（两侧共用一份词表）；
+    trace 记 `side` 与 `side_source`（evidence / user / framework / unknown），使"判侧"这一步可观测。
+  measure:
+    command: |
+      python3 - <<'PY'
+      import glob, pathlib, subprocess, sys, yaml
+      sys.path.insert(0, 'scripts')
+      import route_check as RC
+      root = pathlib.Path('.')
+      branches = RC.load_branches(root)
+      # ① 改后：每条 case 只与它所在侧的三个分支比较；跨侧碰撞应归零
+      cross = []
+      for p in sorted(glob.glob('knowledge/*/*/*/*.yaml')):
+          doc = yaml.safe_load(open(p, encoding='utf-8')) or {}
+          for case in (doc.get('cases') or []):
+              exp = RC.expected_branch(pathlib.Path(p), root)
+              if not exp:
+                  continue
+              side = exp.split('_')[0]
+              side_branches = [b for b in branches if str(b.get('id', '')).startswith(side + '_')]
+              hits, _broken = RC.hits_for(RC.case_text(case), side_branches)
+              if hits and hits[0][0] != exp:
+                  cross.append((case.get('id'), exp, hits[0][0]))
+      # ② 宽词：只应剩"同性质内共享"（两侧同名性质共用一份词表即不算跨分支重复）
+      ww = RC.wide_words(branches)
+      print('cross_side_captures', len(cross), cross[:3])
+      print('wildcard_duplicates', len(ww), [w for w, _ in ww[:3]])
+      print('VERDICT', 'PASS' if not cross else 'FAIL')
+      PY
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: golden_replay
+  baseline: >-
+    改动前：`triage-tree.yaml` 六个分支各含"侧 + 性质"（加兜底共七支）；侧只体现在分支 id 与
+    `search_namespaces` 的前缀里，由症状词匹配结果间接决定；全库 76 条 cross 命中（72 跨侧）。
+  success_criteria: >-
+    ①上述 measure 打 VERDICT PASS（改后跨侧碰撞 0）；
+    ②历史回放对照：同一批 trace 上改前/改后的 `routed` 与最终 `active_case` 一致性不下降
+    （仓里检索层改动的门，见 docs/guide/eval.md）；
+    ③诊断正文改了侧的处理：第 1 步覆盖表加一行 `负载类型（训练 / 推理）`（来源标注：材料 / 框架 / 问他），
+    第 2 步在侧内选性质；侧未知时两侧都查并在 trace 标 `side: unknown`；
+    ④`tests/` 全绿，`build_triage_tree.py --check-coverage` 与 `route_check.py` 两条自查在改后的表上跑通；
+    ⑤kb-checks 逐条本机复跑全绿。
+  rollback: 分支丢弃或 git revert；路由表与其生成物同一次提交内可整体回退（无数据迁移）。
+gate: >-
+  若改后回放显示 `routed` 准确率没有改善、且实际诊断里"侧需要问"的比例高于预期（比如多数 session
+  都要多问一句才敢定侧），说明侧信息在真实材料里比我假设的更难拿到——那时回到"两侧都查"做默认，
+  问只作为可选优化，而不是把它当成流程的必经一步。
+risk: medium
+principle_refs: [2, 6, 9, 10, 11]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: >-
+    产卡即执行。规模预计：`triage-tree.d/` 重构为侧与性质两层（7 个族文件 → 侧文件 + 性质文件）、
+    `scripts/build_triage_tree.py` 校验随之调整、`scripts/route_check.py` 按侧内比较、
+    改 `skills/diagnose/references/diagnosis-procedure.md` 第 1、2 步与 `skills/diagnose/SKILL.md` 的路由段、
+    trace schema 加 `side` / `side_source`、若干文档（CLAUDE.md 的 Tier 1 行、git-workflow 的 union 说明、
+    kb-explorer 与 ev_board_data 若引用分支 id）、测试与历史回放对照。估 2.5 到 3 小时。
+decisions:
+  - who: agent
+    when: 2026-09-23
+    type: proposal
+    conclusion: >-
+      产卡即执行，范围限定为一件结构改动：路由先分侧、再分性质。设计经用户三轮否掉两个更重的版本——
+      不做"框架名到侧"的映射表（MindIE 这类新框架就是反例，且表会腐烂），也不做"证据判侧"的判据体系
+      （为省一句话造两层机制，是把模型当猜谜机）。侧只有单一来源：工程师给的事实；材料里读得到就用，
+      读不到就问一句（他一定知道），顺手给了框架名就对到库里目录；判不出来时两侧都查并在 trace 标
+      `side: unknown`，不猜、不阻塞。中途证据与他的说法相反时以证据为准并回一句话。
