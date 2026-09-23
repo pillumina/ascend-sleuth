@@ -1,0 +1,150 @@
+# ============================================================
+# EV-2026-147 —— 独立预核：把「Agent 预核意见」从作者自评改成另一个 agent 的对抗评审
+# 来源：用户问「每个 PR 里有 agent 审核标记，这个是不是得让 subagent 去审核？最优的方案是什么」
+#       → 核查发现两件事：①五个模板里那段写的是"机器可填、可选"、字段全是自评口径
+#       （事实依据/预期影响/风险标注），没有任何地方要求"独立"；②同一次会话里实测到差距——
+#       PR #282 的作者自评漏了 1 条阻断级（聚合分支顺序静默改路由优先级）+ 2 条重要级
+#       （重复条目静默通过、面板"读不到"是假绿），全部由独立 subagent 评出。
+# 脱敏：只含仓库内路径、命令与聚合数字
+# ============================================================
+
+id: EV-2026-147
+layer: L2
+target_component: docs/guide/git-workflow.md
+title: "独立预核：预核意见由新上下文的 agent 产出、按改动类型分三档、没查出问题也要给覆盖清单"
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: '2026-09-22'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户提出「每个 PR 里有 agent 审核标记，是不是得让 subagent 去审核？最优方案是什么」，
+      并连续追问两处判据：文档类改动是否也要对照行文规范、内容类是否真要跑一串 build 脚本。
+      两个追问都指到同一个缺口：这段意见**没有产出规则**，于是它既不知道谁写、也不知道写到什么程度。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      同一次会话内的天然对照：结构改动 PR #282 的预核意见由**作者**填写（事实依据/预期影响/风险标注
+      三段齐全、看起来像模像样），独立 subagent 用新上下文重评后抓到 1 条阻断级 + 2 条重要级问题，
+      其中阻断级（`triage-tree.yaml` 聚合的分支顺序被手改时 CI 全绿）与「面板读不到是假绿」两处，
+      正是作者那份自评里被写成"低风险"的东西。差别不在模型：独立评审被要求**构造反例并跑出来**。
+    trajectory:
+      - "PR #282 的 Agent 预核意见段（作者填写）与独立评审报告逐条对照"
+      - "独立评审在 /tmp 副本里对调聚合的两个分支块 → 旧版 --check-coverage exit 0"
+hypothesis: >-
+  把预核意见的产出者钉成「新上下文的 agent（作者不得代填）」、按改动类型给三档强度
+  （文档对照行文规范的共用条目 + 核对文中可验证声明；内容跑路由自查与事实抽查；脚本机制必须构造反例）、
+  并强制「没查出问题也要给覆盖清单」之后：这段意见才对 reviewer 有信息量——它能区分
+  「没问题」与「没查」，且能给出可复跑的证据；同时给内容类 PR 补上一个能跑的动作
+  （`scripts/route_check.py` 报这条 case 会被哪个分支接住）。
+predicted_effect:
+  metric: 预核意见的可核对性（产出者是否独立 / 是否有覆盖清单 / 是否有可复跑命令 / 内容类是否有可跑动作）
+  from: >-
+    五个模板写"机器可填、可选"，字段全是自评口径；没有产出规则、没有分档、没有覆盖清单要求；
+    内容类 PR 的预核没有任何能跑的动作（CI 只查路由表结构，不查"这条 case 会被谁接住"）。
+  to: >-
+    模板声明「由独立 agent 产出；作者不得代填」，并含覆盖清单、反例与可复跑命令、结论行三项；
+    `git-workflow.md` 的「评审把手」给出三档强度与两条通用要求，并写清为什么不进 CI；
+    内容类有 `scripts/route_check.py`（报期望分支 / 首个命中 / 宽词跨分支重复，不一致时 exit 1）。
+  measure:
+    command: |
+      python3 - <<'PY'
+      import pathlib, subprocess, sys
+      ROOT = pathlib.Path('.').resolve()
+      tpls = sorted(pathlib.Path('.github/PULL_REQUEST_TEMPLATE').glob('*.md'))
+      missing = []
+      for p in tpls:
+          t = p.read_text(encoding='utf-8')
+          if '## Agent 预核意见' not in t:
+              continue
+          for need in ('独立 agent 产出', '作者不得代填', '覆盖清单', '反例与可复跑命令', 'MERGE_READY'):
+              if need not in t:
+                  missing.append(f'{p.name}:{need}')
+      gw = (ROOT / 'docs/guide/git-workflow.md').read_text(encoding='utf-8')
+      tiers = all(k in gw for k in ('独立预核（提交前', '要跑反例吗', '为什么不进 CI',
+                                    '没查出问题也要给覆盖清单'))
+      wn = (ROOT / 'docs/spec/writing-norms.md').read_text(encoding='utf-8')
+      wn_points = '独立预核' in wn
+      r1 = subprocess.run([sys.executable, 'scripts/route_check.py',
+                           'knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-9887.yaml'],
+                          capture_output=True, text=True)
+      r2 = subprocess.run([sys.executable, 'scripts/route_check.py', '--wide-words'],
+                          capture_output=True, text=True)
+      ww_ok = r2.returncode == 0 and '跨分支重复的正则' in r2.stdout
+      # 已知会误吸的那条 case：报出首个命中不是期望分支（这就是这个动作的价值）
+      misfire = r1.returncode == 1 and '首个命中是 training_interrupt' in r1.stdout
+      tests = subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests',
+                              '-p', 'test_route_check.py'], capture_output=True, text=True)
+      print('templates_ok', not missing, missing[:3])
+      print('git_workflow_tiers', tiers, '| writing_norms_pointer', wn_points)
+      print('route_check_misfire_reported', misfire, '| wide_words_ok', ww_ok)
+      print('route_check_tests_ok', tests.returncode == 0)
+      ok = (not missing) and tiers and wn_points and misfire and ww_ok and tests.returncode == 0
+      print('VERDICT', 'PASS' if ok else 'FAIL')
+      PY
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: scan_review
+  baseline: >-
+    改动前：五个模板的 Agent 段写"机器可填，可选"，字段是自评口径；`git-workflow.md` 的「评审把手」
+    只讲 EV 卡 measure 与抽审纪律，没有预核的产出规则；内容类 PR 没有任何能跑的自查动作。
+  success_criteria: >-
+    ①上述 measure 打 VERDICT PASS；②模板校验器（`pr-template` CI 用的 `verify_pr_body.py`）
+    对改动后的模板仍判"关键区块齐全"；③`tests/` 全绿（含 `tests/test_route_check.py` 九条）；
+    ④kb-checks 逐条本机复跑全绿；⑤`route_check.py` 在真实热格 case 上报出已知的分支误吸
+    （VLLM-ASC-9887：期望 inference_interrupt、首个命中 training_interrupt），且 `--wide-words`
+    列出跨分支重复的正则（本次实测 57 条）。
+  rollback: 分支丢弃或 git revert；本轮只改模板与文档措辞 + 新增一个只读脚本，无数据面影响。
+gate: >-
+  若预核在三个批次的 PR 上都没有产出过一条被采纳的问题（连续三轮"无发现"），说明这段意见在
+  当前改动规模下是仪式——那时降级为"高风险改动才填"，或把它的字段再收紧到只留覆盖清单。
+risk: low
+principle_refs: [1, 5, 6, 8, 10]
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: >-
+    同一会话内完成，未单独计量（按既有卡口径以 0 计）。规模：5 个模板的 Agent 段重写、
+    `docs/guide/git-workflow.md` 新增「独立预核（提交前，由另一个 agent 做）」一节、
+    `docs/spec/writing-norms.md` §3 那一行补指路、新增 `scripts/route_check.py`（约 150 行）
+    与 `tests/test_route_check.py`（9 条）、`scripts/build_triage_tree.py` 的顺序检查注释收紧
+    （原写"首命中先路由"，实际是模糊匹配 + 单分支决策，顺序效应来自宽词跨分支重复）。
+decisions:
+  - who: agent
+    when: 2026-09-22
+    type: proposal
+    conclusion: >-
+      范围限定在三件事：①把"谁写这段意见"钉进模板（独立 agent、作者不得代填）并补三项必填
+      （覆盖清单 / 反例与可复跑命令 / 结论行）；②在「评审把手」给出三档强度与两条通用要求，
+      并写清为什么不做成 CI 门；③给内容类补一个能跑的动作（路由自查）。
+      **不做**：不进 CI（判断性工作，成门即仪式）；不替代双签；不为低风险改动强制跑反例。
+  - who: agent
+    when: 2026-09-22
+    type: action
+    conclusion: >-
+      落地：5 个模板的 Agent 段重写；`git-workflow.md` 新增一节（三档表 + 两条通用要求 +
+      "不重复跑 CI 已跑的"清单 + 为什么不做成门）；`writing-norms.md` §3 补指路；
+      新增 `scripts/route_check.py` 与 9 条测试；顺序检查注释改成准确说法。
+      过程中自查抓到自己一处代号越界：初稿拿 `P0`/`P1` 当严重度分级，而那两个在本仓词表里
+      已是优先级与流程事项族代号——改成分级写中文（阻断级 / 重要级 / 建议级），并在该节写明这条。
+  - who: agent
+    when: 2026-09-22
+    type: eval
+    conclusion: >-
+      measure 实跑 PASS。另记两条实测：`route_check.py --wide-words` 在真实路由表上列出 **57 条**
+      跨分支重复的正则（`\btimeout\b`、`RuntimeError`、`ModuleNotFoundError` 等在训推两侧都有）；
+      `VLLM-ASC-9887`（推理侧中断）的症状面首个命中是 `training_interrupt`——这是"分支误吸"
+      在数据上的实例，此前没有任何检查器报得出来。
+  - who: agent
+    when: 2026-09-22
+    type: decision
+    conclusion: >-
+      判 validated。边界如实标注：①三档强度是**判断性规范**，进不了 CI，靠预核者与 reviewer 执行；
+      ②`route_check.py` 的输入是**代理输入**（case 自己的 title + symptoms），真实路由喂的是工程师贴的
+      文本，所以结论读作"这条 case 的措辞会落在哪个分支"，不是"诊断时一定这样路由"；
+      ③本次"独立评审更强"的证据来自**一次**对照（PR #282），样本量为 1，按 gate 观察下一步。
