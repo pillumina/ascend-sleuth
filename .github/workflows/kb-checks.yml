@@ -190,13 +190,16 @@ jobs:
       # 目标 case 内容变了只进「待复核」清单不红（case 的合法变更不该阻塞无关 PR）。
       - run: python3 scripts/eval_scorecard.py --check
       # 按侧覆盖：路由分侧之后，侧是量尺单位——训练侧曾在 22 条 case 上 0 条夹具。
-      # **读准这两行钉的是什么**：`--check` 钉"任一含 case 的 (侧 × 性质) 格子缺夹具"，
-      # `--require-side training` 只**额外**加"训练侧至少有一条真实夹具"这一条；
-      # 两条一起跑，效力以前者为主（本仓现状下两者同结果，`--require-side` 是防整侧归零的保险）。
-      # **它钉的是覆盖（有没有夹具），不是保护强度**：实测 26 条夹具里 16 条的输入对三个性质的
-      # 正则零命中（靠流程写明的语义兜底），改坏词表它们照样通过；哪几条真钉着词表，
+      # **本行钉的是"某一侧的量尺不许归零"**（`--require-side` 逐侧判"至少有一条真实夹具"），
+      # **不是**"每个含 case 的格子都要有夹具"：后者是格级缺口，本仓对它的既定动作是**如实报出**
+      # （同 `holdout.py --list` 对六个格子的处理；补夹具需要真实来源、凭空造不出来），
+      # 故不做成硬门——否则"新 case 落到尚无夹具的格子"会被拦下，而那时确实拿不出夹具。
+      # 代价写清：格级缺口只在有人主动跑报告时才可见，夹具被删也没东西自动喊。
+      # 要改成格级门就**去掉 `--require-side`**（`--check` 独自即可），并接受上面的代价。
+      # **另：它钉的是覆盖（有没有夹具），不是保护强度**——实测 26 条夹具里 16 条的输入对三个
+      # 性质的正则零命中（靠流程写明的语义兜底），改坏词表它们照样通过；哪几条真钉着词表，
       # 用 `python3 scripts/eval_side_coverage.py --nature-evidence` 现算现看（不进 CI 结论）。
-      - run: python3 scripts/eval_side_coverage.py --check --require-side training
+      - run: python3 scripts/eval_side_coverage.py --check --require-side training --require-side inference
 
   # 口径脚本的单元测试：既有 12 个 --check 卡口验的是「仓库自洽」（索引新鲜、schema 合法、
   # id 唯一、生成物一致），不验「算得对」——build_index / trace_metrics / settle_trace_feedback /

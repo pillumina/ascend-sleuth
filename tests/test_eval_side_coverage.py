@@ -209,8 +209,38 @@ natures:
             "  assertion: top-3\n", encoding="utf-8")
         r = self.run_cli("--nature-evidence")
         self.assertEqual(r.returncode, 0)
-        self.assertIn("性质证据（夹具的输入在词法上命中期望性质的有 1/2 条）", r.stdout)
+        self.assertIn("分母 = 2 条", r.stdout)
+        self.assertIn("词法上命中期望性质的有 1 条", r.stdout)
         self.assertIn("仅语义兜底", r.stdout)
+        # 证据行必须带**命中的正则**，不能只印性质名：读者要回答的是"这条夹具钉住了哪几个词"，
+        # 而同一个词可能出现在多个症状组里（只挪一处，夹具会照样显示为"词法命中"）。
+        self.assertIn("interrupt←RuntimeError", r.stdout)
+
+    def test_nature_evidence_denominator_excludes_natureless_namespaces(self):
+        """分母只算 `expected.namespace` 带性质段的夹具——这条直接给函数喂一条无性质段的 row。
+
+        为什么不走 CLI：无性质段的夹具（`inference/sglang/`，与仓里 SGL 那条同形）在
+        `library_cases` 阶段就进不了任何 (侧 × 性质) 桶，于是连 `real` 都进不去、根本到不了这一栏。
+        而 CLI 输出的 `不参与本栏的 N 条` 是兜底防线（防的是"进了 real、但性质段读不出来"）。
+        """
+        import yaml as _yaml
+        (self.root / "triage-tree.yaml").write_text(
+            "sides:\n  - id: training\n    namespaces: [training/<detected_framework>/]\n"
+            "natures:\n  - id: interrupt\n    symptoms: [[\"RuntimeError\"]]\n"
+            "    search_namespaces: [<side>/<detected_framework>/]\n", encoding="utf-8")
+        self.write_fixture("I-1.fixture.yaml", "I-1", "inference/sglang/")
+        rows = ESC.fixture_rows(self.root)
+        self.assertEqual(rows[0]["side"], "inference")
+        self.assertEqual(rows[0]["nature"], "")      # 没有性质段
+        self.assertEqual(ESC.nature_evidence(self.root, rows), [])
+
+    def test_nature_evidence_survives_unparsable_tree(self):
+        """路由表读不动时，性质证据是**可选读数**——不该把整份报告带崩、也不该伪装成"有缺口"。"""
+        (self.root / "triage-tree.yaml").write_text("natures: [{id: interrupt", encoding="utf-8")
+        self.write_case("training/mindspeed-llm/interrupt/T-1.yaml", "T-1")
+        r = self.run_cli("--nature-evidence")
+        self.assertNotIn("Traceback", r.stderr)
+        self.assertEqual(r.returncode, 0)
 
     # ---------------------------------------------------------------- 覆盖记在错的格子上要报出来
     def test_fixture_declaring_the_wrong_cell_is_surfaced(self):
@@ -265,6 +295,18 @@ natures:
         self.assertTrue(train, "训练侧没有任何夹具")
         for name, e in train.items():
             self.assertTrue(e["lexical"], f"{name} 的输入没有词法命中期望性质 {e['expected']}")
+
+    def test_repo_nature_evidence_report_is_self_explanatory(self):
+        """本仓实跑：这一栏要自带分母说明、点名不参与的夹具、并印出命中的正则。
+
+        注意要走**本仓 root**（run_cli 默认把 --root 指向临时目录，那里没有 knowledge/）。
+        """
+        r = subprocess.run([sys.executable, str(ROOT / "scripts" / "eval_side_coverage.py"),
+                            "--nature-evidence"], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("带性质段的夹具", r.stdout)
+        self.assertIn("不参与本栏的", r.stdout)
+        self.assertIn("←", r.stdout)          # 命中的正则与性质一起印（性质←正则）
 
 
 if __name__ == "__main__":

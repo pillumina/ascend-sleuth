@@ -153,6 +153,13 @@ def nature_evidence(root: Path, rows: list) -> list:
     try:
         natures, sides = RC.load_tree(root)
     except SystemExit:
+        # 文件不存在：route_check 用 SystemExit(2) 报"读不到"，这里不重复报
+        return []
+    except Exception as e:
+        # 解析不了（表被改坏）：性质证据是**可选读数**，不该把整份报告带崩，
+        # 也不该以退出码 1 出现——本脚本里 1 是"有覆盖缺口"，两种事同形会误导。
+        print(f"  （性质证据跳过：{root / 'triage-tree.yaml'} 读不动——"
+              f"{type(e).__name__}；先跑 `python3 scripts/build_triage_tree.py`）", file=sys.stderr)
         return []
     out = []
     for r in rows:
@@ -166,9 +173,13 @@ def nature_evidence(root: Path, rows: list) -> list:
                                          sides=sides)
         text = str((doc.get("input") or {}).get("symptoms") or "")
         hits, _broken = RC.hits_for(text, branches)
-        got = [h[0] for h in hits]
+        # 连命中的**正则**一起留下，不只留性质名：读者要回答的是"这条夹具钉住了哪几个词"，
+        # 只印性质名的话，想知道是哪条正则救的就得绕开本脚本自己去 import（实测踩过这个坑——
+        # 同一个词可能出现在多个症状组里，`RuntimeError` 在 interrupt 的两组各出现一次，
+        # 只删一处夹具照样是"词法命中"）。
         out.append({"fixture": r["fixture"], "side": r["side"], "expected": r["nature"],
-                    "matched": got, "lexical": r["nature"] in got})
+                    "matched": [(h[0], h[1]) for h in hits],
+                    "lexical": r["nature"] in [h[0] for h in hits]})
     return out
 
 
@@ -243,15 +254,23 @@ def main() -> int:
         ev = nature_evidence(root, R["rows"])
         if ev:
             lex = [e for e in ev if e["lexical"]]
-            print(f"\n性质证据（夹具的输入在词法上命中期望性质的有 {len(lex)}/{len(ev)} 条）：")
+            skipped = [r for r in R["rows"] if not r["side"] or not r["nature"]]
+            print(f"\n性质证据（分母 = {len(ev)} 条 `expected.namespace` 带性质段的夹具；"
+                  f"其中词法上命中期望性质的有 {len(lex)} 条）：")
             for e in ev:
                 mark = "词法命中" if e["lexical"] else "仅语义兜底（改坏词表本条也照样通过）"
+                shown = "、".join(f"{n}←{p}" for n, p in e["matched"]) or "（无）"
                 print(f"  {e['fixture']:38s} 期望 {e['side']}/{e['expected']:12s} "
-                      f"命中 {e['matched'] or '（无）'}  {mark}")
-            print("  · 强度说明：词法命中只覆盖它输入里那几个正则——实测把某条夹具赖以命中的正则"
-                  "挪到别的性质，只有该夹具报（如 `RuntimeError` 挪走 → MSLLM-1655 报）；"
-                  "挪一条与它无关的正则则零检出。所以这一栏读作「这条夹具钉住了哪几个词」，"
-                  "不读作「这一侧的词表被守住了」。")
+                      f"命中 {shown}  {mark}")
+            # 分母少了谁必须点名：只印一个比例，读者会把它读成"全部夹具里 10 条钉住词表"。
+            if skipped:
+                names = "、".join(r["fixture"] for r in skipped)
+                print(f"  · 不参与本栏的 {len(skipped)} 条（`expected.namespace` 没有性质段）：{names}")
+            print("  · 强度说明：词法命中只覆盖它输入里命中的那几个正则——同一形态的词若在多个"
+                  "症状组里重复出现，夹具是被这**几处共同**锚定的（实测 `RuntimeError` 在 interrupt 的"
+                  "两个症状组各出现一次，只挪走一处，夹具照样是「词法命中」）。"
+                  "所以这一栏读作「这条夹具此刻钉着哪几个词」，不读作「改哪一处会被抓到」，"
+                  "也不读作「这一侧的词表被守住了」。")
 
     if not args.check:
         return 0

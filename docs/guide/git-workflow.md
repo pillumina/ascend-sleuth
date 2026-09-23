@@ -152,7 +152,7 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 | EV 卡预测可复现 | CI：`scripts/verify_proposals.py --check`（`predicted_effect.measure` 必须有命令 + 期望，或如实声明不可度量） | 硬（结构）/ 约定（命令是否有意义） |
 | 面板契约（渲染 / 文案 / 数据口径） | CI：`panel-checks` job 跑 `scripts/check_panel_tokens.py` + `scripts/panel_render_check.js`（触发路径含 `dsh-plugins/**`） | 硬（红即挡 merge）；"判据是否真在测那件事"仍是约定 |
 | 对照集不被改动者削弱 | CI：`scripts/holdout.py --check`（封存夹具按哈希钉住）+ `holdout-change` 标签闸门；CODEOWNERS 保护 `eval/holdout.yaml` | 硬（哈希）/ 半硬（谁有权 reseal——CODEOWNERS 落实前不是人把关） |
-| 回放量尺的按侧覆盖 | CI：`scripts/eval_side_coverage.py --check --require-side training`（路由分侧后，侧是量尺单位；训练侧曾在 22 条 case 上 0 条夹具） | 硬。**读准它钉的是什么**：`--check` 钉"任一含 case 的 (侧 × 性质) 格子缺夹具"，`--require-side training` 只加"该侧至少有一条真实夹具"这一条——CI 两条都跑，效力是前者。**它钉的是覆盖（有没有夹具），不是保护强度**：实测 26 条夹具里 16 条的输入对性质正则零命中（靠语义兜底），改坏词表它们照样过；哪几条真钉着词表用 `--nature-evidence` 现算现看 |
+| 回放量尺的按侧覆盖 | CI：`scripts/eval_side_coverage.py --check --require-side training --require-side inference`（路由分侧后，侧是量尺单位；训练侧曾在 22 条 case 上 0 条夹具） | 硬，但**只保单侧量尺不归零**（某一侧一条真实夹具都不剩即红）。**格级缺口（某个 (侧 × 性质) 格子有 case 没夹具）是报告不是门**——把 `--check` 去掉 `--require-side` 就能变成格级门，代价是"新 case 落到尚无夹具的格子会被拦下"，与"补夹具需要真实来源、凭空造不出来"的政策冲突，故不做。**它钉的是覆盖不是保护强度**：实测 26 条夹具里 16 条的输入对性质正则零命中（靠语义兜底），改坏词表它们照样过；哪几条真钉着词表用 `--nature-evidence` 现算现看 |
 
 ## 评审把手（reviewer 怎么判"该不该合"）
 

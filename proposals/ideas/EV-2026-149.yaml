@@ -59,7 +59,7 @@ predicted_effect:
   to: >-
     训练侧真实夹具 2 条（`training/mindspeed-llm/interrupt` 与 `training/mindspeed-llm/precision`
     各 1 条，来源为公开 issue 首帖）；新增 `scripts/eval_side_coverage.py` 一条命令现算按侧覆盖，
-    CI 里钉住 `--require-side training`（删掉训练侧夹具即红）；
+    CI 里钉住 `--require-side training --require-side inference`（某一侧量尺归零即红）；
     并新增 `--nature-evidence` 一栏读出「哪几条夹具真钉着词表」（实测 26 条里 10 条词法锚定，
     两条训练侧夹具都在其中）。
   measure:
@@ -67,13 +67,19 @@ predicted_effect:
       python3 - <<'PY'
       import pathlib, subprocess, sys
       wf = pathlib.Path('.github/workflows/kb-checks.yml').read_text(encoding='utf-8')
-      gate = 'eval_side_coverage.py --check --require-side training' in wf
+      gate = ('eval_side_coverage.py --check --require-side training --require-side inference' in wf)
       r = subprocess.run([sys.executable, 'scripts/eval_side_coverage.py',
                           '--check', '--require-side', 'training'],
                          capture_output=True, text=True)
       rep = subprocess.run([sys.executable, 'scripts/eval_side_coverage.py'],
                            capture_output=True, text=True).stdout
       doc = 'eval_side_coverage.py' in pathlib.Path('docs/guide/eval.md').read_text(encoding='utf-8')
+      # 新的 `--nature-evidence` 也必须被钉住：to 段用它支撑"哪几条夹具真钉着词表"。
+      nev = subprocess.run([sys.executable, 'scripts/eval_side_coverage.py',
+                            '--nature-evidence'], capture_output=True, text=True).stdout
+      nev_ok = ('带性质段的夹具' in nev and '不参与本栏的' in nev
+                and 'interrupt←RuntimeError' in nev
+                and nev.count('词法命中') >= 2)
       # 训练侧两个性质面都该有真实夹具（构造示例不算）
       t_int = 'training   interrupt' in rep and ' 1  有' in rep
       t_pre = 'training   precision' in rep and ' 1  有' in rep
@@ -81,7 +87,8 @@ predicted_effect:
       print('gate_exit         ', r.returncode)
       print('documented        ', doc)
       print('training_cells    ', t_int, t_pre)
-      ok = gate and r.returncode == 0 and doc and t_int and t_pre
+      print('nature_evidence   ', nev_ok)
+      ok = gate and r.returncode == 0 and doc and t_int and t_pre and nev_ok
       print('VERDICT', 'PASS' if ok else 'FAIL')
       PY
     expect_exit: 0
@@ -101,6 +108,8 @@ validation:
   success_criteria: >-
     ①`python3 scripts/eval_side_coverage.py --require-side training` 退出 0，报告里训练侧
     interrupt / precision 两格都是"有"；②把两条新夹具任一删掉，同一条命令退出 1（门有牙齿）；
+    ②′CI 那一步是 `--check --require-side training --require-side inference`——**只保单侧不归零**，
+    格级缺口是报告不是门（取舍与代价写在 `docs/guide/eval.md` 与门控映射表里）；
     ③`python3 scripts/eval_scorecard.py --check` 绿（账本随夹具重建：26 → 28 条，
     命中第一 16 → 18、前三 19 → 21）；④`.github/workflows/kb-checks.yml` 逐条本机复跑全绿
     （含 `--check-sources` / `--check-coverage` / `verify_case_draft --all` / `holdout --check` /
@@ -162,8 +171,8 @@ decisions:
       其中"明确判错"6 条（inference 5 / **training 1** —— `MSLLM-FA-MASK-GRADNAN`）、
       "零命中"22 条（inference 21 / training 1 —— `VERL-6756`）。
       它的**强度上限实测出来了**（构造 12 个变体逐条跑）：把训练侧性质词挪走/删掉，
-      **7 个变体里 6 个零检出**（`build_train_valid_test_data`、`recv_forward`、`重复注册`
-      换性质或删除都不报；`\btimeout\b` 换性质也不报）。原因：这些词都不是任何一条 case 的
+      **8 个变体里 7 个零检出**（`build_train_valid_test_data`、`recv_forward`、`重复注册`、
+      `aclnn\w+`、`\btimeout\b` 换性质或删除都不报）。原因：这些词都不是任何一条 case 的
       "唯一证据"，别的正则仍先接住；只有当一个词是某条 case 的唯一命中来源时才报
       （挪 `日志.*异常` 精确报出 `MSLLM-1780`；挪 `抢占` 报 `VLLM-ASC-8938`）。
       **它也不适合当 CI 硬门**：现状就有 28 条不符（6 条真判错 + 22 条零命中），
@@ -230,6 +239,21 @@ decisions:
       采纳（validated）。判据是：改前基线 0/22 → 改后训练侧两个性质面各有 1 条真实夹具；
       门的反向验证通过（删任一夹具即退出 1）；scorecard 记账 26 → 28 条且 `--check` 绿；
       kb-checks 逐条本机复跑全绿、单测 12 条新增全绿、`holdout --check` 11 条未动。
-      价值层不由此卡证明：这两条夹具只证明训练侧链路接得通、且这两条 case 的性质判对了；
-      "训练侧词表被改坏会被测出来"**本次实测证伪**（7 个变体 6 个零检出），
-      那一层仍靠路由表里 `needs-review` 那条标法 + 人审，不在本卡的可达面内。
+      价值层不由此卡证明：这两条夹具只证明训练侧链路接得通、且这两条 case 的性质判对了。
+      **本段末尾那句"训练侧词表被改坏会被测出来 = 本次实测证伪"的措辞已被下一条 decision 取代**
+      （措辞留在这里不改，只追加档案）：准确说法是"夹具钉住的是它输入里命中的那几个正则，
+      不是整侧词表"，而不是"测不出来"——把 `RuntimeError` 挪走时 `MSLLM-1655` 是会报的。
+      词表层仍靠路由表里 `needs-review` 那条标法 + 人审，不在本卡的可达面内。
+  - who: agent
+    when: 2026-09-23
+    type: decision
+    conclusion: >-
+      **推翻本卡上一条 decision 末尾的措辞**（只追加、不改原文）：那处写的
+      "训练侧词表被改坏会被测出来——本次实测证伪（7 个变体 6 个零检出）"**过宽且方向偏**。
+      修正后的事实：①两条训练侧夹具**确实**钉着词表——把 `RuntimeError` 从 interrupt 挪到别的
+      性质，`MSLLM-1655` 当场报（全库新增 2 条、训练侧 1 条）；②零检出的变体是**8 个**（不是 7 个），
+      且零检出的原因是它们挪的词与这两条夹具无关（`日志.*异常`、`重复注册`、`recv_forward`、
+      `build_train_valid_test_data`、`抢占` 等）；③还有一层更细的：同一个词可能出现在多个症状组
+      （`RuntimeError` 在 interrupt 的两组各一次），**只挪一处夹具照样是"词法命中"**。
+      所以准确口径是"夹具钉住它输入里命中的那几个正则，不钉整侧词表"，由新增的
+      `--nature-evidence` 现算现读；`predicted_effect.measure` 已同步钉住这一栏的读数。
