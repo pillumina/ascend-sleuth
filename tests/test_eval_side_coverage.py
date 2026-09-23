@@ -61,6 +61,13 @@ class EvalSideCoverageTest(unittest.TestCase):
         (self.root / "eval" / "golden" / name).write_text(
             FIXTURE.format(name=name, cid=cid, ns=ns, fw=fw), encoding="utf-8")
 
+    def seed_both_sides_covered(self):
+        """两侧各一条 case + 一条夹具——`--check` 判**全部已声明侧**，所以格层用例要先满足侧层。"""
+        self.write_case("training/mindspeed-llm/interrupt/T-1.yaml", "T-1")
+        self.write_fixture("T-1.fixture.yaml", "T-1", "training/mindspeed-llm/interrupt/")
+        self.write_case("inference/vllm-ascend/interrupt/I-1.yaml", "I-1")
+        self.write_fixture("I-1.fixture.yaml", "I-1", "inference/vllm-ascend/interrupt/")
+
     def run_cli(self, *args):
         return subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "eval_side_coverage.py"),
@@ -115,27 +122,54 @@ class EvalSideCoverageTest(unittest.TestCase):
         self.assertEqual((row["side"], row["nature"]), ("inference", "precision"))
 
     # ---------------------------------------------------------------- 门的两档
-    def test_check_red_on_any_gap(self):
+    # ------------------------------------------- 两层判据的分界（这是本脚本最容易做错的地方）
+    # 侧层（`--check`）管"某一侧一条真实夹具都不剩"；格层（`--check-cells`）管"某个
+    # (侧 × 性质) 格子有 case 没夹具"。**两层必须能各自独立触发**——本脚本第一版把两层
+    # 压在一个 `--check` 里，于是文档写的门与实际跑的门不是同一个，下面四条钉住这个分界。
+    def test_side_layer_red_when_a_side_has_no_fixture(self):
+        """某个侧有 case 却一条夹具都没有 → 侧层红。"""
         self.write_case("training/mindspeed-llm/interrupt/T-1.yaml", "T-1")
         r = self.run_cli("--check")
         self.assertEqual(r.returncode, 1)
-        self.assertIn("training / interrupt", r.stdout)
+        self.assertIn("侧层", r.stdout)
 
-    def test_check_green_when_every_cell_has_a_fixture(self):
-        self.write_case("training/mindspeed-llm/interrupt/T-1.yaml", "T-1")
-        self.write_fixture("T-1.fixture.yaml", "T-1", "training/mindspeed-llm/interrupt/")
+    def test_cell_layer_is_report_only_by_default(self):
+        """**默认只报不拦**：格子缺夹具但每个侧都有别的夹具时，`--check` 放行。
+
+        这是刻意的取舍（补夹具需要真实来源、凭空造不出来，同 holdout 的空缺格子）——
+        所以"某个格子缺夹具"不该让一次无关 PR 变红。放行的同时必须仍然**报出来**。
+        """
+        self.seed_both_sides_covered()
+        self.write_case("training/verl/performance/T-2.yaml", "T-2", cat="performance")
         r = self.run_cli("--check")
         self.assertEqual(r.returncode, 0)
-        self.assertIn("每个含 case 的 (侧 × 性质) 格子都有真实夹具", r.stdout)
+        self.assertIn("默认只报不拦", r.stdout)
+        self.assertIn("--check-cells", r.stdout)
 
-    def test_require_side_red_when_that_side_has_nothing(self):
-        """`--require-side` 是钉住本次补齐的那一档：整侧没有夹具时，即使其它格子都满也要报。"""
-        self.write_case("inference/vllm-ascend/interrupt/I-1.yaml", "I-1")
-        self.write_fixture("I-1.fixture.yaml", "I-1", "inference/vllm-ascend/interrupt/")
+    def test_cell_layer_red_when_explicitly_requested(self):
+        """同一个状态加 `--check-cells` 就红——格层门随时可开，只是默认不开。"""
+        self.seed_both_sides_covered()
+        self.write_case("training/verl/performance/T-2.yaml", "T-2", cat="performance")
         self.assertEqual(self.run_cli("--check").returncode, 0)
+        self.assertEqual(self.run_cli("--check-cells").returncode, 1)
+        self.assertEqual(self.run_cli("--check", "--check-cells").returncode, 1)
+
+    def test_check_green_when_both_layers_are_clean(self):
+        self.seed_both_sides_covered()
+        r = self.run_cli("--check", "--check-cells")
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("侧层：每个已声明的侧都有真实夹具", r.stdout)
+        self.assertNotIn("默认只报不拦", r.stdout)
+
+    def test_require_side_limits_the_side_layer(self):
+        """`--require-side` 把侧层判据限定到点名的侧——没点名的侧就算归零也不拦。"""
         self.write_case("training/mindspeed-llm/interrupt/T-1.yaml", "T-1")
-        # 训练侧此刻有 case、无夹具——普通 --check 报缺口，--require-side 也报
-        self.assertEqual(self.run_cli("--check", "--require-side", "training").returncode, 1)
+        self.write_fixture("T-1.fixture.yaml", "T-1", "training/mindspeed-llm/interrupt/")
+        # inference 侧这时有 case、无夹具：不点它名则不管，点了才红
+        self.assertEqual(self.run_cli("--check").returncode, 1)
+        self.assertEqual(self.run_cli("--check", "--require-side", "training").returncode, 0)
+        self.assertEqual(self.run_cli("--check", "--require-side", "training",
+                                      "--require-side", "inference").returncode, 1)
 
     def test_require_side_rejects_unknown_side(self):
         """写错的侧名要报出来，不能静默当成"通过了"——那是这个脚本最容易骗自己的地方。"""

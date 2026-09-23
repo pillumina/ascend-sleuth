@@ -11,20 +11,32 @@
 # 报的是 (namespace × category) 六个格子，读不出"训练侧 0/22"这个结论——格子是**结果**，
 # 侧是**这一层的量尺单位**。本脚本补的就是这一眼。
 #
-# 判据强度（如实标注，原则六/十）：
+# 两层判据，**两个开关各管一层**（别把它们混起来——混起来会让"文档描述的门"与
+# "实际跑的门"不是同一个，本脚本的第一版就这么错过一次）：
+#   - **侧层（`--check`）**：某一侧一条真实夹具都不剩 → 退出 1。
+#     CI 跑的就是这一层。它防的是"整侧量尺归零"。
+#   - **格层（`--check-cells`）**：某个含 case 的 (侧 × 性质) 格子没有夹具 → 退出 1。
+#     **默认只报不拦**：本仓对这类缺口的既定动作是如实报出，不是拦下——补夹具需要真实来源、
+#     凭空造不出来（同 `holdout.py --list` 对空缺格子的处理）。把它做成硬门等于要求
+#     "新 case 落到尚无夹具的格子必须先补一条夹具"，而那时确实拿不出。
+#     需要它当门时显式加 `--check-cells`（例如审计轮：`--check --check-cells`）。
 #   - **它不判准确率**，也不判回放有没有重跑过（那是 eval_scorecard 的账本）。
-#   - 它判的是**覆盖**：库里有 case 的 (侧 × 性质) 格子里，有没有至少一条夹具钉住它。
-#     这是机械可判、确定性后果的（覆盖缺口 = 该侧没有回归保护）。
-#   - **它测不到**：夹具覆盖的是"某一条真实输入",不是整份词表。所以"训练侧有夹具了"
-#     不等于"训练侧词表被改坏会被测出来"——反例见 EV 卡的检出实验记录。
+#   - **它测不到**：夹具覆盖的是"某一条真实输入"，不是整份词表。所以"训练侧有夹具了"
+#     不等于"训练侧词表被改坏会被测出来"——反例见 EV 卡的检出实验记录；
+#     哪几条夹具真钉着词表用 `--nature-evidence` 现算现读。
+#   - **覆盖格子是 (侧 × 性质)，不含框架**：同一侧同一性质下的所有框架**共用一格**
+#     （实测：`training/fwA/interrupt` 与 `training/fwB/interrupt` 各 1 条 case、只配一个夹具
+#     时，报告是 `training interrupt 2 1 有`）。所以别把 `inference 22/124` 读成"逐框架覆盖"。
 #
 # 用法：
-#   python3 scripts/eval_side_coverage.py            # 打印按侧覆盖（人读）
-#   python3 scripts/eval_side_coverage.py --check    # 有"真实夹具覆盖不到的侧"即退出 1
+#   python3 scripts/eval_side_coverage.py                  # 打印按侧覆盖（人读）
+#   python3 scripts/eval_side_coverage.py --check          # 某一侧量尺归零即退出 1
+#   python3 scripts/eval_side_coverage.py --check-cells    # 格级缺口也当门（默认只报）
+#   python3 scripts/eval_side_coverage.py --nature-evidence # 附加：哪几条夹具真钉着词表
 #   python3 scripts/eval_side_coverage.py --check --require-side training
-#                                                    # 指定侧必须有夹具（用于钉住本次补齐）
+#                                                          # 只要求指定侧不归零（可多次）
 #
-# 退出码：0 = 报告成立（或 --check 下要求的侧都有夹具）；1 = 有缺口；2 = 读取错误。
+# 退出码：0 = 报告成立（未点名任何门，或点名的门都通过）；1 = 点名的门没通过（侧层或格层）；2 = 读取错误。
 #
 # 口径说明（别把这三个数混起来读）：
 #   - **夹具覆盖的 case**：夹具 `expected.case_id` 指向的、且确实在库里的 case（去重）。
@@ -186,9 +198,12 @@ def nature_evidence(root: Path, rows: list) -> list:
 def main() -> int:
     ap = argparse.ArgumentParser(description="回放夹具的按侧覆盖报告")
     ap.add_argument("--check", action="store_true",
-                    help="任一含 case 的 (侧 × 性质) 格子缺夹具即退出 1")
+                    help="某一侧一条真实夹具都不剩即退出 1（侧层；CI 跑这一层）")
+    ap.add_argument("--check-cells", action="store_true",
+                    help="任一含 case 的 (侧 × 性质) 格子缺夹具也退出 1（格层；默认只报不拦，"
+                         "理由见文件头注：补夹具需要真实来源、凭空造不出来）")
     ap.add_argument("--require-side", action="append", default=[],
-                    help="要求该侧**至少有一条**真实夹具（不判该侧每个格子；可多次）")
+                    help="把侧层判据限定在这几个侧（可多次；不写 = 全部已声明的侧）")
     ap.add_argument("--nature-evidence", action="store_true",
                     help="附加一栏：每条夹具的输入在词法上命中哪些性质（读出「钉住词表」的夹具是哪几条）")
     ap.add_argument("--root", type=Path, default=REPO)
@@ -272,20 +287,29 @@ def main() -> int:
                   "所以这一栏读作「这条夹具此刻钉着哪几个词」，不读作「改哪一处会被抓到」，"
                   "也不读作「这一侧的词表被守住了」。")
 
-    if not args.check:
-        return 0
-    bad = list(gaps)
-    for side in args.require_side:
+    # 两层判据分开算、分开报：读者要能一眼看出"红的是哪一层"
+    # （本脚本第一版把两层压在一个 `--check` 里，结果文档描述的门与实际跑的门不是同一个）。
+    side_lacking = []
+    for side in (args.require_side or list(SIDES)):
         if not any(k[0] == side for k in covered):
-            bad.append((side, "（整侧没有真实夹具）"))
-    if bad:
-        print(f"\n✗ 覆盖缺口 {len(bad)} 项：")
-        for side, nature in bad:
-            print(f"   - {side} / {nature}：库里有 case，没有任何真实夹具钉住它")
-        print("  （修法：补真实来源的夹具；构造示例不算覆盖——见 docs/guide/eval.md 的数据策略）")
-        return 1
-    print("\n✓ 每个含 case 的 (侧 × 性质) 格子都有真实夹具")
-    return 0
+            side_lacking.append(side)
+    cell_gaps = list(gaps)
+
+    if args.check and side_lacking:
+        print(f"\n✗ 侧层：{len(side_lacking)} 个侧一条真实夹具都没有——{', '.join(side_lacking)}")
+        print("  （该侧的所有 case 都没有回归保护；补真实来源的夹具，构造示例不算覆盖）")
+    if args.check_cells and cell_gaps:
+        print(f"\n✗ 格层：{len(cell_gaps)} 个 (侧 × 性质) 格子有 case 却没有夹具：")
+        for side, nature in cell_gaps:
+            print(f"   - {side} / {nature}")
+    if args.check and not side_lacking:
+        print("\n✓ 侧层：每个已声明的侧都有真实夹具")
+    if cell_gaps and not args.check_cells:
+        # 这一行是"默认只报不拦"的可执行指引：要说清怎么把它变成门，不能只印一个缺口数。
+        print(f"  · 上面 {len(cell_gaps)} 个格级缺口**默认只报不拦**（补夹具需要真实来源）；"
+              f"要把它当门就加 `--check-cells`")
+    # 未点名 `--check` / `--check-cells` 时一律不拦；两层各自独立判定，互不掩盖。
+    return 1 if (args.check and side_lacking) or (args.check_cells and cell_gaps) else 0
 
 
 if __name__ == "__main__":

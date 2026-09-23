@@ -108,8 +108,12 @@ validation:
   success_criteria: >-
     ①`python3 scripts/eval_side_coverage.py --require-side training` 退出 0，报告里训练侧
     interrupt / precision 两格都是"有"；②把两条新夹具任一删掉，同一条命令退出 1（门有牙齿）；
-    ②′CI 那一步是 `--check --require-side training --require-side inference`——**只保单侧不归零**，
-    格级缺口是报告不是门（取舍与代价写在 `docs/guide/eval.md` 与门控映射表里）；
+    ②′CI 那一步是 `--check --require-side training --require-side inference`——**侧层判据**
+    （某一侧一条真实夹具都不剩即红）；格层是**另一个开关** `--check-cells`，默认只报不拦
+    （取舍与代价写在 `docs/guide/eval.md` 与门控映射表里）。
+    实测两层各自独立触发（合成用例）：现仓 `--check`/`--check-cells` 都 0；某格有 case 无夹具时
+    `--check` 0 而 `--check-cells` 1；某侧归零时两者都 1；`--check --require-side training`
+    在某侧归零但训练侧有覆盖时 0。
     ③`python3 scripts/eval_scorecard.py --check` 绿（账本随夹具重建：26 → 28 条，
     命中第一 16 → 18、前三 19 → 21）；④`.github/workflows/kb-checks.yml` 逐条本机复跑全绿
     （含 `--check-sources` / `--check-coverage` / `verify_case_draft --all` / `holdout --check` /
@@ -133,6 +137,9 @@ gate: >-
   若将来训练侧 case 增长而夹具补不上（例如真实训练侧输入只有这 4 条 session、再无可脱敏的材料），
   说明训练侧的量尺确实到顶了——那时把 `--require-side training` 保留为"不许掉回零"，
   而**不要**把它扩成"每个含 case 的格子都要有夹具"：后者凭空造不出来，做成硬门就是假硬化。
+  （这一条已落进代码：侧层是 `--check`，格层是单独开关 `--check-cells`、默认不开。
+  第一版把两层压在一个 `--check` 里，被独立预核实测出"文档描述的门与实际跑的门不是同一个"，
+  已拆开——见下一条 decision。）
   **另一件不要做的事**：别把 `--nature-evidence` 直接做成门。它现在是读数不是判据——
   全库 16/26 条夹具靠语义兜底，硬门会要求把那 16 条先改造掉，而它们本来就不靠字面量判别
   （`docs/guide/eval.md` 已实测过这个天花板：提高行内 token 上限四组变体 recall@5 全不变）。
@@ -244,6 +251,23 @@ decisions:
       （措辞留在这里不改，只追加档案）：准确说法是"夹具钉住的是它输入里命中的那几个正则，
       不是整侧词表"，而不是"测不出来"——把 `RuntimeError` 挪走时 `MSLLM-1655` 是会报的。
       词表层仍靠路由表里 `needs-review` 那条标法 + 人审，不在本卡的可达面内。
+  - who: agent
+    when: 2026-09-23
+    type: action
+    conclusion: >-
+      **独立预核第三轮查出一条阻断级，已修**：本卡声称"门只保某一侧量尺不归零"，但代码里
+      `--check` 仍把格级缺口当阻断项（`bad = list(gaps)` 无条件生效），`--require-side` 只是在它
+      之上**追加**一条——所以真实机制是"`--check` = 格级门 + `--require-side` = 额外的单侧门"，
+      而三处文档（`kb-checks.yml` 注释、`docs/guide/eval.md`、门控映射表）都把这个开关认反了：
+      写的是"要改成格级门就**去掉** `--require-side`"，照做之后格级门一点没变、被削掉的恰恰是
+      唯一的单侧保护（实测：`--check` / `--check --require-side training` 都是 exit 1，
+      `--require-side training` 单独才是 exit 0）。
+      另外文档里用来证明这条分界的例子（"把 vllm 夹具全删、只剩一条别的框架夹具 → 两档都放行"）
+      **结构上不可能发生**：覆盖格子是 (侧 × 性质)、**不含框架**（实测两个框架共用一格）。
+      修法：让两个开关各管一层——`--check` 只判侧层，新增 `--check-cells` 判格层（默认不开），
+      CI 那一步保持不变（`--check --require-side training --require-side inference`）。
+      这样三处文档写的机制第一次成真；格层门随时可用 `--check-cells` 打开。
+      实测两层独立触发（见 `success_criteria` ②′）；测试相应重写为标定两层分界的四条。
   - who: agent
     when: 2026-09-23
     type: decision

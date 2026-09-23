@@ -48,33 +48,34 @@ python3 scripts/eval_scorecard.py --build   # 重建账本（写文件）
 (namespace × 性质) 的结果格子，读不出"训练侧 0 条"（量尺单位）。数字一律现算，别在文档里写死。
 
 ```
-python3 scripts/eval_side_coverage.py            # 按侧覆盖报告（人读）
-python3 scripts/eval_side_coverage.py --check    # 有"含 case 的 (侧 × 性质) 格子没夹具"即红
-python3 scripts/eval_side_coverage.py --check --require-side training   # 该侧至少有一条真实夹具
+python3 scripts/eval_side_coverage.py                  # 按侧覆盖报告（人读）
+python3 scripts/eval_side_coverage.py --check          # 侧层：某一侧量尺归零即红
+python3 scripts/eval_side_coverage.py --check-cells    # 格层：任一格缺夹具也当门（默认只报）
+python3 scripts/eval_side_coverage.py --check --require-side training   # 只要求点名的侧不归零
 python3 scripts/eval_side_coverage.py --nature-evidence                 # 附加：哪几条夹具钉着词表
 ```
 
-口径（三个数别混起来读）：**夹具覆盖的 case** = `expected.case_id` 指向的、且确实在库里的 case；
+口径（几个数别混起来读）：**夹具覆盖的 case** = `expected.case_id` 指向的、且确实在库里的 case；
 **构造示例**（`example.*`）与**指向未入库 case 的夹具**都不计入覆盖——前者是格式演示，
 后者不可运行（`case_id` 不在索引里）；两者都在报告里**点名列出**，只印一个数字看不出谁被剔了。
-`common/` 是框架无关的共享池，不判侧，单列不计入缺口。
+**覆盖格子是 (侧 × 性质)、不含框架**：同一侧同一性质下的所有框架共用一格（`training/<任意框架>/interrupt`
+算同一格），所以 `inference 22/124` 不是"逐框架覆盖"。`common/` 是框架无关的共享池，
+不判侧，单列不计入缺口。
 `--root` 指错地方时报读取错误（退出 2），**不静默报绿**——`glob` 对不存在的根返回空，
 不拦就会把"根够不着"印成"每侧 0 条 case ✓"，那正是这份报告要消灭的那类误读。
 
-**强度分层（如实标注，同 holdout 的写法）**：
+**强度分层（如实标注，同 holdout 的写法）——两层判据，两个开关各管一层**：
 
-- **机械可判（报告）**：某个 (侧 × 性质) 格子里库里有 case、而没有任何真实夹具钉住它 → 报为缺口。
-- **进 CI 的只有一条**：`--require-side training`（连同 `--require-side inference`）——
-  它保的是"**某一侧的量尺不许归零**"，不是"每个格子都要有夹具"。
-  实测这条分界：把推理侧的 vllm 夹具全删、只剩一条别的框架夹具 → 两档都放行（整侧未归零，
-  但 `inference/vllm-ascend` 那一整片已经没有量尺了）；某一侧一条都不剩 → 两档都红。
-- **为什么格级缺口不做成硬门**（这是取舍，不是遗漏）：本仓对"有 case 却没有夹具"这类缺口的
-  既定动作是**如实报出**，不是拦下——理由是补夹具需要真实来源、凭空造不出来
-  （同 `eval/holdout.py --list` 对六个格子的处理，以及 [`eval.md` 数据策略](#数据策略)）。
-  把它硬门化等于要求"新 case 落到尚无夹具的格子必须先补一条夹具"，而那在真实数据没到之前做不到。
-  **这条取舍的代价要写清**：格级缺口从此只在**有人主动跑报告**时才可见，
-  没有东西会在夹具被删掉时自动喊——如果你希望"夹具被删 = 红"，把 CI 那一步改成不带 `--require-side`
-  的 `--check` 即可（它会为任一空格子红），但要接受"新格子加 case 会被拦下"。
+- **侧层（`--check`，CI 跑的就是这一层）**：某一侧**一条真实夹具都不剩** → 红。
+  它防的是"整侧量尺归零"。`--require-side <侧>` 把这一层限定到点名的侧。
+- **格层（`--check-cells`，默认只报不拦）**：某个 (侧 × 性质) 格子有 case、没有任何真实夹具 → 红。
+  **为什么默认不做成门**（这是取舍，不是遗漏）：本仓对"有 case 却没有夹具"这类缺口的既定动作是
+  **如实报出**，不是拦下——补夹具需要真实来源、凭空造不出来（同 `eval/holdout.py --list`
+  对空缺格子的处理）。把它做成硬门等于要求"新 case 落到尚无夹具的格子必须先补一条夹具"，
+  而那时确实拿不出。需要它当门时显式加 `--check-cells`（审计轮写成 `--check --check-cells` 即可）。
+- **默认只报不拦的代价要写清**：格级缺口与"某格的非最后一条夹具被删"都不会自动喊，
+  只在**有人主动跑报告**时才可见。要换来那一层保护就加 `--check-cells`，
+  代价是"新格子加 case 会被拦下"——两个代价必须选一个，别以为能同时不要。
 - **夹具钉住词表的程度是可读的，而且差别很大（本次实测）**：`--nature-evidence` 用路由表
   自己的性质正则跑一遍夹具输入，**26 条里只有 10 条**词法上就命中期望性质（两条训练侧夹具都在
   其中），另外 16 条输入对三个性质零命中——它们靠的是流程里写明的语义兜底（`triage_semantic`）。
