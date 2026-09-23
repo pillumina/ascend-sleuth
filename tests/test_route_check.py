@@ -64,16 +64,61 @@ class RouteCheckTest(unittest.TestCase):
         return p
 
     def test_hits_follow_branch_order(self):
-        """按聚合顺序返回——顺序就是"谁先接住"，这正是这个脚本要报的东西。"""
-        hits = RC.hits_for("服务 \btimeout\b 了", self.branches)
+        """按聚合顺序返回，顺序就是"谁先接住"，这正是这个脚本要报的东西。"""
+        # 症状文本写普通词（不要写正则字面量）：`\b` 在 Python 字符串里是退格符，
+        # 写成 "\btimeout\b" 时匹配靠的是巧合——测试要测的是"顺序"，不该顺手埋这种坑。
+        hits, broken = RC.hits_for("服务 timeout 了", self.branches)
         self.assertEqual([b for b, _ in hits], ["training_interrupt", "inference_interrupt"])
+        self.assertEqual(broken, [])
 
     def test_hits_report_first_matching_pattern_per_branch(self):
-        hits = RC.hits_for("RuntimeError: 超时", self.branches)
+        hits, _broken = RC.hits_for("RuntimeError: 超时", self.branches)
         self.assertEqual(hits, [("training_interrupt", "RuntimeError")])
 
     def test_no_hit_returns_empty(self):
-        self.assertEqual(RC.hits_for("完全没有关键词", self.branches), [])
+        hits, broken = RC.hits_for("完全没有关键词", self.branches)
+        self.assertEqual(hits, [])
+        self.assertEqual(broken, [])
+
+    def test_uncompilable_regex_is_reported_not_swallowed(self):
+        """**阻断级回归**：不可编译的正则不能静默跳过。
+
+        跳过的后果是"该分支根本没参与判定"，而输出读起来像"这条 case 没命中任何分支"——
+        两者同形，等于脚本在真空通过（独立预核实测：把 inference 分支的正则写成 `[` 后，
+        推理侧 case 被报成"无命中"并 exit 0）。
+        """
+        bad = [{"id": "training_interrupt", "category": "interrupt", "symptoms": [["x"]],
+                "search_namespaces": ["training/<f>/"], "fallback": "Tier 3"},
+               {"id": "inference_interrupt", "category": "interrupt", "symptoms": [["["]],
+                "search_namespaces": ["inference/<f>/"], "fallback": "Tier 3"}]
+        hits, broken = RC.hits_for("RuntimeError", bad)
+        self.assertEqual(hits, [])
+        self.assertEqual(broken, [("inference_interrupt", "[")])
+
+    def test_cli_exits_nonzero_when_tree_has_uncompilable_regex(self):
+        (self.root / "triage-tree.yaml").write_text(
+            "branches:\n"
+            "  - id: inference_interrupt\n"
+            "    category: interrupt\n"
+            '    symptoms:\n      - ["["]\n'
+            "    search_namespaces: [inference/<f>/]\n"
+            "    fallback: Tier 3\n", encoding="utf-8")
+        self.write_case("inference/vllm-ascend/interrupt/X.yaml", cid="T-BAD")
+        r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"),
+                            "knowledge/inference/vllm-ascend/interrupt/X.yaml", "--root", str(self.root)],
+                           capture_output=True, text=True, cwd=self.root)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("不可编译", r.stdout)
+        self.assertIn("未参与判定", r.stdout)
+
+    def test_cli_usage_errors_exit_two(self):
+        """用法/读取错误是 2，与"判定不一致"的 1 分开（否则两类错会被读成同一件事）。"""
+        p = self.root / "knowledge" / "inference" / "vllm-ascend" / "interrupt"
+        p.mkdir(parents=True, exist_ok=True)
+        for arg in (str(p), str(self.root / "nope.yaml")):
+            r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"), arg,
+                                "--root", str(self.root)], capture_output=True, text=True, cwd=self.root)
+            self.assertEqual(r.returncode, 2, f"{arg}: {r.stdout}{r.stderr}")
 
     def test_expected_branch_from_path(self):
         """期望分支从路径推：knowledge/<训推>/<框架>/<性质>/x.yaml → <训推>_<性质>。"""

@@ -15,7 +15,8 @@
 #   python3 scripts/route_check.py <case 文件>      # 报告：期望分支 / 首个命中 / 全部命中 / 宽词
 #   python3 scripts/route_check.py --wide-words     # 全库体检：同一正则出现在多个分支的清单
 #
-# 退出码：0 期望分支与首个命中一致（或本条不参与路由，如 common/）；1 不一致；2 用法/读取错误。
+# 退出码：0 期望分支与首个命中一致（或本条不参与路由，如 common/）；1 不一致、
+# 或路由表里有不可编译的正则（那时"没命中"不可信）；2 用法/读取错误。
 
 import argparse
 import re
@@ -43,21 +44,30 @@ def case_text(case: dict) -> str:
 
 
 def hits_for(text: str, branches: list):
-    """按分支顺序返回 [(分支 id, 命中的正则), ...]（每个分支只报首个命中）。"""
-    out = []
+    """→ (hits, broken)：hits = [(分支 id, 命中的正则)]（每个分支只报首个命中），
+    broken = [(分支 id, 不可编译的正则)]。
+
+    不可编译的正则**不能静默跳过**：跳过的后果是"该分支根本没参与判定"，而输出读起来像
+    "这条 case 没命中任何分支"——两者在界面上同形，等于这个脚本在真空通过（实测：把
+    inference 分支的正则写成 `[` 后，推理侧 case 被报成"无命中"并 exit 0）。
+    """
+    out, broken = [], []
     for b in branches:
+        hit = None
         for group in b.get("symptoms") or []:
             for pat in group:
                 try:
-                    if re.search(pat, text, re.I):
-                        out.append((b.get("id"), pat))
-                        break
+                    matched = re.search(pat, text, re.I)
                 except re.error:
+                    broken.append((b.get("id"), pat))
                     continue
-            else:
-                continue
-            break
-    return out
+                if matched and hit is None:
+                    hit = pat
+            if hit is not None:
+                break
+        if hit is not None:
+            out.append((b.get("id"), hit))
+    return out, broken
 
 
 def expected_branch(path: Path, root: Path) -> str:
@@ -114,7 +124,14 @@ def main() -> int:
     if not path.exists():
         print(f"读不到 {path}", file=sys.stderr)
         return 2
-    doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if path.is_dir():
+        print(f"{path} 是目录——给一个 case 文件（knowledge/**/*.yaml）", file=sys.stderr)
+        return 2
+    try:
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception as e:
+        print(f"{path} 读不动（{type(e).__name__}：{e}）", file=sys.stderr)
+        return 2
     cases = doc.get("cases") or []
     if not cases:
         print(f"{path} 里没有 cases", file=sys.stderr)
@@ -123,8 +140,10 @@ def main() -> int:
     rel = path.relative_to(root) if path.is_relative_to(root) else path
     all_wide = wide_words(branches)
     mismatch = 0
+    broken_any = []
     for i, case in enumerate(cases):
-        hits = hits_for(case_text(case), branches)
+        hits, broken = hits_for(case_text(case), branches)
+        broken_any += broken
         head = f"case：{case.get('id')}" + (f"（{rel} 第 {i + 1}/{len(cases)} 条）" if len(cases) > 1 else f"（{rel}）")
         print(head)
         print(f"期望分支：{exp or '（common/ 或路径不在 knowledge/<训推>/<框架>/<性质>/，本条不判）'}")
@@ -134,6 +153,11 @@ def main() -> int:
             print("本条用的宽词跨分支重复（顺序先到者接住）：")
             for pat, ids in dup:
                 print(f"  {pat!r} → {', '.join(ids)}")
+        if broken:
+            for bid, pat in broken:
+                print(f"⚠ 分支 {bid} 的正则 {pat!r} 不可编译，该分支**未参与判定**——这条结论不等于"
+                      f"「没命中该分支」；先修路由表（重跑 `python3 scripts/build_triage_tree.py`）")
+            mismatch += 1
         if exp and hits and hits[0][0] != exp:
             print(f"⚠ 首个命中是 {hits[0][0]}，不是期望的 {exp}——症状里可能缺该分支独有的签名（错误码/算子名/框架特有措辞），"
                   f"或该补一条更窄的变体")

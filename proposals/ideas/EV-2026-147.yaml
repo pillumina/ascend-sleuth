@@ -53,7 +53,7 @@ predicted_effect:
   measure:
     command: |
       python3 - <<'PY'
-      import pathlib, subprocess, sys
+      import pathlib, re, subprocess, sys
       ROOT = pathlib.Path('.').resolve()
       tpls = sorted(pathlib.Path('.github/PULL_REQUEST_TEMPLATE').glob('*.md'))
       missing = []
@@ -79,10 +79,12 @@ predicted_effect:
       misfire = r1.returncode == 1 and '首个命中是 training_interrupt' in r1.stdout
       tests = subprocess.run([sys.executable, '-m', 'unittest', 'discover', '-s', 'tests',
                               '-p', 'test_route_check.py'], capture_output=True, text=True)
+      n_tests = re.search(r'Ran (\d+) test', tests.stderr or tests.stdout)
       print('templates_ok', not missing, missing[:3])
       print('git_workflow_tiers', tiers, '| writing_norms_pointer', wn_points)
       print('route_check_misfire_reported', misfire, '| wide_words_ok', ww_ok)
-      print('route_check_tests_ok', tests.returncode == 0)
+      print('route_check_tests_ok', tests.returncode == 0,
+            (n_tests.group(1) + ' 条') if n_tests else '(条数未解析)')
       ok = (not missing) and tiers and wn_points and misfire and ww_ok and tests.returncode == 0
       print('VERDICT', 'PASS' if ok else 'FAIL')
       PY
@@ -95,11 +97,12 @@ validation:
     只讲 EV 卡 measure 与抽审纪律，没有预核的产出规则；内容类 PR 没有任何能跑的自查动作。
   success_criteria: >-
     ①上述 measure 打 VERDICT PASS；②模板校验器（`pr-template` CI 用的 `verify_pr_body.py`）
-    对改动后的模板仍判"关键区块齐全"；③`tests/` 全绿（含 `tests/test_route_check.py` 九条）；
+    对改动后的模板仍判"关键区块齐全"；③`tests/` 全绿（含 `tests/test_route_check.py`；条数由 measure 打印，不写死在卡里）；
     ④kb-checks 逐条本机复跑全绿；⑤`route_check.py` 在真实热格 case 上报出已知的分支误吸
     （VLLM-ASC-9887：期望 inference_interrupt、首个命中 training_interrupt），且 `--wide-words`
     列出跨分支重复的正则（本次实测 57 条）。
-  rollback: 分支丢弃或 git revert；本轮只改模板与文档措辞 + 新增一个只读脚本，无数据面影响。
+  rollback: 分支丢弃或 git revert。本轮改 5 个模板、两篇文档、`scripts/build_triage_tree.py` 的注释，
+    新增一个只读脚本与其单测；无数据面影响。
 gate: >-
   若预核在三个批次的 PR 上都没有产出过一条被采纳的问题（连续三轮"无发现"），说明这段意见在
   当前改动规模下是仪式——那时降级为"高风险改动才填"，或把它的字段再收紧到只留覆盖清单。
@@ -112,7 +115,7 @@ actual_cost:
     同一会话内完成，未单独计量（按既有卡口径以 0 计）。规模：5 个模板的 Agent 段重写、
     `docs/guide/git-workflow.md` 新增「独立预核（提交前，由另一个 agent 做）」一节、
     `docs/spec/writing-norms.md` §3 那一行补指路、新增 `scripts/route_check.py`（约 150 行）
-    与 `tests/test_route_check.py`（9 条）、`scripts/build_triage_tree.py` 的顺序检查注释收紧
+    与 `tests/test_route_check.py`、`scripts/build_triage_tree.py` 的顺序检查注释收紧
     （原写"首命中先路由"，实际是模糊匹配 + 单分支决策，顺序效应来自宽词跨分支重复）。
 decisions:
   - who: agent
@@ -129,7 +132,7 @@ decisions:
     conclusion: >-
       落地：5 个模板的 Agent 段重写；`git-workflow.md` 新增一节（三档表 + 两条通用要求 +
       "不重复跑 CI 已跑的"清单 + 为什么不做成门）；`writing-norms.md` §3 补指路；
-      新增 `scripts/route_check.py` 与 9 条测试；顺序检查注释改成准确说法。
+      新增 `scripts/route_check.py` 与其单测；顺序检查注释改成准确说法。
       过程中自查抓到自己一处代号越界：初稿拿 `P0`/`P1` 当严重度分级，而那两个在本仓词表里
       已是优先级与流程事项族代号——改成分级写中文（阻断级 / 重要级 / 建议级），并在该节写明这条。
   - who: agent
@@ -140,6 +143,21 @@ decisions:
       跨分支重复的正则（`\btimeout\b`、`RuntimeError`、`ModuleNotFoundError` 等在训推两侧都有）；
       `VLLM-ASC-9887`（推理侧中断）的症状面首个命中是 `training_interrupt`——这是"分支误吸"
       在数据上的实例，此前没有任何检查器报得出来。
+  - who: agent
+    when: 2026-09-22
+    type: eval
+    conclusion: >-
+      本卡的改动自己跑了一次独立预核（另一次会话的 subagent，基准 e245907），结论 MERGE_READY: no，
+      报出 1 条阻断级与若干重要级，均已实跑验证并逐条修：
+      ①阻断级：`route_check.py` 里正则不可编译时被 `except re.error: continue` 静默跳过，
+      于是"该分支根本没参与判定"被报成"无命中"并 exit 0（真空通过）；改成报出不可编译的正则与该分支
+      未参与判定，退出码 1，另补两条回归测试。②把"独立 = 新上下文的 agent"当事实陈述：本仓常见的
+      subagent 与作者同父会话，不是外部第三方独立；文档改成"与作者不同的会话"并写明这个界限。
+      ③卡里三处写"九条"（实际 10 条）→ 不再写死条数，measure 直接把条数打出来。④脚本 docstring 的
+      退出码与实际不符（读不到路由表返回 1、传目录抛回溯）→ 修成 2。⑤"kb-checks 十二个 job"逐个列名
+      与工作流对不上 → 删掉逐个列名，只留文件指路。⑥模板里一行以冒号收尾没有正文 → 改成字段式写法。
+      ⑦writing-norms §1 命中项（破折号堆叠、自我评价式措辞、裸 §6）→ 重写那几段。⑧新脚本未进 CI
+      paths → 补上。这条对照是本卡假设的第二个样本：独立预核在同一个 PR 上又抓到了作者自审没抓到的东西。
   - who: agent
     when: 2026-09-22
     type: decision
