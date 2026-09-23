@@ -1805,25 +1805,46 @@ _MS._run_no_pipe = no_fallback`)
         // scripts/export_trace.py），按计数判会得出"15 处调用"这种假数字。
         const countPolicy = (src) => {
           const lines = src.split(/\r?\n/)
+          const needsPolicy = (line) => {
+            // 两个面板跑脚本都是 `command: py + '…'` 这个形状（ev-panel 拼的是变量 scriptName）
+            if (/command: py \+/.test(line)) return true
+            // 解释器**探活**同样是一次 shell 调用（`command: candidate + ' --version'`）。原先漏的
+            // 就是这个形状：不带策略时 DSH 回落到 harness 进程 cwd 当写权限根，Windows 上撞
+            // `SetNamedSecurityInfoW failed (Win32 5)`；而探活把异常 catch 掉，报出来是
+            // 「未找到可用的 Python 3 解释器」——真因被吞（2026-09-22 实测）。
+            return /command: candidate \+ ' --version'/.test(line)
+          }
           let sites = 0
           let ok = 0
           for (let i = 0; i < lines.length; i++) {
-            // 两个面板都是 `command: py + '…'` 这个形状（ev-panel 拼的是变量 scriptName）
-            if (!/command: py \+/.test(lines[i])) continue
+            if (!needsPolicy(lines[i])) continue
             sites++
-            for (let j = i + 1; j < Math.min(i + 10, lines.length); j++) {
+            // 窗口只用于"没带策略就判红"，不是解析器：同一 shell.resolve({…}) 里的
+            // workdir / env 等字段行数会变，窗口给宽一点。
+            for (let j = i + 1; j < Math.min(i + 14, lines.length); j++) {
               if (/sandboxPolicy: \{ mode: 'workspace-write', workspaceRoot: cwd \}/.test(lines[j])) { ok++; break }
               if (/^\s*\}\)\)?\s*$/.test(lines[j])) break   // shell.resolve({...}) 调用结束
             }
           }
           return { sites: sites, ok: ok }
         }
-        const asc = countPolicy(fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8'))
-        expect('沙箱策略：诊断面板每个跑脚本的调用点都带写权限根（' + asc.ok + '/' + asc.sites + '）',
-          asc.sites >= 3 && asc.ok === asc.sites, JSON.stringify(asc))
-        const ev = countPolicy(fs.readFileSync(path.join(repo, 'dsh-plugins/ev-panel/panel-host.js'), 'utf8'))
-        expect('沙箱策略：自演进面板的 runScript 也带（同类陷阱不在别的面板重演）',
-          ev.sites >= 1 && ev.ok === ev.sites, JSON.stringify(ev))
+        // 探活点单独判：cwd 得从参数**传进来**，只在 resolvePython 内部写死一个 cwd
+        // 解决不了"面板不知道根在哪"这件事。
+        const probeWired = (src) => {
+          const fn = (src.match(/async function resolvePython\([^)]*\)/) || [''])[0]
+          return /async function resolvePython\(cwd\)/.test(fn)
+            && (src.match(/await resolvePython\(cwd\)/g) || []).length >= 1
+        }
+        const ascSrcFile = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+        const asc = countPolicy(ascSrcFile)
+        expect('沙箱策略：诊断面板每个 shell 调用点（含解释器探活）都带写权限根（' + asc.ok + '/' + asc.sites + '）',
+          asc.sites >= 4 && asc.ok === asc.sites, JSON.stringify(asc))
+        expect('沙箱策略：诊断面板的探活把工作区根当参数接进来（不是内部写死）', probeWired(ascSrcFile))
+        const evSrcFile = fs.readFileSync(path.join(repo, 'dsh-plugins/ev-panel/panel-host.js'), 'utf8')
+        const ev = countPolicy(evSrcFile)
+        expect('沙箱策略：自演进面板的 runScript 与探活都带（同类陷阱不在别的面板重演）',
+          ev.sites >= 2 && ev.ok === ev.sites, JSON.stringify(ev))
+        expect('沙箱策略：自演进面板的探活同样接参数', probeWired(evSrcFile))
       }
       expect('交接包：结果里回报体量、未纳入数、待补材料条数',
         /humanKB\(handoff\.zipBytes\)/.test(hoBlock) && /未纳入 /.test(hoBlock) && /待补材料/.test(hoBlock))
