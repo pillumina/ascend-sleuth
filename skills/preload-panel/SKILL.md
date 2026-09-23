@@ -3,11 +3,10 @@ name: preload-panel
 description: >
   在 DSH 会话中热加载 ascend-sleuth 面板插件：先查 panel_from_file 工具在不在（它按进程
   全局注册，通常已在；DSH 重启后第一次才需装 dsh-plugins/loader/panel-from-file.js——
-  host-only 免审批的小加载器，~3K token，两种装法见正文），再用它按路径加载
+  host-only 免审批的小加载器，两种装法见正文），再用它按路径加载
   dsh-plugins/<panel>/ 下的 panel-host.js 与
   panel-client.js——**只发两个路径，不转写 ~70KB 源码**，最后 cordis_run 激活，
-  对话视图出现对应 tab。加载本身只值几千 token、约 30 秒；会话累计到几十万 token
-  是上下文重发，与面板无关——用户问"加载面板是不是很贵"时按此回答。面板选择：
+  对话视图出现对应 tab。面板选择：
   - ascend-panel →「诊断」「指标」两个 tab（诊断会话/轨迹/证据 + **指标闭环判决**：首屏列要处理的判据、容量逐格、不可解读标记）
   - ev-panel →「自演进」tab（演进体检判决 / 触及面 / 执行现场 / EV 卡决策链）
   仅 DSH 可用——依赖 DSH 的 cordis_define / cordis_run 工具
@@ -53,13 +52,6 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 
 ## 流程
 
-> **成本与耗时（实测，别自己重新推）**：面板加载本身只值几千 token —— loader 文件
-> 快照 ~3K + 每次调用 ~60 token 回执；耗时中位数 ~30 秒。会话累计 input 打到几十万
-> 甚至上百万，来自**每一步都把整段上下文重发一次**（系统提示 + skill 目录 + 工具目录 +
-> 历史），与加不加载面板无关：`node scripts/session_cost.mjs --session <id>` 看真实账单，
-> 典型面板会话 uncachedIn ≈ 109 万是**首轮 118 步**攒下的，加载面板那一刻的上下文
-> 已到 218K–553K，那是之前干的事的账。
-
 0. **先查有没有**：跑一次 `cordis_inspect_self`（不带参数）——它一次给出两件事：
    本会话已加载的插件清单，以及（对照工具目录）`panel_from_file` 在不在。该工具是
    **进程全局**的（一次注册后同一 DSH 进程的所有会话都能直接调），所以"工具不在"只在
@@ -72,19 +64,19 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
    - 已有（第 0 步查到 `panel_from_file`）→ 跳到第 3 步。
    - 没有（DSH 刚重启、本进程还没注册过）→ 加载 loader，**按 `cordis_define` 的能力二选一**：
 
-     | 你的 `cordis_define` | 怎么发 loader 源码 | 成本 |
-     |---|---|---|
-     | 有 `codeFile` | `codeFile.host: 'dsh-plugins/loader/panel-from-file.js'` | ~3K token |
-     | 只有 `code`（官方发布版） | `read` 该文件全文 → `code.host` 原样粘贴 | ~6K token，多 20 秒 |
+     | 你的 `cordis_define` | 怎么发 loader 源码 |
+     |---|---|
+     | 有 `codeFile` | `codeFile.host: 'dsh-plugins/loader/panel-from-file.js'`（不要再 `read` 一遍） |
+     | 只有 `code`（官方发布版） | `read` 该文件全文 → `code.host` 原样粘贴 |
 
      判法：`cordis_define` 的**参数表**里有没有 `codeFile`；不确定就直接按 `codeFile` 发一次，
      报"参数不认识 / 缺 code"就换 `read` + `code.host`。**别为此重试第三次**。
 
      两条路都走同一个 loader：`cordis_define`（kind: new，idPrefix `ldr`）→
-     `cordis_run`（mode: run）。**host-only 包，免审批**，几秒完成。
+     `cordis_run`（mode: run）。**host-only 包，免审批**。
      该 loader 只用 `harness.registerTool` + `ctx.get('dynamicCordisRunner')` 两个
-     公开机制，不依赖任何 DSH 补丁——所以两条路都能装上。
-     `codeFile` 机器上**不要**先 `read`（白烧 ~3K）；只有 `code` 的机器上 `read` 是**必需**的一步。
+     公开机制，不依赖任何 DSH 补丁——所以两条路都能装上；差别只是 `read` 那一步的
+     一次重复读入，跑起来完全一样。
 
 3. **加载面板**：调 `panel_from_file`（不要用 `cordis_define` 转写源码）：
 
@@ -99,12 +91,11 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
    它读盘 → `dynamicCordisRunner.define()` → `run()`，源码**原样进不可变 Package**
    （可被 `cordis_inspect_self` 审计），审批流与 `cordis_run` 一致。返回
    awaiting-approval 时告知用户在 UI 允许（Client 半需授权）；授权后 tab 出现。
-   面板两个文件合计 ~70KB——**别把全文重新输出一遍**（几千 token、几分钟），
-   发路径只要几十 token。
+   面板两个文件合计 ~70KB——**别把全文重新输出一遍**，发路径即可。
 
-   **加载期间不要做的事**：`cordis_inspect_query(Tool.listTools)` 一次回 53KB
-   （~13K token），加载面板用不上它；`Slots.listSubTree` 同理（自查 tab 用，一次即可，
-   不要连跑两遍）。这两条是实测里耗时最长的那个会话（20.7 分钟）的主要开销。
+   **加载期间不要做的事**：`cordis_inspect_query(Tool.listTools)` 与
+   `Slots.listSubTree` 都不是加载面板的必需品，别顺手自查（前者一次回 53KB 的工具全表，
+   后者只在核 tab 时看一次）。
 
 4. **验证**：确认插件 running 且无 waitingFor（`cordis_inspect_self`）；tab 出现在
    对话视图（conversation.view 插槽，按上表 id 核对）。自演进看板首次打开会调
@@ -115,8 +106,8 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 ## 回退（DSH 版本差异）
 
 - **`cordis_define` 不带 `codeFile`**（官方发布版都没有它；带它的是本机检出）→ 见第 2 步
-  的两行表：`read` loader 全文 → `code.host` 原样粘贴即可，功能完全相同，只多 ~3K token。
-  **先试 `codeFile`，报参数错再退回内联；默认内联在带 `codeFile` 的机器上白烧 3K。**
+  的两行表：`read` loader 全文 → `code.host` 原样粘贴即可，功能完全相同。
+  **先试 `codeFile`，报参数错再退回内联。**
 - **loader 也注册不了工具**（`harness.registerTool` 缺失）→ 内联面板本身：读两个文件
   全文 → `code.host` / `code.client` 原样粘贴。文件是函数体形态
   （`return { apply(ctx) {...} }`），别改形态——动态插件不经过打包器，
@@ -126,7 +117,7 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 
 ## 交互原则
 
-**跨 session（实测）**：工具 `panel_from_file` 是**进程全局**的——新 session 不必再加载
+**跨 session**：工具 `panel_from_file` 是**进程全局**的——新 session 不必再加载
 loader，直接就有它可用；重复加载 loader 会撞名但不报错（工具仍可用），只有要更新 loader
 自身代码时才需重启 DSH。面板插件则是 **per-session** 的：新 session 认领不了旧 session
 的插件（DSH 的 `define(kind:'existing')` 要求同 session 拥有），所以会新建一个同 tab id 的

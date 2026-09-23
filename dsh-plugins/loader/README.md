@@ -22,12 +22,12 @@
 1) 先查工具在不在（跨 session 复用；只有 DSH 重启后的第一个会话会缺）
    cordis_inspect_self()          # 工具目录里有 panel_from_file → 直接跳到第 2 步
 
-2) 没有才加载 loader（host-only，免审批，几秒）——按 cordis_define 的能力二选一：
+2) 没有才加载 loader（host-only，免审批）——按 cordis_define 的能力二选一：
    有 codeFile：cordis_define(kind: new, idPrefix: 'ldr',
                               codeFile.host: 'dsh-plugins/loader/panel-from-file.js')
-               —— 别先 read 这个文件，codeFile 自己读盘，先读一遍只多烧 ~3K token
+               —— 不要再 read 这个文件，codeFile 自己读盘
    只有 code（官方发布版都没有 codeFile）：read 该文件全文 → code.host ← 原样粘贴
-               —— 多花 ~3K token / ~20 秒，功能完全相同
+               —— 功能完全相同，只是多一次重复读入
    然后统一：cordis_run(mode: run)
 
 3) 加载面板
@@ -40,27 +40,11 @@
 会话里已有 `panel_from_file` 时**不要重复加载 loader**——重复注册同名工具会失败（loader
 会拦下来只打提示，但那次调用等于白花两次工具往返）。
 
-## 成本（实测，回答"加载面板是不是很贵"）
+## 加载期间别顺手自查
 
-实测口径：本机 368 个 ascend-sleuth 会话的 session log 逐条累加（字符数 /4 估 token）。
-
-| 项 | 量级 |
-|---|---|
-| loader 源码快照进 Package | ~3K token（每进程一次） |
-| `cordis_run` 回执 | ~60 token |
-| `panel_from_file` 调用参数 | ~230 字符 |
-| **加载完成所需时间** | 最快 0.6 分钟（工具已在，4 次工具调用）；无 loader 时 ~2 分钟 |
-| **调用那一刻的会话上下文** | 218K–553K token——那是之前干的事的账 |
-
-**`panel_from_file` 本身不是成本来源。** 想知道真实账单别估算，跑
-`node scripts/session_cost.mjs --session <id>` 读提供方 usage：一个典型面板会话
-`uncachedIn=109 万`，而那是**首轮 118 步**攒的（第一轮就 119,385 uncached + 1,451 万
-cacheRead）；`cordis_define` / `cordis_run` / `panel_from_file` 三次调用的参数合计
-不到 400 字符。每一步都把整段上下文重发一次，本库全部会话的累计 input 中位数
-本来就有 ~95 万——"跑了 1.1M 还没加载好"看到的就是这个数，不是加载面板花的。
-
-加载面板期间真正贵的动作是拿大目录自查：`cordis_inspect_query(Tool.listTools)` 一次
-回 53KB（~13K token），`Slots.listSubTree` 一次 ~10KB——两者都不是加载面板的必需品。
+`cordis_inspect_query(Tool.listTools)` 一次回 53KB 的工具全表，`Slots.listSubTree`
+一次 ~10KB——都不是加载面板的必需品，只会把加载拖长。要查会话里的插件用
+`cordis_inspect_self`（不带参数）就够。
 
 ## 参数
 

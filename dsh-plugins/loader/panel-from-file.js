@@ -11,7 +11,7 @@
 // 注意 codeFile 本身是 cordis_define 的能力，**官方发布版没有它**（只在带该提交的检出里）——
 // 所以本文件的装法有两条，功能相同，按手头 cordis_define 的参数表选：
 //   有 codeFile：cordis_define(kind: new, idPrefix: 'ldr', codeFile.host ← 本文件路径)
-//   只有 code ：read 本文件全文 → code.host ← 原样粘贴（多 ~3K token，别为此重试第三次）
+//   只有 code ：read 本文件全文 → code.host ← 原样粘贴（功能相同，别为此重试第三次）
 //
 // **幂等**：改完面板代码再调一次是常事，所以重复调用不再新建插件——
 // 先查 inventory 找本 session 已存在的同前缀插件，找到就复用（追加新 Package +
