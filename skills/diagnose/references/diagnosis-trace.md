@@ -42,7 +42,7 @@ user 事件无 `action`，不参与词表检查。**新增 action 时同步改 `
 
   中途证据与他的说法相反时以证据为准：`workload_type_source: evidence`，并在 `reason` 里写明改向的理由与回给他那句话。
 - `branch` 现在是**性质**名（`interrupt` / `precision` / `performance`），不再带 `training_` / `inference_` 前缀——负载类型已经在 `workload_type` 里，分支名再带一次就是两处记同一件事。**分层前写下的历史 trace 保持原样、不改写**（那时的分支 id 是当时口径的真实记录）。
-- **字段改过名，读的时候两种都认**：早期 trace 里这两个字段叫 `side` / `side_source`（同一个意思）。新写的 trace 用 `workload_type` / `workload_type_source`；**历史 trace 不回填**——trace 是运行时件，回填等于改写当时的记录。要统计这一层时两个键名都取。
+- **字段改过名，读的时候两种都认**：早期 trace 里这两个字段叫 `side` / `side_source`（同一个意思）。新写的 trace 用 `workload_type` / `workload_type_source`；**历史 trace 不回填**——trace 是运行时件，回填等于改写当时的记录。**当前还没有读端**（这一层暂时算不出数），将来接入统计时两个键名都取。
 
 **`workload_type: unknown` 的占比是这一层的体检读数**：它按设计是保底路径（训练与推理都查），占比持续偏高说明步骤 1 那句问话没问出去，而不是"负载类型判不出来"——那时的修法是改流程，不是加词。
 
@@ -157,7 +157,7 @@ case 错 / 执行错判）——让 `component_tally.py` 能聚合出"被跟随�
 - **判据只有两种**：逐字相等（空白归一化），或显式截断的分段按序命中。**不做大小写、全半角、标点的规整**——规整越多，"核对过"越接近"看起来像"。
 - **为什么要有这一层**：报告要求"每条结论都指回证据"，但"指回去了"和"引文与原件一致"是两件事。后者原先只是人审项（`report_lint.py` 只查结构：必需节、字段配对、路径存在），改写引文与行号漂移都不报错。
 
-## 外部事实获取落盘（agent 负载类型，与 `user.evidence` 分开）
+## 外部事实获取落盘（agent 侧，与 `user.evidence` 分开）
 
 诊断中为**形成结论**而做的外部获取——`web_search` / `web_fetch` / `gh api` / `git clone` / 源码 `grep` 读——**记到 agent 事件**（`source_analysis` 的 `tool_calls`，或 `reference_lookup`）。
 

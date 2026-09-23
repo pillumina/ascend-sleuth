@@ -72,7 +72,7 @@ jobs:
       - run: python3 scripts/build_procedure_index.py --check
       # 错误码缺口索引新鲜度：故障模式表里出现、而错误表没有行的码——那是"错误表未命中"时的
       # 唯一跳板。不重建即红，理由同上：它是数据（哪个码在哪张表有修法），漂移会让跳板指向
-      # 一个不存在的条目，而读负载类型无从分辨"库里没有"与"跳板坏了"。
+      # 一个不存在的条目，而读侧无从分辨"库里没有"与"跳板坏了"。
       - run: python3 scripts/build_error_gap_index.py --check
 
   metrics-validation:

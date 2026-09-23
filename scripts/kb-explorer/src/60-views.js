@@ -275,9 +275,9 @@ function viewTriage(){
   var h='<div class="triage container"><div class="triage-head">'
     +'<div class="kicker">triage-tree</div>'
     +'<h1>症状 → 检索路由图</h1>'
-    +'<p>路由分两步、互不竞争：<b>先定侧</b>（训练 / 推理——由工程师给的事实确定，不由症状词判，见下表）；'
-    +'<b>再在侧内判性质</b>（中断 / 精度 / 性能——这一层由症状词匹配，词表训推共用一份）。'
-    +'组合出检索面 <code>knowledge/&lt;侧&gt;/&lt;框架&gt;/&lt;性质&gt;/</code>，另加框架无关的 <code>common/</code>（本界面不含私有 case）。'
+    +'<p>路由分两步、互不竞争：<b>先定负载类型</b>（训练 / 推理——由工程师给的事实确定，不由症状词判，见下表）；'
+    +'<b>再在负载类型内判性质</b>（中断 / 精度 / 性能——这一层由症状词匹配，词表训推共用一份）。'
+    +'组合出检索面 <code>knowledge/&lt;负载类型&gt;/&lt;框架&gt;/&lt;性质&gt;/</code>，另加框架无关的 <code>common/</code>（本界面不含私有 case）。'
     +"把现场报错里的关键词对照下方各性质的症状词，理解「这类问题该往哪个方向查」。</p>";
   h+='<div class="triage-stats">'
     +'<div class="bar-dist" title="按 category 分布">'+Object.keys(cats).map(function(c){

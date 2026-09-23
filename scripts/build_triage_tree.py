@@ -23,7 +23,7 @@
 #   拼接**逐字保留**：每个源文件里 `natures:` 之后的文本原样进入生成物（含行内注释与对齐）。
 #   生成物的两个顶层键是 `workload_types:`（负载类型层）与 `natures:`（性质层）。原先的 `branches:` 桶
 #   随分层退休——不再给别名：YAML 别名会让那份列表在文件里出现两遍（读的人以为有两结构），
-#   而它换来的只是"读负载类型一个字都不用改"。路由数据每次诊断现读，改两处读点比留一份看起来
+#   而它换来的只是"读侧一个字都不用改"。路由数据每次诊断现读，改两处读点比留一份看起来
 #   像双源的东西便宜（同一条道理也写在 `00-protocol.md` 里）。
 #
 # 用法：
@@ -51,7 +51,7 @@ REQUIRED_NATURE_KEYS = ("id", "category", "symptoms", "search_namespaces", "fall
 SIDE_PREFIX = "<side>/"   # 性质层检索面里表示"由哪种负载类型展开"的记号（负载类型不在症状层判）
 REQUIRED_WORKLOAD_TYPE_KEYS = ("id", "label", "namespaces", "fallback")
 
-# git 冲突标记：源文件里出现它几乎只有一个原因——这一性质在两边各被改过，且平台那负载类型没走 union 驱动
+# git 冲突标记：源文件里出现它几乎只有一个原因——这一性质在两边各被改过，且平台那一侧没走 union 驱动
 # （例如本地手抄合并、或 .gitattributes 没进那一负载类型）。不特判的话只会报"YAML 解析失败：..."，
 # 而人要的答案是"把两份症状都留下"。
 CONFLICT_MARKERS = ("<<<<<<<", ">>>>>>>")
@@ -206,7 +206,7 @@ def validate_nature(nature, path, seen_ids, public):
             errors.append(
                 f"{path.name}: 性质 '{nid}' 的 search_namespaces 里有写死某一负载类型的目录 {pinned}——"
                 "分层后性质层不知道自己在哪一种负载类型下，负载类型由 `workload_types:` 给出；只要列表里有一条写死某一种负载类型，"
-                "另一侧的诊断就会去查这一侧的目录（把一个带 `<side>` 的项混在同一条列表里也绕不过，"
+                "另一种的诊断就会去查这一种的目录（把一个带 `<side>` 的项混在同一条列表里也绕不过，"
                 "本检查逐条判）。改成 `<side>/<detected_framework>/`，公共目录只留 `common/` 这类负载类型无关项。"
             )
     return errors, warnings

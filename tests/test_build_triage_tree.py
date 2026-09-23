@@ -1,7 +1,7 @@
 """Tier 1 路由层「源 → 生成物」的口径回归测试。
 
 这一层存在的理由是可验证的：路由数据原先放在一个文件里，谁加词都得改它，两个人撞在同一段文本上
-就要人判断"留哪一份"。拆成一性质一文件 + 生成物之后，**读负载类型完全不变**（diagnose /
+就要人判断"留哪一份"。拆成一性质一文件 + 生成物之后，**读侧完全不变**（diagnose /
 verify_references / kb-explorer 读的还是 triage-tree.yaml），所以本测试要钉住的正是
 "生成物与源一致、拼接不丢内容、不改顺序"这三件事。
 
@@ -404,7 +404,7 @@ class TriageTreeSplitTest(unittest.TestCase):
 
 
 class RealRepoTest(unittest.TestCase):
-    """真实仓库上的断言：读负载类型不变、生成物与源一致、路由面就是那三个性质 × 两个负载类型。"""
+    """真实仓库上的断言：读侧不变、生成物与源一致、路由面就是那三个性质 × 两个负载类型。"""
 
     def test_check_green_on_repo(self):
         for flag in ("--check", "--check-coverage", "--check-sources"):

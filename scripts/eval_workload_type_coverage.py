@@ -13,8 +13,8 @@
 #
 # 两层判据，**两个开关各管一层**（别把它们混起来——混起来会让"文档描述的门"与
 # "实际跑的门"不是同一个，本脚本的第一版就这么错过一次）：
-#   - **负载类型层（`--check`）**：库里**有 case 的**某一负载类型一条真实夹具都不剩 → 退出 1。
-#     CI 跑的就是这一层。它防的是"整负载类型量尺归零"。只对"有 case 的负载类型"要求夹具——
+#   - **负载类型层（`--check`）**：库里**有 case 的**某一侧一条真实夹具都不剩 → 退出 1。
+#     CI 跑的就是这一层。它防的是"整侧量尺归零"。只对"有 case 的负载类型"要求夹具——
 #     新负载类型先声明、下一条 PR 才补 case 与夹具是正常顺序，那时没有需要保护的东西。
 #   - **格层（`--check-cells`）**：某个含 case 的 (负载类型 × 性质) 格子没有夹具 → 退出 1。
 #     **默认只报不拦**：本仓对这类缺口的既定动作是如实报出，不是拦下——补夹具需要真实来源、
@@ -104,7 +104,7 @@ def fixture_rows(root: Path) -> list:
         exp = doc.get("expected") or {}
         ns = str(exp.get("namespace") or "").strip("/")
         parts = ns.split("/") if ns else []
-        # 命名空间形如 <负载类型>/<框架>/<性质>；推理侧无性质段时（旧形态）性质记空。
+        # 命名空间形如 <side>/<框架>/<性质>（<side> 取值 training / inference）；推理侧无性质段时（旧形态）性质记空。
         workload_type = parts[0] if parts and parts[0] in WORKLOAD_TYPES else ""
         nature = parts[2] if len(parts) >= 3 else ""
         rows.append({

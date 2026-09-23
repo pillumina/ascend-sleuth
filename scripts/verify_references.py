@@ -154,7 +154,7 @@ def check_skill_ref_bindings(root: Path, ref_ids: set, active_ids: set, legal_ca
     errors = []
     files = sorted(root.glob(SKILL_BINDING_GLOB))
     if not files:
-        return [f"未找到 skill 负载类型绑定文件（约定 {SKILL_BINDING_GLOB}）——绑定表缺失不应静默通过"]
+        return [f"未找到 skill 侧绑定文件（约定 {SKILL_BINDING_GLOB}）——绑定表缺失不应静默通过"]
     for path in files:
         rel_file = str(path.relative_to(root))
         doc = load_yaml(path)
