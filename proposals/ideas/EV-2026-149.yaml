@@ -1,0 +1,235 @@
+# ============================================================
+# EV-2026-149 —— 训练侧回放覆盖：路由分侧之后，"这一侧没有量尺"要能现算、且不许再掉回零
+# 来源：承接 EV-2026-148（路由拆成"侧 × 性质"两层）。分侧把"侧"变成了**量尺单位**，
+#       于是暴露出一件此前没人能一眼看见的事：`eval/golden/` 的真实夹具 25 条全在推理侧，
+#       唯一写着训练侧的那条是对着"从未入库的 case"写的构造示例（它自己的头注就写明
+#       "当前不可作为可运行回归"）。训练侧 22 条 case，0 条有夹具。
+# 脱敏：只含仓库内路径、命令与聚合数字；两条新夹具的输入取自公开 issue 首帖，
+#       剥掉平台自动附的安全提醒样板与页脚，唯一删改是模型 config.json 的附件链接（含上传 id 与哈希）。
+# ============================================================
+
+id: EV-2026-149
+layer: L2
+target_component: eval/golden/
+title: "训练侧回放覆盖：分侧后侧才是量尺单位——把「哪一侧没有量尺」做成可现算的报告，补训练侧真实夹具，并钉住它不再掉回零"
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: '2026-09-23'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户给的判据不是"补几条夹具"，而是"训练侧整条链没有量尺"：无论谁把训练侧的性质词表改坏、
+      或把侧的处理写坏，`eval/` 全绿都测不出来。同时明确两条纪律：①两条候选量尺都要给取舍与证据，
+      别默认选第一条；②如果两条路都拿不到有意义的判据，就如实说"这条路现在走不通"，
+      不要为了交差挑一条弱判据硬门化——本仓对这类动作的定性是"把不确定的东西硬门化 = 假硬化"。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      三组现算读数（本次在 origin/main 的新 worktree 上重算，不引用他人数字）：
+      ①夹具 26 条，期望命名空间分布 19 inference/vllm-ascend/interrupt、3 inference/vllm-ascend/precision、
+      2 inference/vllm-ascend/performance、1 inference/sglang、1 training/mindspeed-llm；
+      按侧 25 推理 / 1 训练，而那条训练侧的是 `example.fixture.yaml`——它的 `case_id`
+      （MSLLM-EP-HANG-001）**不在 knowledge/ 索引里**，按文件自己的头注"当前不可作为可运行回归"。
+      ②按 case 覆盖：训练侧 0/22、推理侧 22/124（`knowledge/inference/` 下共 125 条，其中
+      `inference/sglang/SGL-PD-HEAP-001.yaml` 路径没有性质段、现有判据不判它，故分母 124）。
+      ③全库 26 条夹具的 `input.framework` 逐条看过：只有构造示例是 mindspeed-llm，
+      其余全是 vllm-ascend / sglang——**没有任何一条夹具的输入是训练侧材料**。
+      另：`python3 scripts/holdout.py --list` 早已报出"有 case 但没有夹具的格子"六个，
+      其中四个属训练侧——但它报的是 (namespace × 性质) 格子（结果），读不出"训练侧 0/22"（量尺单位）。
+    trajectory:
+      - "python3 scripts/eval_side_coverage.py（本卡新增；改前基线：training 0/22 = 0%、inference 22/124 = 18%）"
+      - "逐条读 eval/golden/*.fixture.yaml 的 expected.namespace 与 input.framework"
+      - "python3 scripts/holdout.py --list"
+hypothesis: >-
+  分侧之后，"侧"成了量尺单位，因此覆盖报告也要按侧算——否则"训练侧没有量尺"这件事只能靠人肉数，
+  而人肉数出来的东西既不会随 PR 更新、也不会在夹具被删时报警。把这份报告做成一条命令 +
+  两档门（任一含 case 的格子缺夹具 = 报告为缺口；训练侧不许掉回零 = 硬门），
+  再用两条**真实来源**的训练侧夹具把缺口补上：训练侧从"0 条可运行夹具"变成"两个性质面各有 1 条"。
+  **同时如实标注这条判据的强度上界**：夹具钉的是"某一侧的某一条真实输入"，
+  不是那一侧整份词表——别把"补齐了"读成"训练侧词表被改坏会被测出来"。
+predicted_effect:
+  metric: 训练侧真实夹具条数；以及这份覆盖报告是否真在 CI 里拦得住"训练侧掉回零"
+  from: >-
+    训练侧真实夹具 0 条（唯一写着训练侧的 `example.fixture.yaml` 指向从未入库的 case，
+    不可运行）；"训练侧 0/22"这个数只能靠人肉数夹具并逐条看 `case_id` 在不在库里。
+  to: >-
+    训练侧真实夹具 2 条（`training/mindspeed-llm/interrupt` 与 `training/mindspeed-llm/precision`
+    各 1 条，来源为公开 issue 首帖）；新增 `scripts/eval_side_coverage.py` 一条命令现算按侧覆盖，
+    CI 里钉住 `--require-side training`（删掉训练侧夹具即红）；
+    并新增 `--nature-evidence` 一栏读出「哪几条夹具真钉着词表」（实测 26 条里 10 条词法锚定，
+    两条训练侧夹具都在其中）。
+  measure:
+    command: |
+      python3 - <<'PY'
+      import pathlib, subprocess, sys
+      wf = pathlib.Path('.github/workflows/kb-checks.yml').read_text(encoding='utf-8')
+      gate = 'eval_side_coverage.py --check --require-side training' in wf
+      r = subprocess.run([sys.executable, 'scripts/eval_side_coverage.py',
+                          '--check', '--require-side', 'training'],
+                         capture_output=True, text=True)
+      rep = subprocess.run([sys.executable, 'scripts/eval_side_coverage.py'],
+                           capture_output=True, text=True).stdout
+      doc = 'eval_side_coverage.py' in pathlib.Path('docs/guide/eval.md').read_text(encoding='utf-8')
+      # 训练侧两个性质面都该有真实夹具（构造示例不算）
+      t_int = 'training   interrupt' in rep and ' 1  有' in rep
+      t_pre = 'training   precision' in rep and ' 1  有' in rep
+      print('side_gate_in_ci   ', gate)
+      print('gate_exit         ', r.returncode)
+      print('documented        ', doc)
+      print('training_cells    ', t_int, t_pre)
+      ok = gate and r.returncode == 0 and doc and t_int and t_pre
+      print('VERDICT', 'PASS' if ok else 'FAIL')
+      PY
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: golden_replay
+  baseline: >-
+    **改前基线（本次在 `origin/main` = 07c84fc 的新 worktree 上现算，不引用他人数字）**：
+    `python3 scripts/eval_side_coverage.py` → `training 按 case 覆盖 0/22 = 0%`、
+    `inference 按 case 覆盖 22/124 = 18%`；训练侧两个格子（interrupt 17 条 case、
+    precision 5 条 case）都是"缺"。夹具总表 26 条，其中真实投影 24 条、
+    构造示例或指向未入库 case 的 2 条。
+    与用户给的口径一致（19/3/2/1/1 的命名空间分布、22 条训练侧 case、0 条训练侧夹具）；
+    唯一差异是推理侧分母：用户记的是 124（= 146 可判 case 里除训练侧 22 条），
+    本次现算是 `knowledge/inference/` 共 125 条、其中 `inference/sglang/SGL-PD-HEAP-001.yaml`
+    路径没有性质段（现有判据不判它），故可判分母是 124——两个数都站得住，差的 1 条是它。
+  success_criteria: >-
+    ①`python3 scripts/eval_side_coverage.py --require-side training` 退出 0，报告里训练侧
+    interrupt / precision 两格都是"有"；②把两条新夹具任一删掉，同一条命令退出 1（门有牙齿）；
+    ③`python3 scripts/eval_scorecard.py --check` 绿（账本随夹具重建：26 → 28 条，
+    命中第一 16 → 18、前三 19 → 21）；④`.github/workflows/kb-checks.yml` 逐条本机复跑全绿
+    （含 `--check-sources` / `--check-coverage` / `verify_case_draft --all` / `holdout --check` /
+    `-m unittest discover tests`）；⑤`python3 scripts/rehearse_evolve_loop.py` 绿。
+    **`eval/holdout.yaml` 一字未改**（新夹具默认不进封存集，`holdout --check` 11 条全绿）。
+    **这条判据的适用范围（本次实测出的上界，写窄比写宽诚实）**：
+    它判的是"**覆盖**"——某个 (侧 × 性质) 格子有没有真实夹具钉住它。它**不判保护强度**：
+    夹具钉的是一条真实输入，不是整份词表。实测把训练侧的性质词从一处挪到另一处
+    （`build_train_valid_test_data`、`recv_forward`、`重复注册` 等训练专属 token），
+    语料级判据与夹具级判据**都可能零检出**——因为这些词都不是任何一条 case 的"唯一证据"，
+    别的正则仍先接住它。所以"训练侧有夹具了"只证明该侧链路接得通、且那一条 case 的性质判对了。
+    **独立预核把这一段的强度测得更准（修正本卡原先偏保守的说法）**：`--nature-evidence` 实测
+    26 条夹具里只有 10 条的输入**词法上**命中期望性质（两条训练侧夹具都在其中），另外 16 条
+    输入对三个性质零命中、靠流程写明的语义兜底——**改坏词表那 16 条也照样通过**。
+    反过来，两条训练侧夹具**确实**钉着词表：把 `RuntimeError` 从 interrupt 挪到别的性质，
+    `MSLLM-1655` 当场报（全库新增 2 条、训练侧 1 条）；而挪一条与它们无关的正则
+    （`日志.*异常`、`重复注册`、`recv_forward` 等 8 个变体）全部零检出。
+    所以准确的说法是"**钉住了它输入里那几个正则**"，不是"守住了这一侧的词表"。
+  rollback: 分支丢弃或 git revert；两条夹具与账本条目、新脚本与 CI 那一行同一次提交内整体可退（无数据迁移）。
+gate: >-
+  若将来训练侧 case 增长而夹具补不上（例如真实训练侧输入只有这 4 条 session、再无可脱敏的材料），
+  说明训练侧的量尺确实到顶了——那时把 `--require-side training` 保留为"不许掉回零"，
+  而**不要**把它扩成"每个含 case 的格子都要有夹具"：后者凭空造不出来，做成硬门就是假硬化。
+  **另一件不要做的事**：别把 `--nature-evidence` 直接做成门。它现在是读数不是判据——
+  全库 16/26 条夹具靠语义兜底，硬门会要求把那 16 条先改造掉，而它们本来就不靠字面量判别
+  （`docs/guide/eval.md` 已实测过这个天花板：提高行内 token 上限四组变体 recall@5 全不变）。
+risk: low
+principle_refs: [3, 6, 10]
+actual_cost:
+  tokens: 120000
+  source: estimate
+  note: >-
+    口径如实标注：`tokens` 是按本次会话的工具往返规模与产出（2 条夹具 + 1 个脚本 + 12 条单测 +
+    1 段文档 + CI 两处）粗估的量级，不是从 exec-log 记账读出来的真实值（本卡工作没有走 skill 入口）。
+decisions:
+  - who: agent
+    when: 2026-09-23
+    type: proposal
+    conclusion: >-
+      先复核缺口再决定做什么。复核结论：缺的不是"夹具里少一个 side 字段"，而是**训练侧整条链没有量尺**
+      ——25 条真实夹具全在推理侧，唯一写着训练侧的是对着未入库 case 写的构造示例。
+      量尺候选按用户要求给了两条并实测了强度，没有默认选第一条（见下一条 decision）。
+  - who: agent
+    when: 2026-09-23
+    type: eval
+    conclusion: >-
+      **两条候选量尺的取舍（都实测了，证据如下）**。
+      ①**端到端回放（golden 路径）**：夹具里加期望的侧，跑 replay 看侧与性质是否都对。
+      实测可行——训练侧不是没有回放样本，主检出 `traces/*.yaml` 里有 4 条 resolved、
+      且都已沉淀成 case 的训练侧 session（MSLLM-1655 / MSLLM-1780 / MSLLM-1707 / MSLLM-1805）。
+      取其中 2 条造夹具；拿它们的**首帖原文**跑 `rank_candidates.py` 复核检索面：
+      MSLLM-1780 在 `training/mindspeed-llm` precision 面排第 1（token 交集 6），
+      MSLLM-1655 在 interrupt 面排第 1（token 交集 2）；再用 `route_check.effective_branches`
+      逐条算首个命中的性质，两条都是**唯一命中**（`全部命中` 只有一条）、与期望一致。
+      力度上限：回放喂的是固定输入 + 固定 `framework`，侧由"框架名对到库里目录"这一档确定，
+      所以它断言的是"**正确侧的知识被检索到 + 侧内性质判对**"，**不是**"侧是怎么判出来的"。
+      ②**结构级判据（`scripts/route_check.py` 那条路）**：不改夹具，对全库 case 跑检查。
+      实测它的现状读数：147 个文件里 7 个非零退出；按侧算可判 146 条（training 22 / inference 124），
+      其中"明确判错"6 条（inference 5 / **training 1** —— `MSLLM-FA-MASK-GRADNAN`）、
+      "零命中"22 条（inference 21 / training 1 —— `VERL-6756`）。
+      它的**强度上限实测出来了**（构造 12 个变体逐条跑）：把训练侧性质词挪走/删掉，
+      **7 个变体里 6 个零检出**（`build_train_valid_test_data`、`recv_forward`、`重复注册`
+      换性质或删除都不报；`\btimeout\b` 换性质也不报）。原因：这些词都不是任何一条 case 的
+      "唯一证据"，别的正则仍先接住；只有当一个词是某条 case 的唯一命中来源时才报
+      （挪 `日志.*异常` 精确报出 `MSLLM-1780`；挪 `抢占` 报 `VLLM-ASC-8938`）。
+      **它也不适合当 CI 硬门**：现状就有 28 条不符（6 条真判错 + 22 条零命中），
+      而"零命中"按流程设计是走语义兜底的正常路径，不是缺陷——硬门会要求把这 22 条先修掉，
+      那是在给一个从未被消费的判据改知识库。
+      **结论：两条都保留，各测各的层**。端到端回放补"训练侧那条链路接得通、性质判对"；
+      结构级判据留作提交前自查（它对单条 case 的证据面有用，本卡不动它）。
+  - who: agent
+    when: 2026-09-23
+    type: action
+    conclusion: >-
+      实施两件：①新增 `scripts/eval_side_coverage.py`——按侧现算覆盖，`--check` 报任一缺口、
+      `--require-side <侧>` 钉住指定侧不许掉回零；CI 只接 `--require-side training` 这一档，
+      **不接**"每个格子都要有夹具"（那需要真实来源的夹具、凭空造不出来，做成硬门即假硬化；
+      与 `docs/guide/eval.md` 对 holdout 缺口用的"软信号、不红"保持一致）。
+      ②补两条真实来源的训练侧夹具 `eval/golden/MSLLM-1780.fixture.yaml`（precision 面）与
+      `eval/golden/MSLLM-1655.fixture.yaml`（interrupt 面），输入 = 公开 issue 首帖原文。
+      另补 12 条单测、`docs/guide/eval.md` 一节、CI 的 paths 与门各一处。
+      **写脚本时自查抓到一个真缺陷**：早先 `library_cases` 只 glob `knowledge/*/*/*/*.yaml`（四段），
+      而 `common/` 的 case 在 `knowledge/common/<性质>/`（三段）——于是共享池被印成"0 条"，
+      读起来像事实、实际是 glob 够不着。已改成按 `knowledge/**` 递归取、共享池按 `rel[0]=="common"` 收集，
+      并补了 `test_common_pool_is_not_a_side` 钉住它（改前该测试红）。
+  - who: agent
+    when: 2026-09-23
+    type: eval
+    conclusion: >-
+      **夹具字段的核对结论（第 4 步要求先确认谁消费）**：**两条新夹具都不加 `side` / `side_source` 期望字段**，
+      理由是机械核对出来的——`scripts/eval_scorecard.py` 只读 `expected` 里的 `namespace` / `case_id` /
+      `assertion`（`load_fixture` 只取这三个），额外字段不报错但**没人读**；而侧已经能从
+      `expected.namespace` 的第一段读出来，单独再写一遍就是两处记同一件事。
+      `side_source` 更是不能在夹具里固定：它的值取决于**输入材料里有没有写**（材料里写着 = `evidence`、
+      问他 = `user`、给框架名对目录 = `framework`），不是由夹具选定的，硬写一个值等于伪造观测。
+      另外核清了 `side` / `side_source` 的**现行消费者**：全仓只有两处——`skills/diagnose/references/
+      diagnosis-procedure.md` 与 `diagnosis-trace.md` 要求"写进 trace"，**没有任何代码读它们**
+      （`scripts/trace_metrics.py` 不消费、面板读 `routed` 不读 `side`）。也就是说 EV-2026-148 的
+      `gate` 里写的那件观测（"'侧要问一句'的真实比例只有上线后的 trace ≈ `side_source` 分布能回答"）
+      **当前没有任何一条命令能算**。这是本次发现的**残余缺口，如实标注、不在本卡范围**：
+      要让它可测，得让 `side_source` 进 `trace_metrics` 的产出，那属观测层的改动（本卡只到"补量尺"）。
+  - who: agent
+    when: 2026-09-23
+    type: action
+    conclusion: >-
+      **采纳独立预核的意见，改了五处（预核由另起上下文的 agent 产出，作者未代填）**。
+      ①**最重要的一处是修正本卡自己的结论**：预核实测出两条训练侧夹具**本来就能报出性质词表被改坏**
+      （把 `RuntimeError` 从 interrupt 挪走 → `MSLLM-1655` 报），而这条能力**此前没有任何命令在跑**——
+      我原先写的"夹具不保护词表"方向对但过于保守，真实缺口是"测得出来但没人跑"。据此新增
+      `--nature-evidence` 一栏并把强度上界重测（10/26 条词法锚定；8 个"挪无关正则"变体全零检出），
+      结论改写成"钉住它输入里那几个正则"。
+      ②`--root` 指错地方时原先静默报绿（两栏 0/0 加一句 ✓），与脚本头注写的"2 = 读取错误"矛盾——
+      已加根存在性检查（退出 2），并补 `test_missing_root_is_read_error_not_green` 钉住。
+      ③构造示例被排除出覆盖后**没在任何明细行里出现**（只印一个数字），已两类都点名列出。
+      ④`docs/guide/git-workflow.md` 那行与 `kb-checks.yml` 的注释自称"只钉训练侧掉回零"，
+      与事实不符（`--check` 同时钉了所有含 case 的格子，本仓现状下两条命令同结果）——已改写成事实，
+      避免"读起来比实际弱"的反向误读。
+      ⑤修 `docs/guide/eval.md` 里"六个格子"这个改动前的旧读数（`holdout --list` 现报 4 个），
+      并改成不写死数字。
+      修 ② 时自己踩到一次真回归：根存在性检查抢在参数校验前面，把"侧名写错"的报错盖成了
+      "读不到 knowledge"——已被既有单测 `test_require_side_rejects_unknown_side` 当场抓住，
+      已把参数校验提到读取检查之前。
+  - who: agent
+    when: 2026-09-23
+    type: decision
+    conclusion: >-
+      采纳（validated）。判据是：改前基线 0/22 → 改后训练侧两个性质面各有 1 条真实夹具；
+      门的反向验证通过（删任一夹具即退出 1）；scorecard 记账 26 → 28 条且 `--check` 绿；
+      kb-checks 逐条本机复跑全绿、单测 12 条新增全绿、`holdout --check` 11 条未动。
+      价值层不由此卡证明：这两条夹具只证明训练侧链路接得通、且这两条 case 的性质判对了；
+      "训练侧词表被改坏会被测出来"**本次实测证伪**（7 个变体 6 个零检出），
+      那一层仍靠路由表里 `needs-review` 那条标法 + 人审，不在本卡的可达面内。

@@ -1,6 +1,32 @@
 version: 1
 note: 回放观测账本（生成物，由 scripts/eval_scorecard.py --build 重建）。observed 记的是「上次回放观测到什么」，不是「现在能不能命中」；fixture_sha256 用于判定夹具是否在观测之后被改过，case_sha256 用于标出目标 case 是否已变（待复核，不阻塞）。
 entries:
+- fixture: MSLLM-1655.fixture.yaml
+  case_id: MSLLM-1655
+  covers: training/mindspeed-llm/interrupt
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: primary
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=1 path=primary
+    recorded_before: null
+  fixture_sha256: fc8cb6208bcff87125e8d8426dd11a820377d36d639cd29b538ba0617afefbd1
+  case_sha256: e2f7077d65c2
+- fixture: MSLLM-1780.fixture.yaml
+  case_id: MSLLM-1780
+  covers: training/mindspeed-llm/precision
+  assertion: top-3
+  observed:
+    status: hit
+    rank: 1
+    path: primary
+    candidates: true
+    raw: 本条回放结果：candidates=Y rank=1 path=primary
+    recorded_before: null
+  fixture_sha256: 55323222cc857bbfda1888377ab46dbf7ba7960e384679feb9814aeba8d88c7d
+  case_sha256: 544219f96b15
 - fixture: SGL-PD-HEAP-001.fixture.yaml
   case_id: SGL-PD-HEAP-001
   covers: inference/sglang
