@@ -1,10 +1,12 @@
 ---
 name: preload-panel
 description: >
-  在 DSH 会话中热加载 ascend-sleuth 面板插件：先确保 panel_from_file 工具可用（一次性
-  加载 dsh-plugins/loader/panel-from-file.js，~1.5KB，host-only 免审批），再用它按路径
-  加载 dsh-plugins/<panel>/ 下的 panel-host.js 与 panel-client.js——**只发两个路径，
-  不转写 ~70KB 源码**，最后 cordis_run 激活，对话视图出现对应 tab。面板选择：
+  在 DSH 会话中热加载 ascend-sleuth 面板插件：先查 panel_from_file 工具在不在（它按进程
+  全局注册，通常已在；DSH 重启后第一次才需装 dsh-plugins/loader/panel-from-file.js——
+  host-only 免审批的小加载器），再用它按路径加载
+  dsh-plugins/<panel>/ 下的 panel-host.js 与
+  panel-client.js——**只发两个路径，不转写 ~70KB 源码**，最后 cordis_run 激活，
+  对话视图出现对应 tab。面板选择：
   - ascend-panel →「诊断」「指标」两个 tab（诊断会话/轨迹/证据 + **指标闭环判决**：首屏列要处理的判据、容量逐格、不可解读标记）
   - ev-panel →「自演进」tab（演进体检判决 / 触及面 / 执行现场 / EV 卡决策链）
   仅 DSH 可用——依赖 DSH 的 cordis_define / cordis_run 工具
@@ -50,17 +52,26 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 
 ## 流程
 
+0. **先查有没有**：跑一次 `cordis_inspect_self`（不带参数）——它一次给出两件事：
+   本会话已加载的插件清单，以及（对照工具目录）`panel_from_file` 在不在。该工具是
+   **进程全局**的（一次注册后同一 DSH 进程的所有会话都能直接调），所以"工具不在"只在
+   DSH 重启后的第一个会话出现；本会话已有面板插件时也可顺手确认 tab id 没撞。
+
 1. **确定要加载的面板**：用户要诊断可视化 → ascend-panel；要自演进状态（EV 卡/
    容量/归因）→ ev-panel；两者可同时加载（不同 tab id，互不冲突）。
 
-2. **确保 `panel_from_file` 工具可用**（一个会话一次）：
-   - 已有（工具目录里能查到 `panel_from_file`，本会话之前加载过）→ 跳到第 3 步。
-   - 没有 → 加载 loader：读 `dsh-plugins/loader/panel-from-file.js`（~1.5KB），
-     `cordis_define`（kind: new，idPrefix `ldr`，`code.host` ← 该文件全文）→
-     `cordis_run`（mode: run）。**host-only 包，免审批**，几秒完成。
-     该 loader 只用 `harness.registerTool` + `ctx.get('dynamicCordisRunner')` 两个
-     公开机制，不依赖任何 DSH 补丁；若 DSH 支持 `cordis_define` 的 `codeFile`，
-     也可以用 `codeFile.host` 指路径来加载 loader（更省 token）。
+2. **确保 `panel_from_file` 工具可用**：
+   - 已有（第 0 步查到 `panel_from_file`）→ 跳到第 3 步。
+   - 没有（DSH 刚重启、本进程还没注册过）→ 装 loader：
+     1. `read dsh-plugins/loader/panel-from-file.js`（全文）
+     2. `cordis_define`：kind: new，idPrefix `ldr`，`code.host` ← 刚读到的全文
+     3. `cordis_run`（mode: run）——**host-only 包，免审批**
+
+     loader 只用 `harness.registerTool` + `ctx.get('dynamicCordisRunner')` 两个公开机制，
+     不依赖任何 DSH 补丁，所以在带 Cordis 工具的 DSH 版本上都能装。
+     **若本机 `cordis_define` 的参数表里有 `codeFile`**，可以省掉第 1 步、直接
+     `codeFile.host` 指该文件路径（本机检出有这个参数，官方发布版没有——
+     所以默认走 `read` + `code.host`，两条路装出来的 loader 完全相同）。
 
 3. **加载面板**：调 `panel_from_file`（不要用 `cordis_define` 转写源码）：
 
@@ -75,8 +86,11 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
    它读盘 → `dynamicCordisRunner.define()` → `run()`，源码**原样进不可变 Package**
    （可被 `cordis_inspect_self` 审计），审批流与 `cordis_run` 一致。返回
    awaiting-approval 时告知用户在 UI 允许（Client 半需授权）；授权后 tab 出现。
-   面板两个文件合计 ~70KB——**别把全文重新输出一遍**（几千 token、几分钟），
-   发路径只要几十 token。
+   面板两个文件合计 ~70KB——**别把全文重新输出一遍**，发路径即可。
+
+   **加载期间不要做的事**：`cordis_inspect_query(Tool.listTools)` 与
+   `Slots.listSubTree` 都不是加载面板的必需品，别顺手自查（前者一次回 53KB 的工具全表，
+   后者只在核 tab 时看一次）。
 
 4. **验证**：确认插件 running 且无 waitingFor（`cordis_inspect_self`）；tab 出现在
    对话视图（conversation.view 插槽，按上表 id 核对）。自演进看板首次打开会调
@@ -86,18 +100,16 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 
 ## 回退（DSH 版本差异）
 
-- **有 `codeFile` 参数**（`cordis_define` 支持）→ 可跳过第 2 步，直接
-  `cordis_define(codeFile.host, codeFile.client)` + `cordis_run`，最少一次调用。
-- **没有 `cordis_define` 的 `codeFile`，且 loader 也注册不了工具**（`harness.registerTool`
-  缺失）→ 退回内联：读两个文件全文 → `code.host` / `code.client` 原样粘贴。
-  文件是函数体形态（`return { apply(ctx) {...} }`），别改形态——动态插件不经过
-  打包器，`export default` / `import` 等 ESM 语法无法加载。
+- **loader 注册不了工具**（`harness.registerTool` 缺失）→ 内联面板本身：读两个文件
+  全文 → `code.host` / `code.client` 原样粘贴。文件是函数体形态
+  （`return { apply(ctx) {...} }`），别改形态——动态插件不经过打包器，
+  `export default` / `import` 等 ESM 语法无法加载。
 - **改完面板代码**：`panel_from_file` 传 `pluginId` + `mode: 'update'` 追加新 Package
   再切换（读入的是定义时快照，改文件不会自动生效）。
 
 ## 交互原则
 
-**跨 session（实测）**：工具 `panel_from_file` 是**进程全局**的——新 session 不必再加载
+**跨 session**：工具 `panel_from_file` 是**进程全局**的——新 session 不必再加载
 loader，直接就有它可用；重复加载 loader 会撞名但不报错（工具仍可用），只有要更新 loader
 自身代码时才需重启 DSH。面板插件则是 **per-session** 的：新 session 认领不了旧 session
 的插件（DSH 的 `define(kind:'existing')` 要求同 session 拥有），所以会新建一个同 tab id 的
