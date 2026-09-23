@@ -22,13 +22,12 @@
 1) 先查工具在不在（跨 session 复用；只有 DSH 重启后的第一个会话会缺）
    cordis_inspect_self()          # 工具目录里有 panel_from_file → 直接跳到第 2 步
 
-2) 没有才加载 loader（host-only，免审批）——按 cordis_define 的能力二选一：
-   有 codeFile：cordis_define(kind: new, idPrefix: 'ldr',
-                              codeFile.host: 'dsh-plugins/loader/panel-from-file.js')
-               —— 不要再 read 这个文件，codeFile 自己读盘
-   只有 code（官方发布版都没有 codeFile）：read 该文件全文 → code.host ← 原样粘贴
-               —— 功能完全相同，只是多一次重复读入
-   然后统一：cordis_run(mode: run)
+2) 没有才加载 loader（host-only，免审批）：
+   read dsh-plugins/loader/panel-from-file.js        # 全文
+   cordis_define(kind: new, idPrefix: 'ldr', code.host ← 刚读到的全文)
+   cordis_run(mode: run)
+   —— cordis_define 的参数表里有 codeFile 时（本机检出有，官方发布版没有）
+      可省掉 read，直接用 codeFile.host 指该路径；装出来的 loader 完全相同
 
 3) 加载面板
    panel_from_file(host:   dsh-plugins/<面板>/panel-host.js,

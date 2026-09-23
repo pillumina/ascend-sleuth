@@ -3,7 +3,7 @@ name: preload-panel
 description: >
   在 DSH 会话中热加载 ascend-sleuth 面板插件：先查 panel_from_file 工具在不在（它按进程
   全局注册，通常已在；DSH 重启后第一次才需装 dsh-plugins/loader/panel-from-file.js——
-  host-only 免审批的小加载器，两种装法见正文），再用它按路径加载
+  host-only 免审批的小加载器），再用它按路径加载
   dsh-plugins/<panel>/ 下的 panel-host.js 与
   panel-client.js——**只发两个路径，不转写 ~70KB 源码**，最后 cordis_run 激活，
   对话视图出现对应 tab。面板选择：
@@ -62,21 +62,16 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 
 2. **确保 `panel_from_file` 工具可用**：
    - 已有（第 0 步查到 `panel_from_file`）→ 跳到第 3 步。
-   - 没有（DSH 刚重启、本进程还没注册过）→ 加载 loader，**按 `cordis_define` 的能力二选一**：
+   - 没有（DSH 刚重启、本进程还没注册过）→ 装 loader：
+     1. `read dsh-plugins/loader/panel-from-file.js`（全文）
+     2. `cordis_define`：kind: new，idPrefix `ldr`，`code.host` ← 刚读到的全文
+     3. `cordis_run`（mode: run）——**host-only 包，免审批**
 
-     | 你的 `cordis_define` | 怎么发 loader 源码 |
-     |---|---|
-     | 有 `codeFile` | `codeFile.host: 'dsh-plugins/loader/panel-from-file.js'`（不要再 `read` 一遍） |
-     | 只有 `code`（官方发布版） | `read` 该文件全文 → `code.host` 原样粘贴 |
-
-     判法：`cordis_define` 的**参数表**里有没有 `codeFile`；不确定就直接按 `codeFile` 发一次，
-     报"参数不认识 / 缺 code"就换 `read` + `code.host`。**别为此重试第三次**。
-
-     两条路都走同一个 loader：`cordis_define`（kind: new，idPrefix `ldr`）→
-     `cordis_run`（mode: run）。**host-only 包，免审批**。
-     该 loader 只用 `harness.registerTool` + `ctx.get('dynamicCordisRunner')` 两个
-     公开机制，不依赖任何 DSH 补丁——所以两条路都能装上；差别只是 `read` 那一步的
-     一次重复读入，跑起来完全一样。
+     loader 只用 `harness.registerTool` + `ctx.get('dynamicCordisRunner')` 两个公开机制，
+     不依赖任何 DSH 补丁，所以在带 Cordis 工具的 DSH 版本上都能装。
+     **若本机 `cordis_define` 的参数表里有 `codeFile`**，可以省掉第 1 步、直接
+     `codeFile.host` 指该文件路径（本机检出有这个参数，官方发布版没有——
+     所以默认走 `read` + `code.host`，两条路装出来的 loader 完全相同）。
 
 3. **加载面板**：调 `panel_from_file`（不要用 `cordis_define` 转写源码）：
 
@@ -105,10 +100,7 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
 
 ## 回退（DSH 版本差异）
 
-- **`cordis_define` 不带 `codeFile`**（官方发布版都没有它；带它的是本机检出）→ 见第 2 步
-  的两行表：`read` loader 全文 → `code.host` 原样粘贴即可，功能完全相同。
-  **先试 `codeFile`，报参数错再退回内联。**
-- **loader 也注册不了工具**（`harness.registerTool` 缺失）→ 内联面板本身：读两个文件
+- **loader 注册不了工具**（`harness.registerTool` 缺失）→ 内联面板本身：读两个文件
   全文 → `code.host` / `code.client` 原样粘贴。文件是函数体形态
   （`return { apply(ctx) {...} }`），别改形态——动态插件不经过打包器，
   `export default` / `import` 等 ESM 语法无法加载。
