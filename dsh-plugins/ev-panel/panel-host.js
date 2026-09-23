@@ -27,12 +27,22 @@ return {
     // 而是弹 Microsoft Store。因此按候选逐个探测，取第一个能打印 Python 3.x 的
     // （退出码 0 + 版本号双重判据，占位程序两者都过不了）；结果缓存，一次加载只探一轮。
     // 注意：dynamic Cordis 插件不能 import，此函数与 ascend-panel 的同名函数是刻意重复的副本。
+    // 探活**也要带沙箱策略**（2026-09-22 实测）：不带策略时 DSH 回落到 harness 进程自身的
+    // cwd 当写权限根；服务器从 `C:\Program Files (x86)\Cntlm` 这类调用者改不动 DACL 的目录
+    // 启动时，Windows 的 ACL 受限令牌 runner 会 `SetNamedSecurityInfoW failed (Win32 5)` →
+    // 三条探活全挂。而探活把每次异常都 catch 掉换下一个候选，用户看到的是
+    // 「未找到可用的 Python 3 解释器」——真因被吞成误导信息。
     let pythonCmd
-    async function resolvePython() {
+    async function resolvePython(cwd) {
       if (pythonCmd !== undefined) return pythonCmd
       for (const candidate of ['python3', 'python', 'py -3']) {
         try {
-          const spec = shell.resolve({ command: candidate + ' --version', stdoutMaxBytes: 4096 })
+          const spec = shell.resolve({
+            command: candidate + ' --version',
+            workdir: cwd,
+            stdoutMaxBytes: 4096,
+            sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },
+          })
           const r = await shell.run(spec)
           const out = [r && r.stdout && r.stdout.text, r && r.stderr && r.stderr.text]
             .filter(t => typeof t === 'string').join('\n')
@@ -49,7 +59,7 @@ return {
       const cwd = resolveCwd(sessionId)
       if (!cwd) return { ok: false, error: '无法解析工作区' }
       if (!shell) return { ok: false, error: 'shell 不可用' }
-      const py = await resolvePython()
+      const py = await resolvePython(cwd)
       if (!py) {
         return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）——'
           + '自演进看板的数据脚本 ' + scriptName + ' 需要它，装好 Python 3 并确保在 PATH 里' }
