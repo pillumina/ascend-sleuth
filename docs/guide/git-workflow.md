@@ -37,7 +37,7 @@ git worktree remove ../ascend-sleuth-s<session>
 
 - 有数字（条数 / 容量 / 日期）→ 数字一进 git，两人并发合并时要么撞同一行、要么漂移成错的数。
   **所以生成物里不写数字**：要数字就现算（`python3 scripts/index_counts.py`）。
-- 一层平铺的追加型结构（每条 case 一段、每个分支一段）→ 可以配 `merge=union`：两边新增的都留住。
+- 一层平铺的追加型结构（每条 case 一段、每个性质一段）→ 可以配 `merge=union`：两边新增的都留住。
 - 嵌套结构（索引就是：namespaces → ns → category → 条目）→ **不能** union（实测会把 YAML 拼坏），
   同一个格子的两人并发仍会撞一次，解决动作是重跑生成器。
 
@@ -45,8 +45,9 @@ git worktree remove ../ascend-sleuth-s<session>
 |---|---|---|---|
 | case 本体 `knowledge/<ns>/<cat>/*.yaml` | 人（PR） | — | `verify_case_draft.py --all` |
 | 索引分片 + 总表 `knowledge/_index/…` | 人（PR） | `python3 scripts/build_index.py` | `build_index.py --check`（覆盖检查：每条 case 的行都在、与内容对得上） |
-| 路由族文件 `triage-tree.d/<族>.yaml` | 人（PR） | — | `build_triage_tree.py --check-sources`（id 唯一 / category 合法 / ≤30 分支 / 一族一文件） |
-| 路由聚合 `triage-tree.yaml` | 人（PR） | `python3 scripts/build_triage_tree.py` | `build_triage_tree.py --check-coverage`（源里每条症状组都在聚合里） |
+| 路由性质文件 `triage-tree.d/<性质>.yaml` | 人（PR） | — | `build_triage_tree.py --check-sources`（性质 id 唯一 / category 合法 / ≤30 性质 / 一性质一文件 / `<side>` 占位在 / 源清单无遗漏） |
+| 路由协议与清单 `triage-tree.d/00-protocol.md` | 人（PR） | — | 同上（`sources:` 决定拼接顺序与归属，`sides:` 是侧层的唯一写点） |
+| 路由聚合 `triage-tree.yaml` | 人（PR） | `python3 scripts/build_triage_tree.py` | `build_triage_tree.py --check-coverage`（源里每条症状组、侧层每个字段都在聚合里） |
 
 **合并完没有任何收尾动作**——不需要谁再跑一次命令。这是"生成物里不写数字 + 路由层可 union +
 门改成覆盖检查"三件事一起买来的：
@@ -60,7 +61,7 @@ git worktree remove ../ascend-sleuth-s<session>
 
 | 冲突文件 | 动作 |
 |---|---|
-| `triage-tree.d/<族>.yaml`、`triage-tree.yaml` | 通常不会冲突（配了 `merge=union`）。若真出现冲突标记：把两份都留下、删掉三行标记，再跑一次聚合。 |
+| `triage-tree.d/<性质>.yaml`、`triage-tree.d/00-protocol.md`、`triage-tree.yaml` | 通常不会冲突（配了 `merge=union`）。若真出现冲突标记：把两份都留下、删掉三行标记，再跑一次聚合。 |
 | 索引分片 / 总表（嵌套结构，故意没配 union） | **不要逐行解**（实测：那些冲突段是交错在条目块内部的，删标记会拼出非法 YAML）。正确动作是三行：`git checkout --theirs -- knowledge/_index.yaml knowledge/_index` → `python3 scripts/build_index.py` → `git add` 后提交。约 5 秒、无判断——两边都不接受，重生成一份对的。 |
 | case 本体 | 真正需要人判断的只剩这里（同一 case 两人改）——按内容合。 |
 
@@ -92,7 +93,7 @@ git worktree remove ../ascend-sleuth-s<session>
 **只在本仓**（上游不合并）：`knowledge/ postmortems/`（含 `inbox/` 草稿）、`eval/golden/` 里的真实夹具、`traces/`。
 
 **两边都写**（正常合并）：`triage-tree.d/`、`references/`、`metrics/gates.yaml`、`trace-status.yaml`。
-这四个路径 fork 会因为自己的知识面、阈值与词表去改，上游也在改。冲突按文件类型处理：追加型（`references/` 下的家族表、`trace-status.yaml` 的词表、`triage-tree.d/` 的族文件——后者还配了 `merge=union`，两边新增的词自动都留住）两边都保留；键控结构（族文件里 `category` / `id` 这类字段）按语义合，不机械取一边。
+这四个路径 fork 会因为自己的知识面、阈值与词表去改，上游也在改。冲突按文件类型处理：追加型（`references/` 下的家族表、`trace-status.yaml` 的词表、`triage-tree.d/` 的性质文件——后者还配了 `merge=union`，两边新增的词自动都留住）两边都保留；键控结构（性质文件与 `00-protocol.md` 里 `id` / `category` / `sources:` 这类字段）按语义合，不机械取一边。
 
 **每部署一份**（不参与合并）：`metrics/timeline.d/`、`metrics/timeline.yaml`、`ingest-state.json`、`reference-ingest-state.json`、`eval/scorecard.yaml`、`.github/CODEOWNERS`（owner 名单各仓不同）。
 冲突时保留本仓那份。同期名的指标文件也按本仓处理——两份部署的读数混进一条趋势线本身不成立。

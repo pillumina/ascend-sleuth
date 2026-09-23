@@ -61,8 +61,8 @@ class GeneratedPlaneTest(unittest.TestCase):
         p = self.repo / "knowledge" / "inference" / "vllm-ascend" / "interrupt" / f"{cid}.yaml"
         p.write_text(CASE.format(cid=cid), encoding="utf-8")
 
-    def add_route_word(self, word="gpWordE2E", family="40-inference-interrupt.yaml",
-                       branch="inference_interrupt"):
+    def add_route_word(self, word="gpWordE2E", family="10-interrupt.yaml",
+                       branch="interrupt"):
         p = self.repo / "triage-tree.d" / family
         lines = p.read_text(encoding="utf-8").split("\n")
         start = next(i for i, l in enumerate(lines) if l.strip() == f"- id: {branch}")
@@ -112,8 +112,8 @@ class GeneratedPlaneTest(unittest.TestCase):
         内容齐全 → 门绿；逐字节自检红（可选归一化），**不许**因此逼人再跑一遍。"""
         self.add_case("TEST-GP-A")
         self.add_case("TEST-GP-B")
-        self.add_route_word("gpWordMine", branch="inference_interrupt")
-        self.add_route_word("gpWordTheirs", branch="inference_interrupt")
+        self.add_route_word("gpWordMine", branch="interrupt")
+        self.add_route_word("gpWordTheirs", branch="interrupt")
         self.regenerate()
 
         cell = self.repo / "knowledge" / "_index" / "inference__vllm-ascend__interrupt.yaml"
@@ -136,10 +136,10 @@ class GeneratedPlaneTest(unittest.TestCase):
     def test_regenerate_normalizes_after_union(self):
         """归一化是可选动作：跑一次生成器，逐字节自检就绿了。"""
         self.add_case("TEST-GP-A")
-        self.add_route_word("gpWordMine", branch="inference_interrupt")
+        self.add_route_word("gpWordMine", branch="interrupt")
         self.regenerate()
         agg = self.repo / "triage-tree.yaml"
-        agg.write_text(agg.read_text(encoding="utf-8").replace("#\nbranches:", "#\n\nbranches:", 1),
+        agg.write_text(agg.read_text(encoding="utf-8") + "# 手工加的一行（非规范形态）\n",
                        encoding="utf-8")
         self.assertNotEqual(self.gate("scripts/build_triage_tree.py", "--check").returncode, 0)
         self.gate("scripts/build_triage_tree.py")
@@ -150,7 +150,7 @@ class GeneratedPlaneTest(unittest.TestCase):
         self.add_route_word("gpWordE2E")
         self.regenerate()
         doc = yaml.safe_load((self.repo / "triage-tree.yaml").read_text(encoding="utf-8"))
-        self.assertEqual([b["id"] for b in doc["branches"]][0], "training_interrupt")
+        self.assertEqual([b["id"] for b in doc["natures"]][0], "interrupt")
         self.assertIn("gpWordE2E", (self.repo / "triage-tree.yaml").read_text(encoding="utf-8"))
 
     def test_counts_are_computed_not_stored(self):

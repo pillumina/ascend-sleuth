@@ -197,7 +197,7 @@
 由首次真实数据评估（eval-reports/0001，git 历史可查）产出的工程项（按收益排序）：
 
 - **triage 词边界匹配**：`hang`⊂`changed`、`inf`⊂`INFO` 等子串误配浪费候选预算，修复为 `\b` 词边界，低成本高收益
-- **inference_interrupt 补错误码型症状**：107030 等 error-code 型无分支命中，靠优雅退化兜底
+- **错误码型症状入库**：107030 等错误码型无分支命中，靠优雅退化兜底（**机制那一半已随"路由先分侧再分性质"就位**：性质词表训推共用，错误码型词写进对应性质一次即两侧同时生效；**这几个码本身仍未被任何分支接住**——词的缺口照旧要按证据补）
 - **fallback regex 收紧**：related-issue 提及、启动命令词、通用 token 三类候选污染源
 - **回放 harness 的 metric-form 分支**：performance 类 metric 断言需数值提取比对，regex 回放测不了
 - **variant 签名追加进主 case fallback**：防签名微变（交叉回放改进项）

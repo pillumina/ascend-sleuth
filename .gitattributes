@@ -17,13 +17,16 @@
 *.mp4 binary
 *.webm binary
 
-# Tier 1 路由：一个分支族一个文件、聚合是一层平铺列表——**追加型**结构。
-# merge=union（git 内建驱动，不需要任何本地配置）= 两边新增的行都留住：两人同一天给同一族加词，
+# Tier 1 路由：一个性质一个文件、聚合是一层平铺列表——**追加型**结构。
+# merge=union（git 内建驱动，不需要任何本地配置）= 两边新增的行都留住：两人同一天给同一性质加词，
 # 合流不产生冲突标记，也不需要判断"留哪一份"（判断错就是静默丢一条路由词，而丢词没有报错）。
 # 这个目录里也没有数字（条数/日期已从生成物拿掉，改成现算 scripts/index_counts.py），
 # 所以 union 之后不会出现"漂移的错数"。
 triage-tree.yaml merge=union
 triage-tree.d/*.yaml merge=union
+# 协议文件也配 union：它的 `sources:`（源清单）与 `sides:`（合法侧）是追加型的短列表，两人各加
+# 一项时两边都留住；只有散文段落被两边同时改才真冲突，那时按语义合。
+triage-tree.d/00-protocol.md merge=union
 
 # 索引（knowledge/_index.yaml 与 knowledge/_index/*.yaml）**故意不给 union**：它是**嵌套**结构
 # （namespaces → ns → category → 条目列表），union 是行级文本合并——两人在同一格各加一条时，

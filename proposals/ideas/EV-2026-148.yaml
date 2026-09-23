@@ -14,7 +14,7 @@ id: EV-2026-148
 layer: L2
 target_component: triage-tree.yaml
 title: "路由先分侧再分性质：训练/推理由工程师的事实确定（材料里读得到就用，读不到问一句），宽词归性质层"
-status: in_experiment
+status: validated
 authorization: review
 dimension: architecture
 supersedes: []
@@ -61,29 +61,60 @@ predicted_effect:
   measure:
     command: |
       python3 - <<'PY'
-      import glob, pathlib, subprocess, sys, yaml
+      import glob, pathlib, sys, yaml
       sys.path.insert(0, 'scripts')
       import route_check as RC
+      SIDES = ('training', 'inference')
       root = pathlib.Path('.')
       branches = RC.load_branches(root)
-      # ① 改后：每条 case 只与它所在侧的三个分支比较；跨侧碰撞应归零
-      cross = []
+
+      # ① 结构：侧不在症状层。"侧被写进词表"的表现是分支名带侧前缀，或性质分支的检索面写死某一侧
+      #    （写死了就不会带 <side> 那个替身记号）。
+      side_in_ids = [b.get('id') for b in branches
+                     if str(b.get('id', '')).split('_')[0] in SIDES]
+      pinned = [b.get('id') for b in branches
+                if not any('<side>' in str(n) for n in (b.get('search_namespaces') or []))]
+      try:
+          sides = yaml.safe_load(open('triage-tree.yaml', encoding='utf-8')).get('sides') or []
+      except Exception:
+          sides = []
+
+      # ② 词的重复：性质词表训推共用一份，同一正则不该再出现在两个性质里。
+      ww = RC.wide_words(branches)
+
+      # ③ 跨侧碰撞（与基线同口径：拿 case 自己的症状当代理输入、按首个命中算）：
+      #    算首个命中，再按"赢的那个分支的检索面落在哪些侧"判它是不是抢了另一侧的 case。
+      #    与侧无关的性质分支（检索面里带 <side> 那个替身记号）两侧共用一份词表，
+      #    结构上不可能跨侧抢——这正是本次改动要买的东西。
+      def branch_sides(b):
+          ns = [str(x) for x in (b.get('search_namespaces') or [])]
+          if any('<side>/' in x for x in ns):      # 带 <side>/ 的检索面由侧展开
+              return set()
+          return {x.split('/', 1)[0] for x in ns if x.split('/', 1)[0] in SIDES}
+
+      by_id = {str(b.get('id')): b for b in branches}
+      cross, same = [], []
       for p in sorted(glob.glob('knowledge/*/*/*/*.yaml')):
           doc = yaml.safe_load(open(p, encoding='utf-8')) or {}
           for case in (doc.get('cases') or []):
-              exp = RC.expected_branch(pathlib.Path(p), root)
+              side, exp = RC.case_side_and_nature(pathlib.Path(p), root)
               if not exp:
                   continue
-              side = exp.split('_')[0]
-              side_branches = [b for b in branches if str(b.get('id', '')).startswith(side + '_')]
-              hits, _broken = RC.hits_for(RC.case_text(case), side_branches)
-              if hits and hits[0][0] != exp:
-                  cross.append((case.get('id'), exp, hits[0][0]))
-      # ② 宽词：只应剩"同性质内共享"（两侧同名性质共用一份词表即不算跨分支重复）
-      ww = RC.wide_words(branches)
-      print('cross_side_captures', len(cross), cross[:3])
-      print('wildcard_duplicates', len(ww), [w for w, _ in ww[:3]])
-      print('VERDICT', 'PASS' if not cross else 'FAIL')
+              hits, _broken = RC.hits_for(RC.case_text(case), branches)
+              if not hits or hits[0][0] == exp:
+                  continue
+              bs = branch_sides(by_id.get(hits[0][0]) or {})
+              (cross if bs and side not in bs else same).append(
+                  (case.get('id'), side, exp, hits[0][0]))
+
+      print('sides_declared         ', [s.get('id') for s in sides])
+      print('side_in_branch_ids     ', len(side_in_ids), side_in_ids)
+      print('natures_pinning_a_side ', len(pinned), pinned)
+      print('wildcard_duplicates    ', len(ww), [w for w, _ in ww[:3]])
+      print('cross_side_captures    ', len(cross), cross[:3])
+      print('same_side_other_nature ', len(same), same[:3])
+      ok = (len(sides) >= 2 and not side_in_ids and not pinned and not ww and not cross)
+      print('VERDICT', 'PASS' if ok else 'FAIL')
       PY
     expect_exit: 0
     expect_stdout: "VERDICT PASS"
@@ -91,15 +122,43 @@ validation:
   method: golden_replay
   baseline: >-
     改动前：`triage-tree.yaml` 六个分支各含"侧 + 性质"（加兜底共七支）；侧只体现在分支 id 与
-    `search_namespaces` 的前缀里，由症状词匹配结果间接决定；全库 76 条 cross 命中（72 跨侧）。
+    `search_namespaces` 的前缀里，由症状词匹配结果间接决定；全库 76 条 case 被别的分支先接住，
+    其中 **72 条跨侧**（同一个 case 症状，被检索面写死另一侧的分支抢走）；**57 条正则跨分支重复**
+    （同一个宽词在训推两侧各写一遍，靠分支顺序决定谁先接住）。
+    **改前那几个数怎么复现**（独立预核提了这条：说清路径，否则 reviewer 拿着命令跑不出原数）。
+    要点有二：**改前的聚合要配改前的 `route_check.py`**，以及**改前的 `expected_branch` 返回
+    `<侧>_<性质>`**（`case_side_and_nature` 是分层时才加的，用现在的脚本读旧表会 `AttributeError`，
+    而现在的 `load_tree` 不回退退休的 `branches:` 桶，读旧表只会得到一排 0——那不是"基线是 0"，
+    是读错了表）。照下面这段跑：
+
+      git archive <本次改动之前的那次提交> | tar -x -C /tmp/pre      # 写 revision 不写哈希：哈希随 amend 失效
+      cd /tmp/pre && python3 scripts/build_triage_tree.py --check       # 确认拿到的是旧表（7 个分支）
+      # 再把卡片这条 measure 粘出来跑，但把
+      #     RC.case_side_and_nature(path, root)   →   RC.expected_branch(path, root)
+      # 并把 `side/exp` 那一行换成 exp.split('_')[0] / exp.split('_')[-1]
+
+    实测读数：`side_in_branch_ids 6`、`natures_pinning_a_side 7`（旧表 7 个分支的检索面都没带
+    `<side>` 占位——6 个性质分支 + 兜底的 `uncategorized`，它的检索面是 `common/`）、
+    `wildcard_duplicates 57`、`cross_side_captures 72`、`same_side_other_nature 4` → VERDICT FAIL。
+    （改前的候选共 7 个分支，可判 case 123 条里没有一条"首个命中就是它的性质段"。）
   success_criteria: >-
-    ①上述 measure 打 VERDICT PASS（改后跨侧碰撞 0）；
-    ②历史回放对照：同一批 trace 上改前/改后的 `routed` 与最终 `active_case` 一致性不下降
-    （仓里检索层改动的门，见 docs/guide/eval.md）；
+    ①上述 measure 打 VERDICT PASS：`sides` 两个侧、分支名不带侧、性质分支都带 `<side>` 占位、
+    跨性质重复正则 0、**跨侧碰撞 0**（改前 72）；
+    ②历史回放对照：同一批 trace 上 `routed` 与最终命中 case 的 namespace 一致性不下降——
+    实测 `python3 scripts/replay_trace.py` 改前改后都是"16 个 session、可校验 4 个、路由漂移 1 处
+    （`2026-09-16-12430-dsv4pro-mc2`）"，即检索层改动没有让历史一致性变差（那 1 处是当时 session
+    自己没记 `routed`，不是本次改动引入的）；
     ③诊断正文改了侧的处理：第 1 步覆盖表加一行 `负载类型（训练 / 推理）`（来源标注：材料 / 框架 / 问他），
     第 2 步在侧内选性质；侧未知时两侧都查并在 trace 标 `side: unknown`；
-    ④`tests/` 全绿，`build_triage_tree.py --check-coverage` 与 `route_check.py` 两条自查在改后的表上跑通；
+    ④`tests/` 全绿（236 条；`python3 -m unittest discover tests` 实跑读数），`build_triage_tree.py --check-coverage` 与 `route_check.py`
+    两条自查在改后的表上跑通；
     ⑤kb-checks 逐条本机复跑全绿。
+    **这条 measure 的适用范围（独立预核实测出的盲区，写窄比写宽诚实）**：它查的是**结构**——侧有没有
+    被写进分支名、性质分支的检索面有没有 `<side>` 占位、同一正则有没有被两个性质同时认领、以及
+    "按首个命中算，有没有 case 被检索面写死另一侧的分支抢走"。它**查不出**"某一侧的专属措辞被写进了
+    共用词表"（反例：把 `vllm serve` 加进 interrupt 的 symptoms，占位都在，measure 仍 PASS）——那一类
+    是内容判断，靠 `python3 scripts/route_check.py <case>` 单条看"首个命中是不是它该归的性质"，以及人审；
+    别把这条 measure 的 PASS 读成"词表已经侧中立"。
   rollback: 分支丢弃或 git revert；路由表与其生成物同一次提交内可整体回退（无数据迁移）。
 gate: >-
   若改后回放显示 `routed` 准确率没有改善、且实际诊断里"侧需要问"的比例高于预期（比如多数 session
@@ -108,14 +167,17 @@ gate: >-
 risk: medium
 principle_refs: [2, 6, 9, 10, 11]
 actual_cost:
-  tokens: 0
+  tokens: 250000
   source: estimate
   note: >-
-    产卡即执行。规模预计：`triage-tree.d/` 重构为侧与性质两层（7 个族文件 → 侧文件 + 性质文件）、
-    `scripts/build_triage_tree.py` 校验随之调整、`scripts/route_check.py` 按侧内比较、
-    改 `skills/diagnose/references/diagnosis-procedure.md` 第 1、2 步与 `skills/diagnose/SKILL.md` 的路由段、
-    trace schema 加 `side` / `side_source`、若干文档（CLAUDE.md 的 Tier 1 行、git-workflow 的 union 说明、
-    kb-explorer 与 ev_board_data 若引用分支 id）、测试与历史回放对照。估 2.5 到 3 小时。
+    产卡即执行。规模预计：`triage-tree.d/` 重构为侧与性质两层、`scripts/build_triage_tree.py` 校验随之调整、
+    `scripts/route_check.py` 按侧内比较、改 `skills/diagnose/references/diagnosis-procedure.md` 第 1、2 步
+    与 `skills/diagnose/SKILL.md` 的路由段、trace schema 加 `side` / `side_source`、若干文档
+    （CLAUDE.md 的 Tier 1 行、git-workflow 的 union 说明、roadmap 的一条旧项）、四个测试文件与历史回放对照。
+    估 2.5 到 3 小时。**成本口径如实标注**：`tokens` 是按本会话 40 余次工具往返规模粗估的量级
+    （不是从 exec-log 记账读出来的真实值——本卡的工作没有走 skill 入口，exec-log 里没有对应记录）。
+    实际改动面比预估略大：测试从"改三处断言"变成四个文件的口径重写（约 300 行），
+    因为分层改变了 `expected_branch` / `wide_words` 的含义而不只是常量。
 decisions:
   - who: agent
     when: 2026-09-23
@@ -126,3 +188,54 @@ decisions:
       （为省一句话造两层机制，是把模型当猜谜机）。侧只有单一来源：工程师给的事实；材料里读得到就用，
       读不到就问一句（他一定知道），顺手给了框架名就对到库里目录；判不出来时两侧都查并在 trace 标
       `side: unknown`，不猜、不阻塞。中途证据与他的说法相反时以证据为准并回一句话。
+  - who: agent
+    when: 2026-09-23
+    type: action
+    conclusion: >-
+      实施：`triage-tree.d/` 由"6 个训推分支 + 1 个兜底"改为"一性质一文件"（10-interrupt /
+      20-precision / 30-performance），协议文件 `00-protocol.md` 同时承载 `sources:`（源清单，
+      拼接口径的唯一写点）与 `sides:`（合法侧 + 每侧目录面）；性质分支的检索面改用 `<side>/` 占位，
+      由侧展开——侧因此不在症状层。生成物出 `sides:` + `natures:`，并保留 `branches:` 别名
+      （YAML 锚点，读侧口径不变）。`build_triage_tree.py` 的校验随之加五条：一性质一文件、
+      源清单无遗漏、`<side>` 占位必须在、侧不能少于 2 个、侧的目录面必须落在自己的 `knowledge/<侧>/` 下；
+      `route_check.py` 增加 `effective_branches(side)`（侧内比较的入口）与 `--show-sides`，
+      `--wide-words` 的语义从"跨侧重复"改为"同一形态被两个性质同时认领"。诊断正文：第 1 步覆盖表加
+      `负载类型（训练 / 推理）` 行与四档来源规则，第 2 步改为"先落侧、再在侧内判性质"，trace 的
+      `triage` 事件加 `side` / `side_source`（四档）并写明历史 trace 不改写。删掉 `uncategorized`
+      兜底分支：性质判不了时的动作（该侧三个性质的索引一起加载）本来就写在流程里，作为分支存在
+      反而要求它带一个 `category: null` 的空词表。
+  - who: agent
+    when: 2026-09-23
+    type: eval
+    conclusion: >-
+      measure PASS：`side_in_branch_ids 0`／`natures_pinning_a_side 0`／`wildcard_duplicates 0`
+      （改前 57）／`cross_side_captures 0`（改前 72）。改前四个数的复现路径写在 `validation.baseline`
+      里（要点：改前聚合要配改前的脚本；拿现在的脚本读旧表只会读成 0）。反例覆盖面见
+      `success_criteria` 末尾那段"适用范围"——同一条判据在 8 个故意做坏的变体上 7 个报红、1 个漏过
+      （侧专属措辞进共用词表），所以 PASS 不是脚本自己没牙齿，但也没有宽到能替内容判断。
+      **如实标注残余**：`same_side_other_nature 6`——同侧内部"首个命中落在别的性质"的 case 有 6 条，
+      改前同口径是 4 条。逐条回看改前归属（独立预核实测）：4 条改前也落在同侧别的性质上
+      （`VLLM-ASC-7659` / `VLLM-ASC-12723` / `VLLM-ASC-5725` / `MSLLM-FA-MASK-GRADNAN`，症状歧义是既有的）；
+      另外 2 条（`VLLM-ASC-14306` / `VLLM-ASC-14273`）改前是被**训练侧**的分支抢走的（跨侧），改后落回自己
+      这一侧、只是性质仍判偏——所以这 2 条是**改善**，不是新增问题。修这几条属于改词面（要证据），
+      不在本卡范围内；这类走流程里写明的"多个性质弱匹配 → 该侧索引全加载"退化路径。
+      验收②历史回放：`python3 scripts/replay_trace.py` 改前改后同读数（16 个 session、可校验 4 个、
+      漂移 1 处 `2026-09-16-12430-dsv4pro-mc2`），检索层改动没有让历史一致性变差；那一处是当时
+      session 没记 `routed`（`routed: []`），与本次改动无关，也不在本次改动的可达面内。
+      验收④`tests/` 236 条全绿。**顺带核对了卡里的两处数**：①`source_signals` 说"16 个 trace 里
+      11 个有 triage 记录"——主检出实测是 16 个文件里 15 个含 `triage` 事件，其中 4 个的 `branch` 是
+      `null`（没定出分支），**11 这个数是"定出了分支的 session 数"**，口径本身站得住、只是没写明，
+      这里补上。②**证伪了卡里的一处推断**：卡把 trace 里
+      `2026-09-14-telechat-cq-alloc-dev5` 的 `VLLM-ASC-9596` 记为"真跨侧误吸"的实例，实读那条 trace——
+      工程师说的是 MindSpore 训练（侧路由正确），推理侧 case 是被步骤 4 的"跨库比对"机制捞出来的
+      并当场排除，不是路由表把它抢过去的。所以 trace 侧的真实跨侧误吸样本数应记为 0/11，
+      卡里那个 1/11 是归因错了（`source_signals` 保留原文，此处更正）。
+  - who: agent
+    when: 2026-09-23
+    type: decision
+    conclusion: >-
+      采纳（validated）。判据是 measure 的 FAIL → PASS 对照 + 236 条测试全绿 + 历史回放一致，
+      且残余（6 条同侧跨性质）已如实标注、有流程内既定的退化路径兜住。价值层不由此卡证明：
+      跨侧碰撞归零是结构性的（另一侧的检索面不在候选里），但"侧要问一句"的真实比例只有上线后
+      的 trace（`side_source` 分布）能回答——那是 `gate` 里写的那件事，留作后续观测。如果
+      `side: unknown` 占比持续偏高，修法是把那句问话往前挪，不是把侧塞回症状层。

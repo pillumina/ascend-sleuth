@@ -275,15 +275,26 @@ function viewTriage(){
   var h='<div class="triage container"><div class="triage-head">'
     +'<div class="kicker">triage-tree</div>'
     +'<h1>症状 → 检索路由图</h1>'
-    +'<p>两个正交轴：<b>在哪查</b>＝训推 × 框架（→ knowledge/ 命名空间，本界面不含私有 case）；<b>什么性质</b>＝category 决定诊断路径。'
-    +"把现场报错里的关键词对照下方各分支的症状词，理解「这类问题该往哪个方向查」。</p>";
+    +'<p>路由分两步、互不竞争：<b>先定侧</b>（训练 / 推理——由工程师给的事实确定，不由症状词判，见下表）；'
+    +'<b>再在侧内判性质</b>（中断 / 精度 / 性能——这一层由症状词匹配，词表训推共用一份）。'
+    +'组合出检索面 <code>knowledge/&lt;侧&gt;/&lt;框架&gt;/&lt;性质&gt;/</code>，另加框架无关的 <code>common/</code>（本界面不含私有 case）。'
+    +"把现场报错里的关键词对照下方各性质的症状词，理解「这类问题该往哪个方向查」。</p>";
   h+='<div class="triage-stats">'
     +'<div class="bar-dist" title="按 category 分布">'+Object.keys(cats).map(function(c){
       return '<i style="width:'+(cats[c]/total*100)+'%;background:'+CAT_COLOR[c]+'" data-cat="'+esc(c)+'" title="'+esc(CAT_LABEL[c]||c)+' '+cats[c]+' 条"></i>';}).join("")+"</div>"
     +'<div class="legend">'+Object.keys(cats).map(function(c){
       return '<span><i style="background:'+CAT_COLOR[c]+'"></i>'+esc(CAT_LABEL[c]||c)+" "+cats[c]+"</span>";}).join("")+"</div></div>";
-  h+='<div class="b-filters" style="margin-top:14px"><button class="ftag on" data-cf="all">全部分支 '+total+"</button>"
+  h+='<div class="b-filters" style="margin-top:14px"><button class="ftag on" data-cf="all">全部性质 '+total+"</button>"
     +Object.keys(cats).map(function(c){return '<button class="ftag" data-cf="'+esc(c)+'">'+esc(CAT_LABEL[c]||c)+" "+cats[c]+"</button>";}).join("")+"</div>";
+  if(SIDES.length){
+    h+='<div class="branches" style="margin-top:14px">'+SIDES.map(function(s){
+      return '<div class="branch"><div class="b-head" style="cursor:default">'
+        +'<span class="b-id">'+esc(s.id)+"</span>"
+        +chip(s.label||"","chip-cat")
+        +'<span class="b-ns">'+(s.namespaces||[]).map(function(n){return chip(n,"chip-plat");}).join("")+"</span>"
+        +'</div><div class="b-region"><div class="inner"><div class="lbl" style="font-size:10px;letter-spacing:.14em;color:var(--ink-3);font-weight:700">'
+        +"侧由工程师的事实确定（材料里写着 / 第 1 步问一句 / 框架名对到库里目录）；一时不答则两侧都查并记 side: unknown</div></div></div></div>";}).join("")+"</div>";
+  }
   h+='</div><div class="branches" data-branches></div></div>';
   $view.innerHTML=h;
   document.title="昇腾知识浏览器 · 症状路由图";
@@ -298,6 +309,7 @@ function renderBranches(cf){
   var el=$view.querySelector("[data-branches]");
   el.innerHTML=TRIAGE.filter(function(b){return cf==="all"||b.category===cf;}).map(function(b){
     var syms=b.symptoms||[];
+    // 性质层的检索面带 <side> 记号：侧不在症状层判，由 SIDES 展开成 knowledge/<侧>/<框架>/
     var ns=(b.search_namespaces||[]).map(function(n){return chip(n,"chip-plat");}).join("");
     return '<div class="branch"><div class="b-head" data-branch-head>'
       +'<span class="b-id">'+esc(b.id)+"</span>"

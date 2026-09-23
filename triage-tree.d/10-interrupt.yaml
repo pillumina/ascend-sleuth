@@ -1,0 +1,39 @@
+# 性质：中断（interrupt）——训推共用一份词表，侧由工程师的事实确定，不由症状词判。
+# 合并自 training_interrupt（原 10-training-interrupt.yaml）与 inference_interrupt
+# （原 40-inference-interrupt.yaml）：同一个宽词原先要在两侧各写一遍、靠分支顺序决定谁先接住，
+# 现在只写一次——侧在候选集之外，跨侧碰撞在结构上不可能发生。
+# 加词判据见 00-protocol.md；加词只碰本文件（配了 merge=union，两人同一天加词两边都留住）。
+
+natures:
+  - id: interrupt
+    category: interrupt
+    symptoms:
+      # ---- 自 training_interrupt ----
+      - ['\btimeout\b', '\bhang\b', "stuck at step"]
+      - ["NCCL.*timeout", "HCCL.*timeout", "all_to_all.*timeout"]
+      - ['\bOOM\b', "out of memory", '\bkilled\b']
+      - ["core dumped", "segmentation fault"]
+      - ["HCCL.*(error|fail)", "hcclCommInit"]                      # HCCL 通信初始化错误（VERL-5074 error code 5 / VERL-6608 error code 7）
+      - ["aclnn\\w+"]                                               # aclnn 算子调用错误（VERL-6885 ConvolutionBackward）
+      - ["CPU-only actor", "registered but not available"]          # 设备平台注册失败（VERL-6741 Ray actor CPU-only）
+      - ["RuntimeError", "AssertionError", "patch.*fail"]           # 运行期异常（VERL-6707 npu_patch / VERL-6756 设备检测兜底）
+      - ["ImportError", "ModuleNotFoundError", "FileNotFoundError"]  # 启动期 import/文件错误（MSLLM-1554/1555 features_manager 缺符号 / MSLLM-1465 数据预处理路径）
+      - ["cannot start", "启动失败", "failed to start", "无法启动", "无法拉起", "启动即失败"]   # 启动失败类（MSLLM-1459/1667 等；原为「训练无法启动 / 训练无法拉起」，去侧后作一般写法）
+      - ["重复注册", "register.*multiple times"]                     # 算子重复注册（MSLLM-1550 GMMOpBuilder / MSLLM-1707 npu_moe 算子）
+      - ["build_train_valid_test_data"]                              # 数据集构建阶段（MSLLM-1526 helpers_cpp 缓存）
+      - ["recv_forward", "p2p_communication"]                        # p2p 通信路径（MSLLM-1525 batch_p2p_comm）
+      # ---- 自 inference_interrupt ----
+      - ["\\btimeout\\b", "超时", "synchronize.*timeout", "广播.*超时", "timed out", "TimeoutError"]   # 通信/同步超时（timed out/TimeoutError 补录：2026-W37 #13639 sample_tokens RPC 超时）
+      - ["\\bhang\\b", "\\bstuck\\b", "死锁", "挂起", "deadlock"]   # hang/死锁（2026-W37 #13639 fullgraph deadlock 补录——原只有 timeout 变体，hang 被 training 分支独占）
+      - ["\\bpreempt\\b", "抢占", "无法.*调度", "调度.*(卡|死锁|楔)", "admission.*fail", "排队.*堆积", "waiting.*递增"]   # 调度/接纳层（preemption/admission）——PD 分离静默冻结/调度楔（2026-09-08 ascend_store PD prefill hang；真实支点常是调度/控制循环层而非 load/传输组件）
+      - ["kv.*cache.*full", "out of memory", "\\bOOM\\b", "内存泄漏", "memory leak", "内存.*持续增长"]   # 长跑内存泄漏/OOM（#12345：CANN host buffer 不驱逐，中文/大写 OOM 补录）
+      - ["serving.*crash", "engine.*error"]
+      - ['ErrCode=\d+', 'EE9999', 'rtStream\w*.*fail', 'aclrt\w+.*fail']   # 错误码型签名（评估 0001 §四.2：12983 型靠退化兜底的缺口）
+      - ['internal error', '\babort\b', '\bcrash\b', '\bdied\b']
+      - ["failed to start", "cannot start", "unable to start", "启动失败", "service.*start.*fail"]   # 启动失败类（10610/11208/13508/9167 等）
+      - ["ModuleNotFoundError", "ImportError", "KeyError", "AttributeError", "RuntimeError", "AssertionError", "ValueError", "TypeError"]   # 启动期异常类（ValueError 补录：2026-W36 #7023；TypeError 补录：2026-W37 #13446 Reranker config 类型错配——原缺 TypeError 致被 training 的 failed to start 误吸）
+      - ["are not supported for now", "not supported for now", "Model architectures.*not supported"]   # 架构不支持（#15086：K3 版本错位，OOD 补录）
+    search_namespaces:            # 按顺序搜索，最多加载 3 个；<side> 由工程师的事实定（见 00-protocol.md 的 sides）
+      - <side>/<detected_framework>/
+      - common/
+    fallback: Tier 3

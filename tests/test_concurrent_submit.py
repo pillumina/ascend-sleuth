@@ -10,8 +10,8 @@
 
 两种提交纪律（`POLICIES`）：
   before    「现状」：每个 PR 都提交生成物；总表头注带生成日期（三人跨天各自重建 → 日期行必撞）
-  after     「改后」：PR 提交 case 本体 + 分片 + 路由族文件 + **生成物（总表与聚合）**；
-            三层生成物都配了 merge=union，内容里也不再有数字（条数/容量/日期改成现算），
+  after     「改后」：PR 提交 case 本体 + 分片 + 路由性质文件 + **生成物（总表与聚合）**；
+            生成物与路由源都配了 merge=union，内容里也不再有数字（条数/容量/日期改成现算），
             于是两人并发时两边新增的条目都留住、不产生冲突标记、也不会有漂移的错数；
             门是**覆盖检查**（条目都在、与内容对得上），所以 union 的结果算通过。
             **合并后谁都不需要跑命令**——这是这套改法要买的东西。
@@ -34,14 +34,14 @@ CONTRIB = [
 # 场景 → 每位参与者的 (namespace 目录, 路由分支 id, 改哪个 triage 源文件)
 SCENARIOS = {
     "same-ns": [
-        ("inference/vllm-ascend/interrupt", "inference_interrupt", "40-inference-interrupt.yaml"),
-        ("inference/vllm-ascend/interrupt", "inference_interrupt", "40-inference-interrupt.yaml"),
-        ("inference/vllm-ascend/interrupt", "inference_interrupt", "40-inference-interrupt.yaml"),
+        ("inference/vllm-ascend/interrupt", "interrupt", "10-interrupt.yaml"),
+        ("inference/vllm-ascend/interrupt", "interrupt", "10-interrupt.yaml"),
+        ("inference/vllm-ascend/interrupt", "interrupt", "10-interrupt.yaml"),
     ],
     "diff-ns": [
-        ("inference/vllm-ascend/interrupt", "inference_interrupt", "40-inference-interrupt.yaml"),
-        ("training/verl/interrupt", "training_interrupt", "10-training-interrupt.yaml"),
-        ("training/mindspeed-llm/interrupt", "training_precision", "20-training-precision.yaml"),
+        ("inference/vllm-ascend/interrupt", "interrupt", "10-interrupt.yaml"),
+        ("training/verl/interrupt", "interrupt", "10-interrupt.yaml"),
+        ("training/mindspeed-llm/precision", "precision", "20-precision.yaml"),
     ],
 }
 POLICIES = ("before", "after")

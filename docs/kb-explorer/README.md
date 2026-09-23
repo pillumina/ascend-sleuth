@@ -18,7 +18,7 @@ cd docs/kb-explorer && python3 -m http.server 8080
 
 ## 重新生成
 
-`references/` 或路由变更后（路由改了 `triage-tree.d/` 里的族文件时，先跑 `scripts/build_triage_tree.py` 重建聚合 `triage-tree.yaml`——本脚本读的是聚合）：
+`references/` 或路由变更后（路由改了 `triage-tree.d/` 里的性质文件时，先跑 `scripts/build_triage_tree.py` 重建聚合 `triage-tree.yaml`——本脚本读的是聚合）：
 
 ```
 python3 scripts/build_kb_explorer.py
