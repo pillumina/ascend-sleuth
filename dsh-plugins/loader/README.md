@@ -1,6 +1,6 @@
 # loader —— 一次性加载器（`panel_from_file` 工具）
 
-`panel-from-file.js` 是一个 **host-only 动态插件**（~1.5KB），加载后注册 `panel_from_file`
+`panel-from-file.js` 是一个 **host-only 动态插件**（~12KB / 200 行），加载后注册 `panel_from_file`
 工具：按工作区路径读 Host/Client 两半源码 → `dynamicCordisRunner.define()` → `run()`。
 
 **为什么需要它**：面板两个文件合计 ~70KB。旧流程要求 agent 把全文重新输出进
@@ -16,23 +16,34 @@
 真实面板源码仍进**不可变 Package**（`cordis_inspect_self` 可审计），审批流与
 `cordis_run` 完全一致。
 
-## 用法（每个 DSH 会话一次）
+## 用法（每个 DSH **进程**一次）
 
 ```
-1) 加载 loader（host-only，免审批，几秒）
-   cordis_define(kind: new, idPrefix: 'ldr', code.host ← panel-from-file.js 全文)
-   cordis_run(mode: run)
-   —— DSH 支持 codeFile 时也可 codeFile.host 指本文件路径，更省 token
+1) 先查工具在不在（跨 session 复用；只有 DSH 重启后的第一个会话会缺）
+   cordis_inspect_self()          # 工具目录里有 panel_from_file → 直接跳到第 2 步
 
-2) 加载面板
+2) 没有才加载 loader（host-only，免审批）：
+   read dsh-plugins/loader/panel-from-file.js        # 全文
+   cordis_define(kind: new, idPrefix: 'ldr', code.host ← 刚读到的全文)
+   cordis_run(mode: run)
+   —— cordis_define 的参数表里有 codeFile 时（本机检出有，官方发布版没有）
+      可省掉 read，直接用 codeFile.host 指该路径；装出来的 loader 完全相同
+
+3) 加载面板
    panel_from_file(host:   dsh-plugins/<面板>/panel-host.js,
                    client: dsh-plugins/<面板>/panel-client.js,
                    idPrefix: 'sleu' | 'evbd', name, purpose)
    —— 有 client 半 → 返回 awaiting-approval，需在 UI 允许；授权后 tab 出现
 ```
 
-会话里已有 `panel_from_file`（工具目录能查到）时**不要重复加载 loader**——重复注册同名
-工具会失败。
+会话里已有 `panel_from_file` 时**不要重复加载 loader**——重复注册同名工具会失败（loader
+会拦下来只打提示，但那次调用等于白花两次工具往返）。
+
+## 加载期间别顺手自查
+
+`cordis_inspect_query(Tool.listTools)` 一次回 53KB 的工具全表，`Slots.listSubTree`
+一次 ~10KB——都不是加载面板的必需品，只会把加载拖长。要查会话里的插件用
+`cordis_inspect_self`（不带参数）就够。
 
 ## 参数
 
