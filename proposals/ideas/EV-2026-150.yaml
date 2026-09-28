@@ -1,0 +1,175 @@
+# ============================================================
+# EV-2026-150 —— 生成物不写日期：三个索引从「写日期 + --check 归一化掉再比」改成不写日期 + 整篇比较
+# 来源：用户在一个只改 references/ 的 PR 上看到 diff 里混着两个不相干分片的改动，
+#       问「那个日期的注释是不是可以去掉，不然每次都会变更」。核对后确认：不是那一个文件的问题，
+#       是生成物平面里三个索引都带着一个「每次重建都变」的字段，而知识索引（build_index.py）
+#       早就因为同一个理由去掉了它——这次是把另外三个对齐。
+# 脱敏：只含仓库内路径、命令与聚合数字。
+# ============================================================
+
+id: EV-2026-150
+layer: L2
+target_component: scripts/build_procedure_index.py
+title: "生成物不写日期：三个索引（流程选择器 / 背景类 summary / 错误码缺口）从「写日期 + --check 归一化」改成不写日期 + 整篇比较"
+status: validated
+authorization: review
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: '2026-09-28'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户在一个只新增两条 reference 词条、没有改任何既有内容的 PR 上看到：diff 里除了新词条与
+      有理由重生的分片，还混着 `references/_procedure-index/interrupt.yaml` 与
+      `references/_procedure-index/precision.yaml` 的改动——这两个分片与本次内容毫无关系，
+      它们变的只有头注那行日期。用户的问法直接指向机制而不是那一行：「是不是可以去掉，
+      不然每次都会变更」。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+      - "PR #290 的 diff：references/_procedure-index/{interrupt,precision}.yaml 各 1 行变化，均为头注日期"
+  - signal: observation_window
+    evidence: >-
+      本次在 origin/main（8a54d2b）的 worktree 上现算：带日期的生成物共 6 个文件——
+      `references/_procedure-index.yaml` 与三个分片（`# 生成日期：2026-09-21`）、
+      `references/_summary-index.yaml`（`# 生成日期：2026-09-22`）、
+      `references/errors/_code-gaps.yaml`（`generated_at: 2026-09-21`）。
+      三个生成器里有两个各带一份 `_DATE_RE` + `_normalize_date`，第三个带 `_normalize`，
+      都只为「把日期替换成占位再比」而存在——也就是说 `--check` 明知这个字段与内容无关，
+      却选择在比较时容忍它，而没有选择不写它。
+      对照面：`scripts/build_index.py` 的头注写着「本文件不写数字（条数 / 容量 / 日期）：
+      数字一进 git，两人并发合并时要么撞同一行、要么漂移成错的数」，
+      `tests/test_build_index.py` 也有 `assertNotRegex(head, r"20\d\d-\d\d-\d\d")` 钉着它。
+      即：同一条不变量在知识索引上早已成立，另外三个索引没有。
+    trajectory:
+      - "grep -rn 生成日期 references/（现算：6 个文件）"
+      - "scripts/build_index.py 头注第 15 行与 tests/test_build_index.py:232-235"
+      - "python3 scripts/build_procedure_index.py --check（改前：跨天重建即报过期，靠归一化掩盖）"
+hypothesis: >-
+  把日期从生成物里去掉、并让 `--check` 整篇比较（不再归一化），可以同时得到两件事：
+  ① 重建生成物不再产生与内容无关的改动，并发合并时不再有「一行必撞」；
+  ② 比较反而更强——归一化是为了容忍那个字段而存在的，字段没了，任何多出来的行都会报过期。
+  前提是这条不变量必须被一条测试钉住，否则「顺手加回生成日期」在下一次改动里会再次发生
+  （它看起来像有用的元信息，加回去没有任何东西会报）。
+predicted_effect:
+  metric: 重建生成物时产生的与内容无关的改动行数（并发合并时的撞行点）
+  from: >-
+    每次重建都改 6 个文件的同一行（流程选择器 + 3 个分片 + 背景类 summary + 错误码缺口）；
+    `--check` 还要靠两份归一化逻辑才能跨天不假红。
+  to: >-
+    0 行——三个生成物里不再有日期；`--check` 整篇比较（三处归一化逻辑删除）；
+    新增 `tests/test_generated_indexes_no_date.py` 6 条测试钉住：①三个生成器渲染出的头注里没有日期
+    （防回归的主力——谁把日期写回生成器，它当场红），②往生成物里塞一行日期后 `--check` 报过期。
+  measure:
+    command: |
+      python3 - <<'PY'
+      import pathlib, re, subprocess, sys
+      arts = ["references/_procedure-index.yaml",
+              "references/_procedure-index/interrupt.yaml",
+              "references/_procedure-index/performance.yaml",
+              "references/_procedure-index/precision.yaml",
+              "references/_summary-index.yaml",
+              "references/errors/_code-gaps.yaml"]
+      dated = [a for a in arts if re.search(r"\d{4}-\d{2}-\d{2}", pathlib.Path(a).read_text(encoding="utf-8"))]
+      r = subprocess.run([sys.executable, "-m", "unittest", "tests.test_generated_indexes_no_date"],
+                         capture_output=True, text=True)
+      print("dated_artifacts", dated)
+      print("tests_exit", r.returncode)
+      ok = (not dated) and r.returncode == 0
+      print("VERDICT", "PASS" if ok else "FAIL")
+      PY
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: metrics_compare
+  baseline: >-
+    **改前基线（本次在 origin/main = 8a54d2b 的新 worktree 上现算）**：
+    `grep -rn 生成日期 references/` 命中 6 个文件；三个生成器各带一份日期归一化
+    （`build_procedure_index.py` 与 `build_ref_summary_index.py` 各有 `_DATE_RE` + `_normalize_date`，
+    `build_error_gap_index.py` 有 `_normalize`）；`--check` 三条命令都靠归一化才能跨天绿。
+    触发这件事的观测：同期一个只改 references/ 的 PR（#290）里，
+    `_procedure-index/interrupt.yaml` 与 `_procedure-index/precision.yaml` 各产生 1 行与内容无关的变化。
+  success_criteria: >-
+    ①6 个生成物里不再出现日期形状的字符串（measure 的 `dated_artifacts` 为空）；
+    ②三个 `--check` 命令在真实检出上绿，且去掉归一化后仍绿；
+    ③`tests/test_generated_indexes_no_date.py` 6 条全绿；**负向对照实测有牙齿**——
+    把 `f"# 词条数：{n}"` 改回 `f"# 生成日期：2026-09-28    词条数：{n}"` 后当场红
+    （`Regex matched: '2026-09-28'`），改回即绿；
+    ④`python3 -m unittest discover tests` 全绿（新文件并入既有套件）；
+    ⑤`.github/workflows/kb-checks.yml` 逐条本机复跑全绿（含 `build_index --check`、
+    `verify_references --check`、三条索引 `--check`、`--check-sources`/`--check-coverage`、
+    `verify_case_draft --all`、`holdout --check`、`eval_scorecard --check`、`verify_proposals --check`）；
+    ⑥`python3 scripts/rehearse_evolve_loop.py` 全绿（断言 183/183）。
+    **适用范围如实标注**：这条判据管的是「生成物里没有日期这个字段」，
+    不管「生成物里该不该有别的数字」——流程选择器的条数与成本估算仍在头注里（见 gate）。
+  rollback: 分支丢弃或 git revert；改动集中在 3 个生成器 + 1 个新测试 + 6 个生成物，同一次提交内整体可退（无数据迁移）。
+gate: >-
+  **同一条理由还留在别处：生成物里的『条数 / 成本估算』也是数字。** 本次只去掉日期，
+  理由是两者的合并行为不同——日期**每次重建都变**（任何一次重建都产生 diff，且一行必撞），
+  条数只在内容真的变了时才变，而且流程选择器的 `本片加载成本：约 N token` 是读侧
+  「要不要打开这一片」的依据，去掉它等于把预算判断的成本转嫁给读者。
+  但 `_procedure-index.yaml` 里的 `procedures_total` 是**单行汇总**：两人各加一条流程到不同
+  分片时，这一行必撞。若将来这个文件再次出现「一行必撞」的抱怨，
+  处置是把它也改成现算（同 `scripts/index_counts.py` 的做法），而不是加日历或加合并策略。
+  **不要做的事**：别为了「保留元信息」把日期加回来。它的信息量是零——
+  「这份索引什么时候重建的」看 git 历史即可，而写进文件的代价是每次重建都改一行。
+  **边界（独立预核查出、本卡明确不收）**：`docs/kb-explorer/kb-data.js` 也带 `generated_at`，
+  但它是另一类——没有 `--check` 门（手工为演示页重建），且这个字段**被读侧消费**
+  （`docs/kb-explorer/app.js` 把它渲染成「数据源 references/ · 生成于 …」）。
+  去掉它会改动演示页显示，收益只是每次手工重建少一行 diff，不划算。要处置它应另开一卡，
+  连同「给它加不加门」一起判。
+risk: low
+principle_refs: [2, 6, 9, 11]
+actual_cost:
+  tokens: 45000
+  source: estimate
+  note: >-
+    口径如实标注：按本次会话的工具往返规模与产出（3 个生成器 + 1 个测试文件 + 6 个生成物 +
+    1 张卡）粗估的量级，不是从 exec-log 记账读出来的真实值。
+decisions:
+  - who: agent
+    when: 2026-09-28
+    type: action
+    conclusion: >-
+      先核对「是不是那一个文件的问题」，结论是范围比用户看到的大：带日期的生成物共 6 个文件，
+      三个生成器各带一份日期归一化。因此按同一口径一起改，而不是只改用户点到的那两个分片。
+  - who: agent
+    when: 2026-09-28
+    type: decision
+    conclusion: >-
+      **做法选的是「不写日期」而不是「只在变化时更新日期」**。后者（比出内容相同就不动那一行）
+      能让 diff 干净，但它把一件简单的事变成有状态的写入逻辑，且换个实现就失效。
+      不写日期是没有状态的做法，且顺带得到一个更强的 `--check`：归一化消失在源头，
+      整篇比较即可，任何多出来的行都报过期。
+  - who: agent
+    when: 2026-09-28
+    type: eval
+    conclusion: >-
+      **不变量必须有牙齿，所以补了一条测试并把牙齿实测出来**：`tests/test_generated_indexes_no_date.py`
+      两类共 6 条——①三个生成器在真实 `references/` 上渲染一遍，头注里不许出现日期
+      （只判头注，词条正文提到时间不算）；②在一个只含最小词条的临时仓库里写出生成物，
+      再塞一行日期，三个 `--check` 都必须报过期。
+      **独立预核把这一段原先的说法证伪了一处，已改**：我原先写「这一条钉的正是归一化不许回来」——
+      实测不成立。归一化只替换日期值、消不掉多出来的那一行，所以单独把归一化加回 `--check`
+      （生成器仍不写日期）时这一条照样通过。防那条回归的其实是 ①：生成器一写回日期它就红
+      （生成物有没有跟着重生都红，实测两条路径都红）。测试与卡里的措辞已按实测改窄。
+      负向对照实跑：把 summary 索引的 `词条数` 那一行改回带 `# 生成日期：2026-09-28`，
+      测试当场红；改回即绿。测试并进既有的 `python3 -m unittest discover tests` 套件，不新增 CI job。
+  - who: agent
+    when: 2026-09-28
+    type: decision
+    conclusion: >-
+      **头注里那句「不写生成日期」只加在选择器上，没加进三个分片**。理由是成本：
+      选择器每次走方法缺口都要整读一遍（按仓库自己的 round(len/2.6) 口径实测：选择器文件 430 → 442 token，
+      净 +12；去掉的日期行抵消了大部分新增），而它的头注本来就承载设计说明；
+      分片紧随其后被打开，同一句话再说三遍就是白付三份。防回归靠的是测试，
+      不是靠头注里的一句话——两者留一个够用，留成本低的那个。
+  - who: agent
+    when: 2026-09-28
+    type: eval
+    conclusion: >-
+      **端到端演练先红后绿，红的是一次真实的假绿**：第一次跑
+      `scripts/rehearse_evolve_loop.py` 时它报 `[reference-validation] build_procedure_index.py --check`
+      失败——当时我改了分片头注却还没重跑生成器，生成物与生成器不一致。
+      这次红不是演练本身的问题，正是这道门该抓的东西；重跑生成器后演练 183/183 全绿。
+      记录在案的理由：它同时证明了「生成物随 PR 走」这条纪律在演练里真的被判。

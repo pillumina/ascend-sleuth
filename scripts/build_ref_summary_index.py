@@ -17,9 +17,7 @@
 # --check 返回非零 = 过期（对称 build_index / verify_references）。
 
 import argparse
-import re
 import sys
-from datetime import date
 from pathlib import Path
 
 import yaml
@@ -33,14 +31,9 @@ BG_TYPES = {"platform-fact", "software-fact", "tool"}
 OUT_NAME = "_summary-index.yaml"
 SUMMARY_CAP = 160
 
-# --check 的新鲜度比较应针对"内容"而非"生成时刻"：头部日期戳是元信息（每次生成都 = today），
-# 逐字节比较会使索引在生成次日即假红（拦截任何当日触碰 skills/** 的 PR，即使 references 内容未变）。
-# 归一化：把日期值替换为固定 token，比较剩余内容（词条数 + entries）。真改 references → 内容变 → 仍报过期。
-_DATE_RE = re.compile(r"# 生成日期：\d{4}-\d{2}-\d{2}")
-def _normalize_date(text: str) -> str:
-    return _DATE_RE.sub("# 生成日期：<YYYY-MM-DD>", text)
-
-
+# 生成物里不写日期（原先是「写日期戳 + --check 归一化掉再比」）：那样做每次重建都改同一行，
+# 并发合并时必撞，而日期本身的信息量为零——「这份索引什么时候重建的」看 git 历史即可。
+# 不写日期之后 --check 就能逐字节比较，反而更强：任何多出来的行都报过期，不必再归一化什么。
 def platforms_of(entry) -> list:
     ap = entry.get("applies_to")
     if isinstance(ap, dict):
@@ -82,7 +75,8 @@ def render(doc_entries) -> str:
         "# 只含背景类 + status=active；查表类走步骤 2 收尾的键触发 grep（口径同 diagnose SKILL）。",
         "# 读法：grep 取行 + ≤5 行上限——索引随词条数增长，整读等于注入全库背景。",
         "# applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。",
-        f"# 生成日期：{date.today().isoformat()}    词条数：{n}",
+        f"# 词条数：{n}",
+        "# 不写生成日期：日期进 git 会让每次重建都改同一行，并发合并时必撞（口径同 build_index.py）。",
         "",
     ])
     return header + yaml.safe_dump({"entries": rows}, allow_unicode=True,
@@ -122,8 +116,9 @@ def main():
         if not out.exists():
             print(f"{OUT_NAME} 不存在 —— 先运行 scripts/build_ref_summary_index.py 生成")
             sys.exit(1)
-        # 归一化日期戳后比较内容（词条数+entries）；仅日期不同 → 视为新鲜
-        if _normalize_date(out.read_text(encoding="utf-8")) != _normalize_date(text):
+        # 整篇比较，不做任何归一化：生成物里没有日期这类「每次重建都变」的字段，
+        # 也就没有要容忍的差异。read_text 会把 CRLF 折成 LF，所以 Windows 检出不会因此假红。
+        if out.read_text(encoding="utf-8") != text:
             print(f"{OUT_NAME} 过期（references 变更后需重新生成并提交）")
             sys.exit(1)
         print(f"reference summary 索引新鲜（{len(entries)} 条背景类词条）。")
