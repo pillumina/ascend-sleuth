@@ -1,0 +1,101 @@
+id: hostbound-evidence-gate
+type: methodology
+title: Host 侧嫌疑（HostBound）的证据门槛与降级（六项齐全 / 至少两类独立证据 / 最低证据组合与后续动作 / 命名不算证据 / 时钟域 / 缺数据不等于正常）
+summary: 怀疑 Host 侧拖慢 NPU 时，先判"这个结论现在能不能下"再往下查：①每条结论必须写全 指标、取值、阈值或基线、证据来源、时间窗、置信度 六项，缺项只能写成待验证假设；②没有至少两类独立证据时输出"证据不足"，CPU 高、中断多、GIL 事件多、Cache Miss 高这四项各自都不能单独判定 HostBound；③每类结论有最低证据组合与对应的后续动作（CPU 饱和、中断或 SQ/CQ、绑核、NUMA、GIL、函数长尾与 PMU）；④`acl_thread`、SQ、CQ、中断名只能用来确定该看谁，不能用来确定是谁慢，IRQ 次数本身不是故障；⑤ftrace / msprof / GIL / PMU 的时钟基准未对齐时只能做相对关联；⑥采集清单要如实记录这次没运行哪些工具，缺数据不等于该项正常；⑦绑核、中断亲和、停 irqbalance 只出方案不出手。
+
+sources:
+  - type: engineer-input
+    engineer: "hu669293657（公开 GitHub 仓库 skills 的作者，匿名工程师）"
+    document: "cpu-host-performance skill：references/hostbound_diagnosis_rules.md、references/ascend_host_thread_knowledge.md、references/official_tool_integration.md、SKILL.md 诊断方法节"
+    url: "https://github.com/hu669293657/skills/tree/main/cpu-host-performance"
+    input_session: "session-57027022-0349-4512-b32b-d61aa5b3d6f8"
+    confirmed_at: 2026-09-28
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  categories: [performance]
+
+related_references: [performance-delimiting-and-comparison, msprof-timeline-lane-reading, msprof-comm-bottleneck-thresholds, ascend-profiling-collection-planning]
+
+status: active
+last_verified: 2026-09-28
+
+content:
+  flow:
+    - step: 1
+      name: 先确认手上有没有设备侧时间线
+      action: >-
+        Host 侧定位的入口是设备侧等待，不是 CPU 侧读数。先问清楚有没有设备 task 时间线或 step 级耗时拆解：
+        有，才可以往 HostBound 这个方向查；没有，本轮最高只能产出"Host 侧风险 / 疑似"，措辞按此降级，
+        不能用 CPU 利用率、中断次数这类单侧读数得出设备被拖慢的结论。
+        本流程只管结论强度，不管先查哪一块；定方向属于另一件事。
+      check: 手上是否有 msprof 采集产物（设备 task 时间线 / step trace）；没有时结论措辞是否已降级
+      when_to_use: 怀疑 CPU 侧拖慢 NPU、或集群出现多卡等单卡时
+
+    - step: 2
+      name: 结论要写全六项，且至少凑齐两类独立证据
+      action: >-
+        六项：指标、取值、阈值或基线、证据来源、时间窗、置信度。缺任何一项的读数写成"待验证假设"。
+        写下阈值或基线时说明它从哪来（官方口径 / 历史复采 / 同批其他卡），没有基线就写"无基线"，
+        不要用"偏高"这种没有参照的说法。数量门槛同样要满足：凑不出至少两类独立证据时，
+        输出"证据不足"（`INSUFFICIENT_EVIDENCE`）或写明这是待验证假设，不得声称根因。
+        CPU 高、中断多、GIL 事件多、Cache Miss 高这四项各自都不能单独判定 HostBound。
+      check: 六项是否齐全；阈值或基线是否标明来源；是否至少有两类独立证据；不足时措辞是否已降级
+      when_to_use: 准备输出任何 Host 侧结论时
+
+    - step: 3
+      name: 逐类对照最低证据组合与后续动作
+      action: >-
+        只有单一指标时一律降级，逐类这样对：①CPU 饱和或调度争用，要高利用率加 runnable 或唤醒延迟异常；
+        只有单核高而大量核心空闲时改判不均衡；成立后按降并发、隔离关键线程、复采验证走。
+        ②中断或 SQ/CQ 干扰，要中断处理占比（或频率热点，两者是同一件事的两种测法）加关键线程调度延迟或与中断同核；
+        只有中断快照、没有时间相关性时不成立；成立后先给亲和方案，确认后再执行，前后对比。
+        ③绑核问题，要 taskset 或 cpuset 限制，加 trace 显示关键线程落在受限热核或频繁迁移，加存在可用空闲核；
+        没有 PID 与 TID 的对应关系时只输出风险和补采计划。
+        ④NUMA，要 NPU 亲和与线程或内存节点不一致，加延迟、迁移或吞吐差异；只有拓扑时记为 NUMA_RISK，不称根因。
+        ⑤GIL 争用，要 GIL 长持有或长等待，加同窗口的业务线程延迟或设备空泡；只有 take 与 drop 总数时不成立；
+        成立后调线程模型或让出 GIL，再复采。
+        ⑥函数长尾或 PMU 异常，要函数长尾加同窗口 Cache Miss、Page Fault 或 IPC 异常，加 trace 或设备空泡；
+        只有 PMU 计数或只有函数耗时不成立；成立后把更粗粒度的函数标出来再复采。
+        ⑦HostBound 本身，要设备空泡或 Host 与 Device 重叠关系失配，加对应 Host 侧调度、GIL、PMU 或 Runtime 证据。
+      check: 逐类对上表；证据不足时结论是否写成"待验证假设"或标为证据不足；成立时是否给出了对应的后续动作
+      when_to_use: 手上有一到两类 Host 侧观测数据时
+
+    - step: 4
+      name: 名字对上不算证据
+      action: >-
+        线程名与中断名只用来确定该看谁，不用来确定是谁慢。`acl_thread`、`release_thread`、SQ、CQ、
+        `sq_send_trigger_irq`、`cq_update_irq`、`dev[i]_sq_task` 出现，都要再证明它的慢窗口与设备空泡重合，才能进结论。
+        中断次数本身不是故障，成立需要三样同时在：占比、落在哪些核、哪些线程被拖慢。容器里看不到 `dev[i]_sq_task`，
+        只说明这项观测不可得，不代表驱动侧没有亲和问题。
+      check: 每个被点名的线程或中断都有与空泡同窗口的对应关系
+      when_to_use: 用线程名或中断名做归因时
+
+    - step: 5
+      name: 跨工具的时钟对齐与关联强度
+      action: >-
+        ftrace、msprof、GIL trace、PMU 分属不同采集器。时钟基准没有证实一致时，跨工具只能做相对关联
+        （这两段大致同期），不能做加减法，得不出"中断导致设备空泡多少微秒"这类差值。
+        要定量就先对齐时间戳并在结论里写明对齐方式；对不齐就退回到相对关联的措辞。
+      check: 是否声明了时钟对齐方式；未对齐时措辞是否已退回相对关联
+      when_to_use: 把两类以上数据放在一起给结论时
+
+    - step: 6
+      name: 缺数据不等于正常
+      action: >-
+        采集收尾时留一份清单，写明这次没有运行哪些工具（GIL trace、PMU 采样、函数插桩、msprof）。
+        分析可以因为缺数据而降低结论强度，但"这项没测"读不成"这项正常"。
+        报告里单列一节写清哪些数据不存在、结论因此受限在哪里，并一次性给出补采的最小组合
+        （优先同一窗口的 trace 加进程与拓扑快照），不要为已有数据要求客户重复采集。
+      check: 清单是否列出未运行的工具；报告是否有数据覆盖与限制一节；补采请求是否一次给全
+      when_to_use: 采集或分析收尾时
+
+    - step: 7
+      name: 优化动作的安全边界
+      action: >-
+        绑核（taskset、cpuset）、写中断亲和、停 irqbalance、批量迁移内存页，都只出方案不出手。
+        给方案前先留存现状快照（亲和、中断、NUMA 拓扑）；改完用同一负载、同一窗口复采对比，
+        无收益或出现副作用时给出回滚方式。生成绑核建议的工具是执行器，它给出的建议不构成根因。
+      check: 每项优化是否配了现状快照、前后同窗口复采与回滚方式
+      when_to_use: 从定位转到优化时

@@ -6,7 +6,7 @@
 #   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：
 #   references/_procedure-index.yaml
 #
-# 本片流程条数：8    本片加载成本：约 1360 token
+# 本片流程条数：10    本片加载成本：约 1709 token
 entries:
 - id: ascend-hardware-detect-triage
   title: 硬件与压力检测判读（asys diagnose 四模式 → Pass/Warn/Fail → [ERROR] AML 错误码前缀分流 → 电压恢复）
@@ -34,6 +34,14 @@ entries:
   platforms:
   - A5-950
   file: references/methodologies/dma-granularity-and-pingpong-tuning.yaml
+- id: hostbound-evidence-gate
+  title: Host 侧嫌疑（HostBound）的证据门槛与降级（六项齐全 / 至少两类独立证据 / 最低证据组合与后续动作 / 命名不算证据 / 时钟域 / 缺数据不等于正常）
+  summary: 怀疑 Host 侧拖慢 NPU 时，先判"这个结论现在能不能下"再往下查：①每条结论必须写全 指标、取值、阈值或基线、证据来源、时间窗、置信度 六项，缺项只能写成待验证假设；②没有至少两类独立证据时输出"证据不足"，CPU 高、中断多、GIL 事件多、Cache Miss 高这四项各自都不能单独判定 HostBound；③每类结论有最低证据组合与对应的后续动作（CPU 饱和、中断或 SQ/CQ、…
+  categories:
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/hostbound-evidence-gate.yaml
 - id: msprof-comm-bottleneck-thresholds
   title: 通信瓶颈判定阈值（Wait Time Ratio / 传输前同步比例 / 带宽使用率）
   summary: msprof 官方的通信瓶颈判定口径：①一个迭代内是否存在「等待时长比例（Wait Time Ratio）> 0.2」的卡——有则通信瓶颈；②找 WTR 最大的卡看「传输前同步时长比例 > 0.2」——大于则存在慢卡（查慢卡前反向计算时间与数据预处理），否则链路异常；③通信矩阵：带宽使用率 > 0.8 说明链路正常、通信包比例 > 0.8 指向链路配置/劣化、包尺寸过小指向带宽瓶颈
@@ -58,6 +66,14 @@ entries:
   platforms:
   - cross
   file: references/methodologies/operator-bottleneck-attribution.yaml
+- id: performance-delimiting-and-comparison
+  title: 性能问题的定界顺序与有基线时的对比判据（先定方向再下钻 / 贡献度显著性门控 / 有效吞吐 / 集中度 / 单位与汇总行纪律）
+  summary: 拿到性能数据（一份或两份）后按固定顺序走：①先把端到端或 step 耗时拆成计算、通信未掩盖、空闲三块，只定方向不下钻，通信再分等待与传输；②按变多的那一块走对应路径，其中通信算子逐个没变慢而通信未掩盖耗时涨了，说明重叠变差（并行度问题），改去看同步点与重叠关系；③有基线时先过显著性门控再算贡献度，门控只对集群对比的 Stage 差异这一项成立，判不过时贡献度降级为"—"，给得出时要写明它是占变…
+  categories:
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/performance-delimiting-and-comparison.yaml
 - id: pipeline-slot-and-attribution-discipline
   title: 流水空泡归因纪律（四层槽位检查顺序 / 预发射的边际收益 / 三类数据不可换算）
   summary: 分析 CV 协作 kernel 的流水空泡时按固定顺序查：①先缩短中间数据搬运路径，再增加在途 item 数；②查双缓冲要**分开看 CV 核间槽 / AIC 内 L0 / task I/O 三层**——任一层还在复用单槽就能把前后阶段重新串起来；③加预发射数只能增加重叠机会、**不能缩短 Vector 自身**。配套三条归因口径：MFU 用整卡峰值做分母（未用核也计入）、并行 Pipe 的 a…
