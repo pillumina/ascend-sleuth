@@ -19,8 +19,8 @@
 #
 # 口径：只收 6 位数字码与 E*#### 码（官方错误码参考的两种可检索键）；`0x…` 设备异常码
 # 归属与查法不同（在故障模式表内按域查），不在本索引内。
+# 不写生成日期：日期进 git 会让每次重建都改同一行，并发合并时必撞（口径同 build_index.py）。
 
-generated_at: 2026-09-21
 source: references/fault-patterns/*.yaml 中出现的错误码 − references/errors/*.yaml 已有行
 code_gaps:
 - code: '100002'

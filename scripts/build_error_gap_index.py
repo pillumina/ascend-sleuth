@@ -21,7 +21,6 @@
 import argparse
 import re
 import sys
-from datetime import date
 from pathlib import Path
 
 import yaml
@@ -149,8 +148,8 @@ def render(refs: Path) -> str:
 #
 # 口径：只收 6 位数字码与 E*#### 码（官方错误码参考的两种可检索键）；`0x…` 设备异常码
 # 归属与查法不同（在故障模式表内按域查），不在本索引内。
+# 不写生成日期：日期进 git 会让每次重建都改同一行，并发合并时必撞（口径同 build_index.py）。
 
-generated_at: {date.today()}
 source: references/fault-patterns/*.yaml 中出现的错误码 − references/errors/*.yaml 已有行
 """
     doc = {"code_gaps": gaps, "no_home": no_home}
@@ -175,11 +174,6 @@ def parses(text: str) -> str:
     return ""
 
 
-def _normalize(text: str) -> str:
-    """生成日期不参与比对——否则跨天跑 --check 会假红。"""
-    return re.sub(r"^generated_at: .*$", "generated_at: <DATE>", text, flags=re.M)
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--check", action="store_true")
@@ -198,7 +192,7 @@ def main():
             print(f"{OUT_REL} 不存在——运行 scripts/build_error_gap_index.py 生成")
             return 1
         old = out.read_text(encoding="utf-8")
-        if _normalize(old) != _normalize(text):
+        if old != text:
             print(f"{OUT_REL} 过期——references/ 有变更未重建（运行 scripts/build_error_gap_index.py）")
             return 1
         print(f"错误码缺口索引新鲜且可解析（{len(yaml.safe_load(text)['code_gaps'])} 条缺口）")

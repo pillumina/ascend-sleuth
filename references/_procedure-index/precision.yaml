@@ -6,7 +6,7 @@
 #   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：
 #   references/_procedure-index.yaml
 #
-# 生成日期：2026-09-21    本片流程条数：17    本片加载成本：约 2809 token
+# 本片流程条数：17    本片加载成本：约 2809 token
 entries:
 - id: ascend-determinism-triage
   title: 确定性失效排查路径（开关被重置 / 算子内部竞争 / batch invariance 三路分流）

@@ -32,9 +32,7 @@
 # 只收 status: active 的 methodology 词条（未验证的先验不进诊断上下文）。
 
 import argparse
-import re
 import sys
-from datetime import date
 from pathlib import Path
 
 import yaml
@@ -46,13 +44,6 @@ SHARD_DIR_NAME = "_procedure-index"
 CROSS_KEY = "_cross"                # 不限定类别的分片键（任何 category 都要一并打开）
 SUMMARY_CAP = 200
 SELECTOR_CAP_TOKENS = 2000          # 选择器自身的成本上限（它每次都要整读）
-
-_DATE_RE = re.compile(r"# 生成日期：\d{4}-\d{2}-\d{2}")
-
-
-def _normalize_date(text: str) -> str:
-    return _DATE_RE.sub("# 生成日期：<YYYY-MM-DD>", text)
-
 
 def _tokens(text: str) -> int:
     """成本口径与旧版一致（按字符数 / 2.6 估）——留着是为了这个数可比，不是精确计量。"""
@@ -148,7 +139,7 @@ def render_shard(key, entries, root: Path) -> str:
         "#   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：",
         f"#   {selector}",
         "#",
-        f"# 生成日期：{date.today()}    本片流程条数：{len(entries)}    本片加载成本：约 {_tokens(body)} token",
+        f"# 本片流程条数：{len(entries)}    本片加载成本：约 {_tokens(body)} token",
     ]
     return "\n".join(header) + "\n" + body
 
@@ -185,8 +176,9 @@ def render_selector(entries, keys, root: Path) -> str:
         "#   5) **本 category 没有对应分片**（索引里没这一行）→ 读本选择器列出的**全部分片**再选，",
         "#      并在 trace 里记下\"本 category 无专用分片\"——空手去深度排查与\"没有可用流程\"是两件事。",
         "#",
-        f"# 生成日期：{date.today()}    流程条数：{len(entries)}    分片数：{len(keys)}    "
+        f"# 流程条数：{len(entries)}    分片数：{len(keys)}    "
         f"本文件整体加载成本：约 {_tokens(body)} token",
+        "# 不写生成日期：日期进 git 会在并发合并时撞同一行（口径同 build_index.py）。",
         "#",
         "# 为什么分片：单文件形态下每次都要整读全部流程行才挑 1 条（5K token 级），这笔固定开销",
         "#   会压低方法缺口消费点的使用意愿；分片后本轮只读自己那一片（判据与数值见 shards）。",
@@ -261,7 +253,7 @@ def main():
                 problems.append(f"{rel} 形态不合法：{err}")
                 continue
             # ② 新鲜度
-            if _normalize_date(old) != _normalize_date(text):
+            if old != text:
                 problems.append(f"{rel} 过期——references/ 有变更未重建（运行 scripts/build_procedure_index.py）")
         # ②b 选择器指向的分片必须存在（生成路径拿到的是还没写盘的文件，故这条只在 --check 判）
         sel_problems = []
