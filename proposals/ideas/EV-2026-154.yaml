@@ -1,0 +1,147 @@
+# ============================================================
+# EV-2026-154 —— 多卡/集群/快照与算子级判据入库：快慢卡六类定性、双集群比对门控、
+#                显存快照块级视图、算子 pipe 占比阈值与实验纪律
+# 来源：用户要求"1,2,3,4 都做"——第 3 组多卡与集群、第 4 组算子级。
+# 脱敏：只含仓库内路径、上游公开 URL 与 commit、聚合数字。
+# ============================================================
+
+id: EV-2026-154
+layer: L1
+target_component: references/
+title: "多卡与算子级判据入库：快慢卡六类定性 + 双集群比对显著性门控 + 显存快照块级视图 + 算子 pipe 阈值与实验纪律"
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: '2026-09-29'
+source_signals:
+  - signal: user_feedback
+    evidence: 用户看过"接下来能吸收的点"清单后回"1,2,3,4 都做"——第 3 组多卡/集群/快照、第 4 组算子级。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      改前现状：`快慢卡` 在 references 里只有 4 处零散提及、`slow_rank` 1 处；集群比对与显存快照
+      **零命中**。而本库已有 `operator-bottleneck-attribution`（讲 pipe 分解与 Bound 分类的方法论）
+      与 `dma-granularity-and-pingpong-tuning`——缺的是**阈值表**（多少算 bound、多少算均衡、
+      多少在噪声带内）与**实验纪律**（怎么判定一次改动算不算收益）。
+    trajectory:
+      - "grep -rli '快慢卡|slow_rank|集群比对|snapshot' references/"
+hypothesis: >-
+  多卡面缺的是"跨卡怎么比"的判据（显著性门控、贡献度语义、有效吞吐比、快慢卡线索阈值），
+  显存面缺的是**块级存量视图**（msMemScope 只能看事件流，分不清真碎片/流池残留/异步释放造成的假性碎片），
+  算子面缺的是**阈值表与收益判定线**。三者都落成 reference 并挂闸门。
+predicted_effect:
+  metric: 多卡/快照/算子级判据词条条数及其可达性
+  from: >-
+    集群比对与显存快照零词条；算子级只有方法论没有阈值表与实验纪律；performance 分片 10 条流程、
+    interrupt 分片 11 条。
+  to: >-
+    新增 fault-pattern `cluster-compare-diagnosis`（7 条）与 `operator-pipe-bound-classification`（8 条）、
+    methodology `multi-rank-slow-rank-detection`（5 步）与 `operator-tuning-experiment-method`（5 步）、
+    tool `npu-memory-snapshot-analyzer` 与 `operator-sanitizer-suite` 与 `operator-coredump-forensics`；
+    全部挂进 performance / interrupt 闸门；reference 词条 250 → 257。
+  measure:
+    command: |
+      python3 - <<'PY'
+      import pathlib, subprocess, sys
+      sys.path.insert(0, 'scripts')
+      from _yaml import load_file
+      root = pathlib.Path('.')
+      fp = load_file(root / 'references' / 'fault-patterns' / 'cluster-compare-diagnosis.yaml')
+      fp2 = load_file(root / 'references' / 'fault-patterns' / 'operator-pipe-bound-classification.yaml')
+      mt = load_file(root / 'references' / 'methodologies' / 'multi-rank-slow-rank-detection.yaml')
+      mt2 = load_file(root / 'references' / 'methodologies' / 'operator-tuning-experiment-method.yaml')
+      tools = [load_file(root / 'references' / 'tools' / f'{t}.yaml') for t in
+               ('npu-memory-snapshot-analyzer', 'operator-sanitizer-suite', 'operator-coredump-forensics')]
+      ok_items = (len((fp['content'] or {}).get('patterns') or []) >= 6
+                  and len((fp2['content'] or {}).get('patterns') or []) >= 7
+                  and len((mt['content'] or {}).get('flow') or []) >= 5
+                  and len((mt2['content'] or {}).get('flow') or []) >= 5
+                  and all(t and t.get('status') == 'active' for t in tools))
+      gates = load_file(root / 'skills' / 'diagnose' / 'references' / 'collect-gates.yaml')
+      bound = set()
+      for g in gates.get('gates') or []:
+          bound.update(g.get('refs') or []); bound.update(g.get('caveat_refs') or [])
+          for br in g.get('branches') or []:
+              bound.update(br.get('refs') or [])
+      targets = ['multi-rank-slow-rank-detection', 'cluster-compare-diagnosis',
+                 'operator-pipe-bound-classification', 'operator-tuning-experiment-method',
+                 'npu-memory-snapshot-analyzer', 'operator-sanitizer-suite', 'operator-coredump-forensics']
+      ok_bound = all(t in bound for t in targets)
+      perf = (root / 'references' / '_procedure-index' / 'performance.yaml').read_text(encoding='utf-8')
+      intr = (root / 'references' / '_procedure-index' / 'interrupt.yaml').read_text(encoding='utf-8')
+      ok_flow = ('multi-rank-slow-rank-detection' in perf and 'operator-tuning-experiment-method' in perf
+                 and 'operator-tuning-experiment-method' in intr)
+      r = subprocess.run([sys.executable, 'scripts/verify_references.py', '--check'],
+                         capture_output=True, text=True)
+      print('items      ', ok_items)
+      print('bound      ', ok_bound)
+      print('in_flow    ', ok_flow)
+      print('verify_refs', r.returncode)
+      ok = ok_items and ok_bound and ok_flow and r.returncode == 0
+      print('VERDICT', 'PASS' if ok else 'FAIL')
+      PY
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: scan_review
+  baseline: >-
+    **改前基线（本轮在 origin/main = 2c8f24c 的新 worktree 上现算）**：`快慢卡` 4 处零散提及、
+    `slow_rank` 1 处、集群比对与显存快照零词条；reference 词条 246 条（本卡与 EV-2026-153 同批）。
+  success_criteria: >-
+    ①改后词条 257 条、id 唯一，`verify_references.py --check` 绿；
+    ②7 条新词条全部被闸门绑定（含 3 条 tool 的覆盖环，实测挂之前三项都报红）；
+    ③三条新流程分别进 performance / interrupt 分片；
+    ④三个索引生成物随提交重建、`--check` 全绿；
+    ⑤CI 15 条命令本机复跑全绿 + 单测 + `rehearse_evolve_loop.py` 绿；
+    ⑥**边界如实标注**：内容取自上游 SKILL.md / references / 脚本常量（cross-checked-source），
+    阈值均为上游口径（1%/5%/10%、15%/5%/10%、80%/70%/50%、13%、±5%、1.05/0.95、pending 50%、
+    碎片率 5%/15%、segment 100/200 等），**未在本机复现**；上游有三处文档与实现不一致，
+    已在词条 pitfalls 里逐条写明（快照 OOM 的 1GB 判据、trace 时序解析、尖刺阈值口径）。
+  rollback: 分支丢弃或 git revert；词条、闸门绑定、生成物与卡在同一分支内整体可退。
+gate:
+  condition: >-
+    若后续要把上游 `ops-performance-tuning` 的 10 篇优化路径（AscendC / CATLASS / Triton / TileLang / PyPTO / SHMEM…）
+    也沉淀进来，**先判它属于"算子开发调优"还是"诊断"**——本库面向中断/精度/性能定位，算子开发侧的
+    实现技巧（Tiling 模板、RegBase 迁移、双缓冲写法）超出该范围，应只取其中的**判据与阈值**，
+    不搬实现教程。
+    **另一件不要做的事**：不要把上游 `bound_analyzer.py` / `snapshot_to_db.py` 等脚本复制进本仓。
+risk: low
+principle_refs: [3, 6, 8, 11]
+actual_cost:
+  tokens: 260000
+  source: estimate
+  note: >-
+    口径如实标注：按本轮工具往返与产出（7 条词条 + 四处闸门绑定 + 上游 3 个 skill 的精读）粗估的量级，
+    不是 exec-log 记账读出的真实值。
+decisions:
+  - who: agent
+    when: 2026-09-29
+    type: proposal
+    conclusion: >-
+      先核缺口再动手：集群比对与显存快照零词条；算子级已有方法论但没有阈值表与收益判定线。
+      三块都是同一形态的缺口——**有方向、没判据**。
+  - who: agent
+    when: 2026-09-29
+    type: action
+    conclusion: >-
+      三条 tool 词条写完即被 CI 覆盖环全部拦下（未绑定闸门 = 永不加载），逐一挂进 performance 的分析工具分支
+      与 interrupt 的深挖分支。这条机制第三次在本轮工作中发挥了作用（EV-2026-151/152 各一次）。
+  - who: agent
+    when: 2026-09-29
+    type: decision
+    conclusion: >-
+      采纳（validated）。判据：改前 246 条 → 改后 257 条且 `verify_references.py --check` 绿；
+      7 条新词条全部被闸门绑定；三条流程进对应分片；索引 `--check` 绿；CI 与单测、演练全绿。
+      **价值层不由此卡证明**：词条只说明判据进库且可达，不说明诊断准确率提升。
+  - who: agent
+    when: 2026-09-29
+    type: eval
+    conclusion: >-
+      **本卡 measure 第一版被自己的实测证伪并修正**：判据里写了「operator-tuning-experiment-method 要出现在 interrupt 分片」，
+      实测该词条当时只声明 `categories: [performance]`，流程分片按 categories 归片，所以它不在 interrupt 片里 —— 判 FAIL。
+      这里有两种修法：改 measure 迁就现状，或改 `categories` 让词条真出现在该片。选了后者：
+      算子性能实验方法同样适用于「先修正确性再谈性能」的中断类场景（精度门禁是它的第一步），
+      把它同时归入 interrupt 是有语义依据的，而不是为了过判据。改后重跑 PASS。
