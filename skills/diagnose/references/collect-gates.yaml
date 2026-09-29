@@ -79,6 +79,9 @@ gates:
           - msprobe-visualization
           - precision-first-divergence-triage
           - precision-threshold-cascade
+          - accuracy-operator-exemption-and-verification
+          - single-operator-accuracy-verification
+          - train-infer-paired-collection
           - verl-cross-validation
           - verl-probs-diff-monitoring
           - verl-uwc-weight-consistency
@@ -146,6 +149,7 @@ gates:
           - cluster-compare-diagnosis
           - operator-pipe-bound-classification
           - operator-tuning-experiment-method
+          - operator-compute-failure-modes
           - npu-memory-snapshot-analyzer
           - msprof-timeline-lane-reading
           - msopprof
