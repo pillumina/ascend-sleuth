@@ -669,7 +669,7 @@ namespaces:
       tok:
       - AICPU
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12345.yaml
-      hash: fc913ca8fac6
+      hash: a43a82411704
     - id: VLLM-ASC-12430
       title: 4×A2 多节点 A2-910B 拉起 DeepSeek-V4-Pro-w4a8（dp4/tp8 + --enable-expert-parallel，EP=32）固定在 determine_available_memory
         → profile_run 崩：AICore timeout 507014（subErrTyp…

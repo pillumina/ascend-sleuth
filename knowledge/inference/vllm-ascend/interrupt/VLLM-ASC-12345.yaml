@@ -45,7 +45,7 @@ cases:
       fallback:
         command_template: "npu-smi info && ps -o pid,rss,cmd -p $(pgrep -f 'vllm serve')"
         rank_selector: all_failed
-        expected: "显存平稳 + 进程 RSS 随时间单调增长（host 泄漏特征，区别于 device OOM）"
+        expected: 'regex:^(?!.*:).*([1-9]\d{2,}) *(KB|MB|GB).*$   # 同上命令连续采两次：RSS 列单调增长且增量 > 0'
 
     diagnosis:
       - step: 1

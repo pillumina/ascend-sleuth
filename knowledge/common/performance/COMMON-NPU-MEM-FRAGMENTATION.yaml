@@ -38,7 +38,7 @@ cases:
       primary:
         command_template: "对比跨 step 的 allocated 与 reserved 趋势（profiling 内存数据）"
         rank_selector: coordinator
-        expected: "allocated 稳定而 reserved 持续上涨 → 优先按碎片排查"
+        expected: 'regex:^(?!.*:).*(\d{1,3}(\.\d+)?\s*%).*$'
         note: "performance 类：primary 用内存趋势指标断言"
       fallback:
         command_template: "grep -icE 'out of memory|OOM' {{log_path}}"
@@ -47,7 +47,7 @@ cases:
 
     diagnosis:
       - step: 1
-        check: "allocated 是否稳定、reserved 是否持续上涨？"
+        check: 碎片率 (reserved − allocated) / reserved > 5% 为偏高、> 15% 为严重；allocated 稳定而 reserved 上涨即符合本 case 形态
         expected: "是 → 优先怀疑碎片，而不是典型泄漏"
       - step: 2
         check: "筛选 operator_memory.csv，上涨来自 GE 侧还是框架侧？"

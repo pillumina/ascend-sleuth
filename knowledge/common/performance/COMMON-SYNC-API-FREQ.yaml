@@ -31,7 +31,7 @@ cases:
       primary:
         command_template: "从 trace 统计同步接口（aclrtSynchronizeStream*）出现频次与其前后算子下发情况"
         rank_selector: coordinator
-        expected: "同步接口频繁且调用期间无算子下发"
+        expected: '同步接口（aclrtSynchronizeStream 系列）频繁出现，且其调用窗口内无算子下发——本库无此量的阈值口径，按同任务历史基线比'
         note: "performance 类：primary 用调用频次/下发空档指标断言"
       fallback:
         command_template: "grep -icE 'aclrtSynchronizeStream|synchronize' {{profiling_report_path}}"

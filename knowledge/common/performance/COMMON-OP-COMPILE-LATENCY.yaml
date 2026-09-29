@@ -31,7 +31,7 @@ cases:
       primary:
         command_template: "在 api_statistic.csv 中按关键字 aclopCompile 统计编译 API 调用次数"
         rank_selector: coordinator
-        expected: "aclopCompile 调用频繁"
+        expected: 'aclopCompile 类编译 API 调用次数与累计耗时在 api_statistic 中排进前列——本库无此量的阈值口径，按同任务历史基线比'
         note: "performance 类：primary 用调用次数/占比指标断言"
       fallback:
         command_template: "grep -icE 'aclopCompile|free' {{profiling_report_path}}"

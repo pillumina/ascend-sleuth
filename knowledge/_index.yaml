@@ -31,7 +31,7 @@ namespaces:
       sig: []
       tok: []
       file: knowledge/common/performance/COMMON-CPU-CACHE-MISS.yaml
-      hash: 48de99bf2375
+      hash: 63f64b0ee50e
     - id: COMMON-CPU-THREAD-SWITCH
       title: 8 机 96 卡训练中每迭代均有一张卡 PyTorch 框架侧 Dequeue 耗时过长（最长 7.9s），同期 Device 无算子执行、CPU 侧 synchronize 多等
         92ms：无关后台线程与算子下发线程竞争 CPU，导致下发线程频繁非自愿上下文切换
@@ -52,7 +52,7 @@ namespaces:
       tok:
       - '7.9'
       file: knowledge/common/performance/COMMON-CPU-THREAD-SWITCH.yaml
-      hash: b2dfa8798e7f
+      hash: ededeb7f85ec
     - id: COMMON-DISPATCH-BATCH-SMALL
       title: 业务整体 free 时间占比偏高、硬件资源利用率低：未充分利用硬件（如 batch 过小），通过流水图与 host_to_device 连线可直观看到瓶颈与资源使用情况
       category: performance
@@ -71,7 +71,7 @@ namespaces:
       sig: []
       tok: []
       file: knowledge/common/performance/COMMON-DISPATCH-BATCH-SMALL.yaml
-      hash: b5d6786b471e
+      hash: 55add0fe9f89
     - id: COMMON-GIL-PREEMPTION
       title: Python 模型业务迁移到 Ascend 平台后整体性能未达预期（耗时偏高、吞吐不足），无算子报错/数据异常/硬件瓶颈，业务核心链路存在大量多线程并发：GIL 单时刻单线程执行
         + 工作线程长期持锁不释放，导致其他线程抢锁失败、调度失衡
@@ -91,7 +91,7 @@ namespaces:
       sig: []
       tok: []
       file: knowledge/common/performance/COMMON-GIL-PREEMPTION.yaml
-      hash: 1082a56c130c
+      hash: d2bfa0a846f1
     - id: COMMON-HCCL-ADDR-ALIGN
       title: 8 卡训练单 step 通信耗时占比 >40%、AllReduce 耗时波动 2~3 倍（计算侧稳定）：自定义算子用 torch.empty() 分配输出 tensor 未指定
         memory_format，起始地址不满足 HCCL 128 字节对齐，触发 HCCL 内部对齐拷贝（约 200ms）
@@ -131,7 +131,7 @@ namespaces:
       sig: []
       tok: []
       file: knowledge/common/performance/COMMON-IRQ-IMBALANCE.yaml
-      hash: ff3c28dbcbec
+      hash: 4c7fd2915e72
     - id: COMMON-KERNEL-THREAD-SWITCH
       title: 业务部署后延迟波动大、吞吐不稳、CPU 有效算力利用率偏低、sys 开销偏高：系统全局线程上下文切换次数异常暴涨、内核态 CPU 占用占比过高、任务就绪队列堆积——大量轻量短时线程叠加默认调度配置未做亲和性绑定
       category: performance
@@ -150,7 +150,7 @@ namespaces:
       sig: []
       tok: []
       file: knowledge/common/performance/COMMON-KERNEL-THREAD-SWITCH.yaml
-      hash: 46900c50abd7
+      hash: ea2b9562db10
     - id: COMMON-KVCACHE-REFCOUNT-LEAK
       title: 推理运行约 12 小时后在第 471 个 step 触发 OOM：custom_attention_forward 算子的 KV-cache 引用计数错误，每 step 约 47MB
         中间 tensor 无法回收，累积约 22GB
@@ -170,7 +170,7 @@ namespaces:
       sig: []
       tok: []
       file: knowledge/common/performance/COMMON-KVCACHE-REFCOUNT-LEAK.yaml
-      hash: 86c901e3e672
+      hash: 8a9f5b50b50a
     - id: COMMON-NONZERO-ACCESS-HEAVY
       title: op_statistic.csv 中某索引类算子（如 NonZero）占比很大、执行时间明显偏长：访存密集型操作对昇腾达芬奇架构不友好，访存开销主导
       category: performance
@@ -189,7 +189,7 @@ namespaces:
       sig: []
       tok: []
       file: knowledge/common/performance/COMMON-NONZERO-ACCESS-HEAVY.yaml
-      hash: d9d7dc5d9dc5
+      hash: 37c1655becac
     - id: COMMON-NPU-MEM-FRAGMENTATION
       title: 推理过程中显存缓慢增长（每次十几 MB），约 10 小时后 OOM；开启 empty_cache 仍持续上涨，profiling 显示 allocated 基本不涨而 reserved
         持续涨——内存碎片累积（非泄漏）
@@ -209,7 +209,7 @@ namespaces:
       sig: []
       tok: []
       file: knowledge/common/performance/COMMON-NPU-MEM-FRAGMENTATION.yaml
-      hash: 20458247164a
+      hash: 67752d50c8fd
     - id: COMMON-OP-COMPILE-LATENCY
       title: 训练 step 耗时偏高、Host 下发空档大：api_statistic.csv 中 aclopCompile 调用频繁，算子编译额外增加下发耗时，NPU 执行空隙增大（示例
         free 占比 22%）
@@ -229,7 +229,7 @@ namespaces:
       sig: []
       tok: []
       file: knowledge/common/performance/COMMON-OP-COMPILE-LATENCY.yaml
-      hash: 338c401223f8
+      hash: 322972acda33
     - id: COMMON-PTHREAD-LOCK-WAIT
       title: NPU 利用率降低、Device 空闲时间增加等待 Host 下发，单步训练耗时增加、吞吐下降：锁粒度设计错误——整个数据预处理（解码/增强/归一化）都在临界区内执行，平均持锁约
         8ms，worker 无法入队形成串行化
@@ -249,7 +249,7 @@ namespaces:
       sig: []
       tok: []
       file: knowledge/common/performance/COMMON-PTHREAD-LOCK-WAIT.yaml
-      hash: 920660e68fa7
+      hash: 27c6f199d3ef
     - id: COMMON-PY-GC-LATENCY
       title: 各节点训练单步耗时周期性抖动（示例 2770ms 抖到 2900ms 左右），抖动趋势与发生频率跨节点高度一致：Python 循环引用累积触发自动 GC（标记-清除），GC 的
         Stop-The-World 特性阻塞整个进程
@@ -268,7 +268,7 @@ namespaces:
       sig: []
       tok: []
       file: knowledge/common/performance/COMMON-PY-GC-LATENCY.yaml
-      hash: baa0d1b70efc
+      hash: e0d7813ff601
     - id: COMMON-SYNC-API-FREQ
       title: 推理/训练中 NPU 整体利用率较低：trace 里大量 aclrtSynchronizeStreamWithTimeout 等同步接口，同步调用期间没有任何其他算子下发，异步下发被打断
       category: performance
@@ -287,7 +287,7 @@ namespaces:
       sig: []
       tok: []
       file: knowledge/common/performance/COMMON-SYNC-API-FREQ.yaml
-      hash: 66a5dc76bd68
+      hash: 599b03520b78
     - id: COMMON-SYSCALL-THP
       title: 训练前 500 步性能正常，保存 Checkpoint 后性能下降 20%+ 再缓慢恢复：30GB 量级 D2H 拷贝长期占用 Host 内存，触发内核内存回收与重整，malloc/free
         耗时显著增长；透明大页（THP）后台合并进一步抢占训练进程 CPU
@@ -307,7 +307,7 @@ namespaces:
       sig: []
       tok: []
       file: knowledge/common/performance/COMMON-SYSCALL-THP.yaml
-      hash: 2325e90a18e3
+      hash: 5a4723a4d87d
     precision:
     - id: COMMON-EMBEDDING-BWD-EMPTY
       title: 训练 loss NaN（首个 NaN 在 embedding/wte 层梯度）：embedding 反向输入为空时返回默认内存中的未初始化数据——触发源 A：dsp 序列切分致部分卡无
@@ -1118,7 +1118,7 @@ namespaces:
       tok:
       - AICPU
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-12345.yaml
-      hash: fc913ca8fac6
+      hash: a43a82411704
     - id: VLLM-ASC-12430
       title: 4×A2 多节点 A2-910B 拉起 DeepSeek-V4-Pro-w4a8（dp4/tp8 + --enable-expert-parallel，EP=32）固定在 determine_available_memory
         → profile_run 崩：AICore timeout 507014（subErrTyp…

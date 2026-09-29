@@ -29,7 +29,7 @@ cases:
       primary:
         command_template: "看 step 耗时是否存在跨节点一致的周期性抖动，并统计 GC 触发次数/耗时"
         rank_selector: coordinator
-        expected: "周期性抖动且与 GC 触发时间对齐"
+        expected: 'regex:^(?!.*:).*(0\.2[1-9]|0\.[3-9]\d*|[1-9](\.\d+)?)\s*(%|倍|毫秒|ms).*$'
         note: "performance 类：primary 用周期性指标断言"
       fallback:
         command_template: "grep -icE 'gc|garbage collect' {{profiling_report_path}}"
@@ -38,7 +38,7 @@ cases:
 
     diagnosis:
       - step: 1
-        check: "step 耗时抖动是否周期性、且跨节点高度一致？"
+        check: 同一 step 的耗时抖动跨节点一致，且漂移量 CV = σ/μ > 0.20（漂移告警线）
         expected: "是 → 指向全局性的进程内机制（如 GC），而非个别节点问题"
       - step: 2
         check: "抖动时间是否与 Python GC 触发对齐？"

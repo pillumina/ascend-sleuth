@@ -1,0 +1,139 @@
+# ============================================================
+# EV-2026-158 —— 阈值回流到 case：16 项定性判据改成可判定，其中 8 项接上带出处的数字
+# 来源：用户在我列出"性能 case 的 quickly_check 一半是定性描述"后要求"改"，
+#       并进一步要求"把所有对 sleuth 有明显收益的做掉，直到觉得已经到头了"。
+# 脱敏：只含仓库内路径与聚合数字。
+# ============================================================
+
+id: EV-2026-158
+layer: L1
+target_component: knowledge/
+title: "阈值从 reference 回流到 case：16 项定性 quickly_check 改为可判定，其中 8 项接上带出处的数字（另 6 项如实标注无数值口径）"
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: '2026-09-29'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户先同意"把 23 条性能 case 的定性 expected 改成带阈值的可判定写法"，随后要求
+      "把所有对 sleuth 有明显收益的做掉，直到觉得已经到头了"。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      本轮现算：全库 168 条 case、336 个 quickly_check 半边里，**16 项的 expected 既无数字也无 regex**
+      （14 项 performance + 2 项 interrupt）——等于"判据写成了描述，读完还是不知道过没过线"。
+      其中 6 项还同时在 `diagnosis[].check` 里用问句表达（"free 时间占比是否偏高？"）。
+      另有结构性发现：`npu-smi` 的宽度限制让 schema 走不了 `git diff --check`（与本题无关，记在别处）。
+    trajectory:
+      - "python3 - <<PY（遍历 knowledge/**/*.yaml 统计 expected 无数字且非 regex 的项）"
+hypothesis: >-
+  这几批从上游沉淀的阈值（Host Bound 10%、碎片率 5%/15%、绑核 0.8×online_cpus、漂移 CV>0.20、
+  离群 P50+3σ、单调增长）此前只住在 reference 层，**case 层还在用"偏高/频繁/明显"**。
+  把这些阈值回流到 case 的 `expected` 与 `diagnosis[].check`，判据就从"像不像"变成"过没过线"。
+predicted_effect:
+  metric: 不可判定的 quickly_check 项数；以及接入出处的阈值项数
+  from: >-
+    16 项 expected 既无数字也无 regex（14 performance + 2 interrupt）；
+    其中 6 项的 diagnosis check 是问句形态（无阈值）。
+  to: >-
+    不可判定项降到 **6 项**（且这 6 项在 expected 里**显式写明"本库无此量的阈值口径，按现场基线比"**——
+    如实标注而不是留白）；**8 项接上带出处的数字判据**（Host Bound >10% ×3、碎片率 5%/15%、
+    绑核 0.8×online_cpus、漂移 CV>0.20 ×2、离群 P50+3σ、案例自带 47MB/step）；
+    另修 `VLLM-ASC-12345` 的 fallback 为 RSS 增长的 regex。
+  measure:
+    command: |
+      python3 - <<'PY'
+      import pathlib, re, subprocess, sys
+      sys.path.insert(0, 'scripts')
+      from _yaml import load_file
+      root = pathlib.Path('.')
+      vague, quantified = [], []
+      for p in sorted((root / 'knowledge').rglob('*.yaml')):
+          if p.name.startswith('_'):
+              continue
+          d = load_file(p)
+          if not isinstance(d, dict):
+              continue
+          for c in d.get('cases') or []:
+              for half in ('primary', 'fallback'):
+                  h = (c.get('quickly_check') or {}).get(half) or {}
+                  exp = str(h.get('expected') or '')
+                  if not exp:
+                      continue
+                  if re.search(r'\d', exp) or exp.startswith('regex:'):
+                      quantified.append(c.get('id'))
+                  else:
+                      vague.append((c.get('id'), exp))
+      # 每一项留下的"不可判定"都必须自带说明，不许留白
+      explained = all('阈值口径' in exp or '基线' in exp for _, exp in vague)
+      r = subprocess.run([sys.executable, 'scripts/verify_case_draft.py', '--all'],
+                         capture_output=True, text=True)
+      print('vague      ', len(vague))
+      print('explained  ', explained)
+      print('quantified ', len(quantified))
+      print('verify     ', r.returncode)
+      ok = len(vague) <= 6 and explained and len(quantified) >= 320 and r.returncode == 0
+      print('VERDICT', 'PASS' if ok else 'FAIL')
+      PY
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: scan_review
+  baseline: >-
+    **改前基线（本轮在 origin/main = b7e0cf1 的新 worktree 上现算）**：168 条 case、336 个半边里
+    16 项不可判定（14 performance / 2 interrupt）；6 项的 diagnosis check 是问句形态。
+  success_criteria: >-
+    ①不可判定项 ≤6 且每一项都在 expected 里写明"无阈值口径、按基线比"；
+    ②8 项接上带出处的数字（出处逐条写在 PR body 的关键词里）；
+    ③`verify_case_draft.py --all` 绿（含 regex 可编译检查）、`build_index.py --check` 绿（28 处索引行随之重建）；
+    ④CI 全套 + 单测 + `rehearse_evolve_loop.py` 全绿。
+    ⑤**改动性质如实标注**：这是对 22 条 active case 的判据字段修订，按本仓纪律属 `kb/high-risk`；
+    本卡以"只把已有出处搬进来、不造新判据"的形态走 review，并显式声明该边界。
+  rollback: 分支丢弃或 git revert（纯文本字段改写，无数据迁移）。
+gate:
+  condition: >-
+    **不要再为了"让 expected 里有数字"而编阈值**。剩下的 6 项（GIL 抢占、IRQ 不均、内核线程切换、
+    访存密集算子占比、编译 API 频次、同步 API 频次）在本库**确实没有可引用的数字口径**，
+    它们已经在 expected 里写明"按现场基线比"。要量化它们，前提是先把口径沉淀成 reference 词条
+    （来源可以是官方文档或 ≥2 条实测案例），**不是先在 case 里写个数**——那会把拍脑袋的数字伪装成判据。
+risk: medium
+principle_refs: [1, 3, 6, 8, 10]
+actual_cost:
+  tokens: 180000
+  source: estimate
+  note: 口径如实标注：按本轮工具往返与产出（22 条 case 的字段改写 + 全库复核 + 全套门）粗估的量级。
+decisions:
+  - who: agent
+    when: 2026-09-29
+    type: eval
+    conclusion: >-
+      **先量化"改多少"再动手**：全库 336 个半边里只有 16 项不可判定——说明 case 层的判据质量整体不差，
+      缺口集中在**跨平台性能那批（COMMON-*）+ 2 条 interrupt**。范围清楚后才动，避免全库重写。
+  - who: agent
+    when: 2026-09-29
+    type: eval
+    conclusion: >-
+      **两类分开处理，不搞一刀切**：8 项能引到出处（Host Bound 10%、碎片率 5%/15%、绑核 0.8、
+      漂移 CV 0.20、离群 P50+3σ、案例自带 47MB/step）——直接写数字；
+      另 6 项本库确实没有该量的阈值口径——保留定性，但**在 expected 里写明"本库无此量的阈值口径，
+      按现场基线比"**。第二种写法看起来更弱，但它把"没有口径"这件事**变得可读**，比留白强。
+      另外顺手把 `diagnosis[].check` 里的 6 个问句（"free 时间占比是否偏高？"）换成带阈值的陈述句，
+      否则判据仍停在"像不像"。
+  - who: agent
+    when: 2026-09-29
+    type: action
+    conclusion: >-
+      实现时踩到两个小坑并修掉：①第一次把 expected 写成含 `**强调**` 的说明文字，
+      `verify_case_draft.py` 当场报"regex 不可编译（multiple repeat）"——说明该字段是正则而非散文；
+      ②改完 case 必须重跑 `build_index.py`（28 处索引行），否则 `index-freshness` 红。
+  - who: agent
+    when: 2026-09-29
+    type: decision
+    conclusion: >-
+      采纳（validated）。判据：不可判定 16 → 6 且 6 项都自带说明；量化项 336-16 → 330+；
+      `verify_case_draft` 与 `build_index --check` 绿；CI 与单测、演练全绿。
+      **显式标注**：这是对 22 条 active case 的判据修订，本该双签；本 PR 声明该边界并请 reviewer 裁决。

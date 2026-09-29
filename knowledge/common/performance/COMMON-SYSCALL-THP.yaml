@@ -29,7 +29,7 @@ cases:
       primary:
         command_template: "对比 Checkpoint 前后 malloc/free 系统调用耗时与 Host 内存回收活动"
         rank_selector: coordinator
-        expected: "Checkpoint 后 syscall 耗时显著增长"
+        expected: 'Checkpoint 之后同一阶段的 syscall 耗时比之前明显增长（案例口径是性能下降 ≥20%）'
         note: "performance 类：primary 用 syscall 耗时指标断言"
       fallback:
         command_template: "grep -icE 'malloc|free|checkpoint' {{profiling_report_path}}"
