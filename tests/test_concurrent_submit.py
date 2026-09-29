@@ -11,9 +11,10 @@
 两种提交纪律（`POLICIES`）：
   before    「现状」：每个 PR 都提交生成物；总表头注带生成日期（三人跨天各自重建 → 日期行必撞）
   after     「改后」：PR 提交 case 本体 + 分片 + 路由性质文件 + **生成物（总表与聚合）**；
-            生成物与路由源都配了 merge=union，内容里也不再有数字（条数/容量/日期改成现算），
-            于是两人并发时两边新增的条目都留住、不产生冲突标记、也不会有漂移的错数；
-            门是**覆盖检查**（条目都在、与内容对得上），所以 union 的结果算通过。
+            路由源与聚合配了 merge=union（一层平铺的追加型结构），所以两边新增的路由词都留住；
+            **索引（总表与分片）故意没配 union**（嵌套结构做行级合并会拼坏 YAML）——同一格并发仍会撞一次，
+            撞了解法是重跑生成器（机械、无判断），不是判留哪份；
+            内容里不再有数字（条数/容量/日期改成现算），所以合并后不会有漂移的错数。
             **合并后谁都不需要跑命令**——这是这套改法要买的东西。
 """
 import re
@@ -49,7 +50,7 @@ POLICIES = ("before", "after")
 CASE = """cases:
   - id: {cid}
     title: "并发提交实验用 case（{cid}）"
-    category: interrupt
+    category: {cat}
     tags: [exp]
     compat:
       - framework: vllm-ascend
@@ -153,7 +154,10 @@ class Experiment:
         git(r, "checkout", "-q", "-b", f"kb/{tag}", "main")
         case = r / "knowledge" / ns_dir / f"{cid}.yaml"
         case.parent.mkdir(parents=True, exist_ok=True)
-        case.write_text(CASE.format(cid=cid), encoding="utf-8")
+        # category 跟随目录：目录表达性质，字段必须与它一致（`build_index.py --check` 有这道门）。
+        # 原先这里写死 interrupt——diff-ns 场景第三位参与者的目录是 training/mindspeed-llm/precision，
+        # 于是每次实验都在造一条"目录说 precision、字段说 interrupt"的错位 case（门加起来的第一次跑就抓到）。
+        case.write_text(CASE.format(cid=cid, cat=ns_dir.split("/")[-1]), encoding="utf-8")
 
         if self.policy == "before":
             append_symptom(r / "triage-tree.yaml", branch_id, word)
@@ -202,8 +206,9 @@ class Experiment:
           - 现状：`triage-tree.yaml` 既是源又是所有人加词的目标 → 冲突要人判断留哪份（judgment）；
                   而且没有任何 union 规则，生成物冲突也只能靠人重跑。
           - 改后：路由数据在 `triage-tree.d/`（手写源，union 两边都留）；总表/分片/聚合是生成物，
-                  也都配了 union → 正常并发下**不该出现冲突标记**；万一撞上（结构性改动凑一起），
-                  动作是重跑生成器（机械、无判断）。
+                  其中**聚合与路由源配了 union、索引没配**（嵌套结构行级合并会拼坏 YAML）——
+                  索引撞出冲突标记是预期的，动作是重跑生成器（机械、无判断），
+                  与"路由词的 union 结果算通过"是两件事、两种解。
         """
         if path == "knowledge/_index.yaml" or path.startswith("knowledge/_index/"):
             return "generated"

@@ -113,8 +113,9 @@ class BuildIndexTest(unittest.TestCase):
 
     # ---------------------------------------------------------------- 一致性门口径
     # 门是**覆盖检查**（每条 case 的索引行都在、与内容对得上），不是逐字节相同：
-    # 生成物配了 merge=union，合并出来的文件内容对、顺序可能与重新生成不同。
-    # 所以下面既测"五种漂移都红"，也测"union 合并的结果不许红"。
+    # 并发合并后文件内容对、条目顺序可能与重新生成不同（索引故意没配 merge=union，
+    # 同一格并发要重跑一次生成器；顺序差异仍不必判红）。
+    # 所以下面既测"五种漂移都红"，也测"顺序不同但内容齐全的文件不许红"。
     def generate_all(self, ns=None):
         """分片 + 总表都写出来（模拟一次完整的"跑了一遍生成器"）。"""
         ns = bi.collect(self.root) if ns is None else ns
@@ -212,7 +213,7 @@ class BuildIndexTest(unittest.TestCase):
         self.assertTrue(any("分片缺失" in p and "inference__vllm-ascend__interrupt" in p for p in probs), probs)
 
     def test_shard_with_conflict_markers_is_reported_not_merged(self):
-        """分片里出现冲突标记（不该有——本目录配了 union）→ 点名，动作是重跑生成器。"""
+        """分片里出现冲突标记（不该有——索引故意没配 union，撞了就该重跑）→ 点名，动作是重跑生成器。"""
         self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
         self.generate_all()
         p = bi.shard_path(self.root, "inference/vllm-ascend__interrupt")
@@ -272,6 +273,40 @@ class BuildIndexTest(unittest.TestCase):
         self.assertIn("knowledge/inference/vllm-ascend/interrupt/R.yaml", text)
         self.assertIn("hash:", text)
         self.assertIn("R-1", text)
+
+
+    # ------------------------------------------------- 目录 × category 一致门口径
+    # 目录表达性质（人翻目录、将来按目录切子族都靠它），字段是索引真正的格子来源——
+    # 两者不一致时索引自洽、实体合法，只有"按目录找"会错位，且没有任何别的信号报它。
+    def test_dir_category_mismatch_is_reported(self):
+        self.write_case("inference/vllm-ascend/interrupt/M.yaml", cid="M-1", cat="precision")
+        probs = bi.dir_category_problems(self.root)
+        self.assertEqual(len(probs), 1)
+        self.assertIn("M-1", probs[0])
+        self.assertIn("interrupt", probs[0])
+
+    def test_dir_category_match_is_silent(self):
+        self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1", cat="interrupt")
+        self.write_case("common/performance/B.yaml", cid="B-1", cat="performance")
+        self.assertEqual(bi.dir_category_problems(self.root), [])
+
+    def test_dir_without_category_layer_is_silent(self):
+        """`knowledge/inference/sglang/` 这类直接把 case 放在框架层的形态：目录不表达性质，不报。"""
+        self.write_case("inference/sglang/C.yaml", cid="C-1", cat="interrupt")
+        self.assertEqual(bi.dir_category_problems(self.root), [])
+
+    def test_dir_check_covers_common_and_nested(self):
+        self.write_case("common/precision/D.yaml", cid="D-1", cat="interrupt")
+        self.write_case("training/verl/performance/E.yaml", cid="E-1", cat="interrupt")
+        probs = bi.dir_category_problems(self.root)
+        self.assertEqual(len(probs), 2)
+        self.assertTrue(any("D-1" in p for p in probs))
+        self.assertTrue(any("E-1" in p for p in probs))
+
+    def test_dir_check_skips_archive_and_generated(self):
+        self.write_case("_archive/inference/vllm-ascend/interrupt/OLD.yaml", cid="OLD-1", cat="precision")
+        self.write_case("_index/inference/vllm-ascend/interrupt/X.yaml", cid="X-1", cat="precision")
+        self.assertEqual(bi.dir_category_problems(self.root), [])
 
 
 if __name__ == "__main__":

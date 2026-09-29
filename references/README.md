@@ -85,7 +85,8 @@ status: active | pending-review | deprecated | draft   # 新产出即 active（P
 用途只有一个：承接从 `summary` 挪出来的正文。已有 104 条走这条路（2026-09-29 批）。
 
 **`summary` 是"选择用的路由行"，不是内容**（本条为表述纪律，不进 CI——判"哪句算判据"要人读）：
-背景层每轮只取 **≤5 行**、且生成器对 `summary` **截断到 160 字符**（`build_ref_summary_index.py` 的 `SUMMARY_CAP`）。
+背景层每轮只取 **≤5 行**（索引**一行一条**：`id/type/title/summary/applies_to` 都在同一行，一次 grep 命中即整条，不必按字段多趟扫）、
+且生成器对 `summary` **截断到 160 字符**（`build_ref_summary_index.py` 的 `SUMMARY_CAP`）。
 所以 `summary` 的职责只有一个：**让读的人决定"这条要不要点开"**——写清"这条讲什么工具/事实 + 什么时候看"就够。
 判据（阈值、口径、命令、约束、陷阱）**一律写在 `content`**：写在 `summary` 里的部分，超出 160 字符的部分
 读侧根本看不到（被 `…` 截掉），等于白写；而进得去的那部分又要与 `content` 维护两遍，必然漂移。
