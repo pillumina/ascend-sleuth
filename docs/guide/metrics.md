@@ -10,7 +10,7 @@
 | `metrics/timeline.yaml` | **生成物**：由源重建的聚合（`periods:` 列表，读侧的唯一入口） | 每次源变化后重建（**不要手改**） |
 | `scripts/build_timeline.py` | 聚合重建 / `--check` 校验生成物与源一致（CI 强制） | 随机制 |
 | `docs/guide/metrics.md`（本文） | 机制文档：指标定义、口径、汇总流程、示例 | 机制变化时 |
-| `metrics/gates.yaml` | **阈值与可解读性下限（数据）**：新鲜度上限、格子读入成本线（`cell_read_soft_tok` / `cell_read_hard_tok`）、反馈下限、哪些指标分母为 0 即"不可解读" | 判据变化时 |
+| `metrics/gates.yaml` | **阈值与可解读性下限（数据）**：新鲜度上限、读入成本线（类视图 `cell_read_soft_tok` / `cell_read_hard_tok`，兜底视图 `fallback_read_soft_tok` / `fallback_read_hard_tok`）、反馈下限、哪些指标分母为 0 即"不可解读" | 判据变化时 |
 | `scripts/metrics_snapshot.py` | **一期快照的单一产出命令**：组装诊断侧 + 结构侧 + 内容流程侧（逐块标 `sources`）；撞号自动加后缀 | 随机制 |
 | `scripts/metrics_health.py` | **闭环检测器**：读 timeline + gates，判新鲜度 / 越界 / 可解读性；`--check` 三态（0 判据全评过且无越界 / 1 有违反 / 2 有判据未被评估）；`--json` 是诊断面板的数据契约 | 随机制 |
 | `scripts/trace_metrics.py` | 诊断侧指标（markdown 概览 + `--emit-yaml` 骨架 + `--emit-yaml-only` 供组装） | 随机制 |
@@ -38,7 +38,7 @@
 | 来源 | 谁产出 | 指标 |
 |---|---|---|
 | 诊断侧 | `trace_metrics.py`（读 `traces/*.yaml`） | 命中率、误诊率、路由准确率、归因比、按类命中、置信度分布、trace 完整性、Tier 3、反馈捕获、reference 引用/消费点、流程加载与跟随 |
-| 结构侧 | `index_counts.py`（条数，现算）+ `index_read_cost.py`（读入成本，现算）+ `verify_references.py` | `case_total`、`reference_total`、`capacity_by_ns`（每格 `count` + `tok`；成本才是被治理的量） |
+| 结构侧 | `index_counts.py`（条数，现算）+ `index_read_cost.py`（读入成本，现算）+ `verify_references.py` | `case_total`、`reference_total`、`capacity_by_ns`（每格 `count` + `tok`；成本才是被治理的量）。一次诊断的读入账另有三个分项由 `index_read_cost.py` 现算（兜底视图 / 先验层 / 阶段二候选全文），体检的 `capacity_fallbacks` 取自它 |
 | 内容流程侧 | `log_skill_exec.py` → `tail_exec_log.py --summary` | `content_flow_runs`、`evolve_check_runs`、`evolve_check_no_signal` |
 | 评测侧 | ixn / golden / S2 等按需 | `ixn_*`、`golden_suite`、S2 内容验证（口径见下） |
 
@@ -62,7 +62,7 @@
 | trace 完整性 | 有 trace 记录的 step / 实际执行 step | proxy：含 triage + 过滤步 |
 | Tier 3 挽救率 | 走 Tier 3 兜底检索且最终 resolved 的比例 | trace `tier3` action |
 | 反馈捕获率 | 回报 fix 结果的 session / 给出 fix 的 session | trace `feedback` action |
-| reference 引用 | 引用次数 / 引用后 resolve 率 / 平台分布 / 消费点分布（collect / signature / fix / background）/ **触发三态分布（hit / miss / skipped）** | trace `reference_lookup` 事件（引用后 outcome 从 session 最终 status 派生；消费点看 `purpose`——`collect` 是数据缺口的采集面，此前无该值可记，等于零观测）。**触发三态**（EV-2026-093）看 `outcome`：`hit` 用到、`miss` 查了没命中（指向知识库覆盖缺口）、`skipped` 没查且写了理由（指向流程执行）。三态缺一，"没查"与"查了没命中"同形，消费率无法归因。**`skipped` 不计入「引用次数」**——那个口径是"查过" |
+| reference 引用 | 引用次数 / 引用后 resolve 率 / 平台分布 / 消费点分布（`reference_purposes`：collect / signature / background / fix / procedure，**进 live 快照**）/ **触发三态分布（hit / miss / skipped）** | trace `reference_lookup` 事件（引用后 outcome 从 session 最终 status 派生；消费点看 `purpose`——`collect` 是数据缺口的采集面，此前无该值可记，等于零观测）。**触发三态**（EV-2026-093）看 `outcome`：`hit` 用到、`miss` 查了没命中（指向知识库覆盖缺口）、`skipped` 没查且写了理由（指向流程执行）。三态缺一，"没查"与"查了没命中"同形，消费率无法归因。**`skipped` 不计入「引用次数」**——那个口径是"查过" |
 | 流程加载与跟随 | 流程加载率（`purpose: procedure` 的会话占比）/ 每条流程的加载次数与跟随深度（`procedure_follow` 的 `steps_executed` 长度 / `branch_taken` 分布）/ 跟随后 resolve 率 | trace `reference_lookup`（purpose=procedure）+ `procedure_follow` 事件。**这是流程层唯一的可观测面**——没有它就无法判断某条流程该留、该改、该摘（EV-2026-038）。注意：加载率是**活动**度量不是**价值**度量（加了触发点必然接近 100%），必须与"跟随后 resolve 率"配对读。注意 `purpose: procedure` 也会计入上表的"reference 引用次数"——该口径自此混装四个消费点，看消费点构成请用 `purpose` 分布，不要只看总数。**强度如实标注（原则十）**：加载率是**确定性**的（来自 `reference_lookup` 事件）；
 跟随深度（`steps_executed` / `branch_taken` / `conflict`）是**agent 自报**——属弱观测，只可作趋势与异常信号，
 不可当验收证据；跟随后 resolve 率来自工程师反馈闭环（S1），是本行唯一较强的效果信号 |
@@ -129,8 +129,21 @@ periods:
 | 面 | 判据（gates.yaml） | 说明 |
 |---|---|---|
 | 新鲜度 | `live_snapshot_max_age_days` / `structural_max_age_days` | 超期 = 趋势断档（实测：结构侧 10 天没进快照） |
-| 越界 | `cell_read_soft_tok`(>8000) / `cell_read_hard_tok`(>=20000) / `feedback_capture_floor`(<=0) | 每条带 `meaning` 与 `action`，报告直接给下一步。容量线按**阶段一实读 token**判（现算 `scripts/index_read_cost.py`），不按条数——条数只是代理量，实测每条 177 token 而旧政策按 70 估 |
+| 越界 | `cell_read_soft_tok`(>8000) / `cell_read_hard_tok`(>=20000) / `fallback_read_soft_tok`(>8000) / `fallback_read_hard_tok`(>=20000) / `feedback_capture_floor`(<=0) | 每条带 `meaning` 与 `action`，报告直接给下一步。容量线按**实读 token**判（现算 `scripts/index_read_cost.py`），不按条数——条数只是代理量，实测每条 177 token 而旧政策按 70 估。**两条读取路径各判一条线**：类视图（category 已定）与 ns 兜底视图（category 未定才读）；先验层与阶段二候选全文只量不判（见下） |
 | 可解读性 | `readability` 规则（如 `source_nonzero`） | 分母/来源无数据时把指标标成**不可解读**，禁止把 `0/N` 读成"零问题" |
+
+### 一次诊断的读入账：四个分项，线只加在有证据的地方
+
+`scripts/index_read_cost.py` 报的是"查一次问题要读进来多少字"，分四项：
+
+| 分项 | 何时读 | 判线 |
+|---|---|---|
+| 类视图 `knowledge/_index/<ns>__<category>.list` | category 判出来时（命中路径） | 软 8000 / 硬 20000 |
+| 兜底视图 `knowledge/_index/<ns>.list` | category 没判出来时 | **同一条线**（数值同一套推导，单列 dimension 让"哪条路径越线"看得出来） |
+| 先验层（背景索引整读 / 流程选择器 / 分片 / 错误族表） | 步骤 2 收尾与步骤 5 | **不判**：检索式读取（一次 grep + ≤5 行），成本不随库大小线性涨 |
+| 阶段二候选全文（≤5 条） | 候选验证 | **不判**：上限是"读几条候选"，压低字数等于压低证据量 |
+
+先验层的退化量不是 token 而是**检索残量**（平台 + 类别两刀切完剩多少行，`index_read_cost.py` 现算）——它随词条数线性涨，比 token 更早说明"还找不找得到"。兜底视图此前被明确写在线外：vllm-ascend 兜底视图 24270 tok（全系统最贵的一次读）不在任何判据里、`--json` 退 0。现在它接上同一条线（`fallback_read_soft_tok` / `fallback_read_hard_tok`）。先验层与阶段二先量不判：按准入判据（机械可判 + 确定性后果 + 已复发 ≥2 次），缺的是第三项。
 
 **为什么必须单独有这一层**：`verify_metrics.py` 只验**结构**（period 唯一/字段合法），
 它不判"该更新的没更新""越界了""这个 0 是没数据还是真没问题"——实测按旧流程走一遍

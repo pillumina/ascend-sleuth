@@ -33,7 +33,8 @@ import metrics_snapshot as MS
 # 本体检器**实现了哪些判据 dimension / readability rule**——写成集合，用来对照 `gates.yaml`
 # 实际声明的条目。gates.yaml 里新增一条判据而这里没实现时，`--check` 报 2（不可判定），
 # 而不是安静地"没有越界"（EV-2026-055 的教训：检测腿断了自己不会喊）。
-IMPLEMENTED_GATE_DIMENSIONS = {"capacity_cell_read_tok", "feedback_capture_total"}
+IMPLEMENTED_GATE_DIMENSIONS = {"capacity_cell_read_tok", "capacity_fallback_read_tok",
+                               "feedback_capture_total"}
 IMPLEMENTED_READABILITY_RULES = {"total_gt_0", "any_gt_0", "source_nonzero"}
 # 容量两线的兜底阈值：只在 `cell_read_*_tok` 闸门缺失时才用到（正常路径读 gates.yaml）。
 # **定义只有一处**：`index_read_cost.py` 是成本量的家（本 PR 自己的论点——同一个量两处定义，
@@ -249,14 +250,19 @@ def main():
     try:
         cells = [(ns, cat, c["count"], c.get("tok")) for ns, cs in (structural.get("capacity_by_ns") or {}).items()
                  for cat, c in cs.items()]
+        # 兜底视图的成本**没有快照来源**（结构侧只记类视图格子）→ 一律现算。它与类视图共用同一把
+        # 尺子（token），但判据是独立的 dimension：哪条读取路径越线要看得出来。
+        # 为什么非接上不可：这条路是全系统最贵的一次读（vllm-ascend 兜底 24270 tok），
+        # 而它此前被明确写在线外——"最贵的读不在任何判据里"是政策洞，不是可接受的取舍。
+        import index_read_cost
+        live = index_read_cost.cell_costs(root)
         if all(t is None for _ns, _cat, _n, t in cells):
-            import index_read_cost
-            live_costs = {(c["namespace"], c["category"]): c["tok"]
-                          for c in index_read_cost.cell_costs(root)["cells"]}
+            live_costs = {(c["namespace"], c["category"]): c["tok"] for c in live["cells"]}
             cells = [(ns, cat, n, live_costs.get((ns, cat))) for ns, cat, n, _t in cells]
+        fallbacks = [(f["namespace"], None, f["rows"], f["tok"]) for f in live["fallbacks"]]
     except Exception as e:
         s_notes.append(f"读入成本现算失败（{type(e).__name__}: {str(e)[:120]}）——容量线本轮未被评估")
-        cells = []
+        cells, fallbacks = [], []
     prev_cells = {}
     if last_struct:
         for ns, cs in ((last_struct.get("metrics") or {}).get("capacity_by_ns") or {}).items():
@@ -271,51 +277,70 @@ def main():
     # 量不出的格子单独记：读侧视图缺失时成本是 None，**不能**当成"没越界"（那正是假绿的样子）
     unmeasurable = ([(ns, cat) for ns, cat, _n, tok in cells if tok is None]
                     if not structural_unavailable else [("（整个结构侧）", "拿不到")])
-    capacity_hits = {}   # (ns, cat) → {n, tok, gates:[{id, meaning, action}], hard:bool}
-    for g in gates:
-        if g.get("dimension") != "capacity_cell_read_tok":
-            continue
-        op, val = g.get("op"), g.get("value")
-        for ns, cat, n, tok in cells:
-            if tok is None or not op_holds(op, tok, val):
+    fb_unmeasurable = [ns for ns, _cat, _n, tok in fallbacks if tok is None]
+    # 两类读入视图各按自己的 dimension 判：类视图（命中路径）与兜底视图（category 未判出才读）。
+    # 判据条目本身在 gates.yaml 一处（原则二），这里只做"哪个视图 × 哪条线"的比较。
+    capacity_hits = {}   # (kind, ns, cat) → {n, tok, gates:[{id, meaning, action}], hard:bool}
+    for dim, kind, rows in (("capacity_cell_read_tok", "cell", cells),
+                            ("capacity_fallback_read_tok", "fallback", fallbacks)):
+        for g in gates:
+            if g.get("dimension") != dim:
                 continue
-            key = (ns, cat)
-            hit = capacity_hits.setdefault(key, {"ns": ns, "cat": cat, "n": n, "tok": tok,
-                                                 "gates": [], "hard": False})
-            hit["gates"].append({"id": g.get("id"), "meaning": g.get("meaning"), "action": g.get("action")})
-            if "hard" in str(g.get("id")):
-                hit["hard"] = True
+            op, val = g.get("op"), g.get("value")
+            for ns, cat, n, tok in rows:
+                if tok is None or not op_holds(op, tok, val):
+                    continue
+                key = (kind, ns, cat)
+                hit = capacity_hits.setdefault(key, {"kind": kind, "ns": ns, "cat": cat, "n": n, "tok": tok,
+                                                     "gates": [], "hard": False})
+                hit["gates"].append({"id": g.get("id"), "meaning": g.get("meaning"), "action": g.get("action")})
+                if "hard" in str(g.get("id")):
+                    hit["hard"] = True
 
-    soft_tok = next((g.get("value") for g in gates if g.get("id") == "cell_read_soft_tok"), SOFT_TOK_FALLBACK)
-    hard_tok = next((g.get("value") for g in gates if g.get("id") == "cell_read_hard_tok"), HARD_TOK_FALLBACK)
+    def line_tok(kind: str, which: str):
+        """这条线的数值：按视图类别取对应的 gates.yaml 条目（缺省回到 index_read_cost 的常数）。"""
+        gid = f"{kind}_read_{which}_tok"
+        fallback = SOFT_TOK_FALLBACK if which == "soft" else HARD_TOK_FALLBACK
+        return next((g.get("value") for g in gates if g.get("id") == gid), fallback)
     for key in sorted(capacity_hits, key=lambda k: -(capacity_hits[k]["tok"] or 0)):
         hit = capacity_hits[key]
         ns, cat, n, tok = hit["ns"], hit["cat"], hit["n"], hit["tok"]
+        soft_tok = line_tok(hit["kind"], "soft")
+        hard_tok = line_tok(hit["kind"], "hard")
         prev = prev_cells.get((ns, cat))
         drift = f"（上次快照 {prev} 条）" if prev is not None and prev != n else ""
+        where = f"{ns} · {cat}" if hit["kind"] == "cell" else f"{ns} · 兜底视图（category 未判出）"
         # 动作取最强的那条（硬线优先，否则按 gates.yaml 顺序）
         action = next((x["action"] for x in hit["gates"] if x["action"] and "hard" in str(x["id"])),
                       hit["gates"][0].get("action"))
+        if hit["kind"] == "cell":
+            plain = (f"{ns_label(ns)} 的「{cat_label(cat)}」共 {n} 条，查一次问题要读进来约 {tok} 字"
+                     + (f"，是硬线 {hard_tok} 的 {round(tok / hard_tok, 1)} 倍" if tok >= hard_tok else "")
+                     + ("。读得太多会挤掉推理余量，先看能不能再省（行宽/字段），再看要不要按平台切开"
+                        if hit["hard"] else "。已过评估线，值得看看还能不能再省"))
+        else:
+            plain = (f"{ns_label(ns)} 的问题性质没判出来时，要整读这 {n} 条 case 的索引（约 {tok} 字）"
+                     + (f"，是硬线 {hard_tok} 的 {round(tok / hard_tok, 1)} 倍" if tok >= hard_tok else "")
+                     + "。这条读取路径此前不在任何线上——先用窄列视图（只留 id/标题/标签）找候选，"
+                       "再读判出来的那一类的索引")
         findings.append(("fail", "容量",
-                         f"{ns} · {cat} = {tok} tok（{n} 条）{drift} —— 越过 "
+                         f"{where} = {tok} tok（{n} 条）{drift} —— 越过 "
                          f"{'、'.join(str(x['id']) for x in hit['gates'])}"
                          f"（{'；'.join(str(x['meaning']) for x in hit['gates'])}）",
-                         action,
-                         f"{ns_label(ns)} 的「{cat_label(cat)}」共 {n} 条，查一次问题要读进来约 {tok} 字"
-                         + (f"，是硬线 {hard_tok} 的 {round(tok / hard_tok, 1)} 倍" if tok >= hard_tok else "")
-                         + ("。读得太多会挤掉推理余量，先看能不能再省（行宽/字段），再看要不要按平台切开"
-                            if hit["hard"] else "。已过评估线，值得看看还能不能再省")))
-    if unmeasurable:
+                         action, plain))
+    if unmeasurable or fb_unmeasurable:
         findings.append(("warn", "容量",
                          "容量线未评估：" + ("结构侧整块拿不到（knowledge/ 或读侧视图缺失）"
                                           if structural_unavailable
-                                          else "读侧视图缺失：" + "、".join(f"{ns} · {cat}" for ns, cat in unmeasurable)),
+                                          else "读侧视图缺失：" + "、".join(f"{ns} · {cat}" for ns, cat in unmeasurable)
+                                          + ("；" if unmeasurable and fb_unmeasurable else "")
+                                          + "、".join(f"{ns} 兜底视图" for ns in fb_unmeasurable)),
                          "python3 scripts/build_index.py",
                          "读入成本量不出来（结构侧/读侧视图缺失）——先重建索引再看容量"))
-    if not capacity_hits and not unmeasurable:
-        findings.append(("ok", "容量",
-                         f"所有格子均未触发 ({'、'.join(str(g.get('id')) for g in gates if g.get('dimension') == 'capacity_cell_read_tok')})",
-                         None, None))
+    if not capacity_hits and not unmeasurable and not fb_unmeasurable:
+        ids = "、".join(str(g.get("id")) for g in gates
+                       if g.get("dimension") in ("capacity_cell_read_tok", "capacity_fallback_read_tok"))
+        findings.append(("ok", "容量", f"两类读入视图均未触发 ({ids})", None, None))
 
     for g in gates:
         gid, dim, op, val = g.get("id"), g.get("dimension"), g.get("op"), g.get("value")
@@ -403,7 +428,8 @@ def main():
         {"label": "追快照", "command": "python3 scripts/metrics_snapshot.py",
          "why": "诊断侧/结构侧快照超期 → 趋势断档"},
         {"label": "看读入成本", "command": "python3 scripts/index_read_cost.py",
-         "why": "容量线按阶段一实读 token 判：超评估线先看能否再省（行宽/字段），超硬线再评估平台轴切分"},
+         "why": "一次诊断的读入账（类视图 / 兜底视图 / 先验层 / 阶段二全文）：两条视图路径都判线，"
+                "先验层与阶段二只量不判"},
         {"label": "重建索引", "command": "python3 scripts/build_index.py",
          "why": "索引头注与磁盘不一致时，检索与面板读到的都是旧数"},
     ]
@@ -417,16 +443,25 @@ def main():
     # 语义与 `ev_measure.py` 的三态刻意同形（0 符合 / 1 被证伪 / 2 无法判定）。
     gate_audit = []
     broken = list(load_errors)
-    if unmeasurable:
+    if unmeasurable or fb_unmeasurable:
         what = ("结构侧拿不到" if structural_unavailable
-                else "读侧视图缺失（" + "、".join(f"{ns}×{cat}" for ns, cat in unmeasurable) + "）")
+                else "读侧视图缺失（" + "、".join(f"{ns}×{cat}" for ns, cat in unmeasurable)
+                     + ("；" if unmeasurable and fb_unmeasurable else "")
+                     + "、".join(f"{ns} 兜底视图" for ns in fb_unmeasurable) + "）")
         broken.append(f"容量线未评估：{what}——先跑 `python3 scripts/build_index.py`")
     for g in gates:
         dim = g.get("dimension")
-        ok_impl = dim in IMPLEMENTED_GATE_DIMENSIONS and not (dim == "capacity_cell_read_tok" and unmeasurable)
+        missing_data = ((dim == "capacity_cell_read_tok" and unmeasurable)
+                        or (dim == "capacity_fallback_read_tok" and fb_unmeasurable))
+        implemented = dim in IMPLEMENTED_GATE_DIMENSIONS
+        ok_impl = implemented and not missing_data
         gate_audit.append({"id": g.get("id"), "dimension": dim, "implemented": ok_impl})
-        if not ok_impl:
+        # "没实现"与"没数据"是两件事：前者是检测腿断了（改代码），后者是输入缺了（重建索引）。
+        # 合成一条会让读者按错的方向修（两者的修复动作相反）。
+        if not implemented:
             broken.append(f"闸门 {g.get('id')}（dimension={dim}）没有评估实现——这条判据不会被检查")
+        elif missing_data:
+            broken.append(f"闸门 {g.get('id')}：数据缺失（读侧视图量不出），本轮**未被评估**——不等于通过")
     readability_audit = []
     for rule in readability:
         metric, kind = rule.get("metric"), rule.get("rule")
@@ -471,9 +506,17 @@ def main():
         "readability": readability_state,
         "capacity_cells": [
             {"namespace": ns, "category": cat, "count": n, "tok": tok,
-             "soft_tok": soft_tok, "hard_tok": hard_tok,
-             "soft": tok is not None and tok > soft_tok, "hard": tok is not None and tok >= hard_tok}
+             "soft_tok": line_tok("cell", "soft"), "hard_tok": line_tok("cell", "hard"),
+             "soft": tok is not None and tok > line_tok("cell", "soft"),
+             "hard": tok is not None and tok >= line_tok("cell", "hard")}
             for ns, cat, n, tok in sorted(cells, key=lambda x: (-(x[3] or 0), x[0], x[1]))
+        ],
+        "capacity_fallbacks": [
+            {"namespace": ns, "count": n, "tok": tok,
+             "soft_tok": line_tok("fallback", "soft"), "hard_tok": line_tok("fallback", "hard"),
+             "soft": tok is not None and tok > line_tok("fallback", "soft"),
+             "hard": tok is not None and tok >= line_tok("fallback", "hard")}
+            for ns, _cat, n, tok in sorted(fallbacks, key=lambda x: (-(x[3] or 0), x[0]))
         ],
         "candidate_commands": candidate_commands,
         "current": {"case_total": structural.get("case_total"),
