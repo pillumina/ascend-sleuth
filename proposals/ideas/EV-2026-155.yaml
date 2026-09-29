@@ -1,0 +1,137 @@
+# ============================================================
+# EV-2026-155 —— 算子级失败模式、精度豁免与验证容差、训推配对采集入库
+# 来源：用户要求"1-4 和 5 都做"（承接 EV-2026-153/154 之后列的剩余清单）。
+# 脱敏：只含仓库内路径、上游公开 URL 与 commit、聚合数字。
+# ============================================================
+
+id: EV-2026-155
+layer: L1
+target_component: references/
+title: "算子级失败模式十类 + 精度豁免算子与单算子验证容差 + 训推配对采集流程入库"
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: '2026-09-29'
+source_signals:
+  - signal: user_feedback
+    evidence: 用户看过"msagent 剩下的还有什么"清单后回"1-4 和 5 都做"。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      改前现算：`grep -rli 豁免算子 references/` 0 处、`verl-omni` 0 处、`模块映射` 0 处、
+      `单算子验证` 仅 1 处、容差表零命中（float64/float32/float16/bfloat16 四档都不在库）。
+      而库内已有 `precision-threshold-cascade`（讲哪个差异算引入点）与 RL 训推一致性的流程词条——
+      缺的是"哪些算子根本不该比"和"怎么把两侧数据配起来"。
+    trajectory:
+      - "grep -rli '豁免算子|verl-omni|模块映射' references/"
+hypothesis: >-
+  算子级失败模式给的是"信号 → 证据 → **常见误报** → 方向 → 置信度条件"这一整套（本库此前只有阈值与方向）；
+  精度豁免表拦掉两类结构性误判（未初始化内存分配族被当根因、跨 rank 通信算子的 input→output 比对不成立）；
+  单算子验证把"怀疑某算子"变成"能自己验某算子"；训推配对采集补上"两侧数据怎么配起来"的实施面。
+predicted_effect:
+  metric: 本批词条条数与其可达性
+  from: >-
+    豁免/占位算子、单算子容差、训推配对采集三块零覆盖；算子级只有阈值表没有误报清单。
+  to: >-
+    新增 fault-pattern `operator-compute-failure-modes`（十类模式逐条带常见误报）与
+    `accuracy-operator-exemption-and-verification`（豁免/占位/容差/构造质量门）、
+    methodology `single-operator-accuracy-verification`（5 步）与 `train-infer-paired-collection`（4 步）；
+    全部挂进 precision / performance 闸门；reference 词条 257 → 261。
+  measure:
+    command: |
+      python3 - <<'PY'
+      import pathlib, subprocess, sys
+      sys.path.insert(0, 'scripts')
+      from _yaml import load_file
+      root = pathlib.Path('.')
+      fp1 = load_file(root / 'references' / 'fault-patterns' / 'operator-compute-failure-modes.yaml')
+      fp2 = load_file(root / 'references' / 'fault-patterns' / 'accuracy-operator-exemption-and-verification.yaml')
+      mt1 = load_file(root / 'references' / 'methodologies' / 'single-operator-accuracy-verification.yaml')
+      mt2 = load_file(root / 'references' / 'methodologies' / 'train-infer-paired-collection.yaml')
+      ok_items = (len((fp1['content'] or {}).get('patterns') or []) >= 8
+                  and len((fp2['content'] or {}).get('patterns') or []) >= 4
+                  and len((mt1['content'] or {}).get('flow') or []) >= 5
+                  and len((mt2['content'] or {}).get('flow') or []) >= 4)
+      gates = load_file(root / 'skills' / 'diagnose' / 'references' / 'collect-gates.yaml')
+      bound = set()
+      for g in gates.get('gates') or []:
+          bound.update(g.get('refs') or []); bound.update(g.get('caveat_refs') or [])
+          for br in g.get('branches') or []:
+              bound.update(br.get('refs') or [])
+      targets = ['operator-compute-failure-modes', 'accuracy-operator-exemption-and-verification',
+                 'single-operator-accuracy-verification', 'train-infer-paired-collection']
+      ok_bound = all(t in bound for t in targets)
+      prec = (root / 'references' / '_procedure-index' / 'precision.yaml').read_text(encoding='utf-8')
+      ok_flow = 'single-operator-accuracy-verification' in prec and 'train-infer-paired-collection' in prec
+      r = subprocess.run([sys.executable, 'scripts/verify_references.py', '--check'],
+                         capture_output=True, text=True)
+      print('items      ', ok_items)
+      print('bound      ', ok_bound)
+      print('in_flow    ', ok_flow)
+      print('verify_refs', r.returncode)
+      ok = ok_items and ok_bound and ok_flow and r.returncode == 0
+      print('VERDICT', 'PASS' if ok else 'FAIL')
+      PY
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: scan_review
+  baseline: >-
+    **改前基线（本轮在 origin/main = b7a6ec3 的新 worktree 上现算）**：reference 词条 257 条；
+    `豁免算子` 0 处、`verl-omni` 0 处、`模块映射` 0 处、`单算子验证` 1 处；dtype 容差表零命中。
+  success_criteria: >-
+    ①改后词条 261 条、id 唯一，`verify_references.py --check` 绿；
+    ②4 条新词条全部被闸门绑定；③两条精度流程进 precision 分片；
+    ④三个索引生成物随提交重建、`--check` 全绿；
+    ⑤CI 15 条命令本机复跑全绿 + 单测 + `rehearse_evolve_loop.py` 绿；
+    ⑥**边界如实标注**：容差与质量门阈值均为上游口径（float32 `1e-4/1e-3`、构造质量 `l2norm 5%` 与
+    `clamp 10%` 等），未在本机复现。
+  rollback: 分支丢弃或 git revert；词条、闸门绑定、生成物与卡在同一分支内整体可退。
+gate:
+  condition: >-
+    原计划的第 5 组（把 msprof `best_practices/` 的 4 篇定位案例转成 case 草稿）**经核对后未执行，理由记在 decisions**：
+    上游 18 篇对应的主题在 `knowledge/common/performance/` 里已有 15 条 case 覆盖（文件名与主题一一对应），
+    剩下未覆盖的两篇（性能数据采集适配、算子 MFU）不是"现象→根因→处置"形态；
+    msagent 自己的 `docs/zh/best_practices/` 6 篇是**带截图的产品演示**（问题背景 + 操作步骤 + 截图），不含根因分析。
+    所以第 5 组的真实增量接近零，不做比硬做更诚实。
+    **另一件不要做的事**：不要把上游 `verify_op.py` 之类的脚本复制进本仓（同前三批的判断）。
+risk: low
+principle_refs: [3, 6, 8, 10, 11]
+actual_cost:
+  tokens: 180000
+  source: estimate
+  note: >-
+    口径如实标注：按本轮工具往返与产出（4 条词条 + 两处闸门绑定 + 上游 6 篇文档与 2 个 best_practices 目录的核对）
+    粗估的量级，不是 exec-log 记账读出的真实值。
+decisions:
+  - who: agent
+    when: 2026-09-29
+    type: eval
+    conclusion: >-
+      **第 5 组（best_practices → case）核对后判定为"增量接近零"，未执行**。三条证据：
+      ① msprof `docs/zh/best_practices/` 的主题与本库 `knowledge/common/performance/` 的 15 条 case 一一对应
+      （cpu_cache_miss_conflict ↔ COMMON-CPU-CACHE-MISS、memory_fragmentation ↔ COMMON-NPU-MEM-FRAGMENTATION、
+      irq_interruption ↔ COMMON-IRQ-IMBALANCE、python_gc_high_latency ↔ COMMON-PY-GC-LATENCY …），
+      说明这批上游文档**此前已经沉淀过**；
+      ② 未对应的两篇（性能数据采集适配、算子 MFU）不是"现象→根因→处置"结构，转不成 case；
+      ③ msagent 自己的 `docs/zh/best_practices/` 6 篇是带截图的产品演示（问题背景 + 操作步骤 + 截图编号），
+      抽取只能拿到"用了什么功能"，拿不到根因与修复——按"不编造"的纪律不入库。
+      结论：原清单里的第 5 组是**我基于文件形态的推测，核对后被证据推翻**，如实记录而不是硬凑四条草稿。
+  - who: agent
+    when: 2026-09-29
+    type: action
+    conclusion: >-
+      **纠正一处流程偏差**：此前三个内容 PR 各配了一个"回写合入指针"的小 PR。核对机制文档时发现
+      `docs/mechanism/pipeline.md` **早已写明**"指针只有几行 diff，随下一个批的聚合 PR 进 main，不为它单独开 PR"。
+      也就是说那不是待定的约定，而是既有规矩，我多开了 3 个 PR。已按该规矩执行本批：指针不在本 PR 内补，
+      留到下一批用 `ev_proposal.py --mark-merged --from-prs` 一次性回写。
+  - who: agent
+    when: 2026-09-29
+    type: decision
+    conclusion: >-
+      采纳（validated）。判据：改前 257 条 → 改后 261 条且 `verify_references.py --check` 绿；
+      4 条新词条全部被闸门绑定；两条精度流程进 precision 分片；索引 `--check` 绿；CI 与单测、演练全绿。
+      **价值层不由此卡证明**：词条只说明判据进库且可达，不说明诊断准确率提升。
