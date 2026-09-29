@@ -14,7 +14,7 @@ applies_to:
   frameworks: [torch_npu, mindspeed-llm, verl]
   categories: [performance]
 
-related_references: [profiler-db-query, profiler-analysis-cli, profiler-analysis-triage, msprof-comm-bottleneck-thresholds, profiler-breakdown-method]
+related_references: [profiler-db-query, profiler-analysis-cli, profiler-analysis-triage, msprof-comm-bottleneck-thresholds, profiler-breakdown-method, hostbound-evidence-gate, performance-delimiting-and-comparison]
 
 status: active
 last_verified: 2026-09-28

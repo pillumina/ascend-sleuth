@@ -25,7 +25,7 @@ applies_to:
   frameworks: [msprof, torch_npu]
   categories: [performance]
 
-related_references: [msprof-collect-parse, msprof-timeline-lane-reading, profiler-analysis-cli, msprof-comm-bottleneck-thresholds, msprof-output-reading-and-performance-analysis]
+related_references: [msprof-collect-parse, msprof-timeline-lane-reading, profiler-analysis-cli, msprof-comm-bottleneck-thresholds, msprof-output-reading-and-performance-analysis, performance-delimiting-and-comparison]
 
 status: active
 last_verified: 2026-09-28

@@ -29,7 +29,7 @@ applies_to:
   frameworks: [msprof-analyze, msprof, torch_npu]
   categories: [performance]
 
-related_references: [profiler-analysis-cli, profiler-db-query, msprof-comm-bottleneck-thresholds, msprof-timeline-lane-reading, operator-bottleneck-attribution, msprof-output-reading-and-performance-analysis]
+related_references: [profiler-analysis-cli, profiler-db-query, msprof-comm-bottleneck-thresholds, msprof-timeline-lane-reading, operator-bottleneck-attribution, msprof-output-reading-and-performance-analysis, performance-delimiting-and-comparison, hostbound-evidence-gate]
 
 status: active
 last_verified: 2026-09-28

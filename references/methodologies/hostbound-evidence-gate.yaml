@@ -16,7 +16,7 @@ applies_to:
   platforms: [cross]
   categories: [performance]
 
-related_references: [performance-delimiting-and-comparison, msprof-timeline-lane-reading, msprof-comm-bottleneck-thresholds, ascend-profiling-collection-planning]
+related_references: [performance-delimiting-and-comparison, msprof-timeline-lane-reading, msprof-comm-bottleneck-thresholds, ascend-profiling-collection-planning, profiler-host-bound-triage]
 
 status: active
 last_verified: 2026-09-28

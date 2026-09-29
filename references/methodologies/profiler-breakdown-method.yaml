@@ -24,7 +24,7 @@ applies_to:
   frameworks: [torch_npu, vllm-ascend, sglang, verl, mindspeed-llm]
   categories: [performance]
 
-related_references: [profiler-db-query, profiler-analysis-cli, profiler-analysis-triage, profiler-host-bound-triage, msprof-timeline-lane-reading]
+related_references: [profiler-db-query, profiler-analysis-cli, profiler-analysis-triage, profiler-host-bound-triage, msprof-timeline-lane-reading, performance-delimiting-and-comparison]
 
 status: active
 last_verified: 2026-09-28

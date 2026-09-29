@@ -20,7 +20,7 @@ applies_to:
   frameworks: [msprof-analyze]
   categories: [performance]
 
-related_references: [msprof-collect-parse, profiler-db-query, profiler-analysis-triage, msprof-comm-bottleneck-thresholds, msprof-timeline-lane-reading]
+related_references: [msprof-collect-parse, profiler-db-query, profiler-analysis-triage, msprof-comm-bottleneck-thresholds, msprof-timeline-lane-reading, performance-delimiting-and-comparison, profiler-host-bound-triage]
 
 status: active
 last_verified: 2026-09-28
