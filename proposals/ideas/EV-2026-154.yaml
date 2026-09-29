@@ -145,3 +145,7 @@ decisions:
       这里有两种修法：改 measure 迁就现状，或改 `categories` 让词条真出现在该片。选了后者：
       算子性能实验方法同样适用于「先修正确性再谈性能」的中断类场景（精度门禁是它的第一步），
       把它同时归入 interrupt 是有语义依据的，而不是为了过判据。改后重跑 PASS。
+  - who: agent
+    when: 2026-09-29
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #296 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

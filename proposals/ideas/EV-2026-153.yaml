@@ -134,3 +134,7 @@ decisions:
       采纳（validated）。判据：改前 246 条 → 改后 250 条且 `verify_references.py --check` 绿；
       4 条新词条全部被闸门绑定；两条流程进对应分片；三个索引 `--check` 绿；CI 与单测、演练全绿。
       **价值层不由此卡证明**：词条只说明判据进库且可达，不说明诊断准确率提升。
+  - who: agent
+    when: 2026-09-29
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #296 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
