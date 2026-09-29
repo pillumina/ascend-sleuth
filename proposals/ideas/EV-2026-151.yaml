@@ -1,0 +1,168 @@
+# ============================================================
+# EV-2026-151 —— 性能/精度的"判读面"缺字段字典与执行层：把外部 skill 仓的判据沉淀成
+#                 reference 词条，并第一次把新 tool 词条挂上闸门（不挂 = 永不加载）
+# 来源：用户给的输入是外部仓库（Ascend/msagent 的 skills/），要求"全面分析、识别哪些能让
+#       sleuth 受益"，随后明确"之前说的 5 条都做"。
+# 脱敏：只含仓库内路径、上游公开 URL 与 commit、聚合数字；无客户现场原文。
+# ============================================================
+
+id: EV-2026-151
+layer: L1
+target_component: references/
+title: "性能/精度的判读面缺口：补 DB 字段字典与调用纪律、把采集体检做进采集流程、新增 Host Bound 与逐级拆解两条流程，并把新 tool 词条挂上闸门"
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: '2026-09-29'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户先要一份"哪些能受益"的分析，再直接拍板"之前说的 5 条都做"。分析过程中现算出的
+      事实是主要依据：全库 grep `msprof-analyze` 零命中、`Wait Time Ratio` 只在本库已有的
+      通信阈值词条里、`Host Bound` / `Free time` / `profiler level 语义` 在 reference 层
+      零覆盖——性能面的"读数→判据"这一段是空的，用户贴回 profiling 数据时只能靠猜。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+      - "grep -rl 'msprof-analyze' references/ knowledge/（改前：零命中）"
+  - signal: observation_window
+    evidence: >-
+      外部语料的规模与形态（本轮实抓，不引用转述）：msagent 检出 1a1483f17cf8，skills/ 下
+      140 个 .py 共 41,464 行；绝大多数只用标准库（sqlite3/csv/argparse），可在无 NPU 的
+      机器上跑。上下游文档仓 Ascend/msprof 的 docs/zh 有 29 篇候选，其中
+      `user_guide/profile_data_file_references_db.md`（1130 行，47 张表）与
+      `best_practices/`（18 篇定位案例）是本库 reference 层没有对应词条的原始来源。
+    trajectory:
+      - "python3 scripts/gc_docs.py --owner Ascend scan msprof --prefix docs/zh --dry-run"
+      - "python3 scripts/gc_docs.py --owner Ascend scan msagent --prefix skills/profiler --prefix skills/accuracy --dry-run"
+      - "find skills -name '*.py' | wc -l（140）；cat 全部 .py | wc -lc（41464 行 / 1709987 字节）"
+hypothesis: >-
+  性能面缺的不是"更多 case"，是**读数的判读面**：字段字典（哪张表答哪个问题、单位是什么、
+  哪些值在 level0 下是库内默认值而非实测）、执行层（msprof-analyze 各模式怎么调、输出怎么读）、
+  以及"看到 X 不要判 Y"的排除条款。把这三样按既有三层结构落进 reference（三张 tool 词条 +
+  三张 fault-pattern 表 + 两条 methodology），并**补上采集流程里的"分析前置体检"**，
+  就能让 agent 在用户贴回 profiling 数据时先判数据可用性、再按判据分流，而不是停在泛泛的
+  优化清单。工具词条必须同时挂进 `collect-gates.yaml`——那是它们进诊断上下文的唯一入口。
+predicted_effect:
+  metric: 性能面判读词条的条数与其在诊断上下文中的可达性（闸门绑定 + 摘要索引 + 流程分片）
+  from: >-
+    reference 层无 profiling DB 字段字典、无 msprof-analyze 词条、无 Host Bound 判据、
+    无 level0 假零值类排除条款；performance 流程分片 8 条（无下发/空闲归因、无逐级拆解）。
+  to: >-
+    新增 3 条 tool（profiler-db-query / profiler-analysis-cli / framework-profiler-instrumentation）、
+    3 条 fault-pattern 表（profiler-analysis-triage / train-infer-precision-patterns /
+    training-performance-case-patterns）、2 条 methodology（profiler-host-bound-triage /
+    profiler-breakdown-method），并在采集流程词条里补"分析前置体检"（三态 valid|unparsed|invalid）；
+    3 条新 tool 全部挂进 performance 两个闸门；reference 词条总数 232 → 241，performance 分片 8 → 10。
+  measure:
+    command: |
+      python3 - <<'PY'
+      import pathlib, subprocess, sys
+      sys.path.insert(0, 'scripts')
+      from _yaml import load_file
+      root = pathlib.Path('.')
+      new_ids = ['profiler-db-query', 'profiler-analysis-cli', 'framework-profiler-instrumentation']
+      ok_active = []
+      for tid in new_ids:
+          d = load_file(root / 'references' / 'tools' / f'{tid}.yaml')
+          ok_active.append(bool(d) and d.get('status') == 'active'
+                           and 'performance' in ((d.get('applies_to') or {}).get('categories') or []))
+      gates = load_file(root / 'skills' / 'diagnose' / 'references' / 'collect-gates.yaml')
+      bound = set()
+      for g in gates.get('gates') or []:
+          bound.update(g.get('refs') or []); bound.update(g.get('caveat_refs') or [])
+          for br in g.get('branches') or []:
+              bound.update(br.get('refs') or [])
+      ok_bound = [tid in bound for tid in new_ids]
+      summ = (root / 'references' / '_summary-index.yaml').read_text(encoding='utf-8')
+      ok_index = [tid in summ for tid in new_ids]
+      perf = (root / 'references' / '_procedure-index' / 'performance.yaml').read_text(encoding='utf-8')
+      ok_flow = [f in perf for f in ('profiler-host-bound-triage', 'profiler-breakdown-method')]
+      coll = load_file(root / 'references' / 'methodologies' / 'ascend-profiling-collection-planning.yaml')
+      flow_text = str(coll.get('content'))
+      ok_health = all(k in flow_text for k in ('invalid', 'unparsed', 'profiler_info.json', 'end_info'))
+      r = subprocess.run([sys.executable, 'scripts/verify_references.py', '--check'],
+                         capture_output=True, text=True)
+      print('active      ', ok_active)
+      print('bound       ', ok_bound)
+      print('in_index    ', ok_index)
+      print('in_flow     ', ok_flow)
+      print('health_gate ', ok_health)
+      print('verify_refs ', r.returncode)
+      ok = (all(ok_active) and all(ok_bound) and all(ok_index)
+            and all(ok_flow) and ok_health and r.returncode == 0)
+      print('VERDICT', 'PASS' if ok else 'FAIL')
+      PY
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: scan_review
+  baseline: >-
+    **改前基线（本次在 origin/main = 8a54d2b 的新 worktree 上现算）**：reference 词条 232 条；
+    `grep -rl 'msprof-analyze' references/ knowledge/` 零命中；
+    `references/_procedure-index/performance.yaml` 8 条流程（无 Host Bound、无逐级拆解）；
+    performance 两个闸门未引用任何 profiling DB / msprof-analyze 词条（因为不存在）。
+  success_criteria: >-
+    ①改后 reference 词条 241 条、id 全唯一，`verify_references.py --check` 绿；
+    ②3 条新 tool 词条全部被闸门绑定（CI 的覆盖环，未绑定即红——实测挂之前该检查确实报红，见 decisions）；
+    ③两条新流程进 performance 分片（10 条，本片加载成本 1360 → 1683 token）；
+    ④三个索引生成物随提交重建（_summary-index / _procedure-index{,.yaml} / errors/_code-gaps），`--check` 全绿；
+    ⑤CI 15 条命令本机复跑全绿 + `-m unittest discover tests` 绿 + `rehearse_evolve_loop.py` 183/183；
+    ⑥**词条内容全部来自上游文档或技能说明、逐条标了 sources[].verification**（cross-checked-source 或
+    auto-extracted）——但**未在本机复跑 msprof-analyze 与 db 查询验证阈值行为**，这条边界写进 commit message，
+    不能读成"阈值已在平台上验证"。
+  rollback: 分支丢弃或 git revert；词条、闸门绑定、生成物、台账登记在同一提交内，整体可退（无数据迁移）。
+gate:
+  condition: >-
+    若后续把上游 msprof 仓的 29 篇文档按 reference-ingest 全量沉淀（本轮只做了仓级判定并抓 3 篇正文），
+    **必须以"每个文件解不解决一个真实缺口"筛**，不要为了凑量把 API 参考页与导航页也沉进来——
+    本仓已有 `skipped` 记账机制，判过不沉淀的下一篇不再评估。
+    **另一件不要做的事**：不要把上游 skill 的 `scripts/`（decompose.py 等，纯标准库、可离线跑）复制进本仓。
+    它们是上游持续维护的操作层，复制即产生第二份实现；本仓接法是"判据与字段字典进 reference、
+    脚本留在上游"，诊断时让工程师在上游仓库执行。
+risk: low
+principle_refs: [3, 6, 8, 11]
+actual_cost:
+  tokens: 260000
+  source: estimate
+  note: >-
+    口径如实标注：按本次会话的工具往返规模与产出（9 条词条 + 两处闸门绑定 + 两个上游仓的目录面扫描）
+    粗估的量级，不是从 exec-log 记账读出的真实值（本卡工作没有走 skill 入口）。
+decisions:
+  - who: agent
+    when: 2026-09-29
+    type: proposal
+    conclusion: >-
+      先做"哪些能受益"的分析再动手，不做全量搬运。分析结论：外部仓的机制层（agent 声明式配置、
+      子代理信封协议、构建期资源分发）对本仓无价值——本仓的文档索引门、版本兼容矩阵、脱敏与
+      封存评测都比它强；有价值的是**判读面**（字段字典、执行层、阈值与排除条款），
+      以及"它没做的事"这一反向清单（无兼容矩阵、无脱敏流程、benchmark 未接 CI）。
+  - who: agent
+    when: 2026-09-29
+    type: eval
+    conclusion: >-
+      **先核实上游来源的许可与形态再抄内容**：上游是木兰宽松许可证第 2 版，可复制/修改/分发，
+      须保留版权与许可声明；词条的 sources 逐条写了上游 URL + commit，不搬正文段落。
+      另发现上游自身三处文档与实现不一致（NaN 溢出判据声明含 inf 而脚本只判 NaN、
+      尖刺阈值文档写 60% 而脚本是 50% + max(median×2,1.5)、训推算子差异扫描声明产出 3 个文件实际 2 个）——
+      抽词条时以脚本实现为准，并把"文档与实现不一致"作为 pitfalls 写进词条。
+  - who: agent
+    when: 2026-09-29
+    type: action
+    conclusion: >-
+      实施过程中被 CI 抓住一次真缺口：`framework-profiler-instrumentation` 写完后
+      `verify_references.py --check` 报"tool 词条未被任何诊断闸门绑定——未绑定等于永不加载"。
+      这条覆盖环正好证明了本次要修的东西：tool 词条不进候选路由，闸门是唯一入口。
+      已挂进 performance 的 has_data / no_data 两个分支；同时把此前未被绑定的
+      `ascend-profiling-collection-planning` 补挂到 has_data（它的"分析前置体检"正是拿回数据后的第一步）。
+  - who: agent
+    when: 2026-09-29
+    type: decision
+    conclusion: >-
+      采纳（validated）。判据：改前 232 条 → 改后 241 条且 `verify_references.py --check` 绿；
+      3 条新 tool 全部被闸门绑定；performance 分片 8 → 10 条；三个索引生成物 `--check` 绿；
+      CI 15 条命令本机复跑全绿 + `unittest discover tests` 绿 + `rehearse_evolve_loop.py` 183/183。
+      **价值层不由此卡证明**：词条只说明"判据进库了且可达"，不说明诊断准确率提升——
+      那要靠后续 trace 的真实读数（本卡未涉及，如实标注）。
+      来源边界同样如实：全部内容取自上游文档与技能说明，未在本机复跑工具验证阈值行为。

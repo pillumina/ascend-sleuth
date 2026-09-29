@@ -1,0 +1,63 @@
+id: training-performance-case-patterns
+type: fault-pattern
+title: 训练侧性能现象对照表（上游官方定位案例提炼：下发不足 / 主机侧常见劣化 / 推理现象索引）
+summary: 补本库性能面**案例来源**的一张表：上游官方定位案例（msprof 文档仓 `docs/zh/best_practices/`，18 篇，每篇按"问题背景 / 问题来源 / 问题现象 / 定位过程 / 问题根因 / 定位方法总结"成文）与推理精度现象表（msagent 的推理现象对照表）都已经把"现象 → 定位方法 → 根因"写全，**可直接作为 case 草稿的来源**：本篇把可以映射进本库 case schema 的现象签名与判据先抽出来，避免重新起名。两条结构性发现：① 这些案例的判据几乎都锚在**可视化时间线的形状**上（host_to_device 连线"直上直下"＝下发即执行＝资源利用率低，连线有倾斜＝硬件高密度执行），不是锚在单个数值阈值上——写 case 时 `quickly_check` 要能表达"连线形状"这类判据，否则会退化成只能靠人看图；② 其中有若干篇的根因落在**主机侧通用运行时**（CPU 缓存冲突、线程频繁切换、GIL 抢占、IRQ 中断、内存碎片/泄漏、算子编译延迟、Python GC、pthread 锁等待、同步 API 频繁调用、syscall 高延迟），与本库 `knowledge/common/performance/` 现有条目同域，是补 case 的首选面。
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprof/blob/master/docs/zh/best_practices/dispatch_small_batch_performance.md"
+    version: "Ascend/msprof master（commit a2659ef09082，2026-09-28 抓取）：下发性能不及预期（完整定位案例）"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprof/blob/master/docs/zh/best_practices/"
+    version: "Ascend/msprof master（commit a2659ef09082）docs/zh/best_practices 目录面：18 篇定位案例（含 cpu_cache_miss_conflict / cpu_thread_frequent_switching / gil_lock_preemption / irq_interruption / memory_fragmentation / memory_leak / operator_compilation_latency / python_gc_high_latency / pthread_lock_wait / sync_api_frequent_call / syscall_high_latency / kernel_thread_switching / communication_address_misalignment 等）"
+    fetched_at: 2026-09-28
+    verification: auto-extracted
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/accuracy/precision-debugger/references/summary.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：推理侧现象—根因—触发条件 17 条"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [mindspeed-llm, mindspeed-mm, vllm-ascend, sglang, verl]
+  categories: [performance, precision]
+
+related_references: [profiler-analysis-triage, profiler-host-bound-triage, framework-profiler-instrumentation, msprof-timeline-lane-reading, msprof-output-reading-and-performance-analysis]
+
+status: active
+last_verified: 2026-09-28
+
+content:
+  patterns:
+    - pattern: 下发不足致硬件利用率低（小 batch 型）
+      symptoms:
+        - "timeline 上整体 free 时间占比偏高、硬件资源利用率低（msInsight 打开 msprof.json / trace_view.json 即可看出）"
+        - "host_to_device 连线**直上直下**（下发即执行、执行完再等下一次下发），而不是带倾斜角度的密集流水"
+        - "显存占用远低于卡容量（案例中为 15GB / 64GB）"
+      cause: "单算子计算量太小（batch 太小），设备执行时间短到无法把 host 下发掩盖掉，形成“下发−等待”串行；本质是硬件资源未被吃满"
+      fix: "在显存允许范围内加大 batch size（提高单算子计算量）让设备侧接得住下发；判据是连线从直上直下变为有倾斜、free 占比下降。注意与真正的下发瓶颈区分：真下发瓶颈要看下发侧 gap 是否与 Free 区间对齐（见 profiler-host-bound-triage）"
+    - pattern: 主机侧通用运行时劣化（一族，需按现象分流）
+      symptoms:
+        - "设备侧存在大块空闲，但下发侧看不到对应的工作量"
+        - "同一份数据在不同机器/不同并发下表现差异明显"
+      cause: "根因落在主机侧通用运行时，而非 CANN/NPU：CPU 缓存冲突、CPU 线程频繁切换、GIL 抢占、IRQ 中断、内存碎片、内存泄漏、算子编译延迟、Python GC 停顿、pthread 锁等待、同步 API 频繁调用、syscall 高延迟、内核线程切换——上游 best_practices 中每一类各有一篇专门案例"
+      fix: "按“空闲区间内主机在做什么”分流到对应单篇（上游 docs/zh/best_practices/ 同名文件）；本库 knowledge/common/performance/ 已有 CPU 缓存未命中、线程切换、IRQ 不均等条目，**新增时对到已有条目而不是新建同义 name**"
+    - pattern: 通信地址未对齐
+      symptoms:
+        - "通信带宽明显低于同类型链路，且传输量不是 512 的整数倍"
+      cause: "参与通信的张量地址或切片起点未对齐，传输退化"
+      fix: "对齐地址/切片起点后复测；上游同名单篇案例给出完整定位过程"
+    - pattern: 现象在时间线形状上（无法用单点数值判据表达）
+      symptoms:
+        - "单看任一指标都在正常范围，端到端却慢"
+        - "需要看 host_to_device 连线形状、算子在时间线上的疏密、空闲区间位置才能定位"
+      cause: "瓶颈是“排布”而不是“某个值”——下发与执行的相对关系、重叠程度、空闲分布"
+      fix: "这类判据写进 case 时要落到**可复核的观察动作**（打开哪份产物、看哪条连线、与哪个形状比），不要只写“利用率低”；数值阈值只能作为辅助"
+    - pattern: 推理侧现象在本库缺对照（乱码 / 复读 / 空回复）
+      symptoms:
+        - "输出乱码、重复、空回复、混入其它请求内容等推理侧现象"
+      cause: "现象与触发条件成对出现（是否启用某量化权重、某组合开关、并发水平、序列长度档位），同一现象对应多个算子级根因"
+      fix: "先按触发条件核对再定位算子（见 train-infer-precision-patterns）；上游对照表共 17 条，可作为补本库 inference 精度 case 的来源清单"

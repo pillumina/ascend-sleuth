@@ -20,7 +20,7 @@ applies_to:
   frameworks: [msprof]
   categories: [performance]
 
-related_references: [msprof-collect-parse, msprof-timeline-lane-reading, msprof-cli-collect-items, msprof-configuration-options, msprof-collection-mechanism-and-metric-semantics, operator-bottleneck-attribution]
+related_references: [msprof-collect-parse, msprof-timeline-lane-reading, msprof-cli-collect-items, msprof-configuration-options, msprof-collection-mechanism-and-metric-semantics, operator-bottleneck-attribution, profiler-db-query, profiler-analysis-cli]
 
 status: active
 last_verified: 2026-09-15

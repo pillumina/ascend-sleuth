@@ -16,7 +16,7 @@ applies_to:
   platforms: [cross]
   categories: [performance]
 
-related_references: [hostbound-evidence-gate, msprof-comm-bottleneck-thresholds, msprof-timeline-lane-reading, operator-bottleneck-attribution]
+related_references: [hostbound-evidence-gate, msprof-comm-bottleneck-thresholds, msprof-timeline-lane-reading, operator-bottleneck-attribution, profiler-breakdown-method, profiler-analysis-cli, profiler-analysis-triage, profiler-db-query]
 
 status: active
 last_verified: 2026-09-28

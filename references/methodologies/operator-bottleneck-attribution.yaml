@@ -24,7 +24,7 @@ applies_to:
   platforms: [cross]
   categories: [performance]
 
-related_references: [msprof-collect-parse, msprof-timeline-lane-reading, aicore-task-duration-anatomy, l1-l0-bank-and-conflict, simd-vf-programming-constraints]
+related_references: [msprof-collect-parse, msprof-timeline-lane-reading, aicore-task-duration-anatomy, l1-l0-bank-and-conflict, simd-vf-programming-constraints, profiler-analysis-triage, profiler-db-query]
 
 status: active
 last_verified: 2026-09-14

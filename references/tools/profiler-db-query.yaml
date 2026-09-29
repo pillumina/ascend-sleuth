@@ -1,0 +1,61 @@
+id: profiler-db-query
+type: tool
+title: profiling DB 查询（字段字典 / 单位口径 / level0 假零值 / 只读打开法与三条查询纪律）
+summary: '直接查 profiling 汇出的 `msprof_<时间戳>.db`（sqlite）读原始表格时用：**先记住四类单位**——时间一律纳秒（且为本地 Unix 时间）、内存字节、带宽字节每秒、频率 MHz；**表名与字段名去 `profile_data_file_references_db` 对**（47 张表，本词条给出跨框架高频表的用途索引，不复制字段清单）。三个**读错就会误判**的口径：① 名字列是整数外键（`COMPUTE_TASK_INFO.name` 等），真名要 JOIN `STRING_IDS`（`value`/`id`），拿不到真名不代表表里没数据；② `profiler_level` 为 level0 时 `transit_size`/`link_type`/`transport_type`/`src_rank`/`dst_rank` 等字段可能是库内默认值而非实测——**这些值要判 unknown，不能当成零/未通信**；③ 打开方式必须是只读 `mode=ro`，**不要用 `immutable=1`**（跳过 WAL 恢复会缺表，表现为"这张表不存在"）。查询纪律三条：主查询必须带聚合或 `LIMIT`（20 或更小）；**不要用 `PRAGMA table_info` 当 schema 来源**（它与实际采集开关不一致）；查不到表先怀疑版本差异或本次采集配置不足，不要猜字段语义。查询入口优先级：`msprof-analyze`（见 profiler-analysis-cli）→ 本词条 SQL → 直接读导出件（`kernel_details.csv` / `op_statistics.csv` / `step_trace_time.csv`）。'
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msprof/blob/master/docs/zh/user_guide/profile_data_file_references_db.md"
+    version: "Ascend/msprof master（commit a2659ef09082，2026-09-28 抓取）：DB 格式性能数据文件参考"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-profiler-db-explorer/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：查询纪律、只读打开法与 level0 默认值提示"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/msagent-profiler-breakdown/references/db-usage.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：`PYTORCH_API` 字段口径与只读打开实测"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msprof, torch_npu]
+  categories: [performance]
+
+related_references: [msprof-collect-parse, msprof-timeline-lane-reading, profiler-analysis-cli, msprof-comm-bottleneck-thresholds, msprof-output-reading-and-performance-analysis, performance-delimiting-and-comparison]
+
+status: active
+last_verified: 2026-09-28
+
+content:
+  tool_name: "profiling DB（msprof / torch_npu profiler 汇出的 sqlite 性能数据文件）"
+  invocation: >-
+    `msprof <app> --type=db` 或 `export_type=['db']` 采集后得到 `msprof_<时间戳>.db`；torch_npu profiler 侧产物形如
+    `ascend_pytorch_profiler_<rank>.db`。查法：`sqlite3 <db> "SELECT ... "`，或 python `sqlite3.connect("file:<db>?mode=ro", uri=True)`。
+    字段语义去官方《DB 格式性能数据文件参考》对（表名与字段名以那份为准，本词条只给用途索引与读法陷阱）。
+  commands:
+    unit_semantics: "时间=纳秒（且为本地 Unix 时间，不是相对起点）；内存=字节；带宽=字节每秒；频率=MHz。报告里换算单位要显式标注"
+    join_string_ids: "名字列是整数外键，必须 JOIN 反查：`SELECT t.*, s.value FROM TASK t JOIN STRING_IDS s ON t.name = s.id`（`STRING_IDS` 为 `value`/`id` 两列）"
+    open_ro: "python: `sqlite3.connect('file:<db>?mode=ro', uri=True)`——**不要加 `immutable=1`**，它跳过 WAL 恢复会导致缺表"
+    list_tables: "`sqlite3 <db> '.tables'`；或 skill 侧 `get_schema.py --db_path <db> --list_db_tables`（与官方文档表名做交集/差集，用于判版本差异）"
+    step_time: "`SESSION_TIME_INFO`（or `analysis.db/StepTraceTime` / `step_trace_time.csv`）取 step 级 Free / Preparation 时间——判 Host Bound 的入口"
+    comm_breakdown: "`ClusterCommunicationTime`（op/group/rank/step/elapsed/wait/transit/start ts）算等待占比；域标签要 JOIN `CommunicationGroupMapping`（`pg_name`/`group_id`/`type`/`rank_set`），**不要把 group_name 当最终域标签**"
+    comm_bandwidth: "`ClusterCommunicationBandwidth`（link/band type、transit size/time、bandwidth、大包比例）与 `ClusterCommunicationMatrix`（src/dst rank 对、transport/link type、bandwidth）——判慢链路"
+    op_hotspot: "`COMPUTE_TASK_INFO`（算子级 task，名字 JOIN `STRING_IDS`）+ `TASK`/`CANN_API`/`PYTORCH_API`（下发面，看 `depth` 列：depth=1 可用，depth=0 多为 `ProfilerStep#` 包装、过粗）"
+    api_type_filter: "`PYTORCH_API.type` 按 `ENUM_API_TYPE` 过滤：50001=op、50002=queue、50003=trace、50004=mstx——统计 API 耗时**要排除 queue**"
+    aicore_freq: "`AICORE_FREQ`：正常 1800MHz、空闲 800MHz、其余为异常"
+    overlap_mem_copy: "`OVERLAP_ANALYSIS` / `MEMCPY_INFO` / `HCCS` / `PCIE` / `NIC` / `ROCE`——通信与拷贝是否与计算重叠、走哪条链路"
+    mstx_scopes: "`MSTX_EVENTS`（JOIN `STRING_IDS` ON message）：框架自己打的阶段范围（MSTX 默认不开采集，`msprof_tx=False` 时这张表为空）"
+  output_meaning:
+    - "`STRING_IDS` 是名词典：拿不到真名先查这张表，再判“是不是没采到”"
+    - "`ENUM_API_TYPE`：acl=20000、model=15000、node=10000、communication=5500、runtime=5000、op=50001、queue=50002、trace=50003、mstx=50004"
+    - "同一份 db 里 time 列是纳秒量级整数（本地 Unix 时间），做差即为耗时；不要与“相对 step 起点的微秒”混用"
+  pitfalls:
+    - "**level0 的默认值不是零**：`profiler_level` 为 level0 时 small task 的 `transit_size`/`link_type`/`transport_type`/`src_rank`/`dst_rank` 可能是库内默认值——判 unknown，不要据此下“没有通信/带宽为 0”的结论；缺通信带宽与矩阵时先要求按 level1 重采"
+    - "**不要重算库算好的派生列**：`transit_size`/`bandwidth`/`transit_time`/`wait_time` 直接取，别自己按别列推（通信侧尤其）"
+    - "主查询不带聚合也不带 `LIMIT` 会把整张表刷进上下文——先聚合再下钻"
+    - "`PRAGMA table_info` 给的字段面与“本次采集实际开了什么”不是一回事，不能当 schema 权威"
+    - "表在文档里有、库里没有 = 本次采集没开该能力（或版本差异），不是数据缺失；反过来库里多出的表说明用的是更新版本"

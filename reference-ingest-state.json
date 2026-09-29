@@ -1,5 +1,27 @@
 {
  "sources": {
+  "gitcode/Ascend/msagent": {
+   "branch": null,
+   "docs": {},
+   "head_sha": null,
+   "last_scan": null,
+   "triage": {
+    "at": "2026-09-29T09:07:46",
+    "decision": "selected",
+    "note": "领域 agent 技能仓：本批已从 skills/profiler 与 skills/accuracy 沉淀出 profiler-db-query / profiler-analysis-cli / profiler-analysis-triage / profiler-host-bound-triage / profiler-breakdown-method / framework-profiler-instrumentation / train-infer-precision-patterns / training-performance-case-patterns 八条词条；其余目录（quantizer/operator/modeling/minos）与定位无关，后续按主题按需再评"
+   }
+  },
+  "gitcode/Ascend/msprof": {
+   "branch": null,
+   "docs": {},
+   "head_sha": null,
+   "last_scan": null,
+   "triage": {
+    "at": "2026-09-29T09:07:26",
+    "decision": "selected",
+    "note": "官方性能工具仓：docs/zh/user_guide（DB 表结构 47 表 + 扩展功能含通信判据）与 docs/zh/best_practices（18 篇定位案例，含 CPU 缓存/线程切换/IRQ/GIL/内存碎片/算子编译延迟等）与 knowledge/common/performance 现有 case 同域，属独立于事故的先验知识与方法论来源"
+   }
+  },
   "gitcode/cann/.gitcode": {
    "branch": "master",
    "docs": {
