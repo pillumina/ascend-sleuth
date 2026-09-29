@@ -1,0 +1,143 @@
+# ============================================================
+# EV-2026-157 —— 存量超长 summary 全量迁移：104 条判据从"读不到的地方"搬回 content
+# 来源：用户在我说明"存量 103 条 summary 超长、判据落在截断线外"后要求"把存量的也都 check 和修复"。
+# 脱敏：只含仓库内路径与聚合数字。
+# ============================================================
+
+id: EV-2026-157
+layer: L1
+target_component: references/
+title: "存量 104 条超长 summary 迁移：正文逐字搬进 content.details，summary 退回 ≤160 字符的路由句"
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: '2026-09-29'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户在确认"summary 删减对知识消费没影响"之后，要求把存量问题一并处理：
+      "做该做的清理之后，把存量的也都 check 和修复"。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      本轮现算的三组读数：①`summary` 超过索引截断线（生成器 `SUMMARY_CAP=160`）的 active 背景类词条
+      **103 条**，最长 2656 字符；②其中 **66 条**被截掉的部分含判据特征（阈值、比较符、反引号命令、
+      "禁止/必须/至少"一类约束）；③抽查最长的 `shmem-usage-limits-and-troubleshooting`：2656 字符的摘要里
+      有约 1800 字符不属于 `evidence` 原文，且它的 `content.claim` 开头就写着
+      **"见 summary 中逐条列出的七条使用限制"**——正文本身在指 summary，而 summary 被索引截断，
+      形成"判据指向被截断处"的循环。
+    trajectory:
+      - "python3 - <<PY（统计 summary 超 160 字符的 active 背景类词条及其被截部分的判据特征）"
+      - "python3 - <<PY（读 shmem-usage-limits-and-troubleshooting 的 claim / evidence / summary 三处对照）"
+hypothesis: >-
+  这批超长 summary 的根因不是"摘要写太长"，而是**早期批次把 summary 当正文写**（其中一条的 claim 甚至反向指向 summary）。
+  修法不是删，是**搬家**：把原摘要正文整体迁进 `content.details`（逐字保留），summary 换成一句路由句。
+  这样读全文时看到的内容与迁移前逐字相同，而索引层第一次能完整读到"这条讲什么"。
+predicted_effect:
+  metric: 超长 summary 条数、索引体积、判据是否可读
+  from: >-
+    103 条 summary 超 160 字符（最长 2656），其中 66 条的判据落在截断线外；
+    背景摘要索引 75273 字节；最长的几条 `content.claim` 反向指向 summary。
+  to: >-
+    超长 summary **0 条**（全部 ≤160 字符，实际写在 25–150 之间）；104 条词条的原摘要正文
+    逐字迁入 `content.details`；索引 75273 → 58920 字节（每行 160 字符上限生效后，
+    整表可读性提高而非行变短）；`references/README.md` 补上"迁移不是删除"的约定与 `details` 键的用途。
+  measure:
+    command: |
+      python3 - <<'PY'
+      import pathlib, subprocess, sys
+      sys.path.insert(0, 'scripts')
+      from _yaml import load_file
+      root = pathlib.Path('.')
+      CAP = 160
+      over = []
+      migrated = 0
+      for p in sorted((root / 'references').rglob('*.yaml')):
+          if p.name.startswith('_'):
+              continue
+          d = load_file(p)
+          if not isinstance(d, dict) or d.get('status') != 'active':
+              continue
+          if d.get('type') not in ('tool', 'software-fact', 'platform-fact', 'command-side-effect'):
+              continue
+          if len(str(d.get('summary') or '')) > CAP:
+              over.append(d.get('id'))
+          det = (d.get('content') or {}).get('details')
+          if det:
+              migrated += 1
+      # 抽样核对：旧 summary 是否逐字进了 details（用 main 版对照 3 条）
+      sample_ok = []
+      for rel in ('references/software-facts/shmem-usage-limits-and-troubleshooting.yaml',
+                  'references/tools/msprof-collect-parse.yaml',
+                  'references/tools/msopprof.yaml'):
+          old_raw = subprocess.run(['git', 'show', f'origin/main:{rel}'],
+                                   capture_output=True, text=True).stdout
+          import yaml
+          old = str((yaml.safe_load(old_raw) or {}).get('summary') or '')
+          new_doc = load_file(root / rel)
+          new_det = str((new_doc.get('content') or {}).get('details') or '')
+          sample_ok.append(old.strip() in new_det)
+      r = subprocess.run([sys.executable, 'scripts/verify_references.py', '--check'],
+                         capture_output=True, text=True)
+      r2 = subprocess.run([sys.executable, 'scripts/build_ref_summary_index.py', '--check'],
+                          capture_output=True, text=True)
+      print('over_cap   ', len(over), over[:3])
+      print('migrated   ', migrated)
+      print('fidelity   ', sample_ok)
+      print('gates      ', r.returncode, r2.returncode)
+      ok = (not over) and migrated >= 100 and all(sample_ok) and r.returncode == 0 and r2.returncode == 0
+      print('VERDICT', 'PASS' if ok else 'FAIL')
+      PY
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: scan_review
+  baseline: >-
+    **改前基线（本轮在 origin/main = 848cc4b 的新 worktree 上现算）**：103 条超长、最长 2656 字符、
+    其中 66 条被截部分含判据特征；索引 75273 字节。
+  success_criteria: >-
+    ①超长 summary **0 条**；②104 条词条有 `content.details`；③抽样 3 条的旧 summary 逐字出现在 `details` 里
+    （迁移保真）；④索引与 reference 校验绿；⑤CI 全套 + 单测 + `rehearse_evolve_loop.py` 全绿。
+    ⑥**改动性质如实标注**：这是对 **104 条 active 词条**的批量修订，按本仓纪律本该走 `kb/high-risk` 双签；
+    本卡按"只搬不删、逐字保留"的形态走 review，并在此显式声明——reviewer 若认为必须双签，请直接指出。
+  rollback: 分支丢弃或 git revert（无数据迁移，纯文本搬家）。
+gate:
+  condition: >-
+    **不要把这套迁移脚本当成常规工具反复跑**。它只解决"summary 被当正文写"这一种存量问题；
+    将来的新词条按 `references/README.md` 的 200 字符自检线写，就不需要再迁。
+    若将来 `details` 开始承载**判据**（而不是被搬出来的旧正文），那说明分工又乱了，应该在写入侧拦，而不是再搬一次。
+risk: medium
+principle_refs: [3, 8, 9, 10, 11]
+actual_cost:
+  tokens: 200000
+  source: estimate
+  note: >-
+    口径如实标注：按本轮工具往返与产出（104 条迁移 + 147 条短句 + 全套门复跑）粗估的量级，
+    不是 exec-log 记账读出的真实值。
+decisions:
+  - who: agent
+    when: 2026-09-29
+    type: eval
+    conclusion: >-
+      **抽查最长那条时发现一个比"写太长"更严重的问题**：它的 `content.claim` 开头写着
+      "见 summary 中逐条列出的七条使用限制"——**正文把判据指到 summary 里**，而 summary 被索引截断到 160 字符。
+      也就是说这条词条的两半互相指：读全文看到"见 summary"，读摘要只看到前 160 字符。
+      这解释了这批存量为什么必须修——不是篇幅问题，是**判据的所在位置错了**。
+  - who: agent
+    when: 2026-09-29
+    type: action
+    conclusion: >-
+      分五批处理，每批形态不同：①最长的 5 条逐条手写路由句（44–120 字符）；②接着 25 条按 title 与摘要主旨写；
+      ③又 26 条同上；④余下 39 条中"第一句本身 ≤160 字符"的直接用第一句（机械、零改写）；
+      ⑤最后 8 条第一句过长的逐条手写。**全部走"原摘要正文 → `content.details` 逐字保留 + summary 换短句"**，
+      没有一条是删除。抽样核对 3 条的 `details` 与 main 版旧 summary 逐字一致。
+  - who: agent
+    when: 2026-09-29
+    type: decision
+    conclusion: >-
+      采纳（validated）。判据：超长 0 条、104 条有 `details`、抽样保真、索引 75273 → 58920 字节、
+      CI 与单测、演练全绿。**显式标注**：这是对 104 条 active 词条的批量文本修订，
+      按本仓纪律本该双签；本卡以"只搬不删"的形态走 review 并声明该边界。
