@@ -50,7 +50,7 @@ POLICIES = ("before", "after")
 CASE = """cases:
   - id: {cid}
     title: "并发提交实验用 case（{cid}）"
-    category: interrupt
+    category: {cat}
     tags: [exp]
     compat:
       - framework: vllm-ascend
@@ -154,7 +154,10 @@ class Experiment:
         git(r, "checkout", "-q", "-b", f"kb/{tag}", "main")
         case = r / "knowledge" / ns_dir / f"{cid}.yaml"
         case.parent.mkdir(parents=True, exist_ok=True)
-        case.write_text(CASE.format(cid=cid), encoding="utf-8")
+        # category 跟随目录：目录表达性质，字段必须与它一致（`build_index.py --check` 有这道门）。
+        # 原先这里写死 interrupt——diff-ns 场景第三位参与者的目录是 training/mindspeed-llm/precision，
+        # 于是每次实验都在造一条"目录说 precision、字段说 interrupt"的错位 case（门加起来的第一次跑就抓到）。
+        case.write_text(CASE.format(cid=cid, cat=ns_dir.split("/")[-1]), encoding="utf-8")
 
         if self.policy == "before":
             append_symptom(r / "triage-tree.yaml", branch_id, word)

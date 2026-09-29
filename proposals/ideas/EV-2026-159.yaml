@@ -82,6 +82,11 @@ decisions:
       （168 条覆盖完整，目录×category 门报 0 处）、build_ref_summary_index --check、verify_references
       （261 条）、verify_case_draft --all（168 文件）、build_triage_tree --check-sources/--check-coverage、
       build_docs_index --check、tests/test_build_index.py 24 条通过。门本身用临时错位 case 验过会红。
+      **门有牙齿的旁证**：加上这道门后 tests/test_concurrent_submit.py 的 after 场景立刻变红——
+      该实验夹具写死 `category: interrupt`，而 diff-ns 场景第三位参与者写进
+      `training/mindspeed-llm/precision/`，即每次实验都在造一条目录×字段错位的 case
+      （main 上该实验 9 passed，说明这处错位此前从未被报出）；夹具改成 category 跟随目录后 9 passed 复绿。
+      全量：`python3 -m unittest discover tests` → Ran 273 tests, OK。
   - who: agent（本轮执行）
     when: "2026-09-29"
     type: decision
