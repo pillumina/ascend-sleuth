@@ -493,7 +493,7 @@ namespaces:
       - quantization
       - 507015
       - aicore
-      compat: vllm-ascend (cann:<,9,.,1,.,0,.,b,e,t,a,2)
+      compat: vllm-ascend (cann:<9.1.0.beta2)
       confidence:
         score: 0.4
       symptoms:

@@ -1,0 +1,9 @@
+# GENERATED FILE —— 阶段一读侧视图（一行一条 case），不要手改。
+# 由 scripts/build_index.py 生成、随 PR 提交；字段顺序：id / category / title / symptoms / sig / tok / compat / tags / score
+# 为什么不是 YAML：这份东西由人/agent 读，缩进/引号/字段名/嵌套要多花四成 token（同信息）。
+# file 省略（= knowledge/<ns>/<category>/<id>.yaml，全库实测零例外）；hash 只在总表（门用）。
+# 软匹配照旧：compat 不符只降置信度、不排除；sig 是报错字面量（逐字命中即强候选）、tok 是关键词。
+# 本文件**故意没配 merge=union**：同一格并发仍会在总表上撞一次——重跑 `python3 scripts/build_index.py`。
+# 阶段一加载协议（F1 EV-2026-022）：category 未定 / 类分片缺失时 diagnose 回退读本 namespace 分片，不读整库总表。
+# 本分片：inference/sglang
+id: SGL-PD-HEAP-001 | category: interrupt | title: PD 分离偶发失败：CombineMemories 合并 K+V 超过 heap_size 致 halShmemCreateHandle 拒绝 | symptoms: PD 分离 --disaggregation-transfer-backend ascend，KV cache 跨 NPU 传输偶发失败 | compat: sglang <=0.5.10; memfabric_hybrid <=1.0.5 | tags: pd-separation; kv-cache-transfer; sdma; combinememories; heap-overflow; non-deterministic | score: 0.6

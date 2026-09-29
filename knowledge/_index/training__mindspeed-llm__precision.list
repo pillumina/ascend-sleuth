@@ -1,0 +1,12 @@
+# GENERATED FILE —— 阶段一读侧视图（一行一条 case），不要手改。
+# 由 scripts/build_index.py 生成、随 PR 提交；字段顺序：id / category / title / symptoms / sig / tok / compat / tags / score
+# 为什么不是 YAML：这份东西由人/agent 读，缩进/引号/字段名/嵌套要多花四成 token（同信息）。
+# file 省略（= knowledge/<ns>/<category>/<id>.yaml，全库实测零例外）；hash 只在总表（门用）。
+# 软匹配照旧：compat 不符只降置信度、不排除；sig 是报错字面量（逐字命中即强候选）、tok 是关键词。
+# 本文件**故意没配 merge=union**：同一格并发仍会在总表上撞一次——重跑 `python3 scripts/build_index.py`。
+# 阶段一加载协议（F1 EV-2026-022 + F4 EV-2026-025）：category 已定时 diagnose 只读命中 (namespace×category) 的类分片，不读整库总表。
+# 本分片：training/mindspeed-llm__precision
+id: MSLLM-1437 | category: precision | title: qwen3-14b-64k-lora 微调开启 uniform 重计算时 grad norm 恒为 0、loss 不收敛：LoRA 微调与 uniform 重计算组合仓库未支持/未验证，关闭重计算或改用官方脚本修复 | symptoms: qwen3-14b-64k-lora 微调开启 uniform 重计算时，grad norm 恒为 0、loss 不收敛（lm loss 停滞在 ~1.22e1 附近），num zeros/nan 均为 0 但训练无进展 | tok: 26.0.0; 5.2 | compat: mindspeed-llm 26.0.0; cann 8.5.2 | tags: lora; recompute; grad-norm-zero; convergence; feature-gap; qwen3 | score: 0.6
+id: MSLLM-1532 | category: precision | title: Qwen3（GQA）用 convert_ckpt_v2.py 做 HF→MCore→HF 转换后导出权重 q_proj/k_proj/v_proj 错位、生成乱码：convert_mg2hf 按 plain [Q,K,V] 而非 grouped layout 拆分 linear_qkv（PR #4545 回归） | symptoms: Qwen3-0.6B 用 convert_ckpt_v2.py 做 HF→MCore→HF 无训练 round-trip 转换，导出的 HF 模型生成乱码碎片（如 'aseñaGLISHATUREATURE...'） | tok: 0.03; convert_ckpt_v2.py | compat: mindspeed-llm * | tags: checkpoint-convert; gqa; weight-mismatch; garbled-output; code-bug; qwen3 | score: 0.6
+id: MSLLM-1780 | category: precision | title: FSDP2 断点续训后第一步日志异常：lm loss 被错误除以 global_step（0.247×31=7.66 与相邻步一致）、elapsed/tokens/s 同步失真：trainer.py 续训时 _last_logged_step 从 _global_step_last_logged（常为 0）恢复，纯日志… | symptoms: FSDP2 断点续训（resume_from_checkpoint）后第一步日志三项指标同时异常：lm loss 显示 0.247（×31 还原 = 7.66 与相邻步 7.74 一致）、elapsed time 34.55ms（正常 90… | tok: 0.247; 6.94; 7.66; 7.74; 90.11; FSDP2; trainer.py | compat: mindspeed-llm master@c8f3cada | tags: fsdp2; checkpoint-resume; log-statistics; loss-display; trainer-bug | score: 0.6
+id: MSLLM-FA-MASK-GRADNAN | category: precision | title: 256卡 Qwen3-235B 长序列 SFT GradNorm 出现 NaN/Inf：sparsemode=0 下 pre_tockens 默认值 65536 小于序列长度 131072，causal mask 由三角下全计算退化为 band、attention 只能看到有限数据，反向逐层放大 | symptoms: GradNorm 出现 NaN/Inf（256 卡 Qwen3-235B 长序列 SFT，序列长度 131072，TP4/PP4/EP16/CP16/VPP3） | tok: 131072; 65536; ASCEND_LAUNCH_BLOCKING | compat: mindspeed-llm 2.1.0 (cann:8.2.RC1) | tags: gradnorm-nan; flash-attention; sparse-mode; causal-mask; long-sequence; dump-analysis | score: 0.7
