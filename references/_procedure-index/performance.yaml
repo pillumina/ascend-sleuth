@@ -6,7 +6,7 @@
 #   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：
 #   references/_procedure-index.yaml
 #
-# 本片流程条数：13    本片加载成本：约 2202 token
+# 本片流程条数：16    本片加载成本：约 2716 token
 entries:
 - id: ascend-hardware-detect-triage
   title: 硬件与压力检测判读（asys diagnose 四模式 → Pass/Warn/Fail → [ERROR] AML 错误码前缀分流 → 电压恢复）
@@ -26,6 +26,14 @@ entries:
   platforms:
   - cross
   file: references/methodologies/ascend-profiling-collection-planning.yaml
+- id: cpu-binding-inspection-procedure
+  title: Host 绑核体检与改动流程（采集只读快照 → 规则体检 → 保守方案与回滚 → 改动前后对照）
+  summary: 怀疑 Host 侧 CPU 配置有问题时的流程。**采集阶段只做只读动作**——`lscpu`、`lscpu -e=CPU,CORE,SOCKET,NODE,ONLINE,MAXMHZ,MINMHZ,MHZ`、`numactl -H`、`/sys/devices/system/cpu/cpu*/topology/thread_siblings_list`、`/sys/devices/system…
+  categories:
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/cpu-binding-inspection-procedure.yaml
 - id: dma-granularity-and-pingpong-tuning
   title: 搬运耗时压不动时的调参顺序（先保 ping-pong 重叠，再加大单次 DMA）
   summary: 当 mte2/mte3 耗时在多个优化步骤后几乎不动（看着像「不可压缩的搬运底座」）时，先怀疑 **16KB 级小 DMA 的 ramp-up 损耗**没吃满带宽；手段是把单次 DMA 从 16KB 加到 32KB（实测 mte2 3.02→2.00µs、mte3 1.15→0.82µs）。但调参顺序有硬约束：**ping-pong 重叠（≥2 tile）比 DMA 尺寸更重要**——单缓冲下即…
@@ -59,6 +67,14 @@ entries:
   platforms:
   - cross
   file: references/methodologies/msprof-comm-bottleneck-thresholds.yaml
+- id: multi-rank-slow-rank-detection
+  title: 多卡快慢卡判读流程（先判输入形态 → 跑集群模式逐项 → 六类定性 → 算子级微观证据 → 对慢卡出建议）
+  summary: 集群里"谁慢、为什么慢"的判读路径。**第 1 步判输入形态**——rank 数、数据是 DB 还是 Text（Text 需要每个 rank 有 `profiler_info_{rank}.json` + `ASCEND_PROFILER_OUTPUT/op_statistic.csv`/`api_statistic.csv`；DB 需要 `ascend_pytorch_profiler_{ra…
+  categories:
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/multi-rank-slow-rank-detection.yaml
 - id: multicore-partitioning-and-template-selection
   title: 多核切分优先原则与算子模板/Bound 策略选择表
   summary: 性能优化的第一动作是**查并行度**：来源实例中把只跑 1 个 Block（其余 63 个 Vector Core 空闲）改成按行切到 64 核，使 6790 → 113.6 µs（59.8x），占整条优化链 157x 的绝大部分，且判据是**各类 ratio 基本不变**（说明收益来自并行度而非单核实现变化）。定位到 Bound 类型后再按策略表选模板：Cube Bound → SWAT + …
@@ -75,6 +91,17 @@ entries:
   platforms:
   - cross
   file: references/methodologies/operator-bottleneck-attribution.yaml
+- id: operator-tuning-experiment-method
+  title: 算子性能实验方法（精度门禁 → 不可变基线 → 单变量迭代 → 前后对照判定；含否证条款）
+  summary: 要给算子做性能改动时的实验纪律。**前置门禁**：精度未过、崩溃或 kernel 挂起 → **停止性能调优**（不是先记下来继续）——先修正确性再谈速度；任一目标用例失败即停。**第 1 步建不可变基线**：同软件栈、同 SoC、同频率、同 shape/dtype、同 TilingKey 下取稳态多次的中位耗时，并记下采集方式（event / simulator / msprof 等口径不可混…
+  categories:
+  - performance
+  - interrupt
+  platforms:
+  - A5-950
+  - A3-910C
+  - A2-910B
+  file: references/methodologies/operator-tuning-experiment-method.yaml
 - id: performance-delimiting-and-comparison
   title: 性能问题的定界顺序与有基线时的对比判据（先定方向再下钻 / 贡献度显著性门控 / 有效吞吐 / 集中度 / 单位与汇总行纪律）
   summary: 拿到性能数据（一份或两份）后按固定顺序走：①先把端到端或 step 耗时拆成计算、通信未掩盖、空闲三块，只定方向不下钻，通信再分等待与传输；②按变多的那一块走对应路径，其中通信算子逐个没变慢而通信未掩盖耗时涨了，说明重叠变差（并行度问题），改去看同步点与重叠关系；③有基线时先过显著性门控再算贡献度，门控只对集群对比的 Stage 差异这一项成立，判不过时贡献度降级为"—"，给得出时要写明它是占变…

@@ -77,6 +77,8 @@ gates:
           - msprobe-response-anomaly
           - msprobe-trend-visualization
           - msprobe-visualization
+          - precision-first-divergence-triage
+          - precision-threshold-cascade
           - verl-cross-validation
           - verl-probs-diff-monitoring
           - verl-uwc-weight-consistency
@@ -138,6 +140,13 @@ gates:
           - msmemscope-collect-and-query
           - memory-leak-and-oom-triage
           - memory-symptom-triage
+          - cpu-binding-affinity-triage
+          - cpu-binding-inspection-procedure
+          - multi-rank-slow-rank-detection
+          - cluster-compare-diagnosis
+          - operator-pipe-bound-classification
+          - operator-tuning-experiment-method
+          - npu-memory-snapshot-analyzer
           - msprof-timeline-lane-reading
           - msopprof
           - cannsim-sim-profiling
@@ -200,6 +209,8 @@ gates:
           - msdebug-operator-source-debug
           - operator-debug-entrypoints
           - mssanitizer
+          - operator-sanitizer-suite
+          - operator-coredump-forensics
           - asc-tools-ascendc-debug-suite
           - hccn-tool-network-diagnosis
           - hixl-tool-route-and-comm-res

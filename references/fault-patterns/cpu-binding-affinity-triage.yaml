@@ -1,0 +1,97 @@
+id: cpu-binding-affinity-triage
+type: fault-pattern
+title: Host CPU 绑核判据（R001–R010 算术规则 / effective CPU 与推荐范围算法 / NPU→NUMA 三级推断 / 线程分类权重）
+summary: "怀疑 Host 侧拖慢 NPU 时，把绑核从“凭经验看看”变成可判定的不等式。十条规则里有六条是纯算术，可直接算：**未绑核** `allowed_count ≥ 0.8 × online_cpus` 且 NUMA 节点 >1；**范围过宽**同一 0.8 线；**范围过窄** `allowed_count < max(1, num_threads // 2)`；**线程过载** `demand = max(torch_num_threads, OMP_NUM_THREADS, dataloader_workers + 1, num_threads) > effective_cpu_count`；**cgroup 冲突** `cpus_allowed_list − cpuset_cpus_effective ≠ ∅` 或 `nr_throttled > 0`；**重复占用**多 rank/多实例场景下两个 PID 的 allowed 交集非空。剩下四条是结构性判断：跨 NUMA（同进程线程的 `numa_node` 集合 >1）、rank/NPU/NUMA 不匹配（NPU 的 NUMA 不在进程 allowed 的 NUMA 集合里）、SMT 策略与目标不符（latency/stability 应避开同物理核的 sibling，throughput 可验证后再用）、信息不足（缺 rank→NPU 或 NPU→NUMA 映射时**不许猜 locality**）。两个可复用的算法：**effective CPU** 优先取 `cgroup.cpuset_cpus_effective`、缺失才回退 `cpus_allowed_list`，推荐范围 = `intersect(effective, preferred)`、交集为空退回 effective；**NPU→NUMA 三级推断**（人工映射 → `pci_bus_id` 对应的 `numa_node` 且值为负视为无 → `npu-smi info -t topo` 的 CPU Affinity 列与该节点 CPU 列表求交取最小节点号），并标注来源；取不到就写进缺失项。"
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/mindstudio-cpu-binding/docs/diagnosis-rules.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：R001–R010 触发条件、证据字段、判断与验证"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/mindstudio-cpu-binding/scripts/collectors/npu_topology.py"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：NPU→NUMA 三级推断与 numa_source 标注"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/mindstudio-cpu-binding/scripts/collectors/linux_proc.py"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：线程分类正则序与 KEY_SCORE 权重"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [torch_npu, vllm-ascend, sglang, mindspeed-llm, verl]
+  categories: [performance]
+
+related_references: [msmemscope-collect-and-query, profiler-host-bound-triage, hostbound-evidence-gate, profiler-analysis-triage, npu-smi-950-device-ops]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  patterns:
+    - pattern: 进程未绑定 CPU（R001）
+      symptoms:
+        - "`cpus_allowed_list` 等于或接近 `system.online_cpus`（判定线 `allowed_count ≥ 0.8 × online_cpus`）"
+        - "`numa_topology` 节点数 > 1，且进程是 NPU/PyTorch 训练或推理进程"
+      cause: "Host 线程可能被调度到非本地 NUMA 或与其他 rank 争抢，缓存局部性下降、迁移增加"
+      fix: "有明确 rank→NPU 映射时按 NPU 本地 NUMA 收敛；没有映射时**先补映射再说**（不许猜 locality）。验证看 CPU 迁移是否下降、step time p90/p99 是否下降"
+    - pattern: 绑核范围过宽（R004）
+      symptoms:
+        - "单 rank 进程可使用超过一个 NUMA 的 CPU，而该 rank 只用一个 NPU"
+        - "推理单实例可用全机 CPU，但目标是时延或稳定性"
+        - "多实例 CPU 范围大量重叠"
+      cause: "调度不确定性增加，关键线程与别人抢 CPU"
+      fix: "收敛到单个 NUMA 的不重叠范围；**单进程服务多 NPU 时不要强绑单一 NUMA**——那会顾此失彼"
+    - pattern: 绑核范围过窄（R005）
+      symptoms:
+        - "`allowed_count < max(1, num_threads // 2)`"
+      cause: "可用 CPU 不足，线程竞争、上下文切换增加、输入流水变慢"
+      fix: "放宽范围或降低线程数（两者要一起看，别只调一个）"
+    - pattern: 线程数超过可用 CPU（R006）
+      symptoms:
+        - "`demand = max(torch_num_threads, OMP_NUM_THREADS, dataloader_workers + 1, num_threads) > effective_cpu_count`"
+        - "多 rank 场景各 rank 的 OMP 线程之和超过本地 NUMA 可用 CPU"
+      cause: "线程配置超过实际可用 CPU，over-subscription 与调度竞争"
+      fix: "按 effective CPU 反算线程预算；多 rank 场景按 NUMA 分账而不是各 rank 各自拉满"
+    - pattern: cgroup/cpuset 与应用绑核冲突（R007）
+      symptoms:
+        - "`cpus_allowed_list` 里有不在 `cpuset_cpus_effective` 中的 CPU"
+        - "启动命令推荐的 CPU 范围超出 cgroup 有效范围"
+        - "有配额限制且 `nr_throttled` 在涨"
+      cause: "应用允许的 CPU 与容器/作业实际可用的 CPU 不一致；或配额被打满被限流"
+      fix: "以 `cpuset_cpus_effective` 为准重算推荐范围；配额问题改容器/K8s resource 而不是改绑核"
+    - pattern: 多 rank / 多实例 CPU 范围重叠（R008）
+      symptoms:
+        - "process_model 为 multi-rank 或 multi-instance，且至少两个 PID 的有效 CPU 范围明显交集"
+        - "优化目标是 latency / stability / isolation，或采样显示 CPU 竞争"
+      cause: "同一批 CPU 被多进程分时复用，互相干扰"
+      fix: "按 rank/实例划分不重叠范围；验证看进程间 CPU 竞争与 step time 方差"
+    - pattern: 跨 NUMA 运行（R002）与 rank/NPU/NUMA 不匹配（R003）
+      symptoms:
+        - "同一进程的高 CPU 线程 `numa_node` 分布在多个节点"
+        - "进程 allowed 的 NUMA 集合里不含它所用 NPU 的 NUMA"
+      cause: "关键线程跨 NUMA 调度，或 rank 与它用的卡不在同一 locality"
+      fix: "优先关注主调度、SQ、通信、DataLoader 这几类线程（它们比后台线程更能代表 Host 瓶颈）；按 `rank → npu → numa → cpu_range` 生成映射后收敛"
+    - pattern: SMT 使用策略与目标不匹配（R009）
+      symptoms:
+        - "低时延推理实例共享同一物理核的 sibling（`smt_enabled` 为真）"
+        - "推荐用了 SMT sibling 但目标是时延/稳定性；或完全避开 SMT 但目标是吞吐且 CPU 不够"
+      cause: "同物理核的两个逻辑核争抢执行资源，对时延敏感场景不划算"
+      fix: "时延/稳定性优先避开 sibling；吞吐场景可在验证后使用 SMT。**这是目标相关判断，不是越窄越好**"
+    - pattern: 信息不足（R010，不许猜）
+      symptoms:
+        - "缺 rank→NPU 映射，或缺 NPU→NUMA 映射，或 cgroup/cpuset 信息缺失"
+      cause: "这些是推断 locality 的必要输入"
+      fix: "把缺失项列进结论（“因此不能判断 locality”），去补采或问用户；**缺 cgroup 信息时不得声称推荐范围一定可用**。把 PID/worker→NPU 的推导负担推给用户也是错的——那是可枚举的事实，用 `npu-smi`/`ps`/`lscpu` 取"
+    - pattern: 哪个线程值得看（分类与排序）
+      symptoms:
+        - "进程线程数很多，不知道看哪个"
+      cause: "不同线程对 Host 瓶颈的代表性差很多"
+      fix: "按名称正则分类（首个匹配优先）：`main_scheduler`（tid==pid）权重 100、`sq_task`（`^dev(\\d+)_sq(?:_task)?$`）95、communication（`hccl|nccl|comm(?:unication)?`）85、npu_fixed（`^(release_thread|acl_thread|pt_data_pin|pt_autograd_\\d+|data_pin)$`）80、dataloader（`dataloader|data_worker|pt_data`）70、engine_worker 65、tokenizer/scheduler 60、api_server 55、blas/openmp 50；排序键 = `-cpu_percent, -key_score, tid`"
+    - pattern: 推荐范围的算法（不是拍一个数字）
+      symptoms:
+        - "要给出“绑到哪几个核”但不清楚以什么为准"
+      cause: "应用允许的 CPU 与容器实际可用的 CPU 可能不同"
+      fix: "**effective CPU** 优先 `cgroup.cpuset_cpus_effective`（缺失才回退 `cpus_allowed_list`）；**推荐 NUMA 的 CPU** 优先取 NPU 的 `local_cpus`，进程只落单 NUMA 时取该节点 CPU，否则取第一个非空节点；**推荐范围 = intersect(effective, preferred)**，交集为空退回 effective；与当前完全相同则不产出动作（避免无意义变更）"

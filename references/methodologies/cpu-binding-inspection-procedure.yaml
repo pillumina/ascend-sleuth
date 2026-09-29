@@ -1,0 +1,81 @@
+id: cpu-binding-inspection-procedure
+type: methodology
+title: Host 绑核体检与改动流程（采集只读快照 → 规则体检 → 保守方案与回滚 → 改动前后对照）
+summary: 怀疑 Host 侧 CPU 配置有问题时的流程。**采集阶段只做只读动作**——`lscpu`、`lscpu -e=CPU,CORE,SOCKET,NODE,ONLINE,MAXMHZ,MINMHZ,MHZ`、`numactl -H`、`/sys/devices/system/cpu/cpu*/topology/thread_siblings_list`、`/sys/devices/system/node/node*/cpulist`、`/sys/fs/cgroup/**/cpuset.cpus.effective`、`/sys/fs/cgroup/**/cpu.max` 与 `cpu.stat`、`lscpu` + `npu-smi info`、`npu-smi info -t topo`、`ps -eo pid,ppid,comm,args`、`/proc/<pid>/task/*/stat`；**报告阶段不得再执行这些命令**（结论必须由已采集的快照渲染出来，否则同一份报告前后不一致）。**体检阶段按 rules 逐条跑**（见 cpu-binding-affinity-triage），每条先输出触发条件、再输出建议，缺证据的条目写进"信息缺口"而不是跳过。**改动的三条纪律**：① 改动分三档影响面（低：只出建议、临时 `taskset`、改下次启动的环境变量；中：重启进程、改容器 cpuset 或 K8s resource；高：IRQ 亲和、CPU governor、内核启动参数、线上自动重启）——**高影响档只出方案不执行**；② 每次只改一件事并保留回滚命令（`taskset -cp <原 CPU list> <pid>`），**回滚前先查 PID 是否被复用**（比对 `/proc/<pid>/stat` 的 starttime）；③ 每轮只问一个澄清问题、优先给选择题。**收尾**：给出改动前后的对照指标（CPU 迁移、step time p90/p99、NPU 利用率波动、进程间 CPU 竞争），并声明这次没跑哪些工具（缺数据不等于该项正常）。
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/mindstudio-cpu-binding/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：快速流程 11 步、快照质量检查与降级、报告阶段禁跑命令"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/mindstudio-cpu-binding/docs/collector-design.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：只读数据源清单"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/mindstudio-cpu-binding/docs/binding-rollback-design.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：绑定与回滚设计（含 PID 复用检查）"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [torch_npu, vllm-ascend, sglang]
+  categories: [performance]
+
+related_references: [cpu-binding-affinity-triage, profiler-host-bound-triage, hostbound-evidence-gate, npu-smi-950-device-ops, profiler-analysis-triage]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  flow:
+    - step: 1
+      name: 采集只读快照（这一步之后不再跑系统命令）
+      action: >-
+        按只读清单取一次快照：`lscpu`（含 `-e=CPU,CORE,SOCKET,NODE,ONLINE,MAXMHZ,MINMHZ,MHZ`）、`numactl -H`、
+        `/sys/devices/system/cpu/cpu*/topology/thread_siblings_list`、`/sys/devices/system/node/node*/cpulist`、
+        `/sys/fs/cgroup/**/cpuset.cpus.effective`、`/sys/fs/cgroup/**/cpu.max`、`/sys/fs/cgroup/**/cpu.stat`、
+        `npu-smi info` 与 `npu-smi info -t topo`、`ps -eo pid,ppid,comm,args`，以及目标进程的 `/proc/<pid>/task/*/stat`
+        （线程名/CPU/NUMA）。另需：进程模型（单实例/多 rank/多实例）、优化目标（时延/吞吐/稳定性）、
+        rank→NPU 映射（可用 `rank0=<pid>:npu0,rank1=<pid>:npu1` 形式给出）。
+      check: "快照字段齐备性；缺哪些字段要当场记下来"
+      when_to_use: 用户报"Host 侧慢/抖动/绑核问题"时第一步
+    - step: 2
+      name: 快照质量检查与降级
+      action: >-
+        逐项检查快照质量：CPU 拓扑是否可用、NUMA 节点数与 CPU 列表是否解析出来、进程的 `cpus_allowed_list` 是否有值、
+        线程的 NUMA 归属是否取到、cgroup/cpuset 是否可见、NPU→NUMA 是否推断出来（三级链，标 `numa_source`）、
+        线程数/CPU 百分比采样是否有效。缺字段时按四步降级：**跑有证据的规则 → 列出信息缺口 → 说明哪些结论因此不能下 →
+        不据缺失字段下结论**。
+      check: "质量检查逐项结果 + 缺口清单 + 因此不能下的结论"
+      when_to_use: 采集完成后
+    - step: 3
+      name: 按规则体检
+      action: >-
+        跑 rules（见 cpu-binding-affinity-triage）：算术类六条（未绑核 / 过宽 / 过窄 / 线程过载 / cgroup 冲突 / 多实例重叠）
+        用不等式直接判定；结构类四条（跨 NUMA / rank-NPU-NUMA 不匹配 / SMT 策略 / 信息不足）。
+        每条输出：触发条件是否满足（给具体数值）、判断、建议、验证方法。**"信息不足"是一条要输出的结论**，不是沉默跳过。
+      check: "每条规则的三元组（触发/判断/建议）+ 命中时的具体数值"
+      when_to_use: 快照质量过关后
+    - step: 4
+      name: 出保守方案与回滚
+      action: >-
+        计算推荐范围：effective CPU 优先 `cgroup.cpuset_cpus_effective`（缺失才回退 `cpus_allowed_list`），推荐 NUMA 的 CPU
+        优先取 NPU 的 `local_cpus`，**推荐范围 = intersect(effective, preferred)**、交集为空退回 effective、与当前相同则不给动作。
+        按影响面分三档输出：低（只出建议 / 临时 `taskset -cp <list> <pid>` / 改下次启动的环境变量）、
+        中（重启进程应用新命令 / 改容器 cpuset 或 K8s resource）、**高（IRQ 亲和、CPU governor、内核启动参数、线上自动重启）只出方案不执行**。
+        每个动作配回滚命令 `taskset -cp <原 CPU list> <pid>`，并说明**回滚前要查 PID 是否被复用**（比对 `/proc/<pid>/stat` 的 starttime）。
+      check: "推荐范围如何算出 + 每个动作的影响档与回滚命令"
+      when_to_use: 体检出问题后
+    - step: 5
+      name: 改动前后对照与收尾
+      action: >-
+        给出对照指标与验证方式：`top_threads` 的 NUMA 分布是否收敛、CPU 迁移是否下降、step time 的 p90/p99 是否下降、
+        NPU 利用率波动是否变小、多 rank 间 step time 方差是否变小、进程间 CPU 竞争是否消失。
+        收尾必须声明：这次没跑哪些工具（**缺数据不等于该项正常**）、哪些结论因缺字段降级、哪些动作没执行（高影响档）。
+        报告渲染阶段**不得再执行 `lscpu`/`npu-smi`/读 live `/proc`**。
+      check: "对照指标 + 未跑工具清单 + 未执行动作清单"
+      when_to_use: 输出结论前

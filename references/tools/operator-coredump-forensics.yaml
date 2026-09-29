@@ -1,0 +1,43 @@
+id: operator-coredump-forensics
+type: tool
+title: 算子 coredump 取证（触发条件 / 产物配套 / 加载解析与有效栈帧判据 / 与在线调试互斥）
+summary: 算子执行期崩溃（AIC/AIV error、越界、卡死）后的**事后取证**入口：拿到 core 文件后不必重跑，直接看崩溃现场。**先要能产出 core**：必须设置 `ASCEND_DUMP_SCENE="aic_err_detail_dump"` 与 `ASCEND_DUMP_PATH` 再运行算子；**抓 core 与在线调试互斥**——同一环境里不要同时用 msdebug 挂着调试，否则拿不到或拿不全。**编译选项按用途选**：上板调试用 `-O0 -g`；**coredump 解析反而建议 `-O2 -g`**——`-O0` 会展开过多 inline，栈帧反而更少、更难看。**加载解析**：`msdebug --core <core 文件> [<kernel.o 或带 -O2 -g 的二进制>]`，进去后用 `ascend info summary` 拿崩溃摘要（`stop_reason`、崩溃核列表与 PC、dump 可读内存区域），再用 `bt` 看调用栈。**判据**：只有 `stop_reason` 属于 MTE / VEC / CUBE / CCU / FIXP_ERROR 时才保证 `bt` 准确；**栈帧 `#0~#2` 常是库调用链**，真正的问题点通常更靠后——不要把前三帧当根因。约束：单 Device 同时只能有一个 msdebug 实例；`/proc/debug_switch` 应为 `1`。
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/operator/msdebug-basic-usage/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：两条流程（在线调试 / coredump 解析）、触发条件、编译选项建议与栈帧判据"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msdebug, ascendc]
+  categories: [interrupt]
+
+related_references: [msdebug-operator-source-debug, operator-debug-entrypoints, operator-sanitizer-suite, asc-tools-ascendc-debug-suite, ascend-msaicerr]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  tool_name: "msdebug（LLDB 风格的昇腾算子调试器，含 coredump 解析）"
+  invocation: >-
+    在线调试：`msdebug ./test_aclnn_add_example`、`msdebug -- ./app --flag1 arg1` 或 `msdebug python3 t.py`（需先按调试用途编译，且
+    `/proc/debug_switch` 为 `1`）。事后取证：先按触发条件产出 core，再 `msdebug --core <core 文件> [<kernel.o 或 -O2 -g 二进制>]`。
+  commands:
+    produce_core: "`export ASCEND_DUMP_SCENE=aic_err_detail_dump; export ASCEND_DUMP_PATH=<目录>; ./<算子可执行>`（不设这个变量不会生成 aic core）"
+    load_core: "`msdebug --core <core 文件> <kernel.o 或带 -O2 -g 的二进制>`"
+    crash_summary: "进去后 `ascend info summary`——给 `stop_reason`、崩溃核列表与 PC、dump 可读内存区域"
+    backtrace: "`bt` 看调用栈（**有效性取决于 `stop_reason`**）"
+    build_hint: "上板调试建议 `-O0 -g`；coredump 解析建议 `-O2 -g`（`-O0` 会展开过多 inline，栈帧更少）"
+  output_meaning:
+    - "`stop_reason` ∈ MTE / VEC / CUBE / CCU / FIXP_ERROR 时，`bt` 才保证准确"
+    - "`bt` 的帧 `#0~#2` 常是库调用链——问题点通常更靠后，**不要把前三帧当根因**"
+    - "`ascend info summary` 同时给出崩溃核列表与 PC，是多核场景判断“哪个核先挂”的入口"
+  pitfalls:
+    - "**抓 core 与在线调试互斥**：同一环境不要同时挂 msdebug 在线调试再抓 core"
+    - "不设 `ASCEND_DUMP_SCENE` 时不会有 aic core——先确认这个变量再怀疑现场没留"
+    - "**coredump 与在线调试的编译选项相反**（前者 -O2 -g、后者 -O0 -g）——用错会让栈帧残缺，看起来像“没有有用信息”"
+    - "单 Device 同时只能有一个 msdebug 实例；`/proc/debug_switch` 不是 `1` 时调试功能不可用"
+    - "它是**源码级**手段：需要能拿到与该 core 配套的二进制/kernel.o 才能解析出有意义的位置"

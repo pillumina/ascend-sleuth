@@ -6,7 +6,7 @@
 #   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：
 #   references/_procedure-index.yaml
 #
-# 本片流程条数：17    本片加载成本：约 2809 token
+# 本片流程条数：18    本片加载成本：约 2978 token
 entries:
 - id: ascend-determinism-triage
   title: 确定性失效排查路径（开关被重置 / 算子内部竞争 / batch invariance 三路分流）
@@ -67,6 +67,14 @@ entries:
   platforms:
   - cross
   file: references/methodologies/long-vector-accumulation-error.yaml
+- id: precision-first-divergence-triage
+  title: 精度比对判读流程（阈值先定 → 首问题点三关 → 传播分类与溯源 → 参数梯度独立评估 → 多指标交叉收敛）
+  summary: 拿到逐算子比对结果后的判读路径。**第 0 步先定阈值**——不要凭经验拍，用自适应级联从数据分布算（见 precision-threshold-cascade）：SICD 变点 → 锚定回溯 → Delta-NRE 离群 → 分布间隙 → 兜底，全程钳制 [0.1%, 100%]。**第 1 步按执行序找首个 output 超标的节点**（超标 = NRE ≥ 阈值 或 MeanBias ≥ …
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/precision-first-divergence-triage.yaml
 - id: rl-inference-precision-triage
   title: RL 推理精度定位（纯服务化 / RL 场景乱码 / 长跑异象，含 Resharding 组合定界）
   summary: RL 推理精度问题的三形态分流：先按现象归形态（纯服务化推理乱码 / 纯服务化正常但 RL 场景乱码 / 长跑才有的异象），再各走一条路——dump 精准定位与 GPU 复测、对齐服务化参数后用 dummy 与 safetensors+skip_update_weight 组合定界 Resharding、单步权重纯服务化回放区分训歪与 kvcache 问题

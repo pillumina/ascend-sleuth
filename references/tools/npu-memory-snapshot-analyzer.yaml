@@ -1,0 +1,59 @@
+id: npu-memory-snapshot-analyzer
+type: tool
+title: NPU 显存快照分析（转 sqlite → 六种模式分析；补 msMemScope 的块级盲区：真碎片 / 假性碎片 / 块状态）
+summary: 显存问题的**块级存量视图**——msMemScope 只能看事件流（分配/释放累计），看不到每个 segment/block 的当前状态，于是"碎片是真碎片还是流池残留、还是异步释放延迟造成的假性碎片"分不清。快照分析补的就是这一层：先 `python3 scripts/snapshot_to_db.py <snapshot.pkl> [-o <db>] [--no-indexes]` 把 `torch_npu.npu.memory._dump_snapshot()` 的产物转成 sqlite，再 `python3 scripts/snapshot_analyze.py <db> --mode {overview|peak|fragment|leak|oom|compare|all} [--ref 另一份.db] [--device N] [-o report.html] [--json]`（两个脚本只依赖标准库，**可离线在无 NPU 的机器上跑**）。**碎片率口径**：整体 = `(Reserved − Allocated) / Reserved`（Reserved = Σsegment.total_size，Allocated = Σsegment.allocated_size），也有逐段口径；分级 `<5%` 正常 / `5%~15%` 偏高 / `>15%` 严重。**假性碎片判据**：待释放占比 `pending_bytes / (Reserved − Allocated) > 50%` → 碎片主因是异步释放延迟，**不是分配器碎片**（块状态分 `active_allocated` / `active_pending_free` / `inactive` 三类，段类型分 large（>1MB）/ small）。**泄漏**：单调增长（segment 净增逐点非降且末值大于首值）**且**长生命周期块 ≥5 → 高风险；只满足其一 → 中风险。长生命周期定义为 block 所属分配发生在时间线前 20% 且当前仍是 `active_allocated`；归因按调用栈聚合取 TOP 3。**OOM**：回溯 OOM 前 50 条 trace，取前 5 次 alloc（按 size 降序）——同一堆栈出现 ≥3 次判"同栈重复分配"，否则 `前 5 条累计 > device_free × 3` 判"接力大分配"，否则"单次过大申请"；**分配事件不足 3 次时不得给 OOM 根因**。
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-npu-snapshot-analyzer/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：两脚本用法、六种模式、离线约束与报告五层结构"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-npu-snapshot-analyzer/references/analysis_methodology.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：碎片率口径与分级、假性碎片判据、泄漏与峰值分析、segment 数量分级"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-npu-snapshot-analyzer/references/snapshot_schema.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：pickle 结构、块状态、段类型与 trace action 枚举"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [torch_npu, vllm-ascend, mindspeed-llm]
+  categories: [performance, interrupt]
+
+related_references: [msmemscope-collect-and-query, memory-symptom-triage, memory-leak-and-oom-triage, profiler-db-query]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  tool_name: "NPU 显存快照分析（memory snapshot → sqlite 分析，含 HTML 报告）"
+  invocation: >-
+    采集侧用 `torch_npu.npu.memory._dump_snapshot()`（或 `torch.cuda.memory._dump_snapshot()`）导出 pickle，
+    **记录历史建议 `_record_memory_history(max_entries=100000)`**；分析侧先转库再按模式分析。
+    本工具**只支持离线 pickle，不做实时采集**；大文件（>1GB）建议先用 `--no-indexes` 导入再手动建索引。
+  commands:
+    to_db: "`python3 scripts/snapshot_to_db.py <snapshot.pkl> [-o custom.db] [--no-indexes]`（pickle 支持 dict 与 list 两种形态）"
+    overview: "`python3 scripts/snapshot_analyze.py <db> --mode overview`——先看总览（健康状态、碎片率、segment 数、设备概况）"
+    fragment: "`--mode fragment`——碎片率与构成（空闲 = Σtotal_size − Σallocated_size；待释放 = Σ blocks.size where state='active_pending_free'）"
+    leak: "`--mode leak`——单调增长与长生命周期块判定 + 按调用栈 TOP3 归因"
+    oom: "`--mode oom`——回溯 OOM 前 50 条 trace，按三种模式分流（同栈重复 / 接力大分配 / 单次过大）"
+    peak: "`--mode peak`——按时间重放 segment_alloc/segment_free 记录 (Reserved, Allocated, Active)，基线取前 10% 事件，峰值贡献者按 total_size 取 TOP5"
+    compare: "`--mode compare --ref <另一份.db>`——两份快照对比：B 有 A 无的 address = 新增 segment；同 address 且 B.total_size 更大 = 扩容"
+    all: "`--mode all -o report.html`——出交互式 HTML（五层结构：总览 → 设备详情 → 深度分析 → 堆栈归因 → 建议）"
+  output_meaning:
+    - "**块状态三类**：`active_allocated`（在用）、`active_pending_free`（已请求释放未完成）、`inactive`（空闲）——假性碎片判据就看 pending 这一类的占比"
+    - "**段类型**：`large`（>1MB）与 `small`；segment 数量分级 `<100` 正常 / `100~200` 偏多 / `>200` 频繁"
+    - "**trace action 枚举**：alloc / free_requested / free_completed / segment_alloc / segment_free / segment_map / segment_unmap / snapshot / oom——判断“谁在什么时候申请”用这张表"
+    - "**健康状态合成规则**：存在 OOM 或碎片率 > 15% → 严重；碎片率 > 5% 或 segment 数 > 100 → 需关注；否则健康"
+    - "**输出单位口径**：≥1GB 用 GB、≥1MB 用 MB、否则 KB；百分比一位小数；差异带正负号"
+  pitfalls:
+    - "**先看 pending 占比再谈碎片**：待释放占比 > 50% 时那是异步释放延迟造成的**假性碎片**，不要判成分配器碎片（会给出错误的调参方向）"
+    - "**泄漏要两个条件同时成立**：单调增长**且**长生命周期块 ≥5 才算高风险；只有单调增长或只有 ≥3 个长寿块是中风险——单条不足以定性"
+    - "**OOM 推断有样本下限**：分配事件不足 3 次时不给根因，写“数据不足”"
+    - "**离线快照看到的是某一时刻的存量**：它回答“现在这块内存归谁、什么状态”，回答不了“它是怎么涨上来的”——增长过程要回到事件流侧（msMemScope 的曲线与 trend）"
+    - "文档与实现有两处不一致（已知）：文档写“OOM 时 device_free > 1GB 判单次过大请求”但脚本无此判据；文档写“Phase 1 不解析 trace 时序”但 `--mode peak` 实际做时序重放——**以脚本行为为准**"
