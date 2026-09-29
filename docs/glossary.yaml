@@ -251,8 +251,8 @@ entries:
   - token: T6
     family: 触发信号
     scope: ["docs/plan/roadmap.md", "skills/evolve-check/SKILL.md"]
-    short: 信号：容量超 soft_cap→拆分评估
-    meaning: 信号：容量超 soft_cap→拆分评估（详见 evolve-check 信号表（编号会随表增行而变，引用写中文含义））
+    short: 信号：格子读入成本超评估线→评估能否再省
+    meaning: 信号：格子阶段一实读超评估线→评估能否再省（详见 evolve-check 信号表（编号会随表增行而变，引用写中文含义））
     see: skills/evolve-check/SKILL.md
   - token: T7
     family: 触发信号

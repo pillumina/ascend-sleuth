@@ -25,7 +25,7 @@
 | ID | 事项 | 需求 / 验收标准 | 入口闸门 | 阶段 |
 |---|---|---|---|---|
 | A1 | Tier 3 postmortem frontmatter 结构化 | `postmortems/**/*.md` 加 frontmatter（framework / category / platform / case-id / keywords）；诊断 Tier 3 检索先按字段过滤再 grep；to-postmortem 产出自动带 frontmatter；存量文件一次性补齐 | Tier 3 语料 >300 篇，或 tier3 检索频繁但挽救率指标偏低 | v1.5 |
-| A2 | 格子容量治理与拆分（ADR-0004：category 子层 + 参数化 cap，拒目录深度 +2） | cap 按 (framework×category) 格子计：soft_cap 30 触发评估（健康指标：候选溢出 / 重复率 / 维护时长），hard_cap 60 强制拆；拆分建议 → 人确认，目录迁移 + `_index.yaml` 重建 + fixture namespace 断言同步，**同一 PR 完成**。**状态**：vllm-ascend interrupt 已超 hard_cap（实时条数见 `knowledge/_index.yaml` 头注，别引用本文的数字）；F1–F5 加载协议优化落地后，命中 category 分片读入由 68.9KB（EV-2026-029）降至 **~60.2–60.6KB**（F4/F5 后复测，128 case）——贴 60KB 线，**拆评估不启动、转观察窗**。**owner 待办**：统一口径（含头与否、估 tok 系数 bytes/3.4）复测后裁决，不自动执行。**再拆闸门（任一触发即评估子族拆分）**：溢出率 ≥40% / med >5 / 统一口径后命中分片读入 >60KB；子族映射（moe / startup-failure / mtp / mooncake+kv / patch-layer / 310P / cudagraph）与容量健康复测历史见 EV-2026-006/022~025/029/030 + 完成账本，此处不重复搬运 | 格子超 soft_cap 且健康指标恶化 / 超 hard_cap | 按闸门 |
+| A2 | 格子容量治理（ADR-0004：category 子层；2026-09-29 起**按阶段一实读 token 判**，不按条数） | 被治理的量只有一个：**查一次问题要把命中格子读进来多少字**（现算 `scripts/index_read_cost.py`）。两条线在 `metrics/gates.yaml`：评估线 8000（到线→评估能否再省：先看行宽/字段）、硬线 20000（= 常驻指令面量级→强制处理，先瘦身再评估平台轴切分）。**条数已退出政策面**（`gates.yaml` / `build_index.py` / `index_counts.py` 里都不再有条数阈值），只作容量台账的显示值与增长观察。**当前读数**：`inference/vllm-ascend × interrupt` 16442 tok / 93 条（超评估线、未到硬线）——不拆，转观察窗。**下一杠杆（数据已备，未启用）**：平台轴切读集——实测 A5+未声明 38 行≈6.5K、310P 40 行≈7.0K、A3 54 行≈9.6K、A2 59 行≈10.3K；17 条夹具里「输入提到的平台」与「case 声明平台」冲突 0 条；代价是 30/93 条未声明平台的 case 永远要读、且要动分片命名与读侧选片规则。依据与实验见 EV-2026-160/161；容量复测历史见 EV-2026-006/022~025/029/030，此处不重复搬运 | 任一格实读 token 超硬线 / 检索质量恶化（候选溢出率 >20%） | 按闸门 |
 | A3 | 第二拆分轴（硬件 platform）ADR | 若 (framework×category) 格子拆分后仍超限，写**新 ADR（编号 0009+——ADR-0003 已被「平台可移植性（git 托管平台）」占用，勿复用号）**，论证**硬件平台**轴（A2-910B / A3-910C / A5-950…，与 ADR-0003 的 platform 术语区分）或索引分片的取舍 | 某 (framework×category) 格子 >100 条（vllm-ascend interrupt 增速见 `metrics/timeline.yaml` 的容量期，别引用本文的数字；**触发单位按 ADR-0004 格子口径计，非整 namespace**——vllm-ascend 整 ns 107 条已达字面 >100，勿误触发） | v2 |
 | A4 | 非单调版本兼容实测 | 真实非单调 case（如 2.7 失效、2.8 恢复）出现时，groom 的 `_archive/` 复活检查跑通全流程，结论记录进 ADR | 首个真实非单调 case 被 groom 处理 | 按事件 |
 | A5 | 容量推演重算 | 用实测过滤率、退休率、增速重算 ADR-0002 的稳态规模与容量结论；确认或修订"不上 RAG"决策及触发条件 | 第 6 个月，或 metrics 首次给出完整过滤/退休数据 | 常设 |
@@ -114,10 +114,10 @@
 |---|---|---|---|
 | **现在就做**（闸门已开） | M1 CODEOWNERS 转正 + 分支保护 | 做（前提：人事决策落地） | Phase 0 唯一剩余出口阻塞（owner 人名 / 维护人未定） |
 | | M2 fixture replay 半自动化 | 做并收口登记 | 闸门已开：golden 24 条 ≥5；replay 工具链与 arena golden 门已共用，缺首份改前/改后报告收口 |
-| | O5 容量趋势预测 | 做 | 闸门已开：A2 于 2026-W36 首次触发（interrupt 超 soft_cap） |
+| | O5 容量趋势预测 | 做 | 闸门已开：容量线自 2026-W36 起长期有格子压线（现按读入 token 判，见 A2 行） |
 | | O6 诊断报告 / O7 健康报表 | 做（或登记已交付形态） | 闸门已开：真实诊断与 live 指标期均已积累；交付状态待登记 |
 | | O8 常态化（口径补正 + held_out ≥10） | 做 | 首级已达成；timeline 行缺分母/小样本标注，常态 trend 未达 |
-| | A2 统一口径复测（owner 裁决拆否） | 做 | 拆分裁决悬空：interrupt 单元 60KB 贴线、口径未统一 |
+| | A2 拆分裁决（owner 定夺要不要按平台轴切） | 做 | 裁决悬空：容量线已按读入 token 统一（16442 / 8000 / 20000），平台轴是下一杠杆、未启用 |
 | | S1 反馈闭环（O3/E1/M3/Q4 自评共同前置） | 做 | 捕获 0/3——无反馈则 confidence 学习环与 2026-Q4 自评数据前提全部空转 |
 | **等闸门**（数据/事件未到，暂不做） | A1 Tier3 frontmatter | 等 | postmortems 128 <300 |
 | | E1 agent 自起草候选 case | 等 | 首次"Tier-2 未命中但最终解决"事件（未记录触发） |
@@ -139,7 +139,7 @@
 
 | 事项 | 落地内容 | 载体 / 日期 | 残余 / 观察窗 |
 |---|---|---|---|
-| A2 加载协议子流（F1–F5） | 索引分片、行瘦身、F3 复测与再拆闸门、category 分片 + 阶段二 top-2、行宽压缩；interrupt 单元 68.9KB → ~60.2–60.6KB | EV-2026-022/023/024/025/029/030，2026-09 | A2 整体未完成：拆分裁决转观察窗（阈值与估 tok 口径待 owner 复核固化，见 A2 行） |
+| A2 加载协议子流（F1–F5 + 读侧换形态） | 索引分片、行瘦身、category 分片 + 阶段二 top-2、行宽压缩；YAML 分片 → 一行一条的读侧视图（该格 23449 → 16442 tok）；容量线由条数改为读入 token | EV-2026-022/023/024/025/029/030/160/161/162，2026-09 | A2 整体未完成：拆分裁决转观察窗（阈值已按实测固化，见 A2 行与 ADR-0004 读侧一节） |
 | M5 | groom token 治理落地（脚本先行 + 信号触发；~129K → 目标 <30K） | EV-2026-028，2026-09 | 真实 groom 单次 token 实测待首次真实 groom（观察窗：.s2-replay/arena/groom-m5-pending.md） |
 | E8 | arena 元层台 + 端到端门控首跑（见 E8 行数据） | EV-2026-013/014，2026-09-04 | test/selection 分离（selection ≥20 后启用） |
 | O8 首级 | ixn-replay harness v1 + 首批 staged n=10 出分进 timeline（见 O8 行数据） | EV-2026-012/016/017/018，2026-09-04 | 常态化（held_out ≥10 单列 trend）；timeline 行分母/小样本标注待按 O1 补正 |

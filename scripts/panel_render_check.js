@@ -322,14 +322,37 @@ async function main() {
   }
   expect('自演进度量：验证方式分布', /验证方式分布/.test(ev.text) && /S2 issue 回放/.test(ev.text))
   expect('信号来源分布', /信号来源/.test(ev.text))
-  // 容量压力：从真实容量表里取最紧的那一格做断言（不硬编码 84/30）
+  // EV 面板的容量节：判据量是**读入 token**，与「指标」tab 必须说同一件事。
+  // 为什么补这条（预核 2026-09-29）：该节此前零断言——index_counts 的每格记录去掉 `cap` 之后，
+  // 它仍在读 `cell.cap`，于是渲染出「全部格子在软上限的 80% 以下」的假陈述而 CI 全绿。
+  {
+    const evCap = (() => {
+      const cb = (board.capacity) || {}
+      const rows = []
+      Object.keys(cb).forEach(ns => Object.keys(cb[ns] || {}).forEach(cat => {
+        const c = cb[ns][cat]
+        if (typeof c.tok === 'number') rows.push({ ns, cat, count: c.count, tok: c.tok })
+      }))
+      return rows.sort((a, b) => b.tok - a.tok)
+    })()
+    if (evCap.length) {
+      const top = evCap[0]
+      expect('EV 容量节显示读入成本（' + top.ns + ' · ' + top.cat + ' ' + top.count + ' 条 / ' + top.tok + ' tok）',
+        ev.text.includes(top.count + ' 条 / ' + top.tok + ' tok'), ev.text.split('\n').slice(0, 6).join(' | '))
+    }
+    expect('EV 容量节不再说"软上限"（条数已不是判据量）',
+      !/软上限/.test(ev.text), (ev.text.match(/软上限[^\n]{0,20}/g) || []).join(','))
+  }
+  // 容量压力：从真实容量表里取最贵的一格做断言（不硬编码阈值/格名）。
+  // 判据量是**读入 token**（阈值在 gates.yaml），条数只作括号里的观察值。
   const capCells = []
   Object.keys(board.capacity || {}).forEach(ns => Object.keys(board.capacity[ns] || {}).forEach(cat => {
     const c = board.capacity[ns][cat]
-    capCells.push({ label: c.count + '/' + c.cap, ratio: c.cap ? c.count / c.cap : 0 })
+    if (typeof c.tok !== 'number') return
+    capCells.push({ label: c.tok + ' tok', ratio: c.hard && c.hard > 0 ? c.tok / c.hard : 0 })
   }))
   const tightest = capCells.sort((a, b) => b.ratio - a.ratio)[0]
-  if (tightest && tightest.ratio > 0.8) expect('容量压力出现最紧格子 ' + tightest.label, ev.text.includes(tightest.label), (ev.text.match(/\d+\/30/g) || []).join(','))
+  if (tightest) expect('容量压力出现最贵格子 ' + tightest.label, ev.text.includes(tightest.label), (ev.text.match(/\d+ tok/g) || []).join(','))
   expect('timeline 趋势区块存在', /指标趋势/.test(ev.text))
   // 趋势的可读性契约（2026-09 重写后新增，起因是实测看不懂）：
   // ① 比例必须带分母——旧实现把 {ok,total} 压成 ok，三期 "3/3" 渲染成三根等高的柱 + 一个 "3"；
@@ -899,8 +922,8 @@ print(json.dumps({
   const verdict = JSON.parse(pyRun(['scripts/metrics_health.py', '--json'], { cwd: repo, maxBuffer: 16 * 1024 * 1024, env: PY_ENV }).toString())
   const cells = verdict.capacity_cells || []
   const hot = cells.filter(c => c.soft || c.hard)
-  const softVal = (verdict.gates || []).filter(g => g.id === 'cell_soft_cap').map(g => g.value)[0]
-  const hardVal = (verdict.gates || []).filter(g => g.id === 'cell_hard_cap').map(g => g.value)[0]
+  const softVal = (verdict.gates || []).filter(g => g.id === 'cell_read_soft_tok').map(g => g.value)[0]
+  const hardVal = (verdict.gates || []).filter(g => g.id === 'cell_read_hard_tok').map(g => g.value)[0]
 
   // —— 数据契约：体检脚本必须把面板要用的东西都给全（缺一项面板就会静默少一块）——
   expect('体检 JSON 含 gates（阈值只在 gates.yaml 一处）', Array.isArray(verdict.gates) && verdict.gates.length > 0)
@@ -910,11 +933,12 @@ print(json.dumps({
   expect('体检 JSON 含 candidate_commands', Array.isArray(verdict.candidate_commands) && verdict.candidate_commands.length > 0)
 
   // —— 判据强度：面板报的越界格 == 按 gates.yaml 阈值独立算出的越界格（口径一份）——
-  const expectSoft = cells.filter(c => (verdict.gates || []).some(g => g.dimension === 'capacity_cell'
-    && ((g.op === '>' && c.count > g.value) || (g.op === '>=' && c.count >= g.value))))
+  const expectSoft = cells.filter(c => (verdict.gates || []).some(g => g.dimension === 'capacity_cell_read_tok'
+    && c.tok != null && ((g.op === '>' && c.tok > g.value) || (g.op === '>=' && c.tok >= g.value))))
   expect('容量越界格数与判据一致（面板 ' + hot.length + ' == 独立计算 ' + expectSoft.length + '）', hot.length === expectSoft.length)
-  expect('hard_cap 那格被判成硬越界', hot.every(c => (c.count >= hardVal) === !!c.hard), JSON.stringify(hot.slice(0, 2)))
-  expect('soft_cap 阈值来自 gates.yaml（' + softVal + '）', softVal === 30)
+  expect('硬线那格被判成硬越界（按读入 token）', hot.every(c => (c.tok != null && c.tok >= hardVal) === !!c.hard), JSON.stringify(hot.slice(0, 2)))
+  expect('评估线阈值来自 gates.yaml（' + softVal + ' tok）', softVal === 8000)
+  expect('容量台账逐格带读入 token', cells.every(c => typeof c.tok === 'number'))
 
   // —— `--check` 的三态：0 判据全评过且无越界 / 1 有判据被违反 / 2 有判据未被评估 ——
   // 为什么必须测 2：修前 `--check` 只用"有没有 ✗"映射 0/1，于是**"体检器坏了"与"本期确实
@@ -1030,18 +1054,18 @@ print(json.dumps(n))
       String(withPlain[0].plain).slice(0, 48))
   }
   // 人话版里不得残留实现标识符（用户不该看见判据名/指标名）
-  const leaky = withPlain.filter(f => /cell_(soft|hard)_cap|feedback_capture_floor|misdiagnosis_rate|attribution_ratio|soft_cap|hard_cap/.test(String(f.plain)))
+  const leaky = withPlain.filter(f => /cell_read_(soft|hard)_tok|cell_(soft|hard)_cap|feedback_capture_floor|misdiagnosis_rate|attribution_ratio|soft_cap|hard_cap/.test(String(f.plain)))
   expect('人话版不含实现标识符（判据名/指标名）', leaky.length === 0,
     leaky.map(f => String(f.plain).slice(0, 60)).join(' | '))
   // 收起态不暴露判据名（技术文案只在展开区）
-  expect('收起态不直接显示判据名（cell_soft_cap 等）',
-    !/\bcell_soft_cap\b|\bfeedback_capture_floor\b/.test(vt),
-    (vt.match(/cell_soft_cap|feedback_capture_floor/g) || []).join(','))
+  expect('收起态不直接显示判据名（cell_read_soft_tok 等）',
+    !/\bcell_read_soft_tok\b|\bcell_read_hard_tok\b|\bfeedback_capture_floor\b/.test(vt),
+    (vt.match(/cell_read_(soft|hard)_tok|feedback_capture_floor/g) || []).join(','))
   if (hot.length) {
-    const h = hot.sort((a, b) => b.count - a.count)[0]
-    expect('容量越界在首屏可见：' + h.namespace + ' · ' + h.category + ' = ' + h.count + '/' + h.cap,
-      vt.includes(h.namespace + ' · ' + h.category) && vt.includes(h.count + '/' + h.cap),
-      (vt.match(/\d+\/\d+/g) || []).slice(0, 8).join(','))
+    const h = hot.sort((a, b) => b.tok - a.tok)[0]
+    expect('容量越界在首屏可见：' + h.namespace + ' · ' + h.category + ' = ' + h.tok + ' tok（' + h.count + ' 条）',
+      vt.includes(h.namespace + ' · ' + h.category) && vt.includes(h.tok + ' tok'),
+      (vt.match(/\d+ tok/g) || []).slice(0, 8).join(','))
   }
   expect('容量台账标出「逐格」口径', vt.includes('逐格'))
   // 不可解读：gates.yaml 的 readability 里判成不可解读的指标，行上必须带标记（不能安静显示成 0）
@@ -1956,7 +1980,7 @@ _MS._run_no_pipe = no_fallback`)
   {
     const hostSrc = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
     expect('host 不再把容量加总到 namespace（旧口径 byNamespace 已移除）', !/byNamespace/.test(hostSrc))
-    expect('host 不再内联 soft_cap 数值做判断', !/>\s*30\b/.test(hostSrc) && !/count\s*>\s*30/.test(hostSrc))
+    expect('host 不再内联容量阈值做判断', !/>\s*(30|8000|20000)\b/.test(hostSrc) && !/count\s*>\s*30/.test(hostSrc))
     expect('host 走 metrics_health.py（判据一处）', /metrics_health\.py --json/.test(hostSrc))
     expect('client 渲染 gates.yaml 的阈值而非写死', /gates\.yaml/.test(ascSrc))
   }

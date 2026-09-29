@@ -10,7 +10,7 @@
 | `metrics/timeline.yaml` | **生成物**：由源重建的聚合（`periods:` 列表，读侧的唯一入口） | 每次源变化后重建（**不要手改**） |
 | `scripts/build_timeline.py` | 聚合重建 / `--check` 校验生成物与源一致（CI 强制） | 随机制 |
 | `docs/guide/metrics.md`（本文） | 机制文档：指标定义、口径、汇总流程、示例 | 机制变化时 |
-| `metrics/gates.yaml` | **阈值与可解读性下限（数据）**：新鲜度上限、格子 soft/hard cap、反馈下限、哪些指标分母为 0 即"不可解读" | 判据变化时 |
+| `metrics/gates.yaml` | **阈值与可解读性下限（数据）**：新鲜度上限、格子读入成本线（`cell_read_soft_tok` / `cell_read_hard_tok`）、反馈下限、哪些指标分母为 0 即"不可解读" | 判据变化时 |
 | `scripts/metrics_snapshot.py` | **一期快照的单一产出命令**：组装诊断侧 + 结构侧 + 内容流程侧（逐块标 `sources`）；撞号自动加后缀 | 随机制 |
 | `scripts/metrics_health.py` | **闭环检测器**：读 timeline + gates，判新鲜度 / 越界 / 可解读性；`--check` 三态（0 判据全评过且无越界 / 1 有违反 / 2 有判据未被评估）；`--json` 是诊断面板的数据契约 | 随机制 |
 | `scripts/trace_metrics.py` | 诊断侧指标（markdown 概览 + `--emit-yaml` 骨架 + `--emit-yaml-only` 供组装） | 随机制 |
@@ -38,7 +38,7 @@
 | 来源 | 谁产出 | 指标 |
 |---|---|---|
 | 诊断侧 | `trace_metrics.py`（读 `traces/*.yaml`） | 命中率、误诊率、路由准确率、归因比、按类命中、置信度分布、trace 完整性、Tier 3、反馈捕获、reference 引用/消费点、流程加载与跟随 |
-| 结构侧 | `index_counts.py`（从 case 文件现算）+ `verify_references.py` | `case_total`、`reference_total`、`capacity_by_ns`（每格 `count/cap`） |
+| 结构侧 | `index_counts.py`（条数，现算）+ `index_read_cost.py`（读入成本，现算）+ `verify_references.py` | `case_total`、`reference_total`、`capacity_by_ns`（每格 `count` + `tok`；成本才是被治理的量） |
 | 内容流程侧 | `log_skill_exec.py` → `tail_exec_log.py --summary` | `content_flow_runs`、`evolve_check_runs`、`evolve_check_no_signal` |
 | 评测侧 | ixn / golden / S2 等按需 | `ixn_*`、`golden_suite`、S2 内容验证（口径见下） |
 
@@ -129,7 +129,7 @@ periods:
 | 面 | 判据（gates.yaml） | 说明 |
 |---|---|---|
 | 新鲜度 | `live_snapshot_max_age_days` / `structural_max_age_days` | 超期 = 趋势断档（实测：结构侧 10 天没进快照） |
-| 越界 | `cell_soft_cap`(>30) / `cell_hard_cap`(>=60) / `feedback_capture_floor`(<=0) | 每条带 `meaning` 与 `action`，报告直接给下一步 |
+| 越界 | `cell_read_soft_tok`(>8000) / `cell_read_hard_tok`(>=20000) / `feedback_capture_floor`(<=0) | 每条带 `meaning` 与 `action`，报告直接给下一步。容量线按**阶段一实读 token**判（现算 `scripts/index_read_cost.py`），不按条数——条数只是代理量，实测每条 177 token 而旧政策按 70 估 |
 | 可解读性 | `readability` 规则（如 `source_nonzero`） | 分母/来源无数据时把指标标成**不可解读**，禁止把 `0/N` 读成"零问题" |
 
 **为什么必须单独有这一层**：`verify_metrics.py` 只验**结构**（period 唯一/字段合法），

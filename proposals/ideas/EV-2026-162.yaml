@@ -1,0 +1,130 @@
+# ============================================================
+# EV-2026-162 —— 容量治理概念统一：被治理的量从「条数」迁到「阶段一实读 token」
+# 来源：用户追问「hard_cap 的定义是改了吗？metrics 面板里的告警还需要存在吗」→ 讨论后定：
+#       告警留着但换一个被治理的量，并把三处不一致（政策/脚本/文档）收成一处。
+# 脱敏：只含仓库内路径、命令与聚合数字。
+# ============================================================
+
+id: EV-2026-162
+layer: L3
+target_component: metrics/gates.yaml
+title: "容量治理概念统一：阈值从条数（30/60）迁到阶段一实读 token（8000/20000），条数退出政策面只作显示；面板与体检的告警文案、动作、一键命令同步"
+status: validated
+authorization: dual                # 治理判据的身份与阈值搬家（跨 metrics / 面板 / 生成器 / 文档）
+dimension: architecture
+supersedes: []
+superseded_by: null
+created_at: 2026-09-29
+source_signals:
+  - signal: user_inquiry
+    evidence: "用户「那现在 hard_cap 的定义是改了吗？那 metrics 面板里的告警还需要存在吗？讨论一下」→ 实测三处不一致（政策按条数、决策文本按 token、面板动作写「拆格子」而拆已被否），定为此卡"
+    trajectory:
+      - "实测 1（不一致）：`build_index.py` 的 `SOFT_CAP=30/HARD_CAP=60`、`metrics/gates.yaml` 的 `cell_soft_cap`/`cell_hard_cap`（动作写「强制拆分，不等健康指标」）与 ADR-0004 新节的「按 token 判」并存；面板据此每次报「容量越界」并给一键命令「拆格子」——而拆正是 EV-2026-160 否掉的动作"
+      - "实测 2（换算关系）：该格 93 条 = 16442 tok（177/条）；按 token 线反推，评估线 8000 ≈ 45 条、硬线 20000 ≈ 113 条——旧条数线（30/60）与真实成本线差 1.5–1.9 倍，所以两套阈值会给出不同结论"
+      - "实测 3（改后读数）：`python3 scripts/metrics_health.py` → 容量面从「93/30 超 hard_cap、强制拆分」变为「16442 tok（93 条）超评估线 → 评估能否再省」；判据覆盖 3/3 仍全评过"
+hypothesis: >-
+  阈值与量统一到「阶段一实读 token」之后，体检、面板、文档三处给同一句话与同一个动作，
+  且条数不再触发任何动作——避免"告警永远在喊、且它叫你做的事已被否掉"。
+predicted_effect:
+  metric: 容量判据的身份与动作在四处的**一致性**（gates.yaml / 体检输出 / 面板 / 文档）
+  from: "四处分别写：条数 30/60、条数越界、强制拆分、拆格子"
+  to: "四处同一：读入 token 8000/20000、超评估线（再省）/超硬线（先瘦身再评估平台轴）、看读入成本"
+  measure:
+    command: >-
+      python3 scripts/metrics_health.py --json
+      | python3 -c "import json,sys; d=json.load(sys.stdin); ids=[g['id'] for g in d['gates']]; assert 'cell_read_soft_tok' in ids and 'cell_read_hard_tok' in ids and not [i for i in ids if i.endswith('_cap')], ids; c=d['capacity_cells'][0]; assert isinstance(c['tok'], int) and c['hard_tok']==20000 and c['soft_tok']==8000, c; print('ok', c['namespace'], c['category'], c['tok'], 'tok /', c['count'], 'rows')"
+    expect_exit: 0
+    expect_stdout: "ok "
+    # 复现：python3 scripts/ev_measure.py EV-2026-162 --run
+    # 断言的是**判据身份**（两条 token 线在场、条数线不再存在、每格带上成本与两条线），
+    # 不是会随 case 增长而腐烂的具体数字
+validation:
+  method: metrics_compare
+  baseline: "改前：gates.yaml = 条数 30/60；体检输出 = 「93/30 超 hard_cap…需要拆成更细的分类」；面板 = 「容量越界」+「拆格子」"
+  success_criteria: "①两条 token 线在 `gates.yaml`，条数阈值在 `gates.yaml`/`build_index.py`/`index_counts.py` 三处都不再存在；②体检与面板同口径（面板渲染的数 == 按 gates.yaml 独立算出的数，`panel_render_check.js` 断言）；③体检判据覆盖仍 3/3、`metrics_health.py --check` 退出码语义不变；④面板 render check 全通过"
+  rollback: "分支可整体丢弃；合入后 git revert（阈值回条数、面板文案回旧）"
+gate:
+  condition: "用户「以合理的方案修改优化，并且逻辑概念上统一」"
+risk: medium
+principle_refs: [2, 9, 10]
+actual_cost:
+  tokens: 140000
+  source: estimate
+  note: >-
+    口径：跨 9 个文件（gates.yaml / metrics_health / metrics_snapshot / index_counts / build_index /
+    面板 client / panel_render_check / fixtures / 文档三处）+ 两轮全量门与面板检查；估 14 万，
+    含讨论轮与独立预核的往返。
+decisions:
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: proposal
+    conclusion: >-
+      被治理的量只能有一个：**阶段一实读 token**（查一次问题第一眼要读进来多少字）。条数退成
+      **计数与增长观察**（台账里显示，不触发动作）。另一根轴（候选溢出率 >20%）管"挑不挑得对"，
+      与成本线互不代替——两条不同的问题，两个不同的量。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: action
+    conclusion: >-
+      落地：`metrics/gates.yaml` 换成 `cell_read_soft_tok`(>8000，动作=评估能否再省) 与
+      `cell_read_hard_tok`(>=20000，动作=先瘦身再评估平台轴切分)；`build_index.py` 删掉
+      SOFT_CAP/HARD_CAP（生成器只产数据）；`index_counts.py` 只报计数并在人读表里指路到成本尺子；
+      `metrics_snapshot.py` 在结构快照里同时记 `{count, tok}`；`metrics_health.py` 按 token 判、
+      按格子合并成一条、文案与人话版重写（含"先瘦身再看平台轴"的动作）；面板台账改以 token 为主角
+      （`16442 tok（93 条）`、徽标"超评估线/超硬线"）、一键命令换成 `python3 scripts/index_read_cost.py`；
+      `panel_render_check.js` 与夹具同步（阈值 8000/20000、按 token 判越界）；文档三处（metrics 判据表、
+      roadmap A2 行、CLAUDE.md 结构性状态）与 ADR-0004 延续节收口。
+      **一处口径修正**：读侧视图缺失时成本记 `None` 而不是 0（0 会被下游读成"这格免费"）。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: eval
+    conclusion: >-
+      改后实测：`metrics_health.py` → 判据 3/3 全评过，容量面输出「inference/vllm-ascend · interrupt
+      = 16442 tok（93 条）——越过 cell_read_soft_tok…→ 评估能否再省」；`--json` 的
+      `capacity_cells[0]` = {count: 93, tok: 16442, soft_tok: 8000, hard_tok: 20000, soft: true, hard: false}；
+      `node scripts/panel_render_check.js` 全部通过；`verify_metrics --check`、`build_index --check`、
+      `pytest tests/test_index_counts.py tests/test_index_read_cost.py` 全绿。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: decision
+    conclusion: >-
+      采纳（validated，dual）：**告警留、量换**。留的理由：该格确已过评估线且在长（93 条 ≈ 16442 tok，
+      硬线余量约 20 条），删掉会失去"哪一格在变贵"的早期信号；换的理由：条数线 30/60 与真实成本线
+      差 1.5–1.9 倍，且旧动作（强制拆分/拆格子）已被否——一个永远在喊、且指的动作是"已被否掉的那件事"
+      的告警，会被训练成被忽略。**未做**：平台轴切分仍留作下一杠杆（读数与代价见 roadmap A2 行）；
+      候选溢出率那条线不动（它管检索质量，不管成本）。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: decision
+    conclusion: >-
+      补一条**防假绿**：读侧视图缺失时成本记 None，而"None"最初只是被跳过——那会让体检在
+      "量不出"时输出「所有格子均未触发」（绿），正是本仓反复吃过的假绿形态。改成：① 报一条
+      warn 人话版（"有格子的读入成本量不出来，先重建索引"）；② 把该判据记成**未评估**，
+      `--check` 退 2（不是 0）。反例实测：删掉一格读侧视图的临时副本 → exit 2、覆盖 1/3、
+      点名缺哪一格；正常库仍是 3/3、`--check` 退 1（容量超评估线 + 反馈 0，属真实越界）。
+  - who: agent（独立预核会话 + 本轮回修）
+    when: "2026-09-29"
+    type: decision
+    conclusion: >-
+      独立预核判 **MERGE_READY: no**，报 9 项，全部回修（无一项是"判定链坏了"，全是"两套说法没清干净"）：
+      ① **P1 EV 面板容量节说假话**——`ev_board_data.capacity_cells()` 直接把 `index_counts.capacity_by_ns`
+      给面板，而本轮把每格记录从 `{count, cap}` 改成 `{count}`，ev-panel 仍读 `cell.cap` → 渲染空态
+      「全部格子在软上限的 80% 以下」，与「指标」tab 的「1 格越界 / 16442 tok」同屏打架，且该节
+      **零断言**所以 CI 看不出来。修：`ev_board_data` 合并读入成本、EV 面板容量节改按 token 展示，
+      并在 `panel_render_check.js` 补两条断言（显示 `93 条 / 16442 tok`、不得再出现"软上限"）。
+      ② **P1 第二套阈值**：`skills/knowledge-groom`（第 6 步与触发信号表两行）、`CONTEXT.md` 术语表「格子」、
+      `docs/glossary.yaml` 的 T6、`docs/guide/metrics.md` 两处仍写 30/60 条——skill 是独立分发面，
+      照旧口径会在 groom 时判"强制拆"。全部改成 token 线。
+      ③ **P1 体检自己的候选命令**仍写「拆格子 / 用 knowledge-groom 处理容量越界…（category 轴深化或
+      platform 轴）」+ why 引 soft_cap/hard_cap → 改成 `index_read_cost.py` 与新动作文案。
+      ④ **P2 同一个量两处定义**：`metrics_health` 与 `index_read_cost` 各写一份 8000/20000 兜底 →
+      改成只从 `index_read_cost` 导入（本卡自己的论点：一个量两处定义必有一处先腐烂）。
+      ⑤ **P2 数字陈旧**：`docs/adr/0004` 与 `build_index.py` 的 `16424` → `16442`；`index_read_cost`
+      注释"软线 = 该面的一半" → 实测 37%；`roadmap.md` 的两行台账（60KB 贴线 / 口径未统一）随 A2 行更新。
+      ⑥ **P3 无活回归测试** → 新增 `tests/test_metrics_health.py`（5 条：判据 id 写明量 / 缺读侧视图退 2 /
+      结构侧拿不到退 2 / 体检读数 == 现算 / 条数多但成本低不越线）。
+      ⑦ **P3 顺带堵旧洞**：结构侧整块拿不到时原本仍输出「✓ 所有格子均未触发」（基线同样假绿）——
+      现在同样记"未评估 + 退 2"。
+      预核同时确认：`SOFT_CAP/HARD_CAP` 全仓无代码引用、`--check` 三态语义未变、`normalizeCapacity`
+      对三种历史形状都容错且不会把旧 `cap` 当本线用、`index_read_cost --json` 契约未变、
+      演练 183/183 与 293 tests 均复算通过。

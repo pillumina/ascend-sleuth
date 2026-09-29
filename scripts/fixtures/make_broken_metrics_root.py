@@ -67,8 +67,8 @@ def main() -> int:
         shutil.copy2(timeline_src, out / "metrics" / "timeline.yaml")
 
     if args.case == "A":
-        # 在 cell_hard_cap 之前插一条本体检器不认识的判据
-        marker = "  - id: cell_hard_cap"
+        # 在容量硬线之前插一条本体检器不认识的判据
+        marker = "  - id: cell_read_hard_tok"
         if marker not in gates:
             print(f"夹具前提不成立：{marker!r} 不在 gates.yaml 里（格式变了？）", file=sys.stderr)
             return 1

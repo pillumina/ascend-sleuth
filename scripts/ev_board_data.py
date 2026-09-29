@@ -33,7 +33,11 @@ def load_yaml(path):
 
 
 def capacity_cells(root: Path):
-    """逐格容量 {ns: {cat: {count, cap}}} —— **现算**（index_counts），不再解析索引头注。
+    """逐格容量 {ns: {cat: {count, tok}}} —— **现算**，不再解析索引头注。
+
+    `tok` = 阶段一实读成本（被治理的量，判据阈值在 metrics/gates.yaml）；`count` = 条数（观察值）。
+    两个量都给：EV 面板的容量节与「指标」tab 的容量台账必须说同一件事——此前这里只给 `count`，
+    消费方还在读已删除的 `cap`，于是渲染出「全部格子在软上限的 80% 以下」的假陈述（预核 2026-09-29）。
 
     原先这里解析 `knowledge/_index.yaml` 头注里的「容量(...)=N/30」行。那几个数字后来从生成物里
     拿掉了：它们是共享热点，两人并发改不同框架时会撞同一段、或写出漂移的数（根因见
@@ -41,7 +45,14 @@ def capacity_cells(root: Path):
     """
     try:
         import index_counts
-        return index_counts.capacity_by_ns(index_counts.counts(root))
+        import index_read_cost
+        caps = index_counts.capacity_by_ns(index_counts.counts(root))
+        toks = {(c["namespace"], c["category"]): c["tok"]
+                for c in index_read_cost.cell_costs(root)["cells"]}
+        for ns_name, cs in caps.items():
+            for cat, rec in cs.items():
+                rec["tok"] = toks.get((ns_name, cat))
+        return caps
     except Exception:
         return {}
 

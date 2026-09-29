@@ -19,18 +19,22 @@ freshness:
   structural_max_age_days: 7
 
 gates:
-  - id: cell_soft_cap
-    dimension: capacity_cell
+  # 容量线按**阶段一实读 token** 判，不按条数（2026-09-29 统一，见 docs/adr/0004 的读侧一节）：
+  #   被约束的量是"查问题时第一眼要读进来多少字"（B_ctx）；条数只是它的代理，且代理关系随内容变
+  #   （实测每条 177 token，而旧政策按 70 估 → 估小了 3.6 倍，才让 93 条看起来"贴着线"）。
+  #   数字现算：`python3 scripts/index_read_cost.py`。条数仍在容量台账里显示，但**不触发动作**。
+  - id: cell_read_soft_tok
+    dimension: capacity_cell_read_tok
     op: ">"
-    value: 30
-    meaning: "(framework × category) 格子条数超 soft_cap"
-    action: 触发拆分评估（groom 步骤 6：category 轴深化或 platform 轴）
-  - id: cell_hard_cap
-    dimension: capacity_cell
+    value: 8000
+    meaning: 格子阶段一实读超评估线（约常驻指令面的 38%）
+    action: 评估能否再省：先看行宽/字段，再看平台轴切分（python3 scripts/index_read_cost.py）
+  - id: cell_read_hard_tok
+    dimension: capacity_cell_read_tok
     op: ">="
-    value: 60
-    meaning: 格子条数超 hard_cap（信道物理上限）
-    action: 强制拆分，不等健康指标
+    value: 20000
+    meaning: 格子阶段一实读超硬线（与常驻指令面同量级）
+    action: 强制处理：先瘦身，再评估平台轴切分（不预拆目录；动作见 EV-2026-160/161）
   - id: feedback_capture_floor
     dimension: feedback_capture_total
     op: "<="

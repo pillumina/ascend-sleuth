@@ -135,9 +135,22 @@ def collect_structural(root: Path):
     try:
         sys.path.insert(0, str(Path(__file__).resolve().parent))
         import index_counts
+        import index_read_cost
         data = index_counts.counts(root)
         out["case_total"] = data["total"]
-        out["capacity_by_ns"] = index_counts.capacity_by_ns(data)
+        caps = index_counts.capacity_by_ns(data)
+        # 容量台账两个量一起记：条数（增长观察）+ 阶段一实读 token（**被治理的成本量**）。
+        # 为什么现在才记 token：2026-09-29 之前容量只按条数管，而条数与真实成本差 3.6 倍
+        # （见 docs/adr/0004 的读侧一节）；趋势要能看出"哪一格在变贵"。
+        try:
+            toks = {(c["namespace"], c["category"]): c["tok"] for c in index_read_cost.cell_costs(root)["cells"]}
+        except Exception as e:
+            notes.append(f"读入成本现算失败（{type(e).__name__}: {str(e)[:120]}）——容量台账只记条数")
+            toks = {}
+        for ns_name, cs in caps.items():
+            for cat, rec in cs.items():
+                rec["tok"] = toks.get((ns_name, cat))
+        out["capacity_by_ns"] = caps
     except Exception as e:
         notes.append(f"结构数字现算失败（{type(e).__name__}: {str(e)[:200]}）——本轮容量判据未被评估")
 
@@ -276,12 +289,15 @@ def main():
         for m in missing:
             print(f"    ! {m}")
     caps = metrics.get("capacity_by_ns") or {}
-    over = [(ns, cat, c["count"], c["cap"]) for ns, cells in caps.items()
-            for cat, c in cells.items() if c["count"] > c["cap"]]
-    if over:
-        print("  已越界格子（判据见 metrics/gates.yaml，检测走 metrics_health.py）：")
-        for ns, cat, n, cap in over:
-            print(f"    ! {ns} · {cat} = {n}/{cap}")
+    # 这里**不判越界**：阈值与动作在 metrics/gates.yaml，判定走 metrics_health.py。
+    # 只把最贵的几格摆出来（读入成本是成本量，条数是观察量）。
+    costliest = sorted(((ns, cat, c.get("count"), c.get("tok")) for ns, cells in caps.items()
+                        for cat, c in cells.items() if c.get("tok") is not None),
+                       key=lambda x: -x[3])[:3]
+    if costliest:
+        print("  最贵的格子（判据见 metrics/gates.yaml，越界判定走 metrics_health.py）：")
+        for ns, cat, n, tok in costliest:
+            print(f"    · {ns} · {cat} = {tok} tok（{n} 条）")
     print("\n下一步：人复核 → `python3 scripts/metrics_health.py` 体检 → 把这一期写进 "
           f"metrics/timeline.d/{period}.yaml → `python3 scripts/build_timeline.py` → verify_metrics --check")
     print("  注意：metrics/timeline.yaml 是**生成物**，不要直接编辑它（重建会覆盖）。")

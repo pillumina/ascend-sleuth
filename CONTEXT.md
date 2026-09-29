@@ -115,7 +115,7 @@ _避免_：隐含价格、机会成本（语义近但不等）
 | `S1` / `S2` | 反馈的两条通道：S1 = 现场 resolve（工程师回报 fix 是否解决）；S2 = 内容验证（issue-replay 对照外部 ground truth） | `docs/mechanism/rsi-mechanism.md` |
 | `EV 卡` | 演进提案卡（`proposals/ideas/EV-*.yaml`），演进闭环的改进单元 | `docs/mechanism/pipeline.md` |
 | `F1`–`F5` | 阶段一索引加载协议的优化子项编号 | `docs/plan/roadmap.md` 的「加载协议子流」条目 |
-| 格子 | 容量治理单元 = (框架 × 类别)；软上限 30、硬上限 60 | `docs/adr/0004-capacity-governance.md` |
+| 格子 | 容量治理单元 = (框架 × 类别)；治理量是**查一次问题要读进来多少字**（评估线 8000 / 硬线 20000），条数只作观察值 | `docs/adr/0004-capacity-governance.md` |
 | 夹具 / `holdout` | 回归评测样本统称夹具；其中按内容哈希封存、不被改动者削弱的那部分叫 holdout | `docs/guide/eval.md` |
 | `grill` | 沉淀 reference 前的反复确认追问环节 | `skills/to-reference/SKILL.md` |
 | 口径 | 统计或判定所用的统一算法与边界定义——口径不同则数字不可比 | `docs/guide/metrics.md` |

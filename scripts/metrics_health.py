@@ -33,10 +33,12 @@ import metrics_snapshot as MS
 # 本体检器**实现了哪些判据 dimension / readability rule**——写成集合，用来对照 `gates.yaml`
 # 实际声明的条目。gates.yaml 里新增一条判据而这里没实现时，`--check` 报 2（不可判定），
 # 而不是安静地"没有越界"（EV-2026-055 的教训：检测腿断了自己不会喊）。
-IMPLEMENTED_GATE_DIMENSIONS = {"capacity_cell", "feedback_capture_total"}
+IMPLEMENTED_GATE_DIMENSIONS = {"capacity_cell_read_tok", "feedback_capture_total"}
 IMPLEMENTED_READABILITY_RULES = {"total_gt_0", "any_gt_0", "source_nonzero"}
-# `capacity_cells[].hard` 的兜底阈值：`cell_hard_cap` 闸门缺失时才用到（正常路径读 gates.yaml）
-HARD_CAP_FALLBACK = 60
+# 容量两线的兜底阈值：只在 `cell_read_*_tok` 闸门缺失时才用到（正常路径读 gates.yaml）。
+# **定义只有一处**：`index_read_cost.py` 是成本量的家（本 PR 自己的论点——同一个量两处定义，
+# 必有一处先腐烂；预核 2026-09-29 指出这里曾各写一份）。
+from index_read_cost import DEFAULT_HARD_TOK as HARD_TOK_FALLBACK, SOFT_TOK as SOFT_TOK_FALLBACK  # noqa: E402
 
 
 def load_yaml(path: Path, errors: list = None):
@@ -238,8 +240,23 @@ def main():
     # 现在走防御包装：结构侧任何异常都降级成"这一块拿不到 + 如实标注"，不崩整轮体检
     # （实测：面板环境下 collect_structural 曾整体抛错，连容量判据一起带走）。
     structural, s_notes = collect_structural_safe(root)
-    cells = [(ns, cat, c["count"], c["cap"]) for ns, cs in (structural.get("capacity_by_ns") or {}).items()
-             for cat, c in cs.items()]
+    # 结构侧整体拿不到（knowledge/ 不在、读侧视图缺失…）→ 容量线**量不出**，不许报"均未触发"。
+    # 旧缺陷（预核 2026-09-29 复现）：把 knowledge/ 移走后仍输出「✓ 所有格子均未触发」、
+    # coverage 3/3、broken=[] —— 与"确实没越界"同形。
+    structural_unavailable = not (structural.get("capacity_by_ns") or {})
+    # 阶段一实读成本**现算**（与条数同源：都从 case 文件算，不读快照里的旧值）。
+    # 为什么不用快照里的 tok：判据要判的是"现在这格多贵"，快照可能是上期的。
+    try:
+        cells = [(ns, cat, c["count"], c.get("tok")) for ns, cs in (structural.get("capacity_by_ns") or {}).items()
+                 for cat, c in cs.items()]
+        if all(t is None for _ns, _cat, _n, t in cells):
+            import index_read_cost
+            live_costs = {(c["namespace"], c["category"]): c["tok"]
+                          for c in index_read_cost.cell_costs(root)["cells"]}
+            cells = [(ns, cat, n, live_costs.get((ns, cat))) for ns, cat, n, _t in cells]
+    except Exception as e:
+        s_notes.append(f"读入成本现算失败（{type(e).__name__}: {str(e)[:120]}）——容量线本轮未被评估")
+        cells = []
     prev_cells = {}
     if last_struct:
         for ns, cs in ((last_struct.get("metrics") or {}).get("capacity_by_ns") or {}).items():
@@ -251,45 +268,58 @@ def main():
     # 为什么（2026-09 七轮，实测）：格子 85/30 会同时越过 soft_cap(>30) 与 hard_cap(>=60)，
     # 于是面板上出现两行 85/30、人话版也几乎一样——读者以为是两件事。判据确实是两条，
     # 但对人来说"这一格超了两条线"是一件事：合成一条，并在展开的判据行里如实写清越过了哪两条。
-    capacity_hits = {}   # (ns, cat) → {n, cap, gates:[{id, meaning, action}], hard:bool}
+    # 量不出的格子单独记：读侧视图缺失时成本是 None，**不能**当成"没越界"（那正是假绿的样子）
+    unmeasurable = ([(ns, cat) for ns, cat, _n, tok in cells if tok is None]
+                    if not structural_unavailable else [("（整个结构侧）", "拿不到")])
+    capacity_hits = {}   # (ns, cat) → {n, tok, gates:[{id, meaning, action}], hard:bool}
     for g in gates:
-        if g.get("dimension") != "capacity_cell":
+        if g.get("dimension") != "capacity_cell_read_tok":
             continue
         op, val = g.get("op"), g.get("value")
-        for ns, cat, n, cap in cells:
-            if not op_holds(op, n, val):
+        for ns, cat, n, tok in cells:
+            if tok is None or not op_holds(op, tok, val):
                 continue
             key = (ns, cat)
-            hit = capacity_hits.setdefault(key, {"ns": ns, "cat": cat, "n": n, "cap": cap,
+            hit = capacity_hits.setdefault(key, {"ns": ns, "cat": cat, "n": n, "tok": tok,
                                                  "gates": [], "hard": False})
             hit["gates"].append({"id": g.get("id"), "meaning": g.get("meaning"), "action": g.get("action")})
             if "hard" in str(g.get("id")):
                 hit["hard"] = True
 
-    for key in sorted(capacity_hits, key=lambda k: -capacity_hits[k]["n"]):
+    soft_tok = next((g.get("value") for g in gates if g.get("id") == "cell_read_soft_tok"), SOFT_TOK_FALLBACK)
+    hard_tok = next((g.get("value") for g in gates if g.get("id") == "cell_read_hard_tok"), HARD_TOK_FALLBACK)
+    for key in sorted(capacity_hits, key=lambda k: -(capacity_hits[k]["tok"] or 0)):
         hit = capacity_hits[key]
-        ns, cat, n, cap = hit["ns"], hit["cat"], hit["n"], hit["cap"]
+        ns, cat, n, tok = hit["ns"], hit["cat"], hit["n"], hit["tok"]
         prev = prev_cells.get((ns, cat))
-        drift = f"（上次快照 {prev}）" if prev is not None and prev != n else ""
-        gate_names = "、".join(str(x["id"]) for x in hit["gates"])
-        # 动作取最强的那条（hard 优先，否则按 gates.yaml 顺序）
+        drift = f"（上次快照 {prev} 条）" if prev is not None and prev != n else ""
+        # 动作取最强的那条（硬线优先，否则按 gates.yaml 顺序）
         action = next((x["action"] for x in hit["gates"] if x["action"] and "hard" in str(x["id"])),
                       hit["gates"][0].get("action"))
         findings.append(("fail", "容量",
-                         f"{ns} · {cat} = {n}/{cap}{drift} —— 越过 {'、'.join(str(x['id']) for x in hit['gates'])}"
+                         f"{ns} · {cat} = {tok} tok（{n} 条）{drift} —— 越过 "
+                         f"{'、'.join(str(x['id']) for x in hit['gates'])}"
                          f"（{'；'.join(str(x['meaning']) for x in hit['gates'])}）",
                          action,
-                         f"{ns_label(ns)} 的「{cat_label(cat)}」已收录 {n} 条，上限 {cap} 条"
-                         + (f"，是上限的 {round(n / cap, 1)} 倍" if cap else "")
-                         + ("。同类问题堆得太多，检索会变慢、命中会变散，需要拆成更细的分类"
-                            if hit["hard"] else "。已到预警线，建议评估是否拆分")))
-    if not capacity_hits:
-        findings.append(("ok", "容量", f"所有格子均未触发 ({'、'.join(str(g.get('id')) for g in gates if g.get('dimension') == 'capacity_cell')})",
+                         f"{ns_label(ns)} 的「{cat_label(cat)}」共 {n} 条，查一次问题要读进来约 {tok} 字"
+                         + (f"，是硬线 {hard_tok} 的 {round(tok / hard_tok, 1)} 倍" if tok >= hard_tok else "")
+                         + ("。读得太多会挤掉推理余量，先看能不能再省（行宽/字段），再看要不要按平台切开"
+                            if hit["hard"] else "。已过评估线，值得看看还能不能再省")))
+    if unmeasurable:
+        findings.append(("warn", "容量",
+                         "容量线未评估：" + ("结构侧整块拿不到（knowledge/ 或读侧视图缺失）"
+                                          if structural_unavailable
+                                          else "读侧视图缺失：" + "、".join(f"{ns} · {cat}" for ns, cat in unmeasurable)),
+                         "python3 scripts/build_index.py",
+                         "读入成本量不出来（结构侧/读侧视图缺失）——先重建索引再看容量"))
+    if not capacity_hits and not unmeasurable:
+        findings.append(("ok", "容量",
+                         f"所有格子均未触发 ({'、'.join(str(g.get('id')) for g in gates if g.get('dimension') == 'capacity_cell_read_tok')})",
                          None, None))
 
     for g in gates:
         gid, dim, op, val = g.get("id"), g.get("dimension"), g.get("op"), g.get("value")
-        if dim == "capacity_cell":
+        if dim == "capacity_cell_read_tok":
             pass   # 已在上面按格子合并处理
         elif dim == "feedback_capture_total":
             live_m = ((last_live or {}).get("metrics") or {})
@@ -372,8 +402,8 @@ def main():
          "why": "反馈捕获为 0 时，误诊率/归因比没有分母"},
         {"label": "追快照", "command": "python3 scripts/metrics_snapshot.py",
          "why": "诊断侧/结构侧快照超期 → 趋势断档"},
-        {"label": "拆格子", "command": "用 /skill:knowledge-groom 处理容量越界格子（category 轴深化或 platform 轴拆分）",
-         "why": "格子超 soft_cap 触发拆分评估，超 hard_cap 强制拆分"},
+        {"label": "看读入成本", "command": "python3 scripts/index_read_cost.py",
+         "why": "容量线按阶段一实读 token 判：超评估线先看能否再省（行宽/字段），超硬线再评估平台轴切分"},
         {"label": "重建索引", "command": "python3 scripts/build_index.py",
          "why": "索引头注与磁盘不一致时，检索与面板读到的都是旧数"},
     ]
@@ -387,9 +417,13 @@ def main():
     # 语义与 `ev_measure.py` 的三态刻意同形（0 符合 / 1 被证伪 / 2 无法判定）。
     gate_audit = []
     broken = list(load_errors)
+    if unmeasurable:
+        what = ("结构侧拿不到" if structural_unavailable
+                else "读侧视图缺失（" + "、".join(f"{ns}×{cat}" for ns, cat in unmeasurable) + "）")
+        broken.append(f"容量线未评估：{what}——先跑 `python3 scripts/build_index.py`")
     for g in gates:
         dim = g.get("dimension")
-        ok_impl = dim in IMPLEMENTED_GATE_DIMENSIONS
+        ok_impl = dim in IMPLEMENTED_GATE_DIMENSIONS and not (dim == "capacity_cell_read_tok" and unmeasurable)
         gate_audit.append({"id": g.get("id"), "dimension": dim, "implemented": ok_impl})
         if not ok_impl:
             broken.append(f"闸门 {g.get('id')}（dimension={dim}）没有评估实现——这条判据不会被检查")
@@ -436,9 +470,10 @@ def main():
                   for g in gates],
         "readability": readability_state,
         "capacity_cells": [
-            {"namespace": ns, "category": cat, "count": n, "cap": cap,
-             "soft": cap is not None and n > cap, "hard": n >= HARD_CAP_FALLBACK}
-            for ns, cat, n, cap in sorted(cells, key=lambda x: (-x[2], x[0], x[1]))
+            {"namespace": ns, "category": cat, "count": n, "tok": tok,
+             "soft_tok": soft_tok, "hard_tok": hard_tok,
+             "soft": tok is not None and tok > soft_tok, "hard": tok is not None and tok >= hard_tok}
+            for ns, cat, n, tok in sorted(cells, key=lambda x: (-(x[3] or 0), x[0], x[1]))
         ],
         "candidate_commands": candidate_commands,
         "current": {"case_total": structural.get("case_total"),

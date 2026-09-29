@@ -38,7 +38,7 @@ import build_index as BI  # noqa: E402
 
 # 每格阶段一实读的硬线（token）。20000 是**推导**来的，不是拍的：诊断会话的常驻指令面
 # （SKILL 11.4K + 仓库指令 5.7K + 路由表 4.1K ≈ 21K）是"每次都要读"的量——阶段一不该比它更贵。
-# 软线 8000 = 该面的一半：到这里就该问"能不能再省"（与 ADR-0004 的 soft/hard 两级同构）。
+# 软线 8000 ≈ 该面的 37%（到这里就该问"能不能再省"；与 ADR-0004 的 soft/hard 两级同构）。
 # 两个常数服从 roadmap 参数治理：metrics 实测（回放命中率 vs 读入量）后复核。
 DEFAULT_HARD_TOK = 20000
 SOFT_TOK = 8000
@@ -58,6 +58,8 @@ def _view_cost(p: Path) -> int:
 def cell_costs(root: Path) -> dict:
     """→ {cells:[...], fallbacks:[...], total:{...}, missing_views:[...], hard_tok, soft_tok}
 
+    视图缺失时那一格的 `tok` 记 **None**（不是 0）：0 会被下游读成"这格免费"。
+
     cells     = 类视图（命中路径；硬线只管这一组）
     fallbacks = ns 兜底视图（category 未定才读；单独报，不混进同一个分母）
     """
@@ -69,25 +71,27 @@ def cell_costs(root: Path) -> dict:
             rows = ns[ns_name][cat]
             p = shard_dir / BI.shard_slug(f"{ns_name}__{cat}")
             if not p.exists():
-                # 缺读侧视图 ≠ 成本为 0：量不出就得说量不出（否则"残缺"会被读成"这格免费"）
+                # 缺读侧视图 ≠ 成本为 0：量不出就记 None（"残缺"与"免费"必须不同形）
                 missing.append(p.name)
-            cost = _view_cost(p) if p.exists() else 0
+            cost = _view_cost(p) if p.exists() else None
             cells.append({
                 "namespace": ns_name, "category": cat, "rows": len(rows),
-                "tok": cost, "per_row": round(cost / len(rows)) if rows else 0,
+                "tok": cost, "per_row": (round(cost / len(rows)) if (cost is not None and rows) else None),
                 "bytes": p.stat().st_size if p.exists() else 0,
             })
         fb = shard_dir / BI.shard_slug(ns_name)
         if not fb.exists():
             missing.append(fb.name)
-        fb_cost = _view_cost(fb) if fb.exists() else 0
+        fb_rows = sum(len(v) for v in ns[ns_name].values())
+        fb_cost = _view_cost(fb) if fb.exists() else None
         fallbacks.append({
             "namespace": ns_name,
-            "rows": sum(len(v) for v in ns[ns_name].values()),
+            "rows": fb_rows,
             "tok": fb_cost,
-            "per_row": round(fb_cost / max(1, sum(len(v) for v in ns[ns_name].values()))),
+            "per_row": (round(fb_cost / fb_rows) if (fb_cost is not None and fb_rows) else None),
         })
-    total = {"rows": sum(c["rows"] for c in cells), "tok": sum(c["tok"] for c in cells)}
+    total = {"rows": sum(c["rows"] for c in cells),
+             "tok": sum(c["tok"] for c in cells if c["tok"] is not None)}
     return {"cells": cells, "fallbacks": fallbacks, "total": total,
             "hard_tok": DEFAULT_HARD_TOK, "soft_tok": SOFT_TOK, "missing_views": missing}
 
@@ -118,7 +122,7 @@ def main() -> int:
             print(f"没找到格子 {args.cell}。可选：\n  {keys}", file=sys.stderr)
             return 2
         cells = hit
-    over = [c for c in cells if c["tok"] > args.cap]
+    over = [c for c in cells if c["tok"] is not None and c["tok"] > args.cap]
     if args.json:
         out = {"cells": cells, "fallbacks": [] if args.cell else fallbacks,
                "total": data["total"], "cap": args.cap, "soft_tok": data["soft_tok"],
@@ -128,17 +132,22 @@ def main() -> int:
     print(f"阶段一实读成本（读侧视图；硬线 {args.cap} tok、评估线 {data['soft_tok']} tok）")
     for c in sorted(cells, key=lambda x: -x["tok"]):
         flag = ""
-        if c["tok"] > args.cap:
+        if c["tok"] is None:
+            flag = "  ← 量不出（视图缺失）"
+        elif c["tok"] > args.cap:
             flag = f"  ← 超硬线 {args.cap}"
         elif c["tok"] > data["soft_tok"]:
             flag = "  ← 超评估线"
         print(f"  {c['namespace'] + ' × ' + c['category']:44s} {c['rows']:4d} 条 "
-              f"{c['tok']:6d} tok（{c['per_row']}/条）{flag}")
+              f"{'—' if c['tok'] is None else c['tok']:>6} tok"
+              f"（{'—' if c['per_row'] is None else c['per_row']}/条）{flag}")
     if not args.cell:
         print(f"  合计类视图 {data['total']['rows']} 条 / {data['total']['tok']} tok")
         print("兜底视图（category 未定时才读，不在上面的硬线里）：")
-        for f in sorted(fallbacks, key=lambda x: -x["tok"]):
-            print(f"  {f['namespace']:44s} {f['rows']:4d} 条 {f['tok']:6d} tok（{f['per_row']}/条）")
+        for f in sorted(fallbacks, key=lambda x: -(x["tok"] or 0)):
+            print(f"  {f['namespace']:44s} {f['rows']:4d} 条 "
+                  f"{'—' if f['tok'] is None else f['tok']:>6} tok"
+                  f"（{'—' if f['per_row'] is None else f['per_row']}/条）")
     return 1 if over else 0
 
 
