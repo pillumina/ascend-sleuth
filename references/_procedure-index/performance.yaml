@@ -6,7 +6,7 @@
 #   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：
 #   references/_procedure-index.yaml
 #
-# 本片流程条数：12    本片加载成本：约 2033 token
+# 本片流程条数：13    本片加载成本：约 2202 token
 entries:
 - id: ascend-hardware-detect-triage
   title: 硬件与压力检测判读（asys diagnose 四模式 → Pass/Warn/Fail → [ERROR] AML 错误码前缀分流 → 电压恢复）
@@ -42,6 +42,15 @@ entries:
   platforms:
   - cross
   file: references/methodologies/hostbound-evidence-gate.yaml
+- id: memory-leak-and-oom-triage
+  title: 显存问题判读流程（数据可用度确认 → 曲线定性 → 对池定维度 → 按症状分支 → 假设验证与伪影排除）
+  summary: 显存类问题的判读路径，先判数据够不够再往下走。**第 1 步确认可用度**——读采集配置（`config.json`）：没开 `decompose` 就没有 `owner`，模块级拆解做不了；没配 `call_stack` 就归因不到代码位置；两条都没有时只能看总量曲线，此时要**如实告知信息缺失并按需补采**，不要带着缺口下结论。**第 2 步曲线定性**（持续攀升/阶梯/平台/锯齿/峰值后回…
+  categories:
+  - performance
+  - interrupt
+  platforms:
+  - cross
+  file: references/methodologies/memory-leak-and-oom-triage.yaml
 - id: msprof-comm-bottleneck-thresholds
   title: 通信瓶颈判定阈值（Wait Time Ratio / 传输前同步比例 / 带宽使用率）
   summary: msprof 官方的通信瓶颈判定口径：①一个迭代内是否存在「等待时长比例（Wait Time Ratio）> 0.2」的卡——有则通信瓶颈；②找 WTR 最大的卡看「传输前同步时长比例 > 0.2」——大于则存在慢卡（查慢卡前反向计算时间与数据预处理），否则链路异常；③通信矩阵：带宽使用率 > 0.8 说明链路正常、通信包比例 > 0.8 指向链路配置/劣化、包尺寸过小指向带宽瓶颈

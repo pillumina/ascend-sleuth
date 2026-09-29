@@ -3,7 +3,7 @@
 # 只含背景类 + status=active；查表类走步骤 2 收尾的键触发 grep（口径同 diagnose SKILL）。
 # 读法：grep 取行 + ≤5 行上限——索引随词条数增长，整读等于注入全库背景。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 词条数：137
+# 词条数：138
 # 不写生成日期：日期进 git 会让每次重建都改同一行，并发合并时必撞（口径同 build_index.py）。
 entries:
 - id: a5-950dt-memory-spec
@@ -811,6 +811,17 @@ entries:
     categories:
     - interrupt
     - precision
+- id: msmemscope-collect-and-query
+  type: tool
+  title: msMemScope 显存采集与判读（按诉求选采集配置 / 统计键口径 / 幽灵释放陷阱 / 聚合脚本次第）
+  summary: 显存类问题（OOM / 泄漏 / 大头占比 / 峰值 / 碎片）的采集与判读入口。**先定诉求再定配置**——OOM 用 `--analysis=oom[:K]` 并加 `--call-stack`；怀疑泄漏用
+    `--analysis=leaks`（离线走 mstx 打点 A/B/C + `check_leaks`）；…
+  applies_to:
+    platforms:
+    - cross
+    categories:
+    - performance
+    - interrupt
 - id: msopprof
   type: tool
   title: msopprof 算子级性能采集（流水图 + 带宽类 CSV 指标，与 TTK 配合须关 Profiling 与预热）
