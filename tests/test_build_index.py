@@ -207,6 +207,20 @@ class BuildIndexTest(unittest.TestCase):
         probs = self.problems()
         self.assertTrue(any("出现 2 次" in x for x in probs), probs)
 
+    def test_coverage_red_when_cell_view_emptied(self):
+        """把某一格的视图掏空（条目还在 ns 兜底视图里）→ 必须红。
+
+        为什么单列（独立预核 2026-09-29 指出的既有洞）：只按 id 建全局索引时，"这条在别处找得到"
+        会盖住"它自己那一格没了"——而阶段一命中该格时读的正是那一份。
+        """
+        self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
+        self.generate_all()
+        p = bi.shard_path(self.root, "inference/vllm-ascend__interrupt")
+        head = [ln for ln in p.read_text(encoding="utf-8").splitlines() if ln.startswith("#")]
+        p.write_text("\n".join(head) + "\n", encoding="utf-8")          # 头注留着，条目清空
+        probs = self.problems()
+        self.assertTrue(any("这一格" in x and "S-1" in x for x in probs), probs)
+
     def test_coverage_red_when_shard_missing(self):
         self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
         self.generate_all()

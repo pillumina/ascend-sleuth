@@ -527,6 +527,21 @@ def coverage_problems(root: Path, namespaces):
                             f"跑 `python3 scripts/build_index.py`")
     for cid in sorted(set(rows) - set(expected)):
         problems.append(f"读侧视图里有、库里没有：{cid}——case 被删/移走了没重建，跑 `python3 scripts/build_index.py`")
+    # **每格自己那份视图里必须真有它自己的条目**：不能"在别处（ns 兜底视图）能找到"就算过。
+    # 为什么单列这条：条目只要还出现在任何一份视图里，上面的按 id 建索引就查得到——于是把某一格的
+    # 视图掏空（或删掉整格的行）不会报，而阶段一命中该格时恰恰读的就是那一份（独立预核 2026-09-29
+    # 指出该洞在换形态前就存在）。修复方式就是按文件再查一遍。
+    for ns_name in sorted(namespaces):
+        for cat in sorted(namespaces[ns_name]):
+            p = shard_dir / shard_slug(f"{ns_name}__{cat}")
+            if not p.exists():
+                continue                      # 缺文件已由上面的"文件在场"一条覆盖
+            have = {parse_read_line(ln).get("id") for ln in p.read_text(encoding="utf-8").splitlines()
+                    if ln.strip() and not ln.startswith("#")}
+            for c in namespaces[ns_name][cat]:
+                if c["id"] not in have:
+                    problems.append(f"这一格（{ns_name} × {cat}）的视图里缺 {c['id']}"
+                                    f"（别处找得到不算）——跑 `python3 scripts/build_index.py`")
     # 文件本身的在场与回收：少一片 = 阶段一在某条路径上读不到（退化），多一片 = 退休格子没清
     want_files = set()
     for ns_name, cells in namespaces.items():

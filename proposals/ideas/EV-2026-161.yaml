@@ -69,6 +69,10 @@ decisions:
       落地：`render_shard` 改紧凑行 + `compact_line`/`parse_read_line`；分片扩展名 `.yaml` → `.list`
       并在生成时回收旧形态；`--check` 改成读侧比行原文、总表比 content hash（读侧看不出的字段改动
       仍由总表兜住）；`duplicate_ids` 支持两种记法；`dir_category_problems` 等既有门不动。
+      另修一条**既有门洞**（独立预核指出：换形态前就存在）：覆盖检查只按 id 建全局索引，
+      于是"某一格的视图被掏空、条目还在 ns 兜底视图里"不会报——而阶段一命中该格时读的正是那一份。
+      现在按文件再查一遍（`test_coverage_red_when_cell_view_emptied` 钉住），并同步迁移了
+      `tests/test_generated_plane.py`（它按旧 `.yaml` 分片路径读写，不迁移会让 CI 的 unit-tests 红）。
       文档同步：CLAUDE.md 的 Tier 2 行、诊断步骤一（SKILL + procedure 展开）、git-workflow 的表与
       冲突处理、ADR-0004 追加"读侧形态与上限口径"一节（含更正后的上限推导：硬线 20000 = 不许超过
       常驻指令面 ≈21K，而不是早先那个没来由的 15000）。
