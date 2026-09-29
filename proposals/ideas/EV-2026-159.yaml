@@ -23,7 +23,7 @@ source_signals:
       - "实测 1：knowledge/_index.yaml 与 knowledge/_index/*.yaml 头注自称配了 merge=union，.gitattributes:31 写的是故意不配（同一条错还抄进 .github/workflows/kb-checks.yml 注释与 tests/test_build_index.py 注释）"
       - "实测 2：build_index.py 的 collect() 的 ns 从目录取、category 从字段取；全库 168 条实测无错位，但没有任何门会报错位"
       - "实测 3：references/_summary-index.yaml 改前 141 条占 1440 行（一条 5~7 行块状 YAML，58920 字节），而读侧协议是「grep 取行 + ≤5 行上限」——按平台 grep 只命中 platforms 行、按组件词 grep 只命中 title/summary 行，拿不到整条"
-      - "实测 4：平台收窄力弱——141 条里 90 条 platforms 写 cross，A3-910C × interrupt 两刀切完仍剩 9 条（目标 ≤5）"
+      - "实测 4：平台收窄力弱——141 条的 platforms 里 90 条**含** `cross`（其中 73 条恰为 `[cross]`）；平台（含 cross）+ 类别 interrupt 两刀切完实测剩 45 行，把平台收到只匹配 A3-910C 才剩 9 行（目标 ≤5）"
 hypothesis: >-
   三处修正后：①合并撞车时读到的头注与 .gitattributes 一致（不再保证一件不会发生的事）；
   ②错位 case（目录写 interrupt、字段写 precision）在 CI 被报出，而不是只表现为"人按目录找不到"；
@@ -94,3 +94,15 @@ decisions:
       采纳（validated，review）：三处按上表落地。**范围声明**：本卡不处理格子容量越界
       （vllm-ascend interrupt 93/hard_cap 60）与"超格后没有中间档"——那是结构决策，
       两道闸门（溢出率 42%、分片 73KB）已越，需单独裁决。
+  - who: agent（独立预核会话 + 本轮回修）
+    when: "2026-09-29"
+    type: decision
+    conclusion: >-
+      独立预核（另起会话，只看仓库事实与 diff）判 MERGE_READY: yes，并报 3 项，全部回修：
+      ① 重要级——同一句「索引配了 merge=union」的错话只清了四处，`coverage_problems` 的 docstring
+      里还有第五处（恰好长在门函数上，下次改门的人先读到）；已改并与文件头口径统一。
+      ② 建议级——`diagnosis-procedure.md` 那句「两刀切完通常还剩近 10 行」与该行自己给的命令不符
+      （含 cross 的口径实测 45 行）；已改成实测值，并把「90 条含 cross / 73 条恰为 [cross]」的口径写明。
+      ③ 建议级——新门的作用域边界（`platforms/` 及其下层不受约束）已补进 `dir_category_problems` 的 docstring。
+      预核另核过：索引正文逐字节未动、面板正则数条目仍 168、一行一条与基线逐条字典相等、
+      render_row 对元字符/长行/值内换行的行为、以及全部 CI 门与 rehearse_evolve_loop（断言 183/183）。

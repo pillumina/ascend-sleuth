@@ -213,7 +213,7 @@ class BuildIndexTest(unittest.TestCase):
         self.assertTrue(any("分片缺失" in p and "inference__vllm-ascend__interrupt" in p for p in probs), probs)
 
     def test_shard_with_conflict_markers_is_reported_not_merged(self):
-        """分片里出现冲突标记（不该有——本目录配了 union）→ 点名，动作是重跑生成器。"""
+        """分片里出现冲突标记（不该有——索引故意没配 union，撞了就该重跑）→ 点名，动作是重跑生成器。"""
         self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
         self.generate_all()
         p = bi.shard_path(self.root, "inference/vllm-ascend__interrupt")
