@@ -6,7 +6,7 @@
 #   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：
 #   references/_procedure-index.yaml
 #
-# 本片流程条数：18    本片加载成本：约 2978 token
+# 本片流程条数：20    本片加载成本：约 3314 token
 entries:
 - id: ascend-determinism-triage
   title: 确定性失效排查路径（开关被重置 / 算子内部竞争 / batch invariance 三路分流）
@@ -140,6 +140,14 @@ entries:
   platforms:
   - cross
   file: references/methodologies/sentinel-precheck-data-movement.yaml
+- id: single-operator-accuracy-verification
+  title: 单算子精度验证流程（定算子与判据 → 按 dtype 取容差 → 构造同输入 → 两侧各跑 → 读结果并标降级）
+  summary: 整网比对标出可疑算子之后，用一次独立验证把它确认或排除的流程。**第 1 步界定验证对象与判据**：只验**能独立运行的 API 级算子**（Module 级不能自动验证）；判据是 `passed = shape_match AND (max_diff < atol) AND (max_rel_err < rtol × 100)`。**第 2 步按 dtype 取容差**（内置、不用手填）：fl…
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/single-operator-accuracy-verification.yaml
 - id: slime-framework-debug-and-divergence
   title: Slime 框架定位（训推分离架构 → 自带 DEBUG 开关 → 数据采集面 → 与 verl 的差异点）
   summary: Slime 训推分离 RL 框架（SGLang 采样 / Megatron 训练 / Ray 调度，每轮 rollout 结束经 update_weights 把权重同步回推理引擎）的定位：自带五类 DEBUG 开关（数据缓存复用、训练数据留存、单推调试、权重一致性核对、细节 dump）；与 verl 比对前先处理两处差异（dynamic_bsz、grpo 的 dual_clip）
@@ -148,6 +156,14 @@ entries:
   platforms:
   - cross
   file: references/methodologies/slime-framework-debug-and-divergence.yaml
+- id: train-infer-paired-collection
+  title: 训推两侧配对采集（开关与窗口 → 配对依据 → 布局对齐 → 配对验证；任一侧漏采即不算交付）
+  summary: 要对比训练与推理两侧的数值时，**先保证两侧采到的是同一批样本**，否则比对本身没有意义。**第 1 步定开关与窗口**：`DUMP_ON` 控制两侧是否采集（关闭时不导入、不改输入与随机状态；开启失败要明确报错）；`MSPROBE_DUMP_GLOBAL_STEP` 指定**一个真实的训练 step**；`DUMP_PHASE=log_prob|update_actor|all` 只筛 act…
+  categories:
+  - precision
+  platforms:
+  - cross
+  file: references/methodologies/train-infer-paired-collection.yaml
 - id: vllm-infer-precision-triage
   title: vLLM 推理精度定位五步路径（前置对齐 → 首差异 token → dump → compare → 单算子确认）
   summary: vLLM 推理精度定位五步路径（单 case 可复现场景）：问题场景与标杆场景对齐（配置/超参/三方库/输入）并固定采样随机性（temperature=0）与算子确定性 → 打印输出 token_id 序列定位**首个差异 token**（把"整句不对"缩到"第 N 个 token 起不对"）→ 两侧使能 msprobe dump（推荐 mix+statistics）→ msprobe comp…

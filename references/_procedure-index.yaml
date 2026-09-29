@@ -9,14 +9,14 @@
 #   5) **本 category 没有对应分片**（索引里没这一行）→ 读本选择器列出的**全部分片**再选，
 #      并在 trace 里记下"本 category 无专用分片"——空手去深度排查与"没有可用流程"是两件事。
 #
-# 流程条数：41    分片数：3    本文件整体加载成本：约 135 token
+# 流程条数：43    分片数：3    本文件整体加载成本：约 135 token
 # 不写生成日期：日期进 git 会在并发合并时撞同一行（口径同 build_index.py）。
 #
 # 为什么分片：单文件形态下每次都要整读全部流程行才挑 1 条（5K token 级），这笔固定开销
 #   会压低方法缺口消费点的使用意愿；分片后本轮只读自己那一片（判据与数值见 shards）。
 # 分片自身的上限：单片 > 6K token，或单 category 流程 > 30 条 → 该 category 再按
 #   platforms 细分（当前未越界，越界时在这里加行而不是加日历）。
-procedures_total: 41
+procedures_total: 43
 shards:
 - category: interrupt
   shard: references/_procedure-index/interrupt.yaml
@@ -28,5 +28,5 @@ shards:
   tokens: 2716
 - category: precision
   shard: references/_procedure-index/precision.yaml
-  procedures: 18
-  tokens: 2978
+  procedures: 20
+  tokens: 3314

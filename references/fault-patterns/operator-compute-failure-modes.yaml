@@ -1,0 +1,71 @@
+id: operator-compute-failure-modes
+type: fault-pattern
+title: 算子级计算失败的十类模式（信号 / 要看哪些证据 / 常见误报 / 优化方向 / 置信度条件）
+summary: 拿到算子级数据（overview + 算子列表 + 执行序 + advisor）之后的分流表，每类给"信号 → 要看的证据 → **常见误报** → 优化方向 → 置信度成立条件"。十类：① AI Core 流水低效（算子占大头但 ratio 不强、同 shape 耗时不稳）；② shape 亲和性（热点算子的某些 shape 簇持续更慢）；③ 搬运压力（`mte2_ratio` 高、热点算子周围有 `TransData`/`Transpose`/`Cast`、小 M 推理的权重反复搬）；④ Vector 密集（向量算子频次或累计时长高，典型 `IndexPutV2`/`NonZero`/`where`/`SelectV2`）；⑤ AICPU 回退（`AI_CPU` 任务有可观累计时长且在关键路径上）；⑥ 动态 shape 或图开销（同一逻辑算子出现大量 shape 变体、算子数很多）；⑦ Block Dim 或并行度不足（block dim 低或与核数不匹配）；⑧ 冗余 Cast/TransData/Transpose（格式或 dtype 在相邻算子间来回跳）；⑨ 跨流等待（主流在等辅助流、`EVENT_WAIT` 或等待时间可观）；⑩ 频率或运行时状态异常。**这张表的价值集中在"常见误报"一栏**：极短 kernel 的 ratio 是噪声、`level0` 下没有 shape 字段、AICPU 里的通信 helper（`allgatherAicpuKernel`/`allreduceAicpuKernel`）不算热点、存在转换算子但很便宜且不重复不算问题、`NZ` 提速了 kernel 但两端成对的 `TransData` 会把收益吃掉、向量算子频次高但总时长短或不在关键路径、预期内的同步不算问题、跨流等待属通信面时该换流程。**不要强行归到单一模式**——计算类问题常常是多因素叠加，每条结论要带证据强度与预期时间影响。
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-computation-analysis/references/failure_handbook.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：十类失败模式的 Signals / Evidence / Common False Positives / Optimization Directions / Confidence Notes"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msprof, torch_npu]
+  categories: [performance]
+
+related_references: [operator-pipe-bound-classification, operator-bottleneck-attribution, profiler-analysis-triage, profiler-db-query, operator-tuning-experiment-method]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  patterns:
+    - pattern: AI Core 流水低效
+      symptoms:
+        - "AI Core 类算子占运行时长大部分，但 ratio 指标不强"
+        - "同一 shape 的平均耗时不稳定或异常差；Cube/MatMul/FA 进了 TOP 但看着没饱和"
+      cause: "流水没有被填满（亲和性、切分、搬运或同步在其中一处拖住），而不是某一条 pipe 打满"
+      fix: "对同 shape 比平均/最大/方差，再看 ratio 与 block dim 是否匹配，最后看算子两侧有没有转换或同步任务。**误报**：极短 kernel 的 ratio 是噪声、动态 shape 路径下 shape 分组不完整、频率下降多数是次生效应——三者都不能单独定案。**置信度成立条件**：同 shape 证据、ratio 字段、时间影响三者一致"
+    - pattern: 搬运压力
+      symptoms:
+        - "`mte2_ratio` 或同类搬运占比高；热点算子周围出现 `TransData`/`Transpose`/`Cast`"
+        - "小 M 推理的 MatMul/Cube 被反复搬权重拖住"
+      cause: "搬运量与搬运频次吃掉了收益，计算单元在等数据"
+      fix: "减少重复格式转换、避免 dtype 反复跳变、重看 micro-batch 与切分、压小 decode/小 M 路径的权重搬运。**误报**：计算已饱和的 MatMul 总时长高被误读成搬运压力、转换算子存在但累计时长短"
+    - pattern: Vector 密集
+      symptoms:
+        - "向量算子时间占比高、频次多或累计时长高"
+        - "出现已知贵的形态：`IndexPutV2`、`NonZero`、`where`、`SelectV2`"
+      cause: "稀疏/索引类表达落在向量单元上，代价高且常被重复调用"
+      fix: "能改写就改写（换成对 AI Core 友好的计算），把重复的向量序列融合或去掉。**误报**：某向量算子频次高但总时长短、该段不在关键路径上。**判优先级看时间占比，不看算子名**"
+    - pattern: AICPU 回退
+      symptoms:
+        - "`AI_CPU` 任务有可观累计时长，且某个 AICPU 算子的平均或最大耗时高"
+        - "AICPU 出现在关键路径上而不是边缘小任务"
+      cause: "部分计算回退到 AICPU 执行，或 AICPU 上的任务被排在关键路径"
+      fix: "确认该回退是否有必要；能挪回 AI Core 的实现优先挪。**误报**：通信相关 AICPU kernel（`allgatherAicpuKernel`/`allreduceAicpuKernel`）是通信 helper，不算计算热点；极短 AICPU 任务总影响可忽略"
+    - pattern: 冗余 Cast / TransData / Transpose
+      symptoms:
+        - "`Cast`/`TransData`/`Transpose` 有可观累计时长，且反复出现在热点计算算子周围"
+        - "相邻算子的 dtype 或 format 来回跳"
+      cause: "格式与 dtype 没对齐，转换开销被反复支付"
+      fix: "减少重复格式转换、避免 dtype 振荡。**误报（这一类最值钱）**：转换存在但很便宜且不重复；单个 `Transpose` 是模型语义要求；**`NZ` 格式提升了 kernel 本身，但两端成对的 `TransData` 主导了省下的那点计算时间——端到端反而更慢**。合并计算成对搬运的净收益再判断"
+    - pattern: 跨流等待
+      symptoms:
+        - "主流在等辅助流的工作，`EVENT_WAIT` 或等待时间可观"
+        - "辅助流上的短任务把主流串行化了"
+      cause: "多流编排里辅助任务挡住了主流"
+      fix: "看该辅助任务能否与主流重叠或提前。**误报**：预期内的同步且总影响很小；等待其实属通信面（该转通信分析流程，不要在这里给结论）"
+    - pattern: 动态 shape 或图开销 / Block Dim 或并行度不足
+      symptoms:
+        - "同一逻辑算子出现大量 shape 变体、算子数很多，怀疑 shape 推断或图开销"
+        - "block dim 低或与可用核数严重不匹配、同 shape 反复表现差"
+      cause: "前者是 shape 分组/图机制的成本，后者是并行度没用满"
+      fix: "前者核对 shape 分组是否完整、评估固定 shape 的收益；后者调切分让 block dim 与核数匹配。**误报**：`level0` 数据下没有 shape 字段（不能据此下结论）；动态 shape 存在但时间影响很小；block dim 低但该算子本身很短"
+    - pattern: 频率或运行时状态异常
+      symptoms:
+        - "频率读数异常（如既非正常值也非空闲值）"
+      cause: "多数是别的瓶颈引起的次生现象（算子等待、调度空转）"
+      fix: "先定位频率异常发生的时间段，回到该时段的任务分布找主因。**频率下降本身不作主因**——把它当症状"

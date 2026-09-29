@@ -1,0 +1,72 @@
+id: train-infer-paired-collection
+type: methodology
+title: 训推两侧配对采集（开关与窗口 → 配对依据 → 布局对齐 → 配对验证；任一侧漏采即不算交付）
+summary: 要对比训练与推理两侧的数值时，**先保证两侧采到的是同一批样本**，否则比对本身没有意义。**第 1 步定开关与窗口**：`DUMP_ON` 控制两侧是否采集（关闭时不导入、不改输入与随机状态；开启失败要明确报错）；`MSPROBE_DUMP_GLOBAL_STEP` 指定**一个真实的训练 step**；`DUMP_PHASE=log_prob|update_actor|all` 只筛 actor 阶段——**阶段筛选不关闭 rollout**，两者别混。诊断 wrapper 的常规默认：`trainer.val_before_train=False`、actor 每卡 micro-batch = 1、推理侧 `max_num_seqs=1`（不改 TP）、全局 batch/PPO mini-batch 取满足 DP 整除的最小组合、需要 eager 的 stage 设 `enforce_eager=True`。**第 2 步定配对依据**——按"样本身份 + 计算片段 + 权重版本"配对，**禁止按目录顺序或本地 step 号配对**；两侧的 step 计数起点可能不同，不同含义的计数要先建立映射再比较，**不能直接比**；global step 的值要解包成非空唯一标量后再比较，缺失或非法要报错而不是当普通未命中。**第 3 步对齐输入布局**：按后端支持情况开 `use_remove_padding=True`（保留有效 token offset）、关 `use_dynamic_bsz`（稳定 token 布局）、关 `balance_batch`（关跨 rank 样本重排）、需要完整 prompt 前向时关掉会拆段或跳过计算的功能（chunked prefill / prefix cache），**保留时按实际 token 区间配对**。**第 4 步配对验证**：两侧都实际 start/stop 且目标模块 dump 非空；validation/warmup/dummy 不得混入有效配对；**任一侧漏采都不得作为成功交付**——要定位原因、修复、重采，直到取得可配对的两侧产物；无运行条件时注明"未验证"。
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/accuracy/verl-omni-msprobe-dump/references/implementation.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：生命周期与窗口、共用采集参数、配对与漏采判定"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/accuracy/verl-omni-msprobe-dump/references/omni.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：prompt-only 路径的采集参数与 token 布局约束"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/accuracy/verl-omni-msprobe-dump/references/diffusion.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：diffusion 分支的布局差异（kB vs B）与条件分支收敛要求"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [verl, vllm-ascend]
+  categories: [precision]
+
+related_references: [msprobe-data-dump, rl-train-infer-consistency-triage, rl-train-infer-divergence-metrics, train-infer-precision-patterns, verl-cross-validation]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  flow:
+    - step: 1
+      name: 定开关与采集窗口
+      action: >-
+        `DUMP_ON` 控采集开关（关闭时不导入 debugger、不改输入或随机状态；开启失败要明确报错，不能静默降级）；
+        `MSPROBE_DUMP_GLOBAL_STEP` 指向**一个真实训练 step**；`DUMP_PHASE=log_prob|update_actor|all` 只筛 actor
+        （**阶段筛选不关闭 rollout**）。常用默认：`trainer.val_before_train=False`、actor 每卡 micro-batch = 1、
+        推理侧 `max_num_seqs=1`（不动 TP）、全局 batch 与 PPO mini-batch 取满足 DP 整除的最小组合、
+        需要 eager 的 stage 设 `enforce_eager=True`。**每次前向仍受开关与窗口控制，不能命中一次后持续采集**。
+      check: "开关与窗口取值 + 当前实际生效的并发/批大小"
+      when_to_use: 决定采集配置时
+    - step: 2
+      name: 定配对依据（禁止按顺序配对）
+      action: >-
+        配对键是"**样本身份 + 计算片段 + 权重版本**"三者。**禁止按目录顺序或本地 step 号配对**：
+        两侧的 step 计数起点可能不同，不同含义的计数先建立映射再比较；global step 要按当前框架 API
+        解包成非空、唯一的标量，与目标值都无损转成整数后比较——不能用容器的字符串表示、不能取首项、
+        不能依赖隐式类型转换；缺失/非法/无法归一的值要**报错**，不能当作普通未命中。
+      check: "配对键的三个成分各自怎么确定的 + step 值的来源与类型"
+      when_to_use: 开始采集前
+    - step: 3
+      name: 对齐输入布局
+      action: >-
+        按后端支持开 `use_remove_padding=True`（保留有效 token 的 offset）、关 `use_dynamic_bsz`（稳定训练侧 token 布局）、
+        关 `balance_batch`（避免跨 rank 样本重排）。需要完整 prompt 前向时，关闭会拆段或跳过计算的功能
+        （chunked prefill / prefix cache 一类）；**保留它们时按实际 token 区间配对**，并把实际 padding、
+        样本顺序与 token 范围记下来。多模态输入要同步核对 embedding、media mask、位置编码与 token 展开，
+        **不能只按文本长度配**。diffusion 分支还有布局差异（`kB` 与 `B`），默认须两侧只算同一个条件分支。
+      check: "布局相关的开关取值 + 实际 token 区间/token 展开方式"
+      when_to_use: 采集前，且两侧配置都要核
+    - step: 4
+      name: 配对验证（任一侧漏采即不算交付）
+      action: >-
+        短跑验证时必须确认：两侧都**实际 start/stop** 过、目标模块 dump **非空**。
+        validation / warmup / dummy 数据**不得混入有效配对**；多候选按阶段、分支、时间位置与版本消歧，
+        缺证据时报"未配对"而不是取第一条。**任一侧漏采都不得当作成功交付**——定位原因、修复、重采，
+        直到取得可配对的两侧产物；确实没有运行条件时，注明"未验证"，不要把静态检查当结论。
+      check: "两侧 start/stop 记录 + 目标模块非空 + 每对产物的配对依据"
+      when_to_use: 采集完成后

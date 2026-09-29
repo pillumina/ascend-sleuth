@@ -1,0 +1,54 @@
+id: accuracy-operator-exemption-and-verification
+type: fault-pattern
+title: 精度分析的算子分类修正（豁免算子 / 仅按输出判定的占位算子 / 单算子验证与 dtype 容差 / 构造质量门）
+summary: 逐算子精度比对里有两类算子会**结构性误判**，必须先分类再分析。**类别一 · 豁免（不参与根因判定）**：未初始化内存分配族（`empty`、`empty_like`、`empty_strided`、`empty_with_format`、`new_empty`、`new_empty_strided`）——它们的输出本来就是未初始化内存，比对没有意义；跨后端视图/转换族（`numpy`）；dtype/设备搬运族（`to`）。**类别二 · 仅用输出做上下游分析**：`_reduce_scatter_base`、`_all_gather_base`、`all_to_all_single`、`batch_isend_irecv`——它们的 input 是本 rank 待规约/待发送的完整张量、output 依赖**所有 rank** 的输入，单看本 rank 的 input→output 无意义；**上游溯源在这些算子上停止**（继续往上追会追到别的 rank 的数据，结论不成立）。**验证层**：可疑算子可以自己验——按 dtype 取自适应容差判 `passed = shape_match AND (max_diff < atol) AND (max_rel_err < rtol × 100)`：float64 `atol 1e-9 / rtol 1e-7`、float32 `1e-4 / 1e-3`、float16 `1e-3 / 1e-3`、bfloat16 `5e-3 / 5e-3`（float32 档的依据是 matmul K=1024 的理论累加误差 ≈1.2e-4）。**构造输入有两个质量门**：`l2norm` 相对偏差 < 5%、被 clamp 的元素比例 < 10%——任一越界就标 `construct_degraded` 并降级结论（构造没造准，验证结果不作数）。近零向量（`l2norm < 1e-30`）直接填均值；区间极窄（`β − α ≤ 1e-15`）退化为均匀分布。
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/accuracy/compare-result-analyzer/references/operator_types.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：豁免算子清单与占位算子（仅用输出判定）"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/accuracy/compare-result-analyzer/references/verify_op.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：dtype 自适应容差表、构造策略与质量校验门"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msprobe, torch_npu]
+  categories: [precision]
+
+related_references: [precision-threshold-cascade, precision-first-divergence-triage, msprobe-accuracy-compare, msprobe-capability-limits, msprobe-data-dump]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  patterns:
+    - pattern: 未初始化内存分配被当成根因
+      symptoms:
+        - "`empty` / `empty_like` / `empty_strided` / `empty_with_format` / `new_empty` / `new_empty_strided` 出现在超标节点里"
+      cause: "这类算子分配的是未初始化内存，输出内容本来就不确定——比对它没有意义"
+      fix: "列入豁免清单，**不参与根因判定、不作为首问题点、也不作为溯源起点**"
+    - pattern: 跨后端视图或 dtype/设备搬运被当成误差引入点
+      symptoms:
+        - "`numpy`（`Tensor.numpy()`）或 `to`（dtype 转换 / 设备搬运）被判为引入误差"
+      cause: "视图转换与搬运本身不改变数值语义，误差要么来自上游、要么来自后端实现差异，需要另找判据"
+      fix: "同样列入豁免；若怀疑后端转换本身有差异，用单算子验证（同输入两侧各跑一次）而不是在整网比对里判它"
+    - pattern: 跨 rank 通信算子的 input→output 比对不成立
+      symptoms:
+        - "`_reduce_scatter_base` / `_all_gather_base` / `all_to_all_single` / `batch_isend_irecv` 被判为“输入继承”或“引入误差”"
+      cause: "这些算子的 output 依赖**所有 rank** 的输入，本 rank 的 input 单独推不出 output——input→output 的误差继承关系在这里没有定义"
+      fix: "**只按 output 做上下游判定**，且**上游溯源在此停止**（继续往上追会追到别的 rank 的输入，结论不成立）。要判这类算子本身，走两侧同输入的独立验证"
+    - pattern: 可疑算子的单算子验证（带 dtype 容差）
+      symptoms:
+        - "整网比对标出某算子可疑，但需要一个独立证据来确认"
+      cause: "整网链路上的误差可能来自上游累积，单算子验证给的是“这个算子自身在给定输入下是否一致”"
+      fix: "同输入在两侧各跑一次，判 `passed = shape_match AND (max_diff < atol) AND (max_rel_err < rtol × 100)`。容差按 dtype：float64 `1e-9 / 1e-7`、float32 `1e-4 / 1e-3`、float16 `1e-3 / 1e-3`、bfloat16 `5e-3 / 5e-3`。**注意验证的用途是确认而非发现**——被标记的可疑算子其 NRE 通常远超任何合理容差"
+    - pattern: 构造输入没造准（验证结果不可信）
+      symptoms:
+        - "构造出的输入与目标统计量偏差过大，或大量元素被 clamp 到边界"
+      cause: "输入构造失真会让算子行为偏离真实场景，验证结论随之失真"
+      fix: "用两个质量门：`l2norm` 相对偏差 `< 5%`、被 clamp 元素比例 `< 10%`；任一越界标 `construct_degraded` 并降级结论。近零向量（`l2norm < 1e-30`）直接填均值；分布区间极窄（`β − α ≤ 1e-15`）退化为均匀分布"
