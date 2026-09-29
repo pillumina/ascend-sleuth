@@ -173,3 +173,7 @@ decisions:
       它的可达性由 tool 词条的 `related_references` 承担。按实测改成核那条链（tool 在摘要索引里 且
       它的 related_references 含这两条表/流程），重跑 PASS。这条修正本身是收获：**fault-pattern 表的可达性
       此前没有被任何判据表达过**，本卡把它写成可复跑的一行。
+  - who: agent
+    when: 2026-09-29
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #294 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
