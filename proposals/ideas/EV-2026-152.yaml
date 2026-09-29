@@ -1,0 +1,175 @@
+# ============================================================
+# EV-2026-152 —— 显存面缺的"量尺"：三张词条补上 OOM / 泄漏 / 碎片的判据与采集口径，
+#                并接上三条已有显存类 case 的测量手段
+# 来源：承接 EV-2026-151（性能判读面）。用户问"msagent 还有什么可以让 sleuth 受益"，
+#       核对后发现显存面是最大缺口：reference 层 msMemScope 零命中，而库里已有三条
+#       显存类 case 却没有对应的测量口径。
+# 脱敏：只含仓库内路径、上游公开 URL 与 commit、聚合数字。
+# ============================================================
+
+id: EV-2026-152
+layer: L1
+target_component: references/
+title: "显存面补量尺：新增 msMemScope 采集与查询词条、显存判读分流表、显存问题判读流程，并挂上 performance 闸门"
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: '2026-09-29'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户问"msagent 还有什么可以让 sleuth 受益"，分析给出的第一优先级就是显存面
+      （reference 层 msMemScope 零命中），用户回"好的继续做这个"。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+      - "grep -rli memscope references/（改前：零命中）"
+  - signal: observation_window
+    evidence: >-
+      库内已有三条显存类 case 但缺测量口径：`COMMON-KVCACHE-REFCOUNT-LEAK`（引用计数错致每 step
+      约 47MB 累积、约 12h 后 OOM）、`COMMON-NPU-MEM-FRAGMENTATION`（allocated 不涨 reserved 涨、
+      开 empty_cache 仍涨）、`COMMON-DISPATCH-BATCH-SMALL`（显存占用远低于卡容量）。三条的判据都停在
+      现象层，而"怎么量出引用计数没释放""碎片率算到几算严重"没有对应词条。
+      上游语料：msagent 的 `skills/profiler/memory-analysis` 有 7 篇 reference（含 msMemScope 用法、
+      数据口径、泄漏与 OOM 诊断指南、PTA/vLLM/HCCL 显存行为）+ 2 个纯标准库脚本。
+    trajectory:
+      - "grep -rln '显存|HBM|OOM|内存' knowledge/（改前：12 个文件命中）"
+      - "grep -rli memscope references/（改前：0）"
+      - "wc -l /tmp/msagent-probe/skills/profiler/memory-analysis/references/*.md（7 篇，1913 行含 SKILL.md）"
+hypothesis: >-
+  显存面缺的不是 case，是**量尺**：怎么采（按诉求选配置、泄漏/OOM 归因必须带调用栈）、
+  怎么读（四个统计键的口径与层级、HAL 与池嵌套不可相加）、怎么判（碎片率分级、泄漏四算法的强弱区分、
+  OOM 的字段级量化规则）。把这三样落成一条 tool + 一张 fault-pattern 表 + 一条 methodology，
+  并挂进 performance 闸门，已有的三条显存 case 才有可执行的测量动作；同时把最反直觉的
+  "幽灵释放导致 MALLOC/FREE 必然配对，配对不是无泄漏证据"写进 pitfalls，拦掉一类高发误判。
+predicted_effect:
+  metric: 显存面词条条数与可达性（闸门绑定 + 摘要索引 + 流程分片）
+  from: >-
+    reference 层 msMemScope 零命中；无碎片率分级、无泄漏四算法、无 OOM 量化规则；
+    performance 闸门拿不到任何显存测量口径。
+  to: >-
+    新增 3 条：tool `msmemscope-collect-and-query`、fault-pattern `memory-symptom-triage`（11 条判据）、
+    methodology `memory-leak-and-oom-triage`（5 步流程）；全部挂进 performance 的 has_data /
+    no_data / 分析工具三个分支；reference 词条 243 → 246，performance 流程分片新增 1 条。
+  measure:
+    command: |
+      python3 - <<'PY'
+      import pathlib, subprocess, sys
+      sys.path.insert(0, 'scripts')
+      from _yaml import load_file
+      root = pathlib.Path('.')
+      tid = 'msmemscope-collect-and-query'
+      d = load_file(root / 'references' / 'tools' / f'{tid}.yaml')
+      ok_tool = bool(d) and d.get('status') == 'active' \
+          and set((d.get('applies_to') or {}).get('categories') or []) >= {'performance'}
+      fp = load_file(root / 'references' / 'fault-patterns' / 'memory-symptom-triage.yaml')
+      ok_fp = len((fp.get('content') or {}).get('patterns') or []) >= 10
+      mt = load_file(root / 'references' / 'methodologies' / 'memory-leak-and-oom-triage.yaml')
+      ok_mt = len((mt.get('content') or {}).get('flow') or []) >= 5
+      gates = load_file(root / 'skills' / 'diagnose' / 'references' / 'collect-gates.yaml')
+      bound = set()
+      for g in gates.get('gates') or []:
+          bound.update(g.get('refs') or []); bound.update(g.get('caveat_refs') or [])
+          for br in g.get('branches') or []:
+              bound.update(br.get('refs') or [])
+      ok_bound = all(x in bound for x in (tid, 'memory-symptom-triage', 'memory-leak-and-oom-triage'))
+      # 背景摘要索引收 tool / software-fact 类；fault-pattern 表不进摘要索引，
+      # 它的可达性由 tool 词条的 related_references 承担——这里就核这条链
+      summ = (root / 'references' / '_summary-index.yaml').read_text(encoding='utf-8')
+      refs_of_tool = (d.get('related_references') or [])
+      ok_index = tid in summ and 'memory-symptom-triage' in refs_of_tool \
+          and 'memory-leak-and-oom-triage' in refs_of_tool
+      perf = (root / 'references' / '_procedure-index' / 'performance.yaml').read_text(encoding='utf-8')
+      ok_flow = 'memory-leak-and-oom-triage' in perf
+      # 三条已有显存 case 仍在库（本卡不碰 case）
+      cases = (root / 'knowledge' / 'common' / 'performance')
+      ok_cases = all((cases / f'{c}.yaml').exists() for c in
+                     ('COMMON-KVCACHE-REFCOUNT-LEAK', 'COMMON-NPU-MEM-FRAGMENTATION'))
+      r = subprocess.run([sys.executable, 'scripts/verify_references.py', '--check'],
+                         capture_output=True, text=True)
+      print('tool        ', ok_tool)
+      print('fault_pat   ', ok_fp)
+      print('methodology ', ok_mt)
+      print('bound       ', ok_bound)
+      print('in_index    ', ok_index)
+      print('in_flow     ', ok_flow)
+      print('cases_intact', ok_cases)
+      print('verify_refs ', r.returncode)
+      ok = all([ok_tool, ok_fp, ok_mt, ok_bound, ok_index, ok_flow, ok_cases]) and r.returncode == 0
+      print('VERDICT', 'PASS' if ok else 'FAIL')
+      PY
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: scan_review
+  baseline: >-
+    **改前基线（本次在 origin/main = 270b058 的新 worktree 上现算）**：`grep -rli memscope references/`
+    零命中；reference 词条 243 条；库里已有 `COMMON-KVCACHE-REFCOUNT-LEAK`、
+    `COMMON-NPU-MEM-FRAGMENTATION`、`COMMON-DISPATCH-BATCH-SMALL` 三条显存类 case，
+    但没有对应的采集与判读口径。
+  success_criteria: >-
+    ①改后词条 246 条、id 唯一，`verify_references.py --check` 绿；
+    ②3 条新词条全部被 performance 闸门绑定（CI 覆盖环）；
+    ③`memory-leak-and-oom-triage` 进 performance 流程分片；
+    ④三个索引生成物随提交重建、`--check` 全绿；
+    ⑤CI 15 条命令本机复跑全绿 + `-m unittest discover tests` 绿 + `rehearse_evolve_loop.py` 绿；
+    ⑥**边界如实标注**：全部内容取自上游 SKILL.md 与 7 篇 reference，标 `cross-checked-source`，
+    但**未在本机跑过 msMemScope**（未验采集参数与脚本行为），阈值（碎片率 5%/15%、`req_size ≥ 80%`、
+    同栈 ≥3 次、5 条累计 > 3× 剩余）均为上游口径，平台上未复现。
+  rollback: 分支丢弃或 git revert；词条、闸门绑定、生成物、卡在同一分支内整体可退（无数据迁移）。
+gate:
+  condition: >-
+    若后续要把上游的 PTA / vLLM-Ascend / HCCL 三篇显存行为文档也沉淀进来，**以"本条解释哪个已有 case 的现象"
+    筛**（例如 vLLM-Ascend 篇对应 KV cache 相关 case），不要整篇搬——那三篇是组件行为手册，
+    与本库 platform-fact / software-fact 的粒度不同，需要拆成单条事实再进。
+    **另一件不要做的事**：不要把上游 `scripts/aggregate_dump.py` 复制进本仓。它是纯标准库、可离线跑，但同样属于上游持续维护的操作层——本仓接法是「判据与口径进 reference」，脚本留在上游。
+risk: low
+principle_refs: [3, 6, 8, 11]
+actual_cost:
+  tokens: 150000
+  source: estimate
+  note: >-
+    口径如实标注：按本轮工具往返与产出（3 条词条 + 三处闸门绑定 + 上游 1 个 skill 的 7 篇 reference 精读）
+    粗估的量级，不是 exec-log 记账读出的真实值。
+decisions:
+  - who: agent
+    when: 2026-09-29
+    type: proposal
+    conclusion: >-
+      先核实缺口再动手。核对结论：显存面缺的不是 case（已有三条），而是**量尺**——
+      `msmemscope` 在 reference 层零命中，三条 case 的判据都停在现象层（"reserved 持续涨"
+      "每 step 约 47MB 累积"），没有"怎么量、量到几算严重"的口径。
+  - who: agent
+    when: 2026-09-29
+    type: action
+    conclusion: >-
+      写词条时按"三个面各一条"组织，不把上游 597 行 SKILL.md 压成一条：
+      tool 转"参数与硬约束 + 统计键口径 + 陷阱"，fault-pattern 转"11 条现象→判据→处置"，
+      methodology 转"5 步判读流程（数据可用度 → 曲线定性 → 对池定维度 → 按症状分支 → 验伪）"。
+      粒度与 `_types.yaml` 一致：tool 是 fact、表是 table、流程是 flow。
+  - who: agent
+    when: 2026-09-29
+    type: eval
+    conclusion: >-
+      过程中再次被 CI 覆盖环抓住：新 tool 词条写完 `verify_references.py --check` 报"未被任何诊断闸门绑定"。
+      已挂进 performance 的 has_data / no_data / 分析工具三个分支——注意 has_data 分支的口径要写清
+      "显存面走另一条"，否则会与 profiling 产物那条混在一起让人以为同一套数据。
+  - who: agent
+    when: 2026-09-29
+    type: decision
+    conclusion: >-
+      采纳（validated）。判据：改前 243 条 → 改后 246 条且 `verify_references.py --check` 绿；
+      3 条新词条全部被闸门绑定；memory 流程进 performance 分片；三个索引 `--check` 绿；
+      CI 15 条命令与单测、演练全绿。
+      **价值层不由此卡证明**：词条只说明"显存面的量尺进库了且可达"，不说明诊断准确率提升；
+      阈值也未在本机复现（来源是上游口径），如实标注。
+  - who: agent
+    when: 2026-09-29
+    type: eval
+    conclusion: >-
+      **本卡 measure 第一版被自己的实测证伪并修正**：原判据里写了「摘要索引里能查到 memory-symptom-triage」，
+      第一次 `ev_measure --run` 判 FAIL——实测该表**不进背景摘要索引**（索引只收 tool / software-fact 类），
+      它的可达性由 tool 词条的 `related_references` 承担。按实测改成核那条链（tool 在摘要索引里 且
+      它的 related_references 含这两条表/流程），重跑 PASS。这条修正本身是收获：**fault-pattern 表的可达性
+      此前没有被任何判据表达过**，本卡把它写成可复跑的一行。
