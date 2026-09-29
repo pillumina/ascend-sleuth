@@ -176,7 +176,7 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 | 层 | 内容 | 加载时机 |
 |---|---|---|
 | Tier 1 | `triage-tree.yaml`：症状到命名空间的映射，不超过 30 个分支 | 始终加载 |
-| Tier 2 | `knowledge/` 下结构化的 case 规则 | 症状匹配后两阶段加载：先读生成索引 `knowledge/_index.yaml` 过滤候选，再加载全量验证 |
+| Tier 2 | `knowledge/` 下结构化的 case 规则 | 症状匹配后两阶段加载：先读命中的读侧视图 `knowledge/_index/<ns>__<category>.list`（一行一条 case）过滤候选，再加载全量验证 |
 | Tier 3 | `postmortems/` 下的原始定位记录 | 前两层未命中时关键词检索兜底 |
 
 问题沿两个维度拆解。在哪查：按问题发生的环节（训练或推理）与所用框架，对应加载哪个命名空间（如 `training/mindspeed-llm/`），这是知识库的目录结构。什么性质：按问题类型（中断、精度、性能）走各自的匹配形态与默认排查思路——中断用错误签名 grep，精度用数值阈值断言，性能用 profiler 指标比对，三者不混用。
@@ -284,7 +284,8 @@ agent 提取症状与根因，给出命名空间建议供你确认，生成 YAML
 
 ```
 knowledge/
-├── _index.yaml              Tier 2 总索引（scripts/build_index.py 生成；阶段一按命中 namespace/category 读 `_index/<ns>[-<cat>].yaml` 分片——F1/F2/F4 索引治理）
+├── _index.yaml              Tier 2 总索引（机器面：面板/排序器/门读它；scripts/build_index.py 生成）
+├── _index/                  读侧视图（人/agent 面：一行一条 case 的 `.list`；阶段一按命中 namespace/category 读它）
 ├── training/{mindspeed-llm,mindspeed-mm,verl}/
 ├── inference/{vllm-ascend,sglang}/
 │   └── vllm-ascend/         （framework × category 格子分层，ADR-0004）

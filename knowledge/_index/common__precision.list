@@ -1,7 +1,8 @@
 # GENERATED FILE —— 阶段一读侧视图（一行一条 case），不要手改。
 # 由 scripts/build_index.py 生成、随 PR 提交；字段顺序：id / category / title / symptoms / sig / tok / compat / tags / score
-# 为什么不是 YAML：这份东西由人/agent 读，缩进/引号/字段名/嵌套要多花四成 token（同信息）。
-# file 省略（= knowledge/<ns>/<category>/<id>.yaml，全库实测零例外）；hash 只在总表（门用）。
+# 为什么不是 YAML：这份东西由人/agent 读，缩进/引号/字段名/嵌套要多花三成 token（同信息）。
+# 条目所在目录：knowledge/common/precision/（阶段二按它定位 case 本体）
+# hash 不在读侧（只服务新鲜度门，在总表里）。
 # 软匹配照旧：compat 不符只降置信度、不排除；sig 是报错字面量（逐字命中即强候选）、tok 是关键词。
 # 本文件**故意没配 merge=union**：同一格并发仍会在总表上撞一次——重跑 `python3 scripts/build_index.py`。
 # 阶段一加载协议（F1 EV-2026-022 + F4 EV-2026-025）：category 已定时 diagnose 只读命中 (namespace×category) 的类分片，不读整库总表。

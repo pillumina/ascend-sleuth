@@ -147,7 +147,7 @@ class BuildIndexTest(unittest.TestCase):
         # 读侧视图与总表各报一次（两处都存着这条 case 的旧行）——这正是"两层都得跟上"的意思
         self.assertEqual(len(probs), 2, probs)
         self.assertTrue(all("S-1" in p for p in probs), probs)
-        self.assertTrue(any("读侧视图" in p for p in probs), probs)
+        self.assertTrue(any("对不上" in p and "__interrupt.list" in p for p in probs), probs)
         self.assertTrue(any("总表" in p for p in probs), probs)
 
     def test_coverage_flags_added_case(self):
@@ -219,7 +219,22 @@ class BuildIndexTest(unittest.TestCase):
         head = [ln for ln in p.read_text(encoding="utf-8").splitlines() if ln.startswith("#")]
         p.write_text("\n".join(head) + "\n", encoding="utf-8")          # 头注留着，条目清空
         probs = self.problems()
-        self.assertTrue(any("这一格" in x and "S-1" in x for x in probs), probs)
+        self.assertTrue(any("缺 S-1" in x for x in probs), probs)
+
+    def test_coverage_red_when_fallback_view_emptied(self):
+        """ns 兜底视图被掏空 → 必须红。
+
+        为什么单列：它是 category 判不出时**唯一**能读的那份（且更贵），但条目在类视图里也找得到，
+        只按 id 建全局索引就看不出来（独立预核 2026-09-29 指出这条路径没被覆盖）。
+        """
+        self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
+        self.write_case("inference/vllm-ascend/precision/P.yaml", cid="P-1", cat="precision")
+        self.generate_all()
+        fb = bi.shard_path(self.root, "inference/vllm-ascend")
+        head = [ln for ln in fb.read_text(encoding="utf-8").splitlines() if ln.startswith("#")]
+        fb.write_text("\n".join(head) + "\n", encoding="utf-8")
+        probs = self.problems()
+        self.assertTrue(any("ns 兜底视图" in x and "缺 S-1" in x for x in probs), probs)
 
     def test_coverage_red_when_shard_missing(self):
         self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
@@ -296,6 +311,57 @@ class BuildIndexTest(unittest.TestCase):
             self.assertIn(want, line)
         self.assertNotIn("knowledge/inference", line)   # file 可由 id 推出，不进读侧
         self.assertNotIn("hash:", line)                 # hash 只在总表里（门用）
+
+    def test_read_view_field_sequence_is_pinned(self):
+        """读侧字段**序列**逐项钉住（不只是"某几个子串在"）。
+
+        为什么（独立预核 2026-09-29 的反例）：只查子串时，把 `tok` 段整段删掉、重新生成，
+        `--check --canonical` 仍绿、全部测试仍过——"悄悄砍掉判断证据"能一路通过。
+        这里断言键的序列：少一个、多一个、换个顺序都红。
+        """
+        p = self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
+        p.write_text(
+            "cases:\n"
+            "  - id: A-1\n"
+            "    title: t\n"
+            "    category: interrupt\n"
+            "    tags: [a]\n"
+            "    compat:\n"
+            "      - framework: vllm-ascend\n"
+            "        ranges: [\"0.23.0\"]\n"
+            "    confidence: {score: 0.5}\n"
+            "    symptoms: ['首条症状：error code 507014']\n"
+            "    quickly_check:\n"
+            "      primary:\n"
+            "        expected: 'regex:507014|error code 5'\n",
+            encoding="utf-8")
+        row = bi.collect(self.root)["inference/vllm-ascend"]["interrupt"][0]
+        names = [part.split(": ", 1)[0] for part in bi.compact_line(row).split(bi.SEP)]
+        self.assertEqual(names, list(bi.READ_FIELDS))         # 全字段用例：九段一个不少、顺序即 READ_FIELDS
+        self.assertNotIn("file", names)                      # 路径统一时逐行不带 file（由头注给目录）
+        # 缺字段的用例：只允许"按序省略"，不许改序、不许冒出外来键
+        self.write_case("inference/vllm-ascend/interrupt/B.yaml", cid="B-1", title="t2")
+        row2 = [r for r in bi.collect(self.root)["inference/vllm-ascend"]["interrupt"] if r["id"] == "B-1"][0]
+        names2 = [part.split(": ", 1)[0] for part in bi.compact_line(row2).split(bi.SEP)]
+        self.assertEqual(names2, [f for f in bi.READ_FIELDS if f in names2])
+
+    def test_read_view_carries_file_when_paths_are_not_uniform(self):
+        """条目路径不统一时逐行带 `file`——否则读者按头注的目录去找会 404。
+
+        真实例外：`knowledge/inference/sglang/` 下没有 category 层，那条 case 的路径推不出来
+        （全库 168 条里 1 条）。这里的合成场景与它同类：同一个 ns 视图里两条 case 落在不同目录。
+        """
+        self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
+        self.write_case("inference/vllm-ascend/precision/B.yaml", cid="B-1", cat="precision")
+        ns = bi.collect(self.root)
+        text = bi.render_shard("inference/vllm-ascend", ns["inference/vllm-ascend"])
+        self.assertIn("条目路径不统一", text)
+        body = [ln for ln in text.splitlines() if not ln.startswith("#")]
+        self.assertTrue(all("file: knowledge/" in ln for ln in body), body)
+        # 而单格视图路径统一 → 头注给目录、逐行不带 file
+        cell = bi.render_shard("inference/vllm-ascend__interrupt", {"interrupt": ns["inference/vllm-ascend"]["interrupt"]})
+        self.assertIn("条目所在目录：knowledge/inference/vllm-ascend/interrupt/", cell)
+        self.assertNotIn("file: knowledge/", cell)
 
     def test_read_view_line_round_trips(self):
         """一行要能解析回字段——门是按行比对，但消费者（体检、上限判定）要能按字段读。"""

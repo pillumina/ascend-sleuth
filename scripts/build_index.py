@@ -10,9 +10,10 @@
 #   - 把"阶段一只加载索引字段"从 prompt 纪律变成结构保证：阶段一 = 读命中 (ns×category)
 #     的那一份读侧视图（类分片按 category、ns 分片兜底，均由本脚本生成）
 #   - 读侧视图为什么不是 YAML（2026-09-29，EV-2026-160）：阶段一由人/agent 读，YAML 的缩进、
-#     引号、字段名、嵌套在百余条规模上要多花 40% token（同一格实测 23449 → 14154），
-#     而那些字符对判断没有贡献。信息不丢：字段一一对应，只有 `file`（可由 id 推出，全库
-#     实测零例外）与 `hash`（只服务新鲜度门）不进读侧。
+#     引号、字段名、嵌套在百余条规模上要多花三成 token（同一格实测 23449 → 16424），
+#     而那些字符对判断没有贡献。信息不丢：字段一一对应，只有 `hash`（只服务新鲜度门）不进读侧；
+#     `file` 不进每一行——视图头注给"条目所在目录"，只在路径不统一时才逐行带 `file`
+#     （全库有 1 条例外：`knowledge/inference/sglang/` 下没有 category 层）。
 #   - 每条 case 记 content hash 在总表里，--check 校验新鲜度（groom 每次跑，可挂 CI）
 #
 # 一致性门是**覆盖检查**，不是逐字节相同（2026-09-22；起因：并发提交时生成物天天撞）：
@@ -222,6 +223,8 @@ def shard_path(root: Path, ns: str) -> Path:
 # 但两个面共用同一套投影，冗余三个 token 换"一处定义"。`file` 与 `hash` 不进读侧：
 # 前者可由 id 推出（`knowledge/<ns>/<category>/<id>.yaml`，全库实测零例外），后者只服务新鲜度门。
 READ_FIELDS = ("id", "category", "title", "symptoms", "sig", "tok", "compat", "tags", "score")
+# 只在"这一份视图的条目路径不统一"时才出现的字段（正常情况由头注给目录，见 view_dir）
+OPTIONAL_FIELDS = ("file",)
 SEP = " | "
 
 
@@ -238,11 +241,29 @@ def _trunc(s: str, n: int) -> str:
     return s if len(s) <= n else s[:n] + "…"
 
 
-def compact_line(row) -> str:
+def _dir_of(row) -> str:
+    """一条 case 所在目录（从 `file` 取，去掉文件名）。"""
+    return "/".join(str(row.get("file", "")).split("/")[:-1])
+
+
+def view_dir(rows) -> str:
+    """这一份视图里条目所在目录：唯一 → 返回它；不唯一 → 空串（那就逐行带 `file`）。
+
+    为什么不让读者按"`knowledge/<ns>/<category>/<id>.yaml`"自己推（独立预核 2026-09-29 抓的）：
+    全库有 1 条例外——`knowledge/inference/sglang/` 下没有 category 层，那条 case 的路径推不出来。
+    由头注给一次目录（每份文件 ~15 token），比每行带 `file`（~17 token/行）省得多，也不依赖
+    "id 一定等于文件名"这个**约定**（仓里没有校验器钉它）。
+    """
+    dirs = {_dir_of(r) for r in rows}
+    return dirs.pop() if len(dirs) == 1 else ""
+
+
+def compact_line(row, with_file: bool = False) -> str:
     """一条 case 的索引行 → 读侧视图的一行（`字段: 值`，按 READ_FIELDS 顺序）。
 
     截断口径与总表行一致（title 160、症状首条 120，见 collect()）：两个面读同一批字段，
     只是排版不同——读侧的判断证据（`sig` 报错字面量、`tok` 关键词、`tags`、`compat`）一个不少。
+    `with_file=True` 时才带 `file`（只有"该视图条目路径不统一"时用，见 view_dir）。
     """
     score = (row.get("confidence") or {}).get("score")
     fields = [
@@ -255,6 +276,7 @@ def compact_line(row) -> str:
         ("compat", _cell(row.get("compat"))),
         ("tags", _cell("; ".join(map(str, row.get("tags") or [])))),
         ("score", "" if score is None else str(score)),
+        ("file", _cell(row.get("file")) if with_file else ""),
     ]
     return SEP.join(f"{k}: {v}" for k, v in fields if v)
 
@@ -264,12 +286,12 @@ def parse_read_line(line: str) -> dict:
 
     只认「关键词: 值」按首冒号切分：值里的 `|` 在生成时已折成 `¦`，所以字段一定是 SEP 切出来的；
     值里自带冒号（标题、报错原文都可能有）也不影响——切的是每段的第一个 `: `。
-    只解析 READ_FIELDS 里的键，别的段落静默跳过（手改进来的杂质不该被当成字段）。
+    只解析 READ_FIELDS + OPTIONAL_FIELDS 里的键，别的段落静默跳过（手改进来的杂质不该被当成字段）。
     """
     out = {}
     for part in line.split(SEP):
         k, sep, v = part.partition(": ")
-        if sep and k in READ_FIELDS:
+        if sep and k in READ_FIELDS + OPTIONAL_FIELDS:
             out[k] = v
     return out
 
@@ -285,18 +307,22 @@ def render_shard(ns, cells) -> str:
         else "# 阶段一加载协议（F1 EV-2026-022）：category 未定 / 类分片缺失时 diagnose 回退读本"
         " namespace 分片，不读整库总表。"
     )
+    rows = [r for cat in cells for r in cells[cat]]
+    d = view_dir(rows)
     header = "\n".join([
         "# GENERATED FILE —— 阶段一读侧视图（一行一条 case），不要手改。",
         "# 由 scripts/build_index.py 生成、随 PR 提交；字段顺序：" + " / ".join(READ_FIELDS),
-        "# 为什么不是 YAML：这份东西由人/agent 读，缩进/引号/字段名/嵌套要多花四成 token（同信息）。",
-        "# file 省略（= knowledge/<ns>/<category>/<id>.yaml，全库实测零例外）；hash 只在总表（门用）。",
+        "# 为什么不是 YAML：这份东西由人/agent 读，缩进/引号/字段名/嵌套要多花三成 token（同信息）。",
+        (f"# 条目所在目录：{d}/（阶段二按它定位 case 本体）" if d else
+         "# 本视图条目路径不统一：每行都带 file 字段（阶段二按它定位 case 本体）"),
+        "# hash 不在读侧（只服务新鲜度门，在总表里）。",
         "# 软匹配照旧：compat 不符只降置信度、不排除；sig 是报错字面量（逐字命中即强候选）、tok 是关键词。",
         "# 本文件**故意没配 merge=union**：同一格并发仍会在总表上撞一次——重跑 `python3 scripts/build_index.py`。",
         proto,
         "# 本分片：" + ns,
         "",
     ])
-    lines = [compact_line(r) for cat in cells for r in cells[cat]]
+    lines = [compact_line(r, with_file=(not d or _dir_of(r) != d)) for r in rows]
     return header + "\n".join(lines) + ("\n" if lines else "")
 
 
@@ -317,7 +343,7 @@ def render(namespaces) -> str:
         "# 随 PR 提交。本文件**故意没配 merge=union**（嵌套结构做行级合并会拼坏 YAML，见 .gitattributes）：",
         "# 两人在同一格并发会撞一次，解决动作是重跑 `python3 scripts/build_index.py`（机械、无判断）。",
         "# 阶段一加载协议：本文件是总表（兜底 + 跨库比对）；diagnose 只读命中的最小分片",
-        "# （knowledge/_index/<ns>__<category>.yaml；category 未定回退 <ns>.yaml），候选 ≤5 过滤后",
+        "# （knowledge/_index/<ns>__<category>.list；category 未定回退 <ns>.list），候选 ≤5 过滤后",
         "# 按 file 字段定位做阶段二全量加载。",
         "# 本文件**不写数字**（条数 / 容量 / 日期）：数字一进 git，两人并发合并时要么撞同一行、",
         "# 要么漂移成错的数。要看数字就现算：`python3 scripts/index_counts.py`",
@@ -347,13 +373,16 @@ def stale_entries(root: Path, namespaces):
 
 
 def shard_rows(root: Path):
-    """已提交的读侧视图 → ({case id: 行原文}, broken)。
+    """已提交的读侧视图 → ({文件名: {case id: 行原文}}, broken)。
 
-    比对单位是**整行原文**（不是解析出来的字段）：门要问的是"这一行是不是生成器会写的那一行"，
-    逐字段解析只在需要时做（`parse_read_line`）。broken 收集三类"不能挑一份信"的情况：
-    ① 文件里有 git 冲突标记；② 旧形态（`.yaml`）分片还没回收；③ 同一条 case 在两片里行不同。
+    比对单位是**整行原文**（不是解析出来的字段）：门要问的是"这一行是不是生成器会写的那一行"。
+    **按文件分开存**：同一 id 会在两份视图里出现（类视图 + ns 兜底视图），而两边的行**故意可以不同**
+    （路径是否统一决定带不带 `file`），所以"跨文件行必须一致"不再是有效的判据——每个文件各自对账
+    （见 coverage_problems）。
+    broken 收集三类"不能挑一份信"的情况：① 有 git 冲突标记；② 旧形态（`.yaml`）分片没回收；
+    ③ 某一行解析不出 id。
     """
-    rows, broken = {}, []
+    by_file, broken = {}, []
     shard_dir = root / "knowledge" / "_index"
     for legacy in sorted(shard_dir.glob(f"*{LEGACY_SHARD_SUFFIX}")):
         broken.append(f"{legacy.name}: 旧形态分片（读侧视图现在是 `.list` 文本行）——"
@@ -363,6 +392,7 @@ def shard_rows(root: Path):
         if any(m in raw for m in ("<<<<<<<", ">>>>>>>")):
             broken.append(f"{p.name}: 有 git 冲突标记——重跑 `python3 scripts/build_index.py`（生成物，不必手判留哪份）")
             continue
+        rows = {}
         for line in raw.splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
@@ -372,15 +402,18 @@ def shard_rows(root: Path):
                 broken.append(f"{p.name}: 有一行解析不出 id（读侧视图是 `字段: 值 | …`）——"
                               f"重跑 `python3 scripts/build_index.py`：{line[:60]}")
                 continue
-            if cid in rows and rows[cid] != line:
-                broken.append(f"{p.name}: {cid} 的行与别的分片不一致——有分片没重建，重跑 `python3 scripts/build_index.py`")
             rows[cid] = line
-    return rows, broken
+        by_file[p.name] = rows
+    return by_file, broken
 
 
 def shard_lines(root: Path):
-    """兼容薄壳：只取行层（[{id: 行原文}, broken]）。"""
-    return shard_rows(root)
+    """兼容薄壳：把按文件的行合成 {id: 行原文}（测试与既有调用用它；跨文件不一致不报）。"""
+    by_file, broken = shard_rows(root)
+    merged = {}
+    for rows in by_file.values():
+        merged.update(rows)
+    return merged, broken
 
 
 def duplicate_ids(root: Path):
@@ -490,59 +523,65 @@ def _rows_of(path: Path):
 
 
 def coverage_problems(root: Path, namespaces):
-    """**覆盖检查**（这是门）：读侧视图与总表是否都收全了 case，且与 case 内容一致。
+    """**覆盖检查**（这是门）：每份读侧视图与总表是否都收全了 case，且与 case 内容对得上。
 
     为什么门不是"逐字节和重建结果相同"：合并后文件的**内容是对的**（两边各加的条目都在），
-    只是条目顺序可能与「重新生成一遍」不同——两个面都**故意没配 merge=union**（总表是嵌套 YAML，
-    行级合并会拼坏；同一格并发得重跑一次生成器），而重跑之前的合并结果就是"内容对、顺序不标准"。
-    逐字节的门会把那种正确的文件判红，于是又逼人跑一遍收尾命令，白付一次成本。
-    所以门只问三件事：每条 case 的读侧行在不在、对不对得上、有没有多余的旧条目。
+    只是条目顺序可能与「重新生成一遍」不同——两个面都**故意没配 merge=union**，重跑之前的合并结果
+    就是"内容对、顺序不标准"。逐字节的门会把那种正确的文件判红，白付一次收尾成本。
 
-    **两面的新鲜度分工**：读侧视图只带判断用的字段（title/症状首条/sig/tok/compat/tags/score/
-    category），所以"改了 case 里参与索引的字段"会表现为**行不同**；"只改了不参与索引的字段"
-    （fix / severity / root_cause / ref_knowledge）在行上看不出来，靠总表的 content hash 抓。
-    两面都要全绿，覆盖才算完整——所以本函数对两者都查。
+    **三个面都要对账**（独立预核 2026-09-29 指出"只在别处找得到就算过"是个洞）：
+      ① 每一格自己的那份视图里必须有它自己的条目，且**行原文与生成器一致**；
+      ② ns 兜底视图（category 未定时读的那份）里也必须都有；
+      ③ 总表比 content hash——"只改了不参与索引的字段"（fix / severity / root_cause）在读侧行上
+         看不出来，靠它兜住。
     """
     shard_dir = root / "knowledge" / "_index"
     if not shard_dir.is_dir():
         return None
     problems = []
-    rows, broken = shard_rows(root)
+    by_file, broken = shard_rows(root)
     problems += broken
-    dup = duplicate_ids(root)
-    for name, cid, n in dup:
+    for name, cid, n in duplicate_ids(root):
         problems.append(f"{name} 里 {cid} 出现 {n} 次（重复条目）——重跑 `python3 scripts/build_index.py`")
-    expected, want_line = {}, {}
+    expected, cell_dir = {}, {}
     for ns, cells in namespaces.items():
         for cat, cases in cells.items():
+            cell_dir[(ns, cat)] = view_dir(cases)          # 该格条目路径是否统一（决定要不要逐行带 file）
             for c in cases:
-                expected[c["id"]] = (f"{ns}__{cat}", c)
-                want_line[c["id"]] = compact_line(c)
-    for cid, (cell, want) in sorted(expected.items()):
+                expected[c["id"]] = (ns, cat, c)
+    # ① 类视图：条目在、行对得上
+    for cid, (ns_name, cat, c) in sorted(expected.items()):
+        fname = shard_slug(f"{ns_name}__{cat}")
+        rows = by_file.get(fname)
+        if rows is None:
+            continue                      # 文件缺失已由下面的"文件在场"一条覆盖
         got = rows.get(cid)
         if got is None:
-            problems.append(f"读侧视图缺条目：{cid}（{want['file']}，应在 {cell}）——跑 `python3 scripts/build_index.py`")
-        elif got != want_line[cid]:
-            problems.append(f"读侧视图这一行与 case 内容对不上：{cid}——case 改了没重建、或行被手改过？"
-                            f"跑 `python3 scripts/build_index.py`")
-    for cid in sorted(set(rows) - set(expected)):
-        problems.append(f"读侧视图里有、库里没有：{cid}——case 被删/移走了没重建，跑 `python3 scripts/build_index.py`")
-    # **每格自己那份视图里必须真有它自己的条目**：不能"在别处（ns 兜底视图）能找到"就算过。
-    # 为什么单列这条：条目只要还出现在任何一份视图里，上面的按 id 建索引就查得到——于是把某一格的
-    # 视图掏空（或删掉整格的行）不会报，而阶段一命中该格时恰恰读的就是那一份（独立预核 2026-09-29
-    # 指出该洞在换形态前就存在）。修复方式就是按文件再查一遍。
+            problems.append(f"{fname} 里缺 {cid}（{c['file']}）——跑 `python3 scripts/build_index.py`")
+        else:
+            d = cell_dir[(ns_name, cat)]
+            want = compact_line(c, with_file=(not d or _dir_of(c) != d))
+            if got != want:
+                problems.append(f"{fname} 里 {cid} 这一行与 case 内容对不上"
+                                f"——case 改了没重建、或行被手改过？跑 `python3 scripts/build_index.py`")
+    # ② ns 兜底视图：条目在（行可能因路径统一性而与类视图不同，故只查在不在）
     for ns_name in sorted(namespaces):
+        rows = by_file.get(shard_slug(ns_name))
+        if rows is None:
+            continue
         for cat in sorted(namespaces[ns_name]):
-            p = shard_dir / shard_slug(f"{ns_name}__{cat}")
-            if not p.exists():
-                continue                      # 缺文件已由上面的"文件在场"一条覆盖
-            have = {parse_read_line(ln).get("id") for ln in p.read_text(encoding="utf-8").splitlines()
-                    if ln.strip() and not ln.startswith("#")}
             for c in namespaces[ns_name][cat]:
-                if c["id"] not in have:
-                    problems.append(f"这一格（{ns_name} × {cat}）的视图里缺 {c['id']}"
-                                    f"（别处找得到不算）——跑 `python3 scripts/build_index.py`")
-    # 文件本身的在场与回收：少一片 = 阶段一在某条路径上读不到（退化），多一片 = 退休格子没清
+                if c["id"] not in rows:
+                    problems.append(f"{shard_slug(ns_name)}（ns 兜底视图，category 未定时读它）里缺 {c['id']}"
+                                    f"——跑 `python3 scripts/build_index.py`")
+    # ③ 多余的条目：任何视图里有、库里没有
+    seen_ids = set()
+    for name, rows in sorted(by_file.items()):
+        for cid in rows:
+            seen_ids.add(cid)
+            if cid not in expected:
+                problems.append(f"{name} 里有、库里没有：{cid}——case 被删/移走了没重建，跑 `python3 scripts/build_index.py`")
+    # 文件本身的在场与回收：少一份 = 阶段一在某条路径上读不到（退化），多一份 = 退休格子没清
     want_files = set()
     for ns_name, cells in namespaces.items():
         want_files.add(shard_slug(ns_name))
@@ -566,12 +605,11 @@ def coverage_problems(root: Path, namespaces):
             problems.append(f"总表 YAML 读不动（{type(e).__name__}：{str(e)[:80]}）——"
                             "多半是合并把嵌套结构拼坏了，重跑 `python3 scripts/build_index.py` 归一化")
             mrows = {}
-        for cid, (_cell, want) in sorted(expected.items()):
+        for cid, (_ns, _cat, want) in sorted(expected.items()):
             got = mrows.get(cid)
             if got is None:
                 problems.append(f"总表缺条目：{cid}——跑 `python3 scripts/build_index.py`")
             elif got.get("hash") != want["hash"] or got != want:
-                # hash 覆盖**整份 case 文件**（含不参与索引的字段）：读侧视图看不出的改动在这里落地
                 problems.append(f"总表条目与 case 内容不一致（含 hash）：{cid}——重跑 `python3 scripts/build_index.py`")
         for cid in sorted(set(mrows) - set(expected)):
             problems.append(f"总表里有、库里没有：{cid}——重跑 `python3 scripts/build_index.py`")

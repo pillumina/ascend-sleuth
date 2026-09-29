@@ -19,7 +19,7 @@
 #   注意这是**成本**论断，不是准确率论断：三轮盲测证明的是"给了 id/title/summary 就能选对"，
 #   不含"读全 32 条比读 11 条选得更准"的证据。选择语义不变（仍是按 title/summary 选一条）。
 #
-# 形态（对齐 case 层 knowledge/_index/<ns>__<category>.yaml 的分片做法）：
+# 形态（对齐 case 层 knowledge/_index/<ns>__<category>.list 的分片做法）：
 #   references/_procedure-index.yaml          选择器：总条数 + category → 分片文件 + 成本
 #   references/_procedure-index/<category>.yaml  分片：该 category 的完整选择器行
 #   references/_procedure-index/_cross.yaml      不限定类别（applies_to.categories 为空）的流程

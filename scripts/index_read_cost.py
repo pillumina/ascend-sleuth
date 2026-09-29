@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # index_read_cost.py —— 现算"阶段一实读成本"（每格多少 token、每行多少 token）
 #
-# 为什么单独一个脚本（2026-09-29，起因：容量上限的算术偏了 3.4 倍）：
+# 为什么单独一个脚本（2026-09-29，起因：容量上限的算术偏了 3.6 倍）：
 #   ADR-0004 把 hard_cap 定成"每格 60 条 ≈ 60×70 ≈ 4.2K token"，那个 70 token/条是**估的**。
-#   实测：YAML 分片 252 token/条、同信息的读侧视图 173 token/条。估小了 3.4 倍，后果是
+#   实测：YAML 分片 252 token/条、同信息的读侧视图 177 token/条。估小了 3.6 倍（252/70），后果是
 #   `inference/vllm-ascend × interrupt` 93 条看起来"只是贴着线"，实际 23449 token——比诊断会话
 #   的常驻指令面（SKILL + CLAUDE + 路由表 ≈ 21K）还大。条数是代理量，token 才是被约束的量（B_ctx）。
 #

@@ -48,7 +48,7 @@ disable-model-invocation: true
    - references 维护段（R1/R5/R5.5/R6）：仅当 references/ 本轮有变更（新词条/修订/失效信号）才跑；
      无变更 → 摘要一句"references 无变更，跳过维护段"。
 3. **预分诊比对不全文重读**：draft 与现有 case 比对用**命中 (namespace × category) 的索引分片行**
-   `knowledge/_index/<ns>__<category>.yaml`（category 未定回退 `<ns>.yaml`；不读全库总表）的
+   `knowledge/_index/<ns>__<category>.list`（一行一条 case；category 未定回退 `<ns>.list`；不读全库总表）的
    title/tags/symptoms 摘要/score 定位
    候选 → 只读 1-2 个最高分候选全文核对；draft 头注释已有产出时分诊建议 → 复核证据成立即可，不重判。
 4. 变更摘要 = 各脚本输出摘要 + agent 判断行；审计链在 EV 卡/PR，不靠每次重读全库。
@@ -57,7 +57,7 @@ disable-model-invocation: true
 
 1. **intake 队列处理（升格的前置）**：处理 `postmortems/inbox/`（`/skill:to-postmortem` / `/skill:issue-ingest` 的产出都落这里；**先解析一次**：`python3 scripts/shared_dir.py inbox` 给出主检出的绝对路径——草稿是锚在主检出的共享队列，在 worktree 里用相对 `postmortems/inbox/` 会读成一个空队列）：
    - **节律**：单仓集中可周批；**分布式（成员本地 inbox，远程仓不存）在提交主仓时处理**——产出时已做 pre-triage（见下），groom 复核确认而非重判；
-   - 逐条**预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象：命中 namespace + `common/` 的现有 case——用**命中 (namespace × category) 的索引分片** `knowledge/_index/<ns>__<category>.yaml` 行（title/tags/symptoms 摘要/score）按 symptoms/tags 定位候选，
+   - 逐条**预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象：命中 namespace + `common/` 的现有 case——用**命中 (namespace × category) 的读侧视图** `knowledge/_index/<ns>__<category>.list` 行（一行一条：title/tags/symptoms 首条/score 等）按 symptoms/tags 定位候选，
    只读 1-2 个最高分候选全文核对 root_cause/fix（M5 成本预算 #3，不全文重读全库）。**draft 头注释已带 to-postmortem/issue-ingest 产出的分诊建议 → 复核证据是否成立，不重判**（建议与决定分离：判断在产出时做，groom 是审核者）；
    **先判后看（顺序纪律，改不了的自觉就别指望）**：读候选之前，先从草稿本身写出自己的判断——症状签名（错误码/关键日志行/数值阈值）、根因假设、修复族方向。看候选是**取证**（我这条假设能否被候选解释，还是只是"看起来像"）。先看候选再判断，判的是**像不像**而不是**对不对**：候选一旦在眼前，语义相近就会把判断拉过去（尤其是措辞相似但根因不同的 draft）。判断行写进批审清单：先写自己的判断，再写与候选的对照结论；两者不一致时**以证据为准**，别用"候选里有类似的"当理由；
    - 产出**批审清单**交 owner 处理（像清 PR inbox，~30 秒/条）：
