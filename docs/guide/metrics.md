@@ -129,7 +129,7 @@ periods:
 | 面 | 判据（gates.yaml） | 说明 |
 |---|---|---|
 | 新鲜度 | `live_snapshot_max_age_days` / `structural_max_age_days` | 超期 = 趋势断档（实测：结构侧 10 天没进快照） |
-| 越界 | `cell_soft_cap`(>30) / `cell_hard_cap`(>=60) / `feedback_capture_floor`(<=0) | 每条带 `meaning` 与 `action`，报告直接给下一步 |
+| 越界 | `cell_read_soft_tok`(>8000) / `cell_read_hard_tok`(>=20000) / `feedback_capture_floor`(<=0) | 每条带 `meaning` 与 `action`，报告直接给下一步。容量线按**阶段一实读 token**判（现算 `scripts/index_read_cost.py`），不按条数——条数只是代理量，实测每条 177 token 而旧政策按 70 估 |
 | 可解读性 | `readability` 规则（如 `source_nonzero`） | 分母/来源无数据时把指标标成**不可解读**，禁止把 `0/N` 读成"零问题" |
 
 **为什么必须单独有这一层**：`verify_metrics.py` 只验**结构**（period 唯一/字段合法），

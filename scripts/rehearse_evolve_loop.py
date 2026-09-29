@@ -723,19 +723,21 @@ def ex_metrics_loop(root: Path):
     except Exception:
         h = {}
     texts = " ".join(f.get("text", "") for f in (h.get("findings") or []))
-    # 容量数字从 case 文件**现算**（index_counts），不硬编码也不读索引头注：写死数字时，
-    # 知识库一长这条断言就常年失败（实测漂到 89/30），而失败的是一条"断言自己腐烂"的噪声——
-    # 本脚本存在的意义恰恰是"断言不随当天数据漂移"。断言的是**检测器报出了现算的那个数**。
+    # 容量数字从 case 文件与读侧视图**现算**（读入 token 是判据量），不硬编码也不读索引头注：
+    # 写死数字时，知识库一长这条断言就常年失败（实测漂到 89/30），而失败的是一条"断言自己腐烂"
+    # 的噪声——本脚本存在的意义恰恰是"断言不随当天数据漂移"。断言的是**检测器报出了现算的那个数**。
     note = ""
     try:
-        data = json.loads(py(root, "scripts/index_counts.py", "--json")[1])
-        for c in data["cells"]:
+        costs = json.loads(py(root, "scripts/index_read_cost.py", "--json")[1])
+        for c in costs["cells"]:
             if c["namespace"] == "inference/vllm-ascend" and c["category"] == "interrupt":
-                note = f"{c['count']}/{c['soft_cap']}"
+                tok = c["tok"]
+                if tok is not None and tok > (costs.get("soft_tok") or 0):
+                    note = f"{tok} tok"
                 break
     except Exception:
         note = ""
-    check(f"检测器报出容量越界（与现算一致：{note or '现算未读到'}）",
+    check(f"检测器报出容量越线（与现算一致：{note or '现算未读到'}）",
           bool(note) and f"interrupt = {note}" in texts, texts[:200])
     check("检测器报出反馈下限被触发", "捕获反馈 0 条" in texts or "feedback" in texts.lower(), texts[:200])
     check("检测器把 misdiagnosis_rate 标为不可解读", "misdiagnosis_rate：不可解读" in texts, texts[:200])
@@ -756,7 +758,7 @@ def ex_metrics_loop(root: Path):
                 "attribution_ratio": {"case_error": attr_case, "execution_error": 0},
                 "feedback_capture": {"resolved": feedback, "not_resolved": 0, "partial": 0},
                 "case_total": case_total,
-                "capacity_by_ns": {"inference/vllm-ascend": {"interrupt": {"count": cell_count, "cap": 30}}},
+                "capacity_by_ns": {"inference/vllm-ascend": {"interrupt": {"count": cell_count, "tok": 1234}}},
             },
         }]}, allow_unicode=True, sort_keys=False)
 
@@ -769,22 +771,23 @@ def ex_metrics_loop(root: Path):
         rc, out = py(root, "scripts/metrics_health.py", "--json", "--check")
         h2 = json.loads(out)
         t2 = " ".join(f.get("text", "") for f in (h2.get("findings") or []))
-        # 不哭狼的口径收窄到"容量格子"这一维：真实数据里有一格确实超了 hard_cap
-        # （inference/vllm-ascend/interrupt），所以整体 fail_count 不为 0 是**对的**；
-        # 该断言的是"报出来的格子 = 现算出来的超限格子"，即检出的精度与召回都对得上。
-        real = json.loads(py(root, "scripts/index_counts.py", "--json")[1])
-        over_hard = [c for c in real["cells"] if c["over_hard"]]
-        over_soft = [c for c in real["cells"] if c["over_soft"]]
-        # 召回：每个超限格子都得被报出来（体检的文案形态是"<category> = <count>/<soft_cap>"）
-        recall = bool(over_hard) and all(
-            f"{c['category']} = {c['count']}/{c['soft_cap']}" in t2 and c["namespace"] in t2
-            for c in over_hard)
-        # 精度（不哭狼）：报出来的每一处越界都必须对应一个真超限的格子
+        # 不哭狼的口径收窄到"容量格子"这一维：容量线按**阶段一实读 token** 判（阈值在 gates.yaml），
+        # 所以这里比的是"体检报出来的格子 == 按现算成本独立算出的超线格子"，即检出的精度与召回都对得上。
+        real = json.loads(py(root, "scripts/index_read_cost.py", "--json")[1])
+        tok_of = {(c["namespace"], c["category"]): c["tok"] for c in real["cells"]}
+        soft_tok = next((g.get("value") for g in (h2.get("gates") or []) if g.get("id") == "cell_read_soft_tok"), None)
+        hard_tok = next((g.get("value") for g in (h2.get("gates") or []) if g.get("id") == "cell_read_hard_tok"), None)
+        over_line = [c for c in (h2.get("capacity_cells") or []) if c.get("soft") or c.get("hard")]
+        recall = bool(over_line) and all(
+            f"{c['category']} = {c['tok']} tok" in t2 and c["namespace"] in t2 for c in over_line)
+        # 精度（不哭狼）：报出来的每一处越界都必须对应一个真超线的格子
         import re as _re
-        named = _re.findall(r"([a-z_]+) = (\d+)/(\d+)", t2)
-        precision = all(any(c["category"] == cat and str(c["count"]) == cnt
-                            for c in over_soft) for cat, cnt, _cap in named)
-        check(f"容量检出与现算一致（超 hard_cap：{[c['namespace'] + '/' + c['category'] for c in over_hard]}）",
+        named = _re.findall(r"([a-z_-]+) = (\d+) tok", t2)
+        precision = all(any(c["category"] == cat and str(c["tok"]) == tok
+                            and (c.get("soft") or c.get("hard"))
+                            for c in (h2.get("capacity_cells") or [])) for cat, tok in named)
+        check(f"容量检出与现算一致（超线格子：{[c['namespace'] + '/' + c['category'] for c in over_line]}，"
+              f"线 {soft_tok}/{hard_tok}）",
               recall and precision, f"recall={recall} precision={precision} named={named[:4]} | {t2[:200]}")
         # ③b 崩坏：30 天前的一期 + 反馈 0 + 无归因 → 必须报陈旧/不可解读，且 --check 非零。
         #     （容量越界这条现在由上面那条"与现算一致"覆盖——它本来就该跟着真实数据走。）

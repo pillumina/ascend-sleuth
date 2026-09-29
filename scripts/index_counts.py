@@ -12,7 +12,8 @@
 #   python3 scripts/index_counts.py            # 人读表格
 #   python3 scripts/index_counts.py --json     # 机器读（面板 / 体检 / 快照脚本）
 #
-# 口径：cap 按 (framework × category) 格子计（docs/adr/0004）。soft 触发拆分评估，hard 强制拆。
+# 范围：**只报计数**（每格多少条）。容量政策（阶段一实读 token 的软/硬线）在 metrics/gates.yaml，
+# 由 scripts/metrics_health.py 判越界并给动作；读入成本现算走 scripts/index_read_cost.py。
 
 import argparse
 import json
@@ -24,7 +25,12 @@ import build_index as BI  # noqa: E402
 
 
 def counts(root: Path) -> dict:
-    """→ {"total": n, "cells": [{namespace, category, count, soft_cap, hard_cap, over_soft, over_hard}]}"""
+    """→ {"total": n, "cells": [{namespace, category, count}]}
+
+    **只报计数，不报阈值**：容量政策（读入成本的软/硬线）住在 `metrics/gates.yaml`，
+    越界判定与动作由 `scripts/metrics_health.py` 统一给。此处曾带 soft_cap/hard_cap 两个常数，
+    而它们与实测成本差了 3.6 倍——同一个量出现两处定义，就会有一处先腐烂。
+    """
     ns = BI.collect(root)
     cells = []
     for ns_name in sorted(ns):
@@ -34,19 +40,19 @@ def counts(root: Path) -> dict:
                 "namespace": ns_name,
                 "category": cat,
                 "count": n,
-                "soft_cap": BI.SOFT_CAP,
-                "hard_cap": BI.HARD_CAP,
-                "over_soft": n > BI.SOFT_CAP,
-                "over_hard": n > BI.HARD_CAP,
             })
     return {"total": sum(c["count"] for c in cells), "cells": cells}
 
 
 def capacity_by_ns(data: dict) -> dict:
-    """面板/体检脚本用的旧形状：{ns: {cat: {count, cap}}}（cap = soft_cap，一个格子一条）。"""
+    """面板/体检脚本用的形状：{ns: {cat: {count}}}（一个格子一条）。
+
+    形状保持"每格一个字典"，是为了让消费侧（面板趋势、体检）不必跟着阈值一起改——
+    阈值后来搬去了 gates.yaml，这里就只剩计数本身。
+    """
     out = {}
     for c in data["cells"]:
-        out.setdefault(c["namespace"], {})[c["category"]] = {"count": c["count"], "cap": c["soft_cap"]}
+        out.setdefault(c["namespace"], {})[c["category"]] = {"count": c["count"]}
     return out
 
 
@@ -61,12 +67,8 @@ def main() -> int:
         return 0
     print(f"case 总数：{data['total']}")
     for c in data["cells"]:
-        flag = ""
-        if c["over_hard"]:
-            flag = f"  ← 超 hard_cap {c['hard_cap']}（强制拆）"
-        elif c["over_soft"]:
-            flag = f"  ← 超 soft_cap {c['soft_cap']}（触发拆分评估）"
-        print(f"  {c['namespace']:<26} {c['category']:<12} {c['count']}/{c['soft_cap']}{flag}")
+        print(f"  {c['namespace']:<26} {c['category']:<12} {c['count']}")
+    print("（这里只报条数；容量线按**读入成本**判，现算：python3 scripts/index_read_cost.py）")
     return 0
 
 

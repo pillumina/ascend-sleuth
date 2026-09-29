@@ -50,10 +50,10 @@ try:
 except ImportError:
     sys.exit("需要 PyYAML：pip install pyyaml")
 
-# ADR-0004 容量治理：soft_cap 触发拆分评估，hard_cap 强制拆分。
-# 均为初始估计，服从 roadmap「参数治理」——metrics 实测后按理论 §4.4 复核。
-SOFT_CAP = 30
-HARD_CAP = 60
+# 容量阈值**不在这里**：本文件只产数据（条数在这里，读入成本在 index_read_cost.py），
+# 阈值是治理政策，住在 `metrics/gates.yaml`（一处），体检脚本据此判越界并给动作。
+# 为什么把这两个常数删掉（2026-09-29）：它们曾是"按条数拆格"的政策来源，而实测每条成本
+# 是估算的 3.6 倍——政策与量放在同一个文件里，改一个忘另一个时无人发现。
 
 
 def case_hash(path: Path) -> str:

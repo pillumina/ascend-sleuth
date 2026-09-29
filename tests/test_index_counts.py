@@ -53,21 +53,20 @@ class CountsTest(unittest.TestCase):
         self.assertEqual(by[("inference/vllm-ascend", "interrupt")]["count"], 3)
         self.assertEqual(by[("training/verl", "precision")]["count"], 1)
 
-    def test_caps_and_flags(self):
-        """soft/hard cap 是**算出来的标志**，不是文件里写死的数字。"""
-        for i in range(IC.BI.SOFT_CAP + 1):
+    def test_counts_carry_no_threshold(self):
+        """计数脚本**只报计数**，不带阈值、也不判越界。
+
+        为什么（2026-09-29 概念统一）：容量政策（阶段一实读 token 的软/硬线）住在
+        `metrics/gates.yaml`，越界判定与动作由体检脚本给。这里曾带 soft_cap/hard_cap 两个常数，
+        而它们与实测成本差 3.6 倍——同一个量两处定义，必有一处先腐烂。断言"字段不存在"就是在钉这条分工。
+        """
+        for i in range(3):
             self.write_case("inference/vllm-ascend/interrupt", "interrupt", f"A-{i}")
         cell = {(c["namespace"], c["category"]): c for c in IC.counts(self.root)["cells"]}[
             ("inference/vllm-ascend", "interrupt")]
-        self.assertEqual(cell["soft_cap"], IC.BI.SOFT_CAP)
-        self.assertEqual(cell["hard_cap"], IC.BI.HARD_CAP)
-        self.assertTrue(cell["over_soft"])
-        self.assertFalse(cell["over_hard"])
-        for i in range(IC.BI.HARD_CAP - IC.BI.SOFT_CAP + 1):
-            self.write_case("inference/vllm-ascend/interrupt", "interrupt", f"B-{i}")
-        cell = {(c["namespace"], c["category"]): c for c in IC.counts(self.root)["cells"]}[
-            ("inference/vllm-ascend", "interrupt")]
-        self.assertTrue(cell["over_hard"])
+        self.assertEqual(cell["count"], 3)
+        for bad in ("soft_cap", "hard_cap", "over_soft", "over_hard", "cap"):
+            self.assertNotIn(bad, cell, f"计数侧不该再带 {bad}（阈值在 gates.yaml）")
 
     def test_no_number_is_stored_in_the_index(self):
         """生成物里不留数字：这是 union 合并能用的前提（数字一进去，两人并发非撞即漂）。"""
@@ -84,8 +83,22 @@ class CountsTest(unittest.TestCase):
             self.write_case("inference/vllm-ascend/interrupt", "interrupt", f"A-{i}")
         out, notes = MS.collect_structural(self.root)
         self.assertEqual(out["case_total"], 2)
-        self.assertEqual(out["capacity_by_ns"]["inference/vllm-ascend"]["interrupt"]["count"], 2)
-        self.assertEqual(out["capacity_by_ns"]["inference/vllm-ascend"]["interrupt"]["cap"], IC.BI.SOFT_CAP)
+        rec = out["capacity_by_ns"]["inference/vllm-ascend"]["interrupt"]
+        self.assertEqual(rec["count"], 2)
+        # 结构快照同时记读入成本（被治理的那个量）。**这里只写了 case、没生成读侧视图**，
+        # 所以成本是"量不出"= None——不是 0（0 会被下游读成"这格免费"）。
+        self.assertIn("tok", rec)
+        self.assertIsNone(rec["tok"])
+        # 生成视图之后就有值了
+        import build_index as BI
+        (self.root / "knowledge" / "_index").mkdir(parents=True, exist_ok=True)
+        ns = BI.collect(self.root)
+        for nsk, cells in ns.items():
+            for cat, cases in cells.items():
+                BI.shard_path(self.root, f"{nsk}__{cat}").write_text(
+                    BI.render_shard(f"{nsk}__{cat}", {cat: cases}), encoding="utf-8")
+        out2, _ = MS.collect_structural(self.root)
+        self.assertGreater(out2["capacity_by_ns"]["inference/vllm-ascend"]["interrupt"]["tok"], 0)
 
 
 if __name__ == "__main__":

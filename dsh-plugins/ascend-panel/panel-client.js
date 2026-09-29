@@ -1510,7 +1510,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     function commandFor(face, text) {
       const f = String(face || '')
       const t = String(text || '')
-      if (/cell_|容量|超\s*(soft|hard)_cap/.test(f + t)) return { label: '拆格子', command: '用 /skill:knowledge-groom 处理容量越界格子。先跑 python3 scripts/capacity_health.py 看候选溢出率，再决定沿 category 轴深化还是沿 platform 轴拆分。' }
+      if (/cell_|容量|读入/.test(f + t)) return { label: '看读入成本', command: 'python3 scripts/index_read_cost.py —— 看是哪一格贵、贵在多少 token；要省先看行宽/字段（scripts/build_index.py 的读侧视图），再评估按平台轴切分。' }
       if (/feedback|反馈/.test(f + t)) return { label: '补反馈', command: '回报 fix 结果：逐个确认 traces/ 中已定位 case 的 session（含 feedback.outcome: pending 的）fix 应用后是否解决。按 resolved / not_resolved / partial 写 feedback 事件。' }
       if (/新鲜度|快照|超期/.test(f + t)) return { label: '追快照', command: 'python3 scripts/metrics_snapshot.py' }
       if (/索引|drift/.test(f + t)) return { label: '重建索引', command: 'python3 scripts/build_index.py' }
@@ -1783,20 +1783,21 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 历史趋势条：把"这一格从哪涨上来的"画出来。
     //
     // **为什么要做形状归一**（实测）：timeline 里的容量有三种写法——
-    //   ① `{count, cap}` 字典（W37-live 起，`metrics_snapshot.py` 组装的结构侧）
+    //   ① `{count, tok}` 字典（2026-09-29 起带读入成本；此前是 `{count, cap}`）
     //   ② `"36/30"` 字符串（W35/W36-capacity，`build_index.py` 头注快照）
     //   ③ 整个 `capacity_by_ns` 缺席（诊断侧 live 快照不含结构指标）
     // 只认 ① 的话趋势永远只有 1 个点、什么也画不出来——而"容量从哪涨上来的"正是本轮要回答的。
     // 归一后不变量：**当前值以判决（体检器对磁盘现实的判定）为准**，历史只用来画走势。
     function normalizeCapacity(v) {
-      if (typeof v === 'number') return { count: v, cap: null }
+      if (typeof v === 'number') return { count: v, cap: null, tok: null }
       if (typeof v === 'string') {
         const m = /^\s*(\d+)\s*\/\s*(\d+)\s*$/.exec(v)
-        if (m) return { count: Number(m[1]), cap: Number(m[2]) }
+        if (m) return { count: Number(m[1]), cap: Number(m[2]), tok: null }
         return null
       }
       if (v && typeof v === 'object' && typeof v.count === 'number') {
-        return { count: v.count, cap: typeof v.cap === 'number' ? v.cap : null }
+        return { count: v.count, cap: typeof v.cap === 'number' ? v.cap : null,
+                 tok: typeof v.tok === 'number' ? v.tok : null }
       }
       return null
     }
@@ -1849,8 +1850,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 容量台账：逐格（framework × category）——判据逐格计，加总到 namespace 会让人看不出是哪一格爆了
     function CapacityLedger({ cells, gates, periods }) {
       if (!cells || !cells.length) return null
-      const softCap = (gates || []).filter(g => g.id === 'cell_soft_cap').map(g => g.value)[0]
-      const hardCap = (gates || []).filter(g => g.id === 'cell_hard_cap').map(g => g.value)[0]
+      const softTok = (gates || []).filter(g => g.id === 'cell_read_soft_tok').map(g => g.value)[0]
+      const hardTok = (gates || []).filter(g => g.id === 'cell_read_hard_tok').map(g => g.value)[0]
       const hot = cells.filter(c => c.soft || c.hard)
       const coldest = cells.filter(c => !c.soft && !c.hard).slice(0, 3)
       const shown = hot.concat(coldest)
@@ -1859,7 +1860,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           React.createElement('span', { style: { width: 8, height: 16, borderRadius: 4, background: 'var(--acc-amber)', display: 'inline-block' } }),
           React.createElement('span', { className: 'sleu-title', style: { fontSize: 15, fontWeight: 700 } }, '容量台账'),
           React.createElement('span', { style: { fontSize: 13.5, color: T.text2 } },
-            '逐格 soft_cap=' + (softCap === undefined ? '—' : softCap) + (hardCap === undefined ? '' : ' / hard_cap=' + hardCap) + '（数值读 metrics/gates.yaml）'),
+            '逐格：查一次问题要读进来多少字（评估线 ' + (softTok === undefined ? '—' : softTok)
+            + (hardTok === undefined ? '' : ' / 硬线 ' + hardTok) + '，数值读 metrics/gates.yaml）'),
           hot.length ? React.createElement('span', { style: { marginLeft: 'auto' } }, pill(hot.length + ' 格越界', T.error)) 
                      : React.createElement('span', { style: { marginLeft: 'auto' } }, pill('全部格子正常', T.success)),
         ),
@@ -1872,10 +1874,12 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       )
     }
     function CapacityCell({ cell, periods }) {
-      const ratio = cell.cap > 0 ? cell.count / cell.cap : 0
+      // 判据量是**读入 token**（软线 8000 / 硬线 20000，来自 gates.yaml）；条数退成括号里的观察值。
+      const cap = cell.hard_tok || cell.soft_tok || 0
+      const ratio = cap > 0 && cell.tok != null ? cell.tok / cap : 0
       const over = cell.soft || cell.hard
       const color = cell.hard ? 'var(--acc-red)' : (cell.soft ? 'var(--acc-amber)' : 'var(--acc-green)')
-      const dash = cell.cap > 0 ? Math.min(100, Math.round(ratio * 100)) : 0
+      const dash = cap > 0 ? Math.min(100, Math.round(ratio * 100)) : 0
       return React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 } },
         React.createElement('span', { style: { width: 6, height: 6, borderRadius: 999, background: color, flexShrink: 0 } }),
         React.createElement('span', { style: { flex: '1 1 128px', minWidth: 0, color: over ? T.text : T.text2, fontWeight: over ? 700 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', fontSize: 12.5 } },
@@ -1883,9 +1887,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         React.createElement('span', { style: { width: 74, height: 5, borderRadius: 999, background: T.bg2, overflow: 'hidden', flexShrink: 0 } },
           React.createElement('span', { style: { display: 'block', width: dash + '%', height: '100%', background: color, transition: DUR ? 'width .3s ' + EASE : 'none' } })),
         React.createElement('span', { style: { width: 72, textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: over ? color : T.text, flexShrink: 0 } },
-          cell.count + '/' + cell.cap + (ratio > 1 ? ' ' + ratio.toFixed(1) + '×' : '')),
+          cell.tok != null ? cell.tok + ' tok' : '—',
+          React.createElement('span', { style: { color: T.text2, fontWeight: 400 } }, '（' + cell.count + ' 条）')),
         React.createElement(CapacityTrend, { periods: periods, cell: cell, color: color }),
-        cell.hard ? React.createElement('span', { style: tinyBadge('var(--d-red)') }, '硬上限') : (cell.soft ? React.createElement('span', { style: tinyBadge('var(--d-amber)') }, '超 soft') : null),
+        cell.hard ? React.createElement('span', { style: tinyBadge('var(--d-red)') }, '超硬线') : (cell.soft ? React.createElement('span', { style: tinyBadge('var(--d-amber)') }, '超评估线') : null),
       )
     }
 
