@@ -640,8 +640,7 @@ entries:
 - id: framework-profiler-instrumentation
   type: tool
   title: 框架侧 profiling 采集接入（训练 YAML 配置 / 推理 HTTP 启停 / RL 两侧离散采集）
-  summary: 要采性能数据但**不能用 msprof 外层包命令**时（训练框架已在代码里集成 profiler、或推理服务是常驻进程），走框架自带的接入面。三套入口，形状不同：**训练**（MindSpeed-LLM
-    一类，代表框架 MindSpeed-LLM / MindSpeed-MM）走 YAML 配置——`training…
+  summary: 外层 msprof 包不住命令时的采集接入：训练走框架 YAML 的 profile 配置块、推理走服务启动参数 + HTTP 启停；含采集窗口必须落在真实 step 上的硬约束。
   applies_to:
     platforms:
     - cross
@@ -814,8 +813,7 @@ entries:
 - id: msmemscope-collect-and-query
   type: tool
   title: msMemScope 显存采集与判读（按诉求选采集配置 / 统计键口径 / 幽灵释放陷阱 / 聚合脚本次第）
-  summary: 显存类问题（OOM / 泄漏 / 大头占比 / 峰值 / 碎片）的采集与判读入口。**先定诉求再定配置**——OOM 用 `--analysis=oom[:K]` 并加 `--call-stack`；怀疑泄漏用
-    `--analysis=leaks`（离线走 mstx 打点 A/B/C + `check_leaks`）；…
+  summary: 显存类问题（OOM / 泄漏 / 大头占比 / 碎片）的采集与判读入口：按诉求选配置，四个统计键口径与『配对不等于没泄漏』这个高发误判。
   applies_to:
     platforms:
     - cross
@@ -1106,8 +1104,7 @@ entries:
 - id: npu-memory-snapshot-analyzer
   type: tool
   title: NPU 显存快照分析（转 sqlite → 六种模式分析；补 msMemScope 的块级盲区：真碎片 / 假性碎片 / 块状态）
-  summary: 显存问题的**块级存量视图**——msMemScope 只能看事件流（分配/释放累计），看不到每个 segment/block 的当前状态，于是"碎片是真碎片还是流池残留、还是异步释放延迟造成的假性碎片"分不清。快照分析补的就是这一层：先
-    `python3 scripts/snapshot_to_db.py <snap…
+  summary: 显存快照的块级存量视图，补 msMemScope 看不到的那一层：真碎片与假性碎片怎么分、块状态三类、泄漏判定要两个条件。
   applies_to:
     platforms:
     - cross
@@ -1165,8 +1162,7 @@ entries:
 - id: operator-coredump-forensics
   type: tool
   title: 算子 coredump 取证（触发条件 / 产物配套 / 加载解析与有效栈帧判据 / 与在线调试互斥）
-  summary: 算子执行期崩溃（AIC/AIV error、越界、卡死）后的**事后取证**入口：拿到 core 文件后不必重跑，直接看崩溃现场。**先要能产出 core**：必须设置 `ASCEND_DUMP_SCENE="aic_err_detail_dump"`
-    与 `ASCEND_DUMP_PATH` 再运行算子；**抓 co…
+  summary: 算子崩溃后的离线取证：产出 core 的触发条件、编译选项（与在线调试相反）、崩溃摘要与栈帧哪几帧不能当根因。
   applies_to:
     platforms:
     - cross
@@ -1191,8 +1187,7 @@ entries:
 - id: operator-sanitizer-suite
   type: tool
   title: 算子内存与竞争检测套件（memcheck/racecheck/initcheck/synccheck 串跑 + 报告合并；参数边界与有效结论判据）
-  summary: 怀疑算子内部越界、踩踏、未初始化、同步竞争时的检测入口。四类检测可组合：`mssanitizer -t memcheck -t racecheck <app>`，或用 skill 侧脚本一次串跑（memcheck
-    → racecheck → initcheck → synccheck）并把多份报告合并成一份分析稿。**…
+  summary: 算子越界/踩踏/竞争/未初始化的检测入口：四类检测串跑与报告合并、参数边界、以及『有效结论』与『修复完成』各自的判据。
   applies_to:
     platforms:
     - cross
@@ -1223,8 +1218,7 @@ entries:
 - id: profiler-analysis-cli
   type: tool
   title: msprof-analyze 执行层（集群分析各模式 / advisor 算子级建议 / free_analysis / 调用约束与判读阈值）
-  summary: 手上已有 profiling 数据、要一条命令出结论时用的一层：**聚类分析** `msprof-analyze -m <mode> -d <集群数据路径> -o <输出> --agent`（模式含
-    `cluster_time_summary` 迭代耗时拆解 / `free_analysis` 设备侧大块空闲归因 / …
+  summary: 手上已有 profiling 数据、要一条命令出结论时用：`msprof-analyze` 的集群各模式与 advisor 的调用约束与产物形态。它答不了具体问题时才降到 SQL 直查。
   applies_to:
     platforms:
     - cross
@@ -1233,8 +1227,7 @@ entries:
 - id: profiler-db-query
   type: tool
   title: profiling DB 查询（字段字典 / 单位口径 / level0 假零值 / 只读打开法与三条查询纪律）
-  summary: 直接查 profiling 汇出的 `msprof_<时间戳>.db`（sqlite）读原始表格时用：**先记住四类单位**——时间一律纳秒（且为本地 Unix 时间）、内存字节、带宽字节每秒、频率
-    MHz；**表名与字段名去 `profile_data_file_references_db` 对**（47 张表，本词…
+  summary: 直接查 profiling 汇出的 sqlite 库（`msprof_<时间戳>.db`）时用：表名与字段口径对官方参考，本词条给单位、只读打开法与 level0 假零值三个读错就会误判的坑。
   applies_to:
     platforms:
     - cross

@@ -1,7 +1,7 @@
 id: training-performance-case-patterns
 type: fault-pattern
 title: 训练侧性能现象对照表（上游官方定位案例提炼：下发不足 / 主机侧常见劣化 / 推理现象索引）
-summary: 补本库性能面**案例来源**的一张表：上游官方定位案例（msprof 文档仓 `docs/zh/best_practices/`，18 篇，每篇按"问题背景 / 问题来源 / 问题现象 / 定位过程 / 问题根因 / 定位方法总结"成文）与推理精度现象表（msagent 的推理现象对照表）都已经把"现象 → 定位方法 → 根因"写全，**可直接作为 case 草稿的来源**：本篇把可以映射进本库 case schema 的现象签名与判据先抽出来，避免重新起名。两条结构性发现：① 这些案例的判据几乎都锚在**可视化时间线的形状**上（host_to_device 连线"直上直下"＝下发即执行＝资源利用率低，连线有倾斜＝硬件高密度执行），不是锚在单个数值阈值上——写 case 时 `quickly_check` 要能表达"连线形状"这类判据，否则会退化成只能靠人看图；② 其中有若干篇的根因落在**主机侧通用运行时**（CPU 缓存冲突、线程频繁切换、GIL 抢占、IRQ 中断、内存碎片/泄漏、算子编译延迟、Python GC、pthread 锁等待、同步 API 频繁调用、syscall 高延迟），与本库 `knowledge/common/performance/` 现有条目同域，是补 case 的首选面。
+summary: 训练侧性能现象与上游案例来源，含『下发不足致利用率低』的完整判据与时间线形状类判据的写法。
 
 sources:
   - type: official-doc

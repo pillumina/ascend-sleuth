@@ -1,7 +1,7 @@
 id: framework-profiler-instrumentation
 type: tool
 title: 框架侧 profiling 采集接入（训练 YAML 配置 / 推理 HTTP 启停 / RL 两侧离散采集）
-summary: 要采性能数据但**不能用 msprof 外层包命令**时（训练框架已在代码里集成 profiler、或推理服务是常驻进程），走框架自带的接入面。三套入口，形状不同：**训练**（MindSpeed-LLM 一类，代表框架 MindSpeed-LLM / MindSpeed-MM）走 YAML 配置——`training:` 段下的 `profile`、`profile_step_start`、`profile_step_end`（`-1` 表示采到结束）、`profile_ranks`（默认全卡 `[-1]`，只采部分卡时要显式列）、`profile_level`（`level_none`/`level0`/`level1`/`level2`）、`profile_export_type`（`text`/`db`，**要查通信带宽与通信矩阵就必须是 db**）、`profile_save_path`，另有 `profile_with_cpu`/`profile_with_stack`/`profile_with_memory`/`profile_record_shapes` 三个开销开关；**硬约束是窗口必须落在真实 step 上**——`skip_first + (wait + warmup + active) * repeat` 不得超过总 step 数，且要按框架的推导规则换算（`profile_step_end=-1` 时 active 视为足够大，否则 active = 结束 − 开始，小于等于 0 直接报错；`skip_first = max(0, 开始−1)`、`warmup` 在起始步为 0 时取 0、否则取 1）。**推理**（vLLM-Ascend / SGLang）走运行时 HTTP——启动时 `--profiler-config '{"profiler":"torch","torch_profiler_dir":"...","torch_profiler_with_stack":false}'`，运行期 `curl -X POST /start_profile` / `/stop_profile` 控制窗口，**不必重启服务**。**RL 两侧**要采到独立的两份：训练侧走框架的 `global_profiler` 与 actor/ref 的 `profiler` 段，推理侧（rollout）要显式打开离散采集（`tool_config.npu.discrete=True` 一类开关），否则推理侧不会独立采集；两侧采集**必须同一次运行内**，禁止分别单跑（会引入环境差异）。三条接入纪律：不改业务逻辑（外层封装）、profiler 必须与被采流程同进程、RL 各阶段的 profiler 控制解耦。
+summary: 外层 msprof 包不住命令时的采集接入：训练走框架 YAML 的 profile 配置块、推理走服务启动参数 + HTTP 启停；含采集窗口必须落在真实 step 上的硬约束。
 sources:
   - type: official-doc
     url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-profiler-collect-adaption/references/training_best_practices.md"

@@ -6,7 +6,7 @@
 #   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：
 #   references/_procedure-index.yaml
 #
-# 本片流程条数：20    本片加载成本：约 3314 token
+# 本片流程条数：20    本片加载成本：约 3132 token
 entries:
 - id: ascend-determinism-triage
   title: 确定性失效排查路径（开关被重置 / 算子内部竞争 / batch invariance 三路分流）
@@ -69,7 +69,7 @@ entries:
   file: references/methodologies/long-vector-accumulation-error.yaml
 - id: precision-first-divergence-triage
   title: 精度比对判读流程（阈值先定 → 首问题点三关 → 传播分类与溯源 → 参数梯度独立评估 → 多指标交叉收敛）
-  summary: 拿到逐算子比对结果后的判读路径。**第 0 步先定阈值**——不要凭经验拍，用自适应级联从数据分布算（见 precision-threshold-cascade）：SICD 变点 → 锚定回溯 → Delta-NRE 离群 → 分布间隙 → 兜底，全程钳制 [0.1%, 100%]。**第 1 步按执行序找首个 output 超标的节点**（超标 = NRE ≥ 阈值 或 MeanBias ≥ …
+  summary: 拿到比对结果后的判读顺序：阈值怎么定、首问题点怎么过三关、怎么溯源到引入点。
   categories:
   - precision
   platforms:
@@ -142,7 +142,7 @@ entries:
   file: references/methodologies/sentinel-precheck-data-movement.yaml
 - id: single-operator-accuracy-verification
   title: 单算子精度验证流程（定算子与判据 → 按 dtype 取容差 → 构造同输入 → 两侧各跑 → 读结果并标降级）
-  summary: 整网比对标出可疑算子之后，用一次独立验证把它确认或排除的流程。**第 1 步界定验证对象与判据**：只验**能独立运行的 API 级算子**（Module 级不能自动验证）；判据是 `passed = shape_match AND (max_diff < atol) AND (max_rel_err < rtol × 100)`。**第 2 步按 dtype 取容差**（内置、不用手填）：fl…
+  summary: 把『怀疑某算子』变成『能自己验』的五步流程，含容差取法与构造降级的边界。
   categories:
   - precision
   platforms:
@@ -158,7 +158,7 @@ entries:
   file: references/methodologies/slime-framework-debug-and-divergence.yaml
 - id: train-infer-paired-collection
   title: 训推两侧配对采集（开关与窗口 → 配对依据 → 布局对齐 → 配对验证；任一侧漏采即不算交付）
-  summary: 要对比训练与推理两侧的数值时，**先保证两侧采到的是同一批样本**，否则比对本身没有意义。**第 1 步定开关与窗口**：`DUMP_ON` 控制两侧是否采集（关闭时不导入、不改输入与随机状态；开启失败要明确报错）；`MSPROBE_DUMP_GLOBAL_STEP` 指定**一个真实的训练 step**；`DUMP_PHASE=log_prob|update_actor|all` 只筛 act…
+  summary: 训推两侧配对采集：配对键是样本身份 + 计算片段 + 权重版本（禁止按目录顺序配），任一侧漏采即不算交付。
   categories:
   - precision
   platforms:

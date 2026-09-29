@@ -1,0 +1,163 @@
+# ============================================================
+# EV-2026-156 —— 先验知识的"取用面"修四处缺口：摘要不再是内容、命中 case 也允许取判读流程、
+#                开屏补性能/精度证据行、把 summary 与 content 的分工写成纪律
+# 来源：用户问"定位性能问题时是不是能全面用到 reference"→ 实测出 26 条里只有 7 条可达；
+#       随后问"1-4 都可以做，开屏形态会影响很多吗"→ 本轮实施。
+# 脱敏：只含仓库内路径、聚合数字。
+# ============================================================
+
+id: EV-2026-156
+layer: L2
+target_component: skills/diagnose/references/diagnosis-procedure.md
+title: "先验知识取用面修四处缺口：summary 退回路由职责（压缩 26 条）、命中 case 允许取判读流程、开屏补性能与精度证据行、纪律写进 references/README"
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: '2026-09-29'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户先问"现在定位性能问题，是不是能全面利用到 reference 里的知识"，实测后发现 26 条新词条里
+      只有 7 条能通过背景摘要层被取到；随后问"1-4 都可以做，开屏形态会影响很多吗，
+      针对性能问题我觉得这个用户体验还是需要的，比如有没有 profiling、劣化了有没有对比 profiling 数据"。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      本轮现算的四个读数：①注册的 26 条新词条里，只有 7 条 tool 在背景摘要层（`_summary-index.yaml`），
+      13 条既不在摘要层也没被任何摘要层词条引用；②`summary` 超过生成器截断线（160 字符）的条目
+      **103 条**，最长 2656 字符——判据写在摘要里的部分读侧根本看不到；
+      ③`proposals/experiments/flow-form/` 的实验数据：候选命中时流程加载 **0/6**（设计如此），
+      真未命中才 **3/4** 加载；④`SCORE-2.md` 结论：摘要层对 methodology 类无效（截断的流程比不加载只多花 token）。
+    trajectory:
+      - "python3 - <<PY（逐条核 26 个 id 是否在 _summary-index.yaml / _procedure-index/*.yaml）"
+      - "python3 - <<PY（统计 summary 长度 >160 的 active 背景类词条）"
+      - "sed -n '30,80p' proposals/experiments/flow-form/SCORE-4.md"
+hypothesis: >-
+  这四处缺口都不是"内容不够"，而是**取用面**的问题：摘要被当内容写（判据落在截断线外）、
+  流程只在未命中时才取（命中场景下判读口径无入口）、开屏证据面按中断形态设计（性能/精度缺"手上有什么数据"这几行）、
+  以及判据在三处各写一遍。四处都不新增检索层、不改变"reference 不参与候选路由"这条不变量。
+predicted_effect:
+  metric: 性能/精度问题的取用面（证据行是否被收、判读口径是否有入口、摘要是否承载判据）
+  from: >-
+    开屏固定 10 行按"报错了什么"设计，性能/精度问题拿不到"有没有 profiling / 有没有对比基线 /
+    有没有标杆 dump"这几行；命中 case 时判读类流程无入口（历史实测 0/6）；26 条新词条摘要平均 517 字符、
+    判据大半落在 160 字符截断线外。
+  to: >-
+    ①诊断步骤 1 增"性质差异行"：性能 4 行（有无 profiling 产物 / 是劣化还是从来就慢且有对比基线 /
+    时间形态 / 范围）、精度 4 行（有无 dump / 有无标杆 / 首次异常位置 / 评价口径），并写明
+    "这两组里最容易漏的是对比基线与标杆"；②步骤 5 增一条例外——命中候选但缺判读口径时，
+    仍可且仅可再取一条"判读/拆解/分流/口径"类流程，记账与理由必写；③26 条新词条的 summary 压到 ~50–105 字符，
+    判据全部留在 content；④`references/README.md` 写明 summary 是路由行、判据只在 content，并给出 200 字符自检线。
+  measure:
+    command: |
+      python3 - <<'PY'
+      import pathlib, re, subprocess, sys
+      sys.path.insert(0, 'scripts')
+      from _yaml import load_file
+      root = pathlib.Path('.')
+      # ① 开屏性能/精度证据行在步骤 1 里
+      proc = (root / 'skills' / 'diagnose' / 'references' / 'diagnosis-procedure.md').read_text(encoding='utf-8')
+      step1 = proc.split('## 步骤 2')[0]
+      ok_open = all(k in step1 for k in ('P1)', 'P2)', 'C1)', 'C2)', '对比基线', '标杆'))
+      # ② 命中 case 取判读流程的例外条款
+      step5 = proc.split('## 步骤 5')[1].split('## 步骤 6')[0]
+      ok_exc = ('判读面缺口' in step5) and ('不能再取第二条' in step5 or '不能因此再取第二条' in step5)
+      # ③ summary 压缩：本批 26 条的 summary 都 ≤ 130 字符
+      ids = ['profiler-db-query', 'profiler-analysis-cli', 'framework-profiler-instrumentation',
+             'msmemscope-collect-and-query', 'npu-memory-snapshot-analyzer', 'operator-sanitizer-suite',
+             'operator-coredump-forensics', 'profiler-analysis-triage', 'train-infer-precision-patterns',
+             'training-performance-case-patterns', 'profiler-host-bound-triage', 'profiler-breakdown-method',
+             'memory-symptom-triage', 'memory-leak-and-oom-triage', 'precision-threshold-cascade',
+             'precision-first-divergence-triage', 'cpu-binding-affinity-triage', 'cpu-binding-inspection-procedure',
+             'cluster-compare-diagnosis', 'multi-rank-slow-rank-detection', 'operator-pipe-bound-classification',
+             'operator-tuning-experiment-method', 'operator-compute-failure-modes',
+             'accuracy-operator-exemption-and-verification', 'single-operator-accuracy-verification',
+             'train-infer-paired-collection']
+      lens = []
+      for p in (root / 'references').rglob('*.yaml'):
+          if p.name.startswith('_'): continue
+          d = load_file(p)
+          if isinstance(d, dict) and d.get('id') in ids:
+              lens.append(len(str(d.get('summary') or '')))
+      ok_slim = len(lens) == len(ids) and max(lens) <= 130
+      # ④ 纪律写进 README
+      readme = (root / 'references' / 'README.md').read_text(encoding='utf-8')
+      ok_disc = 'summary' in readme and 'SUMMARY_CAP' in readme and '路由行' in readme
+      # ⑤ 生成物新鲜 + reference 校验
+      r1 = subprocess.run([sys.executable, 'scripts/build_ref_summary_index.py', '--check'],
+                          capture_output=True, text=True)
+      r2 = subprocess.run([sys.executable, 'scripts/build_procedure_index.py', '--check'],
+                          capture_output=True, text=True)
+      r3 = subprocess.run([sys.executable, 'scripts/verify_references.py', '--check'],
+                          capture_output=True, text=True)
+      print('open_rows   ', ok_open)
+      print('exception   ', ok_exc)
+      print('slim        ', ok_slim, f'(n={len(lens)}, max={max(lens) if lens else 0})')
+      print('discipline  ', ok_disc)
+      print('indexes     ', r1.returncode, r2.returncode, r3.returncode)
+      ok = (ok_open and ok_exc and ok_slim and ok_disc
+            and r1.returncode == 0 and r2.returncode == 0 and r3.returncode == 0)
+      print('VERDICT', 'PASS' if ok else 'FAIL')
+      PY
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: scan_review
+  baseline: >-
+    **改前基线（本轮在 origin/main = 12e3b0c 的新 worktree 上现算）**：26 条新词条里 7 条在背景摘要层、
+    13 条既不在也没被引用；`summary` >160 字符的 active 背景类词条 103 条（最长 2656）；
+    开屏步骤 1 只有中断形态的 10 行；流程取用时点为"候选全部未命中"（实测命中时 0/6 加载）。
+  success_criteria: >-
+    ①步骤 1 里性能 4 行与精度 4 行都在，且点明"对比基线 / 标杆"是最易漏的两行；
+    ②步骤 5 有"命中候选但缺判读口径"的例外条款，且写明不得再取第二条；
+    ③本批 26 条 summary 全部 ≤130 字符（判据改由 content 承载）；
+    ④`references/README.md` 写明 summary 的路由职责、160 字符截断事实与 200 字符自检线；
+    ⑤三个索引生成物随提交重建、`--check` 全绿；CI 15 条命令 + 单测 + 演练全绿；
+    ⑥**边界如实标注**：本轮只压缩了 26 条（本批引进的），**存量 103 条超长 summary 未动**——
+    这是有意的：改存量属"修订 active 内容"，按纪律是 `kb/high-risk`，不该混在流程修复里顺手做，
+    已记入本卡 gate 作为后续批次。
+  rollback: 分支丢弃或 git revert；四处改动互不依赖，可单独回退（步骤 1 / 步骤 5 / 26 条 summary / README）。
+gate:
+  condition: >-
+    **不要顺手批量压存量 103 条 summary**。它们多数是早期批次写的，压缩需要逐条判断"哪句是判据、哪句是摘要"，
+    属内容修订（`kb/high-risk` 双签口径），应与本轮的取用面修复分开走；分批做，每批只碰一个主题族，
+    并在 PR body 里逐条给出"挪了哪句进 content"。
+    **另一件要盯的事**：exception 条款（命中 case 也可取一条判读流程）是**新增入口**，
+    它是否真被用到的唯一观测面是 trace 里的 `reference_lookup` + `procedure_follow` 的 `reason` 字段。
+    下一轮 evolve 或 groom 时应核一次：若长期为 0，说明条款没被读到，问题在措辞而不在条款本身。
+risk: medium
+principle_refs: [2, 3, 7, 9, 11]
+actual_cost:
+  tokens: 150000
+  source: estimate
+  note: >-
+    口径如实标注：按本轮工具往返与产出（四处改动 + 26 条摘要压缩 + 实测读数）粗估的量级，
+    不是 exec-log 记账读出的真实值。
+decisions:
+  - who: agent
+    when: 2026-09-29
+    type: eval
+    conclusion: >-
+      **先纠正自己上一轮的一个错误结论**：我说"索引被新词条撑胖了、要压摘要省 token"。实测发现
+      生成器早已把 summary 截断到 160 字符（`SUMMARY_CAP`），索引体积与 summary 原文长度**无关**——
+      压缩 26 条后索引只从 75273 → 74432 字节。真实问题是另一件事：**103 条词条的判据落在截断线之外，
+      读侧根本看不到**。所以本轮的收益不是省 token，而是"判据不再被写在看不到的地方"。
+  - who: agent
+    when: 2026-09-29
+    type: eval
+    conclusion: >-
+      **开屏形态的影响面比想象的小**：查过之后，步骤 1 的固定行只在
+      `skills/diagnose/references/diagnosis-procedure.md`（本次改的就是它）与 `skills/diagnose/SKILL.md`
+      的开屏说明里；面板渲染（`panel_render_check`）与 trace 字段都不依赖那条表的形态。
+      所以改动是**加一节**而不是改结构：中断那 10 行原样保留，性能/精度各加一组行，按性质取用。
+  - who: agent
+    when: 2026-09-29
+    type: decision
+    conclusion: >-
+      采纳（validated）。判据：四项改动都落在可核位置（步骤 1 的两组行、步骤 5 的例外条款、
+      26 条 summary 长度、README 的纪律段）；三个索引 `--check` 绿；CI 与单测、演练全绿。
+      **本条同时回写 EV-2026-155 的合入指针**（按"指针随下一个批的聚合 PR 进 main"的既有规矩）。
+      价值层不由此卡证明：取用面修好了，是否真被用到要看后续 trace 的 `reference_lookup` 读数。

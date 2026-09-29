@@ -1,7 +1,7 @@
 id: operator-pipe-bound-classification
 type: fault-pattern
 title: 算子级 pipe 占比判读（各 pipe 阈值 / 串行指纹 / occupancy 与 L2 判据 / 噪声与收益线）
-summary: 拿到算子级 profiling 的 `PipeUtilization.csv`（或 `ArithmeticUtilization.csv`、`L2Cache.csv`、`ResourceConflictRatio.csv`）后判"这个算子卡在哪"的判据表。**先看各 pipe 占比的互补关系**：多个 pipe 占比之和 ≈ 1 是**串行无重叠的指纹**（例：cube 0.44 + mte2 0.42 + mte1 0.18），此时优化方向是重叠而非单点提速。**主导 pipe 定 Bound**：最高 pipe 均值 > 80% 判 `<pipe> BOUND`（> 70% 时加"占比最大"限定）；**全 pipe 均值都 < 50% 时输出"LATENCY/SYNC 可疑"，不要判"无 bound"**——那是没找到瓶颈，不是没有瓶颈。细分阈值：`aiv_mte2_ratio > 90%` = 带宽 bound（此时向量方面的实现优化无效）、`aiv_vec_ratio > 50%` 且 mte2 低 = 计算 bound、`aiv_scalar_ratio > 20%`（或 Scalar > 90%）= 标量/地址计算开销、`MMAD > 50%` = 接近硬件极限、`WAIT_FLAG_DEVI > 50%` 且 `MMAD < 5%` = Cube 在空等 Vector。**核间均衡**：核间差 ≤13% 仍属均衡；核间不均衡必须"Block Dim 接近核数 **且** 各 block 行差异大"同时成立；Block Dim 远小于核数指向核数不足，**此时各 block 数值一致也不能排除**。行数 < 16 时 occupancy 结论可疑（A5 上约 48 个 AIV 核）。**L2 判据**：命中率低**且**重复流量高才值得做 L2 切分/全载/workspace 改造——纯流式访问命中率低是正常的；**命中率改善但总时延没降 = 不保留**。**噪声与收益线**：±5% 在噪声带内既不算收益也不算劣化；加速比 > 1.05 才算可复测提升、≥ 0.95 视为噪声带内无稳定收益、< 0.95 应回滚；首跑与稳态实测可差 25%（冷跑含初始化/缓存预热）；负优化出现率约 1/3 属正常需处置；**单一 ratio 改善不足以采纳**，终结论必须带"Bound + 反证 + 置信度 + 缺失指标"。
+summary: 算子级 pipe 占比的阈值表：多少算 bound、串行怎么认、核间均衡与噪声带界线。
 
 sources:
   - type: official-doc

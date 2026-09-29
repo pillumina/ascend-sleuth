@@ -1,7 +1,7 @@
 id: train-infer-paired-collection
 type: methodology
 title: 训推两侧配对采集（开关与窗口 → 配对依据 → 布局对齐 → 配对验证；任一侧漏采即不算交付）
-summary: 要对比训练与推理两侧的数值时，**先保证两侧采到的是同一批样本**，否则比对本身没有意义。**第 1 步定开关与窗口**：`DUMP_ON` 控制两侧是否采集（关闭时不导入、不改输入与随机状态；开启失败要明确报错）；`MSPROBE_DUMP_GLOBAL_STEP` 指定**一个真实的训练 step**；`DUMP_PHASE=log_prob|update_actor|all` 只筛 actor 阶段——**阶段筛选不关闭 rollout**，两者别混。诊断 wrapper 的常规默认：`trainer.val_before_train=False`、actor 每卡 micro-batch = 1、推理侧 `max_num_seqs=1`（不改 TP）、全局 batch/PPO mini-batch 取满足 DP 整除的最小组合、需要 eager 的 stage 设 `enforce_eager=True`。**第 2 步定配对依据**——按"样本身份 + 计算片段 + 权重版本"配对，**禁止按目录顺序或本地 step 号配对**；两侧的 step 计数起点可能不同，不同含义的计数要先建立映射再比较，**不能直接比**；global step 的值要解包成非空唯一标量后再比较，缺失或非法要报错而不是当普通未命中。**第 3 步对齐输入布局**：按后端支持情况开 `use_remove_padding=True`（保留有效 token offset）、关 `use_dynamic_bsz`（稳定 token 布局）、关 `balance_batch`（关跨 rank 样本重排）、需要完整 prompt 前向时关掉会拆段或跳过计算的功能（chunked prefill / prefix cache），**保留时按实际 token 区间配对**。**第 4 步配对验证**：两侧都实际 start/stop 且目标模块 dump 非空；validation/warmup/dummy 不得混入有效配对；**任一侧漏采都不得作为成功交付**——要定位原因、修复、重采，直到取得可配对的两侧产物；无运行条件时注明"未验证"。
+summary: 训推两侧配对采集：配对键是样本身份 + 计算片段 + 权重版本（禁止按目录顺序配），任一侧漏采即不算交付。
 
 sources:
   - type: official-doc

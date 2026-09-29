@@ -21,12 +21,12 @@ shards:
 - category: interrupt
   shard: references/_procedure-index/interrupt.yaml
   procedures: 13
-  tokens: 2113
+  tokens: 1992
 - category: performance
   shard: references/_procedure-index/performance.yaml
   procedures: 16
-  tokens: 2716
+  tokens: 2371
 - category: precision
   shard: references/_procedure-index/precision.yaml
   procedures: 20
-  tokens: 3314
+  tokens: 3132

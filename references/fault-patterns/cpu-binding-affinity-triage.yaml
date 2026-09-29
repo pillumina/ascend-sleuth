@@ -1,7 +1,7 @@
 id: cpu-binding-affinity-triage
 type: fault-pattern
 title: Host CPU 绑核判据（R001–R010 算术规则 / effective CPU 与推荐范围算法 / NPU→NUMA 三级推断 / 线程分类权重）
-summary: "怀疑 Host 侧拖慢 NPU 时，把绑核从“凭经验看看”变成可判定的不等式。十条规则里有六条是纯算术，可直接算：**未绑核** `allowed_count ≥ 0.8 × online_cpus` 且 NUMA 节点 >1；**范围过宽**同一 0.8 线；**范围过窄** `allowed_count < max(1, num_threads // 2)`；**线程过载** `demand = max(torch_num_threads, OMP_NUM_THREADS, dataloader_workers + 1, num_threads) > effective_cpu_count`；**cgroup 冲突** `cpus_allowed_list − cpuset_cpus_effective ≠ ∅` 或 `nr_throttled > 0`；**重复占用**多 rank/多实例场景下两个 PID 的 allowed 交集非空。剩下四条是结构性判断：跨 NUMA（同进程线程的 `numa_node` 集合 >1）、rank/NPU/NUMA 不匹配（NPU 的 NUMA 不在进程 allowed 的 NUMA 集合里）、SMT 策略与目标不符（latency/stability 应避开同物理核的 sibling，throughput 可验证后再用）、信息不足（缺 rank→NPU 或 NPU→NUMA 映射时**不许猜 locality**）。两个可复用的算法：**effective CPU** 优先取 `cgroup.cpuset_cpus_effective`、缺失才回退 `cpus_allowed_list`，推荐范围 = `intersect(effective, preferred)`、交集为空退回 effective；**NPU→NUMA 三级推断**（人工映射 → `pci_bus_id` 对应的 `numa_node` 且值为负视为无 → `npu-smi info -t topo` 的 CPU Affinity 列与该节点 CPU 列表求交取最小节点号），并标注来源；取不到就写进缺失项。"
+summary: Host 绑核的十条规则，六条是可直接算的不等式（未绑核 / 过宽 / 过窄 / 线程过载 / cgroup 冲突 / 范围重叠），另有推荐范围算法与 NPU→NUMA 推断链。
 sources:
   - type: official-doc
     url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/mindstudio-cpu-binding/docs/diagnosis-rules.md"
