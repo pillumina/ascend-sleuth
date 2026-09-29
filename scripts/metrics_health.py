@@ -263,6 +263,8 @@ def main():
     # 为什么（2026-09 七轮，实测）：格子 85/30 会同时越过 soft_cap(>30) 与 hard_cap(>=60)，
     # 于是面板上出现两行 85/30、人话版也几乎一样——读者以为是两件事。判据确实是两条，
     # 但对人来说"这一格超了两条线"是一件事：合成一条，并在展开的判据行里如实写清越过了哪两条。
+    # 量不出的格子单独记：读侧视图缺失时成本是 None，**不能**当成"没越界"（那正是假绿的样子）
+    unmeasurable = [(ns, cat) for ns, cat, _n, tok in cells if tok is None]
     capacity_hits = {}   # (ns, cat) → {n, tok, gates:[{id, meaning, action}], hard:bool}
     for g in gates:
         if g.get("dimension") != "capacity_cell_read_tok":
@@ -297,7 +299,12 @@ def main():
                          + (f"，是硬线 {hard_tok} 的 {round(tok / hard_tok, 1)} 倍" if tok >= hard_tok else "")
                          + ("。读得太多会挤掉推理余量，先看能不能再省（行宽/字段），再看要不要按平台切开"
                             if hit["hard"] else "。已过评估线，值得看看还能不能再省")))
-    if not capacity_hits:
+    if unmeasurable:
+        findings.append(("warn", "容量",
+                         "读侧视图缺失，容量线未评估：" + "、".join(f"{ns} · {cat}" for ns, cat in unmeasurable),
+                         "python3 scripts/build_index.py",
+                         "有格子的读入成本量不出来（读侧视图缺失）——先重建索引再看容量"))
+    if not capacity_hits and not unmeasurable:
         findings.append(("ok", "容量",
                          f"所有格子均未触发 ({'、'.join(str(g.get('id')) for g in gates if g.get('dimension') == 'capacity_cell_read_tok')})",
                          None, None))
@@ -402,9 +409,12 @@ def main():
     # 语义与 `ev_measure.py` 的三态刻意同形（0 符合 / 1 被证伪 / 2 无法判定）。
     gate_audit = []
     broken = list(load_errors)
+    if unmeasurable:
+        broken.append("容量线未评估：读侧视图缺失（" + "、".join(f"{ns}×{cat}" for ns, cat in unmeasurable)
+                      + "）——先跑 `python3 scripts/build_index.py`")
     for g in gates:
         dim = g.get("dimension")
-        ok_impl = dim in IMPLEMENTED_GATE_DIMENSIONS
+        ok_impl = dim in IMPLEMENTED_GATE_DIMENSIONS and not (dim == "capacity_cell_read_tok" and unmeasurable)
         gate_audit.append({"id": g.get("id"), "dimension": dim, "implemented": ok_impl})
         if not ok_impl:
             broken.append(f"闸门 {g.get('id')}（dimension={dim}）没有评估实现——这条判据不会被检查")
