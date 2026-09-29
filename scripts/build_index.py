@@ -142,7 +142,7 @@ def collect(root: Path):
             category = case.get("category", "")
             # 三分类强制（废弃 other）：非法 category 直接红——路由层依赖 category 分发，
             # other 会变成不可达格子（2026-08 重分类 5 条 other 的教训）
-            if category not in ("interrupt", "precision", "performance"):
+            if category not in CATEGORIES:
                 raise ValueError(
                     f"{path}: case {case.get('id', '?')} category {category!r} 非法"
                     "（三分类强制：interrupt / precision / performance，无 other）"
@@ -205,7 +205,8 @@ def render_shard(ns, cells) -> str:
     header = "\n".join([
         "# GENERATED FILE —— 分片（knowledge/_index.yaml 的 " + ns + " 子集），不要手改。",
         "# 随 PR 提交（改 case 的人跑 `python3 scripts/build_index.py`）；",
-        "# 本目录配了 merge=union：两人同一天改同一格时，两边的条目都会留住，不产生冲突标记。",
+        "# 本目录**故意没配 merge=union**（嵌套结构做行级合并会拼坏 YAML，见 .gitattributes）：",
+        "# 同一格并发会撞一次，解决动作是重跑 `python3 scripts/build_index.py`；不同格子不碰同一分片。",
         proto,
         "# 本分片：" + ns,
         "",
@@ -231,7 +232,8 @@ def shard_dirty(root: Path, ns, cells) -> list:
 def render(namespaces) -> str:
     header = "\n".join([
         "# GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。",
-        "# 随 PR 提交（谁都能改到它，但本文件配了 merge=union：两边新增的条目都会留住，不产生冲突标记）。",
+        "# 随 PR 提交。本文件**故意没配 merge=union**（嵌套结构做行级合并会拼坏 YAML，见 .gitattributes）：",
+        "# 两人在同一格并发会撞一次，解决动作是重跑 `python3 scripts/build_index.py`（机械、无判断）。",
         "# 阶段一加载协议：本文件是总表（兜底 + 跨库比对）；diagnose 只读命中的最小分片",
         "# （knowledge/_index/<ns>__<category>.yaml；category 未定回退 <ns>.yaml），候选 ≤5 过滤后",
         "# 按 file 字段定位做阶段二全量加载。",
@@ -239,7 +241,7 @@ def render(namespaces) -> str:
         "# 要么漂移成错的数。要看数字就现算：`python3 scripts/index_counts.py`",
         "# （容量治理的格子口径见该脚本与 docs/adr/0004）。",
         "# 一致性门是**覆盖检查**（每条 case 的索引行都在、且与 case 内容对得上），不是逐字节相同——",
-        "# 逐字节的门会让 union 合并出来的、内容正确的文件变红。要归一化就重跑一次生成器。",
+        "# 逐字节的门会把「两边各加一条、顺序与重新生成不同」的、内容正确的文件判红。要归一化就重跑一次生成器。",
         "# `--canonical` 是那个「重跑后应当逐字节相同」的自检，供收尾/排查用，不作门。",
         "",
     ])
@@ -319,6 +321,59 @@ def duplicate_ids(root: Path):
             if n > 1:
                 out.append((p.name, cid, n))
     return out
+
+
+CATEGORIES = ("interrupt", "precision", "performance")
+
+
+def _category_dir_of(rel: Path):
+    """case 文件所在目录里**表达性质**的那一层（没有 → None）。
+
+    两层形态（与 collect() 的 ns 口径同源）：
+      common/<性质>/a.yaml                → parts[1]
+      <负载类型>/<框架>/<性质>/a.yaml      → parts[2]（`platforms/` 是另一层语义，不算）
+    目录名不是三个性质之一（如 `knowledge/inference/sglang/` 直接放文件）→ None：
+    那种形态下目录不表达性质，没有可对的东西，不报。
+    """
+    parts = rel.parts
+    if len(parts) >= 3 and parts[0] == "common" and parts[1] in CATEGORIES:
+        return parts[1]
+    if len(parts) >= 4 and parts[0] in ("inference", "training") and parts[2] in CATEGORIES:
+        return parts[2]
+    return None
+
+
+def dir_category_problems(root: Path):
+    """目录说一个性质、case 字段说另一个性质 → 报。
+
+    为什么值得一道门：`collect()` 的 namespace 从**目录**取、category 从**字段**取。于是一条放在
+    `interrupt/` 目录里却写着 `category: precision` 的 case 会静默落进 precision 格子——索引自洽、
+    实体也合法，只有**按目录找**的时候错位（人翻目录、以及将来按目录切子族时）。没有任何别的
+    信号会报这件事：`--check` 只比对索引与字段、`verify_case_draft.py` 只看字段取值。
+    """
+    problems = []
+    kdir = root / "knowledge"
+    for path in sorted(kdir.rglob("*.yaml")):
+        rel = path.relative_to(kdir)
+        if rel.parts[0] in ("_archive", "_index") or path.name == "_index.yaml":
+            continue
+        want = _category_dir_of(rel)
+        if want is None:
+            continue
+        try:
+            doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except Exception as e:
+            problems.append(f"{path.name}: YAML 读不动（{type(e).__name__}: {str(e)[:60]}）")
+            continue
+        for case in doc.get("cases", []) or []:
+            got = case.get("category")
+            if got != want:
+                problems.append(
+                    f"knowledge/{rel.as_posix()}：case {case.get('id', '?')} 的 category={got!r}"
+                    f" 与所在目录 {want}/ 不一致——目录是「按目录找」与子族拆分的依据，"
+                    f"改字段或挪文件（两者对齐后才重建索引）"
+                )
+    return problems
 
 
 def _rows_of(path: Path):
@@ -429,15 +484,25 @@ def main():
 
     ns = collect(root)
     if args.check:
+        # 目录与字段的一致先查：它与索引覆盖无关（错位 case 的索引行是自洽的），
+        # 所以不能挂在 coverage_problems 里（那个在分片目录缺失时整块跳过）。
+        dir_problems = dir_category_problems(root)
         problems = coverage_problems(root, ns)
         if problems is None:
             print("分片目录不存在（knowledge/_index/）——先运行 scripts/build_index.py 生成")
+            for p in dir_problems:
+                print(f"索引问题：{p}")
             sys.exit(1)
+        problems = dir_problems + problems
         if problems:
             for p in problems:
                 print(f"索引问题：{p}")
-            print(f"\n{len(problems)} 处。生成物（分片与总表）随 PR 提交，跑一次重建即可：")
-            print("  python3 scripts/build_index.py")
+            if dir_problems:
+                print(f"\n{len(problems)} 处，其中「目录与 category 不一致」{len(dir_problems)} 处："
+                      "那些是 case 内容问题——改字段或挪文件，重建索引修不了它们。")
+            else:
+                print(f"\n{len(problems)} 处。生成物（分片与总表）随 PR 提交，跑一次重建即可：")
+                print("  python3 scripts/build_index.py")
             sys.exit(1)
         if args.canonical:
             dirty = canonical_dirty(root, ns)

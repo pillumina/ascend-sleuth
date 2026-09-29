@@ -1,0 +1,91 @@
+# ============================================================
+# EV-2026-159 —— 索引与先验层的"取用面"修三处：生成物自称配了 merge=union（实际故意不配）、
+#                目录与 category 字段不一致无人报、背景层索引的形态收不下它自己的读法
+# 来源：用户追问"知识库（kb + reference）的索引 lookup 设计是否合理"→ 审视出五处，本轮修其中三处
+#       （③④⑤）；前两处（格子容量越界、超格后没有中间档）是结构决策，不在本卡范围。
+# 脱敏：只含仓库内路径、命令与聚合数字。
+# ============================================================
+
+id: EV-2026-159
+layer: L2
+target_component: scripts/build_index.py
+title: "取用面修三处：修掉生成物里「索引配了 merge=union」的错误自称、加「目录 × category 一致」门、背景层索引改成一行一条"
+status: validated
+authorization: review              # 工具与文档面、可逆；不涉及知识内容与结构拆分（那是 kb/high-risk / dual）
+dimension: maintainability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-29
+source_signals:
+  - signal: user_inquiry
+    evidence: "用户问「kb 与 reference 的索引 lookup 设计是否足够合理」→ 逐项实测出五处；用户再问「前面的 3,4,5 能优化解决吗」→ 本轮实施"
+    trajectory:
+      - "实测 1：knowledge/_index.yaml 与 knowledge/_index/*.yaml 头注自称配了 merge=union，.gitattributes:31 写的是故意不配（同一条错还抄进 .github/workflows/kb-checks.yml 注释与 tests/test_build_index.py 注释）"
+      - "实测 2：build_index.py 的 collect() 的 ns 从目录取、category 从字段取；全库 168 条实测无错位，但没有任何门会报错位"
+      - "实测 3：references/_summary-index.yaml 改前 141 条占 1440 行（一条 5~7 行块状 YAML，58920 字节），而读侧协议是「grep 取行 + ≤5 行上限」——按平台 grep 只命中 platforms 行、按组件词 grep 只命中 title/summary 行，拿不到整条"
+      - "实测 4：平台收窄力弱——141 条里 90 条 platforms 写 cross，A3-910C × interrupt 两刀切完仍剩 9 条（目标 ≤5）"
+hypothesis: >-
+  三处修正后：①合并撞车时读到的头注与 .gitattributes 一致（不再保证一件不会发生的事）；
+  ②错位 case（目录写 interrupt、字段写 precision）在 CI 被报出，而不是只表现为"人按目录找不到"；
+  ③背景层一次 grep 命中即整条，读法不再要求按字段多趟扫。
+predicted_effect:
+  metric: 取用面可执行性（头注与 .gitattributes 一致 / 错位可被机械报出 / 背景层一次 grep 得整条）
+  from: "头注自称 union（错）；错位无信号；背景层块状 YAML，一行不等于一条"
+  to: "头注与 .gitattributes 一致；--check 报错位；141 条 × 一行一条，单次 grep 命中即整条"
+  measure:
+    command: "python3 -m pytest tests/test_build_index.py -q && python3 scripts/build_ref_summary_index.py --check && grep -c '^- {id:' references/_summary-index.yaml"
+    expect_exit: 0
+    expect_stdout: "141"
+    # 复现：python3 scripts/ev_measure.py EV-2026-159 --run
+validation:
+  method: metrics_compare
+  baseline: "改前：_summary-index.yaml 1440 行块状 YAML（141 条，58920 字节）；头注自称 union；目录×category 无门"
+  success_criteria: "①三处生成物头注与 .gitattributes 口径一致且 --check 全绿；②目录×category 门对错位报红、对现状 168 条报绿（现状无错位，属预防）；③背景层一次 grep 得整条，体积不增（151 行 / 56290 字节 vs 改前 1440 行 / 58920 字节）"
+  rollback: 分支合入前可整体丢弃；合入后 git revert（原则七）。生成物重跑三个生成器即回到旧形态。
+gate:
+  condition: "用户「前面的 3,4,5 能优化解决问题吗」"
+risk: low
+principle_refs: [2, 6, 10]
+actual_cost:
+  tokens: 60000
+  source: estimate
+  note: >-
+    口径：本卡三处都是小改（两个生成器 + 一处 CI 注释 + 5 条单测 + 两处读侧文档），
+    成本主要在审视与实测（跑生成器、验 grep 形态、验门对错位报红）而不在写码。
+    含前一轮五处审视的读数采集（容量溢出率、分片体积、token/条、收窄力），
+    按 4 轮会话估 6 万 token；若只算本卡的实施与验证，约 1.5 万。
+decisions:
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: proposal
+    conclusion: >-
+      三处都属"表述与形态错了、机制本身没错"，所以都不动结构决策：④改生成器头注（顺带修 CI 注释
+      与测试注释里的同一句话）；⑤在 build_index.py --check 里加目录×category 门（现状全绿，
+      属预防——子族拆分按目录切，错位必须在切之前堵住）；③把背景层索引改成一行一条
+      （flow style，值内换行折成空格；折行即抛异常，因为"一行一条"是读法的前提）。
+      平台收窄力弱（90/141 是 cross）不在本轮修：那不是形态问题，要引入新的检索键，属设计变更。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: action
+    conclusion: >-
+      改动落点：scripts/build_index.py（render/render_shard 头注 + dir_category_problems +
+      --check 接入）、scripts/build_ref_summary_index.py（render_row/render + 头注读法）、
+      .github/workflows/kb-checks.yml（job 注释）、tests/test_build_index.py（+5 条单测）、
+      skills/diagnose/references/diagnosis-procedure.md（阶段 2.5 ② 的读法写清一行一条与示例 grep）、
+      references/README.md（一行一条的口径）；生成物重建：knowledge/_index.yaml + 15 个分片、
+      references/_summary-index.yaml。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: eval
+    conclusion: >-
+      measure 实跑 exit 0、stdout 含 141（一行一条 141 行）。CI 逐条命令全绿：build_index --check
+      （168 条覆盖完整，目录×category 门报 0 处）、build_ref_summary_index --check、verify_references
+      （261 条）、verify_case_draft --all（168 文件）、build_triage_tree --check-sources/--check-coverage、
+      build_docs_index --check、tests/test_build_index.py 24 条通过。门本身用临时错位 case 验过会红。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: decision
+    conclusion: >-
+      采纳（validated，review）：三处按上表落地。**范围声明**：本卡不处理格子容量越界
+      （vllm-ascend interrupt 93/hard_cap 60）与"超格后没有中间档"——那是结构决策，
+      两道闸门（溢出率 42%、分片 73KB）已越，需单独裁决。

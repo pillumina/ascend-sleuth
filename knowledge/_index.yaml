@@ -1,5 +1,6 @@
 # GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。
-# 随 PR 提交（谁都能改到它，但本文件配了 merge=union：两边新增的条目都会留住，不产生冲突标记）。
+# 随 PR 提交。本文件**故意没配 merge=union**（嵌套结构做行级合并会拼坏 YAML，见 .gitattributes）：
+# 两人在同一格并发会撞一次，解决动作是重跑 `python3 scripts/build_index.py`（机械、无判断）。
 # 阶段一加载协议：本文件是总表（兜底 + 跨库比对）；diagnose 只读命中的最小分片
 # （knowledge/_index/<ns>__<category>.yaml；category 未定回退 <ns>.yaml），候选 ≤5 过滤后
 # 按 file 字段定位做阶段二全量加载。
@@ -7,7 +8,7 @@
 # 要么漂移成错的数。要看数字就现算：`python3 scripts/index_counts.py`
 # （容量治理的格子口径见该脚本与 docs/adr/0004）。
 # 一致性门是**覆盖检查**（每条 case 的索引行都在、且与 case 内容对得上），不是逐字节相同——
-# 逐字节的门会让 union 合并出来的、内容正确的文件变红。要归一化就重跑一次生成器。
+# 逐字节的门会把「两边各加一条、顺序与重新生成不同」的、内容正确的文件判红。要归一化就重跑一次生成器。
 # `--canonical` 是那个「重跑后应当逐字节相同」的自检，供收尾/排查用，不作门。
 namespaces:
   common:

@@ -3,8 +3,9 @@
 #
 # 目的（B1 EV-2026-026）：diagnose 阶段 2.5 原为"扫 references/<type-dir>/*.yaml
 # 只读 summary+applies_to"，需逐文件读全文找字段；本索引把**背景类
-# （platform-fact/software-fact/tool）+ status=active** 词条压缩为每行
-# {id/type/title/summary(≤160c)/applies_to.platforms+categories}，读侧一次 grep 就够。
+# （platform-fact/software-fact/tool）+ status=active** 词条压缩为**一行一条**
+# {id/type/title/summary(≤160c)/applies_to.platforms+categories}，读侧一次 grep 就够
+# （一行一条是 2026-09-29 改的：块状 YAML 一条占 5~7 行，一趟 grep 拿不到整条）。
 # 体积随词条数线性增长——所以**读侧按 grep 取行 + ≤5 行上限，不整读**（EV-2026-093）。
 # categories 入索引（EV-2026-037）：按本轮 category 收窄背景加载，
 # 声明了 categories 的词条不再无条件灌进上下文；空列表 = 不限定类别。
@@ -50,10 +51,30 @@ def categories_of(entry) -> list:
     return []
 
 
+def _flat(v) -> str:
+    """值里的换行折成空格——「一行一条」是硬约束，折行会让 grep 的命中行不再是完整条目。"""
+    return " ".join(str(v).split())
+
+
+def render_row(row) -> str:
+    """一条索引 → 一行 YAML（flow style，不折行）。
+
+    为什么强制一行（2026-09-29）：读侧协议是「grep 取行 + ≤5 行上限」，而块状 YAML 一条占 5~7 行——
+    按平台 grep 只命中 `platforms:` 那行（拿不到 id/title），按组件词 grep 只命中 title/summary 行
+    （拿不到平台），同一条词条要两趟扫才拼得出来，而"两趟的命中各算一条还是算半条"没有答案。
+    一行一条之后，一次 grep 命中即整条：id / type / title / summary / 平台 / 类别都在同一行上。
+    """
+    out = yaml.safe_dump(row, allow_unicode=True, sort_keys=False,
+                         default_flow_style=True, width=10 ** 9).strip()
+    if "\n" in out:  # 兜底：flow style 仍折行说明有值带换行（_flat 已防，防不住就报出来而不是静默破格式）
+        raise ValueError(f"索引行折行了（一行一条是硬约束）：{row.get('id')}")
+    return out
+
+
 def render(doc_entries) -> str:
     rows = []
     for e in sorted(doc_entries, key=lambda x: x.get("id", "")):
-        s = e.get("summary") or ""
+        s = _flat(e.get("summary") or "")
         if len(s) > SUMMARY_CAP:
             s = s[:SUMMARY_CAP] + "…"
         # categories 入索引（EV-2026-037）：原只按平台过滤，精度/性能问题会把
@@ -65,7 +86,7 @@ def render(doc_entries) -> str:
             applies_to["categories"] = cats
         rows.append({
             "id": e.get("id", ""), "type": e.get("type", ""),
-            "title": e.get("title", ""), "summary": s,
+            "title": _flat(e.get("title", "")), "summary": s,
             "applies_to": applies_to,
         })
     n = len(rows)
@@ -73,14 +94,15 @@ def render(doc_entries) -> str:
         "# GENERATED FILE —— 背景类 summary 索引（diagnose 步骤 3 阶段 2.5 读取），不要手改。",
         "# 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。",
         "# 只含背景类 + status=active；查表类走步骤 2 收尾的键触发 grep（口径同 diagnose SKILL）。",
-        "# 读法：grep 取行 + ≤5 行上限——索引随词条数增长，整读等于注入全库背景。",
+        "# 读法：**一行一条**（`- {id: …, type: …, title: …, summary: …, applies_to: {platforms: […], categories: […]}}`）——",
+        "#   一次 grep 命中即整条；先按 applies_to 收窄，再在命中的行上按组件/工具词挑，每轮 ≤5 条。",
+        "#   整读等于注入全库背景（索引随词条数增长），别整读。",
         "# applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。",
         f"# 词条数：{n}",
         "# 不写生成日期：日期进 git 会让每次重建都改同一行，并发合并时必撞（口径同 build_index.py）。",
         "",
     ])
-    return header + yaml.safe_dump({"entries": rows}, allow_unicode=True,
-                                   sort_keys=False, default_flow_style=False, width=100)
+    return header + "entries:\n" + "".join(f"- {render_row(r)}\n" for r in rows)
 
 
 def collect(refs_dir: Path):
