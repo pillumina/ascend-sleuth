@@ -1,7 +1,7 @@
 id: operator-compute-failure-modes
 type: fault-pattern
 title: 算子级计算失败的十类模式（信号 / 要看哪些证据 / 常见误报 / 优化方向 / 置信度条件）
-summary: 拿到算子级数据（overview + 算子列表 + 执行序 + advisor）之后的分流表，每类给"信号 → 要看的证据 → **常见误报** → 优化方向 → 置信度成立条件"。十类：① AI Core 流水低效（算子占大头但 ratio 不强、同 shape 耗时不稳）；② shape 亲和性（热点算子的某些 shape 簇持续更慢）；③ 搬运压力（`mte2_ratio` 高、热点算子周围有 `TransData`/`Transpose`/`Cast`、小 M 推理的权重反复搬）；④ Vector 密集（向量算子频次或累计时长高，典型 `IndexPutV2`/`NonZero`/`where`/`SelectV2`）；⑤ AICPU 回退（`AI_CPU` 任务有可观累计时长且在关键路径上）；⑥ 动态 shape 或图开销（同一逻辑算子出现大量 shape 变体、算子数很多）；⑦ Block Dim 或并行度不足（block dim 低或与核数不匹配）；⑧ 冗余 Cast/TransData/Transpose（格式或 dtype 在相邻算子间来回跳）；⑨ 跨流等待（主流在等辅助流、`EVENT_WAIT` 或等待时间可观）；⑩ 频率或运行时状态异常。**这张表的价值集中在"常见误报"一栏**：极短 kernel 的 ratio 是噪声、`level0` 下没有 shape 字段、AICPU 里的通信 helper（`allgatherAicpuKernel`/`allreduceAicpuKernel`）不算热点、存在转换算子但很便宜且不重复不算问题、`NZ` 提速了 kernel 但两端成对的 `TransData` 会把收益吃掉、向量算子频次高但总时长短或不在关键路径、预期内的同步不算问题、跨流等待属通信面时该换流程。**不要强行归到单一模式**——计算类问题常常是多因素叠加，每条结论要带证据强度与预期时间影响。
+summary: 算子级十类失败模式，每条带信号、要看的证据与**常见误报**（最短 kernel 的 ratio 是噪声、NZ 加速被两端搬运吃掉等）。
 
 sources:
   - type: official-doc

@@ -1,7 +1,7 @@
 id: cpu-binding-inspection-procedure
 type: methodology
 title: Host 绑核体检与改动流程（采集只读快照 → 规则体检 → 保守方案与回滚 → 改动前后对照）
-summary: 怀疑 Host 侧 CPU 配置有问题时的流程。**采集阶段只做只读动作**——`lscpu`、`lscpu -e=CPU,CORE,SOCKET,NODE,ONLINE,MAXMHZ,MINMHZ,MHZ`、`numactl -H`、`/sys/devices/system/cpu/cpu*/topology/thread_siblings_list`、`/sys/devices/system/node/node*/cpulist`、`/sys/fs/cgroup/**/cpuset.cpus.effective`、`/sys/fs/cgroup/**/cpu.max` 与 `cpu.stat`、`lscpu` + `npu-smi info`、`npu-smi info -t topo`、`ps -eo pid,ppid,comm,args`、`/proc/<pid>/task/*/stat`；**报告阶段不得再执行这些命令**（结论必须由已采集的快照渲染出来，否则同一份报告前后不一致）。**体检阶段按 rules 逐条跑**（见 cpu-binding-affinity-triage），每条先输出触发条件、再输出建议，缺证据的条目写进"信息缺口"而不是跳过。**改动的三条纪律**：① 改动分三档影响面（低：只出建议、临时 `taskset`、改下次启动的环境变量；中：重启进程、改容器 cpuset 或 K8s resource；高：IRQ 亲和、CPU governor、内核启动参数、线上自动重启）——**高影响档只出方案不执行**；② 每次只改一件事并保留回滚命令（`taskset -cp <原 CPU list> <pid>`），**回滚前先查 PID 是否被复用**（比对 `/proc/<pid>/stat` 的 starttime）；③ 每轮只问一个澄清问题、优先给选择题。**收尾**：给出改动前后的对照指标（CPU 迁移、step time p90/p99、NPU 利用率波动、进程间 CPU 竞争），并声明这次没跑哪些工具（缺数据不等于该项正常）。
+summary: 绑核体检的执行流程：只读快照 → 质量降级 → 规则体检 → 保守方案与回滚 → 改动前后对照。
 
 sources:
   - type: official-doc

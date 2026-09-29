@@ -1,7 +1,7 @@
 id: multi-rank-slow-rank-detection
 type: methodology
 title: 多卡快慢卡判读流程（先判输入形态 → 跑集群模式逐项 → 六类定性 → 算子级微观证据 → 对慢卡出建议）
-summary: 集群里"谁慢、为什么慢"的判读路径。**第 1 步判输入形态**——rank 数、数据是 DB 还是 Text（Text 需要每个 rank 有 `profiler_info_{rank}.json` + `ASCEND_PROFILER_OUTPUT/op_statistic.csv`/`api_statistic.csv`；DB 需要 `ascend_pytorch_profiler_{rank}.db`）、产物是否齐全、是否已有 `cluster_analysis_output`（有就直接进定性）。**第 2 步逐项跑集群分析**（`msprof-analyze -m <能力>`：`cluster_time_summary` / `compute_op_sum` / `hccl_sum` / `slow_rank` / `slow_link` / `cann_api_sum` / `all`）——**某一项失败必须记录失败命令与错误，不得把该项当成已验证证据**；判定结论时必须至少引用 `cluster_time_summary`、`slow_rank`、`slow_link` 三者之一。**第 3 步定性只归六类**：Host 下发瓶颈（伪快卡：Free Time 占比 > 10% 或远超均值且 Compute/Communication 偏短）／计算型慢卡（Free 普遍短而均匀、某卡 Compute 显著大）／通信型（带宽远低于理论值，如 SDMA < 2GB/s）／负载不均衡（count 不同）／算子劣化（count 相同但 avg_time 激增，常见于动态 shape）／证据不足。**第 4 步补算子级微观证据**：逐算子比 slow 与 fast rank 的 `total_time`、`count`、`ratio = slow/fast`、`avg_time` 差，按 `|diff_total_time|` 降序取 TOP N（默认 20）；**count 不同指向切分不均、count 相同而 avg 涨指向算子劣化**，这两条要分开说。**第 5 步**对慢卡目录跑 `advisor` 出建议；advisor 结论与集群判断冲突时**必须显式指出冲突并以某类证据为主、说明原因**。收尾禁止："仅凭单项指标字面下结论"。
+summary: 跨卡快慢卡的判读流程，定性只归六类（伪快卡 / 计算型 / 通信型 / 负载不均 / 算子劣化 / 证据不足）。
 
 sources:
   - type: official-doc

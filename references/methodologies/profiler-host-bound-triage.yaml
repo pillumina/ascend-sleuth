@@ -1,7 +1,7 @@
 id: profiler-host-bound-triage
 type: methodology
 title: 下发/调度瓶颈判读（Host Bound 三条件 → Free 时间三拆 → 下发几何 → 主因桶与最小实验）
-summary: '怀疑"NPU 等 CPU"时的判读路径：**先证 Host Bound 而不是先看 API 延迟**——三条必须同时成立（设备 `Free` > step 的 10%，或其值远大于相邻 step/其他 rank 基线；Free 区间内既无计算任务也无通信任务；下发侧 gap 与 Free 区间对齐），缺一条就只能写"证据不足"。成立后把 Free 时间**拆三段**（Preparation＝step 起到首个设备任务、in-step 大空隙、尾部），再用下发几何定主因：dispatch 到执行近乎垂直且与 Free 重叠 → 下发瓶颈；launch 后设备延迟启动而设备本就有活 → 正常排队；斜率突然变陡处常是"host 下发不再被设备工作掩盖"的分界。主因分五桶（模型侧下发压力 / 同步断点 / 纯 CPU 工作 / CPU 调度干扰 / 内存分配与 GC），每桶落到最小实验。**反面条款是这张流程的主要价值**：高 API 延迟单独不能判 Host Bound；`launch` 耗时已含在 `Dequeue@` 内、不得二次相加；不得因 Host Bound 就推荐换内存分配器；`TASK_QUEUE_ENABLE=2` 不是万灵药；CPU 绑核要有抢占/迁移/快慢卡证据才动，且改动前先查拓扑避免跨 NUMA。'
+summary: Host Bound 的判读流程：三条件须同时成立，再说 Free 三拆与主因桶——高 API 延迟单独不能判 Host Bound。
 sources:
   - type: official-doc
     url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-schedule-analysis/SKILL.md"

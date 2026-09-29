@@ -1,7 +1,7 @@
 id: profiler-breakdown-method
 type: methodology
 title: 性能数据逐级拆解（端到端→阶段→step→层的守恒自检、异常与漂移判据、置信度分级）
-summary: 把一份 profiling 数据拆成"哪一级吃掉了时间"的可核验结构时用的流程。核心是**守恒自检**：每一级都算 `缺口 = 父级 wall − Σ 子级 self`，逐级上报，**缺口超过父级 wall 的 5% 就要显式告警"归属不完整"**——不告警就会出现"看起来拆完了其实有一大块没归因"的假结论。异常与漂移用三条可配阈值：单点 outlier（`> P50 + 3σ`，或 `> P99`）、同卡跨 step 漂移（变异系数 `σ/μ > 0.20`）、跨运行比均值 ± σ 区间；**稳态口径要先剔除首 step 的编译/热身噪声与 prefill，并各去掉 ±1 个尾部 step**。结论必须带**置信度来源**（不是分数）：来自框架打点/`STEP_TIME` 的为高、来自锚点 + 层数校验的为中、靠推测或命中原算子/未知算子的为低——低置信项逐条列出并要求人工复核。降级路径：缺 step 边界信息时跳过 step 拆解并告警，而不是用错误的边界硬拆；框架打点（MSTX）默认不开，表为空是"没采"不是"没有阶段"。
+summary: 把 profiling 拆成『哪一级吃掉时间』的流程，带守恒自检、异常与漂移阈值、置信度分级。
 sources:
   - type: official-doc
     url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/msagent-profiler-breakdown/references/check-rules.md"

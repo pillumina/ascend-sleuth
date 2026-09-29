@@ -1,7 +1,7 @@
 id: profiler-analysis-cli
 type: tool
 title: msprof-analyze 执行层（集群分析各模式 / advisor 算子级建议 / free_analysis / 调用约束与判读阈值）
-summary: '手上已有 profiling 数据、要一条命令出结论时用的一层：**聚类分析** `msprof-analyze -m <mode> -d <集群数据路径> -o <输出> --agent`（模式含 `cluster_time_summary` 迭代耗时拆解 / `free_analysis` 设备侧大块空闲归因 / `freq_analysis` AICore 频率异常 / `slow_rank` 快慢卡 / `communication_time_sum`、`hccl_sum`、`all` 通信面 / `ep_load_balance` MoE 负载；不传 `-m` 等价 `all`），**算子级建议** `msprof-analyze advisor <all|computation|schedule> -d <单卡 rank 目录> -o <输出> --agent`。它把"读 DB 写 SQL"这一步替你做完，所以**入口优先级最高**：先跑它，答不了具体问题时才降到 SQL 直查（见 profiler-db-query）。三条调用约束是踩过的坑：集群模式**不要传单卡目录**（要传集群路径或单卡父目录集），advisor **必须传 `-o`** 且多卡时**指到目标 rank 子目录**而不是集群根，**不要孤立分析单卡**（快慢卡结论必须来自多卡对比）。判读阈值与否定条款见 profiler-analysis-triage。'
+summary: 手上已有 profiling 数据、要一条命令出结论时用：`msprof-analyze` 的集群各模式与 advisor 的调用约束与产物形态。它答不了具体问题时才降到 SQL 直查。
 
 sources:
   - type: official-doc

@@ -1,7 +1,7 @@
 id: single-operator-accuracy-verification
 type: methodology
 title: 单算子精度验证流程（定算子与判据 → 按 dtype 取容差 → 构造同输入 → 两侧各跑 → 读结果并标降级）
-summary: 整网比对标出可疑算子之后，用一次独立验证把它确认或排除的流程。**第 1 步界定验证对象与判据**：只验**能独立运行的 API 级算子**（Module 级不能自动验证）；判据是 `passed = shape_match AND (max_diff < atol) AND (max_rel_err < rtol × 100)`。**第 2 步按 dtype 取容差**（内置、不用手填）：float64 `1e-9 / 1e-7`、float32 `1e-4 / 1e-3`、float16 `1e-3 / 1e-3`、bfloat16 `5e-3 / 5e-3`；float32 这档给得比较宽是有依据的（matmul K=1024 的理论累加误差 ≈1.2e-4）。**第 3 步构造同一份输入喂给两侧**——近零向量（`l2norm < 1e-30`）填均值、分布区间极窄（`β − α ≤ 1e-15`）退化为均匀分布；构造完先过两个质量门：`l2norm` 相对偏差 `< 5%`、被 clamp 比例 `< 10%`，越界即标 `construct_degraded`。**第 4 步两侧各跑一次并读结果**：`max_rel_err` 是逐元素最大相对误差百分比、`mean_rel_err` 是平均相对误差百分比；shape 不一致直接判不通过。**第 5 步收尾**：把结论分成"已排除 / 已确认 / 因构造降级而不可用"三档；构造降级的结论**不得当作确认证据**；验证通过也不代表整网那条链路没问题（整网误差可能来自上游累积——那是首问题点判定的事，见 precision-first-divergence-triage）。
+summary: 把『怀疑某算子』变成『能自己验』的五步流程，含容差取法与构造降级的边界。
 
 sources:
   - type: official-doc

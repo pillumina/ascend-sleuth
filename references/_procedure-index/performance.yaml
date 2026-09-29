@@ -6,7 +6,7 @@
 #   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：
 #   references/_procedure-index.yaml
 #
-# 本片流程条数：16    本片加载成本：约 2716 token
+# 本片流程条数：16    本片加载成本：约 2371 token
 entries:
 - id: ascend-hardware-detect-triage
   title: 硬件与压力检测判读（asys diagnose 四模式 → Pass/Warn/Fail → [ERROR] AML 错误码前缀分流 → 电压恢复）
@@ -28,7 +28,7 @@ entries:
   file: references/methodologies/ascend-profiling-collection-planning.yaml
 - id: cpu-binding-inspection-procedure
   title: Host 绑核体检与改动流程（采集只读快照 → 规则体检 → 保守方案与回滚 → 改动前后对照）
-  summary: 怀疑 Host 侧 CPU 配置有问题时的流程。**采集阶段只做只读动作**——`lscpu`、`lscpu -e=CPU,CORE,SOCKET,NODE,ONLINE,MAXMHZ,MINMHZ,MHZ`、`numactl -H`、`/sys/devices/system/cpu/cpu*/topology/thread_siblings_list`、`/sys/devices/system…
+  summary: 绑核体检的执行流程：只读快照 → 质量降级 → 规则体检 → 保守方案与回滚 → 改动前后对照。
   categories:
   - performance
   platforms:
@@ -52,7 +52,7 @@ entries:
   file: references/methodologies/hostbound-evidence-gate.yaml
 - id: memory-leak-and-oom-triage
   title: 显存问题判读流程（数据可用度确认 → 曲线定性 → 对池定维度 → 按症状分支 → 假设验证与伪影排除）
-  summary: 显存类问题的判读路径，先判数据够不够再往下走。**第 1 步确认可用度**——读采集配置（`config.json`）：没开 `decompose` 就没有 `owner`，模块级拆解做不了；没配 `call_stack` 就归因不到代码位置；两条都没有时只能看总量曲线，此时要**如实告知信息缺失并按需补采**，不要带着缺口下结论。**第 2 步曲线定性**（持续攀升/阶梯/平台/锯齿/峰值后回…
+  summary: 显存问题的判读流程：先确认数据可用度，再曲线定性、对池定维度、按症状分支、最后验伪。
   categories:
   - performance
   - interrupt
@@ -69,7 +69,7 @@ entries:
   file: references/methodologies/msprof-comm-bottleneck-thresholds.yaml
 - id: multi-rank-slow-rank-detection
   title: 多卡快慢卡判读流程（先判输入形态 → 跑集群模式逐项 → 六类定性 → 算子级微观证据 → 对慢卡出建议）
-  summary: 集群里"谁慢、为什么慢"的判读路径。**第 1 步判输入形态**——rank 数、数据是 DB 还是 Text（Text 需要每个 rank 有 `profiler_info_{rank}.json` + `ASCEND_PROFILER_OUTPUT/op_statistic.csv`/`api_statistic.csv`；DB 需要 `ascend_pytorch_profiler_{ra…
+  summary: 跨卡快慢卡的判读流程，定性只归六类（伪快卡 / 计算型 / 通信型 / 负载不均 / 算子劣化 / 证据不足）。
   categories:
   - performance
   platforms:
@@ -93,7 +93,7 @@ entries:
   file: references/methodologies/operator-bottleneck-attribution.yaml
 - id: operator-tuning-experiment-method
   title: 算子性能实验方法（精度门禁 → 不可变基线 → 单变量迭代 → 前后对照判定；含否证条款）
-  summary: 要给算子做性能改动时的实验纪律。**前置门禁**：精度未过、崩溃或 kernel 挂起 → **停止性能调优**（不是先记下来继续）——先修正确性再谈速度；任一目标用例失败即停。**第 1 步建不可变基线**：同软件栈、同 SoC、同频率、同 shape/dtype、同 TilingKey 下取稳态多次的中位耗时，并记下采集方式（event / simulator / msprof 等口径不可混…
+  summary: 算子性能改动的实验纪律：精度门禁优先、不可变基线、单变量迭代、加速比判定线与否证条款。
   categories:
   - performance
   - interrupt
@@ -120,7 +120,7 @@ entries:
   file: references/methodologies/pipeline-slot-and-attribution-discipline.yaml
 - id: profiler-breakdown-method
   title: 性能数据逐级拆解（端到端→阶段→step→层的守恒自检、异常与漂移判据、置信度分级）
-  summary: 把一份 profiling 数据拆成"哪一级吃掉了时间"的可核验结构时用的流程。核心是**守恒自检**：每一级都算 `缺口 = 父级 wall − Σ 子级 self`，逐级上报，**缺口超过父级 wall 的 5% 就要显式告警"归属不完整"**——不告警就会出现"看起来拆完了其实有一大块没归因"的假结论。异常与漂移用三条可配阈值：单点 outlier（`> P50 + 3σ`，或 `> P9…
+  summary: 把 profiling 拆成『哪一级吃掉时间』的流程，带守恒自检、异常与漂移阈值、置信度分级。
   categories:
   - performance
   platforms:
@@ -128,7 +128,7 @@ entries:
   file: references/methodologies/profiler-breakdown-method.yaml
 - id: profiler-host-bound-triage
   title: 下发/调度瓶颈判读（Host Bound 三条件 → Free 时间三拆 → 下发几何 → 主因桶与最小实验）
-  summary: 怀疑"NPU 等 CPU"时的判读路径：**先证 Host Bound 而不是先看 API 延迟**——三条必须同时成立（设备 `Free` > step 的 10%，或其值远大于相邻 step/其他 rank 基线；Free 区间内既无计算任务也无通信任务；下发侧 gap 与 Free 区间对齐），缺一条就只能写"证据不足"。成立后把 Free 时间**拆三段**（Preparation＝st…
+  summary: Host Bound 的判读流程：三条件须同时成立，再说 Free 三拆与主因桶——高 API 延迟单独不能判 Host Bound。
   categories:
   - performance
   platforms:

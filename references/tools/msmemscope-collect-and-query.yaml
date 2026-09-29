@@ -1,7 +1,7 @@
 id: msmemscope-collect-and-query
 type: tool
 title: msMemScope 显存采集与判读（按诉求选采集配置 / 统计键口径 / 幽灵释放陷阱 / 聚合脚本次第）
-summary: 显存类问题（OOM / 泄漏 / 大头占比 / 峰值 / 碎片）的采集与判读入口。**先定诉求再定配置**——OOM 用 `--analysis=oom[:K]` 并加 `--call-stack`；怀疑泄漏用 `--analysis=leaks`（离线走 mstx 打点 A/B/C + `check_leaks`）；"显存花在哪"用 `--analysis=decompose`；Step 间差异分两次采（`--steps=N`，一次一个 Step）再 `--compare`。四条硬约束：① `--analysis` 必须配 `--events` 含 alloc,free（否则泄漏结果不准、时间线不完整）；② `--steps` 与分析功能**互斥**；③ 泄漏/OOM 归因**必须配 `--call-stack`**，否则只能定位到分配行为、给不出代码位置；④ 默认采 csv（快、体积小、脚本可直接分析），只有明确要 MindStudio Insight 可视化时才 `--format=db`，**不要"先采 db 再转 csv"**。三个读数据的口径陷阱：`used`（本进程 HAL 申请）/ `process_used`（本进程总量，与 npu-smi Process memory 同源）/ `device_used`（整卡，与 npu-smi HBM-Usage 同源，环境不支持时为 `-1` 不可引用）；**HAL 与池两类数值嵌套、不可相加**（HAL 是驱动层全集，框架池段以 `CANN@APP` 计入 HAL，池事件是同一物理内存的子视图）；曲线是**事件驱动**的（只有事件时刻有点，两点之间是阶梯保持，不是轮询采样）。最反直觉的一条是**幽灵释放**：未释放的块在进程退出时被工具补发 `shadow:true` 的 FREE，所以 **MALLOC/FREE 必然配对，"配对上了"不能证明没泄漏**。
+summary: 显存类问题（OOM / 泄漏 / 大头占比 / 碎片）的采集与判读入口：按诉求选配置，四个统计键口径与『配对不等于没泄漏』这个高发误判。
 
 sources:
   - type: official-doc

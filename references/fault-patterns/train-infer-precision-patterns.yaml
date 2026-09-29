@@ -1,7 +1,7 @@
 id: train-infer-precision-patterns
 type: fault-pattern
 title: 训推不一致与推理侧精度现象对照表（融合结构差异 / 采集配对 / 乱码复读现象的已知触发条件）
-summary: '偏向推理与 RL 训推一致性的现象→根因对照表，按主题域成表。三块内容：① **结构性不匹配要先排除**——训练侧与推理侧模块名不同常常是融合实现差异（如 `linear_q_down_proj`/`linear_kv_down_proj` → `fused_qkv_a_proj`），按名字对不上就判模块缺失是高频误报，判据是输出是否对齐（输出一致而内部不一致要降级）；② **两侧采集的配对契约**——必须按"样本身份 + 计算片段 + 权重版本"配对，禁止按目录顺序或本地 step 配对，validation/warmup/dummy 不得混入有效配对，任一侧漏采都不得当作成功交付；③ **推理现象与已知触发条件**——乱码/复读/空回复这类现象多数绑定具体算子或开关（启用了某量化权重、某算子在小 shape 下的 tiling、KV Cache 打满触发重算等），先按触发条件核对，不要从现象直接推断算子。**共同前提**：推理侧 profiling 默认不出 db，判"两侧都采到了"要看 `COMPUTE_TASK_INFO` 行数 > 0，不能只看 db 文件存在。'
+summary: 训推不一致与推理侧现象对照：结构性不匹配先排除、采集配对契约、乱码复读现象绑定的触发条件。
 
 sources:
   - type: official-doc

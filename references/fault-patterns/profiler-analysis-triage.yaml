@@ -1,7 +1,7 @@
 id: profiler-analysis-triage
 type: fault-pattern
 title: 性能数据判读分流（快慢卡 / 空闲时间 / 频率 / 链路 / 算子级 Bound 的判据，含每条的反面条款）
-summary: '把 profiling 的读数变成"下一步动哪里"的判据表，按主题域成表。**共同前提**：先确认采集级别——`profiler_level` 为 level0 时缺 shape/dtype/format/block_dim/各类 ratio 字段，通信带宽与通信矩阵也不产出；缺这些字段时**不得下对应结论**（如实标注降级，不要用"没有"解释）。三条铁律：找"最先/最主要"而不是"最大"；用同批数据的其余卡/其余 step 作对照，而不是绝对幅度；**只在关键路径上的耗时才算问题**。每条判据都配了反面条款——这些"看到 X 不要判 Y"是这张表的主要价值。'
+summary: 性能读数的分流表：每条判据都配了反面条款（看到 X 不要判 Y）。
 sources:
   - type: official-doc
     url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-msprof-analyze-cli/SKILL.md"

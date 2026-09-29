@@ -1,7 +1,7 @@
 id: operator-sanitizer-suite
 type: tool
 title: 算子内存与竞争检测套件（memcheck/racecheck/initcheck/synccheck 串跑 + 报告合并；参数边界与有效结论判据）
-summary: 怀疑算子内部越界、踩踏、未初始化、同步竞争时的检测入口。四类检测可组合：`mssanitizer -t memcheck -t racecheck <app>`，或用 skill 侧脚本一次串跑（memcheck → racecheck → initcheck → synccheck）并把多份报告合并成一份分析稿。**参数边界要知道**：`--block-id` 范围 `0~200`（默认全部 block）、`--cache-size` 单 block `1~8192` MB 且多 block 时上限 `24×1024/block数`（默认 100）、`--padding` `32~1024` 字节（默认 32）、`--max-debuglog-size` `1~10240` MB（默认 1024）；`--leak-check` / `--check-unused-memory` / `--check-cross-npu-races` 默认都是 `no`。**两条必须同时成立**：编译要 `-g` 与 sanitizer 选项**同时加**（同开 `-O0` 还要关掉 always-inline）；**有效结论要求日志里同时出现 `Start` 与 `Finished` 行**——只看到 Start 说明进程没跑完，此时任何结论都不成立。**修复完成的门是全部 ERROR 归零**（不是"错误变少了"）。**已知误报要预排除**：算子自实现的软同步（核间 barrier/set-wait、卡间 barrier/signal）会被 racecheck 报成竞争——先把它按 mstx 接口上报或列入已知白名单，再判剩余告警。
+summary: 算子越界/踩踏/竞争/未初始化的检测入口：四类检测串跑与报告合并、参数边界、以及『有效结论』与『修复完成』各自的判据。
 
 sources:
   - type: official-doc

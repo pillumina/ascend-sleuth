@@ -1,7 +1,7 @@
 id: profiler-db-query
 type: tool
 title: profiling DB 查询（字段字典 / 单位口径 / level0 假零值 / 只读打开法与三条查询纪律）
-summary: '直接查 profiling 汇出的 `msprof_<时间戳>.db`（sqlite）读原始表格时用：**先记住四类单位**——时间一律纳秒（且为本地 Unix 时间）、内存字节、带宽字节每秒、频率 MHz；**表名与字段名去 `profile_data_file_references_db` 对**（47 张表，本词条给出跨框架高频表的用途索引，不复制字段清单）。三个**读错就会误判**的口径：① 名字列是整数外键（`COMPUTE_TASK_INFO.name` 等），真名要 JOIN `STRING_IDS`（`value`/`id`），拿不到真名不代表表里没数据；② `profiler_level` 为 level0 时 `transit_size`/`link_type`/`transport_type`/`src_rank`/`dst_rank` 等字段可能是库内默认值而非实测——**这些值要判 unknown，不能当成零/未通信**；③ 打开方式必须是只读 `mode=ro`，**不要用 `immutable=1`**（跳过 WAL 恢复会缺表，表现为"这张表不存在"）。查询纪律三条：主查询必须带聚合或 `LIMIT`（20 或更小）；**不要用 `PRAGMA table_info` 当 schema 来源**（它与实际采集开关不一致）；查不到表先怀疑版本差异或本次采集配置不足，不要猜字段语义。查询入口优先级：`msprof-analyze`（见 profiler-analysis-cli）→ 本词条 SQL → 直接读导出件（`kernel_details.csv` / `op_statistics.csv` / `step_trace_time.csv`）。'
+summary: 直接查 profiling 汇出的 sqlite 库（`msprof_<时间戳>.db`）时用：表名与字段口径对官方参考，本词条给单位、只读打开法与 level0 假零值三个读错就会误判的坑。
 
 sources:
   - type: official-doc

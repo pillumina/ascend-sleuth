@@ -1,7 +1,7 @@
 id: memory-leak-and-oom-triage
 type: methodology
 title: 显存问题判读流程（数据可用度确认 → 曲线定性 → 对池定维度 → 按症状分支 → 假设验证与伪影排除）
-summary: 显存类问题的判读路径，先判数据够不够再往下走。**第 1 步确认可用度**——读采集配置（`config.json`）：没开 `decompose` 就没有 `owner`，模块级拆解做不了；没配 `call_stack` 就归因不到代码位置；两条都没有时只能看总量曲线，此时要**如实告知信息缺失并按需补采**，不要带着缺口下结论。**第 2 步曲线定性**（持续攀升/阶梯/平台/锯齿/峰值后回落）决定进哪条分支。**第 3 步对池定维度**：从框架池（PyTorch 用户优先 PTA）入手，再和 HAL 驱动层全集联动——**两类数值嵌套不可相加**；同时做**应然值核对**：通信内存每通信域默认约 401MB CCL Buffer（in 200MB + out 200MB + winExp 1MB）、AIV 另加 40MB、MC2 另加 16MB，出现一次性固定大段时按通信类型核对应然大小。**第 4 步按症状分支**：泄漏走算法 A（跨周期不回基线，强信号）→ B（`total` 单调增，弱信号须与 A 联动）→ C（长生命周期块且 FREE 全 shadow）→ D（按调用栈 TOP3 归因）并给风险分级；OOM 按 `req_size` 与剩余空间、RECENT 分配序列、TOP_ALLOC 归属三表分流，并区分单次巨量 / 接力耗尽 / 累积型 / 池扩容失败；碎片按 `(total − used) / total` 分级选配置杠杆。**第 5 步验伪**：泄漏 vs 池预留、峰值 vs 累积、真碎片 vs 流池残留——每条都要给出验证动作，且**证据不足时列出缺什么**。
+summary: 显存问题的判读流程：先确认数据可用度，再曲线定性、对池定维度、按症状分支、最后验伪。
 sources:
   - type: official-doc
     url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/memory-analysis/SKILL.md"

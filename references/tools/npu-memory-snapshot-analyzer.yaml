@@ -1,7 +1,7 @@
 id: npu-memory-snapshot-analyzer
 type: tool
 title: NPU 显存快照分析（转 sqlite → 六种模式分析；补 msMemScope 的块级盲区：真碎片 / 假性碎片 / 块状态）
-summary: 显存问题的**块级存量视图**——msMemScope 只能看事件流（分配/释放累计），看不到每个 segment/block 的当前状态，于是"碎片是真碎片还是流池残留、还是异步释放延迟造成的假性碎片"分不清。快照分析补的就是这一层：先 `python3 scripts/snapshot_to_db.py <snapshot.pkl> [-o <db>] [--no-indexes]` 把 `torch_npu.npu.memory._dump_snapshot()` 的产物转成 sqlite，再 `python3 scripts/snapshot_analyze.py <db> --mode {overview|peak|fragment|leak|oom|compare|all} [--ref 另一份.db] [--device N] [-o report.html] [--json]`（两个脚本只依赖标准库，**可离线在无 NPU 的机器上跑**）。**碎片率口径**：整体 = `(Reserved − Allocated) / Reserved`（Reserved = Σsegment.total_size，Allocated = Σsegment.allocated_size），也有逐段口径；分级 `<5%` 正常 / `5%~15%` 偏高 / `>15%` 严重。**假性碎片判据**：待释放占比 `pending_bytes / (Reserved − Allocated) > 50%` → 碎片主因是异步释放延迟，**不是分配器碎片**（块状态分 `active_allocated` / `active_pending_free` / `inactive` 三类，段类型分 large（>1MB）/ small）。**泄漏**：单调增长（segment 净增逐点非降且末值大于首值）**且**长生命周期块 ≥5 → 高风险；只满足其一 → 中风险。长生命周期定义为 block 所属分配发生在时间线前 20% 且当前仍是 `active_allocated`；归因按调用栈聚合取 TOP 3。**OOM**：回溯 OOM 前 50 条 trace，取前 5 次 alloc（按 size 降序）——同一堆栈出现 ≥3 次判"同栈重复分配"，否则 `前 5 条累计 > device_free × 3` 判"接力大分配"，否则"单次过大申请"；**分配事件不足 3 次时不得给 OOM 根因**。
+summary: 显存快照的块级存量视图，补 msMemScope 看不到的那一层：真碎片与假性碎片怎么分、块状态三类、泄漏判定要两个条件。
 
 sources:
   - type: official-doc

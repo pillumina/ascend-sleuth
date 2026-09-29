@@ -6,7 +6,7 @@
 #   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：
 #   references/_procedure-index.yaml
 #
-# 本片流程条数：13    本片加载成本：约 2113 token
+# 本片流程条数：13    本片加载成本：约 1992 token
 entries:
 - id: ascend-aicore-error-triage
   title: AI Core Error 问题定位（RAS → NPU 硬件 → 软件 → msaicerr 分析）
@@ -83,7 +83,7 @@ entries:
   file: references/methodologies/glm-quantized-startup-triage.yaml
 - id: memory-leak-and-oom-triage
   title: 显存问题判读流程（数据可用度确认 → 曲线定性 → 对池定维度 → 按症状分支 → 假设验证与伪影排除）
-  summary: 显存类问题的判读路径，先判数据够不够再往下走。**第 1 步确认可用度**——读采集配置（`config.json`）：没开 `decompose` 就没有 `owner`，模块级拆解做不了；没配 `call_stack` 就归因不到代码位置；两条都没有时只能看总量曲线，此时要**如实告知信息缺失并按需补采**，不要带着缺口下结论。**第 2 步曲线定性**（持续攀升/阶梯/平台/锯齿/峰值后回…
+  summary: 显存问题的判读流程：先确认数据可用度，再曲线定性、对池定维度、按症状分支、最后验伪。
   categories:
   - performance
   - interrupt
@@ -99,7 +99,7 @@ entries:
   file: references/methodologies/msllm-startup-version-env-triage.yaml
 - id: operator-tuning-experiment-method
   title: 算子性能实验方法（精度门禁 → 不可变基线 → 单变量迭代 → 前后对照判定；含否证条款）
-  summary: 要给算子做性能改动时的实验纪律。**前置门禁**：精度未过、崩溃或 kernel 挂起 → **停止性能调优**（不是先记下来继续）——先修正确性再谈速度；任一目标用例失败即停。**第 1 步建不可变基线**：同软件栈、同 SoC、同频率、同 shape/dtype、同 TilingKey 下取稳态多次的中位耗时，并记下采集方式（event / simulator / msprof 等口径不可混…
+  summary: 算子性能改动的实验纪律：精度门禁优先、不可变基线、单变量迭代、加速比判定线与否证条款。
   categories:
   - performance
   - interrupt

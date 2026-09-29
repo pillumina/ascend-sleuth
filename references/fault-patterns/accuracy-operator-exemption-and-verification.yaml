@@ -1,7 +1,7 @@
 id: accuracy-operator-exemption-and-verification
 type: fault-pattern
 title: 精度分析的算子分类修正（豁免算子 / 仅按输出判定的占位算子 / 单算子验证与 dtype 容差 / 构造质量门）
-summary: 逐算子精度比对里有两类算子会**结构性误判**，必须先分类再分析。**类别一 · 豁免（不参与根因判定）**：未初始化内存分配族（`empty`、`empty_like`、`empty_strided`、`empty_with_format`、`new_empty`、`new_empty_strided`）——它们的输出本来就是未初始化内存，比对没有意义；跨后端视图/转换族（`numpy`）；dtype/设备搬运族（`to`）。**类别二 · 仅用输出做上下游分析**：`_reduce_scatter_base`、`_all_gather_base`、`all_to_all_single`、`batch_isend_irecv`——它们的 input 是本 rank 待规约/待发送的完整张量、output 依赖**所有 rank** 的输入，单看本 rank 的 input→output 无意义；**上游溯源在这些算子上停止**（继续往上追会追到别的 rank 的数据，结论不成立）。**验证层**：可疑算子可以自己验——按 dtype 取自适应容差判 `passed = shape_match AND (max_diff < atol) AND (max_rel_err < rtol × 100)`：float64 `atol 1e-9 / rtol 1e-7`、float32 `1e-4 / 1e-3`、float16 `1e-3 / 1e-3`、bfloat16 `5e-3 / 5e-3`（float32 档的依据是 matmul K=1024 的理论累加误差 ≈1.2e-4）。**构造输入有两个质量门**：`l2norm` 相对偏差 < 5%、被 clamp 的元素比例 < 10%——任一越界就标 `construct_degraded` 并降级结论（构造没造准，验证结果不作数）。近零向量（`l2norm < 1e-30`）直接填均值；区间极窄（`β − α ≤ 1e-15`）退化为均匀分布。
+summary: 精度比对里哪些算子不该参与根因判定（未初始化内存分配族、视图与搬运、跨 rank 通信算子），以及单算子验证的 dtype 容差与构造质量门。
 
 sources:
   - type: official-doc

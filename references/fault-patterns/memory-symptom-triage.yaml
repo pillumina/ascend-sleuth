@@ -1,7 +1,7 @@
 id: memory-symptom-triage
 type: fault-pattern
 title: 显存判读分流（曲线形态 / 碎片率分级 / OOM 量化规则 / 泄漏增长性四算法 / 常见泄漏模式对照）
-summary: 显存类问题的判据表，按主题域成表。**共同前提**：先确认采集配置够不够——没开 `analysis=decompose` 就没有 `owner` 字段，按模块拆解做不了（只能按事件类型/池维度看）；没配 `--call-stack` 就只能定位到分配行为、给不出代码位置。**曲线形态先定性**：持续攀升不回落 → 泄漏/缓存累积；阶梯上升要看 `total` 是否同步涨（同步涨且池使用率低 = 池预留策略问题）；平台期 = 正常；峰值后回落 = 瞬时峰值。**碎片率**用同一条池事件的 `(total − used) / total`（或 SNAPSHOT 的 `1 − pt_utilization`），分级 <5% 正常 / 5%~15% 偏高 / >15% 严重，且要算峰值时刻与稳定期两次。**泄漏只看增长性**：算法 A（跨周期 used 不回基线且单调上升，强信号）、B（`total` 单调增，弱信号、**不能单独定泄漏**）、C（长生命周期块且 FREE 全为 shadow）、D（按调用栈聚合 TOP3 归因）四级，配风险分级（A 命中且长寿块 ≥5 为高风险）。**OOM 用字段级量化规则**分流：`req_size ≥ 80% × 剩余空间` = 单次巨量申请；最近 5 条里同一调用栈出现 ≥3 次 = 循环内重复申请；5 条累计 > 3 × 剩余 = 接力耗尽；剩余充足（>1GB）却 OOM = 单点过大申请。每个现象后面都给"这是假设不是定论"的验证路径。
+summary: 显存现象到处置的分流表：曲线形态、碎片率分级、OOM 量化规则、泄漏四种模式与伪泄漏。
 sources:
   - type: official-doc
     url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/memory-analysis/references/leak_diagnosis_guide.md"
