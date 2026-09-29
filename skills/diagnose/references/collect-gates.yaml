@@ -94,17 +94,23 @@ gates:
     question: "你已经有 profiling 数据了吗（采集产物）？还是要我给采集指引？"
     branches:
       - when: has_data
-        action: 直接分析产物（kernel_details.csv / step trace 等），不展开采集说明
+        action: >-
+          先判这份产物能不能用（认类型 / 查是否正常结束 / 对交付件清单，三态 valid|unparsed|invalid），
+          再直接分析（kernel_details.csv / step trace 等），不展开采集说明
         refs:
           - msprof-collect-parse
+          - ascend-profiling-collection-planning
           - msprof-tool-fault-patterns
           - msprof-comm-bottleneck-thresholds
       - when: no_data
         action: >-
           给采集方式（命令 + PROF_* 产物结构）；具体命令以客户环境的工具版本为准
-          （版本差异以实际输出为准，不照搬示例）
+          （版本差异以实际输出为准，不照搬示例）。**外层包不住命令时走框架侧接入**
+          （训练改框架 YAML 的 profile 配置块、推理服务走 `--profiler-config` + HTTP 启停），
+          两条路都先算清采集窗口与开销
         refs:
           - msprof-collect-parse
+          - framework-profiler-instrumentation
           - msprof-tool-fault-patterns
 
   - id: performance-analysis-tools
@@ -115,10 +121,15 @@ gates:
     branches:
       - when: has_data
         action: >-
-          按产物选读法：timeline 横条读法（µs 级归因、区分计算与空泡）、算子内部 pipe 分解、
+          按产物选读法：先跑执行层命令拿结论（集群综合分析 / advisor / free 分析），命令答不了具体问题时降到 SQL 直查；
+          再把读数套判据表分流（快慢卡 / 空闲 / 频率 / 链路 / 算子 Bound，每条都带反面条款）；
+          其余读法：timeline 横条（µs 级归因、区分计算与空泡）、算子内部 pipe 分解、
           仿真报告（无上板条件时）、静态编译视角看搬运与切分、融合类看编译策略是否生效；
           具体调优动作落到对应的流程词条，不在这里展开
         refs:
+          - profiler-analysis-cli
+          - profiler-analysis-triage
+          - profiler-db-query
           - msprof-timeline-lane-reading
           - msopprof
           - cannsim-sim-profiling

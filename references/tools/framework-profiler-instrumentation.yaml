@@ -1,0 +1,60 @@
+id: framework-profiler-instrumentation
+type: tool
+title: 框架侧 profiling 采集接入（训练 YAML 配置 / 推理 HTTP 启停 / RL 两侧离散采集）
+summary: 要采性能数据但**不能用 msprof 外层包命令**时（训练框架已在代码里集成 profiler、或推理服务是常驻进程），走框架自带的接入面。三套入口，形状不同：**训练**（MindSpeed-LLM 一类，代表框架 MindSpeed-LLM / MindSpeed-MM）走 YAML 配置——`training:` 段下的 `profile`、`profile_step_start`、`profile_step_end`（`-1` 表示采到结束）、`profile_ranks`（默认全卡 `[-1]`，只采部分卡时要显式列）、`profile_level`（`level_none`/`level0`/`level1`/`level2`）、`profile_export_type`（`text`/`db`，**要查通信带宽与通信矩阵就必须是 db**）、`profile_save_path`，另有 `profile_with_cpu`/`profile_with_stack`/`profile_with_memory`/`profile_record_shapes` 三个开销开关；**硬约束是窗口必须落在真实 step 上**——`skip_first + (wait + warmup + active) * repeat` 不得超过总 step 数，且要按框架的推导规则换算（`profile_step_end=-1` 时 active 视为足够大，否则 active = 结束 − 开始，小于等于 0 直接报错；`skip_first = max(0, 开始−1)`、`warmup` 在起始步为 0 时取 0、否则取 1）。**推理**（vLLM-Ascend / SGLang）走运行时 HTTP——启动时 `--profiler-config '{"profiler":"torch","torch_profiler_dir":"...","torch_profiler_with_stack":false}'`，运行期 `curl -X POST /start_profile` / `/stop_profile` 控制窗口，**不必重启服务**。**RL 两侧**要采到独立的两份：训练侧走框架的 `global_profiler` 与 actor/ref 的 `profiler` 段，推理侧（rollout）要显式打开离散采集（`tool_config.npu.discrete=True` 一类开关），否则推理侧不会独立采集；两侧采集**必须同一次运行内**，禁止分别单跑（会引入环境差异）。三条接入纪律：不改业务逻辑（外层封装）、profiler 必须与被采流程同进程、RL 各阶段的 profiler 控制解耦。
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-profiler-collect-adaption/references/training_best_practices.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：训练侧 ProfilerConfig 字段与窗口换算规则（MindSpeed-LLM）"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-profiler-collect-adaption/references/inference_best_practices.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：推理侧 --profiler-config 与 /start_profile 控制链路（vLLM-Ascend）"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/accuracy/train-infer-op-diff-scanner/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：RL 两侧 profiler 配置块与“推理侧必须离线解析”"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-profiler-collect-adaption/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：接入三条纪律与交付件校验"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [mindspeed-llm, mindspeed-mm, vllm-ascend, sglang, verl]
+  categories: [performance]
+
+related_references: [ascend-profiling-collection-planning, profiler-db-query, profiler-analysis-cli, msprof-collect-parse, train-infer-precision-patterns]
+
+status: active
+last_verified: 2026-09-28
+
+content:
+  tool_name: "框架侧 torch_npu.profiler 接入（训练 YAML 配置 / 推理 HTTP 启停）"
+  invocation: >-
+    训练：在框架 YAML 的 `training:` 段打开 `profile: true` 并给窗口（见 commands.training_yaml），启动训练即可采集，
+    产物落在 `profile_save_path` 下的 `ASCEND_PROFILER_OUTPUT/` 或 `*_ascend_pt` 目录。
+    推理：服务启动加 `--profiler-config '{...}'`，运行期用 HTTP 开关采集窗口。
+    **外层 msprof 能包住命令时优先用 msprof**（见 msprof-collect-parse）——本词条是包不住时的那条路。
+  commands:
+    training_yaml: "`training: {profile: true, profile_step_start: <起始步>, profile_step_end: <结束步，-1=到结束>, profile_ranks: [<卡号，默认全卡>], profile_level: level1, profile_export_type: db, profile_save_path: <目录>}`（另有 profile_with_cpu / profile_with_stack / profile_with_memory / profile_record_shapes 四个开销开关，按需开）"
+    window_math: "窗口必须落在真实 step 上：`skip_first + (wait + warmup + active) * repeat < 总 step 数`；结束为 -1 时 active 视为足够大，否则 `active = 结束 − 开始`，`active ≤ 0` 直接报错；`skip_first = max(0, 开始 − 1)`，`warmup` 在起始步为 0 时取 0、否则取 1"
+    inference_start: "`python3 -m vllm.entrypoints.openai.api_server ... --profiler-config '{profiler=torch, torch_profiler_dir=./vllm_profile}'`（值为 JSON，示例里给成键值便于阅读），随后 `curl -X POST http://localhost:8000/start_profile` 开、`curl -X POST http://localhost:8000/stop_profile` 关"
+    rl_two_sides: "RL 训推对比要在**同一次运行**内两侧都采：训练侧框架 `global_profiler`（tool=npu、steps、save_path）+ actor/ref 的 `profiler.enable=True` 与 `tool_config.npu.contents=['npu','cpu','shapes']`、`level=level1`；rollout 侧 `profiler.enable=True`、`tool=npu`、**`tool_config.npu.discrete=True`（不开则推理侧不独立采集）**"
+    inference_export_db: "推理侧 `export_type=Text` 不会自动落 db——必须离线解析：`from torch_npu.profiler.profiler import analyse; analyse(<dir>)`（CANN 不支持 text 自动带 db 时显式 `export_type=['db']`）"
+    verify_artifacts: "框架侧看 `ASCEND_PROFILER_OUTPUT/`（text 需 `trace_view.json` + `kernel_details.csv`，db 需 `ascend_pytorch_profiler_*.db`）；db 是否真有数据要查表行数（推理侧 `SELECT COUNT(*) FROM COMPUTE_TASK_INFO` > 0），不能只看文件存在"
+  output_meaning:
+    - "`profile_level` 决定字段面：level0 缺 shape/dtype/format/block_dim 与各类 ratio，通信带宽与通信矩阵也不产出——要判通信或算子 Bound 就别用 level0"
+    - "`profile_export_type` 建议 `db`（text 与 db 不要求同时存在，但缺 db 时通信带宽/矩阵类结论不可得）"
+    - "`profile_ranks` 默认 `[-1]` 全卡；只列部分卡时快慢卡类结论不能下（缺对照）"
+    - "RL 两侧各自落盘、目录形态不同（训练侧自动解析出 db，推理侧常只有 text），比对前先确认两侧都解析完成"
+  pitfalls:
+    - "**采集窗口与真实 step 数不匹配是最高频失败**：窗口落在热身/编译段，或超出总 step 数，结果采到一半或全是噪声——先按 window_math 算一遍再启动"
+    - "采集本身影响性能指标：**采集窗口内不要同时开 Dump**；单 step 采集通常已够回答瓶颈问题，不必全量"
+    - "接入不得改业务逻辑，profiler 必须与被采流程同进程（主控/调度进程不执行 NPU 计算时采不到）"
+    - "推理服务重启会丢现场：能用 HTTP 启停就别重启（`/start_profile` 的价值正是这个）"

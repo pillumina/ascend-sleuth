@@ -1,0 +1,80 @@
+id: profiler-breakdown-method
+type: methodology
+title: 性能数据逐级拆解（端到端→阶段→step→层的守恒自检、异常与漂移判据、置信度分级）
+summary: 把一份 profiling 数据拆成"哪一级吃掉了时间"的可核验结构时用的流程。核心是**守恒自检**：每一级都算 `缺口 = 父级 wall − Σ 子级 self`，逐级上报，**缺口超过父级 wall 的 5% 就要显式告警"归属不完整"**——不告警就会出现"看起来拆完了其实有一大块没归因"的假结论。异常与漂移用三条可配阈值：单点 outlier（`> P50 + 3σ`，或 `> P99`）、同卡跨 step 漂移（变异系数 `σ/μ > 0.20`）、跨运行比均值 ± σ 区间；**稳态口径要先剔除首 step 的编译/热身噪声与 prefill，并各去掉 ±1 个尾部 step**。结论必须带**置信度来源**（不是分数）：来自框架打点/`STEP_TIME` 的为高、来自锚点 + 层数校验的为中、靠推测或命中原算子/未知算子的为低——低置信项逐条列出并要求人工复核。降级路径：缺 step 边界信息时跳过 step 拆解并告警，而不是用错误的边界硬拆；框架打点（MSTX）默认不开，表为空是"没采"不是"没有阶段"。
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/msagent-profiler-breakdown/references/check-rules.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：守恒/阈值/置信度三级判据"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/msagent-profiler-breakdown/references/scenario-taxonomy.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：阶段拆解的置信度分级（打点 / 锚点 / 推测）与 P-D 共部署退化"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/msagent-profiler-breakdown/references/report-template.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：结论先行的报告结构与低置信度清单"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [torch_npu, vllm-ascend, sglang, verl, mindspeed-llm]
+  categories: [performance]
+
+related_references: [profiler-db-query, profiler-analysis-cli, profiler-analysis-triage, profiler-host-bound-triage, msprof-timeline-lane-reading]
+
+status: active
+last_verified: 2026-09-28
+
+content:
+  flow:
+    - step: 1
+      name: 定场景与拆解边界
+      action: >-
+        先确认负载类型与阶段口径（推理看 prefill/decode 或 P-D 分离，RL 看 rollout/reward/更新各阶段，训练看 step 边界），
+        再定"一次执行"的边界。**边界来源有强弱之分**：框架自身打点（`STEP_TIME`、MSTX 范围）最强；用锚点 + 层数/序列校验推出的中等；
+        靠命名规律推测的最弱。P-D 共部署（同一 batch 混 prefill 与 decode）时二分不成立，**退化为按重复出现的范围划分并降置信度**，
+        不要硬拆成 prefill/decode 两段。打点缺失时跳过该级并告警，不用错误边界硬拆。
+      check: "确定阶段口径 + 单次执行边界 + 该边界的来源（打点/锚点/推测）"
+      when_to_use: 拿到 profiling 数据后第一步
+    - step: 2
+      name: 逐级拆解并做守恒自检
+      action: >-
+        按 端到端 → 阶段 → step → 层 逐级下钻，每一级算 `缺口 = 父级 wall − Σ 子级 self`，逐级上报缺口值。
+        缺口分类：重叠（子项时间互相重叠）、未归因（自定义/未知范围）、取整误差。**默认告警线：缺口 > 父级 wall 的 5%**
+        → 显式标注"归属不完整"，不得当作拆解已完成。逐级都做一次，不是只做顶层。
+      check: "每级都给出 父级 wall / Σ 子级 self / 缺口 / 缺口占比"
+      when_to_use: 每一级拆解之后
+    - step: 3
+      name: 剔除稳态噪声后再看统计
+      action: >-
+        稳态口径：**剔除首 step 的编译/图捕获与热身噪声、剔除 prefill 段，并各去掉 ±1 个尾部 step**；样本过少
+        （默认少于 2 个 step）直接告警"样本不足"，不要用一两个 step 下分布结论。
+      check: "剔除了哪些 step、剩下多少样本"
+      when_to_use: 做 per-step 统计与跨 step 比较之前
+    - step: 4
+      name: 异常与漂移判据
+      action: >-
+        三条可配阈值：① 单点 outlier——`duration > P50 + 3σ`（或 `> P99`）；② 同卡跨 step 漂移——变异系数
+        `σ/μ > 0.20` 告警；③ 跨运行对比——用均值 ± σ 区间而非单点比。阈值允许按场景放宽/收紧，但**改阈值要写明改了哪一条**。
+      check: "每条结论后面注明命中的是哪条阈值、阈值取多少"
+      when_to_use: 定位到某级之后判"这算不算异常"
+    - step: 5
+      name: 归因到可执行动作（含跨运行对比）
+      action: >-
+        对占时最大的那一级继续下钻到具体算子/API；若要证明"某次优化有效"，用同口径的多运行对比（先对齐稳态口径与 step 数，
+        再比均值与分布），**不要拿单次最好成绩对比单次最差成绩**。Host 侧下发与空闲的归因走 profiler-host-bound-triage；
+        读原始表格的字段口径走 profiler-db-query。
+      check: "动作指向具体算子/API/环境变量 + 期望哪个指标变化 + 怎么验证"
+      when_to_use: 时间已经被拆到具体对象之后
+    - step: 6
+      name: 出结论（置信度与降级逐条列）
+      action: >-
+        结论先行：一句话结论 → 逐级耗时表（每级标 wall/self/占比/置信度等级）→ 阶段统计 → 热点下钻 → per-step 明细 →
+        稳态统计 → 异常与漂移 → **低置信度清单（逐条写"需人工复核"）** → 建议下一步。任何因字段缺失或打点缺失而降级的结论
+        必须在清单里出现，不能只写在正文里。
+      check: "低置信度清单非空时逐条列出；每条说明缺的是什么"
+      when_to_use: 输出报告时

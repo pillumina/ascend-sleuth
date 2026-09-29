@@ -1,0 +1,72 @@
+id: profiler-host-bound-triage
+type: methodology
+title: 下发/调度瓶颈判读（Host Bound 三条件 → Free 时间三拆 → 下发几何 → 主因桶与最小实验）
+summary: '怀疑"NPU 等 CPU"时的判读路径：**先证 Host Bound 而不是先看 API 延迟**——三条必须同时成立（设备 `Free` > step 的 10%，或其值远大于相邻 step/其他 rank 基线；Free 区间内既无计算任务也无通信任务；下发侧 gap 与 Free 区间对齐），缺一条就只能写"证据不足"。成立后把 Free 时间**拆三段**（Preparation＝step 起到首个设备任务、in-step 大空隙、尾部），再用下发几何定主因：dispatch 到执行近乎垂直且与 Free 重叠 → 下发瓶颈；launch 后设备延迟启动而设备本就有活 → 正常排队；斜率突然变陡处常是"host 下发不再被设备工作掩盖"的分界。主因分五桶（模型侧下发压力 / 同步断点 / 纯 CPU 工作 / CPU 调度干扰 / 内存分配与 GC），每桶落到最小实验。**反面条款是这张流程的主要价值**：高 API 延迟单独不能判 Host Bound；`launch` 耗时已含在 `Dequeue@` 内、不得二次相加；不得因 Host Bound 就推荐换内存分配器；`TASK_QUEUE_ENABLE=2` 不是万灵药；CPU 绑核要有抢占/迁移/快慢卡证据才动，且改动前先查拓扑避免跨 NUMA。'
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-schedule-analysis/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：证据标准、Free 三拆、下发几何判读与主因桶"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [torch_npu, mindspeed-llm, verl]
+  categories: [performance]
+
+related_references: [profiler-db-query, profiler-analysis-cli, profiler-analysis-triage, msprof-comm-bottleneck-thresholds, profiler-breakdown-method]
+
+status: active
+last_verified: 2026-09-28
+
+content:
+  flow:
+    - step: 1
+      name: 取 step 级时间与下发记录
+      action: >-
+        先拿 step 级汇总：`analysis.db/StepTraceTime` 或 `step_trace_time.csv` 里的设备 Free 时间与 Preparation 时间。
+        下发侧读 `PYTORCH_API` / `CANN_API`，注意 `depth` 列——`depth=1` 可用，`depth=0` 多为 `ProfilerStep#` 外层包装、粒度太粗。
+        集群场景先按设备 Free 时间排序取最长的 rank 作为首要嫌疑，再与 Free 最短的 rank 在同一 step 区间对比下发 API。
+      check: "Free 占比或时长 + Preparation 时长 + depth=1 的下发序列（同一 step 区间至少两个 rank 对比）"
+      when_to_use: 端到端变慢且疑似 NPU 等 CPU 时（已采到 profiling 数据）
+    - step: 2
+      name: 判 Host Bound 是否成立（三条件须同时）
+      action: >-
+        ① 设备 `Free` 时间大于 step 的 10%，或远大于相邻 step / 其他 rank 基线；② 该 Free 区间内既无计算任务也无通信任务；
+        ③ 下发或 host 侧 gap 与该 Free 区间对齐。三者缺一即**不成立**，输出"证据不足"并写清缺哪一条、需要补什么数据。
+      check: "Free 占比 > 10%；Free 区间内任务数 = 0；gap 与 Free 区间时间对齐"
+      when_to_use: 手上有 step 级时间与下发记录之后
+    - step: 3
+      name: 把 Free 时间拆成三段
+      action: >-
+        ① Preparation：step 开始到首个设备任务之间；② in-step Free 空隙：首个到最后一个设备任务之间的大块空白（可用
+        `msprof-analyze -m free_analysis` 自动归因成因，注意该模式**不能直接传单卡目录**，要传集群路径或单卡父目录）；
+        ③ 尾部/边界效应：最后一个设备任务之后，与下发瓶颈分开处理，除非它阻塞了下一个 step。
+      check: "三段各自时长与占比；段内是否有任务与通信"
+      when_to_use: Host Bound 三条件成立后，用于决定优化对象
+    - step: 4
+      name: 用下发几何定主因桶
+      action: >-
+        看 framework call → kernel launch → device execution 的关系：dispatch 到执行近乎垂直且与 Free 重叠 → 下发瓶颈；
+        launch 后设备延迟启动但设备已有排队工作 → 健康排队；斜率突然变陡的位置常是 host 下发不再被设备工作掩盖的分界。
+        再按 API 形态分桶：`Dequeue@` 长 → 二级流水 `acl_thread` 受扰；`Enqueue@` 长 → task queue 满或框架下发线程受扰；
+        `aten::`/`npu::` 长 → 框架下发线程受扰。五桶：模型侧下发压力 / 同步断点（`aclrtSynchronizeStream`、`aten::item`、`.cpu()`）/
+        纯 CPU 工作 / CPU 调度干扰（抢占、迁移）/ 内存分配与 GC。**`launch` 耗时已包含在 `Dequeue@` 内，不得二次相加**。
+      check: "API 序列与 Free 区间的对齐关系；每桶至少一条 API 形态证据"
+      when_to_use: 已确认设备存在饿死区间
+    - step: 5
+      name: 映射最小实验（带影响面）
+      action: >-
+        按桶给一个最小可验证动作，并说明影响面与回滚：下发压力 → `TASK_QUEUE_ENABLE`（`0` 关闭；`1` 或未设 = Level1，aclnn 调用进二级流水；
+        `2` = Level2，再搬 workspace，二进制支持时推荐值——**Level2 会抬高峰值 NPU 内存**，且 `ASCEND_LAUNCH_BLOCKING=1` 时 task queue 被禁用、该变量无效）；
+        编译期算子缓存 → `ACLNN_CACHE_LIMIT`（默认 10000，范围 [1,10000000]）；CPU 调度干扰 → `CPU_AFFINITY_CONF`（mode `0`/未设 关闭、
+        `1` 粗粒度、`2` 细粒度），**动绑核前先 `npu-smi info -t topo` 查拓扑，跨 NUMA 访存会抵消收益**；纯 CPU 工作 → 见 profiler-breakdown-method 的 CPU 面。
+      check: "每个动作给“改什么 + 期望哪个指标变化 + 怎么回滚”三件套"
+      when_to_use: 定完主因桶、要给出可执行建议时
+    - step: 6
+      name: 收尾报告（含降级声明）
+      action: >-
+        必报四件：分析的 rank 与 step、Free 占比或时长、支撑结论的具体区间或 API 序列、结论是高置信还是因缺字段降级。
+        缺字段时逐条列出"因此不能下哪类结论"，不要把"没采到"写成"没有"。
+      check: "四件都写全；降级项逐条列出"
+      when_to_use: 输出结论前

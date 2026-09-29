@@ -6,7 +6,7 @@
 #   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：
 #   references/_procedure-index.yaml
 #
-# 本片流程条数：10    本片加载成本：约 1709 token
+# 本片流程条数：12    本片加载成本：约 2033 token
 entries:
 - id: ascend-hardware-detect-triage
   title: 硬件与压力检测判读（asys diagnose 四模式 → Pass/Warn/Fail → [ERROR] AML 错误码前缀分流 → 电压恢复）
@@ -82,6 +82,22 @@ entries:
   platforms:
   - A5-950
   file: references/methodologies/pipeline-slot-and-attribution-discipline.yaml
+- id: profiler-breakdown-method
+  title: 性能数据逐级拆解（端到端→阶段→step→层的守恒自检、异常与漂移判据、置信度分级）
+  summary: 把一份 profiling 数据拆成"哪一级吃掉了时间"的可核验结构时用的流程。核心是**守恒自检**：每一级都算 `缺口 = 父级 wall − Σ 子级 self`，逐级上报，**缺口超过父级 wall 的 5% 就要显式告警"归属不完整"**——不告警就会出现"看起来拆完了其实有一大块没归因"的假结论。异常与漂移用三条可配阈值：单点 outlier（`> P50 + 3σ`，或 `> P9…
+  categories:
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/profiler-breakdown-method.yaml
+- id: profiler-host-bound-triage
+  title: 下发/调度瓶颈判读（Host Bound 三条件 → Free 时间三拆 → 下发几何 → 主因桶与最小实验）
+  summary: 怀疑"NPU 等 CPU"时的判读路径：**先证 Host Bound 而不是先看 API 延迟**——三条必须同时成立（设备 `Free` > step 的 10%，或其值远大于相邻 step/其他 rank 基线；Free 区间内既无计算任务也无通信任务；下发侧 gap 与 Free 区间对齐），缺一条就只能写"证据不足"。成立后把 Free 时间**拆三段**（Preparation＝st…
+  categories:
+  - performance
+  platforms:
+  - cross
+  file: references/methodologies/profiler-host-bound-triage.yaml
 - id: simt-vs-simd-selection
   title: SIMT / SIMD 与 MemBase / RegBase 的选型判据（标量受限时先试纯 SIMT）
   summary: 选型不是偏好问题，按判据走：①出现**逐元素标量循环把算子锁在 Scalar 引擎**（`aiv_scalar_ratio≈0.999` 且 `aiv_vec_ratio≈0`）时，改纯 SIMT（grid-stride）是首选，实测主 Bound 切到 Vector、收益可达数十倍；②但纯 SIMT 在 **bins 超出 UB 容量**时会退到 GM 原子累加、代价极高，且 `innerDi…

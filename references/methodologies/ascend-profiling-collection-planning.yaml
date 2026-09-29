@@ -33,14 +33,28 @@ applies_to:
 related_references: [msprof-collect-parse, msprof-configuration-options, msprof-collection-mechanism-and-metric-semantics, profiling-env, msprof-timeline-lane-reading]
 
 status: active
-last_verified: 2026-09-15
+last_verified: 2026-09-28
 
 content:
   flow:
     - step: 1
+      name: 先判手上这份数据能不能用（分析前置体检）
+      action: >-
+        拿到的是**已有产物**（不是要新采）时，先做三件事再决定要不要重采：① **认类型**——顶层目录形态决定全程规则，
+        `[*]_ascend_pt` 是框架侧 torch_npu profiler 产物、`[*]_ascend_ms` 是 MindSpore 侧、含 `PROF_<时间戳>` 的是 msprof 产物，
+        **三种不要混用**；② **查有没有正常结束**——缺 `profiler_info.json`（或 `profiler_info_<Rank_ID>.json`）说明采集未正常 Stop，
+        msprof 侧缺 `PROF_*/device_*/end_info.*` 说明未正常结束，这两类残缺数据的时间线不可信；③ **对交付件清单**——框架侧看
+        `ASCEND_PROFILER_OUTPUT`（text 模式需 `trace_view.json` + `kernel_details.csv`，db 模式需 `ascend_pytorch_profiler_*.db`），
+        msprof 侧看 `mindstudio_profiler_output/`（需 `msprof_*.db`，或 `msprof_<ts>.json` + `op_summary.csv`）。
+        三态结论：**valid**（可分析）/ **invalid**（必须停，先重采）/ **unparsed**（文件在但未解析——先跑
+        `msprof --export=on --output=<path>` 或框架侧解析接口，再回到 valid 判据）。多卡默认抽查 Rank0。text 与 db 交付件不要求
+        同时存在，但用了哪一档要写清：**缺 db 时通信带宽与通信矩阵类结论不可得**（不是"通信没问题"）。
+      check: "`ls <顶层目录>` 认类型；`ls <产物>/profiler_info*.json` 或 `ls PROF_*/device_*/end_info.*` 验结束；`ls ASCEND_PROFILER_OUTPUT` / `ls mindstudio_profiler_output` 对交付件"
+      when_to_use: 用户给的是已有采集产物时（先于选采集方式）
+    - step: 2
       name: 选采集方式
-      action: 首选 msprof 命令行——**方式一（推荐）**在 msprof 命令末尾直接跟用户程序或脚本；方式二用 `--application` 传入（但参数值含需加引号的符号时可能识别不了，此时把命令写进 Shell 脚本再传入）。需要跳过启动阶段/只采一段区间用延迟采集（`--delay`/`--duration`，仅采集 AI 任务运行性能数据时支持，且与动态采集互斥）；需要采业务过程中的某个片段用动态采集；已有代码里已集成接口则走 acl C&C++ 接口、Ascend Graph 接口或 acl.json 配置；TensorFlow 训练/在线推理场景可用环境变量方式（PROFILING_MODE + PROFILING_OPTIONS）。
-      check: "msprof <app> ... / msprof --application=\"...\" ... / --delay + --duration / --dynamic=on"
+      action: 首选 msprof 命令行——**方式一（推荐）**在 msprof 命令末尾直接跟用户程序或脚本；方式二用 `--application` 传入（但参数值含需加引号的符号时可能识别不了，此时把命令写进 Shell 脚本再传入）。需要跳过启动阶段/只采一段区间用延迟采集（`--delay`/`--duration`，仅采集 AI 任务运行性能数据时支持，且与动态采集互斥）；需要采业务过程中的某个片段用动态采集；已有代码里已集成接口则走 acl C&C++ 接口、Ascend Graph 接口或 acl.json 配置；TensorFlow 训练/在线推理场景可用环境变量方式（PROFILING_MODE + PROFILING_OPTIONS）。**框架侧接入另有两条入口**：训练/RL 走框架的 profile 配置块（如 `profile` / `profile_step_start` / `profile_step_end` / `profile_ranks` / `profile_level` / `profile_export_type`，`profile_ranks` 默认 `[-1]` 全卡），**硬约束是采集窗口必须落在真实 step 范围内**——`skip_first + (wait + warmup + active) * repeat` 不得超过总 step 数，否则采不到完整窗口（`profile_step_end=-1` 视为采到结束）；推理服务走 `--profiler-config '{"profiler":"torch","torch_profiler_dir":...}'` 启动、运行期用 `curl -X POST /start_profile` 与 `/stop_profile` 控制采集窗口。框架侧接入的三条纪律：不改业务逻辑（外层封装）、同进程才能采到、RL 各阶段的 profiler 控制要解耦。
+      check: "msprof <app> ... / msprof --application=\"...\" ... / --delay + --duration / --dynamic=on；框架侧 profile 配置块 + POST /start_profile|/stop_profile"
       when_to_use: 决定采集方式时
     - step: 2
       name: 前置检查（权限、环境、无冲突项）

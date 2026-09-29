@@ -1,0 +1,53 @@
+id: profiler-analysis-cli
+type: tool
+title: msprof-analyze 执行层（集群分析各模式 / advisor 算子级建议 / free_analysis / 调用约束与判读阈值）
+summary: '手上已有 profiling 数据、要一条命令出结论时用的一层：**聚类分析** `msprof-analyze -m <mode> -d <集群数据路径> -o <输出> --agent`（模式含 `cluster_time_summary` 迭代耗时拆解 / `free_analysis` 设备侧大块空闲归因 / `freq_analysis` AICore 频率异常 / `slow_rank` 快慢卡 / `communication_time_sum`、`hccl_sum`、`all` 通信面 / `ep_load_balance` MoE 负载；不传 `-m` 等价 `all`），**算子级建议** `msprof-analyze advisor <all|computation|schedule> -d <单卡 rank 目录> -o <输出> --agent`。它把"读 DB 写 SQL"这一步替你做完，所以**入口优先级最高**：先跑它，答不了具体问题时才降到 SQL 直查（见 profiler-db-query）。三条调用约束是踩过的坑：集群模式**不要传单卡目录**（要传集群路径或单卡父目录集），advisor **必须传 `-o`** 且多卡时**指到目标 rank 子目录**而不是集群根，**不要孤立分析单卡**（快慢卡结论必须来自多卡对比）。判读阈值与否定条款见 profiler-analysis-triage。'
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-msprof-analyze-cli/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：集群分析模式表、命令模板、调用约束与输出契约"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-schedule-analysis/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：`free_analysis` 的路径限制与 Host Bound 判据"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msprof-analyze]
+  categories: [performance]
+
+related_references: [msprof-collect-parse, profiler-db-query, profiler-analysis-triage, msprof-comm-bottleneck-thresholds, msprof-timeline-lane-reading]
+
+status: active
+last_verified: 2026-09-28
+
+content:
+  tool_name: "msprof-analyze（MindStudio Profiler Analyze，性能数据统计/比对/诊断命令行）"
+  invocation: >-
+    **集群面**：`msprof-analyze -m <mode> -d <集群数据路径> -o <输出目录> [--force] --agent`；
+    **算子面**：`msprof-analyze advisor <all|computation|schedule> -d <单卡 profiling 路径> -o <输出目录> [--force] --agent`。
+    加 `--agent` 是给 agent 消费的结构化输出形态；命令失败或产出为空时**去掉 `--agent` 自查**再回来。
+  commands:
+    cluster_summary: "`msprof-analyze -m cluster_time_summary -d <cluster_data> -o <out> --agent`——各 rank 的计算/通信/内存拷贝/空闲时间占比拆解，找瓶颈的第一入口"
+    free_analysis: "`msprof-analyze -m free_analysis -d <集群路径或单卡父目录> -o <out> --agent`——设备侧大块空闲的成因（**不能直接传单卡目录**）"
+    freq_analysis: "`msprof-analyze -m freq_analysis -d <cluster_data> -o <out> --agent`——AICore 是否空闲（800MHz）或异常（非 1800/800MHz）"
+    slow_rank: "`msprof-analyze -m slow_rank -d <cluster_data> -o <out> --agent`——按快慢卡统计算法给出各 rank 影响次数与原因"
+    comm_modes: "`-m communication_time_sum`（通信时间与带宽汇总）/ `-m hccl_sum`（通信算子汇总）/ `-m all`（同时出通信矩阵 communication_matrix 与通信耗时 communication_time；不传 -m 等价 all）"
+    compute_side: "`-m compute_op_sum`（device 侧计算算子汇总）/ `-m cann_api_sum`（CANN 层 API 汇总）/ `-m ep_load_balance`（MoE 负载）"
+    advisor: "`msprof-analyze advisor all -d <单卡路径> -o <out> --agent`（每跑一次都会产生新产物，**必须显式传 -o**；多卡场景要指到目标 rank 子目录而非集群根）"
+    how_to_read_advisor: "advisor 产物优先看 XLSX：sheet 名含 `AICPU Issues`、`Operator Dynamic Shape Issues`、`AI Core Performance Analysis`、`Cube Operator Perf Analysis`、`FA Operator Perf Analysis`、`Vector Operator Perf Analysis`、`Block Dim Issues`、`Operator No Bound Issues`、`AI Core Frequency Issues`、`Affinity API Issues`，综述 sheet 名为 `问题综述` 或 `problems`"
+  output_meaning:
+    - "**报告单位统一换算成 ms**（原始列多为 µs），不标单位会被读错量级"
+    - "集群产物面：`cluster_step_trace_time.csv`（A–O 列）、`ClusterTimeSummary`、`SlowRank`/`SlowOpStats`、`HcclTopOpStats`、`stats.ipynb`；通信汇总里带宽列单位 GB/s、传输时长 ms、传输量 MB"
+    - "advisor 结论是“逐条 issue”形态：每条给问题、涉及算子/API 与建议，**不要直接照抄文本当结论**，要与 overview 的时间占比互相对上"
+    - "缺 db 时 Recipe 面不可用——PyTorch 侧要采集时带 `export_type=['db']`"
+  pitfalls:
+    - "**不要孤立分析单卡**：快慢卡/链路类结论必须来自多卡对比；命令行失败后不要转去逐个 rank 读原始数据顶上"
+    - "`profiler_level` 过低（level0）时通信带宽与通信矩阵不会产出——先要求按 level1+ 重采，别在缺数据的情况下下结论"
+    - "`--rank_list` / `--step_id` 必须真实存在，写错的组合不会报“参数非法”，只会得到空结果"
+    - "拿不准该用哪个 `-m` 模式时**让用户明确**，不要自己试；模式选错不会报错，只会给一份答非所问的报告"
+    - "单 step 采集足够回答瓶颈类问题，不必采全量（采集本身影响指标）"

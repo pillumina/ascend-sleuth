@@ -1,0 +1,102 @@
+id: profiler-analysis-triage
+type: fault-pattern
+title: 性能数据判读分流（快慢卡 / 空闲时间 / 频率 / 链路 / 算子级 Bound 的判据，含每条的反面条款）
+summary: '把 profiling 的读数变成"下一步动哪里"的判据表，按主题域成表。**共同前提**：先确认采集级别——`profiler_level` 为 level0 时缺 shape/dtype/format/block_dim/各类 ratio 字段，通信带宽与通信矩阵也不产出；缺这些字段时**不得下对应结论**（如实标注降级，不要用"没有"解释）。三条铁律：找"最先/最主要"而不是"最大"；用同批数据的其余卡/其余 step 作对照，而不是绝对幅度；**只在关键路径上的耗时才算问题**。每条判据都配了反面条款——这些"看到 X 不要判 Y"是这张表的主要价值。'
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-msprof-analyze-cli/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：集群诊断先验规则（快慢卡/链路/频率/通信瓶颈）"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-computation-analysis/references/failure_handbook.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：计算侧失败模式与误判清单（Common False Positives）"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-schedule-analysis/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：Host Bound 证据标准与下发几何判读"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-communication-analysis/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：wait 门控与带宽锚点"
+    fetched_at: 2026-09-28
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msprof-analyze, msprof, torch_npu]
+  categories: [performance]
+
+related_references: [profiler-analysis-cli, profiler-db-query, msprof-comm-bottleneck-thresholds, msprof-timeline-lane-reading, operator-bottleneck-attribution, msprof-output-reading-and-performance-analysis]
+
+status: active
+last_verified: 2026-09-28
+
+content:
+  patterns:
+    - pattern: 'Host 下发瓶颈引起的"伪快卡"'
+      symptoms:
+        - "某 rank 的 Free Time 占比 > 10%，或远超同时段其他 rank 的均值"
+        - "该 rank 的 Compute 与 Communication 时间同时异常偏短"
+        - "它一发起通信，其他卡立刻完成（其他卡 Wait 长、它 Wait 短）"
+      cause: "该卡 CPU 下发慢，NPU 长期饿死——它的通信“快”是因为别人等它，不是因为链路好。它不是快卡而是拖慢集群的那张卡"
+      fix: "按 Host 侧下发路径查（free_analysis 看空闲成因、freq_analysis 排除频率异常），处理方向是下发压力/同步断点/CPU 竞争"
+    - pattern: 计算型慢卡
+      symptoms:
+        - "各卡 Free Time 普遍短且均匀，无单卡空闲突出"
+        - "某卡 Compute Time 显著大于均值"
+      cause: "计算量或算子实现差异落在该卡上（负载不均、算子退化）"
+      fix: "对该 rank 做算子级下钻（advisor computation 面 + 算子耗时排序），对比与正常卡的算子拆解"
+    - pattern: 慢链路
+      symptoms:
+        - "同一 transport/link 类型的链路中，某条 Bandwidth 显著低于同类均值"
+        - "官方判定口径：链路带宽小于平均带宽 20% 时会被列为最慢链路"
+      cause: "链路劣化或配置问题；速度序为 LOCAL（片内拷贝）> HCCS/PCIE（节点内片间）> RDMA（节点间）"
+      fix: "先按链路类型对同类比（不与更快的链路类型比），再看该链路两端的通信矩阵；结合 hccn_tool 类网络面命令排查"
+    - pattern: AICore 频率异常
+      symptoms:
+        - "AICore 频率出现 800MHz（空闲态）或既非 1800MHz 也非 800MHz 的值"
+      cause: "算子等待或调度问题导致降频/空转——**频率异常通常是次生现象**"
+      fix: "用 freq_analysis 定位出现频率异常的 rank/时段，再回到该时段的任务分布找主因；不要把降频本身当根因"
+    - pattern: 通信耗时高但链路正常
+      symptoms:
+        - "通信耗时占比高，快慢卡差异明显"
+        - "带宽使用率 > 0.8（官方口径：带宽使用正常，全网链路无瓶颈）"
+      cause: "等待而非传输——需要区分 Host 侧下发慢与 Device 侧计算慢造成的等待"
+      fix: "先做 wait 门控：拿到等待占比与传输前同步占比再分流（阈值 0.2 的两个比例见 msprof-comm-bottleneck-thresholds）"
+    - pattern: 小包低带宽（不是链路故障）
+      symptoms:
+        - "通信带宽偏低，但传输量小（跨片 SDMA < 16MB、跨节点 RDMA < 1MB）"
+      cause: "包太小，未吃满带宽，属预期行为"
+      fix: "优化方向是增大单次传输量或减少通信次数，不是查链路；判链路故障前先排除小包"
+    - pattern: 疑似通信地址未对齐
+      symptoms:
+        - "传输量不是 512 的整数倍，且带宽极低"
+      cause: "地址未对齐导致传输退化（参考官方 best practice：通信地址未对齐）"
+      fix: "对齐参与通信的张量地址/切片起点后复测"
+    - pattern: 计算侧 Bound 误判（ratio 噪声与相邻算子）
+      symptoms:
+        - "极短 kernel 的 mac_ratio / mte2_ratio 忽高忽低"
+        - "某 kernel 变慢但其前后存在成对的 TransData/Transpose/Cast"
+        - "高频次但总耗时很短的 Vector 算子，且不在关键路径上"
+      cause: "ratio 在极短 kernel 上是噪声；NZ 等格式调整能加速 kernel，但两端成对搬运会把收益抵消；非关键路径的耗时不影响端到端"
+      fix: "只对时长可观测的 kernel 下结论；把成对搬运算子合起来算收益；按时间影响排序而不是按单算子 ratio 排序"
+    - pattern: 把通信 helper 当计算热点
+      symptoms:
+        - "算子名含 `allgatherAicpuKernel` / `allreduceAicpuKernel` 且被列为 AICPU 热点"
+      cause: "它们是通信的 AICPU 辅助 kernel，属通信面而非计算热点"
+      fix: "转到通信面分析（wait 门控与通信耗时拆分），不要在计算侧给优化建议"
+    - pattern: '采集级别不足导致的假"缺失"'
+      symptoms:
+        - "缺少 shape/dtype/format/op type/block dim/各类 ratio 字段"
+        - "通信带宽与通信矩阵表为空或不存在"
+        - "small task 的 transit_size / link_type / src_rank / dst_rank 全为 0 或同一个值"
+      cause: "`profiler_level` 为 level0（字段级降级），或 small task 字段落入库内默认值"
+      fix: "判 unknown 而不是判“零/未通信”，要求按 level1+ 重采（PyTorch 侧采集时带 `export_type=['db']`）"
+    - pattern: 高 API 延迟被当成 Host Bound
+      symptoms:
+        - "PYTORCH_API/CANN_API 里某类调用延迟很高"
+      cause: "设备侧已有排队工作时，慢 API 只是优化机会，不等于设备饿死"
+      fix: "Host Bound 必须三条同时成立（见 profiler-host-bound-triage）：设备 Free > step 的 10%、Free 区间内既无计算也无通信、下发 gap 与 Free 区间对齐"
