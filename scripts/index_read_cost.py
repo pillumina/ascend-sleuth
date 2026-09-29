@@ -45,7 +45,8 @@ import build_index as BI  # noqa: E402
 
 # 每格阶段一实读的硬线（token）。20000 是**推导**来的，不是拍的：诊断会话的常驻指令面
 # （SKILL 11.4K + 仓库指令 5.7K + 路由表 4.1K ≈ 21K）是"每次都要读"的量——阶段一不该比它更贵。
-# 软线 8000 ≈ 该面的 37%（到这里就该问"能不能再省"；与 ADR-0004 的 soft/hard 两级同构）。
+# 软线 8000 ≈ 该面的 38%（到这里就该问"能不能再省"；与 ADR-0004 的 soft/hard 两级同构）。
+#   比值与 `metrics/gates.yaml`、ADR-0004 的读侧一节同口径（8000/21000 = 38%）。
 # 两个常数服从 roadmap 参数治理：metrics 实测（回放命中率 vs 读入量）后复核。
 DEFAULT_HARD_TOK = 20000
 SOFT_TOK = 8000
@@ -114,7 +115,7 @@ def bg_residual(root: Path) -> dict:
 
     为什么先量这个而不是先给先验层定一条 token 硬线：先验层是检索式读取——一次 grep 加
     ≤5 行上限，token 成本**不随库大小线性涨**，所以"读太多"不是它的退化形态；"翻不到"才是。
-    残量（每张卡 × 每个性质要在一堆行里挑）随词条数线性增长，比 token 更早报警。
+    残量（每张卡 × 每个性质要在一堆行里挑）随词条数线性增长，比 token 更早越过可用线。
     没填 platforms 视为跨平台（与 diagnose 步骤 2 的读法一致）。
     """
     p = root / "references" / "_summary-index.yaml"
@@ -180,8 +181,8 @@ def reference_costs(root: Path) -> list:
 def stage2_costs(root: Path) -> dict:
     """阶段二候选全文（≤5 条）：单条成本的中位与最贵 5 条合计（**只量不判**）。
 
-    上限是"读几条候选"，不是"读多少字"——压低字数是压低证据量。所以这里只报数：
-    候选全文的最坏 5 条与阶段一最贵的格子是同一量级，这笔账此前完全没记。
+    上限是"读几条候选"（读多少字是它的结果）——压低字数是压低证据量。所以这里只报数：
+    候选全文的最坏 5 条与阶段一最贵的格子是同一量级，这笔账此前没有记录。
     """
     kdir = root / "knowledge"
     if not kdir.is_dir():
@@ -195,7 +196,7 @@ def stage2_costs(root: Path) -> dict:
 
 
 def _row_line(v: dict, cap: int, soft: int) -> str:
-    """人读表一行。越线的话术照实说「超了哪条线」，不混成一句。"""
+    """人读表一行。越线的话术指到具体那一条线，不混成一句。"""
     name = f"{v['namespace']} × {v['category']}" if v["kind"] == "cell" else v["namespace"]
     flag = ""
     if v["tok"] is None:
@@ -239,7 +240,9 @@ def main() -> int:
     # 此前兜底视图被排除在外（"不在上面的硬线里"）——于是全系统最贵的一次读（vllm-ascend
     # 兜底视图 2.4 万 token）不在任何判据里，`--json` 也退 0。
     views = cells if args.cell else data["views"]
-    over = [v for v in views if v["tok"] is not None and v["tok"] > args.cap]
+    # 硬线的比较符与 `metrics/gates.yaml` 一致（`>=`）：恰好等于硬线时体检判越线，脚本也要判，
+    # 否则同一个数在体检里越线、在这里退 0（独立预核实测的两处定义）。
+    over = [v for v in views if v["tok"] is not None and v["tok"] >= args.cap]
     label = lambda v: (f"{v['namespace']}/{v['category']}" if v["kind"] == "cell" else f"{v['namespace']}（兜底）")
     if args.json:
         out = {"cells": cells, "fallbacks": [] if args.cell else fallbacks,
@@ -263,6 +266,9 @@ def main() -> int:
         for f in sorted(fallbacks, key=lambda x: -(x["tok"] or 0)):
             print("  " + _row_line(f, args.cap, data["soft_tok"]))
         refs, stage2, residual = reference_costs(root), stage2_costs(root), bg_residual(root)
+        if not refs:
+            # 量不出必须显式写出来：静默省略会让「这个检出没有 references/」与「先验层很便宜」同形
+            print("③ 先验层：量不出（这个检出里没有 references/）——不是 0")
         if refs:
             print("③ 先验层（只量不判：检索式读取，成本不随库大小涨；退化量是检索残量）：")
             for r in sorted(refs, key=lambda x: -x["tok"]):
@@ -275,6 +281,8 @@ def main() -> int:
                       f"（跨平台行 interrupt {residual['cross_only_by_category']['interrupt']} / "
                       f"precision {residual['cross_only_by_category']['precision']} / "
                       f"performance {residual['cross_only_by_category']['performance']}）")
+        if not stage2:
+            print("④ 阶段二候选全文：量不出（knowledge/ 下没有 case 文件）——不是 0")
         if stage2:
             print("④ 阶段二候选全文（只量不判：上限是「读几条候选」，压低字数等于压低证据量）：")
             print(f"  {stage2['cases']} 条 case：单条中位 {stage2['median']} tok、最贵 {stage2['max']} tok"

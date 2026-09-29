@@ -247,6 +247,7 @@ def main():
     structural_unavailable = not (structural.get("capacity_by_ns") or {})
     # 阶段一实读成本**现算**（与条数同源：都从 case 文件算，不读快照里的旧值）。
     # 为什么不用快照里的 tok：判据要判的是"现在这格多贵"，快照可能是上期的。
+    live_ok = False
     try:
         cells = [(ns, cat, c["count"], c.get("tok")) for ns, cs in (structural.get("capacity_by_ns") or {}).items()
                  for cat, c in cs.items()]
@@ -260,6 +261,7 @@ def main():
             live_costs = {(c["namespace"], c["category"]): c["tok"] for c in live["cells"]}
             cells = [(ns, cat, n, live_costs.get((ns, cat))) for ns, cat, n, _t in cells]
         fallbacks = [(f["namespace"], None, f["rows"], f["tok"]) for f in live["fallbacks"]]
+        live_ok = True
     except Exception as e:
         s_notes.append(f"读入成本现算失败（{type(e).__name__}: {str(e)[:120]}）——容量线本轮未被评估")
         cells, fallbacks = [], []
@@ -321,7 +323,7 @@ def main():
         else:
             plain = (f"{ns_label(ns)} 的问题性质没判出来时，要整读这 {n} 条 case 的索引（约 {tok} 字）"
                      + (f"，是硬线 {hard_tok} 的 {round(tok / hard_tok, 1)} 倍" if tok >= hard_tok else "")
-                     + "。这条读取路径此前不在任何线上——先用窄列视图（只留 id/标题/标签）找候选，"
+                     + "。这条读取路径此前不在清单里：先用窄列视图（只留 id/标题/标签）找候选，"
                        "再读判出来的那一类的索引")
         findings.append(("fail", "容量",
                          f"{where} = {tok} tok（{n} 条）{drift} —— 越过 "
@@ -337,15 +339,23 @@ def main():
                                           + "、".join(f"{ns} 兜底视图" for ns in fb_unmeasurable)),
                          "python3 scripts/build_index.py",
                          "读入成本量不出来（结构侧/读侧视图缺失）——先重建索引再看容量"))
-    if not capacity_hits and not unmeasurable and not fb_unmeasurable:
+    if not live_ok:
+        # 现算抛错时 cells/fallbacks 都是空的，容量面的每条比较都不成立——若不单独报，
+        # 下面那条「均未触发」就会亮出来（独立预核实测的形状：同一屏里既有 ✓ 又有「本轮未被评估」）。
+        findings.append(("warn", "容量", "容量线未评估：读入成本现算失败（结构侧拿到了，现算抛错）",
+                         "python3 scripts/index_read_cost.py",
+                         "读入成本没算出来——先看这条命令报什么错，别把这一面读成没有越界"))
+    elif not capacity_hits and not unmeasurable and not fb_unmeasurable:
         ids = "、".join(str(g.get("id")) for g in gates
                        if g.get("dimension") in ("capacity_cell_read_tok", "capacity_fallback_read_tok"))
         findings.append(("ok", "容量", f"两类读入视图均未触发 ({ids})", None, None))
 
     for g in gates:
         gid, dim, op, val = g.get("id"), g.get("dimension"), g.get("op"), g.get("value")
-        if dim == "capacity_cell_read_tok":
-            pass   # 已在上面按格子合并处理
+        if dim in ("capacity_cell_read_tok", "capacity_fallback_read_tok"):
+            pass   # 两类读入视图的容量线已在上面合并处理（按 dimension 分别判）
+            # 漏一个的后果（独立预核实测）：报告同时写「闸门 5/5 条已评估」和「dimension
+            # 'capacity_fallback_read_tok' 没有对应评估实现」——自相矛盾，而 EV 卡正拿这句话当验收证据。
         elif dim == "feedback_capture_total":
             live_m = ((last_live or {}).get("metrics") or {})
             fc = live_m.get("feedback_capture")

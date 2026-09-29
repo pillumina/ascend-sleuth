@@ -53,7 +53,7 @@ skill 的名单、分组与"谁用得上"**不在此处维护**：由 `docs/_man
 
 ### Reference layer (prior knowledge)
 
-`references/` 放先验知识（与具体事故无关的事实 + 方法论），与 case 并列。**它不是第四层检索**——不参与候选路由与排序。它有两个消费点，都锚在流程里的缺口上：**数据缺口**（还没有测量数据 → 工具词条的采集面，在候选加载前消费）与**判断缺口**（候选已载入但缺签名/背景/修复依据 → 诊断步骤 2.5）。两处都只读 `status: active`。
+`references/` 放先验知识（与具体事故无关的事实 + 方法论），与 case 并列。**它不是第四层检索**——不参与候选路由与排序。它的消费点都锚在流程里的缺口上：**数据缺口**（还没有测量数据 → 工具词条的采集面，在候选加载前消费）、**判断缺口**（理解侧：证据里的码/签名/名/版本组合 → 步骤 2 收尾查表族；背景侧：平台 / 软件 / 工具事实 → 同一步收尾取背景层，**与候选是否命中无关**）、**修复依据**（候选命中后按 `ref_knowledge` 取，步骤 3 阶段 2.5）、**方法缺口**（候选全未命中 → 步骤 5 取流程）。各处都只读 `status: active`。
 
 - **两种组织形态**（组织单位 = 校验单位）：数据集表（error-code / fault-pattern / env-var-table，一族/一域/一模块一个文件）与独立词条（fact: platform-fact / software-fact / tool / command-side-effect；flow: methodology）。
 - **生命周期**：to-reference 产出 `status: active` → PR review 即闸门 → 合入即生效；诊断只读 main 上的 active 内容，未合入的分支不进诊断上下文。修订 active 内容属 `kb/high-risk`（双签）；退化信号（低解决率、`last_verified` 过期、来源失效）由观测与 groom 报出。

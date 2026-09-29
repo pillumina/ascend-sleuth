@@ -37,7 +37,7 @@ gates:
     action: 强制处理：先瘦身，再评估平台轴切分（不预拆目录；动作见 EV-2026-160/161）
   # 兜底视图（category 未判出来时才读）**接上同一条线，单列一个 dimension**：
   #   此前它被明确写在线外（"兜底视图更贵，要治得单独立项"），后果是全系统最贵的一次读
-  #   ——vllm-ascend 兜底视图 24270 tok——不在任何判据里，`index_read_cost.py --json` 也退 0。
+  #   （vllm-ascend 兜底视图 24270 tok）不在任何判据里，`index_read_cost.py --json` 也退 0。
   #   数值沿用同一套推导（硬线 = 常驻指令面量级；软线 = 其 38%），不是给这条路新拍的数：
   #   线本来就有，缺的是把它接到这条读取路径上。单列 dimension 是为了让"哪条路径越线"看得出来。
   - id: fallback_read_soft_tok

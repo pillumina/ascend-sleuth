@@ -19,8 +19,8 @@ from exec_log_path import resolve_traces
 
 # trace action 固定词表（与 skills/diagnose/SKILL.md「每步必写 trace」一致）
 # 词表外 action = 诊断纪律违规，写入时靠 SKILL.md 约束，此处确定性检出
-# reference_lookup（ADR-0008）：diagnose 查询先验知识层的四个触发点（数据缺口 / 键触发 /
-# 判断缺口 / 方法缺口，见 skills/diagnose/references/diagnosis-trace.md）——reference 命中统计
+# reference_lookup（ADR-0008）：diagnose 查询先验知识层的五个触发点（数据缺口 / 键触发 /
+# 背景层 / 修复依据 / 方法缺口，见 skills/diagnose/references/diagnosis-trace.md）——reference 命中统计
 # （hits/last_hit）与引用后 resolve 率的数据源；resolve 从该 session 最终 status 派生，
 # 不新增单独事件。事件自带的两组取值各管一件事：`outcome`（hit/miss/skipped）是本行三态，
 # `purpose` 是消费点分布。
@@ -141,7 +141,8 @@ def main():
     ref_hits = {}
     ref_resolved = {}
     ref_platforms = {}
-    # 消费点分布（docs/guide/metrics.md「reference 引用」口径）：purpose ∈ collect/signature/fix/background
+    # 消费点分布（docs/guide/metrics.md「reference 引用」口径）：
+    # purpose ∈ collect / signature / background / fix / procedure（词表见 KNOWN_PURPOSES）
     ref_purposes = {}
     purpose_bad = []
     # 触发三态（EV-2026-093）：hit / miss / skipped——三态缺一，"没查"与"查了没命中"同形
@@ -356,7 +357,7 @@ def main():
             )
         pur_summary = "、".join(f"{k} {v}" for k, v in sorted(ref_purposes.items(), key=lambda x: -x[1]))
         rows.append(
-            f"| reference 消费点分布（collect/signature/fix/background） | "
+            f"| reference 消费点分布（collect/signature/background/fix/procedure） | "
             + (pur_summary if pur_summary else "无 purpose 字段（旧 trace 未记）")
             + (f"；**词表外：{'、'.join(purpose_bad[:5])}**" if purpose_bad else "")
             + " |"

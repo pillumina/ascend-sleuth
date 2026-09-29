@@ -99,3 +99,14 @@ decisions:
       **未做**：`ref_knowledge` 回链覆盖率（有该字段的 case 12/168）没动——那是沉淀侧的
       债（新增 case 该不该补回链），属 to-postmortem / groom 的动作，不是 diagnose 流程能修的。
       本卡只保证"没有回链时也有入口"（背景那一半与候选无关、且 2.5 明确写了"没有它不等于没有先验可补"）。
+  - who: agent（独立预核会话 + 本轮回修）
+    when: "2026-09-29"
+    type: decision
+    conclusion: >-
+      独立预核判 MERGE_READY: no（P1 两条在容量面，见另一张卡），本卡范围内回修三处**同一件事的残留说法**：
+      ① `references/README.md` 仍写「三个缺口、四个触发点」且把背景侧写成「候选命中 → 阶段 2.5」；
+      ② `CLAUDE.md` 的常驻指令仍写「两个消费点……判断缺口（候选已载入但缺签名/背景/修复依据 → 步骤 2.5）」；
+      ③ `scripts/trace_metrics.py` 的注释与人读表仍把消费点写成四个（漏 `procedure`）、
+      `docs/guide/metrics.md` 仍写「混装四个消费点」。三处都改成五个触发点、背景侧写明「步骤 2 收尾、
+      与候选是否命中无关」。预核亦确认：五触发点在 SKILL / procedure / trace / trace_metrics 四处原本已一致，
+      无重复查询、无路径丢背景（快路也走前四步）。
