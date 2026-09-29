@@ -1,0 +1,55 @@
+id: operator-sanitizer-suite
+type: tool
+title: 算子内存与竞争检测套件（memcheck/racecheck/initcheck/synccheck 串跑 + 报告合并；参数边界与有效结论判据）
+summary: 怀疑算子内部越界、踩踏、未初始化、同步竞争时的检测入口。四类检测可组合：`mssanitizer -t memcheck -t racecheck <app>`，或用 skill 侧脚本一次串跑（memcheck → racecheck → initcheck → synccheck）并把多份报告合并成一份分析稿。**参数边界要知道**：`--block-id` 范围 `0~200`（默认全部 block）、`--cache-size` 单 block `1~8192` MB 且多 block 时上限 `24×1024/block数`（默认 100）、`--padding` `32~1024` 字节（默认 32）、`--max-debuglog-size` `1~10240` MB（默认 1024）；`--leak-check` / `--check-unused-memory` / `--check-cross-npu-races` 默认都是 `no`。**两条必须同时成立**：编译要 `-g` 与 sanitizer 选项**同时加**（同开 `-O0` 还要关掉 always-inline）；**有效结论要求日志里同时出现 `Start` 与 `Finished` 行**——只看到 Start 说明进程没跑完，此时任何结论都不成立。**修复完成的门是全部 ERROR 归零**（不是"错误变少了"）。**已知误报要预排除**：算子自实现的软同步（核间 barrier/set-wait、卡间 barrier/signal）会被 racecheck 报成竞争——先把它按 mstx 接口上报或列入已知白名单，再判剩余告警。
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/operator/mssanitizer-basic-usage/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：四类检测、参数默认值与边界、编译选项约束、有效结论判据与报告结构"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/operator/mssanitizer-basic-usage/scripts/parse_mssanitizer_report.py"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：报告头标记与合并逻辑（接受 1..n 个报告文件）"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/operator/mstx-report-soft-sync/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：软同步语义识别与上报（避免 racecheck 误报）"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [mssanitizer]
+  categories: [interrupt, performance]
+
+related_references: [mssanitizer, operator-debug-entrypoints, msdebug-operator-source-debug, asc-tools-ascendc-debug-suite, operator-pipe-bound-classification]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  tool_name: "mssanitizer（算子内存/竞争/初始化/同步检测套件）"
+  invocation: >-
+    `mssanitizer -t <tool> [-t <tool>...] <可执行文件或启动命令>`；需先把算子用带 `-g` 与 sanitizer 选项的方式编译。
+    串跑与报告合并推荐走 skill 侧脚本：`python3 scripts/run_mssanitizer.py [--output-dir <d>] [--extra-args "<参数>"] -- <命令>`
+    依次跑四类检测；`python3 scripts/parse_mssanitizer_report.py <report1.txt> [report2.txt ...]` 合并成一份分析稿。
+  commands:
+    four_tools: "`mssanitizer -t memcheck -t racecheck ./app`（四类可任意组合；单独用 `mssanitizer --tool=memcheck -- python test_ops_custom.py` 也可）"
+    leak_checks: "`mssanitizer --tool=memcheck --leak-check=yes -- <cmd> > result.log 2>&1`（`--check-unused-memory`、`--check-cross-npu-races` 同理，三者默认都是 no）"
+    scope: "`--block-id <0~200>` 限定 block（默认全部）；`--cache-size` 默认 100MB、单 block 上限 8192MB、多 block 上限 `24×1024/block数`；`--padding` 默认 32 字节"
+    build: "编译必须同时带 `-g` 与 sanitizer 选项；若同时用 `-O0`，需加 `--cce-ignore-always-inline=false`（否则内联展开会让栈帧变差）。注意部分产品形态不支持 sanitizer 与 `-O0` 同用"
+    run_and_merge: "`python3 scripts/run_mssanitizer.py --output-dir ./out -- <命令>` 再 `python3 scripts/parse_mssanitizer_report.py mssanitizer_origin_*.txt`"
+  output_meaning:
+    - "**报告头标记**：`[MSSANITIZER_CMD]` / `[MSSANITIZER_REAL_CMD]` / `[MSSANITIZER_TOOL]` / `[MSSANITIZER_PARAMS]` / `[MSSANITIZER_ENV]` / `[MSSANITIZER_LOGDIR]`——合并多份报告时按 `[MSSANITIZER_TOOL]` 区分来源"
+    - "**告警字段**：`MemErrorType` 给类型；位置形如 `aiv(N)` / `aiv(N-M)` / `aiv(N,M)` / `aic(N)` / `aicore(N)`；调用栈 `#0..#n filePath:lineNo:colNo`；地址空间 `GM/UB/L1/L0A/L0B/L0C`；级别 `ERROR/WARNING/INFO`"
+    - "**有效结论的前提**：日志里同时出现 `Start` 与 `Finished` 行——只有 Start 说明进程未跑完，此时结论不成立"
+    - "**交付表**：`检测工具|ERROR|WARNING`、`编号|告警(工具/类型/位置)|误报排查结论|根因`、`编号|修改内容(文件/位置/改动)|最终检测结果`"
+  pitfalls:
+    - "**修复门是全部 ERROR 归零**，不是“显著减少”——留一条就可能仍是真的越界"
+    - "**软同步误报要先处理**：算子自实现的核间 barrier/set-wait、卡间 barrier/signal 会被 racecheck 当竞争；按 mstx 软同步接口上报或列入白名单后再看剩余告警，否则会在假告警上耗很久"
+    - "`--check-device-heap` 与 `--check-cann-heap` 不能同时开"
+    - "编译选项不齐（少 `-g` 或少 sanitizer 选项）时报告会缺信息或跑不出结论——先核对编译命令再看结果"
+    - "检测**需要重跑**算子：它改变编译选项与执行方式，可能让时序类现象消失——排查顺序上应排在“用日志/栈先缩小范围”之后"

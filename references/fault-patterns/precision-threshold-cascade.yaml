@@ -1,0 +1,80 @@
+id: precision-threshold-cascade
+type: fault-pattern
+title: 数值比对判据（不可忽略判定 / 首个引入点四模式 / 参数梯度继承三档 / 自适应阈值级联与钳制）
+summary: 拿到逐算子比对结果（compare CSV / JSON）后判"哪里算问题"的判据表。**不可忽略的双层判据**：NRE ≥ 阈值直接算；NRE 不到阈值时看 `MeanBias = |Mean diff| / Bench L2norm`，`MeanBias ≥ 1.2 × 阈值` 也算——前者抓局部相对误差，后者抓整体偏移。**首个引入点必须过三关**，不能只看 output 超标：① **输入继承检查**——output 的误差若与某个 input 四维一致（`|out−in| / max(|in|,eps) ≤ 0.1%` 且 dtype、MeanRE、MaxRE 都一致），说明是继承来的，跳过；② **下游吸收检查**——下游 500 行内若某算子 output 恢复到阈值以下，说明影响有限，跳过；③ 继续向后直到第一个既不继承也不被吸收的节点。**参数梯度单独评估**（不在梯度传播链上）：输入脏且 grad ≤ 输入 × 2 = 继承（降级为传播）；> 2× = 放大；输入全干净仍超标 = **实现问题，最高优先**。**阈值本身先用自适应级联算**：SICD 变点（log 空间、变点后连续 3 点也偏高、近零基线走快速通道）→ 锚定回溯（Top-5 最差节点回溯 300 行、`ratio ≥ 5`）→ Delta-NRE 离群（`upper_fence = Q3 + 3×IQR`，需 ≥30 组）→ 分布间隙 → 兜底 `max(p50 × 3, 0.1%)`；**全流程钳制在 [0.1%, 100%]**，被钳制要在结论里标出来并降一档置信度。多窗口（`[200, 500, 1000]`，步长 50%）取 `min(全局, 各有效窗口)`，防远端大幅振荡把全局阈值拉高、漏掉前段早期小幅跳变。
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/accuracy/compare-result-analyzer/references/constraints.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：C-ANALYSIS-001~021 判定标准与传播分类"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/accuracy/compare-result-analyzer/references/thresholds.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：自适应阈值级联与 MeanBias 判定"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/accuracy/spike-root-cause-analysis/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：对照组自适应阈值与「找最先不是找最大」"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msprobe, torch_npu]
+  categories: [precision]
+
+related_references: [precision-first-divergence-triage, msprobe-accuracy-compare, msprobe-overflow-check, msprobe-capability-limits, rl-train-infer-divergence-metrics]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  patterns:
+    - pattern: 不可忽略判定（NRE 为主、MeanBias 补充）
+      symptoms:
+        - "某节点 NRE ≥ 阈值"
+        - "某节点 NRE 未到阈值，但整体均值偏移明显（MeanBias ≥ 1.2 × 阈值）"
+      cause: "NRE 抓的是张量级相对误差，抓不到“整体平移但相对形状没变”这类偏移；MeanBias 补上这一面"
+      fix: "两条任一命中即判不可忽略；报告中所有“需关注/问题节点”都按这个双层标准，不要只用一条。**小范数张量要加提示**：`l2 < 1e-3` 且 NRE > 10% 时 NRE 可能因分母小被放大，实际绝对差可能很小——要一并给绝对量级"
+    - pattern: 首个引入点（不能凭 output 超标直接认定）
+      symptoms:
+        - "按执行序第一个 output 超标的节点被判成根因"
+      cause: "它可能只是继承了输入已有的误差，或它引入的误差被下游吸收掉了"
+      fix: "过三关：① 输入继承检查（与某个 input 四维一致 → INPUT_PROPAGATION，跳过）；② 下游吸收检查（下游 500 行内 output 回到阈值以下 → DOWNSTREAM_ABSORBED，跳过）；③ 继续向后直到第一个既不继承也不被吸收的节点。**换了首问题点必须在结论里记录跳过过程与原因**"
+    - pattern: 误差传播四模式
+      symptoms:
+        - "需要判断某算子是“引入”还是“传导”"
+      cause: "同一份比对数据里，四种 input→output 关系对应完全不同的排查优先级"
+      fix: "干净入→脏出 = **引入**（最高优先）；脏→更脏 = 放大（传播）；脏→更好且超出 0.1% 相对容差 = 穿越（优先级低）；脏→干净 = 被吸收。多输入算子要遍历**所有** input 组合再定标签——只看 input.0 会把继承误判成根因"
+    - pattern: 参数梯度（backward 的 grad_weight/grad_bias）
+      symptoms:
+        - "backward 算子的 `parameters_grad` 输出超标"
+      cause: "它不在梯度传播链上，是 kernel 独立算出来的；直接判根因会把“输入本来就脏”错认成“kernel 有问题”"
+      fix: "独立评估 + 继承性三档：输入脏且 grad ≤ 输入 × 2 = **继承**（降级为传播，指向脏输入来源）；> 2× = **放大**（真根因特征）；输入全干净仍超标 = **实现问题**（最高优先排查）。含 `parameters_grad` 的算子**豁免下游吸收检查**，不要用 output 行把参数梯度根因改判为被吸收"
+    - pattern: 阈值从哪来（自适应级联）
+      symptoms:
+        - "不知道该把 NRE 阈值定在多少；凭经验拍的阈值导致误报或漏报"
+      cause: "阈值应由数据分布决定，而不是固定常数"
+      fix: "按级联顺序自动定：SICD 变点（log 空间、要求变点后连续 3 点也偏高、前面全近零时第一个非零即变点）→ 锚定回溯（Top-5 最差节点回溯 300 行、`ratio ≥ 5`）→ Delta-NRE 离群（`Q3 + 3×IQR`，需 ≥30 组）→ 分布间隙 → 兜底 `max(p50 × 3, 0.1%)`。**全流程钳制 [0.1%, 100%]**，被钳制则在结论里标明并降一档置信度"
+    - pattern: 全序列阈值被远端振荡拉高
+      symptoms:
+        - "序列后段大幅振荡，全局阈值被抬高，前段早期的真实跳变没被报出来"
+      cause: "单窗口在全序列上只找一个断点，断点落在前后分界处，阈值被后段噪声基线带走"
+      fix: "多窗口变体：窗口 `[200, 500, 1000]`、步长 50%、要求窗口内 ≥50 个节点且标准差 > 0，最终阈值取 `min(全局, 各有效窗口)`。小窗口噪声基线近零，小幅跳变即可触发"
+    - pattern: 对照组自适应异常判定（用健康侧噪声定阈值）
+      symptoms:
+        - "「1.2 倍算不算异常」这类幅度争议"
+      cause: "绝对幅度不由自己决定，由对照组（健康侧）的噪声水平决定"
+      fix: "取四组样本 A（异常）/B（标杆）/C（正常）/D（标杆），异常度 = `(A/B) / (C/D)`，标注阈值 = `median(C/D) + max(3×IQR, 0.03)`。**只看标注不看绝对幅度**；各指标阈值从其各自对照组独立学习、不共用。**未对齐层不等于正常**：某方向判“正常”必须有该方向无未对齐层，未对齐往往是“比不了”，不是“没问题”"
+    - pattern: 找分叉起点而不是最大分叉
+      symptoms:
+        - "直接下钻分叉幅度最大的层/算子"
+      cause: "最大分叉往往是传导或放大的结果，起点才是根因位置"
+      fix: "前向从浅到深找第一个异常层、反向从深到浅找第一个；定位后在该层展开子模块找差异最大的算子，再查它的上游是否已有分叉。多指标交叉：**每用一个指标确认一个分叉点后，必须用其余指标再探是否有更早的**，直到都指向同一个最前分叉点"
+    - pattern: shape 不一致与数据覆盖缺口
+      symptoms:
+        - "shape 不一致节点占比较高；或相邻两个可比对节点之间存在“从干净直接跳到脏”的缝"
+      cause: "前者让 NRE 不可信；后者说明真正引入误差的算子没被采集到"
+      fix: "shape 不一致 >10% 标“关键数据异常”、>50% 标“严重数据异常——先修数据对齐再分析；覆盖缺口要在结论里写”误差引入点可能藏在不可比对算子中，建议补采“，**不要当成”没问题“**"

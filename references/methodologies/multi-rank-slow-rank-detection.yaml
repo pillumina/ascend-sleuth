@@ -1,0 +1,79 @@
+id: multi-rank-slow-rank-detection
+type: methodology
+title: 多卡快慢卡判读流程（先判输入形态 → 跑集群模式逐项 → 六类定性 → 算子级微观证据 → 对慢卡出建议）
+summary: 集群里"谁慢、为什么慢"的判读路径。**第 1 步判输入形态**——rank 数、数据是 DB 还是 Text（Text 需要每个 rank 有 `profiler_info_{rank}.json` + `ASCEND_PROFILER_OUTPUT/op_statistic.csv`/`api_statistic.csv`；DB 需要 `ascend_pytorch_profiler_{rank}.db`）、产物是否齐全、是否已有 `cluster_analysis_output`（有就直接进定性）。**第 2 步逐项跑集群分析**（`msprof-analyze -m <能力>`：`cluster_time_summary` / `compute_op_sum` / `hccl_sum` / `slow_rank` / `slow_link` / `cann_api_sum` / `all`）——**某一项失败必须记录失败命令与错误，不得把该项当成已验证证据**；判定结论时必须至少引用 `cluster_time_summary`、`slow_rank`、`slow_link` 三者之一。**第 3 步定性只归六类**：Host 下发瓶颈（伪快卡：Free Time 占比 > 10% 或远超均值且 Compute/Communication 偏短）／计算型慢卡（Free 普遍短而均匀、某卡 Compute 显著大）／通信型（带宽远低于理论值，如 SDMA < 2GB/s）／负载不均衡（count 不同）／算子劣化（count 相同但 avg_time 激增，常见于动态 shape）／证据不足。**第 4 步补算子级微观证据**：逐算子比 slow 与 fast rank 的 `total_time`、`count`、`ratio = slow/fast`、`avg_time` 差，按 `|diff_total_time|` 降序取 TOP N（默认 20）；**count 不同指向切分不均、count 相同而 avg 涨指向算子劣化**，这两条要分开说。**第 5 步**对慢卡目录跑 `advisor` 出建议；advisor 结论与集群判断冲突时**必须显式指出冲突并以某类证据为主、说明原因**。收尾禁止："仅凭单项指标字面下结论"。
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-cluster-fast-slow-rank-detector/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：输入路由、逐项能力执行、六类定性与 advisor 冲突处置"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-cluster-fast-slow-rank-detector/scripts/compare_op_stats.py"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：逐算子差异字段与排序键（ratio 定义、avg_time_diff、TOP N 默认 20）"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-cluster-fast-slow-rank-detector/scripts/rank_data_finder.py"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：rank 产物自动发现与遍历深度上限"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msprof-analyze, torch_npu]
+  categories: [performance]
+
+related_references: [cluster-compare-diagnosis, profiler-analysis-cli, profiler-db-query, profiler-analysis-triage, msprof-comm-bottleneck-thresholds, profiler-host-bound-triage]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  flow:
+    - step: 1
+      name: 判输入形态与产物齐备性
+      action: >-
+        先看清手上是什么：rank 数是多少；数据是 DB 还是 Text（Text 的判据是每个 rank 目录下有 `profiler_info_{rank}.json`
+        与 `ASCEND_PROFILER_OUTPUT/op_statistic.csv` 或 `api_statistic.csv`；DB 是 `ascend_pytorch_profiler_{rank}.db`）；
+        是否已存在 `cluster_analysis_output`（有则直接进第 3 步定性，跳过重新生成）。缺产物时明确缺哪个 rank、缺哪类文件——
+        按"缺什么补什么"补采或补跑分析，不要在数据不齐时下结论。
+      check: "rank 清单 + 每 rank 的产物类型 + 是否已有集群分析产物"
+      when_to_use: 用户报"集群里有卡慢/快慢卡"时第一步
+    - step: 2
+      name: 逐项跑集群分析能力
+      action: >-
+        `msprof-analyze -m <能力> -d <集群路径> -o <输出> --agent`，能力逐项跑：`cluster_time_summary`（迭代耗时拆解）、
+        `compute_op_sum`、`hccl_sum`、`slow_rank`、`slow_link`、`cann_api_sum`，或不指定走 `all`。
+        **某一项失败要记录失败命令与错误原文**，并在结论里标"该项未验证"——不得拿"没跑成"当"没问题"，也不得当成证据。
+      check: "每项能力的执行结果（成功/失败 + 错误）+ 产物路径"
+      when_to_use: 产物齐备后
+    - step: 3
+      name: 六类定性（只在这六类里下结论）
+      action: >-
+        按证据组合归入**唯一一类**：① **Host 下发瓶颈（伪快卡）**——某卡 Free Time 占比 > 10% 或远超均值，
+        且 Compute/Communication 异常偏短（它"快"是因为别人在等它）；② **计算型慢卡**——各卡 Free 普遍短且均匀、
+        某卡 Compute 显著大于均值；③ **通信型**——通信带宽远低于理论值（例：SDMA < 2GB/s），指向小包通信、
+        地址未对齐或硬件；④ **负载不均衡**——同算子 count 不同；⑤ **算子劣化**——count 相同但 avg_time 激增
+        （常见于动态 shape）；⑥ **证据不足**。定性必须至少引用 `cluster_time_summary` / `slow_rank` / `slow_link` 之一；
+        多类叠加时写明叠加关系，不要含糊成"综合问题"。
+      check: "归入哪一类 + 引用了哪几类证据 + 命中的具体数值"
+      when_to_use: 集群分析产出之后
+    - step: 4
+      name: 补算子级微观证据
+      action: >-
+        对 slow 与 fast 两个 rank 逐算子比：`total_time`、`count`、`ratio = slow_total / fast_total`
+        （fast 为 0 且 slow > 0 时 ratio 记 inf；两者都为 0 记 1.0）、`avg_time_diff = slow_time/slow_count − fast_time/fast_count`；
+        按 `|diff_total_time|` 降序取 TOP N（默认 20）。**分流读法**：count 不同 → 负载切分不均；
+        count 相同而 avg_time 涨 → 算子劣化。自动发现 rank 产物失败时用显式路径参数指定，不要手工猜路径。
+      check: "TOP N 差异表 + 每条属于“切分不均”还是“算子劣化”"
+      when_to_use: 定性到某类之后（或定性为"证据不足"时用作补证）
+    - step: 5
+      name: 对慢卡出建议并处置冲突
+      action: >-
+        对判定为慢卡的 rank 目录跑 `msprof-analyze advisor all -d <该 rank 路径>` 取算子级建议。
+        **advisor 结论与集群层判断冲突时必须显式指出**：说明以哪类证据为主、为什么——不要挑一个顺眼的写进结论。
+        注意 advisor 必须传 `-o`、多卡场景要指到目标 rank 子目录而不是集群根。
+      check: "advisor 产物 + 与集群判断是否一致（不一致时写明裁决理由）"
+      when_to_use: 给出建议前

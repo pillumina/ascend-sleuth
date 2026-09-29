@@ -1,0 +1,136 @@
+# ============================================================
+# EV-2026-153 —— 精度面与 Host 绑核面补判据：首问题点四模式、自适应阈值级联、
+#                对照组自适应、参数梯度继承三档；绑核 R001–R010 与体检流程
+# 来源：用户要求"1,2,3,4 都做"（承接 EV-2026-151/152 之后列的可行清单）。
+# 脱敏：只含仓库内路径、上游公开 URL 与 commit、聚合数字。
+# ============================================================
+
+id: EV-2026-153
+layer: L1
+target_component: references/
+title: "精度判据与绑核算术规则入库：首问题点四模式 / 自适应阈值级联 / 对照组自适应 / 参数梯度继承三档，加绑核 R001–R010 与体检流程"
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: '2026-09-29'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户看过"接下来能吸收的点"清单后回"1,2,3,4 都做"——第 1 组是精度面判据、第 2 组是绑核算术规则。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      改前现算的零命中：`grep -rli '首个不一致|被吸收|SICD|自适应阈值|对照组' references/` 只有
+      autofuse 一条无关命中；`grep -rli 'cpus_allowed|online_cpus|cpuset' references/` 只有
+      hostbound-evidence-gate 一条（讲证据门槛，没有算术判据）。而本库精度面已有 40+ 条 msprobe 工具词条
+      （dump/compare/monitor/overflow-check…），它们讲**工具怎么用**，不讲**哪个差异才算引入点**。
+    trajectory:
+      - "grep -rli '首个不一致|被吸收|SICD|对照组' references/"
+      - "grep -rli 'cpus_allowed|online_cpus|cpuset' references/"
+hypothesis: >-
+  精度面缺的不是工具用法而是**判据**：NRE 与 MeanBias 的双层不可忽略标准、首问题点必须先过"输入继承/下游吸收"两关、
+  参数梯度要按继承性分三档、阈值要从数据分布自适应算并全程钳制。Host 绑核面缺的是**算术**：
+  六条不等式（未绑核/过宽/过窄/线程过载/cgroup 冲突/范围重叠）把"凭经验看看"变成可判定的判据。
+  两者都以表与流程的形式落进 reference 并挂上闸门。
+predicted_effect:
+  metric: 精度与绑核判据词条条数及其可达性
+  from: >-
+    精度面零判据（只有工具用法）；绑核面零算术判据（只有一条讲证据门槛的流程）。
+  to: >-
+    新增 fault-pattern `precision-threshold-cascade`（9 条判据）与 `cpu-binding-affinity-triage`（11 条规则），
+    methodology `precision-first-divergence-triage`（6 步）与 `cpu-binding-inspection-procedure`（5 步）；
+    全部挂进 precision / performance 闸门；reference 词条 246 → 250。
+  measure:
+    command: |
+      python3 - <<'PY'
+      import pathlib, subprocess, sys
+      sys.path.insert(0, 'scripts')
+      from _yaml import load_file
+      root = pathlib.Path('.')
+      fp1 = load_file(root / 'references' / 'fault-patterns' / 'precision-threshold-cascade.yaml')
+      fp2 = load_file(root / 'references' / 'fault-patterns' / 'cpu-binding-affinity-triage.yaml')
+      mt1 = load_file(root / 'references' / 'methodologies' / 'precision-first-divergence-triage.yaml')
+      mt2 = load_file(root / 'references' / 'methodologies' / 'cpu-binding-inspection-procedure.yaml')
+      ok_items = (len((fp1['content'] or {}).get('patterns') or []) >= 8
+                  and len((fp2['content'] or {}).get('patterns') or []) >= 9
+                  and len((mt1['content'] or {}).get('flow') or []) >= 5
+                  and len((mt2['content'] or {}).get('flow') or []) >= 5)
+      gates = load_file(root / 'skills' / 'diagnose' / 'references' / 'collect-gates.yaml')
+      bound = set()
+      for g in gates.get('gates') or []:
+          bound.update(g.get('refs') or []); bound.update(g.get('caveat_refs') or [])
+          for br in g.get('branches') or []:
+              bound.update(br.get('refs') or [])
+      targets = ['precision-first-divergence-triage', 'precision-threshold-cascade',
+                 'cpu-binding-affinity-triage', 'cpu-binding-inspection-procedure']
+      ok_bound = all(t in bound for t in targets)
+      perf = (root / 'references' / '_procedure-index' / 'performance.yaml').read_text(encoding='utf-8')
+      prec = (root / 'references' / '_procedure-index' / 'precision.yaml').read_text(encoding='utf-8')
+      ok_flow = ('cpu-binding-inspection-procedure' in perf
+                 and 'precision-first-divergence-triage' in prec)
+      r = subprocess.run([sys.executable, 'scripts/verify_references.py', '--check'],
+                         capture_output=True, text=True)
+      print('items      ', ok_items)
+      print('bound      ', ok_bound)
+      print('in_flow    ', ok_flow)
+      print('verify_refs', r.returncode)
+      ok = ok_items and ok_bound and ok_flow and r.returncode == 0
+      print('VERDICT', 'PASS' if ok else 'FAIL')
+      PY
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: scan_review
+  baseline: >-
+    **改前基线（本轮在 origin/main = 2c8f24c 的新 worktree 上现算）**：reference 词条 246 条；
+    `grep -rli '首个不一致|被吸收|SICD|对照组' references/` 仅 autofuse 一条无关命中；
+    `grep -rli 'cpus_allowed|online_cpus|cpuset' references/` 仅 hostbound-evidence-gate 一条（无算术判据）；
+    precision 分片 17 条流程、performance 分片 10 条。
+  success_criteria: >-
+    ①改后词条 250 条、id 唯一，`verify_references.py --check` 绿；
+    ②4 条新词条全部被闸门绑定（tool 词条的覆盖环对 fault-pattern 不强制，但本卡把四条都挂进对应分支）；
+    ③两条新流程分别进 precision 与 performance 分片；
+    ④三个索引生成物随提交重建、`--check` 全绿；
+    ⑤CI 15 条命令本机复跑全绿 + 单测 + `rehearse_evolve_loop.py` 绿；
+    ⑥**边界如实标注**：内容取自上游 SKILL.md 与 references（cross-checked-source），
+    阈值为上游口径（1%/5%/10%、15%/5%/10%、0.1%/100%、0.8×online_cpus、×2 继承线等），
+    **未在本机平台上复现**；上游自身有三处文档与实现不一致，已在词条 pitfalls 里逐条写明。
+  rollback: 分支丢弃或 git revert；词条、闸门绑定、生成物与卡在同一分支内整体可退。
+gate:
+  condition: >-
+    若后续要把上游 `compare-result-analyzer` 的完整报告模板（四套 assets 模板 + 术语通用化对照 14 条）也沉淀进来，
+    **先确认本库是否真需要那套报告体裁**——本仓有 writing-norms，与上游模板可能冲突；不要把两套写法都塞进 reference。
+    **另一件不要做的事**：不要把上游 `analyze_stat.py` / `cascade_threshold.py` 复制进本仓（同 EV-2026-151/152 的判断：
+    判据进 reference，脚本留在上游）。
+risk: low
+principle_refs: [3, 6, 8, 11]
+actual_cost:
+  tokens: 220000
+  source: estimate
+  note: >-
+    口径如实标注：按本轮工具往返与产出（4 条词条 + 两处闸门绑定 + 上游 4 篇 references 精读）粗估的量级，
+    不是 exec-log 记账读出的真实值。
+decisions:
+  - who: agent
+    when: 2026-09-29
+    type: proposal
+    conclusion: >-
+      先核缺口再动手。核对结论：精度面 40+ 条 msprobe 工具词条讲的是"工具怎么用"，
+      没有一条讲"哪个差异才算引入点"；绑核面一条算术判据都没有。两者都是**判据缺口**而非数据缺口。
+  - who: agent
+    when: 2026-09-29
+    type: eval
+    conclusion: >-
+      写词条时把上游的"文档与实现不一致"当检查项逐条核：随机抽了三处（尖刺阈值文档 60% vs 脚本 50% + max(median×2,1.5)、
+      NaN 判据声明含 inf 但脚本只判 NaN、训推算子差异声明 3 个产出文件实际 2 个），
+      结论是**以脚本实现为准**并把差异写进 pitfalls。同一发现也记在 EV-2026-151。
+  - who: agent
+    when: 2026-09-29
+    type: decision
+    conclusion: >-
+      采纳（validated）。判据：改前 246 条 → 改后 250 条且 `verify_references.py --check` 绿；
+      4 条新词条全部被闸门绑定；两条流程进对应分片；三个索引 `--check` 绿；CI 与单测、演练全绿。
+      **价值层不由此卡证明**：词条只说明判据进库且可达，不说明诊断准确率提升。

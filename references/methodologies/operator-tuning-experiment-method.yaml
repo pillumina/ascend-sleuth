@@ -1,0 +1,73 @@
+id: operator-tuning-experiment-method
+type: methodology
+title: 算子性能实验方法（精度门禁 → 不可变基线 → 单变量迭代 → 前后对照判定；含否证条款）
+summary: 要给算子做性能改动时的实验纪律。**前置门禁**：精度未过、崩溃或 kernel 挂起 → **停止性能调优**（不是先记下来继续）——先修正确性再谈速度；任一目标用例失败即停。**第 1 步建不可变基线**：同软件栈、同 SoC、同频率、同 shape/dtype、同 TilingKey 下取稳态多次的中位耗时，并记下采集方式（event / simulator / msprof 等口径不可混）。**第 2 步采集证据**：先有证据再谈假设——**不得先加载案例猜瓶颈**；`bound_analyzer.py` 的结论只作初筛，终结论必须带"Bound + 反证 + 置信度 + 缺失指标"四件。**第 3 步选同型机制**：从同类案例里挑**不超过 3 个**候选机制，一次只改一个（改多个无关机制的对照无归因价值）。**第 4 步单变量迭代**：每轮改动走精度门禁 + 保留回滚点；**劣化或噪声带内的收益不得只报喜不报忧**。**第 5 步前后对照**：用统一的对照表（基线/优化后/Δ%/加速比），加速比 > 1.05 才算可复测提升、≥ 0.95 视为噪声带内无稳定收益、< 0.95 应回滚；**只展示最快样本、只展示提升的 case、跨栈/跨 SoC/跨 shape 比较都是禁止动作**。短 kernel 不得用插桩耗时替代 event 基线；精度容差只能来自工程现有测试，**禁止自创容差**。
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/operator/ops-performance-tuning/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：八步流程、渐进式披露五条与否定清单（跨栈比较、照搬案例、只展示最快样本等）"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/operator/ops-performance-tuning/scripts/delta_report.py"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：加速比三档判定（>1.05 / ≥0.95 / <0.95）与精度双向硬校验"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/operator/ops-performance-tuning/scripts/result_saver.py"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：基线记录字段（软件栈/CANN 版本/SoC/shape/dtype/计时方式/重复次数）"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950, A3-910C, A2-910B]
+  frameworks: [msopprof, msprof]
+  categories: [performance, interrupt]
+
+related_references: [operator-pipe-bound-classification, operator-bottleneck-attribution, msopprof, dma-granularity-and-pingpong-tuning, multicore-partitioning-and-template-selection, op-compiler-static-kernel]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  flow:
+    - step: 1
+      name: 前置门禁（精度与崩溃优先于性能）
+      action: >-
+        先确认：精度门禁通过、无崩溃、无 kernel 挂起。任一不满足**停止性能调优**，先把正确性修好——
+        在错误的实现上做性能优化，收益数字没有意义。校验链本身也要先审计：跑通校验脚本不等于校验有效
+        （要确认 golden 链可用、是位级还是数值转换、掩码分支是否真的执行到）。
+      check: "精度结论 + 是否崩溃/挂起 + 校验链是否被审计过"
+      when_to_use: 任何性能改动之前
+    - step: 2
+      name: 建不可变基线
+      action: >-
+        在**同一软件栈、同一 SoC、同频率、同 shape/dtype、同 TilingKey** 下取基线：稳态多次（≥3）的中位耗时，
+        并记录计时方式（event / simulator / msprof / profiler_summary 口径不同，不可混用）、CANN 版本、算子名与 shape 列表、
+        预热次数与重复次数。**短 kernel 不得用插桩耗时替代 event 基线**；精度容差只能来自工程现有测试，禁止自创。
+      check: "基线记录字段齐备（含计时方式与版本）+ 至少 3 次取中位"
+      when_to_use: 开始改动之前
+    - step: 3
+      name: 采集证据并判 Bound（先证据后假设）
+      action: >-
+        采集算子级 profiling，按 operator-pipe-bound-classification 判 Bound，输出必须带四件：
+        **Bound 结论 + 反证（为什么不是别的 Bound）+ 置信度 + 缺失指标**。不足 5 项数据不补 TOP 列表；
+        没有对应采集能力时不推断该 Bound（写 `UNRESOLVED`），**不得用别的数据外推**；标记为 NA 的列不参与判读。
+      check: "Bound 四件齐备 + 数据量与采集能力是否够"
+      when_to_use: 拿到 profiling 数据后
+    - step: 4
+      name: 选同型机制（≤3 个候选，一次改一个）
+      action: >-
+        按 Bound 类型挑同类案例的候选机制，**不超过 3 个**；一次只改一个机制（改多个无关机制的对照无归因价值）。
+        每轮改动前记回滚点，改完先过精度门禁再看性能。
+      check: "本轮只改了哪一个机制 + 回滚点在哪"
+      when_to_use: 定完 Bound 之后
+    - step: 5
+      name: 前后对照与判定（含否决条款）
+      action: >-
+        用统一对照表（基线/优化后/Δ%/加速比）判定：加速比 > 1.05 = 可复测提升；≥ 0.95 = 噪声带内无稳定收益（不保留）；
+        < 0.95 = 劣化，回滚。**禁止动作**：跨软件栈/SoC/频率/shape/dtype/TilingKey 比较；照搬案例的加速比；
+        只展示最快样本或只展示提升的 case；把劣化或噪声带内的收益略去不提；把环境准备成本伪装成瓶颈。
+      check: "对照表 + 每个结论对应哪一档判定"
+      when_to_use: 每轮迭代收尾

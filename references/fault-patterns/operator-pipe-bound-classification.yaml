@@ -1,0 +1,84 @@
+id: operator-pipe-bound-classification
+type: fault-pattern
+title: 算子级 pipe 占比判读（各 pipe 阈值 / 串行指纹 / occupancy 与 L2 判据 / 噪声与收益线）
+summary: 拿到算子级 profiling 的 `PipeUtilization.csv`（或 `ArithmeticUtilization.csv`、`L2Cache.csv`、`ResourceConflictRatio.csv`）后判"这个算子卡在哪"的判据表。**先看各 pipe 占比的互补关系**：多个 pipe 占比之和 ≈ 1 是**串行无重叠的指纹**（例：cube 0.44 + mte2 0.42 + mte1 0.18），此时优化方向是重叠而非单点提速。**主导 pipe 定 Bound**：最高 pipe 均值 > 80% 判 `<pipe> BOUND`（> 70% 时加"占比最大"限定）；**全 pipe 均值都 < 50% 时输出"LATENCY/SYNC 可疑"，不要判"无 bound"**——那是没找到瓶颈，不是没有瓶颈。细分阈值：`aiv_mte2_ratio > 90%` = 带宽 bound（此时向量方面的实现优化无效）、`aiv_vec_ratio > 50%` 且 mte2 低 = 计算 bound、`aiv_scalar_ratio > 20%`（或 Scalar > 90%）= 标量/地址计算开销、`MMAD > 50%` = 接近硬件极限、`WAIT_FLAG_DEVI > 50%` 且 `MMAD < 5%` = Cube 在空等 Vector。**核间均衡**：核间差 ≤13% 仍属均衡；核间不均衡必须"Block Dim 接近核数 **且** 各 block 行差异大"同时成立；Block Dim 远小于核数指向核数不足，**此时各 block 数值一致也不能排除**。行数 < 16 时 occupancy 结论可疑（A5 上约 48 个 AIV 核）。**L2 判据**：命中率低**且**重复流量高才值得做 L2 切分/全载/workspace 改造——纯流式访问命中率低是正常的；**命中率改善但总时延没降 = 不保留**。**噪声与收益线**：±5% 在噪声带内既不算收益也不算劣化；加速比 > 1.05 才算可复测提升、≥ 0.95 视为噪声带内无稳定收益、< 0.95 应回滚；首跑与稳态实测可差 25%（冷跑含初始化/缓存预热）；负优化出现率约 1/3 属正常需处置；**单一 ratio 改善不足以采纳**，终结论必须带"Bound + 反证 + 置信度 + 缺失指标"。
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/operator/ops-performance-tuning/scripts/bound_analyzer.py"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：pipe 占比阈值（80%/70%/50%）、核间长尾与行数下限的实现常量"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/operator/ops-performance-tuning/references/diagnose/diagnose-pipeline.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：串行指纹、Scalar 热点、SIMULATOR 阈值与否定条款"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/operator/ops-performance-tuning/references/diagnose/diagnose-occupancy.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：核间均衡判据与“各 block 一致也不能排除核数不足”"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/operator/ops-performance-tuning/references/diagnose/diagnose-l2-cache.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：L2 判据与“命中率改善但时延不降不保留”"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/operator/ops-performance-tuning/references/optimize/optimize-ascendc-regbase-vf.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：mte2 / vec / scalar 三档判据（90% / 50% / 20%）"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [A5-950, A3-910C, A2-910B]
+  frameworks: [msopprof, msprof]
+  categories: [performance]
+
+related_references: [operator-bottleneck-attribution, msopprof, profiler-analysis-triage, dma-granularity-and-pingpong-tuning, simt-vs-simd-selection, multicore-partitioning-and-template-selection]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  patterns:
+    - pattern: 多个 pipe 占比之和接近 1（串行无重叠）
+      symptoms:
+        - "cube 0.44 + mte2 0.42 + mte1 0.18 这类互补分布"
+      cause: "搬运与计算没有重叠，硬件在排队而不是并行"
+      fix: "方向是重叠（多缓冲/流水），不是把某一条 pipe 压得更低。参见 dma-granularity-and-pingpong-tuning 的调参顺序（先保证 ping-pong 重叠，再加大单次 DMA）"
+    - pattern: 全 pipe 均值都低于 50%
+      symptoms:
+        - "挑不出主导 pipe，每条都在中低位"
+      cause: "不是“没有瓶颈”，而是瓶颈在延迟/同步侧（启动开销、同步等待、核间等待）"
+      fix: "输出 **LATENCY/SYNC 可疑**，去查同步点与启动开销；**禁止写“无 bound”**——那会让排查停在一个空结论上"
+    - pattern: 搬运受限（带宽 bound）
+      symptoms:
+        - "`aiv_mte2_ratio > 90%`；或 aic 侧 mte2 最高"
+      cause: "数据搬运吃满了带宽，计算单元在等数据"
+      fix: "从搬运量、对齐、单次传输粒度入手；**此时向量侧的实现优化无效**（数据到不了就算得快也没用）"
+    - pattern: 计算受限
+      symptoms:
+        - "`aiv_vec_ratio > 50%` 且 mte2 不高；或 `MMAD > 50%`"
+      cause: "计算单元接近饱和"
+      fix: "`MMAD > 50%` 是接近硬件极限的信号，再提速空间有限；否则看算子实现（融合、减少冗余计算）。**`bound_analyzer.py` 只做初筛**，终结论要带反证与置信度"
+    - pattern: 标量开销（容易被忽略的一类）
+      symptoms:
+        - "`aiv_scalar_ratio > 20%`，或 Scalar > 90% 而 vec/MTE 都低"
+      cause: "逐元素标量访问、地址计算、mask 计算把标量单元占满了"
+      fix: "减少标量运算（向量化地址计算、合并循环、减少 mask 重算）；这类热点不看 pipe 占比容易被漏掉"
+    - pattern: 核间不均衡与核数不足
+      symptoms:
+        - "各 block 用时差异大；或 Block Dim 远小于可用核数"
+      cause: "前者是切分不均（尾块长尾），后者是并行度没用满"
+      fix: "不均衡必须“Block Dim 接近核数 **且** 各 block 行差异大”同时成立才判；核数不足时**各 block 数值一致也不能排除**。核间差 ≤13% 属均衡范围，别把正常波动当问题。行数 < 16 时 occupancy 结论可疑（样本太少）"
+    - pattern: L2 命中率低
+      symptoms:
+        - "`read_hit_rate` / `write_hit_rate` 偏低"
+      cause: "可能是纯流式访问（正常），也可能是重复流量没被 L2 接住（可优化）"
+      fix: "**命中率低 且 重复流量高**才值得做 L2 切分/全载/workspace 驻留改造；纯流式不算问题。**命中率改善但总时延没降 = 不保留该改动**"
+    - pattern: 把噪声当收益
+      symptoms:
+        - "改动后快了一点点就判定优化成功"
+      cause: "测量噪声与稳态差异"
+      fix: "±5% 在噪声带内既不算收益也不算劣化，要加采样轮次；加速比 > 1.05 才算可复测提升、≥ 0.95 视为无稳定收益、< 0.95 回滚；首跑与稳态可差 25%（冷跑含初始化与缓存预热），所以基线要取稳态多次的中位；run 间噪声 > 5% 时，小于噪声幅度的收益不得归因"

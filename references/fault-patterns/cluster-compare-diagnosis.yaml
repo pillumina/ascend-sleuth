@@ -1,0 +1,75 @@
+id: cluster-compare-diagnosis
+type: fault-pattern
+title: 双集群 profiling 比对判据（显著性门控 / 贡献度 / 劣化分级 / 有效吞吐与慢卡线索）
+summary: 对比"同一个任务在两个集群/两个版本上"的性能时的判据表。**先过显著性门控再算贡献度**：Stage 变化幅度 `|ΔStage / Stage_A| < 1%` 时贡献度降级为 `—`（不算），只有 `|增幅| ≥ 1%` 才进入归因。**贡献度 = ΔX / ΔStage × 100%**，语义是"占 Stage 变化量的比例"——**可以 > 100%、也可以为负，不得解读成占总时间的比例**；命中 `comm_contrib > 50` 判通信主因、否则 `compute_contrib > 50` 判计算主因、都不满足写"劣化来源分散"。**劣化分级**：Stage 变化 `> 10%` 严重、`> 5%` 中度、`> 0` 轻微，否则算改善。**带宽要按有效吞吐比**（`Σtransit_size / Σtransit_time`）：有效吞吐降 ≥15% 才是真实链路劣化（P0）、≥5% 为次要（P1）；**均值带宽降 ≥10% 而有效吞吐没降 = 统计口径差异（占比不同），不作为链路劣化依据**。快慢卡线索：某 rank 的 Stage 时间偏离所有 rank 均值超过 10% 即标记；rank 间 `(max − min) / min × 100 > 3%` 提示存在慢卡线索（**报告模板层有此判据，脚本只出逐 rank 差值与趋势**）。**两条纪律**：集群 A 恒为基准、B 为对比，一切差值都是 `B − A`；两集群 rank 集合不重叠时**不做配对**，避免假的 ±100%。单位口径：DB 与 TEXT-CSV 为 μs、TEXT-JSON 为 ms——比之前先对齐。
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-cluster-compare/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：显著性门控、贡献度语义、劣化分级、有效吞吐与差值为 B−A"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-cluster-compare/scripts/generate_cluster_report.py"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：门控与分级的实现常量（1%/10%/5%、15%/5%/10%）"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-cluster-compare/references/db_schema.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：集群分析表结构（新旧两套）与字段映射"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/ascend-cluster-compare/references/text_schema.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：TEXT 模式 CSV/JSON 列头与嵌套结构"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msprof, torch_npu]
+  categories: [performance]
+
+related_references: [multi-rank-slow-rank-detection, profiler-analysis-cli, profiler-db-query, performance-delimiting-and-comparison, msprof-comm-bottleneck-thresholds]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  patterns:
+    - pattern: 贡献度被当成"占总时间比"
+      symptoms:
+        - "报告里写“计算占 120%”或“通信贡献 −30%”"
+      cause: "贡献度的分母是 Stage 的**变化量**，不是 Stage 本身；因此可以超 100%（某一块涨得比整体还多，别处降了）也可以为负（该块反而变好）"
+      fix: "口径写成“占变化量的比例”；门控不通过时贡献度显示 `—`，**不得把 `—` 当成 0 或当成占比使用**"
+    - pattern: 用均值带宽判定链路劣化
+      symptoms:
+        - "均值带宽降了 10% 以上，于是判“链路劣化”"
+      cause: "均值带宽受单次大包/小包占比变化影响；真实劣化要看**有效吞吐**（`Σtransit_size / Σtransit_time`）"
+      fix: "有效吞吐降 ≥15% 判真实链路劣化（P0）、≥5% 判次要（P1）；只有均值带宽降 ≥10% 而有效吞吐没降时，判**统计口径差异**并标绿，不作为劣化依据"
+    - pattern: 劣化幅度分级与主因判定
+      symptoms:
+        - "知道 Stage 变慢了，但不知道该从计算还是通信查"
+      cause: "需要先算各块的贡献度再定主因"
+      fix: "Stage 变化 >10% 严重、>5% 中度、>0 轻微；`comm_contrib > 50` 判通信主因、否则 `compute_contrib > 50` 判计算主因、都不满足写“劣化来源分散”（分散时不要硬指一个方向）"
+    - pattern: 快慢卡线索（跨集群视角）
+      symptoms:
+        - "某 rank 的 Stage 时间明显偏离其他 rank"
+      cause: "可能是慢卡（硬件/链路），也可能是负载切分不均"
+      fix: "偏离所有 rank 均值 >10% 标记异常；rank 间离散度 `(max−min)/min × 100 > 3%` 提示慢卡线索。进一步：两侧慢卡集合为同一张卡 → 高度怀疑硬件/链路；不重叠 → 可排除固定单卡故障。**这些阈值在报告模板层，脚本只出逐 rank 差值，别把“脚本没报”当成“没问题”**"
+    - pattern: rank 集合不重叠仍做配对
+      symptoms:
+        - "两个集群的 rank 数/rank 集合不同，却输出了逐 rank 的 ±100% 差值"
+      cause: "把两个集群的 rank 按序号强行对齐"
+      fix: "rank 集合不重叠时**不做配对**，改为按 Host/分组维度比或只比汇总"
+    - pattern: 汇总行与单位混入算子级对比
+      symptoms:
+        - "算子级 TOP 差异表里出现 `Total Op Info` 这类汇总行"
+        - "一方 μs 一方 ms，比出来的倍数差 1000 倍"
+      cause: "汇总行不是算子；DB/TEXT-CSV 是 μs、TEXT-JSON 是 ms"
+      fix: "算子级对比前过滤 `Total` 汇总行；比较前先对齐单位（展示统一转 ms 并标注）；纯对比脚本本身可离线跑（只依赖标准库），数据必须由 NPU 侧采"
+    - pattern: 采集级别不足导致的"无通信数据"
+      symptoms:
+        - "通信表为空或通信带宽/矩阵缺失"
+      cause: "`profiler_level` 低于 Level1 时没有通信小算子；Ascend 950PR/950DT 的 CCU 场景本身不支持采集通信矩阵与通信算子带宽"
+      fix: "前者要求按 level1+ 重采；后者属正常缺失，要在结论里写明是平台限制而不是问题。**“没有数据”与“数据是零”必须分开写**"

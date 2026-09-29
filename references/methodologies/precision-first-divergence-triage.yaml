@@ -1,0 +1,86 @@
+id: precision-first-divergence-triage
+type: methodology
+title: 精度比对判读流程（阈值先定 → 首问题点三关 → 传播分类与溯源 → 参数梯度独立评估 → 多指标交叉收敛）
+summary: 拿到逐算子比对结果后的判读路径。**第 0 步先定阈值**——不要凭经验拍，用自适应级联从数据分布算（见 precision-threshold-cascade）：SICD 变点 → 锚定回溯 → Delta-NRE 离群 → 分布间隙 → 兜底，全程钳制 [0.1%, 100%]。**第 1 步按执行序找首个 output 超标的节点**（超标 = NRE ≥ 阈值 或 MeanBias ≥ 1.2 × 阈值）。**第 2 步过三关确认首问题点**：输入继承检查（与某个 input 四维一致 → 跳过）、下游吸收检查（下游 500 行内回到阈值以下 → 跳过）、继续向后找首个既不继承也不被吸收的节点；换了首问题点必须记录跳过过程。**第 3 步分类与溯源**：按四模式定标签（引入/放大/穿越/被吸收），对继承的节点按 NRE + dtype + MeanRE + MaxRE 四维一致向上**循环**追溯——**禁止找到第一个上游就停**，一直追到引入点或数据边界，追不到就如实写"数据覆盖不足"。**第 4 步参数梯度独立评估**（三档继承性对照，含 `parameters_grad` 的算子豁免吸收检查）。**第 5 步多指标交叉收敛**：每用一个指标确认后必须用其余指标再探更早的分叉点，直到都指向同一个最前分叉点，分歧时按"最先开始偏离"的指标为准并注明分歧。**收尾纪律**：报告里写"已排除"比写"已确认根因"更可信——可确认的是排除项，不是根因；分析范围（上下游各 500 行）与未对齐层要显式列出。
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/accuracy/compare-result-analyzer/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：九步分析流程、算子类型修正与报告纪律"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/accuracy/compare-result-analyzer/references/constraints.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：首问题点三关、溯源规则与算子分组"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/accuracy/spike-root-cause-analysis/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：多指标交叉与方向判定纪律"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msprobe, torch_npu]
+  categories: [precision]
+
+related_references: [precision-threshold-cascade, msprobe-accuracy-compare, msprobe-data-dump, msprobe-capability-limits, rl-train-infer-consistency-triage]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  flow:
+    - step: 0
+      name: 先定阈值（自适应级联，不拍数）
+      action: >-
+        从数据分布算阈值：分段预处理（dtype 变化或 NRE ≥10× 跃迁为断点，shape 变化不参与）→ 每段独立跑级联
+        （SICD 变点 → 锚定回溯 → Delta-NRE 离群 → 分布间隙 → 统计兜底）→ 全局阈值取各段有效阈值的最小值。
+        全局阈值 > 5% 时触发低信号回退（局部基线取 `min(0.1%, p50)`）。多窗口（`[200,500,1000]`）取 `min(全局, 各有效窗口)`。
+        阈值被钳制到 [0.1%, 100%] 的边界时，结论里注明并降一档置信度。
+      check: "阈值的来源方法、置信度、是否被钳制、是否用了多窗口"
+      when_to_use: 拿到比对结果后第一步
+    - step: 1
+      name: 找首个 output 超标的节点
+      action: >-
+        按执行顺序扫描，取第一个满足"不可忽略判定"的 OUTPUT 节点：`NRE ≥ 阈值`，或 `NRE < 阈值` 但
+        `MeanBias = |Mean diff| / Bench L2norm ≥ 1.2 × 阈值`。**这一步只产出候选，不是结论**。
+      check: "候选节点 + 命中哪条判据 + 具体数值"
+      when_to_use: 阈值确定后
+    - step: 2
+      name: 过三关确认首问题点
+      action: >-
+        ① **输入继承检查**：把候选的 output 与同一算子的**所有** input 比，若与某个 input 四维一致
+        （`|out−in| / max(|in|,eps) ≤ 0.1%` 且 dtype、MeanRE、MaxRE 一致）→ 判继承，跳过；
+        ② **下游吸收检查**：在其后 500 行内找 output 回到阈值以下的算子，若它的某个 input 与候选 output 四维一致
+        → 判被吸收，跳过（**含 `parameters_grad` 的 backward 算子豁免本检查**）；
+        ③ 继续向后，直到第一个既不继承也不被吸收的节点，确认为**首问题点**。
+        若最终的首问题点与最初候选不同，**必须记录跳过过程与原因**。
+      check: "三关各自结论（继承/吸收/确认）+ 换点的原因"
+      when_to_use: 有了候选节点之后
+    - step: 3
+      name: 传播分类与循环溯源
+      action: >-
+        按四模式定标签：干净入→脏出 = **引入**（最高优先）；脏→更脏 = 放大；脏→更好且超出 0.1% 相对容差 = 穿越；
+        脏→干净 = 被吸收。多输入算子遍历全部 (input, output) 组合后再给单一标签。
+        对被判继承的节点做**循环溯源**：限定当前行向上 500 行，按四维一致匹配产出该 input 的上游，再看该上游自身是引入还是继续继承——
+        **禁止找到第一个上游就停**；追到数据边界仍定不下来时，如实写"无法溯源——数据覆盖不足或 input 来自模型外部"。
+      check: "每个相关节点的标签 + 完整传播链（含范围限制声明）"
+      when_to_use: 首问题点确认后
+    - step: 4
+      name: 参数梯度独立评估（backward）
+      action: >-
+        对 backward 的 `parameters_grad` 输出做三档继承性对照：输入脏且 `grad ≤ max_input × 2` = **继承**（降级为传播，
+        指向脏输入来源）；`> 2×` = **放大**（真根因）；输入全干净仍超标 = **实现问题**（最高优先排查）。
+        聚焦子集（只留 `parameters_grad`、无输入可比）时保持独立评估不降级。MeanBias 触发的条目不参与继承降级。
+      check: "每条参数梯度结论带上 inheritance 档位"
+      when_to_use: 定位到 backward 方向时
+    - step: 5
+      name: 多指标交叉收敛与收尾
+      action: >-
+        用 Max / Min / Mean / Norm 多指标交叉：每用一个指标确认一个分叉点后，**必须用其余指标再探是否有更早的**，
+        直到所有指标指向同一个最前分叉点；分歧且互不包含时，以当前最前分叉点为准并注明"各指标分歧: <指标>→<层>"。
+        收尾纪律：结论里写"已排除"比写"已确认根因"更可信；分析范围（上下游各 500 行）、未对齐层、数据覆盖缺口、
+        shape 不一致比例都要显式列出；**未对齐层不等于正常**（往往是比不了）。
+      check: "交叉验证记录 + 范围/未对齐/覆盖缺口的显式声明"
+      when_to_use: 输出结论前

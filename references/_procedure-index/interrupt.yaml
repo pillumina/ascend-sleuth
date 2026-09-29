@@ -6,7 +6,7 @@
 #   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：
 #   references/_procedure-index.yaml
 #
-# 本片流程条数：12    本片加载成本：约 1932 token
+# 本片流程条数：13    本片加载成本：约 2113 token
 entries:
 - id: ascend-aicore-error-triage
   title: AI Core Error 问题定位（RAS → NPU 硬件 → 软件 → msaicerr 分析）
@@ -97,6 +97,17 @@ entries:
   - interrupt
   platforms: []
   file: references/methodologies/msllm-startup-version-env-triage.yaml
+- id: operator-tuning-experiment-method
+  title: 算子性能实验方法（精度门禁 → 不可变基线 → 单变量迭代 → 前后对照判定；含否证条款）
+  summary: 要给算子做性能改动时的实验纪律。**前置门禁**：精度未过、崩溃或 kernel 挂起 → **停止性能调优**（不是先记下来继续）——先修正确性再谈速度；任一目标用例失败即停。**第 1 步建不可变基线**：同软件栈、同 SoC、同频率、同 shape/dtype、同 TilingKey 下取稳态多次的中位耗时，并记下采集方式（event / simulator / msprof 等口径不可混…
+  categories:
+  - performance
+  - interrupt
+  platforms:
+  - A5-950
+  - A3-910C
+  - A2-910B
+  file: references/methodologies/operator-tuning-experiment-method.yaml
 - id: runtime-async-error-triage
   title: Runtime 异步错误定位（异步错误会延迟传播与覆盖 → 立即同步取首错 + 遇错即停/分段标记）
   summary: Runtime 异步接口（aclrtMemcpyAsync、Kernel Launch 等）返回成功只代表 Host 侧参数校验与任务下发成功，Device 侧执行错误会**延迟到后续某个接口调用才返回**——于是报错的接口往往不是出错的接口；遇错继续模式下后发生的错误还会**覆盖**先前的错误信息，导致拿不到首错。定位路径：下发后立即用 aclrtSynchronizeStream / acl…
