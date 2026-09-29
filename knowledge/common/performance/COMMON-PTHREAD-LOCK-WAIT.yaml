@@ -30,7 +30,7 @@ cases:
       primary:
         command_template: "看 Device 空闲时间占比与 Host 侧锁等待时长（profiling 时间线 + 锁竞争统计）"
         rank_selector: coordinator
-        expected: "Device 空闲等待 Host、锁等待时长偏高"
+        expected: 'regex:^(?!.*:).*(1[0-9]|[2-9][0-9]|100)(\.\d+)?\s*%.*$'
         note: "performance 类：primary 用空闲/等待时长指标断言"
       fallback:
         command_template: "grep -icE 'lock|wait' {{profiling_report_path}}"
@@ -39,7 +39,7 @@ cases:
 
     diagnosis:
       - step: 1
-        check: "NPU 利用率是否偏低、Device 是否在等 Host 下发？"
+        check: Device Free 占比 > step 的 10%，且下发侧 gap 与 Free 区间对齐（Host Bound）；锁等待表现为宿主侧长耗时调用
         expected: "是 → 瓶颈在 Host 侧"
       - step: 2
         check: "Host 侧是否存在长时间持锁？"

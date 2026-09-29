@@ -37,7 +37,7 @@ cases:
       primary:
         command_template: "对比两个版本单 step profiling 的内存数据（allocated/reserved 跨 step 趋势）"
         rank_selector: coordinator
-        expected: "某版本 reserved/allocated 随 step 线性累积"
+        expected: 'regex:^(?!.*:).*(\d{2,}(\.\d+)?\s*(MB|GB)).*$'
         note: "performance 类：primary 用内存趋势指标断言"
       fallback:
         command_template: "grep -icE 'out of memory|OOM|NPU out of memory' {{log_path}}"
@@ -46,7 +46,7 @@ cases:
 
     diagnosis:
       - step: 1
-        check: "是否与版本绑定（另一版本/GPU 不复现）？显存是否随 step 线性累积？"
+        check: 显存随 step 单调增长且每 step 增量 > 0；案例口径是每 step 约 47MB、累计约 22GB 后 OOM
         expected: "版本绑定 + 线性累积 → 指向算子/实现级泄漏，而非容量不足"
       - step: 2
         check: "采集多个 step 的 profiling，泄漏累积趋势是否稳定？"

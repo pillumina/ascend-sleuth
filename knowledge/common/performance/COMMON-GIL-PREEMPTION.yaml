@@ -29,7 +29,7 @@ cases:
       primary:
         command_template: "看 CPU 多核利用率是否偏低、线程锁竞争/等待占比是否偏高（profiling 线程视图）"
         rank_selector: coordinator
-        expected: "多核利用率低 + 锁等待占比高"
+        expected: '多核利用率低（各核 CPU 占用不均衡）且锁等待占比高——本库无此量的阈值口径，按现场基线比，不要凭数值下结论'
         note: "performance 类：primary 用利用率/锁等待指标断言"
       fallback:
         command_template: "grep -icE 'gil|lock' {{profiling_report_path}}"

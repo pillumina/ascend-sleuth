@@ -29,7 +29,7 @@ cases:
       primary:
         command_template: "在 op_statistic.csv 中按执行时间/占比排序，看是否存在单个访存密集型算子占比异常"
         rank_selector: coordinator
-        expected: "某索引/访存密集算子占比显著偏高"
+        expected: '单一访存密集算子（如 NonZero、IndexPut）占算子总耗时比例明显偏高——本库无此量的阈值口径，按同类算子横向比'
         note: "performance 类：primary 用算子占比指标断言"
       fallback:
         command_template: "grep -iE 'NonZero' {{profiling_report_path}}"

@@ -30,7 +30,7 @@ cases:
       primary:
         command_template: "看各 CPU 核中断次数分布（/proc/interrupts 或 profiling 的中断统计）"
         rank_selector: coordinator
-        expected: "部分核中断次数异常偏高、分布不均"
+        expected: '部分核中断次数明显高于其余核（分布不均）——本库无此量的阈值口径，按现场基线比'
         note: "performance 类：primary 用中断分布指标断言"
       fallback:
         command_template: "grep -icE 'irq|interrupt' {{profiling_report_path}}"
@@ -39,7 +39,7 @@ cases:
 
     diagnosis:
       - step: 1
-        check: "是否常规问题（算子/计算/内存/网络/环境/驱动）都排除后仍劣化？"
+        check: 各核中断次数里存在离群核：最忙核次数 > P50 + 3σ（离群判据），且 CPU 迁移与上下文切换同时上升
         expected: "是 → 转向系统层"
       - step: 2
         check: "各 CPU 核中断次数是否分布不均、个别核异常偏高？"

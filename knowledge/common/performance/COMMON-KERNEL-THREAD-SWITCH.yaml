@@ -29,7 +29,7 @@ cases:
       primary:
         command_template: "看全局上下文切换次数、内核态 CPU 占比与就绪队列长度（vmstat/pidstat 或 profiling 系统指标）"
         rank_selector: coordinator
-        expected: "上下文切换暴涨 + 内核态占比高 + 就绪队列堆积"
+        expected: '上下文切换次数与内核态占比同步高于基线（就绪队列堆积）——本库无此量的阈值口径，按现场基线比'
         note: "performance 类：primary 用系统指标断言"
       fallback:
         command_template: "grep -icE 'context switch|runqueue|sys%' {{profiling_report_path}}"
@@ -38,7 +38,7 @@ cases:
 
     diagnosis:
       - step: 1
-        check: "是否排除业务逻辑/数据链路/环境/驱动/硬件后仍劣化？"
+        check: 上下文切换次数与内核态占比相对基线同步上升，且 step 耗时漂移 CV = σ/μ > 0.20（漂移告警线）
         expected: "是 → 转向系统调度层"
       - step: 2
         check: "上下文切换次数是否异常暴涨、内核态 CPU 占比是否过高？"

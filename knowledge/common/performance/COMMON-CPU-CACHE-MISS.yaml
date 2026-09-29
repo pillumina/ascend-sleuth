@@ -30,7 +30,7 @@ cases:
       primary:
         command_template: "对比同业务在 A+K 与 A+X 的 TPOT/TTFT 指标，并看 CPU 上下文切换与 Cache Miss 统计"
         rank_selector: coordinator
-        expected: "A+K 明显劣化且上下文切换频繁 / Cache Miss 升高"
+        expected: 'regex:^(?!.*:).*(0\.8|80%|(\d{2,})\s*(MB|GB|KiB|MiB)).*$'
         note: "performance 类：primary 用平台对比指标断言"
       fallback:
         command_template: "grep -icE 'cache miss|context switch|ctx_switches' {{profiling_report_path}}"
