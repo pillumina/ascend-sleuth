@@ -79,6 +79,11 @@ status: active | pending-review | deprecated | draft   # 新产出即 active（P
 - **互链不悬挂**：`related_references` 必须指向存在的词条 id（实测 6 处悬挂 + 5 处指向已归档的 deprecated 词条——链接不报错，只是点不动）。
 - **错误码缺口的两个视图一致**：族文件里的 `content.code_gaps`（节选）必须都在 `_code-gaps.yaml`（生成台账）里。
 
+**超长 `summary` 的处理动作（本仓约定）**：把原摘要正文整体迁进 `content.details`（块标量，逐字保留），
+`summary` 换成一句 ≤160 字符的路由句——**迁移不是删除**，读全文时看到的内容与迁移前逐字相同。
+`details` 是 `content` 下的可选键（不在 `_types.yaml` 的 `schema_required` 里，生成器与校验器都不读它），
+用途只有一个：承接从 `summary` 挪出来的正文。已有 104 条走这条路（2026-09-29 批）。
+
 **`summary` 是"选择用的路由行"，不是内容**（本条为表述纪律，不进 CI——判"哪句算判据"要人读）：
 背景层每轮只取 **≤5 行**、且生成器对 `summary` **截断到 160 字符**（`build_ref_summary_index.py` 的 `SUMMARY_CAP`）。
 所以 `summary` 的职责只有一个：**让读的人决定"这条要不要点开"**——写清"这条讲什么工具/事实 + 什么时候看"就够。

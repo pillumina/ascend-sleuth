@@ -233,8 +233,7 @@ entries:
 - id: aclnn-quant-modes-and-sparsemode
   type: software-fact
   title: aclnn 量化模式与 sparseMode（T/C/K/G/B 五级与五种组合 / MX 的定义 / sparseMode 0-8 表与 varlen 限制）
-  summary: 两块与『精度问题的成因判读』直接相关的语义。**① 量化模式（量化粒度）与 scale 的 shape**：pertensor（T）——左或右矩阵整张共用一个量化参数，左矩阵 (m,k)
-    时 scale 形状 (1,)；perchannel（C）——只能作用于**右矩阵**、每个 channel 独立，右矩阵 (k,n…
+  summary: aclnn 量化模式与稀疏模式的语义和约束——两块与精度成因判读直接相关的规则。
   applies_to:
     platforms:
     - cross
@@ -244,7 +243,7 @@ entries:
   type: software-fact
   title: aclnn 两段式接口契约（一阶段 GetWorkspaceSize / 二阶段执行）
   summary: aclnn 单算子接口固定为两段：一阶段 `aclnnXxxGetWorkspaceSize` 做入参校验、动态 shape 推导、Tiling、构建 L0 计算图、算 workspace
-    大小；二阶段 `aclnnXxx` 由 nnopbase 按图选算子提交到 NPU。据此把报错与耗时按段归属：一阶段失败多为入参 …
+    大小；
   applies_to:
     platforms:
     - cross
@@ -254,7 +253,7 @@ entries:
 - id: aclnn-type-promotion-broadcast-and-format
   type: software-fact
   title: aclnn 的张量语义约束（互推导/互转换/broadcast 的 <6 维限制/数据格式与维度要求/非连续 Tensor）
-  summary: 写或排查 aclnn 调用时的四类张量语义约束。**① 互推导（type promotion，类比 PyTorch）**：输入 aclTensor 之间数据类型不一致时，API 内部推导出一个类型并把输入都转成它再算——规则是**整数类型间可推导、整数可往浮点与复数推、浮点间可推、浮点可往复数推、复数之间可推、BOOL…
+  summary: aclnn 类型提升、广播与格式推导的规则：什么情况下 dtype 会被提升、shape 广播怎么算、格式冲突如何报错。
   applies_to:
     platforms:
     - cross
@@ -264,8 +263,7 @@ entries:
 - id: aicore-task-duration-anatomy
   type: software-fact
   title: AICore 算子 Task Duration 分段与首指令取指链（Icache/TLB/Dcache）
-  summary: profiling 里的单算子 Task Duration 由多段构成：AICore 调度器调度约 150ns、硬件初始化约 50ns、软件初始化约 1us、所有核执行结束到结果上报约
-    500ns，来源明写**这个时间不是固定的**——由 TilingData 大小、算子入参个数、算子初始化行为决定（复杂算子的 Til…
+  summary: AICore 算子 Task Duration 的分段构成与首指令取指链（Icachemiss 一类），用于判「这段耗时到底花在哪」。
   applies_to:
     platforms:
     - cross
@@ -274,8 +272,7 @@ entries:
 - id: amct-quantization-precision-tuning
   type: software-fact
   title: AMCT 量化的精度三手段（基于精度的自动量化 / 校准集 batch_num 建议 16 或 32 / skip_layers 跳过损失大的层）与损失层两步比对法
-  summary: 量化模型精度不够时的三条手段与一条定位法：①**基于精度的自动量化**——借助 AMCT 工具提供的 Python 接口，在保证用户所需模型精度前提下自动搜索模型的量化配置并执行**训练后量化**，生成满足精度要求的量化模型（当前
-    PyTorch、TensorFlow、Caffe 框架支持）。②**校准集规模**——基…
+  summary: AMCT 量化的精度三手段（基于精度的自动量化 / 校准集 batch_num 等）各自的适用与取舍。
   applies_to:
     platforms:
     - cross
@@ -284,8 +281,7 @@ entries:
 - id: aoe-model-tuning
   type: tool
   title: AOE 模型调优（aoe 命令：先子图调优再算子调优 → 知识库/om/效果文件 → TUNE_BANK_PATH 指定后推理）
-  summary: 推理性能调优的关键工具之一（另一个是模型压缩工具 AMCT）：`aoe` 命令在 atc 参数基础上增加 `--job_type`，提供**子图调优**与**算子调优**；**一般建议先做子图调优再做算子调优**——子图调优会生成图的切分方式，之后算子已被切成最终
-    shape，再按最终 shape 做算子调优；顺序颠倒…
+  summary: AOE 模型调优：先子图调优再算子调优的流程，以及知识库 / om / 效果文件的产物形态。
   applies_to:
     platforms:
     - cross
@@ -295,8 +291,7 @@ entries:
   type: tool
   title: Ascend C 算子调试工具集（cpu_debug 的 CPU 域编译 + npu_check 的 Error* 判据表 + msobjdump 的 ELF 字段 + show_kernel_debug_data
     + optype_collector）
-  summary: asc-tools 这套工具解决算子级问题：**cpu_debug**——在 NPU 部署前先上 CPU 做功能与精度基本验证（bisheng 编译生成 CPU 域可执行程序，再用
-    gdb 常规调试；编译选项 `CMAKE_ASC_RUN_MODE=cpu` 与 `CMAKE_ASC_ARCHITECTURES=dav…
+  summary: 昇腾算子调试与精度比对工具套件（ASC 工具集）的命令与解读：仿真、dump、比对各自的入口与结果字段。
   applies_to:
     platforms:
     - A2-910B
@@ -320,8 +315,7 @@ entries:
 - id: ascend-app-process-and-resource-constraints
   type: software-fact
   title: 应用侧进程与资源硬约束（单 Device 进程数上限 63/64、不支持 fork 后调 acl 接口、创建销毁配对、休眠前置）
-  summary: 三类会直接表现为「进程起不来 / 报错 / 卡死」的应用侧硬约束：①**单 Device 用户进程数上限**（Host 上限 = Device 数 × 单卡上限）——Atlas 训练系列、Atlas
-    推理系列、Atlas 200I/500 A2 推理产品、Ascend 950PR/950DT 为**单卡 64 个**（…
+  summary: 应用侧进程与资源的硬约束：单 Device 进程数上限、不支持 fork 一类限制及其报错形态。
   applies_to:
     platforms:
     - A2-910B
@@ -334,8 +328,7 @@ entries:
 - id: ascend-asys
   type: tool
   title: asys 故障信息收集与解析工具（仅 Ascend EP 形态；含收集面/约束/五类解析/四类检测的完整口径）
-  summary: asys 一键式收集故障信息并解析 plog 伴侣文件：collect/launch 收集（含业务复跑）、info 状态展示、health 健康检查、diagnose 压测检测（stress/hbm/cpu/aicore_stl/component）、analyze
-    解析（trace/coredump/stackcor…
+  summary: asys 故障信息收集与解析（仅 Ascend EP 形态）：收集面、约束与产物解读。
   applies_to:
     platforms:
     - cross
@@ -345,7 +338,7 @@ entries:
   type: tool
   title: Device 日志排查操作（RAS 故障 ID / 资源占用 / 进程拉起与结束时间）
   summary: 三组 Device 日志操作：①msnpureport -f 导出后 event_*.log 搜 event_id 取 RAS 故障码（npu-smi info -t health
-    兜底 8 次）；②SYSMONITOR 看 fd usage（阈值 90%）与僵尸进程（阈值 5）；③slog/dev-os-id/[de…
+    兜底 8 次）；
   applies_to:
     platforms:
     - cross
@@ -354,8 +347,7 @@ entries:
 - id: ascend-error-code-structure
   type: software-fact
   title: 昇腾 6 位错误码结构（级别位 + 模块位 + 内部码规则）
-  summary: 错误码 6 位：第 1 位 E/W/I（错误/告警/提示）；第 2 位模块（E1=GE、E2=FE、E3=AI CPU、E4=TEFusion、E7=Vector 算子插件、E8=Vector
-    算子、EB=TBE Pass、EC=Auto Tune、ED=RLTune、EE=Runtime、EF=LxFusion&Au…
+  summary: 昇腾 6 位错误码的结构（级别位 + 模块位 + 内部码规则），用于从码反推责任组件。
   applies_to:
     platforms:
     - cross
@@ -366,8 +358,7 @@ entries:
 - id: ascend-inference-multistream-and-graph-mode
   type: software-fact
   title: 推理侧多流并行与 NPU 图模式（两种并行的成立条件、三模式接口不可混用、Guards 命中是收益前提、9 条图模式高频问题）
-  summary: 推理性能定位里最常被误解的两块机制。**多流**：Device 侧物理单元 Cube（大矩阵乘）、Vector（向量/激活/规约）、HCCL（集合通信）可独立调度，Stream 是
-    Host 向 Device 下发任务的队列（同流串行、跨流由 Event 与调度器定序）；三种并行形态——**Cube↔Vector 互补…
+  summary: 推理侧多流与图模式的语义差异：流与事件的约束、图捕获的支持边界与失败形态。
   applies_to:
     platforms:
     - A2-910B
@@ -379,8 +370,7 @@ entries:
 - id: ascend-log-classification
   type: software-fact
   title: 昇腾日志分类与统一格式
-  summary: 昇腾日志分系统类（Device 侧）/ 应用类（Host+Device）/ trace（内存记录、出错或退出才落盘）三类；统一格式 [Level] ModuleName(PID,PName):DateTimeMS
-    [FileName:LineNumber]LogContent；文件名中 id=Device ID、pid…
+  summary: 昇腾日志分系统类（Device 侧）/ 应用类（Host+Device）/ trace（内存记录、出错或退出才落盘）三类；
   applies_to:
     platforms:
     - cross
@@ -389,8 +379,7 @@ entries:
 - id: ascend-log-levels
   type: tool
   title: 设置日志级别（应用类环境变量 / 系统类 msnpureport 或 slog.conf）
-  summary: 日志级别序 0 DEBUG < 1 INFO < 2 WARNING < 3 ERROR < 4 NULL 不输出；调试日志默认 ERROR 可调、安全日志默认 DEBUG 不可调、运行日志默认
-    INFO 不可调；应用类用 ASCEND_GLOBAL_LOG_LEVEL 等环境变量，系统类 EP 用 msnpurepo…
+  summary: 日志级别序 0 DEBUG < 1 INFO < 2 WARNING < 3 ERROR < 4 NULL 不输出；
   applies_to:
     platforms:
     - cross
@@ -400,7 +389,7 @@ entries:
   type: software-fact
   title: 昇腾日志存储路径（EP / RC / Control CPU 开放形态，含 EP 现场采集包 npu_log_collect 布局）
   summary: 昇腾日志存储路径：EP 应用类 $HOME/ascend/log、系统类走 msnpureport 导出或现场采集包 npu_log_collect（driver_log/<时间戳>/slog/dev-os-id/，debug
-    下有 device-id 与 device-os 两级）；event 文件名时间戳是创建时间…
+    下有 device-id 与 device-os 两级）；
   applies_to:
     platforms:
     - cross
@@ -410,7 +399,7 @@ entries:
   type: software-fact
   title: 昇腾日志模块名字典（ModuleName 解码）
   summary: 日志行 [Level] ModuleName(PID,PName):... 中 ModuleName 对照：Device 侧 SLOG/IDEDD/DVPP/TS/TSDUMP/LP/AICPU，Host
-    侧 GE/ASCENDCL/DRV/RUNTIME/TBE/TDT/HCCL/TEFUSION/ATC/PLOG；…
+    侧 GE/ASCENDCL/DRV/RUNTIME/TBE/TDT/HCCL/TEFUSION/ATC/PLOG；
   applies_to:
     platforms:
     - cross
@@ -420,7 +409,7 @@ entries:
   type: tool
   title: msaicerr AI Core Error 专项分析工具（含功能约束、目录约束与四个子命令的参数口径）
   summary: msaicerr 分析 AI Core Error 问题（输出 info.txt 分析报告）、解析 Dump 文件（→.bin/.npy，含算子输入输出与 workspace）、转换
-    Dump 数据类型（13 种 dtype）、检查环境（-e 跑内置算子样例）；不支持 MatmulAllReduce 类算子（Matmu…
+    Dump 数据类型（13 种 dtype）、检查环境（-e 跑内置算子样例）；
   applies_to:
     platforms:
     - cross
@@ -440,7 +429,7 @@ entries:
   type: tool
   title: Device 侧日志配置文件 /etc/slog.conf
   summary: RC 与 Control CPU 开放形态 Device 侧系统日志配置在 /etc/slog.conf：global_level、enableEvent、模块级别（5=跟随全局）、滚动规格、logAgentFileDir（≤255
-    字节）、permission_for_all；改后必须重启 slogd 生效；Asce…
+    字节）、permission_for_all；
   applies_to:
     platforms:
     - cross
@@ -459,8 +448,7 @@ entries:
 - id: ascend-trace-logs
   type: software-fact
   title: trace 日志机制与落盘路径（仅 Ascend EP 标准形态）
-  summary: trace 将软件栈维测信息记内存、运行出错或进程结束时才落盘，仅 Ascend EP 标准形态支持；根目录 $HOME/ascend/atrace（ASCEND_WORK_PATH
-    可重定向），事件三类 schedule/stackcore/exit；stackcore 与 *.bin 轨迹需 asys 工具解析，目…
+  summary: trace 将软件栈维测信息记内存、运行出错或进程结束时才落盘，仅 Ascend EP 标准形态支持；
   applies_to:
     platforms:
     - cross
@@ -469,8 +457,7 @@ entries:
 - id: atb-dispatch-bound-and-runtime-optimizations
   type: software-fact
   title: ATB 算子下发链与 Host/Device Bound 判据（下发六步、Tiling 影响可达 10×、Tiling Cache 与 Setup 复用、Workspace 省 50%）
-  summary: 判断推理性能瓶颈在 Host 还是 Device，以及 ATB 为此做什么。**两种瓶颈的判据**：Host Bound —— Host 下发较慢、Device 执行较快，**在 profiling
-    图上表现为 Stream 上的 Kernel 之间存在空泡**，此时设备算力未被充分利用、应优化 Host 端下发；De…
+  summary: ATB 下发受限的判据与运行时优化开关：什么形态算下发瓶颈、可用的运行时选项及其副作用。
   applies_to:
     platforms:
     - A2-910B
@@ -481,8 +468,7 @@ entries:
 - id: atc-precision-mode-and-switches
   type: software-fact
   title: ATC 精度模式与两个默认开启的优化开关（默认 fp16 / allow_fp32_to_fp16 / keep_dtype 例外清单 / 数据缓存优化 / 融合规则）
-  summary: om 模型精度问题的三个配置面：①**精度模式**——模型转换不指定精度模式时**默认用 fp16** 计算；`--precision_mode=allow_fp32_to_fp16`
-    表示算子支持 fp32 就用 fp32、不支持才用 fp16（高精度模式，提升精度但可能影响性能）；`--keep_dtype` 配一…
+  summary: ATC 精度模式与两个默认开启的优化开关（默认 fp16、allow_fp32_to_fp16 一类）对精度的影响。
   applies_to:
     platforms:
     - cross
@@ -491,8 +477,7 @@ entries:
 - id: attention-precision-chains
   type: software-fact
   title: Attention 两类精度损失链（FP8 per-block 量化的 P 压 fp8 / 衰减注意力的 exp 指数上溢）与验收判据
-  summary: 量化与线性 attention 各有主要精度损失点：①FIA FP8 per-block 全量化里 **softmax 概率 P 被压到 fp8(E4M3)** 是最大损失点，且要求
-    block_size 与算子 tiling 块一致（scale shape 直接暴露粒度：query 沿 S1 每 128、key/va…
+  summary: Attention 的两类精度损失链（FP8 per-block 量化的 P 压缩等）与各自的判读入口。
   applies_to:
     platforms:
     - cross
@@ -501,8 +486,7 @@ entries:
 - id: autofuse-fusion-enable-and-diagnostics
   type: tool
   title: AutoFuse 自动融合的使能与未融合原因判读（torch.compile 的 ascendc 后端 + autofused_ 产物 + Fallback 原因 + DFX 融合图）
-  summary: AutoFuse 是面向 Ascend C 的自动融合框架（把相邻算子合成一个、消掉中间的输入输出搬运，缓解 Vector 链路的 Memory Bound），在 PyTorch 侧通过
-    `torch.compile(model, dynamic=False, fullgraph=True, options={"npu…
+  summary: Autofuse 自动融合的启用方式与诊断：怎么确认融合生效、不生效时看哪些编译期信息。
   applies_to:
     platforms:
     - A2-910B
@@ -515,8 +499,7 @@ entries:
 - id: batch-consistency-and-determinism-switches
   type: software-fact
   title: 计算确定性开关（ACL_OPT_DETERMINISTIC 1 与 3 / torch 侧两个入口 / 逐比特一致与 batch 一致性的区别 / 版本门槛）
-  summary: 昇腾上「结果不一致」分两级，开关也不同级。**① 确定性（determinism，`ACL_OPT_DETERMINISTIC=1`）**：解决同一算子在同一输入下多次运行结果不同——根源是算子实现内的异步多线程执行使浮点累加顺序变化；aclnn
-    路径用 `aclrtSetSysParamOpt`（进程级）设 1，Py…
+  summary: 批一致性与确定性的开关面：哪些开关影响逐次可复现性、各自代价是什么。
   applies_to:
     platforms:
     - cross
@@ -526,7 +509,7 @@ entries:
   type: software-fact
   title: BF16 中间计算的精度处理（升 FP32 计算 / 等价重结合会改变 BF16 舍入位置）
   summary: BF16 的尾数只有 8 位，两类精度事故有明确机制：①**中间结果在 BF16 上直接计算**会累积舍入误差（修法是 BF16 load → FP32 compute → BF16
-    store，来源实例最大偏差 0.0078125）；②**代数等价的重新结合**（如把 `(a+b)+c` 改成 `a+(b+c)`、或…
+    store，来源实例最大偏差 0.0078125）；
   applies_to:
     platforms:
     - cross
@@ -535,16 +518,14 @@ entries:
 - id: cann-source-location
   type: software-fact
   title: CANN 源码位置（gitcode 的 cann 组织：82 仓、匿名可枚举的清单 API、仓与层的对应、版本号即 CANN 发布号）
-  summary: CANN 已开源，源码在 **gitcode 的 cann 组织**（https://gitcode.com/cann/）：2026-09 实测 **82 个公开仓**，且仓库清单**匿名可枚举**——`https://gitcode.com/api/v5/orgs/cann/repos&page=N`（无需
-    toke…
+  summary: CANN 源码仓的定位与结构（各仓职责、共用发布号），以及为什么 tag 能解析不构成定位证据。
   applies_to:
     platforms:
     - cross
 - id: cannsim-sim-profiling
   type: tool
   title: cannsim 仿真观测（SoC 级指令流水 cycle Trace + bit 级精度仿真，非上板采集；单卡/仅 AI Core 计算算子/仅 950PR）
-  summary: cannsim 在 SoC 级仿真器上跑同一个 kernel（与上板二进制兼容），输出两类结果：**性能面**——cycle 级指令流水 Trace 与 VectorFunction（VF）的
-    load / exec / store pipe 分布；**精度面**——bit 级精度结果用于算子精度验证。它补的是上板 p…
+  summary: cannsim 仿真观测：SoC 级指令流水 cycle trace 与 bit 级仿真的读法与适用场景。
   applies_to:
     platforms:
     - A5-950
@@ -553,8 +534,7 @@ entries:
 - id: crosscore-vs-mutex
   type: software-fact
   title: CrossCore 与核内 Mutex 的分工（跨核交接 vs 核内槽复用，不可互替、方向不对称）
-  summary: 1C2V Mix 核里有**两套互不替代**的同步机制：CrossCore 只传递「数据就绪」与「槽位可复用」两类状态、**不搬运数值**，负责 AIC/AIV 共享资源的所有权；核内
-    Mutex 负责单个核心内部物理槽的复用（分别约束 AIV 的 MTE2→Vector→MTE3、AIC 的 MTE1→Mmad 与 …
+  summary: 1C2V Mix 核里有**两套互不替代**的同步机制：CrossCore 只传递「数据就绪」与「槽位可复用」两类状态、**不搬运数值**，负责 AIC/AIV 共享资源的所有权；
   applies_to:
     platforms:
     - A5-950
@@ -564,8 +544,7 @@ entries:
 - id: cv-fusion-fixpipe-ub
   type: software-fact
   title: Cube-Vector 融合与 Fixpipe L0C→UB 直通（仅 Ascend 950；判据 aiv_mte2_time 趋零）
-  summary: Cube 累加结果默认在 L0C，传统通路是 Fixpipe 写到 GM、再由 AIV 用 MTE2 搬进 UB；**Ascend 950（dav-3510）的 Fixpipe 支持
-    L0C 直通 UB**，A2/A3 无此能力。融合算子（同一 launch 内 AIC 计算 + AIV 后处理）的收益判据有两条：`a…
+  summary: Cube 累加结果默认在 L0C，传统通路是 Fixpipe 写到 GM、再由 AIV 用 MTE2 搬进 UB；
   applies_to:
     platforms:
     - A5-950
@@ -576,7 +555,7 @@ entries:
   type: software-fact
   title: elemwise 是 throughput-bound、归约是 latency-bound（判据：循环携带依赖）
   summary: 判断 Vector 算子该往哪优化，分水岭是**相邻迭代之间有没有循环携带依赖**：elemwise 每个 lane 只读写自己的位置、无依赖 → **throughput-bound**，基线已最优，手写展开或
-    `#pragma unroll` 基本无效（发射已打满，只多出标量地址指令）；归约是多对一、累加器要用上一…
+    `#pragma unroll` 基本无效（发射已打满，只多出标量地址指令）；
   applies_to:
     platforms:
     - A5-950
@@ -585,8 +564,7 @@ entries:
 - id: exec-npu-cmd-async-launch
   type: software-fact
   title: EXEC_NPU_CMD 单算子下发（V1/V2 线程归属 + 十步异步提交 TaskQueue）
-  summary: torch_npu 每个算子下发的固定展开：`task_queue_enable == 2` 走 `EXEC_NPU_CMD_V2`（参数预拷贝），否则走 V1（直接转换）；两者**只差一阶段
-    `GetWorkspaceSize` 在哪个线程执行**——V1 在主线程、V2 在消费线程，二阶段 `aclnnXxx` 两…
+  summary: torch_npu 每个算子下发的固定展开：`task_queue_enable == 2` 走 `EXEC_NPU_CMD_V2`（参数预拷贝），否则走 V1（直接转换）；
   applies_to:
     platforms:
     - cross
@@ -596,8 +574,7 @@ entries:
 - id: fabricmem-unified-addressing-and-transfer
   type: software-fact
   title: FabricMem 模式（超节点内 DRAM 统一编址 + D2RH/RH2D 单边传输：VMM 四步、开关与取值约束、依赖与硬件范围）
-  summary: HIXL 的 FabricMem 传输模式：在 Atlas 800T A3 超节点内把**所有计算节点的 DRAM 统一编址**，NPU 通过 HCCS 直接访问远程节点内存，从而走
-    **D2RH（设备→远程主机）/RH2D（远程主机→设备）** 高带宽通道——文档给出的动机是传统 RoCE 方案满载带宽约 20GB/…
+  summary: FabricMem 统一编址与传输的契约：地址语义、传输约束与失败形态。
   applies_to:
     platforms:
     - A3-910C
@@ -607,8 +584,7 @@ entries:
 - id: flash-attention-stage-pipeline
   type: software-fact
   title: FlashAttention 四阶段的三条依赖与跨轮次错位（FIA_PRELOAD_TASK_CACHE_SIZE = 3）
-  summary: FA 的 mm1/vec1/mm2/vec2 四阶段由 Cube 核与 Vector 核分担，依赖关系**只有三条**：①同一轮次的四阶段顺序执行；②不同轮次之间的 vec1 顺序执行；③不同轮次之间的
-    vec2 顺序执行。因此**非同一轮次的 mm1 与 vec1/vec2、mm2 与 vec1/vec2 都可并行*…
+  summary: FlashAttention 四阶段的三条依赖与跨轮次错位（含 `FIA_PRELOAD` 一类的重叠条件）。
   applies_to:
     platforms:
     - cross
@@ -618,7 +594,7 @@ entries:
   type: software-fact
   title: float4_e2m1 → float8_e4m3fn 无直接 Cast（位映射 + ×64 补偿，bias 需先 ÷64）
   summary: Ascend 950 不支持从 `float4_e2m1` 直接转 `float8_e4m3fn`：需走 `float4_e2m1 → bfloat16 → float32 → float8_e4m3fn`
-    共 3 个 Cast。等效位操作是符号位不变、指数位高位补两个 0、尾数位低位补两个 0；该结果被解释为 e4m…
+    共 3 个 Cast。
   applies_to:
     platforms:
     - A5-950
@@ -628,8 +604,7 @@ entries:
 - id: fractal-nz-layout
   type: platform-fact
   title: FRACTAL_NZ 分形排布（基本块 16×16 / FP32 16×8，K 对齐 32/sizeof(T)，N 对齐 16）
-  summary: NPU 内部计算亲和 **FRACTAL_NZ** 分形排布：基本块 FP16/BF16 为 16×16、FP32 为 16×8（M 维块恒 16，FP32 时 N 维减半）；块间按
-    N 字形（列优先）、块内按 Z 字形（Morton）排列，ND 则是行主序。对齐规则：K 维对齐到 `CUBE_SIZE/sizeof(…
+  summary: NPU 内部计算亲和 **FRACTAL_NZ** 分形排布：基本块 FP16/BF16 为 16×16、FP32 为 16×8（M 维块恒 16，FP32 时 N 维减半）；
   applies_to:
     platforms:
     - A5-950
@@ -649,8 +624,7 @@ entries:
 - id: full-load-l1-condition
   type: software-fact
   title: 全载（FullLoad）把小矩阵常驻 L1 的判定条件与后果
-  summary: MTE2 Bound 场景下，若 A（或 B）矩阵能完整放进 L1，可一次性载入并常驻复用，把 MTE2 搬运次数从「与计算轮次成正比」降到**常数级**。判定条件三条：①分块数需超过可用核数（`tilesM=(m+255)/256`、`tilesN=(n+255)/256`，要求
-    `tilesM×tilesN ≥ n…
+  summary: 全载（FullLoad）把小矩阵常驻 L1 的判定条件与代价。
   applies_to:
     platforms:
     - A5-950
@@ -660,8 +634,7 @@ entries:
 - id: hccl-cluster-heartbeat-and-link-probe
   type: software-fact
   title: HCCL 集群心跳维测链路与建链故障探测链路（事件类型、判据窗口、日志格式）
-  summary: HCCL 在两个阶段各自建了一条「自动指根节点」的旁路机制：①**集群心跳**——基于通信域信息与邻近 rank 建独立维测链路，把单点故障广播到通信域内每个 rank（HCCL 控制链路数量与数据量，不影响通信性能），探测三类事件：网络问题
-    ERROR CQE/Error cqe Occurred（轮询 ROCE 驱…
+  summary: HCCL 集群心跳维测链路与建链故障探测链路：事件类型、判据窗口与日志格式。
   applies_to:
     platforms:
     - cross
@@ -670,8 +643,7 @@ entries:
 - id: hccl-log-key-info-fields
   type: software-fact
   title: HCCL 关键日志的检索关键字与字段含义（Communicator/LocalRank Key Info、HCCL_ENV、Entry- 算子入参、task exception 三段）
-  summary: 从 CANN 日志里取 HCCL 证据的四个检索入口：①`Communicator Key Info` / `LocalRank Key Info`——一行的通信域关键信息（identifier/rankSize/serverNum/moduleNum/superPodNum
-    及两个「是否不一致」标志）与本端关键信息（…
+  summary: HCCL 日志里的关键字段：哪些字段能定到 rank/链路/算子，以及各字段的取值含义。
   applies_to:
     platforms:
     - cross
@@ -682,8 +654,7 @@ entries:
 - id: hccn-tool-network-diagnosis
   type: tool
   title: hccn_tool（网口链路闪断 / device IP / ROCE 与 HCCS 连通性 / TLS 状态与证书）
-  summary: 用 hccn_tool 检查 device 侧网络链路健康与 TLS 一致性的一套命令。**旧版写法**（模式开关在尾）：`-link_stat -g` 查网口 up/down 次数与闪断时间点（ERROR
-    CQE 的常见根因）、`-ip -g`/`-vnic -g`/`-ip -inet6 -g` 查 NIC/VNI…
+  summary: hccn_tool 网口诊断：链路闪断、device IP、ROCE 与 HCCS 侧查询命令与判据。
   applies_to:
     platforms:
     - cross
@@ -693,8 +664,7 @@ entries:
 - id: hif8-and-mxfp8-low-precision-training
   type: software-fact
   title: HiF8 / MXFP8 低精度训练（格式特性、Per-Tensor vs Per-Block、Delayed vs Current Scaling、950DT 实测 29.5% 加速与参数组合支持范围）
-  summary: 训练低精度（8-bit）的选型与判据。**格式**：HiF8 由符号 S(1) + 点位 Dot(2~4) + 阶码 E(D 位，**符号-幅度编码**且幅值最高位为隐含位) + 尾数
-    M(1~3) 组成；Normal 模式下 Dot=1/2/3/4 分别编码 E=±1、±[2,3]…共覆盖指数 [-15,15] 且*…
+  summary: hif8 与 mxfp8 低精度训练的数值契约：类型语义、量化尺度规则与精度风险点。
   applies_to:
     platforms:
     - A5-950
@@ -705,7 +675,7 @@ entries:
   type: software-fact
   title: HiFloat8 的类型契约（hifloat8_t 建 tensor / Cast 直转 / 按 1 Byte 搬运）
   summary: 算子开发侧不需要感知 HiFloat8 的转换计算逻辑：把输入/输出数据类型设为 `hifloat8_t` 即可，支持创建该类型的 GM 与 UB（`GlobalTensor<hifloat8_t>`
-    / `LocalTensor<hifloat8_t>`）；类型转换直接用 `AscendC::Cast<hifloat…
+    / `LocalTensor<hifloat8_t>`）；
   applies_to:
     platforms:
     - A5-950
@@ -715,8 +685,7 @@ entries:
 - id: hixl-tool-route-and-comm-res
   type: tool
   title: hixl_tool（A5/950 通信资源生成：host_route 导 EID 清单 + local_comm_res 生成 LocalCommRes JSON）
-  summary: HIXL 附带的命令行工具，为分布式推理/AI 场景生成网络通信资源，**仅适用于 A5（Ascend 950）机型，不支持 A2/A3**。两个子命令：`host_route` 导出本机
-    Host/CPU 侧 EID（2 口 PG）与 NPU 侧 EID 到 `host_route.json`（默认 `/etc/`，…
+  summary: hixl 工具：查通信路由与通信资源占用的入口与字段解读。
   applies_to:
     platforms:
     - A5-950
@@ -726,8 +695,7 @@ entries:
 - id: host-kernel-log-collection
   type: tool
   title: Host 内核日志采集与判读（dmesg / journalctl -k / /var/log/messages）
-  summary: Host 侧内核日志三条入口（dmesg -T 与时间窗、journalctl -k 与 -b -1、/var/log/messages）+ 判读面（OOM killer 的 Out
-    of memory / Memory cgroup out of memory 消息格式、重启与链路事件入口）+ 四个坑（环形缓冲被覆盖…
+  summary: Host 内核日志的采集与判读：`dmesg` / `journalctl -k` 该看什么、哪些行指向掉卡与 OOM killer。
   applies_to:
     platforms:
     - cross
@@ -737,7 +705,7 @@ entries:
   type: platform-fact
   title: 硬件任务调度模块分派（AICore / AICpu / Sdma 三条调度通道）
   summary: 昇腾芯片的系统任务调度模块把任务按类型分派到不同调度器：硬件队列 → 路由请求 → {AICore 调度器, AICpu 调度器, ……, Sdma 调度器} → {AIC, AIV,
-    AICpu, ……, Sdma}。即 AIC/AIV 任务走 AICore 调度器，而 AICpu 任务与 Sdma 拷贝任务**各有…
+    AICpu, ……, Sdma}。
   applies_to:
     platforms:
     - cross
@@ -747,8 +715,7 @@ entries:
 - id: l1-l0-bank-and-conflict
   type: platform-fact
   title: L1/L0 片上存储的 Bank 结构与冲突（L1 双 256KiB Bank、UB bank 交织公式）
-  summary: 片上存储的内部划分决定了「搬运不快」的一类根因：L1 为 512 KiB、按 256 KiB 分成两个 Bank，跨 Bank 的访问模式会打断 MMAD；L0C 固定 256 KiB，直接决定
-    `baseM = baseN = 256` 是 tiling 上限；UB 侧存在 bank 交织（`bank = (byte…
+  summary: 片上存储的内部划分决定了「搬运不快」的一类根因：L1 为 512 KiB、按 256 KiB 分成两个 Bank，跨 Bank 的访问模式会打断 MMAD；
   applies_to:
     platforms:
     - A5-950
@@ -758,7 +725,7 @@ entries:
   type: software-fact
   title: matmul 的 L2 与多缓冲机制（SWAT 提命中率 / 只读权重绕过 L2 / K 尾轮 L0C 冲突 / 2-3-4 Buffer 条件）
   summary: 四个与 L2、多缓冲相关的机制：①**SWAT**（M 向固定窗口 + N 向 Z 型往复滑动）通过提高多核单次访问的 **L2 命中率**改善 MTE2，做到首轮搬运即可 MMAD
-    不断流，Cube 利用率可达 95%+；②**只读一次的 weight 可绕过 L2**（双页表），不适用的数据不必占 L2；③**K …
+    不断流，Cube 利用率可达 95%+；
   applies_to:
     platforms:
     - A5-950
@@ -767,8 +734,7 @@ entries:
 - id: llm-datadist-link-and-kv-transfer-contract
   type: software-fact
   title: LLM-DataDist 建链与 KV Cache 传输契约（类 TCP 建链 / rets 逐个判 / Pull 与 Push 的层范围语义 / 角色切换前置）
-  summary: PD 分离里 LLM-DataDist 的传输面契约。**① 建链是类 TCP 流程**：Server 侧初始化时提供侦听信息（`OPTION_LISTEN_IP_INFO = ip:port`），Client
-    侧调 `LinkLlmClusters` 发起；**Server/Client 与 prompt/decod…
+  summary: LLM DataDist 的链路与 KV 传输契约：建链前置、KV 传输的接口约束与常见失败形态。
   applies_to:
     platforms:
     - A2-910B
@@ -780,8 +746,7 @@ entries:
 - id: mc2-megamoe-token-capacity
   type: software-fact
   title: MC2 / MegaMoe 的 token 容量与 dispatch_ffn_combine 的 workspace 构成（含 mega_moe_max_tokens 默认值）
-  summary: '**① MC2 token 容量是算出来的，不是一个固定值**：`set_mc2_tokens_capacity()` 按三分支取 `max_num_tokens`——开了 `enable_prefill_mc2`
-    取 `max_num_batched_tokens`；否则若有 cudagraph 捕获尺寸取 `max…'
+  summary: MC2 / MegaMoe 的 token 容量与 `dispatch_ffn_combine` 上限：超限时的表现与判据。
   applies_to:
     platforms:
     - cross
@@ -791,8 +756,7 @@ entries:
 - id: moe-dispatch-combine
   type: software-fact
   title: MoE Dispatch/Combine 的对等内存单边写机制（mte_put / K+1 状态位 / 通信前量化收益边界）
-  summary: EP 扩大后 MoE 推理的主瓶颈是 Dispatch/Combine 通信。替代传统 `alltoallv` 的做法是：基于对称共享内存按 token 逐个发送/接收，用 `mte_put`
-    跨 PE 单边写对端窗口偏移（`aclshmem_ptr(shmemCtx, pe) + offset`），并用 pipeli…
+  summary: EP 扩大后 MoE 推理的主瓶颈是 Dispatch/Combine 通信。
   applies_to:
     platforms:
     - cross
@@ -802,8 +766,7 @@ entries:
 - id: msdebug-operator-source-debug
   type: tool
   title: msdebug 算子源码级调试（lldb 定制 + stub 劫持在 AiCore 上打断点；需 root 开 /proc/debug_switch 与 DWARF）
-  summary: MindStudio 的算子**源码级调试工具**（底层基于 lldb 定制）：通过注入 `libruntime_stub.so` 劫持库拦截运行时 `libruntime.so`
-    里的 kernel 启动调用，从而在 **AiCore 上**（不是宿主机 CPU 上）对核函数源码设置断点，做源码级断点/单步/变量查看…
+  summary: msdebug 算子源码级调试：在 AiCore 上做 stub 劫持的用法与断点/核切换的操作面。
   applies_to:
     platforms:
     - cross
@@ -823,8 +786,7 @@ entries:
 - id: msopprof
   type: tool
   title: msopprof 算子级性能采集（流水图 + 带宽类 CSV 指标，与 TTK 配合须关 Profiling 与预热）
-  summary: MindStudio 的**算子级性能采集与分析工具**：采集算子执行过程中的**硬件流水、带宽利用率**等细粒度数据，生成流水图 `visualize_data.bin`（供 MindStudio
-    Insight 查看）与 `L2Cache.csv`、`MemoryL0.csv` 等性能数据文件。**与 TTK 配合…
+  summary: msopprof 算子级性能采集：流水图与带宽类 CSV 的指标口径，以及与 TTK 配合时必须关闭的采集项。
   applies_to:
     platforms:
     - cross
@@ -833,8 +795,7 @@ entries:
 - id: msprobe-accuracy-checker
   type: tool
   title: msprobe acc_check——离线精度预检（API 达标判定链路与阈值）
-  summary: msprobe acc_check：在 NPU 上扫描训练模型的 API 输入数据，与 CPU 高精度标杆逐 API 比对给出达标判定；判链是「余弦相似度 > 0.99 → 最大绝对误差
-    < 0.001 → 双百/双千/双万」；输出 accuracy_checking_result/details_{ts}.csv；m…
+  summary: msprobe acc_check：在 NPU 上扫描训练模型的 API 输入数据，与 CPU 高精度标杆逐 API 比对给出达标判定；
   applies_to:
     platforms:
     - cross
@@ -853,8 +814,7 @@ entries:
 - id: msprobe-capability-limits
   type: software-fact
   title: msprobe 五功能的适用场景与当前版本局限性（选型与边界）
-  summary: msprobe 选型与能力边界：dump（API 级仅支持白名单、对 inplace 支持有限、不支持参数及参数梯度，且**加工具可能让同步问题消失**）/ 离线预检（不受累计误差影响，但依赖
-    GPU 环境、不支持通信算子、仅部分融合算子）/ 整网比对与可视化（可疑算子受累计误差影响、大模型耗时长）/ 训练状态监测（仅…
+  summary: msprobe 五个功能的适用场景与当前版本的局限：选型依据与边界（哪些问题它答不了）。
   applies_to:
     platforms:
     - cross
@@ -864,7 +824,7 @@ entries:
   type: tool
   title: msprobe ckpt 比对——逐参数 l2/余弦相似度（Megatron/MindSpeed）
   summary: msprobe ckpt 比对：`msprobe config_check --compare <ckpt1> <ckpt2>` 逐参数输出 l2（欧氏距离）/cos（余弦相似度）/numel/shape
-    到 json；支持 Megatron-LM 与 MindSpeed（含 TP/PP/EP/VPP 与 megatr…
+    到 json；
   applies_to:
     platforms:
     - cross
@@ -874,7 +834,7 @@ entries:
   type: tool
   title: msprobe PrecisionChecker——eager 与 compile 逐模块精度比对（single-pass / two-pass）
   summary: msprobe PrecisionChecker：给启用 torch.compile 后出现的 loss 抖动/收敛变差/输出不一致定位差异来源——wrap 标记模块后分别以 eager
-    与 compile 执行，逐模块比对前向输出与输入梯度；训练场景用 single-pass（install+collect），推理/…
+    与 compile 执行，逐模块比对前向输出与输入梯度；
   applies_to:
     platforms:
     - cross
@@ -894,7 +854,7 @@ entries:
   type: tool
   title: msprobe dump 精度数据采集（config.json 配置 + PrecisionDebugger 接口）
   summary: msprobe dump：PyTorch 精度数据采集——config.json 配 task/dump_path/rank/step/level/scope/list/summary_mode，代码里用
-    PrecisionDebugger(config_path).start/stop/step 采集；输出 dump…
+    PrecisionDebugger(config_path).start/stop/step 采集；
   applies_to:
     platforms:
     - cross
@@ -913,8 +873,7 @@ entries:
 - id: msprobe-monitor
   type: tool
   title: msprobe monitor——训练状态监测（v1 全功能 / v2 轻量 CSV）
-  summary: msprobe monitor：训练中采集权重/权重梯度/激活值/优化器状态/通信算子统计——v1（TrainerMon，README 主指向、能力最全：异常告警/堆栈/l2 特征/mbs
-    粒度/csv2tensorboard）与 v2（TrainerMonitorV2，轻量 CSV 子集，按 rank 落 rank_…
+  summary: msprobe monitor 训练状态监测：v1 全功能与 v2 轻量版的差别、采集配置与产物。
   applies_to:
     platforms:
     - cross
@@ -935,7 +894,7 @@ entries:
   type: tool
   title: msprobe response_anomaly——推理异常检测（生僻字/乱码/重复/NaN logprobs）
   summary: msprobe response_anomaly：基于输出 token + topk logprobs 的**无参照**实时异常检测，返回 [is_ill, ill_type]（1=生僻字
-    2=乱码 3=重复 4=NaN Value）；库接口 analyze_output_anomaly(topk_logprobs, …
+    2=乱码 3=重复 4=NaN Value）；
   applies_to:
     platforms:
     - cross
@@ -944,8 +903,7 @@ entries:
 - id: msprobe-trend-visualization
   type: tool
   title: msprobe data2db 趋势可视化——统计量按 step/rank/张量三维趋势（含 Megatron 并行切分可视化）
-  summary: msprobe 趋势可视化：`msprobe data2db --db <dir> --data <dump/monitor 目录>` 把 dump(L0/mix) 或 monitor(csv)
-    解析成 .trend.db，再用 TensorBoard 的 TREND ANALYZER 从 step/rank/张量目标…
+  summary: msprobe data2db 趋势可视化：统计量按 step/rank 落库后的读法。
   applies_to:
     platforms:
     - cross
@@ -965,8 +923,7 @@ entries:
 - id: msprof-cli-collect-items
   type: software-fact
   title: msprof 命令行采集项开关与频率语义（task-time l0-l3、aic-mode/aic-freq、sys-* 系列范围与默认值、host-sys 依赖）
-  summary: msprof 命令行采集项的取值与默认值：`--task-time` 支持 l0/l1/l2/l3（l3 为 PyPTO 算子试用特性）；`--ai-core` 默认随 `--task-time`
-    联动（on/l1→on，off/l0→off）；`--aic-mode` 取 task-based（**采集 AI 任务性…
+  summary: msprof 命令行的采集项清单：每一项采什么数据、对应的开关与默认值。
   applies_to:
     platforms:
     - A2-910B
@@ -978,8 +935,7 @@ entries:
 - id: msprof-collect-parse
   type: tool
   title: msprof 性能数据采集与解析（命令行两种传参方式 / --type / --storage-limit / 动态与延迟采集 / PROF_* 输出结构）
-  summary: msprof 采集性能数据：**方式一（推荐）** `msprof python3 train.py --output=<dir>` 在命令末尾直接跟用户程序，**方式二** `msprof
-    --application="python3 train.py"`（参数含需加引号的符号时建议写进 Shell 脚本再传）；采集…
+  summary: msprof 性能数据的采集与解析：两种传参方式、`--type` 产物格式、动态与延迟采集、以及 `PROF_*` 产物结构。
   applies_to:
     platforms:
     - cross
@@ -989,8 +945,7 @@ entries:
   type: software-fact
   title: msprof 采集链路与指标口径（task-time 三级别与膨胀、task-based vs sample-based PMU、aicore_time 调频误差与 950 syscnt、l2
     开关的 postp 中断）
-  summary: 读 msprof 数据前要知道的四件事：①**采集链路**——命令行/多种使能方式统一收敛为 `ProfileParams`，Host 侧由 runtime/GE/HCCL 回调上报（经无锁缓冲，上报与落盘解耦），AICPU
-    侧由 Device 上的 aicpu 进程与集合通信进程上报，Device 侧经 `prof_…
+  summary: 读 msprof 数据前要知道的四件事：采集链路、指标语义、单位口径、以及哪些字段是派生而非实测。
   applies_to:
     platforms:
     - A2-910B
@@ -1003,8 +958,7 @@ entries:
   type: software-fact
   title: msprof / PROFILING_OPTIONS 配置项语义与平台差异（task_time 级别、aic_metrics 与 Custom 寄存器、l2、各 freq 范围、host_sys
     依赖）
-  summary: 配置采集项的语义与取值：**默认**——PROFILING_MODE=true 且未配 PROFILING_OPTIONS 时默认采 training_trace、task_trace、hccl、aicpu
-    与 aic_metrics(PipeUtilization)，数据存在 AI 任务所在目录。**关键开关**：`…
+  summary: msprof 各采集项的语义与取值：默认采什么、`PROFILING_OPTIONS` 里每个开关控制哪类数据、哪些组合互斥。
   applies_to:
     platforms:
     - A2-910B
@@ -1016,8 +970,7 @@ entries:
 - id: msprof-enablement-methods
   type: software-fact
   title: 性能数据使能方式与 mstx 打点（msprof 命令行 / acl C&C++ 接口 / acl.json / Ascend Graph / 环境变量 + 依赖工具安装）
-  summary: 采性能数据的五种使能方式与各自入口：①**msprof 命令行**（拉起业务采集，最常用）；②**acl C&C++ 接口**（应用内调用采集与落盘、msproftx 扩展接口、订阅算子信息，采集数据另有说明）；③**acl.json
-    配置文件**（字段与 PROFILING_OPTIONS 同构：switch/out…
+  summary: msprof 的多种使能方式（命令行 / 接口 / 环境变量 / 配置文件）各自的适用场景与优先级。
   applies_to:
     platforms:
     - cross
@@ -1027,8 +980,7 @@ entries:
   type: software-fact
   title: msprof 默认产物清单与性能分析路径（timeline 三区域 / 按 Total Time 与 Task Duration 排序 / prof_rule 调优建议 / fusion_op
     融合前后）
-  summary: 拿到一次 msprof 采集结果后怎么读：**默认配置产出的 9 类文件**——`msprof_*.json`（timeline 总表）、`step_trace_*.json`（迭代轨迹，每轮迭代耗时；单算子场景无）、`op_summary_*.csv`（AI
-    Core 与 AI CPU 算子数据）、`op_stati…
+  summary: msprof 默认产出的文件清单与读法：timeline 三区域怎么读、按哪个字段排序找热点、调优建议从哪来。
   applies_to:
     platforms:
     - cross
@@ -1038,7 +990,7 @@ entries:
   type: tool
   title: msprof 硬件流水时间线泳道读法（泳道名格式 / 指令名 / 时间轴三段式）
   summary: 读 MindStudio 硬件流水时间线（Profiling 导出）的方法：每个 pipe 一条泳道，泳道名格式为 `0X.<PIPE>.<NN> [<kernel名>_<shape>_<子块>]
-    <core号>`，同一 pipe 会按子块/核拆成多条泳道；泳道上的指令块可直接读出指令名（`MOV_OUT_TO_L1`…
+    <core号>`，同一 pipe 会按子块/核拆成多条泳道；
   applies_to:
     platforms:
     - A5-950
@@ -1048,8 +1000,7 @@ entries:
 - id: mssanitizer
   type: tool
   title: mssanitizer 算子级异常检测（memcheck / racecheck / initcheck / synccheck 四子工具，可包裹 TTK 执行）
-  summary: MindStudio Sanitizer：算子级异常检测工具，四个子工具——**memcheck**（默认；非法读写、多核踩踏、非对齐访问、内存泄漏、非法释放、分配内存未使用）、**racecheck**（数据竞争
-    WAW/WAR/RAW）、**initcheck**（读取未初始化内存导致的脏数据）、**syncche…
+  summary: mssanitizer 算子级异常检测（memcheck / racecheck / initcheck / synccheck）的用法与报告字段。
   applies_to:
     platforms:
     - cross
@@ -1059,8 +1010,7 @@ entries:
 - id: mte2-preload-queue-depth
   type: platform-fact
   title: MTE2_PONG 指令队列深度阻塞（双缓冲下搬运流水断流）
-  summary: 启用双缓冲的矩阵乘里，每条 `MTE2_PONG` 必须等配对的 `MTE2_PING` 之后**所有指令发射完毕**才有发射机会；两条指令之间插入的指令数一旦超过芯片预设指令队列深度，即使二者无同步依赖，PONG
-    也发不出去，表现为 MTE2 流水断流。这与「搬运量大」是两回事——靠缩小 tiling 块治不好；解法…
+  summary: 启用双缓冲的矩阵乘里，每条 `MTE2_PONG` 必须等配对的 `MTE2_PING` 之后**所有指令发射完毕**才有发射机会；
   applies_to:
     platforms:
     - A5-950
@@ -1069,8 +1019,7 @@ entries:
 - id: mx-quantized-matmul
   type: software-fact
   title: MX 量化矩阵乘约束（Cube 每拍 16×C0×16 / baseK 必须 64 倍数 / MXFP4 按 B8 搬 / scale L1 缓存 3 份）
-  summary: MX（microscaling）量化的 matmul 有四条硬约束：①Cube 每拍计算量是 `16 × C0 × 16`（MXFP8 的 C0=32、MXFP4 的 C0=64），算力下界据此估算；②MMAD
-    要求 `baseK` 是 **64 的整数倍**，K 非对齐要补零且补零方式随排布而异；③MXFP4 的 `…
+  summary: MX 量化矩阵乘的硬件约束（Cube 每拍尺寸、baseK 对齐要求）与不满足时的表现。
   applies_to:
     platforms:
     - cross
@@ -1082,7 +1031,7 @@ entries:
   type: software-fact
   title: N-Buffer 多级 ping/pong（L1 / L0A-L0B / L0C 各级独立配缓冲+事件标志）
   summary: 双缓冲及以上不是只在某一级加一份缓冲，而是 L1、L0A/L0B、L0C **各级各自配一对 ping/pong**，各级用独立缓冲区索引（`l1BufId = l1PingPong
-    & 1`、`l0BufId = l0PingPong & 1`）与**独立事件标志**循环切换，才使「搬运-计算」在每一级重叠。反过来说…
+    & 1`、`l0BufId = l0PingPong & 1`）与**独立事件标志**循环切换，才使「搬运-计算」在每一级重叠。
   applies_to:
     platforms:
     - A5-950
@@ -1091,8 +1040,7 @@ entries:
 - id: npu-arch-token-map
   type: platform-fact
   title: 架构标识 ↔ 平台映射（dav-3510 = Ascend 950 / dav-2201 = Ascend 910B,C）
-  summary: CANN 工具链用架构标识指定目标 NPU：`dav-3510` = Ascend 950（A5）、`dav-2201` = Ascend 910B/C（A2/A3）。该标识出现在构建配置（`NPU_ARCH`）与编译器参数（`bisheng
-    --npu-arch=dav-3510`）中——判断一份报错、一个二进制或一…
+  summary: CANN 工具链用架构标识指定目标 NPU：`dav-3510` = Ascend 950（A5）、`dav-2201` = Ascend 910B/C（A2/A3）。
   applies_to:
     platforms:
     - A5-950
@@ -1114,8 +1062,7 @@ entries:
 - id: npu-prefetch-and-superkernel
   type: software-fact
   title: NPU 权重预取（npu_prefetch 的四个前提、size 估算、npugraph_ex 需显式预取流）与 SuperKernel（二进制融合的四类算子级优化与五条约束）
-  summary: 两项 Decode 性能优化的机制与判据。**Prefetch**：Decode 小 batch 下 MatMul/QBMM/GMM 常是 memory-bound（耗时为读权重主导，weight
-    常驻 HBM 数十 MB、激活很小），`torch_npu.npu_prefetch(weight, depend, si…
+  summary: Prefetch 与 SuperKernel 的适用前提与判据：什么条件下值得开（memory-bound、依赖窗口、单点 profiling 能解释收益）、代价与常见误用。
   applies_to:
     platforms:
     - A2-910B
@@ -1127,8 +1074,7 @@ entries:
 - id: npu-smi-950-device-ops
   type: tool
   title: npu-smi（Ascend 950 版）设备查询与维护（info -t 全族 / watch 实时监控 / ECC 与告警 / TLS 证书 / 持久化模式日志转储）
-  summary: 950 平台 npu-smi 的查询与维护命令面。**查询**：`npu-smi info -l` 列全部设备（拿逻辑 ID）、`npu-smi info` 基本信息、`npu-smi
-    info -m` 设备映射、`npu-smi info -t <topic> -i <dev_id>` 按主题查——`board`（N…
+  summary: 950 平台 npu-smi 的查询与维护命令面：查什么、信息字段怎么读、哪些是维护动作。
   applies_to:
     platforms:
     - A5-950
@@ -1138,8 +1084,7 @@ entries:
 - id: om-dynamic-shape-and-aipp-constraints
   type: software-fact
   title: 动态 Shape 输入与 AIPP 的组合约束（四种设置方式只能选一、AIPP 与动态维度互斥、内存按最大档申请、size=0 即动态）
-  summary: 动态 Shape 推理（动态 Batch / 动态分辨率 / 动态维度 / Shape 范围）与 AIPP 组合时的硬约束：①**同一模型四种动态设置方式只能选一种**——aclmdlSetDatasetTensorDesc
-    设 Shape 范围、aclmdlSetDynamicBatchSize 设动态 Batch、…
+  summary: 离线模型（OM）动态 shape 与 AIPP 的约束：哪些 shape 可动态、AIPP 与前处理的配合限制。
   applies_to:
     platforms:
     - cross
@@ -1150,8 +1095,7 @@ entries:
 - id: op-compiler-static-kernel
   type: tool
   title: op_compiler 静态 Kernel 编译（dump 算子信息 → 编译 run 包 → 安装 → 匹配性校验 → 卸载）
-  summary: 用静态 Kernel 提升算子执行性能的工具链：**原理**——静态 Kernel 编译在编译时指定算子 shape、运行时不再指定 shape，算子编译工具按算子信息统计文件得到确定
-    shape 并为每个 shape 各编译一份算子二进制，从而提升执行效率（编译期已知 tensor 大小故存储利用率高、可针对实际 s…
+  summary: 算子编译期的静态视角：从编译产物看搬运、切分与流水，无需上板即可判可优化点。
   applies_to:
     platforms:
     - A2-910B
@@ -1172,8 +1116,7 @@ entries:
   type: tool
   title: 算子级调试与调优入口（plog 路径 / aclGetRecentErrMsg / AI Core printf·DumpTensor / AI CPU KERNEL_LOG / msprof
     op / cannsim record）
-  summary: 算子执行失败或精度异常时，按『先拿 Host 侧日志与框架错误信息 → 再往 Kernel 里加打印 → 复杂场景升级到单步调试』的顺序取信息。**① Host 侧**：plog 默认落在
-    `$HOME/ascend/log/debug/plog/plog-pid_*.log`；`ASCEND_SLOG_PRINT_T…
+  summary: 算子失败或精度异常时的取信顺序：先拿 Host 侧日志与框架错误，再往 kernel 里加打印，复杂场景升级到单步调试。
   applies_to:
     platforms:
     - A2-910B
@@ -1197,8 +1140,7 @@ entries:
 - id: pcie-host-memory-access
   type: software-fact
   title: PCIe Through 判定（Host 内存直算强制 SIMD Tiling）与三条件检查
-  summary: PCIe Through 是零拷贝通路：Device 可直接访问 Host 内存（或反向），省掉显式 `Memcpy`。判定需**三个条件同时满足**——`OP_PCIE_THROUGH_ACCESS_HOST_MEM_CHECK_ENABLE=1`
-    开启特性、`aclrtGetDeviceInfo(..., ACL_…
+  summary: PCIe Through 判定：Host 内存直算何时被强制走 SIMD Tiling，以及它对性能的影响。
   applies_to:
     platforms:
     - cross
@@ -1209,7 +1151,7 @@ entries:
   type: platform-fact
   title: 性能建模参考常数（1.65GHz / 1µs=1650 cycle / MTE1 256BPC / L2 5.2TB/s / L2 命中率 28.9% 门槛）
   summary: 把 profiler 的 µs 换算成 cycle 与有效带宽、再与建模值比对的参考常数集：32 核、**1.65GHz**（故芯片上 **1 µs = 1650 cycle**）、HBM
-    1.6TB/s、L2 5.2TB/s、MTE1 **256BPC**（≈422.4GB/s）、L0C 256KiB；MTE2 综合…
+    1.6TB/s、L2 5.2TB/s、MTE1 **256BPC**（≈422.4GB/s）、L0C 256KiB；
   applies_to:
     platforms:
     - A5-950
@@ -1236,8 +1178,7 @@ entries:
 - id: regbase-execution-model
   type: software-fact
   title: RegBase 执行模型与收益判据（UB 往返 1.72x / IPC 上限 2 / --cce-res-usage 读寄存器与 Stack）
-  summary: RegBase（`__simd_vf__` + `RegTensor`）与 MemBase（`LocalTensor` + 标准 Vector API）的差别只在 **UB 内计算方式**：MemBase
-    一步计算就是「UB 读 → 算 → 写回 UB」，中间结果反复落 UB 时 `RVECLD + RVECST` 可…
+  summary: RegBase 执行模型与收益判据（UB 往返开销、IPC 上限）——判断某算子值不值得迁到 RegBase。
   applies_to:
     platforms:
     - A5-950
@@ -1247,8 +1188,7 @@ entries:
 - id: runtime-first-setdevice-latency
   type: software-fact
   title: 首次 aclrtSetDevice 秒级时延的构成（算子包搬移 + 每进程独立 aicpu_scheduler + 并发竞争）
-  summary: 业务进程**首次**调用 aclrtSetDevice 有明显秒级时延、后续调用降到毫秒级，成因有三条且性质不同：①**算子包搬移**——首次调用时 Runtime 把业务所需算子包从
-    Host 侧传输并部署到 Device 侧，耗时与算子包大小正相关；搬移成功后结果缓存在 Device 侧，**版本一致的后续进程不重…
+  summary: 首次 `aclrtSetDevice` 出现秒级时延的构成（算子包搬移 + 每进程独立初始化）与判读。
   applies_to:
     platforms:
     - cross
@@ -1257,8 +1197,7 @@ entries:
 - id: runtime-memory-allocation-strategies
   type: software-fact
   title: Runtime 内存分配策略与页类型（4K/2M/1G、≤1M 时 HUGE_FIRST 退化普通页、P2P 后缀策略、IPC 页表对齐）
-  summary: 选 aclrtMalloc 策略时的四条硬事实：①页类型——普通页 4K 适合小块/短生命周期/数量多的申请（减少对齐浪费），2M 大页适合大块/长期驻留/频繁访问（减少页表项、扩大
-    TLB 覆盖），1G 大页适合超大块、长期驻留、性能敏感场景（部分产品支持）；②策略语义——`ACL_MEM_MALLOC_HUGE_F…
+  summary: Runtime 内存分配策略与页类型（4K/2M/1G、大页触发条件）对性能与碎片的影响。
   applies_to:
     platforms:
     - cross
@@ -1269,8 +1208,7 @@ entries:
   type: software-fact
   title: 从 plog 提取失败 task / 内核 / Device 异常的检索关键字与字段含义（Task run failed、fault kernel_name、The error from
     device）
-  summary: Device 侧任务失败的证据链在 plog 里按五个关键字逐段取出：`Task run failed`（失败任务：device_id/stream_id/task_id/sqe_type/errType/sqSwStatus）、`fault
-    kernel_name`（失败内核名 + `_high_performanc…
+  summary: 从 plog 提取失败 task / 内核 / Device 异常的检索关键字与字段含义。
   applies_to:
     platforms:
     - cross
@@ -1280,8 +1218,7 @@ entries:
 - id: runtime-stream-event-device-semantics
   type: software-fact
   title: Runtime 的 Stream / Event / Device 语义（Device 归属、默认 Device 与默认 Stream 的创建销毁时机、同步范围与传参规则）
-  summary: 三条决定定位方向的语义：①**Device 归属**——Stream 与 Event 在创建时绑定 Device，只能在该 Device 上使用，Event 只能关联到与其同 Device
-    的 Stream；跨 Device 协调要用 Event 同步，不能跨 Device 复用 Stream（否则 aclrtMemc…
+  summary: Runtime 的 Stream / Event / Device 三层语义：哪些行为是异步的、同步点在哪里、多流与事件配合的约束。
   applies_to:
     platforms:
     - cross
@@ -1302,8 +1239,8 @@ entries:
 - id: shmem-usage-limits-and-troubleshooting
   type: software-fact
   title: SHMEM 使用限制与常见问题（对称内存分配、UB Buffer 预留、A2 16 卡跨组禁 MTE、端口桥、QP 建链超时、卡间同步须在 AIV）
-  summary: SHMEM（多机多卡内存通信库）的七条使用限制与常见问题的判据。**限制**：①GM2GM 高阶 RMA 用默认 buffer **不支持并发**（会覆盖数据，需并发就用低阶接口）；②`barrier`
-    当前**必须在 Mix Kernel（含 mmad 与 GM2UB/UB2GM 操作）中使用**；③RDMA 高阶接…
+  summary: SHMEM（多机多卡内存通信库）的七条使用限制与典型问题判据：RMA 并发、barrier 使用位置、RDMA/SDMA/UDMA 预留量、A2 跨组搬运限制、A3 Host DRAM
+    交集，以及「精度异常但无 error 日志」这类形态。
   applies_to:
     platforms:
     - A2-910B
@@ -1317,8 +1254,7 @@ entries:
 - id: simd-vf-programming-constraints
   type: software-fact
   title: SIMD Vector Function 约束集（入参白名单 / 硬循环退化 / Aux Scalar 仅整数 / UnalignReg ≤4）
-  summary: 自定义算子（Ascend C SIMD Vector Function）的一族硬约束，多数以**编译失败**或**静默退化**表现：入参类型有白名单、入参数量受 PUSH_PB 头开销限制、循环要能被识别成硬件循环否则退化为
-    software loop（控制流指令暴涨）、VF 内标量计算只允许 16/32 位整数（禁浮…
+  summary: SIMD Vector Function 的约束集（入参白名单、硬循环退化条件等）与违反时的表现。
   applies_to:
     platforms:
     - A5-950
@@ -1328,8 +1264,7 @@ entries:
 - id: simt-execution-model
   type: platform-fact
   title: SIMT 执行模型与硬件上限（Warp 32 / Block ≤2048 / 一个 AIV 同时只跑一个 Block）
-  summary: SIMT 线程层次为 Thread / Block / NumBlock 三层：Warp 固定 32 线程、一个 Block 的多个 Warp 依次调度到同一个 AIV；单 Block
-    最多 **2048 线程**（硬件当前上限），且**一次在一个 AIV 上只能运行一个 Block**（与 GPU 不同），NumBl…
+  summary: SIMT 线程层次为 Thread / Block / NumBlock 三层：Warp 固定 32 线程、一个 Block 的多个 Warp 依次调度到同一个 AIV；
   applies_to:
     platforms:
     - A5-950
@@ -1339,8 +1274,7 @@ entries:
 - id: torch-npu-op-routing
   type: software-fact
   title: torch_npu 算子路由（PrivateUse1 注册 / redispatch / 兼容实现开关 / aclnn-aclop 分支）
-  summary: PyTorch 张量在 NPU 上的算子调用要过三层路由：①Dispatcher 从参数提取 keyset（Autograd+PrivateUse1）并取最高优先级，Autograd
-    优先于 PrivateUse1，故先命中 VariableType；②redispatch 用 `ks & after_autograd…
+  summary: torch_npu 的算子路由：PrivateUse1 注册与 redispatch 的走向，决定一个算子最终落在哪套实现上。
   applies_to:
     platforms:
     - cross
@@ -1352,8 +1286,7 @@ entries:
   type: software-fact
   title: torchtitan-npu 的图编译契约（两级 backend 必须在 import torch 前定 / 按 Block 全图编译 / fallback 与动态 shape 边界 /
     内核缓存与「训练成功≠融合生效」）
-  summary: 在 torchtitan-npu 上做 torch.compile 的性能与中断定位，先记住五条。**① 两级 backend 不能互相替代**：`compile.backend=inductor`
-    选 PyTorch Dynamo backend，`TORCHINDUCTOR_NPU_BACKEND=ascendc`…
+  summary: torchtitan-npu 上做 torch.compile 的性能与中断定位要先记住的五条限制（后端选择、图捕获边界、编译期与运行期的失败形态）。
   applies_to:
     platforms:
     - A2-910B
@@ -1366,8 +1299,7 @@ entries:
 - id: torchtitan-npu-sdc-detection
   type: software-fact
   title: torchtitan-npu 的 SDC 检测（静默数据损坏：gradient / matmul checksum / HCCL 三路，typed 参数默认值与前置约束）
-  summary: torchtitan-npu 内置的 **SDC（Silent Data Corruption，静默数据损坏）检测**，检测 torch.compile + Inductor 编译训练中的
-    gradient、HCCL 与 matmul checksum 异常。**默认关闭**，通过 `TrainerEx.Config.…
+  summary: torchtitan-npu 的静默数据损坏（SDC）检测：判定口径、检测开关与结果解读。
   applies_to:
     platforms:
     - A2-910B
@@ -1379,8 +1311,7 @@ entries:
 - id: torchtitan-npu-training-metrics-and-debugging
   type: tool
   title: torchtitan-npu 训练可观测面（Memory Snapshot 抓 OOM/泄漏 + NPU 适配 Profiling 的周期/绝对步数采集与离线解析）
-  summary: torchtitan-npu 的两条观测路径，都通过**分层 CLI 参数**（默认全关）启用。**① Memory Snapshot**（查 OOM 与内存泄漏）：`--profiler.enable-memory-snapshot`
-    定时采集（`--profiler.profile-freq` 默认 10 步一次，…
+  summary: torchtitan-npu 的两条观测路径（训练指标与调试开关），都由分层 CLI 参数启用、默认全关。
   applies_to:
     platforms:
     - A2-910B
@@ -1392,8 +1323,7 @@ entries:
 - id: transfer-granularity-thresholds
   type: platform-fact
   title: 搬运粒度阈值（单次总量 <20K 不友好、连续 <128B 浪费 Sector-Cache）
-  summary: 两个搬运粒度阈值：单次搬运总量小于 **20K** 对芯片搬运不友好、速度下降；Ascend 950 支持 **128B Sector-Cache**，但为了用满核把连续搬运字节数降到
-    128B 以下会浪费有效带宽。可操作判据是 `N ≤ coreNum × 128` 的场景要检查任务是否被切得过碎（128 为 N 方…
+  summary: 两个搬运粒度阈值：单次搬运总量小于 **20K** 对芯片搬运不友好、速度下降；
   applies_to:
     platforms:
     - A5-950
@@ -1402,8 +1332,7 @@ entries:
 - id: ttk-deterministic-levels-and-batch-consistency
   type: software-fact
   title: TTK 确定性等级 0–3 与 batch 一致性判据（batch relation 三字段齐全才进第二阶段）
-  summary: TTK 用 `--deterministic-level`（缩写 `--dl`）控制一次执行的确定性等级：**0** 不启用确定性选项（只做普通精度校验）；**1** 同一用例的确定性执行；**2**
-    编译期与执行期确定性选项（通路原有的强确定性检查）；**3** 确定性执行，**且只有在「完整声明 batch rel…
+  summary: TTK 确定性等级 0–3 的语义与 batch 一致性判据（batch relation 与逐次可复现的关系）。
   applies_to:
     platforms:
     - cross
@@ -1412,8 +1341,7 @@ entries:
 - id: ttk-dump-and-performance-testing
   type: software-fact
   title: TTK 的 Dump 调试与性能测试口径（--dump/--dump-on-fail、warmup×run 冷热两模式、四条通路的采集差异）
-  summary: 两件在算子级定位里最常用的事：①**Dump 调试**——`--dump in|out|golden|full`（可组合，逗号分隔）分别在「输入生成后·设备执行前」「设备执行后·精度比对前」「Golden
-    生成后」保存张量；`--dump-format` 取 bin（默认、无 shape）/npy（推荐，numpy.l…
+  summary: TTK 算子级定位的两个入口：`--dump` 取算子输入/输出/标杆做精度比对，以及算子性能测试的采集与结果字段。
   applies_to:
     platforms:
     - cross
@@ -1423,8 +1351,7 @@ entries:
 - id: ttk-precision-comparison-methods
   type: software-fact
   title: TTK 算子精度比对的 8 种方法与各 dtype 阈值（mixed/stat_rel_err/close/cosine/binary/requant/quant/cross_check）
-  summary: 判「算子精度是否达标」时的判据表：默认方法 **mixed（混合容差）** 逐元素判 `|a-g| <= atol + rtol*|g|` 且要求通过率 ≥ **0.99**，另有绝对误差硬上限
-    `max_abs_error_limit`（与 `32*ULP` 取满足任一）拦灾难性离群点；dtype 阈值——float…
+  summary: TTK 的精度比对方法：比对口径、容差与结果解读。
   applies_to:
     platforms:
     - cross
@@ -1434,7 +1361,7 @@ entries:
   type: platform-fact
   title: UB 容量口径（每 AIV 248 KiB 可用 / 每 AI Core 512 KiB）与 buffer 预算
   summary: UB 预算判据是 `queBytes × bufNum × 队列数 ≤ UB 可用容量`，其中 `queBytes` 是**每个 buffer** 的字节数、单条队列实占 `bufNum
-    × queBytes`。dav-3510/Ascend 950 的可用值来自运行期查询：**每颗 AIV 独享 248 KiB 私有…
+    × queBytes`。
   applies_to:
     platforms:
     - A5-950
@@ -1444,8 +1371,7 @@ entries:
 - id: unit-flag-mmad-fixpipe
   type: software-fact
   title: unit_flag：按 512B 块解绑 MMAD 与 FixPipe（尾轮取值 3 / 非尾轮 2）
-  summary: 当计算基本块过大占满 L0C、无法开缓存机制时，MMAD（计算）与 Fixpipe（搬出）无法并行；`unit_flag` 是指令级的解绑手段：MMAD 与 FixPipe 两侧同时配置后，计算单元每完成
-    **512B** 数据块，FixPipe 立即搬出该块，不必等全部算完。MMAD 侧 `para.unitFlag…
+  summary: unit_flag：按 512B 块解绑 MMAD 与 FixPipe 的收益与尾轮取值约束。
   applies_to:
     platforms:
     - A5-950
@@ -1456,7 +1382,7 @@ entries:
   type: tool
   title: verl 训推交叉打桩——Rollout Skip + 交叉验证（精度定界在训练还是推理）
   summary: verl 交叉验证：用打桩替换一个阶段的输出实现精度定界——两种模式 ckpt（推理执行并保存 rollout 数据 / 训练执行并加载 ckpt）与 rollout（推理加载 rollout
-    数据跳过推理 / 训练执行并保存 ckpt），两个训练过程通过共享数据目录交换数据；另有 Rollout Skip 基础功能（…
+    数据跳过推理 / 训练执行并保存 ckpt），两个训练过程通过共享数据目录交换数据；
   applies_to:
     platforms:
     - cross
@@ -1475,7 +1401,7 @@ entries:
   type: tool
   title: verl 逐 token prob diff 监控——rollout 与 actor 前向的概率差
   summary: verl 逐 token prob diff 监控：逐 token 计算 rollout（vLLM）与 actor 前向（训练引擎）对同一 response 的对数概率差，输出到训练日志并落
-    npy；前提必须设 actor_rollout_ref.rollout.calculate_log_probs=True；偏差来…
+    npy；
   applies_to:
     platforms:
     - cross
@@ -1485,7 +1411,7 @@ entries:
   type: tool
   title: UWC 训推权重一致性验证——RL 训练侧到 vLLM 推理侧权重同步链路三段比对
   summary: UWC（Unified Weight Consistency）验证 RL 训推一体场景下「训练侧（verl+Megatron-core）→ 推理侧（vLLM）」权重同步链路的数值一致性，把链路拆成三段独立可比对：①Bridge
-    转换 HF↔mcore ②跨进程传输 ③vLLM 加载；容差为 P0 vs P2 atol=…
+    转换 HF↔mcore ②跨进程传输 ③vLLM 加载；
   applies_to:
     platforms:
     - cross
@@ -1495,7 +1421,7 @@ entries:
   type: software-fact
   title: asc_vf_call 的屏障语义与 UB 屏障规则（VF 期间 MTE2 被阻塞 / VF 内 LocalMemBar 会死锁）
   summary: 两条容易踩的 VF 调用规则：①`asc_vf_call` 是**屏障**——VF 执行期间 MTE2 被阻塞，预取的 `DataCopyPad` 也得等 VF 结束才能执行，且**屏障时间守恒**（3
-    次短 VF 合并成 1 次长 VF 不减少总阻塞）；官方模式改用 `__no_simd_vf_fusion__` +…
+    次短 VF 合并成 1 次长 VF 不减少总阻塞）；
   applies_to:
     platforms:
     - A5-950
@@ -1506,8 +1432,7 @@ entries:
 - id: weight-nz-inference-only
   type: software-fact
   title: 权重预转 FRACTAL_NZ 只适用于推理（训练每步变权重无法预处理）
-  summary: Matmul 以 ND 传入权重时需在数据通路中**随路做格式转换**，引入额外带宽损耗；把权重提前转成 FRACTAL_NZ 可消除这部分开销、提高带宽利用率——但**只适用于推理**：训练场景权重每步变化，无法预处理，随路转换的额外耗时消不掉。收益随权重矩阵规模增大而变高。诊断含义：不要把推理侧的
-    NZ 优化建议套…
+  summary: Matmul 以 ND 传入权重时需在数据通路中**随路做格式转换**，引入额外带宽损耗；
   applies_to:
     platforms:
     - A5-950
