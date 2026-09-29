@@ -1,0 +1,89 @@
+id: memory-leak-and-oom-triage
+type: methodology
+title: 显存问题判读流程（数据可用度确认 → 曲线定性 → 对池定维度 → 按症状分支 → 假设验证与伪影排除）
+summary: 显存类问题的判读路径，先判数据够不够再往下走。**第 1 步确认可用度**——读采集配置（`config.json`）：没开 `decompose` 就没有 `owner`，模块级拆解做不了；没配 `call_stack` 就归因不到代码位置；两条都没有时只能看总量曲线，此时要**如实告知信息缺失并按需补采**，不要带着缺口下结论。**第 2 步曲线定性**（持续攀升/阶梯/平台/锯齿/峰值后回落）决定进哪条分支。**第 3 步对池定维度**：从框架池（PyTorch 用户优先 PTA）入手，再和 HAL 驱动层全集联动——**两类数值嵌套不可相加**；同时做**应然值核对**：通信内存每通信域默认约 401MB CCL Buffer（in 200MB + out 200MB + winExp 1MB）、AIV 另加 40MB、MC2 另加 16MB，出现一次性固定大段时按通信类型核对应然大小。**第 4 步按症状分支**：泄漏走算法 A（跨周期不回基线，强信号）→ B（`total` 单调增，弱信号须与 A 联动）→ C（长生命周期块且 FREE 全 shadow）→ D（按调用栈 TOP3 归因）并给风险分级；OOM 按 `req_size` 与剩余空间、RECENT 分配序列、TOP_ALLOC 归属三表分流，并区分单次巨量 / 接力耗尽 / 累积型 / 池扩容失败；碎片按 `(total − used) / total` 分级选配置杠杆。**第 5 步验伪**：泄漏 vs 池预留、峰值 vs 累积、真碎片 vs 流池残留——每条都要给出验证动作，且**证据不足时列出缺什么**。
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/memory-analysis/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：Part B 解读三件套、泄漏/OOM/碎片诊断步骤与输出报告结构"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/memory-analysis/references/leak_diagnosis_guide.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：判别注意与 shadow 来源区分"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/memory-analysis/references/oom_diagnosis_guide.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：OOM 归因层级与典型场景示例"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [torch_npu, vllm-ascend, mindspeed-llm, verl]
+  categories: [performance, interrupt]
+
+related_references: [msmemscope-collect-and-query, memory-symptom-triage, profiler-db-query, msprof-collect-parse, hostbound-evidence-gate]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  flow:
+    - step: 1
+      name: 确认数据可用度（决定能下哪类结论）
+      action: >-
+        读采集配置与数据画像（`config.json`、`--stats`），逐条核对：① 有没有 `owner`（来自 `analysis=decompose`）——
+        没有就只能按事件类型/池维度看，模块级拆解做不了；② 有没有调用栈（`--call-stack`）——没有就只能定位到分配行为，
+        给不出代码位置；③ `events` 是否同时含 alloc 与 free——不成的会导致配对信息缺失、泄漏分析不准；
+        ④ OOM 场景 dump 里有没有 `Event=OOM_DETAIL`（没有说明 OOM 未落在采集区间内，或没配 `--analysis=oom`）；
+        ⑤ 数据规模落在哪个档位（>100 万行不要直接读文件或导入可视化，先分桶看宏观）。
+        三样都缺时**如实说明"只能看总量曲线"并按需补采**，不要带缺口硬下结论。
+      check: "config.json 的 analysis/events/call_stack；`--stats` 的解析能力提示；`--check` 的完整性校验"
+      when_to_use: 拿到显存数据后第一步（无论用户说的问题是什么）
+    - step: 2
+      name: 曲线定性（先判形态再选分支）
+      action: >-
+        取 `used` / `device_used` 序列（`--curve`，大数据量先 `--ascii --bins N` 看宏观），按形态分流：
+        **持续攀升且不回落** → 泄漏/缓存累积嫌疑（进第 4 步泄漏分支）；**阶梯上升** → 看 `total` 是否同步增长
+        （同步涨且池使用率低 = 池预留策略/碎片；`total` 稳而 `used` 阶梯 = 峰值申请瞬态）；**平台期** → 正常；
+        **锯齿** → 正常动态分配（关注振幅）；**峰值后回落** → 瞬时峰值，走峰值占比分析。
+        同时用 `device_used` 与 `npu-smi info` 对照（同源接口，应一致；系统性偏低属正常，说明工具只看得到 host 侧申请）。
+      check: "曲线形态 + 关键转折点时间戳 + 与 npu-smi 的对照结果"
+      when_to_use: 数据可用度确认后
+    - step: 3
+      name: 对池定维度并做应然值核对
+      action: >-
+        从框架池入手（PyTorch 用户优先 `--pool PTA`），再与 HAL 驱动层全集联动：`--group-by owner --metric peak --pool HAL`
+        拿一级归口（`CANN@HCCL`/`CANN@APP`/`CANN@GE`/`CANN@RUNTIME`），`CANN@APP` 即框架池段，再下钻 `--pool PTA` 看池内用途
+        （weight/optimizer/fsdp2…）。**两类数值嵌套、不可相加**（池的物理段已计入 HAL）。
+        对 HAL 大段做**应然值核对**（`--hal-segments`）：通信内存每通信域默认约 401MB CCL Buffer（in 200MB + out 200MB + winExp 1MB）、
+        AIV 模式另加 40MB、MC2 场景另加 16MB，这些是一次性固定段、不随数据量变化。核对不上的段才是异常候选。
+      check: "HAL 一级归口占比 + PTA 池内用途占比 + HAL 大段清单与应然值对照"
+      when_to_use: 要回答"显存花在哪"或定位峰值占用者时
+    - step: 4
+      name: 按症状分支（泄漏 / OOM / 碎片）
+      action: >-
+        **泄漏**：先 `--trend` 判跨周期是否回基线（算法 A，强信号），再看 `total` 单调性（算法 B，**弱信号、不能单独定泄漏**，
+        池只增不减是"释放≠归还"的正常行为），再 `--leak-candidates` 筛长生命周期候选块（算法 C，判据是同一 Ptr 的 FREE 全为
+        `shadow:true` 或无 FREE），最后按调用栈 TOP3 归因（算法 D）。风险分级：A 命中且长寿块 ≥5 为高、A 或 B 命中或长寿块 ≥3 为中。
+        **OOM**：`--oom` 出三表 → 先看 `req_size` 相对剩余空间（≥80% 为单次巨量）→ 再看 `OOM_TOP_ALLOC` 大头归属
+        （weight/optimizer_state = 模型超配；kv_cache = 推理 KV 配置；aten = 激活/中间量）→ 再看 `OOM_RECENT_ALLOC` 分配序列
+        （同栈 ≥3 次 = 循环内重复申请；5 条累计 > 3× 剩余 = 接力耗尽）；`func` 指向池扩容路径时是**池扩容失败型**，
+        根因在池内占用而非分配模式。
+        **碎片**：算 `(total − used) / total`（同一时刻同一条池事件）或 `1 − pt_utilization`，峰值时刻与稳定期各算一次，
+        分级 <5% 正常 / 5%~15% 偏高 / >15% 严重；再按成因选杠杆（详见 memory-symptom-triage 的对应条目）。
+      check: "泄漏四项算法的命中情况与风险分级；OOM 三表读数与归因层级；碎片率数值与分级"
+      when_to_use: 第 2 步定性到"泄漏/OOM/碎片"之一后
+    - step: 5
+      name: 假设验证与伪影排除（下结论前必做）
+      action: >-
+        逐条排除会误判的情形：① **配对不是无泄漏证据**（幽灵机制保证 MALLOC/FREE 必然配对），要看 FREE 是否全为 `shadow:true`；
+        ② `shadow:true` 有两类来源（非采集期正常释放 vs 进程退出补齐），**不能只按时间戳区分**——单轮采集时全部当候选、按增长性判别；
+        ③ **常驻内存不等于泄漏**（前期申请、总量稳定 vs 周期性增长）；④ **第一 Step 的波动不算泄漏**；⑤ **池预留不等于泄漏**
+        （`total` 高 `used` 低且不增长）；⑥ **多流场景碎片率可能虚高**（真碎片 / 流池残留 / 跨流延迟假性碎片三种解释，
+        当前数据无法区分，需要块状态快照才能确认）；⑦ **HAL 段"申请后从未归还"是池缓存的正常行为**。
+        每条假设都要给验证路径（复采、对照 npu-smi、按 Step 聚合、加调用栈重采）；无法验证的写成待验证假设，不要写成结论。
+      check: "每条结论配一条验证动作；无法验证的列进“缺失信息”"
+      when_to_use: 输出报告前

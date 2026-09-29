@@ -96,22 +96,27 @@ gates:
       - when: has_data
         action: >-
           先判这份产物能不能用（认类型 / 查是否正常结束 / 对交付件清单，三态 valid|unparsed|invalid），
-          再直接分析（kernel_details.csv / step trace 等），不展开采集说明
+          再直接分析（kernel_details.csv / step trace 等），不展开采集说明。**问题落在显存面时走另一条**
+          （显存采集与判读、碎片与泄漏口径），先确认数据可用度再定分支
         refs:
           - msprof-collect-parse
           - ascend-profiling-collection-planning
           - msprof-tool-fault-patterns
           - msprof-comm-bottleneck-thresholds
+          - msmemscope-collect-and-query
+          - memory-symptom-triage
       - when: no_data
         action: >-
           给采集方式（命令 + PROF_* 产物结构）；具体命令以客户环境的工具版本为准
           （版本差异以实际输出为准，不照搬示例）。**外层包不住命令时走框架侧接入**
           （训练改框架 YAML 的 profile 配置块、推理服务走 `--profiler-config` + HTTP 启停），
-          两条路都先算清采集窗口与开销
+          两条路都先算清采集窗口与开销。**显存面是另一套采集**：先问清诉求（OOM / 怀疑泄漏 /
+          想知道花在哪）再定配置，别默认一套参数；泄漏与 OOM 归因必须带调用栈
         refs:
           - msprof-collect-parse
           - framework-profiler-instrumentation
           - msprof-tool-fault-patterns
+          - msmemscope-collect-and-query
 
   - id: performance-analysis-tools
     category: performance
@@ -130,6 +135,9 @@ gates:
           - profiler-analysis-cli
           - profiler-analysis-triage
           - profiler-db-query
+          - msmemscope-collect-and-query
+          - memory-leak-and-oom-triage
+          - memory-symptom-triage
           - msprof-timeline-lane-reading
           - msopprof
           - cannsim-sim-profiling

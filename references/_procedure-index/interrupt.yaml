@@ -6,7 +6,7 @@
 #   一轮诊断最多加载一条流程（成本有界）。选择器与全部分片清单见：
 #   references/_procedure-index.yaml
 #
-# 本片流程条数：11    本片加载成本：约 1763 token
+# 本片流程条数：12    本片加载成本：约 1932 token
 entries:
 - id: ascend-aicore-error-triage
   title: AI Core Error 问题定位（RAS → NPU 硬件 → 软件 → msaicerr 分析）
@@ -81,6 +81,15 @@ entries:
   - interrupt
   platforms: []
   file: references/methodologies/glm-quantized-startup-triage.yaml
+- id: memory-leak-and-oom-triage
+  title: 显存问题判读流程（数据可用度确认 → 曲线定性 → 对池定维度 → 按症状分支 → 假设验证与伪影排除）
+  summary: 显存类问题的判读路径，先判数据够不够再往下走。**第 1 步确认可用度**——读采集配置（`config.json`）：没开 `decompose` 就没有 `owner`，模块级拆解做不了；没配 `call_stack` 就归因不到代码位置；两条都没有时只能看总量曲线，此时要**如实告知信息缺失并按需补采**，不要带着缺口下结论。**第 2 步曲线定性**（持续攀升/阶梯/平台/锯齿/峰值后回…
+  categories:
+  - performance
+  - interrupt
+  platforms:
+  - cross
+  file: references/methodologies/memory-leak-and-oom-triage.yaml
 - id: msllm-startup-version-env-triage
   title: mindspeed-llm 训练启动失败排查（版本/环境配套面 + import 失败判别）
   summary: mindspeed-llm 训练启动即失败的常见根因分流：import 失败先判别"版本/安装面 vs 代码漂移面"（features_manager 缺符号=版本不配套；tasks.checkpoint.models 缺失=上游删模块未同步后端）；算子重复注册（CANN 版本过旧 vs 多版本 mindspeed）；特性未适配（batch_p2p_comm 等需升级 PTA 或关闭）。按报错签…

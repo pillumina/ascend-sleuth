@@ -1,0 +1,97 @@
+id: memory-symptom-triage
+type: fault-pattern
+title: 显存判读分流（曲线形态 / 碎片率分级 / OOM 量化规则 / 泄漏增长性四算法 / 常见泄漏模式对照）
+summary: 显存类问题的判据表，按主题域成表。**共同前提**：先确认采集配置够不够——没开 `analysis=decompose` 就没有 `owner` 字段，按模块拆解做不了（只能按事件类型/池维度看）；没配 `--call-stack` 就只能定位到分配行为、给不出代码位置。**曲线形态先定性**：持续攀升不回落 → 泄漏/缓存累积；阶梯上升要看 `total` 是否同步涨（同步涨且池使用率低 = 池预留策略问题）；平台期 = 正常；峰值后回落 = 瞬时峰值。**碎片率**用同一条池事件的 `(total − used) / total`（或 SNAPSHOT 的 `1 − pt_utilization`），分级 <5% 正常 / 5%~15% 偏高 / >15% 严重，且要算峰值时刻与稳定期两次。**泄漏只看增长性**：算法 A（跨周期 used 不回基线且单调上升，强信号）、B（`total` 单调增，弱信号、**不能单独定泄漏**）、C（长生命周期块且 FREE 全为 shadow）、D（按调用栈聚合 TOP3 归因）四级，配风险分级（A 命中且长寿块 ≥5 为高风险）。**OOM 用字段级量化规则**分流：`req_size ≥ 80% × 剩余空间` = 单次巨量申请；最近 5 条里同一调用栈出现 ≥3 次 = 循环内重复申请；5 条累计 > 3 × 剩余 = 接力耗尽；剩余充足（>1GB）却 OOM = 单点过大申请。每个现象后面都给"这是假设不是定论"的验证路径。
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/memory-analysis/references/leak_diagnosis_guide.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：幽灵机制与配对误区、算法 A/B/C/D、风险分级、常见泄漏模式对照"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/memory-analysis/references/oom_diagnosis_guide.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：OOM 定性决策树与量化推断规则"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/memory-analysis/references/msmemscope_data.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：曲线形态决策树、碎片率定义与阈值、口径陷阱"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [torch_npu, vllm-ascend, mindspeed-llm, verl]
+  categories: [performance, interrupt]
+
+related_references: [msmemscope-collect-and-query, memory-leak-and-oom-triage, msprof-collect-parse, profiler-db-query]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  patterns:
+    - pattern: 曲线持续攀升且不回落
+      symptoms:
+        - "used / device_used 单调上升，跨 Step 不回落到该周期基线"
+        - "长时间运行后整卡显存不回落到起点"
+      cause: "泄漏或缓存累积（两者需用增长性区分：周期性增长偏向泄漏，前期一次性抬高后稳定偏向常驻/池预留）"
+      fix: "进泄漏诊断：先 `--trend` 看跨周期是否回基线，再 `--leak-candidates` 筛候选块，最后按调用栈归因到代码位置。**判泄漏看该 Ptr 的 FREE 是否全为 `shadow:true`，不是看 MALLOC/FREE 有没有配对**"
+    - pattern: 池预留高但实际用量低（碎片）
+      symptoms:
+        - "池 `total` 明显高于 `used`，且反复扩容"
+        - "SNAPSHOT 的 `pt_utilization` 偏低（torch 视角碎片率 = 1 − pt_utilization）"
+      cause: "碎片累积，或池预留策略过大（释放≠归还驱动，池 `total` 只增不减是正常行为）"
+      fix: "先算碎片率 `(total − used) / total`（分级 <5% 正常 / 5%~15% 偏高 / >15% 严重），并用 `--fragmentation` 看扩容清单与扩容前有效使用率；杠杆按成因选：频繁扩容 → `expandable_segments`；碎片集中大块段 → `max_split_size_mb`；池长期占位可接受间歇回收 → `garbage_collection_threshold` 或定期 `empty_cache()`。**注意前两者与 `garbage_collection_threshold` 互斥**"
+    - pattern: OOM 但单次申请并不大（累积型）
+      symptoms:
+        - "`OOM_TRIGGER.req_size` 很小"
+        - "`OOM_TOP_ALLOC` 单块不大，但 `OOM_RECENT_ALLOC` 随 Step 均匀分布、总量随 Step 攀升"
+      cause: "累积型 OOM（泄漏或缓存增长）——不是某一次大申请打穿"
+      fix: "转泄漏诊断定位增长源；不要按“减小 batch/序列长度”处理（那是单次巨量申请的方向）"
+    - pattern: OOM 由单次巨量申请触发
+      symptoms:
+        - "`OOM_TRIGGER.req_size` ≥ 80% × OOM 时刻剩余空间"
+      cause: "单次巨量申请（大 Tensor、长序列、大 batch 的中间量）"
+      fix: "检查 batch / 序列长度 / 一次性大分配；开重计算（activation checkpointing）或拆分分配。**剩余空间取最近的 SNAPSHOT `free_mem`，没有快照时用 `device_used` 反推并注明是反推值**"
+    - pattern: OOM 由接力分配耗尽
+      symptoms:
+        - "`OOM_RECENT_ALLOC` 前 5 条 `size` 累计 > 3 × OOM 时刻剩余空间"
+        - "同一调用栈在前 5 条里出现 ≥3 次"
+      cause: "一连串大分配接力耗尽（多算子大中间量），或循环/固定路径反复申请"
+      fix: "前者查批量连续申请路径；后者定位该调用栈所在循环，检查循环内累积申请"
+    - pattern: 框架池扩容失败型 OOM
+      symptoms:
+        - "`OOM_TRIGGER.func` 指向池扩容路径（而非业务算子的分配）"
+      cause: "池内占用过高、可回收不足——**不是单次大申请的问题**"
+      fix: "看池内使用率与碎片（`--fragmentation --pool <池>`）与池配置杠杆；不要按单次巨量申请的方向处理"
+    - pattern: 泄漏模式 · 模型/推理缓存未清理
+      symptoms:
+        - "曲线阶梯式持续攀升；泄漏块 owner 集中在推理框架缓存（kv_cache、中间结果缓存）"
+        - "调用栈指向推理循环内的缓存逻辑"
+      cause: "推理长稳运行中缓存未随轮次清理，或 kv_cache 配置过大/未复用"
+      fix: "缓存复用或及时释放、限制 kv_cache 大小、推理循环结束显式清理；验证路径：对比不同 batch/序列长度下泄漏速率是否成正比"
+    - pattern: 泄漏模式 · 梯度或优化器状态累积
+      symptoms:
+        - "泄漏块 owner 为 `gradient` 或 `optimizer_state`"
+        - "随 Step 数线性增长，增长量≈每 Step 梯度大小 × 次数"
+      cause: "`optimizer.step()` 未正确调用导致梯度累积未释放，或梯度累加配置下中间状态未释放"
+      fix: "检查 `zero_grad`/`step` 配对与梯度累积实现；验证路径：按 Step 聚合泄漏块数量，看是否线性且量级匹配"
+    - pattern: 泄漏模式 · 循环内重复申请未释放
+      symptoms:
+        - "泄漏块调用栈指向同一代码位置（循环体内）"
+        - "曲线呈等步长锯齿上升（申请多、释放少）；数量≈循环次数 × 每次申请量"
+      cause: "循环内每轮创建 Tensor/临时结果未释放，或缓存 dict 持续 append"
+      fix: "循环内复用缓冲、循环结束清理；验证路径：统计同一调用栈下未释放块数量与循环次数比对"
+    - pattern: 泄漏模式 · Python 侧引用残留
+      symptoms:
+        - "泄漏块 owner 为 PTA 池；调用栈（Python）指向模块级/全局引用"
+        - "长时间运行后曲线整体上移"
+      cause: "全局变量/模块级缓存持有 Tensor、闭包捕获、dataloader 预取缓存残留"
+      fix: "解除全局引用、用后释放、限制缓存大小。**注意 PTA 池 used 的平台期常常不是“没释放”而是“没触发释放”**，`gc.collect()` 可强制回收循环引用"
+    - pattern: 伪泄漏（池预留或驱动保留，不是真泄漏）
+      symptoms:
+        - "曲线看着在“泄漏”，但泄漏块 owner 为 HAL、调用栈为空或与任务结束后的整卡残留一致"
+        - "进程结束后 `npu-smi` 整卡用量回落"
+      cause: "框架池预留在 Step 边界间的正常行为（`total` 只增不减），或驱动侧保留块（workspace 缓存等）"
+      fix: "区分“池预留”（`total` 高、`used` 低、不增长）与“真泄漏”（`used` 持续增长）；用 `npu-smi` 对照进程结束后的回落情况"

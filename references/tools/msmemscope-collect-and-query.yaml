@@ -1,0 +1,74 @@
+id: msmemscope-collect-and-query
+type: tool
+title: msMemScope 显存采集与判读（按诉求选采集配置 / 统计键口径 / 幽灵释放陷阱 / 聚合脚本次第）
+summary: 显存类问题（OOM / 泄漏 / 大头占比 / 峰值 / 碎片）的采集与判读入口。**先定诉求再定配置**——OOM 用 `--analysis=oom[:K]` 并加 `--call-stack`；怀疑泄漏用 `--analysis=leaks`（离线走 mstx 打点 A/B/C + `check_leaks`）；"显存花在哪"用 `--analysis=decompose`；Step 间差异分两次采（`--steps=N`，一次一个 Step）再 `--compare`。四条硬约束：① `--analysis` 必须配 `--events` 含 alloc,free（否则泄漏结果不准、时间线不完整）；② `--steps` 与分析功能**互斥**；③ 泄漏/OOM 归因**必须配 `--call-stack`**，否则只能定位到分配行为、给不出代码位置；④ 默认采 csv（快、体积小、脚本可直接分析），只有明确要 MindStudio Insight 可视化时才 `--format=db`，**不要"先采 db 再转 csv"**。三个读数据的口径陷阱：`used`（本进程 HAL 申请）/ `process_used`（本进程总量，与 npu-smi Process memory 同源）/ `device_used`（整卡，与 npu-smi HBM-Usage 同源，环境不支持时为 `-1` 不可引用）；**HAL 与池两类数值嵌套、不可相加**（HAL 是驱动层全集，框架池段以 `CANN@APP` 计入 HAL，池事件是同一物理内存的子视图）；曲线是**事件驱动**的（只有事件时刻有点，两点之间是阶梯保持，不是轮询采样）。最反直觉的一条是**幽灵释放**：未释放的块在进程退出时被工具补发 `shadow:true` 的 FREE，所以 **MALLOC/FREE 必然配对，"配对上了"不能证明没泄漏**。
+
+sources:
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/memory-analysis/SKILL.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：采集决策树、参数速查、硬性约束、产物结构与解读误区"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/memory-analysis/references/msmemscope_usage.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：命令行/Python 接口参数全表、场景矩阵、环境变量管理与风险"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://gitcode.com/Ascend/msagent/blob/master/skills/profiler/memory-analysis/references/msmemscope_data.md"
+    version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：列结构与 Attr 键、统计键口径、曲线形态决策树、内存池模型、owner 聚合、口径陷阱"
+    fetched_at: 2026-09-29
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  frameworks: [torch_npu, vllm-ascend, mindspeed-llm, verl]
+  categories: [performance, interrupt]
+
+related_references: [memory-symptom-triage, memory-leak-and-oom-triage, msprof-collect-parse, profiler-db-query]
+
+status: active
+last_verified: 2026-09-29
+
+content:
+  tool_name: "msMemScope（昇腾显存采集与解读工具，`msmemscope`）"
+  invocation: >-
+    命令行 `msmemscope [options] bash user.sh` 或 `msmemscope [options] -- <prog> [args]`；Python 接口用
+    `config/start/stop/step/take_snapshot` 组合（推荐，可精确控制采集范围）；mstx 打点用于标记 Step 边界或离线泄漏分析范围。
+    **环境变量注入是前置**：Python 接口方式必须先 `source msmemscope --load-api-env`，用完**必须**
+    `source msmemscope --unload-api-env`（不清理会与后续 `set_env`、`LD_PRELOAD`/`LD_LIBRARY_PATH` 类操作冲突）。
+    产物默认落 `memscopeDumpResults/`，Python 接口为 `memscope_{PID}_{ts}_ascend/device_{id}/dump/`。
+  commands:
+    oom: "`msmemscope --analysis=oom:50 --call-stack=python:10,c:20 --events=alloc,free bash train.sh`（K∈[1,1000] 默认 10）"
+    leaks_online: "`msmemscope --analysis=leaks --events=alloc,free --call-stack=python:10 bash train.sh`"
+    leaks_offline: "mstx 打点 A/B/C 标记范围 + 采集时 `--events=alloc,free` + 事后 `msmemscope.check_leaks(input_path=..., mstx_info=...)`——**离线 check_leaks 必须先用 mark 打点**"
+    decompose: "`msmemscope --analysis=decompose --events=alloc,free --output-path=<dir> bash train.sh`（自动使能框架钩子，MALLOC 事件才带 `owner`）"
+    step_compare: "先 `msmemscope --steps=5 --level=kernel --events=alloc,free bash train.sh` 各采一次，再 `msmemscope --compare --input-path=<step1>,<step2> --level=kernel`（`--compare` 与 `--input-path` 必须成对；对比前 `TASK_QUEUE_ENABLE=0`）"
+    python_api: "Python 接口先 `msmemscope.config(events='alloc,free', data_format='csv', output='<dir>')` 再 `start()/stop()`；推理/RL 场景先 `cleanup_framework_hooks()` 再 `init_framework_hooks('vllm_ascend', '11.0', 'worker', 'snapshot')`（框架/版本/组件/功能四个参数）"
+    local_scope: "局部采集（`start()/stop()` 包住目标段）足够时优先用它——**但泄漏趋势判断与整条曲线必须全局采集**（算法 A 要跨多个 Step 比 used 是否回基线）"
+    query_curve: "`python3 scripts/aggregate_dump.py <dump.csv> --curve [--ascii] [--bins N]`（百万行级先 `--ascii --bins N` 看宏观）"
+    query_peak: "`--peak [--key used|device_used|process_used] [--pool <池>]` 定位峰值时间戳 → `--at-timestamp <ns> [--pool HAL|PTA]` 取该时刻活跃块分布"
+    query_owner: "`--group-by owner --metric peak --pool HAL`（驱动层全集，含 `CANN@APP` 框架池段）→ 再 `--pool PTA` 下钻池内用途"
+    query_oom: "`--oom [--detail N]` 输出 `OOM_TRIGGER` / `OOM_TOP_ALLOC` / `OOM_RECENT_ALLOC` 三表 + 量化推断提示"
+    query_leak: "`--leak-candidates [--detail N] [--pool PTA]` 先筛候选块（同一 Ptr 的 FREE 全为 `shadow:true`，或无任何 FREE）"
+    query_trend: "`--trend [--buckets N]` 按等宽桶输出 used/total 末值 + 单调性与是否回基线（泄漏算法 A/B 的自动化）"
+    query_frag: "`--fragmentation [--pool PTA]` 输出池扩容清单（含扩容前 used/total 有效使用率）+ 碎片率统计 + 有效使用率最低 TOP5"
+    query_hal_segments: "`--hal-segments [--min-size 100MB]` 列出 HAL 池大段（供应然值核对：CCL Buffer、MC2、AIV 等），`alloc_type=create` 出现即 expandable_segments 生效"
+    precheck: "`--check`（表头/列数/末行完整性/是否已有序）→ 需排序时 `--sort --overwrite`；两脚本只依赖 Python 标准库"
+  output_meaning:
+    - "**统计键**：`used` = 本进程 HAL 申请累计（池事件下则为池内活跃块）；`process_used` = 本进程总量（与 npu-smi Process memory 同源）；`device_used` = 整卡（与 npu-smi HBM-Usage 同源，**环境不支持时为 `-1`，此时改用 used/process_used**）；`total` = 池向驱动申请量（只增不减，`total` 变大即扩容）"
+    - "**层级关系**：`device_used` ≥ `process_used` ≥ HAL `used`；HAL `used` 与 `process_used` 的差值一般是 HCCP 占用"
+    - "**OOM 三类记录**：`OOM_TRIGGER`（谁在申请、`req_size` 多大）、`OOM_RECENT_ALLOC`（最近 K 条未释放，看分配序列）、`OOM_TOP_ALLOC`（最大 K 条未释放，看大头归属）"
+    - "**owner 多级**：`@` 分隔，首段是分配器来源（PTA 池为 `PTA`；HAL 池为 `CANN@<组件>`，如 `CANN@HCCL`/`CANN@APP`/`CANN@GE`/`CANN@RUNTIME`），丢弃首段后才是该维度下一级"
+    - "**无 owner 时的降级**：只能按 Event Type（HAL/PTA/MindSpore/ATB/HOST_PINNED）或池维度聚合，并明确告知用户信息缺失"
+    - "**观测边界**：没有段级/块级存量视图——逐段碎片率、块状态分布、假性碎片判定（pending 占比）需要另采快照类数据"
+  pitfalls:
+    - "**配对不是无泄漏证据**：未释放块在进程退出时被补发 `shadow:true` 的 FREE，MALLOC/FREE 必然一一配对；判泄漏看**该 Ptr 的 FREE 是否全部为 `shadow:true`**，并配合跨周期是否回基线"
+    - "**`shadow:true` 有两类来源**：非采集期正常释放（真实释放行为）与进程退出时统一补齐（才是未释放内存）；两类时间戳都可能落在最后一次 stop+1 处，**不能只按时间戳区分**——单轮采集（一次 start 到进程退出）时全部 shadow FREE 都可视为候选，再按增长性判别"
+    - "**第一 Step 的波动不算泄漏**：内存尚未稳定，从第二 Step 起分析"
+    - "**start() 之前的存量只统计不分析**：不参与泄漏/拆解——怀疑对象可能在前段申请、后段持续持有时，局部采集会漏"
+    - "**常驻内存不等于泄漏**：常驻是前期申请、总量稳定；泄漏是周期性增长——按增长性判别"
+    - "**曲线不是轮询采样**：只有事件时刻有点，不要在两点之间做中间态推断"
+    - "**HAL 与池不可相加**：池的物理段已计入 HAL（`CANN@APP`），不存在“池并列汇总”"
+    - "**VLLM-Ascend 限制**：不支持命令行采集、不支持泄漏分析，只能用 Python 接口 + 一键分析（`init_framework_hooks`）"
+    - "**`--collect-mode=deferred` 时分析功能不可用**；`--steps` 与分析功能互斥（同时用会失效）"
