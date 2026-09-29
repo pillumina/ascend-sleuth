@@ -758,6 +758,8 @@ def ex_metrics_loop(root: Path):
                 "attribution_ratio": {"case_error": attr_case, "execution_error": 0},
                 "feedback_capture": {"resolved": feedback, "not_resolved": 0, "partial": 0},
                 "case_total": case_total,
+                # 快照形状带 tok（与真实期一致）；但**体检按现算判容量线、不读快照里的 tok**，
+                # 所以这里的 1234 只是形状示例，不参与断言（别把它当成有效读数）。
                 "capacity_by_ns": {"inference/vllm-ascend": {"interrupt": {"count": cell_count, "tok": 1234}}},
             },
         }]}, allow_unicode=True, sort_keys=False)

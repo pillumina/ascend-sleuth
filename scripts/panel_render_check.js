@@ -322,6 +322,27 @@ async function main() {
   }
   expect('自演进度量：验证方式分布', /验证方式分布/.test(ev.text) && /S2 issue 回放/.test(ev.text))
   expect('信号来源分布', /信号来源/.test(ev.text))
+  // EV 面板的容量节：判据量是**读入 token**，与「指标」tab 必须说同一件事。
+  // 为什么补这条（预核 2026-09-29）：该节此前零断言——index_counts 的每格记录去掉 `cap` 之后，
+  // 它仍在读 `cell.cap`，于是渲染出「全部格子在软上限的 80% 以下」的假陈述而 CI 全绿。
+  {
+    const evCap = (() => {
+      const cb = (board.capacity) || {}
+      const rows = []
+      Object.keys(cb).forEach(ns => Object.keys(cb[ns] || {}).forEach(cat => {
+        const c = cb[ns][cat]
+        if (typeof c.tok === 'number') rows.push({ ns, cat, count: c.count, tok: c.tok })
+      }))
+      return rows.sort((a, b) => b.tok - a.tok)
+    })()
+    if (evCap.length) {
+      const top = evCap[0]
+      expect('EV 容量节显示读入成本（' + top.ns + ' · ' + top.cat + ' ' + top.count + ' 条 / ' + top.tok + ' tok）',
+        ev.text.includes(top.count + ' 条 / ' + top.tok + ' tok'), ev.text.split('\n').slice(0, 6).join(' | '))
+    }
+    expect('EV 容量节不再说"软上限"（条数已不是判据量）',
+      !/软上限/.test(ev.text), (ev.text.match(/软上限[^\n]{0,20}/g) || []).join(','))
+  }
   // 容量压力：从真实容量表里取最贵的一格做断言（不硬编码阈值/格名）。
   // 判据量是**读入 token**（阈值在 gates.yaml），条数只作括号里的观察值。
   const capCells = []

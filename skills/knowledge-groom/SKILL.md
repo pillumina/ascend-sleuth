@@ -94,7 +94,7 @@ disable-model-invocation: true
    - **tried-and-failed**（被选中但近 12 周未解决）且 `score` 低 → 移入 `_archive/`
    - `compat` 版本过期 → 移入 `_archive/`（与命中无关）
    - 检查 `_archive/` 中 case 是否因新 `compat` 区间该复活（2.7 退休、2.8 恢复）
-6. **容量治理与拆分建议**：cap 按 **(framework × category) 格子**计，执行参数：**soft_cap=30**（触发拆分评估）、**hard_cap=60**（信道物理上限，强制拆）；健康指标阈值：候选溢出率 >20%、同根因重复率连续两轮上升、维护时长 >30 分钟/周。每次 groom 附**容量表**：各格子条数 / soft_cap、三项健康指标。任一格子超 soft_cap 即**触发拆分评估**（不是立即拆）：查健康指标，任一恶化 → 报告内容分布 + 拆分建议（首选 category 轴深化或按 platform 轴）；超 hard_cap 无论健康指标**强制拆**。拆分被数据预告，不被卡住才想起（论证见 docs/adr/0004——可选论证层，上述数值为执行值，参数待 metrics 复核）。**越界清单与行动走 `python3 scripts/metrics_health.py`**（判据数值在 `metrics/gates.yaml`，与本节一致）——别只看 `_index.yaml` 头注的数字：头注只列数，不判越界，也不告诉你这条闸门已经越了多久。
+6. **容量治理**：被治理的量是**查一次问题要把命中格子读进来多少字**（阶段一实读 token），不按条数——条数只作观察值记在容量表里。执行参数：**评估线 8000**（到线→评估能否再省：先看行宽/字段，再看平台轴切分）、**硬线 20000**（= 常驻指令面的量级→强制处理，先瘦身再评估拆分）；健康指标阈值：候选溢出率 >20%、同根因重复率连续两轮上升、维护时长 >30 分钟/周。每次 groom 附**容量表**：各格子的条数与读入成本（`python3 scripts/index_read_cost.py`）+ 三项健康指标。**不预拆目录**：拆分是超硬线之后才评估的选项，不是到线就做的动作（拆分轴与实测代价见 docs/adr/0004 与 roadmap 的 A2 行）。**越界清单与行动走 `python3 scripts/metrics_health.py`**（判据数值在 `metrics/gates.yaml`，与本节一致）——别只看 `_index.yaml` 头注的数字：头注只列数，不判越界，也不告诉你这条闸门已经越了多久。
 7. **同 namespace 合并建议**：相似 case 对自动提示。
 8. **索引维护（收尾必做）**：所有 KB 变更（升格/合并/退休/改 confidence）完成后，运行 `python3 scripts/build_index.py`，把分片与总表一起提交。门是**覆盖检查**（每条 case 的索引行都在、与内容对得上）：`--check` 报问题 = 变更不完整，或索引行被手改过。要归一化（顺序/注释回到生成器口径）就重跑一次；`--canonical` 是那个自检（不作门）。软退休的 case 移 `_archive/` 后自动从活跃索引消失。
 
@@ -179,8 +179,8 @@ disable-model-invocation: true
 | 某 case `score` 低仍被加载 | 标待复审；命中一次失败即转人工 |
 | 某案例 `needs-structurer-review` 超 14 天 | 提醒领域 owner |
 | inbox 条目停留 >2 周 | 变更摘要标红，提醒 owner（队列不是档案） |
-| 某 (framework×category) 格子超 soft_cap（30）且健康指标恶化 | 触发拆分评估（category 深化或 platform 轴），不等撞线 |
-| 某格子超 hard_cap（60） | 强制拆分（信道物理上限） |
+| 某格子阶段一实读超评估线（8000 tok） | 评估能否再省：先看行宽/字段，再看要不要按平台轴切开 |
+| 某格子实读超硬线（20000 tok，≈常驻指令面量级） | 强制处理：先瘦身，再评估平台轴切分（不预拆目录） |
 | `references/` 有遗留 draft 草稿 | 审核 R1（修订 3 前历史产出）：accept 改 active / adjust / reject；case-derived methodology 未达 ≥3 引用禁止 active；新产出走 to-reference 即 active + PR 合入，不再产生新 draft |
 | 某 reference `last_verified` 超 90 天未刷新 | 标 `needs-review`，owner 季度审 |
 | case-derived methodology 被引用数 < 3（派生计数） | 不允许 active（verify_references 强制；已 active 的降 draft） |

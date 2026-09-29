@@ -35,9 +35,10 @@ import metrics_snapshot as MS
 # 而不是安静地"没有越界"（EV-2026-055 的教训：检测腿断了自己不会喊）。
 IMPLEMENTED_GATE_DIMENSIONS = {"capacity_cell_read_tok", "feedback_capture_total"}
 IMPLEMENTED_READABILITY_RULES = {"total_gt_0", "any_gt_0", "source_nonzero"}
-# 容量两线的兜底阈值：`cell_read_*_tok` 闸门缺失时才用到（正常路径读 gates.yaml）
-SOFT_TOK_FALLBACK = 8000
-HARD_TOK_FALLBACK = 20000
+# 容量两线的兜底阈值：只在 `cell_read_*_tok` 闸门缺失时才用到（正常路径读 gates.yaml）。
+# **定义只有一处**：`index_read_cost.py` 是成本量的家（本 PR 自己的论点——同一个量两处定义，
+# 必有一处先腐烂；预核 2026-09-29 指出这里曾各写一份）。
+from index_read_cost import DEFAULT_HARD_TOK as HARD_TOK_FALLBACK, SOFT_TOK as SOFT_TOK_FALLBACK  # noqa: E402
 
 
 def load_yaml(path: Path, errors: list = None):
@@ -239,6 +240,10 @@ def main():
     # 现在走防御包装：结构侧任何异常都降级成"这一块拿不到 + 如实标注"，不崩整轮体检
     # （实测：面板环境下 collect_structural 曾整体抛错，连容量判据一起带走）。
     structural, s_notes = collect_structural_safe(root)
+    # 结构侧整体拿不到（knowledge/ 不在、读侧视图缺失…）→ 容量线**量不出**，不许报"均未触发"。
+    # 旧缺陷（预核 2026-09-29 复现）：把 knowledge/ 移走后仍输出「✓ 所有格子均未触发」、
+    # coverage 3/3、broken=[] —— 与"确实没越界"同形。
+    structural_unavailable = not (structural.get("capacity_by_ns") or {})
     # 阶段一实读成本**现算**（与条数同源：都从 case 文件算，不读快照里的旧值）。
     # 为什么不用快照里的 tok：判据要判的是"现在这格多贵"，快照可能是上期的。
     try:
@@ -264,7 +269,8 @@ def main():
     # 于是面板上出现两行 85/30、人话版也几乎一样——读者以为是两件事。判据确实是两条，
     # 但对人来说"这一格超了两条线"是一件事：合成一条，并在展开的判据行里如实写清越过了哪两条。
     # 量不出的格子单独记：读侧视图缺失时成本是 None，**不能**当成"没越界"（那正是假绿的样子）
-    unmeasurable = [(ns, cat) for ns, cat, _n, tok in cells if tok is None]
+    unmeasurable = ([(ns, cat) for ns, cat, _n, tok in cells if tok is None]
+                    if not structural_unavailable else [("（整个结构侧）", "拿不到")])
     capacity_hits = {}   # (ns, cat) → {n, tok, gates:[{id, meaning, action}], hard:bool}
     for g in gates:
         if g.get("dimension") != "capacity_cell_read_tok":
@@ -301,9 +307,11 @@ def main():
                             if hit["hard"] else "。已过评估线，值得看看还能不能再省")))
     if unmeasurable:
         findings.append(("warn", "容量",
-                         "读侧视图缺失，容量线未评估：" + "、".join(f"{ns} · {cat}" for ns, cat in unmeasurable),
+                         "容量线未评估：" + ("结构侧整块拿不到（knowledge/ 或读侧视图缺失）"
+                                          if structural_unavailable
+                                          else "读侧视图缺失：" + "、".join(f"{ns} · {cat}" for ns, cat in unmeasurable)),
                          "python3 scripts/build_index.py",
-                         "有格子的读入成本量不出来（读侧视图缺失）——先重建索引再看容量"))
+                         "读入成本量不出来（结构侧/读侧视图缺失）——先重建索引再看容量"))
     if not capacity_hits and not unmeasurable:
         findings.append(("ok", "容量",
                          f"所有格子均未触发 ({'、'.join(str(g.get('id')) for g in gates if g.get('dimension') == 'capacity_cell_read_tok')})",
@@ -394,8 +402,8 @@ def main():
          "why": "反馈捕获为 0 时，误诊率/归因比没有分母"},
         {"label": "追快照", "command": "python3 scripts/metrics_snapshot.py",
          "why": "诊断侧/结构侧快照超期 → 趋势断档"},
-        {"label": "拆格子", "command": "用 /skill:knowledge-groom 处理容量越界格子（category 轴深化或 platform 轴拆分）",
-         "why": "格子超 soft_cap 触发拆分评估，超 hard_cap 强制拆分"},
+        {"label": "看读入成本", "command": "python3 scripts/index_read_cost.py",
+         "why": "容量线按阶段一实读 token 判：超评估线先看能否再省（行宽/字段），超硬线再评估平台轴切分"},
         {"label": "重建索引", "command": "python3 scripts/build_index.py",
          "why": "索引头注与磁盘不一致时，检索与面板读到的都是旧数"},
     ]
@@ -410,8 +418,9 @@ def main():
     gate_audit = []
     broken = list(load_errors)
     if unmeasurable:
-        broken.append("容量线未评估：读侧视图缺失（" + "、".join(f"{ns}×{cat}" for ns, cat in unmeasurable)
-                      + "）——先跑 `python3 scripts/build_index.py`")
+        what = ("结构侧拿不到" if structural_unavailable
+                else "读侧视图缺失（" + "、".join(f"{ns}×{cat}" for ns, cat in unmeasurable) + "）")
+        broken.append(f"容量线未评估：{what}——先跑 `python3 scripts/build_index.py`")
     for g in gates:
         dim = g.get("dimension")
         ok_impl = dim in IMPLEMENTED_GATE_DIMENSIONS and not (dim == "capacity_cell_read_tok" and unmeasurable)

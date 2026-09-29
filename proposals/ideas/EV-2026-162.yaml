@@ -102,3 +102,29 @@ decisions:
       warn 人话版（"有格子的读入成本量不出来，先重建索引"）；② 把该判据记成**未评估**，
       `--check` 退 2（不是 0）。反例实测：删掉一格读侧视图的临时副本 → exit 2、覆盖 1/3、
       点名缺哪一格；正常库仍是 3/3、`--check` 退 1（容量超评估线 + 反馈 0，属真实越界）。
+  - who: agent（独立预核会话 + 本轮回修）
+    when: "2026-09-29"
+    type: decision
+    conclusion: >-
+      独立预核判 **MERGE_READY: no**，报 9 项，全部回修（无一项是"判定链坏了"，全是"两套说法没清干净"）：
+      ① **P1 EV 面板容量节说假话**——`ev_board_data.capacity_cells()` 直接把 `index_counts.capacity_by_ns`
+      给面板，而本轮把每格记录从 `{count, cap}` 改成 `{count}`，ev-panel 仍读 `cell.cap` → 渲染空态
+      「全部格子在软上限的 80% 以下」，与「指标」tab 的「1 格越界 / 16442 tok」同屏打架，且该节
+      **零断言**所以 CI 看不出来。修：`ev_board_data` 合并读入成本、EV 面板容量节改按 token 展示，
+      并在 `panel_render_check.js` 补两条断言（显示 `93 条 / 16442 tok`、不得再出现"软上限"）。
+      ② **P1 第二套阈值**：`skills/knowledge-groom`（第 6 步与触发信号表两行）、`CONTEXT.md` 术语表「格子」、
+      `docs/glossary.yaml` 的 T6、`docs/guide/metrics.md` 两处仍写 30/60 条——skill 是独立分发面，
+      照旧口径会在 groom 时判"强制拆"。全部改成 token 线。
+      ③ **P1 体检自己的候选命令**仍写「拆格子 / 用 knowledge-groom 处理容量越界…（category 轴深化或
+      platform 轴）」+ why 引 soft_cap/hard_cap → 改成 `index_read_cost.py` 与新动作文案。
+      ④ **P2 同一个量两处定义**：`metrics_health` 与 `index_read_cost` 各写一份 8000/20000 兜底 →
+      改成只从 `index_read_cost` 导入（本卡自己的论点：一个量两处定义必有一处先腐烂）。
+      ⑤ **P2 数字陈旧**：`docs/adr/0004` 与 `build_index.py` 的 `16424` → `16442`；`index_read_cost`
+      注释"软线 = 该面的一半" → 实测 37%；`roadmap.md` 的两行台账（60KB 贴线 / 口径未统一）随 A2 行更新。
+      ⑥ **P3 无活回归测试** → 新增 `tests/test_metrics_health.py`（5 条：判据 id 写明量 / 缺读侧视图退 2 /
+      结构侧拿不到退 2 / 体检读数 == 现算 / 条数多但成本低不越线）。
+      ⑦ **P3 顺带堵旧洞**：结构侧整块拿不到时原本仍输出「✓ 所有格子均未触发」（基线同样假绿）——
+      现在同样记"未评估 + 退 2"。
+      预核同时确认：`SOFT_CAP/HARD_CAP` 全仓无代码引用、`--check` 三态语义未变、`normalizeCapacity`
+      对三种历史形状都容错且不会把旧 `cap` 当本线用、`index_read_cost --json` 契约未变、
+      演练 183/183 与 293 tests 均复算通过。

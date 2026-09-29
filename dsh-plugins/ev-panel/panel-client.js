@@ -819,24 +819,26 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
         const cells = capacity[ns] || {}
         Object.keys(cells).forEach(cat => {
           const cell = cells[cat]
-          const ratio = cell.cap ? cell.count / cell.cap : 0
-          rows.push({ ns, cat, ...cell, ratio })
+          // 判据量是**查一次问题要读进来多少字**（token），阈值在 metrics/gates.yaml；
+          // 条数只作观察值。这里不重算阈值——面板拿不到 gates.yaml，只按"有没有值"排序，
+          // 越线的判定与文案由「指标」tab 的体检判决给出（两处必须说同一件事：都按 token）。
+          rows.push({ ns, cat, ...cell, tok: typeof cell.tok === 'number' ? cell.tok : null })
         })
       })
-      rows.sort((a, b) => b.ratio - a.ratio)
-      const over = rows.filter(r => r.count > r.cap)
-      const near = rows.filter(r => r.count <= r.cap && r.ratio > 0.8)
+      rows.sort((a, b) => (b.tok || 0) - (a.tok || 0))
+      // 「需要看的」= 有读入成本的格子（按成本从高到低）；阈值判定归体检，此处不猜线。
+      const near = rows.filter(r => r.tok != null).slice(0, 3)
       return React.createElement(Section, {
         title: '知识库容量',
-        right: rows.length + ' 格 · 明细见「指标」tab',
+        right: rows.length + ' 格 · 逐格读入成本与越线判定见「指标」tab',
       },
-        (over.length || near.length)
+        near.length
           ? React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
-              over.concat(near).map(r => React.createElement(Pill, {
-                key: r.ns + r.cat, color: r.count > r.cap ? 'var(--c-red)' : 'var(--c-amber)',
-                title: r.ns + ' · ' + r.cat + ' ' + r.count + '/' + r.cap,
-              }, r.ns.split('/').pop() + ' · ' + r.cat + ' ' + r.count + '/' + r.cap)))
-          : React.createElement(EmptyBox, { text: '全部格子在软上限的 80% 以下' }),
+              near.map(r => React.createElement(Pill, {
+                key: r.ns + r.cat, color: 'var(--c-amber)',
+                title: r.ns + ' · ' + r.cat + '：' + r.count + ' 条，查一次读进来约 ' + r.tok + ' tok',
+              }, r.ns.split('/').pop() + ' · ' + r.cat + ' ' + r.count + ' 条 / ' + r.tok + ' tok')))
+          : React.createElement(EmptyBox, { text: '读入成本未生成（先跑 python3 scripts/build_index.py 与 index_read_cost.py）' }),
       )
     }
 
