@@ -9,7 +9,7 @@
 ```
 references/
 ├── _types.yaml               # type 注册表（渐进登记；CI 强校验的 schema 依据）
-├── _summary-index.yaml       # 生成物：背景类（platform-fact/software-fact/tool）行化索引（diagnose 步骤 3 阶段 2.5）
+├── _summary-index.yaml       # 生成物：背景类（platform-fact/software-fact/tool）行化索引（diagnose 步骤 2 收尾，先于候选加载）
 ├── _procedure-index.yaml     # 生成物：流程选择器（methodology；diagnose 步骤 5）——只有 category→分片一行
 ├── _procedure-index/         # 生成物：^^ 的分片（按 category 一片，本轮只读自己那片）
 

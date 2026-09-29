@@ -63,7 +63,7 @@ resume 只负责**恢复现场**——恢复后继续的是 `/diagnose` 的完�
 - **误诊归因**：反馈 not_resolved/partial → 读 trace 判 case_error/execution_error。
 - **连续失败 ≤2**：两次未解决转人工，不连续试第三个。
 - **trace 边界**：续接后同样别把流程/设计讨论写进本 trace（走 `_evnote.md`）。
-- **检索面**：若续接中需重新路由/加载（如 active_case 丢失），照 diagnose 的 tier1 / 两阶段 tier2 / 2.5 reference 流程执行——那是续接中必要的重新定位，不是"回到起点"。
+- **检索面**：若续接中需重新路由/加载（如 active_case 丢失），照 diagnose 的 tier1 / 步骤 2 收尾的先验查询 / 两阶段 tier2 / 阶段 2.5 流程执行——那是续接中必要的重新定位，不是"回到起点"。
 
 > 单一数据源纪律：上表是"易丢项清单"，**权威定义仍在 diagnose**；两者冲突时以 diagnose 为准，并在 diagnose 同步修正。
 

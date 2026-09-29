@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# build_ref_summary_index.py —— 生成 references/_summary-index.yaml（诊断阶段 2.5 的背景层索引）
+# build_ref_summary_index.py —— 生成 references/_summary-index.yaml（诊断步骤 2 收尾的背景层索引）
 #
-# 目的（B1 EV-2026-026）：diagnose 阶段 2.5 原为"扫 references/<type-dir>/*.yaml
+# 目的（B1 EV-2026-026）：diagnose 原先为"扫 references/<type-dir>/*.yaml
 # 只读 summary+applies_to"，需逐文件读全文找字段；本索引把**背景类
 # （platform-fact/software-fact/tool）+ status=active** 词条压缩为**一行一条**
 # {id/type/title/summary(≤160c)/applies_to.platforms+categories}，读侧一次 grep 就够
@@ -91,9 +91,9 @@ def render(doc_entries) -> str:
         })
     n = len(rows)
     header = "\n".join([
-        "# GENERATED FILE —— 背景类 summary 索引（diagnose 步骤 3 阶段 2.5 读取），不要手改。",
+        "# GENERATED FILE —— 背景类 summary 索引（diagnose 步骤 2 收尾读取，先于候选加载），不要手改。",
         "# 由 scripts/build_ref_summary_index.py 生成；--check 校验新鲜度（CI）。",
-        "# 只含背景类 + status=active；查表类走步骤 2 收尾的键触发 grep（口径同 diagnose SKILL）。",
+        "# 只含背景类 + status=active；查表类同样在步骤 2 收尾按检索键 grep（口径同 diagnose SKILL）。",
         "# 读法：**一行一条**（`- {id: …, type: …, title: …, summary: …, applies_to: {platforms: […], categories: […]}}`）——",
         "#   一次 grep 命中即整条；先按 applies_to 收窄，再在命中的行上按组件/工具词挑，每轮 ≤5 条。",
         "#   整读等于注入全库背景（索引随词条数增长），别整读。",

@@ -45,7 +45,8 @@ KNOWN_ACTIONS = {
 #   collect    数据缺口的采集面（步骤 1，候选加载前，精度 / 性能单必留一条）
 #   signature  键触发：证据里的错误码 / 故障签名 / 环境变量名 / 版本组合（步骤 2 收尾，**先于候选加载**）
 #   fix        修复依据（command-side-effect / 工具解读，步骤 3 阶段 2.5）
-#   background 平台 / 软件背景 summary（步骤 3 阶段 2.5）
+#   background 平台 / 软件背景 summary（步骤 2 收尾，先于候选加载——与键触发同一时点；
+#              未命中路径同样要记，所以它与 fix 分开两个 purpose）
 #   procedure  方法缺口的流程加载（步骤 5，EV-2026-038）——**只读全文**，摘要行不算加载
 # 词表外的 purpose → 消费点分布指标（docs/guide/metrics.md）不可算，此处确定性检出。
 KNOWN_PURPOSES = {"collect", "signature", "fix", "background", "procedure"}
@@ -301,6 +302,10 @@ def main():
         "reference": {"hits": sum(ref_hits.values()), "refs": len(ref_hits)} if ref_hits else None,
         # 触发三态（EV-2026-093）：三态都进快照——消费率要能与"没查"区分才可归因
         "reference_outcomes": ref_outcomes or None,
+        # 消费点分布（collect / signature / background / fix / procedure）：背景层从"候选命中后"
+        # 挪到"步骤 2 收尾（先于候选加载）"之后，**未命中路径有没有读背景**只能靠这个分布看——
+        # 它此前只进人读 markdown、没进快照，于是流程改动的效果没有周期读端。
+        "reference_purposes": ref_purposes or None,
         "reference_detail": {rid: {"hits": h, "resolved": ref_resolved.get(rid, 0)}
                              for rid, h in sorted(ref_hits.items(), key=lambda x: -x[1])} or None,
     }
