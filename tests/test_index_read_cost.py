@@ -29,6 +29,7 @@ CASE = """cases:
       score: 0.5
     symptoms:
       - "{sym}"
+      - "第二条症状带 token：error code 507014，kernel_name=QuantBatchMatMulV3"
     quickly_check:
       primary:
         command_template: "grep -n '507014' log"
@@ -71,16 +72,22 @@ class ReadCostTest(unittest.TestCase):
         self.assertLess(IRC.tok("昇腾 vllm-ascend 507014"), IRC.tok("昇腾 vllm-ascend 507014 " * 3))
 
     # ------------------------------------------------------------------ 紧凑行形态
-    def test_compact_line_carries_the_judgement_evidence(self):
-        """一行要带：id / 标题 / 症状首条 / sig 字面量 / tok / compat / tags（少了任一项就是证据缺失）。"""
+    def test_compact_line_field_set_is_exactly_the_read_protocol(self):
+        """字段集合要**逐个钉住**，不能只查症状子串。
+
+        为什么（独立预核 2026-09-29 的反例）：早先只断言"串里有 507014 / 症状"这类子串，
+        于是把 `tok` 段整段删掉、测试仍 9 passed、卡里的 measure 仍通过——"静默砍掉判断证据"
+        能一路绿灯。这里改成断言字段名集合：少一个字段就红。
+        """
         self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
         row = BI.collect(self.root)["inference/vllm-ascend"]["interrupt"][0]
-        line = IRC.compact_line(row)
-        for want in ("A-1", "标题", "症状", "507014", "vllm-ascend 0.23.0", "hccl"):
-            self.assertIn(want, line)
-        self.assertNotIn("\n", line)                   # 一行一条：折行就等于 grep 拿不到整条
-        self.assertNotIn("hash", line)                 # hash 只服务新鲜度门，读侧不需要
-        self.assertNotIn("knowledge/inference", line)  # file 可由 id 推出，也不进读侧
+        names = [part.split(": ", 1)[0] for part in IRC.compact_line(row).split(IRC.SEP)]
+        self.assertEqual(names, list(IRC.READ_FIELDS))
+        for want in ("A-1", "interrupt", "标题", "症状", "507014", "vllm-ascend 0.23.0", "hccl", "0.5"):
+            self.assertIn(want, IRC.compact_line(row))
+        self.assertNotIn("\n", IRC.compact_line(row))           # 一行一条：折行等于 grep 拿不到整条
+        self.assertNotIn("hash:", IRC.compact_line(row))        # hash 只服务新鲜度门，读侧不需要
+        self.assertNotIn("knowledge/inference", IRC.compact_line(row))   # file 可由 id 推出，不进读侧
 
     def test_compact_line_truncates_like_the_shard_row(self):
         self.write_case("inference/vllm-ascend/interrupt/L.yaml", cid="L-1",
@@ -95,7 +102,16 @@ class ReadCostTest(unittest.TestCase):
         p.write_text("cases:\n  - id: S-1\n    title: t\n    category: interrupt\n    symptoms:\n      - s\n",
                      encoding="utf-8")
         row = BI.collect(self.root)["inference/vllm-ascend"]["interrupt"][0]
-        self.assertEqual(IRC.compact_line(row), "S-1 | t | s")
+        # 没有 sig/tok/compat/tags/score → 那几段整段省略（省行宽），其余按序保留
+        self.assertEqual(IRC.compact_line(row), "id: S-1 | category: interrupt | title: t | symptoms: s")
+
+    def test_compact_line_pipe_in_value_cannot_split_the_fields(self):
+        """值里的 `|` 折成 `¦`：否则一条会被切成两截，解析与"grep 命中即整条"都失效。"""
+        self.write_case("inference/vllm-ascend/interrupt/P.yaml", cid="P-1", title="a | b")
+        row = BI.collect(self.root)["inference/vllm-ascend"]["interrupt"][0]
+        names = [part.split(": ", 1)[0] for part in IRC.compact_line(row).split(IRC.SEP)]
+        self.assertEqual(names, list(IRC.READ_FIELDS))
+        self.assertIn("a ¦ b", IRC.compact_line(row))
 
     # ------------------------------------------------------------------ 逐格成本
     def test_cell_costs_reports_both_formats_and_saving(self):
@@ -110,12 +126,25 @@ class ReadCostTest(unittest.TestCase):
         self.assertLess(data["total"]["compact_tok"], data["total"]["yaml_tok"])
         self.assertGreater(data["total"]["saving_pct"], 0)
 
-    def test_missing_shard_reports_zero_not_crash(self):
-        """分片还没生成时（只跑过 collect）：yaml 成本记 0，不抛——尺子不能因为缺文件就崩。"""
+    def test_missing_view_is_reported_not_counted_as_free(self):
+        """缺读侧视图时：`cell_costs` 记 0（不崩），但 `missing_views` 要点名、`main` 返回 2。
+
+        为什么（独立预核 2026-09-29）：静默 0 会被读成"这一格免费"——"残缺"与"量不出"必须不同形。
+        """
         self.write_case("common/performance/C.yaml", cid="C-1", cat="performance")
         data = IRC.cell_costs(self.root)
         self.assertEqual(data["cells"][0]["yaml_tok"], 0)
         self.assertGreater(data["cells"][0]["compact_tok"], 0)
+        self.assertIn("common__performance.yaml", data["missing_views"])
+        sys.argv = ["index_read_cost.py", "--root", str(self.root)]
+        self.assertEqual(IRC.main(), 2)
+
+    def test_bad_root_is_usage_error_not_empty_library(self):
+        """`--root` 传错（下面没有 knowledge/）→ 2，不能静默报"0 条、exit 0"。"""
+        sys.argv = ["index_read_cost.py", "--root", str(self.root)]   # setUp 只建了 knowledge/，没有 case
+        self.assertEqual(IRC.main(), 0)                               # 空库是真 0：knowledge/ 在
+        sys.argv = ["index_read_cost.py", "--root", str(self.root / "nope")]
+        self.assertEqual(IRC.main(), 2)
 
     # ------------------------------------------------------------------ 退出码契约
     def test_exit_code_flags_cell_over_cap(self):
@@ -128,6 +157,19 @@ class ReadCostTest(unittest.TestCase):
         self.assertEqual(IRC.main(), 1)
         sys.argv = ["index_read_cost.py", "--root", str(self.root), "--cell",
                     "inference/vllm-ascend/interrupt", "--cap", "100000"]
+        self.assertEqual(IRC.main(), 0)
+
+    def test_json_obeys_the_same_exit_code(self):
+        """`--json` 也要按 cap 判（独立预核 2026-09-29 的反例：早先 `--json` 恒 0，
+        于是机器读的那条路永远看不出越线，而卡里的 measure 恰好走的就是 `--json`）。"""
+        for i in range(40):
+            self.write_case(f"inference/vllm-ascend/interrupt/A{i}.yaml", cid=f"A-{i}")
+        self.generate()
+        sys.argv = ["index_read_cost.py", "--root", str(self.root), "--json",
+                    "--cell", "inference/vllm-ascend/interrupt", "--cap", "100"]
+        self.assertEqual(IRC.main(), 1)
+        sys.argv = ["index_read_cost.py", "--root", str(self.root), "--json",
+                    "--cell", "inference/vllm-ascend/interrupt", "--cap", "100000"]
         self.assertEqual(IRC.main(), 0)
 
     def test_unknown_cell_is_usage_error(self):
