@@ -155,6 +155,89 @@ class ReadCostTest(unittest.TestCase):
         sys.argv = ["index_read_cost.py", "--root", str(self.root), "--cell", "no/such"]
         self.assertEqual(IRC.main(), 2)
 
+    # ------------------------------------------------------------------ 一张账：四个分项
+    def test_views_carry_kind_and_cover_both_paths(self):
+        """类视图与兜底视图两条读取路径都要进账，且带 `kind` 分得开。
+
+        为什么：两条路径的判据是两条 dimension（"哪条路径越线"要看得出来），
+        但共用同一把尺子（token）——`views` 是它们的并集。
+        """
+        self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
+        self.write_case("common/performance/C.yaml", cid="C-1", cat="performance")
+        self.generate()
+        data = IRC.cell_costs(self.root)
+        self.assertEqual(sorted(v["kind"] for v in data["views"]), ["cell", "cell", "fallback", "fallback"])
+        self.assertEqual(len(data["views"]), len(data["cells"]) + len(data["fallbacks"]))
+
+    def test_fallback_over_cap_flags_exit_1(self):
+        """兜底视图（category 未定才读）**同一条硬线**——此前它被明确写在线外。
+
+        真实库里的反例：vllm-ascend 兜底视图 24270 tok 超硬线 20000，而 `--json` 退 0、
+        体检报"所有格子均未触发"：全系统最贵的一次读不在任何判据里。本测试钉住越线即 1。
+        """
+        self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
+        self.generate()
+        sys.argv = ["index_read_cost.py", "--root", str(self.root), "--cap", "1"]
+        self.assertEqual(IRC.main(), 1)
+        sys.argv = ["index_read_cost.py", "--root", str(self.root), "--cap", "1000000"]
+        self.assertEqual(IRC.main(), 0)
+
+    def test_reference_layer_measured_but_never_gated(self):
+        """先验层进同一张账（整读成本 + 检索残量），但**不设线**：再贵也不影响退出码。
+
+        判据：先验层是检索式读取（一次 grep + ≤5 行），token 不随库大小线性涨，
+        它的退化形态是"翻不到"（残量）。给它配 token 硬线属假硬化——准入判据第三条
+        （已复发 ≥2 次）没有证据，所以先有数（原则八），攒到期数够了再定线。
+        """
+        self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
+        self.generate()
+        ref = self.root / "references"
+        (ref / "_procedure-index").mkdir(parents=True)
+        (ref / "errors").mkdir()
+        (ref / "_summary-index.yaml").write_text(
+            "entries:\n"
+            "- {id: p1, type: platform-fact, title: t1, summary: s, applies_to: {platforms: [cross], categories: []}}\n"
+            "- {id: p2, type: software-fact, title: t2, summary: s, applies_to: {platforms: [A3-910C], categories: [interrupt]}}\n",
+            encoding="utf-8")
+        (ref / "_procedure-index.yaml").write_text("procedures_total: 1\n", encoding="utf-8")
+        (ref / "_procedure-index" / "interrupt.yaml").write_text("- {id: m1}\n", encoding="utf-8")
+        (ref / "errors" / "cann-runtime.yaml").write_text("- {id: e1}\n", encoding="utf-8")
+
+        views = [r["view"] for r in IRC.reference_costs(self.root)]
+        self.assertTrue(any("背景索引" in v for v in views), views)
+        self.assertTrue(any("流程分片" in v for v in views), views)
+        self.assertTrue(any("错误族表" in v for v in views), views)
+
+        residual = IRC.bg_residual(self.root)
+        self.assertEqual(residual["entries"], 2)
+        per = {(x["platform"], x["category"]): x["rows"] for x in residual["by_platform_category"]}
+        self.assertEqual(per[("A3-910C", "interrupt")], 2)      # 跨平台行 + 本卡行
+        self.assertEqual(per[("A3-910C", "performance")], 1)    # 只剩跨平台行
+        self.assertEqual(residual["cross_only_by_category"]["interrupt"], 1)
+
+        # 只量不判：先验层再贵也不进退出码（cap 放到无穷大 → 0）
+        sys.argv = ["index_read_cost.py", "--root", str(self.root), "--cap", "1000000"]
+        self.assertEqual(IRC.main(), 0)
+        # references/ 不在（worktree 里被删/未挂）→ 空表，不是崩溃
+        empty = tempfile.TemporaryDirectory()
+        with empty:
+            root = Path(empty.name)
+            (root / "knowledge").mkdir()
+            self.assertEqual(IRC.reference_costs(root), [])
+            self.assertIsNone(IRC.bg_residual(root))
+            self.assertIsNone(IRC.stage2_costs(root))
+
+    def test_stage2_body_cost_is_measured(self):
+        """阶段二候选全文（≤5 条）此前一笔账都没有——它和最贵的格子同量级。"""
+        for i in range(3):
+            self.write_case(f"inference/vllm-ascend/interrupt/A{i}.yaml", cid=f"A-{i}", sym="症状" * 40)
+        self.generate()
+        st = IRC.stage2_costs(self.root)
+        self.assertEqual(st["cases"], 3)
+        self.assertGreater(st["median"], 0)
+        self.assertLessEqual(st["top5"], 5 * st["max"])
+        self.assertGreaterEqual(st["top5"], 3 * st["median"] - st["max"] if st["max"] > st["median"] else st["median"])
+
     # ------------------------------------------------------------------ 退出码契约
     def test_exit_code_flags_cell_over_cap(self):
         """越硬线 = 1（给体检脚本判），不越 = 0；这是脚本对外的契约。"""

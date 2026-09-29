@@ -141,24 +141,28 @@
 
 **路由准确率**依赖这步的 trace：最终 root cause 所在 namespace 是否在被加载集合里（指标定义见 docs/guide/metrics.md）。路由错（分错桶）和 KB 空（分对了没 case）修复动作相反，必须分开测。
 
-**先验键触发（本步骤收尾，先于候选加载）**：把证据里**能当检索键的东西**当场查掉——错误码（`E1xxxx` / `EIxxxx` / `507xxx` / `0x……`）、可 grep 的故障签名（`fault kernel_name=`、`event_id`）、具体环境变量名、要核对的版本组合。查法与阶段 2.5 的查表路径同形态，只是**时点提前到这里**：
+**先验查询（本步骤收尾，先于候选加载）**：两半——**键触发**（把证据里能当检索键的东西当场查掉：错误码 `E1xxxx` / `EIxxxx` / `507xxx` / `0x……`、可 grep 的故障签名（`fault kernel_name=`、`event_id`）、具体环境变量名、要核对的版本组合）与**背景层**（平台 / 软件 / 工具事实）。两半都在**候选加载之前**做，两半都留 trace：
 
-- 错误码 → 读 `ascend-error-code-structure` 的 `module_files` 前缀映射定位族文件（`references/errors/<族>.yaml`），族内 grep code 读 meaning / solution。**族文件里查不到这个码时不要就此收场**——`references/errors/_code-gaps.yaml` 是"错误表缺行但库里有事实"的索引：按 code 查一行，`seen_in` 直接指出该码在哪个故障模式词条里有症状→根因→修法（实测有十余个码属于这种：官方表没有行，隔壁表有答案）。也没有 → 才是真的没有，把码写进 `_code-gaps.yaml` 的 `no_home` 段（覆盖缺口要留痕，下次遇到能省一次全库翻找）；
+- 错误码 → 读 `ascend-error-code-structure` 的 `module_files` 前缀映射定位族文件（`references/errors/<族>.yaml`），族内 grep code 读 meaning / solution（**按码 grep，不整读全族**：最大一族已到 8000+ token，现算见 `python3 scripts/index_read_cost.py` 的先验层一节）。**族文件里查不到这个码时不要就此收场**——`references/errors/_code-gaps.yaml` 是"错误表缺行但库里有事实"的索引：按 code 查一行，`seen_in` 直接指出该码在哪个故障模式词条里有症状→根因→修法（实测有十余个码属于这种：官方表没有行，隔壁表有答案）。也没有 → 才是真的没有，把码写进 `_code-gaps.yaml` 的 `no_home` 段（覆盖缺口要留痕，下次遇到能省一次全库翻找）；
 - 故障签名 → 按域定位 `references/fault-patterns/<域>.yaml`，域内 grep symptoms 读 cause / fix；
 - 环境变量 → `references/env-vars/<表>.yaml` 内 grep name；
-- 版本组合 → `references/compat-matrices/` 按传导链分层，按要核对的层直接读该层文件：framework 层 `references/compat-matrices/vllm-ascend-torch-npu.yaml` / `references/compat-matrices/verl-npu.yaml`、adapter 层 `references/compat-matrices/torch-npu-cann.yaml`、base 层 `references/compat-matrices/cann-hdk.yaml`（CANN↔驱动/固件，如 `cann: 9.0.1` 一行直接给配套 `hdk` 列表）——**先落本库矩阵，再考虑联网查证**（厂商文档站多为 JS 渲染，正文表格常取不到）。
+- 版本组合 → `references/compat-matrices/` 按传导链分层，按要核对的层直接读该层文件：framework 层 `references/compat-matrices/vllm-ascend-torch-npu.yaml` / `references/compat-matrices/verl-npu.yaml`、adapter 层 `references/compat-matrices/torch-npu-cann.yaml`、base 层 `references/compat-matrices/cann-hdk.yaml`（CANN↔驱动/固件，如 `cann: 9.0.1` 一行直接给配套 `hdk` 列表）——**先落本库矩阵，再考虑联网查证**（厂商文档站多为 JS 渲染，正文表格常取不到）；
+- **背景层（同一次收尾里取，与上面四类并列）** → `references/_summary-index.yaml`（生成索引，背景类 + `active`，**一行一条**）：先按 `applies_to.platforms` 匹配客户平台（含 `cross` 或未填 platforms 视为跨平台），该行 `applies_to.categories` 有值时再按本轮 category 收窄，**再用本次症状里的组件 / 工具 / 平台 / 版本词收窄**，取最相关的 **≤5 行**；行内 `summary` 即背景提示（不读全文），确需细节再按 `id` 读单文件。
+  - **一行一条怎么用**：三个条件落在同一行上，一次 `grep -E` 就能带上平台与类别（`grep -E 'platforms: \[[^]]*(A3-910C|cross)' references/_summary-index.yaml | grep -iE 'categories: \[[^]]*interrupt|<组件/工具词>'`）。**别把"筛完还剩几条"当成索引坏了**：绝大多数词条的 `platforms` 含 `cross`（跨平台事实本就该跨平台），前两刀切完剩的仍是两位数行数（现算见 `python3 scripts/index_read_cost.py` 的检索残量一行），真正定案的是第三刀（组件 / 工具词）——它才是本步的判断所在。
+  - **没命中就换词再试一次**：按平台/工具的另一种写法再 grep 一次（`A3-910C` 与 `910C`、`vllm-ascend` 与 `vllm_ascend`、工具名与它的子命令名），仍无才记 `miss`。跳过这一步就把"我没想到那个词"记成了"库里没有"。
+  - **用 grep 取行，别整读索引**：索引随词条数线性增长，整读等于把全库背景一次性注入上下文——本次成本上限就是这 5 行加一次 grep。
 
 **命中了不等于能套用**：故障模式表按**域**组织，同一个码可以在不同病因下出现（如 `507035` 一家讲 UB 对齐违例、现场那单是索引 buffer 取值越界）。读到词条后先核对它的症状面与**本次证据**是否同一病因，不同就写明"命中但不作根因依据"再继续——把命中当结论是把检索当确诊（原则一）。
 
-**为什么提前到这里**：码 / 签名 / 名的**语义**与"命中哪条 case"无关——不知道 `507903` 是什么意思时，case 层给不出解释，而这个解释正是判断候选真假的输入。排在候选加载之后，等于让判断先于理解。
+**为什么提前到这里**：码 / 签名 / 名的**语义**与"命中哪条 case"无关——不知道 `507903` 是什么意思时，case 层给不出解释，而这个解释正是判断候选真假的输入。排在候选加载之后，等于让判断先于理解。背景层同理（它是与具体事故无关的事实）：`platform-fact` / `software-fact` / `tool` 是**与具体事故无关**的事实（先验层的定义），把它的入口挂在"候选命中"上，等于只开给"库里有同类 case"的单子——库里没有同行案例时（未命中路径）最需要它，而那条路径此前能读到的先验只有流程类。时点提到这里之后，**命中路径与未命中路径都在候选加载前拿到背景**。
 
-**为什么必须有负记录**：这个触发点的价值一半在"查到了什么"，另一半在"**没有可查的键**"。证据里没有可检索键（报错是框架自定义断言文本、Python traceback、业务日志）时记 `outcome: skipped` 并写明理由——不记的话，"库不覆盖这个键"与"根本没查"在数据上完全同形。
+**为什么必须有负记录**：这个触发点的价值一半在"查到了什么"，另一半在"**没有可查的键**"。证据里没有可检索键（报错是框架自定义断言文本、Python traceback、业务日志）时记 `outcome: skipped` 并写明理由——不记的话，"库不覆盖这个键"与"根本没查"在数据上完全同形。背景层没有"没有可查的键"这种豁免：平台 / 组件词几乎总有，所以它记 `miss`（查了没有）而不是 `skipped`，只在证据里连平台都判不出时才 `skipped`。
 
-trace 记：`{step: 2, action: reference_lookup, purpose: signature, outcome: hit|miss|skipped, ref_id, platform, output, reason}`（`outcome` 三态词表见 `diagnosis-trace.md`）。**每次诊断都留一条**（含 `skipped`）——它是"这一单到底有没有可查的键"的唯一数据源。
+trace 记两条（同一时点、同一 `step`，`purpose` 不同）：`{step: 2, action: reference_lookup, purpose: signature, outcome: hit|miss|skipped, ref_id, platform, output, reason}` 与 `{step: 2, action: reference_lookup, purpose: background, outcome: hit|miss|skipped, ref_id, platform, output, reason}`（`outcome` 三态词表见 `diagnosis-trace.md`）。**每次诊断都留**（含 `skipped`）——它们是"这一单有没有可查的键""背景层有没有可用的词条"的数据源。
 
 ## 步骤 3：两阶段加载 Tier 2
 
-**阶段一（索引）**：读**命中 (namespace × category) 的读侧视图** `knowledge/_index/<ns>__<category>.list`（`scripts/build_index.py` 生成；category 未定 → 回退该 namespace 的 `<ns>.list`）。它是**一行一条 case** 的文本，字段按序为 `id / category / title / symptoms 首条 / sig / tok / compat / tags / score`——`sig` 是该 case 的报错字面量（输入里逐字命中即强候选）、`tok` 是关键词集合，两者是判断的**证据**；行内没有 `quickly_check`，判定式在 case 本体、阶段二才读。
+**阶段一（索引）**：读**命中 (namespace × category) 的读侧视图** `knowledge/_index/<ns>__<category>.list`（`scripts/build_index.py` 生成；category 未定 → 回退该 namespace 的 `<ns>.list`——**这条路更贵**（vllm-ascend 2.4 万 token，超硬线；两类视图成本都现算：`python3 scripts/index_read_cost.py`），先按标题/标签收敛到候选再看，别逐条通读）。它是**一行一条 case** 的文本，字段按序为 `id / category / title / symptoms 首条 / sig / tok / compat / tags / score`——`sig` 是该 case 的报错字面量（输入里逐字命中即强候选）、`tok` 是关键词集合，两者是判断的**证据**；行内没有 `quickly_check`，判定式在 case 本体、阶段二才读。
 **这个视图就是本步的预算上限**：条目每条约 150–250 token，意味着百余条的格子约 1.5–2 万 token——顶得上整个常驻指令面，所以既不要退化成读全库总表 `knowledge/_index.yaml`（机器面、嵌套 YAML、随库线性涨），也不要在这一格上反复重读。**要看准确数字**：`python3 scripts/index_read_cost.py`（逐格现算，含"如果换更省的行宽能省多少"）。
 **为什么不是 YAML**：阶段一是人/agent 在读它，YAML 的缩进、引号、字段名、嵌套在百余条规模上要多花四成 token，而信息与旧形态一一对应（只少了 `file`——可由 id 推出——与 `hash`——只服务索引新鲜度门）。判据：**每一条都要看到，但每条只花一行**。
 两阶段加载由**结构**保证，不靠逐文件打开的自觉：**读侧视图里没有 `quickly_check`**（字段就是上面那九个，`file` 与 `hash` 也不在里面），判定式在 case 本体、到阶段二才读。索引缺失或 `build_index.py --check` 报过期 → 兜底：逐文件只读上述索引字段，并提醒重建索引。**筛候选时同步扫 `tags`**（与 title/symptom 并查）：同族 case 常只靠 tag 表达（如 `balance-scheduling` / `patch-layer`），只按 title/symptom 词面 grep 会把"同文件族"整片漏掉（静默停滞类尤其如此——真实故障常是调度/控制循环层，而它的 tag 不在症状词面里）。
@@ -172,7 +176,7 @@ trace 记：`{step: 2, action: reference_lookup, purpose: signature, outcome: hi
 
 拿 interrupt 的 grep 思路建 precision case，匹配不上。
 
-**阶段二（全量）**：候选 ≤5 条，全量加载 body，按 `confidence.score` **降序**验证（最可靠的先试）。**先跑候选的 `quickly_check` 对照已提供的信息**：
+**阶段二（全量）**：候选 ≤5 条，全量加载 body，按 `confidence.score` **降序**验证（最可靠的先试）——单条全文的中位与最贵 5 条合计都现算（`python3 scripts/index_read_cost.py`），与最贵的索引格子同量级，所以"够了就停"，不要凑满 5 条。**先跑候选的 `quickly_check` 对照已提供的信息**：
 - 先 primary（精确）
 - primary 不匹配 → 跑 fallback（更模糊）
 - primary 不匹配但 fallback 匹配 → 仍进验证，标 `low_confidence`
@@ -180,18 +184,15 @@ trace 记：`{step: 2, action: reference_lookup, purpose: signature, outcome: hi
 
 **多条候选时明示**：“匹配到 N 条，先验证最可能的 `<id>`（confidence `<score>`）”，工程师可说“跳过这条试下一条”。
 
-**阶段二.5：reference 辅助查询（「判断缺口」消费点）**——**候选命中后固定执行，不写成"按需"**：命中只说明"这条 case 像"，不说明"该补的先验已经在手上了"。把"需不需要先验"交给当场自评，等于让最顺的那条路径永远不读先验。执行顺序（**只读 `status: active`**）：
+**阶段二.5：候选自带回链与修复依据（「判断缺口 · 修复依据」消费点）**——**候选命中后固定执行，不写成"按需"**：命中只说明"这条 case 像"，不说明"该补的先验已经在手上了"。把"需不需要先验"交给当场自评，等于让最顺的那条路径永远不读先验。执行顺序（**只读 `status: active`**）：
 
-1. **候选带 `ref_knowledge` → 先读它**：按每条 `role` 用——`signature-source`（签名的含义与判别面）、`fix-methodology`（修复路径的方法依据）、`root-cause-context`（根因成立的背景）。这是最精准的入口：关系是沉淀时写下的，不需要当场猜。
-2. **然后一律取背景 summary 层**（**不是"没有 `ref_knowledge` 才取"，两者并列，不是二选一**）：`references/_summary-index.yaml`（生成索引，背景类 + active，**一行一条**）按 `applies_to.platforms` 匹配客户平台（含 `cross` 或未填 platforms 视为跨平台），该行 `applies_to.categories` 有值时再按本轮 category 收窄；**再用本次症状里的组件 / 工具 / 平台 / 版本词收窄**，取最相关的 **≤5 行**，行内 `summary` 即背景提示（不读全文），确需细节再按 `id` 读单文件。
-   **一行一条怎么用**：三个条件都落在同一行上，一次 `grep -E` 就能带上平台与类别，再在命中的行上按组件词挑——例：`grep -E 'platforms: \[[^]]*(A3-910C|cross)' references/_summary-index.yaml | grep -iE 'categories: \[[^]]*interrupt|<组件/工具词>'`。**别把"筛完还剩几条"当成索引坏了**：141 条的 `platforms` 里 **90 条含 `cross`**（其中 73 条恰为 `[cross]`），平台 + 类别两刀切完实测剩 **45 行**；把平台从 `cross` 收到具体一张卡（只匹配 `A3-910C`）才降到 9 行。真正定案的是第三刀（组件 / 工具词），它才是本步的判断所在。
-   **为什么并列而不是"否则"**：`ref_knowledge` 是少数 case 才有的手写回链，绝大多数候选没有它——写成"否则"时，这一分支在多数单子上就被读到的人当作可省，而它恰恰是**唯一**能覆盖背景类的入口（背景类词条不参与候选路由，没有别的路径能读进来）。代价侧有界：grep 一次 + ≤5 行。**查了没有相关词条就记 `miss`**——`miss` 是覆盖缺口的信号（说明库缺这一族背景），比不查有信息。
-   **用 grep 取行，别整读索引**：索引随词条数增长，整读等于把全库背景一次性注入上下文——本触发点的成本上限就是这 5 行加一次 grep。
-3. **查表类（error-code / fault-pattern / env-var-table / compat-matrix）不在这里**：它们是码 / 签名 / 名 / 版本检索键，键来自证据而不是来自候选，已在步骤 2 收尾的「先验键触发」按检索键取过，此处不重复查。
+1. **候选带 `ref_knowledge` → 读它**：按每条 `role` 用——`signature-source`（签名的含义与判别面）、`fix-methodology`（修复路径的方法依据）、`root-cause-context`（根因成立的背景）。这是最精准的入口：关系是沉淀时写下的，不需要当场猜。**只有少数 case 有这条手写回链**，没有它不等于没有先验可补——背景那一半已在步骤 2 收尾查过，此处不重复查。
+2. **按需补修复依据（`purpose: fix`）**：`command-side-effect` / 工具解读这类"修复路径的依据"词条，在候选命中、要给修复建议时按 `ref_knowledge.role: fix-methodology` 或工具名直接读单文件。
+3. **查表类（error-code / fault-pattern / env-var-table / compat-matrix）不在这里**：它们是码 / 签名 / 名 / 版本检索键，键来自证据而不是来自候选，已在步骤 2 收尾的键触发里按检索键取过，此处不重复查。
 4. **流程类（methodology）也不在这里**：它要的是"选中一条读全文"，走步骤 5 的流程选择器；摘要行承载不了判据。
 
 - **只读 `status: active`**——draft / pending-review / deprecated 一律不加载（未验证知识不进上下文——这是"agent 不引用错误先验"的机制化，不是自觉）；
-- **trace 三态必记**：`{action: reference_lookup, purpose: background|fix, outcome: hit|miss|skipped, ref_id, platform, output, reason}`——`hit` 读到并用了、`miss` 查了没有相关词条、`skipped` 没查（**写明为什么**，例："候选全未命中，本触发点不适用"）。没走到这一步（无候选命中）就记一条 `skipped`，别假装查过。
+- **trace 三态必记**：`{action: reference_lookup, purpose: fix, outcome: hit|miss|skipped, ref_id, platform, output, reason}`——`hit` 读到并用了、`miss` 查了没有相关词条、`skipped` 没查（**写明为什么**，例："本次修复路径不依赖工具解读，候选也未带 `ref_knowledge`"）。**候选全未命中时**这一步不适用，但**步骤 2 的背景查询照做**（它不依赖候选），别把两件事写成同一条 `skipped`。
 
 **数据资产探询（「数据缺口」消费点——时点：候选加载后）**：候选读完、**发现某个具体测量值（或产物）不在手上、而它决定下一步能不能走**时，按本 skill 的 `references/collect-gates.yaml`（与本文同级，**不是仓库根 references/**）执行闸门——问句、分支动作、词条绑定都在表里（id 受 CI 校验），本文不重复：
 
@@ -235,6 +236,8 @@ trace 记：
 命中 → 步骤 6（产出）。所有候选未命中 → 步骤 5（深度排查）。
 
 ## 步骤 5：深度排查（Tier 2 未命中）
+
+**先把步骤 2 收尾取到的背景先验摆出来**：未命中意味着库里没有同行案例，此刻手上与本次症状有关、又不依赖案例的先验就是步骤 2 查到的背景行（平台规格 / 软件栈事实 / 工具能力面）。命中且相关 → 用它框定排查方向（该看哪一层、哪个工具能给到证据、这版软件的已知行为）；步骤 2 记的是 `miss` 而本轮又出现了新证据（新的组件名 / 版本号）→ 允许按新词重查一次并记新的一条 trace（不重复用同一组词查）。**这一步用来给未命中单一个不依赖案例的起点**：能读到的先验此前只有 43 条流程，现在还有 141 条背景。
 
 **先取流程（方法缺口消费点）**：所有候选未命中、进入本步时，按 `references/procedure-gates.yaml` 的 `kind: procedure` 闸门取流程：
 

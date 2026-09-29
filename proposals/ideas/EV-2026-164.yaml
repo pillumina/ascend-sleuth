@@ -1,0 +1,112 @@
+# ============================================================
+# EV-2026-164 —— 背景先验层解绑「候选命中」：时点提前到步骤 2 收尾（先于候选加载）
+# 来源：用户「reference 先验知识的使用主要是 diagnose 流程控制的吧，那流程上有没有优化的点？」
+#       → 实测：背景层（141 条）的入口挂在"候选命中"上，而未命中路径最需要它。
+# 脱敏：只含仓库内路径、命令与聚合数字。
+# ============================================================
+
+id: EV-2026-164
+layer: L2
+target_component: skills/diagnose
+title: "背景先验解绑候选命中：查询时点从「步骤 3 阶段 2.5（候选命中后）」提前到「步骤 2 收尾（与键触发同一时点，先于候选加载）」——未命中路径可达的先验从 43 条（只有流程）扩到 184 条；背景与修复依据拆成两个 purpose"
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-29
+source_signals:
+  - signal: user_inquiry
+    evidence: "用户「从机制上，实际上 reference 的先验知识的使用主要是 diagnose 流程控制的吧，那流程上有没有优化的点？」→ 实测四个触发点的时点，发现背景层的入口前提是「候选命中」"
+    trajectory:
+      - "实测 1（入口被条件化）：`skills/diagnose/SKILL.md` 触发点表原文「判断缺口（背景方面）｜触发点：候选命中｜时点：步骤 3 阶段 2.5」；阶段 2.5 正文写「候选命中后固定执行」"
+      - "实测 2（未命中路径读不到背景）：trace `2026-08-31-msllm-1805` 记 `skipped`，理由「候选全未命中，本触发点不适用」——该单因此只读到流程类先验（43 条），141 条背景（平台规格 / 软件栈事实 / 工具能力面）一条都进不来"
+      - "实测 3（可达面）：`references/` 按 type 计数 = 背景类 141（tool 45 + platform-fact 33 + software-fact 63）+ 流程类 43（methodology）+ 查表类 91（error-code / fault-pattern / env-var / compat）——前两类里只有 43 条在未命中路径上有入口"
+      - "实测 4（消费点分布此前无可视面）：`reference_purposes` 只在 `trace_metrics.py` 的人读 markdown 里，没进快照——流程改动的效果没有周期读端（本卡一并补上）"
+hypothesis: >-
+  把背景层的时点从"候选命中后"提到"步骤 2 收尾（先于候选加载）"之后，命中与未命中两条路径
+  都能在候选加载前拿到背景；且因为它是"与具体事故无关的事实"，提前读还有第二个好处——
+  它参与判断候选真假（原来的位置只能事后补背景）。
+predicted_effect:
+  metric: "背景层在流程里的位置（时点 + 前提）"
+  from: "时点=步骤 3 阶段 2.5；前提=候选命中（未命中单只能记 skipped）"
+  to: "时点=步骤 2 收尾（先于候选加载）；前提=证据里有平台/组件词（与候选是否命中无关）"
+  measure:
+    command: >-
+      python3 -c "import pathlib; p=pathlib.Path('skills/diagnose/references/diagnosis-procedure.md').read_text(encoding='utf-8'); s=pathlib.Path('skills/diagnose/SKILL.md').read_text(encoding='utf-8'); t=pathlib.Path('skills/diagnose/references/diagnosis-trace.md').read_text(encoding='utf-8'); assert '背景层（同一次收尾里取，与上面四类并列）' in p; assert p.index('背景层（同一次收尾') < p.index('## 步骤 3'); assert '候选全未命中，本触发点不适用' not in p; assert '与候选是否命中无关' in s and 'purpose: background' in s; assert '背景层：平台 / 软件 / 工具事实' in t and '修复依据：候选命中后按' in t; print('ok background trigger before candidates')"
+    expect_exit: 0
+    expect_stdout: "ok background trigger before candidates"
+    # 复现：python3 scripts/ev_measure.py EV-2026-164 --run
+    # 强度（原则十）：这条命令判的是**结构**（时点在前、旧口径已消失、词表已分开），
+    # 判不了"agent 真的照做了"——后者要看 trace 里 `purpose: background` 在未命中单上的出现，
+    # 数据面已备（`reference_purposes` 进快照），要等下几期数据。
+validation:
+  method: metrics_compare
+  baseline: "改前：背景层挂在候选命中后（阶段 2.5）；未命中单记 skipped；`background` 与 `fix` 共用一个 purpose 格"
+  success_criteria: "①背景层在步骤 2 收尾、先于候选加载，且写明「与候选是否命中无关」；②旧口径（候选命中才查背景 / 未命中即不适用）在 skill 内不再出现；③trace 词表把 `background` 与 `fix` 分开，且 `trace_metrics.py` 的 `dispatch` 词表里两者都合法（`KNOWN_PURPOSES` 不变）；④`reference_purposes` 进 live 快照；⑤全量 CI 全绿"
+  rollback: "分支可整体丢弃；合入后 git revert（背景层回阶段 2.5、`background|fix` 合回一格）"
+gate:
+  condition: "用户「流程上有没有优化的点」→ 有且已落地；下一轮复核信号：`reference_purposes.background` 在未命中单上的占比持续偏低"
+risk: medium
+principle_refs: [4, 8, 9, 11]
+actual_cost:
+  tokens: 70000
+  source: estimate
+  note: >-
+    口径：跨 7 个文件（diagnose SKILL / diagnosis-procedure / diagnosis-trace / resume-diagnosis /
+    build_ref_summary_index 头注 / references README / trace_metrics + metrics.md）+ 重新生成背景索引
+    + 全量 CI 一轮；估 7 万，含此前审视轮的往返。
+decisions:
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: proposal
+    conclusion: >-
+      **背景层不该挂在候选命中上**，理由不是"多查一次更保险"，而是这条挂法与先验层的定义矛盾：
+      背景类（platform-fact / software-fact / tool）是**与具体事故无关**的事实，它不参与候选路由，
+      也没有别的入口。把它条件化在"库里有同类 case"上，等于让唯一能覆盖它的入口在最需要它的
+      单子（库里没有同行案例）上关闭。键触发（signature）此前已经用过同一个论证提前到时点前
+      ——"排在候选加载之后，等于让判断先于理解"；背景层同理，且它还多一层作用：参与判断候选真假。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: action
+    conclusion: >-
+      落地：`diagnosis-procedure.md` 步骤 2 的键触发块扩成两半（键触发 + 背景层，含"一行一条怎么用"
+      "没命中就换词再试一次""用 grep 取行，别整读索引"三条读法），阶段 2.5 收窄为"候选自带
+      `ref_knowledge` + 按需补修复依据"（`purpose: fix`），步骤 5 增加"把步骤 2 取到的背景摆出来"；
+      `SKILL.md` 触发点表从四个变五个（背景独立一行，时点写"与键触发同一时点，先于候选加载"）、
+      核心循环与步骤 2/3/5 文案同步；`diagnosis-trace.md` 把 `background` 与 `fix` 拆成两行
+      （前者不依赖候选、后者依赖），并写清"背景层的正常负结果是 `miss` 而不是 `skipped`"；
+      `build_ref_summary_index.py` 的头注与 `references/README.md` 同步时点；`resume-diagnosis` 指路同步。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: decision
+    conclusion: >-
+      **成本核算**：命中路径净成本不变（背景那一次 grep 从阶段 2.5 挪到步骤 2 收尾，2.5 不再重复查）；
+      未命中路径 +1 次 grep + ≤5 行（约 200–400 token），换来 141 条背景可达。若把背景留两个时点
+      （两处都查）才是重复成本——所以本卡明确写"此处不重复查"。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: decision
+    conclusion: >-
+      **补上效果的可视面**：`reference_purposes` 此前只进人读 markdown、不进快照，于是"未命中单有没有
+      读背景"在周期数据里看不见（与 `reference_outcomes` 早先的处境同形）。本卡把它加进
+      `trace_metrics.py` 的快照输出，实测当前历史值：signature 9 / procedure 4 / background 3 / fix 0
+      ——`background` 的 3 次来自旧的阶段 2.5 路径，改后的增量要等下几期。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: decision
+    conclusion: >-
+      **未做**：`ref_knowledge` 回链覆盖率（有该字段的 case 12/168）没动——那是沉淀侧的
+      债（新增 case 该不该补回链），属 to-postmortem / groom 的动作，不是 diagnose 流程能修的。
+      本卡只保证"没有回链时也有入口"（背景那一半与候选无关、且 2.5 明确写了"没有它不等于没有先验可补"）。
+  - who: agent（独立预核会话 + 本轮回修）
+    when: "2026-09-29"
+    type: decision
+    conclusion: >-
+      独立预核判 MERGE_READY: no（P1 两条在容量面，见另一张卡），本卡范围内回修三处**同一件事的残留说法**：
+      ① `references/README.md` 仍写「三个缺口、四个触发点」且把背景侧写成「候选命中 → 阶段 2.5」；
+      ② `CLAUDE.md` 的常驻指令仍写「两个消费点……判断缺口（候选已载入但缺签名/背景/修复依据 → 步骤 2.5）」；
+      ③ `scripts/trace_metrics.py` 的注释与人读表仍把消费点写成四个（漏 `procedure`）、
+      `docs/guide/metrics.md` 仍写「混装四个消费点」。三处都改成五个触发点、背景侧写明「步骤 2 收尾、
+      与候选是否命中无关」。预核亦确认：五触发点在 SKILL / procedure / trace / trace_metrics 四处原本已一致，
+      无重复查询、无路径丢背景（快路也走前四步）。

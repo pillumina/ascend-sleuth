@@ -19,8 +19,8 @@ from exec_log_path import resolve_traces
 
 # trace action 固定词表（与 skills/diagnose/SKILL.md「每步必写 trace」一致）
 # 词表外 action = 诊断纪律违规，写入时靠 SKILL.md 约束，此处确定性检出
-# reference_lookup（ADR-0008）：diagnose 查询先验知识层的四个触发点（数据缺口 / 键触发 /
-# 判断缺口 / 方法缺口，见 skills/diagnose/references/diagnosis-trace.md）——reference 命中统计
+# reference_lookup（ADR-0008）：diagnose 查询先验知识层的五个触发点（数据缺口 / 键触发 /
+# 背景层 / 修复依据 / 方法缺口，见 skills/diagnose/references/diagnosis-trace.md）——reference 命中统计
 # （hits/last_hit）与引用后 resolve 率的数据源；resolve 从该 session 最终 status 派生，
 # 不新增单独事件。事件自带的两组取值各管一件事：`outcome`（hit/miss/skipped）是本行三态，
 # `purpose` 是消费点分布。
@@ -45,7 +45,8 @@ KNOWN_ACTIONS = {
 #   collect    数据缺口的采集面（步骤 1，候选加载前，精度 / 性能单必留一条）
 #   signature  键触发：证据里的错误码 / 故障签名 / 环境变量名 / 版本组合（步骤 2 收尾，**先于候选加载**）
 #   fix        修复依据（command-side-effect / 工具解读，步骤 3 阶段 2.5）
-#   background 平台 / 软件背景 summary（步骤 3 阶段 2.5）
+#   background 平台 / 软件背景 summary（步骤 2 收尾，先于候选加载——与键触发同一时点；
+#              未命中路径同样要记，所以它与 fix 分开两个 purpose）
 #   procedure  方法缺口的流程加载（步骤 5，EV-2026-038）——**只读全文**，摘要行不算加载
 # 词表外的 purpose → 消费点分布指标（docs/guide/metrics.md）不可算，此处确定性检出。
 KNOWN_PURPOSES = {"collect", "signature", "fix", "background", "procedure"}
@@ -140,7 +141,8 @@ def main():
     ref_hits = {}
     ref_resolved = {}
     ref_platforms = {}
-    # 消费点分布（docs/guide/metrics.md「reference 引用」口径）：purpose ∈ collect/signature/fix/background
+    # 消费点分布（docs/guide/metrics.md「reference 引用」口径）：
+    # purpose ∈ collect / signature / background / fix / procedure（词表见 KNOWN_PURPOSES）
     ref_purposes = {}
     purpose_bad = []
     # 触发三态（EV-2026-093）：hit / miss / skipped——三态缺一，"没查"与"查了没命中"同形
@@ -301,6 +303,10 @@ def main():
         "reference": {"hits": sum(ref_hits.values()), "refs": len(ref_hits)} if ref_hits else None,
         # 触发三态（EV-2026-093）：三态都进快照——消费率要能与"没查"区分才可归因
         "reference_outcomes": ref_outcomes or None,
+        # 消费点分布（collect / signature / background / fix / procedure）：背景层从"候选命中后"
+        # 挪到"步骤 2 收尾（先于候选加载）"之后，**未命中路径有没有读背景**只能靠这个分布看——
+        # 它此前只进人读 markdown、没进快照，于是流程改动的效果没有周期读端。
+        "reference_purposes": ref_purposes or None,
         "reference_detail": {rid: {"hits": h, "resolved": ref_resolved.get(rid, 0)}
                              for rid, h in sorted(ref_hits.items(), key=lambda x: -x[1])} or None,
     }
@@ -351,7 +357,7 @@ def main():
             )
         pur_summary = "、".join(f"{k} {v}" for k, v in sorted(ref_purposes.items(), key=lambda x: -x[1]))
         rows.append(
-            f"| reference 消费点分布（collect/signature/fix/background） | "
+            f"| reference 消费点分布（collect/signature/background/fix/procedure） | "
             + (pur_summary if pur_summary else "无 purpose 字段（旧 trace 未记）")
             + (f"；**词表外：{'、'.join(purpose_bad[:5])}**" if purpose_bad else "")
             + " |"

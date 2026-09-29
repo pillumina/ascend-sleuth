@@ -116,6 +116,8 @@ _避免_：隐含价格、机会成本（语义近但不等）
 | `EV 卡` | 演进提案卡（`proposals/ideas/EV-*.yaml`），演进闭环的改进单元 | `docs/mechanism/pipeline.md` |
 | `F1`–`F5` | 阶段一索引加载协议的优化子项编号 | `docs/plan/roadmap.md` 的「加载协议子流」条目 |
 | 格子 | 容量治理单元 = (框架 × 类别)；治理量是**查一次问题要读进来多少字**（评估线 8000 / 硬线 20000），条数只作观察值 | `docs/adr/0004-capacity-governance.md` |
+| 类视图 / 兜底视图 | 阶段一索引的两条读取路径：类视图 = `knowledge/_index/<框架>__<类别>.list`（性质判出来时读）；兜底视图 = `knowledge/_index/<框架>.list`（性质没判出来时才读）。两条路径**各判一条线**（同 8000 / 20000），后者更贵 | `docs/adr/0004-capacity-governance.md` |
+| 一次诊断的读入账 | `scripts/index_read_cost.py` 现算的四个分项：类视图 / 兜底视图（判线）+ 先验层 / 阶段二候选全文（只量不判）。先验层的退化量是**检索残量**（平台 × 性质两刀切完剩多少行），不是 token | `docs/guide/metrics.md` |
 | 夹具 / `holdout` | 回归评测样本统称夹具；其中按内容哈希封存、不被改动者削弱的那部分叫 holdout | `docs/guide/eval.md` |
 | `grill` | 沉淀 reference 前的反复确认追问环节 | `skills/to-reference/SKILL.md` |
 | 口径 | 统计或判定所用的统一算法与边界定义——口径不同则数字不可比 | `docs/guide/metrics.md` |

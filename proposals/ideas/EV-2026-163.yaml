@@ -1,0 +1,123 @@
+# ============================================================
+# EV-2026-163 —— 兜底视图接上容量线 + 「一次诊断的读入账」四个分项
+# 来源：用户「审视 kb 和 reference 的索引层设计」→ 发现全系统最贵的一次读不在任何判据里，
+#       以及先验层与阶段二候选全文一笔账都没有。用户随后要求「cap 按合理方案设计实现，要有真正的收益」。
+# 脱敏：只含仓库内路径、命令与聚合数字。
+# ============================================================
+
+id: EV-2026-163
+layer: L3
+target_component: scripts/index_read_cost.py
+title: "读入账四分项 + 兜底视图接上容量线：全系统最贵的一次读（vllm-ascend 兜底 24270 tok）此前不在任何判据里；先验层与阶段二候选全文从「没数」到「有数」（只量不判）"
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-09-29
+source_signals:
+  - signal: user_inquiry
+    evidence: "用户「继续审视 kb 和 reference 的索引层设计……从 token 消耗、reference 知识使用等角度做严谨评价」→ 实测发现两件事：① 兜底视图 24270 tok 超硬线 20000，而它被明确写在线外——体检报「所有格子均未触发」、`--json` 退 0；② 先验层（261 条词条）与阶段二候选全文（最贵 5 条 17999 tok）没有任何成本读数"
+    trajectory:
+      - "实测 1（最贵的读无人管）：`python3 scripts/index_read_cost.py` → 兜底视图 inference/vllm-ascend 124 条 24270 tok，脚本自己印「不在上面的硬线里」；`python3 scripts/metrics_health.py --json` 的容量面只有类视图格子"
+      - "实测 2（先验层没有尺子）：`verify_references.py` 只数条数（261 条）；`index_read_cost.py` 只覆盖 knowledge/，先验索引（背景索引整读 16945 tok、单片最大 4279 tok）与阶段二候选全文（中位 1432 / 最贵 4160 / 最贵 5 条合计 17999 tok）都没有读数"
+      - "实测 3（先验层随库增长最快）：reference 词条数按 timeline 记的三期是 95 → 130 → 261；同期 case 168 条"
+hypothesis: >-
+  把"一次诊断要读进来的东西"收成一张账并让两条读取路径各判一条线之后，
+  ①最贵的那条读取路径进入判据（越线即报，带动作）；②先验层与阶段二有数可看，
+  且它们的线**故意不设**——不因为"库里东西多"触发告警。
+predicted_effect:
+  metric: "读入账的覆盖面（分项数与越线可见性）"
+  from: "只有类视图格子进账（兜底视图越线不可见）；先验层与阶段二候选全文零读数"
+  to: "四个分项进账（类视图 / 兜底视图判线；先验层 / 阶段二只量不判）；兜底视图越线被体检报出并给出动作"
+  measure:
+    command: >-
+      python3 scripts/index_read_cost.py --json
+      | python3 -c "import json,sys; d=json.load(sys.stdin); kinds={v['kind'] for v in d['views']}; assert kinds=={'cell','fallback'}, kinds; assert any('兜底' in x for x in d['over_cap']), d['over_cap']; assert d['reference'] and d['reference_residual']['entries']>0 and d['stage2']['top5']>0; print('ok over=%s ref_views=%d stage2_top5=%d' % (d['over_cap'], len(d['reference']), d['stage2']['top5']))"
+      && python3 scripts/metrics_health.py --json
+      | python3 -c "import json,sys; d=json.load(sys.stdin); f=[x for x in d['findings'] if x['face']=='容量' and '兜底视图' in x['text']]; assert f, '兜底视图未被体检报出'; assert d['capacity_fallbacks'], 'capacity_fallbacks 缺失'; print('ok health flags fallback')"
+    expect_exit: 0
+    expect_stdout: "ok health flags fallback"
+    # 复现：python3 scripts/ev_measure.py EV-2026-163 --run
+    # 断言的是**覆盖面**（两类视图都进账且兜底越线被报出、先验层与阶段二有读数），不是会随
+    # case 增长而腐烂的具体数字。强度：三条判据机器可判；"命令是否真在测那件事"是约定。
+validation:
+  method: metrics_compare
+  baseline: "改前：`index_read_cost.py --json` 只有 cells/fallbacks 两组、越线只判 cells（兜底 24270 tok 退 0）；体检容量面只遍历类视图格子，输出「所有格子均未触发」；先验层与阶段二无任何读数"
+  success_criteria: "①兜底视图越线被体检报出（fail，带动作）且 `capacity_fallbacks` 进 `--json`；②先验层（整读成本 + 检索残量）与阶段二候选全文在 `index_read_cost.py` 有人读表与机器字段；③两条旧线的数值与语义不变（软 8000 / 硬 20000，类视图判据 id 不动）；④`metrics_health.py --check` 三态语义不变（缺视图仍退 2）；⑤全量 CI + 面板检查全绿"
+  rollback: "分支可整体丢弃；合入后 git revert（线回到「只判类视图」、读入账回到单一分项）"
+gate:
+  condition: "用户「cap 也按照合理的方案进行设计实现，要有真正的收益」"
+risk: medium
+principle_refs: [2, 6, 8, 9]
+actual_cost:
+  tokens: 90000
+  source: estimate
+  note: >-
+    口径：跨 6 个文件（index_read_cost / metrics_health / gates.yaml / tests × 2 / 文档三处含 ADR）
+    + 全量 CI 一轮 + 面板检查；估 9 万，含此前审视轮的往返。
+decisions:
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: proposal
+    conclusion: >-
+      cap 只压**每次读进来多少**，不压**库里存多少**，也不给"检索式读取"配线。三条理由：
+      ①先验层是检索式读取（一次 grep + ≤5 行），token 成本不随库大小线性涨——它的退化形态是
+      "翻不到"而不是"读太多"，量化量是**检索残量**（平台 + 类别两刀切完剩多少行，现算）；
+      ②阶段二的上限是"读几条候选"，压低字数等于压低证据量；③按本仓准入判据（机械可判 +
+      确定性后果 + 已复发 ≥2 次），这两项缺的是第三项——先有数，攒到期数够了再定线。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: action
+    conclusion: >-
+      落地：`index_read_cost.py` 报"一次诊断的读入账"四个分项（类视图 / 兜底视图判线，先验层 /
+      阶段二只量不判），新增 `reference_costs()` / `bg_residual()` / `stage2_costs()`，
+      `cells`/`fallbacks` 各带 `kind` 并合并进 `views`，退出码扩到"任一读入视图越线即 1"；
+      `metrics/gates.yaml` 新增 `fallback_read_soft_tok` / `fallback_read_hard_tok`
+      （dimension `capacity_fallback_read_tok`，数值沿用同一套推导，不新拍数）；
+      `metrics_health.py` 遍历两类视图、`capacity_fallbacks` 进机器输出，并把"判据没实现"与
+      "数据缺失"拆成两句（两者的修复动作相反）；`tests/test_index_read_cost.py`（+4）与
+      `tests/test_metrics_health.py`（+2）钉住接线。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: eval
+    conclusion: >-
+      改后实测：`index_read_cost.py` → 兜底视图 `inference/vllm-ascend` 124 条 24270 tok
+      「超硬线 20000」；`metrics_health.py` → 容量面首条 = 「兜底视图（category 未判出）越过
+      fallback_read_soft_tok、fallback_read_hard_tok」，判据覆盖 5/5（两类 token 线都评过）；
+      先验层读数：背景索引整读 16945 tok、流程分片 2528–4279、检索残量 A5-950×performance 91 行；
+      阶段二：168 条 case 单条中位 1432 tok、最贵 5 条合计 17999 tok。单元测试与全量 CI 见 validation。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: decision
+    conclusion: >-
+      **不把兜底视图的成本写进周期快照**（`capacity_by_ns` 只记类视图）。理由：快照是"期"的
+      账，而这条读取路径按需触发、不是每次诊断都读；写进快照会把"偶发的一次"记成"每期都有"。
+      体检与面板读的都是现算值（`capacity_fallbacks`），趋势要看得先攒"这条路径多久走一次"的数据
+      （现在没有该字段的观测面）——留作下一杠杆。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: decision
+    conclusion: >-
+      **未做**：兜底视图的"两步法"（先读窄列视图只留 id/标题/标签，再读判出来那一类的索引）——
+      它是本卡给动作列写的下一杠杆，但要动 `build_index.py` 的生成面与阶段一读法，属独立改动；
+      本卡只负责把它变成"看得见的越界 + 有名字的动作"，不再是一条注释里的"另立项"。
+  - who: agent（独立预核会话 + 本轮回修）
+    when: "2026-09-29"
+    type: decision
+    conclusion: >-
+      独立预核判 MERGE_READY: no，报 2 条 P1 + 1 条 P2 形状 + 7 条 P3，全部回修：
+      ① **P1 体检自相矛盾**：新 dimension 没进 `metrics_health.py` 的判据分派，于是每次体检都多打两行
+      「dimension 'capacity_fallback_read_tok' 没有对应评估实现」，而同一份报告又写「闸门 5/5 条已评估」
+      ——本卡正是拿这句话当验收证据。修：分派里把两类容量 dimension 一起放行（一行）。
+      ② **P1 交付项落不了地**：`reference_purposes` 没进 `verify_metrics.py` 的 live 白名单，实测下一期
+      快照会被 CI 拦下（同批还缺 `reference_outcomes` / `triage_miss_classes` / `triage_miss_sessions`，
+      属旧债但会一起爆）。修：四个字段补进白名单，并用真实快照在临时根上验过 `--check` 通过。
+      ③ **P1 可达假绿**：读入成本现算抛错时 `cells/fallbacks` 被清空 → 容量面比较全部落空 →
+      输出「✓ 两类读入视图均未触发」，同一屏里还有「本轮未被评估」。修：把「现算是否成功」做成独立
+      一条 finding，并让它挡住那条 ✓（反例实测：`chmod 000` 一格读侧视图 → 现在只报「容量线未评估：读入成本现算失败」）。
+      ④ P3：软线比值 37% → 38%（与 gates.yaml / 本 ADR 同口径）；硬线比较符与 gates.yaml 对齐
+      （`>` → `>=`，否则恰好等于硬线时体检判越线、脚本退 0）；先验层/阶段二量不出时人读表显式写
+      「量不出」，不再静默省略整节；消费点计数从「四个」改「五个」（`trace_metrics.py` 两处 + 指标文档）。
+      预核同时确认：中心事实成立（main 版 `--json` 退 0、HEAD 退 1）、判据 id 与文档数字逐一对得上、
+      五触发点在四处一致、10 个机械门全绿、7 条反例跑通并全部恢复（`git status` 干净）。

@@ -111,6 +111,56 @@ class CapacityGateTest(unittest.TestCase):
         self.assertEqual(rc, 2, doc.get("check_verdict"))
         self.assertTrue(any("容量线未评估" in b for b in doc["broken"]), doc["broken"])
 
+    # ---------------------------------------------------------------- 兜底视图也判线
+    def add_fallback_gates(self, soft="1", hard="1"):
+        """给 fixture 的 gates.yaml 追加兜底视图那两条线（值取 1：合成库很小，判的是接线）。"""
+        g = self.root / "metrics" / "gates.yaml"
+        g.write_text(g.read_text(encoding="utf-8")
+                     + "  - id: fallback_read_soft_tok\n"
+                       "    dimension: capacity_fallback_read_tok\n"
+                       "    op: \">\"\n"
+                       f"    value: {soft}\n"
+                       "    meaning: 兜底视图超评估线\n"
+                       "    action: 看能否改两步法\n"
+                       "  - id: fallback_read_hard_tok\n"
+                       "    dimension: capacity_fallback_read_tok\n"
+                       "    op: \">=\"\n"
+                       f"    value: {hard}\n"
+                       "    meaning: 兜底视图超硬线\n"
+                       "    action: 优先按平台轴切分或改两步法\n",
+                     encoding="utf-8")
+
+    def test_fallback_view_is_gated(self):
+        """兜底视图（category 未判出才读）接上同一条线——此前它被明确写在线外。
+
+        真实库里的形态：vllm-ascend 兜底视图 24270 tok 超硬线 20000，而体检报"所有格子均未
+        触发"：全系统最贵的一次读不在任何判据里。这条钉住三个接线点：判据被实现、越线报出来、
+        机器读的那份带上兜底视图的读数。
+        """
+        self.write_case("inference/vllm-ascend/interrupt/A.yaml", "A-1")
+        self.generate_views()
+        self.add_fallback_gates()
+        _rc, doc = self.health()
+        # 不判 rc：本 fixture 的 references/ 是空的，结构侧会如实退 2（与容量无关）；
+        # 容量的判定看这条 fail——没有别的 broken 时它就是把退出码推到 1 的那条。
+        hits = [f for f in doc["findings"] if f["face"] == "容量" and f["level"] == "fail"]
+        self.assertTrue(any("兜底视图" in f["text"] for f in hits), doc["findings"])
+        self.assertGreaterEqual(doc["fail_count"], 1)
+        fb = next(c for c in doc["capacity_fallbacks"] if c["namespace"] == "inference/vllm-ascend")
+        self.assertTrue(fb["hard"])
+        dims = {a["dimension"]: a["implemented"] for a in doc["coverage"]["gates"]}
+        self.assertTrue(dims["capacity_fallback_read_tok"])
+
+    def test_missing_fallback_view_is_not_evaluated(self):
+        """兜底视图量不出（缺 `<ns>.list`）→ 未评估（退 2），不是"没越界"。"""
+        self.write_case("inference/vllm-ascend/interrupt/A.yaml", "A-1")
+        self.generate_views()
+        self.add_fallback_gates(soft="0", hard="0")
+        BI.shard_path(self.root, "inference__vllm-ascend").unlink()
+        rc, doc = self.health()
+        self.assertEqual(rc, 2, doc.get("check_verdict"))
+        self.assertTrue(any("容量线未评估" in b and "兜底视图" in b for b in doc["broken"]), doc["broken"])
+
     # ---------------------------------------------------------------- 读数与现算一致
     def test_reported_cost_equals_the_live_recomputation(self):
         """体检报的每格成本 == `index_read_cost` 现算的那个数（同一个量，不许两套）。"""

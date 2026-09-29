@@ -53,7 +53,7 @@ skill 的名单、分组与"谁用得上"**不在此处维护**：由 `docs/_man
 
 ### Reference layer (prior knowledge)
 
-`references/` 放先验知识（与具体事故无关的事实 + 方法论），与 case 并列。**它不是第四层检索**——不参与候选路由与排序。它有两个消费点，都锚在流程里的缺口上：**数据缺口**（还没有测量数据 → 工具词条的采集面，在候选加载前消费）与**判断缺口**（候选已载入但缺签名/背景/修复依据 → 诊断步骤 2.5）。两处都只读 `status: active`。
+`references/` 放先验知识（与具体事故无关的事实 + 方法论），与 case 并列。**它不是第四层检索**——不参与候选路由与排序。它的消费点都锚在流程里的缺口上：**数据缺口**（还没有测量数据 → 工具词条的采集面，在候选加载前消费）、**判断缺口**（理解侧：证据里的码/签名/名/版本组合 → 步骤 2 收尾查表族；背景侧：平台 / 软件 / 工具事实 → 同一步收尾取背景层，**与候选是否命中无关**）、**修复依据**（候选命中后按 `ref_knowledge` 取，步骤 3 阶段 2.5）、**方法缺口**（候选全未命中 → 步骤 5 取流程）。各处都只读 `status: active`。
 
 - **两种组织形态**（组织单位 = 校验单位）：数据集表（error-code / fault-pattern / env-var-table，一族/一域/一模块一个文件）与独立词条（fact: platform-fact / software-fact / tool / command-side-effect；flow: methodology）。
 - **生命周期**：to-reference 产出 `status: active` → PR review 即闸门 → 合入即生效；诊断只读 main 上的 active 内容，未合入的分支不进诊断上下文。修订 active 内容属 `kb/high-risk`（双签）；退化信号（低解决率、`last_verified` 过期、来源失效）由观测与 groom 报出。
@@ -114,7 +114,7 @@ Golden-case 回归套件在 `eval/golden/`：公开仓只放构造示例，真�
 - **Normative foundation:** all design/implementation/evolution changes must be traceable to `docs/spec/design-principles.md` (the normative articles); the derivation chain lives in `docs/spec/design-theory.md` (four axioms → formulas → principles). An untraceable rule is suspect; an unexplainable real-world choice indicts the theory.
 - **Diagnose does not access customer environments.** All info (logs, versions, errors) comes from the engineer pasting it. The agent's role is to ask for what's missing when information is insufficient.
 - **Agent never applies fixes to production.** Fixes are suggestions for the human to apply.
-- **知识库结构性状态**：实时数字**现算**——条数 `python3 scripts/index_counts.py`；容量线按**阶段一实读 token** 判（软 8000 / 硬 20000，政策在 `metrics/gates.yaml`），现算 `python3 scripts/index_read_cost.py`（生成物里不写数字——数字进 git 就会在并发合并时撞行或漂移；面板与体检脚本走同一条现算路径），**不在此硬编码**（条数随 KB 增长腐烂）；指标时序数据的**源**在 `metrics/timeline.d/<期号>.yaml`、**生成物** `metrics/timeline.yaml` 由 `scripts/build_timeline.py` 重建（读侧只读它），口径见 `docs/guide/metrics.md`。
+- **知识库结构性状态**：实时数字**现算**——条数 `python3 scripts/index_counts.py`；容量线按**实读 token** 判（类视图与 ns 兜底视图各一条线，软 8000 / 硬 20000，政策在 `metrics/gates.yaml`），现算 `python3 scripts/index_read_cost.py`（同一张账还报先验层与阶段二候选全文，那两项只量不判）（生成物里不写数字——数字进 git 就会在并发合并时撞行或漂移；面板与体检脚本走同一条现算路径），**不在此硬编码**（条数随 KB 增长腐烂）；指标时序数据的**源**在 `metrics/timeline.d/<期号>.yaml`、**生成物** `metrics/timeline.yaml` 由 `scripts/build_timeline.py` 重建（读侧只读它），口径见 `docs/guide/metrics.md`。
 - **人读面的名单与数字同样不硬编码**：skill 名单、文档目录由 `docs/_manifest.yaml` 生成到 README（`scripts/build_docs_index.py`；`--check` 进 CI `docs-index`，**生成物不一致或 `docs/` 下有未登记文档即红**）。手写数字会腐烂且不报错。
 - **人读文本的行文规范**：写任何给人看或给人审的文本——定位报告、trace 的 `summary`/`output`/`reason`、面板文案、EV 卡、case/reference 词条、postmortem、诊断对话输出、PR body、`docs/` 与 skill 正文——按 `docs/spec/writing-norms.md`：共用条目、必须保留的原值、每一面"共用还是定制"的判定都在那一篇，各面的写点见其 §3。行文是判断性规范，**不进 CI**；由 PR 人读性自查 + review spot-check 保证。机械可判的切片已有门：`build_docs_index.py --check` 与 `render_review_summary.py --scan`（代号未登记与越界）。
 - **代号有生存范围**：`docs/glossary.yaml` 每条带 `scope`。记账号（roadmap 事项、治理缺口、触发信号、落地阶段）**只在各自的计划文档里裸用**；PR body / EV 卡 prose / 机制文档要引用就写中文含义（`scripts/render_review_summary.py --scan <文件或目录>` 会报越界）。`docs/adr/` 与 `proposals/` 是只追加档案，豁免且不追溯。

@@ -43,6 +43,11 @@ LIVE_FIELDS = {
     "by_category_hit", "attribution_ratio", "confidence_distribution",
     "feedback_capture", "trace_completeness", "vocab_compliance", "tier3",
     "reference", "reference_detail",
+    # 触发三态与消费点分布（trace_metrics.py）：三态不进快照时「没查」与「查了没命中」同形；
+    # 消费点分布不进快照时，「未命中单有没有读背景」这类流程改动的效果没有周期读端。
+    # 下面 triage_miss_* 与本行两个 reference_* 都属白名单没跟上——补上，否则下一期快照被本脚本拦下。
+    "reference_outcomes", "reference_purposes",
+    "triage_miss_classes", "triage_miss_sessions",
     # 结构侧（metrics_snapshot.py ← build_index 头注 / verify_references）
     "case_total", "reference_total", "capacity_by_ns",
     # 内容流程侧（metrics_snapshot.py ← tail_exec_log 聚合）
