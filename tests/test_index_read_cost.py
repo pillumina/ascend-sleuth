@@ -1,9 +1,11 @@
 """阶段一实读成本（每格 token）的口径回归测试。
 
-为什么钉住它（2026-09-29）：容量上限原先用"条数 × 70 token/条"估，实测是 252 token/条（现行
-分片）/ 152 token/条（紧凑行）——估小了 3.4 倍，于是一个 93 条的格子看起来"贴着线"，实际
-23.4K token，比整个诊断会话的常驻指令面还大。上限要按 token 定，所以这把尺子本身要有测试：
-估算口径、紧凑行字段与截断、`--cell` 选择、以及越界时的退出码。
+为什么钉住它（2026-09-29）：容量上限原先用"条数 × 70 token/条"估，实测是 252 token/条（旧 YAML 分片）
+与 173 token/条（现行读侧视图）——估小了 3.4 倍。上限要按 token 定，所以这把尺子本身要有测试：
+估算口径、量的是**实际落盘的那份视图**、两类视图分开报、以及退出码契约。
+
+上一条独立预核的反例（已回修，见"缺数据不能读成免费"与"退出码"两节）：`--json` 恒 0、缺视图静默报 0——
+机器读的那条路看不出越线，"量不出"被读成"免费"。
 """
 
 import sys
@@ -53,9 +55,11 @@ class ReadCostTest(unittest.TestCase):
         return p
 
     def generate(self):
+        """按生成器的口径把读侧视图写出来（本文件量的是"落盘那份"）。"""
         ns = BI.collect(self.root)
         (self.root / "knowledge" / "_index").mkdir(parents=True, exist_ok=True)
         for nsk, cells in ns.items():
+            BI.shard_path(self.root, nsk).write_text(BI.render_shard(nsk, cells), encoding="utf-8")
             for cat, cases in cells.items():
                 BI.shard_path(self.root, f"{nsk}__{cat}").write_text(
                     BI.render_shard(f"{nsk}__{cat}", {cat: cases}), encoding="utf-8")
@@ -71,84 +75,89 @@ class ReadCostTest(unittest.TestCase):
     def test_estimate_is_positive_and_monotone(self):
         self.assertLess(IRC.tok("昇腾 vllm-ascend 507014"), IRC.tok("昇腾 vllm-ascend 507014 " * 3))
 
-    # ------------------------------------------------------------------ 紧凑行形态
-    def test_compact_line_field_set_is_exactly_the_read_protocol(self):
-        """字段集合要**逐个钉住**，不能只查症状子串。
+    # ------------------------------------------------------------------ 量的是落盘的那份视图
+    def test_cost_comes_from_the_shipped_view_not_a_recomputation(self):
+        """成本取自分片文件本身（含头注）：手写一份更长的视图 → 成本随之变大。
 
-        为什么（独立预核 2026-09-29 的反例）：早先只断言"串里有 507014 / 症状"这类子串，
-        于是把 `tok` 段整段删掉、测试仍 9 passed、卡里的 measure 仍通过——"静默砍掉判断证据"
-        能一路绿灯。这里改成断言字段名集合：少一个字段就红。
+        为什么钉这条：成本若改成"按字段现算"，尺子就会与阶段一真正读到的字节脱钩——
+        头注、字段名、分隔符这些"真会占字"的东西会从账上消失。
         """
         self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
-        row = BI.collect(self.root)["inference/vllm-ascend"]["interrupt"][0]
-        names = [part.split(": ", 1)[0] for part in IRC.compact_line(row).split(IRC.SEP)]
-        self.assertEqual(names, list(IRC.READ_FIELDS))
-        for want in ("A-1", "interrupt", "标题", "症状", "507014", "vllm-ascend 0.23.0", "hccl", "0.5"):
-            self.assertIn(want, IRC.compact_line(row))
-        self.assertNotIn("\n", IRC.compact_line(row))           # 一行一条：折行等于 grep 拿不到整条
-        self.assertNotIn("hash:", IRC.compact_line(row))        # hash 只服务新鲜度门，读侧不需要
-        self.assertNotIn("knowledge/inference", IRC.compact_line(row))   # file 可由 id 推出，不进读侧
+        self.generate()
+        base = IRC.cell_costs(self.root)["cells"][0]["tok"]
+        self.assertGreater(base, 0)
+        p = BI.shard_path(self.root, "inference/vllm-ascend__interrupt")
+        p.write_text(p.read_text(encoding="utf-8") + "# 多出来的一行注释\n" * 20, encoding="utf-8")
+        self.assertGreater(IRC.cell_costs(self.root)["cells"][0]["tok"], base)
 
-    def test_compact_line_truncates_like_the_shard_row(self):
-        self.write_case("inference/vllm-ascend/interrupt/L.yaml", cid="L-1",
-                        title="标" * 200, sym="症" * 200)
-        row = BI.collect(self.root)["inference/vllm-ascend"]["interrupt"][0]
-        line = IRC.compact_line(row)
-        self.assertIn("标" * 160 + "…", line)
-        self.assertIn("症" * 120 + "…", line)
+    def test_read_view_is_cheaper_than_the_old_yaml_shape(self):
+        """同信息的读侧视图必须比旧 YAML 分片省——这是换形态的全部理由。
 
-    def test_compact_line_skips_empty_optional_fields(self):
-        p = self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
-        p.write_text("cases:\n  - id: S-1\n    title: t\n    category: interrupt\n    symptoms:\n      - s\n",
-                     encoding="utf-8")
-        row = BI.collect(self.root)["inference/vllm-ascend"]["interrupt"][0]
-        # 没有 sig/tok/compat/tags/score → 那几段整段省略（省行宽），其余按序保留
-        self.assertEqual(IRC.compact_line(row), "id: S-1 | category: interrupt | title: t | symptoms: s")
+        比较**正文**（去掉两边头注）：头注是固定成本，条目少时它会让总量比不出来（3 条时反而更贵）。
+        真实规模（百余条）下头注被摊掉，两种比法都成立。
+        """
+        import yaml as _yaml
+        for i in range(20):
+            self.write_case(f"inference/vllm-ascend/interrupt/A{i}.yaml", cid=f"A-{i}",
+                            title="标题" * 20, sym="症状" * 30)
+        ns = BI.collect(self.root)
+        rows = ns["inference/vllm-ascend"]["interrupt"]
+        body = lambda text: "\n".join(l for l in text.splitlines() if not l.startswith("#"))
+        compact = IRC.tok(body(BI.render_shard("inference/vllm-ascend__interrupt", {"interrupt": rows})))
+        legacy = IRC.tok(body(_yaml.safe_dump(
+            {"namespaces": {"inference/vllm-ascend__interrupt": {"interrupt": rows}}},
+            allow_unicode=True, sort_keys=False)))
+        self.assertLess(compact, legacy)
+        self.assertGreater(100 - 100 * compact / legacy, 15)      # 实测约 25–35%
 
-    def test_compact_line_pipe_in_value_cannot_split_the_fields(self):
-        """值里的 `|` 折成 `¦`：否则一条会被切成两截，解析与"grep 命中即整条"都失效。"""
-        self.write_case("inference/vllm-ascend/interrupt/P.yaml", cid="P-1", title="a | b")
-        row = BI.collect(self.root)["inference/vllm-ascend"]["interrupt"][0]
-        names = [part.split(": ", 1)[0] for part in IRC.compact_line(row).split(IRC.SEP)]
-        self.assertEqual(names, list(IRC.READ_FIELDS))
-        self.assertIn("a ¦ b", IRC.compact_line(row))
+    def test_fallback_view_is_reported_separately(self):
+        """ns 兜底视图（category 未定才读）单独一节报，不混进类视图的分母。
 
-    # ------------------------------------------------------------------ 逐格成本
-    def test_cell_costs_reports_both_formats_and_saving(self):
-        for i in range(3):
-            self.write_case("inference/vllm-ascend/interrupt/A.yaml" if i == 0
-                            else f"inference/vllm-ascend/interrupt/A{i}.yaml", cid=f"A-{i}")
+        为什么：兜底视图更贵（真实库里 vllm-ascend 单文件 3 万余 token），混在一起会让"哪条读取
+        路径越线"看不出来。
+        """
+        self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
+        self.write_case("inference/vllm-ascend/precision/B.yaml", cid="B-1", cat="precision")
         self.generate()
         data = IRC.cell_costs(self.root)
-        cell = next(c for c in data["cells"] if c["category"] == "interrupt")
-        self.assertEqual(cell["rows"], 3)
-        self.assertGreater(cell["yaml_tok"], cell["compact_tok"])   # 现行分片的结构开销是真实的
-        self.assertLess(data["total"]["compact_tok"], data["total"]["yaml_tok"])
-        self.assertGreater(data["total"]["saving_pct"], 0)
+        self.assertEqual(len(data["cells"]), 2)
+        self.assertEqual(len(data["fallbacks"]), 1)
+        fb = data["fallbacks"][0]
+        self.assertEqual((fb["namespace"], fb["rows"]), ("inference/vllm-ascend", 2))
+        self.assertGreater(fb["tok"], max(c["tok"] for c in data["cells"]))   # 兜底更贵
 
-    def test_missing_view_is_reported_not_counted_as_free(self):
-        """缺读侧视图时：`cell_costs` 记 0（不崩），但 `missing_views` 要点名、`main` 返回 2。
-
-        为什么（独立预核 2026-09-29）：静默 0 会被读成"这一格免费"——"残缺"与"量不出"必须不同形。
-        """
+    def test_total_counts_only_cell_views(self):
+        self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
         self.write_case("common/performance/C.yaml", cid="C-1", cat="performance")
+        self.generate()
         data = IRC.cell_costs(self.root)
-        self.assertEqual(data["cells"][0]["yaml_tok"], 0)
-        self.assertGreater(data["cells"][0]["compact_tok"], 0)
-        self.assertIn("common__performance.yaml", data["missing_views"])
+        self.assertEqual(data["total"]["rows"], 2)
+        self.assertEqual(data["total"]["tok"], sum(c["tok"] for c in data["cells"]))
+
+    # ------------------------------------------------------------------ 缺数据不能读成免费
+    def test_missing_view_is_reported_not_counted_as_free(self):
+        self.write_case("common/performance/C.yaml", cid="C-1", cat="performance")
+        data = IRC.cell_costs(self.root)          # 没跑 generate：视图不存在
+        self.assertIn("common__performance.list", data["missing_views"])
         sys.argv = ["index_read_cost.py", "--root", str(self.root)]
         self.assertEqual(IRC.main(), 2)
 
     def test_bad_root_is_usage_error_not_empty_library(self):
-        """`--root` 传错（下面没有 knowledge/）→ 2，不能静默报"0 条、exit 0"。"""
-        sys.argv = ["index_read_cost.py", "--root", str(self.root)]   # setUp 只建了 knowledge/，没有 case
-        self.assertEqual(IRC.main(), 0)                               # 空库是真 0：knowledge/ 在
+        self.generate()
+        sys.argv = ["index_read_cost.py", "--root", str(self.root)]
+        self.assertEqual(IRC.main(), 0)                              # 空库是真 0：knowledge/ 在
         sys.argv = ["index_read_cost.py", "--root", str(self.root / "nope")]
+        self.assertEqual(IRC.main(), 2)
+
+    def test_unknown_cell_is_usage_error(self):
+        self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
+        self.generate()
+        sys.argv = ["index_read_cost.py", "--root", str(self.root), "--cell", "no/such"]
         self.assertEqual(IRC.main(), 2)
 
     # ------------------------------------------------------------------ 退出码契约
     def test_exit_code_flags_cell_over_cap(self):
-        """越硬线 = 退出码 1（给体检脚本判），不越 = 0；这是脚本对外的契约。"""
+        """越硬线 = 1（给体检脚本判），不越 = 0；这是脚本对外的契约。"""
         for i in range(40):
             self.write_case(f"inference/vllm-ascend/interrupt/A{i}.yaml", cid=f"A-{i}")
         self.generate()
@@ -161,7 +170,7 @@ class ReadCostTest(unittest.TestCase):
 
     def test_json_obeys_the_same_exit_code(self):
         """`--json` 也要按 cap 判（独立预核 2026-09-29 的反例：早先 `--json` 恒 0，
-        于是机器读的那条路永远看不出越线，而卡里的 measure 恰好走的就是 `--json`）。"""
+        于是机器读的那条路永远看不出越线）。"""
         for i in range(40):
             self.write_case(f"inference/vllm-ascend/interrupt/A{i}.yaml", cid=f"A-{i}")
         self.generate()
@@ -171,12 +180,6 @@ class ReadCostTest(unittest.TestCase):
         sys.argv = ["index_read_cost.py", "--root", str(self.root), "--json",
                     "--cell", "inference/vllm-ascend/interrupt", "--cap", "100000"]
         self.assertEqual(IRC.main(), 0)
-
-    def test_unknown_cell_is_usage_error(self):
-        self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
-        self.generate()
-        sys.argv = ["index_read_cost.py", "--root", str(self.root), "--cell", "no/such"]
-        self.assertEqual(IRC.main(), 2)
 
 
 if __name__ == "__main__":
