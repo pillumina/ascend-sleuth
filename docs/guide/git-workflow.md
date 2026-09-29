@@ -37,14 +37,16 @@ git worktree remove ../ascend-sleuth-s<session>
 
 - 有数字（条数 / 容量 / 日期）→ 数字一进 git，两人并发合并时要么撞同一行、要么漂移成错的数。
   **所以生成物里不写数字**：要数字就现算（`python3 scripts/index_counts.py`）。
-- 一层平铺的追加型结构（每条 case 一段、每个性质一段）→ 可以配 `merge=union`：两边新增的都留住。
-- 嵌套结构（索引就是：namespaces → ns → category → 条目）→ **不能** union（实测会把 YAML 拼坏），
-  同一个格子的两人并发仍会撞一次，解决动作是重跑生成器。
+- 一层平铺的追加型结构（每条 case 一行、每个性质一段）→ 可以配 `merge=union`：两边新增的都留住。
+- 嵌套结构（总表就是：namespaces → ns → category → 条目）→ **不能** union（实测会把 YAML 拼坏），
+  同一个格子的两人并发仍会撞一次，解决动作是重跑生成器。读侧视图（`knowledge/_index/*.list`）
+  现在虽然是一层平铺行，但同一格的并发照样会在**总表**上撞一次——所以两处都保持没配 union，
+  冲突动作没变（重跑一次生成器）。
 
 | 文件 | 谁提交 | 提交前跑什么 | 门（PR 与主干同一条） |
 |---|---|---|---|
 | case 本体 `knowledge/<ns>/<cat>/*.yaml` | 人（PR） | — | `verify_case_draft.py --all` |
-| 索引分片 + 总表 `knowledge/_index/…` | 人（PR） | `python3 scripts/build_index.py` | `build_index.py --check`（覆盖检查：每条 case 的行都在、与内容对得上） |
+| 读侧视图 + 总表 `knowledge/_index/…`（`.list` 一行一条 + `_index.yaml`） | 人（PR） | `python3 scripts/build_index.py` | `build_index.py --check`（覆盖检查：每条 case 的读侧行与总表条目都在、与内容对得上） |
 | 路由性质文件 `triage-tree.d/<性质>.yaml` | 人（PR） | — | `build_triage_tree.py --check-sources`（性质 id 唯一 / category 合法 / ≤30 性质 / 一性质一文件 / `<side>` 占位在 / 源清单无遗漏） |
 | 路由协议与清单 `triage-tree.d/00-protocol.md` | 人（PR） | — | 同上（`sources:` 决定拼接顺序与归属，`workload_types:` 是负载类型层的唯一写点） |
 | 路由聚合 `triage-tree.yaml` | 人（PR） | `python3 scripts/build_triage_tree.py` | `build_triage_tree.py --check-coverage`（源里每条症状组、负载类型层每个字段都在聚合里） |
@@ -62,7 +64,7 @@ git worktree remove ../ascend-sleuth-s<session>
 | 冲突文件 | 动作 |
 |---|---|
 | `triage-tree.d/<性质>.yaml`、`triage-tree.d/00-protocol.md`、`triage-tree.yaml` | 通常不会冲突（配了 `merge=union`）。若真出现冲突标记：把两份都留下、删掉三行标记，再跑一次聚合。 |
-| 索引分片 / 总表（嵌套结构，故意没配 union） | **不要逐行解**（实测：那些冲突段是交错在条目块内部的，删标记会拼出非法 YAML）。正确动作是三行：`git checkout --theirs -- knowledge/_index.yaml knowledge/_index` → `python3 scripts/build_index.py` → `git add` 后提交。约 5 秒、无判断——两边都不接受，重生成一份对的。 |
+| 总表 / 读侧视图（故意都没配 union） | **不要逐行解**（总表的冲突段交错在条目块内部，删标记会拼出非法 YAML；读侧视图虽然是一行一条，但同一格并发仍会在总表上撞）。正确动作是三行：`git checkout --theirs -- knowledge/_index.yaml knowledge/_index` → `python3 scripts/build_index.py` → `git add` 后提交。约 5 秒、无判断——两边都不接受，重生成一份对的。 |
 | case 本体 | 真正需要人判断的只剩这里（同一 case 两人改）——按内容合。 |
 
 **建议在平台上开启"合并前分支必须最新到主干"**（设置项名字各平台不同）：这样索引冲突会落在**提交者本地**——他有检出、能跑生成器；不开启的话，冲突会落到**合并者的网页冲突编辑器**上，而网页上跑不了生成器，只能先选一边落下、再去本地重生成一次（多一次往返，且主干会短暂红）。

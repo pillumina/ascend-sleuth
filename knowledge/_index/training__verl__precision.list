@@ -1,0 +1,10 @@
+# GENERATED FILE —— 阶段一读侧视图（一行一条 case），不要手改。
+# 由 scripts/build_index.py 生成、随 PR 提交；字段顺序：id / category / title / symptoms / sig / tok / compat / tags / score
+# 为什么不是 YAML：这份东西由人/agent 读，缩进/引号/字段名/嵌套要多花三成 token（同信息）。
+# 条目所在目录：knowledge/training/verl/precision/（阶段二按它定位 case 本体）
+# hash 不在读侧（只服务新鲜度门，在总表里）。
+# 软匹配照旧：compat 不符只降置信度、不排除；sig 是报错字面量（逐字命中即强候选）、tok 是关键词。
+# 本文件**故意没配 merge=union**：同一格并发仍会在总表上撞一次——重跑 `python3 scripts/build_index.py`。
+# 阶段一加载协议（F1 EV-2026-022 + F4 EV-2026-025）：category 已定时 diagnose 只读命中 (namespace×category) 的类分片，不读整库总表。
+# 本分片：training/verl__precision
+id: VERL-LOGPROB-CONFIG-MISMATCH | category: precision | title: Kimi2.5 RL 训练 log_prob 首 step 指数差异过大：训练侧 YarnRotaryEmbedding 的 original_max_position_embeddings=1024 与实际外层配置 4096 不一致，位置编码偏差致 MLA 输出不一致 | symptoms: RL 训练中 log_prob 指数首 step 差异较大（超出预期范围） | compat: verl * | tags: rl; train-infer-consistency; log-prob; rope; yarn; mla | score: 0.7

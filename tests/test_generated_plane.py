@@ -106,9 +106,9 @@ class GeneratedPlaneTest(unittest.TestCase):
         self.assertEqual(self.gate("scripts/build_triage_tree.py", "--check-coverage").returncode, 0)
         self.assertEqual(self.gate("scripts/build_triage_tree.py", "--check").returncode, 0)
 
-    # ---------------------------------------------------------------- ③ union 的结果算通过
+    # ---------------------------------------------------------------- ③ 合并的结果算通过
     def test_union_merged_files_pass_coverage_but_flag_canonical(self):
-        """模拟平台上的 union 合并：分片里两条 case 的顺序被换过、聚合里两句路由词的顺序被换过。
+        """模拟平台上的行级合并：读侧视图里两条 case 的顺序被换过、聚合里两句路由词的顺序被换过。
         内容齐全 → 门绿；逐字节自检红（可选归一化），**不许**因此逼人再跑一遍。"""
         self.add_case("TEST-GP-A")
         self.add_case("TEST-GP-B")
@@ -116,10 +116,12 @@ class GeneratedPlaneTest(unittest.TestCase):
         self.add_route_word("gpWordTheirs", branch="interrupt")
         self.regenerate()
 
-        cell = self.repo / "knowledge" / "_index" / "inference__vllm-ascend__interrupt.yaml"
-        rows = cell.read_text(encoding="utf-8").split("\n    - id: ")
-        self.assertGreaterEqual(len(rows), 3)
-        cell.write_text("\n    - id: ".join([rows[0]] + list(reversed(rows[1:]))), encoding="utf-8")
+        cell = self.repo / "knowledge" / "_index" / "inference__vllm-ascend__interrupt.list"
+        head = [ln for ln in cell.read_text(encoding="utf-8").splitlines() if ln.startswith("#")]
+        body = [ln for ln in cell.read_text(encoding="utf-8").splitlines()
+                if ln.strip() and not ln.startswith("#")]
+        self.assertGreaterEqual(len(body), 2)
+        cell.write_text("\n".join(head + list(reversed(body))) + "\n", encoding="utf-8")
 
         agg = self.repo / "triage-tree.yaml"
         lines = agg.read_text(encoding="utf-8").split("\n")

@@ -158,8 +158,10 @@ trace 记：`{step: 2, action: reference_lookup, purpose: signature, outcome: hi
 
 ## 步骤 3：两阶段加载 Tier 2
 
-**阶段一（索引）**：读**命中 (namespace × category) 的索引分片** `knowledge/_index/<ns>__<category>.yaml`（`scripts/build_index.py` 生成；category 未定 → 回退该 namespace 的分片 `<ns>.yaml`），用条目里的 `title` / `tags` / `symptoms` 首条摘要 / `confidence.score` 筛候选（≤5）。条目每条约 0.7KB（≈210 token），**这个分片就是本步的预算上限**——不要退化成读全库总表 `knowledge/_index.yaml`（它随库线性涨，且不增加本步需要的判别信息）。
-两阶段加载由**结构**保证，不靠逐文件打开的自觉：**索引条目里没有 `quickly_check`**（行已瘦身成 id/title/tags/symptoms 首条摘要/category/score + `file` 定位），判定式在 case 本体、到阶段二才读。索引缺失或 `build_index.py --check` 报过期 → 兜底：逐文件只读上述索引字段，并提醒重建索引。**筛候选时同步扫 `tags`**（与 title/symptom 并查）：同族 case 常只靠 tag 表达（如 `balance-scheduling` / `patch-layer`），只按 title/symptom 词面 grep 会把"同文件族"整片漏掉（静默停滞类尤其如此——真实故障常是调度/控制循环层，而它的 tag 不在症状词面里）。
+**阶段一（索引）**：读**命中 (namespace × category) 的读侧视图** `knowledge/_index/<ns>__<category>.list`（`scripts/build_index.py` 生成；category 未定 → 回退该 namespace 的 `<ns>.list`）。它是**一行一条 case** 的文本，字段按序为 `id / category / title / symptoms 首条 / sig / tok / compat / tags / score`——`sig` 是该 case 的报错字面量（输入里逐字命中即强候选）、`tok` 是关键词集合，两者是判断的**证据**；行内没有 `quickly_check`，判定式在 case 本体、阶段二才读。
+**这个视图就是本步的预算上限**：条目每条约 150–250 token，意味着百余条的格子约 1.5–2 万 token——顶得上整个常驻指令面，所以既不要退化成读全库总表 `knowledge/_index.yaml`（机器面、嵌套 YAML、随库线性涨），也不要在这一格上反复重读。**要看准确数字**：`python3 scripts/index_read_cost.py`（逐格现算，含"如果换更省的行宽能省多少"）。
+**为什么不是 YAML**：阶段一是人/agent 在读它，YAML 的缩进、引号、字段名、嵌套在百余条规模上要多花四成 token，而信息与旧形态一一对应（只少了 `file`——可由 id 推出——与 `hash`——只服务索引新鲜度门）。判据：**每一条都要看到，但每条只花一行**。
+两阶段加载由**结构**保证，不靠逐文件打开的自觉：**读侧视图里没有 `quickly_check`**（字段就是上面那九个，`file` 与 `hash` 也不在里面），判定式在 case 本体、到阶段二才读。索引缺失或 `build_index.py --check` 报过期 → 兜底：逐文件只读上述索引字段，并提醒重建索引。**筛候选时同步扫 `tags`**（与 title/symptom 并查）：同族 case 常只靠 tag 表达（如 `balance-scheduling` / `patch-layer`），只按 title/symptom 词面 grep 会把"同文件族"整片漏掉（静默停滞类尤其如此——真实故障常是调度/控制循环层，而它的 tag 不在症状词面里）。
 
 **空库提示（冷启动）**：若命中 namespace 为空（还没 case），**不要静默退化**——告诉用户“当前 `knowledge/<ns>/` 还没有验证过的 case，你可以：①继续深度排查（步骤 5）②诊断完跑 `/skill:to-postmortem` 沉淀成第一条 case ③转人工”。空库的体感不该是“啥也不会”。
 

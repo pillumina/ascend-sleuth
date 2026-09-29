@@ -144,10 +144,11 @@ class BuildIndexTest(unittest.TestCase):
         p.write_text(p.read_text(encoding="utf-8").replace("score: 0.6", "score: 0.9"),
                      encoding="utf-8")
         probs = self.problems()
-        # 分片与总表各报一次（两处都存着这条 case 的旧行）——这正是"两层都得跟上"的意思
+        # 读侧视图与总表各报一次（两处都存着这条 case 的旧行）——这正是"两层都得跟上"的意思
         self.assertEqual(len(probs), 2, probs)
         self.assertTrue(all("S-1" in p for p in probs), probs)
-        self.assertTrue(any("过期" in p for p in probs), probs)
+        self.assertTrue(any("对不上" in p and "__interrupt.list" in p for p in probs), probs)
+        self.assertTrue(any("总表" in p for p in probs), probs)
 
     def test_coverage_flags_added_case(self):
         self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
@@ -164,62 +165,93 @@ class BuildIndexTest(unittest.TestCase):
         self.assertTrue(any("S-1" in p and "库里没有" in p for p in probs), probs)
 
     def test_coverage_flags_hand_edited_row(self):
-        """手改索引行（case 内容没动）→ 红。hash 查不出这种改动，行级比对能——这是覆盖检查比
-        "只比 hash"强的地方。"""
+        """手改读侧视图的行（case 内容没动）→ 红。总表的 hash 查不出这种改动，行级比对能——
+        这是覆盖检查比"只比 hash"强的地方。"""
         self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
         self.generate_all()
         p = bi.shard_path(self.root, "inference/vllm-ascend__interrupt")
         p.write_text(p.read_text(encoding="utf-8").replace("title: t", "title: 手改过的标题"),
                      encoding="utf-8")
         probs = self.problems()
-        self.assertTrue(any("不一致" in x for x in probs), probs)
+        self.assertTrue(any("对不上" in x for x in probs), probs)
 
     def test_union_merged_index_is_green(self):
-        """**关键一条**：两人同一天各加一条 case，union 合并出来的分片/总表（两条目都在、
-        顺序可能与重新生成不同）必须是**绿的**——否则 union 换来的"不用任何人跑命令"就白拿了。
+        """**关键一条**：两人同一天各加一条 case，合并出来的读侧视图/总表（两条目都在、
+        顺序可能与重新生成不同）必须是**绿的**——否则"不用任何人跑命令"就白拿了。
         内容出错（丢条目）仍然红，见上面几条。"""
         self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
         self.write_case("inference/vllm-ascend/interrupt/B.yaml", cid="B-1")
         ns = bi.collect(self.root)
         self.generate_all(ns)
-        # 模拟 union：把 B 的条目从分片里挪到 A 前面（顺序非规范，内容齐全）
+        # 模拟行级合并：把 B 那一行挪到 A 前面（顺序非规范，内容齐全）
         p = bi.shard_path(self.root, "inference/vllm-ascend__interrupt")
         text = p.read_text(encoding="utf-8")
-        rows = text.split("\n    - id: ")
-        self.assertEqual(len(rows), 3, rows)
-        p.write_text(rows[0] + "\n    - id: " + rows[2] + "\n    - id: " + rows[1],
-                     encoding="utf-8")
+        head, *rows = text.splitlines()
+        rows = [ln for ln in rows if ln.strip()]
+        header = [ln for ln in rows if ln.startswith("#")]
+        body = [ln for ln in rows if not ln.startswith("#")]
+        self.assertEqual(len(body), 2, body)
+        p.write_text("\n".join(header + [body[1], body[0]]) + "\n", encoding="utf-8")
         self.assertEqual(self.problems(), [])                      # 门：绿（内容齐全）
         self.assertTrue(bi.canonical_dirty(self.root, ns))         # 逐字节自检：非规范（可选归一）
 
     def test_coverage_flags_duplicate_rows(self):
-        """同一条 case 在索引里出现两次（行级合并/重复 rebase 的产物，内容完全相同 → git 不报冲突，
-        hash 与行比对也一致）→ 必须报出来。只按 id 建字典的话第二份被静静吃掉（评审抓到的洞）。"""
+        """同一条 case 在读侧视图里出现两次（行级合并/重复 rebase 的产物，内容完全相同 → git 不报冲突，
+        行比对也一致）→ 必须报出来。只按 id 建字典的话第二份被静静吃掉（评审抓到的洞）。"""
         self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
         self.generate_all()
         p = bi.shard_path(self.root, "inference/vllm-ascend__interrupt")
         text = p.read_text(encoding="utf-8")
-        i = text.index("    - id: ")
-        p.write_text(text + text[i:], encoding="utf-8")      # 同一条目块再来一份（内容完全相同）
+        body = [ln for ln in text.splitlines() if ln.strip() and not ln.startswith("#")]
+        p.write_text(text + body[0] + "\n", encoding="utf-8")   # 同一行再来一份（内容完全相同）
         probs = self.problems()
         self.assertTrue(any("出现 2 次" in x for x in probs), probs)
+
+    def test_coverage_red_when_cell_view_emptied(self):
+        """把某一格的视图掏空（条目还在 ns 兜底视图里）→ 必须红。
+
+        为什么单列（独立预核 2026-09-29 指出的既有洞）：只按 id 建全局索引时，"这条在别处找得到"
+        会盖住"它自己那一格没了"——而阶段一命中该格时读的正是那一份。
+        """
+        self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
+        self.generate_all()
+        p = bi.shard_path(self.root, "inference/vllm-ascend__interrupt")
+        head = [ln for ln in p.read_text(encoding="utf-8").splitlines() if ln.startswith("#")]
+        p.write_text("\n".join(head) + "\n", encoding="utf-8")          # 头注留着，条目清空
+        probs = self.problems()
+        self.assertTrue(any("缺 S-1" in x for x in probs), probs)
+
+    def test_coverage_red_when_fallback_view_emptied(self):
+        """ns 兜底视图被掏空 → 必须红。
+
+        为什么单列：它是 category 判不出时**唯一**能读的那份（且更贵），但条目在类视图里也找得到，
+        只按 id 建全局索引就看不出来（独立预核 2026-09-29 指出这条路径没被覆盖）。
+        """
+        self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
+        self.write_case("inference/vllm-ascend/precision/P.yaml", cid="P-1", cat="precision")
+        self.generate_all()
+        fb = bi.shard_path(self.root, "inference/vllm-ascend")
+        head = [ln for ln in fb.read_text(encoding="utf-8").splitlines() if ln.startswith("#")]
+        fb.write_text("\n".join(head) + "\n", encoding="utf-8")
+        probs = self.problems()
+        self.assertTrue(any("ns 兜底视图" in x and "缺 S-1" in x for x in probs), probs)
 
     def test_coverage_red_when_shard_missing(self):
         self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
         self.generate_all()
         bi.shard_path(self.root, "inference/vllm-ascend__interrupt").unlink()
         probs = self.problems()
-        # 少了类分片：条目还在 ns 分片里（覆盖不破），但阶段一命中该类分片的路径读不到了 → 必须报
-        self.assertTrue(any("分片缺失" in p and "inference__vllm-ascend__interrupt" in p for p in probs), probs)
+        # 少了该类读侧视图：条目还在 ns 兜底视图里（覆盖不破），但阶段一命中该格的路径读不到了 → 必须报
+        self.assertTrue(any("读侧视图缺失" in p and "inference__vllm-ascend__interrupt" in p for p in probs), probs)
 
     def test_shard_with_conflict_markers_is_reported_not_merged(self):
-        """分片里出现冲突标记（不该有——索引故意没配 union，撞了就该重跑）→ 点名，动作是重跑生成器。"""
+        """读侧视图里出现冲突标记（不该有——索引故意没配 union，撞了就该重跑）→ 点名，动作是重跑生成器。"""
         self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
         self.generate_all()
         p = bi.shard_path(self.root, "inference/vllm-ascend__interrupt")
-        p.write_text("<<<<<<< HEAD\nnamespaces: {}\n=======\nnamespaces: {}\n>>>>>>> other\n",
+        p.write_text("<<<<<<< HEAD\nid: S-1 | title: t\n=======\nid: S-1 | title: t\n>>>>>>> other\n",
                      encoding="utf-8")
-        _rows, broken = bi.shard_hashes(self.root)
+        _rows, broken = bi.shard_lines(self.root)
         self.assertTrue(broken and "冲突标记" in broken[0], broken)
         self.assertTrue(any("冲突标记" in x for x in self.problems()), self.problems())
 
@@ -236,8 +268,9 @@ class BuildIndexTest(unittest.TestCase):
         self.assertNotRegex(head, r"20\d\d-\d\d-\d\d")
         shard_head = bi.render_shard("inference/vllm-ascend__interrupt",
                                      {"interrupt": bi.collect(self.root)["inference/vllm-ascend"]["interrupt"]}
-                                     ).split("namespaces:")[0]
+                                     ).split("\n\n")[0]
         self.assertNotRegex(shard_head, r"（\d+ 条 case）")
+        self.assertNotRegex(shard_head, r"20\d\d-\d\d-\d\d")
 
     def test_sig_and_tok_fields_for_phase_one_ranking(self):
         """行内签名面字段（EV-2026-111）：sig 只收纯字面量、tok 覆盖全部症状且上限 12。"""
@@ -265,14 +298,116 @@ class BuildIndexTest(unittest.TestCase):
         self.assertIn("507014", row["tok"])                  # 判别信号在第二条症状 → tok 收得到
         self.assertLessEqual(len(row["tok"]), 12)
 
-    def test_render_shard_carries_file_and_hash(self):
-        """阶段二要靠 file 定位、靠 hash 判过期——分片里必须有这两列。"""
-        self.write_case("inference/vllm-ascend/interrupt/R.yaml", cid="R-1")
+    # ------------------------------------------------- 读侧视图（一行一条 case）
+    # 阶段一读的是这份东西，不是 YAML：判据字段一个不少，但 `file`（可由 id 推出）与 `hash`
+    # （只服务新鲜度门）不进读侧。下面钉住这个投影的形态与可解析性。
+    def test_read_view_carries_judgement_evidence_not_gate_fields(self):
+        self.write_case("inference/vllm-ascend/interrupt/R.yaml", cid="R-1", title="标题 t", sym="症状 s")
+        ns = bi.collect(self.root)
+        line = [ln for ln in bi.render_shard("inference/vllm-ascend",
+                                             ns["inference/vllm-ascend"]).splitlines()
+                if not ln.startswith("#") and ln.strip()][0]
+        for want in ("id: R-1", "category: interrupt", "title: 标题 t", "symptoms: 症状 s"):
+            self.assertIn(want, line)
+        self.assertNotIn("knowledge/inference", line)   # file 可由 id 推出，不进读侧
+        self.assertNotIn("hash:", line)                 # hash 只在总表里（门用）
+
+    def test_read_view_field_sequence_is_pinned(self):
+        """读侧字段**序列**逐项钉住（不只是"某几个子串在"）。
+
+        为什么（独立预核 2026-09-29 的反例）：只查子串时，把 `tok` 段整段删掉、重新生成，
+        `--check --canonical` 仍绿、全部测试仍过——"悄悄砍掉判断证据"能一路通过。
+        这里断言键的序列：少一个、多一个、换个顺序都红。
+        """
+        p = self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
+        p.write_text(
+            "cases:\n"
+            "  - id: A-1\n"
+            "    title: t\n"
+            "    category: interrupt\n"
+            "    tags: [a]\n"
+            "    compat:\n"
+            "      - framework: vllm-ascend\n"
+            "        ranges: [\"0.23.0\"]\n"
+            "    confidence: {score: 0.5}\n"
+            "    symptoms: ['首条症状：error code 507014']\n"
+            "    quickly_check:\n"
+            "      primary:\n"
+            "        expected: 'regex:507014|error code 5'\n",
+            encoding="utf-8")
+        row = bi.collect(self.root)["inference/vllm-ascend"]["interrupt"][0]
+        names = [part.split(": ", 1)[0] for part in bi.compact_line(row).split(bi.SEP)]
+        self.assertEqual(names, list(bi.READ_FIELDS))         # 全字段用例：九段一个不少、顺序即 READ_FIELDS
+        self.assertNotIn("file", names)                      # 路径统一时逐行不带 file（由头注给目录）
+        # 缺字段的用例：只允许"按序省略"，不许改序、不许冒出外来键
+        self.write_case("inference/vllm-ascend/interrupt/B.yaml", cid="B-1", title="t2")
+        row2 = [r for r in bi.collect(self.root)["inference/vllm-ascend"]["interrupt"] if r["id"] == "B-1"][0]
+        names2 = [part.split(": ", 1)[0] for part in bi.compact_line(row2).split(bi.SEP)]
+        self.assertEqual(names2, [f for f in bi.READ_FIELDS if f in names2])
+
+    def test_read_view_carries_file_when_paths_are_not_uniform(self):
+        """条目路径不统一时逐行带 `file`——否则读者按头注的目录去找会 404。
+
+        真实例外：`knowledge/inference/sglang/` 下没有 category 层，那条 case 的路径推不出来
+        （全库 168 条里 1 条）。这里的合成场景与它同类：同一个 ns 视图里两条 case 落在不同目录。
+        """
+        self.write_case("inference/vllm-ascend/interrupt/A.yaml", cid="A-1")
+        self.write_case("inference/vllm-ascend/precision/B.yaml", cid="B-1", cat="precision")
         ns = bi.collect(self.root)
         text = bi.render_shard("inference/vllm-ascend", ns["inference/vllm-ascend"])
-        self.assertIn("knowledge/inference/vllm-ascend/interrupt/R.yaml", text)
-        self.assertIn("hash:", text)
-        self.assertIn("R-1", text)
+        self.assertIn("条目路径不统一", text)
+        body = [ln for ln in text.splitlines() if not ln.startswith("#")]
+        self.assertTrue(all("file: knowledge/" in ln for ln in body), body)
+        # 而单格视图路径统一 → 头注给目录、逐行不带 file
+        cell = bi.render_shard("inference/vllm-ascend__interrupt", {"interrupt": ns["inference/vllm-ascend"]["interrupt"]})
+        self.assertIn("条目所在目录：knowledge/inference/vllm-ascend/interrupt/", cell)
+        self.assertNotIn("file: knowledge/", cell)
+
+    def test_read_view_line_round_trips(self):
+        """一行要能解析回字段——门是按行比对，但消费者（体检、上限判定）要能按字段读。"""
+        self.write_case("inference/vllm-ascend/interrupt/R.yaml", cid="R-1", title="a: b | c", sym="症状 s")
+        row = bi.collect(self.root)["inference/vllm-ascend"]["interrupt"][0]
+        line = bi.compact_line(row)
+        self.assertNotIn(" | ", line.split("title: ")[1].split(" | ")[0])   # 值里的 | 已折成 ¦
+        back = bi.parse_read_line(line)
+        self.assertEqual(back["id"], "R-1")
+        self.assertEqual(back["category"], "interrupt")
+        self.assertEqual(back["title"], "a: b ¦ c")
+        self.assertEqual(back["symptoms"], "症状 s")
+
+    def test_read_view_ignores_unknown_keys(self):
+        """手改进来的杂字段不该被当成字段（解析器只认 READ_FIELDS）。"""
+        back = bi.parse_read_line("id: X-1 | 备注: 手写的 | title: t")
+        self.assertEqual(back, {"id": "X-1", "title": "t"})
+
+    def test_legacy_yaml_shard_is_reported(self):
+        """旧形态（.yaml）分片残留在目录里 → 报出来催回收（换形态那次迁移的护栏）。"""
+        self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
+        self.generate_all()
+        legacy = bi.shard_path(self.root, "inference/vllm-ascend").with_suffix(".yaml")
+        legacy.write_text("namespaces: {}\n", encoding="utf-8")
+        probs = self.problems()
+        self.assertTrue(any("旧形态分片" in p for p in probs), probs)
+
+    def test_duplicate_read_view_line_is_reported(self):
+        """同一行原样留两份（行级合并的典型产物）→ 报重复，别被字典静静吃掉。"""
+        self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
+        self.generate_all()
+        p = bi.shard_path(self.root, "inference/vllm-ascend__interrupt")
+        body = [ln for ln in p.read_text(encoding="utf-8").splitlines() if not ln.startswith("#")]
+        p.write_text("\n".join(body + [body[-1]]) + "\n", encoding="utf-8")
+        self.assertTrue(any("出现 2 次" in x for x in self.problems()), self.problems())
+
+    def test_compat_string_valued_range_is_not_split_into_chars(self):
+        """cann/hdk 写成字符串时不能被逐字符 join（实测：库里有一条 `cann: "<9.1.0.beta2"`）。
+
+        这是渲染的健壮性，不是 schema 变更：那条 case 的字段类型属 compat 面（高风险），不改。
+        """
+        self.assertEqual(bi.compat_summary([{"framework": "vllm-ascend", "ranges": ["0.23.0"],
+                                            "cann": "<9.1.0.beta2"}]),
+                         "vllm-ascend 0.23.0 (cann:<9.1.0.beta2)")
+        self.assertEqual(bi.compat_summary([{"framework": "v", "ranges": ["1"], "hdk": ["<25.5.1"]}]),
+                         "v 1 (hdk:<25.5.1)")
 
 
     # ------------------------------------------------- 目录 × category 一致门口径

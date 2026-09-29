@@ -2,7 +2,7 @@
 # 随 PR 提交。本文件**故意没配 merge=union**（嵌套结构做行级合并会拼坏 YAML，见 .gitattributes）：
 # 两人在同一格并发会撞一次，解决动作是重跑 `python3 scripts/build_index.py`（机械、无判断）。
 # 阶段一加载协议：本文件是总表（兜底 + 跨库比对）；diagnose 只读命中的最小分片
-# （knowledge/_index/<ns>__<category>.yaml；category 未定回退 <ns>.yaml），候选 ≤5 过滤后
+# （knowledge/_index/<ns>__<category>.list；category 未定回退 <ns>.list），候选 ≤5 过滤后
 # 按 file 字段定位做阶段二全量加载。
 # 本文件**不写数字**（条数 / 容量 / 日期）：数字一进 git，两人并发合并时要么撞同一行、
 # 要么漂移成错的数。要看数字就现算：`python3 scripts/index_counts.py`
@@ -493,7 +493,7 @@ namespaces:
       - quantization
       - 507015
       - aicore
-      compat: vllm-ascend (cann:<,9,.,1,.,0,.,b,e,t,a,2)
+      compat: vllm-ascend (cann:<9.1.0.beta2)
       confidence:
         score: 0.4
       symptoms:

@@ -1,0 +1,97 @@
+# ============================================================
+# EV-2026-161 —— 落地第二步：阶段一读侧视图换成一行一条（同信息省 30%，实读回到硬线内）
+# 来源：EV-2026-160 定案后的执行（用户："接着做读侧换格式"）；本卡是那一步的记录。
+# 脱敏：只含仓库内路径、命令与聚合数字。
+# ============================================================
+
+id: EV-2026-161
+layer: L2
+target_component: scripts/build_index.py
+title: "阶段一读侧视图换成一行一条（`.list`）：同信息省 30%（该格 23449 → 16442 tok），实读回到硬线内；顺带修 compat 渲染的逐字符 join"
+status: validated
+authorization: dual                # 改的是阶段一实际读的那份资产（形态 + 路径），口径决策见 EV-2026-160
+dimension: architecture
+supersedes: []
+superseded_by: null
+created_at: 2026-09-29
+source_signals:
+  - signal: user_inquiry
+    evidence: "EV-2026-160 定案后的执行轮：用户「接着做读侧换格式」；上限口径与形态取舍已在 160 卡（dual）定过，本卡是落地"
+    trajectory:
+      - "实测 1（成本）：`python3 scripts/index_read_cost.py` → 该格 93 条 23449 tok（旧 YAML 分片，252/条）→ **16442 tok（读侧视图，177/条）**，−30%；全库类视图合计 43078 → 31564 tok；ns 兜底视图单列（vllm-ascend 124 条 21821 tok），不进同一条硬线"
+      - "实测 2（信息等价）：读侧视图字段与索引行一一对应（id/category/title/symptoms 首条/sig/tok/compat/tags/score），只少 `file`（可由 id 推出，全库 168 条零例外——但属约定，仓里无校验器）与 `hash`（只服务新鲜度门）；门的覆盖语义不变：读侧比**行原文**、总表比 content hash，两面都要绿"
+      - "实测 3（判断力不受影响）：EV-2026-160 那轮 27 次独立对照已表明「行形态（标题长短/有无症状首条）与挑对与否不可区分」（top-5 6/9、6/9、5/9）；本卡换的是排版与结构开销，字段集合不变"
+      - "实测 4（顺带发现的渲染缺陷）：`compat` 的 cann/hdk 若写成字符串，会被 `'',.join()` 逐字符拆成 `cann:<,9,.,1,...` 写进索引行（库里有 1 条）。renderer 侧修健壮；那条 case 的字段类型属 compat 面（高风险），不在本卡改"
+hypothesis: >-
+  读侧换成一行一条（同信息）后，阶段一实读成本降到硬线内、判断证据一个不少，且诊断读法可以在
+  一行上同时看到"报错字面量 / 关键词 / 平台 / 标签"四类证据。
+predicted_effect:
+  metric: 最贵格子的阶段一实读 token（落盘的那份视图）
+  from: "23449 tok（旧 YAML 分片，252/条）"
+  to: "16442 tok（读侧视图，177/条；硬线 20000 内，超 8000 软线 → 属「值得再省」的评估档）"
+  measure:
+    command: >-
+      python3 scripts/index_read_cost.py --json --cell inference/vllm-ascend/interrupt
+      | python3 -c "import json,sys; d=json.load(sys.stdin); c=d['cells'][0]; assert c['tok'] < d['cap'] and c['per_row'] < 200, c; print('ok tok=%d per_row=%d cap=%d' % (c['tok'], c['per_row'], d['cap']))"
+    expect_exit: 0
+    expect_stdout: "ok tok="
+    # 复现：python3 scripts/ev_measure.py EV-2026-161 --run
+    # 注：断言的是**属性**（不越硬线、每行比旧形态的 252 tok 更省），不是会随 case 增长腐烂的常数
+validation:
+  method: metrics_compare
+  baseline: "旧 YAML 分片：该格 23449 tok / 252 每行；全库类视图 43078 tok"
+  success_criteria: "①该格 ≤ 硬线且每行 < 200 tok（实测 16442 / 177）；②`build_index.py --check --canonical` 绿（读侧行与总表都覆盖、逐字节归一）；③字段集合被测试钉住（`tests/test_build_index.py` 断言读侧行含 `id: …` 等九字段且不含 `file`/`hash`）；④并发提交实验（`tests/test_concurrent_submit.py`）9 passed——行级合并后门仍绿"
+  rollback: "分支可整体丢弃；合入后 git revert（生成器回旧渲染，重跑即回到 YAML 分片）"
+gate:
+  condition: "用户「接着做读侧换格式」（EV-2026-160 已 dual 定案）"
+risk: medium                       # 形态与路径变了，但内容与门语义不变、可一条命令回退
+principle_refs: [2, 6, 9, 10]
+actual_cost:
+  tokens: 90000
+  source: estimate
+  note: >-
+    口径：改生成器与门（render_shard/shard_rows/coverage/duplicate_ids/--check 文案）+ 迁移 15 个
+    视图 + 改 6 处文档 + 重写两套测试，含反复跑全库门与并发实验；估 9 万，不含前一轮实验成本
+    （那部分记在 EV-2026-160）。
+decisions:
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: proposal
+    conclusion: >-
+      形态：`knowledge/_index/<ns>__<category>.list`，一行一条 `字段: 值 | …`，字段顺序固定
+      （id/category/title/symptoms/sig/tok/compat/tags/score）。**带字段名**（比裸分隔多约 4% 体积）：
+      读的人要能分辨「哪段是报错字面量、哪段是关键词」——协议正是按这两段判相关性，裸分隔会逼人猜。
+      值里的 `|` 折成 `¦`、值内换行折成空格（一行一条是硬约束：grep 命中即整条）。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: action
+    conclusion: >-
+      落地：`render_shard` 改紧凑行 + `compact_line`/`parse_read_line`；分片扩展名 `.yaml` → `.list`
+      并在生成时回收旧形态；`--check` 改成读侧比行原文、总表比 content hash（读侧看不出的字段改动
+      仍由总表兜住）；`duplicate_ids` 支持两种记法；`dir_category_problems` 等既有门不动。
+      另修一条**既有门洞**（独立预核指出：换形态前就存在）：覆盖检查只按 id 建全局索引，
+      于是"某一格的视图被掏空、条目还在 ns 兜底视图里"不会报——而阶段一命中该格时读的正是那一份。
+      现在按文件再查一遍（`test_coverage_red_when_cell_view_emptied` 钉住），并同步迁移了
+      `tests/test_generated_plane.py`（它按旧 `.yaml` 分片路径读写，不迁移会让 CI 的 unit-tests 红）。
+      文档同步：CLAUDE.md 的 Tier 2 行、诊断步骤一（SKILL + procedure 展开）、git-workflow 的表与
+      冲突处理、ADR-0004 追加"读侧形态与上限口径"一节（含更正后的上限推导：硬线 20000 = 不许超过
+      常驻指令面 ≈21K，而不是早先那个没来由的 15000）。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: eval
+    conclusion: >-
+      门全绿：`build_index.py --check --canonical`（168 条读侧行 + 总表条目、逐字节归一）、
+      `verify_case_draft --all`、`verify_references`、`verify_proposals`、`build_docs_index --check`、
+      `verify_metrics --check`、`holdout --check`、`eval_scorecard --check`、`build_triage_tree
+      --check-coverage`；单测 `test_build_index` + `test_index_read_cost` 共 40 passed；
+      `tests/test_concurrent_submit.py` 9 passed（行级合并后门仍绿——覆盖检查按行比对，顺序非规范
+      不算红）。成本：该格 16442 tok（−30%）、全库类视图 31564 tok。
+  - who: agent（本轮执行）
+    when: "2026-09-29"
+    type: decision
+    conclusion: >-
+      采纳（validated，dual）：读侧视图形态落地，EV-2026-160 的「格式切换」这一步闭环。
+      **未做的事留档**：① 平台轴切分仍留作下一杠杆（实测桶成本见 EV-2026-160；本卡不做不是因为它
+      不可行，而是 16442 已回到硬线内）；② ns 兜底视图比类视图更贵（vllm-ascend 124 条 21821 tok，
+      已超硬线），但它是「category 判不出」时的兜底路径，治它要另立项；③ `compat` 那条字符串型
+      字段的**类型**没改（属高风险面），只让渲染健壮。

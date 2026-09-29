@@ -28,9 +28,10 @@ triage-tree.d/*.yaml merge=union
 # 一项时两边都留住；只有散文段落被两边同时改才真冲突，那时按语义合。
 triage-tree.d/00-protocol.md merge=union
 
-# 索引（knowledge/_index.yaml 与 knowledge/_index/*.yaml）**故意不给 union**：它是**嵌套**结构
-# （namespaces → ns → category → 条目列表），union 是行级文本合并——两人在同一格各加一条时，
-# 两段插入会被拼成不合法的 YAML（实测：parser 报 "expected <block end>"）。
-# 所以索引的同一格并发仍会撞一次，解决动作是重跑生成器（`python3 scripts/build_index.py`，
-# 机械、无判断）；不同格子的两人并发不碰同一个文件，本来就不撞。
-# 想彻底消掉它得先把索引改成一层平铺列表（条目自带 namespace/category）——那是另一件事。
+# 索引（总表 knowledge/_index.yaml 与读侧视图 knowledge/_index/*.list）**故意都不给 union**：
+#   总表还是**嵌套**结构（namespaces → ns → category → 条目列表），union 是行级文本合并——
+#   两人在同一格各加一条时，两段插入会被拼成不合法的 YAML（实测：parser 报 "expected <block end>"）。
+#   读侧视图（2026-09-29 起）已经是一层平铺的 `一行一条 case` 了，本来够格配 union；但**同一格的
+#   并发照样会在总表上撞一次**，所以配了也只省掉一半冲突——于是两处都保持没配，冲突动作不变：
+#   重跑生成器（`python3 scripts/build_index.py`，机械、无判断）。
+# 想彻底消掉它得把总表也压成一层平铺条目（自带 ns/category）——那是另一件事（要同时改面板与排序器）。

@@ -1,0 +1,15 @@
+# GENERATED FILE —— 阶段一读侧视图（一行一条 case），不要手改。
+# 由 scripts/build_index.py 生成、随 PR 提交；字段顺序：id / category / title / symptoms / sig / tok / compat / tags / score
+# 为什么不是 YAML：这份东西由人/agent 读，缩进/引号/字段名/嵌套要多花三成 token（同信息）。
+# 条目所在目录：knowledge/common/precision/（阶段二按它定位 case 本体）
+# hash 不在读侧（只服务新鲜度门，在总表里）。
+# 软匹配照旧：compat 不符只降置信度、不排除；sig 是报错字面量（逐字命中即强候选）、tok 是关键词。
+# 本文件**故意没配 merge=union**：同一格并发仍会在总表上撞一次——重跑 `python3 scripts/build_index.py`。
+# 阶段一加载协议（F1 EV-2026-022 + F4 EV-2026-025）：category 已定时 diagnose 只读命中 (namespace×category) 的类分片，不读整库总表。
+# 本分片：common__precision
+id: COMMON-EMBEDDING-BWD-EMPTY | category: precision | title: 训练 loss NaN（首个 NaN 在 embedding/wte 层梯度）：embedding 反向输入为空时返回默认内存中的未初始化数据——触发源 A：dsp 序列切分致部分卡无 token；触发源 B：数据标注越界致 gt_labels 为空（早期 CANN <8.0.0） | symptoms: 训练出现 loss NaN，打印 grad 信息后首个 NaN 出现在 embedding（wte）层的梯度 | tok: 8.0.0 | compat: cross * | tags: nan; embedding; backward; empty-tensor; aclnn; fsdp | score: 0.7
+id: COMMON-FA-RACE-DETERMINISM | category: precision | title: 80 卡大规模训练结果确定性无法固定：CANN 8.1.0 RC1 的 Flash Attention 算子内部数据搬迁前后缺少同步机制（数据竞争），8.0.0 RC4 无此问题 | symptoms: 80 卡大规模训练任务结果确定性无法固定（重复运行 Loss 曲线不一致） | tok: 8.0.0; 8.1.0 | compat: cross * (cann:8.1.0.RC1) | tags: determinism; race-condition; flash-attention; cann-upgrade; mssanitizer; multi-card | score: 0.7
+id: COMMON-FSDP-OFFLOAD-SYNC-NAN | category: precision | title: MOVA 模型训练 NaN：offload 场景下 FSDP post_backward / foreach_reduce 前后的流同步缺失，.to() 前后的数据搬运时序异常（加同步后问题消失） | symptoms: MOVA 模型训练出现 NaN：L0 dump 发现 step 2 前向权重已为 NaN | tok: reciprocal(); to() | compat: cross * | tags: nan; fsdp; offload; stream-sync; accelerate; ddp | score: 0.7
+id: COMMON-RMSNORM-WEIGHT-SCALE | category: precision | title: Gemma 加载权重后重复训练 Loss 差异偏大、grad_norm 异常偏大：加载的 RMSNorm 权重数值异常放大（数值每经一层 RMSNorm 放大约百倍，深层尤甚），随机初始化时正常 | symptoms: 随机初始化权重时两遍训练 Loss 对齐；加载权重时两遍 Loss 差异偏大，但两侧加载的权重确实完全一致 | compat: cross * | tags: rmsnorm; weight-scale; retrain-diff; non-deterministic; weight-loading; dump-analysis | score: 0.7
+id: COMMON-SEED-RESET-DETERMINISM | category: precision | title: Qwen2.5-omni 重复训练 loss 与 grad_norm 不一致：业务代码自定义 fix_randn 装饰器内重复调用无参 seed_all()（未带 mode=True），把 torch.use_deterministic_algorithms(True) 重置为 False，aclnn 算子 deter… | symptoms: 同一模型重复训练，loss 与 grad_norm 不一致（偶现，非每次） | tok: seed_all() | compat: cross * | tags: determinism; seed; non-deterministic; business-code; plog; training | score: 0.7
+id: COMMON-TP-SEED-UNSYNCED | category: precision | title: Qwen-Image-Edit 基于 Megatron 在 NPU 上 TP8 推理，跑多个请求时第 3 张生成图必然花图：TP 组内随机种子未同步——0 卡作通信主卡的 random 调用次数与其他卡不同 | symptoms: TP=8 时跑多个请求，第 3 张生成图片必然花图；TP=1 时低分辨率推理跑 100 个实例未发现花图 | compat: cross * | tags: tensor-parallel; random-seed; diffusion; image-generation; megatron; multi-card | score: 0.7
