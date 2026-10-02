@@ -83,7 +83,10 @@ tab（list 插槽，按 order 排列，可共存）。
    面板源码改了就跑 `node scripts/build_panel_bundle.js`，用
    `node scripts/build_panel_bundle.js --check` 核对产物与源文件一致，
    `node scripts/check_panel_bundle.js` 做一次可加载性冒烟（路由、端点、工具、
-   三个 tab、样式标签、卸载）。**不要手改 `lib/`**。
+   三个 tab、样式标签、卸载）。**不要手改 `lib/`**。同一条命令还会判本机 DSH 走哪条装载路，
+   并核对常驻包依赖的三处接缝（connection RPC 的注册接口、路由注册要注入 webServer、
+   client 沙箱给的 `styles.insert`）还在不在——**装之前跑它**，找不到 DSH 时会如实跳过；
+   `--selftest-dsh` 用临时假 DSH 自测这条判据，`--dsh-root <目录>` 指到别的安装处。
 
 2. **装**：`plugin_manager install_bundle(target: <仓库绝对路径>/dsh-plugins/dsh-sleuth-panels)`。
    包会复制进 profile 的 generation，所以仓库被移动或 worktree 被清掉都不影响已装的那份；

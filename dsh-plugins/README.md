@@ -40,6 +40,10 @@
 `host.call`（调用同一条路由）、`styles.insert`（自建 style 标签）。装载流程与版本判据见
 `skills/preload-panel/SKILL.md`。
 
+这三处接缝是照已安装的 DSH 读出来的，所以有了判据：`node scripts/check_panel_bundle.js`
+会顺带判本机 DSH 走哪条装载路、三处接缝还在不在（找不到 DSH 时如实跳过），
+`--selftest-dsh` 用临时假 DSH 自测这条判据，`--dsh-root <目录>` 指到别的安装处。
+
 ## 面板文案的定制条款
 
 行文规范的**共用条目**与**必须保留的原值**（枚举、路径、命令、证据原值）写在

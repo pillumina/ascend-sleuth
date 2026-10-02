@@ -13,12 +13,22 @@
 // 为什么值得有：面板包装进 profile 后，首个失败信号是「重启后 tab 不出现」，而那要用户重启
 // 一次 DSH Desktop 才能看见——这个脚本把「代码能不能加载、能不能注册」提前到本地秒级。
 //
-// 用法：node scripts/check_panel_bundle.js
+// 还有一段 DSH 探针（装载前跑）：判定本机 DSH 支持哪条装载路，并核对常驻包依赖的三处接缝
+// 还在不在——它们此前是靠试装试出来的（webServer 注入、styles.insert、authority）。
+// 找不到已安装的 DSH 时如实跳过（CI 形态），不假装通过。
+//
+// 用法：
+//   node scripts/check_panel_bundle.js                    产物 + 冒烟 + DSH 探针（自动找 DSH，找不到即跳过）
+//   node scripts/check_panel_bundle.js --dsh-root <目录>   指定 DSH 安装处（如 <app>/resources/app.asar.unpacked）
+//   node scripts/check_panel_bundle.js --selftest-dsh      用临时假 DSH 自测探针本身（不需要真 DSH）
+//
+// 退出码：0 全绿或如实跳过；1 产物/冒烟失败；2 DSH 接缝漂移
 
 'use strict'
 
 const fs = require('fs')
 const path = require('path')
+const os = require('os')
 const crypto = require('crypto')
 const { pathToFileURL } = require('node:url')
 const { register } = require('node:module')
@@ -244,7 +254,191 @@ function checkFidelity(artifactRel, half) {
   }
 }
 
+// ── DSH 探针：装载路判定 + 三处接缝 ──────────────────────────────────────────
+//
+// 常驻插件包把面板源码接到新版 DSH 上，靠的是三个外部假设：
+//   ① connection RPC 的注册形态（HostConnectionRpc.handle(channel, handler, options)）
+//   ② 该 handle 由 dsh-client-connection 实现，且要求调用方 fiber 注入 webServer
+//   ③ client 沙箱给每个包注入 styles.insert(css) -> disposer
+// 这三处任一变化，面板都要到「装完、重启、页面空白」才被发现。这里把它们读成断言，
+// 顺便判本机 DSH 有没有模型侧的 cordis_define（有 = 热加载路，无 = 常驻插件包路）。
+
+const DSH_SEAMS = [
+  {
+    id: 'rpc-handle-declared',
+    rel: '@deepseek-ai/dsh-tool-cordis/lib/types/api-catalog.js',
+    ok: (text) => /HostConnectionRpc[\s\S]{0,200}handle\(channel/.test(text),
+    note: 'connection RPC 的注册接口（handle(channel, handler)）',
+  },
+  {
+    id: 'rpc-handler-needs-webServer',
+    rel: '@deepseek-ai/dsh-client-connection/lib/index.js',
+    ok: (text) => text.includes('webServer.register('),
+    note: "路由注册走宿主 webServer（所以调用方 fiber 必须注入 webServer：ctx.inject(['webServer'])）",
+  },
+  {
+    id: 'styles-insert',
+    rel: '@deepseek-ai/dsh-cordis-client-runner/lib/client.js',
+    ok: (text) => text.includes('styles.insert(css'),
+    note: 'client 沙箱注入的样式接口（styles.insert(css) -> disposer）',
+  },
+]
+
+const DSH_ROUTE_FILE = '@deepseek-ai/dsh-tool-cordis/lib/index.js'
+
+function readUnder(root, rel) {
+  try {
+    return fs.readFileSync(path.join(root, 'node_modules', rel), 'utf8')
+  } catch (e) {
+    return null
+  }
+}
+
+function probeDsh(root) {
+  const routeText = readUnder(root, DSH_ROUTE_FILE)
+  const seams = DSH_SEAMS.map((seam) => {
+    const text = readUnder(root, seam.rel)
+    return { id: seam.id, note: seam.note, rel: seam.rel, present: text !== null, ok: text !== null && seam.ok(text) }
+  })
+  return {
+    root,
+    // 只有确实读到路线文件才敢判路；读不到就不给结论（见 looksLikeDsh）
+    route: routeText === null ? null : (routeText.includes('cordis_define') ? 'hot-load' : 'bundle'),
+    seams,
+    looksLikeDsh: routeText !== null || seams.some((seam) => seam.present),
+  }
+}
+
+// 自动找 DSH：① 显式环境变量；② 桌面版 patch 里带绝对 file:/// URL 指向 app.asar.unpacked；
+// ③ profile 的 node_modules。都找不到就如实跳过（CI 形态没有 DSH）。
+function detectDshRoot() {
+  const tried = []
+  const candidates = []
+  if (process.env.DSH_DSH_ROOT) candidates.push(process.env.DSH_DSH_ROOT)
+
+  const home = process.env.DSH_HOME
+  if (home) {
+    let names = []
+    try {
+      names = fs.readdirSync(home).filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
+    } catch (e) {
+      names = []
+    }
+    for (const name of names) {
+      let text = ''
+      try {
+        text = fs.readFileSync(path.join(home, name), 'utf8')
+      } catch (e) {
+        continue
+      }
+      // 路径里有 %20（Desktop 的 patch 就是这样写的）：先按原文匹配，再解码，别先解码
+      // （先解码会把空格喂给 [^"'] 之外的空白类，匹配反而失败——实测踩过）
+      const matched = /file:\/\/\/([^"']*?resources\/app\.asar\.unpacked)\//.exec(text)
+      if (matched) candidates.push(matched[1].replace(/%20/g, ' '))
+    }
+  }
+  if (process.env.DSH_PROFILE_DIR) candidates.push(path.join(process.env.DSH_PROFILE_DIR, 'node_modules'))
+
+  for (const raw of candidates) {
+    const root = path.resolve(raw)
+    if (tried.indexOf(root) >= 0) continue
+    tried.push(root)
+    const probe = probeDsh(root)
+    if (probe.looksLikeDsh) return probe
+  }
+  return { root: null, route: null, seams: [], looksLikeDsh: false, tried }
+}
+
+// 返回退出码：0 无漂移；2 有接缝漂移
+function checkDsh(probe, explicit) {
+  if (!probe.looksLikeDsh) {
+    if (explicit) {
+      process.stderr.write('指定的 DSH 目录里没有 @deepseek-ai 包：' + probe.root + '\n')
+      return 1
+    }
+    process.stdout.write('DSH 探针：未找到已安装的 DSH（试过：' + (probe.tried || []).join('、') + '）——如实跳过\n')
+    process.stdout.write('  要指定就传 --dsh-root <DSH 安装处，如 <app>/resources/app.asar.unpacked>\n')
+    return 0
+  }
+
+  process.stdout.write('DSH 探针（' + probe.root + '）\n')
+  process.stdout.write('  路线：' + (probe.route === 'hot-load'
+    ? '热加载路（有 cordis_define / cordis_run）'
+    : '常驻插件包路（无 cordis_define，走 plugin_manager install_bundle）') + '\n')
+
+  let drift = 0
+  for (const seam of probe.seams) {
+    if (!seam.ok) drift += 1
+    process.stdout.write('  ' + (seam.ok ? 'ok   ' : 'DRIFT') + ' ' + seam.id + ' —— ' + seam.note + '\n')
+    if (!seam.ok) {
+      process.stdout.write('        （读 ' + seam.rel + '：' + (seam.present ? '文件在，但断言不成立' : '文件缺失') + '）\n')
+    }
+  }
+  if (drift > 0) {
+    process.stderr.write('DSH 接缝漂移 ' + drift + ' 处：面板包依赖的外部契约变了，'
+      + '先按上面点名的文件核对适配层（scripts/build_panel_bundle.js 的适配段）再装\n')
+    return 2
+  }
+  return 0
+}
+
+function writeFakeDsh(root, options) {
+  const files = {
+    '@deepseek-ai/dsh-tool-cordis/lib/index.js': options.legacy
+      ? "defineTool({ name: 'cordis_define' }); defineTool({ name: 'cordis_run' })"
+      : "defineTool({ name: 'cordis_inspect_list' }); defineTool({ name: 'cordis_inspect_query' })",
+    '@deepseek-ai/dsh-tool-cordis/lib/types/api-catalog.js':
+      "export interface HostConnectionRpc { handle(channel: string, handler: ConnectionRpcHandler): () => Promise<void> }",
+    '@deepseek-ai/dsh-client-connection/lib/index.js':
+      "return owner.effect(() => owner.webServer.register(route), `client-connection: ${channel} rpc channel`)",
+  }
+  if (!options.omitStyles) {
+    files['@deepseek-ai/dsh-cordis-client-runner/lib/client.js'] = 'signatures: ["styles.insert(css: string): () => void"]'
+  }
+  for (const [rel, body] of Object.entries(files)) {
+    const target = path.join(root, 'node_modules', rel)
+    fs.mkdirSync(path.dirname(target), { recursive: true })
+    fs.writeFileSync(target, body, 'utf8')
+  }
+}
+
+// 探针自测：三份临时假 DSH（现代 / 旧版 / 漂移）。不需要真 DSH，所以 CI 里也能跑。
+function selftestDsh() {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-probe-selftest-'))
+  const cases = [
+    { name: '现代（无 cordis_define）', legacy: false, omitStyles: false, route: 'bundle', drift: 0 },
+    { name: '旧版（有 cordis_define）', legacy: true, omitStyles: false, route: 'hot-load', drift: 0 },
+    { name: '漂移（去掉 styles.insert）', legacy: false, omitStyles: true, route: 'bundle', drift: 1 },
+  ]
+  let bad = 0
+  try {
+    for (const item of cases) {
+      const root = path.join(base, item.name.replace(/[（）]/g, '-'))
+      writeFakeDsh(root, item)
+      const probe = probeDsh(root)
+      const drift = probe.seams.filter((seam) => !seam.ok).length
+      const ok = probe.route === item.route && drift === item.drift
+      if (!ok) bad += 1
+      process.stdout.write('  ' + (ok ? 'ok  ' : 'FAIL') + ' ' + item.name
+        + '：route=' + probe.route + ' 漂移=' + drift
+        + '（期望 route=' + item.route + ' 漂移=' + item.drift + '）\n')
+    }
+  } finally {
+    fs.rmSync(base, { recursive: true, force: true })
+  }
+  if (bad > 0) {
+    process.stderr.write('DSH 探针自测未通过：' + bad + ' 例\n')
+    return 1
+  }
+  process.stdout.write('dsh-probe selftest ok（3 例：现代 / 旧版 / 漂移）\n')
+  return 0
+}
+
 async function main() {
+  if (process.argv.includes('--selftest-dsh')) {
+    process.exit(selftestDsh())
+  }
+
   await checkHost()
   await checkClient()
   checkFidelity('lib/index.js', 'host')
@@ -256,6 +450,15 @@ async function main() {
     process.exit(1)
   }
   process.stdout.write('\n面板包冒烟测试通过\n')
+
+  const rootFlag = process.argv.indexOf('--dsh-root')
+  const explicitRoot = rootFlag >= 0 ? process.argv[rootFlag + 1] : undefined
+  if (rootFlag >= 0 && explicitRoot === undefined) {
+    process.stderr.write('--dsh-root 后面要给一个目录\n')
+    process.exit(1)
+  }
+  const code = checkDsh(explicitRoot ? probeDsh(path.resolve(explicitRoot)) : detectDshRoot(), explicitRoot !== undefined)
+  process.exit(code)
 }
 
 main().catch((error) => {

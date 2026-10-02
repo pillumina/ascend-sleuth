@@ -243,11 +243,13 @@ jobs:
       # 真实 trace 的对照走主检出那一份（`scripts/shared_dir.py traces`）；CI 检出里没有
       # traces/（gitignore 运行时件），脚本会如实打印跳过，只跑形状夹具。
       - run: node scripts/panel_render_check.js
-      # 面板包（新版 DSH 的常驻插件包）：产物与源文件一致 + 可加载性冒烟。
-      # 前者防"改了面板源码没重跑生成器"，后者用 stub ctx 原样加载两个产物，
-      # 把"装进 profile 后重启才发现 tab 不在"提前到本地秒级。
+      # 面板包（新版 DSH 的常驻插件包）：产物与源文件一致 + 可加载性冒烟 + DSH 接缝探针。
+      # 前者防"改了面板源码没重跑生成器"；中者用 stub ctx 原样加载两个产物，把"装进 profile
+      # 后重启才发现 tab 不在"提前到本地秒级；后者判本机 DSH 走哪条装载路并核对三处接缝，
+      # CI 里没有 DSH，会如实跳过（退 0），所以下面那条自测用临时假 DSH。
       - run: node scripts/build_panel_bundle.js --check
       - run: node scripts/check_panel_bundle.js
+      - run: node scripts/check_panel_bundle.js --selftest-dsh
 
   skill-self-contained:
     runs-on: ubuntu-latest
