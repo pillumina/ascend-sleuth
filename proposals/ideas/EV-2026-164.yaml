@@ -110,3 +110,7 @@ decisions:
       `docs/guide/metrics.md` 仍写「混装四个消费点」。三处都改成五个触发点、背景侧写明「步骤 2 收尾、
       与候选是否命中无关」。预核亦确认：五触发点在 SKILL / procedure / trace / trace_metrics 四处原本已一致，
       无重复查询、无路径丢背景（快路也走前四步）。
+  - who: agent
+    when: 2026-10-02
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #306 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

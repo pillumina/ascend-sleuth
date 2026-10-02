@@ -121,3 +121,7 @@ decisions:
       「量不出」，不再静默省略整节；消费点计数从「四个」改「五个」（`trace_metrics.py` 两处 + 指标文档）。
       预核同时确认：中心事实成立（main 版 `--json` 退 0、HEAD 退 1）、判据 id 与文档数字逐一对得上、
       五触发点在四处一致、10 个机械门全绿、7 条反例跑通并全部恢复（`git status` 干净）。
+  - who: agent
+    when: 2026-10-02
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #306 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

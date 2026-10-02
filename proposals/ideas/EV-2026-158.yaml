@@ -137,3 +137,7 @@ decisions:
       采纳（validated）。判据：不可判定 16 → 6 且 6 项都自带说明；量化项 336-16 → 330+；
       `verify_case_draft` 与 `build_index --check` 绿；CI 与单测、演练全绿。
       **显式标注**：这是对 22 条 active case 的判据修订，本该双签；本 PR 声明该边界并请 reviewer 裁决。
+  - who: agent
+    when: 2026-10-02
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #301 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

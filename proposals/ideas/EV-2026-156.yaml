@@ -161,3 +161,7 @@ decisions:
       26 条 summary 长度、README 的纪律段）；三个索引 `--check` 绿；CI 与单测、演练全绿。
       **本条同时回写 EV-2026-155 的合入指针**（按"指针随下一个批的聚合 PR 进 main"的既有规矩）。
       价值层不由此卡证明：取用面修好了，是否真被用到要看后续 trace 的 `reference_lookup` 读数。
+  - who: agent
+    when: 2026-10-02
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #299 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

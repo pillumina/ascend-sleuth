@@ -106,3 +106,7 @@ decisions:
       ③ 建议级——新门的作用域边界（`platforms/` 及其下层不受约束）已补进 `dir_category_problems` 的 docstring。
       预核另核过：索引正文逐字节未动、面板正则数条目仍 168、一行一条与基线逐条字典相等、
       render_row 对元字符/长行/值内换行的行为、以及全部 CI 门与 rehearse_evolve_loop（断言 183/183）。
+  - who: agent
+    when: 2026-10-02
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #302 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

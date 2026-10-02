@@ -128,3 +128,7 @@ decisions:
       预核同时确认：`SOFT_CAP/HARD_CAP` 全仓无代码引用、`--check` 三态语义未变、`normalizeCapacity`
       对三种历史形状都容错且不会把旧 `cap` 当本线用、`index_read_cost --json` 契约未变、
       演练 183/183 与 293 tests 均复算通过。
+  - who: agent
+    when: 2026-10-02
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #305 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

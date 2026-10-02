@@ -191,3 +191,7 @@ decisions:
       不同格子不碰同一个文件，本来就不撞。这条不靠文档掩盖，写进了 docs/guide/git-workflow.md
       的冲突处理表，也作为本卡 gate 的触发条件。**没有合并后收尾这一步**（原设计的"合并者跑一遍"
       已被否掉，见 decisions）。
+  - who: agent
+    when: 2026-10-02
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #282 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

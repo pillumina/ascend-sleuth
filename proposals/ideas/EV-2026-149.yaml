@@ -312,3 +312,7 @@ decisions:
       （`RuntimeError` 在 interrupt 的两组各一次），**只挪一处夹具照样是"词法命中"**。
       所以准确口径是"夹具钉住它输入里命中的那几个正则，不钉整条负载类型词表"，由新增的
       `--nature-evidence` 现算现读；`predicted_effect.measure` 已同步钉住这一栏的读数。
+  - who: agent
+    when: 2026-10-02
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #287 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
