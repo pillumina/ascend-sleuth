@@ -93,3 +93,17 @@ decisions:
       0/2/1 分别表示通、路由没在服务、其他失败；自带假服务器自测五条判定并接进 CI 的
       panel-checks。文档两处同步：dsh-plugins/README 的判据一节、skills/preload-panel 的验证步。
       教训：探针本身第一版在 Windows 上撞 libuv 断言（fetch 句柄没收干就 process.exit），已改设 exitCode。
+  - who: agent（独立预核 subagent + 本轮回修）
+    when: "2026-10-02"
+    type: action
+    conclusion: >-
+      独立预核判 MERGE_READY: yes（无阻断级），同时点出四类真问题，全部回修：
+      ①**探针有两条断言盯的是适配层已弃用的 API**（connection.rpc.handle / dsh-client-connection 的
+      webServer.register）——DSH 真删掉该接口时会误红并把读者引向无需改动的文件；改成只盯自己用的
+      四个契约（webServer prefix 路由声明、connection.requestRejection、client 沙箱 styles.insert、
+      页面产物格式 __ModuleLoader__.load），并补一条"去掉 webServer 路由声明必漂移"的自测用例。
+      ②**三处/四处接缝在文档与代码间打架**，统一为"四处适配 / 四个外部契约"，并修掉 header 里
+      残留的 authority 与旧接缝描述。③`host.call` 在冒烟里实测零覆盖（组件不渲染），文档不再声称
+      它被机械检查，改写明由 panel_rpc_probe 覆盖。④退出码图例补上 --dsh-root 指错目录退 1、
+      探针 exit 2 的两个状态、请求体完整形态；另补三处名字对齐（package.json / cordis.patch.yml /
+      产物 export，此前无门读这两份清单）与 CI paths 的 scripts/fixtures/**。

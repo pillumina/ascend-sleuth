@@ -6,25 +6,27 @@
 //
 //   host 半： import 成功 → apply() 不抛 → 在 webServer 上注册一条 prefix 路由（channel 正确）
 //            → 用假 req/res 走一遍真实信封（{ type:'server-response', rpcId, result }）：
-//              未知端点回 not-found、已知端点走到面板的处理函数、非 POST 回 405
-//            → 附带工具经 ctx.tools.register 注册 → 返回卸载函数且不抛
+//              未知端点回 not-found、已知端点走到面板的处理函数、非 POST 回 405、端点回退
+//            → 附带工具经 ctx.tools.register 注册（参数归一化成 DSL）→ 返回卸载函数且不抛
 //            工具定义优先用真品校验：探到已安装 DSH 时用它的 defineTool（写法不对当场红）。
 //   client 半：工厂产出插件 → exports.inject 含 slots → apply() 注册三个 conversation.view tab
 //            （id / order 与面板源码一致：ascend-diagnose 20、ascend-metrics 21、ascend-evolve 22）
+//            注：client 半的 `host.call` 映射**不在本脚本覆盖范围**——它只在组件挂载时才发生，
+//            这里不渲染组件。那条链路由 scripts/panel_rpc_probe.js（同一条线协议打真机）覆盖。
 //
 // 为什么值得有：面板包装进 profile 后，首个失败信号是「重启后 tab 不出现」，而那要用户重启
 // 一次 DSH Desktop 才能看见——这个脚本把「代码能不能加载、能不能注册」提前到本地秒级。
 //
-// 还有一段 DSH 探针（装载前跑）：判定本机 DSH 支持哪条装载路，并核对常驻包依赖的三处接缝
-// 还在不在——它们此前是靠试装试出来的（webServer 注入、styles.insert、authority）。
-// 找不到已安装的 DSH 时如实跳过（CI 形态），不假装通过。
+// 还有一段 DSH 探针（装载前跑）：判定本机 DSH 支持哪条装载路，并核对常驻包依赖的四条接缝
+// 还在不在。找不到已安装的 DSH 时如实跳过（CI 形态），不假装通过。
 //
 // 用法：
 //   node scripts/check_panel_bundle.js                    产物 + 冒烟 + DSH 探针（自动找 DSH，找不到即跳过）
 //   node scripts/check_panel_bundle.js --dsh-root <目录>   指定 DSH 安装处（如 <app>/resources/app.asar.unpacked）
 //   node scripts/check_panel_bundle.js --selftest-dsh      用临时假 DSH 自测探针本身（不需要真 DSH）
 //
-// 退出码：0 全绿或如实跳过；1 产物/冒烟失败；2 DSH 接缝漂移
+// 退出码：0 全绿或如实跳过；1 产物/冒烟失败，或 --dsh-root 指到的目录里没有 DSH 包；
+//        2 DSH 接缝漂移
 
 'use strict'
 
@@ -168,6 +170,26 @@ async function callRouteByMethod(route, endpoint, payload) {
   return { res, parsed }
 }
 
+// 三处名字必须对齐：package.json 的 name、cordis.patch.yml 插入行的 name、产物的 export name。
+// 此前没有任何门读这两份清单——错过只会在"装上、重启、界面什么都没发生"时才暴露
+// （插件管理器按 name 解析包，客户端产物按 id 认领）。
+function checkNames(artifactName) {
+  const pkg = JSON.parse(fs.readFileSync(path.join(repo, BUNDLE, 'package.json'), 'utf8'))
+  const patch = fs.readFileSync(path.join(repo, BUNDLE, 'cordis.patch.yml'), 'utf8')
+  const matched = /name:\s*'([^']+)'/.exec(patch)
+  const patchName = matched === null ? null : matched[1]
+
+  check(pkg.name === artifactName, 'package.json 的 name 与产物 export name 一致', String(pkg.name))
+  check(patchName === artifactName, 'cordis.patch.yml 插入行的 name 与产物 export name 一致', String(patchName))
+  check(pkg.exports !== undefined && pkg.exports['.'] === './lib/index.js' && pkg.exports['./client'] === './lib/client.js',
+    'package.json 的 exports 指向两个产物', JSON.stringify(pkg.exports))
+  check(pkg.dsh !== undefined && pkg.dsh.bundle !== undefined && pkg.dsh.bundle.patch === './cordis.patch.yml',
+    'package.json 声明 dsh.bundle.patch', pkg.dsh === undefined ? '缺 dsh' : JSON.stringify(pkg.dsh.bundle))
+  check(pkg.dsh !== undefined && pkg.dsh.client !== undefined && pkg.dsh.client.platform === 'web',
+    "package.json 声明 dsh.client.platform = 'web'",
+    pkg.dsh === undefined ? '缺 dsh' : JSON.stringify(pkg.dsh.client))
+}
+
 async function checkHost() {
   process.stdout.write('host 半（' + BUNDLE + '/lib/index.js）\n')
 
@@ -183,6 +205,7 @@ async function checkHost() {
   const mod = await import(pathToFileURL(path.join(repo, BUNDLE, 'lib/index.js')).href)
 
   check(mod.name === 'dsh-sleuth-panels', 'export name = dsh-sleuth-panels', String(mod.name))
+  checkNames(mod.name)
   check(Array.isArray(mod.inject) && mod.inject.includes('connection') && mod.inject.includes('tools'),
     'inject 含 connection + tools', JSON.stringify(mod.inject))
 
@@ -335,6 +358,8 @@ function fingerprint(text) {
 // 保真：产物里嵌的必须是源文件原文。
 // 为什么单列一条：`build_panel_bundle.js --check` 只证明"产物 == 重新生成的产物"——
 // 若生成器本身的嵌入逻辑吃掉了内容，两边会一起错、门照绿。这里直接拿源文件比对。
+// 强度如实标注：这是**必要非充分**——原文作为子串出现即可通过，它不证明"被执行的就是原文"
+// （重复嵌入或放进死分支都能绿）。补足靠冒烟测试真的把产物跑起来。
 function checkFidelity(artifactRel, half) {
   process.stdout.write('保真（' + artifactRel + ' ← 各面板 ' + half + ' 源文件）\n')
   const artifact = fs.readFileSync(path.join(repo, BUNDLE, artifactRel), 'utf8')
@@ -352,27 +377,35 @@ function checkFidelity(artifactRel, half) {
   }
 }
 
-// ── DSH 探针：装载路判定 + 三处接缝 ──────────────────────────────────────────
+// ── DSH 探针：装载路判定 + 四条接缝 ──────────────────────────────────────────
 //
-// 常驻插件包把面板源码接到新版 DSH 上，靠的是三个外部假设：
-//   ① connection RPC 的注册形态（HostConnectionRpc.handle(channel, handler, options)）
-//   ② 该 handle 由 dsh-client-connection 实现，且要求调用方 fiber 注入 webServer
+// 常驻插件包把面板源码接到新版 DSH 上，靠的是四个外部契约（**都是生成物真正用到的**）：
+//   ① webServer.register(route) 且 WebRouteKind 含 prefix —— RPC 挂在这条 prefix 路由上
+//   ② connection.requestRejection(request) —— 路由处理函数用它挡未授权请求
 //   ③ client 沙箱给每个包注入 styles.insert(css) -> disposer
-// 这三处任一变化，面板都要到「装完、重启、页面空白」才被发现。这里把它们读成断言，
+//   ④ 页面产物格式 window.__ModuleLoader__.load({ id, factory })
+// 这四条任一变化，面板都要到「装完、重启、页面空白」才被发现。这里把它们读成断言，
 // 顺便判本机 DSH 有没有模型侧的 cordis_define（有 = 热加载路，无 = 常驻插件包路）。
+//
+// 反面教材（首版踩过）：曾把断言挂在 `connection.rpc.handle` 上——那是适配层**明确不用**的
+// 接口（它把 owner 绑在服务自身 ctx 上，注册即抛）。那样的断言在 DSH 真删掉该接口时会误红，
+// 并把读者引向一个无需改动的文件。断言只盯自己用的契约。
+
+const API_CATALOG = '@deepseek-ai/dsh-tool-cordis/lib/types/api-catalog.js'
 
 const DSH_SEAMS = [
   {
-    id: 'rpc-handle-declared',
-    rel: '@deepseek-ai/dsh-tool-cordis/lib/types/api-catalog.js',
-    ok: (text) => /HostConnectionRpc[\s\S]{0,200}handle\(channel/.test(text),
-    note: 'connection RPC 的注册接口（handle(channel, handler)）',
+    id: 'webServer-prefix-route',
+    rel: API_CATALOG,
+    // 生成物里类型声明是 JS 字符串，引号带转义（\'exact\' | \'prefix\'），所以用宽松匹配
+    ok: (text) => text.includes('register(route: WebRoute)') && /exact.{0,8}\|.{0,8}prefix/.test(text),
+    note: 'webServer 的 prefix 路由（面板包的 RPC 挂在它上面）',
   },
   {
-    id: 'rpc-handler-needs-webServer',
-    rel: '@deepseek-ai/dsh-client-connection/lib/index.js',
-    ok: (text) => text.includes('webServer.register('),
-    note: "路由注册走宿主 webServer（所以调用方 fiber 必须注入 webServer：ctx.inject(['webServer'])）",
+    id: 'connection-requestRejection',
+    rel: API_CATALOG,
+    ok: (text) => text.includes('requestRejection(request: ConnectionTrustRequest)'),
+    note: 'connection 的请求准入（路由处理函数用它挡未授权的请求）',
   },
   {
     id: 'styles-insert',
@@ -381,11 +414,10 @@ const DSH_SEAMS = [
     note: 'client 沙箱注入的样式接口（styles.insert(css) -> disposer）',
   },
   {
-    id: 'webServer-prefix-route',
-    rel: '@deepseek-ai/dsh-tool-cordis/lib/types/api-catalog.js',
-    // 生成物里类型声明是 JS 字符串，引号带转义（\'exact\' | \'prefix\'），所以用宽松匹配
-    ok: (text) => text.includes('register(route: WebRoute)') && /exact.{0,8}\|.{0,8}prefix/.test(text),
-    note: 'webServer 的 prefix 路由（面板包的 RPC 走它；connection.rpc.handle 在本构建不可用）',
+    id: 'client-module-loader',
+    rel: '@deepseek-ai/dsh-client-modules/lib/index.js',
+    ok: (text) => text.includes('window.__ModuleLoader__'),
+    note: '页面产物格式（window.__ModuleLoader__.load({ id, factory })）',
   },
 ]
 
@@ -488,17 +520,20 @@ function checkDsh(probe, explicit) {
 }
 
 function writeFakeDsh(root, options) {
+  // webServer 与 requestRejection 两条接缝同住 api-catalog.js：要去掉前者，得只留后者
+  const catalog = options.omitWebRoute
+    ? "signature: 'requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection'"
+    : "signature: 'register(route: WebRoute): () => void'\n"
+      + "signature: 'requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection'\n"
+      + "export interface WebRoute { kind: WebRouteKind; path: string; handler: (req, res) => void }\n"
+      + "export type WebRouteKind = 'exact' | 'prefix'"
   const files = {
     '@deepseek-ai/dsh-tool-cordis/lib/index.js': options.legacy
       ? "defineTool({ name: 'cordis_define' }); defineTool({ name: 'cordis_run' })"
       : "defineTool({ name: 'cordis_inspect_list' }); defineTool({ name: 'cordis_inspect_query' })",
-    '@deepseek-ai/dsh-tool-cordis/lib/types/api-catalog.js':
-      "export interface HostConnectionRpc { handle(channel: string, handler: ConnectionRpcHandler): () => Promise<void> }\n"
-      + "signature: 'register(route: WebRoute): () => void'\n"
-      + "export interface WebRoute { kind: WebRouteKind; path: string; handler: (req, res) => void }\n"
-      + "export type WebRouteKind = 'exact' | 'prefix'",
-    '@deepseek-ai/dsh-client-connection/lib/index.js':
-      "return owner.effect(() => owner.webServer.register(route), `client-connection: ${channel} rpc channel`)",
+    '@deepseek-ai/dsh-tool-cordis/lib/types/api-catalog.js': catalog,
+    '@deepseek-ai/dsh-client-modules/lib/index.js':
+      'window.__ModuleLoader__={ create() {}, load(entry) { return entry } }',
   }
   if (!options.omitStyles) {
     files['@deepseek-ai/dsh-cordis-client-runner/lib/client.js'] = 'signatures: ["styles.insert(css: string): () => void"]'
@@ -510,13 +545,15 @@ function writeFakeDsh(root, options) {
   }
 }
 
-// 探针自测：三份临时假 DSH（现代 / 旧版 / 漂移）。不需要真 DSH，所以 CI 里也能跑。
+// 探针自测：四份临时假 DSH（现代 / 旧版 / 去 styles.insert / 去 webServer 路由声明）。
+// 不需要真 DSH，所以 CI 里也能跑。每份都断言路线判定与漂移条数，并打印是哪条接缝漂了。
 function selftestDsh() {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-probe-selftest-'))
   const cases = [
-    { name: '现代（无 cordis_define）', legacy: false, omitStyles: false, route: 'bundle', drift: 0 },
-    { name: '旧版（有 cordis_define）', legacy: true, omitStyles: false, route: 'hot-load', drift: 0 },
-    { name: '漂移（去掉 styles.insert）', legacy: false, omitStyles: true, route: 'bundle', drift: 1 },
+    { name: '现代（无 cordis_define）', legacy: false, route: 'bundle', drift: [] },
+    { name: '旧版（有 cordis_define）', legacy: true, route: 'hot-load', drift: [] },
+    { name: '漂移（去 styles.insert）', legacy: false, omitStyles: true, route: 'bundle', drift: ['styles-insert'] },
+    { name: '漂移（去 webServer 路由声明）', legacy: false, omitWebRoute: true, route: 'bundle', drift: ['webServer-prefix-route'] },
   ]
   let bad = 0
   try {
@@ -525,12 +562,13 @@ function selftestDsh() {
       writeFakeDsh(root, item)
       const probe = probeDsh(root)
       const missing = probe.seams.filter((seam) => !seam.ok).map((seam) => seam.id)
-      const drift = missing.length
-      const ok = probe.route === item.route && drift === item.drift
+      const want = item.drift.slice().sort()
+      const got = missing.slice().sort()
+      const ok = probe.route === item.route && JSON.stringify(got) === JSON.stringify(want)
       if (!ok) bad += 1
       process.stdout.write('  ' + (ok ? 'ok  ' : 'FAIL') + ' ' + item.name
-        + '：route=' + probe.route + ' 漂移=' + drift + '（期望 route=' + item.route + ' 漂移=' + item.drift + '）'
-        + (missing.length > 0 ? ' 缺：' + missing.join(',') : '') + '\n')
+        + '：route=' + probe.route + ' 漂移=[' + got.join(',') + ']'
+        + '（期望 route=' + item.route + ' 漂移=[' + want.join(',') + ']）\n')
     }
   } finally {
     fs.rmSync(base, { recursive: true, force: true })
@@ -539,7 +577,7 @@ function selftestDsh() {
     process.stderr.write('DSH 探针自测未通过：' + bad + ' 例\n')
     return 1
   }
-  process.stdout.write('dsh-probe selftest ok（3 例：现代 / 旧版 / 漂移）\n')
+  process.stdout.write('dsh-probe selftest ok（4 例：现代 / 旧版 / 去 styles.insert / 去 webServer 路由声明）\n')
   return 0
 }
 

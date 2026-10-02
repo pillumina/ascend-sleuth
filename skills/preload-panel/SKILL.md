@@ -83,9 +83,10 @@ tab（list 插槽，按 order 排列，可共存）。
    面板源码改了就跑 `node scripts/build_panel_bundle.js`，用
    `node scripts/build_panel_bundle.js --check` 核对产物与源文件一致，
    `node scripts/check_panel_bundle.js` 做一次可加载性冒烟（路由、端点、工具、
-   三个 tab、样式标签、卸载）。**不要手改 `lib/`**。同一条命令还会判本机 DSH 走哪条装载路，
-   并核对常驻包依赖的三处接缝（connection RPC 的注册接口、路由注册要注入 webServer、
-   client 沙箱给的 `styles.insert`）还在不在——**装之前跑它**，找不到 DSH 时会如实跳过；
+   三个 tab、样式标签、卸载），以及三处名字对齐（`package.json` / `cordis.patch.yml` / 产物 export）。
+   **不要手改 `lib/`**。同一条命令还会判本机 DSH 走哪条装载路，并核对常驻包依赖的四个外部契约
+   （`webServer` 的 prefix 路由声明、`connection.requestRejection`、client 沙箱的 `styles.insert`、
+   页面产物格式 `__ModuleLoader__.load`）还在不在——**装之前跑它**，找不到 DSH 时会如实跳过；
    `--selftest-dsh` 用临时假 DSH 自测这条判据，`--dsh-root <目录>` 指到别的安装处。
 
 2. **装**：`plugin_manager install_bundle(target: <仓库绝对路径>/dsh-plugins/dsh-sleuth-panels)`。
@@ -94,14 +95,13 @@ tab（list 插槽，按 order 排列，可共存）。
 
 3. **读安装结果**（`application` 与 `warnings` 决定是否已生效，不要拿日志或进程列表代替）：
    - `applied` → 已生效。
-   - `restart-required` → 替换已装包时会出现（运行时把先前的模块路径钉住了）。让用户重启
-     DSH Desktop，重启后再验证。
-   - `failed` → 读诊断；`webServer` 一类的报错说明适配层没把路由注册在
-     `ctx.inject(['webServer'])` 里。
+   - `restart-required` → 运行时把先前的模块路径钉住了，要重启 DSH Desktop 才加载新版本；
+     替换已装包时通常是这个（插件管理器默认只在能热替换时才回 applied）。让用户重启后再验证。
+   - `failed` → 读诊断；`webServer` 一类的报错说明路由没注册成功。
 
 4. **验证**：先跑 `node scripts/panel_rpc_probe.js`——它按页面的线协议打一条面板 RPC，
-   直接告出 host 半挂没挂、工作区解析得出、取到几条会话（退出码 2 = 路由没在服务，
-   "装了还没重启"就是这个）。再用 `cordis_inspect_query`（client, `Slots`, `listSubTree`,
+   直接告出 host 半挂没挂、工作区解析得出、取到几条会话（退出码 2 = 路由没在服务或未授权，
+   "装了还没重启"是前者）。再用 `cordis_inspect_query`（client, `Slots`, `listSubTree`,
    root `conversation.view`）看三个 tab id 是否在占位列表里；最后请用户点开一页，确认
    React 那层的渲染（插槽占位与 RPC 都通了也不等于看着对，这一步只有页面能验）。
    浏览器代码是页面启动时装载的，刚装完要刷新页面。
