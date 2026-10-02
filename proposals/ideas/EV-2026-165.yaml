@@ -130,3 +130,7 @@ decisions:
       它被机械检查，改写明由 panel_rpc_probe 覆盖。④退出码图例补上 --dsh-root 指错目录退 1、
       探针 exit 2 的两个状态、请求体完整形态；另补三处名字对齐（package.json / cordis.patch.yml /
       产物 export，此前无门读这两份清单）与 CI paths 的 scripts/fixtures/**。
+  - who: agent
+    when: 2026-10-02
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #307 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
