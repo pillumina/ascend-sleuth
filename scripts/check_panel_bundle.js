@@ -91,11 +91,19 @@ function makeFakeShell(record) {
     },
     async execute(spec) {
       record.shellCommands.push(String(spec.command))
-      const isVersion = /--version/.test(String(spec.command))
-      const stdout = isVersion
-        ? 'Python 3.13.0'
-        : '{"gates":[{"id":"selftest","level":"ok","title":"自测判据","plain":"自测判据"}],'
+      const command = String(spec.command)
+      // 按命令给对应的"脚本输出"：验的是面板的取数与解析路径，不重算脚本内容
+      let stdout = 'Python 3.13.0'
+      if (/metrics_health\.py/.test(command)) {
+        stdout = '{"gates":[{"id":"selftest","level":"ok","title":"自测判据","plain":"自测判据"}],'
           + '"findings":[{"level":"ok","face":"数据底座","text":"selftest finding","action":null,"plain":null}]}'
+      } else if (/ev_board_data\.py/.test(command)) {
+        stdout = '{"ideas":[],"by_surface":{},"skill_exec":{},"generated_at":"selftest"}'
+      } else if (/evolution_health\.py/.test(command)) {
+        stdout = '{"findings":[],"generated_at":"selftest"}'
+      } else if (!/--version/.test(command)) {
+        stdout = '{}'
+      }
       return {
         status: 'exited',
         exitCode: 0,
@@ -305,6 +313,21 @@ async function checkHost() {
     verdictText.slice(0, 200))
   check(record.shellCommands.some((c) => /--version/.test(c)) && record.shellCommands.some((c) => /metrics_health\.py/.test(c)),
     'shell 桥：解释器探测与脚本调用都真的发生过', JSON.stringify(record.shellCommands.slice(0, 3)))
+
+  // 自演进那两个端点此前只有 client 侧覆盖（渲染时发出 RPC），host 侧的取数与解析没有断言
+  const board = await callRoute(record.route, 'ev-board-load', { sessionId: 'x' })
+  const boardText = JSON.stringify(board.parsed)
+  check(board.parsed !== null && board.parsed.result.ok === true
+    && boardText.indexOf('未找到可用的 Python 3 解释器') < 0,
+    'shell 桥：ev-board-load 走通（ev_board_data.py 的输出被解析成 data）', boardText.slice(0, 200))
+  check(record.shellCommands.some((c) => /ev_board_data\.py/.test(c)), 'shell 桥：ev_board_data.py 真被调用')
+
+  const health = await callRoute(record.route, 'ev-health-load', { sessionId: 'x' })
+  const healthText = JSON.stringify(health.parsed)
+  check(health.parsed !== null && health.parsed.result.ok === true
+    && healthText.indexOf('未找到可用的 Python 3 解释器') < 0,
+    'shell 桥：ev-health-load 走通（evolution_health.py 的输出被解析成 data）', healthText.slice(0, 200))
+  check(record.shellCommands.some((c) => /evolution_health\.py/.test(c)), 'shell 桥：evolution_health.py 真被调用')
 
   // 非 POST：405（与 dsh-ppt 的同名路由一致）
   const wrongMethod = await callRoute(record.route, 'ascend-traces-list', {}, 'GET')

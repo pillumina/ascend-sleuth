@@ -113,7 +113,9 @@ decisions:
       递归调用函数组件（面板注册的是 `props => createElement(TraceView, props)` 薄包装，不往下渲染
       就走不到内层组件的挂载 effect），于是三个 tab 的首屏各渲染一次，断言它们分别发出
       ascend-traces-list / ascend-metrics-verdict / ev-board-load 且渲染期无异常。断言数 39 → 46；
-      文档里"host.call 不在覆盖面"的说法与脚本 header 随之改掉。
+      文档里"host.call 不在覆盖面"的说法与脚本 header 随之改掉。随后又把两个自演进端点补进 host 侧
+      断言（假 shell 按命令给对应脚本输出，验 ev_board_data.py / evolution_health.py 的取数与解析），
+      断言数到 50——四个首屏端点（fs 一类 + 三个 Python）与三个 tab 的 client 侧至此全覆盖。
   - who: agent（独立预核 subagent + 本轮回修）
     when: "2026-10-02"
     type: action
