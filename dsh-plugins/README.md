@@ -15,7 +15,7 @@
 | 只读边界 | 面板是只读可视化 + 指令生成器；不做决策与写入 | 人审（`skills/preload-panel/SKILL.md`） |
 | 依赖缺失时的退化 | 拿不到数据时给一行说明 + 可行的下一步，不占位、不拿别处的数据冒充 | `node scripts/panel_render_check.js`（退化路径一节，含 5 个缺件用例） |
 | 面板包产物 | 面板源码（`dsh-plugins/<面板>/panel-host.js`、`panel-client.js`）是唯一真源，`dsh-plugins/dsh-sleuth-panels/lib/` 是生成物 | `node scripts/build_panel_bundle.js --check` |
-| 面板包可加载性 | 常驻插件包的适配层（`harness.handle` / `host.call` / `styles.insert` 三条接缝） | `node scripts/check_panel_bundle.js` |
+| 面板包可加载性 | 常驻插件包的适配层（`harness.handle` / `host.call` / `styles.insert` / `defineTool` 的 parameters 四处接缝） | `node scripts/check_panel_bundle.js` |
 
 **结果复用窗口**（两个面板同一条约定）：面板取数要起 Python 子进程，而切走 tab 再切回会重新挂载
 组件、重新发起同一条 RPC，所以结果按短窗口复用（切回不必等进程）。三条约束一起成立才算守住：
@@ -35,14 +35,23 @@
 | 常驻插件包 | DSH 没有这两件工具（新版把模型侧的动态定义入口删了） | `plugin_manager install_bundle` 装 `dsh-plugins/dsh-sleuth-panels/` | 本 profile 每个会话，重启不丢 |
 
 常驻包的两个产物由 `node scripts/build_panel_bundle.js` 把面板源码原文嵌进适配层生成，
-不要手改；源文件改了要重跑生成器。适配层补的是动态沙箱当年自带、常驻包没有的三样：
-`harness.handle`（接到一条 connection RPC 路由，注册在 `ctx.inject(['webServer'])` 内）、
-`host.call`（调用同一条路由）、`styles.insert`（自建 style 标签）。装载流程与版本判据见
-`skills/preload-panel/SKILL.md`。
+不要手改；源文件改了要重跑生成器。适配层补的是动态沙箱当年自带、常驻包没有的四样：
 
-这三处接缝是照已安装的 DSH 读出来的，所以有了判据：`node scripts/check_panel_bundle.js`
-会顺带判本机 DSH 走哪条装载路、三处接缝还在不在（找不到 DSH 时如实跳过），
-`--selftest-dsh` 用临时假 DSH 自测这条判据，`--dsh-root <目录>` 指到别的安装处。
+- `harness.handle` → 一条 **webServer 的 prefix 路由**（`/ascend-sleuth-panels`），信封与客户端的
+  `connection.rpc.call` 对齐：`POST <channel>/<endpoint>`（body `{rpcId, payload}`），应答
+  `{type:'server-response', rpcId, result}`，`result` 是 `{ok, value}` 或 `{ok:false, error}`。
+  不用 `connection.rpc.handle`：它把 owner 绑到 connection 服务自己的 ctx，注册时读
+  `owner.webServer` 就会抛（in-app 的 dsh-ppt 也把这一步包在 try/catch 里，真正干活的是它自己注册的路由）。
+- `host.call` → 调同一个 channel；失败抛错（面板各处的 `.catch` 就是照这个写的）。
+- `styles.insert` → 自建 style 标签（client 沙箱给每个包注入的那个）。
+- `harness.defineTool` 的 `parameters` → dsh 自带的 `defineTool` 只认 DSL
+  （`{ 字段: schema, required: true }`），动态沙箱则会把面板用的 JSON-Schema 包装
+  （`type` / `properties` / `required`）归一化掉。漏了这一步会在面板自身的 try/catch 之外抛，
+  整个 host 半挂不上、RPC 一个都不注册。
+
+装载流程见 `skills/preload-panel/SKILL.md`。这四处接缝是照已安装的 DSH 读出来的，所以有了判据：
+`node scripts/check_panel_bundle.js` 会顺带判本机 DSH 走哪条装载路、四处接缝还在不在
+（找不到 DSH 时如实跳过），`--selftest-dsh` 用临时假 DSH 自测这条判据，`--dsh-root <目录>` 指到别的安装处。
 
 ## 面板文案的定制条款
 

@@ -73,3 +73,14 @@ decisions:
     conclusion: >-
       采纳（validated）。三处接缝与路线判定各一条断言，真实 DSH 与三例假 DSH 都按预期；
       找不到 DSH 时如实跳过并退 0（CI 形态），不假装通过。
+  - who: agent
+    when: "2026-10-02"
+    type: action
+    conclusion: >-
+      首次真机使用（用户重启后）：探针接缝 2 提示路由走宿主 webServer，据此定位到 connection.rpc.handle
+      把 owner 绑在服务自身 ctx 上、注册即抛，面板包的 RPC 改走 webServer 的 prefix 路由（与 in-app 的
+      dsh-ppt 同形）。真实 DSH 上还暴露第二个方言差异：静态 defineTool 只认 DSL，而面板写的是
+      JSON-Schema 包装，该异常又落在面板自身 try/catch 之外，整个 host 半没挂上（客户端的三个 tab 反而
+      注册成功了）。两处修好后补第 4 条接缝（webServer prefix 路由的声明）与更硬的离线判据：冒烟测试
+      改用已安装 DSH 的真品 defineTool 校验工具定义，并用假 req/res 走一遍
+      {type:'server-response', rpcId, result} 信封（未知端点 / 已知端点 / 非 POST）。

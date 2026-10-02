@@ -4,9 +4,11 @@
 // 与 build_panel_bundle.js --check 分工：那个管「产物 = 源文件」，这个管「产物能跑」。
 // 用 stub 的 ctx / 服务**原样加载两个生成物**，断言：
 //
-//   host 半： import 成功 → apply() 不抛 → 注册一条 connection RPC 路由（channel 正确）
-//            → 未知端点回 { ok:false, error.code:'not-found' } → 已知端点走到面板的处理函数
+//   host 半： import 成功 → apply() 不抛 → 在 webServer 上注册一条 prefix 路由（channel 正确）
+//            → 用假 req/res 走一遍真实信封（{ type:'server-response', rpcId, result }）：
+//              未知端点回 not-found、已知端点走到面板的处理函数、非 POST 回 405
 //            → 附带工具经 ctx.tools.register 注册 → 返回卸载函数且不抛
+//            工具定义优先用真品校验：探到已安装 DSH 时用它的 defineTool（写法不对当场红）。
 //   client 半：工厂产出插件 → exports.inject 含 slots → apply() 注册三个 conversation.view tab
 //            （id / order 与面板源码一致：ascend-diagnose 20、ascend-metrics 21、ascend-evolve 22）
 //
@@ -76,22 +78,22 @@ function makeHostCtx(record) {
   const ctx = {
     get(name) {
       record.gets.push(name)
-      return undefined // fs / sessions / shell 都不给：面板必须自行降级而不是崩
+      // fs / sessions / shell 都不给：面板必须自行降级而不是崩。
+      // connection 只给路由守卫要用的 requestRejection（放行）。
+      if (name === 'connection') return { requestRejection: () => undefined }
+      return undefined
     },
     tools: {
       register(definition) {
         record.tools.push(definition && definition.name)
+        record.toolDefinition = definition
         return () => {}
       },
     },
-    connection: {
-      rpc: {
-        handle(channel, handler, options) {
-          record.channel = channel
-          record.handler = handler
-          record.options = options
-          return async () => {}
-        },
+    webServer: {
+      register(route) {
+        record.route = route
+        return async () => {}
       },
     },
     inject(deps, callback) {
@@ -107,40 +109,116 @@ function makeHostCtx(record) {
   return ctx
 }
 
+// 假 req/res：走一遍客户端真正会走的 HTTP 信封（POST <channel>/<endpoint>，body { rpcId, payload }）
+function fakeRequest(url, body, method) {
+  const encoded = Buffer.from(JSON.stringify(body), 'utf8')
+  return {
+    method: method === undefined ? 'POST' : method,
+    url,
+    async *[Symbol.asyncIterator]() {
+      yield encoded
+    },
+  }
+}
+
+function fakeResponse() {
+  return {
+    statusCode: null,
+    headers: null,
+    setHeaders: null,
+    body: '',
+    setHeader(name, value) {
+      this.setHeaders = Object.assign({}, this.setHeaders, { [name]: value })
+      return this
+    },
+    writeHead(code, headers) {
+      this.statusCode = code
+      this.headers = headers === undefined ? null : headers
+      return this
+    },
+    end(text) {
+      this.body = text === undefined ? '' : String(text)
+      return this
+    },
+  }
+}
+
+async function callRoute(route, endpoint, payload, method) {
+  const res = fakeResponse()
+  await route.handler(fakeRequest(CHANNEL + '/' + endpoint, { rpcId: 'r-test', payload }, method), res)
+  let parsed = null
+  try {
+    parsed = JSON.parse(res.body)
+  } catch (e) {
+    parsed = null
+  }
+  return { res, parsed }
+}
+
 async function checkHost() {
   process.stdout.write('host 半（' + BUNDLE + '/lib/index.js）\n')
+
+  // 探到已安装的 DSH 就用真品 defineTool 校验工具定义（找不到则用本地 stub，如实说明）
+  const detected = detectDshRoot()
+  if (detected.looksLikeDsh) {
+    process.env.DSH_SLEUTH_TOOLS_ROOT = detected.root
+    process.stdout.write('  工具定义用真品校验：' + detected.root + '\n')
+  } else {
+    process.stdout.write('  工具定义用本地 stub 校验（未找到已安装 DSH，这一项强度较弱）\n')
+  }
+
   const mod = await import(pathToFileURL(path.join(repo, BUNDLE, 'lib/index.js')).href)
 
   check(mod.name === 'dsh-sleuth-panels', 'export name = dsh-sleuth-panels', String(mod.name))
   check(Array.isArray(mod.inject) && mod.inject.includes('connection') && mod.inject.includes('tools'),
     'inject 含 connection + tools', JSON.stringify(mod.inject))
 
-  const record = { gets: [], tools: [], injects: [], channel: undefined, handler: undefined }
+  const record = { gets: [], tools: [], injects: [], route: undefined }
   const ctx = makeHostCtx(record)
 
   const dispose = mod.apply(ctx)
-  check(record.channel === CHANNEL, '注册 RPC 路由 channel = ' + CHANNEL, String(record.channel))
-  check(typeof record.handler === 'function', '路由 handler 是函数')
   check(record.injects.includes('webServer'), "路由注册在 ctx.inject(['webServer']) 内")
-  check(record.options !== undefined && record.options.authority === 'trusted-host',
-    '路由注册带 authority: trusted-host（与 dsh-ppt 一致）', JSON.stringify(record.options))
-  check(record.tools.length === 1, '注册 1 个附带工具（ascend_trace_status）', JSON.stringify(record.tools))
+  check(record.route !== undefined && record.route.kind === 'prefix' && record.route.path === CHANNEL,
+    '在 webServer 上注册 prefix 路由 ' + CHANNEL,
+    record.route === undefined ? '未注册' : JSON.stringify({ kind: record.route.kind, path: record.route.path }))
+  check(record.route !== undefined && typeof record.route.handler === 'function', '路由 handler 是函数')
+  check(record.tools.length === 1 && record.tools[0] === 'ascend_trace_status',
+    '注册 1 个附带工具（ascend_trace_status）', JSON.stringify(record.tools))
+  const spec = record.toolDefinition === undefined ? undefined : record.toolDefinition.parameters
+  check(spec !== undefined && spec.cwd !== undefined && spec.type === undefined,
+    '工具参数已归一化成 DSL（字段名 → schema，不再是 JSON-Schema 包装）', JSON.stringify(spec))
   check(typeof dispose === 'function', 'apply() 返回卸载函数')
 
-  // 未知端点：分发表要回我们约定的 not-found 信封（客户端 host.call 依赖它 → 抛错）
-  const unknown = await record.handler('no-such-endpoint', {})
-  check(unknown && unknown.ok === false && unknown.error && unknown.error.code === 'not-found',
-    '未知端点回 not-found 信封', JSON.stringify(unknown))
+  // 未知端点：分发表要回 not-found 信封（客户端 rpc.call 依赖 result.ok/error）
+  const unknown = await callRoute(record.route, 'no-such-endpoint', {})
+  check(unknown.res.statusCode === 200
+    && unknown.parsed !== null
+    && unknown.parsed.type === 'server-response'
+    && unknown.parsed.rpcId === 'r-test'
+    && unknown.parsed.result.ok === false
+    && unknown.parsed.result.error.code === 'not-found',
+    '未知端点：200 + server-response 信封 + result.ok=false/not-found',
+    JSON.stringify(unknown.parsed))
 
   // 已知端点：fs 未注入 → 面板自身的降级分支（不该抛、也不该 500）
-  const known = await record.handler('ascend-traces-list', { sessionId: 'x' })
-  check(known && known.ok === true && known.value && known.value.ok === false,
-    '已知端点走到面板处理函数并走 fs 缺失降级', JSON.stringify(known))
+  const known = await callRoute(record.route, 'ascend-traces-list', { sessionId: 'x' })
+  check(known.res.statusCode === 200
+    && known.parsed !== null
+    && known.parsed.result.ok === true
+    && known.parsed.result.value.ok === false,
+    '已知端点：走到面板处理函数并走 fs 缺失降级', JSON.stringify(known.parsed))
 
-  // 卸载：不抛，且之后端点全部消失
+  // 非 POST：405（与 dsh-ppt 的同名路由一致）
+  const wrongMethod = await callRoute(record.route, 'ascend-traces-list', {}, 'GET')
+  check(wrongMethod.res.statusCode === 405, '非 POST 回 405', String(wrongMethod.res.statusCode))
+
+  // 卸载：端点从分发表里摘掉（路由本身由 webCtx.effect 收回），再请求即 not-found
   dispose()
-  const afterDispose = await record.handler('ascend-traces-list', {})
-  check(afterDispose && afterDispose.ok === false, '卸载后端点已摘除', JSON.stringify(afterDispose))
+  const afterDispose = await callRoute(record.route, 'ascend-traces-list', {})
+  check(afterDispose.parsed !== null
+    && afterDispose.parsed.result.ok === false
+    && afterDispose.parsed.result.error.code === 'not-found',
+    '卸载后端点已摘除', JSON.stringify(afterDispose.parsed))
 }
 
 const REACT_STUB = {
@@ -282,6 +360,13 @@ const DSH_SEAMS = [
     ok: (text) => text.includes('styles.insert(css'),
     note: 'client 沙箱注入的样式接口（styles.insert(css) -> disposer）',
   },
+  {
+    id: 'webServer-prefix-route',
+    rel: '@deepseek-ai/dsh-tool-cordis/lib/types/api-catalog.js',
+    // 生成物里类型声明是 JS 字符串，引号带转义（\'exact\' | \'prefix\'），所以用宽松匹配
+    ok: (text) => text.includes('register(route: WebRoute)') && /exact.{0,8}\|.{0,8}prefix/.test(text),
+    note: 'webServer 的 prefix 路由（面板包的 RPC 走它；connection.rpc.handle 在本构建不可用）',
+  },
 ]
 
 const DSH_ROUTE_FILE = '@deepseek-ai/dsh-tool-cordis/lib/index.js'
@@ -388,7 +473,10 @@ function writeFakeDsh(root, options) {
       ? "defineTool({ name: 'cordis_define' }); defineTool({ name: 'cordis_run' })"
       : "defineTool({ name: 'cordis_inspect_list' }); defineTool({ name: 'cordis_inspect_query' })",
     '@deepseek-ai/dsh-tool-cordis/lib/types/api-catalog.js':
-      "export interface HostConnectionRpc { handle(channel: string, handler: ConnectionRpcHandler): () => Promise<void> }",
+      "export interface HostConnectionRpc { handle(channel: string, handler: ConnectionRpcHandler): () => Promise<void> }\n"
+      + "signature: 'register(route: WebRoute): () => void'\n"
+      + "export interface WebRoute { kind: WebRouteKind; path: string; handler: (req, res) => void }\n"
+      + "export type WebRouteKind = 'exact' | 'prefix'",
     '@deepseek-ai/dsh-client-connection/lib/index.js':
       "return owner.effect(() => owner.webServer.register(route), `client-connection: ${channel} rpc channel`)",
   }
@@ -416,12 +504,13 @@ function selftestDsh() {
       const root = path.join(base, item.name.replace(/[（）]/g, '-'))
       writeFakeDsh(root, item)
       const probe = probeDsh(root)
-      const drift = probe.seams.filter((seam) => !seam.ok).length
+      const missing = probe.seams.filter((seam) => !seam.ok).map((seam) => seam.id)
+      const drift = missing.length
       const ok = probe.route === item.route && drift === item.drift
       if (!ok) bad += 1
       process.stdout.write('  ' + (ok ? 'ok  ' : 'FAIL') + ' ' + item.name
-        + '：route=' + probe.route + ' 漂移=' + drift
-        + '（期望 route=' + item.route + ' 漂移=' + item.drift + '）\n')
+        + '：route=' + probe.route + ' 漂移=' + drift + '（期望 route=' + item.route + ' 漂移=' + item.drift + '）'
+        + (missing.length > 0 ? ' 缺：' + missing.join(',') : '') + '\n')
     }
   } finally {
     fs.rmSync(base, { recursive: true, force: true })
