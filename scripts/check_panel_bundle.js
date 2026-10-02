@@ -19,12 +19,27 @@
 
 const fs = require('fs')
 const path = require('path')
+const crypto = require('crypto')
 const { pathToFileURL } = require('node:url')
 const { register } = require('node:module')
 
 const repo = path.resolve(__dirname, '..')
 const BUNDLE = 'dsh-plugins/dsh-sleuth-panels'
 const CHANNEL = '/ascend-sleuth-panels'
+
+// 面板清单与生成器一致：id 只用于日志，host/client 是唯一真源
+const PANELS = [
+  {
+    id: 'ascend-panel',
+    host: 'dsh-plugins/ascend-panel/panel-host.js',
+    client: 'dsh-plugins/ascend-panel/panel-client.js',
+  },
+  {
+    id: 'ev-panel',
+    host: 'dsh-plugins/ev-panel/panel-host.js',
+    client: 'dsh-plugins/ev-panel/panel-client.js',
+  },
+]
 
 const failures = []
 function check(ok, label, detail) {
@@ -205,9 +220,35 @@ async function checkClient() {
   check(styleTags.length === 0, '卸载后样式标签清空', '标签数 ' + styleTags.length)
 }
 
+function fingerprint(text) {
+  return crypto.createHash('sha256').update(text, 'utf8').digest('hex').slice(0, 12)
+}
+
+// 保真：产物里嵌的必须是源文件原文。
+// 为什么单列一条：`build_panel_bundle.js --check` 只证明"产物 == 重新生成的产物"——
+// 若生成器本身的嵌入逻辑吃掉了内容，两边会一起错、门照绿。这里直接拿源文件比对。
+function checkFidelity(artifactRel, half) {
+  process.stdout.write('保真（' + artifactRel + ' ← 各面板 ' + half + ' 源文件）\n')
+  const artifact = fs.readFileSync(path.join(repo, BUNDLE, artifactRel), 'utf8')
+
+  for (const panel of PANELS) {
+    const rel = panel[half]
+    const raw = fs.readFileSync(path.join(repo, rel), 'utf8')
+    // 生成器只去掉源文件末尾空白（文件末尾换行），比对时照同一条变换
+    const body = raw.replace(/\s*$/, '')
+    const label = panel.id + ' ' + half
+
+    check(artifact.includes(body), label + ' 原文逐字嵌进产物（' + rel + '）')
+    check(artifact.includes('sha256:' + fingerprint(raw)),
+      label + ' 产物标记的源文件指纹与当前源文件一致')
+  }
+}
+
 async function main() {
   await checkHost()
   await checkClient()
+  checkFidelity('lib/index.js', 'host')
+  checkFidelity('lib/client.js', 'client')
 
   if (failures.length > 0) {
     process.stderr.write('\n面板包冒烟测试未通过（' + failures.length + ' 项）：\n')
