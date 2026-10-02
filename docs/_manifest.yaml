@@ -3,17 +3,29 @@
 #
 # 为什么需要它：`README.md` 的文档目录与 skill 名单原先手写，于是**事实被镜像到多处
 # 就会漂移**（术语表曾写"共九个 skill"而实际十个；文档目录是 17 条平铺，看不出该读哪篇）。
-# 本文件是数据，`scripts/build_docs_index.py` 由它生成 README 的两个标记区块；
+# 本文件是数据，`scripts/build_docs_index.py` 由它生成两个标记区块；
 # 数字与名单不再手写（分层先例同 metrics/timeline.yaml vs docs/guide/metrics.md）。
 #
 # 维护规则：
 #   1. 新增文档 / 新增 skill → 先在这里登记（生成器会报"未登记"，CI --check 红）；
-#   2. `layer` 决定它在 README 里的分组，也决定读者"什么时候该读"；
-#   3. 改完跑 `python3 scripts/build_docs_index.py`（不带参数即写回 README），再提交。
+#   2. `layer` 决定它在文档目录里的分组，也决定读者"什么时候该读"；
+#   3. 改完跑 `python3 scripts/build_docs_index.py`（不带参数即写回各个落点），再提交。
 #   4. 新增或改写文档的正文按 `docs/spec/writing-norms.md`（人读文本规范）：共用条目 + 该面在它 §3 里的定制条款。
 # ============================================================
 
 version: 1
+
+# 两个生成区块各自的落点（相对仓根）。落点是数据，因为两块服务于不同的读者：
+#   skill-roster 回答"有哪几个 skill"，是落地页要回答的问题之一 → 留在 README.md；
+#   docs-index   是全部文档的清单，服务"我要改机制"的读者 → 放 docs/README.md，
+#                落地页只留一个指向它的链接。原先两块都硬写在 README.md 里（脚本里写死路径），
+#                于是 24 条文档清单也只能放在落地页上，而落地页的读者要的是下一个动作。
+# 未列出的区块用默认落点 README.md。
+blocks:
+  skill-roster:
+    target: README.md
+  docs-index:
+    target: docs/README.md
 
 # 读者要回答的问题不是"有哪些文档"，而是"我现在该读哪篇"——所以按 layer 分组，
 # 每组给一句"什么时候读"。
@@ -29,7 +41,7 @@ layers:
     when: 你要改演进/评测/编排机制本身时——日常只读 docs/mechanism/rsi-mechanism.md 一篇，论证层在 docs/mechanism/
   - id: guide
     title: 操作指南（用到那个环节时才读）
-    when: 你要装环境（Windows skills 使能）、跑评测、看指标、走 git 门控、或做 issue 导入时
+    when: 你要搭新部署、装环境（Windows skills 使能）、跑评测、看指标、走 git 门控、或做导入时
   - id: plan
     title: 计划与就绪度（想知道"下一步做什么"时读）
     when: 你要排下一步工作，或评估能不能推广给一个团队时
@@ -46,7 +58,7 @@ docs:
     purpose: 从一次诊断到知识演化的可读演示：两分钟架构总览 + 术语与 skill 速览 + 全流程示例（不需要动手）
   - path: docs/spec/case-schema.md
     layer: spec
-    when: 你要新增/修改一条 case、或要解释某个字段口径时
+    purpose: case 的字段定义、口径，以及哪些内容不允许进库
   - path: docs/spec/design-principles.md
     layer: spec
     purpose: 十一条规范性条文——一切设计、实现、修复与演进的依据
@@ -92,6 +104,9 @@ docs:
   - path: docs/guide/git-workflow.md
     layer: guide
     purpose: 审核、门控、合入与多人协作的落地（含评审把手）
+  - path: docs/guide/knowledge-acquisition.md
+    layer: guide
+    purpose: 知识获取的三种起步形态、稀疏拉取白名单，以及部署形态与目录归属的入口
   - path: docs/guide/issue-ingest-pipeline.md
     layer: guide
     purpose: issue → case 的半自动导入管道
@@ -116,19 +131,20 @@ docs:
 
 # skill 名单。`scope` 回答的唯一问题是"**我（某类使用者）需要看哪几个**"——
 # 原先 README 写"八个 skill"、术语表写"共九个"，读者无法判断是"总数"还是"某一面"。
+# 分组名与说明按人读文本规范写：它们是 README 正文的一部分，不用第二人称口语。
 skills:
   - name: diagnose
-    scope: 你要用的
+    scope: 日常诊断
   - name: resume-diagnosis
-    scope: 你要用的
+    scope: 日常诊断
   - name: to-postmortem
-    scope: 沉淀知识
+    scope: 知识沉淀
   - name: to-reference
-    scope: 沉淀知识
+    scope: 知识沉淀
   - name: issue-ingest
-    scope: 沉淀知识
+    scope: 知识沉淀
   - name: reference-ingest
-    scope: 沉淀知识
+    scope: 知识沉淀
   - name: knowledge-groom
     scope: 维护与演进
   - name: self-evolve
@@ -141,6 +157,6 @@ skills:
     note: 内部协议，由用户显式触发做 skill 质量审视
   - name: preload-panel
     scope: 维护与演进
-    note: 仅 DSH——本机 DSH 有 cordis_define / cordis_run 时热加载面板，没有时装常驻插件包
+    note: 仅 DSH：本机 DSH 有 cordis_define / cordis_run 时热加载面板，否则装常驻插件包
 
-scope_order: ["你要用的", "沉淀知识", "维护与演进"]
+scope_order: ["日常诊断", "知识沉淀", "维护与演进"]
