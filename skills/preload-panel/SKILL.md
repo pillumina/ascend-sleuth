@@ -84,10 +84,10 @@ tab（list 插槽，按 order 排列，可共存）。
    `node scripts/build_panel_bundle.js --check` 核对产物与源文件一致，
    `node scripts/check_panel_bundle.js` 做一次可加载性冒烟（路由、端点、工具、
    三个 tab、样式标签、卸载），以及三处名字对齐（`package.json` / `cordis.patch.yml` / 产物 export）。
-   **不要手改 `lib/`**。同一条命令还会判本机 DSH 走哪条装载路，并核对常驻包依赖的四个外部契约
+   **不要手改 `lib/`**。同一条命令还会判本机 DSH 走哪条装载路，并核对常驻包依赖的五个外部契约
    （`webServer` 的 prefix 路由声明、`connection.requestRejection`、client 沙箱的 `styles.insert`、
-   页面产物格式 `__ModuleLoader__.load`）还在不在——**装之前跑它**，找不到 DSH 时会如实跳过；
-   `--selftest-dsh` 用临时假 DSH 自测这条判据，`--dsh-root <目录>` 指到别的安装处。
+   页面产物格式 `__ModuleLoader__.load`、shell 的 `resolve` + `execute`）还在不在——**装之前跑它**，
+   找不到 DSH 时会如实跳过；`--selftest-dsh` 用临时假 DSH 自测这条判据，`--dsh-root <目录>` 指到别的安装处。
 
 2. **装**：`plugin_manager install_bundle(target: <仓库绝对路径>/dsh-plugins/dsh-sleuth-panels)`。
    包会复制进 profile 的 generation，所以仓库被移动或 worktree 被清掉都不影响已装的那份；

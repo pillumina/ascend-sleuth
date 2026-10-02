@@ -93,6 +93,18 @@ decisions:
       0/2/1 分别表示通、路由没在服务、其他失败；自带假服务器自测五条判定并接进 CI 的
       panel-checks。文档两处同步：dsh-plugins/README 的判据一节、skills/preload-panel 的验证步。
       教训：探针本身第一版在 Windows 上撞 libuv 断言（fetch 句柄没收干就 process.exit），已改设 exitCode。
+  - who: agent（首次真机端到端验证）
+    when: "2026-10-02"
+    type: action
+    conclusion: >-
+      重启后第一次真机端到端：客户端三个 tab、路由注册、fs 类端点（traces-list 读到 3 个真实诊断会话、
+      kb-health 168 条、process-health 3 单）全部通过；但**三个要起 Python 的端点一律退化成
+      "未找到可用的 Python 3 解释器"**。定位：面板源码用的是 `shell.run(spec) → {exitCode, stdout.text}`，
+      而这个 DSH 的 shell 服务只有 `execute(spec) → ShellExecution`（句柄）+ `await result() → ShellRunResult`；
+      面板那段又把每个候选的异常 catch 掉，真因被吞成误导信息。修法同前：在适配层补桥（真服务已有 run
+      则透传、没有则映射到 execute + result()），并补第 5 条接缝（shell 的 resolve + execute）与冒烟断言
+      （只给 execute 的假 shell 上跑 ascend-metrics-verdict，必须不报"找不到 Python"且脚本真被调用）。
+      这条说明接缝清单要覆盖**每一处真正用到的方法形状**，不能只覆盖包级契约。
   - who: agent（独立预核 subagent + 本轮回修）
     when: "2026-10-02"
     type: action

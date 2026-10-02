@@ -76,13 +76,62 @@ for (const rel of ['lib/index.js', 'lib/client.js']) {
 // 让生成物里的 `import { defineTool } from '@deepseek-ai/dsh-tools'` 在仓库里可解析
 register(pathToFileURL(path.join(__dirname, 'fixtures', 'panel-bundle-stub-loader.mjs')).href)
 
+// 假 shell：**故意只给 execute**（这个 DSH 的 shell 服务就是这个形状），
+// 用来验适配层补的 `run → execute + result()` 桥；记录每条命令，好断言探测与脚本调用都发生过。
+function makeFakeShell(record) {
+  return {
+    resolve(request) {
+      return {
+        command: request.command,
+        workdir: request.workdir,
+        stdoutMaxBytes: request.stdoutMaxBytes,
+        sandboxPolicy: request.sandboxPolicy,
+      }
+    },
+    async execute(spec) {
+      record.shellCommands.push(String(spec.command))
+      const isVersion = /--version/.test(String(spec.command))
+      const stdout = isVersion
+        ? 'Python 3.13.0'
+        : '{"gates":[{"id":"selftest","level":"ok","title":"自测判据","plain":"自测判据"}],'
+          + '"findings":[{"level":"ok","face":"数据底座","text":"selftest finding","action":null,"plain":null}]}'
+      return {
+        status: 'exited',
+        exitCode: 0,
+        signal: null,
+        async result() {
+          return {
+            exitCode: 0,
+            signal: null,
+            timedOut: false,
+            aborted: false,
+            timeoutMs: 1000,
+            stdout: { text: stdout, truncated: false },
+            stderr: { text: '', truncated: false },
+          }
+        },
+      }
+    },
+  }
+}
+
 function makeHostCtx(record) {
+  record.shellCommands = []
+  record.shell = makeFakeShell(record)
   const ctx = {
     get(name) {
       record.gets.push(name)
-      // fs / sessions / shell 都不给：面板必须自行降级而不是崩。
+      // fs 不给：面板必须自行降级而不是崩。
+      // sessions 给一个带 cwd 的会话（工作区解析要它）；shell 只给 execute（见 makeFakeShell）；
       // connection 只给路由守卫要用的 requestRejection（放行）。
       if (name === 'connection') return { requestRejection: () => undefined }
+      if (name === 'sessions') {
+        return {
+          get: () => ({ header: { cwd: repo } }),
+          list: () => [{ header: { cwd: repo } }],
+        }
+      }
+      if (name === 'shell') return record.shell
       return undefined
     },
     tools: {
@@ -244,6 +293,18 @@ async function checkHost() {
     && known.parsed.result.value.ok === false,
     '已知端点：走到面板处理函数并走 fs 缺失降级', JSON.stringify(known.parsed))
 
+  // shell 形状桥：这个 DSH 的 shell 只有 execute（返回句柄），面板写的是 run(spec) 并直接读
+  // exitCode/stdout.text —— 适配层补的桥必须让这条端点真的跑起来（此前真机上它退化成
+  // "未找到可用的 Python 3 解释器"）
+  const verdict = await callRoute(record.route, 'ascend-metrics-verdict', { sessionId: 'x' })
+  const verdictText = JSON.stringify(verdict.parsed)
+  check(verdict.parsed !== null && verdict.parsed.result.ok === true
+    && verdictText.indexOf('未找到可用的 Python 3 解释器') < 0,
+    'shell 桥：ascend-metrics-verdict 在只有 execute 的服务上不再报"找不到 Python"',
+    verdictText.slice(0, 200))
+  check(record.shellCommands.some((c) => /--version/.test(c)) && record.shellCommands.some((c) => /metrics_health\.py/.test(c)),
+    'shell 桥：解释器探测与脚本调用都真的发生过', JSON.stringify(record.shellCommands.slice(0, 3)))
+
   // 非 POST：405（与 dsh-ppt 的同名路由一致）
   const wrongMethod = await callRoute(record.route, 'ascend-traces-list', {}, 'GET')
   check(wrongMethod.res.statusCode === 405, '非 POST 回 405', String(wrongMethod.res.statusCode))
@@ -377,14 +438,15 @@ function checkFidelity(artifactRel, half) {
   }
 }
 
-// ── DSH 探针：装载路判定 + 四条接缝 ──────────────────────────────────────────
+// ── DSH 探针：装载路判定 + 五条接缝 ──────────────────────────────────────────
 //
-// 常驻插件包把面板源码接到新版 DSH 上，靠的是四个外部契约（**都是生成物真正用到的**）：
+// 常驻插件包把面板源码接到新版 DSH 上，靠的是五个外部契约（**都是生成物真正用到的**）：
 //   ① webServer.register(route) 且 WebRouteKind 含 prefix —— RPC 挂在这条 prefix 路由上
 //   ② connection.requestRejection(request) —— 路由处理函数用它挡未授权请求
 //   ③ client 沙箱给每个包注入 styles.insert(css) -> disposer
 //   ④ 页面产物格式 window.__ModuleLoader__.load({ id, factory })
-// 这四条任一变化，面板都要到「装完、重启、页面空白」才被发现。这里把它们读成断言，
+//   ⑤ shell 的 resolve(request) + execute(spec) —— 面板写的是 shell.run(spec)，适配层映射到这两个
+// 这五条任一变化，面板都要到「装完、重启、页面空白」才被发现。这里把它们读成断言，
 // 顺便判本机 DSH 有没有模型侧的 cordis_define（有 = 热加载路，无 = 常驻插件包路）。
 //
 // 反面教材（首版踩过）：曾把断言挂在 `connection.rpc.handle` 上——那是适配层**明确不用**的
@@ -418,6 +480,14 @@ const DSH_SEAMS = [
     rel: '@deepseek-ai/dsh-client-modules/lib/index.js',
     ok: (text) => text.includes('window.__ModuleLoader__'),
     note: '页面产物格式（window.__ModuleLoader__.load({ id, factory })）',
+  },
+  {
+    id: 'shell-resolve-execute',
+    rel: API_CATALOG,
+    // 面板写的是 shell.run(spec)，本 DSH 只有 resolve + execute（句柄 + result()），适配层据此补桥；
+    // 这条断言盯的是那两个方法还在（PTC 的 run(spec: PtcRunSpec) 是另一回事，不在此列）
+    ok: (text) => text.includes('resolve(request: ShellExecRequest)') && text.includes('execute(spec: ShellExecSpec)'),
+    note: 'shell 的 resolve + execute（面板的 run 由适配层映射到它们）',
   },
 ]
 
@@ -522,9 +592,13 @@ function checkDsh(probe, explicit) {
 function writeFakeDsh(root, options) {
   // webServer 与 requestRejection 两条接缝同住 api-catalog.js：要去掉前者，得只留后者
   const catalog = options.omitWebRoute
-    ? "signature: 'requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection'"
+    ? "signature: 'requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection'\n"
+      + "signature: 'resolve(request: ShellExecRequest): ShellExecSpec'\n"
+      + "signature: 'execute(spec: ShellExecSpec): Promise<ShellExecution>'"
     : "signature: 'register(route: WebRoute): () => void'\n"
       + "signature: 'requestRejection(request: ConnectionTrustRequest): ConnectionRequestRejection'\n"
+      + "signature: 'resolve(request: ShellExecRequest): ShellExecSpec'\n"
+      + "signature: 'execute(spec: ShellExecSpec): Promise<ShellExecution>'\n"
       + "export interface WebRoute { kind: WebRouteKind; path: string; handler: (req, res) => void }\n"
       + "export type WebRouteKind = 'exact' | 'prefix'"
   const files = {
