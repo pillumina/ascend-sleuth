@@ -11,8 +11,9 @@
 //            工具定义优先用真品校验：探到已安装 DSH 时用它的 defineTool（写法不对当场红）。
 //   client 半：工厂产出插件 → exports.inject 含 slots → apply() 注册三个 conversation.view tab
 //            （id / order 与面板源码一致：ascend-diagnose 20、ascend-metrics 21、ascend-evolve 22）
-//            注：client 半的 `host.call` 映射**不在本脚本覆盖范围**——它只在组件挂载时才发生，
-//            这里不渲染组件。那条链路由 scripts/panel_rpc_probe.js（同一条线协议打真机）覆盖。
+//            → 用 mock React（effect 同步跑、createElement 递归渲染函数组件）把三个 tab 的首屏
+//              各渲染一次，断言 host.call 真的发出各自的端点、渲染期无异常。
+//            真机那一次仍归 scripts/panel_rpc_probe.js（同一条线协议）。
 //
 // 为什么值得有：面板包装进 profile 后，首个失败信号是「重启后 tab 不出现」，而那要用户重启
 // 一次 DSH Desktop 才能看见——这个脚本把「代码能不能加载、能不能注册」提前到本地秒级。
@@ -325,14 +326,51 @@ async function checkHost() {
     '卸载后端点已摘除', JSON.stringify(afterDispose.parsed))
 }
 
+// createElement 递归调用函数组件：面板注册的是薄包装（`props => createElement(TraceView, props)`），
+// 不往下渲染就永远走不到内层组件的挂载 effect（也就不发那条首屏 RPC）。渲染期异常收集在
+// renderErrors 里，由调用侧断言为空——别让内层报错被静默吞掉。
+const renderErrors = []
 const REACT_STUB = {
-  createElement: () => null,
+  createElement(type, props, ...children) {
+    if (typeof type === 'function') {
+      const merged = Object.assign({}, props)
+      if (children.length === 1) merged.children = children[0]
+      else if (children.length > 1) merged.children = children
+      try {
+        return type(merged)
+      } catch (e) {
+        renderErrors.push(String((e && e.stack) || e).split('\n').slice(0, 2).join(' | '))
+        return null
+      }
+    }
+    return null
+  },
   Fragment: 'Fragment',
   useState: (value) => [value, () => {}],
-  useEffect: () => {},
+  useReducer: (reducer, initial) => [initial, () => {}],
+  // effect 同步跑：面板取数都在挂载 effect 里，跑一次就等于"首屏真的发了那条 RPC"
+  useEffect: (fn) => {
+    const cleanup = fn()
+    return typeof cleanup === 'function' ? cleanup : () => {}
+  },
+  useLayoutEffect: (fn) => {
+    const cleanup = fn()
+    return typeof cleanup === 'function' ? cleanup : () => {}
+  },
   useMemo: (factory) => factory(),
   useCallback: (fn) => fn,
   useRef: (value) => ({ current: value }),
+  useContext: () => undefined,
+  useSyncExternalStore: (subscribe, getSnapshot) => getSnapshot(),
+  useId: () => 'selftest-id',
+  useTransition: () => [false, (fn) => fn()],
+  useDeferredValue: (value) => value,
+  createContext: () => ({ Provider: 'Provider', Consumer: 'Consumer' }),
+  memo: (component) => component,
+  forwardRef: (component) => component,
+  cloneElement: () => null,
+  isValidElement: () => false,
+  Children: { map: () => [] },
 }
 
 // 面板 apply 时 `styles.insert(PANEL_CSS)` 会建 <style> 标签，Node 里需要最小 document
@@ -379,13 +417,27 @@ async function checkClient() {
       factory()
       return () => {}
     },
-    register(options) {
-      registrations.push(options)
+    register(options, component) {
+      registrations.push(Object.assign({ component }, options))
       return () => {}
     },
   }
+  // 客户端那侧的 host.call → connection.rpc.call：记录每次调用，好断言首屏真的发了哪条 RPC
+  const rpcCalls = []
+  const connection = {
+    rpc: {
+      call(channel, endpoint, payload) {
+        rpcCalls.push({ channel, endpoint, payload })
+        return Promise.resolve({ ok: true, value: { ok: true, sessions: [] } })
+      },
+    },
+  }
   const clientCtx = {
-    get(name) { return name === 'slots' ? slots : undefined },
+    get(name) {
+      if (name === 'slots') return slots
+      if (name === 'connection') return connection
+      return undefined
+    },
     inject(deps, callback) { return callback(clientCtx) },
     effect(callback) {
       const disposer = callback()
@@ -407,6 +459,32 @@ async function checkClient() {
   check(registrations.every(r => r.name === 'conversation.view'),
     '三个 tab 都注册在 conversation.view')
   check(styleTags.length >= 2, '两个面板都经 styles.insert 注入样式', '标签数 ' + styleTags.length)
+
+  // 渲染三个 tab 的首屏组件（mock React 同步跑 effect）：这条覆盖此前为零的 client 侧 host.call →
+  // connection.rpc.call 映射——面板源码不渲染组件就不发 RPC，所以只有真渲染才能验到它。
+  const wantEndpoint = {
+    'ascend-diagnose': 'ascend-traces-list',
+    'ascend-metrics': 'ascend-metrics-verdict',
+    'ascend-evolve': 'ev-board-load',
+  }
+  for (const item of registrations) {
+    const label = item.id
+    let threw = null
+    try {
+      if (typeof item.component === 'function') item.component({ sessionId: 'selftest' })
+    } catch (e) {
+      threw = String((e && e.message) || e)
+    }
+    check(threw === null, 'client 半 ' + label + ' 首屏组件渲染不抛', threw === null ? '' : threw)
+  }
+  for (const [id, endpoint] of Object.entries(wantEndpoint)) {
+    const hit = rpcCalls.find(c => c.endpoint === endpoint)
+    check(hit !== undefined && hit.channel === CHANNEL,
+      'client 半 ' + id + ' 首屏经 host.call 发出 ' + endpoint,
+      hit === undefined ? '未发出；已发出：' + JSON.stringify(rpcCalls.map(c => c.endpoint)) : JSON.stringify(hit.payload))
+  }
+  check(renderErrors.length === 0, '渲染期无异常（含被 createElement 递归调用的内层组件）',
+    renderErrors.slice(0, 2).join(' ;; '))
 
   if (typeof dispose === 'function') dispose()
   check(styleTags.length === 0, '卸载后样式标签清空', '标签数 ' + styleTags.length)

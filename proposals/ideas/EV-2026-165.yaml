@@ -105,6 +105,15 @@ decisions:
       则透传、没有则映射到 execute + result()），并补第 5 条接缝（shell 的 resolve + execute）与冒烟断言
       （只给 execute 的假 shell 上跑 ascend-metrics-verdict，必须不报"找不到 Python"且脚本真被调用）。
       这条说明接缝清单要覆盖**每一处真正用到的方法形状**，不能只覆盖包级契约。
+  - who: agent
+    when: "2026-10-02"
+    type: action
+    conclusion: >-
+      补掉预核量出的 `host.call` 零覆盖：冒烟测试的 mock React 改为 effect 同步跑、createElement
+      递归调用函数组件（面板注册的是 `props => createElement(TraceView, props)` 薄包装，不往下渲染
+      就走不到内层组件的挂载 effect），于是三个 tab 的首屏各渲染一次，断言它们分别发出
+      ascend-traces-list / ascend-metrics-verdict / ev-board-load 且渲染期无异常。断言数 39 → 46；
+      文档里"host.call 不在覆盖面"的说法与脚本 header 随之改掉。
   - who: agent（独立预核 subagent + 本轮回修）
     when: "2026-10-02"
     type: action

@@ -15,7 +15,7 @@
 | 只读边界 | 面板是只读可视化 + 指令生成器；不做决策与写入 | 人审（`skills/preload-panel/SKILL.md`） |
 | 依赖缺失时的退化 | 拿不到数据时给一行说明 + 可行的下一步，不占位、不拿别处的数据冒充 | `node scripts/panel_render_check.js`（退化路径一节，含 5 个缺件用例） |
 | 面板包产物 | 面板源码（`dsh-plugins/<面板>/panel-host.js`、`panel-client.js`）是唯一真源，`dsh-plugins/dsh-sleuth-panels/lib/` 是生成物 | `node scripts/build_panel_bundle.js --check` |
-| 面板包可加载性 | 常驻插件包适配层的 host 四样（`harness.handle` → prefix 路由、信封格式、`harness.defineTool` 的 parameters 归一化、`shell.run` → `execute` + `result()`）+ 三处名字对齐（`package.json` / `cordis.patch.yml` / 产物 export） | `node scripts/check_panel_bundle.js` |
+| 面板包可加载性 | 常驻插件包适配层的 host 四样（`harness.handle` → prefix 路由、信封格式、`harness.defineTool` 的 parameters 归一化、`shell.run` → `execute` + `result()`）+ client 的 `host.call` 映射（渲染三个 tab 的首屏各验一条 RPC）+ 三处名字对齐（`package.json` / `cordis.patch.yml` / 产物 export） | `node scripts/check_panel_bundle.js` |
 | 面板包外部契约 | 已安装 DSH 的五条接缝：`webServer.register(route)` 含 prefix、`connection.requestRejection`、client 沙箱的 `styles.insert`、页面产物格式 `__ModuleLoader__.load`、shell 的 `resolve` + `execute` | 同上（末段 DSH 探针；`--selftest-dsh` 自测） |
 
 **结果复用窗口**（两个面板同一条约定）：面板取数要起 Python 子进程，而切走 tab 再切回会重新挂载
@@ -46,8 +46,10 @@
   不用 `connection.rpc.handle`：它把 owner 绑到 connection 服务自己的 ctx，注册时读
   `owner.webServer` 就会抛（in-app 的 dsh-ppt 也把这一步包在 try/catch 里，真正干活的是它自己注册的路由）。
 - `host.call` → 调同一个 channel；失败抛错（面板各处的 `.catch` 就是照这个写的）。
-  注意它只在组件挂载时才发生，所以**不在 `check_panel_bundle.js` 的覆盖面**里（那里不渲染组件）；
-  那条链路由 `panel_rpc_probe.js` 用同一条线协议打真机来验。
+  它只在组件挂载时才发生，所以靠**渲染**来验：`check_panel_bundle.js` 用 mock React（effect 同步跑、
+  `createElement` 递归调用函数组件）把三个 tab 的首屏各渲染一次，断言它们分别真的发出了
+  `ascend-traces-list` / `ascend-metrics-verdict` / `ev-board-load`，且渲染期无异常；真机那一次
+  仍归 `panel_rpc_probe.js`（同一条线协议）。
 - `styles.insert` → 自建 style 标签（client 沙箱给每个包注入的那个）。
 - `harness.defineTool` 的 `parameters` → dsh 自带的 `defineTool` 只认 DSL
   （`{ 字段: schema, required: true }`），动态沙箱则会把面板用的 JSON-Schema 包装
