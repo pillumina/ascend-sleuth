@@ -155,6 +155,19 @@ async function callRoute(route, endpoint, payload, method) {
   return { res, parsed }
 }
 
+// URL 里拿不到端点时（路径不带 channel 前缀），回退用 body.method
+async function callRouteByMethod(route, endpoint, payload) {
+  const res = fakeResponse()
+  await route.handler(fakeRequest('/not-our-prefix', { rpcId: 'r-method', method: endpoint, payload }), res)
+  let parsed = null
+  try {
+    parsed = JSON.parse(res.body)
+  } catch (e) {
+    parsed = null
+  }
+  return { res, parsed }
+}
+
 async function checkHost() {
   process.stdout.write('host 半（' + BUNDLE + '/lib/index.js）\n')
 
@@ -211,6 +224,13 @@ async function checkHost() {
   // 非 POST：405（与 dsh-ppt 的同名路由一致）
   const wrongMethod = await callRoute(record.route, 'ascend-traces-list', {}, 'GET')
   check(wrongMethod.res.statusCode === 405, '非 POST 回 405', String(wrongMethod.res.statusCode))
+
+  // URL 里拿不到端点时回退 body.method（客户端两个都发，回退只为前缀匹配方式变化时兜底）
+  const byMethod = await callRouteByMethod(record.route, 'ascend-traces-list', { sessionId: 'x' })
+  check(byMethod.parsed !== null
+    && byMethod.parsed.result.ok === true
+    && byMethod.parsed.result.value.ok === false,
+    '端点在 URL 缺失时回退 body.method', JSON.stringify(byMethod.parsed))
 
   // 卸载：端点从分发表里摘掉（路由本身由 webCtx.effect 收回），再请求即 not-found
   dispose()
