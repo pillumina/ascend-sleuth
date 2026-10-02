@@ -50,8 +50,9 @@
   整个 host 半挂不上、RPC 一个都不注册。
 
 装载流程见 `skills/preload-panel/SKILL.md`。这四处接缝是照已安装的 DSH 读出来的，所以有了判据：
-`node scripts/check_panel_bundle.js` 会顺带判本机 DSH 走哪条装载路、四处接缝还在不在
-（找不到 DSH 时如实跳过），`--selftest-dsh` 用临时假 DSH 自测这条判据，`--dsh-root <目录>` 指到别的安装处。
+
+- `node scripts/check_panel_bundle.js` —— 判本机 DSH 走哪条装载路、四处接缝还在不在（找不到 DSH 时如实跳过）；`--selftest-dsh` 用临时假 DSH 自测这条判据；`--dsh-root <目录>` 指到别的安装处。
+- `node scripts/panel_rpc_probe.js` —— 不经 GUI，按页面的线协议打一条面板 RPC，直接看 host 半挂没挂、会话工作区解析得出、数据取到几条。退出码 2 = 路由没在服务（装了还没重启时就是这个）。它证明不了 React 那层的渲染，那一层只能看页面。
 
 ## 面板文案的定制条款
 

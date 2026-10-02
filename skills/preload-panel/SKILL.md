@@ -99,9 +99,11 @@ tab（list 插槽，按 order 排列，可共存）。
    - `failed` → 读诊断；`webServer` 一类的报错说明适配层没把路由注册在
      `ctx.inject(['webServer'])` 里。
 
-4. **验证**：`cordis_inspect_query`（client, `Slots`, `listSubTree`, root
-   `conversation.view`）看三个 tab id 是否出现在占位列表里；再请用户点开一页，确认读到
-   真数据（这一条只有页面能验，插槽占位不等于数据能取到）。
+4. **验证**：先跑 `node scripts/panel_rpc_probe.js`——它按页面的线协议打一条面板 RPC，
+   直接告出 host 半挂没挂、工作区解析得出、取到几条会话（退出码 2 = 路由没在服务，
+   "装了还没重启"就是这个）。再用 `cordis_inspect_query`（client, `Slots`, `listSubTree`,
+   root `conversation.view`）看三个 tab id 是否在占位列表里；最后请用户点开一页，确认
+   React 那层的渲染（插槽占位与 RPC 都通了也不等于看着对，这一步只有页面能验）。
    浏览器代码是页面启动时装载的，刚装完要刷新页面。
 
 5. **卸载**：`plugin_manager remove_bundle(target: 'dsh-sleuth-panels')`。
