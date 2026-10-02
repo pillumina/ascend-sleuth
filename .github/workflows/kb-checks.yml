@@ -5,12 +5,12 @@ on:
     paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**",
     "scripts/_lexical.py", "scripts/_stdio.py", "scripts/_yaml.py", "scripts/exec_log_path.py",
     "scripts/route_check.py", "scripts/build_index.py", "scripts/build_triage_tree.py", "scripts/index_counts.py",
-    "scripts/metrics_snapshot.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/eval_workload_type_coverage.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/build_panel_bundle.js", "scripts/check_panel_bundle.js", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
+    "scripts/metrics_snapshot.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/eval_workload_type_coverage.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/build_panel_bundle.js", "scripts/check_panel_bundle.js", "scripts/panel_rpc_probe.js", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
   pull_request:
     paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**",
     "scripts/_lexical.py", "scripts/_stdio.py", "scripts/_yaml.py", "scripts/exec_log_path.py",
     "scripts/route_check.py", "scripts/build_index.py", "scripts/build_triage_tree.py", "scripts/index_counts.py",
-    "scripts/metrics_snapshot.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/eval_workload_type_coverage.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/build_panel_bundle.js", "scripts/check_panel_bundle.js", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
+    "scripts/metrics_snapshot.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/eval_workload_type_coverage.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/build_panel_bundle.js", "scripts/check_panel_bundle.js", "scripts/panel_rpc_probe.js", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
 
 jobs:
   index-freshness:
@@ -245,11 +245,14 @@ jobs:
       - run: node scripts/panel_render_check.js
       # 面板包（新版 DSH 的常驻插件包）：产物与源文件一致 + 可加载性冒烟 + DSH 接缝探针。
       # 前者防"改了面板源码没重跑生成器"；中者用 stub ctx 原样加载两个产物，把"装进 profile
-      # 后重启才发现 tab 不在"提前到本地秒级；后者判本机 DSH 走哪条装载路并核对三处接缝，
+      # 后重启才发现 tab 不在"提前到本地秒级；后者判本机 DSH 走哪条装载路并核对四处接缝，
       # CI 里没有 DSH，会如实跳过（退 0），所以下面那条自测用临时假 DSH。
       - run: node scripts/build_panel_bundle.js --check
       - run: node scripts/check_panel_bundle.js
       - run: node scripts/check_panel_bundle.js --selftest-dsh
+      # RPC 探针自测：自带假服务器把五条判定各走一遍（正常 / 信封不合法 / 处理函数报错 /
+      # 面板侧降级 / 路由没在服务），不需要真 DSH；真机那一次要 DSH 在跑，不进 CI。
+      - run: node scripts/panel_rpc_probe.js --selftest
 
   skill-self-contained:
     runs-on: ubuntu-latest
