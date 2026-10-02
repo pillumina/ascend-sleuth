@@ -1,0 +1,132 @@
+id: EV-2026-165
+layer: L2
+target_component: scripts/check_panel_bundle.js
+title: 面板装载路的外部能力面做成一条命令的读数：路线判定 + 三处接缝，DSH 升级导致的失效在装之前报出
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-10-02
+source_signals:
+  - signal: stale_assertion
+    evidence: "skills/preload-panel/SKILL.md 与 dsh-plugins/loader/README.md 都把装载路写成唯一一条，并声明『任何带 Cordis 工具的 DSH 版本都能用』。实测本机 DSH 不是这样：dsh-tool-cordis 的 lib/index.js 只注册 cordis_inspect_list 与 cordis_inspect_query 两个只读工具；dsh-cordis-host-runner 的 README『模型体验』一节写『本包不注册工具或提示』与『内置模型工具无法创建或更新动态定义』。声明与实现不符，而库里没有任何检查会把这件事报出来，只能靠人执行到那一步才发现。"
+    trajectory:
+      - "skills/preload-panel/SKILL.md 改前 frontmatter 与「依赖」节：仅 DSH 可用——依赖 cordis_define / cordis_run"
+      - "dsh-plugins/loader/README.md 改前第 15 行：因此任何带 Cordis 工具的 DSH 版本都能用"
+      - "E:/dsh-desktop/DSH Desktop/resources/app.asar.unpacked/node_modules/@deepseek-ai/dsh-tool-cordis/lib/index.js（全文只注册两个只读检查工具）"
+      - "E:/dsh-desktop/DSH Desktop/resources/app.asar.unpacked/node_modules/@deepseek-ai/dsh-cordis-host-runner/README.zh.md（模型体验一节）"
+  - signal: process_friction
+    evidence: "常驻插件包依赖的三处接缝都是装进 profile 之后逐个试错得到的，代价是三次 install_bundle、前两次以激活失败告终：路由必须注册在 ctx.inject(['webServer']) 内（否则报 cannot get property \"webServer\" without inject）、client 沙箱还给每个包注入 styles.insert、handle 要带 authority: trusted-host。这三处都能在装之前从已安装的 DSH 包里读出来。"
+    trajectory:
+      - "会话：首次 install_bundle 返回 application=failed（cannot get property \"webServer\" without inject）"
+      - "scripts/check_panel_bundle.js 首跑报 styles is not defined（两个面板的 client 半都挂载失败）"
+hypothesis: 把「本机 DSH 支持哪条装载路」与「常驻包依赖的三处接缝在不在」做成一条命令的读数后，DSH 升级或换构建导致的装载路失效会在装之前被报出，并指名是哪处接缝变了；DSH 不存在时如实跳过，不假装通过。
+predicted_effect:
+  metric: 装载前能机械读到的 DSH 接缝数，以及路线判定是否可机械读
+  from: "0 处接缝有判据；路线判定只有 skill 正文一句人读指令，靠人查工具目录或直接试装（本轮为此多花两次 install_bundle）"
+  to: "3 处接缝 + 路线判定各一条断言，由一条命令给出；DSH 缺失时如实跳过"
+  measure:
+    command: "node scripts/check_panel_bundle.js --selftest-dsh"
+    expect_exit: 0
+    expect_stdout: "dsh-probe selftest ok"
+validation:
+  method: scan_review
+  baseline: "现状：check_panel_bundle.js 只加载本仓产物（stub ctx），不看已安装的 DSH；路线判定与三处接缝没有任何机械判据"
+  success_criteria: "①--selftest-dsh 用临时搭的三份假 DSH 逐步断言：现代（无 cordis_define）判常驻包路且三处接缝齐、旧版（有 cordis_define）判热加载路、漂移（去掉 styles.insert）报出该接缝并退非 0；②对真实已安装 DSH 跑一次，输出路线与三处接缝状态；③找不到 DSH 时打印跳过并退 0（CI 形态）；④CI 的 panel-checks 接上这两条命令"
+  rollback: "删掉 check_panel_bundle.js 的 DSH 段、CI 那一步与 skill 里那一句即可；不改任何面板源码、不改产物"
+gate:
+  condition: "换机器或 DSH 版本变化后，面板装载路再次失效（装完、重启之后才发现）"
+risk: medium
+principle_refs: [1, 2, 8, 10]
+actual_cost:
+  tokens: 30000
+  source: estimate
+  note: "口径：改 check_panel_bundle.js（探针 + 三例自测 + 自动找 DSH 的三个候选来源）、修两处自造缺陷、CI 一步、skill 与 dsh-plugins/README 各一句、产卡与判据复跑；估 3 万，未计本任务前面那部分（面板包适配本身）。"
+decisions:
+  - who: agent
+    when: "2026-10-02"
+    type: proposal
+    conclusion: >-
+      把「本机 DSH 走哪条装载路 + 常驻包依赖的三处接缝在不在」收进 check_panel_bundle.js 的一条命令。
+      三处接缝此前靠试装试出来（三次 install_bundle、前两次激活失败），而它们都能在装之前从已安装的
+      DSH 包里读出来：注册接口的声明、路由注册走宿主 webServer、client 沙箱注入 styles.insert。
+  - who: agent
+    when: "2026-10-02"
+    type: action
+    conclusion: >-
+      落点：check_panel_bundle.js 新增 DSH 探针（路线判定 + 三处接缝 + 自动找 DSH 的三个候选来源：
+      显式环境变量、桌面版 patch 里指向 app.asar.unpacked 的绝对路径、profile 的 node_modules）
+      与 --selftest-dsh 三例自测（现代 / 旧版 / 漂移）；CI 的 panel-checks 接上自测；
+      skill 与 dsh-plugins/README 各补一句。
+  - who: agent
+    when: "2026-10-02"
+    type: eval
+    conclusion: >-
+      判据跑通：scripts/ev_measure.py EV-2026-165 --run → PASS（exit 0 且 stdout 含 dsh-probe selftest ok）；
+      真实 DSH 上退 0、判常驻插件包路、三处接缝齐；不指定 root 时自动找到 Desktop 安装处。
+      首跑抓出两处自造缺陷并修掉：接缝 2 原先拿运行时错误文案当字面量（该文案由框架生成，不在被检文件里），
+      改为断言路由注册走 webServer.register；自动找 DSH 的正则先解码 %20 再匹配，被路径里的空格破坏。
+  - who: agent
+    when: "2026-10-02"
+    type: decision
+    conclusion: >-
+      采纳（validated）。三处接缝与路线判定各一条断言，真实 DSH 与三例假 DSH 都按预期；
+      找不到 DSH 时如实跳过并退 0（CI 形态），不假装通过。
+  - who: agent
+    when: "2026-10-02"
+    type: action
+    conclusion: >-
+      首次真机使用（用户重启后）：探针接缝 2 提示路由走宿主 webServer，据此定位到 connection.rpc.handle
+      把 owner 绑在服务自身 ctx 上、注册即抛，面板包的 RPC 改走 webServer 的 prefix 路由（与 in-app 的
+      dsh-ppt 同形）。真实 DSH 上还暴露第二个方言差异：静态 defineTool 只认 DSL，而面板写的是
+      JSON-Schema 包装，该异常又落在面板自身 try/catch 之外，整个 host 半没挂上（客户端的三个 tab 反而
+      注册成功了）。两处修好后补第 4 条接缝（webServer prefix 路由的声明）与更硬的离线判据：冒烟测试
+      改用已安装 DSH 的真品 defineTool 校验工具定义，并用假 req/res 走一遍
+      {type:'server-response', rpcId, result} 信封（未知端点 / 已知端点 / 非 POST）。
+  - who: agent
+    when: "2026-10-02"
+    type: action
+    conclusion: >-
+      补一个不依赖 GUI 的验证入口：scripts/panel_rpc_probe.js 按页面的线协议打一条面板 RPC
+      （自动从 Desktop 的 harness.log 取地址与 token、换会话 cookie、校验信封），退出码
+      0/2/1 分别表示通、路由没在服务、其他失败；自带假服务器自测五条判定并接进 CI 的
+      panel-checks。文档两处同步：dsh-plugins/README 的判据一节、skills/preload-panel 的验证步。
+      教训：探针本身第一版在 Windows 上撞 libuv 断言（fetch 句柄没收干就 process.exit），已改设 exitCode。
+  - who: agent（首次真机端到端验证）
+    when: "2026-10-02"
+    type: action
+    conclusion: >-
+      重启后第一次真机端到端：客户端三个 tab、路由注册、fs 类端点（traces-list 读到 3 个真实诊断会话、
+      kb-health 168 条、process-health 3 单）全部通过；但**三个要起 Python 的端点一律退化成
+      "未找到可用的 Python 3 解释器"**。定位：面板源码用的是 `shell.run(spec) → {exitCode, stdout.text}`，
+      而这个 DSH 的 shell 服务只有 `execute(spec) → ShellExecution`（句柄）+ `await result() → ShellRunResult`；
+      面板那段又把每个候选的异常 catch 掉，真因被吞成误导信息。修法同前：在适配层补桥（真服务已有 run
+      则透传、没有则映射到 execute + result()），并补第 5 条接缝（shell 的 resolve + execute）与冒烟断言
+      （只给 execute 的假 shell 上跑 ascend-metrics-verdict，必须不报"找不到 Python"且脚本真被调用）。
+      这条说明接缝清单要覆盖**每一处真正用到的方法形状**，不能只覆盖包级契约。
+  - who: agent
+    when: "2026-10-02"
+    type: action
+    conclusion: >-
+      补掉预核量出的 `host.call` 零覆盖：冒烟测试的 mock React 改为 effect 同步跑、createElement
+      递归调用函数组件（面板注册的是 `props => createElement(TraceView, props)` 薄包装，不往下渲染
+      就走不到内层组件的挂载 effect），于是三个 tab 的首屏各渲染一次，断言它们分别发出
+      ascend-traces-list / ascend-metrics-verdict / ev-board-load 且渲染期无异常。断言数 39 → 46；
+      文档里"host.call 不在覆盖面"的说法与脚本 header 随之改掉。随后又把两个自演进端点补进 host 侧
+      断言（假 shell 按命令给对应脚本输出，验 ev_board_data.py / evolution_health.py 的取数与解析），
+      断言数到 50——四个首屏端点（fs 一类 + 三个 Python）与三个 tab 的 client 侧至此全覆盖。
+  - who: agent（独立预核 subagent + 本轮回修）
+    when: "2026-10-02"
+    type: action
+    conclusion: >-
+      独立预核判 MERGE_READY: yes（无阻断级），同时点出四类真问题，全部回修：
+      ①**探针有两条断言盯的是适配层已弃用的 API**（connection.rpc.handle / dsh-client-connection 的
+      webServer.register）——DSH 真删掉该接口时会误红并把读者引向无需改动的文件；改成只盯自己用的
+      四个契约（webServer prefix 路由声明、connection.requestRejection、client 沙箱 styles.insert、
+      页面产物格式 __ModuleLoader__.load），并补一条"去掉 webServer 路由声明必漂移"的自测用例。
+      ②**三处/四处接缝在文档与代码间打架**，统一为"四处适配 / 四个外部契约"，并修掉 header 里
+      残留的 authority 与旧接缝描述。③`host.call` 在冒烟里实测零覆盖（组件不渲染），文档不再声称
+      它被机械检查，改写明由 panel_rpc_probe 覆盖。④退出码图例补上 --dsh-root 指错目录退 1、
+      探针 exit 2 的两个状态、请求体完整形态；另补三处名字对齐（package.json / cordis.patch.yml /
+      产物 export，此前无门读这两份清单）与 CI paths 的 scripts/fixtures/**。

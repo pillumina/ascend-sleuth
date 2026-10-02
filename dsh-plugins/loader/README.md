@@ -16,6 +16,14 @@
 真实面板源码仍进**不可变 Package**（`cordis_inspect_self` 可审计），审批流与
 `cordis_run` 完全一致。
 
+## 适用版本
+
+本加载器依赖模型侧的 `cordis_define` / `cordis_run`——它自己就是用这两件工具装出来的。
+新版 DSH 把这两件工具删掉了（动态定义只由程序侧调用方与浏览器面板驱动），那时本目录装不上，
+也不要反复试 `cordis_define`：改走常驻插件包 `dsh-plugins/dsh-sleuth-panels/`
+（`plugin_manager install_bundle`）。判据与两条路的完整流程见
+`skills/preload-panel/SKILL.md`。
+
 ## 用法（每个 DSH **进程**一次）
 
 ```

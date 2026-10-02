@@ -71,7 +71,13 @@
 
 ## 加载方式
 
-本插件是动态 Cordis 插件，定义只存在于当前 DSH 进程，重启后需重新加载。
+本插件有两条装载路，按本机 DSH 有没有 `cordis_define` / `cordis_run` 选。面板源码一份，
+两条路读同一份。
+
+| 路 | 怎么装 | 生效范围 |
+|---|---|---|
+| 热加载 | 用 `dsh-plugins/loader/` 装出 `panel_from_file`，再发两个路径 | 本会话，随进程消失 |
+| 常驻插件包 | `plugin_manager install_bundle(target: <仓库绝对路径>/dsh-plugins/dsh-sleuth-panels)` | 本 profile 每个会话，重启不丢 |
 
 ### 快速开始
 
@@ -89,14 +95,22 @@
 
 `panel_from_file` 读盘 → 定义 → 激活，**只发两个路径**。**不要自己把文件内容重新输出一遍**：两个文件合计 ~70KB，转写要几千 token、几分钟；给路径只要几十 token。`/skill:preload-panel` 是同一流程的 skill 封装（仅 DSH）。
 
-前置条件：agent 具备 `cordis_define` / `cordis_run` 工具；工作区为 ascend-sleuth 仓库（面板读 `traces/`、`knowledge/`、`references/`、`metrics/`）。
+前置条件：工作区为 ascend-sleuth 仓库（面板读 `traces/`、`knowledge/`、`references/`、`metrics/`）。热加载那条另需 `cordis_define` / `cordis_run` 工具；常驻插件包那条另需 `plugin_manager` 工具，替换已装包时还要能重启 DSH Desktop。
 
 ### 手动加载
 
 1. 加载 loader（一个会话一次，host-only 免审批）：`cordis_define`（kind: new，idPrefix `ldr`，`code.host` ← `dsh-plugins/loader/panel-from-file.js` 全文）→ `cordis_run`
 2. `panel_from_file`（idPrefix `sleu`，`host` / `client` 指本目录两个文件）→ 返回 awaiting-approval 时在 UI 允许 → 出现「诊断」「指标」两个 tab
 
-**形态约束**：文件是 `cordis_define` 需要的函数体（`return { apply(ctx) {...} }`），原样读入/粘贴。不要改成 `export default` / `import`——动态插件代码不经过打包器，ESM 语法无法加载（此前因此失败过一次）。
+### 常驻插件包（DSH 没有这两件工具）
+
+```
+plugin_manager install_bundle(target: <仓库绝对路径>/dsh-plugins/dsh-sleuth-panels)
+```
+
+`lib/index.js` 与 `lib/client.js` 由 `node scripts/build_panel_bundle.js` 从本目录两个源文件生成，不要手改；改源码后重跑它，`--check` 核产物与源文件一致，`node scripts/check_panel_bundle.js` 做可加载性冒烟。安装结果里 `restart-required` 表示运行时仍持有先前那份模块，让用户重启 DSH Desktop 后 tab 才出现。
+
+**形态约束**：文件是 `cordis_define` 需要的函数体（`return { apply(ctx) {...} }`），原样读入/粘贴。不要改成 `export default` / `import`——动态插件代码不经过打包器，ESM 语法无法加载（此前因此失败过一次）。生成器嵌入的也是这份原文。
 
 **改代码后**：读入的是**定义时的快照**——编辑 `panel-*.js` 后要 `panel_from_file`（`pluginId` + `mode: 'update'`）追加新 Package 再切换。
 
