@@ -61,9 +61,10 @@ function makeHostCtx(record) {
     },
     connection: {
       rpc: {
-        handle(channel, handler) {
+        handle(channel, handler, options) {
           record.channel = channel
           record.handler = handler
+          record.options = options
           return async () => {}
         },
       },
@@ -96,6 +97,8 @@ async function checkHost() {
   check(record.channel === CHANNEL, '注册 RPC 路由 channel = ' + CHANNEL, String(record.channel))
   check(typeof record.handler === 'function', '路由 handler 是函数')
   check(record.injects.includes('webServer'), "路由注册在 ctx.inject(['webServer']) 内")
+  check(record.options !== undefined && record.options.authority === 'trusted-host',
+    '路由注册带 authority: trusted-host（与 dsh-ppt 一致）', JSON.stringify(record.options))
   check(record.tools.length === 1, '注册 1 个附带工具（ascend_trace_status）', JSON.stringify(record.tools))
   check(typeof dispose === 'function', 'apply() 返回卸载函数')
 

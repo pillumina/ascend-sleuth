@@ -1873,6 +1873,8 @@ export function apply(ctx) {
   // 必须在 ctx.inject(['webServer']) 里注册：dsh-client-connection 的 rpc.handle 会读调用方
   // fiber 的 webServer，直接调报 cannot get property "webServer" without inject（实测）。
   ctx.inject(['webServer'], (webCtx) => {
+    // authority: trusted-host 与 dsh-ppt 的注册处一致：这条路由由宿主自己应答，
+    // 不按页面 peer 的权限跑（in-app 里唯一同类先例就是这么传的）。
     const disposeRoute = webCtx.connection.rpc.handle(CHANNEL, async (endpoint, payload, signal) => {
       const fn = handlers.get(String(endpoint))
       if (fn === undefined) {
@@ -1883,7 +1885,7 @@ export function apply(ctx) {
       } catch (e) {
         return { ok: false, error: { code: 'internal', message: String((e && e.message) || e), details: {} } }
       }
-    })
+    }, { authority: 'trusted-host' })
     console.error('[dsh-sleuth-panels] RPC 路由已注册: ' + CHANNEL)
     return () => { void disposeRoute() }
   })
