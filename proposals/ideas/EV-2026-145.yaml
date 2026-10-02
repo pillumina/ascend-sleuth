@@ -149,3 +149,7 @@ decisions:
       定位是导航辅助）。判据一句话：**写我们工具怎么用 → skill 支撑文件；写外面的系统是什么样 → 先验层。**
       闸门 `source-location` 的两条分支随之只挂 `cann-source-location`，脚本用法靠 SKILL 正文指向
       `references/src-fetch.md`（skill 支撑文件按需加载，不占常驻）。
+  - who: agent
+    when: 2026-10-02
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #281 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

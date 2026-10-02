@@ -141,3 +141,7 @@ decisions:
       采纳（validated）。判据：超长 0 条、104 条有 `details`、抽样保真、索引 75273 → 58920 字节、
       CI 与单测、演练全绿。**显式标注**：这是对 104 条 active 词条的批量文本修订，
       按本仓纪律本该双签；本卡以"只搬不删"的形态走 review 并声明该边界。
+  - who: agent
+    when: 2026-10-02
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #300 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

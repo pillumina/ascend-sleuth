@@ -95,3 +95,7 @@ decisions:
       不可行，而是 16442 已回到硬线内）；② ns 兜底视图比类视图更贵（vllm-ascend 124 条 21821 tok，
       已超硬线），但它是「category 判不出」时的兜底路径，治它要另立项；③ `compat` 那条字符串型
       字段的**类型**没改（属高风险面），只让渲染健壮。
+  - who: agent
+    when: 2026-10-02
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #304 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
