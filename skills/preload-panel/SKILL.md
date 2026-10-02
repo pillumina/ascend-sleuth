@@ -1,79 +1,62 @@
 ---
 name: preload-panel
 description: >
-  在 DSH 会话中热加载 ascend-sleuth 面板插件：先查 panel_from_file 工具在不在（它按进程
-  全局注册，通常已在；DSH 重启后第一次才需装 dsh-plugins/loader/panel-from-file.js——
-  host-only 免审批的小加载器），再用它按路径加载
-  dsh-plugins/<panel>/ 下的 panel-host.js 与
-  panel-client.js——**只发两个路径，不转写 ~70KB 源码**，最后 cordis_run 激活，
-  对话视图出现对应 tab。面板选择：
-  - ascend-panel →「诊断」「指标」两个 tab（诊断会话/轨迹/证据 + **指标闭环判决**：首屏列要处理的判据、容量逐格、不可解读标记）
-  - ev-panel →「自演进」tab（演进体检判决 / 触及面 / 执行现场 / EV 卡决策链）
-  仅 DSH 可用——依赖 DSH 的 cordis_define / cordis_run 工具
-  与 conversation.view 插槽；其他 agent（Claude Code / Codex / pi）无此机制。
+  在 DSH 会话中加载 ascend-sleuth 面板。先查工具目录里有没有 cordis_define / cordis_run：
+  有就用 dsh-plugins/loader/panel-from-file.js 热加载面板（只发两个路径，不转写源码）；
+  没有（新版 DSH 删了这两件模型工具）就把 dsh-plugins/dsh-sleuth-panels/ 作为常驻插件包
+  用 plugin_manager install_bundle 装进 profile，装一次每个会话都在。面板：ascend-panel
+  →「诊断」「指标」两个 tab；ev-panel →「自演进」tab。仅 DSH 可用——依赖
+  conversation.view 插槽；其他 agent（Claude Code / Codex / pi）无此机制。
 ---
 
 # Preload Panel
 
-DSH 会话中加载可视化面板（诊断 / 指标 / 自演进）。每个面板是独立动态插件，各占
-conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
+DSH 会话中加载可视化面板（诊断 / 指标 / 自演进）。每个面板占 conversation.view 一个
+tab（list 插槽，按 order 排列，可共存）。
+
+面板源码只有一份（`dsh-plugins/<面板>/panel-host.js` 与 `panel-client.js`，动态插件
+方言的函数体）。装载有两条路，看本机 DSH 有没有模型侧的动态定义工具：
+
+| 路 | 适用 | 怎么装 | 生效范围 |
+|---|---|---|---|
+| A 热加载 | DSH 有 `cordis_define` / `cordis_run` | 装 loader，再 `panel_from_file` 发两个路径 | 本会话 |
+| B 常驻插件包 | DSH 没有这两件工具 | `plugin_manager install_bundle` 装 `dsh-plugins/dsh-sleuth-panels/` | 本 profile 的每个会话 |
+
+两条路读的是同一份面板源码。B 路的两个产物是生成物，改面板源码后要重跑生成器。
 
 ## 触发
 
-用户需要面板但当前会话没有对应 tab 时，用本 skill 加载。
+用户需要面板但当前视图没有对应 tab 时，用本 skill 加载。
 
 ## 面板清单
 
 | 面板 | 目录 | tab id / label | 视图 |
 |---|---|---|---|
 | 诊断面板 | `dsh-plugins/ascend-panel/` | `ascend-diagnose`(20) / `ascend-metrics`(21) | 会话列表/轨迹/证据 + 指标闭环判决（判据→结论/证据/下一步）/容量逐格/趋势 |
-| 自演进看板 | `dsh-plugins/ev-panel/` | `ascend-evolve`(22) | 首屏是**体检判决**（要处理的判据 + 下一步动作）与**触及面**（这批改动落在机器的哪一层）；卡收在默认收起的抽屉里作为 diff 日志（决策链全文按需拉取） |
+| 自演进看板 | `dsh-plugins/ev-panel/` | `ascend-evolve`(22) | 首屏是体检判决（要处理的判据 + 下一步动作）与触及面；卡收在默认收起的抽屉里作为 diff 日志 |
 
-## 依赖预检（激活前跑，避免面板加载后白屏/报错）
+## 第 0 步：判本机 DSH 走哪条路
 
-面板 host 已做优雅退化（自演进 JSON 不截断、无 traces/ 显示空态、缺 pyyaml 给提示），
-但 loader 在激活前跑一次预检，能把"依赖缺失"改成**主动告知**而不是面板里一条报错：
+查工具目录里有没有 `cordis_define` 与 `cordis_run`（不必查别的）：
 
-- **通用**：确认会话工作区是 ascend-sleuth 仓库（Host 从 `session.header.cwd` 解析数据目录）。
-- **ev-panel（自演进）**：确认 Python 3 + PyYAML 可用——面板 host 会自动探测解释器
-  （`python3` → `python` → `py -3`，取第一个能打印 Python 3.x 的；Windows 上 `python3` 常不存在），
-  预检照探测结果来：
-  ```bash
-  python3 -c "import yaml; print('pyyaml ok')" # 失败 → 试 python / py -3；再失败 → pip install pyyaml
-  ```
-  若失败，先告知用户"自演进看板需要 PyYAML，请 `pip install pyyaml`"，再决定是否仍加载
-  （host 也会给同样提示，但 loader 提前讲更友好）。
-- **ascend-panel（诊断）**：`traces/` 可能不存在（gitignored、按需生成）——host 已把
-  "目录不存在"当空态处理，无需预建；但如果用户预期有历史诊断却显示为空，提示
-  "运行 /skill:diagnose 后生成 traces/"。指标 tab 需要 Python 3 + **PyYAML**：
-  「闭环判决」跑 `scripts/metrics_health.py --json`（判据读 `metrics/gates.yaml`），
-  「实时计算」跑 `scripts/trace_metrics.py`；缺依赖时面板会显示「体检不可用」并给出
-  安装/路径提示，**不会**假装闭环正常——所以预检失败仍可加载，只是首屏没有判决条。
+- **有** → 走 A 路（热加载）。
+- **没有** → 走 B 路（常驻插件包）。新版 DSH 把模型侧定义与运行的入口删掉了，动态
+  定义只由程序侧调用方与浏览器面板驱动；`dsh-cordis-host-runner` 的说明里写着本包
+  不注册工具、内置模型工具无法创建或更新动态定义。这时 A 路的 loader 装不上——
+  不要反复试 `cordis_define`。
 
-## 流程
+## A 路：热加载（本机 DSH 有这两件工具）
 
-0. **先查有没有**：跑一次 `cordis_inspect_self`（不带参数）——它一次给出两件事：
-   本会话已加载的插件清单，以及（对照工具目录）`panel_from_file` 在不在。该工具是
-   **进程全局**的（一次注册后同一 DSH 进程的所有会话都能直接调），所以"工具不在"只在
-   DSH 重启后的第一个会话出现；本会话已有面板插件时也可顺手确认 tab id 没撞。
+1. **确保 `panel_from_file` 工具可用**：先查它在不在（它按进程全局注册，通常已在；
+   DSH 重启后第一次才缺）。缺则装 loader：
+   1. `read dsh-plugins/loader/panel-from-file.js`（全文）
+   2. `cordis_define`：kind: new，idPrefix `ldr`，`code.host` ← 刚读到的全文
+   3. `cordis_run`（mode: run）——host-only 包，免审批
 
-1. **确定要加载的面板**：用户要诊断可视化 → ascend-panel；要自演进状态（EV 卡/
-   容量/归因）→ ev-panel；两者可同时加载（不同 tab id，互不冲突）。
+   loader 只用 `harness.registerTool` 与 `ctx.get('dynamicCordisRunner')` 两个公开机制。
+   若本机 `cordis_define` 的参数表里有 `codeFile`，可省掉第 1 步，直接用它指向该文件。
 
-2. **确保 `panel_from_file` 工具可用**：
-   - 已有（第 0 步查到 `panel_from_file`）→ 跳到第 3 步。
-   - 没有（DSH 刚重启、本进程还没注册过）→ 装 loader：
-     1. `read dsh-plugins/loader/panel-from-file.js`（全文）
-     2. `cordis_define`：kind: new，idPrefix `ldr`，`code.host` ← 刚读到的全文
-     3. `cordis_run`（mode: run）——**host-only 包，免审批**
-
-     loader 只用 `harness.registerTool` + `ctx.get('dynamicCordisRunner')` 两个公开机制，
-     不依赖任何 DSH 补丁，所以在带 Cordis 工具的 DSH 版本上都能装。
-     **若本机 `cordis_define` 的参数表里有 `codeFile`**，可以省掉第 1 步、直接
-     `codeFile.host` 指该文件路径（本机检出有这个参数，官方发布版没有——
-     所以默认走 `read` + `code.host`，两条路装出来的 loader 完全相同）。
-
-3. **加载面板**：调 `panel_from_file`（不要用 `cordis_define` 转写源码）：
+2. **加载面板**：调 `panel_from_file`（不要用 `cordis_define` 转写源码）：
 
    ```
    panel_from_file(
@@ -83,72 +66,108 @@ conversation.view 一个 tab（list 插槽，按 order 排列，可共存）。
      name, purpose)
    ```
 
-   它读盘 → `dynamicCordisRunner.define()` → `run()`，源码**原样进不可变 Package**
-   （可被 `cordis_inspect_self` 审计），审批流与 `cordis_run` 一致。返回
-   awaiting-approval 时告知用户在 UI 允许（Client 半需授权）；授权后 tab 出现。
-   面板两个文件合计 ~70KB——**别把全文重新输出一遍**，发路径即可。
+   它读盘 → `dynamicCordisRunner.define()` → `run()`，源码原样进不可变 Package。
+   返回 awaiting-approval 时告知用户在 UI 允许（Client 半需授权）；授权后 tab 出现。
+   面板两个文件合计约 70KB，发路径即可，别把全文重新输出一遍。
 
-   **加载期间不要做的事**：`cordis_inspect_query(Tool.listTools)` 与
-   `Slots.listSubTree` 都不是加载面板的必需品，别顺手自查（前者一次回 53KB 的工具全表，
-   后者只在核 tab 时看一次）。
+3. **验证**：确认插件 running 且无 waitingFor；tab 出现在对话视图（按上表 id 核对）。
+   自演进看板首次打开会调 `scripts/ev_board_data.py` 汇总数据，确认数据区渲染。
 
-4. **验证**：确认插件 running 且无 waitingFor（`cordis_inspect_self`）；tab 出现在
-   对话视图（conversation.view 插槽，按上表 id 核对）。自演进看板首次打开会调
-   `scripts/ev_board_data.py` 汇总数据——确认数据区渲染（EV 卡/容量有真实数据，
-   归因/S2 反馈可能显示"数据积累中"，如实）。若见"数据加载失败"，按顶部
-   「依赖预检」逐条排查（pyyaml / traces / 工作区）。
+改完面板代码再调一次同一条 `panel_from_file` 即重载（同 `idPrefix` 复用本会话的插件，
+返回 `reused: true`，不会堆出重复 tab）。
 
-## 回退（DSH 版本差异）
+## B 路：常驻插件包（本机 DSH 没有这两件工具）
 
-- **loader 注册不了工具**（`harness.registerTool` 缺失）→ 内联面板本身：读两个文件
-  全文 → `code.host` / `code.client` 原样粘贴。文件是函数体形态
+1. **确认包与产物存在**：`dsh-plugins/dsh-sleuth-panels/`，含 `package.json`、
+   `cordis.patch.yml`、`lib/index.js`、`lib/client.js`。两个 `lib/` 文件是生成物：
+   面板源码改了就跑 `node scripts/build_panel_bundle.js`，用
+   `node scripts/build_panel_bundle.js --check` 核对产物与源文件一致，
+   `node scripts/check_panel_bundle.js` 做一次可加载性冒烟（路由、端点、工具、
+   三个 tab、样式标签、卸载）。**不要手改 `lib/`**。
+
+2. **装**：`plugin_manager install_bundle(target: <仓库绝对路径>/dsh-plugins/dsh-sleuth-panels)`。
+   包会复制进 profile 的 generation，所以仓库被移动或 worktree 被清掉都不影响已装的那份；
+   会影响该 profile 的每个会话，这是它的用途。
+
+3. **读安装结果**（`application` 与 `warnings` 决定是否已生效，不要拿日志或进程列表代替）：
+   - `applied` → 已生效。
+   - `restart-required` → 替换已装包时会出现（运行时把先前的模块路径钉住了）。让用户重启
+     DSH Desktop，重启后再验证。
+   - `failed` → 读诊断；`webServer` 一类的报错说明适配层没把路由注册在
+     `ctx.inject(['webServer'])` 里。
+
+4. **验证**：`cordis_inspect_query`（client, `Slots`, `listSubTree`, root
+   `conversation.view`）看三个 tab id 是否出现在占位列表里；再请用户点开一页，确认读到
+   真数据（这一条只有页面能验，插槽占位不等于数据能取到）。
+   浏览器代码是页面启动时装载的，刚装完要刷新页面。
+
+5. **卸载**：`plugin_manager remove_bundle(target: 'dsh-sleuth-panels')`。
+
+## 依赖预检（激活前跑，避免面板加载后白屏/报错）
+
+面板 host 已做优雅退化（自演进 JSON 不截断、无 traces/ 显示空态、缺 pyyaml 给提示），
+但装载前跑一次预检，能把"依赖缺失"改成主动告知，而不是面板里一条报错：
+
+- **通用**：确认会话工作区是 ascend-sleuth 仓库（Host 从 `session.header.cwd` 解析数据目录）。
+- **ev-panel（自演进）**：确认 Python 3 + PyYAML 可用。面板 host 自动探测解释器
+  （`python3` → `python` → `py -3`，取第一个能打印 Python 3.x 的；Windows 上 `python3`
+  常是应用商店的空壳，不打印任何东西）：
+  ```bash
+  python -c "import yaml; print('pyyaml ok')"   # 失败 → 试 py -3；再失败 → pip install pyyaml
+  ```
+  失败就告诉用户"自演进看板需要 PyYAML，请 `pip install pyyaml`"，再决定是否仍加载。
+- **ascend-panel（诊断）**：`traces/` 可能不存在（gitignored、按需生成），host 把
+  "目录不存在"当空态处理；用户预期有历史诊断却显示为空时，提示运行 `/skill:diagnose`
+  生成 `traces/`。指标 tab 需要 Python 3 + PyYAML：「闭环判决」跑
+  `scripts/metrics_health.py --json`（判据读 `metrics/gates.yaml`），「实时计算」跑
+  `scripts/trace_metrics.py`；缺依赖时面板显示「体检不可用」并给出可执行提示，
+  所以预检失败仍可加载，只是首屏没有判决条。
+
+## 回退（A 路的版本差异）
+
+- **loader 注册不了工具**（`harness.registerTool` 缺失）→ 内联面板本身：读两个文件全文，
+  `code.host` / `code.client` 原样粘贴。文件是函数体形态
   （`return { apply(ctx) {...} }`），别改形态——动态插件不经过打包器，
   `export default` / `import` 等 ESM 语法无法加载。
-- **改完面板代码**：`panel_from_file` 传 `pluginId` + `mode: 'update'` 追加新 Package
-  再切换（读入的是定义时快照，改文件不会自动生效）。
+- **A 路整条不可用**（没有 `cordis_define`）→ 走 B 路。
 
 ## 交互原则
 
-**跨 session**：工具 `panel_from_file` 是**进程全局**的——新 session 不必再加载
-loader，直接就有它可用；重复加载 loader 会撞名但不报错（工具仍可用），只有要更新 loader
-自身代码时才需重启 DSH。面板插件则是 **per-session** 的：新 session 认领不了旧 session
-的插件（DSH 的 `define(kind:'existing')` 要求同 session 拥有），所以会新建一个同 tab id 的
-插件——新 tab 覆盖旧 tab 的显示，旧插件仍在跑（RPC 还在、仍读它自己 session 的工作目录）。
-彻底清理需重启 DSH，或在各 session 内对自己的插件 `cordis_stop`。
-
-**重复加载 = 重载（幂等）**：面板代码改了就再调一次同一条 `panel_from_file`——
-同 `idPrefix` 会复用本 session 的已有插件并切到新 Package（返回 `reused: true`），
-不会堆出重复 tab；无需手工传 `pluginId`/`mode`。跨 session（DSH 重启）会新建同 tab id
-的插件覆盖显示。
-
-面板是**只读可视化 + 指令生成器**——展示状态、生成续接/沉淀指令供用户触发，
-面板自身不做决策与写入（唯一例外：诊断面板的沉淀状态标记由用户在面板确认后
-更新）。自演进看板纯只读：展示 EV 卡状态与演进信号，产卡/验证走 agent + 攒批。
+- **A 路跨 session**：工具 `panel_from_file` 是进程全局的，新 session 不必再装 loader
+  （重复装载会撞名但不报错，工具照常可用）；面板插件是 per-session 的，新 session 认领不了
+  旧 session 的插件，会新建一个同 tab id 的插件覆盖显示，旧插件仍在跑。要清理就重启
+  DSH，或在各 session 内对自己的插件 `cordis_stop`。
+- **B 路跨 session**：插件装在 profile 层，每个会话共用一份，重启不丢；换版本用同一条
+  `install_bundle` 重装，重装后按安装结果决定是否要让用户重启。
+- 面板是只读可视化 + 指令生成器：展示状态、生成续接/沉淀指令供用户触发，面板自身不做
+  决策与写入（唯一例外：诊断面板的沉淀状态标记由用户在面板确认后更新）。自演进看板纯
+  只读：展示卡状态与演进信号，产卡/验证走 agent 与攒批。
 
 ## 依赖
 
-- DSH 会话（`cordis_define` / `cordis_run` / `cordis_inspect_self` 工具；loader 额外用
-  `harness.registerTool` + `ctx.get('dynamicCordisRunner')`——DSH 内置机制，无需补丁）
-- 工作区为 ascend-sleuth 仓库（Host 从 session.header.cwd 解析数据目录）
-- Host 服务：`fs` / `sessions` / `shell`
-- **ev-panel（自演进）**：Python 3 + **PyYAML**——两个脚本：`scripts/ev_board_data.py`（卡库/触及面/现场聚合）
-  与 `scripts/evolution_health.py --json`（体检判决，判据在 `proposals/gates.yaml`）。判决是一次独立调用：
-  它失败时面板**不渲染结论条**（不拿卡数冒充"没有越界"），其余区块照常。
-  host 自动探测解释器（`python3` → `python` → `py -3`）；缺 pyyaml 时 host 会提示安装；
-  loader 侧建议激活前预检（见「依赖预检」）。
-- **ascend-panel（指标）**：`shell` + Python 3 + PyYAML——
-  「闭环判决」跑 `scripts/metrics_health.py --json`、「实时计算」跑 `scripts/trace_metrics.py`；
-  解释器同样自动探测（`python3` → `python` → `py -3`）。缺依赖时判决条退化为
-  「体检不可用」+ 可执行提示（不是空面板、也不谎报正常）。
-- 诊断「打开证据 / 打开报告」按方言阶梯探测：Windows 先试 `Start-Process`，再 `open`、`xdg-open`、
-  `explorer.exe`，按退出码判定并回报用了哪一路（Windows 走 `ctx.shell` 实际接的是 PowerShell，
-  不是 bash——bash 链在那边整条命令解析失败，表现为"点了没反应"）。四种都不行时界面给原因。
+- DSH 会话。A 路另需 `cordis_define` / `cordis_run` / `cordis_inspect_self` 工具；
+  B 路另需 `plugin_manager` 工具与在需要时重启 DSH Desktop 的能力。
+- 工作区为 ascend-sleuth 仓库（Host 从 `session.header.cwd` 解析数据目录）。
+- Host 服务：`fs` / `sessions` / `shell` / `connection`。
+- **ev-panel（自演进）**：Python 3 + PyYAML，两个脚本 `scripts/ev_board_data.py`
+  （卡库/触及面/现场聚合）与 `scripts/evolution_health.py --json`（体检判决，判据在
+  `proposals/gates.yaml`）。判决是一次独立调用：它失败时面板不渲染结论条（不拿卡数冒充
+  "没有越界"），其余区块照常。
+- **ascend-panel（指标）**：`shell` + Python 3 + PyYAML：「闭环判决」跑
+  `scripts/metrics_health.py --json`、「实时计算」跑 `scripts/trace_metrics.py`；
+  缺依赖时判决条退化为「体检不可用」加可执行提示。
+- 诊断「打开证据 / 打开报告」按方言阶梯探测：Windows 先试 `Start-Process`，再
+  `open`、`xdg-open`、`explorer.exe`，按退出码判定并回报用了哪一路（Windows 上
+  `ctx.shell` 接的是 PowerShell，不是 bash）。四种都不行时界面给原因。
 - 「看报告」不需要外部程序：报告正文由 host 只读读入后在面板内渲染（章节跳转 + 复制全文），
   「打开文件」才依赖上面的阶梯。
 
 ## 说明
 
-- 动态插件定义只存在于当前 DSH 进程，重启后需重新加载（本 skill 即为此设计）。
-- 仓库内 `dsh-plugins/<面板>/` 是代码的权威版本（含 README 使用说明）；
-  `dsh-plugins/loader/` 是加载入口的一次性加载器；本 skill 负责串起两者——
-  改代码走仓库，加载走这里。
+- 仓库内 `dsh-plugins/<面板>/` 是代码的权威版本（含各面板 README）；
+  `dsh-plugins/loader/` 是 A 路的加载入口；`dsh-plugins/dsh-sleuth-panels/` 是 B 路的
+  插件包（`lib/` 为生成物）。跨面板的颜色、字号、复用窗口与文案约定见
+  `dsh-plugins/README.md`。
+- A 路的动态定义只存在于当前 DSH 进程，重启后需重新加载；B 路装在 profile 层，
+  重启后仍在。
+- 改面板代码走仓库，装载走本 skill；两份产物由生成器保持一致。

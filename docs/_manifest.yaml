@@ -141,6 +141,6 @@ skills:
     note: 内部协议，由用户显式触发做 skill 质量审视
   - name: preload-panel
     scope: 维护与演进
-    note: 仅 DSH——在会话中热加载可视化面板
+    note: 仅 DSH——本机 DSH 有 cordis_define / cordis_run 时热加载面板，没有时装常驻插件包
 
 scope_order: ["你要用的", "沉淀知识", "维护与演进"]
