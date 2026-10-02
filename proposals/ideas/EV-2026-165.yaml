@@ -84,3 +84,12 @@ decisions:
       注册成功了）。两处修好后补第 4 条接缝（webServer prefix 路由的声明）与更硬的离线判据：冒烟测试
       改用已安装 DSH 的真品 defineTool 校验工具定义，并用假 req/res 走一遍
       {type:'server-response', rpcId, result} 信封（未知端点 / 已知端点 / 非 POST）。
+  - who: agent
+    when: "2026-10-02"
+    type: action
+    conclusion: >-
+      补一个不依赖 GUI 的验证入口：scripts/panel_rpc_probe.js 按页面的线协议打一条面板 RPC
+      （自动从 Desktop 的 harness.log 取地址与 token、换会话 cookie、校验信封），退出码
+      0/2/1 分别表示通、路由没在服务、其他失败；自带假服务器自测五条判定并接进 CI 的
+      panel-checks。文档两处同步：dsh-plugins/README 的判据一节、skills/preload-panel 的验证步。
+      教训：探针本身第一版在 Windows 上撞 libuv 断言（fetch 句柄没收干就 process.exit），已改设 exitCode。
