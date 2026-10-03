@@ -7,12 +7,15 @@ pipefail` 直接报错；即使跑起来，Git Bash 的 `ln -s` 默认退化成*
 skills/ 的目录副本而非链接，之后 git pull 更新 SKILL.md 不再同步。Python 三平台统一，
 Windows 分支先试真 symlink（需 Developer Mode），失败退到 `mklink /J`（junction，免管理员）。
 
-检测策略（双检测，覆盖主流场景）：
+检测策略（三检测，覆盖主流场景）：
   - 配置目录存在（~/.dsh ~/.claude ~/.cursor ~/.trae ~/.codebuddy ~/.codex）——
     装了 agent 并用过即有目录，是最可靠的信号；
   - 或命令可执行（dsh/claude/cursor/trae/codebuddy/codex）——CLI 版即使目录不在
-    默认位置也能命中。
-  两者皆无 → 该 agent 未检测到（不建；可用 --agents 手动指定）。
+    默认位置也能命中；
+  - 或该 agent 的 home 环境变量指向存在的目录（DSH_HOME）——DSH Desktop 把 home 放在
+    %APPDATA%\\dsh-desktop\\harness，前两条都不成立；而 Windows clone 下需要本脚本修的
+    `.dsh/skills`（文本文件残留）正好是这一个是。
+  三者皆无 → 该 agent 未检测到（不建；可用 --agents 手动指定）。
 只建项目级配置，不碰 agent 全局配置。
 
 用法：
@@ -36,14 +39,14 @@ REPO_DIR = Path(__file__).resolve().parent.parent
 SKILLS_DIR = REPO_DIR / "skills"
 REL_TARGET = "../skills"  # 相对链接：仓库整体挪位置也不失效
 
-# label / 仓库内目录 / 命令
-AGENTS: list[tuple[str, str, str]] = [
-    ("DeepSeek Harness", ".dsh", "dsh"),
-    ("Claude Code", ".claude", "claude"),
-    ("Cursor", ".cursor", "cursor"),
-    ("Trae", ".trae", "trae"),
-    ("CodeBuddy", ".codebuddy", "codebuddy"),
-    ("Codex", ".codex", "codex"),
+# label / 仓库内目录 / 命令 / home 环境变量（home 不在 ~ 下的 agent 靠它兜底，无则空串）
+AGENTS: list[tuple[str, str, str, str]] = [
+    ("DeepSeek Harness", ".dsh", "dsh", "DSH_HOME"),
+    ("Claude Code", ".claude", "claude", ""),
+    ("Cursor", ".cursor", "cursor", ""),
+    ("Trae", ".trae", "trae", ""),
+    ("CodeBuddy", ".codebuddy", "codebuddy", ""),
+    ("Codex", ".codex", "codex", ""),
 ]
 
 IO_REPARSE_TAG_MOUNT_POINT = getattr(stat, "IO_REPARSE_TAG_MOUNT_POINT", 0xA0000003)
@@ -181,8 +184,17 @@ def ensure_skip_worktree(repo: Path, rel_path: str) -> str | None:
     )
 
 
-def detected(conf_dir: str, cmd: str) -> bool:
-    return (Path.home() / conf_dir).is_dir() or shutil.which(cmd) is not None
+def detected(conf_dir: str, cmd: str, home_env: str = "") -> bool:
+    """本机是否装了该 agent。三条判据任一成立即可。
+
+    第三条为 home 不在 `~` 下的形态而加：DSH Desktop 在 Windows 上把 home 放在
+    `%APPDATA%\\dsh-desktop\\harness` 并用 `DSH_HOME` 指出来，这时前两条都不成立，
+    自动模式会跳过 DSH——而 `.dsh/skills` 在 Windows clone 下正是需要本脚本修的那一个。
+    """
+    if (Path.home() / conf_dir).is_dir() or shutil.which(cmd) is not None:
+        return True
+    home = os.environ.get(home_env, "") if home_env else ""
+    return bool(home) and Path(home).is_dir()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -210,13 +222,13 @@ def main(argv: list[str] | None = None) -> int:
         mode = "all" if args.all else "auto"
 
     configured = 0
-    for label, conf_dir, cmd in AGENTS:
+    for label, conf_dir, cmd, home_env in AGENTS:
         if mode == "manual":
             want = conf_dir.lstrip(".") in wanted
         elif mode == "all":
             want = True
         else:
-            want = detected(conf_dir, cmd)
+            want = detected(conf_dir, cmd, home_env)
         if not want:
             continue
         report, _ = ensure_link(REPO_DIR / conf_dir, label, SKILLS_DIR)
@@ -224,7 +236,8 @@ def main(argv: list[str] | None = None) -> int:
         configured += 1
 
     if configured == 0:
-        print("未检测到已安装 agent（~/.dsh ~/.claude ~/.cursor ~/.trae ~/.codebuddy ~/.codex 或对应命令均无）。")
+        print("未检测到已安装 agent（~/.dsh ~/.claude ~/.cursor ~/.trae ~/.codebuddy ~/.codex、"
+              "对应命令、对应 home 环境变量均无）。")
         print("确定要用的 agent 不在默认路径 → 手动指定：python3 scripts/enable_agent_skills.py --agents claude")
         return 0
 
