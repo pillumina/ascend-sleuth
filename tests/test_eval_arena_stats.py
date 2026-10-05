@@ -81,7 +81,7 @@ class StatsFieldCompatTest(unittest.TestCase):
 class GateArgValidationTest(unittest.TestCase):
     def test_gate_without_args_exits_2_with_next_step(self):
         p = subprocess.run([sys.executable, str(ROOT / "scripts" / "eval_arena.py"), "--gate"],
-                           capture_output=True, text=True, cwd=str(ROOT))
+                           capture_output=True, text=True, encoding="utf-8", cwd=str(ROOT))
         self.assertEqual(p.returncode, 2)
         self.assertIn("baseline", p.stderr)
         self.assertIn("--self-test", p.stderr, "缺数据时要说清该怎么走，而不是报与真因无关的错")
@@ -220,6 +220,18 @@ calibration:
         _jud, reg = self._build()
         self.assertEqual([it["id"] for it in reg["issues"]], ["111"],
                          "正文提到 issue 号不算吸收，只有 case 实名算")
+
+    def test_unmatched_prefix_is_reported_not_read_as_nothing_absorbed(self):
+        out = self.root / ".s2-replay" / "arena" / "pool-nope.yaml"
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            rc = ea.build_pool(self.root, "eval/s2/pool.yaml", "nope", "selection", False, str(out),
+                               case_prefix="ZZZ-NOPE")
+        self.assertEqual(rc, 0)
+        self.assertIn("没有匹配到任何 case 文件", err.getvalue(),
+                      "前缀一条 case 都没匹配到时要明说，不能与「没有样本被吸收」同形")
+        ab = yaml.safe_load(out.read_text(encoding="utf-8"))["absorption"]
+        self.assertEqual((ab["cases_in_kb"], ab["cases_with_prefix"], ab["absorbed"]), (2, 0, 0))
 
     def test_stats_records_role_and_gate_refuses_regression(self):
         _jud, _reg = self._build()

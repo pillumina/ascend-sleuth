@@ -118,6 +118,9 @@ def build_pool(root, source, name, split, only_scored, out, case_prefix="VLLM-AS
         print(f"eval_arena: 源文件里没有 calibration/issues 列表：{src}", file=sys.stderr)
         return 2
     idx = case_index(root)
+    # 前缀一个 case 都没匹配到 = 吸收判据的输入是空的：此后"回归池 0 条"只反映前缀写错
+    # 或库内命名变了，不反映"没有样本被吸收"。这两种情形给出同一句摘要，所以单独报出来。
+    prefixed = [cid for cid in idx if cid.startswith(f"{case_prefix}-")]
     issues, absorbed_rows, from_test = [], [], 0
     for c in cal:
         if not isinstance(c, dict):
@@ -153,6 +156,7 @@ def build_pool(root, source, name, split, only_scored, out, case_prefix="VLLM-AS
         return 1
     src_rel = str(src.relative_to(root)) if src.is_relative_to(root) else str(src)
     absorption = {"case_prefix": case_prefix, "cases_in_kb": len(idx),
+                  "cases_with_prefix": len(prefixed),
                   "samples": len(issues) + len(absorbed_rows), "absorbed": len(absorbed_rows)}
     pool = {"name": name, "split": split, "role": "judgment", "source": src_rel,
             "absorption": absorption,
@@ -177,6 +181,11 @@ def build_pool(root, source, name, split, only_scored, out, case_prefix="VLLM-AS
     print(f"  回归池 {len(absorbed_rows)} 条（答案已进知识库，不参与 gate）→ {reg_p}")
     if absorbed_rows:
         print(f"    吸收判据：knowledge/ 下存在 {case_prefix}-<issue>.yaml（case 实名，非正文提及）")
+    if not prefixed:
+        print(f'eval_arena: case 前缀 "{case_prefix}" 在 knowledge/ 下没有匹配到任何 case 文件'
+              f"（库里 {len(idx)} 条）：本次的吸收判定没有输入，"
+              f'别把上面"回归池 0 条"读成"没有样本被吸收"——先核对 --case-prefix 与库内命名。',
+              file=sys.stderr)
     if scored == 0:
         print("  ⚠ 没有任何 result：先跑 replay 产出 .s2-replay/<issue>.result.yaml，再 --stats")
     else:

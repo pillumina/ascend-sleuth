@@ -117,3 +117,31 @@ decisions:
       （默认前缀 `VLLM-ASC`），知识库若换命名规则要显式传 `--case-prefix`，否则所有样本都会
       被当成未吸收、静默退回分流前的状态。未做：判定池扩容（新增未吸收样本要人工选样与标注，
       见 `docs/plan/roadmap.md` 的评估池扩容条）。
+  - who: agent
+    when: "2026-10-05"
+    type: action
+    conclusion: >-
+      补上前缀零匹配的明说：`build_pool` 现在把 `cases_with_prefix` 写进池文件的 `absorption`，
+      并在前缀一条 case 都没匹配到时把警告打到 stderr。理由：此前"前缀写错"与"没有样本被吸收"
+      打印同一句「回归池 0 条」，后者是结论、前者只是判据的输入为空。新增测试
+      `test_unmatched_prefix_is_reported_not_read_as_nothing_absorbed`；顺带把
+      `GateArgValidationTest` 的 subprocess 调用补 `encoding="utf-8"`（Windows 控制台按 GBK
+      解码子进程输出会让 stderr 变 None），本机该模块 12 条测试全过。
+  - who: agent
+    when: "2026-10-05"
+    type: eval
+    conclusion: >-
+      补丁后复跑：`python -m unittest tests.test_eval_arena_stats` 报 12 条 / OK（补丁前 12 条 /
+      errors=1，那条 error 是既有的控制台解码问题）；`python scripts/eval_arena.py --build-pool`
+      仍报判定池 10 条 / 回归池 10 条；`python scripts/ev_measure.py EV-2026-167 --run` 报
+      `VERDICT PASS`；`python scripts/verify_proposals.py --check` 报 164 张卡通过。另核了吸收
+      判据的完备性：20 条 selection 样本的 issue 号逐个在 `knowledge/` 下搜，10 条命中
+      `VLLM-ASC-<issue>.yaml`，另 10 条在库里零命中——不存在"答案被别的命名吸收"因而让前缀
+      判据漏判的样本。
+  - who: agent
+    when: "2026-10-05"
+    type: decision
+    conclusion: >-
+      判词不变（validated）。上一条 decision 记的边界仍在：吸收判据只认 case 实名，库内换命名
+      要显式传 `--case-prefix`；但边界里"静默退回分流前状态"那一半已消除——前缀零匹配会明说，
+      并写进池文件的 `absorption.cases_with_prefix`。

@@ -39,6 +39,9 @@ expected 标注（namespace/category/fix_ref）由 agent 读 issue 线程产出�
 里就写着 14871），文本搜索会把未吸收的样本误判成已吸收。实测 `eval/s2/vllm-ascend.yaml` 的
 20 条 selection 样本里 **10 条已吸收**：分流前它们混在判定池里，分流后判定池 10 条、回归池 10 条。
 池内容因此变化，`pool_hash` 随之变化，同一池的复用计数归零（换量尺的既有规则）。
+池文件里的 `absorption` 记 `case_prefix`、`cases_in_kb`、`cases_with_prefix`、`absorbed` 四个数；
+前缀在库里一条 case 都没匹配到时，命令把这件事打到 stderr——否则"前缀写错"与
+"没有样本被吸收"给出同一句摘要（`回归池 0 条`），后者是结论、前者只是输入为空。
 
 ## 3. 评分口径（复用 S2 result schema）
 
