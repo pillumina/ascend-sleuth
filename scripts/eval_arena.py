@@ -183,8 +183,9 @@ def build_pool(root, source, name, split, only_scored, out, case_prefix="VLLM-AS
         print(f"    吸收判据：knowledge/ 下存在 {case_prefix}-<issue>.yaml（case 实名，非正文提及）")
     if not prefixed:
         print(f'eval_arena: case 前缀 "{case_prefix}" 在 knowledge/ 下没有匹配到任何 case 文件'
-              f"（库里 {len(idx)} 条）：本次的吸收判定没有输入，"
-              f'别把上面"回归池 0 条"读成"没有样本被吸收"——先核对 --case-prefix 与库内命名。',
+              f"（库里 {len(idx)} 条），本次的吸收判定没有输入。"
+              f'上面那句"回归池 0 条"说的是没有样本被吸收，这里发生的是判据没有输入，'
+              f"先核对 --case-prefix 与库内命名。",
               file=sys.stderr)
     if scored == 0:
         print("  ⚠ 没有任何 result：先跑 replay 产出 .s2-replay/<issue>.result.yaml，再 --stats")
