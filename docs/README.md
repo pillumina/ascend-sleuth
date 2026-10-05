@@ -70,5 +70,5 @@
 *你想推翻某个既有选择，需要先看它当时的论证与重评条件*
 
 - `docs/adr/` — 架构决策记录（软版本匹配 / 不引入 RAG / 容量治理 / 先验知识层等）
-  - [0001](../docs/adr/0001-soft-version-matching.md)、[0002](../docs/adr/0002-retrieval-no-rag-lightweight-index.md)、[0003](../docs/adr/0003-platform-portability.md)、[0004](../docs/adr/0004-capacity-governance.md)、[0005](../docs/adr/0005-knowledge-consumption-split.md)、[0006](../docs/adr/0006-knowledge-ingest-dedup.md)、[0008](../docs/adr/0008-prior-knowledge-framework.md)
+  - [0001](../docs/adr/0001-soft-version-matching.md)、[0002](../docs/adr/0002-retrieval-no-rag-lightweight-index.md)、[0003](../docs/adr/0003-platform-portability.md)、[0004](../docs/adr/0004-capacity-governance.md)、[0005](../docs/adr/0005-knowledge-consumption-split.md)、[0006](../docs/adr/0006-knowledge-ingest-dedup.md)、[0008](../docs/adr/0008-prior-knowledge-framework.md)、[0009](../docs/adr/0009-counterfactual-replay-exploration-policy.md)
 <!-- END generated: docs-index -->
