@@ -184,7 +184,7 @@ PR body 里的「Agent 预核意见」由**与作者不同的会话**产出：�
 
 | 改动类型 | 预核查什么 | 要跑反例吗 | 耗时 |
 |---|---|---|---|
-| 文档与措辞（`skills/**`、`docs/**`、`README`、`CLAUDE.md`） | ① 对照 `docs/spec/writing-norms.md` §1 的共用条目逐条过改动段落，报命中项与行号；② 文中每个**可验证声明**（路径、命令、字段名、代号、数字）逐个核对与实现是否一致；③ 改 skill 正文的另查 `docs/spec/writing-norms.md` §6 的内联要求；④ 新增代号是否登记 `docs/glossary.yaml`、`scope` 是否对 | 不用 | 2 到 3 分钟 |
+| 文档与措辞（`skills/**`、`docs/**`、`README`、`CLAUDE.md`） | ① 对照 `docs/spec/writing-norms.md` §1 的共用条目逐条过改动段落，报命中项与行号；② 文中每个**可验证声明**（路径、命令、字段名、代号、数字）逐个核对与实现是否一致；③ 改 skill 正文的另查 `docs/spec/writing-norms.md` §6 的内联要求；④ 新增代号是否登记 `docs/glossary.yaml`、`scope` 是否对；⑤ 作者提交前自查漏掉的项（自查动作与五类高频项见 `CLAUDE.md` 的「人读文本的行文规范」条） | 不用 | 2 到 3 分钟 |
 | 内容（case、reference、路由词） | ① 路由：`python3 scripts/route_check.py <case 文件>` 报出会被哪个分支接住、宽词是否跨分支重复；② `quickly_check.expected` 在输入里的真实报错上跑一次（CI 只查可编译）；③ 事实自洽与查重（与相邻 case 是否同一根因）；④ 脱敏 | 不用，但要真抽查 | 5 分钟 |
 | 脚本、机制、生成物、门语义 | ① 对改动的判定逻辑构造反例并跑出来（给命令与结果）；② 检查门本身有没有洞；③ 前几轮的临时件有没有残留；④ 受影响的文档承诺扫一遍 | 必须 | 15 到 30 分钟 |
 
@@ -197,7 +197,7 @@ PR body 里的「Agent 预核意见」由**与作者不同的会话**产出：�
 
 **为什么不进 CI**：预核是判断性工作（非确定性、无机械判据），一旦成门就会变成「CI 能过的仪式」；它也不替代双签。
 CI 侧只有机械切片：模板结构（`pr-template.yml`）、docs 名单与未登记文档（`docs-index`）、skill 自包含（`skill-self-contained`）。
-代号未登记与越界的 `python3 scripts/render_review_summary.py --scan` 是手工命令，同样不进 CI（`writing-norms.md` §8）。
+代号未登记与越界的 `python3 scripts/render_review_summary.py --scan` 是手工命令，同样不进 CI（`writing-norms.md` §5）。
 
 **抽审纪律（约定，同"渐进审序"的用意）**：reviewer 每轮**自行随机点一处**核对，**不从改动者列的 spot-check 清单里挑**。不指望抓全，目的是让"如实标注"成为改动侧的占优策略。
 
