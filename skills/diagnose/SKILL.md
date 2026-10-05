@@ -183,16 +183,17 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
 
 - **先解析 trace 目录（一次，之后全程用它）**：`python3 scripts/shared_dir.py traces` 打印的绝对路径就是本次要读写的 `traces/`——它锚在**主检出**（同一克隆的所有 worktree 共读共写），所以从 worktree 干活也不会把记录写进一个主检出看不到、清理 worktree 就消失的地方。**本 skill 里所有 `traces/…` 的读写（含最前面的trace 相似检测）都以这个路径为准**，别写相对 `traces/`。
 
-- **agent 事件**：`{role: agent, step, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback|reference_lookup|triage_semantic|source_analysis|attribution|resume|procedure_follow|report, output, reason, ...}`。`output` 给用户（可精简）、`reason` 记决策依据（**关键决策必写**）；`triage` 必带 `routed`（未命中写 `[]`）；`source_analysis` 必记 `tool_calls`；`attribution` 执行错可加 `component`；`report` 记 `report_file`（人读报告产出，**全路**步骤 6 必写一条；快路不产报告、也不写这条，但证据落盘与 `reason` 照旧必写）；`reference_lookup` 记 `purpose`（collect / signature / fix / background / procedure）与 **`outcome`（hit / miss / skipped，`skipped` 必写理由）**——三态缺一，"没查"就与"查了没命中"同形。
+- **agent 事件**：`{role: agent, step, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback|reference_lookup|triage_semantic|source_analysis|attribution|resume|procedure_follow|report, output, reason, ...}`。`output` 给用户（可精简）、`reason` 记决策依据（**关键决策必写**）；`triage` 必带 `routed`（未命中写 `[]`）；`source_analysis` 必记 `tool_calls`；`attribution` 执行错可加 `component`；`report` 记 `report_file`（人读报告产出，**全路**步骤 6 必写一条；快路不产报告、也不写这条，但证据落盘与 `reason` 照旧必写）；`reference_lookup` 记 `purpose`（collect / signature / fix / background / procedure）与 **`outcome`（hit / miss / skipped，`skipped` 必写理由）**：三态缺一，"没查"就与"查了没命中"同形；`parallel_group` 记同一次并行展开的几个动作（共用一个值，串行不写）；`load_full` / `load_index` 记 `considered_candidates`（筛选时看过的候选 id，含没取全文的）。
 - **user 事件**：`{role: user, step, content, evidence}`——`content` 摘要（短）+ `evidence` 完整证据（`inline` 原文 / `files` 相对路径 / `sources` URL / `missing` 缺口）。
 - **证据落盘铁律（必走，无例外）**：短原文 → `inline` 存完整原文；长命令/配置/日志块/附件 → **先写 `traces/evidence/<session_id>/<名>.txt`** 完整原文、`evidence.files` 用相对路径引用、`inline` 只留一行"完整原文见 evidence.files" + 关键指纹。**禁止**只写摘要、或把原文压成指纹塞 `inline`。
 - **写前自检**：问"用户贴的原文现在在哪？"——答不出"已存在文件"的相对路径或完整 `inline` → 证据未落，先落盘再写 trace。
 - **原件引文要核（有原件时）**：工程师交来**原件**（日志文件 / 日志包 / 交接包）时，引用原文另落 `evidence.quotes: [{file, line, quote}]`，并在写报告前跑 `python3 scripts/verify_evidence.py <trace> --root <原件根>`；报不一致 / 找不到 / 行号越界的引文不能支撑结论——对应结论**降级为推测**，或回步骤 4 重新取证（核不过是"这条引文不能用"，不是"结论错"）。对话里**粘贴**的片段没有原件：不填 `quotes`、不因此降级，写一句"无原件可核"即可。字段与判定见 `references/diagnosis-trace.md`。
 - **时间戳**：建 session 写顶层 `created_at`；**每次写 trace 刷新顶层 `updated_at`**（含 resume 续接——置顶诊断面板）。
+- **停止原因（收尾写一次）**：顶层 `stop_reason` 记这一单为什么停（`resolved_confirmed` / `halted_ask_user` / `budget_exhausted` / `escalated_tier3` / `abandoned` / `unknown`）。停止点是探索策略的一部分，"当时该不该停在这里"以后要靠它判断；漏写按未记录统计。
 - **知识库版本**：建 session 时写顶层 `kb_rev`（`python3 scripts/kb_rev.py` 的末行 = 检出 HEAD 短 sha），**一次写定、之后不改**。它记的是"这一单跑在哪一版 `knowledge/` 上"：跨机接手时接手方要拿它比对本机版本（不一致意味着候选集与 case id 可能对不上，接手侧会看到提示），事后误诊归因也要它（"当时为什么没命中"取决于当时库里有什么）。拿不到 git 就写 `unknown`，别编值。
 - **trace 边界（只记诊断轨迹 + 误诊归因，别混自演进）**：用户中途提出的**流程改进/设计讨论**不是本诊断输入（自演进信号）——走 `traces/evidence/<session_id>/<session_id>_evnote.md`（渐进式披露，正常定位不披露，真要改 SKILL/脚本时才升级为 EV 卡）；`attribution` 执行错归因**仅限"确实影响本次结论"**，纯流程改进走 EV 卡。**别把改进讨论写成 trace 的 user/agent 事件**，也别用 `source_analysis` 记 skill 编辑。
 
-> 完整细节（`KNOWN_ACTIONS` 词表、外部事实获取落盘、agent 事件两层、反馈闭环格式、词表同步纪律）见 `references/diagnosis-trace.md`。trace 是误诊归因的唯一依据：误诊先读 trace 断 **case 错**（改库）还是**执行错**（改 skill）。不写 trace → 无法归因 → 可能改坏正确的 case。
+> 完整细节（`KNOWN_ACTIONS` 词表、外部事实获取落盘、agent 事件两层、离线比较所需的三项记录、反馈闭环格式、词表同步纪律）见 `references/diagnosis-trace.md`。trace 是误诊归因的唯一依据：误诊先读 trace 断 **case 错**（改库）还是**执行错**（改 skill）。不写 trace → 无法归因 → 可能改坏正确的 case。
 
 ## 源码分析（深度排查的子步骤，入口在步骤 5）
 

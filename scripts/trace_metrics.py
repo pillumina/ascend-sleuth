@@ -60,6 +60,20 @@ KNOWN_PURPOSES = {"collect", "signature", "fix", "background", "procedure"}
 # 旧 trace 无 outcome 字段 → 照旧计入引用次数（不追溯改写历史记录）。
 KNOWN_OUTCOMES = {"hit", "miss", "skipped"}
 
+# 停止原因（顶层 `stop_reason`，会话收尾时一次写定；EV-2026-168）：
+# 用历史记录离线比较探索策略时，要知道当时的策略在哪停、为什么停——没有这个字段，
+# 只能按写的人事后回忆重讲一遍。字段可选：旧 trace 没有就计"未记录"，不回填、不猜。
+#   resolved_confirmed  工程师确认修复生效
+#   halted_ask_user     按流程停下等人回报
+#   budget_exhausted    上下文或预算到线
+#   escalated_tier3     转深度排查后仍无结论
+#   abandoned           主动放弃（材料不足等）
+#   unknown             拿不到原因，如实写
+KNOWN_STOP_REASONS = {
+    "resolved_confirmed", "halted_ask_user", "budget_exhausted",
+    "escalated_tier3", "abandoned", "unknown",
+}
+
 
 # triage miss 归类用的 token 判据见 scripts/_lexical.py（单一事实源：rank_candidates.py 共用同一组模式）
 from _lexical import has_lexical_signal  # noqa: E402
@@ -135,6 +149,13 @@ def main():
     complete = 0
     vocab_total = 0
     vocab_bad = []
+    # 离线比较探索策略所需的记录（EV-2026-168）：停止原因 / 同批并发标记 / 候选全集。
+    # 三者都是"策略可重算"的前提——缺了它们，历史树只能当过程记录读，不能当模拟器用。
+    stop_reasons = {}
+    stop_reason_unrecorded = 0
+    parallel_group_events = 0
+    considered_candidates_events = 0
+    record_bad = []
 
     # reference 指标（ADR-0008 观测性）：hits per ref / 引用后 resolve 率 / 平台分布。
     # 引用后 outcome 从该 session 最终 status 派生（不新增事件）；平台来自 lookup 事件。
@@ -163,6 +184,14 @@ def main():
 
     for st in states:
         trace = st.get("trace") or []
+        sid = str(st.get("session_id") or "?")
+        sr = st.get("stop_reason")
+        if sr:
+            stop_reasons[sr] = stop_reasons.get(sr, 0) + 1
+            if sr not in KNOWN_STOP_REASONS:
+                record_bad.append(f"{sid}: stop_reason={sr!r}")
+        else:
+            stop_reason_unrecorded += 1
         # trajectory 统一 {role, ...}：agent 事件带 action，user 事件只带 content（无 action）
         # 词表只约束 agent 决策事件；user 输入事件是回放/fixture 的输入源，不参与词表检查
         actions = [t.get("action") for t in trace if t.get("action")]
@@ -207,6 +236,26 @@ def main():
                 v = t.get("verdict")
                 if v in attr:
                     attr[v] += 1
+            # 同批并发标记：一次并行展开的几个动作共用同一个值；串行动作不写。
+            pg = t.get("parallel_group")
+            if pg is not None:
+                parallel_group_events += 1
+                if not (isinstance(pg, str) and pg.strip()):
+                    record_bad.append(f"{sid}: parallel_group 应为非空字符串（{pg!r}）")
+            # 候选全集：筛选时看过的候选（含没取全文的）。`candidates` 仍只写实际取全文的那些，
+            # 所以后者必须是前者的子集；不满足说明两次记录对不上，按违规报出来。
+            cc = t.get("considered_candidates")
+            if cc is not None:
+                considered_candidates_events += 1
+                if not (isinstance(cc, list) and all(isinstance(x, str) and x for x in cc)):
+                    record_bad.append(f"{sid}: considered_candidates 应为候选 id 列表（{cc!r}）")
+                else:
+                    full = t.get("candidates")
+                    if isinstance(full, list):
+                        lack = [c for c in full if c not in cc]
+                        if lack:
+                            record_bad.append(
+                                f"{sid}: 取全文的候选不在 considered_candidates 里 {lack}")
         if "triage" in actions and (
             "quickly_check" in actions or "load_full" in actions or "hit" in actions
         ):
@@ -245,7 +294,6 @@ def main():
                 routed_total += 1
                 if any(r == ns or r.endswith("/" + ns) or ns.endswith("/" + r) for r in routed):
                     routed_ok += 1
-        sid = str(st.get("session_id") or "?")
         # triage miss 归类（EV-2026-110）。先分清两件被混在一起的事：
         #   ① 真 miss：trace 里有 triage_semantic（语义兜底被触发）或 triage 明确记了空 routed；
         #   ② **记录缺口**：有 triage 事件但 routed 字段没记——E2 的错例池正是靠这个字段取数，
@@ -309,6 +357,13 @@ def main():
         "reference_purposes": ref_purposes or None,
         "reference_detail": {rid: {"hits": h, "resolved": ref_resolved.get(rid, 0)}
                              for rid, h in sorted(ref_hits.items(), key=lambda x: -x[1])} or None,
+        # 离线比较探索策略所需的记录（EV-2026-168）：停止原因分布、两类事件计数与字段违规。
+        # 未记录数单列，不与"记录了但值为 unknown"混算——前者是记录缺口，后者是当时确实拿不到。
+        "stop_reasons": stop_reasons or None,
+        "stop_reason_unrecorded": stop_reason_unrecorded,
+        "parallel_group_events": parallel_group_events,
+        "considered_candidates_events": considered_candidates_events,
+        "trace_record_violations": record_bad[:5] or None,
     }
 
     rows = [
@@ -342,6 +397,12 @@ def main():
          + (f"；无 triage 事件 {len(miss_notriage)}" if miss_notriage else "")
          if (miss_lex or miss_sem or miss_unrec or miss_notriage)
          else "| triage miss 归类 | 本批无 miss（routed 全记录） |"),
+        (f"| 离线比较探索策略所需的记录 | 停止原因已记 {n - stop_reason_unrecorded}/{n}"
+         f"（未记录 {stop_reason_unrecorded}）"
+         f"；同批并发标记（parallel_group）事件 {parallel_group_events}"
+         f"；候选全集（considered_candidates）事件 {considered_candidates_events}"
+         + (f"；**字段违规：{'、'.join(record_bad[:5])}**" if record_bad else "")
+         + " |"),
     ]
     # reference 指标（ADR-0008 观测性）——无引用时如实显示为空（reference 刚建立是现状）
     if ref_hits or ref_outcomes:

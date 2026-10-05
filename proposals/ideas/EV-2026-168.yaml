@@ -1,0 +1,117 @@
+# ============================================================
+# EV-2026-168 —— trace 补齐零执行评估所需的三项记录
+# 来源：用户要求落地 Dream-RSI 里可直接落地的机制（先计划、后执行，充分验证与 review），
+#       本轮选「两个都做」；第二件事补的是「换一个探索策略在这段历史上走一遍」的前提记录。
+# 脱敏：只含仓库内路径、命令与聚合数字
+# ============================================================
+
+id: EV-2026-168
+layer: L2
+target_component: scripts/trace_metrics.py
+title: "trace 补齐零执行评估所需的三项记录：停止原因、同批并发标记、候选全集"
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: '2026-10-05'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户要求把 Dream-RSI 里能直接落地的机制落地，并先出计划、后执行，且要充分的验证与 review。
+      指向的缺口：离线比较探索策略需要「当时在哪停、哪些动作是同一批并发、筛候选时看过哪些」，
+      现有 trace 三项都没有。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      实测本机 `traces/` 3 单：顶层都没有 `stop_reason`，事件里没有 `parallel_group` 与
+      `considered_candidates`；`load_full` 只记了实际取全文的 `candidates`，筛选时看过但没取全文的
+      候选没有落盘。字段违规此前没有出口（词表外的值只进不报）。
+    trajectory:
+      - "traces/ 三单（2026-09-12 与 2026-09-13）"
+      - "skills/diagnose/references/diagnosis-trace.md 的 action 词表与字段表"
+hypothesis: >-
+  在 trace 里补上顶层 `stop_reason`、事件的 `parallel_group` 与 `considered_candidates`，并让
+  `scripts/trace_metrics.py` 把「记了几单 / 未记录几单 / 字段违规几处」报出来之后，
+  「换一个探索策略在这段历史上走一遍」才有数据前提；不补这三项，历史树只能当过程记录读，
+  重放只能按写的人事后回忆重讲。三项都按可选记，旧单按未记录统计，不回填。
+predicted_effect:
+  metric: trace 里三项记录的覆盖与读取；字段违规是否有出口
+  from: >-
+    顶层无 `stop_reason`；事件无 `parallel_group`、无 `considered_candidates`；
+    取全文的候选不要求是候选全集的子集；`scripts/trace_metrics.py` 不统计这三项，
+    也不报它们的字段违规。
+  to: >-
+    trace 规范与 skill 写明三项怎么写；`scripts/trace_metrics.py` 统计
+    `stop_reasons` / `stop_reason_unrecorded` / `parallel_group_events` /
+    `considered_candidates_events` 四个读数并报出 `trace_record_violations`（停止原因不在词表、
+    并发标记不是非空字符串、取全文的候选不在候选全集里）；`scripts/verify_metrics.py` 的
+    live 白名单收下这五个键，快照不再被自家门拦下。
+  measure:
+    command: |
+      python3 -c "import sys,unittest;t=unittest.TextTestRunner(verbosity=0).run(unittest.defaultTestLoader.loadTestsFromName('tests.test_trace_metrics.OfflineReplayRecordsTest'));print('VERDICT PASS' if t.wasSuccessful() else 'VERDICT FAIL');sys.exit(0 if t.wasSuccessful() else 1)"
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前：本机 3 单三项全无（停止原因 0/3、并发标记 0、候选全集 0），读侧没有这几个读数；
+    `tests/test_trace_metrics.py` 7 条测试，`--emit-yaml-only` 的 metrics 里没有这五个键。
+  success_criteria: >-
+    ①新增 `tests/test_trace_metrics.py` 的 `OfflineReplayRecordsTest` 四条通过（记了与未记录分开数、
+    词表外停止原因被报出、并发标记与候选全集计数、取全文的候选不在候选全集里判违规）；
+    ②真实 traces 复跑新读数如实显示未记录（本机 0/3）；③`scripts/verify_metrics.py --check` 通过
+    （白名单与新键一致）；④`verify_proposals.py --check`、`build_docs_index.py --check`、
+    `render_review_summary.py --scan` 对改动文件通过。
+  rollback: "回退该提交即可；trace 里的新字段是可选项，旧单不写也照常读。"
+gate:
+  condition: "零执行评估本体立项时，才发现这三项记录不足以支撑重放（例如策略旋钮还需要别的记录才能重算）"
+risk: low
+principle_refs: [8, 10, 11]
+actual_cost:
+  tokens: 12000
+  source: estimate
+  note: >-
+    口径：改 `scripts/trace_metrics.py`（三项统计与违规报出）、`scripts/verify_metrics.py`（白名单）、
+    `tests/test_trace_metrics.py`（抽基类 + 四条新测）、`skills/diagnose/SKILL.md`、
+    `skills/diagnose/references/diagnosis-trace.md`、`docs/guide/metrics.md`、
+    `docs/plan/roadmap.md`、产卡与判据复跑；估 1.2 万，未计独立预核与回修。
+decisions:
+  - who: agent
+    when: "2026-10-05"
+    type: proposal
+    conclusion: >-
+      采纳「补三项记录」，落点选在 trace 的写出侧（skill 与字段规范）加读侧（`trace_metrics.py` 的
+      读数与违规报出），不写离线打分本体：本机 `traces/` 只有 3 条、反馈捕获为 0，
+      打分本体没有样本可验，按闸门不立项。
+  - who: agent
+    when: "2026-10-05"
+    type: action
+    conclusion: >-
+      三项都按可选字段记，旧单按「未记录」统计、不回填：回填只能靠回忆，会把事后想到的写成当时做的。
+      「未记录」与「记了 `unknown`」分开计数，前者是记录缺口、后者是当时确实拿不到。
+      取全文的候选必须是候选全集的子集，缺项算字段违规。
+  - who: agent
+    when: "2026-10-05"
+    type: eval
+    conclusion: >-
+      判据实跑：`python scripts/ev_measure.py EV-2026-168 --run` → `VERDICT PASS`、`exit == 0 ✓`。
+      `python -m unittest tests.test_trace_metrics` → `Ran 11 tests` / `OK`（7 条旧 + 4 条新）。
+      真实 traces 复跑（`--traces-dir` 指主检出 `traces/`）：新读数如实显示
+      「停止原因已记 0/3（未记录 3）；同批并发标记事件 0；候选全集事件 0」，未记录与违规都不假绿。
+      `scripts/verify_metrics.py --check` → `metrics 校验通过（8 期，其中 live 3）`；
+      `verify_proposals.py --check` → 164 张卡通过；`build_docs_index.py --check` → OK；
+      `render_review_summary.py --scan` 对 8 个改动文件 → 未登记代号无、新人可见面干净
+      （`docs/guide/metrics.md` 2 处、`scripts/trace_metrics.py` 1 处、
+      `tests/test_trace_metrics.py` 1 处越界用途在改动前的版本上同样计数，非本次引入）。
+      顺带修同一根因：`metrics()` 与空目录那条测试补 `encoding="utf-8"`，此前本模块在本机
+      恒有 1 条 error（父进程按 GBK 解码子进程 UTF-8 输出，`r.stdout` 留 None），Linux CI 不暴露。
+  - who: agent
+    when: "2026-10-05"
+    type: decision
+    conclusion: >-
+      判 `validated`。边界：①判据强度上限 = 四条单测通过，测的是读数与违规口径，不测「重放是否真的
+      可算」——那要等离线打分本体有样本再验；②三项记录只在本机 3 条历史单上验证了「未记录如实计数」，
+      有值路径靠合成 trace 覆盖；③真实 traces 里三单全为未记录，故本卡不声称任何覆盖率提升；
+      ④未做判定池扩容，也未写离线打分本体。

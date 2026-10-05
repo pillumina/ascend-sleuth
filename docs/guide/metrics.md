@@ -66,6 +66,7 @@
 | 流程加载与跟随 | 流程加载率（`purpose: procedure` 的会话占比）/ 每条流程的加载次数与跟随深度（`procedure_follow` 的 `steps_executed` 长度 / `branch_taken` 分布）/ 跟随后 resolve 率 | trace `reference_lookup`（purpose=procedure）+ `procedure_follow` 事件。**这是流程层唯一的可观测面**——没有它就无法判断某条流程该留、该改、该摘（EV-2026-038）。注意：加载率是**活动**度量不是**价值**度量（加了触发点必然接近 100%），必须与"跟随后 resolve 率"配对读。注意 `purpose: procedure` 也会计入上表的"reference 引用次数"——该口径自此混装五个消费点（collect / signature / background / fix / procedure），看消费点构成请用 `purpose` 分布，不要只看总数。**强度如实标注（原则十）**：加载率是**确定性**的（来自 `reference_lookup` 事件）；
 跟随深度（`steps_executed` / `branch_taken` / `conflict`）是**agent 自报**——属弱观测，只可作趋势与异常信号，
 不可当验收证据；跟随后 resolve 率来自工程师反馈闭环（S1），是本行唯一较强的效果信号 |
+| 离线比较探索策略所需的记录 | 停止原因记了几单 / 未记录几单；同批并发标记与候选全集各记了几条事件；字段违规几处 | trace 顶层 `stop_reason`（词表 = `scripts/trace_metrics.py` 的 `KNOWN_STOP_REASONS`）与 agent 事件的 `parallel_group`、`considered_candidates`。这是"用历史记录离线比较探索策略"的前提：不知道当时在哪停、哪些动作是同一批并行、筛候选时看过哪些，换一个策略在历史上走一遍就只能按人回忆重讲。**未记录数与"记了 `unknown`"分开算**：前者是记录缺口，后者是当时确实拿不到；旧 trace 没有这些字段属未记录，不回填 |
 | S2 内容验证（口径，数据积累后进 timeline） | case 被 S2 replay 验证的分布：consistent（内容与外部 resolution 一致）/ self_consistent（自证）/ inconsistent（复审） | `.s2-replay/*.result.yaml` → `settle_s2_feedback.py` 结算 → case `validation_record`。**口径纪律**：consistent ≠ 现场 resolve——S1 现场解决率看 confidence（上表命中率/误诊率），S2 内容验证是独立通道，进 timeline 时标注 `source: issue-replay`，不与 S1 混算。按检查准入三条件，待 S2 结算有真实数据（≥2 期）后再扩展 verify_metrics 白名单 |
 
 ## 快照 schema（metrics/timeline.yaml）
