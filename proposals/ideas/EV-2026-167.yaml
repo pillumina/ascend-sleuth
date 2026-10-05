@@ -1,0 +1,119 @@
+# ============================================================
+# EV-2026-167 —— 对照池按吸收状态分流：答案已进知识库的样本只进回归池
+# 来源：用户要求落地 Dream-RSI 里可直接落地的机制（先计划、后执行，充分验证与 review），
+#       本轮选「两个都做」；侦察时实测到判定池把已吸收样本与未吸收样本混在一起。
+# 脱敏：只含仓库内路径、命令与聚合数字
+# ============================================================
+
+id: EV-2026-167
+layer: L2
+target_component: scripts/eval_arena.py
+title: "对照池按吸收状态分流：答案已进知识库的样本只进回归池，--gate 拒绝回归池"
+status: validated
+authorization: auto
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: '2026-10-05'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户要求把 Dream-RSI 里能直接落地的机制落地，并先出计划、后执行，且要充分的验证与 review。
+      指向的缺口：对照池（selection）只按 split 过滤，样本是否已被知识库吸收没有进池子结构。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      实测 `eval/s2/vllm-ascend.yaml` 的 20 条 selection 样本里 10 条答案已进知识库
+      （`knowledge/` 下有 `VLLM-ASC-<号>.yaml` 的 case 实名），10 条没有；`.s2-replay/` 池文件
+      在本机不存在（本地运行件，靠 `--build-pool` 重建）。分流前这 20 条进同一条判定池。
+    trajectory:
+      - "scripts/eval_arena.py 的 build_pool（改前只按 split 过滤，池条目无吸收状态字段）"
+      - "docs/mechanism/eval-arena.md §1 的纪律（自洽样本不虚增外部验证）"
+hypothesis: >-
+  把答案已进知识库的样本按 case 实名拆进回归池、判定池只留未吸收样本，并让 `--gate` 拒绝
+  回归池之后，判定池的读数才有外部含义；否则池子里一半是背下来的题，命中率与配对检验都被
+  自洽样本抬高。吸收判据必须用 case 实名而不是正文文本，因为正文提到别的 issue 是常事。
+predicted_effect:
+  metric: 判定池里是否混有答案已进知识库的样本；`--gate` 是否拒绝回归池
+  from: >-
+    `build_pool` 只按 split 过滤，20 条 selection 样本全部进同一条判定池；池条目没有吸收状态，
+    `--stats` 与 `--gate` 也无从区分自洽样本与判定样本。
+  to: >-
+    `build_pool` 从同一份校准集派生两条池（`pool-val.yaml` 为 `role: judgment`、
+    `pool-val-absorbed.yaml` 为 `role: regression`），条目带 `absorbed_case`；
+    `--stats` 把 role 写进 stats，`--gate` 见到回归池退 2 且不写影响账本。
+  measure:
+    command: |
+      python3 -c "import sys,unittest;t=unittest.TextTestRunner(verbosity=0).run(unittest.defaultTestLoader.loadTestsFromName('tests.test_eval_arena_stats.AbsorbedRoutingTest'));print('VERDICT PASS' if t.wasSuccessful() else 'VERDICT FAIL');sys.exit(0 if t.wasSuccessful() else 1)"
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前：判定池 20 条里 10 条答案已进知识库（实测），池结构与 stats 里都没有吸收状态字段，
+    `--gate` 拿回归池的 stats 也会照判。
+  success_criteria: >-
+    ①真数据跑 `--build-pool` 输出判定池 10 条、回归池 10 条；②新增
+    `tests/test_eval_arena_stats.py` 的 `AbsorbedRoutingTest` 三条断言通过（含"正文提及不算
+    吸收"与"`--gate` 拒绝回归池且不写账本"）；③`--self-test` 全部断言通过；
+    ④`verify_proposals.py --check`、`build_docs_index.py --check`、
+    `render_review_summary.py --scan` 对改动文件通过。
+  rollback: "回退该提交即可；池文件是本地运行件（.s2-replay/ 已 gitignore），无需数据迁移。"
+gate:
+  condition: "后续门控判定里再出现判定池样本已被知识库吸收的迹象（例如判定池命中率异常升高，且命中的样本在知识库里有同号 case）"
+risk: low
+principle_refs: [10, 11]
+actual_cost:
+  tokens: 9000
+  source: estimate
+  note: >-
+    口径：改 `scripts/eval_arena.py`（吸收分流与拒绝）、`tests/test_eval_arena_stats.py`（新增
+    测试类）、`docs/mechanism/eval-arena.md`、`docs/plan/roadmap.md`、
+    `docs/mechanism/rsi-mechanism.md`、产卡与判据复跑、PR body 更新；估 0.9 万，
+    未计独立预核与回修。
+decisions:
+  - who: agent
+    when: "2026-10-05"
+    type: proposal
+    conclusion: >-
+      采纳「对照池按吸收状态分流」，落点选在 `--build-pool`（池派生）与 `--gate`（判定入口），
+      不新建独立脚本：吸收状态是池的属性，池的每条派生路径都该带上它；
+      `docs/mechanism/eval-arena.md` 的纪律早已写明自洽样本不虚增外部验证，
+      缺的是让工具强制它。
+  - who: agent
+    when: "2026-10-05"
+    type: action
+    conclusion: >-
+      吸收判据用 case 实名（`knowledge/**/VLLM-ASC-<issue>.yaml`），不用正文文本：
+      实测 `knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13639.yaml` 的边界判别里
+      就写着别的 issue 号，文本搜索会把未吸收的样本误判成已吸收、把它挪出判定池。
+      回归池文件名取 `<同名>-absorbed.yaml`，两项池都记 `absorption` 汇总与条数。
+  - who: agent
+    when: "2026-10-05"
+    type: eval
+    conclusion: >-
+      判据复跑通过：`python scripts/ev_measure.py EV-2026-167 --run` 报 `VERDICT PASS`、实测
+      exit=0（命令 = 载入 `AbsorbedRoutingTest` 三条测试）。其余复核：真数据
+      `python scripts/eval_arena.py --build-pool` 输出「判定池 10 条 / 回归池 10 条」，与预测的
+      20 条里 10 条已吸收一致；`python scripts/eval_arena.py --self-test` 全部断言通过；
+      `python scripts/verify_proposals.py --check` 报 164 张卡（改前 163）；
+      `python scripts/build_docs_index.py --check` 报 26 条文档登记、11 个 skill、2 个落点一致；
+      `python scripts/render_review_summary.py --scan` 对 6 个改动文件报「未登记代号：无」，
+      越界项只有 `docs/mechanism/eval-arena.md` 的 3 处既有项。
+      单元测试口径：`python -m unittest tests.test_eval_arena_stats` 为 11 条、errors=2，
+      与 `origin/main` 的同一模块相同（那 2 条是既有问题，`build_pool` 打印的非 GBK 字符
+      在 Windows 控制台编码下抛 UnicodeEncodeError；本卡新增的 3 条测试把输出重定向后
+      不依赖控制台编码，所以不增加失败数）；全量 `python -m unittest discover tests` 分支
+      307 条 / errors=48，`origin/main` 304 条 / errors=48，同数。
+  - who: agent
+    when: "2026-10-05"
+    type: decision
+    conclusion: >-
+      判 validated：判据可复现、已实测通过，真数据分流条数与预测一致，且 `--gate` 拒绝回归池
+      有测试护住。**边界**：判据的强度上限是三条测试通过，即合成仓库里的分流行为；真数据
+      「判定池 10 / 回归池 10」是人跑的复核，不是判据的一部分，知识库后续吸收样品会让这个
+      数字变大而不报警。吸收判据只认 case 实名 `knowledge/**/<case-prefix>-<issue>.yaml`
+      （默认前缀 `VLLM-ASC`），知识库若换命名规则要显式传 `--case-prefix`，否则所有样本都会
+      被当成未吸收、静默退回分流前的状态。未做：判定池扩容（新增未吸收样本要人工选样与标注，
+      见 `docs/plan/roadmap.md` 的评估池扩容条）。

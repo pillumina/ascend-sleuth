@@ -8,6 +8,8 @@
    "Is a directory" 这种和真因无关的错；现在退 2 并打印"下一步该建池/跑 stats"。
 """
 
+import contextlib
+import io
 import subprocess
 import sys
 import tempfile
@@ -161,3 +163,78 @@ issues:
         self.assertFalse(s["issues"][0]["route_ok"])          # 缺真值 → 不判为通过
         self.assertIsNone(s["metrics"]["route_ok"]["rate"])   # 分母为 0 → 不编造路由率
         self.assertEqual(s["metrics"]["route_ok"]["unjudgeable"], 1)
+
+
+class AbsorbedRoutingTest(unittest.TestCase):
+    """池按吸收状态分流：答案已进知识库的样本只进回归池，不参与门控判定。
+
+    为什么要分流：那类样本的答案已被知识库吸收（自洽样本 self_consistent），
+    留在判定池里等于把"答案已知"当"答对"，判定池的读数就不再有外部含义。
+    吸收判据用 **case 实名**（`knowledge/**/VLLM-ASC-<issue>.yaml`），不用正文文本——
+    正文提到别的 issue 是常事，文本搜索会把没被吸收的样本误判成已吸收。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        d = self.root / "eval" / "s2"
+        d.mkdir(parents=True)
+        (d / "pool.yaml").write_text("""\
+calibration:
+- issue: 111
+  split: selection
+  expected: {namespace: inference/vllm-ascend, category: interrupt, fix_commit: "PR #1"}
+- issue: 222
+  split: selection
+  expected: {namespace: common, category: performance, fix_commit: "PR #2"}
+""", encoding="utf-8")
+        cases = self.root / "knowledge" / "inference" / "vllm-ascend" / "interrupt"
+        cases.mkdir(parents=True)
+        (cases / "VLLM-ASC-111.yaml").write_text("- id: VLLM-ASC-111\n", encoding="utf-8")
+        # 正文提及不算吸收：真实例子里 VLLM-ASC-13639 的边界判别就写着别的 issue 号
+        (cases / "VLLM-ASC-13639.yaml").write_text(
+            'check: "边界判别：若签名不是 RPC 超时 hang 而是 222，属其他 case 勿混判"\n',
+            encoding="utf-8")
+
+    def _build(self):
+        out = self.root / ".s2-replay" / "arena" / "pool-val.yaml"
+        # 打印里有非 GBK 字符（既有行为），Windows 控制台编码下会抛 UnicodeEncodeError；
+        # 断言与打印无关，这里把输出吞掉，测试只在 Linux 与 Windows 上同样成立。
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = ea.build_pool(self.root, "eval/s2/pool.yaml", "val", "selection", False, str(out))
+        self.assertEqual(rc, 0)
+        return (yaml.safe_load(out.read_text(encoding="utf-8")),
+                yaml.safe_load(out.with_name("pool-val-absorbed.yaml").read_text(encoding="utf-8")))
+
+    def test_absorbed_sample_moves_to_regression_pool(self):
+        jud, reg = self._build()
+        self.assertEqual([it["id"] for it in jud["issues"]], ["222"])
+        self.assertEqual(jud["role"], "judgment")
+        self.assertEqual([it["id"] for it in reg["issues"]], ["111"])
+        self.assertEqual(reg["role"], "regression")
+        self.assertEqual(reg["issues"][0]["absorbed_case"], "VLLM-ASC-111")
+        self.assertEqual(jud["absorption"]["absorbed"], 1)
+
+    def test_text_mention_is_not_absorption(self):
+        _jud, reg = self._build()
+        self.assertEqual([it["id"] for it in reg["issues"]], ["111"],
+                         "正文提到 issue 号不算吸收，只有 case 实名算")
+
+    def test_stats_records_role_and_gate_refuses_regression(self):
+        _jud, _reg = self._build()
+        (self.root / ".s2-replay" / "111.result.yaml").write_text("tier2_hit: true\n", encoding="utf-8")
+        arena = self.root / ".s2-replay" / "arena"
+        reg_file = arena / "pool-val-absorbed.yaml"
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = ea.cmd_stats(self.root, reg_file)
+        self.assertEqual(rc, 0)
+        s = yaml.safe_load((arena / "stats-val-absorbed.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(s["role"], "regression")
+        f1, f2 = self.root / "a.yaml", self.root / "b.yaml"
+        for p in (f1, f2):
+            p.write_text(yaml.safe_dump(s, allow_unicode=True), encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            rc = ea.cmd_gate(self.root, f1, f2, "triage:demo", "EV-TEST", "", 0.1)
+        self.assertEqual(rc, 2, "--gate 必须拒绝回归池：自洽样本不进判定")
+        self.assertFalse((self.root / ea.IMPACT_REL).exists(), "拒绝时不得写影响账本")

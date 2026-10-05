@@ -15,10 +15,11 @@
 |---|---|---|---|
 | **golden** | 23 条构造例 | 无回归保险（任何改动不许倒退） | eval/golden/（提交） |
 | **selection**（val 门用） | 未沉淀 closed/completed issue（held-out） | 候选改动的前后对照评分（门控） | ingest 池选样 + expected 标注（本地 .s2-replay/arena/） |
+| **regression**（池内分流） | 答案已进知识库的样本（自洽样本，self_consistent） | train/回归信号；不参与门控判定（`--gate` 拒绝） | `--build-pool` 按 case 实名从同一源拆出（`pool-*-absorbed.yaml`） |
 | **test**（终判） | 与 selection 分离的 held-out 子集 | validated 终判（防对 selection 过拟合） | 池规模闸门：selection ≥20 后启用分离（现单池，同 §2.1 纪律） |
 | **smoke/self** | 已沉淀 case 的源 issue | train/回归信号（self_consistent 如实标注） | KB case 源 issue 重放 |
 
-**纪律**：val 区 issue **永不沉淀**（只评测、不进知识侧、反馈不回喂——扰动不从评测学）；self_consistent 不虚增外部验证。
+**纪律**：val 区 issue **永不沉淀**（只评测、不进知识侧、反馈不回喂——扰动不从评测学）；self_consistent 不虚增外部验证。已吸收样本由 `--build-pool` 按 case 实名拆进回归池（`role: regression`），判定池里不留它们——把"答案已知"的样本算进判定池，等于把背下来的题当答对。
 
 ## 2. 池构建（本次首批，2026-09）
 
@@ -29,6 +30,15 @@ closed 且 state_reason=completed（resolution 可溯）+ 实体 Bug/Usage 内�
 ——覆盖 interrupt/performance/precision 与 DS-V4-Flash/GLM-5.2/MTP/PD/mooncake 等族。
 expected 标注（namespace/category/fix_ref）由 agent 读 issue 线程产出；**工具只提供池文件与校验，
 标注是协议**（与 S2 同构）。
+
+**吸收分流（2026-10 落地）**：`--build-pool` 从同一份校准集派生两条池——判定池 `pool-val.yaml`
+（`role: judgment`，只留答案未进知识库的样本）与回归池 `pool-val-absorbed.yaml`
+（`role: regression`；`--gate` 见到它直接拒绝）。吸收判据是 **case 实名**：`knowledge/` 下存在
+`VLLM-ASC-<issue>.yaml`（前缀可用 `--case-prefix` 改），不用"issue 号出现在正文里"——正文提到
+别的 issue 是常事（实测 `knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13639.yaml` 的边界判别
+里就写着 14871），文本搜索会把未吸收的样本误判成已吸收。实测 `eval/s2/vllm-ascend.yaml` 的
+20 条 selection 样本里 **10 条已吸收**：分流前它们混在判定池里，分流后判定池 10 条、回归池 10 条。
+池内容因此变化，`pool_hash` 随之变化，同一池的复用计数归零（换量尺的既有规则）。
 
 ## 3. 评分口径（复用 S2 result schema）
 
@@ -99,6 +109,7 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 - `--build-pool`：**从已跟踪的 S2 校准集派生池**（`eval/s2/vllm-ascend.yaml` → `.s2-replay/arena/pool-*.yaml`），
   确定性、可复核——池是本地运行件，靠这条命令任何人都能重建，不必依赖"某次会话留下的文件"。
   默认只取 `split=selection`（test 条目标 `held_out: true`，不参与 gate 决策）；`--only-scored` 只收已有 result 的条目；
+  同时按吸收状态拆出 `<同名>-absorbed.yaml`（`role: regression`）；`--case-prefix` 指定 case 实名前缀（默认 `VLLM-ASC`）；
 - `--pool <yaml>`：校验池文件结构；
 - `--stats <pool>`：聚合各 issue 的 result → 指标 + 逐条向量 + 池哈希（写 .s2-replay/arena/stats-*.yaml）。
   **先复制一份 baseline stats 再跑改后侧**——两次 `--stats` 写同一个文件名，覆盖掉 baseline
@@ -121,10 +132,10 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 | 分级 | 内容 | 何时 |
 |---|---|---|
 | **第一批（本 PR）** | 设计文档 + eval_arena.py v1（pool/stats/gate）+ EV-2026-013 | 现在 |
-| **落地** | 接受判据 v2（配对 + 复用折减 + 三态判词）+ `--self-test` 进 CI（arena-gate-rule）+ 复用判据（`pool_reuse_uncontrolled`） | 随本机制变更 |
+| **落地** | 接受判据 v2（配对 + 复用折减 + 三态判词）+ `--self-test` 进 CI（arena-gate-rule）+ 复用判据（`pool_reuse_uncontrolled`）+ 池按吸收状态分流（吸收样本只进回归池、`--gate` 拒绝回归池） | 随本机制变更 |
 | 推进 | selection 池 expected 标注 + baseline replay（首批 17 条） | 池文件落地后下一批（subagent 执行） |
 | 推进 | 门控端到端运转一次（真实 miss → 候选 → gate → 合入） | baseline 可用后 |
-| 蓝图 | test 分离（selection ≥20）、归因/交互层入台、分数进 timeline（样本 ≥10 带分母）、评估池按样本是否已沉淀分流扩容（答案已进知识库的样本只进回归池，记 `self_consistent`） | 规模/数据触发 |
+| 蓝图 | test 分离（selection ≥20）、归因/交互层入台、分数进 timeline（样本 ≥10 带分母）、判定池扩容（分流已落地；新增未吸收样本要人工选样与标注，分流后判定池 10 条） | 规模/数据触发 |
 
 ## 8. 原则追溯
 
@@ -135,4 +146,4 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 | 门控是数据门槛不替代人闸（dual 仍双签） | 五（建议与决定分离）、六（闸门硬度） |
 | 配对 + 复用折减 + 三态判词（weak_accept 不算通过） | 十（诚实退化：证据不足就说不足，不把"看起来涨了"当门控通过）、十一（判据本身也要可证伪——`--self-test` 进 CI） |
 | 池从 ingest 候选按规则选、test 分离按规模闸门 | 十一（数据触发） |
-| 评估池按样本是否已沉淀分流扩容 | 十（诚实退化：已沉淀的样本进回归池，不虚增判定样本）、十一（数据触发） |
+| 评估池按吸收状态分流（已落地）与扩容（待数据） | 十（诚实退化：已沉淀的样本进回归池，不虚增判定样本）、十一（数据触发） |
