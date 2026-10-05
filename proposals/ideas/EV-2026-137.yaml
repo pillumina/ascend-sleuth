@@ -1,6 +1,6 @@
 id: EV-2026-137
 layer: L2
-status: in_experiment
+status: validated
 authorization: review
 dimension: process
 supersedes: []
@@ -49,3 +49,11 @@ decisions:
   when: '2026-09-21'
   type: proposal
   conclusion: 产卡：反馈闭环改成挂账 + 回报指令
+- who: agent
+  when: '2026-10-05'
+  type: eval
+  conclusion: 'measure 实跑 PASS（在 origin/main 97cefa2 上逐项命中：`不在这里当场追问` 1 处、`回报指令` 2 处，均在 skills/diagnose/references/diagnosis-procedure.md；`不在新诊断的开屏逐单念` 1 处，在 skills/resume-diagnosis/SKILL.md；命令见本卡 predicted_effect.measure）。这条判的是措辞在册，按本卡 metric（行为规则，判别力不可机械度量）它不证明反馈债被挂账归还——真实落点要看诊断 trace 的 feedback 事件与 feedback_pending_since。'
+- who: agent
+  when: '2026-10-05'
+  type: decision
+  conclusion: '采纳并标 validated。此轮边界：①落地早于收尾——改动随 PR #276（2026-09-21，提交 f4787e7）进入 main，产卡时只写了产卡记录、没有给判断，挂满 14 天触发僵尸卡判据；本轮补的是账本状态与措辞核对，不是新的行为验证；②不新增 trace 词表取值这一条未变，仍用 feedback 事件与 confirmation 字段；③影响面是交互指引面，不改变候选选择与路由，按 docs/guide/eval.md 门禁分级不跑检索 golden。'

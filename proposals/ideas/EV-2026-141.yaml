@@ -2,7 +2,7 @@ id: EV-2026-141
 layer: L2
 target_component: skills/diagnose/references/diagnosis-procedure.md
 title: 步骤 1 改信息覆盖表：固定九行、缺项即问句、逐值标来源、按主题分组报
-status: in_experiment
+status: validated
 authorization: review
 dimension: process
 supersedes: []
@@ -59,3 +59,11 @@ decisions:
   when: '2026-09-21'
   type: proposal
   conclusion: 产卡：覆盖表固定九行 + 缺项即问句 + 逐值标来源 + ✓ 行分组（原两张卡合并为本卡）
+- who: agent
+  when: '2026-10-05'
+  type: eval
+  conclusion: 'measure 实跑 PASS（在 origin/main 97cefa2 上逐项命中：`覆盖表` `只报确认行与待补项` `来源是逐值必填` `按主题分组` 各 1 处，均在 skills/diagnose/references/diagnosis-procedure.md；命令见本卡 predicted_effect.measure）。这条判的是三处措辞都在册，按本卡 metric（行为规则，判别力不可机械度量）它不证明覆盖表按九行填、不复述原文——真实落点要看诊断 trace 的 user 事件 evidence 骨架。'
+- who: agent
+  when: '2026-10-05'
+  type: decision
+  conclusion: '采纳并标 validated。此轮边界：①落地早于收尾——改动随 PR #276（2026-09-21，提交 179916f 与 aae54ff）进入 main，产卡时只写了产卡记录、没有给判断，挂满 14 天触发僵尸卡判据；本轮补的是账本状态与措辞核对，不是新的行为验证；②本卡由 EV-2026-139 与 EV-2026-140 合并而来（提交 91a3711），两张原卡的改动同属这一张覆盖表，合并本身不需要重开；③影响面是交互指引面，不改变候选选择与路由，按 docs/guide/eval.md 门禁分级不跑检索 golden。'
