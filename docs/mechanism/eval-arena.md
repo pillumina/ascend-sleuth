@@ -124,7 +124,7 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 | **落地** | 接受判据 v2（配对 + 复用折减 + 三态判词）+ `--self-test` 进 CI（arena-gate-rule）+ 复用判据（`pool_reuse_uncontrolled`） | 随本机制变更 |
 | 推进 | selection 池 expected 标注 + baseline replay（首批 17 条） | 池文件落地后下一批（subagent 执行） |
 | 推进 | 门控端到端运转一次（真实 miss → 候选 → gate → 合入） | baseline 可用后 |
-| 蓝图 | test 分离（selection ≥20）、归因/交互层入台、分数进 timeline（样本 ≥10 带分母）、评估池按吸收状态分流扩容（吸收过的答案只进回归池） | 规模/数据触发 |
+| 蓝图 | test 分离（selection ≥20）、归因/交互层入台、分数进 timeline（样本 ≥10 带分母）、评估池按样本是否已沉淀分流扩容（答案已进知识库的样本只进回归池，记 `self_consistent`） | 规模/数据触发 |
 
 ## 8. 原则追溯
 
@@ -135,4 +135,4 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 | 门控是数据门槛不替代人闸（dual 仍双签） | 五（建议与决定分离）、六（闸门硬度） |
 | 配对 + 复用折减 + 三态判词（weak_accept 不算通过） | 十（诚实退化：证据不足就说不足，不把"看起来涨了"当门控通过）、十一（判据本身也要可证伪——`--self-test` 进 CI） |
 | 池从 ingest 候选按规则选、test 分离按规模闸门 | 十一（数据触发） |
-| 评估池按吸收状态分流扩容 | 十（诚实退化：吸收过的样本进回归池，不虚增判定样本）、十一（数据触发） |
+| 评估池按样本是否已沉淀分流扩容 | 十（诚实退化：已沉淀的样本进回归池，不虚增判定样本）、十一（数据触发） |
