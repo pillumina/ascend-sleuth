@@ -1,0 +1,114 @@
+# ============================================================
+# EV-2026-166 —— 文档类改动的独立预核：可读性、逻辑性、黑话三项逐项给结论
+# 来源：用户提议「对文档类的修改与新增，在 PR 提交审核 agent 时，也要求审核 agent 审它的
+#       可读性、逻辑性与有无黑话」→ 核查「评审把手」的第 1 档：它只写「对照
+#       `docs/spec/writing-norms.md` §1 逐条过改动段落，报命中项与行号」，把
+#       "读者能不能读懂"与"论证成不成立"留成了隐含要求；五个模板的预核区块也没提这三项。
+# 脱敏：只含仓库内路径、命令与聚合数字
+# ============================================================
+
+id: EV-2026-166
+layer: L2
+target_component: docs/guide/git-workflow.md
+title: "文档类改动的独立预核：可读性、逻辑性、黑话三项逐项给结论，没发现也要写「无发现」"
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: '2026-10-05'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户提议：文档类的修改与新增在 PR 交给审核 agent 时，也要求审核 agent 审可读性、
+      逻辑性与有无黑话。指向同一个缺口——预核的第 1 档只有"逐条对照规范条目"这一个动作，
+      "这段文字读不读得懂、论证成不成立"没有被要求给出结论。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      同一条分支上三轮独立预核的实测（`kb/writing-selfcheck`）：报出的问题里大部分属"读得懂 /
+      论证成立"类，且都不是 CI 能查的——① 举证挂错类（用内容与路由类的
+      修订记录去证"行文规范复发 ≥2 次"）；② 同一份文件里同一个动作写三遍（第 22 条）；
+      ③ 一句四主张（第 1 条）；④ 指路只指一半（只写"提交前自查"、漏掉"动笔前读"）；
+      ⑤ 机械切片的清单少了第三条（`docs/spec/writing-norms.md:71` 的「机械检查」列列着
+      `skill-self-contained`、`docs-index`、`render_review_summary.py --scan`）。这几条作者自查与 CI 都没抓到。
+    trajectory:
+      - "docs/guide/git-workflow.md 的「评审把手」改前第 1 档（只有逐条对照规范一个动作）"
+      - "PR #315 三轮独立预核的命中项（会话 4ee6a7a4、d478f92d 的报告）"
+hypothesis: >-
+  把"读得懂 / 论证成立 / 有没有黑话"从隐含要求改成第 1 档里逐项写结论的三项判定
+  （可读性、逻辑性、黑话），并在五个 PR 模板的预核区块与 `CLAUDE.md` 同处各写一句之后，
+  文档类 PR 的预核意见能区分"读过了"与"没查"——三项各自可被推翻，合并成一句"已对照规范检查"
+  则无法核对是哪一项没做。
+predicted_effect:
+  metric: 文档类改动的预核里，三项判定是否成文、是否要求逐项写结论
+  from: >-
+    `docs/guide/git-workflow.md` 的「评审把手」第 1 档只写"对照 `docs/spec/writing-norms.md` §1
+    逐条过改动段落，报命中项与行号"；通用要求里没有逐项结论的规定；五个模板的预核区块没有提到
+    可读性、逻辑性与黑话；`CLAUDE.md` 的「人读文本的行文规范」条当时只要求动笔前读 §1 与提交前
+    自查，没有要求预核逐项给可读性与逻辑结论。
+  to: >-
+    第 1 档的第一项就是三项判定（各给一行结论）；通用要求新增第 3 条（逐项写结论、没发现写
+    「可读性：无发现」，合并成一句等于没查）；五个模板里，四个的预核注释块各加一句、
+    `methodology.md` 的「文档类改动另查」字段行改写为三项；`CLAUDE.md` 同处补一句指向这三项。
+  measure:
+    command: |
+      python3 -c "import pathlib,sys;gw=pathlib.Path('docs/guide/git-workflow.md').read_text(encoding='utf-8');cl=pathlib.Path('CLAUDE.md').read_text(encoding='utf-8');tpls=sorted(pathlib.Path('.github/PULL_REQUEST_TEMPLATE').glob('*.md'));miss=[k for k in ('三项判定','可读性','逻辑性','黑话','无发现') if k not in gw]+(['CLAUDE.md 缺三项指路'] if '可读性、逻辑性与黑话' not in cl else [])+['模板缺三项:'+p.name for p in tpls if '## Agent 预核意见' in p.read_text(encoding='utf-8') and '可读性' not in p.read_text(encoding='utf-8')];print('VERDICT PASS' if not miss else 'VERDICT FAIL '+' '.join(miss));sys.exit(0 if not miss else 1)"
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: scan_review
+  baseline: >-
+    改前：第 1 档只有"逐条对照规范条目"一个动作；五个模板的预核区块只讲产出者独立、覆盖清单与
+    "不替代人审"；三项判定在任何文件里都没有出现过。
+  success_criteria: >-
+    ①`docs/guide/git-workflow.md` 的第 1 档含三项判定，通用要求含"逐项写结论、没发现写无发现"；
+    ②五个含「Agent 预核意见」区块的模板各含这一行的要求；③`CLAUDE.md` 的「人读文本的行文规范」
+    条提到这三项；④判据命令退出 0 且末行 `VERDICT PASS`；⑤`verify_pr_body.py` 对新写的 PR body
+    仍报"关键区块齐全"（模板结构未被改坏）。
+  rollback: "删掉这四处文字即可；不改脚本、CI、数据面与判据阈值。"
+gate:
+  condition: "再出两批文档类 PR，预核意见里仍没有逐项的三项判定结论（继续只写「已对照规范」）"
+risk: low
+principle_refs: [6, 10, 11]
+actual_cost:
+  tokens: 12000
+  source: estimate
+  note: >-
+    口径：改 `docs/guide/git-workflow.md`（第 1 档 + 通用要求第 3 条）、`CLAUDE.md` 一句、
+    五个 PR 模板各一处、产卡与判据复跑、本 PR body 更新；估 1.2 万，未计同分支前三轮预核与回修。
+decisions:
+  - who: agent
+    when: "2026-10-05"
+    type: proposal
+    conclusion: >-
+      采纳用户提议，落点选在「评审把手」的第 1 档与通用要求，而不是新造一份清单：
+      预核的产出规则只该有一个家（`docs/guide/git-workflow.md`），模板与 `CLAUDE.md` 只放指路句。
+  - who: agent
+    when: "2026-10-05"
+    type: action
+    conclusion: >-
+      落点四处：第 1 档第一项改为三项判定（原逐条对照顺延为第二项，耗时改为"5 分钟（只改几段时
+      2 到 3 分钟）"）；通用要求加第 3 条（逐项写结论、没发现写「可读性：无发现」，合并成一句
+      等于没查）；四个模板的预核注释块各加一行、`methodology.md` 的「文档类改动另查」字段行
+      改写为三项；`CLAUDE.md` 同处补一句。
+  - who: agent
+    when: "2026-10-05"
+    type: eval
+    conclusion: >-
+      判据命令（单行 `python3 -c`，见 `predicted_effect.measure`）实测退出 0、末行 `VERDICT PASS`；
+      它同时查第 1 档的三项、`CLAUDE.md` 的指路句与五个模板的那一行。本机复跑
+      `python3 scripts/verify_proposals.py --check` 通过。`render_review_summary.py --scan` 对改动文件
+      报"未登记代号：无"，另报一处越界（`structure.md` 的 `A2`，本提交未引入，`origin/main` 上同样
+      存在），该命令退出码恒为 0，不能当越界判据。**边界**：这条判据只证明三处文字在册，位置、
+      是否被合并成一句、模板清单是否完整都不查——第四轮独立预核构造的三个反例（把三项塞进
+      HTML 注释、把 `## Agent 预核意见` 改名、把三项合并成"已对照规范检查"）都让它照样报
+      `VERDICT PASS`；"下一轮预核真的会逐项给结论"是判断性工作，留给人审与 gate 条件。
+  - who: agent
+    when: "2026-10-05"
+    type: decision
+    conclusion: >-
+      判 validated：判据可复现且已实测通过；不进 CI（判断性规范成门会变仪式，同该档通用
+      要求的理由）。同一分支的证据支持"这项要求真能抓到东西"：三轮预核报出的问题里，
+      多数属可读性与逻辑类，作者自查与 CI 都没抓到。
