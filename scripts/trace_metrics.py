@@ -149,8 +149,8 @@ def main():
     complete = 0
     vocab_total = 0
     vocab_bad = []
-    # 离线比较探索策略所需的记录（EV-2026-168）：停止原因 / 同批并发标记 / 候选全集。
-    # 三者都是"策略可重算"的前提——缺了它们，历史树只能当过程记录读，不能当模拟器用。
+    # 零执行评估所需的记录（EV-2026-168）：停止原因 / 同批并发标记 / 候选全集。
+    # 三者都是策略可重算的前提：缺了它们，这段历史记录只能看出过程，不能拿来重算策略。
     stop_reasons = {}
     stop_reason_unrecorded = 0
     parallel_group_events = 0
@@ -187,9 +187,14 @@ def main():
         sid = str(st.get("session_id") or "?")
         sr = st.get("stop_reason")
         if sr:
-            stop_reasons[sr] = stop_reasons.get(sr, 0) + 1
-            if sr not in KNOWN_STOP_REASONS:
-                record_bad.append(f"{sid}: stop_reason={sr!r}")
+            # 只接字符串：写成列表/字典是现实的错法，未加守卫时会让整个读数脚本崩掉、
+            # 一条 metrics 都不吐（本文件开头自述"字段缺失时降级计算，不硬崩"）。
+            if isinstance(sr, str):
+                stop_reasons[sr] = stop_reasons.get(sr, 0) + 1
+                if sr not in KNOWN_STOP_REASONS:
+                    record_bad.append(f"{sid}: stop_reason={sr!r}")
+            else:
+                record_bad.append(f"{sid}: stop_reason 应为字符串（{sr!r}）")
         else:
             stop_reason_unrecorded += 1
         # trajectory 统一 {role, ...}：agent 事件带 action，user 事件只带 content（无 action）
@@ -256,6 +261,8 @@ def main():
                         if lack:
                             record_bad.append(
                                 f"{sid}: 取全文的候选不在 considered_candidates 里 {lack}")
+                    elif full is not None:
+                        record_bad.append(f"{sid}: candidates 应为候选 id 列表（{full!r}）")
         if "triage" in actions and (
             "quickly_check" in actions or "load_full" in actions or "hit" in actions
         ):
@@ -357,13 +364,15 @@ def main():
         "reference_purposes": ref_purposes or None,
         "reference_detail": {rid: {"hits": h, "resolved": ref_resolved.get(rid, 0)}
                              for rid, h in sorted(ref_hits.items(), key=lambda x: -x[1])} or None,
-        # 离线比较探索策略所需的记录（EV-2026-168）：停止原因分布、两类事件计数与字段违规。
+        # 零执行评估所需的记录（EV-2026-168）：停止原因分布、两类事件计数与字段违规。
         # 未记录数单列，不与"记录了但值为 unknown"混算——前者是记录缺口，后者是当时确实拿不到。
         "stop_reasons": stop_reasons or None,
         "stop_reason_unrecorded": stop_reason_unrecorded,
         "parallel_group_events": parallel_group_events,
         "considered_candidates_events": considered_candidates_events,
         "trace_record_violations": record_bad[:5] or None,
+        # 违规条数单列：上面那条只列前 5 处，没有总数就看不出是 5 处还是 50 处。
+        "trace_record_violations_total": len(record_bad),
     }
 
     rows = [
@@ -397,11 +406,13 @@ def main():
          + (f"；无 triage 事件 {len(miss_notriage)}" if miss_notriage else "")
          if (miss_lex or miss_sem or miss_unrec or miss_notriage)
          else "| triage miss 归类 | 本批无 miss（routed 全记录） |"),
-        (f"| 离线比较探索策略所需的记录 | 停止原因已记 {n - stop_reason_unrecorded}/{n}"
+        (f"| 零执行评估所需的记录 | 停止原因已记 {n - stop_reason_unrecorded}/{n}"
          f"（未记录 {stop_reason_unrecorded}）"
          f"；同批并发标记（parallel_group）事件 {parallel_group_events}"
          f"；候选全集（considered_candidates）事件 {considered_candidates_events}"
-         + (f"；**字段违规：{'、'.join(record_bad[:5])}**" if record_bad else "")
+         + (f"；字段违规 {len(record_bad)} 处：{'、'.join(record_bad[:5])}"
+            f"{'…（此处只列前 5 条）' if len(record_bad) > 5 else ''}"
+            if record_bad else "")
          + " |"),
     ]
     # reference 指标（ADR-0008 观测性）——无引用时如实显示为空（reference 刚建立是现状）

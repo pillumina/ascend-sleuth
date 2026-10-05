@@ -48,10 +48,11 @@ LIVE_FIELDS = {
     # 下面 triage_miss_* 与本行两个 reference_* 都属白名单没跟上——补上，否则下一期快照被本脚本拦下。
     "reference_outcomes", "reference_purposes",
     "triage_miss_classes", "triage_miss_sessions",
-    # 离线比较探索策略所需的记录（trace_metrics.py，EV-2026-168）：停止原因分布、未记录数、
+    # 零执行评估所需的记录（trace_metrics.py，EV-2026-168）：停止原因分布、未记录数、
     # 同批并发标记与候选全集的事件计数、字段违规。白名单没跟上 = 下一期快照被本脚本拦下。
     "stop_reasons", "stop_reason_unrecorded",
     "parallel_group_events", "considered_candidates_events", "trace_record_violations",
+    "trace_record_violations_total",
     # 结构侧（metrics_snapshot.py ← build_index 头注 / verify_references）
     "case_total", "reference_total", "capacity_by_ns",
     # 内容流程侧（metrics_snapshot.py ← tail_exec_log 聚合）

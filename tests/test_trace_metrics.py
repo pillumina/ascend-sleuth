@@ -221,6 +221,44 @@ class OfflineReplayRecordsTest(_MetricsHarness):
             m["trace_record_violations"],
             ["s1-lack: 取全文的候选不在 considered_candidates 里 ['VLLM-ASC-0001']"])
 
+    def test_non_string_stop_reason_is_a_violation_not_a_crash(self):
+        """stop_reason 写成列表/字典：报违规并继续出读数，不把整个脚本打死。"""
+        self.write_session("s1-liststop", extra="stop_reason: [budget_exhausted, abandoned]\n")
+        m = self.metrics()
+        self.assertEqual(
+            m["trace_record_violations"],
+            ["s1-liststop: stop_reason 应为字符串（['budget_exhausted', 'abandoned']）"])
+        self.assertEqual(m["stop_reason_unrecorded"], 0)
+        self.assertNotIn("stop_reasons", m)
+
+    def test_non_list_candidates_is_a_violation(self):
+        """取全文的候选写成字符串：与 considered_candidates 的类型检查对齐，按违规报出来。"""
+        self.write_session(
+            "s1-strcand",
+            extra=("  - role: agent\n"
+                   "    action: load_full\n"
+                   '    candidates: "VLLM-ASC-0001"\n'
+                   '    considered_candidates: ["VLLM-ASC-0002"]\n'),
+        )
+        m = self.metrics()
+        self.assertEqual(
+            m["trace_record_violations"],
+            ["s1-strcand: candidates 应为候选 id 列表（'VLLM-ASC-0001'）"])
+
+    def test_violation_total_counts_past_the_listed_five(self):
+        """违规超过 5 处时列表只留前 5 条，总数另记——否则看不出是 5 处还是 50 处。"""
+        for i in (1, 2, 3):
+            self.write_session(
+                f"s{i}-two",
+                extra=("  - role: agent\n"
+                       "    action: load_full\n"
+                       "    parallel_group: ''\n"
+                       "stop_reason: guessed\n"),
+            )
+        m = self.metrics()
+        self.assertEqual(len(m["trace_record_violations"]), 5)
+        self.assertEqual(m["trace_record_violations_total"], 6)
+
 
 if __name__ == "__main__":
     unittest.main()
