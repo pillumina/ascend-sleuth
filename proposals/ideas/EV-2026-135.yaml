@@ -50,8 +50,8 @@ decisions:
 - who: agent
   when: '2026-10-05'
   type: eval
-  conclusion: 'measure 实跑 PASS（在 origin/main 97cefa2 上逐项命中：`先提取，再问缺口` 1 处、`一次问全` 2 处，均在 skills/diagnose/references/diagnosis-procedure.md；命令见本卡 predicted_effect.measure）。这条判的是措辞在册，按本卡 metric（行为规则，判别力不可机械度量）它不证明提取真的发生在提问之前——真实落点要看诊断 trace 里问句引用的字段与提交材料。'
+  conclusion: 'measure 实跑 PASS（在 origin/main 97cefa2 上逐项命中：`先提取，再问缺口` 1 处、`一次问全` 2 处，均在 skills/diagnose/references/diagnosis-procedure.md；命令见本卡 predicted_effect.measure）。这条判的是措辞在册，按本卡 metric（行为规则，判别力不可机械度量）它不证明提取发生在提问之前——真实落点要看诊断 trace 里问句引用的字段与提交材料。'
 - who: agent
   when: '2026-10-05'
   type: decision
-  conclusion: '采纳并标 validated。边界如实标注：①落地早于收尾——改动随 PR #276（2026-09-21，提交 f4787e7）进入 main，产卡时只写了产卡记录、没有给判断，挂满 14 天触发僵尸卡判据；本轮补的是账本状态与措辞核对，不是新的行为验证；②影响面是交互指引面，不改变候选选择与路由，按 docs/guide/eval.md 门禁分级不跑检索 golden。'
+  conclusion: '采纳并标 validated。此轮边界：①落地早于收尾——改动随 PR #276（2026-09-21，提交 f4787e7）进入 main，产卡时只写了产卡记录、没有给判断，挂满 14 天触发僵尸卡判据；本轮补的是账本状态与措辞核对，不是新的行为验证；②影响面是交互指引面，不改变候选选择与路由，按 docs/guide/eval.md 门禁分级不跑检索 golden。'
