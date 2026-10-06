@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:f66496cf2ff8)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:7288cb42199b)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:f66496cf2ff8) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:7288cb42199b) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -237,6 +237,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       misdiagnosis_rate: '误诊率', by_category_hit: '按类命中',
       routed_accuracy: '路由准确率', feedback_capture: '反馈捕获',
       trace_completeness: 'trace 完整性', vocab_compliance: '词表合规',
+      stop_reasons: '停止原因分布', stop_reason_unrecorded: '停止原因未记录',
+      parallel_group_events: '同批并发标记', considered_candidates_events: '候选全集事件',
+      trace_record_violations: '记录字段违规', trace_record_violations_total: '记录字段违规数',
       reference: 'reference 引用', confidence_distribution: '置信度分布',
       attribution_ratio: '误诊归因比', tier3: '未命中兜底', reference_detail: 'reference 明细',
       semantic_validation_rate: '语义校验通过', pre_triage: '预分诊',

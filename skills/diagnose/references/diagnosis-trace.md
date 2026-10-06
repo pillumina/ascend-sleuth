@@ -186,6 +186,16 @@ case 错 / 执行错判）——让 `component_tally.py` 能聚合出"被跟随�
 trace 特有的一条：**读者没有会话上下文，也没读过报告**。所以字段要能独立读懂——首次出现的简称当场展开，`output`（给用户）与 `reason`（决策依据）分开写；证据原值（case/issue 编号、`文件:行号`、命令、数字、报错原文）照抄，不翻译。
 
 
+## 零执行评估所需的三项记录
+
+trace 不止当过程记录读，还有第二个用途：换一个探索策略在这段历史上走一遍（同一批决策点，换不同的展开方式与停止点），用来判断当时的做法好不好。这个用途对记录有三项要求，缺了它，重放只能按写的人事后回忆重讲：
+
+- **顶层 `stop_reason`（会话收尾写一次）**：这一单为什么停。取值 `resolved_confirmed`（工程师确认修复生效）/ `halted_ask_user`（按流程停下等人回报）/ `budget_exhausted`（上下文或预算到线）/ `escalated_tier3`（转深度排查后仍无结论）/ `abandoned`（主动放弃，如材料不足）/ `unknown`（当时确实拿不到原因）。停止点本身是探索策略的一部分：不记它，就判断不了当时该不该停在这里。
+- **事件的 `parallel_group`（同批并发标记）**：同一次并行展开的几个动作共用一个值（自己起个短名即可），串行展开的动作不写。它记的是同时展开几个候选。
+- **事件的 `considered_candidates`（候选全集）**：筛选时看过的候选 id 列表，含没有取全文的那些。事件原有的 `candidates` 仍只写实际取全文的候选，所以 `candidates` 必须是 `considered_candidates` 的子集。
+
+三项都可选：旧 trace 没写就按"未记录"统计，不回填、不猜；回填只能靠回忆，会把事后想到的写成当时做的。字段违规由 `scripts/trace_metrics.py` 报出来，不静默收下：停止原因不是字符串或不在词表里、并发标记不是非空字符串、候选全集不是候选 id 列表、取全文的候选不在候选全集里或本身不是列表。读数先给违规总处数，再列前 5 条。
+
 ## 顶层 `kb_rev`（会话级，一次写定）
 
 建 session 时把当时那份 `knowledge/` 的版本写进去（`python3 scripts/kb_rev.py` 的末行 = 检出 HEAD 短 sha），**之后不改**。两个用途：
@@ -214,4 +224,4 @@ trace 特有的一条：**读者没有会话上下文，也没读过报告**。�
 
 ## 词表同步纪律
 
-`trace` 的 action 词表与 `scripts/trace_metrics.py` 的 `KNOWN_ACTIONS` 保持一致；`reference_lookup` 的 `purpose` 与 `outcome` 分别与 `KNOWN_PURPOSES` / `KNOWN_OUTCOMES` 保持一致；新增取值必须两处同步（本文 + 脚本）。user 事件无 action，不参与词表检查。
+`trace` 的 action 词表与 `scripts/trace_metrics.py` 的 `KNOWN_ACTIONS` 保持一致；`reference_lookup` 的 `purpose` 与 `outcome` 分别与 `KNOWN_PURPOSES` / `KNOWN_OUTCOMES` 保持一致；顶层 `stop_reason` 与 `KNOWN_STOP_REASONS` 保持一致；新增取值必须两处同步（本文 + 脚本）。user 事件无 action，不参与词表检查。

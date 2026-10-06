@@ -50,7 +50,9 @@ def pick_cases():
     return first, second
 
 
-class TraceMetricsTest(unittest.TestCase):
+class _MetricsHarness(unittest.TestCase):
+    """合成 trace + 跑 `trace_metrics.py` 的公共装置（本文件两个测试类共用）。"""
+
     @classmethod
     def setUpClass(cls):
         # pick_cases() 返回 ((ns, id), (ns2, id2))——两组不同 namespace
@@ -74,13 +76,18 @@ class TraceMetricsTest(unittest.TestCase):
         (self.traces / f"{sid}.yaml").write_text(text, encoding="utf-8")
 
     def metrics(self):
+        # `encoding="utf-8"` 必须显式给：脚本侧把 stdout 钉成 UTF-8（scripts/_stdio.py），
+        # 而 Windows 上的父进程按 locale（中文系统 = GBK）解码，读线程会抛 UnicodeDecodeError、
+        # `r.stdout` 留 None——本地看到的是"空输出"，Linux CI 不暴露。
         r = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "trace_metrics.py"),
              "--root", str(ROOT), "--traces-dir", str(self.traces), "--emit-yaml-only"],
-            capture_output=True, text=True, timeout=120)
+            capture_output=True, text=True, encoding="utf-8", timeout=120)
         self.assertEqual(r.returncode, 0, r.stderr)
         return (yaml.safe_load(r.stdout) or {}).get("metrics") or {}
 
+
+class TraceMetricsTest(_MetricsHarness):
     # ---------------------------------------------------------------- 命中口径
     def test_hit_requires_a_hit_event(self):
         """tier2_hit 只数有 hit 事件的 session——「路由到了」不等于「命中了」。"""
@@ -157,9 +164,110 @@ class TraceMetricsTest(unittest.TestCase):
         r = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "trace_metrics.py"),
              "--root", str(ROOT), "--traces-dir", str(self.traces)],
-            capture_output=True, text=True, timeout=120)
+            capture_output=True, text=True, encoding="utf-8", timeout=120)
         self.assertEqual(r.returncode, 0)
         self.assertIn("未找到任何 traces", r.stdout)
+
+
+class OfflineReplayRecordsTest(_MetricsHarness):
+    """零执行评估所需的三项记录：停止原因 / 同批并发标记 / 候选全集。
+
+    三项都是换一个策略在这段历史上走一遍的前提：不知道当时在哪停、哪些动作是同一批并发、
+    筛候选时看过哪些，重放只能按人回忆重讲。记录缺了就按未记录计数，不回填，也不猜：
+    所以这里断的是记录了怎么算与没记录怎么算两件事，而不是逼旧 trace 补字段。
+    """
+
+    def test_stop_reason_counted_and_missing_counted_separately(self):
+        """顶层 stop_reason：记了的进分布，没记的进未记录数——两者不混算。"""
+        self.write_session("s1-stop", extra="stop_reason: halted_ask_user\n")
+        self.write_session("s2-nostop")
+        m = self.metrics()
+        self.assertEqual(m["stop_reasons"], {"halted_ask_user": 1})
+        self.assertEqual(m["stop_reason_unrecorded"], 1)
+
+    def test_out_of_vocabulary_stop_reason_is_reported(self):
+        """词表外的停止原因照样进分布，同时按字段违规报出来（不静默收下）。"""
+        self.write_session("s1-badstop", extra="stop_reason: guessed\n")
+        m = self.metrics()
+        self.assertEqual(m["stop_reasons"], {"guessed": 1})
+        self.assertEqual(m["trace_record_violations"], ["s1-badstop: stop_reason='guessed'"])
+
+    def test_parallel_group_and_considered_candidates_counted(self):
+        """两项事件记录各自计数；候选全集包含实际取全文的候选时不报违规。"""
+        self.write_session(
+            "s1-records",
+            extra=("  - role: agent\n"
+                   "    action: load_full\n"
+                   "    parallel_group: g1\n"
+                   '    candidates: ["VLLM-ASC-0001", "VLLM-ASC-0002"]\n'
+                   '    considered_candidates: ["VLLM-ASC-0001", "VLLM-ASC-0002", "VLLM-ASC-0003"]\n'),
+        )
+        m = self.metrics()
+        self.assertEqual(m["parallel_group_events"], 1)
+        self.assertEqual(m["considered_candidates_events"], 1)
+        self.assertNotIn("trace_record_violations", m)
+
+    def test_full_text_candidate_outside_considered_is_a_violation(self):
+        """取全文的候选不在候选全集里 = 两次记录对不上，按违规报出来。"""
+        self.write_session(
+            "s1-lack",
+            extra=("  - role: agent\n"
+                   "    action: load_full\n"
+                   '    candidates: ["VLLM-ASC-0001"]\n'
+                   '    considered_candidates: ["VLLM-ASC-0002"]\n'),
+        )
+        m = self.metrics()
+        self.assertEqual(
+            m["trace_record_violations"],
+            ["s1-lack: 取全文的候选不在 considered_candidates 里 ['VLLM-ASC-0001']"])
+
+    def test_non_string_stop_reason_is_a_violation_not_a_crash(self):
+        """stop_reason 写成列表/字典：报违规并继续出读数，不会让整个脚本中断。"""
+        self.write_session("s1-liststop", extra="stop_reason: [budget_exhausted, abandoned]\n")
+        m = self.metrics()
+        self.assertEqual(
+            m["trace_record_violations"],
+            ["s1-liststop: stop_reason 应为字符串（['budget_exhausted', 'abandoned']）"])
+        self.assertEqual(m["stop_reason_unrecorded"], 0)
+        self.assertNotIn("stop_reasons", m)
+
+    def test_non_list_candidates_is_a_violation(self):
+        """取全文的候选写成字符串：与 considered_candidates 的类型检查对齐，按违规报出来。
+
+        候选全集在不在都要报：全集缺了不等于这条记录没问题。
+        """
+        self.write_session(
+            "s1-strcand",
+            extra=("  - role: agent\n"
+                   "    action: load_full\n"
+                   '    candidates: "VLLM-ASC-0001"\n'
+                   '    considered_candidates: ["VLLM-ASC-0002"]\n'),
+        )
+        self.write_session(
+            "s1-strcand-nocc",
+            extra=("  - role: agent\n"
+                   "    action: load_full\n"
+                   '    candidates: "VLLM-ASC-0001"\n'),
+        )
+        m = self.metrics()
+        self.assertEqual(
+            sorted(m["trace_record_violations"]),
+            sorted(["s1-strcand: candidates 应为候选 id 列表（'VLLM-ASC-0001'）",
+                    "s1-strcand-nocc: candidates 应为候选 id 列表（'VLLM-ASC-0001'）"]))
+
+    def test_violation_total_counts_past_the_listed_five(self):
+        """违规超过 5 处时列表只留前 5 条，总数另记——否则看不出是 5 处还是 50 处。"""
+        for i in (1, 2, 3):
+            self.write_session(
+                f"s{i}-two",
+                extra=("  - role: agent\n"
+                       "    action: load_full\n"
+                       "    parallel_group: ''\n"
+                       "stop_reason: guessed\n"),
+            )
+        m = self.metrics()
+        self.assertEqual(len(m["trace_record_violations"]), 5)
+        self.assertEqual(m["trace_record_violations_total"], 6)
 
 
 if __name__ == "__main__":

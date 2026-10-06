@@ -29,6 +29,12 @@ kb_rev: "a1b2c3d"                       # 建 session 时那份 knowledge/ 的�
                                         # 同一条 case 的 id 可能不存在、候选排序可能不同（见 docs/guide/handoff.md）；
                                         # ② 事后误诊归因——"当时为什么没命中"取决于当时库里有什么。
                                         # 拿不到 git 就如实写 unknown，别编值
+stop_reason: ""                         # 会话收尾写一次：这一单为什么停。取值见
+                                        # `scripts/trace_metrics.py` 的 `KNOWN_STOP_REASONS`：
+                                        # resolved_confirmed | halted_ask_user | budget_exhausted |
+                                        # escalated_tier3 | abandoned | unknown。停止点本身是探索
+                                        # 策略的一部分；没写到收尾就留空，读数按"未记录"统计，
+                                        # 与记了 unknown 分开算（旧 trace 不回填）。
 detected_framework: mindspeed-llm
 detected_platform: A5-950
 detected_category: interrupt           # triage 路由到的 category
