@@ -2,11 +2,11 @@ id: EV-2026-101
 target_component: references/_procedure-index.yaml
 layer: L2
 title: 流程选择器索引越自述增长闸门（32 条 / 约 5387 token）→ 按 category 分片评估
-status: in_experiment
+status: superseded
 authorization: dual
 dimension: maintainability
 supersedes: []
-superseded_by: null
+superseded_by: EV-2026-133
 created_at: 2026-09-17
 source_signals:
   - signal: capacity
@@ -80,3 +80,17 @@ decisions:
       方向采纳（按 category 分片），但落地改动触及生成物与 skill 侧 selector 绑定 =
       结构级行为面，本协议只产候选不直改，也不在本批 reference 导入 PR 内混改——本卡停在
       in_experiment，待独立一轮实现 + 双签 + 跑通 measure 后转终态。
+  - who: agent
+    when: '2026-10-06'
+    type: decision
+    conclusion: >-
+      本卡提的分片方案已由 EV-2026-133 落地（提交 `a20961e`，2026-09-21，随该提交改
+      `scripts/build_procedure_index.py`、`skills/diagnose/references/procedure-gates.yaml` 与
+      `skills/diagnose/SKILL.md`）：`references/_procedure-index.yaml` 现为分片选择器（只含流程总数
+      与三片清单），分片为 `references/_procedure-index/interrupt.yaml` 13 条 / 1992 token、
+      `references/_procedure-index/performance.yaml` 16 条 / 2371 token、
+      `references/_procedure-index/precision.yaml` 20 条 / 3132 token（token 按
+      `scripts/build_procedure_index.py:48` 的字符数 / 2.6 折算），诊断侧消费点已改为按本轮类别取片。
+      `python scripts/build_procedure_index.py --check` 实测退出码 0，输出「procedure 索引新鲜且可解析
+      （43 条流程 / 3 片，选择器约 443 token）」。本卡因此转 `superseded`、`superseded_by: EV-2026-133`，
+      EV-2026-133 的 `supersedes` 同步补上本卡号，两卡互指；本卡的评估与方案记录保留不改。

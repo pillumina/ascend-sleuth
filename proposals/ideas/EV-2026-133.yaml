@@ -15,7 +15,7 @@ title: "reference 消费点补齐：背景层去「否则」分叉、流程选�
 status: validated
 authorization: review              # 改 skill 行为面（触发形态）+ reference 元数据与索引形态
 dimension: process                 # 触发形态、成本预算与入口覆盖
-supersedes: []
+supersedes: [EV-2026-101]
 superseded_by: null
 created_at: 2026-09-21
 target_component: skills/diagnose/references/collect-gates.yaml
@@ -197,3 +197,11 @@ decisions:
     when: 2026-09-21
     type: action
     conclusion: "合入指针回写：本卡（及其结论）随 PR #274 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）。合入后 25 项 CI 全绿。"
+  - who: agent
+    when: '2026-10-06'
+    type: decision
+    conclusion: >-
+      `supersedes` 补上 EV-2026-101。该卡在 2026-09-17 给出按类别分片的评估与方案，停在 `in_experiment`
+      等独立一轮实现与双签；本卡在 2026-09-21 落地了同一方案（提交 `a20961e`）。两卡此前未互指，
+      `python scripts/ev_proposal.py --waterline` 据此把该卡算作在池未闭合 1 张；现两卡互指，
+      EV-2026-101 转 `superseded`。
