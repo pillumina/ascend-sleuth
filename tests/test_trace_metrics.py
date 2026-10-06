@@ -170,11 +170,11 @@ class TraceMetricsTest(_MetricsHarness):
 
 
 class OfflineReplayRecordsTest(_MetricsHarness):
-    """离线比较探索策略所需的三项记录：停止原因 / 同批并发标记 / 候选全集。
+    """零执行评估所需的三项记录：停止原因 / 同批并发标记 / 候选全集。
 
-    三项都是"换一个策略在这段历史上走一遍"的前提：不知道当时在哪停、哪些动作是同一批并发、
-    筛候选时看过哪些，重放只能按人回忆重讲。记录缺了就按未记录计数，不回填、不猜——
-    所以这里断的是"记录了怎么算"与"没记录怎么算"两件事，而不是逼旧 trace 补字段。
+    三项都是换一个策略在这段历史上走一遍的前提：不知道当时在哪停、哪些动作是同一批并发、
+    筛候选时看过哪些，重放只能按人回忆重讲。记录缺了就按未记录计数，不回填，也不猜：
+    所以这里断的是记录了怎么算与没记录怎么算两件事，而不是逼旧 trace 补字段。
     """
 
     def test_stop_reason_counted_and_missing_counted_separately(self):
@@ -222,7 +222,7 @@ class OfflineReplayRecordsTest(_MetricsHarness):
             ["s1-lack: 取全文的候选不在 considered_candidates 里 ['VLLM-ASC-0001']"])
 
     def test_non_string_stop_reason_is_a_violation_not_a_crash(self):
-        """stop_reason 写成列表/字典：报违规并继续出读数，不把整个脚本打死。"""
+        """stop_reason 写成列表/字典：报违规并继续出读数，不会让整个脚本中断。"""
         self.write_session("s1-liststop", extra="stop_reason: [budget_exhausted, abandoned]\n")
         m = self.metrics()
         self.assertEqual(
@@ -232,7 +232,10 @@ class OfflineReplayRecordsTest(_MetricsHarness):
         self.assertNotIn("stop_reasons", m)
 
     def test_non_list_candidates_is_a_violation(self):
-        """取全文的候选写成字符串：与 considered_candidates 的类型检查对齐，按违规报出来。"""
+        """取全文的候选写成字符串：与 considered_candidates 的类型检查对齐，按违规报出来。
+
+        候选全集在不在都要报：全集缺了不等于这条记录没问题。
+        """
         self.write_session(
             "s1-strcand",
             extra=("  - role: agent\n"
@@ -240,10 +243,17 @@ class OfflineReplayRecordsTest(_MetricsHarness):
                    '    candidates: "VLLM-ASC-0001"\n'
                    '    considered_candidates: ["VLLM-ASC-0002"]\n'),
         )
+        self.write_session(
+            "s1-strcand-nocc",
+            extra=("  - role: agent\n"
+                   "    action: load_full\n"
+                   '    candidates: "VLLM-ASC-0001"\n'),
+        )
         m = self.metrics()
         self.assertEqual(
-            m["trace_record_violations"],
-            ["s1-strcand: candidates 应为候选 id 列表（'VLLM-ASC-0001'）"])
+            sorted(m["trace_record_violations"]),
+            sorted(["s1-strcand: candidates 应为候选 id 列表（'VLLM-ASC-0001'）",
+                    "s1-strcand-nocc: candidates 应为候选 id 列表（'VLLM-ASC-0001'）"]))
 
     def test_violation_total_counts_past_the_listed_five(self):
         """违规超过 5 处时列表只留前 5 条，总数另记——否则看不出是 5 处还是 50 处。"""

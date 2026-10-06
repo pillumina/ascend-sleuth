@@ -46,7 +46,7 @@ predicted_effect:
     trace 规范与 skill 写明三项怎么写；`scripts/trace_metrics.py` 统计
     `stop_reasons` / `stop_reason_unrecorded` / `parallel_group_events` /
     `considered_candidates_events` 四个读数，报出 `trace_record_violations`（前 5 条）与
-    `trace_record_violations_total`（总处数；停止原因不是字符串或不在词表、并发标记不是非空
+    `trace_record_violations_total`（总处数；停止原因不是字符串或不在词表、同批并发标记不是非空
     字符串、候选全集不是候选 id 列表、取全文的候选不在候选全集里或本身不是列表）；
     `scripts/verify_metrics.py` 的 live 白名单收下这六个键，快照不再被自家门拦下。
   measure:
@@ -57,13 +57,13 @@ predicted_effect:
 validation:
   method: metrics_compare
   baseline: >-
-    改前：本机 3 单三项全无（停止原因 0/3、并发标记 0、候选全集 0），读侧没有这几个读数；
+    改前：本机 3 单三项全无（停止原因 0/3、同批并发标记 0、候选全集 0），读侧没有这几个读数；
     `tests/test_trace_metrics.py` 7 条测试，`--emit-yaml-only` 的 metrics 里没有这五个键。
   success_criteria: >-
     ①新增 `tests/test_trace_metrics.py` 的 `OfflineReplayRecordsTest` 七条通过（记了与未记录分开数、
-    词表外停止原因被报出、并发标记与候选全集计数、取全文的候选不在候选全集里判违规、
+    词表外停止原因被报出、同批并发标记与候选全集计数、取全文的候选不在候选全集里判违规、
     停止原因非字符串只报违规不崩、`candidates` 不是列表判违规、违规超 5 处时总数照记）；
-    ②真实 traces 复跑新读数如实显示未记录（本机 0/3）；③`scripts/verify_metrics.py --check` 通过
+    ②真实 traces 复跑新读数按实测值显示未记录（本机 0/3）；③`scripts/verify_metrics.py --check` 通过
     （白名单与新键一致）；④`verify_proposals.py --check`、`build_docs_index.py --check`、
     `render_review_summary.py --scan` 对改动文件通过。
   rollback: "回退该提交即可；trace 里的新字段是可选项，旧单不写也照常读。"
@@ -100,7 +100,7 @@ decisions:
     conclusion: >-
       判据实跑：`python scripts/ev_measure.py EV-2026-168 --run` → `VERDICT PASS`、`exit == 0 ✓`。
       `python -m unittest tests.test_trace_metrics` → `Ran 14 tests` / `OK`（7 条旧 + 7 条新）。
-      真实 traces 复跑（`--traces-dir` 指主检出 `traces/`）：新读数如实显示
+      真实 traces 复跑（`--traces-dir` 指主检出 `traces/`）：新读数按实测值显示
       「停止原因已记 0/3（未记录 3）；同批并发标记（parallel_group）事件 0；候选全集（considered_candidates）事件 0」，
       未记录与违规都按实测值输出。
       `scripts/verify_metrics.py --check` → `metrics 校验通过（8 期，其中 live 3）`；
@@ -114,8 +114,8 @@ decisions:
     when: "2026-10-05"
     type: decision
     conclusion: >-
-      判 `validated`。边界：①判据强度上限 = 七条单测通过，测的是读数与违规口径，不测「重放是否真的
-      可算」：那要等离线打分本体有样本再验；②三项记录只在本机 3 条历史单上验证了「未记录如实计数」，
+      判 `validated`。边界：①判据强度上限 = 七条单测通过，测的是读数与违规口径，不测重放能不能
+      算：那要等离线打分本体有样本再验；②三项记录只在本机 3 条历史单上验证了未记录按实测值计数，
       有值路径靠合成 trace 覆盖；③真实 traces 里三单全为未记录，故本卡不声称任何覆盖率提升；
       ④未做判定池扩容，也未写离线打分本体。
   - who: agent
@@ -133,7 +133,7 @@ decisions:
     type: decision
     conclusion: >-
       按独立预核（`MERGE_READY: no`）改四处：①顶层 `stop_reason` 写成列表或字典会让整个读数脚本
-      崩掉、一条 metrics 都不吐（`TypeError: unhashable type: 'list'`），现改为只接字符串，其余按
+      中断、一条 metrics 都输出不了（`TypeError: unhashable type: 'list'`），现改为只接字符串，其余按
       字段违规报出并继续出读数，补一条测试；②违规列表只列前 5 条且不给总数，现加
       `trace_record_violations_total` 并把人读行写成「字段违规 N 处：前 5 条」，补一条测试；
       ③`candidates` 不是列表时子集检查被静默跳过，与 `considered_candidates` 的类型检查不对称，
@@ -142,3 +142,15 @@ decisions:
       同一判据（四条 → 七条），判据强度上限仍是单测能证明的范围。
       另记：卡内 `measure.command` 写 `python3`，本机 `python3` 是 WindowsApps 别名（`python3
       --version` 无输出），实测用 `python`；CI（Linux）用 `python3`，两者都跑同一条命令。
+  - who: agent
+    when: "2026-10-05"
+    type: eval
+    conclusion: >-
+      只读复核（独立会话，对象 `dbd979b`）判 `MERGE_READY: yes`，四项点名缺陷实测关掉，并留下
+      一处残余：`candidates` 是字符串而 `considered_candidates` 缺席时，类型检查挂在子集比对的
+      `elif` 分支上不会触发。现把该检查移出分支（`candidates` 非列表一律报违规，候选全集在不在
+      都报），并把测试用例扩到全集缺席那种 session；模块复跑 `Ran 14 tests` / `OK`（测试条数不变，
+      仍是七条新用例），`python scripts/ev_measure.py EV-2026-168 --run` → `VERDICT PASS`。
+      同轮按复核意见去拟人与自我评价：`scripts/trace_metrics.py` 的注释、`tests/test_trace_metrics.py`
+      的 docstring 与用例说明、本卡此前新增文字里的「一条 metrics 都不吐」「如实」，措辞改成
+      「中断」「按实测值」；本卡新增行里「并发标记」一律写成统一名「同批并发标记」。

@@ -187,8 +187,8 @@ def main():
         sid = str(st.get("session_id") or "?")
         sr = st.get("stop_reason")
         if sr:
-            # 只接字符串：写成列表/字典是现实的错法，未加守卫时会让整个读数脚本崩掉、
-            # 一条 metrics 都不吐（本文件开头自述"字段缺失时降级计算，不硬崩"）。
+            # 只接字符串：写成列表或字典是实际会出现的错法，未加守卫时整个读数脚本会中断、
+            # 一条 metrics 都输出不了（本文件开头写明字段缺失时降级计算、不硬崩）。
             if isinstance(sr, str):
                 stop_reasons[sr] = stop_reasons.get(sr, 0) + 1
                 if sr not in KNOWN_STOP_REASONS:
@@ -250,19 +250,20 @@ def main():
             # 候选全集：筛选时看过的候选（含没取全文的）。`candidates` 仍只写实际取全文的那些，
             # 所以后者必须是前者的子集；不满足说明两次记录对不上，按违规报出来。
             cc = t.get("considered_candidates")
+            cc_ok = isinstance(cc, list) and all(isinstance(x, str) and x for x in cc)
             if cc is not None:
                 considered_candidates_events += 1
-                if not (isinstance(cc, list) and all(isinstance(x, str) and x for x in cc)):
+                if not cc_ok:
                     record_bad.append(f"{sid}: considered_candidates 应为候选 id 列表（{cc!r}）")
-                else:
-                    full = t.get("candidates")
-                    if isinstance(full, list):
-                        lack = [c for c in full if c not in cc]
-                        if lack:
-                            record_bad.append(
-                                f"{sid}: 取全文的候选不在 considered_candidates 里 {lack}")
-                    elif full is not None:
-                        record_bad.append(f"{sid}: candidates 应为候选 id 列表（{full!r}）")
+            # `candidates` 的类型检查独立于候选全集在不在：全集缺了也不该静默跳过。
+            full = t.get("candidates")
+            if full is not None and not isinstance(full, list):
+                record_bad.append(f"{sid}: candidates 应为候选 id 列表（{full!r}）")
+            elif cc_ok and isinstance(full, list):
+                lack = [c for c in full if c not in cc]
+                if lack:
+                    record_bad.append(
+                        f"{sid}: 取全文的候选不在 considered_candidates 里 {lack}")
         if "triage" in actions and (
             "quickly_check" in actions or "load_full" in actions or "hit" in actions
         ):
