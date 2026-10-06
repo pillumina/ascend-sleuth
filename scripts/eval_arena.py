@@ -6,12 +6,18 @@
 # 否则回滚；结果留影响账本。设计文档 docs/mechanism/eval-arena.md。
 #
 # 目录（本地运行件，gitignore）：.s2-replay/arena/
-#   pool-*.yaml         池清单：{name, split, issues:[{id, expected_ns, category,
-#                       fix_ref, held_out}]}
+#   pool-*.yaml         池清单：{name, split, role, issues:[{id, expected_ns, category,
+#                       fix_ref, held_out, absorbed_case}]}
 #   stats-*.yaml        --stats 聚合输出
 #   impact.yaml         --gate 影响账本（append-only）
 # 单 issue 评分复用 .s2-replay/<issue>.result.yaml（S2 result schema：
 # namespace/category/hit_case/rc_match/route）。
+#
+# 池的吸收分流（--build-pool）：答案已进知识库的样本属自洽样本（self_consistent），
+# 拆进 <同名>-absorbed.yaml（role: regression）只做回归信号；判定池（role: judgment）
+# 只留未吸收样本。--gate 见到回归池直接拒绝——把"答案已知"的样本算进判定池，等于把
+# 背下来的题当答对。吸收判据用 case 的实名（knowledge/ 下 <前缀>-<issue>.yaml），
+# 不用正文文本：正文提到别的 issue 是常事，文本搜索会把未吸收的样本误判成已吸收。
 #
 # 接受判据（v2：配对 + 复用折减）——**薄弱环节是接受者，不是提议者**。
 #   v1 的规则是"同一个小池子上分数涨了就接受"。反复对同一个池做接受决定，是一串不受控的
@@ -47,6 +53,7 @@
 import argparse
 import hashlib
 import math
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -79,7 +86,28 @@ def pool_path(root, arg):
 S2_CALIBRATION_DEFAULT = "eval/s2/vllm-ascend.yaml"
 
 
-def build_pool(root, source, name, split, only_scored, out):
+CASE_FILE_RE = re.compile(r"^(?P<cid>[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+)$")
+
+
+def case_index(root):
+    """知识库里的 case 实名 → 文件路径（吸收判据的唯一来源）。
+
+    为什么不用"issue 号出现在知识库文本里"当判据：正文提到别的 issue 是常事（实测
+    `knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13639.yaml` 的边界判别里就写着
+    14871），文本搜索会把没被吸收的样本误判成已吸收，把真判定样本挪出池子。
+    """
+    idx = {}
+    kdir = root / "knowledge"
+    if not kdir.is_dir():
+        return idx
+    for p in kdir.rglob("*.yaml"):
+        m = CASE_FILE_RE.match(p.stem)
+        if m:
+            idx.setdefault(m.group("cid"), p)
+    return idx
+
+
+def build_pool(root, source, name, split, only_scored, out, case_prefix="VLLM-ASC"):
     src = pool_path(root, source)
     if not src.exists():
         print(f"eval_arena: 源校准集不存在：{src}", file=sys.stderr)
@@ -89,42 +117,76 @@ def build_pool(root, source, name, split, only_scored, out):
     if not isinstance(cal, list) or not cal:
         print(f"eval_arena: 源文件里没有 calibration/issues 列表：{src}", file=sys.stderr)
         return 2
-    issues, from_test = [], 0
+    idx = case_index(root)
+    # 前缀一个 case 都没匹配到 = 吸收判据的输入是空的：此后"回归池 0 条"只反映前缀写错
+    # 或库内命名变了，不反映"没有样本被吸收"。这两种情形给出同一句摘要，所以单独报出来。
+    prefixed = [cid for cid in idx if cid.startswith(f"{case_prefix}-")]
+    issues, absorbed_rows, from_test = [], [], 0
     for c in cal:
         if not isinstance(c, dict):
             continue
         cid = c.get("issue") or c.get("id")
         if cid is None:
             continue
+        iid = str(cid)
         csplit = str(c.get("split") or "selection")
         if split != "all" and csplit != split:
             continue
         exp = c.get("expected") or {}
         is_test = csplit == "test"
         from_test += int(is_test)
-        if only_scored and not (root / S2_RESULT_REL.format(cid)).exists():
+        if only_scored and not (root / S2_RESULT_REL.format(iid)).exists():
             continue
-        issues.append({
-            "id": str(cid),
+        row = {
+            "id": iid,
             "expected_ns": exp.get("namespace") or "",
             "category": exp.get("category") or "",
             "fix_ref": exp.get("fix_commit") or "",
             "held_out": is_test,      # 终判集：**不参与 gate 决策**（设计纪律）
-        })
-    if not issues:
+        }
+        case_id = f"{case_prefix}-{iid}"
+        if case_id in idx:
+            # 答案已进知识库 = 自洽样本：只做回归信号，进判定池就是把"答案已知"当"答对"。
+            row["absorbed_case"] = case_id
+            absorbed_rows.append(row)
+        else:
+            issues.append(row)
+    if not issues and not absorbed_rows:
         print(f"eval_arena: 按 split={split} 过滤后没有条目（源 {len(cal)} 条）", file=sys.stderr)
         return 1
-    pool = {"name": name, "split": split, "source": str(src.relative_to(root)) if src.is_relative_to(root) else str(src),
+    src_rel = str(src.relative_to(root)) if src.is_relative_to(root) else str(src)
+    absorption = {"case_prefix": case_prefix, "cases_in_kb": len(idx),
+                  "cases_with_prefix": len(prefixed),
+                  "samples": len(issues) + len(absorbed_rows), "absorbed": len(absorbed_rows)}
+    pool = {"name": name, "split": split, "role": "judgment", "source": src_rel,
+            "absorption": absorption,
             "_comment": "由 eval_arena.py --build-pool 从已跟踪的 S2 校准集派生（确定性，可复核）。"
-                        "held_out=true 的条目只用于终判，不参与 gate 决策。",
+                        "held_out=true 的条目只用于终判，不参与 gate 决策；答案已进知识库的样本"
+                        "被拆到 <同名>-absorbed.yaml（role: regression）。",
             "issues": issues}
     out_p = pool_path(root, out)
     out_p.parent.mkdir(parents=True, exist_ok=True)
     out_p.write_text(yaml.safe_dump(pool, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    reg_p = out_p.with_name(f"{out_p.stem}-absorbed{out_p.suffix}")
+    reg_p.write_text(yaml.safe_dump({
+        "name": f"{name}-absorbed", "split": split, "role": "regression", "source": src_rel,
+        "absorption": absorption,
+        "_comment": "回归池：这些样本的答案已进知识库（自洽样本 self_consistent），只做 train/"
+                    "回归信号，不得作为 --gate 的 baseline/candidate（--gate 直接拒绝）。",
+        "issues": absorbed_rows}, allow_unicode=True, sort_keys=False), encoding="utf-8")
     scored = sum(1 for it in issues if (root / S2_RESULT_REL.format(it["id"])).exists())
     print(f"池已生成：{out_p}")
-    print(f"  条目 {len(issues)}（split={split}）· 其中已有 replay result 的 {scored} 条"
+    print(f"  判定池 {len(issues)} 条（split={split}）· 其中已有 replay result 的 {scored} 条"
           + (f" · 源里被过滤掉的 test 条目 {from_test}" if from_test else ""))
+    print(f"  回归池 {len(absorbed_rows)} 条（答案已进知识库，不参与 gate）→ {reg_p}")
+    if absorbed_rows:
+        print(f"    吸收判据：knowledge/ 下存在 {case_prefix}-<issue>.yaml（case 实名，非正文提及）")
+    if not prefixed:
+        print(f'eval_arena: case 前缀 "{case_prefix}" 在 knowledge/ 下没有匹配到任何 case 文件'
+              f"（库里 {len(idx)} 条），本次的吸收判定没有输入。"
+              f'上面那句"回归池 0 条"说的是没有样本被吸收，这里发生的是判据没有输入，'
+              f"先核对 --case-prefix 与库内命名。",
+              file=sys.stderr)
     if scored == 0:
         print("  ⚠ 没有任何 result：先跑 replay 产出 .s2-replay/<issue>.result.yaml，再 --stats")
     else:
@@ -254,7 +316,11 @@ def cmd_pool(root, pool_file):
     if bad:
         print("池校验失败：", bad, file=sys.stderr)
         return 1
-    print(f"池 {pool.get('name')}（split={pool.get('split')}）: {len(pool['issues'])} 条，校验通过")
+    role = pool.get("role", "judgment")
+    print(f"池 {pool.get('name')}（split={pool.get('split')} · role={role}）: "
+          f"{len(pool['issues'])} 条，校验通过")
+    if role == "regression":
+        print("  ⚠ 回归池：样本答案已进知识库（自洽样本），只做回归信号，不得用于 --gate 判定")
     return 0
 
 
@@ -263,6 +329,7 @@ def cmd_stats(root, pool_file):
     if not pool:
         return 1
     stats = {"pool": pool.get("name"), "split": pool.get("split"),
+             "role": pool.get("role", "judgment"),
              "pool_hash": file_hash(pool_file),
              "source": "issue-replay", "generated": datetime.now().isoformat(timespec="minutes"),
              "metrics": {}, "issues": []}
@@ -331,6 +398,12 @@ def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note, alp
     c = load(candidate_file)
     if not b or not c:
         return 1
+    for side, s in (("baseline", b), ("candidate", c)):
+        if s.get("role") == "regression":
+            print(f"eval_arena: {side} 是回归池的 stats（role: regression）——这些样本的答案已进"
+                  f"知识库，属自洽样本，只做回归信号，不能当门控判定"
+                  f"（docs/mechanism/eval-arena.md §1 纪律）。", file=sys.stderr)
+            return 2
 
     imp = root / IMPACT_REL
     ledger = load(imp) if imp.exists() else {"_comment": "arena 影响账本（append-only）",
@@ -542,13 +615,16 @@ def main():
                     help="--build-pool: 只取哪个 split（selection|test|all，默认 selection——test 不参与 gate）")
     ap.add_argument("--only-scored", action="store_true",
                     help="--build-pool: 只收已有 replay result 的条目")
+    ap.add_argument("--case-prefix", default="VLLM-ASC",
+                    help="--build-pool: 吸收判据用的 case 实名前缀（默认 VLLM-ASC，对应源校准集的框架）")
     ap.add_argument("--out", default="", help="--build-pool: 输出路径（默认 .s2-replay/arena/pool-<name>.yaml）")
     ap.add_argument("--root", default=".", help="仓库根目录（默认当前目录）")
     args = ap.parse_args()
     root = Path(args.root).resolve()
     if args.build_pool:
         out = args.out or f"{ARENA_SUBDIR}/pool-{args.name}.yaml"
-        return build_pool(root, args.source, args.name, args.split, args.only_scored, out)
+        return build_pool(root, args.source, args.name, args.split, args.only_scored, out,
+                          args.case_prefix)
     if args.pool:
         return cmd_pool(root, pool_path(root, args.pool))
     if args.stats:
