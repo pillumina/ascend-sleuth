@@ -1,0 +1,139 @@
+# ============================================================
+# EV-2026-175 —— test 分离的池规模闸门定口径：由判定线反推所需可评样本数
+# 来源：机制文档 §1 一直写着「判定池条数够支撑判定之后」才划出终判子集——这句话把闸门
+#       停在判断语上，谁也无法机械地判定「够」了没有；而判定线本身（配对检验 + 复用折减）
+#       是可以反推出条数的。本卡把它换成算式 + 现状对照。
+# 脱敏：只含仓库内路径、命令与聚合数字
+# ============================================================
+
+id: EV-2026-175
+layer: L2
+target_component: docs/mechanism/eval-arena.md
+title: "test 分离的池规模闸门定口径：由判定线反推所需可评样本数"
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: '2026-10-07'
+source_signals:
+  - signal: observation_window
+    evidence: >-
+      `docs/mechanism/eval-arena.md` §1 的 test 行写着闸门是「判定池（未吸收样本）条数够支撑判定之后」，
+      §7 蓝图行同样只写「闸门口径＝判定池条数」。同一份文档的 §4 与 `scripts/eval_arena.py` 却把判定线
+      写得很实：`P(Bin(b+c, 0.5) ≥ b) ≤ α/(k+1)`。两处一对照就能看出：闸门条数不必是判断语，
+      它可以由判定线反推出来；而基线重放跑完之后（判定池 10 条里 9 条有向量），
+      「够不够」这个问题第一次变得可以真答。
+    trajectory:
+      - "docs/mechanism/eval-arena.md §1 test 行（「条数够支撑判定之后」）"
+      - "docs/mechanism/eval-arena.md §4 判定线 + scripts/eval_arena.py:347-371 / :374-420"
+      - "scripts/eval_arena.py:676-677（α_eff = α/(k+1) 的实际算法）"
+  - signal: data_evidence
+    evidence: >-
+      用工具自己的函数算过一遍：c = 0 时 b*(k) = 满足 `2^-b ≤ 0.10/(k+1)` 的最小 b
+      = 4、5、5、6、6、6、7、7、7…（k = 0 起）；累计到 K 次 = 4、9、14、20、26 条。
+      `≥20` 这个原目标出自 `proposals/ideas/EV-2026-013.yaml:80`「③test/selection 分离按规模闸门（selection ≥20）启用」——它说的是 selection 侧条数，正好等于 K = 4 时 selection 侧的 Σ = 20，换算口径由此对齐。
+    trajectory:
+      - "python -c \"from eval_arena import exact_mcnemar_ge; ...\"（见 validation.baseline）"
+      - "proposals/ideas/EV-2026-013.yaml:80（「selection ≥20」原目标）"
+hypothesis: >-
+  把闸门从判断语换成算式，能让「该不该划终判子集」变成一个可复算的读数：先定这套判定要支撑几次
+  判定 K（owner 给的参数），再由判定线反推 selection 侧需要的可评样本数 Σ_{k<K} b*(k)，
+  加上终判子集自己判一次所需的 b*(0) = 4 条，就是触发线。这样闸门既不依赖感觉，也不偷偷改动
+  判定线的松紧（α 与复用折减一个字没动）。
+predicted_effect:
+  metric: >-
+    §1 里 test 分离闸门的表述能不能被机械复核：给定 K 与池的实测可评条数，
+    能不能算出「够 / 不够」而不必问人
+  from: >-
+    改前 §1 写「判定池（未吸收样本）条数够支撑判定之后」，§7 写「闸门口径＝判定池条数」——
+    没有算式、没有触发条数、也没有拿现状对照，谁读都只能凭印象说「应该还不够吧」。
+  to: >-
+    §1 新增一段口径：α_eff = α/(k+1) 与配对检验公式 → b*(k) = 4、5、5、6、6、6、7…
+    → selection 侧 ≥ Σ = 4/9/14/20/26（K = 1…5）→ 加终判子集自身 4 条 → 触发线 8/13/18/24；
+    并写明现状（判定池可评 9 条，只够 K = 1，升到 13 条才够支撑 2 次并留下终判子集）、
+    写明这是必要条件而非充分条件（还要有真会翻转的题）、写明反推取 c = 0 是最省样本的情形
+    （c = 1 时 k = 0 要 b = 6 才达线）。§7 蓝图行同步改掉「先卡在 baseline 重放没跑过」这句已过期的说法。
+  measure:
+    command: |
+      python3 -c "import sys;sys.path.insert(0,'scripts');from eval_arena import exact_mcnemar_ge as p;doc=open('docs/mechanism/eval-arena.md',encoding='utf-8').read();b=[next(x for x in range(1,20) if p(x,x)<=0.10/(k+1)) for k in range(5)];assert b==[4,5,5,6,6],b;cum=[sum(b[:k]) for k in range(1,6)];assert cum==[4,9,14,20,26],cum;assert p(6,7)<=0.10 and p(4,5)>0.10;need=['test 分离的池规模闸门（2026-10 定口径','4（K=1）、9（K=2）、14（K=3）、20（K=4）、26（K=5）','8（K=1）、13（K=2）、18（K=3）、24（K=4）','b*(0) = 4','必要条件，不是充分条件'];missing=[s for s in need if s not in doc];assert not missing,missing;stale=['条数够支撑判定之后才划出终判子集','当前先卡在 baseline 重放没跑过'];left=[s for s in stale if s in doc];assert not left,left;print('VERDICT PASS')"
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前用工具自己的函数复算判定线（worktree，本机 Windows，2026-10-07）：
+    `python -c` 调 `scripts/eval_arena.py` 的 `exact_mcnemar_ge(b, n)`，
+    k = 0…8 的 b*(c=0) 实测 = 4、5、5、6、6、6、7、7、7（对应 α_eff = 0.1、0.05、0.03333、
+    0.025、0.02、0.01667、0.01429、0.0125、0.01111），累计 K = 1…5 = 4、9、14、20、26；
+    c = 1 时 k = 0 的最小 b 实测 = 6（p = 0.0625），b = 5 时 p = 0.10938 > 0.1 不达线。
+  success_criteria: >-
+    ①`docs/mechanism/eval-arena.md` §1 新增的口径段里，b*(k)、Σ、触发线三组数字与用
+    `scripts/eval_arena.py` 的函数现算的结果一致（卡内 `predicted_effect.measure` 一条命令复验）；
+    ②「反推取 c = 0、反向翻转只稀释证据不自动否决」这句与 `decide()` 的实现一致
+    （`scripts/eval_arena.py:399-420`：p 值按 n = b + c 算，没有 c = 0 的前置条件）；
+    ③§7 蓝图行不再声称「先卡在 baseline 重放没跑过」；
+    ④`python scripts/ev_measure.py EV-2026-175 --run` → `VERDICT PASS`；
+    ⑤`python scripts/verify_proposals.py --check`、`python scripts/build_docs_index.py --check` 通过，
+    `python scripts/eval_arena.py --self-test` 全部断言通过；
+    ⑥`python -m unittest discover -s tests -t .` 的失败集合与分支父 `ec96d91` 上一致。
+  rollback: >-
+    回退该提交即可：只改机制文档两处表述并新增本卡，未改 `scripts/`、未改判定线参数（α 与复用折减照旧）。
+gate:
+  condition: >-
+    出现「闸门条数又被写回判断语（没有算式与触发条数）」，或「按名义 selection 条数触发 test 分离」，
+    或「把 Σ 当成充分条件」（池子够大不等于判得成——历史上 20 条池只翻 2 条）。
+risk: low
+principle_refs: [2, 6, 10, 11]
+actual_cost:
+  tokens: 6000
+  source: estimate
+  note: >-
+    口径：`docs/mechanism/eval-arena.md`（§1 新增口径段、§1 test 行与 §7 蓝图行两处表述）、
+    本卡、用 `exact_mcnemar_ge` 现算 b*(k) 与累计值、`ev_measure` 复跑、全门复跑；
+    估 6 千，未计独立预核与回修。
+decisions:
+  - who: agent
+    when: "2026-10-07"
+    type: proposal
+    conclusion: >-
+      采纳「由判定线反推闸门条数」。理由是判断语不可机械复核：同一个人同一天读「够支撑判定之后」
+      可以得出两种结论，而判定线本身是算式——能算出条数就不该停在形容词上。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      反推取 c = 0（无反方向对子）作为最省样本的情形，并写明「反向翻转不是自动否决、
+      只是稀释证据」。理由：`decide()` 只要求 `P(Bin(b+c, 0.5) ≥ b) ≤ α_eff`，没有 c = 0 的前置条件；
+      若把它写成「无反向翻转」，就等于在文档里偷偷加了一条代码没有的门槛，反过来会让读者
+      以为 c ≥ 1 时判词无效。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      把终判子集自身需要的 b*(0) = 4 条计入触发线（8/13/18/24）。理由：终判子集不是只存不判，
+      它要按同一条判定线判一次；只算 selection 侧会让「划出去之后 selection 还够用、终判子集自己判不动」
+      这种半吊子状态看起来像达标。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      触发线写成「够 K 次判定的必要条数」，不写成「样本该采多少」——采集量还要看真会翻转的题有多少
+      （前一轮 20 条池只翻 2 条）。K 由 owner 定，本卡只给算法与现状（现状 9 条可评 → 只够 K = 1），
+      不替 owner 选 K。
+  - who: agent
+    when: "2026-10-07"
+    type: eval
+    conclusion: >-
+      判据复跑（worktree，本机 Windows，2026-10-07）：卡内 `predicted_effect.measure` 一条命令
+      现算 b* 与累计值、并与文档字面串对齐，`python scripts/ev_measure.py EV-2026-175 --run` → `VERDICT PASS`；
+      `python scripts/eval_arena.py --self-test` 全部断言通过；`python scripts/verify_proposals.py --check`
+      与 `python scripts/build_docs_index.py --check` 通过；`python -m unittest discover -s tests -t .`
+      的 `Ran`/failures/errors 与分支父 `ec96d91` 上逐条一致。
+  - who: agent
+    when: "2026-10-07"
+    type: decision
+    conclusion: >-
+      判 validated：闸门条数从判断语换成可复算的算式，且算式与工具函数由一条命令绑定。
+      **边界**：本卡只定「什么时候该划出终判子集」，不定「该采多少新样本」（那要看翻转率与 owner 定的 K）；
+      `≥20` 这个原目标（出处 `proposals/ideas/EV-2026-013.yaml:80`，说的是 selection 侧条数）正好等于 K = 4 时 selection 侧的 Σ；这不等于「20 条就够判 4 次」。

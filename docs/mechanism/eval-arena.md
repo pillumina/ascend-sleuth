@@ -16,10 +16,21 @@
 | **golden** | 23 条构造例 | 无回归保险（任何改动不许倒退） | eval/golden/（提交） |
 | **selection**（val 门用） | 未沉淀 closed/completed issue（held-out） | 候选改动的前后对照评分（门控） | ingest 池选样 + expected 标注（本地 .s2-replay/arena/） |
 | **regression**（池内分流） | 答案已进知识库的样本（自洽样本，self_consistent） | train/回归信号；不参与门控判定（`--gate` 拒绝） | `--build-pool` 按 case 实名（`knowledge/` 下有同名 case 文件）从同一源拆出（`pool-*-absorbed.yaml`） |
-| **test**（终判） | 与 selection 分离的 held-out 子集 | validated 终判（防对 selection 过拟合） | 池规模闸门：**判定池（未吸收样本）条数够支撑判定之后**才划出终判子集——按名义 selection 条数触发会把可判定的题变少（现单池，同 §2.1 纪律） |
+| **test**（终判） | 与 selection 分离的 held-out 子集 | validated 终判（防对 selection 过拟合） | 池规模闸门（2026-10 定口径，算法与现状见下节「test 分离的池规模闸门」）：**判定池的可评样本数达到「终判子集 + selection 侧剩余」两笔之和**才划出终判子集——按名义 selection 条数触发会把可判定的题变少（现单池，同 §2.1 纪律） |
 | **smoke/self** | 已沉淀 case 的源 issue | train/回归信号（self_consistent 照原值记） | KB case 源 issue 重放 |
 
 **纪律**：val 区 issue **永不沉淀**（只评测、不进知识侧、反馈不回喂——扰动不从评测学）；自洽样本照原值记 `self_consistent`，不计入外部验证。答案已进知识库的样本（下称已吸收样本）由 `--build-pool` 按 case 实名拆进回归池（`role: regression`），判定池里不留它们：答案已在库里的样本留在判定池，会让判定池的分数虚高。
+
+**test 分离的池规模闸门（2026-10 定口径，此前只写「条数够支撑判定之后」这句判断语）**：
+闸门的条数不是拍出来的，是拿判据反推出来的。先定这套判定要支撑几次判定 K——**K 由 owner 定**，下面只给「给定 K 要多少条可评样本」的算法，不替 owner 选 K。
+池规模这个缺口本身的盘点见 `docs/mechanism/rsi-mechanism.md` §8 已知缺口第 4 条。
+
+- 第 k 次复用同一个池时阈值折减为 `α_eff = α/(k+1)`（α 默认 0.10，k 从 0 起算；折减在调用点 `scripts/eval_arena.py:676-677`，`reuse_index()` 本身只按池名与池哈希计数，见 `scripts/eval_arena.py:359-371`）。要判 `accept`，得在配对检验上 `P(Bin(b+c, 0.5) ≥ b) ≤ α_eff`（b = candidate 独家命中、c = baseline 独家命中）。
+- 反向翻转（c > 0）不是自动否决，而是稀释证据：n 变成 b + c，同一个 b 的 p 值随之变大——k = 0 时 c = 0 只要 b = 4 达线，c = 1 就要 b = 6。因此下面的反推取 c = 0，它给的是最省样本的那种情形。
+- 取 c = 0：`b*(k)` = 满足 `2^-b ≤ α/(k+1)` 的最小 b = 4、5、5、6、6、6、7、7、7…（k = 0 起）。判过的题不能翻第二次，所以要在 selection 侧支撑 K 次判定，**留在 selection 里的可评样本数 ≥ Σ_{k<K} b*(k)** = 4（K=1）、9（K=2）、14（K=3）、20（K=4）、26（K=5）。
+- 终判子集自己也要按同一条判定线判一次，故它至少要有 `b*(0) = 4` 条。两笔相加就是**划出终判子集的触发线**：判定池可评样本数 ≥ `4 + Σ_{k<K} b*(k)` = 8（K=1）、13（K=2）、18（K=3）、24（K=4）。
+- 现状（2026-10 一轮，读数见 §3）：判定池 10 行、可评 9 行（1 条非诊断样本已剔出），按上式只够 K = 1；升到 13 条才够支撑 2 次判定并同时留下终判子集。本文件与 `docs/plan/roadmap.md` 里都没有「判定池 ≥20 条」这个原目标：`≥20` 的出处是 `proposals/ideas/EV-2026-013.yaml:80` 的「③test/selection 分离按规模闸门（selection ≥20）启用」——它说的是 selection 侧条数，正好等于 K = 4 时 selection 侧的 Σ = 20，两条口径由此对齐。
+- 这是**必要条件，不是充分条件**：它只说池子大得够得上判定线，能不能真判成还取决于池里有多少条真会翻转的题（前一轮 20 条池实测只翻 2 条，缺口主要在这里）。样本条数由 `--stats` 的「N/M 条已评分」与 `held_out_skipped` 现算，不另外维护一份数字。
 
 ## 2. 池构建（本次首批，2026-09）
 
@@ -223,7 +234,7 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 | **落地** | 接受判据 v2（配对 + 复用折减 + 三态判词）+ `--self-test` 进 CI（arena-gate-rule）+ 复用判据（`pool_reuse_uncontrolled`）+ 池按吸收状态分流（吸收样本只进回归池、`--gate` 拒绝回归池）+ 吸收状态在本池范围内运行期重判（`absorption_rev` 对不上则 `--gate` 退出 3、不写账本）+ `held_out` 在 `--stats`/`--gate` 真正生效 + 非诊断样本剔出命中率分母与配对 + 无回归范围写进账本（`no_regression_scope: arena-pool-only`）+ 证据面留痕（`ground_truth: none` 剔出结论一致率分母、重放版本 `kb_rev` 进 `replay_revs` 并在跨版本时告警） | 随本机制变更 |
 | 推进 | selection 池 expected 标注 + baseline replay（首批 17 条） | 池文件落地后下一批（subagent 执行） |
 | 推进 | 门控端到端运转一次（真实 miss → 候选 → gate → 合入） | baseline 可用后 |
-| 蓝图 | test 分离（闸门口径＝判定池条数，见 §1 与 §2；不按名义 selection 条数触发）、归因/交互层入台、分数进 timeline（样本 ≥10 带分母）、判定池扩容（分流已落地；新增未吸收样本仍要人工选样与标注。当前先卡在 baseline 重放没跑过——没有逐条向量，配对检验没有输入） | 规模/数据触发 |
+| 蓝图 | test 分离（闸门口径＝按判定线反推的可评样本数，见 §1 的池规模闸门；不按名义 selection 条数触发）、归因/交互层入台、分数进 timeline（样本 ≥10 带分母）、判定池扩容（分流已落地；新增未吸收样本仍要人工选样与标注。基线重放已出一轮——判定池 10 条里 9 条有逐条向量；下一步的闸门在样本规模，见 §1） | 规模/数据触发 |
 
 ## 8. 原则追溯
 
