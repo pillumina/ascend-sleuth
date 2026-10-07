@@ -78,6 +78,11 @@ namespace/category/hit_case/root_cause/rc_match/route，另见下条 `ground_tru
   写 `none` 的样本在结算时**整体跳过**：结论一致与否在这类样本上没有真值，记 `consistent` 无从判对，
   记 `inconsistent` 则会把一条假复审信号压到 case 上（实测 #10913 命中 VLLM-ASC-8646 但该 issue 以
   NOT_PLANNED 关闭、无维护者结论）。字段缺席按旧行为（存量 result 不受影响）。
+  **2026-10 补上判定侧的读取方**：此前只有结算侧（`scripts/settle_s2_feedback.py`）按这句话办事，
+  判定侧不读它——同一条 `ground_truth: none` 的样本，结算跳过、而 `--stats` 只要它写了
+  `root_cause_ok: true` 就把"没有真值的猜测"记成"结论一致"，推高结论一致率。现在 `--stats` 同样把
+  `none` 的行剔出结论一致率分母（逐条向量的 `rc_match` 记空），各取值条数写进 `stats["ground_truth"]`
+  （`counts` / `none` / `absent`），`--gate` 把两侧读数记进账本。
 
 `--stats` 除聚合指标外还写**逐条判决向量**（每条 issue 的 hit/route_ok/rc_match）与**池内容哈希**：
 前者是配对检验的输入（没有它，判定只能退回点估计，判词上限降为 weak_accept），后者是"量尺身份"
@@ -85,14 +90,20 @@ namespace/category/hit_case/root_cause/rc_match/route，另见下条 `ground_tru
 跳过条数记在 `held_out_skipped`，向量条目带 `held_out` 字段（恒为假，只为读起来能对上口径）。
 标了 `non_diagnostic` 的行同样整体跳过（不读 result、不进指标、不进向量），清单记在
 `non_diagnostic_rows`（id + 原因）。
-`--stats` 同时把本次重算的吸收状态指纹写进 `absorption_recheck`（§2）。
+`--stats` 同时把本次重算的吸收状态指纹写进 `absorption_recheck`（§2），并收集每条 result 的**重放版本**
+`kb_rev`（口径同 `scripts/kb_rev.py`：检出短 sha，脏工作区带后缀）写进 `replay_revs`
+（`counts` / `absent` / `mixed`）；多于一个版本时打印 ⚠。`--gate` 把两侧的 `replay_revs` 与
+`ground_truth` 一起记进账本并同样告警。**跨版本只告警、不拒判**：混算是数据质量问题，不是判定不成立
+——把它做成拒绝，会让"这批分数没法比"和"改动没通过"混成同一个信号（原则十）。
 
 test/selection 分离前单池运行，分数标注 source: issue-replay。
 
-**两条读数口径（实测喂出来的，别绕过）**：
+**三条读数口径（实测喂出来的，别绕过）**：
 
 1. **路由率的分母只算"有真值"的条目**：池条目可能只有 resolution、没有 `expected_ns`（实测一批 20 条里 11 条如此，它们是从 issue 池直接选的、没人标注归属）。把这类算进路由率会凭空造出失败——`--stats` 因此把它们排除在分母外并打印条数，`route_ok.unjudgeable` 字段可读。
 2. **非诊断样本不进命中率（2026-10 落地，此前只有口径、没有读取方）**：issue 正文为空、或 resolution 是"请把问题描述清楚"这类（实测 1 条：标题 `[Bug]: wait`、正文空白、末尾 `### 🐛Describe the bug` 段为空），任何诊断都不可能有结论。这类样本要么单列、要么从命中率分母剔除，否则同时高估（分母虚增）与低估（拉低命中率）。判据：**输入文件里没有可判别信号 = 非诊断样本**——判据由人下（读校准集那一行的输入），代码不按正文长度猜：机器猜会把"描述简短但可判别"的样本一并剔掉，那是往分母里掺假。落点：校准集行上的 `non_diagnostic`（真值或一句原因）→ `--build-pool` 原样带进池行 → `--stats` 单列 `non_diagnostic_rows`，并从命中率分母、逐条向量与吸收指纹里剔除（不进指纹的理由同 `held_out`：它被吸收不改变这次判定测的是检索还是背诵，算进去只会造出假过期）；`--gate` 把两侧条数记进账本，手写/旧版 stats 带着这类向量时 `vectors()` 再滤一道。
+
+3. **重放版本留痕：只告警，不拒判（2026-10 落地）**：result 里原本没有"这次回放在哪份知识库上跑的"这句话，而一批结果常常跨若干次 `git pull` 才跑完（本轮实测 9 条结果跨 2 个版本：`3c3ba14` → `d29d450`）——跨版本混算出来的分数前后不可比，同一个候选改动两次统计出的差异可能全部来自知识库版本变了。落点：`--stats` 收 `kb_rev` 写 `replay_revs`，混版本打印 ⚠；`--gate` 记进账本并同样告警。**不拒判**：混算是数据质量问题，不是判定不成立，做成拒绝会把"这批分数没法比"和"改动没通过"混成一个信号。取值由回放者执行（`python3 scripts/kb_rev.py` 末行），代码只汇总、不猜。
 
 **本轮全量重放结果（20/20 条已评分）**：路由 9/9（只有 9 条有路由真值）、命中 **2/20**、结论一致（root_cause_ok）13/20。命中低是**符合预期**的：S2 池从"未沉淀的 closed issue"里选样，池本身就是**覆盖缺口的探针**——它按设计就该大量 miss（miss 即"库里没有这条知识"的缺口信号，走补 case 候选）；它不是"已有 case 的外部验证通道"。
 
@@ -158,11 +169,15 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
   标了 `non_diagnostic` 的行同样跳过，清单（id + 原因）记 `non_diagnostic_rows`；
   顶层另写 `case_prefix`、`judged_ids`（本池参与判定的每一行 id；判定时刻的重算靠它，
   不能用逐条向量代替——没跑 replay 的样本不在向量里，按向量重算会把指纹算成空字符串的哈希、
-  把有效的池误判成不新鲜）与 `absorption_recheck: {rev_pool, rev_now, checked, stale, newly_absorbed}`——
+  把有效的池误判成不新鲜）、`ground_truth`（可证伪性各取值条数：`counts` / `none` / `absent`）与
+  `replay_revs`（这批 result 的重放版本集合：`counts` / `absent` / `mixed`，混版本打印 ⚠）与
+  `absorption_recheck: {rev_pool, rev_now, checked, stale, newly_absorbed}`——
   判定前先看 `stale`（`--stats` 恒退 0，判定以 `--gate` 为准；`--gate` 在判定时刻自己再算一遍，见 §2）。**先复制一份 baseline stats 再跑改后侧**——两次 `--stats` 写同一个文件名，覆盖掉 baseline
   就没有配对数据了（`cp stats-pool-val.yaml baseline.yaml` 之后才重跑）；
 - `--gate --baseline <stats-a> --candidate <stats-b> [--alpha 0.1]`：配对判定（accept /
-  weak_accept / reject）+ 追加影响账本（含两侧的非诊断样本条数 `non_diagnostic_rows`）；
+  weak_accept / reject）+ 追加影响账本（含两侧的非诊断样本条数 `non_diagnostic_rows`、两侧的
+  `ground_truth` 与 `replay_revs` 读数）；对混版本与 `ground_truth: none` 打印告警但照常出判词
+  （§3 第三条口径）；
   判定时刻按 stats 记下的逐行样本 id 重算吸收状态
   （stats 没记这份 id 时写明"判定时刻无法重算"并沿用原读数，见 §2），
   任一侧对不上则不出判词、退出码 3、不写账本（退出码表见 §4）；
@@ -183,7 +198,7 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 | 分级 | 内容 | 何时 |
 |---|---|---|
 | **第一批（本 PR）** | 设计文档 + eval_arena.py v1（pool/stats/gate）+ EV-2026-013 | 现在 |
-| **落地** | 接受判据 v2（配对 + 复用折减 + 三态判词）+ `--self-test` 进 CI（arena-gate-rule）+ 复用判据（`pool_reuse_uncontrolled`）+ 池按吸收状态分流（吸收样本只进回归池、`--gate` 拒绝回归池）+ 吸收状态在本池范围内运行期重判（`absorption_rev` 对不上则 `--gate` 退出 3、不写账本）+ `held_out` 在 `--stats`/`--gate` 真正生效 + 无回归范围写进账本（`no_regression_scope: arena-pool-only`） | 随本机制变更 |
+| **落地** | 接受判据 v2（配对 + 复用折减 + 三态判词）+ `--self-test` 进 CI（arena-gate-rule）+ 复用判据（`pool_reuse_uncontrolled`）+ 池按吸收状态分流（吸收样本只进回归池、`--gate` 拒绝回归池）+ 吸收状态在本池范围内运行期重判（`absorption_rev` 对不上则 `--gate` 退出 3、不写账本）+ `held_out` 在 `--stats`/`--gate` 真正生效 + 非诊断样本剔出命中率分母与配对 + 无回归范围写进账本（`no_regression_scope: arena-pool-only`）+ 证据面留痕（`ground_truth: none` 剔出结论一致率分母、重放版本 `kb_rev` 进 `replay_revs` 并在跨版本时告警） | 随本机制变更 |
 | 推进 | selection 池 expected 标注 + baseline replay（首批 17 条） | 池文件落地后下一批（subagent 执行） |
 | 推进 | 门控端到端运转一次（真实 miss → 候选 → gate → 合入） | baseline 可用后 |
 | 蓝图 | test 分离（闸门口径＝判定池条数，见 §1 与 §2；不按名义 selection 条数触发）、归因/交互层入台、分数进 timeline（样本 ≥10 带分母）、判定池扩容（分流已落地；新增未吸收样本仍要人工选样与标注。当前先卡在 baseline 重放没跑过——没有逐条向量，配对检验没有输入） | 规模/数据触发 |

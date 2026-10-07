@@ -545,3 +545,89 @@ calibration:
         self.assertEqual(pool["absorption_rev"],
                          ea.absorption_rev(ea.judged_rows(pool["issues"]), ea.case_index(root)))
         self.assertEqual(len(ea.judged_rows(pool["issues"])), 1)
+
+
+EV_POOL = """\
+name: pool-ev
+split: selection
+issues:
+  - {id: "201", expected_ns: "inference/vllm-ascend", fix_ref: "PR#1"}
+  - {id: "202", expected_ns: "inference/vllm-ascend", fix_ref: "PR#2"}
+"""
+
+
+class EvidenceFieldTest(unittest.TestCase):
+    """可证伪性（ground_truth）与重放版本（kb_rev）在判定层留痕。
+
+    两处都是同一类"文档写了、判定层不读"：①`ground_truth: none` 的样本（外部没有结论可对照）
+    在结算侧 scripts/settle_s2_feedback.py 被跳过，判定侧却只要它写了 `root_cause_ok: true`
+    就把"没有真值的猜测"记成"结论一致"，推高结论一致率；②result 里没有"这次回放在哪份知识库
+    上跑的"，而一批结果常跨若干次 git pull 才跑完，跨版本混算出来的分数前后不可比。
+
+    这里钉住五件事：none 不进结论一致率分母；字段缺席按旧行为计入（缺席 ≠ none，不得偷偷
+    变成 none）；两个字段的条数与 mixed 标记进 stats；--gate 把两侧的读数记进账本。
+    """
+
+    NEW_STYLE = ("namespace: inference/vllm-ascend\nrouting_ok: true\ntier2_hit: false\n"
+                 "root_cause_ok: true\n")
+
+    def _stats(self, results, pool=EV_POOL):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        arena = root / ".s2-replay" / "arena"
+        arena.mkdir(parents=True)
+        (arena / "pool-ev.yaml").write_text(pool, encoding="utf-8")
+        for iid, text in results.items():
+            (root / ".s2-replay" / f"{iid}.result.yaml").write_text(text, encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(ea.cmd_stats(root, arena / "pool-ev.yaml"), 0, "cmd_stats 应成功")
+        return root, yaml.safe_load((arena / "stats-pool-ev.yaml").read_text(encoding="utf-8"))
+
+    def test_ground_truth_none_is_not_counted_as_agreement(self):
+        _, s = self._stats({
+            "201": self.NEW_STYLE + "ground_truth: none\n",
+            "202": self.NEW_STYLE + "ground_truth: both\n",
+        })
+        self.assertEqual(s["ground_truth"]["none"], 1)
+        self.assertEqual(s["ground_truth"]["counts"], {"none": 1, "both": 1})
+        vec = {v["id"]: v for v in s["issues"]}
+        self.assertIsNone(vec["201"]["rc_match"], "无外部结论 = 没有真值，不得记成结论一致")
+        self.assertTrue(vec["202"]["rc_match"], "有外部结论的样本照旧对照")
+        self.assertEqual(s["metrics"]["rc_match"]["n"], 1, "结论一致率分母剔掉 none 行")
+        self.assertEqual(vec["201"]["ground_truth"], "none")
+
+    def test_absent_ground_truth_keeps_old_behavior(self):
+        """缺席 ≠ none：没写这个字段的 result 按旧行为计入分母，不得静默变成"整体跳过"。"""
+        _, s = self._stats({"201": self.NEW_STYLE, "202": self.NEW_STYLE})
+        self.assertEqual(s["ground_truth"]["none"], 0)
+        self.assertEqual(s["ground_truth"]["absent"], 2)
+        self.assertEqual(s["metrics"]["rc_match"]["n"], 2)
+        self.assertIsNone(s["issues"][0]["ground_truth"])
+
+    def test_replay_revs_records_mix_and_warns_in_gate_ledger(self):
+        root, s = self._stats({
+            "201": self.NEW_STYLE + "kb_rev: 3c3ba14\n",
+            "202": self.NEW_STYLE + "kb_rev: d29d450\n",
+        })
+        self.assertTrue(s["replay_revs"]["mixed"], "两条来自不同版本，必须标成混算")
+        self.assertEqual(s["replay_revs"]["counts"], {"3c3ba14": 1, "d29d450": 1})
+        self.assertEqual(s["replay_revs"]["absent"], 0)
+        pf = root / ".s2-replay" / "arena" / "pool-ev.yaml"
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(ea.cmd_gate(root, pf.with_name("stats-pool-ev.yaml"),
+                                         pf.with_name("stats-pool-ev.yaml"),
+                                         "triage:demo", "EV-TEST", "", 0.1), 0)
+        led = yaml.safe_load((root / ea.IMPACT_REL).read_text(encoding="utf-8"))
+        rec = led["records"][-1]
+        self.assertTrue(rec["replay_revs"]["baseline"]["mixed"])
+        self.assertEqual(rec["replay_revs"]["baseline"]["counts"],
+                         {"3c3ba14": 1, "d29d450": 1})
+        self.assertIn("ground_truth", rec, "账本要能事后看出这批样本有没有无真值的行")
+
+    def test_unrecorded_revs_are_not_read_as_one_version(self):
+        """一条都没留痕时 mixed 必须是假、absent 记数——不得把"没写"读成"版本一致"。"""
+        _, s = self._stats({"201": self.NEW_STYLE, "202": self.NEW_STYLE})
+        self.assertFalse(s["replay_revs"]["mixed"])
+        self.assertEqual(s["replay_revs"]["counts"], {})
+        self.assertEqual(s["replay_revs"]["absent"], 2)

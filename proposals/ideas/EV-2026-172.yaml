@@ -1,0 +1,138 @@
+# ============================================================
+# EV-2026-172 —— 证据面留痕：可证伪性字段判定侧也读，重放版本进读数与账本
+# 来源：C 段基线重放（判定池 9 条真实回放）喂出来的两处数据缺口——
+#       ①`ground_truth` 声明在机制文档 §3 里，但只有结算侧读它；判定侧把「没有真值的猜测」
+#         记成「结论一致」，推高结论一致率。
+#       ②result 里没有「这次回放在哪份知识库上跑的」这句话，而 9 条结果实际跨 2 个版本
+#         （3c3ba14 → d29d450）跑出来，跨版本混算的分数前后不可比。
+# 脱敏：只含仓库内路径、命令与聚合数字
+# ============================================================
+
+id: EV-2026-172
+layer: L2
+target_component: scripts/eval_arena.py
+title: "证据面留痕：ground_truth 判定侧读取 + 重放版本 kb_rev 进 stats 与影响账本"
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: '2026-10-07'
+source_signals:
+  - signal: observation_window
+    evidence: >-
+      C 段基线：判定池 10 条里 9 条跑完真实回放（hit 0/9、route_ok 2/2、rc_match 0/0）。
+      结算时暴露两件事：`scripts/settle_s2_feedback.py` 按 `ground_truth: none` 跳过样本，
+      而 `scripts/eval_arena.py` 全文对 `ground_truth` 与 `kb_rev` 零命中——判定这一层既不读
+      可证伪性，也不留重放版本痕迹；9 条结果跨 `3c3ba14` → `d29d450` 两个版本。
+    trajectory:
+      - "docs/mechanism/eval-arena.md §3（声明了 ground_truth，读取方只有结算侧）"
+      - "scripts/settle_s2_feedback.py:152-160（none → 跳过结算）"
+      - "scripts/s2_replay.py:59-65 / :247-249（写 result 的工具没提这个字段）"
+  - signal: user_feedback
+    evidence: >-
+      用户要求把 eval 机制做到位、把分析清楚且值得落地的点都落地；需要人介入的先问，
+      文本不带黑话与比喻，要说清利害与判断依据。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+hypothesis: >-
+  判定与结算必须按同一句话办事：`ground_truth: none` 的样本（外部没有结论可对照）在判定侧
+  也要剔出结论一致率分母，否则同一份 result 会被两个读端判成两种样子。同时「这批 result 是在
+  哪份知识库上跑出来的」必须留痕：`--stats` 汇总 `kb_rev` 成 `replay_revs`，跨版本只告警不拒判
+  （混算是数据质量问题，不是判定不成立；做成拒绝会把「分数没法比」和「改动没通过」混成一个信号），
+  `--gate` 把两侧读数记进账本，让「分数变了」能归因到改动还是归因到知识库换了版本。
+predicted_effect:
+  metric: >-
+    `ground_truth: none` 的样本是否计入结论一致率分母，以及 stats 与影响账本里能否读出
+    这批 result 的重放版本集合
+  from: >-
+    改前 `--stats` 只认 `root_cause_ok`：一条 `ground_truth: none` + `root_cause_ok: true` 的
+    result 被记成「结论一致」（实测合成池：`rc_match: 2/2（100%）`），而结算侧对同一条样本是跳过的；
+    stats 与账本里没有任何重放版本信息。
+  to: >-
+    `--stats` 把 none 行剔出结论一致率分母（逐条向量的 `rc_match` 记空），写
+    `ground_truth: {counts, none, absent}` 与 `replay_revs: {counts, absent, mixed}`，混版本打印
+    ⚠；`--gate` 把两侧的 `ground_truth` 与 `replay_revs` 记进账本并对混版本/`none` 告警；
+    `scripts/s2_replay.py` 的输入提示与 `--todo` 文案写明两个字段怎么记、`--collect` 打印覆盖率。
+  measure:
+    command: |
+      python3 -c "import sys,unittest;t=unittest.TextTestRunner(verbosity=0).run(unittest.defaultTestLoader.loadTestsFromName('tests.test_eval_arena_stats.EvidenceFieldTest'));print('VERDICT PASS' if t.wasSuccessful() else 'VERDICT FAIL');sys.exit(0 if t.wasSuccessful() else 1)"
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前：合成池两条 result（901 写 `ground_truth: none` + `root_cause_ok: true` + `kb_rev: 3c3ba14`，
+    902 只有 `root_cause_ok: true` + `kb_rev: d29d450`），跑
+    `python scripts/eval_arena.py --stats`（主检出 d29d450）→
+    `rc_match: 2/2（100%）`，stats 里 `ground_truth` 与 `replay_revs` 两个键都不存在（实测计数 0）。
+  success_criteria: >-
+    ①同一份合成池在改后跑 `--stats` → `rc_match: 1/1（100%）`，并打印
+    「ground_truth: none 1 条（无外部结论）——结论一致率不计入分母」「1 条 result 没写 ground_truth
+    （按旧行为计入结论一致率）」「⚠ 本次结果来自 2 个不同的知识库版本（3c3ba14×1、d29d450×1）」，
+    stats 里 `ground_truth.counts = {none: 1}`、`ground_truth.absent = 1`、
+    `replay_revs.mixed = true`；②`EvidenceFieldTest` 四个测试通过（none 不进分母；缺席按旧行为；
+    混版本标记与账本留痕；都没留痕时 `mixed` 为假、`absent` 计数——不得把「没写」读成「版本一致」）；
+    ③`python scripts/eval_arena.py --self-test` 全部断言通过；
+    ④`python scripts/verify_proposals.py --check`、`python scripts/build_docs_index.py --check` 通过；
+    ⑤`python -m unittest discover tests` 的失败集合与 `origin/main` 上一致。
+  rollback: "回退该提交即可：新字段只加在 stats 与账本的读取面上，旧 stats 仍按旧行为读；result 文件不新增必填键。"
+gate:
+  condition: >-
+    出现「`ground_truth: none` 的样本又被记进结论一致率」，或「跨版本混算被当成拒绝判词的理由」
+    （那会把数据质量与判定结果混成一个信号），或「没写 kb_rev 被读成版本一致」。
+risk: low
+principle_refs: [6, 10, 11]
+actual_cost:
+  tokens: 16000
+  source: estimate
+  note: >-
+    口径：改 `scripts/eval_arena.py`（`cmd_stats` 计数/打印/顶层字段、`cmd_gate` 账本与告警、
+    头部注释）、`scripts/s2_replay.py`（`prepare` 提示、`--todo` 文案、`--collect` 覆盖率）、
+    `docs/mechanism/eval-arena.md`（§3 可证伪性段与第三条读数口径、§5 工具、§7 落地行）、
+    `tests/test_eval_arena_stats.py`（新增一个测试类四条）、合成池改前改后实测、产卡、判据复跑；
+    估 1.6 万，未计独立预核与回修。
+decisions:
+  - who: agent
+    when: "2026-10-07"
+    type: proposal
+    conclusion: >-
+      采纳「判定侧也读 ground_truth」。理由是同一份 result 被两个读端判成两种样子：结算侧按
+      `none` 跳过，判定侧却把「没有真值的猜测」记成「结论一致」——两边不一致时，读到的数字就取决于
+      你看的是哪一份报告。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      重放版本只告警、不拒判。混版本是数据质量问题，拒判会把「这批分数没法比」和「改动没通过」
+      压成同一个信号，人只能看到「拒绝」而看不到原因；账本里留下两侧的 `replay_revs` 才能事后归因。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      `kb_rev` 字段名沿用 `scripts/kb_rev.py` 的口径（检出短 sha，脏工作区加后缀），不复用 PR1 的
+      池指纹 `absorption_rev`。两者量的是不同的东西：一个是「在哪份知识库上跑的」，一个是
+      「池内样本是否已被吸收」；混成一个名字会让人以为改池指纹也要改 result。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      `ground_truth` 由读过 issue 线程的标注者补记，回放者按盲测边界留空——`scripts/s2_replay.py`
+      的输入提示与 `--todo` 文案都写明这一点，`--collect` 只报覆盖率、不替它下结论。理由是回放者
+      若去猜外部结论，盲测就不成立了。
+  - who: agent
+    when: "2026-10-07"
+    type: eval
+    conclusion: >-
+      判据复跑（worktree，本机 Windows，2026-10-07）：`python -m unittest tests.test_eval_arena_stats`
+      二十七个测试全过（改前二十三个）；`python scripts/eval_arena.py --self-test` 全部断言通过；
+      合成池改前 `rc_match: 2/2`、改后 `rc_match: 1/1` 且打印 none 条数与混版本告警，stats 里
+      `ground_truth` / `replay_revs` 两键实测可读。
+  - who: agent
+    when: "2026-10-07"
+    type: decision
+    conclusion: >-
+      判 validated：两处「声明了没有读端」都由测试护住，实测读数与告警可复现。
+      **边界**：这套留痕只保证「写了就会被读到」，不保证 result 里写的是真的——`kb_rev` 与
+      `ground_truth` 都要靠回放/标注那一刻的人如实填写；未做：把 `kb_rev` 变成必填或由工具自动注入
+      （回放常跨多台机器与多次 pull，工具注入会把版本写成「跑 --collect 那一刻的版本」，比人填更容易错）。

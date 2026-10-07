@@ -8,7 +8,8 @@
 # 目录（本地运行件，gitignore）：.s2-replay/arena/
 #   pool-*.yaml         池清单：{name, split, role, absorption_rev, issues:[{id, expected_ns,
 #                       category, fix_ref, held_out, absorbed_case, non_diagnostic}]}
-#   stats-*.yaml        --stats 聚合输出（含吸收状态重判 absorption_recheck）
+#   stats-*.yaml        --stats 聚合输出（含吸收状态重判 absorption_recheck、可证伪性
+#                       ground_truth 条数、重放版本 replay_revs）
 #   impact.yaml         --gate 影响账本（append-only）
 # 单 issue 评分复用 .s2-replay/<issue>.result.yaml（S2 result schema：
 # namespace/category/hit_case/rc_match/route）。
@@ -41,6 +42,17 @@
 # 指标、不写进逐条向量，并把剔除的 id 与原因单列成 `non_diagnostic_rows`；--gate 再从逐条
 # 向量里滤一次。剔除只会缩小命中率分母与配对样本数（判定更难，不会凭空造出翻转），且每次
 # 读数都打印剔除条数——这条口径不是"看不见地调分数"。
+#
+# 证据面留痕（2026-10 补，实测喂出来的）：
+#   - `ground_truth`（§3 声明的可证伪性字段）此前只有 scripts/settle_s2_feedback.py 一个读端
+#     按"none 不结算"处理，判定这一层不读它——实测差异：同一条 `ground_truth: none` 的样本，
+#     结算侧跳过，而 --stats 只要它写了 `root_cause_ok: true` 就把"没有真值的猜测"记成
+#     "结论一致"，推高结论一致率。现在 --stats 同样把 none 行剔出结论一致率分母，并把各取值
+#     的条数写进 `stats["ground_truth"]`（缺席按旧行为计入，与结算侧一致）。
+#   - **重放版本留痕**：result 里没有"这次回放在哪份知识库上跑的"这句话，而一批结果常常跨若干
+#     次 git pull 才跑完（本轮实测：9 条结果跨 2 个版本），跨版本混算出来的分数前后不可比。
+#     现在 --stats 收集 result 里的 `kb_rev`（口径同 scripts/kb_rev.py：检出短 sha，脏工作区
+#     加后缀），写进 `stats["replay_revs"]`，多于一个版本时打印告警；--gate 把它记进账本。
 #
 # 退出码：0 = 判定成立并已写账本（accept / weak_accept / reject 都算"判定成立"——判词是
 # 数据，不是命令失败；把它报成非零会让"测量结果为否"和"测量没法做"混成一个信号）；
@@ -471,6 +483,11 @@ def cmd_stats(root, pool_file):
              "metrics": {}, "issues": []}
     n_route = n_route_ok = n_route_skip = n_hit = n_hit_ok = n_rc = n_rc_ok = 0
     n_held = 0
+    n_gt_none = 0
+    n_gt_absent = 0
+    gt_counts = {}
+    rev_counts = {}
+    n_rev_absent = 0
     nd_rows = []
     missing = []
     for it in pool["issues"]:
@@ -492,6 +509,24 @@ def cmd_stats(root, pool_file):
             continue
         r = load(rp) or {}
         expected_ns = it.get("expected_ns", "")
+        # 可证伪性（docs/mechanism/eval-arena.md §3 的 ground_truth）：这个 issue 的外部结论
+        # 是什么形态。`none` = 无外部结论 → "结论一致"这件事没有真值，既不记一致也不记不一致
+        # （结算侧 scripts/settle_s2_feedback.py 依同一句话跳过；两边必须同口径，否则同一份
+        # result 会被两个读端判成两种样子）。字段缺席 ≠ none：缺席按旧行为计入分母。
+        gt = str(r.get("ground_truth") or "").strip().lower()
+        if gt:
+            gt_counts[gt] = gt_counts.get(gt, 0) + 1
+        else:
+            n_gt_absent += 1
+        if gt == "none":
+            n_gt_none += 1
+        # 重放版本留痕：这份 result 是在哪份知识库上跑出来的。跨版本混算的分数前后不可比，
+        # 所以只收集、只告警，不拒判——拒判会把"数据质量差"和"判定不成立"混成一个信号。
+        rev = str(r.get("kb_rev") or "").strip()
+        if rev:
+            rev_counts[rev] = rev_counts.get(rev, 0) + 1
+        else:
+            n_rev_absent += 1
         # result 文件有两套字段写法并存，两套都认——实测代价：只认旧写法时，盘上全部
         # result 的结论一致（root_cause_ok）读不到，rc_match 恒为 None，判定少一路证据、
         # 账本里也看不出"没数据"和"结论不一致"的区别（诚实退化要求这两者可区分）。
@@ -501,13 +536,17 @@ def cmd_stats(root, pool_file):
             or (bool(expected_ns) and expected_ns in str(r.get("namespace") or ""))
         hit_ok = bool(r.get("hit_case")) or bool(r.get("tier2_hit"))
         rc = r.get("rc_match", r.get("root_cause_ok"))
+        if gt == "none":
+            rc = None  # 无外部结论 = 没有真值：写没写结论都不进结论一致率
         # 逐条向量：配对检验的输入。没有它，判定只能退回点估计（判词上限 weak_accept）。
         # held_out 恒为 False：这一行只有非终判样本才会走到（上面的 continue），写出来是让
         # 读 stats 的人知道这个字段存在、且这里是它被排除的位置。
         stats["issues"].append({"id": str(it["id"]), "hit": bool(hit_ok),
                                 "route_ok": bool(route_ok),
                                 "rc_match": None if rc is None else bool(rc),
-                                "held_out": False})
+                                "held_out": False,
+                                "ground_truth": gt or None,
+                                "kb_rev": rev or None})
         if expected_ns:
             n_route += 1
             n_route_ok += int(route_ok)
@@ -531,6 +570,9 @@ def cmd_stats(root, pool_file):
     stats["issues_scored"] = n_hit
     stats["held_out_skipped"] = n_held
     stats["non_diagnostic_rows"] = nd_rows
+    stats["ground_truth"] = {"counts": gt_counts, "none": n_gt_none, "absent": n_gt_absent}
+    stats["replay_revs"] = {"counts": rev_counts, "absent": n_rev_absent,
+                            "mixed": len(rev_counts) > 1}
     stats["missing_results"] = missing
     stats["metrics"]["route_ok"] = {"n": n_route, "ok": n_route_ok,
                                     "rate": round(n_route_ok / n_route, 3) if n_route else None,
@@ -554,6 +596,20 @@ def cmd_stats(root, pool_file):
     if nd_rows:
         shown = "、".join(f"{r['id']}（{r['reason']}）" if r["reason"] else r["id"] for r in nd_rows)
         print(f"  非诊断样本 {len(nd_rows)} 条已从命中率分母与配对里剔除：{shown}")
+    if n_gt_none:
+        print(f"  ground_truth: none {n_gt_none} 条（无外部结论）——结论一致率不计入分母")
+    if n_gt_absent:
+        print(f"  {n_gt_absent} 条 result 没写 ground_truth（按旧行为计入结论一致率）")
+    if len(rev_counts) > 1:
+        shown = "、".join(f"{k}×{v}" for k, v in sorted(rev_counts.items()))
+        print(f"  ⚠ 本次结果来自 {len(rev_counts)} 个不同的知识库版本（{shown}）"
+              f"——跨版本混算，前后不可比；重放期间应锁版本，或分批出 stats")
+    elif rev_counts:
+        tail = f"（{n_rev_absent} 条没记 kb_rev）" if n_rev_absent else ""
+        print(f"  重放版本一致：{sorted(rev_counts)[0]}{tail}")
+    elif n_rev_absent:
+        print(f"  重放版本未留痕：{n_rev_absent} 条 result 都没记 kb_rev"
+              f"——无法判断这批结果是否跨版本混算")
     if recheck["checked"]:
         if recheck["stale"]:
             print(f"  ⚠ 吸收状态已变：指纹 {recheck['rev_pool']} → {recheck['rev_now']}，"
@@ -638,6 +694,11 @@ def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note, alp
                                 "candidate": len(c.get("non_diagnostic_rows") or [])},
         "absorption_recheck": {"baseline": rechecks.get("baseline"),
                                "candidate": rechecks.get("candidate")},
+        # 证据面留痕：两侧各自的重放版本集合与无外部结论样本数。跨版本混算不拒判（那是数据
+        # 质量问题，不是判定不成立），但必须能事后看出来——否则"分数变了"没法归因到改动还是
+        # 归因到重放时知识库换了版本。
+        "replay_revs": {"baseline": b.get("replay_revs"), "candidate": c.get("replay_revs")},
+        "ground_truth": {"baseline": b.get("ground_truth"), "candidate": c.get("ground_truth")},
         "note": note or "",
         "reason": res["reason"],
     }
@@ -663,6 +724,17 @@ def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note, alp
     if nd["baseline"] or nd["candidate"]:
         print(f"  非诊断样本（无可判别信号，不参与命中率与配对）："
               f"baseline {nd['baseline']} 条、candidate {nd['candidate']} 条")
+    for side, s in (("baseline", b), ("candidate", c)):
+        rv = s.get("replay_revs") or {}
+        counts = rv.get("counts") or {}
+        if len(counts) > 1:
+            shown = "、".join(f"{k}×{v}" for k, v in sorted(counts.items()))
+            print(f"  ⚠ {side} 侧的 result 来自 {len(counts)} 个不同的知识库版本（{shown}）"
+                  f"——这批分数跨版本混算，前后差异未必来自候选改动")
+        gtv = s.get("ground_truth") or {}
+        if gtv.get("none"):
+            print(f"  {side} 侧有 {gtv['none']} 条 result 标了 ground_truth: none"
+                  f"（无外部结论）——已剔出结论一致率分母")
     print("  无回归范围：只校验本池指标不降（arena-pool-only）。golden 无回归由 "
           "python3 scripts/replay_golden.py 单独跑（要模型），本命令不执行。")
     print(f"  账本追加 → {imp}")
