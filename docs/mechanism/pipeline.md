@@ -50,7 +50,7 @@ S2 miss 的归因边界要守住（防越权）：一次 S2 miss（未命中）�
 
 S2 的边界应诚实标注，防止过度承诺：它以 issue 的 resolution 为基准，校准的是系统的检索与内容是否正确；现场 fix 有效性（severity 语义、环境特异性）仍只能靠 S1。S2 分数进入指标时标注 `source: issue-replay`，不与 S1 混淆（口径见 docs/guide/metrics.md）。若某 issue 的 resolution 仅是 workaround 而非根因修复，标记后降权或剔除（issue 池筛选规则：优先 state_reason=completed + 维护者 closed + fix commit 可溯的）。
 
-S2 校准集当前单池运行，selection/test 分离是规模闸门（2026-09 降级）：原设计分 selection（gate 用）/ test（validated 终判用，防对校准集过拟合，对应 SkillOpt held-out）。池子小，撑不起两半：test 半要求"从未被本系统沉淀过的历史 issue"，而沉淀会消耗池子，小池下 test 半无法成立还自相矛盾。降级规则是单池运行直到有真实 held-out 需求（原"≥30"是参数估计而非硬门槛，theory §7：常数接受实测重校；2026-Q3 自评确认：单池 + self-referential 隔离已覆盖防过拟合主威胁，扩池是 issue 流自然流入的持续动作，不是前置阻塞）。当前 20 条（11 high）单池，replay 分数标注 `source: issue-replay`，validated 终判诚实标注"无 held-out test（池小），依赖 selection 对照 + 人工抽审"。self-referential 隔离（任何规模都执行）：case 的 validation_record 结算时检查两件事——replay issue 是否正是该 case 的沉淀来源（references 含该 issue URL），以及 replay issue 是否在 case 正文里被引用（`#N` / `issues/N` / `pulls/N`）；命中任一即记 `self_consistent`（非独立，如实标注不虚增外部验证权重）。后一条是 2026-09 加的：cross 样本的第一批实测显示，同签名但被 case 正文引用过的 issue，其结论就是撰写该 case 时读来的，记 consistent 等于一份证据数两次。token 影响经 2026-Q3 核实：eval/s2/*.yaml 虽随池增长（20 条 83KB），但从不整文件喂给 LLM。s2_replay prepare 逐条生成 `.s2-replay/<issue>.md`（单条 ~2KB），诊断 LLM 只读单条 md；s2_calibration 增量只提取 issue 号集合去重。文件大仅影响脚本处理（Python 解析，无 token 成本），对 LLM 上下文无影响。"先评测后沉淀"的纪律（run §3）持续执行：新 closed issue 先过 S2 评测再允许沉淀为 case。
+S2 校准集当前单池运行，selection/test 分离是规模闸门（2026-09 降级）：原设计分 selection（gate 用）/ test（validated 终判用，防对校准集过拟合，对应 SkillOpt held-out）。池子小，撑不起两半：test 半要求"从未被本系统沉淀过的历史 issue"，而沉淀会消耗池子，小池下 test 半无法成立还自相矛盾。降级规则是单池运行直到有真实 held-out 需求（原"≥30"是参数估计而非硬门槛，theory §7：常数接受实测重校；2026-Q3 自评确认：单池 + self-referential 隔离已覆盖防过拟合主威胁，扩池是 issue 流自然流入的持续动作，不是前置阻塞）。当前 19 条（11 high）单池，replay 分数标注 `source: issue-replay`，validated 终判诚实标注"无 held-out test（池小），依赖 selection 对照 + 人工抽审"。self-referential 隔离（任何规模都执行）：case 的 validation_record 结算时检查两件事——replay issue 是否正是该 case 的沉淀来源（references 含该 issue URL），以及 replay issue 是否在 case 正文里被引用（`#N` / `issues/N` / `pulls/N`）；命中任一即记 `self_consistent`（非独立，如实标注不虚增外部验证权重）。后一条是 2026-09 加的：cross 样本的第一批实测显示，同签名但被 case 正文引用过的 issue，其结论就是撰写该 case 时读来的，记 consistent 等于一份证据数两次。token 影响经 2026-Q3 核实：eval/s2/*.yaml 虽随池增长（19 条 83KB），但从不整文件喂给 LLM。s2_replay prepare 逐条生成 `.s2-replay/<issue>.md`（单条 ~2KB），诊断 LLM 只读单条 md；s2_calibration 增量只提取 issue 号集合去重。文件大仅影响脚本处理（Python 解析，无 token 成本），对 LLM 上下文无影响。"先评测后沉淀"的纪律（run §3）持续执行：新 closed issue 先过 S2 评测再允许沉淀为 case。
 
 ## 3. L1 知识内容层（已闭环，简述）
 
@@ -450,9 +450,9 @@ $B_{\text{attn}}$）。**结论：卡面主要供 agent（下一轮起草查同�
 | L2 归因事件簇（component_tally，Phase B） | 失败事件 verdict（execution_error + 组件 ID） | diagnose S1 侧 attribution 0；S2 attributions 0 | 未达标 | **可判性**（S2 miss 三义需人/trace 裁决，不冒充）+ 事件未发生 |
 | S2 覆盖缺口（补 case 信号） | tier2 miss（无 case 命中） | 9 条 replay 中 7 无命中 → 其中 5 已沉淀同名 case（replay 先于沉淀，结算为 self_consistent）；**当前真缺口 2**：13673（random_sample 跨流）、13961（310P+bge-m3，待上游闭环核验） | ✅ 已达标且部分已结算 | —（剩余动作：2 候选走 issue-ingest 管道，13673 待上游 fix 闭环核验） |
 | M2 fixture replay（roadmap） | golden fixture ≥5 | golden 23 条 | ✅ 已达标 | M2 可推进（半自动脚本） |
-| S2 校准集建立（Phase C2 / §2.1） | 已闭环 issue 池 | 单池 20 条（11 high；9 已 replay） | ✅ 已建 | 扩池是持续动作，非前置阻塞 |
+| S2 校准集建立（Phase C2 / §2.1） | 已闭环 issue 池 | 单池 19 条（11 high；8 已 replay） | ✅ 已建 | 扩池是持续动作，非前置阻塞 |
 | S1 现场反馈（confidence 结算） | 工程师回报 fix 结果 | 捕获率≈0 | 未达标 | 量（依赖人）——观察窗降级态为兜底（§11.1 蓝图） |
-| Phase D 试点（§11） | C/C2 任一落地 + trace ≥20 可归因 | C2 已落地（单池 20 条）；trace 齐全 5 | 部分达标 | 量（真实可归因会话）——**注意**：Phase D 与 E2 同门，S2 replay 不计入的口径同样适用 |
+| Phase D 试点（§11） | C/C2 任一落地 + trace ≥20 可归因 | C2 已落地（单池 19 条）；trace 齐全 5 | 部分达标 | 量（真实可归因会话）——**注意**：Phase D 与 E2 同门，S2 replay 不计入的口径同样适用 |
 
 **盘点结论**：多数蓝图闸门未解锁的原因不是"没有数据记录"，而是三类性质限制——①量（真实会话少，靠使用增长）；②事件未发生（路由错例=0、无 rejected L2 卡——诚实零，不应为解锁而凑样本）；③可判性/独立性（S2 miss 无 verdict、S2 池不可兼作独立验证样本）。已达标未结算的只有 S2 覆盖缺口（2 候选）与 M2（fixture 已够）。实时数字以脚本与数据文件为准（`render_review_summary.py`/trace 计数/`_index.yaml` 头注），本表是机制与口径说明，不是数字仓库。
 

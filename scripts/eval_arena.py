@@ -599,7 +599,8 @@ def cmd_stats(root, pool_file):
     if n_gt_none:
         print(f"  ground_truth: none {n_gt_none} 条（无外部结论）——结论一致率不计入分母")
     if n_gt_absent:
-        print(f"  {n_gt_absent} 条 result 没写 ground_truth（按旧行为计入结论一致率）")
+        print(f"  {n_gt_absent} 条 result 没写 ground_truth（无外部结论可比——结论一致率不计入"
+              f"它们，命中率分母仍计入）")
     if len(rev_counts) > 1:
         shown = "、".join(f"{k}×{v}" for k, v in sorted(rev_counts.items()))
         print(f"  ⚠ 本次结果来自 {len(rev_counts)} 个不同的知识库版本（{shown}）"

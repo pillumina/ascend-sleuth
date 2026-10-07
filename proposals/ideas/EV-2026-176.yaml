@@ -1,0 +1,139 @@
+# ============================================================
+# EV-2026-176 —— 校准集剔掉不可诊断样本，并把结论一致率的打印口径改成与算术一致
+# 来源：owner 指示（2026-10-07）——判定池里那条没有外部结论、也诊断不出东西的样本（`#12490`）
+#       既然「如果没用就换掉」，本轮先只删（补新样本要等 K 定了跟扩池一起做）；同时
+#       `scripts/eval_arena.py:602` 那句打印把没写 `ground_truth` 的行说成「按旧行为计入
+#       结论一致率」，与同文件 `:557 if rc is not None:` 的算术相反，一并改掉。
+# 脱敏：只含仓库内路径、命令与聚合数字
+# ============================================================
+
+id: EV-2026-176
+layer: L2
+target_component: eval/s2/vllm-ascend.yaml
+title: "校准集剔掉不可诊断样本，并把结论一致率的打印口径改成与算术一致"
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: '2026-10-07'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      owner 2026-10-07 的三条处置：判定要支撑几次（K）暂不决策、扩池数据面先不动；
+      `12490`/`12947` 两条「如果没用就换掉」；`scripts/eval_arena.py` 的打印口径「开 PR 修」；
+      有修改也只开一个 PR。
+    trajectory:
+      - "owner 指示（2026-10-07：K 待定 / 没用的换掉 / 打印口径开 PR 修）"
+  - signal: data_evidence
+    evidence: >-
+      `eval/s2/vllm-ascend.yaml` 的 20 条 selection 校准集里，`#12490`（`[Misc]: Close cherry-pick PR #12265`）
+      的 `expected.confidence` 是 `pending`，没有外部结论可比；实跑它在池里只当必失分
+      （`route=no-nature`、路由判失败）。删掉它之后判定池 10 条 → 9 条、可评 9 条 → 8 条，
+      命中率分母里少掉一个必然失分的格子。
+    trajectory:
+      - "eval/s2/vllm-ascend.yaml:1041-1078（被删的那 38 行：`- issue: 12490` 到 `status: active`）"
+      - "proposals/ideas/EV-2026-173.yaml:25（该条实跑读数：route=no-nature、routing_ok=false）"
+  - signal: observation_window
+    evidence: >-
+      `scripts/eval_arena.py:602` 打印「N 条 result 没写 ground_truth（按旧行为计入结论一致率）」，
+      而同文件 `:557 if rc is not None:` / `:558 n_rc += 1` / `:582 stats["metrics"]["rc_match"]`
+      只把取得到值的行为计入结论一致率分母，`:555-556 n_hit += 1` 才是无条件计入命中率分母
+      ——打印的方向与算术相反。
+    trajectory:
+      - "scripts/eval_arena.py:555-558 / :582（结论一致率与命中率各自的真实口径）"
+      - "scripts/eval_arena.py:601-602（改前的打印文本）"
+hypothesis: >-
+  校准集里留着一条既没有外部结论、也诊断不出东西的样本，只会让命中率分母多一个必然失分的格子，
+  掩盖掉「其余行到底判得怎样」；把它剔掉、再把打印口径改成与算术一致之后，池的读数会同时满足
+  「数字对得上」和「描述对得上」，而判定线本身一个字都不用动。
+predicted_effect:
+  metric: >-
+    校准集条数与判定池读数是否为 19 / 9 / 8，且 `--stats` 的打印文本与 `scripts/eval_arena.py`
+    的分母算术一致
+  from: >-
+    改前校准集 20 条（判定池 10 条、可评 9 条），且 `--stats` 结尾打出与 `:557` 算术相反的一句
+    「（按旧行为计入结论一致率）」。
+  to: >-
+    校准集 19 条（判定池 9 条、可评 8 条），`--stats` 打「（无外部结论可比——结论一致率不计入它们，
+    命中率分母仍计入）」；五份文档里的现行读数与池一致（`判定池 9 条，其中 8 条已评分`、
+    `命中 **0/8**`、一次翻转 `+11 个百分点`、roadmap 的 `route 2/2、命中 0/8、结论一致 5/6`、
+    rsi-mechanism 的 `判定池 9 条里 8 条重放完`、pipeline 与 run 的 `19 条`）。
+  measure:
+    command: |
+      python3 -c "import yaml;d=yaml.safe_load(open('eval/s2/vllm-ascend.yaml',encoding='utf-8'));ids=[e['issue'] for e in d['calibration']];assert 12490 not in ids,ids;assert len(ids)==19,len(ids);src=open('scripts/eval_arena.py',encoding='utf-8').read();assert '结论一致率不计入' in src and '命中率分母仍计入' in src;assert '按旧行为计入结论一致率' not in src;doc=open('docs/mechanism/eval-arena.md',encoding='utf-8').read();road=open('docs/plan/roadmap.md',encoding='utf-8').read();rsi=open('docs/mechanism/rsi-mechanism.md',encoding='utf-8').read();pipe=open('docs/mechanism/pipeline.md',encoding='utf-8').read();need=[(doc,'判定池 9 行、可评 8 行'),(doc,'判定池 9 条，其中 8 条已评分'),(doc,'命中 **0/8**'),(doc,'一次翻转就是 +11 个百分点'),(doc,'见卡 EV-2026-176'),(road,'判定池 9 条 + 回归池 10 条'),(road,'route 2/2、命中 0/8、结论一致 5/6'),(rsi,'判定池 9 条里 8 条重放完'),(pipe,'当前 19 条（11 high）单池')];miss=[s for t,s in need if s not in t];assert not miss,miss;stale=[(doc,'判定池 10 行、可评 9 行'),(doc,'命中 **0/9**'),(doc,'一次翻转就是 +10 个百分点'),(rsi,'判定池 10 条里 9 条重放完'),(road,'判定池 10 条 + 回归池 10 条'),(pipe,'当前 20 条（11 high）单池')];left=[s for t,s in stale if s in t];assert not left,left;print('VERDICT PASS')"
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: metrics_compare
+  baseline: >-
+    删前/删后在同一 worktree（本机 Windows，2026-10-07）实跑对照：删前 `--build-pool` 判定池 10 条
+    （9 条已有 replay result）、`--stats` `9/10 条已评分`、`route_ok 2/2`、`hit 0/9`、`rc_match 5/6`、
+    `absorption_rev=e9cf8ad8ff91`、打印「3 条 result 没写 ground_truth（按旧行为计入结论一致率）」；
+    删后判定池 9 条（8 条已有 result）、回归池 10 条、`--stats` `8/9 条已评分`、`route_ok 2/2`、
+    `hit 0/8`、`rc_match 5/6`、`absorption_rev=72dac0016056`、打印改成新口径且条数变 2。
+  success_criteria: >-
+    ①`eval/s2/vllm-ascend.yaml` 的 `calibration` 为 19 条、不含 `12490`，其余 18 条的顺序与
+    `expected`/`non_diagnostic` 手写字段一字未动；
+    ②`scripts/eval_arena.py` 的打印文本与 `:557 if rc is not None:` 的算术一致
+    （卡内 `predicted_effect.measure` 一条命令复验）；
+    ③五份文档里与判定池规模相关的现行读数全部改成 9 条 / 8 条，历史叙述（2026-09 建集 20 条、
+    前一轮 20 条池的读数）保持原样；
+    ④`proposals/ideas/EV-2026-174.yaml` 的判据串重钉后仍能过（判据形态不变）；
+    ⑤`python scripts/ev_measure.py EV-2026-176 --run` → `VERDICT PASS`；
+    ⑥`python scripts/verify_proposals.py --check`、`python scripts/build_docs_index.py --check`、
+    `python scripts/eval_scorecard.py --check`、`python scripts/eval_arena.py --self-test` 通过；
+    ⑦`python -m unittest discover -s tests -t .` 的 `Ran`/failures/errors 与分支父 `81739c7` 上逐条一致。
+  rollback: >-
+    回退该提交即可：删掉一条校准集样本、改一句打印、改五份文档的现行读数、重钉一条旧卡的判据串
+    并新增本卡；未改判定线参数（α 与复用折减照旧）、未改任何 `expected` 与 `non_diagnostic` 标记。
+gate:
+  condition: >-
+    出现「校准集里又收进没有外部结论、也诊断不出东西的样本」，或「打印/文档又把没写 `ground_truth`
+    的行说成计入结论一致率分母」，或「把删样本当成扩池」（删一条只让读数干净，不增加能支撑的判定次数）。
+risk: low
+principle_refs: [2, 8, 10, 11]
+actual_cost:
+  tokens: 5000
+  source: estimate
+  note: >-
+    口径：删一条校准集样本、改一句打印、改五份文档的现行读数、重钉 `EV-2026-174` 的判据串、
+    新增本卡、删前删后各跑一次池读数、`ev_measure` 与全门复跑；估 5 千，未计独立预核与回修。
+decisions:
+  - who: agent
+    when: "2026-10-07"
+    type: proposal
+    conclusion: >-
+      采纳「先只删、不补新样本」。理由：补一条能用的样本要先有明确修复结论的 issue、再跑一次
+      带模型的诊断回放拿逐条向量，而这套判定要支撑几次（K）还没定——现在补样本等于替 owner
+      决定池的规模；删掉必失分的那条则立刻让读数变干净。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      `12947` 经核实保留不动：它有真实缺陷与真实修复（PR #12948、`confidence: high`），
+      正是「弱信号通道挡不掉的真实缺陷」这个实测例子的来源；它被候选筛选判据挡下是那条判据的
+      已知代价，不是样本没用。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      打印口径按算术改，而不是按打印改算术。理由：`:557 if rc is not None:` 把取不到外部结论的行
+      排除在结论一致率分母外，是「没有真值就不假装有」；命中率分母（`:555-556 n_hit += 1`）仍计入
+      它们——两处行为不同是设计，不是不一致；错的只是那句括注。
+  - who: agent
+    when: "2026-10-07"
+    type: eval
+    conclusion: >-
+      读数对照（worktree，本机 Windows，2026-10-07）：删后 `--build-pool` 判定池 9 条（8 条已有
+      replay result）、回归池 10 条、`absorption_rev=72dac0016056`；
+      `--stats .s2-replay/arena/pool-val.yaml` → `8/9 条已评分`、`route_ok 2/2`、`hit 0/8`、
+      `rc_match 5/6`、新打印文本生效且条数由 3 变 2。
+  - who: agent
+    when: "2026-10-07"
+    type: decision
+    conclusion: >-
+      判 validated：不可诊断的样本已从校准集剔除，打印口径与分母算术一致，五份文档的现行读数
+      与池对齐，`EV-2026-174` 的判据串同步重钉。
+      **边界**：本卡不解释「判定池该有多少条」（那是 `EV-2026-175` 的规模闸门与 owner 定的 K），
+      也不补新样本。
