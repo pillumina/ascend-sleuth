@@ -60,7 +60,9 @@ stem 里 138 个匹配，31 个不匹配（都是没有 issue 号的自有名，
 运行不得推高复用计数），stderr 列出新被吸收的样本 id 并提示重跑 `--build-pool` 与 `--stats`。`--stats`
 本身恒退 0（它是产物生成器，不是判定命令），发现不新鲜在 stdout 打一行警告，判定以 `--gate` 为准。
 池文件没有该字段时（旧池、手写池）按未校验放行，但两条命令都会写明"新鲜度无法校验"——"没有校验"
-必须与"校验通过"可区分（原则十）。
+必须与"校验通过"可区分（原则十）。第三种状态是"有指纹、但那份 stats 没记下逐行样本 id"（本字段
+落地前的产物）：判定时刻算不出新指纹，`--gate` 写明"判定时刻无法重算"、沿用 `--stats` 那一刻的读数
+（账本里 `absorption_recheck.recomputed` 为假），不把它当成校验通过。
 
 ## 3. 评分口径（复用 S2 result schema）
 
@@ -155,7 +157,8 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
   判定前先看 `stale`（`--stats` 恒退 0，判定以 `--gate` 为准；`--gate` 在判定时刻自己再算一遍，见 §2）。**先复制一份 baseline stats 再跑改后侧**——两次 `--stats` 写同一个文件名，覆盖掉 baseline
   就没有配对数据了（`cp stats-pool-val.yaml baseline.yaml` 之后才重跑）；
 - `--gate --baseline <stats-a> --candidate <stats-b> [--alpha 0.1]`：配对判定（accept /
-  weak_accept / reject）+ 追加影响账本；判定时刻按 stats 记下的逐行样本 id 重算吸收状态，
+  weak_accept / reject）+ 追加影响账本；判定时刻按 stats 记下的逐行样本 id 重算吸收状态
+  （stats 没记这份 id 时写明"判定时刻无法重算"并沿用原读数，见 §2），
   任一侧对不上则不出判词、退出码 3、不写账本（退出码表见 §4）；
 - `--self-test`：复现判词（合成样本，无需本地池数据；CI 跑它）；
 - `--rc-check <pool>`：结论一致离线对照（agent root_cause vs 标注 resolution_summary，
