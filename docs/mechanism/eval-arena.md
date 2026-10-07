@@ -16,7 +16,7 @@
 | **golden** | 23 条构造例 | 无回归保险（任何改动不许倒退） | eval/golden/（提交） |
 | **selection**（val 门用） | 未沉淀 closed/completed issue（held-out） | 候选改动的前后对照评分（门控） | ingest 池选样 + expected 标注（本地 .s2-replay/arena/） |
 | **regression**（池内分流） | 答案已进知识库的样本（自洽样本，self_consistent） | train/回归信号；不参与门控判定（`--gate` 拒绝） | `--build-pool` 按 case 实名（`knowledge/` 下有同名 case 文件）从同一源拆出（`pool-*-absorbed.yaml`） |
-| **test**（终判） | 与 selection 分离的 held-out 子集 | validated 终判（防对 selection 过拟合） | 池规模闸门：selection ≥20 后启用分离（现单池，同 §2.1 纪律） |
+| **test**（终判） | 与 selection 分离的 held-out 子集 | validated 终判（防对 selection 过拟合） | 池规模闸门：**判定池（未吸收样本）条数够支撑判定之后**才划出终判子集——按名义 selection 条数触发会把可判定的题变少（现单池，同 §2.1 纪律） |
 | **smoke/self** | 已沉淀 case 的源 issue | train/回归信号（self_consistent 照原值记） | KB case 源 issue 重放 |
 
 **纪律**：val 区 issue **永不沉淀**（只评测、不进知识侧、反馈不回喂——扰动不从评测学）；自洽样本照原值记 `self_consistent`，不计入外部验证。答案已进知识库的样本（下称已吸收样本）由 `--build-pool` 按 case 实名拆进回归池（`role: regression`），判定池里不留它们：答案已在库里的样本留在判定池，会让判定池的分数虚高。
@@ -48,6 +48,22 @@ stem 里 138 个匹配，31 个不匹配（都是没有 issue 号的自有名，
 `absorbed`。前缀在库里一条 case 都没匹配到时，`cases_with_prefix` 为 0，命令把这件事打到 stderr：
 "回归池 0 条"在两种情形下都会打印，一种是没有样本被吸收，另一种是吸收判据没有输入。
 
+**吸收状态在运行期重判（2026-10 落地）**：吸收若只在 `--build-pool` 那一刻判定，沉淀闭环随后把某条
+样本的答案收进知识库，池会变旧而判定照旧出结论。两条池文件因此各记一个 `absorption_rev`：把
+**本池参与判定的每一行**按 `id:该行的答案是否已在库里` 排序拼接后取 sha256 前 12 位。`held_out: true`
+的行不计入：终判子集本来就不进判定，它被吸收不改变这次判定测的是检索还是背诵，把它算进去只会
+造出假过期（同一份池在存储与重算两边得出不同指纹，一份本来有效的判定被拒）。指纹只覆盖本池的
+行，不用整库 case 实名集合——后者会把任何一条与样本无关的新 case 也算成池过期，而沉淀是本仓常态，
+门会长期拒绝出判词，最后被人绕过。`--stats` 每次重算这个指纹并把结论写进 stats；`--gate` 在判定时刻
+按 stats 里记下的逐行样本 id 再算一遍——沉淀可能正好落在 `--stats` 与 `--gate` 之间，沿用那份记录就会
+漏掉这一段。对不上说明池里某条样本的答案已被吸收：`--gate` 不出判词、退出码 3、不写影响账本（作废的
+运行不得推高复用计数），stderr 列出新被吸收的样本 id 并提示重跑 `--build-pool` 与 `--stats`。`--stats`
+本身恒退 0（它是产物生成器，不是判定命令），发现不新鲜在 stdout 打一行警告，判定以 `--gate` 为准。
+池文件没有该字段时（旧池、手写池）按未校验放行，但两条命令都会写明"新鲜度无法校验"——"没有校验"
+必须与"校验通过"可区分（原则十）。第三种状态是"有指纹、但那份 stats 没记下逐行样本 id"（本字段
+落地前的产物）：判定时刻算不出新指纹，`--gate` 写明"判定时刻无法重算"、沿用 `--stats` 那一刻的读数
+（账本里 `absorption_recheck.recomputed` 为假），不把它当成校验通过。
+
 ## 3. 评分口径（复用 S2 result schema）
 
 每条 issue 一次 diagnose replay 写 `.s2-replay/<issue>.result.yaml`（已有 schema：
@@ -64,7 +80,9 @@ namespace/category/hit_case/root_cause/rc_match/route，另见下条 `ground_tru
 
 `--stats` 除聚合指标外还写**逐条判决向量**（每条 issue 的 hit/route_ok/rc_match）与**池内容哈希**：
 前者是配对检验的输入（没有它，判定只能退回点估计，判词上限降为 weak_accept），后者是"量尺身份"
-（池内容变＝换量尺，复用计数归零）。
+（池内容变＝换量尺，复用计数归零）。逐条向量只收参与判定的行：`held_out: true` 的行整体跳过，
+跳过条数记在 `held_out_skipped`，向量条目带 `held_out` 字段（恒为假，只为读起来能对上口径）。
+`--stats` 同时把本次重算的吸收状态指纹写进 `absorption_recheck`（§2）。
 
 test/selection 分离前单池运行，分数标注 source: issue-replay。
 
@@ -83,8 +101,13 @@ test/selection 分离前单池运行，分数标注 source: issue-replay。
 作用于**检索/路由层组件**（triage 分支文本、quickly_check、case 内容/排序）与低风险 content：
 
 1. 候选 = EV 卡（前置元流程，带 before 反例）；
-2. **无回归**：golden 全部通过（改动不倒退）；
-3. **提升门（配对 + 复用折减）**：在 selection 池上候选侧 vs baseline 重放对照。判定不是
+2. **无回归（本池指标不降）**：`--gate` 只校验这一层，账本记 `no_regression_scope: arena-pool-only`。
+   golden 全量无回归是**另一步**：`scripts/replay_golden.py` 逐条 fixture 跑完整诊断（每条都要模型），
+   目前是手动/半自动步骤（golden 回放半自动化的雏形），**不在 `--gate` 命令内**。2026-10 之前本节把它写成门控的第 2 步，
+   而 `--gate` 从未执行它——属于文档承诺了、工具没接线；现在把这个范围写进账本，不再声称命令做了它没做的事；
+3. **提升门（配对 + 复用折减）**：在 selection 池上候选侧 vs baseline 重放对照（`held_out: true` 的行
+   跳过：不读 result、不进指标、不进配对——终判子集不参与门控。无回归的比率取自 stats 的 `metrics`，
+   手写 stats 要自己把 `held_out` 行剔除）。判定不是
    "两个比例各看一遍、涨了就收"，而是只数**同一批 issue 上方向不一致的对子**（candidate
    独家命中 b / baseline 独家命中 c）做精确单侧检验，并与阈值比：**判定阈值 α_eff = α/(k+1)**，
    k 是同一份池（同名 + 同内容哈希）上已做过的判定次数。三态判词：
@@ -97,11 +120,16 @@ test/selection 分离前单池运行，分数标注 source: issue-replay。
    即可判"提升"）。配对检验让"一次翻转"不再自动成立，复用折减让"反复用同一个池刷通过"自动变难。
    不通过则 **回滚**（git revert / 分支丢弃）；
 4. **账本**：`scripts/eval_arena.py --gate` 把 候选 id / 组件 / 分数对照 / 配对读数（b、c、p）/
-   复用序号 k / α 与 α_eff / 判词 append 进 `.s2-replay/arena/impact.yaml`（本地；结论随方法论
+   复用序号 k / α 与 α_eff / 判词 / 无回归范围（`no_regression_scope: arena-pool-only`）/
+   两侧的吸收状态重判记录（`absorption_recheck`，判定时刻重算所得）append 进 `.s2-replay/arena/impact.yaml`（本地；结论随方法论
    PR 投影）。同一份池复用次数达阈值由判据层报出（`proposals/gates.yaml` 的
    `pool_reuse_uncontrolled`，读数见 `scripts/evolution_health.py`）——**复用超限的动作是重新选样
    （换量尺、计数归零）或扩池**，不是把标准说松；
 5. 高风险的 dual 级改动（triage 结构等）门控通过后仍按 kb/high-risk 双签送人审——门控是"数据门槛"，不替代人闸（原则五/六）。
+
+`--gate` 的退出码（判词是数据，不是命令成败）：**0** = 判定成立且已写账本（accept / weak_accept /
+reject 都算成立，reject 也要留档）；**1** = 读文件失败或池结构错；**2** = 用法输入问题（缺参、把回归池
+当判定池）；**3** = 池已不新鲜（`absorption_rev` 对不上，见 §2），判词作废、账本不写。
 
 判词本身也要有牙齿：`--self-test` 用合成样本复现三态（单次翻转只给 weak_accept、复用 k 次后
 同一提升降级、回归必 reject、跨池不可比、无向量降级、复用计数按池哈希归零），CI 跑它
@@ -117,17 +145,24 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 - `--build-pool`：**从已跟踪的 S2 校准集派生池**（`eval/s2/vllm-ascend.yaml` → `.s2-replay/arena/pool-*.yaml`），
   确定性、可复核——池是本地运行件，靠这条命令任何人都能重建，不必依赖"某次会话留下的文件"。
   默认只取 `split=selection`（test 条目标 `held_out: true`，不参与 gate 决策）；`--only-scored` 只收已有 result 的条目；
-  同时按吸收状态拆出 `<同名>-absorbed.yaml`（`role: regression`）；`--case-prefix` 指定 case 实名前缀（默认 `VLLM-ASC`，
+  同时按吸收状态拆出 `<同名>-absorbed.yaml`（`role: regression`）；两个池文件各写自己的 `absorption_rev`
+  （§2 的指纹，判定池与回归池行不同，各算一份）；`--case-prefix` 指定 case 实名前缀（默认 `VLLM-ASC`，
   文件名 stem 还要匹配 §2 那条命名规则，否则该 case 不算命中）；
-- `--pool <yaml>`：校验池文件结构；
+- `--pool <yaml>`：校验池文件结构，并打印吸收状态指纹与 `held_out` 条数；
 - `--stats <pool>`：聚合各 issue 的 result → 指标 + 逐条向量 + 池哈希（写 .s2-replay/arena/stats-*.yaml）。
-  **先复制一份 baseline stats 再跑改后侧**——两次 `--stats` 写同一个文件名，覆盖掉 baseline
+  `held_out: true` 的行跳过（不读 result、不进指标、不进逐条向量），跳过条数记 `held_out_skipped`；
+  顶层另写 `case_prefix`、`judged_ids`（本池参与判定的每一行 id；判定时刻的重算靠它，
+  不能用逐条向量代替——没跑 replay 的样本不在向量里，按向量重算会把指纹算成空字符串的哈希、
+  把有效的池误判成不新鲜）与 `absorption_recheck: {rev_pool, rev_now, checked, stale, newly_absorbed}`——
+  判定前先看 `stale`（`--stats` 恒退 0，判定以 `--gate` 为准；`--gate` 在判定时刻自己再算一遍，见 §2）。**先复制一份 baseline stats 再跑改后侧**——两次 `--stats` 写同一个文件名，覆盖掉 baseline
   就没有配对数据了（`cp stats-pool-val.yaml baseline.yaml` 之后才重跑）；
 - `--gate --baseline <stats-a> --candidate <stats-b> [--alpha 0.1]`：配对判定（accept /
-  weak_accept / reject）+ 追加影响账本；
+  weak_accept / reject）+ 追加影响账本；判定时刻按 stats 记下的逐行样本 id 重算吸收状态
+  （stats 没记这份 id 时写明"判定时刻无法重算"并沿用原读数，见 §2），
+  任一侧对不上则不出判词、退出码 3、不写账本（退出码表见 §4）；
 - `--self-test`：复现判词（合成样本，无需本地池数据；CI 跑它）；
 - `--rc-check <pool>`：结论一致离线对照（agent root_cause vs 标注 resolution_summary，
-  启发式信号 + 人工核验清单——归因层/结论一致的评分件，auto 不终判）。
+  启发式信号 + 人工核验清单——归因层/结论一致的评分件，auto 不终判）；`held_out: true` 的行同样跳过。
 
 ## 6. 与既有机制的关系
 
@@ -141,10 +176,10 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 | 分级 | 内容 | 何时 |
 |---|---|---|
 | **第一批（本 PR）** | 设计文档 + eval_arena.py v1（pool/stats/gate）+ EV-2026-013 | 现在 |
-| **落地** | 接受判据 v2（配对 + 复用折减 + 三态判词）+ `--self-test` 进 CI（arena-gate-rule）+ 复用判据（`pool_reuse_uncontrolled`）+ 池按吸收状态分流（吸收样本只进回归池、`--gate` 拒绝回归池） | 随本机制变更 |
+| **落地** | 接受判据 v2（配对 + 复用折减 + 三态判词）+ `--self-test` 进 CI（arena-gate-rule）+ 复用判据（`pool_reuse_uncontrolled`）+ 池按吸收状态分流（吸收样本只进回归池、`--gate` 拒绝回归池）+ 吸收状态在本池范围内运行期重判（`absorption_rev` 对不上则 `--gate` 退出 3、不写账本）+ `held_out` 在 `--stats`/`--gate` 真正生效 + 无回归范围写进账本（`no_regression_scope: arena-pool-only`） | 随本机制变更 |
 | 推进 | selection 池 expected 标注 + baseline replay（首批 17 条） | 池文件落地后下一批（subagent 执行） |
 | 推进 | 门控端到端运转一次（真实 miss → 候选 → gate → 合入） | baseline 可用后 |
-| 蓝图 | test 分离（selection ≥20）、归因/交互层入台、分数进 timeline（样本 ≥10 带分母）、判定池扩容（分流已落地；新增未吸收样本要人工选样与标注，分流后判定池 10 条） | 规模/数据触发 |
+| 蓝图 | test 分离（闸门口径＝判定池条数，见 §1 与 §2；不按名义 selection 条数触发）、归因/交互层入台、分数进 timeline（样本 ≥10 带分母）、判定池扩容（分流已落地；新增未吸收样本仍要人工选样与标注。当前先卡在 baseline 重放没跑过——没有逐条向量，配对检验没有输入） | 规模/数据触发 |
 
 ## 8. 原则追溯
 
@@ -154,5 +189,6 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 | golden 无回归 + val 严格提升 + 回滚 | 一（验证先于交付）、七（变更可逆） |
 | 门控是数据门槛不替代人闸（dual 仍双签） | 五（建议与决定分离）、六（闸门硬度） |
 | 配对 + 复用折减 + 三态判词（weak_accept 不算通过） | 十（诚实退化：证据不足就说不足，不把"看起来涨了"当门控通过）、十一（判据本身也要可证伪——`--self-test` 进 CI） |
-| 池从 ingest 候选按规则选、test 分离按规模闸门 | 十一（数据触发） |
+| 池从 ingest 候选按规则选、test 分离按判定池条数 | 十一（数据触发） |
 | 评估池按吸收状态分流（已落地）与扩容（待数据） | 十（诚实退化：已沉淀的样本进回归池，不虚增判定样本）、十一（数据触发） |
+| 吸收状态在运行期重判、无回归范围写进账本（`arena-pool-only`）、"没有校验"与"校验通过"可区分 | 十（诚实退化：池不新鲜就拒绝出判词；命令没做的事不写成做到了）、六（闸门硬度：拒绝要机械可判） |

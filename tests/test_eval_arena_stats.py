@@ -1,11 +1,14 @@
-"""eval_arena 打分侧的两处口径（本卡机制修正）。
+"""eval_arena 打分侧的三处口径（本卡机制修正）。
 
-护两件事：
+护三件事：
 ① **result 字段两套写法都认**：盘上的 result 文件写 `tier2_hit` / `routing_ok` / `root_cause_ok`，
    而工具早期只读 `hit_case` / `route` / `rc_match`。只认一套的代价是**结论一致（rc）一路恒为
    None**——判定少一路证据，账本里也分不清"没有数据"和"结论不一致"。
 ② **缺参要明确退化**：`--gate` 不给 baseline/candidate 时，旧行为是拿空路径去读仓库根，报
    "Is a directory" 这种和真因无关的错；现在退 2 并打印"下一步该建池/跑 stats"。
+③ **吸收状态在运行期重判、held_out 真的不参与判定**：池建好之后答案仍会进知识库，那时池测的
+   是背诵而不是检索能力；`held_out` 此前只被建池写过、没有读取方。两件事都在
+   `AbsorptionRuntimeRecheckTest` 与 `HeldOutSkipTest` 里守住。
 """
 
 import contextlib
@@ -250,3 +253,202 @@ calibration:
             rc = ea.cmd_gate(self.root, f1, f2, "triage:demo", "EV-TEST", "", 0.1)
         self.assertEqual(rc, 2, "--gate 必须拒绝回归池：自洽样本不进判定")
         self.assertFalse((self.root / ea.IMPACT_REL).exists(), "拒绝时不得写影响账本")
+
+
+class AbsorptionRuntimeRecheckTest(unittest.TestCase):
+    """吸收状态在运行期重判：池建好之后，沉淀闭环仍可能把样本的答案写进知识库。
+
+    那时池测的是背诵而不是检索能力，而 `--gate` 照样会出判词——这是本轮要消掉的假绿。
+    三件事必须成立：①`--stats` 每次重算指纹并把结论写进 stats；②`--gate` 在判定时刻自己重算
+    （沉淀可能正好落在 `--stats` 与 `--gate` 之间，沿用那份记录就会漏掉），见到不新鲜就拒绝
+    出判词，且**不写账本**（账本里的复用计数不得被一次作废运行推高，否则误判一次就永久收紧
+    阈值）；③池文件没有指纹（旧池、手写池）时**不拦**，但必须说明"无法校验"——"没有校验"与
+    "校验通过"混淆，诚实退化就退化成静默放行。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        d = self.root / "eval" / "s2"
+        d.mkdir(parents=True)
+        (d / "pool.yaml").write_text("""\
+calibration:
+- issue: 511
+  split: selection
+  expected: {namespace: inference/vllm-ascend, category: interrupt, fix_commit: "PR #1"}
+- issue: 512
+  split: selection
+  expected: {namespace: inference/vllm-ascend, category: interrupt, fix_commit: "PR #2"}
+""", encoding="utf-8")
+        (self.root / ".s2-replay").mkdir(parents=True, exist_ok=True)
+        for iid in ("511", "512"):
+            (self.root / ".s2-replay" / f"{iid}.result.yaml").write_text(
+                "namespace: inference/vllm-ascend\nrouting_ok: true\ntier2_hit: false\n"
+                "root_cause_ok: true\n", encoding="utf-8")
+
+    def _build(self):
+        out = self.root / ".s2-replay" / "arena" / "pool-r.yaml"
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(ea.build_pool(self.root, "eval/s2/pool.yaml", "r", "selection",
+                                           False, str(out)), 0)
+        return out
+
+    def _stats(self, pool_file, name):
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(ea.cmd_stats(self.root, pool_file), 0)
+        return yaml.safe_load(pool_file.with_name(f"stats-{name}.yaml").read_text(encoding="utf-8"))
+
+    def _plant_case(self, iid):
+        """把池内某条样本的答案"沉淀"进知识库：case 文件名用它的 issue 号。"""
+        d = self.root / "knowledge" / "inference" / "vllm-ascend" / "interrupt"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / f"VLLM-ASC-{iid}.yaml").write_text("- id: x\n", encoding="utf-8")
+
+    def _write(self, path, doc):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        return path
+
+    def test_stats_writes_recheck_and_newly_absorbed(self):
+        pf = self._build()
+        rc1 = self._stats(pf, "r")["absorption_recheck"]
+        self.assertTrue(rc1["checked"], "建池时写的指纹必须能在 --stats 里用")
+        self.assertFalse(rc1["stale"])
+        self.assertEqual(rc1["newly_absorbed"], [])
+        self._plant_case("511")
+        rc2 = self._stats(pf, "r")["absorption_recheck"]
+        self.assertTrue(rc2["stale"], "样本答案进库后池必须被判成不新鲜")
+        self.assertNotEqual(rc2["rev_pool"], rc2["rev_now"])
+        self.assertEqual(rc2["newly_absorbed"], ["511"])
+
+    def test_stale_pool_makes_gate_refuse_and_write_no_ledger(self):
+        pf = self._build()
+        self._stats(pf, "r")
+        self._plant_case("511")
+        s = self._stats(pf, "r")
+        f1 = self._write(self.root / "a.yaml", s)
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            rc = ea.cmd_gate(self.root, f1, f1, "triage:demo", "EV-TEST", "", 0.1)
+        self.assertEqual(rc, 3, "池不新鲜必须拒绝出判词（不是 reject，是判词作废）")
+        self.assertIn("511", err.getvalue(), "要说清是哪条样本进了库，否则无法定位")
+        self.assertFalse((self.root / ea.IMPACT_REL).exists(),
+                         "判词作废时不得写账本：复用计数不得被作废运行推高")
+
+    def test_gate_rechecks_at_decision_time_not_from_stale_stats(self):
+        """池在 `--stats` 之后才变旧：判定时刻必须重算，不沿用那份旧读数。
+
+        这是 `--stats` 与 `--gate` 之间的窗口——stats 里还写着"不新鲜为假"，而沉淀在那之后
+        把样本的答案写进了库。沿用记录就会照常出判词并推高复用计数。
+        """
+        pf = self._build()
+        s = self._stats(pf, "r")
+        self.assertFalse(s["absorption_recheck"]["stale"])
+        f1 = self._write(self.root / "a.yaml", s)
+        self._plant_case("512")                      # 落在这个窗口里
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            rc = ea.cmd_gate(self.root, f1, f1, "triage:demo", "EV-TEST", "", 0.1)
+        self.assertEqual(rc, 3, "stats 之后变旧也必须拒绝：新鲜度以判定时刻为准")
+        self.assertIn("512", err.getvalue())
+        self.assertFalse((self.root / ea.IMPACT_REL).exists())
+
+    def test_gate_recomputes_without_vectors_from_recorded_ids(self):
+        """池里一条 replay 结果都没有时，判定时刻仍要能按 stats 记下的行 id 重算。
+
+        逐条向量是配对检验的输入，没跑 replay 的样本不在向量里；拿向量当行集合重算，指纹
+        会算成空字符串的哈希，把一份本来有效的池误判成不新鲜——假过期与真过期的读数长得
+        一样，而这一池根本没被吸收。
+        """
+        for iid in ("511", "512"):
+            (self.root / ".s2-replay" / f"{iid}.result.yaml").unlink()
+        pf = self._build()
+        s = self._stats(pf, "r")
+        self.assertEqual(s["issues"], [], "没跑 replay 时不该有逐条向量")
+        self.assertEqual(s["judged_ids"], ["511", "512"], "行集合要单独记，不能靠向量推")
+        self.assertFalse(s["absorption_recheck"]["stale"])
+        f1 = self._write(self.root / "a.yaml", s)
+        self._plant_case("512")
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            rc = ea.cmd_gate(self.root, f1, f1, "triage:demo", "EV-TEST", "", 0.1)
+        self.assertEqual(rc, 3, "没有向量也要按行 id 重算，该拒就拒")
+        self.assertIn("512", err.getvalue())
+        self.assertNotIn("e3b0c44298fc", err.getvalue(),
+                         "空字符串的哈希说明行集合取错了（假过期）")
+
+    def test_stats_without_judged_ids_says_it_cannot_recheck(self):
+        """本字段落地前的 stats 有指纹、没行集合：说明"判定时刻无法重算"，不假装校验过。"""
+        pf = self._build()
+        s = self._stats(pf, "r")
+        s.pop("judged_ids")
+        f1 = self._write(self.root / "a.yaml", s)
+        self._plant_case("512")
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            rc = ea.cmd_gate(self.root, f1, f1, "triage:demo", "EV-TEST", "", 0.1)
+        self.assertEqual(rc, 0, "算不了就沿用 --stats 的读数并写明，不因此改变判词")
+        self.assertIn("无法重算", err.getvalue())
+
+    def test_pool_without_fingerprint_passes_as_unchecked(self):
+        rows = [{"id": "511", "expected_ns": "inference/vllm-ascend",
+                 "category": "interrupt", "fix_ref": ""}]
+        pf = self._write(self.root / ".s2-replay" / "arena" / "pool-old.yaml",
+                         {"name": "old", "split": "selection", "role": "judgment", "issues": rows})
+        s = self._stats(pf, "old")
+        self.assertFalse(s["absorption_recheck"]["checked"])
+        self.assertFalse(s["absorption_recheck"]["stale"], "没有指纹不等于不新鲜")
+        f1 = self._write(self.root / "a.yaml", s)
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            rc = ea.cmd_gate(self.root, f1, f1, "triage:demo", "EV-TEST", "", 0.1)
+        self.assertEqual(rc, 0, "旧池应仍可判；未校验只记进账本，不拦")
+        self.assertTrue((self.root / ea.IMPACT_REL).exists())
+
+
+class HeldOutSkipTest(unittest.TestCase):
+    """held_out（终判集）不进判定：--stats 不读它的 result、不进指标、不进逐条向量。
+
+    此前这个键只出现在建池与结构校验里，"不参与 gate 决策"的声明只在 `--split selection`
+    的默认参数下侥幸成立；用 `--split all` 建池时它会进统计与配对。
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / ".s2-replay").mkdir(parents=True, exist_ok=True)
+        for iid in ("511", "512", "599"):
+            (self.root / ".s2-replay" / f"{iid}.result.yaml").write_text(
+                "namespace: inference/vllm-ascend\nrouting_ok: true\ntier2_hit: true\n"
+                "root_cause_ok: true\n", encoding="utf-8")
+
+    def test_held_out_row_is_skipped_and_not_paired(self):
+        rows = [{"id": "511", "expected_ns": "inference/vllm-ascend", "category": "interrupt",
+                 "fix_ref": ""},
+                {"id": "512", "expected_ns": "inference/vllm-ascend", "category": "interrupt",
+                 "fix_ref": ""},
+                {"id": "599", "expected_ns": "inference/vllm-ascend", "category": "interrupt",
+                 "fix_ref": "", "held_out": True}]
+        pf = self.root / ".s2-replay" / "arena" / "pool-h.yaml"
+        pf.parent.mkdir(parents=True, exist_ok=True)
+        pf.write_text(yaml.safe_dump({
+            "name": "h", "split": "all", "role": "judgment",
+            "absorption": {"case_prefix": "VLLM-ASC"},
+            "absorption_rev": ea.absorption_rev(ea.judged_rows(rows), ea.case_index(self.root)),
+            "issues": rows}, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(ea.cmd_stats(self.root, pf), 0)
+        s = yaml.safe_load((pf.parent / "stats-h.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(s["issues_total"], 3)
+        self.assertEqual(s["held_out_skipped"], 1)
+        self.assertEqual(s["issues_scored"], 2)
+        self.assertEqual([v["id"] for v in s["issues"]], ["511", "512"])
+        self.assertTrue(all(v["held_out"] is False for v in s["issues"]))
+        self.assertNotIn("599", ea.vectors(s))
+        other = dict(s, issues=[dict(v, hit=False) for v in s["issues"]])
+        self.assertEqual(ea.decide(s, other, 0.1)["paired"]["n_common"], 2)
+        # held_out 行不进指纹：终判子集本来就不进判定，把它算进去会造出假过期
+        # （同一份池两边算出不同指纹，--gate 会拒绝一份本来有效的判定）。
+        self.assertTrue(s["absorption_recheck"]["checked"])
+        self.assertFalse(s["absorption_recheck"]["stale"])

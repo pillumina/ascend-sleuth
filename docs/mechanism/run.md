@@ -156,7 +156,7 @@ exec-log 只做内容流程收尾时的轻量现场记录，不做"每次 skill 
 
 | 步骤 | 内容 | 入口闸门 |
 |---|---|---|
-| 1 | S2 校准集建立（单池；实时条数见 `eval/s2/vllm-ascend.yaml`，selection/test 分离是规模闸门：池 ≥30 再分，见 §3） | issue 池可批量取（已具备） |
+| 1 | S2 校准集建立（单池；实时条数见 `eval/s2/vllm-ascend.yaml`，selection/test 分离按判定池＝未吸收样本的条数触发，见 `docs/mechanism/eval-arena.md` §1） | issue 池可批量取（已具备） |
 | 2 | 统一执行记录（内容 skill 收尾 exec-log + evolve-check 读现场） | 已落地（schema+脚本+4 内容 skill 收尾含 groom+evolve-check 自落记录+`tail_exec_log.py` 取数入口+`exec_log_path.py` 共享路径+CI 卡校验配套）；diagnose 走 trace 不重复落（§4 边界）。**同一克隆共享**（跨 worktree 共写共读，写侧持锁）；跨克隆/跨机的口径**已接线**：`metrics_snapshot.py` 把 exec-log 聚合写进 `metrics/timeline.yaml`（§4） |
 | 2b | S2 feedback 结算（settle_s2_feedback → case.validation_record） | 已落地（2026-09 selfevolve-loop）；真实 S2 result 批量后结算首轮 |
 | 3 | 长期任务层试点一轮（手动触发，任务状态机 + 轮间调度跑通，对应 §11 Phase D） | 步骤 1–2b 有真实数据 |
@@ -170,7 +170,7 @@ exec-log 只做内容流程收尾时的轻量现场记录，不做"每次 skill 
 | 设计元素 | 服务的原则 | 说明 |
 |---|---|---|
 | issue 即带标注评测集、即时对照 | 八（可观测先于改进）、十 | 答案随拉取可得，无需延迟机制；open 只作弱信号不冒充结论 |
-| selection/test 分离（规模闸门） | 一（验证先于交付） | 池 ≥30 再分两半防过拟合；当前单池 + self-referential 隔离（self_consistent） |
+| selection/test 分离（规模闸门） | 一（验证先于交付） | 按判定池＝未吸收样本的条数触发（原「≥30」是参数估计，已按实测重校，见 `docs/mechanism/eval-arena.md` §1）：够支撑判定后再分两半防过拟合；当前单池 + self-referential 隔离（self_consistent） |
 | 统一执行记录（对象是 skill 非人，内容流程收尾） | 八、九 | 内容流程全链路数据；不碰身份红线；diagnose 走 trace 不重复落 |
 | supersede 关系与回滚到被替代版本 | 七（变更可逆） | 替换可追溯，回滚粒度到"上一个有效实现" |
 | 可视化四层视图 | 八、十 | 让"人在看系统演进"成为可能而非宣称 |

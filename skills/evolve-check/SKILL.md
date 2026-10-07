@@ -109,9 +109,10 @@ description: >
      **检索/路由/候选选择面**改动 → golden 子集前后对照（2-5 条受影响 fixture，
      非全量；基线缓存复用，只跑改后侧）或 S2 replay（`scripts/replay_golden.py` /
      `scripts/s2_replay.py`），数据通过才算 eval solid；检索/路由层候选在 **arena
-     selection 池可用时**（`scripts/eval_arena.py --stats/--gate`，论证见
-     docs/mechanism/eval-arena.md 可选层）：golden 无回归 + 门控判词为 **accept**
-     才判 solid（门控判定是数据门槛，不替代 dual 双签）。
+     selection 池可用时**（`scripts/eval_arena.py --stats` 出分、`--gate` 出判词，论证见
+     docs/mechanism/eval-arena.md 可选层）：无回归 + 门控判词为 **accept**
+     才判 solid（门控判定是数据门槛，不替代 dual 双签）。golden 无回归不在这两条命令里，
+     由 `scripts/replay_golden.py` 单独跑（每条 fixture 一次完整诊断，要模型）。
      **判词三态，只有 accept 算通过**：`weak_accept` 表示"看起来涨了但证据不够"
      （池子里翻转的对子太少，或 stats 缺逐条向量）——**不得据此判 validated**：
      要么补样本/扩池后重跑，要么如实把卡记为证据不足（诚实退化，不虚报门控通过）。
