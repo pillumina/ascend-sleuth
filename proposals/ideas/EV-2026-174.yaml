@@ -1,0 +1,136 @@
+# ============================================================
+# EV-2026-174 —— 评测台读数与缺口条刷新：写成分流后的实测值，并给出复算入口
+# 来源：用户要求把 eval 机制做到位（清单第 ⑦ 项：文档/路线图/缺口按新行为更新）。
+#       分流（EV-2026-167）、运行期重判（EV-2026-169）、非诊断样本（EV-2026-171）、
+#       重放证据字段（EV-2026-172）落地后，三处文档仍写着分流前那一轮的读数，
+#       路线图与机制文档的缺口条还把「基线重放一次都没跑过」当成当前卡点。
+# 脱敏：只含仓库内路径、命令与聚合数字
+# ============================================================
+
+id: EV-2026-174
+layer: L2
+target_component: docs/mechanism/eval-arena.md
+title: "评测台读数与缺口条刷新：口径写成分流后的实测值，数字给出复算入口"
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: '2026-10-07'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户要求把已分析清楚、值得落地的 eval 机制落点全部落地，其中第 ⑦ 项是文档、路线图与缺口
+      按新行为更新；需要人介入的先问，文本不带黑话。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      `docs/mechanism/eval-arena.md` §3 记着「本轮全量重放结果（20/20 条已评分）：路由 9/9、
+      命中 2/20、结论一致 13/20」，`docs/plan/roadmap.md` 的 E8 行记着「20 条池、route 9/9、
+      命中 2/9、结论一致 6/9、剩余 11 条待 replay」，而分流后判定池是 10 条、回归池 10 条：
+      分流前那一轮的数字与现行池不是同一把量尺（池内容变即 `pool_hash` 变、复用计数归零）。
+      §3 路由率分母那条写「实测一批 20 条里 11 条如此」，判定池里实际是 10 行中 8 行如此；
+      §4 把「16 条池一次翻转就是 +6.25 个百分点」当成当前池规模的举例。
+      `docs/plan/roadmap.md` 的「评估池扩容」条与 `docs/mechanism/rsi-mechanism.md` §8 第 4 条
+      都把「基线重放一次都没跑过」写成当前卡点，而 2026-10 那一轮判定池 10 条里 9 条已重放完。
+    trajectory:
+      - "docs/mechanism/eval-arena.md §3（读数、路由分母、复用折减举例）"
+      - "docs/plan/roadmap.md 的 E8 行与「评估池扩容」条"
+      - "docs/mechanism/rsi-mechanism.md §8 第 4 条"
+hypothesis: >-
+  把这三处文档的读数换成现行判定池的实测值，并写明它们能从已跟踪数据复算（`--build-pool` 从
+  `eval/s2/vllm-ascend.yaml` 派生池、`--stats` 出分；池文件与 stats 是 gitignore 的本地运行件），
+  读者才不会把分流前那一轮的数字当成现行量尺；同时把「基线重放没跑过」这条缺口改成已落地的状态，
+  避免下一个人按过期的卡点立项。
+predicted_effect:
+  metric: >-
+    三处文档里与判定池规模相关的读数与缺口描述，是否与现行池（判定池 10 条 / 回归池 10 条）一致，
+    且给出的复算命令在干净检出上跑得通
+  from: >-
+    eval-arena.md §3 写 20/20 已评分、路由 9/9、命中 2/20、结论一致 13/20、路由分母「20 条里 11 条」、
+    复用折减举例「16 条池」；roadmap.md E8 行写 20 条池与 route 9/9、命中 2/9、结论一致 6/9、
+    「剩余 11 条待 replay」、阶段列「数据待重建」；roadmap.md 与 rsi-mechanism.md §8 第 4 条把
+    「基线重放一次都没跑过」写成当前卡点
+  to: >-
+    eval-arena.md §3 改成 2026-10 那一轮（判定池 10 条、9 条已评分、路由 2/2、命中 0/9、
+    结论一致 5/6），上一轮数字留作历史并注明两轮不可比；路由率分母改成 10 行中 8 行；复用折减举例
+    改成现行 10 条池（一次翻转 +10 个百分点）；roadmap.md 的 E8 行与「评估池扩容」条、
+    rsi-mechanism.md §8 第 4 条改成「基线已出一轮、逐条向量齐了」，并写明选样已收成机械判据
+    （卡 EV-2026-173）
+  measure:
+    command: |
+      python3 -c "import pathlib,sys;r={'docs/mechanism/eval-arena.md':['判定池 10 条，其中 9 条已评分','路由 **2/2**','命中 **0/9**','结论一致（root_cause_ok）**5/6**','一次翻转就是 +10 个百分点'],'docs/plan/roadmap.md':['route 2/2、命中 0/9、结论一致 5/6','基线已出一轮'],'docs/mechanism/rsi-mechanism.md':['判定池 10 条里 9 条重放完'],'proposals/ideas/EV-2026-124.yaml':['2026-10 复核']};stale=[('docs/mechanism/eval-arena.md','20/20 条已评分'),('docs/mechanism/eval-arena.md','16 条池'),('docs/mechanism/eval-arena.md','一批 20 条里 11 条如此'),('docs/plan/roadmap.md','命中 2/9'),('docs/plan/roadmap.md','剩余 11 条待 replay'),('docs/plan/roadmap.md','数据待重建'),('docs/mechanism/rsi-mechanism.md','基线重放一次都没跑过')];miss=[(f,n) for f,ns in r.items() for n in ns if n not in pathlib.Path(f).read_text(encoding='utf-8')];left=[(f,s) for f,s in stale if s in pathlib.Path(f).read_text(encoding='utf-8')];print('VERDICT PASS' if not miss and not left else 'VERDICT FAIL miss=%s left=%s'%(miss,left));sys.exit(0 if not miss and not left else 1)"
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前：三处文档的读数见 source_signals 第二段；`docs/plan/roadmap.md` 的 E8 行阶段列写
+    「工具已完成 · 数据待重建」；`proposals/ideas/EV-2026-124.yaml` 的 evidence 与 trajectory
+    把 12980 的输入写成「正文空白 / 正文为空」。
+  success_criteria: >-
+    ①`measure` 命令输出 `VERDICT PASS`（新读数在文档里、分流前的旧数字已从「现行读数」位置移走、
+    EV-2026-124 里那处输入描述已就地更正并留下更正记录）；②`python scripts/verify_proposals.py --check`、
+    `python scripts/build_docs_index.py --check`、`python scripts/eval_arena.py --self-test` 通过；
+    ③`python -m unittest discover -s tests -t .` 的失败集合与 `origin/main` 上一致；
+    ④文档给出的复算入口是命令（`--build-pool` 与 `--stats` 各一条），不是本地运行件里的数字。
+  rollback: "回退该提交即可；本次只改文档与一张已验证卡的措辞，无代码与数据面变更。"
+gate:
+  condition: >-
+    出现「文档里的读数与 `--stats` 实际输出不一致」而无人复核；或有人把本地运行件里的数字当证据补进
+    文档、却没写清它由哪条命令从已跟踪数据复算
+risk: low
+principle_refs: [8, 10, 11]
+actual_cost:
+  tokens: 6000
+  source: estimate
+  note: >-
+    口径：改 `docs/mechanism/eval-arena.md` 四处、`docs/plan/roadmap.md` 两处、
+    `docs/mechanism/rsi-mechanism.md` 一处、`proposals/ideas/EV-2026-124.yaml` 三处就地更正、
+    产卡、判据复跑、PR body；估 6000，未计独立预核与回修。
+decisions:
+  - who: agent
+    when: "2026-10-07"
+    type: proposal
+    conclusion: >-
+      采纳「把读数改成现行池的实测值，上一轮数字留作历史」。理由：分流换过池内容，`pool_hash`
+      与复用计数都已归零，两轮不是同一把量尺；把旧数字留在「本轮」位置会让读者按过期的分母
+      理解判定线（10 条池一次翻转就是 +10 个百分点，与 16 条池的 +6.25 不同）。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      三处读数都写成「命令 + 期望读数」的形式，并写明数字由 `--build-pool` 与 `--stats` 从已跟踪的
+      `eval/s2/vllm-ascend.yaml` 复算（池文件与 stats 在 `.gitignore` 覆盖的运行件里，不在检出里）。
+      理由是这份仓库的纪律是数字现算，文档只该给出可复算的入口。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      `proposals/ideas/EV-2026-124.yaml` 里那处输入描述就地更正（12980 的正文只有环境信息段、
+      `### 🐛Describe the bug` 段为空），并把「此前写作……」留在原处当更正记录，不改 2026-09-17
+      那一轮的任何读数与结论。理由：卡是历史记录，读数不动，只把与输入实况不符的描述更正。
+  - who: agent
+    when: "2026-10-07"
+    type: eval
+    conclusion: >-
+      判据复跑（worktree，本机 Windows，2026-10-07）：`--build-pool --root <主检出>` 报判定池 10 条
+      （9 条已有 replay result）、非诊断样本 1 条（12980）、回归池 10 条、指纹 `e9cf8ad8ff91`；
+      `--stats` 报 9/10 条已评分、路由面 7 条无真值、route_ok 2/2、hit 0/9、rc_match 5/6；
+      `measure` 命令 `VERDICT PASS`；`python -m unittest discover -s tests -t .` 报 `Ran 341 tests`、
+      `failures=10`、`errors=2`，12 项与主检出 `71f6397` 逐条相同（本机既有环境性失败）；
+      `build_docs_index.py --check` OK（26 条文档登记、11 个 skill、2 个落点一致）、
+      `eval_arena.py --self-test` 全部断言通过；`render_review_summary.py --scan` 五个文件
+      「未登记代号：无」「新人可见面干净」，`docs/mechanism/eval-arena.md` 的 3 处越界为既有项
+      （与主检出未改动版本计数相同）。
+  - who: agent
+    when: "2026-10-07"
+    type: decision
+    conclusion: >-
+      判 validated：三处文档的现行读数与复算入口一致，旧数字移作历史，缺口语义改成已完成的那一半。
+      **边界**：文档里的数字本身仍是本机一轮的读数（池文件不在检出里，跨机复算会有差异）；
+      `measure` 钉住的是「文档写的是哪一轮、旧数字有没有留在现行位置」，不是「读数在每个环境都相同」。
+      未做：`docs/mechanism/eval-arena.md` §1 的 test 分离闸门仍是「判定池条数够支撑判定之后」
+      这样的人工判断语，没有换成机械阈值——它要等用户对「这套判定要支撑几次判定」给定标，
+      属另一件事。
