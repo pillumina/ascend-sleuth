@@ -267,6 +267,58 @@ class S2ClipKeepsTriggerParamsTest(unittest.TestCase):
         self.assertEqual(sc.clip_text("短正文", 900), "短正文")
 
 
+class S2CandidateScreenTest(unittest.TestCase):
+    """校准集收样规则的机械判据：流程/文档类前缀硬拒；只有 `triaged` 标签或无前缀的算弱信号。
+
+    为什么值得单测（2026-10 实测）：旧规则是「标题不在 6 项黑名单里」且「labels 为空**或**含
+    `bug`/`triaged`」，其中 `triaged` 近乎恒真，于是流程单进了判定池——`#12490 [Misc]: Close
+    cherry-pick PR #12265`（labels 只有 `triaged`）被当 bug 候选收进校准集，回放到一半才发现它没有
+    可诊断内容（三组症状正则命中数全 0），按 `docs/mechanism/eval-arena.md` §2 的筛选规则本不该进池。
+    这里钉住：流程/文档类前缀连 `--include-weak` 也拒；无前缀或只有 `triaged` 的默认拒、但列出来给
+    人看（`--include-weak` 可收）；标题前缀或 `bug` 标签任一成立就照收。
+    """
+
+    @staticmethod
+    def _issue(title, labels=()):
+        return {"number": 1, "title": title, "labels": [{"name": l} for l in labels]}
+
+    def test_process_and_doc_prefixes_are_hard_rejected(self):
+        import s2_calibration as sc
+        for title in ("[Misc]: Close cherry-pick PR #12265", "[Doc]: 更新部署文档",
+                      "[Documentation] 章节错字", "[Build] 构建失败",
+                      "[Feature] 支持新模型", "[Question] 怎么配", "[CI] flaky",
+                      "docs: 补一节", "chore: 清缓存"):
+            issue = self._issue(title, ["triaged"])
+            self.assertFalse(sc.is_bug_candidate(issue), title)
+            self.assertFalse(sc.is_bug_candidate(issue, include_weak=True), f"{title}（弱信号通道也不收）")
+
+    def test_bug_signal_is_kept_with_and_without_prefix(self):
+        import s2_calibration as sc
+        kept = (
+            ("[Bug]: 随机采样在高并发下可能存在正确性问题", ["bug", "triaged"]),
+            ("[BugFix] 修一处崩溃", []),                       # 无标签靠前缀
+            ("[Usage] 怎么用 DCP", []),                        # §2 把 Usage 算实体内容
+            ("Gemma4 31B EAGLE3 speculative decoding on Ascend", ["bug"]),  # 无前缀但有 bug 标签
+        )
+        for title, labels in kept:
+            issue = self._issue(title, labels)
+            self.assertTrue(sc.is_bug_candidate(issue), title)
+            self.assertEqual(sc.candidate_signal(issue), "bug", title)
+
+    def test_weak_signal_is_held_back_by_default(self):
+        """无前缀 / 只有 triaged 标签 / [Performance] 这类：默认拒、显式开启才收（判断留给人）。"""
+        import s2_calibration as sc
+        for title, labels in (("Gemma4 31B EAGLE3 speculative decoding on Ascend", ["triaged"]),
+                              ("Bug: NPU Graph crash with aclnnScatterNdUpdate", ["triaged"]),
+                              ("[Performance]: IndexCache 写入变慢", ["glm5", "triaged"]),
+                              ("[Installation]: CPU-only build", ["triaged"]),
+                              ("[load_balance_proxy] Decode backend errors are swallowed", ["triaged"])):
+            issue = self._issue(title, labels)
+            self.assertFalse(sc.is_bug_candidate(issue), title)
+            self.assertEqual(sc.candidate_signal(issue), "weak", title)
+            self.assertTrue(sc.is_bug_candidate(issue, include_weak=True), title)
+
+
 class S2SampleIndependenceTest(unittest.TestCase):
     """cross 样本的独立性守卫：case 正文引用了这个 issue → 不能算独立的「外部验证」。
 

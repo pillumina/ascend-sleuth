@@ -26,6 +26,9 @@
 # 用法：
 #   python3 scripts/s2_calibration.py --repo vllm-project/vllm-ascend --state closed \
 #     --labels triaged --limit 5 --output eval/s2/vllm-ascend.yaml --state-file ingest-state.json
+# 收样规则（2026-10 收紧）：标题带流程/文档类前缀（NON_DIAGNOSTIC_PREFIXES）直接排除；其余要求
+#   标题是 Bug/BugFix/Usage 前缀、或 labels 里含 bug。只剩 triaged 标签或无前缀的算"弱信号"——
+#   默认不收，只打印出来供人判断，要看就带 --include-weak。
 #   --dry-run 只列候选不写文件
 #
 # 网络：gh api 逐个取 issue body（元数据已由 fetch_issues 拉过，body 需按需取）。
@@ -41,8 +44,15 @@ from pathlib import Path
 import yaml
 
 BODY_CLIP = 3500
-# 非诊断类 title 前缀（S2 校准集只收 bug/可诊断问题——Doc/Feature/Usage 类无诊断价值）
-NON_BUG_PREFIXES = ("[Doc]", "[Feature]", "[Usage]", "[Question]", "docs:", "feat:")
+# 流程/文档/发布类 title 前缀：S2 校准集一律不收（2026-10 扩充；起因＝池里进了 `[Misc]: Close
+# cherry-pick PR`，实测 400 条窗口里 [Misc] 8 条、[Doc] 37 条、[Build] 1 条等，见 docs/mechanism/eval-arena.md §2）。
+NON_DIAGNOSTIC_PREFIXES = (
+    "[Doc]", "[docs]", "[Documentation]", "[Feature]", "[Feature Request]", "[Question]",
+    "[Misc]", "[Build]", "[CI]", "[Test]", "[Refactor]", "[Chore]", "[Release]",
+    "docs:", "doc:", "feat:", "chore:", "ci:", "test:", "refactor:",
+)
+# 「实体 Bug/Usage」的标题前缀白名单（把 §2 的内容判据写成机械判据；Usage 按 §2 在收）
+BUG_TITLE_PREFIXES = ("[Bug]", "[bug]", "[BugFix]", "[bugfix]", "[Usage]")
 # 评论中的非结论模式（指派/待查/流程语——不是 resolution）
 NON_RESOLUTION_PATTERNS = (
     "/wait", "@", "please take a look", "pls check", "please check", "take a look at",
@@ -58,15 +68,32 @@ FIX_REF_PATTERNS = (
 )
 
 
-def is_bug_candidate(issue: dict) -> bool:
+def candidate_signal(issue: dict) -> str:
+    """候选强度：`bug` = 有明确缺陷信号（标题前缀或 bug 标签）；`weak` = 只靠 `triaged` 标签或无前缀。
+
+    分两档是为了让"要人看一眼"的样本浮出来而不是被静默吞掉：`triaged` 是近乎恒真的标签
+    （2026-10 实测 400 条窗口里带它的占绝大多数），用它当放行条件等于没筛。
+    """
     title = (issue.get("title") or "").strip()
-    if any(title.startswith(p) for p in NON_BUG_PREFIXES):
+    if any(title.startswith(p) for p in BUG_TITLE_PREFIXES):
+        return "bug"
+    labels = [str(l.get("name", "")).lower() for l in (issue.get("labels") or [])]
+    if any("bug" in l for l in labels):
+        return "bug"
+    return "weak"
+
+
+def is_bug_candidate(issue: dict, include_weak: bool = False) -> bool:
+    """是否收进校准集候选。默认严格：流程/文档类标题硬拒，弱信号（无前缀或只有 `triaged`）也拒。
+
+    弱信号在 2026-10 实测的 20 条校准集里只有 1 条（`#12947`：无方括号前缀、labels 只有
+    `triaged`），它后来撞上了真实的 fix PR，所以留一条显式通道（`--include-weak`）而不是
+    一票否决——判断留给人，规则只负责别让噪声静默混进来。
+    """
+    title = (issue.get("title") or "").strip()
+    if any(title.startswith(p) for p in NON_DIAGNOSTIC_PREFIXES):
         return False
-    # 有 bug 标签优先；无标签时靠 title 排除非 bug
-    labels = [l.get("name", "") for l in (issue.get("labels") or [])]
-    if labels and not any("bug" in l.lower() or "triaged" in l.lower() for l in labels):
-        return False
-    return True
+    return include_weak or candidate_signal(issue) == "bug"
 
 
 def looks_like_resolution(text: str) -> bool:
@@ -230,6 +257,8 @@ def main():
     ap.add_argument("--state-file", type=Path, default=Path("ingest-state.json"))
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--incremental", action="store_true", help="增量模式：跳过 output 中已收录的 issue")
+    ap.add_argument("--include-weak", action="store_true",
+                    help="连弱信号一起收（题面无 Bug 前缀且 labels 里没有 bug，只有 triaged）")
     args = ap.parse_args()
 
     processed = load_processed(args.state_file)
@@ -244,16 +273,21 @@ def main():
     # 1. 拉候选 issue 元数据（单页，按最近 closed 排序）
     query = f"repos/{args.repo}/issues?state={args.state}&labels={args.labels}&per_page={max(args.limit*3, 10)}"
     issues = gh_api(query)
-    # 2. 排除已沉淀（processed）+ 非 bug 类
-    candidates = [
-        i for i in issues
-        if i["number"] not in processed
-        and i["number"] not in already_in          # 增量：跳过已收录
-        and i.get("state_reason") == "completed"    # 排除 not_planned（维护者不修）
-        and is_bug_candidate(i)
-    ]
-    candidates = candidates[: args.limit]
-    print(f"s2_calibration: 未沉淀 bug 候选 {len([i for i in issues if i['number'] not in processed and is_bug_candidate(i)])} 条 / 取 {len(candidates)} 条")
+    # 2. 排除已沉淀（processed）+ 未收的类；弱信号单独计数（默认挡、--include-weak 才收）
+    def _open(i: dict) -> bool:
+        return (i["number"] not in processed
+                and i["number"] not in already_in        # 增量：跳过已收录
+                and i.get("state_reason") == "completed")  # 排除 not_planned（维护者不修）
+
+    strict = [i for i in issues if _open(i) and is_bug_candidate(i)]
+    weak = [i for i in issues if _open(i) and is_bug_candidate(i, include_weak=True)
+            and not is_bug_candidate(i)]
+    candidates = (strict + (weak if args.include_weak else []))[: args.limit]
+    weak_hint = "" if args.include_weak else "（要看就带 --include-weak）"
+    print(f"s2_calibration: 未沉淀候选 {len(strict)} 条 · 弱信号 {len(weak)} 条{weak_hint}"
+          f" / 取 {len(candidates)} 条")
+    for i in weak:
+        print(f"  弱信号 #{i['number']}：{i.get('title', '')[:60]}")
 
     entries = []
     for i in candidates:
