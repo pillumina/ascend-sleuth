@@ -4,9 +4,14 @@
 排序错=候选顺序错=诊断先看错的 case；而排序是纯计算，出错没有任何别的信号会报。
 """
 
+import contextlib
+import io
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -83,6 +88,192 @@ class RankCandidatesTest(unittest.TestCase):
         rows = [row("A", score=0.5)]
         e = rc.evaluate(rows, [("A", "x"), ("NOT-IN-KB", "x")], rc._key_score)
         self.assertEqual(e["n"], 1)
+
+
+class RankBaselineCompareTest(unittest.TestCase):
+    """阶段一排序的前后对照（--write-baseline / --compare-baseline）。
+
+    护三件事：同一份树前后对照报「无变差」并退 0；索引侧证据变了必须报变差并退 1；
+    不可比时明确退化而不是给读数——没有基线文件、基线读不出来或不是合法 YAML、基线是空文件、
+    基线里没有逐条名次、基线里的名次不是整数或 null、基线里的名次超出 1..top_k 范围、
+    口径不符（排序键或 top_k 不同）、
+    基线里的 fixture 名与现状一个都对不上、现状一条 fixture 都评不了，这些路径都退 2，
+    且都不给出「无变差」这类肯定读数。
+    夹具在临时目录现造（一格索引 + 若干条 fixture），不复用真实知识库。
+    """
+
+    TEXT = "CUDA error 719 observed during inference"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / "eval" / "golden").mkdir(parents=True, exist_ok=True)
+        self.base = self.root / ".s2-replay" / "rank-baseline.yaml"
+        self._write_index([row("VLLM-ASC-1", sig=["CUDA error 719"], tok=["cuda", "error"]),
+                           row("VLLM-ASC-2", tok=["hang"]),
+                           row("VLLM-ASC-3", tok=["timeout"])])
+        self._write_fixture("fx-a.fixture.yaml", "VLLM-ASC-1")
+
+    def _write_index(self, rows):
+        doc = {"namespaces": {"inference/vllm-ascend": {"interrupt": rows}}}
+        (self.root / "knowledge").mkdir(parents=True, exist_ok=True)
+        (self.root / "knowledge" / "_index.yaml").write_text(
+            yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    def _write_fixture(self, name, case_id):
+        (self.root / "eval" / "golden" / name).write_text(
+            yaml.safe_dump({"expected": {"case_id": case_id}, "input": {"symptoms": self.TEXT}},
+                           allow_unicode=True), encoding="utf-8")
+
+    def _run(self, fn, *a):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = fn(*a)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_write_then_compare_no_change(self):
+        code, _out, _err = self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 0)
+        doc = yaml.safe_load(self.base.read_text(encoding="utf-8"))
+        self.assertEqual(doc["key"], "lexical")
+        self.assertEqual(doc["top_k"], 5)
+        self.assertEqual(doc["fixtures"], {"fx-a.fixture.yaml": 1})
+
+        code, out, _err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 0)
+        self.assertIn("无变差", out)
+
+    def test_compare_reports_regression_and_exits_1(self):
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        # 改动后：期望 case 丢了字面量分支，同格子多出 5 条更强的竞争者
+        rows = [row("VLLM-ASC-1", tok=["cuda", "error"])]
+        rows += [row(f"VLLM-ASC-{i}", sig=["CUDA error 719"]) for i in range(4, 9)]
+        self._write_index(rows)
+
+        code, out, _err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 1)
+        self.assertIn("变差", out)
+        self.assertIn("fx-a.fixture.yaml", out)
+        self.assertIn("未进候选", out)
+
+    def test_compare_without_baseline_returns_2(self):
+        code, _out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("--write-baseline", err)
+
+    def test_top_k_mismatch_is_not_comparable(self):
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        code, _out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 3)
+        self.assertEqual(code, 2)
+        self.assertIn("不可比", err)
+
+    def test_fixture_with_unknown_case_is_skipped(self):
+        self._write_fixture("fx-gone.fixture.yaml", "VLLM-ASC-999")
+        code, out, _err = self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 0)
+        self.assertIn("skip 1 条", out)
+        doc = yaml.safe_load(self.base.read_text(encoding="utf-8"))
+        self.assertEqual(list(doc["fixtures"]), ["fx-a.fixture.yaml"])
+
+    def test_corrupt_baseline_is_not_comparable(self):
+        """基线不是合法 YAML：退 2 并说清怎么重写，不能抛异常退 1（退 1 是「查出变差」）。"""
+        self.base.parent.mkdir(parents=True, exist_ok=True)
+        self.base.write_text("fixtures: [不是映射\n", encoding="utf-8")
+        code, _out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("读不出来", err)
+        self.assertIn("--write-baseline", err)
+
+    def test_empty_baseline_reports_missing_readings_not_no_change(self):
+        """0 字节基线：退 2，且原因必须是「没有逐条名次」，不是「无变差」或 top_k 不符。"""
+        self.base.parent.mkdir(parents=True, exist_ok=True)
+        self.base.write_text("", encoding="utf-8")
+        code, out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("没有逐条名次", err)
+        self.assertNotIn("无变差", out)
+
+    def test_baseline_without_fixtures_is_not_comparable(self):
+        """合法 YAML 但没有逐条名次（只有 top_k）：退 2——不能对一份不可比的基线说「无变差」。"""
+        self.base.parent.mkdir(parents=True, exist_ok=True)
+        self.base.write_text(yaml.safe_dump({"key": "lexical", "top_k": 5}), encoding="utf-8")
+        code, out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("没有逐条名次", err)
+        self.assertNotIn("无变差", out)
+
+    def test_baseline_key_mismatch_is_not_comparable(self):
+        """基线是别的排序键算的：退 2（换键后名次不是同一把尺子量的）。"""
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        doc = yaml.safe_load(self.base.read_text(encoding="utf-8"))
+        doc["key"] = "score"
+        self.base.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False),
+                             encoding="utf-8")
+        code, _out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("不可比", err)
+
+    def test_renamed_fixture_is_not_counted_as_regression(self):
+        """夹具改名：现状缺的是 fixture 文件本身，不是期望 case 掉出候选——不报成变差。"""
+        self._write_fixture("fx-keep.fixture.yaml", "VLLM-ASC-2")
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        (self.root / "eval" / "golden" / "fx-a.fixture.yaml").unlink()
+        self._write_fixture("fx-b.fixture.yaml", "VLLM-ASC-1")
+        code, out, _err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 0)
+        self.assertIn("不计入变差 fx-a.fixture.yaml", out)
+        self.assertIn("新增 fixture 1 条", out)
+
+    def test_all_fixtures_renamed_is_not_comparable(self):
+        """基线里的名字与现状一个都对不上：没有任何一条真被对照过，不能报「无变差」退 0。"""
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        (self.root / "eval" / "golden" / "fx-a.fixture.yaml").unlink()
+        self._write_fixture("fx-b.fixture.yaml", "VLLM-ASC-1")
+        self._write_fixture("fx-c.fixture.yaml", "VLLM-ASC-2")
+        code, out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("一个都对不上", err)
+        self.assertNotIn("无变差", out)
+
+    def test_baseline_with_non_integer_rank_is_not_comparable(self):
+        """基线里的名次必须是整数或 null：写成字符串会抛异常退 1（退 1 是「查出变差」），写成小数不能当名次用。"""
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        for value in ("1", 1.5, True):
+            with self.subTest(value=value):
+                doc = yaml.safe_load(self.base.read_text(encoding="utf-8"))
+                doc["fixtures"]["fx-a.fixture.yaml"] = value
+                self.base.write_text(
+                    yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+                code, out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+                self.assertEqual(code, 2)
+                self.assertIn("不是整数或 null", err)
+                self.assertNotIn("无变差", out)
+
+    def test_baseline_with_out_of_range_rank_is_not_comparable(self):
+        """基线里的名次必须落在 1..top_k：写 0 或负数会假报「名次后退」退 1，写大于窗口的值会假报「变好」并给「无变差」。"""
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        for value in (0, -1, 6, 99):
+            with self.subTest(value=value):
+                doc = yaml.safe_load(self.base.read_text(encoding="utf-8"))
+                doc["fixtures"]["fx-a.fixture.yaml"] = value
+                self.base.write_text(
+                    yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+                code, out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+                self.assertEqual(code, 2)
+                self.assertIn("超出 1..5 范围", err)
+                self.assertNotIn("无变差", out)
+
+    def test_no_evaluable_fixture_reports_cause(self):
+        """现状一条 fixture 都评不了（夹具改名/删除或知识库没重建）：说清原因并退 2，不给读数。"""
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        (self.root / "eval" / "golden" / "fx-a.fixture.yaml").unlink()
+        self._write_fixture("fx-gone.fixture.yaml", "VLLM-ASC-999")
+        code, out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("一条 fixture 都评不了", err)
+        self.assertIn("build_index.py", err)
+        self.assertNotIn("无变差", out)
 
 
 if __name__ == "__main__":

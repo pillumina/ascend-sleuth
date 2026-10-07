@@ -18,6 +18,17 @@
 #   python3 scripts/rank_candidates.py --text-file <报错/症状文本> --ns inference/vllm-ascend [--category interrupt] [--top 5]
 #   echo "报错原文" | python3 scripts/rank_candidates.py --ns inference/vllm-ascend --category interrupt
 #   python3 scripts/rank_candidates.py --eval          # 管线同构的量尺：先筛 ≤5 再算名次（判据出处）
+#   python3 scripts/rank_candidates.py --write-baseline      # 改动前：把逐条名次存成本地基线
+#   python3 scripts/rank_candidates.py --compare-baseline    # 改动后：同口径重算，逐条对照
+#
+# 自动对照（--write-baseline / --compare-baseline）：索引侧证据（索引行里的字面量与 token）有没有变，
+# 用同构口径前后各算一遍名次来对。基线默认写 `.s2-replay/rank-baseline.yaml`，**是本地运行件、不入库**
+# （按 `.gitignore:77`）：它是数字快照，进 git 会在并发合并时撞行，而"生成物里不写数字"的前提正是
+# 数字不入库（`CLAUDE.md:117`）。
+# 它**只报警，不拦合并**：只覆盖阶段一的筛与排。生产流程里排序由 agent 按相关性判断
+# （`skills/diagnose/SKILL.md:62`），本脚本的机械键是那份判断的代理——代理指标变差要人看，
+# 不据此阻塞合并；本命令**不进 CI**（准入判据见 `CLAUDE.md:127`，机械键与生产结论的相关性还需累积对照）。
+
 #
 # `--eval` 的口径（**2026-09 修正**）：早期版本在"整个 ns×category 格子内"排序算名次，与生产管线
 # **不同构**——生产是「按相关性筛 ≤5 → 只加载这 5 条 → 用 quickly_check 验证」。两者不可比：
@@ -26,7 +37,14 @@
 # 更好的判断者。故现在 --eval 一律输出：**recall@5（期望 case 有没有进候选）** 与
 # **top3|≤5（进去之后排第几）**，并附历史(agent)行作参照。排序类改动一律用这个量尺判。
 #
-# 退出码：0 = 正常；1 = 输入/参数问题（无文本、ns 不存在）。
+# 退出码：0 = 正常；1 = 输入/参数问题（无文本、ns 不存在），或 --compare-baseline 查出变差
+# （报警，不是用法错误）；2 = --compare-baseline 不可比、没有读数：缺基线文件、基线读不出来或不是
+# 合法 YAML、基线顶层不是映射、基线是空文件、基线里没有逐条名次、基线里的名次不是整数或 null、
+# 基线里的名次超出 1..top_k 范围、口径不符（排序键不同或 top_k 不同）、基线里的 fixture 名与现状
+# 一个都对不上、现状一条 fixture 都评不了。
+# 不可比的每一路都打印原因、且都不打印「无变差」这类肯定读数；「缺基线/读不出来/口径不符/名次非法
+# 或越界/零重叠」这几路给可直接复制的重写基线命令；夹具都在、只是与原状对不上的那一路给重建索引与
+# 补夹具的下一步（那条要修的不是基线）。
 #
 # 强度如实标注：本排序器只解决**排序**——它不判候选是否相关（那是 quickly_check 阶段二的事），
 # 也不改任何 case 内容；sig 只覆盖有字面量分支的 case（当前 74/159，覆盖率如实打印）。
@@ -43,6 +61,7 @@ from _lexical import tokens_of
 
 INDEX = Path("knowledge") / "_index.yaml"
 GOLDEN = Path("eval") / "golden"
+BASELINE_DEFAULT = Path(".s2-replay") / "rank-baseline.yaml"
 
 
 def load_rows(root: Path) -> list:
@@ -161,17 +180,9 @@ def cmd_eval(root: Path) -> int:
     """
     rows = load_rows(root)
     hist = _history_by_fixture(root)          # {fixture 名: 历史名次}
-    all_fx, sub_fx, skipped = [], [], []
-    for f in sorted((root / GOLDEN).glob("*.fixture.yaml")):
-        d = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
-        cid = str((d.get("expected") or {}).get("case_id") or (d.get("expected") or {}).get("case") or "")
-        if not any(r["id"] == cid for r in rows):
-            skipped.append(f.name)
-            continue
-        item = (cid, (d.get("input") or {}).get("symptoms") or "")
-        all_fx.append(item)
-        if isinstance(hist.get(f.name), int):
-            sub_fx.append(item)
+    items, skipped = _fixture_items(root, rows)
+    all_fx = [(cid, text) for _n, cid, text in items]
+    sub_fx = [(cid, text) for n, cid, text in items if isinstance(hist.get(n), int)]
 
     def row_line(label, key, fixtures):
         e = evaluate(rows, fixtures, key)
@@ -199,6 +210,219 @@ def cmd_eval(root: Path) -> int:
     print(f"  另：行内 sig/tok 覆盖 {_coverage(rows)}；**行内无任何字面量证据的 case {len(blind)}/{len(rows)}**"
           f"——这批在机械筛选里不可达（只能靠 agent 语义判断），它是机械键的硬天花板，不是调参问题")
     return 0
+
+
+def _fixture_items(root: Path, rows: list) -> tuple:
+    """(items, skipped)：items = [(fixture 名, 期望 case_id, 输入文本)]，只收期望 case 在索引里的。
+
+    `cmd_eval` 与 `--compare-baseline` 共用这一份 fixture 集合，否则两处读数不可比。
+    """
+    ids = {r["id"] for r in rows}
+    items, skipped = [], []
+    for f in sorted((root / GOLDEN).glob("*.fixture.yaml")):
+        d = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+        exp = d.get("expected") or {}
+        cid = str(exp.get("case_id") or exp.get("case") or "")
+        if cid not in ids:
+            skipped.append(f.name)
+            continue
+        items.append((f.name, cid, (d.get("input") or {}).get("symptoms") or ""))
+    return items, skipped
+
+
+def evaluate_detail(rows: list, items: list, filter_key, top_k: int = 5) -> dict:
+    """逐条名次：先按 filter_key 筛 top_k 候选，再记期望 case 在其中的位置。
+
+    返回 {fixture 名: rank}；rank 从 1 起，没进候选记 None。筛选口径与 `evaluate()` 相同。
+    """
+    by_cell, by_id = {}, {}
+    for r in rows:
+        by_cell.setdefault((r["ns"], r["category"]), []).append(r)
+        by_id[r["id"]] = r
+    out = {}
+    for name, cid, text in items:
+        tgt = by_id.get(cid)
+        if tgt is None:
+            continue
+        pool = by_cell.get((tgt["ns"], tgt["category"]), [])
+        ids = [r["id"] for r in sorted(pool, key=lambda r: filter_key(r, text))[:top_k]]
+        out[name] = (ids.index(cid) + 1) if cid in ids else None
+    return out
+
+
+def _coverage_counts(rows: list) -> dict:
+    return {"rows": len(rows), "sig": sum(1 for r in rows if r.get("sig")),
+            "tok": sum(1 for r in rows if r.get("tok")),
+            "blind": sum(1 for r in rows if not r.get("sig") and not r.get("tok"))}
+
+
+def _rank_text(rank) -> str:
+    return "未进候选" if rank is None else f"#{rank}"
+
+
+def cmd_write_baseline(root: Path, path: Path, top_k: int) -> int:
+    """改动前存一份逐条名次，供 --compare-baseline 对照。"""
+    rows = load_rows(root)
+    items, skipped = _fixture_items(root, rows)
+    if not items:
+        print("没有可评的 fixture（期望 case 不在索引里）——先跑 python3 scripts/build_index.py",
+              file=sys.stderr)
+        return 2
+    detail = evaluate_detail(rows, items, _key_lexical, top_k)
+    with_cov = _coverage_counts(rows)
+    doc = {"key": "lexical", "top_k": top_k, "coverage": with_cov, "fixtures": detail}
+    path.parent.mkdir(parents=True, exist_ok=True)
+    overwrote = path.exists()
+    path.write_text(
+        "# GENERATED by scripts/rank_candidates.py --write-baseline；阶段一排序的本地基线（运行件，不入库）。\n"
+        f"# 口径：lexical(sig→tok→score) 三顺位键，先筛 top_k 候选再看期望 case 的名次；null = 未进候选。\n"
+        + yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    got = sum(1 for v in detail.values() if v is not None)
+    print(f"基线已写入：{path}"
+          + ("（覆盖了原有基线——改动前那份读数已不在）" if overwrote else ""))
+    print(f"  fixture {len(detail)} 条（skip {len(skipped)} 条：期望 case 不在索引里）"
+          f"· recall@{top_k} {got}/{len(detail)}"
+          f"· 进前三 {sum(1 for v in detail.values() if v and v <= 3)}")
+    print("  改一处索引侧证据后再跑 --compare-baseline；本文件是数字快照，不入库。")
+    return 0
+
+
+def cmd_compare_baseline(root: Path, path: Path, top_k: int) -> int:
+    """改动后同口径重算并与基线逐条对照。变差则退 1（报警，不作为合并门槛）。"""
+    if not path.exists():
+        print(f"没有基线文件：{path}", file=sys.stderr)
+        print(f"先在改动前跑：python3 scripts/rank_candidates.py --write-baseline {path}",
+              file=sys.stderr)
+        return 2
+    rewrite = f"重跑 python3 scripts/rank_candidates.py --write-baseline {path} 重写基线"
+    try:
+        base = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        print(f"基线文件读不出来或不是合法 YAML：{path}（{exc}）——不可比，没有读数",
+              file=sys.stderr)
+        print(rewrite, file=sys.stderr)
+        return 2
+    if base is None:
+        print(f"基线是空文件：{path}——里面没有逐条名次，不可比，没有读数", file=sys.stderr)
+        print(rewrite, file=sys.stderr)
+        return 2
+    if not isinstance(base, dict):
+        print(f"基线文件不是一份基线（顶层不是映射）：{path}——不可比，没有读数", file=sys.stderr)
+        print(rewrite, file=sys.stderr)
+        return 2
+    b_fx = base.get("fixtures")
+    if not isinstance(b_fx, dict) or not b_fx:
+        print(f"基线里没有逐条名次（fixtures 缺失或为空）：{path}——不可比，没有读数",
+              file=sys.stderr)
+        print(rewrite, file=sys.stderr)
+        return 2
+    bad = [(n, v) for n, v in b_fx.items()
+           if v is not None and (isinstance(v, bool) or not isinstance(v, int))]
+    if bad:
+        print(f"基线里的名次不是整数或 null：{bad[:3]}——不可比，没有读数", file=sys.stderr)
+        print(rewrite, file=sys.stderr)
+        return 2
+    try:
+        b_top = int(base.get("top_k"))
+    except (TypeError, ValueError):
+        b_top = 0
+    if b_top != top_k:
+        print(f"基线口径是 top_k={base.get('top_k')!r}，本次是 {top_k}——两份名次不可比",
+              file=sys.stderr)
+        print(f"按同一 top_k 重写基线再对照："
+              f"python3 scripts/rank_candidates.py --write-baseline {path} --top {top_k}",
+              file=sys.stderr)
+        return 2
+    out_of_range = [(n, v) for n, v in b_fx.items()
+                    if v is not None and not (1 <= v <= b_top)]
+    if out_of_range:
+        print(f"基线里的名次超出 1..{b_top} 范围：{out_of_range[:3]}——不可比，没有读数",
+              file=sys.stderr)
+        print(rewrite, file=sys.stderr)
+        return 2
+    b_key = base.get("key")
+    if b_key not in (None, "lexical"):
+        print(f"基线的排序键是 {b_key!r}，本次是 'lexical'——两份名次不可比", file=sys.stderr)
+        print(rewrite, file=sys.stderr)
+        return 2
+    rows = load_rows(root)
+    items, skipped = _fixture_items(root, rows)
+    if not items:
+        if skipped:
+            print("现状一条 fixture 都评不了：eval/golden 下的夹具与索引对不上"
+                  "（夹具改名或删除、或知识库没重建过）——先跑 python3 scripts/build_index.py，"
+                  "再确认 eval/golden 下还有与索引同名的夹具", file=sys.stderr)
+        else:
+            print("eval/golden 下没有可评的 fixture——不可比，没有读数", file=sys.stderr)
+        return 2
+    now = evaluate_detail(rows, items, _key_lexical, top_k)
+    worse, better, added = [], [], []
+    for name in sorted(now):
+        rank = now[name]
+        if name not in b_fx:
+            added.append(name)
+            continue
+        was = b_fx[name]
+        if was == rank:
+            continue
+        if was is not None and (rank is None or rank > was):
+            worse.append((name, was, rank))
+        else:
+            better.append((name, was, rank))
+    gone = [n for n in sorted(b_fx) if n not in now]
+    gone_case = [n for n in gone if n in set(skipped)]
+    gone_fixture = [n for n in gone if n not in set(skipped)]
+    if not (set(b_fx) & set(now)):
+        print(f"基线里的 fixture 名与现状一个都对不上：{path}——两份覆盖的不是同一批夹具，"
+              f"不可比，没有读数", file=sys.stderr)
+        print(rewrite, file=sys.stderr)
+        return 2
+    cov, b_cov = _coverage_counts(rows), base.get("coverage") or {}
+    cov_drop = [k for k in ("sig", "tok") if k in b_cov and cov[k] < b_cov[k]]
+    rows_delta = b_cov.get("rows") != cov["rows"]
+    blind_up = isinstance(b_cov.get("blind"), int) and cov["blind"] > b_cov["blind"]
+
+    b_got = sum(1 for v in b_fx.values() if v is not None)
+    n_got = sum(1 for v in now.values() if v is not None)
+    print(f"rank_candidates --compare-baseline（管线同构：先筛 ≤{top_k} 候选 → 看期望 case 的名次）")
+    print(f"  基线 {path}：fixture {len(b_fx)} 条 · recall@{top_k} {b_got}/{len(b_fx)}"
+          f" · 行内证据 sig {b_cov.get('sig', '?')}/{b_cov.get('rows', '?')}"
+          f"、tok {b_cov.get('tok', '?')}/{b_cov.get('rows', '?')}"
+          f"、无线索 {b_cov.get('blind', '?')}")
+    print(f"  现状：fixture {len(now)} 条 · recall@{top_k} {n_got}/{len(now)}"
+          f" · 行内证据 sig {cov['sig']}/{cov['rows']}、tok {cov['tok']}/{cov['rows']}"
+          f"、无线索 {cov['blind']}"
+          + (f" · skip {len(skipped)} 条（期望 case 已不在索引里）" if skipped else ""))
+    print(f"  变差 {len(worse) + len(gone_case)} 条 · 变好 {len(better)} 条 · 新增 fixture {len(added)} 条"
+          + (f" · 基线里的 fixture 现状找不到：{len(gone_fixture)} 条（不计入变差）"
+             if gone_fixture else ""))
+    for name, was, rank in worse:
+        print(f"    - 变差 {name}：基线 {_rank_text(was)} → 现状 {_rank_text(rank)}")
+    for name in gone_case:
+        print(f"    - 变差 {name}：基线 {_rank_text(b_fx[name])} → 现状 期望 case 已不在索引里")
+    for name in gone_fixture:
+        print(f"    - 不计入变差 {name}：基线里有这条 fixture，现状 eval/golden 下没有同名文件"
+              f"（改名或删除）——这条 fixture 无法对照")
+    for name, was, rank in better:
+        print(f"    - 变好 {name}：基线 {_rank_text(was)} → 现状 {_rank_text(rank)}")
+    for k in cov_drop:
+        print(f"    - 行内证据减少：{k} {b_cov[k]} → {cov[k]}"
+              + (f"（总行数也从 {b_cov.get('rows')} 变成 {cov['rows']}）" if rows_delta else "")
+              + "——索引重建掉了这部分证据，机械排序键据此失据")
+    if rows_delta and not cov_drop:
+        print(f"    - 总行数变了：{b_cov.get('rows')} → {cov['rows']}——绝对条数相同不代表证据没变；"
+              f"以逐条名次为准")
+    if blind_up:
+        print(f"    - 行内无任何字面量证据的 case 变多：{b_cov.get('blind')} → {cov['blind']}"
+              f"（机械键的覆盖面变窄；这是读数，不单独触发退出码）")
+
+    print("  结论：" + ("有变差。" if (worse or gone_case or cov_drop) else "无变差。")
+          + "先分清两件事：索引里多了同格子的新 case（竞争变大，生产管线同样更难筛到），"
+          "还是索引行本身的字面量/token 证据变了（排序键的依据变了）。")
+    print("  本命令的范围：只覆盖阶段一的筛与排；生产排序由 agent 按相关性判断"
+          "（skills/diagnose/SKILL.md:62），机械键是那份判断的代理，变差要人看，不据此阻塞合并；"
+          "本命令不进 CI（准入判据见 CLAUDE.md:127）。")
+    return 1 if (worse or gone_case or cov_drop) else 0
 
 
 def _fixture_names(root: Path) -> dict:
@@ -237,9 +461,15 @@ def main() -> int:
     ap.add_argument("--text-file", default=None, help="从文件读症状/报错原文")
     ap.add_argument("--ns", default=None, help="限定 namespace（如 inference/vllm-ascend）")
     ap.add_argument("--category", default=None, help="限定 category（interrupt/precision/performance）")
-    ap.add_argument("--top", type=int, default=5, help="打印前 N 条（默认 5）")
+    ap.add_argument("--top", type=int, default=5,
+                    help="打印前 N 条（默认 5）；--write-baseline/--compare-baseline 拿它当候选窗口"
+                         " top_k（写读必须同值），--eval 不使用")
     ap.add_argument("--json", action="store_true", help="额外输出机器可读排序（全量）")
     ap.add_argument("--eval", action="store_true", help="在 eval/golden 上复现排序命中分布")
+    ap.add_argument("--write-baseline", nargs="?", const=str(BASELINE_DEFAULT), default=None,
+                    metavar="PATH", help=f"把逐条名次存成本地基线（默认 {BASELINE_DEFAULT}）")
+    ap.add_argument("--compare-baseline", nargs="?", const=str(BASELINE_DEFAULT), default=None,
+                    metavar="PATH", help=f"与基线逐条对照，变差退 1（默认 {BASELINE_DEFAULT}）")
     ap.add_argument("--list-ns", action="store_true", help="列出索引里的 ns×category 与条数")
     ap.add_argument("--root", default=None, help="仓库根（默认脚本上两级）")
     args = ap.parse_args()
@@ -253,6 +483,10 @@ def main() -> int:
         for (ns, cat), n in sorted(counts.items()):
             print(f"  {ns}/{cat}: {n}")
         return 0
+    if args.write_baseline:
+        return cmd_write_baseline(root, Path(args.write_baseline), args.top)
+    if args.compare_baseline:
+        return cmd_compare_baseline(root, Path(args.compare_baseline), args.top)
     if args.eval:
         return cmd_eval(root)
     return cmd_rank(args, root)
