@@ -1038,44 +1038,6 @@ calibration:
     fix_commit: ''
     confidence: medium
   status: active
-- issue: 12490
-  split: selection
-  title: '[Misc]: Close cherry-pick PR #12265'
-  input:
-    symptoms: '### Anything you want to discuss about vllm on ascend.
-
-
-      ### What this issue does / why we need it?
-
-
-      PR #12265 is a stale cherry-pick of #12084 to `releases/v0.24.0rc`. It has a
-      merge conflict in `tests/ut/conftest.py` (caused by the revert in #12259) and
-      cannot be auto-merged.
-
-      The same cherry-pick was re-triggered as #12409, which has already been merged.
-
-      Therefore #12265 is a duplicate and should be closed.
-
-
-      ### Action requested
-
-
-      Close #12265.
-
-      Comment on #12265 requesting closure: https://github.com/vllm-project/vllm-ascend/pull/12265#issuecomment-5021720403.
-
-
-      ### Evidence
-
-
-      - #12265: OPEN, CONFLICTING
-
-      - #12409: MERGED'
-  expected:
-    resolution: （待补：维护者结论）
-    fix_commit: ''
-    confidence: pending
-  status: active
 - issue: 12211
   split: selection
   title: '[Bug] Anthropic /v1/messages returns 500: _patched_convert_system_message()

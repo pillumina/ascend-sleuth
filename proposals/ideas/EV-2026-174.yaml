@@ -45,7 +45,7 @@ hypothesis: >-
   避免下一个人按过期的卡点立项。
 predicted_effect:
   metric: >-
-    三处文档里与判定池规模相关的读数与缺口描述，是否与现行池（判定池 10 条 / 回归池 10 条）一致，
+    三处文档里与判定池规模相关的读数与缺口描述，是否与现行池（判定池 9 条 / 回归池 10 条）一致，
     且给出的复算命令在干净检出上跑得通
   from: >-
     eval-arena.md §3 写 20/20 已评分、路由 9/9、命中 2/20、结论一致 13/20、路由分母「20 条里 11 条」、
@@ -55,12 +55,14 @@ predicted_effect:
   to: >-
     eval-arena.md §3 改成 2026-10 那一轮（判定池 10 条、9 条已评分、路由 2/2、命中 0/9、
     结论一致 5/6），上一轮数字留作历史并注明两轮不可比；路由率分母改成 10 行中 8 行；复用折减举例
-    改成现行 10 条池（一次翻转 +10 个百分点）；roadmap.md 的 E8 行与「评估池扩容」条、
+    改成现行 10 条池（一次翻转 +10 个百分点；该池在 2026-10-07 又删掉一条不可诊断样本，
+    现行是 9 条、+11 个百分点，`measure` 里的读数串已重钉，见 decisions 与卡 EV-2026-176）；
+    roadmap.md 的 E8 行与「评估池扩容」条、
     rsi-mechanism.md §8 第 4 条改成「基线已出一轮、逐条向量齐了」，并写明选样已收成机械判据
     （卡 EV-2026-173）
   measure:
     command: |
-      python3 -c "import pathlib,sys;r={'docs/mechanism/eval-arena.md':['判定池 10 条，其中 9 条已评分','路由 **2/2**','命中 **0/9**','结论一致（root_cause_ok）**5/6**','一次翻转就是 +10 个百分点'],'docs/plan/roadmap.md':['route 2/2、命中 0/9、结论一致 5/6','基线已出一轮'],'docs/mechanism/rsi-mechanism.md':['判定池 10 条里 9 条重放完'],'proposals/ideas/EV-2026-124.yaml':['2026-10 复核']};stale=[('docs/mechanism/eval-arena.md','20/20 条已评分'),('docs/mechanism/eval-arena.md','16 条池'),('docs/mechanism/eval-arena.md','一批 20 条里 11 条如此'),('docs/plan/roadmap.md','命中 2/9'),('docs/plan/roadmap.md','剩余 11 条待 replay'),('docs/plan/roadmap.md','数据待重建'),('docs/mechanism/rsi-mechanism.md','基线重放一次都没跑过')];miss=[(f,n) for f,ns in r.items() for n in ns if n not in pathlib.Path(f).read_text(encoding='utf-8')];left=[(f,s) for f,s in stale if s in pathlib.Path(f).read_text(encoding='utf-8')];print('VERDICT PASS' if not miss and not left else 'VERDICT FAIL miss=%s left=%s'%(miss,left));sys.exit(0 if not miss and not left else 1)"
+      python3 -c "import pathlib,sys;r={'docs/mechanism/eval-arena.md':['判定池 9 条，其中 8 条已评分','路由 **2/2**','命中 **0/8**','结论一致（root_cause_ok）**5/6**','一次翻转就是 +11 个百分点'],'docs/plan/roadmap.md':['route 2/2、命中 0/8、结论一致 5/6','基线已出一轮'],'docs/mechanism/rsi-mechanism.md':['判定池 9 条里 8 条重放完'],'proposals/ideas/EV-2026-124.yaml':['2026-10 复核']};stale=[('docs/mechanism/eval-arena.md','20/20 条已评分'),('docs/mechanism/eval-arena.md','16 条池'),('docs/mechanism/eval-arena.md','一批 20 条里 11 条如此'),('docs/plan/roadmap.md','命中 2/9'),('docs/plan/roadmap.md','剩余 11 条待 replay'),('docs/plan/roadmap.md','数据待重建'),('docs/mechanism/rsi-mechanism.md','基线重放一次都没跑过')];miss=[(f,n) for f,ns in r.items() for n in ns if n not in pathlib.Path(f).read_text(encoding='utf-8')];left=[(f,s) for f,s in stale if s in pathlib.Path(f).read_text(encoding='utf-8')];print('VERDICT PASS' if not miss and not left else 'VERDICT FAIL miss=%s left=%s'%(miss,left));sys.exit(0 if not miss and not left else 1)"
     expect_exit: 0
     expect_stdout: "VERDICT PASS"
 validation:
@@ -93,6 +95,17 @@ actual_cost:
     `docs/mechanism/rsi-mechanism.md` 一处、`proposals/ideas/EV-2026-124.yaml` 三处就地更正、
     产卡、判据复跑、PR body；估 6000，未计独立预核与回修。
 decisions:
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      判据串随池读数重钉一次（卡 EV-2026-176）：校准集里那条不可诊断样本（`#12490`）被删掉，
+      判定池从 10 条降到 9 条、可评从 9 条降到 8 条，故本卡 `measure` 钉的读数串同步改成
+      「判定池 9 条，其中 8 条已评分」「命中 **0/8**」「一次翻转就是 +11 个百分点」、
+      roadmap 的「route 2/2、命中 0/8、结论一致 5/6」、rsi-mechanism 的「判定池 9 条里 8 条重放完」。
+      判据的形态没变——仍是「文档里这一轮读数写着什么、旧数字有没有留在现行位置」，
+      变的只是这一轮池的实测值。上面 source_signals / baseline / decisions 里带 10 条、9 条的
+      叙述是 2026-10-07 当轮的记录，保持原样。
   - who: agent
     when: "2026-10-07"
     type: proposal
