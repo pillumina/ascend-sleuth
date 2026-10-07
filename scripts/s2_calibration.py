@@ -27,7 +27,7 @@
 #   python3 scripts/s2_calibration.py --repo vllm-project/vllm-ascend --state closed \
 #     --labels triaged --limit 5 --output eval/s2/vllm-ascend.yaml --state-file ingest-state.json
 # 收样规则（2026-10 收紧）：标题带流程/文档类前缀（NON_DIAGNOSTIC_PREFIXES）直接排除；其余要求
-#   标题是 Bug/BugFix/Usage 前缀、或 labels 里含 bug。只剩 triaged 标签或无前缀的算"弱信号"——
+#   标题是 [Bug]/[bug]/[BugFix]/[bugfix]/[Usage] 前缀、或 labels 里含 bug。只剩 triaged 标签或无前缀的算"弱信号"——
 #   默认不收，只打印出来供人判断，要看就带 --include-weak。
 #   --dry-run 只列候选不写文件
 #

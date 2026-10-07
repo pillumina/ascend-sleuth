@@ -35,7 +35,7 @@ source_signals:
       - "scripts/s2_calibration.py:NON_BUG_PREFIXES（6 项）与 is_bug_candidate"
 hypothesis: >-
   把「实体 Bug/Usage 内容」写成两手机械判据——标题带流程/文档类前缀直接拒；其余要求标题是
-  `[Bug]`/`[BugFix]`/`[Usage]` 前缀、或 labels 里含 `bug`。只剩 `triaged` 标签或无前缀的算弱信号，
+  `[Bug]`/`[bug]`/`[BugFix]`/`[bugfix]`/`[Usage]` 前缀、或 labels 里含 `bug`。只剩 `triaged` 标签或无前缀的算弱信号，
   默认不收但逐条打印（`--include-weak` 可显式收）。这样流程单必然出局，而「无前缀但确是真缺陷」
   的样本不会被规则静默丢掉——判断仍由人下。
 predicted_effect:
@@ -69,7 +69,7 @@ validation:
     ①`S2CandidateScreenTest` 三条全过：流程/文档类前缀连 `--include-weak` 也拒（含
     `#12490 [Misc]: Close cherry-pick PR #12265`）；标题前缀或 `bug` 标签任一成立即收（含
     `[Usage]` 与「无前缀但有 bug 标签」）；弱信号默认拒、`candidate_signal` 报 `weak`、
-    `--include-weak` 才收；②`S2CandidateScreenTest` 三条全过；`python -m unittest tests.test_audit_readings`
+    `--include-weak` 才收；②`python -m unittest tests.test_audit_readings`
     与 `python -m unittest tests.test_rank_candidates` 的失败集合与改动前一致（本机 `test_audit_readings`
     上有一条既有的环境性失败：`StaleMeasureDepTest.test_self_created_outside_path_is_not_a_dependency`
     在 Windows 下断言 `/tmp/...` 路径，改动前的主检出上同样失败）；③`python scripts/eval_arena.py --self-test`、
@@ -81,7 +81,7 @@ gate:
     有人把弱信号通道当默认（长期带 `--include-weak` 跑批量收样，等于回到旧规则）；或把这份判据
     当「样本可诊断」的保证（它只挡题面明显非诊断的流程/文档单，正文有没有可判别信号仍要人读）。
 risk: low
-principle_refs: [6, 8, 10, 11]
+principle_refs: [2, 6, 8, 10, 11]
 actual_cost:
   tokens: 9000
   source: estimate
@@ -106,7 +106,7 @@ decisions:
     conclusion: >-
       判据分两步：先硬拒流程/文档类前缀，再要求明确缺陷信号（标题前缀或 `bug` 标签）。
       这样 `triaged` 与「labels 为空」两个近乎恒真的放行条件都被拿掉——它们合起来等于没筛，
-      实测同一窗口 400 条里绝大多数都满足，旧规则因此只能挡掉极少一部分。
+      实测同一窗口 400 条里旧规则只有 `triaged` 与空 labels 两关，过闸 339 条；新判据过闸 331 条。
   - who: agent
     when: "2026-10-07"
     type: action
@@ -122,7 +122,7 @@ decisions:
       （`StaleMeasureDepTest.test_self_created_outside_path_is_not_a_dependency` 断言 `/tmp/...` 路径，
       改动前的主检出上同样失败，非本次引入）；`python scripts/eval_arena.py --self-test`
       通过；`python scripts/verify_proposals.py --check` 与 `python scripts/build_docs_index.py --check`
-      通过；`python -m unittest discover -s tests -t .` 的失败集合与 `origin/main` 逐条相同
-      （本机 `Ran 339` / `Ran 336`，新增 3 条即本卡的测试）。
+      通过；`python -m unittest discover -s tests -t .` 的失败集合与分支父 `363b188` 逐条相同
+      （本机本分支 `Ran 349`、分支父 `Ran 346`，差值 3 条即本卡的测试）。
       同一窗口（closed + `triaged`，最近 400 条）量过一次：旧规则通过 339 条、新判据 331 条；
-      现有 20 条校准集里只有 `#12490`（前缀黑名单）与 `#12947`（弱信号）会被挡。
+      现有 20 条校准集里只有 `#12490`（`[Misc]` 被硬拒前缀挡）与 `#12947`（弱信号）会被挡。

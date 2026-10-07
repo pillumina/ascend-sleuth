@@ -39,13 +39,14 @@ expected 标注（namespace/category/fix_ref）由 agent 读 issue 线程产出�
 ①标题带流程/文档类前缀（`NON_DIAGNOSTIC_PREFIXES`：`[Doc]`/`[docs]`/`[Documentation]`/`[Feature]`/
 `[Feature Request]`/`[Question]`/`[Misc]`/`[Build]`/`[CI]`/`[Test]`/`[Refactor]`/`[Chore]`/`[Release]`，
 以及小写 `docs:`/`doc:`/`feat:`/`chore:`/`ci:`/`test:`/`refactor:`）**硬拒**，连 `--include-weak` 也不收；
-②其余要求有明确缺陷信号：标题前缀是 `[Bug]`/`[BugFix]`/`[Usage]`（`[Usage]` 按本节的「实体
-Bug/Usage」在收），或 labels 里含 `bug`。只剩 `triaged` 标签、或标题没有前缀的算**弱信号**——默认
+②其余要求有明确缺陷信号：标题前缀是 `[Bug]`/`[bug]`/`[BugFix]`/`[bugfix]`/`[Usage]`（`[Usage]` 按本节的
+「实体 Bug/Usage」在收），或 labels 里含 `bug`。只剩 `triaged` 标签、或标题没有前缀的算**弱信号**——默认
 不收，但候选清单会把它们逐条打印出来，要看就带 `--include-weak`（弱信号接在严格候选之后，
 `--limit` 先被严格候选填满时不会进池）。这条通道留着是因为弱信号里两种东西
-混在一起：既有流程单（`[Misc]` 已被 ① 挡掉），也有真实缺陷（实测 `#12947` 无前缀、labels 只有
+混在一起：既有会被 ① 挡掉的流程单，也有真实缺陷（实测 `#12947` 无前缀、labels 只有
 `triaged`，后来撞上了真实的 fix PR #12948）——一票否决会连后者一起丢掉，所以挡在默认值上、把判断
-留给人。同一窗口（closed + `triaged`，最近 400 条）量过一次：旧规则通过 339 条，这套判据通过 331 条；
+留给人。同一窗口（closed + `triaged`，最近 400 条）量过一次：旧规则通过 339 条，这套判据通过 331 条
+（另外 21 条落进弱信号档、48 条被 ① 硬拒，三者相加正好 400）；
 当时 20 条校准集里只有 `#12490`（`[Misc]`）与 `#12947`（弱信号）会被挡，其余 18 条都带 `bug` 标签或
 `[Bug]` 前缀。窗口里的 issue 列表一直在动，这两个数只作量级参考，别当阈值用。
 
