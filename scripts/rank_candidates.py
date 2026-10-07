@@ -38,8 +38,10 @@
 # **top3|≤5（进去之后排第几）**，并附历史(agent)行作参照。排序类改动一律用这个量尺判。
 #
 # 退出码：0 = 正常；1 = 输入/参数问题（无文本、ns 不存在），或 --compare-baseline 查出变差
-# （报警，不是用法错误）；2 = --compare-baseline 不可比、没有读数：缺基线、基线读不出来或不是
-# 合法 YAML、基线里没有逐条名次、或口径不符（排序键不同、top_k 不同）。
+# （报警，不是用法错误）；2 = --compare-baseline 不可比、没有读数：缺基线文件、基线读不出来或不是
+# 合法 YAML、基线是空文件、基线里没有逐条名次、基线里的名次不是整数或 null、口径不符（排序键不同
+# 或 top_k 不同）、基线里的 fixture 名与现状一个都对不上、现状一条 fixture 都评不了。
+# 不可比的每一路都打印可直接复制的重写命令，且都不打印「无变差」这类肯定读数。
 #
 # 强度如实标注：本排序器只解决**排序**——它不判候选是否相关（那是 quickly_check 阶段二的事），
 # 也不改任何 case 内容；sig 只覆盖有字面量分支的 case（当前 74/159，覆盖率如实打印）。
@@ -311,24 +313,37 @@ def cmd_compare_baseline(root: Path, path: Path, top_k: int) -> int:
               file=sys.stderr)
         print(rewrite, file=sys.stderr)
         return 2
+    bad = [n for n, v in b_fx.items()
+           if v is not None and (isinstance(v, bool) or not isinstance(v, int))]
+    if bad:
+        print(f"基线里的名次不是整数或 null：{bad[:3]}——不可比，没有读数", file=sys.stderr)
+        print(rewrite, file=sys.stderr)
+        return 2
     try:
         b_top = int(base.get("top_k"))
     except (TypeError, ValueError):
         b_top = 0
     if b_top != top_k:
-        print(f"基线口径是 top_k={base.get('top_k')!r}，本次是 {top_k}——两份名次不可比；"
-              f"按同一 top_k 重写基线再对照", file=sys.stderr)
+        print(f"基线口径是 top_k={base.get('top_k')!r}，本次是 {top_k}——两份名次不可比",
+              file=sys.stderr)
+        print(f"按同一 top_k 重写基线再对照："
+              f"python3 scripts/rank_candidates.py --write-baseline {path} --top {top_k}",
+              file=sys.stderr)
         return 2
     b_key = base.get("key")
     if b_key not in (None, "lexical"):
-        print(f"基线的排序键是 {b_key!r}，本次是 'lexical'——两份名次不可比；"
-              f"按同一口径重写基线再对照", file=sys.stderr)
+        print(f"基线的排序键是 {b_key!r}，本次是 'lexical'——两份名次不可比", file=sys.stderr)
+        print(rewrite, file=sys.stderr)
         return 2
     rows = load_rows(root)
     items, skipped = _fixture_items(root, rows)
     if not items:
-        print("没有可评的 fixture（期望 case 不在索引里）——先跑 python3 scripts/build_index.py",
-              file=sys.stderr)
+        if skipped:
+            print("现状一条 fixture 都评不了：eval/golden 下的夹具与索引对不上"
+                  "（夹具改名或删除、或知识库没重建过）——先跑 python3 scripts/build_index.py，"
+                  "再确认 eval/golden 下还有与索引同名的夹具", file=sys.stderr)
+        else:
+            print("eval/golden 下没有可评的 fixture——不可比，没有读数", file=sys.stderr)
         return 2
     now = evaluate_detail(rows, items, _key_lexical, top_k)
     worse, better, added = [], [], []
@@ -347,6 +362,11 @@ def cmd_compare_baseline(root: Path, path: Path, top_k: int) -> int:
     gone = [n for n in sorted(b_fx) if n not in now]
     gone_case = [n for n in gone if n in set(skipped)]
     gone_fixture = [n for n in gone if n not in set(skipped)]
+    if not (set(b_fx) & set(now)):
+        print(f"基线里的 fixture 名与现状一个都对不上：{path}——两份覆盖的不是同一批夹具，"
+              f"不可比，没有读数", file=sys.stderr)
+        print(rewrite, file=sys.stderr)
+        return 2
     cov, b_cov = _coverage_counts(rows), base.get("coverage") or {}
     cov_drop = [k for k in ("sig", "tok") if k in b_cov and cov[k] < b_cov[k]]
     rows_delta = b_cov.get("rows") != cov["rows"]

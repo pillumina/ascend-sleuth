@@ -44,9 +44,10 @@ predicted_effect:
   to: >-
     `--write-baseline` 把同构口径的逐条名次与行内证据覆盖写进本地基线
     （默认 `.s2-replay/rank-baseline.yaml`，按 `.gitignore:77` 不入库）；`--compare-baseline`
-    逐条报变差/变好/新增，变差或覆盖下降退 1，无变差退 0；不可比一律退 2 且不给读数，共五种：
-    没有基线、基线读不出来或不是合法 YAML、基线是空文件、基线里没有逐条名次、口径不符
-    （排序键不同或 `top_k` 不同）。基线里有、现状找不到同名文件的 fixture 单列为"不计入变差"。
+    逐条报变差/变好/新增，变差或覆盖下降退 1，无变差退 0；不可比一律退 2 且不给读数：没有基线文件、
+    基线读不出来或不是合法 YAML、基线是空文件、基线里没有逐条名次、基线里的名次不是整数或 null、
+    口径不符（排序键不同或 `top_k` 不同）、基线里的 fixture 名与现状一个都对不上、现状一条
+    fixture 都评不了。基线里有、现状找不到同名文件的 fixture 单列为"不计入变差"。
   measure:
     command: |
       python3 -c "import sys,unittest;t=unittest.TextTestRunner(verbosity=0).run(unittest.defaultTestLoader.loadTestsFromName('tests.test_rank_candidates.RankBaselineCompareTest'));print('VERDICT PASS' if t.wasSuccessful() else 'VERDICT FAIL');sys.exit(0 if t.wasSuccessful() else 1)"
@@ -59,11 +60,12 @@ validation:
     `tests/test_rank_candidates.py` 九个测试（都只测排序与覆盖统计，没有基线读写）；
     脚本无 `BASELINE_DEFAULT`，`main()` 无 `--write-baseline`/`--compare-baseline`。
   success_criteria: >-
-    ①`RankBaselineCompareTest` 十个测试通过（同一份树前后对照退 0 且报无变差；索引侧证据被改坏
-    后报变差并退 1；期望 case 不在索引里的 fixture 被跳过；五种不可比各退 2 且不出肯定读数——
-    缺基线、基线不是合法 YAML、基线是空文件、基线里没有逐条名次、排序键不同；夹具改名单列为
-    "不计入变差"而不是报成排序变差）；
-    ②`python -m unittest tests.test_rank_candidates` 十九条全过（改前九条）；
+    ①`RankBaselineCompareTest` 十三个测试通过（同一份树前后对照退 0 且报无变差；索引侧证据被改坏
+    后报变差并退 1；期望 case 不在索引里的 fixture 被跳过；各条不可比路径都退 2 且不出肯定读数——
+    缺基线文件、基线不是合法 YAML、基线是空文件、基线里没有逐条名次、基线里的名次不是整数或 null、
+    排序键不同、`top_k` 不同、基线里的名字与现状一个都对不上、现状一条 fixture 都评不了；
+    夹具改名单列为"不计入变差"而不是报成排序变差）；
+    ②`python -m unittest tests.test_rank_candidates` 二十二条全过（改前九条）；
     ③新旧 `--eval` 输出逐行相同（`Compare-Object` 差异 0 行），既有读数不因新增子命令而变；
     ④`python scripts/verify_proposals.py --check`、`python scripts/build_docs_index.py --check`
     与其余仓库门通过；⑤`python -m unittest discover tests` 的失败集合与 `origin/main` 上一致。
@@ -81,9 +83,10 @@ actual_cost:
     口径：改 `scripts/rank_candidates.py`（新增 `BASELINE_DEFAULT`、`_fixture_items`、
     `evaluate_detail`、`_coverage_counts`、`_rank_text`、`cmd_write_baseline`、
     `cmd_compare_baseline`，`cmd_eval` 改用共用 fixture 集合，`main()` 加两个子命令；
-    按独立预核意见补 `cmd_compare_baseline` 的读盘与格式异常处理、排序键校验、改名 fixture
-    的归因分流，并把用户可见输出里的比喻改掉）、`tests/test_rank_candidates.py` 新增一个测试类
-    （十个测试）、`docs/guide/eval.md` 加一节、产卡、判据复跑、独立预核与回修、PR body；
+    按第一轮独立预核意见补 `cmd_compare_baseline` 的读盘与格式异常处理、排序键校验、改名 fixture
+    的归因分流，并把用户可见输出里的比喻改掉；按第二轮意见补零重叠退 2、名次值必须是整数或 null、
+    两条不可比路径补重写命令、不可评夹具的归因分流）、`tests/test_rank_candidates.py` 新增一个测试类
+    （十三个测试）、`docs/guide/eval.md` 加一节、产卡、判据复跑、两轮独立预核与回修、PR body；
     估 1.5 万，不含预核轮次。
 decisions:
   - who: agent
@@ -129,10 +132,23 @@ decisions:
       依据 `docs/spec/writing-norms.md:20`：不用比喻与拟人，自造代称首现不得未定义。
   - who: agent
     when: "2026-10-07"
+    type: action
+    conclusion: >-
+      按第二轮独立预核意见回修（阻断 1）：基线里的 fixture 名与现状零重叠时（夹具整体改名、
+      或拿别检出/别分支写的基线来对照），原来没有任何一条真被对照却打印"结论：无变差。"并退 0——
+      与本卡"不能对一份不可比的基线给出肯定读数"冲突。改为：零交集即退 2 并给重写命令。
+      同时修阻断 2：基线里的名次值原来不校验，写成字符串 `"1"` 会在名次比较处抛 `TypeError`
+      退 1（与"查出变差"同码）且只有 traceback，写成 `1.5` 会被当名次用并给"变好/无变差"退 0；
+      改为只接受整数或 null，其余退 2。另按同轮非阻断意见：`top_k` 与排序键两条不可比也补上
+      可直接复制的重写命令（`top_k` 那条带 `--top`）；"现状一条 fixture 都评不了"这条按是否
+      有被跳过的夹具分两种文案（原先把夹具改名一律说成"期望 case 不在索引里"）；文档与该分支
+      措辞里"共五种"改为一句话枚举，避免与代码漂移。
+  - who: agent
+    when: "2026-10-07"
     type: eval
     conclusion: >-
       判据复跑（worktree，本机 Windows，2026-10-07）：
-      `python -m unittest tests.test_rank_candidates` 十九条全过（改前九条）；
+      `python -m unittest tests.test_rank_candidates` 二十二条全过（改前九条）；
       真实仓库上 `--write-baseline` 写 27 条 fixture（skip 1 条：期望 case 不在索引里）、
       recall@5 15/27、进前三 15，`--compare-baseline` 报无变差、exit 0；
       覆盖读数 `sig 80/168、tok 142/168`；`--eval` 新输出与 `origin/main` 的旧输出逐行相同。
@@ -141,6 +157,7 @@ decisions:
     type: decision
     conclusion: >-
       判 validated：判据可复现、已实测通过，索引侧证据被改坏这条路径有测试护住。
-      **边界**：十个测试都在临时目录的合成索引上跑，真数据上"某次改动让某条 fixture 掉出候选"
+      **边界**：十三个测试都在临时目录的合成索引上跑，真数据上"某次改动让某条 fixture 掉出候选"
       还没有出现过；覆盖下降只是提示，具体成因（同格子多出竞争 case，还是索引行自己的证据变了）
-      要人看。未做：把它接进 `--gate` 或 CI（需要先攒对照记录）。
+      要人看。未做：把它接进 `--gate` 或 CI（需要先攒对照记录）；`scripts/replay_trace.py` 里另有
+      一处"行为差异哨兵"的同类措辞，与本卡无关，留给增量清理。

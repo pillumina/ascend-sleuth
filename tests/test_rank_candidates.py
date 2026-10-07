@@ -94,8 +94,10 @@ class RankBaselineCompareTest(unittest.TestCase):
     """阶段一排序的前后对照（--write-baseline / --compare-baseline）。
 
     护三件事：同一份树前后对照报「无变差」并退 0；索引侧证据变了必须报变差并退 1；
-    不可比时明确退化而不是给读数（没有基线、基线读不出来、基线里没有逐条名次、排序键不同、
-    两边 top_k 不同——这五种都退 2，且不给出「无变差」这类肯定读数）。
+    不可比时明确退化而不是给读数——没有基线文件、基线读不出来或不是合法 YAML、基线是空文件、
+    基线里没有逐条名次、基线里的名次不是整数或 null、口径不符（排序键或 top_k 不同）、
+    基线里的 fixture 名与现状一个都对不上、现状一条 fixture 都评不了，这些路径都退 2，
+    且都不给出「无变差」这类肯定读数。
     夹具在临时目录现造（一格索引 + 一条 fixture），不复用真实知识库。
     """
 
@@ -213,6 +215,7 @@ class RankBaselineCompareTest(unittest.TestCase):
 
     def test_renamed_fixture_is_not_counted_as_regression(self):
         """夹具改名：现状缺的是 fixture 文件本身，不是期望 case 掉出候选——不报成变差。"""
+        self._write_fixture("fx-keep.fixture.yaml", "VLLM-ASC-2")
         self._run(rc.cmd_write_baseline, self.root, self.base, 5)
         (self.root / "eval" / "golden" / "fx-a.fixture.yaml").unlink()
         self._write_fixture("fx-b.fixture.yaml", "VLLM-ASC-1")
@@ -220,6 +223,42 @@ class RankBaselineCompareTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("不计入变差 fx-a.fixture.yaml", out)
         self.assertIn("新增 fixture 1 条", out)
+
+    def test_all_fixtures_renamed_is_not_comparable(self):
+        """基线里的名字与现状一个都对不上：没有任何一条真被对照过，不能报「无变差」退 0。"""
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        (self.root / "eval" / "golden" / "fx-a.fixture.yaml").unlink()
+        self._write_fixture("fx-b.fixture.yaml", "VLLM-ASC-1")
+        self._write_fixture("fx-c.fixture.yaml", "VLLM-ASC-2")
+        code, out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("一个都对不上", err)
+        self.assertNotIn("无变差", out)
+
+    def test_baseline_with_non_integer_rank_is_not_comparable(self):
+        """基线里的名次必须是整数或 null：写成字符串会抛异常退 1（退 1 是「查出变差」），写成小数不能当名次用。"""
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        for value in ("1", 1.5, True):
+            with self.subTest(value=value):
+                doc = yaml.safe_load(self.base.read_text(encoding="utf-8"))
+                doc["fixtures"]["fx-a.fixture.yaml"] = value
+                self.base.write_text(
+                    yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+                code, out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+                self.assertEqual(code, 2)
+                self.assertIn("不是整数或 null", err)
+                self.assertNotIn("无变差", out)
+
+    def test_no_evaluable_fixture_reports_cause(self):
+        """现状一条 fixture 都评不了（夹具改名/删除或知识库没重建）：说清原因并退 2，不给读数。"""
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        (self.root / "eval" / "golden" / "fx-a.fixture.yaml").unlink()
+        self._write_fixture("fx-gone.fixture.yaml", "VLLM-ASC-999")
+        code, out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("一条 fixture 都评不了", err)
+        self.assertIn("build_index.py", err)
+        self.assertNotIn("无变差", out)
 
 
 if __name__ == "__main__":
