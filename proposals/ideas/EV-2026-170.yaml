@@ -38,16 +38,18 @@ hypothesis: >-
 predicted_effect:
   metric: >-
     索引行的字面量/token 证据被改动后，名次变化能否不靠人工并排比对就报出来；
-    以及缺基线、口径不符时是否明确退化而不是给出一份不可比的读数
+    以及缺基线、基线损坏、口径不符时是否明确退化而不是给出一份不可比的读数
   from: >-
     只有 `--eval`（打印三行读数，退出码恒为 0）；没有基线写入与对照子命令；名次变化只能人工比对。
   to: >-
     `--write-baseline` 把同构口径的逐条名次与行内证据覆盖写进本地基线
     （默认 `.s2-replay/rank-baseline.yaml`，按 `.gitignore:77` 不入库）；`--compare-baseline`
-    逐条报变差/变好/新增，变差或覆盖下降退 1，无变差退 0，缺基线或 `top_k` 不同退 2。
+    逐条报变差/变好/新增，变差或覆盖下降退 1，无变差退 0；不可比一律退 2 且不给读数，共五种：
+    没有基线、基线读不出来或不是合法 YAML、基线是空文件、基线里没有逐条名次、口径不符
+    （排序键不同或 `top_k` 不同）。基线里有、现状找不到同名文件的 fixture 单列为"不计入变差"。
   measure:
     command: |
-      python3 -c "import sys,unittest;t=unittest.TextTestRunner(verbosity=0).run(unittest.defaultTestLoader.loadTestsFromName('tests.test_rank_candidates.RankBaselineSentinelTest'));print('VERDICT PASS' if t.wasSuccessful() else 'VERDICT FAIL');sys.exit(0 if t.wasSuccessful() else 1)"
+      python3 -c "import sys,unittest;t=unittest.TextTestRunner(verbosity=0).run(unittest.defaultTestLoader.loadTestsFromName('tests.test_rank_candidates.RankBaselineCompareTest'));print('VERDICT PASS' if t.wasSuccessful() else 'VERDICT FAIL');sys.exit(0 if t.wasSuccessful() else 1)"
     expect_exit: 0
     expect_stdout: "VERDICT PASS"
 validation:
@@ -57,9 +59,11 @@ validation:
     `tests/test_rank_candidates.py` 九个测试（都只测排序与覆盖统计，没有基线读写）；
     脚本无 `BASELINE_DEFAULT`，`main()` 无 `--write-baseline`/`--compare-baseline`。
   success_criteria: >-
-    ①`RankBaselineSentinelTest` 五个测试通过（同一份树前后对照退 0 且报无变差；索引侧证据被改坏
-    后报变差并退 1；缺基线退 2；两边 `top_k` 不同退 2；期望 case 不在索引里的 fixture 被跳过）；
-    ②`python -m unittest tests.test_rank_candidates` 十四条全过（改前九条）；
+    ①`RankBaselineCompareTest` 十个测试通过（同一份树前后对照退 0 且报无变差；索引侧证据被改坏
+    后报变差并退 1；期望 case 不在索引里的 fixture 被跳过；五种不可比各退 2 且不出肯定读数——
+    缺基线、基线不是合法 YAML、基线是空文件、基线里没有逐条名次、排序键不同；夹具改名单列为
+    "不计入变差"而不是报成排序变差）；
+    ②`python -m unittest tests.test_rank_candidates` 十九条全过（改前九条）；
     ③新旧 `--eval` 输出逐行相同（`Compare-Object` 差异 0 行），既有读数不因新增子命令而变；
     ④`python scripts/verify_proposals.py --check`、`python scripts/build_docs_index.py --check`
     与其余仓库门通过；⑤`python -m unittest discover tests` 的失败集合与 `origin/main` 上一致。
@@ -76,9 +80,11 @@ actual_cost:
   note: >-
     口径：改 `scripts/rank_candidates.py`（新增 `BASELINE_DEFAULT`、`_fixture_items`、
     `evaluate_detail`、`_coverage_counts`、`_rank_text`、`cmd_write_baseline`、
-    `cmd_compare_baseline`，`cmd_eval` 改用共用 fixture 集合，`main()` 加两个子命令）、
-    `tests/test_rank_candidates.py` 新增一个测试类、`docs/guide/eval.md` 加一节、产卡、
-    判据复跑、PR body；估 1.5 万，未计独立预核与回修。
+    `cmd_compare_baseline`，`cmd_eval` 改用共用 fixture 集合，`main()` 加两个子命令；
+    按独立预核意见补 `cmd_compare_baseline` 的读盘与格式异常处理、排序键校验、改名 fixture
+    的归因分流，并把用户可见输出里的比喻改掉）、`tests/test_rank_candidates.py` 新增一个测试类
+    （十个测试）、`docs/guide/eval.md` 加一节、产卡、判据复跑、独立预核与回修、PR body；
+    估 1.5 万，不含预核轮次。
 decisions:
   - who: agent
     when: "2026-10-07"
@@ -104,10 +110,29 @@ decisions:
       （报警，命令本身成功执行），退 2 = 不可比（缺基线、`top_k` 不同），不给读数。
   - who: agent
     when: "2026-10-07"
+    type: action
+    conclusion: >-
+      按独立预核意见回修（阻断 1）：`--compare-baseline` 原来对基线只做"存在性"检查，
+      读盘与解析没有异常处理——基线不是合法 YAML 时抛 traceback 退 1（与"查出变差"同码），
+      合法 YAML 但 `fixtures` 为空时把 27 条全算成"新增"，打印"结论：无变差。"并退 0——
+      对一份不可比的基线给出了肯定读数。改为：读盘与解析进 try/except、空文件与非映射文件各给
+      自己的原因、`fixtures` 缺失或为空退 2、排序键不符退 2，五个不可比路径都打印可复制的重写
+      命令。另按同轮意见把夹具改名从"变差"分流成"不计入变差"，并在读出总行数变化时提一句
+      "绝对条数相同不代表证据没变"。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      按独立预核意见清理用户可见输出里的比喻：脚本与测试里把"哨兵/预警哨兵"改成"前后对照/本命令
+      的范围"，"索引里长出了"改"索引里多了"，"机械键据此退让"改"机械排序键据此失据"；
+      测试类名一并从 `RankBaselineSentinelTest` 改为 `RankBaselineCompareTest`（本卡判据命令同步改）。
+      依据 `docs/spec/writing-norms.md:20`：不用比喻与拟人，自造代称首现不得未定义。
+  - who: agent
+    when: "2026-10-07"
     type: eval
     conclusion: >-
       判据复跑（worktree，本机 Windows，2026-10-07）：
-      `python -m unittest tests.test_rank_candidates` 十四条全过（改前九条）；
+      `python -m unittest tests.test_rank_candidates` 十九条全过（改前九条）；
       真实仓库上 `--write-baseline` 写 27 条 fixture（skip 1 条：期望 case 不在索引里）、
       recall@5 15/27、进前三 15，`--compare-baseline` 报无变差、exit 0；
       覆盖读数 `sig 80/168、tok 142/168`；`--eval` 新输出与 `origin/main` 的旧输出逐行相同。
@@ -116,6 +141,6 @@ decisions:
     type: decision
     conclusion: >-
       判 validated：判据可复现、已实测通过，索引侧证据被改坏这条路径有测试护住。
-      **边界**：五个测试都在临时目录的合成索引上跑，真数据上"某次改动让某条 fixture 掉出候选"
+      **边界**：十个测试都在临时目录的合成索引上跑，真数据上"某次改动让某条 fixture 掉出候选"
       还没有出现过；覆盖下降只是提示，具体成因（同格子多出竞争 case，还是索引行自己的证据变了）
       要人看。未做：把它接进 `--gate` 或 CI（需要先攒对照记录）。

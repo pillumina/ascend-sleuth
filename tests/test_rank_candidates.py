@@ -90,11 +90,12 @@ class RankCandidatesTest(unittest.TestCase):
         self.assertEqual(e["n"], 1)
 
 
-class RankBaselineSentinelTest(unittest.TestCase):
-    """阶段一排序的预警哨兵（--write-baseline / --compare-baseline）。
+class RankBaselineCompareTest(unittest.TestCase):
+    """阶段一排序的前后对照（--write-baseline / --compare-baseline）。
 
     护三件事：同一份树前后对照报「无变差」并退 0；索引侧证据变了必须报变差并退 1；
-    不可比时明确退化而不是给读数（没有基线退 2、两边 top_k 不同退 2）。
+    不可比时明确退化而不是给读数（没有基线、基线读不出来、基线里没有逐条名次、排序键不同、
+    两边 top_k 不同——这五种都退 2，且不给出「无变差」这类肯定读数）。
     夹具在临时目录现造（一格索引 + 一条 fixture），不复用真实知识库。
     """
 
@@ -171,6 +172,54 @@ class RankBaselineSentinelTest(unittest.TestCase):
         self.assertIn("skip 1 条", out)
         doc = yaml.safe_load(self.base.read_text(encoding="utf-8"))
         self.assertEqual(list(doc["fixtures"]), ["fx-a.fixture.yaml"])
+
+    def test_corrupt_baseline_is_not_comparable(self):
+        """基线不是合法 YAML：退 2 并说清怎么重写，不能抛异常退 1（退 1 是「查出变差」）。"""
+        self.base.parent.mkdir(parents=True, exist_ok=True)
+        self.base.write_text("fixtures: [不是映射\n", encoding="utf-8")
+        code, _out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("读不出来", err)
+        self.assertIn("--write-baseline", err)
+
+    def test_empty_baseline_reports_missing_readings_not_no_change(self):
+        """0 字节基线：退 2，且原因必须是「没有逐条名次」，不是「无变差」或 top_k 不符。"""
+        self.base.parent.mkdir(parents=True, exist_ok=True)
+        self.base.write_text("", encoding="utf-8")
+        code, out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("没有逐条名次", err)
+        self.assertNotIn("无变差", out)
+
+    def test_baseline_without_fixtures_is_not_comparable(self):
+        """合法 YAML 但没有逐条名次（只有 top_k）：退 2——不能对一份不可比的基线说「无变差」。"""
+        self.base.parent.mkdir(parents=True, exist_ok=True)
+        self.base.write_text(yaml.safe_dump({"key": "lexical", "top_k": 5}), encoding="utf-8")
+        code, out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("没有逐条名次", err)
+        self.assertNotIn("无变差", out)
+
+    def test_baseline_key_mismatch_is_not_comparable(self):
+        """基线是别的排序键算的：退 2（换键后名次不是同一把尺子量的）。"""
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        doc = yaml.safe_load(self.base.read_text(encoding="utf-8"))
+        doc["key"] = "score"
+        self.base.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False),
+                             encoding="utf-8")
+        code, _out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("不可比", err)
+
+    def test_renamed_fixture_is_not_counted_as_regression(self):
+        """夹具改名：现状缺的是 fixture 文件本身，不是期望 case 掉出候选——不报成变差。"""
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        (self.root / "eval" / "golden" / "fx-a.fixture.yaml").unlink()
+        self._write_fixture("fx-b.fixture.yaml", "VLLM-ASC-1")
+        code, out, _err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 0)
+        self.assertIn("不计入变差 fx-a.fixture.yaml", out)
+        self.assertIn("新增 fixture 1 条", out)
 
 
 if __name__ == "__main__":
