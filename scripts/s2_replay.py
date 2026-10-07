@@ -62,7 +62,12 @@ def prepare(root: Path):
         "- 不向用户追问（单发盲测）；但 agent 自己的推理与工具查证不受限\n"
         "- 结论写 .s2-replay/<issue>.result.yaml，含分层归因：\n"
         "  namespace/category/hit_case/root_cause/evidence_gap/routing_ok/tier2_hit/\n"
-        "  root_cause_ok/tool_used(工具名+拿到什么)/evidence_gap_class(A客观缺失|B推理未收尾|C工具未用足)\n"
+        "  root_cause_ok/tool_used(工具名+拿到什么)/evidence_gap_class(A客观缺失|B推理未收尾|C工具未用足)/replayed_at\n"
+        "- 另记 kb_rev：本次回放对应的知识库版本（取 python3 scripts/kb_rev.py 末行）。\n"
+        "  一批结果常常跨几次 git pull 才跑完，没有它就无法判断这批分数是否跨版本混算。\n"
+        "- ground_truth（该 issue 的外部结论形态：maintainer-conclusion|fix-merged|both|none）"
+        "按盲测边界不该由回放者猜——留空即可，由读过 issue 线程的标注者补记；"
+        "缺席按旧行为处理，标 none 的样本在结算与结论一致率里整体跳过。\n"
     )
     for f in sorted((root / S2_DIR).glob("*.yaml")):
         doc = load_yaml(f)
@@ -97,6 +102,9 @@ def collect(root: Path, report_path: Path):
     rows = []
     attribution_entries = []
     nd_skipped = []
+    n_gt = 0
+    n_rev = 0
+    rev_counts = {}
     for f in sorted((root / S2_DIR).glob("*.yaml")):
         doc = load_yaml(f)
         if not isinstance(doc, dict):
@@ -127,6 +135,15 @@ def collect(root: Path, report_path: Path):
             root_cause_ok = res.get("root_cause_ok")  # True/False/None
             tier2_hit_flag = res.get("tier2_hit")      # True/False/None
             routing_ok = res.get("routing_ok")         # True/False/None
+            # 证据面留痕的覆盖率：这个字段写了没有。评分报告不替它下结论，只报"多少条写了"，
+            # 因为没写不等于没值（回放者按盲测边界留空、由标注者补记），也不等于不重要——
+            # 跨版本混算和"没有真值的猜测被记成结论一致"都是这两个字段缺席造成的。
+            if str(res.get("ground_truth") or "").strip():
+                n_gt += 1
+            rev = str(res.get("kb_rev") or "").strip()
+            if rev:
+                n_rev += 1
+                rev_counts[rev] = rev_counts.get(rev, 0) + 1
 
             # 对照评分（诚实：自动判定是弱信号）
             # 简化关键词匹配：取 resolution 的核心名词，看是否出现在诊断结论
@@ -209,6 +226,19 @@ def collect(root: Path, report_path: Path):
         )
     report_path.write_text("\n".join(lines), encoding="utf-8")
     print(f"s2_replay: 报告已写 {report_path}")
+    n_replayed = sum(1 for r in rows if r["status"] == "replayed")
+    if n_replayed:
+        missing = []
+        if n_gt < n_replayed:
+            missing.append(f"ground_truth 缺 {n_replayed - n_gt} 条（由读过 issue 线程的标注者补记）")
+        if n_rev < n_replayed:
+            missing.append(f"kb_rev 缺 {n_replayed - n_rev} 条（取 python3 scripts/kb_rev.py 末行）")
+        if len(rev_counts) > 1:
+            shown = "、".join(f"{k}×{v}" for k, v in sorted(rev_counts.items()))
+            print(f"s2_replay: ⚠ 这批 {n_replayed} 条结果跨 {len(rev_counts)} 个知识库版本"
+                  f"（{shown}）——分数前后不可比")
+        if missing:
+            print(f"s2_replay: 证据面留痕不全：{'；'.join(missing)}")
     if nd_skipped:
         print(f"s2_replay: 跳过非诊断样本 {len(nd_skipped)} 条（{'、'.join(nd_skipped)}）："
               f"输入里没有可判别信号，不进这份评分报告")
@@ -246,7 +276,8 @@ def todo(root: Path):
     print(f"s2_replay: {len(rows)} 条待 replay（按 confidence 优先）：\n")
     print("对每条：读 .s2-replay/<issue>.md（现象 + 工具边界）→ 按 diagnose 流程诊断（可用工具查公开信息）→ 结论写 .s2-replay/<issue>.result.yaml")
     print("（result 结构: namespace/category/hit_case/root_cause/evidence_gap/routing_ok/tier2_hit/")
-    print("  root_cause_ok/tool_used/evidence_gap_class/replayed_at——EV-2026-004 分层归因）\n")
+    print("  root_cause_ok/tool_used/evidence_gap_class/replayed_at/kb_rev——EV-2026-004 分层归因）")
+    print("  另：ground_truth（外部结论形态）由读过 issue 线程的标注者补记；回放者按盲测边界留空。\n")
     for _, issue, repo, title, conf in rows:
         print(f"  #{issue} [{conf}] ({repo}) {title[:60]}")
 
