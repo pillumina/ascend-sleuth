@@ -61,13 +61,13 @@ validation:
     `tests/test_rank_candidates.py` 九个测试（都只测排序与覆盖统计，没有基线读写）；
     脚本无 `BASELINE_DEFAULT`，`main()` 无 `--write-baseline`/`--compare-baseline`。
   success_criteria: >-
-    ①`RankBaselineCompareTest` 十四个测试通过（同一份树前后对照退 0 且报无变差；索引侧证据被改坏
+    ①`RankBaselineCompareTest` 十五个测试通过（同一份树前后对照退 0 且报无变差；索引侧证据被改坏
     后报变差并退 1；期望 case 不在索引里的 fixture 被跳过；各条不可比路径都退 2 且不出肯定读数——
     缺基线文件、基线不是合法 YAML、基线顶层不是映射、基线是空文件、基线里没有逐条名次、基线里的名次
     不是整数或 null、基线里的名次超出 1..top_k 范围、
     排序键不同、`top_k` 不同、基线里的名字与现状一个都对不上、现状一条 fixture 都评不了；
     夹具改名单列为"不计入变差"而不是报成排序变差）；
-    ②`python -m unittest tests.test_rank_candidates` 二十三条全过（改前九条）；
+    ②`python -m unittest tests.test_rank_candidates` 二十四条全过（改前九条）；
     ③新旧 `--eval` 输出逐行相同（`Compare-Object` 差异 0 行），既有读数不因新增子命令而变；
     ④`python scripts/verify_proposals.py --check`、`python scripts/build_docs_index.py --check`
     与其余仓库门通过；⑤`python -m unittest discover tests` 的失败集合与 `origin/main` 上一致。
@@ -88,7 +88,7 @@ actual_cost:
     按第一轮独立预核意见补 `cmd_compare_baseline` 的读盘与格式异常处理、排序键校验、改名 fixture
     的归因分流，并把用户可见输出里的比喻改掉；按第二轮意见补零重叠退 2、名次值必须是整数或 null、
     两条不可比路径补重写命令、不可评夹具的归因分流）、`tests/test_rank_candidates.py` 新增一个测试类
-    （十四个测试）、`docs/guide/eval.md` 加一节、产卡、判据复跑、三轮独立预核与回修、PR body；
+    （十五个测试）、`docs/guide/eval.md` 加一节、产卡、判据复跑、三轮独立预核与回修、PR body；
     估 1.5 万，不含预核轮次。
 decisions:
   - who: agent
@@ -173,7 +173,7 @@ decisions:
     type: eval
     conclusion: >-
       判据复跑（worktree，本机 Windows，2026-10-07）：
-      `python -m unittest tests.test_rank_candidates` 二十三条全过（改前九条）；
+      `python -m unittest tests.test_rank_candidates` 二十四条全过（改前九条）；
       真实仓库上 `--write-baseline` 写 27 条 fixture（skip 1 条：期望 case 不在索引里）、
       recall@5 15/27、进前三 15，`--compare-baseline` 报无变差、exit 0；
       覆盖读数 `sig 80/168、tok 142/168`；`--eval` 新输出与 `origin/main` 的旧输出逐行相同。
@@ -182,7 +182,37 @@ decisions:
     type: decision
     conclusion: >-
       判 validated：判据可复现、已实测通过，索引侧证据被改坏这条路径有测试护住。
-      **边界**：十四个测试都在临时目录的合成索引上跑，真数据上"某次改动让某条 fixture 掉出候选"
+      **边界**：十五个测试都在临时目录的合成索引上跑，真数据上"某次改动让某条 fixture 掉出候选"
       还没有出现过；覆盖下降只是提示，具体成因（同格子多出竞争 case，还是索引行自己的证据变了）
       要人看。未做：把它接进 `--gate` 或 CI（需要先攒对照记录）；`scripts/replay_trace.py` 里另有
       一处"行为差异哨兵"的同类措辞，与本卡无关，留给增量清理。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      第五轮（增量收口）独立预核的唯一非阻断项：`--write-baseline` 在"现状一条 fixture 都评不了"
+      时同样退 2 且不落盘，但脚本头注与 `docs/guide/eval.md` 的退出码 2 只写在对照流程下，
+      且写侧把"夹具改名或删除"与"完全没有夹具"共用一句归因（对照侧第二轮已拆成两种文案）。
+      本条补平：写侧按 `skipped` 是否为空分开说明（"夹具与索引对不上 + 先重建索引" /
+      "没有可评的 fixture"），头注与文档同步声明"写不出一份能对照的基线就不写"，
+      并加一条测试护住（写侧两种归因、不落盘、不打印"基线已写入"）。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      该提交的独立预核结论 MERGE_READY: no——两条文本事实错误，已在同一分支回修：卡内把对照侧
+      两种文案的拆分记成第三轮（实为第二轮：`git log -S '现状一条 fixture 都评不了：eval/golden 下的夹具与索引对不上' --oneline` 只返回 `218888e`）、
+      三处"十四个测试"未随新增测试刷新为"十五个"（`RankBaselineCompareTest` 现为 15 条）。
+      非阻断项收掉两条：测试补断言"已存在的旧基线在退 2 时不被覆盖"；写侧与对照侧的归因文案补上
+      "夹具里的 expected.case_id 缺失或写错"（`scripts/rank_candidates.py:272/:359` 与头注、`docs/guide/eval.md`
+      同步），并把同一段里"夹具改名或删除"与"夹具都在、只是与原状对不上"统一成一个说法。
+      预核已独立复核通过、本文本次未改的部分：写侧四种失败输入退 2 且不落盘（含旧基线不被覆盖），
+      正常输入退 0 并写盘、12 路 exit-2 文案与文档枚举双向对齐、回归门全绿、消费方 grep 零破坏、
+      四个文件无 BOM 无 CRLF。未收的非阻断项：夹具不是合法 YAML 时退 1 打 traceback（既有路径，
+      两版相同）、`docs/guide/eval.md:130` 只说退 1 是"查出变差"。
+      第二次增量预核（绑定 40d5786）结论仍是 MERGE_READY: no，余两条文本阻断项：`docs/guide/eval.md`
+      的括注把运行时打印行说成"首句"，而写侧那一行以"没有可写的基线："开头、对照侧以
+      "现状一条 fixture 都评不了："开头；本卡上面那句又自相矛盾地写"对照侧两版输出逐字未变"
+      （对照侧那一路的归因文案本次确实变了）。两条均已改：括注改成"打印出来的行里含…"并写明
+      两侧前导、本卡改成"对照侧只有本次有意改的归因文案变了，其余输出与退出码逐字未变"。
+      两次均属"预核给的建议措辞本身没写准"，不是代码或测试问题。

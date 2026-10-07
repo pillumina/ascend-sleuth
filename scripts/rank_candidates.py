@@ -38,13 +38,15 @@
 # **top3|≤5（进去之后排第几）**，并附历史(agent)行作参照。排序类改动一律用这个量尺判。
 #
 # 退出码：0 = 正常；1 = 输入/参数问题（无文本、ns 不存在），或 --compare-baseline 查出变差
-# （报警，不是用法错误）；2 = --compare-baseline 不可比、没有读数：缺基线文件、基线读不出来或不是
+# （报警，不是用法错误）；2 = 没有读数：--compare-baseline 不可比（缺基线文件、基线读不出来或不是
 # 合法 YAML、基线顶层不是映射、基线是空文件、基线里没有逐条名次、基线里的名次不是整数或 null、
 # 基线里的名次超出 1..top_k 范围、口径不符（排序键不同或 top_k 不同）、基线里的 fixture 名与现状
-# 一个都对不上、现状一条 fixture 都评不了。
+# 一个都对不上、现状一条 fixture 都评不了），或 --write-baseline 写不出能对照的基线（现状一条
+# fixture 都评不了）。
 # 不可比的每一路都打印原因、且都不打印「无变差」这类肯定读数；「缺基线/读不出来/口径不符/名次非法
-# 或越界/零重叠」这几路给可直接复制的重写基线命令；夹具都在、只是与原状对不上的那一路给重建索引与
-# 补夹具的下一步（那条要修的不是基线）。
+# 或越界/零重叠」这几路给可直接复制的重写基线命令；夹具都在、只是与原状对不上的那一路（含夹具里的
+# expected.case_id 缺失或写错）给重建索引与补夹具的下一步（那条要修的不是基线）。写基线与对照两侧都把
+# 「夹具都在、只是与原状对不上」与「eval/golden 下没有夹具」分开说明，不让前者看起来像「没有夹具」。
 #
 # 强度如实标注：本排序器只解决**排序**——它不判候选是否相关（那是 quickly_check 阶段二的事），
 # 也不改任何 case 内容；sig 只覆盖有字面量分支的 case（当前 74/159，覆盖率如实打印）。
@@ -265,8 +267,12 @@ def cmd_write_baseline(root: Path, path: Path, top_k: int) -> int:
     rows = load_rows(root)
     items, skipped = _fixture_items(root, rows)
     if not items:
-        print("没有可评的 fixture（期望 case 不在索引里）——先跑 python3 scripts/build_index.py",
-              file=sys.stderr)
+        if skipped:
+            print("没有可写的基线：eval/golden 下的夹具与索引对不上"
+                  "（夹具改名或删除、夹具里的 expected.case_id 缺失、或知识库没重建过）——先跑 python3 scripts/build_index.py，"
+                  "再确认 eval/golden 下还有与索引同名的夹具", file=sys.stderr)
+        else:
+            print("没有可写的基线：eval/golden 下没有可评的 fixture", file=sys.stderr)
         return 2
     detail = evaluate_detail(rows, items, _key_lexical, top_k)
     with_cov = _coverage_counts(rows)
@@ -350,7 +356,7 @@ def cmd_compare_baseline(root: Path, path: Path, top_k: int) -> int:
     if not items:
         if skipped:
             print("现状一条 fixture 都评不了：eval/golden 下的夹具与索引对不上"
-                  "（夹具改名或删除、或知识库没重建过）——先跑 python3 scripts/build_index.py，"
+                  "（夹具改名或删除、夹具里的 expected.case_id 缺失、或知识库没重建过）——先跑 python3 scripts/build_index.py，"
                   "再确认 eval/golden 下还有与索引同名的夹具", file=sys.stderr)
         else:
             print("eval/golden 下没有可评的 fixture——不可比，没有读数", file=sys.stderr)
