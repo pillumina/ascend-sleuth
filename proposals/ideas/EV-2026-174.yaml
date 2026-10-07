@@ -73,8 +73,11 @@ validation:
     ①`measure` 命令输出 `VERDICT PASS`（新读数在文档里、分流前的旧数字已从「现行读数」位置移走、
     EV-2026-124 里那处输入描述已就地更正并留下更正记录）；②`python scripts/verify_proposals.py --check`、
     `python scripts/build_docs_index.py --check`、`python scripts/eval_arena.py --self-test` 通过；
-    ③`python -m unittest discover -s tests -t .` 的失败集合与 `origin/main` 上一致；
-    ④文档给出的复算入口是命令（`--build-pool` 与 `--stats` 各一条），不是本地运行件里的数字。
+    ③`python -m unittest discover -s tests -t .` 的失败集合与分支父提交上逐条一致；
+    ④文档给出的复算入口是命令（`--build-pool` 与 `--stats` 各一条），不是本地运行件里的数字；
+    这两条命令的输入（`.s2-replay/` 下的 result 与池文件）本身是 gitignore 运行件，干净克隆上只会
+    得到「0 条已有 replay result」的池——判据钉的是「文档写的是哪一轮、怎么复算」，不是「任何机器
+    都能复算出 5/6」。
   rollback: "回退该提交即可；本次只改文档与一张已验证卡的措辞，无代码与数据面变更。"
 gate:
   condition: >-
