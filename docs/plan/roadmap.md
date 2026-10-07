@@ -141,7 +141,7 @@
 |---|---|---|---|
 | A2 加载协议子流（F1–F5 + 读侧换形态） | 索引分片、行瘦身、category 分片 + 阶段二 top-2、行宽压缩；YAML 分片 → 一行一条的读侧视图（该格 23449 → 16442 tok）；容量线由条数改为读入 token | EV-2026-022/023/024/025/029/030/160/161/162，2026-09 | A2 整体未完成：拆分裁决转观察窗（阈值已按实测固化，见 A2 行与 ADR-0004 读侧一节） |
 | M5 | groom token 治理落地（脚本先行 + 信号触发；~129K → 目标 <30K） | EV-2026-028，2026-09 | 真实 groom 单次 token 实测待首次真实 groom（观察窗：.s2-replay/arena/groom-m5-pending.md） |
-| E8 | arena 元层台 + 端到端门控首跑（见 E8 行数据） | EV-2026-013/014，2026-09-04 | test/selection 分离（selection ≥20 后启用） |
+| E8 | arena 元层台 + 端到端门控首跑（见 E8 行数据） | EV-2026-013/014，2026-09-04 | test/selection 分离（按判定池＝未吸收样本的条数触发，见 `docs/mechanism/eval-arena.md` §1） |
 | O8 首级 | ixn-replay harness v1 + 首批 staged n=10 出分进 timeline（见 O8 行数据） | EV-2026-012/016/017/018，2026-09-04 | 常态化（held_out ≥10 单列 trend）；timeline 行分母/小样本标注待按 O1 补正 |
 | A2 读入账 + 兜底视图接线 | `index_read_cost.py` 报"一次诊断的读入账"四分项（类视图 / 兜底视图判线；先验层 / 阶段二只量不判）；ns 兜底视图接上同一条容量线（`fallback_read_soft_tok` / `fallback_read_hard_tok`，现读数 24270 tok 超硬线） | EV-2026-163，2026-09-29 | 兜底视图的"窄列两步法"未做（下一杠杆）；先验层/阶段二的线待攒到期数（准入判据第三条） |
 | L2 先验层消费点（背景） | 背景层解绑"候选命中"：时点提前到步骤 2 收尾、先于候选加载，命中与未命中两条路径都到（未命中路径可达先验 43 → 184 条）；`background` 与 `fix` 拆成两个 purpose；`reference_purposes` 进 live 快照 | EV-2026-164，2026-09-29 | 效果观察窗：`reference_purposes.background` 在未命中单上的占比（需下几期数据）；`ref_knowledge` 回链覆盖率 12/168 属沉淀侧债 |
