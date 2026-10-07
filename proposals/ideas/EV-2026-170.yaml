@@ -1,0 +1,121 @@
+# ============================================================
+# EV-2026-170 —— 排序侧改动给一条自动对照：同构口径前后各算一遍名次，变差报警
+# 来源：用户认可「排序口径先当预警、不当门槛」（本会话讨论中的 A′），要求把已分析清楚、
+#       值得落地的 eval 机制落点全部落地。
+# 脱敏：只含仓库内路径、命令与聚合数字
+# ============================================================
+
+id: EV-2026-170
+layer: L2
+target_component: scripts/rank_candidates.py
+title: "阶段一排序加自动对照：同构口径前后各算一遍名次，变差报警、不可比则不给读数"
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: '2026-10-07'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户选择把排序口径先做成预警而不是门槛：可以自动跑、红了人看，但不据此阻塞合并；
+      当门要先攒够机械键与生产结论同向的对照记录。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      改前 `scripts/rank_candidates.py` 只有 `--eval` 一个读数出口，没有任何基线对照模式：
+      索引行的字面量或 token 被改动后，名次变化要靠人工把前后两次输出并排比；
+      而阶段一是整条链路上唯一位于窗口前端的闸口——正确答案排在第 6 名之外就永远不被加载
+      （`docs/guide/eval.md` 的排序量尺一节记了同构口径与 25 条夹具的实测）。
+    trajectory:
+      - "docs/guide/eval.md 的「排序/筛选类改动的量尺（必须与管线同构）」一节"
+      - "scripts/rank_candidates.py 头注记的 EV-2026-111 实测与 2026-09 同构口径修正"
+hypothesis: >-
+  给阶段一的排序加一条同构口径的自动对照（改动前后各跑一次，逐条比名次与行内证据条数），
+  索引侧证据被改坏时当场报出并退 1；没有基线或两份名次口径不同时报"不可比"并退 2，不给读数。
+  它只覆盖阶段一的筛与排，是 agent 判断的代理指标，所以只报警、不拦合并、不进 CI。
+predicted_effect:
+  metric: >-
+    索引行的字面量/token 证据被改动后，名次变化能否不靠人工并排比对就报出来；
+    以及缺基线、口径不符时是否明确退化而不是给出一份不可比的读数
+  from: >-
+    只有 `--eval`（打印三行读数，退出码恒为 0）；没有基线写入与对照子命令；名次变化只能人工比对。
+  to: >-
+    `--write-baseline` 把同构口径的逐条名次与行内证据覆盖写进本地基线
+    （默认 `.s2-replay/rank-baseline.yaml`，按 `.gitignore:77` 不入库）；`--compare-baseline`
+    逐条报变差/变好/新增，变差或覆盖下降退 1，无变差退 0，缺基线或 `top_k` 不同退 2。
+  measure:
+    command: |
+      python3 -c "import sys,unittest;t=unittest.TextTestRunner(verbosity=0).run(unittest.defaultTestLoader.loadTestsFromName('tests.test_rank_candidates.RankBaselineSentinelTest'));print('VERDICT PASS' if t.wasSuccessful() else 'VERDICT FAIL');sys.exit(0 if t.wasSuccessful() else 1)"
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前：`python scripts/rank_candidates.py --eval` 的三行读数之外没有对照出口；
+    `tests/test_rank_candidates.py` 九个测试（都只测排序与覆盖统计，没有基线读写）；
+    脚本无 `BASELINE_DEFAULT`，`main()` 无 `--write-baseline`/`--compare-baseline`。
+  success_criteria: >-
+    ①`RankBaselineSentinelTest` 五个测试通过（同一份树前后对照退 0 且报无变差；索引侧证据被改坏
+    后报变差并退 1；缺基线退 2；两边 `top_k` 不同退 2；期望 case 不在索引里的 fixture 被跳过）；
+    ②`python -m unittest tests.test_rank_candidates` 十四条全过（改前九条）；
+    ③新旧 `--eval` 输出逐行相同（`Compare-Object` 差异 0 行），既有读数不因新增子命令而变；
+    ④`python scripts/verify_proposals.py --check`、`python scripts/build_docs_index.py --check`
+    与其余仓库门通过；⑤`python -m unittest discover tests` 的失败集合与 `origin/main` 上一致。
+  rollback: "回退该提交即可；基线是本地运行件（.s2-replay/ 已 gitignore），无需数据迁移。"
+gate:
+  condition: >-
+    对照报出变差而无人查看；或有人把机械键当门槛用来阻塞合并（它只覆盖阶段一的筛与排，
+    生产排序由 agent 按相关性判断）；或把基线文件提交进 git（数字快照入库会在并发合并时撞行）。
+risk: low
+principle_refs: [6, 8, 10, 11]
+actual_cost:
+  tokens: 15000
+  source: estimate
+  note: >-
+    口径：改 `scripts/rank_candidates.py`（新增 `BASELINE_DEFAULT`、`_fixture_items`、
+    `evaluate_detail`、`_coverage_counts`、`_rank_text`、`cmd_write_baseline`、
+    `cmd_compare_baseline`，`cmd_eval` 改用共用 fixture 集合，`main()` 加两个子命令）、
+    `tests/test_rank_candidates.py` 新增一个测试类、`docs/guide/eval.md` 加一节、产卡、
+    判据复跑、PR body；估 1.5 万，未计独立预核与回修。
+decisions:
+  - who: agent
+    when: "2026-10-07"
+    type: proposal
+    conclusion: >-
+      采纳「排序口径先做自动对照、只报警不当门槛」这一半，不采纳「当硬门槛」那一半：
+      机械键是 agent 判断的代理，同类改动下 agent 的同子集读数高于机械键，把它做成门会用
+      更差的判断者拦下更好的判断者。要当门得先攒够两者同向的对照记录。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      对照与 `--eval` 共用同一份 fixture 集合（`_fixture_items`）并写死 `top_k`：
+      两次读数的分母与口径不同就没法比，且历史上正是"换个口径就能造出提升"
+      （整格内全量排序与管线不同构，同一份数据从 5→13 缩回 12/19），所以口径与 `top_k`
+      写进基线文件，不符就退 2。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      基线写成本地运行件、不入库、不进 CI：它是数字快照，入库会在并发合并时撞行，
+      而"生成物里不写数字"的前提正是数字不入库。退出码把两类结果分开：退 1 = 查出变差
+      （报警，命令本身成功执行），退 2 = 不可比（缺基线、`top_k` 不同），不给读数。
+  - who: agent
+    when: "2026-10-07"
+    type: eval
+    conclusion: >-
+      判据复跑（worktree，本机 Windows，2026-10-07）：
+      `python -m unittest tests.test_rank_candidates` 十四条全过（改前九条）；
+      真实仓库上 `--write-baseline` 写 27 条 fixture（skip 1 条：期望 case 不在索引里）、
+      recall@5 15/27、进前三 15，`--compare-baseline` 报无变差、exit 0；
+      覆盖读数 `sig 80/168、tok 142/168`；`--eval` 新输出与 `origin/main` 的旧输出逐行相同。
+  - who: agent
+    when: "2026-10-07"
+    type: decision
+    conclusion: >-
+      判 validated：判据可复现、已实测通过，索引侧证据被改坏这条路径有测试护住。
+      **边界**：五个测试都在临时目录的合成索引上跑，真数据上"某次改动让某条 fixture 掉出候选"
+      还没有出现过；覆盖下降只是提示，具体成因（同格子多出竞争 case，还是索引行自己的证据变了）
+      要人看。未做：把它接进 `--gate` 或 CI（需要先攒对照记录）。

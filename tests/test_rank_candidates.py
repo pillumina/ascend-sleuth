@@ -4,9 +4,14 @@
 排序错=候选顺序错=诊断先看错的 case；而排序是纯计算，出错没有任何别的信号会报。
 """
 
+import contextlib
+import io
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -83,6 +88,89 @@ class RankCandidatesTest(unittest.TestCase):
         rows = [row("A", score=0.5)]
         e = rc.evaluate(rows, [("A", "x"), ("NOT-IN-KB", "x")], rc._key_score)
         self.assertEqual(e["n"], 1)
+
+
+class RankBaselineSentinelTest(unittest.TestCase):
+    """阶段一排序的预警哨兵（--write-baseline / --compare-baseline）。
+
+    护三件事：同一份树前后对照报「无变差」并退 0；索引侧证据变了必须报变差并退 1；
+    不可比时明确退化而不是给读数（没有基线退 2、两边 top_k 不同退 2）。
+    夹具在临时目录现造（一格索引 + 一条 fixture），不复用真实知识库。
+    """
+
+    TEXT = "CUDA error 719 observed during inference"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = Path(self.tmp.name)
+        (self.root / "eval" / "golden").mkdir(parents=True, exist_ok=True)
+        self.base = self.root / ".s2-replay" / "rank-baseline.yaml"
+        self._write_index([row("VLLM-ASC-1", sig=["CUDA error 719"], tok=["cuda", "error"]),
+                           row("VLLM-ASC-2", tok=["hang"]),
+                           row("VLLM-ASC-3", tok=["timeout"])])
+        self._write_fixture("fx-a.fixture.yaml", "VLLM-ASC-1")
+
+    def _write_index(self, rows):
+        doc = {"namespaces": {"inference/vllm-ascend": {"interrupt": rows}}}
+        (self.root / "knowledge").mkdir(parents=True, exist_ok=True)
+        (self.root / "knowledge" / "_index.yaml").write_text(
+            yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+    def _write_fixture(self, name, case_id):
+        (self.root / "eval" / "golden" / name).write_text(
+            yaml.safe_dump({"expected": {"case_id": case_id}, "input": {"symptoms": self.TEXT}},
+                           allow_unicode=True), encoding="utf-8")
+
+    def _run(self, fn, *a):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = fn(*a)
+        return code, out.getvalue(), err.getvalue()
+
+    def test_write_then_compare_no_change(self):
+        code, _out, _err = self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 0)
+        doc = yaml.safe_load(self.base.read_text(encoding="utf-8"))
+        self.assertEqual(doc["key"], "lexical")
+        self.assertEqual(doc["top_k"], 5)
+        self.assertEqual(doc["fixtures"], {"fx-a.fixture.yaml": 1})
+
+        code, out, _err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 0)
+        self.assertIn("无变差", out)
+
+    def test_compare_reports_regression_and_exits_1(self):
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        # 改动后：期望 case 丢了字面量分支，同格子多出 5 条更强的竞争者
+        rows = [row("VLLM-ASC-1", tok=["cuda", "error"])]
+        rows += [row(f"VLLM-ASC-{i}", sig=["CUDA error 719"]) for i in range(4, 9)]
+        self._write_index(rows)
+
+        code, out, _err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 1)
+        self.assertIn("变差", out)
+        self.assertIn("fx-a.fixture.yaml", out)
+        self.assertIn("未进候选", out)
+
+    def test_compare_without_baseline_returns_2(self):
+        code, _out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("--write-baseline", err)
+
+    def test_top_k_mismatch_is_not_comparable(self):
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        code, _out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 3)
+        self.assertEqual(code, 2)
+        self.assertIn("不可比", err)
+
+    def test_fixture_with_unknown_case_is_skipped(self):
+        self._write_fixture("fx-gone.fixture.yaml", "VLLM-ASC-999")
+        code, out, _err = self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 0)
+        self.assertIn("skip 1 条", out)
+        doc = yaml.safe_load(self.base.read_text(encoding="utf-8"))
+        self.assertEqual(list(doc["fixtures"]), ["fx-a.fixture.yaml"])
 
 
 if __name__ == "__main__":
