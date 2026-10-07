@@ -276,18 +276,20 @@ class RankBaselineCompareTest(unittest.TestCase):
         self.assertIn("build_index.py", err)
         self.assertNotIn("无变差", out)
 
-
     def test_write_baseline_without_evaluable_fixture_reports_cause(self):
-        """写基线侧同样退 2 且不落盘；「夹具改名或删除」与「没有夹具」分开说明。"""
+        """写基线侧同样退 2 且不落盘；「夹具改名或删除」与「没有夹具」分开说明；已存在的旧基线不被覆盖。"""
         (self.root / "eval" / "golden" / "fx-a.fixture.yaml").unlink()
         self._write_fixture("fx-gone.fixture.yaml", "VLLM-ASC-999")
+        self.base.parent.mkdir(parents=True, exist_ok=True)
+        self.base.write_text("old-baseline: keep-me\n", encoding="utf-8")
         code, out, err = self._run(rc.cmd_write_baseline, self.root, self.base, 5)
         self.assertEqual(code, 2)
         self.assertIn("夹具与索引对不上", err)
         self.assertIn("build_index.py", err)
-        self.assertFalse(self.base.exists())
+        self.assertEqual(self.base.read_text(encoding="utf-8"), "old-baseline: keep-me\n")
         self.assertNotIn("基线已写入", out)
 
+        self.base.unlink()
         (self.root / "eval" / "golden" / "fx-gone.fixture.yaml").unlink()
         code, out, err = self._run(rc.cmd_write_baseline, self.root, self.base, 5)
         self.assertEqual(code, 2)
@@ -295,7 +297,6 @@ class RankBaselineCompareTest(unittest.TestCase):
         self.assertNotIn("build_index.py", err)
         self.assertFalse(self.base.exists())
         self.assertNotIn("基线已写入", out)
-
 
 if __name__ == "__main__":
     unittest.main()
