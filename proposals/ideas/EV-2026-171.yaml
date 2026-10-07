@@ -1,0 +1,137 @@
+# ============================================================
+# EV-2026-171 —— 非诊断样本真正不进命中率：判据由人下，工具链四层都读它
+# 来源：用户要求把 eval 机制做到位（已确认的落点清单之外，分析时发现的第三处「说了没做」）。
+#       机制文档 §3 早写「非诊断样本不进命中率……判据：输入文件里没有可判别信号」，
+#       但 `git grep 非诊断` 在 scripts/ 下零命中——只有口径、没有读取方。
+# 脱敏：只含仓库内路径、命令与聚合数字
+# ============================================================
+
+id: EV-2026-171
+layer: L2
+target_component: scripts/eval_arena.py
+title: "非诊断样本不进命中率：校准集行标注 → 池行 → stats 单列 → 账本两侧条数 → 向量再滤"
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: '2026-10-07'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户要求把已分析清楚、值得落地的 eval 机制落点全部落地，需要人介入的先问；
+      文本不带黑话与比喻，并给出利害与判断依据。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      改前 `docs/mechanism/eval-arena.md` §3 已把「非诊断样本不进命中率」写成落地的读数口径，
+      连同判据（「输入文件里没有可判别信号 = 非诊断样本」），但 `scripts/` 下没有任何读取方：
+      `--stats` 把它算进命中率分母，`--gate` 的配对把它算进去，`scripts/s2_replay.py --prepare`
+      还会让 agent 为它白跑一次完整诊断（没有可判别信号的输入，任何诊断都不会有结论）。
+    trajectory:
+      - "docs/mechanism/eval-arena.md §3 读数口径第 2 条（只有口径、没有读取方）"
+      - "docs/mechanism/rsi-mechanism.md §8 已知缺口（同类：规则写了、代码没读）"
+hypothesis: >-
+  在校准集行上把「输入里没有可判别信号」这件事标出来（`non_diagnostic`，真值或一句原因），
+  让池构建、评分、门控、结果协商四层都读这个标记：该行不进命中率分母、不进配对、不进逐条向量、
+  不进吸收指纹，也不再让 `s2_replay` 为它准备输入或催人跑诊断。判据由人下、不由代码猜——
+  按正文长度之类的特征自动判会把「描述简短但仍可判别」的样本一起剔掉，那是把分母改小而冒充变好。
+predicted_effect:
+  metric: >-
+    标了 `non_diagnostic` 的样本是否出现在命中率分母、配对与逐条向量里，以及 `s2_replay`
+    是否为它准备输入/催跑诊断
+  from: >-
+    `docs/mechanism/eval-arena.md` §3 写着这条口径，但 `scripts/eval_arena.py` 与
+    `scripts/s2_replay.py` 全文没有读取方；标了也没用，`--stats` 照旧把它算进分母与配对，
+    `--todo` 照旧列出它。
+  to: >-
+    校准集行可标 `non_diagnostic`（真值或一句原因）；`--build-pool` 把标注带进池行并在
+    指纹与 `scored` 计数里排除它；`--stats` 写 `non_diagnostic_rows`（id + 原因）并从分母、
+    配对、逐条向量、`judged_ids` 剔除；`--gate` 账本记两侧条数；`cmd_rc_check` 同样跳过；
+    `--todo` 不再列出它、`--collect` 打印跳过条数；`scripts/s2_calibration.py` 重新生成校准集时
+    不会丢掉说明。
+  measure:
+    command: |
+      python3 -c "import sys,unittest;t=unittest.TextTestRunner(verbosity=0).run(unittest.defaultTestLoader.loadTestsFromName('tests.test_eval_arena_stats.NonDiagnosticRowTest'));print('VERDICT PASS' if t.wasSuccessful() else 'VERDICT FAIL');sys.exit(0 if t.wasSuccessful() else 1)"
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前：`tests/test_eval_arena_stats.py` 十九个测试（没有非诊断样本这一类）；
+    `--stats` 没有 `non_diagnostic_rows`；标了 `non_diagnostic` 的行照旧进命中率分母与配对；
+    `python scripts/s2_replay.py --todo` 会把 12980 列进待测列表。
+  success_criteria: >-
+    ①`NonDiagnosticRowTest` 四个测试通过（标注行被单列且不进分母与逐条向量；未标注的行照旧计数；
+    手写 stats 的逐条向量也被 `vectors()` 滤掉且不进配对；`--build-pool` 原样带标注、没标的不带键、
+    指纹只算参与判定的行）；②`python scripts/eval_arena.py --self-test` 全部断言通过；
+    ③真实的 12980 行标上 `non_diagnostic` 后，`--build-pool` 打印「非诊断样本 1 条」且指纹随之改变，
+    `--stats` 打印剔除行并把缺 result 列表里 12980 去掉，`s2_replay --todo` 不再列出它、
+    `--collect` 打印跳过条数；④`python scripts/verify_proposals.py --check`、
+    `python scripts/build_docs_index.py --check`、`python scripts/build_index.py --check` 通过；
+    ⑤`python -m unittest discover tests` 的失败集合与 `origin/main` 上一致。
+  rollback: "回退该提交即可；校准集里的标注删掉一条键即恢复原口径，池与 stats 都是本地运行件。"
+gate:
+  condition: >-
+    出现「没有 `non_diagnostic` 标注的行被排除在分母之外」或「有标注的行仍进配对/指纹」；
+    或有人为了让某次判定好看而给可判别的样本补标注（标注必须写得出一句可复核的原因）。
+risk: low
+principle_refs: [6, 10, 11]
+actual_cost:
+  tokens: 14000
+  source: estimate
+  note: >-
+    口径：改 `scripts/eval_arena.py`（`judged_rows`、`build_pool` 带标注、`vectors` 过滤、
+    `cmd_stats`/`cmd_gate`/`cmd_pool`/`cmd_rc_check` 的读数与跳过）、`scripts/s2_replay.py`
+    （prepare/collect/todo 三处跳过与打印）、`scripts/s2_calibration.py`（生成的注释串）、
+    `eval/s2/vllm-ascend.yaml`（头部说明 + 12980 行标注）、`docs/mechanism/eval-arena.md` 六处、
+    `tests/test_eval_arena_stats.py`（一个新测试类）、产卡、判据复跑、PR body；估 1.4 万，
+    未计独立预核与回修。
+decisions:
+  - who: agent
+    when: "2026-10-07"
+    type: proposal
+    conclusion: >-
+      采纳「把这条口径真正接上」，判据由人下、落在校准集行上（`non_diagnostic`），不按正文长度
+      或关键词自动判定。自动判定会把「描述简短但可判别」的样本一起剔出分母，效果与放宽标准同类，
+      而这条卡要修的是「口径写了没有读取方」，不是把分母改小。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      非诊断行与 `held_out` 行走同一条排除口径，且都不进吸收指纹。理由：它被吸收不改变这次判定
+      测的是检索还是背诵，算进指纹只会在每次沉淀后造出假过期；而 `judged_ids` 与指纹必须来自
+      同一份行集合，否则存储指纹与重算指纹不等，一样是假过期。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      端到端也接上：改 `scripts/s2_replay.py` 的 `prepare`/`collect`/`todo` 三处，标了
+      `non_diagnostic` 的样本不再准备输入、不再进入待测列表、报告里单列跳过条数。
+      理由是这一层不接，agent 仍会为一段没有可判别信号的正文跑一次完整诊断，
+      产出的 result 必然是「没命中」——那会直接污染命中率读数。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      `scripts/s2_calibration.py` 生成的 `_comment` 里补一句标注含义与后果。这份工具会重新生成
+      校准集，注释不在生成的串里，下一次重新生成就会把说明丢掉，人再看到这行就只能猜。
+  - who: agent
+    when: "2026-10-07"
+    type: eval
+    conclusion: >-
+      判据复跑（worktree，本机 Windows，2026-10-07）：
+      `python -m unittest tests.test_eval_arena_stats` 二十三个测试全过（改前十九个）；
+      `python scripts/eval_arena.py --build-pool` 报判定池 10 条、非诊断样本 1 条（12980）、
+      回归池 10 条，指纹为 `e9cf8ad8ff91`；`python scripts/s2_replay.py --todo` 的待测列表里
+      已无 12980，`--collect` 报「跳过非诊断样本 1 条（12980）」。
+  - who: agent
+    when: "2026-10-07"
+    type: decision
+    conclusion: >-
+      判 validated：判据可复现、已实测通过，非诊断样本不进分母这条路径有测试护住。
+      **边界**：判据是人的判断，工具只保证「标了就一致地生效」，不保证「标得对」；标注必须写出
+      一句可复核的原因（12980 的正文只有环境信息、`### Describe the bug` 段为空）。
+      未做：给校准集里其它可疑行（流程类、题面自带修复链接）定标——那些不是「没有可判别信号」，
+      属另一类口径问题，留给增量处理。
