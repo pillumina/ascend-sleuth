@@ -452,3 +452,96 @@ class HeldOutSkipTest(unittest.TestCase):
         # （同一份池两边算出不同指纹，--gate 会拒绝一份本来有效的判定）。
         self.assertTrue(s["absorption_recheck"]["checked"])
         self.assertFalse(s["absorption_recheck"]["stale"])
+
+
+ND_POOL = """\
+name: pool-nd
+split: selection
+issues:
+  - {id: "101", expected_ns: "inference/vllm-ascend", fix_ref: "PR#1"}
+  - {id: "102", expected_ns: "inference/vllm-ascend", fix_ref: "PR#2"}
+  - {id: "103", expected_ns: "", fix_ref: "", non_diagnostic: "正文只有环境信息，没有可判别症状"}
+"""
+
+ND_POOL_UNMARKED = """\
+name: pool-nd
+split: selection
+issues:
+  - {id: "101", expected_ns: "inference/vllm-ascend", fix_ref: "PR#1"}
+  - {id: "102", expected_ns: "inference/vllm-ascend", fix_ref: "PR#2"}
+  - {id: "103", expected_ns: "", fix_ref: ""}
+"""
+
+
+class NonDiagnosticRowTest(unittest.TestCase):
+    """非诊断样本（输入里没有可判别信号）不进命中率分母与配对。
+
+    文档 docs/mechanism/eval-arena.md §3 早就写了这条口径，但全仓没有读取方——与 held_out
+    同一类"说了没做"。这里钉住四件事：显式标注→单列并剔出一切指标与指纹行集合；没标注的行
+    照旧参与（只认标注，不从正文猜）；手写 stats 带着这一行时配对也滤掉；--build-pool 把
+    校准集行上的标注原样带进池行。
+    """
+
+    def _stats(self, results, pool=None):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        arena = root / ".s2-replay" / "arena"
+        arena.mkdir(parents=True)
+        (arena / "pool-nd.yaml").write_text(pool or ND_POOL, encoding="utf-8")
+        for iid, text in results.items():
+            (root / ".s2-replay" / f"{iid}.result.yaml").write_text(text, encoding="utf-8")
+        self.assertEqual(ea.cmd_stats(root, arena / "pool-nd.yaml"), 0, "cmd_stats 应成功")
+        return yaml.safe_load((arena / "stats-pool-nd.yaml").read_text(encoding="utf-8"))
+
+    def test_marked_row_is_singled_out_and_not_scored(self):
+        s = self._stats({"101": NEW_STYLE, "102": OLD_STYLE, "103": OLD_STYLE})
+        self.assertEqual([r["id"] for r in s["non_diagnostic_rows"]], ["103"])
+        self.assertIn("环境信息", s["non_diagnostic_rows"][0]["reason"], "原因要照原样带出来")
+        self.assertEqual(s["metrics"]["hit"]["n"], 2, "命中率分母不含非诊断样本")
+        self.assertEqual(s["issues_scored"], 2)
+        self.assertEqual([v["id"] for v in s["issues"]], ["101", "102"])
+        self.assertNotIn("103", s["judged_ids"], "参与判定的行集合不含非诊断样本")
+
+    def test_unmarked_row_still_counts(self):
+        """只认显式标注，不从正文猜：没标注的行照旧进分母。"""
+        s = self._stats({"101": NEW_STYLE, "102": NEW_STYLE, "103": OLD_STYLE},
+                        pool=ND_POOL_UNMARKED)
+        self.assertEqual(s["non_diagnostic_rows"], [])
+        self.assertEqual(s["metrics"]["hit"]["n"], 3)
+
+    def test_hand_written_stats_vector_is_filtered(self):
+        """手写/旧版 stats 带着这一行：配对也滤掉（--stats 之外的第二道），不给它造出翻转。"""
+        s = self._stats({"101": NEW_STYLE, "102": NEW_STYLE})
+        other = dict(s, issues=list(s["issues"]) + [
+            {"id": "103", "hit": True, "route_ok": True, "rc_match": None, "non_diagnostic": True}])
+        self.assertNotIn("103", ea.vectors(other))
+        self.assertEqual(ea.decide(s, other, 0.1)["paired"]["n_common"], 2)
+
+    def test_build_pool_carries_the_flag(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        d = root / "eval" / "s2"
+        d.mkdir(parents=True)
+        (d / "pool.yaml").write_text("""\
+calibration:
+- issue: 111
+  split: selection
+  expected: {namespace: inference/vllm-ascend, category: interrupt, fix_commit: "PR #1"}
+  non_diagnostic: "正文只有环境信息，没有可判别症状"
+- issue: 222
+  split: selection
+  expected: {namespace: inference/vllm-ascend, category: interrupt, fix_commit: "PR #2"}
+""", encoding="utf-8")
+        out = root / ".s2-replay" / "arena" / "pool-val.yaml"
+        self.assertEqual(
+            ea.build_pool(root, "eval/s2/pool.yaml", "val", "selection", False, str(out)), 0)
+        pool = yaml.safe_load(out.read_text(encoding="utf-8"))
+        rows = {it["id"]: it for it in pool["issues"]}
+        self.assertIn("环境信息", str(rows["111"].get("non_diagnostic")))
+        self.assertNotIn("non_diagnostic", rows["222"], "没标的行不带这个键")
+        # 指纹只算参与判定的行：标了非诊断的那条不进指纹
+        self.assertEqual(pool["absorption_rev"],
+                         ea.absorption_rev(ea.judged_rows(pool["issues"]), ea.case_index(root)))
+        self.assertEqual(len(ea.judged_rows(pool["issues"])), 1)

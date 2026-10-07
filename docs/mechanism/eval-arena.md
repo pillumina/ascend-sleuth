@@ -29,7 +29,8 @@ closed 且 state_reason=completed（resolution 可溯）+ 实体 Bug/Usage 内�
 #14306/#14265/#14082/#13974/#13792/#13719/#13627/#13441/#13379/#13339/#13255/#12933/#12677/#12658
 ——覆盖 interrupt/performance/precision 与 DS-V4-Flash/GLM-5.2/MTP/PD/mooncake 等族。
 expected 标注（namespace/category/fix_ref）由 agent 读 issue 线程产出；**工具只提供池文件与校验，
-标注是协议**（与 S2 同构）。
+标注是协议**（与 S2 同构）。标注时若发现输入里没有可判别信号（正文空白、只有环境信息），在校准集行上
+标 `non_diagnostic`（真值，或一句原因；空字符串等同未标注）；这类行不进命中率分母、不进配对、也不进吸收指纹，见 §3。
 
 **吸收分流（2026-10 落地）**：`--build-pool` 从同一份校准集派生两条池：判定池 `pool-val.yaml`
 （`role: judgment`，只留未吸收样本）与回归池 `pool-val-absorbed.yaml`
@@ -82,6 +83,8 @@ namespace/category/hit_case/root_cause/rc_match/route，另见下条 `ground_tru
 前者是配对检验的输入（没有它，判定只能退回点估计，判词上限降为 weak_accept），后者是"量尺身份"
 （池内容变＝换量尺，复用计数归零）。逐条向量只收参与判定的行：`held_out: true` 的行整体跳过，
 跳过条数记在 `held_out_skipped`，向量条目带 `held_out` 字段（恒为假，只为读起来能对上口径）。
+标了 `non_diagnostic` 的行同样整体跳过（不读 result、不进指标、不进向量），清单记在
+`non_diagnostic_rows`（id + 原因）。
 `--stats` 同时把本次重算的吸收状态指纹写进 `absorption_recheck`（§2）。
 
 test/selection 分离前单池运行，分数标注 source: issue-replay。
@@ -89,7 +92,9 @@ test/selection 分离前单池运行，分数标注 source: issue-replay。
 **两条读数口径（实测喂出来的，别绕过）**：
 
 1. **路由率的分母只算"有真值"的条目**：池条目可能只有 resolution、没有 `expected_ns`（实测一批 20 条里 11 条如此，它们是从 issue 池直接选的、没人标注归属）。把这类算进路由率会凭空造出失败——`--stats` 因此把它们排除在分母外并打印条数，`route_ok.unjudgeable` 字段可读。
-2. **非诊断样本不进命中率**：issue 正文为空、或 resolution 是"请把问题描述清楚"这类（实测 1 条：标题 `[Bug]: wait`、正文空白），任何诊断都不可能有结论。这类样本要么单列、要么从命中率分母剔除，否则同时高估（分母虚增）与低估（拉低命中率）。判据：输入文件里没有可判别信号 = 非诊断样本。
+2. **非诊断样本不进命中率（2026-10 落地，此前只有口径、没有读取方）**：issue 正文里没有可判别的现象（空白，或只有环境信息）、或 resolution 是"请把问题描述清楚"这类（实测 1 条：标题 `[Bug]: wait`、正文只有 `### Your current environment` 段的环境信息、末尾 `### 🐛Describe the bug` 段为空），任何诊断都不可能有结论。这类样本要么单列、要么从命中率分母剔除，否则同时高估（分母虚增）与低估（拉低命中率）。
+   判据：**输入文件里没有可判别信号即非诊断样本**——判据由人下（读校准集那一行的输入），代码不按正文长度猜：机器猜会把"描述简短但可判别"的样本一并剔掉，那是把不可判的样本算成失败。空字符串等同未标注（`non_diagnostic: ""` 与 `false` 都按未标注处理，该行照旧进判定）。
+   落点：校准集行上的 `non_diagnostic`（真值或一句原因）→ `--build-pool` 原样带进池行 → `--stats` 单列 `non_diagnostic_rows`，并从命中率分母、逐条向量与吸收指纹里剔除（不进指纹的理由同 `held_out`：它被吸收不改变这次判定测的是检索还是背诵，算进去只会造出假过期）；`--gate` 把两侧条数记进账本，手写/旧版 stats 带着这类向量时 `vectors()` 再滤一道。
 
 **本轮全量重放结果（20/20 条已评分）**：路由 9/9（只有 9 条有路由真值）、命中 **2/20**、结论一致（root_cause_ok）13/20。命中低是**符合预期**的：S2 池从"未沉淀的 closed issue"里选样，池本身就是**覆盖缺口的探针**——它按设计就该大量 miss（miss 即"库里没有这条知识"的缺口信号，走补 case 候选）；它不是"已有 case 的外部验证通道"。
 
@@ -107,7 +112,7 @@ test/selection 分离前单池运行，分数标注 source: issue-replay。
    而 `--gate` 从未执行它——属于文档承诺了、工具没接线；现在把这个范围写进账本，不再声称命令做了它没做的事；
 3. **提升门（配对 + 复用折减）**：在 selection 池上候选侧 vs baseline 重放对照（`held_out: true` 的行
    跳过：不读 result、不进指标、不进配对——终判子集不参与门控。无回归的比率取自 stats 的 `metrics`，
-   手写 stats 要自己把 `held_out` 行剔除）。判定不是
+   手写 stats 要自己把 `held_out` 行与非诊断行剔除）。判定不是
    "两个比例各看一遍、涨了就收"，而是只数**同一批 issue 上方向不一致的对子**（candidate
    独家命中 b / baseline 独家命中 c）做精确单侧检验，并与阈值比：**判定阈值 α_eff = α/(k+1)**，
    k 是同一份池（同名 + 同内容哈希）上已做过的判定次数。三态判词：
@@ -121,7 +126,8 @@ test/selection 分离前单池运行，分数标注 source: issue-replay。
    不通过则 **回滚**（git revert / 分支丢弃）；
 4. **账本**：`scripts/eval_arena.py --gate` 把 候选 id / 组件 / 分数对照 / 配对读数（b、c、p）/
    复用序号 k / α 与 α_eff / 判词 / 无回归范围（`no_regression_scope: arena-pool-only`）/
-   两侧的吸收状态重判记录（`absorption_recheck`，判定时刻重算所得）append 进 `.s2-replay/arena/impact.yaml`（本地；结论随方法论
+   两侧的吸收状态重判记录（`absorption_recheck`，判定时刻重算所得）/ 两侧的非诊断样本条数
+   （`non_diagnostic_rows`）append 进 `.s2-replay/arena/impact.yaml`（本地；结论随方法论
    PR 投影）。同一份池复用次数达阈值由判据层报出（`proposals/gates.yaml` 的
    `pool_reuse_uncontrolled`，读数见 `scripts/evolution_health.py`）——**复用超限的动作是重新选样
    （换量尺、计数归零）或扩池**，不是把标准说松；
@@ -148,21 +154,24 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
   同时按吸收状态拆出 `<同名>-absorbed.yaml`（`role: regression`）；两个池文件各写自己的 `absorption_rev`
   （§2 的指纹，判定池与回归池行不同，各算一份）；`--case-prefix` 指定 case 实名前缀（默认 `VLLM-ASC`，
   文件名 stem 还要匹配 §2 那条命名规则，否则该 case 不算命中）；
-- `--pool <yaml>`：校验池文件结构，并打印吸收状态指纹与 `held_out` 条数；
+- `--pool <yaml>`：校验池文件结构，并打印吸收状态指纹、`held_out` 条数与非诊断样本条数；
 - `--stats <pool>`：聚合各 issue 的 result → 指标 + 逐条向量 + 池哈希（写 .s2-replay/arena/stats-*.yaml）。
   `held_out: true` 的行跳过（不读 result、不进指标、不进逐条向量），跳过条数记 `held_out_skipped`；
+  标了 `non_diagnostic` 的行同样跳过，清单（id + 原因）记 `non_diagnostic_rows`；
   顶层另写 `case_prefix`、`judged_ids`（本池参与判定的每一行 id；判定时刻的重算靠它，
   不能用逐条向量代替——没跑 replay 的样本不在向量里，按向量重算会把指纹算成空字符串的哈希、
   把有效的池误判成不新鲜）与 `absorption_recheck: {rev_pool, rev_now, checked, stale, newly_absorbed}`——
   判定前先看 `stale`（`--stats` 恒退 0，判定以 `--gate` 为准；`--gate` 在判定时刻自己再算一遍，见 §2）。**先复制一份 baseline stats 再跑改后侧**——两次 `--stats` 写同一个文件名，覆盖掉 baseline
   就没有配对数据了（`cp stats-pool-val.yaml baseline.yaml` 之后才重跑）；
 - `--gate --baseline <stats-a> --candidate <stats-b> [--alpha 0.1]`：配对判定（accept /
-  weak_accept / reject）+ 追加影响账本；判定时刻按 stats 记下的逐行样本 id 重算吸收状态
+  weak_accept / reject）+ 追加影响账本（含两侧的非诊断样本条数 `non_diagnostic_rows`）；
+  判定时刻按 stats 记下的逐行样本 id 重算吸收状态
   （stats 没记这份 id 时写明"判定时刻无法重算"并沿用原读数，见 §2），
   任一侧对不上则不出判词、退出码 3、不写账本（退出码表见 §4）；
 - `--self-test`：复现判词（合成样本，无需本地池数据；CI 跑它）；
 - `--rc-check <pool>`：结论一致离线对照（agent root_cause vs 标注 resolution_summary，
-  启发式信号 + 人工核验清单——归因层/结论一致的评分件，auto 不终判）；`held_out: true` 的行同样跳过。
+  启发式信号 + 人工核验清单——归因层/结论一致的评分件，auto 不终判）；`held_out: true` 的行与
+  非诊断行同样跳过（两类都不可能有可判的结论）。
 
 ## 6. 与既有机制的关系
 

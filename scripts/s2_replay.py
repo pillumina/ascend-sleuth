@@ -16,6 +16,9 @@
 #   - 根因匹配：诊断结论是否命中 issue resolution 的**关键语义**（fix PR 意图/根因要点）
 #     - 自动判定是弱信号（关键词重叠），只标 candidate_match；人工复核定稿
 #   - 输出：replay 记录 + 缺口信号（知识库无 case 命中的 issue = 补 case 候选）
+#   - 非诊断样本（校准集行标了 non_diagnostic：输入里没有可判别信号）三步都跳过：
+#     跑一遍也不会有结论，产输入/列待测/进报告都只是白花一次完整诊断（口径见
+#     docs/mechanism/eval-arena.md §3）。跳过的条数与 id 会打印出来。
 #
 # 用法：
 #   python3 scripts/s2_replay.py --prepare    # 产 replay 输入清单
@@ -51,6 +54,7 @@ def prepare(root: Path):
     out_dir = root / REPLAY_DIR
     out_dir.mkdir(exist_ok=True)
     n = 0
+    skipped_nd = []
     tool_note = (
         "【工具边界：本评测验证完整诊断能力】\n"
         "- 允许使用工具查公开信息：gh api 拉模型 config.json / 查官方文档 / clone 上游源码 grep 报错行\n"
@@ -66,6 +70,10 @@ def prepare(root: Path):
             continue
         for e in doc.get("calibration", []):
             issue = e.get("issue")
+            if e.get("non_diagnostic"):
+                # 输入里没有可判别信号：跑一遍也不会有结论，产输入只是白花一次完整诊断。
+                skipped_nd.append(str(issue))
+                continue
             sym = (e.get("input") or {}).get("symptoms", "")
             if not sym:
                 continue
@@ -78,6 +86,9 @@ def prepare(root: Path):
             (out_dir / f"{issue}.md").write_text(content, encoding="utf-8")
             n += 1
     print(f"s2_replay: 已产出 {n} 个 replay 输入 → {out_dir}/（含工具边界与分层归因提示）")
+    if skipped_nd:
+        print(f"s2_replay: 跳过非诊断样本 {len(skipped_nd)} 条（{'、'.join(skipped_nd)}）："
+              f"输入里没有可判别信号，跑了也不会有结论")
 
 
 def collect(root: Path, report_path: Path):
@@ -85,12 +96,17 @@ def collect(root: Path, report_path: Path):
     results_dir = root / REPLAY_DIR
     rows = []
     attribution_entries = []
+    nd_skipped = []
     for f in sorted((root / S2_DIR).glob("*.yaml")):
         doc = load_yaml(f)
         if not isinstance(doc, dict):
             continue
         for e in doc.get("calibration", []):
             issue = e.get("issue")
+            if e.get("non_diagnostic"):
+                # 与 arena 同口径：这类样本不进命中率，也不该出现在评分报告里当"未跑"。
+                nd_skipped.append(str(issue))
+                continue
             expected = e.get("expected", {})
             res_txt = expected.get("resolution", "") or ""
             fix_ref = expected.get("fix_commit", "") or ""
@@ -193,18 +209,26 @@ def collect(root: Path, report_path: Path):
         )
     report_path.write_text("\n".join(lines), encoding="utf-8")
     print(f"s2_replay: 报告已写 {report_path}")
+    if nd_skipped:
+        print(f"s2_replay: 跳过非诊断样本 {len(nd_skipped)} 条（{'、'.join(nd_skipped)}）："
+              f"输入里没有可判别信号，不进这份评分报告")
 
 
 def todo(root: Path):
     """列出未 replay 的校准集条目（供 agent 驱动批量测试），按 confidence 优先。"""
     conf_order = {"high": 0, "medium": 1, "pending": 2}
     rows = []
+    nd_skipped = []
     for f in sorted((root / S2_DIR).glob("*.yaml")):
         doc = load_yaml(f)
         if not isinstance(doc, dict):
             continue
         for e in doc.get("calibration", []):
             issue = e.get("issue")
+            if e.get("non_diagnostic"):
+                # 别把"没有可判别信号"的样本排进待测：跑一遍也不会有结论。
+                nd_skipped.append(str(issue))
+                continue
             res_file = root / REPLAY_DIR / f"{issue}.result.yaml"
             if res_file.exists():
                 continue
@@ -213,6 +237,9 @@ def todo(root: Path):
                 issue, f.stem, e.get("title", ""), e.get("expected", {}).get("confidence", "?"),
             ))
     rows.sort(key=lambda r: r[0])
+    if nd_skipped:
+        print(f"s2_replay: 非诊断样本 {len(nd_skipped)} 条已跳过（{'、'.join(nd_skipped)}）："
+              f"输入里没有可判别信号，跑了也不会有结论（docs/mechanism/eval-arena.md §3）")
     if not rows:
         print("s2_replay: 校准集全部已 replay（无待测）")
         return
