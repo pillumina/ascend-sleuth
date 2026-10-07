@@ -28,8 +28,8 @@ source_signals:
     evidence: >-
       文档与代码互相矛盾：`docs/mechanism/eval-arena.md` §2 写「实体 Bug/Usage 内容（排除
       Doc/营销类与 not_planned）」——`[Usage]` 在收；而代码的黑名单把 `[Usage]` 拉黑，且放行
-      「labels 为空」与「labels 含 `triaged`」两种几乎恒真的情形（同一窗口按 `triaged` 查回 400
-      条，labels 这一条恒真：旧规则放行 339 条、该挡的都得靠标题才挡得住）。判据写在人脑里，机器那侧等于没筛。
+      「labels 为空」与「labels 含 `triaged`」两种近乎恒真的情形（同一窗口按 `triaged` 查回 400
+      条，labels 这一条在该窗口内恒真：旧规则放行 339 条、该挡的都得靠标题才挡得住）。判据写在人脑里，机器那侧等于没筛。
     trajectory:
       - "docs/mechanism/eval-arena.md 第 2 节（池构建与筛选规则）"
       - "scripts/s2_calibration.py:NON_BUG_PREFIXES（6 项）与 is_bug_candidate"
