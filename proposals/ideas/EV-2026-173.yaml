@@ -28,8 +28,8 @@ source_signals:
     evidence: >-
       文档与代码互相矛盾：`docs/mechanism/eval-arena.md` §2 写「实体 Bug/Usage 内容（排除
       Doc/营销类与 not_planned）」——`[Usage]` 在收；而代码的黑名单把 `[Usage]` 拉黑，且放行
-      「labels 为空」与「labels 含 `triaged`」两种几乎恒真的情形（同一窗口 400 条里带 `triaged`
-      的占绝大多数）。判据写在人脑里，机器那侧等于没筛。
+      「labels 为空」与「labels 含 `triaged`」两种几乎恒真的情形（同一窗口按 `triaged` 查回 400
+      条，labels 这一条恒真：旧规则放行 339 条、该挡的都得靠标题才挡得住）。判据写在人脑里，机器那侧等于没筛。
     trajectory:
       - "docs/mechanism/eval-arena.md 第 2 节（池构建与筛选规则）"
       - "scripts/s2_calibration.py:NON_BUG_PREFIXES（6 项）与 is_bug_candidate"
@@ -74,7 +74,8 @@ validation:
     上有一条既有的环境性失败：`StaleMeasureDepTest.test_self_created_outside_path_is_not_a_dependency`
     在 Windows 下断言 `/tmp/...` 路径，改动前的主检出上同样失败）；③`python scripts/eval_arena.py --self-test`、
     `python scripts/verify_proposals.py --check`、`python scripts/build_docs_index.py --check`
-    与其余仓库门通过；④`python -m unittest discover -s tests -t .` 的失败集合与 `origin/main` 一致。
+    与其余仓库门通过；④`python -m unittest discover -s tests -t .` 的失败集合与分支父提交
+    （`363b188`，当时的 `origin/main`）逐条一致。
   rollback: "回退该提交即可；校准集与池文件是本地运行件（.s2-replay/ 已 gitignore），无需数据迁移。"
 gate:
   condition: >-
@@ -122,7 +123,7 @@ decisions:
       （`StaleMeasureDepTest.test_self_created_outside_path_is_not_a_dependency` 断言 `/tmp/...` 路径，
       改动前的主检出上同样失败，非本次引入）；`python scripts/eval_arena.py --self-test`
       通过；`python scripts/verify_proposals.py --check` 与 `python scripts/build_docs_index.py --check`
-      通过；`python -m unittest discover -s tests -t .` 的失败集合与分支父 `363b188` 逐条相同
+      通过；`python -m unittest discover -s tests -t .` 的失败集合与分支父提交 `363b188` 逐条相同
       （本机本分支 `Ran 349`、分支父 `Ran 346`，差值 3 条即本卡的测试）。
       同一窗口（closed + `triaged`，最近 400 条）量过一次：旧规则通过 339 条、新判据 331 条；
       现有 20 条校准集里只有 `#12490`（`[Misc]` 被硬拒前缀挡）与 `#12947`（弱信号）会被挡。

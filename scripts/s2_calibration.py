@@ -72,7 +72,7 @@ def candidate_signal(issue: dict) -> str:
     """候选强度：`bug` = 有明确缺陷信号（标题前缀或 bug 标签）；`weak` = 只靠 `triaged` 标签或无前缀。
 
     分两档是为了让"要人看一眼"的样本浮出来而不是被静默吞掉：`triaged` 是近乎恒真的标签
-    （2026-10 实测 400 条窗口里带它的占绝大多数），用它当放行条件等于没筛。
+    （2026-10 在同一窗口按它查回 400 条，这一条条件恒真），用它当放行条件等于没筛。
     """
     title = (issue.get("title") or "").strip()
     if any(title.startswith(p) for p in BUG_TITLE_PREFIXES):
