@@ -54,10 +54,13 @@ stem 里 138 个匹配，31 个不匹配（都是没有 issue 号的自有名，
 的行不计入：终判子集本来就不进判定，它被吸收不改变这次判定测的是检索还是背诵，把它算进去只会
 造出假过期（同一份池在存储与重算两边得出不同指纹，一份本来有效的判定被拒）。指纹只覆盖本池的
 行，不用整库 case 实名集合——后者会把任何一条与样本无关的新 case 也算成池过期，而沉淀是本仓常态，
-门会长期拒绝出判词，最后被人绕过。`--stats` 与 `--gate` 每次使用前重算这个指纹：不一致说明池里某条
-样本的答案已被吸收，`--gate` 不出判词、退出码 3、不写影响账本（作废的运行不得推高复用计数），stderr
-列出新被吸收的样本 id 并提示重跑 `--build-pool` 与 `--stats`。池文件没有该字段时（旧池、手写池）按
-未校验放行，但两条命令都会写明"新鲜度无法校验"——"没有校验"必须与"校验通过"可区分（原则十）。
+门会长期拒绝出判词，最后被人绕过。`--stats` 每次重算这个指纹并把结论写进 stats；`--gate` 在判定时刻
+按 stats 里记下的逐行样本 id 再算一遍——沉淀可能正好落在 `--stats` 与 `--gate` 之间，沿用那份记录就会
+漏掉这一段。对不上说明池里某条样本的答案已被吸收：`--gate` 不出判词、退出码 3、不写影响账本（作废的
+运行不得推高复用计数），stderr 列出新被吸收的样本 id 并提示重跑 `--build-pool` 与 `--stats`。`--stats`
+本身恒退 0（它是产物生成器，不是判定命令），发现不新鲜在 stdout 打一行警告，判定以 `--gate` 为准。
+池文件没有该字段时（旧池、手写池）按未校验放行，但两条命令都会写明"新鲜度无法校验"——"没有校验"
+必须与"校验通过"可区分（原则十）。
 
 ## 3. 评分口径（复用 S2 result schema）
 
@@ -98,10 +101,11 @@ test/selection 分离前单池运行，分数标注 source: issue-replay。
 1. 候选 = EV 卡（前置元流程，带 before 反例）；
 2. **无回归（本池指标不降）**：`--gate` 只校验这一层，账本记 `no_regression_scope: arena-pool-only`。
    golden 全量无回归是**另一步**：`scripts/replay_golden.py` 逐条 fixture 跑完整诊断（每条都要模型），
-   目前是手动/半自动步骤（M2 雏形），**不在 `--gate` 命令内**。2026-10 之前本节把它写成门控的第 2 步，
+   目前是手动/半自动步骤（golden 回放半自动化的雏形），**不在 `--gate` 命令内**。2026-10 之前本节把它写成门控的第 2 步，
    而 `--gate` 从未执行它——属于文档承诺了、工具没接线；现在把这个范围写进账本，不再声称命令做了它没做的事；
 3. **提升门（配对 + 复用折减）**：在 selection 池上候选侧 vs baseline 重放对照（`held_out: true` 的行
-   跳过：不读 result、不进指标、不进配对——终判子集不参与门控）。判定不是
+   跳过：不读 result、不进指标、不进配对——终判子集不参与门控。无回归的比率取自 stats 的 `metrics`，
+   手写 stats 要自己把 `held_out` 行剔除）。判定不是
    "两个比例各看一遍、涨了就收"，而是只数**同一批 issue 上方向不一致的对子**（candidate
    独家命中 b / baseline 独家命中 c）做精确单侧检验，并与阈值比：**判定阈值 α_eff = α/(k+1)**，
    k 是同一份池（同名 + 同内容哈希）上已做过的判定次数。三态判词：
@@ -114,7 +118,8 @@ test/selection 分离前单池运行，分数标注 source: issue-replay。
    即可判"提升"）。配对检验让"一次翻转"不再自动成立，复用折减让"反复用同一个池刷通过"自动变难。
    不通过则 **回滚**（git revert / 分支丢弃）；
 4. **账本**：`scripts/eval_arena.py --gate` 把 候选 id / 组件 / 分数对照 / 配对读数（b、c、p）/
-   复用序号 k / α 与 α_eff / 判词 append 进 `.s2-replay/arena/impact.yaml`（本地；结论随方法论
+   复用序号 k / α 与 α_eff / 判词 / 无回归范围（`no_regression_scope: arena-pool-only`）/
+   两侧的吸收状态重判记录（`absorption_recheck`，判定时刻重算所得）append 进 `.s2-replay/arena/impact.yaml`（本地；结论随方法论
    PR 投影）。同一份池复用次数达阈值由判据层报出（`proposals/gates.yaml` 的
    `pool_reuse_uncontrolled`，读数见 `scripts/evolution_health.py`）——**复用超限的动作是重新选样
    （换量尺、计数归零）或扩池**，不是把标准说松；
@@ -144,15 +149,17 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 - `--pool <yaml>`：校验池文件结构，并打印吸收状态指纹与 `held_out` 条数；
 - `--stats <pool>`：聚合各 issue 的 result → 指标 + 逐条向量 + 池哈希（写 .s2-replay/arena/stats-*.yaml）。
   `held_out: true` 的行跳过（不读 result、不进指标、不进逐条向量），跳过条数记 `held_out_skipped`；
-  顶层另写 `case_prefix` 与 `absorption_recheck: {rev_pool, rev_now, checked, stale, newly_absorbed}`——
-  判定前先看 `stale`。**先复制一份 baseline stats 再跑改后侧**——两次 `--stats` 写同一个文件名，覆盖掉 baseline
+  顶层另写 `case_prefix`、`judged_ids`（本池参与判定的每一行 id；判定时刻的重算靠它，
+  不能用逐条向量代替——没跑 replay 的样本不在向量里，按向量重算会把指纹算成空字符串的哈希、
+  把有效的池误判成不新鲜）与 `absorption_recheck: {rev_pool, rev_now, checked, stale, newly_absorbed}`——
+  判定前先看 `stale`（`--stats` 恒退 0，判定以 `--gate` 为准；`--gate` 在判定时刻自己再算一遍，见 §2）。**先复制一份 baseline stats 再跑改后侧**——两次 `--stats` 写同一个文件名，覆盖掉 baseline
   就没有配对数据了（`cp stats-pool-val.yaml baseline.yaml` 之后才重跑）；
 - `--gate --baseline <stats-a> --candidate <stats-b> [--alpha 0.1]`：配对判定（accept /
-  weak_accept / reject）+ 追加影响账本；任一侧 `absorption_recheck.stale` 为真则不出判词、退出码 3、
-  不写账本（退出码表见 §4）；
+  weak_accept / reject）+ 追加影响账本；判定时刻按 stats 记下的逐行样本 id 重算吸收状态，
+  任一侧对不上则不出判词、退出码 3、不写账本（退出码表见 §4）；
 - `--self-test`：复现判词（合成样本，无需本地池数据；CI 跑它）；
 - `--rc-check <pool>`：结论一致离线对照（agent root_cause vs 标注 resolution_summary，
-  启发式信号 + 人工核验清单——归因层/结论一致的评分件，auto 不终判）。
+  启发式信号 + 人工核验清单——归因层/结论一致的评分件，auto 不终判）；`held_out: true` 的行同样跳过。
 
 ## 6. 与既有机制的关系
 
@@ -179,6 +186,6 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
 | golden 无回归 + val 严格提升 + 回滚 | 一（验证先于交付）、七（变更可逆） |
 | 门控是数据门槛不替代人闸（dual 仍双签） | 五（建议与决定分离）、六（闸门硬度） |
 | 配对 + 复用折减 + 三态判词（weak_accept 不算通过） | 十（诚实退化：证据不足就说不足，不把"看起来涨了"当门控通过）、十一（判据本身也要可证伪——`--self-test` 进 CI） |
-| 池从 ingest 候选按规则选、test 分离按规模闸门 | 十一（数据触发） |
+| 池从 ingest 候选按规则选、test 分离按判定池条数 | 十一（数据触发） |
 | 评估池按吸收状态分流（已落地）与扩容（待数据） | 十（诚实退化：已沉淀的样本进回归池，不虚增判定样本）、十一（数据触发） |
 | 吸收状态在运行期重判、无回归范围写进账本（`arena-pool-only`）、"没有校验"与"校验通过"可区分 | 十（诚实退化：池不新鲜就拒绝出判词；命令没做的事不写成做到了）、六（闸门硬度：拒绝要机械可判） |

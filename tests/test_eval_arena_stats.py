@@ -259,9 +259,10 @@ class AbsorptionRuntimeRecheckTest(unittest.TestCase):
     """吸收状态在运行期重判：池建好之后，沉淀闭环仍可能把样本的答案写进知识库。
 
     那时池测的是背诵而不是检索能力，而 `--gate` 照样会出判词——这是本轮要消掉的假绿。
-    两件事必须成立：①`--stats` 每次重算指纹并把结论写进 stats；②`--gate` 见到不新鲜就拒绝
+    三件事必须成立：①`--stats` 每次重算指纹并把结论写进 stats；②`--gate` 在判定时刻自己重算
+    （沉淀可能正好落在 `--stats` 与 `--gate` 之间，沿用那份记录就会漏掉），见到不新鲜就拒绝
     出判词，且**不写账本**（账本里的复用计数不得被一次作废运行推高，否则误判一次就永久收紧
-    阈值）。池文件没有指纹（旧池、手写池）时**不拦**，但必须说明"无法校验"——"没有校验"与
+    阈值）；③池文件没有指纹（旧池、手写池）时**不拦**，但必须说明"无法校验"——"没有校验"与
     "校验通过"混淆，诚实退化就退化成静默放行。
     """
 
@@ -334,6 +335,61 @@ calibration:
         self.assertIn("511", err.getvalue(), "要说清是哪条样本进了库，否则无法定位")
         self.assertFalse((self.root / ea.IMPACT_REL).exists(),
                          "判词作废时不得写账本：复用计数不得被作废运行推高")
+
+    def test_gate_rechecks_at_decision_time_not_from_stale_stats(self):
+        """池在 `--stats` 之后才变旧：判定时刻必须重算，不沿用那份旧读数。
+
+        这是 `--stats` 与 `--gate` 之间的窗口——stats 里还写着"不新鲜为假"，而沉淀在那之后
+        把样本的答案写进了库。沿用记录就会照常出判词并推高复用计数。
+        """
+        pf = self._build()
+        s = self._stats(pf, "r")
+        self.assertFalse(s["absorption_recheck"]["stale"])
+        f1 = self._write(self.root / "a.yaml", s)
+        self._plant_case("512")                      # 落在这个窗口里
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            rc = ea.cmd_gate(self.root, f1, f1, "triage:demo", "EV-TEST", "", 0.1)
+        self.assertEqual(rc, 3, "stats 之后变旧也必须拒绝：新鲜度以判定时刻为准")
+        self.assertIn("512", err.getvalue())
+        self.assertFalse((self.root / ea.IMPACT_REL).exists())
+
+    def test_gate_recomputes_without_vectors_from_recorded_ids(self):
+        """池里一条 replay 结果都没有时，判定时刻仍要能按 stats 记下的行 id 重算。
+
+        逐条向量是配对检验的输入，没跑 replay 的样本不在向量里；拿向量当行集合重算，指纹
+        会算成空字符串的哈希，把一份本来有效的池误判成不新鲜——假过期与真过期的读数长得
+        一样，而这一池根本没被吸收。
+        """
+        for iid in ("511", "512"):
+            (self.root / ".s2-replay" / f"{iid}.result.yaml").unlink()
+        pf = self._build()
+        s = self._stats(pf, "r")
+        self.assertEqual(s["issues"], [], "没跑 replay 时不该有逐条向量")
+        self.assertEqual(s["judged_ids"], ["511", "512"], "行集合要单独记，不能靠向量推")
+        self.assertFalse(s["absorption_recheck"]["stale"])
+        f1 = self._write(self.root / "a.yaml", s)
+        self._plant_case("512")
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            rc = ea.cmd_gate(self.root, f1, f1, "triage:demo", "EV-TEST", "", 0.1)
+        self.assertEqual(rc, 3, "没有向量也要按行 id 重算，该拒就拒")
+        self.assertIn("512", err.getvalue())
+        self.assertNotIn("e3b0c44298fc", err.getvalue(),
+                         "空字符串的哈希说明行集合取错了（假过期）")
+
+    def test_stats_without_judged_ids_says_it_cannot_recheck(self):
+        """本字段落地前的 stats 有指纹、没行集合：说明"判定时刻无法重算"，不假装校验过。"""
+        pf = self._build()
+        s = self._stats(pf, "r")
+        s.pop("judged_ids")
+        f1 = self._write(self.root / "a.yaml", s)
+        self._plant_case("512")
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            rc = ea.cmd_gate(self.root, f1, f1, "triage:demo", "EV-TEST", "", 0.1)
+        self.assertEqual(rc, 0, "算不了就沿用 --stats 的读数并写明，不因此改变判词")
+        self.assertIn("无法重算", err.getvalue())
 
     def test_pool_without_fingerprint_passes_as_unchecked(self):
         rows = [{"id": "511", "expected_ns": "inference/vllm-ascend",

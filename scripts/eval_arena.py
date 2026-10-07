@@ -166,6 +166,33 @@ def absorption_recheck(root, rows, rev_pool, case_prefix="VLLM-ASC"):
             "stale": bool(checked and rev_pool != rev_now), "newly_absorbed": newly}
 
 
+def recheck_from_stats(root, s, idx=None):
+    """按 stats 里记下的逐行样本 id，在判定时刻重算吸收状态。
+
+    `--stats` 那一刻的读数会随 stats 文件一起留下来，但池可能在两次命令之间变旧：沉淀
+    落在 `--stats` 与 `--gate` 之间时，那份记录还是旧的。stats 记着本池参与判定的每一行
+    id（`judged_ids`），所以 `--gate` 不必读池文件就能在判定时刻重算。
+
+    两种"算不了"要分开，都不能当成"校验通过"：池文件没有指纹（`checked=False`，旧池、
+    手写池）原样返回那份记录；有指纹但没记行集合的 stats（本字段落地前的产物）返回
+    `recomputed=False` 并沿用 `--stats` 那一刻的读数，由调用方写明"判定时刻无法重算"。
+    """
+    rc = s.get("absorption_recheck")
+    rc = rc if isinstance(rc, dict) else None
+    if not (rc and rc.get("checked")):
+        return rc
+    ids = s.get("judged_ids")
+    if not isinstance(ids, list):
+        return dict(rc, recomputed=False)
+    idx = case_index(root) if idx is None else idx
+    case_prefix = s.get("case_prefix") or "VLLM-ASC"
+    rows = [{"id": i} for i in ids]
+    live = absorption_rev(rows, idx, case_prefix)
+    newly = [str(r.get("id")) for r in rows if f"{case_prefix}-{r.get('id')}" in idx]
+    return dict(rc, rev_now=live, stale=bool(rc.get("rev_pool") != live),
+                newly_absorbed=newly, recomputed=True)
+
+
 def build_pool(root, source, name, split, only_scored, out, case_prefix="VLLM-ASC"):
     src = pool_path(root, source)
     if not src.exists():
@@ -460,6 +487,10 @@ def cmd_stats(root, pool_file):
     rows = judged_rows(pool["issues"])
     recheck = absorption_recheck(root, rows, pool.get("absorption_rev"), case_prefix)
     stats["absorption_recheck"] = recheck
+    # 参与判定的行 id 写进 stats：`--gate` 只拿到 stats、拿不到池文件，判定时刻要靠这份 id
+    # 重算指纹。不能拿逐条向量（`issues`）当行集合——没跑 replay 的样本不在向量里，按向量
+    # 重算会把指纹算成空串的哈希、把一份有效的池误判成不新鲜。
+    stats["judged_ids"] = [r.get("id") for r in rows]
     stats["issues_total"] = len(pool["issues"])
     stats["issues_scored"] = n_hit
     stats["held_out_skipped"] = n_held
@@ -514,10 +545,12 @@ def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note, alp
     # 运行期重判：池建好之后，沉淀闭环可能已经把某些样本的答案写进了知识库。此时这一池测的
     # 是「背下来的题」而不是检索能力，而判词照样会出——所以拦在这里，并且**不写账本**：
     # 账本里的复用计数不得被一次作废的运行推高，否则误判一次就永久收紧了阈值。
+    # 重算发生在判定时刻，不沿用 stats 里那份可能已过时的读数：沉淀可能正好落在
+    # `--stats` 与 `--gate` 之间。
+    idx = case_index(root)
     rechecks = {}
     for side, s in (("baseline", b), ("candidate", c)):
-        rc = s.get("absorption_recheck")
-        rc = rc if isinstance(rc, dict) else None
+        rc = recheck_from_stats(root, s, idx)
         rechecks[side] = rc
         if rc and rc.get("checked") and rc.get("stale"):
             print(f"eval_arena: {side} 的池已不新鲜——建池之后这些样本的答案进了知识库：\n"
@@ -530,6 +563,9 @@ def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note, alp
             print(f"eval_arena: {side} 的 stats 没有可用的吸收状态重判记录"
                   f"（旧 stats、手写 stats，或池文件缺少 absorption_rev）——"
                   f"样本是否已被吸收无法校验，本次判定按未校验放行。", file=sys.stderr)
+        elif rc.get("recomputed") is False:
+            print(f"eval_arena: {side} 的 stats 没记逐行样本 id（judged_ids 落地前的产物）——"
+                  f"判定时刻无法重算，沿用 --stats 那一刻的读数。", file=sys.stderr)
 
     imp = root / IMPACT_REL
     ledger = load(imp) if imp.exists() else {"_comment": "arena 影响账本（append-only）",
@@ -699,7 +735,12 @@ def cmd_rc_check(root, pool_file):
         return 1
     ann_dir = root / ARENA_SUBDIR / "annotations"
     out_rows = []
+    n_held = 0
     for it in pool["issues"]:
+        if it.get("held_out"):
+            # 终判子集不进判定，也不进这份对照（与 --stats/--gate 同一口径）。
+            n_held += 1
+            continue
         iid = it["id"]
         ann = ann_dir / f"{iid}.yaml"
         rp = root / S2_RESULT_REL.format(iid)
@@ -725,6 +766,8 @@ def cmd_rc_check(root, pool_file):
     lm = sum(1 for x in out_rows if x["signal"] == "likely_mismatch")
     print(f"== rc 离线对照：{n} 条（启发式信号，需人工核验；写入 {out}）==")
     print(f"  likely_match {lk} / likely_mismatch {lm} / unclear {n - lk - lm}")
+    if n_held:
+        print(f"  held_out（终判集）{n_held} 条已跳过：不参与判定，也不进这份对照")
     for x in out_rows:
         print(f"  #{x['id']} [{x['signal']}] agent: {x['agent_rc'][:70]}")
     return 0
