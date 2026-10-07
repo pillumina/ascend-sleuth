@@ -39,9 +39,12 @@
 #
 # 退出码：0 = 正常；1 = 输入/参数问题（无文本、ns 不存在），或 --compare-baseline 查出变差
 # （报警，不是用法错误）；2 = --compare-baseline 不可比、没有读数：缺基线文件、基线读不出来或不是
-# 合法 YAML、基线是空文件、基线里没有逐条名次、基线里的名次不是整数或 null、口径不符（排序键不同
-# 或 top_k 不同）、基线里的 fixture 名与现状一个都对不上、现状一条 fixture 都评不了。
-# 不可比的每一路都打印可直接复制的重写命令，且都不打印「无变差」这类肯定读数。
+# 合法 YAML、基线是空文件、基线里没有逐条名次、基线里的名次不是整数或 null、基线里的名次超出
+# 1..top_k 范围、口径不符（排序键不同或 top_k 不同）、基线里的 fixture 名与现状一个都对不上、
+# 现状一条 fixture 都评不了。
+# 不可比的每一路都打印原因、且都不打印「无变差」这类肯定读数；「缺基线/读不出来/口径不符/名次非法
+# 或越界/零重叠」这几路给可直接复制的重写基线命令，「现状一条 fixture 都评不了」给重建索引与补夹具
+# 的下一步（那条要修的不是基线）。
 #
 # 强度如实标注：本排序器只解决**排序**——它不判候选是否相关（那是 quickly_check 阶段二的事），
 # 也不改任何 case 内容；sig 只覆盖有字面量分支的 case（当前 74/159，覆盖率如实打印）。
@@ -313,7 +316,7 @@ def cmd_compare_baseline(root: Path, path: Path, top_k: int) -> int:
               file=sys.stderr)
         print(rewrite, file=sys.stderr)
         return 2
-    bad = [n for n, v in b_fx.items()
+    bad = [(n, v) for n, v in b_fx.items()
            if v is not None and (isinstance(v, bool) or not isinstance(v, int))]
     if bad:
         print(f"基线里的名次不是整数或 null：{bad[:3]}——不可比，没有读数", file=sys.stderr)
@@ -329,6 +332,13 @@ def cmd_compare_baseline(root: Path, path: Path, top_k: int) -> int:
         print(f"按同一 top_k 重写基线再对照："
               f"python3 scripts/rank_candidates.py --write-baseline {path} --top {top_k}",
               file=sys.stderr)
+        return 2
+    out_of_range = [(n, v) for n, v in b_fx.items()
+                    if v is not None and not (1 <= v <= b_top)]
+    if out_of_range:
+        print(f"基线里的名次超出 1..{b_top} 范围：{out_of_range[:3]}——不可比，没有读数",
+              file=sys.stderr)
+        print(rewrite, file=sys.stderr)
         return 2
     b_key = base.get("key")
     if b_key not in (None, "lexical"):

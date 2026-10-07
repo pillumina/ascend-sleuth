@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # EV-2026-170 —— 排序侧改动给一条自动对照：同构口径前后各算一遍名次，变差报警
 # 来源：用户认可「排序口径先当预警、不当门槛」（本会话讨论中的 A′），要求把已分析清楚、
 #       值得落地的 eval 机制落点全部落地。
@@ -60,12 +60,12 @@ validation:
     `tests/test_rank_candidates.py` 九个测试（都只测排序与覆盖统计，没有基线读写）；
     脚本无 `BASELINE_DEFAULT`，`main()` 无 `--write-baseline`/`--compare-baseline`。
   success_criteria: >-
-    ①`RankBaselineCompareTest` 十三个测试通过（同一份树前后对照退 0 且报无变差；索引侧证据被改坏
+    ①`RankBaselineCompareTest` 十四个测试通过（同一份树前后对照退 0 且报无变差；索引侧证据被改坏
     后报变差并退 1；期望 case 不在索引里的 fixture 被跳过；各条不可比路径都退 2 且不出肯定读数——
     缺基线文件、基线不是合法 YAML、基线是空文件、基线里没有逐条名次、基线里的名次不是整数或 null、
     排序键不同、`top_k` 不同、基线里的名字与现状一个都对不上、现状一条 fixture 都评不了；
     夹具改名单列为"不计入变差"而不是报成排序变差）；
-    ②`python -m unittest tests.test_rank_candidates` 二十二条全过（改前九条）；
+    ②`python -m unittest tests.test_rank_candidates` 二十三条全过（改前九条）；
     ③新旧 `--eval` 输出逐行相同（`Compare-Object` 差异 0 行），既有读数不因新增子命令而变；
     ④`python scripts/verify_proposals.py --check`、`python scripts/build_docs_index.py --check`
     与其余仓库门通过；⑤`python -m unittest discover tests` 的失败集合与 `origin/main` 上一致。
@@ -86,7 +86,7 @@ actual_cost:
     按第一轮独立预核意见补 `cmd_compare_baseline` 的读盘与格式异常处理、排序键校验、改名 fixture
     的归因分流，并把用户可见输出里的比喻改掉；按第二轮意见补零重叠退 2、名次值必须是整数或 null、
     两条不可比路径补重写命令、不可评夹具的归因分流）、`tests/test_rank_candidates.py` 新增一个测试类
-    （十三个测试）、`docs/guide/eval.md` 加一节、产卡、判据复跑、两轮独立预核与回修、PR body；
+    （十四个测试）、`docs/guide/eval.md` 加一节、产卡、判据复跑、三轮独立预核与回修、PR body；
     估 1.5 万，不含预核轮次。
 decisions:
   - who: agent
@@ -145,10 +145,21 @@ decisions:
       措辞里"共五种"改为一句话枚举，避免与代码漂移。
   - who: agent
     when: "2026-10-07"
+    type: action
+    conclusion: >-
+      按第三轮独立预核意见收口（该轮无阻断项，四条非阻断）：①名次值原来只校验类型不校验范围，
+      基线写 `0`/`-1` 会假报"名次后退"退 1、写 `6`/`99`（大于候选窗口）会假报"变好"并给
+      "无变差"退 0——补 1..top_k 范围判定，越界与类型非法走同一条退 2；②坏值原来只打印 fixture
+      名不打印坏值，改为打印 `(名, 值)` 对，读者不必开文件；③脚本头注与 `docs/guide/eval.md`
+      把"不可比的每一路都给可直接复制的重写基线命令"收窄为"重写基线这几路给重写命令、
+      '现状一条 fixture 都评不了'给重建索引与补夹具的下一步"（那条要修的不是基线）；
+      ④测试类 docstring 的"一格索引 + 一条 fixture"改"若干条"。
+  - who: agent
+    when: "2026-10-07"
     type: eval
     conclusion: >-
       判据复跑（worktree，本机 Windows，2026-10-07）：
-      `python -m unittest tests.test_rank_candidates` 二十二条全过（改前九条）；
+      `python -m unittest tests.test_rank_candidates` 二十三条全过（改前九条）；
       真实仓库上 `--write-baseline` 写 27 条 fixture（skip 1 条：期望 case 不在索引里）、
       recall@5 15/27、进前三 15，`--compare-baseline` 报无变差、exit 0；
       覆盖读数 `sig 80/168、tok 142/168`；`--eval` 新输出与 `origin/main` 的旧输出逐行相同。
@@ -157,7 +168,7 @@ decisions:
     type: decision
     conclusion: >-
       判 validated：判据可复现、已实测通过，索引侧证据被改坏这条路径有测试护住。
-      **边界**：十三个测试都在临时目录的合成索引上跑，真数据上"某次改动让某条 fixture 掉出候选"
+      **边界**：十四个测试都在临时目录的合成索引上跑，真数据上"某次改动让某条 fixture 掉出候选"
       还没有出现过；覆盖下降只是提示，具体成因（同格子多出竞争 case，还是索引行自己的证据变了）
       要人看。未做：把它接进 `--gate` 或 CI（需要先攒对照记录）；`scripts/replay_trace.py` 里另有
       一处"行为差异哨兵"的同类措辞，与本卡无关，留给增量清理。

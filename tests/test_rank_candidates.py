@@ -95,10 +95,11 @@ class RankBaselineCompareTest(unittest.TestCase):
 
     护三件事：同一份树前后对照报「无变差」并退 0；索引侧证据变了必须报变差并退 1；
     不可比时明确退化而不是给读数——没有基线文件、基线读不出来或不是合法 YAML、基线是空文件、
-    基线里没有逐条名次、基线里的名次不是整数或 null、口径不符（排序键或 top_k 不同）、
+    基线里没有逐条名次、基线里的名次不是整数或 null、基线里的名次超出 1..top_k 范围、
+    口径不符（排序键或 top_k 不同）、
     基线里的 fixture 名与现状一个都对不上、现状一条 fixture 都评不了，这些路径都退 2，
     且都不给出「无变差」这类肯定读数。
-    夹具在临时目录现造（一格索引 + 一条 fixture），不复用真实知识库。
+    夹具在临时目录现造（一格索引 + 若干条 fixture），不复用真实知识库。
     """
 
     TEXT = "CUDA error 719 observed during inference"
@@ -247,6 +248,20 @@ class RankBaselineCompareTest(unittest.TestCase):
                 code, out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
                 self.assertEqual(code, 2)
                 self.assertIn("不是整数或 null", err)
+                self.assertNotIn("无变差", out)
+
+    def test_baseline_with_out_of_range_rank_is_not_comparable(self):
+        """基线里的名次必须落在 1..top_k：写 0 或负数会假报「名次后退」退 1，写大于窗口的值会假报「变好」并给「无变差」。"""
+        self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        for value in (0, -1, 6, 99):
+            with self.subTest(value=value):
+                doc = yaml.safe_load(self.base.read_text(encoding="utf-8"))
+                doc["fixtures"]["fx-a.fixture.yaml"] = value
+                self.base.write_text(
+                    yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+                code, out, err = self._run(rc.cmd_compare_baseline, self.root, self.base, 5)
+                self.assertEqual(code, 2)
+                self.assertIn("超出 1..5 范围", err)
                 self.assertNotIn("无变差", out)
 
     def test_no_evaluable_fixture_reports_cause(self):
