@@ -98,7 +98,8 @@ class RankBaselineCompareTest(unittest.TestCase):
     基线里没有逐条名次、基线里的名次不是整数或 null、基线里的名次超出 1..top_k 范围、
     口径不符（排序键或 top_k 不同）、
     基线里的 fixture 名与现状一个都对不上、现状一条 fixture 都评不了，这些路径都退 2，
-    且都不给出「无变差」这类肯定读数。
+    且都不给出「无变差」这类肯定读数；写基线侧（--write-baseline）遇到「一条 fixture 都评不了」
+    同样退 2、不落盘，且与对照侧一样把「夹具改名或删除」与「eval/golden 下没有夹具」分开说明。
     夹具在临时目录现造（一格索引 + 若干条 fixture），不复用真实知识库。
     """
 
@@ -274,6 +275,26 @@ class RankBaselineCompareTest(unittest.TestCase):
         self.assertIn("一条 fixture 都评不了", err)
         self.assertIn("build_index.py", err)
         self.assertNotIn("无变差", out)
+
+
+    def test_write_baseline_without_evaluable_fixture_reports_cause(self):
+        """写基线侧同样退 2 且不落盘；「夹具改名或删除」与「没有夹具」分开说明。"""
+        (self.root / "eval" / "golden" / "fx-a.fixture.yaml").unlink()
+        self._write_fixture("fx-gone.fixture.yaml", "VLLM-ASC-999")
+        code, out, err = self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("夹具与索引对不上", err)
+        self.assertIn("build_index.py", err)
+        self.assertFalse(self.base.exists())
+        self.assertNotIn("基线已写入", out)
+
+        (self.root / "eval" / "golden" / "fx-gone.fixture.yaml").unlink()
+        code, out, err = self._run(rc.cmd_write_baseline, self.root, self.base, 5)
+        self.assertEqual(code, 2)
+        self.assertIn("没有可评的 fixture", err)
+        self.assertNotIn("build_index.py", err)
+        self.assertFalse(self.base.exists())
+        self.assertNotIn("基线已写入", out)
 
 
 if __name__ == "__main__":

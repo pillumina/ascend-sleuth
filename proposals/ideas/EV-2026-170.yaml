@@ -67,7 +67,7 @@ validation:
     不是整数或 null、基线里的名次超出 1..top_k 范围、
     排序键不同、`top_k` 不同、基线里的名字与现状一个都对不上、现状一条 fixture 都评不了；
     夹具改名单列为"不计入变差"而不是报成排序变差）；
-    ②`python -m unittest tests.test_rank_candidates` 二十三条全过（改前九条）；
+    ②`python -m unittest tests.test_rank_candidates` 二十四条全过（改前九条）；
     ③新旧 `--eval` 输出逐行相同（`Compare-Object` 差异 0 行），既有读数不因新增子命令而变；
     ④`python scripts/verify_proposals.py --check`、`python scripts/build_docs_index.py --check`
     与其余仓库门通过；⑤`python -m unittest discover tests` 的失败集合与 `origin/main` 上一致。
@@ -173,7 +173,7 @@ decisions:
     type: eval
     conclusion: >-
       判据复跑（worktree，本机 Windows，2026-10-07）：
-      `python -m unittest tests.test_rank_candidates` 二十三条全过（改前九条）；
+      `python -m unittest tests.test_rank_candidates` 二十四条全过（改前九条）；
       真实仓库上 `--write-baseline` 写 27 条 fixture（skip 1 条：期望 case 不在索引里）、
       recall@5 15/27、进前三 15，`--compare-baseline` 报无变差、exit 0；
       覆盖读数 `sig 80/168、tok 142/168`；`--eval` 新输出与 `origin/main` 的旧输出逐行相同。
@@ -186,3 +186,13 @@ decisions:
       还没有出现过；覆盖下降只是提示，具体成因（同格子多出竞争 case，还是索引行自己的证据变了）
       要人看。未做：把它接进 `--gate` 或 CI（需要先攒对照记录）；`scripts/replay_trace.py` 里另有
       一处"行为差异哨兵"的同类措辞，与本卡无关，留给增量清理。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      第五轮（增量收口）独立预核的唯一非阻断项：`--write-baseline` 在"现状一条 fixture 都评不了"
+      时同样退 2 且不落盘，但脚本头注与 `docs/guide/eval.md` 的退出码 2 只写在对照流程下，
+      且写侧把"夹具改名或删除"与"完全没有夹具"共用一句归因（对照侧第三轮已拆成两种文案）。
+      本条补平：写侧按 `skipped` 是否为空分开说明（"夹具与索引对不上 + 先重建索引" /
+      "没有可评的 fixture"），头注与文档同步声明"写不出一份能对照的基线就不写"，
+      并加一条测试护住（写侧两种归因、不落盘、不打印"基线已写入"）。
