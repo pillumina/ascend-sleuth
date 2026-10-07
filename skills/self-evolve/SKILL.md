@@ -65,8 +65,9 @@ disable-model-invocation: true
 3. **agent 自行验证执行**：按影响面分级选门禁（docs/guide/eval.md「门禁分级」可选层）——
    检索/路由/候选选择面 → golden 子集（2-5 条，基线缓存复用）或 S2 replay
    （replay_golden.py / s2_replay.py）；检索/路由层候选在 arena selection 池可用时
-   加跑 val 前后对照（eval_arena.py --stats/--gate：golden 无回归 + 门控判词 **accept**
-   才算通过，论证见 docs/mechanism/eval-arena.md 可选层）。判词为 `weak_accept`
+   加跑 val 前后对照（eval_arena.py --stats 出分、--gate 出判词：无回归 + 门控判词 **accept**
+   才算通过；golden 无回归不在这两条命令里，由 `scripts/replay_golden.py` 单独跑，
+   论证见 docs/mechanism/eval-arena.md 可选层）。判词为 `weak_accept`
    （提升看起来真实但证据不足）时**不得判 validated**——补样本/扩池重跑，或如实记
    证据不足；同一池反复使用时判定阈值按复用序号收紧，别拿同一个小池反复刷接受。
    **交互/追问/指引面 → ixn

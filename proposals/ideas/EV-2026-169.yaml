@@ -1,0 +1,172 @@
+# ============================================================
+# EV-2026-169 —— 评估池的吸收状态在运行期重判：池不新鲜则拒绝出判词
+# 来源：用户要求把 eval 机制做到位（先后对齐背景与动机，再落地已确认的落点清单）。
+#       上一张卡 EV-2026-167 只把吸收判定落在建池那一刻，池随后会变旧而判定照常出结论。
+# 脱敏：只含仓库内路径、命令与聚合数字
+# ============================================================
+
+id: EV-2026-169
+layer: L2
+target_component: scripts/eval_arena.py
+title: "评估池的吸收状态在运行期重判：指纹对不上则 --gate 退 3、不写账本；held_out 行不进判定"
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: '2026-10-07'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      用户要求把已分析清楚、值得落地的 eval 机制落点全部落地，需要人介入的先问；
+      文本不带黑话与比喻，并给出利害与判断依据。
+    trajectory:
+      - "用户会话输入（本轮；无仓库内出处）"
+  - signal: observation_window
+    evidence: >-
+      吸收判定在改前只发生在 `--build-pool` 那一刻，池文件只记 `absorption` 汇总、不留逐行指纹，
+      池里的样本被沉淀闭环吸收后没有地方能看出来；`--gate` 读 stats 直接出判词。
+      另一处：`held_out` 键在改前全文只有四处（池 schema 注释、`build_pool` 的赋值、
+      池文件注释、结构校验提示），`--stats` 与 `--gate` 都不读它，这条声明只在默认
+      `--split selection` 下侥幸成立。
+    trajectory:
+      - "docs/mechanism/rsi-mechanism.md §8 已知缺口第 4 条（运行时重判这一半未落地）"
+      - "docs/plan/roadmap.md 的评估池扩容条（分流已落地、扩容未落地）"
+hypothesis: >-
+  让两条池文件各记一个逐行吸收状态指纹（`absorption_rev`），`--stats` 每次重算并把结论写进 stats，
+  `--gate` 在判定时刻按 stats 记下的逐行样本 id 再算一遍，池里任一样本的答案事后被吸收时判定就会被
+  拒绝，而不是照旧出结论。指纹只覆盖本池的行，不覆盖整库的 case 实名集合：后者会把任何一条与样本
+  无关的新 case 也算成池过期，而沉淀是本仓常态，门会长期拒绝出判词，最后被人绕过。
+predicted_effect:
+  metric: >-
+    判定池里某条样本的答案事后被吸收时，`--gate` 是照旧出判词还是拒绝出判词；
+    `held_out: true` 的行是否进配对
+  from: >-
+    池文件只记 `absorption` 汇总（`case_prefix`/`cases_in_kb`/`cases_with_prefix`/`samples`/
+    `absorbed`），没有指纹字段；`--stats` 的逐条向量只有 id/hit/route_ok/rc_match；`--gate`
+    结尾是 `return 0 if res["verdict"] == "accept" else 0`（两个分支都返回 0），池过期时照旧
+    出判词并写账本。
+  to: >-
+    两条池文件各记 `absorption_rev`（逐行 `id:该行是否已吸收` 排序拼接后的 sha256 前 12 位）；
+    `--stats` 写 `absorption_recheck`（rev_pool/rev_now/checked/stale/newly_absorbed）、
+    `held_out_skipped`、`case_prefix` 与 `judged_ids`（本池参与判定的每一行 id）；`--gate` 在判定
+    时刻按 `judged_ids` 自己再算一遍（不用那份可能过期的记录），任一侧对不上时退 3、不写账本，
+    unchecked 时写明"新鲜度无法校验"后放行、算不了时写明"判定时刻无法重算"；`held_out: true`
+    的行不读 result、不进指标、不进配对、不进指纹（`vectors()` 再滤一次，挡手写池与旧 stats），
+    `--rc-check` 同样跳过。
+  measure:
+    command: |
+      python3 -c "import sys,unittest;t=unittest.TextTestRunner(verbosity=0).run(unittest.defaultTestLoader.loadTestsFromNames(['tests.test_eval_arena_stats.AbsorptionRuntimeRecheckTest','tests.test_eval_arena_stats.HeldOutSkipTest']));print('VERDICT PASS' if t.wasSuccessful() else 'VERDICT FAIL');sys.exit(0 if t.wasSuccessful() else 1)"
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前：`--self-test` 九条断言（没有 held_out 断言）；`tests/test_eval_arena_stats.py` 十二个
+    测试（没有吸收重判、没有 held_out 跳过）；stats 文件没有 `absorption_recheck`、没有
+    `held_out_skipped`；`--gate` 在任何池状态下都退 0。
+  success_criteria: >-
+    ①`AbsorptionRuntimeRecheckTest` 六个测试通过（写入重判读数并按新被吸收的 id 报出；池变旧时
+    `--gate` 退 3 且不写账本；**判定时刻自己重算——stats 出分之后才被吸收的样本也拦得住**；
+    **一条 replay 结果都没有的池（逐条向量为空）不会因行集合取错被误判成不新鲜**；
+    没有指纹的旧池按未校验放行，本字段落地前的 stats 写明"无法重算"）；②`HeldOutSkipTest` 通过（构造含
+    `held_out: true` 的池，断言它不进指标、不进逐条向量、不进配对，且不进指纹——不因此造出假过期）；③
+    `python scripts/eval_arena.py --self-test` 全部断言通过（含新增第 ⑩ 条）；④
+    `python scripts/verify_proposals.py --check` 与 `python scripts/build_docs_index.py --check` 通过；
+    ⑤`python -m unittest discover tests` 的失败集合与 `origin/main` 上一致。
+  rollback: "回退该提交即可；池文件是本地运行件（.s2-replay/ 已 gitignore），无需数据迁移。"
+gate:
+  condition: >-
+    账本里出现同一份池的复用计数增加、而对应记录吸收状态为"无法校验"或指纹前后不一致；
+    或有人手工改池文件的行集合绕过指纹（改后这种池会被判 stale，正确动作是重跑 `--build-pool`）。
+risk: low
+principle_refs: [6, 10, 11]
+actual_cost:
+  tokens: 20000
+  source: estimate
+  note: >-
+    口径：改 `scripts/eval_arena.py`（两个新函数、判定时刻重算、`build_pool` 写指纹、`cmd_pool`/
+    `cmd_stats`/`cmd_gate` 的新读数与拦截、`vectors` 过滤、`--rc-check` 跳过、`--self-test` 第 ⑩ 条）、
+    `tests/test_eval_arena_stats.py`（两个新测试类）、`docs/mechanism/eval-arena.md`、
+    `docs/mechanism/rsi-mechanism.md`、`docs/plan/roadmap.md`（两处）、两份 skill 的执行指令、
+    产卡、判据复跑、PR body 更新；估 2 万，未计独立预核与回修。
+decisions:
+  - who: agent
+    when: "2026-10-07"
+    type: proposal
+    conclusion: >-
+      采纳「吸收状态在运行期重判」与「`held_out` 真正生效」，落点选在 stats 的 schema 上：
+      `--gate` 只拿到 stats 文件、拿不到池文件，所以重判读数与 held_out 标记必须先写进 stats，
+      否则 `--gate` 这一层没有判据可用。两条合起来修的是一类问题——规则写了、代码没读。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      指纹口径取「本池逐行吸收状态」，不取整库 case 实名集合的哈希。整库哈希下任何人往库里加
+      一条与样本无关的 case，池就整体算过期，而沉淀是本仓常态，门会长期拒绝出判词。逐行口径下
+      只有本池样本的答案被吸收才会让指纹变化，这正是要拦的那件事。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      字段名用 `absorption_rev`，不用 `kb_rev`。`scripts/kb_rev.py` 里的 `kb_rev` 是检出短 sha
+      （`git rev-parse --short HEAD`），已被 trace 写入与多处消费（`scripts/import_trace.py`、
+      `scripts/export_trace.py`、`scripts/check_handoff.py`、`scripts/panel_render_check.js` 等）；
+      同名异物会让跨机版本比对读到另一个值。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      没有指纹字段的池（旧池、手写池）不拦：读数里写明"新鲜度无法校验"、账本记 null。
+      理由是"没有校验"必须与"校验通过"可区分，且旧 stats 仍应可判。判定池与回归池各算一份
+      指纹，因为两条池文件的行不同，共用一份会互相判成不新鲜。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      无回归范围改为写进账本：账本新增 `no_regression_scope: arena-pool-only`，命令末尾打印
+      "golden 无回归由 `scripts/replay_golden.py` 单独跑（要模型），本命令不执行"。
+      原因是 `docs/mechanism/eval-arena.md` 的门控第 2 步写「golden 全部通过」，而
+      `scripts/eval_arena.py` 全文没有 golden 的调用（grep 零命中）；golden 回放每条 fixture 要跑
+      一次完整诊断，成本放在这条命令里不成立，所以改文档与账本，不改命令。
+  - who: agent
+    when: "2026-10-07"
+    type: eval
+    conclusion: >-
+      判据复跑（worktree，本机 Windows，2026-10-07）：
+      `python scripts/eval_arena.py --self-test` 全部断言通过、exit 0（含新增第 ⑩ 条）；
+      `python -m unittest tests.test_eval_arena_stats` 十九个测试全过（改前十二个；按独立预核意见
+      回修后又加了三条：判定时刻重算、无向量池不假过期、缺行集合写明无法重算）；
+      `python scripts/build_docs_index.py --check` 报 26 条文档登记、11 个 skill、2 个落点一致；
+      `python -m unittest discover tests` 报 319 条、failures=10、errors=2，在未改动的
+      `origin/main`（HEAD 0d1ddd9）上跑同样的四个模块得到同一批 12 项失败
+      （`tests.test_generated_plane`、`tests.test_concurrent_submit`、`tests.test_rename_ref`、
+      `tests.test_audit_readings`；例：`tests/test_generated_plane.py:166` 报
+      `TypeError: 'NoneType' object is not subscriptable`），属本机既有的环境性失败，与本改动无关。
+      `python scripts/ev_measure.py EV-2026-169 --run` 报 `VERDICT PASS`（实测 exit=0）；
+      `python scripts/verify_proposals.py --check` 报 166 张卡通过。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      `--gate` 由"读 stats 里记下的重判结论"改为"判定时刻按 stats 记下的逐行样本 id 自己再算一遍"。
+      起因是独立预核给出的反例：建池 → `--stats` → 复制 baseline → 植入同号 case → 用植库前那两份
+      stats 跑 `--gate`，实测仍退 0、照旧出判词并写账本，复用计数被推高；而三处文档把它写成"每次
+      使用前重算"。这是本卡要修的同一类错误（文档承诺了、工具没接线），所以在代码里堵掉这段窗口，
+      而不是把文档改软。回修同时补了 `--rc-check` 跳过 `held_out` 行、账本字段清单与 `--stats`
+      恒退 0 的说明。
+      第一版重算拿 stats 的逐条向量当行集合，实测立刻暴露问题：判定池 10 条样本一条 replay 结果
+      都没有（向量为空），重算出来的指纹是空字符串的哈希 `e3b0c44298fc`，一份有效的池被报成不新鲜、
+      而且"新被吸收的样本 id"是空——假过期与真过期的读数长得一样。改成 `--stats` 另写 `judged_ids`
+      （本池参与判定的每一行 id），`--gate` 按它重算；本字段落地前的 stats 返回"判定时刻无法重算"
+      并沿用原读数，不与"校验通过"混同。教训记在这里：行集合不能从"有结果的样本"里推。
+  - who: agent
+    when: "2026-10-07"
+    type: decision
+    conclusion: >-
+      判 validated：判据可复现、已实测通过，池不新鲜时拒绝出判词这条路径有测试护住。
+      **边界**：判据的强度上限是合成仓库里的行为（植入一个同号 case 文件即触发），真数据里
+      "某条判定样本的答案被吸收"这件事没有发生过，所以拦到的第一例可能是真事件而不是演练。
+      指纹只认 case 实名 `knowledge/**/<case-prefix>-<issue>.yaml`（默认前缀 `VLLM-ASC`），
+      库内换命名规则要显式传 `--case-prefix`。未做：判定池扩容（新增未吸收样本要人工选样与标注）
+      与排序型口径（另一张卡）。

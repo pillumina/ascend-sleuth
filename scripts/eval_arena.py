@@ -6,9 +6,9 @@
 # 否则回滚；结果留影响账本。设计文档 docs/mechanism/eval-arena.md。
 #
 # 目录（本地运行件，gitignore）：.s2-replay/arena/
-#   pool-*.yaml         池清单：{name, split, role, issues:[{id, expected_ns, category,
-#                       fix_ref, held_out, absorbed_case}]}
-#   stats-*.yaml        --stats 聚合输出
+#   pool-*.yaml         池清单：{name, split, role, absorption_rev, issues:[{id, expected_ns,
+#                       category, fix_ref, held_out, absorbed_case}]}
+#   stats-*.yaml        --stats 聚合输出（含吸收状态重判 absorption_recheck）
 #   impact.yaml         --gate 影响账本（append-only）
 # 单 issue 评分复用 .s2-replay/<issue>.result.yaml（S2 result schema：
 # namespace/category/hit_case/rc_match/route）。
@@ -18,6 +18,25 @@
 # 只留未吸收样本。--gate 见到回归池直接拒绝——把"答案已知"的样本算进判定池，等于把
 # 背下来的题当答对。吸收判据用 case 的实名（knowledge/ 下 <前缀>-<issue>.yaml），
 # 不用正文文本：正文提到别的 issue 是常事，文本搜索会把未吸收的样本误判成已吸收。
+#
+# 吸收状态在**运行期重判**，不是只在建池那一刻判一次：沉淀闭环会持续把答案写进
+# knowledge/，池里的样本随时可能从"没解决过"变成"答案已在库里"。这件事发生时，池测的
+# 就不再是检索能力而是背诵，而 --gate 会照常出判词。故 --stats 与 --gate 都按池文件里的
+# `absorption_rev` 重算一次吸收状态：
+#   - 指纹只覆盖**本池参与判定的每一行**，不覆盖整库的 case 实名集合。否则任何人加一条与
+#     样本无关的 case，池就整体算过期——而本仓的常态就是持续沉淀 case，门会长期拒绝出
+#     判词，最终被人绕过。真正决定池子还有效的只有一件事：这些样本行自己有没有被吸收。
+#   - 池文件没有该字段（旧池、手写池）时**不拦**，只报"新鲜度无法校验"，并把它记进 stats
+#     与账本。旧的应仍可判，而"没有校验"必须与"校验通过"可区分（诚实退化）。
+#   - 不新鲜时 --gate 不出判词、退出码 3、**不写账本**：账本里的复用计数不得被这种运行推高。
+#
+# held_out（终判集）也在这一层落实：--stats 不把它的 result 计入任何指标，--gate 再从逐条
+# 向量里滤掉一次（挡住手写 stats 与旧版 stats）。此前该字段只出现在建池与结构校验里，
+# "写了不读"，那条"不参与 gate 决策"的声明只在 --split selection 的默认参数下侥幸成立。
+#
+# 退出码：0 = 判定成立并已写账本（accept / weak_accept / reject 都算"判定成立"——判词是
+# 数据，不是命令失败；把它报成非零会让"测量结果为否"和"测量没法做"混成一个信号）；
+# 1 = 读文件失败或池结构错；2 = 用法/输入问题（缺参、回归池）；3 = 池不新鲜，判词作废。
 #
 # 接受判据（v2：配对 + 复用折减）——**薄弱环节是接受者，不是提议者**。
 #   v1 的规则是"同一个小池子上分数涨了就接受"。反复对同一个池做接受决定，是一串不受控的
@@ -107,6 +126,73 @@ def case_index(root):
     return idx
 
 
+def judged_rows(rows):
+    """参与判定的行：held_out（终判集）不计。
+
+    指纹与运行期重判必须用同一份行集合，否则同一份池在两边算出不同指纹，会造出假过期。
+    """
+    return [r for r in (rows or []) if isinstance(r, dict) and not r.get("held_out")]
+
+
+def absorption_rev(rows, idx, case_prefix="VLLM-ASC"):
+    """池的吸收状态指纹：对本池每一行取"答案是否已进库"，逐行拼接后哈希。
+
+    为什么不用整个知识库的 case 实名集合当指纹：那样任何人往库里加一条与本池样本无关的
+    case，池就整体算过期。本仓的常态就是持续沉淀 case，门会长期拒绝出判词，最后被人绕过。
+    真正决定池子还有效的只有一件事：这些样本行自己有没有被吸收。指纹随本池行的增减而变是
+    应该的（池内容哈希 pool_hash 也在管这件事），随库的无关增长而变是误报。
+    """
+    parts = []
+    for r in rows:
+        cid = f"{case_prefix}-{r.get('id')}"
+        parts.append(f"{r.get('id')}:{1 if cid in idx else 0}")
+    return hashlib.sha256("\n".join(sorted(parts)).encode("utf-8")).hexdigest()[:12]
+
+
+def absorption_recheck(root, rows, rev_pool, case_prefix="VLLM-ASC"):
+    """运行期重判吸收状态：池建好之后，沉淀闭环可能已经把某些样本的答案写进了知识库。
+
+    checked=False 表示池文件没带指纹（旧池、手写池）——此时不拦，但"没有校验"必须与
+    "校验通过"可区分，否则诚实退化会退化成静默放行。
+    """
+    idx = case_index(root)
+    rev_now = absorption_rev(rows, idx, case_prefix)
+    newly = []
+    for r in rows:
+        if f"{case_prefix}-{r.get('id')}" in idx:
+            newly.append(str(r.get("id")))
+    checked = bool(rev_pool)
+    return {"rev_pool": rev_pool or None, "rev_now": rev_now, "checked": checked,
+            "stale": bool(checked and rev_pool != rev_now), "newly_absorbed": newly}
+
+
+def recheck_from_stats(root, s, idx=None):
+    """按 stats 里记下的逐行样本 id，在判定时刻重算吸收状态。
+
+    `--stats` 那一刻的读数会随 stats 文件一起留下来，但池可能在两次命令之间变旧：沉淀
+    落在 `--stats` 与 `--gate` 之间时，那份记录还是旧的。stats 记着本池参与判定的每一行
+    id（`judged_ids`），所以 `--gate` 不必读池文件就能在判定时刻重算。
+
+    两种"算不了"要分开，都不能当成"校验通过"：池文件没有指纹（`checked=False`，旧池、
+    手写池）原样返回那份记录；有指纹但没记行集合的 stats（本字段落地前的产物）返回
+    `recomputed=False` 并沿用 `--stats` 那一刻的读数，由调用方写明"判定时刻无法重算"。
+    """
+    rc = s.get("absorption_recheck")
+    rc = rc if isinstance(rc, dict) else None
+    if not (rc and rc.get("checked")):
+        return rc
+    ids = s.get("judged_ids")
+    if not isinstance(ids, list):
+        return dict(rc, recomputed=False)
+    idx = case_index(root) if idx is None else idx
+    case_prefix = s.get("case_prefix") or "VLLM-ASC"
+    rows = [{"id": i} for i in ids]
+    live = absorption_rev(rows, idx, case_prefix)
+    newly = [str(r.get("id")) for r in rows if f"{case_prefix}-{r.get('id')}" in idx]
+    return dict(rc, rev_now=live, stale=bool(rc.get("rev_pool") != live),
+                newly_absorbed=newly, recomputed=True)
+
+
 def build_pool(root, source, name, split, only_scored, out, case_prefix="VLLM-ASC"):
     src = pool_path(root, source)
     if not src.exists():
@@ -158,11 +244,15 @@ def build_pool(root, source, name, split, only_scored, out, case_prefix="VLLM-AS
     absorption = {"case_prefix": case_prefix, "cases_in_kb": len(idx),
                   "cases_with_prefix": len(prefixed),
                   "samples": len(issues) + len(absorbed_rows), "absorbed": len(absorbed_rows)}
+    # 指纹逐池各算一份：两份池文件的行不同，同一份指纹喂给两边会互相判成不新鲜。
+    rev_judgment = absorption_rev(judged_rows(issues), idx, case_prefix)
+    rev_regression = absorption_rev(judged_rows(absorbed_rows), idx, case_prefix)
     pool = {"name": name, "split": split, "role": "judgment", "source": src_rel,
-            "absorption": absorption,
+            "absorption": absorption, "absorption_rev": rev_judgment,
             "_comment": "由 eval_arena.py --build-pool 从已跟踪的 S2 校准集派生（确定性，可复核）。"
                         "held_out=true 的条目只用于终判，不参与 gate 决策；答案已进知识库的样本"
-                        "被拆到 <同名>-absorbed.yaml（role: regression）。",
+                        "被拆到 <同名>-absorbed.yaml（role: regression）。absorption_rev 是本池"
+                        "吸收状态的指纹，--stats 与 --gate 会重判它——对不上说明池已不新鲜。",
             "issues": issues}
     out_p = pool_path(root, out)
     out_p.parent.mkdir(parents=True, exist_ok=True)
@@ -170,7 +260,7 @@ def build_pool(root, source, name, split, only_scored, out, case_prefix="VLLM-AS
     reg_p = out_p.with_name(f"{out_p.stem}-absorbed{out_p.suffix}")
     reg_p.write_text(yaml.safe_dump({
         "name": f"{name}-absorbed", "split": split, "role": "regression", "source": src_rel,
-        "absorption": absorption,
+        "absorption": absorption, "absorption_rev": rev_regression,
         "_comment": "回归池：这些样本的答案已进知识库（自洽样本 self_consistent），只做 train/"
                     "回归信号，不得作为 --gate 的 baseline/candidate（--gate 直接拒绝）。",
         "issues": absorbed_rows}, allow_unicode=True, sort_keys=False), encoding="utf-8")
@@ -179,6 +269,8 @@ def build_pool(root, source, name, split, only_scored, out, case_prefix="VLLM-AS
     print(f"  判定池 {len(issues)} 条（split={split}）· 其中已有 replay result 的 {scored} 条"
           + (f" · 源里被过滤掉的 test 条目 {from_test}" if from_test else ""))
     print(f"  回归池 {len(absorbed_rows)} 条（答案已进知识库，不参与 gate）→ {reg_p}")
+    print(f"  吸收状态指纹 absorption_rev={rev_judgment}"
+          f"（--stats/--gate 会重判；对不上说明池已不新鲜，判词作废）")
     if absorbed_rows:
         print(f"    吸收判据：knowledge/ 下存在 {case_prefix}-<issue>.yaml（case 实名，非正文提及）")
     if not prefixed:
@@ -204,10 +296,14 @@ def file_hash(path):
 
 # ---------------------------------------------------------------- 配对判定（纯函数，可自检）
 def vectors(stats):
-    """从 stats 取逐条判决向量：{id: {hit, route_ok, rc_match}}。旧 stats 没有 = 空。"""
+    """从 stats 取逐条判决向量：{id: {hit, route_ok, rc_match}}。旧 stats 没有 = 空。
+
+    held_out（终判集）在这里再滤一次：--stats 已经不写它们，但手写 stats 或旧版 stats 可能
+    带着。两道过滤是刻意的——这道挡的是"--stats 之外的入口"，不是同一件事做两遍。
+    """
     out = {}
     for it in (stats or {}).get("issues") or []:
-        if isinstance(it, dict) and it.get("id") not in (None, ""):
+        if isinstance(it, dict) and it.get("id") not in (None, "") and not it.get("held_out"):
             out[str(it["id"])] = it
     return out
 
@@ -304,7 +400,8 @@ def load(path):
 def cmd_pool(root, pool_file):
     pool = load(pool_file)
     if not isinstance(pool, dict) or not isinstance(pool.get("issues"), list):
-        print("池文件结构错误：需 {name, split, issues:[{id, expected_ns, category, fix_ref, held_out}]}",
+        print("池文件结构错误：需 {name, split, absorption_rev, "
+              "issues:[{id, expected_ns, category, fix_ref, held_out}]}",
               file=sys.stderr)
         return 1
     required = {"id", "expected_ns", "fix_ref"}
@@ -321,6 +418,15 @@ def cmd_pool(root, pool_file):
           f"{len(pool['issues'])} 条，校验通过")
     if role == "regression":
         print("  ⚠ 回归池：样本答案已进知识库（自洽样本），只做回归信号，不得用于 --gate 判定")
+    if pool.get("absorption_rev"):
+        print(f"  吸收状态指纹 absorption_rev={pool['absorption_rev']}"
+              f"（--stats/--gate 会重判它是否仍新鲜）")
+    else:
+        print("  ⚠ 池文件没有 absorption_rev：--stats 无法校验这些样本是否已被吸收"
+              "（旧池或手写池），判定时按未校验放行。")
+    n_held = sum(1 for it in pool["issues"] if it.get("held_out"))
+    if n_held:
+        print(f"  held_out（终判集）{n_held} 条：不参与 gate 决策（docs/mechanism/eval-arena.md §1）")
     return 0
 
 
@@ -328,14 +434,22 @@ def cmd_stats(root, pool_file):
     pool = load(pool_file)
     if not pool:
         return 1
+    case_prefix = str((pool.get("absorption") or {}).get("case_prefix") or "VLLM-ASC")
     stats = {"pool": pool.get("name"), "split": pool.get("split"),
              "role": pool.get("role", "judgment"),
              "pool_hash": file_hash(pool_file),
              "source": "issue-replay", "generated": datetime.now().isoformat(timespec="minutes"),
+             "case_prefix": case_prefix,
              "metrics": {}, "issues": []}
     n_route = n_route_ok = n_route_skip = n_hit = n_hit_ok = n_rc = n_rc_ok = 0
+    n_held = 0
     missing = []
     for it in pool["issues"]:
+        # held_out（终判集）= 留到最后才用的题，不参与判定：不读 result、不进任何指标、
+        # 不进逐条向量。此前这个键只被建池写过、没有任何读取方。
+        if it.get("held_out"):
+            n_held += 1
+            continue
         rp = root / S2_RESULT_REL.format(it["id"])
         if not rp.exists():
             missing.append(it["id"])
@@ -352,9 +466,12 @@ def cmd_stats(root, pool_file):
         hit_ok = bool(r.get("hit_case")) or bool(r.get("tier2_hit"))
         rc = r.get("rc_match", r.get("root_cause_ok"))
         # 逐条向量：配对检验的输入。没有它，判定只能退回点估计（判词上限 weak_accept）。
+        # held_out 恒为 False：这一行只有非终判样本才会走到（上面的 continue），写出来是让
+        # 读 stats 的人知道这个字段存在、且这里是它被排除的位置。
         stats["issues"].append({"id": str(it["id"]), "hit": bool(hit_ok),
                                 "route_ok": bool(route_ok),
-                                "rc_match": None if rc is None else bool(rc)})
+                                "rc_match": None if rc is None else bool(rc),
+                                "held_out": False})
         if expected_ns:
             n_route += 1
             n_route_ok += int(route_ok)
@@ -365,8 +482,18 @@ def cmd_stats(root, pool_file):
         if rc is not None:
             n_rc += 1
             n_rc_ok += int(bool(rc))
+    # 指纹只算参与判定的行（held_out 行不计）：终判子集本来就不进判定，它被吸收不改变
+    # 这次判定测的是检索还是背诵，把它算进去只会造出假过期。
+    rows = judged_rows(pool["issues"])
+    recheck = absorption_recheck(root, rows, pool.get("absorption_rev"), case_prefix)
+    stats["absorption_recheck"] = recheck
+    # 参与判定的行 id 写进 stats：`--gate` 只拿到 stats、拿不到池文件，判定时刻要靠这份 id
+    # 重算指纹。不能拿逐条向量（`issues`）当行集合——没跑 replay 的样本不在向量里，按向量
+    # 重算会把指纹算成空串的哈希、把一份有效的池误判成不新鲜。
+    stats["judged_ids"] = [r.get("id") for r in rows]
     stats["issues_total"] = len(pool["issues"])
     stats["issues_scored"] = n_hit
+    stats["held_out_skipped"] = n_held
     stats["missing_results"] = missing
     stats["metrics"]["route_ok"] = {"n": n_route, "ok": n_route_ok,
                                     "rate": round(n_route_ok / n_route, 3) if n_route else None,
@@ -385,6 +512,16 @@ def cmd_stats(root, pool_file):
     for k, m in stats["metrics"].items():
         print(f"  {k}: {m['ok']}/{m['n']}"
               + (f"（{m['rate']:.0%}）" if m["rate"] is not None else "（无样本）"))
+    if n_held:
+        print(f"  held_out（终判集）{n_held} 条不参与判定，已跳过")
+    if recheck["checked"]:
+        if recheck["stale"]:
+            print(f"  ⚠ 吸收状态已变：指纹 {recheck['rev_pool']} → {recheck['rev_now']}，"
+                  f"新被吸收 {recheck['newly_absorbed']}——池已不新鲜，--gate 会拒绝出判词")
+        else:
+            print(f"  吸收状态未变（指纹 {recheck['rev_now']}）")
+    else:
+        print("  吸收状态无法校验：池文件没有 absorption_rev（旧池或手写池），本次按未校验放行")
     print(f"  写入 {out}")
     return 0
 
@@ -404,6 +541,31 @@ def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note, alp
                   f"知识库，属自洽样本，只做回归信号，不能当门控判定"
                   f"（docs/mechanism/eval-arena.md §1 纪律）。", file=sys.stderr)
             return 2
+
+    # 运行期重判：池建好之后，沉淀闭环可能已经把某些样本的答案写进了知识库。此时这一池测的
+    # 是「背下来的题」而不是检索能力，而判词照样会出——所以拦在这里，并且**不写账本**：
+    # 账本里的复用计数不得被一次作废的运行推高，否则误判一次就永久收紧了阈值。
+    # 重算发生在判定时刻，不沿用 stats 里那份可能已过时的读数：沉淀可能正好落在
+    # `--stats` 与 `--gate` 之间。
+    idx = case_index(root)
+    rechecks = {}
+    for side, s in (("baseline", b), ("candidate", c)):
+        rc = recheck_from_stats(root, s, idx)
+        rechecks[side] = rc
+        if rc and rc.get("checked") and rc.get("stale"):
+            print(f"eval_arena: {side} 的池已不新鲜——建池之后这些样本的答案进了知识库：\n"
+                  f"  吸收状态指纹 {rc.get('rev_pool')} → {rc.get('rev_now')}\n"
+                  f"  新被吸收的样本 id: {rc.get('newly_absorbed')}\n"
+                  f"  此时这一池测的是「背下来的题」，判词作废。重跑 --build-pool 与 --stats 再判。",
+                  file=sys.stderr)
+            return 3
+        if not (rc and rc.get("checked")):
+            print(f"eval_arena: {side} 的 stats 没有可用的吸收状态重判记录"
+                  f"（旧 stats、手写 stats，或池文件缺少 absorption_rev）——"
+                  f"样本是否已被吸收无法校验，本次判定按未校验放行。", file=sys.stderr)
+        elif rc.get("recomputed") is False:
+            print(f"eval_arena: {side} 的 stats 没记逐行样本 id（judged_ids 落地前的产物）——"
+                  f"判定时刻无法重算，沿用 --stats 那一刻的读数。", file=sys.stderr)
 
     imp = root / IMPACT_REL
     ledger = load(imp) if imp.exists() else {"_comment": "arena 影响账本（append-only）",
@@ -431,6 +593,9 @@ def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note, alp
         "verdict": res["verdict"],
         "decision": res["verdict"],          # 旧字段名保留：面板/账本读法不变
         "rule": "配对（b/c 方向不一致对子）+ 复用折减 α/(k+1) + 无回归；只有 accept 算门控通过",
+        "no_regression_scope": "arena-pool-only",
+        "absorption_recheck": {"baseline": rechecks.get("baseline"),
+                               "candidate": rechecks.get("candidate")},
         "note": note or "",
         "reason": res["reason"],
     }
@@ -452,8 +617,12 @@ def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note, alp
     if res["verdict"] != "accept":
         print("  → 该判词**不构成**门控通过：不得据此把卡判 validated；"
               "补配对证据/扩池后重跑，或如实按 weak 记入卡。")
+    print("  无回归范围：只校验本池指标不降（arena-pool-only）。golden 无回归由 "
+          "python3 scripts/replay_golden.py 单独跑（要模型），本命令不执行。")
     print(f"  账本追加 → {imp}")
-    return 0 if res["verdict"] == "accept" else 0
+    # 退出码 0 = 判定成立且已写账本。reject 也是判定成立（判词是数据，不是命令失败）；
+    # 把它报成非零会让「测量结果为否」和「测量没法做」混成同一个信号。
+    return 0
 
 
 # ---------------------------------------------------------------- 判据自检（CI 跑它）
@@ -543,6 +712,14 @@ def cmd_self_test():
         expect("第三次 α_eff=0.0333 → 同一提升降为 weak_accept",
                led["records"][2]["verdict"], "weak_accept")
 
+    # ⑩ held_out（终判集）不进配对：stats 里带着这一行也不参与（--stats 已不写它，这里是第二道）
+    cand_held = _mk([(f"i{n}", n < 10, True) for n in range(16)])
+    cand_held["issues"].append({"id": "held-1", "hit": True, "route_ok": True,
+                                "rc_match": None, "held_out": True})
+    r10 = decide(base, cand_held, ALPHA_DEFAULT)
+    expect("held_out 行不进配对（共同向量仍 16 条）", r10["paired"]["n_common"], 16)
+    expect("  held_out 行也不改判词", r10["verdict"], "accept")
+
     if fails:
         print(f"\n--self-test：{len(fails)} 条断言失败")
         return 1
@@ -558,7 +735,12 @@ def cmd_rc_check(root, pool_file):
         return 1
     ann_dir = root / ARENA_SUBDIR / "annotations"
     out_rows = []
+    n_held = 0
     for it in pool["issues"]:
+        if it.get("held_out"):
+            # 终判子集不进判定，也不进这份对照（与 --stats/--gate 同一口径）。
+            n_held += 1
+            continue
         iid = it["id"]
         ann = ann_dir / f"{iid}.yaml"
         rp = root / S2_RESULT_REL.format(iid)
@@ -584,6 +766,8 @@ def cmd_rc_check(root, pool_file):
     lm = sum(1 for x in out_rows if x["signal"] == "likely_mismatch")
     print(f"== rc 离线对照：{n} 条（启发式信号，需人工核验；写入 {out}）==")
     print(f"  likely_match {lk} / likely_mismatch {lm} / unclear {n - lk - lm}")
+    if n_held:
+        print(f"  held_out（终判集）{n_held} 条已跳过：不参与判定，也不进这份对照")
     for x in out_rows:
         print(f"  #{x['id']} [{x['signal']}] agent: {x['agent_rc'][:70]}")
     return 0
