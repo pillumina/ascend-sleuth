@@ -125,7 +125,7 @@ decisions:
     type: eval
     conclusion: >-
       判据复跑（worktree，本机 Windows，2026-10-07）：`python -m unittest tests.test_eval_arena_stats`
-      二十七个测试全过（改前二十三个）；`python scripts/eval_arena.py --self-test` 全部断言通过；
+      二十八个测试全过（改前二十三个；独立预核后又补一条：只留痕一部分时不得说成「版本一致」）；`python scripts/eval_arena.py --self-test` 全部断言通过；
       合成池改前 `rc_match: 2/2`、改后 `rc_match: 1/1` 且打印 none 条数与混版本告警，stats 里
       `ground_truth` / `replay_revs` 两键实测可读。
   - who: agent
@@ -136,3 +136,12 @@ decisions:
       **边界**：这套留痕只保证「写了就会被读到」，不保证 result 里写的是真的——`kb_rev` 与
       `ground_truth` 都要靠回放/标注那一刻的人如实填写；未做：把 `kb_rev` 变成必填或由工具自动注入
       （回放常跨多台机器与多次 pull，工具注入会把版本写成「跑 --collect 那一刻的版本」，比人填更容易错）。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      独立预核（只读会话，绑定 9a7009f 与五个文件）回来一条阻断、八条非阻断：阻断项在 PR 描述里
+      「9 条 result 没写 ground_truth」一句与实测不符（标注后是 3 条未写、6 条已写），属描述陈旧、
+      不是代码缺陷；非阻断里收掉的是机制文档三处措辞与一处重复口径、一条新测试（部分留痕时不得
+      说成「版本一致」）以及影响面那句 grep 的不完整表述。留作后续小修的是统计表头总条数仍含
+      非诊断行（scripts/eval_arena.py 的 issues_total）。

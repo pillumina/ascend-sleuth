@@ -565,7 +565,8 @@ class EvidenceFieldTest(unittest.TestCase):
     上跑的"，而一批结果常跨若干次 git pull 才跑完，跨版本混算出来的分数前后不可比。
 
     这里钉住五件事：none 不进结论一致率分母；字段缺席按旧行为计入（缺席 ≠ none，不得偷偷
-    变成 none）；两个字段的条数与 mixed 标记进 stats；--gate 把两侧的读数记进账本。
+    变成 none）；两个字段的条数与 mixed 标记进 stats；--gate 把两侧的读数记进账本；只留痕了
+    一部分时不得说成"版本一致"。
     """
 
     NEW_STYLE = ("namespace: inference/vllm-ascend\nrouting_ok: true\ntier2_hit: false\n"
@@ -580,8 +581,10 @@ class EvidenceFieldTest(unittest.TestCase):
         (arena / "pool-ev.yaml").write_text(pool, encoding="utf-8")
         for iid, text in results.items():
             (root / ".s2-replay" / f"{iid}.result.yaml").write_text(text, encoding="utf-8")
-        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(ea.cmd_stats(root, arena / "pool-ev.yaml"), 0, "cmd_stats 应成功")
+        self.last_stdout = buf.getvalue()
         return root, yaml.safe_load((arena / "stats-pool-ev.yaml").read_text(encoding="utf-8"))
 
     def test_ground_truth_none_is_not_counted_as_agreement(self):
@@ -631,3 +634,16 @@ class EvidenceFieldTest(unittest.TestCase):
         self.assertFalse(s["replay_revs"]["mixed"])
         self.assertEqual(s["replay_revs"]["counts"], {})
         self.assertEqual(s["replay_revs"]["absent"], 2)
+
+    def test_partly_recorded_revs_are_not_called_consistent(self):
+        """只留痕了一部分时不得说"版本一致"：没记的那些无从判断，措辞要带上这个不确定性。"""
+        _, s = self._stats({
+            "201": self.NEW_STYLE + "kb_rev: 3c3ba14\n",
+            "202": self.NEW_STYLE,
+        })
+        self.assertFalse(s["replay_revs"]["mixed"])
+        self.assertEqual(s["replay_revs"]["counts"], {"3c3ba14": 1})
+        self.assertEqual(s["replay_revs"]["absent"], 1)
+        self.assertIn("已记版本的 1 条一致", self.last_stdout)
+        self.assertIn("另有 1 条 result 没记 kb_rev", self.last_stdout)
+        self.assertNotIn("重放版本一致", self.last_stdout)

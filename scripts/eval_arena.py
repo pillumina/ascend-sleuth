@@ -605,8 +605,11 @@ def cmd_stats(root, pool_file):
         print(f"  ⚠ 本次结果来自 {len(rev_counts)} 个不同的知识库版本（{shown}）"
               f"——跨版本混算，前后不可比；重放期间应锁版本，或分批出 stats")
     elif rev_counts:
-        tail = f"（{n_rev_absent} 条没记 kb_rev）" if n_rev_absent else ""
-        print(f"  重放版本一致：{sorted(rev_counts)[0]}{tail}")
+        if n_rev_absent:
+            print(f"  已记版本的 {sum(rev_counts.values())} 条一致：{sorted(rev_counts)[0]}"
+                  f"——另有 {n_rev_absent} 条 result 没记 kb_rev，无法判断它们是否同一版本")
+        else:
+            print(f"  重放版本一致：{sorted(rev_counts)[0]}")
     elif n_rev_absent:
         print(f"  重放版本未留痕：{n_rev_absent} 条 result 都没记 kb_rev"
               f"——无法判断这批结果是否跨版本混算")

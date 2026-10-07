@@ -93,8 +93,7 @@ namespace/category/hit_case/root_cause/rc_match/route，另见下条 `ground_tru
 `--stats` 同时把本次重算的吸收状态指纹写进 `absorption_recheck`（§2），并收集每条 result 的**重放版本**
 `kb_rev`（口径同 `scripts/kb_rev.py`：检出短 sha，脏工作区带后缀）写进 `replay_revs`
 （`counts` / `absent` / `mixed`）；多于一个版本时打印 ⚠。`--gate` 把两侧的 `replay_revs` 与
-`ground_truth` 一起记进账本并同样告警。**跨版本只告警、不拒判**：混算是数据质量问题，不是判定不成立
-——把它做成拒绝，会让"这批分数没法比"和"改动没通过"混成同一个信号（原则十）。
+`ground_truth` 一起记进账本并同样告警（为什么不拒判，见下面第 3 条）。
 
 test/selection 分离前单池运行，分数标注 source: issue-replay。
 
@@ -103,7 +102,10 @@ test/selection 分离前单池运行，分数标注 source: issue-replay。
 1. **路由率的分母只算"有真值"的条目**：池条目可能只有 resolution、没有 `expected_ns`（实测一批 20 条里 11 条如此，它们是从 issue 池直接选的、没人标注归属）。把这类算进路由率会凭空造出失败——`--stats` 因此把它们排除在分母外并打印条数，`route_ok.unjudgeable` 字段可读。
 2. **非诊断样本不进命中率（2026-10 落地，此前只有口径、没有读取方）**：issue 正文为空、或 resolution 是"请把问题描述清楚"这类（实测 1 条：标题 `[Bug]: wait`、正文空白、末尾 `### 🐛Describe the bug` 段为空），任何诊断都不可能有结论。这类样本要么单列、要么从命中率分母剔除，否则同时高估（分母虚增）与低估（拉低命中率）。判据：**输入文件里没有可判别信号 = 非诊断样本**——判据由人下（读校准集那一行的输入），代码不按正文长度猜：机器猜会把"描述简短但可判别"的样本一并剔掉，那是往分母里掺假。落点：校准集行上的 `non_diagnostic`（真值或一句原因）→ `--build-pool` 原样带进池行 → `--stats` 单列 `non_diagnostic_rows`，并从命中率分母、逐条向量与吸收指纹里剔除（不进指纹的理由同 `held_out`：它被吸收不改变这次判定测的是检索还是背诵，算进去只会造出假过期）；`--gate` 把两侧条数记进账本，手写/旧版 stats 带着这类向量时 `vectors()` 再滤一道。
 
-3. **重放版本留痕：只告警，不拒判（2026-10 落地）**：result 里原本没有"这次回放在哪份知识库上跑的"这句话，而一批结果常常跨若干次 `git pull` 才跑完（本轮实测 9 条结果跨 2 个版本：`3c3ba14` → `d29d450`）——跨版本混算出来的分数前后不可比，同一个候选改动两次统计出的差异可能全部来自知识库版本变了。落点：`--stats` 收 `kb_rev` 写 `replay_revs`，混版本打印 ⚠；`--gate` 记进账本并同样告警。**不拒判**：混算是数据质量问题，不是判定不成立，做成拒绝会把"这批分数没法比"和"改动没通过"混成一个信号。取值由回放者执行（`python3 scripts/kb_rev.py` 末行），代码只汇总、不猜。
+3. **重放版本留痕：只告警，不拒判（2026-10 落地）**：result 里原本没有"这次回放在哪份知识库上跑的"这句话，而一批结果常常跨若干次 `git pull` 才跑完——跨版本混算出来的分数前后不可比，同一个候选改动两次统计出的差异可能全部来自知识库版本变了。
+   本轮实测的 9 条结果就横跨两次代码推进（`3c3ba14` → `d29d450`，靠重放时间与主检出提交时间对出来的：这批 result 自己一条都没记版本）。
+   落点：`--stats` 收 `kb_rev` 写 `replay_revs`，混版本打印 ⚠；`--gate` 记进账本并同样告警。版本号由回放者取值（`python3 scripts/kb_rev.py` 末行），result 里没写就记 `absent`，代码不回填。
+   **不拒判**：混算是数据质量问题，不是判定不成立，做成拒绝会把"这批分数没法比"和"改动没通过"混成一个信号（原则十）。
 
 **本轮全量重放结果（20/20 条已评分）**：路由 9/9（只有 9 条有路由真值）、命中 **2/20**、结论一致（root_cause_ok）13/20。命中低是**符合预期**的：S2 池从"未沉淀的 closed issue"里选样，池本身就是**覆盖缺口的探针**——它按设计就该大量 miss（miss 即"库里没有这条知识"的缺口信号，走补 case 候选）；它不是"已有 case 的外部验证通道"。
 
@@ -169,9 +171,9 @@ golden 无回归 + val 严格提升 与 SkillOpt/WikiSkill 的 `R_val > R_best` 
   标了 `non_diagnostic` 的行同样跳过，清单（id + 原因）记 `non_diagnostic_rows`；
   顶层另写 `case_prefix`、`judged_ids`（本池参与判定的每一行 id；判定时刻的重算靠它，
   不能用逐条向量代替——没跑 replay 的样本不在向量里，按向量重算会把指纹算成空字符串的哈希、
-  把有效的池误判成不新鲜）、`ground_truth`（可证伪性各取值条数：`counts` / `none` / `absent`）与
-  `replay_revs`（这批 result 的重放版本集合：`counts` / `absent` / `mixed`，混版本打印 ⚠）与
-  `absorption_recheck: {rev_pool, rev_now, checked, stale, newly_absorbed}`——
+  把有效的池误判成不新鲜）、`ground_truth`（可证伪性各取值条数：`counts` / `none` / `absent`）、
+  `replay_revs`（这批 result 的重放版本集合：`counts` / `absent` / `mixed`，混版本打印 ⚠），
+  以及 `absorption_recheck: {rev_pool, rev_now, checked, stale, newly_absorbed}`——
   判定前先看 `stale`（`--stats` 恒退 0，判定以 `--gate` 为准；`--gate` 在判定时刻自己再算一遍，见 §2）。**先复制一份 baseline stats 再跑改后侧**——两次 `--stats` 写同一个文件名，覆盖掉 baseline
   就没有配对数据了（`cp stats-pool-val.yaml baseline.yaml` 之后才重跑）；
 - `--gate --baseline <stats-a> --candidate <stats-b> [--alpha 0.1]`：配对判定（accept /
