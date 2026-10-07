@@ -32,6 +32,23 @@ expected 标注（namespace/category/fix_ref）由 agent 读 issue 线程产出�
 标注是协议**（与 S2 同构）。标注时若发现输入里没有可判别信号（正文空白、只有环境信息），在校准集行上
 标 `non_diagnostic`（真值，或一句原因；空字符串等同未标注）；这类行不进命中率分母、不进配对、也不进吸收指纹，见 §3。
 
+**收样判据（2026-10 收紧，落在 `scripts/s2_calibration.py`）**：上面那句「实体 Bug/Usage 内容」原来只
+落在人工约定上，代码用的是「标题不在 6 项黑名单里」且「labels 为空**或**含 `bug`/`triaged`」——`triaged`
+近乎恒真，于是流程单也能进池（实测一条：`#12490 [Misc]: Close cherry-pick PR #12265`，labels 只有
+`triaged`，进了判定池、回放时才发现没有可诊断内容，三组症状正则命中数全 0）。现在判据是机械的两步：
+①标题带流程/文档类前缀（`NON_DIAGNOSTIC_PREFIXES`：`[Doc]`/`[docs]`/`[Documentation]`/`[Feature]`/
+`[Feature Request]`/`[Question]`/`[Misc]`/`[Build]`/`[CI]`/`[Test]`/`[Refactor]`/`[Chore]`/`[Release]`，
+以及小写 `docs:`/`doc:`/`feat:`/`chore:`/`ci:`/`test:`/`refactor:`）**硬拒**，连 `--include-weak` 也不收；
+②其余要求有明确缺陷信号：标题前缀是 `[Bug]`/`[bug]`/`[BugFix]`/`[bugfix]`/`[Usage]`（`[Usage]` 按本节的
+「实体 Bug/Usage」在收），或 labels 里含 `bug`。只剩 `triaged` 标签、或标题没有前缀的算**弱信号**——默认
+不收，但候选清单会把它们逐条打印出来，要看就带 `--include-weak`（弱信号接在严格候选之后，
+`--limit` 先被严格候选填满时不会进池）。同一窗口（closed + `triaged`，最近 400 条）量过一次：旧规则通过
+339 条，这套判据通过 331 条（另外 21 条落进弱信号、48 条被 ① 硬拒，三者相加正好 400）；当时 20 条校准集里
+只有 `#12490`（`[Misc]`）与 `#12947`（弱信号）会被挡，其余 18 条都带 `bug` 标签或 `[Bug]` 前缀。弱信号这条
+通道留着，是因为里面既有真实缺陷（实测 `#12947` 就属于这一种：无前缀、labels 只有 `triaged`，后来撞上了真实
+的 fix PR #12948），也有不带流程/文档类前缀的流程单——后者 ① 挡不到。一票否决会连真实缺陷一起丢掉，所以把它挡在默认值
+上、把判断留给人。窗口里的 issue 列表一直在动，这几个数只作量级参考，别当阈值用。
+
 **吸收分流（2026-10 落地）**：`--build-pool` 从同一份校准集派生两条池：判定池 `pool-val.yaml`
 （`role: judgment`，只留未吸收样本）与回归池 `pool-val-absorbed.yaml`
 （`role: regression`；`--gate` 按 `role` 字段拒绝它，不看文件名）。吸收判据是 **case 实名**：

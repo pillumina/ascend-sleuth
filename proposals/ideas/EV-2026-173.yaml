@@ -1,0 +1,129 @@
+# ============================================================
+# EV-2026-173 —— S2 选样判据收紧：流程/文档类标题硬拒，弱信号默认不收、打印出来交人判断
+# 来源：用户要求把已确认的 eval 机制落点全部落地；本卡起因＝判定池里进了流程单
+#        （#12490 [Misc]: Close cherry-pick PR #12265，回放时才发现没有可诊断内容）
+# 脱敏：只含仓库内路径、命令与聚合数字
+# ============================================================
+
+id: EV-2026-173
+layer: L2
+target_component: scripts/s2_calibration.py
+title: "S2 选样判据写成机械规则：流程/文档类前缀硬拒，弱信号默认不收但逐条打印，判断留给人"
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: '2026-10-07'
+source_signals:
+  - signal: observation_window
+    evidence: >-
+      判定池里进了流程单：`#12490 [Misc]: Close cherry-pick PR #12265`（labels 只有 `triaged`）
+      被当 bug 候选收进校准集，回放时三组症状正则命中数全 0、性质判不出——按
+      `docs/mechanism/eval-arena.md` §2 的池筛选规则本就不该进池，但机器判据放它进来了。
+    trajectory:
+      - ".s2-replay/12490.result.yaml（本地运行件）实跑记录：route=no-nature、routing_ok=false"
+      - "scripts/s2_calibration.py 的 is_bug_candidate（旧规则：黑名单 + labels 含 bug/triaged）"
+  - signal: observation_window
+    evidence: >-
+      文档与代码互相矛盾：`docs/mechanism/eval-arena.md` §2 写「实体 Bug/Usage 内容（排除
+      Doc/营销类与 not_planned）」——`[Usage]` 在收；而代码的黑名单把 `[Usage]` 拉黑，且放行
+      「labels 为空」与「labels 含 `triaged`」两种近乎恒真的情形（同一窗口按 `triaged` 查回 400
+      条，labels 这一条在该窗口内恒真：旧规则放行 339 条、该挡的都得靠标题才挡得住）。判据写在人脑里，机器那侧等于没筛。
+    trajectory:
+      - "docs/mechanism/eval-arena.md 第 2 节（池构建与筛选规则）"
+      - "scripts/s2_calibration.py:NON_BUG_PREFIXES（6 项）与 is_bug_candidate"
+hypothesis: >-
+  把「实体 Bug/Usage 内容」写成两手机械判据——标题带流程/文档类前缀直接拒；其余要求标题是
+  `[Bug]`/`[bug]`/`[BugFix]`/`[bugfix]`/`[Usage]` 前缀、或 labels 里含 `bug`。只剩 `triaged` 标签或无前缀的算弱信号，
+  默认不收但逐条打印（`--include-weak` 可显式收）。这样流程单必然出局，而「无前缀但确是真缺陷」
+  的样本不会被规则静默丢掉——判断仍由人下。
+predicted_effect:
+  metric: >-
+    流程/文档类流程单能否在收样那一步就被挡掉；以及弱信号（无前缀、只有 `triaged` 标签）
+    是被静默收进池、还是被打印出来交人判断
+  from: >-
+    旧规则＝「标题不以 6 项黑名单开头」且「labels 为空或含 `bug`/`triaged`」；`[Misc]`/`[Build]`/
+    `[Installation]` 等前缀不在黑名单，`triaged` 近乎恒真，于是流程单进池（实测 #12490）；
+    与机制文档 §2 的「实体 Bug/Usage、排除 Doc 类」也不一致（`[Usage]` 被代码拉黑）。
+  to: >-
+    `NON_DIAGNOSTIC_PREFIXES`（含 `[Doc]`/`[docs]`/`[Documentation]`/`[Feature]`/`[Feature Request]`/
+    `[Question]`/`[Misc]`/`[Build]`/`[CI]`/`[Test]`/`[Refactor]`/`[Chore]`/`[Release]` 与小写
+    `docs:`/`doc:`/`feat:`/`chore:`/`ci:`/`test:`/`refactor:`）硬拒（`--include-weak` 也不收）；
+    `BUG_TITLE_PREFIXES`＝`[Bug]`/`[bug]`/`[BugFix]`/`[bugfix]`/`[Usage]` 或 labels 含 `bug` 才收；
+    `candidate_signal()` 把弱信号单列，CLI 打印「未沉淀候选 N 条 · 弱信号 M 条（要看就带
+    --include-weak）」并逐条列出弱信号标题；`--include-weak` 把它们接在严格候选之后（`--limit`
+    先被严格候选填满时不会进池）。
+  measure:
+    command: |
+      python3 -c "import sys,unittest;t=unittest.TextTestRunner(verbosity=0).run(unittest.defaultTestLoader.loadTestsFromName('tests.test_audit_readings.S2CandidateScreenTest'));print('VERDICT PASS' if t.wasSuccessful() else 'VERDICT FAIL');sys.exit(0 if t.wasSuccessful() else 1)"
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: metrics_compare
+  baseline: >-
+    改前：`scripts/s2_calibration.py:is_bug_candidate` 只查 6 项黑名单与「labels 为空或含
+    `bug`/`triaged`」；无 `candidate_signal`、无 `--include-weak`；`tests/test_audit_readings.py`
+    只有 `S2ClipKeepsTriggerParamsTest` 与 `S2SampleIndependenceTest`，没有针对收样判据的测试。
+  success_criteria: >-
+    ①`S2CandidateScreenTest` 三条全过：流程/文档类前缀连 `--include-weak` 也拒（含
+    `#12490 [Misc]: Close cherry-pick PR #12265`）；标题前缀或 `bug` 标签任一成立即收（含
+    `[Usage]` 与「无前缀但有 bug 标签」）；弱信号默认拒、`candidate_signal` 报 `weak`、
+    `--include-weak` 才收；②`python -m unittest tests.test_audit_readings`
+    与 `python -m unittest tests.test_rank_candidates` 的失败集合与改动前一致（本机 `test_audit_readings`
+    上有一条既有的环境性失败：`StaleMeasureDepTest.test_self_created_outside_path_is_not_a_dependency`
+    在 Windows 下断言 `/tmp/...` 路径，改动前的主检出上同样失败）；③`python scripts/eval_arena.py --self-test`、
+    `python scripts/verify_proposals.py --check`、`python scripts/build_docs_index.py --check`
+    与其余仓库门通过；④`python -m unittest discover -s tests -t .` 的失败集合与分支父提交
+    （`363b188`，当时的 `origin/main`）逐条一致。
+  rollback: "回退该提交即可；校准集与池文件是本地运行件（.s2-replay/ 已 gitignore），无需数据迁移。"
+gate:
+  condition: >-
+    有人把弱信号通道当默认（长期带 `--include-weak` 跑批量收样，等于回到旧规则）；或把这份判据
+    当「样本可诊断」的保证（它只挡题面明显非诊断的流程/文档单，正文有没有可判别信号仍要人读）。
+risk: low
+principle_refs: [2, 6, 8, 10, 11]
+actual_cost:
+  tokens: 9000
+  source: estimate
+  note: >-
+    口径：改 `scripts/s2_calibration.py`（`NON_DIAGNOSTIC_PREFIXES`、`BUG_TITLE_PREFIXES`、
+    `candidate_signal`、`is_bug_candidate(include_weak=)`、候选构造与打印、`--include-weak`、
+    头注与用法注）、`tests/test_audit_readings.py` 新增一个测试类（三条）、
+    `docs/mechanism/eval-arena.md` §2 写机械判据与实测计数、产卡、判据复跑、独立预核与回修、
+    PR body；估 0.9 万，不含预核轮次。
+decisions:
+  - who: agent
+    when: "2026-10-07"
+    type: decision
+    conclusion: >-
+      采纳「把人工约定写成机械判据」，不采纳「弱信号一票否决」。理由是弱信号里混着两种东西：
+      流程单（`#12490 [Misc]`）与真实缺陷（`#12947` 无前缀、labels 只有 `triaged`，后来撞上了
+      真实 fix PR #12948）。前者必须挡，后者一票否决会丢；而「丢一条好样本」的代价是隐性的
+      （池子小一点，没人看得出来），所以把不确定的一档打印出来交人判断，而不是让规则替人决定。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      判据分两步：先硬拒流程/文档类前缀，再要求明确缺陷信号（标题前缀或 `bug` 标签）。
+      这样 `triaged` 与「labels 为空」两个近乎恒真的放行条件都被拿掉——它们合起来等于没筛，
+      实测同一窗口 400 条里旧规则只有 `triaged` 与空 labels 两关，过闸 339 条；新判据过闸 331 条。
+  - who: agent
+    when: "2026-10-07"
+    type: action
+    conclusion: >-
+      `[Usage]` 恢复为在收（与机制文档 §2 的「实体 Bug/Usage 内容」一致）：旧代码把它写进黑名单，
+      与文档互相矛盾，而 Usage 类 issue 常带可诊断的报错现场。
+  - who: agent
+    when: "2026-10-07"
+    type: eval
+    conclusion: >-
+      判据复跑（worktree，本机 Windows，2026-10-07）：`S2CandidateScreenTest` 三条全过；
+      `python -m unittest tests.test_audit_readings` → `Ran 34`、1 条失败，是既有的环境性失败
+      （`StaleMeasureDepTest.test_self_created_outside_path_is_not_a_dependency` 断言 `/tmp/...` 路径，
+      改动前的主检出上同样失败，非本次引入）；`python scripts/eval_arena.py --self-test`
+      通过；`python scripts/verify_proposals.py --check` 与 `python scripts/build_docs_index.py --check`
+      通过；`python -m unittest discover -s tests -t .` 的失败集合与分支父提交 `363b188` 逐条相同
+      （本机本分支 `Ran 349`、分支父 `Ran 346`，差值 3 条即本卡的测试）。
+      同一窗口（closed + `triaged`，最近 400 条）量过一次：旧规则通过 339 条、新判据 331 条；
+      现有 20 条校准集里只有 `#12490`（`[Misc]` 被硬拒前缀挡）与 `#12947`（弱信号）会被挡。
