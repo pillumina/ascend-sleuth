@@ -22,25 +22,25 @@
 
 下表是 `docs/spec/writing-norms.md` §3 那份「人读面清单」的**篇章层**对应表。词句怎么写看 writing-norms；每面该有哪些节、按什么顺序，看这张表。
 
-| 面 | 形态 | 写点（模板或 schema 所在处） |
+| 面 | 按哪类写 | 依哪份文本写 |
 |---|---|---|
-| `docs/**` 正文 | 见上一节九类之一 | 无模板，按本 spec 的 type-catalog 写 |
-| `docs/adr/*.md` | 决策记录 | 无模板，按 §决策记录写 |
-| `skills/**/SKILL.md` | 规则条文（skill 正文，自带模板） | 各 skill 自己的正文；受 `skill-self-contained` 门约束 |
-| 定位报告 `traces/*.report.md` | 复盘 + 参考词条（自带模板，以模板为准） | `skills/diagnose/references/report-template.md` |
-| trace 人读字段 | 字段说明（自带模板） | `skills/diagnose/references/diagnosis-trace.md` |
-| 诊断对话输出 | 会话记录（无骨架） | `skills/diagnose/SKILL.md` 的输出格式一节 |
-| case / reference 词条 | 参考词条（自带 schema） | `skills/to-postmortem/SKILL.md`、`skills/to-reference/SKILL.md` |
-| EV 卡 `proposals/ideas/*.yaml` | 提案（YAML 卡片，自带 schema） | `docs/mechanism/pipeline.md` §7「改进项的 schema 与状态机」 |
-| postmortem `postmortems/**` | 复盘 | `skills/to-postmortem/SKILL.md` |
-| PR body / 评审摘要 | 提案（自带五类模板） | `.github/PULL_REQUEST_TEMPLATE/` 五个模板 |
-| 面板文案 | 界面文案（自带清单） | `dsh-plugins/README.md` 的定制条款一节 |
-| 指标注记 | 数据文件里的注记（无骨架） | 无模板，写在 `metrics/timeline.d/*.yaml` 里 |
-| 对话回复 | 会话输出（无骨架） | `CLAUDE.md` 的对话回复条 |
+| `docs/**` 正文 | 见上一节的九类之一 | 本 spec + `type-catalog.md` |
+| `docs/adr/*.md` | 决策记录 | 本 spec + `type-catalog.md` |
+| `skills/**/SKILL.md` | 规范条文 | 本 spec + `type-catalog.md`；另有 skill 自身的结构约束，受 `skill-self-contained` 门约束 |
+| 定位报告 `traces/*.report.md` | 复盘 | 自带模板 `skills/diagnose/references/report-template.md`，以模板为准 |
+| trace 人读字段 | 未映射到九类 | 自带模板 `skills/diagnose/references/diagnosis-trace.md` |
+| 诊断对话输出 | 未映射到九类 | 无固定骨架，见 `skills/diagnose/SKILL.md` 的输出格式一节 |
+| case / reference 词条 | 参考词条 | 自带 schema：`skills/to-postmortem/SKILL.md`、`skills/to-reference/SKILL.md` |
+| EV 卡 `proposals/ideas/*.yaml` | 提案 | 自带 schema：`docs/mechanism/pipeline.md` §7「改进项的 schema 与状态机」 |
+| postmortem `postmortems/**` | 复盘 | 本 spec + `type-catalog.md`；产出模板在 `skills/to-postmortem/SKILL.md` |
+| PR body / 评审摘要 | 提案 | 自带五类模板：`.github/PULL_REQUEST_TEMPLATE/` |
+| 面板文案 | 未映射到九类 | 自带清单：`dsh-plugins/README.md` 的定制条款一节 |
+| 指标注记 | 未映射到九类 | 无固定骨架，写在 `metrics/timeline.d/*.yaml` 里 |
+| 对话回复 | 未映射到九类 | 无固定骨架，见 `CLAUDE.md` 的对话回复条 |
 
-第二列的「形态」不是新引入的类型名，是这一面在本仓的既有叫法：只有第一列里写「决策记录」「复盘」这几行的，才按 type-catalog 的骨架写；标了「自带模板」的面各有自己的 schema，本 spec 只在这些模板要改、或新增一类面时给判定口径。
+第一列的面名取自 `docs/spec/writing-norms.md` §3 那份清单，本表不另造面名。第二列只出现两类值：九类名，或「未映射到九类」；不出现别的类型名，也不把类型名和别的标签叠在一格里。
 
-**已经自带模板的面，不在本 spec 里重写骨架**：报告、词条、PR body、EV 卡各有模板或 schema，本 spec 只在这些模板要改、或新增一类面时提供判定口径。判据只有一条：该面**读者手上有什么**，这决定它是共用条目还是要定制（writing-norms §4）。
+第三列写这一面实际依哪份文本写。写「本 spec + `type-catalog.md`」的，按本 spec 的小节骨架写；写「自带模板 / 自带 schema」的以那份模板为准——它可能与本 spec 的骨架不同，冲突时以模板为准，因为模板是该面对外的输出契约。本 spec 只在这些模板要改、或要新增一类面时提供判定口径。判据只有一条：该面**读者手上有什么**，这决定它是共用条目还是要定制（writing-norms §4）。
 
 ## 3 与 `docs/spec/writing-norms.md` 的边界
 
