@@ -3,7 +3,7 @@ name: preload-panel
 description: >
   在 DSH 会话中加载 ascend-sleuth 面板。先查本机 DSH 给模型哪些工具定装载路：有 cordis_define /
   cordis_run 就在会话内热加载（dsh-plugins/loader/panel-from-file.js，只发两个路径，不转写源码）；
-  有 plugin_manager 工具就把 dsh-plugins/dsh-sleuth-panels/ 装成常驻插件包；两件都没有
+  有 plugin_manager 工具就把 dsh-plugins/dsh-sleuth-panels/ 装成常驻插件包；三件工具都没有
   （DSH Desktop 默认如此）就在侧栏「插件」页粘贴该包的绝对路径安装。面板：ascend-panel
   →「诊断」「指标」两个 tab；ev-panel →「自演进」tab。仅 DSH 可用——依赖
   conversation.view 插槽；其他 agent（Claude Code / Codex / pi）无此机制。
@@ -21,7 +21,7 @@ tab（list 插槽，按 order 排列，可共存）。
 |---|---|---|---|
 | A 热加载 | DSH 有 `cordis_define` / `cordis_run` | 装 loader，再 `panel_from_file` 发两个路径 | 本会话 |
 | B 常驻插件包 | 没有这两件工具，但有 `plugin_manager` | `plugin_manager install_bundle` 装 `dsh-plugins/dsh-sleuth-panels/` | 本 profile 的每个会话 |
-| C 插件页安装 | 两件都没有（DSH Desktop 默认如此） | 在侧栏「插件」页粘贴该包的绝对路径 | 本 profile 的每个会话 |
+| C 插件页安装 | 三件工具都没有（DSH Desktop 默认如此） | 在侧栏「插件」页粘贴该包的绝对路径 | 本 profile 的每个会话 |
 
 三条路读的是同一份面板源码；B 与 C 装的是同一个包、写进 profile 的是同一处状态，差别只在
 谁去调插件管理器（模型的工具还是界面）。B、C 的产物是生成物，改面板源码后要重跑生成器。
@@ -46,7 +46,7 @@ tab（list 插槽，按 order 排列，可共存）。
   写着本包不注册工具、内置模型工具无法创建或更新动态定义。这时 A 路的 loader 装不上——
   不要反复试 `cordis_define`。
 - **没有这两件、但有 `plugin_manager`** → 走 B 路（常驻插件包）。
-- **两件都没有** → 走 C 路（插件页安装）。发行版把插件管理器的模型侧入口那行写成
+- **三件工具都没有** → 走 C 路（插件页安装）。发行版把插件管理器的模型侧入口那行写成
   `disabled: true`，界面之外没有别的入口；这时 B 路的工具不是「loader 还没装」，补装也补不出来。
 
 ## A 路：热加载（本机 DSH 有这两件工具）
@@ -104,7 +104,7 @@ tab（list 插槽，按 order 排列，可共存）。
    - `failed` → 读诊断；`webServer` 一类的报错说明路由没注册成功。
 
 4. **验证**：先跑 `node scripts/panel_rpc_probe.js`——它按页面的线协议打一条面板 RPC，
-   直接告出 host 半挂没挂、工作区解析得出、取到几条会话（退出码 2 = 路由没在服务或未授权，
+   直接告出 host 半挂没挂、工作区解析得出、取到几条会话（退出码 2 = 拿不到地址，或路由没在服务／未授权，
    "装了还没重启"是前者）。再用 `cordis_inspect_query`（client, `Slots`, `listSubTree`,
    root `conversation.view`）看三个 tab id 是否在占位列表里；最后请用户点开一页，确认
    React 那层的渲染（插槽占位与 RPC 都通了也不等于看着对，这一步只有页面能验）。
@@ -112,26 +112,30 @@ tab（list 插槽，按 order 排列，可共存）。
 
 5. **卸载**：`plugin_manager remove_bundle(target: 'dsh-sleuth-panels')`。
 
-## C 路：插件页安装（本机 DSH 两件工具都没有）
+## C 路：插件页安装（本机 DSH 三件工具都没有）
 
 DSH Desktop 把插件管理器只接到界面上：侧栏「插件」页能安装、启用、禁用与卸载 profile 的包，
 模型侧没有对应工具。这条路装出的是同一个常驻包，落进同一处 profile 状态。
 
-1. **先跑预检**：`node scripts/check_panel_bundle.js`（与 B 路第 1 步同一条：产物可加载性、
+1. **先跑预检**：`node scripts/check_panel_bundle.js`（与 B 路第 1 步同一份检查：产物可加载性、
    三处名字对齐、五条外部契约）。桌面版的原生包在 `app.asar` 内，这条命令的 DSH 探针找不到
-   安装处时会如实跳过契约核对，那是预期结果，不是「契约有问题」。
+   安装处，只按本地桩校验工具定义并在首行报「强度较弱」。这一项退化是预期的，不代表契约有问题。
 
 2. **装**：让用户在侧栏「插件」页的添加入口粘贴 `<仓库绝对路径>/dsh-plugins/dsh-sleuth-panels`。
-   该入口接受包名、Git 地址、压缩包或本地绝对路径。装完界面会把它复制进 profile 的 generation：
-   `package.json` 的 `dependencies` 与 `dsh.profile.bundles` 各多一条 `dsh-sleuth-panels`，
-   `dsh.desktop.generationProjection` 与 `pnpm.overrides` 各多一条指向
-   `.generations/live/dsh-sleuth-panels+<版本>+<哈希>` 的记录。包进了 generation，所以仓库
-   被移动或 worktree 被清掉都不影响已装的那份。
+   该入口接受包名、Git 地址、压缩包或本地绝对路径。粘的是这个包目录，不是上面的面板源目录
+   `dsh-plugins/ascend-panel/`——后者没有 `package.json`，入口会拒。装完界面把包复制成 profile
+   里的一份 generation（按版本与哈希建的包快照），落进四处记录：`package.json` 的
+   `dependencies` 与 `dsh.profile.bundles` 各一条 `dsh-sleuth-panels`；
+   `dsh.desktop.generationProjection` 里一条 generationId，形如
+   `dsh-sleuth-panels+<版本>+<哈希>`；`pnpm.overrides` 里一条指向
+   `dirname($DSH_PROFILE_DIR)/.generations/live/<generationId>/node_modules/dsh-sleuth-panels`
+   的 link。包进了 generation，仓库被移动或 worktree 被清掉都不影响已装的那份。
 
 3. **读安装结果**：界面不给模型可读的 `application` / `warnings`（B 路第 3 步那份），改读
-   profile 目录（`$DSH_PROFILE_DIR`）里上面那四处记录，以及界面自己报的成功或失败。
+   profile 的 `package.json`（`dependencies` 与 `dsh.profile.bundles`）与 `pnpm.overrides`，
+   以及 `dirname($DSH_PROFILE_DIR)/.generations/live/` 下那份快照，还有界面自己报的成功或失败。
 
-4. **验证**：先跑 `node scripts/panel_rpc_probe.js`（退出码 2 = 路由没在服务或未授权）；
+4. **验证**：先跑 `node scripts/panel_rpc_probe.js`（退出码 2 = 拿不到地址，或路由没在服务／未授权）；
    再让用户刷新页面，浏览器代码在页面启动时装载，对话视图的 tab 条里应出现诊断 / 指标 /
    自演进三个 tab。B 路第 4 步那半条 `cordis_inspect_query` 查法在桌面版用不了，这条路上没有
    这个工具。
@@ -141,14 +145,17 @@ DSH Desktop 把插件管理器只接到界面上：侧栏「插件」页能安�
 ## 桌面版的日志位置与冻结依赖
 
 - **日志不在 `dirname($DSH_HOME)/logs`**：macOS 桌面版把 harness 日志写在
-  `~/Library/Logs/DSH Desktop/harness.log`，`panel_rpc_probe.js` 会自动找到它。找不到时显式传
-  `--url <base> --token <token>`，本会话的运行上下文里有 GUI 地址与 token。
-- **profile 里有一条解析不了的依赖会把插件安装冻住**：`dependencies` 里若有一条指向没有
-  `package.json` 的目录的 link 依赖，桌面版启动时的 generations 迁移会 defer，写进
-  `.generations-deferred.json`，日志里记 `profile maintenance frozen`；界面上做插件操作会报
-  `cannot resolve profile bundle "<名字>"`。处置是把那条依赖删干净：profile 的 `package.json`、
-  `pnpm-lock.yaml`、`node_modules/` 里的死链各删一处，下次启动时指纹变了会重跑迁移。界面
-  提示里那条 `dsh plugin --profile web install` 在桌面版用不了，桌面版不带 `dsh` 命令行。
+  `~/Library/Logs/DSH Desktop/harness.log`。`panel_rpc_probe.js` 扫 `~/Library/Logs` 下的各子目录，
+  挑出真正含 `dsh web:` 行的那份，并把选中的路径打进「地址取自 …」。它拿不到地址时显式传
+  `--url <base> --token <token>`：地址就是 `$DSH_WEB_URL`，token 只出现在界面地址栏与那份日志的
+  `dsh web: http://…/?token=…` 行里，运行上下文的环境变量里没有 token。
+- **profile 里有一条解析不了的依赖会让 generations 迁移 defer**：`dependencies` 里若有一条指向
+  没有 `package.json` 的目录的 link 依赖，桌面版启动时把这次迁移写进 `.generations-deferred.json`
+  并放弃，日志里记 `profile maintenance frozen`。冻结的是这次迁移；之后凡是要解析这个包的操作
+  会报 `cannot resolve profile bundle "<名字>"`，同一个进程里装别的包仍可能装得上。处置是把那条
+  依赖删干净：profile 的 `package.json`、`pnpm-lock.yaml`、`node_modules/` 里的死链各删一处，
+  下次启动时输入指纹变了会重跑迁移。界面提示里那条 `dsh plugin --profile web install` 在桌面版
+  用不了，桌面版不带 `dsh` 命令行。
 
 ## 依赖预检（激活前跑，避免面板加载后白屏/报错）
 

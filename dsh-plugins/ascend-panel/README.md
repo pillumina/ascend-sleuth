@@ -112,16 +112,16 @@ plugin_manager install_bundle(target: <仓库绝对路径>/dsh-plugins/dsh-sleut
 
 `lib/index.js` 与 `lib/client.js` 由 `node scripts/build_panel_bundle.js` 从本目录两个源文件生成，不要手改；改源码后重跑它，`--check` 核产物与源文件一致，`node scripts/check_panel_bundle.js` 做可加载性冒烟。安装结果里 `restart-required` 表示运行时仍持有先前那份模块，让用户重启 DSH Desktop 后 tab 才出现。
 
-### 插件页安装（两件工具都没有，DSH Desktop 默认如此）
+### 插件页安装（三件工具都没有，DSH Desktop 默认如此）
 
 发行版把插件管理器的模型侧入口写成 `disabled: true` 时，装包由界面的插件页做，装出的是同一个常驻包：
 
-1. 侧栏「插件」页 → 添加入口 → 粘贴本仓库 `dsh-plugins/dsh-sleuth-panels` 的绝对路径。该入口也接受包名、Git 地址与压缩包。
-2. 装完看 profile 目录（`$DSH_PROFILE_DIR`）里的四处记录：`package.json` 的 `dependencies` 与 `dsh.profile.bundles` 各一条 `dsh-sleuth-panels`，`dsh.desktop.generationProjection` 与 `pnpm.overrides` 各一条指向 `.generations/live/dsh-sleuth-panels+<版本>+<哈希>`。界面不给模型可读的 application / warnings，以这四处记录为准。包进了 generation，仓库被移动或 worktree 被清掉都不影响已装的那份。
-3. 在仓库里跑 `node scripts/panel_rpc_probe.js`（退出码 2 = 路由没在服务或未授权），再刷新页面，对话视图的 tab 条里应出现「诊断」「指标」「自演进」三个 tab。
+1. 侧栏「插件」页 → 添加入口 → 粘贴本仓库 `dsh-plugins/dsh-sleuth-panels` 的绝对路径（粘的是这个包目录，不是上面的面板源目录 `dsh-plugins/ascend-panel/`：后者没有 `package.json`，入口会拒）。该入口也接受包名、Git 地址与压缩包。
+2. 装完看 profile 里的四处记录：`package.json` 的 `dependencies` 与 `dsh.profile.bundles` 各一条 `dsh-sleuth-panels`；`dsh.desktop.generationProjection` 里一条 generationId，形如 `dsh-sleuth-panels+<版本>+<哈希>`；`pnpm.overrides` 里一条指向 `dirname($DSH_PROFILE_DIR)/.generations/live/<generationId>/node_modules/dsh-sleuth-panels` 的 link。界面不给模型可读的 application / warnings，以这四处记录为准。包进了 generation，仓库被移动或 worktree 被清掉都不影响已装的那份。
+3. 在仓库里跑 `node scripts/panel_rpc_probe.js`（退出码 2 = 拿不到地址，或路由没在服务或未授权），再刷新页面，对话视图的 tab 条里应出现「诊断」「指标」「自演进」三个 tab。
 4. 卸载也在这个页面做。
 
-桌面版没有 `dsh` 命令，界面提示的 `dsh plugin --profile web install` 与 `dsh --profile web --dump-config` 都用不上。profile 的 `dependencies` 里若有指向没有 `package.json` 的目录的 link 依赖，桌面版启动的 generations 迁移会 defer，插件操作报 `cannot resolve profile bundle "<名字>"`；处置是把 `package.json`、`pnpm-lock.yaml`、`node_modules` 里的死链一起删干净。
+桌面版没有 `dsh` 命令，界面提示的 `dsh plugin --profile web install` 与 `dsh --profile web --dump-config` 都用不上。profile 的 `dependencies` 里若有指向没有 `package.json` 的目录的 link 依赖，桌面版启动的 generations 迁移会 defer，之后需要解析这个包的操作报 `cannot resolve profile bundle "<名字>"`；处置是把 `package.json`、`pnpm-lock.yaml`、`node_modules` 里的死链一起删干净。
 
 **形态约束**：文件是 `cordis_define` 需要的函数体（`return { apply(ctx) {...} }`），原样读入/粘贴。不要改成 `export default` / `import`——动态插件代码不经过打包器，ESM 语法无法加载（此前因此失败过一次）。生成器嵌入的也是这份原文。
 

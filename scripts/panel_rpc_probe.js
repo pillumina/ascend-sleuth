@@ -17,7 +17,8 @@
 //   node scripts/panel_rpc_probe.js --log <harness.log 路径>
 //   node scripts/panel_rpc_probe.js --selftest          # 自带假服务器自测本脚本（不需要 DSH）
 //
-// 退出码：0 拿到 result.ok=true；2 路由没在服务或未授权（多半是 host 半没加载、还没重启）；
+// 退出码：0 拿到 result.ok=true；2 拿不到 DSH 的地址与 token（既没传 --url/--token，日志里也没有
+//        `dsh web:` 行），或路由没在服务、未授权（多半是 host 半没加载、还没重启）；
 //        1 其他失败（信封不合法、面板侧降级、处理函数报错）
 
 'use strict'
@@ -53,14 +54,18 @@ function defaultLogPath() {
     if (fs.existsSync(candidate)) return candidate
   }
   // macOS 桌面版把日志写在 ~/Library/Logs/<产品名>/harness.log，不在 Application Support 下；
-  // 产品名随发行版变，所以按目录扫，取最近写过的那个。
+  // 产品名随发行版变。~/Library/Logs 下可能有别的产品也写同名文件，所以先试目录名带 dsh 的，
+  // 再试真的含 `dsh web:` 行的，最后才按 mtime 兜底取最近写过的那个。
   const macLogs = path.join(os.homedir(), 'Library', 'Logs')
   if (fs.existsSync(macLogs)) {
-    const found = fs.readdirSync(macLogs)
+    const candidates = fs.readdirSync(macLogs)
       .filter((name) => fs.existsSync(path.join(macLogs, name, 'harness.log')))
       .map((name) => path.join(macLogs, name, 'harness.log'))
       .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)
-    if (found.length > 0) return found[0]
+    const dshNamed = candidates.filter((one) => /dsh/i.test(path.dirname(one)))
+    const hasTarget = (one) => readLogTarget(one) !== null
+    const picked = dshNamed.find(hasTarget) || candidates.find(hasTarget) || dshNamed[0] || candidates[0]
+    if (picked !== undefined) return picked
   }
   return null
 }
@@ -84,9 +89,10 @@ function resolveTarget(args) {
   if (args.url !== null && args.token !== null) {
     return { base: args.url.replace(/\/$/, ''), token: args.token, source: '命令行' }
   }
-  const fromLog = readLogTarget(args.log !== null ? args.log : defaultLogPath())
+  const logPath = args.log !== null ? args.log : defaultLogPath()
+  const fromLog = readLogTarget(logPath)
   if (fromLog === null) return null
-  return Object.assign(fromLog, { source: 'harness.log' })
+  return Object.assign(fromLog, { source: logPath })
 }
 
 async function runProbe(args, io) {
@@ -100,11 +106,11 @@ async function runProbe(args, io) {
 
   const target = resolveTarget(args)
   if (target === null) {
-    say('探针：拿不到 DSH 的地址与 token（harness.log 里没有 `dsh web:` 行）——如实跳过\n')
+    say('探针：拿不到 DSH 的地址与 token（日志里没有 `dsh web:` 行）\n')
     say('  可显式传 --url <base> --token <token>，或 --log <harness.log 路径>\n')
-    return 0
+    return 2
   }
-  say('探针目标：' + target.base + '（取自 ' + target.source + '）\n')
+  say('探针目标：' + target.base + '（地址取自 ' + target.source + '）\n')
 
   // ① 换一次浏览器会话 cookie（页面也是这么进门的）
   let cookie = null

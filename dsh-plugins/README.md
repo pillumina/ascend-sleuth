@@ -69,11 +69,12 @@
 
 - `node scripts/check_panel_bundle.js` —— 判本机 DSH 走哪条装载路，并逐条核对那五个契约
   （`webServer` 的 prefix 路由声明、`connection.requestRejection`、client 沙箱的 `styles.insert`、
-  页面产物格式 `__ModuleLoader__.load`、shell 的 `resolve` + `execute`）；找不到 DSH 时如实跳过。
+  页面产物格式 `__ModuleLoader__.load`、shell 的 `resolve` + `execute`）；找不到 DSH 时只按本地桩
+  校验工具定义，首行报「强度较弱」。
   `--selftest-dsh` 用临时假 DSH 自测这条判据（含两条"去掉某个契约必报红"的用例）；
   `--dsh-root <目录>` 指到别的安装处。
 - `node scripts/panel_rpc_probe.js` —— 不经 GUI，按页面的线协议打一条面板 RPC，直接看 host 半挂没挂、
-  会话工作区解析得出、数据取到几条。退出码 2 = 路由没在服务**或未授权**（装了还没重启时就是前者）。
+  会话工作区解析得出、数据取到几条。退出码 2 = 拿不到地址，或路由没在服务**或未授权**（装了还没重启时就是前者）。
   它证明不了 React 那层的渲染，那一层只能看页面。
 
 ## 面板文案的定制条款
