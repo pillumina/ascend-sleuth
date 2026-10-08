@@ -110,7 +110,7 @@ exec-log 只记录内容流程收尾时的现场情况，不做每次 skill 调�
 
 读法一律走 `scripts/tail_exec_log.py`：人读尾巴，`--summary` 聚合，`--json` 给面板。不要在别处重新实现解析：datetime 归一、路径解析与缺失退化只应有一份实现。执行记录经 `scripts/exec_log_path.py` 解析到主检出，同一克隆内所有 worktree 共写共读，写侧持 flock；无锁的并发实测里 16 次写入只剩 3 条。文件缺失或空表按正常退化处理，退出码 0。
 
-边界是同一克隆内共享，跨克隆与跨机不聚合。跨机的数据走聚合值进 timeline 这条路，且已经接线：`scripts/metrics_snapshot.py` 组装每期快照时，把 `tail_exec_log --summary` 的聚合（`content_flow_runs`、`evolve_check_runs`、`evolve_check_no_signal`）作为内容流程侧写进当期的指标源文件 `metrics/timeline.d/<期号>.yaml`。
+边界是同一克隆内共享，跨克隆与跨机不聚合。跨机的数据走聚合值进 timeline 这条路，且已经接线。`scripts/metrics_snapshot.py` 组装每期快照时，把 `tail_exec_log --summary` 的聚合（`content_flow_runs`、`evolve_check_runs`、`evolve_check_no_signal`）作为内容流程侧写进当期的指标源文件 `metrics/timeline.d/<期号>.yaml`。
 
 聚合文件 `metrics/timeline.yaml` 由 `scripts/build_timeline.py` 重建，是生成物，不要手写。执行记录本身不进 git。
 
@@ -209,7 +209,13 @@ validated 的结论要能点开证据（issue、diff、前后指标），用户�
 
 自演进体系不能只做成一个 skill：skill 定义 agent 怎么做，但不承载确定性校验（脚本）、可 diff 的状态（数据文件）与运行时渲染（插件）。这四类能力在仓库里本来就是四种载体，自演进横跨全部四类。只做成 skill 会把校验、状态与可视化塞进 prompt 协议，违反 [design-principles.md](../spec/design-principles.md) 原则二（不变量写进结构）。dsh-agent-teams 插件属于执行载体层（[pipeline.md](pipeline.md) §6.7），不在上述四层内：它提供多 agent 运行底座，可以被 self-evolve skill 调用，但不是自演进工程本身。
 
-先做哪一层按 [pipeline.md](pipeline.md) §11 的总纲排，不看本表。顺序是先确定性逻辑（S2 评测脚本）与领域状态（`proposals/` 骨架，`ideas/` 入 git，运行时状态不进 git），再流程协议（self-evolve skill 把已跑通的脚本与状态机包起来），最后可视化（面板）。skill 把脚本、状态与协议装配成可重复执行的一轮，面板让过程可见。
+先做哪一层按 [pipeline.md](pipeline.md) §11 的总纲排，不看本表。顺序是：
+
+1. 确定性逻辑（S2 评测脚本）与领域状态（`proposals/` 骨架，`ideas/` 入 git，运行时状态不进 git）。
+2. 流程协议（self-evolve skill 把已跑通的脚本与状态机包起来）。
+3. 可视化（面板）。
+
+skill 把脚本、状态与协议装配成可重复执行的一轮，面板让过程可见。
 
 ## 9. 落地顺序
 

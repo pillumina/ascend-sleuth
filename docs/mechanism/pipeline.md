@@ -390,7 +390,7 @@ rejected 卡同样进 PR 供审：agent 提出改进项、改了、实验发现�
 
 validated 与观察窗的关系：agent 判 validated 依据的是合入前可得的验证（S2、golden、归因事件复测）。
 
-真实反馈类（content 与 fix 的现场有效性）agent 只能做到实现加 S2 佐证再加判 validated，现场确认（S1）在合入后的观察窗里发生，观察窗结果（`confirmed` 或 `rolled_back`）作为追加的 decision 记录写回卡，不改变卡状态机。
+真实反馈类（content 与 fix 的现场有效性）agent 只能做到实现加 S2 佐证再加判 validated。现场确认（S1）在合入后的观察窗里发生，观察窗结果（`confirmed` 或 `rolled_back`）作为追加的 decision 记录写回卡，不改变卡状态机。
 
 规则：`status` 与 `authorization` 由机制推进，不靠自觉（落地时 schema 校验能机械执行就进 CI，准入判据同 §6.5）；`decisions` 只追加不修改；`supersedes` 与 `superseded_by` 构成替换追溯链（[run.md](run.md) 第 5 节），回滚粒度是被替代版本的合入点。
 
@@ -398,7 +398,7 @@ validated 与观察窗的关系：agent 判 validated 依据的是合入前可�
 
 改进项是决策档案，适合逐卡追溯，不适合逐卡阅读。实测的失效形态是：卡库长到几十张以后，状态分布几乎全是 validated，rejected 与 superseded 只有个位数，「状态分布、采纳率」这类聚合退化成常数。
 
-人审的单位是批（§6.3a 审的是整个自演进过程是否扎实），一批几十张卡的决策链合计约数万字，远超人的注意力预算（[design-theory.md](../spec/design-theory.md) 第 6 节的 $B_{\text{attn}}$，即一个人一次审议能读完的改动量）。
+人审的单位是批（§6.3a 审的是整个自演进过程是否扎实）。一批几十张卡的决策链合计约数万字，远超人的注意力预算（[design-theory.md](../spec/design-theory.md) 第 6 节的 $B_{\text{attn}}$，即一个人一次审议能读完的改动量）。
 
 结论是：卡面主要供 agent（下一轮起草时查同组件先例）与人按需复核，人的首屏应当是判决，而不是逐张读卡的全文。
 
@@ -485,7 +485,11 @@ validated 与观察窗的关系：agent 判 validated 依据的是合入前可�
 
 本文及整套 evolution 文档是完整设计蓝图，落地必须分级：机制已经开始真实运行，设计对错正随数据流入验证（原则八）。
 
-读数现算：知识库条数用 `python3 scripts/index_counts.py`，改进项状态用 `python3 scripts/ev_measure.py --audit`，真实诊断会话数用 `ls <主检出>/traces/*.yaml | wc -l` 或 `python3 scripts/trace_metrics.py --root <主检出>`。
+读数现算：
+
+- 知识库条数用 `python3 scripts/index_counts.py`。
+- 改进项状态用 `python3 scripts/ev_measure.py --audit`。
+- 真实诊断会话数用 `ls <主检出>/traces/*.yaml | wc -l` 或 `python3 scripts/trace_metrics.py --root <主检出>`。
 
 因此先建第一批落地（最小可运行闭环），即让机制第一次真实跑起来的最小组件集，用 1 至 2 轮真实 issue 验证设计；其余为蓝图，触发条件出现才实现。仓库 [rollout-assessment.md](../plan/rollout-assessment.md) 的「数据与运维层未就绪，需第一个团队跑起来」与此一致；在它之上预建全部机制（十几态状态机、多套载体、多级降级）即为过度设计。分级见下表。
 

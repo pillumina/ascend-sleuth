@@ -50,7 +50,10 @@ expected 标注（namespace/category/fix_ref）由 agent 读 issue 线程产出�
 
 弱信号这条通道留着，是因为里面既有真实缺陷（`#12947` 就是：无前缀，labels 只有 `triaged`，后来撞上了真实的 fix PR #12948），也有不带流程或文档类前缀的流程单，后者第 1 条挡不到。一票否决会连真实缺陷一起丢掉，所以把它挡在默认值上，把判断留给人。窗口里的 issue 列表一直在动，这几个数只作量级参考，不当阈值用。
 
-吸收分流：`--build-pool` 从同一份校准集派生两条池，判定池 `pool-val.yaml`（`role: judgment`，只留未吸收样本）与回归池 `pool-val-absorbed.yaml`（`role: regression`；`--gate` 按 `role` 字段拒绝它，不看文件名）。吸收判据是 case 实名：`knowledge/` 下存在 `VLLM-ASC-<issue>.yaml`（前缀可用 `--case-prefix` 改）。不用「issue 号出现在正文里」做判据，因为正文提到别的 issue 是常事：`knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13639.yaml` 的边界判别里就写着 14871，文本搜索会把未吸收的样本误判成已吸收。
+吸收分流：`--build-pool` 从同一份校准集派生两条池。
+
+- 判定池 `pool-val.yaml`（`role: judgment`）：只留未吸收样本。
+- 回归池 `pool-val-absorbed.yaml`（`role: regression`）：`--gate` 按 `role` 字段拒绝它，不看文件名。吸收判据是 case 实名：`knowledge/` 下存在 `VLLM-ASC-<issue>.yaml`（前缀可用 `--case-prefix` 改）。不用「issue 号出现在正文里」做判据，因为正文提到别的 issue 是常事：`knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13639.yaml` 的边界判别里就写着 14871，文本搜索会把未吸收的样本误判成已吸收。
 
 case 实名还要求文件名 stem 匹配命名规则 `^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+$`（全大写、以 issue 号结尾）：`knowledge/` 下 169 个 stem 里 138 个匹配，31 个不匹配（都是没有 issue 号的自有名，如 `COMMON-CPU-CACHE-MISS`）。
 
@@ -95,7 +98,7 @@ test/selection 分离前单池运行，分数标注 `source: issue-replay`。
 
 命中低是设计的结果：S2 池从未沉淀的 closed issue 里选样，池本身就是用来暴露覆盖缺口的，按设计就该大量不命中，不命中即库里没有这条知识，走补 case 候选。它不是已有 case 的外部验证通道。
 
-### cross 样本
+### 3.1 cross 样本
 
 cross 样本（`eval/s2/vllm-ascend-cross.yaml`）是另一类：与某条 case 的来源 issue 不同、但错误签名与该 case 对得上的 issue，即另一个现场撞上同一条知识。构造方式机械：拿 case 的 quickly_check 签名去 issue 池里搜同签名的非来源 issue，只收已关闭且有维护者结论（维护者判词或已合入 fix PR）的条目；没有外部结论的样本产不出可证伪的 `consistent`，收了也只会变成不可判读的记录。样本的 `expected` 里记 `target_case`（该签名期望撞上的 case）与 `cross_ref`；判定口径是「是否命中目标 case，且结论与 issue 实际处置一致」，命中且一致则记进该 case 的 `validation_record.consistent`（非来源 issue，不是自证）。
 
@@ -103,9 +106,9 @@ cross 样本（`eval/s2/vllm-ascend-cross.yaml`）是另一类：与某条 case 
 
 选样纪律：下一个 cross 样本必须挑既非该 case 来源、又未被该 case 引用的同签名 issue，否则样本再多也只会累积 `self_consistent`。
 
-### 外部验证占比
+### 3.2 外部验证占比
 
-外部验证占比不再是判据。原判据要求外部验证卡占比下限 1/3，实测不可达。以 2026-10 的终态卡为例：方法能走外部的只有 19 张（`golden_replay` 与 `issue_replay`），其余 154 张里 87 张是 `metrics_compare`、67 张是 `scan_review`。`metrics_compare` 有可复现命令、客观但不来自系统之外；`scan_review` 是人或 agent 自审；这两类改的组件能被回放碰到的只有个位数，可达上限约 18%。原判据的动作文案自己就写着「只能自证的卡片…不计入外部验证」，把它们排除出分子却留在分母里，占比到不了 1/3。占比因此降为体检器的读数（外部验证占比与可复现证据占比都由 `python3 scripts/evolution_health.py` 的输出现算，同期读数为 11% 与 70%），判据改问通道还在不在用：`external_verification_stall` 在最近一次外部验证之后又产出 20 张以上终态卡时报警。理由是这条通道缺的是跑，不是改口径，判据要能被人一次动作清掉。
+外部验证占比不再是判据。原判据要求外部验证卡占比下限 1/3，实测不可达。以 2026-10 的终态卡为例：方法能走外部的只有 19 张（`golden_replay` 与 `issue_replay`），其余 154 张里 87 张是 `metrics_compare`、67 张是 `scan_review`。`metrics_compare` 有可复现命令、客观但不来自系统之外；`scan_review` 是人或 agent 自审；这两类改的组件能被回放碰到的只有个位数，可达上限约 18%。原判据的动作文案自己就写着「只能自证的卡片…不计入外部验证」，把它们排除出分子却留在分母里，占比到不了 1/3。占比因此降为体检器的读数（外部验证占比与可复现证据占比都由 `python3 scripts/evolution_health.py` 的输出现算，同期读数为 11% 与 70%）。判据改为问通道还在不在用：`external_verification_stall` 在最近一次外部验证之后又产出 20 张以上终态卡时报警。理由是这条通道缺的是跑，不是改口径，判据要能被人一次动作清掉。
 
 ---
 
