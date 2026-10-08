@@ -14,7 +14,7 @@
 
 `assets/`、`diagrams/`、`demo-assets/`、`kb-explorer/` 是素材与演示页，不是阅读顺序里的文档。
 
-**一件想找的事只有一个权威处。** 按"你要做什么"查 [mechanism/rsi-mechanism.md](mechanism/rsi-mechanism.md) 末尾的权威归属表，那张表也说明每篇文档什么时候该读。
+**一件想找的事只有一个权威处。** 按"你要做什么"查 [mechanism/rsi-mechanism.md](mechanism/rsi-mechanism.md) §11.2 的权威归属表，那张表也说明每篇文档什么时候该读。
 
 ## 文档目录
 

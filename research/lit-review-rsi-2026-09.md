@@ -78,9 +78,9 @@
 
 ---
 
-## 4. 与既有 §12 / §12a 的增量关系
+## 4. 与既有 §13.1 / §13.2 的增量关系
 
-`docs/mechanism/pipeline.md` §12（SkillOpt）、§12a（WikiSkill, Google Research）已吸收"验证门语义 + 自动评分集 + 知识/skill 分层 + 先例咨询"。本轮增量不在那两条线上，而在三处：
+`docs/mechanism/pipeline.md` §13.1（SkillOpt）、§13.2（WikiSkill, Google Research）已吸收"验证门语义 + 自动评分集 + 知识/skill 分层 + 先例咨询"。本轮增量不在那两条线上，而在三处：
 
 1. **接受规则的统计性质**（PACE）：既有两节都只说"严格提升才接受"，没说"反复用同一个小 dev 集接受"会累积假接受。这是新的一层。
 2. **提案者可见性切分**（StarHarness）：既有设计把独立性押在 holdout 封存上，没有"proposer 不可见的 selection 集"这一层。

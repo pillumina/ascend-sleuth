@@ -85,7 +85,7 @@ description: >
    `python3 scripts/ev_proposal.py --mark-merged --from-prs` 把上一批的指针补齐再看剩余量——
    把已合入的卡读成未合入，会让动作走成"停产"而真正该做的是回写；
 2. 查重 + **同组件先例咨询**（防重提被拒方案——skill-impact 咨询语义；
-   论证可选层 docs/mechanism/pipeline.md §12a）：`python3 scripts/ev_proposal.py --list`
+   论证可选层 docs/mechanism/pipeline.md §13.2）：`python3 scripts/ev_proposal.py --list`
    ——同 trajectory/同 target 已有在池卡 → 合并不新建；
    同时查本卡要改的组件（skill 步骤 / triage 分支 / script）在历史卡里的结局：
    `--list` 定位同组件卡 → 读其 decisions——该组件被改过 / 回滚过 / 有 rejected 结论 =
