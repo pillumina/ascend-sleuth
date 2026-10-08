@@ -66,7 +66,7 @@
 | postmortem | `postmortems/**` | 复盘，并供后续沉淀 | 可观察事实与推断分开写：时间线只放事实，判断另起 | 无 |
 | 诊断对话输出 | 会话里 | 现场工程师，要立刻行动 | 4 段必需 + 2 个按需块（见 `skills/diagnose/SKILL.md`）；一件事只说一遍；结论先行 | 无 |
 | 对话回复 | 会话里 | 没读过本仓文档，也不在诊断现场 | 两类都要展开：短代号（卡号、事项号、机制名、分组名）与本仓内部术语（只有读过 `docs/` 才这么说的词）；必须保留的原值见 §2，本行不复写那份清单 | 无 |
-| PR body / 评审摘要 | `.github/PULL_REQUEST_TEMPLATE/`（五类模板）、`scripts/render_review_summary.py` | 评审人 | 结构按模板的 `##` 区块；代号写中文含义（`docs/glossary.yaml` 的 `scope` 规则） | `pr-template`、`render_review_summary.py --scan` |
+| PR body / 评审摘要 | `.github/PULL_REQUEST_TEMPLATE/`（五类模板）、`scripts/render_review_summary.py` | 评审人 | 结构按模板的 `##` 区块；首节写背景与动机（触发 / 不做的代价 / 做完的变化），不写实现；Agent 预核意见只写模板该区块列的几项（结论、核对的版本、按严重度排的问题、覆盖清单、反例与可复跑命令、三项判定、报告指针；四类模板另加一条随变更对象定的判定项），命令输出与逐条证据留预核报告（见 [git-workflow.md](../guide/git-workflow.md) 的「独立预核」一节）；代号写中文含义（`docs/glossary.yaml` 的 `scope` 规则） | `pr-template`、`render_review_summary.py --scan` |
 | 指标注记 | `metrics/timeline.d/*.yaml`、exec-log | 看面板趋势 | 读数带分母；趋势不可读时明说不可读，不画等高柱充数 | `verify_metrics.py`、`build_timeline.py --check` |
 | skill 与 docs 正文 | `skills/**`、`docs/**`、`README.md`、`CLAUDE.md`、`CONTEXT.md` | agent 载入 + 人读 | skill 正文的行为规则要内联（自包含）；不能出现 ADR 号、日期、卡号这类外部锚点；仓库根的人读文档与 `docs/` 正文同样适用 §1 的共用条目与 §2 的原值例外；动笔前读 §1、提交前对照 §1 自查，这两步与五类高频项写在 `CLAUDE.md` 的「人读文本的行文规范」条 | `skill-self-contained`、`docs-index`、`render_review_summary.py --scan`（代号未登记与越界）；§1 的其余条目由**独立预核**对照（三档强度见 [git-workflow.md](../guide/git-workflow.md) 的「评审把手」） |
 
@@ -85,7 +85,7 @@
 | reference 词条 | `skills/to-reference/SKILL.md` 的「产出词条」一节 |
 | EV 卡 | `docs/mechanism/pipeline.md` 的「Idea 卡 schema」一节 |
 | 面板文案 | `dsh-plugins/README.md` 的「面板文案的定制条款」一节 |
-| PR body | `.github/PULL_REQUEST_TEMPLATE/methodology.md`（各节自带填写要求） |
+| PR body | `.github/PULL_REQUEST_TEMPLATE/methodology.md`（五类模板的首节都是「背景与动机」，各节自带填写要求） |
 | 指标注记 | **暂无写点**：注记直接写在 `metrics/timeline.d/*.yaml` 里，没有模板可挂。接入需先给它一个模板或 schema 约束，或把定制条款写进该目录的注释头 |
 | docs 与 skill 正文（含 README / CLAUDE.md / CONTEXT.md） | 无需在每个文件里指路：`CLAUDE.md` 的「Key constraints」一节（每个 agent 会话都会读到）+ `docs/_manifest.yaml` 的维护规则第 4 条（新增文档时读到），两处都指向本文件；动笔前与提交前的自查动作见 `CLAUDE.md` 的「人读文本的行文规范」条 |
 | 跨 harness 入口（所有面） | 根目录 `AGENTS.md`：Codex 与 WorkBuddy 读它，Trae 需在设置里开启导入才读；`CLAUDE.md` 被 DSH 与 Claude Code 读。两份都只有指路，正文仍在 `CLAUDE.md` 与本文件 |

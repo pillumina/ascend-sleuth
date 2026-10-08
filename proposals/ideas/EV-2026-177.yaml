@@ -1,0 +1,213 @@
+# ============================================================
+# EV-2026-177 —— PR body 改成 reviewer 先读的形态：首节写背景与动机，预核意见只留结论与要复核的点
+# 来源：owner 指示（2026-10-08）四条：① methodology 模板的「人读性自查」节删掉——呈现在 PR 里没有意义；
+#       ② body 的行文按 docs/spec/writing-norms.md，不写黑话与比喻，reviewer 要读得懂；
+#       ③ 「Agent 预核意见」太长太 compact，检视人不需要展开细节，只要严谨、简洁的建议与结论；
+#       ④ body 缺背景和动机，只列变更内容会让审核者不明白。目标：body 可读、可审、严谨、简洁。
+# 脱敏：只含仓库内路径、命令与字面量
+# ============================================================
+
+id: EV-2026-177
+layer: L2
+target_component: .github/PULL_REQUEST_TEMPLATE
+title: "PR body 首节改为背景与动机，预核意见只留结论与要复核的点，删掉人读性自查节"
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: '2026-10-08'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      owner 2026-10-08 的四条：模板 body 写得过于复杂，「人读性自查」呈现在 PR 里没有意义；
+      body 的文字、行文、措辞要符合 docs/spec/writing-norms.md，不写黑话与复杂比喻，reviewer 要读得懂；
+      「Agent 预核意见」输出太长、太 compact，检视人不需要展开具体细节，只要严谨、简洁的建议与结论；
+      body 缺「背景和动机」，只列变更内容还是会让审核者不明白。
+    trajectory:
+      - "owner 指示（2026-10-08：可读、可审、严谨、简洁明了、可读性佳）"
+hypothesis: >-
+  把五类模板的首节固定成「背景与动机」（触发 / 不做的代价 / 做完的变化），并把「Agent 预核意见」
+  压成结论优先的七到八行之后，reviewer 不打开预核报告就能判定合入，也不需要在 body 里翻找改动动机；
+  删掉 methodology 模板的「人读性自查」节不丢覆盖——代号与行文约束由 writing-norms §3 的机械检查
+  （pr-template、render_review_summary.py --scan）与独立预核的三项判定承担。
+predicted_effect:
+  metric: 五类 PR 模板的 body 结构（首节是否为背景与动机、预核意见字段是否为结论优先）
+  from: >-
+    五类模板都没有「背景与动机」节；「Agent 预核意见」各有 7 个自评口径字段（预核者、事实依据、
+    两条随模板定的判定项——methodology 是「行为差异」「文档类改动另查」，其余是「期望正确性」或
+    「归因判定」「预期影响」加「风险标注」——、覆盖清单、反例与可复跑命令、结论），作者容易照抄成
+    checklist；methodology 模板另带 6 条「人读性自查」勾选项。
+  to: >-
+    五类模板首节都是「背景与动机」（触发 / 不做的代价 / 做完的变化）；「Agent 预核意见」改成
+    结论行（MERGE_READY）+ 核对的版本 + 按严重度排的问题 + 覆盖清单 + 反例与可复跑命令 +
+    人读文本三项判定 + 预核报告链接，共 7 到 8 行；methodology 模板不再有「人读性自查」节，
+    其「新增或改名的名字」一行并入「变更内容」（枚举提示移进注释，标签只留「无则写「无」」）。
+  measure:
+    command: |
+      python3 - <<'PY'
+      from pathlib import Path
+      import importlib.util, subprocess, sys
+
+      root = Path(".")
+      tmpl = root / ".github/PULL_REQUEST_TEMPLATE"
+      names = ["methodology", "knowledge_intake", "knowledge_modification", "reference", "structure"]
+      anchors = ["独立 agent 产出", "作者不得代填", "覆盖清单", "反例与可复跑命令", "MERGE_READY", "人读文本三项判定"]
+      bodies = {}
+      for n in names:
+          text = (tmpl / (n + ".md")).read_text(encoding="utf-8")
+          bodies[n] = text
+          sections = [l for l in text.splitlines() if l.startswith("## ")]
+          assert sections[0] == "## 背景与动机", (n, sections[0])
+          for a in anchors:
+              assert a in text, (n, a)
+      assert "人读性自查" not in bodies["methodology"], "methodology 仍有人读性自查节"
+      assert "新增或改名的名字" in bodies["methodology"], "methodology 缺新增或改名的名字一行"
+
+      spec = importlib.util.spec_from_file_location("vp", "scripts/verify_pr_body.py")
+      vp = importlib.util.module_from_spec(spec)
+      spec.loader.exec_module(vp)
+      assert set(vp.REQUIRED_SECTIONS) == set(names), sorted(vp.REQUIRED_SECTIONS)
+      for n, req in vp.REQUIRED_SECTIONS.items():
+          assert req[0] == "背景与动机", (n, req)
+      for n, hints in vp.TEMPLATE_HINTS.items():
+          assert "背景与动机" not in hints, n
+      for n in names:
+          ok = subprocess.run([sys.executable, "scripts/verify_pr_body.py"], input=bodies[n], capture_output=True, text=True)
+          assert ok.returncode == 0, (n, ok.stdout, ok.stderr)
+          cut = "\n".join(l for l in bodies[n].splitlines() if l != "## 背景与动机")
+          bad = subprocess.run([sys.executable, "scripts/verify_pr_body.py"], input=cut, capture_output=True, text=True)
+          assert bad.returncode == 1 and "背景与动机" in bad.stdout, (n, bad.returncode, bad.stdout)
+
+      gw = (root / "docs/guide/git-workflow.md").read_text(encoding="utf-8")
+      for s in ["独立预核（提交前", "要跑反例吗", "为什么不进 CI", "没查出问题也要给覆盖清单", "PR body 上写多少", "独立预核的黑话判定"]:
+          assert s in gw, s
+      assert "PR 人读性自查" not in gw, "git-workflow 仍把不进 CI 归因于 PR 人读性自查"
+      wn = (root / "docs/spec/writing-norms.md").read_text(encoding="utf-8")
+      for s in ["首节写背景与动机", "五类模板的首节都是「背景与动机」"]:
+          assert s in wn, s
+      print("VERDICT PASS")
+      PY
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+validation:
+  method: scan_review
+  baseline: 改前的五类模板（main 73c720f）与 docs/guide/git-workflow.md:227 的归因句
+  success_criteria: >-
+    ①五类模板首节都是「背景与动机」，且各含独立 agent 产出 / 作者不得代填 / 覆盖清单 /
+    反例与可复跑命令 / MERGE_READY / 人读文本三项判定六个字面串；
+    ②methodology 模板不再含「人读性自查」，其「新增或改名的名字」一行在「变更内容」里；
+    ③scripts/verify_pr_body.py 的五条 REQUIRED_SECTIONS 首项都是「背景与动机」，
+    TEMPLATE_HINTS 不含它；对五类模板 body 判 PASS、删掉该行后判 FAIL；
+    ④docs/guide/git-workflow.md 仍含 EV-2026-147 钉住的两个字面串与三档表表头，且不再把
+    「不进 CI」归因于 PR 人读性自查；⑤docs/spec/writing-norms.md 的 PR body 行写明首节内容与
+    预核意见的取舍；⑥python3 scripts/ev_measure.py EV-2026-147 --run 里本改动涉及的三项读数
+    （templates_ok / git_workflow_tiers / writing_norms_pointer）仍为 True；该判据另两项不通过
+    （route_check_misfire_reported、wide_words_ok）的成因见 decisions，与本改动无关；
+    ⑦本卡 predicted_effect.measure 一条命令复验 → VERDICT PASS。
+  rollback: >-
+    回退该提交即可：五个模板回到 73c720f 的版本、verify_pr_body.py 的 REQUIRED_SECTIONS 去掉
+    「背景与动机」、git-workflow 与 writing-norms 的三处措辞回退；未改任何 CI 工作流与判定逻辑。
+gate:
+  condition: >-
+    再出现「PR body 只列变更内容、读不出动机」，或「预核意见把命令输出与逐条证据复制进 body」
+    压过结论，或「人读性自查」式勾选清单重新出现在模板里。
+risk: low
+principle_refs: [1, 6, 10, 11]
+actual_cost:
+  tokens: 6000
+  source: estimate
+  note: >-
+    口径：改五个模板、加 verify_pr_body.py 一条必含项、改 git-workflow 四处与 writing-norms 两处、
+    新增本卡、跑 pr-template 与 kb-checks 对应命令、复核 EV-2026-147 的判据串；估 6 千，
+    未计独立预核与回修。
+decisions:
+  - who: agent
+    when: "2026-10-08"
+    type: proposal
+    conclusion: >-
+      采纳「首节背景与动机 + 预核意见结论优先 + 删人读性自查」三条一起改。理由：四条反馈指向同一个
+      读者问题——reviewer 要先知道为什么改、再看要复核哪几条；背景与动机和预核意见的长度是一件事的
+      两端（前者补上缺的，后者砍掉多的），分开改会让 body 总长度只增不减。
+  - who: agent
+    when: "2026-10-08"
+    type: decision
+    conclusion: >-
+      删「人读性自查」节，其覆盖改由三处承担：行文按 writing-norms §3 的机械检查
+      （pr-template、render_review_summary.py --scan），代号登记查 docs/glossary.yaml 的 scope，
+      判断性三项判定归独立预核（CLAUDE.md:119 已要求）。理由：PR 是审读面，勾选项在 PR 上
+      只能证明作者勾过，证明不了行文质量。
+  - who: agent
+    when: "2026-10-08"
+    type: action
+    conclusion: >-
+      保留 EV-2026-147 measure 钉住的五个字面串（独立 agent 产出 / 作者不得代填 / 覆盖清单 /
+      反例与可复跑命令 / MERGE_READY），只压缩其后的括注。理由：旧卡的判据是流程门槛，不是行文；
+      压括注即可满足可读性，不必 supersede 旧卡、也不动只追加档案。
+  - who: agent
+    when: "2026-10-08"
+    type: eval
+    conclusion: >-
+      判据实跑（本机，worktree，2026-10-08）：五类模板经 scripts/verify_pr_body.py 全部 exit 0
+      （body 走 stdin，不是当文件名传）；删掉首节后 exit 1 且报「缺少关键区块: [背景与动机]」。
+      **EV-2026-147 的判据是 FAIL，与本次改动无关**：分支上得 templates_ok True []、
+      git_workflow_tiers True、writing_norms_pointer True、route_check_misfire_reported False、
+      wide_words_ok False、route_check_tests_ok True（25 条）；在主检出 main 73c720f 上复跑输出逐字
+      相同，说明那两项改动前就不通过。两个红的成因经独立预核溯源，都不是 route_check 的现存缺陷：
+      wide_words_ok=False 是判据的期望串过期——它找「跨分支重复的正则」，scripts/route_check.py:190
+      现在打印「跨性质重复的正则」（改名在 a5fc926，EV-2026-148），实跑 --wide-words 得
+      「跨性质重复的正则：0 条（同一形态被两个性质同时认领）」；misfire=False 是判据依赖的那条 case
+      已修好（实跑该 case 命中 interrupt，无 training_interrupt 抢先）。旧卡不动（只追加档案、
+      最小改动），在 PR body 的证据节写明。
+  - who: agent
+    when: "2026-10-08"
+    type: eval
+    conclusion: >-
+      盲辨对照（回归检查要求，本改动正是输出契约）：把主检出 PR #324 的真实 body（旧模板）与按新
+      模板重写的同一内容去掉来源后交不知情 subagent 判，结论 VERDICT: new——新样稿「背景与动机」
+      独立成节（触发 / 不做的代价 / 做完的变化），结论在预核意见第一条；旧样稿的动机埋在 diffstat
+      之后，最终 MERGE_READY 在节末。判定者同时指出新样稿丢了旧样的版本绑定信息（提交链与 blob
+      哈希）与限制清单，据此回修两处：五类模板的预核意见各加一行「核对的版本（提交号或文件哈希；
+      还没提交写「改动前」）」，覆盖清单括注加「没查到的部分一并写明」。判定者建议保留旧样的
+      「人读性自查」节一条不采纳——删它是本次三条反馈之一，其覆盖由 writing-norms §3 的机械检查
+      与独立预核三项判定承担。
+  - who: agent
+    when: "2026-10-08"
+    type: decision
+    conclusion: >-
+      判 validated：四条反馈都在模板与两份配套文档里落成字面规则，判据可复跑。
+      **边界**：本卡不改 pr-template CI 的工作流文件（只改它读的模板与校验脚本），也不改任何
+      知识内容与路由。
+  - who: agent
+    when: "2026-10-08"
+    type: eval
+    conclusion: >-
+      第 1 轮独立预核（会话 4831cfdc，read-only，核 48c50fdd）判 MERGE_READY: no，一条阻断级：
+      git-workflow.md:200-201 的「只写四样」、五类模板的 7 个字段、writing-norms.md:69 的三样，对预核
+      body 该写哪些字段给出三份互不相同的枚举。已按模板那份统一三处措辞（git-workflow 与 writing-norms
+      各一句改成与模板一致的七项枚举），并修掉预核报的四条重要级：本卡 from 的字段数（6 → 7）与字段名
+      （按模板实测）、「人读性自查」条数（7 → 6）、hypothesis 行数（六到七 → 七到八）、EV-2026-147
+      两项红的成因（期望串过期与该 case 已修，均非 route_check 现存缺陷）。另采纳建议级一条：
+      scripts/verify_pr_body.py 的必含区块判定从「整段 body 子串包含」改成「行首 ## 标题匹配」——
+      原文案会被注释里的同一串字面量绕过（预核给了反例）；第 1 轮建议级的行文两条也一并改了（本卡
+      :131 的「此消彼长」与「如实标出」两处措辞）。另一条不采纳：在途 PR 会因新硬门判红属预期，
+      已在 PR body 的「影响面与合入风险」写明补救与最小反例。第 2 轮预核另报一条存量缺口，本轮不修：
+      行首标题匹配不识别代码围栏，围栏代码块里写同名标题仍放行（已随预核意见进 PR body，留作后续）。
+  - who: agent
+    when: "2026-10-08"
+    type: eval
+    conclusion: >-
+      第 2 轮独立预核（同会话 4831cfdc，核 5535f7a）判 MERGE_READY: yes：第 1 轮的 1 条阻断级与 4 条
+      重要级逐条复核通过，五类模板正/反例与五个门实跑全绿。该轮另报三条不阻断项，两条在本轮修掉：
+      docs/spec/writing-norms.md:69 与 docs/guide/git-workflow.md 的「七项」改成「模板该区块列的几项
+      + 一条随变更对象定的判定项」（实测 methodology 7 行、其余四类各 8 行），本卡上一轮记的「建议级
+      另两条不采纳」改成与实测一致的说法。第三条不修，如实留作存量缺口：scripts/verify_pr_body.py 的
+      行首标题匹配不识别代码围栏，把首节标题写进围栏代码块仍放行（预核已跑出最小反例，returncode 0）。
+  - who: agent
+    when: "2026-10-08"
+    type: eval
+    conclusion: >-
+      第 3 轮独立预核（同会话 4831cfdc，核 60093dd）亦判 MERGE_READY: yes，只余两条建议级：①上述
+      两处文档写「另有一条随变更对象定的判定项」，实测只有四类模板各多一条、methodology 就是共同七项
+      （本轮已改成「其中四类模板另有一条……（四类各自的字段名）」并同步 writing-norms）；②围栏代码块
+      那条存量缺口按上一轮决定不修。第 1 轮的三处枚举不一致、第 2 轮的三条不阻断项至此全部销账。
