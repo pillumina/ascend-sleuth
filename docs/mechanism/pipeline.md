@@ -523,7 +523,7 @@ validated 与观察窗的关系：agent 判 validated 依据的是合入前可�
 | 稳态降频（steady） | scope 真实收敛后 | §6.3a、[orchestration.md](orchestration.md) 第 2.3 节 |
 | 运行模式细化（任务级批提交跨轮） | 用户真实要求「跨多轮攒批」后（默认批边界是一轮已经够用） | §6.3a |
 | 成功模式提取信号 | 常态运行中首次出现可复述的成功模式（无信号即止，不预设轮次） | §13.2、roadmap 的「成功模式提取信号」事项 |
-| 可信自动升格（trusted auto-promotion） | roadmap 的「可信自动升格」事项的入口条件（trace ≥100 个 session） | §1 的 L1 自动化边界：groom 预分诊自动，人审转正 |
+| 可信自动升格（trusted auto-promotion） | roadmap 的 trusted auto-promotion 事项的入口条件（随 v2 池入口：trace ≥100 个 session，且 Phase 1 完成 ≥3 项，且指标趋势连续两季可解读） | §1 的 L1 自动化边界：groom 预分诊自动，人审转正 |
 | 多 agent 载体（DSH Agent Teams 一类） | 出现真实的多 agent 并行场景 | §6.7 |
 
 分级原则：机制分为两类，解决已发生问题的第一批落地件，与解决预测问题的蓝图件。蓝图件保留设计但不实现，触发条件（数据、用户诉求）出现才激活，这正是仓库原则十一（数据触发演进）与 roadmap「明确不做（触发条件到再评估）」的形态。
