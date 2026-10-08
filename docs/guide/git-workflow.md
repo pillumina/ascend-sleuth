@@ -197,6 +197,15 @@ PR body 里的「Agent 预核意见」由**与作者不同的会话**产出：�
 3. 第 1 档（文档与措辞）的**三项判定逐项写结论**，没发现就写「可读性：无发现」。合并成一句
    「已对照规范检查」等于没查：三项各自可以被推翻，合并之后无法核对是哪一项没做。
 
+**PR body 上写多少**：读 body 的人是 reviewer，要先看到结论与需要自己复核的点，所以 body 只写模板该区块
+列的那几项——共同的是结论行（`MERGE_READY`）、核对的版本、按严重度排的问题、覆盖清单、反例与可复跑
+命令、第 1 档的三项判定、预核报告指针；其中四类模板另有一条随变更对象定的判定项（knowledge_intake 的「期望正确性」、knowledge_modification 的「归因判定」、reference 的「来源可信度」、structure 的「影响方向」）。
+命令输出、逐条证据、核对过程留在预核报告里，body 末行给报告链接（或 `文件:行`）即可。字段的准确清单以
+`.github/PULL_REQUEST_TEMPLATE/` 的「Agent 预核意见」区块为准。理由：body 会被逐行读，
+报告只在复核某条结论时才展开；把过程复制进 body 会让结论不突出，reviewer 定位要复核的点更慢。
+正文用工程师口吻：短句、动词开头、给具体读数；证据节只列 reviewer 要核的 3 到 5 条，不写过程叙述、自我评价与比喻
+（全量门清单与其余命令输出留在 CI 或报告）。
+
 **为什么不进 CI**：预核是判断性工作（非确定性、无机械判据），一旦成门就会变成「CI 能过的仪式」；它也不替代双签。
 CI 侧只有机械切片：模板结构（`pr-template.yml`）、docs 名单与未登记文档（`docs-index`）、skill 自包含（`skill-self-contained`）。
 代号未登记与越界的 `python3 scripts/render_review_summary.py --scan` 是手工命令，同样不进 CI（`writing-norms.md` §5）。
@@ -205,9 +214,9 @@ CI 侧只有机械切片：模板结构（`pr-template.yml`）、docs 名单与�
 
 ## PR 模板
 
-`.github/PULL_REQUEST_TEMPLATE/` 下按变更对象分五类（创建 PR 时选择，或 `?template=` 直链）：**knowledge_intake**（新知识升格：预分诊+证据+脱敏自查）、**knowledge_modification**（改 expected/fix/compat 等高风险字段：触发条款+依据+双签）、**reference**（references/ 词条：导入/转正/修订，含聚类检查与 verification 声明）、**methodology**（skill/脚本/文档：原则追溯+golden 回归对照）、**structure**（triage-tree/namespace：数据依据+迁移完整性检查单）。模板目录属上游方法论，随 fork 同步。
+`.github/PULL_REQUEST_TEMPLATE/` 下按变更对象分五类（创建 PR 时选择，或 `?template=` 直链）：五类模板的首节都是「背景与动机」（触发 / 不做的代价 / 做完的变化），缺失由 `pr-template` CI 判红。**knowledge_intake**（新知识升格：背景与动机+预分诊+证据+脱敏自查）、**knowledge_modification**（改 expected/fix/compat 等高风险字段：背景与动机+触发条款+依据+双签）、**reference**（references/ 词条：导入/转正/修订，含背景与动机、聚类检查与 verification 声明）、**methodology**（skill/脚本/文档：背景与动机+原则追溯+golden 回归对照）、**structure**（triage-tree/namespace：背景与动机+数据依据+迁移完整性检查单）。模板目录属上游方法论，随 fork 同步。
 
-**模板选择与结构约束**：agent 提交 PR 时模板选择由产出流程决定（to-postmortem/groom/to-reference 产出物自带对应模板类型），不靠提交时自觉选。`pr-template` CI（每次 PR 都跑）校验"用了正确模板 + 关键结构区块在"，缺失即红（如 knowledge 类缺脱敏自查、高风险类缺双签）。**Agent 预核意见区块是可选增值，CI 不校验是否填写**，agent 提交链路未打通的内网/手动提交者可留空，不被硬卡；有则给 reviewer 提供基于事实的独立意见供对齐判断（不替代人审）。模板里的"机器可填"字段当前部分自动生成（fixture 候选的 agent_review、预分诊结论），完整自动生成在 roadmap 待定池（PR 描述机器层生成）。
+**模板选择与结构约束**：agent 提交 PR 时模板选择由产出流程决定（to-postmortem/groom/to-reference 产出物自带对应模板类型），不靠提交时自觉选。`pr-template` CI（每次 PR 都跑）校验"用了正确模板 + 关键结构区块在"，缺失即红（如缺首节「背景与动机」，或 knowledge 类缺脱敏自查、高风险类缺双签）。**Agent 预核意见区块是可选增值，CI 不校验是否填写**，agent 提交链路未打通的内网/手动提交者可留空，不被硬卡；有则给 reviewer 提供基于事实的独立意见供对齐判断（不替代人审）。模板里的"机器可填"字段当前部分自动生成（fixture 候选的 agent_review、预分诊结论），完整自动生成在 roadmap 待定池（PR 描述机器层生成）。
 
 **frontmatter 与 body 起点**：GitHub 不解析 PR 模板的 YAML frontmatter（name/about/labels 是 issue 模板语法），原样带入会渲染成正文顶部粗体块。模板文件内的元数据因此放在 HTML 注释里（供人读与平台迁移适配）；创建 PR（`?template=` 或 agent `--body-file`）时正文从首个 `## ` 区块开始，注释块可留可删（渲染不可见，CI 只查 `## ` 区块）。`labels` 不随模板自动应用，需 `gh pr create --label` 显式打（如 `kb/high-risk`）。
 
@@ -224,7 +233,7 @@ CI 侧只有机械切片：模板结构（`pr-template.yml`）、docs 名单与�
 5. **越界用途可查**：`python3 scripts/render_review_summary.py --scan docs/ README.md CONTEXT.md`（可传目录）会报三类——未登记代号、越界用途（新人可见面单列并优先清理，其余按文件计数可增量清理）、以及词表冲突。`docs/adr/` 与 `proposals/` 是只追加的档案，豁免越界检查（不追溯改历史）；
 6. **同形冲突登记而不改名**：`A1/A2/A3` 同时是设计公理、roadmap 事项与平台代号前缀，`P0` 同时是优先级与（易混的）流程事项族——这类冲突在词表里各自登记、用 `scope` 消歧，**不靠改历史编号**（改编号会打烂只追加档案里的引用）。新增代号前先查是否已有同形；
 7. **跨文档引用不写裸小节号**：引用别处的小节写 `文件名 §N` 或直接写小节标题，**不写裸 `§N`**（读者不知道是哪篇；且小节号会随文档重排失效——仓库里现存约 100 处这类引用，属历史欠账，见 EV-2026-052 残留）。**不硬门化**：无"复发 ≥2 次"的证据，不满足检查准入三条件；
-8. **不进 CI**：prose 可读性是判断性规范（检查准入三条件不满足），由 PR 人读性自查（methodology 模板试点）+ review spot-check 保证，不硬门化。**唯一例外是机械可判的部分**——名单/数字是否与 `docs/_manifest.yaml` 一致、`docs/` 有无未登记文档，由 `build_docs_index.py --check` 硬门（那是"生成物与清单一致性"，不是可读性判断）。
+8. **不进 CI**：prose 可读性是判断性规范（检查准入三条件不满足），由独立预核的黑话判定（见本文件「独立预核」节第 1 档）+ reviewer 抽审保证，不硬门化。**唯一例外是机械可判的部分**——名单/数字是否与 `docs/_manifest.yaml` 一致、`docs/` 有无未登记文档，由 `build_docs_index.py --check` 硬门（那是"生成物与清单一致性"，不是可读性判断）。
 
 ## Skill 自包含边界（SKILL.md 与 docs/ 的引用关系）
 

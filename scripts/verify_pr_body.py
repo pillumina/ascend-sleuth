@@ -5,8 +5,12 @@
 #   - 只校验"用了正确的模板 + 关键结构字段存在"——这是流程完整性的保证
 #   - **不校验 Agent 预核意见是否填写**——agent 提交链路未打通的人
 #     （内网平台 / 手动提交）不应被硬卡；意见是可选增值，不是流程门槛
-#   - 模板结构锚点 = 模板文件里的 "## " 区块标题（knowledge 类必须有三分类、
-#     高风险类必须有触发条款/双签、methodology 必须有回归检查…）
+#   - 模板结构锚点 = 模板文件里的 "## " 区块标题（五类首节都必须是"背景与动机"、
+#     knowledge 类必须有三分类、高风险类必须有触发条款/双签、methodology 必须有回归检查…）
+#   - "背景与动机" 只进 REQUIRED_SECTIONS，不进 TEMPLATE_HINTS：它对五类模板都成立，
+#     放进特征词只会抬高所有模板的匹配分，让只写了这一节的 body 被误判成某个模板
+#   - 必含区块按"行首 `## ` 标题"匹配，不按整段 body 的子串包含：后者会被注释里的同一串
+#     字面量绕过（2026-10-08 独立预核给出的反例），门就形同不存在
 #
 # 用法（CI）：PR body 经 stdin 传入
 #   gh pr view <N> --json body --jq .body | python3 scripts/verify_pr_body.py
@@ -17,11 +21,11 @@ import sys
 
 # 模板 → 必含的"## "区块锚点（流程完整性的最小集；Agent 意见区块不在此列）
 REQUIRED_SECTIONS = {
-    "knowledge_intake": ["预分诊结论", "脱敏自查", "完整性"],
-    "knowledge_modification": ["触发条款", "变更依据", "双签", "影响与回退"],
-    "reference": ["变更类型", "词条清单", "来源与验证状态", "聚类检查"],
-    "methodology": ["变更内容", "原则追溯", "回归检查", "影响面"],
-    "structure": ["变更类型", "依据", "迁移完整性检查单", "双签"],
+    "knowledge_intake": ["背景与动机", "预分诊结论", "脱敏自查", "完整性"],
+    "knowledge_modification": ["背景与动机", "触发条款", "变更依据", "双签", "影响与回退"],
+    "reference": ["背景与动机", "变更类型", "词条清单", "来源与验证状态", "聚类检查"],
+    "methodology": ["背景与动机", "变更内容", "原则追溯", "回归检查", "影响面"],
+    "structure": ["背景与动机", "变更类型", "依据", "迁移完整性检查单", "双签"],
 }
 
 # body 里出现这些特征词 → 判定为对应模板（宽松匹配，防误判）
@@ -55,7 +59,8 @@ def main():
         print("请使用 .github/PULL_REQUEST_TEMPLATE/ 下的对应模板创建 PR")
         sys.exit(1)
 
-    missing = [s for s in REQUIRED_SECTIONS[tpl] if f"## {s}" not in body]
+    headings = [l.strip() for l in body.splitlines() if l.strip().startswith("## ")]
+    missing = [s for s in REQUIRED_SECTIONS[tpl] if not any(h.startswith(f"## {s}") for h in headings)]
     if missing:
         print(f"识别模板: {tpl}，但缺少关键区块: {missing}")
         print("模板流程未走完整（关键结构字段缺失）——按对应模板补全")
