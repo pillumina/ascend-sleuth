@@ -157,6 +157,6 @@ skills:
     note: 内部协议，由用户显式触发做 skill 质量审视
   - name: preload-panel
     scope: 维护与演进
-    note: 仅 DSH：本机 DSH 有 cordis_define / cordis_run 时热加载面板，否则装常驻插件包
+    note: 仅 DSH：按本机给模型的工具定装载路，有 cordis_define / cordis_run 热加载，有 plugin_manager 装常驻插件包，两样都没有时跑 scripts/panel_install.js 经 /api 通路装
 
 scope_order: ["日常诊断", "知识沉淀", "维护与演进"]

@@ -121,19 +121,21 @@ plugin_manager install_bundle(target: <仓库绝对路径>/dsh-plugins/dsh-sleut
 
 ```
 node scripts/panel_install.js            # 装并使能（地址与 token 从日志里取）
-node scripts/panel_install.js --check    # 只查状态
+node scripts/panel_install.js --check    # 只查状态（只对能定到包名的目标给判断）
 node scripts/panel_install.js --remove   # 卸载
 ```
 
 它先 `GET <base>/?token=<token>` 换会话 cookie，再 `POST <base>/api/pluginManager/<方法>`
 （信封 `{type:'client-request', rpcId, method:'pluginManager/<方法>', payload:{args:{…}}}`），
-先 `inspect`，已装就 `setBundleEnabled`，未装就 `installBundle(spec, {enabled:true})`。
+先 `inspect`（spec 传字符串）：认了且没装就 `installBundle(spec, {enabled:true})`；回
+`already-installed`（这条 refused 不带包名）就从本地 `package.json` 读包名再 `setBundleEnabled(name, true)`。
 `installBundle` 阻塞到操作结束才返回，结果里的 `application` 与 `warnings` 与
-`plugin_manager` 那条同一套。退出码 0 = 装好并使能（`--check` / `--remove` 成功也是 0），
-2 = 拿不到地址与 token 或 `/api` 没有认领端点，1 = 其他失败；取不到地址时传
-`--url` / `--token` / `--log`。
+`plugin_manager` 那条同一套。退出码 0 = 操作完成（装好并使能、`--check` 有结果、`--remove`
+成功都是 0；`application` 可能是 `restart-required`，那要重启 DSH Desktop 才加载新版本），
+2 = 拿不到地址与 token、地址取到了但连不上，或 `/api` 没有认领端点／未授权，1 = 其他失败；
+取不到地址时传 `--url` / `--token` / `--log`。
 
-### 插件页安装（脚本安装也跑不通时）
+### 插件页安装（脚本安装拿不到地址与 token，或 `/api` 没有认领端点时）
 
 发行版把插件管理器的模型侧入口写成 `disabled: true` 时，装包由界面的插件页做，装出的是同一个常驻包：
 

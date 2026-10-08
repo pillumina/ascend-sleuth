@@ -36,12 +36,12 @@
 | 脚本安装 | 三件工具都没有（DSH Desktop 默认如此） | `node scripts/panel_install.js` 经 `/api` 通路调同一个插件管理器 | 同上；装的是同一个包 |
 | 插件页安装 | 脚本安装拿不到地址与 token，或 `/api` 没有认领端点 | 在侧栏「插件」页粘贴 `dsh-plugins/dsh-sleuth-panels/` 的绝对路径 | 同上 |
 
-后两条路换的是谁来调插件管理器：桌面版把它只接到界面上，模型侧没有这个工具，界面与脚本打的是
-同一个 Remote 服务。四条路装完落在 profile 的状态相同（`dependencies` 与 `dsh.profile.bundles`
-各一条、各一个 generation）。
+B、C、D 三条路用的是同一个插件管理器，差别只在谁去调它：模型的工具、脚本经 `/api` 通路，
+或用户在界面上点。三条路装完落在 profile 的状态相同（`dependencies` 与 `dsh.profile.bundles`
+各一条、各一个 generation）；A 路是会话内的动态定义，不落 profile。
 
 常驻包的两个产物由 `node scripts/build_panel_bundle.js` 把面板源码原文嵌进适配层生成，
-不要手改；源文件改了要重跑生成器。适配层补的是动态沙箱当年自带、常驻包没有的五样：
+不要手改；源文件改了要重跑生成器。适配层补的是动态沙箱当年自带、常驻包没有的五项：
 
 - `harness.handle` → 一条 **webServer 的 prefix 路由**（`/ascend-sleuth-panels`），信封与客户端的
   `connection.rpc.call` 对齐：`POST <channel>/<endpoint>`（body 是页面发的那份
@@ -72,17 +72,18 @@
 - `node scripts/check_panel_bundle.js` —— 判本机 DSH 走哪条装载路，并逐条核对那五个契约
   （`webServer` 的 prefix 路由声明、`connection.requestRejection`、client 沙箱的 `styles.insert`、
   页面产物格式 `__ModuleLoader__.load`、shell 的 `resolve` + `execute`）；找不到 DSH 时只按本地桩
-  校验工具定义，首行报「强度较弱」。
+  校验工具定义，第 2 行打印「这一项强度较弱」。
   `--selftest-dsh` 用临时假 DSH 自测这条判据（含两条"去掉某个契约必报红"的用例）；
   `--dsh-root <目录>` 指到别的安装处。
 - `node scripts/panel_rpc_probe.js` —— 不经 GUI，按页面的线协议打一条面板 RPC，直接看 host 半挂没挂、
-  会话工作区解析得出、数据取到几条。退出码 2 = 拿不到地址，或路由没在服务**或未授权**（装了还没重启时就是前者）。
+  会话工作区解析得出、数据取到几条。退出码 2 = 拿不到地址，或路由没在服务**或未授权**（装了还没重启时是「路由没在服务」那一项）。
   它证明不了 React 那层的渲染，那一层只能看页面。
 - `node scripts/panel_install.js` —— 装、查、卸常驻包，走的是界面那条 HTTP 通路：先
   `GET <base>/?token=<token>` 换会话 cookie，再 `POST <base>/api/pluginManager/<方法>`
   （信封 `{type:'client-request', rpcId, method, payload:{args:{…}}}`）。默认装并使能，
-  `--check` 查状态，`--remove` 卸载，`--spec` 换目标，`--selftest` 跑 8 个桩用例；
-  退出码与 `panel_rpc_probe.js` 相同。
+  `--check` 查状态（只对能定到包名的目标给判断，定不到包名或没装都退 1），`--remove` 卸载，
+  `--spec` 换目标，`--selftest` 跑 10 个桩用例。退出码与 `panel_rpc_probe.js` 相同，
+  只是 0 表示操作完成：`application` 仍可能是 `restart-required`，那要重启 DSH Desktop 才加载。
 
 ## 面板文案的定制条款
 

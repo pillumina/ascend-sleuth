@@ -9,16 +9,21 @@
 //
 // 用法：
 //   node scripts/panel_install.js                  # 装面板包并使能（先 inspect，已装则补使能）
-//   node scripts/panel_install.js --check          # 只读：列出本包的安装与使能状态
+//   node scripts/panel_install.js --check          # 只读：报本包的安装与使能状态（要能定到包名）
 //   node scripts/panel_install.js --remove         # 卸载
 //   node scripts/panel_install.js --spec <spec>    # 换包：绝对路径 / 包名 / git 地址 / tarball
 //   node scripts/panel_install.js --url <base> --token <token>   # 不自动找地址
 //   node scripts/panel_install.js --log <harness.log 路径>
 //   node scripts/panel_install.js --selftest       # 自带假服务器自测本脚本（不需要 DSH）
 //
-// 退出码：0 装好并使能（或 --check/--remove 成功）；2 拿不到 DSH 的地址与 token，或 /api
-//        没有认领这个端点（多半是这一版 DSH 没有 API Gateway）、未授权；
-//        1 其他失败（spec 被拒、安装返回 failed、应答不合法）
+// --check 只对能定到包名的目标给判断：spec 是本地路径时从它的 package.json 读包名，
+// inspect 认了这个 spec 时用 inspect 回的 name。定不到包名（包名 / git / tarball 形式的 spec，
+// 而 inspect 回 refused）时它不列 profile 的全表，只说明定不到包名并退 1；目标没装也退 1。
+//
+// 退出码：0 = 操作完成（装好并使能、--check 有结果、--remove 成功都是 0；application 可能是
+//        restart-required，表示要重启 DSH Desktop 才加载新版本）；2 = 拿不到 DSH 的地址与 token，
+//        或地址取到了但连不上，或 /api 没有认领这个端点、未授权；1 = 其他失败（spec 被拒、
+//        安装返回 failed、应答不合法）
 
 'use strict'
 
@@ -62,7 +67,7 @@ async function apiCall(endpoint, args, target, cookie) {
 // 一次调用的三种收场：端点在不在、业务认不认、结果是什么
 function classify(callResult) {
   if (callResult.status === 404 || callResult.status === 405) return { unreachable: true }
-  if (callResult.status === 401 || callResult.status === 403) return { unauthorized: true }
+  if (callResult.status === 401 || callResult.status === 403) return { unauthorized: callResult.status }
   if (callResult.status !== 200 || callResult.envelope === null) return { malformed: true }
   if (callResult.envelope.result.ok !== true) return { failure: callResult.envelope.result.error === undefined ? {} : callResult.envelope.result.error }
   return { value: callResult.envelope.result.value }
@@ -73,12 +78,18 @@ async function openTarget(args, io) {
   if (target === null) {
     io.say('安装：拿不到 DSH 的地址与 token（日志里没有 `dsh web:` 行）\n')
     io.say('  可显式传 --url <base> --token <token>，或 --log <harness.log 路径>\n')
-    return null
+    return { kind: 'no-target' }
   }
   io.say('安装目标：' + target.base + '（地址取自 ' + target.source + '）\n')
-  const session = await sessionCookie(target.base, target.token)
+  let session
+  try {
+    session = await sessionCookie(target.base, target.token)
+  } catch (e) {
+    io.warn('  地址取到了（' + target.base + '）但连不上：' + String((e && e.message) || e) + '\n')
+    return { kind: 'unreachable' }
+  }
   io.say('  索引页 HTTP ' + session.status + (session.cookie === null ? '（未拿到 cookie）' : '（已拿到会话 cookie）') + '\n')
-  return { base: target.base, cookie: session.cookie }
+  return { kind: 'ok', base: target.base, cookie: session.cookie }
 }
 
 function describeGuard(guard, io, endpoint) {
@@ -86,8 +97,8 @@ function describeGuard(guard, io, endpoint) {
     io.warn('  /api 没认领 ' + endpoint + '（HTTP 404）：这一版 DSH 的 API Gateway 没在服务这个端点\n')
     return 2
   }
-  if (guard.unauthorized === true) {
-    io.warn('  未授权：token 过期或 cookie 没换成\n')
+  if (guard.unauthorized !== undefined) {
+    io.warn('  未授权（HTTP ' + guard.unauthorized + '）：' + (guard.unauthorized === 403 ? 'host 不在信任列表里\n' : 'token 过期或 cookie 没换成\n'))
     return 2
   }
   if (guard.malformed === true) {
@@ -104,6 +115,7 @@ async function ensureEnabled(name, target, io) {
   if (guard.value === undefined) return describeGuard(guard, io, 'pluginManager/setBundleEnabled')
   const change = guard.value
   io.say('  已装，使能结果：changed=' + change.changed + ' application=' + change.application + '\n')
+  if (change.application === 'restart-required') io.say('  application=restart-required：要重启 DSH Desktop 才加载新版本\n')
   return change.application === 'failed' || change.application === 'cancelled' ? 1 : 0
 }
 
@@ -115,14 +127,8 @@ async function runInstall(args, io) {
     return 0
   }
 
-  let target
-  try {
-    target = await openTarget(args, io)
-  } catch (e) {
-    warn('拿索引页失败：' + String((e && e.message) || e) + '\n')
-    return 1
-  }
-  if (target === null) return 2
+  const target = await openTarget(args, io)
+  if (target.kind !== 'ok') return 2
 
   const call = await apiCall('pluginManager/inspect', { spec: args.spec }, target, target.cookie)
   const guard = classify(call)
@@ -133,9 +139,14 @@ async function runInstall(args, io) {
     const listed = classify(await apiCall('pluginManager/listBundles', {}, target, target.cookie))
     if (listed.value === undefined) return describeGuard(listed, io, 'pluginManager/listBundles')
     const name = inspection.status === 'accepted' && inspection.name !== undefined ? inspection.name : localPackageName(args.spec)
-    const rows = (Array.isArray(listed.value) ? listed.value : []).filter((one) => name === null || one.name === name)
+    if (name === null) {
+      say('  定不到包名：' + String(args.spec) + ' 不是能读到 package.json 的本地路径，这次 inspect 也没认它\n')
+      say('  要查状态就传本地路径；不看状态就直接跑不带 --check 的安装\n')
+      return 1
+    }
+    const rows = (Array.isArray(listed.value) ? listed.value : []).filter((one) => one.name === name)
     if (rows.length === 0) {
-      say('  没有装：' + (name === null ? String(args.spec) : name) + '\n')
+      say('  没有装：' + name + '\n')
       return 1
     }
     for (const row of rows) {
@@ -176,6 +187,7 @@ async function runInstall(args, io) {
   if (installed.value === undefined) return describeGuard(installed, io, 'pluginManager/installBundle')
   const change = installed.value
   say('  安装结果：stage=' + change.stage + ' target=' + change.target + ' changed=' + change.changed + ' application=' + change.application + '\n')
+  if (change.application === 'restart-required') say('  application=restart-required：要重启 DSH Desktop 才加载新版本\n')
   for (const warning of Array.isArray(change.warnings) ? change.warnings : []) say('  警告：' + String(warning) + '\n')
   if (change.application === 'failed' || change.application === 'cancelled') {
     warn('  安装没成功：' + JSON.stringify(change.error) + '\n')
@@ -267,9 +279,11 @@ async function selftest() {
     { name: 'spec 被拒', spec: specPaths.refused, want: 1 },
     { name: '安装返回 failed', spec: specPaths.failing, want: 1 },
     { name: '--check 读到状态', spec: specPaths.accepted, check: true, want: 0 },
+    { name: '--check 定不到包名', spec: specPaths.refused, check: true, want: 1 },
     { name: '--remove 卸载', spec: specPaths.accepted, remove: true, want: 0 },
     { name: 'api 没认领端点', spec: specPaths.unclaimed, want: 2 },
     { name: '拿不到地址', spec: specPaths.accepted, noTarget: true, want: 2 },
+    { name: '地址连不上', spec: specPaths.accepted, url: 'http://127.0.0.1:1', want: 2 },
   ]
   let bad = 0
   try {
@@ -278,7 +292,7 @@ async function selftest() {
         spec: item.spec,
         check: item.check === true,
         remove: item.remove === true,
-        url: item.noTarget === true ? null : base,
+        url: item.url !== undefined ? item.url : (item.noTarget === true ? null : base),
         token: item.noTarget === true ? null : 'selftest-token',
         log: item.noTarget === true ? path.join(dir, 'no-such-harness.log') : null,
       })
@@ -294,7 +308,7 @@ async function selftest() {
     process.stderr.write('panel-install 自测未通过：' + bad + ' 例\n')
     return 1
   }
-  process.stdout.write('panel-install selftest ok（8 例：安装 / 已装使能 / spec 被拒 / 安装失败 / 查状态 / 卸载 / 端点没认领 / 拿不到地址）\n')
+  process.stdout.write('panel-install selftest ok（10 例：安装 / 已装使能 / spec 被拒 / 安装失败 / 查状态 / 查状态定不到包名 / 卸载 / 端点没认领 / 拿不到地址 / 地址连不上）\n')
   return 0
 }
 

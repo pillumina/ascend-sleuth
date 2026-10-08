@@ -92,7 +92,7 @@ async function runProbe(args, io) {
     return 2
   }
   if (response.status === 401 || response.status === 403) {
-    warn('未授权（HTTP ' + response.status + '）：token 过期或 cookie 没换成\n')
+    warn('未授权（HTTP ' + response.status + '）：' + (response.status === 403 ? 'host 不在信任列表\n' : 'token 过期或 cookie 没换成\n'))
     return 2
   }
   if (response.status !== 200) {

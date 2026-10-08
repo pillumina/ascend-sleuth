@@ -118,7 +118,7 @@ knowledge/
 本仓共 **11 个 skill**，按使用场景分 3 组：
 - **日常诊断**（2）：`diagnose` · `resume-diagnosis`
 - **知识沉淀**（4）：`to-postmortem` · `to-reference` · `issue-ingest` · `reference-ingest`
-- **维护与演进**（5）：`knowledge-groom` · `self-evolve` · `evolve-check`（内部协议，由内容流程收尾自动转接，不单独调用） · `skill-review`（内部协议，由用户显式触发做 skill 质量审视） · `preload-panel`（仅 DSH：本机 DSH 有 cordis_define / cordis_run 时热加载面板，否则装常驻插件包）
+- **维护与演进**（5）：`knowledge-groom` · `self-evolve` · `evolve-check`（内部协议，由内容流程收尾自动转接，不单独调用） · `skill-review`（内部协议，由用户显式触发做 skill 质量审视） · `preload-panel`（仅 DSH：按本机给模型的工具定装载路，有 cordis_define / cordis_run 热加载，有 plugin_manager 装常驻插件包，两样都没有时跑 scripts/panel_install.js 经 /api 通路装）
 <!-- END generated: skill-roster -->
 
 每个 skill 的触发条件与操作细节见各自的 `skills/<name>/SKILL.md`。

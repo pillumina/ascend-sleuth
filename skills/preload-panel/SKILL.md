@@ -49,10 +49,11 @@ tab（list 插槽，按 order 排列，可共存）。
   写着本包不注册工具、内置模型工具无法创建或更新动态定义。这时 A 路的 loader 装不上——
   不要反复试 `cordis_define`。
 - **没有这两件、但有 `plugin_manager`** → 走 B 路（常驻插件包）。
-- **三件工具都没有** → 走 D 路（脚本安装）。发行版把插件管理器的模型侧入口那行写成
-  `disabled: true`，模型侧没有这个工具；这时 B 路的工具不是「loader 还没装」，补装也补不出来。
-  D 路打的是界面同一个服务的 HTTP 通路，成了就到此为止；拿不到地址与 token，或 `/api` 没有
-  认领端点时，落到 C 路（用户粘贴）。
+- **三件工具都没有** → 走 D 路（脚本安装）。发行版在基础层与 web 层的 patch 里各把插件管理器
+  的模型工具行写成 `disabled: true`（`@deepseek-ai/dsh-base/cordis.patch.yml:19`、
+  `@deepseek-ai/dsh-web-app/cordis.patch.yml:448-449`），模型侧没有这个工具。这时 B 路的工具
+  不是「loader 还没装」，补装也补不出来。D 路打的是界面同一个服务的 HTTP 通路，成了就到此为止；
+  拿不到地址与 token，或 `/api` 没有认领端点时，落到 C 路（用户粘贴）。
 
 ## A 路：热加载（本机 DSH 有这两件工具）
 
@@ -96,7 +97,7 @@ tab（list 插槽，按 order 排列，可共存）。
    **不要手改 `lib/`**。同一条命令还会判本机 DSH 走哪条装载路，并核对常驻包依赖的五个外部契约
    （`webServer` 的 prefix 路由声明、`connection.requestRejection`、client 沙箱的 `styles.insert`、
    页面产物格式 `__ModuleLoader__.load`、shell 的 `resolve` + `execute`）还在不在——**装之前跑它**，
-   找不到 DSH 时会如实跳过；`--selftest-dsh` 用临时假 DSH 自测这条判据，`--dsh-root <目录>` 指到别的安装处。
+   找不到 DSH 时这一项按本地桩校验工具定义；`--selftest-dsh` 用临时假 DSH 自测这条判据，`--dsh-root <目录>` 指到别的安装处。
 
 2. **装**：`plugin_manager install_bundle(target: <仓库绝对路径>/dsh-plugins/dsh-sleuth-panels)`。
    包会复制进 profile 的 generation，所以仓库被移动或 worktree 被清掉都不影响已装的那份；
@@ -110,7 +111,7 @@ tab（list 插槽，按 order 排列，可共存）。
 
 4. **验证**：先跑 `node scripts/panel_rpc_probe.js`——它按页面的线协议打一条面板 RPC，
    直接告出 host 半挂没挂、工作区解析得出、取到几条会话（退出码 2 = 拿不到地址，或路由没在服务／未授权，
-   "装了还没重启"是前者）。再用 `cordis_inspect_query`（client, `Slots`, `listSubTree`,
+   "装了还没重启"是后者）。再用 `cordis_inspect_query`（client, `Slots`, `listSubTree`,
    root `conversation.view`）看三个 tab id 是否在占位列表里；最后请用户点开一页，确认
    React 那层的渲染（插槽占位与 RPC 都通了也不等于看着对，这一步只有页面能验）。
    浏览器代码是页面启动时装载的，刚装完要刷新页面。
@@ -119,31 +120,38 @@ tab（list 插槽，按 order 排列，可共存）。
 
 ## D 路：脚本安装（本机 DSH 三件工具都没有）
 
-DSH Desktop 把插件管理器只接到界面上：侧栏「插件」页能安装、启用、禁用与卸载 profile 的包，
-模型侧没有对应工具。界面调的是 `pluginManager` 这个 Remote 服务，它和面板走同一条 HTTP 通路
-（Connection 在 `/api` 上把它的端点交给已认证的调用方），所以模型可以自己装，不必让用户粘贴。
+DSH Desktop 把插件管理器接到界面上：侧栏「插件」页能安装、启用、禁用与卸载 profile 的包，
+模型侧没有对应工具。发行版在工具清单里给 `plugin_manager` 标了 `disabled: true`（`app.asar`
+内 `@deepseek-ai/dsh-plugin-manager` 的工具定义）。界面调的是 `pluginManager` 这个 Remote
+服务，它和面板走同一条 HTTP 通路（Connection 在 `/api` 上把它的端点交给已认证的调用方），
+所以模型可以自己装，不必让用户粘贴。
 
 1. **先跑预检**：`node scripts/check_panel_bundle.js`（与 B 路第 1 步同一份检查：产物可加载性、
-   三处名字对齐、五条外部契约）。桌面版的原生包在 `app.asar` 内，这条命令的 DSH 探针找不到
-   安装处，只按本地桩校验工具定义并在首行报「强度较弱」。这一项退化是预期的。
+   三处名字对齐、五个外部契约）。探针在 profile 的 `node_modules` 与几个环境变量指的目录里找
+   已安装的 DSH（`scripts/check_panel_bundle.js:621`），桌面版把 DSH 装在 `app.asar` 内，
+   它找不到安装处，于是只按本地桩校验工具定义，第 2 行打印「这一项强度较弱」。
+   这一项在桌面版查不了，其余几项仍然在查。
 
 2. **装**：`node scripts/panel_install.js`——默认装
    `<仓库绝对路径>/dsh-plugins/dsh-sleuth-panels/` 并使能。它先
    `GET <base>/?token=<token>` 换会话 cookie，再 `POST <base>/api/pluginManager/<方法>`，
    信封是 `{type:'client-request', rpcId, method:'pluginManager/<方法>', payload:{args:{…}}}`；
-   先 `inspect`（spec 传字符串），已装就调 `setBundleEnabled(name, true)`，未装就调
-   `installBundle(spec, {enabled:true})`。`--check` 只查状态，`--remove` 卸载，
-   `--spec <spec>` 换目标（包名、Git 地址、tarball 或本地绝对路径）。地址与 token 的取法同
-   `panel_rpc_probe.js`：先扫日志，取不到再传 `--url` / `--token` / `--log`。
-   退出码 0 = 装好并使能（`--check` / `--remove` 成功也是 0）｜2 = 拿不到地址与 token，或
-   `/api` 没有认领端点、未授权｜1 = 其他失败。
+   先 `inspect`（spec 传字符串）：认了且没装就调 `installBundle(spec, {enabled:true})`；
+   回 `already-installed`（这条 refused 不带包名）就从本地 `package.json` 读包名再调
+   `setBundleEnabled(name, true)`，spec 不是本地路径时读不到包名，脚本以退出码 1 收场。
+   `--check` 只查状态，且只对能定到包名的目标给判断：定不到包名或目标没装都退 1。
+   `--remove` 卸载，`--spec <spec>` 换目标（包名、Git 地址、tarball 或本地绝对路径）。
+   地址与 token 的取法同 `panel_rpc_probe.js`：先扫日志，取不到再传 `--url` / `--token` / `--log`。
+   退出码 0 = 操作完成（装好并使能、`--check` 有结果、`--remove` 成功都是 0；`application`
+   可能是 `restart-required`，表示要重启 DSH Desktop 才加载新版本）｜2 = 拿不到地址与 token，
+   或地址取到了但连不上，或 `/api` 没有认领端点、未授权｜1 = 其他失败。
 
 3. **读安装结果**：`installBundle` 阻塞到操作结束才返回，`application` 与 `warnings` 与 B 路
    第 3 步同一套（`restart-required` 表示要重启 DSH Desktop 才加载新版本）。不需要读 profile
    的文件来替代这两个字段。
 
 4. **验证**：先跑 `node scripts/panel_rpc_probe.js`（退出码 2 = 拿不到地址，或路由没在服务／未授权，
-   "装了还没重启"是前者）；再请用户刷新页面，浏览器代码在页面启动时装载，对话视图的 tab 条里
+   "装了还没重启"是后者）；再请用户刷新页面，浏览器代码在页面启动时装载，对话视图的 tab 条里
    应出现诊断 / 指标 / 自演进三个 tab。B 路第 4 步那半条 `cordis_inspect_query` 查法在桌面版
    用不了，这条路上也没有这个工具。
 
@@ -154,8 +162,10 @@ DSH Desktop 把插件管理器只接到界面上：侧栏「插件」页能安�
 同一个包、同一个服务，只是换成用户在侧栏「插件」页里贴路径。
 
 1. **先跑预检**：`node scripts/check_panel_bundle.js`（与 B 路第 1 步同一份检查：产物可加载性、
-   三处名字对齐、五条外部契约）。桌面版的原生包在 `app.asar` 内，这条命令的 DSH 探针找不到
-   安装处，只按本地桩校验工具定义并在首行报「强度较弱」。这一项退化是预期的，不代表契约有问题。
+   三处名字对齐、五个外部契约）。探针在 profile 的 `node_modules` 与几个环境变量指的目录里找
+   已安装的 DSH（`scripts/check_panel_bundle.js:621`），桌面版把 DSH 装在 `app.asar` 内，
+   它找不到安装处，于是只按本地桩校验工具定义，第 2 行打印「这一项强度较弱」。
+   这一项在桌面版查不了，其余几项仍然在查，不代表契约有问题。
 
 2. **装**：让用户在侧栏「插件」页的添加入口粘贴 `<仓库绝对路径>/dsh-plugins/dsh-sleuth-panels`。
    该入口接受包名、Git 地址、压缩包或本地绝对路径。粘的是这个包目录，不是上面的面板源目录
