@@ -61,6 +61,7 @@ predicted_effect:
           assert sections[0] == "## 背景与动机", (n, sections[0])
           for a in anchors:
               assert a in text, (n, a)
+          assert "写工程师能直接读的话" in text, (n, "五类模板缺语气提示")
       assert "人读性自查" not in bodies["methodology"], "methodology 仍有人读性自查节"
       assert "新增或改名的名字" in bodies["methodology"], "methodology 缺新增或改名的名字一行"
 
@@ -80,11 +81,11 @@ predicted_effect:
           assert bad.returncode == 1 and "背景与动机" in bad.stdout, (n, bad.returncode, bad.stdout)
 
       gw = (root / "docs/guide/git-workflow.md").read_text(encoding="utf-8")
-      for s in ["独立预核（提交前", "要跑反例吗", "为什么不进 CI", "没查出问题也要给覆盖清单", "PR body 上写多少", "独立预核的黑话判定"]:
+      for s in ["独立预核（提交前", "要跑反例吗", "为什么不进 CI", "没查出问题也要给覆盖清单", "PR body 上写多少", "独立预核的黑话判定", "正文用工程师口吻", "证据节只列 reviewer 要核的 3 到 5 条"]:
           assert s in gw, s
       assert "PR 人读性自查" not in gw, "git-workflow 仍把不进 CI 归因于 PR 人读性自查"
       wn = (root / "docs/spec/writing-norms.md").read_text(encoding="utf-8")
-      for s in ["首节写背景与动机", "五类模板的首节都是「背景与动机」"]:
+      for s in ["首节写背景与动机", "五类模板的首节都是「背景与动机」", "工程师口吻"]:
           assert s in wn, s
       print("VERDICT PASS")
       PY
@@ -211,3 +212,16 @@ decisions:
       两处文档写「另有一条随变更对象定的判定项」，实测只有四类模板各多一条、methodology 就是共同七项
       （本轮已改成「其中四类模板另有一条……（四类各自的字段名）」并同步 writing-norms）；②围栏代码块
       那条存量缺口按上一轮决定不修。第 1 轮的三处枚举不一致、第 2 轮的三条不阻断项至此全部销账。
+  - who: agent
+    when: "2026-10-08"
+    type: decision
+    conclusion: >-
+      第 4 轮预核判 yes 并被 owner 看过之后，owner 又提了两条（同日）：body 里黑话仍多、证据节读起来吃力；
+      行文要像工程师，不要 AI 味。据此做两件事：①把语气与证据节上限写进写点——五类模板的「背景与动机」
+      注释各加一行「写工程师能直接读的话：短句、动词开头、给具体事实或读数；不用比喻与自造缩写，也不写
+      自我评价」，methodology 的「证据」注释加「只列 reviewer 要核的 3 到 5 条，一行一条；全量门清单与
+      命令输出留在 CI 或预核报告」，docs/guide/git-workflow.md 的「PR body 上写多少」与
+      docs/spec/writing-norms.md 的 PR body 行同步；②本卡 measure 加三条断言（五类模板都含语气提示句、
+      git-workflow 含「正文用工程师口吻」与「证据节只列 reviewer 要核的 3 到 5 条」、writing-norms 含
+      「工程师口吻」），让这条判断性规范至少有一处机械锚点；③PR body 按新写法重写（证据节从 10 条压到
+      5 条，去掉过程叙述与自我评价）。前一轮的字段结构不动。
