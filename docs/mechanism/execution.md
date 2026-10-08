@@ -77,9 +77,9 @@
 
 这些契约项今天落进 case 文件的只有一部分。
 
-`verification` 落 case 的 `verification.source` 与 `verification.detail`。`ref_knowledge` 落 case 的同名字段（`docs/spec/case-schema.md:21`）。
+`verification` 落 case 的 `verification.source` 与 `verification.detail`。`ref_knowledge` 落 case 的同名字段（`docs/spec/case-schema.md:78`）。
 
-`source_evidence`、`sediment_form`、`evidence_strength`、`discriminative_power` 是沉淀契约要回答的问题项，case 文件里没有同名字段。case 的完整字段清单见 `docs/spec/case-schema.md:11`。
+`source_evidence`、`sediment_form`、`evidence_strength`、`discriminative_power` 是沉淀契约要回答的问题项，case 文件里没有同名字段。case 的完整字段清单见 `docs/spec/case-schema.md:22`。
 
 ## 4 沉淀效果度量：两条通道
 
@@ -336,7 +336,7 @@ content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期
 | S2 结算 `validation_record` | `scripts/settle_s2_feedback.py`、groom 3.5b（`skills/knowledge-groom/SKILL.md:80`） |
 | S1 结算 `confidence` | `scripts/settle_trace_feedback.py` |
 | `verification` 档位定义 | `skills/to-postmortem/SKILL.md:85` 到 `:91` |
-| case 完整字段清单与 `ref_knowledge` | `docs/spec/case-schema.md:11`、`docs/spec/case-schema.md:21` |
+| case 完整字段清单与 `ref_knowledge` | `docs/spec/case-schema.md:22`、`docs/spec/case-schema.md:78` |
 | `ref_knowledge` 的 role 校验 | `scripts/verify_references.py` |
 | issue 源的价值启发式 | `scripts/issue_filter.py` |
 | 归因事件的按需聚合 | `scripts/component_tally.py` |

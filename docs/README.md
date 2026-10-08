@@ -1,8 +1,18 @@
 # docs 怎么读
 
-第一次接触这套系统，读 [demo-walkthrough.md](demo-walkthrough.md)。两分钟看完系统在做什么、数据怎么流动，不需要动手。
+本文是这套系统全部文档的入口：文档按"你什么时候会用到它"分五层，每篇给一句话说明。
 
-其余文档按"你什么时候会用到它"分五层。**目录名就是层次名**，所以你在路径里就能看出这篇是给谁的。
+它值得读，是因为分层解决"我现在该读哪篇"——同一个层里的文档结构一致，你不必每篇重新猜结论在哪。范围只覆盖 `docs/` 下的文档与阅读顺序；素材与演示页不在阅读顺序里。读者是第一次读这套文档、或要改机制的人。第一次接触先读 [demo-walkthrough.md](demo-walkthrough.md)；只想跑一次诊断、不改机制的人，看完演示就可以去用，不必读本文其余部分。
+
+## 1 这是什么
+
+`docs/` 是这套系统的文档层，按"什么时候读"分五层：规范、演进机制、操作指南、计划与就绪度、决策留痕。目录名就是层次名，路径里就能看出这篇是给谁的。
+
+## 2 它解决什么问题
+
+同一层的两篇文档如果结构不一致，读者每读一篇都要重新判断哪一节才是结论。分层回答"我现在该读哪篇"；每层内统一的骨架回答"这篇的结论在哪"。某件事由哪篇文档说了算，查 [mechanism/rsi-mechanism.md](mechanism/rsi-mechanism.md) §11.2 的权威归属表——那张表也说明每篇什么时候该读。
+
+## 3 由哪几块组成
 
 | 目录 | 这一层是给谁的 | 什么时候读 |
 |---|---|---|
@@ -14,11 +24,11 @@
 
 `assets/`、`diagrams/`、`demo-assets/`、`kb-explorer/` 是素材与演示页，不是阅读顺序里的文档。
 
-**一件想找的事只有一个权威处。** 按"你要做什么"查 [mechanism/rsi-mechanism.md](mechanism/rsi-mechanism.md) §11.2 的权威归属表，那张表也说明每篇文档什么时候该读。
+## 4 从哪读起
 
-## 文档目录
+第一次接触：读 [demo-walkthrough.md](demo-walkthrough.md)。两分钟看完系统在做什么、数据怎么流动，不需要动手。
 
-完整的文档目录与每篇的一句话说明由 `docs/_manifest.yaml` 生成在这里（`scripts/build_docs_index.py`）。
+完整的文档目录与每篇的一句话说明由 `docs/_manifest.yaml` 生成在这里（`scripts/build_docs_index.py`）：
 
 <!-- BEGIN generated: docs-index (scripts/build_docs_index.py；由 docs/_manifest.yaml 生成，勿手改) -->
 **入门（第一次接触先读这篇）**
@@ -72,3 +82,9 @@
 - `docs/adr/` — 架构决策记录（软版本匹配 / 不引入 RAG / 容量治理 / 先验知识层等）
   - [0001](../docs/adr/0001-soft-version-matching.md)、[0002](../docs/adr/0002-retrieval-no-rag-lightweight-index.md)、[0003](../docs/adr/0003-platform-portability.md)、[0004](../docs/adr/0004-capacity-governance.md)、[0005](../docs/adr/0005-knowledge-consumption-split.md)、[0006](../docs/adr/0006-knowledge-ingest-dedup.md)、[0008](../docs/adr/0008-prior-knowledge-framework.md)、[0009](../docs/adr/0009-counterfactual-replay-exploration-policy.md)
 <!-- END generated: docs-index -->
+
+## 5 不覆盖什么
+
+- 知识库内容本身（`knowledge/`、`references/`、`postmortems/`）：那是 case 与先验词条，不是 `docs/` 下的文档，入口见各层自己的说明。
+- 素材与演示页（`assets/`、`diagrams/`、`demo-assets/`、`kb-explorer/`）：不在阅读顺序里，见各目录自己的 README。
+- 脚本与校验器的实现细节：看脚本本身；每层的「代码与文档入口」节给指针。
