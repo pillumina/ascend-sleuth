@@ -9,30 +9,38 @@ name: kb-checks
 # 保护会让 PR 永远等一个不会出现的 Expected。单文件 + job 级 `if:` 下，跳过的 job 照常上报 skipped。
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", ".github/workflows/kb-checks.yml"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", ".github/workflows/kb-checks.yml"]
 
 jobs:
   # ── 细网：这次改了哪一面 ──────────────────────────────────────────────────────
-  # GitHub 只支持 workflow 级 `paths:`，不支持 job 级，所以粗网命中就 12 个 job 全跑。实测一轮
+  # GitHub 只支持 workflow 级 `paths:`，不支持 job 级，所以粗网一命中就会把下面 12 个 job 全拉起来。实测一轮
   # PR 的 wall clock 140 秒，其中 unit-tests 单独占 135 秒（其余 11 个最慢 38 秒）——只改 docs 的
   # PR 也在付这 135 秒。本 job 把「改了哪一面」算成一组布尔量供各 job 取用。
   #
   # 各 job 的触发面 = 它的命令**真正读了**哪些目录（逐条按脚本里的路径字面量核过）。按"读了就
   # 触发"取，不按"断言强不强"取，宁可多跑：
-  #   index-freshness      ← knowledge（triage-tree* 归在 knowledge 组里）
-  #   case-structure       ← knowledge、references（verify_case_draft 建 references 索引校验 ref_knowledge）
-  #   reference-validation ← references、knowledge（解析全部 case 算派生计数）、skills（*-gates.yaml 绑定）
-  #   metrics-validation   ← metrics
-  #   proposal-audit       ← proposals
-  #   docs-index           ← docs（含 README；skill 名单取自 docs/_manifest.yaml，不扫 skills/）
-  #   holdout-integrity    ← eval
-  #   eval-scorecard       ← eval、knowledge（case↔夹具的负载类型覆盖算在 case 上）
+  #   index-freshness      ← knowledge（triage-tree* 归在 knowledge 组里）、code
+  #   case-structure       ← knowledge、references（verify_case_draft 建 references 索引校验 ref_knowledge）、code
+  #   reference-validation ← references、knowledge（解析全部 case 算派生计数）、skills（*-gates.yaml 绑定）、code
+  #   metrics-validation   ← metrics、code
+  #   proposal-audit       ← proposals、code
+  #   docs-index           ← docs（含 README；skill 名单取自 docs/_manifest.yaml，不扫 skills/）、code
+  #   holdout-integrity    ← eval、code
+  #   eval-scorecard       ← eval、knowledge（case↔夹具的负载类型覆盖算在 case 上）、code
   #   unit-tests           ← scripts、tests
-  #   panel-checks         ← dsh-plugins、scripts、metrics、skills
-  #   skill-self-contained ← skills
+  #   panel-checks         ← dsh-plugins、scripts、metrics、skills、docs、trace-status.yaml
+  #   skill-self-contained ← skills（只 grep skills/，不执行脚本，故不吃 code）
   #   arena-gate-rule      ← scripts（跑的是 --self-test，用合成样本）
+  #
+  # 独立预核实测出的两处洞（已修，见对应 job 的 if）：
+  #   · 8 个 verification job 都吃 code：它们的判定就是「跑一遍 scripts/<x>.py」。改了脚本本身而不跑
+  #     那道门，等于改坏了验证脚本没人验（实测：往 scripts/verify_references.py 注入脚本级故障，改前
+  #     跑 reference-validation 并置红，只按目录细分后就只剩 unit-tests，而 tests/ 没有一条覆盖它）。
+  #     代价：改 scripts/ 的 PR 仍会跑 11 个 job（与改前 12 个只差 skill-self-contained，它只读 skills/），
+#     换到的是 docs / knowledge / skills 类 PR 免付。
+  #   · panel-checks 吃 docs 与 trace-status.yaml 的实测反例见下。
   #
   # 强度让步（如实写在这里，评审一眼可见）：
   #   · unit-tests 只按 scripts/tests 触发。它确有 4 个模块读仓库内容（test_trace_metrics 读
@@ -42,6 +50,10 @@ jobs:
   #     要更保守：把 knowledge 也加进它（代价是内容 PR 继续付满）。
   #   · panel-checks 不算 knowledge：panel_render_check.js 读 knowledge/ 只做「索引非空、case
   #     文件非空」两条 >0 断言，新鲜度由 index-freshness 管。
+  #   · panel-checks 吃 docs 与 trace-status.yaml：它读 docs/spec/writing-norms.md 并断言「文案共用
+  #     条目归唯一权威处」（脚本 2627 行附近）——抽掉该文件的条目表这道门会红（rc=1），而 docs-index
+  #     不兜底（rc=0）；trace-status.yaml 是它校验 status/outcome 词表的唯一数据源（脚本 1478 行），
+  #     而粗网此前两条 paths 都没有它，改它 CI 根本不跑。
   changes:
     runs-on: ubuntu-latest
     outputs:
@@ -86,10 +98,16 @@ jobs:
           if [ -z "$base" ]; then
             echo "取不到比对基线（本地复跑 / 新分支首次推送 / 无 .git 的副本）——按全量处理（宁可全跑，不可漏跑）"
             all=true
-            changed=$(git ls-files 2>/dev/null || true)
+            changed=$(git -c core.quotePath=false ls-files 2>/dev/null || true)
           else
             echo "比对基线：$base"
-            changed=$(git diff --name-only "$base" || true)
+            # 取得到基线名 ≠ 取得到可比对的内容：孤儿分支、与基线无 merge base 的推送会让 git diff
+            # 直接失败。失败必须走全量，不能吞成「零改动」——那正是「宁可全跑，不可漏跑」的反面。
+            if ! changed=$(git -c core.quotePath=false diff --name-only "$base"); then
+              echo "与基线比不了（无 merge base 等）——按全量处理（宁可全跑，不可漏跑）"
+              all=true
+              changed=$(git -c core.quotePath=false ls-files 2>/dev/null || true)
+            fi
           fi
           if printf '%s\n' "$changed" | grep -qE '^\.github/workflows/'; then
             echo "本工作流自身有改动——全部 job 复验"
@@ -110,11 +128,11 @@ jobs:
           emit eval       '^eval/'
           emit skills     '^skills/'
           emit code       '^scripts/|^tests/'
-          emit panels     '^dsh-plugins/'
+          emit panels     '^dsh-plugins/|^trace-status\.yaml$'
 
   index-freshness:
     needs: changes
-    if: needs.changes.outputs.knowledge == 'true'
+    if: needs.changes.outputs.knowledge == 'true' || needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -139,7 +157,7 @@ jobs:
 
   case-structure:
     needs: changes
-    if: needs.changes.outputs.knowledge == 'true' || needs.changes.outputs.references == 'true'
+    if: needs.changes.outputs.knowledge == 'true' || needs.changes.outputs.references == 'true' || needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -158,7 +176,7 @@ jobs:
 
   reference-validation:
     needs: changes
-    if: needs.changes.outputs.references == 'true' || needs.changes.outputs.knowledge == 'true' || needs.changes.outputs.skills == 'true'
+    if: needs.changes.outputs.references == 'true' || needs.changes.outputs.knowledge == 'true' || needs.changes.outputs.skills == 'true' || needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -182,7 +200,7 @@ jobs:
 
   metrics-validation:
     needs: changes
-    if: needs.changes.outputs.metrics == 'true'
+    if: needs.changes.outputs.metrics == 'true' || needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -200,7 +218,7 @@ jobs:
 
   proposal-audit:
     needs: changes
-    if: needs.changes.outputs.proposals == 'true'
+    if: needs.changes.outputs.proposals == 'true' || needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -223,7 +241,7 @@ jobs:
   # 生成物与清单不一致即红；**docs/ 下出现未登记的文档也即红**（漏登记比数字写错更难发现）。
   docs-index:
     needs: changes
-    if: needs.changes.outputs.docs == 'true'
+    if: needs.changes.outputs.docs == 'true' || needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -238,7 +256,7 @@ jobs:
   # 控信号；封存后改内容必红，要合法改就得维护者 reseal 并在 PR 上留下标签。
   holdout-integrity:
     needs: changes
-    if: needs.changes.outputs.eval == 'true'
+    if: needs.changes.outputs.eval == 'true' || needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       # fetch-depth: 0 供下一步的 diff 用（label 闸门要知道 PR 改没改对照集）
@@ -293,7 +311,7 @@ jobs:
   # 准确率仍要 agent 跑回放（docs/guide/eval.md 门禁分级），不把不确定的东西硬门化。
   eval-scorecard:
     needs: changes
-    if: needs.changes.outputs.eval == 'true' || needs.changes.outputs.knowledge == 'true'
+    if: needs.changes.outputs.eval == 'true' || needs.changes.outputs.knowledge == 'true' || needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -346,7 +364,7 @@ jobs:
   # 准入判据（机械可判 + 确定性后果 + 复发 ≥2 次）：三条都满足。
   panel-checks:
     needs: changes
-    if: needs.changes.outputs.panels == 'true' || needs.changes.outputs.code == 'true' || needs.changes.outputs.metrics == 'true' || needs.changes.outputs.skills == 'true'
+    if: needs.changes.outputs.panels == 'true' || needs.changes.outputs.code == 'true' || needs.changes.outputs.metrics == 'true' || needs.changes.outputs.skills == 'true' || needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

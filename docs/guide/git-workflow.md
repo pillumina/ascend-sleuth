@@ -152,7 +152,7 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 | eval 观测不陈旧 | CI：`scripts/eval_scorecard.py --check`（`eval/scorecard.yaml` 记"上次回放观测到什么"；夹具字节哈希变了而账本没重建即红） | 硬（夹具哈希）/ 软（目标 case 内容变了只进「待复核」，不挡 merge）；**不判准确率**——命中率仍要 agent 跑回放 |
 | 口径脚本算得对 | CI：`python3 -m unittest discover tests`（`build_index` / `trace_metrics` / `settle_trace_feedback` / `build_timeline` 的口径与边界）；**触发面＝改 `scripts/**` 或 `tests/**`**（只改 case / 文档的 PR 不跑这道） | 硬（红即挡 merge）；"断言是否真打在口径上"仍是约定 |
 | EV 卡预测可复现 | CI：`scripts/verify_proposals.py --check`（`predicted_effect.measure` 必须有命令 + 期望，或如实声明不可度量） | 硬（结构）/ 约定（命令是否有意义） |
-| 面板契约（渲染 / 文案 / 数据口径） | CI：`panel-checks` job 跑 `scripts/check_panel_tokens.py` + `scripts/panel_render_check.js`（触发面＝改 `dsh-plugins/**`、`scripts/**`、`metrics/**`、`skills/**`） | 硬（红即挡 merge）；"判据是否真在测那件事"仍是约定 |
+| 面板契约（渲染 / 文案 / 数据口径） | CI：`panel-checks` job 跑 `scripts/check_panel_tokens.py` + `scripts/panel_render_check.js`（触发面＝改 `dsh-plugins/**`、`scripts/**`、`metrics/**`、`skills/**`、`docs/**`、`trace-status.yaml`——后两者是它实际读的：文案规范的唯一权威处与状态词表） | 硬（红即挡 merge）；"判据是否真在测那件事"仍是约定 |
 | 对照集不被改动者削弱 | CI：`scripts/holdout.py --check`（封存夹具按哈希钉住）+ `holdout-change` 标签闸门；CODEOWNERS 保护 `eval/holdout.yaml` | 硬（哈希）/ 半硬（谁有权 reseal——CODEOWNERS 落实前不是人把关） |
 | 回放量尺的按负载类型覆盖 | CI：`scripts/eval_workload_type_coverage.py --check --require-workload-type training --require-workload-type inference`（路由分负载类型后，负载类型是量尺单位；训练侧曾在 22 条 case 上 0 条夹具） | 硬，但**只保单一负载类型量尺不归零**（负载类型层由 `--check` 判；某一种负载类型一条真实夹具都不剩即红）。**格级缺口（某个 (负载类型 × 性质) 格子有 case 没夹具）默认只在报告里出现，不拦**——格层门是另一个开关 `--check-cells`（审计轮用），默认不开的代价是"某格缺夹具"与"某格的非最后一条夹具被删"不会自动喊；开了的代价是"新 case 落到尚无夹具的格子会被拦下"。两代价择一，本仓选前者（同 `holdout.py --list` 的空缺格子：如实报而不假装覆盖）。**它钉的是覆盖不是保护强度**：实测 26 条夹具里 16 条的输入对性质正则零命中（靠语义兜底），改坏词表它们照样过；哪几条真钉着词表用 `--nature-evidence` 现算现看 |
 
@@ -274,14 +274,25 @@ python3 scripts/build_index.py --check
 ### 触发分两层（改 CI 时两者都要照顾）
 
 - **粗网**：`kb-checks.yml` 顶部的 workflow 级 `paths:`，决定这次 push/PR 要不要起这个 workflow。
-  它是一串**目录 glob**（`scripts/**`、`knowledge/**` …），不是逐文件清单——新增脚本不必回来补名字。
+  它是一串**目录 glob**（`scripts/**`、`knowledge/**` …）加几个在仓根的顶层文件（`README.md`、
+  `.gitattributes`、`triage-tree.yaml`、`trace-status.yaml`），不是逐文件清单——新增脚本不必回来补名字。
   旧清单逐个列了 35 个 `scripts/*`，实测漏掉 37 个（改那些脚本 CI 完全不跑）。**漏一条 `paths:` 的
   代价是整条流水线静默不跑**，所以它宁可宽，细活交给下面那层。
 - **细网**：`changes` job 算出这次改了哪一面（`docs` / `knowledge` / `references` / `metrics` /
   `proposals` / `eval` / `skills` / `code` / `panels` 九个布尔量），各 job 用
   `if: needs.changes.outputs.<组> == 'true'` 自取所需。新增 job 时**按"它的命令真正读了哪些目录"挑组**
-  （看脚本里的路径字面量），不要按直觉——触发面取"读了就触发"，不按"断言强不强"取。取不到比对基线
-  （本地复跑 / 新分支首次推送）时它按**全量**处理：宁可全跑，不可漏跑。
+  （看脚本里的路径字面量），不要按直觉——触发面取"读了就触发"，不按"断言强不强"取。
+- 它会退化成**全量**（九个布尔量全 true 并打印原因）的四种情形：本地复跑、新分支首次推送（`before`
+  全 0）、无 `.git` 的副本（端到端演练场就是这个形态）、**与基线比不了**（孤儿分支 / 与 `main` 无
+  merge base 的推送）。后一类是独立预核抓出来的：比对取不到内容时必须按全量，不能吞成"零改动"。
+- 8 个 verification job（`index-freshness` / `case-structure` / `reference-validation` /
+  `metrics-validation` / `proposal-audit` / `docs-index` / `holdout-integrity` / `eval-scorecard`）
+  的 `if` 都带 `code`：它们的判定就是"跑一遍 `scripts/<x>.py`"，改了脚本本身而不跑那道门，等于改坏了
+  验证脚本没人验（同一个洞的第二面：改 `scripts/verify_references.py` 只有 `unit-tests` 会跑，而
+  `tests/` 里没有一条覆盖它）。代价是**改 `scripts/` 的 PR 仍会跑 11 个 job**（和改前 12 个只差
+  `skill-self-contained`——它只读 `skills/`，不吃 `code`），换来只改 `docs` / `knowledge` / `skills` 的 PR 免付。
+- **`changes` 自己失败时的上报形态**：其余 12 个 job 全部只上报 `skipped`（GitHub 眼里等于通过）。所以
+  将来开分支保护时**必须把 `changes` 也列进 required**，否则一条坏 diff 会静默放行全部门。
 - 为什么不拆成多个 workflow 文件：被 `paths:` 过滤掉的 workflow **根本不上报 check**，将来开分支保护
   会让 PR 永远等一个不会出现的 Expected。单文件 + job 级 `if:` 下，跳过的 job 照常上报 skipped。
 
