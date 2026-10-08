@@ -1,19 +1,120 @@
 name: kb-checks
 
+# 触发分两层：
+#   ① 下面 workflow 级 `paths:` = **粗网**，决定这次 push/PR 要不要起这个 workflow。
+#      它是目录 glob，不是逐文件清单——旧清单逐个列了 35 个 scripts/*.py|js，实测漏掉 37 个
+#      （改那些脚本 CI 完全不跑），且每加一个脚本要记得来两处补名字（维护成本随文件数线性上涨）。
+#   ② `changes` job = **细网**，算出这次改了哪一面，各 job 用 `if:` 自取所需。
+# 为什么不拆成多个 workflow 文件：被 `paths:` 过滤掉的 workflow 根本不上报 check，将来开分支
+# 保护会让 PR 永远等一个不会出现的 Expected。单文件 + job 级 `if:` 下，跳过的 job 照常上报 skipped。
 on:
   push:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**",
-    "scripts/_lexical.py", "scripts/_stdio.py", "scripts/_yaml.py", "scripts/exec_log_path.py",
-    "scripts/route_check.py", "scripts/build_index.py", "scripts/build_triage_tree.py", "scripts/index_counts.py",
-    "scripts/metrics_snapshot.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/eval_workload_type_coverage.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/build_panel_bundle.js", "scripts/check_panel_bundle.js", "scripts/panel_rpc_probe.js", "scripts/fixtures/**", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", ".github/workflows/kb-checks.yml"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**",
-    "scripts/_lexical.py", "scripts/_stdio.py", "scripts/_yaml.py", "scripts/exec_log_path.py",
-    "scripts/route_check.py", "scripts/build_index.py", "scripts/build_triage_tree.py", "scripts/index_counts.py",
-    "scripts/metrics_snapshot.py", "scripts/verify_references.py", "scripts/verify_case_draft.py", "scripts/verify_metrics.py", "scripts/build_timeline.py", "scripts/verify_proposals.py", "scripts/build_ref_summary_index.py", "scripts/build_procedure_index.py", "scripts/build_error_gap_index.py", "scripts/holdout.py", "scripts/eval_arena.py", "scripts/eval_scorecard.py", "scripts/eval_workload_type_coverage.py", "scripts/build_docs_index.py", "scripts/panel_render_check.js", "scripts/check_panel_tokens.py", "scripts/build_panel_bundle.js", "scripts/check_panel_bundle.js", "scripts/panel_rpc_probe.js", "scripts/fixtures/**", "scripts/ev_board_data.py", "scripts/metrics_health.py", "scripts/trace_metrics.py", "scripts/shared_dir.py", "scripts/ev_proposal.py", "scripts/component_tally.py", "scripts/rename_ref.py", "scripts/verify_evidence.py", ".github/workflows/kb-checks.yml"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", ".github/workflows/kb-checks.yml"]
 
 jobs:
+  # ── 细网：这次改了哪一面 ──────────────────────────────────────────────────────
+  # GitHub 只支持 workflow 级 `paths:`，不支持 job 级，所以粗网命中就 12 个 job 全跑。实测一轮
+  # PR 的 wall clock 140 秒，其中 unit-tests 单独占 135 秒（其余 11 个最慢 38 秒）——只改 docs 的
+  # PR 也在付这 135 秒。本 job 把「改了哪一面」算成一组布尔量供各 job 取用。
+  #
+  # 各 job 的触发面 = 它的命令**真正读了**哪些目录（逐条按脚本里的路径字面量核过）。按"读了就
+  # 触发"取，不按"断言强不强"取，宁可多跑：
+  #   index-freshness      ← knowledge（triage-tree* 归在 knowledge 组里）
+  #   case-structure       ← knowledge、references（verify_case_draft 建 references 索引校验 ref_knowledge）
+  #   reference-validation ← references、knowledge（解析全部 case 算派生计数）、skills（*-gates.yaml 绑定）
+  #   metrics-validation   ← metrics
+  #   proposal-audit       ← proposals
+  #   docs-index           ← docs（含 README；skill 名单取自 docs/_manifest.yaml，不扫 skills/）
+  #   holdout-integrity    ← eval
+  #   eval-scorecard       ← eval、knowledge（case↔夹具的负载类型覆盖算在 case 上）
+  #   unit-tests           ← scripts、tests
+  #   panel-checks         ← dsh-plugins、scripts、metrics、skills
+  #   skill-self-contained ← skills
+  #   arena-gate-rule      ← scripts（跑的是 --self-test，用合成样本）
+  #
+  # 强度让步（如实写在这里，评审一眼可见）：
+  #   · unit-tests 只按 scripts/tests 触发。它确有 4 个模块读仓库内容（test_trace_metrics 读
+  #     knowledge/_index.yaml、test_build_triage_tree 读 triage-tree*、test_concurrent_submit
+  #     copytree knowledge/、test_generated_plane 跑生成器），但那几面的**口径与新鲜度**由
+  #     index-freshness / case-structure 兜底，所以只改 knowledge/ 的 PR 不再付这 135 秒。
+  #     要更保守：把 knowledge 也加进它（代价是内容 PR 继续付满）。
+  #   · panel-checks 不算 knowledge：panel_render_check.js 读 knowledge/ 只做「索引非空、case
+  #     文件非空」两条 >0 断言，新鲜度由 index-freshness 管。
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      docs: ${{ steps.diff.outputs.docs }}
+      knowledge: ${{ steps.diff.outputs.knowledge }}
+      references: ${{ steps.diff.outputs.references }}
+      metrics: ${{ steps.diff.outputs.metrics }}
+      proposals: ${{ steps.diff.outputs.proposals }}
+      eval: ${{ steps.diff.outputs.eval }}
+      skills: ${{ steps.diff.outputs.skills }}
+      code: ${{ steps.diff.outputs.code }}
+      panels: ${{ steps.diff.outputs.panels }}
+    steps:
+      # fetch-depth: 0 供三点 diff 用：`A...B` 要 merge-base，浅克隆取不到会让 diff 静默为空、
+      # 所有组判 false、12 个 job 全被跳过——那是最坏的失败形态（全绿而什么都没跑）。
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -eu
+          # 本地复跑（scripts/rehearse_evolve_loop.py 的 E6）没有 GITHUB_OUTPUT、没有 .git、也没有
+          # BASE_REF/BEFORE：那时取不到基线，按下行"全量"处理并如实打印，不静默跳过任何 job。
+          OUT="/dev/null"
+          if [ -n "${GITHUB_OUTPUT:-}" ]; then OUT="$GITHUB_OUTPUT"; fi
+          base=""
+          if [ -n "${BASE_REF:-}" ]; then
+            git fetch --no-tags origin "$BASE_REF" >/dev/null 2>&1 || true
+            if git rev-parse --verify --quiet "origin/$BASE_REF" >/dev/null; then
+              base="origin/$BASE_REF...HEAD"
+            fi
+          fi
+          if [ -z "$base" ] && [ -n "${BEFORE:-}" ] \
+             && [ "$BEFORE" != "0000000000000000000000000000000000000000" ] \
+             && git rev-parse --verify --quiet "$BEFORE" >/dev/null; then
+            base="$BEFORE..HEAD"
+          fi
+          all=false
+          if [ -z "$base" ]; then
+            echo "取不到比对基线（本地复跑 / 新分支首次推送 / 无 .git 的副本）——按全量处理（宁可全跑，不可漏跑）"
+            all=true
+            changed=$(git ls-files 2>/dev/null || true)
+          else
+            echo "比对基线：$base"
+            changed=$(git diff --name-only "$base" || true)
+          fi
+          if printf '%s\n' "$changed" | grep -qE '^\.github/workflows/'; then
+            echo "本工作流自身有改动——全部 job 复验"
+            all=true
+          fi
+          echo "改动文件："
+          printf '%s\n' "$changed" | sed -e '/^$/d' -e 's/^/  /'
+          emit() {
+            name="$1"; pat="$2"; v=false
+            if [ "$all" = true ] || printf '%s\n' "$changed" | grep -qE "$pat"; then v=true; fi
+            echo "$name=$v" >> "$OUT"
+          }
+          emit docs       '^docs/|^README\.md$'
+          emit knowledge  '^knowledge/|^triage-tree\.yaml$|^triage-tree\.d/|^\.gitattributes$'
+          emit references '^references/'
+          emit metrics    '^metrics/'
+          emit proposals  '^proposals/'
+          emit eval       '^eval/'
+          emit skills     '^skills/'
+          emit code       '^scripts/|^tests/'
+          emit panels     '^dsh-plugins/'
+
   index-freshness:
+    needs: changes
+    if: needs.changes.outputs.knowledge == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +138,8 @@ jobs:
       - run: python3 scripts/build_triage_tree.py --check-coverage
 
   case-structure:
+    needs: changes
+    if: needs.changes.outputs.knowledge == 'true' || needs.changes.outputs.references == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -54,6 +157,8 @@ jobs:
       - run: python3 scripts/verify_case_draft.py --all
 
   reference-validation:
+    needs: changes
+    if: needs.changes.outputs.references == 'true' || needs.changes.outputs.knowledge == 'true' || needs.changes.outputs.skills == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -76,6 +181,8 @@ jobs:
       - run: python3 scripts/build_error_gap_index.py --check
 
   metrics-validation:
+    needs: changes
+    if: needs.changes.outputs.metrics == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -92,6 +199,8 @@ jobs:
       - run: python3 scripts/build_timeline.py --check
 
   proposal-audit:
+    needs: changes
+    if: needs.changes.outputs.proposals == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -113,6 +222,8 @@ jobs:
   # 而实际十个；文档目录 17 条平铺，读者看不出该读哪篇）。数字没有理由手写——
   # 生成物与清单不一致即红；**docs/ 下出现未登记的文档也即红**（漏登记比数字写错更难发现）。
   docs-index:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -126,6 +237,8 @@ jobs:
   # 头注——golden 在改动者可写面内且 groom 被要求跟着 case 改夹具，所以"无回归"是可
   # 控信号；封存后改内容必红，要合法改就得维护者 reseal 并在 PR 上留下标签。
   holdout-integrity:
+    needs: changes
+    if: needs.changes.outputs.eval == 'true'
     runs-on: ubuntu-latest
     steps:
       # fetch-depth: 0 供下一步的 diff 用（label 闸门要知道 PR 改没改对照集）
@@ -179,6 +292,8 @@ jobs:
   # 强度如实标注：**本门不判准确率**——账本记的是上次观测，不是现在能不能命中；
   # 准确率仍要 agent 跑回放（docs/guide/eval.md 门禁分级），不把不确定的东西硬门化。
   eval-scorecard:
+    needs: changes
+    if: needs.changes.outputs.eval == 'true' || needs.changes.outputs.knowledge == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -211,6 +326,8 @@ jobs:
   # ③复发：本套件无历史失败记录，入 CI 依据同类门先例与「口径错了没人知道」的代价，
   # EV-2026-108 记了这条判断；评审若按第三条严格执行，退回成收尾自查即可。
   unit-tests:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -228,6 +345,8 @@ jobs:
   # 重写后留在旧措辞上，而那条分支只在"没有 exec-log"的检出里跑，开发机上永远走不到。
   # 准入判据（机械可判 + 确定性后果 + 复发 ≥2 次）：三条都满足。
   panel-checks:
+    needs: changes
+    if: needs.changes.outputs.panels == 'true' || needs.changes.outputs.code == 'true' || needs.changes.outputs.metrics == 'true' || needs.changes.outputs.skills == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -258,6 +377,8 @@ jobs:
       - run: node scripts/panel_install.js --selftest
 
   skill-self-contained:
+    needs: changes
+    if: needs.changes.outputs.skills == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -291,6 +412,8 @@ jobs:
   # 逻辑写在脚本里，改坏了没有任何信号（arena 的池与账本都是本地运行件，CI 里不存在，
   # 所以能进 CI 的只有判据本身）。准入判据（机械可判 + 确定性后果 + 复发）三条都满足。
   arena-gate-rule:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
