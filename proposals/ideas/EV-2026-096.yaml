@@ -37,7 +37,7 @@ source_signals:
     trajectory:
       - "docs/evolution.md:56（hits 口径=现场 resolve）、:92（confidence 必须入库，未说每单）"
       - "docs/spec/design-theory.md:234（独立性假设过强 → 收敛被高估）"
-      - "docs/mechanism/eval-arena.md:21 与 docs/mechanism/execution.md:59（S2 的 self_consistent 不虚增）"
+      - "docs/mechanism/eval-arena.md:21 与 docs/mechanism/execution.md:67（S2 的 self_consistent 不虚增）"
       - "scripts/settle_trace_feedback.py（查无来源 session 判定）"
       - "已关闭的 PR pillumina/ascend-sleuth#233（本单的 self-settle）+ #83（结算脚本引入）"
   - signal: mechanism_gap
