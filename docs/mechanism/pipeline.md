@@ -5,10 +5,10 @@
 >
 > 本文回答一个问题：系统如何闭环地改进自己的三层资产（知识内容、流程与 skill、工作流与编排），并把人的参与从逐条执行上移到流程审视。
 > 本文覆盖三层模型（L1 知识内容 / L2 流程与 skill / L3 工作流与编排），以及第 6 节的自演进执行流程：一个降低人工参与度、但每次改动可追溯、每次合入由实验数据驱动的专门流程。
-> 执行级信息契约（改进项要记录什么、验证如何区分合入前可判与合入后需真实反馈、沉淀效果怎么度量、agent 拿到什么）见 [execution.md](execution.md)。编排与治理层（会话如何启动、目标函数与停止条件、token 预算、自我指涉治理）见 [orchestration.md](orchestration.md)。从一条指令到持续运行的运行视图（长期任务、issue 评测循环、执行记录、可视化）见 [run.md](run.md)。面向使用者的指令、报告与干预语言见 [evolution-user-guide.md](../guide/evolution-user-guide.md)。
+> 执行级信息契约（改进项要记录什么、验证如何区分合入前可判与合入后需真实反馈、沉淀效果怎么度量、agent 拿到什么）见 [execution.md](execution.md)，编排与治理层（会话如何启动、目标函数与停止条件、token 预算、自我指涉治理）见 [orchestration.md](orchestration.md)。
 > 文中的设计原则编号（原则一至原则十一）对应 [design-principles.md](../spec/design-principles.md)。正文用词与代码、文件名不同时，查第 13 节的名词对照表。
-> 本文是完整设计蓝图，不是全部待办。落地时只实现 §11.1 中「第一批落地」列的机制；「蓝图」列（观察窗超时降级态、候选过期态、策略记忆、稳态降频等）是预测性设计，触发条件（数据或用户诉求）出现才激活，不为未发生的问题预建机制（原则十一）。
-> 对象层的闭环（case 越用越准）已在 [rsi-mechanism.md](rsi-mechanism.md) 落地。理论推导见 [design-theory.md](../spec/design-theory.md) 第 4.2 至 4.4 节（元层信念、自演进闭环、演化即假设检验）。
+> 本文是完整设计蓝图，不是全部待办。落地时只实现 §11.1 中「第一批落地」列的机制；「蓝图」列是预测性设计，触发条件（数据或用户诉求）出现才激活，不为未发生的问题预建机制（原则十一）。蓝图里出现的四个名词分别是：观察窗超时降级态（等不到现场反馈时把改动标成未确认，不判失败）、候选过期态（在池里积压太久的候选标为过期）、策略记忆（跨轮保存探索策略的独立文件，现在还不存在，策略暂存在 session 上下文里）、稳态降频（某个方向收敛后降低产出节奏）。
+> 对象层的闭环（case 越用越准）已在 [rsi-mechanism.md](rsi-mechanism.md) 落地。
 > 本文自身的修订走 methodology PR 加体系维护人审：它属于 L3 结构，受 §5.2 管辖。
 
 ## 1. 三层模型
@@ -19,7 +19,7 @@
 | L2 流程与 skill | diagnose、groom、to-* 的实现，triage 分支、scripts、新 skill | 流程随误诊变对：组件执行错率下降 | 半闭环（归因事件已写入 trace，按需聚合脚本已就绪；真实归因事件还没有积累，验证门有设计没有常态数据，没有回测） | 归因自动，修复建议自动，合入人审（本文第 4 节的设计补全） |
 | L3 工作流与编排 | 流水线、groom 节奏、roadmap 的机制部分、本文档 | 流程本身不腐化，参数被数据校准 | 未闭环（人按季度回顾，参数不回流） | 参数级自校准半自动；结构级演进留人（本文第 5 节） |
 
-一条流水线服务三层：信号源相同（trace、metrics、容量、回放），候选改进项标注所属层，各层走各自的验证与授权路径。L1 的闭环是 L2 与 L3 的数据前提。反馈数据不只有工程师回报一种形态，见 §2.1 的评分源分级：对已闭环 issue 做 diagnose 重放、以 issue 的实际 resolution 为基准的对照评分，是不依赖人的自动评分源，可以部分替代工程师反馈，支撑检索与路由类的演进。
+一条流水线服务三层：信号源相同（trace、metrics、容量、回放），候选改进项标注所属层，各层走各自的验证与授权路径。L1 的闭环是 L2 与 L3 的数据前提。反馈数据不只有工程师回报一种形态，见 §2.1 的评分源分级：对已闭环 issue 做 diagnose 重放、以 issue 的实际 resolution 为基准的对照评分，是不依赖人的自动评分源，可以部分替代工程师反馈，支撑检索与路由类的演进。S1 当前捕获率约等于 0，后果是知识层的校准与命中率读不出结论，依赖现场反馈的改动也升不到 auto（§2.1、§6.3a）。
 
 ## 2. 三层共用的观测基座：归因事件写入 trace，报告按需聚合
 
@@ -38,7 +38,7 @@ L2 与 L3 的指标全部从已有的 trace 与 metrics 派生，不新增采集
 
 | 源 | 反馈对象 | 判定什么 | 结算落点 | 可得性 |
 |---|---|---|---|---|
-| S1 工程师回报 fix 结果 | 现场有效性：fix 在这个用户环境里是否解决 | case 的 confidence.hits / mis（resolve 口径的唯一依据） | `case.confidence` | 依赖人，当前捕获率约等于 0 |
+| S1 工程师回报 fix 结果 | 现场有效性：fix 在这个用户环境里是否解决 | case 的 confidence.hits / mis（resolve 口径的唯一依据） | `case.confidence` | 依赖人，当前捕获率约等于 0（后果：confidence 口径的读数不可解读，依赖该通道的改动升不到 auto，见 §6.3a） |
 | S2 Issue-replay 对照 | 内容正确性：case 的 symptom → root cause → fix 描述是否与外部 ground truth 一致 | 命中且结论一致 → `validation_record.consistent`（内容被外部验证，排序优先）；命中但结论不符 → `validation_record.inconsistent`（复审信号） | `case.validation_record`，由 settle_s2_feedback 结算 | 全自动、无人工；数据源是上游已闭环 issue |
 | S3 golden 回放 | 回归防护：改动后不倒退 | 不改 case 数据，只作验证门 | 无 | 全自动，套件人工维护 |
 
@@ -47,7 +47,7 @@ S2 补 S1 的空缺。它把已闭环 issue 批量做 diagnose 重放，产出�
 - 验证门数据：L2 skill 演进的 golden 验证可以换成或补充 S2 对照，即改 skill 前后在同一批 issue 上命中率是否提升。
 - case 内容验证回流：命中且一致记 `validation_record.consistent`；命中但结论不符记 `inconsistent`，这是内容错、过时或判别力不足的合法证据。由 `settle_s2_feedback.py` 结算进 case。
 - 错例提取：路由 miss 与未命中 case 从 S2 的 miss 自动累积，是路由错例演进与 trace 结构挖掘的数据源，不依赖工程师回报。
-- 覆盖缺口：tier2 miss（无 case 命中）说明该现象族没有覆盖，是缺 case 的候选信号。
+- 覆盖缺口：Tier 2 miss（无 case 命中）说明该现象族没有覆盖，是缺 case 的候选信号。
 
 S2 miss 的归因边界要守住。一次 S2 miss（未命中）有三种可能：(a) 路由错，(b) 缺 case，(c) case 内容错。S2 只看到「没命中」，区分不了三者。因此 S2 miss 只能产出检索层候选（查路由、查覆盖缺口），不能据此判定 case 内容错。命中但结论不符不是 miss，它有区分力：说明被命中的那条 case 内容或判别力有问题，是 case 复审的合法证据（settle_s2_feedback 的 inconsistent 通道）。检索有效与现场有效是两件事：consistent 表示内容与外部 resolution 一致（检索与归因正确），现场是否 resolve 仍然只认 S1，confidence 口径不变。
 
@@ -61,7 +61,7 @@ self-referential 隔离在任何规模都执行。结算 case 的 validation_rec
 
 [rsi-mechanism.md](rsi-mechanism.md) 的五类演化动作与 roadmap 里的容量、trace 类事项已经覆盖这一层：confidence 回写、groom 维护、误诊归因改 case、容量治理。本流水线对 L1 只做两件事：
 
-- 承接：把 L1 的维护动作（groom 信号表）升级为带 trajectory 的候选改进项（§7 的 schema），让容量告警、路由错例、覆盖缺口不再止步于动作，而进入提案闭环。
+- 承接：把 L1 的维护动作（groom 信号表）升级为带 trajectory 的候选改进项（§7 的 schema），让容量告警、路由错例、覆盖缺口不再止步于动作，而进入改进项闭环。
 - 校正：误诊归因（case 错还是执行错）的判决依据落在 trace 的 attribution 事件上，误改正确 case 的风险下降（[rsi-mechanism.md](rsi-mechanism.md) 第 4.3 节的误诊归因护栏）。
 
 ## 4. L2 流程与 skill 层（从半闭环到全闭环的设计）
@@ -87,7 +87,7 @@ self-referential 隔离在任何规模都执行。结算 case 的 validation_rec
 - 同一执行错类别反复出现，且没有可归责的组件（按需聚合时出现「未归因」簇）。
 - 多轮诊断反复走同一 Tier 3 兜底且最终 resolved，说明缺 Tier 2 覆盖，可能补 case 而不是新 skill。
 
-这两类信号，连同更广的伴随信号（沉淀 ≥3 条同根因 case 可以归纳 reference；同一流程重复手动动作可以固化成脚本或 skill 步骤），由 `/skill:evolve-check` 在内容流程（issue-ingest / to-reference / to-postmortem / knowledge-groom）收尾时自动采集。有信号产卡，无信号即止。用户不需要为「沉淀新 skill」单独立目标：演进是内容执行的默认收尾，不是独立的目标轮。diagnose 不强制在收尾跑 evolve-check（高频，且已有内建的演进动作），它的 L2 与 L3 缺口信号由 S2 重放与深度轮按需聚合覆盖。候选进待定池，不自动立项，标注「新 skill 立项是高风险结构变更，需要 proposal 论证与双签」。不做 embedding 相似度推荐（ADR-0002 已锁定，见 `docs/adr/`）。
+这两类信号，连同更广的伴随信号（沉淀 ≥3 条同根因 case 可以归纳 reference；同一流程重复手动动作可以固化成脚本或 skill 步骤），由 `/skill:evolve-check` 在内容流程（issue-ingest / to-reference / to-postmortem / knowledge-groom）收尾时自动采集。有信号产卡，无信号即止。用户不需要为「沉淀新 skill」单独立目标：演进是内容执行的默认收尾，不是独立的目标轮。diagnose 不强制在收尾跑 evolve-check（高频，且已有内建的演进动作），它的 L2 与 L3 缺口信号由 S2 重放与深度轮按需聚合覆盖。候选进待定池，不自动立项，标注「新 skill 立项是高风险结构变更，需要改进项论证与双签」。不做 embedding 相似度推荐（ADR-0002 已锁定，见 `docs/adr/`）。
 
 ### 4.5 效果回测（闭环收口）
 
@@ -154,9 +154,9 @@ roadmap 明确不做的是 KPI、身份与使用观测，观测对象是人（�
 | 模式 | 用户语义 | 各授权级别怎么处理 | 人审时机 |
 |---|---|---|---|
 | hands-off（完全自动化） | 我信这个 scope 的判断，全自动跑，做完给我 PR 审 | auto、review、dual 都按预授权连续执行，事中不打断；结构级（dual）也自动，前提是每张卡都有改进项记录、独立验证门、独立 commit | 目标完成或批边界，提一个批 PR 人审（含所有卡，dual 标注高风险），然后合入 |
-| default（关键人审） | 自动跑，但关键改动攒批给我审 | auto 即时合入；review 与 dual 攒批 | 轮末或批边界，提一个批 PR 人审 |
+| default（关键人审，默认） | 自动跑，但关键改动攒批给我审 | auto 即时合入；review 与 dual 攒批 | 轮末或批边界，提一个批 PR 人审 |
 
-hands-off 需要用户明确要求，防止把「自动」当成「失控」。它有几条硬前提：
+不特别指定时按 default（关键人审）跑；hands-off 需要用户明确要求，防止把「自动」当成「失控」。它有几条硬前提：
 
 1. 每个改动都源于一张改进项（`proposals/ideas/`，含 trajectory、hypothesis、predicted_effect）。没有改进项记录的改动不允许自动执行，结构级改动尤其如此。
 2. 每个改动过独立验证门（§6.5）：每张卡的 golden 或 S2 通过才 commit。
@@ -236,7 +236,7 @@ hands-off 需要用户明确要求，防止把「自动」当成「失控」。�
 | rejected | 不采纳。试了不行，或评估不成立，改动不保留，结论留在卡里。 |
 | superseded | 换方向。被新的改进项替代，supersede 链指向新的那一张。 |
 
-改进项是 agent 自演进行为的决策档案：识别改进点、执行、验证、判断采纳或不采纳。它不含 git 协作状态，批提交、提 PR、合入是流程层 session 的事，不进卡词表。人审发生在目标态完成、提批 PR 的时候，审的是整个自演进过程是否扎实，包括 rejected 卡：它是一次真实的实验记录。信号但数据前提没满足、方案未成形时不产卡，记进 session 报告，条件到了再产；信号不是提案，提案是已经准备好执行的方案。
+改进项是 agent 自演进行为的决策档案：识别改进点、执行、验证、判断采纳或不采纳。它不含 git 协作状态，批提交、提 PR、合入是流程层 session 的事，不进卡词表。人审发生在目标态完成、提批 PR 的时候，审的是整个自演进过程是否扎实，包括 rejected 卡：它是一次真实的实验记录。信号但数据前提没满足、方案未成形时不产卡，记进 session 报告，条件到了再产；信号不是改进项，改进项是已经准备好执行的方案。
 
 ```yaml
 id: EV-2026-XXX                 # 示例占位（真实卡号由 ev_proposal --new 分配）
@@ -287,12 +287,12 @@ decisions: []                    # 审计链：谁在何时依据哪份证据判
                                  #   status 推进随 decisions 走（见下「生命周期完整性规则」）
 ```
 
-生命周期完整性规则：每张卡都是一份 proposal → action → eval → decision 的完整档案，不是想法清单。
+生命周期完整性规则：每张卡都是一份「提出 → 执行 → 验证 → 判断」的完整档案（对应 decisions 里的 proposal / action / eval / decision 四类记录），不是想法清单。
 
-1. 产卡即执行，没有 candidate 待办态。识别信号且方案成形才产卡，产卡状态即 in_experiment（记 proposal 与 action），然后验证（记 eval），再判断（记 decision：采纳、不采纳、换方向、继续下一轮，四种都是合法判断）。方案成形就该做，不做就不产卡。执行与验证都完成、却既没有终态也没有任何 decision，是卡不完整；有中途判断但还有下一轮要跑，是正常的中间态，机制按这个判据推进，不靠 agent 记得改状态。一张卡结束与否看 `status`，不看 decision 的个数。
+1. 产卡即执行，没有 candidate 待办态。识别信号且方案成形才产卡，产卡状态即 in_experiment（记 `proposal` 与 `action` 两类记录），然后验证（记 eval），再判断（记 decision：采纳、不采纳、换方向、继续下一轮，四种都是合法判断）。方案成形就该做，不做就不产卡。执行与验证都完成、却既没有终态也没有任何 decision，是卡不完整；有中途判断但还有下一轮要跑，是正常的中间态，机制按这个判据推进，不靠 agent 记得改状态。一张卡结束与否看 `status`，不看 decision 的个数。
 2. 终态卡必须有 decision 记录。validated、rejected、superseded 的卡，decisions 里必须有 agent 的对应判断结论（依据哪份 eval 数据）。没有结论的终态卡是审计缺口，`verify_proposals.py` 会校验。
 3. validated 后 actual_cost 必填。成本审计（[orchestration.md](orchestration.md) 第 3.2 节：没有实际成本记录就不可审计）要求 validated 卡的 actual_cost 不能仍为 null。
-4. 信号与提案的边界。只有观察到的信号（容量超了、族够了、数据前提未满足，但没有准备执行的具体方案）不产卡，信号记进 session 报告或任务状态，等条件到（方案成形、数据齐）再产卡，防止想法清单污染提案账本。跨轮待做的改进点在任务状态里追踪，不用卡状态追踪。
+4. 信号与改进项的边界。只有观察到的信号（容量超了、族够了、数据前提未满足，但没有准备执行的具体方案）不产卡，信号记进 session 报告或任务状态，等条件到（方案成形、数据齐）再产卡，防止想法清单污染改进项账本。跨轮待做的改进点在任务状态里追踪，不用卡状态追踪。
 
 状态机当前是第 5 版。它的定义是：改进项是 agent 的决策档案，不含 git 协作状态与待办态；产卡即执行，终态是 agent 依据 eval 做出的判断。
 
@@ -305,7 +305,7 @@ decisions: []                    # 审计链：谁在何时依据哪份证据判
     └──（有信号但方案未成形或数据未齐 → 不产卡，记报告，条件到再产）
 ```
 
-改进项与 git、PR 的边界：卡的终态是 agent 的判断（采纳、不采纳、换方向），不含 pending_merge、adopted 这类合入语义；攒批、提 PR、人审合入是流程层的事（session state 与批边界，§6.3a），不进卡词表。人审发生在目标态完成（或降级完成，例如「要沉淀 100 条，实际只有 60 条」）后提的批 PR 上，审的是整个自演进过程是否扎实：agent 的 proposal → action → eval → decision 链是否合理、验证是否充分，而不是逐卡审批合入。rejected 卡同样进 PR 供审：agent 提出改进项、改了、实验发现不行、不采纳，这是一次真实的实验记录，人审时应当接受，它证明机制在真的评估而不是自欺。采纳的改动随 PR 合入后，卡的 decisions 可以追加「PR #N 合入」作为追溯记录，不改变卡状态。
+改进项与 git、PR 的边界：卡的终态是 agent 的判断（采纳、不采纳、换方向），不含 pending_merge、adopted 这类合入语义；攒批、提 PR、人审合入是流程层的事（session state 与批边界，§6.3a），不进卡词表。人审发生在目标态完成（或降级完成，例如「要沉淀 100 条，实际只有 60 条」）后提的批 PR 上，审的是整个自演进过程是否扎实：agent 的「提出 → 执行 → 验证 → 判断」链是否合理、验证是否充分，而不是逐卡审批合入。rejected 卡同样进 PR 供审：agent 提出改进项、改了、实验发现不行、不采纳，这是一次真实的实验记录，人审时应当接受，它证明机制在真的评估而不是自欺。采纳的改动随 PR 合入后，卡的 decisions 可以追加「PR #N 合入」作为追溯记录，不改变卡状态。
 
 validated 与观察窗的关系：agent 判 validated 依据的是合入前可得的验证（S2、golden、归因事件复测）。真实反馈类（content 与 fix 的现场有效性）agent 只能做到实现加 S2 佐证再加判 validated，现场确认（S1）在合入后的观察窗里发生，观察窗结果（`confirmed` 或 `rolled_back`）作为追加的 decision 记录写回卡，不改变卡状态机。
 
@@ -313,7 +313,7 @@ validated 与观察窗的关系：agent 判 validated 依据的是合入前可�
 
 ### 7.1 演进闭环的判据层
 
-改进项是决策档案，适合逐卡追溯，不适合逐卡阅读。实测的失效形态是：卡库长到几十张以后，状态分布几乎全是 validated，rejected 与 superseded 只有个位数，「状态分布、采纳率」这类聚合退化成常数；而人审的单位是批（§6.3a 审的是整个自演进过程是否扎实），一批几十张卡的决策链合计约数万字，远超人的注意力预算（[design-theory.md](../spec/design-theory.md) 第 6 节的 $B_{\text{attn}}$）。结论是：卡面主要供 agent（下一轮起草时查同组件先例）与人按需复核，人的首屏应当是判决，不是卡墙。
+改进项是决策档案，适合逐卡追溯，不适合逐卡阅读。实测的失效形态是：卡库长到几十张以后，状态分布几乎全是 validated，rejected 与 superseded 只有个位数，「状态分布、采纳率」这类聚合退化成常数；而人审的单位是批（§6.3a 审的是整个自演进过程是否扎实），一批几十张卡的决策链合计约数万字，远超人的注意力预算（[design-theory.md](../spec/design-theory.md) 第 6 节的 $B_{\text{attn}}$，即一个人一次审议能读完的改动量）。结论是：卡面主要供 agent（下一轮起草时查同组件先例）与人按需复核，人的首屏应当是判决，不是卡墙。
 
 2026-09-15 的读数：`proposals/ideas/` 下 174 张卡，其中 validated 165、superseded 6、rejected 2、in_experiment 1；`authorization` 里 review 149、dual 19、auto 6。复算命令：`python3 scripts/ev_measure.py --audit`，`grep -h "^authorization:" proposals/ideas/*.yaml | sort | uniq -c`。
 
@@ -332,16 +332,16 @@ validated 与观察窗的关系：agent 判 validated 依据的是合入前可�
 2. 数据源缺席时，判据标为「未被评估」，不写 0 冒充「没问题」。`readability` 面把「没人回报 fix 结果」与「零误诊」分开：前者不可解读，禁止读成后者。
 3. 判据强度要写明：`pointer_rot` 只说明卡点名的文件不在了，不断言卡的结论失效；`measure_never_run` 只说明判据没被执行，不断言预测对错。
 
-影响面（轴）是确定性派生，不让 agent 自己声明。agent 自报既是弱观测（同 `procedure_follow` 的先例），又是可以被刷的靶子：系统会学会写能通过的标签。轴从卡里已经写下的仓库路径反推（字段优先级：`decisions[type=action]` 的结论 > 标题或假设 > 成功判据 > 证据引用），因此同一份卡文本必得同一个轴、对存量卡同样成立、归因依据（哪个字段、哪条路径）可回查。边界要原样说清楚：轴记的是改动落在仓库的哪一层，不是变好了多少，也不是作者想优化什么；后者属能力轴，在 S1 现场反馈断供时没有可读分母（原则十）。
+影响面（早期文档里叫「轴」）是确定性派生，不让 agent 自己声明。agent 自报既是弱观测（同 `procedure_follow` 的先例：让 agent 自报自己有没有按流程走），又是可以被刷的靶子：系统会学会写能通过的标签。轴从卡里已经写下的仓库路径反推（字段优先级：`decisions[type=action]` 的结论 > 标题或假设 > 成功判据 > 证据引用），因此同一份卡文本必得同一个轴、对存量卡同样成立、归因依据（哪个字段、哪条路径）可回查。边界要原样说清楚：轴记的是改动落在仓库的哪一层，不是变好了多少，也不是作者想优化什么；后者属能力轴，在 S1 现场反馈断供时没有可读分母（原则十）。
 
-判据值不是目标值：阈值是假设，接受实测重校（原则十一）。「收敛到哪里」在这个问题上没有全局目标态，只有按 scope 的稳态降频（[orchestration.md](orchestration.md) 第 2.3 节）加审批带宽约束。把演进压成一条单调下降的曲线，等于给一个非平稳世界里的跟踪问题虚构终点。
+判据值不是目标值：阈值是假设，接受实测重校（原则十一）。「收敛到哪里」在这个问题上没有全局目标态，只有按 scope（一段独立的目标范围）的稳态降频（[orchestration.md](orchestration.md) 第 2.3 节）加审批带宽约束。把演进压成一条单调下降的曲线，等于给一个非平稳世界里的跟踪问题虚构终点。
 
 ## 8. 自动化边界
 
 | 环节 | 可自动 | 必须人闸 |
 |---|---|---|
 | 信号计算、归因事件聚合、指标汇总 | 全部自动（脚本） | 无 |
-| 候选起草、proposal 起草、PR 起草 | 全部自动（agent 读聚合，不读全文） | 无 |
+| 候选起草、改进项起草、PR 起草 | 全部自动（agent 读聚合，不读全文） | 无 |
 | 实验执行与报告 | 全部自动（worktree 内） | 无 |
 | 低风险合入 | auto（带抽审，可撤销） | 抽审与撤销权 |
 | 判断性合入、高风险合入 | 不可自动 | review 30s / dual 双签 |
@@ -370,7 +370,7 @@ validated 与观察窗的关系：agent 判 validated 依据的是合入前可�
 | 参数级自校准与结构级留人 | 十一、五 | 参数是假设，可实测修正；结构不可逆，留给人裁决 |
 | 卡内证据自包含、每条约 30s 审完 | 九（注意力预算） | 人审足够轻，才不会被跳过 |
 | 季度自评审视流程本身 | 十 | 防流水线自身腐化与为产出而产出 |
-| 同组件先例咨询结构化（防重提被拒方案） | 八、九、十一 | 历史先例防重复失败提案（八）；咨询读卡不重扫全库（九）；`--impact` 与成功模式提取都挂数据闸门（十一） |
+| 同组件先例咨询结构化（防重提被拒方案） | 八、九、十一 | 历史先例防重复提交已失败的改进项（八）；咨询读卡不重扫全库（九）；`--impact` 与成功模式提取都挂数据闸门（十一） |
 | 成功模式提取信号（无信号即止） | 八、十一 | 成功侧可观测（八）；不为预测问题预设轮次（十一） |
 | 不取全自动终审、不设常驻独立角色、不新建自观测 wiki 层 | 五、六、十一 | 决定权在人（五）；闸门硬度与错误代价匹配（六）；防台账反模式复燃（十一） |
 
@@ -411,7 +411,7 @@ validated 与观察窗的关系：agent 判 validated 依据的是合入前可�
 
 | 其他文档的落地项 | 归属本表哪一 Phase |
 |---|---|
-| execution §10：proposal schema v3 落模板 | Phase A（已完成：schema 加 verify_proposals） |
+| execution §10：改进项 schema v3 落模板 | Phase A（已完成：schema 加 verify_proposals） |
 | execution §10：沉淀效果字段（predicted_value / first_hit） | Phase B（归因事件与首条 L2 卡之后，随首批沉淀） |
 | execution §10：follow-up 观察窗常态化 | Phase C（依赖 fixture replay 与 S2 的即时判定） |
 | execution §10：回滚率等机制指标进 timeline | Phase D 试点 ≥1 轮后 |
@@ -431,16 +431,16 @@ validated 与观察窗的关系：agent 判 validated 依据的是合入前可�
 |---|---|---|---|---|
 | 路由错例演进（roadmap） | 检索行为：路由错例（`triage.routed` 对比命中 ns），且与 S2 池独立的真实样本 | 真实 trace 12（routed 8 / hit 6 / 齐全 5）；S2 replay 9（route 全 ok、attributions 0） | 未达标（5 < 20） | 量加独立性（replay 不计入）加当前路由错例为 0（事件未发生：EV-2026-005 与 EV-2026-008 修过 triage 之后，样本内不再出错） |
 | trace 结构挖掘（roadmap） | 检索行为语料量 | 真实 trace 12 | 未达标（<100） | 量 |
-| 改进项影响视图（§12a） | 首个真实 L2 rejected 或回滚簇 | 当时 EV 卡 10 张全是 validated，没有 rejected 的 L2 卡 | 当时未达标 | 事件未发生（没有可学样本）。快照之后已解锁，见下文 |
+| 改进项影响视图（§12a） | 首个真实 L2 rejected 或回滚簇 | 2026-09-04 时 EV 卡 10 张全是 validated，没有 rejected 的 L2 卡 | 2026-09-04 时未达标 | 事件未发生（没有可学样本）。快照之后已解锁，见下文 |
 | 成功模式提取信号（§12a） | 常态运行中可复述的成功模式 | evolve-check 收尾 1 次，记录为无信号 | 未达标 | 事件未发生 |
 | L2 归因事件簇（component_tally，Phase B） | 失败事件 verdict（execution_error 加组件 ID） | diagnose S1 侧 attribution 0；S2 attributions 0 | 未达标 | 可判性（S2 miss 的三种解释需人裁决，不冒充）加事件未发生 |
-| S2 覆盖缺口（补 case 信号） | tier2 miss（无 case 命中） | 9 条 replay 中 7 条无命中，其中 5 条已沉淀同名 case（replay 先于沉淀，结算为 self_consistent）；当时真缺口 2 条：13673（random_sample 跨流）、13961（310P 加 bge-m3，待上游闭环核验） | 已达标且部分已结算 | 剩余动作：2 个候选走 issue-ingest 管道，13673 待上游 fix 闭环核验 |
+| S2 覆盖缺口（补 case 信号） | Tier 2 miss（无 case 命中） | 9 条 replay 中 7 条无命中，其中 5 条已沉淀同名 case（replay 先于沉淀，结算为 self_consistent）；当时真缺口 2 条：13673（random_sample 跨流）、13961（310P 加 bge-m3，待上游闭环核验） | 已达标且部分已结算 | 剩余动作：2 个候选走 issue-ingest 管道，13673 待上游 fix 闭环核验 |
 | fixture replay 半自动化（roadmap） | golden fixture ≥5 | golden 23 条 | 已达标 | 半自动脚本可推进 |
 | S2 校准集建立（Phase C2，§2.1） | 已闭环 issue 池 | 单池 19 条，其中 11 条的 `confidence` 是 high（复算：`grep -c "^    confidence: high" eval/s2/vllm-ascend.yaml`） | 已建 | 扩池是持续动作，不是前置阻塞 |
 | S1 现场反馈（confidence 结算） | 工程师回报 fix 结果 | 捕获率约等于 0 | 未达标 | 量（依赖人）；观察窗降级态是兜底（§11.1 的蓝图） |
 | Phase D 试点（§11） | C 或 C2 任一落地，加 trace ≥20 可归因 | C2 已落地（单池 19 条）；trace 齐全 5 | 部分达标 | 量（真实可归因会话）。Phase D 与路由错例演进同门，S2 replay 不计入的口径同样适用 |
 
-盘点结论：多数蓝图闸门未解锁的原因不是没有数据记录，而是三类性质限制：量（真实会话少，靠使用增长）、事件未发生（路由错例为 0、没有 rejected 的 L2 卡，这是真实的零，不应为解锁而凑样本）、可判性与独立性（S2 miss 没有 verdict，S2 池不能兼作独立验证样本）。快照之后的变化（2026-09-15 复算）：真实诊断会话 16 个，改进项 174 张，golden 28 条，S2 单池 19 条。其中改进项影响视图的闸门已经满足：`proposals/ideas/EV-2026-112.yaml` 与 `EV-2026-113.yaml` 是 rejected 的 L2 卡。实时数字以脚本与数据文件为准，上表是机制与口径说明，不是数字仓库。
+盘点结论（2026-09-04 快照）：多数蓝图闸门未解锁的原因不是没有数据记录，而是三类性质限制：量（真实会话少，靠使用增长）、事件未发生（路由错例为 0、没有 rejected 的 L2 卡，这是真实的零，不应为解锁而凑样本）、可判性与独立性（S2 miss 没有 verdict，S2 池不能兼作独立验证样本）。快照之后的变化（2026-09-15 复算）：真实诊断会话 16 个，改进项 174 张，golden 28 条，S2 单池 19 条。其中改进项影响视图的闸门已经满足：`proposals/ideas/EV-2026-112.yaml` 与 `EV-2026-113.yaml` 是 rejected 的 L2 卡。实时数字以脚本与数据文件为准，上表是机制与口径说明，不是数字仓库。
 
 ## 12. 外部参考：与 SkillOpt 的关系（借鉴什么、不取什么）
 
