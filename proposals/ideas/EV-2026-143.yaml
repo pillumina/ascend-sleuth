@@ -30,7 +30,7 @@ source_signals:
       `--mark-merged <PR号> --all-pending`，而 `scripts/ev_proposal.py:294` 写着
       「`--all-pending <PR号>` 会把同一个号写给所有待回写卡——那是假数据（一张卡的真实出处只有
       一个批 PR）」。后者是后来那次修复（提交 408b6d1，同日）加的，它没有回头改技能里那行；
-      `skills/evolve-check/SKILL.md:84` 与 `docs/mechanism/orchestration.md:92` 也教同一条命令。
+      `skills/evolve-check/SKILL.md:84` 与 `docs/mechanism/orchestration.md:130` 也教同一条命令。
     trajectory:
       - "skills/self-evolve/SKILL.md:105（改动前）"
       - "scripts/ev_proposal.py:294（mark_merged_from_prs 的 docstring）"
