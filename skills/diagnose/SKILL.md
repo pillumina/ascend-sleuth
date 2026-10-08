@@ -181,7 +181,7 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
 
 每个 step 后往 `traces/<session_id>.yaml`（每个并发诊断一文件；模板见 `diagnosis_state.yaml.example`）的 `trace` 数组追加一条。**trace 是完整交互轨迹（trajectory）**——统一 `{role, ...}` 结构：
 
-- **先解析 trace 目录（一次，之后全程用它）**：`python3 scripts/shared_dir.py traces` 打印的绝对路径就是本次要读写的 `traces/`——它锚在**主检出**（同一克隆的所有 worktree 共读共写），所以从 worktree 干活也不会把记录写进一个主检出看不到、清理 worktree 就消失的地方。**本 skill 里所有 `traces/…` 的读写（含最前面的trace 相似检测）都以这个路径为准**，别写相对 `traces/`。
+- **先解析 trace 目录（一次，之后全程用它）**：`python3 scripts/shared_dir.py traces` 打印的绝对路径就是本次要读写的 `traces/`——它锚在**主检出**（同一克隆的所有 worktree 共读共写），所以从 worktree 干活也不会把记录写进一个主检出看不到、清理 worktree 就消失的地方。**本 skill 里所有 `traces/…` 的读写（含最前面的 trace 相似检测）都以这个路径为准**，别写相对 `traces/`。
 
 - **agent 事件**：`{role: agent, step, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback|reference_lookup|triage_semantic|source_analysis|attribution|resume|procedure_follow|report, output, reason, ...}`。`output` 给用户（可精简）、`reason` 记决策依据（**关键决策必写**）；`triage` 必带 `routed`（未命中写 `[]`）；`source_analysis` 必记 `tool_calls`；`attribution` 执行错可加 `component`；`report` 记 `report_file`（人读报告产出，**全路**步骤 6 必写一条；快路不产报告、也不写这条，但证据落盘与 `reason` 照旧必写）；`reference_lookup` 记 `purpose`（collect / signature / fix / background / procedure）与 **`outcome`（hit / miss / skipped，`skipped` 必写理由）**：三态缺一，"没查"就与"查了没命中"同形；`parallel_group` 记同批并发标记（同一次并行展开的几个动作共用一个值，串行不写）；`load_full` / `load_index` 记 `considered_candidates`（候选全集：筛选时看过的候选 id，含没取全文的）。
 - **user 事件**：`{role: user, step, content, evidence}`——`content` 摘要（短）+ `evidence` 完整证据（`inline` 原文 / `files` 相对路径 / `sources` URL / `missing` 缺口）。

@@ -7,7 +7,9 @@
 # 数字与名单不再手写（分层先例同 metrics/timeline.yaml vs docs/guide/metrics.md）。
 #
 # 维护规则：
-#   1. 新增文档 / 新增 skill → 先在这里登记（生成器会报"未登记"，CI --check 红）；
+#   1. 新增文档 → 先在这里登记（生成器会报"未登记"，CI --check 红）。skill 不参与这条
+#      检查，但**不在 skills: 段的 skill 不会出现在 README 名单里**——这份清单是名单唯一的
+#      数据源。项目自用、不面向使用者的 skill 登记时写 internal: true；
 #   2. `layer` 决定它在文档目录里的分组，也决定读者"什么时候该读"；
 #   3. 改完跑 `python3 scripts/build_docs_index.py`（不带参数即写回各个落点），再提交。
 #   4. 新增或改写文档的正文按 `docs/spec/writing-norms.md`（人读文本规范）：共用条目 + 该面在它 §3 里的定制条款。
@@ -67,7 +69,7 @@ docs:
     purpose: 四公理 → 公式 → 原则的完整推导链（原则的生成处）
   - path: docs/spec/writing-norms.md
     layer: spec
-    purpose: 人读/审阅文本的行文规范（唯一权威）：共用条目、必须保留的原值、各面的共用与定制判定、哪些能硬化
+    purpose: 人读/审阅文本的行文规范（词句层：口径以本文件为准）：共用条目、必须保留的原值、各面的共用与定制判定、哪些能硬化；篇章结构口径见 skills/doc-standards/
   - path: docs/evolution.md
     layer: mechanism
     purpose: "旧链接入口（保留以免旧链接失效）：内容已并入 mechanism/rsi-mechanism.md，本文只是一页指路，不要在此续写"
@@ -145,6 +147,10 @@ skills:
     scope: 知识沉淀
   - name: reference-ingest
     scope: 知识沉淀
+  # internal: true = 项目自用、不面向使用者：不进 README 名单，也不进"共 N 个"的计数。
+  - name: doc-standards
+    scope: 维护与演进
+    internal: true
   - name: knowledge-groom
     scope: 维护与演进
   - name: self-evolve

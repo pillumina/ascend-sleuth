@@ -33,7 +33,7 @@
 - [case-schema.md](../docs/spec/case-schema.md) — case 的字段定义、口径，以及哪些内容不允许进库
 - [design-principles.md](../docs/spec/design-principles.md) — 十一条规范性条文——一切设计、实现、修复与演进的依据
 - [design-theory.md](../docs/spec/design-theory.md) — 四公理 → 公式 → 原则的完整推导链（原则的生成处）
-- [writing-norms.md](../docs/spec/writing-norms.md) — 人读/审阅文本的行文规范（唯一权威）：共用条目、必须保留的原值、各面的共用与定制判定、哪些能硬化
+- [writing-norms.md](../docs/spec/writing-norms.md) — 人读/审阅文本的行文规范（词句层：口径以本文件为准）：共用条目、必须保留的原值、各面的共用与定制判定、哪些能硬化；篇章结构口径见 skills/doc-standards/
 
 **演进机制（改机制本身才读；日常不必读）**
 *你要改演进/评测/编排机制本身时——日常只读 docs/mechanism/rsi-mechanism.md 一篇，论证层在 docs/mechanism/*
