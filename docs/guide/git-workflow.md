@@ -274,8 +274,9 @@ python3 scripts/build_index.py --check
 ### 触发分两层（改 CI 时两者都要照顾）
 
 - **粗网**：`kb-checks.yml` 顶部的 workflow 级 `paths:`，决定这次 push/PR 要不要起这个 workflow。
-  它是一串**目录 glob**（`scripts/**`、`knowledge/**` …）加几个在仓根的顶层文件（`README.md`、
-  `.gitattributes`、`triage-tree.yaml`、`trace-status.yaml`），不是逐文件清单——新增脚本不必回来补名字。
+  它是一串**目录 glob**（`scripts/**`、`knowledge/**` …）加五个非 glob 的具体路径：仓根的 `README.md`、
+  `.gitattributes`、`triage-tree.yaml`、`trace-status.yaml`，以及 `kb-checks.yml` 自身（它一改就全量复验）。
+  不是逐文件清单——新增脚本不必回来补名字。
   旧清单逐个列了 35 个 `scripts/*`，实测漏掉 37 个（改那些脚本 CI 完全不跑）。**漏一条 `paths:` 的
   代价是整条流水线静默不跑**，所以它宁可宽，细活交给下面那层。
 - **细网**：`changes` job 算出这次改了哪一面（`docs` / `knowledge` / `references` / `metrics` /

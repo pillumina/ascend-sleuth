@@ -39,7 +39,7 @@ jobs:
   #     那道门，等于改坏了验证脚本没人验（实测：往 scripts/verify_references.py 注入脚本级故障，改前
   #     跑 reference-validation 并置红，只按目录细分后就只剩 unit-tests，而 tests/ 没有一条覆盖它）。
   #     代价：改 scripts/ 的 PR 仍会跑 11 个 job（与改前 12 个只差 skill-self-contained，它只读 skills/），
-#     换到的是 docs / knowledge / skills 类 PR 免付。
+  #     换到的是 docs / knowledge / skills 类 PR 免付。
   #   · panel-checks 吃 docs 与 trace-status.yaml 的实测反例见下。
   #
   # 强度让步（如实写在这里，评审一眼可见）：
@@ -54,6 +54,9 @@ jobs:
   #     条目归唯一权威处」（脚本 2627 行附近）——抽掉该文件的条目表这道门会红（rc=1），而 docs-index
   #     不兜底（rc=0）；trace-status.yaml 是它校验 status/outcome 词表的唯一数据源（脚本 1478 行），
   #     而粗网此前两条 paths 都没有它，改它 CI 根本不跑。
+  #   · panel-checks 还经 metrics_health.py --check → verify_references.py 读到 references/（删掉
+  #     references/env-vars 时 metrics_health rc 1→2，会翻 panel_render_check.js 的 status===1 断言），
+  #     但门组不含 references——这一层由 reference-validation 兜住（同一输入它必红），无静默放行。
   changes:
     runs-on: ubuntu-latest
     outputs:
