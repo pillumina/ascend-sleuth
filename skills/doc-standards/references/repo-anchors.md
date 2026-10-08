@@ -16,27 +16,29 @@
 | `docs/plan/*.md` | 下一步做什么、什么时候算做完 | 计划 | §计划 |
 | `docs/adr/*.md` | 当初为什么这样选，能不能推翻 | 决策记录 | §决策记录 |
 
-新增一篇文档时，先定位它属于哪一层；层对了类型就定了，类型定了骨架就定了。层本身的选择写进 `docs/_manifest.yaml` 的 `documents:` 段——登记是硬要求，未登记的 `.md` 会让 `docs-index` 门报红。
+新增一篇文档时，先定位它属于哪一层；层对了类型就定了，类型定了骨架就定了。层本身的选择写进 `docs/_manifest.yaml` 的 `docs:` 段——登记是硬要求，未登记的 `.md` 会让 `docs-index` 门报红。
 
 ## 2 全部人读面 → 类型与现有写点
 
 下表是 `docs/spec/writing-norms.md` §3 那份「人读面清单」的**篇章层**对应表。词句怎么写看 writing-norms；每面该有哪些节、按什么顺序，看这张表。
 
-| 面 | 类型 | 写点（模板或 schema 所在处） |
+| 面 | 形态 | 写点（模板或 schema 所在处） |
 |---|---|---|
-| `docs/**` 正文 | 见上一节 | 无模板，按本 spec 的 type-catalog 写 |
+| `docs/**` 正文 | 见上一节九类之一 | 无模板，按本 spec 的 type-catalog 写 |
 | `docs/adr/*.md` | 决策记录 | 无模板，按 §决策记录写 |
-| `skills/**/SKILL.md` | 操作契约 | 各 skill 自己的正文；受 `skill-self-contained` 门约束 |
-| 定位报告 `traces/*.report.md` | 定位报告 | `skills/diagnose/references/report-template.md` |
-| trace 人读字段 | 卡片字段 | `skills/diagnose/references/diagnosis-trace.md` |
-| 诊断对话输出 | 会话输出 | `skills/diagnose/SKILL.md` 的输出格式一节 |
-| case / reference 词条 | 参考词条 | `skills/to-postmortem/SKILL.md`、`skills/to-reference/SKILL.md` |
-| EV 卡 `proposals/ideas/*.yaml` | 卡片 | `docs/mechanism/pipeline.md` §7「改进项的 schema 与状态机」 |
+| `skills/**/SKILL.md` | 规则条文（skill 正文，自带模板） | 各 skill 自己的正文；受 `skill-self-contained` 门约束 |
+| 定位报告 `traces/*.report.md` | 复盘 + 参考词条（自带模板，以模板为准） | `skills/diagnose/references/report-template.md` |
+| trace 人读字段 | 字段说明（自带模板） | `skills/diagnose/references/diagnosis-trace.md` |
+| 诊断对话输出 | 会话记录（无骨架） | `skills/diagnose/SKILL.md` 的输出格式一节 |
+| case / reference 词条 | 参考词条（自带 schema） | `skills/to-postmortem/SKILL.md`、`skills/to-reference/SKILL.md` |
+| EV 卡 `proposals/ideas/*.yaml` | 提案（YAML 卡片，自带 schema） | `docs/mechanism/pipeline.md` §7「改进项的 schema 与状态机」 |
 | postmortem `postmortems/**` | 复盘 | `skills/to-postmortem/SKILL.md` |
-| PR body / 评审摘要 | 提案的落地面 | `.github/PULL_REQUEST_TEMPLATE/` 五个模板 |
-| 面板文案 | 界面文案 | `dsh-plugins/README.md` 的定制条款一节 |
-| 指标注记 | 卡片字段 | 无模板，写在 `metrics/timeline.d/*.yaml` 里 |
-| 对话回复 | 会话输出 | `CLAUDE.md` 的对话回复条 |
+| PR body / 评审摘要 | 提案（自带五类模板） | `.github/PULL_REQUEST_TEMPLATE/` 五个模板 |
+| 面板文案 | 界面文案（自带清单） | `dsh-plugins/README.md` 的定制条款一节 |
+| 指标注记 | 数据文件里的注记（无骨架） | 无模板，写在 `metrics/timeline.d/*.yaml` 里 |
+| 对话回复 | 会话输出（无骨架） | `CLAUDE.md` 的对话回复条 |
+
+第二列的「形态」不是新引入的类型名，是这一面在本仓的既有叫法：只有第一列里写「决策记录」「复盘」这几行的，才按 type-catalog 的骨架写；标了「自带模板」的面各有自己的 schema，本 spec 只在这些模板要改、或新增一类面时给判定口径。
 
 **已经自带模板的面，不在本 spec 里重写骨架**：报告、词条、PR body、EV 卡各有模板或 schema，本 spec 只在这些模板要改、或新增一类面时提供判定口径。判据只有一条：该面**读者手上有什么**，这决定它是共用条目还是要定制（writing-norms §4）。
 
@@ -59,7 +61,7 @@
 这几条在仓库里是既成事实，但没有任何文件写过，于是每篇文档都靠人记：
 
 - **一段一行**：中文段落在源文件里不硬换行，长行交给编辑器软换行。现状如此（`docs/mechanism/pipeline.md` 非空行 457、平均 151 字符），代价是 PR 里改一句话会让整段进 diff——接受这个代价，换掉它要重排全仓并让后续每次编辑都产生重排噪音。
-- **直角引号**：正文一律用「」，不用弯引号。现状 `docs/` 内是零个弯引号。
+- **直角引号**：正文一律用「」，不用弯引号。现状：`grep -rn '“' docs --include=*.md` 只命中 `docs/spec/writing-norms.md` 第 40 条的反例那一处（`docs/kb-explorer/*.js` 等素材文件里有，不属正文）。
 - **中文含义在前、内部代号放括号**：读者不先读一遍 `docs/` 就读不懂的词，都要当场展开。
 - **数字与名单不手写**：凡是「共 N 篇 / 共 N 个」这类计数，从 `docs/_manifest.yaml` 生成，正文里不写死。
 

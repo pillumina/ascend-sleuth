@@ -12,7 +12,7 @@
 | 机制说明的节序：范围与不变量 → 最小可执行模型 → 完整机制 → 边界与失败模式 | arc42 的节序与「黑盒 / 白盒递归分解」 |
 | 图的规则：独立可读、图例、元素给类型与职责、关系线写清传什么 | C4 model 的 diagram notation 与 tooling |
 | 提案：动机只讲问题、非目标、替代方案给代价、缺点不可空 | Rust RFC、PEP、IETF RFC 的模板与流程、Kubernetes Enhancement Proposal、Oxide RFD、Squarespace RFC |
-| 决策记录：状态枚举、已接受不改写、双向 supersede、被否不删 | Nygard 的 ADR 原文、MADR、adr.github.io 模板集 |
+| 决策记录：状态枚举、已批准不改写、双向 supersede、被否不删 | Nygard 的 ADR 原文、MADR、adr.github.io 模板集 |
 | 状态字段与「已落地要能确认」 | MADR 的 Confirmation 节 |
 | 复盘节序、行动项表、无责归因、用词不夸大、时间线给来源 | Google SRE Book 的 postmortem 章节与示例、PagerDuty postmortem 指南与 anti-patterns |
 | 不设字数上限、一节不超七小节、出边不超五条 | arc42 的拆分判据、Diátaxis 的 map、C4 的分层克制 |
