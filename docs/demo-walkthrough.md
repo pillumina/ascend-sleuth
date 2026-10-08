@@ -1,10 +1,41 @@
 # 全流程演示：从一次诊断到知识演化
 
-这份文档带你走一遍完整流程：从一次真实诊断开始，到知识沉淀、批量导入、门控审核，最后知识反哺下一次诊断。读者视角，不需要操作，跟着每一步的输入输出理解系统做什么、为什么。
+本篇是「导览 + 逐步演示」两层。第一屏的五节是导览，说明这套系统是什么、解决什么问题、由哪几块组成、从哪读起、不覆盖什么；其后的正文是逐步演示，带你走一遍完整流程：从一次真实诊断开始，到知识沉淀、批量导入、门控审核，最后知识反哺下一次诊断。读者视角，不需要操作，跟着每一步的输入输出理解系统做什么、为什么。逐步演示为保留完整走查超过导览规范的三屏上限，正文不删减。
 
-> 示例输出基于真实知识库构造，标注「示例输出」。实际运行结果因输入而异，实时条数以 `knowledge/_index.yaml` 头注和 `verify_references.py` 为准。交互式架构图可随时对照：[ascend-sleuth-architecture.html](diagrams/ascend-sleuth-architecture.html)。
+## 这是什么
+
+ascend-sleuth 是面向昇腾 NPU 训练与推理问题的诊断知识库。它按症状命中已验证的 case（结构化诊断条目），把每次新定位沉淀回库，同类问题下次直接命中。系统处理中断、精度、性能三类问题，核心是一个会追问、会查知识、会承认不知道的诊断协作者。
+
+## 它解决什么问题
+
+昇腾训练与推理的日常问题集中在三类：中断（hang、crash、OOM）、精度异常（loss 发散、FP8 衰减）、性能退化（吞吐下降、通信占比过高）。根因高度重复，相关知识却散落在个人笔记、IM 聊天与各处 wiki；新 case 每周都在出现，A2-910B / A3-910C / A5-950 三代平台的差异还在扩大，靠个人手工维护的知识库跟不上这个速度。诊断一旦跨 agent/session，平台 memory 不可用，新 agent 只能靠 trace（每次诊断的逐步记录）重建上下文。
+
+## 由哪几块组成
+
+| 组成 | 一句话职责 |
+|---|---|
+| Tier 1 路由表 | `triage-tree.yaml` 按症状映射到命名空间 |
+| Tier 2 case 规则 | `knowledge/<ns>/*.yaml`，一个问题的完整闭环：症状 → 检查 → 根因 → fix |
+| Tier 3 底稿 | `postmortems/` 原始调查记录，未结构化，前两层未命中时关键词兜底 |
+| 先验知识层 | `references/` 独立于事故的事实与方法论，不参与候选路由与排序，只在流程出现缺口时被读 |
+| skill | 诊断、沉淀、导入、维护各管一段，完整名单见 README 的「skill 清单」节 |
+| trace | `traces/<session_id>.yaml` 记录每次诊断的每一步，支撑跨 agent/session 续接与误诊归因 |
+| DSH 面板 | DSH 会话中的可视化操作台，把诊断、续接、沉淀、证据浏览变成界面操作（可选增强，见第 4.5 节）|
+
+## 从哪读起
+
+- 第一次接触、先看系统在做什么：留在本篇，读「0. 两分钟架构总览」，再对照 [ascend-sleuth-architecture.html](diagrams/ascend-sleuth-architecture.html)。
+- 要跑一次诊断、或续接被打断的诊断：读 `skills/diagnose/SKILL.md`、`skills/resume-diagnosis/SKILL.md`。
+- 要把一次调查沉淀成知识、或批量导入上游 issue：读 `skills/to-postmortem/SKILL.md`、`skills/to-reference/SKILL.md`、`skills/issue-ingest/SKILL.md`。
+- 要改演进、评测、编排机制本身，或按层浏览全部文档：先读 [rsi-mechanism.md](mechanism/rsi-mechanism.md)，全部文档见 [docs 怎么读](README.md)。
+
+## 不覆盖什么
+
+本篇是导览与演示，不覆盖安装部署、字段定义、机制论证与规范条文。要动手装环境、跑评测、看指标、走 git 门控，读 `docs/guide/`；要判断某个设计或改动是否合规，读 `docs/spec/`；要改机制本身，读 [rsi-mechanism.md](mechanism/rsi-mechanism.md)；case 的字段定义与口径见 `docs/spec/case-schema.md`，reference（先验知识层词条）的字段见 `references/README.md` 与 `references/_types.yaml`。
 
 ---
+
+> 示例输出基于真实知识库构造，标注「示例输出」。实际运行结果因输入而异，实时条数以 `knowledge/_index.yaml` 头注和 `verify_references.py` 为准。交互式架构图可随时对照：[ascend-sleuth-architecture.html](diagrams/ascend-sleuth-architecture.html)。
 
 ## 0. 两分钟架构总览
 
@@ -21,14 +52,14 @@
 
 先认识几个词：
 
-- **case**（Tier 2 条目）：一个问题的完整闭环，症状 → 检查 → 根因 → fix。沉淀在 `knowledge/`。
-- **reference**（先验知识层条目）：独立事实或方法论，如"507015 错误码含义"、"MoE 算子故障排查流程"。沉淀在 `references/`。
-- **postmortem**（Tier 3 底稿）：原始调查记录，未结构化。进 `postmortems/inbox/` 待审。
-- **groom**：周批维护，把待审草稿分诊、转正、重算置信度、重建索引。
-- **confidence**：case 的可信度（0-1）。新 case 按调查质量给初始值，随用户反馈校准，详见第 4 节。
-- **pre-triage**：沉淀时预判新 case 是全新模式（`new_pattern`）、已有 case 的变体（`variant_of`）、还是已被覆盖（`covered_by`）。
+- case（Tier 2 条目）：一个问题的完整闭环，症状 → 检查 → 根因 → fix。沉淀在 `knowledge/`。
+- reference（先验知识层条目）：独立事实或方法论，如"507015 错误码含义"、"MoE 算子故障排查流程"。沉淀在 `references/`。
+- postmortem（Tier 3 底稿）：原始调查记录，未结构化。进 `postmortems/inbox/` 待审。
+- groom：周批维护，把待审草稿分诊、转正、重算置信度、重建索引。
+- confidence：case 的可信度（0-1）。新 case 按调查质量给初始值，随用户反馈校准，详见第 4 节。
+- pre-triage：沉淀时预判新 case 是全新模式（`new_pattern`）、已有 case 的变体（`variant_of`）、还是已被覆盖（`covered_by`）。
 
-日常会用到的几个 skill 各管一段（完整名单与数量见 README 的「skill 名单」节，本文不写死）：
+日常会用到的几个 skill 各管一段（完整名单与数量见 README 的「skill 清单」节，本文不写死）：
 
 | skill | 职责 |
 |---|---|
@@ -79,7 +110,7 @@ agent 不干等，缺什么先问清。信息不全时主动问，是诊断循�
 日志就是上面那段报错栈。
 ```
 
-agent 收到后做**症状归一**：把原始报错提炼成可检索的签名，同时留意还缺什么。
+agent 收到后做症状归一：把原始报错提炼成可检索的签名，同时留意还缺什么。
 
 ```
 [示例输出] 症状理解：
@@ -89,14 +120,14 @@ agent 收到后做**症状归一**：把原始报错提炼成可检索的签名�
   - 还缺：CANN 版本（修复判定的关键）——先按已有信息走，验证阶段会问
 ```
 
-① **Tier 1 路由**。triage-tree 把症状映射到命名空间。
+① Tier 1 路由。triage-tree 把症状映射到命名空间。
 
 ```
 [示例输出] 症状路由：interrupt（aicore exception / 算子执行失败）
 → namespace: inference/vllm-ascend/interrupt
 ```
 
-② **Tier 2 候选**。读 `_index.yaml` 过滤候选（≤5），按 confidence 排序。agent 比对 quickly_check（case 里的快速检查正则）与已提供信息，排除不匹配的。
+② Tier 2 候选。读 `_index.yaml` 过滤候选（≤5），按 confidence 排序。agent 比对 quickly_check（case 里的快速检查正则）与已提供信息，排除不匹配的。
 
 ```
 [示例输出] 候选比对（_index.yaml 命中 namespace 的 interrupt 条目）：
@@ -105,7 +136,7 @@ agent 收到后做**症状归一**：把原始报错提炼成可检索的签名�
 匹配到 1 条候选：VLLM-ASC-10122
 ```
 
-③ **2.5 层 reference 辅助**。报错里的错误码走签名检索，命中先验知识，agent 判断这条先验是否相关、怎么辅助。
+③ 2.5 层 reference 辅助。报错里的错误码走签名检索，命中先验知识，agent 判断这条先验是否相关、怎么辅助。
 
 ```
 [示例输出] 错误码 507015 → references/errors/cann-runtime.yaml：
@@ -114,7 +145,7 @@ agent 收到后做**症状归一**：把原始报错提炼成可检索的签名�
   → 与候选 case 的根因方向一致，先验佐证：量化算子版本问题，不是用户用法错误
 ```
 
-④ **验证 → 输出**。diagnosis checks 逐条对照客户信息。缺信息时 agent 会停下问你，不跳步。
+④ 验证 → 输出。diagnosis checks 逐条对照客户信息。缺信息时 agent 会停下问你，不跳步。
 
 ```
 [示例输出] 验证：
@@ -192,7 +223,7 @@ aclnnScatterNdUpdate error 507011
    trace: {action: source_analysis, repo, ref, files_read, followup: unfixed}
 ```
 
-根因不在 vllm-ascend 时，agent 继续往下看。torch-npu 与 CANN 各层（gitcode 的 cann 组织）用同样流程分析（`source_ref` 指向该仓）；仓定不下来时先按签名枚举组织仓给候选，候选 ≥2 才问工程师一句；**闭源的商业发布形态二进制包**才承认局限，给根因方向 + 建议联系华为。
+根因不在 vllm-ascend 时，agent 继续往下看。torch-npu 与 CANN 各层（gitcode 的 cann 组织）用同样流程分析（`source_ref` 指向该仓）；仓定不下来时先按签名枚举组织仓给候选，候选 ≥2 才问工程师一句；闭源的商业发布形态二进制包才承认局限，给根因方向 + 建议联系华为。
 
 诊断是"词法检索提名 + agent 语义判断放行"。路由/候选/签名 grep 是结构化的，但症状归一、候选比对、缺信息追问、验证逐条、fix 综合、未命中转深度排查，全是 agent 的理解与判断。它是一个会追问、会解释、会承认不知道的排查协作者，不是查表器。
 
@@ -286,7 +317,7 @@ GitCode 源有几个实测差异：不返回 `closed_at`（游标用 `updated_at
 
 `inbox` 是本地待审队列，草稿不进 git/PR，转正才走 PR。PR 审核看的是已分诊的变更，不是裸草稿。
 
-groom 还负责**置信度结算**：跑 `settle_trace_feedback.py`，把上一周期的用户反馈累积进 case 的 confidence（详见第 4 节学习环）。结算先于置信度重算，保证重算的输入来自真实反馈，不是初始值。
+groom 还负责置信度结算：跑 `settle_trace_feedback.py`，把上一周期的用户反馈累积进 case 的 confidence（详见第 4 节学习环）。结算先于置信度重算，保证重算的输入来自真实反馈，不是初始值。
 
 ---
 
@@ -374,7 +405,7 @@ sedimented: {state: submitted}   # none→submitted→knowledge/archived（零�
 
 为什么自包含：跨 agent/session 续接时平台 memory 不可用，新 agent 只能靠 trace 重建。`summary`（背景）+ `evidence`（原始证据）+ `reason`（推理）三者齐备，新 agent 才能继续诊断而不丢上下文。证据大文件落 `traces/evidence/<session_id>/`（gitignored，跨 agent 同工作区可读）。
 
-**沉淀状态语义**（区分三层）：
+沉淀状态语义（区分三层）：
 - `submitted`：执行过 to-postmortem，草稿在 inbox 待审
 - `knowledge`：已升 Tier 2 active case，下次诊断可命中
 - `archived`：仅转正 Tier 3 语料（covered/语料），grep 兜底，非 active case
@@ -392,10 +423,10 @@ sedimented: {state: submitted}   # none→submitted→knowledge/archived（零�
 
 打开交互架构图，你已经走完了两个循环的每一环：
 
-- **诊断循环**：第 1 节（diagnose → 路由 → 候选 → 2.5 参考 → 验证 → trace）
-- **演化循环**：第 2-3 节（沉淀 → inbox → groom 预分诊 → PR 门控 → 转正）
-- **连接**：第 4 节（转正的 case/reference 回到诊断，R8 提炼共性，置信度学习环结算反馈）
-- **DSH 载体**：第 4.5 节（面板可视化操作台，trace 自包含支撑跨 agent 续接）
+- 诊断循环：第 1 节（diagnose → 路由 → 候选 → 2.5 参考 → 验证 → trace）
+- 演化循环：第 2-3 节（沉淀 → inbox → groom 预分诊 → PR 门控 → 转正）
+- 连接：第 4 节（转正的 case/reference 回到诊断，R8 提炼共性，置信度学习环结算反馈）
+- DSH 载体：第 4.5 节（面板可视化操作台，trace 自包含支撑跨 agent 续接）
 
 系统的核心设计：检索只负责提名，验证决定放行；建议与决定分离（agent 产出建议，人审转正）；知识随使用变厚（每次兜底后沉淀，下次命中）；置信度来自可信反馈（resolved 才 +1）；trace 自包含（跨 agent/session 不依赖平台 memory，证据/推理完整可重建）。
 

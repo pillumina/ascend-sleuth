@@ -90,7 +90,7 @@
 - `held_out: false`（已沉淀为 case，例如 #9769）：重放命中即 `self_consistent`。它只作训练与回归样本（检索与交互回归），不计为外部验证，与 S2 同一纪律。
 - `held_out: true`（未沉淀，例如 #2424）：作评测样本。
 
-验证集复用：issue 进入评测集不等于它被用掉。纪律是该 issue 不再沉淀，也不把评测反馈送回知识侧，也就是不从评测中学习扰动。允许验证集里的 issue 与现有 case 族冗余：该 issue 不再沉淀，冗余入库的代价不大。合成变体（用 case 派生，按 seed 重新生成）可以测表面鲁棒性，前提是 [roadmap.md](../plan/roadmap.md) 第 56 行的 fixture 自动生成落地。上游 issue 流只作自然扩池。
+验证集复用：issue 进入评测集不等于它被用掉。纪律是该 issue 不再沉淀，也不把评测反馈送回知识侧，也就是不从评测中学习扰动。允许验证集里的 issue 与现有 case 族冗余：该 issue 不再沉淀，冗余入库的代价不大。合成变体（用 case 派生，按 seed 重新生成）可以测表面鲁棒性，前提是 [roadmap.md](../plan/roadmap.md) 第 126 行的 fixture 自动生成落地。上游 issue 流只作自然扩池。
 
 ## 4. 评分口径：双层指标加防过早
 
@@ -170,18 +170,18 @@
 | 评测工具 v1 | `scripts/ixn_replay.py`，含 `prepare`/`score`/`aggregate` | `python3 scripts/ixn_replay.py --help`；源码入口 `scripts/ixn_replay.py:62`、`:121`、`:176` |
 | 评测规格入库 | `eval/ixn-arena/<issue>/` 的 `gold.yaml`、`stage-k.md` 与 `registry.yaml` | `ls eval/ixn-arena/`；`sed -n '1,4p' eval/ixn-arena/registry.yaml` |
 | 运行时件排除 | `.gitignore` 排除 `.ixn-replay/` | `sed -n '80,81p' .gitignore` |
-| 路线图条目 | 交互型 replay 评测（roadmap 里该事项的首级 2026-09-04 达成） | `sed -n '73p' docs/plan/roadmap.md` |
+| 路线图条目 | 交互型 replay 评测（roadmap 里该事项的首级 2026-09-04 达成） | `sed -n '143p' docs/plan/roadmap.md` |
 | 首批出分记录 | 2026-W37 的 timeline 条目（EV-2026-018） | `sed -n '1,20p' metrics/timeline.d/2026-W37.yaml` |
-| 交互面闸门接线 | 交互/追问面改动走 ixn 对口样本（EV-2026-016） | `grep -n 'ixn' docs/guide/eval.md`（第 166–167 行）；触发条件：下一次 diagnose skill 改动时启用 |
+| 交互面闸门接线 | 交互/追问面改动走 ixn 对口样本（EV-2026-016） | `grep -n 'ixn' docs/guide/eval.md`（第 72–73 行）；触发条件：下一次 diagnose skill 改动时启用 |
 
 ### 8.2 蓝图
 
 | 机制 | 触发条件 |
 |---|---|
-| 评分阈值与筛选标准固化 | `held_out` 样本达到 10 条后按实测校准；规则见 [roadmap.md](../plan/roadmap.md) 第 66 行 |
+| 评分阈值与筛选标准固化 | `held_out` 样本达到 10 条后按实测校准；规则见 [roadmap.md](../plan/roadmap.md) 第 143 行 |
 | 交互面分数进 timeline | `held_out` ≥10 且带分母（当前 8 条，首批按小样本显式标注的规则带标注记录、不作趋势基准） |
 | 归因型 replay 工具化（用 PR 引用作标注） | 出现归因评测需求，且样本可追溯到 PR 引用；关系见 §12.2 |
-| 合成变体生成器（case 派生扰动加 seed） | [roadmap.md](../plan/roadmap.md) 第 56 行的 fixture 自动生成事项落地后；关系见 §12.3 |
+| 合成变体生成器（case 派生扰动加 seed） | [roadmap.md](../plan/roadmap.md) 第 126 行的 fixture 自动生成事项落地后；关系见 §12.3 |
 
 ### 8.3 已否决
 
@@ -229,7 +229,7 @@
 | 样本清单 | `eval/ixn-arena/registry.yaml` | `version: 2` |
 | 本地正文与运行件 | `.ixn-replay/<issue>/` | 排除规则见 `.gitignore:80-81` |
 | 单发 S2 先例 | `scripts/s2_replay.py`、`eval/s2/` | S2 口径见 [pipeline.md](pipeline.md) §2.1 |
-| 交互面改动门禁 | `docs/guide/eval.md` | `:166-167` |
+| 交互面改动门禁 | `docs/guide/eval.md` | `:72-73` |
 
 ### 11.2 相邻文档分工
 
@@ -257,7 +257,7 @@
 
 ### 12.3 蓝图：与合成变体生成的关系
 
-合成变体用 case 派生、按 seed 重新生成，可以测表面鲁棒性。它等 [roadmap.md](../plan/roadmap.md) 第 56 行的 fixture 自动生成落地后再做；上游 issue 流只作自然扩池。
+合成变体用 case 派生、按 seed 重新生成，可以测表面鲁棒性。它等 [roadmap.md](../plan/roadmap.md) 第 126 行的 fixture 自动生成落地后再做；上游 issue 流只作自然扩池。
 
 ### 12.4 已否决：不采纳的相邻做法
 

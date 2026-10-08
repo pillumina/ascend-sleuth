@@ -42,7 +42,7 @@
 
 ### 1.2 标点与排版（23–34）
 
-现状：本仓的中文与英文之间已按下面第 31 条的写法排，数字与中文之间也带空格（`26 条`、`150–500 行`）。剩下的紧贴处只在原值里，属有意保留（不再记数字——引一句带数字的原值就会多一处，记了必然过期）：命令行与文件路径（`skills/issue-ingest/SKILL.md:24`、`skills/to-reference/SKILL.md:27`）、LaTeX 公式（`docs/spec/design-theory.md:93`）、占位符（`docs/mechanism/pipeline.md:45` 的 `<组件ID>`）、引用外部来源原值处（`docs/demo-walkthrough.md:247` 的 `[13评论]`、`skills/to-reference/SKILL.md:73` 的文档标题与作者行）、本表自身的反例列与上面这一句（它引了原值）。核对命令扫的是 `docs/**`、`skills/**` 与 `README.md`；`postmortems/**`、`research/**`、`eval/**` 这些面还没按本条清过，不在上面这句的范围内（命中数会随正文引用原值变化，看的是「命中的是不是原值」而不是总数）：
+现状：本仓的中文与英文之间已按下面第 31 条的写法排，数字与中文之间也带空格（`26 条`、`150–500 行`）。剩下的紧贴处只在原值里，属有意保留（不再记数字——引一句带数字的原值就会多一处，记了必然过期）：命令行与文件路径（`skills/issue-ingest/SKILL.md:24`、`skills/to-reference/SKILL.md:27`）、LaTeX 公式（`docs/spec/design-theory.md:93`）、占位符（`docs/mechanism/pipeline.md:42` 的 `<组件ID>`）、引用外部来源原值处（`docs/demo-walkthrough.md:278` 的 `[13评论]`、`skills/to-reference/SKILL.md:73` 的文档标题与作者行）、本表自身的反例列与上面这一句（它引了原值）。核对命令扫的是 `docs/**`、`skills/**` 与 `README.md`；`postmortems/**`、`research/**`、`eval/**` 这些面还没按本条清过，不在上面这句的范围内（命中数会随正文引用原值变化，看的是「命中的是不是原值」而不是总数）：
 
 ```bash
 python3 -c "import re,pathlib;pat=re.compile(r'[\u4e00-\u9fff][A-Za-z0-9]|[A-Za-z0-9][\u4e00-\u9fff]');[print(f'{p}:{i}') for p in [*pathlib.Path('docs').rglob('*.md'),*pathlib.Path('skills').rglob('*.md'),pathlib.Path('README.md')] for i,l in enumerate(p.read_text(encoding='utf-8').splitlines(),1) if pat.search(l)]"
