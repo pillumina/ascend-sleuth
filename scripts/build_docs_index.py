@@ -48,9 +48,19 @@ def load(root: Path):
     return yaml.safe_load(p.read_text(encoding="utf-8")) or {}
 
 
+def roster_skills(doc):
+    """名单里的面向使用者的 skill。
+
+    `internal: true` 的条目是项目自用的 skill（写规范、维护流程这类），不面向使用者：
+    它们既不进名单，也不进计数——否则本清单会把"给使用者的 skill 有几个"说错，
+    而这句话正是本清单存在的理由（先例：README 曾写"八个"、术语表曾写"共九个"）。
+    """
+    return [s for s in (doc.get("skills") or []) if not s.get("internal")]
+
+
 def render_skills(root: Path, doc, target: str) -> str:
     # root / target 未使用：与 render_docs 统一签名，便于按 BLOCKS 表分发。
-    skills = doc.get("skills") or []
+    skills = roster_skills(doc)
     order = doc.get("scope_order") or []
     by_scope = {}
     for s in skills:
@@ -59,7 +69,7 @@ def render_skills(root: Path, doc, target: str) -> str:
     total = len(skills)
     groups = [sc for sc in order + [k for k in by_scope if k not in order] if by_scope.get(sc)]
     # 组数是现算的：写死"三组"会在增删一个分组时静默说错。
-    parts = [f"本仓共 **{total} 个 skill**，按使用场景分 {len(groups)} 组："]
+    parts = [f"本仓共 **{total} 个面向使用者的 skill**，按使用场景分 {len(groups)} 组："]
     for scope in groups:
         items = by_scope[scope]
         names = []
@@ -241,14 +251,14 @@ def main() -> int:
                 print(f"  - {p}")
             return 1
         n = len(doc.get("docs") or [])
-        print(f"build_docs_index --check: OK（{n} 条文档登记、{len(doc.get('skills') or [])} 个 skill，"
+        print(f"build_docs_index --check: OK（{n} 条文档登记、{len(roster_skills(doc))} 个 skill，"
               f"{len(results)} 个落点一致：{places}）")
         return 0
 
     for rel, want in results.items():
         write_text_lf(root / rel, want, encoding="utf-8")
     print(f"build_docs_index: 已写回 {places}（{len(doc.get('docs') or [])} 条文档登记、"
-          f"{len(doc.get('skills') or [])} 个 skill）")
+          f"{len(roster_skills(doc))} 个 skill）")
     if missing:
         print(f"  提示：docs/ 下仍有 {len(missing)} 篇未登记（--check 会因此红）：")
         for m in missing:
