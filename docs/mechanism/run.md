@@ -69,7 +69,7 @@ issue 的 resolution（fix PR 合入、committer 确认或 issue 内的用户反
 
 open issue 不参与对照评分，只做覆盖探测：把现象交给 diagnose，若没有命中或置信度低，就记一条该现象族未覆盖的候选（进待定池）；此时没有 resolution 可对照，不做结论判定。issue 转 closed 后自动进入评测池，增量拉取的游标会捕获这一转换，从那一刻起它才有答案、才参与 S2。
 
-S2 校准集的 selection 与 test 分离是规模闸门。原设计分 selection（供闸门决策）与 test（供 validated 终判，防对校准集过拟合，对应 SkillOpt 的 held-out，即留出、不参与调参的样本，见 [pipeline.md](pipeline.md) §12）两半，但池子小，撑不起两半：test 半要求从未被本系统沉淀过的历史 issue，而沉淀会消耗池子，小池下 test 半自相矛盾。降级后的规则是单池运行，直到出现真实的 held-out 需求。原「≥30」是参数估计，不是硬门槛；[design-theory.md](../spec/design-theory.md) §7 说明常数接受实测重校。扩池是 issue 流自然流入的持续动作，单池加自我指涉隔离（self-referential 隔离：评测样本不得由本系统自己沉淀，见本节末尾三条）已经覆盖防过拟合的主要威胁。当前单池 19 条，其中 11 条的 resolution 信号强度为 high（由 fix commit 或 PR 指认；分级见 [pipeline.md](pipeline.md) §2.1；复算：\`grep -c "^    confidence: high" eval/s2/vllm-ascend.yaml\`）。replay 分数标 `source: issue-replay`；validated 终判标注无 held-out test（池小），依赖 selection 对照与人工抽审。
+S2 校准集的 selection 与 test 分离是规模闸门。原设计分 selection（供闸门决策）与 test（供 validated 终判，防对校准集过拟合，对应 SkillOpt 的 held-out，即留出、不参与调参的样本，见 [pipeline.md](pipeline.md) §12）两半，但池子小，撑不起两半：test 半要求从未被本系统沉淀过的历史 issue，而沉淀会消耗池子，小池下 test 半自相矛盾。降级后的规则是单池运行，直到出现真实的 held-out 需求。原「≥30」是参数估计，不是硬门槛；[design-theory.md](../spec/design-theory.md) §7 说明常数接受实测重校。扩池是 issue 流自然流入的持续动作，单池加自我指涉隔离（self-referential 隔离：评测样本不得由本系统自己沉淀，见本节末尾三条）已经覆盖防过拟合的主要威胁。当前单池 19 条，其中 11 条的 resolution 信号强度为 high（由 fix commit 或 PR 指认；分级见 [pipeline.md](pipeline.md) §2.1；复算：`grep -c "^    confidence: high" eval/s2/vllm-ascend.yaml`）。replay 分数标 `source: issue-replay`；validated 终判标注无 held-out test（池小），依赖 selection 对照与人工抽审。
 
 S2 评测集与沉淀来源解耦这条规则保留，self-referential 隔离在任何规模都执行。评测用的 issue 如果已经被沉淀成 case（issue → to-postmortem → case 是同一个循环），重放命中的只是系统自己写下的答案，高分不构成外部验证。隔离有三条：
 
