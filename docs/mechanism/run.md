@@ -69,7 +69,7 @@ issue 的 resolution（fix PR 合入、committer 确认或 issue 内的用户反
 
 open issue 不参与对照评分，只做覆盖探测：把现象交给 diagnose，若没有命中或置信度低，就记一条该现象族未覆盖的候选（进待定池）；此时没有 resolution 可对照，不做结论判定。issue 转 closed 后自动进入评测池，增量拉取的游标会捕获这一转换，从那一刻起它才有答案、才参与 S2。
 
-S2 校准集的 selection 与 test 分离是规模闸门。原设计分 selection（供闸门决策）与 test（供 validated 终判，防对校准集过拟合，对应 SkillOpt 的 held-out，即留出、不参与调参的样本，见 [pipeline.md](pipeline.md) §12）两半，但池子小，撑不起两半：test 半要求从未被本系统沉淀过的历史 issue，而沉淀会消耗池子，小池下 test 半自相矛盾。降级后的规则是单池运行，直到出现真实的 held-out 需求。原「≥30」是参数估计，不是硬门槛；[design-theory.md](../spec/design-theory.md) §7 说明常数接受实测重校。扩池是 issue 流自然流入的持续动作，单池加自我指涉隔离（self-referential 隔离：评测样本不得由本系统自己沉淀，见本节末尾三条）已经覆盖防过拟合的主要威胁。当前单池 19 条，其中 11 条的 resolution 信号强度为 high（由 fix commit 或 PR 指认；分级见 [pipeline.md](pipeline.md) §2.1）。replay 分数标 `source: issue-replay`；validated 终判标注无 held-out test（池小），依赖 selection 对照与人工抽审。
+S2 校准集的 selection 与 test 分离是规模闸门。原设计分 selection（供闸门决策）与 test（供 validated 终判，防对校准集过拟合，对应 SkillOpt 的 held-out，即留出、不参与调参的样本，见 [pipeline.md](pipeline.md) §12）两半，但池子小，撑不起两半：test 半要求从未被本系统沉淀过的历史 issue，而沉淀会消耗池子，小池下 test 半自相矛盾。降级后的规则是单池运行，直到出现真实的 held-out 需求。原「≥30」是参数估计，不是硬门槛；[design-theory.md](../spec/design-theory.md) §7 说明常数接受实测重校。扩池是 issue 流自然流入的持续动作，单池加自我指涉隔离（self-referential 隔离：评测样本不得由本系统自己沉淀，见本节末尾三条）已经覆盖防过拟合的主要威胁。当前单池 19 条，其中 11 条的 resolution 信号强度为 high（由 fix commit 或 PR 指认；分级见 [pipeline.md](pipeline.md) §2.1；复算：\`grep -c "^    confidence: high" eval/s2/vllm-ascend.yaml\`）。replay 分数标 `source: issue-replay`；validated 终判标注无 held-out test（池小），依赖 selection 对照与人工抽审。
 
 S2 评测集与沉淀来源解耦这条规则保留，self-referential 隔离在任何规模都执行。评测用的 issue 如果已经被沉淀成 case（issue → to-postmortem → case 是同一个循环），重放命中的只是系统自己写下的答案，高分不构成外部验证。隔离有三条：
 
@@ -107,7 +107,7 @@ exec-log 只记录内容流程收尾时的现场情况，不做每次 skill 调�
   - 旧卡处于 `in_experiment`（执行中、未终判）：新卡提出时旧卡标 `superseded`，`superseded_by` 指向新卡。旧卡还没有终判，没有回滚负担；它的改动如果已经进入批提交，就从批里撤出，因为尚未合入，不需要保留观察窗证据。
   - 旧卡已经 `validated`（已采纳，合入后还在观察窗内）：新卡进入实验，旧卡的观察窗继续结算到终点。若旧卡先在观察窗内确认有效、之后被新卡替代，旧卡标 `superseded`；若旧卡先因现场退化被回滚（观察窗判定为 `rolled_back`，按本节「回滚粒度到被替代版本」一条执行 `git revert`），旧卡的合入已被撤销，新卡成为该组件上唯一的在跑实现，不需要额外动作。不要在新卡还没有验证时就废弃观察窗中的旧卡：观察窗是旧卡效果的证据，中途废弃会丢失对照。
   - 旧卡 `validated` 且观察窗已经结算：新卡 validated 之后旧卡标 `superseded`，这是最常见的路径。
-- 回滚粒度到被替代版本。观察窗判定为 `rolled_back` 时，如果该卡 `supersedes` 某张旧卡，就回滚到被替代版本，用 `git revert` 回到旧卡的合入点，而不是回滚到空白。链式替代（A → B → C 的链回滚 C）沿 `superseded_by` 链回溯，回滚到链上最近一张 `validated` 的实现：若 B 已在 A 之上被替代、不是 `validated` 终态，就跳过 B 回到 A 或链上更早的 `validated` 卡；若链上没有 `validated` 卡，回滚到链首的初始实现，并标注链上无 validated 版本。回滚目标是最近的有效实现，不是紧邻的旧卡，这样系统回到的是曾经验证过的状态，不是中间试验态。
+- 回滚粒度到被替代版本。观察窗判定为 `rolled_back` 时，如果该卡 `supersedes` 某张旧卡，就回滚到被替代版本，用 `git revert` 回到旧卡的合入点，而不是回滚到空白。链式替代（A → B → C 的链回滚 C）沿 `supersedes` 链向前驱回溯（`superseded_by` 指向替代它的新卡，走不到前驱），回滚到链上最近一张 `validated` 的实现：若 B 已在 A 之上被替代、不是 `validated` 终态，就跳过 B 回到 A 或链上更早的 `validated` 卡；若链上没有 `validated` 卡，回滚到链首的初始实现，并标注链上无 validated 版本。回滚目标是最近的有效实现，不是紧邻的旧卡，这样系统回到的是曾经验证过的状态，不是中间试验态。
 - 追溯链是：卡 → `supersedes` 链 → `decisions` → 实验记录 → 合入 commit。这条链回答两个问题：现在的实现是谁、替代了谁，看卡与 `supersedes`/`superseded_by` 链；为什么替代，看 `decisions` 里逐条追加的判断（`supersedes` 链本身不含原因），再往下追到实验记录与合入 commit。有一条不变式：同一时刻每个 `target_component` 至多一张 `validated` 卡。
 
 ## 6. 可视化
