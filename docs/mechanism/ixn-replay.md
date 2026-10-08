@@ -8,8 +8,6 @@
 
 读者与前置：知道单发 S2 replay 是什么，读过 [pipeline.md](pipeline.md) §2.1 与 diagnose skill。本文属论证层，日常诊断不必读；执行规则与机制地图见 [rsi-mechanism.md](rsi-mechanism.md)。
 
-现状：机制决议是 EV-2026-012。第一阶段（本文档与 `scripts/ixn_replay.py` v1）已落地，首次出分见 §8。评分口径经 2026-09 的本地试点验证：N=3（vllm-ascend #2424、#9769、#9798），含 `held_out`（未沉淀、留作评测）与 `self_consistent`（自指隔离）两种分流。试点数据与结论写在 §4 与 §7，试点的运行留档是本地运行时件，不入库。评分阈值与筛选标准的校准是蓝图，触发条件见 §8。
-
 ## 1. 解决什么问题与不解决什么
 
 单发 S2 replay（[pipeline.md](pipeline.md) §2.1）只测检索与内容面：给全量 issue 背景，看系统能否路由、命中、到达正确结论。diagnose 的交互面它测不了。那一面要回答三个问题：信息不足时会不会追问、问的是不是决定性字段、会不会过早下结论。ixn-replay 补的就是这一维。
@@ -162,6 +160,8 @@
 
 ## 8. 现状与闸门
 
+机制决议是 EV-2026-012。第一阶段（本文档与 `scripts/ixn_replay.py` v1）已落地，首次出分见 §8.4。评分口径经 2026-09 的本地试点验证：N=3（vllm-ascend #2424、#9769、#9798），含 `held_out`（未沉淀、留作评测）与 `self_consistent`（自指隔离）两种分流。试点数据与结论写在 §4 与 §7，试点的运行留档是本地运行时件，不入库。评分阈值与筛选标准的校准是蓝图，触发条件见 §8.2。
+
 ### 8.1 已落地
 
 | 机制 | 落地形态 | 确认方式 |
@@ -170,7 +170,7 @@
 | 评测工具 v1 | `scripts/ixn_replay.py`，含 `prepare`/`score`/`aggregate` | `python3 scripts/ixn_replay.py --help`；源码入口 `scripts/ixn_replay.py:62`、`:121`、`:176` |
 | 评测规格入库 | `eval/ixn-arena/<issue>/` 的 `gold.yaml`、`stage-k.md` 与 `registry.yaml` | `ls eval/ixn-arena/`；`sed -n '1,4p' eval/ixn-arena/registry.yaml` |
 | 运行时件排除 | `.gitignore` 排除 `.ixn-replay/` | `sed -n '80,81p' .gitignore` |
-| 路线图条目 | O8 交互型 replay 评测（首级 2026-09-04 达成） | `sed -n '73p' docs/plan/roadmap.md` |
+| 路线图条目 | 交互型 replay 评测（roadmap 里该事项的首级 2026-09-04 达成） | `sed -n '73p' docs/plan/roadmap.md` |
 | 首批出分记录 | 2026-W37 的 timeline 条目（EV-2026-018） | `sed -n '1,20p' metrics/timeline.d/2026-W37.yaml` |
 | 交互面闸门接线 | 交互/追问面改动走 ixn 对口样本（EV-2026-016） | `grep -n 'ixn' docs/guide/eval.md`（第 166–167 行）；触发条件：下一次 diagnose skill 改动时启用 |
 
@@ -239,7 +239,7 @@
 | [eval-arena.md](eval-arena.md) | 评测台总览与兄弟台分工 |
 | [rsi-mechanism.md](rsi-mechanism.md) | 机制地图与权威归属 |
 | [metrics.md](../guide/metrics.md) | 指标定义与闸门口径 |
-| [roadmap.md](../plan/roadmap.md) | O8 的路线状态与门槛规则 |
+| [roadmap.md](../plan/roadmap.md) | 交互型 replay 评测的路线状态与门槛规则 |
 | [design-principles.md](../spec/design-principles.md) | 原则条文 |
 
 ## 12. 外部参考

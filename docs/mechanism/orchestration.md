@@ -322,7 +322,7 @@ proposals/strategy-memory.yaml                  # 策略记忆（跨会话累积
 | 合入指针回写命令（§2.4） | `ev_proposal.py --mark-merged --from-prs`，按已合入 PR 逐卡匹配，匹配不上的报出、不做猜测 | `grep -n "mark-merged" scripts/ev_proposal.py` |
 | 成本的分子口径单一实现（§2.4） | `scripts/ev_proposal.py:135` 的 `has_merge_pointer`，`--waterline` 与 `ev_board_data` 同源 import | `grep -n "has_merge_pointer" scripts/ev_proposal.py` |
 | 卡的成本侧字段（§3.2） | 已并入 [pipeline.md](pipeline.md) 第 7 节的 schema；旧 `estimated_cost` 已废弃 | `grep -n "actual_cost" docs/mechanism/pipeline.md` |
-| 会话状态文件的落盘位置与 gitignore 规则（§1.2） | `proposals/sessions/*` 写进 `.gitignore:67`；会话协议本身随 Phase D 试点落地（见 §11） | `grep -n "proposals/sessions" .gitignore` |
+| 会话状态文件的落盘位置与 gitignore 规则（§1.2） | `proposals/sessions/*` 写进 `.gitignore:67`；会话协议本身随「自演进执行流程试点一轮」那一步落地（见 §11） | `grep -n "proposals/sessions" .gitignore` |
 
 ### 9.2 蓝图（触发条件出现才实现）
 
@@ -332,7 +332,7 @@ proposals/strategy-memory.yaml                  # 策略记忆（跨会话累积
 | 候选过期态 `stale`（§2.4） | 候选停留超过 8 周（参数待校准）且从未被采纳 | inbox 式标红 |
 | 策略记忆独立文件 `proposals/strategy-memory.yaml`（§5.1） | 季度自评跑通至少一轮 | 结构级教训并入 session context |
 | 冲突检测的机械检查（§5.2） | `affected_paths` 进卡 schema 后 | 读卡判断改动范围的交集 |
-| 会话协议与预算试点（§1、§2、§3） | 排在 golden 验证门与 S2 校准集之后（[pipeline.md](pipeline.md) §11.1 的 Phase D） | 本轮之前不存在自演进会话 |
+| 会话协议与预算试点（§1、§2、§3） | 排在 golden 验证门与 S2 校准集之后（[pipeline.md](pipeline.md) §11.1 的「自演进执行流程试点一轮」） | 本轮之前不存在自演进会话 |
 
 ### 9.3 已否决
 
