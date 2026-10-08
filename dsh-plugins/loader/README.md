@@ -20,8 +20,10 @@
 
 本加载器依赖模型侧的 `cordis_define` / `cordis_run`——它自己就是用这两件工具装出来的。
 新版 DSH 把这两件工具删掉了（动态定义只由程序侧调用方与浏览器面板驱动），那时本目录装不上，
-也不要反复试 `cordis_define`：改走常驻插件包 `dsh-plugins/dsh-sleuth-panels/`
-（`plugin_manager install_bundle`）。判据与两条路的完整流程见
+也不要反复试 `cordis_define`：改走常驻插件包 `dsh-plugins/dsh-sleuth-panels/`。
+有 `plugin_manager` 工具时用 `plugin_manager install_bundle` 装它；三件工具都没有时（DSH Desktop
+默认如此）跑 `node scripts/panel_install.js`，它经界面那条 `/api` 通路调同一个插件管理器，
+这条路不通再让用户在侧栏「插件」页粘贴该目录的绝对路径。判据与四条路的完整流程见
 `skills/preload-panel/SKILL.md`。
 
 ## 用法（每个 DSH **进程**一次）
