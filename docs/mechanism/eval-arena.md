@@ -1,28 +1,34 @@
 # 元层 eval 台（arena）：train/val 分离与门控自演进
 
-> 本文写给要改机制自身的元层评测的人。元层指把系统对自身的判断与流程当作被评测对象的那一层（见 [design-theory.md](../spec/design-theory.md) §4.2）。eval 台（下称 arena）是自演进机制在评测层的那部分：它给检索/路由层的候选改动做门控，把 issue 回放拆成 train（供改动参考的样本）与 val（判定改动好坏的样本）两套样本。候选改动在 val 样本上达到证据门槛才接受，否则回滚，结果写进影响账本。
->
-> 本文说清三件事：train/val 分离怎么防住拿同一批数据自证，门控协议在哪一层生效，影响账本记了什么。日常执行规则与机制地图见 [rsi-mechanism.md](rsi-mechanism.md)。正文不用内部简称；改脚本、查数据文件之前，先用文末[名词对照](#9-名词对照)把正文用词换成代码与文件里的名字。池的样本条数、已吸收条数与已评分条数随运行变化，本文只在解释判据时引用读数，并写明复算命令。
+eval 台（下称 arena）是自演进机制在评测层的那一部分。它把 issue 回放拆成两套样本：train（供改动参考的样本）与 val（判定改动好坏的样本）；候选改动在 val 样本上达到证据门槛才接受，否则回滚，结果写进影响账本（`.s2-replay/arena/impact.yaml`，记候选 id、分数对照、配对读数与判词）。元层指把系统对自身的判断与流程当作被评测对象的那一层，定义见 [design-theory.md](../spec/design-theory.md) §4.2。本台的设计决议是改进项 EV-2026-013。
 
-本台的设计决议是改进项 EV-2026-013。它对应 WikiSkill（arXiv 2608.27454）在元层的做法：候选改动在 `held_out` 样本（留出、不参与调参的样本）上严格提升才接受，否则回滚，结果写进影响账本。本台把 S2 回放从单池评测升级为 train/val 分离加门控与账本，用来给检索/路由层组件（triage 分支文本、quickly_check、case 内容与排序）的演进做门控。交互层 [ixn-replay.md](ixn-replay.md) 与归因层是兄弟台。
+本文说清三件事：train/val 分离怎么防住拿同一批数据自证；门控协议在哪一层生效；影响账本记了什么。
 
----
+范围是五套样本的分层与角色、池构建、评分口径、门控协议、工具与失败模式。不含两类：日常 S2 单池评测的执行规则（见 [pipeline.md](pipeline.md) 第 2.1 节），以及与归因层、交互层 [ixn-replay.md](ixn-replay.md) 的分工；这两块各有自己的文档，入口见 §10。与别的项目、论文的对比放在文末 §11。
 
-## 1. 分层与角色
+读者需要先读过 [rsi-mechanism.md](rsi-mechanism.md)，那是自演进机制地图与日常执行规则。只想知道日常怎么跑 S2、或按现有流程跑一轮评测的人不必读本文。正文不用内部简称；改脚本、查数据文件之前，先用 §10 的名词对照把正文用词换成代码与文件里的名字。池的样本条数、已吸收条数与已评分条数随运行变化，本文只在解释判据时引用读数，并写明复算命令。
+
+## 1 解决什么问题与五套样本
+
+本台解决的是：让检索/路由层的候选改动有一条可复核的放行判定，代替「拿同一批数据自证」。它明确不解决现场有效性（fix 在用户环境里是否解决，那要 S1 工程师回报），也不为还没有改动的机制预建判定（原则十一）。
+
+最小可执行模型是五套样本各有分工，加一条从池到判词的命令链：`--build-pool` 从校准集派生池，`--stats` 出分与逐条判决向量，`--gate` 做配对判词并写影响账本。读完本节就该知道池分哪几类、判定池与回归池怎么分、终判子集什么时候划出来；后面每一节不引入本节没出现过的构件名。
 
 五套样本各有分工。
 
 | 集 | 内容 | 角色 | 数据来源 |
 |---|---|---|---|
 | golden | 28 条构造例（条数现算：`ls eval/golden/*.fixture.yaml`） | 无回归底线：任何改动都不许让其中一条倒退 | `eval/golden/`（提交进仓库） |
-| selection | 未沉淀的 closed/completed issue（`held_out`） | 候选改动的前后对照评分（门控入口） | 从 ingest 池选样并标 expected，写进本地 `.s2-replay/arena/` |
+| selection | 未沉淀的 closed/completed issue（校准集里 `split: selection`） | 候选改动的前后对照评分（门控入口） | 从 ingest 池选样并标 expected，写进本地 `.s2-replay/arena/` |
 | regression | 答案已进知识库的样本（已吸收样本） | train 信号；不参与门控判定（`--gate` 拒绝） | `--build-pool` 按 case 实名从同一份校准集拆出（`pool-*-absorbed.yaml`） |
 | test | 与 selection 分离的 `held_out` 子集 | validated 终判，防对 selection 过拟合 | 判定池的可评样本数达到触发线后划出，算法见下 |
 | smoke/self | 已沉淀 case 的源 issue | train 信号；自洽样本照原值记 `self_consistent` | 知识库 case 的源 issue 重放 |
 
 判定池（val 区）里的 issue 只用于评测：不写进知识库，评测结果也不回喂给知识侧，避免被评的改动从评测数据里学到答案。自洽样本不计入外部验证。答案已进知识库的样本（下称已吸收样本）由 `--build-pool` 按 case 实名拆进回归池（`role: regression`）：它们留在判定池会让判定池的分数虚高，所以判定池里不留。
 
-终判子集（test）什么时候划出来，由池规模闸门决定。闸门的条数由判据反推得出，不是估一个数填进去。先定这套闸门要支撑几次判定，记为 K；K 由 owner 定，下面只给按 K 反推可评样本条数的算法，不替 owner 选 K。池规模这个缺口本身的盘点见 [rsi-mechanism.md](rsi-mechanism.md) 第 8 节的已知缺口第 4 条。
+### 1.1 test 分离的池规模闸门（2026-10 定口径）
+
+终判子集什么时候划出来，由池规模闸门决定。闸门的条数由判据反推得出，不是估一个数填进去。先定这套闸门要支撑几次判定，记为 K；K 由 owner 定，下面只给按 K 反推可评样本条数的算法，不替 owner 选 K。池规模这个缺口本身的盘点见 [rsi-mechanism.md](rsi-mechanism.md) 第 8 节的已知缺口第 4 条。
 
 - 第 k 次复用同一个池时，判定阈值折减为 `α_eff = α/(k+1)`（α 默认 0.10，k 从 0 起算）。折减在调用点 `scripts/eval_arena.py:677-678`；`reuse_index()` 本身只按池名与池哈希计数，见 `scripts/eval_arena.py:359-371`。要判 `accept`，配对检验须满足 `P(Bin(b+c, 0.5) ≥ b) ≤ α_eff`，其中 b 是 candidate 独家命中数、c 是 baseline 独家命中数。
 - c > 0 不会自动否决，但会摊薄证据：检验的 n 变成 b + c，同一个 b 的 p 值随之变大。k = 0 时，c = 0 只要 b = 4 就达线，c = 1 要 b = 6。下面的反推取 c = 0，给出需要样本最少的情形。
@@ -31,9 +37,9 @@
 - 现状（2026-10 读数，见第 3 节）：判定池 9 行、可评 8 行（1 条非诊断样本已剔出），按上式只够 K = 1；升到 13 条才够支撑 2 次判定并同时留下终判子集。本文件与 [roadmap.md](../plan/roadmap.md) 里都没有「判定池 ≥20 条」这个目标。`≥20` 的出处是 `proposals/ideas/EV-2026-013.yaml:80` 的「③test/selection 分离按规模闸门（selection ≥20）启用」，说的是 selection 侧条数，正好等于 K = 4 时 selection 侧的 Σ = 20，两条口径由此对齐。
 - 这个下限是必要条件，不是充分条件：它只说池子大到够得上判定线，能不能真判成还取决于池里有多少条真会翻转的样本。判据卡 EV-2026-175 记的实测是 20 条池上只有 2 条会翻转，缺口主要在这里；第 3 节的命中率 2/20 与这里的 2 条会翻转不是同一个量，不能混读。样本条数由 `--stats` 输出的「N/M 条已评分」与 `held_out_skipped` 现算，不另外维护一份数字。
 
----
+## 2 池构建
 
-## 2. 池构建
+池可从已跟踪的 S2 校准集机械重建：`--build-pool` 一条命令派生，确定性、可复核，不依赖某次会话留下的本地文件。
 
 候选来自 ingest-state 里 vllm-ascend 的 processed 集合，去掉答案已进知识库的 issue。条数随知识库与 issue 池变化，由 `--build-pool` 打印的 `absorption` 现算（2026-09 立卡时的量级是 processed 325 条）。筛选规则：issue 处于 closed 且 state_reason=completed（resolution 可溯），内容是实体缺陷或用法问题（排除文档类、营销类与 not_planned）。
 
@@ -41,7 +47,9 @@
 
 expected 标注（namespace/category/fix_ref）由 agent 读 issue 线程产出。工具只提供池文件与校验，标注本身是协议（与 S2 同构）。标注时若发现输入里没有可判别信号（正文空白、只有环境信息），在校准集行上标 `non_diagnostic`，写真值或写一句原因；空字符串等同未标注。这类行不进命中率分母、不进配对，也不进吸收指纹，见第 3 节。
 
-收样判据落在 `scripts/s2_calibration.py`。原来的「实体 Bug/Usage 内容」只落在人工约定上，代码用的是「标题不在 6 项黑名单里」且「labels 为空或含 `bug`/`triaged`」；`triaged` 近乎恒真，于是流程单也能进池。实测一条：`#12490 [Misc]: Close cherry-pick PR #12265` 的 labels 只有 `triaged`，进了判定池，回放时才发现没有可诊断内容，三组症状正则命中数全 0。该条已按下面的判据从校准集删掉（卡 EV-2026-176）。现行判据是机械的两步：
+### 2.1 收样判据
+
+收样判据落在 `scripts/s2_calibration.py`，现行判据是机械的两步。原来的「实体 Bug/Usage 内容」只落在人工约定上，代码用的是「标题不在 6 项黑名单里」且「labels 为空或含 `bug`/`triaged`」；`triaged` 近乎恒真，于是流程单也能进池。实测一条：`#12490 [Misc]: Close cherry-pick PR #12265` 的 labels 只有 `triaged`，进了判定池，回放时才发现没有可诊断内容，三组症状正则命中数全 0。该条已按下面的判据从校准集删掉（卡 EV-2026-176）。
 
 1. 标题带流程或文档类前缀的硬拒，连 `--include-weak` 也不收。前缀列在 `NON_DIAGNOSTIC_PREFIXES`：`[Doc]`/`[docs]`/`[Documentation]`/`[Feature]`/`[Feature Request]`/`[Question]`/`[Misc]`/`[Build]`/`[CI]`/`[Test]`/`[Refactor]`/`[Chore]`/`[Release]`，以及小写 `docs:`/`doc:`/`feat:`/`chore:`/`ci:`/`test:`/`refactor:`。
 2. 其余条目要有明确的缺陷信号：标题前缀是 `[Bug]`/`[bug]`/`[BugFix]`/`[bugfix]`/`[Usage]`（`[Usage]` 按「实体 Bug/Usage」收），或 labels 里含 `bug`。只剩 `triaged` 标签、或标题没有前缀的算弱信号，默认不收；候选清单会把它们逐条打印出来，要收弱信号就带 `--include-weak`（弱信号接在严格候选之后，`--limit` 先被严格候选填满时不会进池）。
@@ -50,10 +58,9 @@ expected 标注（namespace/category/fix_ref）由 agent 读 issue 线程产出�
 
 弱信号这条通道留着，是因为里面既有真实缺陷（`#12947` 就是：无前缀，labels 只有 `triaged`，后来撞上了真实的 fix PR #12948），也有不带流程或文档类前缀的流程单，后者第 1 条挡不到。一票否决会连真实缺陷一起丢掉，所以把它挡在默认值上，把判断留给人。窗口里的 issue 列表一直在动，这几个数只作量级参考，不当阈值用。
 
-吸收分流：`--build-pool` 从同一份校准集派生两条池。
+### 2.2 吸收分流与池新鲜度
 
-- 判定池 `pool-val.yaml`（`role: judgment`）：只留未吸收样本。
-- 回归池 `pool-val-absorbed.yaml`（`role: regression`）：`--gate` 按 `role` 字段拒绝它，不看文件名。吸收判据是 case 实名：`knowledge/` 下存在 `VLLM-ASC-<issue>.yaml`（前缀可用 `--case-prefix` 改）。不用「issue 号出现在正文里」做判据，因为正文提到别的 issue 是常事：`knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13639.yaml` 的边界判别里就写着 14871，文本搜索会把未吸收的样本误判成已吸收。
+`--build-pool` 从同一份校准集派生两条池。判定池 `pool-val.yaml`（`role: judgment`）只留未吸收样本；回归池 `pool-val-absorbed.yaml`（`role: regression`）由 `--gate` 按 `role` 字段拒绝，不看文件名。吸收判据是 case 实名：`knowledge/` 下存在 `VLLM-ASC-<issue>.yaml`（前缀可用 `--case-prefix` 改）。不用「issue 号出现在正文里」做判据，因为正文提到别的 issue 是常事：`knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13639.yaml` 的边界判别里就写着 14871，文本搜索会把未吸收的样本误判成已吸收。
 
 case 实名还要求文件名 stem 匹配命名规则 `^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d+$`（全大写、以 issue 号结尾）：`knowledge/` 下 169 个 stem 里 138 个匹配，31 个不匹配（都是没有 issue 号的自有名，如 `COMMON-CPU-CACHE-MISS`）。
 
@@ -69,9 +76,7 @@ case 实名还要求文件名 stem 匹配命名规则 `^[A-Z][A-Z0-9]*(?:-[A-Z0-
 
 池文件没有该字段时（旧池、手写池）按未校验放行，但两条命令都会写明新鲜度无法校验：没有校验必须与校验通过可区分（原则十）。新鲜度判定还有第三种状态：有指纹，但那份 stats 没记下逐行样本 id（本字段落地前的产物），判定时刻算不出新指纹，`--gate` 写明判定时刻无法重算，沿用 `--stats` 那一刻的读数（账本里 `absorption_recheck.recomputed` 为假），不把它当成校验通过。
 
----
-
-## 3. 评分口径（复用 S2 result schema）
+## 3 评分口径（复用 S2 result schema）
 
 每条 issue 跑一次 diagnose 回放，写 `.s2-replay/<issue>.result.yaml`，沿用已有 schema：namespace/category/hit_case/root_cause/rc_match/route，另加下面的 `ground_truth`。聚合指标都带分母：
 
@@ -110,9 +115,7 @@ cross 样本（`eval/s2/vllm-ascend-cross.yaml`）是另一类：与某条 case 
 
 外部验证占比不再是判据。原判据要求外部验证卡占比下限 1/3，实测不可达。以 2026-10 的终态卡为例：方法能走外部的只有 19 张（`golden_replay` 与 `issue_replay`），其余 154 张里 87 张是 `metrics_compare`、67 张是 `scan_review`。`metrics_compare` 有可复现命令、客观但不来自系统之外；`scan_review` 是人或 agent 自审；这两类改的组件能被回放碰到的只有个位数，可达上限约 18%。原判据的动作文案自己就写着「只能自证的卡片…不计入外部验证」，把它们排除出分子却留在分母里，占比到不了 1/3。占比因此降为体检器的读数（外部验证占比与可复现证据占比都由 `python3 scripts/evolution_health.py` 的输出现算，同期读数为 11% 与 70%）。判据改为问通道还在不在用：`external_verification_stall` 在最近一次外部验证之后又产出 20 张以上终态卡时报警。理由是这条通道缺的是跑，不是改口径，判据要能被人一次动作清掉。
 
----
-
-## 4. 门控协议：接受与回滚
+## 4 门控协议：接受与回滚
 
 门控作用在检索/路由层组件与低风险的 content 类改动上。前者指 triage 分支文本、quickly_check、case 内容与排序；后者指补 case 这类，见 [pipeline.md](pipeline.md) §6.3a。
 
@@ -131,11 +134,7 @@ cross 样本（`eval/s2/vllm-ascend-cross.yaml`）是另一类：与某条 case 
 
 `--self-test` 用合成样本复现三态：单次翻转只给 `weak_accept`、复用若干次后同一提升降级、回归必 `reject`、跨池不可比、无向量降级、复用计数按池哈希归零。CI 跑它（`kb-checks` 的 `arena-gate-rule`）。判据写坏了、只会判 `accept` 了，CI 就红。
 
-golden 无回归加 val 严格提升，与 SkillOpt/WikiSkill 的 `R_val > R_best` 是同一条验证语义，都要求留出样本上严格更好（[pipeline.md](pipeline.md) 第 12 节已吸收）。本节的配对检验与复用折减是在此之上把统计口径收紧：那些工作的闸门语义是 val 上更好就接受，本台进一步要求更好在配对意义上达到证据门槛。
-
----
-
-## 5. 工具
+## 5 工具
 
 `scripts/eval_arena.py` 的子命令：
 
@@ -147,41 +146,72 @@ golden 无回归加 val 严格提升，与 SkillOpt/WikiSkill 的 `R_val > R_bes
 - `--self-test`：用合成样本复现判词，不需要本地池数据；CI 跑它。
 - `--rc-check <pool>`：结论一致的离线对照（agent 的 root_cause 对标注 resolution_summary，启发式信号加人工核验清单；这是归因层与结论一致的评分件，脚本只给启发式信号、不构成终判，结论是否一致由人工核验定）。`held_out: true` 的行与非诊断行同样跳过，两类都不可能有可判的结论。
 
----
+## 6 边界与失败模式
 
-## 6. 与既有机制的关系
+本台在数据缺失、池过期、跨版本混算与小样本下的行为取同一条原则：写明未校验或证据不足，不假装通过（原则十）。下面按情形集中列出，细则在各自的小节。
 
-- S2 评测（[pipeline.md](pipeline.md) 第 2.1 节）：本台是 S2 的门控化形态。S2 单池评测照旧用于日常，arena 是演进时的门，改动时才跑。
-- 路由错例演进（从 trace 提取路由错例，产出 triage 修订建议）与 fixture 回放半自动化：arena 提供它们的自动评分数据源（[roadmap.md](../plan/roadmap.md) 里的两个可演进事项）。
-- 交互层 [ixn-replay.md](ixn-replay.md)：兄弟台，本台管检索/路由层。
-- [pipeline.md](pipeline.md) 第 12a 节（WikiSkill）：本台把第 12 节末句预留的类 SkillOpt 实验正式化，作用域是流程与 skill 层里可自动评分的子组件。
-
----
-
-## 7. 分级与闸门
-
-| 状态 | 内容 | 触发 |
+| 情形 | 行为 | 细则 |
 |---|---|---|
-| 已落地 | 设计文档与 `scripts/eval_arena.py` 的子命令（`--build-pool`、`--pool`、`--stats`、`--gate`、`--rc-check`、`--self-test`），改进项 EV-2026-013 | 无 |
-| 已落地 | 接受判据（配对检验、复用折减、三态判词） | 随本机制变更 |
-| 已落地 | `--self-test` 进 CI（`kb-checks` 的 `arena-gate-rule`） | 随本机制变更 |
-| 已落地 | 复用判据 `pool_reuse_uncontrolled` | 随本机制变更 |
-| 已落地 | 池按吸收状态分流（吸收样本只进回归池，`--gate` 拒绝回归池） | 随本机制变更 |
-| 已落地 | 吸收状态在本池范围内运行期重判（`absorption_rev` 对不上则 `--gate` 退出 3、不写账本） | 随本机制变更 |
-| 已落地 | `held_out` 在 `--stats` 与 `--gate` 生效 | 随本机制变更 |
-| 已落地 | 非诊断样本剔出命中率分母与配对 | 随本机制变更 |
-| 已落地 | 无回归范围写进账本（`no_regression_scope: arena-pool-only`） | 随本机制变更 |
-| 已落地 | 证据面留痕（`ground_truth: none` 剔出结论一致率分母，重放版本 `kb_rev` 进 `replay_revs` 并在跨版本时告警） | 随本机制变更 |
-| 推进 | selection 池的 expected 标注与基线回放（现行 19 条；基线已出一轮，判定池 9 条里 8 条有逐条向量） | 继续扩样本 |
-| 推进 | 门控端到端运转一次（真实 miss → 候选 → gate → 合入） | baseline 可用后 |
-| 蓝图 | test 分离（触发线按判定线反推，见第 1 节） | 池子撑得起两半 |
-| 蓝图 | 归因层与交互层入台 | 两层各自有可用的评测集 |
-| 蓝图 | 分数进 timeline（样本 ≥10 且带分母） | 样本规模达标 |
-| 蓝图 | 判定池扩容（分流已落地，新增未吸收样本仍要人工选样与标注；下一步的闸门在样本规模，见第 1 节） | 规模或数据触发 |
+| 池不新鲜（`absorption_rev` 对不上） | `--gate` 不出判词、退出码 3、不写账本；stderr 列出新被吸收的样本 id 并提示重跑 `--build-pool` 与 `--stats` | §2 |
+| 池文件没有 `absorption_rev`（旧池、手写池） | 按未校验放行，两条命令都写明新鲜度无法校验 | §2 |
+| stats 没记逐行样本 id | `--gate` 写明判定时刻无法重算，沿用 `--stats` 那一刻的读数（账本 `absorption_recheck.recomputed` 为假），不当成校验通过 | §2 |
+| 吸收判据没有输入（`case_prefix` 零匹配） | `--build-pool` 仍退出 0，警告写到 stderr；此时「回归池 0 条」不反映没有样本被吸收 | §2 |
+| 缺逐条判决向量 | 判词上限降为 `weak_accept`，配对检验没有输入 | §4 |
+| baseline 与 candidate 的 `pool_hash` 不同 | 判 `reject`，理由写跨池纪元不可比 | §4 |
+| 结果跨知识库版本（`replay_revs.mixed`） | 打印 ⚠、记进账本，不拒判；混算是数据质量问题，不是判定不成立 | §3 |
+| `ground_truth: none` 的样本 | 剔出结论一致率分母，各取值条数写进 `stats["ground_truth"]`，不把没有真值的猜测记成结论一致 | §3 |
+| 样本没有 `expected_ns` | 剔出路由率分母，条数记 `route_ok.unjudgeable` | §3 |
+| `non_diagnostic` 的样本 | 不进命中率分母、不进配对、不进逐条向量、不进吸收指纹；`--stats` 单列 `non_diagnostic_rows` 并打印 | §3 |
+| `held_out: true` 的样本 | 不进 `--stats` 指标与逐条向量，跳过条数记 `held_out_skipped`；不参与 gate 决策 | §1 |
+| 判定池小、可翻转样本少 | 判定线原理上可达，但结论常落在证据不足（20 条池实测只有 2 条会翻转）；这是池规模缺口，不是判据失效 | §1 |
+| golden 没跑 | `--gate` 的范围只到本池（`no_regression_scope: arena-pool-only`），不等于跑过 golden；golden 全量无回归是另一步 | §4 |
+| 复用超限（`pool_reuse_uncontrolled`） | 动作是重新选样（池内容改变、计数归零）或扩池，不是把标准说松 | §4 |
+| 跑改后侧前覆盖了 baseline stats | 没有配对数据（两次 `--stats` 写同一个文件名） | §5 |
 
----
+## 7 现状：已落地 / 蓝图 / 已否决
 
-## 8. 原则追溯
+已落地的一条附可执行确认方式；给不出确认方式的标「已决定」。蓝图的一条附触发条件，触发条件出现才激活（原则十一）。
+
+### 7.1 已落地
+
+| 内容 | 可执行确认方式 |
+|---|---|
+| 设计文档与 `scripts/eval_arena.py` 的子命令（`--build-pool`、`--pool`、`--stats`、`--gate`、`--rc-check`、`--self-test`），改进项 EV-2026-013 | `python3 scripts/eval_arena.py --help` |
+| 接受判据（配对检验、复用折减、三态判词） | `grep -n "exact_mcnemar_ge\|ALPHA_DEFAULT\|reuse_index" scripts/eval_arena.py` |
+| `--self-test` 进 CI（`kb-checks` 的 `arena-gate-rule`） | `grep -n "arena-gate-rule" .github/workflows/kb-checks.yml` |
+| 复用判据 `pool_reuse_uncontrolled` | `grep -n "pool_reuse_uncontrolled" proposals/gates.yaml` |
+| 池按吸收状态分流（吸收样本只进回归池，`--gate` 拒绝回归池） | `grep -n "role.*regression\|absorbed" scripts/eval_arena.py` |
+| 吸收状态在本池范围内运行期重判（`absorption_rev` 对不上则 `--gate` 退出 3、不写账本） | `python3 scripts/eval_arena.py --pool .s2-replay/arena/pool-val.yaml` |
+| `held_out` 在 `--stats` 与 `--gate` 生效 | `grep -n "held_out" scripts/eval_arena.py` |
+| 非诊断样本剔出命中率分母与配对 | `grep -n "non_diagnostic" scripts/eval_arena.py scripts/s2_replay.py` |
+| 无回归范围写进账本（`no_regression_scope: arena-pool-only`） | `grep -n "no_regression_scope" scripts/eval_arena.py` |
+| 证据面留痕（`ground_truth: none` 剔出结论一致率分母，重放版本 `kb_rev` 进 `replay_revs` 并在跨版本时告警） | `grep -n "ground_truth\|replay_revs" scripts/eval_arena.py` |
+
+### 7.2 推进
+
+基线已出一轮，判定池 9 条里 8 条有逐条向量；下一步是继续扩样本。这一条里「基线已出」是本地运行件里的读数，检出里核不到，只能按「已决定」读。
+
+| 内容 | 下一步 |
+|---|---|
+| selection 池的 expected 标注与基线回放（现行 19 条） | 继续扩样本 |
+| 门控端到端运转一次（真实 miss → 候选 → gate → 合入） | baseline 可用后 |
+
+### 7.3 蓝图
+
+| 内容 | 触发条件 |
+|---|---|
+| test 分离（触发线按判定线反推，见 §1） | 池子撑得起两半 |
+| 归因层与交互层入台 | 两层各自有可用的评测集 |
+| 分数进 timeline（样本 ≥10 且带分母） | 样本规模达标 |
+| 判定池扩容（分流已落地，新增未吸收样本仍要人工选样与标注；下一步的闸门在样本规模，见 §1） | 规模或数据触发 |
+
+### 7.4 已否决
+
+| 内容 | 否决理由 |
+|---|---|
+| 外部验证卡占比下限 1/3 | 实测不可达（可达上限约 18%），且原判据把自己的动作文案排除出分子却留在分母里；改为 `external_verification_stall`（§3.2） |
+
+## 8 原则追溯
 
 | 元素 | 原则 |
 |---|---|
@@ -194,11 +224,24 @@ golden 无回归加 val 严格提升，与 SkillOpt/WikiSkill 的 `R_val > R_bes
 | 评估池扩容 | 十一（数据触发） |
 | 吸收状态在运行期重判、无回归范围写进账本、没有校验与校验通过可区分 | 十（诚实退化：池不新鲜就拒绝出判词；命令没做的事不写成做到了）、六（闸门硬度：拒绝要机械可判） |
 
----
+## 9 明确不做（防过度设计）
 
-## 9. 名词对照
+以下都是本台明确不做、或试过之后定下不做的，每条写清没选它的代价与理由。
 
-正文用白话。改脚本、查数据文件时，用这张表换成代码与文件里的实际名字。
+- 不做点估计判定（「两个比例各看一遍、涨了就收」）：反复对同一个池做接受决定是一串不受控的适应性检验，假接受会累积；池越小越严重（判定池现为 9 条，一次翻转就是 +11 个百分点）。改用配对检验加复用折减（§4）。
+- 不把外部验证占比当下限判据：实测不可达，且原判据拿掉了分子却留着分母；改为问通道还在不在用（§3.2、§7.4）。
+- 不用整库 case 实名集合当池新鲜度指纹：任何一条与样本无关的新 case 都会把池判成过期，而沉淀是本仓常态，门会长期拒绝出判词，最后被人绕过。指纹只覆盖本池的行（§2）。
+- 不用「issue 号出现在正文里」当吸收判据：正文提到别的 issue 是常事（`knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13639.yaml` 写着 14871），文本搜索会把未吸收的样本误判成已吸收。吸收判据是 case 实名（§2）。
+- 不让代码按正文长度猜非诊断样本：机器猜会把描述简短但可判别的样本一并剔掉，那是把不可判的样本算成失败。判据由人读校准集那一行的输入下（§3）。
+- 不把跨知识库版本混算当拒绝理由：混算是数据质量问题，不是判定不成立；做成拒绝会把这批分数没法比和改动没通过混成一个信号（§3）。
+- 不为还没有改动的机制预建判定：test 分离按判定线反推的触发线到了才划；小池下 test 半无法成立，因为沉淀会消耗池子（§1、原则十一）。
+- 不把 `--stats` 做成判定命令：它是产物生成器，恒退出 0；判定以 `--gate` 为准（§2、§4）。
+- 不用门控替代人闸：高风险的 dual 级改动门控通过后仍按 kb/high-risk 双签送人审（§4、原则五、六）。
+- 不把 `--gate` 当成 golden 全量回归：门控这一步的范围只到本池（§4）。
+
+## 10 代码与文档入口
+
+正文用白话。改脚本、查数据文件之前，用下面第一张表把正文用词换成代码与文件里的名字。关键行号：`scripts/eval_arena.py:677-678` 是 α_eff 的折减调用点，`scripts/eval_arena.py:359-371` 是 `reuse_index()`，`scripts/eval_arena.py:538` 是 `rc = r.get("rc_match", r.get("root_cause_ok"))`。
 
 | 正文里说 | 代码与文件里的名字 |
 |---|---|
@@ -222,3 +265,22 @@ golden 无回归加 val 严格提升，与 SkillOpt/WikiSkill 的 `R_val > R_bes
 | 收样判据 | `scripts/s2_calibration.py`、`NON_DIAGNOSTIC_PREFIXES` |
 | 判据、体检器 | `proposals/gates.yaml`、`metrics/gates.yaml`、`scripts/evolution_health.py` |
 | 每周批审 | `knowledge-groom` |
+
+相邻机制与文档分工：
+
+| 文档 | 管什么 |
+|---|---|
+| S2 单池评测（[pipeline.md](pipeline.md) 第 2.1 节） | 本台是 S2 的门控化形态。S2 单池评测照旧用于日常，arena 是演进时的门，改动时才跑。 |
+| 路由错例演进（从 trace 提取路由错例，产出 triage 修订建议）与 fixture 回放半自动化 | arena 提供它们的自动评分数据源（[roadmap.md](../plan/roadmap.md) 里的两个可演进事项）。 |
+| [ixn-replay.md](ixn-replay.md) | 交互层，兄弟台；本台管检索/路由层。 |
+| [rsi-mechanism.md](rsi-mechanism.md) | 自演进机制地图与日常执行规则。 |
+
+## 11 外部参考
+
+本节放与其他项目、论文的对比；读者不读这一节也不影响理解前面的机制。
+
+本台的设计决议是改进项 EV-2026-013。它对应 WikiSkill（arXiv 2608.27454）在元层的做法：候选改动在 `held_out` 样本（留出、不参与调参的样本）上严格提升才接受，否则回滚，结果写进影响账本。本台把 S2 回放从单池评测升级为 train/val 分离加门控与账本，用来给检索/路由层组件（triage 分支文本、quickly_check、case 内容与排序）的演进做门控。
+
+golden 无回归加 val 严格提升，与 SkillOpt/WikiSkill 的 `R_val > R_best` 是同一条验证语义，都要求留出样本上严格更好（[pipeline.md](pipeline.md) 第 13 节已吸收）。本台的配对检验与复用折减是在此之上把统计口径收紧：那些工作的闸门语义是 val 上更好就接受，本台进一步要求更好在配对意义上达到证据门槛。
+
+[pipeline.md](pipeline.md) 第 13.2 节（WikiSkill）：本台把第 13 节末句预留的类 SkillOpt 实验正式化，作用域是流程与 skill 层里可自动评分的子组件。

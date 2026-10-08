@@ -1,38 +1,49 @@
 # 执行链路：改进项契约、合入后跟踪（follow-up）与效果度量
 
-> 给谁读：要改改进项信息契约或评审判据的人。
-> 什么时候读：要改一张卡必须记什么、怎么判它该不该合时。
-> 读完能做什么：按契约写出一张卡，并说清它的验证方式与效果度量落在哪。
-> 本文属论证层，日常执行不必读。执行规则与机制地图见 [rsi-mechanism.md](rsi-mechanism.md)。
+本文是改进项（EV 卡）的执行级契约，回答总览留给执行层的四个问题：一张卡要记录什么、改动在合入前怎么验证、一条知识沉淀的效果怎么度量、agent 在每个决策点拿到什么信息。
 
-> 本文是 [pipeline.md](pipeline.md) 的执行级规范。机制总览（三层闭环、分级授权、状态机、落地节奏）在那篇。本文回答执行时的四个问题：一张改进项卡要记录什么信息；改动的验证如何区分「合入前可判」与「合入后需真实反馈」；一次知识沉淀的效果怎么度量；agent 在每个决策点拿到什么信息。
-> 把一轮自演进作为可审计会话来运行（人怎么下指令、目标函数与停止条件、token 预算、自我指涉治理），见 [orchestration.md](orchestration.md)。把一轮轮会话装配成长期持续运行（长期任务、issue 评测循环、执行记录、可视化），见 [run.md](run.md)。面向使用者的指令与报告语言，见 [evolution-user-guide.md](../guide/evolution-user-guide.md)。
-> 推导依据：原则一（验证先于交付）、二（不变量写进结构）、五（建议与决定分离）、七（变更可逆）、八（可观测先于改进）、九（资源预算）、十一（数据触发）。理论见 [design-theory.md](../spec/design-theory.md) §4.2–4.4。本文自身的修订属于 L3 结构，走 methodology PR 加体系维护人审。本文的内容将来落成 skill 时，执行参数要内联进 SKILL.md（skill 自包含纪律），本文退为可选论证层。
+它的上一级是 [pipeline.md](pipeline.md) 的机制总览，三层闭环、分级授权与状态机在那篇定义。本文只补执行层的判定口径，做法是把每张改进项卡、每次沉淀当成一次带预期的实验；逐条判定口径都在这里，不必从脚本行为反推。
 
-## 1. 为什么需要执行级规范
+范围含四条信息契约与判定口径、沉淀效果的两条度量通道、合入后的跟踪验证链路、metrics 分层与 agent 供给清单。范围不含机制总览、单轮会话的编排与长期运行的装配，这三件事分在相邻的三篇文档里（见第 12 节）。
 
-v2 机制把「观测 → 候选 → 授权 → 合入」串了起来，但执行时 agent 与评审人仍会卡在四个缺口：
+读者是要改改进项信息契约或评审判据的人，读本文前先读 [pipeline.md](pipeline.md) 第 7 节（卡 schema 与状态机）。
+
+本文属论证层，日常执行不必读。照现有流程跑一轮诊断或自演进的人，看 [rsi-mechanism.md](rsi-mechanism.md) 的机制地图即可。
+
+## 1 解决什么问题与最小可执行模型
+
+执行层缺一套可判定的契约：v2 机制把「观测 → 候选 → 授权 → 合入」串了起来，但执行时 agent 与评审人仍会卡在四个缺口。
 
 1. 改进项卡的可执行性没有契约。一张卡写「修订 triage 分支 vllm-ascend 启动参数族」，agent 不知道改哪几行、现状行为是什么、怎么算改完、改完影响谁。
 2. 依赖真实场景的改动缺 follow-up 环节。对 content 与 fix 两类改动，旧机制只验证到「合入时 golden 通过」，没有回答这条改动在真实使用里是否改善、没改善算谁的责任、何时回滚。即时判定类不在此列，它们在合入前已由 S2（拿已闭环 issue 重跑 diagnose 做对照）与 golden（回归样本回放）验证。
 3. 每次沉淀的效果没有定义。知识库整体有命中率，但「这次 to-postmortem 或 to-reference 沉淀的那条 case 是否有效」没有度量口径：沉淀时没有预期，沉淀后没有跟踪。
 4. agent 执行时信息供给不足。决策点只有聚合值，没有执行所需的完整证据与历史先例。
 
-统一框架是把每张改进项卡、每次沉淀当成一次带预期的实验：
+最小可执行模型把每张改进项卡、每次沉淀当成一次带预期的实验：
 
-1. 执行前写下可测的 `predicted_effect`；
-2. 执行后进入 follow-up 观察窗，对照预期判定达标、再迭代或回滚；
+1. 执行前写下可测的预期（`predicted_effect`）。
+2. 执行后进入观察窗（follow-up），对照预期判定达标、再迭代或回滚。
 3. 判定结果写回卡、指标与归因事件（按需聚合）。
 
 合理性在「预期 → 实测」的对照里判定，不在合入那一刻判定。
 
-## 2. 改进项信息契约（skill 与流程优化）
+机制的主要构件是改进项卡（EV 卡）、case 与 reference 两类沉淀、观察窗、归因事件与 metrics 台账。
 
-适用对象：skill 步骤、triage 分支、quickly_check、script、提示词。
+对外的两个接口是卡 schema 与 case schema。权威处分别是 [pipeline.md](pipeline.md) 第 7 节与 [case-schema.md](../spec/case-schema.md)，代码入口见第 12 节。
 
-契约的目标是让 agent 拿到卡就能回答四个问题：改哪、现状是什么、怎么算改完、影响谁。
+## 2 改进项信息契约（skill 与流程优化）
 
-下表列的是契约项，其中一部分今天已经是卡 schema 的字段，另一部分写在卡的正文里：`hypothesis`、`predicted_effect` 与 `validation`（其下含 `method`、`baseline`、`success_criteria`、`rollback`）是卡字段；`baseline_behavior` 记在 `validation.baseline`；`edit_semantics` 记在 `hypothesis` 与 `decisions`；`affected_paths` 目前没有对应字段。卡 schema 的必填字段清单见 `scripts/verify_proposals.py:90` 的 REQUIRED 列表。
+契约让 agent 拿到卡就能回答四个问题，缺任何一项都会落到盲改或无法验证。
+
+适用对象：skill 步骤、triage 分支、quickly_check、script、提示词。四个问题是：改哪、现状是什么、怎么算改完、影响谁。
+
+下表列的是契约项。一部分今天已经是卡 schema 的字段，另一部分写在卡的正文里。
+
+- 卡字段是 `hypothesis`、`predicted_effect` 与 `validation`（其下含 `method`、`baseline`、`success_criteria`、`rollback`）。
+- `baseline_behavior` 记在 `validation.baseline`，`edit_semantics` 记在 `hypothesis` 与 `decisions`。
+- `affected_paths` 目前没有对应字段。
+
+卡 schema 的必填字段清单见 `scripts/verify_proposals.py:90` 的 REQUIRED 列表。`target_component` 不在该列表里，由同一脚本的生效日闸门强制（`scripts/verify_proposals.py:224`，`TARGET_CUTOVER` 为 2026-09-17）。
 
 | 契约项 | 要写什么 | 缺了会怎样 |
 |---|---|---|
@@ -48,29 +59,35 @@ v2 机制把「观测 → 候选 → 授权 → 合入」串了起来，但执�
 
 脱敏纪律在信息完整性与隐私之间取舍。卡进 git 时只含聚合值与证据引用（trace 路径加事件索引、issue 号加段落号），不含客户现场原文，与 eval fixture 同一纪律（见 `.gitignore` 注释）。原文留在本地 `traces/evidence/`，同一文件系统内的执行 agent 可以读。跨机器或对外分享时，证据降级为摘要，并在卡上标注缺失的部分，不把摘要写成完整证据。
 
-## 3. 知识沉淀契约（case 与 reference）
+## 3 知识沉淀契约（case 与 reference）
+
+沉淀契约回答的不是「改什么」，而是「值不值得沉淀、沉淀后有没有效」。
 
 适用对象：to-postmortem 与 to-reference 的产出、groom 预分诊三分类（new_pattern / variant_of / covered_by）、Tier 3 转正。
-
-与 skill 优化的区别：这里要回答的不是「改什么」，而是「值不值得沉淀、沉淀后有没有效」。
 
 | 契约项 | 要写什么 | 判定用途 |
 |---|---|---|
 | `source_evidence` | 来源（issue、trace 或 postmortem id），加现象、日志、根因的证据引用 | 判断证据是否充分；缺证据的沉淀置信度低 |
 | `sediment_form` | 新 case、variant 并入（作为已有 case 的一个变体并入，不新建）、reference、Tier 3 转正 | 决定验证方式与审批路径 |
 | `evidence_strength` | 症状、根因、fix 三类证据各自的强度：确证、推测或缺失 | 定初始置信度，也是标注的依据 |
-| `verification` | 来源验证档位，按来源形态分而不按 issue 分：`upstream-fix-merged`（关联的 fix PR 已合入）、`upstream-official-doc`（上游官方发布的案例或指南文档，含定位链与验证结论）、`upstream-maintainer-confirmed`、`investigation`、`engineer-report` | 定初始 score 的先验档位。它与 `evidence_strength` 分工不同：strength 是调查判断，verification 是外部证据强度。档位表见 groom 的置信度重算规则 |
+| `verification` | 来源验证档位，按来源形态分而不按 issue 分：`upstream-fix-merged`（关联的 fix PR 已合入）、`upstream-official-doc`（上游官方发布的案例或指南文档，含定位链与验证结论）、`upstream-maintainer-confirmed`、`investigation`、`engineer-report` | 定初始 score 的先验档位。它与 `evidence_strength` 分工不同：strength 是调查判断，verification 是外部证据强度。档位定义见 `skills/to-postmortem/SKILL.md:85` 到 `:91` |
 | `discriminative_power` | quickly_check 能否把这条 case 与同 namespace 的相似 case 区分开，附对比候选 | 防重复沉淀，防低判别力的条目污染候选集 |
 | `predicted_value` | 预期命中场景：这条沉淀预计命中哪类未来问题，写成可检验的描述（见第 4 节）。当前是蓝图字段，未进 case schema | 沉淀效果度量的对比基准 |
 | `ref_knowledge` | 关联的 active reference，role 必须合法，由 `scripts/verify_references.py` 校验 | 已有机制，沉淀时一并评估 |
 
-这些契约项今天落进 case 文件的只有一部分。`verification` 落 case 的 `verification.source` 与 `verification.detail`，档位定义见 `skills/to-postmortem/SKILL.md:85` 到 `:91`；`ref_knowledge` 落 case 的同名字段（`docs/spec/case-schema.md:21`）；`source_evidence`、`sediment_form`、`evidence_strength`、`discriminative_power` 是沉淀契约要回答的问题项，case 文件里没有同名字段（case 的完整字段清单见 `docs/spec/case-schema.md:11`）。
+这些契约项今天落进 case 文件的只有一部分。
 
-## 4. 沉淀效果度量：两条通道
+`verification` 落 case 的 `verification.source` 与 `verification.detail`。`ref_knowledge` 落 case 的同名字段（`docs/spec/case-schema.md:21`）。
+
+`source_evidence`、`sediment_form`、`evidence_strength`、`discriminative_power` 是沉淀契约要回答的问题项，case 文件里没有同名字段。case 的完整字段清单见 `docs/spec/case-schema.md:11`。
+
+## 4 沉淀效果度量：两条通道
+
+一次沉淀的效果用两条现成的通道度量，不引入中间字段。
 
 ### 4.1 通道定义与数据落点
 
-原设计的 `predicted_value`、`first_hit`、`expected_window` 三个字段与随后的观察窗实验都没有落地：字段没有进 case schema，整套设计依赖 S1（工程师回报 fix 结果）现场反馈，而该通道当前的捕获率约为 0。
+原设计的 `predicted_value`、`first_hit`、`expected_window` 三个字段与随后的观察窗实验都没有落地。字段没有进 case schema，整套设计依赖 S1（工程师回报 fix 结果）现场反馈，而该通道当前的捕获率约为 0。
 
 压缩后的做法是用两条现成的通道度量一次沉淀的效果，不再引入中间字段。
 
@@ -84,9 +101,9 @@ v2 机制把「观测 → 候选 → 授权 → 合入」串了起来，但执�
 - S2 命中且结论与 issue resolution 一致，落 `validation_record.consistent`：内容被外部验证，同等 score 下排序优先；
 - S2 命中但样本本身是这条 case 的来源，或这条 case 在正文里引用了该样本，落 `validation_record.self_consistent`：这是非独立命中，同一份证据不能数两次；
 - S2 命中但结论不符，落 `validation_record.inconsistent`：这是 case 复审信号，指向内容错、过时或判别力不足；
-- 既没被 S2 命中、也没被 S1 确认：做归因，判断是场景没有出现，还是判别力有问题，并标为未验证。
+- 既没被 S2 命中、也没被 S1 确认：做归因，判断是场景没有出现，还是判别力有问题，把结论标为未验证。
 
-`verification`、`validation_record`、`confidence` 按对象分层，这一分层保留：内容置信不等于现场置信。`verification` 是来源验证（fix PR 已合入等），提高的是内容正确性的先验；`validation_record` 是它的运行期延续，靠持续的外部验证累积；`confidence` 是现场解决率，只由 S1 写入。
+`verification`、`validation_record`、`confidence` 按对象分层，这一分层保留：内容置信不等于现场置信。`verification` 是来源验证（fix PR 已合入等），提高的是内容正确性的先验；`validation_record` 是它的运行期延续，靠持续的外部验证累积。`confidence` 是现场解决率，只由 S1 写入。
 
 三者独立。来源为 fix-merged 的 case 初始 score 高，说明内容可信，不等于它在任意客户环境里被验证过；现场确认仍要等 S1 回报。
 
@@ -96,10 +113,14 @@ v2 机制把「观测 → 候选 → 授权 → 合入」串了起来，但执�
 
 ### 4.2 标注规则
 
-- 只有 S2 佐证、没有 S1 反馈的 case，`validation_record` 标 `source: issue-replay`，与 `confidence` 的 S1 口径分开（见第 6 节）。`consistent` 不等于现场 resolve，报告与指标里不得混称。
+两条标注规则把内容验证与现场验证分开记。
+
+- 只有 S2 佐证、没有 S1 反馈的 case，`validation_record` 标 `source: issue-replay`。它与 `confidence` 的 S1 口径分开（见第 6 节）。`consistent` 不等于现场 resolve，报告与指标里不得混称。
 - 「从未被验证」不等于「沉淀失败」。若预期场景本身没有出现（该框架版本没有人用），记「场景未出现」，不把预测偏差当成案例错误。
 
-## 5. 合入后跟踪验证链路：改进项改动后的合理性
+## 5 合入后跟踪验证链路：改进项改动后的合理性
+
+改进项改动后的合理性分两段判定：合入前用 S2 与 golden，合入后用观察窗结算现场有效性。
 
 ### 5.1 状态机：改进项卡（EV 卡）是 agent 的决策档案
 
@@ -118,13 +139,15 @@ v2 机制把「观测 → 候选 → 授权 → 合入」串了起来，但执�
 
 观察窗的结果以追加 `decisions` 的方式写回卡，例如「PR #N 合入」「观察窗 S1 确认现场有效」「现场退化已回滚」。
 
-状态词表与 schema 的唯一事实源在 [pipeline.md](pipeline.md) 第 7 节。改进项卡的 status 词表是 `in_experiment`、`validated`、`rejected`、`superseded`，不含 `candidate` 待办态，也不含 `pending_merge`、`adopted` 这类 git 合入态。产卡即执行。`supersedes` 与 `superseded_by` 构成替换链，`actual_cost` 是成本字段，两处都在那边定义。本文只引用，不重复定义，避免两处状态机再次漂移。
+状态词表与 schema 的唯一事实源在 [pipeline.md](pipeline.md) 第 7 节。改进项卡的 status 词表是 `in_experiment`、`validated`、`rejected`、`superseded`。它不含 `candidate` 待办态，也不含 `pending_merge`、`adopted` 这类 git 合入态。产卡即执行。
+
+`supersedes` 与 `superseded_by` 构成替换链，`actual_cost` 是成本字段，这两处在那边定义。本文只引用，不重复定义，避免两处状态机再次漂移。
 
 注意区分对象：case 的观察窗跟踪字段与改进项卡的 status 是两套词表，不混用。第 4 节讲的是 case 的度量通道，本节讲的是改进项卡的状态。
 
 ### 5.1a 观察窗超时降级
 
-这一节的完整机制设计保留，但它是蓝图：[pipeline.md](pipeline.md) §11.1 把它排在「触发后实现」一列，触发条件是 S1 断供真实持续两期以上。在那之前，观察窗到期而没有反馈时，用「标存疑加提醒人」的轻量方式处理，人可以补反馈或回滚。
+完整机制设计保留，但它是蓝图：[pipeline.md](pipeline.md) §11.1 把它排在「触发后实现」一列，触发条件是 S1 断供真实持续两期以上。在那之前，观察窗到期而没有反馈时，用「标存疑加提醒人」的轻量方式处理，人可以补反馈或回滚。
 
 content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期断供（当前捕获率约为 0）。没有超时结算，已采纳改动的现场有效性会一直悬空，follow-up 机制停在等答案上。超时处理按观察窗长度分级：即时类不设超时；content 类按预期观察窗长度的两倍（`expected_window ×2`，该字段尚未落地，见第 4 节的蓝图说明）；fix 类按最长窗的两倍。参数等落地后校准。
 
@@ -133,17 +156,17 @@ content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期
 | 对象 | 情形 | 处理 |
 |---|---|---|
 | 改进项卡（给 `validated` 改动的现场效果结算） | 有 S2 或 golden 的检索命中证据 | 追加 `decisions`「检索有效、现场未确认」（`unconfirmed_valid` 语义），效果按 `source: issue-replay` 入指标，不无限滞留 |
-| 改进项卡 | 没有任何命中证据 | 追加 `decisions`「观察窗超时无证据」（`unconfirmed` 语义），标为存疑，并触发降权信号（证据不足，进入重审或回滚候选） |
+| 改进项卡 | 没有任何命中证据 | 追加 `decisions`「观察窗超时无证据」（`unconfirmed` 语义），标为存疑，触发降权信号（证据不足，进入重审或回滚候选） |
 | 改进项卡 | 有退化证据（S2 miss 增长） | 追加 `decisions`「现场退化，已回滚改动」（`rolled_back` 语义），不等 S1 |
 | 沉淀 case | 持续结算 `validation_record`（`scripts/settle_s2_feedback.py`） | S2 命中一致落 `consistent`；命中不符落 `inconsistent`（复审）；无命中且无 S1 则做归因（场景未出现或判别力问题），标为未验证 |
 
-规则：观察窗不是无限等待，到期必须结算。结算结果作为追加 `decisions` 记到 `validated` 卡上，并写明证据强度（有 S1 记 S1，只有 S2 记检索有效，没有证据记存疑），不改变卡状态。卡状态是 agent 决策的终态，观察窗属于流程层的效果结算。它与轻量提醒的分工是：提醒提前提示，人还有机会补反馈；超时结算做最终兜底，人不补就标注，不无限等。
+规则：观察窗不是无限等待，到期必须结算。结算结果作为追加 `decisions` 记到 `validated` 卡上。记录写明证据强度（有 S1 记 S1，只有 S2 记检索有效，没有证据记存疑），不改变卡状态。卡状态是 agent 决策的终态，观察窗属于流程层的效果结算。它与轻量提醒的分工是：提醒提前提示，人还有机会补反馈；超时结算做最终兜底，人不补就标注，不无限等。
 
 观察窗结算为存疑或未确认的改动不悬空，仍可继续参与演进：
 
 - 可以被 supersede。新卡可以在未确认的改动上提出替代：未确认说明原方案缺少现场证据，正是「更好的 idea」适用的场景。supersede 规则见 [run.md](run.md) 第 5 节。
 - 可以重新验证。无证据存疑的改动可以开新卡重新设计验证方案，补 S2 证据或改验证设计。
-- 可以进积压清理。季度自评统计「观察窗未确认」改动的占比；占比高说明 S1 断供或验证设计存在系统性不足，触发流程改进（例如追问话术与提醒时机，对应 [roadmap.md](../plan/roadmap.md) 里的反馈捕获率监测），而不是继续堆积。
+- 可以进积压清理。季度自评统计「观察窗未确认」改动的占比。占比高说明 S1 断供或验证设计存在系统性不足，触发流程改进（例如追问话术与提醒时机，对应 [roadmap.md](../plan/roadmap.md) 里的反馈捕获率监测），而不是继续堆积。
 - 不计入现场统计。观察窗未确认、只有 S2 佐证的改动不计入「现场 validated」统计。第 6 节的 validated 计数与回滚率口径都不含未确认项，不把未确认项混进真验证的统计。
 
 ### 5.2 观察窗按变更类分
@@ -155,17 +178,21 @@ content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期
 | 检索与路由（triage、case 的 quickly_check、`knowledge/_index/` 下的读侧视图） | S2 issue-replay 校准集 | 即时，replay 不等现场 | 命中率、路由准确率的改前改后对比 |
 | skill 流程（diagnose 与 groom 的步骤、脚本） | S2 加 golden 回放 | 即时到数周 | 组件误诊率、错例复测、golden 无回归 |
 | content（新 case 或 reference 沉淀） | 后续真实诊断加 S2 | 数周到数月，等场景出现 | 预期命中场景与实际命中、resolve 的对照（第 4 节） |
-| fix 有效类（改 fix 内容、severity） | S1 工程师反馈 | 长，依赖现场回报 | 反馈 resolve；没有回报时停在等待，并做超时结算 |
+| fix 有效类（改 fix 内容、severity） | S1 工程师反馈 | 长，依赖现场回报 | 反馈 resolve；没有回报时停在等待，做超时结算 |
 
 ### 5.3 判定后写回
 
-- 卡：agent 判断后更新 status，并向 `decisions` 追加记录（谁、何时、依据哪份 eval 数据、采纳或不采纳的结论）。观察窗结算同样追加 `decisions`，不改变卡状态。
-- 指标：`validated` 时在 `metrics/timeline.yaml` 记一期效果差（改前基线与改后实测的对比）；观察窗结算为「现场退化回滚」时记录并计入回滚率。
+判定结果分三处写回，三处都只追加、不就地改写结论。
+
+- 卡：agent 判断后更新 status，把判断写进 `decisions`（谁、何时、依据哪份 eval 数据、采纳或不采纳的结论）。观察窗结算同样追加 `decisions`，不改变卡状态。
+- 指标：`validated` 时在 `metrics/timeline.yaml` 记一期效果差（改前基线与改后实测的对比）；观察窗结算为「现场退化回滚」时，同样记录一期，回滚率随之更新。
 - 归因事件：`validated` 后对应归因事件簇减少（组件执行错率回落）；观察窗结算为「退化」时追加归因事件与教训摘要，防同类改进项重复提交。
 
-## 6. metrics 分层：每个指标回答一个决策问题
+## 6 metrics 分层：每个指标回答一个决策问题
 
-指标消费方三问（谁决策、答什么问题、不答会怎样）先行，答不了任何决策问题的指标不采集（[roadmap.md](../plan/roadmap.md) 的「指标消费方三问」纪律）。指标分四层，口径互不混淆：
+指标按消费方的决策问题分层，答不出决策问题的指标不采集。
+
+指标消费方三问（谁决策、答什么问题、不答会怎样）先行（[roadmap.md](../plan/roadmap.md) 的「指标消费方三问」纪律）。指标分四层，口径互不混淆：
 
 | 层 | 指标 | 回答的决策问题 | 数据源 |
 |---|---|---|---|
@@ -174,9 +201,9 @@ content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期
 | 单次沉淀效果 | `validation_record`（S2 内容验证一致或不一致）加 `confidence`（S1 resolve） | 每次沉淀是否有效？哪个来源产出低质沉淀？ | `scripts/settle_s2_feedback.py` 加 groom |
 | skill 组件质量 | 归因事件簇（按需聚合）、每次 skill 变更前后的差 | 哪个组件反复出错？这次 skill 改动有效吗？ | `scripts/component_tally.py` 聚合加回测 |
 
-口径纪律沿用 `docs/guide/metrics.md`：比例带分母；分母小于 10 时显式标注；`source: live / replay / issue-replay` 必标；无数据时不写。回滚率是新增的指标，衡量合入闸门放错了多少，是授权级别校准（[pipeline.md](pipeline.md) §6.3）与季度自评（[pipeline.md](pipeline.md) §6.6）的输入。
+口径纪律沿用 `docs/guide/metrics.md`：比例带分母；分母小于 10 时显式标注；`source: live / replay / issue-replay` 必标；无数据时不写。回滚率是新增的指标，衡量合入闸门放错了多少。它是授权级别校准（[pipeline.md](pipeline.md) §6.3）与季度自评（[pipeline.md](pipeline.md) §6.6）的输入。
 
-## 7. agent 决策点的信息供给
+## 7 agent 决策点的信息供给
 
 当执行与评审交给 agent 时，每个决策点要明确供给什么。第 2、3 节的信息契约不是文档装饰，而是 agent 能正确执行的前提。
 
@@ -189,25 +216,96 @@ content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期
 
 评审把手的判据强度（原则十）：`ev_measure --run` 证明效果，即改动是否产生了它声称的变化；它不证明价值，即这个变化是否值得。命令是否在测那件事，机器判不了，这条属于约定强度，靠人审抽查。退出码分三态：`0` 符合预测、`1` 预测被证伪、`2` 无法判定，避免「判不了」被读成「验证失败」。
 
-存量卡（`created_at` 早于 `MEASURE_CUTOVER`，该常量在 `scripts/verify_proposals.py:63`，值为 2026-09-11）豁免强制要求：给已完成的决策补一条命令，不恢复当时的判断，只造事后叙述。这类缺口由 `python3 scripts/ev_measure.py --audit` 报出，不静默跳过。
+存量卡豁免强制要求：`created_at` 早于 `MEASURE_CUTOVER`（该常量在 `scripts/verify_proposals.py:63`，值为 2026-09-11）。豁免的理由是给已完成的决策补一条命令不恢复当时的判断，只造事后叙述。这类缺口由 `python3 scripts/ev_measure.py --audit` 报出，不静默跳过。
 
 多人协作下这条尤其关键：评审者会变多，而完整心智模型只有一个。
 
 分层供给控预算（原则九）：决策点先给卡（聚合值与证据引用），判定前才展开证据原文；只有进入 follow-up 判定的卡才加载完整回测数据。供给的目标是每个决策点给够判定所需的信息；信息不足与信息过载同样损害执行质量。
 
-归因事件的按需聚合与改进项、深度轮报告的历史记录合在一起，构成 agent 判断「这个组件以前怎么改、结果如何」的依据（对应 SkillOpt 的 reject buffer 与 meta-skill 思路；载体是本仓库的词法归因事件加按需聚合，不是模型内的隐状态）。
+## 8 边界与失败模式
 
-## 8. 与现有机制的关系
+这套契约的边界在反馈通道与证据强度上，失败集中在「等不到反馈」与「把内容验证当现场验证」两处。
 
-| 本文 | 对接的现有机制 | 关系 |
+一般情形先看两个反馈源的供给。S1 是工程师回报 fix 结果，S2 是 issue-replay 对照外部 resolution；两条通道任一断供，判定就落到下表的降级行为上。
+
+| 情形 | 行为 | 细则 |
 |---|---|---|
-| 改进项契约（第 2、3 节） | pipeline.md 第 7 节的 schema | pipeline.md 定义状态机与最小字段，本文定义执行级完整字段；落地时以本文扩展 |
-| 沉淀效果度量（第 4 节） | case 的 `confidence` 与 `validation_record`、groom 的 R 轮次 | `confidence` 语义不变（只认 S1 resolve），`validation_record` 承接 S2 内容验证；groom 跑 `scripts/settle_s2_feedback.py` |
-| follow-up 验证（第 5 节） | golden fixture 回放（[roadmap.md](../plan/roadmap.md) 里的 fixture replay 半自动化与 fixture 自动生成两行）、S2 校准集、反馈结算 | 观察窗的即时判定依赖 golden 回放与 S2；S1 类依赖 `scripts/settle_trace_feedback.py` |
-| metrics 分层（第 6 节） | `metrics/timeline.yaml`、`scripts/trace_metrics.py` | 新指标进 timeline 要通过 `scripts/verify_metrics.py` 的结构校验扩展（按准入三条件评估） |
-| agent 供给（第 7 节） | 归因事件加 `scripts/component_tally.py` 的按需聚合（pipeline.md 第 2 节） | 归因事件是历史先例的载体 |
+| S1 断供 | 观察窗到期必须结算，不无限等待 | 当前捕获率约为 0；落地前用「标存疑加提醒人」，正式降级态是蓝图（第 5.1a 节） |
+| 观察窗超时 | 按变更类分长度结算 | 即时类不设超时；content 类按预期观察窗的两倍（`expected_window ×2`，字段未落地）；fix 类按最长窗的两倍；参数等落地后校准 |
+| 跨机器或对外分享 | 证据降级为摘要，卡上标注缺失的部分 | 原文留在本地 `traces/evidence/`；不把摘要写成完整证据 |
+| 预测不可度量 | 声明 `reason`，按约定强度处理 | 缺口由 `python3 scripts/ev_measure.py --audit` 报出，不静默跳过 |
+| 并发写回 | 卡的终态与 `decisions` 只追加，已采纳的结论不就地改写 | 观察窗结算不改变卡状态；替换走 `supersedes` 与 `superseded_by` 链 |
+| 同一改动被重复提出 | 归因事件记教训摘要，新改进项必须引用先例 | 防同类改进项重复提交 |
 
-## 9. 原则追溯
+几种失败模式与处置：
+
+| 失败模式 | 触发 | 处置 |
+|---|---|---|
+| 评审变成橡皮图章 | 预测无法机械判定，reviewer 只能在「开全文」与「直接批」之间二选一 | `predicted_effect.measure` 强制一条命令加期望（第 2 节、第 7 节） |
+| 状态机两处漂移 | 本文与 [pipeline.md](pipeline.md) 各定义一套状态词表 | 本文只引用第 7 节，不重复定义 |
+| 未确认项混进现场统计 | 只有 S2 佐证的改动被算作现场 validated | 第 6 节的 validated 计数与回滚率口径都不含未确认项 |
+| 把 S2 当现场有效性 | 内容验证与现场解决混算 | 两条证据分别结算，现场只认 S1 |
+| 预测退化成散文 | 卡缺 `predicted_effect.measure` | `scripts/verify_proposals.py` 的 `MEASURE_CUTOVER` 闸门拦下 |
+
+本文自身的修订属于 L3 结构，走 methodology PR 加体系维护人审。本文的内容将来落成 skill 时，执行参数要内联进 SKILL.md（skill 自包含纪律），本文退为可选论证层。
+
+## 9 明确不做（防过度设计）
+
+下面七条都具备实现的可能，本文明确不做，每条给出不做的理由与触发条件出现前的替代做法。
+
+1. 不实现 `predicted_value`、`first_hit`、`expected_window` 三个字段。整套设计依赖 S1 现场反馈，而该通道当前捕获率约为 0；`validation_record` 与 `confidence` 两条通道已覆盖效果度量。触发条件（第一次真实沉淀批次且 S1 反馈恢复）到了再评估。
+2. 不实现观察窗超时降级的正式状态机（`unconfirmed_valid` / `unconfirmed` / `rolled_back` 语义）。触发条件是 S1 断供真实持续两期以上；此前用「标存疑加提醒人」的轻量方式。
+3. 不在本文重复定义改进项卡的状态机与 schema。唯一事实源是 [pipeline.md](pipeline.md) 第 7 节，两处各写一份必然漂移。
+4. 不把 S2 或 golden 的命中当现场有效性。现场有效只认 S1，两条证据分别结算。
+5. 不采集答不出决策问题的指标。先过「指标消费方三问」（第 6 节）。
+6. 不追求每个决策点都给全量证据。分层供给控预算（原则九）；信息不足与信息过载同样损害执行质量。
+7. 不把观察窗未确认的改动计入现场统计。只有排除它们，validated 计数与回滚率才反映真验证。
+
+## 10 现状与落地
+
+结论：卡 schema 与评审把手这批已落地，观察窗与效果字段按触发条件缓行。已落地的机制各自附一条可执行的确认方式；给不出确认方式的只标「已决定」。
+
+### 10.1 已落地
+
+| 机制 | 落地形态 | 确认方式 |
+|---|---|---|
+| 改进项卡 schema v3 | `proposals/ideas/` 模板加 `scripts/verify_proposals.py` 的结构校验 | `python3 scripts/verify_proposals.py --check` |
+| `predicted_effect.measure` 强制 | `MEASURE_CUTOVER`（2026-09-11）之后的卡必须有可复现测量口径，或声明 `reason` | `grep -n "MEASURE_CUTOVER" scripts/verify_proposals.py` |
+| 评审把手 | `ev_measure --run` 打印判据命令、实测输出与退出码；`--audit` 盘全库缺口与存量豁免 | `python3 scripts/ev_measure.py --audit` |
+| `target_component` 生效日闸门 | `TARGET_CUTOVER`（2026-09-17）之后的卡必须有目标组件键 | `grep -n "TARGET_CUTOVER" scripts/verify_proposals.py` |
+| `validation_record` 的 S2 结算 | groom 步骤 3.5b 跑 `scripts/settle_s2_feedback.py`（默认 dry-run） | `grep -n "3.5b" skills/knowledge-groom/SKILL.md` |
+| 现场置信只由 S1 写入 | `scripts/settle_trace_feedback.py` 结算 `confidence` | `ls scripts/settle_trace_feedback.py` |
+| 四层指标与 timeline 结构校验 | `scripts/verify_metrics.py` 校验 `metrics/timeline.yaml` 的结构 | `python3 scripts/verify_metrics.py --check` |
+
+### 10.2 蓝图（触发条件出现才实现）
+
+| 机制 | 触发条件 | 此前的替代做法 |
+|---|---|---|
+| `predicted_value` / `first_hit` / `expected_window` 三个字段 | 出现第一次真实沉淀批次，且 S1 反馈恢复 | 用 `validation_record` 与 `confidence` 两条通道 |
+| 观察窗超时降级态（`unconfirmed_valid` / `unconfirmed` / `rolled_back` 语义） | S1 断供真实持续两期以上 | 标存疑加提醒人（第 5.1a 节） |
+| follow-up 观察窗常态化（第 10.4 节步骤 3） | golden 回放或 S2 校准集可用 | 即时判定类在合入前结清 |
+| 回滚率、采纳率等机制健康指标进 timeline（步骤 4） | 自演进执行流程试点满一轮 | 人工读卡与抽审 |
+| agent 供给清单固化为执行 checklist（步骤 5） | 步骤 1 到 3 有真实执行记录 | 第 7 节的供给清单 |
+
+### 10.3 已否决
+
+无。这份契约至今没有整条否决的内容；被压缩掉的三个字段按触发条件缓行，属于蓝图，不算否决。
+
+### 10.4 落地顺序
+
+本表只回答本文所述契约内部先做什么。整体落地总纲见 [pipeline.md](pipeline.md) §11，以那份为准，本表与其不平行。
+
+| 步骤 | 内容 | 入口闸门 |
+|---|---|---|
+| 1 | 改进项 schema v3 落 `proposals/ideas/` 模板（与 pipeline.md §11.1 的第一批落地同批） | owner 确认（已完成：schema 加 `scripts/verify_proposals.py`） |
+| 2 | `validation_record` 结算落地（`scripts/settle_s2_feedback.py` 加 groom 3.5b） | 已完成；真实 S2 result 批量后结算首轮 |
+| 3 | follow-up 观察窗常态化 | golden 回放或 S2 校准集可用（即时判定类） |
+| 4 | 回滚率、采纳率等机制健康指标进 timeline | 自演进执行流程试点满一轮 |
+| 5 | agent 供给清单固化为执行 checklist（将来由 skill 承载） | 步骤 1 到 3 有真实执行记录 |
+
+## 11 原则追溯
+
+本文的每个设计元素都能追到 [design-principles.md](../spec/design-principles.md) 的条文。
 
 | 设计元素 | 服务的原则 | 说明 |
 |---|---|---|
@@ -221,14 +319,53 @@ content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期
 | 脱敏纪律（引用不含原文） | 十 | 信息完整与隐私冲突时降级 |
 | 回滚率指标 | 六、十一 | 合入闸门质量可度量，用于校准授权级别 |
 
-## 10. 落地顺序
+推导依据：原则一（验证先于交付）、二（不变量写进结构）、五（建议与决定分离）、七（变更可逆）、八（可观测先于改进）、九（资源预算）、十一（数据触发）。理论见 [design-theory.md](../spec/design-theory.md) §4.2–4.4。
 
-本表只回答本文所述契约内部先做什么。整体落地总纲见 [pipeline.md](pipeline.md) §11，以那份为准，本表与其不平行。
+## 12 代码与文档入口
 
-| 步骤 | 内容 | 入口闸门 |
+正文里的每个脚本、字段与文档在这里给出准确落点。
+
+### 12.1 代码与文件
+
+| 正文里说 | 代码与文件里的名字 |
+|---|---|
+| 卡 schema 必填字段 | `scripts/verify_proposals.py:90`（`REQUIRED`） |
+| `target_component` 生效日闸门 | `scripts/verify_proposals.py:224`（`TARGET_CUTOVER` = 2026-09-17） |
+| `predicted_effect.measure` 强制与存量豁免 | `scripts/verify_proposals.py:63`（`MEASURE_CUTOVER` = 2026-09-11） |
+| 评审把手 | `scripts/ev_measure.py`（`--run` / `--audit`） |
+| S2 结算 `validation_record` | `scripts/settle_s2_feedback.py`、groom 3.5b（`skills/knowledge-groom/SKILL.md:80`） |
+| S1 结算 `confidence` | `scripts/settle_trace_feedback.py` |
+| `verification` 档位定义 | `skills/to-postmortem/SKILL.md:85` 到 `:91` |
+| case 完整字段清单与 `ref_knowledge` | `docs/spec/case-schema.md:11`、`docs/spec/case-schema.md:21` |
+| `ref_knowledge` 的 role 校验 | `scripts/verify_references.py` |
+| issue 源的价值启发式 | `scripts/issue_filter.py` |
+| 归因事件的按需聚合 | `scripts/component_tally.py` |
+| 四层指标口径与 timeline 校验 | `docs/guide/metrics.md`、`scripts/verify_metrics.py`、`scripts/trace_metrics.py`、`scripts/index_counts.py` |
+| 效果差与回滚率记录 | `metrics/timeline.yaml` |
+| 改进项卡目录 | `proposals/ideas/` |
+| 证据原文 | `traces/evidence/` |
+
+### 12.2 与现有机制的对接
+
+| 本文 | 对接的现有机制 | 关系 |
 |---|---|---|
-| 1 | 改进项 schema v3 落 `proposals/ideas/` 模板（与 pipeline.md §11.1 的第一批落地同批） | owner 确认（已完成：schema 加 `scripts/verify_proposals.py`） |
-| 2 | `validation_record` 结算落地（`scripts/settle_s2_feedback.py` 加 groom 3.5b） | 已完成；真实 S2 result 批量后结算首轮 |
-| 3 | follow-up 观察窗常态化 | golden 回放或 S2 校准集可用（即时判定类） |
-| 4 | 回滚率、采纳率等机制健康指标进 timeline | 自演进执行流程试点满一轮 |
-| 5 | agent 供给清单固化为执行 checklist（将来由 skill 承载） | 步骤 1 到 3 有真实执行记录 |
+| 改进项契约（第 2、3 节） | pipeline.md 第 7 节的 schema | pipeline.md 定义状态机与最小字段，本文定义执行级完整字段；落地时以本文扩展 |
+| 沉淀效果度量（第 4 节） | case 的 `confidence` 与 `validation_record`、groom 的 R 轮次 | `confidence` 语义不变（只认 S1 resolve），`validation_record` 承接 S2 内容验证；groom 跑 `scripts/settle_s2_feedback.py` |
+| follow-up 验证（第 5 节） | golden fixture 回放（[roadmap.md](../plan/roadmap.md) 里的 fixture replay 半自动化与 fixture 自动生成两行）、S2 校准集、反馈结算 | 观察窗的即时判定依赖 golden 回放与 S2；S1 类依赖 `scripts/settle_trace_feedback.py` |
+| metrics 分层（第 6 节） | `metrics/timeline.yaml`、`scripts/trace_metrics.py` | 新指标进 timeline 要通过 `scripts/verify_metrics.py` 的结构校验扩展（按准入三条件评估） |
+| agent 供给（第 7 节） | 归因事件加 `scripts/component_tally.py` 的按需聚合（pipeline.md 第 2 节） | 归因事件是历史先例的载体 |
+
+### 12.3 相邻文档的分工
+
+| 文档 | 分工 |
+|---|---|
+| [pipeline.md](pipeline.md) | 机制总览：三层闭环、分级授权、卡 schema 与状态机、落地节奏；本文是它的执行级规范 |
+| [rsi-mechanism.md](rsi-mechanism.md) | 自演进元机制的唯一技术入口与机制地图；日常执行看它 |
+| [orchestration.md](orchestration.md) | 一轮自演进的会话边界、目标函数与停止条件、token 预算、自我指涉治理 |
+| [run.md](run.md) | 把一轮轮会话装配成长期持续运行（长期任务、issue 评测循环、执行记录、可视化） |
+| [evolution-user-guide.md](../guide/evolution-user-guide.md) | 面向使用者的指令、报告与干预语言 |
+| [design-theory.md](../spec/design-theory.md) | 本文推导依据的理论（§4.2–4.4） |
+
+## 13 外部参考
+
+归因事件的按需聚合与改进项、深度轮报告的历史记录合在一起，构成 agent 判断「这个组件以前怎么改、结果如何」的依据。这一处对应 SkillOpt 的 reject buffer 与 meta-skill 思路；载体是本仓库的词法归因事件加按需聚合，不是模型内的隐状态。与 SkillOpt 的完整对照（借鉴什么、不取什么）在 [pipeline.md](pipeline.md) §13.1。

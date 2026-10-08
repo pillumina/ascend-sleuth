@@ -1,11 +1,14 @@
 # 持续运行：长期任务、issue 评测循环、执行记录与可视化
 
-> 本文是持续运行的设计文档，回答三件事：长期任务怎么排、执行记录怎么留、面板看什么。要改长期任务、统一执行记录或可视化时读它；读完能说清执行记录的读写口径，以及它供哪些视图使用。论证层，日常不必读；执行规则与机制地图见 [rsi-mechanism.md](rsi-mechanism.md)。
->
-> 本文与另外三份文档的分工：[pipeline.md](pipeline.md) 是机制总览，[execution.md](execution.md) 是单卡执行契约，[orchestration.md](orchestration.md) 是单轮会话编排。本文把前三份的单轮与单卡机制装配成用户可下指令、可观察、可干预的长期运行形态。使用者侧的指令、报告与干预语言见 [evolution-user-guide.md](../guide/evolution-user-guide.md)。
-> 设计依据是 [design-principles.md](../spec/design-principles.md) 的原则一、五、七、八、九、十、十一，理论推导见 [design-theory.md](../spec/design-theory.md) §4.2–4.4 与 §6。本文自身的修订属于 L3（工作流与编排层，分层定义见 [pipeline.md](pipeline.md) §1）结构变更，走 methodology PR 并经体系维护人审。
+本文说清持续运行怎么装配：用户下一句话目标之后，系统怎么把它变成跨轮推进的长期任务、怎么把每一轮的现场留下数据、人从哪里看到系统在跑什么。读完能说清执行记录的读写口径，以及它供哪些视图使用。要改长期任务、统一执行记录或可视化的人读它。
 
-## 1. 从一条指令到持续自演进
+范围是长期任务层、issue 评测循环、统一执行记录、替换与回滚、可视化、停止条件与落地工程形态，即第 2 节至第 9 节。不覆盖机制总览、单张改进项卡的执行契约与单轮会话编排，它们各有自己的文档；分层定义见 [pipeline.md](pipeline.md) §1，相邻文档的分工见 §14。
+
+读者需要先读过 [rsi-mechanism.md](rsi-mechanism.md)（对象层，即 case 与 reference 的闭环）与 [pipeline.md](pipeline.md)（机制总览）。设计依据是 [design-principles.md](../spec/design-principles.md) 的原则一、五、七、八、九、十、十一，理论推导见 [design-theory.md](../spec/design-theory.md) §4.2–4.4 与 §6。
+
+使用者侧的指令、报告与干预语言见 [evolution-user-guide.md](../guide/evolution-user-guide.md)；只按现有流程跑一轮、或只想知道这套系统在做什么的人不必读本文。
+
+## 1. 解决什么问题与最小可执行模型
 
 自演进的默认策略由系统承接，用户不必说出要记录观测数据、要跑反馈回路、要按自演进制定计划。用户指令的典型形态是一句话目标：
 
@@ -13,12 +16,14 @@
 > 这周有哪些值得沉淀的 verl issue？
 > 自演进最近变贵了，查一下。
 
-系统在入口做四件事，对齐协议见 [orchestration.md](orchestration.md) §1.2：
+最小可执行模型是一条指令走完的四步：
 
-1. 装载默认策略。观测信号集、S2 评测、反馈回路、改进项从提出到验证的流程、授权分级、停止条件与预算分层全部自动带出，用户不需要复述。
-2. 对齐目标。系统回显自己的理解并澄清歧义：范围落在哪一层、数据前提够不够、目标之间是否冲突。没有对齐就不执行。
-3. 开一个长期任务，见第 2 节。任务是目标、范围、预算策略与每轮循环（拉取 → 评测 → 沉淀 → 候选 → 实验 → 合入 → 报告）。
-4. 全程留痕并可观察，见第 4、5、6 节。内容 skill 在收尾时落一条执行记录（诊断侧已有 trace，见第 4 节），任务、卡与指标渲染给人看。
+| 步 | 动作 | 落点 |
+|---|---|---|
+| 1 装载默认策略 | 观测信号集、S2 评测、反馈回路、改进项从提出到验证的流程、授权分级、停止条件与预算分层全部自动带出，用户不需要复述 | 系统默认策略 |
+| 2 对齐目标 | 系统回显自己的理解并澄清歧义：范围落在哪一层、数据前提够不够、目标之间是否冲突。没有对齐就不执行 | 入口会话，对齐协议见 [orchestration.md](orchestration.md) §1.2 |
+| 3 开一个长期任务 | 任务是目标、范围、预算策略与每轮循环（拉取 → 评测 → 沉淀 → 候选 → 实验 → 合入 → 报告） | `proposals/tasks/<TASK-ID>.yaml`，见第 2 节 |
+| 4 全程留痕并可观察 | 内容 skill 在收尾时落一条执行记录（诊断侧已有 trace，见第 4 节）；任务、卡与指标渲染给人看 | 第 4、5、6 节 |
 
 反例是把机制写进指令：
 
@@ -26,13 +31,15 @@
 
 这段里只有 vllm-ascend 与持续改进是目标，其余都是实现细节，应当由默认策略承接。要求用户说出这些细节，等于把系统内部机制变成用户负担。
 
+本文不解决各机制内部的规则：观测信号集与评分源分级见 [pipeline.md](pipeline.md) §2.1，单张改进项卡的执行契约见 [execution.md](execution.md)，单轮会话编排见 [orchestration.md](orchestration.md)。本文自身的修订属于 L3（工作流与编排层，分层定义见 [pipeline.md](pipeline.md) §1）结构变更，走 methodology PR 并经体系维护人审。
+
 ## 2. 长期任务层：多轮循环
 
 [orchestration.md](orchestration.md) §1 的会话是单轮的：目标 → 装载默认策略 → 对齐 → 计划 → 确认 → 执行并报告 → 停止。用户的指令对应一个长期任务，一轮做完不结束，下一轮按数据增量继续。
 
 长期任务由六个字段定义：`goal_id`、`scope`、issue 源配置、预算策略、停止条件与运行模式 `approval_policy`。
 
-每轮是一次 orchestration 会话，复用 §1 的协议，顺序为：拉新批次 → S2 评测与沉淀评估 → 候选 → 授权 → 实验 → 批提交 → 报告。运行模式见 [pipeline.md](pipeline.md) §6.3a，有两种取值：
+每轮是一次 orchestration 会话，复用 [orchestration.md](orchestration.md) §1 的协议，顺序为：拉新批次 → S2 评测与沉淀评估 → 候选 → 授权 → 实验 → 批提交 → 报告。运行模式见 [pipeline.md](pipeline.md) §6.3a，有两种取值：
 
 - `default`（关键人审，默认）：`auto` 级改动即时合入，`review` 与 `dual` 级留到轮末提一个批提交；
 - `hands-off`（完全自动化，需要用户明确要求）：全部改动留到任务完成时提一个批提交。
@@ -52,12 +59,12 @@ open issue 转 closed 不需要延迟等待：增量拉取会自然捕获这一�
 
 - `active`：任务在跑，默认取值；
 - `paused`：预算耗尽或人中断；
-- `steady`：收敛后降频（降频本身是蓝图，见第 7 节）；
+- `steady`：收敛后降频（降频本身是蓝图，见 §13.2）；
 - `stopped`：人终止。
 
 任务状态写在 `proposals/tasks/<TASK-ID>.yaml`，含目标、范围、来源配置、每轮引用、预算账本与停止原因。它是运行时状态，本地留存、不进 git；稳态结果以报告与采纳卡入 git。任务状态与会话状态分开：任务记得目标与历史，会话记得本轮进度。
 
-轮间调度（拉新批次 → 决定下一轮范围 → 分派轮内角色）在 DSH 上由 Agent Teams 承载。它是实验性载体，提供持久成员表（roster）、共享任务图（DAG）与持久信箱（mailbox）；任务图带 `blockedBy` 依赖边，可以直接表达回测轮依赖评测轮完成这一关系。轮内单步用可续接的 subagent 即可。载体选项与启用条件见 [pipeline.md](pipeline.md) §6.7。机制与载体解耦：没有 DSH 环境时，任务状态文件加手动或定时触发同样成立。
+轮间调度（拉新批次 → 决定下一轮范围 → 分派轮内角色）在 DSH 上由 Agent Teams 承载，与它的关系见 §15.1。它是实验性载体，提供持久成员表（roster）、共享任务图（DAG）与持久信箱（mailbox）；任务图带 `blockedBy` 依赖边，可以直接表达回测轮依赖评测轮完成这一关系。轮内单步用可续接的 subagent 即可。载体选项与启用条件见 [pipeline.md](pipeline.md) §6.7。机制与载体解耦：没有 DSH 环境时，任务状态文件加手动或定时触发同样成立。
 
 ## 3. Issue 的三重角色与 S2 即时对照
 
@@ -71,7 +78,7 @@ issue 的 resolution（fix PR 合入、committer 确认或 issue 内的用户反
 
 open issue 不参与对照评分，只做覆盖探测：把现象交给 diagnose，若没有命中或置信度低，就记一条该现象族未覆盖的候选，进待定池。此时没有 resolution 可对照，因此不做结论判定。issue 转 closed 后自动进入评测池，增量拉取的游标会捕获这一转换；从那一刻起它才有答案、才参与 S2。
 
-S2 校准集的 selection 与 test 分离是规模闸门。原设计分两半：selection 供闸门决策，test 供 validated 终判、防对校准集过拟合。test 这一半对应 SkillOpt 的 held-out，即留出、不参与调参的样本，见 [pipeline.md](pipeline.md) §12。池子小，撑不起两半：test 半要求从未被本系统沉淀过的历史 issue，而沉淀会消耗池子，小池下 test 半自相矛盾。降级后的规则是单池运行，直到出现真实的 held-out 需求。
+S2 校准集的 selection 与 test 分离是规模闸门。原设计分两半：selection 供闸门决策，test 供 validated 终判、防对校准集过拟合。test 这一半是留出样本（held-out），即不参与调参的样本，与 SkillOpt 的对照见 §15.2。池子小，撑不起两半：test 半要求从未被本系统沉淀过的历史 issue，而沉淀会消耗池子，小池下 test 半自相矛盾。降级后的规则是单池运行，直到出现真实的 held-out 需求。
 
 原「≥30」是参数估计，不是硬门槛；[design-theory.md](../spec/design-theory.md) §7 说明常数接受实测重校。扩池是 issue 流自然流入的持续动作；单池加 self-referential 隔离（评测样本不得由本系统自己沉淀，见本节末尾三条）已经覆盖防过拟合的主要威胁。
 
@@ -144,7 +151,7 @@ exec-log 只记录内容流程收尾时的现场情况，不做每次 skill 调�
 
 载体三档，按落地成本排序：
 
-1. dsh-agent-teams 插件的活动面板（[NanmiCoder/dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)，已装 0.1.14）：自带成员树、任务图、实时状态、会话跟随与历史归档。它可视化的是多 agent 协作的运行状态（哪个成员在跑哪个任务、依赖进度、模型标注），数据源是 `<workspace>/.agent-teams/<teamId>/`。它不含本设计的领域状态：改进项状态机、timeline 指标、token 账本与跨轮任务历史都在 `proposals/` 与 `metrics/` 里。因此它只覆盖会话直播视图中的 agent 执行部分，卡流转、指标与任务总览仍需自建。
+1. dsh-agent-teams 插件的活动面板（[NanmiCoder/dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)，已装 0.1.14）：自带成员树、任务图、实时状态、会话跟随与历史归档，数据源是 `<workspace>/.agent-teams/<teamId>/`。它只覆盖会话直播视图中的 agent 执行部分，卡流转、指标与任务总览仍需自建；与本设计的关系见 §15.1。
 2. DSH 面板扩展（仓库已有 ascend-panel 先例，在诊断与指标 tab 之外加自演进 tab）：补齐领域视图（任务总览、卡流转、指标、token），直接读 `proposals/`、timeline 与 trace/decisions 的数据，是看到系统自演进的主要载体。
 3. HTML 报告（与 health_report 同款，离线生成）：没有 DSH 环境或需要分享时使用。
 
@@ -160,11 +167,11 @@ exec-log 只记录内容流程收尾时的现场情况，不做每次 skill 调�
 - 收敛：本轮没有新候选，或全部卡进入 `rejected`/`validated`；
 - 人中断。
 
-任务级停止条件（本层新增）：达到稳态（连续两轮没有新信号，且 validated 的效果达标）后转 `steady` 降频（[orchestration.md](orchestration.md) §2.3；稳态降频目前是蓝图，见 [pipeline.md](pipeline.md) §11.1）；人可以随时置 `paused` 或 `stopped`；预算策略（例如每周 token 上限）耗尽时转 `paused`，等下一个周期。
+任务级停止条件（本层新增）：达到稳态（连续两轮没有新信号，且 validated 的效果达标）后转 `steady` 降频（[orchestration.md](orchestration.md) §2.3；稳态降频目前是蓝图，见 §13.2 与 [pipeline.md](pipeline.md) §11.1）；人可以随时置 `paused` 或 `stopped`；预算策略（例如每周 token 上限）耗尽时转 `paused`，等下一个周期。
 
-批边界（[pipeline.md](pipeline.md) §6.3a）：任务级批提交是做到目标完成再提 PR，批不会无限等待。任务级批提交本身是蓝图（见 [pipeline.md](pipeline.md) §11.1），但启用后本边界仍然强制。批内卡数上限、时间上限或稳态收敛任一触发就提前提批结算，不等目标完成，用户可以再开新任务继续。批提交是为了少打断，不是无限延迟合入。
+批边界（[pipeline.md](pipeline.md) §6.3a）：任务级批提交是做到目标完成再提 PR，批不会无限等待。任务级批提交本身是蓝图（见 §13.2 与 [pipeline.md](pipeline.md) §11.1），但启用后本边界仍然强制。批内卡数上限、时间上限或稳态收敛任一触发就提前提批结算，不等目标完成，用户可以再开新任务继续。批提交是为了少打断，不是无限延迟合入。
 
-长期保护措施：判据文件 `proposals/gates.yaml` 里的越界项触发时，任务按人的处置降低授权级别（`auto` → `review`），并把待处置项通知人（自我指涉治理，见 [orchestration.md](orchestration.md) §4）。回滚率与抽审发现率是这项保护计划接入的读数，尚未落成判据。
+长期保护措施：判据文件 `proposals/gates.yaml` 里的越界项触发时，任务按人的处置降低授权级别（`auto` → `review`），并把待处置项通知人（自我指涉治理，见 [orchestration.md](orchestration.md) §4）。回滚率与抽审发现率是这项保护计划接入的读数，尚未落成判据（见 §13.2）。
 
 ### 7.1 报告的用户语言规范
 
@@ -181,7 +188,7 @@ exec-log 只记录内容流程收尾时的现场情况，不做每次 skill 调�
 - 真实 issue 对照验证（S2，可以点开看是哪几条）；
 - 工程师反馈确认（S1，强度最高但稀少）；
 - 只有回放无回归（S3，下限保障）；
-- 观察窗超时降级（没等到现场反馈，按现有证据降级结算；蓝图）；
+- 观察窗超时降级（没等到现场反馈，按现有证据降级结算；蓝图，见 §13.2）；
 - 系统推断（强度最低）。
 
 validated 的结论要能点开证据（issue、diff、前后指标），用户不必只信系统自评。
@@ -224,7 +231,7 @@ skill 把脚本、状态与协议装配成可重复执行的一轮，面板让�
 | 步骤 | 内容 | 入口闸门 |
 |---|---|---|
 | 1 | S2 校准集建立（单池；实时条数见 `eval/s2/vllm-ascend.yaml`；selection/test 分离按判定池中未吸收样本的条数触发，见 [eval-arena.md](eval-arena.md) §1） | issue 池可批量取（已具备） |
-| 2 | 统一执行记录：内容 skill 收尾落 exec-log，evolve-check 读现场 | 已落地。schema、脚本、4 个内容 skill 的收尾（含 groom）、evolve-check 自落记录、`scripts/tail_exec_log.py` 取数入口、`scripts/exec_log_path.py` 共享路径都已就位，`ideas/` 卡结构由 `scripts/verify_proposals.py --check` 在 CI 校验。diagnose 走 trace，不重复落（§4 的边界）。执行记录在同一克隆内共享（跨 worktree 共写共读，写侧持锁）；跨克隆与跨机的数据已经接线：`scripts/metrics_snapshot.py` 把 exec-log 聚合写进当期指标源文件 `metrics/timeline.d/<期号>.yaml`（§4） |
+| 2 | 统一执行记录：内容 skill 收尾落 exec-log，evolve-check 读现场 | 已落地，逐项确认方式见 §13.1 |
 | 2b | S2 feedback 结算（`settle_s2_feedback` → `case.validation_record`） | 已落地；真实 S2 result 积累到一批后结算首轮 |
 | 3 | 长期任务层试点一轮（手动触发，任务状态机与轮间调度跑通，对应 [pipeline.md](pipeline.md) §11 的自演进执行流程试点阶段） | 步骤 1–2b 有真实数据 |
 | 4 | `supersedes` 字段与回滚语义落地（schema 已含字段，出现首个替代场景时激活，对应 [pipeline.md](pipeline.md) §11 的自演进执行流程试点阶段） | 出现首个新改进项替代旧实现的场景 |
@@ -232,7 +239,44 @@ skill 把脚本、状态与协议装配成可重复执行的一轮，面板让�
 
 对应用户指令：持续改进这类指令就是第一个长期任务，先拉 200 个 issue 扩池（步骤 1）。前几轮的真实产出是第一批落地：建 S2、接执行记录、跑通任务循环，让机制第一次真实运行；之后才进入持续的沉淀与演进。边界不变：内容层（补 case、沉淀）可以高度自动，结构层（triage、skill、指标口径）永远由人审。
 
-## 10. 原则追溯
+## 10. 边界与失败模式
+
+自动化只覆盖内容流程与实验，闸门与裁决留在人这一侧。各种异常、降级与并发情形集中列在下面，细则在各自的小节：
+
+| 情形 | 行为 | 细则 |
+|---|---|---|
+| 预算耗尽 | 任务转 `paused`，等下一个周期 | 第 2、7 节 |
+| 人中断 | 本轮停止，出中间报告，保留状态 | §7.2 |
+| 收敛到稳态 | 转 `steady` 降频；降频是蓝图 | 第 2、7 节，§13.2 |
+| 批内卡数、时间上限或稳态收敛触顶 | 提前提批结算，不等目标完成 | 第 7 节 |
+| 判据越界（`proposals/gates.yaml`） | 授权级别从 `auto` 降到 `review`，待处置项通知人 | 第 7 节 |
+| 回滚率与抽审发现率尚无判据 | 长期保护只做人工处置，读数未接入判据 | 第 7 节，§13.2 |
+| exec-log 文件缺失或空表 | 按正常退化处理，退出码 0 | 第 4 节 |
+| exec-log 并发写 | 写侧持 flock；无锁并发实测里 16 次写入只剩 3 条 | 第 4 节 |
+| 执行记录跨克隆或跨机 | 不聚合原文，跨机走聚合值进 timeline | 第 4 节 |
+| S2 池子小，test 半自相矛盾 | 降级为单池运行，直到出现真实 held-out 需求 | 第 3 节 |
+| 某一期混入已沉淀源 | 指标标 `test 含已沉淀源` 并降权 | 第 3 节 |
+| 评测样本由本系统自己沉淀 | 记 `self_consistent`，不计入 `consistent`，不计外部验证 | 第 3 节 |
+| open issue 没有 resolution | 只作弱信号，记该现象族未覆盖，不参与对照评分 | 第 3 节 |
+| 链式替代回滚找不到前驱 | 回溯到链上最近一张 `validated` 卡；链上没有就回滚到链首初始实现，并标注链上无 validated 版本 | 第 5 节 |
+| 同一 `target_component` 出现第二张 `validated` 卡 | 违反不变式 | 第 5 节 |
+| 没有 DSH 环境 | 任务状态文件加手动或定时触发同样成立 | 第 2 节 |
+| 视图数据范围混用 | 按数据来源标〔中心全量〕或〔本地视角〕，不得混用 | 第 6 节 |
+| 待审项积压 | 进批 PR 的待审项，由 reviewer 或双签人消费，不阻塞能自动的部分 | §7.2 |
+
+## 11. 明确不做（防过度设计）
+
+以下都是已否决项，否决理由写在各条后面：
+
+- 不把系统内部机制写进用户指令。观测信号集、评测流程与修改计划都是默认策略的一部分；要求用户复述它们等于把机制变成用户负担（第 1 节）。
+- 不做每次 skill 调用的全量执行记录。diagnose 已有 trace，信息更全、含完整轨迹，再落一份 exec-log 是重复劳动；高频调用全记录会让记录负担超过观测价值（第 4 节，[design-principles.md](../spec/design-principles.md) 原则九）。
+- 不引入身份与使用观测。记录对象是 skill、动作与产物 id，不涉及人；roadmap 不做 KPI、身份与使用观测这条红线不变（第 4 节，[pipeline.md](pipeline.md) §5.3）。
+- 不把自演进体系只做成一个 skill。skill 定义 agent 怎么做，不承载确定性校验、可 diff 的状态与运行时渲染；只做成 skill 会把校验、状态与可视化塞进 prompt 协议，违反原则二（第 8 节）。
+- 不用 dsh-agent-teams 活动面板替代领域视图。它可视化多 agent 协作的运行状态，不含改进项状态机、timeline 指标、token 账本与跨轮任务历史（第 6 节，§15.1）。
+- 不用 dsh-agent-teams 承载自演进工程本体。它属执行载体层（[pipeline.md](pipeline.md) §6.7），提供多 agent 运行底座，可以被 self-evolve skill 调用，但不是自演进工程本身（第 8 节）。
+- 不做无限延迟的批提交。批提交是为了少打断，批内卡数上限、时间上限或稳态收敛任一触发就提前结算（第 7 节）。
+
+## 12. 原则追溯
 
 下表的设计元素对应 [design-principles.md](../spec/design-principles.md) 的条文。
 
@@ -246,7 +290,50 @@ skill 把脚本、状态与协议装配成可重复执行的一轮，面板让�
 | 任务级稳态降频与阈值保护 | 九、十一 | 持续运行必须有资源与质量边界 |
 | 四层工程装配（skill、脚本、数据、面板） | 二、三 | 校验进脚本、状态进词法文件、协议进 skill、渲染进插件；只做成 skill 会违反原则二 |
 
-## 11. 名词对照
+## 13. 现状：已落地、蓝图与已否决
+
+本节回答「现在到哪了」。落地顺序与入口闸门见第 9 节，落地总纲见 [pipeline.md](pipeline.md) §11。
+
+### 13.1 已落地
+
+第一批落地是让这套装配第一次真实跑起来的最小组件集。每条附一条可执行的确认方式：
+
+| 机制 | 落地形态 | 确认方式 |
+|---|---|---|
+| S2 单池校准集（第 3 节） | 生成物 `eval/s2/vllm-ascend.yaml`，脚本 `scripts/s2_calibration.py`、`scripts/s2_replay.py` | `grep -c "^    confidence: high" eval/s2/vllm-ascend.yaml` |
+| S2 feedback 结算（第 3 节） | `scripts/settle_s2_feedback.py` 结算进 case 的 `validation_record` | `grep -n "validation_record" scripts/settle_s2_feedback.py` |
+| 统一执行记录 schema 与脚本（第 4 节） | `metrics/skill-exec-log.yaml`；写入 `scripts/log_skill_exec.py`，校验 `scripts/verify_exec_log.py`，读取 `scripts/tail_exec_log.py`，共享路径 `scripts/exec_log_path.py` | `python3 scripts/verify_exec_log.py` |
+| 内容 skill 收尾接入（第 4 节） | issue-ingest、to-postmortem、to-reference、knowledge-groom 四个 skill 的收尾步骤，加 evolve-check 自落记录 | `grep -rl "log_skill_exec" skills/` |
+| exec-log 聚合进 timeline（第 4 节） | `scripts/metrics_snapshot.py` 组装 `content_flow_runs`、`evolve_check_runs`、`evolve_check_no_signal`，写当期 `metrics/timeline.d/<期号>.yaml` | `grep -n "evolve_check_runs" scripts/metrics_snapshot.py` |
+| 改进项卡 schema 与结构校验（第 2、5 节） | `proposals/ideas/` 下的卡，校验脚本 `scripts/verify_proposals.py` | `python3 scripts/verify_proposals.py --check` |
+| `supersedes` 与 `superseded_by` 字段（第 5 节） | schema 已含字段，交叉引用校验已接线 | `grep -n "supersedes:" examples/sample-idea.yaml` |
+| 长期保护判据文件（第 7 节） | `proposals/gates.yaml` | `ls proposals/gates.yaml` |
+| 面板先例（第 6 节） | `dsh-plugins/ascend-panel` 已有诊断与指标 tab | `ls dsh-plugins/ascend-panel` |
+| 任务状态目录（第 2 节） | `proposals/tasks/` 已建（运行时件） | `ls -d proposals/tasks` |
+
+### 13.2 蓝图
+
+蓝图件保留设计但不实现，触发条件出现才激活。落地总纲见 [pipeline.md](pipeline.md) §11.1。
+
+| 机制 | 触发条件 | 此前的替代做法 |
+|---|---|---|
+| 长期任务层跨轮运行（第 2 节、第 9 节步骤 3） | 步骤 1–2b 有真实数据后手动试点一轮 | 单轮 orchestration 会话 |
+| 任务级批提交与跨轮攒批（第 7 节） | 用户真实要求跨多轮攒批 | `default` 模式的轮末批提交 |
+| 稳态降频 `steady`（第 2、7 节） | 连续两轮没有新信号，且 validated 的效果达标 | 任务停在 `active`，人工置 `paused` |
+| 观察窗超时降级（§7.1） | 现场反馈持续断供，没等到现场反馈 | 标存疑加提醒人 |
+| `supersedes` 回滚语义激活（第 5 节、第 9 节步骤 4） | 出现首个新改进项替代旧实现的场景 | 字段已含，`rejected` 为终态 |
+| S2 selection 与 test 分离（第 3 节） | 判定池中未吸收样本的条数够支撑判定 | 单池加 self-referential 隔离 |
+| S2 池管理扩展（第 3 节） | issue-ingest 的 `processed` 记录扩展时 | `processed` 只记一个集合 |
+| 长期保护判据接入（第 7 节） | 回滚率与抽审发现率接入 `proposals/gates.yaml` 的判据 | 判据越界由人工处置 |
+| 可视化面板与 HTML 报告（第 6、8 节、第 9 节步骤 5） | 任务层跑通一轮以上 | 直接读 `proposals/` 与 timeline 的原始文件 |
+| 轮间调度载体（DSH Agent Teams）（第 2、6 节） | 出现真实的多 agent 并行场景 | 任务状态文件加手动或定时触发 |
+| 自演进面板插件 `dsh-plugins/self-evolve-panel/`（第 8 节） | 可视化进入实现阶段 | 用已有 `dsh-plugins/ascend-panel` 的先例扩展 |
+
+### 13.3 已否决
+
+已否决项集中在第 11 节「明确不做」，不在这里重复。它们不进蓝图表：触发条件出现也不做。
+
+## 14. 代码与文档入口
 
 正文用白话。改脚本、查数据文件时，用这张表换成代码与文件里的实际名字。
 
@@ -264,3 +351,49 @@ skill 把脚本、状态与协议装配成可重复执行的一轮，面板让�
 | 自指隔离样本 | `self_consistent` |
 | 轮间调度载体 | DSH Agent Teams（实验性），见 [pipeline.md](pipeline.md) §6.7 |
 | 四层视图 | 面板视图，数据源为 `proposals/`、`metrics/timeline.yaml` 与 `traces/` |
+
+关键文件与脚本：
+
+| 文件 | 做什么 |
+|---|---|
+| `scripts/log_skill_exec.py` | 写一条执行记录 |
+| `scripts/verify_exec_log.py` | 校验 seq 唯一与字段 |
+| `scripts/tail_exec_log.py` | 读执行记录：尾巴、`--summary` 聚合、`--json` |
+| `scripts/exec_log_path.py` | 把执行记录解析到主检出，写侧持 flock |
+| `scripts/metrics_snapshot.py` | 组装每期快照，把 exec-log 聚合写进 `metrics/timeline.d/<期号>.yaml` |
+| `scripts/build_timeline.py` | 重建 `metrics/timeline.yaml` |
+| `scripts/settle_s2_feedback.py` | S2 反馈结算到 `case.validation_record` |
+| `scripts/s2_calibration.py` | 生成 S2 校准集 `eval/s2/vllm-ascend.yaml` |
+| `scripts/s2_replay.py` | 用历史 issue 重跑诊断 |
+| `scripts/verify_proposals.py` | 校验 `proposals/ideas/` 的卡结构 |
+
+相邻文档的分工：
+
+| 文档 | 管什么 |
+|---|---|
+| [rsi-mechanism.md](rsi-mechanism.md) | 机制地图与对象层闭环，即 case 与 reference 的演化动作 |
+| [pipeline.md](pipeline.md) | 机制总览：三层模型、自演进执行流程、改进项 schema 与状态机 |
+| [execution.md](execution.md) | 单张改进项卡的执行契约：记录什么、follow-up 怎么验证、沉淀效果怎么度量 |
+| [orchestration.md](orchestration.md) | 单轮会话的边界、目标函数与停止条件、token 预算 |
+| [eval-arena.md](eval-arena.md) | 元层评测台：分层与池构建、门控协议 |
+| [evolution-user-guide.md](../guide/evolution-user-guide.md) | 使用者侧的指令、报告与干预语言 |
+| [design-principles.md](../spec/design-principles.md) | 原则一至原则十一的出处 |
+| [design-theory.md](../spec/design-theory.md) | 理论推导，含常数接受实测重校 |
+
+## 15. 外部参考
+
+本文与两个外部工作的关系。
+
+### 15.1 与 dsh-agent-teams 的关系（借鉴什么、不取什么）
+
+[NanmiCoder/dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams) 是多 agent 协作的运行时与活动面板。它自带成员树、任务图、实时状态、会话跟随与历史归档，可视化的是多 agent 协作的运行状态：哪个成员在跑哪个任务、依赖进度、模型标注。数据源是 `<workspace>/.agent-teams/<teamId>/`。
+
+它不含本设计的领域状态：改进项状态机、timeline 指标、token 账本与跨轮任务历史都在 `proposals/` 与 `metrics/` 里。因此它只覆盖会话直播视图中的 agent 执行部分，卡流转、指标与任务总览仍需自建。
+
+它属于执行载体层（[pipeline.md](pipeline.md) §6.7），不在第 8 节的四层内：它提供多 agent 运行底座，可以被 self-evolve skill 调用，但不是自演进工程本身。
+
+已装 0.1.14（本条按「已决定」记录：仓库内查不到该插件的安装记录，给不出可执行确认方式）。
+
+### 15.2 与 SkillOpt 的关系（借鉴什么、不取什么）
+
+S2 校准集的 selection 与 test 分离沿用 SkillOpt 的 held-out 语义：在 selection 上做闸门决策，在留出样本上做最终验收。SkillOpt 的机制对照与不取项见 [pipeline.md](pipeline.md) §13。

@@ -199,31 +199,31 @@ entries:
     scope: ["docs/plan/roadmap.md", "docs/mechanism/orchestration.md"]
     short: 治理缺口：会话层缺失
     meaning: 治理缺口：会话层缺失（无会话协议）
-    see: mechanism/orchestration.md 引言
+    see: mechanism/orchestration.md §1
   - token: G2
     family: 治理缺口
     scope: ["docs/plan/roadmap.md", "docs/mechanism/orchestration.md"]
     short: 治理缺口：无目标与停止
     meaning: 治理缺口：无目标函数与停止条件
-    see: mechanism/orchestration.md 引言
+    see: mechanism/orchestration.md §1
   - token: G4
     family: 治理缺口
     scope: ["docs/plan/roadmap.md", "docs/mechanism/orchestration.md"]
     short: 治理缺口：同轮冲突
     meaning: 治理缺口：同轮多卡冲突无编排
-    see: mechanism/orchestration.md 引言
+    see: mechanism/orchestration.md §1
   - token: G7
     family: 治理缺口
     scope: ["docs/plan/roadmap.md", "docs/mechanism/orchestration.md"]
     short: 治理缺口：无稳态降频
     meaning: 治理缺口：无稳态降频机制
-    see: mechanism/orchestration.md 引言
+    see: mechanism/orchestration.md §1
   - token: G8
     family: 治理缺口
     scope: ["docs/plan/roadmap.md", "docs/mechanism/orchestration.md"]
     short: 治理缺口：无暂停重启
     meaning: 治理缺口：无暂停/重启机制
-    see: mechanism/orchestration.md 引言
+    see: mechanism/orchestration.md §1
   - token: T1
     family: 触发信号
     scope: ["docs/plan/roadmap.md", "skills/evolve-check/SKILL.md"]
