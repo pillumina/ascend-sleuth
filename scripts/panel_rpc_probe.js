@@ -24,6 +24,7 @@
 
 const fs = require('fs')
 const http = require('node:http')
+const os = require('os')
 const path = require('path')
 
 const CHANNEL = '/ascend-sleuth-panels'
@@ -42,7 +43,7 @@ function parseArgs(argv) {
 function defaultLogPath() {
   const home = process.env.DSH_HOME
   if (home !== undefined && home !== '') {
-    // DSH_HOME 是 …/harness；Desktop 的日志在它的上一层 logs/
+    // DSH_HOME 是 …/harness；命令行与 Windows 桌面版的日志在它的上一层 logs/
     const candidate = path.join(path.dirname(home), 'logs', 'harness.log')
     if (fs.existsSync(candidate)) return candidate
   }
@@ -50,6 +51,16 @@ function defaultLogPath() {
   if (appData !== undefined && appData !== '') {
     const candidate = path.join(appData, 'dsh-desktop', 'logs', 'harness.log')
     if (fs.existsSync(candidate)) return candidate
+  }
+  // macOS 桌面版把日志写在 ~/Library/Logs/<产品名>/harness.log，不在 Application Support 下；
+  // 产品名随发行版变，所以按目录扫，取最近写过的那个。
+  const macLogs = path.join(os.homedir(), 'Library', 'Logs')
+  if (fs.existsSync(macLogs)) {
+    const found = fs.readdirSync(macLogs)
+      .filter((name) => fs.existsSync(path.join(macLogs, name, 'harness.log')))
+      .map((name) => path.join(macLogs, name, 'harness.log'))
+      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)
+    if (found.length > 0) return found[0]
   }
   return null
 }

@@ -71,13 +71,15 @@
 
 ## 加载方式
 
-本插件有两条装载路，按本机 DSH 有没有 `cordis_define` / `cordis_run` 选。面板源码一份，
-两条路读同一份。
+本插件有三条装载路，按本机 DSH 有哪些工具选。面板源码一份，三条路读同一份。
 
 | 路 | 怎么装 | 生效范围 |
 |---|---|---|
 | 热加载 | 用 `dsh-plugins/loader/` 装出 `panel_from_file`，再发两个路径 | 本会话，随进程消失 |
 | 常驻插件包 | `plugin_manager install_bundle(target: <仓库绝对路径>/dsh-plugins/dsh-sleuth-panels)` | 本 profile 每个会话，重启不丢 |
+| 插件页安装 | 在侧栏「插件」页粘贴 `<仓库绝对路径>/dsh-plugins/dsh-sleuth-panels` | 本 profile 每个会话，重启不丢 |
+
+常驻插件包与插件页安装装的是同一个包，落进 profile 的是同一处状态，差别只在谁去调插件管理器。
 
 ### 快速开始
 
@@ -95,20 +97,31 @@
 
 `panel_from_file` 读盘 → 定义 → 激活，**只发两个路径**。**不要自己把文件内容重新输出一遍**：两个文件合计 ~70KB，转写要几千 token、几分钟；给路径只要几十 token。`/skill:preload-panel` 是同一流程的 skill 封装（仅 DSH）。
 
-前置条件：工作区为 ascend-sleuth 仓库（面板读 `traces/`、`knowledge/`、`references/`、`metrics/`）。热加载那条另需 `cordis_define` / `cordis_run` 工具；常驻插件包那条另需 `plugin_manager` 工具，替换已装包时还要能重启 DSH Desktop。
+前置条件：工作区为 ascend-sleuth 仓库（面板读 `traces/`、`knowledge/`、`references/`、`metrics/`）。热加载那条另需 `cordis_define` / `cordis_run` 工具；常驻插件包那条另需 `plugin_manager` 工具。两条都缺时走插件页安装，那条不需要工具，只要用户能操作侧栏「插件」页；替换已装包时还要能重启 DSH Desktop。
 
 ### 手动加载
 
 1. 加载 loader（一个会话一次，host-only 免审批）：`cordis_define`（kind: new，idPrefix `ldr`，`code.host` ← `dsh-plugins/loader/panel-from-file.js` 全文）→ `cordis_run`
 2. `panel_from_file`（idPrefix `sleu`，`host` / `client` 指本目录两个文件）→ 返回 awaiting-approval 时在 UI 允许 → 出现「诊断」「指标」两个 tab
 
-### 常驻插件包（DSH 没有这两件工具）
+### 常驻插件包（有 `plugin_manager` 工具）
 
 ```
 plugin_manager install_bundle(target: <仓库绝对路径>/dsh-plugins/dsh-sleuth-panels)
 ```
 
 `lib/index.js` 与 `lib/client.js` 由 `node scripts/build_panel_bundle.js` 从本目录两个源文件生成，不要手改；改源码后重跑它，`--check` 核产物与源文件一致，`node scripts/check_panel_bundle.js` 做可加载性冒烟。安装结果里 `restart-required` 表示运行时仍持有先前那份模块，让用户重启 DSH Desktop 后 tab 才出现。
+
+### 插件页安装（两件工具都没有，DSH Desktop 默认如此）
+
+发行版把插件管理器的模型侧入口写成 `disabled: true` 时，装包由界面的插件页做，装出的是同一个常驻包：
+
+1. 侧栏「插件」页 → 添加入口 → 粘贴本仓库 `dsh-plugins/dsh-sleuth-panels` 的绝对路径。该入口也接受包名、Git 地址与压缩包。
+2. 装完看 profile 目录（`$DSH_PROFILE_DIR`）里的四处记录：`package.json` 的 `dependencies` 与 `dsh.profile.bundles` 各一条 `dsh-sleuth-panels`，`dsh.desktop.generationProjection` 与 `pnpm.overrides` 各一条指向 `.generations/live/dsh-sleuth-panels+<版本>+<哈希>`。界面不给模型可读的 application / warnings，以这四处记录为准。包进了 generation，仓库被移动或 worktree 被清掉都不影响已装的那份。
+3. 在仓库里跑 `node scripts/panel_rpc_probe.js`（退出码 2 = 路由没在服务或未授权），再刷新页面，对话视图的 tab 条里应出现「诊断」「指标」「自演进」三个 tab。
+4. 卸载也在这个页面做。
+
+桌面版没有 `dsh` 命令，界面提示的 `dsh plugin --profile web install` 与 `dsh --profile web --dump-config` 都用不上。profile 的 `dependencies` 里若有指向没有 `package.json` 的目录的 link 依赖，桌面版启动的 generations 迁移会 defer，插件操作报 `cannot resolve profile bundle "<名字>"`；处置是把 `package.json`、`pnpm-lock.yaml`、`node_modules` 里的死链一起删干净。
 
 **形态约束**：文件是 `cordis_define` 需要的函数体（`return { apply(ctx) {...} }`），原样读入/粘贴。不要改成 `export default` / `import`——动态插件代码不经过打包器，ESM 语法无法加载（此前因此失败过一次）。生成器嵌入的也是这份原文。
 
