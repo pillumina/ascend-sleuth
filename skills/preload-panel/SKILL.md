@@ -4,7 +4,8 @@ description: >
   在 DSH 会话中加载 ascend-sleuth 面板。先查本机 DSH 给模型哪些工具定装载路：有 cordis_define /
   cordis_run 就在会话内热加载（dsh-plugins/loader/panel-from-file.js，只发两个路径，不转写源码）；
   有 plugin_manager 工具就把 dsh-plugins/dsh-sleuth-panels/ 装成常驻插件包；三件工具都没有
-  （DSH Desktop 默认如此）就在侧栏「插件」页粘贴该包的绝对路径安装。面板：ascend-panel
+  （DSH Desktop 默认如此）就跑 scripts/panel_install.js，经已认证的 /api 通路调界面同一个插件
+  管理器装包，这条路不通再让用户在侧栏「插件」页粘贴该包的绝对路径。面板：ascend-panel
   →「诊断」「指标」两个 tab；ev-panel →「自演进」tab。仅 DSH 可用——依赖
   conversation.view 插槽；其他 agent（Claude Code / Codex / pi）无此机制。
 ---
@@ -15,16 +16,18 @@ DSH 会话中加载可视化面板（诊断 / 指标 / 自演进）。每个面�
 tab（list 插槽，按 order 排列，可共存）。
 
 面板源码只有一份（`dsh-plugins/<面板>/panel-host.js` 与 `panel-client.js`，动态插件
-方言的函数体）。装载有三条路，看本机 DSH 给模型哪些工具：
+方言的函数体）。装载有四条路，先看本机 DSH 给模型哪些工具：
 
 | 路 | 适用 | 怎么装 | 生效范围 |
 |---|---|---|---|
 | A 热加载 | DSH 有 `cordis_define` / `cordis_run` | 装 loader，再 `panel_from_file` 发两个路径 | 本会话 |
 | B 常驻插件包 | 没有这两件工具，但有 `plugin_manager` | `plugin_manager install_bundle` 装 `dsh-plugins/dsh-sleuth-panels/` | 本 profile 的每个会话 |
-| C 插件页安装 | 三件工具都没有（DSH Desktop 默认如此） | 在侧栏「插件」页粘贴该包的绝对路径 | 本 profile 的每个会话 |
+| D 脚本安装 | 三件工具都没有（DSH Desktop 默认如此） | 跑 `node scripts/panel_install.js`，经 `/api` 通路调插件管理器 | 本 profile 的每个会话 |
+| C 插件页安装 | D 路拿不到地址与 token，或 `/api` 没有认领端点 | 在侧栏「插件」页粘贴该包的绝对路径 | 本 profile 的每个会话 |
 
-三条路读的是同一份面板源码；B 与 C 装的是同一个包、写进 profile 的是同一处状态，差别只在
-谁去调插件管理器（模型的工具还是界面）。B、C 的产物是生成物，改面板源码后要重跑生成器。
+四条路读的是同一份面板源码；B、C、D 装的是同一个包、写进 profile 的是同一处状态，差别只在
+谁去调插件管理器：模型的工具、界面，或模型拿界面那条 HTTP 通路。B、C、D 的产物是生成物，
+改面板源码后要重跑生成器。
 
 ## 触发
 
@@ -46,8 +49,10 @@ tab（list 插槽，按 order 排列，可共存）。
   写着本包不注册工具、内置模型工具无法创建或更新动态定义。这时 A 路的 loader 装不上——
   不要反复试 `cordis_define`。
 - **没有这两件、但有 `plugin_manager`** → 走 B 路（常驻插件包）。
-- **三件工具都没有** → 走 C 路（插件页安装）。发行版把插件管理器的模型侧入口那行写成
-  `disabled: true`，界面之外没有别的入口；这时 B 路的工具不是「loader 还没装」，补装也补不出来。
+- **三件工具都没有** → 走 D 路（脚本安装）。发行版把插件管理器的模型侧入口那行写成
+  `disabled: true`，模型侧没有这个工具；这时 B 路的工具不是「loader 还没装」，补装也补不出来。
+  D 路打的是界面同一个服务的 HTTP 通路，成了就到此为止；拿不到地址与 token，或 `/api` 没有
+  认领端点时，落到 C 路（用户粘贴）。
 
 ## A 路：热加载（本机 DSH 有这两件工具）
 
@@ -112,10 +117,41 @@ tab（list 插槽，按 order 排列，可共存）。
 
 5. **卸载**：`plugin_manager remove_bundle(target: 'dsh-sleuth-panels')`。
 
-## C 路：插件页安装（本机 DSH 三件工具都没有）
+## D 路：脚本安装（本机 DSH 三件工具都没有）
 
 DSH Desktop 把插件管理器只接到界面上：侧栏「插件」页能安装、启用、禁用与卸载 profile 的包，
-模型侧没有对应工具。这条路装出的是同一个常驻包，落进同一处 profile 状态。
+模型侧没有对应工具。界面调的是 `pluginManager` 这个 Remote 服务，它和面板走同一条 HTTP 通路
+（Connection 在 `/api` 上把它的端点交给已认证的调用方），所以模型可以自己装，不必让用户粘贴。
+
+1. **先跑预检**：`node scripts/check_panel_bundle.js`（与 B 路第 1 步同一份检查：产物可加载性、
+   三处名字对齐、五条外部契约）。桌面版的原生包在 `app.asar` 内，这条命令的 DSH 探针找不到
+   安装处，只按本地桩校验工具定义并在首行报「强度较弱」。这一项退化是预期的。
+
+2. **装**：`node scripts/panel_install.js`——默认装
+   `<仓库绝对路径>/dsh-plugins/dsh-sleuth-panels/` 并使能。它先
+   `GET <base>/?token=<token>` 换会话 cookie，再 `POST <base>/api/pluginManager/<方法>`，
+   信封是 `{type:'client-request', rpcId, method:'pluginManager/<方法>', payload:{args:{…}}}`；
+   先 `inspect`（spec 传字符串），已装就调 `setBundleEnabled(name, true)`，未装就调
+   `installBundle(spec, {enabled:true})`。`--check` 只查状态，`--remove` 卸载，
+   `--spec <spec>` 换目标（包名、Git 地址、tarball 或本地绝对路径）。地址与 token 的取法同
+   `panel_rpc_probe.js`：先扫日志，取不到再传 `--url` / `--token` / `--log`。
+   退出码 0 = 装好并使能（`--check` / `--remove` 成功也是 0）｜2 = 拿不到地址与 token，或
+   `/api` 没有认领端点、未授权｜1 = 其他失败。
+
+3. **读安装结果**：`installBundle` 阻塞到操作结束才返回，`application` 与 `warnings` 与 B 路
+   第 3 步同一套（`restart-required` 表示要重启 DSH Desktop 才加载新版本）。不需要读 profile
+   的文件来替代这两个字段。
+
+4. **验证**：先跑 `node scripts/panel_rpc_probe.js`（退出码 2 = 拿不到地址，或路由没在服务／未授权，
+   "装了还没重启"是前者）；再请用户刷新页面，浏览器代码在页面启动时装载，对话视图的 tab 条里
+   应出现诊断 / 指标 / 自演进三个 tab。B 路第 4 步那半条 `cordis_inspect_query` 查法在桌面版
+   用不了，这条路上也没有这个工具。
+
+5. **卸载**：`node scripts/panel_install.js --remove`。
+
+## C 路：插件页安装（D 路拿不到地址，或 `/api` 没有认领端点时）
+
+同一个包、同一个服务，只是换成用户在侧栏「插件」页里贴路径。
 
 1. **先跑预检**：`node scripts/check_panel_bundle.js`（与 B 路第 1 步同一份检查：产物可加载性、
    三处名字对齐、五条外部契约）。桌面版的原生包在 `app.asar` 内，这条命令的 DSH 探针找不到
@@ -183,7 +219,7 @@ DSH Desktop 把插件管理器只接到界面上：侧栏「插件」页能安�
   `code.host` / `code.client` 原样粘贴。文件是函数体形态
   （`return { apply(ctx) {...} }`），别改形态——动态插件不经过打包器，
   `export default` / `import` 等 ESM 语法无法加载。
-- **A 路整条不可用**（没有 `cordis_define`）→ 按第 0 步走 B 路或 C 路。
+- **A 路整条不可用**（没有 `cordis_define`）→ 按第 0 步走 B 路、D 路或 C 路。
 
 ## 交互原则
 
@@ -191,8 +227,9 @@ DSH Desktop 把插件管理器只接到界面上：侧栏「插件」页能安�
   （重复装载会撞名但不报错，工具照常可用）；面板插件是 per-session 的，新 session 认领不了
   旧 session 的插件，会新建一个同 tab id 的插件覆盖显示，旧插件仍在跑。要清理就重启
   DSH，或在各 session 内对自己的插件 `cordis_stop`。
-- **B 路 / C 路跨 session**：插件装在 profile 层，每个会话共用一份，重启不丢；换版本用同一条
-  `install_bundle` 重装（C 路在插件页里换），重装后按安装结果决定是否要让用户重启。
+- **B / C / D 路跨 session**：插件装在 profile 层，每个会话共用一份，重启不丢；换版本重装一次
+  （B 路同一条 `install_bundle`，D 路同一条 `panel_install.js`，C 路在插件页里换），
+  重装后按安装结果决定是否要让用户重启。
 - 面板是只读可视化 + 指令生成器：展示状态、生成续接/沉淀指令供用户触发，面板自身不做
   决策与写入（唯一例外：诊断面板的沉淀状态标记由用户在面板确认后更新）。自演进看板纯
   只读：展示卡状态与演进信号，产卡/验证走 agent 与攒批。
@@ -200,8 +237,9 @@ DSH Desktop 把插件管理器只接到界面上：侧栏「插件」页能安�
 ## 依赖
 
 - DSH 会话。A 路另需 `cordis_define` / `cordis_run` / `cordis_inspect_self` 工具；
-  B 路另需 `plugin_manager` 工具；C 路另需用户能操作侧栏「插件」页，以及刷新页面的能力。
-  三条路都可能需要在装完后重启 DSH Desktop。
+  B 路另需 `plugin_manager` 工具；D 路另需本机跑着一个界面（日志里有 `dsh web:` 行，或能传
+  `--url` / `--token`）；C 路另需用户能操作侧栏「插件」页，以及刷新页面的能力。
+  四条路都可能需要在装完后重启 DSH Desktop。
 - 工作区为 ascend-sleuth 仓库（Host 从 `session.header.cwd` 解析数据目录）。
 - Host 服务：`fs` / `sessions` / `shell` / `connection`。
 - **ev-panel（自演进）**：Python 3 + PyYAML，两个脚本 `scripts/ev_board_data.py`
@@ -220,9 +258,9 @@ DSH Desktop 把插件管理器只接到界面上：侧栏「插件」页能安�
 ## 说明
 
 - 仓库内 `dsh-plugins/<面板>/` 是代码的权威版本（含各面板 README）；
-  `dsh-plugins/loader/` 是 A 路的加载入口；`dsh-plugins/dsh-sleuth-panels/` 是 B 路与 C 路的
+  `dsh-plugins/loader/` 是 A 路的加载入口；`dsh-plugins/dsh-sleuth-panels/` 是 B、C、D 路的
   插件包（`lib/` 为生成物）。跨面板的颜色、字号、复用窗口与文案约定见
   `dsh-plugins/README.md`。
-- A 路的动态定义只存在于当前 DSH 进程，重启后需重新加载；B 路与 C 路装在 profile 层，
+- A 路的动态定义只存在于当前 DSH 进程，重启后需重新加载；B、C、D 路装在 profile 层，
   重启后仍在。
 - 改面板代码走仓库，装载走本 skill；两份产物由生成器保持一致。

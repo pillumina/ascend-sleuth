@@ -25,18 +25,20 @@
 窗口数值只写在 host（机器落点），client 的说明与本节都以它为准；数值漂了由机械检查拦下。
 复用不等于实时：界面上的时间戳照旧是脚本生成时刻，不会因为复用被刷成"现在"。
 
-## 三条装载路（面板源码一份）
+## 四条装载路（面板源码一份）
 
-面板源码是动态插件方言的函数体，三条路读同一份，按本机 DSH 给模型哪些工具选：
+面板源码是动态插件方言的函数体，四条路读同一份，按本机 DSH 给模型哪些工具选：
 
 | 路 | 适用 | 怎么装 | 生效范围 |
 |---|---|---|---|
 | 热加载 | DSH 有 `cordis_define` / `cordis_run` | 用 `dsh-plugins/loader/` 装出 `panel_from_file`，再发两个路径 | 本会话，随进程消失 |
 | 常驻插件包 | DSH 没有这两件工具（新版把模型侧的动态定义入口删了），但有 `plugin_manager` | `plugin_manager install_bundle` 装 `dsh-plugins/dsh-sleuth-panels/` | 本 profile 每个会话，重启不丢 |
-| 插件页安装 | 三件工具都没有（DSH Desktop 默认如此） | 在侧栏「插件」页粘贴 `dsh-plugins/dsh-sleuth-panels/` 的绝对路径 | 同上；装的是同一个包 |
+| 脚本安装 | 三件工具都没有（DSH Desktop 默认如此） | `node scripts/panel_install.js` 经 `/api` 通路调同一个插件管理器 | 同上；装的是同一个包 |
+| 插件页安装 | 脚本安装拿不到地址与 token，或 `/api` 没有认领端点 | 在侧栏「插件」页粘贴 `dsh-plugins/dsh-sleuth-panels/` 的绝对路径 | 同上 |
 
-第三条路换的是谁来调插件管理器：桌面版把它只接到界面上，模型侧没有这个工具。三条路装完
-落在 profile 的状态相同（`dependencies` 与 `dsh.profile.bundles` 各一条、各一个 generation）。
+后两条路换的是谁来调插件管理器：桌面版把它只接到界面上，模型侧没有这个工具，界面与脚本打的是
+同一个 Remote 服务。四条路装完落在 profile 的状态相同（`dependencies` 与 `dsh.profile.bundles`
+各一条、各一个 generation）。
 
 常驻包的两个产物由 `node scripts/build_panel_bundle.js` 把面板源码原文嵌进适配层生成，
 不要手改；源文件改了要重跑生成器。适配层补的是动态沙箱当年自带、常驻包没有的五样：
@@ -76,6 +78,11 @@
 - `node scripts/panel_rpc_probe.js` —— 不经 GUI，按页面的线协议打一条面板 RPC，直接看 host 半挂没挂、
   会话工作区解析得出、数据取到几条。退出码 2 = 拿不到地址，或路由没在服务**或未授权**（装了还没重启时就是前者）。
   它证明不了 React 那层的渲染，那一层只能看页面。
+- `node scripts/panel_install.js` —— 装、查、卸常驻包，走的是界面那条 HTTP 通路：先
+  `GET <base>/?token=<token>` 换会话 cookie，再 `POST <base>/api/pluginManager/<方法>`
+  （信封 `{type:'client-request', rpcId, method, payload:{args:{…}}}`）。默认装并使能，
+  `--check` 查状态，`--remove` 卸载，`--spec` 换目标，`--selftest` 跑 8 个桩用例；
+  退出码与 `panel_rpc_probe.js` 相同。
 
 ## 面板文案的定制条款
 

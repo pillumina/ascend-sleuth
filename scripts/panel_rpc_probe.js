@@ -23,10 +23,8 @@
 
 'use strict'
 
-const fs = require('fs')
 const http = require('node:http')
-const os = require('os')
-const path = require('path')
+const { resolveTarget, sessionCookie, rpcCall } = require('./lib/panel_endpoint')
 
 const CHANNEL = '/ascend-sleuth-panels'
 const DEFAULT_ENDPOINT = 'ascend-traces-list'
@@ -39,60 +37,6 @@ function parseArgs(argv) {
     if (flag === '--endpoint') { args.endpoint = value; i += 1 } else if (flag === '--payload') { args.payload = value; i += 1 } else if (flag === '--url') { args.url = value; i += 1 } else if (flag === '--token') { args.token = value; i += 1 } else if (flag === '--log') { args.log = value; i += 1 } else if (flag === '--quiet') { args.quiet = true } else if (flag === '--help' || flag === '-h') { args.help = true }
   }
   return args
-}
-
-function defaultLogPath() {
-  const home = process.env.DSH_HOME
-  if (home !== undefined && home !== '') {
-    // DSH_HOME 是 …/harness；命令行与 Windows 桌面版的日志在它的上一层 logs/
-    const candidate = path.join(path.dirname(home), 'logs', 'harness.log')
-    if (fs.existsSync(candidate)) return candidate
-  }
-  const appData = process.env.APPDATA
-  if (appData !== undefined && appData !== '') {
-    const candidate = path.join(appData, 'dsh-desktop', 'logs', 'harness.log')
-    if (fs.existsSync(candidate)) return candidate
-  }
-  // macOS 桌面版把日志写在 ~/Library/Logs/<产品名>/harness.log，不在 Application Support 下；
-  // 产品名随发行版变。~/Library/Logs 下可能有别的产品也写同名文件，所以先试目录名带 dsh 的，
-  // 再试真的含 `dsh web:` 行的，最后才按 mtime 兜底取最近写过的那个。
-  const macLogs = path.join(os.homedir(), 'Library', 'Logs')
-  if (fs.existsSync(macLogs)) {
-    const candidates = fs.readdirSync(macLogs)
-      .filter((name) => fs.existsSync(path.join(macLogs, name, 'harness.log')))
-      .map((name) => path.join(macLogs, name, 'harness.log'))
-      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)
-    const dshNamed = candidates.filter((one) => /dsh/i.test(path.dirname(one)))
-    const hasTarget = (one) => readLogTarget(one) !== null
-    const picked = dshNamed.find(hasTarget) || candidates.find(hasTarget) || dshNamed[0] || candidates[0]
-    if (picked !== undefined) return picked
-  }
-  return null
-}
-
-// 从 harness.log 里取最后一条 `dsh web: http://host:port/?token=…`
-function readLogTarget(logPath) {
-  if (logPath === null) return null
-  let text = ''
-  try {
-    text = fs.readFileSync(logPath, 'utf8')
-  } catch (e) {
-    return null
-  }
-  const matches = [...text.matchAll(/dsh web:\s*(https?:\/\/[^\s?]+)\/?\?token=([^\s]+)/g)]
-  if (matches.length === 0) return null
-  const last = matches[matches.length - 1]
-  return { base: last[1].replace(/\/$/, ''), token: last[2] }
-}
-
-function resolveTarget(args) {
-  if (args.url !== null && args.token !== null) {
-    return { base: args.url.replace(/\/$/, ''), token: args.token, source: '命令行' }
-  }
-  const logPath = args.log !== null ? args.log : defaultLogPath()
-  const fromLog = readLogTarget(logPath)
-  if (fromLog === null) return null
-  return Object.assign(fromLog, { source: logPath })
 }
 
 async function runProbe(args, io) {
@@ -115,10 +59,9 @@ async function runProbe(args, io) {
   // ① 换一次浏览器会话 cookie（页面也是这么进门的）
   let cookie = null
   try {
-    const indexResponse = await fetch(target.base + '/?token=' + encodeURIComponent(target.token), { redirect: 'manual' })
-    const setCookie = indexResponse.headers.getSetCookie === undefined ? [] : indexResponse.headers.getSetCookie()
-    if (setCookie.length > 0) cookie = setCookie.map((one) => one.split(';')[0]).join('; ')
-    say('  索引页 HTTP ' + indexResponse.status + (cookie === null ? '（未拿到 cookie）' : '（已拿到会话 cookie）') + '\n')
+    const session = await sessionCookie(target.base, target.token)
+    cookie = session.cookie
+    say('  索引页 HTTP ' + session.status + (cookie === null ? '（未拿到 cookie）' : '（已拿到会话 cookie）') + '\n')
   } catch (e) {
     warn('拿索引页失败：' + String((e && e.message) || e) + '\n')
     return 1
@@ -134,16 +77,10 @@ async function runProbe(args, io) {
     warn('--payload 不是合法 JSON：' + String((e && e.message) || e) + '\n')
     return 1
   }
-  const rpcId = 'probe-' + Date.now()
-  const message = { type: 'client-request', rpcId, method: args.endpoint, payload }
 
   let response
   try {
-    response = await fetch(target.base + CHANNEL + '/' + args.endpoint, {
-      method: 'POST',
-      headers: Object.assign({ 'content-type': 'application/json' }, cookie === null ? {} : { cookie }),
-      body: JSON.stringify(message),
-    })
+    response = await rpcCall(CHANNEL, args.endpoint, payload, target.base, cookie)
   } catch (e) {
     warn('RPC 请求失败：' + String((e && e.message) || e) + '\n')
     return 1
@@ -158,24 +95,18 @@ async function runProbe(args, io) {
     warn('未授权（HTTP ' + response.status + '）：token 过期或 cookie 没换成\n')
     return 2
   }
-  if (!response.ok) {
-    warn('HTTP ' + response.status + '：' + (await response.text()).slice(0, 200) + '\n')
+  if (response.status !== 200) {
+    warn('HTTP ' + response.status + '：' + response.text.slice(0, 200) + '\n')
     return 1
   }
 
-  let envelope
-  try {
-    envelope = await response.json()
-  } catch (e) {
-    warn('应答不是 JSON\n')
-    return 1
-  }
+  const envelope = response.envelope
   if (envelope === null || typeof envelope !== 'object' || envelope.type !== 'server-response' || typeof envelope.rpcId !== 'string') {
     warn('信封不合法（要 { type: "server-response", rpcId, result }）：' + JSON.stringify(envelope).slice(0, 200) + '\n')
     return 1
   }
-  if (envelope.rpcId !== rpcId) {
-    warn('rpcId 不匹配：发出 ' + rpcId + '，收到 ' + envelope.rpcId + '\n')
+  if (envelope.rpcId !== response.rpcId) {
+    warn('rpcId 不匹配：发出 ' + response.rpcId + '，收到 ' + envelope.rpcId + '\n')
     return 1
   }
   const result = envelope.result
