@@ -608,9 +608,9 @@ async function main() {
       }
     }
     // 收尾与下面 tmpBase 那处用同一种写法：交给 Python 的 shutil.rmtree，不用 fs.rmSync
-    // （理由见那里——Windows 夹具的 junction 会让 fs.rmSync 顺着重解析点删进检出）。
-    // 这一个夹具（make_degraded_evolve_root.py）只做拷贝、当前不含链接，改它不是为了修错，
-    // 而是让临时根的收尾只留一种：将来谁给退化夹具加了链接，不必再想起来换掉 fs.rmSync。
+    // （理由见下面那处——临时根里一旦有指回检出的目录链接，fs.rmSync 就会删进检出）。
+    // 这一个夹具（make_degraded_evolve_root.py）只做拷贝、当前不含链接，所以这处换法不改它的
+    // 行为；换它是让两处临时根的收尾只留一种，将来谁给退化夹具加了链接，不必再想一次。
     execFileSync(PY.cmd, [...PY.prefix, '-c',
       'import shutil, sys; shutil.rmtree(sys.argv[1], ignore_errors=True)',
       fixtureRoot], { env: PY_ENV, stdio: 'pipe' })
@@ -985,9 +985,11 @@ print(json.dumps({
       b.doc ? 'exit=' + b.exit + ' verdict=' + b.doc.check_verdict : 'exit=' + b.exit)
     expect('  且说清是"配置读不动"而不是"没有越界"',
       !!b.doc && (b.doc.broken || []).some(x => /gates\.yaml/.test(x)), b.doc ? JSON.stringify(b.doc.broken).slice(0, 140) : '')
-    // Windows 夹具（make_broken_metrics_root.py）用 junction 把 knowledge/scripts 指回检出。
-    // **不能用 fs.rmSync**：实测它会顺着 junction 删进目标，把检出的 knowledge/ 与 scripts/
-    // 一并清掉（数据丢失）。交给 Python 的 shutil.rmtree：它识别目录重解析点，只摘链接不进目标。
+    // **不能用 fs.rmSync**：Windows 夹具（make_broken_metrics_root.py，本例就是它）用 junction 把
+    // knowledge/、scripts/ 指回检出，旧版收尾的 fs.rmSync(tmpBase) 会顺着它删进目标——内网 Win11
+    // 上检出的这两个目录被清空，作者已在隔离的临时仓库复现。改用 Python 的 shutil.rmtree：Windows
+    // 上它把 junction 当重解析点，只删链接本身、不进目标（本机 macOS 复现不出上面那次清空，因为
+    // POSIX 夹具走的是 symlink，是另一条路径；这条按 Windows 现场处理）。
     execFileSync(PY.cmd, [...PY.prefix, '-c',
       'import shutil, sys; shutil.rmtree(sys.argv[1], ignore_errors=True)',
       tmpBase], { env: PY_ENV, stdio: 'pipe' })

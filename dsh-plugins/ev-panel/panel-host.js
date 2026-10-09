@@ -58,8 +58,9 @@ return {
           lastError = candidate + ' 执行失败：' + String(e && e.message || e).slice(0, 300)
         }
       }
-      // 失败**不进缓存**：解释器或执行环境修好后，下一次调用就自愈，不必重载面板
-      // （实测：工作区文件权限修好后面板仍报旧错，就因为这里把 null 缓存到了 host 重载为止）
+      // 失败**不进缓存**：解释器或执行环境修好后，下一次调用就自愈，不必重载面板。
+      // 内网 Win11 现场：工作区文件权限修好后，面板仍一直报同一句错，直到重载插件——
+      // 旧写法的 `pythonCmd = null` 把这次失败当成了结论（`null !== undefined`）。
       resolvePython.lastError = lastError
       return null
     }

@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:a14a36183248)
-//   dsh-plugins/ev-panel/panel-host.js  (sha256:80450877cd45)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:721c51460b32)
+//   dsh-plugins/ev-panel/panel-host.js  (sha256:e45522d60c58)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
 // 面板源码是动态插件方言（文件是函数体，靠沙箱提供的 harness 通信）；这里原文嵌入常驻
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:a14a36183248) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:721c51460b32) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -978,8 +978,9 @@ return {
           lastError = candidate + ' 执行失败：' + String(e && e.message || e).slice(0, 300)
         }
       }
-      // 失败**不进缓存**：解释器或执行环境修好后，下一次调用就自愈，不必重载面板
-      // （实测：工作区文件权限修好后面板仍报旧错，就因为这里把 null 缓存到了 host 重载为止）
+      // 失败**不进缓存**：解释器或执行环境修好后，下一次调用就自愈，不必重载面板。
+      // 内网 Win11 现场：工作区文件权限修好后，面板仍一直报同一句错，直到重载插件——
+      // 旧写法的 `pythonCmd = null` 把这次失败当成了结论（`null !== undefined`）。
       resolvePython.lastError = lastError
       return null
     }
@@ -1742,7 +1743,7 @@ return {
     id: 'ev-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ev-panel/panel-host.js (sha256:80450877cd45) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-host.js (sha256:e45522d60c58) 原文开始 ----
 // ev-panel host —— 自演进看板数据服务（EV 卡 / 容量 / 归因聚合 / timeline）
 // 用法：cordis_define kind:new → code.host 用本文件全文；code.client 用 panel-client.js 全文。
 // host 侧通过 shell 跑 scripts/ev_board_data.py 汇总 JSON（确定性逻辑在脚本，遵循原则二）。
@@ -1803,8 +1804,9 @@ return {
           lastError = candidate + ' 执行失败：' + String(e && e.message || e).slice(0, 300)
         }
       }
-      // 失败**不进缓存**：解释器或执行环境修好后，下一次调用就自愈，不必重载面板
-      // （实测：工作区文件权限修好后面板仍报旧错，就因为这里把 null 缓存到了 host 重载为止）
+      // 失败**不进缓存**：解释器或执行环境修好后，下一次调用就自愈，不必重载面板。
+      // 内网 Win11 现场：工作区文件权限修好后，面板仍一直报同一句错，直到重载插件——
+      // 旧写法的 `pythonCmd = null` 把这次失败当成了结论（`null !== undefined`）。
       resolvePython.lastError = lastError
       return null
     }
