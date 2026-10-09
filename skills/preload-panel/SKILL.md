@@ -78,7 +78,7 @@ tab（list 插槽，按 order 排列，可共存）。
 
    它读盘 → `dynamicCordisRunner.define()` → `run()`，源码原样进不可变 Package。
    返回 awaiting-approval 时告知用户在 UI 允许（Client 半需授权）；授权后 tab 出现。
-   面板两个文件合计约 70 KB，发路径即可，别把全文重新输出一遍。
+   面板两个文件（`panel-host.js` 与 `panel-client.js`）各在 80 KB 到 260 KB 之间（`ev-panel` 约 82 KB、`ascend-panel` 约 259 KB），发路径即可，别把全文重新输出一遍。
 
 3. **验证**：确认插件 running 且无 waitingFor；tab 出现在对话视图（按上表 id 核对）。
    自演进看板首次打开会调 `scripts/ev_board_data.py` 汇总数据，确认数据区渲染。
