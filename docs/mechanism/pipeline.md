@@ -87,7 +87,7 @@ self-referential 隔离在任何规模都执行。结算 case 的 `validation_re
 
 命中任一条记 `self_consistent`，即非独立样本，不虚增外部验证权重。后一条是实测加上的：cross 样本的第一批重放显示，同签名但被 case 正文引用过的 issue，其结论就是撰写该 case 时读来的，记 consistent 等于一份证据数两次。
 
-token 影响已核实：`eval/s2/*.yaml` 随池增长（19 条约 83KB），但从不会整文件喂给 LLM。`s2_replay --prepare` 逐条生成 `.s2-replay/<issue>.md`（单条约 2KB），诊断 LLM 只读单条 md；`s2_calibration` 增量只提取 issue 号集合去重。文件大只影响脚本处理（Python 解析，无 token 成本）。
+token 影响已核实：`eval/s2/` 下两个校准集文件随样本累积变大（主集 `vllm-ascend.yaml` 19 条约 83 KB，cross 集 `vllm-ascend-cross.yaml` 4 条约 48 KB），但从不会整文件喂给 LLM。`s2_replay --prepare` 逐条生成 `.s2-replay/<issue>.md`（单条约 2 KB），诊断 LLM 只读单条 md；`s2_calibration` 增量只提取 issue 号集合去重。文件大只影响脚本处理（Python 解析，无 token 成本）。
 
 「先评测后沉淀」的纪律（[run.md](run.md) 第 3 节）持续执行：新的 closed issue 先过 S2 评测，再允许沉淀为 case。
 
