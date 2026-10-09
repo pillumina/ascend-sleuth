@@ -607,7 +607,13 @@ async function main() {
         expect(fc.label + ' · 报出结论不成立', /结论不成立/.test(t), t.slice(0, 220))
       }
     }
-    fs.rmSync(fixtureRoot, { recursive: true, force: true })
+    // 收尾与下面 tmpBase 那处用同一种写法：交给 Python 的 shutil.rmtree，不用 fs.rmSync
+    // （理由见那里——Windows 夹具的 junction 会让 fs.rmSync 顺着重解析点删进检出）。
+    // 这一个夹具（make_degraded_evolve_root.py）只做拷贝、当前不含链接，改它不是为了修错，
+    // 而是让临时根的收尾只留一种：将来谁给退化夹具加了链接，不必再想起来换掉 fs.rmSync。
+    execFileSync(PY.cmd, [...PY.prefix, '-c',
+      'import shutil, sys; shutil.rmtree(sys.argv[1], ignore_errors=True)',
+      fixtureRoot], { env: PY_ENV, stdio: 'pipe' })
   }
 
   // ================= 展开单卡 =================
@@ -979,7 +985,12 @@ print(json.dumps({
       b.doc ? 'exit=' + b.exit + ' verdict=' + b.doc.check_verdict : 'exit=' + b.exit)
     expect('  且说清是"配置读不动"而不是"没有越界"',
       !!b.doc && (b.doc.broken || []).some(x => /gates\.yaml/.test(x)), b.doc ? JSON.stringify(b.doc.broken).slice(0, 140) : '')
-    fs.rmSync(tmpBase, { recursive: true, force: true })
+    // Windows 夹具（make_broken_metrics_root.py）用 junction 把 knowledge/scripts 指回检出。
+    // **不能用 fs.rmSync**：实测它会顺着 junction 删进目标，把检出的 knowledge/ 与 scripts/
+    // 一并清掉（数据丢失）。交给 Python 的 shutil.rmtree：它识别目录重解析点，只摘链接不进目标。
+    execFileSync(PY.cmd, [...PY.prefix, '-c',
+      'import shutil, sys; shutil.rmtree(sys.argv[1], ignore_errors=True)',
+      tmpBase], { env: PY_ENV, stdio: 'pipe' })
   }
   expect('真实数据下 verdict=violations 且判据全部评过（3/3）',
     verdict.check_verdict === 'violations' && verdict.coverage.gates_evaluated === verdict.coverage.gates_total,

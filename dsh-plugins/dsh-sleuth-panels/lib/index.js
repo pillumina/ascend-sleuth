@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:1e705b9bdfe2)
-//   dsh-plugins/ev-panel/panel-host.js  (sha256:c086b93beb27)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:a14a36183248)
+//   dsh-plugins/ev-panel/panel-host.js  (sha256:80450877cd45)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
 // 面板源码是动态插件方言（文件是函数体，靠沙箱提供的 harness 通信）；这里原文嵌入常驻
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:1e705b9bdfe2) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:a14a36183248) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -945,16 +945,17 @@ return {
     // `python3` 常不存在——python.org 安装器装的是 `python.exe` + `py.exe` 启动器；
     // 若 PATH 里还有 Store 的「应用执行别名」占位程序，执行 `python3` 不报"找不到命令"
     // 而是弹 Microsoft Store。因此按候选逐个探测，取第一个能打印 Python 3.x 的
-    // （退出码 0 + 版本号双重判据，占位程序两者都过不了）；结果缓存，一次加载只探一轮。
+    // （退出码 0 + 版本号双重判据，占位程序两者都过不了）；成功缓存、失败不缓存（环境修好后自愈）。
     // 注意：dynamic Cordis 插件不能 import，此函数与 ev-panel 的同名函数是刻意重复的副本。
     // 探活**也要带沙箱策略**（2026-09-22 实测）：不带策略时 DSH 回落到 harness 进程自身的
     // cwd 当写权限根；服务器从 `C:\Program Files (x86)\Cntlm` 这类调用者改不动 DACL 的目录
     // 启动时，Windows 的 ACL 受限令牌 runner 会 `SetNamedSecurityInfoW failed (Win32 5)` →
-    // 三条探活全挂。而探活把每次异常都 catch 掉换下一个候选，用户看到的是
-    // 「未找到可用的 Python 3 解释器」——真因被吞成误导信息。
+    // 三条探活全挂。探活把异常原文记进 resolvePython.lastError，调用点把它带回面板，
+    // 而不是只报一句误导的「未找到可用的 Python 3 解释器」。
     let pythonCmd
     async function resolvePython(cwd) {
       if (pythonCmd !== undefined) return pythonCmd
+      let lastError = ''
       for (const candidate of ['python3', 'python', 'py -3']) {
         try {
           const spec = shell.resolve({
@@ -966,13 +967,21 @@ return {
           const r = await shell.run(spec)
           const out = [r && r.stdout && r.stdout.text, r && r.stderr && r.stderr.text]
             .filter(t => typeof t === 'string').join('\n')
-          if (r && r.exitCode === 0 && /Python 3\./.test(out)) { pythonCmd = candidate; return pythonCmd }
+          if (r && r.exitCode === 0 && /Python 3\./.test(out)) {
+            pythonCmd = candidate
+            resolvePython.lastError = ''
+            return pythonCmd
+          }
+          lastError = candidate + ' 退出码 ' + String(r && r.exitCode) + '：' + (out.trim() || '（无输出）').slice(0, 200)
         } catch (e) {
-          // 候选不可执行 → 试下一个
+          // 候选不可执行 → 试下一个；异常原文要留下来，否则报出来只有那句误导的「没找到 Python」
+          lastError = candidate + ' 执行失败：' + String(e && e.message || e).slice(0, 300)
         }
       }
-      pythonCmd = null
-      return pythonCmd
+      // 失败**不进缓存**：解释器或执行环境修好后，下一次调用就自愈，不必重载面板
+      // （实测：工作区文件权限修好后面板仍报旧错，就因为这里把 null 缓存到了 host 重载为止）
+      resolvePython.lastError = lastError
+      return null
     }
 
     // 指标闭环体检（verdict）：判据在 metrics/gates.yaml，体检在 scripts/metrics_health.py。
@@ -1058,7 +1067,8 @@ return {
       const py = await resolvePython(cwd)
       if (!py) {
         return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）——'
-          + '体检跑的是 scripts/metrics_health.py，装好 Python 3 并确保在 PATH 里' }
+          + '体检跑的是 scripts/metrics_health.py，装好 Python 3 并确保在 PATH 里'
+          + (resolvePython.lastError ? '\n探测失败原因：' + resolvePython.lastError : '') }
       }
       let r = null
       try {
@@ -1104,7 +1114,8 @@ return {
       const py = await resolvePython(cwd)
       if (!py) {
         return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）——'
-          + '实时计算跑的是 scripts/trace_metrics.py，装好 Python 3 并确保在 PATH 里' }
+          + '实时计算跑的是 scripts/trace_metrics.py，装好 Python 3 并确保在 PATH 里'
+          + (resolvePython.lastError ? '\n探测失败原因：' + resolvePython.lastError : '') }
       }
       try {
         const spec = shell.resolve({
@@ -1149,7 +1160,8 @@ return {
       const py = await resolvePython(cwd)
       if (!py) {
         return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）。'
-          + '手工复现：' + manual }
+          + '手工复现：' + manual
+          + (resolvePython.lastError ? '\n探测失败原因：' + resolvePython.lastError : '') }
       }
       let r = null
       try {
@@ -1730,7 +1742,7 @@ return {
     id: 'ev-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ev-panel/panel-host.js (sha256:c086b93beb27) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-host.js (sha256:80450877cd45) 原文开始 ----
 // ev-panel host —— 自演进看板数据服务（EV 卡 / 容量 / 归因聚合 / timeline）
 // 用法：cordis_define kind:new → code.host 用本文件全文；code.client 用 panel-client.js 全文。
 // host 侧通过 shell 跑 scripts/ev_board_data.py 汇总 JSON（确定性逻辑在脚本，遵循原则二）。
@@ -1758,16 +1770,17 @@ return {
     // `python3` 常不存在——python.org 安装器装的是 `python.exe` + `py.exe` 启动器；
     // 若 PATH 里还有 Store 的「应用执行别名」占位程序，执行 `python3` 不报"找不到命令"
     // 而是弹 Microsoft Store。因此按候选逐个探测，取第一个能打印 Python 3.x 的
-    // （退出码 0 + 版本号双重判据，占位程序两者都过不了）；结果缓存，一次加载只探一轮。
+    // （退出码 0 + 版本号双重判据，占位程序两者都过不了）；成功缓存、失败不缓存（环境修好后自愈）。
     // 注意：dynamic Cordis 插件不能 import，此函数与 ascend-panel 的同名函数是刻意重复的副本。
     // 探活**也要带沙箱策略**（2026-09-22 实测）：不带策略时 DSH 回落到 harness 进程自身的
     // cwd 当写权限根；服务器从 `C:\Program Files (x86)\Cntlm` 这类调用者改不动 DACL 的目录
     // 启动时，Windows 的 ACL 受限令牌 runner 会 `SetNamedSecurityInfoW failed (Win32 5)` →
-    // 三条探活全挂。而探活把每次异常都 catch 掉换下一个候选，用户看到的是
-    // 「未找到可用的 Python 3 解释器」——真因被吞成误导信息。
+    // 三条探活全挂。探活把异常原文记进 resolvePython.lastError，调用点把它带回面板，
+    // 而不是只报一句误导的「未找到可用的 Python 3 解释器」。
     let pythonCmd
     async function resolvePython(cwd) {
       if (pythonCmd !== undefined) return pythonCmd
+      let lastError = ''
       for (const candidate of ['python3', 'python', 'py -3']) {
         try {
           const spec = shell.resolve({
@@ -1779,13 +1792,21 @@ return {
           const r = await shell.run(spec)
           const out = [r && r.stdout && r.stdout.text, r && r.stderr && r.stderr.text]
             .filter(t => typeof t === 'string').join('\n')
-          if (r && r.exitCode === 0 && /Python 3\./.test(out)) { pythonCmd = candidate; return pythonCmd }
+          if (r && r.exitCode === 0 && /Python 3\./.test(out)) {
+            pythonCmd = candidate
+            resolvePython.lastError = ''
+            return pythonCmd
+          }
+          lastError = candidate + ' 退出码 ' + String(r && r.exitCode) + '：' + (out.trim() || '（无输出）').slice(0, 200)
         } catch (e) {
-          // 候选不可执行 → 试下一个
+          // 候选不可执行 → 试下一个；异常原文要留下来，否则报出来只有那句误导的「没找到 Python」
+          lastError = candidate + ' 执行失败：' + String(e && e.message || e).slice(0, 300)
         }
       }
-      pythonCmd = null
-      return pythonCmd
+      // 失败**不进缓存**：解释器或执行环境修好后，下一次调用就自愈，不必重载面板
+      // （实测：工作区文件权限修好后面板仍报旧错，就因为这里把 null 缓存到了 host 重载为止）
+      resolvePython.lastError = lastError
+      return null
     }
 
     async function runScript(sessionId, scriptName, extraArgs) {
@@ -1795,7 +1816,8 @@ return {
       const py = await resolvePython(cwd)
       if (!py) {
         return { ok: false, error: '未找到可用的 Python 3 解释器（已试 python3 / python / py -3）——'
-          + '自演进看板的数据脚本 ' + scriptName + ' 需要它，装好 Python 3 并确保在 PATH 里' }
+          + '自演进看板的数据脚本 ' + scriptName + ' 需要它，装好 Python 3 并确保在 PATH 里'
+          + (resolvePython.lastError ? '\n探测失败原因：' + resolvePython.lastError : '') }
       }
       try {
         const spec = shell.resolve({
