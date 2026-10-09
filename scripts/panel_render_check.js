@@ -607,7 +607,13 @@ async function main() {
         expect(fc.label + ' · 报出结论不成立', /结论不成立/.test(t), t.slice(0, 220))
       }
     }
-    fs.rmSync(fixtureRoot, { recursive: true, force: true })
+    // 收尾与下面 tmpBase 那处用同一种写法：交给 Python 的 shutil.rmtree，不用 fs.rmSync
+    // （理由见下面那处——临时根里一旦有指回检出的目录链接，fs.rmSync 就会删进检出）。
+    // 这一个夹具（make_degraded_evolve_root.py）只做拷贝、当前不含链接，所以这处换法不改它的
+    // 行为；换它是让两处临时根的收尾只留一种，将来谁给退化夹具加了链接，不必再想一次。
+    execFileSync(PY.cmd, [...PY.prefix, '-c',
+      'import shutil, sys; shutil.rmtree(sys.argv[1], ignore_errors=True)',
+      fixtureRoot], { env: PY_ENV, stdio: 'pipe' })
   }
 
   // ================= 展开单卡 =================
@@ -979,7 +985,14 @@ print(json.dumps({
       b.doc ? 'exit=' + b.exit + ' verdict=' + b.doc.check_verdict : 'exit=' + b.exit)
     expect('  且说清是"配置读不动"而不是"没有越界"',
       !!b.doc && (b.doc.broken || []).some(x => /gates\.yaml/.test(x)), b.doc ? JSON.stringify(b.doc.broken).slice(0, 140) : '')
-    fs.rmSync(tmpBase, { recursive: true, force: true })
+    // **不能用 fs.rmSync**：Windows 夹具（make_broken_metrics_root.py，本例就是它）用 junction 把
+    // knowledge/、scripts/ 指回检出，旧版收尾的 fs.rmSync(tmpBase) 会顺着它删进目标——内网 Win11
+    // 上检出的这两个目录被清空，作者已在隔离的临时仓库复现。改用 Python 的 shutil.rmtree：Windows
+    // 上它把 junction 当重解析点，只删链接本身、不进目标（本机 macOS 复现不出上面那次清空，因为
+    // POSIX 夹具走的是 symlink，是另一条路径；这条按 Windows 现场处理）。
+    execFileSync(PY.cmd, [...PY.prefix, '-c',
+      'import shutil, sys; shutil.rmtree(sys.argv[1], ignore_errors=True)',
+      tmpBase], { env: PY_ENV, stdio: 'pipe' })
   }
   expect('真实数据下 verdict=violations 且判据全部评过（3/3）',
     verdict.check_verdict === 'violations' && verdict.coverage.gates_evaluated === verdict.coverage.gates_total,
