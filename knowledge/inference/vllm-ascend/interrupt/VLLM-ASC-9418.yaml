@@ -12,6 +12,18 @@
 
 cases:
   - id: VLLM-ASC-9418
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 9418
+        url: https://github.com/vllm-project/vllm-ascend/issues/9418
     title: "A3 双机混部（TP16+DP2+EP，DeepSeek-V4-Pro w4a8）拉起失败：call aclnnHcPreInvRms failed——未用灵衢背板仍按机内 AIV/HCCS 配置跑跨机通信；跨机改走 ROCE（HCCL_BUFFSIZE=200、HCCL_INTER_HCCS_DISABLE=TRUE、删 HCCL_OP_EXPANSION_MODE=AIV）+ MoE 通信类型 ALLGATHER 后拉起"
 
     category: interrupt
@@ -24,10 +36,6 @@ cases:
         note: "配置层问题，非版本回归；配方按 maintainer 模板"
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "A3 双机混部部署 DeepSeek-V4-Pro-w4a8（TP16 + DP2 跨 2 节点 + expert parallel + --quantization ascend），vllm serve 拉起失败，报 'call aclnnHcPreInvRms failed'"
       - "启动脚本特征：export HCCL_OP_EXPANSION_MODE=\"AIV\" + export HCCL_BUFFSIZE=2048（机内/超节点内优化配置），跨机仍用同配置"

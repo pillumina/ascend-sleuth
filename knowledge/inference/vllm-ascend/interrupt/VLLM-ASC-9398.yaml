@@ -12,6 +12,18 @@
 
 cases:
   - id: VLLM-ASC-9398
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 9398
+        url: https://github.com/vllm-project/vllm-ascend/issues/9398
     title: "CANN 9.0 镜像 + Mooncake KV pool 跨机 put key error：HCCP RDMA MR 注册 30GiB 缓冲失败 + GE 503900 channel init 失败 + ascend_direct 建链失败 → backend Failed to put key res[-800]；Mooncake 0.3.9→0.3.10 解决"
 
     category: interrupt
@@ -26,10 +38,6 @@ cases:
         cann: ["=9.0.0"]               # 升级 CANN 9.0 后出现（旧组合正常）
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "CANN 9.0（+HDK 25.2.1）镜像下 GLM5.1-w8a8 PD 分离 kv pool 服务，mooncake_backend.py 反复报 'Failed to put key [...] res:[-800, -800, ...]'"
       - "ascend_direct_transport.cpp: Failed to connect to target: [REDACTED]:<port>, status: 503900"

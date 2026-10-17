@@ -332,3 +332,33 @@ periods:
     · interrupt = 85/30`（soft_cap 2.8 倍、已超 hard_cap 60） ——按 ADR-0004 应触发/强制拆分，本期只如实记录，拆分动作属
     groom 步骤 6 的独立决策。 容量随本期进 live（口径修正：结构指标原先只能出现在 replay 快照里，按"只有 live 参与趋势" 的规则等于没有趋势通道）。人复核后
     append（分母：诊断侧 12 session 为累计值，非本期新增）。
+metric_strength:
+  sessions_total: 确定性
+  tier2_hit: 确定性
+  routed_accuracy: 确定性
+  misdiagnosis_rate: 人工
+  by_category_hit: 确定性
+  attribution_ratio: 自报
+  confidence_distribution: 确定性
+  feedback_capture: 人工
+  trace_completeness: 确定性
+  vocab_compliance: 确定性
+  tier3: 确定性
+  reference: 确定性
+  reference_detail: 确定性
+  candidate_recall: 确定性
+  rank_distribution: 确定性
+  cross_replay_rank1: 确定性
+  case_total: 确定性
+  reference_total: 确定性
+  capacity_by_ns: 确定性
+  pre_triage: 确定性
+  semantic_validation_rate: 确定性
+  content_flow_runs: 确定性
+  evolve_check_runs: 确定性
+  evolve_check_no_signal: 确定性
+  golden_suite: 确定性
+  ixn_decisive_in_chain_heldout: 确定性
+  ixn_premature: 确定性
+  ixn_question_recall_heldout: 确定性
+  ixn_question_recall_self: 确定性

@@ -16,12 +16,6 @@ cases:
         ranges: ["0.9.1"]     # 文档记录版本；根因是模型 config 取值，与框架版本弱相关
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "tora 模型 + vllm（vllm-ascend）推理，统一数据集下游评分 NPU 54.4 明显差于 GPU 80.6"
       - "存在稳定的 badcase（特定 prompt 输出错误）"

@@ -12,6 +12,18 @@
 
 cases:
   - id: VLLM-ASC-9129
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 9129
+        url: https://github.com/vllm-project/vllm-ascend/issues/9129
     title: "310P 上 LLM-Compressor 导出的 compressed-tensors W8A8 模型拉起失败（KeyError: <PlatformEnum.OOT: 6>）：310P 分支未注册 compressed-tensors 量化适配 → vLLM 原生 int8 scaled-mm kernel selector 只枚举 CPU/CUDA/ROCm、无 OOT 平台；310P 的 W8A8 须用 modelslim 格式 + --quantization ascend"
 
     category: interrupt
@@ -20,10 +32,6 @@ cases:
     platforms: ["310P"]               # Atlas 300I Duo；对照：同模型/镜像 910B 正常
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "310P（Atlas 300I Duo，quay.io/ascend/vllm-ascend:v0.18.0rc1-310p）部署 LLM-Compressor 量化（scheme W8A8，config 中 quant_method=compressed-tensors）的模型，EngineCore failed to start"
       - "报错尾部：KeyError: <PlatformEnum.OOT: 6>，栈：compressed_tensors/schemes/compressed_tensors_w8a8_int8.py create_weights → init_int8_linear_kernel → choose_scaled_mm_linear_kernel → possible_kernels[current_platform._enum]"

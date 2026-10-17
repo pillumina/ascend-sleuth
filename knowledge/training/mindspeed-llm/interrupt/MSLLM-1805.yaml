@@ -16,12 +16,6 @@ cases:
         ranges: ["master@c77308a1"]   # 触发版本；根因=代码漂移，非版本配置问题
 
     investigation_quality: high       # 用户定位到 commit + 本次 dogfood 源码验证（clone master 核对 4 处悬挂引用）
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     symptoms:
       - "master 分支用 --ai-framework mindspore 启动（pretrain_gpt.py）稳定失败：ModuleNotFoundError: No module named 'mindspeed_llm.tasks.checkpoint.models'，双 rank 均复现"
       - "栈：pretrain_gpt.py → mindspeed_llm/__init__.py → megatron_adaptor_v2.py:114 FeatureAdaptor.execute() → ms_patch_feature.py → mindspore_adaptor_v2.py:157 _patch_optimizer_and_training → from mindspeed_llm.mindspore.tasks.checkpoint.models import register_functions → 其 line 11: from mindspeed_llm.tasks.checkpoint.models import ModelBase → ModuleNotFoundError"

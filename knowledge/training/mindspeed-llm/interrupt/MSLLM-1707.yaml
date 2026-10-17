@@ -19,12 +19,6 @@ cases:
         ranges: ["9.0.0"]             # 触发版本；9.1.0B120+ 验证修复（含 9.0.0-beta.2，见变体 #1801）
 
     investigation_quality: high       # 维护者定论根因 + resolved
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     symptoms:
       - "Atlas 800I A3 + CANN 9.0.0 + MindSpeed-LLM 26.0.0 镜像内源码安装最新版，deepseek-v4-flash 做 LoRA 微调（posttrain_gpt.py launch）启动即失败"
       - "RuntimeError: Tried to register an operator (npu_ops_transformer::npu_moe_distribute_dispatch_v2(...)) with the same name and overload name multiple times，Duplicate registration at /dev/null:241"

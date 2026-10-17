@@ -14,7 +14,6 @@ cases:
     compat: [{framework: cross, ranges: ["*"]}]
 
     investigation_quality: high
-    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
 
     symptoms:
       - "NPU 利用率降低、Device 空闲时间增加，等待 Host 下发计算任务"

@@ -168,6 +168,12 @@ import yaml, json
 d = yaml.safe_load(open('metrics/timeline.yaml', encoding='utf-8'))
 print(json.dumps(d['periods'], ensure_ascii=False, default=str))
 `], { cwd: repo, env: PY_ENV }).toString())
+// 指标强度档的权威口径来自 gates.yaml —— 用它做面板侧解析器的对照（拿被测实现当对照等于没测）
+const pyStrength = JSON.parse(pyRun(['-c', `
+import yaml, json
+d = yaml.safe_load(open('metrics/gates.yaml', encoding='utf-8'))
+print(json.dumps(d.get('metric_strength') or {}, ensure_ascii=False))
+`], { cwd: repo, env: PY_ENV }).toString())
 
 // 演进判决（面板首屏的判决层）。**允许非零退出**：evolution_health.py 的退出码是结论
 // （0 全评过无越界 / 1 有违反 / 2 有判据没被评估），像 metrics_health 一样——有违反时它
@@ -854,6 +860,23 @@ async function main() {
     expect('真实 timeline.yaml：每期指标键数一致', JSON.stringify(jsM) === JSON.stringify(pyM), jsM.join(',') + ' | ' + pyM.join(','))
     expect('真实 timeline.yaml：live 期被认出来（≥1 期）', jsPeriods.filter(p => p.kind === 'live').length >= 1)
     expect('真实 timeline.yaml：notes 也读到了（期卡展开要显示）', jsPeriods.some(p => String(p.notes || '').trim().length > 0))
+
+    // 指标强度档（3.6 的最后一问「这个数怎么来的」）。为什么单测这一层：强度档决定读者能不能
+    // 把一个数当硬读数——`自报` 是 agent 自己记的判断，面板把它与确定性读数长得一样，读的人
+    // 就会拿它当验收证据。解析器取不到时必须落到「未声明强度」，**不能默认成确定性**。
+    const stFrom = hostSrc.indexOf('function parseMetricStrength')
+    const stTo = hostSrc.indexOf('async function loadTimeline')
+    expect('host 指标强度解析器可抽出', stFrom > 0 && stTo > stFrom)
+    const stf = new Function(hostSrc.slice(stFrom, stTo) + '\nreturn { parseMetricStrength: parseMetricStrength };')()
+    const st = stf.parseMetricStrength(tlText)
+    const pySt = pyStrength
+    expect('真实 timeline.yaml：强度档条数与 gates.yaml 一致（' + Object.keys(st).length + ' / ' + Object.keys(pySt).length + '）',
+      Object.keys(st).length === Object.keys(pySt).length && Object.keys(st).length > 0)
+    expect('真实 timeline.yaml：强度档逐条一致', Object.keys(pySt).every(k => st[k] === pySt[k]),
+      Object.keys(pySt).filter(k => st[k] !== pySt[k]).map(k => k + ':' + st[k] + '≠' + pySt[k]).join(','))
+    expect('自报的指标被认出来（`attribution_ratio`）', st.attribution_ratio === '自报', String(st.attribution_ratio))
+    expect('客户端为强度档给徽标，且未声明时不冒充确定性',
+      /StrengthBadge\(strength\)/.test(ascSrc) && /未声明强度/.test(ascSrc) && /自报/.test(ascSrc))
 
     // 加载窗口：判决 RPC 未返回时**不能说"没问题"**。窗口真实存在——timeline 是文件读，
     // 判决要 spawn Python；旧实现在这段窗口里按"0 条 findings"走绿分支，打印
@@ -1565,8 +1588,10 @@ _MS._run_no_pipe = no_fallback`)
       const resumeMd = fs.readFileSync(path.join(repo, 'skills/resume-diagnosis/SKILL.md'), 'utf8')
       expect('resume 按 feedback.case 的两种取值分支',
         /真实 case id/.test(resumeMd) && /占位串 `pending-investigation`/.test(resumeMd))
-      expect('占位串分支不回写 confidence，且明确不是终态',
-        /不要求回写 confidence/.test(resumeMd) && /不是终态/.test(resumeMd))
+      // 断言的是「占位串那一支不做结算、且明说不是终态」这条行为，不是某一版措辞：
+      // 计数落点从案例字段搬到条目使用记录之后，这句话的动词从「回写」变成了「记结算」。
+      expect('占位串分支不做现场结算，且明确不是终态',
+        /不要求记 (feedback )?结算|不要求回写 confidence/.test(resumeMd) && /不是终态/.test(resumeMd))
       const procMd = fs.readFileSync(path.join(repo, 'skills/diagnose/references/diagnosis-procedure.md'), 'utf8')
       expect('diagnose 写明未命中时的 case 填占位串（不是 case id）',
         /未命中但给了建议 → 占位串/.test(procMd))

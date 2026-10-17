@@ -10,6 +10,18 @@
 
 cases:
   - id: VLLM-ASC-8201
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 8201
+        url: https://github.com/vllm-project/vllm-ascend/issues/8201
     title: "vllm-ascend 0.18.0RC1 patch_minimax_usage_accounting 模块级覆写 engine/chat protocol 的 UsageInfo/CompletionTokenUsageInfo → 非 MiniMax 场景（vllm-omni qwen-image-edit 等）Pydantic 校验失败；workaround=注释 patch/platform/__init__.py:32-33 import，根治=升级到覆写被 scope/移除的版本（main #11050/#11384）"
 
     category: interrupt
@@ -21,11 +33,6 @@ cases:
         ranges: ["0.18.0rc1"]       # 0.18.0RC1 及同代（0.18 正式版经核实仍含覆写 L40-62）受影响；main ≥ #11050/#11384 才去除全局覆写（#7835 wrapper 化不消除覆写，见头注）
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      # score 草稿期不写，groom 首次评估后计算
-
     symptoms:
       - "vllm-omni:v0.18.0（基于 quay.io/ascend/vllm-ascend:v0.18.0rc1）跑 qwen-image-edit image-to-image 推理抛 Pydantic 校验错误；MiniMax-M2.5 官方教程部署（0.18 线）同现（评论#6）"
       - "定位到 vllm_ascend/patch/platform/patch_minimax_usage_accounting.py：子类 UsageInfo(engine_protocol.UsageInfo) 后整体覆写 engine_protocol/chat_protocol/chat_serving 的 UsageInfo 与 CompletionTokenUsageInfo（模块级赋值）"

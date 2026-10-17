@@ -107,8 +107,15 @@ metrics/skill-exec-log.yaml.lock
 # 判据与读法见 proposals/gates.yaml 的 measure_never_run 与 scripts/evolution_health.py。
 metrics/ev-measure-log.yaml
 metrics/ev-measure-log.yaml.lock
+# 一次诊断的本机记录（含逐次工具调用明细、命令摘要与 token 账单——明细含客户现场信息，故不上仓）。
+# **同一克隆共享**：由 scripts/exec_log_path.py 解析到主检出，所有 worktree 共写共读同一份；
+# 上仓的只有按 id 聚合后的增量行（metrics/entry-activity.d/ 与 metrics/entry-activity/）。
+metrics/entry-activity.local/
 .flow-replay/
 # 回放夹具的输入与报告（replay_golden.py 在检出根写出；此前未被忽略，
 # 跑一次 --prepare 就留下未跟踪目录。要留档请先挪出检出）。
 .replay-input/
 .replay-report.md
+
+# 周文件的写锁（log_lock 的副产物）
+metrics/entry-activity.d/*.lock

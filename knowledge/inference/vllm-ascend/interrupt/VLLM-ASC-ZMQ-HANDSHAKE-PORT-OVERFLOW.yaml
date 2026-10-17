@@ -21,12 +21,6 @@ cases:
         ranges: ["0.22.1rc1", "0.23.0rc1"]   # v0.22.1rc1 为现场报告版本；v0.23.0rc1 为本次源码核验版本（公式一致）
 
     investigation_quality: high   # 公式与"无范围校验"两点已按源码逐行核验（source_ref）
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     source_ref:
       repo: vllm-ascend
       ref: v0.23.0rc1

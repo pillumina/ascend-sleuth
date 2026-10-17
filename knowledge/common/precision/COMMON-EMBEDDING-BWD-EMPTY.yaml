@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]     # 触发源 B 需 CANN <8.0.0（8.0.0 及以上已修复）；触发源 A 为算子边界缺陷，需打补丁
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "训练出现 loss NaN，打印 grad 信息后首个 NaN 出现在 embedding（wte）层的梯度"
       - "触发源 A：多模态模型 FSDP 全参微调且开启 dsp（distributed sequence parallel）——部分卡没有 token 输入，dump 显示该 rank 输入 shape [0]、反向输入 [0, 4096]，输出疑似未初始化的内存"

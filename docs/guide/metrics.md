@@ -2,7 +2,7 @@
 
 本文是 metrics 机制的文档化解释（人读理解用），不是数据存储。指标数据在 [`metrics/timeline.yaml`](../../metrics/timeline.yaml)（生成物；源是 `metrics/timeline.d/<期号>.yaml`，一期一个文件）；机制文档只在机制变化时更新（指标定义、口径、流程），不随每期数据变动。
 
-读者是跑周批、校准闸门、或要引用指标口径的人。只看面板趋势的人不必读。
+读者是跑知识整理收尾、校准闸门、或要引用指标口径的人。只看面板趋势的人不必读。
 
 ## 1 做完得到什么
 
@@ -14,7 +14,7 @@
 
 | 载体 | 内容 | 变更频率 |
 |---|---|---|
-| `metrics/timeline.d/<期号>.yaml` | 时序数据的源：一期一个文件（period / kind / metrics / sources / notes） | 每期（谁跑周批谁写一个） |
+| `metrics/timeline.d/<期号>.yaml` | 时序数据的源：一期一个文件（period / kind / metrics / sources / notes） | 每期（谁做知识整理收尾谁写一个） |
 | `metrics/timeline.yaml` | 生成物：由源重建的聚合（`periods:` 列表，读侧的唯一入口） | 每次源变化后重建（不要手改） |
 | `scripts/build_timeline.py` | 聚合重建 / `--check` 校验生成物与源一致（CI 强制） | 随机制 |
 | `docs/guide/metrics.md`（本文） | 机制文档：指标定义、口径、汇总流程、示例 | 机制变化时 |
@@ -22,14 +22,14 @@
 | `scripts/metrics_snapshot.py` | 一期快照的单一产出命令：组装诊断侧 + 结构侧 + 内容流程侧（逐块标 `sources`）；撞号自动加后缀 | 随机制 |
 | `scripts/metrics_health.py` | 闭环检测器：读 timeline + gates，判新鲜度 / 越界 / 可解读性；`--check` 三态（0 判据全评过且无越界 / 1 有违反 / 2 有判据未被评估）；`--json` 是诊断面板的数据契约 | 随机制 |
 | `scripts/trace_metrics.py` | 诊断侧指标（markdown 概览 + `--emit-yaml` 骨架 + `--emit-yaml-only` 供组装） | 随机制 |
-| `scripts/verify_metrics.py` | 校验聚合结构（period 唯一 / kind 合法 / live 期号命名 / 比例字段合法 / live 字段白名单），CI 强制 | 随机制 |
-| `scripts/session_cost.mjs` | 真实账单（提供方 usage）：解析 DSH 会话日志（多帧 zstd + JSONL），按 (turn, step) 去重后给出未缓存输入 / 缓存读取 / 缓存写入 / 输出与逐轮汇总；`--session <id>` / `--file` / `--all`；exec-log 的 `--cost-source measured` 就该填它读出来的值 | 需要 measured 口径时 |
+| `scripts/verify_metrics.py` | 校验聚合结构（period 唯一 / kind 合法 / live 期号命名 / 比例字段合法 / live 字段白名单 / 每个指标都声明了强度档），CI 强制 | 随机制 |
+| `scripts/session_cost.mjs` | 真实账单（提供方 usage）：解析 DSH 会话日志（多帧 zstd + JSONL），按 (turn, step) 去重后给出未缓存输入 / 缓存读取 / 缓存写入 / 输出与逐轮汇总；`--session <id>` / `--file` / `--all`；`--decompress <file>` 只把日志解成 JSONL，供 Python 侧（`trace_entry_activity.py`）读多帧 zstd；exec-log 的 `--cost-source measured` 就该填它读出来的值 | 需要 measured 口径时 |
 | `scripts/audit_skill_cost.py` | skill 上下文成本审计：常驻面（CLAUDE.md/AGENTS.md/被注入的 description）、按需面（正文 + 本地 references）、重复面（同一行出现在 ≥2 skill）、强制词密度与输出段数；skill-review 的 A 静态审计调它 | skill 改动前后 |
 
 ### 指标定义
 
-指标来自四类来源——不是"单一脚本"：本行原写作"所有指标由 `trace_metrics.py` 计算（单一数据源）"，
-而实际 timeline 里还有结构侧与评测侧指标。这个错误表述让周批只跑 trace_metrics、其余靠人手工搬运，
+指标来自多处，不是"单一脚本"：本行原写作"所有指标由 `trace_metrics.py` 计算（单一数据源）"，
+而实际 timeline 里还有结构侧与评测侧指标。这个错误表述让知识整理只跑 trace_metrics、其余靠人手工搬运，
 实测导致结构指标 10 天没进快照（快照 `case_total 52` vs 现实 158，某格已 `85/30` 而快照里还是 `36/30`）。
 
 | 来源 | 谁产出 | 指标 |
@@ -38,11 +38,14 @@
 | 结构侧 | `index_counts.py`（条数，现算）+ `index_read_cost.py`（读入成本，现算）+ `verify_references.py` | `case_total`、`reference_total`、`capacity_by_ns`（每格 `count` + `tok`；成本才是被治理的量）。一次诊断的读入账另有三个分项由 `index_read_cost.py` 现算（兜底视图 / 先验层 / 阶段二候选全文），体检的 `capacity_fallbacks` 取自它 |
 | 内容流程侧 | `log_skill_exec.py` → `tail_exec_log.py --summary` | `content_flow_runs`、`evolve_check_runs`、`evolve_check_no_signal` |
 | 评测侧 | ixn / golden / S2 等按需 | `ixn_*`、`golden_suite`、S2 内容验证（口径见下） |
+| 条目使用记录 | `trace_entry_activity.py`（汇总本机诊断，追加 `kind: case` / `kind: ref` / `kind: tool` 行，另写本机明细 `metrics/entry-activity.local/`）+ `settle_trace_feedback.py`（结算现场回报，追加 `resolved` / `misdiagnosed` / `self_resolved` 计数行）；读端是生成物，由 `build_entry_activity.py` 重建 | 条目使用增量（被选中、被加载、解决、误诊、自证解决）、先验三态与消费点 |
+| 工具分布 | 会话日志 → `trace_entry_activity.py` 的 `kind: tool` 行 → `build_entry_activity.py` 生成物的 `tools` 段 | 按工具的次数、耗时 p50/p90、失败与超时数 |
 
-`metrics_snapshot.py` 把 ①②③ 拼成一期骨架（④ 按需；拿不到的块不写，不用 0 冒充）。
+`metrics_snapshot.py` 把诊断侧、结构侧、内容流程侧拼成一期骨架（评测侧按需；拿不到的块不写，不用 0 冒充）。
+条目使用记录不在这里：它是另一份文件族，产出 `metrics/entry-activity/<部署>.yaml`，不进期文件。
 比例类指标要连同分母解读，样本量小（分母不足 10）时波动很大。
 
-traces 是各检出各一份的运行时件：在 worktree 里跑周批读不到主检出的 trace
+traces 是各检出各一份的运行时件：在 worktree 里跑知识整理收尾读不到主检出的 trace
 （实测会静默产出空诊断指标）。`metrics_snapshot.py` 会自动解析该读哪一份（优先主检出）
 并在 `sources.diagnose_side` 里标明；手工跑 `trace_metrics.py` 时需显式 `--root <主检出>`。
 
@@ -54,7 +57,7 @@ traces 是各检出各一份的运行时件：在 worktree 里跑周批读不到
 | 执行-误诊归因比 | 误诊中 case 错与执行错的比例 | trace `attribution` 事件 verdict（diagnose 反馈 not_resolved 后自动归因） |
 | 按类命中 | interrupt / precision / performance 各自的命中率 | trace triage/triage_semantic 的 category vs hit |
 | triage miss 归类 | 未命中里「token 在场而词法层没接住」（真缺陷，进 E2 错例池）/「本来无 token」（级联换挡）/「routed 未记录」（取数字段缺口）各多少 | 每个 session 的 user 文本是否含 token 类信号（错误码/环境变量名/算子名/文件名/版本）与 triage / triage_semantic 事件形态 |
-| 置信度分布 | 低置信（score<0.5）case 占比 | `knowledge/_index.yaml` score 统计 |
+| 置信度分布 | 低置信（score<0.5）case 占比 | `knowledge/_index.yaml` score 统计（该 score 由 `scripts/score_entries.py` 从条目使用记录加冷启动先验算出，不落在案例里） |
 | 自起草采纳率 | groom 验证通过的草案 / agent 起草总数 | 暂无数据源（agent 自起草未落地，落地后补） |
 | trace 完整性 | 有 trace 记录的 step / 实际执行 step | proxy：含 triage + 过滤步 |
 | Tier 3 挽救率 | 走 Tier 3 兜底检索且最终 resolved 的比例 | trace `tier3` action |
@@ -64,7 +67,22 @@ traces 是各检出各一份的运行时件：在 worktree 里跑周批读不到
 跟随深度（`steps_executed` / `branch_taken` / `conflict`）是 agent 自报——属弱观测，只可作趋势与异常信号，
 不可当验收证据；跟随后 resolve 率来自工程师反馈闭环（S1），是本行唯一较强的效果信号 |
 | 零执行评估所需的记录 | 停止原因记了几单 / 未记录几单；同批并发标记与候选全集各记了几条事件；字段违规几处（给总数，另列前 5 条） | trace 顶层 `stop_reason`（词表 = `scripts/trace_metrics.py` 的 `KNOWN_STOP_REASONS`）与 agent 事件的 `parallel_group`、`considered_candidates`。这是用历史记录离线比较探索策略的前提：不知道当时在哪停、哪些动作是同一批并行、筛候选时看过哪些，换一个策略在历史上走一遍就只能按人回忆重讲。未记录数与记了 `unknown` 分开算：前者是记录缺口，后者是当时确实拿不到；旧 trace 没有这些字段属未记录，不回填 |
-| S2 内容验证（口径，数据积累后进 timeline） | case 被 S2 replay 验证的分布：consistent（内容与外部 resolution 一致）/ self_consistent（自证）/ inconsistent（复审） | `.s2-replay/*.result.yaml` → `settle_s2_feedback.py` 结算 → case `validation_record`。口径纪律：consistent ≠ 现场 resolve——S1 现场解决率看 confidence（上表命中率/误诊率），S2 内容验证是独立通道，进 timeline 时标注 `source: issue-replay`，不与 S1 混算。按检查准入三条件，待 S2 结算有真实数据（≥2 期）后再扩展 verify_metrics 白名单 |
+| S2 内容验证（口径，数据积累后进 timeline） | case 被 S2 replay 验证的分布：consistent（内容与外部 resolution 一致）/ self_consistent（自证）/ inconsistent（复审） | `.s2-replay/*.result.yaml` → `settle_s2_feedback.py` 结算 → case `validation_record`。口径纪律：consistent ≠ 现场 resolve——S1 现场解决率看条目使用记录里的现场计数（上表命中率/误诊率），S2 内容验证是独立通道，进 timeline 时标注 `source: issue-replay`，不与 S1 混算。按检查准入三条件，待 S2 结算有真实数据（≥2 期）后再扩展 verify_metrics 白名单 |
+
+### 计数与分数分居三处
+
+条目使用记录是原始观测，分数是它的派生值，人工覆盖是例外。三者各写一处：
+
+| 量 | 写在哪 | 谁写 |
+|---|---|---|
+| 计数（被选中、被加载、解决、误诊、自证解决、先验三态、消费点、被排除） | `metrics/entry-activity.d/<周>.yaml` 的追加行 | `trace_entry_activity.py`、`settle_trace_feedback.py` |
+| 排序分数 | 索引生成物 `knowledge/_index.yaml` 与 `knowledge/_index/*.list` | `score_entries.py` 从计数加冷启动先验算出，`build_index.py` 写进生成物 |
+| 人工覆盖的分数 | 案例的可选字段 `score_override`（`score`、`reason`、`by`） | 人，两人复核 |
+
+`score_override` 的合法性由 `python3 scripts/score_entries.py --check-overrides` 判：不带 `reason` 的覆盖报错（CI 的 `case-structure` job）。
+
+案例文件里因此不再有 `confidence` 块：计数搬进记录（历史累计值由 `scripts/migrate_confidence_baseline.py` 搬成 `kind: baseline` 行），分数搬进索引。
+一个量在两处表达时，对不上没有判据说该信哪一处（口径与取舍见 [diagnosis-observability.md](../mechanism/diagnosis-observability.md) 3.4）。
 
 ### 快照 schema（`metrics/timeline.yaml`）
 
@@ -109,7 +127,7 @@ periods:
   `metrics/timeline.yaml` 是由 `scripts/build_timeline.py` 重建的聚合，读侧只读它，CI 校验两者一致。
   冲突因此是机械动作（重跑一次重建），不是判断题（留哪一份读数）。
 - live 期号规则：`YYYY-Www-live-MMDD`（如 `2026-W37-live-0913`；同一天的第二期加后缀 `-2`），
-  `verify_metrics.py --check` 强制。为什么带日期：期号是趋势锚点，而周批人人可跑（并发修改靠
+  `verify_metrics.py --check` 强制。为什么带日期：期号是趋势锚点，而知识整理人人可跑（并发修改靠
   PR merge 合流，见 CLAUDE.md「多 agent 协作」）。手写期号有两种坏结局——同名（CI 靠 period
   唯一性拦住，但拦在 merge 时）与异名同期（各自进 main，趋势线上同一周两个数字，读的人分不清
   哪个是真的）。带快照日期后两人产出的期号天生不重；同一天的第二期由生成器自动加 `-2`。
@@ -117,7 +135,7 @@ periods:
   豁免是标注，不是放宽。
 - `kind` 只有 `live` 参与跨期趋势对比；`replay`（回放评估）与 `example`（示例）供参考，不参与趋势
   - 结构性指标（`case_total` / `reference_total` / `capacity_by_ns`）允许出现在 live：它们是最该看趋势的治理指标，早期只能放在 replay 里 → 按本规则等于没有趋势通道（实测某格已 `85/30`，快照里还停在 `36/30`）
-- `verify_metrics.py --check`（CI）校验：period 唯一、kind 合法、recorded_at 必填、metrics 非空、比例字段 ok/total 合法、live 字段在白名单内、`sources` 若填必须是 mapping
+- `verify_metrics.py --check`（CI）校验：period 唯一、kind 合法、recorded_at 必填、metrics 非空、比例字段 ok/total 合法、live 字段在白名单内、`sources` 若填必须是 mapping、期文件里出现的每个指标都在 `metrics/gates.yaml` 的 `metric_strength` 里声明了强度档（漏声明即红）
 - 无数据的指标不写（reference 刚建立时 hits=0 是现状，不是 bug）
 
 ### 为什么源与生成物分开，数据不进 docs
@@ -134,19 +152,27 @@ periods:
 
 ## 3 步骤
 
-### 周批流程（谁做：跑周批的人）
+### 知识整理收尾的组期步骤（谁做：跑知识整理的人）
 
-metrics 在周批时机生成并 append（每期一条，团队共享）——不是某个角色的专属动作：
-周批可由任何人跑（groom 本身人人可跑），而写入的并发不靠覆盖、也不靠判断：
+本期读数在知识整理收尾的周界那一次生成并 append（每期一条，团队共享）——不是某个角色的专属动作：
+知识整理可由任何人跑（groom 本身人人可跑），而写入的并发不靠覆盖、也不靠判断：
 一期一个源文件（`metrics/timeline.d/<期号>.yaml`），聚合是生成物、由重建命令产出，
 两个人最多在各自那个小文件上冲突——合流时是"重跑一次 build_timeline.py"的机械动作
 （CLAUDE.md「多 agent 协作」：各 worktree 是各自分支副本，合流时显式合并），
 期号唯一性、命名规则与生成物一致性由 `verify_metrics.py --check`、`build_timeline.py --check` 兜底。
 
-工程师不必为此做额外动作：他们只做诊断（本地 trace）+ 回报 fix 结果（case confidence 走 PR）；
+工程师不必为此做额外动作：他们只做诊断（本地 trace）+ 回报 fix 结果（结算成条目使用记录的计数行，走知识变更 PR）；
 中心化指标直接从仓库 case 统计，无需工程师提交。
 
 ```
+0. 记录层（条目使用记录这一层）先落定（同一个知识整理里的结算、汇总、算分与索引重建，组期之前跑完）：
+   python3 scripts/settle_trace_feedback.py --apply  # 结算现场回报，追加 resolved/misdiagnosed/self_resolved 计数行
+   python3 scripts/trace_entry_activity.py --apply   # 汇总本机诊断，追加 kind: case/ref/tool 行，写本机明细
+   python3 scripts/build_entry_activity.py           # 源 → 生成物 metrics/entry-activity/<部署>.yaml
+   python3 scripts/verify_entry_activity.py          # 门：行形状 / (run,kind,id) 唯一 / id 查得到 / run 与文件名归周 / 部署名一致
+   python3 scripts/build_entry_activity.py --check   # 门：生成物与源一致（与上一条同在 CI 的 metrics-validation）
+   python3 scripts/score_entries.py                  # 算分：记录计数 + 冷启动先验，不落盘
+   python3 scripts/build_index.py                    # 把分数写进索引生成物
 1. 组一期骨架（三块一起，不用再从多个脚本手工搬运）：
    python3 scripts/metrics_snapshot.py --kind live
    → 期号默认按 kind 生成正确形状（live 为 2026-W37-live-0912），不要手写
@@ -156,7 +182,7 @@ metrics 在周批时机生成并 append（每期一条，团队共享）——�
    → 逐面列出 ✓/!/✗ 与行动，末尾报"判据覆盖面"
    → `--check` 退出码三态：0 判据全评过且无越界 · 1 有违反 · 2 有判据未被评估（结论不可用）
 3. 人复核：核对分母、把"不可解读"的指标写进 notes（禁止把 0/N 读成"零问题"）、
-   越界格子按行动列处置（容量拆分走 groom 步骤 6）；`recorded_at` 是复核日期，脚本预填的当天不等于已复核
+   越界格子按行动列处置（容量拆分走知识整理的容量治理步骤）；`recorded_at` 是复核日期，脚本预填的当天不等于已复核
 4. 把这一期写进源文件 `metrics/timeline.d/<期号>.yaml`，再重建聚合：
    python3 scripts/build_timeline.py
    → 不要直接编辑 `metrics/timeline.yaml`（生成物，重建会覆盖；`--check` 会红）
@@ -175,11 +201,11 @@ metrics 在周批时机生成并 append（每期一条，团队共享）——�
 
 ### 闸门与可解读性（`metrics/gates.yaml` + `metrics_health.py`）
 
-阈值落成数据（`metrics/gates.yaml`），由 `metrics_health.py` 在周批流程第 2 步判三件事：
+阈值落成数据（`metrics/gates.yaml`），由 `metrics_health.py` 在知识整理收尾的组期那一步判三件事：
 
 | 面 | 判据（gates.yaml） | 说明 |
 |---|---|---|
-| 新鲜度 | `live_snapshot_max_age_days` / `structural_max_age_days` | 超期 = 趋势断档（实测：结构侧 10 天没进快照） |
+| 新鲜度 | `live_snapshot_max_age_days` / `structural_max_age_days` / `entry_activity_stale_days` | 超期 = 趋势断档（实测：结构侧 10 天没进快照）。`entry_activity_stale_days`（dimension `entry_activity_age_days`）判的是条目使用记录的新鲜度：记录越旧，排序越像在按很久以前的表现排，体检输出里的「记录层」一行报出它 |
 | 越界 | `cell_read_soft_tok`(>8000) / `cell_read_hard_tok`(>=20000) / `fallback_read_soft_tok`(>8000) / `fallback_read_hard_tok`(>=20000) / `feedback_capture_floor`(<=0) | 每条带 `meaning` 与 `action`，报告直接给下一步。容量线按实读 token 判（现算 `scripts/index_read_cost.py`），不按条数——条数只是代理量，实测每条 177 token 而旧政策按 70 估。两条读取路径各判一条线：类视图（category 已定）与 ns 兜底视图（category 未定才读）；先验层与阶段二候选全文只量不判（见下） |
 | 可解读性 | `readability` 规则（如 `source_nonzero`） | 分母/来源无数据时把指标标成不可解读，禁止把 `0/N` 读成"零问题" |
 
@@ -199,7 +225,7 @@ metrics 在周批时机生成并 append（每期一条，团队共享）——�
 为什么必须单独有这一层：`verify_metrics.py` 只验结构（period 唯一/字段合法），
 它不判"该更新的没更新""越界了""这个 0 是没数据还是真没问题"——实测按旧流程走一遍
 （trace_metrics → 复核 → append → verify）不会被告知上述任何一条，指标坏了只能等人想起来。
-检测器不进 CI：安静的一周没有新快照是正常状态，硬门会假红；它服务于周批与季度回顾。
+检测器不进 CI：安静的一周没有新快照是正常状态，硬门会假红；它服务于知识整理收尾与季度回顾。
 
 ### `--check` 的三态：把「体检器坏了」与「本期没事」分开
 
@@ -235,4 +261,5 @@ metrics 在周批时机生成并 append（每期一条，团队共享）——�
 
 - 手工改坏了共享的 `metrics/timeline.yaml`：不要手改这份生成物，重跑 `python3 scripts/build_timeline.py` 从源重建。
 - 源文件写错：`metrics/timeline.d/<期号>.yaml` 是 append-only 的源，不改历史期号（`2026-09-12` 之前的期豁免、不追溯改名）。
+- 条目使用记录被手改：重建命令只把错值搬进生成物，修不了源。处置是删掉被改的那些行，用同一批本机记录重跑该 `run` 的汇总（`python3 scripts/trace_entry_activity.py --apply`）。
 - 已合入指标口径的回滚不在本文范围。

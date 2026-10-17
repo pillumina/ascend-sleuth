@@ -10,6 +10,18 @@
 
 cases:
   - id: VLLM-ASC-8336
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 8336
+        url: https://github.com/vllm-project/vllm-ascend/issues/8336
     title: "qwen3.5 35B w8a8（--quantization ascend, main/dev 镜像）910B 压测一压就崩：AttributeError: WAITING_FOR_FSM——balance scheduling patch（patch_balance_schedule.py:297）引用配套 vLLM 0.19.0 缺失的 RequestStatus 枚举成员"
 
     category: interrupt
@@ -20,10 +32,6 @@ cases:
         ranges: ["<=0.19.0"]        # 触发配对：配套 vLLM v0.19.0（RequestStatus 尚无 WAITING_FOR_FSM 成员；vllm#38048 于 v0.19.1 引入）；实测 vllm-ascend main/dev 0.17.0rc2.dev312+g1eb0cc0e4（2026-04-16）。#8448 升配套 vLLM v0.19.1 修复
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "Qwen3.5-35B-A3B-w8a8-mtp（ascend 量化 + auto tool choice/reasoning parser）vllm-ascend main/dev + 配套 vLLM v0.19.0，导出 VLLM_ASCEND_BALANCE_SCHEDULING=1，910B3 压测一压就崩：EngineCore fatal，栈尾 raise AttributeError(name) from None → AttributeError: WAITING_FOR_FSM"
       - "崩溃点 vllm_ascend/patch/platform/patch_balance_schedule.py:297 scheduler.schedule() 内 'if request.status == RequestStatus.WAITING_FOR_FSM:'（enum.py:786 __getattr__ 抛缺成员）"

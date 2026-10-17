@@ -23,12 +23,6 @@ cases:
         ranges: ["0.22.1rc1"]        # 现场实测版本（rc；正式版 0.23.0 含若干端口/MTP 修复）
 
     investigation_quality: medium   # 根因未闭环：同签名 plog 证据 + 机制推演，无维护者结论
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3
-      last_hit: ""
-
     symptoms:
       - "PD 分离多机部署（如 4 机 A3 3×1P + 1×1D），各 P 节点**独立启动、不使用 Ray**，服务长稳运行（数小时~两天半）后某 P 节点崩溃退出"
       - "崩溃点常在 MoE 分发路径之后：python 栈尾在 token_dispatcher 的 torch.repeat_interleave → npu_moe_distribute_dispatch（MC2 跨节点分发）"

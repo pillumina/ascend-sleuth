@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]     # 根因在并行组内随机性同步，与框架版本无关
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "TP=8 时跑多个请求，第 3 张生成图片必然花图；TP=1 时低分辨率推理跑 100 个实例未发现花图"
       - "msprobe 分级可视化比对 TP8 vs TP1：第一个 nn.Module（Linear）就出现精度不一致"

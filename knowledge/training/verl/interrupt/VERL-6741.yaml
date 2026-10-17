@@ -7,6 +7,18 @@
 
 cases:
   - id: VERL-6741
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: verl-project/verl
+        issue: 6741
+        url: https://github.com/verl-project/verl/issues/6741
     title: "verl+Ray+昇腾：训练启动 warning \"Platform 'huawei' (PlatformNPU) is registered but not available...CPU-only actor\"——NPU 未启用，配置 trainer.device='npu'"
 
     category: interrupt
@@ -18,12 +30,6 @@ cases:
         ranges: ["0.7.1"]            # 实测版本；版本不正确疑似诱因
 
     investigation_quality: low       # 根因未代码级定论（maintainer 猜测版本/配置），fix 方向明确
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.1                     # low → 初始 0.1
-      last_hit: ""
-
     symptoms:
       - "VERL + Ray + Ascend NPU 训练启动后 warning：Platform 'huawei' (PlatformNPU) is registered but not available. This may be due to this ray actor being a CPU-only actor."
       - "NPU worker 未正确启用，存在 fallback 到 CPU 的可能"

@@ -14,6 +14,18 @@
 
 cases:
   - id: VLLM-ASC-10524
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 10524
+        url: https://github.com/vllm-project/vllm-ascend/issues/10524
     title: "GLM-5.1-w8a8 PD 分离偶现精度问题（Claude Code 多并发长请求）：graph-capture/dummy run 未走 _prepare_inputs() 导致 slot_mapping 读未初始化残留值，需 dummy run 重置 slot_mapping 为 pad id（PR #11774）"
 
     category: precision
@@ -25,12 +37,6 @@ cases:
         ranges: ["<0.24.0rc1"]     # v0.18.0 / v0.20.2 复现（用户实测）；fix b9acec8 首个含修复 tag = v0.24.0rc1（0.23.0/0.23.0rc1 分支未含）
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     symptoms:
       - "GLM-5.1-w8a8 PD 分离（P:TP16/DP2，D:TP4/DP8 FULL_DECODE_ONLY 图模式+MTP，Mooncake KV transfer）+ Claude Code（转 completions 接口）压测偶现精度问题（输出劣化/复读），再次请求恢复"
       - "触发条件：同一时刻两个 DP 存在一长一短两个请求时大概率出现；服务日志无报错、无 Mooncake transfer 失败"

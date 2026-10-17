@@ -16,12 +16,6 @@ cases:
         ranges: ["master@c8f3cada"]    # 触发版本；修复 PR !4987
 
     investigation_quality: high       # contributor 源码级定位 + 离线重放验证 + 修复 PR 过 UT/smoke
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     symptoms:
       - "FSDP2 断点续训（resume_from_checkpoint）后第一步日志三项指标同时异常：lm loss 显示 0.247（×31 还原 = 7.66 与相邻步 7.74 一致）、elapsed time 34.55ms（正常 90.11）、tokens/s 560（正常 6747）——三个互不相关指标同时除以恢复后的 global_step"
       - "consumed tokens/samples 从 0 重新计数而非从 checkpoint 恢复累计值"

@@ -6,6 +6,18 @@
 
 cases:
   - id: VERL-6885
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: verl-project/verl
+        issue: 6885
+        url: https://github.com/verl-project/verl/issues/6885
     title: "verl GRPO vision（Qwen3-VL + vLLM rollout + FSDP）训练反向崩溃：aclnnConvolutionBackwardGetWorkspaceSize——升级至 verl 9.0.0（CANN 9.0）镜像修复"
 
     category: interrupt
@@ -19,12 +31,6 @@ cases:
         ranges: ["8.5.0"]            # 实测触发 CANN；9.0.0 镜像验证修复
 
     investigation_quality: medium    # 修复经镜像验证（未深入算子层根因），根因为版本组合级
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3
-      last_hit: ""
-
     symptoms:
       - "verl 0.8.0.dev0 + vllm-ascend 0.18.1 + CANN 8.5.0 跑 Qwen3-VL GRPO（vision, vLLM rollout, FSDP）反向阶段崩溃：aclnnConvolutionBackwardGetWorkspaceSize"
       - "崩溃落在 WorkerDict 的 torch::autograd::Engine::thread_main 反向传播路径"

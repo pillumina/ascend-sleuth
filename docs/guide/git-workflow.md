@@ -32,7 +32,7 @@ git worktree remove ../ascend-sleuth-s<session>
 1. 工作区隔离：worktree 隔离工作区文件 / index / HEAD / 未提交改动，各 session 在自己 worktree 内任意修改，不污染他人检出（`git checkout` 携带未提交改动的问题从根上消失）。
 2. 共享面（worktree 不隔离）：`.git` 对象库与 refs 全局共享，分支名 `kb/<用途>` 必须全局唯一；共享状态文件（ingest-state.json 的 processed、metrics/timeline.yaml、index 分片、postmortems/inbox/）在各 worktree 是各自分支的副本，合流时显式解决 merge 冲突：processed 数组合并、索引分片重跑一次生成器即可（它是生成物，不必逐行解）、inbox 清空先确认无他人草稿。
 3. 未进 git 的运行时件：一律锚到主检出（别再假设"未跟踪文件会被 git 拦住"）。实测（git 2.39）：`.gitignore` 覆盖的未跟踪件不计入 dirty，`git worktree remove` 不报错、也不需要 `--force`，随 worktree 静默一并删掉；只有"已跟踪且被修改"的文件才会被拦下并提示 `--force`。所以：
-   - 跨 session 复用的记录（`metrics/skill-exec-log.yaml`、`metrics/ev-measure-log.yaml`、`src-code/` 源码缓存、`traces/`、`postmortems/inbox/` 草稿、`proposals/{sessions,tasks,reviews,experiments}/`）路径一律解析到主检出——`scripts/exec_log_path.py` 是唯一事实源，agent 侧入口是 `python3 scripts/shared_dir.py <名字>`（打印绝对路径；`--list` 看全部）。写侧别用相对路径：写进 worktree 的记录，主检出那一份读者（诊断面板 / 周批指标 / `settle_trace_feedback.py` 等结算脚本）看不到，而且 worktree 一清就没了——"记录了但没人看得见"与"读不到就当成没有"会同时发生。
+   - 跨 session 复用的记录（`metrics/skill-exec-log.yaml`、`metrics/ev-measure-log.yaml`、`metrics/entry-activity.local/` 本机明细、`src-code/` 源码缓存、`traces/`、`postmortems/inbox/` 草稿、`proposals/{sessions,tasks,reviews,experiments}/`）路径一律解析到主检出——`scripts/exec_log_path.py` 是唯一事实源，agent 侧入口是 `python3 scripts/shared_dir.py <名字>`（打印绝对路径；`--list` 看全部）。写侧别用相对路径：写进 worktree 的记录，主检出那一份读者（诊断面板 / 周批指标 / `settle_trace_feedback.py` 等结算脚本）看不到，而且 worktree 一清就没了——"记录了但没人看得见"与"读不到就当成没有"会同时发生。
    - 读 `traces/` 的脚本（`trace_metrics.py` / `settle_trace_feedback.py` / `component_tally.py` / `replay_trace.py` / `metrics_snapshot.py`）默认就取主检出那一份，不必手工指定。
    - 仍是检出内、会随 worktree 静默消失的只剩 dev 期产物：`.s2-replay/`、`.ixn-replay/`、`.flow-replay/`、`.auto-fetch/`、`eval-reports/`（不是知识记录；要留就在收工前挪出来）。
 4. 串行操作：涉及 ingest-state.json 的 fetch / `--mark-imported` / 游标更新必须串行（read-modify-write 无锁，并发写互相覆盖）；groom 清空 inbox 前先确认无其他 session 未提交草稿。
@@ -61,12 +61,15 @@ git worktree remove ../ascend-sleuth-s<session>
 两边都写（正常合并）：`triage-tree.d/`、`references/`、`metrics/gates.yaml`、`trace-status.yaml`。
 这四个路径 fork 会因为自己的知识面、阈值与词表去改，上游也在改。冲突按文件类型处理：追加型（`references/` 下的家族表、`trace-status.yaml` 的词表、`triage-tree.d/` 的性质文件——后者还配了 `merge=union`，两边新增的词自动都留住）两边都保留；键控结构（性质文件与 `00-protocol.md` 里 `id` / `category` / `sources:` 这类字段）按语义合，不机械取一边。
 
+追加型共享源（两边都写，且同一仓内多人同周并发追加）：`metrics/entry-activity.d/`。
+它与「两边都写」的差别在追加的粒度：一周一个文件、一行一条自包含记录（每行带 `deployment`），配了 `merge=union`——同周并发时各人各写各的行、两侧都留住，行序不影响结果（前提是「一行一条」，见 `.gitattributes` 的注释）。读端按 `deployment` 分组，一个部署出一份生成物 `metrics/entry-activity/<部署>.yaml`，不跨部署合并：合并两侧的行只解决同部署的并发，两份部署的计数不会被加成一条排行。它与 `metrics/timeline.d/` 一样按自然周命名，一个文件里可能装两个部署的行。
+
 每部署一份（不参与合并）：`metrics/timeline.d/`、`metrics/timeline.yaml`、`ingest-state.json`、`reference-ingest-state.json`、`eval/scorecard.yaml`、`.github/CODEOWNERS`（owner 名单各仓不同）。
 冲突时保留本仓那份。同期名的指标文件也按本仓处理——两份部署的读数混进一条趋势线本身不成立。
 
-生成物（重新生成，不逐行解）：`knowledge/_index.yaml` 与 `knowledge/_index/`、`triage-tree.yaml`、`references/_summary-index.yaml`、`references/_procedure-index.yaml` 与 `references/_procedure-index/`。
+生成物（重新生成，不逐行解）：`knowledge/_index.yaml` 与 `knowledge/_index/`、`triage-tree.yaml`、`references/_summary-index.yaml`、`references/_procedure-index.yaml` 与 `references/_procedure-index/`、`metrics/entry-activity/`（一个部署一份，由 `scripts/build_entry_activity.py` 从源重建）。
 
-本节没列到的路径按只接收处理；要写它就先在本节加一行。
+本节没列到的路径按只接收处理；要写它就先在本节加一行。`metrics/entry-activity.d/` 属上面新增的「追加型共享源」一档，不适用只接收。
 
 仍混装两边内容的文件（靠合并策略只能缓解，按来源拆文件才根治）：`ingest-state.json` 一个文件装所有来源的游标、`eval/scorecard.yaml` 一个账本装两边夹具的哈希、`metrics/timeline.d/` 按自然周命名。这三件属机制改动，等第二个部署真实摄取数据时再做。
 
@@ -174,7 +177,7 @@ draft(inbox/) ─► triaged(三分类标签) ─► reviewed(人审) ─► mer
 
 高风险双签：
 
-高风险清单与 `skills/knowledge-groom/SKILL.md` 保持一致：新建 `common/` 权威记录、修改 `expected`、修改 `fix_on_mismatch`、修改 `compat` 区间、手动覆盖 `confidence.score`。
+高风险清单与 `skills/knowledge-groom/SKILL.md` 保持一致：新建 `common/` 权威记录、修改 `expected`、修改 `fix_on_mismatch`、修改 `compat` 区间、条目的排序分数被 `score_override` 手动覆盖。
 
 落地步骤：
 

@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]
 
     investigation_quality: high      # 维护者定论根因 + 明确修复步骤
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     symptoms:
       - "dsv4 整网训练将 step 从 2000 改为 20000（数据总量变化）后启动训练报错"
       - "rank41 在 build_train_valid_test_data_iterators → build_train_valid_test_data_loaders 数据集构建/加载阶段抛异常，训练无法拉起"

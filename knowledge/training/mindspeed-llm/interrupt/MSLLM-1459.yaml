@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]
 
     investigation_quality: high      # 维护者定论根因 + resolved
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     symptoms:
       - "昇腾环境执行训练脚本 examples/mcore/qwen3/pretrain_qwen3_8b_4K_ptd.sh 启动即失败"
       - "/opt/conda/lib/python3.11/site-packages/bitsandbytes/libbitsandbytes_cpu.so: cannot open shared object file: No such file or directory（bitsandbytes 动态库缺失/加载失败），训练无法拉起"

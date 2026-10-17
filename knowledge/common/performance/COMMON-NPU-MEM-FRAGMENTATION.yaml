@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "推理经过几次图推后显存缓慢增长（每次上涨十几 MB），约 10 小时后 OOM；GPU 上未复现，仅 NPU 出现"
       - "开启 empty_cache 后显存仍持续上涨"

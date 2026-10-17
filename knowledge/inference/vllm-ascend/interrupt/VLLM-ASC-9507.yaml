@@ -6,6 +6,12 @@
 
 cases:
   - id: VLLM-ASC-9507
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 9507
+        url: https://github.com/vllm-project/vllm-ascend/issues/9507
     title: "minimax2.7 TP4 + --prefill-context-parallel-size 2 开启 PCP 时 curl 报 AttributeError: 'NoneType' object has no attribute 'num_computed_tokens_of_pcp_dcp'；FULL 图模式不支持 PCP，切 FULL_DECODE_ONLY 解决"
 
     category: interrupt
@@ -18,11 +24,6 @@ cases:
         ranges: ["<=0.19.1"]        # 线程环境 v0.19.1rc1；官方确认功能限制，未提修复版本
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3                    # medium
-
     symptoms:
       - "minimax2.7-w8a8 TP4 + --prefill-context-parallel-size 2（PCP=2）启动后 curl 调用报错，Worker 抛 AttributeError: 'NoneType' object has no attribute 'num_computed_tokens_of_pcp_dcp'"
       - "报错栈在 vllm_ascend/attention/context_parallel/attention_cp.py:324 update_graph_params（acl_graph.py:233 update_full_graph_params 图参数更新路径）"

@@ -10,6 +10,18 @@
 
 cases:
   - id: VLLM-ASC-14273
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 14273
+        url: https://github.com/vllm-project/vllm-ascend/issues/14273
     title: "CANN 9.1.0 下 DeepSeek-V4 PD 分离输出损坏（content:null / 多语言乱码 reasoning / NaN→token 全 -1→507035→EngineDead），同配置 CANN 9.0.1 正常：CANN 9.1 的 cann_ops_transformer 激活 MegaMoe 路径，暴露 prefill buffer 按 decode graph 尺寸分配、超容却仍走 MegaMoe"
 
     category: precision
@@ -21,12 +33,6 @@ cases:
         ranges: ["9.1.0"]            # 触发面：9.1 装了 cann_ops_transformer；9.0.1 不触发
 
     investigation_quality: high   # 维护者给出根因 + 四格 A/B 矩阵（含强制 legacy 路径与提容量两组对照）
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.65
-      last_hit: ""
-
     symptoms:
       - "PD 分离 + Mooncake（KV 传输）+ DeepSeek-V4-Flash-W8A8 + 投机解码（DSpark，5 draft tokens）部署，**CANN 9.1.0** 镜像下输出损坏：`content: null`、`reasoning_content` 为多语言乱码、`finish_reason: length`"
       - "同模型、同 vLLM/vllm-ascend 代码与启动参数，换 **CANN 9.0.1** 镜像即正确——**HTTP 200、无 traceback、无 Mooncake 传输错误**（表现为『跑通了但答案是垃圾』）"

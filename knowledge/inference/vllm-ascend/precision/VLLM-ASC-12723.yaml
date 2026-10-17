@@ -6,6 +6,18 @@
 
 cases:
   - id: VLLM-ASC-12723
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 1
+      self_consistent: 0
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 12723
+        url: https://github.com/vllm-project/vllm-ascend/issues/12723
     title: "Triton rope 的 sin 缓存偏移用了 pad 后的 rotary dim（rope_dim=192→pad 256，起点错位 32 元素）致 RoPE 退化为 out=in*cos，Q/K 范数 ~0.73，DSpark 投机接受率 5.6→3.0"
 
     category: precision
@@ -17,12 +29,6 @@ cases:
         ranges: ["<=0.23.0"]        # 受影响为含 Triton rope 路径的 0.23.0 nightly；PR #12963 在 main，是否回传 0.23.x 需验证
 
     investigation_quality: high     # to-postmortem 标的调查质量，groom 据此设初始 score
-    confidence:
-      hits: 1
-      misdiagnoses: 0
-      score: 0.73                   # 反馈回写：1 次命中后 Beta 后验重算（α 强先验 0.6 起步）
-      last_hit: "2026-W35"          # 首次真实命中
-
     symptoms:
       - "GLM-5.2 DSpark 投机解码（bf16, NeoX, head_dim=rotary_dim=192）在线 accept_len 从 ~5.6 崩到 ~3.0"
       - "同一 rope 对象/worker/输入调 forward_native() 后 accept_len 恢复 5.4~5.5"

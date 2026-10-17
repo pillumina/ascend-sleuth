@@ -14,6 +14,18 @@
 
 cases:
   - id: VLLM-ASC-10876
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 10876
+        url: https://github.com/vllm-project/vllm-ascend/issues/10876
     title: "DeepSeek-V4-Flash chunked prefill 偶发超长（forward_ms 4000+ms、TTFT P90 7.3s）：vllm_ascend/ops/triton/rms_norm.py 的 TOTAL_BATCH 误标 tl.constexpr 致 batch shape 变化频繁重编译——去 constexpr（PR #11211）修复，v0.23.0rc1+"
 
     category: performance
@@ -24,12 +36,6 @@ cases:
         ranges: ["<0.23.0rc1"]     # 0.20.2rc1/0.21.0rc1 实测复现（0.19.1-dev 打点同现）；76d338a72 含于 v0.23.0rc1
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     symptoms:
       - "serve DeepSeek-V4-Flash（TP8 chunked prefill + prefix cache + enable-dsa-cp/flashcomm1）：多轮长对话 prefill 偶发超长——forward_ms 4000+ms（正常 chunk ~450ms），TTFT P90/P99 ~7.3s"
       - "触发特征：单批 token 数不等于 chunked_prefill_size（8192）边界时大概率触发（实样日志：total_scheduled_tokens=3122 forward_ms=4381.53）"

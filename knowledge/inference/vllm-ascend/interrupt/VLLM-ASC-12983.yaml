@@ -6,6 +6,18 @@
 
 cases:
   - id: VLLM-ASC-12983
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 12983
+        url: https://github.com/vllm-project/vllm-ascend/issues/12983
     title: "310P MTP 与图模式无法同时开启：镜像缺 free-mask 算子，pageattention-splitfuse 变化 shape mask 不入图"
 
     category: interrupt
@@ -17,11 +29,6 @@ cases:
         ranges: ["=0.23.0rc1-310p-openeuler"]   # 实测镜像；修复依赖后续 CANN/torch-npu 版本（发布后升级）
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3                    # 初始值（investigation_quality=medium → 0.3）
-
     symptoms:
       - "v0.23.0rc1-310p-openeuler 镜像 310P 上 MTP 与图模式无法同时开启，启动报错（Qwen3.6-27B qwen3_5_mtp）"
       - "RuntimeError: NPUModelRunner init failed ... copy_between_host_and_device_opapi ... aclrtMemcpy, error code is 107030"

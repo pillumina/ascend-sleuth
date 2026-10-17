@@ -7,6 +7,18 @@
 
 cases:
   - id: VERL-6707
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: verl-project/verl
+        issue: 6707
+        url: https://github.com/verl-project/verl/issues/6707
     title: "verl Qwen3-MoE NPU patch 失败：verl/models/transformers/npu_patch.py 按 Transformers 4.57 编写，Transformers 5.x 下 Qwen3MoeSparseMoeBlock 接口不兼容（gate 变 router module）→ PR #6708 修复"
 
     category: interrupt
@@ -20,12 +32,6 @@ cases:
         ranges: [">=5.0"]            # 4.57 的 patch 与 5.x 不兼容
 
     investigation_quality: high      # 根因定位到源码文件+接口差异（issue 给出 4.x/5.x 对比），PR #6708 修复
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6                     # high → 初始 0.6
-      last_hit: ""
-
     symptoms:
       - "verl 0.8.0.dev 跑 Qwen3-MoE GRPO（910B）：npu fused kernel for Qwen3-MoE patch failed"
       - "Transformers 5.x 环境下 Qwen3 MoE forward 路由行为错误或运行失败（patch 与上游模型实现不兼容）"

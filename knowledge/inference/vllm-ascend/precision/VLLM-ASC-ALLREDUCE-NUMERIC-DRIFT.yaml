@@ -17,12 +17,6 @@ cases:
         cann: ["9.1.0"]     # 9.0.0 正常、9.1.0 异常；修复版本 9.1.0 B037
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "CANN 从 9.0.0 升级到 9.1.0 后，vLLM 推理请求回复乱码（正常场景回复正常文本，异常场景回复乱码数据）"
       - "回退 CANN 版本后问题消失——升级前后模型结构、API 调用逻辑均未改变"

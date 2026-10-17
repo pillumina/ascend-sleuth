@@ -7,6 +7,18 @@
 
 cases:
   - id: VLLM-ASC-11824
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        pr: 11824
+        url: https://github.com/vllm-project/vllm-ascend/pull/11824
     title: "Ascend NPU 上 batch invariance 测试输出随 batch 波动：算子默认非确定性执行，需在 override_envs_for_invariance() 开启 torch.use_deterministic_algorithms(True, warn_only=True)"
 
     category: precision
@@ -19,11 +31,6 @@ cases:
         ranges: ["<0.23.0"]      # 修复 PR #11824 合入 main（2026-07-13）；0.23.0 为 PR 标注的 vLLM 版本，vllm-ascend 以含该 PR 的 release 为准
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3                 # investigation_quality=medium → 初始 0.3
-
     symptoms:
       - "batch invariance 测试（如 Qwen3-30B）断言同输入、不同 batch 输出一致，在 Ascend NPU 上随 batch 波动、测试失败"
       - "Ascend NPU 上算子默认非确定性执行（未显式开启 PyTorch 确定性算法）"

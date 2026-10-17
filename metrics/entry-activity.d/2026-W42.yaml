@@ -1,0 +1,67 @@
+# 条目使用记录的源：一周一个文件，一次运行追加若干行，一行一条自包含记录。
+#
+# 谁写：scripts/trace_entry_activity.py（汇总：被选中/被加载/被排除、先验三态与消费点、工具分布）
+#       scripts/settle_trace_feedback.py（结算：现场确认解决/自证解决/误诊）
+#       scripts/migrate_confidence_baseline.py（搬运：案例文件里原有的累计值，kind: baseline）
+# 谁读：scripts/build_entry_activity.py 聚合成 metrics/entry-activity/<部署>.yaml，读端只读生成物。
+#
+# 不要改已经写下的行：追加是唯一写动作。同一周多人各写各的行，配 merge=union（行级合并）两侧都留住。
+# 行的唯一键是 (run, kind, id)；同一行被重复保留只算一次，键相同而内容不同的两行判重复（校验脚本报红）。
+- {run: baseline-2026-10-17, deployment: ascend-sleuth, kind: baseline, id: VLLM-ASC-12430, resolved: 0, misdiagnosed: 0, self_resolved: 1, note: 搬自 confidence 块，2026-10-17}
+- {run: baseline-2026-10-17, deployment: ascend-sleuth, kind: baseline, id: VLLM-ASC-15087, resolved: 1, misdiagnosed: 0, self_resolved: 0, note: 搬自 confidence 块，2026-10-17}
+- {run: baseline-2026-10-17, deployment: ascend-sleuth, kind: baseline, id: VLLM-ASC-12723, resolved: 1, misdiagnosed: 0, self_resolved: 0, last_hit: 2026-W35, note: 搬自 confidence 块，2026-10-17}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-10322, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-10500, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-10610, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-10834, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-10944, selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-12030, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-12461, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-12640, selected: 4, loaded: 3, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-12989, selected: 4, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-13050, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-13070, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-13329, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-13688, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-14273, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-14320, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-14363, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-7635, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-7856, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-9005, selected: 2, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-9024, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-9596, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-9769, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: case, id: VLLM-ASC-9887, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: aclnn-quant-modes-and-sparsemode, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: aclnn-type-promotion-broadcast-and-format, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: aicore-error-fault-patterns, lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: ascend-310p-known-limits, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: ascend-moe-comm-triage, lookups: 2, hit: 2, miss: 0, skipped: 0, purpose: {fix: 1, procedure: 1}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: ascend-process-interrupt-triage, lookups: 2, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 2}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: ascend-vllm-spec-decode-mtp-triage, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: cann-hdk, lookups: 3, hit: 2, miss: 0, skipped: 0, purpose: {signature: 1, background: 1, fix: 1}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: cann-runtime-error-codes, lookups: 4, hit: 2, miss: 1, skipped: 0, purpose: {signature: 2, background: 1, fix: 1}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: fractal-nz-layout, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: msllm-startup-version-env-triage, lookups: 2, hit: 0, miss: 0, skipped: 0, purpose: {signature: 2}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: operator-error-codes, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: operator-exec-fault-patterns, lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: reg-data-movement-fault-patterns, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: runtime-resource-fault-patterns, lookups: 1, hit: 0, miss: 0, skipped: 0, purpose: {signature: 1}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: vllm-infer-precision-triage, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 1}}
+- {run: 2026-10-17-2124, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, sessions: 9, kind: ref, id: weight-nz-inference-only, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+- {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: ask_user_question, calls: 1, p50_ms: 821713, p90_ms: 821713, errors: 0, timeouts: 0}
+- {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: bash, calls: 359, p50_ms: 130, p90_ms: 6485, errors: 0, timeouts: 0}
+- {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: create_goal, calls: 1, p50_ms: 46, p90_ms: 46, errors: 0, timeouts: 0}
+- {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: edit, calls: 19, p50_ms: 49, p90_ms: 54, errors: 0, timeouts: 0}
+- {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: get_goal, calls: 1, p50_ms: 23, p90_ms: 23, errors: 0, timeouts: 0}
+- {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: job_kill, calls: 1, p50_ms: 66, p90_ms: 66, errors: 0, timeouts: 0}
+- {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: job_output, calls: 15, p50_ms: 60147, p90_ms: 184161, errors: 0, timeouts: 0}
+- {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: list_agents, calls: 1, p50_ms: 29, p90_ms: 29, errors: 0, timeouts: 0}
+- {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: read, calls: 15, p50_ms: 32, p90_ms: 59, errors: 0, timeouts: 0}
+- {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: send_message, calls: 2, p50_ms: 28, p90_ms: 29, errors: 0, timeouts: 0}
+- {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: skill, calls: 1, p50_ms: 35, p90_ms: 35, errors: 0, timeouts: 0}
+- {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: subagent, calls: 5, p50_ms: 254, p90_ms: 277, errors: 0, timeouts: 0}
+- {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: todo_write, calls: 1, p50_ms: 26, p90_ms: 26, errors: 0, timeouts: 0}
+- {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: update_goal, calls: 1, p50_ms: 43, p90_ms: 43, errors: 0, timeouts: 0}
+- {run: 2026-10-17-2125, deployment: ascend-sleuth, checkout: 896493c, kb_rev: b752859, kind: tool, id: write, calls: 16, p50_ms: 56, p90_ms: 82, errors: 0, timeouts: 0}

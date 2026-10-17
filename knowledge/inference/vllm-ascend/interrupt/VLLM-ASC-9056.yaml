@@ -19,6 +19,18 @@
 
 cases:
   - id: VLLM-ASC-9056
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 9056
+        url: https://github.com/vllm-project/vllm-ascend/issues/9056
     title: "vLLM v0.20.1 + vllm-ascend main@4d51588（GLM-5-w4a8，DP2 TP8 + MTP）拉起即崩：上游 Scheduler.__init__ 新增 hash_block_size 参数，balance scheduling patch 的 BalanceScheduler.__init__（patch_balance_schedule.py:696）未适配 → TypeError: BalanceScheduler.__init__() got an unexpected keyword argument 'hash_block_size'；main2main PR #9155 同步后修复"
 
     category: interrupt
@@ -31,10 +43,6 @@ cases:
     # 平台：issue 未声明机型（DP2×TP8 GLM-5-w4a8）
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "vllm v0.20.1 + vllm-ascend main@4d51588e2381018348f1022dfa3a7698899805b7（旧于 main2main 0514）拉起 GLM-5-w4a8（--data-parallel-size 2 --tensor-parallel-size 8 --enable-expert-parallel + deepseek_mtp spec decode）：EngineCore DP1 启动阶段即崩"
       - "崩溃栈尾：patch_balance_schedule.py:696 调 super().__init__(*args, **kwargs) → 'TypeError: BalanceScheduler.__init__() got an unexpected keyword argument 'hash_block_size''"

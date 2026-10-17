@@ -14,7 +14,6 @@ cases:
     compat: [{framework: cross, ranges: ["*"]}]
 
     investigation_quality: high
-    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
 
     symptoms:
       - "稳定复现：训练启动后前 500 步性能正常，第 500 步保存 Checkpoint 后性能下降 20%+，之后缓慢恢复"

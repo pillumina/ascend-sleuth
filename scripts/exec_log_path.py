@@ -177,6 +177,9 @@ CHECKOUT_DIRS = {
     # 与摄取台账（ingest-state.json 的 sources.<repo>）分家：台账要跨机同步故 tracked 走 PR，
     # 游标只在本地判「这个 session 结算过没有」，进 git 只会让每次结算都变成一次 PR。
     "settle-state": Path(".settle-state.json"),
+    # 一次诊断的本机记录（含逐次工具调用明细与 token 账单）：gitignored，锚主检出——
+    # 面板与汇总脚本读的是主检出那一份，写侧在 worktree 里跑也要落在同处。
+    "entry-activity-local": Path("metrics") / "entry-activity.local",
 }
 
 

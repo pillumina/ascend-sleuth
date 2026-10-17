@@ -9,6 +9,12 @@
 
 cases:
   - id: VLLM-ASC-14363
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 14363
+        url: https://github.com/vllm-project/vllm-ascend/issues/14363
     title: "DeepSeek V4 adapter 构造 routed FusedMoE 时漏传 swiglu_limit（config=10.0）→ routed expert 以默认 None 运行、无 SwiGLU clamp → 敏感前缀处 next-token logit/ranking 漂移 → 异常中文/特殊 token（BF16 与量化均受影响，main 与 v0.25.1rc 均存在）"
 
     category: precision
@@ -19,16 +25,11 @@ cases:
         ranges: ["<0.25.1"]        # fix PR #14364 merged → v0.25.1
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
-
-    validation_record:  # S2/外部验证累积（settle_s2_feedback 结算；与 confidence 分开：confidence=现场 resolve S1，validation=内容被外部验证）
+    validation_record:  # S2/外部验证累积（settle_s2_feedback 结算；与现场解决计数分开：现场解决计数在条目使用记录里，validation=内容被外部验证）
       consistent: 0
       inconsistent: 0
-      self_consistent: 1
-      last_verified: 2026-W36
+      self_consistent: 2
+      last_verified: 2026-W42
     symptoms:
       - "DeepSeek V4 部署后输出异常中文/特殊 token（关联 #13615），BF16 与量化 checkpoint 均受影响"
       - "main 与 v0.25.1rc 分支均存在；由 FusedMoE refactor（#11081）引入——refactor 前 adapter 直接从 hf_config 读 swiglu_limit，refactor 后需显式传参"

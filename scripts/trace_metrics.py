@@ -33,6 +33,20 @@ from exec_log_path import resolve_traces
 #   聚合统计由 scripts/component_tally.py 按需聚合承担（归因事件入 trace——无常驻台账表，
 #   docs/mechanism/pipeline §2）——本脚本只计 verdict 分布（case_error/execution_error 汇总指标），
 #   不重复统计 component，避免双源口径漂移。component 字段不会被词表检查拦截（非 action）。
+# `attribution_kind` → 归因比的两个桶。生产端写的是 execution|improvement|design
+# （见 skills/diagnose 的 diagnosis-procedure 与 trace schema），而归因比只分
+# 「case 错（知识库要改）」与「执行错（流程要改）」两类：
+#   execution            → execution_error（执行的流程步骤错了）
+#   improvement / design → case_error（这条内容不够判别、或设计有缺口，归到要改库那一侧）
+# 映射只在这一处定义（component_tally.py 的读法与之同源，改这里要一并核它）。
+ATTRIBUTION_KIND_MAP = {
+    "execution": "execution_error",
+    "improvement": "case_error",
+    "design": "case_error",
+    "case_error": "case_error",
+    "execution_error": "execution_error",
+}
+
 KNOWN_ACTIONS = {
     "triage", "load_index", "quickly_check", "load_full",
     "run_check", "hit", "miss", "tier3", "feedback", "reference_lookup",
@@ -106,14 +120,23 @@ def ns_map_from_index(root: Path) -> dict:
                 for c in cases:
                     m[c.get("id")] = (ns, cat, (c.get("confidence") or {}).get("score"))
         return m
+    # 索引缺失时的回退：分数不再住在案例本体（案例里已没有 confidence 块），所以从
+    # score_entries 现算——此前这里读 `confidence.score`，字段一删就会**恒为空**，
+    # 而「恒为空」在读数上表现为「置信度分布 0 条」，不是报错。
     kdir = root / "knowledge"
+    try:
+        import score_entries
+        scores = score_entries.compute(root)["cases"]
+    except Exception:
+        scores = {}
     for f in kdir.rglob("*.yaml"):
         if f.name.startswith("_") or f.parent.name == "_archive":
             continue
         doc = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
         ns = str(f.parent.relative_to(kdir))
         for c in doc.get("cases", []):
-            m[c.get("id")] = (ns, c.get("category"), (c.get("confidence") or {}).get("score"))
+            cid = c.get("id")
+            m[cid] = (ns, c.get("category"), (scores.get(cid) or {}).get("score"))
     return m
 
 
@@ -238,7 +261,11 @@ def main():
                     if pur not in KNOWN_PURPOSES:
                         purpose_bad.append(f"{st.get('session_id', '?')}: {pur!r}")
             elif a == "attribution":
-                v = t.get("verdict")
+                # 两种键都认：规范写 `verdict`，而生产端实际写的是 `attribution_kind`——
+                # 只读 `verdict` 时这条腿恒为 0（实测 7 条归因事件里 4 条写 attribution_kind、
+                # 3 条两个键都没有），而「0」在读数上与「没有归因问题」同形。
+                # 两个键都写时以 `verdict` 为准（它是规范口径）。
+                v = t.get("verdict") or ATTRIBUTION_KIND_MAP.get(t.get("attribution_kind"))
                 if v in attr:
                     attr[v] += 1
             # 同批并发标记：一次并行展开的几个动作共用同一个值；串行动作不写。

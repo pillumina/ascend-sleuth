@@ -1,0 +1,543 @@
+# 条目使用记录的生成物（由 scripts/build_entry_activity.py 从 metrics/entry-activity.d/ 重建）。
+#
+# 读端只读这一份：面板与知识整理不解析源文件、也不自行求和。不要手改——改了会在 --check 上报过期。
+# 重建命令：python3 scripts/build_entry_activity.py
+#
+# `tools` 的 p50_ms/p90_ms 是**按调用次数加权的各运行分位均值**：跨运行的分位数无法从各运行的
+# 分位数精确合成，这里给的是量级读数，逐次与逐运行的精确值只在本机明细里（metrics/entry-activity.local/）。
+covered: {deployment: ascend-sleuth, runs: 3, weeks: [2026-W42], checkouts: [896493c]}
+cases:
+  VLLM-ASC-10322:
+    totals: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-10500:
+    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-10610:
+    totals: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 3, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-10834:
+    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-10944:
+    totals: {selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 1, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-12030:
+    totals: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-12430:
+    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 1, excluded: 0, baseline: True}
+    by_week: {}
+    recent: []
+  VLLM-ASC-12461:
+    totals: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-12640:
+    totals: {selected: 4, loaded: 3, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 4, loaded: 3, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 4, loaded: 3, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-12723:
+    totals: {selected: 0, loaded: 0, resolved: 1, misdiagnosed: 0, self_resolved: 0, excluded: 0, baseline: True}
+    last_hit: '2026-W35'
+    by_week: {}
+    recent: []
+  VLLM-ASC-12989:
+    totals: {selected: 4, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    by_week:
+      2026-W42: {selected: 4, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 4, loaded: 2, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+  VLLM-ASC-13050:
+    totals: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    by_week:
+      2026-W42: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+  VLLM-ASC-13070:
+    totals: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-13329:
+    totals: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-13688:
+    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-14273:
+    totals: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-14320:
+    totals: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-14363:
+    totals: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-15087:
+    totals: {selected: 0, loaded: 0, resolved: 1, misdiagnosed: 0, self_resolved: 0, excluded: 0, baseline: True}
+    by_week: {}
+    recent: []
+  VLLM-ASC-7635:
+    totals: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-7856:
+    totals: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 3, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-9005:
+    totals: {selected: 2, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    by_week:
+      2026-W42: {selected: 2, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 2, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 0}
+  VLLM-ASC-9024:
+    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-9596:
+    totals: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 1, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-9769:
+    totals: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 0, loaded: 0, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+  VLLM-ASC-9887:
+    totals: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    by_week:
+      2026-W42: {selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, selected: 2, loaded: 1, resolved: 0, misdiagnosed: 0, self_resolved: 0, excluded: 1}
+references:
+  aclnn-quant-modes-and-sparsemode:
+    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
+    purpose: {background: 1}
+    by_week:
+      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+  aclnn-type-promotion-broadcast-and-format:
+    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
+    purpose: {background: 1}
+    by_week:
+      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+  aicore-error-fault-patterns:
+    totals: {lookups: 2, hit: 1, miss: 1, skipped: 0}
+    purpose: {signature: 2}
+    by_week:
+      2026-W42: {lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+  ascend-310p-known-limits:
+    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
+    purpose: {background: 1}
+    by_week:
+      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+  ascend-moe-comm-triage:
+    totals: {lookups: 2, hit: 2, miss: 0, skipped: 0}
+    purpose: {fix: 1, procedure: 1}
+    by_week:
+      2026-W42: {lookups: 2, hit: 2, miss: 0, skipped: 0, purpose: {fix: 1, procedure: 1}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 2, hit: 2, miss: 0, skipped: 0, purpose: {fix: 1, procedure: 1}}
+  ascend-process-interrupt-triage:
+    totals: {lookups: 2, hit: 1, miss: 0, skipped: 0}
+    purpose: {procedure: 2}
+    by_week:
+      2026-W42: {lookups: 2, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 2}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 2, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 2}}
+  ascend-vllm-spec-decode-mtp-triage:
+    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
+    purpose: {signature: 1}
+    by_week:
+      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+  cann-hdk:
+    totals: {lookups: 3, hit: 2, miss: 0, skipped: 0}
+    purpose: {signature: 1, background: 1, fix: 1}
+    by_week:
+      2026-W42: {lookups: 3, hit: 2, miss: 0, skipped: 0, purpose: {signature: 1, background: 1, fix: 1}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 3, hit: 2, miss: 0, skipped: 0, purpose: {signature: 1, background: 1, fix: 1}}
+  cann-runtime-error-codes:
+    totals: {lookups: 4, hit: 2, miss: 1, skipped: 0}
+    purpose: {signature: 2, background: 1, fix: 1}
+    by_week:
+      2026-W42: {lookups: 4, hit: 2, miss: 1, skipped: 0, purpose: {signature: 2, background: 1, fix: 1}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 4, hit: 2, miss: 1, skipped: 0, purpose: {signature: 2, background: 1, fix: 1}}
+  fractal-nz-layout:
+    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
+    purpose: {background: 1}
+    by_week:
+      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+  msllm-startup-version-env-triage:
+    totals: {lookups: 2, hit: 0, miss: 0, skipped: 0}
+    purpose: {signature: 2}
+    by_week:
+      2026-W42: {lookups: 2, hit: 0, miss: 0, skipped: 0, purpose: {signature: 2}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 2, hit: 0, miss: 0, skipped: 0, purpose: {signature: 2}}
+  operator-error-codes:
+    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
+    purpose: {signature: 1}
+    by_week:
+      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+  operator-exec-fault-patterns:
+    totals: {lookups: 2, hit: 1, miss: 1, skipped: 0}
+    purpose: {signature: 2}
+    by_week:
+      2026-W42: {lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 2, hit: 1, miss: 1, skipped: 0, purpose: {signature: 2}}
+  reg-data-movement-fault-patterns:
+    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
+    purpose: {signature: 1}
+    by_week:
+      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {signature: 1}}
+  runtime-resource-fault-patterns:
+    totals: {lookups: 1, hit: 0, miss: 0, skipped: 0}
+    purpose: {signature: 1}
+    by_week:
+      2026-W42: {lookups: 1, hit: 0, miss: 0, skipped: 0, purpose: {signature: 1}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 0, miss: 0, skipped: 0, purpose: {signature: 1}}
+  vllm-infer-precision-triage:
+    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
+    purpose: {procedure: 1}
+    by_week:
+      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 1}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {procedure: 1}}
+  weight-nz-inference-only:
+    totals: {lookups: 1, hit: 1, miss: 0, skipped: 0}
+    purpose: {background: 1}
+    by_week:
+      2026-W42: {lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+    recent:
+    - {run: 2026-10-17-2124, week: 2026-W42, lookups: 1, hit: 1, miss: 0, skipped: 0, purpose: {background: 1}}
+tools:
+  ask_user_question: {calls: 1, p50_ms: 821713, p90_ms: 821713, errors: 0, timeouts: 0}
+  bash: {calls: 359, p50_ms: 130, p90_ms: 6485, errors: 0, timeouts: 0}
+  create_goal: {calls: 1, p50_ms: 46, p90_ms: 46, errors: 0, timeouts: 0}
+  edit: {calls: 19, p50_ms: 49, p90_ms: 54, errors: 0, timeouts: 0}
+  get_goal: {calls: 1, p50_ms: 23, p90_ms: 23, errors: 0, timeouts: 0}
+  job_kill: {calls: 1, p50_ms: 66, p90_ms: 66, errors: 0, timeouts: 0}
+  job_output: {calls: 15, p50_ms: 60147, p90_ms: 184161, errors: 0, timeouts: 0}
+  list_agents: {calls: 1, p50_ms: 29, p90_ms: 29, errors: 0, timeouts: 0}
+  read: {calls: 15, p50_ms: 32, p90_ms: 59, errors: 0, timeouts: 0}
+  send_message: {calls: 2, p50_ms: 28, p90_ms: 29, errors: 0, timeouts: 0}
+  skill: {calls: 1, p50_ms: 35, p90_ms: 35, errors: 0, timeouts: 0}
+  subagent: {calls: 5, p50_ms: 254, p90_ms: 277, errors: 0, timeouts: 0}
+  todo_write: {calls: 1, p50_ms: 26, p90_ms: 26, errors: 0, timeouts: 0}
+  update_goal: {calls: 1, p50_ms: 43, p90_ms: 43, errors: 0, timeouts: 0}
+  write: {calls: 16, p50_ms: 56, p90_ms: 82, errors: 0, timeouts: 0}
+cold: {cases: 145}
+cold_never_looked_up:
+- a5-950dt-memory-spec
+- a5-950pr-memory-spec
+- a5-ai-subsystem-compute-spec
+- a5-ccu
+- a5-ccu-algorithms
+- a5-cube-core-spec
+- a5-cv-fusion
+- a5-die-architecture
+- a5-hif8-format
+- a5-interconnect-ub2
+- a5-l2-cache
+- a5-l2-cache-detail
+- a5-memory-hierarchy
+- a5-memory-ras
+- a5-nddma
+- a5-pcie5-spec
+- a5-precision-format-support
+- a5-simd-simt-mixed
+- a5-stars2-scheduler
+- a5-supernode-scale
+- a5-ub-onchip-switch
+- a5-urma-semantics
+- a5-vector-core-spec
+- accuracy-operator-exemption-and-verification
+- acl-error-codes
+- aclnn-return-codes
+- aclnn-two-phase-contract
+- ai-cpu-error-codes
+- aicore-task-duration-anatomy
+- amct-env
+- amct-error-codes
+- amct-quantization-precision-tuning
+- aoe-env
+- aoe-error-codes
+- aoe-model-tuning
+- asc-tools-ascendc-debug-suite
+- ascend-aicore-error-triage
+- ascend-app-process-and-resource-constraints
+- ascend-asys
+- ascend-determinism-triage
+- ascend-device-log-ops
+- ascend-error-code-structure
+- ascend-garbled-output-triage
+- ascend-hardware-detect-triage
+- ascend-hccl-comm-fault-triage
+- ascend-inference-multistream-and-graph-mode
+- ascend-log-classification
+- ascend-log-env
+- ascend-log-levels
+- ascend-log-locations
+- ascend-log-modules
+- ascend-log-troubleshooting
+- ascend-msaicerr
+- ascend-om-infer-precision-triage
+- ascend-oom-triage
+- ascend-process-hang-triage
+- ascend-profiling-collection-planning
+- ascend-restart-slogd
+- ascend-slog-conf
+- ascend-stack-view
+- ascend-trace-logs
+- ascend-train-precision-triage
+- atb-dispatch-bound-and-runtime-optimizations
+- atc-precision-mode-and-switches
+- attention-precision-chains
+- audio-fault-patterns
+- auto-tune-error-codes
+- autofuse-fusion-enable-and-diagnostics
+- batch-consistency-and-determinism-switches
+- bf16-intermediate-precision
+- camera-fault-patterns
+- cann-source-location
+- cannsim-sim-profiling
+- cluster-compare-diagnosis
+- compile-exec-fault-patterns
+- cpu-binding-affinity-triage
+- cpu-binding-inspection-procedure
+- crosscore-vs-mutex
+- cv-fusion-fixpipe-ub
+- deprecated-env
+- dma-granularity-and-pingpong-tuning
+- driver-error-codes
+- dvpp-common-fault-patterns
+- dvpp-decode-fault-patterns
+- dvpp-encode-fault-patterns
+- dvpp-error-codes
+- dvpp-vpc-fault-patterns
+- elemwise-vs-reduce-bound
+- exec-npu-cmd-async-launch
+- fabricmem-unified-addressing-and-transfer
+- fault-collect-env
+- fe-error-codes
+- flash-attention-stage-pipeline
+- float8-cast-bit-mapping
+- framework-profiler-instrumentation
+- full-load-l1-condition
+- ge-error-codes
+- glm-quantized-startup-triage
+- graph-compile-env
+- graph-exec-env
+- hccl-cluster-heartbeat-and-link-probe
+- hccl-comm-init-and-link-faults
+- hccl-debug-env
+- hccl-error-codes
+- hccl-function-env
+- hccl-log-key-info-fields
+- hccl-network-env
+- hccl-op-exec-and-cluster-event-faults
+- hccl-performance-env
+- hccl-reliability-env
+- hccl-safety-env
+- hccn-tool-network-diagnosis
+- hdmi-fault-patterns
+- hif8-and-mxfp8-low-precision-training
+- hif8-type-contract
+- hixl-error-codes
+- hixl-tool-route-and-comm-res
+- host-kernel-log-collection
+- hostbound-evidence-gate
+- hw-task-scheduler-routing
+- install-config-env
+- l1-l0-bank-and-conflict
+- l2-and-multibuffer-mechanisms
+- llm-datadist-error-codes
+- llm-datadist-link-and-kv-transfer-contract
+- long-vector-accumulation-error
+- lxfusion-error-codes
+- mc2-megamoe-token-capacity
+- memory-leak-and-oom-triage
+- memory-symptom-triage
+- misc-error-codes
+- model-inference-fault-patterns
+- moe-dispatch-combine
+- msdebug-operator-source-debug
+- msmemscope-collect-and-query
+- msopprof
+- msprobe-accuracy-checker
+- msprobe-accuracy-compare
+- msprobe-capability-limits
+- msprobe-checkpoint-compare
+- msprobe-compile-precision-checker
+- msprobe-config-check
+- msprobe-data-dump
+- msprobe-data-load
+- msprobe-monitor
+- msprobe-overflow-check
+- msprobe-response-anomaly
+- msprobe-tool-side-effect-fault-patterns
+- msprobe-trend-visualization
+- msprobe-visualization
+- msprof-cli-collect-items
+- msprof-collect-parse
+- msprof-collection-mechanism-and-metric-semantics
+- msprof-comm-bottleneck-thresholds
+- msprof-configuration-options
+- msprof-enablement-methods
+- msprof-output-reading-and-performance-analysis
+- msprof-timeline-lane-reading
+- msprof-tool-fault-patterns
+- mssanitizer
+- mte2-preload-queue-depth
+- multi-rank-slow-rank-detection
+- multicore-partitioning-and-template-selection
+- mx-quantized-matmul
+- n-buffer-multi-level-pingpong
+- npu-arch-token-map
+- npu-memory-snapshot-analyzer
+- npu-prefetch-and-superkernel
+- npu-smi-950-device-ops
+- om-dynamic-shape-and-aipp-constraints
+- op-compiler-static-kernel
+- op-internal-sync-and-reduction
+- operator-bottleneck-attribution
+- operator-compile-env
+- operator-compute-failure-modes
+- operator-coredump-forensics
+- operator-debug-entrypoints
+- operator-exec-env
+- operator-pipe-bound-classification
+- operator-sanitizer-suite
+- operator-tuning-experiment-method
+- pcie-host-memory-access
+- perf-modeling-constants
+- performance-delimiting-and-comparison
+- pipeline-slot-and-attribution-discipline
+- precision-first-divergence-triage
+- precision-threshold-cascade
+- process-hang-fault-patterns
+- process-interrupt-fault-patterns
+- profiler-analysis-cli
+- profiler-analysis-triage
+- profiler-breakdown-method
+- profiler-db-query
+- profiler-host-bound-triage
+- profiling-env
+- profiling-error-codes
+- regbase-execution-model
+- resource-config-env
+- rl-inference-precision-triage
+- rl-precision-alignment-overview
+- rl-reward-module-triage
+- rl-train-infer-consistency-triage
+- rl-train-infer-divergence-metrics
+- rl-training-precision-triage
+- rts-error-codes
+- runtime-api-call-failures
+- runtime-async-error-triage
+- runtime-first-setdevice-latency
+- runtime-memory-allocation-strategies
+- runtime-plog-failure-task-fields
+- runtime-stream-event-device-semantics
+- scatter-write-conflict
+- sentinel-precheck-data-movement
+- shmem-usage-limits-and-troubleshooting
+- simd-vf-programming-constraints
+- simt-execution-model
+- simt-vs-simd-selection
+- single-operator-accuracy-verification
+- slime-framework-debug-and-divergence
+- tbe-pass-error-codes
+- tefusion-error-codes
+- tf-adapter-env
+- torch-npu-cann
+- torch-npu-op-routing
+- torchtitan-npu-compile-backends-and-limits
+- torchtitan-npu-sdc-detection
+- torchtitan-npu-training-metrics-and-debugging
+- train-infer-paired-collection
+- train-infer-precision-patterns
+- training-performance-case-patterns
+- transfer-granularity-thresholds
+- ttk-deterministic-levels-and-batch-consistency
+- ttk-dump-and-performance-testing
+- ttk-precision-comparison-methods
+- ub-capacity-and-budget
+- unit-flag-mmad-fixpipe
+- verl-cross-validation
+- verl-npu
+- verl-official-image-no-hdk
+- verl-probs-diff-monitoring
+- verl-runtime-env-hccl-port-range-auto
+- verl-uwc-weight-consistency
+- vf-call-and-barrier-rules
+- vllm-ascend-torch-npu
+- vllm-eager-cudagraph-conflict

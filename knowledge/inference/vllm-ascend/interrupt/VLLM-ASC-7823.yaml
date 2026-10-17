@@ -9,6 +9,18 @@
 
 cases:
   - id: VLLM-ASC-7823
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 7823
+        url: https://github.com/vllm-project/vllm-ascend/issues/7823
     title: "vllm serve 启动即崩（任何模型，qwen3.5 亦复现）：patch_minimax_usage_accounting 源码改写补丁在上游 vLLM v0.18.0 源码漂移后定位不到期望块，RuntimeError: Failed to locate expected block while patching OpenAIServingChat usage accounting"
 
     category: interrupt
@@ -19,11 +31,6 @@ cases:
         ranges: ["<=0.18.0"]        # 崩溃环境 vllm-ascend releases/v0.18.0（0.1.dev1+g90bb1b4b9 = commit 6fbd0049）+ vLLM v0.18.0（commit bcf2be9）；PR #7835 于 2026-03-31 合入 releases/v0.18.0 修复，maintainer 2026-07-29 确认最新 release/rc 已解决（release 命名映射待 groom 按实际 tag 精化）
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      # score 草稿期不写，groom 首次评估后计算
-
     symptoms:
       - "vllm serve 启动即崩，Traceback 终止于 RuntimeError: Failed to locate expected block while patching OpenAIServingChat usage accounting"
       - "崩溃栈经 vllm_ascend/platform.py:138 pre_register_and_update → utils.py:381 adapt_patch → patch/platform/patch_minimax_usage_accounting.py:366 _patch_chat_completion_stream_generator → :71 _replace_block"

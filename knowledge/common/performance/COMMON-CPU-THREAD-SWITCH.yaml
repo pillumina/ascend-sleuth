@@ -16,7 +16,6 @@ cases:
         ranges: ["*"]
 
     investigation_quality: high
-    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
 
     symptoms:
       - "每个训练迭代均有某一张卡 PyTorch 框架侧队列取出（Dequeue）耗时过长，最长可达 7.9 秒"

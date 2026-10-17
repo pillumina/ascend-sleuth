@@ -12,6 +12,18 @@
 
 cases:
   - id: VLLM-ASC-11312
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 11312
+        url: https://github.com/vllm-project/vllm-ascend/issues/11312
     title: "GLM5.1（vLLM 0.20.2）图模式下开启 DCP=2 启动失败：sfa_cp.py:178 build_cp_metadata 读 num_computed_tokens_cpu=None → AttributeError: 'NoneType' object has no attribute 'to'（async 投机解码清空 CP computed-token 元数据）"
 
     category: interrupt
@@ -22,10 +34,6 @@ cases:
         ranges: ["<=0.20.2"]        # issue 环境 vLLM 0.20.2；无已合入修复 PR，修复版本未明（用户验证 v0.23.0+GLM5.2 混部 DCP ok）
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "GLM5.1 启动脚本加 --decode-context-parallel-size 2 + --cp-kv-cache-interleave-size 128（DCP=2）后服务拉起失败：RuntimeError: NPUModelRunner init failed, error is AttributeError: 'NoneType' object has no attribute 'to'；关闭图模式可正常拉起"
       - "报错在 cudagraph 捕获 warmup（capture_model → _dummy_run → _build_attn_group_metadata → builder.build），栈到 vllm_ascend/attention/context_parallel/sfa_cp.py:178 build_cp_metadata：num_computed_tokens = common_attn_metadata.num_computed_tokens_cpu.to(seq_lens.device)"

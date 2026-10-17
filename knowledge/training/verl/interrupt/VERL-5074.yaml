@@ -7,6 +7,18 @@
 
 cases:
   - id: VERL-5074
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: verl-project/verl
+        issue: 5074
+        url: https://github.com/verl-project/verl/issues/5074
     title: "verl GRPO 启动 A2 报 HCCL error code 5（hcclCommInitRootInfoConfig, RuntimeError: create_config）：runtime_env.yaml 的 HCCL_HOST_SOCKET_PORT_RANGE/HCCL_NPU_SOCKET_PORT_RANGE=\"auto\" 不兼容"
 
     category: interrupt
@@ -18,12 +30,6 @@ cases:
         ranges: ["<=0.7.x"]           # ef6eaa05d 触发；回退 f31df344 或删配置行修复
 
     investigation_quality: medium      # 多用户验证修复（删行/回退 commit），根因为配置而非代码
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3                       # medium → 初始 0.3
-      last_hit: ""
-
     symptoms:
       - "A2 上按 verl ascend_quick_start 跑 GRPO 启动即失败：RuntimeError: create_config:...HCCL function error: hcclCommInitRootInfoConfig(numRanks, &rootInfo, rank, config, ...), error code is 5"
       - "同环境跑 vllm-ascend 推理正常——问题在 verl 侧拉起（ray/WorkerDict）"

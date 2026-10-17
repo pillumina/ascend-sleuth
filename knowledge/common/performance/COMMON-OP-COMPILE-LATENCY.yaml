@@ -16,7 +16,6 @@ cases:
         ranges: ["*"]
 
     investigation_quality: high
-    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
 
     symptoms:
       - "从 api_statistic.csv 可见 aclopCompile 相关编译 API 调用频繁"

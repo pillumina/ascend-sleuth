@@ -12,6 +12,18 @@
 
 cases:
   - id: VLLM-ASC-10322
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 10322
+        url: https://github.com/vllm-project/vllm-ascend/issues/10322
     title: "DSV4-Flash decode 服务（FULL_DECODE_ONLY cudagraph + DSA 压缩 KV）启动即崩：profile_cudagraph_memory 阶段 aclnnScatterNdUpdateV2 aicore exception 507015（MTE DDR 越界/SMMU fault）——#9865 pre-KV ACL graph 显存预估在 KV 分配前临时 capture 撞 DSA 压缩路径；PR #10369 跳过该场景 pre-KV profiling"
 
     category: interrupt
@@ -22,10 +34,6 @@ cases:
     # 触发组合：cudagraph_mode=FULL_DECODE_ONLY + DSV4 压缩 attention（DSA）+ MTP decode；--enforce-eager 正常
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "DeepSeek-V4-Flash（w8a8-mtp）decode 服务 FULL_DECODE_ONLY cudagraph 模式启动：全部 DP worker 在 profile_cudagraph_memory → _warmup_and_capture → _dummy_run 崩溃；同配置 --enforce-eager 正常"
       - "Python 侧：RuntimeError: ... current working operator name is aclnnScatterNdUpdateV2（torch.npu.graph context 内 torch.npu.synchronize）"

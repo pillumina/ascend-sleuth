@@ -10,6 +10,18 @@
 
 cases:
   - id: VLLM-ASC-8646
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 8646
+        url: https://github.com/vllm-project/vllm-ascend/issues/8646
     title: "0.18.0rc1 A2 双机背靠背 GLM-5.1-W4A8（DP2×TP8 EP + FULL_DECODE_ONLY + MTP）拉起报 AclrtSynchronizeStreamWithTimeout 107027 / rtMemcpy capture 模式不支持 107030，plog 定位 aclnnQuantMatmulWeightNz/QuantBatchMatmulV3 Append Launch NULL aclTensor——EP MoE 量化分发路径与 ACL graph capture 冲突；moe_comm_type 切 ALLGATHER（MoECommType.ALLGATHER）规避"
 
     category: interrupt
@@ -21,11 +33,6 @@ cases:
         ranges: ["0.18.0rc1"]        # 0.18.0rc1 复现；规避=MoE 通信切 ALLGATHER（维护者 workaround，代码修复未见于 thread）
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      # score 草稿期不写，groom 首次评估后计算
-
     symptoms:
       - "A2 双机背靠背 GLM-5.1-W4A8（--quantization ascend）DP2×TP8 + EP + FULL_DECODE_ONLY（capture sizes 1..96）+ deepseek_mtp + multistream_overlap_shared_expert 拉起报错"
       - "报错链：RuntimeError: AclrtSynchronizeStreamWithTimeout(copy_stream), error code is 107027 → EE9999: rtMemcpy execution failed, reason=the current capture mode does not support this operation → synchronized memcpy failed, kind = 1, runtime result = 107030 → Not allow to synchronize captured-stream, stream_id=15"

@@ -28,6 +28,12 @@ triage-tree.d/*.yaml merge=union
 # 一项时两边都留住；只有散文段落被两边同时改才真冲突，那时按语义合。
 triage-tree.d/00-protocol.md merge=union
 
+# 条目使用记录的源（一周一个文件、一行一条自包含记录）配 union：这是**追加型共享源**——
+# 一次知识整理往当周文件追加若干行，两人同周各写各的行时两侧都留住；读端按 id 求和，行序不影响结果。
+# 之所以能配 union，前提是「一行一条」：嵌套结构做行级合并会拼出非法 YAML（下面索引那段的实测）。
+# 记录里没有「每次重建都变」的字段（run 是本次运行的时间戳，属于数据本身），union 之后不会漂移。
+metrics/entry-activity.d/*.yaml merge=union
+
 # 索引（总表 knowledge/_index.yaml 与读侧视图 knowledge/_index/*.list）**故意都不给 union**：
 #   总表还是**嵌套**结构（namespaces → ns → category → 条目列表），union 是行级文本合并——
 #   两人在同一格各加一条时，两段插入会被拼成不合法的 YAML（实测：parser 报 "expected <block end>"）。

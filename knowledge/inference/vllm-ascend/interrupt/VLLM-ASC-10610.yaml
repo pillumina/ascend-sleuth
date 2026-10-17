@@ -6,6 +6,18 @@
 
 cases:
   - id: VLLM-ASC-10610
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 1
+      self_consistent: 0
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 10610
+        url: https://github.com/vllm-project/vllm-ascend/issues/10610
     title: "GLM-5.2-w8a8（--quantization ascend）拉起服务加载权重即报 KeyError: 'model.layers.N.self_attn.indexer.wq_b.weight'，modelslim 量化描述未覆盖 GLM-5.2 新增 indexer 结构"
 
     category: interrupt
@@ -18,11 +30,6 @@ cases:
         ranges: ["<0.23.0"]         # 修复版本 v0.23.0（含 PR #10441 的 main）；0.21.0rc2 / 0.22.1rc 均触发
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6                    # high
-
     symptoms:
       - "GLM-5.2-w8a8 + --quantization ascend 拉起 vllm serve，模型加载阶段抛 KeyError: 'model.layers.N.self_attn.indexer.wq_b.weight'，服务无法启动"
       - "vllm-ascend v0.21.0rc2 与 releases/v0.22.1rc 均复现（Dbgsaoge/211840040/xw1216 多用户），910b2 同现"

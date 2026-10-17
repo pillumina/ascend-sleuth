@@ -9,6 +9,12 @@
 
 cases:
   - id: VLLM-ASC-10700
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 10700
+        url: https://github.com/vllm-project/vllm-ascend/issues/10700
     title: "GLM5.1 + MTP 投机解码未设 enforce_eager 时推理十余次请求后崩溃：507011 + MTE DDR 越界（fftsplus aivector error）——加 enforce_eager 后稳定，指向图模式路径"
 
     category: interrupt
@@ -19,12 +25,6 @@ cases:
         ranges: ["0.21.0rc1"]        # 现场实测版本（rc）
 
     investigation_quality: medium   # 现场 A/B（enforce_eager）指明方向，上游无根因结论
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3
-      last_hit: ""
-
     symptoms:
       - "GLM5.1（双节点 A2 16 卡）启用 MTP 投机解码（`--speculative-config '{\"num_speculative_tokens\":3,\"method\":\"mtp\"}'`）且**未设 enforce_eager** 时，推理十余次请求后 vLLM 进程崩溃（非启动即失败）"
       - "框架侧：`NPU function error: call failed, error code is 507011` / `aclrtLaunchKernelWithHostArgs failed: 507011` / `Kernel launch from cache failed`（走的是算子缓存/图路径）"

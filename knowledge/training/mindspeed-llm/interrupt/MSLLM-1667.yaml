@@ -18,12 +18,6 @@ cases:
         ranges: ["5.2.0"]
 
     investigation_quality: high      # 维护者定论根因 + resolved
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     symptoms:
       - "A2 上运行 fsdp2 训练减层版 gpt-oss-20b（mindspeed-llm 26.1.0 + transformers 5.2.0），在模型构建/加载阶段（ModelFactory.create → model_loader.create_model → _create_on_cpu）报错退出，训练无法启动"
 

@@ -28,6 +28,12 @@
 
 cases:
   - id: VLLM-ASC-12430
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 12430
+        url: https://github.com/vllm-project/vllm-ascend/issues/12430
     title: "4×A2 多节点 A2-910B 拉起 DeepSeek-V4-Pro-w4a8（dp4/tp8 + --enable-expert-parallel，EP=32）固定在 determine_available_memory → profile_run 崩：AICore timeout 507014（subErrType:4，plog retCode=0x25 aicore timeout），fault kernel = MoeDistributeDispatchV2（MC2 融合 MoE 分发）——HDK（npu driver 24.1.0.3 / firmware 7.5.0.5.220）低于 CANN 9.0.1 配套（25.5.1/25.5.2/26.0.RC1）；纯 HCCL 跨 32 卡正常、单机可过、dummy 权重可复现，指向环境而非模型；升级 HDK 到配套版本（CANN 不动）"
 
     category: interrupt
@@ -46,20 +52,13 @@ cases:
     # 触发条件：多节点（≥4 机）+ EP=32 大通信量 MoE + 单卡专家数未超 MC2 上限（本案 384/32=12 ≤ 24，故 MC2 必被选中）
 
     source_session: "2026-09-16-12430-dsv4pro-mc2"   # 产出本 case 的诊断 session；结算据此判「自证」
-                                                      # （该 session 自己的 resolve 记 confidence.self_resolved，不计入 hits）
+                                                      # （该 session 自己的 resolve 记 self_resolved，不计入 resolved）
 
     investigation_quality: medium
     # 现场排查质量高（HCCL 自证组网、dummy 复现、单机对照、CANN 三版对照、四项环境变量消融全为负），
     # 但**机制为推断**：plog 只有摘要，未拿到 #4914 那行 `rtMemcpy ... [driver error:internal error]` 的直接证据；
     # 根因由「配套矩阵越界 + 同 driver 同签名先例 + 维护者 CANN↔driver 口径」三方收敛推出，非代码级定位。
 
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      self_resolved:  # 来源 session 自己的 resolve（自证）——如实标注、不计入 hits
-        count: 1
-        last: "2026-W38"
-        examples: [2026-09-16-12430-dsv4pro-mc2]
     verification:
       source: investigation
       detail: "issue #12430（OPEN，无维护者结论、无 fix PR）。根因证据为：① CANN 9.0.1 ↔ HDK 官方配套矩阵（cann-hdk.yaml，引 CANN release-note）显示 24.1.x 越界；② 同 driver 24.1.0.3 的完全同签名先例 #4914（同 507014、同 subErrType:4、同 retCode=0x25，其 plog 含 rtMemcpy [driver error:internal error]，发帖人判为驱动）；③ #5468 维护者口径 CANN 8.5.0 即要求 driver >=25.0；④ #6875 同 4×A2 同错误码先例。**尚未在本案闭环**（现场未回报升级结果）"

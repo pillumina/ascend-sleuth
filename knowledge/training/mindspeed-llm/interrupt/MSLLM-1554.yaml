@@ -18,12 +18,6 @@ cases:
         ranges: ["0.12.1"]           # 触发版本（过旧，缺新符号）
 
     investigation_quality: medium    # 维护者定论根因，用户未回验
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3
-      last_hit: ""
-
     symptoms:
       - "A3 节点按指导文档用 MindSpeed-LLM master + mindspeed 0.12.1 拉起 dsv4 训练（pretrain_deepseek4.py → import mindspeed_llm → megatron_adaptor_v2 初始化）即报 ImportError: cannot import name 'PipelineModelParallelLayoutFeature' from 'mindspeed.features_manager'，ERR99999 UNKNOWN application exception，训练进程无法启动"
 

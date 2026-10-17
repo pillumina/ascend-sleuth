@@ -15,6 +15,18 @@
 
 cases:
   - id: VLLM-ASC-8867
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 8867
+        url: https://github.com/vllm-project/vllm-ascend/issues/8867
     title: "910C 双机 1P1D DSV4-Flash w8a8（decode TP1 DP16，16 个 api server）+ load_balance_proxy_server_example.py 长稳压测：数小时后部分 decode engine 不再收到请求（进程存活、日志无异常）——请求取消时 asyncio.CancelledError 不属 Exception，代理负载分数不释放，负载均衡停止向该 D 节点路由；PR #8836 修复"
 
     category: interrupt
@@ -27,10 +39,6 @@ cases:
       # 触发条件：PD 分离 + 多 decode engine 副本 + load_balance_proxy_server_example.py（或 layerwise 版）+ 压测中有客户端取消/断开请求
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "910C 双机 1P1D 跑 DSV4-Flash w8a8（decode 侧 TP1 DP16，16 个 Engine/API server 副本 + load_balance_proxy_server_example.py 负载分发）：长稳压测正常时 16 个 engine 日志都有请求（Running: 75 reqs、External prefix cache hit rate: 100.0%）"
       - "数小时后部分 engine 不再收到请求：某 engine（如 Engine 013 pid=107）日志最后一条停在更早时刻（'Running: 0 reqs... 10:06:42'），此后持续缺位；进程存活、日志无 ERROR/traceback，其余 engine 继续服务"

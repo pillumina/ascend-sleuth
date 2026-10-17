@@ -10,6 +10,18 @@
 
 cases:
   - id: VLLM-ASC-7856
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 7856
+        url: https://github.com/vllm-project/vllm-ascend/issues/7856
     title: "GLM-4.7-w8a8（float-mtp）在 vllm-ascend v0.17.0rc1 镜像 opencode/webfetch 场景流式 tool_calls 解析异常（arguments json 不闭合/拼接错误，工具调用必现失败），非流式正常——上游 vLLM <0.18 流式 tool-call parser 问题（上游 PR #29947），升级 vLLM ≥0.18.0 修复"
 
     category: precision
@@ -21,11 +33,6 @@ cases:
         ranges: ["<0.18.0"]        # v0.17.0rc1 镜像（内 vLLM <0.18）复现；v0.18.0rc1 镜像（vLLM 0.18.0，含上游 #29947）复测通过
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      # score 草稿期不写，groom 首次评估后计算
-
     symptoms:
       - "GLM-4.7-W8A8-floatmtp（--tool-call-parser glm47 等官方部署）opencode/webfetch 场景（如'洛杉矶天气怎么样'）模型输出 tool_calls 格式不正确、arguments json 不闭合/拼接错误，工具调用 100% 失败"
       - "流式（stream=true）必现异常；同一请求非流式（stream=false）正常"

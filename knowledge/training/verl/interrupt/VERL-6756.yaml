@@ -7,6 +7,18 @@
 
 cases:
   - id: VERL-6756
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: verl-project/verl
+        issue: 6756
+        url: https://github.com/verl-project/verl/issues/6756
     title: "verl v0.7.1 get_npu_versions() 硬编码 NPU device ID 为 \"1\"（6751 同 bug 硬编码 \"7\"）→ 多 NPU/异 chip ID 机器上版本检测失败——PR #6043 修复"
 
     category: interrupt
@@ -18,12 +30,6 @@ cases:
         ranges: ["0.7.1"]            # 实测触发版本；PR #6043 合入后修复
 
     investigation_quality: high      # 源码级定位（device.py 硬编码 device id），PR #6043 修复
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     symptoms:
       - "verl v0.7.1 在 NPU device ID 非 1 的机器（如 chip ID 0 或 7）上 get_npu_versions() 检测失败/返回错误版本"
       - "NPU 版本检测硬编码 device ID：6756=1、6751=7——不同机器暴露不同取值，同一源码 bug"

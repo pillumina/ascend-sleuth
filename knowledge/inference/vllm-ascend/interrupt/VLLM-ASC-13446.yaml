@@ -15,6 +15,18 @@
 
 cases:
   - id: VLLM-ASC-13446
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 13446
+        url: https://github.com/vllm-project/vllm-ascend/issues/13446
     title: "按 v0.24.0rc 官方 Qwen3-Reranker deploy guide 启动 Qwen3-VL-Reranker-2B（--runner pooling + --hf_overrides '{\"architectures\": [\"Qwen3VLForSequenceClassification\"]}'）报 TypeError: Invalid type of HuggingFace config（Expected Qwen3VLConfig but found Qwen3Config）→ serve 起不来：guide 架构覆盖与模型实际 config 类错配（doc bug，PR #13510 修 guide）；改 Qwen3ForSequenceClassification（0.18 配方）可正常启动"
 
     category: interrupt
@@ -25,11 +37,6 @@ cases:
         note: "doc/guide 层问题、非引擎版本门：触发=按 v0.24.0rc Qwen3-Reranker deploy guide 的 hf_overrides 配方启动（实测镜像 vllm-ascend:v0.23.0rc1，910B2）；修复=guide 文档修正（PR #13510），doc 修复不随引擎 tag 发布——同配方在新/旧引擎上都会踩（错配发生在 vllm 模型加载/数据解析层），升级镜像不能替代改配方"
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.75
-
     symptoms:
       - "按官方文档（https://docs.vllm.ai/projects/ascend/en/v0.24.0rc/tutorials/models/Qwen3-Reranker.html）配方启动：vllm serve Qwen/Qwen3-VL-Reranker-2B --served-model-name Qwen/Qwen3-Reranker-0.6B --runner pooling --hf_overrides '{\"architectures\": [\"Qwen3VLForSequenceClassification\"],\"classifier_from_token\": [\"no\", \"yes\"],\"is_original_qwen3_reranker\": true}' --port 8000 --max-model-len 1024，serve 启动报错"
       - "报错签名（issue 原文可匹配）：TypeError: Invalid type of HuggingFace config. Expected type: <class 'transformers.models.qwen3_vl.configuration_qwen3_vl.Qwen3VLConfig'>, but found type: <class 'transformers.models.qwen3.configuration_qwen3.Qwen3Config'>，栈经 vllm/model_executor/models/qwen3_vl.py get_data_parser/get_hf_config → vllm/multimodal/processing/context.py get_hf_config raise TypeError"

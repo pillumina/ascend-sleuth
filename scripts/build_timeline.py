@@ -102,8 +102,33 @@ def collect_sources(root: Path):
     return periods, errors
 
 
-def render(periods) -> str:
-    body = yaml.safe_dump({"periods": periods}, allow_unicode=True, sort_keys=False,
+#: 指标强度档的合法取值（取自设计文档 3.6 的最后一问：「这个数怎么来的」）。
+STRENGTH_VALUES = ("确定性", "代理", "自报", "人工")
+
+
+def metric_strength(root: Path):
+    """读 `metrics/gates.yaml` 的 `metric_strength` 段——强度的**唯一来源**。
+
+    为什么要把它带进生成物而不是让面板自己去读 gates.yaml：面板只读 `metrics/timeline.yaml`
+    这一份读侧契约，多开一个读点就多一处会漂移的口径。这份数据不随期变，所以放在生成物的
+    顶层一次（不是每期重复一遍）。
+    """
+    p = root / "metrics" / "gates.yaml"
+    if not p.exists():
+        return {}
+    try:
+        doc = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return {}
+    st = doc.get("metric_strength") or {}
+    return {str(k): str(v) for k, v in st.items() if isinstance(st, dict)}
+
+
+def render(periods, strengths=None) -> str:
+    body_doc = {"periods": periods}
+    if strengths:
+        body_doc["metric_strength"] = strengths
+    body = yaml.safe_dump(body_doc, allow_unicode=True, sort_keys=False,
                           default_flow_style=False)
     return HEADER + body
 
@@ -127,7 +152,7 @@ def main() -> int:
         return 1
 
     out_path = root / OUT_REL
-    wanted = render(periods)
+    wanted = render(periods, metric_strength(root))
     current = out_path.read_text(encoding="utf-8") if out_path.exists() else None
 
     if args.do_print:

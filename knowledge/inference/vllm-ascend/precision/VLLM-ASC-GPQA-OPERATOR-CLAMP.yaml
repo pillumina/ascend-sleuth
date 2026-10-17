@@ -17,12 +17,6 @@ cases:
         ranges: ["*"]
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "DeepSeek-V4 Pro 在 Atlas 800I A3 环境下 GPQA 数据集评分明显偏低；同模型其他环境、以及 DeepSeek-V4 Flash 在同环境下评分均正常"
       - "badcase 分析 + 代码走读 + badcase 复现三步定位到算子/模型侧三处差异"

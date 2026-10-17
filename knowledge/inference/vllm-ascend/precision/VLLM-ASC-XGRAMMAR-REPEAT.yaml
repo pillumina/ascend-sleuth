@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]     # 根因在约束解码与 prompt 内容的字符冲突
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "昇腾 + vLLM 部署 Qwen2.5-7B-Instruct，某推理用例偶现持续输出换行符、回复不终止"
       - "eager 模式 / 采样参数 / 硬件相关性逐一排除后仍复现"

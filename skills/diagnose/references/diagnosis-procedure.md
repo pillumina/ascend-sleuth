@@ -176,13 +176,13 @@ trace 记两条（同一时点、同一 `step`，`purpose` 不同）：`{step: 2
 
 拿 interrupt 的 grep 思路建 precision case，匹配不上。
 
-**阶段二（全量）**：候选 ≤5 条，全量加载 body，按 `confidence.score` **降序**验证（最可靠的先试）——单条全文的中位与最贵 5 条合计都现算（`python3 scripts/index_read_cost.py`），与最贵的索引格子同量级，所以"够了就停"，不要凑满 5 条。**先跑候选的 `quickly_check` 对照已提供的信息**：
+**阶段二（全量）**：候选 ≤5 条，全量加载 body，按索引行里的 `score` **降序**验证（最可靠的先试）——单条全文的中位与最贵 5 条合计都现算（`python3 scripts/index_read_cost.py`），与最贵的索引格子同量级，所以"够了就停"，不要凑满 5 条。**先跑候选的 `quickly_check` 对照已提供的信息**：
 - 先 primary（精确）
 - primary 不匹配 → 跑 fallback（更模糊）
 - primary 不匹配但 fallback 匹配 → 仍进验证，标 `low_confidence`
 - 都不匹配 → 跳过该 case（它不是候选）
 
-**多条候选时明示**：“匹配到 N 条，先验证最可能的 `<id>`（confidence `<score>`）”，工程师可说“跳过这条试下一条”。
+**多条候选时明示**：“匹配到 N 条，先验证最可能的 `<id>`（索引里的 score `<score>`）”，工程师可说“跳过这条试下一条”。
 
 **阶段二.5：候选自带回链与修复依据（「判断缺口 · 修复依据」消费点）**——**候选命中后固定执行，不写成"按需"**：命中只说明"这条 case 像"，不说明"该补的先验已经在手上了"。把"需不需要先验"交给当场自评，等于让最顺的那条路径永远不读先验。执行顺序（**只读 `status: active`**）：
 
@@ -210,7 +210,7 @@ trace 记：
 - {step: 2, action: reference_lookup, purpose: signature, outcome: skipped, ref_id: null, reason: "报错是框架自定义断言文本，无错误码 / event_id / env 名可作检索键"}
 - {step: 2, action: load_index, namespaces: [...], n_cases: 34}
 - {step: 3, action: quickly_check, case: MSLLM-EP-HANG-001, primary: pass}
-- {step: 3, action: load_full, candidates: [...], order: by_confidence_score}
+- {step: 3, action: load_full, candidates: [...], order: by_index_score}
 - {step: 3, action: reference_lookup, purpose: background, outcome: hit, ref_id: aclnn-two-phase-contract, platform: A3-910C}
 - {step: 3, action: reference_lookup, purpose: background, outcome: miss, ref_id: null, reason: "背景层按平台+组件词取 5 行，无与本签名相关的词条"}
 ```
@@ -222,7 +222,7 @@ trace 记：
 - 比对 `expected`
 - mismatch 且有 `fix_on_mismatch` → 提示 fix（**先看 severity**）
 - mismatch 且无 `fix_on_mismatch` → 该 case 不匹配，标 `excluded_cases`，试下一个
-- **版本软匹配**：把候选 case 的 `compat`（framework/cann/hdk，**填了的维度**）逐维对照客户版本组合——任一维不匹配 → 标 `version_mismatch`、confidence 临时下调，**case 仍是候选**（不硬排除）；没填的维度跳过
+- **版本软匹配**：把候选 case 的 `compat`（framework/cann/hdk，**填了的维度**）逐维对照客户版本组合——任一维不匹配 → 标 `version_mismatch`、排序分数临时下调，**case 仍是候选**（不硬排除）；没填的维度跳过
 
 **severity 闸门**（命中后）：
 - `benign` → 给 fix
@@ -231,7 +231,7 @@ trace 记：
 
 **串联保护**（误诊保护）：连续两个 case 都 fix 了但没解决 → 强制转人工，不试第三个。
 
-**命中时的输出**（结构化、可追溯，别只甩 fix）：报出 `<CASE-ID>` + confidence（含 hits/misdiagnoses）+ 匹配的症状 + root cause + fix（severity + side_effects）+ rollback + 应用后检查。confidence 校准：`>0.8` 高可信直接应用、`0.5–0.8` 中（备 plan B）、`<0.5` 仅提示。
+**命中时的输出**（结构化、可追溯，别只甩 fix）：报出 `<CASE-ID>` + 索引里的 score + 匹配的症状 + root cause + fix（severity + side_effects）+ rollback + 应用后检查。分数校准：`>0.8` 高可信直接应用、`0.5–0.8` 中（备 plan B）、`<0.5` 仅提示。需要历史解决 / 误诊计数时，读条目使用记录生成物 `metrics/entry-activity/<部署>.yaml` 里该 id 的 `totals`。
 
 命中 → 步骤 6（产出）。所有候选未命中 → 步骤 5（深度排查）。
 
@@ -311,13 +311,13 @@ trace 记 `{action: tier3, keyword: <kw>, files_read: [...]}`——Tier 3 挽救
 - **报告是活件，不是一次性交付物**：它必须跟着诊断走，否则第一次交付之后就开始说谎。同一份文件改到底（不另起 `report-v2`），每次修订更新元信息的"最后更新"、在第 10 节追加一行修订记录，旧结论被推翻时**降级标注而不是删掉**（读者要看到判断怎么变的）。触发点与各改哪节见 `report-template.md` 第 2 节；本步骤最常见的两处是 **用户回报 fix 结果**（改 1/6/7/8 节）与 **resume 续接**（改 7/3 节）。
 - **写 `sediment_candidates`**（顶层字段，与报告第 8 节同源）：把"这单能沉淀什么"结构化——报告给人读，trace 给机器与 resume 读；trace 记一条 `{action: report, report_file, sediment_candidates: N}` 事件。
 - **Tier-2 命中**：常规 postmortem 草稿
-- **Tier-2 未命中但最终解决**：postmortem 含一段 agent 起草的候选 case（标 `confidence.score` 初始低值），交 groom 验证。人的角色从“结构化”上移到“验证草案”。
+- **Tier-2 未命中但最终解决**：postmortem 含一段 agent 起草的候选 case（初始分数由 `verification` × `investigation_quality` 决定的冷启动先验给出，通常偏低），交 groom 验证。人的角色从“结构化”上移到“验证草案”。
 - **结果反馈：挂账 + 回报指令，不在这里当场追问**：给完 fix 那一刻，工程师还没应用、也没跑验证命令，此时问"解决了吗"只会得到一句"还没试"——这一问把债的产生点当成清偿点。正确顺序是：
   1. **立刻写**：`feedback: {case: <真实 case id 或占位串 pending-investigation>, outcome: pending}` + `feedback_pending_since: <当天日期>`（顶层字段，口径见 `diagnosis_state.yaml.example` 与 `trace-status.yaml`；**不再写 `feedback_pending`**，那是面板口头沿用的旧说法，脚本读不到）。写账龄是为了让这笔债可排序、可催——没有它，"挂了两周的反馈"与"昨天刚挂的"在面板上一样。
   2. **对话里给一条可复制的回报指令**，三选一、话术照抄可用：「应用后解决了吗？回我一句就行——`解决` / `没解决` / `部分解决`」。
-  3. **有人回来回报时才回写**：解决 → 该 case `hits += 1`；没解决 → `misdiagnoses += 1`；两者都更新 `last_hit`，trace 记 `{action: feedback, case, outcome: resolved|not_resolved|partial}`，清 `pending`。not_resolved / partial 自动进入误诊归因（见文末）。
+  3. **有人回来回报时才记**：trace 记 `{action: feedback, case, outcome: resolved|not_resolved|partial}` 并清 `pending`；计数由知识整理收尾的结算步骤（`scripts/settle_trace_feedback.py`）落进条目使用记录，**不写回 case 文件**。not_resolved / partial 自动进入误诊归因（见文末）。
 - **这笔债谁追**：`/skill:resume-diagnosis` 续那一单时问得其所；`/diagnose` **不在新诊断的开屏逐单念**（新问题的第一屏只服务新问题，积压时那是审讯）；面板待办面承载其余（谁欠、哪一单、欠多久），人去清。
-- **`case` 按是否命中填两种之一**：命中 → **真实 case id**（回报后能回写它的 confidence）；未命中但给了建议 → 占位串 `pending-investigation`，表示"**没有 case 可回写 confidence**"——后续追问这类单时问的是"上次要求的材料拿到了吗"，不是"那个 case 的 fix 生效了吗"。反馈捕获是学习环的吞吐上限，靠文件标记而非记性。
+- **`case` 按是否命中填两种之一**：命中 → **真实 case id**（回报后结算到它头上）；未命中但给了建议 → 占位串 `pending-investigation`，表示"**没有 case 可结算**"——后续追问这类单时问的是"上次要求的材料拿到了吗"，不是"那个 case 的 fix 生效了吗"。反馈捕获是学习环的吞吐上限，靠文件标记而非记性。
 - **沉淀已含在本步骤**：命中=常规 postmortem、未命中=含候选 case 的 postmortem，已生成。只有非 /diagnose 定位的（Kimi/手工、或没配 session-end hook 导致没生成）才需 `/skill:to-postmortem` 手动沉淀。
 
 ## 误诊归因（每次误诊必做）

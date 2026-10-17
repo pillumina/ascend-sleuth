@@ -64,6 +64,16 @@ gates:
     value: 0
     meaning: 本期捕获到 fix 结果的 session 为 0
     action: 命中率/误诊率/归因比无分母——不得据此下"无异常"结论；groom 摘要提示补反馈
+  # 条目使用记录的新鲜度：记录一周一周地来，断了就是断档——而分数是它的派生值，
+  # 记录越旧，排序越像在按"很久以前的表现"排。14 天 = 两个周批周期：
+  # 一周没跑属于正常节律（假期、没有新诊断），两周没跑说明汇总这一步没人在做。
+  # 判据在体检器里按**当天日期**算；索引生成物不按当天算（否则 --check 会在没有知识变更时变红）。
+  - id: entry_activity_stale_days
+    dimension: entry_activity_age_days
+    op: ">"
+    value: 14
+    meaning: 条目使用记录已超过两个周批周期没有新增
+    action: 跑 python3 scripts/trace_entry_activity.py --apply 汇总本机诊断，再重建生成物；分数仍在用旧记录
 
 # 可解读性下限：分母为 0（或来源无数据）的指标必须被标成"不可解读"，而不是安静地写成 0
 readability:
@@ -74,3 +84,43 @@ readability:
   - metric: attribution_ratio
     rule: any_gt_0
     why: 全 0 会被读成"无归因问题"，实际是"没有一个 not_resolved 触发过归因"（没数据）
+
+# 指标强度档：**每个指标的数是怎么来的**（数据，不是散文）。四种取值，取自
+# docs/mechanism/diagnosis-observability.md 3.6 的最后一问「这个数怎么来的」：
+#   确定性 —— 脚本、轨迹或账单直接产出的计数与比例
+#   代理   —— 用可计算的量代替真量的估计（例如用"各运行分位均值"代表跨运行分位）
+#   自报   —— agent 自己记下来的判断（弱观测，只作趋势与异常信号，不当验收证据）
+#   人工   —— 只有现场能给的（工程师回报的解决 / 没解决）
+# 谁读：`scripts/build_timeline.py` 把它写进生成的 metrics/timeline.yaml（面板据此标「自报」），
+#       `scripts/verify_metrics.py --check` 强制「期文件里出现的每个指标都声明了强度档」——
+#       新指标没声明就报红，而不是安静地没有强度。增删指标时改这里一处。
+metric_strength:
+  sessions_total: 确定性
+  tier2_hit: 确定性
+  routed_accuracy: 确定性
+  misdiagnosis_rate: 人工
+  by_category_hit: 确定性
+  attribution_ratio: 自报
+  confidence_distribution: 确定性
+  feedback_capture: 人工
+  trace_completeness: 确定性
+  vocab_compliance: 确定性
+  tier3: 确定性
+  reference: 确定性
+  reference_detail: 确定性
+  candidate_recall: 确定性
+  rank_distribution: 确定性
+  cross_replay_rank1: 确定性
+  case_total: 确定性
+  reference_total: 确定性
+  capacity_by_ns: 确定性
+  pre_triage: 确定性
+  semantic_validation_rate: 确定性
+  content_flow_runs: 确定性
+  evolve_check_runs: 确定性
+  evolve_check_no_signal: 确定性
+  golden_suite: 确定性
+  ixn_decisive_in_chain_heldout: 确定性
+  ixn_premature: 确定性
+  ixn_question_recall_heldout: 确定性
+  ixn_question_recall_self: 确定性

@@ -7,6 +7,18 @@
 
 cases:
   - id: VERL-6608
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: verl-project/verl
+        issue: 6608
+        url: https://github.com/verl-project/verl/issues/6608
     title: "verl GRPO TP2（npu 上 qwen 4B VL）报 HCCL error code 7（hcclCommInitRootInfoConfig）：HDK 版本与 verl 镜像组合不兼容，换 HDK 25.5.1 修复"
 
     category: interrupt
@@ -20,12 +32,6 @@ cases:
         ranges: ["26.0.rc1"]         # 官方镜像推荐但触发；25.5.1 验证可跑
 
     investigation_quality: medium    # 用户自验证修复（HDK 换版），无 maintainer 代码级定位
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3
-      last_hit: ""
-
     symptoms:
       - "verl GRPO + vllm-ascend rollout，TP2/N_GPUS_PER_NODE=2 训练 qwen 4B VL：vLLMHttpServer WorkerProc 崩溃，RuntimeError: create_config:...HCCL function error: hcclCommInitRootInfoConfig(...), error code is 7"
       - "多 TP 必现，单卡不报"

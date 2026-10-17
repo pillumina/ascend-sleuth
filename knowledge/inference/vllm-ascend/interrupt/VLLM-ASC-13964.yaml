@@ -20,12 +20,6 @@ cases:
         ranges: ["<=2.10.0.post2"]     # 线程实测版本
 
     investigation_quality: high        # to-postmortem 标的调查质量，groom 据此设初始 score
-    confidence:                        # groom 维护
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6                       # high → 初始 0.6
-      last_hit: ""
-
     symptoms:
       - "DeepSeek-V4-Flash W8A8 + one-token MTP + Mooncake P/D 分离 + async-scheduling + FULL_DECODE_ONLY（decode DP=16/TP=1/EP）"
       - "decode 各 DP rank 静默停滞：vllm:num_requests_running 保持 >0，而 generation_tokens_total / request 完成数停止增长，健康检查仍 200"

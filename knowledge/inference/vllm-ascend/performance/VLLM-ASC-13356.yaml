@@ -18,11 +18,6 @@ cases:
         ranges: ["<=0.23.0rc1"]     # 实测 0.23.0rc1；优化 PR #12783 及后续已合入 23.0 分支
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3                    # 初始值（investigation_quality=medium → 0.3）
-
     symptoms:
       - "PD 分离下开启 memcache（AscendStoreConnector/MultiConnector，backend=memcache）性能劣化：128K 输入序列时 lookup 与本地 prefix cache 重叠"
       - "每请求 lookup() 经常命中但 connector 随后 load 了 0 个 token"

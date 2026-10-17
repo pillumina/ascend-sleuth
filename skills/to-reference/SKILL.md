@@ -209,7 +209,7 @@ content:
 ```
 
 - `status` **写 `active`**——产出即 active，PR review 即审核闸门，合入即生效；**深审条件在产出时就满足**（case-derived + methodology 需 ≥3 条 case 引用，CI 强校验，产出时不达标 PR 直接红——不允许以 active 提交未达深审门槛的词条）。未合入的 PR 分支不 main，天然不进诊断上下文；合入动作即审核通过；
-- 初始 confidence 按来源类型（写进词条注释，供审核参考）：`official-doc` 0.6 / `engineer-input` 0.3 / `case-derived` 0.3–0.6（case 数与一致性越高越靠近 0.6）；
+- 初始可信度按来源类型（写进词条注释，供审核参考；与 case 的排序分数不是一回事）：`official-doc` 0.6 / `engineer-input` 0.3 / `case-derived` 0.3–0.6（case 数与一致性越高越靠近 0.6）；
 - `last_verified` 填今天——grill 阶段用户认可即视为一次人工确认，但**这不替代 maintainer 审核**；
 - **产出前检查：词条文件里不得有任何 `#` 注释行**（上模板中的注释全部删掉）——`grep -c "#" <file>` 应为 0。
 

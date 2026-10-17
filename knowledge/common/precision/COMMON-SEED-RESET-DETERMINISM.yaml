@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]     # 根因在业务代码，与框架/CANN 版本无关
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "同一模型重复训练，loss 与 grad_norm 不一致（偶现，非每次）"
       - "dump 两次数据比对，cross_entropy 存在确定性问题；to cpu 后第一步 loss 一致但 grad_norm 仍偶现不一致，几步后累积到 loss 不一致"

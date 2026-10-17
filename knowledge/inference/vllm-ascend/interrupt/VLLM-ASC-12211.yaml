@@ -14,6 +14,18 @@
 
 cases:
   - id: VLLM-ASC-12211
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 12211
+        url: https://github.com/vllm-project/vllm-ascend/issues/12211
     title: "Anthropic /v1/messages 每次请求 500：patch_anthropic_system_message 的两参 monkey-patch 与打包上游 vLLM 的 merge_inline_system= 调用点错配（TypeError: _patched_convert_system_message() got an unexpected keyword argument）——该补丁在 v0.23.0rc1 起已移除，升级/去补丁即修复"
 
     category: interrupt
@@ -28,12 +40,6 @@ cases:
         ranges: [">0.21.0"]        # 该镜像打包的上游 vLLM 比 v0.21.0 tag 新——v0.21.0 tag 的 serving.py 尚无该关键字，精确引入版本待确认
 
     investigation_quality: high   # 错配两侧（补丁签名 / 上游调用点）均在公开源码核对；维护者处置一致
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6                  # 保守取值：groom 先验表 upstream-maintainer-confirmed × high = 0.65，此处不取高
-      last_hit: ""
-
     symptoms:
       - "Ascend vllm-ascend 0.21.0rc1 官方镜像上，每一条 POST /v1/messages 请求都返回 HTTP 500，开箱即现、无需任何改动（与模型/权重无关）"
       - "服务端日志：ERROR api_router.py:72 Error in create_messages: _patched_convert_system_message() got an unexpected keyword argument 'merge_inline_system'"

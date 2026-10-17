@@ -34,7 +34,7 @@ import metrics_snapshot as MS
 # 实际声明的条目。gates.yaml 里新增一条判据而这里没实现时，`--check` 报 2（不可判定），
 # 而不是安静地"没有越界"（EV-2026-055 的教训：检测腿断了自己不会喊）。
 IMPLEMENTED_GATE_DIMENSIONS = {"capacity_cell_read_tok", "capacity_fallback_read_tok",
-                               "feedback_capture_total"}
+                               "feedback_capture_total", "entry_activity_age_days"}
 IMPLEMENTED_READABILITY_RULES = {"total_gt_0", "any_gt_0", "source_nonzero"}
 # 容量两线的兜底阈值：只在 `cell_read_*_tok` 闸门缺失时才用到（正常路径读 gates.yaml）。
 # **定义只有一处**：`index_read_cost.py` 是成本量的家（本 PR 自己的论点——同一个量两处定义，
@@ -79,6 +79,35 @@ def op_holds(op: str, value, threshold) -> bool:
     if op == "==":
         return value == threshold
     return False
+
+
+def ea_generated_rel() -> str:
+    """记录生成物的目录（人话输出里点明读的是哪一份）。"""
+    import entry_activity as _ea
+    return str(_ea.GENERATED_DIR_REL)
+
+
+def week_monday(week: str):
+    """ISO 周标签（`2026-W42`）→ 那一周的周一；解析不出返回 None。"""
+    try:
+        return date.fromisocalendar(int(week[:4]), int(week[6:]), 1)
+    except (ValueError, IndexError, TypeError):
+        return None
+
+
+def record_layer(root: Path):
+    """使用记录层的现状 → (anchor_week, age_days, score_meta)。
+
+    读的是记录**生成物**（`metrics/entry-activity/<部署>.yaml`）与 `score_entries.py` 的算分结果：
+    分数已不在案例本体里，所以「分数是不是退回先验了」这件事只有这一处能判。
+    """
+    try:
+        import score_entries
+        res = score_entries.compute(root)
+        _recs, anchor, _deps = score_entries.load_records(root)
+        return anchor, (date.today() - week_monday(anchor)).days if week_monday(anchor) else None, res["meta"]
+    except Exception as e:
+        return None, None, {"error": f"{type(e).__name__}: {e}"}
 
 
 def latest_by(periods, pred):
@@ -356,6 +385,34 @@ def main():
             pass   # 两类读入视图的容量线已在上面合并处理（按 dimension 分别判）
             # 漏一个的后果（独立预核实测）：报告同时写「闸门 5/5 条已评估」和「dimension
             # 'capacity_fallback_read_tok' 没有对应评估实现」——自相矛盾，而 EV 卡正拿这句话当验收证据。
+        elif dim == "entry_activity_age_days":
+            anchor, age, meta = record_layer(root)
+            if meta.get("error"):
+                findings.append(("warn", "记录层", f"使用记录读取失败（{meta['error']}）",
+                                 "python3 scripts/build_entry_activity.py",
+                                 "条目使用记录读不出来——先重建生成物再看这一面"))
+            elif not meta.get("records_present"):
+                findings.append(("warn", "记录层",
+                                 f"仓里没有任何条目使用记录（{ea_generated_rel()}）——"
+                                 f"全部分数退回冷启动先验",
+                                 "python3 scripts/trace_entry_activity.py --apply && "
+                                 "python3 scripts/build_entry_activity.py",
+                                 "还没汇总过任何一次诊断的使用记录，所以排序分数用的都是冷启动先验值，"
+                                 "不是按现场表现算出来的"))
+            elif age is None:
+                findings.append(("warn", "记录层",
+                                 f"记录里最新一次运行（{anchor}）归不了周——新鲜度判不了", None,
+                                 "使用记录的时间戳认不出来，判断不了它是不是过期"))
+            elif op_holds(op, age, val):
+                findings.append(("fail", "记录层",
+                                 f"使用记录最新一次运行在 {anchor}，距今 {age} 天 —— {g.get('meaning')}",
+                                 g.get("action"),
+                                 f"条目使用记录已经 {age} 天没更新——排序分数正在用越来越旧的现场表现"))
+            else:
+                findings.append(("ok", "记录层",
+                                 f"使用记录最新一次运行在 {anchor}（距今 {age} 天；"
+                                 f"按记录算分 {meta.get('with_records')} 条、退回先验 "
+                                 f"{meta.get('prior_only')} 条）", None, None))
         elif dim == "feedback_capture_total":
             live_m = ((last_live or {}).get("metrics") or {})
             fc = live_m.get("feedback_capture")

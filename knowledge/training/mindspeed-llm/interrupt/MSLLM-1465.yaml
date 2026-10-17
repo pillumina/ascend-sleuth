@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]
 
     investigation_quality: high      # 根因明确（配置错误）+ 修复明确
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     symptoms:
       - "执行 examples/mcore/qwen3/data_convert_qwen3_pretrain.sh 做 Qwen3 预训练数据预处理时，preprocess_data.py 报 FileNotFoundError: Couldn't find any data file at /data/dataset/train-00000-of-00042-d964455e17e96d5a.parquet"
       - "日志中夹杂 bitsandbytes/DeprecationWarning 等干扰项，关键报错是这一行"

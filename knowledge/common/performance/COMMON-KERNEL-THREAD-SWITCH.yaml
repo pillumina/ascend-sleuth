@@ -14,7 +14,6 @@ cases:
     compat: [{framework: cross, ranges: ["*"]}]
 
     investigation_quality: high
-    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
 
     symptoms:
       - "运行延迟波动大、任务吞吐不稳定、实时响应超时、CPU 有效算力利用率偏低、系统 sys 开销偏高"

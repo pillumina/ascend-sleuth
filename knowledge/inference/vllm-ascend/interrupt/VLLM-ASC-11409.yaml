@@ -11,6 +11,18 @@
 
 cases:
   - id: VLLM-ASC-11409
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 11409
+        url: https://github.com/vllm-project/vllm-ascend/issues/11409
     title: "RFork 二次实例启动失败：pre-transfer post-process 在接收端权重仍空时跑 FusedMoE shared-expert 一致性 forward → NaN mismatch abort（quantized processed-layout 传输，GLM-5 W4A8+MTP 等）"
 
     category: interrupt
@@ -22,10 +34,6 @@ cases:
     # 平台/触发面：RFork × 量化 DeepSeekV2 族（GLM-5 W4A8 + MTP，multistream_overlap_shared_expert）processed-layout 传输
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "RFork 二次实例启动（量化模型 processed-layout 传输路径）报 FusedMoE shared experts split computation does not match the integrated computation"
       - "mismatch 详情全为 NaN：max absolute difference:nan、integrated output-sum:nan,norm:nan、split output-sum:nan,norm:nan"

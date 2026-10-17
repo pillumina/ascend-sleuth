@@ -7,6 +7,18 @@
 
 cases:
   - id: VLLM-ASC-12989
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 12989
+        url: https://github.com/vllm-project/vllm-ascend/issues/12989
     title: "310P 硬件 event 资源有限：FULL_DECODE_ONLY 多尺寸 cudagraph 捕获超上限 → Insufficient_Event_Resources(EL0008)/507903，TP2 启动失败"
 
     category: interrupt
@@ -22,12 +34,6 @@ cases:
         ranges: ["9.1.0-beta.1"]       # 线程实测版本
 
     investigation_quality: medium      # to-postmortem 标的调查质量，groom 据此设初始 score
-    confidence:                        # groom 维护
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3                       # medium → 初始 0.3
-      last_hit: ""
-
     symptoms:
       - "Atlas 300I DUO（310P3）+ vllm-ascend v0.23.0rc1-310p 镜像，Qwen3-14B-W8A8SC TP2 启动失败；同命令 TP1 正常"
       - "FULL_DECODE_ONLY + cudagraph_capture_sizes [1,2,4,8,16] 捕获进行到第 5 张（80%）时崩溃"

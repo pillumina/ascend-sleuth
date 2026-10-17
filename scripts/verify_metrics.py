@@ -31,6 +31,9 @@ def load_yaml(path: Path):
         return {"__yaml_error__": str(e)}
 
 
+#: 指标强度档的合法取值（与 build_timeline.py 同一条口径，取自设计文档 3.6 的最后一问）。
+STRENGTH_VALUES = ("确定性", "代理", "自报", "人工")
+
 # live 快照字段白名单
 # ——来源一：trace_metrics.py --emit-yaml（诊断侧，单一实现）
 # ——来源二：metrics_snapshot.py 组装的结构侧与内容流程侧（2026-09-10 起）
@@ -191,6 +194,29 @@ def main():
         srcs = p.get("sources")
         if srcs is not None and not isinstance(srcs, dict):
             errors.append(f"{rel} [{pid}]: sources 应为 mapping（块名 → 出处说明），便于回溯每个指标块")
+
+    # 指标强度档的覆盖检查：期文件里出现的每个指标都要声明「这个数怎么来的」。
+    # 为什么值得一道门：漏声明是**静默**的——面板上那一行只是没有强度标记，没有任何报错；
+    # 而强度决定了读的人能不能把「自报」与「确定性」同权（设计文档 3.6 要求写进数据）。
+    # 强度档的取值与名册在 metrics/gates.yaml 的 metric_strength 段（唯一来源）。
+    strength_doc = load_yaml(root / "metrics" / "gates.yaml")
+    strength = (strength_doc or {}).get("metric_strength") if isinstance(strength_doc, dict) else None
+    if not isinstance(strength, dict) or not strength:
+        errors.append("metrics/gates.yaml 缺 metric_strength 段（指标强度档的名册）——"
+                      "没有它就无法回答「这个数怎么来的」")
+    else:
+        seen_metrics = set()
+        for p in periods:
+            if isinstance(p.get("metrics"), dict):
+                seen_metrics |= set(p["metrics"])
+        undeclared = sorted(seen_metrics - set(strength))
+        if undeclared:
+            errors.append(f"以下指标出现在期文件里，但 metrics/gates.yaml 的 metric_strength "
+                          f"没有声明强度档：{undeclared}（强度档决定读者能不能把它与确定性读数同权）")
+        bad = sorted({k: v for k, v in strength.items() if v not in STRENGTH_VALUES}.items())
+        if bad:
+            errors.append(f"metric_strength 有非法取值：{[f'{k}={v}' for k, v in bad]}"
+                          f"（合法值：{'、'.join(STRENGTH_VALUES)}）")
 
     if errors:
         print(f"metrics/timeline.yaml 校验失败（{len(errors)} 处）：")

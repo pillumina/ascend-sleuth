@@ -12,6 +12,18 @@
 
 cases:
   - id: VLLM-ASC-1991
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 1991
+        url: https://github.com/vllm-project/vllm-ascend/issues/1991
     title: "Qwen3-Embedding-4B（pooling 模型）在 300I Duo/310P3 上无法启动：模型加载报 ValueError: no module or parameter named 'layers' in CustomQwen3ForCausalLM（或 worker init 报 ACL SetPrecisionMode 500001）——310P 平台 pooling 支持缺失，升级到含 PR #8846 的版本（main/后续发布）可用"
 
     category: interrupt
@@ -24,10 +36,6 @@ cases:
         cann: ["8.1.RC1"]             # 触发环境；与 CANN 版本无关（支持缺失不是 CANN bug）
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "300I Duo（310P3）上用 vllm-ascend v0.9.2rc1-310p 镜像起 Qwen3-Embedding-4B（--tensor-parallel-size 2）服务，worker init_device 报 RuntimeError: SetPrecisionMode ... AclSetCompileopt(ACL_PRECISION_MODE), error code is 500001 → GE/OpCompileProcessor init failed"
       - "310P3 复现同模型：模型加载报 ValueError: There is no module or parameter named 'layers' in CustomQwen3ForCausalLM（vllm_ascend/models/qwen3.py load_weights）"

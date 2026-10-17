@@ -14,7 +14,6 @@ cases:
     compat: [{framework: cross, ranges: ["*"]}]
 
     investigation_quality: high
-    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
 
     symptoms:
       - "Python 模型业务迁移至 Ascend 平台后运行耗时偏高、任务吞吐率不足"

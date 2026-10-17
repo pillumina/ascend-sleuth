@@ -15,6 +15,12 @@
 
 cases:
   - id: VLLM-ASC-1767
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 1767
+        url: https://github.com/vllm-project/vllm-ascend/issues/1767
     title: "带 guided decoding / response_format（结构化输出）的请求打到 AscendScheduler（ascend_scheduler_config.enabled=true 或该版本默认启用）上时整服务崩溃：RuntimeError: Invalid request status: WAITING_FOR_FSM —— scheduler 缺 WAITING_FOR_FSM → WAITING 的状态迁移分支"
 
     category: interrupt
@@ -27,18 +33,11 @@ cases:
         ranges: ["0.9", "0.10", "0.11"]
 
     investigation_quality: high   # 上游源码逐版本核对 + 维护者结论 + 修复 PR，机制链闭合
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6                  # groom 先验表：upstream-maintainer-confirmed × high
-      last_hit: ""
-
-
-    validation_record:  # S2/外部验证累积（settle_s2_feedback 结算；与 confidence 分开：confidence=现场 resolve S1，validation=内容被外部验证）
+    validation_record:  # S2/外部验证累积（settle_s2_feedback 结算；与现场解决计数分开：现场解决计数在条目使用记录里，validation=内容被外部验证）
       consistent: 0
       inconsistent: 0
-      self_consistent: 2
-      last_verified: 2026-W38
+      self_consistent: 3
+      last_verified: 2026-W42
     symptoms:
       - "服务**启动正常**、普通请求也正常；一旦发来带结构化输出约束的请求（response_format / guided_decoding，如 json_object），服务随即整体崩溃——不是该请求失败，是 EngineCore fatal 后 EngineDeadError"
       - "失败签名：`RuntimeError: Invalid request status: WAITING_FOR_FSM`，抛在 vllm_ascend/core/scheduler.py 的 schedule() 里（现场 :236）"

@@ -6,6 +6,18 @@
 
 cases:
   - id: VLLM-ASC-11343
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 11343
+        url: https://github.com/vllm-project/vllm-ascend/issues/11343
     title: "PD 分离 + 多节点 PP：D 侧 _get_remote_ranks_for_req 用 P0 的 base kv_port(31112) 计算所有 PP rank 的 ZMQ 端口，P1(31113) 上 PP2+ 端口整体偏移 -1，连到无人监听的 31128 → KV 传输超时、P 节点显存堆积、bench 卡死"
 
     category: interrupt
@@ -17,12 +29,6 @@ cases:
         ranges: ["<0.23.0"]           # 线程未提供版本；2026-07 时段（0.22.x/0.23.0-dev），修复 PR #11342 合入后的发布版本未在快照确认，软匹配降权
 
     investigation_quality: high       # to-postmortem 标的调查质量，groom 据此设初始 score
-    confidence:                       # groom 维护
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6                      # high → 初始 0.6
-      last_hit: ""
-
     symptoms:
       - "PD 分离 + 多节点 PP（各 P 节点配置不同 base kv_port，如 P0=31112、P1=31113）部署，单 curl 请求 OK，bench 跑到 100+ 请求后彻底卡死"
       - "D 节点反复出现 Receive request timeout ... port 31128（共 21 次，全部指向 P1）；登 P1 查 ZMQ 监听范围是 31129-31144，31128 无 worker 监听"

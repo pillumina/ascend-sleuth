@@ -9,6 +9,18 @@
 
 cases:
   - id: VLLM-ASC-14448
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 14448
+        url: https://github.com/vllm-project/vllm-ascend/issues/14448
     title: "GLM-5.2 单 D MTP（4 并发长输入 20-40k）TPOT 极差：MTP 路径 host 侧长 copy 同步点推迟算子下发、呈 host-bound（PR #14103/#14554 优化 DCP drafting metadata 消除多余 CPU↔NPU 拷贝）"
 
     category: performance
@@ -19,10 +31,6 @@ cases:
         ranges: ["<0.26.0"]      # PR #14103 main（v0.26.0rc 为 #14554），受影响精确区间未系统确认
 
     investigation_quality: medium   # fix PR 合入对应；profiling 为截图证据，机制由 fix 措辞支持
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "GLM-5.2 单 D（PD 分离 decode 侧）+ MTP 服务，4 并发长输入（20-40k tokens）：TPOT 明显劣化"
       - "profiling 显示 MTP 分支耗时超长、host 侧存在长 copy 操作推迟 MTP 算子下发——整体 host-bound（算子未及时下发，流水空档），非 NPU kernel 算力瓶颈"

@@ -11,6 +11,18 @@
 
 cases:
   - id: VLLM-ASC-9305
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 9305
+        url: https://github.com/vllm-project/vllm-ascend/issues/9305
     title: "启动报 ModuleNotFoundError: No module named 'vllm.v1.attention.backends.mla.prefill'：vllm 与 vllm-ascend 版本错配（乱配 commit），按 vllm-main-verified.commit / vllm-release-tag.commit 对齐解决"
 
     category: interrupt
@@ -22,10 +34,6 @@ cases:
     # 平台：与芯片无关——纯 vllm×vllm-ascend 组合错配（openEuler aarch64 环境），不标 platforms
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "vllm-ascend（dev 构建或官方镜像）与 vllm 版本未对齐时启动报 ModuleNotFoundError: No module named 'vllm.v1.attention.backends.mla.prefill'"
       - "vllm-ascend 0.19.1rc2.dev75(g5385230a8) + vLLM 0.20.2 复现；quay.io/ascend/vllm-ascend:v0.20.2rc1 + Qwen3.5-9B 同报"

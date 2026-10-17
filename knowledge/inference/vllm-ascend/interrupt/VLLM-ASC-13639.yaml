@@ -14,6 +14,18 @@
 
 cases:
   - id: VLLM-ASC-13639
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 13639
+        url: https://github.com/vllm-project/vllm-ascend/issues/13639
     title: "MRV2 FullGraph（FULL 全图捕获/回放）模式下开启 speculative decoding 请求 hang：main 与 draft 模型图的参数更新流（update_stream）未统一 → fullgraph 死锁，decode worker 采样步永不返回，EngineCore 经 multiproc executor 报 'TimeoutError: RPC call to sample_tokens timed out'，随后 executor shutdown 等待 worker exit（count=8）——PR #13600 Unify update_stream across main and draft 修复"
 
     category: interrupt
@@ -24,11 +36,6 @@ cases:
         ranges: ["含 MRV2 main/draft update_stream 未统一、未含 PR #13600 的构建"]   # 具体 release 号待 groom 按 PR #13600 合入版本回填（盲测 fixture 为 vLLM 0.27.1 main2main era）
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.75
-
     symptoms:
       - "MRV2（vllm_ascend/worker/v2 Model Runner V2）FullGraph 图模式下开启 speculative decoding，请求到达后 hang（不再出 token/挂起）——非启动失败、非崩溃"
       - "EngineCore_DP0 侧 multiproc executor 报 TimeoutError: RPC call to sample_tokens timed out（core.py:1332 raise self._exception，_wait_for_response 超时）"

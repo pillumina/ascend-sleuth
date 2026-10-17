@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:721c51460b32)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:b419b04cf66d)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:e45522d60c58)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -81,7 +81,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:721c51460b32) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:b419b04cf66d) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -139,7 +139,7 @@ return {
       }
       return undefined
     }
-    function resolveCwd(sessionId) {
+    function rawCwdOf(sessionId) {
       if (sessions && sessionId) {
         let s = null
         try { s = sessions.get(sessionId) } catch (e) { s = null }
@@ -148,9 +148,80 @@ return {
       return pickCwdFromSessions()
     }
 
+    // ── 主检出解析（worktree 里开面板时，运行时件读主检出那一份）───────────────────
+    //
+    // 判据与 `scripts/exec_log_path.py` 的 `main_checkout()` **同一处取值**：git 的 common dir
+    // （`git rev-parse --git-common-dir`）的父目录。本仓要求改动走 worktree，而 `traces/`、
+    // `metrics/entry-activity.local/` 这类运行时件锚在主检出（见 CLAUDE.md 的多 agent 协作约束），
+    // worktree 里那一份是空的——面板若读 worktree 那份，就整块显示成"没有数据"。
+    //
+    // 这里**不跑 git 子进程**：面板的 shell 调用点都带沙箱策略、且有一条检查按调用点数核（少带一处即红），
+    // 而路径解析不该为它起一次进程。改从 `.git` 的两种形态直接推，与 `--git-common-dir` 等价：
+    //   · `<检出>/.git` 是目录 → 该检出就是主检出（普通检出）
+    //   · `<检出>/.git` 是文件 → 内容是 `gitdir: <主检出>/.git/worktrees/<名>`（worktree 形态）
+    // 认不出的形态（submodule、无 git、裁剪检出）返回 null，调用方退回会话原 cwd——不猜。
+    // 会话的 cwd 通常是检出根，但不保证，所以从它逐级向上找 `.git`（最多 6 级）。
+    const MAIN_CHECKOUT_CACHE = new Map()
+    async function mainCheckoutOf(cwd) {
+      if (!fs || !cwd) return null
+      const key = String(cwd)
+      if (MAIN_CHECKOUT_CACHE.has(key)) return MAIN_CHECKOUT_CACHE.get(key)
+      let found = null
+      let dir = key.replace(/\\/g, '/').replace(/\/+$/, '')
+      for (let depth = 0; depth < 6 && dir; depth++) {
+        let entries = []
+        try { entries = (await fs.listDir(await fs.resolve('.', { cwd: dir }))) || [] } catch (e) { entries = [] }
+        const git = entries.filter(e => e && e.name === '.git')[0] || null
+        if (git) {
+          const isDir = git.type === 'directory' || git.isDirectory === true
+          if (isDir) { found = dir; break }
+          let text = ''
+          try { text = await fs.readText(await fs.resolve('.git', { cwd: dir })) } catch (e) { text = '' }
+          const m = /^\s*gitdir:\s*(.+?)\s*$/m.exec(String(text || ''))
+          const cm = m ? /^(.*\/\.git)(?:\/.*)?$/.exec(m[1].replace(/\\/g, '/')) : null
+          if (cm) {
+            const parent = cm[1].replace(/\/\.git$/, '')
+            // 与 main_checkout() 的确认条件同：父目录下有 `.git` 或 `metrics/` 才算主检出
+            let ok = false
+            try {
+              const pe = (await fs.listDir(await fs.resolve('.', { cwd: parent }))) || []
+              ok = pe.some(e => e && (e.name === '.git' || e.name === 'metrics'))
+            } catch (e) { ok = false }
+            if (ok) found = parent
+          }
+          break
+        }
+        const up = dir.replace(/\/[^/]*$/, '')
+        if (!up || up === dir) break
+        dir = up
+      }
+      MAIN_CHECKOUT_CACHE.set(key, found)
+      return found
+    }
+
+    // 面板读两类路径，归属不同，**不能混成一个 cwd**：
+    //   · 运行时件（`traces/`、`metrics/entry-activity.local/`、`metrics/skill-exec-log.yaml`）
+    //     锚在**主检出**（同一克隆共享侧，见 CLAUDE.md 的多 agent 协作约束）。worktree 里那一份是空的，
+    //     读它只会把整块数据显示成"没有数据"。用 `resolveCwd`。
+    //   · 进 git 的读取（`knowledge/`、`metrics/timeline.yaml`、`metrics/entry-activity/<部署>.yaml`、
+    //     `scripts/`）跟**会话自己的工作目录**：读者看的是他正打开的那个检出/分支。用 `resolveRepoCwd`。
+    // 两者在主检出里打开面板时是同一个目录，只有 worktree 里才分家。
+    //
+    // 会话工作目录（进 git 的读取）。
+    async function resolveRepoCwd(sessionId) {
+      return rawCwdOf(sessionId)
+    }
+    // 运行时件的工作目录 → 主检出（解析不出就退回会话原 cwd，不猜）。
+    async function resolveCwd(sessionId) {
+      const raw = rawCwdOf(sessionId)
+      if (!raw) return raw
+      const main = await mainCheckoutOf(raw)
+      return main || raw
+    }
+
     async function openEvidence(sessionId, path) {
       if (!path) return { opened: false, error: '缺路径' }
-      const cwd = resolveCwd(sessionId)
+      const cwd = await resolveCwd(sessionId)
       if (!cwd) return { opened: false, error: '无法解析工作区' }
       const p = String(path)
       // 外部 URL 走同一条打开通路（trace 里 agent 查到的资料就是 http(s) 链接，读者要能一键打开）。
@@ -189,7 +260,7 @@ return {
     }
 
     async function updateSedimented(sessionId, traceFile, state, caseId) {
-      const cwd = resolveCwd(sessionId)
+      const cwd = await resolveCwd(sessionId)
       if (!cwd || !traceFile) return { ok: false, error: '缺参数' }
       const allowed = { submitted: 1, knowledge: 1, archived: 1 }
       if (!allowed[state]) return { ok: false, error: '非法状态' }
@@ -357,7 +428,9 @@ return {
       }
     }
 
-    async function listTraces(cwd) {
+    // `cwd` 是轨迹所在的那一侧（运行时件 → 主检出）；`kbCwd` 是知识库索引所在的那一侧
+    // （进 git → 会话自己的检出）。缺 `kbCwd` 时退回 `cwd`（主检出里两者同一个目录）。
+    async function listTraces(cwd, kbCwd) {
       let base
       try {
         base = await fs.resolve('traces', { cwd })
@@ -374,7 +447,7 @@ return {
         if (e && e.code === 'FS_NOT_FOUND') return { ok: true, sessions: [] }
         return { ok: false, error: 'traces 目录不可读: ' + String(e && e.message || e) }
       }
-      const kbIds = await loadKbCaseIds(cwd)
+      const kbIds = await loadKbCaseIds(kbCwd || cwd)
       const out = []
       const basePath = fs.processPath(base)
       // traces/ 的条目名：报告入口的同名回退要用它（见 reportFileOf）
@@ -574,6 +647,10 @@ return {
           const refPath = fs.processPath(refRoot)
           const dirs = await fs.listDir(refRoot)
           const byType = {}
+          // 先验 id → 标题。借这次既有的逐文件读取顺手收下：条目使用榜每行要显示 id 与标题，
+          // 而 id 与文件名常不一致（`cann-runtime-error-codes` 在 `references/errors/cann-runtime.yaml`
+          // 里），所以只能按文件里的 `id:` 建表，不能按文件名猜。不额外多读一遍。
+          const titles = {}
           let total = 0
           let draft = 0
           let stale = 0
@@ -595,6 +672,9 @@ return {
               } catch (e) { continue }
               total++
               byType[d.name] = (byType[d.name] || 0) + 1
+              const idm = /^id:\s*(.+?)\s*$/m.exec(text)
+              const tm = /^title:\s*(.+?)\s*$/m.exec(text)
+              if (idm && tm) titles[idm[1]] = tm[1]
               const sm = /^status:\s*(\S+)/m.exec(text)
               if (sm && sm[1] === 'draft') draft++
               const lm = /^last_verified:\s*['"]?([\d-]+)/m.exec(text)
@@ -610,6 +690,7 @@ return {
           out.references.staleCount = stale
           out.references.byType = byType
           out.references.caseDerivedCount = caseDerived
+          out.references.titles = titles
         } catch (e) {
           // references/ 缺失（裁剪检出 / sparse-checkout 未含该目录）→ 全零空态，而非报错
           if (e && e.code === 'FS_NOT_FOUND') {
@@ -618,6 +699,7 @@ return {
             out.references.staleCount = 0
             out.references.byType = {}
             out.references.caseDerivedCount = 0
+            out.references.titles = {}
           } else {
             out.references.error = String(e && e.message || e)
           }
@@ -678,6 +760,368 @@ return {
       } catch (e) {
         return { ok: false, error: '流程统计失败: ' + String(e && e.message || e) }
       }
+    }
+
+    // ── 诊断观测数据面（设计文档 3.7 的两节面板）────────────────────────────────
+    //
+    // 面板**只读**这些数据：`metrics/entry-activity/<部署>.yaml`（累计读数的生成物）、
+    // `metrics/entry-activity.local/<会话>.yaml`（单次诊断的本机明细）、`traces/*.yaml`（轨迹本体）、
+    // `metrics/timeline.yaml`、`metrics/skill-exec-log.yaml`。不新增写路径。
+    //
+    // 两条硬规则（设计文档第 4 节）：
+    //   ① 没有数据的格子写「本次没记」，缺分母的读数写「不可解读」——都不写 0；
+    //   ② **读不到生成物时只报缺哪个文件与重建命令，不回退到原始记录自行求和**。源是
+    //      `metrics/entry-activity.d/`（一周一个文件、一行一条）。面板一旦在这里解析它，
+    //      读端就有了第二个口径，"生成物是唯一读入口"这层设计随之作废。
+    const ENTRY_GEN_DIR = 'metrics/entry-activity'
+    const ENTRY_LOCAL_DIR = 'metrics/entry-activity.local'
+    const REBUILD_ENTRY = 'python3 scripts/build_entry_activity.py'
+    const REBUILD_LOCAL = 'python3 scripts/trace_entry_activity.py --apply'
+    // 读入账的四个分项（与 scripts/index_read_cost.py 的分项同名）
+    const ACCT_LABELS = [
+      ['class_view', '类视图'],
+      ['fallback_view', '兜底视图'],
+      ['reference_layer', '先验层'],
+      ['candidates_full', '阶段二候选全文'],
+    ]
+    const TOKEN_LABELS = [
+      ['uncached', '未缓存输入'],
+      ['cache_read', '缓存读'],
+      ['cache_write', '缓存写'],
+      ['out', '输出'],
+    ]
+
+    // 计数里的 0 是真实的 0，缺席才是"本次没记"——两者不能同形（硬规则①）。
+    function scalarNum(v) {
+      if (v === null || v === undefined || v === '') return null
+      const n = Number(v)
+      return Number.isFinite(n) ? n : null
+    }
+    // 面板自带的 YAML 子集解析器把 `key: null` 读成字符串 `'null'`（它不认 YAML 的 null 字面量，
+    // 与 PyYAML 在这一处不同形）。所以取值前先把这几种写法归一成 `null`——否则"没写"会被读成
+    // "写了 null 这个值"：结论强度、停止原因、命中案例都会因此显示成字符串 null。
+    const YAML_NULL = /^(null|Null|NULL|~)$/
+    function scalarStr(v) {
+      const s = (v === null || v === undefined) ? '' : String(v).trim()
+      if (!s || YAML_NULL.test(s)) return null
+      return s
+    }
+    function asMap(v) { return (v && typeof v === 'object' && !Array.isArray(v)) ? v : null }
+    function hasValue(m, k) {
+      if (!m) return false
+      return scalarStr(m[k]) !== null
+    }
+    // 列表值的两种写法都要吃：块序列（解析器给数组）与行内 flow 序列。行内映射
+    // （`covered: {…, weeks: [2026-W42]}`）里的 `[...]` 经 parseInlineMap 出来是**带方括号的
+    // 字符串**（它不做流式展开），所以这里再展开一次——不展开会得到 `['[2026-W42]']`，
+    // 期号与检出号会带着方括号上屏。
+    function asList(v) {
+      if (Array.isArray(v)) return v.map(x => String(x)).filter(Boolean)
+      const s = scalarStr(v)
+      if (!s) return []
+      if (/^\[[\s\S]*\]$/.test(s)) {
+        return splitFlow(s.slice(1, -1)).map(x => scalarStr(yamlScalar(x))).filter(Boolean)
+      }
+      return [s]
+    }
+    // 读侧视图（`knowledge/_index/*.list`）一行的解析。生成器把值里的 `|` 折成 `¦`，所以按
+    // ` | ` 切一定切得开；每段再按第一处 `: ` 切成字段——与 `scripts/build_index.py` 的
+    // `parse_read_line` 同一条规则。面板读它拿的是**条目标题与分数**（都是生成物里的值）。
+    function parseListRow(line) {
+      const out = {}
+      for (const part of String(line || '').split(' | ')) {
+        const m = /^([a-z_]+):\s?([\s\S]*)$/.exec(part)
+        if (m) out[m[1]] = m[2]
+      }
+      return out.id ? out : null
+    }
+    // 案例 id → {title, score, category}。用读侧视图而不是总表：视图一行一条、字段固定；
+    // 总表是嵌套 YAML 且标题会被折行（折行位置随内容变）。
+    async function loadCaseMeta(cwd) {
+      const meta = {}
+      let base = null
+      let names = []
+      try {
+        base = await fs.resolve('knowledge/_index', { cwd })
+        for (const e of (await fs.listDir(base)) || []) {
+          if (e && e.name && e.name.endsWith('.list')) names.push(e.name)
+        }
+      } catch (e) {
+        return { ok: false, meta: meta, error: '读侧视图目录不可读（knowledge/_index/）' }
+      }
+      if (!names.length) return { ok: false, meta: meta, error: 'knowledge/_index/ 下没有 *.list' }
+      const basePath = fs.processPath(base)
+      let unreadable = 0
+      for (const name of names) {
+        let text = ''
+        try { text = await fs.readText(await fs.resolve(name, { cwd: basePath })) } catch (e) { unreadable++; continue }
+        for (const line of String(text).split(/\r?\n/)) {
+          if (!line || line.charAt(0) === '#') continue
+          const row = parseListRow(line)
+          if (!row || meta[row.id]) continue
+          meta[row.id] = { title: row.title || '', score: scalarNum(row.score), category: row.category || '' }
+        }
+      }
+      return { ok: true, meta: meta, count: Object.keys(meta).length, unreadable: unreadable }
+    }
+
+    // 单次诊断的本机明细（`metrics/entry-activity.local/<会话>.yaml`，锚主检出、不进 git）。
+    // 返回归一后的字段 + 「本次没记」清单（缺哪一项、缺的是什么）。
+    async function readLocalRecord(cwd, sessionId) {
+      const sid = String(sessionId || '')
+      const rel = ENTRY_LOCAL_DIR + '/' + sid + '.yaml'
+      const out = { path: rel, rebuild: REBUILD_LOCAL + ' --session ' + sid }
+      let text = null
+      try {
+        text = await fs.readText(await fs.resolve(rel, { cwd }))
+      } catch (e) {
+        return Object.assign(out, {
+          ok: false, missingProduct: true,
+          error: '单次诊断记录（' + rel + '）读不到：本机明细还没汇总过这一单，或它锚在另一台机器上',
+        })
+      }
+      const doc = parseYaml(text)
+      if (!doc || typeof doc !== 'object') {
+        return Object.assign(out, { ok: false, missingProduct: true, error: '单次诊断记录解析失败：' + rel })
+      }
+      const route = asMap(doc.route) || {}
+      const ouc = asMap(doc.outcome) || {}
+      const fb = asMap(doc.feedback) || {}
+      const sed = asMap(doc.sedimented) || {}
+      const det = asMap(doc.detected) || {}
+      const win = asMap(doc.window) || {}
+      const touched = asMap(doc.touched) || {}
+      const steps = asMap(doc.steps) || {}
+      const cost = asMap(doc.cost) || {}
+      const tokens = asMap(cost.tokens)
+      const acct = asMap(cost.index_read_tok)
+      const calls = Array.isArray(doc.tool_calls) ? doc.tool_calls : []
+      // 逐次工具调用 → 总耗时、最慢那一次与失败数。**不按 `step` 归并**：会话日志的 `step` 是
+      // harness 的轮次编号，轨迹的 `step` 是诊断流程自己的编号，两者不同源；按它归并会把耗时
+      // 挂到别的步骤上（面板据此显示了"每步耗时占比"这一格按本次没记处理）。
+      let totalMs = null
+      let slowest = null
+      let failures = 0
+      for (const c of calls) {
+        const m = asMap(c) || {}
+        const ms = scalarNum(m.ms)
+        if (ms !== null) {
+          totalMs = (totalMs || 0) + ms
+          if (!slowest || ms > slowest.ms) slowest = { ms: ms, tool: scalarStr(m.tool), step: scalarNum(m.step), args: scalarStr(m.args) }
+        }
+        if (m.ok === false || m.ok === 'false') failures++
+      }
+      const logNote = scalarStr(doc.session_log)
+      const rec = {
+        sessionId: scalarStr(doc.session_id) || sid,
+        window: { start: scalarStr(win.start), end: scalarStr(win.end) },
+        detected: {
+          framework: scalarStr(det.framework), platform: scalarStr(det.platform),
+          category: scalarStr(det.category), workloadType: scalarStr(det.workload_type),
+        },
+        routed: scalarStr(route.routed),
+        hitCase: scalarStr(route.hit_case),
+        candidatesConsidered: asList(route.candidates_considered),
+        stepCount: scalarNum(steps.count),
+        stepActions: (function () {
+          const outA = {}
+          for (const k of Object.keys(steps)) {
+            if (k === 'count') continue
+            const n = scalarNum(steps[k])
+            if (n !== null) outA[k] = n
+          }
+          return outA
+        })(),
+        toolCallCount: calls.length,
+        toolTotalMs: totalMs,
+        toolSlowest: slowest,
+        toolFailures: failures,
+        touchedCases: asList(touched.cases),
+        touchedReferences: asList(touched.references),
+        outcome: {
+          status: scalarStr(ouc.status),
+          fixEmitted: hasValue(ouc, 'fix_emitted') ? (ouc.fix_emitted === true || ouc.fix_emitted === 'true') : null,
+          stopReason: scalarStr(ouc.stop_reason),
+        },
+        feedback: {
+          case: scalarStr(fb.case), outcome: scalarStr(fb.outcome), confirmedAt: scalarStr(fb.confirmed_at),
+        },
+        sedimented: {
+          state: scalarStr(sed.state), caseId: scalarStr(sed.case_id || sed.caseId),
+        },
+        tokens: tokens ? (function () {
+          const t = {}
+          for (const pair of TOKEN_LABELS) t[pair[0]] = scalarNum(tokens[pair[0]])
+          return t
+        })() : null,
+        indexRead: acct ? (function () {
+          const t = {}
+          for (const pair of ACCT_LABELS) t[pair[0]] = scalarNum(acct[pair[0]])
+          return t
+        })() : null,
+        strength: scalarStr(doc.strength),
+        sessionLog: logNote,
+        harnessSession: scalarStr(doc.harness_session),
+        kbRev: scalarStr(doc.kb_rev),
+      }
+      // 「本次没记」：逐项判**有没有数据**。不判"值是不是空/没有命中"——那是结局，不是缺记录。
+      const missing = []
+      if (!rec.strength) missing.push('结论强度档（strength）')
+      if (!rec.routed) missing.push('路由判定（route.routed）')
+      if (rec.outcome.stopReason === null) missing.push('停止原因（outcome.stop_reason）')
+      if (rec.outcome.fixEmitted === null) missing.push('是否给出 fix（outcome.fix_emitted）')
+      if (!rec.tokens) missing.push('四类 token（cost.tokens）：会话账单没有关联上')
+      if (!calls.length) missing.push('逐次工具调用与每步耗时（tool_calls）')
+      if (!rec.indexRead) {
+        missing.push('一次诊断的读入账（cost.index_read_tok）')
+      } else {
+        for (const pair of ACCT_LABELS) {
+          if (rec.indexRead[pair[0]] === null) missing.push('读入账分项：' + pair[1] + '（cost.index_read_tok.' + pair[0] + '）')
+        }
+      }
+      if (logNote && logNote !== '已关联') missing.push('会话日志关联（session_log）：' + logNote)
+      if (rec.feedback.outcome && rec.feedback.outcome !== 'pending' && !rec.feedback.confirmedAt) {
+        missing.push('回报确认日期（feedback.confirmed_at）')
+      }
+      if (!rec.kbRev) missing.push('知识库版本（kb_rev）')
+      if (!rec.harnessSession) missing.push('harness 会话号（harness_session）')
+      return Object.assign(out, { ok: true, record: rec, missing: missing })
+    }
+
+    // 累计读数的生成物（`metrics/entry-activity/<部署>.yaml`）。一个部署一份；部署名取主检出
+    // 的目录名（脚本侧还认环境变量 `ASCEND_SLEUTH_DEPLOYMENT`，见 entry_activity.deployment()）。
+    // 读不到只有一条出路：报缺件与重建命令。
+    // `cwd` 是进 git 的读取侧（生成物跟着会话的检出/分支走）；`sharedCwd` 是运行时件侧
+    // （本机明细锚主检出）——两者在主检出里相同，只有 worktree 里才分家。
+    async function loadEntryActivity(cwd, sharedCwd) {
+      const out = { dir: ENTRY_GEN_DIR, rebuild: REBUILD_ENTRY }
+      let names = []
+      try {
+        const base = await fs.resolve(ENTRY_GEN_DIR, { cwd })
+        for (const e of (await fs.listDir(base)) || []) {
+          if (e && e.name && e.name.endsWith('.yaml') && e.name.charAt(0) !== '_') names.push(e.name)
+        }
+      } catch (e) {
+        return Object.assign(out, {
+          ok: false, missingProduct: true,
+          error: '生成物目录（' + ENTRY_GEN_DIR + '/）不可读',
+        })
+      }
+      if (!names.length) {
+        return Object.assign(out, {
+          ok: false, missingProduct: true,
+          error: '生成物目录（' + ENTRY_GEN_DIR + '/）里没有 *.yaml：本部署还没产出过累计读数',
+        })
+      }
+      const main = await mainCheckoutOf(cwd)
+      const dep = String(main || cwd || '').replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop()
+      let file = (dep && names.indexOf(dep + '.yaml') >= 0) ? (dep + '.yaml') : null
+      if (!file && names.length === 1) file = names[0]
+      if (!file) {
+        return Object.assign(out, {
+          ok: false, missingProduct: true, files: names,
+          error: '目录里没有与主检出目录名同名的生成物（期望 ' + (dep || '?') + '.yaml），'
+            + '现有 ' + names.join('、') + '：部署改名或换了机器时，面板不替读者挑一份来显示',
+        })
+      }
+      out.file = ENTRY_GEN_DIR + '/' + file
+      let text = ''
+      try {
+        text = await fs.readText(await fs.resolve(out.file, { cwd }))
+      } catch (e) {
+        return Object.assign(out, { ok: false, missingProduct: true, error: '生成物读不到：' + out.file })
+      }
+      const doc = parseYaml(text)
+      if (!doc || typeof doc !== 'object') {
+        return Object.assign(out, { ok: false, missingProduct: true, error: '生成物解析失败：' + out.file })
+      }
+      const cov = asMap(doc.covered) || {}
+      const cases = []
+      const caseMap = asMap(doc.cases) || {}
+      for (const id of Object.keys(caseMap)) {
+        const e = asMap(caseMap[id]) || {}
+        const t = asMap(e.totals) || {}
+        const byWeek = {}
+        const rawByWeek = asMap(e.by_week) || {}
+        for (const w of Object.keys(rawByWeek)) {
+          const v = asMap(rawByWeek[w]) || {}
+          byWeek[w] = {
+            selected: scalarNum(v.selected), loaded: scalarNum(v.loaded),
+            resolved: scalarNum(v.resolved), misdiagnosed: scalarNum(v.misdiagnosed),
+            selfResolved: scalarNum(v.self_resolved), excluded: scalarNum(v.excluded),
+          }
+        }
+        cases.push({
+          id: id, baseline: t.baseline === true || t.baseline === 'True' || t.baseline === 'true',
+          selected: scalarNum(t.selected), loaded: scalarNum(t.loaded),
+          resolved: scalarNum(t.resolved), misdiagnosed: scalarNum(t.misdiagnosed),
+          selfResolved: scalarNum(t.self_resolved), excluded: scalarNum(t.excluded),
+          lastHit: scalarStr(e.last_hit), byWeek: byWeek,
+        })
+      }
+      const references = []
+      const refMap = asMap(doc.references) || {}
+      for (const id of Object.keys(refMap)) {
+        const e = asMap(refMap[id]) || {}
+        const t = asMap(e.totals) || {}
+        const recent = Array.isArray(e.recent) ? e.recent : []
+        const last = recent.length ? (asMap(recent[recent.length - 1]) || {}) : null
+        const byWeek = {}
+        const rawByWeek = asMap(e.by_week) || {}
+        for (const w of Object.keys(rawByWeek)) {
+          const v = asMap(rawByWeek[w]) || {}
+          byWeek[w] = {
+            lookups: scalarNum(v.lookups), hit: scalarNum(v.hit),
+            miss: scalarNum(v.miss), skipped: scalarNum(v.skipped),
+          }
+        }
+        const purpose = {}
+        const rawPurpose = asMap(e.purpose) || {}
+        for (const p of Object.keys(rawPurpose)) {
+          const n = scalarNum(rawPurpose[p])
+          if (n !== null) purpose[p] = n
+        }
+        references.push({
+          id: id, lookups: scalarNum(t.lookups), hit: scalarNum(t.hit),
+          miss: scalarNum(t.miss), skipped: scalarNum(t.skipped),
+          purpose: purpose, lastWeek: last ? scalarStr(last.week) : null,
+          lastRun: last ? scalarStr(last.run) : null, byWeek: byWeek,
+        })
+      }
+      const tools = []
+      const toolMap = asMap(doc.tools) || {}
+      for (const name of Object.keys(toolMap)) {
+        const t = asMap(toolMap[name]) || {}
+        tools.push({
+          name: name, calls: scalarNum(t.calls), p50: scalarNum(t.p50_ms),
+          p90: scalarNum(t.p90_ms), errors: scalarNum(t.errors), timeouts: scalarNum(t.timeouts),
+        })
+      }
+      // 本机明细的份数（每条 = 一次诊断）。生成物的 `covered` 报的是**运行次数**与期号，
+      // 不含会话数；会话数在这份明细里现数，两个量分开写，不合成一个"覆盖"。
+      let localDetailCount = null
+      try {
+        const lb = await fs.resolve(ENTRY_LOCAL_DIR, { cwd: sharedCwd || cwd })
+        localDetailCount = ((await fs.listDir(lb)) || []).filter(e => e && e.name && e.name.endsWith('.yaml')).length
+      } catch (e) { localDetailCount = null }
+      const meta = await loadCaseMeta(cwd)
+      return Object.assign(out, {
+        ok: true,
+        covered: {
+          deployment: scalarStr(cov.deployment),
+          runs: scalarNum(cov.runs),
+          checkouts: asList(cov.checkouts),
+        },
+        weeks: asList(cov.weeks),
+        cases: cases, references: references, tools: tools,
+        coldCases: scalarNum((asMap(doc.cold) || {}).cases),
+        coldNeverLookedUp: asList(doc.cold_never_looked_up),
+        localDetailCount: localDetailCount,
+        caseMeta: meta.ok ? meta.meta : null,
+        caseMetaError: meta.ok ? null : meta.error,
+        caseMetaCount: meta.ok ? meta.count : null,
+        caseMetaUnreadable: meta.ok ? meta.unreadable : null,
+      })
     }
 
     // 记录维护类动作——与 panel-client.js 的 PROC_ACTIONS 同值（人读视图收起它们）。
@@ -750,7 +1194,8 @@ return {
     }
     const eventStr = (v, max) => (v === undefined || v === null || v === '' ? null : String(v).slice(0, max || 300))
 
-    async function traceDetail(cwd, traceFile) {
+    // `cwd` = 运行时件侧（轨迹与本机明细），`repoCwd` = 进 git 侧（读侧视图里的标题与分数）。
+    async function traceDetail(cwd, repoCwd, traceFile) {
       try {
         const target = await fs.resolve('traces/' + traceFile, { cwd })
         const text = await fs.readText(target)
@@ -772,6 +1217,12 @@ return {
           // 那是**回报结果**不是"先验命中"，所以 client 只在参考层步骤上渲染它（这里照原样带出）。
           caseId: eventStr(t && t.case, 80),
           candidates: eventList(t && t.candidates),
+          // 候选全集（筛选时看过的候选，含没取全文的）与被排除的候选：检索那一块要"展开多少条、
+          // 排除多少条、被排除的是哪些"。三个字段在 trace 里各写各的，读数不是一个量。
+          considered: eventList(t && t.considered_candidates),
+          excluded: eventList(t && t.excluded_cases),
+          // 同批并发的分组标记（同一个值 = 同时展开的那几个动作）。各步那一块要按它分组。
+          parallelGroup: eventStr(t && t.parallel_group, 60),
           refs: eventList(t && (t.ref_ids !== undefined ? t.ref_ids : t.ref_id)),
           purpose: eventStr(t && t.purpose, 40),
           outcome: eventStr(t && t.outcome, 20),
@@ -803,9 +1254,58 @@ return {
           return -1
         })()
         if (conclusionIndex >= 0 && steps[conclusionIndex]) steps[conclusionIndex].isConclusion = true
+        // 单次诊断的本机明细（`metrics/entry-activity.local/<会话>.yaml`）：成本、结论强度档、
+        // 每步耗时、四类 token 与读入账都在它里面，轨迹本身没有。读不到就**如实报缺件与重建命令**，
+        // 不从轨迹里替它推数（硬规则②）。
+        const sid = doc.session_id ? String(doc.session_id) : String(traceFile || '').replace(/\.yaml$/, '')
+        const rec = await readLocalRecord(cwd, sid)
+        // 先验引用里的**路径写法**归一到 id：trace 里两种都出现过（`ref_id: <id>` 与
+        // `ref_id: references/platform-facts/xxx.yaml`），而记录侧已由汇总脚本按词条 id 归一。
+        // 不归一的话，面板上一条先验会以文件路径的样子出现、按 id 聚合时也分成两条。
+        // 拿得到本机明细就用它的 id 表对齐，拿不到就退到"最后一段去掉扩展名"。
+        const knownRefs = rec.ok ? (rec.record.touchedReferences || []) : []
+        for (const st of steps) {
+          st.refs = (st.refs || []).map(function (raw) {
+            const v = String(raw || '')
+            if (!v) return v
+            if (v.indexOf('/') < 0 && !/\.ya?ml$/.test(v)) return v
+            const base = v.split('/').pop().replace(/\.ya?ml$/, '')
+            return knownRefs.indexOf(base) >= 0 ? base : (knownRefs.indexOf(v) >= 0 ? v : base)
+          })
+        }
+        // 命中案例与沉淀案例的标题、分数（读侧视图生成物）：结论那一块要"命中的案例与分数"
+        // 与"沉淀到哪个案例"（两个 id 可以不同——本次命中 9005、最终沉淀成 12430 是真实情形）。
+        // 命中案例取三处（先本机明细、再 trace 的 active_case、最后 hit 事件里写的 case）：
+        // 前两处都可能空着，而"哪个案例被命中"是 hit 事件自己记下来的事实。
+        let traceHit = null
+        for (const st of steps) if (!traceHit && st.action === 'hit' && st.caseId) traceHit = st.caseId
+        const hitId = (rec.ok && rec.record.hitCase)
+          || (doc.active_case && activeCaseKindOf(doc.active_case) === 'case' ? String(doc.active_case) : null)
+          || traceHit
+        const sedId = (rec.ok && rec.record.sedimented.caseId) || (sed && (sed.caseId || sed.case_id)) || null
+        let caseMeta = null
+        let sedimentMeta = null
+        if (hitId || sedId) {
+          const m = await loadCaseMeta(repoCwd || cwd)
+          const metaOf = (id) => {
+            const hit = (m.ok && id) ? m.meta[id] : null
+            return id ? { id: id, title: (hit && hit.title) || '', score: hit ? hit.score : null, error: m.ok ? null : m.error } : null
+          }
+          caseMeta = metaOf(hitId)
+          sedimentMeta = sedId && sedId !== hitId ? metaOf(sedId) : null
+        }
         return {
           ok: true, steps, summary: doc.summary ? String(doc.summary) : null, refCount, sedimented: sed,
           conclusionIndex: conclusionIndex,
+          stopReason: scalarStr(doc.stop_reason),
+          record: rec.ok ? rec.record : null,
+          recordPath: rec.path,
+          recordRebuild: rec.rebuild,
+          recordMissing: rec.missing || [],
+          recordError: rec.ok ? null : rec.error,
+          recordMissingProduct: !!rec.missingProduct,
+          caseMeta: caseMeta,
+          sedimentMeta: sedimentMeta,
           reportFile: (function () { const r = reportFileOf(doc, null, traceFile); return r ? r.name : null })(),
           sedimentCandidates: cands.map(c => ({
             kind: c && c.kind ? String(c.kind) : '',
@@ -895,6 +1395,29 @@ return {
       if (cur) periods.push(cur)
       return periods
     }
+    // 指标强度档：`metrics/timeline.yaml` 顶层的 `metric_strength:`（由 build_timeline.py 从
+    // `metrics/gates.yaml` 抄进来，同一处定义）。它回答的是 3.6 五个问题的最后一问「这个数怎么来的」，
+    // 面板要把它标出来——`自报` 是 agent 自己记的判断，不能与确定性读数同权读。
+    // 取不到（老文件没这一段）就给空表，客户端显示「未声明强度」，**不默认成确定性**。
+    function parseMetricStrength(text) {
+      const out = {}
+      const lines = text.split(/\r?\n/)
+      let inBlock = false
+      let base = null
+      for (const raw of lines) {
+        const line = raw.trimEnd()
+        const body = line.trimStart()
+        if (!body || body.startsWith('#')) continue
+        const indent = line.length - body.length
+        if (indent === 0) { inBlock = body === 'metric_strength:'; base = null; continue }
+        if (!inBlock) continue
+        if (base === null) base = indent
+        if (indent !== base) continue
+        const m = /^([A-Za-z0-9_]+):\s*(.*)$/.exec(body)
+        if (m && m[2]) out[m[1]] = m[2].trim()
+      }
+      return out
+    }
     async function loadTimeline(cwd) {
       try {
         const target = await fs.resolve('metrics/timeline.yaml', { cwd })
@@ -906,7 +1429,8 @@ return {
         // （实测踩过：真实文件 3 期 live、解析 0 期、面板说没有）。所以把它作为独立字段
         // 交给客户端，由客户端分别渲染。
         const declared = /^\s*periods:/m.test(text)
-        return { ok: true, periods, integrity: (declared && periods.length === 0) ? 'unparsed' : 'ok' }
+        return { ok: true, periods, metricStrength: parseMetricStrength(text),
+                 integrity: (declared && periods.length === 0) ? 'unparsed' : 'ok' }
       } catch (e) {
         return { ok: false, error: 'timeline.yaml 不可读: ' + String(e && e.message || e) }
       }
@@ -1362,8 +1886,22 @@ return {
       // 先折算成"去注释 + 带缩进"的行表，再按缩进递归收结构
       const lines = String(text == null ? '' : text).replace(/^\uFEFF/, '').split(/\r?\n/)
       const rows = []
+      // 块标量（`output: |` / `reason: >-`）**正文里的 `#` 是内容，不是注释**：YAML 的注释规则
+      // 只在它没落在块标量正文里时成立。逐行去注释的 splitYamlLine 看不到自己在块标量里，
+      // 于是这样的正文行被整行吃掉——实测（2026-10-12-18386-dsv4-dsml-leak.yaml 第 444 行）
+      // 漏掉的正是 `output: |-` 的第一行 `#18457 的 CI 归因：…`，表现为该事件 output 整段消失，
+      // 而且它被当成了注释、连"解析器没读到的行"都不算（静默）。所以先按缩进判一次块标量区间。
+      let blockIndent = null
+      const indentOf = (s) => /^[ \t]*/.exec(s)[0].length
       for (let i = 0; i < lines.length; i++) {
-        const line = splitYamlLine(lines[i])
+        const raw = lines[i]
+        const inBlock = blockIndent !== null && (raw.trim() === '' || indentOf(raw) > blockIndent)
+        const line = inBlock ? raw.replace(/\s+$/, '') : splitYamlLine(raw)
+        if (!inBlock) {
+          const head = line.trim()
+          blockIndent = (/(^|[^\s]):\s*[|>][-+]?$/.test(head) || /^-\s*[|>][-+]?$/.test(head))
+            ? indentOf(raw) : null
+        }
         const body = line.trim()
         if (body === '' || body === '---') continue
         // 缩进只数 ASCII 空格与制表符。别写 `line.length - line.trimStart().length`：
@@ -1405,7 +1943,10 @@ return {
         const row = cursor.rows[cursor.i]
         if (row.indent < indent) break
         if (row.indent > indent) { markDropped(cursor, row, '缩进比同层更深的散行'); cursor.i++; continue }
-        const m = /^([A-Za-z_][A-Za-z0-9_.-]*):(?:\s+(.*))?$/.exec(row.body)
+        // 键允许**数字开头**：条目使用记录的生成物按周分组（`2026-W42: {…}`），PyYAML 收这种键。
+        // 原先只认 `[A-Za-z_]` 开头，后果是 `by_week` 整段被当成"解析器没读到的行"丢掉——
+        // 面板会显示"本期没有增量"，而文件里写着。这是与 PyYAML 对齐，不是放宽。
+        const m = /^([A-Za-z_][A-Za-z0-9_.-]*|[0-9][^\s:]*):(?:\s+(.*))?$/.exec(row.body)
         if (!m) { markDropped(cursor, row, '既不是键值行、也不是序列项'); cursor.i++; continue }
         cursor.i++
         obj[m[1]] = readYamlValue(cursor, indent, m[2] === undefined ? '' : String(m[2]).trim())
@@ -1637,8 +2178,10 @@ return {
     const handleDisposer = harness.handle('ascend-traces-list', async (args) => {
       if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
-      const cwd = resolveCwd(sessionId)
-      const r = await listTraces(cwd)
+      // 轨迹读共享侧（主检出），"这单命中的 case 在不在库里"读会话自己的检出
+      const cwd = await resolveCwd(sessionId)
+      const repoCwd = await resolveRepoCwd(sessionId)
+      const r = await listTraces(cwd, repoCwd)
       if (!r.ok) return { ok: false, error: r.error }
       return { ok: true, sessions: r.sessions }
     })
@@ -1648,8 +2191,9 @@ return {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const traceFile = args && args.traceFile ? String(args.traceFile) : null
       if (!traceFile) return { ok: false, error: '缺 traceFile' }
-      const cwd = resolveCwd(sessionId)
-      return traceDetail(cwd, traceFile)
+      const cwd = await resolveCwd(sessionId)
+      const repoCwd = await resolveRepoCwd(sessionId)
+      return traceDetail(cwd, repoCwd, traceFile)
     })
 
     const openDisposer = harness.handle('ascend-open-evidence', async (args) => {
@@ -1667,11 +2211,19 @@ return {
       return updateSedimented(sessionId, traceFile, state, caseId)
     })
 
+    // 指标 tab 的两条数据源合并在一次 RPC 里返回（不再新增 handler：RPC 的条数与 fs 守卫数
+    // 由 panel_render_check 按调用点核，新增一条就得多改两处契约）。
+    //   `periods`       ← metrics/timeline.yaml（期次与趋势）
+    //   `entryActivity` ← metrics/entry-activity/<部署>.yaml（条目使用、工具分布、冷条目）
+    // 两条各自成败：timeline 读不到不影响累计读数那一块，反之亦然。
     const metricsDisposer = harness.handle('ascend-metrics-load', async (args) => {
       if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
-      const cwd = resolveCwd(sessionId)
-      return loadTimeline(cwd)
+      const cwd = await resolveCwd(sessionId)
+      const repoCwd = await resolveRepoCwd(sessionId)
+      const tl = await loadTimeline(repoCwd)
+      const ea = await loadEntryActivity(repoCwd, cwd)
+      return Object.assign({}, tl, { entryActivity: ea })
     })
 
     // 报告正文（只读）。面板不给"写入报告"的入口——报告归 diagnose 产，见其 report-template。
@@ -1679,34 +2231,35 @@ return {
       if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const traceFile = args && args.traceFile ? String(args.traceFile) : null
-      const cwd = resolveCwd(sessionId)
+      const cwd = await resolveCwd(sessionId)
       return readReport(cwd, traceFile)
     })
 
     const healthDisposer = harness.handle('ascend-kb-health', async (args) => {
       if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
-      const cwd = resolveCwd(sessionId)
+      const cwd = await resolveRepoCwd(sessionId)
       return loadHealth(cwd)
     })
 
     const processDisposer = harness.handle('ascend-process-health', async (args) => {
       if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
-      const cwd = resolveCwd(sessionId)
+      const cwd = await resolveCwd(sessionId)
       return loadProcessHealth(cwd)
     })
 
     const verdictDisposer = harness.handle('ascend-metrics-verdict', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
-      const cwd = resolveCwd(sessionId)
+      // 体检器读 knowledge/ 与 scripts/（进 git 的两侧都跟会话检出），不读 traces/
+      const cwd = await resolveRepoCwd(sessionId)
       // `refresh: true` = 绕过复用窗口强制重跑（面板「重新体检」按钮）
       return loadMetricsVerdict(cwd, !!(args && args.refresh === true))
     })
 
     const liveDisposer = harness.handle('ascend-metrics-live', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
-      const cwd = resolveCwd(sessionId)
+      const cwd = await resolveCwd(sessionId)
       return runLiveMetrics(cwd)
     })
 
@@ -1715,7 +2268,7 @@ return {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const traceFile = args && args.traceFile ? String(args.traceFile) : null
       if (!traceFile) return { ok: false, error: '缺 traceFile' }
-      const cwd = resolveCwd(sessionId)
+      const cwd = await resolveCwd(sessionId)
       return exportHandoff(cwd, traceFile, args && args.intent)
     })
 

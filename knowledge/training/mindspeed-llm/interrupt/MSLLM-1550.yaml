@@ -18,12 +18,6 @@ cases:
         ranges: ["8.5.0"]
 
     investigation_quality: low       # 维护者根因假设（"很有可能"），用户未确认，stale 关闭
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.1
-      last_hit: ""
-
     symptoms:
       - "8 卡 910B4（openEuler，CANN 8.5.0，master 分支）运行 Qwen3-8B 预训练脚本，环境校验（torch_npu/torchair 导入、8 卡 NPU 可用）均正常通过"
       - "启动后算子编译/加载阶段报 GMMOpBuilder 重复注册操作符，训练无法继续"

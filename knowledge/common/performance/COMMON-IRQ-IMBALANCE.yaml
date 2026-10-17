@@ -14,7 +14,6 @@ cases:
     compat: [{framework: cross, ranges: ["*"]}]
 
     investigation_quality: high
-    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
 
     symptoms:
       - "A+K 平台业务吞吐、延迟等核心性能指标明显劣化，达不到预期"

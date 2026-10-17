@@ -16,9 +16,6 @@ cases:
     ranges:
     - '>=0.26.0rc,<0.26.0'
   investigation_quality: high
-  confidence:
-    hits: 0
-    misdiagnoses: 0
   symptoms:
   - v0.26.0rc GLM-5.2 + MTP（deepseek_mtp spec-decode）投机接受率相对 v0.23（50%+）大幅劣化
   - 大 prefill 场景更明显：MegaMoe 对称通信 buffer 容量不足 → 溢出 → 错误输出 → 接受率下降（精度面而非纯效率）

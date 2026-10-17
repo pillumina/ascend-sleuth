@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]     # 根因是加载的权重数值，与框架/软件栈版本无关
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "随机初始化权重时两遍训练 Loss 对齐；加载权重时两遍 Loss 差异偏大，但两侧加载的权重确实完全一致"
       - "grad_norm 异常偏大"

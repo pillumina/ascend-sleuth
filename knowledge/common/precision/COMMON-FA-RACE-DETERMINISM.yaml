@@ -17,12 +17,6 @@ cases:
         cann: ["8.1.0.RC1"]     # 8.0.0.RC4 无此问题；修复包在算子内部搬迁前后加同步
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "80 卡大规模训练任务结果确定性无法固定（重复运行 Loss 曲线不一致）"
       - "全量 dump 会导致问题不复现（采集行为影响执行时序）"

@@ -81,19 +81,20 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
    - **批量模式**（多个文件/目录输入时）：命名空间确认改为一次批量——agent 按检测到的框架分组报告（如“12 个 mindspeed-llm、5 个 verl、3 个 common”），人一次确认或调整。语义校验仍逐个跑，失败的标 `needs-structurer-review`。批量模式不逐个 30 秒确认，改成抽审。
 3. **输出结构化 YAML 草稿 + postmortem.md**：
    - **postmortem 策略**：源是混乱对话/手工笔记 → 写完整 postmortem.md（提炼+结构化）；**源已经是结构化文档**（调查报告/issue/wiki）→ postmortem.md 只写指针（`# 原文见：<source-url/path>`），不重写。YAML case 草稿两种情况都照常产出。
-   - 标 `confidence: high | medium | low`——**人的调查质量判断**（五天详查 vs 随手记录），不是来源验证
-   - 标 `verification: {source: <档>, detail: <引用>}`——**这一档决定草稿能不能升格**：自诊断的问题（带 `source_session`）**默认要等来源 trace 的 `feedback.outcome: resolved`** 才会被 groom 升格；没闭环就该如实标 `investigation`，并知道它会被闸门拦下（除非补强外部证据并走 owner 双签）。别为了让草稿过关而抬高档位——档位是外部证据强度，不是主观评价——**来源验证状态**（与 confidence 区分：confidence=内容判断质量，verification=外部证据强度）。**档位按「来源形态」分，不按 issue 分**——issue 只是外部来源之一，官方案例文档与本地闭环同样是来源：
+   - 标 `investigation_quality: high | medium | low`——**人的调查质量判断**（五天详查 vs 随手记录），不是来源验证
+   - 标 `verification: {source: <档>, detail: <引用>}`——**这一档决定草稿能不能升格**：自诊断的问题（带 `source_session`）**默认要等来源 trace 的 `feedback.outcome: resolved`** 才会被 groom 升格；没闭环就该如实标 `investigation`，并知道它会被闸门拦下（除非补强外部证据并走 owner 双签）。别为了让草稿过关而抬高档位——档位是外部证据强度，不是主观评价——**来源验证状态**（与 `investigation_quality` 区分：quality=内容判断质量，verification=外部证据强度）。**档位按「来源形态」分，不按 issue 分**——issue 只是外部来源之一，官方案例文档与本地闭环同样是来源：
      - `upstream-fix-merged`：来源是上游 issue 且关联 fix PR 已合入（references 含 `pull/<n>` 或确认 merged）——内容被外部验证（根因+修复代码合入），最强档；
      - `upstream-official-doc`：来源是**上游官方发布的案例/指南文档**（如框架仓库 `best_practices/` 下的定位实践、官方 troubleshooting 指南），含完整定位链与验证结论——内容被上游发布验证，但无指向本问题的 fix PR；
      - `upstream-maintainer-confirmed`：上游 issue 维护者确认 resolution 但无 fix PR 引用；
      - `investigation`：本地深度排查/源码分析定位（`source_ref` 佐证），无上游确认；
      - `engineer-report`：工程师现场回报验证过（最强现场证据，rare）。
      `detail` 记 issue/PR 号、文档路径或来源路径。无明确外部验证 → 不填 verification（如实：仅调查级）
+   - **来源是上游 issue / PR 时，标 `upstream: [{repo, issue|pr, url}]`**（case 内字段，非注释）——它是外部对照自动查证（`python3 scripts/verify_upstream_outcomes.py`）的唯一分母：有锚点的 case 才靠上游状态自动确认「内容对不对」，没有锚点的客户侧现网问题只能等现场回报。`issue` 与 `pr` 二选一，`url` 写原址让人点开；**只写这条 case 的来源那个**，正文里顺带提到的同族 issue 不算锚点（写多个会让查证对上错的那一个）。它判断不了「现场是否解决」，那只有现场能给。
    - 标 `novelty: new_pattern | variant | covered`（**pre-triage，对比现有 case 判定**）：用**命中 (namespace × category) 的读侧视图** `knowledge/_index/<ns>__<category>.list`（一行一条 case；category 未定回退 `<ns>.list`；已知 namespace 时不读全库总表）按 symptoms/tags 定位候选，再全量读候选 case 本体比对 root_cause/fix——无重叠 → `new_pattern`；同主题不同形态 → `variant`（注明 `variant_of:<case-id>`）；已有 case 覆盖 → `covered`（注明 `covered_by:<case-id>`）。**给出证据**（如"同算子×同网络，增量=升级修复"），groom 复核该标签而非重判
    - 标 `category: interrupt | precision | performance` **三选一，无 other**（按症状判断——interrupt 是 hang/crash/OOM/启动失败、precision 是 NaN/数值发散/输出错误/乱码、performance 是吞吐/延迟）。分不进去 → 由人确认归入最接近的分类，不设 other
    - 标 `tags`（sub-type，如 `oom`、`kv-cache`、`precision.convergence`）
    - 根因定位到源码时（如 vllm-ascend 某文件某行），标 `source_ref: {repo, ref, file, line}`——`ref` 用触发版本对应的 commit/tag，`line` 可选。源码不落库，只记代码指针（诊断按需取该版本片段）
-   - **来源是诊断 session 时，标 `source_session: <session_id>`**（case 内字段，非注释）——它是反馈结算判定「自证」的唯一依据：来源 session 自己回报的 resolve 记 `confidence.self_resolved`、不计入 `hits`（同一份证据不数两次）。不写这个字段，结算只能退回「计入 hits」，等于让产地自证冒充独立命中。
+   - **来源是诊断 session 时，标 `source_session: <session_id>`**（case 内字段，非注释）——它是反馈结算判定「自证」的唯一依据：来源 session 自己回报的 resolve 记 `self_resolved`、不计入 `resolved`（同一份证据不数两次）。不写这个字段，结算只能退回「计入 resolved」，等于让产地自证冒充独立命中。
 3.5. **triage 路由同步（知识增长自动补全路由）**：产出 case 草稿后，检查该 case 的 `symptoms` 关键词能否被路由正则（`triage-tree.yaml`，生成物）路由到正确性质。**路由分两层、加词只碰性质层**：侧（训练 / 推理）由工程师的事实确定，不写进症状词；性质层是 `triage-tree.d/<性质>.yaml`（一性质一文件：`10-interrupt.yaml` / `20-precision.yaml` / `30-performance.yaml`），**词表训推共用**——所以一个新词只写一次，两侧同时生效，也不必再判断"这是训练侧还是推理侧的说法"。改完跑 `python3 scripts/build_triage_tree.py`，把聚合一起提交（门是覆盖检查：源里每条症状组都得在聚合里；新文件还要在 `00-protocol.md` 的 `sources:` 里登记，否则不会被拼进聚合；同性质两人并发由 union 自动两边都留；`route_check.py --wide-words` 会列出"同一形态被两个性质同时认领"的词，加词前扫一眼）：
    - 能 → 无需动作（路由已覆盖）；
    - 不能（新形态 OOD，正则没识别）→ 在产出报告里给出**路由症状建议**（新正则追加到对应**性质文件**里该性质的 `symptoms`，如 "过度思考" → `20-precision.yaml`），随 case PR 一并提交（structure 部分，人审确认）——**triage 随知识入库增长，不靠手工补**；拿不准放哪个性质 → 建议标 `needs-review`，groom 定夺；**拿不准是不是某一侧的专属措辞**（`vllm serve` 这类只在推理侧成立的写法）→ 同样标 `needs-review`：写进共用词表不会报错，但会让另一侧的同性质 case 掉到别的性质或没命中。
@@ -125,7 +126,7 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 
 **写草稿时的行文**：postmortem 与 case 词条都是给人读、给人审的文本，按 `docs/spec/writing-norms.md` 写（可选论证层，不影响本 skill 执行）；本面的定制条款见该文件 §3 的「case / reference 词条」与「postmortem」两行——症状句要能直接当 grep 判据，`root_cause` / `fix` 只写结论与依据，时间线只放可观察事实。
 
-**结算与提 PR 的粒度（别每次闭环都开 PR）**：诊断现场回报 fix 结果后，trace 里记 `feedback` 事件即可（`feedback.outcome: pending` → 现场确认后置 `resolved`）。**confidence 的结算与入库按周批走一次**——groom 的结算步骤跑 `settle_trace_feedback.py`，一个 knowledge_modification PR 覆盖当期全部变更。本地连着定位多个问题时，不要每闭环一个就提一个 PR：`hits` 只影响候选排序（排序对时效不敏感），而结算游标是 gitignored 的共享运行时件、不进 git。理由是三条写入点的**git 归属刻意不同**：现场记录含客户信息故不进 git，置信度是学习环的持久知识故必须入库，指标时序是周节奏的人复核汇总故不等每次反馈。
+**结算与提 PR 的粒度（别每次闭环都开 PR）**：诊断现场回报 fix 结果后，trace 里记 `feedback` 事件即可（`feedback.outcome: pending` → 现场确认后置 `resolved`）。**现场回报的结算与入库按周批走一次**——知识整理收尾的结算步骤跑 `settle_trace_feedback.py`，把计数写进条目使用记录，一个知识变更 PR 覆盖当期全部变更。本地连着定位多个问题时，不要每闭环一个就提一个 PR：计数只影响候选排序（排序对时效不敏感），而结算游标是 gitignored 的共享运行时件、不进 git。理由是三条写入点的**git 归属刻意不同**：现场记录含客户信息故不进 git，条目使用记录是学习环的持久知识故必须入库，指标时序是周节奏的人复核汇总故不等每次反馈。
 
 **回写来源 trace 的沉淀状态（诊断闭环）**：若本次沉淀来源是一个诊断 trace（输入提到 `traces/<session_id>.yaml`，或用户从诊断面板"沉淀此案例"触发），产出草稿落 inbox 后**回写该 trace 的 `sedimented.state: submitted`**（动作发生时写，零推断）——诊断面板据此显示"已提交沉淀待审"，不再重复提示沉淀。转正（`knowledge`/`archived`）由用户在面板/对话确认时更新，本 skill 不写。
 

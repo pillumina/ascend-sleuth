@@ -18,12 +18,6 @@ cases:
         ranges: ["*"]                # 触发于镜像预装版本残留
 
     investigation_quality: medium    # 维护者定论根因，用户未回验
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3
-      last_hit: ""
-
     symptoms:
       - "A3 节点 Atlas A3 训练镜像上按 install_guide.md 手动安装 MindSpeed(Master)+MindSpeed-LLM+Megatron core_v0.12.1 后，拉起 dsv4 训练（pretrain_deepseek4.py）报 ImportError: cannot import name 'HcclOpModeSetFeature' from 'mindspeed.features_manager'，训练拉起失败"
 

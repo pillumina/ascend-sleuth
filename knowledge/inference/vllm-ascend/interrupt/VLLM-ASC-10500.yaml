@@ -9,6 +9,18 @@
 
 cases:
   - id: VLLM-ASC-10500
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 10500
+        url: https://github.com/vllm-project/vllm-ascend/issues/10500
     title: "含 ViT 的多模态/VL 模型开启 FlashComm1+FlashComm2 报错：vLLM 在 forward_context 外预计算 inputs_embeds，ViT 层被 FC1/FC2 dispatch 误路由到依赖 forward context 的 SP 线性算子（SequenceRowParallelOp/Flashcomm2OProjRowParallelOp）→ 启动崩溃；PR #10941 加 'vision_model' not in prefix guard 跳过 ViT"
 
     category: interrupt
@@ -20,10 +32,6 @@ cases:
                                    # PR 在 vLLM v0.23.0/main 验证（issue env 未列 vllm-ascend 具体版本，无下界证据）
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "含 ViT 的多模态/VL 模型（如 Step3p7 w8a8，TP=8）开启 FlashComm1（VLLM_ASCEND_ENABLE_FLASHCOMM1=1）+ FlashComm2（VLLM_ASCEND_FLASHCOMM2_PARALLEL_SIZE=1）+ MTP 时启动/初始化崩溃：AssertionError: Forward context is not set. Please use `set_forward_context` to set the forward context."
       - "报错栈在 vllm_ascend/ops/linear_op.py：SequenceRowParallelOp.apply_impl（torch.ops.vllm.matmul_and_reduce）与 Flashcomm2OProjRowParallelOp.apply_impl（_EXTRA_CTX.pad_size），经 ascend_forward_context.py _ExtraForwardContextProxy.__getattr__ → get_forward_context() 断言"

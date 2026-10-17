@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]                # PR #4545 引入回归后触发；该 PR 之前的代码无此问题
 
     investigation_quality: high      # 维护者确认根因 + issue 附已验证修复代码
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     symptoms:
       - "Qwen3-0.6B 用 convert_ckpt_v2.py 做 HF→MCore→HF 无训练 round-trip 转换，导出的 HF 模型生成乱码碎片（如 'aseñaGLISHATUREATURE...'）"
       - "逐 tensor 对比仅 q_proj/k_proj/v_proj 权重与原始不一致（mean_abs≈0.03），其余 embed/lm_head/norm/mlp 权重完全一致"

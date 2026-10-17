@@ -6,6 +6,12 @@
 
 cases:
   - id: VLLM-ASC-12642
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 12642
+        url: https://github.com/vllm-project/vllm-ascend/issues/12642
     title: "triton-ascend 3.2.1 对 [4,256] K 做 head reduction 后接 extract_slice+cos 广播的布局/归约路径生成错误设备代码，square_sums 被算成 0 → K RMSNorm variance=0 → K 放大 1000 倍"
 
     category: precision
@@ -19,12 +25,6 @@ cases:
         ranges: ["<3.2.2"]          # 3.2.1 有 codegen bug；3.2.2 修复
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     symptoms:
       - "Ascend 950PR (A5) 上 Qwen3.5-4B (bf16, partial RoPE: rope_dim=64 < head_size=256) 输出错误"
       - "triton_split_qkv_rmsnorm_mrope 融合算子把 K 的 variance 算成 [0,0,0,0]（正确 ~1.05~1.19）→ reciprocal_std=1/sqrt(0+1e-6)=1000，K 被异常放大 ~1000 倍"

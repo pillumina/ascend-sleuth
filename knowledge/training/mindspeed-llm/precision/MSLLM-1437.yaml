@@ -18,12 +18,6 @@ cases:
         ranges: ["8.5.2"]
 
     investigation_quality: high      # 维护者定论根因（不支持组合）+ resolved
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     symptoms:
       - "qwen3-14b-64k-lora 微调开启 uniform 重计算时，grad norm 恒为 0、loss 不收敛（lm loss 停滞在 ~1.22e1 附近），num zeros/nan 均为 0 但训练无进展"
       - "环境：A3、cann_8.5.2、mindspeed-llm 26.0.0"

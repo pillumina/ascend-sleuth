@@ -21,8 +21,6 @@ CASE_TMPL = """cases:
     compat:
       - framework: vllm-ascend
         ranges: ["0.23.0"]
-    confidence:
-      score: 0.6
     symptoms:
       - "{sym}"
 """
@@ -138,10 +136,11 @@ class BuildIndexTest(unittest.TestCase):
         self.assertEqual(bi.canonical_dirty(self.root, bi.collect(self.root)), [])
 
     def test_coverage_flags_changed_case(self):
+        """改一个**读侧行里看得见**的字段（标题）→ 分片与总表各报一次。"""
         p = self.write_case("inference/vllm-ascend/interrupt/S.yaml", cid="S-1")
         self.generate_all()
         self.assertEqual(self.problems(), [])
-        p.write_text(p.read_text(encoding="utf-8").replace("score: 0.6", "score: 0.9"),
+        p.write_text(p.read_text(encoding="utf-8").replace('title: "t"', 'title: "改过的标题"'),
                      encoding="utf-8")
         probs = self.problems()
         # 读侧视图与总表各报一次（两处都存着这条 case 的旧行）——这正是"两层都得跟上"的意思

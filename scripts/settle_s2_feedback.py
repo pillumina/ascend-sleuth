@@ -18,10 +18,10 @@
 #   - tier2_hit=false → 覆盖缺口信号（无 case 命中），不结算 case（补 case 候选走
 #     EV 卡机制，非本脚本职权）
 #
-# 口径纪律：validation_record 与 confidence 分开——confidence.hits/mis 只承载 S1
-# 现场 resolve（"fix 在你环境解决了没有"）；validation_record 承载"内容被外部验证"
-# （S2/上游确认）。两种信号不混算（execution §4.1 的 resolve 只认 S1 在此保留为
-# confidence 语义，S2 另立验证记录，不再被降格为无落点的旁证）。
+# 口径纪律：validation_record 与现场解决计数分开——现场解决（"fix 在你环境解决了没有"）
+# 只进 `metrics/entry-activity.d/` 的使用记录（`resolve` 只认 S1，在 settle_trace_feedback.py）；
+# validation_record 承载"内容被外部验证"（S2/上游确认）。两种信号不混算，S2 另立验证记录，
+# 不被降格为无落点的旁证。案例本体不再有 confidence 块（观测与知识本体分家）。
 #
 # 幂等：结算游标记在 ingest-state.json 的 sources.<key>.s2_feedback 下
 #   （key = issue + result 内容 hash——同 settle_trace_feedback 哲学，重复跑不重复累积）。
@@ -231,24 +231,21 @@ def settle(root: Path, state_path: Path, apply: bool, migrate_from=None):
                     if s and not s.startswith("#") and not lines[j].startswith("      "):
                         break
             else:
-                # 顶层插入：找 "    confidence:" 所在的 case 起始行之前？简化：插到
-                # "    category:" 之后不可靠——改为插到文件 cases: 块内第一个字段前。
-                # 稳妥做法：找 confidence: 块结束（其后的非缩进行）前插入同等缩进字段。
+                # 顶层插入：插到 case 的第一个字段之前（`- id:` 那一行之后）。
+                # 此前拿 `confidence:` 块当锚点——该块已随观测数据面迁出案例（计数进使用记录、
+                # 分数进索引生成物），锚点没了会让 S2 结算**静默停摆**（写明 warn 而不是不写）。
                 insert_at = None
                 for i, ln in enumerate(lines):
-                    if ln.strip() == "confidence:":
-                        j = i + 1
-                        while j < len(lines):
-                            s = lines[j].strip()
-                            if s and not s.startswith("#") and not lines[j].startswith("      "):
-                                break
-                            j += 1
-                        insert_at = j  # confidence 块后
+                    # 案例块的起始行：`cases:` 之后的第一个列表项。**不锚 `- id:`**：
+                    # 案例的第一个字段不一定是 id（YAML 不要求字段顺序，手写的草稿可从
+                    # `- category:` 起），锚错就整条跳过写回，而"跳过"在输出里只是一行 warn。
+                    if ln.lstrip().startswith("- "):
+                        insert_at = i + 1
                         break
                 if insert_at is None:
-                    print(f"  [warn] {case_f.name}: 未定位插入点——跳过写回（仅记录 diff）")
+                    print(f"  [warn] {case_f.name}: 未定位插入点（cases: 块里找不到列表项）——跳过写回（仅记录 diff）")
                     continue
-                block = ["", "    validation_record:  # S2/外部验证累积（settle_s2_feedback 结算；与 confidence 分开：confidence=现场 resolve S1，validation=内容被外部验证）"]
+                block = ["", "    validation_record:  # S2/外部验证累积（settle_s2_feedback 结算；与现场 resolve 分开记：现场解决率在使用记录里，这里是内容被外部验证）"]
                 for k in ("consistent", "inconsistent", "self_consistent", "last_verified"):
                     block.append(f"      {k}: {vals[k]}")
                 lines[insert_at:insert_at] = block

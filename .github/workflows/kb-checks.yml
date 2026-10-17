@@ -135,7 +135,10 @@ jobs:
 
   index-freshness:
     needs: changes
-    if: needs.changes.outputs.knowledge == 'true' || needs.changes.outputs.code == 'true'
+    # `metrics` 也进：索引行的 `score` 由 `score_entries.py` 从条目使用记录的生成物算出来，
+    # 只追加记录、不重建索引的 PR 会让索引过期。实测：追加一行 `resolved: 1` 后
+    # `build_index.py --check` 退 1。
+    if: needs.changes.outputs.knowledge == 'true' || needs.changes.outputs.code == 'true' || needs.changes.outputs.metrics == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -176,6 +179,10 @@ jobs:
       # `expected` 的 regex 可编译且无空分支（空分支恒真，会让该 case 对任何输入都成为候选）。
       # 准入判据（机械可判 + 确定性后果 + 复发）：三类都满足。
       - run: python3 scripts/verify_case_draft.py --all
+      # `score_override` 的判据：字段只有一个可选用途——人工覆盖排序分数，而覆盖必须带理由
+      # （不带 reason 的覆盖在半年后无法判断该不该撤）。它不进 `verify_case_draft`：
+      # 那个脚本判的是「必需字段与枚举」，这一条判的是「可选字段填了就得填对」。
+      - run: python3 scripts/score_entries.py --check-overrides
 
   reference-validation:
     needs: changes
@@ -203,7 +210,11 @@ jobs:
 
   metrics-validation:
     needs: changes
-    if: needs.changes.outputs.metrics == 'true' || needs.changes.outputs.code == 'true'
+    # `knowledge` / `references` 也进：条目使用记录的生成物里有 `cold` 与
+    # `cold_never_looked_up` 两个现算自库的字段（`entry_activity.library_inventory()`），
+    # 加一条 case 或一条词条就会让它过期。不列进来的后果实测过：加 case 的 PR 全绿，
+    # 生成物停在旧值，下一个碰 `metrics/` 的 PR 才因与它无关的原因变红。
+    if: needs.changes.outputs.metrics == 'true' || needs.changes.outputs.code == 'true' || needs.changes.outputs.knowledge == 'true' || needs.changes.outputs.references == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -218,6 +229,13 @@ jobs:
       # 为什么需要这道门：timeline.yaml 是**生成物**，两人各写各的源文件才不撞；但若谁直接改了
       # 生成物（或改了源忘记重建），读者会拿到一份与源不符的时序数据——必须红，且报错要给出"重跑一次"的修法。
       - run: python3 scripts/build_timeline.py --check
+      # 条目使用记录：源（metrics/entry-activity.d/，一周一个文件、一行一条）与生成物
+      # （metrics/entry-activity/<部署>.yaml）两层。两条判据分工明确——
+      # `--check` 验「生成物与源一致」，`verify_entry_activity` 验「源本身合法」
+      # （行形状 / (run,kind,id) 唯一 / id 在知识库里查得到 / run 与文件名归周一致 / 部署名一致）。
+      # 只跑前者会把「源写错了但生成物忠实照搬」判绿。
+      - run: python3 scripts/verify_entry_activity.py
+      - run: python3 scripts/build_entry_activity.py --check
 
   proposal-audit:
     needs: changes

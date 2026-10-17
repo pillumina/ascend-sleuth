@@ -19,6 +19,18 @@
 
 cases:
   - id: VLLM-ASC-9024
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 9024
+        url: https://github.com/vllm-project/vllm-ascend/issues/9024
     title: "MTP 投机解码 + --enable-prefix-caching 同时开启（服务能拉起、首条 curl 即崩）：model_runner_v1.execute_model 把 Transformer（Qwen3.5-27B-w8a8-mtp 等）状态盲目路由进 vllm mamba_utils.preprocess_mamba → get_temporal_copy_spec 'src_block_id = block_ids[cur_block_idx + num_accepted_tokens - 1]' 越界 IndexError: list index out of range（v0.19.1rc1；#9003 同 bug）；维护者指向 PR #9456（async MTP 多流同步）解决"
 
     category: interrupt
@@ -30,10 +42,6 @@ cases:
     # 平台：发帖未声明（评论者 aeytkn 在 910B1 复现同栈）；组合判别优先于平台
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "Qwen3.5-27B-w8a8-mtp（--speculative-config '{\"num_speculative_tokens\": 3, \"method\":\"qwen3_5_mtp\"}'）+ --enable-prefix-caching + --async-scheduling + FULL_DECODE_ONLY，vllm-ascend v0.19.1rc1：服务能拉起，一发 curl 请求即崩；去掉 MTP 或 prefix-caching 任一功能即正常"
       - "崩溃：'(Worker_TP3) multiproc_executor.py:949 WorkerProc hit an exception' → vllm_ascend worker.py execute_model → model_runner_v1.py:1597 execute_model → mamba_utils.preprocess_mamba → collect_mamba_copy_meta → get_temporal_copy_spec (mamba_utils.py:285 'src_block_id = block_ids[cur_block_idx + num_accepted_tokens - 1]') → IndexError: list index out of range"

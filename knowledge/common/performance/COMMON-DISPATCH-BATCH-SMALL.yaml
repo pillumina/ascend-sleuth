@@ -14,7 +14,6 @@ cases:
     compat: [{framework: cross, ranges: ["*"]}]
 
     investigation_quality: medium
-    confidence: {hits: 0, misdiagnoses: 0, score: 0.55, last_hit: ""}
 
     symptoms:
       - "Insight 打开 msprof.json / trace_view.json 可观察到业务整体 free 时间占比偏高"

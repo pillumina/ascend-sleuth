@@ -12,6 +12,18 @@
 
 cases:
   - id: VLLM-ASC-10303
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 10303
+        url: https://github.com/vllm-project/vllm-ascend/issues/10303
     title: "310P 部署 Qwen3-TTS（vllm-omni）无现成镜像：需源码安装 vllm 0.22.0+vllm-ascend dde19f7+vllm-omni main(含PR#4283)，且 qwen3_tts.yaml dtype 全改 fp16（310P 不支持 bf16）"
 
     category: interrupt
@@ -25,12 +37,6 @@ cases:
         ranges: ["0.22.0"]        # 310P 可跑组合（+ vllm-ascend dde19f7 + omni main 含#4283）
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.4
-      last_hit: ""
-
     symptoms:
       - "310P（npu-smi 310P/310P3）上部署 Qwen3-TTS-12Hz（vllm-omni：--omni + --deploy-config qwen3_tts.yaml）失败/不可用——quay.io/ascend/vllm-omni 镜像是 910B 适配，310P 未测试"
       - "310P 芯片不支持 bf16，qwen3_tts.yaml 默认 dtype（bf16 系）在 310P 不可用，需各 stage 改 float16"

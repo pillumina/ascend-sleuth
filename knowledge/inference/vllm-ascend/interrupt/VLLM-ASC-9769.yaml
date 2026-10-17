@@ -16,10 +16,23 @@
 # 脱敏：不引 issue 线程正文/内网 IP/token（replay fixture 内网 IP 已裁剪）
 # 建议命名空间：inference/vllm-ascend/interrupt/
 # 导入管道：S2 replay 覆盖缺口（.s2-replay/9769）→ to-postmortem 草稿 → postmortems/inbox/（待 groom 分诊转正）
-# 草稿纪律：不加 confidence / validation_record 字段（人审接受后由 groom/结算脚本按口径写入）
+# 草稿纪律：案例文件不写使用计数与 validation_record 字段——观测计数由 groom 结算进条目使用记录，
+#   外部验证记录由 settle_s2_feedback 写入
 
 cases:
   - id: VLLM-ASC-9769
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 9769
+        url: https://github.com/vllm-project/vllm-ascend/issues/9769
     title: "310P 图模式（vllm-ascend 0.19.1）W8A8 量化模型推理请求崩溃：QuantBatchmatmulV3 收 FRACTAL_NZ 期望 ND（NZ/ND 格式期望错位）→ ACL stream synchronize failed 507015 / EngineDeadError 500；--enforce-eager 正常——310P 图模式 fused-ops 覆盖缺口（框架侧，cherry-pick PR #9104）"
 
     category: interrupt
@@ -34,11 +47,7 @@ cases:
     # 本 issue 根因非 CANN 侧——避免与 10122（升 CANN ≥9.1.0.beta2）混淆，判别见 diagnosis step 3
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-    # confidence/validation_record：草稿期不设（见头注释）
+    # 观测计数与 validation_record：草稿期不设（见头注释）
 
     symptoms:
       - "310P（npu-smi 310P3）上 vllm-ascend 0.19.1 服务 W8A8 量化模型（默认图模式），推理请求触发 EngineCore 崩溃：RuntimeError: ACL stream synchronize failed, error code:507015"

@@ -139,8 +139,24 @@ def main() -> int:
         ok("无 mermaid 图（配置层问题可无图）")
 
     # ④ 报告点名的 traces/ 证据路径必须真实存在
+    #
+    # `traces/` 是**锚主检出**的运行时件（同一克隆的所有 worktree 共读共写，见
+    # `scripts/exec_log_path.py` 的 `main_checkout`）：在 worktree 里跑本脚本时，
+    # `root` 是 worktree、那里根本没有 traces/，于是每条都报「不存在」——假红。
+    # 所以按 main_checkout 解析 traces 那一侧，其余路径仍按 root。
+    traces_root = root
+    try:
+        import sys as _sys
+        from pathlib import Path as _P
+        _sys.path.insert(0, str(_P(__file__).resolve().parent))
+        from exec_log_path import main_checkout
+        main_root = main_checkout(root)
+        if main_root is not None:
+            traces_root = main_root
+    except Exception:
+        pass
     named = sorted(set(TRACES_PATH_RE.findall(text)))
-    missing = [p for p in named if not (root / p).exists()]
+    missing = [p for p in named if not ((traces_root / p).exists() or (root / p).exists())]
     if missing:
         failures.append("报告点名的路径不存在: " + "、".join(missing[:5]))
     else:

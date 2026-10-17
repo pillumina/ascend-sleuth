@@ -9,6 +9,18 @@
 
 cases:
   - id: VLLM-ASC-14306
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 14306
+        url: https://github.com/vllm-project/vllm-ascend/issues/14306
     title: "GLM-5.2 FullGraph(MRV1)+MTP（num_spec≥2）投机接受率低（per-pos 0.45/0.34/0.25、无输出质量错误）：SFA 后端按 draft step 把 actual_seq_lengths 逐次写入使早期 draft step 的 attention metadata 错误（PR #14236 修复，Fixes #14306）"
 
     category: performance
@@ -19,10 +31,6 @@ cases:
         ranges: ["<0.26.0"]      # PR #14236 2026-08-17 合入，受影响精确区间未系统确认
 
     investigation_quality: high     # fix PR Fixes 关联 + 机制定位（SFA metadata 写入路径）
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "GLM-5.2 全图/MRV1 + MTP num_spec≥2：投机接受率明显低于预期（acceptance_per_pos≈0.45/0.34/0.25、acceptance_len 偏低），对照 v0.23 正常"
       - "无输出乱码/精度错误伴随（区别于 11127/12723 的精度路径）——纯生成效率退化"

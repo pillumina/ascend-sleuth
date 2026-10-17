@@ -17,24 +17,39 @@ cases:
         hdk: [">=23.0"]                          # 可选：HDK/固件版本
     # 匹配软判：客户版本不在区间 → version_mismatch 降权，不硬排除
 
-    confidence:                          # groom 计算，非人设定
-      hits: 18
-      misdiagnoses: 1
-      score: 0.86                        # hits/(hits+misdiagnoses)，按 last_hit 衰减；校准：>0.8 高、0.5-0.8 中、<0.5 仅提示
-      last_hit: "2026-W28"
+    # 人的调查质量判断：现场排查做到多深（五天详查 vs 随手记录）。
+    # 它只决定这条 case 的**冷启动先验分**（与 verification.source 一起查表），
+    # 现场表现如何由使用记录里的计数校准。分数不住在 case 里（算分见 scripts/score_entries.py）。
+    investigation_quality: high
 
     # 可选：内容被外部验证的累积记录（settle_s2_feedback.py 结算，非人设定）。
-    # 与 confidence 分开：confidence.hits/mis 只承载 S1 现场 resolve（"fix 在你环境
-    # 解决了没有"）；validation_record 承载"内容与外部 ground truth 一致"（S2
-    # issue-replay 对照维护者 resolution / fix PR 合入）。S2 结果也是 feedback——
-    # 反馈对象是内容正确性而非现场有效性。consistent=外部验证一致（提排序优先），
-    # self_consistent=自证命中（replay issue 即 case 来源，如实标注不虚增），
-    # inconsistent=命中但结论与 resolution 不符（复审信号）。无 S2 验证不填。
+    # 与现场解决计数分开：后者写在使用记录里（metrics/entry-activity.d/，只承载 S1
+    # 现场 resolve "fix 在你环境解决了没有"）；validation_record 承载"内容与外部
+    # ground truth 一致"（S2 issue-replay 对照维护者 resolution / fix PR 合入）。
+    # S2 结果也是 feedback——反馈对象是内容正确性而非现场有效性。
+    # consistent=外部验证一致（提排序优先），self_consistent=自证命中（replay issue
+    # 即 case 来源，如实标注不虚增），inconsistent=命中但结论与 resolution 不符（复审信号）。
+    # 无 S2 验证不填。
     validation_record:
       consistent: 0
       inconsistent: 0
       self_consistent: 1                 # 例：该 case 由 issue #NNN 沉淀，replay #NNN 命中且一致 = 自证
       last_verified: "2026-W37"
+
+    # 可选：人工覆盖排序分数（罕见，走高风险改动的两人复核）。三个子字段都必填——
+    # 不带 reason 的覆盖在半年后无法判断该不该撤。由 score_entries.py --check-overrides 拦。
+    # score_override:
+    #   score: 0.9
+    #   reason: "客户三次现场确认该 fix 生效，但回报没有走本仓的 feedback 通道"
+    #   by: "<owner>"
+
+    # 可选：上游锚点。有它才能靠上游状态自动确认"内容对不对"（verify_upstream_outcomes.py
+    # 查证后写进 validation_record）；客户侧现网问题没有锚点，只能等现场回报。
+    # issue 与 pr 二选一；它判断不了"现场是否解决"。
+    # upstream:
+    #   - repo: "vllm-project/vllm-ascend"
+    #     issue: 12430
+    #     url: "https://github.com/vllm-project/vllm-ascend/issues/12430"
 
     symptoms:
       - "all_to_all_single hangs at step usually after 1000+"
@@ -49,7 +64,7 @@ cases:
     # quality=人的调查判断，verification=外部证据强度）。档位按「来源形态」分，不按 issue 分：
     #   upstream-fix-merged | upstream-official-doc | upstream-maintainer-confirmed
     #   | investigation | engineer-report
-    # 决定初始 confidence.score 先验（groom 置信度重算规则表）；无外部验证不填。
+    # 与 investigation_quality 一起决定这条 case 的冷启动先验分；无外部验证不填。
     verification:
       source: investigation
       detail: "本地源码分析定位（见 source_ref）"
@@ -66,7 +81,7 @@ cases:
         expected: "regex:^[1-9]"
       # primary 不匹配但 fallback 匹配 → 仍进 diagnosis，标 low_confidence
 
-    # 阶段二加载：仅候选 case，按 confidence.score 降序验证
+    # 阶段二加载：仅候选 case，按索引里的 score（由 scripts/score_entries.py 算出）降序验证
     diagnosis:
       - step: 1
         command_template: "env | grep HCCL_BUFFSIZE"

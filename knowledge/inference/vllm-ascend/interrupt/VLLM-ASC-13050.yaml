@@ -6,6 +6,18 @@
 
 cases:
   - id: VLLM-ASC-13050
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 13050
+        url: https://github.com/vllm-project/vllm-ascend/issues/13050
     title: "310P 上推理请求触发 IndexPut aicpu exception（errorCode=0x2a, runtime 507018, stream phase=SCHEDULE），0.23.0 rc 镜像复现、POC 镜像正常、0.23.0 正式版修复"
 
     category: interrupt
@@ -17,12 +29,6 @@ cases:
         ranges: ["<0.23.0"]         # 受影响为 nightly-v0.23.0-310p-openeuler / v0.22.1rc1-310p；0.23.0 正式版确认修复
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     symptoms:
       - "310P 双芯（300I Duo）+ Qwen3.6-35B-A3B-w8a8，TP=2 服务启动成功，第一条推理请求即崩溃"
       - "plog：aicpu exception, kernelName=IndexPut, errorCode=0x2a, runtime result=507018, stream phase=SCHEDULE"

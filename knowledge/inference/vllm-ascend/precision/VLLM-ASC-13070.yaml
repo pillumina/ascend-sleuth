@@ -5,7 +5,7 @@
 # fix：升级到含 reasoning 计数修复的版本（上游修复面在 reasoning parser 的
 #   count_reasoning_tokens()，覆盖 deepseek_v3/deepseek_v4/glm45/holo2 等）——首个含修复版本待确认
 # verification: investigation（诚实档）——机制方向与上游 resolution 一致，但本条核到的类/文件
-#   归属与之未对齐（见 root_cause 限定语），且 eval 记录的 fix_commit 为空、confidence=medium
+#   归属与之未对齐（见 root_cause 限定语），且 eval 记录的 fix_commit 为空、调查质量=medium
 # pre-triage: new_pattern —— 同 reason 字段相关的 VLLM-ASC-8798 是 Qwen3.5 thinking 重复输出
 #   （模型能力问题，reasoning_tokens=0 只是伴随现象），与本条「内容正常、计量恒 0」不同机制；
 #   不与之互命中（该条 primary 要求重复句文案）
@@ -14,6 +14,18 @@
 
 cases:
   - id: VLLM-ASC-13070
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 13070
+        url: https://github.com/vllm-project/vllm-ascend/issues/13070
     title: "thinking 开启时 usage.completion_tokens_details.reasoning_tokens 恒为 0（reasoning 字段内容正常、finish_reason 正常）：reasoning parser 未覆写 count_reasoning_tokens 的计数路径缺位 → 计量失真"
 
     category: precision
@@ -24,12 +36,6 @@ cases:
         ranges: ["0.20"]          # issue 标题标 v0.20；用户未附 collect_env，精确版本待确认（仅 system_fingerprint 的 vllm 段可见）
 
     investigation_quality: medium  # 机制方向清楚（计数来自 reasoning parser 的 count_reasoning_tokens，未覆写则基类返回 0）；类/文件归属未对上 → 精度打折
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3                  # groom 先验表：investigation × medium（本条证据缺口最大，不取高）
-      last_hit: ""
-
     symptoms:
       - "thinking 开启时，响应正常返回 message.reasoning（完整思考文本）、finish_reason 正常（如 tool_calls），但 usage.completion_tokens_details.reasoning_tokens 恒为 0"
       - "同一响应的 completion_tokens 非 0（现场示例 48）——即 token 被计入总量，只是 reasoning 那一项没被统计出来"
@@ -41,7 +47,7 @@ cases:
 
     verification:
       source: investigation
-      detail: "issue #13070（GLM-5.1、4×Atlas A3、PD 分离，thinking 开启时 reasoning_tokens 恒 0）；本地读码核对 v0.26.0rc1 存在 vllm_ascend/patch/platform/patch_glm_reasoning_usage_accounting.py（覆写 Glm47MoeParser.count_reasoning_tokens 并把 reasoning_tokens 注入 usage.completion_tokens_details，仅在 reasoning_parser_cls 为 Glm47MoeParserReasoningAdapter 子类时启用，且该文件在 main 上已不存在）。上游 resolution 指向的修复面是 reasoning parser 的 count_reasoning_tokens()（覆盖 deepseek_v3/deepseek_v4/glm45/holo2，处理 prompt 自带起始 think 标记、显式 span、被截断的 reasoning）——与本条机制方向一致，但类/文件归属未对齐（本条核到 patch 层覆写，修复落在上游 parser 侧），且 eval 记录的 fix_commit 为空、confidence=medium，故按 investigation 记而非 upstream-fix-merged/confirmed"
+      detail: "issue #13070（GLM-5.1、4×Atlas A3、PD 分离，thinking 开启时 reasoning_tokens 恒 0）；本地读码核对 v0.26.0rc1 存在 vllm_ascend/patch/platform/patch_glm_reasoning_usage_accounting.py（覆写 Glm47MoeParser.count_reasoning_tokens 并把 reasoning_tokens 注入 usage.completion_tokens_details，仅在 reasoning_parser_cls 为 Glm47MoeParserReasoningAdapter 子类时启用，且该文件在 main 上已不存在）。上游 resolution 指向的修复面是 reasoning parser 的 count_reasoning_tokens()（覆盖 deepseek_v3/deepseek_v4/glm45/holo2，处理 prompt 自带起始 think 标记、显式 span、被截断的 reasoning）——与本条机制方向一致，但类/文件归属未对齐（本条核到 patch 层覆写，修复落在上游 parser 侧），且 eval 记录的 fix_commit 为空、调查质量=medium，故按 investigation 记而非 upstream-fix-merged/confirmed"
 
     quickly_check:
       primary:

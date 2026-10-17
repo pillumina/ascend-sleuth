@@ -16,12 +16,6 @@ cases:
         ranges: ["26.1.0"]
 
     investigation_quality: medium    # 维护者定论根因（功能未支持），无用户回验
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3
-      last_hit: ""
-
     symptoms:
       - "预训练 gemma-2-9b 时框架无法识别 architectures: Gemma2ForCausalLM，报 RuntimeError: Cannot infer model type from architectures of Huggingface config.json '{arch_row}'. Please specify --model-type-hf explicitly"
       - "栈：pretrain_gpt.py → validate_features_args → convert_checkpoint.py:158 validate_args → infer_model_type_from_hf_config 抛错"

@@ -16,9 +16,6 @@ cases:
     ranges:
     - <0.26.0
   investigation_quality: medium
-  confidence:
-    hits: 0
-    misdiagnoses: 0
   symptoms:
   - TP 推理图捕获失败：AclmdlRICaptureEnd 报 107025 / “capture model contains a stream that
     was not joined to the original stream”

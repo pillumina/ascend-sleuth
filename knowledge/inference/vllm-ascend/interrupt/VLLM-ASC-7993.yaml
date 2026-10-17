@@ -10,6 +10,18 @@
 
 cases:
   - id: VLLM-ASC-7993
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 7993
+        url: https://github.com/vllm-project/vllm-ascend/issues/7993
     title: "A2（910B）跑 MiniMax-M2.5-w8a8-QuaRot（FULL_DECODE_ONLY 图模式）推理偶现崩溃：runtime 报 fftsplus FIA 算子越界/内存访问错误（aicore/aivector error、sq sw status error、model stream execute failed）——CANN runtime graph 下 attention update_param 的 args copy 保序缺失（x86>1k/ARM>4k 异步拷贝分支拿到错误地址），CANN 9.0 修复"
     category: interrupt
     tags: [fia, attention, cudagraph, full-decode-only, graph-mode, runtime, args-copy, cann-version, intermittent, minimax, m2.5, quarot, 910b]
@@ -21,11 +33,6 @@ cases:
         cann: ["<9.0"]              # 修复合入 CANN 9.0
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      # score 草稿期不写，groom 首次评估后计算
-
     symptoms:
       - "A2 + minimax-m2.5-w8a8-quarot + FULL_DECODE_ONLY 图模式（+ auto-tool-choice/minimax_m2 parser）推理偶现崩溃"
       - "runtime plog 首错：there is an exception of fftsplus aicore error / fftsplus aivector error（core dump，MTE error info 非零，extend info subErrType=4 'D-cache 读写 UB 时总线返回非零'）"

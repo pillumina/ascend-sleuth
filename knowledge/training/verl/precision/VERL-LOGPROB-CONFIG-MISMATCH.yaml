@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]     # 根因是两侧配置不一致，与框架版本弱相关
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "RL 训练中 log_prob 指数首 step 差异较大（超出预期范围）"
       - "缩小至双机多卡后差异仍明显"

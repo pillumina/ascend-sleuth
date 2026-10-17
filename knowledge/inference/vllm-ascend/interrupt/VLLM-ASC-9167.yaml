@@ -6,6 +6,18 @@
 
 cases:
   - id: VLLM-ASC-9167
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 9167
+        url: https://github.com/vllm-project/vllm-ascend/issues/9167
     title: "GLM5.1-w4a8 拉起报 AssertionError: FlashAttnPrefillBackend requires flash_attn_varlen_func（vLLM 0.20.1 下 MLA prefill backend patch 分支不匹配）"
 
     category: interrupt
@@ -16,11 +28,6 @@ cases:
         ranges: ["<=0.20.1"]        # 线程失败环境 vllm-ascend 0.19.1rc2.dev45 + vLLM 0.20.1；main 由 PR #9835 修复
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3                    # medium
-
     symptoms:
       - "GLM5.1-w4a8 拉起服务失败，Worker 报 AssertionError: FlashAttnPrefillBackend requires flash_attn_varlen_func. Ensure FlashAttnPrefillBackend.is_available() is checked first"
       - "vLLM 0.20.1 + vllm-ascend 0.19.1rc2.dev45+g8486a744f（20260514）复现；报错栈到 vllm/v1/attention/backends/mla/prefill/flash_attn.py:60"

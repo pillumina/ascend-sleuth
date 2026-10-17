@@ -15,6 +15,18 @@
 
 cases:
   - id: VLLM-ASC-12640
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 12640
+        url: https://github.com/vllm-project/vllm-ascend/issues/12640
     title: "DSpark V1（method=dspark + DP>1）在 DP 补齐 drafter token 时崩溃：draft attention metadata 先于 positions/slot buffer 哨兵构建、非因果 DSA decode token 计数与 num_input_tokens 口径不一致 → RuntimeError: call aclnnInplacePartialRotaryMul failed / EZ9999: dim0 must be equal / CheckInputShapes is failed"
 
     category: interrupt
@@ -27,12 +39,6 @@ cases:
         ranges: ["54503ecec0f3ac31e5ecfc5f28652e4cc42307b5"]   # 现场配对的上游 vLLM commit（公开材料原值）
 
     investigation_quality: medium  # 源码三处口径不一致已读通、与 issue 自述根因及关联修复面一致；但无现场完整栈/可复现环境 → 分析级
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.3                  # groom 先验表：investigation × medium
-      last_hit: ""
-
     symptoms:
       - "DSpark 投机解码（--speculative-config '{\"method\":\"dspark\",\"num_speculative_tokens\":N}' + DP>1，现场 TP4/DP4/EP 共 16 NPU、V1 model runner）下，一批异构请求成批失败：completed 4 / failed 12，引擎在 DP rank 完成时刻不一致时退出"
       - "栈尾：RuntimeError: call aclnnInplacePartialRotaryMul failed / EZ9999: dim0 must be equal / CheckInputShapes is failed"

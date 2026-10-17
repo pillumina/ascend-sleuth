@@ -44,6 +44,7 @@ from pathlib import Path
 
 from _lexical import tokens_of
 from _stdio import write_text_lf
+import score_entries
 
 try:
     import yaml
@@ -135,11 +136,19 @@ def quickly_check_summary(qc) -> dict:
     return out
 
 
-def collect(root: Path):
+def collect(root: Path, scores=None):
     """扫 knowledge/**/*.yaml → {namespace: {category: [索引条目, ...]}}
     ADR-0004：目录按 (framework × category) 分层；索引按格子分组，
-    格子是阶段一实际被扫的单元，cap 语义精确到格子。"""
+    格子是阶段一实际被扫的单元，cap 语义精确到格子。
+
+    `scores` 是 `scripts/score_entries.py` 算出来的 {case_id: {score, source, ...}}。
+    **分数不再从案例文件读**：案例只为内容层的决定而改，不因观测而改；分数是记录计数与冷启动
+    先验的派生值，只存在索引生成物里（`docs/mechanism/diagnosis-observability.md` 3.4）。
+    """
     namespaces = {}
+    if scores is None:
+        import score_entries
+        scores = score_entries.compute(root)["cases"]
     kdir = root / "knowledge"
     for path in sorted(kdir.rglob("*.yaml")):
         rel = path.relative_to(kdir)
@@ -177,10 +186,12 @@ def collect(root: Path):
                 "tags": (case.get("tags") or [])[:6],
                 "compat": compat_summary(case.get("compat")),
                 "confidence": {
-                    # ADR-0004 修正：索引只保留排序所需的 score；
-                    # hits/misdiagnoses 是学习环动态字段（Beta 后验），留在 case 本体，
-                    # 由 groom 置信度重算读取，不进入检索视图（避免学习环每次更新全量重建索引）。
-                    "score": (case.get("confidence") or {}).get("score"),
+                    # ADR-0004 要求索引行保留 `confidence` 这个键（读侧契约不改）；
+                    # 但它的**来源**换了：过去读案例本体的 `confidence.score`（由 agent 判断重算），
+                    # 现在读 score_entries 由「记录计数 + 冷启动先验（verification ×
+                    # investigation_quality）+ 可选 score_override」算出的分数。
+                    # 案例文件因此不再有 confidence 块：观测不再改知识条目。
+                    "score": (scores.get(case.get("id", "")) or {}).get("score"),
                 },
                 # F2 行瘦身（EV-2026-023）：索引只留 symptoms 首条摘要（~120 字）作阶段一
                 # 过滤；完整 symptoms/quickly_check 移 case 本体，阶段二加载候选后验证。
@@ -337,7 +348,7 @@ def shard_dirty(root: Path, ns, cells) -> list:
 
 
 
-def render(namespaces) -> str:
+def render(namespaces, score_source: str = "records") -> str:
     header = "\n".join([
         "# GENERATED FILE —— 由 scripts/build_index.py 生成，不要手改。",
         "# 随 PR 提交。本文件**故意没配 merge=union**（嵌套结构做行级合并会拼坏 YAML，见 .gitattributes）：",
@@ -351,6 +362,8 @@ def render(namespaces) -> str:
         "# 一致性门是**覆盖检查**（每条 case 的索引行都在、且与 case 内容对得上），不是逐字节相同——",
         "# 逐字节的门会把「两边各加一条、顺序与重新生成不同」的、内容正确的文件判红。要归一化就重跑一次生成器。",
         "# `--canonical` 是那个「重跑后应当逐字节相同」的自检，供收尾/排查用，不作门。",
+        "# 分数的来源（score_entries.py：记录计数 + 冷启动先验 + 可选 score_override）："
+        + SCORE_SOURCE_NOTE.get(score_source, score_source),
         "",
     ])
     body = yaml.safe_dump(
@@ -451,7 +464,98 @@ def duplicate_ids(root: Path):
     return out
 
 
+def library_id_problems(root: Path):
+    """条目 id 的唯一性，以及「案例文件名 = id」——记录层的地基判据。
+
+    为什么值得一道门：记录用条目**自己的 `id`** 建键，不取文件名——先验侧两者常不一致
+    （实测如此，所以记录带 `kind` 区分 case / ref），案例侧目前一致但没有门保证。撞车或错位的
+    后果都不是报错而是**静默合并**：两条条目在记录与面板排行里合成一条；文件名与 id 不一致时，
+    按文件名推出来的路径（阶段二定位用的那个约定）会落空。
+
+    先验侧只查唯一性，不查文件名与 id 是否相同：那边的文件名是给人读的英文短语，id 另有一套
+    历史命名，两者不一致是现状而不是缺陷。
+    """
+    problems = []
+    seen = {}
+    kdir = root / "knowledge"
+    for f in sorted(kdir.rglob("*.yaml")) if kdir.is_dir() else []:
+        if f.name == "_index.yaml" or "_index" in f.parts:
+            continue
+        try:
+            doc = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError as e:
+            problems.append(f"{f.relative_to(root)}: 解析失败（{e}）")
+            continue
+        for c in (doc.get("cases") or []):
+            cid = c.get("id")
+            if not cid:
+                problems.append(f"{f.relative_to(root)}: case 缺 id")
+                continue
+            if cid != f.stem:
+                problems.append(f"{f.relative_to(root)}: 文件名 {f.stem!r} 与 case id {cid!r} 不一致"
+                                "（记录按 id 建键，按文件名推不出这条的路径）")
+            if cid in seen:
+                problems.append(f"案例 id 重复：{cid!r} 同时出现在 {seen[cid]} 与 {f.relative_to(root)}")
+            else:
+                seen[cid] = f.relative_to(root)
+    rdir = root / "references"
+    rseen = {}
+    for f in sorted(rdir.rglob("*.yaml")) if rdir.is_dir() else []:
+        if f.name.startswith("_"):
+            continue
+        try:
+            doc = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+        except yaml.YAMLError:
+            continue
+        if not (isinstance(doc, dict) and doc.get("id")):
+            continue
+        rid = str(doc["id"])
+        if rid in rseen:
+            problems.append(f"先验 id 重复：{rid!r} 同时出现在 {rseen[rid]} 与 {f.relative_to(root)}")
+        else:
+            rseen[rid] = f.relative_to(root)
+    overlap = sorted(set(seen) & set(rseen))
+    if overlap:
+        problems.append(f"案例与先验的 id 撞车：{overlap}（记录按 kind 区分，但面板按 id 索引）")
+    return problems
+
+
+def header_problems(root: Path, score_source: str):
+    """总表头注里的「分数来源」那一行要与本次重建一致。
+
+    为什么它该进 `--check`：覆盖检查只比条目，不比头注；而头注那行是**唯一**告诉读者
+    「这一次的分是记录算的还是先验值」的地方。它错了不会让任何数变错，只会让读者按错强度
+    读分数——正是这类"只影响解读、不影响数据"的字段最容易烂掉（`--canonical` 能看出来，
+    但它不作门，CI 不跑）。
+    """
+    out = root / "knowledge" / "_index.yaml"
+    if not out.exists():
+        return []
+    want = SCORE_SOURCE_NOTE.get(score_source, score_source)
+    try:
+        head = out.read_text(encoding="utf-8").split("namespaces:", 1)[0]
+    except OSError:
+        return []
+    for line in head.splitlines():
+        if line.startswith("# 分数的来源"):
+            return [] if line.rstrip().endswith(want) else [
+                f"knowledge/_index.yaml: 头注的分数来源与本次重建不一致（应为「{want}」）"
+                "——重跑 `python3 scripts/build_index.py`"]
+    return ["knowledge/_index.yaml: 头注缺「分数的来源」一行——重跑 `python3 scripts/build_index.py`"]
+
+
 CATEGORIES = ("interrupt", "precision", "performance")
+
+#: 索引头注里那句「这一次的分数是从哪来的」。写的是**模式**不是数字：生成物里不写数字
+#: （条数会漂移、并在并发合并时撞行），要看数字现算 `python3 scripts/score_entries.py`。
+#: 为什么必须披露：记录缺失时分数退回冷启动先验，读的人若不知道，会把「先验分」当成
+#: 「按现场表现算出来的分」——那是两种不同强度的证据（体检器 `metrics_health.py` 同时报出这一项）。
+SCORE_SOURCE_NOTE = {
+    "records": "有记录的条目按记录计数算（其余条目退回冷启动先验）",
+    "prior": "本次没有任何使用记录，全部分数都是冷启动先验值（体检器会报出这一项）",
+    "records+prior": "部分条目有记录、部分退回冷启动先验（体检器会报出这一项）",
+    "mixed": "记录、先验与人工覆盖三种来源并存（体检器会报出这一项）",
+}
 
 
 def _category_dir_of(rel: Path):
@@ -616,7 +720,7 @@ def coverage_problems(root: Path, namespaces):
     return problems
 
 
-def canonical_dirty(root: Path, namespaces):
+def canonical_dirty(root: Path, namespaces, score_source: str = "records"):
     """逐字节自检（`--canonical`，不作门）：分片与总表是否与"重新生成一遍"完全相同。
 
     用途是收尾/排查——union 合并后文件通常是"内容对、顺序不标准"，跑一次生成器即归一化，
@@ -624,7 +728,7 @@ def canonical_dirty(root: Path, namespaces):
     """
     dirty = []
     out = root / "knowledge" / "_index.yaml"
-    if not out.exists() or out.read_text(encoding="utf-8") != render(namespaces):
+    if not out.exists() or out.read_text(encoding="utf-8") != render(namespaces, score_source):
         dirty.append("knowledge/_index.yaml")
     for nsk, cells in namespaces.items():
         for key, payload in [(nsk, cells)] + [(f"{nsk}__{cat}", {cat: cases})
@@ -645,30 +749,38 @@ def main():
     args = ap.parse_args()
     root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[1]
 
-    ns = collect(root)
+    scored = score_entries.compute(root)
+    ns = collect(root, scored["cases"])
+    score_source = scored["meta"]["score_source"]
     if args.check:
         # 目录与字段的一致先查：它与索引覆盖无关（错位 case 的索引行是自洽的），
         # 所以不能挂在 coverage_problems 里（那个在分片目录缺失时整块跳过）。
-        dir_problems = dir_category_problems(root)
+        dir_problems = dir_category_problems(root) + library_id_problems(root)
+        # 头注过期与内容问题分开报：前者重跑生成器就好，后者要改字段或挪文件。
+        header_bad = header_problems(root, score_source)
         problems = coverage_problems(root, ns)
         if problems is None:
             print("读侧视图目录不存在（knowledge/_index/）——先运行 scripts/build_index.py 生成")
             for p in dir_problems:
                 print(f"索引问题：{p}")
             sys.exit(1)
-        problems = dir_problems + problems
+        problems = dir_problems + header_bad + problems
         if problems:
             for p in problems:
                 print(f"索引问题：{p}")
-            if dir_problems:
-                print(f"\n{len(problems)} 处，其中「目录与 category 不一致」{len(dir_problems)} 处："
-                      "那些是 case 内容问题——改字段或挪文件，重建索引修不了它们。")
+            if header_bad:
+                print(f"\n{len(problems)} 处：其中 {len(header_bad)} 处是生成物头注过期，"
+                      "跑一次重建即可：\n  python3 scripts/build_index.py")
+            elif dir_problems:
+                print(f"\n{len(problems)} 处，其中 case 内容问题 {len(dir_problems)} 处"
+                      "（目录与 category 不一致 / id 重复或与文件名不一致）："
+                      "改字段或挪文件，重建索引修不了它们。")
             else:
                 print(f"\n{len(problems)} 处。生成物（读侧视图与总表）随 PR 提交，跑一次重建即可：")
                 print("  python3 scripts/build_index.py")
             sys.exit(1)
         if args.canonical:
-            dirty = canonical_dirty(root, ns)
+            dirty = canonical_dirty(root, ns, score_source)
             if dirty:
                 print("逐字节自检：以下生成物与「重新生成一遍」不同（内容已覆盖全部 case，只是顺序/注释未归一）：")
                 for d in dirty:
@@ -682,7 +794,7 @@ def main():
         return
 
     out = root / "knowledge" / "_index.yaml"
-    write_text_lf(out, render(ns))
+    write_text_lf(out, render(ns, score_source))
     shard_dir = root / "knowledge" / "_index"
     shard_dir.mkdir(exist_ok=True)
     expected = set()

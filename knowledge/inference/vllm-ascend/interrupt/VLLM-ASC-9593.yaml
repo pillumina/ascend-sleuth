@@ -12,6 +12,18 @@
 
 cases:
   - id: VLLM-ASC-9593
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 9593
+        url: https://github.com/vllm-project/vllm-ascend/issues/9593
     title: "310P（300I Duo / 310P3）vllm serve 启动 pooling 模型（如 bge-m3 --runner pooling）报 NotImplementedError: \"310P does not support runner_type='pooling'\"：310P 分支 attention 掩码生成缺非因果（pooling）支持；升级至含 PR #8846 的版本解决"
 
     category: interrupt
@@ -24,10 +36,6 @@ cases:
         note: "PR #8846 作者标 vLLM v0.20.2 代；310P 镜像版本线与 main 不完全同步，升级前确认镜像含该 commit"
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "310P（310P3/300I Duo）vllm serve 启动 pooling 模型（命令：vllm serve bge-m3 --runner pooling --dtype float16 --enforce-eager）直接报 NotImplementedError"
       - "报错位置：vllm_ascend/_310p/attention/attention_mask.py:135 get_attention_mask → raise NotImplementedError(\"310P does not support runner_type='pooling'\")"

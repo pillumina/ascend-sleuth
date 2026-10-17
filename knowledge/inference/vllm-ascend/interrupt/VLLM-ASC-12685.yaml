@@ -21,12 +21,6 @@ cases:
         ranges: ["<=2.10.0.post2"]     # 线程实测版本
 
     investigation_quality: high        # to-postmortem 标的调查质量，groom 据此设初始 score
-    confidence:                        # groom 维护
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6                       # high → 初始 0.6
-      last_hit: ""
-
     symptoms:
       - "v0.23.0rc1 拉起 MiniMax-M2.7（BF16 非量化权重）服务启动失败，多 worker 同时 'WorkerProc failed to start'"
       - "AttributeError: 'MiniMaxM2Config' object has no attribute 'o_groups'（vllm_ascend/quantization/methods/fp8.py:45 self.n_groups = hf_config.o_groups）"

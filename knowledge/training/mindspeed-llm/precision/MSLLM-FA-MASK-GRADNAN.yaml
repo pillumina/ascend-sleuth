@@ -18,12 +18,6 @@ cases:
         # TorchNPU 2.6.0 / MindSpeed 0.8.0（文档记录的环境；sparsemode 与 pre_tockens 语义随版本核对）
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "GradNorm 出现 NaN/Inf（256 卡 Qwen3-235B 长序列 SFT，序列长度 131072，TP4/PP4/EP16/CP16/VPP3）"
       - "export ASCEND_LAUNCH_BLOCKING=1 后仍显示 NaN"

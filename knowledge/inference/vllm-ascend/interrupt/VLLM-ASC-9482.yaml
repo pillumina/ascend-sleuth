@@ -12,6 +12,18 @@
 
 cases:
   - id: VLLM-ASC-9482
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 9482
+        url: https://github.com/vllm-project/vllm-ascend/issues/9482
     title: "--async-scheduling + MTP（spec decode）崩溃：model runner 的 _copy_valid_sampled_token_count（PR #8766 重写）把 current_stream 声明进 with torch.npu.stream() 内、多流未同步 → valid_sampled_tokens_count 脏读写 → num_accepted/num_computed_tokens 溢出崩溃；升级/合入 PR #9456 修复"
 
     category: interrupt
@@ -24,10 +36,6 @@ cases:
         note: "触发组合：--async-scheduling + MTP/spec decode（Qwen3.5-APC-MTP / DeepSeek-V4 类）"
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "vllm-ascend 0.19.0/main：Qwen3.5-APC + MTP（spec decode）开启 --async-scheduling 后服务崩溃（issue 内 trace 为截图）"
       - "开发者打印定位：开启 async-scheduling 后 num_accepted 与 num_computed_tokens 溢出，导致后续崩溃"

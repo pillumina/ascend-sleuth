@@ -12,6 +12,18 @@
 
 cases:
   - id: VLLM-ASC-5725
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 5725
+        url: https://github.com/vllm-project/vllm-ascend/issues/5725
     title: "Qwen3-Embedding-0.6B 同串第二次请求向量与首次不一致（Cosine ~0.585，命中缓存后稳定但错）：pooling 模型 attention 路由无条件走 npu_fusion_attention（不支持 prefix caching）→ 缓存命中路径静默错输出；升级 ≥v0.18.0（PR #7452/#7894）或关 prefix cache 规避"
 
     category: precision
@@ -23,10 +35,6 @@ cases:
         ranges: ["<=0.17.0"]          # 0.13.0rc1 实测，复测 0.14.0rc1/0.15.0rc1 仍现；fix main 2026-03-28（#7452）→ v0.18.0（#7894 backport 2026-04-01）
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "embedding 服务（Qwen3-Embedding-0.6B，--convert embed）同一字符串首次与二次请求返回向量不一致：Cosine ~0.585；首算与原生 vLLM ~0.9997（对），二次起命中 prefix cache 的结果稳定但错（对首算 0.585、对原生 0.581）"
       - "显式关闭 prefix cache 后不一致消失（reporter 实测）"

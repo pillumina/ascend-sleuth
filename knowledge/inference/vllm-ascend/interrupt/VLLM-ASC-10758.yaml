@@ -14,6 +14,18 @@
 
 cases:
   - id: VLLM-ASC-10758
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 10758
+        url: https://github.com/vllm-project/vllm-ascend/issues/10758
     title: "minimax-m2.5（v0.20.2rc1）流式工具调用末尾拼接 </parameter> 残缺尾片致路径识别失败：增量 tool-call parser 在参数未闭合时输出 delta，需参数完整闭合后再发（vllm-ascend #10817 backport / vLLM 上游 #45701 parser engine）"
 
     category: interrupt
@@ -26,12 +38,6 @@ cases:
         versions: ["< 含 vllm#45701 的 main/发布"]
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.4
-      last_hit: ""
-
     symptoms:
       - "minimax-m2.5-w8a8（--enable-auto-tool-choice --tool-call-parser minimax_m2）流式工具调用响应末尾拼接残缺 '</parameter>' 尾片（如参数值 'a.txt</parameter'），调用方路径/参数识别失败"
       - "同一流最终解析出的 tool call 本身正确——问题在流式增量序列化（MiniMax-M2 tokenizer 把 </parameter> 切成 </、parameter、> 多片，parser 在参数打开时就发 delta）"

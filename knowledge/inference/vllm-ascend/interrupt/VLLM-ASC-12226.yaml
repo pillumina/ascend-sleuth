@@ -6,6 +6,18 @@
 
 cases:
   - id: VLLM-ASC-12226
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 12226
+        url: https://github.com/vllm-project/vllm-ascend/issues/12226
     title: "camem sleep/wake 是字节级 memcpy（恢复后权重已是 forward READY 方向），NPUWorker.wake_up 又对 MoE w13/w2 transpose(1,2) 一次构成双重转置，纯推理 wake_up 后 K 维错位（3072 vs 2048）→ npu_grouped_matmul 161002/EZ1001"
 
     category: interrupt
@@ -17,12 +29,6 @@ cases:
         ranges: ["<=0.18.0"]          # releases/v0.18.0 实测（0.1.dev100+g45068b082）；修复未发布（维护者解耦设计进行中），>0.18 是否修复需验证
 
     investigation_quality: high       # to-postmortem 标的调查质量，groom 据此设初始 score
-    confidence:                       # groom 维护
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6                      # high → 初始 0.6
-      last_hit: ""
-
     symptoms:
       - "vllm serve --enable-sleep-mode 下 sleep(level=1) 后 wake_up，纯推理 MoE 模型（如 Qwen3.5-122B-A10B）再次请求报 500"
       - "wake_up 后推理栈报 aclnnGroupedMatmulV5 failed, error code is 161002，EZ1001: Dim 1 value of x[0] should be equal with dim 1 value of weight[0]，3072 vs 2048"

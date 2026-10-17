@@ -12,6 +12,18 @@
 
 cases:
   - id: VLLM-ASC-7792
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 7792
+        url: https://github.com/vllm-project/vllm-ascend/issues/7792
     title: "mooncake kv_both + GLM-5-w4a8 KV 传输失败：Transfer slice failed with status: 503900，HcclBatchPut ret=4 Can't find remoteBuffer by key（mooncake_backend Failed to put key res:[-800]）——漏设 HCCL_INTRA_ROCE_ENABLE=1，intra-node 通信未走 RoCE 与远端 buffer 注册不匹配"
 
     category: interrupt
@@ -24,10 +36,6 @@ cases:
         cann: ["8.5.1"]
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "mooncake kv_both（同节点多实例 PD，KV pool 经 ascend-direct/RoCE 传输，参考 pd_colocated_mooncake_multi_instance tutorial）+ GLM-5-w4a8，KV put 持续失败：ascend_direct_transport.cpp Transfer slice failed with status: 503900"
       - "mooncake_backend.py: Failed to put key [...], res:[-800]；client_service.cpp: Transfer failed for key ... TRANSFER_FAIL（revoked failed put）"

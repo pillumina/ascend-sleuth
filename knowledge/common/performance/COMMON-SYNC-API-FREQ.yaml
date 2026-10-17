@@ -16,7 +16,6 @@ cases:
         ranges: ["*"]
 
     investigation_quality: high
-    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
 
     symptoms:
       - "可视化打开 msprof.json / trace_view.json 发现较多算子执行伴随 aclrtSynchronizeStreamWithTimeout 等同步接口"

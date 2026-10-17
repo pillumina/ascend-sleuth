@@ -11,6 +11,18 @@
 
 cases:
   - id: VLLM-ASC-7160
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 7160
+        url: https://github.com/vllm-project/vllm-ascend/issues/7160
     title: "Qwen3.5-35B-A3B（MoE）vllm serve 启动即崩（profile_run）：fused-MoE 路由以 renorm=1 调 aclnnMoeGatingTopK，CANN op 只支持 renorm=0 → EZ9999；改走 torch_npu.npu_moe_gating_top_k（#7573）"
 
     category: interrupt
@@ -23,10 +35,6 @@ cases:
     #       非 A5 若仍走 _C_ascend 自定义 op 需 CANN 放开 renorm=1 或本地套 #7573 思路——版本/芯片判别放 diagnosis，platforms 不强标
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "Qwen3.5-35B-A3B / qwen3-30B-A3B 等 MoE 模型 vllm serve 启动，EngineCore profile_run 阶段 worker 抛 RuntimeError: call aclnnMoeGatingTopK failed, detail:EZ9999: Inner Error!"
       - "EZ9999 详情：renorm is: 1, but currently only support 0.[FUNC:CheckAttr][FILE:moe_gating_top_k_tiling.cpp][LINE:210]；MoeGatingTopK do tiling failed, ret is -1"

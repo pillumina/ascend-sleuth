@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "8 卡训练（约 70B）单 step 通信耗时占比超过 40%，AllReduce 算子耗时波动大——部分 step 的通信耗时是其他 step 的 2~3 倍"
       - "计算耗时稳定（约 320ms），通信耗时在 195ms~410ms 之间剧烈波动；单卡推理正常（排除计算瓶颈）"

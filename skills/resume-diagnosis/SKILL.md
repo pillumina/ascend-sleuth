@@ -25,9 +25,9 @@ description: >
 
 **先清反馈债——按 `feedback.case` 的取值分三种，别混**：扫到的 state 文件里若有 `feedback.outcome: pending`，先看 `feedback.case` 是**真实 case id**、占位串 `pending-investigation`，还是**空值/缺失**（三种都出现过，定义见 `diagnosis_state.yaml.example`）。
 
-- **真实 case id**（上次命中 case 并给了可应用 fix）：追问“上次 <case-id> 的 fix 应用后解决了吗？（解决 / 没解决 / 部分解决）”——按结果回写该 case 的 confidence（hits/misdiagnoses/last_hit）、trace 记 `{action: feedback, case, outcome}`、把 `feedback.outcome` 从 `pending` 改成实际结果，再进入续接。
-- **占位串 `pending-investigation`**（没命中 case，只给了建议）：**不念这个占位串**（它不是 case id），也**不要求回写 confidence**（没有 case 可回写，结算脚本只会跳过它）。这类单等的是**现场材料**：按 trace 里最近一条 `evidence.missing` 与顶层 `last_action` 追问“上次要求的那几项材料拿到了吗”，把新证据接回诊断主循环。它**不是终态**——`status` 仍是 `in_progress`；结论出来时结果记在 `status` 与 `summary`，并把遗留的 `feedback.outcome: pending` 清掉（无命中单不用反馈轴承载结果，否则会出现“状态已结、反馈轴仍挂着”的两轴打架）。
-- **空值/缺失**（写了 `outcome: pending` 却没填 `case`）：**一个字都别念**——照字面追问会问出“上次 的 fix 应用后解决了吗”，读者无从判断你在指哪一单。按占位串那一路处理（问现场材料、不回写 confidence），并**顺手把这笔写清**：该单没命中就清掉 pending，确实在等材料就补成 `pending-investigation`。空值悬在那里，下次续接还得再猜一遍。
+- **真实 case id**（上次命中 case 并给了可应用 fix）：追问“上次 <case-id> 的 fix 应用后解决了吗？（解决 / 没解决 / 部分解决）”——trace 记 `{action: feedback, case, outcome}`、把 `feedback.outcome` 从 `pending` 改成实际结果，再进入续接——**计数不在这里写**，由知识整理收尾的结算步骤落进条目使用记录。
+- **占位串 `pending-investigation`**（没命中 case，只给了建议）：**不念这个占位串**（它不是 case id），也**不要求记 feedback 结算**（没有 case 可结算，结算脚本只会跳过它）。这类单等的是**现场材料**：按 trace 里最近一条 `evidence.missing` 与顶层 `last_action` 追问“上次要求的那几项材料拿到了吗”，把新证据接回诊断主循环。它**不是终态**——`status` 仍是 `in_progress`；结论出来时结果记在 `status` 与 `summary`，并把遗留的 `feedback.outcome: pending` 清掉（无命中单不用反馈轴承载结果，否则会出现“状态已结、反馈轴仍挂着”的两轴打架）。
+- **空值/缺失**（写了 `outcome: pending` 却没填 `case`）：**一个字都别念**——照字面追问会问出“上次 的 fix 应用后解决了吗”，读者无从判断你在指哪一单。按占位串那一路处理（问现场材料、不记结算），并**顺手把这笔写清**：该单没命中就清掉 pending，确实在等材料就补成 `pending-investigation`。空值悬在那里，下次续接还得再猜一遍。
 
 状态与结局词表见仓库根的 `trace-status.yaml`（**不是** `feedback_pending` 那个旧说法）。
 
@@ -55,9 +55,9 @@ description: >
 resume 只负责**恢复现场**——恢复后继续的是 `/diagnose` 的完整诊断循环（步骤 2-6），**不是更松的模式**。续接中以下 diagnose 约束**同样生效**（完整定义以 `skills/diagnose/SKILL.md` 为准，此处只列续接时最易被丢失的）：
 
 - **severity 闸门**：`data-loss-risk` 不给 fix，先停/保留现场/通知 owner；`service-affecting` 标 `fix_side_effects`。
-- **命中输出格式 + 强度标注**：结构化推理链 + `已验证/推测/数据` + confidence 校准，别甩一句 fix。
+- **命中输出格式 + 强度标注**：结构化推理链 + `已验证/推测/数据` + 分数校准，别甩一句 fix。
 - **经验证后给 fix**：对照已提供信息验证 diagnosis checks，缺就问；`fix_on_mismatch` 带 rollback。
-- **版本软匹配**：compat 不符只降 confidence，不硬排除。
+- **版本软匹配**：compat 不符只降排序分数，不硬排除。
 - **证据落盘铁律**：用户证据完整落 `traces/evidence/<session_id>/`，不写摘要/指纹；每次写 trace 刷新顶层 `updated_at`。
 - **深度排查**：Tier 3 / 源码分析一律走 `scripts/src_fetch.py`（复用、不自行 clone）。
 - **误诊归因**：反馈 not_resolved/partial → 读 trace 判 case_error/execution_error。

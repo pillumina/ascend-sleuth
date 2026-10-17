@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "稳定复现：B 版本运行约 12 小时后第 471 个 step 出现 OOM；A 版本与 GPU 均未复现"
       - "已确认开启了虚拟内存；每 step 显存累积量稳定（约 47MB），累积约 22GB 后 OOM"

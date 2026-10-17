@@ -11,6 +11,18 @@
 
 cases:
   - id: VLLM-ASC-10834
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 10834
+        url: https://github.com/vllm-project/vllm-ascend/issues/10834
     title: "Qwen3-8B-W4A8 量化权重（group_size=256）启动报 antiquantGroupSize should be 128 or 64, but actual [256]（ERR00100/EZ1001）：torch_npu 反量化 matmul int4×FRACTAL_NZ 仅支持 group 64/128；VLLM_ASCEND_ENABLE_NZ=0 或重量化 group128"
 
     category: interrupt
@@ -23,10 +35,6 @@ cases:
     # 平台：atlas800i a2（910B）；同因 #5603 = 910B 单卡。机制为 torch_npu 算子限制，跨版本存在
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "W4A8 量化权重（group_size=256）启动 vllm serve：ERR00100 PTA call acl api failed"
       - "AclNN_Parameter_Error(EZ1001): when weight's dtype is [int4], weight's format is [FRACTAL_NZ], antiquantGroupSize should be 128 or 64, but actual antiquantGroupSize is [256]"

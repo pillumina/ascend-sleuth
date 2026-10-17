@@ -4,6 +4,12 @@
 
 cases:
   - id: VLLM-ASC-13688
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 13688
+        url: https://github.com/vllm-project/vllm-ascend/issues/13688
     title: "AIV 模式下 torch.npu.graph_task_group_begin 包 HCCL all_reduce 导致 graph capture 失败 + 首请求死锁（507009/507903，AIV+RIC task_group 组合冲突）"
 
     category: interrupt
@@ -17,12 +23,6 @@ cases:
         ranges: ["9.0.0"]
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6                        # high → 初始 0.6
-      last_hit: ""
-
     symptoms:
       - "AIV 模式下 torch.npu.graph_task_group_begin + HCCL all_reduce 导致 graph capture 失败：rtEventRecord task not supported, runtime result=507009, capture_end 507903"
       - "vllm serve GLM-4.6V TP8+EP8 首请求挂在 Replaying aclgraph，AIVector 8-16% / AICore 0% 死锁，5min 后 EngineCore shm_broadcast timeout"

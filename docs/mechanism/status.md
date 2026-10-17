@@ -41,8 +41,10 @@
 | 评审把手 `--run` / `--audit` | [execution.md](execution.md) 「改进项信息契约」 | 已落地 | `python3 scripts/ev_measure.py --run` 打印判据命令、实测输出与退出码；`python3 scripts/ev_measure.py --audit` 盘全库缺口与存量豁免 |
 | `target_component` 生效日闸门 | [execution.md](execution.md) 「改进项信息契约」 | 已落地 | `grep -n "TARGET_CUTOVER" scripts/verify_proposals.py` |
 | `validation_record` 的 S2 结算 | [execution.md](execution.md) 「知识沉淀契约」 | 已落地 | `grep -n "3.5b" skills/knowledge-groom/SKILL.md` |
-| 现场置信只由 S1 写入 | [execution.md](execution.md) 「知识沉淀契约」 | 已落地 | `ls scripts/settle_trace_feedback.py` |
+| 现场置信只由现场回报写入 | [execution.md](execution.md) 「知识沉淀契约」 | 已落地 | `ls scripts/settle_trace_feedback.py` |
 | 四层指标与 timeline 结构校验 | [execution.md](execution.md) 「metrics 分层」 | 已落地 | `python3 scripts/verify_metrics.py --check` |
+| 条目使用记录 | [diagnosis-observability.md](diagnosis-observability.md) 「记录与生成物」 | 已落地 | `python3 scripts/verify_entry_activity.py` |
+| 工具分布 | [diagnosis-observability.md](diagnosis-observability.md) 「记录与生成物」 | 已落地 | `grep -n '"tool": ("calls"' scripts/entry_activity.py` |
 | S2 feedback 结算 | [run.md](run.md) 「Issue 的三重角色与 S2 即时对照」 | 已落地 | `grep -n "validation_record" scripts/settle_s2_feedback.py` |
 | 统一执行记录 schema 与脚本 | [run.md](run.md) 「统一执行记录」 | 已落地 | `python3 scripts/verify_exec_log.py` |
 | 内容 skill 收尾接入 | [run.md](run.md) 「统一执行记录」 | 已落地 | `grep -rl "log_skill_exec" skills/` |
@@ -140,7 +142,7 @@
 | 自演进面板插件 | `dsh-plugins/self-evolve-panel/` | 不存在；`ls -d dsh-plugins/self-evolve-panel` | [run.md](run.md) 「落地工程形态：四层装配」列为蓝图 |
 | 回滚率与抽审发现率接入判据 | `proposals/gates.yaml` 的判据项 | 判据里没有这两项；`grep -n "回滚\|抽审" proposals/gates.yaml` | [run.md](run.md) 「落地工程形态：四层装配」列为蓝图 |
 | 外部验证的第一条独立记录 | 知识条目的外部验证记录 | 需要外部验证类记录的条目数现算；`grep -rl "external_verification" knowledge/` | [rsi-mechanism.md](rsi-mechanism.md) 「已知缺口」列为蓝图 |
-| 现场反馈通道出数据 | 知识条目的 `confidence` 现场结算 | 捕获计数现算；`python3 scripts/settle_trace_feedback.py --help` | [rsi-mechanism.md](rsi-mechanism.md) 「已知缺口」列为蓝图 |
+| 现场反馈通道出数据 | 条目使用记录里的现场解决计数 | 捕获计数现算；`python3 scripts/settle_trace_feedback.py --help` | [rsi-mechanism.md](rsi-mechanism.md) 「已知缺口」列为蓝图 |
 
 ## 3 其他文档落地项的归属阶段
 
@@ -180,7 +182,7 @@
 | 诊断记录 | trace，`traces/<session>.yaml`（运行时件） |
 | 执行记录 | `metrics/skill-exec-log.yaml`（运行时件，同一克隆共享） |
 | 观测账本 | `eval/scorecard.yaml`，`scripts/eval_scorecard.py --check` |
-| 现场反馈回报 | 反馈通道 S1，`case.confidence` |
+| 现场反馈回报 | 反馈通道 S1，条目使用记录（`metrics/entry-activity.d/`） |
 | 内容与外部结论对照 | 反馈通道 S2，`case.validation_record` |
 | 影响面、触及面、轴 | 从卡文本派生，判据输出里的 `by_surface`；三者指同一件事，正文用影响面，体检器输出用触及面，更早的文档里写轴 |
 | 闭环演练 | `scripts/rehearse_evolve_loop.py` |
@@ -193,7 +195,7 @@
 | `predicted_effect.measure` 强制与存量豁免 | `MEASURE_CUTOVER`（`grep -n MEASURE_CUTOVER scripts/verify_proposals.py`） |
 | 评审把手 | `scripts/ev_measure.py`（`--run` / `--audit`） |
 | S2 结算 `validation_record` | `scripts/settle_s2_feedback.py`、groom 步骤 3.5b（`grep -n "3.5b" skills/knowledge-groom/SKILL.md`） |
-| S1 结算 `confidence` | `scripts/settle_trace_feedback.py` |
+| S1 结算现场解决计数 | `scripts/settle_trace_feedback.py`（只写记录，不改案例） |
 | `verification` 档位定义 | `skills/to-postmortem/SKILL.md` 的 verification 段（`grep -n "verification" skills/to-postmortem/SKILL.md`） |
 | case 完整字段清单 | [case-schema.md](../spec/case-schema.md)；`ref_knowledge` 见其「source_ref」与「ref_knowledge」两节 |
 | `ref_knowledge` 的 role 校验 | `scripts/verify_references.py` |

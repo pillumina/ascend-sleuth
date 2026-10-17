@@ -18,6 +18,18 @@
 
 cases:
   - id: VLLM-ASC-8808
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 8808
+        url: https://github.com/vllm-project/vllm-ascend/issues/8808
     title: "GLM-5.1-w4a8 A2 1P1D PD 分离 + KV Pool（MooncakeConnectorV1 + AscendStoreConnector/mooncake）+ deepseek_mtp spec decode 0.18.0rc1：P 节点 KV cache 持续上涨、后续请求卡死 waiting——vLLM v0.18 在投机解码时推迟 KV connector finalize，vllm-ascend 未适配致 KV 从不 Put 入池（mooncake Master Metrics PutStart=0/0）"
 
     category: interrupt
@@ -30,10 +42,6 @@ cases:
       # 触发条件：PD 分离 + KV Pool + 投机解码（deepseek_mtp/qwen3_5_mtp 等）同时开启
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "A2 1P1D PD 分离 + KV Pool（--kv-transfer-config MultiConnector：MooncakeConnectorV1 producer/consumer + AscendStoreConnector backend=mooncake）+ --speculative-config '{\"num_speculative_tokens\": 3, \"method\":\"deepseek_mtp\"}' + vllm-ascend 0.18.0rc1：请求调用后 P 节点 KV cache 一直上涨不释放，后续请求长时间处于 waiting 状态"
       - "mooncake master service 日志：'Master Metrics: Mem Storage: 0 B / 32.00 GB ... PutStart=0/0, PutEnd=0/0 ... ExistKey:(Req=5/0/5, Item=665/665)' —— 服务一直收到 ExistKey/Get 查询但 Put 计数恒为 0，KV 从未写入池"

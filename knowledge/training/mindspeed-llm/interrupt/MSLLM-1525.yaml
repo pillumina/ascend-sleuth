@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]                # 特性缺口，未绑定具体版本；触发于开启 batch_p2p_comm 的 dsv4+流水线并行
 
     investigation_quality: high      # 维护者定论根因 + 作者升级验证
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-      last_hit: ""
-
     symptoms:
       - "DeepSeek-V4 整网训练开启 config.batch_p2p_comm（mindspeed/core/pipeline_parallel/optimize_p2p_comm/adaptor.py）后 rank 报错崩溃，栈崩在 megatron core pipeline parallel schedules 的 recv_forward（p2p_communication.recv_forward）接收前向张量路径"
       - "关闭 batch_p2p_comm 配置后训练可继续"

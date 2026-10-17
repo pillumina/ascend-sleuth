@@ -18,12 +18,6 @@ cases:
         ranges: ["<=1.0.5"]
 
     investigation_quality: high         # to-postmortem 标的调查质量，groom 据此设初始 score
-    confidence:                          # groom 维护
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6                         # 初始值（groom 按 investigation_quality=high 设）；校准：>0.8 高、0.5-0.8 中、<0.5 仅提示
-      last_hit: ""
-
     symptoms:
       - "PD 分离 --disaggregation-transfer-backend ascend，KV cache 跨 NPU 传输偶发失败"
       - "decode 侧日志：halShmemCreateHandle → 'Size is bad' → size > heap_size → Create_para_check fail"

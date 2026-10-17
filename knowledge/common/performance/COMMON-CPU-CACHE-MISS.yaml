@@ -14,7 +14,6 @@ cases:
     compat: [{framework: cross, ranges: ["*"]}]
 
     investigation_quality: high
-    confidence: {hits: 0, misdiagnoses: 0, score: 0.7, last_hit: ""}
 
     symptoms:
       - "对标 A+X 平台，A+K 平台 TPOT（单 Token 耗时）、TTFT（首 Token 延迟）显著劣化，整体推理吞吐偏低、请求延迟抖动大"

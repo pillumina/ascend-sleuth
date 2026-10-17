@@ -18,6 +18,18 @@
 
 cases:
   - id: VLLM-ASC-10998
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 10998
+        url: https://github.com/vllm-project/vllm-ascend/issues/10998
     title: "Qwen3.6-27B hybrid KV（多 cache group）+ layerwise connector + mooncake store PD disagg 长稳：D 侧批量 get 跨组 key 部分失败——group 1/2/3 key 全部 -704（mooncake_backend 'Failed to get 3 keys out of 6 … Check key existence and memory state'），同批 group 0 key 全命中；layerwise connector+mooncake store 按 cache group 命中集合取块缺陷（PR #11131）"
 
     category: interrupt
@@ -28,11 +40,6 @@ cases:
         ranges: ["0.21.0rc1"]       # 触发镜像（v0.21.0rc1.tar.gz + PR #10565）；fix PR #11131 merged main——首含该 PR 的 release 素材未确认，软匹配降权
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-
     symptoms:
       - "PD disagg 长稳压测（长序列）：prefill/decode 侧 --kv-transfer-config MultiConnector = MooncakeLayerwiseConnector（kv_producer / kv_consumer）+ AscendStoreConnector（backend=mooncake），模型 qwen3.6-27b 且 --no-disable-hybrid-kv-cache-manager（hybrid KV），触发镜像 v0.21.0rc1 + PR #10565"
       - "vllm worker 日志偶发：'[mooncake_backend.py:240] [vllm-ascend] [distributed] - Failed to get 3 keys out of 6. error_codes=[-704]. Check key existence and memory state.'（get 失败型，-704=key not found；区别于 put 失败 -800）"

@@ -94,20 +94,20 @@
 | 通道 | 读什么 | 回答的问题 | 数据落点 |
 |---|---|---|---|
 | 内容正确性 | S2 issue-replay 对照外部 resolution 的结果，加入库时的 `verification` 来源档位 | 这条知识对不对 | `case.validation_record`，由 `scripts/settle_s2_feedback.py` 结算 |
-| 现场有效性 | S1 工程师回报 fix 是否解决 | 这条 fix 在用户环境里管不管用 | `case.confidence` |
+| 现场有效性 | S1 工程师回报 fix 是否解决 | 这条 fix 在用户环境里管不管用 | `metrics/entry-activity.d/<周>.yaml` 的追加行（条目使用记录），由 `scripts/settle_trace_feedback.py` 结算 |
 
-现场有效（resolve）只认 S1，落 `confidence.hits` 与 `confidence.misdiagnoses`。S2 与 golden 证明的是「内容与外部 ground truth 一致」或「检索命中」，不证明「fix 在现场解决」。两条证据对应不同对象，分别结算，不混算：
+现场有效（resolve）只认 S1，落条目使用记录的 `resolved` 与 `misdiagnosed` 计数。S2 与 golden 证明的是「内容与外部 ground truth 一致」或「检索命中」，不证明「fix 在现场解决」。两条证据对应不同对象，分别结算，不混算：
 
 - S2 命中且结论与 issue resolution 一致，落 `validation_record.consistent`：内容被外部验证，同等 score 下排序优先；
 - S2 命中但样本本身是这条 case 的来源，或这条 case 在正文里引用了该样本，落 `validation_record.self_consistent`：这是非独立命中，同一份证据不能数两次；
 - S2 命中但结论不符，落 `validation_record.inconsistent`：这是 case 复审信号，指向内容错、过时或判别力不足；
 - 既没被 S2 命中、也没被 S1 确认：做归因，判断是场景没有出现，还是判别力有问题，把结论标为未验证。
 
-`verification`、`validation_record`、`confidence` 按对象分层，这一分层保留：内容置信不等于现场置信。`verification` 是来源验证（fix PR 已合入等），提高的是内容正确性的先验；`validation_record` 是它的运行期延续，靠持续的外部验证累积。`confidence` 是现场解决率，只由 S1 写入。
+`verification`、`validation_record`、现场解决计数按对象分层，这一分层保留：内容置信不等于现场置信。`verification` 是来源验证（fix PR 已合入等），提高的是内容正确性的先验；`validation_record` 是它的运行期延续，靠持续的外部验证累积；现场解决计数是现场解决率的来源，只由 S1 写入条目使用记录。
 
 三者独立。来源为 fix-merged 的 case 初始 score 高，说明内容可信，不等于它在任意客户环境里被验证过；现场确认仍要等 S1 回报。
 
-`predicted_value`、`first_hit`、`expected_window` 三个字段标为蓝图。它们是预测性设计：等出现第一次真实的沉淀批次，并且 S1 反馈恢复之后，再评估是否需要「预期命中场景对照」这个字段，触发条件到了才实现（原则十一）。当前 `validation_record` 与 `confidence` 已经覆盖效果度量的两条通道。
+`predicted_value`、`first_hit`、`expected_window` 三个字段标为蓝图。它们是预测性设计：等出现第一次真实的沉淀批次，并且 S1 反馈恢复之后，再评估是否需要「预期命中场景对照」这个字段，触发条件到了才实现（原则十一）。当前 `validation_record` 与现场解决计数已经覆盖效果度量的两条通道。
 
 反馈到源头这条保留。某个 issue 源（如 vllm-ascend 池）的沉淀连续不被验证或从未命中时，调 `scripts/issue_filter.py` 的价值启发式，而不是继续增加沉淀量。这样沉淀质量的考量从 to-postmortem 环节延伸到 issue-ingest 的筛选环节（原则十一：数据回流到假设）。
 
@@ -115,7 +115,7 @@
 
 两条标注规则把内容验证与现场验证分开记。
 
-- 只有 S2 佐证、没有 S1 反馈的 case，`validation_record` 标 `source: issue-replay`。它与 `confidence` 的 S1 口径分开（见第 6 节）。`consistent` 不等于现场 resolve，报告与指标里不得混称。
+- 只有 S2 佐证、没有 S1 反馈的 case，`validation_record` 标 `source: issue-replay`。它与现场解决计数的 S1 口径分开（见第 6 节）。`consistent` 不等于现场 resolve，报告与指标里不得混称。
 - 「从未被验证」不等于「沉淀失败」。若预期场景本身没有出现（该框架版本没有人用），记「场景未出现」，不把预测偏差当成案例错误。
 
 ## 5 合入后跟踪验证链路：改进项改动后的合理性
@@ -198,7 +198,7 @@ content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期
 |---|---|---|---|
 | 机制健康（流水线自身） | 候选到采纳率、实验到通过率、信号误报率、抽审发现率、回滚率 | 流水线是否在做对的事？信号是否误报？auto 授权是否过宽？ | `proposals/ideas`、decisions、回测记录 |
 | 知识质量（库整体） | 命中率、resolve 率（S1）、误诊率、路由准确率、判别力、覆盖缺口 | 知识库整体在变准吗？哪个格子弱？ | `scripts/trace_metrics.py` 加 `scripts/index_counts.py` |
-| 单次沉淀效果 | `validation_record`（S2 内容验证一致或不一致）加 `confidence`（S1 resolve） | 每次沉淀是否有效？哪个来源产出低质沉淀？ | `scripts/settle_s2_feedback.py` 加 groom |
+| 单次沉淀效果 | `validation_record`（S2 内容验证一致或不一致）加现场解决计数（S1 resolve） | 每次沉淀是否有效？哪个来源产出低质沉淀？ | `scripts/settle_s2_feedback.py` 加 groom |
 | skill 组件质量 | 归因事件簇（按需聚合）、每次 skill 变更前后的差 | 哪个组件反复出错？这次 skill 改动有效吗？ | `scripts/component_tally.py` 聚合加回测 |
 
 口径纪律沿用 `docs/guide/metrics.md`：比例带分母；分母小于 10 时显式标注；`source: live / replay / issue-replay` 必标；无数据时不写。回滚率是新增的指标，衡量合入闸门放错了多少。它是授权级别校准（[pipeline.md](pipeline.md) 第 6.3 节）与季度自评（[pipeline.md](pipeline.md) 第 6.6 节）的输入。
@@ -253,7 +253,7 @@ content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期
 
 下面七条都具备实现的可能，本文明确不做，每条给出不做的理由与触发条件出现前的替代做法。
 
-1. 不实现 `predicted_value`、`first_hit`、`expected_window` 三个字段。整套设计依赖 S1 现场反馈，而该通道当前捕获率约为 0；`validation_record` 与 `confidence` 两条通道已覆盖效果度量。触发条件（第一次真实沉淀批次且 S1 反馈恢复）到了再评估。
+1. 不实现 `predicted_value`、`first_hit`、`expected_window` 三个字段。整套设计依赖 S1 现场反馈，而该通道当前捕获率约为 0；`validation_record` 与现场解决计数两条通道已覆盖效果度量。触发条件（第一次真实沉淀批次且 S1 反馈恢复）到了再评估。
 2. 不实现观察窗超时降级的正式状态机（`unconfirmed_valid` / `unconfirmed` / `rolled_back` 语义）。触发条件是 S1 断供真实持续两期以上；此前用「标存疑加提醒人」的轻量方式。
 3. 不在本文重复定义改进项卡的状态机与 schema。唯一事实源是 [pipeline.md](pipeline.md) 第 7 节，两处各写一份必然漂移。
 4. 不把 S2 或 golden 的命中当现场有效性。现场有效只认 S1，两条证据分别结算。

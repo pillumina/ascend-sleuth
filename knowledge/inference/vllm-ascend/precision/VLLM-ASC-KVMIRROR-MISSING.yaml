@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]     # 迁移缺失类问题，与具体版本无关（取决于模型移植是否补齐该模块）
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "VL 模型从 H20 + transformers 迁到昇腾 + vLLM 后，第 7 个 token 开始 NPU 输出与 GPU 对不上，随后出现乱码"
       - "msprobe 统计信息层（余弦相似度）找不到差异——需再采集 tensor 数据才能看到"

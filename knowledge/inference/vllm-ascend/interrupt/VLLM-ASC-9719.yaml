@@ -12,6 +12,18 @@
 
 cases:
   - id: VLLM-ASC-9719
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 9719
+        url: https://github.com/vllm-project/vllm-ascend/issues/9719
     title: "Minimax W8A8（minimax-m2.5-w8a8-quarot）启动 OOM、权重显存翻倍（~27GB→~54GB/shard）：config.json 含 quantization_config 顶层键导致 modelslim_config.py maybe_update_config 卫语句 if self.quant_description: return 跳过 per-layer quant_model_description.json → 全层退 bf16；官方解=重下正确权重（config.json 不应含 quantization_config）"
 
     category: interrupt
@@ -24,10 +36,6 @@ cases:
         note: "触发条件=config.json 含 quantization_config（modelslim 权重导出错误变体），与版本关联弱"
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "Minimax m2.5-w8a8-quarot（W8A8）启动失败：加载权重显存约为预期的 2 倍（~27GB→~54GB/shard），触发 OOM"
       - "vLLM 0.20.2 + vllm-ascend main（commit 2e94f541）出现；历史版本正常"

@@ -36,6 +36,23 @@ handoff/<session_id>.README.txt  给人看的一页说明（接手命令就在�
 
 元数据放 `handoff/` 子目录也有一条具体理由：`traces/` 的会话发现是非递归的 glob `*.yaml`（面板与 `trace_metrics.py` 都是），所以 `handoff/`、`evidence/` 不会被误读成一单会话。交接单要是直接放 `traces/<sid>.handoff.yaml`，面板会把它当成一单没有轨迹的会话显示出来。
 
+### 包里没有的本机件
+
+记录分两处：留在产生它的那台机器上的明细，与进 git 的记录（[diagnosis-observability.md](../mechanism/diagnosis-observability.md) 第 2 节与 3.3 的表）。交接包只装 `traces/` 的子集，下面两件既不在包里、也不在 git 里。
+
+| 本机件 | 里面有什么 | 交接时意味着什么 |
+|---|---|---|
+| `metrics/entry-activity.local/<session_id>.yaml` | 这一单的步骤计数、逐次工具调用与 token 账单 | 接手方看不到这一单的过程明细。它的原料（harness 会话日志）同样只在上家那台，在 `$DSH_HOME/sessions/<工作区>/<session_id>/session.jsonl.zstd` 里 |
+| `.settle-state.json` | 结算与汇总的幂等状态：S1 现场回报与 S2 外部验证各结算过哪些事件、汇总时每个会话的累计计数到哪 | 接手方这台不知道上家算过哪些事件，也不继承上家的游标 |
+
+进 git 的那部分接手方看得到：记录源 `metrics/entry-activity.d/<周>.yaml` 与聚合后的生成物 `metrics/entry-activity/<部署>.yaml`，只要上家那份已经合入。生成物按 `deployment` 分组，一个部署一份，两份不合并，所以上家那台记下的选中、加载、解决计数不会变成接手方这一份里的数；接手方在自己这台跑结算与汇总时，给接入的这一单另写一套行，落进自己部署的生成物。
+
+要补的只有过程明细，游标不用补：
+
+1. 要这一单的步骤、逐次工具调用与 token 账单，向产出侧要 `metrics/entry-activity.local/<session_id>.yaml`（产出侧路径：`python3 scripts/shared_dir.py entry-activity-local`）。
+2. 要重算这一单的工具与成本，把 harness 会话日志一起带过来，放进本机 `$DSH_HOME/sessions/<工作区>/<session_id>/session.jsonl.zstd`；只拿 trace 跑 `python3 scripts/trace_entry_activity.py --apply`，取得到条目触达，取不到工具与 token。
+3. 游标不继承是设计本身：记录按部署分组，同一单的回报在两台各记一行、分属两份生成物，不跨部署相加（[diagnosis-observability.md](../mechanism/diagnosis-observability.md) 3.5）。
+
 ### 交接单 `handoff/<session_id>.yaml`
 
 | 字段 | 含义 |

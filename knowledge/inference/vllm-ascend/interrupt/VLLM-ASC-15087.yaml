@@ -11,7 +11,7 @@
 #   邻近：8808(put 不入池)、11343(PP 端口)、10998(get -704)、13356(need_to_allocate=0)、
 #         13964(decode 侧计数冻结)、7871(metrics ValueError) —— 机制/签名全异
 # 脱敏：日志 reqid 为 chatcmpl- hex（非敏感），无内网 IP/token/密码落库，无替换
-# groom 转正：2026-09-08 升格 Tier 2（new_pattern），score=0.65（verification=upstream-maintainer-confirmed × confidence=high）
+# groom 转正：2026-09-08 升格 Tier 2（new_pattern），当时 score=0.65（verification=upstream-maintainer-confirmed × 调查质量=high）
 
 cases:
   - id: VLLM-ASC-15087
@@ -35,11 +35,6 @@ cases:
           故版本号只能作提示，判定按下方 step 1 核验 patch 是否真在。
 
     investigation_quality: high
-    confidence:
-      hits: 1
-      misdiagnoses: 0
-      score: 0.65                      # 转正初值：verification=upstream-maintainer-confirmed(0.65) × confidence=high；S1 现场确认后按反馈校准
-
     source_ref:                        # 源码分析路径：vllm-ascend 自定义调度 patch
       repo: vllm-ascend
       ref: v0.23.0

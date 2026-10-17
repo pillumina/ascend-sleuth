@@ -51,7 +51,7 @@ L2 与 L3 的指标全部从已有的 trace 与 metrics 派生，不新增采集
 
 | 源 | 反馈对象 | 判定什么 | 结算落点 | 可得性 |
 |---|---|---|---|---|
-| S1 工程师回报 fix 结果 | 现场有效性：fix 在这个用户环境里是否解决 | case 的 `confidence.hits` / `mis`（resolve 口径的唯一依据） | `case.confidence` | 依赖人，当前捕获率约等于 0。后果：confidence 口径的读数不可解读，依赖该通道的改动升不到 auto（§6.3a 末段的升级门槛） |
+| S1 工程师回报 fix 结果 | 现场有效性：fix 在这个用户环境里是否解决 | 条目使用记录的 `resolved` / `misdiagnosed`（resolve 口径的唯一依据） | `metrics/entry-activity.d/<周>.yaml` 的追加行，由 `scripts/settle_trace_feedback.py` 结算 | 依赖人，当前捕获率约等于 0。后果：现场解决计数口径的读数不可解读，依赖该通道的改动升不到 auto（§6.3a 末段的升级门槛） |
 | S2 Issue-replay 对照 | 内容正确性：case 的 symptom → root cause → fix 描述是否与外部 ground truth 一致 | 命中且结论一致 → `validation_record.consistent`（内容被外部验证，排序优先）；命中但结论不符 → `validation_record.inconsistent`（复审信号） | `case.validation_record`，由 settle_s2_feedback 结算 | 全自动、无人工；数据源是上游已闭环 issue |
 | S3 golden 回放 | 回归防护：改动后不倒退 | 不改 case 数据，只作验证门 | 无 | 全自动，套件人工维护 |
 
@@ -72,7 +72,7 @@ S2 只看到「没命中」，区分不了三者。因此 S2 miss 只能产出�
 
 命中但结论不符不是 miss，它有区分力：说明被命中的那条 case 内容或判别力有问题，是 case 复审的合法证据（`settle_s2_feedback` 的 inconsistent 通道）。
 
-检索有效与现场有效是两件事：consistent 表示内容与外部 resolution 一致（检索与归因正确），现场是否 resolve 仍然只认 S1，confidence 口径不变。
+检索有效与现场有效是两件事：consistent 表示内容与外部 resolution 一致（检索与归因正确），现场是否 resolve 仍然只认 S1，现场解决计数口径不变。
 
 S2 的边界要写清楚，不做超出数据的承诺：它以 issue 的 resolution 为基准，校准的是系统的检索与内容是否正确；现场 fix 的有效性（severity 语义、环境特异性）只能靠 S1。S2 分数进入指标时标 `source: issue-replay`，不与 S1 混淆（口径见 [metrics.md](../guide/metrics.md)）。如果某个 issue 的 resolution 只是 workaround 而不是根因修复，标记后降权或剔除；issue 池的筛选规则是优先 `state_reason=completed`、维护者 closed、fix commit 可追溯的。
 
@@ -93,7 +93,7 @@ token 影响已核实：`eval/s2/` 下两个校准集文件随样本累积变大
 
 ## 3 L1 知识内容层：本流水线只做承接与校正
 
-[rsi-mechanism.md](rsi-mechanism.md) 的五类演化动作与 roadmap 里的容量、trace 类事项已经覆盖这一层：confidence 回写、groom 维护、误诊归因改 case、容量治理。本流水线对 L1 只做两件事：
+[rsi-mechanism.md](rsi-mechanism.md) 的五类演化动作与 roadmap 里的容量、trace 类事项已经覆盖这一层：现场解决计数结算、groom 维护、误诊归因改 case、容量治理。本流水线对 L1 只做两件事：
 
 - 承接：把 L1 的维护动作（groom 信号表）升级为带 trajectory 的候选改进项（§7 的 schema），让容量告警、路由错例、覆盖缺口不再止步于动作，而进入改进项闭环。
 - 校正：误诊归因（case 错还是执行错）的判决依据落在 trace 的 attribution 事件上，误改正确 case 的风险下降（[rsi-mechanism.md](rsi-mechanism.md) 第 4.3 节的误诊归因护栏）。
@@ -508,7 +508,7 @@ validated 与观察窗的关系：agent 判 validated 依据的是合入前可�
 | S2 覆盖缺口（补 case 信号） | Tier 2 miss（无 case 命中） | 9 条 replay 中 7 条无命中，其中 5 条已沉淀同名 case（replay 先于沉淀，结算为 self_consistent）；当时真缺口 2 条：13673（random_sample 跨流）、13961（310P 加 bge-m3，待上游闭环核验） | 已达标且部分已结算 | 剩余动作：2 个候选走 issue-ingest 管道，13673 待上游 fix 闭环核验 |
 | fixture replay 半自动化（roadmap） | golden fixture ≥5 | golden 23 条 | 已达标 | 半自动脚本可推进 |
 | S2 校准集建立（Phase C2，§2.1） | 已闭环 issue 池 | 单池 19 条，其中 11 条的 `confidence` 是 high（复算：`grep -c "^    confidence: high" eval/s2/vllm-ascend.yaml`） | 已建 | 扩池是持续动作，不是前置阻塞 |
-| S1 现场反馈（confidence 结算） | 工程师回报 fix 结果 | 捕获率约等于 0 | 未达标 | 量（依赖人）；观察窗降级态是兜底（蓝图，见 [status.md](status.md) 的机制状态总表） |
+| S1 现场反馈（现场解决计数结算） | 工程师回报 fix 结果 | 捕获率约等于 0 | 未达标 | 量（依赖人）；观察窗降级态是兜底（蓝图，见 [status.md](status.md) 的机制状态总表） |
 | Phase D 试点（§11） | C 或 C2 任一落地，加 trace ≥20 可归因 | C2 已落地（单池 19 条）；trace 齐全 5 | 部分达标 | 量（真实可归因会话）。Phase D 与路由错例演进同门，S2 replay 不计入的口径同样适用 |
 
 盘点结论（2026-09-04 快照）：多数蓝图闸门未解锁的原因不是没有数据记录，而是三类性质限制：

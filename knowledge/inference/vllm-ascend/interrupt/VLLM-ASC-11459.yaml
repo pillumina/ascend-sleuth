@@ -7,6 +7,18 @@
 
 cases:
   - id: VLLM-ASC-11459
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        pr: 11459
+        url: https://github.com/vllm-project/vllm-ascend/pull/11459
     title: "MooncakeBackend lazy_init=True 时 _setup_store() 被推迟到首次 put()（KV 传输发送线程），无参 get_global_rank() 读 process-global vllm config 为 None 抛 AssertionError: Current vLLM config is not set（x43），store 永不初始化、每次 put() 失败"
 
     category: interrupt
@@ -18,11 +30,6 @@ cases:
     # 平台：线程未声明；Ascend fabric memory 卸载路径（ASCEND_ENABLE_USE_FABRIC_MEM=1）触发
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6
-
     symptoms:
       - "DSV4-Flash-w8a8-mtp 双节点 PD 分离（data-parallel 4 × tensor-parallel 4，kv_role=kv_producer）+ ASCEND_ENABLE_USE_FABRIC_MEM=1 + enable_multithread_load=true + Mooncake store（enable_ssd_offload=true）时，KV 传输线程报 AssertionError: Current vLLM config is not set（实测 x43）"
       - "MooncakeBackend 以 lazy_init=True 创建时 store 永不初始化，此后每次 put() 都失败"

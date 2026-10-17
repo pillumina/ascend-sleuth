@@ -6,6 +6,18 @@
 
 cases:
   - id: VLLM-ASC-9596
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 1
+      self_consistent: 0
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 9596
+        url: https://github.com/vllm-project/vllm-ascend/issues/9596
     title: "Qwen3-4B TP=8 默认 PIECEWISE（mixed prefill-decode）graph capture 失败：rtStreamWaitEvent resource alloc fail（207005/507903），昇腾 NPU stream/SQ-CQ 资源预算不足"
 
     category: interrupt
@@ -16,11 +28,6 @@ cases:
         ranges: ["<=0.19.1"]        # 线程环境 v0.19.1rc1；修复 #9691 重构进行中未合入
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6                    # high
-
     symptoms:
       - "Qwen3-4B TP=8 默认 vllm serve 在 PIECEWISE graph capture 12/15 左右失败，报 rtStreamWaitEvent execution failed, reason=driver error:resource alloc fail / stream wait event failed, runtime result = 207005"
       - "伴随 [SqCqManage]Alloc sq cq fail, stream_id=1984, retCode=0x7020023，capture_end 阶段 error code is 507903（ERR00100）"

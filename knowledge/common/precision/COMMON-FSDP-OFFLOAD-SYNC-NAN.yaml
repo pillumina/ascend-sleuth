@@ -16,12 +16,6 @@ cases:
         ranges: ["*"]     # 根因在 FSDP + offload 的同步时序
 
     investigation_quality: high
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-      score: 0.7
-      last_hit: ""
-
     symptoms:
       - "MOVA 模型训练出现 NaN：L0 dump 发现 step 2 前向权重已为 NaN"
       - "异常在 DDP 域中传播（手动打印修正观察位置后确认）"

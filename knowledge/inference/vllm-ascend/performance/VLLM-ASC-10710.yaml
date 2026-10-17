@@ -11,6 +11,18 @@
 
 cases:
   - id: VLLM-ASC-10710
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 10710
+        url: https://github.com/vllm-project/vllm-ascend/issues/10710
     title: "DSV4-Flash-w8a8-mtp 完全相同串行请求 Prefix Cache 命中率恒 0%：混合压缩 KV（compression_ratio=128）最小命中长度=block_size×128（block128→16k、投机/MTP→32k），10k 级前缀永不命中；--block-size 32 或升 v0.23.0rc1"
 
     category: performance
@@ -23,10 +35,6 @@ cases:
     # 平台：issue 实为 Ascend A3 8×NPU；机制对任意混合压缩 KV 生效
 
     investigation_quality: medium
-    confidence:
-      hits: 0
-      misdiagnoses: 0
-
     symptoms:
       - "DSV4-Flash（w8a8-mtp 等混合模型）本地 prefix cache 开启：cache_config_info enable_prefix_caching=True、prefix_cache_queries_total 正常增长"
       - "prefix_cache_hits_total 恒 0、prompt_tokens_by_source_total{source=local_cache_hit} 恒 0——完全相同请求（≈10.1k prompt）串行 8 次 + system-prompt 复用对照组命中率均 0.00%"

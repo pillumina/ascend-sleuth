@@ -39,7 +39,7 @@
 | 维度 | 已就绪 |
 |---|---|
 | 架构 | 三层检索、生成索引 `_index.yaml`、triage-tree 路由、字段级平台分发、软版本匹配、双部署模式 |
-| 可演进性 | confidence 反馈闭环（`feedback_pending` 结构化捕获）、intake 队列、三分类预分诊 |
+| 可演进性 | 现场反馈闭环（`feedback_pending` 结构化捕获，现场解决计数写入条目使用记录）、intake 队列、三分类预分诊 |
 | 可维护性 | groom 周批处理、git 门控（标签/CODEOWNERS/双签）、kb-checks CI、golden eval 框架 |
 | 可观测性 | trace 词表、`trace_metrics.py`、`metrics/timeline.yaml` 数据、`docs/guide/metrics.md` 指标定义、容量表 |
 | 流程 | severity 闸门、串联保护（两次未解决转人工）、日志裁剪、脱敏、随机审序 |
@@ -71,7 +71,7 @@
 | | O6 诊断报告 / O7 健康报表 | 做（或登记已交付形态） | 闸门已开：真实诊断与 live 指标期均已积累；交付状态待登记 |
 | | O8 常态化（口径补正 + held_out ≥10） | 做 | 首级已达成；timeline 行缺分母/小样本标注，常态 trend 未达 |
 | | A2 拆分裁决（owner 定夺要不要按平台轴切） | 做 | 裁决悬空：容量线已按读入 token 统一（16442 / 8000 / 20000），平台轴是下一杠杆、未启用；**兜底视图已超硬线（24270 tok）**，动作序列已写明（行宽/字段 → 窄列两步法 → 平台轴） |
-| | S1 反馈闭环（O3/E1/M3/Q4 自评共同前置） | 做 | 捕获 0/3——无反馈则 confidence 学习环与 2026-Q4 自评数据前提全部空转 |
+| | S1 反馈闭环（O3/E1/M3/Q4 自评共同前置） | 做 | 捕获 0/3——无反馈则现场反馈闭环与 2026-Q4 自评数据前提全部空转 |
 | **等闸门**（数据/事件未到，暂不做） | A1 Tier3 frontmatter | 等 | postmortems 128 <300 |
 | | E1 agent 自起草候选 case | 等 | 首次"Tier-2 未命中但最终解决"事件（未记录触发） |
 | | E2 router 从 trace 错例演进 | 等 | trace 可归因 12 <20（前置 E2 通道候选已在跑） |
@@ -106,7 +106,7 @@
 
 | ID | 事项 | 需求 / 验收标准 | 入口闸门 | 阶段 |
 |---|---|---|---|---|
-| E1 | agent 自起草候选 case | Tier-2 未命中但最终解决的 session，diagnose 产出含候选 case 的 postmortem 落 inbox（confidence 初始低值）；groom 按正常三分类验证；采纳率进 metrics | 首次发生"Tier-2 未命中但最终解决" | v1.5 |
+| E1 | agent 自起草候选 case | Tier-2 未命中但最终解决的 session，diagnose 产出含候选 case 的 postmortem 落 inbox（初始分数低）；groom 按正常三分类验证；采纳率进 metrics | 首次发生"Tier-2 未命中但最终解决" | v1.5 |
 | E2 | router 从 trace 错例演进 | groom 从 trace 提取路由错例（`triage.routed` 集合 vs 命中 case 实际 namespace；**只收 token 在场而分支没接住的那一类**——`trace_metrics.py` 的 `triage_miss_classes` 分流，纯自由语言的语义路径不进池），产出 triage-tree 修订建议（diff 形式），走 `kb/high-risk` 双签合入；修订后用 `trace_metrics.py` 复测路由准确率并记入 metrics | trace ≥20 个可归因 session（`hit.case` 与 `triage.routed` 齐全；**计数口径 = 真实 diagnose trace，S2 replay result 不计入**——与 S2 池独立，防同池自我优化，见 mechanism/pipeline §11.2） | v1.5 |
 | E3 | embedding intake 预分诊 | 按 ADR-0002 既定设计落地：`semantics.text_hash` + `model` 字段 + `.embeddings/` sidecar（人审文件 diff 保持干净），embedding 经 API 生成、本地暴力余弦，**不引入向量库**；预分诊输出三分类 + 相似度证据，人审环节不变 | inbox 周均 ≥4 条持续 4 周，或 covered/variant 占比可观测地 >50% | 推迟项 |
 | E4 | trusted auto-promotion | 近重复 + quickly_check 通过 + 连续 N 次兄弟命中未误诊的新 case 可自动升格，标 `auto_promoted: true`，进月度抽审 | v2 入口条件（见阶段视图） | v2 |
@@ -125,7 +125,7 @@
 | M2 | fixture replay 半自动化 | 脚本以 replay 模式喂 `eval/golden/*.yaml` 给 /skill:diagnose，比对 expected（top-3 命中断言，容忍 LLM 非确定性），产出改前/改后报告；报告随变更摘要交 owner | 真实 golden fixture ≥5 条 | v1.5 |
 | M3 | fixture 自动生成 | `replay_trace.py --emit-fixtures` 从 resolved+feedback 确认的 trace 派生 fixture 候选（输入=user 原文，期望=实际命中）；groom 人确认入库；覆盖报告同步更新（见 O4）。断言分层：未确认 trace 只做弱断言回归，不作正确性基准 | 首个 resolved+feedback 确认的 trace | v1.5 |
 | M4 | groom 报告留档规范 | 每周 groom-report issue 固定模板：变更摘要 / 高风险项 / 容量表 / 标红项；季度回顾可直接回溯 | 首轮真实 groom 完成后固化模板 | v1.5 |
-| M5 | groom token 预算（结构性减负） | 现状 groom 每次全量扫 knowledge（~47K）与 references（~82K），随库线性涨，职责重、token 大（实测核算）。修法：①确定性环节脚本化（引用校验/值重复/置信度重算/容量统计由脚本算完，agent 只读 diff 摘要，不读全量）②按信号触发（R3/R8 可选建议不全量默认扫）③references 维护按触发而非每轮全跑。验收：groom 单次 token 降至可读摘要量级（目标 <30K），且功能不缺失。**落地：groom SKILL「成本预算与脚本先行」+ 信号触发（R3/置信度重算/references 维护按需），决议 EV-2026-028** | 实测单次 groom >150K token，或库规模到 60 case | v1.5 |
+| M5 | groom token 预算（结构性减负） | 现状 groom 每次全量扫 knowledge（~47K）与 references（~82K），随库线性涨，职责重、token 大（实测核算）。修法：①确定性环节脚本化（引用校验/值重复/算分/容量统计由脚本算完，agent 只读 diff 摘要，不读全量）②按信号触发（R3/R8 可选建议不全量默认扫）③references 维护按触发而非每轮全跑。验收：groom 单次 token 降至可读摘要量级（目标 <30K），且功能不缺失。**落地：groom SKILL「成本预算与脚本先行」+ 信号触发（R3/references 维护按需）；算分本身已由 `scripts/score_entries.py` 一次算完全库，决议 EV-2026-028** | 实测单次 groom >150K token，或库规模到 60 case | v1.5 |
 
 ### 3.4 可观测性
 
@@ -135,7 +135,7 @@
 |---|---|---|---|---|
 | O1 | 指标常态化 | 每两周 `trace_metrics.py` 输出经人复核 append `metrics/timeline.yaml`（数据）；所有比例必须带分母；小样本（分母 <10）显式标注 | Phase 0 出口后即常态 | 常设 |
 | O2 | 指标按团队分账 | state 文件记 workload（training/inference）；`trace_metrics.py` 按组输出命中率与误诊率，两组各自复盘 | 首次真实使用后的小改动 | v1.5 |
-| O3 | 反馈捕获率监测 | feedback 捕获率（回报 session / 给出 fix 的 session）进 metrics；连续两期 <50% 触发流程检查（追问话术、nag 时机）。**现状（2026-09-04）**：W35-live1 与 W36-live2 捕获均 0/3（0%，全部 pending 未回报）——贴近触发线；两期同日回填，是否算「连续两期」待定口径（回填期不算则未触发）；一旦触发，流程检查须留痕（本行无触发记录 = 按回填期口径未触发）。S1 反馈 =0 同步影响 confidence 学习环与 2026-Q4 自评「S1 反馈 >0」数据前提 | O1 常态化后 | 常设 |
+| O3 | 反馈捕获率监测 | feedback 捕获率（回报 session / 给出 fix 的 session）进 metrics；连续两期 <50% 触发流程检查（追问话术、nag 时机）。**现状（2026-09-04）**：W35-live1 与 W36-live2 捕获均 0/3（0%，全部 pending 未回报）——贴近触发线；两期同日回填，是否算「连续两期」待定口径（回填期不算则未触发）；一旦触发，流程检查须留痕（本行无触发记录 = 按回填期口径未触发）。S1 反馈 =0 同步影响现场反馈闭环与 2026-Q4 自评「S1 反馈 >0」数据前提 | O1 常态化后 | 常设 |
 | O4 | eval 覆盖报告 | groom 每轮输出覆盖矩阵：有 case 的 `(namespace × category × platform)` 格子 vs 有 fixture 的格子，缺口列表（"inference/sglang 0 条"、"precision 类偏弱"） | M2 完成后并入 groom | v1.5 |
 | O5 | 容量趋势预测 | 容量表增加近 4 周增速与"预计达 80% 日期"，拆分预告由数据给出而非事后发现 | A2 首次触发前后 | v1.5 |
 | O6 | 诊断报告（trace 派生视图） | diagnose 收尾渲染人读报告：症状→路由→候选→验证→根因→fix 的推理叙事 + 证据回溯（每判断指回 trace step）+ 强度标注（已验证/推测/未知）。trace 为唯一数据源、零数据模型改动；默认本地留档，分享前脱敏；1-2 分钟读完（证据链折叠可展开）。质量基准见历史讨论 | 首次真实诊断后 | v1.5 |
@@ -159,13 +159,13 @@
 由 [设计理论](../spec/design-theory.md) §8 生成的设计标准（依设计原则修订门槛，需先有使用检验）：
 
 - **VPI 序提问**：信息不全时按期望信息价值/成本比排序提问
-- **校准度量**：confidence 的 reliability 式校准指标进 metrics
+- **校准度量**：现场解决计数的 reliability 式校准指标进 metrics（评的是「由记录计数算出的排序分数与实际解决率对不对得上」）
 - **先验超参显式化**：investigation_quality → 初始 score 作为 Beta 超参管理
 - **多样性审计**：triage/quickly_check 判别力对照症状空间的定期审计
 - **零执行评估**（前置记录已落地，评估本体未落地，见 [ADR-0009](../adr/0009-counterfactual-replay-exploration-policy.md)）：策略里可重算的部分（同时展开几个候选、命名空间顺序、并行分组和停止点）用历史树离线打分，不重跑执行，现任策略进候选集。**已落地**：trace 侧三项记录（顶层 `stop_reason`、事件的 `parallel_group` 与 `considered_candidates`）与它们的读数、字段违规报出（卡 EV-2026-168）。**未落地**：离线打分本体。本机 `traces/` 只有 3 条、反馈捕获为 0，历史树的规模还不足以支撑离线打分。闸门：任一部署机 `traces/` 达到 30 条且反馈捕获率大于 0（本机现状不满足，不立项；30 条是估计值，接受实测重校）
 - **评估池扩容**（分流与运行期重判已落地，扩容仍未落地）：`--build-pool` 已按 case 实名把答案已进知识库的样本拆进回归池（`role: regression`），`--gate` 按 `role` 字段直接拒绝（卡 EV-2026-167）；判定池文件另记逐行吸收状态指纹 `absorption_rev`，`--stats` 每次重算并把结论写进 stats、`--gate` 在判定时刻按记下的逐行样本 id 再算一遍，对不上就拒绝出判词、退出码 3、不写账本（卡 EV-2026-169）——池已变旧却照常出判词这条路径已经关闭（`--stats` 与 `--gate` 之间的窗口也关上了：判定时刻重算，不用那份可能过期的记录）。剩下的扩容是新增样本，但顺序要先摆正：判定线（配对检验 `P(Bin(b+c, 0.5) ≥ b) ≤ α_eff`，b = candidate 独家命中、c = baseline 独家命中；命中率或路由率点估计上升、且无回归才判 `accept`；反向翻转只把 `b+c` 顶大、不自动否决——k = 0 时 c = 0 只要 b = 4 达线）对 10 条池并没有原理上的不可达，当时真正卡住的是**基线重放一次都没跑过**——池里没有逐条向量，配对检验没有输入。这一半已落地（2026-10）：判定池 9 条里 8 条已重放，逐条向量齐了（读数见 `docs/mechanism/eval-arena.md` §3）。扩容解决的是另外两件事：可翻转样本少、点估计靠单条样本；以及同一份池每判一次门槛更严（α_eff = α/(k+1)，且翻过的题不能翻第二次）。选样那一侧也已收紧成机械判据（卡 EV-2026-173：流程/文档类前缀硬拒、弱信号默认不收但可 `--include-weak` 取）。闸门：按「这套判定要支撑几次判定」换算新增样本条数（见 `docs/mechanism/rsi-mechanism.md` §8 已知缺口第 4 条）
 - **参数治理**：设计常数（串联保护 n=2、批审 30 秒上限、每 ns 30 条 cap）按理论 §7 的限定属参数估计，纳入 metrics 实测复核，数据足够时重校（n=2 可由误诊级联率复核，30 秒由批审实际耗时复核）
-- **PR 描述机器层生成**（**部分落地**）：to-postmortem / groom 直接产出符合 `.github/PULL_REQUEST_TEMPLATE/` 的 PR body 草稿（预分诊、证据、CI 链接、置信变化由系统数据自动填充，人只补脱敏自查与动机）。**已落地**：5 模板加"Agent 预核意见（可选）"区块、`pr-template` CI 校验模板结构与关键区块（不拦 agent 意见缺失，内网/手动链路体验约束）。**剩余**：各 skill 产出时自动填充预分诊/证据/置信字段的完整 body 草稿。闸门：E1 落地后或团队 PR 量周均 ≥3
+- **PR 描述机器层生成**（**部分落地**）：to-postmortem / groom 直接产出符合 `.github/PULL_REQUEST_TEMPLATE/` 的 PR body 草稿（预分诊、证据、CI 链接、置信变化由系统数据自动填充，人只补脱敏自查与动机）。**已落地**：5 模板加"Agent 预核意见（可选）"区块、`pr-template` CI 校验模板结构与关键区块（不拦 agent 意见缺失，内网/手动链路体验约束）。**剩余**：各 skill 产出时自动填充预分诊/证据/条目使用计数的完整 body 草稿。闸门：E1 落地后或团队 PR 量周均 ≥3
 
 ### 3.7 工程预备项
 

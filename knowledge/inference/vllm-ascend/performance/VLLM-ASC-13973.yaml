@@ -12,6 +12,18 @@
 
 cases:
   - id: VLLM-ASC-13973
+
+    validation_record:  # 外部对照累积（verify_upstream_outcomes 结算；只记内容被上游确认，不记现场是否解决）
+      consistent: 0
+      inconsistent: 0
+      self_consistent: 1
+      last_verified: 2026-W42
+    # 上游锚点：外部对照查证（scripts/verify_upstream_outcomes.py）按它查上游状态，
+    #   结局写进 validation_record。它判断的是内容对不对，不是现场是否解决。
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 13973
+        url: https://github.com/vllm-project/vllm-ascend/issues/13973
     title: "v0.26 P 节点 prefill 回归：dsa-cp 与共享专家 DP 解耦致共享专家走 fc1 额外两次通信 + SFA DCP block table 宽度用错致 kv_gather_ids 冲高（TTFT 7.1x）"
 
     category: performance
@@ -25,12 +37,6 @@ cases:
         ranges: ["<=2.10.0.post2"]     # 线程实测版本
 
     investigation_quality: high        # to-postmortem 标的调查质量，groom 据此设初始 score
-    confidence:                        # groom 维护
-      hits: 0
-      misdiagnoses: 0
-      score: 0.6                       # high → 初始 0.6
-      last_hit: ""
-
     symptoms:
       - "GLM-5.2 w4a8 PD 分离 P 节点（kv_role=kv_producer），v0.23→v0.26 相同 DCP=8/TP=8/EP=32 拓扑下 prefill 吞吐 38811→29911 tok/s"
       - "TTFT P50 7617ms→54296ms（~7.1x 劣化），QPS 1.69→1.14"
