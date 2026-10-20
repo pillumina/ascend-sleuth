@@ -8,10 +8,14 @@
 
 | 契约 | 权威实现 | 机械检查 |
 |---|---|---|
-| 颜色角色 | 每个 `panel-client.js` 的 `--c-*`（文字，需过 WCAG AA）/ `--acc-*`（装饰，两点面板逐色同值）/ `--fill-*`（实心徽标底）/ `--btn-*` | `python3 scripts/check_panel_tokens.py` |
-| 字号与行高 | 8 档 `--t-md2 10.5` → `--t-2xl 18`（基准 `--t-base` 14.5）；行高 `--lh-tight/base/prose`（中文需 ≥1.6） | `node scripts/panel_render_check.js`（断言：声明 8 档、无硬编码 font-size、最小档 ≥10、基准档 ≥14、两面板同值域） |
+| 颜色角色 | 两面板都必须有 `--c-*`（文字，需过 WCAG AA）与 `--acc-*`（装饰，逐色同值）；`--d-*`（文字深档）与 `--btn-*`（实心按钮）当前只在诊断面板用，ev-panel 另有自己的 `--fill-*`（实心徽标底）。新增角色先改 `scripts/check_panel_tokens.py` 的 ROLES | `python3 scripts/check_panel_tokens.py` |
+| 字号与行高 | 8 档 `--t-md2 10.5` → `--t-2xl 18`（基准 `--t-base` 14.5）；行高只留 `--lh-tight/base/prose`（中文 ≥1.6）。**内联字号只许写 `var(--t-*)`**，不写裸数字 | `node scripts/panel_render_check.js`（断言：声明 8 档、内联只用 token、最小档 ≥10、基准档 ≥14、两面板同值域） |
+| 圆角与间距 | 圆角只用 `--r-xs 5 / r-sm 7 / r-md 9 / r-lg 12 / r-pill`；间距集中在 4 / 6 / 8 / 10 / 12 这几档，不新增零散值 | 人审（渲染检查无几何断言） |
+| 动效 | 三档时长 `--m-fast 120 / m-base 160 / m-slow 220` + 一条 `--e-out`；过渡优先 `transform / opacity / 背景色 / 边框色 / 阴影`，数据编码（柱高、进度条宽度）允许动 `height / width`；禁止 `transition: all`；reduced-motion 下时长归零且清 delay | `node scripts/panel_render_check.js`（断言：无 `transition: all`、reduced-motion 选择器收在面板根内、三档时长声明存在） |
 | 结果复用窗口 | 每个 `panel-host.js` 的窗口常量（`VERDICT_TTL_MS` / `CACHE_TTL_MS`），client 的刷新说明照它写 | `node scripts/panel_render_check.js`（断言：窗口内复用不重跑脚本、`refresh: true` 绕过窗口、失败也能强制重跑、首屏那次不强制、两面板窗口同值且与 client 说明一致） |
 | 面板文案 | 共用条目见 `docs/spec/writing-norms.md`（判定口径的权威）；面板特有的见下方「面板文案的定制条款」 | 同上（行文只有"无字面 Markdown 星号"一条可机械判） |
+| 可展开块 | 统一用 `.sleu-fold`（标题条 + 箭头 + 可选提示），不裸用 `<details>` 或 chip 暗示；动作组在触发按钮所在行**下方**展开，两组常驻 DOM 用 `display` 切换，不挤动兄弟元素 | 人审（渲染检查无几何断言） |
+| 响应式 | 面板跑在可变宽度的 tab 里：按**容器宽度**降级（容器查询），窄时收列、展开态单列；不假设全宽、也不让整页横向滚动 | 人审（渲染检查只断言容器查询存在） |
 | 只读边界 | 面板是只读可视化 + 指令生成器；不做决策与写入 | 人审（`skills/preload-panel/SKILL.md`） |
 | 依赖缺失时的退化 | 拿不到数据时给一行说明 + 可行的下一步，不占位、不拿别处的数据冒充 | `node scripts/panel_render_check.js`（退化路径一节，含 5 个缺件用例） |
 | 面板包产物 | 面板源码（`dsh-plugins/<面板>/panel-host.js`、`panel-client.js`）是唯一真源，`dsh-plugins/dsh-sleuth-panels/lib/` 是生成物 | `node scripts/build_panel_bundle.js --check` |

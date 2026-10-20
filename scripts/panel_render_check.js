@@ -436,6 +436,13 @@ async function main() {
   expect('发丝线变量 --hair（亮色下 border-l1 只有 4% 不可见）', /--hair:color-mix/.test(css))
   expect('主题判定跟随 DSH（body[data-ds-dark-theme]）而非 prefers-color-scheme',
     /body\[data-ds-dark-theme\]/.test(css) && !/@media\s*\(prefers-color-scheme/.test(css))
+  // 选择器必须能命中：`:root` 是 <html>，不可能是 body 的后代——写成
+  // `body[data-ds-dark-theme] :root` 时整块暗色规则从未生效（实测踩过）。
+  {
+    const ascText = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-client.js'), 'utf8')
+    expect('暗色覆盖的选择器真的命中面板根（.sleu），不是 :root',
+      ascText.indexOf('body[data-ds-dark-theme] .sleu{') >= 0 && ascText.indexOf('body[data-ds-dark-theme] :root') < 0)
+  }
   // 手选色值（不再"品牌色混黑"——那会把饱和度一起压掉，面板因此发暗沉）
   expect('语义色阶：ink 手选色值', /--c-blue:#1d4ed8/.test(css) && /--c-amber:#92400e/.test(css))
   expect('语义色阶：实心底独立于 ink', /--fill-blue:#1d4ed8/.test(css))
@@ -1425,21 +1432,31 @@ _MS._run_no_pipe = no_fallback`)
     const fams = [...new Set([...typo.matchAll(/fontFamily: '([^']+)'/g)].map(m => m[1]))]
     expect('字体栈走 token（不再内联 system-ui 字面量）',
       fams.every(f => f.startsWith('var(--font-')), fams.join(' | '))
-    expect('声明了 sans / mono / num 三套字体 token',
-      /--font-sans:/.test(typo) && /--font-mono:/.test(typo) && /--font-num:/.test(typo))
-    const sizes = [...new Set([...typo.matchAll(/fontSize: ([\d.]+)/g)].map(m => Number(m[1])))]
+    expect('声明了 sans / mono 两套字体 token（数字并入等宽一条栈）',
+      /--font-sans:/.test(typo) && /--font-mono:/.test(typo) && !/--font-num:/.test(typo))
+    // 目标态：内联字号只许写 var(--t-*)，且必须是**已声明**的 token；裸数字（含 `fontSize:12`
+    // 这种无空格写法）一律不许。档位仍以 token 声明为准。
+    const declaredTNames = new Set([...typo.matchAll(/(--t-[a-z0-9]+):/g)].map(m => m[1]))
+    const varTokens = new Set([...typo.matchAll(/fontSize: *'var\((--t-[a-z0-9]+)\)'/g)].map(m => m[1]))
+    const unknownTokens = [...varTokens].filter(t => !declaredTNames.has(t))
+    const sizes = [...new Set([...typo.matchAll(/--t-[a-z0-9]+:([\d.]+)px/g)].map(m => Number(m[1])))]
     expect('字号档位 ≤ 8 档（原 9 档只差 3.5px = 无尺度）', sizes.length <= 8, sizes.sort((a, b) => a - b).join(' '))
     // token 与内联必须**同一集合**：否则声明的尺度是摆设，实现里另有一套
     //（实测：加会话卡状态条与卡片标题时各塞了一个新值，档位从 8 漂到 9）
     const tokenSizes = [...new Set([...typo.matchAll(/--t-[a-z0-9]+:\s*([\d.]+)px/g)].map(m => Number(m[1])))]
-    const sameSet = JSON.stringify(sizes.slice().sort((a, b) => a - b)) === JSON.stringify(tokenSizes.slice().sort((a, b) => a - b))
-    expect('内联字号集合 == --t-* 声明集合（尺度不是摆设）', sameSet,
-      '内联: ' + sizes.join(',') + ' | token: ' + tokenSizes.join(','))
+    expect('内联字号不写裸数字（含无空格写法）', !/fontSize: *[\d.]/.test(typo))
+    expect('内联字号只用已声明的 --t-* token', unknownTokens.length === 0, '未声明: ' + unknownTokens.join(','))
+    expect('内联字号实际用到了 ≥ 6 档 token', varTokens.size >= 6, [...varTokens].join(','))
     expect('最小 UI 字号 ≥ 10（原 9.5 太小）', Math.min(...sizes) >= 10, 'min=' + Math.min(...sizes))
-    expect('基准字号 ≥ 14（原 13，中文在 11–12px 会糊）', sizes.some(s => s >= 14), sizes.join(' '))
+    expect('基准字号 ≥ 14（原 13，中文在 11–12px 会糊）', /--t-base:1[4-9]/.test(typo), sizes.join(' '))
     expect('声明了语义字号 token（--t-*）', /--t-base:/.test(typo) && /--t-tiny:/.test(typo) && /--t-2xl:/.test(typo))
     expect('中文行高 ≥ 1.6（原 1.5 偏挤）',
       /--lh-prose:1\.[678]/.test(typo) && /--lh-base:1\.[6-9]/.test(typo))
+    expect('动效：不用 transition: all', !/transition:\s*'?all/.test(ascSrc) && !/transition:all/.test(ascSrc))
+    expect('动效：reduced-motion 只作用在面板根内（不关掉宿主其它界面）',
+      /@media \(prefers-reduced-motion: reduce\)\{\.sleu/.test(ascSrc) && /animation-delay:0ms !important/.test(ascSrc))
+    expect('动效：时长只有三档 token', /--m-fast:120ms/.test(typo) && /--m-base:160ms/.test(typo) && /--m-slow:220ms/.test(typo))
+    expect('筛选 chip 带 aria-pressed（选中不只靠颜色）', /'aria-pressed': c\.id === kbFilter/.test(ascSrc))
     expect('数字用等宽对齐（tabular-nums）', /font-variant-numeric:tabular-nums/.test(typo) || /"tnum" 1/.test(typo))
     expect('面板根挂 .sleu（字体与排版的唯一落点）', /className: 'sleu'/.test(typo))
     // 现代观感的三件套：分层阴影 / 圆角尺度 / 交互反馈
@@ -1468,6 +1485,7 @@ _MS._run_no_pipe = no_fallback`)
       lastRole: 'agent',
       lastOutput: '定位到 device OOM：batch size 超过 910B 显存，建议降到 8 并开 NPU 内存碎片整理（这是第 ' + i + ' 单的结论摘要）',
       updatedAt: new Date(Date.now() - i * 3600 * 1000).toISOString(),
+      createdAt: new Date(Date.now() - i * 86400000).toISOString(),
     }, over)
     const manySessions = Array.from({ length: 23 }, (_, k) => mkSession(k + 1))
     // host 的 traceDetail 返回 {ok, steps: [...], summary, refCount, sedimented}
@@ -1497,6 +1515,17 @@ _MS._run_no_pipe = no_fallback`)
     //    **记录维护**动作，读者看不懂（实测反馈："最后一步……让人看不懂也觉得很奇怪"）。
     expect('诊断 tab：收起态优先显示问题背景（不是"最后一步"）', /背景/.test(dt) && /问题背景：第 2 单/.test(dt))
     expect('诊断 tab：无背景段时退回末条记录，且不再叫「最后一步」', /末条记录/.test(dt) && /定位到 device OOM/.test(dt) && !/最后一步/.test(dt))
+    expect('诊断 tab：收起态显示诊断开始时间（人读 MM-DD HH:mm）', /开始 \d{2}-\d{2} \d{2}:\d{2}/.test(dt), dt.slice(0, 200))
+    expect('工具栏有按开始时间筛选的入口', /按诊断开始时间筛选/.test(ascSrc) && /timeRange !== 'all'/.test(ascSrc))
+    expect('列表卡片记忆化（筛选/搜索时不重渲染未变的卡）', /const SessionCard = React\.memo/.test(ascSrc))
+    expect('搜索防抖 120ms 且可取消', /queryTimerDispose = timer\.timeout\(\(\) => setQuery\(v\), 120\)/.test(ascSrc))
+    expect('再次展开用缓存（新鲜不重取，过期等动画结束再刷新）',
+      /const fresh = cached && \(Date\.now\(\) - detailAt < 60000\)/.test(ascSrc)
+      && /timer\.timeout\(\(\) => loadDetail\(true\), 200\)/.test(ascSrc))
+    expect('展开不做高度动画（只走合成层淡入，避免每帧重排整棵子树）',
+      /\.sleu-open\{animation:sleuFade/.test(ascSrc) && !/\.sleu-expand\{/.test(ascSrc) && !/grid-template-rows:0fr/.test(ascSrc))
+    expect('窄面板按容器查询降列（不靠整页横向滚动）',
+      /@container \(max-width: 700px\)/.test(ascSrc) && /--row-cols/.test(ascSrc) && /sleu-expanded/.test(ascSrc))
     expect('诊断 tab：收起态不再只给环境标签（框架/平台/类别仍在展开态）',
       !/vllm-ascend · A2-910B · interrupt[\s\S]{0,40}背景/.test(dt))
     // ④ 回到顶部：会话 > 20 才出现
@@ -2325,7 +2354,20 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
 
   // —— 指令区形态（2026-09-12 改版）：按钮横排 + 卡片内不复读提示 ——
   {
-    expect('指令区：按钮为横向 flex 换行（竖排会撑高卡片）', /display: 'flex', flexWrap: 'wrap', gap: 8/.test(ascSrc))
+    {
+      const actionBlock = ascSrc.slice(ascSrc.indexOf('const actionArea'), ascSrc.indexOf("return React.createElement('div', { className: 'sleu-card'"))
+      expect('动作组在按钮行下方展开（不挤动兄弟按钮）',
+        /menuOpen === 'close' \? 'flex' : 'none'/.test(actionBlock) && /menuOpen === 'handoff' \? 'flex' : 'none'/.test(actionBlock))
+      expect('展开块统一用 Fold（检索明细 / 成本 / 定位结论不再裸 details）',
+        /React\.createElement\(Fold, \{ title: '检索明细'/.test(ascSrc)
+        && /React\.createElement\(Fold, \{ title: '成本与 token'/.test(ascSrc)
+        && /React\.createElement\(Fold, \{ title: '定位结论（完整）'/.test(ascSrc))
+      expect('右栏键值行对长值分行（不再一行 space-between + nowrap）',
+        /stacked = text\.length > 18/.test(ascSrc) && /display: stacked \? 'block' : 'flex'/.test(ascSrc))
+      expect('指令区：按钮为横向 flex 换行（竖排会撑高卡片）',
+        (/display: 'flex'[^}]*flexWrap: 'wrap'[^}]*gap: 8/.test(actionBlock) || /display: 'flex'[^}]*gap: 8[^}]*flexWrap: 'wrap'/.test(actionBlock))
+        && !/flexDirection: 'column'/.test(actionBlock))
+    }
     expect('指令区：卡片内不再逐卡复读提示文案', !/['"]这一单结束了/.test(ascSrc) && !/['"]这单已闭环\.要更正/.test(ascSrc))
     expect('指令区：展开的命令块只有一处（点谁显示谁）', (ascSrc.match(/openedCmd \? React\.createElement/g) || []).length === 1)
     // 沉淀区同一条纪律：多候选时也只有一个展开位（铺一屏命令等于没折叠）
@@ -2555,9 +2597,9 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         : { ok: true, steps: [], summary: null }
       const ct = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, host)).text
       const lines = ct.split('\n').map(x => x.trim())
-      expect('占位串不当 case 显示：两张无命中单都给「没有对应案例」，不给「定位」',
-        lines.filter(x => x === '没有对应案例').length === 2 && lines.filter(x => x === '定位').length === 1,
-        '无对应=' + lines.filter(x => x === '没有对应案例').length + ' 定位=' + lines.filter(x => x === '定位').length)
+      expect('占位串不当 case 显示：两张无命中单都给「没有对应案例」，命中单给「定位 <id>」',
+        lines.filter(x => x === '没有对应案例').length === 2 && lines.filter(x => /^定位 /.test(x)).length === 1,
+        '无对应=' + lines.filter(x => x === '没有对应案例').length + ' 定位=' + lines.filter(x => /^定位 /.test(x)).length)
       expect('占位串把原值摆出来（不摆读者以为面板漏读了字段）',
         /pending-investigation \(upstream #14728\)/.test(ct), ct.slice(0, 240))
       // 卡面**不解释**：说明文字（占位串 / case id / 字段名）只进 tooltip 与 README。

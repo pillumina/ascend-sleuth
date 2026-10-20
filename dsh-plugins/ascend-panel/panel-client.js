@@ -8,6 +8,8 @@ return {
     // 在该服务缺席时进入 waiting（一个"2 秒后清掉提示"的功能不该拖垮面板）；
     // 服务缺席时降级为"提示不复位"，绝不退回全局定时器。
     const timer = ctx.get('timer')
+    // 搜索防抖的待执行句柄：新按键先撤掉上一次，避免"清空后旧的定时器又把词写回来"。
+    let queryTimerDispose = null
 
     const T = {
       bg: 'var(--dsw-alias-bg-layer-1)', bg2: 'var(--dsw-alias-bg-layer-2)',
@@ -31,7 +33,6 @@ return {
      不做 web font：网络字体在离线/内网环境会闪烁或失败，且中文子集动辄几 MB。 */
   --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI Variable Text","Segoe UI Variable","Segoe UI",system-ui,"PingFang SC","HarmonyOS Sans SC","Noto Sans SC","Microsoft YaHei UI","Microsoft YaHei",sans-serif;
   --font-mono:ui-monospace,SFMono-Regular,"SF Mono",Cascadia Mono,"Cascadia Code",Consolas,"Liberation Mono",monospace;
-  --font-num:"SF Mono",ui-monospace,SFMono-Regular,Cascadia Mono,Consolas,monospace;
 
   /* ── 字号尺度（8 档，替代原先 9 档却只差 3.5px 的"无尺度"）───────────
      基准 14.5：面板信息密度高，而中文在 11–12px 下笔画会糊。
@@ -53,7 +54,7 @@ return {
   --c-blue:#1d4ed8;--c-green:#15803d;--c-purple:#7c3aed;--c-amber:#92400e;--c-red:#b91c1c;--c-gray:#64748b;
   --acc-blue:#3b82f6;--acc-green:#22c55e;--acc-purple:#8b5cf6;--acc-amber:#f59e0b;--acc-red:#ef4444;--acc-gray:#9ca3af;
   --d-blue:#1d4ed8;--d-green:#15803d;--d-amber:#92400e;--d-red:#b91c1c;--d-purple:#6d28d9;
-  --btn-blue-a:#2563eb;--btn-blue-b:#1d4ed8;--btn-green-a:#16a34a;--btn-green-b:#15803d;
+  --btn-blue-a:#2563eb;--btn-blue-b:#1d4ed8;--btn-green-a:#15803d;--btn-green-b:#166534;
   --btn-purple-a:#7c3aed;--btn-purple-b:#6d28d9;--btn-red-a:#dc2626;--btn-red-b:#b91c1c;
   --tint-blue:color-mix(in srgb, var(--d-blue) 9%, transparent);
   --tint-red:color-mix(in srgb, var(--d-red) 8%, transparent);
@@ -65,8 +66,11 @@ return {
   /* 现代观感的三件套：双层柔和阴影（近处紧、远处散）+ 圆角尺度 */
   --elev-1:0 1px 2px rgba(15,23,42,.04),0 1px 1px rgba(15,23,42,.03);
   --elev-2:0 1px 2px rgba(15,23,42,.05),0 4px 12px -6px rgba(15,23,42,.10);
-  --r-sm:7px;--r-md:10px;--r-lg:13px}
-body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b39bfb;--c-amber:#fbbf24;--c-red:#fb8a8a;--c-gray:#a8b0bd;
+  --r-xs:5px;--r-sm:7px;--r-md:9px;--r-lg:12px;--r-pill:999px;
+  /* 动效：三档时长 + 一条 ease-out；新增动效只用这三个时长 */
+  --m-fast:120ms;--m-base:160ms;--m-slow:220ms;--e-out:cubic-bezier(.22,1,.36,1);
+  --hair-strong:color-mix(in srgb, var(--dsw-alias-label-primary) 16%, transparent)}
+body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b39bfb;--c-amber:#fbbf24;--c-red:#fb8a8a;--c-gray:#a8b0bd;
   --acc-blue:#60a5fa;--acc-green:#4ade80;--acc-purple:#a78bfa;--acc-amber:#fbbf24;--acc-red:#f87171;--acc-gray:#9ca3af;
   --d-blue:#7db3fc;--d-green:#5cd68f;--d-amber:#fbbf24;--d-red:#fb8a8a;--d-purple:#b39bfb;
   --tint-blue:color-mix(in srgb, var(--d-blue) 16%, transparent);
@@ -78,40 +82,82 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
   --elev-2:0 1px 2px rgba(0,0,0,.35),0 6px 16px -8px rgba(0,0,0,.45);
   --surf:none}
 /* 面板根：字体与排版的唯一落点（组件里不再各写各的 fontFamily） */
-.sleu{font-family:var(--font-sans);font-size:var(--t-base);line-height:var(--lh-base);color:var(--dsw-alias-label-primary);
-  font-feature-settings:"tnum" 1,"cv05" 1;font-optical-sizing:auto;letter-spacing:.006em;
-  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.sleu{--row-cols:92px minmax(0,1fr) 112px 54px 68px 78px 16px;font-family:var(--font-sans);font-size:var(--t-base);line-height:var(--lh-base);color:var(--dsw-alias-label-primary);
+  font-feature-settings:"tnum" 1,"cv05" 1;font-optical-sizing:auto;letter-spacing:.006em}
+.sleu button,.sleu input{font-family:inherit}
 /* 数字一律等宽对齐（指标/容量/期号同列可比） */
-.sleu-num{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;letter-spacing:-.01em}
+.sleu-num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1;letter-spacing:-.01em}
 .sleu-mono{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
 /* 中英混排微调：中文行更高的 readability，标题收紧字距（现代排版惯例） */
-.sleu-title{font-size:var(--t-lg);font-weight:650;letter-spacing:-.012em;line-height:var(--lh-tight)}
+.sleu-title{font-size:var(--t-lg);font-weight:700;letter-spacing:-.012em;line-height:var(--lh-tight)}
 .sleu-prose{line-height:var(--lh-prose)}
 @keyframes sleuRise{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
 /* 交互反馈：hover/active 有分寸（现代观感来自"响应"而非"装饰"） */
-.sleu-row{transition:background .14s cubic-bezier(.22,1,.36,1)}
+.sleu-row{background:transparent;transition:background-color var(--m-fast) var(--e-out)}
 .sleu-row:hover{background:var(--tint-blue)}
 .sleu-row:active{background:color-mix(in srgb,var(--d-blue) 14%,transparent)}
-.sleu-card{transition:box-shadow .18s cubic-bezier(.22,1,.36,1),border-color .18s cubic-bezier(.22,1,.36,1)}
+.sleu-card{box-shadow:var(--elev-1);transition:box-shadow var(--m-slow) var(--e-out),border-color var(--m-base) var(--e-out)}
 .sleu-card:hover{box-shadow:var(--elev-2)}
-.sleu-chip{transition:background .14s cubic-bezier(.22,1,.36,1),border-color .14s cubic-bezier(.22,1,.36,1)}
-.sleu-chip:hover{border-color:var(--d-blue);color:var(--d-blue)}
+.sleu-chip{background:transparent;border:1px solid var(--hair);color:var(--dsw-alias-label-secondary);border-radius:var(--r-pill);padding:4px 12px;font-size:var(--t-sm);line-height:var(--lh-base);cursor:pointer;transition:background-color var(--m-fast) var(--e-out),border-color var(--m-fast) var(--e-out),color var(--m-fast) var(--e-out)}
+.sleu-chip:hover{border-color:var(--d-blue);color:var(--d-blue);background:var(--tint-blue)}
+.sleu-chip:active{background:color-mix(in srgb,var(--d-blue) 16%,transparent)}
+.sleu-chip[aria-pressed="true"]{background:color-mix(in srgb,var(--d-blue) 12%,transparent);border-color:var(--d-blue);color:var(--d-blue);font-weight:600}
+.sleu-chip:active{transform:scale(.97)}
+.sleu-menu-panel{animation:sleuMenu var(--m-fast) var(--e-out)}
+@keyframes sleuMenu{from{opacity:0;transform:translateY(-2px)}to{opacity:1;transform:none}}
+.sleu-fold[open]>.sleu-fold-body{animation:sleuFade var(--m-base) var(--e-out)}
+.sleu-list{container-type:inline-size}
+.sleu-expanded{display:grid;grid-template-columns:minmax(0,1fr) 240px;align-items:start}
+.sleu-band{grid-column:1 / -1;min-width:0;padding:0 16px}
+.sleu-main{grid-column:1;padding:12px 16px;border-top:1px solid var(--hair);background:var(--dsw-alias-bg-layer-2);min-width:0;content-visibility:auto;contain-intrinsic-size:auto 640px}
+.sleu-rail{grid-column:2;padding:12px 16px 14px 0;border-top:1px solid var(--hair);position:sticky;top:8px;align-self:start;min-width:0}
+@container (max-width: 760px){
+  .sleu-expanded{grid-template-columns:minmax(0,1fr)}
+  .sleu-rail{grid-column:1;position:static;padding:12px 16px}
+}
+@container (max-width: 700px){
+  .sleu-list{--row-cols:92px minmax(0,1fr) 112px 16px}
+  .sleu-c-events,.sleu-c-ms,.sleu-c-tok{display:none}
+}
+@container (max-width: 560px){
+  .sleu-list{--row-cols:84px minmax(0,1fr) 16px}
+  .sleu-c-fw{display:none}
+}
+.sleu :focus-visible{outline:2px solid var(--d-blue);outline-offset:2px}
+.sleu input:focus-visible{outline-offset:1px}
+.sleu-skel{background:linear-gradient(90deg,var(--hair) 0%,color-mix(in srgb,var(--dsw-alias-label-primary) 5%,transparent) 50%,var(--hair) 100%);background-size:200% 100%;animation:sleuShimmer 1.4s linear infinite;border-radius:var(--r-xs)}
+@keyframes sleuShimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+.sleu-open{animation:sleuFade var(--m-base) var(--e-out)}
+@keyframes sleuFade{from{opacity:0}to{opacity:1}}
 /* 迷你趋势条（与 ev-panel 的 .ev-bars 同一套 CSS 条形原语，不用 SVG——两面板视觉语言一致） */
 .sleu-bars{display:flex;align-items:flex-end;gap:2px;height:18px;flex-shrink:0}
-.sleu-bar{width:5px;border-radius:2px 2px 1px 1px;background:var(--acc-blue);opacity:.9;transition:opacity .15s cubic-bezier(.22,1,.36,1),height .2s cubic-bezier(.22,1,.36,1)}
+.sleu-bar{width:5px;border-radius:2px 2px 1px 1px;background:var(--acc-blue);opacity:.9;transition:opacity var(--m-base) var(--e-out),height var(--m-slow) var(--e-out)}
 .sleu-bar.dim{background:var(--acc-gray);opacity:.45}
 .sleu-bar.miss{background:transparent;border-bottom:1px dashed var(--dsw-alias-border-l1)}
 .sleu-bars:hover .sleu-bar{opacity:1}
 /* 轨迹时间轴：左侧刻度点 + 竖轨（"第几步"要能一眼数出来），滑过时刻度点亮 */
 .sleu-tl-row{display:flex;gap:10px;align-items:stretch}
 .sleu-tl-mk{width:14px;flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding-top:5px}
-.sleu-tl-dot{width:7px;height:7px;border-radius:999px;background:var(--bd,var(--dsw-alias-border-l1));flex-shrink:0;transition:transform .16s cubic-bezier(.22,1,.36,1),background .16s}
+.sleu-tl-dot{width:7px;height:7px;border-radius:999px;background:var(--bd,var(--dsw-alias-border-l1));flex-shrink:0;transition:transform var(--m-base) var(--e-out),background var(--m-base) var(--e-out)}
 .sleu-tl-rail{flex:1;width:1.5px;background:var(--dsw-alias-border-l1);margin-top:3px;border-radius:1px}
 .sleu-tl-row:hover .sleu-tl-dot{transform:scale(1.35)}
 .sleu-tl-row:hover .sleu-tl-rail{background:color-mix(in srgb,var(--d-blue) 35%,transparent)}
-.sleu-fab{position:sticky;bottom:10px;margin-left:auto;width:34px;height:34px;border-radius:999px;border:1px solid var(--hair);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;box-shadow:var(--elev-2);transition:transform .16s cubic-bezier(.22,1,.36,1),color .16s}
+.sleu-fab{position:fixed;right:18px;bottom:18px;z-index:3;width:34px;height:34px;border-radius:999px;border:1px solid var(--hair);background:var(--dsw-alias-bg-layer-1);color:var(--dsw-alias-label-secondary);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:15px;line-height:1;box-shadow:var(--elev-2);transition:transform var(--m-base) var(--e-out),color var(--m-base) var(--e-out)}
 .sleu-fab:hover{transform:translateY(-2px);color:var(--d-blue)}
-@media (prefers-reduced-motion: reduce){*{animation-duration:.001ms !important;transition-duration:.001ms !important}}
+.sleu details>summary{list-style:none;cursor:pointer}.sleu details>summary::-webkit-details-marker{display:none}
+.sleu-fold{border:1px solid var(--hair);border-radius:var(--r-md);background:var(--dsw-alias-bg-layer-1);margin-bottom:10px;overflow:hidden}
+.sleu-fold>summary{display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:var(--t-sm);font-weight:600;color:var(--dsw-alias-label-primary);transition:background-color var(--m-fast) var(--e-out)}
+.sleu-fold>summary::before{content:'▸';color:var(--dsw-alias-label-secondary);transition:transform var(--m-base) var(--e-out);display:inline-block}
+.sleu-fold[open]>summary::before{transform:rotate(90deg)}
+.sleu-fold>summary:hover{background:var(--tint-blue)}
+.sleu-fold[open]>summary{border-bottom:1px solid var(--hair);background:var(--dsw-alias-bg-layer-2)}
+.sleu-fold-body{padding:8px 10px}
+.sleu-fold-compact{border:none;background:transparent;margin:6px 0}
+.sleu-fold-compact>summary{display:inline-flex;padding:2px 9px;font-size:var(--t-tiny);font-weight:600;color:var(--d-blue);border:1px solid var(--hair);border-radius:var(--r-pill)}
+.sleu-fold-compact[open]>summary{border-color:var(--d-blue);background:var(--tint-blue)}
+.sleu-fold-compact .sleu-fold-body{padding:6px 0 0}
+.sleu-fold-body>div:first-child>.sleu-block:first-child,.sleu-fold-body>.sleu{margin-top:0}
+@media (prefers-reduced-motion: reduce){.sleu,.sleu *{animation-duration:.001ms !important;animation-delay:0ms !important;transition-duration:.001ms !important}}
 `
     const tokenSheet = styles.insert(PANEL_CSS)
 
@@ -221,6 +267,21 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       setter(value)
       if (timer && typeof timer.timeout === 'function') timer.timeout(() => setter(null), ms)
     }
+    // 人读时间：列表右上一行显示 MM-DD HH:mm（本地时区），完整时间放 title。
+    function fmtTime(iso) {
+      if (!iso) return null
+      const d = new Date(iso)
+      if (isNaN(d.getTime())) return null
+      const p = n => String(n).padStart(2, '0')
+      return (d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
+    }
+    function fmtTimeFull(iso) {
+      if (!iso) return null
+      const d = new Date(iso)
+      if (isNaN(d.getTime())) return null
+      const p = n => String(n).padStart(2, '0')
+      return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes())
+    }
     function relTime(iso) {
       if (!iso) return null
       const t = new Date(iso).getTime()
@@ -232,6 +293,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const h = Math.floor(m / 60)
       if (h < 24) return h + ' 小时前'
       const d = Math.floor(h / 24)
+      // 超过 7 天转绝对日期：'93 天前' 读不出是哪一期（GitHub / Geist 的同一约定）。
+      if (d > 7) { const dt = new Date(t); return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0') }
       return d + ' 天前'
     }
     function fmtVal(v) {
@@ -330,7 +393,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       return { moved, same, prevPeriod: prev ? prev.period : null, curPeriod: cur.period }
     }
 
-    const btnBase = { border: 'none', borderRadius: 7, padding: '4px 12px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer', transition: 'all .15s', letterSpacing: '.01em' }
+    const btnBase = { border: 'none', borderRadius: 'var(--r-sm)', padding: '4px 12px', fontSize: 'var(--t-tiny)', fontWeight: 600, cursor: 'pointer', transition: 'background-color var(--m-fast) var(--e-out),border-color var(--m-fast) var(--e-out),color var(--m-fast) var(--e-out)' }
     const btnPrimary = { ...btnBase, background: 'linear-gradient(135deg,var(--btn-blue-a),var(--btn-blue-b))', color: '#fff', boxShadow: '0 1px 3px rgba(37,99,235,.3)' }
     const btnSuccess = { ...btnBase, background: 'linear-gradient(135deg,var(--btn-green-a),var(--btn-green-b))', color: '#fff', boxShadow: '0 1px 3px rgba(22,163,74,.3)' }
     const btnPurple = { ...btnBase, background: 'linear-gradient(135deg,var(--btn-purple-a),var(--btn-purple-b))', color: '#fff', boxShadow: '0 1px 3px rgba(124,58,237,.3)' }
@@ -342,7 +405,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 用 --d-*（同色相深档）而不是直接拿 --acc-* 当文字色——后者在亮色下 2.15–2.28:1，
     // 既"尖锐"又不过 AA；深浅两套主题各自声明，面板不再各写各的色值。
     function tinyBadge(colorVar) {
-      return { background: 'color-mix(in srgb, ' + colorVar + ' 12%, transparent)', color: colorVar, borderRadius: 4, padding: '1px 6px', fontSize: 10.5, fontWeight: 600, whiteSpace: 'nowrap', lineHeight: '15px' }
+      return { background: 'color-mix(in srgb, ' + colorVar + ' 8%, transparent)', color: colorVar, borderRadius: 'var(--r-xs)', padding: '1px 6px', fontSize: 'var(--t-tiny)', fontWeight: 600, whiteSpace: 'nowrap', lineHeight: 'var(--lh-base)' }
     }
     // 面板动效（与 ev-panel 同族）：120–260ms ease-out-quart；reduced-motion 下置 0 关闭
     const EASE = 'cubic-bezier(.22,1,.36,1)'
@@ -356,7 +419,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     }
     // 实心胶囊（结论性标签）；大块面用装饰色，文字用深档（AA）
     function pill(text, color) {
-      return React.createElement('span', { style: { color: color, border: '1px solid ' + color, borderRadius: 999, padding: '1px 9px', fontSize: 11.5, fontWeight: 700, whiteSpace: 'nowrap' } }, text)
+      return React.createElement('span', { style: { color: color, border: '1px solid ' + color, borderRadius: 'var(--r-pill)', padding: '1px 9px', fontSize: 'var(--t-tiny)', fontWeight: 700, whiteSpace: 'nowrap' } }, text)
     }
     // 交接包的三个意图（与 `export_trace.py` / `import_trace.py` 的词表一致）与体积格式化。
     // 意图标签是**给人读的**：接收侧第一屏据此知道上家期待什么（继续定位 / 复核结论 / 转上游）。
@@ -375,14 +438,15 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       if (v >= 1024) return (v / 1024).toFixed(0) + ' KB'
       return v + ' B'
     }
-    function Dot({ color, size }) {
-      return React.createElement('span', { style: { width: size || 8, height: size || 8, borderRadius: 999, background: color, display: 'inline-block', flexShrink: 0 } })
+    // hollow：状态是「未知」时用空心点——「用户标了不跟了」与「这条记录没写状态」不能在列表里同形。
+    function Dot({ color, size, hollow }) {
+      return React.createElement('span', { style: { width: size || 8, height: size || 8, borderRadius: 'var(--r-pill)', background: hollow ? 'transparent' : color, border: hollow ? '1.5px solid ' + color : 'none', boxSizing: 'border-box', display: 'inline-block', flexShrink: 0 } })
     }
     function Chevron({ open, color }) {
-      return React.createElement('span', { style: { width: 0, height: 0, borderLeft: '5px solid ' + (color || T.text2), borderTop: '5px solid transparent', borderBottom: '5px solid transparent', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform .18s ease', display: 'inline-block', flexShrink: 0 } })
+      return React.createElement('span', { style: { width: 0, height: 0, borderLeft: '5px solid ' + (color || T.text2), borderTop: '5px solid transparent', borderBottom: '5px solid transparent', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform var(--m-base) var(--e-out)', display: 'inline-block', flexShrink: 0 } })
     }
     function SectionLabel({ children, color }) {
-      return React.createElement('div', { style: { fontSize: 12.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.08em', color: color || T.text2, marginBottom: 4 } }, children)
+      return React.createElement('div', { style: { fontSize: 'var(--t-tiny)', fontWeight: 700, color: color || T.text2, marginBottom: 4 } }, children)
     }
     // 指标行：value 可带"不可解读"标记——分母为 0 的指标不能安静地显示成 0
     // （gates.yaml 的 readability 判据，由 metrics_health.py 判定、host 透传到这里）。
@@ -404,14 +468,14 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const body = hasStruct
         ? React.createElement('div', { style: { minWidth: 0 } },
             React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 7, flexWrap: 'wrap' } },
-              React.createElement('span', { style: { color: T.text2, fontSize: 12.5 } }, label),
-              total !== undefined && total !== null ? React.createElement('span', { style: { fontSize: 16.5, fontWeight: 700, fontFamily: 'var(--font-mono)', color: warn ? T.warn : T.text, letterSpacing: '-.01em' } }, total) : null,
+              React.createElement('span', { style: { color: T.text2, fontSize: 'var(--t-sm)' } }, label),
+              total !== undefined && total !== null ? React.createElement('span', { style: { fontSize: 'var(--t-xl)', fontWeight: 700, fontFamily: 'var(--font-mono)', color: warn ? T.warn : T.text, letterSpacing: '-.01em' } }, total) : null,
               small ? React.createElement('span', { title: '样本量 <5', style: tinyBadge('var(--d-amber)') }, '小样本') : null,
               unreadable ? React.createElement('span', { title: unreadableWhy || '分母为 0：这个数不可解读', style: tinyBadge('var(--d-purple)') }, '不可解读') : null,
               warn && !unreadable ? React.createElement('span', { style: tinyBadge('var(--d-amber)') }, '超限') : null,
               StrengthBadge(strength),
             ),
-            sub ? React.createElement('div', { style: { color: T.text2, fontSize: 11.5, marginTop: 2, lineHeight: 1.45, wordBreak: 'break-word' } }, sub) : null,
+            sub ? React.createElement('div', { style: { color: T.text2, fontSize: 'var(--t-tiny)', marginTop: 2, lineHeight: 'var(--lh-base)', wordBreak: 'break-word' } }, sub) : null,
             node || null,
           )
         : React.createElement(React.Fragment, null,
@@ -423,7 +487,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             ),
             React.createElement('span', { style: { color: warn ? T.warn : (unreadable ? T.text2 : T.text), fontWeight: 600, textAlign: 'right', wordBreak: 'break-word' } }, value),
           )
-      return React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 8px', background: T.bg2, borderRadius: 7, fontSize: 13.5, alignItems: hasStruct ? 'center' : 'center', opacity: unreadable ? 0.72 : 1 } },
+      return React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 8, padding: '4px 8px', background: T.bg2, borderRadius: 'var(--r-sm)', fontSize: 'var(--t-md)', alignItems: hasStruct ? 'center' : 'center', opacity: unreadable ? 0.72 : 1 } },
         hasStruct ? React.createElement('div', { style: { display: 'flex', gap: 9, alignItems: 'center', width: '100%' } }, React.createElement(Dot, { color: warn ? T.warn : (unreadable ? 'var(--acc-purple)' : 'var(--acc-green)') }), body) : body,
       )
     }
@@ -478,19 +542,32 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     }
 
     function mdNode(b, key) {
-      const mono = { fontFamily: 'var(--font-mono)', fontSize: 12.5, background: T.bg, border: '1px solid ' + T.border, borderRadius: 8, padding: '8px 10px', color: T.text, lineHeight: 1.6, margin: '6px 0' }
+      const mono = { fontFamily: 'var(--font-mono)', fontSize: 'var(--t-sm)', background: T.bg, border: '1px solid ' + T.border, borderRadius: 'var(--r-sm)', padding: '8px 10px', color: T.text, lineHeight: 'var(--lh-base)', margin: '6px 0' }
       if (b.kind === 'h') {
-        return React.createElement('div', { key: key, style: { fontWeight: 700, fontSize: b.level <= 2 ? 15 : 14.5, color: T.text, margin: b.level <= 2 ? '12px 0 6px' : '8px 0 4px', paddingBottom: b.level === 2 ? 4 : 0, borderBottom: b.level === 2 ? '1px solid var(--hair)' : 'none' } }, b.text)
+        return React.createElement('div', { key: key, style: { fontWeight: 700, fontSize: b.level <= 2 ? 'var(--t-lg)' : 'var(--t-base)', color: T.text, margin: b.level <= 2 ? '12px 0 6px' : '8px 0 4px', paddingBottom: b.level === 2 ? 4 : 0, borderBottom: b.level === 2 ? '1px solid var(--hair)' : 'none' } }, b.text)
       }
       if (b.kind === 'code') return React.createElement('pre', { key: key, style: { ...mono, whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: 320, overflowY: 'auto' } }, b.text)
-      if (b.kind === 'table') return React.createElement('pre', { key: key, style: { ...mono, whiteSpace: 'pre', overflowX: 'auto' } }, b.text)
+      if (b.kind === 'table') {
+        // 源文里的 | 表格没有 padding，中英双宽再错一层——按 cell 切开用 grid 排，才对得齐。
+        const rows = String(b.text || '').split('\n').map(l => l.trim()).filter(Boolean)
+          .map(l => l.replace(/^\|/, '').replace(/\|$/, '').split(/(?<!\\)\|/).map(c => c.trim().replace(/\\\|/g, '|')))
+          .filter(cells => !cells.every(c => /^:?-{2,}:?$/.test(c) || c === ''))
+        if (!rows.length) return null
+        const cols = Math.max.apply(null, rows.map(r => r.length))
+        return React.createElement('div', { key: key, style: { display: 'grid', gridTemplateColumns: 'repeat(' + cols + ',minmax(0,1fr))', border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', overflow: 'hidden', margin: '6px 0' } },
+          rows.map((cells, ri) => React.createElement('div', { key: ri, style: { display: 'contents' } },
+            cells.concat(Array(Math.max(0, cols - cells.length)).fill('')).map((c, ci) => React.createElement('div', {
+              key: ci,
+              style: { padding: '5px 8px', fontSize: 'var(--t-sm)', lineHeight: 'var(--lh-base)', borderTop: ri === 0 ? 'none' : '1px solid var(--hair)', background: ri === 0 ? T.bg2 : 'transparent', fontWeight: ri === 0 ? 700 : 400, color: ri === 0 ? T.text2 : T.text, wordBreak: 'break-word', minWidth: 0 },
+            }, c)))))
+      }
       if (b.kind === 'ul') {
         return React.createElement('div', { key: key, style: { margin: '4px 0 4px 2px' } },
-          b.items.map((it, j) => React.createElement('div', { key: j, style: { display: 'flex', gap: 6, fontSize: 13.5, lineHeight: 1.75, color: T.text } },
+          b.items.map((it, j) => React.createElement('div', { key: j, style: { display: 'flex', gap: 6, fontSize: 'var(--t-md)', lineHeight: 'var(--lh-base)', color: T.text } },
             React.createElement('span', { style: { color: T.text2, flexShrink: 0 } }, '·'),
             React.createElement('span', { style: { minWidth: 0, wordBreak: 'break-word' } }, it.replace(/^\s*([-*+]|\d+\.)\s+/, '')))))
       }
-      return React.createElement('div', { key: key, style: { fontSize: 13.5, lineHeight: 1.75, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: '4px 0' } }, b.text)
+      return React.createElement('div', { key: key, style: { fontSize: 'var(--t-md)', lineHeight: 'var(--lh-base)', color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: '4px 0' } }, b.text)
     }
 
     // 单节渲染上限（字符）：报告最长的一节可达上万字，全铺开会把卡片撑到没法读。
@@ -500,8 +577,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     function ReportViewer({ state, path, onOpen, opening, section, setSection }) {
       const [copied, setCopied] = React.useState(null)
       if (!state) return null
-      if (state.loading) return React.createElement('div', { style: { marginBottom: 10, color: T.text2, fontSize: 13.5 } }, '读取报告…')
-      if (state.error) return React.createElement('div', { style: { marginBottom: 10, color: T.warn, fontSize: 13.5 } }, '报告读不到：' + state.error)
+      if (state.loading) return React.createElement('div', { style: { marginBottom: 10 } },
+        [0, 1, 2].map(i => React.createElement('div', { key: i, className: 'sleu-skel', style: { height: 18, marginBottom: 6 } })))
+      if (state.error) return React.createElement('div', { style: { marginBottom: 10, color: T.warn, fontSize: 'var(--t-md)' } }, '报告读不到：' + state.error)
       const blocks = mdBlocks(state.text)
       const heads = []
       blocks.forEach((b, i) => { if (b.kind === 'h' && b.level === 2) heads.push({ i: i, text: b.text }) })
@@ -525,23 +603,23 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       }
       const shownBlocks = body.slice(0, cut)
       const hidden = body.length - shownBlocks.length
-      return React.createElement('div', { style: { marginBottom: 12, border: '1px solid ' + T.border, borderRadius: 9, background: T.bg, overflow: 'hidden' } },
+      return React.createElement('div', { style: { marginBottom: 12, border: '1px solid ' + T.border, borderRadius: 'var(--r-md)', background: T.bg, overflow: 'hidden' } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: T.bg2, borderBottom: '1px solid ' + T.border, flexWrap: 'wrap' } },
-          React.createElement('span', { style: { fontWeight: 700, fontSize: 13.5, color: T.text } }, '定位报告'),
-          React.createElement('span', { title: path, className: 'sleu-mono', style: { color: T.text2, fontSize: 11.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 } }, path),
-          React.createElement('span', { style: { color: T.text2, fontSize: 11.5 } }, state.chars + ' 字' + (state.truncated ? '（已截断，看全文请打开文件）' : '')),
-          React.createElement('button', { type: 'button', onClick: () => copyText(state.text).then(ok => setCopied(ok ? 'y' : 'n')), style: copied === 'y' ? btnSuccess : btnGhost, title: '复制报告全文（Markdown），可直接发给客户或回贴上游' }, copied === 'y' ? '已复制全文' : '复制全文'),
+          React.createElement('span', { style: { fontWeight: 700, fontSize: 'var(--t-md)', color: T.text } }, '定位报告'),
+          React.createElement('span', { title: path, className: 'sleu-mono', style: { color: T.text2, fontSize: 'var(--t-tiny)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 } }, path),
+          React.createElement('span', { style: { color: T.text2, fontSize: 'var(--t-tiny)' } }, state.chars + ' 字' + (state.truncated ? '（已截断，看全文请打开文件）' : '')),
+          React.createElement('button', { type: 'button', onClick: () => copyText(state.text).then(ok => setCopied(ok ? 'y' : 'n')), style: copied === 'y' ? btnSuccess : btnGhost, title: '复制报告全文（Markdown），可直接发给客户或回贴上游' }, copied === 'y' ? '已复制全文' : (copied === 'n' ? '复制失败' : '复制全文')),
           React.createElement('button', { type: 'button', onClick: onOpen, style: btnGhost }, opening ? '打开中…' : '打开文件'),
         ),
         heads.length ? React.createElement('div', { style: { display: 'flex', gap: 5, flexWrap: 'wrap', padding: '8px 10px 0' } },
           heads.map(h => React.createElement('button', {
             key: h.i, type: 'button', onClick: () => setSection(h.i),
-            style: (h.i === secStart) ? { ...btnPrimary, padding: '2px 9px', borderRadius: 999, fontSize: 11.5 } : { ...btnGhost, padding: '2px 9px', borderRadius: 999, fontSize: 11.5 },
+            style: (h.i === secStart) ? { ...btnPrimary, padding: '2px 9px', borderRadius: 'var(--r-pill)', fontSize: 'var(--t-tiny)' } : { ...btnGhost, padding: '2px 9px', borderRadius: 'var(--r-pill)', fontSize: 'var(--t-tiny)' },
           }, h.text)),
         ) : null,
         React.createElement('div', { style: { padding: '4px 12px 12px', maxHeight: 620, overflowY: 'auto' } },
           shownBlocks.map((b, i) => mdNode(b, i)),
-          hidden > 0 ? React.createElement('div', { style: { marginTop: 6, color: T.text2, fontSize: 12.5 } }, '本节还有 ' + hidden + ' 块未渲染（超单节显示上限）——看全文请用「打开文件」。') : null,
+          hidden > 0 ? React.createElement('div', { style: { marginTop: 6, color: T.text2, fontSize: 'var(--t-sm)' } }, '本节还有 ' + hidden + ' 块未渲染（超单节显示上限）——看全文请用「打开文件」。') : null,
         ),
       )
     }
@@ -655,7 +733,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     }
     function msText(ms) {
       if (typeof ms !== 'number' || !isFinite(ms)) return null
-      if (ms >= 1000) return (ms / 1000).toFixed(ms >= 10000 ? 0 : 1) + ' s'
+      if (ms >= 1000) return (ms / 1000).toFixed(1) + ' s'
       return ms + ' ms'
     }
     // 数据格：值为 null 表示读端拿不到这一格 → 写「本次没记」，不写 0。
@@ -667,17 +745,17 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         React.createElement('div', { style: { color: T.text2, fontSize: 'var(--t-tiny)' } }, label),
         React.createElement('div', {
           style: {
-            fontSize: 'var(--t-md)', lineHeight: 1.6, wordBreak: 'break-word',
+            fontSize: 'var(--t-md)', lineHeight: 'var(--lh-base)', wordBreak: 'break-word',
             color: missing ? (missingText === UNREADABLE ? 'var(--d-purple)' : T.text2) : (tone === 'warn' ? T.warn : T.text),
             fontFamily: mono && !missing ? 'var(--font-mono)' : 'inherit',
           },
         }, missing ? (missingText || NOT_RECORDED) : value),
-        note ? React.createElement('div', { style: { color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 1.5 } }, note) : null,
+        note ? React.createElement('div', { style: { color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 'var(--lh-base)' } }, note) : null,
       )
     }
     // 五块与累计面板共用的块壳：一行块标题 + 可换行的说明 + 内容
     function Block({ title, accent, right, children }) {
-      return React.createElement('div', { style: { marginTop: 10, border: '1px solid ' + T.border, borderRadius: 9, background: T.bg, overflow: 'hidden' } },
+      return React.createElement('div', { style: { marginTop: 10, border: '1px solid ' + T.border, borderRadius: 'var(--r-md)', background: T.bg, overflow: 'hidden' } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: T.bg2, flexWrap: 'wrap' } },
           React.createElement('span', { style: { width: 3, height: 13, borderRadius: 2, background: accent || 'var(--acc-blue)', display: 'inline-block' } }),
           React.createElement('span', { style: { fontWeight: 700, fontSize: 'var(--t-md)' } }, title),
@@ -686,19 +764,28 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         React.createElement('div', { style: { padding: '6px 10px 9px' } }, children),
       )
     }
+    // 统一的折叠块：标题条 + 箭头 + 可选提示。此前各处的"可展开"只是一枚 chip，
+    // 读不出它是开关；套娃（details 里再 details）也来自各块各自加壳。
+    function Fold({ title, hint, children, compact }) {
+      return React.createElement('details', { className: compact ? 'sleu-fold sleu-fold-compact' : 'sleu-fold' },
+        React.createElement('summary', null,
+          React.createElement('span', null, title),
+          hint ? React.createElement('span', { style: { color: T.text2, fontWeight: 400, fontSize: 'var(--t-tiny)' } }, hint) : null),
+        React.createElement('div', { className: 'sleu-fold-body' }, children))
+    }
     function LineRow({ label, children, title }) {
       return React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 7, marginTop: 4, minWidth: 0 } },
-        React.createElement('span', { style: { color: T.text2, fontSize: 'var(--t-tiny)', minWidth: 64, flexShrink: 0 } }, label),
-        React.createElement('span', { title: title || '', style: { flex: 1, minWidth: 0, fontSize: 'var(--t-sm)', lineHeight: 1.65, wordBreak: 'break-word', color: T.text } }, children),
+        React.createElement('span', { style: { color: T.text2, fontSize: 'var(--t-tiny)', minWidth: 64, flexShrink: 0, whiteSpace: 'nowrap' } }, label),
+        React.createElement('span', { title: title || '', style: { flex: 1, minWidth: 0, fontSize: 'var(--t-sm)', lineHeight: 'var(--lh-base)', wordBreak: 'break-word', color: T.text } }, children),
       )
     }
     // 缺件卡：读不到生成物/记录时**只报缺哪个文件与重建命令**，不拿别的数据顶上。
     function MissingProduct({ what, path, rebuild, detail, note }) {
-      return React.createElement('div', { style: { padding: '8px 10px', background: 'var(--tint-amber)', border: '1px solid ' + T.warn, borderRadius: 8, fontSize: 'var(--t-sm)', lineHeight: 1.65, color: T.text } },
+      return React.createElement('div', { style: { padding: '8px 10px', background: 'var(--tint-amber)', border: '1px solid ' + T.warn, borderRadius: 'var(--r-sm)', fontSize: 'var(--t-sm)', lineHeight: 'var(--lh-base)', color: T.text } },
         React.createElement('div', { style: { fontWeight: 700, color: T.warn } }, what + '读不到，这一块不可解读'),
         path ? React.createElement('div', { style: { marginTop: 3, color: T.text2 } }, '缺的是：', React.createElement('code', { className: 'sleu-mono', style: { userSelect: 'all' } }, path)) : null,
         detail ? React.createElement('div', { style: { marginTop: 3, color: T.text2 } }, detail) : null,
-        rebuild ? React.createElement('code', { style: { display: 'block', marginTop: 5, userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 6, padding: '4px 7px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all' } }, rebuild) : null,
+        rebuild ? React.createElement('code', { style: { display: 'block', marginTop: 5, userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-xs)', padding: '4px 7px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', wordBreak: 'break-all' } }, rebuild) : null,
         React.createElement('div', { style: { marginTop: 3, color: T.text2, fontSize: 'var(--t-tiny)' } },
           note || '面板不解析源文件自行求和：这条读数只从生成物读。'),
       )
@@ -757,7 +844,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     }
 
     // 收起态一行的列宽：列头与每一行共用这一份，改一处就同时改两边（分开写必然错位）。
-    const ROW_COLS = '78px minmax(0,1fr) 150px 64px 66px 62px 62px 20px'
+    // 列宽：状态 92 / 会话 1fr / 框架·平台 118 / 事件 58 / 耗时 58 / token 58 / 箭头 16。
+    // 固定列合计 400（旧 502），窄面板下 1fr 不再被压成 0；火花线列已移出列表。
+    const ROW_COLS = 'var(--row-cols)'
 
     // 指标带：展开区最上面那一条，横贯整行。
     // 为什么横着铺而不放侧栏：六步成本天生是横向比较（哪一步最高），竖排要上下扫；
@@ -783,7 +872,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       return React.createElement('div', null,
         React.createElement('div', { style: { display: 'grid', gap: 6, maxHeight: (!open && long) ? 78 : 'none', overflow: 'hidden' } },
           parts.map((t, i) => React.createElement('p', {
-            key: i, style: { margin: 0, fontSize: 'var(--t-md)', lineHeight: 1.75, color: T.text, wordBreak: 'break-word' },
+            key: i, style: { margin: 0, fontSize: 'var(--t-md)', lineHeight: 'var(--lh-base)', color: T.text, wordBreak: 'break-word' },
           }, t))),
         long ? React.createElement('button', {
           type: 'button', onClick: () => setOpen(!open),
@@ -806,8 +895,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const total = cost.reduce((a, r) => a + (r.ms || 0), 0)
       const worst = cost.slice().sort((a, b) => (b.ms || 0) - (a.ms || 0))[0]
       const head = (label, note) => React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8, minWidth: 0 } },
-        React.createElement('span', { style: { fontSize: 'var(--t-md2)', letterSpacing: '.12em', textTransform: 'uppercase', color: T.text2, whiteSpace: 'nowrap' } }, label),
-        note ? React.createElement('span', { style: { fontSize: 'var(--t-tiny)', color: T.text2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, note) : null)
+        React.createElement('span', { style: { fontSize: 'var(--t-md2)', color: T.text2, whiteSpace: 'nowrap' } }, label),
+        note ? React.createElement('span', { title: note, style: { fontSize: 'var(--t-tiny)', color: T.text2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 } }, note) : null)
 
       const bars = React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, alignItems: 'end', height: 78 } },
         [1, 2, 3, 4, 5, 6].map(n => {
@@ -823,12 +912,12 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               + '\n调用 ' + ((r && r.calls) || 0) + ' 次' + (tok ? '\ntoken ' + thousands(tok) : '')
               + ((r && r.tools && r.tools.length) ? '\n工具 ' + r.tools.slice(0, 6).join(' / ') : '')
           return React.createElement('div', { key: n, title: tip, style: { display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%', gap: 4 } },
-            React.createElement('div', { style: { height: '100%', display: 'flex', alignItems: 'flex-end', borderRadius: 3, overflow: 'hidden',
+            React.createElement('div', { style: { height: '100%', display: 'flex', alignItems: 'flex-end', borderRadius: 'var(--r-xs)', overflow: 'hidden',
               background: ms === null ? 'transparent' : 'color-mix(in srgb, ' + T.warn + ' 10%, transparent)',
               border: ms === null ? '1px dashed ' + T.border : 'none' } },
-              ms ? React.createElement('i', { style: { display: 'block', width: '100%', height: h + '%', background: 'var(--acc-amber, ' + T.warn + ')', borderRadius: 3 } }) : null),
+              ms ? React.createElement('i', { style: { display: 'block', width: '100%', height: h + '%', background: 'var(--acc-amber, ' + T.warn + ')', borderRadius: 'var(--r-xs)' } }) : null),
             React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 3, minWidth: 0 } },
-              React.createElement('span', { style: { fontSize: 'var(--t-md2)', color: T.text2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, n + ' ' + STEP_SHORT[n]),
+              React.createElement('span', { title: STEP_SHORT[n], style: { fontSize: 'var(--t-md2)', color: T.text2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, n + ' ' + STEP_SHORT[n]),
               React.createElement('span', { className: 'sleu-num', style: { marginLeft: 'auto', fontSize: 'var(--t-md2)', color: T.text, whiteSpace: 'nowrap' } }, ms === null ? '—' : msText(ms))))
         }))
 
@@ -848,7 +937,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         React.createElement('div', { style: { display: 'flex', gap: 6, alignItems: 'flex-end', flexWrap: 'wrap' } },
           chip('候选', cand), arrow('a1'), chip('取全文', loaded), arrow('a2'), chip('排除', excluded), arrow('a3'),
           chip('命中', hit, hit ? 'var(--acc-green, ' + T.success + ')' : T.text2)),
-        React.createElement('div', { style: { marginTop: 8, fontSize: 'var(--t-tiny)', color: T.text2, lineHeight: 1.5 } }, verdict))
+        React.createElement('div', { style: { marginTop: 8, fontSize: 'var(--t-tiny)', color: T.text2, lineHeight: 'var(--lh-base)' } }, verdict))
 
       const tk = (rec && rec.tokens) ? rec.tokens : null
       const sum = tk ? (tk.uncached || 0) + (tk.cache_read || 0) + (tk.cache_write || 0) + (tk.out || 0) : 0
@@ -862,7 +951,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         React.createElement('div', { style: { minWidth: 0 } },
           head('每步耗时', total ? ('合计 ' + msText(total) + (worst && worst.ms ? ' · 最长是 ' + worst.step + ' ' + STEP_SHORT[worst.step] : '')) : (rec ? '' : '本机明细未生成')),
           bars,
-          React.createElement('div', { style: { marginTop: 8, fontSize: 'var(--t-md2)', color: T.text2, lineHeight: 1.45 } },
+          React.createElement('div', { style: { marginTop: 8, fontSize: 'var(--t-md2)', color: T.text2, lineHeight: 'var(--lh-base)' } },
             '窗口内工具调用之和，不含模型思考；悬停看每步的次数、token 与工具'),
           // 按工具拆开：只给一个总数，读者判断不出"这几秒该裁哪个动作"。
           // 默认收起——它是"要继续查"时才展开的那一层，不占首屏。
@@ -873,12 +962,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               for (const t of (r.byTool || [])) if (t.ms || t.pending) rows.push([r.step, t.tool, t, r])
             }
             if (!rows.length) return null
-            return React.createElement('details', { style: { marginTop: 6 } },
-              React.createElement('summary', { style: { cursor: 'pointer', fontSize: 'var(--t-tiny)', color: T.brand, padding: '2px 0' } }, '按工具拆开'),
-              React.createElement('div', { style: { marginTop: 4, display: 'grid', gap: 2 } },
+            return React.createElement(Fold, { compact: true, title: '按工具拆开', hint: '每一步的分工具耗时' },
+              React.createElement('div', { style: { display: 'grid', gap: 2 } },
                 rows.map(([step, label, t, r], i) => React.createElement('div', { key: i, style: { display: 'grid', gridTemplateColumns: '26px 1fr auto', gap: 8, alignItems: 'baseline', fontSize: 'var(--t-md2)' } },
                   React.createElement('span', { style: { color: T.text2 } }, '步 ' + step),
-                  React.createElement('span', { style: { color: T.text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, label),
+                  React.createElement('span', { title: label, style: { color: T.text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, label),
                   React.createElement('span', { className: 'sleu-num', style: { color: T.text, whiteSpace: 'nowrap' } },
                     t ? ((t.ms || 0) + ' ms · ' + t.calls + ' 次' + (t.pending ? ' · ' + t.pending + ' 未返回' : '')) : '')))))
           })()),
@@ -897,17 +985,22 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             tokCell('输出', tk ? tk.out : 0, 'var(--acc-red, ' + T.error + ')'))))
     }
 
-    function SessionCard(props) {
+    const SessionCard = React.memo(function SessionCardInner(props) {
       const s = props.session
       const ownerSessionId = props.sessionId
       // 批量闭环多选：只在「待升格」筛选下出现（勾选只在那一屏有意义）。
       const selectable = !!props.selectable
       const selected = !!props.selected
-      const onToggle = props.onToggle
+      const onToggleFile = props.onToggleFile
       const [open, setOpen] = React.useState(false)
       const [steps, setSteps] = React.useState(null)
+      const [detailAt, setDetailAt] = React.useState(0)   // 最近一次取到轨迹的时间（缓存新鲜度）
       const [showCmd, setShowCmd] = React.useState(false)
+      // 动作组（收尾 / 交接包）同一时刻只开一个，且**在按钮行下方**展开：
+      // 早先把它们做成行内 <details>，展开时同一行的兄弟按钮会被挤走（实测反馈）。
+      const [menuOpen, setMenuOpen] = React.useState(null)
       const [copied, setCopied] = React.useState(null)
+      const [copyFailKey, setCopyFailKey] = React.useState(null)
       const [evOpen, setEvOpen] = React.useState(null)
       const [tcOpen, setTcOpen] = React.useState(null)   // 关联面：展开哪一步的工具调用清单
       const [opening, setOpening] = React.useState(null)
@@ -952,19 +1045,40 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // "诊断还没收尾"与"这单本身没有结论"。resolved 的单不提示（已闭环，结论在 out 口述里）。
       // 有结论步时不再提示：原先只看 status，结论步存在也照喊"还没有定位结论"。
       const noConclusionHint = (steps && steps.list && steps.list.length && shownIdx.at < 0 && s.status !== 'resolved')
-        ? React.createElement('div', { style: { marginTop: 12, padding: 8, border: '1px solid ' + T.border, borderRadius: 9, fontSize: 12.5, color: T.text2 } },
+        ? React.createElement('div', { style: { marginTop: 12, padding: 8, border: '1px solid ' + T.border, borderRadius: 'var(--r-md)', fontSize: 'var(--t-sm)', color: T.text2 } },
             '本单还没有定位结论（轨迹末条是过程记录）。点「看完整轨迹」看全部事件，或等诊断收尾时补一条结论。')
         : null
 
-      function toggle() {
-        if (open) { setOpen(false); setSteps(null); setEvOpen(null); setTcOpen(null); return }
-        setOpen(true)
-        setSteps({ loading: true })
+      // 取轨迹详情。quiet = true 时**不显示骨架**：收起再展开先用上次结果渲染，再后台刷新，
+      // 避免每次展开都"骨架闪一下 → 长高一次"（一次点击两段跳，实测反馈）。
+      function loadDetail(quiet) {
+        if (!quiet) setSteps({ loading: true })
         host.call('ascend-traces-detail', { sessionId: ownerSessionId || null, traceFile: s.file })
-          .then(r => setSteps({ loading: false, list: r && r.ok ? r.steps : [], summary: r && r.summary, refCount: r && r.refCount, sedimented: r && r.sedimented, sedimentCandidates: r && r.sedimentCandidates, conclusionIndex: r && typeof r.conclusionIndex === 'number' ? r.conclusionIndex : -1, parseAnomaly: r && r.parseAnomaly, record: r && r.record, recordPath: r && r.recordPath, recordRebuild: r && r.recordRebuild, recordMissing: r && r.recordMissing, recordError: r && r.recordError, recordMissingProduct: r && r.recordMissingProduct, caseMeta: r && r.caseMeta, sedimentMeta: r && r.sedimentMeta, stopReason: r && r.stopReason, error: r && r.error }))
+          .then(r => { setDetailAt(Date.now()); setSteps({ loading: false, list: r && r.ok ? r.steps : [], summary: r && r.summary, refCount: r && r.refCount, sedimented: r && r.sedimented, sedimentCandidates: r && r.sedimentCandidates, conclusionIndex: r && typeof r.conclusionIndex === 'number' ? r.conclusionIndex : -1, parseAnomaly: r && r.parseAnomaly, record: r && r.record, recordPath: r && r.recordPath, recordRebuild: r && r.recordRebuild, recordMissing: r && r.recordMissing, recordError: r && r.recordError, recordMissingProduct: r && r.recordMissingProduct, caseMeta: r && r.caseMeta, sedimentMeta: r && r.sedimentMeta, stopReason: r && r.stopReason, error: r && r.error }) })
           .catch(e => setSteps({ loading: false, list: [], error: 'RPC 失败: ' + String(e && e.message || e) }))
       }
-      function doCopy(txt, key) { copyText(txt).then(ok => setCopied(ok ? key : 'fail')) }
+      function toggle() {
+        // 收起时**保留** steps：下次展开直接用缓存渲染，再后台刷新（见 loadDetail 的 quiet）。
+        if (open) { setOpen(false); setEvOpen(null); setTcOpen(null); return }
+        setOpen(true)
+        // 缓存 60 秒内不重取：每次展开都发 RPC，回来的 setSteps 正好落在动画中途，
+        // 整棵展开子树重渲染一次——这是"点开一顿"的主要来源。
+        const cached = !!(steps && steps.list)
+        const fresh = cached && (Date.now() - detailAt < 60000)
+        if (fresh) return
+        if (!cached) { loadDetail(false); return }
+        // 过期缓存：先让动画跑完（180ms）再后台刷新，避免中途重渲染。
+        if (timer && typeof timer.timeout === 'function') timer.timeout(() => loadDetail(true), 200)
+        else loadDetail(true)
+      }
+      // 复制反馈：按目标记失败（不再把任意一处失败渲染成全局 'fail'），2 秒后自己复位。
+      function doCopy(txt, key) {
+        copyText(txt).then(ok => {
+          setCopied(ok ? key : null)
+          setCopyFailKey(ok ? null : key)
+          if (timer && typeof timer.timeout === 'function') timer.timeout(() => { setCopied(null); setCopyFailKey(null) }, 2000)
+        })
+      }
       function openFile(f) {
         setOpening(f)
         setOpenErr(null)
@@ -996,15 +1110,15 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         const copyBtn = React.createElement('button', {
           type: 'button', className: 'sleu-chip', title: f,
           onClick: () => doCopy(f, 'link:' + f),
-          style: { background: 'transparent', border: '1px solid ' + T.border, borderRadius: 999, padding: '0 8px', fontSize: 11.5, cursor: 'pointer', color: T.brand, fontFamily: 'var(--font-mono)' },
+          style: { background: 'transparent', border: '1px solid ' + T.border, borderRadius: 'var(--r-pill)', padding: '0 8px', fontSize: 'var(--t-tiny)', cursor: 'pointer', color: T.brand, fontFamily: 'var(--font-mono)' },
         }, copied === 'link:' + f ? '已复制' : '复制链接')
         if (openErr && openErr.at === f) {
           return React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', minWidth: 0 } },
-            React.createElement('span', { style: { color: T.warn, fontSize: 11.5 } }, openErr.msg), copyBtn)
+            React.createElement('span', { style: { color: T.warn, fontSize: 'var(--t-tiny)' } }, openErr.msg), copyBtn)
         }
         if (openDone && openDone.at === f) {
           return React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
-            React.createElement('span', { style: { color: T.success, fontSize: 11.5 } },
+            React.createElement('span', { style: { color: T.success, fontSize: 'var(--t-tiny)' } },
               openDone.via ? '已交给浏览器（' + openDone.via + '）' : '已交给浏览器'), copyBtn)
         }
         return null
@@ -1054,14 +1168,14 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const refCands = cands.filter(c => c.kind === 'reference')
       const caseCands = cands.filter(c => c.kind && c.kind !== 'reference')
       const sedLabel = (text, tip) => React.createElement('span',
-        { title: tip || '', style: { color: T.text2, fontSize: 12.5, minWidth: 52, flexShrink: 0 } }, text)
+        { title: tip || '', style: { color: T.text2, fontSize: 'var(--t-sm)', minWidth: 52, flexShrink: 0 } }, text)
       // 候选行：kind 徽标 + 一句话（超长省略，全文在 title）；只有先验候选带独立入口。
       // key 用候选在 cands 里的**原下标**，避免过滤后错位。
       const candRow = (c, ci, withAction) => {
         const key = 'cand:' + ci
         return React.createElement('div', { key: key, style: { display: 'flex', alignItems: 'center', gap: 6, marginLeft: 60, marginTop: 5, minWidth: 0 } },
           React.createElement('span', { style: tinyBadge(c.kind === 'reference' ? 'var(--d-purple)' : 'var(--d-green)') }, c.kind || '?'),
-          React.createElement('span', { title: c.summary || '', style: { flex: 1, minWidth: 0, color: T.text, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, c.summary || '(无摘要)'),
+          React.createElement('span', { title: c.summary || '', style: { flex: 1, minWidth: 0, color: T.text, fontSize: 'var(--t-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, c.summary || '(无摘要)'),
           withAction ? React.createElement('button', {
             type: 'button',
             onClick: () => { setSedCmd(sedCmd === key ? null : key); setCopied(null) },
@@ -1180,7 +1294,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               r.rework ? React.createElement('span', { style: tinyBadge('var(--d-amber)'), title: '返工标记：同一个动作在本单出现多次（判据只有这一条）' }, '重复 ' + r.count + ' 次') : null,
             )))
           : React.createElement('div', { style: { color: T.text2, fontSize: 'var(--t-sm)' } }, '轨迹里没有带动作名的事件'),
-        React.createElement('div', { style: { marginTop: 5, color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 1.55 } },
+        React.createElement('div', { style: { marginTop: 5, color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 'var(--lh-base)' } },
           '同批并行按事件的 parallel_group 分组；返工标记按"同一动作在本单出现多次"判。'
           + '每步的耗时占比这一格没有产出方：会话日志里的工具耗时按 harness 的 step 计数，与轨迹的 step 不是同一套编号，'
           + '两者直接关联会把耗时挂到别的步骤上。'),
@@ -1193,10 +1307,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const d5HasCandEvents = (steps && steps.list ? steps.list : []).some(st => st && (
         (st.candidates && st.candidates.length) || (st.considered && st.considered.length)
         || (st.excluded && st.excluded.length)))
-      const d5Retrieval = React.createElement(Block, {
-        title: '检索', accent: 'var(--acc-purple)',
-        right: React.createElement('span', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } }, '轨迹里的候选与先验事件'),
-      },
+      const d5Retrieval = React.createElement(React.Fragment, null,
         d5HasCandEvents
           ? React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '2px 14px' } },
               React.createElement(Cell, { label: '展开候选', value: d5Retr.considered.length ? d5Retr.considered.length + ' 条' : '0 条' }),
@@ -1221,18 +1332,14 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             const keys = Object.keys(p)
             return keys.length ? keys.map(k => (PURPOSE_LABELS[k] || k) + ' ' + p[k]).join(' · ') : NOT_RECORDED
           })()) : null,
-        React.createElement('div', { style: { marginTop: 5, color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 1.55 } },
+        React.createElement('div', { style: { marginTop: 5, color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 'var(--lh-base)' } },
           '展开 = 筛选时看过的候选（considered_candidates）；载入正文 = load_full 取过全文的候选；'
           + '排除 = excluded_cases。三者是同一批候选的三个状态。'),
       )
       const d5Tok = d5Rec && d5Rec.tokens ? d5Rec.tokens : null
       const d5Acct = d5Rec && d5Rec.indexRead ? d5Rec.indexRead : null
       const d5Slowest = d5Rec && d5Rec.toolSlowest ? d5Rec.toolSlowest : null
-      const d5Cost = React.createElement(Block, {
-        title: '成本', accent: 'var(--acc-amber)',
-        right: React.createElement('span', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
-          d5Rec ? '四类 token 与读入账来自本机明细' : '本机明细未生成'),
-      },
+      const d5Cost = React.createElement(React.Fragment, null,
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '2px 14px' } },
           TOKEN_LABELS.map(pair => React.createElement(Cell, {
             key: pair[0], label: pair[1],
@@ -1278,24 +1385,18 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               '四类 token 与逐次工具调用耗时（cost.tokens / tool_calls）',
               '一次诊断的读入账（cost.index_read_tok）',
             ].map((m, i) => React.createElement('div', {
-              key: i, style: { fontSize: 'var(--t-sm)', color: T.text2, lineHeight: 1.65, marginTop: 3 },
+              key: i, style: { fontSize: 'var(--t-sm)', color: T.text2, lineHeight: 'var(--lh-base)', marginTop: 3 },
             }, '· ' + m + '：只在单次诊断记录里，明细未生成时读不到')))
           : (d5Missing.length
               ? React.createElement('div', null, d5Missing.map((m, i) => React.createElement('div', {
-                  key: i, style: { fontSize: 'var(--t-sm)', color: T.text2, lineHeight: 1.65, marginTop: 3 },
+                  key: i, style: { fontSize: 'var(--t-sm)', color: T.text2, lineHeight: 'var(--lh-base)', marginTop: 3 },
                 }, '· ' + m)))
               : React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2 } }, '这一单该记的字段都有数据。')),
-        React.createElement('div', { style: { marginTop: 5, color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 1.55 } },
+        React.createElement('div', { style: { marginTop: 5, color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 'var(--lh-base)' } },
           '读数有值但读端算不出来的归「不可解读」，不列在这里。'),
       )
 
       // 检索明细：图上只有三个数，具体候选 id / 被排除的 / 先验三态与消费点在这里，默认收起。
-      const d5RetrievalCollapsed = (open && steps && steps.list && steps.list.length)
-        ? React.createElement('details', { style: { marginBottom: 10 } },
-            React.createElement('summary', { style: { cursor: 'pointer', fontSize: 'var(--t-sm)', color: T.text2, padding: '4px 0' } },
-              '检索明细（候选 id / 被排除的 / 先验三态与消费点）'),
-            d5Retrieval)
-        : null
 
       // 指标带 = 三张图（六步柱 / 检索漏斗 / token 条）。它替代了原来「各步」「检索」两块文字：
       // 那两块的信息被图吸收，重复才是密度高的根源。
@@ -1304,10 +1405,13 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         : null
       let body = null
       if (open) {
-        if (steps && steps.loading) body = React.createElement('div', null, reportBlock, React.createElement('div', { style: { color: T.text2, padding: 10 } }, '加载轨迹…'))
+        if (steps && steps.loading) body = React.createElement('div', { style: { padding: 10 } }, reportBlock,
+          React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 8, marginBottom: 12 } },
+            [0, 1, 2, 3].map(i => React.createElement('div', { key: i, className: 'sleu-skel', style: { height: 34 } }))),
+          [0, 1, 2].map(i => React.createElement('div', { key: 's' + i, className: 'sleu-skel', style: { height: 28, marginBottom: 8 } })))
         else if (steps && steps.list && steps.list.length) {
           body = React.createElement('div', null,
-            steps.summary ? React.createElement('div', { style: { marginBottom: 10, padding: 10, background: 'color-mix(in srgb, ' + T.brand + ' 6%, transparent)', border: '1px solid ' + T.border, borderRadius: 9 } },
+            steps.summary ? React.createElement('div', { style: { marginBottom: 10, padding: 10, background: 'color-mix(in srgb, ' + T.brand + ' 6%, transparent)', border: '1px solid ' + T.border, borderRadius: 'var(--r-md)' } },
               React.createElement(SectionLabel, { color: T.brand }, '问题背景'),
               React.createElement(SummaryText, { text: steps.summary }),
             ) : null,
@@ -1315,17 +1419,18 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             // 「各步」与指标带的六步柱是同一批数：柱图已经画了耗时与调用，再铺一遍只会互相矛盾
             // （旧版每行还写「耗时占比：本次没记」，紧接上方写着合计 10.0s）。
             // 「检索」保留，但折成明细——图给的是 展开→载入→命中 三个数，这里给的是具体 id 与先验三态。
-            d5RetrievalCollapsed,
-            d5Cost,
+            // 检索明细与成本沉成可展开块：这两块是回查用的，不该占首屏。
+            React.createElement(Fold, { title: '检索明细', hint: '候选 id / 被排除的 / 先验三态与消费点' }, d5Retrieval),
+            React.createElement(Fold, { title: '成本与 token', hint: d5Rec ? '四类 token、读入账、最慢一次' : '本机明细未生成' }, d5Cost),
             // —— 沉淀区：case 与先验候选**分家**（2026-09 重做，修两个实测误读）——
             // ① 引用计数不再贴在这里：`reference N 次` 是"用了几次"，与"沉淀了几条"无关，
             //    贴在沉淀块正上方正是误读的来源；它已移到轨迹标题行（那里才是它的出处）。
             // ② 两段各带自己的入口：case 段给 to-postmortem 指令，先验段每条给 to-reference 指令。
-            React.createElement('div', { style: { marginBottom: 10, border: '1px solid ' + T.border, borderRadius: 9, background: T.bg, overflow: 'hidden' } },
+            React.createElement('div', { style: { marginBottom: 10, border: '1px solid ' + T.border, borderRadius: 'var(--r-md)', background: T.bg, overflow: 'hidden' } },
               React.createElement('div', { style: { padding: '8px 10px' } },
                 React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
                   sedLabel('本单沉淀'),
-                  React.createElement('span', { style: { color: sedInfo.color, fontWeight: 600, fontSize: 12.5 } }, sedInfo.label),
+                  React.createElement('span', { style: { color: sedInfo.color, fontWeight: 600, fontSize: 'var(--t-sm)' } }, sedInfo.label),
                   sedState === 'none' ? React.createElement('button', {
                     type: 'button', onClick: () => { setSedCmd(sedCmd === 'case' ? null : 'case'); setCopied(null) },
                     style: btnPurple, title: '生成 to-postmortem 指令：复制后粘到对话',
@@ -1346,10 +1451,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 refCands.map(c => candRow(c, cands.indexOf(c), true)),
               ) : null,
               sedCmdText ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, padding: '0 10px 9px' } },
-                React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg2, border: '1px solid ' + T.border, borderRadius: 6, padding: '5px 8px', fontSize: 12.5, fontFamily: 'var(--font-mono)', color: T.text, wordBreak: 'break-word', lineHeight: '18px' } },
+                React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg2, border: '1px solid ' + T.border, borderRadius: 'var(--r-xs)', padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', color: T.text, wordBreak: 'break-word', lineHeight: 'var(--lh-base)' } },
                   sedCmdText),
-                React.createElement('button', { onClick: () => doCopy(sedCmdText, 'sed'), style: copied === 'fail' ? { ...btnRed, background: 'var(--d-red)' } : btnPurple },
-                  copied === 'sed' ? '已复制' : (copied === 'fail' ? '失败' : '复制')),
+                React.createElement('button', { onClick: () => doCopy(sedCmdText, 'sed'), style: copyFailKey === 'sed' ? btnRed : btnPurple },
+                  copied === 'sed' ? '已复制' : (copyFailKey === 'sed' ? '失败' : '复制')),
               ) : null,
             ),
             // 轨迹区：**人读视图（默认）** 只给"问题查到哪了"——记录维护类动作收起、推理不铺开、
@@ -1371,7 +1476,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               const moreSteps = shown.length - visible.length
               return React.createElement('div', null,
                 React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' } },
-                  React.createElement('span', { style: { fontSize: 12.5, color: T.text2 } },
+                  React.createElement('span', { style: { fontSize: 'var(--t-sm)', color: T.text2 } },
                     fullTrace
                       ? '完整轨迹（' + all.length + ' 条原始事件，含推理与记录维护动作）'
                       : ('诊断轨迹：' + shown.length + ' 步' + (anomaly ? '（可能不完整）' : '')
@@ -1380,7 +1485,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                   // 与卡上任何一块"沉淀"都不是一回事——放沉淀块旁边会被读成"reference 也沉淀了"。
                   steps.refCount > 0 ? React.createElement('span', {
                     title: 'trace 里取用先验知识的次数（reference_lookup 事件条数）——这是"用了几次"，不是"沉淀了几条"',
-                    style: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 11.5, color: T.text2 },
+                    style: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 },
                   },
                     React.createElement(Dot, { color: 'var(--acc-purple)' }),
                     '先验引用 ' + steps.refCount + ' 次') : null,
@@ -1390,7 +1495,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 // 轨迹解析没收下的行：**必须说出来**。少了事件而看不出来是最坏的一种——
                 // 读者会按上面那行"诊断轨迹：N 步"当成事实（实测症状：文件里 9 条、面板上 1 条，
                 // 文件本身完全正常）。这里给出成因与行号，让读者能自己去核对那几行。
-                anomaly ? React.createElement('div', { style: { marginBottom: 8, padding: '7px 10px', background: 'color-mix(in srgb, ' + T.warn + ' 10%, transparent)', border: '1px solid color-mix(in srgb, ' + T.warn + ' 45%, transparent)', borderRadius: 9, fontSize: 12.5, color: T.text, lineHeight: 1.65 } },
+                anomaly ? React.createElement('div', { style: { marginBottom: 8, padding: '7px 10px', background: 'color-mix(in srgb, ' + T.warn + ' 10%, transparent)', border: '1px solid color-mix(in srgb, ' + T.warn + ' 45%, transparent)', borderRadius: 'var(--r-md)', fontSize: 'var(--t-sm)', color: T.text, lineHeight: 'var(--lh-base)' } },
                   anomalyText(anomaly) + '。请核对这几行的缩进与引号。') : null,
                 // 渲染上限：单步 output/reason 各可到 3000 字、证据原文另有上限，一条长轨迹全铺开
                 // 会把卡片撑到没法读，所以列表自己滚（与报告区同一手法：maxHeight + overflowY）。
@@ -1421,12 +1526,12 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                   // 一个不能点，是读者最容易踩的误导——"填的是标签、描的是能点的"是一眼可分的规则。
                   const assocChip = (text, colorVar, title) => React.createElement('span', {
                     key: text, title: title || '',
-                    style: { background: 'color-mix(in srgb, ' + colorVar + ' 12%, transparent)', color: colorVar, borderRadius: 5, padding: '1px 7px', fontSize: 11.5, fontFamily: 'var(--font-mono)', fontWeight: 600, whiteSpace: 'nowrap' },
+                    style: { background: 'color-mix(in srgb, ' + colorVar + ' 12%, transparent)', color: colorVar, borderRadius: 'var(--r-xs)', padding: '1px 7px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', fontWeight: 600, whiteSpace: 'nowrap' },
                   }, text)
                   const assocRow = (key, label, children) => React.createElement('div', {
                     key: key, style: { display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap', marginTop: 5 },
                   },
-                    React.createElement('span', { style: { color: T.text2, fontSize: 11.5, minWidth: 28, flexShrink: 0 } }, label),
+                    React.createElement('span', { style: { color: T.text2, fontSize: 'var(--t-tiny)', minWidth: 28, flexShrink: 0 } }, label),
                     children)
                   const capped = (arr, n) => ({ head: arr.slice(0, n), rest: arr.length - n })
                   if (st.caseId) {
@@ -1437,42 +1542,42 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                     const c = capped(st.candidates, 6)
                     assocRows.push(assocRow('cand', '候选',
                       c.head.map(x => assocChip(x, T.text2, '本轮载入的候选 case'))
-                        .concat(c.rest > 0 ? [React.createElement('span', { key: 'more', style: { color: T.text2, fontSize: 11.5 } }, '等 ' + c.rest + ' 条')] : [])))
+                        .concat(c.rest > 0 ? [React.createElement('span', { key: 'more', style: { color: T.text2, fontSize: 'var(--t-tiny)' } }, '等 ' + c.rest + ' 条')] : [])))
                   }
                   if (st.action === 'external_lookup') {
                     const capLabel = CAPABILITY_LABELS[st.capability] || st.capability || '外部查证'
                     const outLabel = st.outcome ? ((REF_OUTCOME[st.outcome] || {}).label || st.outcome) : '未记结果'
                     assocRows.push(assocRow('ext', '外部', [
-                      assocChip(capLabel, 'var(--acc-purple)', '外部查证的能力面（trace 的 capability）'),
+                      assocChip(capLabel, 'var(--d-purple)', '外部查证的能力面（trace 的 capability）'),
                       assocChip('结果：' + outLabel, 'var(--d-gray, var(--c-gray))', 'trace 的 external_lookup.outcome：命中 / 查了没命中 / 没查（并写了理由）'),
                     ]))
                   }
                   if (st.refs && st.refs.length) {
                     assocRows.push(assocRow('refs', '先验',
                       (PURPOSE_LABELS[st.purpose]
-                        ? [React.createElement('span', { key: 'p', style: { color: T.text2, fontSize: 11.5 } }, PURPOSE_LABELS[st.purpose])]
+                        ? [React.createElement('span', { key: 'p', style: { color: T.text2, fontSize: 'var(--t-tiny)' } }, PURPOSE_LABELS[st.purpose])]
                         : []).concat(st.refs.map(r => assocChip(r, 'var(--d-purple)', '本轮取用的先验词条 id（可在 references/ 里按它回查）')))))
                   }
                   // 甄别理由：**这一行是全块最值钱的**——它区分"命中"与"有用"
                   // （实测例："命中但判为不同族：越界 vs 超时的 errorStr 不同"）。
                   if (st.note) {
                     assocRows.push(React.createElement('div', { key: 'note', style: { display: 'flex', alignItems: 'baseline', gap: 6, marginTop: 5 } },
-                      React.createElement('span', { style: { color: T.text2, fontSize: 11.5, minWidth: 28, flexShrink: 0 } }, '甄别'),
-                      React.createElement('span', { style: { flex: 1, minWidth: 0, color: T.text2, fontSize: 12.5, lineHeight: 1.65, wordBreak: 'break-word' } }, st.note)))
+                      React.createElement('span', { style: { color: T.text2, fontSize: 'var(--t-tiny)', minWidth: 28, flexShrink: 0 } }, '甄别'),
+                      React.createElement('span', { style: { flex: 1, minWidth: 0, color: T.text2, fontSize: 'var(--t-sm)', lineHeight: 'var(--lh-base)', wordBreak: 'break-word' } }, st.note)))
                   }
                   if (st.sources && st.sources.length) {
                     assocRows.push(assocRow('src', '资料',
                       st.sources.map(u => React.createElement('button', {
                         key: u, type: 'button', onClick: () => openFile(u), title: u, className: 'sleu-chip',
-                        style: { background: 'transparent', border: '1px solid ' + T.border, borderRadius: 999, padding: '1px 9px', fontSize: 11.5, cursor: 'pointer', color: T.brand, fontFamily: 'var(--font-mono)' },
+                        style: { background: 'transparent', border: '1px solid ' + T.border, borderRadius: 'var(--r-pill)', padding: '1px 9px', fontSize: 'var(--t-tiny)', cursor: 'pointer', color: T.brand, fontFamily: 'var(--font-mono)' },
                       }, openLabel(u, shortUrl(u)))).concat([openNote(st.sources[0]) || null].filter(Boolean))))
                   }
                   if (st.toolCalls && st.toolCalls.length) {
                     assocRows.push(React.createElement('div', { key: 'tc', style: { marginTop: 5, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' } },
-                      React.createElement('span', { style: { color: T.text2, fontSize: 11.5, minWidth: 28, flexShrink: 0 } }, '调用'),
+                      React.createElement('span', { style: { color: T.text2, fontSize: 'var(--t-tiny)', minWidth: 28, flexShrink: 0 } }, '调用'),
                       React.createElement('button', { type: 'button', className: 'sleu-chip', onClick: () => setTcOpen(tcOpenHere ? null : i), style: btnGhost },
                         tcOpenHere ? '收起' : '看 ' + st.toolCalls.length + ' 条命令'),
-                      tcOpenHere ? st.toolCalls.map((c, k) => React.createElement('div', { key: k, style: { flexBasis: '100%', color: T.text2, fontSize: 11.5, fontFamily: 'var(--font-mono)', lineHeight: 1.6, wordBreak: 'break-word' } }, '· ' + c)) : null))
+                      tcOpenHere ? st.toolCalls.map((c, k) => React.createElement('div', { key: k, style: { flexBasis: '100%', color: T.text2, fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', lineHeight: 'var(--lh-base)', wordBreak: 'break-word' } }, '· ' + c)) : null))
                   }
                   const assocBlock = assocRows.length
                     ? React.createElement('div', { style: { marginTop: 2, paddingLeft: 9, borderLeft: '2px solid var(--hair)' } }, assocRows)
@@ -1484,13 +1589,13 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                       last ? null : React.createElement('span', { className: 'sleu-tl-rail' }),
                     ),
                     React.createElement('div', { style: { flex: 1, minWidth: 0, paddingBottom: last ? 0 : 14 } },
-                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 7, fontSize: 13.5, color: T.text2, flexWrap: 'wrap' } },
+                      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 7, fontSize: 'var(--t-md)', color: T.text2, flexWrap: 'wrap' } },
                         React.createElement('span', { style: { fontWeight: 700, color: isUser ? T.brand : T.text } }, isUser ? '用户' : 'Agent'),
-                        st.step ? React.createElement('span', { className: 'sleu-num', style: { fontSize: 12.5 } }, '第 ' + st.step + ' 步') : null,
+                        st.step ? React.createElement('span', { className: 'sleu-num', style: { fontSize: 'var(--t-sm)' } }, '第 ' + st.step + ' 步') : null,
                         st.action ? (fullTrace
-                          ? React.createElement('span', { className: 'sleu-mono', style: { background: T.bg2, padding: '1px 7px', borderRadius: 5, fontSize: 11.5, color: T.text2 } }, st.action)
-                          : React.createElement('span', { title: st.action, style: { background: T.bg2, padding: '1px 7px', borderRadius: 5, fontSize: 11.5, color: T.text2 } }, STEP_LABELS[st.action] || st.action)) : null,
-                        isRef ? React.createElement('span', { className: 'sleu-chip', style: { background: 'var(--tint-purple)', color: 'var(--d-purple)', borderRadius: 999, padding: '1px 8px', fontSize: 11.5, fontWeight: 600 } }, '参考层') : null,
+                          ? React.createElement('span', { className: 'sleu-mono', style: { background: T.bg2, padding: '1px 7px', borderRadius: 'var(--r-xs)', fontSize: 'var(--t-tiny)', color: T.text2 } }, st.action)
+                          : React.createElement('span', { title: st.action, style: { background: T.bg2, padding: '1px 7px', borderRadius: 'var(--r-xs)', fontSize: 'var(--t-tiny)', color: T.text2 } }, STEP_LABELS[st.action] || st.action)) : null,
+                        isRef ? React.createElement('span', { className: 'sleu-chip', style: { background: 'var(--tint-purple)', color: 'var(--d-purple)', borderRadius: 'var(--r-pill)', padding: '1px 8px', fontSize: 'var(--t-tiny)', fontWeight: 600 } }, '参考层') : null,
                         // 先验引用的三态徽标：**只挂参考层步骤**——feedback 事件也带 `outcome`
                         // （resolved/pending），那是"回报结果"，挂成"命中/未命中"会读反。
                         // 位置紧跟「参考层」：读作"参考层 · 命中"。
@@ -1530,32 +1635,32 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                     const color = v.indexOf('pass') === 0 || v === 'hit' || v === 'present' ? 'var(--d-green)'
                       : v.indexOf('conflict') === 0 || v === 'unknown' ? 'var(--d-amber)'
                         : v.indexOf('fail') === 0 || v === 'absent' ? 'var(--d-red, var(--d-amber))' : 'var(--c-gray)'
-                    return React.createElement('span', { key: 'res', style: { display: 'inline-block', marginTop: 6, marginRight: 6, background: 'color-mix(in srgb, ' + color + ' 12%, transparent)', color: color, borderRadius: 5, padding: '1px 8px', fontSize: 11.5, fontWeight: 600 } }, String(raw))
+                    return React.createElement('span', { key: 'res', style: { display: 'inline-block', marginTop: 6, marginRight: 6, background: 'color-mix(in srgb, ' + color + ' 12%, transparent)', color: color, borderRadius: 'var(--r-xs)', padding: '1px 8px', fontSize: 'var(--t-tiny)', fontWeight: 600 } }, String(raw))
                   })(),
-                  st.output ? React.createElement('div', { style: { marginTop: 4, color: T.text, fontSize: 14.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.75 } }, st.output) : null,
+                  st.output ? React.createElement('div', { style: { marginTop: 4, color: T.text, fontSize: 'var(--t-base)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 'var(--lh-base)' } }, st.output) : null,
                   // 推理（决策依据）只在完整轨迹里铺开：它写给回放与误诊归因，不是给人读的叙述
                   // （实测：18 步的 trace 里 reason 占 2800 字，是展开后"很多无关记录"的主体）。
-                  fullTrace && st.reason ? React.createElement('div', { style: { marginTop: 3, color: T.text2, fontSize: 13.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontStyle: 'italic', lineHeight: 1.68 } },
+                  fullTrace && st.reason ? React.createElement('div', { style: { marginTop: 3, color: T.text2, fontSize: 'var(--t-md)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', borderLeft: '2px solid var(--hair)', paddingLeft: 8, lineHeight: 'var(--lh-base)' } },
                     '推理: ' + st.reason) : null,
-                  st.content ? React.createElement('div', { style: { marginTop: 4, color: T.text2, fontSize: 14.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.75 } }, st.content) : null,
+                  st.content ? React.createElement('div', { style: { marginTop: 4, color: T.text2, fontSize: 'var(--t-base)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 'var(--lh-base)' } }, st.content) : null,
                   // 关联面排在证据之前：读序是"这一步说了什么 → 用了什么外部东西 → 留下了什么现场材料"
                   assocBlock,
                   // 证据明细（可点开原文 / 打开文件）——存在性已在上面标了，这里给操作
-                  ev ? React.createElement('div', { style: { marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, flexWrap: 'wrap' } },
+                  ev ? React.createElement('div', { style: { marginTop: 6, display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--t-sm)', flexWrap: 'wrap' } },
                     ev.inline ? React.createElement('button', { type: 'button', onClick: () => setEvOpen(evOpenHere ? null : i), className: 'sleu-chip', style: btnGhost }, evOpenHere ? '收起原文' : '看原文') : null,
                     hasFiles ? React.createElement(React.Fragment, null,
                       React.createElement('span', { style: { color: T.text2 } }, '文件'),
-                      ev.files.map(f => React.createElement('button', { key: f, type: 'button', onClick: () => openFile(f), title: f, className: 'sleu-chip', style: { background: 'transparent', border: '1px solid ' + T.border, borderRadius: 999, padding: '1px 9px', fontSize: 11.5, cursor: 'pointer', color: T.brand, fontFamily: 'var(--font-mono)' } },
+                      ev.files.map(f => React.createElement('button', { key: f, type: 'button', onClick: () => openFile(f), title: f, className: 'sleu-chip', style: { background: 'transparent', border: '1px solid ' + T.border, borderRadius: 'var(--r-pill)', padding: '1px 9px', fontSize: 'var(--t-tiny)', cursor: 'pointer', color: T.brand, fontFamily: 'var(--font-mono)' } },
                         openLabel(f, baseName(f)))),
                       openNote(ev.files[0]),
                     ) : null,
                     !hasInline && !hasFiles && hasMissing ? React.createElement('span', { style: { color: T.text2 } }, '这一步没有留证据') : null,
                   ) : null,
-                  evOpenHere && ev.inline ? React.createElement('pre', { style: { marginTop: 6, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 8, padding: 10, fontSize: 12.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: T.text, lineHeight: 1.7, maxHeight: 320, overflowY: 'auto' } }, ev.inline) : null,
+                  evOpenHere && ev.inline ? React.createElement('pre', { style: { marginTop: 6, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: 10, fontSize: 'var(--t-sm)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: T.text, lineHeight: 'var(--lh-base)', maxHeight: 320, overflowY: 'auto' } }, ev.inline) : null,
                   // 原文超长时**如实说**：徽标上的"证据 N 字"读的是原文长度（host 给 inlineChars），
                   // 而这里显示的是截断后的前 N 字——不说出来就成了静默截断（与报告区同一条纪律）。
                   evOpenHere && ev.inline && ev.inlineChars > ev.inline.length
-                    ? React.createElement('div', { style: { marginTop: 4, color: T.text2, fontSize: 11.5 } },
+                    ? React.createElement('div', { style: { marginTop: 4, color: T.text2, fontSize: 'var(--t-tiny)' } },
                         '原文 ' + ev.inlineChars + ' 字，此处显示前 ' + ev.inline.length + ' 字' + (hasFiles ? '——完整原文见上方证据文件' : ''))
                     : null,
                   ),
@@ -1568,19 +1673,22 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               )
             })(),
             // —— 定位结论落底 —— //
+            // 默认收起：根因在上方结论块已有一处。
             // 读者要的是"最后定在哪"；它排在轨迹之后，卡片以结论收尾。轨迹末条本身也是结论
             // （trace 里就能读到），人读视图里不重复渲染那条，只在完整轨迹保留原事件。
-            conclusionStep ? React.createElement('div', { style: { marginTop: 12, padding: 10, background: 'color-mix(in srgb, var(--acc-green) 7%, transparent)', border: '1px solid var(--acc-green)', borderRadius: 9 } },
+            conclusionStep ? React.createElement(Fold, { title: '定位结论（完整）', hint: '根因在上方结论块已有一处' },
+              React.createElement('div', { style: { padding: 10, background: 'color-mix(in srgb, var(--acc-green) 7%, transparent)', border: '1px solid var(--acc-green)', borderRadius: 'var(--r-md)' } },
               React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' } },
                 React.createElement(SectionLabel, { color: 'var(--c-green)' }, '定位结论'),
-                conclusionStep.step ? React.createElement('span', { className: 'sleu-num', style: { fontSize: 12.5 } }, '第 ' + conclusionStep.step + ' 步') : null,
-                React.createElement('span', { style: { fontSize: 12.5, color: T.text2 } }, '轨迹末条'),
+                conclusionStep.step ? React.createElement('span', { className: 'sleu-num', style: { fontSize: 'var(--t-sm)' } }, '第 ' + conclusionStep.step + ' 步') : null,
+                React.createElement('span', { style: { fontSize: 'var(--t-sm)', color: T.text2 } }, '轨迹末条'),
               ),
-              React.createElement('div', { style: { fontSize: 14.5, color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.75 } }, conclusionStep.output || conclusionStep.content || '(该步没有 output)'),
-              React.createElement('div', { style: { marginTop: 6, fontSize: 12.5, color: T.text2 } },
+              React.createElement('div', { style: { fontSize: 'var(--t-base)', color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 'var(--lh-base)' } }, conclusionStep.output || conclusionStep.content || '(该步没有 output)'),
+              React.createElement('div', { style: { marginTop: 6, fontSize: 'var(--t-sm)', color: T.text2 } },
                 fullTrace
                   ? '上方完整轨迹里保留了这条事件的原位置。'
                   : '上方轨迹略去了这条（同一段不读两遍）；「看完整轨迹」里它在原位置。'),
+              ),
             ) : (noConclusionHint),
           )
         } else {
@@ -1665,18 +1773,18 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // （case 与先验候选分家、各带入口，见上方「沉淀区」）：候选与"本单沉淀状态"是同一件事的两面，
       // 拆到卡头下方与卡体深处两处，读者接不上各自的入口（旧版就是这么散的）。
       const docRow = (reportPath || s.sedimentCandidates)
-        ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' } },
+        ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
             reportPath ? React.createElement('button', {
               type: 'button', onClick: toggleReport, title: '在面板里读报告：TL;DR / 依据链 / 修复方案，可一键复制全文',
-              style: { background: reportOpen ? 'color-mix(in srgb, ' + T.brand + ' 10%, transparent)' : 'transparent', border: '1px solid ' + T.border, color: T.text, borderRadius: 999, padding: '2px 11px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' },
+              style: { background: reportOpen ? 'color-mix(in srgb, ' + T.brand + ' 10%, transparent)' : 'transparent', border: '1px solid ' + T.border, color: T.text, borderRadius: 'var(--r-pill)', padding: '2px 11px', fontSize: 'var(--t-tiny)', fontWeight: 600, cursor: 'pointer' },
             }, reportOpen ? '收起报告' : '看报告') : null,
             reportPath ? React.createElement('button', {
               type: 'button', onClick: () => openFile(reportPath), title: reportPath,
-              style: { background: 'transparent', border: '1px solid ' + T.brand, color: T.brand, borderRadius: 999, padding: '2px 11px', fontSize: 11.5, fontWeight: 600, cursor: 'pointer' },
+              style: { background: 'transparent', border: '1px solid ' + T.brand, color: T.brand, borderRadius: 'var(--r-pill)', padding: '2px 11px', fontSize: 'var(--t-tiny)', fontWeight: 600, cursor: 'pointer' },
             }, opening === reportPath ? '打开中…' : '打开报告') : null,
             // 入口是**靠同名规则**找到的（trace 里没记 `report_file`）就说出来：报告明明落在
             // traces/ 里而卡片上什么都不给，读者只会以为"面板读不到报告"（实测反馈）。
-            s.reportSource === 'name' ? React.createElement('span', { title: 'trace 里没有 report_file；这份报告是按 <trace 同名>.report.md 的规则找的', style: { color: T.text2, fontSize: 11.5 } },
+            s.reportSource === 'name' ? React.createElement('span', { title: 'trace 里没有 report_file；这份报告是按 <trace 同名>.report.md 的规则找的', style: { color: T.text2, fontSize: 'var(--t-tiny)' } },
               '（trace 未记报告名，按同名规则找到）') : null,
             // 开没开成都要看得见：成功给「已打开（via X）」，失败给原因。
             // 旧版成功无反馈、失败静默 → 用户只看到"点了没反应"。
@@ -1687,18 +1795,23 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
 
           )
         : null
+      // ---- 动作区：主操作常驻，收尾与交接收进 <details> ----
+      // 为什么要收：12 个可点区域平铺时，主操作（看报告 / 继续诊断）被淹没，卡片也被撑到
+      // 200px 以上。收进可展开组之后，收起态只留一行；展开后仍是同一批按钮、同一段指令。
+      const menuBtn = (key, label, title) => React.createElement('button', {
+        type: 'button', title: title, 'aria-expanded': menuOpen === key ? 'true' : 'false',
+        onClick: () => setMenuOpen(menuOpen === key ? null : key),
+        style: { ...btnGhost, padding: '2px 10px' },
+      }, label + (menuOpen === key ? ' ▴' : ' ▾'))
       // ---- 交接包：把这一单交到另一台机器（外网定位到一半、真正的大日志在内网）----
-      // 这一行与别的按钮组形态不同：那几个是"选一条指令 → 复制 → 粘到对话"，本行是**直接动作**
-      // （点了就导出）。理由：导出只读 trace 与证据、落一个 traces/exports/ 下的运行时件，
-      // 不改知识库也不改 trace，删掉目录即撤销——不需要经 agent 的语义判断，多绕两步只是摩擦。
-      // 意图必须先选：它会写进交接单，决定接收侧第一屏问什么。
-      const handoffRow = React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' } },
-        React.createElement('span', { style: { color: T.text2, fontSize: 11.5 } }, '交给另一台机器：'),
+      // 与"生成指令"类按钮分工不同：它是**直接动作**（点了就导出），所以收进可展开组；
+      // 结果（体量 / 未纳入 / 待补材料 / 含原始证据）仍逐项回报，外发前由人按数据通道规则处理。
+      const handoffRow = React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
         HANDOFF_INTENTS.map(it => React.createElement('button', {
           key: it.id, type: 'button', title: it.why, onClick: () => setHandoffIntent(it.id),
           style: handoffIntent === it.id
-            ? { ...btnPrimary, padding: '2px 9px', borderRadius: 999, fontSize: 11.5 }
-            : { ...btnGhost, padding: '2px 9px', borderRadius: 999, fontSize: 11.5 },
+            ? { ...btnPrimary, padding: '2px 9px', borderRadius: 'var(--r-pill)', fontSize: 'var(--t-tiny)' }
+            : { ...btnGhost, padding: '2px 9px', borderRadius: 'var(--r-pill)', fontSize: 'var(--t-tiny)' },
         }, it.label)),
         React.createElement('button', {
           type: 'button', onClick: doExportHandoff, disabled: !!(handoff && handoff.busy),
@@ -1710,9 +1823,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         }, (handoff && handoff.busy) ? '导出中…' : '导出交接包'),
         handoff && handoff.ok ? React.createElement('button', {
           type: 'button', onClick: () => openFile(handoff.dirRel || 'traces/exports'), title: handoff.dir,
-          style: { background: 'transparent', border: '1px solid ' + T.border, color: T.text2, borderRadius: 999, padding: '2px 9px', fontSize: 11.5, cursor: 'pointer' },
+          style: { background: 'transparent', border: '1px solid ' + T.border, color: T.text2, borderRadius: 'var(--r-pill)', padding: '2px 9px', fontSize: 'var(--t-tiny)', cursor: 'pointer' },
         }, '打开目录') : null,
-        handoff && handoff.ok ? React.createElement('span', { style: { color: T.success, fontSize: 11.5 } },
+        handoff && handoff.ok ? React.createElement('span', { style: { color: 'var(--c-green)', fontSize: 'var(--t-tiny)' } },
           '已导出 zip ' + humanKB(handoff.zipBytes)
           + (handoff.md ? ' + md ' + humanKB(handoff.mdBytes) : '')
           + '｜' + handoff.files + ' 个文件'
@@ -1725,66 +1838,75 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               title: '交接单 redaction.state=raw-evidence：包内含原始现场证据（日志/配置原样）。'
                 + '导出不做脱敏；外发前按你们的数据通道规则处理。',
             }, '含原始证据') : null,
-        handoff && handoff.error ? React.createElement('span', { style: { color: T.warn, fontSize: 11.5 } }, handoff.error) : null,
+        handoff && handoff.error ? React.createElement('span', { style: { color: 'var(--c-amber)', fontSize: 'var(--t-tiny)' } }, handoff.error) : null,
       )
-      // 展开的命令块只出现一次（谁被点开就显示谁），按钮本身用"未选中的淡一档"表达选中关系
-      const actionArea = React.createElement('div', { style: { margin: '0 16px 12px', paddingTop: 10, borderTop: '1px dashed ' + T.border } },
-        docRow,
-        handoffRow,
-        React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 8 } },
-          actions.map(a => React.createElement('button', {
-            key: a.key, type: 'button', title: a.title,
-            onClick: () => { setShowCmd(showCmd === a.key ? null : a.key); setCopied(null) },
-            style: openedCmd && openedCmd.key !== a.key ? { ...a.style, opacity: 0.62 } : a.style,
-          }, a.label)),
+      const cmdButton = (a) => React.createElement('button', {
+        key: a.key, type: 'button', title: a.title,
+        onClick: () => { setShowCmd(showCmd === a.key ? null : a.key); setCopied(null); setMenuOpen(null) },
+        style: { ...a.style, padding: '2px 10px' },
+      }, a.label)
+      const resumeAction = actions.filter(a => a.key === 'rs')[0] || null
+      const closeActions = actions.filter(a => a.key !== 'rs')
+      // 展开的命令块只出现一次（谁被点开就显示谁）；选中关系靠"命令块在最下方"表达，
+      // 不再用 opacity 压未选中的按钮——那会把白字压到 2.07:1（AA 要求 4.5）。
+      const actionArea = React.createElement('div', { style: { margin: '0 16px', padding: '10px 0 14px', borderTop: '1px solid var(--hair)' } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+          docRow,
+          resumeAction ? cmdButton(resumeAction) : null,
+          closeActions.length ? menuBtn('close', '收尾', '生成收尾指令（复制后粘到对话执行）') : null,
+          menuBtn('handoff', '交接包', '导出交接包到 traces/exports/，或接手另一台机器上的单'),
         ),
+        // 动作组的展开区：固定在按钮行**下方**，同一时刻只有一块；按钮行本身不动。
+        // 两个组都常驻 DOM、用 display 切换：不参与布局（没有位置偏移），也不占 Tab 序
+        // （display:none 的元素不可聚焦）。
+        React.createElement('div', { className: 'sleu-menu-panel', style: { display: menuOpen === 'close' ? 'flex' : 'none', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
+          closeActions.map(cmdButton)),
+        React.createElement('div', { className: 'sleu-menu-panel', style: { display: menuOpen === 'handoff' ? 'flex' : 'none', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
+          handoffRow),
         openedCmd ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 } },
-          React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 6, padding: '5px 8px', fontSize: 12.5, fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: T.text } }, openedCmd.cmd),
-          React.createElement('button', { type: 'button', onClick: () => doCopy(openedCmd.cmd, openedCmd.key), style: copied === 'fail' ? { ...btnRed, background: 'var(--d-red)' } : btnPrimary, title: '复制指令' },
-            copied === openedCmd.key ? '已复制' : (copied === 'fail' ? '失败' : '复制')),
+          React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: T.text } }, openedCmd.cmd),
+          React.createElement('button', { type: 'button', onClick: () => doCopy(openedCmd.cmd, openedCmd.key), style: copyFailKey === openedCmd.key ? btnRed : btnPrimary, title: '复制指令' },
+            copied === openedCmd.key ? '已复制' : (copyFailKey === openedCmd.key ? '失败' : '复制')),
         ) : null,
       )
-
-      return React.createElement('div', { className: 'sleu-card', style: { background: T.bg, backgroundImage: 'var(--surf)', border: '1px solid var(--hair)', borderLeft: '3px solid ' + statusAccent, borderRadius: 12, marginBottom: 10, boxShadow: 'var(--elev-1)' } },
+      return React.createElement('div', { className: 'sleu-card', style: { background: T.bg, backgroundImage: 'var(--surf)', border: '1px solid var(--hair)', borderLeft: '3px solid ' + statusAccent, borderRadius: 'var(--r-lg)', marginBottom: 10 } },
         // 勾选框在整行按钮**外面**：整行是一个 button，把 checkbox 嵌进去是嵌套交互元素，
         // 键盘与事件都会打架。它只在「待升格」筛选下渲染。
         selectable ? React.createElement('label', { style: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px 0', fontSize: 'var(--t-sm)', color: T.text2, cursor: 'pointer' } },
-          React.createElement('input', { type: 'checkbox', checked: selected, onChange: onToggle }),
+          React.createElement('input', { type: 'checkbox', checked: selected, onChange: () => onToggleFile(s.file) }),
           '选中用于批量标已解决') : null,
         React.createElement('button', {
           type: 'button', 'aria-expanded': !!open, onClick: toggle, className: 'sleu-row',
-          style: { width: '100%', padding: '12px 16px', cursor: 'pointer', background: 'transparent', border: 'none', textAlign: 'left', color: T.text, font: 'inherit' },
+          style: { width: '100%', padding: '12px 16px 0', cursor: 'pointer', border: 'none', textAlign: 'left', color: T.text, font: 'inherit' },
         },
-          // 一行读完：状态 / 会话 / 平台·类别 / 步·动作 / 每步耗时 / 工具耗时 / token / 箭头。
-          // 列宽与上方的列头逐字对齐（同一份 gridTemplateColumns），否则表格读起来是错位的。
+          // 一行读完：状态 / 会话 / 框架·平台 / 事件数 / 耗时 / token / 箭头。
+          // 列宽与上方的列头共用 ROW_COLS，否则表格读起来是错位的。
           React.createElement('div', { style: { display: 'grid', gridTemplateColumns: ROW_COLS, alignItems: 'center', gap: 10, width: '100%' } },
-            React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 5, color: meta.color, fontSize: 'var(--t-md2)', fontWeight: 600, whiteSpace: 'nowrap' } },
-              React.createElement(Dot, { color: meta.color }),
+            React.createElement('span', { title: meta.label, style: { display: 'flex', alignItems: 'center', gap: 6, color: meta.color, fontSize: 'var(--t-sm)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
+              React.createElement(Dot, { color: meta.color, hollow: s.status === 'unknown' }),
               meta.label),
-            React.createElement('span', { className: 'sleu-mono', style: { fontWeight: 700, fontSize: 'var(--t-sm)', letterSpacing: '.01em', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, s.sessionId),
-            React.createElement('span', { style: { color: T.text2, fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
-              [s.framework, s.platform, s.category].filter(Boolean).join(' · ') || '—'),
-            React.createElement('span', { className: 'sleu-num', style: { color: T.text2, fontSize: 11.5, whiteSpace: 'nowrap' } },
+            React.createElement('span', { className: 'sleu-mono', title: s.sessionId, style: { fontWeight: 500, fontSize: 'var(--t-tiny)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, s.sessionId),
+            React.createElement('span', { className: 'sleu-c-fw', title: [s.framework, s.platform, s.category].filter(Boolean).join(' · '), style: { color: T.text2, fontSize: 'var(--t-tiny)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
+              [s.framework, s.platform].filter(Boolean).join(' · ') || '—'),
+            React.createElement('span', { title: '用户事件 / Agent 事件', className: 'sleu-num sleu-c-events', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 0 } },
               s.userSteps + ' / ' + s.agentSteps),
-            React.createElement('span', { style: { display: 'flex', alignItems: 'flex-end', gap: 2, height: 16, justifyContent: 'flex-end' },
-              title: (s.cost && s.cost.stepms && s.cost.stepms.length)
-                ? '每步耗时：每根柱是那一步时间窗内工具调用的耗时之和（不含模型思考），空位=该步没有事件'
-                : '本机明细里没有每步耗时（轨迹事件没带 ts，或还没汇总）' },
-              (s.cost && s.cost.stepms && s.cost.stepms.length)
-                ? s.cost.stepms.map((v, i) => React.createElement('i', { key: i, style: {
-                    display: 'block', width: 5, borderRadius: 1, background: v ? 'var(--acc-amber, ' + T.warn + ')' : 'var(--hair)',
-                    opacity: v ? 0.8 : 1,
-                    height: Math.max(2, Math.round(v / Math.max.apply(null, s.cost.stepms) * 16)) + 'px' } }))
-                : React.createElement('span', { style: { color: T.text2, fontSize: 'var(--t-tiny)' } }, '—')),
-            React.createElement('span', { className: 'sleu-num', style: { color: T.text2, fontSize: 11.5, textAlign: 'right', whiteSpace: 'nowrap' } },
+            React.createElement('span', { title: '工具调用累计耗时', className: 'sleu-num sleu-c-ms', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', minWidth: 0 } },
               (s.cost && s.cost.ms) ? msText(s.cost.ms) : '—'),
-            React.createElement('span', { className: 'sleu-num', style: { color: T.text2, fontSize: 11.5, textAlign: 'right', whiteSpace: 'nowrap' } },
+            React.createElement('span', { title: '工具调用累计 token', className: 'sleu-num sleu-c-tok', style: { color: T.text2, fontSize: 'var(--t-tiny)', textAlign: 'right', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 } },
               (s.cost && s.cost.tok) ? thousands(s.cost.tok) : '—'),
             React.createElement('span', { style: { display: 'flex', justifyContent: 'flex-end' } }, React.createElement(Chevron, { open: open })),
           ),
           // 第二行：一句"这单在查什么" + 外来标记 + 更新时间。收起态只留这些，其余细节在展开态。
-          React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 3, flexWrap: 'nowrap', minWidth: 0 } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4, flexWrap: 'wrap', minWidth: 0 } },
             kbTag,
+            // 定位并入这一行：命中时给「定位 <id>」，没命中时给一句灰字（占位串原样带上）。
+            // 此前它单独占一行，而多数单都是"没有对应案例"，等于用一整行说"没有"。
+            caseKindOf(s) === 'case'
+              ? React.createElement('span', { className: 'sleu-mono', title: '定位到的知识库 case', style: Object.assign(tinyBadge('var(--d-green)'), { fontSize: 'var(--t-tiny)' }) }, '定位 ' + s.activeCase)
+              : React.createElement('span', { style: { display: 'inline-flex', alignItems: 'baseline', gap: 5, minWidth: 0, color: T.text2, fontSize: 'var(--t-tiny)' } },
+                  '没有对应案例',
+                  // 占位串原样摆出（不摆，读者会以为面板漏读了字段）；解释只在 title 与 README。
+                  caseKindOf(s) === 'placeholder' ? React.createElement('span', { title: 'trace 里记的定位值（不是知识库里的 case）', className: 'sleu-mono', style: { maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.8 } }, s.activeCase) : null),
             // 「待沉淀」「待升格」两条待办的徽标（判据与升格闸门同源）。
             // 它们此前只有展开卡片才看得见——会话一多就成了看不见的积压。
             needSedOf(s) ? React.createElement('span', { title: '已闭环、还没沉淀——在「待沉淀」筛选里可一次生成批量沉淀命令', style: tinyBadge('var(--d-purple)') }, '已闭环 · 待沉淀') : null,
@@ -1802,13 +1924,16 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 + (s.handoff.kbRevMatch === false ? ' · 接手时本机知识库版本与上家不一致' : '')
                 + (s.handoff.needs ? ' · 上家留了 ' + s.handoff.needs + ' 条待补材料' : ''),
             }, '外来 · ' + (s.handoff.host ? String(s.handoff.host).split('.')[0] : '别机')) : null,
-            rel ? React.createElement('span', { style: { marginLeft: 'auto', color: T.text2, fontSize: 11.5, whiteSpace: 'nowrap' } }, '更新 ' + rel) : null,
+            (s.createdAt || rel) ? React.createElement('span', { style: { marginLeft: 'auto', display: 'flex', gap: 8, color: T.text2, fontSize: 'var(--t-tiny)', whiteSpace: 'nowrap' } },
+              s.createdAt ? React.createElement('span', { title: '诊断开始：' + (fmtTimeFull(s.createdAt) || s.createdAt) }, '开始 ' + fmtTime(s.createdAt)) : null,
+              rel ? React.createElement('span', { title: s.updatedAt ? '最后更新：' + (fmtTimeFull(s.updatedAt) || s.updatedAt) : null }, '更新 ' + rel) : null,
+            ) : null,
           ),
           // 副行：**收起态显示"这单在查什么"**——取 trace 的问题背景段（host 带的 summarySnippet）。
           // 旧版显示"最后一步 · Agent" + 最后一个事件的 output，读者看不懂：最后一个事件常常是
           // 产出报告 / 续接 / 回报这类**记录维护**动作（实测反馈："最后一步……让人看不懂也觉得很奇怪"），
           // 它回答的是"记录被改了什么"，不是"这单在查什么"。没有背景段才退回最后一个事件的输出。
-          React.createElement('div', { style: { color: T.text2, fontSize: 12.5, marginTop: 2, lineHeight: 1.55, display: 'flex', gap: 6, alignItems: 'baseline', minWidth: 0 } },
+          React.createElement('div', { style: { color: T.text2, fontSize: 'var(--t-sm)', marginTop: 4, lineHeight: 'var(--lh-base)', display: 'flex', gap: 6, alignItems: 'baseline', minWidth: 0 } },
             !open && (s.summarySnippet || s.lastOutput)
               ? React.createElement(React.Fragment, null,
                   React.createElement('span', { style: { color: T.text2, flexShrink: 0 } }, s.summarySnippet ? '背景' : '末条记录'),
@@ -1816,32 +1941,22 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 )
               : React.createElement('span', null, [s.framework, s.platform, s.category].filter(Boolean).join(' · ') || '—'),
           ),
-          caseKindOf(s) === 'case' ? React.createElement('div', { style: { marginTop: 5, fontSize: 13.5, display: 'flex', alignItems: 'center', gap: 6 } },
-            React.createElement('span', { style: { color: T.text2 } }, '定位'),
-            React.createElement('code', { style: { background: 'color-mix(in srgb, ' + T.success + ' 10%, transparent)', color: T.success, padding: '1px 7px', borderRadius: 5, fontSize: 12.5, fontFamily: 'var(--font-mono)' } }, s.activeCase),
-          ) : React.createElement('div', { style: { marginTop: 5, fontSize: 12.5, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' } },
-            React.createElement('span', { style: { color: T.text2 } }, '没有对应案例'),
-            // trace 里写了占位串就把它原样摆出来（不摆，读者会以为面板漏读了字段），但**卡面不解释**：
-            // 那句"这是什么、不是什么"是给改 trace 的人看的，放 tooltip 与 README。判据在
-            // panel_render_check：占位串只出原值，不出内部说法（占位串 / case id / 字段名）。
-            caseKindOf(s) === 'placeholder' ? React.createElement('span', { title: 'trace 里记的定位值（不是知识库里的 case）', className: 'sleu-mono', style: { color: T.text2, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, s.activeCase) : null,
-          ),
           (s.excludedCount || s.sedimentCandidates)
-            ? React.createElement('div', { style: { color: T.text2, fontSize: 11.5, marginTop: 3, display: 'flex', gap: 12, flexWrap: 'wrap' } },
+            ? React.createElement('div', { style: { color: T.text2, fontSize: 'var(--t-tiny)', marginTop: 3, display: 'flex', gap: 12, flexWrap: 'wrap' } },
                 s.excludedCount ? React.createElement('span', null, '排除 ' + s.excludedCount + ' 条') : null,
                 s.sedimentCandidates ? React.createElement('span', null, '沉淀建议 ' + s.sedimentCandidates + ' 条') : null)
             : null,
           // 步数由同一份解析结果算出：解析少了就得说，否则"1 用户输入"看起来像这单只有一步。
-          s.parseAnomaly ? React.createElement('div', { style: { color: T.warn, fontSize: 13.5, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 } },
+          s.parseAnomaly ? React.createElement('div', { style: { color: T.warn, fontSize: 'var(--t-md)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 } },
             React.createElement(Dot, { color: T.warn }),
             anomalyText(s.parseAnomaly)) : null,
           // 两条轴的**话术分开**：有可应用 fix 才叫"结果待回报"；没命中 case 的单等的是材料，
           // 而"等什么"trace 里已经写着（最近一条 `evidence.missing`，退到 `last_action`）——
           // 直接把它显示出来，读者不用展开轨迹去猜。这一类用中性色：它不是债。
-          fbKindOf(s) === 'case' ? React.createElement('div', { style: { color: T.warn, fontSize: 13.5, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 } },
+          fbKindOf(s) === 'case' ? React.createElement('div', { style: { color: T.warn, fontSize: 'var(--t-md)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 } },
             React.createElement(Dot, { color: T.warn }),
             '结果待回报：' + (s.feedbackCase || (caseKindOf(s) === 'case' ? s.activeCase : '') || '命中 case') + '（下方可生成回报指令）') : null,
-          fbKindOf(s) === 'no-case' ? React.createElement('div', { style: { color: T.text2, fontSize: 13.5, marginTop: 4, display: 'flex', alignItems: 'baseline', gap: 6 } },
+          fbKindOf(s) === 'no-case' ? React.createElement('div', { style: { color: T.text2, fontSize: 'var(--t-md)', marginTop: 4, display: 'flex', alignItems: 'baseline', gap: 6 } },
             React.createElement('span', { style: { flexShrink: 0 } }, '等现场补材料：'),
             React.createElement('span', { title: s.waitingFor || '', style: { color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 } },
               s.waitingFor ? (s.waitingFor.length > 60 ? s.waitingFor.slice(0, 60) + '…' : s.waitingFor) : '本次诊断缺的材料（见轨迹里的「缺」标记）'),
@@ -1852,21 +1967,29 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         // 展开态：指标带横贯一行，下面是「正文 | 操作栏」两栏，指令区挪进右侧操作栏，正文更宽。
         open ? null : actionArea,
         open
-          ? React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 264px', alignItems: 'start' } },
-              React.createElement('div', { style: { gridColumn: '1 / -1', minWidth: 0, padding: '0 16px' } }, band),
-              body ? React.createElement('div', { style: { gridColumn: '1', padding: '12px 16px', borderTop: '1px solid ' + T.border, background: T.bg2, minWidth: 0 } }, body) : null,
-              React.createElement('div', { style: { gridColumn: '2', padding: '12px 16px 14px 0', borderTop: '1px solid ' + T.border, position: 'sticky', top: 8, alignSelf: 'start', minWidth: 0 } },
+          ? React.createElement('div', { className: 'sleu-open sleu-expanded' },
+              React.createElement('div', { className: 'sleu-band' }, band),
+              body ? React.createElement('div', { className: 'sleu-main' }, body) : null,
+              React.createElement('div', { className: 'sleu-rail' },
                 reportBlock,
                 actionArea,
                 // 会话块：这单对应哪个 harness 会话、用的是哪个知识库版本、花了多少——维护者接手时要看。
                 (function () {
                   const rec = (steps && steps.record) || null
                   if (!rec) return null
-                  const kv = (k, v) => React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 'var(--t-tiny)', padding: '1px 0', color: T.text2 } },
-                    React.createElement('span', null, k),
-                    React.createElement('span', { className: 'sleu-mono', style: { color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, v))
-                  return React.createElement('div', { style: { marginTop: 8, padding: '8px 10px', border: '1px solid ' + T.border, borderRadius: 8 } },
-                    React.createElement('div', { style: { fontSize: 'var(--t-md2)', letterSpacing: '.12em', textTransform: 'uppercase', color: T.text2, marginBottom: 4 } }, '会话'),
+                  // 键值行：短值同行右对齐；长值（会话号、版本号）改成「标签一行、原值一行」，
+                  // 并在原值上断词。早先一行 `space-between` + nowrap 会在 232px 栏里把标签挤成两行，
+                  // 值又被省略号截掉——两样都读不到。
+                  const kv = (k, v) => {
+                    const text = v === null || v === undefined || v === '' ? NOT_RECORDED : String(v)
+                    const stacked = text.length > 18
+                    return React.createElement('div', { style: { padding: '2px 0', fontSize: 'var(--t-tiny)', display: stacked ? 'block' : 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'baseline' } },
+                      React.createElement('span', { style: { color: T.text2, flexShrink: 0, whiteSpace: 'nowrap' } }, k),
+                      React.createElement('span', { className: 'sleu-mono', title: text, style: { color: T.text, minWidth: 0, display: stacked ? 'block' : 'inline-block', marginTop: stacked ? 1 : 0, textAlign: stacked ? 'left' : 'right', overflowWrap: 'anywhere', wordBreak: 'break-word' } }, text))
+                  }
+                  return React.createElement('div', { style: { marginTop: 8, padding: '8px 10px', border: '1px solid ' + T.border, borderRadius: 'var(--r-sm)' } },
+                    React.createElement('div', { style: { fontSize: 'var(--t-md2)', color: T.text2, marginBottom: 4 } }, '会话'),
+                    kv('开始时间', fmtTimeFull(s.createdAt) || NOT_RECORDED),
                     kv('harness 会话', rec.harnessSession || NOT_RECORDED),
                     kv('知识库版本', rec.kbRev || NOT_RECORDED),
                     kv('工具耗时', rec.toolTotalMs ? msText(rec.toolTotalMs) : NOT_RECORDED),
@@ -1876,30 +1999,39 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 // 数据缺口：给维护者判断"这份记录能不能进聚合"。读者不该被它挡一屏——
                 // 收成计数徽标，点开才列明细；没有缺口就整块不出现。
                 (function () {
-                  if (!steps || steps.recordMissingProduct) return null
+                  if (!steps) return null
                   const miss = steps.recordMissing || []
                   if (!miss.length) return null
-                  return React.createElement('details', { style: { marginTop: 8 } },
-                    React.createElement('summary', { style: { cursor: 'pointer', fontSize: 'var(--t-tiny)', color: T.text2, padding: '3px 0' } },
-                      '数据缺口 ' + miss.length + ' 项'),
-                    React.createElement('div', { style: { marginTop: 4 } }, d5NotRecorded))
+                  return React.createElement(Fold, { title: '数据缺口 ' + miss.length + ' 项', hint: '影响这份记录能不能进聚合' }, d5NotRecorded)
                 })(),
               ),
             )
           : null,
       )
-    }
+        })
 
     function TraceView(props) {
       const sessionId = props && props.sessionId
       const [state, setState] = React.useState({ loading: true, data: null })
       const [query, setQuery] = React.useState('')
+      const [queryInput, setQueryInput] = React.useState('')
       const [kbFilter, setKbFilter] = React.useState('all')
       // 待升格筛选下的多选（file → true）；批量闭环只对勾中的单生成一条命令。
       const [sel, setSel] = React.useState({})
       // 批量指令的唯一展开位（'sed' / 'close'），与卡片内指令区同一条纪律：点谁显示谁。
       const [batchCmd, setBatchCmd] = React.useState(null)
       const [batchCopied, setBatchCopied] = React.useState(null)
+      const [reloadAt, setReloadAt] = React.useState(0)
+      // 勾选回调做成稳定引用：配合 SessionCard 的 memo，勾一张只重渲染一张。
+      const toggleSel = React.useCallback((file) => {
+        setSel(prev => {
+          const n = Object.assign({}, prev)
+          if (n[file]) delete n[file]
+          else n[file] = true
+          return n
+        })
+      }, [])
+      const [timeRange, setTimeRange] = React.useState('all')
       // 切筛选就清空勾选与展开的批量指令：勾选只在「待升格」这一屏里有意义，
       // 带着上一屏的选择去点批量闭环，最容易把没看过的单一起标掉。
       React.useEffect(() => { setSel({}); setBatchCmd(null); setBatchCopied(null) }, [kbFilter])
@@ -1909,10 +2041,16 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           .then(r => { if (alive) setState({ loading: false, data: r }) })
           .catch(() => { if (alive) setState({ loading: false, data: { ok: false, error: 'Host RPC 失败' } }) })
         return () => { alive = false }
-      }, [sessionId])
+      }, [sessionId, reloadAt])
 
       const base = { fontFamily: 'var(--font-sans)', fontSize: 'var(--t-base)', color: T.text }
-      if (state.loading) return React.createElement('div', { className: 'sleu', style: { ...base, padding: 20, color: T.text2 } }, '加载诊断状态…')
+      if (state.loading) return React.createElement('div', { className: 'sleu', style: { ...base, padding: 20 } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 } },
+          React.createElement('span', { style: { width: 8, height: 16, borderRadius: 'var(--r-xs)', background: 'var(--acc-blue)', display: 'inline-block' } }),
+          React.createElement('span', { className: 'sleu-title', style: { fontSize: 'var(--t-2xl)', fontWeight: 700 } }, '诊断状态')),
+        React.createElement('div', { style: { display: 'flex', gap: 6, marginBottom: 12 } },
+          [64, 84, 74, 84, 78, 78].map((w, i) => React.createElement('span', { key: i, className: 'sleu-skel', style: { width: w, height: 26 } }))),
+        [0, 1, 2, 3].map(i => React.createElement('div', { key: 'r' + i, className: 'sleu-skel', style: { height: 46, marginBottom: 8 } })))
       const r = state.data
       if (!r || !r.ok) return React.createElement('div', { style: { ...base, padding: 16, color: T.error } }, '无法读取 traces/: ' + (r && r.error || '未知错误'))
 
@@ -1924,8 +2062,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       //   待标收尾 = 回报已 resolved 但 status 还停在 in_progress —— 验证过了、状态没更新 → 改 status
       // 三者之和 = 面板徽章的"待跟进"数（不再有重复计入的项；三条条件互斥，见下面各自的谓词）。
       const isClosedButOpen = s => s.status === 'in_progress' && s.feedback === 'resolved'
-      const nLooking = sessions.filter(s => s.status === 'in_progress' && fbKindOf(s) !== 'case' && !isClosedButOpen(s)).length
-      const nAwaiting = sessions.filter(s => fbKindOf(s) === 'case').length
+      const isLookingOf = s => s.status === 'in_progress' && fbKindOf(s) !== 'case' && !isClosedButOpen(s)
+      const isAwaitingOf = s => fbKindOf(s) === 'case'
+      const nLooking = sessions.filter(isLookingOf).length
+      const nAwaiting = sessions.filter(isAwaitingOf).length
       const nClose = sessions.filter(isClosedButOpen).length
       // 计数按 caseKindOf 算：占位串那一类归「无对应案例」，不该被算成"新形态待沉淀"
       const nInKb = sessions.filter(s => caseKindOf(s) === 'case' && s.activeCaseInKb).length
@@ -1962,8 +2102,19 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       if (kbFilter === 'new') sessions = sessions.filter(s => caseKindOf(s) === 'case' && !s.activeCaseInKb)
       if (kbFilter === 'miss') sessions = sessions.filter(s => caseKindOf(s) !== 'case')
       if (kbFilter === 'open') sessions = sessions.filter(isOpenOf)
+      if (kbFilter === 'running') sessions = sessions.filter(isLookingOf)
+      if (kbFilter === 'awaiting') sessions = sessions.filter(isAwaitingOf)
+      if (kbFilter === 'close-pending') sessions = sessions.filter(isClosedButOpen)
       if (kbFilter === 'need-sed') sessions = sessions.filter(needSedOf)
       if (kbFilter === 'need-promote') sessions = sessions.filter(needPromoteOf)
+      // 按诊断开始时间过滤（`created_at`）：只留窗口内的单；没记开始时间的单不猜，直接排除。
+      if (timeRange !== 'all') {
+        const cut = Date.now() - Number(timeRange) * 86400000
+        sessions = sessions.filter(s => {
+          const t = s.createdAt ? new Date(s.createdAt).getTime() : NaN
+          return !isNaN(t) && t >= cut
+        })
+      }
       // 待跟进三类见上方计数处注释（互斥）；徽章与横幅都用这三个数
       const badge = [
         (r.sessions || []).length + ' 会话',
@@ -1989,21 +2140,26 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // 空态：先说"这一屏为什么空"，再说下一步。筛选为空与"还没有任何诊断"是两件事——
       // 前者通常是这一类已经处理完，统一写"去跑一次 diagnose"会被读成数据没生成。
       const totalSessions = (r.sessions || []).length
-      const FILTER_LABEL = { all: '全部', kb: '库中已有', new: '新形态', miss: '无对应案例', open: '未闭环', 'need-sed': '待沉淀', 'need-promote': '待升格' }
+      const FILTER_LABEL = { all: '全部', kb: '库中已有', new: '新形态', miss: '无对应案例', open: '未闭环', running: '在查', awaiting: '等回报', 'close-pending': '待标收尾', 'need-sed': '待沉淀', 'need-promote': '待升格' }
       const EMPTY_HINT = {
         kb: '没有命中过知识库 case 的诊断。',
         new: '没有"命中 case、但库里还没有"的诊断。',
         miss: '没有"知识库里找不到对应案例"的诊断。',
         open: '没有进行中或状态未知的诊断。已收尾的单不在其中。',
+        running: '没有还在查的单。',
+        awaiting: '没有等回报的单。',
+        'close-pending': '没有回报已生效、状态还没更新的单。',
         'need-sed': '没有"已闭环、尚未沉淀"的单。值得入库的诊断在闭环后会出现在这里，可一次生成批量沉淀命令。',
         'need-promote': '没有"草稿已提交、来源诊断尚未闭环"的单。这类单升格时会被拦下；有强外部证据（上游修复已合入等）的可走 owner 双签。',
       }
       const emptyTitle = q ? '没有匹配的会话'
         : (!totalSessions ? '还没有诊断记录'
-          : ('「' + (FILTER_LABEL[kbFilter] || '当前筛选') + '」下没有会话'))
+          : (timeRange !== 'all' ? '该时间范围内没有会话'
+            : ('「' + (FILTER_LABEL[kbFilter] || '当前筛选') + '」下没有会话')))
       const emptyHint = q ? '换个关键词，或点「全部」清掉筛选'
         : (!totalSessions ? '在对话里跑一次 /skill:diagnose，这里就会出现会话与完整轨迹'
-          : (EMPTY_HINT[kbFilter] || '点「全部」查看所有诊断。'))
+          : (timeRange !== 'all' ? '放宽时间范围，或点「全部」清掉筛选。'
+            : (EMPTY_HINT[kbFilter] || '点「全部」查看所有诊断。')))
 
       // 首屏要先回答"有什么在等我"——所以计数里把**待跟进**的两项单独提出来（进行中、待回报），
       // 而不是混在一串 "N 会话 · N 库中已有 …" 里让读者自己找
@@ -2018,14 +2174,14 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           if (!ids.length) return null
           const text = '用 /skill:to-postmortem 批量沉淀这些 session：' + ids.join('、')
             + '（trace 在 traces/<session>.yaml；每个 session 各成一条草稿，来源 trace 回写 sedimented.state: submitted）'
-          return React.createElement('div', { style: { marginBottom: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 9, background: T.bg2 } },
+          return React.createElement('div', { style: { marginBottom: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-              React.createElement('span', { style: { fontSize: 'var(--t-sm)', color: T.text2 } }, '已闭环未沉淀 ' + ids.length + ' 单'),
+              React.createElement('span', { style: { fontSize: 'var(--t-sm)', color: T.text2 }, title: '范围 = 当前筛选（含搜索词）' }, '已闭环未沉淀 ' + ids.length + ' 单'),
               React.createElement('button', { type: 'button', style: batchCmd === 'sed' ? btnPurple : btnGhost, onClick: () => { setBatchCmd(batchCmd === 'sed' ? null : 'sed'); setBatchCopied(null) } },
                 batchCmd === 'sed' ? '隐藏指令' : '批量沉淀这 ' + ids.length + ' 单'),
             ),
             batchCmd === 'sed' ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 } },
-              React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 6, padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', color: T.text, wordBreak: 'break-word', lineHeight: '18px' } }, text),
+              React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-xs)', padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', color: T.text, wordBreak: 'break-word', lineHeight: 'var(--lh-base)' } }, text),
               React.createElement('button', { type: 'button', style: batchCopied === 'fail' ? btnRed : btnPurple, onClick: () => copyText(text).then(ok => setBatchCopied(ok ? 'sed' : 'fail')) },
                 batchCopied === 'sed' ? '已复制' : (batchCopied === 'fail' ? '失败' : '复制')),
             ) : null,
@@ -2040,7 +2196,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             + '。逐单：有命中 case 的标 status: resolved + feedback{outcome: resolved} 并写一条 feedback 事件；'
             + '未命中 case 的只标 status: resolved，不写 feedback；若 trace 里还留着 feedback.outcome（旧数据），一并清掉。'
           const allSelected = list.every(s => sel[s.file])
-          return React.createElement('div', { style: { marginBottom: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 9, background: T.bg2 } },
+          return React.createElement('div', { style: { marginBottom: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
               React.createElement('span', { style: { fontSize: 'var(--t-sm)', color: T.text2 } }, '已沉淀待升格 ' + list.length + ' 单'),
               React.createElement('button', { type: 'button', style: btnGhost, onClick: () => { const n = {}; if (!allSelected) list.forEach(s => { n[s.file] = true }); setSel(n) } },
@@ -2051,7 +2207,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             React.createElement('div', { style: { marginTop: 4, fontSize: 'var(--t-tiny)', color: T.text2 } },
               '只勾真的验证过 fix 生效的单——批量标 resolved 会写进置信度结算；没验证的留在待升格。'),
             batchCmd === 'close' && ids.length ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 } },
-              React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 6, padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', color: T.text, wordBreak: 'break-word', lineHeight: '18px' } }, text),
+              React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-xs)', padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', color: T.text, wordBreak: 'break-word', lineHeight: 'var(--lh-base)' } }, text),
               React.createElement('button', { type: 'button', style: batchCopied === 'fail' ? btnRed : btnPurple, onClick: () => copyText(text).then(ok => setBatchCopied(ok ? 'close' : 'fail')) },
                 batchCopied === 'close' ? '已复制' : (batchCopied === 'fail' ? '失败' : '复制')),
             ) : null,
@@ -2060,43 +2216,101 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         return null
       })()
 
+      // 横幅上的三个数各自可点：看到「2 个等回报」的第一反应是哪些单，不该再回头找筛选。
+      const followChip = (n, label, id) => React.createElement('button', {
+        type: 'button', 'aria-pressed': kbFilter === id ? 'true' : 'false', onClick: () => setKbFilter(kbFilter === id ? 'all' : id),
+        title: '只看这一类', style: { ...btnGhost, padding: '1px 9px', borderRadius: 'var(--r-pill)' },
+      }, n + ' 个' + label)
       return React.createElement('div', { className: 'sleu', style: { ...base, padding: 20 } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 10, flexWrap: 'wrap' } },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-            React.createElement('span', { style: { width: 8, height: 16, borderRadius: 4, background: 'var(--acc-blue)', display: 'inline-block' } }),
-            React.createElement('span', { className: 'sleu-title', style: { fontSize: 18, fontWeight: 700 } }, '诊断状态'),
+            React.createElement('span', { style: { width: 8, height: 16, borderRadius: 'var(--r-xs)', background: 'var(--acc-blue)', display: 'inline-block' } }),
+            React.createElement('span', { className: 'sleu-title', style: { fontSize: 'var(--t-2xl)', fontWeight: 700 } }, '诊断状态'),
           ),
-          React.createElement('span', { title: badge, style: { fontSize: 'var(--t-sm)', color: T.text2, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 999, padding: '3px 11px' } },
-            nFollow ? (nFollow + ' 项待跟进') : ((r.sessions || []).length + ' 个会话')),
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+            React.createElement('button', { type: 'button', title: '重新读取 traces/——复制闭环指令去对话执行后，回来点这里', onClick: () => setReloadAt(n => n + 1), style: { ...btnGhost, padding: '3px 10px' } }, '刷新'),
+            React.createElement('span', { title: badge, style: { fontSize: 'var(--t-sm)', color: T.text2, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-pill)', padding: '3px 11px' } },
+              nFollow ? (nFollow + ' 项待跟进') : ((r.sessions || []).length + ' 个会话')),
+          ),
         ),
         // 待跟进提示：只在真有的时候出现，且给"下一步做什么"。
         // 三类各自对应一个动作（续接 / 追问结果 / 改 status），所以分开说；末尾一句点明这是两条轴，
         // 免得读者把"在查"与"等回报"读成同一件事的两句话。
-        nFollow ? React.createElement('div', { style: { ...rise(0), display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '8px 12px', marginBottom: 10, background: 'var(--tint-amber)', border: '1px solid var(--hair)', borderRadius: 10, fontSize: 13.5, color: T.text } },
+        nFollow ? React.createElement('div', { style: { ...rise(0), display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '8px 12px', marginBottom: 10, background: 'var(--tint-amber)', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', fontSize: 'var(--t-md)', color: T.text } },
           React.createElement(Dot, { color: T.warn, size: 7 }),
-          nLooking ? React.createElement('span', null, nLooking + ' 个在查') : null,
+          nLooking ? followChip(nLooking, '在查', 'running') : null,
           nLooking && (nAwaiting || nClose) ? React.createElement('span', { style: { color: T.text2 } }, '·') : null,
-          nAwaiting ? React.createElement('span', null, nAwaiting + ' 个等回报') : null,
+          nAwaiting ? followChip(nAwaiting, '等回报', 'awaiting') : null,
           nAwaiting && nClose ? React.createElement('span', { style: { color: T.text2 } }, '·') : null,
-          nClose ? React.createElement('span', null, nClose + ' 个待标收尾') : null,
-          React.createElement('span', { style: { color: T.text2, marginLeft: 'auto', fontSize: 12.5 } },
+          nClose ? followChip(nClose, '待标收尾', 'close-pending') : null,
+          React.createElement('span', { style: { color: T.text2, marginLeft: 'auto', fontSize: 'var(--t-sm)' } },
             '在查=诊断没结论（含等现场补材料）；等回报=结论已给、fix 没验证；待标收尾=回报已生效、状态还停在进行中｜卡片里点按钮生成指令 → 复制 → 粘到对话执行'),
           React.createElement('span', { className: 'sleu-mono', title: '面板包版本：与 dsh-plugins/dsh-sleuth-panels/package.json 一致。看到的不是这个版本 = 装的还是旧包，或浏览器缓存了旧 bundle', style: { color: T.text2, fontSize: 'var(--t-md2)', opacity: 0.75 } }, PANEL_VERSION),
         ) : null,
-        // 工具栏（筛选 + 搜索）**吸顶**：会话一多就得往下滚，工具不该滚走
-        React.createElement('div', { style: { position: 'sticky', top: 0, zIndex: 2, paddingTop: 2, paddingBottom: 8, marginBottom: 4, background: T.bg, backgroundImage: 'var(--surf)' } },
+        // 工具栏（筛选 + 搜索 + 列头）**吸顶**：会话一多就得往下滚，工具与列头都不该滚走。
+        // 列头进吸顶容器后，滚到任意位置都知道每列是什么（此前列头随列表一起滚掉）。
+        React.createElement('div', { style: { position: 'sticky', top: 0, zIndex: 2, padding: '2px 0 8px', marginBottom: 4, background: T.bg, borderBottom: '1px solid var(--hair-strong)' } },
           React.createElement('div', { style: { display: 'flex', gap: 6, marginBottom: 8, flexWrap: 'wrap' } },
-            kbChips.map(c => React.createElement('button', { key: c.id, type: 'button', title: c.title || null, onClick: () => setKbFilter(c.id), className: 'sleu-chip', style: c.id === kbFilter ? { ...btnPrimary, padding: '4px 13px', borderRadius: 999 } : { ...btnGhost, padding: '4px 13px', borderRadius: 999 } }, c.label)),
+            // 从横幅切进来的三类（在查/等回报/待标收尾）不在 chip 列表里，补一个可退出的当前项，
+            // 否则切进去后整行没有任何一个 aria-pressed，读者不知道现在在看哪一类。
+            ['running', 'awaiting', 'close-pending'].indexOf(kbFilter) >= 0
+              ? React.createElement('button', {
+                  type: 'button', className: 'sleu-chip', 'aria-pressed': 'true', title: '点一下回到全部',
+                  onClick: () => setKbFilter('all'),
+                }, (FILTER_LABEL[kbFilter] || '当前') + ' ×')
+              : null,
+            kbChips.map(c => React.createElement('button', {
+              key: c.id, type: 'button', title: c.title || null, 'aria-pressed': c.id === kbFilter ? 'true' : 'false',
+              onClick: () => setKbFilter(c.id), className: 'sleu-chip',
+            }, c.label)),
           ),
-          React.createElement('div', { style: { position: 'relative' } },
-            React.createElement('span', { style: { position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', width: 10, height: 10, borderRadius: 999, border: '1.5px solid ' + T.text2, display: 'block' } }),
-            React.createElement('input', { placeholder: '搜索：会话号 / 状态 / 框架 / 平台 / 定位到的 case / 未闭环 / 待沉淀 / 待升格…', value: query, onChange: e => setQuery(e.target.value), style: { width: '100%', boxSizing: 'border-box', padding: '8px 11px 8px 30px', fontSize: 13.5, borderRadius: 9, border: '1px solid var(--hair)', background: T.bg, color: T.text, outline: 'none', transition: 'border-color .15s' } }),
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+            React.createElement('div', { style: { position: 'relative', flex: 1, minWidth: 0 } },
+              React.createElement('span', { 'aria-hidden': 'true', style: { position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', width: 10, height: 10, borderRadius: 'var(--r-pill)', border: '1.5px solid ' + T.text2, display: 'block' } }),
+              React.createElement('input', {
+                placeholder: '搜索会话号 / 状态 / 框架 / 背景', 'aria-label': '筛选会话', value: queryInput,
+                // 输入框立刻回显，过滤延后 120ms：会话多时每个按键都重排列表会掉帧。
+                onChange: e => {
+                  const v = e.target.value
+                  setQueryInput(v)
+                  if (timer && typeof timer.timeout === 'function') {
+                    if (typeof queryTimerDispose === 'function') queryTimerDispose()
+                    queryTimerDispose = timer.timeout(() => setQuery(v), 120)
+                  } else setQuery(v)
+                },
+                onKeyDown: e => { if (e.key === 'Escape') { if (typeof queryTimerDispose === 'function') queryTimerDispose(); setQueryInput(''); setQuery('') } },
+                title: '可搜：会话号、状态、框架、平台、类别、定位到的 case、问题背景、待沉淀 / 待升格',
+                style: { width: '100%', boxSizing: 'border-box', padding: '8px 30px 8px 30px', fontSize: 'var(--t-sm)', borderRadius: 'var(--r-md)', border: '1px solid var(--hair)', background: T.bg, color: T.text, transition: 'border-color var(--m-fast) var(--e-out)' },
+              }),
+              query ? React.createElement('button', {
+                type: 'button', 'aria-label': '清空搜索', onClick: () => { if (typeof queryTimerDispose === 'function') queryTimerDispose(); setQueryInput(''); setQuery('') },
+                style: { position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', color: T.text2, cursor: 'pointer', fontSize: 'var(--t-md)', lineHeight: 1, padding: '4px 6px' },
+              }, '×') : null,
+            ),
+            React.createElement('span', { style: { color: T.text2, fontSize: 'var(--t-tiny)', whiteSpace: 'nowrap' } },
+              q ? (sessions.length + ' / ' + totalSessions + ' 单') : (totalSessions + ' 单')),
+            React.createElement('select', {
+              value: timeRange, 'aria-label': '按诊断开始时间筛选',
+              title: '按诊断开始时间（created_at）筛选',
+              onChange: e => setTimeRange(e.target.value),
+              style: { padding: '7px 8px', fontSize: 'var(--t-tiny)', borderRadius: 'var(--r-md)', border: '1px solid var(--hair)', background: T.bg, color: T.text, cursor: 'pointer' },
+            }, [['all', '全部时间'], ['7', '近 7 天'], ['30', '近 30 天'], ['90', '近 90 天']].map(p => React.createElement('option', { key: p[0], value: p[0] }, p[1]))),
           ),
           batchBar,
+          sessions.length ? React.createElement('div', { style: { display: 'grid', gridTemplateColumns: ROW_COLS, gap: 10, padding: '8px 16px 4px', marginTop: 4 } },
+            ['状态', '会话', '框架 · 平台', '事件', '耗时', 'token', ''].map((h, i) =>
+              React.createElement('span', {
+                key: i,
+                className: ['', '', 'sleu-c-fw', 'sleu-c-events', 'sleu-c-ms', 'sleu-c-tok', ''][i],
+                title: i === 3 ? '斜杠左边是用户贴材料的条数，右边是 Agent 记录动作的条数' : (i === 5 ? '工具调用累计 token' : null),
+                style: { fontSize: 'var(--t-tiny)', color: T.text2,
+                         textAlign: (i >= 3 && i <= 5) ? 'right' : 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+              }, h))) : null,
         ),
         sessions.length > 20 ? React.createElement('button', {
-          type: 'button', className: 'sleu-fab', title: '回到顶部（会话较多）',
+          type: 'button', className: 'sleu-fab', title: '回到顶部（会话较多）', 'aria-label': '回到顶部',
           onClick: () => {
+            const behavior = REDUCED ? 'auto' : 'smooth'
             // 面板的滚动容器可能是祖先节点而不是 window —— 从触发元素往上找第一个可滚的祖先
             try {
               const el = (typeof document !== 'undefined' && document.activeElement) || null
@@ -2104,38 +2318,24 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               while (node && node !== document.body) {
                 const ov = getComputedStyle(node).overflowY
                 if ((ov === 'auto' || ov === 'scroll') && node.scrollHeight > node.clientHeight + 4) {
-                  node.scrollTo({ top: 0, behavior: 'smooth' }); return
+                  node.scrollTo({ top: 0, behavior: behavior }); return
                 }
                 node = node.parentElement
               }
-              if (typeof window !== 'undefined' && window.scrollTo) window.scrollTo({ top: 0, behavior: 'smooth' })
+              if (typeof window !== 'undefined' && window.scrollTo) window.scrollTo({ top: 0, behavior: behavior })
             } catch (e) { /* 滚动不可用时静默（按钮本身无副作用） */ }
           },
         }, '↑') : null,
         sessions.length === 0
-          ? React.createElement('div', { style: { color: T.text2, padding: '32px 16px', textAlign: 'center', fontSize: 13.5, lineHeight: 1.8 } },
-              React.createElement('div', { style: { fontSize: 15, fontWeight: 600, color: T.text, marginBottom: 6 } }, emptyTitle),
+          ? React.createElement('div', { style: { color: T.text2, padding: '32px 16px', textAlign: 'center', fontSize: 'var(--t-md)', lineHeight: 'var(--lh-prose)' } },
+              React.createElement('div', { style: { fontSize: 'var(--t-lg)', fontWeight: 600, color: T.text, marginBottom: 6 } }, emptyTitle),
               emptyHint)
-          : React.createElement('div', null,
-              // 列头：与每一行共用 ROW_COLS。没有它，读者不知道 6 / 11 是什么、10.0s 是工具耗时还是总耗时。
-              React.createElement('div', { style: { display: 'grid', gridTemplateColumns: ROW_COLS, gap: 10, padding: '0 16px 6px', borderBottom: '1px solid var(--hair)' } },
-                ['状态', '会话', '框架 · 平台 · 类别', '用户事件 / Agent 事件', '每步工具耗时', '工具耗时', 'token', ''].map((h, i) =>
-                  React.createElement('span', {
-                    key: i,
-                    title: i === 3 ? '斜杠左边是用户贴材料的条数，右边是 Agent 记录动作的条数' : (i === 4 ? '每根小条是一步的工具耗时（窗口内调用之和，不含模型思考）；空位=该步没有事件' : null),
-                    style: { fontSize: 'var(--t-md2)', letterSpacing: '.11em', textTransform: 'uppercase', color: T.text2,
-                             textAlign: (i >= 5 && i <= 6) ? 'right' : 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-                  }, h))),
+          : React.createElement('div', { className: 'sleu-list' },
               sessions.map(s => React.createElement(SessionCard, {
                 key: s.file, session: s, sessionId: sessionId,
                 selectable: kbFilter === 'need-promote',
                 selected: !!sel[s.file],
-                onToggle: () => setSel(prev => {
-                  const n = Object.assign({}, prev)
-                  if (n[s.file]) delete n[s.file]
-                  else n[s.file] = true
-                  return n
-                }),
+                onToggleFile: toggleSel,
               })),
             ),
       )
@@ -2194,11 +2394,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       }
       if (r.caseDerivedCount !== undefined) refRows.push(React.createElement(MetricRow, { key: 'rcd', label: 'case 提炼（有来源）', value: r.caseDerivedCount + ' / ' + r.total }))
 
-      return React.createElement('div', { style: { background: T.bg, border: '1px solid ' + T.border, borderRadius: 14, marginBottom: 12, overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,.04), 0 1px 1px rgba(15,23,42,.03)' } },
+      return React.createElement('div', { style: { background: T.bg, border: '1px solid ' + T.border, borderRadius: 'var(--r-lg)', marginBottom: 12, overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,.04), 0 1px 1px rgba(15,23,42,.03)' } },
         React.createElement('div', { style: { padding: '12px 14px' } },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9 } },
-            React.createElement('span', { style: { width: 8, height: 16, borderRadius: 4, background: 'var(--acc-green)', display: 'inline-block' } }),
-            React.createElement('span', { className: 'sleu-title', style: { fontSize: 15, fontWeight: 700 } }, '知识库健康'),
+            React.createElement('span', { style: { width: 8, height: 16, borderRadius: 'var(--r-xs)', background: 'var(--acc-green)', display: 'inline-block' } }),
+            React.createElement('span', { className: 'sleu-title', style: { fontSize: 'var(--t-lg)', fontWeight: 700 } }, '知识库健康'),
           ),
           React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 12px' } },
             React.createElement('div', null,
@@ -2230,11 +2430,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         rows.push(React.createElement(MetricRow, { key: 'prl', label: 'reference 参与', value: proc.refSessions + ' / ' + proc.total + ' session', small: proc.total < 5 }))
       }
       if (!rows.length) return null
-      return React.createElement('div', { style: { background: T.bg, border: '1px solid ' + T.border, borderRadius: 14, marginBottom: 12, overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,.04), 0 1px 1px rgba(15,23,42,.03)' } },
+      return React.createElement('div', { style: { background: T.bg, border: '1px solid ' + T.border, borderRadius: 'var(--r-lg)', marginBottom: 12, overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,.04), 0 1px 1px rgba(15,23,42,.03)' } },
         React.createElement('div', { style: { padding: '12px 14px' } },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 9 } },
-            React.createElement('span', { style: { width: 8, height: 16, borderRadius: 4, background: 'var(--acc-purple)', display: 'inline-block' } }),
-            React.createElement('span', { className: 'sleu-title', style: { fontSize: 15, fontWeight: 700 } }, '流程闭环'),
+            React.createElement('span', { style: { width: 8, height: 16, borderRadius: 'var(--r-xs)', background: 'var(--acc-purple)', display: 'inline-block' } }),
+            React.createElement('span', { className: 'sleu-title', style: { fontSize: 'var(--t-lg)', fontWeight: 700 } }, '流程闭环'),
           ),
           rows,
         ),
@@ -2254,34 +2454,34 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         change: { label: '变化', color: T.warn },
         gone: { label: '不再采集', color: T.text2 },
       }
-      return React.createElement('div', { style: { background: T.bg, border: '1px solid ' + T.border, borderRadius: 14, padding: '11px 14px', marginBottom: 12, boxShadow: '0 1px 2px rgba(15,23,42,.04), 0 1px 1px rgba(15,23,42,.03)' } },
+      return React.createElement('div', { style: { background: T.bg, border: '1px solid ' + T.border, borderRadius: 'var(--r-lg)', padding: '11px 14px', marginBottom: 12, boxShadow: '0 1px 2px rgba(15,23,42,.04), 0 1px 1px rgba(15,23,42,.03)' } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, flexWrap: 'wrap' } },
-          React.createElement('span', { className: 'sleu-title', style: { fontSize: 15, fontWeight: 700 } }, '本期变化'),
-          React.createElement('span', { className: 'sleu-chip', style: { color: km.color, border: '1px solid ' + km.color, borderRadius: 999, padding: '1px 9px', fontSize: 11.5, fontWeight: 700 } }, km.label),
-          React.createElement('span', { style: { fontFamily: 'var(--font-mono)', fontSize: 13.5, fontWeight: 700 } }, cur.period),
+          React.createElement('span', { className: 'sleu-title', style: { fontSize: 'var(--t-lg)', fontWeight: 700 } }, '本期变化'),
+          React.createElement('span', { className: 'sleu-chip', style: { color: km.color, border: '1px solid ' + km.color, borderRadius: 'var(--r-pill)', padding: '1px 9px', fontSize: 'var(--t-tiny)', fontWeight: 700 } }, km.label),
+          React.createElement('span', { style: { fontFamily: 'var(--font-mono)', fontSize: 'var(--t-md)', fontWeight: 700 } }, cur.period),
           d.prevPeriod
-            ? React.createElement('span', { style: { fontSize: 12.5, color: T.text2 } }, '对比 ' + d.prevPeriod)
-            : React.createElement('span', { style: { fontSize: 12.5, color: T.text2 } }, '无上一期可比'),
-          React.createElement('span', { style: { marginLeft: 'auto', fontSize: 12.5, color: T.text2 } },
+            ? React.createElement('span', { style: { fontSize: 'var(--t-sm)', color: T.text2 } }, '对比 ' + d.prevPeriod)
+            : React.createElement('span', { style: { fontSize: 'var(--t-sm)', color: T.text2 } }, '无上一期可比'),
+          React.createElement('span', { style: { marginLeft: 'auto', fontSize: 'var(--t-sm)', color: T.text2 } },
             d.moved.length ? d.moved.length + ' 项变动 · ' + d.same + ' 项持平' : '与上期完全一致'),
         ),
         d.moved.length
           ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
               d.moved.map(m => {
                 const meta = META[m.kind] || META.change
-                return React.createElement('div', { key: m.key, style: { display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', background: T.bg2, borderRadius: 7, fontSize: 12.5, flexWrap: 'wrap' } },
-                  React.createElement('span', { style: { color: meta.color, fontWeight: 700, fontSize: 11.5, minWidth: 52 } }, meta.label),
+                return React.createElement('div', { key: m.key, style: { display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px', background: T.bg2, borderRadius: 'var(--r-sm)', fontSize: 'var(--t-sm)', flexWrap: 'wrap' } },
+                  React.createElement('span', { style: { color: meta.color, fontWeight: 700, fontSize: 'var(--t-tiny)', minWidth: 52 } }, meta.label),
                   React.createElement('span', { style: { color: T.text2, flex: '1 1 130px', minWidth: 0 } }, m.label),
                   unread(m.key) ? React.createElement('span', { title: unread(m.key) === true ? '分母为 0：这个数不可解读' : unread(m.key), style: tinyBadge('var(--d-purple)') }, '不可解读') : null,
                   React.createElement('span', { style: { fontFamily: 'var(--font-mono)', color: T.text } },
                     m.kind === 'change' ? (m.from + ' → ' + m.to) : (m.kind === 'new' ? m.to : m.from)),
-                  m.delta !== null && m.delta !== undefined ? React.createElement('span', { style: { fontSize: 11.5, fontWeight: 700,
+                  m.delta !== null && m.delta !== undefined ? React.createElement('span', { style: { fontSize: 'var(--t-tiny)', fontWeight: 700,
                     color: m.direction === 'bad' ? T.error : (m.direction === 'good' ? T.success : T.text2) } },
                     (m.rate ? ((m.delta > 0 ? '+' : '') + (m.delta * 100).toFixed(0) + '%') : ((m.delta > 0 ? '+' : '') + m.delta))) : null,
                 )
               }),
             )
-          : React.createElement('div', { style: { fontSize: 12.5, color: T.text2 } }, '本期各指标与上一期逐项相同——没有新变化可读。'),
+          : React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2 } }, '本期各指标与上一期逐项相同——没有新变化可读。'),
       )
     }
 
@@ -2298,23 +2498,23 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         .concat(metricKeys.filter(k => PRIORITY.indexOf(k) < 0))
       const summary = ordered.slice(0, 4).map(k => (METRIC_LABELS[k] || k) + ' ' + metricValue(p.metrics[k]).text).join(' · ')
       const nUnread = metricKeys.filter(k => unread(k)).length
-      return React.createElement('div', { style: { background: T.bg, border: '1px solid ' + T.border, borderRadius: 14, marginBottom: 10, overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,.04), 0 1px 1px rgba(15,23,42,.03)' } },
+      return React.createElement('div', { style: { background: T.bg, border: '1px solid ' + T.border, borderRadius: 'var(--r-lg)', marginBottom: 10, overflow: 'hidden', boxShadow: '0 1px 2px rgba(15,23,42,.04), 0 1px 1px rgba(15,23,42,.03)' } },
         React.createElement('button', {
           type: 'button', 'aria-expanded': !!open, onClick: onToggle,
           style: { width: '100%', padding: open ? '12px 16px 8px' : '10px 16px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', background: 'transparent', border: 'none', textAlign: 'left', color: T.text, font: 'inherit' },
         },
           React.createElement(Chevron, { open: open, color: km.color }),
-          React.createElement('span', { className: 'sleu-chip', style: { color: km.color, border: '1px solid ' + km.color, borderRadius: 999, padding: '1px 10px', fontSize: 11.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.04em' } }, km.label),
-          React.createElement('span', { style: { fontWeight: 700, fontSize: 13.5, fontFamily: 'var(--font-mono)' } }, p.period),
-          p.recorded_at ? React.createElement('span', { style: { color: T.text2, fontSize: 12.5 } }, '记录 ' + p.recorded_at) : null,
+          React.createElement('span', { className: 'sleu-chip', style: { color: km.color, border: '1px solid ' + km.color, borderRadius: 'var(--r-pill)', padding: '1px 10px', fontSize: 'var(--t-tiny)', fontWeight: 700, letterSpacing: '.04em' } }, km.label),
+          React.createElement('span', { style: { fontWeight: 700, fontSize: 'var(--t-md)', fontFamily: 'var(--font-mono)' } }, p.period),
+          p.recorded_at ? React.createElement('span', { style: { color: T.text2, fontSize: 'var(--t-sm)' } }, '记录 ' + p.recorded_at) : null,
           nUnread ? React.createElement('span', { title: '该期有 ' + nUnread + ' 项指标分母为 0（不可解读）', style: tinyBadge('var(--d-purple)') }, nUnread + ' 项不可解读') : null,
-          !open && summary ? React.createElement('span', { style: { marginLeft: 'auto', color: T.text2, fontSize: 13.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '55%' } }, summary) : null,
-          open ? null : React.createElement('span', { style: { color: T.text2, fontSize: 12.5 } }, metricKeys.length + ' 项'),
+          !open && summary ? React.createElement('span', { title: summary, style: { marginLeft: 'auto', color: T.text2, fontSize: 'var(--t-md)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '55%' } }, summary) : null,
+          open ? null : React.createElement('span', { style: { color: T.text2, fontSize: 'var(--t-sm)' } }, metricKeys.length + ' 项'),
         ),
         open ? React.createElement('div', { style: { padding: '0 16px 12px' } },
-          km.note ? React.createElement('div', { style: { color: T.text2, fontSize: 12.5, marginBottom: 4, fontStyle: 'italic' } }, km.note) : null,
-          p.title ? React.createElement('div', { style: { color: T.text, fontSize: 13.5, marginTop: 3, lineHeight: 1.65 } }, plainNote(p.title)) : null,
-          p.source ? React.createElement('div', { style: { color: T.text2, fontSize: 13.5, marginTop: 3, wordBreak: 'break-word', lineHeight: 1.65 } }, '来源: ' + plainNote(p.source)) : null,
+          km.note ? React.createElement('div', { style: { color: T.text2, fontSize: 'var(--t-sm)', marginBottom: 4, borderLeft: '2px solid var(--hair)', paddingLeft: 8 } }, km.note) : null,
+          p.title ? React.createElement('div', { style: { color: T.text, fontSize: 'var(--t-md)', marginTop: 3, lineHeight: 'var(--lh-base)' } }, plainNote(p.title)) : null,
+          p.source ? React.createElement('div', { style: { color: T.text2, fontSize: 'var(--t-md)', marginTop: 3, wordBreak: 'break-word', lineHeight: 'var(--lh-base)' } }, '来源: ' + plainNote(p.source)) : null,
           metricKeys.length ? React.createElement('div', { style: { marginTop: 9, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 12px' } },
             metricKeys.map(k => {
               const v = p.metrics[k]
@@ -2323,7 +2523,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               return React.createElement(MetricRow, { key: k, label: METRIC_LABELS[k] || k, value: fmtVal(v), small: small, unreadable: !!unread(k), unreadableWhy: unread(k) === true ? null : unread(k), strength: (strengthOf || {})[k] || null })
             }),
           ) : null,
-          p.notes && p.notes.trim() ? React.createElement('div', { style: { marginTop: 9, padding: '7px 10px', background: 'color-mix(in srgb, ' + T.brand + ' 5%, transparent)', borderLeft: '3px solid ' + T.brand, borderRadius: 5, fontSize: 13.5, color: T.text2, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.68 } },
+          p.notes && p.notes.trim() ? React.createElement('div', { style: { marginTop: 9, padding: '7px 10px', background: 'color-mix(in srgb, ' + T.brand + ' 5%, transparent)', borderLeft: '3px solid ' + T.brand, borderRadius: 'var(--r-xs)', fontSize: 'var(--t-md)', color: T.text2, whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 'var(--lh-base)' } },
             plainNote(p.notes)) : null,
         ) : null,
       )
@@ -2414,7 +2614,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           '索引 ' + drift.declared + ' ≠ 磁盘 ' + drift.disk + '（差 ' + (drift.disk - drift.declared) + '）',
         ))
       }
-      return React.createElement('div', { style: { ...rise(0), display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '7px 11px', marginBottom: 9, background: T.bg2, border: '1px solid ' + T.border, borderRadius: 10, fontSize: 13.5, color: T.text2 } },
+      return React.createElement('div', { style: { ...rise(0), display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', padding: '7px 11px', marginBottom: 9, background: T.bg2, border: '1px solid ' + T.border, borderRadius: 'var(--r-md)', fontSize: 'var(--t-md)', color: T.text2 } },
         ...parts,
         React.createElement('span', { title: st.note, style: { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 } },
           pill(st.label, st.color),
@@ -2456,24 +2656,24 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           'aria-expanded': open,
           onClick: () => setOpen(!open),
           className: 'sleu-row',
-          style: { width: '100%', display: 'flex', alignItems: 'baseline', gap: 7, padding: '9px 12px', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', color: T.text, font: 'inherit' },
+          style: { width: '100%', display: 'flex', alignItems: 'baseline', gap: 7, padding: '9px 12px', border: 'none', cursor: 'pointer', textAlign: 'left', color: T.text, font: 'inherit' },
         },
-          React.createElement('span', { style: { color: color, fontWeight: 700, fontSize: 13.5, flexShrink: 0, lineHeight: '20px' } }, iconFor(row.level)),
-          React.createElement('span', { className: 'sleu-chip', style: { fontSize: 11.5, color: T.text2, flexShrink: 0, lineHeight: '20px', border: '1px solid ' + T.border, borderRadius: 999, padding: '0 7px' } }, faceLabel),
-          React.createElement('span', { style: { flex: 1, minWidth: 0, fontSize: 14.5, lineHeight: 1.65, wordBreak: 'break-word', color: T.text } }, plain),
+          React.createElement('span', { style: { color: color, fontWeight: 700, fontSize: 'var(--t-md)', flexShrink: 0, lineHeight: '20px' } }, iconFor(row.level)),
+          React.createElement('span', { className: 'sleu-chip', style: { fontSize: 'var(--t-tiny)', color: T.text2, flexShrink: 0, lineHeight: '20px', border: '1px solid ' + T.border, borderRadius: 'var(--r-pill)', padding: '0 7px' } }, faceLabel),
+          React.createElement('span', { style: { flex: 1, minWidth: 0, fontSize: 'var(--t-base)', lineHeight: 'var(--lh-base)', wordBreak: 'break-word', color: T.text } }, plain),
           React.createElement(Chevron, { open: open, color: T.text2 }),
         ),
-        open ? React.createElement('div', { style: { padding: '2px 12px 12px 30px', fontSize: 13.5, lineHeight: 1.65 } },
+        open ? React.createElement('div', { style: { padding: '2px 12px 12px 30px', fontSize: 'var(--t-md)', lineHeight: 'var(--lh-base)' } },
           // 判据证据行：技术文案（判据名 / 格子数 / 指标名）——给要回查配置的人
           React.createElement(SectionLabel, null, '判据出处'),
-          React.createElement('div', { className: 'sleu-mono', style: { fontSize: 12.5, color: T.text2, lineHeight: 1.6, wordBreak: 'break-word' } }, row.text),
+          React.createElement('div', { className: 'sleu-mono', style: { fontSize: 'var(--t-sm)', color: T.text2, lineHeight: 'var(--lh-base)', wordBreak: 'break-word' } }, row.text),
           row.action ? React.createElement('div', { style: { color: T.text, marginTop: 10 } },
             React.createElement(SectionLabel, null, '下一步动作'),
             row.action) : null,
           cmd ? React.createElement('div', { style: { marginTop: row.action ? 9 : 0 } },
             React.createElement(SectionLabel, null, '可复制指令'),
             React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 6 } },
-              React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg2, border: '1px solid ' + T.border, borderRadius: 6, padding: '6px 8px', fontSize: 12.5, fontFamily: 'var(--font-mono)', wordBreak: 'break-word', lineHeight: 1.6, color: T.text } }, cmd.command),
+              React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg2, border: '1px solid ' + T.border, borderRadius: 'var(--r-xs)', padding: '6px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', wordBreak: 'break-word', lineHeight: 'var(--lh-base)', color: T.text } }, cmd.command),
               React.createElement('button', { type: 'button', onClick: () => onCopy(cmd.command, key), style: copiedKey === 'fail' ? { ...btnPurple, background: T.error } : btnRed }, copiedKey === key ? '已复制' : (copiedKey === 'fail' ? '失败' : cmd.label)),
             ),
           ) : null,
@@ -2494,28 +2694,28 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // ——"按 0 条判据检查"本身就是结论不可用的证据，却被渲染成通过。这与本面板
       // 反复修掉的假绿是同一类：**没被检查 ≠ 没越界**。
       const head = error
-        ? React.createElement('span', { style: { color: T.warn, fontSize: 12.5 } }, error)
+        ? React.createElement('span', { style: { color: T.warn, fontSize: 'var(--t-sm)' } }, error)
         : (pending
-            ? React.createElement('span', { style: { fontSize: 13.5, color: T.text2 } }, '体检结果读取中…（结论未到之前，这里不显示"无阻塞项"）')
+            ? React.createElement('span', { style: { fontSize: 'var(--t-md)', color: T.text2 } }, '体检结果读取中…（结论未到之前，这里不显示"无阻塞项"）')
             : (shown.length === 0
-            ? React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 7, fontSize: 13.5, color: T.text2 } },
+            ? React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 7, fontSize: 'var(--t-md)', color: T.text2 } },
                 React.createElement('span', { style: { color: T.success, fontWeight: 700 } }, '✓'),
                 '本期无阻塞项 · ',
                 // 配置文件名对读者没意义（那是维护者回查用的），收进 title；正文只说"检查了几条"
                 React.createElement('span', { title: '判据与阈值定义在 metrics/gates.yaml（每一项都可展开回查）' },
                   '按 ' + findings.length + ' 条判据检查，全部通过'))
-            : React.createElement('span', { style: { fontSize: 13.5, color: T.text2 } },
+            : React.createElement('span', { style: { fontSize: 'var(--t-md)', color: T.text2 } },
                 React.createElement('span', { title: '判据与阈值定义在 metrics/gates.yaml（每一项都可展开回查）' },
                   '按 ' + findings.length + ' 条判据检查：'),
                 React.createElement('b', { style: { color: T.error } }, ' ' + fail.length + ' 项需要处理'),
                 ' · ',
                 React.createElement('b', { style: { color: T.warn } }, warn.length + ' 项提示'),
                 ' · ' + okN + ' 项正常')))
-      return React.createElement('div', { className: 'sleu-card', style: { ...rise(0), border: '1px solid var(--hair)', borderTop: '2px solid ' + ((error || pending) ? T.border : (fail.length ? 'var(--acc-red)' : 'var(--acc-green)')), borderRadius: 12, background: T.bg, backgroundImage: 'var(--surf)', marginBottom: 10, overflow: 'hidden', boxShadow: 'var(--elev-1)' } },
+      return React.createElement('div', { className: 'sleu-card', style: { ...rise(0), border: '1px solid var(--hair)', borderTop: '2px solid ' + ((error || pending) ? T.border : (fail.length ? 'var(--acc-red)' : 'var(--acc-green)')), borderRadius: 'var(--r-lg)', background: T.bg, backgroundImage: 'var(--surf)', marginBottom: 8, overflow: 'hidden' } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', flexWrap: 'wrap' } },
-          React.createElement('span', { className: 'sleu-title', style: { fontSize: 15, fontWeight: 700 } }, '现在什么坏了'),
+          React.createElement('span', { className: 'sleu-title', style: { fontSize: 'var(--t-lg)', fontWeight: 700 } }, '现在什么坏了'),
           head,
-          (error || pending) ? null : React.createElement('span', { style: { marginLeft: 'auto', color: T.text2, fontSize: 12.5 } }, '点开看证据与下一步'),
+          (error || pending) ? null : React.createElement('span', { style: { marginLeft: 'auto', color: T.text2, fontSize: 'var(--t-sm)' } }, '点开看证据与下一步'),
         ),
         shown.map((row, i) => React.createElement(VerdictRow, { key: i, row: row, copiedKey: copiedKey, onCopy: onCopy })),
         !error && !pending && shown.length === 0 && cmds.length ? React.createElement('div', { style: { padding: '8px 12px', background: T.bg2, borderTop: '1px solid ' + T.border } },
@@ -2550,32 +2750,32 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         ? what.join('、') + ' 这几项判据本轮没跑——所以下面没有它们的结论'
         : (unimpl ? '有 ' + unimpl + ' 条判据本轮没跑——所以下面没有它们的结论'
                   : '本轮有判据没跑——所以下面没有它们的结论')
-      return React.createElement('div', { style: { ...rise(1), border: '1px solid var(--hair)', borderLeft: '2px solid ' + T.warn, borderRadius: 10, background: T.bg, padding: '10px 12px', marginBottom: 10 } },
+      return React.createElement('div', { style: { ...rise(1), border: '1px solid var(--hair)', borderLeft: '2px solid ' + T.warn, borderRadius: 'var(--r-md)', background: T.bg, padding: '10px 12px', marginBottom: 10 } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' } },
           React.createElement(Dot, { color: T.warn, size: 7 }),
-          React.createElement('span', { style: { fontSize: 13.5, fontWeight: 700, color: T.text } }, '本轮判据不完整'),
-          React.createElement('span', { style: { fontSize: 13.5, color: T.text, lineHeight: 1.6 } }, headline),
+          React.createElement('span', { style: { fontSize: 'var(--t-md)', fontWeight: 700, color: T.text } }, '本轮判据不完整'),
+          React.createElement('span', { style: { fontSize: 'var(--t-md)', color: T.text, lineHeight: 'var(--lh-base)' } }, headline),
         ),
-        React.createElement('div', { style: { marginTop: 6, fontSize: 13.5, color: T.text2, lineHeight: 1.65 } },
+        React.createElement('div', { style: { marginTop: 6, fontSize: 'var(--t-md)', color: T.text2, lineHeight: 'var(--lh-base)' } },
           '所以在这次检查里，',
           React.createElement('b', { style: { color: T.text } }, '「没有报出越界」不等于「没有越界」'),
           '——只是那几项没被判。其它判据的结论仍然有效。'),
         React.createElement('button', {
           type: 'button', 'aria-expanded': detailOpen,
           onClick: () => setDetailOpen(!detailOpen),
-          style: { marginTop: 7, background: 'transparent', border: 'none', padding: 0, fontSize: 13.5, color: T.text2, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, font: 'inherit' },
+          style: { marginTop: 7, background: 'transparent', border: 'none', padding: 0, fontSize: 'var(--t-md)', color: T.text2, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5, font: 'inherit' },
         },
           React.createElement(Chevron, { open: detailOpen, color: T.text2 }),
           '为什么没跑 / 怎么复现',
         ),
-        detailOpen ? React.createElement('div', { style: { marginTop: 6, paddingTop: 7, borderTop: '1px dashed ' + T.border, fontSize: 13.5, color: T.text2, lineHeight: 1.7 } },
+        detailOpen ? React.createElement('div', { style: { marginTop: 6, paddingTop: 7, borderTop: '1px dashed ' + T.border, fontSize: 'var(--t-md)', color: T.text2, lineHeight: 'var(--lh-base)' } },
           cov.gates_total ? React.createElement('div', null, '判据覆盖面：闸门 ' + cov.gates_evaluated + '/' + cov.gates_total
             + (cov.readability_total ? ' · 数字可信度 ' + cov.readability_evaluated + '/' + cov.readability_total : '')) : null,
           items.length ? React.createElement('div', { style: { marginTop: 4 } },
             items.map((b, i) => React.createElement('div', { key: i, style: { wordBreak: 'break-word' } }, '· ' + b))) : null,
           React.createElement('div', { style: { marginTop: 5 } },
             '复现：',
-            React.createElement('code', { style: { userSelect: 'all', background: T.bg2, border: '1px solid ' + T.border, borderRadius: 5, padding: '1px 6px', fontFamily: 'var(--font-mono)' } }, 'python3 scripts/metrics_health.py'),
+            React.createElement('code', { style: { userSelect: 'all', background: T.bg2, border: '1px solid ' + T.border, borderRadius: 'var(--r-xs)', padding: '1px 6px', fontFamily: 'var(--font-mono)' } }, 'python3 scripts/metrics_health.py'),
             '　退出码 0 判据全评过且无越界 · 1 有判据被违反 · 2 有判据未被评估',
           ),
         ) : null,
@@ -2593,20 +2793,20 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       return React.createElement('div', { style: { ...rise(1), marginBottom: 10 } },
         React.createElement('button', {
           type: 'button', 'aria-expanded': open, onClick: () => setOpen(!open),
-          style: { width: '100%', display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', background: 'transparent', border: '1px solid ' + T.border, borderRadius: 9, cursor: 'pointer', color: T.text2, fontSize: 13.5, font: 'inherit', transition: DUR ? 'border-color .15s ' + EASE : 'none' },
+          style: { width: '100%', display: 'flex', alignItems: 'center', gap: 7, padding: '6px 10px', background: 'transparent', border: '1px solid ' + T.border, borderRadius: 'var(--r-md)', cursor: 'pointer', color: T.text2, fontSize: 'var(--t-md)', font: 'inherit', transition: DUR ? 'border-color .15s ' + EASE : 'none' },
         },
           React.createElement(Chevron, { open: open, color: T.text2 }),
           React.createElement('span', { style: { fontWeight: 700, color: T.text } }, '闭环检验'),
           React.createElement('span', null, faces.join(' · ')),
           React.createElement('span', { style: { marginLeft: 'auto' } }, nFail + ' ✗ · ' + nWarn + ' ! · ' + findings.length + ' 项'),
         ),
-        open ? React.createElement('div', { style: { marginTop: 7, padding: '8px 11px', background: T.bg, border: '1px solid ' + T.border, borderRadius: 9 } },
-          findings.map((f, i) => React.createElement('div', { key: i, style: { display: 'flex', gap: 8, padding: '3px 0', fontSize: 13.5, lineHeight: 1.55, borderBottom: i === findings.length - 1 ? 'none' : '1px dashed ' + T.border } },
+        open ? React.createElement('div', { style: { marginTop: 7, padding: '8px 11px', background: T.bg, border: '1px solid ' + T.border, borderRadius: 'var(--r-md)' } },
+          findings.map((f, i) => React.createElement('div', { key: i, style: { display: 'flex', gap: 8, padding: '3px 0', fontSize: 'var(--t-md)', lineHeight: 'var(--lh-base)', borderBottom: i === findings.length - 1 ? 'none' : '1px dashed ' + T.border } },
             React.createElement('span', { style: { color: colorFor(f.level), fontWeight: 700, width: 12, flexShrink: 0 } }, iconFor(f.level)),
             React.createElement('span', { style: { color: T.text2, minWidth: 62, flexShrink: 0 } }, f.face),
             React.createElement('span', { style: { flex: 1, minWidth: 0, color: T.text, wordBreak: 'break-word' } }, f.text),
           )),
-          React.createElement('div', { style: { marginTop: 6, fontSize: 13.5, color: T.text2 } },
+          React.createElement('div', { style: { marginTop: 6, fontSize: 'var(--t-md)', color: T.text2 } },
             '来源：scripts/metrics_health.py（判据 read metrics/gates.yaml）· 面板不重算阈值，只渲染这份结论。'),
         ) : null,
       )
@@ -2653,7 +2853,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       if (rows.length < 2) {
         return React.createElement('span', {
           title: rows.length ? '只有 1 期快照含该格数据（' + rows[0].period + '），趋势待积累' : '已有快照里没有该格数据',
-          style: { color: T.text2, fontSize: 13.5, flexShrink: 0 },
+          style: { color: T.text2, fontSize: 'var(--t-md)', flexShrink: 0 },
         }, rows.length ? '趋势待积累' : '无历史')
       }
       const last = rows.slice(-6)
@@ -2673,7 +2873,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           })),
         ),
         React.createElement('span', {
-          style: { fontFamily: 'var(--font-mono)', fontSize: 13.5, color: delta > 0 ? T.warn : T.text2, flexShrink: 0 },
+          style: { fontFamily: 'var(--font-mono)', fontSize: 'var(--t-md)', color: delta > 0 ? T.warn : T.text2, flexShrink: 0 },
           title: '在已有 ' + rows.length + ' 期快照里的走势：'
             + rows.map(r => r.period + '=' + r.count).join(' → ')
             + '（起点 ' + last[0].period + '）',
@@ -2689,11 +2889,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const hot = cells.filter(c => c.soft || c.hard)
       const coldest = cells.filter(c => !c.soft && !c.hard).slice(0, 3)
       const shown = hot.concat(coldest)
-      return React.createElement('div', { className: 'sleu-card', style: { ...rise(1), border: '1px solid var(--hair)', borderRadius: 12, background: T.bg, backgroundImage: 'var(--surf)', marginBottom: 10, overflow: 'hidden', boxShadow: 'var(--elev-1)' } },
+      return React.createElement('div', { className: 'sleu-card', style: { ...rise(1), border: '1px solid var(--hair)', borderRadius: 'var(--r-lg)', background: T.bg, backgroundImage: 'var(--surf)', marginBottom: 8, overflow: 'hidden' } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', flexWrap: 'wrap' } },
-          React.createElement('span', { style: { width: 8, height: 16, borderRadius: 4, background: 'var(--acc-amber)', display: 'inline-block' } }),
-          React.createElement('span', { className: 'sleu-title', style: { fontSize: 15, fontWeight: 700 } }, '容量台账'),
-          React.createElement('span', { style: { fontSize: 13.5, color: T.text2 } },
+          React.createElement('span', { style: { width: 8, height: 16, borderRadius: 'var(--r-xs)', background: 'var(--acc-amber)', display: 'inline-block' } }),
+          React.createElement('span', { className: 'sleu-title', style: { fontSize: 'var(--t-lg)', fontWeight: 700 } }, '容量台账'),
+          React.createElement('span', { style: { fontSize: 'var(--t-md)', color: T.text2 } },
             '逐格：查一次问题要读进来多少 token（评估线 ' + (softTok === undefined ? '—' : softTok)
             + (hardTok === undefined ? '' : ' / 硬线 ' + hardTok) + '，数值读 metrics/gates.yaml）'),
           hot.length ? React.createElement('span', { style: { marginLeft: 'auto' } }, pill(hot.length + ' 格越界', T.error)) 
@@ -2702,7 +2902,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         React.createElement('div', { style: { padding: '0 12px 10px', display: 'flex', flexDirection: 'column', gap: 4 } },
           shown.map((c, i) => React.createElement(CapacityCell, { key: i, cell: c, periods: periods })),
           cells.length > shown.length
-            ? React.createElement('div', { style: { fontSize: 13.5, color: T.text2, paddingTop: 2 } }, '其余 ' + (cells.length - shown.length) + ' 格正常（未展开）')
+            ? React.createElement('div', { style: { fontSize: 'var(--t-md)', color: T.text2, paddingTop: 2 } }, '其余 ' + (cells.length - shown.length) + ' 格正常（未展开）')
             : null,
         ),
       )
@@ -2717,11 +2917,11 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const over = cell.soft || cell.hard
       const color = cell.hard ? 'var(--acc-red)' : (cell.soft ? 'var(--acc-amber)' : 'var(--acc-green)')
       const dash = cap > 0 ? Math.min(100, Math.round(ratio * 100)) : 0
-      return React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 } },
-        React.createElement('span', { style: { width: 6, height: 6, borderRadius: 999, background: color, flexShrink: 0 } }),
-        React.createElement('span', { style: { flex: '1 1 128px', minWidth: 0, color: over ? T.text : T.text2, fontWeight: over ? 700 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', fontSize: 12.5 } },
+      return React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--t-sm)' } },
+        React.createElement('span', { style: { width: 6, height: 6, borderRadius: 'var(--r-pill)', background: color, flexShrink: 0 } }),
+        React.createElement('span', { title: cell.namespace + ' · ' + cell.category, style: { flex: '1 1 128px', minWidth: 0, color: over ? T.text : T.text2, fontWeight: over ? 700 : 400, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', fontSize: 'var(--t-sm)' } },
           cell.namespace + ' · ' + cell.category),
-        React.createElement('span', { title: '分母是硬线 ' + (cell.hard_tok || '—') + ' tok；竖线是软线 ' + (cell.soft_tok || '—') + ' tok', style: { position: 'relative', width: 74, height: 5, borderRadius: 999, background: T.bg2, overflow: 'hidden', flexShrink: 0 } },
+        React.createElement('span', { title: '分母是硬线 ' + (cell.hard_tok || '—') + ' tok；竖线是软线 ' + (cell.soft_tok || '—') + ' tok', style: { position: 'relative', width: 74, height: 5, borderRadius: 'var(--r-pill)', background: T.bg2, overflow: 'hidden', flexShrink: 0 } },
           React.createElement('span', { style: { display: 'block', width: dash + '%', height: '100%', background: color, transition: DUR ? 'width .3s ' + EASE : 'none' } }),
           softPct ? React.createElement('span', { style: { position: 'absolute', left: softPct + '%', top: 0, bottom: 0, width: 1, background: 'var(--acc-amber)', opacity: 0.9 } }) : null),
         React.createElement('span', { style: { width: 72, textAlign: 'right', fontFamily: 'var(--font-mono)', fontWeight: 600, color: over ? color : T.text, flexShrink: 0 } },
@@ -2743,7 +2943,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const caseTotal = (health && health.cases && typeof health.cases.total === 'number') ? health.cases.total : null
       const copyBtn = (text, key) => React.createElement('button', {
         type: 'button', onClick: () => onCopy(text, key),
-        style: { background: 'transparent', border: '1px solid ' + T.border, color: T.text2, borderRadius: 999, padding: '0 8px', fontSize: 'var(--t-tiny)', cursor: 'pointer', flexShrink: 0 },
+        style: { background: 'transparent', border: '1px solid ' + T.border, color: T.text2, borderRadius: 'var(--r-pill)', padding: '0 8px', fontSize: 'var(--t-tiny)', cursor: 'pointer', flexShrink: 0 },
       }, copied === key ? '已复制' : '复制')
       if (!ea.ok) {
         return React.createElement(Block, { title: '累计读数', accent: 'var(--acc-amber)' },
@@ -2870,7 +3070,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         style: { textAlign: 'right', fontSize: 'var(--t-tiny)', color: (opts && opts.dim) ? T.text2 : T.text, whiteSpace: 'nowrap' },
       }, v)
       const headRow = (cols) => React.createElement('div', { style: { display: 'grid', gridTemplateColumns: cols.map(c => c.w).join(' '), gap: 8, padding: '0 0 4px', borderBottom: '1px solid ' + T.border } },
-        cols.map(c => React.createElement('span', { key: c.k, style: { fontSize: 'var(--t-md2)', letterSpacing: '.08em', textTransform: 'uppercase', color: T.text2, textAlign: c.r ? 'right' : 'left' } }, c.k)))
+        cols.map(c => React.createElement('span', { key: c.k, style: { fontSize: 'var(--t-md2)', color: T.text2, textAlign: c.r ? 'right' : 'left' } }, c.k)))
       const caseCols = [{ k: '条目', w: 'minmax(0,1fr)' }, { k: '本期', w: '42px', r: 1 }, { k: '累计', w: '42px', r: 1 },
         { k: anyFeedback ? '解决' : '回报', w: anyFeedback ? '42px' : '58px', r: 1 },
         { k: anyFeedback ? '误诊' : '', w: anyFeedback ? '42px' : '0px', r: 1 },
@@ -2911,7 +3111,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         wk ? null : React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2, marginTop: 3 } }, UNREADABLE + '：生成物没有期号，本期列不可读'),
         section('案例' + (TIE(cumCases, 'selected') ? '（按累计选中降序；并列的按 id，不代表名次）' : ''), 'case', cumCases, caseCols),
         section('先验' + (TIE(cumRefs, 'lookups') ? '（按累计查询降序；并列的按 id，不代表名次）' : ''), 'ref', cumRefs, refCols),
-        React.createElement('div', { style: { marginTop: 5, color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 1.55 } },
+        React.createElement('div', { style: { marginTop: 5, color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 'var(--lh-base)' } },
           anyFeedback
             ? '「解决 / 误诊」由现场回报派生；「排除」是被候选过滤丢掉，与「被使用」是两件事。'
             : '「解决 / 误诊」这一列本期没有任何回报，所以写「无人回报」而不是 0——0 会被读成"用了但没用"。'),
@@ -2934,7 +3134,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         neverIds.length ? React.createElement(LineRow, { label: '举例' },
           neverIds.map(id => React.createElement('code', { key: id, className: 'sleu-mono', style: { marginRight: 8, color: T.text2 } }, id))
           .concat(neverSelected.length > neverIds.length ? [React.createElement('span', { key: 'more', style: { color: T.text2 } }, '等 ' + neverSelected.length + ' 条')] : [])) : null,
-        React.createElement('div', { style: { marginTop: 5, fontSize: 'var(--t-sm)', color: T.warn, lineHeight: 1.65 } },
+        React.createElement('div', { style: { marginTop: 5, fontSize: 'var(--t-sm)', color: T.warn, lineHeight: 'var(--lh-base)' } },
           '不据此退休：零选中只说明这一期没有被用到，先查症状词面与标签是否覆盖，再决定动不动条目。'),
       )
       // —— ⑥ 过程动作成本（按工具；生成物只有按工具的分位，逐次明细在本机）——
@@ -2954,7 +3154,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         key: t.name, style: { display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 62px 96px 76px', gap: 8, alignItems: 'center', padding: '3px 0', borderTop: '1px solid var(--hair)' },
       },
         React.createElement('div', { style: { minWidth: 0, display: 'flex', gap: 6, alignItems: 'baseline' } },
-          React.createElement('code', { className: 'sleu-mono', style: { fontSize: 'var(--t-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, t.name),
+          React.createElement('code', { title: t.name, className: 'sleu-mono', style: { fontSize: 'var(--t-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 } }, t.name),
           isWait ? React.createElement('span', { style: { fontSize: 'var(--t-md2)', color: T.text2, whiteSpace: 'nowrap' } }, WAIT_TOOLS[t.name]) : null),
         React.createElement('span', { className: 'sleu-num', style: { fontSize: 'var(--t-tiny)', textAlign: 'right', color: T.text2 } }, nText(t.calls) + ' 次'),
         React.createElement('div', { style: { height: 8, background: 'var(--hair)', borderRadius: 2, overflow: 'hidden' } },
@@ -2970,9 +3170,9 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           : React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2, marginTop: 3 } },
               NOT_RECORDED + '：生成物的 tools 段是空的（本机没有可汇总的逐次工具调用明细）'),
         waitTools.length ? React.createElement('div', { style: { marginTop: 8 } },
-          React.createElement('div', { style: { fontSize: 'var(--t-md2)', letterSpacing: '.1em', textTransform: 'uppercase', color: T.text2, marginBottom: 2 } }, '等人的 / 等后台任务（不与上面比）'),
+          React.createElement('div', { style: { fontSize: 'var(--t-md2)', letterSpacing: '.1em', color: T.text2, marginBottom: 2 } }, '等人的 / 等后台任务（不与上面比）'),
           waitTools.map(t => toolLine(t, true))) : null,
-        React.createElement('div', { style: { marginTop: 6, color: T.text2, fontSize: 'var(--t-md2)', lineHeight: 1.55 } },
+        React.createElement('div', { style: { marginTop: 6, color: T.text2, fontSize: 'var(--t-md2)', lineHeight: 'var(--lh-base)' } },
           'p50 / p90 是跨运行按调用次数加权的均值，量级读数。带 ⚠ 的 p90 超过一小时——多半是并行调用被拉长或等了很久，不是工具本身慢。'))
       // —— ⑦ 变差的读数（读数 · 阈值或对照 · 一条动作）——
       const fails = (verdict && Array.isArray(verdict.findings) ? verdict.findings : []).filter(f => f.level === 'fail')
@@ -2984,8 +3184,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           ? React.createElement('div', null, fails.map((f, i) => React.createElement('div', {
               key: i, style: { padding: '5px 0', borderTop: i ? '1px solid var(--hair)' : 'none' },
             },
-              React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text, lineHeight: 1.65 } }, f.plain || f.text),
-              f.plain && f.text && f.plain !== f.text ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2, marginTop: 2, lineHeight: 1.55 } }, '读数：' + f.text) : null,
+              React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text, lineHeight: 'var(--lh-base)' } }, f.plain || f.text),
+              f.plain && f.text && f.plain !== f.text ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2, marginTop: 2, lineHeight: 'var(--lh-base)' } }, '读数：' + f.text) : null,
               React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2, marginTop: 3, display: 'flex', alignItems: 'baseline', gap: 6, flexWrap: 'wrap' } },
                 React.createElement('span', { style: { color: T.warn, flexShrink: 0 } }, '动作'),
                 React.createElement('span', { style: { flex: '1 1 200px', minWidth: 0, wordBreak: 'break-word' } }, f.action || '（判据没给动作，分母补上后这一项才算得出来）'),
@@ -3013,7 +3213,7 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               key: i, style: { display: 'flex', alignItems: 'baseline', gap: 8, marginTop: 4, minWidth: 0 },
             },
               React.createElement('span', { className: 'sleu-num', style: { color: T.text2, fontSize: 'var(--t-sm)', flexShrink: 0 } }, (i + 1) + '.'),
-              React.createElement('span', { style: { flex: 1, minWidth: 0, fontSize: 'var(--t-sm)', lineHeight: 1.65, wordBreak: 'break-word' } }, t),
+              React.createElement('span', { style: { flex: 1, minWidth: 0, fontSize: 'var(--t-sm)', lineHeight: 'var(--lh-base)', wordBreak: 'break-word' } }, t),
               copyBtn(t, 'ea-todo:' + i),
             )))
           : React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2, marginTop: 3 } }, '没有要做的：判决没有越界，也没有候补命令。'),
@@ -3045,10 +3245,10 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         unread.length
           ? React.createElement('div', null, unread.map((u, i) => React.createElement('div', { key: i, style: { marginTop: i ? 5 : 2, minWidth: 0 } },
               React.createElement('div', { style: { fontSize: 'var(--t-sm)', fontWeight: 600 } }, u.label),
-              React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2, lineHeight: 1.55, marginTop: 1 } }, '缺的分母或来源：' + u.why),
+              React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2, lineHeight: 'var(--lh-base)', marginTop: 1 } }, '缺的分母或来源：' + u.why),
             )))
           : React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2, marginTop: 3 } }, '这一期没有缺分母的读数。'),
-        React.createElement('div', { style: { marginTop: 5, fontSize: 'var(--t-tiny)', color: T.text2, lineHeight: 1.55 } },
+        React.createElement('div', { style: { marginTop: 5, fontSize: 'var(--t-tiny)', color: T.text2, lineHeight: 'var(--lh-base)' } },
           '不可解读 ≠ 0：没有数据与"读数是 0"是两件事。样本量小于 5 的条目在榜上标「小样本」。'))
       return React.createElement('div', { style: { marginBottom: 12 } },
         // 「变差的读数」与「本期该做」不再单独出块：判决里已经逐条给了判据、处置与可复制指令，
@@ -3101,7 +3301,8 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       }, [sessionId])
 
       const base = { fontFamily: 'var(--font-sans)', fontSize: 'var(--t-base)', color: T.text }
-      if (state.loading) return React.createElement('div', { className: 'sleu', style: { ...base, padding: 20, color: T.text2 } }, '加载指标…')
+      if (state.loading) return React.createElement('div', { className: 'sleu', style: { ...base, padding: 20 } },
+        [0, 1, 2].map(i => React.createElement('div', { key: i, className: 'sleu-skel', style: { height: i === 0 ? 40 : 64, marginBottom: 10 } })))
       const r = state.data
       // timeline 读不到时**不再整页早退**：判决、知识库健康、累计读数都不经过 timeline
       // （host 侧就是这么分的），早退等于把"能用的一半"也一起藏了——旧实现如此，并且
@@ -3172,40 +3373,46 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         const hits = lastLive.metrics.tier2_hit
         if (fb && typeof fb === 'object' && (fb.resolved === 0 || fb.resolved === undefined) && (fb.not_resolved === 0 || fb.not_resolved === undefined) && (fb.partial === 0 || fb.partial === undefined) && hits > 0) {
           const fbCmdText = '回报 fix 结果：请逐个确认 traces/ 中已定位 case 的 session（含 feedback.outcome: pending 的）fix 应用后是否解决。按 resolved / not_resolved / partial 回报并写 feedback 事件；trace_metrics 据此更新误诊率与 confidence。'
-          feedbackAlert = React.createElement('div', { style: { marginBottom: 12, border: '1px solid ' + T.warn, borderRadius: 9, overflow: 'hidden' } },
+          feedbackAlert = React.createElement('div', { style: { marginBottom: 12, border: '1px solid ' + T.warn, borderRadius: 'var(--r-md)', overflow: 'hidden' } },
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', background: 'color-mix(in srgb, ' + T.warn + ' 8%, transparent)' } },
               React.createElement(Dot, { color: T.warn }),
-              React.createElement('span', { style: { fontSize: 13.5, fontWeight: 700, color: T.warn, whiteSpace: 'nowrap' } }, '本期快照的反馈捕获为 0'),
-              React.createElement('span', { style: { fontSize: 13.5, color: T.text, flex: 1 } },
+              React.createElement('span', { style: { fontSize: 'var(--t-md)', fontWeight: 700, color: T.warn, whiteSpace: 'nowrap' } }, '本期快照的反馈捕获为 0'),
+              React.createElement('span', { style: { fontSize: 'var(--t-md)', color: T.text, flex: 1 } },
                 hits + ' 次命中还没人回报结果——所以「误诊率」「误诊归因」标着不可解读（那不是 0，是没数据）'),
               React.createElement('button', { type: 'button', onClick: () => { setFbCmd(!fbCmd); setCopied(null) }, style: fbCmd ? btnPurple : btnGhost }, fbCmd ? '隐藏指令' : '回报'),
             ),
-            fbCmd ? React.createElement('div', { style: { padding: '8px 12px', background: T.bg, borderTop: '1px solid ' + T.warn, fontSize: 12.5 } },
+            fbCmd ? React.createElement('div', { style: { padding: '8px 12px', background: T.bg, borderTop: '1px solid ' + T.warn, fontSize: 'var(--t-sm)' } },
               React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 } },
                 React.createElement('span', { style: { color: T.warn, fontWeight: 600 } }, '粘贴到对话即可触发回报'),
                 React.createElement('button', { type: 'button', onClick: () => doCopy(fbCmdText, 'fb'), style: copied === 'fail' ? { ...btnRed, background: 'var(--d-red)' } : btnPurple },
                   copied === 'fb' ? '已复制' : (copied === 'fail' ? '失败' : '复制')),
               ),
-              React.createElement('code', { style: { userSelect: 'all', background: T.bg2, border: '1px solid ' + T.border, borderRadius: 6, padding: '5px 8px', display: 'block', fontSize: 13.5, fontFamily: 'var(--font-mono)' } },
+              React.createElement('code', { style: { userSelect: 'all', background: T.bg2, border: '1px solid ' + T.border, borderRadius: 'var(--r-xs)', padding: '5px 8px', display: 'block', fontSize: 'var(--t-md)', fontFamily: 'var(--font-mono)' } },
                 fbCmdText),
             ) : null,
           )
         }
       }
 
-      function doCopy(txt, key) { copyText(txt).then(ok => setCopied(ok ? key : 'fail')) }
+      // 复制反馈：2 秒后自己复位（指标 tab 只有一处复制入口，失败仍用 'fail' 标记）。
+      function doCopy(txt, key) {
+        copyText(txt).then(ok => {
+          setCopied(ok ? key : 'fail')
+          if (timer && typeof timer.timeout === 'function') timer.timeout(() => setCopied(null), 2000)
+        })
+      }
 
       // timeline 的三种结局分开渲染：**读不到** / **解析不出期次** / 正常。
       // 中间那一态是本轮实测出来的缺口：解析器与文件结构不符时，旧实现拿到空数组，
       // 于是显示「尚无 live 快照」——文件里 3 期 live 摆着，面板说没有。数据在、结论假，
       // 与"没报越界"被读成"没越界"属同一类，所以这里也单独给一句不可解读声明。
-      const timelineWarnCard = (title, body, command) => React.createElement('div', { style: { marginBottom: 10, padding: '9px 11px', background: 'color-mix(in srgb, ' + T.warn + ' 8%, transparent)', border: '1px solid ' + T.warn, borderRadius: 9, fontSize: 13.5, color: T.text, lineHeight: 1.65 } },
+      const timelineWarnCard = (title, body, command) => React.createElement('div', { style: { marginBottom: 10, padding: '9px 11px', background: 'color-mix(in srgb, ' + T.warn + ' 8%, transparent)', border: '1px solid ' + T.warn, borderRadius: 'var(--r-md)', fontSize: 'var(--t-md)', color: T.text, lineHeight: 'var(--lh-base)' } },
         React.createElement('div', { style: { fontWeight: 700, color: T.warn, marginBottom: 3 } }, title),
         React.createElement('div', { style: { color: T.text } }, body),
-        command ? React.createElement('code', { style: { display: 'block', marginTop: 6, userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 6, padding: '5px 8px', fontSize: 12.5, fontFamily: 'var(--font-mono)' } }, command) : null,
+        command ? React.createElement('code', { style: { display: 'block', marginTop: 6, userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-xs)', padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)' } }, command) : null,
       )
       const periodCards = shown.length === 0
-        ? React.createElement('div', { style: { color: T.text2, padding: '24px 0', textAlign: 'center', fontSize: 12.5 } }, '无该类型快照')
+        ? React.createElement('div', { style: { color: T.text2, padding: '24px 0', textAlign: 'center', fontSize: 'var(--t-sm)' } }, '无该类型快照')
         : React.createElement('div', null, (() => {
             // 默认展开：最近 2 期；历史期收进"历史快照"折叠区（顺序见 allShown 的注释）
             const recent = shown.slice(0, 2)
@@ -3243,22 +3450,22 @@ body[data-ds-dark-theme] :root{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 // 本期 vs 上期差分（阈值语义在判决条里，这里只回答"动了什么"）
                 React.createElement(CompareStrip, { prev: livePeriods.length >= 2 ? livePeriods[livePeriods.length - 2] : null, cur: livePeriods[livePeriods.length - 1] || null, isUnreadable: isUnreadable }),
                 React.createElement('div', { style: { display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' } },
-                  filterChips.map(k => React.createElement('button', { key: k, type: 'button', onClick: () => setKindFilter(k), style: k === kindFilter ? { ...btnPrimary, padding: '3px 12px', borderRadius: 999 } : { ...btnGhost, padding: '3px 12px', borderRadius: 999 } }, filterLabels[k])),
+                  filterChips.map(k => React.createElement('button', { key: k, type: 'button', onClick: () => setKindFilter(k), style: k === kindFilter ? { ...btnPrimary, padding: '3px 12px', borderRadius: 'var(--r-pill)' } : { ...btnGhost, padding: '3px 12px', borderRadius: 'var(--r-pill)' } }, filterLabels[k])),
                 ),
-                liveCount === 0 ? React.createElement('div', { style: { marginBottom: 10, padding: 10, background: 'color-mix(in srgb, ' + T.warn + ' 8%, transparent)', border: '1px solid ' + T.border, borderRadius: 9, fontSize: 13.5, color: T.text2 } },
+                liveCount === 0 ? React.createElement('div', { style: { marginBottom: 10, padding: 10, background: 'color-mix(in srgb, ' + T.warn + ' 8%, transparent)', border: '1px solid ' + T.border, borderRadius: 'var(--r-md)', fontSize: 'var(--t-md)', color: T.text2 } },
                   '尚无 live 快照。首次活诊断后由 owner 追加（docs/guide/metrics.md 汇总职责）。') : null,
                 // 强度缺口只在这里说一次（不再逐行挂「未声明强度」）
-                strengthMissing.length ? React.createElement('div', { style: { marginBottom: 10, padding: '8px 10px', background: 'color-mix(in srgb, ' + T.warn + ' 8%, transparent)', border: '1px solid ' + T.border, borderRadius: 9, fontSize: 12.5, color: T.text2, lineHeight: 1.6 } },
+                strengthMissing.length ? React.createElement('div', { style: { marginBottom: 10, padding: '8px 10px', background: 'color-mix(in srgb, ' + T.warn + ' 8%, transparent)', border: '1px solid ' + T.border, borderRadius: 'var(--r-md)', fontSize: 'var(--t-sm)', color: T.text2, lineHeight: 'var(--lh-base)' } },
                   '有 ' + strengthMissing.length + ' 个指标没在 metrics/gates.yaml 里声明强度档，它们的数不标徽标（不默认成确定性）：',
                   React.createElement('span', { className: 'sleu-mono', style: { marginLeft: 4 } }, strengthMissing.slice(0, 8).join('、') + (strengthMissing.length > 8 ? ' 等' : ''))) : null,
                 periodCards))
 
       return React.createElement('div', { className: 'sleu', style: { ...base, padding: 20 } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 } },
-          React.createElement('div', { style: { fontSize: 13.5, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 } },
-            React.createElement('span', { style: { width: 8, height: 16, borderRadius: 4, background: 'var(--acc-green)', display: 'inline-block' } }),
+          React.createElement('div', { style: { fontSize: 'var(--t-md)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 } },
+            React.createElement('span', { style: { width: 8, height: 16, borderRadius: 'var(--r-xs)', background: 'var(--acc-green)', display: 'inline-block' } }),
             'ascend-sleuth 指标'),
-          React.createElement('span', { style: { fontSize: 13.5, color: T.text2, background: T.bg2, border: '1px solid ' + T.border, borderRadius: 999, padding: '2px 10px' } },
+          React.createElement('span', { style: { fontSize: 'var(--t-md)', color: T.text2, background: T.bg2, border: '1px solid ' + T.border, borderRadius: 'var(--r-pill)', padding: '2px 10px' } },
             timelineError ? '期次不可读'
               : (timelineUnparsed ? '期次解析失败'
                 : (periods.length + ' 期 · live ' + liveCount))),
