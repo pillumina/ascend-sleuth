@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:147d47187362)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:7e32555dd76d)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:147d47187362) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:7e32555dd76d) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -274,7 +274,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.6.6'
+    const PANEL_VERSION = '0.6.7'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -2295,7 +2295,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           ),
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
             React.createElement('button', { type: 'button', title: '重新读取 traces/——复制闭环指令去对话执行后，回来点这里', onClick: () => setReloadAt(n => n + 1), style: { ...btnGhost, padding: '3px 10px' } }, '刷新'),
-            React.createElement('span', { title: badge, style: { fontSize: 'var(--t-sm)', color: T.text2, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-pill)', padding: '3px 11px' } },
+            React.createElement('span', { title: badge + (typeof r.elapsedMs === 'number' ? ' · 列表耗时 ' + r.elapsedMs + ' ms（解析 ' + (r.parsed || 0) + ' 条 / 命中缓存 ' + (r.cached || 0) + ' 条' + (r.skipped ? ' / 跳过 ' + r.skipped + ' 条' : '') + '）' : ''), style: { fontSize: 'var(--t-sm)', color: T.text2, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-pill)', padding: '3px 11px' } },
               nFollow ? (nFollow + ' 项待跟进') : ((r.sessions || []).length + ' 个会话')),
           ),
         ),

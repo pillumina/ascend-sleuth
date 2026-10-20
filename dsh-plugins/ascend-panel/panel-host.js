@@ -303,20 +303,29 @@ return {
     // ——于是报告明明落在 traces/ 里，卡片上却没有「看报告」入口。同名回退在 `readReport` 里一直
     // 就有（真点得到），缺的是"入口先出现"这一步。`fileNames` 给 traces/ 的条目名集合；
     // 传 null 表示不查存在性（读报告时用，真读不到会有明确的读失败）。
-    function reportFileOf(doc, fileNames, traceFile) {
+    // 报告名分两段：**记录名**（trace 里写死的，可随解析一起缓存）与**同名回退**
+    // （取决于当前目录里有没有 `.report.md`，每次刷新都得重算——报告可能后补）。
+    function recordedReportOf(doc) {
       const recorded = normalizeReportName(doc && doc.report_file)
-      if (recorded) return { name: recorded, source: 'trace' }
+      if (recorded) return recorded
       const events = doc && Array.isArray(doc.trace) ? doc.trace : []
       for (let i = events.length - 1; i >= 0; i--) {
         const name = normalizeReportName(events[i] && events[i].report_file)
-        if (name) return { name: name, source: 'trace' }
+        if (name) return name
       }
+      return null
+    }
+    function reportFileFrom(recorded, sessionId, traceFile, fileNames) {
+      if (recorded) return { name: recorded, source: 'trace' }
       const base = String(traceFile || '').replace(/\.yaml$/, '')
-      const sid = doc && doc.session_id ? String(doc.session_id) : ''
+      const sid = sessionId ? String(sessionId) : ''
       for (const cand of [base ? base + '.report.md' : null, sid ? sid + '.report.md' : null]) {
         if (cand && fileNames && fileNames.has(cand)) return { name: cand, source: 'name' }
       }
       return null
+    }
+    function reportFileOf(doc, fileNames, traceFile) {
+      return reportFileFrom(recordedReportOf(doc), doc && doc.session_id ? String(doc.session_id) : '', traceFile, fileNames)
     }
 
     // 外来单的交接单（`traces/handoff/<sid>.yaml`，`import_trace.py` 落位时留档，口径见 docs/guide/handoff.md）。
@@ -346,7 +355,160 @@ return {
 
     // `cwd` 是轨迹所在的那一侧（运行时件 → 主检出）；`kbCwd` 是知识库索引所在的那一侧
     // （进 git → 会话自己的检出）。缺 `kbCwd` 时退回 `cwd`（主检出里两者同一个目录）。
+    // ---- 列表解析缓存 ----------------------------------------------------------
+    // 为什么：列表要读**每个** trace 并完整解析 YAML；trace 里常含内联证据，单文件几十 KB。
+    // 几百单时每次切 tab / 刷新都要重复解析全部文件。`fs.listDir` 的条目带 `version`，
+    // 用它当变更令牌：没变的文件直接复用上次解析出的列表字段（不含正文），变了的才读+解析。
+    // 缓存是派生物：读不到/损坏/版本不一致就整份重建，删掉也不影响正确性。
+    // 存量不需要迁移——第一次刷新全量解析一遍并写缓存，之后都是增量。
+    const INDEX_CACHE_FILE = '.panel-index.json'
+    const INDEX_SCHEMA = 1
+    // 改 `buildCoreItem` 的字段必须同步这份清单：形状不符的缓存条目会被丢弃并重解析，
+    // 避免"旧缓存把新字段喂成 undefined"在列表上静默少一列。
+    const INDEX_CORE_FIELDS = ['sessionId', 'file', 'status', 'framework', 'platform', 'category', 'activeCase',
+      'summarySnippet', 'excludedCount', 'feedbackPending', 'feedback', 'feedbackKind', 'feedbackCase',
+      'waitingFor', 'userSteps', 'agentSteps', 'lastAction', 'lastRole', 'lastOutput', 'createdAt', 'updatedAt',
+      'recordedReport', 'activeCaseKind', 'sedimented', 'sedimentCandidates', 'parseAnomaly']
+    function coreShapeOk(item) {
+      if (!item || typeof item !== 'object') return false
+      const keys = Object.keys(item)
+      return keys.length === INDEX_CORE_FIELDS.length && INDEX_CORE_FIELDS.every(k => Object.prototype.hasOwnProperty.call(item, k))
+    }
+    let traceIndexCache = null
+
+    async function loadIndexCache(basePath) {
+      if (traceIndexCache && traceIndexCache.base === basePath) return traceIndexCache
+      const fresh = { base: basePath, schema: INDEX_SCHEMA, entries: {}, cost: {}, dirty: false }
+      try {
+        const text = await fs.readText(await fs.resolve(INDEX_CACHE_FILE, { cwd: basePath }))
+        const doc = JSON.parse(text)
+        if (doc && doc.schema === INDEX_SCHEMA && doc.entries && typeof doc.entries === 'object') {
+          for (const name of Object.keys(doc.entries)) {
+            if (coreShapeOk(doc.entries[name] && doc.entries[name].item)) fresh.entries[name] = doc.entries[name]
+          }
+          fresh.cost = (doc.cost && typeof doc.cost === 'object') ? doc.cost : {}
+        }
+      } catch (e) { /* 没有缓存 / 解析失败：按空缓存处理，本轮重建 */ }
+      traceIndexCache = fresh
+      return fresh
+    }
+    function saveIndexCache(basePath, cache) {
+      try {
+        // 不 await：缓存写失败不该挡住列表返回（正确性不依赖它）。
+        Promise.resolve(fs.resolve(INDEX_CACHE_FILE, { cwd: basePath }))
+          .then(t => fs.writeText(t, JSON.stringify({ schema: INDEX_SCHEMA, entries: cache.entries, cost: cache.cost })))
+          .catch(() => {})
+      } catch (e) {}
+    }
+    // 本机明细目录的版本号：一次 listDir 拿到，避免每单一次 readText+parse。
+    async function loadLocalRecordVersions(cwd) {
+      const map = Object.create(null)
+      try {
+        const dir = await fs.resolve(ENTRY_LOCAL_DIR, { cwd })
+        for (const e of (await fs.listDir(dir)) || []) {
+          if (e && e.name && e.name.endsWith('.yaml')) map[e.name] = e.version ? String(e.version) : null
+        }
+      } catch (e) {}
+      return map
+    }
+    // 列表只从本机明细取四个数；按文件版本缓存，没变就不解析。
+    async function costOf(cwd, sessionId, fileKey, cache, localVersions) {
+      const name = sessionId + '.yaml'
+      const version = Object.prototype.hasOwnProperty.call(localVersions, name) ? localVersions[name] : null
+      const cached = cache.cost[fileKey]
+      if (cached && cached.v === version) return { value: cached.value || null, dirty: false }
+      const exists = Object.prototype.hasOwnProperty.call(localVersions, name)
+      let value = null
+      try {
+        const rec = await readLocalRecord(cwd, sessionId)
+        // 文件在、但这次读/解析失败：不缓存，下一次刷新再试（原先每轮都会重试）。
+        if (exists && (!rec || !rec.ok)) return { value: null, dirty: false }
+        if (rec && rec.ok && rec.record) {
+          const r = rec.record
+          const t = r.tokens || {}
+          const sc = Array.isArray(r.stepCost) ? r.stepCost : []
+          value = {
+            calls: r.toolCallCount || 0,
+            ms: r.toolTotalMs || 0,
+            tok: (t.uncached || 0) + (t.cache_read || 0) + (t.cache_write || 0) + (t.out || 0),
+            stepms: sc.map(x => x.ms),
+          }
+        }
+      } catch (e) {
+        if (exists) return { value: null, dirty: false }
+        value = null
+      }
+      cache.cost[fileKey] = { v: version, value }
+      return { value, dirty: true }
+    }
+    // 一条 trace 里"只取决于文件内容"的字段。依赖目录/KB/本机明细的字段在每次刷新时另算。
+    function buildCoreItem(doc, ent, stats) {
+      const trace = Array.isArray(doc.trace) ? doc.trace : []
+      const userSteps = trace.filter(t => t && t.role === 'user').length
+      const agentSteps = trace.filter(t => t && t.role === 'agent').length
+      const last = trace[trace.length - 1] || null
+      const lastRole = last && last.role ? String(last.role) : null
+      const lastAction = last && last.action ? String(last.action) : null
+      const lastOutput = last && last.output ? String(last.output).slice(0, 120) : null
+      const createdAt = doc.created_at ? String(doc.created_at) : null
+      const updatedAt = doc.updated_at ? String(doc.updated_at) : null
+      const activeCase = doc.active_case && doc.active_case !== 'null' ? String(doc.active_case) : null
+      const sessionId = doc.session_id ? String(doc.session_id) : ent.name.replace(/\.yaml$/, '')
+      return {
+        sessionId: sessionId,
+        file: ent.name,
+        status: doc.status ? String(doc.status) : 'unknown',
+        framework: doc.detected_framework ? String(doc.detected_framework) : '',
+        platform: doc.detected_platform ? String(doc.detected_platform) : '',
+        category: doc.detected_category ? String(doc.detected_category) : '',
+        activeCase: activeCase,
+        summarySnippet: doc.summary ? String(doc.summary).replace(/\s+/g, ' ').trim().slice(0, 140) : null,
+        excludedCount: Array.isArray(doc.excluded_cases) ? doc.excluded_cases.length : 0,
+        feedbackPending: (function () {
+          const fb = doc.feedback
+          if (fb && typeof fb === 'object' && String(fb.outcome || '') === 'pending') {
+            return fb.case ? String(fb.case) : 'pending'
+          }
+          if (typeof fb === 'string' && fb.trim() === 'pending') return 'pending'
+          return doc.feedback_pending ? String(doc.feedback_pending) : null
+        })(),
+        feedback: doc.feedback && typeof doc.feedback === 'object' ? String(doc.feedback.outcome || '') : (doc.feedback ? String(doc.feedback) : null),
+        feedbackKind: (function () {
+          const fb = doc.feedback
+          const out = (fb && typeof fb === 'object') ? String(fb.outcome || '') : (typeof fb === 'string' ? fb.trim() : '')
+          if (out !== 'pending') return null
+          const cs = (fb && typeof fb === 'object' && fb.case) ? String(fb.case) : ''
+          return (cs && cs !== 'pending-investigation') ? 'case' : 'no-case'
+        })(),
+        feedbackCase: (function () {
+          const fb = doc.feedback
+          const cs = (fb && typeof fb === 'object' && fb.case) ? String(fb.case) : ''
+          return (cs && cs !== 'pending-investigation') ? cs : null
+        })(),
+        waitingFor: (function () {
+          for (let i = trace.length - 1; i >= 0; i--) {
+            const ev = trace[i] && trace[i].evidence
+            if (ev && ev.missing) return String(ev.missing).replace(/\s+/g, ' ').trim()
+          }
+          return doc.last_action ? String(doc.last_action).replace(/\s+/g, ' ').trim() : null
+        })(),
+        userSteps: Number(userSteps) || 0,
+        agentSteps: Number(agentSteps) || 0,
+        lastAction: lastAction,
+        lastRole: lastRole,
+        lastOutput: lastOutput,
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+        recordedReport: recordedReportOf(doc),
+        activeCaseKind: activeCaseKindOf(activeCase),
+        sedimented: readSedimented(doc),
+        sedimentCandidates: Array.isArray(doc.sediment_candidates) ? doc.sediment_candidates.length : 0,
+        parseAnomaly: anomalyOf(stats),
+      }
+    }
+
     async function listTraces(cwd, kbCwd) {
+      const startedAt = Date.now()
       let base
       try {
         base = await fs.resolve('traces', { cwd })
@@ -360,7 +522,7 @@ return {
         // 全新检出无 traces/（gitignored、按需生成）→ 友好空态，而非报错。
         // 注意：resolve 对不存在的路径**不抛错**（沿最近存在的祖先回走、拼回缺失段），
         // 抛 FS_NOT_FOUND 的是 listDir——存在性判断必须挂在 listDir 这一侧。
-        if (e && e.code === 'FS_NOT_FOUND') return { ok: true, sessions: [] }
+        if (e && e.code === 'FS_NOT_FOUND') return { ok: true, sessions: [], elapsedMs: Date.now() - startedAt, parsed: 0, cached: 0, skipped: 0 }
         return { ok: false, error: 'traces 目录不可读: ' + String(e && e.message || e) }
       }
       const kbIds = await loadKbCaseIds(kbCwd || cwd)
@@ -380,128 +542,62 @@ return {
         }
       } catch (e) {
       }
+      const cache = await loadIndexCache(basePath)
+      // 本机明细目录的版本号一次拿全；没有该目录时为空表（每单按"缺记录"处理，也会缓存）。
+      const localVersions = await loadLocalRecordVersions(cwd)
+      let parsedCount = 0
+      let cachedCount = 0
+      let skippedCount = 0
       for (const ent of entries) {
         if (!ent.name.endsWith('.yaml')) continue
         try {
-          const target = await fs.resolve(ent.name, { cwd: basePath })
-          const text = await fs.readText(target)
-          const stats = {}
-          const doc = parseYaml(text, stats)
-          if (!doc || typeof doc !== 'object') continue
-          const trace = Array.isArray(doc.trace) ? doc.trace : []
-          const userSteps = trace.filter(t => t && t.role === 'user').length
-          const agentSteps = trace.filter(t => t && t.role === 'agent').length
-          const last = trace[trace.length - 1] || null
-          const lastRole = last && last.role ? String(last.role) : null
-          const lastAction = last && last.action ? String(last.action) : null
-          const lastOutput = last && last.output ? String(last.output).slice(0, 120) : null
-          const createdAt = doc.created_at ? String(doc.created_at) : null
-          const updatedAt = doc.updated_at ? String(doc.updated_at) : null
-          const activeCase = doc.active_case && doc.active_case !== 'null' ? String(doc.active_case) : null
-          const rep = reportFileOf(doc, fileNames, ent.name)
-          const sessionId = doc.session_id ? String(doc.session_id) : ent.name.replace(/\.yaml$/, '')
-          // 外来标记按 session_id 与文件名两种键查（两者通常相同，但不保证——trace 文件名与
-          // 它里面的 session_id 是两件事）
+          // `version` 是 fs.listDir 给的变更令牌；拿不到就退化为"每次都解析"（正确性优先）。
+          const version = ent.version ? String(ent.version) : null
+          const hit = version && cache.entries[ent.name] && cache.entries[ent.name].v === version
+          let core
+          if (hit) {
+            core = cache.entries[ent.name].item
+            cachedCount += 1
+          } else {
+            const target = await fs.resolve(ent.name, { cwd: basePath })
+            const text = await fs.readText(target)
+            const stats = {}
+            const doc = parseYaml(text, stats)
+            if (!doc || typeof doc !== 'object') continue
+            core = buildCoreItem(doc, ent, stats)
+            if (coreShapeOk(core)) {
+              cache.entries[ent.name] = { v: version, item: core }
+              cache.dirty = true
+            }
+            parsedCount += 1
+          }
+          const sessionId = core.sessionId
+          // 依赖目录/KB/本机明细的字段每次重算（报告可能后补、KB 版本可能更新）。
           const isForeign = handoffIds.has(sessionId) || handoffIds.has(ent.name.replace(/\.yaml$/, ''))
-          out.push({
-            sessionId: sessionId,
+          const rep = reportFileFrom(core.recordedReport, sessionId, ent.name, fileNames)
+          const cost = await costOf(cwd, sessionId, ent.name, cache, localVersions)
+          if (cost.dirty) cache.dirty = true
+          const item = Object.assign({}, core, {
             handoff: isForeign ? await readHandoffNote(handoffDir, sessionId) : null,
-            file: ent.name,
-            status: doc.status ? String(doc.status) : 'unknown',
-            framework: doc.detected_framework ? String(doc.detected_framework) : '',
-            platform: doc.detected_platform ? String(doc.detected_platform) : '',
-            category: doc.detected_category ? String(doc.detected_category) : '',
-            activeCase: activeCase,
-            activeCaseInKb: activeCase ? !!(kbIds && kbIds.has(activeCase)) : false,
-            // 收起态副标题的原料：问题背景段（要回答"这单在查什么"）。不用最后一个事件的 output——
-            // 那常常是产出报告 / 续接 / 回报这类记录维护动作，读者看不懂（实测反馈）。
-            summarySnippet: doc.summary ? String(doc.summary).replace(/\s+/g, ' ').trim().slice(0, 140) : null,
-            // 列表列要的成本读数：从本机明细读，读不到就给 null（列显示「—」）。
-            // 不在列表里替它估——列表是**扫**的地方，估出来的数会被当成真的。
-            cost: await (async function () {
-              try {
-                const rec = await readLocalRecord(cwd, sessionId)
-                if (!rec || !rec.ok || !rec.record) return null
-                const r = rec.record
-                const t = r.tokens || {}
-                const sc = Array.isArray(r.stepCost) ? r.stepCost : []
-                return {
-                  calls: r.toolCallCount || 0,
-                  ms: r.toolTotalMs || 0,
-                  // 四类都算：展开区的 token 条也按四类画，同一张卡里两个数必须对得上
-                  tok: (t.uncached || 0) + (t.cache_read || 0) + (t.cache_write || 0) + (t.out || 0),
-                  stepms: sc.map(x => x.ms),
-                }
-              } catch (e) { return null }
-            })(),
-            excludedCount: Array.isArray(doc.excluded_cases) ? doc.excluded_cases.length : 0,
-            // 反馈债标记：**新口径**是 `feedback.outcome: pending`（配 `feedback.case`），词表见
-            // 仓库根 `trace-status.yaml`；旧 trace 里是 `feedback_pending: <case-id>`。本机历史
-            // trace 两种都存在，所以两种都读（先新后旧）——只认一种会让另一半会话的"待回报"
-            // 从面板上静默消失（词表改了、读取端没跟，就是这类断链）。
-            feedbackPending: (function () {
-              const fb = doc.feedback
-              if (fb && typeof fb === 'object' && String(fb.outcome || '') === 'pending') {
-                return fb.case ? String(fb.case) : 'pending'
-              }
-              if (typeof fb === 'string' && fb.trim() === 'pending') return 'pending'
-              return doc.feedback_pending ? String(doc.feedback_pending) : null
-            })(),
-            feedback: doc.feedback && typeof doc.feedback === 'object' ? String(doc.feedback.outcome || '') : (doc.feedback ? String(doc.feedback) : null),
-            // 反馈轴的**分型**：`feedback.case` 有两种取值——真实 case id，或占位串
-            // `pending-investigation`（词表在 `diagnosis_state.yaml.example` 里明确允许它表示
-            // "没命中 case、只给了建议"）。占位串**不是** case id：读成后者会让面板说
-            // "结果待回报：pending-investigation"（读起来像有个 fix 等验证），也会让
-            // `resume-diagnosis` 去回写一个不存在的 case 的 confidence。所以这里把两种分开：
-            //   'case'    = 给了可应用 fix、等回报（feedback 轴承载结果）
-            //   'no-case' = 没命中 case，等的是**现场补材料**（结果记在 status 与 summary 里）
-            feedbackKind: (function () {
-              const fb = doc.feedback
-              const out = (fb && typeof fb === 'object') ? String(fb.outcome || '') : (typeof fb === 'string' ? fb.trim() : '')
-              if (out !== 'pending') return null
-              const cs = (fb && typeof fb === 'object' && fb.case) ? String(fb.case) : ''
-              return (cs && cs !== 'pending-investigation') ? 'case' : 'no-case'
-            })(),
-            feedbackCase: (function () {
-              const fb = doc.feedback
-              const cs = (fb && typeof fb === 'object' && fb.case) ? String(fb.case) : ''
-              return (cs && cs !== 'pending-investigation') ? cs : null
-            })(),
-            // "在等什么"：无命中单等的不是 fix verdict，而是材料。取**最近一条带 `evidence.missing`
-            // 的事件**（那是"还缺什么"的最新陈述），退到顶层 `last_action`。
-            waitingFor: (function () {
-              for (let i = trace.length - 1; i >= 0; i--) {
-                const ev = trace[i] && trace[i].evidence
-                if (ev && ev.missing) return String(ev.missing).replace(/\s+/g, ' ').trim()
-              }
-              return doc.last_action ? String(doc.last_action).replace(/\s+/g, ' ').trim() : null
-            })(),
-            userSteps: Number(userSteps) || 0,
-            agentSteps: Number(agentSteps) || 0,
-            lastAction: lastAction,
-            lastRole: lastRole,
-            lastOutput: lastOutput,
-            createdAt: createdAt,
-            updatedAt: updatedAt,
-            // 人读定位报告与结构化沉淀候选（diagnose 步骤 6 产出）：报告名与 trace 同名不同后缀，
-            // 面板给"打开报告"入口；候选条数给"沉淀建议 N 条"，让"这单还能沉淀什么"在列表上就可见
-            // （明细含 case 与先验两类，在展开后的沉淀区分家呈现）。
-            // 报告名的来源分两种（trace 记录 / 同名规则），client 据此说明入口是怎么来的。
+            activeCaseInKb: core.activeCase ? !!(kbIds && kbIds.has(core.activeCase)) : false,
             reportFile: rep ? rep.name : null,
             reportSource: rep ? rep.source : null,
-            // `active_case` 是 case id 还是"没命中"的占位/说明串（见 activeCaseKindOf）
-            activeCaseKind: activeCaseKindOf(activeCase),
-            // 沉淀状态（trace 顶层 `sedimented`）：列表要能筛「已闭环未沉淀 / 已沉淀待升格」——
-            // 这两类此前只有展开卡片才看得见，会话一多就成了看不见的债。三种写法都认（见 readSedimented）。
-            sedimented: readSedimented(doc),
-            sedimentCandidates: Array.isArray(doc.sediment_candidates) ? doc.sediment_candidates.length : 0,
-            // 轨迹解析没收下的行数（见 anomalyOf）：列表上的步数由同一份解析结果算出，
-            // 解析少了就标在卡片上，别让"1 用户输入"看起来像这单真的只有一步。
-            parseAnomaly: anomalyOf(stats),
+            cost: cost.value,
           })
+          delete item.recordedReport
+          out.push(item)
         } catch (e) {
+          skippedCount += 1
         }
       }
+      // 剪掉已删除的 trace / 明细，避免缓存无限长。
+      for (const name of Object.keys(cache.entries)) {
+        if (!fileNames.has(name)) { delete cache.entries[name]; cache.dirty = true }
+      }
+      for (const key of Object.keys(cache.cost)) {
+        if (!fileNames.has(key)) { delete cache.cost[key]; cache.dirty = true }
+      }
+      if (cache.dirty) { saveIndexCache(basePath, cache); cache.dirty = false }
       // 排序：**按诊断开始时间倒序**（最新的在最上），`updated_at` 只作同刻并列时的次序。
       // 为什么不用 `updated_at` 当主键：它是 agent 写 trace 时手填的字段，写错或漏刷新都会
       // 直接改列表次序（实测：某次 session 的 created_at 最新，却因 updated_at 被填成较早的
@@ -524,7 +620,7 @@ return {
         if (ub !== null && ua === null) return 1
         return a.file < b.file ? 1 : -1
       })
-      return { ok: true, sessions: out }
+      return { ok: true, sessions: out, elapsedMs: Date.now() - startedAt, parsed: parsedCount, cached: cachedCount, skipped: skippedCount }
     }
 
     // ---- 知识库健康聚合 ----
@@ -2184,7 +2280,7 @@ return {
       const repoCwd = await resolveRepoCwd(sessionId)
       const r = await listTraces(cwd, repoCwd)
       if (!r.ok) return { ok: false, error: r.error }
-      return { ok: true, sessions: r.sessions }
+      return { ok: true, sessions: r.sessions, elapsedMs: r.elapsedMs, parsed: r.parsed, cached: r.cached, skipped: r.skipped }
     })
 
     const detailDisposer = harness.handle('ascend-traces-detail', async (args) => {

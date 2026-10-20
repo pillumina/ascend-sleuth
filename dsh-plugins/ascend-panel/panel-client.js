@@ -2229,7 +2229,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           ),
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
             React.createElement('button', { type: 'button', title: '重新读取 traces/——复制闭环指令去对话执行后，回来点这里', onClick: () => setReloadAt(n => n + 1), style: { ...btnGhost, padding: '3px 10px' } }, '刷新'),
-            React.createElement('span', { title: badge, style: { fontSize: 'var(--t-sm)', color: T.text2, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-pill)', padding: '3px 11px' } },
+            React.createElement('span', { title: badge + (typeof r.elapsedMs === 'number' ? ' · 列表耗时 ' + r.elapsedMs + ' ms（解析 ' + (r.parsed || 0) + ' 条 / 命中缓存 ' + (r.cached || 0) + ' 条' + (r.skipped ? ' / 跳过 ' + r.skipped + ' 条' : '') + '）' : ''), style: { fontSize: 'var(--t-sm)', color: T.text2, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-pill)', padding: '3px 11px' } },
               nFollow ? (nFollow + ' 项待跟进') : ((r.sessions || []).length + ' 个会话')),
           ),
         ),

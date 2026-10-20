@@ -2562,8 +2562,14 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       && helpers.activeCaseKindOf(null) === null && helpers.activeCaseKindOf('') === null
       && helpers.activeCaseKindOf('null') === null)
     expect('host 从 trace 读 report_file 与 sediment_candidates',
-      /reportFileOf\(doc, fileNames, ent\.name\)/.test(hostSrc)
+      /reportFileFrom\(core\.recordedReport, sessionId, ent\.name, fileNames\)/.test(hostSrc)
+      && /recordedReport: recordedReportOf\(doc\)/.test(hostSrc)
       && /sedimentCandidates: Array\.isArray\(doc\.sediment_candidates\)/.test(hostSrc))
+    expect('列表解析缓存按文件 version 命中（没变的 trace 不重读）',
+      /cache\.entries\[ent\.name\]\.v === version/.test(hostSrc) && /INDEX_CACHE_FILE = '\.panel-index\.json'/.test(hostSrc))
+    expect('列表返回耗时与命中数（面板能显示"解析 N / 缓存 M"）',
+      /elapsedMs: Date\.now\(\) - startedAt/.test(hostSrc) && /parsedCount/.test(hostSrc) && /cachedCount/.test(hostSrc))
+    expect('面板把列表耗时放进统计胶囊的 title', /列表耗时 ' \+ r\.elapsedMs/.test(ascSrc))
     expect('读报告与列表用同一个报告名口径（否则"入口指向 A、点开读 B"）',
       (hostSrc.match(/reportFileOf\(/g) || []).length >= 3)
     expect('client 给「打开报告」入口（复用证据打开通路，不新造 RPC）',

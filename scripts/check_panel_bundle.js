@@ -169,6 +169,35 @@ function makeHostCtx(record) {
   return ctx
 }
 
+// 假 fs：内存文件表 + 内容哈希当 version，用来驱动真实的 listTraces（缓存命中/失效）。
+function makeFakeFs(root) {
+  const files = new Map()
+  const norm = (p) => path.resolve(p)
+  const versionOf = (text) => crypto.createHash('sha1').update(text).digest('hex').slice(0, 12)
+  return {
+    put(rel, text) { files.set(norm(path.join(root, rel)), text) },
+    async resolve(target, opts) {
+      const cwd = (opts && opts.cwd) || root
+      return path.isAbsolute(target) ? norm(target) : norm(path.join(cwd, target))
+    },
+    processPath(p) { return norm(p) },
+    async readText(p) {
+      const key = norm(p)
+      if (!files.has(key)) { const e = new Error('not found'); e.code = 'FS_NOT_FOUND'; throw e }
+      return files.get(key)
+    },
+    async writeText(p, content) { files.set(norm(p), content) },
+    async listDir(dir) {
+      const d = norm(dir)
+      const out = []
+      for (const [k, v] of files) {
+        if (path.dirname(k) === d) out.push({ name: path.basename(k), type: 'file', version: versionOf(v), size: Buffer.byteLength(v) })
+      }
+      return out.sort((a, b) => a.name.localeCompare(b.name))
+    },
+  }
+}
+
 // 假 req/res：走一遍客户端真正会走的 HTTP 信封（POST <channel>/<endpoint>，body { rpcId, payload }）
 function fakeRequest(url, body, method) {
   const encoded = Buffer.from(JSON.stringify(body), 'utf8')
@@ -347,6 +376,53 @@ async function checkHost() {
     && afterDispose.parsed.result.ok === false
     && afterDispose.parsed.result.error.code === 'not-found',
     '卸载后端点已摘除', JSON.stringify(afterDispose.parsed))
+  await checkListCache(mod)
+}
+
+async function checkListCache(mod) {
+  // —— 列表解析缓存：真跑三次（首次全量 / 二次命中 / 改一条） ——
+  // 只匹配源码字符串挡不住"缓存命中但沿用了过期字段"，所以这里用带 version 的假 fs
+  // 驱动真实的 listTraces，并断言 RPC 边界把 elapsedMs/parsed/cached 转出来了。
+  {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'sleu-cache-'))
+    try {
+      const fake = makeFakeFs(tmp)
+      const traceText = (id, status) => [
+        'session_id: ' + id, 'status: ' + status,
+        'created_at: 2026-10-01T00:00:00Z', 'updated_at: 2026-10-01T01:00:00Z',
+        'trace:', '  - {role: user, step: 1, content: hi}', '',
+      ].join('\n')
+      fake.put('traces/s1.yaml', traceText('s1', 'resolved'))
+      fake.put('traces/s2.yaml', traceText('s2', 'resolved'))
+      const record2 = { gets: [], tools: [], injects: [], route: undefined }
+      const ctx2 = makeHostCtx(record2)
+      const origGet = ctx2.get.bind(ctx2)
+      const fakeSessions = { get: () => ({ header: { cwd: tmp } }), list: () => [{ header: { cwd: tmp } }] }
+      ctx2.get = (n) => (n === 'fs' ? fake : (n === 'sessions' ? fakeSessions : origGet(n)))
+      mod.apply(ctx2)
+      const first = await callRoute(record2.route, 'ascend-traces-list', {})
+      const v1 = first.parsed && first.parsed.result && first.parsed.result.value
+      check(v1 !== undefined && v1.ok === true && v1.sessions.length === 2,
+        '缓存：首次返回两单', JSON.stringify(v1 && v1.sessions && v1.sessions.length))
+      check(v1.parsed === 2 && v1.cached === 0, '缓存：首次全量解析 parsed=2 / cached=0',
+        JSON.stringify({ parsed: v1.parsed, cached: v1.cached }))
+      check(typeof v1.elapsedMs === 'number', '缓存：RPC 把 elapsedMs 转出来了', String(v1.elapsedMs))
+      const second = await callRoute(record2.route, 'ascend-traces-list', {})
+      const v2 = second.parsed && second.parsed.result && second.parsed.result.value
+      check(v2.parsed === 0 && v2.cached === 2, '缓存：二次全命中 parsed=0 / cached=2',
+        JSON.stringify({ parsed: v2.parsed, cached: v2.cached }))
+      fake.put('traces/s2.yaml', traceText('s2', 'in_progress'))
+      const third = await callRoute(record2.route, 'ascend-traces-list', {})
+      const v3 = third.parsed && third.parsed.result && third.parsed.result.value
+      const s2 = (v3.sessions || []).filter(x => x.sessionId === 's2')[0]
+      check(v3.parsed === 1 && v3.cached === 1, '缓存：改一条只解析一条 parsed=1 / cached=1',
+        JSON.stringify({ parsed: v3.parsed, cached: v3.cached }))
+      check(s2 !== undefined && s2.status === 'in_progress', '缓存：内容更新被读到（不是旧值）', s2 && s2.status)
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true })
+    }
+  }
+
 }
 
 // createElement 递归调用函数组件：面板注册的是薄包装（`props => createElement(TraceView, props)`），

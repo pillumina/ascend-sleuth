@@ -362,6 +362,15 @@ node scripts/panel_install.js --remove   # 卸载
 
 ## 版本
 
+- 2026-10-20 · 大量 trace 的列表性能：按文件 `version` 的解析缓存。host 每次刷新先 `listDir`
+  拿 `name → version`，没变的 trace 直接复用上次解析出的列表字段（不含正文），变了的才读+解析；
+  本机明细按同一机制缓存四个列表读数。缓存落在 `traces/.panel-index.json`（schema 版本化、原子写、
+  损坏自重建、删掉无副作用）。**存量不需要迁移**：首次刷新全量解析一遍并写缓存，之后都是增量。
+  列表响应新增 `elapsedMs / parsed / cached / skipped`，面板统计胶囊的 title 显示
+  "列表耗时 X ms（解析 N 条 / 命中缓存 M 条）"。
+  压测：`node scripts/bench_trace_list.js --count 500`（只量枚举与读取；YAML 解析只发生在变了的文件）。
+  面板包 0.6.6 → 0.6.7。
+
 - 2026-10-20 · 撤掉展开高度动画。实测仍然卡：`grid-template-rows` 的 0fr→1fr 插值会让浏览器
   **每帧重新计算整棵展开子树的布局**，内容越长越明显。改成展开体直接渲染、只做 160ms 的
   `opacity` 淡入（合成层，不触发布局）；高度瞬时到位，列表位移一次完成。收起不做动画、内容立即卸载。另外给正文区加 `content-visibility: auto`（视口外的轨迹先跳过布局），滚到再算。
