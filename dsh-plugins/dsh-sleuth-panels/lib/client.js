@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:7e32555dd76d)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:b641d7fb38d3)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:9e836d4c1993)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -63,7 +63,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:7e32555dd76d) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:b641d7fb38d3) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -274,7 +274,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.6.7'
+    const PANEL_VERSION = '0.6.8'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -957,9 +957,19 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const cost = (rec && Array.isArray(rec.stepCost)) ? rec.stepCost : []
       const byStep = {}
       for (const r of cost) byStep[r.step] = r
-      const maxMs = Math.max(1, ...cost.map(r => r.ms || 0))
-      const total = cost.reduce((a, r) => a + (r.ms || 0), 0)
-      const worst = cost.slice().sort((a, b) => (b.ms || 0) - (a.ms || 0))[0]
+      // 合计与标尺都只算"测得出来、且窗口没被截断"的步：
+      //   · 收尾段截断（没有 ended_at）会把诊断之外的活算进来 → 剔除并标注；
+      //   · 有调用没返回（msComplete=false）时这个数只是下限 → 合计前缀 ≥。
+      const usable = cost.filter(r => !r.windowTruncated && typeof r.ms === 'number')
+      const maxMs = Math.max(1, ...usable.map(r => r.ms))
+      const incomplete = usable.some(r => r.msComplete === false)
+      const truncated = cost.some(r => r.windowTruncated)
+      const total = usable.reduce((a, r) => a + r.ms, 0)
+      const worst = usable.slice().sort((a, b) => (b.ms || 0) - (a.ms || 0))[0]
+      const totalNote = !rec ? '本机明细未生成'
+        : (!cost.length ? '轨迹缺 ts，切不出分步窗口'
+          : ('合计 ' + (incomplete ? '≥ ' : '') + msText(total) + (truncated ? '（不含收尾段）' : '')
+            + (worst && worst.ms ? ' · 最长是 ' + worst.step + ' ' + STEP_SHORT[worst.step] : '')))
       const head = (label, note) => React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 8, minWidth: 0 } },
         React.createElement('span', { style: { fontSize: 'var(--t-md2)', color: T.text2, whiteSpace: 'nowrap' } }, label),
         note ? React.createElement('span', { title: note, style: { fontSize: 'var(--t-tiny)', color: T.text2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', minWidth: 0 } }, note) : null)
@@ -967,24 +977,34 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const bars = React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, alignItems: 'end', height: 78 } },
         [1, 2, 3, 4, 5, 6].map(n => {
           const r = byStep[n]
-          // 有这一步但没记耗时 → null（虚线 + 「—」）。**不能 `|| 0`**：那是把"没测到"画成"0 秒"。
-          const ms = (r && typeof r.ms === 'number') ? r.ms : null
-          const h = ms ? Math.max(4, Math.round(ms / maxMs * 100)) : 0
+          // 三态分开：没这一步 / 有窗口但没记耗时 / 测到了（含 0 ms）。
+          // `ms === 0` 是"窗口内确实没有工具调用"，不是"没测到"——两者不能同形。
+          const hasStep = !!r
+          const cut = !!(r && r.windowTruncated)
+          const ms = (hasStep && !cut && typeof r.ms === 'number') ? r.ms : null
+          const h = (ms !== null && ms > 0) ? Math.max(4, Math.round(ms / maxMs * 100)) : 0
           const t = (r && r.tokens) || {}
-          const tok = (t.uncached || 0) + (t.cache_read || 0) + (t.out || 0)
-          const tip = ms === null
-            ? STEP_SHORT[n] + '：这一步在轨迹里没有事件，本次没记'
-            : STEP_SHORT[n] + '\n耗时 ' + msText(ms) + '（窗口内工具调用之和，不含模型思考）'
-              + '\n调用 ' + ((r && r.calls) || 0) + ' 次' + (tok ? '\ntoken ' + thousands(tok) : '')
-              + ((r && r.tools && r.tools.length) ? '\n工具 ' + r.tools.slice(0, 6).join(' / ') : '')
+          const tok = (t.uncached || 0) + (t.cache_read || 0) + (t.cache_write || 0) + (t.out || 0)
+          const tip = !hasStep
+            ? STEP_SHORT[n] + '：轨迹里没有这一步的事件，本次没记'
+            : cut
+              ? STEP_SHORT[n] + '：轨迹没写 ended_at，收尾段混进了诊断之外的活，这一段不计入合计'
+              : (ms === null
+                ? STEP_SHORT[n] + '：有这一步，但本机明细里没有它的耗时'
+                : STEP_SHORT[n] + '\n耗时 ' + msText(ms) + (ms === 0 ? '（窗口内没有工具调用）' : '')
+                  + '（窗口内工具调用之和，不含模型思考）'
+                  + '\n调用 ' + ((r && r.calls) || 0) + ' 次' + (tok ? '\ntoken ' + thousands(tok) + '（四类之和）' : '')
+                  + (r.msComplete === false ? '\n注意：有调用没返回，这个数是下限' : '')
+                  + ((r && r.tools && r.tools.length) ? '\n工具 ' + r.tools.slice(0, 6).join(' / ') : ''))
+          const label = cut ? '未记' : (ms === null ? '—' : (r.msComplete === false ? '≥ ' : '') + msText(ms))
           return React.createElement('div', { key: n, title: tip, style: { display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', height: '100%', gap: 4 } },
             React.createElement('div', { style: { height: '100%', display: 'flex', alignItems: 'flex-end', borderRadius: 'var(--r-xs)', overflow: 'hidden',
-              background: ms === null ? 'transparent' : 'color-mix(in srgb, ' + T.warn + ' 10%, transparent)',
-              border: ms === null ? '1px dashed ' + T.border : 'none' } },
-              ms ? React.createElement('i', { style: { display: 'block', width: '100%', height: h + '%', background: 'var(--acc-amber, ' + T.warn + ')', borderRadius: 'var(--r-xs)' } }) : null),
+              background: cut ? 'transparent' : (ms === null ? 'transparent' : 'color-mix(in srgb, ' + T.warn + ' 10%, transparent)'),
+              border: cut ? '1px dashed ' + T.warn : (ms === null ? '1px dashed ' + T.border : 'none') } },
+              (ms !== null && ms > 0) ? React.createElement('i', { style: { display: 'block', width: '100%', height: h + '%', background: 'var(--acc-amber, ' + T.warn + ')', borderRadius: 'var(--r-xs)' } }) : null),
             React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 3, minWidth: 0 } },
               React.createElement('span', { title: STEP_SHORT[n], style: { fontSize: 'var(--t-md2)', color: T.text2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, n + ' ' + STEP_SHORT[n]),
-              React.createElement('span', { className: 'sleu-num', style: { marginLeft: 'auto', fontSize: 'var(--t-md2)', color: T.text, whiteSpace: 'nowrap' } }, ms === null ? '—' : msText(ms))))
+              React.createElement('span', { className: 'sleu-num', style: { marginLeft: 'auto', fontSize: 'var(--t-md2)', color: cut ? T.warn : T.text, whiteSpace: 'nowrap' } }, label)))
         }))
 
       // 检索路径：光画三根条读者不知道在比什么（2 → 2 → 0 尤其费解）。计数 + 箭头 + 一句人话结论，缺一不可。
@@ -1015,10 +1035,10 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
 
       return React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1.25fr 1fr .95fr', gap: 24, padding: '2px 0 14px', borderBottom: '1px solid ' + T.border } },
         React.createElement('div', { style: { minWidth: 0 } },
-          head('每步耗时', total ? ('合计 ' + msText(total) + (worst && worst.ms ? ' · 最长是 ' + worst.step + ' ' + STEP_SHORT[worst.step] : '')) : (rec ? '' : '本机明细未生成')),
+          head('每步耗时', totalNote),
           bars,
           React.createElement('div', { style: { marginTop: 8, fontSize: 'var(--t-md2)', color: T.text2, lineHeight: 'var(--lh-base)' } },
-            '窗口内工具调用之和，不含模型思考；悬停看每步的次数、token 与工具'),
+            '各步窗口内工具调用之和，不含模型思考；与卡片「工具耗时」（会话全量）不同源。悬停看次数、token 与工具'),
           // 按工具拆开：只给一个总数，读者判断不出"这几秒该裁哪个动作"。
           // 默认收起——它是"要继续查"时才展开的那一层，不占首屏。
           (function () {
@@ -1034,7 +1054,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                   React.createElement('span', { style: { color: T.text2 } }, '步 ' + step),
                   React.createElement('span', { title: label, style: { color: T.text2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, label),
                   React.createElement('span', { className: 'sleu-num', style: { color: T.text, whiteSpace: 'nowrap' } },
-                    t ? ((t.ms || 0) + ' ms · ' + t.calls + ' 次' + (t.pending ? ' · ' + t.pending + ' 未返回' : '')) : '')))))
+                    t ? (((typeof t.ms === 'number' && t.ms > 0) ? (t.ms + ' ms')
+                      : (t.pending ? '—' : '0 ms')) + ' · ' + t.calls + ' 次' + (t.pending ? ' · ' + t.pending + ' 未返回' : '')) : '')))))
           })()),
         React.createElement('div', { style: { minWidth: 0 } }, head('检索路径', ''), funnel),
         React.createElement('div', { style: { minWidth: 0 } },

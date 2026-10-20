@@ -1724,6 +1724,14 @@ _MS._run_no_pipe = no_fallback`)
         // 但正文与报告入口必须同时在（挪动不许把任何一件挪丢）。
         expect('展开态给指标带（每步耗时 / 检索 / token 三张图）',
           /每步耗时/.test(texts) && /检索/.test(texts) && /token/.test(texts))
+        expect('每步耗时：0 ms 与"没测到"不同形（null 才画 —）',
+          /ms !== null && ms > 0/.test(ascSrc) && /ms === null \? '—'/.test(ascSrc))
+        expect('每步耗时：收尾段截断不计入合计（标"未记"）',
+          /cost\.filter\(r => !r\.windowTruncated && typeof r\.ms === 'number'\)/.test(ascSrc)
+          && /不含收尾段/.test(ascSrc))
+        expect('每步耗时：有调用未返回时合计给下限（≥）', /incomplete \? '≥ ' : ''/.test(ascSrc))
+        expect('每步耗时：token tooltip 含四类之和', /cache_write \|\| 0\) \+ \(t\.out/.test(ascSrc) && /四类之和/.test(ascSrc))
+        expect('按工具拆开：未返回的调用不写成 0 ms', /t\.pending \? '—' : '0 ms'/.test(ascSrc))
         expect('展开态正文与报告入口同时在场（挪进操作栏不等于挪丢）',
           /轨迹|用户输入/.test(texts) && /收起报告/.test(texts))
         expect('报告默认停在 TL;DR 节（正文里先给结论）', /现象：profile_run 崩溃/.test(texts))
