@@ -52,3 +52,7 @@ decisions:
     when: 2026-10-30
     type: decision
     conclusion: 采纳（validated）——把「先例要读」与「自指不算度量」从建议变成 CI 可判的两条硬门
+  - who: agent
+    when: 2026-10-30
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #389 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"

@@ -52,3 +52,7 @@ decisions:
     when: 2026-10-30
     type: decision
     conclusion: 采纳（validated）——倒填从"随手可做"变成"需要解释"，检测失败时打印跳过说明而不是静默判绿
+  - who: agent
+    when: 2026-10-30
+    type: action
+    conclusion: "合入指针回写：本卡（及其结论）随 PR #389 进入 main（回写由 evolve 批次收尾执行，供判据「待合入积压」读取）"
