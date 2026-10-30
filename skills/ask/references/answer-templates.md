@@ -7,8 +7,7 @@
 |---|---|
 | 态 + 一句话 | ≤60 字 |
 | 表或候选 | 查证与术语 ≤4 行 ×45 字；现象 ≤3 行 ×30 字；导览 4 到 6 行 ×22 字 |
-| 第一动作 | 1 行 ≤40 字，用户机器上能跑 |
-| 落点 | 新手题加：在哪跑、跑完看哪一行 |
+| 第一动作 | 1 行 ≤50 字，用户机器上能跑；新手题同一行写在哪跑、看哪一行 |
 | 作用域 | ≤35 字，照抄 `applies_to` |
 | 出处 | 1 行 |
 
@@ -23,8 +22,7 @@
 | 级别 | E 错误 / W 告警 / I 提示 |
 | 模块 | 第 2 位定组件：1 GE、2 FE、E Runtime |
 | 内部码 | 后 4 位 9000 起，属内部错误 |
-第一动作：grep -n "<码>" $HOME/ascend/log/debug/plog/*.log
-落点：在训练节点跑；看命中行前后 20 行里的算子名与 CANN 版本
+第一动作：grep -n "<码>" $HOME/ascend/log/debug/plog/plog-pid_*.log；训练节点跑，看 for op 后算子名
 作用域：跨平台 × CANN 9.0.0
 出处：ascend-error-code-structure（<last_verified>）
 ```
@@ -35,8 +33,7 @@
 <态> <ref-id>：命中 / 只有相关（最近一条覆盖什么）/ 库里没有 <X> / 无法归类，缺 <哪一项>
 一句话：<这个码、这个变量或这个数字是什么>
 表或取值：<数字、阈值、两型判别、开关取值，照抄词条>
-第一动作：<用户机器上能跑的命令>
-落点：<在哪跑>；<跑完看哪一行>
+第一动作：<用户机器上能跑的命令>；<在哪跑、看哪一行>
 作用域：<照抄 applies_to；两条取交集>
 出处：<ref-id>（<last_verified>）
 ```
@@ -91,8 +88,7 @@
 1. 栈里无 CANN 函数 → 任务未下发
 2. 栈里有 SendTask → 卡在下发
 3. 栈里有 Synchronize → 卡在执行
-第一动作：PID=$(pgrep -f 'python.*train\.py' | head -1); asys collect -r=stacktrace --remote=$PID --all --quiet
-落点：在训练节点跑；看栈尾有没有 CANN 函数名
+第一动作：PID=$(pgrep -f 'python.*train\.py' | head -1); asys collect -r=stacktrace --remote=$PID --all --quiet；训练节点跑，看栈尾 CANN 函数名
 作用域：跨平台 × 进程卡住一类
 出处：ascend-process-hang-triage（<last_verified>）
 转诊：要我接着查就开 /skill:diagnose，先贴栈尾。
@@ -108,8 +104,7 @@
 1. <候选> → <怎么从现场数据区分它>
 2. <候选> → <怎么从现场数据区分它>
 3. <候选> → <怎么从现场数据区分它>
-第一动作：<一条命令，能区分上面几个候选>
-落点：<在哪跑>；<看哪一行>
+第一动作：<一条命令，能区分上面几个候选>；<在哪跑、看哪一行>
 作用域：<照抄 applies_to>
 出处：<methodology ref-id 或 case id>（<last_verified>）
 转诊：/skill:diagnose，先贴 <具体那一项>。
