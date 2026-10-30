@@ -142,6 +142,9 @@ docs:
 # 原先 README 写"八个 skill"、术语表写"共九个"，读者无法判断是"总数"还是"某一面"。
 # 分组名与说明按人读文本规范写：它们是 README 正文的一部分，不用第二人称口语。
 skills:
+  - name: ask
+    scope: 日常问答
+    note: 一句话能问完的问题直接答（码、变量值、某类怎么定位、术语、库里有吗），症状定位转 diagnose
   - name: diagnose
     scope: 日常诊断
   - name: resume-diagnosis
@@ -175,4 +178,4 @@ skills:
     scope: 维护与演进
     note: 本机环境体检：一条命令报「哪些流程能跑、哪些会降级」并给修法；只读，不装包
 
-scope_order: ["日常诊断", "知识沉淀", "维护与演进"]
+scope_order: ["日常问答", "日常诊断", "知识沉淀", "维护与演进"]

@@ -1,0 +1,203 @@
+# /ask 答案键：10 题，按层划分 L1 事实 3 / L2 流程 3 / L3 现象 2 / L4 术语 2。
+# 每题字段：id / layer / role / question_class / question / expected_ref_ids / must_include / must_not / first_action / known_gap
+# 角色只记在评测侧，不进题面；题面是用户原话，跨轮不改。
+# ref-id 指 references/methodologies/<ref-id>.yaml 或 references/<type>/<ref-id>.yaml，均可直接打开核对。
+
+- id: L1-01
+  layer: L1
+  role: newbie
+  question_class: fact
+  question: "报错里有一串 561000，下一行写着 Cannot find binary for op，是不是我哪一步没装好？"
+  expected_ref_ids:
+    - cann-runtime-error-codes
+    - aclnn-return-codes
+    - ascend-moe-comm-triage
+  must_include:
+    - "561000 是算子执行或加载失败（aclnn 层内部异常），不是权限、网络或显存问题"
+    - "Cannot find binary for op 指名某个算子缺二进制实现（典型是 MoeInitRoutingV3），修法是升级 torch-npu 到 2.10.0.post4 及以上（或补齐算子包）后重启"
+    - "同一个 561000 还有另一型：aclnnMoeDistributeDispatchV4 failed 叠加 EI0007 资源耗尽；两型根因不同，别套同一个修法"
+    - "先点名是哪个算子，再给版本结论（日志里 grep 出算子名与报错行）"
+  must_not:
+    - "判成显存不足、文件权限或网络问题"
+    - "只说「重装环境」「重装 CANN」这类没有落点的动作"
+    - "不点名算子就断言升级到某个版本能解"
+  first_action: "grep -rn \"561000\\|Cannot find binary for op\" $HOME/ascend/log/debug/plog/ | head -20"
+  known_gap: false
+
+- id: L1-02
+  layer: L1
+  role: expert
+  question_class: fact
+  question: "TASK_QUEUE_ENABLE 有人让设 2、有人让设 0，这两个到底差在哪、什么时候该动它？"
+  expected_ref_ids:
+    - profiler-host-bound-triage
+  must_include:
+    - "0 = 关闭；1 或未设置 = Level1，aclnn 调用进二级流水；2 = Level2，再搬 workspace，二进制支持时才算推荐值"
+    - "Level2 会抬高峰值 NPU 内存"
+    - "ASCEND_LAUNCH_BLOCKING=1 时 task queue 被禁用，这个变量无效"
+    - "只有判成 Host Bound 才动它：Free 时间占 step 的 10% 以上、Free 区间内既无计算任务也无通信任务、下发或 host 侧 gap 与该 Free 区间对齐，三条同时成立；改完给回滚方式与对照指标"
+  must_not:
+    - "说成「数值越大越快」或通用提速开关"
+    - "没判 Host Bound 就建议改值"
+    - "不提 Level2 的内存代价与 ASCEND_LAUNCH_BLOCKING 下的失效"
+  first_action: "echo \"TASK_QUEUE_ENABLE=${TASK_QUEUE_ENABLE:-unset}\""
+  known_gap: false
+
+- id: L1-03
+  layer: L1
+  role: adjacent
+  question_class: fact
+  question: "msprobe 采完一整网数据，工具列出一堆溢出节点，我怎么知道哪个才是最早出问题的那一个？"
+  expected_ref_ids:
+    - msprobe-overflow-check
+    - ascend-train-precision-triage
+  must_include:
+    - "判定口径是「输入正常、输出异常」才算溢出起点；输入已经异常的是传播受害者，不是起点"
+    - "多卡里经通信算子传播的溢出，要回溯到首个产生异常的 rank 与节点"
+    - "命令是 msprobe overflow_check -i <dump>/stepN -o <输出目录>，产物 anomaly_analyze_*.json；-i 必须指到 step 层级，且只支持 PyTorch 的 dump"
+    - "光看到 loss 变 NaN 的那一步不够，结论要落到具体节点"
+  must_not:
+    - "把输出列表里的第一个节点当首个溢出点"
+    - "把 loss 首次出现 NaN 的训练 step 当成首个溢出点"
+    - "对 MindSpore 的 dump 用这个工具"
+  first_action: "msprobe overflow_check -i <dump目录>/step0 -o ./overflow_out"
+  known_gap: false
+
+- id: L2-01
+  layer: L2
+  role: expert
+  question_class: flow
+  question: "训练整体比 GPU 上慢 30%，我手上只有一份 profiler 数据，从哪儿开始拆？"
+  expected_ref_ids:
+    - performance-delimiting-and-comparison
+    - profiler-breakdown-method
+  must_include:
+    - "先把端到端或 step 耗时拆成计算、通信未掩盖、空闲三块，只定方向，不先翻算子明细"
+    - "按变多的那一块走对应路径；通信变多再分等待与传输。通信算子逐个都没变慢而通信未掩盖耗时涨了，说明重叠变差（并行度问题），不要继续抠单个通信算子"
+    - "逐级拆解（端到端→阶段→step→层）要做守恒自检：每级缺口超过父级 wall 的 5% 要标「归属不完整」"
+    - "剔除首 step 的编译与热身噪声，剔除 prefill，各去掉 ±1 个尾部 step；样本少于 2 个 step 要告警样本不足"
+    - "有基线时先过显著性门控：总变化幅度不到 1% 时分项正负相抵，贡献度不可解释，降级为「—」"
+  must_not:
+    - "直接给「绑核」「调大 batch」这类动作，没有先定方向"
+    - "只给算子 Top 列表，没有说明是哪一块变多"
+    - "拿单次最好成绩对比单次最差成绩"
+  first_action: "PROF_DIR=$(ls -dt <采集输出目录>/PROF_* | head -n 1); ls $PROF_DIR/mindstudio_profiler_output/"
+  known_gap: false
+
+- id: L2-02
+  layer: L2
+  role: newbie
+  question_class: flow
+  question: "我们训练出来的 loss 跟别的平台上对不上，我第一步该干啥？"
+  expected_ref_ids:
+    - ascend-train-precision-triage
+    - msprobe-config-check
+  must_include:
+    - "先做 CheckList 排除非算子因素：两侧训练超参与环境变量、三方库版本、数据读取、模型结构、权重初始化、版本，逐项给「一致 / 不一致」结论"
+    - "再固定随机性、打开算子与通信确定性、缩小规模，把问题稳定复现出来"
+    - "然后按「能否稳定复现 + 现象」分流：溢出或 NaN / 首 step loss 差异 / 长稳 loss 差异"
+    - "到最后才做单算子验证与修复（升精度、等价替换、回退版本），前面几步没走完不要进算子层"
+  must_not:
+    - "一上来就给单算子比对方案"
+    - "让用户先把环境搞清楚再回来问"
+    - "把 loss 差异直接判成算子精度问题"
+  first_action: "pip list | grep -Ei \"torch|torch_npu|transformers|mindspeed\""
+  known_gap: false
+
+- id: L2-03
+  layer: L2
+  role: adjacent
+  question_class: coverage
+  question: "我们想用 LLaMA-Factory 做微调，昇腾这边有对应的排查流程吗？现在跑起来 loss 一直不降。"
+  expected_ref_ids:
+    - ascend-train-precision-triage
+  must_include:
+    - "明说零命中：事实层 references 里没有 LLaMA-Factory 的词条，案例层 knowledge/ 下没有该框架的命名空间与 case（只有 mindspeed-llm / mindspeed-mm / verl / sglang / vllm-ascend 与 common/）"
+    - "不把通用训练流程说成该框架的适配方案，也不替官方回答支持或不支持"
+    - "给替代路径：框架无关的精度 case 查 knowledge/_index/common__precision.list；训练侧先按 ascend-train-precision-triage 的 CheckList 与「固定随机性、缩小规模复现」走"
+    - "要该框架的支持结论去查官方文档与社区；确实要沉淀，就把它作为 reference 词条补进库（走 to-reference）后再来问"
+  must_not:
+    - "编一个「LLaMA-Factory 已支持昇腾」或「已适配某个版本」的结论"
+    - "说「库里有相关流程」，把通用流程冒充成该框架的流程"
+    - "让用户先换个框架、或先把环境搞清楚再来问"
+  first_action: "grep -ril \"llama.factory\" knowledge/ references/"
+  known_gap: true
+
+- id: L3-01
+  layer: L3
+  role: newbie
+  question_class: phenomenon
+  question: "训练卡住了，日志里什么也没报，我该怎么办？"
+  expected_ref_ids:
+    - ascend-process-hang-triage
+  must_include:
+    - "明说现在无法归类，并说清缺的是哪一项信息（进程还在不在、有没有调用栈、平台与框架）"
+    - "给一条当前信息下就能做的动作：取卡住进程的调用栈，或先把 plog 里的 ERROR 拉出来"
+    - "给默认假设并说明可纠正：「我按 训练 × 中断 先给，拿到调用栈就能分到卡在下发还是卡在执行」"
+    - "澄清问题至多 1 个"
+  must_not:
+    - "把 HCCL 超时、OOM、算子卡死里的某一个当结论硬给"
+    - "让用户先搞清楚平台、框架或环境再来问"
+    - "一次问 3 个以上澄清问题"
+  first_action: "asys collect -r=stacktrace --remote=<卡住进程的 PID> --all --quiet"
+  known_gap: false
+
+- id: L3-02
+  layer: L3
+  role: adjacent
+  question_class: phenomenon
+  question: "4 卡跑同一个脚本两次，loss 每次都不一样；单卡跑是稳定的，这是精度出问题了吗？"
+  expected_ref_ids:
+    - ascend-determinism-triage
+    - batch-consistency-and-determinism-switches
+  must_include:
+    - "先分清是哪一级不一致：同一输入重复跑不同 = 确定性（ACL_OPT_DETERMINISTIC=1 或 torch.use_deterministic_algorithms）；换个 batch 位置或批大小才变 = batch 一致性（ACL_OPT_DETERMINISTIC=3 或 torch_npu.npu.set_deterministic_level，需 TorchNPU 26.2.0 及以上、CANN 9.2.0 及以上）"
+    - "先确认开关真开着、且没被业务代码中途重置：反复调用无参 seed_all() 会把已置 True 的 torch.use_deterministic_algorithms 重置；plog 里 aclnn 的 deterministic 标识应全程为 1"
+    - "全量 dump 后问题消失 = 竞争类；ASCEND_LAUNCH_BLOCKING=1 后消失 = 算子间竞争，再用 mssanitizer 收敛到具体算子"
+    - "这两级开关都会让算子变慢，只在定位与回归时开，不要常开"
+  must_not:
+    - "直接判「精度有问题，要改算子」"
+    - "只说「开确定性」，不给版本门槛与性能代价"
+    - "把确定性与 batch 一致性当成同一个开关"
+  first_action: "grep -rn \"seed_all(\" <训练代码目录> | grep -v \"mode=True\""
+  known_gap: false
+
+- id: L4-01
+  layer: L4
+  role: newbie
+  question_class: term
+  question: "同事让我把 plog 发给他，plog 是哪个文件、在哪儿？"
+  expected_ref_ids:
+    - ascend-log-locations
+    - ascend-log-classification
+  must_include:
+    - "plog 是应用类日志：Host 侧的 AscendCL、GE、Runtime、HCCL 等组件打的"
+    - "Ascend EP 形态在 $HOME/ascend/log/{debug,run}/plog/plog-pid_*.log"
+    - "文件名里 id 是 Device ID、pid 是业务进程号、* 是文件创建时间"
+    - "系统类日志不在这里：EP 形态没有 Device 登录权限，要用 msnpureport 导出；/var/log/npu/slog 是 RC 与 Control CPU 开放形态的路径"
+    - "报错先在 plog 里 grep ERROR 取首报错，发给他的是首报错附近那一段"
+  must_not:
+    - "把 /var/log/npu/slog 当成 EP 形态的 plog 路径"
+    - "只回答「在日志目录里」，不给具体路径"
+  first_action: "ls -lt $HOME/ascend/log/debug/plog/ | head"
+  known_gap: false
+
+- id: L4-02
+  layer: L4
+  role: expert
+  question_class: term
+  question: "profiling 里有张卡 Free 时间占比 15%、Compute 又很短，同事说它是伪快卡——这个判断的判据是什么？"
+  expected_ref_ids:
+    - multi-rank-slow-rank-detection
+    - msprof-comm-bottleneck-thresholds
+  must_include:
+    - "伪快卡指 Host 下发瓶颈的那张卡：某卡 Free Time 占比超过 10%（或远超均值），同时 Compute 与 Communication 异常偏短——它「快」是因为其他卡在等它"
+    - "真正的慢卡是等待时长比例（WTR）最小的那张，其他卡都在等它；判慢卡还要看 WTR 最大的卡的传输前同步比例是否超过 0.2"
+    - "定性只能归入六类之一并引用证据（伪快卡 / 计算型 / 通信型 / 负载不均 / 算子劣化 / 证据不足）"
+    - "再用 slow 与 fast 两个 rank 的逐算子 ratio 补微观证据，区分切分不均与算子劣化"
+  must_not:
+    - "用「总耗时最短」或「空闲最多」直接认定是快卡"
+    - "把伪快卡与计算型慢卡混为一谈"
+    - "没有 Free 占比与 Free 区间内任务数的证据就下结论"
+  first_action: "msprof-analyze -m slow_rank -d <集群 profiling 路径> -o ./out --agent"
+  known_gap: false
