@@ -302,6 +302,8 @@ roadmap 明确不做的是 KPI、身份与使用观测，观测对象是人（�
 
 ```yaml
 id: EV-2026-XXX                 # 示例占位（真实卡号由 ev_proposal --new 分配）
+# alternatives: 同组件有 rejected/superseded 先例时必填 [{option, why_rejected, evidence}]
+# predicted_effect.external: 改演进流程本身时必填——效果信号来自流程之外
 layer: L2                        # L1 | L2 | L3（本卡示例：流程层）
 title: triage 分支 vllm-ascend 启动参数族执行错率 0.6 → 修订该分支
 status: in_experiment            # 取值见上表

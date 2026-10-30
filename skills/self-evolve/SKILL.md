@@ -63,7 +63,11 @@ disable-model-invocation: true
    被拒方案（`python3 scripts/ev_proposal.py --impact [组件]` 一次查全组件×尝试×结局）；
 2. 落记录：把观察交给 `python3 scripts/evolve_intake.py record …`（`full` 落预填骨架，`record-only`
    落信号台账，`off` 不落）→ 产卡时补字段（layer / hypothesis / predicted_effect / validation /
-   risk / principle_refs；`source_signals` 与 `target_component` 已由 intake 填好）；
+   risk / principle_refs；`source_signals` 与 `target_component` 已由 intake 填好）。
+   **同组件有 rejected / superseded 先例时必填 `alternatives`**（选项 + 否决理由 + 证据）：
+   把"为什么不重走那条"写进卡，而不是留在对话里——否则下一个人会再试一次。
+   **改演进流程本身的卡必填 `predicted_effect.external`**：`measure` 只能证明脚本能跑，
+   效果信号要来自流程之外（台账提升率、intake 拒收率、no-signal 比率、单卡从产到合的天数）；
    `predicted_effect` 须带 `measure`（预测的出处：命令 + 期望，或如实声明不可度量）——
    reviewer 靠 `scripts/ev_measure.py <卡号> --run` 机械复核预测，规则同 evolve-check 产卡链；
 3. **agent 自行验证执行**：按影响面分级选门禁（docs/guide/eval.md「门禁分级」可选层）——

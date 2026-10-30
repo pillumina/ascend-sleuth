@@ -29,11 +29,16 @@ source_signals:                    # 触发信号 + trajectory 出处（本卡�
     trajectory:
       - "traces/*.yaml#attribution 2026-W37 按需聚合"
       - "traces/2026-08-30-xxxx.yaml#attribution"
+alternatives:                      # 可选，但同组件有 rejected / superseded 先例时必填：
+  - option: 另一个可考虑的方向        #   写清「为什么不重走那条」，否则同一方向会被反复重试
+    why_rejected: 被否决的原因（先例卡号或实测数据）
+    evidence: "可选：支撑否决判断的读数或回放结果"
 hypothesis: 修订该分支的症状匹配逻辑后，执行错率降至 <0.3
 predicted_effect:
   metric: 组件执行错率
   from: 0.6
   to: "<0.3"
+  external: "可选：改演进流程本身时必须填——效果信号来自流程之外（台账提升率 / intake 拒收率 / 单卡合入天数）"
   measure:                           # 预测的出处（可复现）——EV-2026-050。reviewer 靠它做
                                      # execution §「30s 判定」；缺它则评审只能开全文。
     command: "待填：复现本条预测的命令（如 python3 scripts/eval_arena.py --gate）"

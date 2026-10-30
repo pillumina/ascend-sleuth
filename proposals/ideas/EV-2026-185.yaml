@@ -1,0 +1,54 @@
+id: EV-2026-185
+layer: L2
+target_component: scripts/verify_proposals.py
+title: 生效日常量可信度过低（日期自报可倒填）→ 拒绝未来日期 + PR 新增卡倒填检测
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-10-30
+source_signals:
+  - signal: human_feedback
+    evidence: 提问「verify_proposals 里为什么硬编码日期」时暴露：常量本身合理，但 created_at 自报，倒填即可绕过所有生效日闸门
+    trajectory:
+      - "scripts/verify_proposals.py#CUTOVER"
+      - "docs/mechanism/execution.md#改进项信息契约"
+hypothesis: 拒绝未来日期 + 对 PR 新增卡做基线倒填检测后，用倒填绕过生效日闸门需要留痕（要么写实际日期，要么在 PR 里解释）
+predicted_effect:
+  metric: 新增卡倒填日期绕过闸门的数量
+  from: "无检测（手改即可绕过）"
+  to: "有检测（PR 新增卡早于基线 7 天即 red）"
+  external: "新增卡的 created_at 早于基线的条数——从 PR diff 与卡库现算（本卡合入后由后续 PR 累积）"
+  measure:
+    command: "python3 -m unittest tests.test_proposal_branches.BackdateTest"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: 只有 MEASURE/TARGET 等生效日常量，created_at 不做任何校验
+  success_criteria: 未来日期被拒；新增卡早于基线 7 天被拒；基线不可达时打印跳过说明而不是判绿；文档不再重复写日期
+  rollback: 合入前丢弃分支；合入后 git revert（两处检查与 CI 参数回退）
+gate:
+  condition: "改动都靠生效日区分存量与增量，而生效日读的是自报的 created_at"
+risk: low
+principle_refs: [2, 6, 8, 10]
+actual_cost:
+  tokens: 0
+  note: 人工指派的机制改动，token 未单独记账
+decisions:
+  - who: agent
+    when: 2026-10-30
+    type: proposal
+    conclusion: 不换掉日期常量（换成 schema 版本要回填 181 张卡），改堵它的可信度：未来日期一律拒、PR 新增卡早于基线 7 天即 red
+  - who: agent
+    when: 2026-10-30
+    type: action
+    conclusion: verify_proposals 加 is_backdated / check_backdated_cards 与未来日期检查；proposal-audit 拉全历史并传 --base；execution.md 去掉重复写的日期
+  - who: agent
+    when: 2026-10-30
+    type: eval
+    conclusion: 13 个单测通过（含临时 git 仓的倒填正反例）；181 张存量卡不受影响；measure 实跑 PASS
+  - who: agent
+    when: 2026-10-30
+    type: decision
+    conclusion: 采纳（validated）——倒填从"随手可做"变成"需要解释"，检测失败时打印跳过说明而不是静默判绿

@@ -1,0 +1,54 @@
+id: EV-2026-184
+layer: L2
+target_component: scripts/verify_proposals.py
+title: 失败先例被反复重提、改演进流程的卡用流程自证 → alternatives 必填 + external 必填
+status: validated
+authorization: review
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-10-30
+source_signals:
+  - signal: human_feedback
+    evidence: 问「产 proposal 是不是只生成单个 action、要不要做决策树」时暴露两处缺口——被否决的选项没有落点、改流程的卡可自证
+    trajectory:
+      - "proposals/ideas/EV-2026-183.yaml"
+      - "scripts/ev_proposal.py#--impact"
+hypothesis: 把「同组件有失败先例必须写 alternatives」与「改演进流程必须有 external 效果信号」变成 CI 硬检查后，同一方向不再被反复重提，流程改动的效果不再自指
+predicted_effect:
+  metric: 同组件有 rejected 先例却无 alternatives 的新卡数
+  from: "无检查（可重提）"
+  to: "0（CI proposal-audit 拦截）"
+  external: "同组件失败先例后仍重提的方案数：从 proposals/ideas 现算（本卡合入后由后续卡累积）"
+  measure:
+    command: "python3 -m unittest tests.test_proposal_branches"
+    expect_exit: 0
+validation:
+  method: scan_review
+  baseline: verify_proposals 只校验单卡结构，不看同组件先例；predicted_effect 无 external 概念
+  success_criteria: 10 个新单测覆盖形状、先例强制、生效日豁免、自指拒绝；全量单测通过；人审确认两条规则没误伤内容卡
+  rollback: 合入前丢弃分支；合入后 git revert（两处检查与文档回退）
+gate:
+  condition: "演进流程开始被反复自改，且失败先例重提的迹象出现（--impact 视图已存在但没人被要求读结论）"
+risk: medium
+principle_refs: [2, 6, 8, 11]
+actual_cost:
+  tokens: 0
+  note: 人工指派的机制改动，token 未单独记账
+decisions:
+  - who: agent
+    when: 2026-10-30
+    type: proposal
+    conclusion: 不做完整决策树——树在两层已经存在（卡内 alternatives / 卡间 supersede）；补的是必填约束与自指度量的边界
+  - who: agent
+    when: 2026-10-30
+    type: action
+    conclusion: verify_proposals 增加 alternatives 形状检查、同组件失败先例必填、演进流程卡必填 external 且不得自指；模板与 pipeline §7 同步；10 个单测
+  - who: agent
+    when: 2026-10-30
+    type: eval
+    conclusion: 10 个单测通过；全量单测通过；存量 180 张卡不受影响（生效日 2026-10-31 之后才强制）
+  - who: agent
+    when: 2026-10-30
+    type: decision
+    conclusion: 采纳（validated）——把「先例要读」与「自指不算度量」从建议变成 CI 可判的两条硬门

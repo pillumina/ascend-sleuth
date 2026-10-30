@@ -52,6 +52,7 @@
 import argparse
 import datetime
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -66,6 +67,25 @@ MEASURE_CUTOVER = datetime.date(2026, 9, 11)
 # 但全库 0 张卡填过它，于是"同组件先例咨询"没有任何可查的键（聚合只能退化到"改动落点"）。
 # 与 measure 同一条纪律：**只对生效日之后的卡强制**，存量不追溯（补写会形成事后叙述）。
 TARGET_CUTOVER = datetime.date(2026, 9, 17)
+
+# 分支记录与自指度量的生效日：与 measure / target 同一条纪律——只对生效日之后的卡强制，
+# 存量不追溯（给旧卡补"当时还考虑过什么"只会造事后叙述，原则十）。
+ALTERNATIVES_CUTOVER = datetime.date(2026, 10, 31)
+EXTERNAL_CUTOVER = datetime.date(2026, 10, 31)
+
+# 演进流程本身的落点。改这些文件的卡，`measure` 常常只能证明"脚本还能跑"——那不足以证明
+# "流程变好了"。所以它们额外要一条独立于该流程的效果信号（predicted_effect.external）。
+EVOLUTION_FLOW = {
+    "skills/evolve-check/SKILL.md",
+    "skills/self-evolve/SKILL.md",
+    "scripts/ev_proposal.py",
+    "scripts/ev_measure.py",
+    "scripts/evolve_mode.py",
+    "scripts/evolve_intake.py",
+    "scripts/evolve_signals.py",
+    "scripts/verify_proposals.py",
+    "proposals/signals/README.md",
+}
 
 # 占位符检测：产卡骨架（examples/sample-idea.yaml）刻意留占位 measure，让"忘了填"在 CI 上
 # 响亮失败，而不是带着一条假命令过审（假 command + 自洽的期望 = 假绿，原则十）。
@@ -87,6 +107,9 @@ VALID_DECISION_TYPE = {"proposal", "action", "eval", "decision"}
 TERMINAL_STATUS = {"validated", "rejected", "superseded"}
 # 在实验卡静默超期 = 僵尸卡（口径与面板 scripts/ev_board_data.py 的 STALE_DAYS 一致）
 STALE_DAYS = 14
+
+# 倒填检测的余量：长寿命分支上写的卡，created_at 可能早于 PR 基线几条街。
+BACKDATE_SLACK_DAYS = 7
 REQUIRED = [
     "id", "layer", "title", "status", "authorization", "dimension", "created_at",
     "hypothesis", "validation", "risk", "principle_refs", "decisions",
@@ -223,6 +246,8 @@ def check_idea(path: Path, ids: dict, errors: list):
     v = doc.get("validation")
     tc = doc.get("target_component")
     created = as_date(doc.get("created_at"))
+    if created is not None and created > datetime.date.today():
+        errors.append(f"{rel}: created_at 在未来（{created}）——日期是自报的，这条挡掉手误与倒填的反向")
     if created is not None and created >= TARGET_CUTOVER and not (isinstance(tc, str) and tc.strip()):
         errors.append(f"{rel}: 缺 target_component——它是「这个组件改过几次、结局如何」的键"
                       f"（聚合视图 ev_proposal.py --impact 与同组件先例咨询都靠它；"
@@ -310,6 +335,112 @@ def age_days(value, today=None):
     return ((today or datetime.date.today()) - d).days
 
 
+def is_backdated(created, base_date, slack_days=BACKDATE_SLACK_DAYS) -> bool:
+    """卡是否把 created_at 倒填到基线之前（倒填会绕过各条生效日闸门）。
+
+    强度：**约定**。7 天余量给长寿命分支，不是证明——它让倒填需要理由，而不是让倒填不可能。
+    """
+    if created is None or base_date is None:
+        return False
+    return created < base_date - datetime.timedelta(days=slack_days)
+
+
+def check_backdated_cards(root: Path, base: str, errors: list):
+    """PR 里新增的卡不许声称自己写于基线之前太久（`--base <sha>` 时启用）。
+
+    只对"本 PR 新增"的文件判：既有卡的 created_at 是历史，不该被今天的基线重判。
+    git 不可用或基线取不到时打印一行说明并跳过——不静默当成通过。
+    """
+    try:
+        r = subprocess.run(["git", "-C", str(root), "diff", "--name-only", "--diff-filter=A",
+                            f"{base}...HEAD", "--", "proposals/ideas"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if r.returncode != 0:
+            raise RuntimeError((r.stderr or "").strip()[:200])
+        added = [ln for ln in r.stdout.splitlines() if ln.endswith(".yaml")]
+        r2 = subprocess.run(["git", "-C", str(root), "log", "-1", "--format=%cs", base],
+                            capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if r2.returncode != 0 or not r2.stdout.strip():
+            raise RuntimeError((r2.stderr or "取不到基线日期").strip()[:200])
+        bdate = datetime.date.fromisoformat(r2.stdout.strip())
+    except Exception as e:
+        print(f"verify_proposals: 跳过倒填检测（{e}）——基线不可达时不一概判绿，也不误报", file=sys.stderr)
+        return
+
+    for rel in added:
+        f = Path(root) / rel
+        d = load_yaml(f)
+        created = as_date(d.get("created_at")) if isinstance(d, dict) else None
+        if is_backdated(created, bdate):
+            errors.append(f"{rel}: created_at {created} 早于基线日期 {bdate} 超过 "
+                          f"{BACKDATE_SLACK_DAYS} 天——新增卡倒填日期会绕过生效日闸门"
+                          f"（确定写错就改成实际日期；长分支请说明）")
+
+
+def check_branches_and_self_reference(root: Path, errors: list):
+    """跨卡检查：分支记录（alternatives）与演进流程卡的自指度量。
+
+    - 同组件有 rejected / superseded 先例时，新卡必须写清"为什么不重走那条"——否则同一方向
+      会被反复重试（先例视图 `ev_proposal.py --impact` 存在，但没人被要求读它的结论）。
+    - 改演进流程的卡，`measure` 往往只能证明实现可用；效果必须有流程之外的信号。
+    """
+    ideas = root / "proposals" / "ideas"
+    docs = []
+    for f in sorted(ideas.glob("*.yaml")):
+        d = load_yaml(f)
+        if isinstance(d, dict):
+            docs.append((f, d))
+
+    by_target = {}
+    for f, d in docs:
+        tc = d.get("target_component")
+        if isinstance(tc, str) and tc.strip():
+            by_target.setdefault(tc.strip(), []).append((f, d))
+
+    for f, d in docs:
+        created = as_date(d.get("created_at"))
+        alt = d.get("alternatives")
+
+        # 形状：给了就必须是 {option, why_rejected} 列表（evidence 可选）
+        if alt is not None:
+            if not isinstance(alt, list) or not alt:
+                errors.append(f"{f}: alternatives 必须是非空列表")
+            else:
+                for i, a in enumerate(alt):
+                    if not isinstance(a, dict):
+                        errors.append(f"{f}: alternatives[{i}] 必须是 mapping")
+                        continue
+                    for k in ("option", "why_rejected"):
+                        if not str(a.get(k) or "").strip():
+                            errors.append(f"{f}: alternatives[{i}] 缺 {k}——只有选项、没有"
+                                          "否决理由的记录挡不住重试")
+
+        tc = d.get("target_component")
+        tc = tc.strip() if isinstance(tc, str) else ""
+        if created is None or not tc:
+            continue
+
+        # 分支记录：同组件有失败结局的先例
+        if created >= ALTERNATIVES_CUTOVER:
+            prior = [x for x in by_target.get(tc, [])
+                     if x[0] != f and x[1].get("status") in {"rejected", "superseded"}]
+            if prior and not (isinstance(alt, list) and alt):
+                names = "、".join(x[0].stem for x in prior[:3])
+                errors.append(f"{f}: 同组件有失败先例（{names}），缺 alternatives——"
+                              "写清「为什么不重走那条」才能过；先例视图 ev_proposal.py --impact")
+
+        # 自指度量：改演进流程的卡要有流程外的效果信号
+        if created >= EXTERNAL_CUTOVER and tc in EVOLUTION_FLOW:
+            pe = d.get("predicted_effect")
+            ext = pe.get("external") if isinstance(pe, dict) else None
+            if not str(ext or "").strip():
+                errors.append(f"{f}: 改的是演进流程（{tc}），缺 predicted_effect.external——"
+                              "measure 只能证明脚本能跑，效果信号要来自流程之外"
+                              "（如台账提升率、intake 拒收率、no-signal 比率、单卡合入天数）")
+            elif str(ext).strip() == tc:
+                errors.append(f"{f}: predicted_effect.external 不能指回被改的组件本身（自指度量不可证伪）")
+
+
 def resolve_supersedes(root: Path, errors: list, ids: dict):
     """supersedes/superseded_by 交叉引用校验（须在收集完所有 id 后跑）。"""
     for f in sorted((root / "proposals" / "ideas").glob("*.yaml")):
@@ -330,6 +461,8 @@ def resolve_supersedes(root: Path, errors: list, ids: dict):
 def main():
     ap = argparse.ArgumentParser(description="校验 proposals/ideas/ 的 idea 卡结构")
     ap.add_argument("--check", action="store_true", help="CI 模式（与默认一致）")
+    ap.add_argument("--base", default="",
+                    help="PR 基线提交（给了就查新增卡是否倒填日期；push 事件留空跳过）")
     ap.add_argument("--root", type=Path, default=Path("."))
     args = ap.parse_args()
 
@@ -344,6 +477,9 @@ def main():
     for f in sorted(ideas_dir.glob("*.yaml")):
         check_idea(f, ids, errors)
     resolve_supersedes(root, errors, ids)
+    check_branches_and_self_reference(root, errors)
+    if args.base:
+        check_backdated_cards(root, args.base, errors)
 
     if errors:
         print(f"verify_proposals: {len(errors)} 个问题")
