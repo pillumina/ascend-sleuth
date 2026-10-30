@@ -267,6 +267,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 倒填检测要能 diff 到 PR 基线；浅克隆拿不到基线提交
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -275,7 +277,7 @@ jobs:
       # 触发路径不含 proposals/**，"schema 由 verify_proposals CI 校验"（proposals/README.md）
       # 是纸面承诺（2026-09-10 审计）。本 job 把承诺变成硬门：卡结构 + 生命周期完整性
       # （终态卡缺 decision / validated 缺成本 / 在实验卡执行完未推进 / 僵尸卡 / 出处缺失）。
-      - run: python3 scripts/verify_proposals.py --check
+      - run: python3 scripts/verify_proposals.py --check --base "${{ github.event.pull_request.base.sha }}"
       # 注意：verify_exec_log.py **不进 CI**——exec-log（metrics/skill-exec-log.yaml）是
       # .gitignore 运行时件，CI checkout 里不存在，跑它只会打印"跳过"并空转。
       # 该不变量改由 evolve-check 收尾自查（skills/evolve-check 第 4 步）。

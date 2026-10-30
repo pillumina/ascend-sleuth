@@ -4,6 +4,7 @@
 证明自己变好了**。两条都只在生效日之后的卡上强制，存量不追溯（补写只会造事后叙述）。
 """
 
+import datetime
 import io
 import sys
 import tempfile
@@ -61,13 +62,17 @@ class BranchRulesTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.root = Path(self.tmp.name)
         (self.root / "proposals" / "ideas").mkdir(parents=True)
+        # 生效日是"今天之后"时没法造合规的卡（未来日期会被挡），测试里把闸门提前到今天
+        self._cuts = (VP.ALTERNATIVES_CUTOVER, VP.EXTERNAL_CUTOVER)
+        VP.ALTERNATIVES_CUTOVER = VP.EXTERNAL_CUTOVER = datetime.date(2026, 1, 1)
 
     def tearDown(self):
+        VP.ALTERNATIVES_CUTOVER, VP.EXTERNAL_CUTOVER = self._cuts
         self.tmp.cleanup()
 
     def write(self, **kw):
         kw.setdefault("status", "validated")
-        kw.setdefault("created", "2026-11-01")
+        kw.setdefault("created", "2026-10-30")
         kw.setdefault("target", "skills/example/SKILL.md")
         kw.setdefault("target_line", f"target_component: {kw['target']}")
         kw.setdefault("alternatives", "")
@@ -120,7 +125,7 @@ class BranchRulesTest(unittest.TestCase):
 
     def test_precedent_before_cutover_not_enforced(self):
         self.write(cid="EV-2026-900", status="rejected", created="2026-09-01")
-        self.write(cid="EV-2026-901", created="2026-10-01")
+        self.write(cid="EV-2026-901", created="2025-12-01")
         self.assertEqual(self.run_check()[0], 0)
 
     def test_evolution_flow_requires_external(self):
@@ -152,3 +157,67 @@ class BranchRulesTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BackdateTest(unittest.TestCase):
+    """created_at 是自报字段：挡掉未来日期，以及"新增卡把日期倒填到基线之前"。"""
+
+    def test_helper_thresholds(self):
+        import datetime
+        base = datetime.date(2026, 10, 30)
+        self.assertTrue(VP.is_backdated(datetime.date(2026, 10, 1), base))
+        self.assertFalse(VP.is_backdated(datetime.date(2026, 10, 29), base))
+        self.assertFalse(VP.is_backdated(None, base))
+        self.assertFalse(VP.is_backdated(datetime.date(2026, 10, 1), None))
+
+    def test_future_created_at_rejected(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+        (root / "proposals" / "ideas").mkdir(parents=True)
+        card = CARD.format(cid="EV-2026-901", status="validated", created="2099-01-01",
+                           target="skills/x/SKILL.md",
+                           target_line="target_component: skills/x/SKILL.md",
+                           alternatives="", external="")
+        (root / "proposals" / "ideas" / "EV-2026-901.yaml").write_text(card, encoding="utf-8")
+        argv = sys.argv
+        sys.argv = ["verify_proposals.py", "--check", "--root", str(root)]
+        out = io.StringIO()
+        try:
+            with redirect_stdout(out):
+                VP.main()
+        except SystemExit as e:
+            self.assertEqual(e.code, 1)
+        finally:
+            sys.argv = argv
+        self.assertIn("created_at 在未来", out.getvalue())
+
+    def test_backdated_added_card_rejected(self):
+        import subprocess
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name)
+
+        def git(*a):
+            return subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True)
+
+        git("init", "-q")
+        git("config", "user.email", "t@example.com")
+        git("config", "user.name", "t")
+        (root / "proposals" / "ideas").mkdir(parents=True)
+        (root / "seed.txt").write_text("x", encoding="utf-8")
+        git("add", "-A")
+        git("commit", "-q", "-m", "base")
+        base = git("rev-parse", "HEAD").stdout.strip()
+
+        card = CARD.format(cid="EV-2026-901", status="validated", created="2026-01-01",
+                           target="skills/x/SKILL.md",
+                           target_line="target_component: skills/x/SKILL.md",
+                           alternatives="", external="")
+        (root / "proposals" / "ideas" / "EV-2026-901.yaml").write_text(card, encoding="utf-8")
+        git("add", "-A")
+        git("commit", "-q", "-m", "add card")
+
+        errors = []
+        VP.check_backdated_cards(root, base, errors)
+        self.assertTrue(any("倒填" in e for e in errors), errors)

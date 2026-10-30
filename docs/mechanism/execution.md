@@ -43,7 +43,7 @@
 - `baseline_behavior` 记在 `validation.baseline`，`edit_semantics` 记在 `hypothesis` 与 `decisions`。
 - `affected_paths` 目前没有对应字段。
 
-卡 schema 的必填字段清单见 `scripts/verify_proposals.py` 的 REQUIRED 列表（`grep -n "^REQUIRED" scripts/verify_proposals.py`）。`target_component` 不在该列表里，由同一脚本的生效日闸门强制（`grep -n "TARGET_CUTOVER" scripts/verify_proposals.py`，`TARGET_CUTOVER` 为 2026-09-17）。
+卡 schema 的必填字段清单见 `scripts/verify_proposals.py` 的 REQUIRED 列表（`grep -n "^REQUIRED" scripts/verify_proposals.py`）。`target_component` 不在该列表里，由同一脚本的生效日闸门强制（`grep -n "TARGET_CUTOVER" scripts/verify_proposals.py`；日期只写在那一个常量里，本文不重复）。
 
 | 契约项 | 要写什么 | 缺了会怎样 |
 |---|---|---|
@@ -216,7 +216,9 @@ content 与 fix 两类的观察窗依赖 S1 现场反馈，而反馈可能长期
 
 评审把手的判据强度（原则十）：`ev_measure --run` 证明效果，即改动是否产生了它声称的变化；它不证明价值，即这个变化是否值得。命令是否在测那件事，机器判不了，这条属于约定强度，靠人审抽查。退出码分三态：`0` 符合预测、`1` 预测被证伪、`2` 无法判定，避免「判不了」被读成「验证失败」。
 
-存量卡豁免强制要求：`created_at` 早于 `MEASURE_CUTOVER`（该常量见 `grep -n "MEASURE_CUTOVER" scripts/verify_proposals.py`，值为 2026-09-11）。豁免的理由是给已完成的决策补一条命令不恢复当时的判断，只造事后叙述。这类缺口由 `python3 scripts/ev_measure.py --audit` 报出，不静默跳过。
+存量卡豁免强制要求：`created_at` 早于 `MEASURE_CUTOVER`（该常量见 `grep -n "MEASURE_CUTOVER" scripts/verify_proposals.py`；日期只写在那一个常量里）。豁免的理由是给已完成的决策补一条命令不恢复当时的判断，只造事后叙述。这类缺口由 `python3 scripts/ev_measure.py --audit` 报出，不静默跳过。
+
+生效日闸门读的是卡的 `created_at`，而它是自报字段。所以另有两条辅证：`created_at` 不得晚于今天；PR 里**新增**的卡，`created_at` 不得早于 PR 基线 7 天以上（`verify_proposals.py --base <sha>`，proposal-audit job 传基线提交）。强度是约定：它让倒填需要解释，不保证倒填不可能；基线不可达时打印跳过说明，不判绿。
 
 多人协作下这条尤其关键：评审者会变多，而完整心智模型只有一个。
 

@@ -52,6 +52,7 @@
 import argparse
 import datetime
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -106,6 +107,9 @@ VALID_DECISION_TYPE = {"proposal", "action", "eval", "decision"}
 TERMINAL_STATUS = {"validated", "rejected", "superseded"}
 # 在实验卡静默超期 = 僵尸卡（口径与面板 scripts/ev_board_data.py 的 STALE_DAYS 一致）
 STALE_DAYS = 14
+
+# 倒填检测的余量：长寿命分支上写的卡，created_at 可能早于 PR 基线几条街。
+BACKDATE_SLACK_DAYS = 7
 REQUIRED = [
     "id", "layer", "title", "status", "authorization", "dimension", "created_at",
     "hypothesis", "validation", "risk", "principle_refs", "decisions",
@@ -242,6 +246,8 @@ def check_idea(path: Path, ids: dict, errors: list):
     v = doc.get("validation")
     tc = doc.get("target_component")
     created = as_date(doc.get("created_at"))
+    if created is not None and created > datetime.date.today():
+        errors.append(f"{rel}: created_at 在未来（{created}）——日期是自报的，这条挡掉手误与倒填的反向")
     if created is not None and created >= TARGET_CUTOVER and not (isinstance(tc, str) and tc.strip()):
         errors.append(f"{rel}: 缺 target_component——它是「这个组件改过几次、结局如何」的键"
                       f"（聚合视图 ev_proposal.py --impact 与同组件先例咨询都靠它；"
@@ -329,6 +335,48 @@ def age_days(value, today=None):
     return ((today or datetime.date.today()) - d).days
 
 
+def is_backdated(created, base_date, slack_days=BACKDATE_SLACK_DAYS) -> bool:
+    """卡是否把 created_at 倒填到基线之前（倒填会绕过各条生效日闸门）。
+
+    强度：**约定**。7 天余量给长寿命分支，不是证明——它让倒填需要理由，而不是让倒填不可能。
+    """
+    if created is None or base_date is None:
+        return False
+    return created < base_date - datetime.timedelta(days=slack_days)
+
+
+def check_backdated_cards(root: Path, base: str, errors: list):
+    """PR 里新增的卡不许声称自己写于基线之前太久（`--base <sha>` 时启用）。
+
+    只对"本 PR 新增"的文件判：既有卡的 created_at 是历史，不该被今天的基线重判。
+    git 不可用或基线取不到时打印一行说明并跳过——不静默当成通过。
+    """
+    try:
+        r = subprocess.run(["git", "-C", str(root), "diff", "--name-only", "--diff-filter=A",
+                            f"{base}...HEAD", "--", "proposals/ideas"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if r.returncode != 0:
+            raise RuntimeError((r.stderr or "").strip()[:200])
+        added = [ln for ln in r.stdout.splitlines() if ln.endswith(".yaml")]
+        r2 = subprocess.run(["git", "-C", str(root), "log", "-1", "--format=%cs", base],
+                            capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if r2.returncode != 0 or not r2.stdout.strip():
+            raise RuntimeError((r2.stderr or "取不到基线日期").strip()[:200])
+        bdate = datetime.date.fromisoformat(r2.stdout.strip())
+    except Exception as e:
+        print(f"verify_proposals: 跳过倒填检测（{e}）——基线不可达时不一概判绿，也不误报", file=sys.stderr)
+        return
+
+    for rel in added:
+        f = Path(root) / rel
+        d = load_yaml(f)
+        created = as_date(d.get("created_at")) if isinstance(d, dict) else None
+        if is_backdated(created, bdate):
+            errors.append(f"{rel}: created_at {created} 早于基线日期 {bdate} 超过 "
+                          f"{BACKDATE_SLACK_DAYS} 天——新增卡倒填日期会绕过生效日闸门"
+                          f"（确定写错就改成实际日期；长分支请说明）")
+
+
 def check_branches_and_self_reference(root: Path, errors: list):
     """跨卡检查：分支记录（alternatives）与演进流程卡的自指度量。
 
@@ -413,6 +461,8 @@ def resolve_supersedes(root: Path, errors: list, ids: dict):
 def main():
     ap = argparse.ArgumentParser(description="校验 proposals/ideas/ 的 idea 卡结构")
     ap.add_argument("--check", action="store_true", help="CI 模式（与默认一致）")
+    ap.add_argument("--base", default="",
+                    help="PR 基线提交（给了就查新增卡是否倒填日期；push 事件留空跳过）")
     ap.add_argument("--root", type=Path, default=Path("."))
     args = ap.parse_args()
 
@@ -428,6 +478,8 @@ def main():
         check_idea(f, ids, errors)
     resolve_supersedes(root, errors, ids)
     check_branches_and_self_reference(root, errors)
+    if args.base:
+        check_backdated_cards(root, args.base, errors)
 
     if errors:
         print(f"verify_proposals: {len(errors)} 个问题")
