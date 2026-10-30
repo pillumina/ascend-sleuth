@@ -6,8 +6,8 @@ description: >
   包；DSH Desktop 用安装目录自带的 dsh 命令行把 dsh-plugins/dsh-sleuth-panels/ 装进 profile（拿不到
   地址与 token 时这是主路）；另有 scripts/panel_install.js --all 经 /api 通路一次装面板与 vllm-kb
   两个包、以及在侧栏「插件」页粘贴路径两条备用路。常驻包里的界面是三块：会话里一个「诊断」tab、
-  左侧栏一个「Ascend Sleuth」整页（指标 / 自演进）、侧栏页脚一个「诊断记录」入口（按价值列出
-  诊断会话，点一行切过去）；热加载路径没有整页容器与页脚入口，仍是三个 tab（诊断 / 指标 / 自演进）。
+  左侧栏一个「Ascend Sleuth」整页（指标 / 自演进）、侧栏页脚一个「诊断记录」入口（列出诊断会话，
+  可按时间或按价值排序，点一行切过去）；热加载路径没有整页容器与页脚入口，仍是三个 tab（诊断 / 指标 / 自演进）。
   仅 DSH 可用
   ——依赖 conversation.view / main / sidebar.panellist / sidebar.footer.action / shell.overlay 插槽；
   其他 agent（Claude Code / Codex / pi）无此机制。
@@ -248,7 +248,7 @@ DSH 会话中加载可视化面板。常驻包把界面分成两块：会话里�
 | 界面 | 目录 | 注册点 | 视图 |
 |---|---|---|---|
 | 诊断 tab | `dsh-plugins/ascend-panel/` | `conversation.view` id `ascend-diagnose`(20) | 会话列表/轨迹/证据；每张卡可「打开会话」，列表可切「按价值」排序 |
-| 诊断记录 | `dsh-plugins/ascend-panel/` | `sidebar.footer.action` id `sleu-ledger-entry`(30) + `shell.overlay` id `sleu-ledger-overlay`(40) | 按价值排的诊断会话清单，点一行切过去（只读 + 导航） |
+| 诊断记录 | `dsh-plugins/ascend-panel/` | `sidebar.footer.action` id `sleu-ledger-entry`(30) + `shell.overlay` id `sleu-ledger-overlay`(40) | 诊断会话清单，可按时间或按价值排序（默认按时间），点一行切过去（只读 + 导航） |
 | Ascend Sleuth · 指标 | `dsh-plugins/ascend-panel/` | 视图登记表 `SLEUTH_VIEWS.metrics`，整页按 id 取 | 指标闭环判决（判据→结论/证据/下一步）/容量逐格/趋势 |
 | Ascend Sleuth · 自演进 | `dsh-plugins/ev-panel/` | 视图登记表 `SLEUTH_VIEWS.evolve`，整页按 id 取 | 首屏是体检判决（要处理的判据 + 下一步动作）与触及面 |
 | Ascend Sleuth 外壳 | `dsh-plugins/sleuth-console/` | `main` key `ascend-sleuth-console` + `sidebar.panellist` 同 id | 两个子页的切换与侧栏图标（`icon.svg`） |
