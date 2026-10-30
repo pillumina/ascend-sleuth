@@ -904,6 +904,213 @@ async function main() {
     expect('面板：没记会话号的那一行仍在（点它会说明补法）', panelText.includes('2026-08-30-c'), panelText)
   }
 
+  // ================= 诊断记录 · 排序（按时间默认 / 按价值可选）=================
+  // 为什么单列一节：这张卡原先只有价值序，最近开工但还没有结论的单会落到列表最底部，被当成
+  // 按时间翻的记录打开时会读成排序坏了（实测反馈：「不是按时间排序的吗」——最新的两单排在第
+  // 14、15 位）。这一节钉五件事：默认按时间、时间排的是行尾那一列（最后更新时间，不是开始
+  // 时间）、同刻按开始时间、切到按价值后与「诊断」tab 同序、以及新控件没有落在键盘闭环之外。
+  console.log('\n[ascend-panel 诊断记录 · 排序]')
+  {
+    const day = n => new Date(Date.now() - n * 86400000).toISOString()
+    // 六单让两种排序给出不同顺序：
+    //   按最后更新时间 → new(1 天前) → touched(2) → mid(10) → old(80) → tie-a / tie-b(都 95)
+    //   按价值         → old(已沉淀) → mid(库中已有) → new / touched / tie-a / tie-b(其余，同档按更新时间)
+    // `touched` 钉"排的是最后更新时间而不是开始时间"：它 90 天前开工、2 天前刚动过，按开始时间
+    // 排会落到最后一格。`tie-a` / `tie-b` 钉同刻并列：更新时间相同、开始时间差 10 天，先后由
+    // 开始时间定（`createdTsOf`）。
+    const sortSessions = [
+      { sessionId: '2026-10-20-new', status: 'in_progress', activeCase: null, activeCaseKind: null,
+        activeCaseInKb: false, feedbackPending: null, sedimented: { state: 'none' },
+        createdAt: day(20), updatedAt: day(1), summarySnippet: '刚开工的一单' },
+      { sessionId: '2026-08-01-touched', status: 'in_progress', activeCase: null, activeCaseKind: null,
+        activeCaseInKb: false, feedbackPending: null, sedimented: { state: 'none' },
+        createdAt: day(90), updatedAt: day(2), summarySnippet: '开工很久、这两天又动过' },
+      { sessionId: '2026-09-30-mid', status: 'resolved', activeCase: 'VLLM-ASC-9000', activeCaseKind: 'case',
+        activeCaseInKb: true, feedbackPending: null, sedimented: { state: 'none' },
+        createdAt: day(30), updatedAt: day(10), summarySnippet: '命中的案例库里已有' },
+      { sessionId: '2026-08-11-old', status: 'resolved', activeCase: null, activeCaseKind: null,
+        activeCaseInKb: false, feedbackPending: null,
+        sedimented: { state: 'knowledge', caseId: 'VLLM-ASC-9001', inboxPath: null },
+        createdAt: day(80), updatedAt: day(80), summarySnippet: '已沉淀的老单' },
+      { sessionId: '2026-08-05-tie-a', status: 'in_progress', activeCase: null, activeCaseKind: null,
+        activeCaseInKb: false, feedbackPending: null, sedimented: { state: 'none' },
+        createdAt: day(30), updatedAt: day(95), summarySnippet: '同刻并列，先开工' },
+      { sessionId: '2026-07-25-tie-b', status: 'in_progress', activeCase: null, activeCaseKind: null,
+        activeCaseInKb: false, feedbackPending: null, sedimented: { state: 'none' },
+        createdAt: day(40), updatedAt: day(95), summarySnippet: '同刻并列，后开工' },
+    ]
+    const sortHost = m => (m === 'ascend-traces-list' ? { ok: true, sessions: sortSessions } : { ok: true })
+    const rendered = await renderAsync(ascSrc, {}, sortHost, { sessions: { current: null, ids: [] } })
+    const entry = rendered.regs.filter(r => r.opts.name === 'sidebar.footer.action')[0]
+    const overlay = rendered.regs.filter(r => r.opts.name === 'shell.overlay')[0]
+    expect('排序：入口与面板都注册了', !!entry && !!overlay,
+      JSON.stringify(rendered.regs.map(r => r.opts.name)))
+    const entryHandlers = []
+    collectHandlers(entry.comp({ wide: true }), entryHandlers)
+    if (entryHandlers[0]) entryHandlers[0].fn()
+    // `renderAsync` 渲过 conversation.view 的那些 view，而 mock 的 hook 槽是同一份全局数组：
+    // 不清一次，浮层读到的就是 tab 的 state（实测：排序开关读成 undefined，第一行成了别人的会话）。
+    hookIdx = 0; hookState = []; depState = []; effectQueue = []
+
+    // 键盘处理器注册在 `document` 上，渲染检查里没有 DOM：挂一个只实现 effect 用到的几个方法的
+    // stub，否则"Tab 能不能到排序开关""方向键会不会被抢"这两条只能靠读代码。
+    // 为什么值得单独造这个桩：新增一个控件而忘了把它放进焦点环，是这类面板反复出现的缺陷
+    // （`select` 不在 `button, input` 选择器里，纯键盘用户到不了它，而 README 写着"Tab 在卡内循环"）。
+    const listeners = []
+    const focusCalls = []
+    let ringSelector = null
+    // `focus()` 同时改 `activeElement`：焦点环的判定读的是它，不改就等于焦点没动。
+    const fakeFocusable = id => ({
+      id,
+      focus() { focusCalls.push(id); if (globalThis.document) globalThis.document.activeElement = this },
+    })
+    // 第一位就是排序开关（真实 DOM 里它在搜索框之前），所以带 tagName；Shift+Tab 那一条
+    // 才能走到"焦点在 select 上"的分支。
+    const firstFocusable = Object.assign(fakeFocusable('first'), { tagName: 'SELECT' })
+    const lastFocusable = fakeFocusable('last')
+    globalThis.document = {
+      activeElement: lastFocusable,
+      addEventListener: (t, fn) => { if (t === 'keydown') listeners.push(fn) },
+      removeEventListener: () => {},
+      querySelector: sel => {
+        if (sel === '[data-ledger-card]') {
+          return { querySelectorAll: s => { ringSelector = s; return [firstFocusable, lastFocusable] } }
+        }
+        if (sel === '[data-ledger-search]') return { focus: () => {} }
+        return { scrollIntoView: () => {} }
+      },
+      querySelectorAll: () => [],
+    }
+
+    // 这里**不清 hook 状态**：切排序后要读到新顺序，清掉就退回默认的那一档了。
+    // （上一个块里的 renderSeat 每次都清，它是为了强制重取数据，用途不同。）
+    const renderPanel = async () => {
+      let tree = null
+      for (let i = 0; i < 8; i++) {
+        hookIdx = 0; effectQueue = []
+        tree = overlay.comp({})
+        const eff = effectQueue.slice()
+        if (!eff.length) break
+        eff.forEach(f => f())
+        await new Promise(r => setImmediate(r))
+      }
+      return tree
+    }
+    const findNode = (tree, hit) => {
+      let found = null
+      const walk = node => {
+        if (found || !node || typeof node !== 'object') return
+        if (Array.isArray(node)) { node.forEach(walk); return }
+        if (node.__el) {
+          if (node.props && hit(node.props)) { found = node; return }
+          walk(node.props && node.props.children)
+        }
+      }
+      walk(tree)
+      return found
+    }
+    const rowOrder = tree => {
+      const rows = []
+      const walk = node => {
+        if (!node || typeof node !== 'object') return
+        if (Array.isArray(node)) { node.forEach(walk); return }
+        if (node.__el) {
+          const p = node.props || {}
+          // 行序号是 `data-ledger-row`（渲染顺序即序号），取行的全文用来认会话号
+          if (p['data-ledger-row'] !== undefined) {
+            const o = []; flatten(p.children, o); rows.push(o.join(' '))
+          }
+          walk(p.children)
+        }
+      }
+      walk(tree)
+      return rows
+    }
+    const textOf = t => { const o = []; flatten(t, o); return o.join(' ') }
+    const idsOf = rows => rows.map(r => (r.match(/20\d\d-\d\d-\d\d-[a-z-]+/) || [''])[0]).join(' → ')
+    // 高亮行就是 active：找带 is-active 的那一行是第几行
+    const activeIndexOf = tree => {
+      let idx = -1
+      const walk = node => {
+        if (idx >= 0 || !node || typeof node !== 'object') return
+        if (Array.isArray(node)) { node.forEach(walk); return }
+        if (node.__el) {
+          const p = node.props || {}
+          if (p['data-ledger-row'] !== undefined && /is-active/.test(String(p.className || ''))) {
+            idx = Number(p['data-ledger-row'])
+            return
+          }
+          walk(p.children)
+        }
+      }
+      walk(tree)
+      return idx
+    }
+    const pressKey = (key, target, shiftKey) => {
+      const ev = { key, shiftKey: !!shiftKey, target, prevented: false, preventDefault() { this.prevented = true } }
+      const fn = listeners[listeners.length - 1]
+      if (fn) fn(ev)
+      return ev
+    }
+
+    let tree = await renderPanel()
+    const sortSelect = findNode(tree, p => p['data-ledger-sort'])
+    expect('排序：面板带排序开关，默认「按时间」',
+      !!sortSelect && sortSelect.props.value === 'time', JSON.stringify(sortSelect && sortSelect.props.value))
+    expect('排序：开关给两个选项（按时间 / 按价值）',
+      !!sortSelect && /按时间/.test(textOf(sortSelect)) && /按价值/.test(textOf(sortSelect)),
+      sortSelect ? textOf(sortSelect) : '没有开关')
+    let rows = rowOrder(tree)
+    expect('排序：默认按时间——按最后更新时间倒序，同刻并列按开始时间',
+      idsOf(rows) === '2026-10-20-new → 2026-08-01-touched → 2026-09-30-mid → 2026-08-11-old → 2026-08-05-tie-a → 2026-07-25-tie-b',
+      idsOf(rows))
+    expect('排序：页脚说明当前按哪一列排（列本身不降序才读得懂）',
+      /按最后更新时间倒序/.test(textOf(tree)), textOf(tree).slice(-160))
+
+    // 键盘闭环：Tab 焦点环必须含 select，且焦点在 select 里时方向键不被面板抢走
+    // 从最后一个焦点位继续 Tab：应被拦回第一个（否则焦点跑出 aria-modal 卡片）
+    pressKey('Tab', lastFocusable, false)
+    expect('排序：Tab 焦点环含 select（新控件不能落在键盘闭环之外）',
+      /select/.test(String(ringSelector)), String(ringSelector))
+    expect('排序：Tab 到最后一位时回到第一位（焦点不出卡）',
+      focusCalls[focusCalls.length - 1] === 'first', focusCalls.join(' → '))
+    // 焦点落在下拉上时 Shift+Tab：也要由焦点环接管（否则焦点会跑到 aria-modal 卡片外）。
+    // stub 里的第一位带 `tagName: 'SELECT'`，所以这一条走的就是"焦点在排序开关上"的真实路径。
+    pressKey('Tab', firstFocusable, true)
+    expect('排序：在下拉上 Shift+Tab 也回到最后一位（焦点不出卡）',
+      focusCalls[focusCalls.length - 1] === 'last', focusCalls.join(' → '))
+    let ev = pressKey('ArrowDown', { tagName: 'BODY' }, false)
+    tree = await renderPanel()
+    expect('排序：焦点不在下拉里时 ↑↓ 仍然挪行高亮',
+      ev.prevented && activeIndexOf(tree) === 1, 'prevented=' + ev.prevented + ' active=' + activeIndexOf(tree))
+    ev = pressKey('ArrowDown', { tagName: 'SELECT' }, false)
+    tree = await renderPanel()
+    expect('排序：焦点在下拉里时 ↑↓ 交给下拉自己处理（不挪高亮）',
+      !ev.prevented && activeIndexOf(tree) === 1, 'prevented=' + ev.prevented + ' active=' + activeIndexOf(tree))
+
+    // 切到「按价值」：顺序改成价值分档，页脚说明同步换成价值梯子，键盘选中行回到第一行
+    if (sortSelect) sortSelect.props.onChange({ target: { value: 'value' } })
+    tree = await renderPanel()
+    rows = rowOrder(tree)
+    expect('排序：切「按价值」后按价值分档，同档按最后更新时间',
+      idsOf(rows) === '2026-08-11-old → 2026-09-30-mid → 2026-10-20-new → 2026-08-01-touched → 2026-08-05-tie-a → 2026-07-25-tie-b',
+      idsOf(rows))
+    expect('排序：切「按价值」后页脚换成价值梯子',
+      /已沉淀 ＞ 库中已有案例/.test(textOf(tree)), textOf(tree).slice(-160))
+    expect('排序：切「按价值」后开关停在「按价值」',
+      (() => { const s = findNode(tree, p => p['data-ledger-sort']); return !!s && s.props.value === 'value' })())
+    // 切排序时高亮行要回到第一行：留在原来的序号上，读者回车会打开另一单。
+    expect('排序：切排序后键盘高亮回到第一行（不留在原序号上）',
+      activeIndexOf(tree) === 0, 'active=' + activeIndexOf(tree))
+
+    delete globalThis.document
+
+    // 「诊断」tab 的排序说明曾写着"按时间 = 最后更新时间倒序"，而 host 给的是按开始时间倒序
+    // （`panel-host.js` 的 listTraces）。文案跟着行为走，不然读者按说明核不上顺序。
+    expect('排序：「诊断」tab 的时间序说明写的是开始时间（与 host 的排序键一致）',
+      /按时间 = 按诊断开始时间（created_at）倒序/.test(ascSrc), '文案未同步')
+  }
+
   hookIdx = 0; hookState = []; depState = []; effectQueue = []; cssChunks = []
   let mt = ''
   {

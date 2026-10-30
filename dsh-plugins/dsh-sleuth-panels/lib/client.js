@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:9f455daf5327)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:b75be4859a93)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:f684735469ce)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:119062e6c579)
 // 校验：`node scripts/build_panel_bundle.js --check`。
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:9f455daf5327) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:b75be4859a93) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -467,7 +467,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.8.0'
+    const PANEL_VERSION = '0.8.1'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -994,6 +994,9 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     //   1 已定位（`status: resolved`）——有根因，但库里没有对应案例
     //   0 其余（在查 / 转上游 / 不再跟进 / 空记录）
     // 同档按最后更新时间倒序：同档之间没有更强的次序理由，别拿拍脑袋的第二判据凑。
+    // 这一句同时出现在三个位置（诊断 tab 的下拉说明、诊断记录的下拉说明、诊断记录的页脚），
+    // 只维护这一份。
+    const VALUE_ORDER_TEXT = '已沉淀 ＞ 库中已有案例 ＞ 新形态 ＞ fix 已生效 ＞ 已定位 ＞ 其余，同档按最后更新时间倒序'
     function valueRankOf(s) {
       if (sedStateOf(s) !== 'none') return 5
       if (caseKindOf(s) === 'case') return s.activeCaseInKb ? 4 : 3
@@ -1003,6 +1006,13 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     }
     function updatedTsOf(s) {
       const raw = s.updatedAt || s.createdAt
+      const t = raw ? new Date(raw).getTime() : NaN
+      return isNaN(t) ? 0 : t
+    }
+    // 开始时间：诊断记录「按时间」排的是**最后更新时间**（行尾那一列就是它，列不降序会被读成
+    // 排序坏了），同刻并列才退到开始时间——与 host 判"何时开始诊断"用的是同一条字段。
+    function createdTsOf(s) {
+      const raw = s.createdAt || s.updatedAt
       const t = raw ? new Date(raw).getTime() : NaN
       return isNaN(t) ? 0 : t
     }
@@ -2552,7 +2562,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         })
       }, [])
       const [timeRange, setTimeRange] = React.useState('all')
-      // 列表排序：'time' 按 trace 的既有顺序（最后更新倒序，host 给的），'value' 见下方 valueRankOf
+      // 列表排序：'time' 用 host 给的顺序（按诊断开始时间倒序，见 panel-host.js 的 listTraces），
+      // 'value' 见下方 valueRankOf
       const [sortBy, setSortBy] = React.useState('time')
       // 切筛选就清空勾选与展开的批量指令：勾选只在「待升格」这一屏里有意义，
       // 带着上一屏的选择去点批量闭环，最容易把没看过的单一起标掉。
@@ -2854,7 +2865,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             // 排序与时间筛选并排：两个都是"这一屏看什么"的开关，分开摆会被当成两套设置。
             React.createElement('select', {
               value: sortBy, 'aria-label': '会话排序',
-              title: '按时间 = 最后更新时间倒序（默认）；按价值 = 已沉淀 ＞ 库中已有案例 ＞ 新形态 ＞ fix 已生效 ＞ 已定位 ＞ 其余，同档按更新时间倒序',
+              title: '按时间 = 按诊断开始时间（created_at）倒序（默认）；按价值 = ' + VALUE_ORDER_TEXT,
               onChange: e => setSortBy(e.target.value),
               style: { padding: '7px 8px', fontSize: 'var(--t-tiny)', borderRadius: 'var(--r-md)', border: '1px solid var(--hair)', background: T.bg, color: T.text, cursor: 'pointer' },
             }, [['time', '排序：按时间'], ['value', '排序：按价值']].map(p => React.createElement('option', { key: p[0], value: p[0] }, p[1]))),
@@ -4193,7 +4204,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const open = useLedgerOpen()
       return React.createElement('button', {
         type: 'button',
-        title: '诊断记录：按价值列出本工作区的诊断会话（已沉淀 / 命中案例 / 已定位 优先），点一行直接切过去',
+        title: '诊断记录：列出本工作区的诊断会话，可按时间或按价值排序，点一行直接切过去',
         'aria-label': '诊断记录', 'aria-expanded': open ? 'true' : 'false',
         onClick: () => setLedgerOpen(!ledger.open),
         style: {
@@ -4219,7 +4230,12 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     }
 
     // 诊断记录面板（点侧栏底部「诊断记录」弹出来的那张卡）。数据走与「诊断」tab 同一条 RPC
-    // （`ascend-traces-list`），排序也用同一份 `valueRankOf`——两处各算一份就会漂移。
+    // （`ascend-traces-list`）；「按价值」用的 `valueRankOf` 与「诊断」tab 是同一份——两处各算
+    // 一份就会给出两套"价值"。「按时间」按行尾那一列（最后更新时间）倒序：时间列不降序会被读成
+    // 排序坏了（这张卡曾只有价值序，最新开工的两单因为没有结论落在最底一档），所以默认按时间。
+    // 用 `updatedAt` 当主键与 host 的取舍不同（`panel-host.js` 的 listTraces 按 `created_at` 排，
+    // 因为那一列承担"何时开始诊断"的语义，而 `updated_at` 由 agent 手填、写错就会改次序）；这里
+    // 排序与行尾显示的是同一个字段，两者不一致才是缺陷。
     // 这里是**只读 + 导航**：不写 trace、不生成指令，指令仍然在「诊断」tab 里。
     //
     // 键盘按一等用法设计：打开即聚焦搜索框，↑↓ 选行、Enter 打开、Esc 关闭、Tab 在卡内循环。
@@ -4229,10 +4245,13 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       { id: 'pending', label: '待回报', test: s => !!s.feedbackPending },
       { id: 'reusable', label: '可复用', test: s => sedStateOf(s) !== 'none' || !!s.activeCaseInKb },
       { id: 'open', label: '未收尾', test: s => isOpenOf(s) },
-      { id: 'recent', label: '近 30 天', test: s => {
-        const t = new Date(s.createdAt || s.updatedAt || 0).getTime()
-        return !isNaN(t) && (Date.now() - t) <= 30 * 86400000
-      } },
+      { id: 'recent', label: '近 30 天',
+        // 这一格按开始时间算（与列表默认的"最后更新时间"不是同一列），所以给一句 tooltip。
+        title: '按开始时间（created_at）算：最近 30 天开工的单',
+        test: s => {
+          const t = new Date(s.createdAt || s.updatedAt || 0).getTime()
+          return !isNaN(t) && (Date.now() - t) <= 30 * 86400000
+        } },
     ]
 
     // 会话列表快照：面板要标出"你已经在这一条里"（否则点一行没反应，读起来像坏了），
@@ -4253,6 +4272,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const [q, setQ] = React.useState('')
       const [navMsg, setNavMsg] = React.useState(null)
       const [filter, setFilter] = React.useState('all')
+      const [sortBy, setSortBy] = React.useState('time')
       const [active, setActive] = React.useState(0)
       const snap = sessionListSnapshot()
       const currentId = snap && snap.current ? String(snap.current) : ''
@@ -4288,7 +4308,9 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         : all
       const activeFilter = LEDGER_FILTERS.filter(f => f.id === filter)[0] || LEDGER_FILTERS[0]
       const filtered = filter === 'all' ? searched : searched.filter(activeFilter.test)
-      const sorted = filtered.slice().sort((a, b) => valueRankOf(b) - valueRankOf(a) || updatedTsOf(b) - updatedTsOf(a))
+      const sorted = filtered.slice().sort(sortBy === 'value'
+        ? (a, b) => valueRankOf(b) - valueRankOf(a) || updatedTsOf(b) - updatedTsOf(a)
+        : (a, b) => updatedTsOf(b) - updatedTsOf(a) || createdTsOf(b) - createdTsOf(a))
       const shown = sorted.slice(0, KW_LIMIT)
       const counts = {}
       for (const f of LEDGER_FILTERS) counts[f.id] = f.id === 'all' ? searched.length : searched.filter(f.test).length
@@ -4320,7 +4342,12 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         const search = document.querySelector('[data-ledger-search]')
         if (search && typeof search.focus === 'function') search.focus()
         const onKey = e => {
+          // 焦点在 <select> 里时，方向键与 Enter 是它自己的用法（换选项、展开列表）；抢过来会
+          // 变成"移动行高亮 / 打开行"，读者会以为面板在乱跳。**Tab 除外**：它由下面那段焦点环
+          // 接管，否则从这道下拉 Shift+Tab 出去会把焦点带到 aria-modal 卡片外的页面上。
+          const tag = e && e.target && e.target.tagName ? String(e.target.tagName).toLowerCase() : ''
           if (e.key === 'Escape') { e.preventDefault(); setNavMsg(null); setLedgerOpen(false); return }
+          if (tag === 'select' && e.key !== 'Tab') return
           if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
             e.preventDefault()
             const step = e.key === 'ArrowDown' ? 1 : -1
@@ -4335,7 +4362,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           if (e.key !== 'Tab') return
           const card = document.querySelector('[data-ledger-card]')
           if (!card || typeof card.querySelectorAll !== 'function') return
-          const focusables = card.querySelectorAll('button, input, [tabindex]:not([tabindex="-1"])')
+          // `select` 必须在圈里：排序开关是卡片里唯一的下拉，漏了它，纯键盘用户切不了排序。
+          const focusables = card.querySelectorAll('button, input, select, [tabindex]:not([tabindex="-1"])')
           if (!focusables.length) return
           const first = focusables[0]
           const last = focusables[focusables.length - 1]
@@ -4370,10 +4398,19 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               (r && r.ok)
                 ? (all.length + ' 条诊断记录' + (workspaceTotal === null ? '' : ' · 本工作区 ' + workspaceTotal + ' 个会话'))
                 : '读不到诊断记录'),
+            // 排序与搜索并排：两个都是"这一屏怎么读"的开关，分开摆会被当成两套设置。
+            React.createElement('select', {
+              value: sortBy, 'aria-label': '诊断记录排序', 'data-ledger-sort': 'true',
+              title: sortBy === 'value'
+                ? '按价值：' + VALUE_ORDER_TEXT
+                : '按时间：行尾那一列（最后更新时间）倒序',
+              onChange: e => { setSortBy(e.target.value); setActive(0) },
+              style: { marginLeft: 'auto', padding: '5px 8px', fontSize: 'var(--t-tiny)', borderRadius: 'var(--r-md)', border: '1px solid var(--hair)', background: T.bg, color: T.text, cursor: 'pointer' },
+            }, [['time', '排序：按时间'], ['value', '排序：按价值']].map(p => React.createElement('option', { key: p[0], value: p[0] }, p[1]))),
             React.createElement('input', {
               value: qText, placeholder: '过滤会话号 / 背景 / 案例', 'aria-label': '过滤诊断记录', 'data-ledger-search': 'true',
               onChange: e => { setQ(e.target.value); setActive(0) },
-              style: { marginLeft: 'auto', width: 190, padding: '6px 9px', fontSize: 'var(--t-sm)', borderRadius: 'var(--r-md)', border: '1px solid var(--hair)', background: T.bg, color: T.text },
+              style: { width: 190, padding: '6px 9px', fontSize: 'var(--t-sm)', borderRadius: 'var(--r-md)', border: '1px solid var(--hair)', background: T.bg, color: T.text },
             }),
             React.createElement('button', {
               type: 'button', onClick: close, title: '关闭（Esc）', 'aria-label': '关闭诊断记录',
@@ -4383,7 +4420,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           // 五个筛选：计数按搜索后的集合算，所以"待回报 3"始终和旁边的"全部 12"同一口径。
           React.createElement('div', { className: 'sleu-ledger-chips' },
             LEDGER_FILTERS.map(f => React.createElement('button', {
-              key: f.id, type: 'button', className: 'sleu-ledger-chip',
+              key: f.id, type: 'button', className: 'sleu-ledger-chip', title: f.title || null,
               'aria-pressed': f.id === filter ? 'true' : 'false',
               onClick: () => { setFilter(f.id); setActive(0) },
             }, f.label + (counts[f.id] ? ' ' + counts[f.id] : ''))),
@@ -4440,7 +4477,9 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                           kw ? '没有匹配「' + qText.trim() + '」的会话。' : '「' + activeFilter.label + '」下没有会话。'),
                   ),
           React.createElement('div', { className: 'sleu-ledger-foot' },
-            React.createElement('span', null, '排序：已沉淀 ＞ 库中已有案例 ＞ 新形态 ＞ fix 已生效 ＞ 已定位 ＞ 其余；同档按最后更新时间。'),
+            React.createElement('span', null, sortBy === 'value'
+              ? '排序：' + VALUE_ORDER_TEXT + '。'
+              : '排序：按最后更新时间倒序，行尾那一列就是这个时间。'),
             React.createElement('span', null, '只读 traces/，写操作仍在「诊断」tab 里生成指令。'),
             sorted.length > KW_LIMIT ? React.createElement('span', null, '当前只列前 ' + KW_LIMIT + ' 条，搜索或筛选可收窄。') : null),
         ),
