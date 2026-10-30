@@ -1,0 +1,158 @@
+# /ask 评测题集。题面（id / layer / role / question）从 answer-keys.yaml 继承，跨轮不改；
+# 本文件只补 turn 2 追问策略与 judge 需要的上下文。题面以 answer-keys.yaml 为准，两处不一致是缺陷。
+#
+# turn2_style：
+#   followup         常规追问：按角色要动作落点、要出处、要作用域
+#   lexical_drift    词法漂移：用口语/错字/英文重问 turn 1 同一个点，测 robustness
+#   push_conclusion  逼结论：用户要一句"是/不是"，测症状类与 known_gap 题不硬答
+#   insufficient_info 信息不足：用户明说没有更多信息，测坏路径三条底线
+# turn2_seed 是给角色模拟子 agent 的种子，不是最终原话；最终原话由角色模拟按 persona 生成。
+# judge_context 只放判分需要的补充，不含 skill 设计细节。
+#
+# 反模板检查（轮级做一次，结果写 summary.md 的 anti_template）：L1-01 与 L4-01 盲比。
+
+anti_template_check:
+  pair: [L1-01, L4-01]
+  rule: 去掉题面后两段答案应能区分；可互换位置或逐句同构判模板化，两题 need_met 各扣 1。
+
+cases:
+
+- id: L1-01
+  layer: L1
+  role: newbie
+  question_class: fact
+  question: "报错里有一串 561000，下一行写着 Cannot find binary for op，是不是我哪一步没装好？"
+  turn2_style: followup
+  turn2_focus: 要命令落点与术语解释：grep 在哪跑、算子名从哪看、561000 另一型要不要一起防
+  turn2_seed: "这个 grep 在哪个目录跑？算子名我从日志哪一行看？"
+  judge_context: 新人题。must_include 四条里至少要覆盖"先点名算子再给版本结论"与两型不可套同一修法；术语（aclnn、算子二进制、torch-npu）首次出现需解释。
+  core_must_include:
+    - "561000 配 Cannot find binary for op = 算子缺二进制实现，修法是 torch-npu 升到 2.10.0.post4 及以上"
+    - "同一码的另一型（aclnnMoeDistributeDispatchV4 failed + EI0007）根因不同，不套同一修法"
+    - "先点名是哪个算子，再给版本结论"
+
+- id: L1-02
+  layer: L1
+  role: expert
+  question_class: fact
+  question: "TASK_QUEUE_ENABLE 有人让设 2、有人让设 0，这两个到底差在哪、什么时候该动它？"
+  turn2_style: lexical_drift
+  turn2_focus: 用错字变量名与"通用加速开关"的错误前提重问同一个点，看是否被带偏、是否抄错变量名
+  turn2_seed: "对了 TASK_QEUEU_ENABLE 设 0 还是 2？我看网上说设 2 是通用加速开关，越大越快？"
+  judge_context: 漂移题。correctness 以 turn 1 为准；robustness 单独看 turn 2 是否指出错前提（变量名拼错、2 不是通用加速、前提是 Host Bound）而不是顺着编。turn 2 若顺着"越大越快"或编出取值范围，记 robustness 1–2。
+  core_must_include:
+    - "三档含义：0=关闭；1 或未设=Level1；2=Level2，多搬一份 workspace、抬高峰值内存"
+    - "只有判成 Host Bound 才动它（Free 占比 >10%、Free 区间内无计算无通信、下发 gap 对齐，三条同时成立）"
+    - "ASCEND_LAUNCH_BLOCKING=1 时 task queue 被禁用，该变量无效"
+
+- id: L1-03
+  layer: L1
+  role: adjacent
+  question_class: fact
+  question: "msprobe 采完一整网数据，工具列出一堆溢出节点，我怎么知道哪个才是最早出问题的那一个？"
+  turn2_style: followup
+  turn2_focus: 要可执行细节：-i 指到 step 还是 iteration、多卡传播怎么回溯到首个异常 rank
+  turn2_seed: "多卡的时候我怎么定位到具体是哪张卡先出的？-i 后面要指到 step 还是具体文件？"
+  judge_context: 相邻域题。判据是"输入正常、输出异常"才算起点；把列表第一个或 loss 首次 NaN 当起点记 correctness ≤2。
+  core_must_include:
+    - "起点判据是输入正常、输出异常；输入已异常的是传播受害者"
+    - "多卡经通信传播时回溯到首个产生异常的 rank"
+    - "命令 msprobe overflow_check -i <dump>/stepN -o <输出目录>，产物 anomaly_analyze_*.json"
+
+- id: L2-01
+  layer: L2
+  role: expert
+  question_class: flow
+  question: "训练整体比 GPU 上慢 30%，我手上只有一份 profiler 数据，从哪儿开始拆？"
+  turn2_style: followup
+  turn2_focus: 要阈值与出处：5% 守恒自检、1% 显著性门控的来源与适用条件
+  turn2_seed: "你说的那两个判据分别怎么用、从哪来的？我的场景样本只有 3 个 step，还成立吗？"
+  judge_context: 老手题。判分重点在拆解顺序（先三块定性、再分项）与两个门的出处；直接给绑核或 batch 动作记 must_not。
+  core_must_include:
+    - "先把耗时拆成计算 / 通信未掩盖 / 空闲三块定方向，不先翻算子明细"
+    - "通信算子逐个没变慢而该块涨，说明重叠变差，不继续抠单个通信算子"
+    - "两个门带数值与适用条件：缺口 > 父级 wall 的 5% 标归属不完整；总变化 <1% 时贡献度写「—」"
+
+- id: L2-02
+  layer: L2
+  role: newbie
+  question_class: flow
+  question: "我们训练出来的 loss 跟别的平台上对不上，我第一步该干啥？"
+  turn2_style: followup
+  turn2_focus: 新人要一条能照着敲的命令与一张能逐项比的清单，不要全流程讲解
+  turn2_seed: "CheckList 那么多项，我今天只有半小时，先比哪几项？命令帮我写出来。"
+  judge_context: 新人题。first_action 必须可直接跑；只给"逐项核对"没给命令记 ≤2。一上来给单算子方案记 must_not。
+  core_must_include:
+    - "先做 CheckList 六项（超参与环境变量、三方库版本、数据读取、模型结构、权重初始化、版本）逐项给一致/不一致"
+    - "给一条能直接跑的命令（如 pip list 查 torch / torch_npu）"
+    - "先固定随机性、缩规模把问题稳定复现，再进算子层"
+
+- id: L2-03
+  layer: L2
+  role: adjacent
+  question_class: coverage
+  question: "我们想用 LLaMA-Factory 做微调，昇腾这边有对应的排查流程吗？现在跑起来 loss 一直不降。"
+  turn2_style: push_conclusion
+  turn2_focus: 逼他凭经验给结论，看是否守住"库里没有"
+  turn2_seed: "那你凭经验猜一下，LLaMA-Factory 在昇腾上 loss 不降最可能是啥？就一句话。"
+  judge_context: known_gap 题。三态必须是"库里没有"，事实层与案例层各说一句；turn 2 被逼时给一个"可能"要标明是推测而非库内结论，编造支持结论或适配版本记 HF2。
+  core_must_include:
+    - "明说零命中：事实层无 LLaMA-Factory 词条、案例层无该框架命名空间"
+    - "给替代路径：common 精度索引 + ascend-train-precision-triage 的 CheckList 与复现步骤"
+    - "不编造该框架的支持或适配结论"
+
+- id: L3-01
+  layer: L3
+  role: newbie
+  question_class: phenomenon
+  question: "训练卡住了，日志里什么也没报，我该怎么办？"
+  turn2_style: insufficient_info
+  turn2_focus: 用户明说没有更多信息，逼他直接给一条能敲的命令；看是否守住坏路径三条底线
+  turn2_seed: "平台和框架我也不知道，反正就是卡住了。你就直接告诉我先敲哪条命令吧。"
+  judge_context: 坏路径题。三条底线：明说无法归类并点名缺哪项；给一条当前就能做的动作；不把责任推回用户。turn 2 硬猜类别记 HF3，让用户先搞清楚环境再来问记 must_not。
+  core_must_include:
+    - "明说现在无法归类，并说清缺哪项（进程是否还在、调用栈、平台或框架）"
+    - "给一条当前就能做的动作：取卡住进程调用栈（或先拉 plog 里的 ERROR）"
+    - "给默认假设 + 可纠正（如「先按 训练 × 中断」），不把责任推回用户、一次澄清不超过 1 个问题"
+
+- id: L3-02
+  layer: L3
+  role: adjacent
+  question_class: phenomenon
+  question: "4 卡跑同一个脚本两次，loss 每次都不一样；单卡跑是稳定的，这是精度出问题了吗？"
+  turn2_style: push_conclusion
+  turn2_focus: 用户要一句"是/不是"，看是否给候选与判别动作而不是单一结论
+  turn2_seed: "你就直接说是还是不是精度问题，别绕了，我等着改。"
+  judge_context: 症状类。turn 2 被逼时仍要给候选 + 一条判别动作 + 转诊；直接判"是精度问题，改算子"记 HF3。同时 must_include 里两个开关的版本门槛不能省。
+  core_must_include:
+    - "先分清两级：同输入重复跑不同 = 确定性；换 batch 位置或批大小才变 = batch 一致性（开关不同）"
+    - "给一条判别动作：确认开关真开且未被无参 seed_all() 重置"
+    - "带版本门槛（batch 一致性需 CANN 9.2.0 / TorchNPU 26.2.0 及以上）与性能代价"
+
+- id: L4-01
+  layer: L4
+  role: newbie
+  question_class: term
+  question: "同事让我把 plog 发给他，plog 是哪个文件、在哪儿？"
+  turn2_style: followup
+  turn2_focus: 新人要能自己判断 EP 还是 RC、要一条能直接跑的命令
+  turn2_seed: "RC 和 EP 我怎么知道自己机器是哪种？有没有一条命令直接看？"
+  judge_context: 新人题。术语题要"定义 + 一处用法"；只答"在日志目录里"没给路径记 must_not。EP 与 RC 路径不能混。
+  core_must_include:
+    - "plog 是 Host 侧应用日志；EP 形态路径 $HOME/ascend/log/{debug,run}/plog/plog-pid_*.log"
+    - "按 pid 与报错时间挑文件；先 grep ERROR 取首报错再发那一段"
+    - "区分 EP 与 RC：RC 在 /var/log/npu/slog，不能混"
+
+- id: L4-02
+  layer: L4
+  role: expert
+  question_class: term
+  question: "profiling 里有张卡 Free 时间占比 15%、Compute 又很短，同事说它是伪快卡——这个判断的判据是什么？"
+  turn2_style: followup
+  turn2_focus: 要两个阈值的出处与作用域（10% 与 0.2），问 A3 是否同样成立
+  turn2_seed: "你说的这两个阈值分别出自哪里、适用在哪里？A3 上也一样吗？"
+  judge_context: 老手题。停手判据 6 要求至少一个阈值或判据带出处；两个阈值缺出处或作用域记 sourcing ≤3。把伪快卡与计算型慢卡混为一谈记 must_not。
+  core_must_include:
+    - "伪快卡判据：Free 占比 >10%（或远超均值）且 Compute 与 Communication 同时偏短、其他卡在等它"
+    - "真慢卡是 WTR 最小的卡；判慢卡还要看 WTR 最大卡的传输前同步比例 >0.2"
+    - "出处与作用域：ref-id 可核、platforms: cross"
