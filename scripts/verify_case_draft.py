@@ -43,7 +43,8 @@ except ImportError:
 
 from _yaml import load_file  # noqa: E402  （解析后端单一事实源）
 from _stdio import pin_utf8_stdio  # noqa: E402
-from exec_log_path import resolve_traces  # noqa: E402  （traces/ 锚主检出，worktree 里没有）
+from exec_log_path import resolve_traces
+from _trace_state import case_kind, is_terminal, load_vocab  # noqa: E402  （traces/ 锚主检出，worktree 里没有）
 
 VALID_ROLES = {"signature-source", "fix-methodology", "root-cause-context"}
 VALID_CATEGORIES = {"interrupt", "precision", "performance"}
@@ -64,6 +65,8 @@ WEAK_EVIDENCE = {"investigation", None, ""}
 # 「无命中」的判定必须与诊断面板的 `activeCaseKindOf` 同源（见 is_no_hit_case）：
 # 占位串与字面量空值都不是 case id。两处判据分家会造出"面板说已闭环、闸门拦下"的反例。
 EMPTY_CASE = re.compile(r"^(null|none|nil|n/?a|unknown)$", re.I)
+# 与面板、写入口同一口径：非空且非占位串即命中（`_trace_state.case_kind`）。
+VOCAB = load_vocab(Path(__file__).resolve().parents[1])
 PLACEHOLDER_CASE = re.compile(r"^pending[-_]investigation\b", re.I)
 
 

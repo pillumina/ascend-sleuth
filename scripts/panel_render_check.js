@@ -3555,11 +3555,12 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       const ascHostSrc = loadHost('dsh-plugins/ascend-panel/panel-host.js')
       const d = driveHost(ascHostSrc, NO_SVC)
       const needFsRpcs = ['ascend-traces-list', 'ascend-traces-detail', 'ascend-update-sedimented',
+        'ascend-trace-transition',
         'ascend-metrics-load', 'ascend-read-report', 'ascend-kb-health', 'ascend-process-health', 'ascend-session-marks']
       const noFsRpcs = ['ascend-open-evidence', 'ascend-metrics-verdict', 'ascend-export-trace',
         'ascend-rebuild-local']
-      expect('ascend-panel：fs 缺失时仍注册全部 12 个 RPC（含侧栏待回报标记那条）',
-        Object.keys(d.regs).length === 12, Object.keys(d.regs).join(','))
+      expect('ascend-panel：fs 缺失时仍注册全部 13 个 RPC（含状态转移与侧栏待回报标记）',
+        Object.keys(d.regs).length === 13, Object.keys(d.regs).join(','))
       expect('ascend-panel：返回可用的 disposer', typeof d.disposer === 'function')
       expect('ascend-panel：导出交接包的 RPC 已注册（fs 缺失不影响它）', !!d.regs['ascend-export-trace'])
       for (const rpc of needFsRpcs) {
@@ -3574,7 +3575,11 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
           !(r && r.ok === false && /需要 fs 服务/.test(r.error)), String(r && r.error).slice(0, 110))
       }
       const guarded = (ascHostSrc.match(/if \(!fs\) return needFs\(\)/g) || []).length
-      expect('ascend-panel：恰好 8 个 handler 带 fs 守卫（放错位置即被这条抓住）', guarded === 8, 'guarded=' + guarded)
+      expect('ascend-panel：恰好 9 个 handler 带 fs 守卫（放错位置即被这条抓住）', guarded === 9, 'guarded=' + guarded)
+      // 状态写入口的两条硬要求：没有内容指纹就拒绝（否则 CAS 退化成按状态比较），
+      // 写子进程必须显式 workspace-write + 主检出 root（否则沙箱把写拒成一句 EPERM）。
+      expect('状态写入口：缺内容指纹时 host 直接拒绝', /缺内容指纹/.test(ascHostSrc) && /--expect-sha256/.test(ascHostSrc))
+      expect('状态写入口：写子进程走 workspace-write 沙箱', /mode: 'workspace-write'/.test(ascHostSrc))
       expect('ascend-panel：代码里无「fs 缺失就整插件 return」',
         !/if \(fs === undefined\) return/.test(codeOf(ascHostSrc)))
     }

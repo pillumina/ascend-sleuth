@@ -37,23 +37,26 @@ status:
       （升格闸门对这一类读 status，见 `scripts/verify_case_draft.py`）。
     writes_feedback: false   # 收尾不连带给 feedback 赋值（两条轴各写各的，见本文件 `outcome:` 段）
   - value: escalated
-    label: 已转上游
+    label: 已转交他人
     resumable: false
     terminal: true
-    meaning: 本地无法定位，转给上游/技术支持跟进
-    when_to_set: 排查走到能力边界（缺环境、缺内部资料、需厂商介入）
+    meaning: 本地不再跟进，已交给别人（厂商 / 技术支持 / 同事）
+    when_to_set: >-
+      本地无法定位，或问题归属别人；必须记 `ending.handed_to`（转交给谁）。
+      旧标签叫「已转上游」，2026-11 起扩到任何接手方。
     writes_feedback: false
   - value: archived
     label: 不再跟进
     resumable: false
     terminal: true
-    meaning: 不再跟进这单，且**不对"fix 是否有效"下判断**
+    meaning: 不再跟进这单，**且没有人接手**，且不对"fix 是否有效"下判断
     when_to_set: >-
-      问题自行消失 / 环境变更后不复现 / 没有走诊断就结束——**不是** agent 给出的 fix 生效。
-      **缺这个值，这类情况只能被标成 resolved（虚高解决率）或 not_resolved（冤枉命中的 case）**
+      问题自行消失 / 环境变更后不复现 / 与已有单重复 / 没有走诊断就结束 / 主动撤回——
+      **不是** agent 给出的 fix 生效。收尾方式记在 `ending.kind`，见本文件 `ending_kinds:` 段。
+      「有人接手了」不写这里，写 `escalated` + `ending.handed_to`。
     writes_feedback: false
   - value: unknown
-    label: 未知
+    label: 状态未记录
     resumable: false
     terminal: false
     meaning: 初期记录或手工写入的 trace 未带状态
@@ -107,3 +110,58 @@ sedimented:
     label: 已归档（Tier 3）
     meaning: 只沉淀为 postmortem（covered_by：已有 case 覆盖）
     when_to_set: knowledge-groom 按 covered_by 转正后回写，并记 case_id
+
+# ── 状态转移表（数据，不是散文）────────────────────────────────────────────────
+#
+# 谁读：`scripts/trace_transition.py`（按它校验必填与合法转移）、`scripts/_trace_state.py`
+# （生成面板可用的动作）、`scripts/verify_trace_status.py`（校验词表自洽）。
+# 加一个状态 = 改本文件 `status:` 段；加一条转移 = 加下面的一条；改必填 = 改 requires/fillable。
+# 面板不实现任何判据，只渲染 `trace_state.py --json` 给出的动作。
+#
+# 字段三类：
+#   requires  —— 本次调用必须提供并写盘（如 ended 时刻、转交给谁）
+#   fillable  —— 已存在就沿用；缺失时面板给输入位，写入口一并写盘
+#   must_exist —— 必须已存在；写入口不写、面板不给输入位（缺失时给「先去回报」引导）
+axes:
+  - { field: status,     writer: scripts/trace_transition.py,                    stage: PR1 }
+  - { field: outcome,    writer: scripts/trace_transition.py --field outcome,    stage: PR2 }
+  - { field: sedimented, writer: scripts/trace_transition.py --field sedimented, stage: PR1 }
+
+# `stop_reason` 的其余取值仍在 `scripts/trace_metrics.py`（停止点统计的唯一判据）；
+# 本段只登记面板新增的那一个，两处必须同步（见 trace_metrics.py:107-110）。
+stop_reasons:
+  - { value: closed_by_user, label: 用户在面板收尾 }
+
+# 严重级三档（与 docs/spec/case-schema.md 同口径；面板输入位从这份读）
+severity:
+  - { value: benign,            label: 不影响服务 }
+  - { value: service-affecting, label: 影响服务 }
+  - { value: data-loss-risk,    label: 数据丢失风险 }
+
+ending_kinds:
+  - { value: root_cause,       label: 根因明确,     statuses: [resolved] }
+  - { value: handed_off,       label: 转交他人跟进, statuses: [escalated], requires: [ending.handed_to] }
+  - { value: not_reproducible, label: 问题未复现,   statuses: [archived] }
+  - { value: duplicate,        label: 与已有单重复, statuses: [archived], requires: [ending.duplicate_of] }
+  - { value: no_diagnosis,     label: 未走诊断,     statuses: [archived] }
+  - { value: withdrawn,        label: 主动撤回,     statuses: [archived] }
+# withdrawn 与 no_diagnosis 的边界：前者是「诊断进行过但主动中止且没有结论」（如材料不足），
+# 后者是「从未开始诊断」。两者都不下 fix 是否有效的判断。
+
+transitions:
+  - { from: [in_progress, unknown], to: resolved, action: close-resolved, action_label: 已定位,
+      ending: root_cause, requires: [resolved_at], fillable: [summary, severity, fix_emitted],
+      must_exist_if_case: [feedback.outcome], expands_to: [] }
+  - { from: [in_progress, unknown], to: escalated, action: close-escalated, action_label: 转交他人跟进,
+      ending: handed_off, requires: [ending.handed_to], fillable: [summary], expands_to: [] }
+  - { from: [in_progress, unknown], to: archived, action: close-archived, action_label: 不再跟进,
+      ending_choices: [not_reproducible, duplicate, no_diagnosis, withdrawn],
+      requires: [ending.kind], fillable: [summary], expands_to: [] }
+  - { from: [resolved, escalated, archived], to: in_progress, action: reopen,
+      action_label: 重新打开, expands_to: [] }
+  - { from: [resolved, escalated, archived], to: [resolved, escalated, archived],
+      action: correct-ending, action_label: 改收尾方式,
+      expands_to: [reopen, close-resolved, close-escalated, close-archived] }
+  - { from: [resolved, escalated, archived], to: [resolved, escalated, archived], same_status: true,
+      action: backfill-ending, action_label: 补记收尾方式,
+      requires: [ending.kind], expands_to: [] }
