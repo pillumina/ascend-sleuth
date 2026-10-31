@@ -24,6 +24,15 @@ PR body 正文从首个 "## " 区块开始。
 - 证据：
 - 建议处置：升格 Tier 2 / 并入已有 case（扩 compat）/ 仅 postmortem 转正
 
+## Groom 评估（机器可读 provenance）
+
+<!-- 由 groom 产出：把 `python3 scripts/groom_record.py --pr-marker --draft-key <key>` 的输出原样贴在下面。
+     不要手改 assessed_commit / candidate_case / human_decision；合入前复核与 CI 读这段注释。 -->
+
+```text
+（粘贴 groom-assessment 注释）
+```
+
 ## Agent 预核意见（**由独立 agent 产出**；作者不得代填；低风险改动可留空）
 
 <!-- 独立 = 与作者不同的会话（另起 session 或 subagent），不是外部第三方，别读成担保。

@@ -101,6 +101,9 @@ docs:
     layer: mechanism
     purpose: 机制状态总表、未建与空转、代码与文件入口对照、相邻文档分工（全库唯一一份）
     note: 各篇机制文档只留一行指向本文的指针，状态变化改本文
+  - path: docs/mechanism/agent-groom.md
+    layer: mechanism
+    purpose: Agent Groom 的同步快照、有界子 agent 语义比对、本地评估状态、合入前过期复核与边界
   - path: docs/guide/evolution-user-guide.md
     layer: guide
     purpose: 使用者侧：能说什么、一句话后发生什么、怎么读进度

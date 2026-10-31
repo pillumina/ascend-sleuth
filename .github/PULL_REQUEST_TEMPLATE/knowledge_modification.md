@@ -33,6 +33,15 @@ PR body 正文从首个 "## " 区块开始。
 - 触发来源：误诊归因（trace 结论）/ fix 结果反馈 / 版本演进 / 其他
 - 证据（trace 摘录 / 反馈记录 / 版本发布说明）：
 
+## Groom 评估（机器可读 provenance，如适用）
+
+<!-- 本 PR 若来自 groom 升格/合并，把 `python3 scripts/groom_record.py --pr-marker --draft-key <key>`
+     的输出原样贴在下面；不要手改 assessed_commit / candidate_case / human_decision。 -->
+
+```text
+（粘贴 groom-assessment 注释）
+```
+
 ## Agent 预核意见（**由独立 agent 产出**；作者不得代填；低风险改动可留空）
 
 <!-- 独立 = 与作者不同的会话（另起 session 或 subagent），不是外部第三方，别读成担保。
