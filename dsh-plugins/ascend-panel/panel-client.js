@@ -55,6 +55,8 @@ return {
     // 状态词表（来自 host 的投影）。面板不自己维护标签：有它就用它，没有才退回旧常量
     // （旧常量是迁移期的兜底，面板接线完成后删除）。
     let VOCAB_CACHE = null
+    let CAPS_CACHE = null
+    let STATE_ERROR = null
 
     function sessionsProbe() {
       const names = ['sessions', 'connection', 'slots', 'workspaces', 'uiWorkspace', 'conversation', 'remote']
@@ -2269,69 +2271,133 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           }, '未记会话号')
       // 展开的命令块只出现一次（谁被点开就显示谁）；选中关系靠"命令块在最下方"表达，
       // 不再用 opacity 压未选中的按钮——那会把白字压到 2.07:1（AA 要求 4.5）。
-      // 面板这一版只实现三个收尾动作与重新打开；改收尾方式/补记要选目标（投影已给 targets），
-      // 客户端还没渲染，先不给出「点了必失败」的入口。
-      // 直接收尾要求 trace 里已有收尾必需字段（summary / severity / fix_emitted）；缺字段时
-      // 不给入口，改为提示用「复制收尾指令」——否则用户点完只会撞 E_SCHEMA，而且界面上
-      // 没有补录这些字段的位置。补录编辑器排在下一 PR。
-      const stMissing = st ? ['summary', 'severity'].filter(k => !String(st[k] || '').trim())
-        .concat((st.fixEmitted === null || st.fixEmitted === undefined) ? ['fix_emitted'] : []) : []
-      const stReady = !!st && stMissing.length === 0
-      const stActions = (st && Array.isArray(st.actions) && stReady)
-        ? st.actions.filter(a => ['close-resolved', 'close-escalated', 'close-archived', 'reopen'].indexOf(a.id) >= 0)
-        : (stReady ? [] : [])
+      const stActions = (st && Array.isArray(st.actions)) ? st.actions : []
       const stAct = stEdit.action ? stActions.filter(a => a.id === stEdit.action)[0] : null
-      const stKinds = stAct ? (stAct.endingChoices || []).map(c => c.value) : []
+      const stTarget = (stAct && stEdit.to && Array.isArray(stAct.targets))
+        ? stAct.targets.filter(t => t.to === stEdit.to)[0] : null
+      const stChoices = stTarget ? (stTarget.endingChoices || []) : ((stAct && stAct.endingChoices) || [])
+      const stKinds = stChoices.map(c => c.value)
+      const stFieldPaths = stAct ? ((stAct.requires || []).concat(stAct.fillable || [])) : []
+      const stMust = stAct ? (stAct.mustExist || []) : []
+      const editableFields = stFieldPaths.filter(f => /^(summary|severity|fix_emitted)$/.test(f))
+      const caps = (typeof CAPS_CACHE === 'object') ? CAPS_CACHE : null
+      const canWrite = !caps || caps.canWrite !== false
+      const fieldVal = (f) => {
+        const v = (stEdit.fields || {})[f]
+        if (v !== undefined) return v
+        if (f === 'summary') return (st && st.summary) || ''
+        if (f === 'severity') return (st && st.severity) || ''
+        if (f === 'fix_emitted') return (st && st.fixEmitted === true) ? 'true' : (st && st.fixEmitted === false) ? 'false' : ''
+        return ''
+      }
+      const setField = (f, v) => setStEdit(x => ({ ...x, fields: { ...(x.fields || {}), [f]: v } }))
+      const buildPayload = () => {
+        const p = {}
+        if (stEdit.to) p.to = stEdit.to
+        if (stEdit.kind) p['ending.kind'] = stEdit.kind
+        if (stEdit.handed) p['ending.handed_to'] = stEdit.handed
+        if (stEdit.dup) p['ending.duplicate_of'] = stEdit.dup
+        for (const f of editableFields) {
+          const v = fieldVal(f)
+          if (v !== '') p[f] = (f === 'fix_emitted') ? (v === 'true') : v
+        }
+        return p
+      }
+      const manualCmd = () => {
+        const p = buildPayload()
+        const parts = ['python3 scripts/trace_transition.py', s.sessionId, '--root .',
+          '--by user', '--source cli', '--json', '--expect-sha256', String((st && st.contentSha256) || '<sha256>')]
+        if (stAct && stAct.id === 'reopen') parts.push('--reopen')
+        else if (stAct && stAct.id === 'correct-ending') { parts.push('--correct-ending'); if (p.to) parts.push('--to', p.to) }
+        else if (stAct && stAct.id === 'backfill-ending') parts.push('--backfill-ending')
+        else if (stAct) parts.push('--to', stAct.id.replace('close-', ''))
+        if (p['ending.kind']) parts.push('--kind', p['ending.kind'])
+        if (p['ending.handed_to']) parts.push('--handed-to', p['ending.handed_to'])
+        if (p['ending.duplicate_of']) parts.push('--duplicate-of', p['ending.duplicate_of'])
+        if (p.summary) parts.push('--summary', p.summary)
+        if (p.severity) parts.push('--severity', p.severity)
+        if (p.fix_emitted !== undefined) parts.push('--fix-emitted', p.fix_emitted ? 'true' : 'false')
+        return parts.join(' ')
+      }
       const submitState = () => {
-        if (!stAct) { setStEdit(v => ({ ...v, msg: '先选一个动作' })); return }
-        const payload = {}
-        if (stEdit.kind) payload['ending.kind'] = stEdit.kind
-        if (stEdit.handed) payload['ending.handed_to'] = stEdit.handed
-        if (stEdit.dup) payload['ending.duplicate_of'] = stEdit.dup
-        setStEdit(v => ({ ...v, msg: '写入中…' }))
+        if (!stAct || stEdit.busy || stEdit.done) return
+        if (!canWrite) {
+          doCopy(manualCmd(), 'manual-' + stAct.id)
+          setStEdit(v => ({ ...v, msg: '已复制命令：在仓库根目录运行（当前会话没有写权限）' }))
+          return
+        }
+        if (stKinds.length > 1 && !stEdit.kind) { setStEdit(v => ({ ...v, msg: '先选收尾方式' })); return }
+        if (stMust.length) { setStEdit(v => ({ ...v, msg: '先去回报：' + stMust.join('、') + '（本编辑器不写反馈轴）' })); return }
+        setStEdit(v => ({ ...v, busy: true, msg: '写入中…' }))
         host.call('ascend-trace-transition', {
-          sessionId: s.sessionId, action: stAct.id, payload,
+          sessionId: s.sessionId, action: stAct.id, payload: buildPayload(),
           expectSha256: (st && st.contentSha256) || '',
         }).then(r => {
-          setStEdit(v => ({ ...v, done: !!(r && r.ok), msg: (r && r.ok)
-            ? ('已记录：' + String(r.from || '') + ' → ' + String(r.to || '') + '；点右上角刷新后列表更新')
-            : ('失败：' + String((r && (r.message || r.code)) || '未知错误')) }))
-        }).catch(e => setStEdit(v => ({ ...v, msg: '失败：' + String(e && e.message || e) })))
+          if (r && r.ok) {
+            setStEdit(v => ({ ...v, busy: false, done: true, msg: '已记录：' + String(r.from || '') + ' → ' + String(r.to || '') + '，列表已刷新' }))
+            if (typeof onRebuilt === 'function') onRebuilt()
+          } else {
+            setStEdit(v => ({ ...v, busy: false, msg: '失败：' + String((r && (r.message || r.code)) || '未知错误')
+              + (r && r.code === 'E_STATE_CHANGED' ? '；这一单刚被改过，点刷新查看当前状态' : '') }))
+          }
+        }).catch(e => setStEdit(v => ({ ...v, busy: false, msg: '失败：' + String(e && e.message || e) })))
       }
-      const stPanel = st ? React.createElement('div', { className: 'sleu-menu-panel', style: { display: menuOpen === 'state' ? 'flex' : 'none', flexDirection: 'column', alignItems: 'stretch', gap: 6, marginTop: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
+      const inputStyle = { font: 'inherit', fontSize: 'var(--t-sm)', padding: '4px 6px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hair)', background: T.bg }
+      const fieldRow = (f) => {
+        const label = { summary: '问题背景（summary）', severity: '严重级', fix_emitted: '本次给出了可执行的修复' }[f] || f
+        if (f === 'summary') return React.createElement('label', { key: f, style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, label,
+          React.createElement('textarea', { 'aria-label': label, value: fieldVal(f), rows: 2, onChange: e => setField(f, e.target.value), style: { ...inputStyle, minWidth: 320, resize: 'vertical' } }))
+        if (f === 'severity') return React.createElement('label', { key: f, style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, label,
+          React.createElement('select', { 'aria-label': label, value: fieldVal(f), onChange: e => setField(f, e.target.value), style: inputStyle },
+            React.createElement('option', { value: '' }, '请选择'),
+            ((VOCAB_CACHE && VOCAB_CACHE.severities) || []).map(o => React.createElement('option', { key: o.value, value: o.value }, o.label || o.value))))
+        return React.createElement('label', { key: f, style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, label,
+          React.createElement('select', { 'aria-label': label, value: fieldVal(f), onChange: e => setField(f, e.target.value), style: inputStyle },
+            React.createElement('option', { value: '' }, '请选择'),
+            React.createElement('option', { value: 'true' }, '是'),
+            React.createElement('option', { value: 'false' }, '否')))
+      }
+      const stPanel = st ? React.createElement('div', { id: 'sleu-state-editor', className: 'sleu-menu-panel', style: { display: menuOpen === 'state' ? 'flex' : 'none', flexDirection: 'column', alignItems: 'stretch', gap: 6, marginTop: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
         React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
-          '直接写入这一单的状态：经脚本校验并追加一条转移记录；没有写权限时会提示改用复制命令。'),
-        stActions.length ? React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
+          canWrite ? '直接写入这一单的状态：经脚本校验并追加一条转移记录。'
+                   : '当前会话没有写权限：编辑器仍可收集内容，确认时给出可在终端运行的命令。'),
+        stActions.length ? React.createElement('div', { role: 'group', 'aria-label': '可执行的动作', style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
           stActions.map(a => React.createElement('button', {
-            key: a.id, type: 'button',
-            onClick: () => setStEdit({ action: a.id, kind: (a.endingChoices && a.endingChoices.length === 1) ? a.endingChoices[0].value : '', handed: '', dup: '', msg: '', done: false }),
+            key: a.id, type: 'button', 'aria-pressed': stEdit.action === a.id ? 'true' : 'false',
+            onClick: () => setStEdit({ action: a.id, kind: (a.endingChoices && a.endingChoices.length === 1) ? a.endingChoices[0].value : '', to: (a.targets && a.targets[0] && a.targets[0].to) || '', handed: '', dup: '', fields: {}, msg: '', done: false, busy: false }),
             style: stEdit.action === a.id ? btnPrimary : btnGhost,
-          }, a.label))) : React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } }, '这一单当前没有可执行的动作。'),
-        stAct ? React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' } },
-          stKinds.length ? React.createElement('select', {
-            value: stEdit.kind, onChange: e => setStEdit(v => ({ ...v, kind: e.target.value })),
-            style: { font: 'inherit', fontSize: 'var(--t-sm)', padding: '4px 6px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hair)', background: T.bg },
-          }, stKinds.map(k => React.createElement('option', { key: k, value: k },
-            ((VOCAB_CACHE && VOCAB_CACHE.endings) || []).reduce((acc, e2) => e2.value === k ? e2.label : acc, k)))) : null,
-          (stEdit.kind === 'handed_off') ? React.createElement('input', {
-            placeholder: '转交给（名字 · 团队 / issue 号）', value: stEdit.handed,
-            onChange: e => setStEdit(v => ({ ...v, handed: e.target.value })),
-            style: { font: 'inherit', fontSize: 'var(--t-sm)', padding: '4px 6px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hair)', background: T.bg, minWidth: 200 },
-          }) : null,
-          (stEdit.kind === 'duplicate') ? React.createElement('input', {
-            placeholder: 'case:<id> 或 session:<id>', value: stEdit.dup,
-            onChange: e => setStEdit(v => ({ ...v, dup: e.target.value })),
-            style: { font: 'inherit', fontSize: 'var(--t-sm)', padding: '4px 6px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hair)', background: T.bg, minWidth: 220 },
-          }) : null,
+          }, a.label))) : React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
+            STATE_ERROR ? ('状态读不到：' + STATE_ERROR + '（可刷新重试，或点「刷新」重读 traces/）') : '这一单当前没有可执行的动作。'),
+        stAct ? React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' } },
+          (stAct.targets && stAct.targets.length) ? React.createElement('label', { style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, '换成哪种收尾',
+            React.createElement('select', { 'aria-label': '换成哪种收尾', value: stEdit.to, onChange: e => {
+              const t = stAct.targets.filter(x => x.to === e.target.value)[0]
+              setStEdit(v => ({ ...v, to: e.target.value, kind: (t && t.endingChoices && t.endingChoices.length === 1) ? t.endingChoices[0].value : '' }))
+            }, style: inputStyle },
+              stAct.targets.map(t => React.createElement('option', { key: t.to, value: t.to }, t.label)))) : null,
+          stKinds.length ? React.createElement('label', { style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, '收尾方式',
+            React.createElement('select', { 'aria-label': '收尾方式', value: stEdit.kind, onChange: e => setStEdit(v => ({ ...v, kind: e.target.value })), style: inputStyle },
+              React.createElement('option', { value: '' }, '请选择'),
+              stChoices.map(c => React.createElement('option', { key: c.value, value: c.value }, c.label)))) : null,
+          (stEdit.kind === 'handed_off') ? React.createElement('label', { style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, '转交给',
+            React.createElement('input', { 'aria-label': '转交给', placeholder: '名字 · 团队 / issue 号', value: stEdit.handed, onChange: e => setStEdit(v => ({ ...v, handed: e.target.value })), style: { ...inputStyle, minWidth: 200 } })) : null,
+          (stEdit.kind === 'duplicate') ? React.createElement('label', { style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, '已有单',
+            React.createElement('input', { 'aria-label': '已有单', placeholder: 'VLLM-ASC-11312 或 session:<id>', value: stEdit.dup, onChange: e => setStEdit(v => ({ ...v, dup: e.target.value })), style: { ...inputStyle, minWidth: 220 } })) : null,
+          editableFields.map(fieldRow),
+          stMust.length ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
+            '这一步需要先去回报：' + stMust.join('、') + '（本编辑器不写反馈轴）') : null) : null,
+        stAct ? React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
           React.createElement('button', {
-          type: 'button', onClick: submitState,
-          disabled: !!stEdit.done || (stKinds.length > 1 && !stEdit.kind),
-          style: (!stEdit.done && !(stKinds.length > 1 && !stEdit.kind)) ? btnPrimary : btnGhost,
-        }, stEdit.done ? '已记录' : (stAct.id === 'reopen' ? '确认重新打开' : '确认收尾'))) : null,
-        stEdit.msg ? React.createElement('div', { role: 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: stEdit.msg.indexOf('失败') === 0 ? T.error : T.text2 } }, stEdit.msg) : null,
+            type: 'button', onClick: submitState,
+            disabled: stEdit.busy || stEdit.done,
+            style: (stEdit.busy || stEdit.done) ? btnGhost : btnPrimary,
+          }, stEdit.done ? '已记录' : stEdit.busy ? '写入中…' : canWrite ? (stAct.id === 'reopen' ? '确认重新打开' : stAct.id === 'correct-ending' ? '确认改收尾' : stAct.id === 'backfill-ending' ? '确认补记' : '确认收尾') : '复制命令'),
+          stEdit.msg ? React.createElement('span', { role: stEdit.msg.indexOf('失败') === 0 ? 'alert' : 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: stEdit.msg.indexOf('失败') === 0 ? T.error : T.text2 } }, stEdit.msg) : null) : null,
         (st.provenance && st.provenance.at) ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
-          '最近记录：' + String(st.provenance.at).slice(5, 16).replace('T', ' ') + (st.provenance.byLabel ? ' · ' + st.provenance.byLabel : '')) : null,
-      ) : null
+          '最近记录：' + String(st.provenance.at).slice(5, 16).replace('T', ' ') + ' · '
+          + (st.provenance.source === 'import' ? (st.provenance.sourceLabel || '上一台机器') : (st.provenance.byLabel || ''))) : null,
+      ) : React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
+        STATE_ERROR ? ('状态读不到：' + STATE_ERROR) : '状态投影还没加载（点刷新重试）。')
       const actionArea = React.createElement('div', { style: { margin: '0 16px', padding: '10px 0 14px', borderTop: '1px solid var(--hair)' } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
           navBtn,
@@ -2340,8 +2406,6 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           resumeAction ? cmdButton(resumeAction) : null,
           closeActions.length ? menuBtn('close', '复制收尾指令', '生成收尾指令（复制后粘到对话执行；没有写权限时用这条）') : null,
           stActions.length ? menuBtn('state', '直接收尾', '在面板里写入状态（经脚本校验，留转移记录）') : null,
-          (st && !stReady) ? React.createElement('span', { style: { fontSize: 'var(--t-tiny)', color: T.text2 }, title: '直接收尾需要 trace 里已有收尾字段；缺 ' + stMissing.join(' / ') + '，先用「复制收尾指令」或回到对话补录' },
-            '直接收尾不可用：缺 ' + stMissing.join(' / ')) : null,
           menuBtn('handoff', '交接包', '导出交接包到 traces/exports/，或接手另一台机器上的单'),
         ),
         // 动作组的展开区：固定在按钮行**下方**，同一时刻只有一块；按钮行本身不动。
@@ -2372,7 +2436,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           // 列宽与上方的列头共用 ROW_COLS，否则表格读起来是错位的。
           React.createElement('div', { style: { display: 'grid', gridTemplateColumns: ROW_COLS, alignItems: 'center', gap: 10, width: '100%' } },
             React.createElement('span', { title: meta.label, style: { display: 'flex', alignItems: 'center', gap: 6, color: meta.color, fontSize: 'var(--t-sm)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
-              React.createElement(Dot, { color: meta.color, hollow: s.status === 'unknown' }),
+              React.createElement(Dot, { color: meta.color, hollow: (s.state && s.state.displayTone) ? !!s.state.displayTone.hollow : s.status === 'unknown' }),
               meta.label),
             React.createElement('span', { className: 'sleu-mono', title: s.sessionId, style: { fontWeight: 500, fontSize: 'var(--t-tiny)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, s.sessionId),
             React.createElement('span', { className: 'sleu-c-fw', title: [s.framework, s.platform, s.category].filter(Boolean).join(' · '), style: { color: T.text2, fontSize: 'var(--t-tiny)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
@@ -2595,7 +2659,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           [64, 84, 74, 84, 78, 78].map((w, i) => React.createElement('span', { key: i, className: 'sleu-skel', style: { width: w, height: 26 } }))),
         [0, 1, 2, 3].map(i => React.createElement('div', { key: 'r' + i, className: 'sleu-skel', style: { height: 46, marginBottom: 8 } })))
       const r = state.data
-      if (r && r.vocab) VOCAB_CACHE = r.vocab
+      if (r) { if (r.vocab) VOCAB_CACHE = r.vocab; CAPS_CACHE = r.capabilities || CAPS_CACHE; STATE_ERROR = r.stateError || null }
       if (!r || !r.ok) {
         // 与诊断记录面板同一个句式：缺什么 + 下一步。旧版只有一行裸红字（`无法读取 traces/: …`），
         // 读者既不知道"这一层只读 traces/"也不知道该跑什么命令。
@@ -4465,7 +4529,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                             onClick: () => openRow(s),
                           },
                             React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 6, color: meta.color, fontSize: 'var(--t-sm)', fontWeight: 700, whiteSpace: 'nowrap' } },
-                              React.createElement(Dot, { color: meta.color, hollow: s.status === 'unknown' }), meta.label),
+                              React.createElement(Dot, { color: meta.color, hollow: (s.state && s.state.displayTone) ? !!s.state.displayTone.hollow : s.status === 'unknown' }), meta.label),
                             React.createElement('span', { className: 'sleu-ledger-sid', title: String(s.sessionId || '') }, String(s.sessionId || '—')),
                             React.createElement('span', { className: 'sleu-ledger-sum', title: s.summarySnippet || s.lastOutput || '' },
                               s.summarySnippet || s.lastOutput || '（没有背景段）'),

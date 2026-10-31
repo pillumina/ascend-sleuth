@@ -2547,7 +2547,10 @@ return {
     // 面板要的状态标签/颜色/合法动作全部来自 `scripts/trace_state.py`；写入一律经
     // `scripts/trace_transition.py`（校验 + CAS + 事件）。这里只负责解析路径、传能力位、
     // 把脚本的 JSON 原样透给客户端——失败也透，由客户端按 `code` 给一句人话。
-    function shq(v) { return "'" + String(v).replace(/'/g, "'\\''") + "'" }
+    // 只给「值」加引号：解释器可能是 `python3` 也可能是 `py -3`（两个 token），
+    // 把整串当一个 token 加引号会让 Windows / 只有 py 启动器的机器上这条 RPC 全挂。
+    // 值用双引号 + 反斜杠转义：POSIX sh 与 PowerShell 5.1 对 " 的处理一致。
+    function shq(v) { return '"' + String(v).replace(/(["\\$`])/g, '\\$1') + '"' }
     async function writeCaps(sessionId) {
       const raw = await resolveCwd(sessionId)
       const main = raw ? await mainCheckoutOf(raw) : null
@@ -2560,13 +2563,13 @@ return {
     async function runTraceScript(sessionId, argv, write) {
       const cwd = await resolveCwd(sessionId)
       const repoCwd = await resolveRepoCwd(sessionId)
-      const pol = write ? { mode: 'workspace-write', workspaceRoot: (await writeCaps(sessionId)).writeRoot } : readPolicy()
+      const pol = write ? { mode: 'workspace-write', workspaceRoot: (await writeCaps(sessionId)).writeRoot } : readPolicy(sessionId)
       const py = await resolvePython(cwd, pol)
       if (!py) return { ok: false, code: 'E_PY', message: '未找到 Python 3 解释器' + (resolvePython.lastError ? '：' + resolvePython.lastError : '') }
       let r = null
       try {
         r = await shell.run(shell.resolve({
-          command: [shq(py)].concat(argv.map(shq)).join(' '),
+          command: py + ' ' + argv.map(v => typeof v === 'string' && (v === '--json' || v.startsWith('--')) ? v : shq(v)).join(' '),
           workdir: cwd, timeoutMs: 60000, stdoutMaxBytes: 262144,
           env: { PYTHONIOENCODING: 'utf-8' },
           ...(pol ? { sandboxPolicy: pol } : {}),
@@ -2739,6 +2742,8 @@ return {
       const payload = (args && args.payload) || {}
       const expect = args && args.expectSha256 ? String(args.expectSha256) : ''
       if (!sessionId || !action) return { ok: false, code: 'E_SCHEMA', message: '缺 sessionId 或 action' }
+      // 内容指纹必传：没有它 CAS 退化为「按 status 比较」，并发写会丢事件（设计 §6.3.4）。
+      if (!expect) return { ok: false, code: 'E_SCHEMA', message: '缺内容指纹，请刷新列表后重试' }
       const caps = await writeCaps(sessionId)
       if (!caps.canWrite) return { ok: false, code: caps.reasonCode || 'E_PERM', message: caps.reason || '当前会话没有写权限' }
       const cwd = await resolveCwd(sessionId)

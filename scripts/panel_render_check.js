@@ -3576,6 +3576,10 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       }
       const guarded = (ascHostSrc.match(/if \(!fs\) return needFs\(\)/g) || []).length
       expect('ascend-panel：恰好 9 个 handler 带 fs 守卫（放错位置即被这条抓住）', guarded === 9, 'guarded=' + guarded)
+      // 状态写入口的两条硬要求：没有内容指纹就拒绝（否则 CAS 退化成按状态比较），
+      // 写子进程必须显式 workspace-write + 主检出 root（否则沙箱把写拒成一句 EPERM）。
+      expect('状态写入口：缺内容指纹时 host 直接拒绝', /缺内容指纹/.test(ascHostSrc) && /--expect-sha256/.test(ascHostSrc))
+      expect('状态写入口：写子进程走 workspace-write 沙箱', /mode: 'workspace-write'/.test(ascHostSrc))
       expect('ascend-panel：代码里无「fs 缺失就整插件 return」',
         !/if \(fs === undefined\) return/.test(codeOf(ascHostSrc)))
     }
