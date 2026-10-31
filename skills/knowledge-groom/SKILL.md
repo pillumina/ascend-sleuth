@@ -39,6 +39,7 @@ disable-model-invocation: true
    - 引用完整性/悬挂/role：`scripts/verify_references.py --check`（输出进摘要）；
    - 索引/容量：`scripts/index_counts.py`（条数与逐格容量，现算）+ `scripts/capacity_health.py`（溢出/健康）输出进摘要；
    - 引用可观测性：`scripts/trace_metrics.py`（R6）；tag 聚类：读 `_index` tags 聚合（R8，零 token 机械）；
+   - 先验缺口：`scripts/ref_gap_index.py`（R8，按 case 的 `title` 与 `symptoms` 里的可检索键聚合，输出三种动作）；
    - reference 规模/退化（R7）：按文件数/metrics 判断，不逐文件读。
 2. **全量重扫默认关闭，改信号触发**：
    - R3（引用发现，需扫 case 正文）：**默认不跑**——仅当本轮 新升格 case ≥5 且 owner 要求时执行
@@ -149,14 +150,21 @@ disable-model-invocation: true
 - `references/` 下文件数 >50，**或** metrics 显示 reference 检索退化（漏检增多 / 平台匹配耗时长）；
 - 达到 → 变更摘要**建议**按层建索引——背景类走 `scripts/build_ref_summary_index.py`（生成 `references/_summary-index.yaml`），流程类走 `scripts/build_procedure_index.py`（生成 `references/_procedure-index.yaml`）；两层都已有生成物与 `--check`（CI 先生成再校验），**case 层 `build_index.py` 与之同构**。**建议不自动改生成物**（生成物只由主干 job 或显式跑生成器的人写，建议与决定分离）；未达到 → 不提及（目录 + grep 足够，不为不存在的规模购置基础设施）。
 
-**R8. case 共性提炼候选（case-derived reference 触发信号）**：跑 `python3 scripts/tag_hygiene.py`（机械聚类，零 token 手扫）——**同 tag 的 case ≥3 条且 ≥3 条未被 reference 收录** → 变更摘要列出该组（tag + case id），**建议**走 `/skill:to-reference --ingest-cases "[id1, id2...]"` 提炼共性（methodology / error-code 表追加）。**建议与决定分离**：同 tag 是弱信号，是否提炼由 owner 定；owner 认可后**在同一轮 groom 里由 agent 执行**（不再等下一次），产出的 reference 与本轮升格随同一个 PR 提交。**执行前提：case 已升格**——R8 只扫 `knowledge/`，引用的 id 天然都已入库；`references/**` 的 `sources[].cases` 不得出现 `postmortems/inbox/` 里的草稿 id（CI 会红）。
+**R8. case 共性提炼候选（case-derived reference 触发信号）**：两个维度各跑一个脚本，先看可检索键，再看 tag。**建议与决定分离**：两个维度都只给候选，是否提炼由 owner 定；owner 认可后**在同一轮 groom 里由 agent 执行**（不再等下一次），产出的 reference 与本轮升格随同一个 PR 提交。**执行前提：case 已升格**——两个脚本读当前检出的 `knowledge/` 与 `references/`，不读 inbox 草稿；`references/**` 的 `sources[].cases` 也不得出现 `postmortems/inbox/` 里的草稿 id（CI 会红）。
 
-- **按 tag 类别过滤**：脚本标注每组为「模型名 / 环境·特性 / 机制」。**只有「机制」族值得提炼**——模型名族（glm5/qwen3.5/deepseek-v4…）同模型 ≠ 同根因，提炼出来是"该模型排障清单"而非独立于事故的先验知识；环境·特性族（mtp/spec-decode/w8a8/310p/cudagraph）是"用了什么"而非"哪里坏了"，且多数已被现有方法论覆盖（如 `mtp` 归 `ascend-vllm-spec-decode-mtp-triage`）。摘要里模型名/特性族只列一行计数，不进候选。
+- **先看可检索键**：跑 `python3 scripts/ref_gap_index.py`。它按 case 的 `title` 与 `symptoms` 里出现的错误码、`0x` 十六进制码、环境变量名、算子名、异常类名聚合。
+  - 键只从这两个字段抽：`diagnosis` / `quickly_check` 里的码常是判别句（"报 507014 还是 507057？"），算成实例会把建议指错词条。
+  - 表列「可处理/组内」。「可处理」指组内还没连到该行「对应词条」的 case 数。连没连看**正向边**：case 的 `ref_knowledge` 有没有指向该词条（诊断阶段二.5 读的是这条边）。反向边（词条 `sources[].cases` 引用 case）不算连上，只用来找该补的目标。
+  - `回链`：有对应词条，该 case 的 `ref_knowledge` 没指向它 → 补 `ref_knowledge`，不新建词条。对应词条有两个来源：键命中（错误码族表、缺行索引指向的词条、词条正文提到该键），或该 case 自己被某条 active 词条反向引用（那条词条就是该补的目标；组里别的 case 不会被挂上这个目标）。
+  - `复审`：键没有对应词条，但该 case 被非 active 词条反向引用过（`draft` / `pending-review` / `deprecated`）→ 先核替代词条有没有覆盖这个 case，不覆盖再提炼。诊断只读 active 词条，这类 case 现在读不到先验。
+  - `提炼`：键没有对应词条，该 case 也没被任何词条（active 或非 active）引用过 → 走 `/skill:to-reference --ingest-cases "[id1, id2...]"`。**表按 键 × 动作 出行，同一个 case 可以落在多行**（多键，或既有键命中又被反向引用）；执行前先看它在别的行是否已处理，别为一个已有对应词条的 case 再建词条。
+  - **表只列达到阈值的行**（默认可处理 ≥3 条），再按 `--top` 截断。没进表的 case 由表后清单点名，四段都给 id：`未进表的未连 case`（可处理不足阈值，或所在行被截断）、`没有可检索键但被 active 词条反向引用过的 case`（按引用它的词条补 `ref_knowledge`）、`没有可检索键且只被非 active 词条反向引用过的 case`（按 id 逐条复核；tag 维度把它们算作已收录）、`没有可检索键也没有任何词条引用过的 case`（覆盖缺口，tag 维度可能覆盖其中一部分）。条数以脚本输出为准，不写死在本文。
+- **按 tag 类别过滤**（`scripts/tag_hygiene.py`，覆盖缺口看它）：脚本标注每组为「模型名 / 环境·特性 / 机制」。**只有「机制」族值得提炼**——模型名族（glm5/qwen3.5/deepseek-v4…）同模型 ≠ 同根因，提炼出来是"该模型排障清单"而非独立于事故的先验知识；环境·特性族（mtp/spec-decode/w8a8/310p/cudagraph）是"用了什么"而非"哪里坏了"，且多数已被现有方法论覆盖（如 `mtp` 归 `ascend-vllm-spec-decode-mtp-triage`）。摘要里模型名/特性族只列一行计数，不进候选。
 - **先看形态**：组内根因**分散**（同现象不同根因）→ 适合提炼 methodology（给分流路径）；根因**收敛**（同根因）→ 不走提炼，走 case 合并 / `variant_of`（提炼只会得到一条 case 的复述）。
-- **已覆盖排除由脚本做**：`references/**` 的 `sources[].cases` 与 `content.*.source_cases` 中的 case id 自动剔除——已被 reference 收录的 case 不再重复建议（教训：glm5 组 9 条中 6 条已在 `glm-quantized-startup-triage`，原 R8 仍重复建议）。
+- **已覆盖排除由脚本做**：`references/**` 的 `sources[].cases` 与 `content.*.source_cases` 中的 case id 自动剔除——已被 reference 收录的 case 不再重复建议（教训：glm5 组 9 条中 6 条已在 `glm-quantized-startup-triage`，原 R8 仍重复建议）。**这份剔除把非 active 词条的引用也算作收录**；这批 case 中已连 active 词条的不会被点名，其余由上一档的回链行、复审行与表后清单点名。
 - **tag 归一前置**：脚本的 `--normalize` 负责删除与字段重复的 tag（category/namespace 名）、合并同义/拼写变体（`startup`/`startup-fail`/`startup-crash`→`startup-failure` 等，映射在脚本内）。tag 一乱 R8 就给噪声（曾实测：未归一前 tag 达 507 个，其中 ≥3 次者 70 个、聚类候选 35 组，还含 `precision`/`vllm-ascend` 这类零信息组）；**先修信号源再挑候选**。
 
-理由：共性识别靠人工不可持续（曾从 42 条 case 里人工才发现 MoE 通信算子族，且仅 4 条同 tag）；tag 聚类是零 token 的机械信号，先把候选端到人眼前。
+理由：共性识别靠人工不可持续（曾从 42 条 case 里人工才发现 MoE 通信算子族，且仅 4 条同 tag）；可检索键与 tag 都是零 token 的机械信号，先把候选端到人眼前。键比 tag 更接近诊断的检索入口，所以先看键。
 
 **R10. 流程留出检验（methodology 的"方法"地位核验）**：跑 `python3 scripts/flow_pool.py --flow-coverage`（该脚本随 `eval/flow/` 评测池引入；**脚本不存在时跳过并在摘要如实标注"评测池未就绪"**，不臆造覆盖数据）——按每条 methodology 的 `sources[].cases` 把评测池样本分成「收录（该词条的来源 case，train-on-test）」与「未收录（泛化证据）」两列：
 - **无未收录样本通过记录的流程，其"方法"地位未验证** → 变更摘要建议：或补判据（把案例指纹改写成可对新变体执行的阈值/分支），或摘掉 procedure 绑定（`skills/diagnose/references/procedure-gates.yaml` 的 selector 不再选它）；
