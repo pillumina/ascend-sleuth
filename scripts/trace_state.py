@@ -35,6 +35,7 @@ def main(argv=None) -> int:
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--can-write", action="store_true")
     ap.add_argument("--write-root", default="")
+    ap.add_argument("--no-root", action="store_true", help="解析不到主检出（canWrite=false, E_NO_ROOT）")
     ap.add_argument("--check", action="store_true")
     args = ap.parse_args(argv)
 
@@ -53,10 +54,16 @@ def main(argv=None) -> int:
 
     traces = Path(args.traces) if args.traces else resolve_traces(root)
     if not traces.is_dir():
-        print(f"traces 目录不存在：{traces}", file=sys.stderr)
+        if args.json:
+            print(json.dumps({"ok": False, "code": "E_TRACES_NOT_FOUND",
+                              "message": f"traces 目录不存在：{traces}"}, ensure_ascii=False))
+        else:
+            print(f"traces 目录不存在：{traces}", file=sys.stderr)
         return 3
+    reason_code = "" if args.can_write else ("E_NO_ROOT" if args.no_root else "E_PERM")
     caps = {"canWrite": bool(args.can_write), "writeRoot": args.write_root,
-            "reason": "" if args.can_write else "当前会话没有写权限"}
+            "reasonCode": reason_code,
+            "reason": "" if args.can_write else ("解析不到主检出" if args.no_root else "当前会话没有写权限")}
     data = project(traces, root, caps, only=args.session)
     data["schemeVersion"] = SCHEME
     if args.json:

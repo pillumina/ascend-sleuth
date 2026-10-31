@@ -132,6 +132,12 @@ axes:
 stop_reasons:
   - { value: closed_by_user, label: 用户在面板收尾 }
 
+# 严重级三档（与 docs/spec/case-schema.md 同口径；面板输入位从这份读）
+severity:
+  - { value: benign,            label: 不影响服务 }
+  - { value: service-affecting, label: 影响服务 }
+  - { value: data-loss-risk,    label: 数据丢失风险 }
+
 ending_kinds:
   - { value: root_cause,       label: 根因明确,     statuses: [resolved] }
   - { value: handed_off,       label: 转交他人跟进, statuses: [escalated], requires: [ending.handed_to] }

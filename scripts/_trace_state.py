@@ -64,7 +64,7 @@ def load_vocab(root: Path | str) -> dict:
             "label": str(entry.get("label") or value),
             "terminal": bool(entry.get("terminal")),
             "resumable": bool(entry.get("resumable")),
-            "meaning": str(entry.get("meaning") or ""),
+            "meaning": str(entry.get("meaning") or "").replace("**", "").strip(),
             "color": style["color"],
             "accent": style["accent"],
             "order": style["order"],
@@ -104,8 +104,20 @@ def load_vocab(root: Path | str) -> dict:
         severities = [{"value": "benign", "label": "不影响服务"},
                       {"value": "service-affecting", "label": "影响服务"},
                       {"value": "data-loss-risk", "label": "数据丢失风险"}]
+    outcomes = [{"value": str(x.get("value")), "label": str(x.get("label") or x.get("value")),
+                 "countsAs": str(x.get("counts_as") or "")}
+                for x in (doc.get("outcome") or []) if isinstance(x, dict)]
+    sedimented = [{"value": str(x.get("value")), "label": str(x.get("label") or x.get("value"))}
+                  for x in (doc.get("sedimented") or []) if isinstance(x, dict)]
+    provenance = {
+        "by": {"user": "本机用户", "agent": "agent", "cli": "命令行"},
+        "source": {"panel": "面板", "cli": "命令行", "agent": "agent", "import": "上一台机器"},
+    }
     return {
         "statuses": statuses,
+        "outcomes": outcomes,
+        "sedimented": sedimented,
+        "provenance": provenance,
         "endings": endings,
         "transitions": transitions,
         "severities": severities,
@@ -281,6 +293,33 @@ def actions_for(doc: dict, vocab: dict, derived: dict) -> list[dict]:
             # 收尾方式」，同状态允许（写入口会按单条事件处理，不重开）。
             continue
         kinds = [t["ending"]] if t["ending"] else list(t["endingChoices"])
+        if t["action"] == "backfill-ending":
+            # 补记只写当前状态的收尾方式：候选按当前状态过滤，否则面板会给出别的状态的 kind。
+            kinds = [e["value"] for e in vocab["endings"] if status in e["statuses"]]
+        targets = []
+        if t["action"] == "correct-ending":
+            # 改收尾方式要选「换成哪种收尾」，候选是三个 close 动作的完整描述（含必填与 kind），
+            # 面板据此渲染目标选择，不必自己去 vocab 里拼。
+            for other in vocab["transitions"]:
+                if not other["action"].startswith("close-"):
+                    continue
+                target_status = other["to"][0]
+                if target_status == status:
+                    continue
+                targets.append({
+                    "to": target_status,
+                    "action": other["action"],
+                    "label": status_meta(vocab, target_status)["label"],
+                    "requires": list(other["requires"]),
+                    "fillable": list(other["fillable"]),
+                    "mustExist": list(other["mustExist"]),
+                    "endingChoices": [
+                        {"value": k,
+                         "label": next((e["label"] for e in vocab["endings"] if e["value"] == k), k),
+                         "requires": next((e["requires"] for e in vocab["endings"] if e["value"] == k), [])}
+                        for k in ([other["ending"]] if other["ending"] else list(other["endingChoices"]))
+                    ],
+                })
         must_exist = list(t["mustExist"]) + (list(t["mustExistIfCase"]) if derived["caseKind"] == "case" else [])
         out.append({
             "id": t["action"],
@@ -298,6 +337,9 @@ def actions_for(doc: dict, vocab: dict, derived: dict) -> list[dict]:
             "expandsTo": list(t["expandsTo"]),
             "exceptSame": t["exceptSame"],
             "sameStatus": t["sameStatus"],
+            "targets": targets,
+            "reopenFirst": t["action"] == "correct-ending",
+            "formFields": form_fields(t, status, vocab, kinds),
         })
     order = {"close-resolved": 10, "close-escalated": 20, "close-archived": 30,
              "correct-ending": 40, "backfill-ending": 50, "reopen": 90}
@@ -328,6 +370,46 @@ def vocab_actions(vocab: dict) -> list[dict]:
                 for k in kinds
             ],
         })
+    return out
+
+
+FIELD_FORM = {
+    "summary": {"label": "问题背景（summary）", "type": "textarea"},
+    "severity": {"label": "严重级", "type": "select"},
+    "fix_emitted": {"label": "是否给出了可执行的修复", "type": "bool"},
+    "resolved_at": {"label": "收尾日期", "type": "auto"},
+    "ending.handed_to": {"label": "转交给", "type": "text",
+                         "placeholder": "名字 · 团队，或厂商 / 技术支持 / issue 号"},
+    "ending.duplicate_of": {"label": "已有单", "type": "text",
+                            "placeholder": "case:<id> 或 session:<session_id>"},
+    "feedback.outcome": {"label": "现场回报", "type": "action",
+                         "hint": "先去回报，再回来收尾"},
+}
+
+
+def form_fields(transition: dict, status: str, vocab: dict, kinds: list[str]) -> list[dict]:
+    """编辑器要渲染的字段清单。把「哪一类字段、什么控件」提到投影里，面板不再按字段名硬编码。
+
+    kind 用 select（候选来自 types/endingChoices）；`auto` 表示写入口自填（如 resolved_at），
+    面板只显示不给输入；hint 是缺前置条件时的引导（如命中单的反馈）。
+    """
+    fields = []
+    if kinds:
+        fields.append({"path": "ending.kind", "label": "收尾方式", "type": "select",
+                       "options": [{"value": k, "label": next((e["label"] for e in vocab["endings"]
+                                                               if e["value"] == k), k)} for k in kinds],
+                       "required": True})
+    for key in ("requires", "fillable", "mustExist", "mustExistIfCase"):
+        for field in transition[key]:
+            base = field.split(".")[0]
+            form = FIELD_FORM.get(field) or FIELD_FORM.get(base) or {"label": field, "type": "text"}
+            fields.append({"path": field, "required": True, "class": key, **form})
+    seen, out = set(), []
+    for f in fields:
+        if f["path"] in seen:
+            continue
+        seen.add(f["path"])
+        out.append(f)
     return out
 
 
@@ -380,6 +462,21 @@ def kb_case_ids(kb_root: Path | str) -> set[str]:
     return ids
 
 
+def provenance_of(doc: dict) -> dict:
+    """「谁在何时把状态改成这样」。有转移事件用最后一条，否则退回 `updated_at` 并标明来源；
+    标签由词表给（面板不自己映射 by/source 枚举）。"""
+    events = [e for e in (doc.get("transitions") or []) if isinstance(e, dict)]
+    labels = {"user": "本机用户", "agent": "agent", "cli": "命令行"}
+    sources = {"panel": "面板", "cli": "命令行", "agent": "agent", "import": "上一台机器"}
+    if events:
+        last = events[-1]
+        return {"at": last.get("at"), "atSource": "transitions",
+                "statusBy": last.get("by"), "byLabel": labels.get(str(last.get("by")), ""),
+                "source": last.get("source"), "sourceLabel": sources.get(str(last.get("source")), "")}
+    return {"at": doc.get("updated_at"), "atSource": "updated_at",
+            "statusBy": None, "byLabel": "", "source": None, "sourceLabel": ""}
+
+
 def project(traces_root: Path | str, kb_root: Path | str, caps: dict | None = None,
             only: str | None = None) -> dict:
     """面板与 CLI 共用的投影。`state` 不进 host 的版本缓存（它依赖 KB 与能力位）。"""
@@ -403,12 +500,12 @@ def project(traces_root: Path | str, kb_root: Path | str, caps: dict | None = No
                 "case_id": str((doc.get("sedimented") or {}).get("case_id") or "")
                 if isinstance(doc.get("sedimented"), dict) else "",
             },
-            "provenance": {
-                "statusBy": (doc.get("transitions") or [{}])[-1].get("by") if doc.get("transitions") else None,
-                "statusAt": (doc.get("transitions") or [{}])[-1].get("at") if doc.get("transitions") else None,
-                "source": (doc.get("transitions") or [{}])[-1].get("source") if doc.get("transitions") else None,
-                "timeSource": derived["timeSource"],
-            },
+            "activeCase": (None if doc.get("active_case") is None else str(doc.get("active_case"))),
+            "summary": str(doc.get("summary") or ""),
+            "severity": str(doc.get("severity") or ""),
+            "fixEmitted": doc.get("fix_emitted"),
+            "updatedAt": str(doc.get("updated_at") or ""),
+            "provenance": provenance_of(doc),
             "derived": derived,
             "transitions": [
                 {"at": e.get("at"), "from": e.get("from"), "to": e.get("to"),
@@ -417,19 +514,26 @@ def project(traces_root: Path | str, kb_root: Path | str, caps: dict | None = No
                 for e in (doc.get("transitions") or []) if isinstance(e, dict)
             ],
             "displayTone": display_tone(str(doc.get("status") or "unknown"), feedback_of(doc)["outcome"]),
-            "actions": [a["id"] for a in actions_for(doc, vocab, derived)],
+            "actions": [] if entry["error"] else actions_for(doc, vocab, derived),
         }
         if entry["error"]:
             row["error"] = entry["error"]
+            row["errorCode"] = "E_PARSE"
+            row["derived"]["readable"] = False
         sessions.append(row)
     return {
         "schemeVersion": SCHEME,
-        "capabilities": caps or {"canWrite": False, "writeRoot": "", "reason": "未提供能力位"},
+        "generatedAt": __import__("datetime").datetime.now().astimezone().replace(microsecond=0).isoformat(),
+        "capabilities": caps or {"canWrite": False, "writeRoot": "", "reasonCode": "E_NO_ROOT",
+                                  "reason": "未提供能力位"},
         "vocab": {
             "statuses": vocab["statuses"],
             "endings": [{"value": e["value"], "label": e["label"], "requires": e["requires"]}
                         for e in vocab["endings"]],
             "severities": vocab["severities"],
+            "outcomes": vocab["outcomes"],
+            "sedimented": vocab["sedimented"],
+            "provenance": vocab["provenance"],
             "actions": vocab_actions(vocab),
         },
         "sessions": sessions,
