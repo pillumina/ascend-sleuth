@@ -58,6 +58,7 @@
 - [ixn-replay.md](../docs/mechanism/ixn-replay.md) — 交互面评测（追问 / 信息充分性 / 过早结论）
 - [diagnosis-observability.md](../docs/mechanism/diagnosis-observability.md) — 诊断观测的目标态：一次诊断记什么字段、十次诊断怎么汇总成一份上仓读数、与知识库的解耦边界、并发与冲突处理、反馈联动、指标清单与面板；取舍在 ADR-0011
 - [status.md](../docs/mechanism/status.md) — 机制状态总表、未建与空转、代码与文件入口对照、相邻文档分工（全库唯一一份）
+- [agent-groom.md](../docs/mechanism/agent-groom.md) — Agent Groom 的同步快照、有界子 agent 语义比对、本地评估状态、合入前过期复核与边界
 
 **操作指南（用到那个环节时才读）**
 *你要搭新部署、装环境（Windows skills 使能）、跑评测、看指标、走 git 门控、或做导入时*

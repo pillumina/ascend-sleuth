@@ -1,7 +1,9 @@
 ---
 name: knowledge-groom
 description: >
-  昇腾知识库的周期性维护引擎。批处理 postmortems/inbox/ 待审队列（预分诊 new/variant/covered 三分类），
+  昇腾知识库的周期性维护引擎。先同步远端知识到确定 commit，用有界子 agent 比对本地草稿与现有
+  case 的语义（root cause / 机制 / 修复 / 证据），由确定性脚本校验并保守聚合，更新本地草稿评估状态；
+  再批处理 postmortems/inbox/ 待审队列（预分诊 new/variant/covered 三分类），
   结构化升格到 Tier 2、校验 references 完整性、检测值重复、汇总条目使用记录并算分、
   软退休过期 case、重建生成索引与本期读数；并行维护先验知识层（references/）——
   审核 references/ 的 draft 草稿、校验引用、失效降级信号、引用发现建议。建议每周运行。
@@ -47,19 +49,149 @@ disable-model-invocation: true
      只读它们的输出摘要；步骤 4 是全库一次算完，不做逐条判断（公式住在脚本里，见 docs/mechanism/diagnosis-observability.md 3.4）；
    - references 维护段（R1/R5/R5.5/R6）：仅当 references/ 本轮有变更（新词条/修订/失效信号）才跑；
      无变更 → 摘要一句"references 无变更，跳过维护段"。
-3. **预分诊比对不全文重读**：draft 与现有 case 比对用**命中 (namespace × category) 的索引分片行**
-   `knowledge/_index/<ns>__<category>.list`（一行一条 case；category 未定回退 `<ns>.list`；不读全库总表）的
-   title/tags/symptoms 摘要/score 定位
-   候选 → 只读 1-2 个最高分候选全文核对；draft 头注释已有产出时分诊建议 → 复核证据成立即可，不重判。
+3. **预分诊比对不全文重读**：先用 `scripts/groom_snapshot.py` 取到确定的远端 commit，再用
+   `scripts/groom_candidates.py` 的**有界候选工作单**（默认 6 条、硬上限 8 条）把草稿交给子 agent；
+   子 agent 只读工作单里的草稿与候选摘录，不读全库。没有候选工作单时，才退回**命中 (namespace × category)
+   的索引分片行** `knowledge/_index/<ns>__<category>.list`（一行一条 case；category 未定回退 `<ns>.list`；
+   不读全库总表）按 symptoms/tags 定位候选，并只读 1-2 个最高分候选全文核对。draft 头注释已有
+   to-postmortem/issue-ingest 产出的分诊建议 → 复核证据是否成立，不重判。
 4. 变更摘要 = 各脚本输出摘要 + agent 判断行；审计链在 EV 卡/PR，不靠每次重读全库。
+
+## Agent 语义比对（Groom 的强制前置，先于 intake）
+
+目标：把"这份草稿与现有知识是什么关系"从"读本地旧索引猜"变成"对**确定的远端 commit** 做有界语义比对"。
+确定性脚本负责取数、校验、聚合与落状态；子 agent 只负责读草稿与候选并返回结构化判断。
+
+### 0. 确定同步源
+
+```bash
+python3 scripts/groom_snapshot.py --list-remotes
+```
+
+它只列本机已经配置的远端**名字**，不判断托管平台、不预设任何地址。
+
+- **只有一个远端**：直接用它，不再问用户；快照命令省略 `--remote`，脚本会自动选它。
+- **多个远端**：把名字给用户，问“这次从哪个远端更新？”，再用 `--remote <名字>`；不要替用户选。
+- **没有远端**：问用户要用的名字和地址，由用户执行 `git remote add <name> <url>`；agent 不猜地址，也不写死任何平台或仓库端点。
+
+`--list-remotes` 只读，不改仓库。
+
+### 0.1 同步快照（失败就停，不拿旧数据往下走）
+
+只有一个远端时：
+
+```bash
+python3 scripts/groom_snapshot.py --require-fresh
+```
+
+有多个远端时，用用户选定的那个：
+
+```bash
+python3 scripts/groom_snapshot.py --remote <用户选择的远端名> --require-fresh
+```
+
+它只 `git fetch` + 在独立路径建 detach worktree，**不 pull / 不 merge / 不 rebase**，源工作区的本地改动与
+未跟踪 inbox 不受影响。输出里的 `remote` 是实际使用的同步源，`commit` 是本轮所有判断的
+`compared_against_commit`。
+
+- 退出 2：同步或索引校验失败。停下来确认网络/权限；**不要**用当前检出里的旧 `knowledge/` 继续判。
+- 确实离线：用同一个 `--remote` 加 `--offline`。快照会标 `fresh: false, authoritative: false`；本轮只能产出
+  `ambiguous` / 待复核，`groom_record` 会把升格标成 `stale-snapshot`，**不得据此升格**。
+- 源工作区有未提交改动是正常的：快照不碰它，报告里会如实显示。
+
+### 1. 生成有界候选工作单（脚本，不读全库）
+
+```bash
+python3 scripts/groom_candidates.py --snapshot <snapshot.json> --all --out <work-orders.json>
+```
+
+每份草稿一张工作单：草稿本体 + 候选（默认 6 条，硬上限 8 条）的 root_cause / fix / 症状 / 诊断摘录。
+候选不足时用同分类/全库最高分补位，池大小与省略数写在工作单里。**不要把整个 knowledge/ 塞给子 agent。**
+
+### 2. 子 agent 比对（有界、只读、逐条覆盖）
+
+- 有 subagent / Task 工具时：**每份草稿一个子 agent**；同时最多 3 个（硬上限 4）。提示词与返回 schema
+  见 [references/subagent-prompts.md](references/subagent-prompts.md)。
+- 子 agent 只读工作单，**不写任何 Case 文件、不升格、不合并、不删草稿**。
+- 必须逐条覆盖工作单里的每个候选；只评"看起来像的"会让未评的候选被静默忽略——`groom_record` 会直接判整份无效。
+- 需要独立复核的情形：建议 `duplicate` / `covered`、置信度非 `high`、证据轴出现 `unknown`、
+  或候选之间结论冲突。每份草稿最多再起 1 个复核 agent；复核只能把结论往保守方向拉。
+- **顺序回退**：Harness 没有子 agent 机制时，主 agent 按同一提示逐份顺序做，返回同一 schema；
+  不得因为"没有子 agent"就退回按本地旧索引直接判。
+
+### 3. 记录（确定性校验 + 保守聚合，子 agent 不落库）
+
+```bash
+python3 scripts/groom_record.py --snapshot <snapshot.json> --work-orders <work-orders.json> \
+  --results-dir <results/> --report
+```
+
+- **校验**：候选必须来自工作单、逐条覆盖、分类/置信度枚举合法、rationale 非空；结果还必须回显并匹配
+  `work_order_id` / `snapshot_commit` / `draft_sha256` / `candidate_ids`。任一不满足 → 整份 `ambiguous` +
+  人工复核，不猜；绑定失败时 `promotion_gate` 标 `binding-mismatch`。
+- **聚合**：只有 `high` 置信度的 `duplicate` / `covered` 才成为建议；中/低置信度降为 `ambiguous`；
+  两个候选同时被高置信度判重复 → `ambiguous`（不自动选一个）；复核 agent `challenge` /
+  `false_merge_risk` → `ambiguous`。证据轴与分类自相矛盾时按证据降级。
+- **人机分家**：`human_decision` 只由 `groom_decide.py` 写；重跑 agent 不会覆盖人已确认的决定。
+- 状态落在 `postmortems/inbox/.groom/assessments/<key>.yaml`（inbox 是 .gitignore 的本地队列，
+  状态文件不进 git）；草稿原字节不变，永久 Case ID 不变。
+
+### 4. 人审与决定
+
+```bash
+python3 scripts/groom_status.py            # 一屏：评估 / 候选 / 人决定 / 新鲜度 / 下一步
+python3 scripts/groom_decide.py --draft-key <key> --decision covered \
+  --candidate <case-id> --by <owner> --note "<为什么>"
+```
+
+- `duplicate` / `covered` / `variant` 必须由人确认；agent 建议不等于决定。
+- `new_pattern` 且 high 置信度、无复核项、快照权威 → 可进入**既有升格闸门**（仍按第 1 步人审批审）。
+- 评估后知识前进或草稿被改 → `groom_status.py` 标 `STALE`；重跑本轮，**不得拿旧结论升格**。
+- 决定被记录为绑定 `applies_to_commit`；新评估与人决定冲突时保留人决定并标 `revalidation-needed`。
+
+### 5. PR provenance 与合入前复核
+
+提 PR 时，把下面命令的输出作为一段 HTML 注释贴进 PR body（机器读它，不读 prose）：
+
+```bash
+python3 scripts/groom_record.py --pr-marker --draft-key <key>
+```
+
+合入前 / CI 里：
+
+```bash
+python3 scripts/groom_recheck.py --pr-body-file <pr-body.md> --base origin/main --head <head>
+```
+
+- `assessed_commit` 必须真实存在且是 base 的祖先；评估后相关 `knowledge/` 变了 → **过期**，重跑 groom。
+- marker 还必须带 `schema: groom-pr/v2`、`assessment_id`、`assessed_content_sha256` 以及人的
+  `human_decision_assessment_id` / `human_decision_content_sha256`。缺字段、枚举非法、批准与评估/内容不匹配
+  → 直接拒绝；`reject` / `defer` / `covered` 不授权新增或修改 Case。
+- **每个被提交或修改的 Case 都要有自己的 marker**；marker 的 `assessed_content_sha256` 必须等于提交
+  Case 的规范化内容指纹（root cause / fix / symptoms / diagnosis 等），否则 `content-mismatch`。
+- PR 新增 case 与 base 前进期间新增 case 有共同字面量 → `possible-duplicate-after-merge`，要求人复核。
+  这是**提示**，不是语义判重；它拦的是"看都没看"。
+- 缺 marker、或建议合并但 `human_decision: pending` → 默认 warning；加 `--enforce` 时变 error。
+- 升格时 final Case ID 与草稿建议 id 不同，`groom_record.py --pr-marker --submitted-case-id <final-id>`
+  把最终 id 写进 marker；不要事后手改。
+
+## 并发边界（必须如实说，不能靠 Git 同步冒充全局唯一）
+
+- `fetch` + 快照只回答"我这一版知识是不是最新的"。它**看不见**同一时刻另一个贡献者未提交的草稿，
+  也**不保证**合入时 main 还是这个 commit。
+- 因此本地 groom 判 `new_pattern` 不等于全局唯一；合入前必须重跑 `groom_recheck.py`，
+  平台侧还必须要求 base 最新（分支保护 / 合并队列）。后者是**部署前提**，本仓脚本不实现这一层。
+- 两个 PR 同时改同一 case 的字段、或 A 先合入使 B 的评估过期：recheck 报出来，人工重跑/解冲突；
+  **不实现自动合并、不自动改写 Case ID、不删除草稿**。
+- 合入后由主干 job 重建索引；没有该 job 的部署按既有纪律在 main 上重建，再复查 `build_index --check`。
 
 ## 流程（一次 groom 产出一个变更摘要）
 
 1. **intake 队列处理（升格的前置）**：处理 `postmortems/inbox/`（`/skill:to-postmortem` / `/skill:issue-ingest` 的产出都落这里；**先解析一次**：`python3 scripts/shared_dir.py inbox` 给出主检出的绝对路径——草稿是锚在主检出的共享队列，在 worktree 里用相对 `postmortems/inbox/` 会读成一个空队列）：
+   - **先读本轮评估状态**：`python3 scripts/groom_status.py` 一屏看草稿的 assessment / 候选 / 人决定 / 新鲜度。**没有本地评估状态文件（sidecar）的草稿先补跑上一节 Agent 语义比对**，不直接拿本地旧索引判、也不直接升格；`stale` 的草稿重跑，不用旧结论。
    - **节律**：单仓集中可周批；**分布式（成员本地 inbox，远程仓不存）在提交主仓时处理**——产出时已做 pre-triage（见下），groom 复核确认而非重判；
-   - 逐条**预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象：命中 namespace + `common/` 的现有 case——用**命中 (namespace × category) 的读侧视图** `knowledge/_index/<ns>__<category>.list` 行（一行一条：title/tags/symptoms 首条/score 等）按 symptoms/tags 定位候选，
-   只读 1-2 个最高分候选全文核对 root_cause/fix（M5 成本预算 #3，不全文重读全库）。**draft 头注释已带 to-postmortem/issue-ingest 产出的分诊建议 → 复核证据是否成立，不重判**（建议与决定分离：判断在产出时做，groom 是审核者）；
-   **先判后看（顺序纪律，改不了的自觉就别指望）**：读候选之前，先从草稿本身写出自己的判断——症状签名（错误码/关键日志行/数值阈值）、根因假设、修复族方向。看候选是**取证**（我这条假设能否被候选解释，还是只是"看起来像"）。先看候选再判断，判的是**像不像**而不是**对不对**：候选一旦在眼前，语义相近就会把判断拉过去（尤其是措辞相似但根因不同的 draft）。判断行写进批审清单：先写自己的判断，再写与候选的对照结论；两者不一致时**以证据为准**，别用"候选里有类似的"当理由；
+   - 逐条**复核预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象与候选来自 sidecar 的 `provenance.candidates`；需要复核时读候选全文核对 root_cause/fix（M5 成本预算 #3，不全文重读全库）。**draft 头注释已带 to-postmortem/issue-ingest 产出的分诊建议 → 一并核对证据是否成立**（建议与决定分离：判断在产出时做，groom 是审核者）；
+   **先判后看（顺序纪律，改不了的自觉就别指望）**：复核候选前，先只读草稿与 sidecar 的 `evidence` 轴，自己写一句判断——症状签名（错误码/关键日志行/数值阈值）、根因假设、修复族方向；再打开候选全文**取证**（我这条假设能否被候选解释，还是只是"看起来像"）。先看候选再判断，判的是**像不像**而不是**对不对**：候选一旦在眼前，语义相近就会把判断拉过去（尤其是措辞相似但根因不同的 draft）。判断行写进批审清单：先写自己的判断，再写与 sidecar / 候选的对照结论；两者不一致时**以证据为准**，别用"候选里有类似的"当理由；
    - 产出**批审清单**交 owner 处理（像清 PR inbox，~30 秒/条）：
      - `covered_by` → 建议关闭升格；postmortem 转正 `postmortems/YYYY-QN/`（Tier 3 语料，**不是丢弃**）
      - `variant_of` → 建议并入已有 case（扩 compat 区间、补 symptoms）；若要动 `expected`/`fix_on_mismatch` 按高风险变更走双签
