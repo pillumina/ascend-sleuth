@@ -2555,7 +2555,7 @@ return {
       const raw = await resolveCwd(sessionId)
       const main = raw ? await mainCheckoutOf(raw) : null
       if (!main) return { canWrite: false, writeRoot: '', reasonCode: 'E_NO_ROOT', reason: '解析不到主检出' }
-      const pol = readPolicy()
+      const pol = readPolicy(sessionId)
       const can = !(pol && pol.mode === 'read-only')
       return can ? { canWrite: true, writeRoot: main, reasonCode: '', reason: '' }
                  : { canWrite: false, writeRoot: main, reasonCode: 'E_PERM', reason: '当前会话没有写权限' }

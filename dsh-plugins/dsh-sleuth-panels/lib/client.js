@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:192350bc0599)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:0bd9677f3d5d)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:f684735469ce)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:119062e6c579)
 // 校验：`node scripts/build_panel_bundle.js --check`。
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:192350bc0599) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:0bd9677f3d5d) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -472,7 +472,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.8.3'
+    const PANEL_VERSION = '0.8.4'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -2350,11 +2350,22 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         ? stAct.targets.filter(t => t.to === stEdit.to)[0] : null
       const stChoices = stTarget ? (stTarget.endingChoices || []) : ((stAct && stAct.endingChoices) || [])
       const stKinds = stChoices.map(c => c.value)
-      const stFieldPaths = stAct ? ((stAct.requires || []).concat(stAct.fillable || [])) : []
-      const stMust = stAct ? (stAct.mustExist || []) : []
+      // 「改收尾方式」的必填在**目标动作**上（correct-ending 自己没有 requires/fillable），
+      // 所以字段与「先去回报」都按 base = 目标 ?? 当前动作取。
+      const stBase = stTarget || stAct
+      const stFieldPaths = stBase ? ((stBase.requires || []).concat(stBase.fillable || [])) : []
+      const stMustAll = stBase ? (stBase.mustExist || []) : []
+      // `mustExist` 是「必须已存在」而不是「必须现在填」。命中真实 case 的单一律带上
+      // `feedback.outcome`，但 diagnose 给 fix 时已经写过 pending——按字段存在性判，才不会
+      // 把「已回报过的命中单」也拦成「先去回报」。
+      const stMust = stMustAll.filter(f => {
+        if (f === 'feedback.outcome') return !(st && st.feedback && st.feedback.outcome)
+        return true
+      })
       const editableFields = stFieldPaths.filter(f => /^(summary|severity|fix_emitted)$/.test(f))
       const caps = (typeof CAPS_CACHE === 'object') ? CAPS_CACHE : null
-      const canWrite = !caps || caps.canWrite !== false
+      // 没有能力位（投影失败/旧 host）时按不可写处理：宁可给复制命令，也不要在提交后才撞 E_PERM。
+      const canWrite = !!caps && caps.canWrite !== false
       const fieldVal = (f) => {
         const v = (stEdit.fields || {})[f]
         if (v !== undefined) return v
@@ -2368,50 +2379,74 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         const p = {}
         if (stEdit.to) p.to = stEdit.to
         if (stEdit.kind) p['ending.kind'] = stEdit.kind
-        if (stEdit.handed) p['ending.handed_to'] = stEdit.handed
-        if (stEdit.dup) p['ending.duplicate_of'] = stEdit.dup
+        if (stEdit.kind === 'handed_off' && stEdit.handed) p['ending.handed_to'] = stEdit.handed
+        if (stEdit.kind === 'duplicate' && stEdit.dup) p['ending.duplicate_of'] = stEdit.dup
         for (const f of editableFields) {
           const v = fieldVal(f)
           if (v !== '') p[f] = (f === 'fix_emitted') ? (v === 'true') : v
         }
         return p
       }
+      const sq = (v) => "'" + String(v).replace(/'/g, "'\\''") + "'"
+      const validateState = () => {
+        if (!stAct) return '先选一个动作'
+        if (stKinds.length > 1 && !stEdit.kind) return '先选收尾方式'
+        if (stEdit.kind === 'handed_off' && !String(stEdit.handed || '').trim()) return '需要填「转交给」'
+        if (stEdit.kind === 'duplicate' && !String(stEdit.dup || '').trim()) return '需要填「已有单」'
+        if (stMust.length) return '这一步需要先去回报（本编辑器不写反馈轴）'
+        const missing = editableFields.filter(f => !String(fieldVal(f)).trim())
+        if (missing.length) return '还需要填：' + missing.map(f => ({ summary: '问题背景', severity: '严重级', fix_emitted: '是否给出修复' }[f] || f)).join('、')
+        return ''
+      }
       const manualCmd = () => {
         const p = buildPayload()
-        const parts = ['python3 scripts/trace_transition.py', s.sessionId, '--root .',
-          '--by user', '--source cli', '--json', '--expect-sha256', String((st && st.contentSha256) || '<sha256>')]
+        const parts = ['python3 scripts/trace_transition.py', sq(s.sessionId), '--root', sq('.'),
+          '--by', 'user', '--source', 'cli', '--json', '--expect-sha256', sq((st && st.contentSha256) || '<sha256>')]
         if (stAct && stAct.id === 'reopen') parts.push('--reopen')
-        else if (stAct && stAct.id === 'correct-ending') { parts.push('--correct-ending'); if (p.to) parts.push('--to', p.to) }
+        else if (stAct && stAct.id === 'correct-ending') { parts.push('--correct-ending'); if (p.to) parts.push('--to', sq(p.to)) }
         else if (stAct && stAct.id === 'backfill-ending') parts.push('--backfill-ending')
-        else if (stAct) parts.push('--to', stAct.id.replace('close-', ''))
-        if (p['ending.kind']) parts.push('--kind', p['ending.kind'])
-        if (p['ending.handed_to']) parts.push('--handed-to', p['ending.handed_to'])
-        if (p['ending.duplicate_of']) parts.push('--duplicate-of', p['ending.duplicate_of'])
-        if (p.summary) parts.push('--summary', p.summary)
-        if (p.severity) parts.push('--severity', p.severity)
+        else if (stAct) parts.push('--to', sq(stAct.id.replace('close-', '')))
+        if (p['ending.kind']) parts.push('--kind', sq(p['ending.kind']))
+        if (p['ending.handed_to']) parts.push('--handed-to', sq(p['ending.handed_to']))
+        if (p['ending.duplicate_of']) parts.push('--duplicate-of', sq(p['ending.duplicate_of']))
+        if (p.summary) parts.push('--summary', sq(p.summary))
+        if (p.severity) parts.push('--severity', sq(p.severity))
         if (p.fix_emitted !== undefined) parts.push('--fix-emitted', p.fix_emitted ? 'true' : 'false')
         return parts.join(' ')
       }
       const submitState = () => {
         if (!stAct || stEdit.busy || stEdit.done) return
+        const invalid = validateState()
+        if (invalid) { setStEdit(v => ({ ...v, msg: invalid })); return }
         if (!canWrite) {
+          if (caps && caps.reasonCode === 'E_NO_ROOT') {
+            setStEdit(v => ({ ...v, msg: '解析不到主检出：请在主检出的面板里打开这一单再写' }))
+            return
+          }
           doCopy(manualCmd(), 'manual-' + stAct.id)
           setStEdit(v => ({ ...v, msg: '已复制命令：在仓库根目录运行（当前会话没有写权限）' }))
           return
         }
-        if (stKinds.length > 1 && !stEdit.kind) { setStEdit(v => ({ ...v, msg: '先选收尾方式' })); return }
-        if (stMust.length) { setStEdit(v => ({ ...v, msg: '先去回报：' + stMust.join('、') + '（本编辑器不写反馈轴）' })); return }
         setStEdit(v => ({ ...v, busy: true, msg: '写入中…' }))
         host.call('ascend-trace-transition', {
           sessionId: s.sessionId, action: stAct.id, payload: buildPayload(),
           expectSha256: (st && st.contentSha256) || '',
         }).then(r => {
           if (r && r.ok) {
-            setStEdit(v => ({ ...v, busy: false, done: true, msg: '已记录：' + String(r.from || '') + ' → ' + String(r.to || '') + '，列表已刷新' }))
+            const lbl = (x) => {
+              const one = (VOCAB_CACHE && Array.isArray(VOCAB_CACHE.statuses)) ? VOCAB_CACHE.statuses.filter(y => y.value === x)[0] : null
+              return one ? one.label : String(x || '')
+            }
+            setStEdit(v => ({ ...v, busy: false, done: true, msg: '已记录：' + lbl(r.from) + ' → ' + lbl(r.to) + '，列表已刷新' }))
             if (typeof onRebuilt === 'function') onRebuilt()
           } else {
-            setStEdit(v => ({ ...v, busy: false, msg: '失败：' + String((r && (r.message || r.code)) || '未知错误')
-              + (r && r.code === 'E_STATE_CHANGED' ? '；这一单刚被改过，点刷新查看当前状态' : '') }))
+            const code = r && r.code
+            setStEdit(v => ({ ...v, busy: false, msg: '失败：' + String((r && (r.message || code)) || '未知错误')
+              + (code === 'E_STATE_CHANGED' ? '；这一单刚被改过，点刷新查看当前状态' : '')
+              + (code === 'E_PERM' ? '；已把这一步转成可复制命令，在仓库根目录运行' : '') }))
+            if (code === 'E_PERM' && caps && caps.reasonCode !== 'E_NO_ROOT') {
+              doCopy(manualCmd(), 'manual-' + stAct.id)
+            }
           }
         }).catch(e => setStEdit(v => ({ ...v, busy: false, msg: '失败：' + String(e && e.message || e) })))
       }
@@ -2445,7 +2480,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           (stAct.targets && stAct.targets.length) ? React.createElement('label', { style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, '换成哪种收尾',
             React.createElement('select', { 'aria-label': '换成哪种收尾', value: stEdit.to, onChange: e => {
               const t = stAct.targets.filter(x => x.to === e.target.value)[0]
-              setStEdit(v => ({ ...v, to: e.target.value, kind: (t && t.endingChoices && t.endingChoices.length === 1) ? t.endingChoices[0].value : '' }))
+              setStEdit(v => ({ ...v, to: e.target.value, fields: {}, kind: (t && t.endingChoices && t.endingChoices.length === 1) ? t.endingChoices[0].value : '' }))
             }, style: inputStyle },
               stAct.targets.map(t => React.createElement('option', { key: t.to, value: t.to }, t.label)))) : null,
           stKinds.length ? React.createElement('label', { style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, '收尾方式',

@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:93d523a3dbc1)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:3985adc90d7d)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:d2bbdff3921b)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -105,7 +105,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:93d523a3dbc1) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:3985adc90d7d) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -2663,7 +2663,7 @@ return {
       const raw = await resolveCwd(sessionId)
       const main = raw ? await mainCheckoutOf(raw) : null
       if (!main) return { canWrite: false, writeRoot: '', reasonCode: 'E_NO_ROOT', reason: '解析不到主检出' }
-      const pol = readPolicy()
+      const pol = readPolicy(sessionId)
       const can = !(pol && pol.mode === 'read-only')
       return can ? { canWrite: true, writeRoot: main, reasonCode: '', reason: '' }
                  : { canWrite: false, writeRoot: main, reasonCode: 'E_PERM', reason: '当前会话没有写权限' }
