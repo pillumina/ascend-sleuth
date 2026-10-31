@@ -2350,8 +2350,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             setStEdit(v => ({ ...v, msg: '解析不到主检出：请在主检出的面板里打开这一单再写' }))
             return
           }
-          copyText(manualCmd()).then(ok => setStEdit(v => ({ ...v,
-            copyCmd: manualCmd(),
+          const cmd = manualCmd()
+          copyText(cmd).then(ok => setStEdit(v => ({ ...v,
             msg: ok ? '已复制命令：在仓库根目录运行（当前会话没有写权限）' : '复制失败：下面的命令可手动选中复制' })))
           return
         }
@@ -2371,7 +2371,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           } else {
             const code = r && r.code
             if (code === 'E_PERM' && caps && caps.reasonCode !== 'E_NO_ROOT') {
-              copyText(manualCmd()).then(ok => setStEdit(v => ({ ...v, busy: false, copyCmd: manualCmd(),
+              const cmd = manualCmd()
+              copyText(cmd).then(ok => setStEdit(v => ({ ...v, busy: false,
                 msg: ok ? '没有写权限：已复制命令，在仓库根目录运行' : '没有写权限，且复制失败：下面的命令可手动选中复制' })))
               return
             }
@@ -2431,9 +2432,9 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             style: (stEdit.busy || stEdit.done) ? btnGhost : btnPrimary,
           }, stEdit.done ? '已记录' : stEdit.busy ? '写入中…' : canWrite ? (stAct.id === 'reopen' ? '确认重新打开' : stAct.id === 'correct-ending' ? '确认改收尾' : stAct.id === 'backfill-ending' ? '确认补记' : '确认收尾') : '复制命令'),
           stEdit.msg ? React.createElement('span', { role: (stEdit.msg.indexOf('失败') === 0 || stEdit.msg.indexOf('复制失败') === 0) ? 'alert' : 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: (stEdit.msg.indexOf('失败') === 0 || stEdit.msg.indexOf('复制失败') === 0) ? T.error : T.text2 } }, stEdit.msg) : null) : null,
-        stAct && (!canWrite || stEdit.copyCmd) ? React.createElement('code', {
+        stAct && (!canWrite || String(stEdit.msg || '').indexOf('复制') >= 0) ? React.createElement('code', {
           style: { display: 'block', userSelect: 'all', background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '5px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', overflowX: 'auto', whiteSpace: 'pre-wrap', color: T.text },
-        }, stEdit.copyCmd || manualCmd()) : null,
+        }, manualCmd()) : null,
         (st.provenance && st.provenance.at) ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
           '最近记录：' + String(st.provenance.at).slice(5, 16).replace('T', ' ') + ' · '
           + (st.provenance.source === 'import' ? (st.provenance.sourceLabel || '上一台机器') : (st.provenance.byLabel || ''))) : null,
