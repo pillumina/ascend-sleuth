@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:c22b075ac0d6)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:6676bc39ff4c)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:f684735469ce)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:119062e6c579)
 // 校验：`node scripts/build_panel_bundle.js --check`。
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:c22b075ac0d6) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:6676bc39ff4c) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -2342,7 +2342,17 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           }, '未记会话号')
       // 展开的命令块只出现一次（谁被点开就显示谁）；选中关系靠"命令块在最下方"表达，
       // 不再用 opacity 压未选中的按钮——那会把白字压到 2.07:1（AA 要求 4.5）。
-      const stActions = (st && Array.isArray(st.actions)) ? st.actions : []
+      // 面板这一版只实现三个收尾动作与重新打开；改收尾方式/补记要选目标（投影已给 targets），
+      // 客户端还没渲染，先不给出「点了必失败」的入口。
+      // 直接收尾要求 trace 里已有收尾必需字段（summary / severity / fix_emitted）；缺字段时
+      // 不给入口，改为提示用「复制收尾指令」——否则用户点完只会撞 E_SCHEMA，而且界面上
+      // 没有补录这些字段的位置。补录编辑器排在下一 PR。
+      const stMissing = st ? ['summary', 'severity'].filter(k => !String(st[k] || '').trim())
+        .concat((st.fixEmitted === null || st.fixEmitted === undefined) ? ['fix_emitted'] : []) : []
+      const stReady = !!st && stMissing.length === 0
+      const stActions = (st && Array.isArray(st.actions) && stReady)
+        ? st.actions.filter(a => ['close-resolved', 'close-escalated', 'close-archived', 'reopen'].indexOf(a.id) >= 0)
+        : (stReady ? [] : [])
       const stAct = stEdit.action ? stActions.filter(a => a.id === stEdit.action)[0] : null
       const stKinds = stAct ? (stAct.endingChoices || []).map(c => c.value) : []
       const submitState = () => {
@@ -2356,8 +2366,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           sessionId: s.sessionId, action: stAct.id, payload,
           expectSha256: (st && st.contentSha256) || '',
         }).then(r => {
-          setStEdit(v => ({ ...v, msg: (r && r.ok)
-            ? ('已记录：' + String(r.from || '') + ' → ' + String(r.to || '') + '，刷新后列表生效')
+          setStEdit(v => ({ ...v, done: !!(r && r.ok), msg: (r && r.ok)
+            ? ('已记录：' + String(r.from || '') + ' → ' + String(r.to || '') + '；点右上角刷新后列表更新')
             : ('失败：' + String((r && (r.message || r.code)) || '未知错误')) }))
         }).catch(e => setStEdit(v => ({ ...v, msg: '失败：' + String(e && e.message || e) })))
       }
@@ -2367,7 +2377,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         stActions.length ? React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
           stActions.map(a => React.createElement('button', {
             key: a.id, type: 'button',
-            onClick: () => setStEdit({ action: a.id, kind: (a.endingChoices && a.endingChoices[0] && a.endingChoices[0].value) || '', handed: '', dup: '', msg: '' }),
+            onClick: () => setStEdit({ action: a.id, kind: (a.endingChoices && a.endingChoices.length === 1) ? a.endingChoices[0].value : '', handed: '', dup: '', msg: '', done: false }),
             style: stEdit.action === a.id ? btnPrimary : btnGhost,
           }, a.label))) : React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } }, '这一单当前没有可执行的动作。'),
         stAct ? React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' } },
@@ -2386,7 +2396,11 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             onChange: e => setStEdit(v => ({ ...v, dup: e.target.value })),
             style: { font: 'inherit', fontSize: 'var(--t-sm)', padding: '4px 6px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hair)', background: T.bg, minWidth: 220 },
           }) : null,
-          React.createElement('button', { type: 'button', onClick: submitState, style: btnPrimary }, '确认收尾')) : null,
+          React.createElement('button', {
+          type: 'button', onClick: submitState,
+          disabled: !!stEdit.done || (stKinds.length > 1 && !stEdit.kind),
+          style: (!stEdit.done && !(stKinds.length > 1 && !stEdit.kind)) ? btnPrimary : btnGhost,
+        }, stEdit.done ? '已记录' : (stAct.id === 'reopen' ? '确认重新打开' : '确认收尾'))) : null,
         stEdit.msg ? React.createElement('div', { role: 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: stEdit.msg.indexOf('失败') === 0 ? T.error : T.text2 } }, stEdit.msg) : null,
         (st.provenance && st.provenance.at) ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
           '最近记录：' + String(st.provenance.at).slice(5, 16).replace('T', ' ') + (st.provenance.byLabel ? ' · ' + st.provenance.byLabel : '')) : null,
@@ -2397,8 +2411,10 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           navErr ? React.createElement('span', { style: { color: 'var(--c-amber)', fontSize: 'var(--t-tiny)' } }, navErr) : null,
           docRow,
           resumeAction ? cmdButton(resumeAction) : null,
-          closeActions.length ? menuBtn('close', '收尾', '生成收尾指令（复制后粘到对话执行）') : null,
+          closeActions.length ? menuBtn('close', '复制收尾指令', '生成收尾指令（复制后粘到对话执行；没有写权限时用这条）') : null,
           stActions.length ? menuBtn('state', '直接收尾', '在面板里写入状态（经脚本校验，留转移记录）') : null,
+          (st && !stReady) ? React.createElement('span', { style: { fontSize: 'var(--t-tiny)', color: T.text2 }, title: '直接收尾需要 trace 里已有收尾字段；缺 ' + stMissing.join(' / ') + '，先用「复制收尾指令」或回到对话补录' },
+            '直接收尾不可用：缺 ' + stMissing.join(' / ')) : null,
           menuBtn('handoff', '交接包', '导出交接包到 traces/exports/，或接手另一台机器上的单'),
         ),
         // 动作组的展开区：固定在按钮行**下方**，同一时刻只有一块；按钮行本身不动。
@@ -2415,7 +2431,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             copied === openedCmd.key ? '已复制' : (copyFailKey === openedCmd.key ? '失败' : '复制')),
         ) : null,
       )
-      return React.createElement('div', { className: 'sleu-card', style: { background: T.bg, backgroundImage: 'var(--surf)', border: '1px solid var(--hair)', borderLeft: '3px solid ' + statusAccent, borderRadius: 'var(--r-lg)', marginBottom: 10 } },
+      return React.createElement('div', { className: 'sleu-card', style: { background: T.bg, backgroundImage: 'var(--surf)', border: '1px solid var(--hair)', borderLeft: '3px solid ' + (meta.acc || statusAccent), borderRadius: 'var(--r-lg)', marginBottom: 10 } },
         // 勾选框在整行按钮**外面**：整行是一个 button，把 checkbox 嵌进去是嵌套交互元素，
         // 键盘与事件都会打架。它只在「待升格」筛选下渲染。
         selectable ? React.createElement('label', { style: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px 0', fontSize: 'var(--t-sm)', color: T.text2, cursor: 'pointer' } },
@@ -2465,7 +2481,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               title: '本单的收尾方式（写入 trace 的 ending.kind）', style: tinyBadge('var(--d-amber)'),
             }, ((VOCAB_CACHE && VOCAB_CACHE.endings) || []).reduce((acc, e2) => e2.value === st.ending.kind ? e2.label : acc, st.ending.kind)) : null,
             (st && st.provenance && st.provenance.at) ? React.createElement('span', { style: { color: T.text2, fontSize: 'var(--t-tiny)' } },
-              '记录于 ' + String(st.provenance.at).slice(5, 16).replace('T', ' ') + (st.provenance.byLabel ? ' · ' + st.provenance.byLabel : '')) : null,
+              '记录于 ' + String(st.provenance.at).slice(5, 16).replace('T', ' ') + ' · '
+              + (st.provenance.source === 'import' ? (st.provenance.sourceLabel || '上一台机器') : (st.provenance.byLabel || ''))) : null,
             needSedOf(s) ? React.createElement('span', {
               title: '有 case 类沉淀候选（= 根因已形成可复用结论）、还没沉淀'
                 + (isClosedOf(s) ? '' : '；诊断尚未标收尾')

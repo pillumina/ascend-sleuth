@@ -2749,18 +2749,22 @@ return {
       if (expect) argv.push('--expect-sha256', expect)
       const kind = payload['ending.kind'] ? String(payload['ending.kind']) : ''
       if (action === 'reopen') argv.push('--reopen')
-      else if (action === 'correct-ending') { argv.push('--correct-ending'); if (payload.to) argv.push('--to', String(payload.to)); if (kind) argv.push('--kind', kind) }
-      else if (action === 'backfill-ending') { argv.push('--backfill-ending'); if (kind) argv.push('--kind', kind) }
-      else {
+      else if (action === 'correct-ending' || action === 'backfill-ending') {
+        argv.push(action === 'correct-ending' ? '--correct-ending' : '--backfill-ending')
+        if (payload.to) argv.push('--to', String(payload.to))
+        if (kind) argv.push('--kind', kind)
+      } else {
         const to = action.replace('close-', '')
         argv.push('--to', to)
         if (kind) argv.push('--kind', kind)
-        if (payload['ending.handed_to']) argv.push('--handed-to', String(payload['ending.handed_to']))
-        if (payload['ending.duplicate_of']) argv.push('--duplicate-of', String(payload['ending.duplicate_of']))
-        if (payload.summary) argv.push('--summary', String(payload.summary))
-        if (payload.severity) argv.push('--severity', String(payload.severity))
-        if (payload.fix_emitted !== undefined && payload.fix_emitted !== null) argv.push('--fix-emitted', payload.fix_emitted ? 'true' : 'false')
       }
+      // 三个分支都要透传的字段：收尾方式之外的必填/补录字段。分开写会让「补记/改收尾」
+      // 丢掉 handed_to/duplicate_of（实测：老 escalated 单补记永远报缺接手方）。
+      if (payload['ending.handed_to']) argv.push('--handed-to', String(payload['ending.handed_to']))
+      if (payload['ending.duplicate_of']) argv.push('--duplicate-of', String(payload['ending.duplicate_of']))
+      if (payload.summary) argv.push('--summary', String(payload.summary))
+      if (payload.severity) argv.push('--severity', String(payload.severity))
+      if (payload.fix_emitted !== undefined && payload.fix_emitted !== null) argv.push('--fix-emitted', payload.fix_emitted ? 'true' : 'false')
       return runTraceScript(sessionId, argv, true)
     })
 
