@@ -106,7 +106,7 @@ KNOWN_EXTERNAL_REASONS = {"probe-failed", "not-configured", "not-applicable", "n
 #   unknown             拿不到原因，如实写
 KNOWN_STOP_REASONS = {
     "resolved_confirmed", "halted_ask_user", "budget_exhausted",
-    "escalated_tier3", "abandoned", "unknown",
+    "escalated_tier3", "abandoned", "closed_by_user", "unknown",
 }
 
 

@@ -50,16 +50,17 @@ def check_panel_vocab(root: Path) -> list[str]:
     return errs
 
 
-def check_vocab_file(root: Path) -> int:
+def check_vocab_file(root: Path, panel_gate: bool = False) -> int:
     vocab = load_vocab(root)
-    errs = check_vocab(vocab) + check_panel_vocab(root)
+    errs = check_vocab(vocab) + (check_panel_vocab(root) if panel_gate else [])
     if errs:
         print("词表自洽检查失败：")
         for e in errs:
             print("  - " + e)
         return 1
+    tail = "；面板源码无旧状态常量" if panel_gate else ""
     print(f"词表自洽：{len(vocab['statuses'])} 个状态、{len(vocab['endings'])} 种收尾方式、"
-          f"{len(vocab['transitions'])} 个动作；面板源码无旧状态常量")
+          f"{len(vocab['transitions'])} 个动作{tail}")
     return 0
 
 
@@ -145,13 +146,15 @@ def main(argv=None) -> int:
     ap.add_argument("--root", default=None)
     ap.add_argument("--traces", default=None)
     ap.add_argument("--check", action="store_true", help="只查词表自洽（CI 用，不需要 traces）")
+    ap.add_argument("--panel-gate", action="store_true",
+                    help="同时查面板源码里没有旧状态常量（面板接投影完成后在 CI 打开）")
     ap.add_argument("--all", action="store_true", help="查本机全部 trace 的字段与事件")
     ap.add_argument("--strict", action="store_true", help="要求所有非导入终态单都有事件与收尾方式")
     args = ap.parse_args(argv)
 
     root = Path(args.root) if args.root else Path(__file__).resolve().parents[1]
     if args.check:
-        return check_vocab_file(root)
+        return check_vocab_file(root, panel_gate=args.panel_gate)
 
     traces = Path(args.traces) if args.traces else resolve_traces(root)
     if not traces.is_dir():

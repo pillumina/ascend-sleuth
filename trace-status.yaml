@@ -153,7 +153,7 @@ transitions:
       requires: [ending.kind], fillable: [summary], expands_to: [] }
   - { from: [resolved, escalated, archived], to: in_progress, action: reopen,
       action_label: 重新打开, expands_to: [] }
-  - { from: [resolved, escalated, archived], to: [resolved, escalated, archived], except_same: true,
+  - { from: [resolved, escalated, archived], to: [resolved, escalated, archived],
       action: correct-ending, action_label: 改收尾方式,
       expands_to: [reopen, close-resolved, close-escalated, close-archived] }
   - { from: [resolved, escalated, archived], to: [resolved, escalated, archived], same_status: true,

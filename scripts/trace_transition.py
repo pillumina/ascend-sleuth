@@ -209,6 +209,15 @@ def build_ending(choices: list[str], args) -> dict:
     return ending
 
 
+def kind_requires(vocab: dict, kind: str | None) -> list[str]:
+    """所选收尾方式自带的必填（`handed_off → ending.handed_to`、`duplicate → ending.duplicate_of`）。
+    补记老 `escalated` 单时同样要这些字段，否则会写出缺接手方的记录。"""
+    for e in vocab["endings"]:
+        if e["value"] == kind:
+            return list(e["requires"])
+    return []
+
+
 def check_fields(doc: dict, action: dict, args) -> dict:
     """`fillable` 缺失就要本次提供；`mustExist` 缺失直接拒（面板据此给「先去回报」）。"""
     updates = {}
@@ -249,7 +258,10 @@ def apply_transition(root: Path, traces: Path, sid: str, args) -> dict:
     raw = path.read_bytes()
     import hashlib
     sha = hashlib.sha256(raw).hexdigest()
-    text = raw.decode("utf-8")
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    body = raw[3:] if bom else raw
+    newline = "\r\n" if b"\r\n" in body else "\n"
+    text = body.decode("utf-8").replace("\r\n", "\n")
     doc = load_text(text) or {}
     if args.expect_sha256 and args.expect_sha256 != sha:
         last = (doc.get("transitions") or [{}])[-1] if doc.get("transitions") else {}
@@ -287,6 +299,9 @@ def apply_transition(root: Path, traces: Path, sid: str, args) -> dict:
         else:
             choices = [c["value"] for c in action["endingChoices"]]
         ending = build_ending(choices, args) if choices else None
+        if ending:
+            action = {**action,
+                      "requires": list(action["requires"]) + kind_requires(vocab, ending["kind"])}
         updates = check_fields(doc, action, args)
         events = [e for e in (doc.get("transitions") or []) if isinstance(e, dict)]
         at = now_iso()
@@ -315,10 +330,10 @@ def apply_transition(root: Path, traces: Path, sid: str, args) -> dict:
                 if not target:
                     raise Fail("E_SCHEMA", "目标状态与当前状态相同")
                 target_status = target[0]
-            if target_status == cur_status:
+            if target_status == cur_status and action["id"] != "correct-ending":
                 raise Fail("E_SCHEMA", "目标状态与当前状态相同")
-            if action["exceptSame"]:
-                # 改收尾方式 = 重开 + 收尾两条事件（历史可回放，不是原地改一个字）
+            if action["id"] == "correct-ending" and target_status != cur_status:
+                # 跨状态：重开 + 收尾两条事件（历史可回放，不是原地改一个字）
                 events.append({"at": at, "from": cur_status, "to": "in_progress",
                                "ending": None, "prev_ending": prev_ending,
                                "by": by, "source": source, "note": "改收尾方式：重新打开"})
@@ -332,9 +347,9 @@ def apply_transition(root: Path, traces: Path, sid: str, args) -> dict:
             new_status = target_status
             new_text = put_block(text, "status", scalar_block("status", new_status))
             new_text = put_block(new_text, "ending", ending_block(ending))
-            if new_status == "resolved":
+            if new_status == "resolved" and cur_status != "resolved":
                 new_text = put_block(new_text, "resolved_at", scalar_block("resolved_at", today_iso()))
-            if not doc.get("stop_reason"):
+            if action["id"].startswith("close-") and not doc.get("stop_reason"):
                 new_text = put_block(new_text, "stop_reason",
                                      scalar_block("stop_reason", args.stop_reason or "closed_by_user"))
 
@@ -352,14 +367,19 @@ def apply_transition(root: Path, traces: Path, sid: str, args) -> dict:
     lock_path = traces / ".transition"
     with log_lock(lock_path):
         tmp = path.with_suffix(".yaml.tmp")
-        write_text_lf(tmp, new_text)
-        if tmp.read_text(encoding="utf-8") != new_text:
+        payload = new_text.replace("\n", newline).encode("utf-8")
+        if bom:
+            payload = b"\xef\xbb\xbf" + payload
+        tmp.write_bytes(payload)
+        if tmp.read_bytes() != payload:
             tmp.unlink(missing_ok=True)
             raise Fail("E_IO", "写盘后的内容与内存不一致，已放弃")
         os.replace(tmp, path)
-    after = load_text(path.read_text(encoding="utf-8")) or {}
+    after_raw = path.read_bytes()
+    after_body = after_raw[3:] if after_raw.startswith(b"\xef\xbb\xbf") else after_raw
+    after = load_text(after_body.decode("utf-8")) or {}
     if not verify_untouched(before, after):
-        write_text_lf(path, text)
+        path.write_bytes(raw)
         raise Fail("E_IO", "写入后校验失败，已回滚")
     last = (after.get("transitions") or [{}])[-1]
     return {"ok": True,

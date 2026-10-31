@@ -97,10 +97,13 @@ def load_vocab(root: Path | str) -> dict:
             "sameStatus": bool(entry.get("same_status")),
             "expandsTo": _as_list(entry.get("expands_to")),
         })
-    severities = [{"value": str(x.get("value"))} for x in (doc.get("severity") or []) if isinstance(x, dict)]
+    severities = [{"value": str(x.get("value")), "label": str(x.get("label") or x.get("value"))}
+                  for x in (doc.get("severity") or []) if isinstance(x, dict)]
     if not severities:
-        # 严重级词表在 case schema（docs/spec/case-schema.md）；这里不另造，缺省给三档。
-        severities = [{"value": "benign"}, {"value": "service-affecting"}, {"value": "data-loss-risk"}]
+        # 词表缺这一段时不让面板空着（旧 trace-status.yaml 兼容）；正常应以文件为准。
+        severities = [{"value": "benign", "label": "不影响服务"},
+                      {"value": "service-affecting", "label": "影响服务"},
+                      {"value": "data-loss-risk", "label": "数据丢失风险"}]
     return {
         "statuses": statuses,
         "endings": endings,
@@ -233,6 +236,24 @@ def _nonempty(value) -> bool:
     return True
 
 
+def display_tone(status: str, feedback_outcome) -> dict:
+    """状态列的颜色/形状。库里算，面板不判——否则「颜色全来自投影」与「反向回报不用绿」
+    两条会互相打架（面板要么自己判、要么实现不了）。
+
+    口径：`resolved` + 反向回报（not_resolved / partial）降成灰，避免与「fix 未生效」的红
+    徽标同时出现；`resolved` + pending 用空心琥珀环（「待回报」）；其余按状态本身的颜色。
+    """
+    meta = STATUS_STYLE.get(status, STATUS_STYLE["unknown"])
+    if status == "resolved" and feedback_outcome in NEGATIVE_OUTCOMES:
+        return {"color": STATUS_STYLE["archived"]["color"], "accent": STATUS_STYLE["archived"]["accent"],
+                "hollow": False, "reason": "已定位但回报未生效"}
+    if status == "resolved" and feedback_outcome == "pending":
+        return {"color": "var(--c-amber)", "accent": "var(--acc-amber)",
+                "hollow": True, "reason": "待回报"}
+    return {"color": meta["color"], "accent": meta["accent"], "hollow": status == "unknown",
+            "reason": ""}
+
+
 def actions_for(doc: dict, vocab: dict, derived: dict) -> list[dict]:
     """当前状态允许的动作。面板只渲染它，不再自己算规则。
 
@@ -247,13 +268,17 @@ def actions_for(doc: dict, vocab: dict, derived: dict) -> list[dict]:
     for t in vocab["transitions"]:
         if status not in t["from"]:
             continue
+        if t["action"] == "correct-ending" and not ending:
+            continue  # 没有收尾方式时是「补记」，不是「改」
         if t["sameStatus"]:
             if ending:
                 continue
         elif t["exceptSame"]:
             if not ending:
                 continue
-        elif status in t["to"]:
+        elif status in t["to"] and t["action"] != "correct-ending":
+            # 普通转移不许目标等于当前状态；`correct-ending` 例外——它就是「换成另一种
+            # 收尾方式」，同状态允许（写入口会按单条事件处理，不重开）。
             continue
         kinds = [t["ending"]] if t["ending"] else list(t["endingChoices"])
         must_exist = list(t["mustExist"]) + (list(t["mustExistIfCase"]) if derived["caseKind"] == "case" else [])
@@ -387,10 +412,11 @@ def project(traces_root: Path | str, kb_root: Path | str, caps: dict | None = No
             "derived": derived,
             "transitions": [
                 {"at": e.get("at"), "from": e.get("from"), "to": e.get("to"),
-                 "ending": (e.get("ending") or {}).get("kind") if isinstance(e.get("ending"), dict) else None,
+                 "ending": e.get("ending") if isinstance(e.get("ending"), dict) else None,
                  "by": e.get("by"), "source": e.get("source")}
                 for e in (doc.get("transitions") or []) if isinstance(e, dict)
             ],
+            "displayTone": display_tone(str(doc.get("status") or "unknown"), feedback_of(doc)["outcome"]),
             "actions": [a["id"] for a in actions_for(doc, vocab, derived)],
         }
         if entry["error"]:
