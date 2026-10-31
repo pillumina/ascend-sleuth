@@ -332,10 +332,13 @@ groom 还负责置信度结算：跑 `settle_trace_feedback.py`，把上一周�
   → 不用再走一遍深度排查
 ```
 
-groom 的 R8 信号让共性提炼不靠人肉发现：
+groom 的 R8 信号让共性提炼不靠人肉发现。先按 case 的 `title` 与 `symptoms` 里的可检索键聚合，没有键的再按 tag（tag 覆盖其中一部分，不保证全覆盖）：
 
 ```
-[示例输出] R8：同 tag case ≥3 → 建议 --ingest-cases
+[示例输出] ref_gap_index：按键 × 动作出行，每个 case 判一个动作
+  回链  code:507015  5/5  cann-runtime-error-codes
+  提炼  exc:EngineDeadError  5/7  无
+[示例输出] R8（tag 维度）：同 tag case ≥3 → 建议 --ingest-cases
   moe 标签 4 条 case → 建议提炼（已产出 ascend-moe-comm-triage）
 ```
 
