@@ -2350,8 +2350,9 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             setStEdit(v => ({ ...v, msg: '解析不到主检出：请在主检出的面板里打开这一单再写' }))
             return
           }
-          doCopy(manualCmd(), 'manual-' + stAct.id)
-          setStEdit(v => ({ ...v, msg: '已复制命令：在仓库根目录运行（当前会话没有写权限）' }))
+          copyText(manualCmd()).then(ok => setStEdit(v => ({ ...v,
+            copyCmd: manualCmd(),
+            msg: ok ? '已复制命令：在仓库根目录运行（当前会话没有写权限）' : '复制失败：下面的命令可手动选中复制' })))
           return
         }
         setStEdit(v => ({ ...v, busy: true, msg: '写入中…' }))
@@ -2364,16 +2365,18 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               const one = (VOCAB_CACHE && Array.isArray(VOCAB_CACHE.statuses)) ? VOCAB_CACHE.statuses.filter(y => y.value === x)[0] : null
               return one ? one.label : String(x || '')
             }
-            setStEdit(v => ({ ...v, busy: false, done: true, msg: '已记录：' + lbl(r.from) + ' → ' + lbl(r.to) + '，列表已刷新' }))
+            // 刷新是异步的：先写「正在刷新」，不把没发生的事写成已发生。
+            setStEdit(v => ({ ...v, busy: false, done: true, msg: '已记录：' + lbl(r.from) + ' → ' + lbl(r.to) + '，正在刷新列表…' }))
             if (typeof onRebuilt === 'function') onRebuilt()
           } else {
             const code = r && r.code
-            setStEdit(v => ({ ...v, busy: false, msg: '失败：' + String((r && (r.message || code)) || '未知错误')
-              + (code === 'E_STATE_CHANGED' ? '；这一单刚被改过，点刷新查看当前状态' : '')
-              + (code === 'E_PERM' ? '；已把这一步转成可复制命令，在仓库根目录运行' : '') }))
             if (code === 'E_PERM' && caps && caps.reasonCode !== 'E_NO_ROOT') {
-              doCopy(manualCmd(), 'manual-' + stAct.id)
+              copyText(manualCmd()).then(ok => setStEdit(v => ({ ...v, busy: false, copyCmd: manualCmd(),
+                msg: ok ? '没有写权限：已复制命令，在仓库根目录运行' : '没有写权限，且复制失败：下面的命令可手动选中复制' })))
+              return
             }
+            setStEdit(v => ({ ...v, busy: false, msg: '失败：' + String((r && (r.message || code)) || '未知错误')
+              + (code === 'E_STATE_CHANGED' ? '；这一单刚被改过，点刷新查看当前状态' : '') }))
           }
         }).catch(e => setStEdit(v => ({ ...v, busy: false, msg: '失败：' + String(e && e.message || e) })))
       }
@@ -2427,7 +2430,10 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             disabled: stEdit.busy || stEdit.done,
             style: (stEdit.busy || stEdit.done) ? btnGhost : btnPrimary,
           }, stEdit.done ? '已记录' : stEdit.busy ? '写入中…' : canWrite ? (stAct.id === 'reopen' ? '确认重新打开' : stAct.id === 'correct-ending' ? '确认改收尾' : stAct.id === 'backfill-ending' ? '确认补记' : '确认收尾') : '复制命令'),
-          stEdit.msg ? React.createElement('span', { role: stEdit.msg.indexOf('失败') === 0 ? 'alert' : 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: stEdit.msg.indexOf('失败') === 0 ? T.error : T.text2 } }, stEdit.msg) : null) : null,
+          stEdit.msg ? React.createElement('span', { role: (stEdit.msg.indexOf('失败') === 0 || stEdit.msg.indexOf('复制失败') === 0) ? 'alert' : 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: (stEdit.msg.indexOf('失败') === 0 || stEdit.msg.indexOf('复制失败') === 0) ? T.error : T.text2 } }, stEdit.msg) : null) : null,
+        stAct && (!canWrite || stEdit.copyCmd) ? React.createElement('code', {
+          style: { display: 'block', userSelect: 'all', background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '5px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', overflowX: 'auto', whiteSpace: 'pre-wrap', color: T.text },
+        }, stEdit.copyCmd || manualCmd()) : null,
         (st.provenance && st.provenance.at) ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
           '最近记录：' + String(st.provenance.at).slice(5, 16).replace('T', ' ') + ' · '
           + (st.provenance.source === 'import' ? (st.provenance.sourceLabel || '上一台机器') : (st.provenance.byLabel || ''))) : null,

@@ -318,7 +318,8 @@ def actions_for(doc: dict, vocab: dict, derived: dict) -> list[dict]:
                     "label": status_meta(vocab, target_status)["label"],
                     "requires": list(other["requires"]),
                     "fillable": list(other["fillable"]),
-                    "mustExist": list(other["mustExist"]),
+                    "mustExist": list(other["mustExist"]) + (
+                        list(other["mustExistIfCase"]) if derived["caseKind"] == "case" else []),
                     "endingChoices": [
                         {"value": k,
                          "label": next((e["label"] for e in vocab["endings"] if e["value"] == k), k),

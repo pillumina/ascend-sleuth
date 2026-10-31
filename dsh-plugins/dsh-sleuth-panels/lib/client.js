@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:0bd9677f3d5d)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:5e9914d8137f)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:f684735469ce)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:119062e6c579)
 // 校验：`node scripts/build_panel_bundle.js --check`。
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:0bd9677f3d5d) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:5e9914d8137f) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -472,7 +472,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.8.4'
+    const PANEL_VERSION = '0.8.5'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -2423,8 +2423,9 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             setStEdit(v => ({ ...v, msg: '解析不到主检出：请在主检出的面板里打开这一单再写' }))
             return
           }
-          doCopy(manualCmd(), 'manual-' + stAct.id)
-          setStEdit(v => ({ ...v, msg: '已复制命令：在仓库根目录运行（当前会话没有写权限）' }))
+          copyText(manualCmd()).then(ok => setStEdit(v => ({ ...v,
+            copyCmd: manualCmd(),
+            msg: ok ? '已复制命令：在仓库根目录运行（当前会话没有写权限）' : '复制失败：下面的命令可手动选中复制' })))
           return
         }
         setStEdit(v => ({ ...v, busy: true, msg: '写入中…' }))
@@ -2437,16 +2438,18 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               const one = (VOCAB_CACHE && Array.isArray(VOCAB_CACHE.statuses)) ? VOCAB_CACHE.statuses.filter(y => y.value === x)[0] : null
               return one ? one.label : String(x || '')
             }
-            setStEdit(v => ({ ...v, busy: false, done: true, msg: '已记录：' + lbl(r.from) + ' → ' + lbl(r.to) + '，列表已刷新' }))
+            // 刷新是异步的：先写「正在刷新」，不把没发生的事写成已发生。
+            setStEdit(v => ({ ...v, busy: false, done: true, msg: '已记录：' + lbl(r.from) + ' → ' + lbl(r.to) + '，正在刷新列表…' }))
             if (typeof onRebuilt === 'function') onRebuilt()
           } else {
             const code = r && r.code
-            setStEdit(v => ({ ...v, busy: false, msg: '失败：' + String((r && (r.message || code)) || '未知错误')
-              + (code === 'E_STATE_CHANGED' ? '；这一单刚被改过，点刷新查看当前状态' : '')
-              + (code === 'E_PERM' ? '；已把这一步转成可复制命令，在仓库根目录运行' : '') }))
             if (code === 'E_PERM' && caps && caps.reasonCode !== 'E_NO_ROOT') {
-              doCopy(manualCmd(), 'manual-' + stAct.id)
+              copyText(manualCmd()).then(ok => setStEdit(v => ({ ...v, busy: false, copyCmd: manualCmd(),
+                msg: ok ? '没有写权限：已复制命令，在仓库根目录运行' : '没有写权限，且复制失败：下面的命令可手动选中复制' })))
+              return
             }
+            setStEdit(v => ({ ...v, busy: false, msg: '失败：' + String((r && (r.message || code)) || '未知错误')
+              + (code === 'E_STATE_CHANGED' ? '；这一单刚被改过，点刷新查看当前状态' : '') }))
           }
         }).catch(e => setStEdit(v => ({ ...v, busy: false, msg: '失败：' + String(e && e.message || e) })))
       }
@@ -2500,7 +2503,10 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             disabled: stEdit.busy || stEdit.done,
             style: (stEdit.busy || stEdit.done) ? btnGhost : btnPrimary,
           }, stEdit.done ? '已记录' : stEdit.busy ? '写入中…' : canWrite ? (stAct.id === 'reopen' ? '确认重新打开' : stAct.id === 'correct-ending' ? '确认改收尾' : stAct.id === 'backfill-ending' ? '确认补记' : '确认收尾') : '复制命令'),
-          stEdit.msg ? React.createElement('span', { role: stEdit.msg.indexOf('失败') === 0 ? 'alert' : 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: stEdit.msg.indexOf('失败') === 0 ? T.error : T.text2 } }, stEdit.msg) : null) : null,
+          stEdit.msg ? React.createElement('span', { role: (stEdit.msg.indexOf('失败') === 0 || stEdit.msg.indexOf('复制失败') === 0) ? 'alert' : 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: (stEdit.msg.indexOf('失败') === 0 || stEdit.msg.indexOf('复制失败') === 0) ? T.error : T.text2 } }, stEdit.msg) : null) : null,
+        stAct && (!canWrite || stEdit.copyCmd) ? React.createElement('code', {
+          style: { display: 'block', userSelect: 'all', background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '5px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', overflowX: 'auto', whiteSpace: 'pre-wrap', color: T.text },
+        }, stEdit.copyCmd || manualCmd()) : null,
         (st.provenance && st.provenance.at) ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
           '最近记录：' + String(st.provenance.at).slice(5, 16).replace('T', ' ') + ' · '
           + (st.provenance.source === 'import' ? (st.provenance.sourceLabel || '上一台机器') : (st.provenance.byLabel || ''))) : null,
