@@ -448,6 +448,9 @@ jobs:
       # 装包脚本自测：自带假服务器把八条判定各走一遍（装好 / 已装改使能 / spec 被拒 / 安装失败 /
       # 查状态 / 卸载 / /api 没认领端点 / 拿不到地址），不需要真 DSH；真机那一次要 DSH 在跑，不进 CI。
       - run: node scripts/panel_install.js --selftest
+      # 桌面版临时实例验证的自测：自带假 dsh 把四条判定各走一遍（全通 / dump 缺层 / 未登记 / 登记不完整），
+      # 不需要真 DSH；真机那一次要桌面版安装目录自带的命令行，不进 CI。
+      - run: node scripts/verify_panel_desktop.js --selftest
       # vllm-kb 接入插件的离线自测：配置归一化与读写、repo#编号→source_id、四个能力的请求形状、
       # 输出截断、5xx 映射、可用性三态与缓存，以及配置路由的鉴权/解析/探测/404。
       # 全部打桩（进程内假服务替代真接口），不需要 DSH，也不需要内网实例；真机那一次按插件 README 走。
