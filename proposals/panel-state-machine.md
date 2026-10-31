@@ -110,6 +110,12 @@ axes:
 stop_reasons:
   - { value: closed_by_user, label: 用户在面板收尾 }   # 其余值在 trace_metrics.py，PR1 只加这一个
 
+# 严重级三档（与 docs/spec/case-schema.md 同口径；面板输入位从这份读）
+severity:
+  - { value: benign,            label: 不影响服务 }
+  - { value: service-affecting, label: 影响服务 }
+  - { value: data-loss-risk,    label: 数据丢失风险 }
+
 ending_kinds:
   - { value: root_cause,       label: 根因明确,     statuses: [resolved] }
   - { value: handed_off,       label: 转交他人跟进, statuses: [escalated], requires: [ending.handed_to] }
@@ -129,7 +135,7 @@ transitions:
       requires: [ending.kind], fillable: [summary], expands_to: [] }
   - { from: [resolved, escalated, archived], to: in_progress, action: reopen,
       action_label: 重新打开, expands_to: [] }
-  - { from: [resolved, escalated, archived], to: [resolved, escalated, archived], except_same: true,
+  - { from: [resolved, escalated, archived], to: [resolved, escalated, archived],
       action: correct-ending, action_label: 改收尾方式,
       expands_to: [reopen, close-resolved, close-escalated, close-archived] }
   - { from: [resolved, escalated, archived], to: [resolved, escalated, archived], same_status: true,
@@ -137,7 +143,7 @@ transitions:
       requires: [ending.kind], expands_to: [] }
 ```
 
-键定义（`verify_trace_status.py --check` 全查）：`from`/`to` 元素必须是 `status:` 段声明过的值；`except_same: true` 表示 `to` 里与当前状态相同的那个不合法；`same_status: true` 是唯一允许状态不变的动作（补记）；`expands_to` 必须是本段出现过的 action id，空列表表示不展开；`ending`/`ending_choices` 必须与 `ending_kinds[].statuses` 一致；`must_exist_if_case` 是命中真实 case 时才要求的 `must_exist`。字段引用一律写 §5.3 的路径（`ending.handed_to`）。
+键定义（`verify_trace_status.py --check` 全查）：`from`/`to` 元素必须是 `status:` 段声明过的值；`same_status: true` 表示允许状态不变（只用于 `backfill-ending`）；`correct-ending` 也允许同状态：目标与当前不同 → 「重开 + 收尾」两条事件，目标与当前相同 → 一条 `from == to` 的事件（只改收尾字段，不重开）；`requires` 取动作自身的 `requires` ∪ 所选收尾方式在 `ending_kinds[].requires` 里的字段（补记老 `escalated` 单同样要求 `handed_to`）；`expands_to` 必须是本段出现过的 action id，空列表表示不展开；`ending`/`ending_choices` 必须与 `ending_kinds[].statuses` 一致；`must_exist_if_case` 是命中真实 case 时才要求的 `must_exist`。字段引用一律写 §5.3 的路径（`ending.handed_to`）。
 
 ### 5.2 trace 顶层字段
 
@@ -158,7 +164,7 @@ transitions:                             # 只追加
     note: ""
 ```
 
-`ended_at` 不改写。收尾时刻从 `transitions[-1].at` 读；老数据没有事件时退回 `updated_at`，投影标 `timeSource: updated_at`。
+`ended_at` 不改写。收尾时刻从 `transitions[-1].at` 读；老数据没有事件时退回 `updated_at`，投影标 `timeSource: updated_at`。重新打开时**删除**顶层 `ending` 键（不是写 `null`），写入口、校验、投影三处都按「键不存在」判定。
 
 ### 5.3 字段清单
 
@@ -199,21 +205,24 @@ project(traces_root, kb_root, caps) -> dict    # 面板与 CLI 共用
     "feedback": {"outcome": "pending", "pendingSince": "…"},
     "sedimented": {"state": "none", "case_id": ""},
     "provenance": {"statusBy": "agent", "statusAt": "…", "source": "agent", "timeSource": "transitions"},
-    "derived": {"open": false, "closed": true, "needSed": true, "needReview": false, "needPromote": false,
+    "displayTone": {"color": "var(--c-green)", "accent": "var(--acc-green)", "hollow": false, "reason": "正常已定位"},
+    "derived": {"open": false, "closed": true, "needWork": false, "needSed": true, "needReview": false, "needPromote": false,
                 "needConfirm": true, "skeleton": false, "submitted": false,
                 "caseKind": "none", "sedState": "none", "valueRank": 4},
-    "transitions": [{"at": "…", "from": "in_progress", "to": "resolved", "ending": "root_cause",
+    "transitions": [{"at": "…", "from": "in_progress", "to": "resolved", "ending": {"kind": "root_cause", "handed_to": "", "duplicate_of": "", "note": ""},
                      "by": "agent", "source": "agent"}],
     "actions": ["reopen", "correct-ending"]
   }]
 }
 ```
 
+`displayTone` 由库算（面板只渲染）：`resolved` 且 `feedback.outcome` 为 `not_resolved`/`partial` 用灰；`resolved` 且 `pending` 用空心琥珀环；其余按 status 颜色。`needWork` = `open && !skeleton && !needSed && !needReview && !submitted`。
+
 派生量口径与出处：`closed`（命中单看 `feedback.outcome == resolved`；无命中单看 `status == resolved` 且无显式 outcome，`verify_case_draft.py:229-236`）、`sedState`（`panel-client.js:854`）、`caseKind`（占位串正则同 `panel-host.js:337-344`）、`skeleton`（`panel-client.js:884`）、`open`/`needSed`/`needReview`/`needPromote`（`panel-client.js:857-912`）、`needConfirm`（`resolved` 且 `outcome == pending`，新增）、`submitted`（`panel-client.js:906`）、`valueRank`（`panel-client.js:915-935` 的档次与破平，必须搬，那里自己写着「两处各算一份就会给出两套价值」）、`timeSource`（有 `transitions` 用 `at`，否则 `updated_at`）。
 
 ### 6.2 CLI `scripts/trace_state.py`
 
-薄封装：`--json` 打印 `project(...)`；`--session <id>` 打单条；`--check` 只做词表自洽（CI 用）。投影自带 mtime+size 缓存（`traces/` 11MB、单份最大约 104KB），缓存放 `traces/.state-cache.json`，schema 变更即丢弃重建。
+薄封装：`--json` 打印 `project(...)`；`--session <id>` 打单条；`--check` 只做词表自洽（CI 用）。投影自带 mtime+size 缓存（`traces/` 11MB、单份最大约 104KB），缓存放 `traces/.state-cache.json`，schema 变更即丢弃重建；缓存写失败不阻断投影（只读会话照常返回），且该缓存不参与列表计数、导入判定与结算。
 
 ### 6.3 写入口 `scripts/trace_transition.py`
 
@@ -221,17 +230,17 @@ project(traces_root, kb_root, caps) -> dict    # 面板与 CLI 共用
 python3 scripts/trace_transition.py <sid> --to archived --kind duplicate --duplicate-of case:VLLM-ASC-11312 \
     [--summary …] [--severity …] [--fix-emitted true|false] [--stop-reason closed_by_user] \
     [--by user] [--source panel] [--expect-sha256 <hex>] [--dry-run] [--json]
-python3 scripts/trace_transition.py <sid> --field sedimented --state submitted --inbox-path … [--dry-run]
+python3 scripts/trace_transition.py <sid> --field sedimented --state submitted --inbox-path … [--expect-sha256 <hex>] [--dry-run]
 python3 scripts/trace_transition.py <sid> --reopen [--json]
 ```
 
 要求：
 
 1. 定位顶层键用 `yaml.compose()` 的 mark，不用正则找 `^status:`（block scalar 里可能出现同名文本）。
-2. 写前取 `log_lock`（`scripts/exec_log_path.py:215`）；`os.replace` 原子替换；换行风格用 `_stdio.write_text_lf`；保留 BOM / CRLF / 无尾换行。
+2. 读用字节（`read_bytes()` + 显式解码），不做换行归一（`read_text()` 会把 CRLF 折成 LF）。写前取 `log_lock`（`scripts/exec_log_path.py:215`）；`os.replace` 原子替换；原文件是 CRLF 就按 CRLF 写回、是 LF 就按 LF；无尾换行保持无尾。
 3. 写后重解析并深比较未被触碰的顶层键，不一致回滚（退出码 4）。
-4. CAS：`--expect-sha256` 比对内容哈希；未传时按 status + ending 比对（面板路径必须传）。
-5. 写集合：`status`、`ending`、`resolved_at`（仅 resolved）、`updated_at`、`stop_reason`，加本次传入的 `fillable`；其余不动。
+4. CAS：三个子命令都接受 `--expect-sha256` 并比对内容哈希；面板路径必须传（`--field sedimented` 尤其必须——它改的字段不在 status/ending 里）。
+5. 写集合按动作分三份：`close-*` 写 `status`、`ending`、`updated_at` 与本次 `fillable`（`resolved_at` 只在目标 `resolved` 且原状态不是 `resolved` 时写；`stop_reason` 只在原值为空时写 `closed_by_user`）；`reopen`/`correct-ending`/`backfill-ending` 写 `status`（跨状态时）、`ending`、`updated_at`，不写 `stop_reason`、不写 `resolved_at`；`--field sedimented` 只写 `sedimented` 与 `updated_at`，不追加 `transitions`。
 6. 事件：`at`、`from`、`to`、`ending`（本次后的完整快照，重开时 `null`）、`prev_ending`、`by`、`source`、`note`。
 7. 输出：人读一行；`--json` 给 `{ok, from, to, changed, event, current}`；失败给 `{ok:false, code, message, requirements:[…]}`。
 8. **写入语义统一**：三个子命令默认写盘，`--dry-run` 才只校验（不沿用 `sediment_batch.py` 那套 `--apply`）。
@@ -251,7 +260,7 @@ python3 scripts/trace_transition.py <sid> --reopen [--json]
 ### 6.4 一致性检查 `scripts/verify_trace_status.py`
 
 - `--check`（CI，不需要 traces）：词表自洽（§5.1 全部键与引用）+ grep 门（状态字面量只许出现在 `trace-status.yaml` 与 `_trace_state.py`）。
-- `--all`（本机报现状）：字段一致性与事件校验——终态必有 `ending`；`handed_off` 有 `handed_to`；`duplicate` 有 `duplicate_of`；`in_progress` 无 `ending`；有 `transitions` 的单校验每条 `from`/`to` 合法、与上一条 `to` 接得上、`at` 是 ISO 8601、`ending`/`prev_ending` 形状正确；另列「老终态单缺收尾方式」计数。**grandfather**：只有带 `transitions` 的单做「终态必有 ending」；**导入单**（`traces/handoff/<sid>.yaml` 存在）不计入 `--strict`。
+- `--all`（本机报现状）：字段一致性与事件校验——终态必有 `ending`；`handed_off` 有 `handed_to`；`duplicate` 有 `duplicate_of`；非终态不得有 `ending`；有 `transitions` 的单校验每条 `from`/`to` 合法、**首条之后**每条与上一条 `to` 接得上、`at` 是 ISO 8601、`ending`/`prev_ending` 形状正确；`from == to` 只允许出现在 `correct-ending` 与 `backfill-ending` 的事件上；另列「老终态单缺收尾方式」计数。**grandfather**：只有带 `transitions` 的单做「终态必有 ending」；**导入单**（`traces/handoff/<sid>.yaml` 存在）不计入 `--strict`。
 - `--strict`（本机）：所有非导入终态单都要有 `transitions` 与 `ending`。
 
 ### 6.5 面板
@@ -268,15 +277,15 @@ RPC：
 能力位与降级：
 
 - `canWrite` / `writeRoot` **只用** `mainCheckoutOf(rawCwdOf(sessionId))`（`panel-host.js:136-176`）判断，不复用 `resolveCwd()` 的返回值——它解析不到时会退回会话 cwd（`panel-host.js:186-191`），正好会写出「状态写进 worktree、面板仍读主检出」的错。解析不到即 `canWrite:false`，写入口退出码 5。
-- `canWrite:false` 时入口按钮不变，编辑器照常收集必填；最后一步的「确认收尾」换成「复制命令（在仓库根目录运行）」，命令带已填值、sessionId 与 sha256。
+- `capabilities.reason` 分 `E_PERM`（解析到主检出但会话档位不许写）与 `E_NO_ROOT`（解析不到主检出）。`E_PERM` 时入口不变，编辑器照常收集必填，最后一步换成「复制命令（在仓库根目录运行）」（带已填值、sessionId、sha256），复制成功用 `aria-live` 播报「已复制」；`E_NO_ROOT` 时不给复制命令，给「在主检出打开面板」。
 - 写入的 workspaceRoot 一律用 `writeRoot`；脚本自己解析文件也只用主检出，解析不到 fail closed（5），不退回会话 cwd。
 - 握手：脚本输出 `schemeVersion`，host 不接受未知版本并提示刷新面板包。
 
 客户端：
 
 - 删除 `RESUMEABLE`、`statusMeta`、`STATUS_LABEL`、`statusAccent`；标签、颜色、动作、kind 候选全部来自投影。
-- 动作区：进行中 →「收尾」（三个动作）；有 `ending` 的终态 →「重新打开」+「改收尾方式」；缺 `ending` 的终态 →「补记收尾方式」+「重新打开」。后两者互斥。
-- 编辑器：打开时焦点进编辑器标题并 `scrollIntoView({block:'nearest'})`；`↑↓/←→` 组内移动，`Enter` 选中并落到必填，`Enter` 在提交按钮上提交，`Esc` 关闭并把焦点还给触发按钮；有输入时用原生 `confirm()` 确认后丢弃。数字键个数按投影动作数动态生成（PR1 为 `1-3`），号码印在选项上，输入框聚焦时不生效。
+- 动作区：进行中 →「收尾」（三个动作）；有 `ending` 的终态 →「重新打开」+「改收尾方式」；缺 `ending` 的终态 →「补记收尾方式」+「重新打开」。「改收尾方式」与「补记收尾方式」按有无 `ending` 二选一。
+- 编辑器：打开时焦点进编辑器标题并 `scrollIntoView({block:'nearest'})`；`↑↓/←→` 组内移动，`Enter` 选中并落到必填，`Enter` 在提交按钮上提交，`Esc` 关闭并把焦点还给触发按钮；有输入时用原生 `confirm()` 确认后丢弃。数字键个数按**编辑器里的选项数**动态生成（终态卡「改收尾方式」有 3 个收尾选项，卡片动作只有 2 个），号码印在选项上，输入框聚焦时不生效。
 - 无障碍：`role=radiogroup` + `aria-checked` + `aria-labelledby` 指向编辑器标题；触发按钮 `aria-expanded`/`aria-controls`；错误 `role=alert` + `aria-invalid` + `aria-describedby` 并把焦点移到第一个错误字段；成功条 `role=status` + `aria-live=polite`；`.dot`/`▾` 加 `aria-hidden`；触发按钮最小 32px 高、左右 8px。
 - 提交：只在 RPC `ok:true` 后更新；提交中禁用并显示「正在写入…」；失败按 `code` 给原因与下一步，保留编辑器与已填内容；`E_STATE_CHANGED` 的 `{谁}` 映射成「本机用户 / agent / 命令行」、时间 `MM-DD HH:mm`、状态用面板标签；新状态是终态时只给「刷新查看」与「复制命令」，仍是进行中才给「按当前状态重试」。
 - 成功后用返回的完整投影刷新该行；若不匹配当前筛选，留在原位显示「已从本筛选移出 · 撤销」，不立即消失。
@@ -285,9 +294,9 @@ RPC：
 
 列表信息预算：
 
-- 收起态第二行最多一个收尾方式徽标（`root_cause` 不显示）+ 一个欠账徽标（待回报 / 待沉淀 / 报告待复核）。
+- 收起态第二行最多一个收尾方式徽标（`root_cause` 不显示）+ 一个欠账徽标（待回报 / 待沉淀 / 报告待复核）。「fix 已验证」徽标只在 `caseKind === 'case'` 时渲染。
 - 记录来源右对齐固定槽位（「记录于 10-31 14:32 · 本机用户 / agent / 上一台机器」），窄屏隐藏留 tooltip。
-- 状态列按进度上色：进行中蓝、已定位绿、已转交他人灰、不再跟进灰、未记录空心灰；`resolved + feedback: not_resolved / partial` 不用绿（改灰），否则与旁边「fix 未生效」红徽标矛盾；`resolved + pending` 用空心琥珀环。README 颜色角色表加例外：状态列颜色表达进度，不表达「该不该你做事」；绿色不表示 fix 已验证。
+- 状态列的颜色与形状全部来自投影的 `displayTone`（库算）：进行中蓝、已定位绿、已转交他人灰、不再跟进灰、未记录空心灰；`resolved + not_resolved/partial` 库降成灰、`resolved + pending` 库给空心琥珀环。README 颜色角色表加例外：状态列颜色表达进度，不表达「该不该你做事」；绿色不表示 fix 已验证。
 
 ### 6.6 既有写者白名单与 skills
 
@@ -327,7 +336,7 @@ RPC：
       ending: {kind: duplicate, handed_to: "", duplicate_of: "case:VLLM-ASC-11312", note: ""},
       prev_ending: null, by: user, source: panel, note: "补记收尾方式" }
   ```
-- 不为历史数据批量补 `ending`；面板对缺 `ending` 的终态单给「补记收尾方式」（同状态写，不重开）。
+- 不为历史数据批量补 `ending`；面板对缺 `ending` 的终态单给「补记收尾方式」（同状态写，不重开）；补记编辑器写明「不知道就取消、保持未记录；不要填猜测值」，「未记录收尾方式」用中性灰、不作欠账徽标。
 - `ended_at` 保持原义，不由写入口改写。
 
 ## 9 回报轴（PR2 设计留接口）
@@ -340,11 +349,11 @@ RPC：
 2. `python3 scripts/verify_trace_status.py --all`：本机字段与事件一致性（老单只报计数）。
 3. `python3 -m unittest discover tests -v`：新增 `tests/test_trace_transition.py`、`tests/test_trace_state.py`。
 4. 既有读端回归：`verify_case_draft.py --all`、`sediment_batch.py`、`export_trace.py --list`、`replay_trace.py --help`、`metrics_health.py`。
-5. `node scripts/panel_render_check.js`（断言用渲染文本）：终态卡无「收尾」入口；缺 `ending` 的终态卡只有「补记收尾方式」+「重新打开」；进行中卡无「重新打开」；只渲染投影给的 actions，未知 action 不渲染；数字键数 = 选项数；旧词按 §7 逐行生成精确 token 禁用（`结局`、`不跟了`、`转上游`、`标于`、`终态`、`重开`、`结算于`、`待现场确认`、`结论待核对`、`没有对应案例`、`上游答复`、`vllm`）；`aria-expanded`/`aria-checked`/`role=alert`/`aria-live`/`aria-labelledby` 存在；写调用分两类断言（转移与沉淀带 `workspace-write` + `--expect-sha256` + `--json`；导出与重建只带 `workspace-write`），替换 `panel_render_check.js:2416-2422` 的全局计数；四组失败用例（缺必填、CAS 冲突、`canWrite:false`、RPC 失败）保留内容并给复制命令。
+5. `node scripts/panel_render_check.js`（断言用渲染文本）：终态卡无「收尾」入口；缺 `ending` 的终态卡只有「补记收尾方式」+「重新打开」；进行中卡无「重新打开」；只渲染投影给的 actions，未知 action 不渲染；数字键数 = 编辑器选项数；旧词断言由 §7「现在」列全量生成（含 `已解决 · fix 生效`、`已标为`、`标过`、`结论未记录`、`补记结论`、`这单结束了`、`改结局`、`修正结论`、`回报现场结果`、`按报告的修复解决`、`用别的方法解决`、`部分解决`、`没解决`；`提交`/`撤回`/`待复核` 是通用词，按上下文断言）；`aria-expanded`/`aria-checked`/`role=alert`/`aria-live`/`aria-labelledby` 存在；写调用分两类断言（转移与 `--field sedimented` 都带 `workspace-write` + `--expect-sha256` + `--json`；导出与重建只带 `workspace-write`），替换 `panel_render_check.js:2416-2422` 的全局计数；四组失败用例（缺必填、CAS 冲突、`canWrite:false`、RPC 失败）保留内容并给复制命令。
 6. `check_panel_tokens.js`、`check_panel_bundle.js`、`panel_rpc_probe.js --selftest`：RPC 计数与 fs 守卫同步、新端点 stub。
 7. `build_panel_bundle.js --check` + `package.json` 版本 bump。
 8. `build_docs_index.py --check`；`trace_metrics.py` 与 `diagnosis-trace.md` 已含 `closed_by_user`。
-9. 可复跑 measure：临时 trace 上跑「收尾 → 重新打开 → 改收尾方式」，断言 `transitions` 三条、`prev_ending` 完整、`resolved_at` 已写、`--check` 通过、`actions_for` 每步只给合法项。
+9. 可复跑 measure：临时 trace 上跑「收尾（1 条事件）→ 改收尾方式（跨状态，展开 2 条）」，断言共 3 条、`prev_ending` 完整、`resolved_at` 只在目标 `resolved` 且原状态不是 `resolved` 时写、`--check` 通过、`actions_for` 每步只给合法项；另跑「同状态改收尾字段」断言只有 1 条 `from == to` 的事件。
 10. 人审清单（写进 PR body）：收尾方式是否互斥；焦点顺序与播报；颜色语义与列表可扫性；60 单密度；文案语气。
 
 ## 11 风险与回退
@@ -411,6 +420,7 @@ RPC：
 | 60 单信息预算（U-I7） | 第二行最多两个徽标；来源固定槽位；筛选移出留原位 | §6.5 |
 | 渲染断言误伤（U-I8） | 渲染文本 + 精确 token + 逐调用点 + 四组失败用例 | §10.5 |
 | 「查看历史」缺入口（U-S1） | 展开态「收尾记录」折叠 | §6.5 |
+| 第 3 轮 1 阻断 + 12 重要（A3-* / U-1..U-10） | 写集合按动作分三份、三子命令都收 sha、`displayTone` 库算、`needWork` 进投影、同状态改收尾允许 1 条事件、measure 与 token 表重写、severity 进词表、补记允许取消 | §5.1/§5.2/§6.1/§6.3/§6.5/§7/§8/§10 |
 
 ## 14 已定的取舍
 
