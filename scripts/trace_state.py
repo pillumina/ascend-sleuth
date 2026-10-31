@@ -70,7 +70,8 @@ def main(argv=None) -> int:
         print(json.dumps(data, ensure_ascii=False))
     else:
         for s in data["sessions"]:
-            print(f"{s['sessionId']}\t{s['status']}\t{','.join(s['actions'])}")
+            ids = [a["id"] if isinstance(a, dict) else str(a) for a in s["actions"]]
+            print(f"{s['sessionId']}\t{s['status']}\t{','.join(ids)}")
     return 0
 
 

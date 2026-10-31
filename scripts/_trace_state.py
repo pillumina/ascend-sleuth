@@ -122,6 +122,7 @@ def load_vocab(root: Path | str) -> dict:
         "transitions": transitions,
         "severities": severities,
         "stopReasons": [str(x.get("value")) for x in (doc.get("stop_reasons") or []) if isinstance(x, dict)],
+        "sedStates": [str(x.get("value")) for x in (doc.get("sedimented") or []) if isinstance(x, dict)],
     }
 
 
@@ -139,13 +140,18 @@ def is_terminal(vocab: dict, value: str) -> bool:
 
 
 def case_kind(active_case) -> str:
-    """case / placeholder / none。占位串不是 case id（同 `verify_case_draft.py` 的判据）。"""
+    """case / placeholder / none。
+
+    口径与面板 host（`panel-host.js:337-344`）和升格闸门一致：**非空且不是占位串即 case**。
+    这里不做 `REAL_CASE` 的格式校验——带注释的 active_case（如 `VLLM-ASC-11312 (see #1)`）
+    在 host 侧算命中，判据必须同一口径，否则会出现「面板说已闭环、闸门拦下」。
+    """
     raw = "" if active_case is None else str(active_case).strip()
-    if REAL_CASE.match(raw):
-        return "case"
+    if not raw or raw.lower() in ("null", "none", "nil", "n/a", "na"):
+        return "none"
     if PLACEHOLDER_CASE.match(raw):
         return "placeholder"
-    return "none"
+    return "case"
 
 
 def feedback_of(doc: dict) -> dict:

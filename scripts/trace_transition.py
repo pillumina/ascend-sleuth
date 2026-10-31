@@ -47,7 +47,7 @@ from _yaml import load_text  # noqa: E402
 from exec_log_path import log_lock, resolve_traces  # noqa: E402
 
 TOUCHED = {"status", "ending", "resolved_at", "updated_at", "stop_reason", "transitions",
-           "summary", "severity", "fix_emitted"}
+           "sedimented", "summary", "severity", "fix_emitted"}
 CODE_EXIT = {"E_SCHEMA": 2, "E_STATE_CHANGED": 3, "E_IO": 4, "E_PERM": 5,
              "E_NOT_FOUND": 6, "E_SCHEMA_VERSION": 7}
 
@@ -160,6 +160,8 @@ def find_entry(doc: dict, key: str) -> bool:
 # ── 校验 ────────────────────────────────────────────────────────────────────
 def pick_action(doc: dict, vocab: dict, derived: dict, args, allowed: list | None = None) -> dict:
     allowed = allowed if allowed is not None else actions_for(doc, vocab, derived)
+    if args.to == "in_progress" and not args.reopen:
+        args.reopen = True
     if args.reopen:
         for a in allowed:
             if a["id"] == "reopen":
@@ -218,12 +220,44 @@ def kind_requires(vocab: dict, kind: str | None) -> list[str]:
     return []
 
 
+def check_enums(doc: dict, vocab: dict, args) -> None:
+    """写入口也要查枚举：不在词表里的值一旦落盘，`--all` 只能事后发现，而它当时还是「合法」的。"""
+    summary = getattr(args, "summary", None)
+    if summary is not None:
+        if not str(summary).strip():
+            raise Fail("E_SCHEMA", "summary 不能为空", requirements=["summary"])
+        if "summary" not in action_ids(doc, vocab):
+            pass
+    severity = getattr(args, "severity", None)
+    if severity is not None:
+        allowed = {s["value"] for s in vocab["severities"]}
+        if severity not in allowed:
+            raise Fail("E_SCHEMA", f"severity={severity!r} 不在词表里", requirements=sorted(allowed))
+    when = getattr(args, "stop_reason", None)
+    if when is not None:
+        allowed = set(vocab.get("stopReasons") or []) | {"closed_by_user"}
+        if when not in allowed:
+            raise Fail("E_SCHEMA", f"stop_reason={when!r} 不在词表里", requirements=sorted(allowed))
+    if args.field == "sedimented":
+        allowed = set(vocab.get("sedStates") or []) or {"none", "submitted", "knowledge", "archived"}
+        if args.state not in allowed:
+            raise Fail("E_SCHEMA", f"sedimented.state={args.state!r} 不在词表里", requirements=sorted(allowed))
+
+
+def action_ids(doc: dict, vocab: dict) -> set:
+    return {t["action"] for t in vocab["transitions"]}
+
+
 def check_fields(doc: dict, action: dict, args) -> dict:
     """`fillable` 缺失就要本次提供；`mustExist` 缺失直接拒（面板据此给「先去回报」）。"""
     updates = {}
     missing = []
     for field in action["fillable"]:
         value = getattr(args, field.replace(".", "_"), None)
+        if field == "fix_emitted" and isinstance(value, str):
+            if value not in ("true", "false"):
+                raise Fail("E_SCHEMA", "fix_emitted 只接受 true / false", requirements=["fix_emitted"])
+            value = value == "true"
         if value is not None:
             updates[field] = value
         elif not _present(doc, field):
@@ -249,6 +283,18 @@ def _present(doc: dict, field: str) -> bool:
 
 # ── 主流程 ──────────────────────────────────────────────────────────────────
 def apply_transition(root: Path, traces: Path, sid: str, args) -> dict:
+    """锁必须包住「读 → CAS → 生成 → 写 → 校验」整段。
+
+    只锁写那一步时，两个窗口拿同一份 sha 都能通过 CAS，后写者用自己的旧快照覆盖前者的
+    事件（评审复现：两次调用都 ok，文件里只剩 1 条事件）。所以这里先取锁再读文件。
+    """
+    if args.dry_run:
+        return _apply_locked(root, traces, sid, args)
+    with log_lock(traces / ".transition-write"):
+        return _apply_locked(root, traces, sid, args)
+
+
+def _apply_locked(root: Path, traces: Path, sid: str, args) -> dict:
     vocab = load_vocab(root)
     if args.scheme_version and args.scheme_version != SCHEME:
         raise Fail("E_SCHEMA_VERSION", f"面板期望 {args.scheme_version}，脚本是 {SCHEME}")
@@ -279,6 +325,7 @@ def apply_transition(root: Path, traces: Path, sid: str, args) -> dict:
     else:
         derived = derive(doc, set())
         allowed = actions_for(doc, vocab, derived)
+        check_enums(doc, vocab, args)
         action = pick_action(doc, vocab, derived, args, allowed)
         cur_status = str(doc.get("status") or "unknown")
         # 「改收尾方式」与「补记收尾方式」在转移表里没有写死 kind：前者取目标收尾动作的
@@ -322,6 +369,10 @@ def apply_transition(root: Path, traces: Path, sid: str, args) -> dict:
                            "by": by, "source": source, "note": args.note or "补记收尾方式"})
             new_status = cur_status
             new_text = put_block(text, "ending", ending_block(ending))
+            if cur_status == "resolved" and not str(doc.get("resolved_at") or "").strip():
+                # 老 resolved 单常见缺 resolved_at；补记时一并补上（取补记时刻的日期），
+                # 否则补出来的记录会被自己的 --all 判成「有事件但缺 resolved_at」。
+                new_text = put_block(new_text, "resolved_at", scalar_block("resolved_at", today_iso()))
         else:
             if action["id"] == "correct-ending":
                 target_status = str(args.to)
@@ -347,7 +398,7 @@ def apply_transition(root: Path, traces: Path, sid: str, args) -> dict:
             new_status = target_status
             new_text = put_block(text, "status", scalar_block("status", new_status))
             new_text = put_block(new_text, "ending", ending_block(ending))
-            if new_status == "resolved" and cur_status != "resolved":
+            if new_status == "resolved" and (cur_status != "resolved" or not str(doc.get("resolved_at") or "").strip()):
                 new_text = put_block(new_text, "resolved_at", scalar_block("resolved_at", today_iso()))
             if action["id"].startswith("close-") and not doc.get("stop_reason"):
                 new_text = put_block(new_text, "stop_reason",
@@ -362,12 +413,16 @@ def apply_transition(root: Path, traces: Path, sid: str, args) -> dict:
         before = doc
 
     if args.dry_run:
-        return {"ok": True, "dryRun": True, "changed": ["status", "ending", "transitions"]}
+        changed = [k for k in ("status", "ending", "sedimented", "resolved_at", "stop_reason",
+                               "summary", "severity", "fix_emitted") if getattr(args, k, None) is not None]
+        return {"ok": True, "dryRun": True, "changed": changed}
 
-    lock_path = traces / ".transition"
-    with log_lock(lock_path):
+    if True:
         tmp = path.with_suffix(".yaml.tmp")
-        payload = new_text.replace("\n", newline).encode("utf-8")
+        out_text = new_text
+        if not text.endswith("\n") and out_text.endswith("\n"):
+            out_text = out_text[:-1]
+        payload = out_text.replace("\n", newline).encode("utf-8")
         if bom:
             payload = b"\xef\xbb\xbf" + payload
         tmp.write_bytes(payload)
@@ -449,6 +504,13 @@ def main(argv=None) -> int:
         else:
             print(exc.message, file=sys.stderr)
         return CODE_EXIT.get(exc.code, 2)
+    except PermissionError:
+        payload = {"ok": False, "code": "E_PERM", "message": "当前会话没有写权限"}
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False))
+        else:
+            print(payload["message"], file=sys.stderr)
+        return CODE_EXIT["E_PERM"]
     except Exception as exc:  # 未预期错误也要给稳定 code，面板才有一句人话
         payload = {"ok": False, "code": "E_IO", "message": str(exc)}
         if args.json:

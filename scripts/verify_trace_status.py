@@ -7,7 +7,7 @@
             （`traces/` 是 gitignored 的运行时件，CI 里没有它）。
   --all     本机现状：字段一致性与转移事件校验。老数据按 grandfather 规则不判违规
             （只有带 `transitions` 的单才要求「终态必有收尾方式」），导入单（交接包落位）
-            ���计入。
+            不计入。
   --strict  本机：要求所有非导入终态单都有 `transitions` 与 `ending`。给人看，不进 CI。
 
 口径：终态必有 `ending`；`handed_off` 有 `handed_to`；`duplicate` 有 `duplicate_of`；
@@ -71,6 +71,8 @@ def check_trace(entry: dict, vocab: dict, strict: bool, imported: bool) -> list[
     if doc is None:
         return [f"{sid}: YAML 解析失败（{entry['error']}）"]
     status = str(doc.get("status") or "unknown")
+    if status not in {s["value"] for s in vocab["statuses"]}:
+        errs.append(f"{sid}: status={status!r} 不在词表里")
     ending = doc.get("ending")
     events = [e for e in (doc.get("transitions") or []) if isinstance(e, dict)]
     terminal = is_terminal(vocab, status)
