@@ -1,0 +1,306 @@
+<!DOCTYPE html><html lang='zh-CN'><head><meta charset='utf-8'>
+<meta name='viewport' content='width=device-width,initial-scale=1'>
+<title>CPU Host 性能分析报告</title><style>
+:root{--bg:#0d1117;--panel:#161b22;--panel2:#1c2129;--border:#2d3742;--txt:#c9d1d9;
+--muted:#8b949e;--blue:#4a9eff;--red:#d64545;--orange:#d98f00;--green:#2e9e5b;--gray:#6b7280}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font-family:"Segoe UI","PingFang SC","Microsoft YaHei",
+"Noto Sans CJK SC",sans-serif;font-size:14px;line-height:1.7;padding:0 0 60px}
+.wrap{max-width:900px;margin:0 auto;padding:0 20px}
+header{background:linear-gradient(135deg,#10161f,#141d2a);border-bottom:1px solid var(--border);
+padding:26px 0 18px;margin-bottom:22px}
+h1{font-size:22px;font-weight:600;letter-spacing:.5px}
+.meta{color:var(--muted);font-size:12.5px;margin-top:6px}
+h2{font-size:17px;font-weight:600;margin:34px 0 12px;padding-left:10px;
+border-left:3px solid var(--blue)}
+h3{font-size:14.5px;font-weight:600;margin:16px 0 8px;color:#dce3ea}
+p{margin:6px 0}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin:12px 0}
+.kpis{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+.kpi{flex:1 1 130px;min-width:130px;background:var(--panel);border:1px solid var(--border);
+border-radius:10px;padding:12px 14px}
+.kpi .v{font-size:22px;font-weight:600;font-family:Consolas,monospace}
+.kpi .n{font-size:12px;color:var(--muted);margin-top:2px}
+.badge{display:inline-block;padding:3px 12px;border-radius:20px;font-size:12.5px;font-weight:600;color:#fff}
+.status-hero{background:var(--panel);border:1px solid var(--border);border-radius:12px;
+padding:20px 22px;margin:16px 0}
+.status-hero .big{font-size:26px;font-weight:700;margin:4px 0 10px}
+table{width:100%;border-collapse:collapse;margin:8px 0;font-size:13px}
+th{background:var(--panel2);color:var(--muted);text-align:left;padding:7px 10px;
+border:1px solid var(--border);font-weight:600;white-space:nowrap}
+td{padding:7px 10px;border:1px solid var(--border);vertical-align:top}
+td.num,th.num{text-align:right;font-family:Consolas,monospace}
+.finding{background:var(--panel);border:1px solid var(--border);border-left:4px solid var(--gray);
+border-radius:8px;padding:14px 18px;margin:12px 0}
+.finding h3{margin:0 0 8px}
+.finding .tagline{font-size:12px;color:var(--muted);margin-bottom:8px}
+.finding .lbl{color:var(--muted)}
+.finding ol{margin:4px 0 0 22px}
+.finding li{margin:3px 0}
+.evt{background:var(--panel2);border-radius:6px;padding:2px 6px;font-family:Consolas,monospace;font-size:12.5px}
+.chart{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;margin:12px 0;overflow-x:auto}
+.legend{font-size:12px;color:var(--muted);margin:6px 0 2px}
+.note{color:var(--muted);font-size:12.5px}
+.warn-box{background:#2a2110;border:1px solid #6b5410;border-radius:8px;padding:10px 14px;margin:10px 0;font-size:13px}
+ol.pri{margin:8px 0 0 22px}ol.pri li{margin:5px 0}
+.footer{color:var(--muted);font-size:12px;margin-top:40px;text-align:center}
+@media print{body{background:#fff;color:#111}.card,.kpi,.finding,.chart,.status-hero{border-color:#ccc}}
+/* ---- 左侧固定导航目录 ---- */
+:root{--tocpad:216px}
+html{scroll-behavior:smooth}
+body{padding-left:var(--tocpad)}
+h2{scroll-margin-top:14px}
+header{margin-left:calc(-1 * var(--tocpad));padding-left:var(--tocpad)}
+nav#toc{position:fixed;left:0;top:0;bottom:0;width:200px;overflow-y:auto;z-index:99;
+background:#0a0f16;border-right:1px solid var(--border);padding:18px 10px}
+nav#toc .toc-title{color:var(--muted);font-size:12px;font-weight:600;letter-spacing:2px;
+padding:0 8px 10px;border-bottom:1px solid var(--border);margin-bottom:8px}
+nav#toc a{display:block;color:#9aa7b4;text-decoration:none;font-size:12.8px;
+padding:6px 8px;border-radius:6px;line-height:1.45}
+nav#toc a:hover{background:#161f2c;color:#e6edf3}
+nav#toc a.active{background:#1c3252;color:#4a9eff}
+nav#toc .toc-foot{color:#4a5568;font-size:10.5px;padding:12px 8px 0;margin-top:10px;
+border-top:1px solid var(--border)}
+@media (max-width:1024px){body{padding-left:0}header{margin-left:0;padding-left:0}nav#toc{display:none}}
+@media print{body{padding-left:0}header{margin-left:0;padding-left:0}nav#toc{display:none}}
+</style></head><body><nav id='toc'><div class='toc-title'>报告目录</div><a href='#sec-1' data-sec='sec-1'>1. Executive Summary（结论摘要）</a><a href='#sec-2' data-sec='sec-2'>2. 问题证据总表</a><a href='#sec-3' data-sec='sec-3'>3. 问题详情</a><a href='#sec-4' data-sec='sec-4'>4. CPU 总体状态</a><a href='#sec-5' data-sec='sec-5'>5. CPU Core Balance（各核心负载）</a><a href='#sec-6' data-sec='sec-6'>6. Scheduler 调度分析</a><a href='#sec-7' data-sec='sec-7'>7. IRQ / SoftIRQ 分析</a><a href='#sec-8' data-sec='sec-8'>8. CPU Frequency / Idle 分析</a><a href='#sec-9' data-sec='sec-9'>9. Task / Thread 分析</a><a href='#sec-10' data-sec='sec-10'>10. Affinity / NUMA 分析</a><a href='#sec-11' data-sec='sec-11'>11. 时间窗口分析</a><a href='#sec-12' data-sec='sec-12'>12. 根因判断</a><a href='#sec-13' data-sec='sec-13'>13. 优化建议</a><a href='#sec-14' data-sec='sec-14'>14. 数据说明与指标解释</a><div class='toc-foot'>cpu_host_performance</div></nav>
+<header><div class='wrap'><h1>CPU Host 性能分析报告</h1>
+<div class='meta'>数据格式：ftrace 文本 (目录内) ｜ 采集时长：10.0 秒 ｜ 核心数：8 ｜ 分析时间：2026-09-09 12:36:08</div></div></header>
+<div class='wrap'>
+<h2 id='sec-1'>1. Executive Summary（结论摘要）</h2>
+<div class='status-hero'><div class='lbl'>Host 健康状态</div>
+<div class='big' style='color:#d64545'>CRITICAL（严重异常）</div></div>
+<div class='kpis'>
+<div class='kpi'><div class='v' style='color:#c9d1d9'>34.8%</div><div class='n'>CPU 平均利用率</div></div>
+<div class='kpi'><div class='v' style='color:#d64545'>95.0%</div><div class='n'>单核最高利用率</div></div>
+<div class='kpi'><div class='v' style='color:#c9d1d9'>210/s</div><div class='n'>上下文切换率</div></div>
+<div class='kpi'><div class='v' style='color:#d64545'>99.20 ms</div><div class='n'>调度延迟 P99</div></div>
+<div class='kpi'><div class='v' style='color:#c9d1d9'>12.51%</div><div class='n'>硬中断总占比</div></div>
+<div class='kpi'><div class='v' style='color:#d64545'>57.63%</div><div class='n'>软中断总占比</div></div>
+</div>
+<div class='card' style='border-left:4px solid #d64545'>
+<h3>核心问题：软中断集中于 CPU 2</h3>
+<p><span class='lbl'>置信度：</span><span class='evt'>HIGH</span> ｜ <span class='lbl'>类别：</span><span class='evt'>SOFTIRQ_HOTSPOT</span></p>
+<p><span class='lbl'>影响：</span>软中断处理挤占计算线程运行时间，调度延迟上升，训练/推理吞吐下降</p>
+<p class='lbl' style='margin-top:10px'>解决方案（按优先级）：</p><ol class='pri'>
+<li>检查 /proc/softirqs 与 /proc/interrupts 中网络中断分布</li>
+<li>开启/调大网卡多队列 (RSS) 并用 ethtool -X 均衡队列</li>
+<li>用 irqbalance 或 smp_affinity 将 NET_RX 分散到多核</li>
+<li>评估业务通信量是否异常 (如 all-reduce 风暴)</li>
+</ol></div>
+<h2 id='sec-2'>2. 问题证据总表</h2>
+<table><tr><th>指标</th><th class='num'>当前值</th><th>基线/阈值</th><th>状态</th></tr>
+<tr><td>CPU 平均利用率</td><td class='num'>34.8%</td><td>&lt;70% 健康</td><td style='color:#2e9e5b;font-weight:600'>正常</td></tr>
+<tr><td>单核最高利用率</td><td class='num'>95.0%</td><td>&lt;90% 健康</td><td style='color:#d98f00;font-weight:600'>饱和</td></tr>
+<tr><td>上下文切换率</td><td class='num'>210 次/秒</td><td>单核&gt;2000/s 偏高</td><td style='color:#2e9e5b;font-weight:600'>正常</td></tr>
+<tr><td>调度延迟 P99</td><td class='num'>99.20 ms</td><td>≥5ms 警告 / ≥20ms 严重</td><td style='color:#d98f00;font-weight:600'>异常</td></tr>
+<tr><td>硬中断总占比</td><td class='num'>12.51%</td><td>单核≥15% 关注热点</td><td style='color:#2e9e5b;font-weight:600'>正常</td></tr>
+<tr><td>软中断总占比</td><td class='num'>57.63%</td><td>单核≥20% 关注热点</td><td style='color:#2e9e5b;font-weight:600'>关注</td></tr>
+</table><p class='note'>指标含义见第 14 节「指标与事件说明」。</p>
+<h2 id='sec-3'>3. 问题详情</h2>
+<div class='finding' style='border-left-color:#d64545'><h3>软中断集中于 CPU 2 <span class='badge' style='background:#d64545'>严重</span> <span class='evt'>置信度 HIGH</span></h3><div class='tagline'>类别：<span class='evt'>SOFTIRQ_HOTSPOT</span> — 软中断热点：软中断（如 NET_RX 网络收包）集中消耗个别核心 CPU</div><p><span class='lbl'>证据：</span></p><table><tr><th>指标</th><th>当前值</th><th>判定阈值</th></tr><tr><td class='evt'>CPU 2 软中断 CPU 占比</td><td><b>56.4%</b></td><td>≥20% 且≥中位数 2.0 倍</td></tr><tr><td class='evt'>Top 软中断类型</td><td><b>NET_RX(5640ms), RCU(80ms), TIMER(40ms)</b></td><td>-</td></tr></table><p><span class='lbl'>影响：</span>软中断处理挤占计算线程运行时间，调度延迟上升，训练/推理吞吐下降</p><p><span class='lbl'>可能根因：</span>该核集中处理了软中断，且以网络收包 (NET_RX) 为主：网卡队列中断亲和性固定于单核，通信/收包量大时极易打满</p><p class='lbl'>建议措施：</p><ol class='pri'><li>检查 /proc/softirqs 与 /proc/interrupts 中网络中断分布</li><li>开启/调大网卡多队列 (RSS) 并用 ethtool -X 均衡队列</li><li>用 irqbalance 或 smp_affinity 将 NET_RX 分散到多核</li><li>评估业务通信量是否异常 (如 all-reduce 风暴)</li></ol></div>
+<div class='finding' style='border-left-color:#d64545'><h3>调度延迟严重 <span class='badge' style='background:#d64545'>严重</span> <span class='evt'>置信度 HIGH</span></h3><div class='tagline'>类别：<span class='evt'>SCHEDULER_LATENCY</span> — 调度延迟过大：任务被唤醒后长时间得不到 CPU</div><p><span class='lbl'>证据：</span></p><table><tr><th>指标</th><th>当前值</th><th>判定阈值</th></tr><tr><td class='evt'>调度延迟 P99</td><td><b>99.20 ms</b></td><td>≥5ms 警告 / ≥20ms 严重</td></tr><tr><td class='evt'>调度延迟平均值</td><td><b>21.641 ms</b></td><td>-</td></tr><tr><td class='evt'>受影响最大的任务</td><td><b>python_main (最大 99.2ms); worker_0 (最大 44.0ms); worker_net (最大 25.4ms)</b></td><td>-</td></tr></table><p><span class='lbl'>影响：</span>关键线程被唤醒后需等待较久才能运行，通信/数据准备节奏被打断，NPU 等待 Host</p><p><span class='lbl'>可能根因：</span>CPU 竞争 (饱和/中断/优先级) 导致 runnable 排队</p><p class='lbl'>建议措施：</p><ol class='pri'><li>结合 CPU 利用率与中断热点结论处理根源负载</li><li>提高关键线程优先级 (nice/chrt) 或绑核隔离 (isolcpus/cpuset)</li><li>减少 Host 线程数，避免过度并发</li></ol></div>
+<div class='finding' style='border-left-color:#d98f00'><h3>CPU 负载严重不均衡 <span class='badge' style='background:#d98f00'>警告</span> <span class='evt'>置信度 HIGH</span></h3><div class='tagline'>类别：<span class='evt'>CPU_IMBALANCE</span> — CPU 负载不均衡：少数核心打满而大量核心空闲，常见于绑核不当或中断亲和性集中</div><p><span class='lbl'>证据：</span></p><table><tr><th>指标</th><th>当前值</th><th>判定阈值</th></tr><tr><td class='evt'>最高核利用率 (CPU 2)</td><td><b>95.0%</b></td><td>≥90%</td></tr><tr><td class='evt'>核心利用率中位数</td><td><b>5.0%</b></td><td>差值≥40% 判定不均衡</td></tr><tr><td class='evt'>空闲核数量 (利用率≤30%)</td><td><b>5 个</b></td><td>-</td></tr></table><p><span class='lbl'>影响：</span>部分核心打满成为瓶颈，同时大量算力闲置，吞吐受限</p><p><span class='lbl'>可能根因：</span>软中断集中在该核 (疑为 IRQ affinity 将网卡中断固定到单核)</p><p class='lbl'>建议措施：</p><ol class='pri'><li>检查 IRQ affinity: cat /proc/interrupts，将高频中断分散 (echo 掩码 &gt; /proc/irq/N/smp_affinity)</li><li>检查业务线程绑核配置 (taskset/numactl)，把任务分散到空闲核</li><li>开启 RPS/XPS 或 RSS 多队列分散网络软中断</li></ol></div>
+<div class='finding' style='border-left-color:#d98f00'><h3>任务迁移频繁 <span class='badge' style='background:#d98f00'>警告</span> <span class='evt'>置信度 MEDIUM</span></h3><div class='tagline'>类别：<span class='evt'>TASK_MIGRATION_HIGH</span> — 任务迁移频繁：任务在核间频繁搬移，破坏缓存局部性</div><p><span class='lbl'>证据：</span></p><table><tr><th>指标</th><th>当前值</th><th>判定阈值</th></tr><tr><td class='evt'>迁移速率</td><td><b>129.8 次/秒</b></td><td>≥50 次/秒 视为频繁 (近似统计)</td></tr><tr><td class='evt'>迁移最多的任务</td><td><b>pid:1003 (600 次); pid:1002 (399 次); pid:1005 (199 次)</b></td><td>-</td></tr></table><p><span class='lbl'>影响：</span>跨核迁移导致 L1/L2 缓存与 TLB 失效，可能跨 NUMA 访存，性能抖动</p><p><span class='lbl'>可能根因：</span>负载均衡器频繁搬移任务或任务未绑核</p><p class='lbl'>建议措施：</p><ol class='pri'><li>将关键线程固定核心 (taskset -c / numactl --physcpubind)</li><li>调小内核调度域负载均衡激进度 (如 sched_migration_cost_ns 调大)</li></ol></div>
+<h2 id='sec-4'>4. CPU 总体状态</h2>
+<div class='card'><p>/proc/stat 快照（开机以来累计）：user 48.0%、system 11.4%、iowait 0.6%、irq 1.1%、softirq 1.7%、idle 37.2%、steal 0.1%。</p>
+<p class='note'>注意：trace 只能区分 busy/idle；user/system/iowait 为开机累计值，仅供参考。</p></div>
+<h2 id='sec-5'>5. CPU Core Balance（各核心负载）</h2>
+<div class='chart'>
+<svg xmlns='http://www.w3.org/2000/svg' width='760' height='186' font-family='sans-serif'><text x='0' y='18' font-size='11' fill='#c9d1d9' text-anchor='start'>CPU 0</text><rect x='110' y='5' width='550' height='16' rx='3' fill='#22303c'/><rect x='110' y='5' width='463.2' height='16' rx='3' fill='#d98f00'/><text x='758' y='18' font-size='11' fill='#c9d1d9'>80.0%</text><text x='0' y='40' font-size='11' fill='#c9d1d9' text-anchor='start'>CPU 1</text><rect x='110' y='27' width='550' height='16' rx='3' fill='#22303c'/><rect x='110' y='27' width='451.6' height='16' rx='3' fill='#d98f00'/><text x='758' y='40' font-size='11' fill='#c9d1d9'>78.0%</text><text x='0' y='62' font-size='11' fill='#c9d1d9' text-anchor='start'>CPU 2</text><rect x='110' y='49' width='550' height='16' rx='3' fill='#22303c'/><rect x='110' y='49' width='550.0' height='16' rx='3' fill='#d64545'/><text x='758' y='62' font-size='11' fill='#c9d1d9'>95.0%</text><text x='0' y='84' font-size='11' fill='#c9d1d9' text-anchor='start'>CPU 3</text><rect x='110' y='71' width='550' height='16' rx='3' fill='#22303c'/><rect x='110' y='71' width='28.9' height='16' rx='3' fill='#4a9eff'/><text x='758' y='84' font-size='11' fill='#c9d1d9'>5.0%</text><text x='0' y='106' font-size='11' fill='#c9d1d9' text-anchor='start'>CPU 4</text><rect x='110' y='93' width='550' height='16' rx='3' fill='#22303c'/><rect x='110' y='93' width='28.9' height='16' rx='3' fill='#4a9eff'/><text x='758' y='106' font-size='11' fill='#c9d1d9'>5.0%</text><text x='0' y='128' font-size='11' fill='#c9d1d9' text-anchor='start'>CPU 5</text><rect x='110' y='115' width='550' height='16' rx='3' fill='#22303c'/><rect x='110' y='115' width='28.9' height='16' rx='3' fill='#4a9eff'/><text x='758' y='128' font-size='11' fill='#c9d1d9'>5.0%</text><text x='0' y='150' font-size='11' fill='#c9d1d9' text-anchor='start'>CPU 6</text><rect x='110' y='137' width='550' height='16' rx='3' fill='#22303c'/><rect x='110' y='137' width='28.9' height='16' rx='3' fill='#4a9eff'/><text x='758' y='150' font-size='11' fill='#c9d1d9'>5.0%</text><text x='0' y='172' font-size='11' fill='#c9d1d9' text-anchor='start'>CPU 7</text><rect x='110' y='159' width='550' height='16' rx='3' fill='#22303c'/><rect x='110' y='159' width='28.9' height='16' rx='3' fill='#4a9eff'/><text x='758' y='172' font-size='11' fill='#c9d1d9'>5.0%</text></svg>
+</div>
+<table><tr><th>核心</th><th class='num'>利用率</th><th class='num'>空闲比</th><th class='num'>上下文切换/s</th><th class='num'>硬中断占比</th><th class='num'>软中断占比</th></tr>
+<tr><td class='evt'>CPU 0</td><td class='num'>80.0%</td><td class='num'>20.0%</td><td class='num'>40</td><td class='num'>0.0%</td><td class='num'>0.0%</td></tr>
+<tr><td class='evt'>CPU 1</td><td class='num'>78.0%</td><td class='num'>22.0%</td><td class='num'>90</td><td class='num'>0.0%</td><td class='num'>0.0%</td></tr>
+<tr><td class='evt'>CPU 2</td><td class='num'>95.0%</td><td class='num'>5.0%</td><td class='num'>60</td><td class='num'>12.5%</td><td class='num'>56.4%</td></tr>
+<tr><td class='evt'>CPU 3</td><td class='num'>5.0%</td><td class='num'>95.0%</td><td class='num'>4</td><td class='num'>0.0%</td><td class='num'>0.2%</td></tr>
+<tr><td class='evt'>CPU 4</td><td class='num'>5.0%</td><td class='num'>95.0%</td><td class='num'>4</td><td class='num'>0.0%</td><td class='num'>0.2%</td></tr>
+<tr><td class='evt'>CPU 5</td><td class='num'>5.0%</td><td class='num'>95.0%</td><td class='num'>4</td><td class='num'>0.0%</td><td class='num'>0.2%</td></tr>
+<tr><td class='evt'>CPU 6</td><td class='num'>5.0%</td><td class='num'>95.0%</td><td class='num'>4</td><td class='num'>0.0%</td><td class='num'>0.2%</td></tr>
+<tr><td class='evt'>CPU 7</td><td class='num'>5.0%</td><td class='num'>95.0%</td><td class='num'>4</td><td class='num'>0.0%</td><td class='num'>0.2%</td></tr>
+</table>
+<p>最高负载：2（95.0%），最低：3（5.0%）。<b style='color:#d98f00'>存在明显不均衡，详见问题详情。</b></p>
+<h2 id='sec-6'>6. Scheduler 调度分析</h2>
+<div class='card'>
+<p>上下文切换总计 <b>2,095</b> 次（210 次/秒）</p>
+<p>唤醒总计 <b>895</b> 次（90 次/秒）— 唤醒率反映任务碎片化程度。</p>
+<p>调度延迟：平均 21.641 ms，P50 2.697 ms，P95 99.20 ms，P99 99.20 ms，最大 99.20 ms（共 791 次可配对样本）。</p>
+<p class='note'>调度延迟含义：调度延迟 (scheduling latency)：任务从被唤醒 (sched_wakeup) 到真正获得 CPU (sched_switch) 的等待时间，直接体现 runnable 队列拥堵程度。</p>
+<p>平均可运行任务数 1.7 — 平均可运行任务数 (runnable)：任意时刻处于等待 CPU 状态的平均任务数，&gt;核心数说明调度拥挤。</p>
+</div>
+<table><tr><th>任务</th><th class='num'>最大延迟 ms</th><th class='num'>平均 ms</th><th class='num'>次数</th></tr>
+<tr><td>python_main (pid 1005)</td><td class='num'>99.20</td><td class='num'>49.753</td><td class='num'>199</td></tr>
+<tr><td>worker_0 (pid 1001)</td><td class='num'>44.00</td><td class='num'>44.000</td><td class='num'>99</td></tr>
+<tr><td>worker_net (pid 1002)</td><td class='num'>25.40</td><td class='num'>18.153</td><td class='num'>17</td></tr>
+<tr><td>worker_2 (pid 1002)</td><td class='num'>22.92</td><td class='num'>5.287</td><td class='num'>458</td></tr>
+<tr><td>worker_1 (pid 1002)</td><td class='num'>10.00</td><td class='num'>7.300</td><td class='num'>18</td></tr>
+</table>
+<h2 id='sec-7'>7. IRQ / SoftIRQ 分析</h2>
+<h3>7.1 硬中断</h3>
+<p>硬中断总 CPU 占比 <b>12.51%</b>（3,400 次）。</p>
+<table><tr><th>中断源</th><th class='num'>次数</th><th class='num'>累计耗时 ms</th><th>说明</th></tr>
+<tr><td class='evt'>eth0</td><td class='num'>2,300</td><td class='num'>920.0</td><td>网卡中断（eth*/enp*/ens*），网络通信的核心中断来源。</td></tr>
+<tr><td class='evt'>nvme0q2</td><td class='num'>1,100</td><td class='num'>330.0</td><td>NVMe 存储队列中断（nvme0q*），数据加载/日志写入时产生。</td></tr>
+</table>
+<h3>7.2 软中断</h3>
+<p>软中断总 CPU 占比 <b>57.63%</b>（5,000 次）。</p>
+<table><tr><th>软中断类型</th><th class='num'>次数</th><th class='num'>累计耗时 ms</th><th>说明</th></tr>
+<tr><td class='evt'>NET_RX</td><td class='num'>4,700</td><td class='num'>5640.0</td><td>网络接收软中断：网卡收到数据包后，协议栈处理（IP/TCP 解析、socket 分发）在软中断中延迟执行。NET_RX 软中断打满单核是分布式训练/推理通信中最常见的 IRQ 热点根因。</td></tr>
+<tr><td class='evt'>RCU</td><td class='num'>200</td><td class='num'>80.0</td><td>RCU 软中断：Read-Copy-Update 宽限期回收，核心数多或 RCU pressure 大时会明显。</td></tr>
+<tr><td class='evt'>TIMER</td><td class='num'>100</td><td class='num'>40.0</td><td>定时器软中断：内核定时器 (tick/timer_list) 的到期处理，过高说明大量定时器密集到期。</td></tr>
+</table>
+<p class='note'>各核中断分布见第 5 节表格与上方图表。</p>
+<h2 id='sec-8'>8. CPU Frequency / Idle 分析</h2>
+<table><tr><th>核心</th><th class='num'>最低 MHz</th><th class='num'>平均 MHz</th><th class='num'>最高 MHz</th><th class='num'>低频样本占比</th></tr>
+<tr><td class='evt'>CPU 0</td><td class='num'>2400</td><td class='num'>2400</td><td class='num'>2400</td><td class='num'>0%</td></tr>
+<tr><td class='evt'>CPU 1</td><td class='num'>2400</td><td class='num'>2400</td><td class='num'>2400</td><td class='num'>0%</td></tr>
+<tr><td class='evt'>CPU 2</td><td class='num'>2400</td><td class='num'>2400</td><td class='num'>2400</td><td class='num'>0%</td></tr>
+<tr><td class='evt'>CPU 3</td><td class='num'>2400</td><td class='num'>2400</td><td class='num'>2400</td><td class='num'>0%</td></tr>
+<tr><td class='evt'>CPU 4</td><td class='num'>2400</td><td class='num'>2400</td><td class='num'>2400</td><td class='num'>0%</td></tr>
+<tr><td class='evt'>CPU 5</td><td class='num'>1200</td><td class='num'>1320</td><td class='num'>2400</td><td class='num'>90%</td></tr>
+<tr><td class='evt'>CPU 6</td><td class='num'>2400</td><td class='num'>2400</td><td class='num'>2400</td><td class='num'>0%</td></tr>
+<tr><td class='evt'>CPU 7</td><td class='num'>2400</td><td class='num'>2400</td><td class='num'>2400</td><td class='num'>0%</td></tr>
+</table>
+<p>governor：schedutil。</p>
+<p class='note'>频率单位由 trace 原始值换算（常见 kHz/Hz，已自动识别）；仅凭 trace 不判定硬件故障。</p>
+<p>各核空闲占比：平均 65.2%，最高 95.0%（3），最低 5.0%（2）。</p>
+<h2 id='sec-9'>9. Task / Thread 分析</h2>
+<table><tr><th>Top 运行时间任务</th><th class='num'>累计运行 ms</th><th>说明</th></tr>
+<tr><td>ksoftirqd/2 (pid 26)</td><td class='num'>6000</td><td>普通任务</td></tr>
+<tr><td>worker_0 (pid 1001)</td><td class='num'>5600</td><td>普通任务</td></tr>
+<tr><td>python_main (pid 1005)</td><td class='num'>2889</td><td>Python 训练/推理主进程或 dataloader</td></tr>
+<tr><td>rcu_preempt (pid 11)</td><td class='num'>2500</td><td>普通任务</td></tr>
+<tr><td>worker_1 (pid 1002)</td><td class='num'>2482</td><td>普通任务</td></tr>
+<tr><td>worker_net (pid 1002)</td><td class='num'>15</td><td>普通任务</td></tr>
+</table>
+<table><tr><th>Top 切出次数任务</th><th class='num'>次数</th></tr>
+<tr><td>python_main (pid 1005)</td><td class='num'>695</td></tr>
+<tr><td>ksoftirqd/2 (pid 26)</td><td class='num'>500</td></tr>
+<tr><td>worker_1 (pid 1002)</td><td class='num'>200</td></tr>
+<tr><td>worker_0 (pid 1001)</td><td class='num'>200</td></tr>
+<tr><td>rcu_preempt (pid 11)</td><td class='num'>100</td></tr>
+</table>
+<table><tr><th>Top 被唤醒任务</th><th class='num'>次数</th></tr>
+<tr><td>worker_2</td><td class='num'>495</td></tr>
+<tr><td>python_main</td><td class='num'>200</td></tr>
+<tr><td>worker_1</td><td class='num'>100</td></tr>
+<tr><td>worker_0</td><td class='num'>100</td></tr>
+</table>
+<table><tr><th>Top 迁移任务</th><th class='num'>次数</th></tr>
+<tr><td>pid:1003</td><td class='num'>600</td></tr>
+<tr><td>pid:1002</td><td class='num'>399</td></tr>
+<tr><td>pid:1005</td><td class='num'>199</td></tr>
+<tr><td>pid:11</td><td class='num'>99</td></tr>
+</table>
+<h2 id='sec-10'>10. Affinity / NUMA 分析</h2>
+<p>快照包含 NUMA 拓扑信息（1 个节点可见）。</p>
+<p>Top 任务运行分布与各核利用率见第 5 节；任务集中在少数核时可结合绑核配置判断。</p>
+<p class='note'><b>证据说明</b>：当前 trace 未包含跨 NUMA 访问的直接证据，NUMA 结论置信度为低（Evidence insufficient），如需精确判断请补充 <span class='evt'>numactl -H</span> 与 <span class='evt'>numastat</span> 快照。</p>
+<h2 id='sec-11'>11. 时间窗口分析</h2>
+<p>以下为利用率最高的时间窗口（桶 = 0.08 秒）：</p><ul style='margin-left:22px'><li>窗口 0.7~0.8 秒：利用率峰值 <b>90.1%</b>，同期 上下文切换 216 次/秒、软中断占比 6.9%、调度延迟 P99 95.34 ms</li><li>窗口 1.2~1.3 秒：利用率峰值 <b>90.1%</b>，同期 上下文切换 204 次/秒、软中断占比 6.9%、调度延迟 P99 95.89 ms</li><li>窗口 3.3~3.4 秒：利用率峰值 <b>90.1%</b>，同期 上下文切换 192 次/秒、软中断占比 6.9%、调度延迟 P99 42.64 ms</li></ul><p class='note'>若峰值窗口内同步出现中断/调度延迟上升，可建立「负载升高 → 中断增加 → 调度延迟上升 → worker 运行时间下降 → NPU 等待 Host」的关联链；仅当上述同期证据存在时成立。</p>
+<h2 id='sec-12'>12. 根因判断</h2>
+<div class='card'><p><span class='lbl'>现象</span> → 软中断集中于 CPU 2</p>
+<p><span class='lbl'>证据</span> → CPU 2 软中断 CPU 占比=56.4%（阈值 ≥20% 且≥中位数 2.0 倍）；Top 软中断类型=NET_RX(5640ms), RCU(80ms), TIMER(40ms)（阈值 -）</p>
+<p><span class='lbl'>推断</span> → 该核集中处理了软中断，且以网络收包 (NET_RX) 为主：网卡队列中断亲和性固定于单核，通信/收包量大时极易打满</p>
+<p><span class='lbl'>根因</span> → <span class='evt'>SOFTIRQ_HOTSPOT</span>（软中断热点：软中断（如 NET_RX 网络收包）集中消耗个别核心 CPU）</p></div>
+<h2 id='sec-13'>13. 优化建议</h2>
+<div class='finding' style='border-left-color:#d64545'>
+<h3>P0（立即处理） — 软中断集中于 CPU 2</h3><ol class='pri'>
+<li>检查 /proc/softirqs 与 /proc/interrupts 中网络中断分布</li>
+<li>开启/调大网卡多队列 (RSS) 并用 ethtool -X 均衡队列</li>
+<li>用 irqbalance 或 smp_affinity 将 NET_RX 分散到多核</li>
+<li>评估业务通信量是否异常 (如 all-reduce 风暴)</li>
+</ol></div>
+<div class='finding' style='border-left-color:#d64545'>
+<h3>P0（立即处理） — 调度延迟严重</h3><ol class='pri'>
+<li>结合 CPU 利用率与中断热点结论处理根源负载</li>
+<li>提高关键线程优先级 (nice/chrt) 或绑核隔离 (isolcpus/cpuset)</li>
+<li>减少 Host 线程数，避免过度并发</li>
+</ol></div>
+<div class='finding' style='border-left-color:#d98f00'>
+<h3>P1（尽快处理） — CPU 负载严重不均衡</h3><ol class='pri'>
+<li>检查 IRQ affinity: cat /proc/interrupts，将高频中断分散 (echo 掩码 &gt; /proc/irq/N/smp_affinity)</li>
+<li>检查业务线程绑核配置 (taskset/numactl)，把任务分散到空闲核</li>
+<li>开启 RPS/XPS 或 RSS 多队列分散网络软中断</li>
+</ol></div>
+<div class='finding' style='border-left-color:#d98f00'>
+<h3>P1（尽快处理） — 任务迁移频繁</h3><ol class='pri'>
+<li>将关键线程固定核心 (taskset -c / numactl --physcpubind)</li>
+<li>调小内核调度域负载均衡激进度 (如 sched_migration_cost_ns 调大)</li>
+</ol></div>
+<h2 id='sec-14'>14. 数据说明与指标解释</h2>
+<h3>数据概况</h3><div class='card'>
+<p>trace 时间范围：1000.000 ~ 1009.995（相对秒），时长 10.0 秒</p>
+<p>CPU 数量（参与统计）：8；报告核数（nproc）：8</p>
+<p>内核版本：5.10.0-136.12.0.oe2203sp1.aarch64 ｜ 主机名：atlas-800-9000</p>
+<p>可用事件：cpu_frequency, cpu_idle, irq_handler_entry, irq_handler_exit, sched_migrate_task, sched_switch, sched_wakeup, softirq_entry, softirq_exit</p>
+<p>解析统计：总行 21,270，成功 21,270，失败 0（失败行已自动跳过）</p>
+<p>buffer 溢出：0（未检测到溢出）</p></div>
+<h3>分析限制</h3><div class='card'><ul style='margin-left:20px'><li>trace 仅覆盖采集窗口，不代表长期行为。</li><li>利用率基于 idle 事件/swapper 近似；user/system 区分依赖 /proc/stat（开机累计）。</li><li>调度延迟为 wakeup→switch 配对估算；中断耗时为 entry→exit 配对。</li><li>频率单位自动换算可能存在平台差异，仅作相对比较。</li></ul></div>
+<h3>指标解释（每个指标是什么）</h3>
+<table><tr><th>指标</th><th>解释</th></tr>
+<tr><td class='evt'>cpu_util</td><td>CPU 利用率：非空闲时间占比。trace 中可精确得到 busy/idle，user/system 区分依赖 /proc/stat 快照（为开机以来累计值）。</td></tr>
+<tr><td class='evt'>cpu_util_p95</td><td>CPU 利用率 P95：将所有核心利用率排序后取第 95 分位，反映高负载核心的普遍水平。</td></tr>
+<tr><td class='evt'>cs_rate</td><td>上下文切换率 (context switches/sec)：每秒进程/线程切换次数，过高说明任务碎片化或争抢激烈。</td></tr>
+<tr><td class='evt'>wakeup_rate</td><td>唤醒率 (wakeups/sec)：每秒任务被唤醒进入 runnable 的次数，反映任务碎片化程度与调度压力。</td></tr>
+<tr><td class='evt'>sched_latency</td><td>调度延迟 (scheduling latency)：任务从被唤醒 (sched_wakeup) 到真正获得 CPU (sched_switch) 的等待时间，直接体现 runnable 队列拥堵程度。</td></tr>
+<tr><td class='evt'>runnable_avg</td><td>平均可运行任务数 (runnable)：任意时刻处于等待 CPU 状态的平均任务数，&gt;核心数说明调度拥挤。</td></tr>
+<tr><td class='evt'>irq_time</td><td>硬中断 CPU 占用：CPU 在处理硬件中断上花费的时间占比 (irq_handler_entry~exit)。</td></tr>
+<tr><td class='evt'>softirq_time</td><td>软中断 CPU 占用：CPU 在处理软中断上花费的时间占比 (softirq_entry~exit)。软中断是中断下半部延迟处理机制。</td></tr>
+<tr><td class='evt'>irq_hotspot</td><td>中断热点：单个核心 IRQ/SoftIRQ 占用远高于其他核心，通常由网卡中断亲和性 (IRQ affinity) 固定在同一核导致。</td></tr>
+<tr><td class='evt'>freq_avg</td><td>CPU 平均频率：trace 期间 cpu_frequency 事件的平均值，高负载下频率低说明降频/温控/调度器策略问题。</td></tr>
+<tr><td class='evt'>idle_ratio</td><td>CPU 空闲占比：idle 状态时间占比，过高说明该核负载不足或任务未调度到该核。</td></tr>
+<tr><td class='evt'>migration</td><td>任务迁移次数：任务在 CPU 之间搬移的次数 (sched_migrate_task 或跨核运行推断)，频繁迁移导致缓存失效、NUMA 跨访。</td></tr>
+<tr><td class='evt'>preempt</td><td>抢占次数：任务未运行完就被更高优先级任务切出 (prev_state=R 的 sched_switch)。</td></tr>
+<tr><td class='evt'>buffer_overrun</td><td>buffer 溢出条数：采集期间 ring buffer 溢出而丢失的事件数，&gt;0 说明 trace 可能不完整，结论置信度应下调。</td></tr>
+</table>
+<h3>事件/术语解释</h3>
+<table><tr><th>术语</th><th>解释</th></tr>
+<tr><td class='evt'>NET_RX</td><td>网络接收软中断：网卡收到数据包后，协议栈处理（IP/TCP 解析、socket 分发）在软中断中延迟执行。NET_RX 软中断打满单核是分布式训练/推理通信中最常见的 IRQ 热点根因。</td></tr>
+<tr><td class='evt'>NET_TX</td><td>网络发送软中断：网卡发送完成后的收尾处理。</td></tr>
+<tr><td class='evt'>TIMER</td><td>定时器软中断：内核定时器 (tick/timer_list) 的到期处理，过高说明大量定时器密集到期。</td></tr>
+<tr><td class='evt'>TASKLET</td><td>TASKLET 软中断：驱动常用的延迟执行机制，常见于网卡/NVMe 驱动。</td></tr>
+<tr><td class='evt'>SCHED</td><td>调度软中断：进程调度相关延迟处理（负载均衡、调度类节流等）。</td></tr>
+<tr><td class='evt'>RCU</td><td>RCU 软中断：Read-Copy-Update 宽限期回收，核心数多或 RCU pressure 大时会明显。</td></tr>
+<tr><td class='evt'>BLOCK</td><td>块设备软中断：块 I/O 完成处理，存储密集场景明显。</td></tr>
+<tr><td class='evt'>HI</td><td>高优先级软中断：最高优先级软中断，数量少但可抢占其他软中断。</td></tr>
+<tr><td class='evt'>HRTIMER</td><td>高精度定时器软中断：hrtimer 到期处理。</td></tr>
+<tr><td class='evt'>irq_handler_entry</td><td>硬件中断进入事件：CPU 开始处理某条硬件中断线，irq=中断号，name=中断名（如 nvme0q3、eth0、iri/pci-MSI）。</td></tr>
+<tr><td class='evt'>irq_handler_exit</td><td>硬件中断退出事件：与 entry 配对可得单次中断耗时，ret=handled 表示有实际处理。</td></tr>
+<tr><td class='evt'>softirq_entry</td><td>软中断进入事件：vec=软中断编号，[action=NAME] 是软中断名。</td></tr>
+<tr><td class='evt'>softirq_exit</td><td>软中断退出事件：与 entry 配对可得单次软中断耗时。</td></tr>
+<tr><td class='evt'>softirq_raise</td><td>软中断触发事件：标记即将执行某类软中断（不代表已执行，仅作触发频度参考）。</td></tr>
+<tr><td class='evt'>sched_switch</td><td>进程切换事件：CPU 上 prev（让出 CPU 的任务）切换到 next（获得 CPU 的任务），是计算利用率、上下文切换、运行时间的基础。</td></tr>
+<tr><td class='evt'>sched_wakeup</td><td>任务唤醒事件：任务因 I/O 完成/锁释放等被唤醒进入 runnable 队列，与 sched_switch 配对可算调度延迟。</td></tr>
+<tr><td class='evt'>sched_waking</td><td>任务开始唤醒事件：wakeup 的前置动作，一般与 sched_wakeup 成对。</td></tr>
+<tr><td class='evt'>sched_wakeup_new</td><td>新创建任务首次唤醒事件。</td></tr>
+<tr><td class='evt'>task_newtask</td><td>新建任务事件 (fork/clone)。</td></tr>
+<tr><td class='evt'>sched_migrate_task</td><td>任务迁移事件：任务被调度器迁往其他 CPU。</td></tr>
+<tr><td class='evt'>cpu_idle</td><td>CPU 空闲状态事件：state=进入的 C-state，state=4294967295 表示退出 idle 恢复运行。</td></tr>
+<tr><td class='evt'>cpu_frequency</td><td>CPU 频率变化事件：state=新频率（单位通常 kHz，x86 平台）或 Hz（ARM 部分平台）。</td></tr>
+<tr><td class='evt'>irq_line_unknown</td><td>未收录中断名：按中断号展示，可在 /proc/interrupts 中查询对应设备。</td></tr>
+</table>
+<h2>附录图 1：利用率 / 中断占比时间序列</h2><div class='chart'>
+<div class='legend'><span style='color:#4a9eff'>■</span> CPU 利用率　<span style='color:#d98f00'>■</span> 硬中断占比　<span style='color:#2e9e5b'>■</span> 软中断占比</div>
+<svg xmlns='http://www.w3.org/2000/svg' width='760' height='200' font-family='sans-serif'><line x1='46' y1='10.0' x2='750' y2='10.0' stroke='#22303c' stroke-width='1'/><text x='42' y='13.0' font-size='10' fill='#8b949e' text-anchor='end'>100.0</text><line x1='46' y1='52.0' x2='750' y2='52.0' stroke='#22303c' stroke-width='1'/><text x='42' y='55.0' font-size='10' fill='#8b949e' text-anchor='end'>75.0</text><line x1='46' y1='94.0' x2='750' y2='94.0' stroke='#22303c' stroke-width='1'/><text x='42' y='97.0' font-size='10' fill='#8b949e' text-anchor='end'>50.0</text><line x1='46' y1='136.0' x2='750' y2='136.0' stroke='#22303c' stroke-width='1'/><text x='42' y='139.0' font-size='10' fill='#8b949e' text-anchor='end'>25.0</text><line x1='46' y1='178.0' x2='750' y2='178.0' stroke='#22303c' stroke-width='1'/><text x='42' y='181.0' font-size='10' fill='#8b949e' text-anchor='end'>0.0</text><polyline points='46.0,38.4 51.9,26.9 57.8,26.8 63.7,26.7 69.7,26.7 75.6,26.9 81.5,38.3 87.4,27.0 93.3,26.8 99.2,26.7 105.2,26.7 111.1,26.9 117.0,38.2 122.9,27.0 128.8,26.7 134.7,26.7 140.7,26.8 146.6,26.9 152.5,38.1 158.4,27.1 164.3,26.7 170.2,26.7 176.2,26.9 182.1,27.0 188.0,38.0 193.9,27.0 199.8,26.7 205.7,26.7 211.6,26.8 217.6,27.1 223.5,38.0 229.4,26.9 235.3,26.7 241.2,26.8 247.1,26.7 253.1,27.2 259.0,38.0 264.9,26.9 270.8,26.7 276.7,26.9 282.6,26.7 288.6,27.3 294.5,37.9 300.4,26.8 306.3,26.8 312.2,26.8 318.1,26.7 324.1,27.4 330.0,37.8 335.9,26.8 341.8,26.8 347.7,26.7 353.6,26.7 359.5,27.4 365.5,37.6 371.4,26.8 377.3,26.8 383.2,26.7 389.1,26.7 395.0,27.5 401.0,37.5 406.9,26.9 412.8,26.8 418.7,26.7 424.6,26.7 430.5,27.6 436.5,37.4 442.4,26.9 448.3,26.7 454.2,26.7 460.1,26.7 466.0,27.6 471.9,37.4 477.9,26.9 483.8,26.7 489.7,26.7 495.6,26.7 501.5,27.7 507.4,37.4 513.4,26.8 519.3,26.7 525.2,26.7 531.1,26.7 537.0,27.8 542.9,37.3 548.9,26.7 554.8,26.7 560.7,26.7 566.6,26.7 572.5,27.9 578.4,37.2 584.4,26.7 590.3,26.7 596.2,26.7 602.1,26.7 608.0,28.0 613.9,37.1 619.8,26.7 625.8,26.7 631.7,26.7 637.6,26.7 643.5,28.1 649.4,37.0 655.3,26.7 661.3,26.7 667.2,26.7 673.1,26.7 679.0,28.2 684.9,36.8 690.8,26.8 696.8,26.7 702.7,26.7 708.6,26.8 714.5,28.2 720.4,110.8 726.3,98.2 732.3,97.5 738.2,97.5 744.1,98.0 750.0,178.0' fill='none' stroke='#4a9eff' stroke-width='1.6'/><polyline points='46.0,176.7 51.9,176.8 57.8,176.8 63.7,176.8 69.7,176.8 75.6,176.8 81.5,176.7 87.4,176.8 93.3,176.8 99.2,176.8 105.2,176.8 111.1,176.8 117.0,176.7 122.9,176.8 128.8,176.8 134.7,176.8 140.7,176.8 146.6,176.8 152.5,176.7 158.4,176.8 164.3,176.8 170.2,176.8 176.2,176.8 182.1,176.8 188.0,176.7 193.9,176.8 199.8,176.8 205.7,176.8 211.6,176.8 217.6,176.8 223.5,176.7 229.4,176.8 235.3,176.8 241.2,176.8 247.1,176.8 253.1,176.8 259.0,176.7 264.9,176.8 270.8,176.8 276.7,176.8 282.6,176.8 288.6,176.8 294.5,176.7 300.4,176.8 306.3,176.8 312.2,176.8 318.1,176.8 324.1,176.8 330.0,176.7 335.9,176.8 341.8,176.8 347.7,176.8 353.6,176.8 359.5,176.8 365.5,176.7 371.4,176.8 377.3,176.8 383.2,176.8 389.1,176.8 395.0,176.8 401.0,176.7 406.9,176.8 412.8,176.8 418.7,176.8 424.6,176.8 430.5,176.7 436.5,176.7 442.4,176.8 448.3,176.8 454.2,176.8 460.1,176.9 466.0,176.7 471.9,176.7 477.9,176.8 483.8,176.8 489.7,176.8 495.6,176.9 501.5,176.7 507.4,176.7 513.4,176.8 519.3,176.8 525.2,176.8 531.1,176.8 537.0,176.7 542.9,176.7 548.9,176.8 554.8,176.8 560.7,176.9 566.6,176.8 572.5,176.7 578.4,176.7 584.4,176.8 590.3,176.8 596.2,176.8 602.1,176.8 608.0,176.7 613.9,176.7 619.8,176.8 625.8,176.8 631.7,176.8 637.6,176.8 643.5,176.7 649.4,176.7 655.3,176.8 661.3,176.9 667.2,176.8 673.1,176.8 679.0,176.7 684.9,176.7 690.8,176.8 696.8,176.8 702.7,176.8 708.6,176.8 714.5,176.7 720.4,176.7 726.3,176.9 732.3,176.8 738.2,176.8 744.1,176.8 750.0,176.7' fill='none' stroke='#d98f00' stroke-width='1.6'/><polyline points='46.0,163.9 51.9,166.4 57.8,166.2 63.7,166.3 69.7,166.4 75.6,166.2 81.5,163.9 87.4,166.3 93.3,166.2 99.2,166.4 105.2,166.3 111.1,166.2 117.0,164.0 122.9,166.3 128.8,166.3 134.7,166.4 140.7,166.2 146.6,166.2 152.5,164.1 158.4,166.2 164.3,166.3 170.2,166.4 176.2,166.2 182.1,166.2 188.0,164.1 193.9,166.2 199.8,166.4 205.7,166.3 211.6,166.3 217.6,166.1 223.5,164.1 229.4,166.3 235.3,166.4 241.2,166.2 247.1,166.3 253.1,166.1 259.0,164.1 264.9,166.4 270.8,166.3 276.7,166.2 282.6,166.4 288.6,166.0 294.5,164.1 300.4,166.4 306.3,166.3 312.2,166.3 318.1,166.4 324.1,166.0 330.0,164.2 335.9,166.4 341.8,166.2 347.7,166.3 353.6,166.4 359.5,165.9 365.5,164.2 371.4,166.3 377.3,166.2 383.2,166.4 389.1,166.3 395.0,165.9 401.0,164.3 406.9,166.3 412.8,166.3 418.7,166.4 424.6,166.2 430.5,165.9 436.5,164.4 442.4,166.2 448.3,166.3 454.2,166.4 460.1,166.2 466.0,165.9 471.9,164.4 477.9,166.2 483.8,166.4 489.7,166.3 495.6,166.3 501.5,165.8 507.4,164.4 513.4,166.3 519.3,166.4 525.2,166.2 531.1,166.3 537.0,165.8 542.9,164.4 548.9,166.4 554.8,166.3 560.7,166.2 566.6,166.4 572.5,165.7 578.4,164.4 584.4,166.4 590.3,166.3 596.2,166.3 602.1,166.4 608.0,165.6 613.9,164.5 619.8,166.4 625.8,166.2 631.7,166.3 637.6,166.4 643.5,165.6 649.4,164.6 655.3,166.3 661.3,166.2 667.2,166.4 673.1,166.3 679.0,165.6 684.9,164.6 690.8,166.3 696.8,166.3 702.7,166.4 708.6,166.2 714.5,165.6 720.4,164.7 726.3,166.2 732.3,166.3 738.2,166.4 744.1,166.2 750.0,165.6' fill='none' stroke='#2e9e5b' stroke-width='1.6'/><text x='46.0' y='194' font-size='10' fill='#8b949e' text-anchor='middle'>0</text><text x='401.0' y='194' font-size='10' fill='#8b949e' text-anchor='middle'>50%</text><text x='750.0' y='194' font-size='10' fill='#8b949e' text-anchor='middle'>100%</text><text x='42' y='8.0' font-size='10' fill='#8b949e' text-anchor='end'>%</text></svg>
+</div>
+<h2>附录图 2：调度延迟 P99 时间序列</h2><div class='chart'>
+<div class='legend'><span style='color:#d64545'>■</span> 调度延迟 P99 (ms)</div>
+<svg xmlns='http://www.w3.org/2000/svg' width='760' height='200' font-family='sans-serif'><line x1='46' y1='10.0' x2='750' y2='10.0' stroke='#22303c' stroke-width='1'/><text x='42' y='13.0' font-size='10' fill='#8b949e' text-anchor='end'>111.5</text><line x1='46' y1='52.0' x2='750' y2='52.0' stroke='#22303c' stroke-width='1'/><text x='42' y='55.0' font-size='10' fill='#8b949e' text-anchor='end'>83.7</text><line x1='46' y1='94.0' x2='750' y2='94.0' stroke='#22303c' stroke-width='1'/><text x='42' y='97.0' font-size='10' fill='#8b949e' text-anchor='end'>55.8</text><line x1='46' y1='136.0' x2='750' y2='136.0' stroke='#22303c' stroke-width='1'/><text x='42' y='139.0' font-size='10' fill='#8b949e' text-anchor='end'>27.9</text><line x1='46' y1='178.0' x2='750' y2='178.0' stroke='#22303c' stroke-width='1'/><text x='42' y='181.0' font-size='10' fill='#8b949e' text-anchor='end'>0.0</text><polyline points='46.0,153.6 51.9,33.6 57.8,33.6 63.7,34.4 69.7,113.4 75.6,34.7 81.5,33.6 87.4,33.6 93.3,33.6 99.2,34.4 105.2,113.4 111.1,34.8 117.0,32.7 122.9,33.6 128.8,33.6 134.7,33.6 140.7,113.8 146.6,33.5 152.5,34.4 158.4,33.6 164.3,33.6 170.2,35.2 176.2,113.3 182.1,34.1 188.0,33.6 193.9,33.6 199.8,32.7 205.7,33.6 211.6,113.8 217.6,34.7 223.5,33.6 229.4,33.6 235.3,33.6 241.2,33.6 247.1,113.7 253.1,36.6 259.0,33.6 264.9,33.6 270.8,33.6 276.7,32.7 282.6,113.8 288.6,34.4 294.5,33.6 300.4,33.6 306.3,33.6 312.2,32.7 318.1,114.2 324.1,34.7 330.0,33.6 335.9,33.6 341.8,34.4 347.7,113.3 353.6,34.4 359.5,34.7 365.5,33.6 371.4,32.7 377.3,33.6 383.2,113.3 389.1,34.4 395.0,34.8 401.0,33.6 406.9,33.6 412.8,33.6 418.7,113.3 424.6,34.4 430.5,34.8 436.5,33.6 442.4,33.6 448.3,33.6 454.2,112.9 460.1,34.4 466.0,34.7 471.9,33.6 477.9,33.6 483.8,33.6 489.7,113.4 495.6,34.4 501.5,34.7 507.4,34.4 513.4,33.6 519.3,33.6 525.2,112.8 531.1,34.4 537.0,34.7 542.9,32.7 548.9,33.6 554.8,33.6 560.7,113.3 566.6,34.4 572.5,33.5 578.4,34.4 584.4,33.6 590.3,33.6 596.2,114.4 602.1,34.4 608.0,34.1 613.9,33.6 619.8,33.6 625.8,32.7 631.7,113.3 637.6,33.6 643.5,35.9 649.4,33.6 655.3,33.6 661.3,33.6 667.2,113.4 673.1,33.6 679.0,35.9 684.9,33.6 690.8,33.6 696.8,33.6 702.7,113.4 708.6,33.6 714.5,34.5 720.4,33.6 726.3,33.6 732.3,33.6 738.2,113.3 744.1,34.4 750.0,31.9' fill='none' stroke='#d64545' stroke-width='1.6'/><text x='46.0' y='194' font-size='10' fill='#8b949e' text-anchor='middle'>0</text><text x='401.0' y='194' font-size='10' fill='#8b949e' text-anchor='middle'>50%</text><text x='750.0' y='194' font-size='10' fill='#8b949e' text-anchor='middle'>100%</text><text x='42' y='8.0' font-size='10' fill='#8b949e' text-anchor='end'>ms</text></svg>
+</div>
+<div class='footer'>CPU Host 性能分析 Skill 生成 ｜ 仅标准库渲染，可离线打开</div>
+</div>
+<script>
+(function(){
+var links=[].slice.call(document.querySelectorAll('nav#toc a'));
+var secs=links.map(function(a){return document.getElementById(a.getAttribute('data-sec'))});
+function upd(){
+  var y=window.scrollY+90,cur=0;
+  for(var i=0;i<secs.length;i++){if(secs[i]&&secs[i].offsetTop<=y)cur=i;}
+  links.forEach(function(a,i){a.className=(i===cur)?'active':'';});
+}
+window.addEventListener('scroll',upd,{passive:true});
+window.addEventListener('resize',upd);upd();
+})();
+</script>
+</body></html>

@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>集群性能分析报告 - 单集群整体分析</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Inter', 'Microsoft YaHei', sans-serif; background-color: #0f172a; color: #f8fafc; }
+.card { background-color: #1e293b; border: 1px solid #334155; border-radius: 0.75rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); }
+.text-gradient { background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-track { background: #0f172a; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+table th { background: #334155; color: #cbd5e1; }
+table td { border-bottom: 1px solid #334155; }
+table tr:hover { background: #334155; }
+.heatmap-low { background: #064e3b; color: #6ee7b7; }
+.heatmap-mid { background: #78350f; color: #fcd34d; }
+.heatmap-high { background: #7f1d1d; color: #fca5a5; }
+.badge-ok { background: #064e3b; color: #6ee7b7; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+.badge-warn { background: #78350f; color: #fcd34d; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+.badge-critical { background: #7f1d1d; color: #fca5a5; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500; }
+
+/* 左侧固定导航栏 */
+.sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 200px; background: #0b1220;
+  border-right: 1px solid #1e293b; padding: 16px 12px; z-index: 50; overflow-y: auto;
+  display: flex; flex-direction: column; }
+.side-title { font-size: .95rem; font-weight: 700; color: #e2e8f0; padding: 4px 8px 12px;
+  border-bottom: 1px dashed #1e293b; margin-bottom: 10px; }
+.sidebar nav { flex: 1; }
+.sidebar nav a { display: block; padding: 7px 10px; border-radius: 6px; color: #94a3b8;
+  font-size: .82rem; text-decoration: none; margin-bottom: 2px; }
+.sidebar nav a:hover { background: #16233a; color: #38bdf8; }
+.sidebar nav a.active { background: #16233a; color: #38bdf8; }
+.toggle-btn { display: block; width: 100%; padding: 7px 0; text-align: center; font-size: .8rem;
+  color: #94a3b8; background: #16233a; border: 1px solid #25344d; border-radius: 6px; cursor: pointer; }
+.toggle-btn:hover { color: #38bdf8; border-color: #38bdf8; }
+.side-foot { margin-top: 10px; font-size: 11px; color: #475569; padding: 8px 8px 0;
+  border-top: 1px dashed #1e293b; word-break: break-all; }
+
+/* 可折叠章节 */
+details.sec { scroll-margin-top: 16px; }
+details.sec > summary { cursor: pointer; list-style: none; }
+details.sec > summary::-webkit-details-marker { display: none; }
+details.sec > summary h3 { margin: 0; }
+details.sec > summary h3::before { content: '▾ '; color: #38bdf8; font-size: .85rem; }
+details.sec:not([open]) > summary h3::before { content: '▸ '; color: #64748b; }
+details.sec > summary:hover h3 { color: #7dd3fc; }
+
+@media (max-width: 1023px) {
+  .sidebar { position: static; width: auto; flex-direction: row; flex-wrap: wrap; align-items: center;
+    border: 1px solid #1e293b; border-radius: .75rem; padding: 10px 12px; margin-bottom: 8px; }
+  .side-title { border-bottom: none; padding: 0 8px; margin: 0; }
+  .sidebar nav { display: flex; flex-wrap: wrap; }
+  .toggle-btn { width: auto; padding: 6px 12px; margin-left: 8px; }
+  .side-foot { display: none; }
+}
+</style>
+</head>
+<body class="min-h-screen p-4 md:p-8">
+<script>
+/* 折叠容器内的 ECharts 懒初始化：位于收起 details 中的图表，等首次展开、布局完成后再真正 init，
+   避免零尺寸画布渲染出空白图 */
+window.__lazyCharts = [];
+(function(){
+  if (!window.echarts) return;
+  var origInit = echarts.init;
+  echarts.init = function(el, theme, opts){
+    var host = el && el.closest ? el.closest('details') : null;
+    if (!host || host.open) return origInit(el, theme, opts);
+    var pending = { el: el, theme: theme, opts: opts, host: host, later: [], chart: null };
+    window.__lazyCharts.push(pending);
+    function flush(){
+      if (pending.chart) { pending.chart.resize(); return; }
+      pending.chart = origInit(pending.el, pending.theme, pending.opts);
+      pending.later.forEach(function(call){ pending.chart[call.m].apply(pending.chart, call.a); });
+      pending.later = [];
+    }
+    host.addEventListener('toggle', function once(){
+      if (!host.open) return;
+      host.removeEventListener('toggle', once);
+      requestAnimationFrame(flush);
+    });
+    return {
+      setOption: function(){ pending.later.push({ m: 'setOption', a: Array.prototype.slice.call(arguments) }); },
+      resize: function(){ if (pending.chart) pending.chart.resize(); },
+      getOption: function(){ return pending.chart ? pending.chart.getOption() : null; },
+      dispose: function(){ if (pending.chart) pending.chart.dispose(); }
+    };
+  };
+})();
+
+/* 左侧导航 + 折叠交互 */
+(function(){
+  var links = document.querySelectorAll('.sidebar nav a');
+  var map = {};
+  links.forEach(function(a){ map[a.getAttribute('href').slice(1)] = a; });
+  var sections = [];
+  Object.keys(map).forEach(function(id){ var s = document.getElementById(id); if (s) sections.push(s); });
+  function onScroll(){
+    var cur = sections.length ? sections[0].id : null;
+    for (var i=0;i<sections.length;i++){ if (sections[i].getBoundingClientRect().top <= 90) cur = sections[i].id; }
+    links.forEach(function(a){ a.classList.remove('active'); });
+    if (cur && map[cur]) map[cur].classList.add('active');
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
+  links.forEach(function(a){
+    a.addEventListener('click', function(){
+      var el = document.getElementById(a.getAttribute('href').slice(1));
+      if (el && el.tagName === 'DETAILS') el.open = true;
+    });
+  });
+  function openByHash(){
+    var id = decodeURIComponent((location.hash || '').slice(1));
+    if (!id) return;
+    var el = document.getElementById(id);
+    if (el && el.tagName === 'DETAILS') el.open = true;
+  }
+  window.addEventListener('hashchange', openByHash);
+  openByHash();
+  var tbtn = document.getElementById('toggle-all');
+  if (tbtn) tbtn.addEventListener('click', function(){
+    var all = document.querySelectorAll('details.sec');
+    var anyClosed = false;
+    all.forEach(function(d){ if (!d.open) anyClosed = true; });
+    all.forEach(function(d){ d.open = anyClosed; });
+    tbtn.textContent = anyClosed ? '全部收起' : '全部展开';
+  });
+  /* 任一章节展开/收起后触发全局 resize，让所有 ECharts 实例适配新容器尺寸 */
+  document.querySelectorAll('details.sec').forEach(function(d){
+    d.addEventListener('toggle', function(){
+      requestAnimationFrame(function(){ window.dispatchEvent(new Event('resize')); });
+    });
+  });
+  onScroll();
+})();
+</script>
+
+<!-- 左侧固定导航栏 -->
+<div class="sidebar">
+  <div class="side-title">集群性能分析</div>
+  <nav>
+    <a href="#sec-overview">概览指标</a>
+    <a href="#sec-trend">Step 耗时趋势</a>
+    <a href="#sec-breakdown">时间分解与负载</a>
+    <a href="#sec-heatmap">Rank 热力表</a>
+    <a href="#sec-slowrank">慢卡识别</a>
+    <a href="#sec-comm">通信算子分析</a>
+    <a href="#sec-advice">优化建议</a>
+  </nav>
+  <button id="toggle-all" type="button" class="toggle-btn">全部收起</button>
+  <div class="side-foot">{{DATA_PATH}}</div>
+</div>
+
+<div class="max-w-7xl mx-auto space-y-6 lg:ml-52">
+
+<!-- [1] Header -->
+<header class="flex flex-col md:flex-row justify-between items-start md:items-center pb-6 border-b border-slate-700">
+  <div>
+    <h1 class="text-3xl md:text-4xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 text-gradient">集群性能分析报告</h1>
+    <p class="text-slate-400 mt-2 text-sm md:text-base">单集群整体性能分析 — 计算/通信/空闲/负载分布诊断</p>
+  </div>
+  <div class="mt-4 md:mt-0 flex items-center space-x-2 bg-emerald-900/30 text-emerald-400 px-4 py-2 rounded-full border border-emerald-800">
+    <span class="relative flex h-3 w-3">
+      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+      <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+    </span>
+    <span class="font-semibold text-sm">分析完成</span>
+  </div>
+</header>
+<div class="text-xs text-slate-500 -mt-4 mb-2">数据路径: {{DATA_PATH}} | 生成时间: {{GENERATE_TIME}} | 并行策略: TP={{TP_SIZE}} PP={{PP_SIZE}} DP={{DP_SIZE}}</div>
+
+<!-- [2] KPI Cards -->
+<details class="sec" id="sec-overview" open>
+  <summary><h3 class="text-lg font-semibold text-slate-200 mb-4">概览指标</h3></summary>
+  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+    <div class="card p-5 relative overflow-hidden">
+      <div class="text-slate-400 text-sm font-medium mb-1">Rank 总数</div>
+      <div class="text-3xl font-bold text-blue-400">{{RANK_COUNT}} <span class="text-lg text-slate-500">个</span></div>
+      <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl">🖥️</div>
+    </div>
+    <div class="card p-5 relative overflow-hidden">
+      <div class="text-slate-400 text-sm font-medium mb-1">Step 数</div>
+      <div class="text-3xl font-bold text-emerald-400">{{STEP_COUNT}} <span class="text-lg text-slate-500">步</span></div>
+      <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl">📊</div>
+    </div>
+    <div class="card p-5 relative overflow-hidden">
+      <div class="text-slate-400 text-sm font-medium mb-1">平均 Stage 时间</div>
+      <div class="text-3xl font-bold text-purple-400">{{AVG_STAGE_MS}} <span class="text-lg text-slate-500">ms</span></div>
+      <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl">⏱️</div>
+    </div>
+    <div class="card p-5 relative overflow-hidden">
+      <div class="text-slate-400 text-sm font-medium mb-1">计算占比</div>
+      <div class="text-3xl font-bold text-emerald-400">{{COMPUTE_RATIO}}<span class="text-lg text-slate-500">%</span></div>
+      <div class="text-xs text-slate-500 mt-2">{{AVG_COMPUTE_MS}} ms</div>
+      <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl">⚙️</div>
+    </div>
+    <div class="card p-5 relative overflow-hidden">
+      <div class="text-slate-400 text-sm font-medium mb-1">通信占比</div>
+      <div class="text-3xl font-bold text-orange-400">{{COMM_RATIO}}<span class="text-lg text-slate-500">%</span></div>
+      <div class="text-xs text-slate-500 mt-2">{{AVG_COMM_MS}} ms</div>
+      <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl">📡</div>
+    </div>
+    <div class="card p-5 relative overflow-hidden">
+      <div class="text-slate-400 text-sm font-medium mb-1">空闲占比</div>
+      <div class="text-3xl font-bold {{FREE_RATIO_COLOR}}">{{FREE_RATIO}}<span class="text-lg text-slate-500">%</span></div>
+      <div class="text-xs text-slate-500 mt-2">{{AVG_FREE_MS}} ms</div>
+      <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl">💤</div>
+    </div>
+  </div>
+</details>
+
+<!-- [3] Step 耗时趋势 -->
+<details class="card p-6 sec" id="sec-trend" open>
+  <summary><h3 class="text-lg font-semibold text-slate-200 mb-4">Step 耗时趋势 (ms)</h3></summary>
+  <div id="chart-trend" class="w-full h-80"></div>
+</details>
+
+<!-- [4] 时间分解柱状图 + 负载分布饼图 -->
+<details class="card p-6 sec" id="sec-breakdown" open>
+  <summary><h3 class="text-lg font-semibold text-slate-200 mb-4">时间分解与负载分布</h3></summary>
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+    <div class="card p-6">
+      <h3 class="text-lg font-semibold text-slate-200 mb-4">时间分解堆叠图 (ms)</h3>
+      <div id="chart-breakdown" class="w-full h-80"></div>
+    </div>
+    <div class="card p-6">
+      <h3 class="text-lg font-semibold text-slate-200 mb-4">负载分布占比</h3>
+      <div id="chart-load-pie" class="w-full h-80"></div>
+    </div>
+  </div>
+</details>
+
+<!-- [5] Rank 热力表 -->
+<details class="card p-6 sec" id="sec-heatmap" open>
+  <summary><h3 class="text-lg font-semibold text-slate-200 mb-4">Rank × Step Stage 时间热力表 (ms)</h3></summary>
+  <div class="overflow-x-auto">{{RANK_HEATMAP_TABLE}}</div>
+</details>
+
+<!-- [6] 慢卡识别 -->
+<details class="card p-6 sec" id="sec-slowrank" open>
+  <summary><h3 class="text-lg font-semibold text-slate-200 mb-4">慢卡识别 (偏离均值 >10%)</h3></summary>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead><tr><th class="text-left p-3">Rank</th><th class="text-right p-3">平均 Stage (ms)</th><th class="text-right p-3">平均计算 (ms)</th><th class="text-right p-3">平均通信 (ms)</th><th class="text-right p-3">平均空闲 (ms)</th><th class="text-right p-3">偏差</th><th class="text-center p-3">状态</th></tr></thead>
+      <tbody>{{SLOW_RANK_ROWS}}</tbody>
+    </table>
+  </div>
+</details>
+
+<!-- [7] 通信算子分析 -->
+<details class="card p-6 sec" id="sec-comm" open>
+  <summary><h3 class="text-lg font-semibold text-slate-200 mb-4">通信算子耗时 Top10 (ms)</h3></summary>
+  <div id="chart-comm-op" class="w-full h-80"></div>
+  <div id="comm-placeholder" style="display:none;text-align:center;padding:40px;color:#64748b;">无通信数据</div>
+</details>
+
+<!-- [8] 优化建议 -->
+<details class="card p-6 sec border-t-4 border-t-blue-500" id="sec-advice" open>
+  <summary><h3 class="text-lg font-bold text-white mb-4">优化建议</h3></summary>
+  <div class="space-y-3">{{ADVICE_CARDS}}</div>
+</details>
+
+<div class="text-center text-slate-500 text-xs pb-6">由 cluster-output-analysis skill 自动生成 | 数据单位: ms (毫秒)</div>
+
+</div>
+
+<script>
+const colorText = '#94a3b8';
+const colorGrid = '#334155';
+
+// Step 趋势
+var chartTrend = echarts.init(document.getElementById('chart-trend'));
+chartTrend.setOption({
+  tooltip: { trigger: 'axis', formatter: function(p){ return p[0].name + '<br/>' + p.map(function(i){return i.marker+i.seriesName+': '+i.value+' ms';}).join('<br/>'); } },
+  legend: { data: ['Stage 总耗时','计算时间','通信时间','空闲时间'], textStyle: { color: colorText }, top: 5 },
+  grid: { left: '3%', right: '4%', bottom: '3%', top: '15%', containLabel: true },
+  xAxis: { type: 'category', data: {{STEP_LABELS}}, name: 'Step', nameTextStyle: { color: colorText }, axisLabel: { color: colorText }, axisLine: { lineStyle: { color: colorGrid } } },
+  yAxis: { type: 'value', name: 'ms', nameTextStyle: { color: colorText }, axisLabel: { color: colorText }, splitLine: { lineStyle: { color: colorGrid, type: 'dashed' } } },
+  series: [
+    { name: 'Stage 总耗时', type: 'line', smooth: true, data: {{STAGE_TREND}}, itemStyle: { color: '#818cf8' }, lineStyle: { width: 3 }, areaStyle: { opacity: 0.1 } },
+    { name: '计算时间', type: 'line', smooth: true, data: {{COMPUTE_TREND}}, itemStyle: { color: '#34d399' } },
+    { name: '通信时间', type: 'line', smooth: true, data: {{COMM_TREND}}, itemStyle: { color: '#fbbf24' } },
+    { name: '空闲时间', type: 'line', smooth: true, data: {{FREE_TREND}}, itemStyle: { color: '#f87171' } }
+  ]
+});
+
+// 时间分解堆叠柱状图
+var chartBreakdown = echarts.init(document.getElementById('chart-breakdown'));
+chartBreakdown.setOption({
+  tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+  legend: { data: ['计算','通信','空闲'], textStyle: { color: colorText }, top: 5 },
+  grid: { left: '3%', right: '4%', bottom: '3%', top: '15%', containLabel: true },
+  xAxis: { type: 'category', data: {{STEP_LABELS}}, axisLabel: { color: colorText }, axisLine: { lineStyle: { color: colorGrid } } },
+  yAxis: { type: 'value', name: 'ms', nameTextStyle: { color: colorText }, axisLabel: { color: colorText }, splitLine: { lineStyle: { color: colorGrid, type: 'dashed' } } },
+  series: [
+    { name: '计算', type: 'bar', stack: 'total', data: {{COMPUTE_BAR}}, itemStyle: { color: '#34d399', borderRadius: [0,0,0,0] } },
+    { name: '通信', type: 'bar', stack: 'total', data: {{COMM_BAR}}, itemStyle: { color: '#fbbf24' } },
+    { name: '空闲', type: 'bar', stack: 'total', data: {{FREE_BAR}}, itemStyle: { color: '#f87171', borderRadius: [4,4,0,0] } }
+  ]
+});
+
+// 负载分布饼图
+var chartLoadPie = echarts.init(document.getElementById('chart-load-pie'));
+chartLoadPie.setOption({
+  tooltip: { trigger: 'item', formatter: '{b}: {c} ms ({d}%)' },
+  legend: { bottom: 10, textStyle: { color: colorText } },
+  color: ['#34d399', '#fbbf24', '#f87171', '#60a5fa'],
+  series: [{
+    type: 'pie', radius: ['40%', '70%'], center: ['50%', '45%'],
+    itemStyle: { borderRadius: 5, borderColor: '#1e293b', borderWidth: 2 },
+    label: { formatter: '{b}\n{d}%', color: '#cbd5e1', fontSize: 12 },
+    data: [
+      { name: '计算', value: {{PIE_COMPUTE}} },
+      { name: '通信', value: {{PIE_COMM}} },
+      { name: '空闲', value: {{PIE_FREE}} },
+      { name: '重叠', value: {{PIE_OVERLAP}} }
+    ]
+  }],
+  graphic: [{ type: 'text', left: '47%', top: '40%', textAlign: 'center', style: { text: '负载\n分布', fill: '#94a3b8', font: 'bold 14px Inter' } }]
+});
+
+// 通信算子
+var chartCommOp = echarts.init(document.getElementById('chart-comm-op'));
+var commHasData = {{COMM_HAS_DATA}};
+if (commHasData) {
+  chartCommOp.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: function(p){ return p[0].name + '<br/>' + p.map(function(i){return i.marker+i.seriesName+': '+i.value+' ms';}).join('<br/>'); } },
+    legend: { data: ['总耗时','传输时间','等待时间'], textStyle: { color: colorText }, top: 5 },
+    grid: { left: '3%', right: '4%', bottom: '15%', top: '15%', containLabel: true },
+    xAxis: { type: 'category', data: {{COMM_OP_LABELS}}, axisLabel: { color: colorText, rotate: 30, interval: 0, fontSize: 11 }, axisLine: { lineStyle: { color: colorGrid } } },
+    yAxis: { type: 'value', name: 'ms', nameTextStyle: { color: colorText }, axisLabel: { color: colorText }, splitLine: { lineStyle: { color: colorGrid, type: 'dashed' } } },
+    series: [
+      { name: '总耗时', type: 'bar', data: {{COMM_OP_ELAPSED}}, itemStyle: { color: '#818cf8', borderRadius: [4,4,0,0] } },
+      { name: '传输时间', type: 'bar', data: {{COMM_OP_TRANSIT}}, itemStyle: { color: '#34d399' } },
+      { name: '等待时间', type: 'bar', data: {{COMM_OP_WAIT}}, itemStyle: { color: '#fbbf24' } }
+    ]
+  });
+} else {
+  document.getElementById('comm-placeholder').style.display = 'block';
+  document.getElementById('chart-comm-op').style.display = 'none';
+}
+
+window.addEventListener('resize', function(){ chartTrend.resize(); chartBreakdown.resize(); chartLoadPie.resize(); chartCommOp.resize(); });
+</script>
+</body>
+</html>

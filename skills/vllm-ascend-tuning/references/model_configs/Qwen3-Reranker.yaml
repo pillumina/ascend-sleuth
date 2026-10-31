@@ -1,0 +1,62 @@
+# Qwen3-Reranker 模型配置
+# 类型: Reranker
+# 最后更新: 2026-02-27
+
+model:
+  name: Qwen3-Reranker
+  type: Reranker
+  description: "Qwen3 文档重排序模型"
+  huggingface_path: Qwen/Qwen3-Reranker
+  architecture: Qwen3ForSequenceClassification
+
+deployment:
+  recommended_tp: 1
+  min_npu_count: 1
+  recommended_memory: "16 GB"
+
+performance:
+  max_model_len: 8192
+  max_num_seqs: 512
+  max_num_batched_tokens: 8192
+  block_size: 128
+  gpu_memory_utilization: 0.9
+
+environment_variables:
+  TASK_QUEUE_ENABLE: "1"
+  ASCEND_RT_VISIBLE_DEVICES: "0"
+
+vllm_parameters:
+  - "trust-remote-code"
+  - "async-scheduling"
+  - "distributed-executor-backend mp"
+
+additional_config:
+  enable_cpu_binding: true
+
+compilation_config:
+  cudagraph_mode: FULL_DECODE_ONLY
+
+reranker_config:
+  reranker_mode: true
+  pooling_method: cls
+
+feature_support:
+  chunked_prefill: "支持"
+  automatic_prefix_cache: "支持"
+  speculative_decoding: "不支持"
+  lora: "不支持"
+
+launch_command: |
+  vllm serve /path/to/Qwen3-Reranker \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --served-model-name Qwen3-Reranker \
+    --trust-remote-code \
+    --max-num-seqs 512 \
+    --max-model-len 8192 \
+    --max-num-batched-tokens 8192 \
+    --tensor-parallel-size 1 \
+    --gpu-memory-utilization 0.9 \
+    --async-scheduling \
+    --additional-config '{"enable_cpu_binding":true}' \
+    --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}'

@@ -1,0 +1,79 @@
+# Kimi-K2.5 模型配置
+# 类型: MoE
+# 最后更新: 2026-02-27
+
+model:
+  name: Kimi-K2.5
+  type: MoE
+  description: "Kimi-K2.5 MoE 模型, 支持投机解码 (Eagle3)"
+  huggingface_path: moonshotai/Kimi-K2.5
+  architecture: KimiForCausalLM
+
+deployment:
+  recommended_tp: 16
+  recommended_dp: 1
+  min_npu_count: 8
+  recommended_memory: "512 GB"
+  quantization_format: W4A8C16
+
+performance:
+  max_model_len: 262144
+  max_num_seqs: 1
+  max_num_batched_tokens: 8192
+  gpu_memory_utilization: 0.95
+
+environment_variables:
+  HCCL_OP_EXPANSION_MODE: "AIV"
+  PYTORCH_NPU_ALLOC_CONF: "expandable_segments:True"
+  OMP_PROC_BIND: "false"
+  OMP_NUM_THREADS: "1"
+  TASK_QUEUE_ENABLE: "1"
+  VLLM_ASCEND_ENABLE_MLAPO: "1"
+  HCCL_BUFFSIZE: "512"
+  VLLM_ASCEND_ENABLE_FLASHCOMM1: "1"
+  VLLM_ASCEND_ENABLE_NZ: "1"
+
+vllm_parameters:
+  - "trust-remote-code"
+  - "quantization ascend"
+  - "no-enable-prefix-caching"
+  - "enable-chunked-prefill"
+  - "allowed-local-media-path /"
+  - "enable-expert-parallel"
+  - "async-scheduling"
+
+speculative_decoding:
+  method: eagle3
+  model: /path/to/lightseekorg_kimi-k2.5-eagle3
+  num_speculative_tokens: 3
+
+compilation_config:
+  cudagraph_capture_sizes: [16]
+  cudagraph_mode: FULL_DECODE_ONLY
+
+additional_config:
+  enable_shared_expert_dp: true
+
+launch_command: |
+  vllm serve /path/to/kimi25_w4a8 \
+    --quantization ascend \
+    --served-model-name kimi_k25 \
+    --no-enable-prefix-caching \
+    --enable-chunked-prefill \
+    --allowed-local-media-path / \
+    --trust-remote-code \
+    --tensor-parallel-size 16 \
+    --data-parallel-size 1 \
+    --enable-expert-parallel \
+    --port 8088 \
+    --max-num-seqs 1 \
+    --max-model-len 262144 \
+    --max-num-batched-tokens 8192 \
+    --gpu-memory-utilization 0.95 \
+    --seed 42 \
+    --async-scheduling \
+    --compilation-config '{"cudagraph_capture_sizes":[16],"cudagraph_mode":"FULL_DECODE_ONLY"}' \
+    --speculative_config '{"method": "eagle3", "model":"/path/to/lightseekorg_kimi-k2.5-eagle3", "num_speculative_tokens": 3}' \
+    --additional-config '{"enable_shared_expert_dp":true}' \
+    --mm-processor-cache-gb 0 \
+    --mm-encoder-tp-mode data

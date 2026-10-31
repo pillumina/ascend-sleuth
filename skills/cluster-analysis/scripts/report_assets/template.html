@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<style>{css}</style>
+</head>
+<body>
+<div class="sidebar">
+  <div class="side-title">NPU 性能分析报告</div>
+  <span class="side-mode">{mode_label}</span>
+  <nav>{nav}</nav>
+  <button id="toggle-all" type="button" class="toggle-btn">全部收起</button>
+  <div class="side-foot">数据路径<br>{data_path}<br><br>生成时间<br>{gen_time}<br><br>
+  执行模式<br>{exec_mode}</div>
+</div>
+<div class="main">
+<header class="pb-4 mb-2 border-b border-slate-700">
+  <h1>{title}</h1>
+  <p class="text-slate-400 mt-2 text-sm">{subtitle}</p>
+</header>
+{body}
+<footer class="text-center text-xs text-slate-500 pt-8 pb-4">
+  由 cluster-analysis skill 生成 · 中间件均在本目录 · 各章节可折叠 · 建议配合 MindStudio Insight 时间线交叉验证
+</footer>
+</div>
+<script>{spy_js}</script>
+</body>
+</html>

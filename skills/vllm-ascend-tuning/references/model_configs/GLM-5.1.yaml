@@ -1,0 +1,99 @@
+# GLM-5.1 模型配置
+# 类型: MoE
+# 最后更新: 2026-02-27
+
+model:
+  name: GLM-5.1
+  type: MoE
+  description: "GLM-5.1 MoE 模型, PD分离 + 投机解码"
+  huggingface_path: THUDM/GLM-5.1
+  architecture: GlmForCausalLM
+
+deployment:
+  recommended_tp: 16
+  recommended_dp: 2
+  min_npu_count: 32
+  recommended_memory: "1024 GB"
+  quantization_format: W8A8C16
+  deployment_mode: "PD分离 (PD_separation)"
+
+performance:
+  max_model_len: 202752
+  max_num_seqs: 64
+  max_num_batched_tokens: 4096
+  gpu_memory_utilization: 0.95
+
+environment_variables:
+  VLLM_ASCEND_ENABLE_FUSED_MC2: "1"
+  HCCL_OP_EXPANSION_MODE: "AIV"
+  VLLM_ASCEND_ENABLE_FLASHCOMM1: "1"
+  OMP_PROC_BIND: "false"
+  OMP_NUM_THREADS: "1"
+  PYTORCH_NPU_ALLOC_CONF: "expandable_segments:True"
+  HCCL_BUFFSIZE: "256"
+  ASCEND_AGGREGATE_ENABLE: "1"
+  ASCEND_TRANSPORT_PRINT: "1"
+  ACL_OP_INIT_MODE: "1"
+  ASCEND_A3_ENABLE: "1"
+  VLLM_NIXL_ABORT_REQUEST_TIMEOUT: "300000"
+  LD_LIBRARY_PATH: "$LD_LIBRARY_PATH:/usr/local/lib"
+
+vllm_parameters:
+  - "trust-remote-code"
+  - "quantization ascend"
+  - "enable-expert-parallel"
+  - "enforce-eager"
+  - "enable-auto-tool-choice"
+  - "tool-call-parser glm47"
+  - "reasoning-parser glm45"
+
+speculative_decoding:
+  method: deepseek_mtp
+  num_speculative_tokens: 3
+
+additional_config:
+  enable_npugraph_ex: true
+  fuse_muls_add: true
+  multistream_overlap_shared_expert: true
+  recompute_scheduler_enable: true
+  layer_sharding: ["q_b_proj", "o_proj"]
+
+pd_separation:
+  kv_connector: MooncakeConnectorV1
+  kv_role: "kv_producer / kv_consumer"
+  kv_port: 30000
+  engine_id: 0
+  kv_connector_extra_config:
+    use_ascend_direct: true
+    prefill:
+      dp_size: 2
+      tp_size: 16
+    decode:
+      dp_size: 2
+      tp_size: 16
+
+launch_command_prefill: |
+  vllm serve /path/to/GLM-new-w8a8 \
+    --host 0.0.0.0 \
+    --port <port> \
+    --data-parallel-size <dp_size> \
+    --data-parallel-rank <rank> \
+    --data-parallel-address <address> \
+    --data-parallel-rpc-port <rpc_port> \
+    --tensor-parallel-size <tp_size> \
+    --enable-expert-parallel \
+    --speculative-config '{"num_speculative_tokens": 3, "method":"deepseek_mtp"}' \
+    --seed 1024 \
+    --served-model-name glm-5 \
+    --max-model-len 202752 \
+    --additional-config '{"enable_npugraph_ex": true, "fuse_muls_add":true,"multistream_overlap_shared_expert":true,"recompute_scheduler_enable":true,"layer_sharding": ["q_b_proj", "o_proj"]}' \
+    --max-num-batched-tokens 4096 \
+    --trust-remote-code \
+    --max-num-seqs 64 \
+    --quantization ascend \
+    --gpu-memory-utilization 0.95 \
+    --enforce-eager \
+    --enable-auto-tool-choice \
+    --tool-call-parser glm47 \
+    --reasoning-parser glm45 \
+    --kv-transfer-config '{"kv_connector": "MooncakeConnectorV1", "kv_role": "kv_producer", "kv_port": "30000", "engine_id": "0", "kv_connector_extra_config": {"use_ascend_direct": true, "prefill": {"dp_size": 2, "tp_size": 16}, "decode": {"dp_size": 2, "tp_size": 16}}}'
