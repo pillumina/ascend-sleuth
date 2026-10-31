@@ -2543,6 +2543,52 @@ return {
         + '面板其余功能照常：' + String(e && e.message || e))
     }
 
+    // ── 状态投影与写入口（面板不实现判据）──────────────────────────────────────
+    // 面板要的状态标签/颜色/合法动作全部来自 `scripts/trace_state.py`；写入一律经
+    // `scripts/trace_transition.py`（校验 + CAS + 事件）。这里只负责解析路径、传能力位、
+    // 把脚本的 JSON 原样透给客户端——失败也透，由客户端按 `code` 给一句人话。
+    function shq(v) { return "'" + String(v).replace(/'/g, "'\\''") + "'" }
+    async function writeCaps(sessionId) {
+      const raw = await resolveCwd(sessionId)
+      const main = raw ? await mainCheckoutOf(raw) : null
+      if (!main) return { canWrite: false, writeRoot: '', reasonCode: 'E_NO_ROOT', reason: '解析不到主检出' }
+      const pol = readPolicy()
+      const can = !(pol && pol.mode === 'read-only')
+      return can ? { canWrite: true, writeRoot: main, reasonCode: '', reason: '' }
+                 : { canWrite: false, writeRoot: main, reasonCode: 'E_PERM', reason: '当前会话没有写权限' }
+    }
+    async function runTraceScript(sessionId, argv, write) {
+      const cwd = await resolveCwd(sessionId)
+      const repoCwd = await resolveRepoCwd(sessionId)
+      const pol = write ? { mode: 'workspace-write', workspaceRoot: (await writeCaps(sessionId)).writeRoot } : readPolicy()
+      const py = await resolvePython(cwd, pol)
+      if (!py) return { ok: false, code: 'E_PY', message: '未找到 Python 3 解释器' + (resolvePython.lastError ? '：' + resolvePython.lastError : '') }
+      let r = null
+      try {
+        r = await shell.run(shell.resolve({
+          command: [shq(py)].concat(argv.map(shq)).join(' '),
+          workdir: cwd, timeoutMs: 60000, stdoutMaxBytes: 262144,
+          env: { PYTHONIOENCODING: 'utf-8' },
+          ...(pol ? { sandboxPolicy: pol } : {}),
+        }))
+      } catch (e) { return { ok: false, code: 'E_IO', message: '脚本执行失败：' + String(e && e.message || e) } }
+      if (r && r.sandbox && r.sandbox.denied) return { ok: false, code: 'E_PERM', message: '沙箱拒绝了这次写入（当前会话档位不允许）' }
+      const out = r && r.stdout && typeof r.stdout.text === 'string' ? r.stdout.text.trim() : ''
+      try { return JSON.parse(out) } catch (e) {
+        return { ok: false, code: 'E_IO', message: (r && r.stderr && r.stderr.text ? r.stderr.text : out) || '脚本没有返回 JSON' }
+      }
+    }
+    async function traceState(sessionId) {
+      const cwd = await resolveCwd(sessionId)
+      const repoCwd = await resolveRepoCwd(sessionId)
+      const caps = await writeCaps(sessionId)
+      const traces = fs.processPath(await fs.resolve('traces', { cwd }))
+      const argv = [repoCwd + '/scripts/trace_state.py', '--json', '--root', repoCwd, '--traces', traces]
+      if (caps.canWrite) argv.push('--can-write', '--write-root', caps.writeRoot)
+      else if (caps.reasonCode === 'E_NO_ROOT') argv.push('--no-root')
+      return runTraceScript(sessionId, argv, false)
+    }
+
     const handleDisposer = harness.handle('ascend-traces-list', async (args) => {
       if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
@@ -2551,7 +2597,22 @@ return {
       const repoCwd = await resolveRepoCwd(sessionId)
       const r = await listTraces(cwd, repoCwd)
       if (!r.ok) return { ok: false, error: r.error }
-      return { ok: true, sessions: r.sessions, inboxDrafts: r.inboxDrafts || [], elapsedMs: r.elapsedMs, parsed: r.parsed, cached: r.cached, skipped: r.skipped }
+      // 状态投影失败不挡列表（卡片退回旧字段），但要把原因带给客户端：不要把「读不到状态」
+      // 显示成「都没有动作」，那会让用户以为这单已经收尾了。
+      let stateError = null
+      try {
+        const proj = await traceState(sessionId)
+        if (proj && proj.schemeVersion && Array.isArray(proj.sessions)) {
+          const byId = {}
+          for (const row of proj.sessions) byId[row.sessionId] = row
+          for (const item of r.sessions) if (byId[item.sessionId]) item.state = byId[item.sessionId]
+          r.vocab = proj.vocab
+          r.capabilities = proj.capabilities
+        } else if (proj && proj.ok === false) stateError = proj.message || proj.code
+      } catch (e) { stateError = String(e && e.message || e) }
+      return { ok: true, sessions: r.sessions, inboxDrafts: r.inboxDrafts || [], elapsedMs: r.elapsedMs,
+               parsed: r.parsed, cached: r.cached, skipped: r.skipped,
+               vocab: r.vocab || null, capabilities: r.capabilities || null, stateError: stateError }
     })
 
     const detailDisposer = harness.handle('ascend-traces-detail', async (args) => {
@@ -2671,6 +2732,38 @@ return {
     })
 
     // 导出交接包（跨机继续定位）。与 open-evidence 一样只依赖 shell，不需要 fs 服务。
+    const transitionDisposer = harness.handle('ascend-trace-transition', async (args) => {
+      if (!fs) return needFs()
+      const sessionId = args && args.sessionId ? String(args.sessionId) : ''
+      const action = args && args.action ? String(args.action) : ''
+      const payload = (args && args.payload) || {}
+      const expect = args && args.expectSha256 ? String(args.expectSha256) : ''
+      if (!sessionId || !action) return { ok: false, code: 'E_SCHEMA', message: '缺 sessionId 或 action' }
+      const caps = await writeCaps(sessionId)
+      if (!caps.canWrite) return { ok: false, code: caps.reasonCode || 'E_PERM', message: caps.reason || '当前会话没有写权限' }
+      const cwd = await resolveCwd(sessionId)
+      const repoCwd = await resolveRepoCwd(sessionId)
+      const traces = fs.processPath(await fs.resolve('traces', { cwd }))
+      const argv = [repoCwd + '/scripts/trace_transition.py', sessionId,
+                    '--root', repoCwd, '--traces', traces, '--by', 'user', '--source', 'panel', '--json']
+      if (expect) argv.push('--expect-sha256', expect)
+      const kind = payload['ending.kind'] ? String(payload['ending.kind']) : ''
+      if (action === 'reopen') argv.push('--reopen')
+      else if (action === 'correct-ending') { argv.push('--correct-ending'); if (payload.to) argv.push('--to', String(payload.to)); if (kind) argv.push('--kind', kind) }
+      else if (action === 'backfill-ending') { argv.push('--backfill-ending'); if (kind) argv.push('--kind', kind) }
+      else {
+        const to = action.replace('close-', '')
+        argv.push('--to', to)
+        if (kind) argv.push('--kind', kind)
+        if (payload['ending.handed_to']) argv.push('--handed-to', String(payload['ending.handed_to']))
+        if (payload['ending.duplicate_of']) argv.push('--duplicate-of', String(payload['ending.duplicate_of']))
+        if (payload.summary) argv.push('--summary', String(payload.summary))
+        if (payload.severity) argv.push('--severity', String(payload.severity))
+        if (payload.fix_emitted !== undefined && payload.fix_emitted !== null) argv.push('--fix-emitted', payload.fix_emitted ? 'true' : 'false')
+      }
+      return runTraceScript(sessionId, argv, true)
+    })
+
     const exportDisposer = harness.handle('ascend-export-trace', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const traceFile = args && args.traceFile ? String(args.traceFile) : null
@@ -2692,6 +2785,7 @@ return {
       if (processDisposer) processDisposer()
       if (verdictDisposer) verdictDisposer()
       if (marksDisposer) marksDisposer()
+      if (transitionDisposer) transitionDisposer()
       if (exportDisposer) exportDisposer()
     }
   },
