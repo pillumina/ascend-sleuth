@@ -34,7 +34,7 @@
 const fs = require('fs')
 const http = require('node:http')
 const path = require('path')
-const { resolveTarget, sessionCookie, rpcCall } = require('./lib/panel_endpoint')
+const { resolveTarget, noTargetLines, sessionCookie, rpcCall } = require('./lib/panel_endpoint')
 
 const API_CHANNEL = '/api'
 const DEFAULT_SPEC = path.resolve(__dirname, '..', 'dsh-plugins', 'dsh-sleuth-panels')
@@ -91,7 +91,8 @@ function classify(callResult) {
 async function openTarget(args, io) {
   const target = resolveTarget(args)
   if (target === null) {
-    io.say('安装：拿不到 DSH 的地址与 token（日志里没有 `dsh web:` 行）\n')
+    io.say('安装：拿不到 DSH 的地址与 token\n')
+    for (const line of noTargetLines(process.env, args.log)) io.say('  ' + line + '\n')
     io.say('  可显式传 --url <base> --token <token>，或 --log <harness.log 路径>\n')
     return { kind: 'no-target' }
   }

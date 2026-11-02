@@ -24,7 +24,7 @@
 'use strict'
 
 const http = require('node:http')
-const { resolveTarget, sessionCookie, rpcCall } = require('./lib/panel_endpoint')
+const { resolveTarget, noTargetLines, sessionCookie, rpcCall } = require('./lib/panel_endpoint')
 
 const CHANNEL = '/ascend-sleuth-panels'
 const DEFAULT_ENDPOINT = 'ascend-traces-list'
@@ -50,7 +50,8 @@ async function runProbe(args, io) {
 
   const target = resolveTarget(args)
   if (target === null) {
-    say('探针：拿不到 DSH 的地址与 token（日志里没有 `dsh web:` 行）\n')
+    say('探针：拿不到 DSH 的地址与 token\n')
+    for (const line of noTargetLines(process.env, args.log)) say('  ' + line + '\n')
     say('  可显式传 --url <base> --token <token>，或 --log <harness.log 路径>\n')
     return 2
   }
