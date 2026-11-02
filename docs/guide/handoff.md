@@ -64,7 +64,7 @@ handoff/<session_id>.README.txt  给人看的一页说明（接手命令就在�
 | `intent` / `intent_source` | 交接意图：`continue`（继续定位）/ `verify`（复核结论）/ `escalate`（转上游）；标了是人指定还是按 `status` 推导 |
 | `intent_note` | 人手写的一句话（为什么带出去、接手方先看什么） |
 | `session` | 上家那一单的状态快照：`status`、`current_step`、`summary`、`active_case`、`excluded_cases`、框架/平台/类别 |
-| `needs` | 接手方该先问什么：由 trace 各事件的 `evidence.missing` 与顶层 `last_action` 投影而来 |
+| `needs` | 接手方该先问什么：未收尾单取顶层 `last_action`（当前提问），没有才退到最近一条 `evidence.missing`；已收尾单为空 |
 | `contents` | 包内清单（路径/字节/类型）、总字节、未纳入清单 `omitted`（含原因）、报告文件名 |
 | `src_refs` | 这次读过哪些源码（`org/repo@ref` 与引用到的文件）；源码缓存是本地件，接收侧要自己取 |
 | `redaction` | `none` / `raw-evidence` / `redacted` 与说明 |

@@ -176,6 +176,25 @@ class CapacityGateTest(unittest.TestCase):
             self.assertEqual(c["soft"], c["tok"] > soft)
             self.assertEqual(c["hard"], c["tok"] >= hard)
 
+    def test_duplicate_gate_id_is_broken_not_silent(self):
+        """复制一条判据 → --check 退 2 并点名重复 id，而不是取第一条静默通过。"""
+        self.write_case("inference/vllm-ascend/interrupt/A.yaml", "A-1")
+        self.generate_views()
+        gates_path = self.root / "metrics" / "gates.yaml"
+        gates_path.write_text(
+            gates_path.read_text(encoding="utf-8")
+            + "  - id: cell_read_soft_tok\n"
+              "    dimension: capacity_cell_read_tok\n"
+              "    op: \">\"\n"
+              "    value: 1\n"
+              "    meaning: 重复条目\n"
+              "    action: 删掉\n",
+            encoding="utf-8")
+        rc, doc = self.health()
+        self.assertEqual(rc, 2, doc.get("check_verdict"))
+        self.assertTrue(any("重复" in b and "cell_read_soft_tok" in b for b in doc["broken"]),
+                        doc["broken"])
+
     def test_counts_alone_never_flag_a_cell(self):
         """条数多但成本低 → 不越线（这正是换量的意义：条数是代理，不是判据）。"""
         for i in range(40):

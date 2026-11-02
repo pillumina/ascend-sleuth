@@ -28,6 +28,7 @@ from datetime import date
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _gates import duplicate_ids                 # noqa: E402
 from _yaml import load_file                      # noqa: E402  （解析后端单一事实源）
 import ev_board_data as EBD                      # noqa: E402
 from ev_measure import (classify as classify_measure, load_cards,  # noqa: E402
@@ -359,6 +360,8 @@ def evaluate(root: Path):
                          "action": "确认是暂无待改进项，还是产卡信号被关闭"})
 
     # ---- 越界 ----
+    for gid in duplicate_ids(cfg.get("gates") or []):
+        errors.append(f"gates 里判据 id 重复：{gid}——重复条目会被判两遍，阈值只取第一条")
     gate_rows = []
     for g in (cfg.get("gates") or []):
         if not isinstance(g, dict) or not g.get("id"):

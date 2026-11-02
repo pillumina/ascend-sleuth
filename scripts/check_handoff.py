@@ -193,8 +193,9 @@ def main() -> int:
         check("zip 与 md 两个投影都产出", bool(doc.get("zip")) and bool(doc.get("md")))
         check("交接意图按命令行记下", doc.get("intent") == "continue"
               and doc.get("intent_source") == "cli")
-        check("待补材料从 evidence.missing + last_action 投影（2 条）",
-              len(doc.get("needs") or []) == 2, json.dumps(doc.get("needs"), ensure_ascii=False))
+        check("待补材料取当前提问（last_action），不把历史 missing 全倒出来",
+              (doc.get("needs") or []) == ["等现场补 plog 首报错段后继续"],
+              json.dumps(doc.get("needs"), ensure_ascii=False))
         check("含原始证据时如实标 raw-evidence",
               (doc.get("redaction") or {}).get("state") == "raw-evidence")
         check("未被引用的证据文件不进包", (doc.get("omitted") or []) == [])

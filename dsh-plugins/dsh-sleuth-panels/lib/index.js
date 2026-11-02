@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:e5dfc1b76b73)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:513ad415e98b)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:d2bbdff3921b)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -105,7 +105,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:e5dfc1b76b73) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:513ad415e98b) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -663,13 +663,9 @@ return {
         // `session_id` 是诊断起的名字（形如 `<日期>-<issue>-<短名>`），与侧栏的会话号是两套，
         // 拿它匹配永远落空。轨迹没写这一项时无法定位到侧栏的行——少这一条标记，不猜。
         harnessSession: doc.harness_session ? String(doc.harness_session) : '',
-        waitingFor: (function () {
-          for (let i = trace.length - 1; i >= 0; i--) {
-            const ev = trace[i] && trace[i].evidence
-            if (ev && ev.missing) return String(ev.missing).replace(/\s+/g, ' ').trim()
-          }
-          return doc.last_action ? String(doc.last_action).replace(/\s+/g, ' ').trim() : null
-        })(),
+        // 「在等什么」由状态投影给（`trace_state.py` 的 derived.waitingFor）；这里不再自推，
+        // 判据只在一门语言里（`_trace_state.py` 头注）。列表拿到投影后覆盖这一格。
+        waitingFor: null,
         userSteps: Number(userSteps) || 0,
         agentSteps: Number(agentSteps) || 0,
         lastAction: lastAction,
@@ -2716,7 +2712,10 @@ return {
         if (proj && proj.schemeVersion && Array.isArray(proj.sessions)) {
           const byId = {}
           for (const row of proj.sessions) byId[row.sessionId] = row
-          for (const item of r.sessions) if (byId[item.sessionId]) item.state = byId[item.sessionId]
+          for (const item of r.sessions) {
+            if (byId[item.sessionId]) item.state = byId[item.sessionId]
+            item.waitingFor = (item.state && item.state.derived && item.state.derived.waitingFor) || ''
+          }
           r.vocab = proj.vocab
           r.capabilities = proj.capabilities
         } else if (proj && proj.ok === false) stateError = proj.message || proj.code

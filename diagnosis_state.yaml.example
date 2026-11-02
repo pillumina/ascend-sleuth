@@ -47,6 +47,8 @@ kb_rev: "a1b2c3d"                       # 建 session 时那份 knowledge/ 的�
                                         # 同一条 case 的 id 可能不存在、候选排序可能不同（见 docs/guide/handoff.md）；
                                         # ② 事后误诊归因——"当时为什么没命中"取决于当时库里有什么。
                                         # 拿不到 git 就如实写 unknown，别编值
+kb_rev_dirty: false                     # 工作区有未提交的已跟踪改动时为 true（trace_begin.py 填）；
+                                        # sha 只标识提交，脏工作区的规则要另记这一位。
 severity: ""                           # 收尾写一次：benign | service-affecting | data-loss-risk（命中单取命中 case 的
                                         # 同名字段，未命中按根因判）。面板据此提示"先停"还是"打补丁"
 fix_emitted: null                       # 收尾写一次：true / false —— 本次是否给出可执行的修复或规避方案。

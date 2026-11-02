@@ -72,6 +72,50 @@ class DeriveTest(unittest.TestCase):
         self.assertEqual(st.case_kind("VLLM-ASC-11312"), "case")
         self.assertEqual(st.case_kind(None), "none")
 
+    # ---- 等什么 / 等谁：派生量，不写盘 ----
+    def test_waiting_for_prefers_last_action_then_latest_missing(self):
+        d = st.derive(doc(trace=[{"role": "user", "evidence": {"missing": "缺日志"}},
+                                 {"role": "agent"}], last_action="等用户确认路径"), set())
+        self.assertEqual(d["waitingFor"], "等用户确认路径")
+        self.assertEqual(d["waitingOn"], "user_material")
+        self.assertTrue(d["needsInput"])
+        # 旧 trace 没写 last_action：退到最近一条 missing
+        d2 = st.derive(doc(trace=[{"role": "user", "evidence": {"missing": "缺日志"}}]), set())
+        self.assertEqual(d2["waitingFor"], "缺日志")
+        self.assertEqual(d2["waitingOn"], "user_material")
+        # 多行提问折叠成一行，面板一行显示
+        d3 = st.derive(doc(trace=[{"role": "user"}], last_action="等用户确认\n  三条路径"), set())
+        self.assertEqual(d3["waitingFor"], "等用户确认 三条路径")
+
+    def test_terminal_trace_does_not_still_wait_for_old_missing(self):
+        d = st.derive(doc(status="resolved",
+                          trace=[{"role": "user", "evidence": {"missing": "缺日志"}}]), set())
+        self.assertEqual(d["waitingFor"], "")
+        self.assertEqual(d["waitingOn"], "ended")
+        self.assertFalse(d["needsInput"])
+
+    def test_waiting_on_feedback_and_sediment(self):
+        d = st.derive(doc(status="resolved", active_case="VLLM-ASC-1",
+                          feedback={"case": "VLLM-ASC-1", "outcome": "pending"}), set())
+        self.assertEqual(d["waitingOn"], "user_feedback")
+        # 在途、有 case 候选、没有当前提问 → 等沉淀
+        d2 = st.derive(doc(sediment_candidates=[{"kind": "case"}]), set())
+        self.assertEqual(d2["waitingOn"], "sediment")
+        # 在途、有 case 候选、但 last_action 在等材料 → 先答「等什么」
+        d3 = st.derive(doc(sediment_candidates=[{"kind": "case"}], last_action="等现场补 plog"), set())
+        self.assertEqual(d3["waitingOn"], "user_material")
+        self.assertTrue(d3["needsInput"])
+        # 已收尾、带 case 候选、还没沉淀 → 待沉淀（不是 ended）
+        d4 = st.derive(doc(status="resolved", sediment_candidates=[{"kind": "case"}]), set())
+        self.assertEqual(d4["waitingOn"], "sediment")
+
+    def test_waiting_on_upstream(self):
+        cases = self._upstream_case()
+        d = st.derive(doc(status="resolved", active_case="VLLM-ASC-1", fix_emitted=False),
+                      {"VLLM-ASC-1"}, cases)
+        self.assertEqual(d["waitingOn"], "upstream")
+        self.assertEqual(d["waitingFor"], "")
+
     # ---- 等上游：四个已有事实的现算组合（收尾 + 没给 fix + 有锚点 + 依据在上游）----
     def _upstream_case(self, source="upstream-maintainer-confirmed", last="2026-W42"):
         return {"VLLM-ASC-1": {"anchors": ["vllm-ascend#10834"], "lastVerified": last,

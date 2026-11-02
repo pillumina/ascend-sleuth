@@ -20,9 +20,9 @@ from pathlib import Path
 
 from _yaml import load_file, load_text
 
-# 投影缓存（`scripts/trace_state.py` 的 `.state-cache.json`）的键含本值：派生量新增字段时
-# 必须 bump，否则升级后命中旧缓存的面板会继续拿到没有新字段的 payload（筛选恒空）。
-SCHEME = "ascend-sleuth-trace-state/2"
+# 投影缓存（`scripts/trace_state.py` 的 `.state-cache.json`）的键含本值：派生量或其判据
+# 变化时必须 bump，否则升级后命中旧缓存的面板会继续拿旧判据（筛选恒空或分类错）。
+SCHEME = "ascend-sleuth-trace-state/4"
 
 # 与 `scripts/sediment_batch.py:48-50` 同一组判据：真 case id / 占位串。两处分家会造出
 # 「面板说已闭环、闸门拦下」的反例（`verify_case_draft.py` 顶部注释也点了这件事）。
@@ -262,6 +262,40 @@ def derive(doc: dict, kb_case_ids: set[str], kb_cases: dict | None = None) -> di
     upstream_grounded = bool(upstream and upstream["verificationSource"].startswith("upstream-"))
     upstream_pending = bool(upstream_grounded and status == "resolved" and fix_false
                             and str(doc.get("severity") or "") != "data-loss-risk")
+
+    # 「在等什么」：派生量，不写盘。顶层 `last_action` 是当前提问，优先用它；只有它空着
+    # 才退到最近一条 `evidence.missing`（旧 trace 没写 last_action 的兜底）。只对未收尾的单
+    # 有意义——收尾后历史缺口不是"还在等"。写入纪律见
+    # `skills/diagnose/references/diagnosis-trace.md` 的 last_action 一节。
+    waiting_for = ""
+    if open_:
+        waiting_for = re.sub(r"\s+", " ", str(doc.get("last_action") or "")).strip()
+        if not waiting_for:
+            for ev in reversed(trace):
+                if not isinstance(ev, dict):
+                    continue
+                evd = ev.get("evidence")
+                if isinstance(evd, dict) and evd.get("missing"):
+                    waiting_for = re.sub(r"\s+", " ", str(evd["missing"])).strip()
+                    break
+
+    # 等谁：一条状态轴上的人读分类，不是新状态。优先级：等上游（已收尾、等外部）>
+    # 等现场回报（有真实 case 的 pending）> 已结束 > 等沉淀 > 等现场材料/决定。
+    fb_pending_case = bool(fb["outcome"] == "pending" and case_kind(fb.get("case")) == "case")
+    if upstream_pending:
+        waiting_on = "upstream"
+    elif fb_pending_case:
+        waiting_on = "user_feedback"
+    elif waiting_for:
+        waiting_on = "user_material"
+    elif need_sed or need_promote:
+        waiting_on = "sediment"
+    elif not open_:
+        waiting_on = "ended"
+    else:
+        waiting_on = None
+    needs_input = waiting_on == "user_material"
+
     return {
         "open": open_,
         "closed": closed,
@@ -281,6 +315,9 @@ def derive(doc: dict, kb_case_ids: set[str], kb_cases: dict | None = None) -> di
         "vendorConfirmed": vendor_confirmed,
         "upstreamPending": upstream_pending,
         "upstream": upstream,
+        "waitingFor": waiting_for,
+        "waitingOn": waiting_on,
+        "needsInput": needs_input,
         "lastReview": ({"verdict": latest_review.get("verdict"), "at": latest_review.get("at")}
                        if latest_review else None),
         "heading": "resolved" if status == "resolved" and fb["outcome"] in NEGATIVE_OUTCOMES else None,

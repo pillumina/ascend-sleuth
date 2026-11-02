@@ -292,6 +292,21 @@ harness 侧的会话号（DSH 里是 `$DSH_SESSION_ID`）。**用途有两个**�
 
 拿不到 git（非检出、无 git）就如实写 `unknown`——写 `unknown` 只让版本无法比对，编一个值会让比对给出假结论。
 
+工作区有未提交的已跟踪改动时，`trace_begin.py` 另写顶层 `kb_rev_dirty: true`。`kb_rev` 的 sha
+只标识提交，不能单独指认脏工作区里的规则；续接时的漂移检查会把未提交改动一并算入。
+
+
+## 顶层 `last_action`（当前在等什么，提问后更新）
+
+`last_action` 记这一单现在等谁做什么：等哪份材料、等哪个决定、等哪条命令输出。写入口是
+`trace_begin.py`（建单时写空串）；每轮以提问结束时写，**下一轮拿到回答后改写或清空**。
+
+它和 `evidence.missing` 分工不同：`missing` 挂在那一轮的 user 事件上，记的是**当时缺的材料**，
+历史事件不改写；`last_action` 是**当前**那一个问题，可以随回答变化。面板与续接只读
+`last_action` 判断「等什么」，不按事件顺序推断「后来的进展等于回答了问题」。
+
+状态投影里的 `waitingFor` / `waitingOn` 是这两个字段的派生量（`scripts/_trace_state.py`），
+不写盘。收尾后通常为 `ended`；等现场回报或等上游时分别是 `user_feedback` / `upstream`。历史缺口不再显示成「还在等」。
 
 ## 值的写法（YAML 语法陷阱）
 

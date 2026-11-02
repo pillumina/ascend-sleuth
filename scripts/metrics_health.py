@@ -27,6 +27,7 @@ import tempfile
 from datetime import date
 from pathlib import Path
 
+from _gates import duplicate_ids
 from _yaml import load_file   # 解析后端单一事实源（快路径见 _yaml.py）
 import metrics_snapshot as MS
 
@@ -217,6 +218,8 @@ def main():
     load_errors = []       # 配置文件读不动的如实记录（进 broken，退出码 2）
     gates_doc = load_yaml(root / "metrics" / "gates.yaml", load_errors)
     gates = gates_doc.get("gates") or []
+    for gid in duplicate_ids(gates):
+        load_errors.append(f"gates.yaml 里判据 id 重复：{gid}——重复条目只取第一条的阈值，其余静默失效")
     fresh = gates_doc.get("freshness") or {}
     readability = gates_doc.get("readability") or []
     timeline = load_yaml(root / "metrics" / "timeline.yaml", load_errors)

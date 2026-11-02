@@ -93,7 +93,7 @@ def main(argv=None) -> int:
     else:
         for s in data["sessions"]:
             ids = [a["id"] if isinstance(a, dict) else str(a) for a in s["actions"]]
-            print(f"{s['sessionId']}\t{s['status']}\t{','.join(ids)}")
+            print(f"{s['sessionId']}\t{s['status']}\t{s['derived'].get('waitingOn') or '-'}\t{','.join(ids)}")
     return 0
 
 

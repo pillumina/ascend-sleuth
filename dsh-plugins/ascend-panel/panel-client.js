@@ -2735,7 +2735,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           fbKindOf(s) === 'case' ? React.createElement('div', { style: { color: T.warn, fontSize: 'var(--t-md)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 } },
             React.createElement(Dot, { color: T.warn }),
             '结果待回报：' + (s.feedbackCase || (caseKindOf(s) === 'case' ? s.activeCase : '') || '命中 case') + '（下方可生成回报指令）') : null,
-          fbKindOf(s) === 'no-case' ? React.createElement('div', { style: { color: T.text2, fontSize: 'var(--t-md)', marginTop: 4, display: 'flex', alignItems: 'baseline', gap: 6 } },
+          (fbKindOf(s) === 'no-case' && (!s.state || !s.state.derived || s.state.derived.open !== false)) ? React.createElement('div', { style: { color: T.text2, fontSize: 'var(--t-md)', marginTop: 4, display: 'flex', alignItems: 'baseline', gap: 6 } },
             React.createElement('span', { style: { flexShrink: 0 } }, '等现场补材料：'),
             React.createElement('span', { title: s.waitingFor || '', style: { color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 } },
               s.waitingFor ? (s.waitingFor.length > 60 ? s.waitingFor.slice(0, 60) + '…' : s.waitingFor) : '本次诊断缺的材料（见轨迹里的「缺」标记）'),
