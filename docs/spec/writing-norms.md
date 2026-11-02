@@ -128,7 +128,7 @@ python3 -c "import re,pathlib;pat=re.compile(r'[\u4e00-\u9fff]\(');[print(f'{p}:
 | trace 人读字段 | `skills/diagnose/references/diagnosis-trace.md`（共用条目指向同目录的报告模板，再指向本文件） |
 | 诊断对话输出 | `skills/diagnose/SKILL.md` 的「命中时的输出格式」一节 |
 | 对话回复 | `CLAUDE.md` 的「回复口吻」条（每个会话整份注入，会话开始即读到；本面不另设文件） |
-| 设计 / 方案文档 | 写法见本节上表中该行的「定制条款」；`proposals/README.md` 只管各子目录放什么、哪些进 git（idea 卡的结构由 `scripts/verify_proposals.py` 校验） |
+| 设计 / 方案文档 | `proposals/README.md` 的「方案文档怎么写」一节（四件事的骨架）；目录与 git 归属同在该文件；idea 卡的结构由 `scripts/verify_proposals.py` 校验 |
 | case 词条 / postmortem | `skills/to-postmortem/SKILL.md` 的「产出落点」一节 |
 | reference 词条 | `skills/to-reference/SKILL.md` 的「产出词条」一节 |
 | EV 卡 | `docs/mechanism/pipeline.md` §7「改进项的 schema 与状态机」 |
