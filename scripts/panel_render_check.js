@@ -109,6 +109,19 @@ const React = {
   },
 }
 
+// 面板跑在浏览器里，`document` 是真实全局。Node 里补一个最小桩，让「点确认时把焦点移到
+// 缺的字段」这类交互路径也能走完（元素找不到时面板自己会跳过，不改变判据）。
+// 用的时候临时挂上、用完还原：下面有别的用例把 `document` 换成自己的假 DOM，全局留着
+// 会让两边互相覆盖。
+const DOCUMENT_STUB = {
+  getElementById: () => null,
+  querySelector: () => null,
+  addEventListener: () => {},
+  removeEventListener: () => {},
+  activeElement: null,
+  body: null,
+}
+
 async function renderAsync(clientSrc, slotProps, hostImpl, { settle = 8, views, requireSlots = true, sessions } = {}) {
   hookIdx = 0; hookState = []; depState = []; effectQueue = []; cssChunks = []
   const registrations = []
@@ -158,6 +171,63 @@ async function renderAsync(clientSrc, slotProps, hostImpl, { settle = 8, views, 
     await new Promise(res => setImmediate(res))
   }
   return { text: out.join('\n'), regs: registrations }
+}
+
+// 交互式渲染：renderAsync 只渲首屏，点了某个按钮之后才展开的分支它到不了。这里把
+// 「渲染 → 在树里按可见文字找 onClick → 点 → 再渲染」交给调用侧，用来测状态编辑器这类
+// 靠选中动作才展开的面。mock React 的 hook 槽是全局的，所以每个用例从新实例开始。
+function interactiveRender(clientSrc, slotProps, hostImpl) {
+  hookIdx = 0; hookState = []; depState = []; effectQueue = []
+  const registrations = []
+  const ctx = {
+    get(name) {
+      if (name === 'slots') return {
+        inject(slot, cb) { cb() },
+        register(opts, comp) { registrations.push({ opts, comp }) },
+      }
+      if (name === 'styles') return { insert() { return () => {} } }
+      return undefined
+    },
+    effect(fn) { const d = fn(); return typeof d === 'function' ? d : () => {} },
+    on() { return () => {} },
+  }
+  const plugin = new Function('React', 'host', 'styles', 'SLEUTH_VIEWS',
+    'return (function(){' + clientSrc + '})()')(React,
+    { call: (m, a) => Promise.resolve(hostImpl(m, a)) }, { insert() { return () => {} } }, undefined)
+  plugin.apply(ctx)
+  const view = registrations.filter(r => r.opts && r.opts.name === 'conversation.view')[0]
+  if (!view) throw new Error('没有 conversation.view 可渲染')
+  let tree = null
+  const handlers = () => { const out = []; collectHandlers(tree, out); return out }
+  const text = () => { const out = []; flatten(tree, out); return out.join('\n') }
+  const pump = async (rounds = 2) => {
+    for (let i = 0; i < rounds; i++) {
+      effectQueue = []; hookIdx = 0
+      tree = [view.comp(slotProps)]
+      effectQueue.slice().forEach(fn => fn())
+      await new Promise(res => setImmediate(res))
+    }
+    return tree
+  }
+  const click = (needle) => {
+    const hit = handlers().find(h => String(h.text).includes(needle))
+    if (!hit) {
+      throw new Error('点不到「' + needle + '」；树里可点的有：'
+        + handlers().map(h => JSON.stringify(String(h.text).slice(0, 40))).join(' '))
+    }
+    hit.fn({ preventDefault() {}, stopPropagation() {} })
+  }
+  // 按可见文字全等点：flatten 会把 title 也拼进可点文字，而同一个词可能既是某按钮的标题、
+  // 又是另一按钮的标签（实测「转交他人跟进」就是这样），按包含找会点到错的那个。
+  const clickExact = (label) => {
+    const hit = handlers().find(h => String(h.text).trim() === label)
+    if (!hit) {
+      throw new Error('点不到文字正好是「' + label + '」的按钮；树里可点的有：'
+        + handlers().map(h => JSON.stringify(String(h.text).slice(0, 40))).join(' '))
+    }
+    hit.fn({ preventDefault() {}, stopPropagation() {} })
+  }
+  return { pump, text, click, clickExact, handlers }
 }
 
 // ---- 真实数据 ----
@@ -1941,6 +2011,139 @@ _MS._run_no_pipe = no_fallback`)
       fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8').includes('--payload-file'))
     expect('诊断 tab：旧的一键指令生成器已移除（不允许两套说法并存）',
       !/status: resolved \+ feedback\{outcome: resolved\}/.test(ascSrc))
+    // —— 状态编辑器：每个动作点开都不许崩（2026-11）——
+    // 为什么要有这一段：此前只断言源码里有 `manualCmd(cmdShell)` 这几个字，而 `cmdShell`
+    // 这个状态根本没声明——选中任一动作后，兜底命令那一块在渲染期读它、抛 ReferenceError，
+    // 整张卡片渲染失败、宿主把那块槽位画成空白（「补记收尾方式」白屏就是这么来的）；上一轮
+    // 还有同一形状的 `inputStyle` 先用后声明。renderAsync 只渲首屏，到不了"点了动作之后"的
+    // 分支，所以这一段用真点击。动作清单本身不在这里手写：跑 trace_state.py 拿真投影。
+    {
+      const prevDocument = globalThis.document
+      if (!prevDocument) globalThis.document = DOCUMENT_STUB
+      const tracesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sleu-state-'))
+      const traceYaml = (id, status, ending) => 'session_id: "' + id + '"\n'
+        + 'harness_session: "session-' + id + '"\n'
+        + 'status: ' + status + '\n'
+        + 'current_step: 3\n'
+        + 'summary: "问题背景：状态编辑器探针"\n'
+        + 'created_at: "2026-10-01T09:00:00+08:00"\n'
+        + 'updated_at: "2026-10-01T10:00:00+08:00"\n'
+        + (ending ? 'ending: { kind: ' + ending + ' }\n' : '')
+        + 'trace:\n'
+        + '  - role: user\n'
+        + '    content: "服务起不来"\n'
+        + '  - role: agent\n'
+        + '    step: 1\n'
+        + '    action: deliver_fix\n'
+        + '    output: "定位到 xxx"\n'
+      fs.writeFileSync(path.join(tracesDir, 's-progress.yaml'), traceYaml('s-progress', 'in_progress', null))
+      fs.writeFileSync(path.join(tracesDir, 's-noend.yaml'), traceYaml('s-noend', 'resolved', null))
+      fs.writeFileSync(path.join(tracesDir, 's-ended.yaml'), traceYaml('s-ended', 'resolved', 'root_cause'))
+      let proj = null
+      try {
+        proj = JSON.parse(pyRun(['scripts/trace_state.py', '--json', '--can-write', '--traces', tracesDir],
+          { cwd: repo, maxBuffer: 8 * 1024 * 1024, env: PY_ENV }).toString())
+      } catch (e) {
+        expect('状态编辑器：状态投影跑得通（动作清单来自 trace_state.py）', false, String((e && e.message) || e))
+      }
+      fs.rmSync(tracesDir, { recursive: true, force: true })
+      if (proj) {
+        const byId = {}
+        for (const st of proj.sessions || []) byId[st.sessionId] = st
+        const actionIds = (id) => ((byId[id] || {}).actions || []).map(a => a.id).join(',')
+        expect('状态投影：三种形态的动作清单（进行中三个收尾 / 缺收尾方式的终态给补记 / 有收尾方式的终态给改收尾）',
+          actionIds('s-progress') === 'close-resolved,close-escalated,close-archived'
+          && actionIds('s-noend') === 'backfill-ending,reopen'
+          && actionIds('s-ended') === 'correct-ending,reopen',
+          JSON.stringify(['s-progress', 's-noend', 's-ended'].map(id => [id, actionIds(id)])))
+        const mkStateSession = (st) => ({
+          sessionId: st.sessionId, file: st.file, status: st.status,
+          framework: 'vllm-ascend', platform: 'A2-910B', category: 'interrupt',
+          activeCase: null, activeCaseKind: null, activeCaseInKb: false, feedbackPending: null,
+          summarySnippet: st.summary, userSteps: 1, agentSteps: 1, lastRole: 'agent',
+          lastOutput: '定位到 xxx', updatedAt: st.updatedAt, sedimented: { state: 'none' }, state: st,
+        })
+        const hostFor = (st) => (m) => m === 'ascend-traces-list'
+          ? { ok: true, sessions: [mkStateSession(st)], vocab: proj.vocab, capabilities: proj.capabilities }
+          : { ok: true, steps: [], summary: st.summary, refCount: 0, sedimented: null }
+        const CONFIRM = {
+          'close-resolved': '确认收尾', 'close-escalated': '确认收尾', 'close-archived': '确认收尾',
+          'correct-ending': '确认改收尾', 'backfill-ending': '确认补记', 'reopen': '确认重新打开',
+        }
+        for (const sid of ['s-progress', 's-noend', 's-ended']) {
+          const st = byId[sid]
+          for (const action of st.actions || []) {
+            const ui = interactiveRender(ascSrc, { sessionId: 'sess-1' }, hostFor(st))
+            await ui.pump(6)
+            let err = null
+            try {
+              ui.click('改状态')
+              await ui.pump(2)
+              ui.clickExact(action.label)
+              await ui.pump(2)
+            } catch (e) { err = e }
+            const text = err ? '' : ui.text()
+            const want = CONFIRM[action.id] || '确认收尾'
+            expect('状态编辑器：' + sid + ' 点「' + action.label + '」渲染不抛、给出「' + want + '」',
+              !err && text.includes(want), err ? String(err.message || err) : ('缺确认按钮，末段：' + text.slice(-160)))
+          }
+        }
+        // 兜底命令：内容真的按动作变、写法真的按壳变（点按钮只改颜色那种"接了一半"挡在这里）。
+        {
+          const st = byId['s-noend']
+          const ui = interactiveRender(ascSrc, { sessionId: 'sess-1' }, hostFor(st))
+          await ui.pump(6)
+          ui.click('改状态'); await ui.pump(2)
+          ui.clickExact('补记收尾方式'); await ui.pump(2)
+          const t1 = ui.text()
+          expect('命令兜底：补记收尾方式给的是同一条写入口，payload 只带 kind、不带 to',
+            /trace_transition\.py s-noend/.test(t1) && /"kind": "root_cause"/.test(t1) && !/"to":/.test(t1),
+            t1.slice(-400))
+          ui.clickExact('PowerShell'); await ui.pump(2)
+          const t2 = ui.text()
+          expect('命令兜底：切到 PowerShell 后命令真的换写法（状态接上了，不只是按钮变色）',
+            /@'/.test(t2) && /python scripts\/trace_transition\.py/.test(t2), t2.slice(-400))
+          ui.clickExact('bash'); await ui.pump(2)
+          expect('命令兜底：切回 bash 后是 here-doc 写法', /<<'JSON'/.test(ui.text()), ui.text().slice(-400))
+        }
+        // 必填没填就点确认：给字段提示、不写盘（转交他人的 "转交给" 是硬必填）。
+        {
+          const st = byId['s-progress']
+          const ui = interactiveRender(ascSrc, { sessionId: 'sess-1' }, hostFor(st))
+          await ui.pump(6)
+          ui.click('改状态'); await ui.pump(2)
+          ui.clickExact('转交他人跟进'); await ui.pump(2)
+          ui.clickExact('确认收尾'); await ui.pump(2)
+          expect('状态编辑器：缺「转交给」时点确认只给字段提示', /需要填「转交给」/.test(ui.text()), ui.text().slice(-300))
+        }
+      }
+      // 静态守卫：用到的状态函数必须在同一份源码里声明过。它盯的是"删了 useState 声明、
+      // 渲染表达式还留着"这一类（本次白屏的成因），真点击测不到所有未来的渲染分支时兜底。
+      const settersMissingDeclaration = (src) => {
+        const declared = new Set()
+        for (const m of src.matchAll(/const\s*\[\s*[^,\]]+\s*,\s*(set[A-Za-z0-9_$]+)\s*\]\s*=\s*React\.useState\s*\(/g)) declared.add(m[1])
+        for (const m of src.matchAll(/function\s+(set[A-Za-z0-9_$]+)\s*\(/g)) declared.add(m[1])
+        for (const m of src.matchAll(/(?:const|let|var)\s+(set[A-Za-z0-9_$]+)\s*=/g)) declared.add(m[1])
+        // 形参 / 解构传进来的（函数组件把 setXxx 从父组件接过来）按已声明算
+        for (const m of src.matchAll(/function[^(]*\(([^)]*)\)/g)) {
+          for (const x of m[1].matchAll(/\bset[A-Z][A-Za-z0-9_$]*\b/g)) declared.add(x[0])
+        }
+        for (const m of src.matchAll(/\(([^()]*)\)\s*=>/g)) {
+          for (const x of m[1].matchAll(/\bset[A-Z][A-Za-z0-9_$]*\b/g)) declared.add(x[0])
+        }
+        const used = new Set([...src.matchAll(/\b(set[A-Z][A-Za-z0-9_$]*)\s*\(/g)].map(m => m[1]))
+        const globals = new Set(['setTimeout', 'setInterval', 'setImmediate'])
+        return [...used].filter(x => !declared.has(x) && !globals.has(x))
+      }
+      for (const f of ['dsh-plugins/ascend-panel/panel-client.js', 'dsh-plugins/ev-panel/panel-client.js',
+        'dsh-plugins/sleuth-console/console-client.js', 'dsh-plugins/dsh-sleuth-vllm-kb/client.js']) {
+        const missing = settersMissingDeclaration(fs.readFileSync(path.join(repo, f), 'utf8'))
+        expect('面板源码：' + f + ' 用到的状态函数都声明过（漏声明 = 点到就白屏）',
+          missing.length === 0, '未声明：' + missing.join(','))
+      }
+      if (prevDocument === undefined) delete globalThis.document
+      else globalThis.document = prevDocument
+    }
     // 词表是数据：面板引用的状态/结局必须都在 trace-status.yaml 里
     {
       const vocab = fs.readFileSync(path.join(repo, 'trace-status.yaml'), 'utf8')

@@ -1317,6 +1317,10 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const st = s.state || null
       const [stEdit, setStEdit] = React.useState({ action: '', kind: '', handed: '', dup: '', msg: '' })
       const [rpEdit, setRpEdit] = React.useState({ source: 'field', result: 'from_report', note: '', msg: '' })
+      // 命令兜底的写法（bash / PowerShell）。它必须是真状态：状态编辑器里兜底命令那一块按
+      // `stAct ?` 渲染、渲染期就读它，漏声明时选中任一动作都会抛 ReferenceError，整张卡片
+      // 渲染失败、宿主把那个槽位画成空白（「补记收尾方式」白屏就是这样来的）。
+      const [cmdShell, setCmdShell] = React.useState('bash')
       // 定位结论：host 标 `isConclusion`（显式 `conclusion: true`，或"人读视图可见末条是 hit"这条约定）。
       // 这里算它在**可见列表**里的位置——host 给的是原始下标，人读视图先过滤过记录维护动作，
       // 直接拿原下标会错位（这是"两个索引混用"的经典坑，故用对象身份找而不是比下标）。
