@@ -48,6 +48,18 @@ class HeaderTest(unittest.TestCase):
         self.assertIn('created_at: "2026-10-30T10:00:00+08:00"', text)
         self.assertIn("trace: []", text)
 
+    def test_header_marks_dirty_working_tree(self):
+        text = trace_begin.build_header(
+            slug="2026-10-30-demo", harness_session="session-abc",
+            created_at="2026-10-30T10:00:00+08:00", kb_rev="deadbee", kb_rev_dirty=True,
+        )
+        self.assertIn("kb_rev_dirty: true", text)
+        clean = trace_begin.build_header(
+            slug="2026-10-30-demo", harness_session="session-abc",
+            created_at="2026-10-30T10:00:00+08:00", kb_rev="deadbee", kb_rev_dirty=False,
+        )
+        self.assertIn("kb_rev_dirty: false", clean)
+
     def test_header_marks_missing_session_rather_than_inventing_one(self):
         text = trace_begin.build_header(
             slug="2026-10-30-demo", harness_session="",

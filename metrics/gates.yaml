@@ -1,6 +1,7 @@
 # metrics 阈值与可解读性下限（**数据，不是散文**）
 #
 # 谁读：`scripts/metrics_health.py`（闭环检测器）；`docs/guide/metrics.md` 的周批流程第 2 步。
+# id 必须唯一：重复条目只取第一条的阈值，其余静默失效；`metrics_health.py --check` 退 2 并点名。
 #
 # 为什么单独成文件（2026-09-10 审计）：
 #   阈值原先散在 `docs/plan/roadmap.md`（闸门叙述）、ADR-0004（容量数值）、`docs/guide/metrics.md`（口径）

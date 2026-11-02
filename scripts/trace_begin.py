@@ -30,6 +30,7 @@ $DSH_SESSION_ID 取不到时（Claude Code / pi 等）**留空并说明**，不�
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
@@ -61,23 +62,35 @@ def harness_session_of(env=None) -> tuple[str, str]:
     return raw, ""
 
 
-def kb_rev_of(root: Path) -> str:
-    """`scripts/kb_rev.py` 末行 = 检出 HEAD 短 sha；拿不到写 unknown，不编。"""
+def kb_rev_of(root: Path) -> tuple[str, bool | None]:
+    """→ (token, dirty)。token 是检出 HEAD 短 sha；拿不到写 unknown，不编。
+
+    dirty 单独返回：sha 只标识提交，工作区有未提交改动时它不能单独指认"当时的规则"。
+    `kb_rev.py --json` 的 dirty 只算已跟踪文件（运行时件天天变，算进去会永远是脏）。
+    """
     script = root / "scripts" / "kb_rev.py"
     if not script.is_file():
-        return "unknown"
+        return "unknown", None
     try:
-        r = subprocess.run([sys.executable, str(script)], capture_output=True,
+        r = subprocess.run([sys.executable, str(script), "--json"], capture_output=True,
                            cwd=str(root), timeout=30)
     except (OSError, subprocess.SubprocessError):
-        return "unknown"
+        return "unknown", None
     if r.returncode != 0:
-        return "unknown"
-    lines = [l.strip() for l in r.stdout.decode("utf-8", "replace").splitlines() if l.strip()]
-    return lines[-1] if lines else "unknown"
+        return "unknown", None
+    try:
+        doc = json.loads(r.stdout.decode("utf-8", "replace"))
+    except (ValueError, UnicodeDecodeError):
+        return "unknown", None
+    if not isinstance(doc, dict):
+        return "unknown", None
+    rev = str(doc.get("kb_rev") or "unknown")
+    dirty = doc.get("dirty")
+    return rev, (dirty if isinstance(dirty, bool) else None)
 
 
 def build_header(*, slug: str, harness_session: str, created_at: str, kb_rev: str,
+                 kb_rev_dirty: bool | None = None,
                  framework: str = "", platform: str = "", category: str = "",
                  summary: str = "") -> str:
     """顶层 header → YAML 文本。纯函数：给定输入就有确定输出（测试直接打它）。
@@ -97,6 +110,7 @@ def build_header(*, slug: str, harness_session: str, created_at: str, kb_rev: st
         "updated_at: " + q(created_at),
         "ended_at: \"\"            # 收尾写一次：单次成本的右边界",
         "kb_rev: " + q(kb_rev),
+        "kb_rev_dirty: " + ("true" if kb_rev_dirty is True else ("false" if kb_rev_dirty is False else "\"\"")) + "   # 工作区有未提交的已跟踪改动；sha 单独指认不了当时的规则",
         "external_evidence: \"\"     # 开屏写一次：on | off（vllm_kb_* 工具在不在）",
         "detected_framework: " + q(framework),
         "detected_platform: " + q(platform),
@@ -142,7 +156,7 @@ def main() -> int:
 
     root = Path(args.repo).resolve()
     session, why = harness_session_of()
-    kb = kb_rev_of(root)
+    kb, kb_dirty = kb_rev_of(root)
 
     if args.dry_run_env:
         print("harness_session: " + (session or "（取不到）" + "——" + why))
@@ -161,7 +175,7 @@ def main() -> int:
         return 2
 
     text = build_header(slug=args.slug, harness_session=session, created_at=now_stamp(),
-                        kb_rev=kb, framework=args.framework, platform=args.platform,
+                        kb_rev=kb, kb_rev_dirty=kb_dirty, framework=args.framework, platform=args.platform,
                         category=args.category, summary=args.summary)
 
     if args.print_only:

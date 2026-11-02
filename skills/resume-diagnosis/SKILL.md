@@ -49,7 +49,7 @@ description: >
 **先清反馈债——按 `feedback.case` 的取值分三种，别混**：扫到的 state 文件里若有 `feedback.outcome: pending`，先看 `feedback.case` 是**真实 case id**、占位串 `pending-investigation`，还是**空值/缺失**（三种都出现过，定义见 `diagnosis_state.yaml.example`）。
 
 - **真实 case id**（上次命中 case 并给了可应用 fix）：追问“上次 <case-id> 的 fix 应用后解决了吗？（解决 / 没解决 / 部分解决）”——trace 记 `{action: feedback, case, outcome}`、把 `feedback.outcome` 从 `pending` 改成实际结果，再进入续接——**计数不在这里写**，由知识整理收尾的结算步骤落进条目使用记录。
-- **占位串 `pending-investigation`**（没命中 case，只给了建议）：**不念这个占位串**（它不是 case id），也**不要求记 feedback 结算**（没有 case 可结算，结算脚本只会跳过它）。这类单等的是**现场材料**：按 trace 里最近一条 `evidence.missing` 与顶层 `last_action` 追问“上次要求的那几项材料拿到了吗”，把新证据接回诊断主循环。它**不是终态**——`status` 仍是 `in_progress`；结论出来时结果记在 `status` 与 `summary`，并把遗留的 `feedback.outcome: pending` 清掉（无命中单不用反馈轴承载结果，否则会出现“状态已结、反馈轴仍挂着”的两轴打架）。
+- **占位串 `pending-investigation`**（没命中 case，只给了建议）：**不念这个占位串**（它不是 case id），也**不要求记 feedback 结算**（没有 case 可结算，结算脚本只会跳过它）。这类单等的是**现场材料**：按顶层 `last_action` 追问上次要求的那几项材料拿到了吗（没有它才退到最近一条 `evidence.missing`），把新证据接回诊断主循环。它**不是终态**——`status` 仍是 `in_progress`；结论出来时结果记在 `status` 与 `summary`，并把遗留的 `feedback.outcome: pending` 清掉（无命中单不用反馈轴承载结果，否则会出现“状态已结、反馈轴仍挂着”的两轴打架）。
 - **空值/缺失**（写了 `outcome: pending` 却没填 `case`）：**一个字都别念**——照字面追问会问出“上次 的 fix 应用后解决了吗”，读者无从判断你在指哪一单。按占位串那一路处理（问现场材料、不记结算），并**顺手把这笔写清**：该单没命中就清掉 pending，确实在等材料就补成 `pending-investigation`。空值悬在那里，下次续接还得再猜一遍。
 
 状态与结局词表见仓库根的 `trace-status.yaml`（**不是** `feedback_pending` 那个旧说法）。两条轴各管一件事：`status: resolved` 表示**诊断已收尾**（根因定位明确），不表示 fix 生效；fix 行不行只由 `feedback.outcome` 记。命中单在给 fix 时挂 `pending`，这里追问后追加 `feedback` 事件改值——**改的是 outcome，不是给 status 补一句"修好了"**（status 早在收尾时就该落）。
@@ -59,12 +59,14 @@ description: >
 **续接只清被续那一单，不顺手清算全库**：工程师开局说"继续上次那个"、或面板把某一单推过来时，只处理那一单的 pending。扫到**别的** session 还挂着 pending 时，**一句话带过**（几笔、最早那笔挂了多少天、"面板待办面有『补反馈』入口"），**不在新诊断的开屏逐单念**、也不要求他当场逐笔回报——积压时那是审讯，不是诊断。想看全量债账的人去面板；续接的职责是把手上这一单推完。
 
 0. **先解析 trace 目录**：`python3 scripts/shared_dir.py traces` 打印的绝对路径就是本会话要读写的 `traces/`（锚在**主检出**、跨 worktree 共读）——下面所有 `traces/…` 读写都以它为准，别写相对 `traces/`。
+   解析后先跑 `python3 scripts/kb_drift.py --session <session_id>`：这单用过的 case 在中断期间有没有变。有漂移就先点出「这条 case 变了、按新内容重验」，再继续。没有 `kb_rev` 的旧单报「不可比」，不阻塞。
 1. 读活跃的 `traces/*.yaml`（每个并发诊断一个文件；模板见 `diagnosis_state.yaml.example`，含 `trace` 数组）。**多个时列出让工程师选续接哪个**
    - **先看有没有配套的人读报告** `traces/<session_id>.report.md`（diagnose 步骤 6 产出）：它把结论、证据链、源码分析、机制图、修复方案、**当前状态与下一步**、**沉淀候选**集中在一处。先读报告能最快恢复"这单在查什么、停在哪、待回报什么"，也直接告诉你**这次能沉淀什么知识**（顶层 `sediment_candidates` 是同一份内容的结构化版本）。读报告**不替代**读 trace：报告的结论要用 trace 的 `reason`/证据核对，两者冲突时以 trace 的现场记录为准并记下冲突。
    - **报告是活件——续接中要顺手修订它**（不是只读）：把新证据并入第 3 节对应强度段、更新第 7 节"当前状态与下一步"、必要时补第 4/5 节、元信息"最后更新"与第 10 节追加一行修订记录；**同一份文件改到底，不另起一份**。规则见 `skills/diagnose/references/report-template.md` 第 2 节。
    - 报告不存在（老 session 或未走完步骤 6）→ 照下面第 2、3 步从 trace 恢复，不视为异常。
 2. **恢复完整现场（读 trace 全轨迹，不只元信息）**：
    - 复述：session_id、status、current_step、已排除的 case（`excluded_cases`）、当前 active_case、`last_action`（上次等你做什么）
+   - `last_action` 是**当前**提问：按它追问上次要的材料或决定拿到了吗；历史 `evidence.missing` 只作背景，不逐条重问。拿到回答后改写或清空 `last_action`，再继续。
    - **读 trace 数组恢复对话上下文**：上次问了用户什么、用户已回答了什么、已排除哪些候选及原因（`reason`）——续接是**接着上次的对话继续**，不是从头开始（用户已提供的信息不重复要）
 3. **证据确认（跨 agent/session 的关键——agent 无法自证摘要够，必须用户裁决）**：
    - **复述证据清单**：每个 user 事件的 `content`（摘要）+ `evidence`（内联了什么 / 引用了哪些文件 `files` / 来源 `sources` / 已知缺口 `missing`）

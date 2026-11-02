@@ -19,6 +19,7 @@
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -64,6 +65,17 @@ def load_state(path: Path) -> dict:
     return json.load(open(path, encoding="utf-8")) if path.exists() else {"sources": {}}
 
 
+def save_state(path: Path, state: dict) -> None:
+    """原子写状态文件：临时文件 + os.replace。
+
+    为什么：这份台账是 issue 去重的唯一依据。直接 json.dump 到目标文件时，进程在写一半
+    中断会留下半截 JSON，下一轮 load_state 直接失败，而且没有第二份记录可恢复。
+    """
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp, path)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cached", help="拉取缓存 JSON（列表或页列表）")
@@ -93,7 +105,7 @@ def main():
         before = len(processed)
         processed.update(nums)
         src["processed"] = sorted(processed)
-        json.dump(state, open(state_path, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+        save_state(state_path, state)
         print(f"标记 {len(nums)} 条已导入（{before} → {len(processed)}）→ {state_path}")
         return
 
@@ -152,7 +164,7 @@ def main():
     if closes:
         src["last_fetch_latest_closed"] = closes[-1]
         src["last_fetch_oldest_closed"] = closes[0]
-        json.dump(state, open(state_path, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
+        save_state(state_path, state)
         print(f"游标已更新 → {state_path}")
 
 

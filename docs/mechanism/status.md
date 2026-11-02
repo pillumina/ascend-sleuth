@@ -12,6 +12,7 @@
 |---|---|---|---|
 | 内容流程收尾的伴随演进 | [rsi-mechanism.md](rsi-mechanism.md) 「什么时候会发生演进」 | 已落地 | `ls skills/evolve-check/SKILL.md` |
 | 部署级演进模式声明 `evolution.mode` | 执行参数：[evolve-check/SKILL.md](../../skills/evolve-check/SKILL.md) 第 0 步；归属规则：[git-workflow.md](../guide/git-workflow.md)「每部署一份」 | 已落地 | `python3 scripts/evolve_mode.py` |
+| 诊断续接时的知识库漂移检查（诊断记录里用过的 case 在中断期间变没变） | [diagnosis-trace.md](../../skills/diagnose/references/diagnosis-trace.md) 的 `kb_rev` 与 `last_action` 节 | 已落地 | `python3 scripts/kb_drift.py --session <id>` |
 | 信号台账（下游部署的收尾交接） | 定义：[signals/README.md](../../proposals/signals/README.md) | 已落地 | `python3 scripts/evolve_signals.py list` |
 | 演进记录入口 `evolve_intake` 与信号生命周期 | 定义：[evolve-check/SKILL.md](../../skills/evolve-check/SKILL.md) 第 3 步；台账：[signals/README.md](../../proposals/signals/README.md) | 已落地 | `python3 scripts/evolve_intake.py record --help`；`python3 scripts/evolve_signals.py mark --help` |
 | 全库体检轮 | [rsi-mechanism.md](rsi-mechanism.md) 「什么时候会发生演进」 | 已落地 | `ls skills/self-evolve/SKILL.md` |

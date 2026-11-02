@@ -168,29 +168,51 @@ def local_src_cache(traces_root: Path, item: dict):
     return d.is_dir()
 
 
-def derive_needs(doc: dict) -> list:
-    """接手方"该先问什么" = 上家留下的缺口，取 `evidence.missing`（新的在前）+ `last_action`。
+_TERMINAL_CACHE: dict[Path, set[str] | None] = {}
 
-    这条是从 `resume-diagnosis` 已有的行为反推的：它对"没命中 case"那一路本来就是按
-    `evidence.missing` 追问现场材料。交接单把它机器可读地固化下来，接手方第一屏就能问对问题，
-    而不是从"请复述一下问题"重新开始。
+
+def terminal_statuses(root: Path | None = None) -> set[str] | None:
+    """终态集合读 `trace-status.yaml`，不在代码里另写一份词表；读不到返回 None。
+
+    `root` 由调用方给（`traces_root.parent`，即主检出）；缺省用脚本所在检出。
+    返回 None 表示"词表不可判定"，调用方据此不给可能错的结论。
     """
-    out = []
+    key = Path(root).resolve() if root else Path(__file__).resolve().parents[1]
+    if key not in _TERMINAL_CACHE:
+        try:
+            from _trace_state import load_vocab  # 延迟导入，避免模块加载时读盘
+            vocab = load_vocab(key)
+            _TERMINAL_CACHE[key] = {s["value"] for s in vocab["statuses"] if s.get("terminal")}
+        except Exception:
+            _TERMINAL_CACHE[key] = None
+    return _TERMINAL_CACHE[key]
+
+
+def derive_needs(doc: dict, root: Path | None = None) -> list:
+    """接手方"该先问什么"：只取当前这一次提问，不把历史缺口全倒出来。
+
+    终态单没有"接着问"这件事，返回空——`resolved` 单里那些 `evidence.missing` 是当时提过、
+    后来可能已经补上的历史；把它们当接手方的问题会让第一屏问错方向。
+    未收尾单优先取顶层 `last_action`（当前在等什么），没有才退到最近一条 `evidence.missing`。
+    """
+    status = str(doc.get("status") or "unknown")
+    terminal = terminal_statuses(root)
+    if terminal is None:
+        # 词表读不到时不猜"终态还是未收尾"，也不把旧 missing 当问题。
+        return []
+    if status in terminal:
+        return []
+    last_action = re.sub(r"\s+", " ", str(doc.get("last_action") or "").strip())
+    if last_action:
+        return [last_action]
     for ev in reversed(doc.get("trace") or []):
         if not isinstance(ev, dict):
             continue
         evd = ev.get("evidence")
         if isinstance(evd, dict) and evd.get("missing"):
-            out.append(str(evd["missing"]).strip())
-    if doc.get("last_action"):
-        out.append(str(doc["last_action"]).strip())
-    seen, uniq = set(), []
-    for s in out:
-        s = re.sub(r"\s+", " ", s)
-        if s and s not in seen:
-            seen.add(s)
-            uniq.append(s)
-    return uniq[:6]
+            text = re.sub(r"\s+", " ", str(evd["missing"]).strip())
+            return [text] if text else []
+    return []
 
 
 def derive_intent(doc: dict, cli_intent: str):
@@ -212,7 +234,8 @@ def derive_intent(doc: dict, cli_intent: str):
     return "continue", "derived"
 
 
-def build_manifest(doc, sid, traces_root, args, included, omitted, report_rel, current_rev, src_refs):
+def build_manifest(doc, sid, traces_root, args, included, omitted, report_rel, current_rev, src_refs,
+                   kb_root: Path | None = None):
     notes = []
     redaction_state = "none"
     if any(f["kind"] == "evidence" for f in included):
@@ -252,7 +275,7 @@ def build_manifest(doc, sid, traces_root, args, included, omitted, report_rel, c
             "created_at": doc.get("created_at") or "",
             "updated_at": doc.get("updated_at") or "",
         },
-        "needs": derive_needs(doc),
+        "needs": derive_needs(doc, kb_root or traces_root.parent),
         "contents": {
             "files": [{"path": f["path"], "bytes": f["bytes"], "kind": f["kind"]} for f in included],
             "total_bytes": sum(f["bytes"] for f in included if f["bytes"]),
@@ -707,7 +730,7 @@ def main() -> int:
                     3, args.json)
 
     manifest = build_manifest(doc, sid, traces_root, args, included, omitted, report_rel,
-                              current_rev, src_refs)
+                              current_rev, src_refs, kb_root=root)
     manifest_path = tree / "handoff" / f"{sid}.yaml"
     readme_path = tree / "handoff" / f"{sid}.README.txt"
     # 交接单自己也进 contents（接手方要能校验"这包里有什么"），但要先算 total 再加自己

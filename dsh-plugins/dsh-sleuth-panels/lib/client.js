@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:21aa257c1b39)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:8f4cd13c9563)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:f684735469ce)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:119062e6c579)
 // 校验：`node scripts/build_panel_bundle.js --check`。
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:21aa257c1b39) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:8f4cd13c9563) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -474,7 +474,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.8.17'
+    const PANEL_VERSION = '0.8.18'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -2808,7 +2808,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           fbKindOf(s) === 'case' ? React.createElement('div', { style: { color: T.warn, fontSize: 'var(--t-md)', marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 } },
             React.createElement(Dot, { color: T.warn }),
             '结果待回报：' + (s.feedbackCase || (caseKindOf(s) === 'case' ? s.activeCase : '') || '命中 case') + '（下方可生成回报指令）') : null,
-          fbKindOf(s) === 'no-case' ? React.createElement('div', { style: { color: T.text2, fontSize: 'var(--t-md)', marginTop: 4, display: 'flex', alignItems: 'baseline', gap: 6 } },
+          (fbKindOf(s) === 'no-case' && (!s.state || !s.state.derived || s.state.derived.open !== false)) ? React.createElement('div', { style: { color: T.text2, fontSize: 'var(--t-md)', marginTop: 4, display: 'flex', alignItems: 'baseline', gap: 6 } },
             React.createElement('span', { style: { flexShrink: 0 } }, '等现场补材料：'),
             React.createElement('span', { title: s.waitingFor || '', style: { color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 } },
               s.waitingFor ? (s.waitingFor.length > 60 ? s.waitingFor.slice(0, 60) + '…' : s.waitingFor) : '本次诊断缺的材料（见轨迹里的「缺」标记）'),

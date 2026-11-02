@@ -2219,11 +2219,17 @@ _MS._run_no_pipe = no_fallback`)
         /1 个在查/.test(onlyNoCase.text) && !/个等回报/.test(onlyNoCase.text))
       expect('真实 case 单才显示「结果待回报：<case>」', /结果待回报：VLLM-ASC-1234/.test(onlyCase.text))
       expect('真实 case 单只算「等回报」', /1 个等回报/.test(onlyCase.text) && !/个在查/.test(onlyCase.text))
+      const terminalNoCase = await renderAsync(ascSrc, { sessionId: 'sess-1' },
+        (m, a) => (m === 'ascend-traces-list' ? { ok: true, sessions: [mkSession(9, {
+          status: 'resolved', feedbackKind: 'no-case', feedbackPending: 'pending-investigation',
+          waitingFor: null, state: { derived: { open: false } },
+        })] } : diagHost(m, a)))
+      expect('已收尾的单不再显示「等现场补材料」', !/等现场补材料/.test(terminalNoCase.text), terminalNoCase.text.slice(0, 160))
       const hostSrc2 = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
       expect('host 把占位串判成 no-case（不当 case id）',
         /cs !== 'pending-investigation'/.test(hostSrc2) && /'no-case'/.test(hostSrc2))
-      expect('host 给出「在等什么」（最近一条 evidence.missing，退到 last_action）',
-        /waitingFor: \(function \(\)/.test(hostSrc2) && /ev\.missing/.test(hostSrc2) && /doc\.last_action/.test(hostSrc2))
+      expect('host 的「在等什么」从状态投影读，不再自推',
+        /state\.derived\.waitingFor/.test(hostSrc2) && !/waitingFor: \(function/.test(hostSrc2))
       expect('旧的一键指令文案已移除（收尾走编辑器 + 命令兜底）',
         !/status: resolved \+ feedback\{outcome: resolved\}/.test(ascSrc))
       // 读取端与写入端一起钉：只改面板会在下一批 trace 上重新长出同一个混用

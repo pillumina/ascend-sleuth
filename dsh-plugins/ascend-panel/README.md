@@ -466,6 +466,12 @@ node scripts/panel_install.js --remove   # 卸载
 
 ## 版本
 
+- 2026-11-02 · 「等什么」改读状态投影。诊断记录与交接包的「在等什么」统一取
+  `_trace_state.derive` 的 `waitingFor`（当前 `last_action`，旧 trace 才退到最近一条
+  `evidence.missing`），host 不再自推；建单时写 `kb_rev_dirty`，续接的 `kb_drift.py`
+  在工作区不干净时提示版本不可精确比对。已收尾的单不再显示「等现场补材料」。
+  面板包 0.8.17 → 0.8.18。
+
 - 2026-11-02 · 「等上游」筛选与查上游指令。已收尾（`status: resolved`）、没给出可执行修复
   （`fix_emitted: false`）、且命中案例带 `upstream` 锚点的单，此前在列表上没有出口——`resolved`
   不可续接，动作区只剩「看报告 / 沉淀」，读者看不出它卡在等上游。现在收起态挂「等上游」徽标
@@ -687,7 +693,7 @@ node scripts/panel_install.js --remove   # 卸载
   ③卡片上的「已解决」在无命中分支里明写"不写 feedback、只标 status"，于是一次结案后出现
   "状态已 resolved、反馈轴仍挂 pending"，两轴互相矛盾且没有任何东西会让它们一致。
   改法：host 出 `feedbackKind`（`case` / `no-case`）、`feedbackCase`（真实 id 或 null）与
-  `waitingFor`（最近一条 `evidence.missing`，退到 `last_action`）；面板按分型说话——真实 case
+  `waitingFor`（当时由 host 现推：最近一条 `evidence.missing`，退到 `last_action`；现已改读状态投影）；面板按分型说话——真实 case
   才是"结果待回报"，占位串是"等现场补材料：<等什么>"并归入「在查」那一轴；无命中单结案时清掉
   遗留的 `feedback.outcome: pending`。`resume-diagnosis` 与 `diagnosis-procedure` 的写入/追问
   规则同步（未命中时 `case` 填占位串，且它不是 case id）。
