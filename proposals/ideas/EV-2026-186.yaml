@@ -1,0 +1,97 @@
+# ============================================================
+# Idea 卡（proposals/ideas/）——schema 与状态机定义见 docs/mechanism/pipeline.md §7（权威）
+# 校验：python3 scripts/verify_proposals.py --check
+# ============================================================
+
+id: EV-2026-186
+layer: L3
+title: 会话成本补工具流量表，arena 账本记成本第二轴（只记录不改判词）
+status: validated
+authorization: review
+dimension: process
+target_component: scripts/session_cost.mjs
+supersedes: []
+superseded_by: null
+created_at: 2026-11-02
+source_signals:
+  - signal: observability_gap
+    evidence: >-
+      会话账单此前只按 (turn, step) 汇总 token，不回答花费落在哪个工具的返回上、有没有重复调用与
+      重复访问。旧卡里的逐步表已由 scripts/trace_entry_activity.py 的 step_cost() 覆盖，工具流量表仍缺。
+    trajectory:
+      - scripts/session_cost.mjs（无 --tools 时只有按轮汇总与最大 5 步）
+      - scripts/trace_entry_activity.py:454 step_cost()
+  - signal: eval_gap
+    evidence: >-
+      scripts/eval_arena.py 的 --gate 只判质量（命中与路由），两臂的花费没有记录位置；
+      事后读影响账本只能看到质量判词，读不出候选省了还是多花了。
+    trajectory:
+      - scripts/eval_arena.py（--gate 写入账本的字段）
+      - docs/mechanism/eval-arena.md（判词与账本口径）
+hypothesis: >-
+  把工具返回的文本量按工具名汇总，并单列两类重复（参数完全相同的调用、同一目标的重复访问），
+  会话成本能定位到具体工具与重复模式；arena 账本增加成本字段后，质量判词与花费可以分开读。
+predicted_effect:
+  metric: 会话成本能否回答花费落在哪个工具上
+  from: >-
+    只有按轮与按步的 token 汇总；arena 账本没有花费字段
+  to: >-
+    --tools 输出工具流量表（调用次数、返回累计、平均每条、单条上限、重复调用、重复目标）；
+    --gate 用 --cost-baseline / --cost-candidate / --cost-note 把两臂花费写进账本，质量判词不变
+  measure:
+    command: >-
+      node scripts/session_cost.mjs --tools --file "$(ls -S ~/.dsh/sessions/*/*/session*.jsonl.zstd | head -1)"
+    expect_exit: 0
+    expect_stdout: "工具流量"
+validation:
+  method: metrics_compare
+  baseline: >-
+    session_cost.mjs 没有 --tools；eval_arena.py --gate 不接受成本参数。
+  success_criteria: >-
+    ① measure 命令 exit 0 且标准输出含「工具流量」；② 工具流量表给出调用次数、返回累计、平均每条、
+    单条上限、重复调用、重复目标六项；③ eval_arena --self-test 全部断言通过，质量判词逐条不变；
+    ④ 带成本参数跑一次 --gate，账本记录里出现 cost 段，verdict 与不带成本参数时相同。
+  rollback: >-
+    两个文件都是只读工具，无数据迁移，revert 单条提交即回到原状；已写进 arena 账本的历史记录不受影响。
+gate: >-
+  出现「某个流程的 token 花费要定位到工具或重复访问」的需求时，先看 session_cost.mjs --tools 能否回答；
+  不能才扩展读数面，不在只有总量的时候开始优化。
+risk: low
+principle_refs: [8, 9, 11]
+actual_cost:
+  tokens: 0
+  note: >-
+    重开自 EV-2026-142（旧分支 kb/token-measure 上那张；main 的 EV-2026-142 是另一张卡），
+    本轮未单独记账。
+decisions:
+  - who: agent
+    when: '2026-11-02'
+    type: proposal
+    conclusion: >-
+      识别：旧 PR 的 --steps 已由 scripts/trace_entry_activity.py 的 step_cost() 覆盖，不再收；
+      main 上仍空白的是工具流量表与 arena 成本轴，收窄为这两件重开。
+  - who: agent
+    when: '2026-11-02'
+    type: decision
+    conclusion: >-
+      旧卡号在 main 上已被另一张卡占用，因此本卡不写 supersedes 链，只在新卡号下重开；
+      不移植 --steps，不加固定面基线比对，不动质量判词。
+  - who: agent
+    when: '2026-11-02'
+    type: action
+    conclusion: >-
+      从 origin/kb/token-measure 移植 --tools 到当前 main（保留 session.v4.jsonl.zstd 通配与
+      --decompress）；eval_arena.py --gate 加三个成本参数并在账本记 cost 段；
+      docs/guide/metrics.md 补 --tools 用法与两种量法不混的说明。
+  - who: agent
+    when: '2026-11-02'
+    type: eval
+    conclusion: >-
+      measure 命令 exit 0 且输出含「工具流量」；--self-test 全部断言通过；带成本参数跑一次 --gate，
+      账本写入 cost 段且 verdict 与不带成本时相同。
+  - who: agent
+    when: '2026-11-02'
+    type: decision
+    conclusion: >-
+      采纳（validated）：两件都只读、可回滚；工具流量表直接回答花费落在哪个工具与哪些重复访问上。
+      成本轴只记录，合并判断仍由人按质量与花费两轴读。
