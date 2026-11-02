@@ -211,10 +211,16 @@ function resolveActiveProfile(home, explicit) {
 
 // ── dsh 命令行 ──────────────────────────────────────────────────────────────
 
-const CLI_RELATIVE = path.join('resources', 'runtime', 'cli', 'bin')
+// macOS 的命令行在 .app 包内，比 Windows 的安装目录多一层 Contents。少了这层，
+// 每台带命令行的 macOS 桌面版都会被判成"未找到"。
+function cliRelativeDir() {
+  return process.platform === 'darwin'
+    ? path.join('Contents', 'Resources', 'runtime', 'cli', 'bin')
+    : path.join('resources', 'runtime', 'cli', 'bin')
+}
 
 function cliFromInstallDir(dir) {
-  const base = path.join(dir, CLI_RELATIVE)
+  const base = path.join(dir, cliRelativeDir())
   const names = process.platform === 'win32' ? ['dsh.cmd', 'dsh.exe', 'dsh'] : ['dsh']
   for (const name of names) {
     const candidate = path.join(base, name)
@@ -304,7 +310,7 @@ function resolveDshCli(explicit) {
   const dirs = process.platform === 'win32' ? windowsInstallDirs() : process.platform === 'darwin' ? macAppDirs() : []
   for (const dir of dirs) {
     const candidate = cliFromInstallDir(dir)
-    tried.push(path.join(dir, CLI_RELATIVE, process.platform === 'win32' ? 'dsh.cmd' : 'dsh'))
+    tried.push(path.join(dir, cliRelativeDir(), process.platform === 'win32' ? 'dsh.cmd' : 'dsh'))
     if (candidate !== null) {
       const cli = normalizeCliFile(candidate, '安装目录')
       if (cli !== null) return Object.assign(cli, { tried })
@@ -432,6 +438,8 @@ module.exports = {
   isValidProfileName,
   listProfiles,
   resolveDshCli,
+  cliRelativeDir,
+  cliFromInstallDir,
   normalizeCliFile,
   needsShell,
   spawnCli,
