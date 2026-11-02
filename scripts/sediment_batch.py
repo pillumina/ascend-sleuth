@@ -41,9 +41,12 @@ from pathlib import Path
 import yaml
 
 from exec_log_path import resolve_traces
+from _trace_state import is_terminal as _is_terminal, load_vocab as _load_vocab
 from _stdio import write_text_lf
 
-TERMINAL = {"resolved", "escalated", "archived"}
+# 终态判定改由判据库给出（`trace-status.yaml` 是唯一来源）；保留常量名给旧调用点。
+TERMINAL = {s["value"] for s in _load_vocab(__import__("pathlib").Path(__file__).resolve().parents[1])["statuses"]
+            if s["terminal"]}
 DONE_SEDIMENT = {"submitted", "knowledge", "archived"}
 REAL_CASE = re.compile(r"^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$")
 PLACEHOLDER = re.compile(r"pending-investigation|^$")

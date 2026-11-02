@@ -194,13 +194,20 @@ def derive_needs(doc: dict) -> list:
 
 
 def derive_intent(doc: dict, cli_intent: str):
-    """交接意图：默认按 status 推，CLI 可覆盖（面板上是一个显式选择）。"""
+    """交接意图：默认按 status 推，CLI 可覆盖（面板上是一个显式选择）。
+
+    判据从 `_trace_state` 取（唯一来源）；`archived + handed_off` 不再是合法组合（转交只走
+    escalated），所以这里只有三种：转交 / 已收尾 / 还在查。
+    """
     if cli_intent:
         return cli_intent, "cli"
-    status = str(doc.get("status") or "")
+    from _trace_state import load_vocab, status_meta
+    from pathlib import Path
+    vocab = load_vocab(Path(__file__).resolve().parents[1])
+    status = str(doc.get("status") or "unknown")
     if status == "escalated":
         return "escalate", "derived"
-    if status in ("resolved", "archived"):
+    if status_meta(vocab, status)["terminal"]:
         return "verify", "derived"
     return "continue", "derived"
 

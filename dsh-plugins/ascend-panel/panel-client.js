@@ -52,6 +52,14 @@ return {
 
     // 切会话的方法名候选：文档里叫 `open`，实测的那一版不是；其余是同义常见写法。
     const OPEN_METHODS = ['open', 'openSession', 'select', 'selectSession', 'show', 'activate', 'focus', 'switchTo']
+    // 状态词表（来自 host 的投影）。面板不自己维护标签：有它就用它，没有才退回旧常量
+    // （旧常量是迁移期的兜底，面板接线完成后删除）。
+    let VOCAB_CACHE = null
+    let CAPS_CACHE = null
+    let STATE_ERROR = null
+    // 最近一次状态改动：成功提示、撤销、以及"被筛掉但先留在原位"都读它。
+    // 卡片重挂载后它仍在，所以撤销按钮不会随刷新消失。
+    let LAST_CHANGE = null
 
     function sessionsProbe() {
       const names = ['sessions', 'connection', 'slots', 'workspaces', 'uiWorkspace', 'conversation', 'remote']
@@ -350,13 +358,12 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // 写「已解决」会让读者把"诊断结束"读成"这个客户已经好了"。
       resolved: { label: '已定位', color: 'var(--c-green)', acc: 'var(--acc-green)' },
       in_progress: { label: '进行中', color: 'var(--c-blue)', acc: 'var(--acc-blue)' },
-      escalated: { label: '已转上游', color: 'var(--c-amber)', acc: 'var(--acc-amber)' },
+      escalated: { label: '已转交他人', color: 'var(--c-gray)', acc: 'var(--acc-gray)' },
       // 「不跟了」写的就是 archived（词表在仓库根 trace-status.yaml）。缺这一项，面板会把它显示成
       // 灰色的「未知」——用户自己标的结局看不出来，等于没记。
       archived: { label: '不再跟进', color: 'var(--c-gray)', acc: 'var(--acc-gray)' },
       unknown: { label: '未知', color: 'var(--c-gray)', acc: 'var(--acc-gray)' },
     }
-    const RESUMEABLE = { in_progress: true, escalated: true }
     // 诊断轨迹的人读语言：内部 action 名（triage / quickly_check / load_full / miss …）是回放与归因
     // 的词表，不是阅读语言——人读视图给中文标签，原词留在 title 里供维护者回查。
     const STEP_LABELS = {
@@ -621,9 +628,9 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     const HANDOFF_INTENTS = [
       { id: 'continue', label: '继续定位', why: '上家没定完，交给另一台机器接着查（更多材料在那台机器上）' },
       { id: 'verify', label: '复核结论', why: '上家已给结论，交给另一台机器对照更全的现场核对' },
-      { id: 'escalate', label: '转上游', why: '本地无法定位，转上游/技术支持跟进' },
+      { id: 'escalate', label: '转交他人跟进', why: '本地无法定位，转给厂商 / 技术支持 / 同事跟进' },
     ]
-    const HANDOFF_INTENT_LABEL = { continue: '继续定位', verify: '复核结论', escalate: '转上游' }
+    const HANDOFF_INTENT_LABEL = { continue: '继续定位', verify: '复核结论', escalate: '转交他人跟进' }
     // 体量数字取不到时**如实说"未知"，不报 0 B**：0 B 读起来是"空文件"，会让读者以为导出失败
     // （实测踩过：host 给的字段名与这里读的对不上，结果行列印 "zip 0 B + md 0 B"，而文件是好的）。
     function humanKB(n) {
@@ -1300,8 +1307,16 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // 按钮可手动重试。`rebuildTried` 记「这一单已经自动试过」，防止失败后无限重试。
       const [rebuild, setRebuild] = React.useState(null)       // {state:'running'|'done'|'error', msg}
       const [rebuildTried, setRebuildTried] = React.useState(null)
-      const meta = statusMeta[s.status] || statusMeta.unknown
-      const canResume = RESUMEABLE[s.status]
+      const vocabStatus = (VOCAB_CACHE && Array.isArray(VOCAB_CACHE.statuses))
+        ? VOCAB_CACHE.statuses.filter(x => x.value === s.status)[0] : null
+      const meta = (s.state && s.state.displayTone)
+        ? { label: vocabStatus ? vocabStatus.label : String(s.status || '状态未记录'),
+            color: s.state.displayTone.color, acc: s.state.displayTone.accent }
+        : (statusMeta[s.status] || statusMeta.unknown)
+      const canResume = vocabStatus ? !!vocabStatus.resumable : (s.status === 'in_progress')
+      const st = s.state || null
+      const [stEdit, setStEdit] = React.useState({ action: '', kind: '', handed: '', dup: '', msg: '' })
+      const [rpEdit, setRpEdit] = React.useState({ source: 'field', result: 'from_report', note: '', msg: '' })
       // 定位结论：host 标 `isConclusion`（显式 `conclusion: true`，或"人读视图可见末条是 hit"这条约定）。
       // 这里算它在**可见列表**里的位置——host 给的是原始下标，人读视图先过滤过记录维护动作，
       // 直接拿原下标会错位（这是"两个索引混用"的经典坑，故用对象身份找而不是比下标）。
@@ -2072,7 +2087,6 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       }
 
       // 状态左条：**扫列表时先看这一列**（进行中/已转上游=要跟；已定位=可放过）
-      const statusAccent = { resolved: 'var(--acc-green)', in_progress: 'var(--acc-blue)', escalated: 'var(--acc-amber)', unknown: 'var(--acc-gray)' }[s.status] || 'var(--acc-gray)'
       // 闭环指令：**4 种结局分开给**（2026-09 阶段一）。
       // 为什么（用户提的"完成最后一公里"）：旧面板只有「继续诊断」与「沉淀」，闭不了环——
       // 于是"fix 生效 / 没生效 / 我不跟了 / 转上游"四种真实结局在数据上无法落笔，
@@ -2080,60 +2094,11 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // **为什么必须分开**：把"没走诊断、问题自己没了"混进 resolved 会虚高解决率；
       // 混进 not_resolved 会冤枉命中的 case（把"没测"记成"误诊"）。词表见 `trace-status.yaml`。
       // 本阶段只生成指令（用户粘贴到对话执行），不改面板写入路径——写入是阶段二。
-      const closeCmds = []
-      // 占位串走「没命中」那一支：没有 case 可回写 confidence，指令里也不能出现占位串当 case 名
-      if (caseKindOf(s) === 'case') {
-        closeCmds.push({
-          key: 'close-fix', label: '已解决 · fix 生效', tone: 'success',
-          cmd: '闭环诊断 ' + s.sessionId + '：fix 已应用且验证生效（' + s.activeCase + ' 命中）。'
-            + '标 status: resolved + feedback{outcome: resolved}，写一条 feedback 事件。',
-        })
-        closeCmds.push({
-          key: 'close-nofix', label: '没解决', tone: 'warn',
-          cmd: '闭环诊断 ' + s.sessionId + '：' + s.activeCase + ' 的 fix 应用后没解决问题。'
-            + '标 status: resolved + feedback{outcome: not_resolved}，写一条 feedback 事件。'
-            + '误诊归因按 trace 判定是 case_error 还是 execution_error。',
-        })
-      } else {
-        closeCmds.push({
-          key: 'close-fix', label: '已定位（有结论）', tone: 'success',
-          // 无命中单的结果**不走反馈轴**（没有 case 可回写 confidence）：结果记在 status 与 summary。
-          // 同时要把遗留的 `feedback.outcome: pending` 清掉——否则"状态已结、反馈轴仍挂 pending"，
-          // 面板与 resume 都会把它读成一个还在等的回报（实测这两轴就是这么打架的）。
-          cmd: '闭环诊断 ' + s.sessionId + '：诊断已收尾、根因定位明确。未命中知识库 case，因此不写 feedback；'
-            + '标 status: resolved，并在 summary 里补一句最终怎么解决的；'
-            + '若 trace 里还留着 feedback.outcome: pending（无命中单留下的占位），一并清掉。',
-        })
-      }
-      closeCmds.push({
-        key: 'close-archive', label: '不跟了', tone: 'ghost',
-        cmd: '闭环诊断 ' + s.sessionId + '：不再跟进，也不判断 fix 是否有效'
-          + '（问题自行消失，或环境变更后不再复现。标 status: archived，不写 feedback 事件）',
-      })
-      closeCmds.push({
-        key: 'close-escalate', label: '转上游', tone: 'ghost',
-        cmd: '闭环诊断 ' + s.sessionId + '：本地无法定位，转上游或技术支持。'
-          + '标 status: escalated，不写 feedback 事件。',
-      })
-      if (!canResume) {
-        closeCmds.push({
-          key: 'reopen', label: '重新打开', tone: 'ghost',
-          cmd: '把这个诊断重新打开：' + s.sessionId + '。'
-          + 'status 改回 in_progress；若当时写过 feedback 事件，一并撤掉那条。',
-        })
-      }
-      const toneStyle = (tone) => tone === 'success' ? btnSuccess : (tone === 'warn' ? btnRed : btnGhost)
-      // 指令区形态（2026-09-12 改版，两个实测体验问题）：
-      //  ① **按钮横排**：它们同属"选哪条指令"，旧版每条指令各占一行竖排（5 个按钮 + 5 行展开体），
-      //     卡片被撑得很高、视觉碎；横排才看得出是一组，点开的内容只在下方一处展开。
-      //  ② **卡片内不再重复提示**：旧版每张卡片都印一句「这一单结束了？（点一个 → 复制指令 → 粘到对话）」，
-      //     同一句话重复 N 遍＝噪音；这条说明属于整个列表（列表工具栏/待跟进条已有一句），不在卡片里复读。
       const actions = []
       if (canResume) actions.push({
         key: 'rs', label: '继续诊断', style: btnPrimary, title: '生成续接指令',
         cmd: '用 /skill:resume-diagnosis 续接 ' + s.sessionId,
       })
-      for (const c of closeCmds) actions.push({ key: c.key, label: c.label, style: toneStyle(c.tone), title: '生成收尾指令（复制后粘到对话执行）', cmd: c.cmd })
       const openedCmd = actions.filter(a => a.key === showCmd)[0] || null
       // 报告入口（diagnose 步骤 6 的产出）。**沉淀候选的明细不在这里**——它归展开态的沉淀区
       // （case 与先验候选分家、各带入口，见上方「沉淀区」）：候选与"本单沉淀状态"是同一件事的两面，
@@ -2227,7 +2192,6 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         style: { ...a.style, padding: '2px 10px' },
       }, a.label)
       const resumeAction = actions.filter(a => a.key === 'rs')[0] || null
-      const closeActions = actions.filter(a => a.key !== 'rs')
       // 「打开会话」：从诊断记录里直接切到这一单的会话，不必回左侧列表里按会话号找。
       // **只能用 `harness_session`**：`session_id` 是诊断自己起的名字（形如
       // `<日期>-<issue 号>-<短名>`），DSH 的会话号是 `session-<uuid>`，两者不是一回事——
@@ -2259,34 +2223,319 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           }, '未记会话号')
       // 展开的命令块只出现一次（谁被点开就显示谁）；选中关系靠"命令块在最下方"表达，
       // 不再用 opacity 压未选中的按钮——那会把白字压到 2.07:1（AA 要求 4.5）。
+      const undoLastChange = () => {
+        const lc = LAST_CHANGE
+        if (!lc || !lc.sha) return
+        host.call('ascend-trace-transition', {
+          sessionId: lc.sessionId, action: 'reopen', payload: {}, expectSha256: lc.sha,
+        }).then(r => {
+          if (r && r.ok) { LAST_CHANGE = null; if (typeof onRebuilt === 'function') onRebuilt() }
+          else setStEdit(v => ({ ...v, msg: '撤销失败：' + String((r && (r.message || r.code)) || '未知错误') }))
+        }).catch(e => setStEdit(v => ({ ...v, msg: '撤销失败：' + String(e && e.message || e) })))
+      }
+      const stActions = (st && Array.isArray(st.actions)) ? st.actions : []
+      const stAct = stEdit.action ? stActions.filter(a => a.id === stEdit.action)[0] : null
+      const stTarget = (stAct && stEdit.to && Array.isArray(stAct.targets))
+        ? stAct.targets.filter(t => t.to === stEdit.to)[0] : null
+      const stChoices = stTarget ? (stTarget.endingChoices || []) : ((stAct && stAct.endingChoices) || [])
+      const stKinds = stChoices.map(c => c.value)
+      // 「改收尾方式」的必填在**目标动作**上（correct-ending 自己没有 requires/fillable），
+      // 所以字段与「先去回报」都按 base = 目标 ?? 当前动作取。
+      const stBase = stTarget || stAct
+      const stFieldPaths = stBase ? ((stBase.requires || []).concat(stBase.fillable || [])) : []
+      const stMustAll = stBase ? (stBase.mustExist || []) : []
+      // `mustExist` 是「必须已存在」而不是「必须现在填」。命中真实 case 的单一律带上
+      // `feedback.outcome`，但 diagnose 给 fix 时已经写过 pending——按字段存在性判，才不会
+      // 把「已回报过的命中单」也拦成「先去回报」。
+      const stMust = stMustAll.filter(f => {
+        if (f === 'feedback.outcome') return !(st && st.feedback && st.feedback.outcome)
+        return true
+      })
+      const editableFields = stFieldPaths.filter(f => /^(summary|severity|fix_emitted)$/.test(f))
+      const caps = (typeof CAPS_CACHE === 'object') ? CAPS_CACHE : null
+      // 没有能力位（投影失败/旧 host）时按不可写处理：宁可给复制命令，也不要在提交后才撞 E_PERM。
+      const canWrite = !!caps && caps.canWrite !== false
+      const fieldVal = (f) => {
+        const v = (stEdit.fields || {})[f]
+        if (v !== undefined) return v
+        if (f === 'summary') return (st && st.summary) || ''
+        if (f === 'severity') return (st && st.severity) || ''
+        if (f === 'fix_emitted') return (st && st.fixEmitted === true) ? 'true' : (st && st.fixEmitted === false) ? 'false' : ''
+        return ''
+      }
+      const setField = (f, v) => setStEdit(x => ({ ...x, fields: { ...(x.fields || {}), [f]: v } }))
+      const buildPayload = () => {
+        const p = {}
+        if (stEdit.to) p.to = stEdit.to
+        if (stEdit.kind) p['ending.kind'] = stEdit.kind
+        if (stEdit.kind === 'handed_off' && stEdit.handed) p['ending.handed_to'] = stEdit.handed
+        if (stEdit.kind === 'duplicate' && stEdit.dup) p['ending.duplicate_of'] = stEdit.dup
+        for (const f of editableFields) {
+          const v = fieldVal(f)
+          if (v !== '') p[f] = (f === 'fix_emitted') ? (v === 'true') : v
+        }
+        return p
+      }
+      const sq = (v) => "'" + String(v).replace(/'/g, "'\\''") + "'"
+      const validateState = () => {
+        if (!stAct) return { msg: '先选一个动作' }
+        if (stKinds.length > 1 && !stEdit.kind) return { msg: '先选收尾方式', field: 'kind' }
+        if (stEdit.kind === 'handed_off' && !String(stEdit.handed || '').trim()) return { msg: '需要填「转交给」', field: 'handed' }
+        if (stEdit.kind === 'duplicate' && !String(stEdit.dup || '').trim()) return { msg: '需要填「已有单」', field: 'dup' }
+        if (stMust.length) return { msg: '这一步需要先去回报（本编辑器不写反馈轴）' }
+        const missing = editableFields.filter(f => !String(fieldVal(f)).trim())
+        if (missing.length) return { msg: '还需要填：' + missing.map(f => ({ summary: '问题背景', severity: '严重级', fix_emitted: '是否给出修复' }[f] || f)).join('、'), field: missing[0] }
+        return null
+      }
+      // 兜底命令：值全部走 JSON（stdin here-doc），不拼命令行——中文、空格、引号、$ 都不会被拆开。
+      // 任何失败（无写权限、无主检出、脚本报错、RPC 不通）都给这一段，用户复制到仓库根目录运行即可。
+      // 「交给 agent」的兜底：同一段命令包成一句可直接粘进对话的话。agent 执行的也是
+      // 同一个脚本，校验/留痕/权限判断一样，不是绕过校验的旁路。
+      const agentPrompt = (cmd) => '请执行下面这条命令，并把输出贴回给我（在仓库根目录运行；执行完点一下面板的刷新）：\n' + cmd
+      const manualCmd = (shell) => {
+        const p = buildPayload()
+        const body = {}
+        if (stAct && stAct.id === 'reopen') body.reopen = true
+        else if (stAct && (stAct.id === 'correct-ending' || stAct.id === 'backfill-ending')) {
+          if (stAct.id === 'correct-ending' && p.to) body.to = p.to
+          if (p['ending.kind']) body.kind = p['ending.kind']
+        } else if (stAct) {
+          body.to = stAct.id.replace('close-', '')
+          if (p['ending.kind']) body.kind = p['ending.kind']
+        }
+        if (p['ending.handed_to']) body.handed_to = p['ending.handed_to']
+        if (p['ending.duplicate_of']) body.duplicate_of = p['ending.duplicate_of']
+        for (const k of ['summary', 'severity', 'fix_emitted']) if (p[k] !== undefined) body[k] = p[k]
+        const sha = String((st && st.contentSha256) || '<sha256>')
+        const json = JSON.stringify(body, null, 2)
+        if (shell === 'powershell') {
+          return 'cd <仓库根目录>\n@\'\n' + json + '\n\'@ | python scripts/trace_transition.py ' + s.sessionId
+            + ' --json --expect-sha256 ' + sha + ' --payload-stdin'
+        }
+        return 'cd <仓库根目录>\npython3 scripts/trace_transition.py ' + s.sessionId
+          + ' --json --expect-sha256 ' + sha + ' --payload-stdin <<\'JSON\'\n'
+          + json + '\nJSON'
+      }
+      const submitState = () => {
+        if (!stAct || stEdit.busy || stEdit.done) return
+        const invalid = validateState()
+        if (invalid) {
+          setStEdit(v => ({ ...v, msg: invalid.msg, errField: invalid.field || '' }))
+          if (invalid.field) {
+            const id = invalid.field === 'handed' ? 'sleu-f-handed' : invalid.field === 'dup' ? 'sleu-f-dup' : 'sleu-f-' + invalid.field
+            const el = document.getElementById(id); if (el && el.focus) el.focus()
+          }
+          return
+        }
+        if (!canWrite) {
+          if (caps && caps.reasonCode === 'E_NO_ROOT') {
+            setStEdit(v => ({ ...v, msg: '解析不到主检出：请在主检出的面板里打开这一单再写' }))
+            return
+          }
+          const cmd = manualCmd()
+          copyText(cmd).then(ok => setStEdit(v => ({ ...v,
+            msg: ok ? '已复制命令：在仓库根目录运行（当前会话没有写权限）' : '复制失败：下面的命令可手动选中复制' })))
+          return
+        }
+        setStEdit(v => ({ ...v, busy: true, msg: '写入中…' }))
+        host.call('ascend-trace-transition', {
+          sessionId: s.sessionId, action: stAct.id, payload: buildPayload(),
+          expectSha256: (st && st.contentSha256) || '',
+        }).then(r => {
+          if (r && r.ok) {
+            const lbl = (x) => {
+              const one = (VOCAB_CACHE && Array.isArray(VOCAB_CACHE.statuses)) ? VOCAB_CACHE.statuses.filter(y => y.value === x)[0] : null
+              return one ? one.label : String(x || '')
+            }
+            // 刷新是异步的：先写「正在刷新」，不把没发生的事写成已发生。
+            LAST_CHANGE = {
+              sessionId: s.sessionId, from: r.from, to: r.to,
+              fromLabel: lbl(r.from), toLabel: lbl(r.to),
+              sha: (r.current && r.current.sha256) || '',
+            }
+            setStEdit(v => ({ ...v, busy: false, done: true, msg: '已记录：' + lbl(r.from) + ' → ' + lbl(r.to) + '，正在刷新列表…' }))
+            if (typeof onRebuilt === 'function') onRebuilt()
+          } else {
+            const code = r && r.code
+            if (code === 'E_PERM' && caps && caps.reasonCode !== 'E_NO_ROOT') {
+              const cmd = manualCmd()
+              copyText(cmd).then(ok => setStEdit(v => ({ ...v, busy: false,
+                msg: ok ? '没有写权限：已复制命令，在仓库根目录运行' : '没有写权限，且复制失败：下面的命令可手动选中复制' })))
+              return
+            }
+            setStEdit(v => ({ ...v, busy: false, msg: '失败：' + String((r && (r.message || code)) || '未知错误')
+              + (code === 'E_STATE_CHANGED' ? '；这一单刚被改过，点刷新查看当前状态' : '') }))
+          }
+        }).catch(e => setStEdit(v => ({ ...v, busy: false, msg: '失败：' + String(e && e.message || e) })))
+      }
+      const submitReport = () => {
+        if (!st || rpEdit.busy) return
+        setRpEdit(v => ({ ...v, busy: true, msg: '写入中…' }))
+        host.call('ascend-trace-transition', {
+          sessionId: s.sessionId, action: 'report',
+          payload: { report_source: rpEdit.source, report_result: rpEdit.result, report_note: rpEdit.note },
+          expectSha256: (st && st.contentSha256) || '',
+        }).then(r => {
+          if (r && r.ok) {
+            setRpEdit(v => ({ ...v, busy: false, msg: '已记录回报' }))
+            if (typeof onRebuilt === 'function') onRebuilt()
+          } else setRpEdit(v => ({ ...v, busy: false, msg: '失败：' + String((r && (r.message || r.code)) || '未知错误') }))
+        }).catch(e => setRpEdit(v => ({ ...v, busy: false, msg: '失败：' + String(e && e.message || e) })))
+      }
+      const reportCmd = () => {
+        const body = { report_source: rpEdit.source, report_result: rpEdit.result }
+        if (rpEdit.note) body.report_note = rpEdit.note
+        return 'cd <仓库根目录>\npython3 scripts/trace_transition.py ' + s.sessionId
+          + ' --field report --json --expect-sha256 ' + String((st && st.contentSha256) || '<sha256>')
+          + ' --payload-stdin <<\'JSON\'\n' + JSON.stringify(body, null, 2) + '\nJSON'
+      }
+      const reviewInstruction = () => {
+        const latest = (st && Array.isArray(st.reports) && st.reports.length) ? st.reports[st.reports.length - 1] : null
+        const base = 'python3 scripts/trace_transition.py ' + s.sessionId + ' --field review '
+        return '这一单的现场回报说「换别的方法解决了」，与报告里的根因/修复对不上。请读证据后只做一件事（不要改状态）：\n'
+          + '1) 只修订报告描述、不判误诊：' + base + '--verdict report_revision --note "<改了什么>"\n'
+          + '2) 判知识条目错：' + base + '--verdict case_error --note "<依据>"\n'
+          + '3) 判执行错：' + base + '--verdict execution_error --note "<依据>"\n'
+          + '依据：trace ' + s.sessionId + '，报告 ' + ((st && st.reportFile) || '未记录')
+          + '，现场原话：' + ((latest && latest.note) || '（未填写）')
+      }
+      const reportPanel = (st && (s.status === 'resolved' || s.status === 'escalated')) ? React.createElement('div', { id: 'sleu-report-editor', className: 'sleu-menu-panel', style: { display: menuOpen === 'report' ? 'flex' : 'none', flexDirection: 'column', alignItems: 'stretch', gap: 6, marginTop: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
+        React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
+          '现场验证来源会写入反馈结果；厂商答复只记录、不算现场解决率。'),
+        React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+          React.createElement('label', { style: { fontSize: 'var(--t-tiny)', color: T.text2, display: 'flex', flexDirection: 'column', gap: 4 } }, '来源',
+            React.createElement('select', { 'aria-label': '回报来源', value: rpEdit.source, onChange: e => setRpEdit(v => ({ ...v, source: e.target.value })), style: inputStyle },
+              ((VOCAB_CACHE && VOCAB_CACHE.reportSources) || [{ value: 'field', label: '现场验证' }, { value: 'vendor', label: '厂商答复' }]).map(o => React.createElement('option', { key: o.value, value: o.value }, o.label || o.value)))),
+          React.createElement('label', { style: { fontSize: 'var(--t-tiny)', color: T.text2, display: 'flex', flexDirection: 'column', gap: 4 } }, '结果',
+            React.createElement('select', { 'aria-label': '回报结果', value: rpEdit.result, onChange: e => setRpEdit(v => ({ ...v, result: e.target.value })), style: inputStyle },
+              ((VOCAB_CACHE && VOCAB_CACHE.reportResults) || []).map(o => React.createElement('option', { key: o.value, value: o.value }, o.label || o.value)))),
+          React.createElement('label', { style: { fontSize: 'var(--t-tiny)', color: T.text2, display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 220 } }, '一句现象（可选）',
+            React.createElement('textarea', { 'aria-label': '一句现象', rows: 2, value: rpEdit.note, onChange: e => setRpEdit(v => ({ ...v, note: e.target.value })), style: { ...inputStyle, resize: 'vertical' } }))),
+        React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+          React.createElement('button', { type: 'button', onClick: submitReport, disabled: rpEdit.busy, style: rpEdit.busy ? btnGhost : btnPrimary }, rpEdit.busy ? '写入中…' : '记录回报'),
+          rpEdit.msg ? React.createElement('span', { role: rpEdit.msg.indexOf('失败') === 0 ? 'alert' : 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: rpEdit.msg.indexOf('失败') === 0 ? T.error : T.text2 } }, rpEdit.msg) : null,
+          React.createElement('button', { type: 'button', onClick: () => copyText(agentPrompt(reportCmd())).then(ok => setRpEdit(v => ({ ...v, msg: ok ? '已复制给 agent 的指令：粘到对话里即可' : '复制失败：请手动选择下方文字' }))), style: { ...btnPrimary, padding: '1px 8px' } }, '复制给 agent'),
+          React.createElement('button', { type: 'button', onClick: () => copyText(reportCmd()).then(ok => setRpEdit(v => ({ ...v, msg: ok ? '已复制命令：在仓库根目录运行' : '复制失败：请手动选择下方命令' }))), style: { ...btnGhost, padding: '1px 8px' } }, '复制命令')),
+        React.createElement('code', { style: { display: 'block', userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '4px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', color: T.text } }, reportCmd()),
+        (st.derived && st.derived.needReportReview) ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4, borderTop: '1px solid var(--hair)', paddingTop: 6 } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--t-tiny)', color: T.text2 } },
+            React.createElement('span', null, '报告待复核：把下面这段发给诊断对话，让它读完证据后落一条复核结论'),
+            React.createElement('button', { type: 'button', onClick: () => copyText(reviewInstruction()).then(ok => setRpEdit(v => ({ ...v, msg: ok ? '已复制复核指令' : '复制失败：请手动选择下面文字' }))), style: { ...btnGhost, padding: '1px 8px' } }, '复制复核指令')),
+          React.createElement('code', { style: { display: 'block', userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '4px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', color: T.text } }, reviewInstruction())) : null,
+      ) : null
+      const inputStyle = { font: 'inherit', fontSize: 'var(--t-sm)', padding: '4px 6px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hair)', background: T.bg }
+      const fieldRow = (f) => {
+        const label = { summary: '问题背景（summary）', severity: '严重级', fix_emitted: '本次给出了可执行的修复' }[f] || f
+        if (f === 'summary') return React.createElement('label', { key: f, style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, label,
+          React.createElement('textarea', { id: 'sleu-f-' + f, 'aria-label': label, 'aria-invalid': stEdit.errField === f ? 'true' : 'false', 'aria-describedby': 'sleu-state-msg', value: fieldVal(f), rows: 2, onChange: e => setField(f, e.target.value), style: { ...inputStyle, minWidth: 320, resize: 'vertical' } }))
+        if (f === 'severity') return React.createElement('label', { key: f, style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, label,
+          React.createElement('select', { id: 'sleu-f-' + f, 'aria-label': label, 'aria-invalid': stEdit.errField === f ? 'true' : 'false', 'aria-describedby': 'sleu-state-msg', value: fieldVal(f), onChange: e => setField(f, e.target.value), style: inputStyle },
+            React.createElement('option', { value: '' }, '请选择'),
+            ((VOCAB_CACHE && VOCAB_CACHE.severities) || []).map(o => React.createElement('option', { key: o.value, value: o.value }, o.label || o.value))))
+        return React.createElement('label', { key: f, style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, label,
+          React.createElement('select', { 'aria-label': label, value: fieldVal(f), onChange: e => setField(f, e.target.value), style: inputStyle },
+            React.createElement('option', { value: '' }, '请选择'),
+            React.createElement('option', { value: 'true' }, '是'),
+            React.createElement('option', { value: 'false' }, '否')))
+      }
+      const stPanel = st ? React.createElement('div', { id: 'sleu-state-editor', tabIndex: -1, autoFocus: true, className: 'sleu-menu-panel',
+        onKeyDown: e => { if (e.key === 'Escape') { setMenuOpen(null) } }, style: { display: menuOpen === 'state' ? 'flex' : 'none', flexDirection: 'column', alignItems: 'stretch', gap: 6, marginTop: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
+        React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
+          canWrite ? '直接写入这一单的状态：经脚本校验并追加一条转移记录。'
+                   : '当前会话没有写权限：编辑器仍可收集内容，确认时给出可在终端运行的命令。'),
+        stActions.length ? React.createElement('div', { role: 'group', 'aria-label': '可执行的动作', style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
+          stActions.map(a => React.createElement('button', {
+            key: a.id, type: 'button', 'aria-pressed': stEdit.action === a.id ? 'true' : 'false',
+            onClick: () => setStEdit({ action: a.id, kind: (a.endingChoices && a.endingChoices.length === 1) ? a.endingChoices[0].value : '', to: (a.targets && a.targets[0] && a.targets[0].to) || '', handed: '', dup: '', fields: {}, msg: '', done: false, busy: false }),
+            style: stEdit.action === a.id ? btnPrimary : btnGhost,
+          }, a.label))) : React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
+            STATE_ERROR ? ('状态读不到：' + STATE_ERROR + '（可刷新重试，或点「刷新」重读 traces/）') : '这一单当前没有可执行的动作。'),
+        stAct ? React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' } },
+          (stAct.targets && stAct.targets.length) ? React.createElement('label', { style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, '换成哪种收尾',
+            React.createElement('select', { 'aria-label': '换成哪种收尾', value: stEdit.to, onChange: e => {
+              const t = stAct.targets.filter(x => x.to === e.target.value)[0]
+              setStEdit(v => ({ ...v, to: e.target.value, fields: {}, kind: (t && t.endingChoices && t.endingChoices.length === 1) ? t.endingChoices[0].value : '' }))
+            }, style: inputStyle },
+              stAct.targets.map(t => React.createElement('option', { key: t.to, value: t.to }, t.label)))) : null,
+          stKinds.length ? React.createElement('label', { style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, '收尾方式',
+            React.createElement('select', { 'aria-label': '收尾方式', value: stEdit.kind, onChange: e => setStEdit(v => ({ ...v, kind: e.target.value })), style: inputStyle },
+              React.createElement('option', { value: '' }, '请选择'),
+              stChoices.map(c => React.createElement('option', { key: c.value, value: c.value }, c.label)))) : null,
+          (stEdit.kind === 'handed_off') ? React.createElement('label', { style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, '转交给',
+            React.createElement('input', { id: 'sleu-f-handed', 'aria-label': '转交给', 'aria-invalid': stEdit.errField === 'handed' ? 'true' : 'false', 'aria-describedby': 'sleu-state-msg', placeholder: '名字 · 团队 / issue 号', value: stEdit.handed, onChange: e => setStEdit(v => ({ ...v, handed: e.target.value })), style: { ...inputStyle, minWidth: 200 } })) : null,
+          (stEdit.kind === 'duplicate') ? React.createElement('label', { style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, '已有单',
+            React.createElement('input', { id: 'sleu-f-dup', 'aria-label': '已有单', 'aria-invalid': stEdit.errField === 'dup' ? 'true' : 'false', 'aria-describedby': 'sleu-state-msg', placeholder: 'VLLM-ASC-11312 或 session:<id>', value: stEdit.dup, onChange: e => setStEdit(v => ({ ...v, dup: e.target.value })), style: { ...inputStyle, minWidth: 220 } })) : null,
+          editableFields.map(fieldRow),
+          stMust.length ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
+            '这一步需要先去回报：' + stMust.join('、') + '（本编辑器不写反馈轴）') : null) : null,
+        stAct ? React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+          React.createElement('button', {
+            type: 'button', onClick: submitState,
+            disabled: stEdit.busy || stEdit.done,
+            style: (stEdit.busy || stEdit.done) ? btnGhost : btnPrimary,
+          }, stEdit.done ? '已记录' : stEdit.busy ? '写入中…' : canWrite ? (stAct.id === 'reopen' ? '确认重新打开' : stAct.id === 'correct-ending' ? '确认改收尾' : stAct.id === 'backfill-ending' ? '确认补记' : '确认收尾') : '复制命令'),
+          stEdit.msg ? React.createElement('span', { id: 'sleu-state-msg', role: (stEdit.msg.indexOf('失败') === 0 || stEdit.msg.indexOf('复制失败') === 0) ? 'alert' : 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: (stEdit.msg.indexOf('失败') === 0 || stEdit.msg.indexOf('复制失败') === 0) ? T.error : T.text2 } }, stEdit.msg) : null) : null,
+        stAct ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--t-tiny)', color: T.text2 } },
+            React.createElement('span', null, '命令兜底：可以自己在终端跑，也可以复制给对话里的 agent（同一个脚本，校验与留痕一样）'),
+            React.createElement('button', { type: 'button', 'aria-pressed': cmdShell === 'bash' ? 'true' : 'false', onClick: () => setCmdShell('bash'), style: cmdShell === 'bash' ? { ...btnPrimary, padding: '1px 8px' } : { ...btnGhost, padding: '1px 8px' } }, 'bash'),
+            React.createElement('button', { type: 'button', 'aria-pressed': cmdShell === 'powershell' ? 'true' : 'false', onClick: () => setCmdShell('powershell'), style: cmdShell === 'powershell' ? { ...btnPrimary, padding: '1px 8px' } : { ...btnGhost, padding: '1px 8px' } }, 'PowerShell'),
+            React.createElement('button', { type: 'button', onClick: () => { const cmd = manualCmd(cmdShell); copyText(agentPrompt(cmd)).then(ok => setStEdit(v => ({ ...v, msg: ok ? '已复制给 agent 的指令：粘到对话里即可' : '复制失败：下面文字可手动选中' }))) }, style: { ...btnPrimary, padding: '1px 8px' } }, '复制给 agent'),
+            React.createElement('button', { type: 'button', onClick: () => { const cmd = manualCmd(cmdShell); copyText(cmd).then(ok => setStEdit(v => ({ ...v, msg: ok ? '已复制命令：在仓库根目录运行' : '复制失败：下面命令可手动选中' }))) }, style: { ...btnGhost, padding: '1px 8px' } }, '复制命令')),
+          React.createElement('code', {
+          style: { display: 'block', userSelect: 'all', background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '5px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', overflowX: 'auto', whiteSpace: 'pre-wrap', color: T.text },
+          }, manualCmd(cmdShell))) : null,
+        (st.provenance && st.provenance.at) ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
+          '最近记录：' + String(st.provenance.at).slice(5, 16).replace('T', ' ') + ' · '
+          + (st.provenance.source === 'import' ? (st.provenance.sourceLabel || '上一台机器') : (st.provenance.byLabel || ''))) : null,
+      ) : React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
+        STATE_ERROR ? ('状态读不到：' + STATE_ERROR) : '状态投影还没加载（点刷新重试）。')
       const actionArea = React.createElement('div', { style: { margin: '0 16px', padding: '10px 0 14px', borderTop: '1px solid var(--hair)' } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
           navBtn,
           navErr ? React.createElement('span', { style: { color: 'var(--c-amber)', fontSize: 'var(--t-tiny)' } }, navErr) : null,
           docRow,
           resumeAction ? cmdButton(resumeAction) : null,
-          closeActions.length ? menuBtn('close', '收尾', '生成收尾指令（复制后粘到对话执行）') : null,
+          (st && (s.status === 'resolved' || s.status === 'escalated')) ? React.createElement('button', {
+            type: 'button', 'aria-expanded': menuOpen === 'report' ? 'true' : 'false', 'aria-controls': 'sleu-report-editor',
+            title: '记录现场或厂商回报的结果（不改变状态）',
+            onClick: () => setMenuOpen(menuOpen === 'report' ? null : 'report'),
+            style: { ...btnGhost, padding: '2px 10px' },
+          }, '回报结果' + (menuOpen === 'report' ? ' ▴' : ' ▾')) : null,
           menuBtn('handoff', '交接包', '导出交接包到 traces/exports/，或接手另一台机器上的单'),
         ),
         // 动作组的展开区：固定在按钮行**下方**，同一时刻只有一块；按钮行本身不动。
         // 两个组都常驻 DOM、用 display 切换：不参与布局（没有位置偏移），也不占 Tab 序
         // （display:none 的元素不可聚焦）。
-        React.createElement('div', { className: 'sleu-menu-panel', style: { display: menuOpen === 'close' ? 'flex' : 'none', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
-          closeActions.map(cmdButton)),
         React.createElement('div', { className: 'sleu-menu-panel', style: { display: menuOpen === 'handoff' ? 'flex' : 'none', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
           handoffRow),
+        stPanel,
+        reportPanel,
         openedCmd ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 } },
           React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: T.text } }, openedCmd.cmd),
           React.createElement('button', { type: 'button', onClick: () => doCopy(openedCmd.cmd, openedCmd.key), style: copyFailKey === openedCmd.key ? btnRed : btnPrimary, title: '复制指令' },
             copied === openedCmd.key ? '已复制' : (copyFailKey === openedCmd.key ? '失败' : '复制')),
         ) : null,
       )
-      return React.createElement('div', { className: 'sleu-card', style: { background: T.bg, backgroundImage: 'var(--surf)', border: '1px solid var(--hair)', borderLeft: '3px solid ' + statusAccent, borderRadius: 'var(--r-lg)', marginBottom: 10 } },
+      return React.createElement('div', { className: 'sleu-card', style: { position: 'relative', background: T.bg, backgroundImage: 'var(--surf)', border: '1px solid var(--hair)', borderLeft: '3px solid ' + (meta.acc || 'var(--acc-gray)'), borderRadius: 'var(--r-lg)', marginBottom: 10 } },
+        // 快捷入口放在整行按钮**外面**（绝对定位）：整行已经是 button，状态按钮嵌进去就是
+        // 嵌套交互元素，键盘与事件都会打架。它只在收起态显示，展开后动作区本来就有入口。
+        stActions.length ? React.createElement('button', {
+          type: 'button', 'aria-label': '直接修改这一单的状态', 'aria-controls': 'sleu-state-editor',
+          title: '直接修改这一单的状态',
+          onClick: e => {
+            e.stopPropagation()
+            if (!open) toggle()
+            setMenuOpen('state')
+            const el = document.getElementById('sleu-state-editor'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' })
+          },
+          style: { position: 'absolute', right: 26, top: 8, zIndex: 2, padding: '1px 8px', fontSize: 'var(--t-tiny)', fontWeight: 600, color: T.text2, background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-pill)', cursor: 'pointer' },
+        }, '改状态') : null,
         // 勾选框在整行按钮**外面**：整行是一个 button，把 checkbox 嵌进去是嵌套交互元素，
         // 键盘与事件都会打架。它只在「待升格」筛选下渲染。
         selectable ? React.createElement('label', { style: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px 0', fontSize: 'var(--t-sm)', color: T.text2, cursor: 'pointer' } },
           React.createElement('input', { type: 'checkbox', checked: selected, onChange: () => onToggleFile(s.file) }),
-          '选中用于批量标已解决') : null,
+          '选中') : null,
         React.createElement('button', {
           type: 'button', 'aria-expanded': !!open, onClick: toggle, className: 'sleu-row',
           style: { width: '100%', padding: '12px 16px 0', cursor: 'pointer', border: 'none', textAlign: 'left', color: T.text, font: 'inherit' },
@@ -2295,7 +2544,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           // 列宽与上方的列头共用 ROW_COLS，否则表格读起来是错位的。
           React.createElement('div', { style: { display: 'grid', gridTemplateColumns: ROW_COLS, alignItems: 'center', gap: 10, width: '100%' } },
             React.createElement('span', { title: meta.label, style: { display: 'flex', alignItems: 'center', gap: 6, color: meta.color, fontSize: 'var(--t-sm)', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
-              React.createElement(Dot, { color: meta.color, hollow: s.status === 'unknown' }),
+              React.createElement(Dot, { color: meta.color, hollow: (s.state && s.state.displayTone) ? !!s.state.displayTone.hollow : s.status === 'unknown' }),
               meta.label),
             React.createElement('span', { className: 'sleu-mono', title: s.sessionId, style: { fontWeight: 500, fontSize: 'var(--t-tiny)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, s.sessionId),
             React.createElement('span', { className: 'sleu-c-fw', title: [s.framework, s.platform, s.category].filter(Boolean).join(' · '), style: { color: T.text2, fontSize: 'var(--t-tiny)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
@@ -2327,6 +2576,25 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                   caseKindOf(s) === 'placeholder' ? React.createElement('span', { title: 'trace 里记的定位值（不是知识库里的 case）', className: 'sleu-mono', style: { maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', opacity: 0.8 } }, s.activeCase) : null),
             // 「待沉淀」「待升格」两条待办的徽标（判据与升格闸门同源）。
             // 它们此前只有展开卡片才看得见——会话一多就成了看不见的积压。
+            (LAST_CHANGE && LAST_CHANGE.sessionId === s.sessionId) ? React.createElement('span', {
+              title: '这一单刚被改过：如果它的新状态不再匹配当前筛选，先留在原位，方便你确认或撤销',
+              style: { display: 'inline-flex', alignItems: 'center', gap: 6, ...tinyBadge('var(--d-amber)') },
+            }, '已移出当前筛选',
+              React.createElement('button', { type: 'button', onClick: e => { e.stopPropagation(); undoLastChange() }, style: { ...btnGhost, padding: '0 6px', fontSize: 'var(--t-tiny)' } }, '撤销')) : null,
+            (st && st.derived && st.derived.needReportReview) ? React.createElement('span', {
+              title: '现场说问题解决了，但用的不是报告里的修复——报告描述可能需要修正（不是误诊）',
+              style: tinyBadge('var(--d-amber)'),
+            }, '报告待复核') : null,
+            (st && st.derived && st.derived.lastReview && !st.derived.needReportReview) ? React.createElement('span', {
+              title: '这一单的现场回报已经复核过',
+              style: tinyBadge('var(--d-purple)'),
+            }, '已复核') : null,
+            (st && st.ending && st.ending.kind && st.ending.kind !== 'root_cause') ? React.createElement('span', {
+              title: '本单的收尾方式（写入 trace 的 ending.kind）', style: tinyBadge('var(--d-amber)'),
+            }, ((VOCAB_CACHE && VOCAB_CACHE.endings) || []).reduce((acc, e2) => e2.value === st.ending.kind ? e2.label : acc, st.ending.kind)) : null,
+            (st && st.provenance && st.provenance.at) ? React.createElement('span', { style: { color: T.text2, fontSize: 'var(--t-tiny)' } },
+              '记录于 ' + String(st.provenance.at).slice(5, 16).replace('T', ' ') + ' · '
+              + (st.provenance.source === 'import' ? (st.provenance.sourceLabel || '上一台机器') : (st.provenance.byLabel || ''))) : null,
             needSedOf(s) ? React.createElement('span', {
               title: '有 case 类沉淀候选（= 根因已形成可复用结论）、还没沉淀'
                 + (isClosedOf(s) ? '' : '；诊断尚未标收尾')
@@ -2512,6 +2780,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           [64, 84, 74, 84, 78, 78].map((w, i) => React.createElement('span', { key: i, className: 'sleu-skel', style: { width: w, height: 26 } }))),
         [0, 1, 2, 3].map(i => React.createElement('div', { key: 'r' + i, className: 'sleu-skel', style: { height: 46, marginBottom: 8 } })))
       const r = state.data
+      if (r) { if (r.vocab) VOCAB_CACHE = r.vocab; CAPS_CACHE = r.capabilities || CAPS_CACHE; STATE_ERROR = r.stateError || null }
       if (!r || !r.ok) {
         // 与诊断记录面板同一个句式：缺什么 + 下一步。旧版只有一行裸红字（`无法读取 traces/: …`），
         // 读者既不知道"这一层只读 traces/"也不知道该跑什么命令。
@@ -2545,6 +2814,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       //   空记录 = 连一轮对话都没有——它不占筛选，只在列表上挂一个「空记录」徽标；
       //   待升格 = 草稿已提交、但来源诊断还没闭环——升格闸门会拦，与"诊断收尾"是两件事。
       const nOpen = sessions.filter(needWorkOf).length
+      const nReportReview = sessions.filter(x => x.state && x.state.derived && x.state.derived.needReportReview).length
       const nNeedSed = sessions.filter(needSedOf).length
       const nNeedReview = sessions.filter(needReviewOf).length
       const nSubmitted = sessions.filter(isSubmittedOf).length
@@ -2582,6 +2852,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       if (kbFilter === 'close-pending') sessions = sessions.filter(isClosedButOpen)
       if (kbFilter === 'need-sed') sessions = sessions.filter(needSedOf)
       if (kbFilter === 'need-promote') sessions = sessions.filter(isSubmittedOf)
+      if (kbFilter === 'report-review') sessions = sessions.filter(x => x.state && x.state.derived && x.state.derived.needReportReview)
       // 按诊断开始时间过滤（`created_at`）：只留窗口内的单；没记开始时间的单不猜，直接排除。
       if (timeRange !== 'all') {
         const cut = Date.now() - Number(timeRange) * 86400000
@@ -2589,6 +2860,12 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           const t = s.createdAt ? new Date(s.createdAt).getTime() : NaN
           return !isNaN(t) && t >= cut
         })
+      }
+      // 刚改过的那一单即使不再匹配当前筛选也先留在列表里：用户刚做完动作，行当场消失
+      // 会让人以为改丢了；这一行带「已移出当前筛选 · 撤销」，下一次操作/刷新后消失。
+      if (LAST_CHANGE && LAST_CHANGE.sessionId && !sessions.some(x => x.sessionId === LAST_CHANGE.sessionId)) {
+        const kept = (r.sessions || []).filter(x => x.sessionId === LAST_CHANGE.sessionId)[0]
+        if (kept) sessions = sessions.concat([kept])
       }
       // 「价值优先」：会话攒多以后，按时间排会把"值得先看的那几单"埋在最底下。
       // 判据（`valueRankOf` / `updatedTsOf`）放在 apply 作用域里与侧栏「诊断记录」共用一份——
@@ -2618,6 +2895,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         { id: 'need-sed', label: '待沉淀' + (nNeedSed ? ' ' + nNeedSed : ''), title: '有 case 类沉淀候选（= 根因已形成可复用结论）、还没沉淀，且命中的 case 不在库里——按这一屏一次生成批量沉淀命令' },
         { id: 'need-review', label: '待复核' + (nNeedReview ? ' ' + nNeedReview : ''), title: '有报告或只有 reference / triage 候选，没有 case 类候选：根因可能还没定。读一眼报告，定了补一条 case 候选，没定就继续查或标收尾' },
         { id: 'need-promote', label: '已交草稿' + (nSubmitted ? ' ' + nSubmitted : ''), title: '草稿已经交到 inbox、等知识整理（含来源诊断还没收尾的那批——它们在升格前会被检查拦下）' },
+        { id: 'report-review', label: '报告待复核' + (nReportReview ? ' ' + nReportReview : ''), title: '现场说「换别的方法解决了」：需要 agent 读证据后修订报告描述、或判条目错 / 执行错（不判误诊时只改报告）' },
       ]
 
       // 空态：先说"这一屏为什么空"，再说下一步。筛选为空与"还没有任何诊断"是两件事——
@@ -2672,40 +2950,19 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           )
         }
         if (kbFilter === 'need-promote') {
-          // 这一屏收全部已交草稿；批量标收尾只对"来源诊断还没收尾"的那些有意义
-          // （已收尾的草稿没有要补的闭环证据，勾它们只会把状态再写一遍）。
+          // 这一屏只报现状：批量收尾会连带写反馈轴（那条轴排在下一批），本版不提供批量入口，
+          // 也不再生成第二套收尾命令——否则同一张卡上会出现两套说法。逐单用卡片里的「直接收尾」。
           const submitted = sessions
           const list = submitted.filter(needPromoteOf)
           const drafts = (r && r.inboxDrafts) || []
-          // 草稿在 inbox、但没有任何 trace 回写沉淀状态时，这一屏仍要说话——那正是"看不见的队列"。
           if (!submitted.length && !drafts.length) return null
-          const chosen = list.filter(s => sel[s.file])
-          const ids = chosen.map(s => s.sessionId).filter(Boolean)
-          const text = '批量闭环以下 ' + ids.length + ' 单，结局都是「已解决 · fix 生效」：' + ids.join('、')
-            + '。逐单：有命中 case 的标 status: resolved + feedback{outcome: resolved} 并写一条 feedback 事件；'
-            + '未命中 case 的只标 status: resolved，不写 feedback；若 trace 里还留着 feedback.outcome（旧数据），一并清掉。'
-          const allSelected = list.length > 0 && list.every(s => sel[s.file])
           return React.createElement('div', { style: { marginBottom: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
-            React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2, marginBottom: list.length ? 8 : 0 } },
+            React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2 } },
               '已交草稿 ' + submitted.length + ' 单'
-              + (list.length ? '，其中 ' + list.length + ' 单来源诊断还没收尾（升格前的检查会拦）' : '，都不卡：等知识整理排期升格')),
-            drafts.length ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2, marginBottom: list.length ? 6 : 0 } },
+              + (list.length ? '，其中 ' + list.length + ' 单来源诊断还没收尾（升格前的检查会拦）。逐单用卡片里的「直接收尾」补状态。' : '，都不卡：等知识整理排期升格。')),
+            drafts.length ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2, marginTop: 4 } },
               'inbox 里另有 ' + drafts.length + ' 份草稿没有对应的诊断记录（不是从某次诊断沉淀来的，或 source_session 回写漏了）：'
-              + drafts.slice(0, 4).join('、') + (drafts.length > 4 ? ' 等' : '')) : null,
-            list.length ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-              React.createElement('button', { type: 'button', style: btnGhost, onClick: () => { const n = {}; if (!allSelected) list.forEach(s => { n[s.file] = true }); setSel(n) } },
-                allSelected ? '取消全选' : '全选这 ' + list.length + ' 单'),
-              React.createElement('button', { type: 'button', disabled: !ids.length, style: !ids.length ? { ...btnGhost, opacity: 0.5, cursor: 'default' } : btnGhost, onClick: () => { if (!ids.length) return; setBatchCmd(batchCmd === 'close' ? null : 'close'); setBatchCopied(null) } },
-                '批量标已解决' + (ids.length ? '（已选 ' + ids.length + ' 单）' : '')),
-            ) : null,
-            list.length ? React.createElement('div', { style: { marginTop: 4, fontSize: 'var(--t-tiny)', color: T.text2 } },
-              '只勾真的验证过 fix 生效的单——批量标 resolved 会写进条目使用记录；没验证的先别勾。') : null,
-            batchCmd === 'close' && ids.length ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 } },
-              React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-xs)', padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', color: T.text, wordBreak: 'break-word', lineHeight: 'var(--lh-base)' } }, text),
-              React.createElement('button', { type: 'button', style: batchCopied === 'fail' ? btnRed : btnPurple, onClick: () => copyText(text).then(ok => setBatchCopied(ok ? 'close' : 'fail')) },
-                batchCopied === 'close' ? '已复制' : (batchCopied === 'fail' ? '失败' : '复制')),
-            ) : null,
-          )
+              + drafts.slice(0, 4).join('、') + (drafts.length > 4 ? ' 等' : '')) : null)
         }
         return null
       })()
@@ -2727,6 +2984,18 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               nFollow ? (nFollow + ' 项待跟进') : ((r.sessions || []).length + ' 个会话')),
           ),
         ),
+        (LAST_CHANGE && LAST_CHANGE.sessionId) ? React.createElement('div', {
+          style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '8px 12px', marginBottom: 10, background: 'var(--tint-amber)', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', fontSize: 'var(--t-md)', color: T.text },
+        },
+          React.createElement(Dot, { color: T.warn, size: 7 }),
+          React.createElement('span', null, '刚记下一笔：' + (LAST_CHANGE.fromLabel || LAST_CHANGE.from) + ' → ' + (LAST_CHANGE.toLabel || LAST_CHANGE.to) + '（如果这单已不匹配当前筛选，先留在列表里）'),
+          React.createElement('button', { type: 'button', onClick: () => {
+            host.call('ascend-trace-transition', { sessionId: LAST_CHANGE.sessionId, action: 'reopen', payload: {}, expectSha256: LAST_CHANGE.sha })
+              .then(r2 => { if (r2 && r2.ok) { LAST_CHANGE = null; setReloadAt(n => n + 1) } })
+              .catch(() => {})
+          }, style: { ...btnGhost, padding: '2px 10px' } }, '撤销'),
+          React.createElement('button', { type: 'button', onClick: () => { LAST_CHANGE = null; setReloadAt(n => n + 1) }, style: { ...btnGhost, padding: '2px 10px' } }, '知道了'),
+        ) : null,
         // 待跟进提示：只在真有的时候出现，且给"下一步做什么"。
         // 三类各自对应一个动作（续接 / 追问结果 / 改 status），所以分开说；末尾一句点明这是两条轴，
         // 免得读者把"在查"与"等回报"读成同一件事的两句话。
@@ -4060,7 +4329,9 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
 
     // 记号的文案片段。悬停卡很窄（侧栏 280px 里的一张卡），所以不用一整句：
     // 一行说"该不该管"，一行说起算日与命中，第三行只在两轴并存时说明它们不矛盾。
-    const STATUS_LABEL = { resolved: '已定位', in_progress: '进行中', escalated: '已转上游', archived: '不再跟进', unknown: '状态未记' }
+    // 迁移期兜底：与 trace-status.yaml 的 label 保持一致（侧栏拿不到投影时用）。
+    // 只有这一张兜底表（卡片、侧栏共用），不再各写一份。
+    const FALLBACK_STATUS_LABEL = { resolved: '已定位', in_progress: '进行中', escalated: '已转交他人', archived: '不再跟进', unknown: '状态未记录' }
     function markBits(mark) {
       if (!mark) return null
       const t = mark.since ? new Date(mark.since).getTime() : NaN
@@ -4086,7 +4357,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       }
       // 第三行只在"已收尾但还欠回报"时出现：这正是读者会读成矛盾的组合。
       const axis = (pending && mark.status === 'resolved')
-        ? '诊断状态 ' + (STATUS_LABEL[mark.status] || mark.status) + '（收尾与回报是两条轴）'
+        ? '诊断状态 ' + (FALLBACK_STATUS_LABEL[mark.status] || mark.status) + '（收尾与回报是两条轴）'
         : ''
       return { pending: pending, title: title, detail: detail, axis: axis, debt: debt, since: since, hit: hit }
     }
@@ -4381,7 +4652,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                             onClick: () => openRow(s),
                           },
                             React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 6, color: meta.color, fontSize: 'var(--t-sm)', fontWeight: 700, whiteSpace: 'nowrap' } },
-                              React.createElement(Dot, { color: meta.color, hollow: s.status === 'unknown' }), meta.label),
+                              React.createElement(Dot, { color: meta.color, hollow: (s.state && s.state.displayTone) ? !!s.state.displayTone.hollow : s.status === 'unknown' }), meta.label),
                             React.createElement('span', { className: 'sleu-ledger-sid', title: String(s.sessionId || '') }, String(s.sessionId || '—')),
                             React.createElement('span', { className: 'sleu-ledger-sum', title: s.summarySnippet || s.lastOutput || '' },
                               s.summarySnippet || s.lastOutput || '（没有背景段）'),
