@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:c75f2079a805)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:46f47c9b9fd4)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:f684735469ce)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:119062e6c579)
 // 校验：`node scripts/build_panel_bundle.js --check`。
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:c75f2079a805) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:46f47c9b9fd4) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -474,7 +474,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.8.14'
+    const PANEL_VERSION = '0.8.15'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -2572,6 +2572,16 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           navErr ? React.createElement('span', { style: { color: 'var(--c-amber)', fontSize: 'var(--t-tiny)' } }, navErr) : null,
           docRow,
           resumeAction ? cmdButton(resumeAction) : null,
+          // 「改状态」放在动作行里，不悬在行内容上：此前它是卡片右上角的绝对定位小按钮，
+          // 压住了同一右端的 token 数与展开箭头，那两处既读不到也点不到。动作行在收起态与
+          // 展开态都常驻（展开态在右栏），同一个入口两态都在，展开的编辑器就在按钮下方。
+          stActions.length ? React.createElement('button', {
+            type: 'button', 'aria-label': '直接修改这一单的状态', 'aria-controls': 'sleu-state-editor',
+            'aria-expanded': menuOpen === 'state' ? 'true' : 'false',
+            title: '直接修改这一单的状态：经脚本校验并追加一条转移记录',
+            onClick: () => setMenuOpen(menuOpen === 'state' ? null : 'state'),
+            style: { ...btnGhost, padding: '2px 10px' },
+          }, '改状态' + (menuOpen === 'state' ? ' ▴' : ' ▾')) : null,
           (st && (s.status === 'resolved' || s.status === 'escalated')) ? React.createElement('button', {
             type: 'button', 'aria-expanded': menuOpen === 'report' ? 'true' : 'false', 'aria-controls': 'sleu-report-editor',
             title: '记录现场或厂商回报的结果（不改变状态）',
@@ -2593,20 +2603,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             copied === openedCmd.key ? '已复制' : (copyFailKey === openedCmd.key ? '失败' : '复制')),
         ) : null,
       )
-      return React.createElement('div', { className: 'sleu-card', style: { position: 'relative', background: T.bg, backgroundImage: 'var(--surf)', border: '1px solid var(--hair)', borderLeft: '3px solid ' + (meta.acc || 'var(--acc-gray)'), borderRadius: 'var(--r-lg)', marginBottom: 10 } },
-        // 快捷入口放在整行按钮**外面**（绝对定位）：整行已经是 button，状态按钮嵌进去就是
-        // 嵌套交互元素，键盘与事件都会打架。它只在收起态显示，展开后动作区本来就有入口。
-        stActions.length ? React.createElement('button', {
-          type: 'button', 'aria-label': '直接修改这一单的状态', 'aria-controls': 'sleu-state-editor',
-          title: '直接修改这一单的状态',
-          onClick: e => {
-            e.stopPropagation()
-            if (!open) toggle()
-            setMenuOpen('state')
-            const el = document.getElementById('sleu-state-editor'); if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' })
-          },
-          style: { position: 'absolute', right: 26, top: 8, zIndex: 2, padding: '1px 8px', fontSize: 'var(--t-tiny)', fontWeight: 600, color: T.text2, background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-pill)', cursor: 'pointer' },
-        }, '改状态') : null,
+      return React.createElement('div', { className: 'sleu-card', style: { background: T.bg, backgroundImage: 'var(--surf)', border: '1px solid var(--hair)', borderLeft: '3px solid ' + (meta.acc || 'var(--acc-gray)'), borderRadius: 'var(--r-lg)', marginBottom: 10 } },
         // 勾选框在整行按钮**外面**：整行是一个 button，把 checkbox 嵌进去是嵌套交互元素，
         // 键盘与事件都会打架。它只在「待升格」筛选下渲染。
         selectable ? React.createElement('label', { style: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px 0', fontSize: 'var(--t-sm)', color: T.text2, cursor: 'pointer' } },
@@ -3027,7 +3024,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         }
         if (kbFilter === 'need-promote') {
           // 这一屏只报现状：批量收尾会连带写反馈轴（那条轴排在下一批），本版不提供批量入口，
-          // 也不再生成第二套收尾命令——否则同一张卡上会出现两套说法。逐单用卡片里的「直接收尾」。
+          // 也不再生成第二套收尾命令——否则同一张卡上会出现两套说法。逐单用卡片里的「改状态」。
           const submitted = sessions
           const list = submitted.filter(needPromoteOf)
           const drafts = (r && r.inboxDrafts) || []
@@ -3035,7 +3032,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           return React.createElement('div', { style: { marginBottom: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
             React.createElement('div', { style: { fontSize: 'var(--t-sm)', color: T.text2 } },
               '已交草稿 ' + submitted.length + ' 单'
-              + (list.length ? '，其中 ' + list.length + ' 单来源诊断还没收尾（升格前的检查会拦）。逐单用卡片里的「直接收尾」补状态。' : '，都不卡：等知识整理排期升格。')),
+              + (list.length ? '，其中 ' + list.length + ' 单来源诊断还没收尾（升格前的检查会拦）。逐单用卡片动作行里的「改状态」收尾。' : '，都不卡：等知识整理排期升格。')),
             drafts.length ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2, marginTop: 4 } },
               'inbox 里另有 ' + drafts.length + ' 份草稿没有对应的诊断记录（不是从某次诊断沉淀来的，或 source_session 回写漏了）：'
               + drafts.slice(0, 4).join('、') + (drafts.length > 4 ? ' 等' : '')) : null)

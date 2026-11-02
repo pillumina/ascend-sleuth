@@ -1918,11 +1918,14 @@ _MS._run_no_pipe = no_fallback`)
     expect('诊断 tab：活跃会话给「继续诊断」', dt.includes('继续诊断'))
     expect('诊断 tab：旧收尾文案已从界面移除（不跟了 / 转上游 / 已解决 · fix 生效 / 没解决）',
       !dt.includes('不跟了') && !dt.includes('转上游') && !dt.includes('已解决 · fix 生效') && !dt.includes('没解决'))
-    expect('诊断 tab：直接收尾入口与命令兜底都在（有状态投影时）',
-      ascSrc.includes('直接收尾') && ascSrc.includes('--payload-stdin') && ascSrc.includes('命令兜底'))
+    expect('诊断 tab：改状态入口与命令兜底都在（有状态投影时）',
+      ascSrc.includes('改状态') && ascSrc.includes('--payload-stdin') && ascSrc.includes('命令兜底'))
     const skillToPostmortem = fs.readFileSync(path.join(repo, 'skills/to-postmortem/SKILL.md'), 'utf8')
-    expect('面板：改状态快捷入口放在行按钮之外（不嵌套交互元素）',
-      /'aria-label': '直接修改这一单的状态'/.test(ascSrc))
+    // 改状态入口必须在卡片动作行里（行按钮之外、按普通流排），不能是卡片角上的绝对定位小按钮：
+    // 那种定位压住同一右端的 token 列与展开箭头，被压住的两处点不到（实测反馈）。
+    const actionSrc = ascSrc.slice(ascSrc.indexOf('const actionArea'), ascSrc.indexOf("return React.createElement('div', { className: 'sleu-card'"))
+    expect('面板：改状态入口在动作行里（不绝对定位压住 token 列与箭头）',
+      /'aria-label': '直接修改这一单的状态'/.test(actionSrc) && !/right: 26, top: 8/.test(ascSrc))
     expect('面板：命令兜底支持 bash 与 PowerShell 两种写法',
       /manualCmd\(cmdShell\)/.test(ascSrc) && /'PowerShell'/.test(ascSrc) && /payload-stdin/.test(ascSrc))
     expect('面板：命令兜底可以交给 agent 执行（同一脚本，不是旁路）',
@@ -3244,7 +3247,7 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       expect('「已交草稿」筛选入口可点', !!chipPromote)
       if (chipPromote) { chipPromote.fn({}); await pumpTree(3) }
       expect('已交草稿屏只报现状，不再给批量收尾入口（批量会连带写反馈轴，排在下一批）',
-        !findByText('批量标已解决') && /逐单用卡片里的「直接收尾」/.test(treeText(tree)), treeText(tree).slice(0, 300))
+        !findByText('批量标已解决') && /逐单用卡片动作行里的「改状态」收尾/.test(treeText(tree)), treeText(tree).slice(0, 300))
 
       // 诊断收尾轴：未闭环筛选只留没收尾的单（escalated/archived 是终态，不算未闭环）。
       const chipOpen = findByText('未收尾 1')
