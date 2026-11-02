@@ -123,5 +123,9 @@ metrics/entry-activity.local/
 # 周文件的写锁（log_lock 的副产物）
 metrics/entry-activity.d/*.lock
 
+
 # 交接包导出目录写不进去时的改道落点（脚本产出的运行时件）
 .handoff/
+
+# Agent Groom 评测临时仓库（不提交）
+.groom-eval/
