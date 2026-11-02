@@ -23,7 +23,7 @@ jobs:
   # ── 细网：这次改了哪一面 ──────────────────────────────────────────────────────
   # GitHub 只支持 workflow 级 `paths:`，不支持 job 级，所以粗网一命中就会把下面全部 job 拉起来。一轮
   # PR 的 wall clock 大头在 unit-tests——只改 docs 的 PR 也在付它。本 job 把「改了哪一面」算成一组
-  # 布尔量供各 job 取用。
+  # 布尔量供各 job 取用；unit-tests 另外用本 job 算出的改动文件列表按改动选测试（见下）。
   #
   # 各 job 的触发面 = 它的命令**真正读了**哪些目录（逐条按脚本里的路径字面量核过）。按"读了就
   # 触发"取，不按"断言强不强"取，宁可多跑：
@@ -35,7 +35,7 @@ jobs:
   #   docs-index           ← docs（含 README；skill 名单取自 docs/_manifest.yaml，不扫 skills/）、code
   #   holdout-integrity    ← eval、code
   #   eval-scorecard       ← eval、knowledge（case↔夹具的负载类型覆盖算在 case 上）、code
-  #   unit-tests           ← scripts、tests
+  #   unit-tests           ← scripts、tests（触发面不变；跑哪些测试按改动选，见强度让步）
   #   panel-checks         ← dsh-plugins、scripts、metrics、skills、docs、trace-status.yaml
   #   skill-self-contained ← skills（只 grep skills/，不执行脚本，故不吃 code）
   #   arena-gate-rule      ← scripts（跑的是 --self-test，用合成样本）
@@ -54,6 +54,11 @@ jobs:
   #     copytree knowledge/、test_generated_plane 跑生成器），但那几面的**口径与新鲜度**由
   #     index-freshness / case-structure 兜底，所以只改 knowledge/ 的 PR 不再付 unit-tests 这轮最长 job 的代价。
   #     要更保守：把 knowledge 也加进它（代价是内容 PR 继续付满）。
+  #   · unit-tests 的**测试面**按改动选：`changes` job 把改动文件列表传给
+  #     `scripts/select_unit_tests.py`，它从 tests 的 import 与脚本名引用、scripts 间的 import
+  #     反向闭包算出要跑的模块。改 `.github/**`、改 tests 的共享助手/夹具、基线不可比、脚本
+  #     解析失败时回退全量。强度：选中的测试红即挡 merge；「选得全不全」是约定——测试用
+  #     动态表达式拼脚本路径时静态扫描会漏（残余与修法写在脚本头注）。
   #   · panel-checks 不算 knowledge：panel_render_check.js 读 knowledge/ 只做「索引非空、case
   #     文件非空」两条 >0 断言，新鲜度由 index-freshness 管。
   #   · panel-checks 吃 docs 与 trace-status.yaml：它读 docs/spec/writing-norms.md 并断言「文案共用
@@ -75,6 +80,8 @@ jobs:
       skills: ${{ steps.diff.outputs.skills }}
       code: ${{ steps.diff.outputs.code }}
       panels: ${{ steps.diff.outputs.panels }}
+      all: ${{ steps.diff.outputs.all }}
+      code_files: ${{ steps.diff.outputs.code_files }}
     steps:
       # fetch-depth: 0 供三点 diff 用：`A...B` 要 merge-base，浅克隆取不到会让 diff 静默为空、
       # 所有组判 false、全部 job 全被跳过——那是最坏的失败形态（全绿而什么都没跑）。
@@ -138,6 +145,19 @@ jobs:
           emit skills     '^skills/'
           emit code       '^scripts/|^tests/'
           emit panels     '^dsh-plugins/|^trace-status\.yaml$'
+
+          # unit-tests 用这份列表按改动选测试（映射算法与回退条件在 scripts/select_unit_tests.py）。
+          # 无基线时（all=true）列表只列 scripts/tests；选择脚本此时只按 --all 回退全量，不读内容。
+          echo "all=$all" >> "$OUT"
+          {
+            echo "code_files<<CODE_FILES_EOF"
+            if [ "$all" = true ]; then
+              git -c core.quotePath=false ls-files 2>/dev/null | grep -E '^(scripts|tests)/' || true
+            else
+              printf '%s\n' "$changed"
+            fi
+            echo "CODE_FILES_EOF"
+          } >> "$OUT"
 
   # 生成物守卫：PR 不得手改生成物。生成物由合入后的 rebuild-generated job 写。
   # 不依赖生成器能否跑通，是提交面的判据；放在最前面，红得早、报错直接给还原命令。
@@ -406,7 +426,32 @@ jobs:
       # 有测试读 knowledge/_index.yaml 与 triage-tree.yaml（口径断言）；PR 不再提交生成物，
       # 先生成，测试读到的是这棵树的实际产物。
       - uses: ./.github/actions/rebuild-generated
-      - run: python3 -m unittest discover tests
+      # 改哪里测哪里：`changes` job 给出改动文件，`scripts/select_unit_tests.py` 从测试的
+      # import 与脚本名引用、scripts 间的 import 反向闭包算出该跑哪些模块。回退全量的条件与
+      # 覆盖边界写在脚本头注；每次选择的理由打印在本步骤日志里。
+      - name: 按改动选单元测试并运行
+        env:
+          ALL: ${{ needs.changes.outputs.all }}
+          CODE_FILES: ${{ needs.changes.outputs.code_files }}
+        run: |
+          set -eu
+          echo "改动文件（来自 changes job）："
+          printf '%s\n' "$CODE_FILES" | sed -e '/^$/d' -e 's/^/  /'
+          extra=""
+          if [ "$ALL" = "true" ]; then extra="--all"; fi
+          selected=$(printf '%s\n' "$CODE_FILES" | python3 scripts/select_unit_tests.py $extra)
+          if [ -z "$selected" ]; then
+            echo "没有与改动对应的单元测试——跳过（改动不在 Python 测试面）"
+            exit 0
+          fi
+          if [ "$selected" = "ALL" ]; then
+            echo "选择：全量"
+            python3 -m unittest discover tests
+          else
+            echo "选择："
+            printf '%s\n' "$selected" | sed -e 's/^/  /'
+            python3 -m unittest $selected
+          fi
 
   # 面板：两个面板的渲染、文案、色语与数据口径契约都由 `panel_render_check` 与
   # `check_panel_tokens` 守着，但这两个脚本**此前不在任何 CI 里**（paths 不含 dsh-plugins/**），
