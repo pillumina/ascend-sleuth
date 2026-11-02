@@ -63,6 +63,14 @@ detected_category: interrupt           # triage 路由到的 category
 resolved_at: ""                        # status=resolved 时填 ISO 日期
 report_file: ""                        # 人读定位报告文件名（与 trace 同目录、同名不同后缀）；结构见
                                        # skills/diagnose/references/report-template.md。步骤 6 产出必填。
+ending:                                # 终态必填：收尾方式（取值见 trace-status.yaml 的 ending_kinds:）
+  kind: ""                             # root_cause | handed_off | not_reproducible | duplicate | no_diagnosis | withdrawn
+  handed_to: ""                        # kind=handed_off 必填：接手方（名字 · 团队，或 issue 号）
+  duplicate_of: ""                     # kind=duplicate 必填：case:<id> 或 session:<session_id>
+  note: ""
+transitions: []                        # 只追加：每次状态转移一条（scripts/trace_transition.py 写）
+                                       # 每条含 at/from/to/ending/prev_ending/by/source/note
+
 sedimented:                           # 沉淀状态（零推断：动作发生时写；拒绝不记录）
   state: none                         # none → submitted（to-postmortem 产出草稿时）→ knowledge（升 Tier 2）/ archived（仅 Tier 3）
   case_id: ""                         # 已沉淀的 case id（state=knowledge/archived 时）

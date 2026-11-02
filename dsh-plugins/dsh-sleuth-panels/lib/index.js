@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:98371de0172f)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:e5dfc1b76b73)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:d2bbdff3921b)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -105,7 +105,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:98371de0172f) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:e5dfc1b76b73) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -2651,6 +2651,55 @@ return {
         + '面板其余功能照常：' + String(e && e.message || e))
     }
 
+    // ── 状态投影与写入口（面板不实现判据）──────────────────────────────────────
+    // 面板要的状态标签/颜色/合法动作全部来自 `scripts/trace_state.py`；写入一律经
+    // `scripts/trace_transition.py`（校验 + CAS + 事件）。这里只负责解析路径、传能力位、
+    // 把脚本的 JSON 原样透给客户端——失败也透，由客户端按 `code` 给一句人话。
+    // 只给「值」加引号：解释器可能是 `python3` 也可能是 `py -3`（两个 token），
+    // 把整串当一个 token 加引号会让 Windows / 只有 py 启动器的机器上这条 RPC 全挂。
+    // 值用双引号 + 反斜杠转义：POSIX sh 与 PowerShell 5.1 对 " 的处理一致。
+    function shq(v) { return '"' + String(v).replace(/(["\\$`])/g, '\\$1') + '"' }
+    async function writeCaps(sessionId) {
+      const raw = await resolveCwd(sessionId)
+      const main = raw ? await mainCheckoutOf(raw) : null
+      if (!main) return { canWrite: false, writeRoot: '', reasonCode: 'E_NO_ROOT', reason: '解析不到主检出' }
+      const pol = readPolicy(sessionId)
+      const can = !(pol && pol.mode === 'read-only')
+      return can ? { canWrite: true, writeRoot: main, reasonCode: '', reason: '' }
+                 : { canWrite: false, writeRoot: main, reasonCode: 'E_PERM', reason: '当前会话没有写权限' }
+    }
+    async function runTraceScript(sessionId, argv, write) {
+      const cwd = await resolveCwd(sessionId)
+      const repoCwd = await resolveRepoCwd(sessionId)
+      const pol = write ? { mode: 'workspace-write', workspaceRoot: (await writeCaps(sessionId)).writeRoot } : readPolicy(sessionId)
+      const py = await resolvePython(cwd, pol)
+      if (!py) return { ok: false, code: 'E_PY', message: '未找到 Python 3 解释器' + (resolvePython.lastError ? '：' + resolvePython.lastError : '') }
+      let r = null
+      try {
+        r = await shell.run(shell.resolve({
+          command: py + ' ' + argv.map(v => typeof v === 'string' && (v === '--json' || v.startsWith('--')) ? v : shq(v)).join(' '),
+          workdir: cwd, timeoutMs: 60000, stdoutMaxBytes: 262144,
+          env: { PYTHONIOENCODING: 'utf-8' },
+          ...(pol ? { sandboxPolicy: pol } : {}),
+        }))
+      } catch (e) { return { ok: false, code: 'E_IO', message: '脚本执行失败：' + String(e && e.message || e) } }
+      if (r && r.sandbox && r.sandbox.denied) return { ok: false, code: 'E_PERM', message: '沙箱拒绝了这次写入（当前会话档位不允许）' }
+      const out = r && r.stdout && typeof r.stdout.text === 'string' ? r.stdout.text.trim() : ''
+      try { return JSON.parse(out) } catch (e) {
+        return { ok: false, code: 'E_IO', message: (r && r.stderr && r.stderr.text ? r.stderr.text : out) || '脚本没有返回 JSON' }
+      }
+    }
+    async function traceState(sessionId) {
+      const cwd = await resolveCwd(sessionId)
+      const repoCwd = await resolveRepoCwd(sessionId)
+      const caps = await writeCaps(sessionId)
+      const traces = fs.processPath(await fs.resolve('traces', { cwd }))
+      const argv = [repoCwd + '/scripts/trace_state.py', '--json', '--root', repoCwd, '--traces', traces]
+      if (caps.canWrite) argv.push('--can-write', '--write-root', caps.writeRoot)
+      else if (caps.reasonCode === 'E_NO_ROOT') argv.push('--no-root')
+      return runTraceScript(sessionId, argv, false)
+    }
+
     const handleDisposer = harness.handle('ascend-traces-list', async (args) => {
       if (!fs) return needFs()
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
@@ -2659,7 +2708,22 @@ return {
       const repoCwd = await resolveRepoCwd(sessionId)
       const r = await listTraces(cwd, repoCwd)
       if (!r.ok) return { ok: false, error: r.error }
-      return { ok: true, sessions: r.sessions, inboxDrafts: r.inboxDrafts || [], elapsedMs: r.elapsedMs, parsed: r.parsed, cached: r.cached, skipped: r.skipped }
+      // 状态投影失败不挡列表（卡片退回旧字段），但要把原因带给客户端：不要把「读不到状态」
+      // 显示成「都没有动作」，那会让用户以为这单已经收尾了。
+      let stateError = null
+      try {
+        const proj = await traceState(sessionId)
+        if (proj && proj.schemeVersion && Array.isArray(proj.sessions)) {
+          const byId = {}
+          for (const row of proj.sessions) byId[row.sessionId] = row
+          for (const item of r.sessions) if (byId[item.sessionId]) item.state = byId[item.sessionId]
+          r.vocab = proj.vocab
+          r.capabilities = proj.capabilities
+        } else if (proj && proj.ok === false) stateError = proj.message || proj.code
+      } catch (e) { stateError = String(e && e.message || e) }
+      return { ok: true, sessions: r.sessions, inboxDrafts: r.inboxDrafts || [], elapsedMs: r.elapsedMs,
+               parsed: r.parsed, cached: r.cached, skipped: r.skipped,
+               vocab: r.vocab || null, capabilities: r.capabilities || null, stateError: stateError }
     })
 
     const detailDisposer = harness.handle('ascend-traces-detail', async (args) => {
@@ -2779,6 +2843,61 @@ return {
     })
 
     // 导出交接包（跨机继续定位）。与 open-evidence 一样只依赖 shell，不需要 fs 服务。
+    const transitionDisposer = harness.handle('ascend-trace-transition', async (args) => {
+      if (!fs) return needFs()
+      const sessionId = args && args.sessionId ? String(args.sessionId) : ''
+      const action = args && args.action ? String(args.action) : ''
+      const payload = (args && args.payload) || {}
+      const expect = args && args.expectSha256 ? String(args.expectSha256) : ''
+      if (!sessionId || !action) return { ok: false, code: 'E_SCHEMA', message: '缺 sessionId 或 action' }
+      // 内容指纹必传：没有它 CAS 退化为「按 status 比较」，并发写会丢事件（设计 §6.3.4）。
+      if (!expect) return { ok: false, code: 'E_SCHEMA', message: '缺内容指纹，请刷新列表后重试' }
+      const caps = await writeCaps(sessionId)
+      if (!caps.canWrite) return { ok: false, code: caps.reasonCode || 'E_PERM', message: caps.reason || '当前会话没有写权限' }
+      const cwd = await resolveCwd(sessionId)
+      const repoCwd = await resolveRepoCwd(sessionId)
+      const traces = fs.processPath(await fs.resolve('traces', { cwd }))
+      // 参数走 JSON 文件，不拼命令行：summary / handed_to 常含空格、引号、$ 与中文，
+      // 拼进命令行在 Windows 与 PowerShell 下会被改写（实测会静默写进错误内容）。
+      const body = {}
+      if (action === 'report') {
+        // 现场回报：只记事实。source=field 才写反馈结果；厂商答复单独存。
+        body.report_source = String(payload.report_source || '')
+        body.report_result = String(payload.report_result || '')
+        if (payload.report_note) body.report_note = String(payload.report_note)
+      }
+      const kind = payload['ending.kind'] ? String(payload['ending.kind']) : ''
+      if (action === 'report') { /* 已填好 body，下面只走 --field report */ }
+      else if (action === 'reopen') body.reopen = true
+      else if (action === 'correct-ending' || action === 'backfill-ending') {
+        if (payload.to) body.to = String(payload.to)
+        if (kind) body.kind = kind
+      } else {
+        body.to = action.replace('close-', '')
+        if (kind) body.kind = kind
+      }
+      for (const key of ['ending.handed_to', 'ending.duplicate_of']) {
+        if (payload[key]) body[key.split('.')[1]] = String(payload[key])
+      }
+      for (const key of ['summary', 'severity', 'fix_emitted']) {
+        if (payload[key] !== undefined && payload[key] !== null) body[key] = payload[key]
+      }
+      const payloadName = '.payload-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8) + '.json'
+      let payloadAbs = null
+      try {
+        payloadAbs = await fs.resolve(payloadName, { cwd: traces })
+        await fs.writeText(payloadAbs, JSON.stringify(body))
+      } catch (e) {
+        return { ok: false, code: 'E_IO', message: '写参数文件失败：' + String(e && e.message || e) }
+      }
+      const argv = [repoCwd + '/scripts/trace_transition.py', sessionId,
+                    '--root', repoCwd, '--traces', traces, '--by', 'user', '--source', 'panel',
+                    '--json', '--expect-sha256', expect]
+      if (action === 'report') argv.unshift('--field', 'report')
+      if (payloadAbs) argv.push('--payload-file', fs.processPath(payloadAbs))
+      return runTraceScript(sessionId, argv, true)
+    })
+
     const exportDisposer = harness.handle('ascend-export-trace', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const traceFile = args && args.traceFile ? String(args.traceFile) : null
@@ -2800,6 +2919,7 @@ return {
       if (processDisposer) processDisposer()
       if (verdictDisposer) verdictDisposer()
       if (marksDisposer) marksDisposer()
+      if (transitionDisposer) transitionDisposer()
       if (exportDisposer) exportDisposer()
     }
   },

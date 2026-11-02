@@ -228,7 +228,7 @@ fix_emitted: false            # 本次有没有给出可执行的修复或规避
 
 trace 不止当过程记录读，还有第二个用途：换一个探索策略在这段历史上走一遍（同一批决策点，换不同的展开方式与停止点），用来判断当时的做法好不好。这个用途对记录有三项要求，缺了它，重放只能按写的人事后回忆重讲：
 
-- **顶层 `stop_reason`（会话收尾写一次）**：这一单为什么停。取值 `resolved_confirmed`（工程师确认修复生效）/ `halted_ask_user`（按流程停下等人回报）/ `budget_exhausted`（上下文或预算到线）/ `escalated_tier3`（转深度排查后仍无结论）/ `abandoned`（主动放弃，如材料不足）/ `unknown`（当时确实拿不到原因）。停止点本身是探索策略的一部分：不记它，就判断不了当时该不该停在这里。
+- **顶层 `stop_reason`（会话收尾写一次）**：这一单为什么停。取值 `resolved_confirmed`（工程师确认修复生效）/ `halted_ask_user`（按流程停下等人回报）/ `budget_exhausted`（上下文或预算到线）/ `escalated_tier3`（转深度排查后仍无结论）/ `abandoned`（主动放弃，如材料不足）/ `closed_by_user`（用户在面板直接收尾）/ `unknown`（当时确实拿不到原因）。停止点本身是探索策略的一部分：不记它，就判断不了当时该不该停在这里。
 - **事件的 `parallel_group`（同批并发标记）**：同一次并行展开的几个动作共用一个值（自己起个短名即可），串行展开的动作不写。它记的是同时展开几个候选。
 - **事件的 `considered_candidates`（候选全集）**：筛选时看过的候选 id 列表，含没有取全文的那些。事件原有的 `candidates` 仍只写实际取全文的候选，所以 `candidates` 必须是 `considered_candidates` 的子集。
 
@@ -303,6 +303,8 @@ harness 侧的会话号（DSH 里是 `$DSH_SESSION_ID`）。**用途有两个**�
 ## 反馈闭环词表
 
 反馈确认后，顶层 `feedback: {case, outcome, confirmed_at}` 要填——`status=resolved 且 feedback.outcome=resolved` 是该 trace 升格为 fixture（强断言基准）的资格条件（`scripts/replay_trace.py --emit-fixtures` 只看这种）。
+
+**终态的收尾方式（`ending`）由写入口写**：`status` 进入终态时必须同时有 `ending`（`{kind, handed_to, duplicate_of, note}`，取值见 `trace-status.yaml` 的 `ending_kinds:`），并追加一条 `transitions` 事件（从什么到什么、收尾方式、谁、何时、来源）。收尾走 `python3 scripts/trace_transition.py`，不要手改 YAML——手改没有校验、没有事件，`verify_trace_status.py` 事后才能发现。
 
 **无命中 case 的单没有 feedback 可写**：它的闭环只记 `status: resolved`（面板的「已解决」命令就是这么做的）。别为了"留一条"而补占位 `case` 的 feedback 事件——结算侧找不到 case 会把它挂成"待结算"、游标不再前进；升格闸门对这一类读 `status`（见 `scripts/verify_case_draft.py`）。
 

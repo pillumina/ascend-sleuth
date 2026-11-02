@@ -1916,12 +1916,28 @@ _MS._run_no_pipe = no_fallback`)
     expect('诊断 tab：会话 >20 时出现「回到顶部」按钮（23 个会话）', /«title:回到顶部/.test(dt))
     // 闭环指令（阶段一）：四种结局分开给，且命令里带上正确的状态词与 feedback outcome
     expect('诊断 tab：活跃会话给「继续诊断」', dt.includes('继续诊断'))
-    expect('诊断 tab：给「已解决 · fix 生效」', dt.includes('已解决 · fix 生效'))
-    expect('诊断 tab：给「没解决」（不把失败藏起来）', dt.includes('没解决'))
-    expect('诊断 tab：给「不跟了」（archived，不下 fix 判断）', dt.includes('不跟了'))
-    expect('诊断 tab：给「转上游」（escalated）', dt.includes('转上游'))
-    expect('诊断 tab：闭环提示写清状态词与 outcome',
-      /status: resolved \+ feedback\{outcome: resolved\}/.test(ascSrc) && /outcome: not_resolved/.test(ascSrc) && /status: archived/.test(ascSrc))
+    expect('诊断 tab：旧收尾文案已从界面移除（不跟了 / 转上游 / 已解决 · fix 生效 / 没解决）',
+      !dt.includes('不跟了') && !dt.includes('转上游') && !dt.includes('已解决 · fix 生效') && !dt.includes('没解决'))
+    expect('诊断 tab：直接收尾入口与命令兜底都在（有状态投影时）',
+      ascSrc.includes('直接收尾') && ascSrc.includes('--payload-stdin') && ascSrc.includes('命令兜底'))
+    const skillToPostmortem = fs.readFileSync(path.join(repo, 'skills/to-postmortem/SKILL.md'), 'utf8')
+    expect('面板：改状态快捷入口放在行按钮之外（不嵌套交互元素）',
+      /'aria-label': '直接修改这一单的状态'/.test(ascSrc))
+    expect('面板：命令兜底支持 bash 与 PowerShell 两种写法',
+      /manualCmd\(cmdShell\)/.test(ascSrc) && /'PowerShell'/.test(ascSrc) && /payload-stdin/.test(ascSrc))
+    expect('面板：命令兜底可以交给 agent 执行（同一脚本，不是旁路）',
+      /const agentPrompt =/.test(ascSrc) && /'复制给 agent'/.test(ascSrc)
+      && /请执行下面这条命令/.test(ascSrc))
+    expect('面板：必填错误标红并跳到对应字段',
+      /aria-invalid/.test(ascSrc) && /sleu-f-handed/.test(ascSrc) && /aria-describedby/.test(ascSrc))
+    expect('面板：侧栏旧词已与新词表一致',
+      /escalated: '已转交他人'/.test(ascSrc) && /unknown: '状态未记录'/.test(ascSrc))
+    expect('沉淀回写走新写入口（技能文档不再教旧脚本）',
+      /trace_transition\.py <session> --field sedimented/.test(skillToPostmortem) && !/--mark-submitted/.test(skillToPostmortem))
+    expect('诊断 tab：写入口走 JSON 参数（不在命令行拼值）',
+      fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8').includes('--payload-file'))
+    expect('诊断 tab：旧的一键指令生成器已移除（不允许两套说法并存）',
+      !/status: resolved \+ feedback\{outcome: resolved\}/.test(ascSrc))
     // 词表是数据：面板引用的状态/结局必须都在 trace-status.yaml 里
     {
       const vocab = fs.readFileSync(path.join(repo, 'trace-status.yaml'), 'utf8')
@@ -1997,8 +2013,8 @@ _MS._run_no_pipe = no_fallback`)
         /cs !== 'pending-investigation'/.test(hostSrc2) && /'no-case'/.test(hostSrc2))
       expect('host 给出「在等什么」（最近一条 evidence.missing，退到 last_action）',
         /waitingFor: \(function \(\)/.test(hostSrc2) && /ev\.missing/.test(hostSrc2) && /doc\.last_action/.test(hostSrc2))
-      expect('无命中单结案时清掉遗留的 feedback.outcome: pending（不出现两轴打架）',
-        /feedback\.outcome: pending（无命中单留下的占位），一并清掉/.test(ascSrc))
+      expect('旧的一键指令文案已移除（收尾走编辑器 + 命令兜底）',
+        !/status: resolved \+ feedback\{outcome: resolved\}/.test(ascSrc))
       // 读取端与写入端一起钉：只改面板会在下一批 trace 上重新长出同一个混用
       const resumeMd = fs.readFileSync(path.join(repo, 'skills/resume-diagnosis/SKILL.md'), 'utf8')
       expect('resume 按 feedback.case 的两种取值分支',
@@ -2395,7 +2411,7 @@ _MS._run_no_pipe = no_fallback`)
         /该目录写不进去时改道到检出内的/.test(ascSrc) && /'\.handoff\//.test(ascSrc))
       expect('交接包：意图词表与脚本一致（continue/verify/escalate 三值）',
         /const HANDOFF_INTENTS = \[/.test(ascSrc) && /id: 'continue', label: '继续定位'/.test(ascSrc)
-        && /id: 'verify', label: '复核结论'/.test(ascSrc) && /id: 'escalate', label: '转上游'/.test(ascSrc))
+        && /id: 'verify', label: '复核结论'/.test(ascSrc) && /id: 'escalate', label: '转交他人跟进'/.test(ascSrc))
       expect('交接包：意图默认「继续定位」（不默认成会误导接收侧的值）',
         /const \[handoffIntent, setHandoffIntent\] = React\.useState\('continue'\)/.test(ascSrc))
       expect('交接包：导出中禁用按钮（防重复点击导出多份）', /disabled: !!\(handoff && handoff\.busy\)/.test(ascSrc))
@@ -2847,7 +2863,7 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
     {
       const actionBlock = ascSrc.slice(ascSrc.indexOf('const actionArea'), ascSrc.indexOf("return React.createElement('div', { className: 'sleu-card'"))
       expect('动作组在按钮行下方展开（不挤动兄弟按钮）',
-        /menuOpen === 'close' \? 'flex' : 'none'/.test(actionBlock) && /menuOpen === 'handoff' \? 'flex' : 'none'/.test(actionBlock))
+        /menuOpen === 'handoff' \? 'flex' : 'none'/.test(actionBlock) && /menuOpen === 'state' \? 'flex' : 'none'/.test(ascSrc))
       expect('展开块统一用 Fold（检索明细 / 成本 / 定位结论不再裸 details）',
         /React\.createElement\(Fold, \{ title: '检索明细'/.test(ascSrc)
         && /React\.createElement\(Fold, \{ title: '成本与 token'/.test(ascSrc)
@@ -3227,17 +3243,8 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       const chipPromote = findByText('已交草稿 3')
       expect('「已交草稿」筛选入口可点', !!chipPromote)
       if (chipPromote) { chipPromote.fn({}); await pumpTree(3) }
-      const btnAll = findByText('全选这 2 单')
-      expect('已交草稿里"来源未收尾"那 2 单的批量入口真的渲染出来（已收尾的那单不参与批量）',
-        !!btnAll, treeText(tree).slice(0, 300))
-      if (btnAll) { btnAll.fn({}); await pumpTree(3) }
-      const btnClose = findByText('批量标已解决（已选 2 单）')
-      expect('勾选后出现批量标已解决按钮', !!btnClose, treeText(tree).slice(0, 300))
-      if (btnClose) { btnClose.fn({}); await pumpTree(3) }
-      expect('批量闭环命令带出单一结局、两条轴的处理，以及清理遗留 outcome',
-        /结局都是「已解决 · fix 生效」/.test(treeText(tree))
-        && /未命中 case 的只标 status: resolved/.test(treeText(tree))
-        && /一并清掉/.test(treeText(tree)))
+      expect('已交草稿屏只报现状，不再给批量收尾入口（批量会连带写反馈轴，排在下一批）',
+        !findByText('批量标已解决') && /逐单用卡片里的「直接收尾」/.test(treeText(tree)), treeText(tree).slice(0, 300))
 
       // 诊断收尾轴：未闭环筛选只留没收尾的单（escalated/archived 是终态，不算未闭环）。
       const chipOpen = findByText('未收尾 1')
@@ -3289,8 +3296,8 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         /sedimented: readSedimented\(doc\)/.test(hostSrc))
       expect('待沉淀可一次生成批量 to-postmortem 命令',
         /用 \/skill:to-postmortem 批量沉淀这些 session：/.test(ascSrc))
-      expect('批量闭环只允许「已解决 · fix 生效」一种结局（多结局混批会虚高解决率）',
-        /结局都是「已解决 · fix 生效」/.test(ascSrc))
+      expect('旧的批量收尾命令已移除（避免第二套收尾文案与第二套写法）',
+        !/批量闭环以下/.test(ascSrc) && !/批量标已解决/.test(ascSrc))
     }
   }
 
@@ -3555,11 +3562,12 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       const ascHostSrc = loadHost('dsh-plugins/ascend-panel/panel-host.js')
       const d = driveHost(ascHostSrc, NO_SVC)
       const needFsRpcs = ['ascend-traces-list', 'ascend-traces-detail', 'ascend-update-sedimented',
+        'ascend-trace-transition',
         'ascend-metrics-load', 'ascend-read-report', 'ascend-kb-health', 'ascend-process-health', 'ascend-session-marks']
       const noFsRpcs = ['ascend-open-evidence', 'ascend-metrics-verdict', 'ascend-export-trace',
         'ascend-rebuild-local']
-      expect('ascend-panel：fs 缺失时仍注册全部 12 个 RPC（含侧栏待回报标记那条）',
-        Object.keys(d.regs).length === 12, Object.keys(d.regs).join(','))
+      expect('ascend-panel：fs 缺失时仍注册全部 13 个 RPC（含状态转移与侧栏待回报标记）',
+        Object.keys(d.regs).length === 13, Object.keys(d.regs).join(','))
       expect('ascend-panel：返回可用的 disposer', typeof d.disposer === 'function')
       expect('ascend-panel：导出交接包的 RPC 已注册（fs 缺失不影响它）', !!d.regs['ascend-export-trace'])
       for (const rpc of needFsRpcs) {
@@ -3574,7 +3582,11 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
           !(r && r.ok === false && /需要 fs 服务/.test(r.error)), String(r && r.error).slice(0, 110))
       }
       const guarded = (ascHostSrc.match(/if \(!fs\) return needFs\(\)/g) || []).length
-      expect('ascend-panel：恰好 8 个 handler 带 fs 守卫（放错位置即被这条抓住）', guarded === 8, 'guarded=' + guarded)
+      expect('ascend-panel：恰好 9 个 handler 带 fs 守卫（放错位置即被这条抓住）', guarded === 9, 'guarded=' + guarded)
+      // 状态写入口的两条硬要求：没有内容指纹就拒绝（否则 CAS 退化成按状态比较），
+      // 写子进程必须显式 workspace-write + 主检出 root（否则沙箱把写拒成一句 EPERM）。
+      expect('状态写入口：缺内容指纹时 host 直接拒绝', /缺内容指纹/.test(ascHostSrc) && /--expect-sha256/.test(ascHostSrc))
+      expect('状态写入口：写子进程走 workspace-write 沙箱', /mode: 'workspace-write'/.test(ascHostSrc))
       expect('ascend-panel：代码里无「fs 缺失就整插件 return」',
         !/if \(fs === undefined\) return/.test(codeOf(ascHostSrc)))
     }
