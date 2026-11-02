@@ -1,6 +1,6 @@
 {
   "name": "dsh-sleuth-panels",
-  "version": "0.8.14",
+  "version": "0.8.15",
   "private": true,
   "description": "ascend-sleuth panels for DSH: diagnose traces, metrics verdict, self-evolution board",
   "type": "module",
