@@ -58,8 +58,12 @@ python3 scripts/build_entry_activity.py             # 重建生成物 metrics/en
 | `scripts/metrics_health.py` | 闭环检测器：读 timeline + gates，判新鲜度 / 越界 / 可解读性；`--check` 三态（0 判据全评过且无越界 / 1 有违反 / 2 有判据未被评估）；`--json` 是诊断面板的数据契约 | 随机制 |
 | `scripts/trace_metrics.py` | 诊断侧指标（markdown 概览 + `--emit-yaml` 骨架 + `--emit-yaml-only` 供组装） | 随机制 |
 | `scripts/verify_metrics.py` | 校验聚合结构（period 唯一 / kind 合法 / live 期号命名 / 比例字段合法 / live 字段白名单 / 每个指标都声明了强度档），CI 强制 | 随机制 |
-| `scripts/session_cost.mjs` | 真实账单（提供方 usage）：解析 DSH 会话日志（多帧 zstd + JSONL），按 (turn, step) 去重后给出未缓存输入 / 缓存读取 / 缓存写入 / 输出与逐轮汇总；`--session <id>` / `--file` / `--all`；`--decompress <file>` 只把日志解成 JSONL，供 Python 侧（`trace_entry_activity.py`）读多帧 zstd；exec-log 的 `--cost-source measured` 就该填它读出来的值 | 需要 measured 口径时 |
+| `scripts/session_cost.mjs` | 真实账单（提供方 usage）：解析 DSH 会话日志（多帧 zstd + JSONL），按 (turn, step) 去重后给出未缓存输入 / 缓存读取 / 缓存写入 / 输出与逐轮汇总；`--session <id>` / `--file` / `--all`；`--tools` 给工具流量表（按工具名的调用次数与返回累计字符数、平均每条、单条上限、参数完全相同的重复调用、同一目标的重复访问）；`--decompress <file>` 只把日志解成 JSONL，供 Python 侧（`trace_entry_activity.py`）读多帧 zstd；exec-log 的 `--cost-source measured` 就该填它读出来的值 | 需要 measured 口径时 |
 | `scripts/audit_skill_cost.py` | skill 上下文成本审计：常驻面（CLAUDE.md/AGENTS.md/被注入的 description）、按需面（正文 + 本地 references）、重复面（同一行出现在 ≥2 skill）、强制词密度与输出段数；skill-review 的 A 静态审计调它 | skill 改动前后 |
+
+工具流量表的读法：`node scripts/session_cost.mjs --tools --file <会话日志>` 按工具名列出调用次数与返回累计字符数，`≈tok` 是字符数按 B/3.4 折算。重复那一行给两类：参数完全相同的调用多出几次、同一目标被重复访问几次。花费是调用次数乘每次返回量，只看单条上限会漏掉重复访问。
+
+**两把尺不要混**：`session_cost.mjs` 与 `trace_entry_activity.py` 读的是提供方 usage（计费）。`audit_skill_cost.py` 按字节 B/3.4 折算，`index_read_cost.py` 按 CJK 一字一 token、其余 3.6 字符一 token 折算，两个都是估算。同一个量用两套算法得到的数不可比，引用时写明是哪一套。
 
 ### 指标定义
 

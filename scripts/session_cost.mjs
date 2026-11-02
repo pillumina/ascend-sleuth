@@ -13,6 +13,10 @@
 //   uncachedInput / cacheRead / cacheWrite / output（其中 reasoning）。
 // 同一 (turn, step) 会同时出现流式与定稿两份，按**定稿优先**去重，避免重复计数。
 //
+// 工具流量（--tools）：轨迹里本来就有 tool/call 与 tool/result，本脚本按工具名汇总
+//   调用次数与返回大小（按 content 里的文本字节数算，估算，不是计费），并统计两类重复：
+//   参数完全相同的调用、同一目标的重复访问。单条上限给的是最大一次返回。
+//
 // 用途：给 skill/内容流程的收尾提供 measured 口径的数字——exec-log 的
 // `--tokens N --cost-source measured` 就该填这里读出来的值，而不是估算。
 //
@@ -21,6 +25,7 @@
 //   node scripts/session_cost.mjs --session <id>       # 按会话 id 在 $DSH_HOME/sessions 下找
 //   node scripts/session_cost.mjs --file <path.jsonl.zstd>
 //   node scripts/session_cost.mjs --all [--workspace <子串>]   # 逐会话汇总（回填历史账单）
+//   node scripts/session_cost.mjs --tools              # 工具流量表（次数/返回量/重复）
 //   加 --json 输出机器可读结果。
 
 import { readFileSync, readdirSync, existsSync, statSync, writeSync } from 'node:fs'
@@ -65,9 +70,42 @@ function usageOf(event) {
   return null
 }
 
+// 工具返回进入上下文的文本字节数（估算）：content 里 tool-result 块的嵌套文本 + 其他块的 text。
+function resultBytes(message) {
+  let n = 0
+  const blocks = message?.content ?? []
+  for (const b of blocks) {
+    if (b?.type === 'tool-result') {
+      for (const c of b.content ?? []) n += typeof c?.text === 'string' ? c.text.length : 0
+    } else if (typeof b?.text === 'string') {
+      n += b.text.length
+    }
+  }
+  return n
+}
+
+// 工具调用的「同一目标」键：优先文件/路径/模式，其次命令前 60 字符。
+function targetKey(name, argsJson) {
+  let a = {}
+  try { a = JSON.parse(argsJson || '{}') } catch { a = {} }
+  const t = a.file_path ?? a.path ?? a.pattern ?? (typeof a.command === 'string' ? a.command.slice(0, 60) : null)
+  return t ? `${name} ${t}` : null
+}
+
+// 参数完全相同的判据：FNV-1a 取整串（不截断），避免把"长参数前缀相同"误判为同一次调用。
+function sigOf(s) {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0 }
+  return h.toString(16)
+}
+
 function summarize(file) {
   const text = readSessionLog(file)
   const attempts = new Map()
+  const calls = new Map()       // callId -> 该次调用的记录
+  const toolStats = new Map()   // 工具名 -> {calls, resultBytes}
+  const sigCount = new Map()    // 参数哈希 -> 次数（完全相同调用）
+  const targetCount = new Map() // 同一目标 -> 次数
   let provider = '-', model = '-', bad = 0, lines = 0
   const turns = new Map()
   for (const line of text.split('\n')) {
@@ -75,6 +113,32 @@ function summarize(file) {
     lines++
     let event
     try { event = JSON.parse(line) } catch { bad++; continue }
+    if (event.type === 'tool/call') {
+      const d = event.data ?? {}
+      const rec = { name: d.name ?? '?', argBytes: (d.arguments ?? '').length, outBytes: 0 }
+      calls.set(d.callId, rec)
+      const t = toolStats.get(rec.name) ?? { calls: 0, resultBytes: 0 }
+      t.calls++
+      toolStats.set(rec.name, t)
+      const s = sigOf(d.arguments ?? '')
+      sigCount.set(s, (sigCount.get(s) ?? 0) + 1)
+      const tk = targetKey(rec.name, d.arguments)
+      if (tk) targetCount.set(tk, (targetCount.get(tk) ?? 0) + 1)
+      continue
+    }
+    if (event.type === 'tool/result') {
+      const d = event.data ?? {}
+      const n = resultBytes(d.message)
+      // callId 在 tool/call 上是顶层的；在 tool/result 上落在 message.source.callId（schema 如此）
+      const cid = d.callId ?? d.message?.source?.callId
+      const rec = calls.get(cid)
+      if (rec) {
+        rec.outBytes = n
+        const t = toolStats.get(rec.name)
+        if (t) t.resultBytes += n
+      }
+      continue
+    }
     const hit = usageOf(event)
     if (!hit) continue
     const { usage, kind, d } = hit
@@ -106,6 +170,9 @@ function summarize(file) {
   }
   totals.inputSide = totals.uncachedInput + totals.cacheRead + totals.cacheWrite
   totals.billed = totals.inputSide + totals.output
+  const dup = m => [...m.values()].reduce((s, n) => s + Math.max(0, n - 1), 0)
+  const allCalls = [...calls.values()]
+  const totalResultBytes = allCalls.reduce((s, r) => s + r.outBytes, 0)
   return {
     file, lines, bad, provider, model,
     attempts: rows.length,
@@ -115,6 +182,18 @@ function summarize(file) {
     turns: [...turns.values()],
     top: [...rows].sort((a, b) => promptOf(b) - promptOf(a)).slice(0, 5)
       .map(r => ({ ...r, prompt: promptOf(r) })),
+    toolTraffic: {
+      calls: allCalls.length,
+      resultBytes: totalResultBytes,
+      meanResultBytes: allCalls.length ? Math.round(totalResultBytes / allCalls.length) : 0,
+      maxResultBytes: allCalls.length ? Math.max(...allCalls.map(r => r.outBytes)) : 0,
+      byTool: [...toolStats.entries()].map(([name, v]) => ({ name, ...v }))
+        .sort((a, b) => b.resultBytes - a.resultBytes),
+      repeatedCalls: dup(sigCount),      // 参数完全相同的重复次数（多出来的那几次）
+      repeatedTargets: dup(targetCount), // 同一目标被重复访问的次数
+      topTargets: [...targetCount.entries()].filter(([, n]) => n > 1)
+        .sort((a, b) => b[1] - a[1]).slice(0, 8).map(([target, calls]) => ({ target, calls })),
+    },
   }
 }
 
@@ -220,3 +299,23 @@ console.log(`final prompt=${fmt(s.finalPrompt)}  peak prompt=${fmt(s.peakPrompt)
 console.log('')
 console.log('top 5 steps by prompt size:')
 for (const r of s.top) console.log(`  turn ${r.turn} step ${r.step}: prompt=${fmt(r.prompt)} (uncached ${fmt(r.input)} + cacheRead ${fmt(r.cacheRead)}) out=${fmt(r.output)}`)
+
+if (process.argv.includes('--tools')) {
+  const tr = s.toolTraffic
+  console.log('')
+  console.log('工具流量（返回字节 = 进入上下文的文本量，估算；不是计费值）')
+  console.log(`  调用 ${fmt(tr.calls)} 次，返回累计 ${fmt(tr.resultBytes)} 字符 ≈${fmt(Math.round(tr.resultBytes / 3.4))} tok`
+    + `（平均 ${fmt(tr.meanResultBytes)} / 条，最大 ${Math.round(tr.maxResultBytes / 1024)} KB）`)
+  console.log(`  重复：参数完全相同的调用多出 ${fmt(tr.repeatedCalls)} 次；同一目标被重复访问 ${fmt(tr.repeatedTargets)} 次`)
+  console.log('  按返回量排的前几位工具：')
+  for (const t of tr.byTool.slice(0, 6)) {
+    console.log(`    ${t.name.padEnd(16)} 调用 ${String(t.calls).padStart(5)}  返回 ${fmt(t.resultBytes).padStart(10)} 字符`
+      + `  均 ${fmt(Math.round(t.resultBytes / Math.max(t.calls, 1))).padStart(7)}`)
+  }
+  if (tr.topTargets.length) {
+    console.log('  被重复访问最多的目标：')
+    for (const x of tr.topTargets) console.log(`    ${String(x.calls).padStart(4)} × ${x.target.slice(0, 96)}`)
+  }
+  console.log('  读法：返回字节按 content 里的文本字符数折算（约 B/3.4），不是提供方计费值。'
+    + '花费来自调用次数 × 每次返回量，先看调用次数与重复目标，不要只盯单条最大。')
+}
