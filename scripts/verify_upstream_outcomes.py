@@ -40,10 +40,12 @@
 #
 # 用法：
 #   python3 scripts/verify_upstream_outcomes.py [--dry-run | --apply] [--root <检出>]
-#                                               [--case <case-id>] [--json]
+#                                               [--case <case-id>]... [--json]
 #   --dry-run（默认）：只输出将要写的内容，不写任何文件
 #   --apply：写回案例 YAML 的 validation_record，并更新游标
-#   --case <case-id>：只查这一条案例（单点核对用）
+#   --case <case-id>：只查指定的案例，可重复（单点核对与「按名单批量查」共用这一条）。
+#                     未知 id 报到 stderr 后跳过——名单来自 trace 的 active_case，可能已改名或退休；
+#                     一条失效就整批退 2 会让「查这批」无处可用。全都未知才退 2。
 #   --json：机器可读输出（stdout 只有 JSON）
 #   退出码：0 = 成功（含「没有可对照的」与「查询失败但报出不可查证」）；1 = 有需人处理的矛盾；
 #           2 = 参数或环境不可用（含写回复核不通过）。
@@ -470,7 +472,7 @@ def _print_case(case_result, show_boundary=False):
     for i, probe in enumerate(case_result["anchors"], 1):
         _print_anchor(i, total, probe)
     action = case_result["action"]
-    if action in ("plan", "write", "repair"):
+    if action in ("plan", "plan-repair", "write", "repair"):
         field = case_result["field"]
         before = case_result["before"].get(field)
         before = 0 if before is None else before
@@ -479,6 +481,8 @@ def _print_case(case_result, show_boundary=False):
               f"last_verified → {case_result['after']['last_verified']}")
         if action == "plan":
             print("  （dry-run：未写盘）")
+        elif action == "plan-repair":
+            print("  （dry-run：未写盘；游标说已结算过，但盘上没有落地痕迹——加 --apply 会补写）")
         elif action == "repair":
             print("  已写回（游标说结算过，盘上没有落地痕迹，本次补写）")
         else:
@@ -518,7 +522,7 @@ def save_cursor(state_path: Path, cursor_state, settled):
                   encoding="utf-8")
 
 
-def run(root, apply=False, case_id=None, as_json=False, api=None, week=None) -> int:
+def run(root, apply=False, case_ids=None, as_json=False, api=None, week=None) -> int:
     api = api or gh_api
     week = week or iso_week_now()
     root = Path(root).resolve()
@@ -536,15 +540,34 @@ def run(root, apply=False, case_id=None, as_json=False, api=None, week=None) -> 
     settled = dict(cursor_state.get(CURSOR_KEY) or {})
 
     all_cases, parse_failures = _iter_cases(kb_root)
-    if case_id:
-        selected = [(path, case) for path, case in all_cases if case.get("id") == case_id]
+    # `--case` 可重复：同一个 id 写两遍只查一次（保序去重），名字对不上的报警后跳过。
+    if isinstance(case_ids, str):
+        case_ids = [case_ids]
+    wanted = list(dict.fromkeys(str(c).strip() for c in (case_ids or []) if str(c).strip()))
+    if case_ids and not wanted:
+        print("verify_upstream_outcomes：--case 给的是空值——当未指定处理会让它扫全库"
+              "（加 --apply 就是全库写回）。要全库请显式不带 --case。", file=sys.stderr)
+        return 2
+    if wanted:
+        by_id = {}
+        for path, case in all_cases:
+            cid = str(case.get("id") or "")
+            if cid:
+                by_id[cid] = (path, case)
+        for cid in wanted:
+            if cid not in by_id:
+                print(f"verify_upstream_outcomes：--case {cid} 在 {kb_root} 下找不到（已跳过；"
+                      f"名单可能来自改名或退休的案例）", file=sys.stderr)
+        selected = [by_id[cid] for cid in wanted if cid in by_id]
         if not selected:
-            print(f"verify_upstream_outcomes：--case {case_id} 在 {kb_root} 下找不到", file=sys.stderr)
+            print("verify_upstream_outcomes：--case 指定的案例一条都没找到——没有可查的对象",
+                  file=sys.stderr)
             return 2
     else:
+        by_id = {}
         selected = all_cases
 
-    results, write_failures, planned, written, repaired, skipped = [], [], [], [], [], []
+    results, write_failures, planned, will_repair, written, repaired, skipped = [], [], [], [], [], [], []
     anchor_count = 0
     for path, case in selected:
         cid = case.get("id") or path.stem
@@ -561,12 +584,20 @@ def run(root, apply=False, case_id=None, as_json=False, api=None, week=None) -> 
             case_result["sig"] = sig
             previous = settled.get(cid) or {}
             if previous.get("sig") == sig:
-                action = "skip" if record_intact(path, cid, case_result["field"]) else "repair"
+                # 游标说这条结局已结算过，但盘上的 validation_record 不见了（合并/回滚把它冲掉）
+                # → 需要补写。补写同样是一次写盘，所以 dry-run 下只报计划，不落地
+                # （库里纪律：dry-run 不写任何文件；否则「只读查证」在补写路径上不成立）。
+                if record_intact(path, cid, case_result["field"]):
+                    action = "skip"
+                else:
+                    action = "repair" if apply else "plan-repair"
             else:
                 action = "write" if apply else "plan"
             case_result["action"] = action
             if action == "plan":
                 planned.append(cid)
+            elif action == "plan-repair":
+                will_repair.append(cid)
             elif action in ("write", "repair"):
                 text = path.read_text(encoding="utf-8")
                 new_text, changed = update_record_text(text, after)
@@ -620,6 +651,7 @@ def run(root, apply=False, case_id=None, as_json=False, api=None, week=None) -> 
         "unverifiable": sum(1 for r in results if r["outcome"] == UNVERIFIABLE),
         "no_anchor": len(no_anchor),
         "planned": len(planned),
+        "planned_repair": len(will_repair),
         "written": len(written),
         "repaired": len(repaired),
         "skipped": len(skipped),
@@ -633,6 +665,9 @@ def run(root, apply=False, case_id=None, as_json=False, api=None, week=None) -> 
             "cursor": str(state_path),
             "cursor_location": where,
             "cases_scanned": len(all_cases),
+            "cases_selected": len(selected),
+            "case_filter": [str(case.get("id") or "") for _path, case in selected],
+            "cases_unknown": [cid for cid in wanted if cid not in by_id],
             "cases_with_anchor": anchor_count,
             "results": results,
             "write_failures": [{"case": c, "problem": p} for c, p in write_failures],
@@ -647,8 +682,10 @@ def run(root, apply=False, case_id=None, as_json=False, api=None, week=None) -> 
         print(f"游标：{state_path}（{where}）")
         print(f"范围：knowledge/ 下 {len(all_cases)} 条案例")
         print(f"边界：{BOUNDARY}")
-        if case_id:
-            print(f"（--case {case_id}：只查这一条）")
+        if wanted:
+            shown = "、".join(r["case"] for r in results[:10])
+            more = f"（另有 {len(results) - 10} 条）" if len(results) > 10 else ""
+            print(f"（--case：只查这 {len(results)} 条——{shown}{more}）")
         print()
 
         if no_anchor:
@@ -657,15 +694,15 @@ def run(root, apply=False, case_id=None, as_json=False, api=None, week=None) -> 
             print(f"[不可对照] {len(no_anchor)} 条案例没有 upstream 锚点：{shown}{more}")
             print("  没有上游关联的案例等现场回报，这里的「不可对照」不是负结论。\n")
 
-        # 逐条展开的只有三类：本次会写 / 已写的（有变化）、矛盾（要人处理）、--case 指定的那条。
+        # 逐条展开的只有三类：本次会写 / 已写的（有变化）、矛盾（要人处理）、--case 指定的那几条。
         # 其余按结局汇总成一行——整轮重跑时上百条「结局未变」逐条印会盖住真正要看的那几条。
         printed = set()
         for case_result in results:
-            interesting = (case_id is not None
+            interesting = (bool(wanted)
                            or case_result["outcome"] == CONTRADICTION
-                           or case_result["action"] in ("plan", "write", "repair"))
+                           or case_result["action"] in ("plan", "plan-repair", "write", "repair"))
             if case_result["outcome"] != NO_ANCHOR and interesting:
-                _print_case(case_result, show_boundary=bool(case_id))
+                _print_case(case_result, show_boundary=bool(wanted))
                 printed.add(id(case_result))
 
         rest = [r for r in results if r["outcome"] != NO_ANCHOR and id(r) not in printed]
@@ -696,13 +733,14 @@ def run(root, apply=False, case_id=None, as_json=False, api=None, week=None) -> 
             print(f"需人处理（{len(contradictions)} 条）：{'、'.join(contradictions[:10])}"
                   f"{'（另有 %d 条）' % (len(contradictions) - 10) if len(contradictions) > 10 else ''}")
             print("  这些案例声明修复已合入，锚点对应的上游 item 否认。先判是改锚点（指向修复 PR）"
-                  "还是改案例结论；本次已按复审信号记 inconsistent。")
+                  "还是改案例结论；" + ("本次已按复审信号记 inconsistent。"
+                                        if apply else "dry-run 未写盘——加 --apply 才会记 inconsistent。"))
         if apply:
             print(f"本次写回 {len(written)} 条、补写 {len(repaired)} 条、跳过 {len(skipped)} 条；"
                   f"游标 → {state_path}")
-        elif planned:
-            print(f"本次将写回 {len(planned)} 条（dry-run 未写任何文件；确认后加 --apply，"
-                  f"再走 knowledge_modification PR）")
+        elif planned or will_repair:
+            print(f"本次将写回 {len(planned)} 条、补写 {len(will_repair)} 条（dry-run 未写任何文件；"
+                  f"确认后加 --apply，再走 knowledge_modification PR）")
         else:
             print("本次没有要写回的内容（dry-run 未写任何文件）。")
 
@@ -719,10 +757,11 @@ def main():
     mode.add_argument("--dry-run", action="store_true", help="只输出将要写的内容（默认）")
     mode.add_argument("--apply", action="store_true", help="写回案例 YAML 与游标")
     ap.add_argument("--root", type=Path, default=Path("."), help="检出根（默认当前目录）")
-    ap.add_argument("--case", help="只查这一条案例 id（单点核对用）")
+    ap.add_argument("--case", action="append", default=None,
+                    help="只查指定案例 id，可重复；未知 id 报警后跳过（全都未知才退 2）")
     ap.add_argument("--json", action="store_true", help="机器可读输出（stdout 只有 JSON）")
     args = ap.parse_args()
-    return run(args.root, apply=args.apply, case_id=args.case, as_json=args.json)
+    return run(args.root, apply=args.apply, case_ids=args.case, as_json=args.json)
 
 
 if __name__ == "__main__":

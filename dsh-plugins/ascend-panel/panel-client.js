@@ -919,6 +919,35 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       return isSubmittedOf(s) && !isClosedOf(s)
     }
 
+    // —— 等上游：已收尾、没给可执行修复、命中案例带上游锚点、且该案例依据上游结论 ——
+    // 判据在 host 的投影里（`scripts/_trace_state.py` 的 derive），因为它要读 case 文件：
+    // 面板不读 knowledge/、也不实现判据。四条同时成立才算：
+    //   收尾轴 `status: resolved`（诊断已有结论）｜`fix_emitted: false`（没给可执行修复）
+    //   ｜案例的 `upstream` 锚点（查得到上游）｜案例的 `verification.source` 属 upstream- 档
+    //   （这条案例的结论依据本来就来自上游）。
+    // 第四条为什么不能省：`fix_emitted: false` 还表示"只定位到根因"，而 `data-loss-risk`
+    // 按 severity gate 本来就不给 fix（先停、保留现场、通知 owner）。只看前三条会把「先停」
+    // 单同时挂上「等上游」，读者把"先停"读成"本机没有待办动作"。
+    // 为什么要它：这类单已经收尾、`resolved` 又不可续接，原本没有与查上游相关的入口，
+    // 读者看不出它其实卡在"等上游动"。
+    function upstreamPendingOf(s) {
+      const d = s && s.state && s.state.derived
+      return !!(d && d.upstreamPending)
+    }
+    function upstreamOf(s) {
+      const d = s && s.state && s.state.derived
+      return (d && d.upstream) || null
+    }
+    // 查上游的指令：prompt，不是裸命令——要的是"读结局、说下一步"，不是脚本输出本身。
+    // 读法（上游确认 / 上游否定且 case 声明已合入 / 未验证 / 不可查证）与"上游确认 ≠ 你的
+    // 部署已有修复"这条界线写在 `/skill:resume-diagnosis` 的「只查上游」一节——指令里点名它，
+    // 判定规则才有出处，而不是每次让 agent 自己现推。`--apply` 不在指令里：写回 knowledge/
+    // 要走 PR，属于周批维护者的活。
+    function upstreamCmdOf(caseId) {
+      return '用 /skill:resume-diagnosis 查 ' + caseId + ' 的上游状态'
+        + '（只查上游，不续接、不写 trace）：python3 scripts/verify_upstream_outcomes.py --case ' + caseId
+    }
+
     // —— 「价值优先」的唯一一份判据（诊断 tab 的排序与侧栏「诊断记录」共用）——
     // 只看 trace 已有的字段，不新增口径，每一档都指到本仓已有的一条轴：
     //   5 已沉淀（`sedimented.state` 有值）——知识库里留下了东西，最值得复用
@@ -2103,6 +2132,14 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         key: 'rs', label: '继续诊断', style: btnPrimary, title: '生成续接指令',
         cmd: '用 /skill:resume-diagnosis 续接 ' + s.sessionId,
       })
+      // 「查上游」：已收尾却卡在等上游的单，`resolved` 不可续接，动作区原本只剩「看报告 / 沉淀」。
+      // 它生成的是**指令**（粘到对话里执行），与「继续诊断 / 沉淀」同一类交互——面板不联网、
+      // 也不回写 knowledge/（写回要 PR，属于周批维护者的活）。
+      if (upstreamPendingOf(s) && caseKindOf(s) === 'case' && s.activeCase) actions.push({
+        key: 'up', label: '查上游', style: btnPrimary,
+        title: '生成查上游的指令：agent 跑 dry-run 查上游 issue / PR 状态，并按结局说下一步（不回写案例）',
+        cmd: upstreamCmdOf(String(s.activeCase)),
+      })
       const openedCmd = actions.filter(a => a.key === showCmd)[0] || null
       // 报告入口（diagnose 步骤 6 的产出）。**沉淀候选的明细不在这里**——它归展开态的沉淀区
       // （case 与先验候选分家、各带入口，见上方「沉淀区」）：候选与"本单沉淀状态"是同一件事的两面，
@@ -2196,6 +2233,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         style: { ...a.style, padding: '2px 10px' },
       }, a.label)
       const resumeAction = actions.filter(a => a.key === 'rs')[0] || null
+      const upstreamAction = actions.filter(a => a.key === 'up')[0] || null
       // 「打开会话」：从诊断记录里直接切到这一单的会话，不必回左侧列表里按会话号找。
       // **只能用 `harness_session`**：`session_id` 是诊断自己起的名字（形如
       // `<日期>-<issue 号>-<短名>`），DSH 的会话号是 `session-<uuid>`，两者不是一回事——
@@ -2503,6 +2541,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           navErr ? React.createElement('span', { style: { color: 'var(--c-amber)', fontSize: 'var(--t-tiny)' } }, navErr) : null,
           docRow,
           resumeAction ? cmdButton(resumeAction) : null,
+          upstreamAction ? cmdButton(upstreamAction) : null,
           // 「改状态」放在动作行里，不悬在行内容上：此前它是卡片右上角的绝对定位小按钮，
           // 压住了同一右端的 token 数与展开箭头，那两处既读不到也点不到。动作行在收起态与
           // 展开态都常驻（展开态在右栏），同一个入口两态都在，展开的编辑器就在按钮下方。
@@ -2624,6 +2663,19 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             (s.fixEmitted === false)
               ? React.createElement('span', { title: '本次诊断没有给出可执行的修复（常见于等上游修复、或只定位到根因）',
                   style: tinyBadge('var(--d-gray)') }, '未给 fix') : null,
+            // 等上游：判据见 `scripts/_trace_state.py` 的 derive（这里不复述条数——判据加过一腿，
+            // 复述必然漂）。收起态就能看出"这单在等上游"，而不只是「没给 fix」（后者也可是
+            // "只定位到根因"）。title 给锚点与上一次外部验证，查证动作在动作行的「查上游」。
+            // 颜色按角色取灰（`dsh-plugins/README.md` 的「颜色按角色分」）：它标的是"本机没有待办
+            // 动作"，与「未给 fix」同档；蓝是「外来」（来源）专用，不借来标状态。
+            upstreamPendingOf(s)
+              ? React.createElement('span', {
+                  title: '已收尾、没给出可执行修复，命中的案例带上游锚点且结论依据来自上游（'
+                    + ((upstreamOf(s) || {}).anchors || []).join('、')
+                    + ((upstreamOf(s) || {}).lastVerified ? '；上次外部验证 ' + upstreamOf(s).lastVerified : '；还没有外部验证记录')
+                    + '）。点动作行的「查上游」生成查证指令，判上游有没有结论（不改本机状态）',
+                  style: tinyBadge('var(--d-gray)'),
+                }, '等上游') : null,
             // fix 验证结果（现场回报）：pending 由「等回报」那条承载，这里只标已有结论的三种。
             (String(s.feedback || '') === 'resolved')
               ? React.createElement('span', { title: '工程师回报：这个 fix 在自己的环境里生效了', style: tinyBadge('var(--d-green)') }, 'fix 已验证') : null,
@@ -2823,6 +2875,10 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const nNeedReview = sessions.filter(needReviewOf).length
       const nSubmitted = sessions.filter(isSubmittedOf).length
       const nNeedPromote = sessions.filter(needPromoteOf).length
+      // 等上游：已收尾、没给 fix、命中的案例有上游锚点。它**不进「待跟进」三数**——
+      // 那三数（在查 / 等回报 / 待标收尾）都是"欠一个动作"，等上游的单不欠本机任何动作，
+      // 它欠的是上游。混进去会让"3 项待跟进"里出现一单无人在追的。
+      const nUpstream = sessions.filter(upstreamPendingOf).length
       const q = query.trim().toLowerCase()
       if (q) {
         sessions = sessions.filter(s =>
@@ -2843,6 +2899,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
            (needReviewOf(s) ? '待复核 ' : '') +
            (isSkeletonOf(s) ? '空记录 ' : '') +
            (isSubmittedOf(s) ? '已交草稿 已沉淀 ' + (needPromoteOf(s) ? '待升格 未收尾 ' : '等整理 ') : '') +
+           (upstreamPendingOf(s) ? '等上游 上游锚点 ' + ((upstreamOf(s) || {}).anchors || []).join(' ') + ' ' : '') +
            (sedStateOf(s) === 'submitted' ? '已沉淀' : '')).includes(q)
         )
       }
@@ -2856,6 +2913,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       if (kbFilter === 'close-pending') sessions = sessions.filter(isClosedButOpen)
       if (kbFilter === 'need-sed') sessions = sessions.filter(needSedOf)
       if (kbFilter === 'need-promote') sessions = sessions.filter(isSubmittedOf)
+      if (kbFilter === 'upstream') sessions = sessions.filter(upstreamPendingOf)
       if (kbFilter === 'report-review') sessions = sessions.filter(x => x.state && x.state.derived && x.state.derived.needReportReview)
       // 按诊断开始时间过滤（`created_at`）：只留窗口内的单；没记开始时间的单不猜，直接排除。
       if (timeRange !== 'all') {
@@ -2887,6 +2945,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         nClose ? nClose + ' 待标收尾' : null,
         nNeedSed ? nNeedSed + ' 待沉淀' : null,
         nNeedReview ? nNeedReview + ' 待复核' : null,
+        nUpstream ? nUpstream + ' 等上游' : null,
         nSubmitted ? nSubmitted + ' 已交草稿' : null,
       ].filter(Boolean).join(' · ')
       // 说明放 title：这几个词只有在点开时才需要，常驻在筛选条上会把一行 chip 读成文档。
@@ -2899,13 +2958,14 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         { id: 'need-sed', label: '待沉淀' + (nNeedSed ? ' ' + nNeedSed : ''), title: '有 case 类沉淀候选（= 根因已形成可复用结论）、还没沉淀，且命中的 case 不在库里——按这一屏一次生成批量沉淀命令' },
         { id: 'need-review', label: '待复核' + (nNeedReview ? ' ' + nNeedReview : ''), title: '有报告或只有 reference / triage 候选，没有 case 类候选：根因可能还没定。读一眼报告，定了补一条 case 候选，没定就继续查或标收尾' },
         { id: 'need-promote', label: '已交草稿' + (nSubmitted ? ' ' + nSubmitted : ''), title: '草稿已经交到 inbox、等知识整理（含来源诊断还没收尾的那批——它们在升格前会被检查拦下）' },
+        { id: 'upstream', label: '等上游' + (nUpstream ? ' ' + nUpstream : ''), title: '已收尾、没给出可执行修复，且命中案例本身依据上游结论（上游修复已合入 / 维护者确认 / 官方文档）：本机没有待办动作，缺的是上游的结论。按这一屏一次生成批量查证指令（dry-run，不回写案例）' },
         { id: 'report-review', label: '报告待复核' + (nReportReview ? ' ' + nReportReview : ''), title: '现场说「换别的方法解决了」：需要 agent 读证据后修订报告描述、或判条目错 / 执行错（不判误诊时只改报告）' },
       ]
 
       // 空态：先说"这一屏为什么空"，再说下一步。筛选为空与"还没有任何诊断"是两件事——
       // 前者通常是这一类已经处理完，统一写"去跑一次 diagnose"会被读成数据没生成。
       const totalSessions = (r.sessions || []).length
-      const FILTER_LABEL = { all: '全部', kb: '库中已有', new: '新形态', miss: '无对应案例', open: '未收尾', running: '在查', awaiting: '等回报', 'close-pending': '待标收尾', 'need-sed': '待沉淀', 'need-review': '待复核', 'need-promote': '已交草稿' }
+      const FILTER_LABEL = { all: '全部', kb: '库中已有', new: '新形态', miss: '无对应案例', open: '未收尾', running: '在查', awaiting: '等回报', 'close-pending': '待标收尾', 'need-sed': '待沉淀', 'need-review': '待复核', 'need-promote': '已交草稿', upstream: '等上游' }
       const EMPTY_HINT = {
         kb: '没有命中过知识库 case 的诊断。',
         new: '没有"命中 case、但库里还没有"的诊断。',
@@ -2917,15 +2977,21 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         'need-sed': '没有可沉淀的单：有 case 类沉淀候选的诊断都已经沉淀过了。',
         'need-review': '没有待复核的单：有报告或 reference 候选、但还没产出 case 候选的诊断都复核过了。',
         'need-promote': '没有已交到 inbox 的草稿。做完沉淀（草稿进 inbox）后会出现在这里，等知识整理排期升格。',
+        upstream: '没有在等上游的单：已收尾、没给 fix、命中案例带上游锚点且依据在上游的单都没有。判据要求这一单记过"有没有给出修复"——没记的老单不进这一屏。',
       }
       const emptyTitle = q ? '没有匹配的会话'
         : (!totalSessions ? '还没有诊断记录'
           : (timeRange !== 'all' ? '该时间范围内没有会话'
             : ('「' + (FILTER_LABEL[kbFilter] || '当前筛选') + '」下没有会话')))
+      // 按投影分类的两屏（等上游 / 报告待复核）在投影读不到时必须换一句话：空列表不是
+      // "这一类没有单"，是"分类本身没算出来"。旧版在这两种情形下照样说"没有…"。
+      const derivedScreen = kbFilter === 'upstream' || kbFilter === 'report-review'
       const emptyHint = q ? '换个关键词，或点「全部」清掉筛选'
         : (!totalSessions ? '在对话里跑一次 /skill:diagnose，这里就会出现会话与完整轨迹'
-          : (timeRange !== 'all' ? '放宽时间范围，或点「全部」清掉筛选。'
-            : (EMPTY_HINT[kbFilter] || '点「全部」查看所有诊断。')))
+          : (STATE_ERROR && derivedScreen
+            ? '状态投影读不到（' + STATE_ERROR + '）：这一屏按投影分类，列表为空不代表没有这类单——点「刷新」重读。'
+            : (timeRange !== 'all' ? '放宽时间范围，或点「全部」清掉筛选。'
+              : (EMPTY_HINT[kbFilter] || '点「全部」查看所有诊断。'))))
 
       // 首屏要先回答"有什么在等我"——所以计数里把**待跟进**的两项单独提出来（进行中、待回报），
       // 而不是混在一串 "N 会话 · N 库中已有 …" 里让读者自己找
@@ -2950,6 +3016,34 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-xs)', padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', color: T.text, wordBreak: 'break-word', lineHeight: 'var(--lh-base)' } }, text),
               React.createElement('button', { type: 'button', style: batchCopied === 'fail' ? btnRed : btnPurple, onClick: () => copyText(text).then(ok => setBatchCopied(ok ? 'sed' : 'fail')) },
                 batchCopied === 'sed' ? '已复制' : (batchCopied === 'fail' ? '失败' : '复制')),
+            ) : null,
+          )
+        }
+        if (kbFilter === 'upstream') {
+          // 等上游：按筛选结果一次生成**一条**查证指令（名单里的 case id），不是每单一条。
+          // 一次全量 dry-run 也够，但那会把 100+ 条锚点全查一遍（一次 gh api 一条）；这一屏
+          // 只需要查"正在等的这几单"。`--case` 可重复正是为这一条加的。
+          // 指令里不带 `--apply`：写回 knowledge/ 是 tracked 改动、要走 PR，属于周批维护者的活。
+          // 去重：多个 session 可能命中同一条 case（同一问题被两个人各开一单），
+          // 命令里每条案例只该出现一次。
+          const ids = Array.from(new Set(sessions
+            .map(s => (caseKindOf(s) === 'case' && s.activeCase ? String(s.activeCase) : ''))
+            .filter(Boolean)))
+          if (!ids.length) return null
+          const text = '用 /skill:resume-diagnosis 查这批 case 的上游状态（只查上游，不续接）：'
+            + 'python3 scripts/verify_upstream_outcomes.py ' + ids.map(id => '--case ' + id).join(' ')
+            + '｜按「上游确认 / 上游否定且案例声明已合入（脚本标作「矛盾」，退出码 1）/ 未验证 / 不可查证」分桶汇总，只展开前两类；'
+            + '仍是 open 的说明不构成证据，别据此说"上游修好了"。dry-run，不要 --apply。'
+          return React.createElement('div', { style: { marginBottom: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+              React.createElement('span', { style: { fontSize: 'var(--t-sm)', color: T.text2 }, title: '范围 = 当前筛选（含搜索词）；单数与案例数不一定相等（多个 session 可能命中同一条案例）' }, '在等上游 ' + sessions.length + ' 单 · ' + ids.length + ' 条案例'),
+              React.createElement('button', { type: 'button', style: batchCmd === 'up' ? btnPrimary : btnGhost, onClick: () => { setBatchCmd(batchCmd === 'up' ? null : 'up'); setBatchCopied(null) } },
+                batchCmd === 'up' ? '隐藏指令' : '批量查这 ' + ids.length + ' 条案例的上游'),
+            ),
+            batchCmd === 'up' ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 } },
+              React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-xs)', padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', color: T.text, wordBreak: 'break-word', lineHeight: 'var(--lh-base)' } }, text),
+              React.createElement('button', { type: 'button', style: batchCopied === 'fail' ? btnRed : btnPrimary, onClick: () => copyText(text).then(ok => setBatchCopied(ok ? 'up' : 'fail')) },
+                batchCopied === 'up' ? '已复制' : (batchCopied === 'fail' ? '失败' : '复制')),
             ) : null,
           )
         }

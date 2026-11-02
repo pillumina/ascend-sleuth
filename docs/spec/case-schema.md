@@ -68,6 +68,8 @@ case 文件，结算就变成每次改知识条目，观测与知识本体也就
 ### 3.4 `validation_record`：{consistent, inconsistent, self_consistent, last_verified}
 
 要求：内容被外部验证的累积记录，由 [settle_s2_feedback.py](../../scripts/settle_s2_feedback.py) 结算，非人设定。
+上游锚点查证由 [verify_upstream_outcomes.py](../../scripts/verify_upstream_outcomes.py) 写同一记录（§3.8），
+两处都会推进 `last_verified`：面板上的「上次外部验证」取的是两者中最近一次，不等于「上次查上游」。
 
 强度：可选。
 

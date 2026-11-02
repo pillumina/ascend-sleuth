@@ -25,6 +25,8 @@ import verify_upstream_outcomes as vuo  # noqa: E402
 
 REPO = "vllm-project/vllm-ascend"
 ISSUE_2760 = f"repos/{REPO}/issues/2760"
+ISSUE_9999 = f"repos/{REPO}/issues/9999"
+ISSUE_2761 = f"repos/{REPO}/issues/2761"
 
 CASE_TMPL = """# 测试案例：{cid}
 cases:
@@ -276,11 +278,35 @@ class VerifyUpstreamOutcomesTest(unittest.TestCase):
         self.assertIn("补写", out)
         self.assertEqual(read_record(path, "VLLM-ASC-15")["consistent"], 1)
 
+    def test_dry_run_does_not_repair_a_settled_record(self):
+        """补写路径也必须尊重 dry-run：盘上记录被合并冲掉时，dry-run 只报计划、不改文件。
+
+        评审构造的反例（2026-11）：游标已推进 → 记录被回滚 → 再跑 dry-run，旧实现直接
+        `write_text_lf` 改了 tracked 案例文件，而 stdout 同时印「dry-run 未写任何文件」。
+        """
+        path = write_case(self.root, "VLLM-ASC-24", extra=anchor_block(issue=2760))
+        gh = FakeGh({ISSUE_2760: {"state": "closed", "state_reason": "completed"}})
+        rc, _, _ = self.run_script(apply=True, api=gh)
+        self.assertEqual(rc, 0)
+        # 模拟合并/回滚把落地冲掉，游标不动
+        path.write_text(CASE_TMPL.format(cid="VLLM-ASC-24", extra=anchor_block(issue=2760)),
+                        encoding="utf-8")
+        before = path.read_bytes()
+        rc, out, err = self.run_script(api=gh)          # dry-run
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(path.read_bytes(), before, "dry-run 不得写任何文件")
+        self.assertIn("补写", out)
+        self.assertIn("dry-run", out)
+        # 加 --apply 才真的补写
+        rc, out, err = self.run_script(apply=True, api=gh)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(read_record(path, "VLLM-ASC-24")["consistent"], 1)
+
     # ---------------------------------------------------------------- 参数与范围
 
     def test_unknown_case_returns_2(self):
         write_case(self.root, "VLLM-ASC-16")
-        rc, _, err = self.run_script(case_id="VLLM-ASC-404", apply=True, api=FakeGh())
+        rc, _, err = self.run_script(case_ids=["VLLM-ASC-404"], apply=True, api=FakeGh())
         self.assertEqual(rc, 2)
         self.assertIn("找不到", err)
 
@@ -290,11 +316,78 @@ class VerifyUpstreamOutcomesTest(unittest.TestCase):
         gh = FakeGh({ISSUE_2760: {"state": "closed", "state_reason": "completed"}})
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            rc = vuo.run(root=self.root, case_id="VLLM-ASC-17", as_json=True, api=gh, week="2026-W40")
+            rc = vuo.run(root=self.root, case_ids=["VLLM-ASC-17"], as_json=True, api=gh, week="2026-W40")
         self.assertEqual(rc, 0, err.getvalue())
         report = json.loads(out.getvalue())
         self.assertEqual([r["case"] for r in report["results"]], ["VLLM-ASC-17"])
         self.assertEqual(gh.calls, [ISSUE_2760])
+
+    # --case 可重复：面板的「批量查上游」按名单一次查几条（名单 = trace 的 active_case）。
+    def test_repeated_case_checks_each_once_in_order(self):
+        write_case(self.root, "VLLM-ASC-20", extra=anchor_block(issue=2760))
+        write_case(self.root, "VLLM-ASC-21", extra=anchor_block(issue=9999))
+        write_case(self.root, "VLLM-ASC-22", extra=anchor_block(issue=2761))
+        gh = FakeGh({ISSUE_2760: {"state": "closed", "state_reason": "completed"},
+                     ISSUE_9999: {"state": "open"}})
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = vuo.run(root=self.root, case_ids=["VLLM-ASC-21", "VLLM-ASC-20", "VLLM-ASC-21"],
+                         as_json=True, api=gh, week="2026-W40")
+        self.assertEqual(rc, 0, err.getvalue())
+        report = json.loads(out.getvalue())
+        # 保序去重：报告顺序就是名单顺序，重复写的 id 只查一次（不重复发 gh 调用）。
+        self.assertEqual([r["case"] for r in report["results"]], ["VLLM-ASC-21", "VLLM-ASC-20"])
+        self.assertEqual(report["case_filter"], ["VLLM-ASC-21", "VLLM-ASC-20"])
+        self.assertEqual(report["cases_selected"], 2)
+        self.assertEqual(gh.calls, [ISSUE_9999, ISSUE_2760])
+        self.assertEqual([r["outcome"] for r in report["results"]], ["not_verified", "verified"])
+
+    def test_empty_case_value_is_rejected(self):
+        """`--case ""` 不能静默变成"没指定"——那会扫全库，加 --apply 就是全库写回。"""
+        write_case(self.root, "VLLM-ASC-25", extra=anchor_block(issue=2760))
+        rc, out, err = self.run_script(case_ids=[""], api=FakeGh())
+        self.assertEqual(rc, 2)
+        self.assertIn("空值", err)
+        self.assertEqual(out, "")
+
+    def test_case_filter_reports_effective_ids_and_unknown_ones(self):
+        """`case_filter` 是**生效**名单，未知 id 单列 `cases_unknown`——否则读起来像都生效了。"""
+        write_case(self.root, "VLLM-ASC-26", extra=anchor_block(issue=2760))
+        gh = FakeGh({ISSUE_2760: {"state": "closed", "state_reason": "completed"}})
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = vuo.run(root=self.root, case_ids=["VLLM-ASC-404", "VLLM-ASC-26"],
+                         as_json=True, api=gh, week="2026-W40")
+        self.assertEqual(rc, 0, err.getvalue())
+        report = json.loads(out.getvalue())
+        self.assertEqual(report["case_filter"], ["VLLM-ASC-26"])
+        self.assertEqual(report["cases_unknown"], ["VLLM-ASC-404"])
+
+    def test_dry_run_contradiction_says_plan_not_done(self):
+        """矛盾在 dry-run 下不能说"已记 inconsistent"（同屏还印着"未写任何文件"）。"""
+        write_case(self.root, "VLLM-ASC-27",
+                   extra=anchor_block(issue=2760) + "    verification:\n      source: upstream-fix-merged\n")
+        gh = FakeGh({ISSUE_2760: {"state": "closed", "state_reason": "not_planned"}})
+        rc, out, err = self.run_script(api=gh)
+        self.assertEqual(rc, 1, err)
+        self.assertIn("dry-run 未写盘", out)
+        self.assertNotIn("本次已按复审信号记", out)
+
+    def test_one_stale_id_does_not_fail_the_batch(self):
+        # 名单来自 trace：案例可能已改名或退休。一条失效整批退 2 会让「查这批」无处可用，
+        # 所以只报警跳过；全都未知才退 2（见上一条）。
+        write_case(self.root, "VLLM-ASC-23", extra=anchor_block(issue=2760))
+        gh = FakeGh({ISSUE_2760: {"state": "closed", "state_reason": "completed"}})
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = vuo.run(root=self.root, case_ids=["VLLM-ASC-404", "VLLM-ASC-23"],
+                         as_json=True, api=gh, week="2026-W40")
+        self.assertEqual(rc, 0, err.getvalue())
+        self.assertIn("VLLM-ASC-404", err.getvalue())
+        self.assertIn("已跳过", err.getvalue())
+        report = json.loads(out.getvalue())
+        self.assertEqual([r["case"] for r in report["results"]], ["VLLM-ASC-23"])
+        self.assertEqual(report["cases_selected"], 1)
 
     def test_archive_and_index_files_are_skipped(self):
         write_case(self.root, "VLLM-ASC-OLD", extra=anchor_block(issue=2760),

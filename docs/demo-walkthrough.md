@@ -381,12 +381,13 @@ trace 记 {action: attribution, verdict: case_error|execution_error, evidence}
 | 面板能力 | 对应流程环节 | 说明 |
 |---|---|---|
 | 会话列表（状态徽章/更新时间/计数） | 诊断入口 | 按 `updated_at` 倒序，resume 续接后置顶 |
-| 搜索框（session/状态/框架/命中 case/未闭环/待沉淀/待升格） | 诊断入口 | 会话多时快速过滤定位 |
+| 搜索框（session/状态/框架/命中 case/未闭环/待沉淀/待升格/等上游） | 诊断入口 | 会话多时快速过滤定位 |
 | 轨迹展开（summary/evidence/reason） | 诊断过程可视化 | summary=问题背景段；evidence=完整证据（inline 原文/文件引用/缺口）；reason=决策依据 |
 | 参考层标注 | 2.5 层先验知识 | `reference_lookup` 步骤带"参考层"徽章 + 使用统计 |
 | 继续诊断（指令 copy → 对话触发） | resume | 未解决会话的续接入口，与 resume skill 闭环 |
 | 沉淀此案例（指令 copy → 对话触发） | 沉淀（第 2 节） | 已解决未沉淀会话触发 to-postmortem |
 | 未闭环 / 待沉淀 / 待升格筛选与批量入口 | 诊断收尾与沉淀 | 「未收尾」筛还挂着、没有可沉淀结论的单；「待沉淀」收「有 case 类沉淀候选、还没沉淀」的单，按筛选结果一次生成批量 to-postmortem 命令；「待复核」收有报告或只有 reference 候选、根因可能还没定的单；连一轮对话都没有的记录不占筛选，列表上挂「空记录」徽标；「已交草稿」收全部草稿已交 inbox 的单，其中来源未收尾的可勾选后批量标已解决（只允许「已解决 · fix 生效」一种结局），并报出 inbox 里没回写沉淀状态的草稿 |
+| 等上游（徽标 + 查上游指令 + 批量查证） | 外部对照闭环 | 已收尾、没给 fix、命中案例有 `upstream` 锚点、且该案例依据上游结论（`verification.source` 属 `upstream-` 档）的单挂「等上游」徽标；「查上游」生成 prompt（`resume-diagnosis` 的「只查上游」一节 → `verify_upstream_outcomes.py --case <id>`，dry-run），按上游确认 / 上游否定且案例声明已合入 / 未验证 / 不可查证四种结局说下一步；筛选里按这一屏一次生成一条批量查证指令。写回 `validation_record` 走 PR，不在面板做 |
 | 沉淀状态（submitted/knowledge/archived） | groom 转正跟踪 | 零推断：动作发生时写，不反查 inbox |
 | 证据文件点击打开 | 跨 agent 自包含 | `traces/evidence/<session_id>/` 本地文件 |
 | 指标 tab（timeline 快照/kind 过滤/实时计算） | 自演进观测（第 3 节） | 展示 `metrics/timeline.yaml` 各期快照（live/replay/example 可过滤）+ 运行 trace_metrics.py 实时对照 |

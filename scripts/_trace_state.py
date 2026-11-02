@@ -20,7 +20,9 @@ from pathlib import Path
 
 from _yaml import load_file, load_text
 
-SCHEME = "ascend-sleuth-trace-state/1"
+# 投影缓存（`scripts/trace_state.py` 的 `.state-cache.json`）的键含本值：派生量新增字段时
+# 必须 bump，否则升级后命中旧缓存的面板会继续拿到没有新字段的 payload（筛选恒空）。
+SCHEME = "ascend-sleuth-trace-state/2"
 
 # 与 `scripts/sediment_batch.py:48-50` 同一组判据：真 case id / 占位串。两处分家会造出
 # 「面板说已闭环、闸门拦下」的反例（`verify_case_draft.py` 顶部注释也点了这件事）。
@@ -181,8 +183,12 @@ def sed_state(doc: dict) -> str:
     return "none"
 
 
-def derive(doc: dict, kb_case_ids: set[str]) -> dict:
-    """派生量。每条口径都标了出处，改之前先读那一处；这里只搬运，不新增判断。"""
+def derive(doc: dict, kb_case_ids: set[str], kb_cases: dict | None = None) -> dict:
+    """派生量。每条口径都标了出处，改之前先读那一处；这里只搬运，不新增判断。
+
+    `kb_cases` 是命中案例在知识库里的那点附加事实（`kb_case_meta`）：目前只有上游锚点。
+    不传或没这条案例时，与「等上游」相关的两个字段按"不可判"处理（false / null），不猜。
+    """
     status = str(doc.get("status") or "unknown")
     kind = case_kind(doc.get("active_case"))
     active_case = "" if doc.get("active_case") is None else str(doc.get("active_case"))
@@ -233,6 +239,29 @@ def derive(doc: dict, kb_case_ids: set[str]) -> dict:
                            for r in reports)
     events = [e for e in (doc.get("transitions") or []) if isinstance(e, dict)]
     time_source = "transitions" if events else "updated_at"
+    # 等上游：诊断已收尾、本机没给出可执行修复、且**这条案例的依据在上游**。
+    # 它不是新状态，是四个已有事实的现算组合：
+    #   ① 收尾轴 `status: resolved`；
+    #   ② `fix_emitted` 为假（本机没给可执行修复）；
+    #   ③ 案例带 `upstream` 锚点（查得到上游，`docs/spec/case-schema.md` 3.8）；
+    #   ④ 案例的 `verification.source` 是 `upstream-` 档——**这一条是防误标的**（见下）。
+    # 为什么需要 ④：`fix_emitted: false` 不只表示"等上游"，还表示"只定位到根因"；
+    # `data-loss-risk` 更是闸门要求不给 fix（先停、保留现场、通知 owner）。只看 ②③ 会把
+    # 「先停」单同时挂上「等上游」，读者把"先停"读成"本机没有待办动作"。所以要求案例本身的
+    # 结论依据在上游（upstream-fix-merged / upstream-maintainer-confirmed / upstream-official-doc），
+    # 且不是数据风险卡。
+    upstream = None
+    if active_in_kb and kb_cases:
+        info = kb_cases.get(active_case) or {}
+        if info.get("anchors"):
+            upstream = {"anchors": list(info["anchors"]),
+                        "lastVerified": str(info.get("lastVerified") or ""),
+                        "verificationSource": str(info.get("verificationSource") or "")}
+    fix_flag = _bool_flag(doc, "fix_emitted")
+    fix_false = fix_flag is False
+    upstream_grounded = bool(upstream and upstream["verificationSource"].startswith("upstream-"))
+    upstream_pending = bool(upstream_grounded and status == "resolved" and fix_false
+                            and str(doc.get("severity") or "") != "data-loss-risk")
     return {
         "open": open_,
         "closed": closed,
@@ -250,6 +279,8 @@ def derive(doc: dict, kb_case_ids: set[str]) -> dict:
         "timeSource": time_source,
         "needReportReview": need_report_review,
         "vendorConfirmed": vendor_confirmed,
+        "upstreamPending": upstream_pending,
+        "upstream": upstream,
         "lastReview": ({"verdict": latest_review.get("verdict"), "at": latest_review.get("at")}
                        if latest_review else None),
         "heading": "resolved" if status == "resolved" and fb["outcome"] in NEGATIVE_OUTCOMES else None,
@@ -263,6 +294,33 @@ def _path_get(doc: dict, path: str):
             return None
         cur = cur.get(part)
     return cur
+
+
+YAML_NULLS = {"", "null", "~"}
+
+
+def _scalar_str(value) -> str:
+    """标量转字符串；YAML 的 null 四种写法都返回空串（与 `panel-host.js` 的 scalarStr 同条）。"""
+    if value is None:
+        return ""
+    s = str(value).strip()
+    return "" if s.lower() in YAML_NULLS else s
+
+
+def _bool_flag(doc: dict, key: str) -> bool | None:
+    """读一个布尔字段（平铺 / `outcome` 下两种写法），**未记返回 None**。
+
+    与 `panel-host.js` 的 hasValue + fixEmitted 同一条：`null` / 空串 / `null` / `~` 都算未记；
+    只有记了一个真值（非 `true`）才算「没给 fix」。不能只看 `key in doc`——`trace_begin.py`
+    给每条新 trace 写的就是 `fix_emitted: null`，按"键存在"判会把所有新单都算成没给 fix。
+    """
+    for holder in (doc, doc.get("outcome") if isinstance(doc.get("outcome"), dict) else None):
+        if not isinstance(holder, dict):
+            continue
+        raw = _scalar_str(holder.get(key))
+        if raw:
+            return raw.lower() == "true"
+    return None
 
 
 def _nonempty(value) -> bool:
@@ -467,26 +525,61 @@ def load_traces(traces_root: Path | str) -> list[dict]:
     return rows
 
 
-def kb_case_ids(kb_root: Path | str) -> set[str]:
-    """知识库里已有的 case id（滚 `knowledge/**/*.yaml` 的 id 字段）。
+def kb_case_meta(kb_root: Path | str) -> dict[str, dict]:
+    """知识库里每条 case 的派生小事实：{id: {"anchors": [...], "lastVerified": "2026-W42"}}。
 
-    `closed` 与 `needSed` 都要它：命中的 case 在不在库里决定「还要不要沉淀」。
+    一次遍历取两用：`closed` 与 `needSed` 只要"命中的 case 在不在库里"，「等上游」还要它的
+    `upstream` 锚点与 `validation_record.last_verified`。分成两次遍历会把这批 case 文件读两遍。
+    没有锚点的案例留一个空 `anchors`（仍然算"在库里"，只是查不了上游）。
     """
-    ids = set()
+    out = {}
     root = Path(kb_root) / "knowledge"
     if not root.is_dir():
-        return ids
+        return out
     for path in root.rglob("*.yaml"):
         if path.name.startswith("_"):
+            continue
+        # 退休案例不进：与 `scripts/build_index.py` 和 `scripts/verify_upstream_outcomes.py`
+        # 同一条（`knowledge/_archive/` 下的 case 不再参与检索、也不再查证）。放进来会让面板
+        # 给一条已退休案例挂「等上游」并生成一条必然报「找不到」的查证指令。
+        if "_archive" in path.parts:
             continue
         try:
             doc = load_file(path) or {}
         except Exception:
             continue
         for case in doc.get("cases") or []:
-            if isinstance(case, dict) and case.get("id"):
-                ids.add(str(case["id"]))
-    return ids
+            if not isinstance(case, dict) or not case.get("id"):
+                continue
+            record = case.get("validation_record")
+            record = record if isinstance(record, dict) else {}
+            verification = case.get("verification")
+            verification = verification if isinstance(verification, dict) else {}
+            out[str(case["id"])] = {
+                "anchors": _upstream_anchor_labels(case),
+                "lastVerified": str(record.get("last_verified") or ""),
+                "verificationSource": str(verification.get("source") or ""),
+            }
+    return out
+
+
+def _upstream_anchor_labels(case: dict) -> list[str]:
+    """`upstream:` 锚点的一句式标签（`vllm-ascend#10834`），给面板徽标的 title 用。
+
+    `issue` 与 `pr` 二选一（`docs/spec/case-schema.md` 3.8）；两者都缺或整条不是映射时跳过，
+    不猜一个编号出来——这里产出的标签会直接出现在人读界面上。
+    """
+    labels = []
+    for anchor in case.get("upstream") or []:
+        if not isinstance(anchor, dict):
+            continue
+        repo = str(anchor.get("repo") or "").strip()
+        number = anchor.get("pr") if anchor.get("pr") is not None else anchor.get("issue")
+        if number is None:
+            continue
+        name = repo.rsplit("/", 1)[-1] if repo else ""
+        labels.append(f"{name}#{number}" if name else f"#{number}")
+    return labels
 
 
 def provenance_of(doc: dict) -> dict:
@@ -520,13 +613,14 @@ def project(traces_root: Path | str, kb_root: Path | str, caps: dict | None = No
             only: str | None = None) -> dict:
     """面板与 CLI 共用的投影。`state` 不进 host 的版本缓存（它依赖 KB 与能力位）。"""
     vocab = load_vocab(Path(kb_root))
-    ids = kb_case_ids(kb_root)
+    kb_cases = kb_case_meta(kb_root)
+    ids = set(kb_cases)
     sessions = []
     for entry in load_traces(traces_root):
         if only and entry["sessionId"] != only:
             continue
         doc = entry["doc"] or {}
-        derived = derive(doc, ids)
+        derived = derive(doc, ids, kb_cases)
         row = {
             "sessionId": entry["sessionId"],
             "file": entry["file"],

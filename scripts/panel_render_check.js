@@ -907,7 +907,9 @@ async function main() {
   // 面板挂在 `shell.overlay`（整帧悬浮层），平时是关着的，所以先点一下页脚入口把它打开。
   console.log('\n[ascend-panel 诊断记录面板]')
   {
-    const day = n => { const d = new Date(Date.now() - n * 86400000); return d.toISOString() }
+    // 固定基准日（同上：两次 Date.now() 造同一日的夹具会在调度暂停时跨天，断言偶发红）
+    const DAY_BASE = Date.parse('2026-11-01T00:00:00Z')
+    const day = n => new Date(DAY_BASE - n * 86400000).toISOString()
     const listHost = (method) => {
       if (method !== 'ascend-traces-list') return { ok: true }
       return {
@@ -981,7 +983,10 @@ async function main() {
   // 时间）、同刻按开始时间、切到按价值后与「诊断」tab 同序、以及新控件没有落在键盘闭环之外。
   console.log('\n[ascend-panel 诊断记录 · 排序]')
   {
-    const day = n => new Date(Date.now() - n * 86400000).toISOString()
+    // 固定基准日：两次 Date.now() 造同一日的夹具，只要两次调用之间被调度暂停就变成两天，
+    // 「同刻并列」的断言会偶发红（实测踩过）。排序断言不依赖真实时钟。
+    const DAY_BASE = Date.parse('2026-11-01T00:00:00Z')
+    const day = n => new Date(DAY_BASE - n * 86400000).toISOString()
     // 六单让两种排序给出不同顺序：
     //   按最后更新时间 → new(1 天前) → touched(2) → mid(10) → old(80) → tie-a / tie-b(都 95)
     //   按价值         → old(已沉淀) → mid(库中已有) → new / touched / tie-a / tie-b(其余，同档按更新时间)
@@ -3470,6 +3475,120 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         /「新形态」下没有会话/.test(emptyText)
         && /没有"命中 case、但库里还没有"的诊断/.test(emptyText)
         && !/在对话里跑一次 \/skill:diagnose/.test(emptyText), emptyText.slice(0, 300))
+    }
+    // —— 等上游：已收尾 + 没给 fix + 命中的案例带 upstream 锚点（2026-11）——
+    // 判据在 host 投影里（`scripts/_trace_state.py` 的 derive），面板只渲染。这一块钉四件：
+    // 徽标只挂该挂的那一单、筛选入口带数量、「查上游」与批量入口生成的指令都带 --case、
+    // 且指令里不出现 --apply（写回 knowledge/ 走 PR，不在诊断面板）。
+    {
+      const base = {
+        status: 'resolved', framework: 'vllm-ascend', platform: 'A2-910B', category: 'interrupt',
+        summarySnippet: '问题背景：启动失败', userSteps: 2, agentSteps: 4, lastRole: 'agent',
+        lastOutput: '结论', updatedAt: new Date().toISOString(), sedimented: { state: 'none' },
+      }
+      const pending = Object.assign({}, base, {
+        sessionId: 's-up', file: 's-up.yaml', activeCase: 'VLLM-ASC-10834', activeCaseKind: 'case',
+        activeCaseInKb: true, fixEmitted: false, harnessSession: 'session-up',
+        state: { derived: { upstreamPending: true,
+                            upstream: { anchors: ['vllm-ascend#10834'], lastVerified: '2026-W42' } } },
+      })
+      // 对照单：同样带锚点、但给了 fix——不是在等上游，不该挂徽标。
+      // 注意：这一对夹具是**渲染层**断言，`derived.upstreamPending` 是夹具写死的布尔值；
+      // 判据本身（收尾 / 没给 fix / 有锚点 / 依据在上游 / 非数据风险）的删除点由
+      // `tests/test_trace_state.py` 的 DeriveTest 钉住——改判据时别只看这里。
+      const fixed = Object.assign({}, base, {
+        sessionId: 's-fixed', file: 's-fixed.yaml', activeCase: 'VLLM-ASC-9000', activeCaseKind: 'case',
+        activeCaseInKb: true, fixEmitted: true, harnessSession: 'session-fixed',
+        state: { derived: { upstreamPending: false,
+                            upstream: { anchors: ['vllm-ascend#9000'], lastVerified: '' } } },
+      })
+      const sessionsFixture = [pending, fixed]
+      const host = (m) => m === 'ascend-traces-list'
+        ? { ok: true, sessions: sessionsFixture }
+        : { ok: true, steps: [], summary: null }
+      hookIdx = 0; hookState = []; depState = []; effectQueue = []
+      const registrations = []
+      const ctx2 = {
+        get: n => n === 'slots' ? { inject: (s, cb) => cb(), register: (o, c) => registrations.push({ opts: o, comp: c }) } : undefined,
+        effect(fn) { const d = fn(); return typeof d === 'function' ? d : () => {} },
+        on() { return () => {} },
+      }
+      const plugin2 = new Function('React', 'host', 'styles', 'return (function(){' + ascSrc + '})()')(
+        React, { call: (m, a) => Promise.resolve(host(m, a)) }, { insert: () => () => {} })
+      plugin2.apply(ctx2)
+      let tree = null
+      const renderDiagnose = () => {
+        effectQueue = []; hookIdx = 0
+        const o = []
+        registrations.filter(r => r.opts && r.opts.id === 'ascend-diagnose').forEach(r => o.push(r.comp({ sessionId: 'sess-1' })))
+        return o
+      }
+      const pumpTree = async (rounds) => {
+        for (let i = 0; i < rounds; i++) {
+          tree = renderDiagnose()
+          effectQueue.slice().forEach(f => f())
+          await new Promise(r => setImmediate(r))
+        }
+        return tree
+      }
+      const treeText = x => { const o = []; flatten(x, o); return o.join('\n') }
+      const findByText = (needle) => {
+        const hs2 = []
+        collectHandlers(tree, hs2)
+        return hs2.find(h => String(h.text).includes(needle))
+      }
+      await pumpTree(6)
+      const t = treeText(tree)
+      expect('等上游徽标只挂「已收尾 + 没给 fix + 有锚点」的那一单（给了 fix 的不挂）',
+        (t.match(/已收尾、没给出可执行修复，命中的案例带上游锚点/g) || []).length === 1,
+        '徽标=' + (t.match(/已收尾、没给出可执行修复，命中的案例带上游锚点/g) || []).length)
+      expect('等上游徽标的 title 给出锚点与上次查证（读者不用点开就知道在等谁）',
+        /vllm-ascend#10834/.test(t) && /上次外部验证 2026-W42/.test(t), t.slice(0, 400))
+      expect('筛选入口带数量（等上游 1）', /等上游 1/.test(t), t.slice(0, 300))
+
+      // 「查上游」真的点得开，指令里带 case id、不带 --apply。
+      // 按钮用「最短文本」定位：整行卡片的 toggle 按钮也会把子节点 title 里的「查上游」带进来，
+      // 按包含关系取第一个会点到展开箭头（实测踩过）。
+      const btnUp = (() => {
+        const hs2 = []
+        collectHandlers(tree, hs2)
+        return hs2.filter(h => String(h.text).includes('查上游'))
+          .sort((a, b) => String(a.text).length - String(b.text).length)[0]
+      })()
+      expect('「查上游」动作按钮可点', !!btnUp && /查上游/.test(String(btnUp.text)))
+      if (btnUp) { btnUp.fn({}); await pumpTree(3) }
+      const upText = treeText(tree)
+      expect('查上游的指令带 --case 与具体 case id',
+        /scripts\/verify_upstream_outcomes\.py --case VLLM-ASC-10834/.test(upText), upText.slice(0, 400))
+      expect('查上游指令里没有 --apply（写回案例走 PR，不在诊断面板）',
+        !/--apply/.test(upText), upText.slice(0, 400))
+
+      // 筛选入口：只留等上游的那一单。
+      const chipUp = findByText('等上游 1')
+      expect('「等上游」筛选入口可点', !!chipUp)
+      if (chipUp) { chipUp.fn({}); await pumpTree(3) }
+      const filtered = treeText(tree)
+      expect('等上游筛选只留「已收尾 + 没给 fix + 有锚点」的单',
+        /s-up/.test(filtered) && !/s-fixed/.test(filtered), filtered.slice(0, 400))
+
+      // 批量入口：一次查这几单，一条指令（不是每单一条）。
+      const btnBatch = findByText('批量查这 1 条案例的上游')
+      expect('等上游的批量入口真的渲染出来', !!btnBatch, treeText(tree).slice(0, 300))
+      if (btnBatch) { btnBatch.fn({}); await pumpTree(3) }
+      const batchText = treeText(tree)
+      expect('批量查证指令一次带上名单里的 case id',
+        /--case VLLM-ASC-10834/.test(batchText), batchText.slice(0, 400))
+      expect('批量指令声明分桶口径与「open 不构成证据」',
+        /分桶汇总/.test(batchText) && /不构成证据/.test(batchText), batchText.slice(0, 400))
+      // 判据只压在**命令本身**上：指令里那句「不要 --apply」是显式护栏，不能当违规。
+      expect('批量指令里的命令部分是 dry-run（护栏那句「不要 --apply」除外）',
+        !/verify_upstream_outcomes\.py[^｜]*--apply/.test(batchText), batchText.slice(0, 400))
+      // 投影读不到时，"等上游"这一屏不能照样说"没有在等上游的单"——空列表不是结论。
+      // 这条按源码判：真实渲染要先让 host 返回 stateError 再点 chip，而空态文案只有一条分支，
+      // 源码这一处是它唯一的入口。
+      expect('投影读不到时，按投影分类的屏换一句"读不到"而不是"没有"',
+        /STATE_ERROR && derivedScreen/.test(ascSrc)
+        && /这一屏按投影分类，列表为空不代表没有这类单/.test(ascSrc))
     }
     // 「有没有结论」只认 `kind: case` 的沉淀候选——报告每单都有，`reference` / `triage` 候选
     // 记的是覆盖缺口与路由词，两者都不能证明根因定了（实测 telechat 有 2 条候选全是 reference）。

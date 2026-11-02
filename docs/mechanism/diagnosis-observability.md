@@ -453,7 +453,7 @@ flowchart LR
 | 词表合规 | 维护者，补词表或改记法 | 违规事件逐条看 | 全部事件 | 确定性 | 已落地 |
 | 反馈捕获 | 维护者，判学习环有没有输入 | 为 0 时误诊率、归因比标不可解读 | 给出结论的会话 | 确定性 | 已落地 |
 | 现场解决计数 | 排序与退休，降置信或退休 | 连续两次未解决转人工 | 已回报的会话 | 人工 | 已落地（生成物的 `cases` 段，`totals` / `by_week` / `recent`） |
-| 外部对照闭环 | 维护者，确认内容是否正确 | 没有上游 issue 或 PR 关联的案例标不可对照 | 有上游关联的案例 | 确定性 | 已落地（案例的 `upstream` 锚点 + `scripts/verify_upstream_outcomes.py`） |
+| 外部对照闭环 | 维护者，确认内容是否正确 | 没有上游 issue 或 PR 关联的案例标不可对照 | 有上游关联的案例 | 确定性 | 已落地（案例的 `upstream` 锚点 + `scripts/verify_upstream_outcomes.py`）；读侧是面板「等上游」筛选（`scripts/_trace_state.py` 的 `derive` 产出 `upstreamPending`：收尾 + 没给 fix + 有锚点 + 案例 `verification.source` 属 `upstream-` 档，且不是 `data-loss-risk`；后两条防把「先停」与「只定位到根因」误标成等上游），单点查证与批量查证都由它生成指令 |
 | 归因比 | 维护者，误诊修复前先读 | 先补归因事件再修 | 已归因的误诊 | 自报 | 已落地（期文件；读端两种键都收，此前只读 `verdict` 导致恒为 0） |
 | 结论强度分布 | 维护者与面板读者，判哪些结论不能当依据 | 弱强度结论不得升格 | 给出结论的会话 | 自报（这里指指标来源，与 3.1 的 `strength` 档不是同一个概念） | 已落地（本机明细的 `strength`） |
 | 条目使用增量 | 知识整理，退休、降置信、合并、补样例 | 高选中低解决时复审该条 | 该条目的当期被选中数，覆盖本部署 | 确定性 | 已落地（`scripts/trace_entry_activity.py` + `scripts/build_entry_activity.py`） |
