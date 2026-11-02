@@ -17,6 +17,17 @@
 - **资产进 git**：idea 卡含最终状态与 decisions，是知识资产（同 knowledge/ 纪律），随 PR 进出；
 - **运行时状态不进 git**：sessions/tasks/reviews/experiments 记录逐轮变化的进度与账本（类比 traces/ 与 inbox 草稿），本地留存；稳态结果以报告/采纳项投影入 git。
 
+## 方案文档怎么写（`proposals/*.md`）
+
+一份方案要能让没参加讨论的人决定**做不做**。写四件事，各占一段：
+
+- **要解决什么问题**：现象加读数，写清谁在什么场景下被卡住。
+- **选哪条路**：候选路径、选这条放弃什么、可能坏在哪。
+- **怎么算完成**：可复跑的判据，一条命令加期望。
+- **不做会怎样**：代价落到具体的人或流程上，不写"风险可控"。
+
+讨论过程、逐条论证与来回追问留在会话，不搬进文档。词句层的规矩按 `docs/spec/writing-norms.md`。
+
 ## schema 校验
 
 - idea 卡 schema 由 `scripts/verify_proposals.py --check` 校验（与 build_index/verify_references 并列）——**由 kb-checks 的 `proposal-audit` job 在 CI 执行**（`proposals/**` 在触发路径里；2026-09-10 前只是纸面承诺）。除结构外还校验**生命周期完整性**：终态卡缺 decision / validated 缺 `actual_cost.tokens` / 在实验卡执行完未推进（status lag）/ 在实验超 14 天未闭合（僵尸卡）/ `source_signals` 缺 `trajectory` 出处；

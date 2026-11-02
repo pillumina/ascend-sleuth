@@ -29,14 +29,15 @@
 | `skills/**/SKILL.md` | 规范条文 | 本 spec + `type-catalog.md`；另有 skill 自身的结构约束，受 `skill-self-contained` 门约束 |
 | 定位报告 `traces/*.report.md` | 复盘 | 自带模板 `skills/diagnose/references/report-template.md`，以模板为准 |
 | trace 人读字段 | 未映射到九类 | 自带模板 `skills/diagnose/references/diagnosis-trace.md` |
-| 诊断对话输出 | 未映射到九类 | 无固定骨架，见 `skills/diagnose/SKILL.md` 的输出格式一节 |
+| 诊断对话输出 | 未映射到九类 | 自带四段骨架：`skills/diagnose/SKILL.md` 的「命中时的输出格式」一节 |
 | case / reference 词条 | 参考词条 | 自带 schema：`skills/to-postmortem/SKILL.md`、`skills/to-reference/SKILL.md` |
 | EV 卡 `proposals/ideas/*.yaml` | 提案 | 自带 schema：`docs/mechanism/pipeline.md` §7「改进项的 schema 与状态机」 |
 | postmortem `postmortems/**` | 复盘 | 本 spec + `type-catalog.md`；产出模板在 `skills/to-postmortem/SKILL.md` |
 | PR body / 评审摘要 | 提案 | 自带五类模板：`.github/PULL_REQUEST_TEMPLATE/` |
+| 设计 / 方案文档 `proposals/*.md` | 提案 | 自带清单：`docs/spec/writing-norms.md` §3 的「设计 / 方案文档」行（`proposals/README.md` 只给目录约定与 git 归属） |
 | 面板文案 | 未映射到九类 | 自带清单：`dsh-plugins/README.md` 的定制条款一节 |
 | 指标注记 | 未映射到九类 | 无固定骨架，写在 `metrics/timeline.d/*.yaml` 里 |
-| 对话回复 | 未映射到九类 | 无固定骨架，见 `CLAUDE.md` 的对话回复条 |
+| 对话回复 | 未映射到九类 | 自带骨架：`CLAUDE.md` 的「回复口吻」条 |
 
 第一列的面名取自 `docs/spec/writing-norms.md` §3 那份清单，本表不另造面名。其中「skill 与 docs 正文」那一面在本表按路径拆成三行：`docs/**` 正文、`docs/adr/*.md`、`skills/**/SKILL.md`；`README.md`、`CLAUDE.md`、`CONTEXT.md` 也属这一面，按导览与规范条文写，不单列。
 

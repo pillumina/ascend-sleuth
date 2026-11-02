@@ -111,7 +111,8 @@ python3 -c "import re,pathlib;pat=re.compile(r'[\u4e00-\u9fff]\(');[print(f'{p}:
 | case / reference 词条 | `knowledge/**`、`references/**` | 工程师检索；agent 载入上下文 | 症状句要能直接当 grep 判据（保留报错原文与算子名）；`root_cause` / `fix` 只写结论与依据，不写推理过程 | `build_index.py`、`verify_references.py`（解析与引用） |
 | postmortem | `postmortems/**` | 复盘，并供后续沉淀 | 可观察事实与推断分开写：时间线只放事实，判断另起 | 无 |
 | 诊断对话输出 | 会话里 | 现场工程师，要立刻行动 | 4 段必需 + 2 个按需块（见 `skills/diagnose/SKILL.md`）；一件事只说一遍；结论先行 | 无 |
-| 对话回复 | 会话里 | 没读过本仓文档，也不在诊断现场 | 两类都要展开：短代号（卡号、事项号、机制名、分组名）与本仓内部术语（只有读过 `docs/` 才这么说的词）；必须保留的原值见 §2，本行不复写那份清单 | 无 |
+| 对话回复 | 会话里 | 没读过本仓文档，也不在诊断现场 | 段落顺序与写法写在 `CLAUDE.md` 的「回复口吻」条，本行不重复骨架。本行只管两件事：哪些词要展开——短代号（卡号、事项号、机制名、分组名）与本仓内部术语（只有读过 `docs/` 才这么说的词）；必须保留的原值见 §2 | 无 |
+| 设计 / 方案文档 | `proposals/*.md`（顶层方案文档，进 git） | 评审要与接手人，多数没参与讨论 | 方案要让没参加讨论的人能决定**做不做**，写四件事：要解决什么问题；选哪条路、这条路放弃什么、可能坏在哪；做到什么算完成；不做会怎样。讨论过程与逐条论证留在会话，不搬进文档 | 无 |
 | PR body / 评审摘要 | `.github/PULL_REQUEST_TEMPLATE/`（五类模板）、`scripts/render_review_summary.py` | 评审人 | 结构按模板的 `##` 区块；首节写背景与动机（触发 / 不做的代价 / 做完的变化），不写实现；Agent 预核意见只写模板该区块列的几项（结论、核对的版本、按严重度排的问题、覆盖清单、反例与可复跑命令、三项判定、报告指针；四类模板另加一条随变更对象定的判定项），命令输出与逐条证据留预核报告；正文用工程师口吻（短句、动词开头、给具体读数，不写过程叙述与自我评价），证据节只列要核的 3 到 5 条（见 [git-workflow.md](../guide/git-workflow.md) 的「独立预核」一节）；代号写中文含义（`docs/glossary.yaml` 的 `scope` 规则） | `pr-template`、`render_review_summary.py --scan` |
 | 指标注记 | `metrics/timeline.d/*.yaml`、exec-log | 看面板趋势 | 读数带分母；趋势不可读时明说不可读，不画等高柱充数 | `verify_metrics.py`、`build_timeline.py --check` |
 | skill 与 docs 正文 | `skills/**`、`docs/**`、`README.md`、`CLAUDE.md`、`CONTEXT.md` | agent 载入 + 人读 | skill 正文的行为规则要内联（自包含）；不能出现 ADR 号、日期、卡号这类外部锚点；仓库根的人读文档与 `docs/` 正文同样适用 §1 的共用条目与 §2 的原值例外；动笔前读 §1、提交前对照 §1 自查，这两步与五类高频项写在 `CLAUDE.md` 的「人读文本的行文规范」条 | `skill-self-contained`、`docs-index`、`render_review_summary.py --scan`（代号未登记与越界）；§1 的其余条目由**独立预核**对照（三档强度见 [git-workflow.md](../guide/git-workflow.md) 的「评审把手」） |
@@ -126,7 +127,8 @@ python3 -c "import re,pathlib;pat=re.compile(r'[\u4e00-\u9fff]\(');[print(f'{p}:
 | 定位报告 | `skills/diagnose/references/report-template.md` |
 | trace 人读字段 | `skills/diagnose/references/diagnosis-trace.md`（共用条目指向同目录的报告模板，再指向本文件） |
 | 诊断对话输出 | `skills/diagnose/SKILL.md` 的「命中时的输出格式」一节 |
-| 对话回复 | `CLAUDE.md` 的「对话回复写人话」条（每个会话整份注入，会话开始即读到；本面不另设文件） |
+| 对话回复 | `CLAUDE.md` 的「回复口吻」条（每个会话整份注入，会话开始即读到；本面不另设文件） |
+| 设计 / 方案文档 | `proposals/README.md` 的「方案文档怎么写」一节（四件事的骨架）；目录与 git 归属同在该文件；idea 卡的结构由 `scripts/verify_proposals.py` 校验 |
 | case 词条 / postmortem | `skills/to-postmortem/SKILL.md` 的「产出落点」一节 |
 | reference 词条 | `skills/to-reference/SKILL.md` 的「产出词条」一节 |
 | EV 卡 | `docs/mechanism/pipeline.md` §7「改进项的 schema 与状态机」 |
@@ -151,7 +153,7 @@ python3 -c "import re,pathlib;pat=re.compile(r'[\u4e00-\u9fff]\(');[print(f'{p}:
 ## 5 哪些能硬化
 
 只有同时满足检查准入三条——①机械可查 ②后果确定 ③复发 ≥2 次——的规则才进 CI。
-现状：§1 的四十三条里，第 16 条（无字面 Markdown 星号）已经合格——后果确定：星号会原样渲染成字符，
+现状：§1 的条目里，第 16 条（无字面 Markdown 星号）已经合格——后果确定：星号会原样渲染成字符，
 并且出现在可复制的指令里被粘进对话。§1.2 与 §1.3 里的标点与格式类（第 25、32、33、34、35、36、37、41、42 条）
 在别的项目里由 zhlint 一类工具机械检查，本仓**具备可查性但缺复发证据**（准入第三条），
 现在只能以只报告的方式跑，不进阻断路径。第 43 条（错词对照表）不一样：zhlint 查不了它，但它的七个词是字面量，一条 `grep` 就能查——七个词在正文里零命中（命中只落在规则自身的文本上：§1 第 43 条、报告模板的这条副本、`skills/doc-standards/references/rule-sources.md` 各一处），缺的同样是准入第三条的复发证据，所以也只在报告侧跑。其余条目属判断性规范，对照 §1 与 §3 人审——
@@ -176,7 +178,7 @@ python3 -c "import re,pathlib;pat=re.compile(r'[\u4e00-\u9fff]\(');[print(f'{p}:
 - **skill 与 skill 支撑文件是例外，而且必须内联完整条目**。仓库约定 `skills/**` 要自包含到"没有 `docs/` 也能正确执行"，
   `docs/` 只是可选论证层（见 `docs/guide/git-workflow.md` 的「Skill 自包含边界」）。所以进 agent 上下文的面
   （报告、trace、case 词条、诊断对话输出）在自己的 skill 或 `references/` 里内联**完整的共用条目**
-  （四十三条 + 必须保留的四类原值），并把本文件标成"可选论证层"。
+  （§1 的全部条目 + 必须保留的四类原值），并把本文件标成"可选论证层"。
   同一 skill 内的多个支撑文件之间可以互相指路——它们总是一起分发，例如 trace 的行文口径指向同目录的报告模板。
 - **不变量**：内联副本的条目文本以本文件 §1 为准；新增、删除或改写一条共用条目时，同步所有内联副本。
   核对方式（照抄就行，别凭印象）：
