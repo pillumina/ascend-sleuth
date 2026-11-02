@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:78206070cc15)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:21aa257c1b39)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:f684735469ce)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:119062e6c579)
 // 校验：`node scripts/build_panel_bundle.js --check`。
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:78206070cc15) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:21aa257c1b39) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -1234,7 +1234,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 指标带 = 三张图，替代原来的四段文字：
     //   ① 六步耗时柱（缺数据的步画虚线空框，不当天花板）② 检索漏斗 ③ token 堆叠条
     // 为什么要图：四段文字里三段的数字本来就是同一批，读者要在脑子里做对比；图把对比直接画出来。
-    // 问题背景：trace 的 summary 是一段长文本。直接铺开来是一堵墙，折行又不分段更难看。
+    // 本次诊断摘要：trace 的 summary 是一段长文本。直接铺开来是一堵墙，折行又不分段更难看。
     // 这里按句号切段逐段排版，默认只露前 3 行，点开看全文——折叠只影响可见高度，
     // **文字始终是全的**（不是截断）。
     function SummaryText(props) {
@@ -1899,7 +1899,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         else if (steps && steps.list && steps.list.length) {
           body = React.createElement('div', null,
             steps.summary ? React.createElement('div', { style: { marginBottom: 10, padding: 10, background: 'color-mix(in srgb, ' + T.brand + ' 6%, transparent)', border: '1px solid ' + T.border, borderRadius: 'var(--r-md)' } },
-              React.createElement(SectionLabel, { color: T.brand }, '问题背景'),
+              React.createElement(SectionLabel, { color: T.brand }, '本次诊断摘要'),
               React.createElement(SummaryText, { text: steps.summary }),
             ) : null,
             d5Conclusion,
@@ -2399,7 +2399,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         if (stEdit.kind === 'duplicate' && !String(stEdit.dup || '').trim()) return { msg: '需要填「已有单」', field: 'dup' }
         if (stMust.length) return { msg: '这一步需要先去回报（本编辑器不写反馈轴）' }
         const missing = editableFields.filter(f => !String(fieldVal(f)).trim())
-        if (missing.length) return { msg: '还需要填：' + missing.map(f => ({ summary: '问题背景', severity: '严重级', fix_emitted: '是否给出修复' }[f] || f)).join('、'), field: missing[0] }
+        if (missing.length) return { msg: '还需要填：' + missing.map(f => ({ summary: '本次诊断摘要', severity: '严重级', fix_emitted: '是否给出修复' }[f] || f)).join('、'), field: missing[0] }
         return null
       }
       // 兜底命令：值全部走 JSON（stdin here-doc），不拼命令行——中文、空格、引号、$ 都不会被拆开。
@@ -2543,7 +2543,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           React.createElement('code', { style: { display: 'block', userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '4px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', color: T.text } }, reviewInstruction())) : null,
       ) : null
       const fieldRow = (f) => {
-        const label = { summary: '问题背景（summary）', severity: '严重级', fix_emitted: '本次给出了可执行的修复' }[f] || f
+        const label = { summary: '本次诊断摘要（summary）', severity: '严重级', fix_emitted: '本次给出了可执行的修复' }[f] || f
         if (f === 'summary') return React.createElement('label', { key: f, style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, label,
           React.createElement('textarea', { id: 'sleu-f-' + f, 'aria-label': label, 'aria-invalid': stEdit.errField === f ? 'true' : 'false', 'aria-describedby': 'sleu-state-msg', value: fieldVal(f), rows: 2, onChange: e => setField(f, e.target.value), style: { ...inputStyle, minWidth: 320, resize: 'vertical' } }))
         if (f === 'severity') return React.createElement('label', { key: f, style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, label,
@@ -2781,7 +2781,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               rel ? React.createElement('span', { title: s.updatedAt ? '最后更新：' + (fmtTimeFull(s.updatedAt) || s.updatedAt) : null }, '更新 ' + rel) : null,
             ) : null,
           ),
-          // 副行：**收起态显示"这单在查什么"**——取 trace 的问题背景段（host 带的 summarySnippet）。
+          // 副行：**收起态显示"这单在查什么"**——取 trace 的本次诊断摘要段（host 带的 summarySnippet）。
           // 旧版显示"最后一步 · Agent" + 最后一个事件的 output，读者看不懂：最后一个事件常常是
           // 产出报告 / 续接 / 回报这类**记录维护**动作（实测反馈："最后一步……让人看不懂也觉得很奇怪"），
           // 它回答的是"记录被改了什么"，不是"这单在查什么"。没有背景段才退回最后一个事件的输出。
@@ -3213,7 +3213,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                   } else setQuery(v)
                 },
                 onKeyDown: e => { if (e.key === 'Escape') { if (typeof queryTimerDispose === 'function') queryTimerDispose(); setQueryInput(''); setQuery('') } },
-                title: '可搜：会话号、状态、框架、平台、类别、定位到的 case、问题背景、待沉淀 / 待复核 / 已交草稿',
+                title: '可搜：会话号、状态、框架、平台、类别、定位到的 case、本次诊断摘要、待沉淀 / 待复核 / 已交草稿',
                 style: { width: '100%', boxSizing: 'border-box', padding: '8px 30px 8px 30px', fontSize: 'var(--t-sm)', borderRadius: 'var(--r-md)', border: '1px solid var(--hair)', background: T.bg, color: T.text, transition: 'border-color var(--m-fast) var(--e-out)' },
               }),
               query ? React.createElement('button', {

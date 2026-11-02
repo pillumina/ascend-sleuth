@@ -382,7 +382,7 @@ trace 记 {action: attribution, verdict: case_error|execution_error, evidence}
 |---|---|---|
 | 会话列表（状态徽章/更新时间/计数） | 诊断入口 | 按 `updated_at` 倒序，resume 续接后置顶 |
 | 搜索框（session/状态/框架/命中 case/未闭环/待沉淀/待升格/等上游） | 诊断入口 | 会话多时快速过滤定位 |
-| 轨迹展开（summary/evidence/reason） | 诊断过程可视化 | summary=问题背景段；evidence=完整证据（inline 原文/文件引用/缺口）；reason=决策依据 |
+| 轨迹展开（summary/evidence/reason） | 诊断过程可视化 | summary=本次诊断摘要段；evidence=完整证据（inline 原文/文件引用/缺口）；reason=决策依据 |
 | 参考层标注 | 2.5 层先验知识 | `reference_lookup` 步骤带"参考层"徽章 + 使用统计 |
 | 继续诊断（指令 copy → 对话触发） | resume | 未解决会话的续接入口，与 resume skill 闭环 |
 | 沉淀此案例（指令 copy → 对话触发） | 沉淀（第 2 节） | 已解决未沉淀会话触发 to-postmortem |
