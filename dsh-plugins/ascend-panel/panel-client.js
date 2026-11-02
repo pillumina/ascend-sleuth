@@ -2399,6 +2399,10 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           + '依据：trace ' + s.sessionId + '，报告 ' + ((st && st.reportFile) || '未记录')
           + '，现场原话：' + ((latest && latest.note) || '（未填写）')
       }
+      // 样式对象必须先声明：`reportPanel` 下面的 React.createElement 是渲染期立即求值的，
+      // 一旦这一单是「已定位 / 已转交」就走了这个分支，声明若在其后就是暂时性死区
+      // （ReferenceError），整张卡片渲染抛错、诊断 tab 一片空白。
+      const inputStyle = { font: 'inherit', fontSize: 'var(--t-sm)', padding: '4px 6px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hair)', background: T.bg }
       const reportPanel = (st && (s.status === 'resolved' || s.status === 'escalated')) ? React.createElement('div', { id: 'sleu-report-editor', className: 'sleu-menu-panel', style: { display: menuOpen === 'report' ? 'flex' : 'none', flexDirection: 'column', alignItems: 'stretch', gap: 6, marginTop: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
         React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
           '现场验证来源会写入反馈结果；厂商答复只记录、不算现场解决率。'),
@@ -2423,7 +2427,6 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             React.createElement('button', { type: 'button', onClick: () => copyText(reviewInstruction()).then(ok => setRpEdit(v => ({ ...v, msg: ok ? '已复制复核指令' : '复制失败：请手动选择下面文字' }))), style: { ...btnGhost, padding: '1px 8px' } }, '复制复核指令')),
           React.createElement('code', { style: { display: 'block', userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '4px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', color: T.text } }, reviewInstruction())) : null,
       ) : null
-      const inputStyle = { font: 'inherit', fontSize: 'var(--t-sm)', padding: '4px 6px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hair)', background: T.bg }
       const fieldRow = (f) => {
         const label = { summary: '问题背景（summary）', severity: '严重级', fix_emitted: '本次给出了可执行的修复' }[f] || f
         if (f === 'summary') return React.createElement('label', { key: f, style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, label,

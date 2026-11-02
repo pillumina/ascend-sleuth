@@ -453,24 +453,66 @@ async function checkListCache(mod) {
 // 不往下渲染就永远走不到内层组件的挂载 effect（也就不发那条首屏 RPC）。渲染期异常收集在
 // renderErrors 里，由调用侧断言为空——别让内层报错被静默吞掉。
 const renderErrors = []
+// 宿主元素上的 aria-label：用来证明"数据态"的某个分支真的渲染到了（见诊断卡片那条断言）。
+const renderedLabels = new Set()
+
+// —— 极小的 hooks 运行时 ——
+// 为什么需要它：`useState` 若返回空 setter，`host.call(...).then(setState)` 的结果永远进不了渲染，
+// 卡片分支（已定位单的回报编辑器等）一次都走不到——数据态里的渲染期异常就测不出来。
+// 这里按组件函数存一份 hook 槽：setState 真改值并标记"还要再渲染一轮"，渲染循环据此重渲染，
+// 于是列表返回数据之后的那一层组件（SessionCard）也进得去。强度如实标注：不是 React 语义，
+// 只是"把数据态走一遍"的最小实现；不覆盖实例隔离、依赖数组与并发渲染。
+const hookStore = new WeakMap()
+const renderFrames = []
+let pendingUpdate = false
+
+function hookSlot(defaultValue) {
+  const frame = renderFrames[renderFrames.length - 1]
+  if (frame === undefined) return { store: null, index: -1, value: defaultValue }
+  let store = hookStore.get(frame.type)
+  if (store === undefined) { store = []; hookStore.set(frame.type, store) }
+  const index = frame.index++
+  if (!(index in store)) store[index] = defaultValue
+  return { store, index, value: store[index] }
+}
+
+function commitSlot(slot, value) {
+  if (Object.is(value, slot.value)) return
+  slot.value = value
+  if (slot.store !== null) slot.store[slot.index] = value
+  pendingUpdate = true
+}
+
 const REACT_STUB = {
   createElement(type, props, ...children) {
+    const merged = Object.assign({}, props)
+    if (children.length === 1) merged.children = children[0]
+    else if (children.length > 1) merged.children = children
     if (typeof type === 'function') {
-      const merged = Object.assign({}, props)
-      if (children.length === 1) merged.children = children[0]
-      else if (children.length > 1) merged.children = children
+      renderFrames.push({ type, index: 0 })
       try {
         return type(merged)
       } catch (e) {
         renderErrors.push(String((e && e.stack) || e).split('\n').slice(0, 2).join(' | '))
         return null
+      } finally {
+        renderFrames.pop()
       }
+    }
+    if (type !== null && typeof type === 'string' && typeof merged['aria-label'] === 'string') {
+      renderedLabels.add(merged['aria-label'])
     }
     return null
   },
   Fragment: 'Fragment',
-  useState: (value) => [value, () => {}],
-  useReducer: (reducer, initial) => [initial, () => {}],
+  useState(initial) {
+    const slot = hookSlot(typeof initial === 'function' ? initial() : initial)
+    return [slot.value, (next) => commitSlot(slot, typeof next === 'function' ? next(slot.value) : next)]
+  },
+  useReducer(reducer, initial) {
+    const slot = hookSlot(typeof initial === 'function' ? initial() : initial)
+    return [slot.value, (action) => commitSlot(slot, reducer(slot.value, action))]
+  },
   // effect 同步跑：面板取数都在挂载 effect 里，跑一次就等于"首屏真的发了那条 RPC"
   useEffect: (fn) => {
     const cleanup = fn()
@@ -480,9 +522,21 @@ const REACT_STUB = {
     const cleanup = fn()
     return typeof cleanup === 'function' ? cleanup : () => {}
   },
-  useMemo: (factory) => factory(),
-  useCallback: (fn) => fn,
-  useRef: (value) => ({ current: value }),
+  useMemo(factory) {
+    const slot = hookSlot(undefined)
+    if (slot.value === undefined) commitSlot(slot, factory())
+    return slot.value
+  },
+  useCallback(fn) {
+    const slot = hookSlot(undefined)
+    if (slot.value === undefined) commitSlot(slot, fn)
+    return slot.value
+  },
+  useRef(value) {
+    const slot = hookSlot(undefined)
+    if (slot.value === undefined) commitSlot(slot, { current: value })
+    return slot.value
+  },
   useContext: () => undefined,
   useSyncExternalStore: (subscribe, getSnapshot) => getSnapshot(),
   useId: () => 'selftest-id',
@@ -494,6 +548,19 @@ const REACT_STUB = {
   cloneElement: () => null,
   isValidElement: () => false,
   Children: { map: () => [] },
+}
+
+// 渲染到稳定：首轮渲染后取数 Promise 才回来，`setState` 会标脏；再渲染一轮就进数据态。
+// 上限防"每次渲染都 setState"的组件把测试拖死。
+async function renderSettled(component, props, rounds = 6) {
+  let out = null
+  for (let i = 0; i < rounds; i++) {
+    pendingUpdate = false
+    out = component(props)
+    for (let k = 0; k < 8; k++) await new Promise((resolve) => setImmediate(resolve))
+    if (!pendingUpdate) break
+  }
+  return out
 }
 
 // 面板 apply 时 `styles.insert(PANEL_CSS)` 会建 <style> 标签，Node 里需要最小 document
@@ -556,6 +623,21 @@ async function checkClient() {
     rpc: {
       call(channel, endpoint, payload) {
         rpcCalls.push({ channel, endpoint, payload })
+        // 列表给一条**已定位**的单：空列表时卡片分支一次都走不到，卡片内部渲染期的异常
+        // （最典型的是"先用后声明"的暂时性死区）就永远暴露不出来——真实界面里一开诊断 tab 就白屏。
+        if (endpoint === 'ascend-traces-list') {
+          return Promise.resolve({ ok: true, value: {
+            ok: true,
+            sessions: [{
+              sessionId: 'selftest-resolved',
+              file: 'selftest-resolved.yaml',
+              status: 'resolved',
+              createdAt: '2026-10-19T08:00:00Z',
+              updatedAt: '2026-10-20T08:00:00Z',
+              state: { displayTone: { color: 'var(--c-green)', accent: 'var(--acc-green)' } },
+            }],
+          } })
+        }
         return Promise.resolve({ ok: true, value: { ok: true, sessions: [] } })
       },
     },
@@ -618,7 +700,7 @@ async function checkClient() {
     const reg = registrations.find(item.find)
     let threw = null
     try {
-      if (reg !== undefined && typeof reg.component === 'function') reg.component(item.props)
+      if (reg !== undefined && typeof reg.component === 'function') await renderSettled(reg.component, item.props)
       else threw = '没找到注册项'
     } catch (e) {
       threw = String((e && e.message) || e)
@@ -629,6 +711,10 @@ async function checkClient() {
       'client 半 ' + item.label + ' 首屏经 host.call 发出 ' + item.endpoint,
       hit === undefined ? '未发出；已发出：' + JSON.stringify(rpcCalls.map(c => c.endpoint)) : JSON.stringify(hit.payload))
   }
+  // 列表给了一条已定位单：这一段只证明"数据态真的渲染进去了"（回报编辑器的下拉出现）。
+  // 若渲染在数据态里抛错（先用后声明一类），renderErrors 会有条目，下面那条断言会红。
+  check(renderedLabels.has('回报来源'), 'client 半 诊断 tab 渲染到数据态（已定位单的回报编辑器）',
+    '没有出现「回报来源」；渲染到的元素数 ' + renderedLabels.size)
   check(renderErrors.length === 0, '渲染期无异常（含被 createElement 递归调用的内层组件）',
     renderErrors.slice(0, 2).join(' ;; '))
 

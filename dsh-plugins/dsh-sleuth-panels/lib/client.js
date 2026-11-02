@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:cbcf8ef26b54)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:c75f2079a805)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:f684735469ce)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:119062e6c579)
 // 校验：`node scripts/build_panel_bundle.js --check`。
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:cbcf8ef26b54) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:c75f2079a805) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -474,7 +474,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.8.13'
+    const PANEL_VERSION = '0.8.14'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -2472,6 +2472,10 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           + '依据：trace ' + s.sessionId + '，报告 ' + ((st && st.reportFile) || '未记录')
           + '，现场原话：' + ((latest && latest.note) || '（未填写）')
       }
+      // 样式对象必须先声明：`reportPanel` 下面的 React.createElement 是渲染期立即求值的，
+      // 一旦这一单是「已定位 / 已转交」就走了这个分支，声明若在其后就是暂时性死区
+      // （ReferenceError），整张卡片渲染抛错、诊断 tab 一片空白。
+      const inputStyle = { font: 'inherit', fontSize: 'var(--t-sm)', padding: '4px 6px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hair)', background: T.bg }
       const reportPanel = (st && (s.status === 'resolved' || s.status === 'escalated')) ? React.createElement('div', { id: 'sleu-report-editor', className: 'sleu-menu-panel', style: { display: menuOpen === 'report' ? 'flex' : 'none', flexDirection: 'column', alignItems: 'stretch', gap: 6, marginTop: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
         React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
           '现场验证来源会写入反馈结果；厂商答复只记录、不算现场解决率。'),
@@ -2496,7 +2500,6 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             React.createElement('button', { type: 'button', onClick: () => copyText(reviewInstruction()).then(ok => setRpEdit(v => ({ ...v, msg: ok ? '已复制复核指令' : '复制失败：请手动选择下面文字' }))), style: { ...btnGhost, padding: '1px 8px' } }, '复制复核指令')),
           React.createElement('code', { style: { display: 'block', userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '4px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', color: T.text } }, reviewInstruction())) : null,
       ) : null
-      const inputStyle = { font: 'inherit', fontSize: 'var(--t-sm)', padding: '4px 6px', borderRadius: 'var(--r-sm)', border: '1px solid var(--hair)', background: T.bg }
       const fieldRow = (f) => {
         const label = { summary: '问题背景（summary）', severity: '严重级', fix_emitted: '本次给出了可执行的修复' }[f] || f
         if (f === 'summary') return React.createElement('label', { key: f, style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, label,
