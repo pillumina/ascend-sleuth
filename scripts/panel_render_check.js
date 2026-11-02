@@ -1862,6 +1862,174 @@ _MS._run_no_pipe = no_fallback`)
     expect('连回退也失败：verdict=broken（不可判定，不是"没事"）', B.verdict === 'broken', 'verdict=' + B.verdict)
   }
 
+  // —— 整页面板的工作区兜底（2026-11-03 实测）——
+  // 整页「指标」与侧栏「诊断记录」都不带会话上下文，host 原先取"会话列表里第一个带 cwd 的"。
+  // 机器上 DSH 默认工作区留下过一个空会话、在会话列表里排在前面，面板于是把那个空目录当仓库根
+  // （体检报 can't open file、诊断记录读不到 traces/）。这里钉住挑会话的顺序：能跑面板的优先。
+  {
+    const hostSrc = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+    const grabFn = (name) => {
+      const lines = hostSrc.split(/\r?\n/)
+      const i = lines.findIndex(l => /^    (async )?function /.test(l) && l.indexOf('function ' + name) > 0)
+      if (i < 0) return null
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j] === '    }') return lines.slice(i, j + 1).join('\n')
+      }
+      return null
+    }
+    const cwdFnSrc = ['sessionCwds', 'looksLikeSleuthRoot', 'pickCwdFromSessions'].map(grabFn).filter(Boolean).join('\n')
+    expect('能从 host 源文件抽出工作区兜底的三个函数',
+      /function sessionCwds/.test(cwdFnSrc) && /function looksLikeSleuthRoot/.test(cwdFnSrc)
+      && /function pickCwdFromSessions/.test(cwdFnSrc))
+
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sleu-cwd-'))
+    try {
+      // 两条判据各建一个夹具（叠在同一个目录上时，其中一条坏掉仍会绿）：
+      //   byScript → 有 scripts/metrics_health.py、没有 knowledge/
+      //   byKnowledge → 有 knowledge/、没有 scripts/
+      const byScript = path.join(tmpRoot, 'by-script')
+      const byKnowledge = path.join(tmpRoot, 'by-knowledge')
+      const scriptsOnly = path.join(tmpRoot, 'scripts-without-entry')
+      const emptyLike = path.join(tmpRoot, 'empty-workspace')
+      fs.mkdirSync(path.join(byScript, 'scripts'), { recursive: true })
+      fs.writeFileSync(path.join(byScript, 'scripts', 'metrics_health.py'), '')
+      fs.mkdirSync(path.join(byKnowledge, 'knowledge'), { recursive: true })
+      // 有 scripts/ 但没有体检入口：判据要查到文件，不能退化成"目录存在"
+      fs.mkdirSync(path.join(scriptsOnly, 'scripts'), { recursive: true })
+      fs.mkdirSync(emptyLike, { recursive: true })
+      const fsStub = {
+        resolve: async (rel, opts) => path.resolve(opts.cwd, rel),
+        listDir: async (p) => fs.readdirSync(p, { withFileTypes: true })
+          .map(d => ({ name: d.name, type: d.isDirectory() ? 'directory' : 'file' })),
+      }
+      const sessionsStub = (cwds, directCwd) => ({
+        list: () => cwds.map(cwd => ({ header: { cwd } })),
+        get: () => (directCwd ? { header: { cwd: directCwd } } : null),
+      })
+      const buildCwd = async (fsArg, sessionsArg) => {
+        const factory = new Function('fs', 'sessions',
+          'return (async () => {\n' + cwdFnSrc + '\nreturn { pickCwdFromSessions }\n})()')
+        return await factory(fsArg, sessionsArg)
+      }
+
+      // ① 列表里空工作区排在前面：必须挑能跑面板的那个（事故形状）
+      {
+        const mod = await buildCwd(fsStub, sessionsStub([emptyLike, byScript]))
+        const picked = await mod.pickCwdFromSessions()
+        expect('兜底挑能跑面板的会话（空工作区排在前面也不选它）', picked === byScript, String(picked))
+      }
+      // ② 只有数据面（knowledge/）不算能跑面板：体检入口不在，选中它仍会报脚本不存在
+      {
+        const mod = await buildCwd(fsStub, sessionsStub([emptyLike, byKnowledge]))
+        const picked = await mod.pickCwdFromSessions()
+        expect('只有 knowledge/ 没有 scripts/ 的目录不算能跑面板', picked === emptyLike, String(picked))
+      }
+      // ③ 有 scripts/ 但缺体检入口的目录不算能跑面板（判据钉到文件，不是目录）
+      {
+        const mod = await buildCwd(fsStub, sessionsStub([scriptsOnly, byScript]))
+        const picked = await mod.pickCwdFromSessions()
+        expect('缺 scripts/metrics_health.py 的目录不算能跑面板', picked === byScript, String(picked))
+      }
+      // ④ 有 sessionId：本会话的工作目录优先（整页之外的调用点走这条分支）
+      {
+        const mod = await buildCwd(fsStub, sessionsStub([emptyLike], byScript))
+        const picked = await mod.pickCwdFromSessions('sess-1')
+        expect('带会话上下文时用本会话的工作目录', picked === byScript, String(picked))
+      }
+      // ⑤ 只有空工作区：没有更好的选择时退回第一个，而不是返回 undefined
+      {
+        const mod = await buildCwd(fsStub, sessionsStub([emptyLike]))
+        const picked = await mod.pickCwdFromSessions()
+        expect('列表里没有能跑面板的会话：退回第一个带 cwd 的（不返回 undefined）', picked === emptyLike, String(picked))
+      }
+      // ⑥ fs 服务缺席：退回第一个带 cwd 的（与改动前一致，不因缺服务抛异常）
+      {
+        const mod = await buildCwd(undefined, sessionsStub([emptyLike, byScript]))
+        const picked = await mod.pickCwdFromSessions()
+        expect('fs 服务缺席：退回第一个带 cwd 的且不抛异常', picked === emptyLike, String(picked))
+      }
+      // ⑦ 没有会话服务：返回 undefined，由调用点如实报"拿不到会话工作区"
+      {
+        const mod = await buildCwd(fsStub, undefined)
+        const picked = await mod.pickCwdFromSessions()
+        expect('没有会话服务：返回 undefined（不猜目录）', picked === undefined, String(picked))
+      }
+    } finally {
+      fs.rmSync(tmpRoot, { recursive: true, force: true })
+    }
+  }
+
+  // —— 整页面板的工作区兜底（自演进页）——
+  // 与「指标」同一事故：自演进页也不带会话上下文，ev-panel 原先同样取"列表里第一个带 cwd 的"。
+  // 判据是 `scripts/ev_board_data.py`（它的数据脚本），fs 只用来挑会话。
+  {
+    const hostSrc = fs.readFileSync(path.join(repo, 'dsh-plugins/ev-panel/panel-host.js'), 'utf8')
+    const grabFn = (name) => {
+      const lines = hostSrc.split(/\r?\n/)
+      const i = lines.findIndex(l => /^    (async )?function /.test(l) && l.indexOf('function ' + name) > 0)
+      if (i < 0) return null
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j] === '    }') return lines.slice(i, j + 1).join('\n')
+      }
+      return null
+    }
+    const evFnSrc = ['sessionCwds', 'looksLikeBoardRoot', 'resolveCwd'].map(grabFn).filter(Boolean).join('\n')
+    expect('能从 ev-panel host 源文件抽出 sessionCwds / looksLikeBoardRoot / resolveCwd',
+      /function sessionCwds/.test(evFnSrc) && /function looksLikeBoardRoot/.test(evFnSrc)
+      && /function resolveCwd/.test(evFnSrc))
+
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'sleu-ev-cwd-'))
+    try {
+      const boardRoot = path.join(tmpRoot, 'board-root')
+      const scriptsOnly = path.join(tmpRoot, 'scripts-without-board-script')
+      const emptyLike = path.join(tmpRoot, 'empty-workspace')
+      fs.mkdirSync(path.join(boardRoot, 'scripts'), { recursive: true })
+      fs.writeFileSync(path.join(boardRoot, 'scripts', 'ev_board_data.py'), '')
+      fs.mkdirSync(path.join(scriptsOnly, 'scripts'), { recursive: true })
+      fs.mkdirSync(emptyLike, { recursive: true })
+      const fsStub = {
+        resolve: async (rel, opts) => path.resolve(opts.cwd, rel),
+        listDir: async (p) => fs.readdirSync(p, { withFileTypes: true })
+          .map(d => ({ name: d.name, type: d.isDirectory() ? 'directory' : 'file' })),
+      }
+      const sessionsStub = (cwds, directCwd) => ({
+        list: () => cwds.map(cwd => ({ header: { cwd } })),
+        get: () => (directCwd ? { header: { cwd: directCwd } } : null),
+      })
+      const buildEvCwd = async (fsArg, sessionsArg) => {
+        const factory = new Function('fsSvc', 'sessions',
+          'return (async () => {\n' + evFnSrc + '\nreturn { resolveCwd }\n})()')
+        return await factory(fsArg, sessionsArg)
+      }
+      // ① 空工作区排在前面：挑能跑看板的那个
+      {
+        const mod = await buildEvCwd(fsStub, sessionsStub([emptyLike, boardRoot]))
+        expect('自演进页：挑有 scripts/ev_board_data.py 的会话', (await mod.resolveCwd(null)) === boardRoot,
+          String(await mod.resolveCwd(null)))
+      }
+      // ② 有 scripts/ 但缺 ev_board_data.py 的目录不算能跑看板
+      {
+        const mod = await buildEvCwd(fsStub, sessionsStub([scriptsOnly, boardRoot]))
+        expect('自演进页：缺 scripts/ev_board_data.py 的目录不算能跑看板',
+          (await mod.resolveCwd(null)) === boardRoot, String(await mod.resolveCwd(null)))
+      }
+      // ③ 没有可用会话：退回第一个带 cwd 的
+      {
+        const mod = await buildEvCwd(fsStub, sessionsStub([emptyLike]))
+        expect('自演进页：没有可用会话时退回第一个带 cwd 的', (await mod.resolveCwd(null)) === emptyLike,
+          String(await mod.resolveCwd(null)))
+      }
+      // ④ fs 服务缺席：退回第一个带 cwd 的（不被 fs 缺席卡死）
+      {
+        const mod = await buildEvCwd(undefined, sessionsStub([emptyLike, boardRoot]))
+        expect('自演进页：fs 服务缺席时退回第一个带 cwd 的', (await mod.resolveCwd(null)) === emptyLike,
+          String(await mod.resolveCwd(null)))
+      }
+    } finally {
+      fs.rmSync(tmpRoot, { recursive: true, force: true })
+    }
+  }
+
   // —— 排版契约（2026-09 六轮）——
   // 用户反馈"字体小、看着累"。实测原状：字号有 9 档却只差 3.5px（9.5→13）、正文 11–12px、
   // 中文 line-height 只有 1.5。这几条断言把"字体栈走 token、字号有尺度、中文行高够松"钉住，
@@ -3769,11 +3937,11 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
     }
     expect('能从 ev-panel host 源文件抽出 resolveCwd / resolvePython / runScript',
       !!grabEv('resolveCwd') && !!grabEv('resolvePython') && !!grabEv('runScript'))
-    const evFnSrc = [grabEv('resolveCwd'), 'let pythonCmd', grabEv('looksLikeSpawnFailure'), grabEv('policyNote'), grabEv('readPolicy'), grabEv('resolvePython'), grabEv('runScript')].join('\n')
-    const buildEv = async (shell, sessions, sandboxPolicySvc) => {
-      const factory = new Function('shell', 'sessions', 'sandboxPolicySvc',
+    const evFnSrc = [grabEv('sessionCwds'), grabEv('looksLikeBoardRoot'), grabEv('resolveCwd'), 'let pythonCmd', grabEv('looksLikeSpawnFailure'), grabEv('policyNote'), grabEv('readPolicy'), grabEv('resolvePython'), grabEv('runScript')].join('\n')
+    const buildEv = async (shell, sessions, sandboxPolicySvc, fsSvc) => {
+      const factory = new Function('shell', 'sessions', 'sandboxPolicySvc', 'fsSvc',
         'return (async () => {\n' + evFnSrc + '\nreturn { runScript }\n})()')
-      return await factory(shell, sessions, sandboxPolicySvc)
+      return await factory(shell, sessions, sandboxPolicySvc, fsSvc)
     }
     const SESS = { get: () => ({ header: { cwd: 'E:/projects/ascend-sleuth' } }) }
     const okShell = (runImpl) => ({ resolve: (x) => x, run: runImpl })
@@ -3855,7 +4023,8 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
   // ================= 面板 host 服务缺失 · 只降级依赖它的功能 =================
   // 为什么单开一节：两个 host 原先都在 apply() 第一行写 `if (fs === undefined) return`——
   // **fs 一缺席，整个插件什么都不注册**（RPC 全没、tab 点开即死）。而 ev-panel 的 host
-  // 根本不用 fs（数据全由 shell 跑脚本产出），ascend-panel 的指标 tab 那两项也不用 fs
+  // 不拿 fs 读数据文件（数据全由 shell 跑脚本产出；fs 只用于挑会话，缺席会优雅退化），
+  // ascend-panel 的指标 tab 那两项也不用 fs
   // （`loadMetricsVerdict` / `runLiveMetrics` 全程无 fs 调用，已按函数逐段核对）。
   // 失败形态是"挂载了却什么都没贡献"：面板不报错，只是什么都没发生——最难查的一类。
   console.log('\n[面板 host 服务缺失 · 只降级依赖它的功能]')
@@ -3881,7 +4050,7 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
     }
     const NO_SVC = { fs: undefined, shell: undefined, sessions: undefined }
 
-    // ① ev-panel：fs 缺失时照样注册（它不用 fs），退化逐调用发生在 session/shell 侧
+    // ① ev-panel：fs 缺失时照样注册（fs 只用来挑会话，不读数据文件），退化逐调用发生在 session/shell 侧
     {
       const evSrc = loadHost('dsh-plugins/ev-panel/panel-host.js')
       const d = driveHost(evSrc, NO_SVC)
@@ -3892,7 +4061,8 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       const r = await d.regs['ev-board-load']({})
       expect('ev-panel：fs 缺失时调用给出明确错误而非静默成功',
         r && r.ok === false && /无法解析工作区/.test(r.error), String(r && r.error).slice(0, 90))
-      expect('ev-panel：代码里无 fs 调用（守卫本就不该存在，防被照抄回来）', !/\bfs\./.test(codeOf(evSrc)))
+      expect('ev-panel：fs 只用于挑会话，不读写数据文件（不拿它数据面上岗）',
+        !/(readText|writeText|readFile|writeFile|appendText)/.test(codeOf(evSrc)))
       expect('ev-panel：代码里无「fs 缺失就整插件 return」', !/if \(fs === undefined\) return/.test(codeOf(evSrc)))
     }
 

@@ -345,7 +345,8 @@ node scripts/panel_install.js --remove   # 卸载
   **不是新诊断开屏的必查项**——新问题的第一屏只服务新问题）。
   `harness.registerTool` 在名字已被占用时**同步抛错**——曾因此让整个 `apply()` 中断、面板完全加载不上。
   现在改为 try/catch 告警：同名工具仍可用（占用者通常是上次会话遗留的同类插件），面板其余功能照常。
-- 工作区：ascend-sleuth 仓库（Host 从 session.header.cwd 解析）。
+- 工作区：ascend-sleuth 仓库（Host 先看 `session.header.cwd`；读不出或那个目录不是本仓检出时，
+  按会话列表挑一个有 `scripts/metrics_health.py` 的）。
 
 ## 功能
 
@@ -465,6 +466,14 @@ node scripts/panel_install.js --remove   # 卸载
   「只查上游」一节，读法在那里有权威定义），批量入口一次生成**一条**指令而不是每单一条。
 
 ## 版本
+
+- 2026-11-03 · 整页「指标」与侧栏「诊断记录」取错工作区。两处入口都不带会话上下文，host 退到
+  "会话列表里第一个带 cwd 的"；DSH 默认工作区留下过一个空会话、在列表里排在前面。
+  面板于是把那个空目录当仓库根：体检报 `can't open file '.../scripts/metrics_health.py'`（exit 2），
+  诊断记录读不到 `traces/`、显示空。
+  现在兜底先挑有 `scripts/metrics_health.py` 的会话（体检入口在，这一页才跑得起来），挑不到才退回
+  第一个；`ascend_trace_status` 工具走同一条兜底。ev-panel 的 `resolveCwd` 同步改（判据换成
+  `scripts/ev_board_data.py`），它的 fs 现在只用来挑会话。面板包 0.8.19 → 0.8.20。
 
 - 2026-11-03 · 每步耗时与按工具拆开的口径修正（只改展示层，host 早已带出这些字段）：
   ① 收尾段被截断（轨迹没写 `ended_at`）的步画虚线标「未记」，从合计与标尺里剔除，合计后注明

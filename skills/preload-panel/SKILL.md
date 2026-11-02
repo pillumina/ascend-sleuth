@@ -297,7 +297,8 @@ node scripts/panel_install.js --spec "<仓库绝对路径>/dsh-plugins/dsh-sleut
 面板 host 已做优雅退化（自演进 JSON 不截断、无 `traces/` 显示空态、缺 PyYAML 给提示），
 装载前跑一次预检，把"依赖缺失"改成主动告知：
 
-- **通用**：确认会话工作区是 ascend-sleuth 仓库（Host 从 `session.header.cwd` 解析数据目录）。
+- **通用**：确认会话工作区是 ascend-sleuth 仓库（Host 先从 `session.header.cwd` 解析数据目录；
+  拿不到、或那个目录不是本仓检出时，按会话列表挑一个有 `scripts/metrics_health.py` 的）。
 - **自演进看板**：确认 Python 3 + PyYAML 可用。面板 host 自动探测解释器
   （`python3` → `python` → `py -3`，取第一个能打印 Python 3.x 的；Windows 上 `python3` 常是应用商店
   的空壳，不打印任何东西）：
@@ -331,7 +332,8 @@ node scripts/panel_install.js --spec "<仓库绝对路径>/dsh-plugins/dsh-sleut
   `plugin_manager` 工具；桌面版命令行另需安装目录下的 `dsh` / `dsh.cmd`（不在 PATH 上，用绝对路径；
   有的发行版不带，走插件页粘贴）；HTTP 脚本安装另需日志里有 `dsh web:` 行，或能传 `--url` / `--token`；
   插件页粘贴另需用户能操作侧栏「插件」页并刷新页面。
-- 工作区为 ascend-sleuth 仓库（Host 从 `session.header.cwd` 解析数据目录）。
+- 工作区为 ascend-sleuth 仓库（Host 先从 `session.header.cwd` 解析数据目录；拿不到、或那个目录不是
+  本仓检出时，按会话列表挑一个有 `scripts/metrics_health.py` 的）。
 - Host 服务：`fs` / `sessions` / `shell` / `connection`。
 - **自演进看板**：Python 3 + PyYAML，两个脚本 `scripts/ev_board_data.py`（卡库/触及面/现场聚合）与
   `scripts/evolution_health.py --json`（体检判决，判据在 `proposals/gates.yaml`）。判决是一次独立
