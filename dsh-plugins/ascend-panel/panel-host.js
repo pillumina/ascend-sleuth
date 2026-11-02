@@ -51,26 +51,53 @@ return {
     // 兜底理由（2026-09-11 实测）：`sessions.get(sessionId)` 可能拿不到 header.cwd（会话标识形态变化、
     // 或面板 tab 所在会话与数据所在检出不是同一个），此时返回 undefined 会让 shell 命令在**别的目录**
     // 下执行——`python scripts/metrics_health.py` 于是找不到文件，只在面板上留下一截截断的 traceback。
-    // 所以退一步：扫一遍已知会话，取第一个带 cwd 的（`ascend_trace_status` 工具一直这么做）。
-    function pickCwdFromSessions() {
-      if (!sessions || typeof sessions.list !== 'function') return undefined
+    // 所以退一步扫一遍已知会话。
+    //
+    // **不能取"列表里第一个带 cwd 的"**（2026-11-03 实测）：同一台机器上还有别的工作区，DSH 默认工作区
+    // 留下过一个空会话、在会话列表里排在前面——取第一个会把面板钉到那个空目录，表现为「诊断记录为空」
+    // 与「体检脚本 can't open file」（整页面板与侧边栏入口都不带会话上下文，全走这条兜底）。
+    // 现在的顺序：本会话 cwd（能跑面板就先用它）→ 会话列表里第一个能跑面板的 → 本会话 cwd → 列表第一个。
+    function sessionCwds() {
+      if (!sessions || typeof sessions.list !== 'function') return []
       try {
-        const all = sessions.list() || []
-        for (const s of all) {
-          if (s && s.header && s.header.cwd) return s.header.cwd
+        const out = []
+        for (const s of sessions.list() || []) {
+          const c = s && s.header && s.header.cwd ? String(s.header.cwd) : ''
+          if (c && out.indexOf(c) < 0) out.push(c)
         }
+        return out
       } catch (e) {
-        return undefined
+        return []
       }
-      return undefined
     }
-    function rawCwdOf(sessionId) {
+    // 能不能跑面板就看 `scripts/metrics_health.py`：它是「指标」页体检的入口，缺了这页就报脚本不存在。
+    // 不拿 `knowledge/`、`traces/` 当判据——只有数据面的目录排在完整检出前面时，仍会把面板钉到
+    // 一个跑不了体检的目录（`traces/` 还是 gitignore 的，新检出本来就没有）。
+    async function looksLikeSleuthRoot(dir) {
+      if (!fs || !dir) return false
+      try {
+        const entries = (await fs.listDir(await fs.resolve('scripts', { cwd: dir }))) || []
+        return entries.some(e => e && e.name === 'metrics_health.py')
+      } catch (e) {
+        return false
+      }
+    }
+    async function pickCwdFromSessions(sessionId) {
+      let direct
       if (sessions && sessionId) {
         let s = null
         try { s = sessions.get(sessionId) } catch (e) { s = null }
-        if (s && s.header && s.header.cwd) return s.header.cwd
+        if (s && s.header && s.header.cwd) direct = String(s.header.cwd)
       }
-      return pickCwdFromSessions()
+      if (direct && await looksLikeSleuthRoot(direct)) return direct
+      const list = sessionCwds()
+      for (const c of list) {
+        if (c !== direct && await looksLikeSleuthRoot(c)) return c
+      }
+      return direct || (list.length ? list[0] : undefined)
+    }
+    async function rawCwdOf(sessionId) {
+      return pickCwdFromSessions(sessionId)
     }
 
     // 只读脚本的沙箱档位 = 本会话自己选的那一档（完全权限 / 工作区写 / 只读）。
@@ -180,11 +207,11 @@ return {
     //
     // 会话工作目录（进 git 的读取）。
     async function resolveRepoCwd(sessionId) {
-      return rawCwdOf(sessionId)
+      return await rawCwdOf(sessionId)
     }
     // 运行时件的工作目录 → 主检出（解析不出就退回会话原 cwd，不猜）。
     async function resolveCwd(sessionId) {
-      const raw = rawCwdOf(sessionId)
+      const raw = await rawCwdOf(sessionId)
       if (!raw) return raw
       const main = await mainCheckoutOf(raw)
       return main || raw
@@ -2451,7 +2478,7 @@ return {
       parameters: {
         type: 'object',
         properties: {
-          cwd: { type: 'string', description: 'ascend-sleuth 仓库路径（含 traces/ 目录）；默认当前 session 的工作目录' },
+          cwd: { type: 'string', description: 'ascend-sleuth 仓库路径（含 traces/ 目录）；不传时先看本会话的工作目录，它读不出或不是本仓检出时再按会话列表挑一个能跑面板的' },
         },
       },
       output: {
@@ -2508,7 +2535,7 @@ return {
       },
       async execute(args) {
         let cwd = args && args.cwd ? String(args.cwd) : undefined
-        if (!cwd) cwd = pickCwdFromSessions()
+        if (!cwd) cwd = await pickCwdFromSessions()
         const r = await listTraces(cwd)
         if (!r.ok) return { error: r.error }
         return {

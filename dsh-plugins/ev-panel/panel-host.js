@@ -3,37 +3,61 @@
 // host 侧通过 shell 跑 scripts/ev_board_data.py 汇总 JSON（确定性逻辑在脚本，遵循原则二）。
 return {
   apply(ctx) {
-    // **刻意没有 fs 守卫**：本插件的 host 从不读写文件——数据全由 `shell` 跑 Python 脚本产出
+    // **没有 fs 守卫**：本插件不读数据文件——数据全由 `shell` 跑 Python 脚本产出
     // （`ev_board_data.py` / `evolution_health.py`）。原先照抄 ascend-panel 写的是
     // `const fs = ctx.get('fs'); if (fs === undefined) return`，后果是 fs 服务缺席时
-    // **整个插件什么都不注册**（两个 RPC 全没、tab 点开即死），而它一个 fs 调用都没有——
-    // "挂载了却什么都没贡献"是最难查的失败形态。
-    // 现在的退化是**逐调用**的：`shell` 缺 → runScript 返回「shell 不可用」；工作区缺 →
+    // **整个插件什么都不注册**（两个 RPC 全没、tab 点开即死）。fs 现在只用来挑会话（见下），
+    // 缺席就退回"会话列表第一个带 cwd 的"，不影响注册与数据读取。
+    // 退化是**逐调用**的：`shell` 缺 → runScript 返回「shell 不可用」；工作区缺 →
     // 「无法解析工作区」。两者都有断言（panel_render_check 的 `[ev-panel host 失败路径]` 一节）。
     const sessions = ctx.get('sessions')
     const shell = ctx.get('shell')
     // 会话的沙箱档位（显式授予 > 会话最后一条 sandbox/mode 事件 > 部署默认）。服务缺席时
     // readPolicy 返回 undefined，调用点把策略省掉、交回 shell 默认，行为与改动前一致。
     const sandboxPolicySvc = ctx.get('sandboxPolicy')
+    // 仅用于**挑会话**：整页面板没有会话上下文时要判断哪个会话的工作目录能跑数据脚本
+    // （列一次 `scripts/` 看有没有 `ev_board_data.py`）。看板的数据文件仍然只经 shell 由 Python 读，
+    // 本插件不读任何数据文件——fs 缺席时退回"会话列表第一个带 cwd 的"，与改动前一致。
+    const fsSvc = ctx.get('fs')
 
-    function resolveCwd(sessionId) {
-      if (sessions && sessionId) {
-        const s = sessions.get(sessionId)
-        if (s && s.header && s.header.cwd) return s.header.cwd
-      }
-      // 整页面板没有会话上下文（sessionId 为空）：退到"第一个带 cwd 的会话"。
-      // 与 ascend-panel 的 pickCwdFromSessions 同一判据——面板读的是仓库，不是某一单；
-      // 不退这一步的后果是整页「指标 / 自演进」直接报「无法解析工作区」（实测）。
-      if (sessions && typeof sessions.list === 'function') {
-        try {
-          for (const s of sessions.list() || []) {
-            if (s && s.header && s.header.cwd) return s.header.cwd
-          }
-        } catch (e) {
-          return undefined
+    function sessionCwds() {
+      if (!sessions || typeof sessions.list !== 'function') return []
+      try {
+        const out = []
+        for (const s of sessions.list() || []) {
+          const c = s && s.header && s.header.cwd ? String(s.header.cwd) : ''
+          if (c && out.indexOf(c) < 0) out.push(c)
         }
+        return out
+      } catch (e) {
+        return []
       }
-      return undefined
+    }
+    async function looksLikeBoardRoot(dir) {
+      if (!fsSvc || !dir) return false
+      try {
+        const entries = (await fsSvc.listDir(await fsSvc.resolve('scripts', { cwd: dir }))) || []
+        return entries.some(e => e && e.name === 'ev_board_data.py')
+      } catch (e) {
+        return false
+      }
+    }
+    async function resolveCwd(sessionId) {
+      let direct
+      if (sessions && sessionId) {
+        let s = null
+        try { s = sessions.get(sessionId) } catch (e) { s = null }
+        if (s && s.header && s.header.cwd) direct = String(s.header.cwd)
+      }
+      if (direct && await looksLikeBoardRoot(direct)) return direct
+      // 整页面板没有会话上下文（sessionId 为空）→ 退到"会话列表里能跑看板的那一个"。
+      // **不能取第一个带 cwd 的**：DSH 默认工作区留下过一个空会话、在会话列表里排在前面，取第一个
+      // 会把脚本路径算到那个空目录（2026-11-03 实测：`python3 scripts/ev_board_data.py` 报 can't open file）。
+      const list = sessionCwds()
+      for (const c of list) {
+        if (c !== direct && await looksLikeBoardRoot(c)) return c
+      }
+      return direct || (list.length ? list[0] : undefined)
     }
 
     // 只读脚本的沙箱档位 = 本会话自己选的那一档。**刻意与 ascend-panel 重复**（同 resolvePython）：
@@ -125,7 +149,7 @@ return {
     }
 
     async function runScript(sessionId, scriptName, extraArgs) {
-      const cwd = resolveCwd(sessionId)
+      const cwd = await resolveCwd(sessionId)
       if (!cwd) return { ok: false, error: '无法解析工作区' }
       if (!shell) return { ok: false, error: 'shell 不可用' }
       const policy = readPolicy(sessionId)
@@ -227,13 +251,13 @@ return {
 
     const handleDisposer = harness.handle('ev-board-load', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
-      return cached('board|' + (resolveCwd(sessionId) || '?'), !!(args && args.refresh === true),
+      return cached('board|' + (await resolveCwd(sessionId) || '?'), !!(args && args.refresh === true),
         () => loadBoard(sessionId))
     })
 
     const healthDisposer = harness.handle('ev-health-load', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
-      return cached('health|' + (resolveCwd(sessionId) || '?'), !!(args && args.refresh === true),
+      return cached('health|' + (await resolveCwd(sessionId) || '?'), !!(args && args.refresh === true),
         () => loadHealth(sessionId))
     })
 

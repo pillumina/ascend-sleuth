@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:513ad415e98b)
-//   dsh-plugins/ev-panel/panel-host.js  (sha256:d2bbdff3921b)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:97f009983765)
+//   dsh-plugins/ev-panel/panel-host.js  (sha256:dcef157b7468)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
 // 面板源码是动态插件方言（文件是函数体，靠沙箱提供的 harness 通信）；这里原文嵌入常驻
@@ -105,7 +105,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:513ad415e98b) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:97f009983765) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -159,26 +159,53 @@ return {
     // 兜底理由（2026-09-11 实测）：`sessions.get(sessionId)` 可能拿不到 header.cwd（会话标识形态变化、
     // 或面板 tab 所在会话与数据所在检出不是同一个），此时返回 undefined 会让 shell 命令在**别的目录**
     // 下执行——`python scripts/metrics_health.py` 于是找不到文件，只在面板上留下一截截断的 traceback。
-    // 所以退一步：扫一遍已知会话，取第一个带 cwd 的（`ascend_trace_status` 工具一直这么做）。
-    function pickCwdFromSessions() {
-      if (!sessions || typeof sessions.list !== 'function') return undefined
+    // 所以退一步扫一遍已知会话。
+    //
+    // **不能取"列表里第一个带 cwd 的"**（2026-11-03 实测）：同一台机器上还有别的工作区，DSH 默认工作区
+    // 留下过一个空会话、在会话列表里排在前面——取第一个会把面板钉到那个空目录，表现为「诊断记录为空」
+    // 与「体检脚本 can't open file」（整页面板与侧边栏入口都不带会话上下文，全走这条兜底）。
+    // 现在的顺序：本会话 cwd（能跑面板就先用它）→ 会话列表里第一个能跑面板的 → 本会话 cwd → 列表第一个。
+    function sessionCwds() {
+      if (!sessions || typeof sessions.list !== 'function') return []
       try {
-        const all = sessions.list() || []
-        for (const s of all) {
-          if (s && s.header && s.header.cwd) return s.header.cwd
+        const out = []
+        for (const s of sessions.list() || []) {
+          const c = s && s.header && s.header.cwd ? String(s.header.cwd) : ''
+          if (c && out.indexOf(c) < 0) out.push(c)
         }
+        return out
       } catch (e) {
-        return undefined
+        return []
       }
-      return undefined
     }
-    function rawCwdOf(sessionId) {
+    // 能不能跑面板就看 `scripts/metrics_health.py`：它是「指标」页体检的入口，缺了这页就报脚本不存在。
+    // 不拿 `knowledge/`、`traces/` 当判据——只有数据面的目录排在完整检出前面时，仍会把面板钉到
+    // 一个跑不了体检的目录（`traces/` 还是 gitignore 的，新检出本来就没有）。
+    async function looksLikeSleuthRoot(dir) {
+      if (!fs || !dir) return false
+      try {
+        const entries = (await fs.listDir(await fs.resolve('scripts', { cwd: dir }))) || []
+        return entries.some(e => e && e.name === 'metrics_health.py')
+      } catch (e) {
+        return false
+      }
+    }
+    async function pickCwdFromSessions(sessionId) {
+      let direct
       if (sessions && sessionId) {
         let s = null
         try { s = sessions.get(sessionId) } catch (e) { s = null }
-        if (s && s.header && s.header.cwd) return s.header.cwd
+        if (s && s.header && s.header.cwd) direct = String(s.header.cwd)
       }
-      return pickCwdFromSessions()
+      if (direct && await looksLikeSleuthRoot(direct)) return direct
+      const list = sessionCwds()
+      for (const c of list) {
+        if (c !== direct && await looksLikeSleuthRoot(c)) return c
+      }
+      return direct || (list.length ? list[0] : undefined)
+    }
+    async function rawCwdOf(sessionId) {
+      return pickCwdFromSessions(sessionId)
     }
 
     // 只读脚本的沙箱档位 = 本会话自己选的那一档（完全权限 / 工作区写 / 只读）。
@@ -288,11 +315,11 @@ return {
     //
     // 会话工作目录（进 git 的读取）。
     async function resolveRepoCwd(sessionId) {
-      return rawCwdOf(sessionId)
+      return await rawCwdOf(sessionId)
     }
     // 运行时件的工作目录 → 主检出（解析不出就退回会话原 cwd，不猜）。
     async function resolveCwd(sessionId) {
-      const raw = rawCwdOf(sessionId)
+      const raw = await rawCwdOf(sessionId)
       if (!raw) return raw
       const main = await mainCheckoutOf(raw)
       return main || raw
@@ -2559,7 +2586,7 @@ return {
       parameters: {
         type: 'object',
         properties: {
-          cwd: { type: 'string', description: 'ascend-sleuth 仓库路径（含 traces/ 目录）；默认当前 session 的工作目录' },
+          cwd: { type: 'string', description: 'ascend-sleuth 仓库路径（含 traces/ 目录）；不传时先看本会话的工作目录，它读不出或不是本仓检出时再按会话列表挑一个能跑面板的' },
         },
       },
       output: {
@@ -2616,7 +2643,7 @@ return {
       },
       async execute(args) {
         let cwd = args && args.cwd ? String(args.cwd) : undefined
-        if (!cwd) cwd = pickCwdFromSessions()
+        if (!cwd) cwd = await pickCwdFromSessions()
         const r = await listTraces(cwd)
         if (!r.ok) return { error: r.error }
         return {
@@ -2931,43 +2958,67 @@ return {
     id: 'ev-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ev-panel/panel-host.js (sha256:d2bbdff3921b) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-host.js (sha256:dcef157b7468) 原文开始 ----
 // ev-panel host —— 自演进看板数据服务（EV 卡 / 容量 / 归因聚合 / timeline）
 // 用法：cordis_define kind:new → code.host 用本文件全文；code.client 用 panel-client.js 全文。
 // host 侧通过 shell 跑 scripts/ev_board_data.py 汇总 JSON（确定性逻辑在脚本，遵循原则二）。
 return {
   apply(ctx) {
-    // **刻意没有 fs 守卫**：本插件的 host 从不读写文件——数据全由 `shell` 跑 Python 脚本产出
+    // **没有 fs 守卫**：本插件不读数据文件——数据全由 `shell` 跑 Python 脚本产出
     // （`ev_board_data.py` / `evolution_health.py`）。原先照抄 ascend-panel 写的是
     // `const fs = ctx.get('fs'); if (fs === undefined) return`，后果是 fs 服务缺席时
-    // **整个插件什么都不注册**（两个 RPC 全没、tab 点开即死），而它一个 fs 调用都没有——
-    // "挂载了却什么都没贡献"是最难查的失败形态。
-    // 现在的退化是**逐调用**的：`shell` 缺 → runScript 返回「shell 不可用」；工作区缺 →
+    // **整个插件什么都不注册**（两个 RPC 全没、tab 点开即死）。fs 现在只用来挑会话（见下），
+    // 缺席就退回"会话列表第一个带 cwd 的"，不影响注册与数据读取。
+    // 退化是**逐调用**的：`shell` 缺 → runScript 返回「shell 不可用」；工作区缺 →
     // 「无法解析工作区」。两者都有断言（panel_render_check 的 `[ev-panel host 失败路径]` 一节）。
     const sessions = ctx.get('sessions')
     const shell = ctx.get('shell')
     // 会话的沙箱档位（显式授予 > 会话最后一条 sandbox/mode 事件 > 部署默认）。服务缺席时
     // readPolicy 返回 undefined，调用点把策略省掉、交回 shell 默认，行为与改动前一致。
     const sandboxPolicySvc = ctx.get('sandboxPolicy')
+    // 仅用于**挑会话**：整页面板没有会话上下文时要判断哪个会话的工作目录能跑数据脚本
+    // （列一次 `scripts/` 看有没有 `ev_board_data.py`）。看板的数据文件仍然只经 shell 由 Python 读，
+    // 本插件不读任何数据文件——fs 缺席时退回"会话列表第一个带 cwd 的"，与改动前一致。
+    const fsSvc = ctx.get('fs')
 
-    function resolveCwd(sessionId) {
-      if (sessions && sessionId) {
-        const s = sessions.get(sessionId)
-        if (s && s.header && s.header.cwd) return s.header.cwd
-      }
-      // 整页面板没有会话上下文（sessionId 为空）：退到"第一个带 cwd 的会话"。
-      // 与 ascend-panel 的 pickCwdFromSessions 同一判据——面板读的是仓库，不是某一单；
-      // 不退这一步的后果是整页「指标 / 自演进」直接报「无法解析工作区」（实测）。
-      if (sessions && typeof sessions.list === 'function') {
-        try {
-          for (const s of sessions.list() || []) {
-            if (s && s.header && s.header.cwd) return s.header.cwd
-          }
-        } catch (e) {
-          return undefined
+    function sessionCwds() {
+      if (!sessions || typeof sessions.list !== 'function') return []
+      try {
+        const out = []
+        for (const s of sessions.list() || []) {
+          const c = s && s.header && s.header.cwd ? String(s.header.cwd) : ''
+          if (c && out.indexOf(c) < 0) out.push(c)
         }
+        return out
+      } catch (e) {
+        return []
       }
-      return undefined
+    }
+    async function looksLikeBoardRoot(dir) {
+      if (!fsSvc || !dir) return false
+      try {
+        const entries = (await fsSvc.listDir(await fsSvc.resolve('scripts', { cwd: dir }))) || []
+        return entries.some(e => e && e.name === 'ev_board_data.py')
+      } catch (e) {
+        return false
+      }
+    }
+    async function resolveCwd(sessionId) {
+      let direct
+      if (sessions && sessionId) {
+        let s = null
+        try { s = sessions.get(sessionId) } catch (e) { s = null }
+        if (s && s.header && s.header.cwd) direct = String(s.header.cwd)
+      }
+      if (direct && await looksLikeBoardRoot(direct)) return direct
+      // 整页面板没有会话上下文（sessionId 为空）→ 退到"会话列表里能跑看板的那一个"。
+      // **不能取第一个带 cwd 的**：DSH 默认工作区留下过一个空会话、在会话列表里排在前面，取第一个
+      // 会把脚本路径算到那个空目录（2026-11-03 实测：`python3 scripts/ev_board_data.py` 报 can't open file）。
+      const list = sessionCwds()
+      for (const c of list) {
+        if (c !== direct && await looksLikeBoardRoot(c)) return c
+      }
+      return direct || (list.length ? list[0] : undefined)
     }
 
     // 只读脚本的沙箱档位 = 本会话自己选的那一档。**刻意与 ascend-panel 重复**（同 resolvePython）：
@@ -3059,7 +3110,7 @@ return {
     }
 
     async function runScript(sessionId, scriptName, extraArgs) {
-      const cwd = resolveCwd(sessionId)
+      const cwd = await resolveCwd(sessionId)
       if (!cwd) return { ok: false, error: '无法解析工作区' }
       if (!shell) return { ok: false, error: 'shell 不可用' }
       const policy = readPolicy(sessionId)
@@ -3161,13 +3212,13 @@ return {
 
     const handleDisposer = harness.handle('ev-board-load', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
-      return cached('board|' + (resolveCwd(sessionId) || '?'), !!(args && args.refresh === true),
+      return cached('board|' + (await resolveCwd(sessionId) || '?'), !!(args && args.refresh === true),
         () => loadBoard(sessionId))
     })
 
     const healthDisposer = harness.handle('ev-health-load', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
-      return cached('health|' + (resolveCwd(sessionId) || '?'), !!(args && args.refresh === true),
+      return cached('health|' + (await resolveCwd(sessionId) || '?'), !!(args && args.refresh === true),
         () => loadHealth(sessionId))
     })
 
