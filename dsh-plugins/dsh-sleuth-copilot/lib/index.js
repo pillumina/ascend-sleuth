@@ -312,6 +312,46 @@ export function apply(ctx) {
     }
   }
 
+  // 单条轨迹的步骤时间线：只读、懒加载；Python 侧只摘录已有事件。
+  async function readTimeline(payload) {
+    const cwd = typeof payload.cwd === 'string' ? payload.cwd : ''
+    const traceFile = String(payload.traceFile || '')
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,180}\.yaml$/.test(traceFile)) {
+      return { ok: false, code: 'E_SCHEMA', message: '轨迹文件名不合法' }
+    }
+    const root = await resolveRepoRoot(cwd)
+    if (root === null) return { ok: false, code: 'E_NO_ROOT', message: '当前工作区不是 ascend-sleuth 检出' }
+    const python = await resolvePython(root)
+    if (python === null) return { ok: false, code: 'E_NO_PYTHON', message: '没找到可用的 Python 3' }
+    const script = join(PKG_DIR, 'lib', 'copilot_state.py')
+    if (!(await isFile(script))) return { ok: false, code: 'E_NO_HELPER', message: '装进来的包缺少 lib/copilot_state.py' }
+    const tracesDir = await normalizeTracesDir(payload)
+    const argv = [python, shq(script), '--root', shq(root)]
+    if (tracesDir) argv.push('--traces', shq(tracesDir))
+    argv.push('--timeline', shq(traceFile))
+    let result
+    try {
+      result = await runShell(resolveSpec({
+        command: argv.join(' '),
+        workdir: root,
+        timeoutMs: PY_TIMEOUT_MS,
+        stdoutMaxBytes: 1024 * 1024,
+        env: { PYTHONIOENCODING: 'utf-8' },
+      }))
+    } catch (error) {
+      return { ok: false, code: 'E_SPAWN', message: '数据脚本执行失败：' + String((error && error.message) || error) }
+    }
+    const stdout = result && result.stdout && typeof result.stdout.text === 'string' ? result.stdout.text : ''
+    const trimmed = stdout.trim()
+    if (result && result.timedOut) return { ok: false, code: 'E_TIMEOUT', message: '读步骤时间线超时。' }
+    if (!trimmed.startsWith('{')) return { ok: false, code: 'E_OUTPUT', message: '数据脚本没有产出 JSON（exit ' + String(result ? result.exitCode : '?') + '）' }
+    try {
+      return JSON.parse(trimmed)
+    } catch (error) {
+      return { ok: false, code: 'E_JSON', message: '数据脚本输出不是合法 JSON：' + String((error && error.message) || error) }
+    }
+  }
+
   // 状态写入。参数走临时 JSON 文件（summary / handed_to 常含空格、引号与中文，拼命令行会被改写），
   // 与面板同一条路径；脚本自己删除参数文件，这里再兜底清一次。
   async function applyTransition(payload) {
@@ -467,7 +507,8 @@ export function apply(ctx) {
         const endpoint = pathEndpoint !== '' ? pathEndpoint : (typeof body?.method === 'string' ? body.method : '')
         const payload = body !== undefined && body.payload !== undefined ? body.payload : {}
         let result
-        if (endpoint !== 'copilot-state' && endpoint !== 'copilot-transition' && endpoint !== 'copilot-report') {
+        if (endpoint !== 'copilot-state' && endpoint !== 'copilot-transition' && endpoint !== 'copilot-report'
+          && endpoint !== 'copilot-timeline') {
           result = { ok: false, error: { code: 'not-found', message: '未知的 RPC 端点: ' + endpoint, details: {} } }
         } else {
           try {
@@ -478,6 +519,8 @@ export function apply(ctx) {
               result = { ok: true, value }
             } else if (endpoint === 'copilot-report') {
               result = { ok: true, value: await readReport(payload) }
+            } else if (endpoint === 'copilot-timeline') {
+              result = { ok: true, value: await readTimeline(payload) }
             } else {
               result = {
                 ok: true,

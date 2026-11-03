@@ -236,6 +236,10 @@ function findToolbar(view) {
     && node.props.className.split(/\s+/).indexOf('scp-tool-btn') >= 0)
 }
 
+function findInput(view, placeholder) {
+  return view.nodes.find((node) => node.type === 'input' && node.props && node.props.placeholder === placeholder)
+}
+
 function findNode(view, predicate) {
   return view.nodes.find(predicate)
 }
@@ -308,6 +312,7 @@ function makeRow(overrides) {
       evidenceFiles: 1, evidenceList: ['traces/evidence/' + ID + '/crash.log'],
       evidenceMissing: '缺 device-side plog', hasReport: false,
       reportFile: '', sedimentCandidateList: [{ kind: 'case', summary: 'vendor TopKV2 kernel 崩溃' }],
+      missingMaterials: ['device-side plog（容器未持久化 /root/ascend/log）'],
     },
     harnessSession: '',
   }, overrides || {})
@@ -341,7 +346,7 @@ function makeState(mode) {
         currentStep: 6, maxSteps: 6, eventCount: 9, userSteps: 1, agentSteps: 8,
         platform: 'A3-910C', category: 'interrupt', framework: 'vllm-ascend',
         excludedCases: [], evidenceFiles: 1, evidenceList: ['traces/evidence/x/p0.log'],
-        evidenceMissing: '', hasReport: true, reportFile: 'traces/x.report.md', sedimentCandidateList: [],
+        evidenceMissing: '', hasReport: true, reportFile: 'traces/x.report.md', sedimentCandidateList: [], missingMaterials: [],
       },
     })
     return {
@@ -370,6 +375,7 @@ function makeState(mode) {
         evidenceList: ['traces/evidence/' + ID + '/crash.log'], evidenceMissing: '',
         hasReport: true, reportFile: 'traces/' + ID + '.report.md',
         sedimentCandidateList: [{ kind: 'case', summary: 'vendor TopKV2 kernel 崩溃' }],
+        missingMaterials: ['P 节点 hang 时刻栈'],
       },
     })
     return {
@@ -478,6 +484,12 @@ async function mount(mode, options) {
                 if (opts.transitionResult) return { ok: true, value: opts.transitionResult }
                 return { ok: true, value: { ok: true, from: 'in_progress', to: 'resolved', changed: ['status'] } }
               }
+              if (endpoint === 'copilot-timeline') {
+                return { ok: true, value: { ok: true, sessionId: ID, timeline: opts.timeline || [
+                  { role: 'user', step: 1, content: '用户贴了崩溃日志' },
+                  { role: 'agent', step: 2, action: 'triage', output: '判定为推理中断类', reason: '签名命中 vector core exception' },
+                ] } }
+              }
               if (endpoint === 'copilot-report') {
                 if (opts.reportError) return { ok: true, value: { ok: false, code: 'E_NOT_FOUND', message: '这单还没有人读报告' } }
                 return { ok: true, value: { ok: true, text: opts.reportText || '# 诊断报告\n根因：vendor TopKV2 kernel 崩溃', file: 'traces/' + ID + '.report.md', bytes: 100 } }
@@ -566,7 +578,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：主按钮是回报结果', !!findButton(view, '回报结果'))
   expect('最近一单：显示身份标签（知识库未覆盖）', view.text.includes('知识库未覆盖'))
   expect('最近一单：显示已排除条数', view.text.includes('已排除 3 条'))
-  expect('最近一单：版本串 0.8.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.8.0'))
+  expect('最近一单：版本串 0.9.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.9.0'))
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
   expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
 }
@@ -706,6 +718,69 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findButton(view, '看报告'))
   const errored = await t.settle()
   expect('报告：失败时给原因', errored.text.includes('这单还没有人读报告'))
+}
+
+{
+  const t = await mount('recent')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('材料：出现「在等材料」', view.text.includes('在等材料'))
+  expect('材料：列出 trace 记的缺口', view.text.includes('device-side plog'))
+  click(findButton(view, '复制清单'))
+  await t.settle()
+  expect('材料：复制清单含缺口', copied[copied.length - 1].includes('这单还缺以下材料') && copied[copied.length - 1].includes('device-side plog'), copied[copied.length - 1])
+}
+
+{
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  click(findButton(view, '展开步骤'))
+  const timelineView = await t.settle()
+  expect('时间线：出现步骤', timelineView.text.includes('第 1 步') && timelineView.text.includes('判定为推理中断类'), timelineView.text.slice(-500))
+  expect('时间线：调用懒加载 RPC', t.rpcCalls.some((call) => call.endpoint === 'copilot-timeline'))
+}
+
+{
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  click(findAria(view, '更多操作'))
+  const menuView = await t.settle()
+  click(findButton(menuView, '复制为 issue 文本'))
+  await t.settle()
+  expect('issue 文本：标题与现象', copied[copied.length - 1].includes('标题：') && copied[copied.length - 1].includes('现象：'), copied[copied.length - 1])
+}
+
+{
+  const t = await mount('multi')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('搜索：初始两行', byClass(view, 'scp-pal-row').length === 2)
+  const input = findInput(view, '搜索单号 / case / 关键词')
+  input.props.onChange({ target: { value: 'PD 分离' } })
+  const searched = await t.settle()
+  expect('搜索：按关键词过滤', byClass(searched, 'scp-pal-row').length === 1, String(byClass(searched, 'scp-pal-row').length))
+}
+
+{
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  await t.settle()
+  pressKey('k', { metaKey: true })
+  const cmdView = await t.settle()
+  expect('命令面板：⌘K 打开', byClass(cmdView, 'scp-cmd').length === 1)
+  click(findButton(cmdView, '复制为 issue 文本'))
+  await t.settle()
+  expect('命令面板：执行复制', copied[copied.length - 1].includes('标题：'))
+}
+
+{
+  globalThis.document.title = '诊断'
+  const t = await mount('recent')
+  await t.settle()
+  expect('标题角标：欠回报计数', String(globalThis.document.title).startsWith('[1] '), globalThis.document.title)
+  globalThis.document.title = ''
 }
 
 {
