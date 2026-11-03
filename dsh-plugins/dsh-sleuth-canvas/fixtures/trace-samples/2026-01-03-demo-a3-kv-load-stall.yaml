@@ -1,0 +1,34 @@
+# 合成测试夹具：in_progress 诊断 trace（同一 step 内并行核验 + Tier 3 + 源码分析 + 未覆盖）。
+# 全部内容为虚构，与任何真实客户现场无关。
+session_id: "2026-01-03-demo-a3-kv-load-stall"
+status: in_progress
+current_step: 5
+summary: "vllm-ascend 0.28.0 四机 PD 分离（1P1D，A3-910C）跑多轮对话压测，约 7 分钟后 P 节点 prefill 全部停滞。P 侧调度日志每 ~1s 重复 'KV pool load spec created ... need_to_allocate=16384 load_async=True'（同一 reqid），请求停在异步 load 永不完成；D 节点 drain 至 0。无 ERROR/Traceback/HCCL 报错，npu-smi 健康。6 个候选均未精确命中；归入远端 KV 池异步 load 族·静默停滞亚层，根因待 P 节点线程栈确认。"
+created_at: "2026-01-03T14:05:00+08:00"
+updated_at: "2026-01-03T16:22:00+08:00"
+detected_framework: vllm-ascend
+detected_platform: A3-910C
+detected_category: interrupt
+resolved_at: ""
+sedimented: {state: none, case_id: ""}
+feedback: {case: "", outcome: pending}
+excluded_cases: [VLLM-ASC-9101, VLLM-ASC-9102, VLLM-ASC-9103, VLLM-ASC-9104, VLLM-ASC-9105, VLLM-ASC-9106]
+active_case: ""
+last_action: "6 候选全部未命中，知识库未覆盖；已给临时规避（关闭异步 load、回退同步搬运），待用户补 P 节点线程栈。"
+
+trace:
+  - {role: user, step: 1, content: "vllm-ascend 0.28.0，四机 PD 分离（1P1D，A3-910C），多轮对话压测约 7 分钟后 P 节点 prefill 全部停住；没有报错，D 节点请求数掉到 0。附调度日志。",
+     evidence: {inline: "P 侧调度日志每 ~1s 重复 'KV pool load spec created reqid=512 need_to_allocate=16384 load_async=True use_layerwise=False'；同一 reqid 反复出现、load 从不完成；D 侧 num_requests_running 5 分钟内降到 0；npu-smi 各卡 Health OK。",
+        files: ["traces/evidence/2026-01-03-demo-a3-kv-load-stall/scheduler.log"],
+        missing: "缺 P 节点主线程栈、远端 KV 池服务端日志、模型名与 TP/DP/PP 配置"}}
+  - {role: agent, step: 2, action: triage, branch: inference_interrupt, category: interrupt, routed: [inference/vllm-ascend/, common/], output: "判定为推理中断类（静默停滞，无报错面），路由 inference/vllm-ascend/ 与 common/。", reason: "进程存活、无 ERROR/Traceback/HCCL 超时，属静默停滞型中断；PD 分离 + 远端 KV 池把范围收到 load 路径。"}
+  - {role: agent, step: 3, action: load_index, namespaces: [inference/vllm-ascend/], n_cases: 41, n_candidates_selected: 6, shard: "knowledge/_index/inference__vllm-ascend__interrupt.list"}
+  - {role: agent, step: 4, action: quickly_check, case: VLLM-ASC-9101, primary: fail, parallel_group: g4, output: "主检查 'PutStart 计数为 0' 不命中：本现场 KV 已在池内（need_to_allocate 与池命中同时出现），卡在 load 而非 put。", reason: "9101 是投机解码漏 finalize 连接器导致 KV 从不入池；本现场已入池，方向相反。"}
+  - {role: agent, step: 4, action: quickly_check, case: VLLM-ASC-9102, primary: pass, fallback: pass, marked: excluded, parallel_group: g4, output: "主检查 '接收请求超时' 形态相似，但本现场日志没有任何 timeout 或端口号。", reason: "9102 是多节点 PP 端口偏移的握手超时；本现场无超时串，按签名排除。"}
+  - {role: agent, step: 4, action: quickly_check, case: VLLM-ASC-9103, primary: fail, fallback: fail, parallel_group: g4, output: "主/备检查均不命中：本现场无 'key not found' 错误码。", reason: "9103 是 D 侧按 cache group 批量取 key 报 not found；本现场无该错误码，排除。"}
+  - {role: agent, step: 4, action: quickly_check, case: VLLM-ASC-9104, primary: pass, fallback: fail, marked: low_confidence, parallel_group: g4, output: "主检查 'need_to_allocate 非 0' 命中；备检查 '计数冻结' 不成立。置信不足，保留观察。", reason: "9104 是池侧与本地 prefix cache 重叠导致的性能退化，与本现场停滞形态不同，只给 low_confidence。"}
+  - {role: agent, step: 4, action: quickly_check, case: VLLM-ASC-9105, primary: fail, parallel_group: g4, output: "主检查 '调度器提前剪枝' 不命中：本现场 prefill 队列只增不减，不是剪枝。", reason: "9105 是异步调度剪枝 SWA block 导致计数冻结；本现场是 load 不完成，排除。"}
+  - {role: agent, step: 4, action: quickly_check, case: VLLM-ASC-9106, primary: pass, marked: excluded, parallel_group: g4, output: "主检查 '远端池连接正常' 不命中：本现场没有连接级告警。", reason: "9106 是连接重建后旧句柄泄漏；本现场连接无异常，排除。"}
+  - {role: agent, step: 4, action: tier3, output: "6 候选只到签名碎片这一层，根因均不同；知识库无「远端 KV 池异步 load 不完成」的精确 case，Tier 3 未覆盖。", reason: "grep knowledge/ 与 postmortems/ 没有 async load 静默停滞的承载 case；方法层归入静默停滞亚层。"}
+  - {role: agent, step: 5, action: source_analysis, repo: vllm-project/vllm-ascend, ref: "v0.28.0 demo read", level: code, followup: unfixed, files_read: ["vllm_ascend/distributed/kv_transfer/demo_pool/pool_scheduler.py", "vllm_ascend/distributed/kv_transfer/demo_pool/pool_worker.py", "vllm_ascend/core/scheduler_dynamic_batch.py"], tool_calls: ["read pool_scheduler.py:112-140 → load_spec 创建后返回 (need_to_allocate, load_async)", "read pool_worker.py:220-260 → 异步 recv 线程在 load 完成前不清 loading 标记", "grep '_loading_req_ids' → 仅在 load 完成回调里移除", "read scheduler_dynamic_batch.py:180-210 → load_async=true 时首轮 num_new_tokens=0，需等 load 完成", "web read doc 章节 KV pool async load → 未标注静默停滞的已知问题"], output: "代码路径确认：异步 load 未完成时请求一直留在 loading 集合，调度器不给 token；缺的是完成回调或线程状态，需 P 节点线程栈才能定位卡点。", reason: "把现象收到 pool_scheduler → pool_worker 的异步 load 链路；代码侧只能证明等待条件成立，不能证明卡在哪个系统调用。"}
+  - {role: agent, step: 5, action: miss, output: "知识库未覆盖，根因待 P 节点线程栈。临时规避：启动加 --additional-config '{\"enable_async_load\": false}' 回退同步搬运；本现场需先停压测并保留现场，KV 池当前有数据丢失风险（未落盘块被释放）。", reason: "诚实退化：现象与代码路径已收窄，但缺运行时栈无法定论；先给可回退的规避并标注 severity=data-loss-risk 的操作顺序（先停压测、保留现场、再关开关）。"}

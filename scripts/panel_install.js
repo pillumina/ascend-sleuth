@@ -11,10 +11,11 @@
 //   node scripts/panel_install.js                  # 装面板包并使能（先 inspect，已装则补使能）
 //   node scripts/panel_install.js --check          # 只读：报本包的安装与使能状态（要能定到包名）
 //   node scripts/panel_install.js --sync           # 拉完代码跑这一条：版本一致就什么都不做，
-//                                                  # 不一致就换装，并明确告诉你"要不要重启"（换装必须重启）
+//                                                  # 不一致就换装，并明确告诉你"要不要重启"（换装必须重启）；
+//                                                  # 配 --all 才对四个包都生效（单跑只处理面板包）
 //   node scripts/panel_install.js --remove         # 卸载
 //   node scripts/panel_install.js --spec <spec>    # 换包：绝对路径 / 包名 / git 地址 / tarball
-//   node scripts/panel_install.js --all            # 一次装三个包：面板包 + vllm-kb 接入插件 + 诊断状态条
+//   node scripts/panel_install.js --all            # 一次装四个包：面板包 + vllm-kb 接入插件 + 诊断状态条 + 诊断画布
 //   node scripts/panel_install.js --force          # 跳过版本相等判断，强制换装（改了源码忘了 bump 版本时用）
 //   node scripts/panel_install.js --url <base> --token <token>   # 不自动找地址
 //   node scripts/panel_install.js --log <harness.log 路径>
@@ -35,11 +36,18 @@ const fs = require('fs')
 const http = require('node:http')
 const path = require('path')
 const { resolveTarget, noTargetLines, sessionCookie, rpcCall } = require('./lib/panel_endpoint')
+const { PANEL_PACKAGES } = require('./lib/panel_desktop')
 
 const API_CHANNEL = '/api'
-const DEFAULT_SPEC = path.resolve(__dirname, '..', 'dsh-plugins', 'dsh-sleuth-panels')
-const KB_SPEC = path.resolve(__dirname, '..', 'dsh-plugins', 'dsh-sleuth-vllm-kb')
-const COPILOT_SPEC = path.resolve(__dirname, '..', 'dsh-plugins', 'dsh-sleuth-copilot')
+// 包清单只有一份（scripts/lib/panel_desktop.js 的 PANEL_PACKAGES）：`--all` 与快检、临时实例验证共用，
+// 新增/删除包只改那一处，避免两处清单漂移。
+const PACKAGE_SPECS = PANEL_PACKAGES.map((item) => path.resolve(__dirname, '..', item.spec))
+// 无参默认目标固定是面板包，不依赖 PANEL_PACKAGES 的顺序（重排数组不会静默改默认安装目标）。
+const DEFAULT_SPEC = path.resolve(
+  __dirname,
+  '..',
+  PANEL_PACKAGES.find((item) => item.name === 'dsh-sleuth-panels').spec,
+)
 
 function parseArgs(argv) {
   const args = { spec: DEFAULT_SPEC, check: false, remove: false, url: null, token: null, log: null, quiet: false, all: false, force: false }
@@ -139,7 +147,7 @@ async function ensureEnabled(name, target, io) {
 async function runInstall(args, io) {
   if (args.all === true) {
     let code = 0
-    for (const spec of [DEFAULT_SPEC, KB_SPEC, COPILOT_SPEC]) {
+    for (const spec of PACKAGE_SPECS) {
       io.say(`\n== ${path.basename(spec)}\n`)
       const one = await runInstall(Object.assign({}, args, { spec, all: false }), io)
       if (one !== 0) code = one
@@ -265,7 +273,7 @@ async function runInstall(args, io) {
   return 0
 }
 
-// 自测：假服务器只做这几件事，把四条判定各走一遍（不需要 DSH，所以 CI 里也能跑）
+// 自测：假服务器只做这几件事，把各条判定各走一遍（不需要 DSH，所以 CI 里也能跑）
 function startFakeServer(specPaths) {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url === undefined ? '/' : req.url, 'http://127.0.0.1')

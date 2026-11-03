@@ -493,7 +493,7 @@ jobs:
       # 装包脚本自测：自带假服务器把八条判定各走一遍（装好 / 已装改使能 / spec 被拒 / 安装失败 /
       # 查状态 / 卸载 / /api 没认领端点 / 拿不到地址），不需要真 DSH；真机那一次要 DSH 在跑，不进 CI。
       - run: node scripts/panel_install.js --selftest
-      # 桌面版临时实例验证的自测：自带假 dsh 把四条判定各走一遍（全通 / dump 缺层 / 未登记 / 登记不完整），
+      # 桌面版临时实例验证的自测：自带假 dsh 把五条判定各走一遍（全通 / canvas-only / dump 缺层 / 未登记 / 登记不完整），
       # 不需要真 DSH；真机那一次要桌面版安装目录自带的命令行，不进 CI。
       - run: node scripts/verify_panel_desktop.js --selftest
       # 现状快检的自测：各平台的应用包内命令行相对位置（macOS 在 Contents 下）、日志地址归属、
@@ -509,6 +509,17 @@ jobs:
       # CI 里没有 gh，上游能力位会报未就绪——冒烟只断言它是布尔值，不依赖本机登录态。
       - run: node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs
       - run: node dsh-plugins/dsh-sleuth-copilot/test/host-smoke.mjs
+      # 独立整页包 canvas：client 半是 `build.mjs` 从 client-src 拼出的生成物，先判产物与源一致；
+      # 四条测试覆盖 host 读 traces（YAML 解析、路径穿越拒绝、RPC 信封）、布局引擎、页面渲染
+      # 与注册面（main 的 key `sleuth-canvas` + sidebar.panellist 同 id）。不需要 DSH。
+      - run: node dsh-plugins/dsh-sleuth-canvas/build.mjs --check
+      - run: node dsh-plugins/dsh-sleuth-canvas/test/host.test.mjs
+      - run: node dsh-plugins/dsh-sleuth-canvas/test/engine.test.mjs
+      - run: node dsh-plugins/dsh-sleuth-canvas/test/ui.test.mjs
+      - run: node dsh-plugins/dsh-sleuth-canvas/test/artifact.test.mjs
+      # fixtures 的源（trace-samples/）与生成物（JSON）必须一致：重跑生成器后不得留下 diff。
+      - run: python3 dsh-plugins/dsh-sleuth-canvas/fixtures/build-fixtures.py
+      - run: git diff --exit-code -- dsh-plugins/dsh-sleuth-canvas/fixtures
 
   skill-self-contained:
     needs: changes

@@ -1,0 +1,4 @@
+# 合成测试夹具：修复后复测输出，内容虚构。
+runs: 5
+consistent: true
+note: 关闭 --enable-prefix-caching 后同一 prompt 5 次输出一致。

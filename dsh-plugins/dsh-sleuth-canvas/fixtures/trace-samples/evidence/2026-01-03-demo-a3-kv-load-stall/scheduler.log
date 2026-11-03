@@ -1,0 +1,6 @@
+# 合成测试夹具：调度日志片段，内容虚构。
+2026-01-03 15:41:02 INFO pool_scheduler: KV pool load spec created reqid=512 need_to_allocate=16384 load_async=True use_layerwise=False
+2026-01-03 15:41:03 INFO pool_scheduler: KV pool load spec created reqid=512 need_to_allocate=16384 load_async=True use_layerwise=False
+2026-01-03 15:41:04 INFO pool_scheduler: KV pool load spec created reqid=512 need_to_allocate=16384 load_async=True use_layerwise=False
+2026-01-03 15:41:05 INFO pool_scheduler: KV pool load spec created reqid=512 need_to_allocate=16384 load_async=True use_layerwise=False
+2026-01-03 15:46:05 INFO scheduler: num_requests_running=0 num_requests_waiting=1

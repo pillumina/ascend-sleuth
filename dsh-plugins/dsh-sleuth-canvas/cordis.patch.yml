@@ -1,0 +1,11 @@
+# Sleuth Canvas：诊断画布（左侧栏图标 + 主区整页）
+#
+# 装法：plugin_manager install_bundle(target: <本目录绝对路径>)
+# 卸载：plugin_manager remove_bundle(target: 'dsh-sleuth-canvas')
+#
+# host 半只做一件事：注册 /sleuth-canvas 的 prefix RPC 路由，离线读 traces/*.yaml。
+# client 半注册 main 的 keyed 条目 sleuth-canvas 与侧栏图标 sidebar.panellist。
+# 不改 ascend-sleuth 仓库里的任何文件。
+- insert:
+    - id: dsh-sleuth-canvas
+      name: 'dsh-sleuth-canvas'
