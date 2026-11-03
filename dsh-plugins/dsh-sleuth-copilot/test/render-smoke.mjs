@@ -438,6 +438,7 @@ async function mount(mode, options) {
 
   const api = {
     registry,
+    inject: factoryResult.inject,
     rpcCalls,
     drafts,
     async settle() {
@@ -467,6 +468,8 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 {
   const t = await mount('recent')
   const view = t.view()
+  expect('注册：inject 声明了 sessions / uiWorkspace',
+    Array.isArray(t.inject) && ['sessions', 'uiWorkspace'].every((name) => t.inject.includes(name)), JSON.stringify(t.inject))
   expect('最近一单：标出「最近一单」', view.text.includes('最近一单'), view.text.slice(0, 160))
   expect('最近一单：显示状态名', view.text.includes('进行中'))
   expect('最近一单：显示人读案例标题', view.text.includes('vllm-ascend GLM-5.3 在 A3 跑推理时 MoE routing TopK 触发 vector core exception'))

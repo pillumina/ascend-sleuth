@@ -2255,7 +2255,9 @@ window.__ModuleLoader__.load({
     }
 
     return {
-      inject: ['connection', 'slots'],
+      // 显式声明用到的服务：cordis 只对声明过的服务名建键，未声明的 ctx.get 返回 undefined。
+      // sessions / uiWorkspace 用于「切到该诊断的会话」，与面板包同一条契约。
+      inject: ['connection', 'slots', 'sessions', 'uiWorkspace'],
       apply(ctx) {
         const slots = ctx.get('slots')
         if (slots === undefined) return
