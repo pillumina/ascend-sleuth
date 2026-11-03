@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:97f009983765)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:96e6404e6893)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:dcef157b7468)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -105,7 +105,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:97f009983765) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:96e6404e6893) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -131,28 +131,49 @@ return {
         + '指标 tab 的「闭环判决」「实时计算」不经 fs，仍然可用',
     })
 
-    // ── 跑子进程的沙箱策略（按调用点分两类）────────────────────────────────────────
+    // ── 写文件的沙箱策略（子进程与 fs 两条通路）──────────────────────────────────────
     //
-    // 两类调用点，判据是"它要不要写仓库里的文件"：
+    // 两条通路都在**每次调用**上显式给策略。不给时两边回退的都是**部署默认**，而部署默认的可写
+    // 根是 DSH 部署工作区根，不是用户打开的检出：
+    //   · `shell.resolve` 不给策略时，shell 自己的默认根是 **DSH 自己的检出**
+    //     （实测 workspaceRoot = …/deepseek-harness），子进程写仓库里任何路径都被拒，报出来只有
+    //     一句 `[Errno 1] Operation not permitted`——读者从这句看不出是沙箱干的（文件权限与
+    //     ACL 都正常）。
+    //   · `fs.writeText` 不传第 5 个实参（单次调用的策略）时，回退部署默认档位
+    //     （workspace-write + 部署工作区根）。检出不在该根之下时写入被拒，报
+    //     `cannot write "<路径>": file access denied under workspace-write mode`（错误码
+    //     `FS_SANDBOX_DENIED`），读者同样看不出是沙箱干的。跨盘是最常见的形态：Windows 上检出
+    //     在 D 盘、部署根在 C 盘。macOS 上没暴露，是因为本仓检出落在部署可写根之下。
     //
-    // ① 写操作（两处：交接包导出写 `<检出>/traces/exports/`、重建本机明细写
+    // 按调用点分三类，判据是"它要不要写仓库里的文件"：
+    //
+    // ① 子进程写操作（两处：交接包导出写 `<检出>/traces/exports/`、重建本机明细写
     //    `<检出>/metrics/entry-activity.local/`）→ 显式写死
-    //    `{ mode: 'workspace-write', workspaceRoot: cwd }`。理由（实测）：`shell.resolve` 不给
-    //    策略时，shell 自己的默认根是 **DSH 自己的检出**（实测 workspaceRoot = …/deepseek-harness），
-    //    子进程写仓库里任何路径都被拒，报出来只有一句 `[Errno 1] Operation not permitted`——
-    //    读者从这句看不出是沙箱干的（文件权限与 ACL 都正常）。`workspace-write` 是够用的最小一档：
+    //    `{ mode: 'workspace-write', workspaceRoot: cwd }`。`workspace-write` 是够用的最小一档：
     //    写只许落在检出内，读不受限，比本会话自身的文件策略更窄，不是提权。
     //
-    // ② 只读脚本（解释器探活、`metrics_health.py`、`trace_metrics.py`）→ 跟随**会话自己的档位**
-    //    （`readPolicy()`，见下）。它们不写仓库，没必要把会话档位改窄；而写死 `workspace-write`
-    //    会在受限令牌沙箱起不来子进程的机器上把面板读数据的路一起堵死（实测：探活三个候选全返回
-    //    `3221225794` = `0xC0000142`，面板只剩一句"未找到 Python"，而同一台机器上直接跑脚本是通的）。
-    //    改成跟随会话后：完全权限的会话不隔离（能读），工作区写 / 只读的会话仍受限，边界只放宽到
-    //    用户自己选的那一档。
+    // ② 子进程只读脚本（解释器探活、`metrics_health.py`、`trace_metrics.py`）→ 跟随**会话自己的
+    //    档位**（`readPolicy()`，见下）。它们不写仓库，没必要把会话档位改窄；而写死
+    //    `workspace-write` 会在受限令牌沙箱起不来子进程的机器上把面板读数据的路一起堵死（实测：
+    //    探活三个候选全返回 `3221225794` = `0xC0000142`，面板只剩一句"未找到 Python"，而同一台
+    //    机器上直接跑脚本是通的）。改成跟随会话后：完全权限的会话不隔离（能读），工作区写 / 只读
+    //    的会话仍受限，边界只放宽到用户自己选的那一档。
+    //
+    // ③ fs 写（三处：沉淀状态回写 `traces/<traceFile>`、列表索引缓存
+    //    `<主检出>/traces/.panel-index.json`、状态写入口的参数文件
+    //    `<主检出>/traces/.payload-*.json`）→ 第 5 个实参传
+    //    `{ mode: 'workspace-write', workspaceRoot: <该次写入对应的主检出> }`。根按写入落点取：
+    //    写 trace 的两处用 `writeCaps(sessionId).writeRoot`，解不出主检出或会话只读时当场返回
+    //    可读错误，不拿空根去写；列表缓存的根用 `listTraces` 收到的运行时工作目录（缓存文件就
+    //    落在它下面的 `traces/` 里）。多传一个实参不改变非沙箱 fs 实现的行为：JS 忽略未声明的
+    //    实参，非沙箱的本地实现只声明 4 个形参（`writeText(target, content, expected, signal)`，
+    //    实测 DSH 0.2.1-rc.2），所以这里不按 fs 类型分支，也不改 fs 接口。
     //
     // 不抽成"每条都带策略"的 helper：`panel_render_check` 会把下面几个函数**单独抽出来求值**
-    // （只注入 shell / resolvePython），所以策略只能以**形参**传进来，不能引外部 helper。
-    // 两类调用点各由该检查的源级断言兜（写死 workspace-write 的必须只有导出、只读点必须走形参）。
+    // （只注入 shell / resolvePython），所以子进程策略只能以**形参**传进来，不能引外部 helper。
+    // fs 写的策略同样直接写在实参位置，检查按"每个 fs 写调用都带单次策略"逐处数。
+    // 三类调用点各由该检查的源级断言兜（写死 workspace-write 的子进程必须只有导出、只读点必须
+    // 走形参、fs 写每处都带策略）。
 
     // 工作区解析。**三处消费者的共同前提**：面板读 traces/ knowledge/ metrics/ scripts/ 全靠它。
     //
@@ -370,6 +391,15 @@ return {
       if (!cwd || !traceFile) return { ok: false, error: '缺参数' }
       const allowed = { submitted: 1, knowledge: 1, archived: 1 }
       if (!allowed[state]) return { ok: false, error: '非法状态' }
+      // 写根与可写性（见上面「写文件的沙箱策略」③）：traces/ 锚在主检出，写它要 workspace-write
+      // 档位 + 主检出根。解不出根或会话只读时当场说清，不拿空根去写：空根回退部署默认策略，
+      // 被 fs 沙箱拒成 FS_SANDBOX_DENIED，读者只会看到一句 file access denied。
+      const caps = await writeCaps(sessionId)
+      if (!caps.canWrite) {
+        return { ok: false, error: caps.reasonCode === 'E_PERM'
+          ? '当前会话是只读档，面板不能写 traces/。切到「工作区写」或「完全权限」后重试'
+          : '解析不到主检出，无法确定写根（traces/ 锚在主检出）' }
+      }
       try {
         const target = await fs.resolve('traces/' + traceFile, { cwd })
         const text = await fs.readText(target)
@@ -393,7 +423,10 @@ return {
           out.push(line)
         }
         if (!replaced) out.push(...block)
-        await fs.writeText(target, out.join('\n'))
+        // 第 5 个实参是这次写入的沙箱策略（见上面「写文件的沙箱策略」③）：根用主检出，
+        // 与本次写入的落点一致。
+        await fs.writeText(target, out.join('\n'), undefined, undefined,
+          { mode: 'workspace-write', workspaceRoot: caps.writeRoot })
         return { ok: true }
       } catch (e) {
         return { ok: false, error: '更新失败: ' + String(e && e.message || e) }
@@ -584,11 +617,17 @@ return {
       traceIndexCache = fresh
       return fresh
     }
-    function saveIndexCache(basePath, cache) {
+    // `root` 是这次写入对应的主检出（缓存文件落在它下面的 `traces/` 里），按「写文件的沙箱策略」③
+    // 作第 5 个实参传进去。没有根就不写：缓存是派生物，正确性不依赖它，而空根会回退部署默认
+    // 策略并被 fs 沙箱拒绝。
+    function saveIndexCache(basePath, cache, root) {
+      if (!root) return
       try {
         // 不 await：缓存写失败不该挡住列表返回（正确性不依赖它）。
         Promise.resolve(fs.resolve(INDEX_CACHE_FILE, { cwd: basePath }))
-          .then(t => fs.writeText(t, JSON.stringify({ schema: INDEX_SCHEMA, entries: cache.entries, cost: cache.cost })))
+          .then(t => fs.writeText(t, JSON.stringify({ schema: INDEX_SCHEMA, entries: cache.entries, cost: cache.cost }),
+            undefined, undefined,
+            { mode: 'workspace-write', workspaceRoot: root }))
           .catch(() => {})
       } catch (e) {}
     }
@@ -740,7 +779,9 @@ return {
       }
     }
 
-    async function listTraces(cwd, kbCwd) {
+    // `canWrite` 决定要不要回写列表索引缓存：缓存是派生物，只读会话下不写
+    //（与面板的只读边界一致，见 dsh-plugins/README.md 的写白名单）。读侧不受影响。
+    async function listTraces(cwd, kbCwd, canWrite) {
       const startedAt = Date.now()
       let base
       try {
@@ -830,7 +871,7 @@ return {
       for (const key of Object.keys(cache.cost)) {
         if (!fileNames.has(key)) { delete cache.cost[key]; cache.dirty = true }
       }
-      if (cache.dirty) { saveIndexCache(basePath, cache); cache.dirty = false }
+      if (cache.dirty && canWrite) { saveIndexCache(basePath, cache, cwd); cache.dirty = false }
       // 排序：**按诊断开始时间倒序**（最新的在最上），`updated_at` 只作同刻并列时的次序。
       // 为什么不用 `updated_at` 当主键：它是 agent 写 trace 时手填的字段，写错或漏刷新都会
       // 直接改列表次序（实测：某次 session 的 created_at 最新，却因 updated_at 被填成较早的
@@ -1864,7 +1905,7 @@ return {
             command: candidate + ' --version',
             workdir: cwd,
             stdoutMaxBytes: 4096,
-            // 只读探活 → 跟随会话档位（见上面「跑子进程的沙箱策略」②）；policy 为 undefined 时省掉这一项
+            // 只读探活 → 跟随会话档位（见上面「写文件的沙箱策略」②）；policy 为 undefined 时省掉这一项
             ...(policy ? { sandboxPolicy: policy } : {}),
           })
           const r = await shell.run(spec)
@@ -1988,7 +2029,7 @@ return {
           stdoutMaxBytes: 65536,
           // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
           env: { PYTHONIOENCODING: 'utf-8' },
-          // 只读脚本 → 跟随会话档位（见上面「跑子进程的沙箱策略」②）
+          // 只读脚本 → 跟随会话档位（见上面「写文件的沙箱策略」②）
           ...(policy ? { sandboxPolicy: policy } : {}),
         }))
       } catch (e) {
@@ -2042,7 +2083,7 @@ return {
           stdoutMaxBytes: 16384,
           // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
           env: { PYTHONIOENCODING: 'utf-8' },
-          // 只读脚本 → 跟随会话档位（见上面「跑子进程的沙箱策略」②）
+          // 只读脚本 → 跟随会话档位（见上面「写文件的沙箱策略」②）
           ...(policy ? { sandboxPolicy: policy } : {}),
         })
         const r = await shell.run(spec)
@@ -2092,7 +2133,7 @@ return {
           stdoutMaxBytes: 262144,
           // 面板按 UTF-8 读 stdout；钉住子进程编码，防脚本侧漏掉 UTF-8 输出（Windows GBK 管道）
           env: { PYTHONIOENCODING: 'utf-8' },
-          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },   // 写操作：见上面「跑子进程的沙箱策略」①
+          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },   // 写操作：见上面「写文件的沙箱策略」①
         }))
       } catch (e) {
         return { ok: false, error: '导出脚本执行失败: ' + String(e && e.message || e), manual: manual }
@@ -2166,7 +2207,7 @@ return {
     // `--local-only` 只写 `metrics/entry-activity.local/`（gitignored 运行时件），可以安全自动调用。
     //
     // 工作目录用 `resolveCwd`（主检出）：本机明细锚主检出的共享侧，worktree 里那份是空的。
-    // 写操作 → 沙箱策略按上面「跑子进程的沙箱策略」①钉 `workspace-write`，根就是主检出。
+    // 写操作 → 沙箱策略按上面「写文件的沙箱策略」①钉 `workspace-write`，根就是主检出。
     async function rebuildLocalCost(cwd, sessionId) {
       const manual = 'python3 scripts/trace_entry_activity.py --local-only --session ' + String(sessionId || '<会话>')
       if (!shell) return { ok: false, error: '重建本机明细需要执行命令的能力（当前会话不可用）。手工复现：' + manual }
@@ -2195,7 +2236,7 @@ return {
           env: Object.assign({ PYTHONIOENCODING: 'utf-8' },
             (typeof process !== 'undefined' && process.env && process.env.DSH_HOME)
               ? { DSH_HOME: String(process.env.DSH_HOME) } : {}),
-          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },   // 写操作：见上面「跑子进程的沙箱策略」①
+          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: cwd },   // 写操作：见上面「写文件的沙箱策略」①
         }))
       } catch (e) {
         return { ok: false, error: '重建脚本执行失败: ' + String(e && e.message || e), manual: manual }
@@ -2644,7 +2685,7 @@ return {
       async execute(args) {
         let cwd = args && args.cwd ? String(args.cwd) : undefined
         if (!cwd) cwd = await pickCwdFromSessions()
-        const r = await listTraces(cwd)
+        const r = await listTraces(cwd, undefined, (await writeCaps(null)).canWrite)
         if (!r.ok) return { error: r.error }
         return {
           sessionCount: r.sessions.length,
@@ -2682,6 +2723,10 @@ return {
     // 把整串当一个 token 加引号会让 Windows / 只有 py 启动器的机器上这条 RPC 全挂。
     // 值用双引号 + 反斜杠转义：POSIX sh 与 PowerShell 5.1 对 " 的处理一致。
     function shq(v) { return '"' + String(v).replace(/(["\\$`])/g, '\\$1') + '"' }
+    // 无会话（整页面板 / 侧栏标记 / agent 工具）时，`resolveCwd` 与 `readPolicy` 都会退回
+    // "第一个带 cwd 的会话"取档位——这是近似：多会话窗口里第一个会话可写、发起方只读时，
+    // 这里会判成可写。它只影响派生物（列表索引缓存）的写入面，不影响状态转移（那几条 RPC
+    // 都带 sessionId）。
     async function writeCaps(sessionId) {
       const raw = await resolveCwd(sessionId)
       const main = raw ? await mainCheckoutOf(raw) : null
@@ -2729,7 +2774,7 @@ return {
       // 轨迹读共享侧（主检出），"这单命中的 case 在不在库里"读会话自己的检出
       const cwd = await resolveCwd(sessionId)
       const repoCwd = await resolveRepoCwd(sessionId)
-      const r = await listTraces(cwd, repoCwd)
+      const r = await listTraces(cwd, repoCwd, (await writeCaps(sessionId)).canWrite)
       if (!r.ok) return { ok: false, error: r.error }
       // 状态投影失败不挡列表（卡片退回旧字段），但要把原因带给客户端：不要把「读不到状态」
       // 显示成「都没有动作」，那会让用户以为这单已经收尾了。
@@ -2838,7 +2883,7 @@ return {
       // 侧栏标记是全局的（没有会话上下文）：轨迹读主检出那一侧。
       const cwd = await resolveCwd(null)
       const repoCwd = await resolveRepoCwd(null)
-      const r = await listTraces(cwd, repoCwd)
+      const r = await listTraces(cwd, repoCwd, (await writeCaps(null)).canWrite)
       if (!r.ok) return { ok: false, error: r.error }
       const marks = []
       for (const s of r.sessions || []) {
@@ -2912,7 +2957,11 @@ return {
       let payloadAbs = null
       try {
         payloadAbs = await fs.resolve(payloadName, { cwd: traces })
-        await fs.writeText(payloadAbs, JSON.stringify(body))
+        // 第 5 个实参是这次写入的沙箱策略（见上面「写文件的沙箱策略」③）：参数文件落在
+        // `<主检出>/traces/` 下，根用上面 writeCaps 解出的主检出。不传时回退部署默认策略，
+        // Windows 上检出不在部署根之下就报 file access denied under workspace-write mode。
+        await fs.writeText(payloadAbs, JSON.stringify(body), undefined, undefined,
+          { mode: 'workspace-write', workspaceRoot: caps.writeRoot })
       } catch (e) {
         return { ok: false, code: 'E_IO', message: '写参数文件失败：' + String(e && e.message || e) }
       }

@@ -227,7 +227,23 @@ function interactiveRender(clientSrc, slotProps, hostImpl) {
     }
     hit.fn({ preventDefault() {}, stopPropagation() {} })
   }
-  return { pump, text, click, clickExact, handlers }
+  // 实验用：按 aria-label 找到 <select> 并触发 onChange（改收尾方式的目标只能这样选）。
+  const setSelect = (aria, value) => {
+    let hit = null
+    const walk = (n) => {
+      if (!n || typeof n !== 'object' || hit) return
+      if (Array.isArray(n)) { n.forEach(walk); return }
+      if (n.__el) {
+        const pp = n.props || {}
+        if (pp['aria-label'] === aria && typeof pp.onChange === 'function') { hit = pp; return }
+        walk(pp.children)
+      }
+    }
+    walk(tree)
+    if (!hit) throw new Error('找不到 aria-label 为「' + aria + '」的可控控件')
+    hit.onChange({ target: { value } })
+  }
+  return { pump, text, click, clickExact, handlers, setSelect }
 }
 
 // ---- 真实数据 ----
@@ -2212,6 +2228,9 @@ _MS._run_no_pipe = no_fallback`)
       fs.writeFileSync(path.join(tracesDir, 's-progress.yaml'), traceYaml('s-progress', 'in_progress', null))
       fs.writeFileSync(path.join(tracesDir, 's-noend.yaml'), traceYaml('s-noend', 'resolved', null))
       fs.writeFileSync(path.join(tracesDir, 's-ended.yaml'), traceYaml('s-ended', 'resolved', 'root_cause'))
+      fs.writeFileSync(path.join(tracesDir, 's-arch.yaml'), traceYaml('s-arch', 'archived', 'not_reproducible'))
+      fs.writeFileSync(path.join(tracesDir, 's-arch-noend.yaml'), traceYaml('s-arch-noend', 'archived', null))
+      fs.writeFileSync(path.join(tracesDir, 's-esc.yaml'), traceYaml('s-esc', 'escalated', null))
       let proj = null
       try {
         proj = JSON.parse(pyRun(['scripts/trace_state.py', '--json', '--can-write', '--traces', tracesDir],
@@ -2288,6 +2307,97 @@ _MS._run_no_pipe = no_fallback`)
           ui.clickExact('转交他人跟进'); await ui.pump(2)
           ui.clickExact('确认收尾'); await ui.pump(2)
           expect('状态编辑器：缺「转交给」时点确认只给字段提示', /需要填「转交给」/.test(ui.text()), ui.text().slice(-300))
+        }
+        // 高危动作：先说清后果，未勾选「我已了解后果」时点确认只给提示、不写盘。
+        {
+          const st = byId['s-noend']
+          const calls = []
+          const host0 = hostFor(st)
+          const ui = interactiveRender(ascSrc, { sessionId: 'sess-1' },
+            (m, a) => { calls.push(m); return host0(m, a) })
+          await ui.pump(6)
+          ui.click('改状态'); await ui.pump(2)
+          ui.clickExact('重新打开'); await ui.pump(2)
+          const t = ui.text()
+          expect('状态编辑器：高危动作先给后果说明与勾选', /我已了解后果/.test(t) && /退回「进行中」/.test(t), t.slice(-300))
+          ui.clickExact('确认重新打开'); await ui.pump(2)
+          expect('状态编辑器：未勾选「我已了解后果」时确认被拦下且不发起写入',
+            /先勾选「我已了解后果」/.test(ui.text())
+            && calls.indexOf('ascend-trace-transition') < 0,
+            JSON.stringify({ msg: ui.text().slice(-200), calls }))
+        }
+        // 高危判据的行为差异（改收尾到同状态 / 补记不要求勾选）要改 <select> 才能测，
+        // mock React 只收集 onClick；这里钉源码形状：判据比的是目标状态与当前状态，
+        // 不是动作 id 名单（id 名单会漏掉词表新增的同类转移，也会把补记误判成高危）。
+        expect('状态编辑器：高危判据按「目标状态 ≠ 当前状态」判（补记与同状态改收尾不算）',
+          /const stRisky = !!stAct && stAfterStatus !== stCurStatus\s*\n\s*&& \(stAfterStatus === 'archived' \|\| stAfterStatus === 'in_progress'\)/.test(ascSrc),
+          'stRisky 源码形状不符')
+        expect('状态编辑器：「谨慎」标记与后果判据同源（不按动作 id 白名单）',
+          /const risky = a\.id !== 'correct-ending' && a\.id !== 'backfill-ending'/.test(ascSrc))
+
+        // —— 实验：高危判据的行为矩阵（真点击 + 真改 <select>，投影来自 trace_state.py）——
+        {
+          const RISK = '我已了解后果'
+          const open = async (sid) => {
+            const st = byId[sid]
+            const ui = interactiveRender(ascSrc, { sessionId: 'sess-1' }, hostFor(st))
+            await ui.pump(6)
+            ui.click('改状态'); await ui.pump(2)
+            return { ui, st }
+          }
+          const pick = async (sid, label) => {
+            const { ui } = await open(sid)
+            ui.clickExact(label); await ui.pump(2)
+            return ui
+          }
+          const check = (name, cond, ui) => expect('矩阵：' + name, cond,
+            ui ? JSON.stringify({ risk: /我已了解后果/.test(ui.text()), tail: ui.text().slice(-180) }) : '')
+
+          // ① 补记收尾方式：状态不变，不要求勾选
+          { const ui = await pick('s-noend', '补记收尾方式')
+            check('补记收尾方式不要求勾选', !new RegExp(RISK).test(ui.text()), ui) }
+          // ①b 补记收尾方式（archived 单，存量里最多的一类）：不要求勾选；预览仍写「目标=当前状态」+「只改收尾内容」
+          { const ui = await pick('s-arch-noend', '补记收尾方式')
+            const t = ui.text()
+            check('archived 单补记不要求勾选、预览说状态不变',
+              !new RegExp(RISK).test(t) && /不再跟进/.test(t) && /只改收尾内容，状态不变/.test(t), ui) }
+          // ② 改收尾方式：目标=当前状态（resolved→resolved）不要求勾选
+          { const ui = await pick('s-ended', '改收尾方式')
+            check('resolved→resolved 不要求勾选', !new RegExp(RISK).test(ui.text()), ui) }
+          // ③ 改收尾方式：resolved→archived 要求勾选，文案说「会标成」
+          { const ui = await pick('s-ended', '改收尾方式')
+            ui.setSelect('换成哪种收尾', 'archived'); await ui.pump(2)
+            const t = ui.text()
+            check('resolved→archived 要求勾选且文案按目标状态', new RegExp(RISK).test(t) && /这单会标成/.test(t) && !/这单会退回/.test(t), ui) }
+          // ④ 改收尾方式：archived→archived（同状态）不要求勾选
+          { const ui = await pick('s-arch', '改收尾方式')
+            ui.setSelect('换成哪种收尾', 'archived'); await ui.pump(2)
+            check('archived→archived 不要求勾选', !new RegExp(RISK).test(ui.text()), ui) }
+          // ⑤ close-archived 要求勾选
+          { const ui = await pick('s-progress', '不再跟进')
+            const t = ui.text()
+            check('close-archived 要求勾选且文案说「会标成」', new RegExp(RISK).test(t) && /这单会标成/.test(t), ui) }
+          // ⑥ reopen 要求勾选
+          { const ui = await pick('s-ended', '重新打开')
+            const t = ui.text()
+            check('reopen 要求勾选且文案说「退回进行中」', new RegExp(RISK).test(t) && /这单会退回「进行中」/.test(t), ui) }
+          // ⑦ close-resolved / close-escalated 不要求勾选
+          { const ui = await pick('s-progress', '已定位')
+            check('close-resolved 不要求勾选', !new RegExp(RISK).test(ui.text()), ui) }
+          { const ui = await pick('s-progress', '转交他人跟进')
+            check('close-escalated 不要求勾选', !new RegExp(RISK).test(ui.text()), ui) }
+          // ⑧ 「谨慎」标记与后果判据同源：动作选项层面
+          { const { ui } = await open('s-progress')
+            const t = ui.text()
+            check('谨慎标记：不再跟进带、已定位/转交他人不带',
+              /不再跟进\n谨慎/.test(t) && !/已定位\n谨慎/.test(t) && !/转交他人跟进\n谨慎/.test(t), ui) }
+          { const { ui } = await open('s-ended')
+            check('谨慎标记：改收尾方式不提前标（目标在第 2 步选）', !/改收尾方式\n谨慎/.test(ui.text()), ui) }
+          // ⑨ escalated 缺收尾方式：补记只写收尾内容，不要求勾选（收尾方式候选按当前状态过滤）
+          { const ui = await pick('s-esc', '补记收尾方式')
+            const t = ui.text()
+            check('escalated 单补记不要求勾选且预览状态不变',
+              !new RegExp(RISK).test(t) && /只改收尾内容，状态不变/.test(t) && /转交他人/.test(t), ui) }
         }
       }
       // 静态守卫：用到的状态函数必须在同一份源码里声明过。它盯的是"删了 useState 声明、
@@ -2795,6 +2905,143 @@ _MS._run_no_pipe = no_fallback`)
         expect('交接包 host：shell 不可用时给原因与手工复现命令（不假装成功）',
           rNoShell.ok === false && /shell/.test(String(rNoShell.error)) && /手工复现/.test(String(rNoShell.error)),
           String(rNoShell && rNoShell.error))
+      }
+      // —— fs 写：每次调用都带单次沙箱策略（2026-11，Windows 跨盘检出被拒）——
+      // 省略第 5 个实参时 dsh-fs-sandbox 回退**部署默认档位**（workspace-write + 部署工作区根）；
+      // 目标不在该根之下就抛 FS_SANDBOX_DENIED。文件权限一切正常，报出来只有一句
+      // file access denied under workspace-write mode。macOS 上检出恰在可写根下，这个洞在
+      // 本机永远不会红，所以这里按 DSH 的围栏语义做 mock fs、真跑三条 RPC，而不是只扫源码。
+      {
+        const MAIN = '/mock/repo'
+        const WT = MAIN + '/wt'
+        const DEPLOY = '/deploy/workspace'   // 部署默认可写根：与检出不同目录，正是跨盘检出的形态
+        const files = new Map()
+        const dirs = new Map()
+        const versions = new Map()
+        const writes = []
+        const specs = []
+        const mkdir = (p) => { if (!dirs.has(p)) dirs.set(p, []); return dirs.get(p) }
+        const addDir = (p) => { mkdir(p); const e = mkdir(path.dirname(p)); const n = path.basename(p); if (!e.some(x => x.name === n)) e.push({ name: n, type: 'directory' }) }
+        const addFile = (p, c) => { files.set(p, c); const e = mkdir(path.dirname(p)); const n = path.basename(p); if (!e.some(x => x.name === n)) e.push({ name: n, type: 'file' }) }
+        addDir(MAIN + '/.git'); addDir(MAIN + '/metrics'); addDir(MAIN + '/traces'); addDir(MAIN + '/scripts')
+        addFile(MAIN + '/scripts/metrics_health.py', '# stub\n')
+        addFile(MAIN + '/traces/t.yaml', 'session_id: "t1"\nstatus: resolved\n'
+          + 'created_at: "2026-11-01T10:00:00+08:00"\nupdated_at: "2026-11-01T11:00:00+08:00"\n'
+          + 'trace:\n  - role: user\n    content: hello\n')
+        addDir(WT)
+        addFile(WT + '/.git', 'gitdir: ' + MAIN + '/.git/worktrees/wt\n')
+        const notFound = (p) => { const e = new Error('ENOENT: ' + p); e.code = 'FS_NOT_FOUND'; return e }
+        const under = (root, p) => {
+          const r = String(root).replace(/\\/g, '/').replace(/\/+$/, '')
+          const t = String(p).replace(/\\/g, '/')
+          return t === r || t.startsWith(r + '/')
+        }
+        const fsMock = {
+          resolve: async (p, opts) => path.resolve((opts && opts.cwd) || '/', p),
+          processPath: (t) => String(t),
+          async listDir(target) {
+            const p = String(target)
+            if (!dirs.has(p)) throw notFound(p)
+            return (dirs.get(p) || []).map(e => ({
+              name: e.name, type: e.type, target: path.join(p, e.name),
+              version: String(versions.get(path.join(p, e.name)) || 1),
+            }))
+          },
+          async readText(target) {
+            const p = String(target)
+            if (!files.has(p)) throw notFound(p)
+            return files.get(p)
+          },
+          async writeText(...args) {
+            const [target, content, , , policy] = args
+            writes.push({ target: String(target), content: String(content), argc: args.length, policy: policy || null })
+            // 按 DSH 0.2.1 的 SandboxedFileSystem 语义：省略策略 → 部署默认档位；目标不在其根下 → 拒
+            const eff = policy || { mode: 'workspace-write', workspaceRoot: DEPLOY }
+            if (eff.mode === 'read-only' || !under(eff.workspaceRoot, target)) {
+              const e = new Error('cannot write "' + target + '": file access denied under ' + eff.mode + ' mode')
+              e.code = 'FS_SANDBOX_DENIED'
+              throw e
+            }
+            addFile(String(target), content)
+            versions.set(String(target), (versions.get(String(target)) || 1) + 1)
+            return { operation: 'write' }
+          },
+        }
+        const hostSrcFs = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
+        const boot = (ro) => {
+          const regs = {}
+          const sessions = { get: () => ({ header: { cwd: WT } }), list: () => [{ header: { cwd: WT } }] }
+          const shell = {
+            resolve: (s) => s,
+            async run(spec) {
+              specs.push(spec)
+              const cmd = String(spec && spec.command || '')
+              if (/--version$/.test(cmd)) {
+                return { exitCode: 0, timedOut: false, aborted: false, stdout: { text: 'Python 3.11.0\n' }, stderr: { text: '' } }
+              }
+              return { exitCode: 0, timedOut: false, aborted: false, stdout: { text: '{"ok":true}' }, stderr: { text: '' } }
+            },
+          }
+          const ctx = {
+            get: (n) => n === 'fs' ? fsMock
+              : n === 'shell' ? shell
+                : n === 'sessions' ? sessions
+                  : n === 'sandboxPolicy' ? (ro ? { resolve: () => ({ mode: 'read-only', workspaceRoot: MAIN }) } : undefined)
+                    : undefined,
+          }
+          const harness = { handle: (n, fn) => { regs[n] = fn; return () => {} }, defineTool: (o) => o, registerTool: () => () => {} }
+          new Function('harness', 'console', hostSrcFs)(harness, { error: () => {}, log: () => {} }).apply(ctx)
+          return regs
+        }
+        const writesTo = (suffix) => writes.filter(w => w.target.replace(/\\/g, '/').endsWith(suffix))
+        const okWrite = (w) => !!w && w.argc === 5 && !!w.policy
+          && w.policy.mode === 'workspace-write' && w.policy.workspaceRoot === MAIN
+          && w.target.replace(/\\/g, '/').startsWith(MAIN + '/')
+        const regs = boot(false)
+        // ① 沉淀状态回写（traces/<traceFile>）
+        const r1 = await regs['ascend-update-sedimented']({ sessionId: 's1', traceFile: 't.yaml', state: 'knowledge' })
+        const w1 = writesTo('/traces/t.yaml')
+        expect('fs 写：沉淀状态回写带单次策略（根=会话解析出的主检出）',
+          !!r1 && r1.ok === true && w1.length === 1 && okWrite(w1[0]),
+          JSON.stringify({ r1, w: w1[0] && { argc: w1[0].argc, policy: w1[0].policy } }))
+        // ② 列表索引缓存（traces/.panel-index.json）
+        writes.length = 0
+        const r2 = await regs['ascend-traces-list']({ sessionId: 's1' })
+        await new Promise(r => setTimeout(r, 30))
+        const w2 = writesTo('/traces/.panel-index.json')
+        expect('fs 写：列表索引缓存带单次策略（根=运行时主检出）',
+          !!r2 && r2.ok === true && w2.length === 1 && okWrite(w2[0]),
+          JSON.stringify({ ok: r2 && r2.ok, w: w2[0] && { argc: w2[0].argc, policy: w2[0].policy } }))
+        // ③ 状态写入口的参数文件（traces/.payload-*.json）
+        writes.length = 0; specs.length = 0
+        const r3 = await regs['ascend-trace-transition']({
+          sessionId: 's1', action: 'close-resolved', expectSha256: 'sha-1',
+          payload: { summary: '含 空格 "引号" $VAR 与中文' },
+        })
+        const w3 = writes.filter(w => /\.payload-[^/]+\.json$/.test(w.target.replace(/\\/g, '/')))
+        expect('fs 写：状态写入口的参数文件带单次策略（根=主检出）',
+          !!r3 && r3.ok === true && w3.length === 1 && okWrite(w3[0]),
+          JSON.stringify({ r3, w: w3[0] && { argc: w3[0].argc, policy: w3[0].policy } }))
+        const transCmd = String((specs.filter(s => /trace_transition\.py/.test(String(s.command)))[0] || {}).command || '')
+        expect('fs 写：参数正文仍走文件、不拼进命令行（中文/引号/$ 不被 shell 改写）',
+          /--payload-file/.test(transCmd) && transCmd.indexOf('中文') < 0, transCmd.slice(0, 160))
+        // 只读档：不写，给可读错误（不是让 fs 抛 file access denied）
+        writes.length = 0
+        const roRegs = boot(true)
+        const r4 = await roRegs['ascend-update-sedimented']({ sessionId: 's1', traceFile: 't.yaml', state: 'knowledge' })
+        expect('fs 写：只读档给可读错误且一次都不写',
+          !!r4 && r4.ok === false && /只读档/.test(String(r4.error)) && writes.length === 0,
+          JSON.stringify({ r4, writes: writes.length }))
+        // 列表刷新是只读会话也会走的路径：索引缓存是派生物，只读档下同样不写。
+        // 先放一份新 trace，让缓存 miss（否则上一轮可写档已把缓存写满且版本命中，
+        // `cache.dirty` 为 false，这条断言会变成恒真——实测删掉守卫也照样绿）。
+        addFile(MAIN + '/traces/t2.yaml', 'session_id: "t2"\nstatus: in_progress\n')
+        writes.length = 0
+        const r5 = await roRegs['ascend-traces-list']({ sessionId: 's1' })
+        await new Promise(r => setTimeout(r, 30))
+        expect('fs 写：只读档刷新列表也不写索引缓存',
+          !!r5 && r5.ok === true && writes.length === 0,
+          JSON.stringify({ ok: r5 && r5.ok, writes: writes.length }))
       }
       // 结构断言：运行时读不回来的那部分（措辞与形态）钉在源文件上
       expect('交接包：改道在界面上有一行明确文案（含落点），不静默改目录',
@@ -3684,7 +3931,13 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         state: { derived: { upstreamPending: false,
                             upstream: { anchors: ['vllm-ascend#9000'], lastVerified: '' } } },
       })
-      const sessionsFixture = [pending, fixed]
+      // 反例：命中了案例但没有上游锚点——不该出现查上游入口（防「有案例就有入口」的假通过）。
+      const noAnchor = Object.assign({}, base, {
+        sessionId: 's-noanchor', file: 's-noanchor.yaml', activeCase: 'VLLM-ASC-7000', activeCaseKind: 'case',
+        activeCaseInKb: true, fixEmitted: false, harnessSession: 'session-noanchor',
+        state: { derived: { upstreamPending: false, upstream: null } },
+      })
+      const sessionsFixture = [pending, fixed, noAnchor]
       const host = (m) => m === 'ascend-traces-list'
         ? { ok: true, sessions: sessionsFixture }
         : { ok: true, steps: [], summary: null }
@@ -3728,22 +3981,17 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         /vllm-ascend#10834/.test(t) && /上次外部验证 2026-W42/.test(t), t.slice(0, 400))
       expect('筛选入口带数量（等上游 1）', /等上游 1/.test(t), t.slice(0, 300))
 
-      // 「查上游」真的点得开，指令里带 case id、不带 --apply。
-      // 按钮用「最短文本」定位：整行卡片的 toggle 按钮也会把子节点 title 里的「查上游」带进来，
-      // 按包含关系取第一个会点到展开箭头（实测踩过）。
-      const btnUp = (() => {
+      // 「查上游进展」入口按锚点挂：三张夹具里两张带锚点、一张没有 → 入口数必须是 2。
+      // 这一条钉的是入口条件放宽（徽标与筛选仍按 upstreamPending 四条组合，判据本体由
+      // `tests/test_trace_state.py` 的 DeriveTest 钉住）：给了 fix 的那单虽不是"等上游"也能查，
+      // 而命中案例但没有锚点的那单不该出现入口（防「有案例就有入口」的假通过）。
+      const upstreamBtns = () => {
         const hs2 = []
         collectHandlers(tree, hs2)
-        return hs2.filter(h => String(h.text).includes('查上游'))
-          .sort((a, b) => String(a.text).length - String(b.text).length)[0]
-      })()
-      expect('「查上游」动作按钮可点', !!btnUp && /查上游/.test(String(btnUp.text)))
-      if (btnUp) { btnUp.fn({}); await pumpTree(3) }
-      const upText = treeText(tree)
-      expect('查上游的指令带 --case 与具体 case id',
-        /scripts\/verify_upstream_outcomes\.py --case VLLM-ASC-10834/.test(upText), upText.slice(0, 400))
-      expect('查上游指令里没有 --apply（写回案例走 PR，不在诊断面板）',
-        !/--apply/.test(upText), upText.slice(0, 400))
+        return hs2.filter(h => /查上游进展$/.test(String(h.text)))
+      }
+      expect('「查上游进展」入口按锚点出现（两张带锚点各一个，无锚点那张没有）',
+        upstreamBtns().length === 2, 'buttons=' + upstreamBtns().length)
 
       // 筛选入口：只留等上游的那一单。
       const chipUp = findByText('等上游 1')
@@ -3751,7 +3999,23 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       if (chipUp) { chipUp.fn({}); await pumpTree(3) }
       const filtered = treeText(tree)
       expect('等上游筛选只留「已收尾 + 没给 fix + 有锚点」的单',
-        /s-up/.test(filtered) && !/s-fixed/.test(filtered), filtered.slice(0, 400))
+        /s-up/.test(filtered) && !/s-fixed/.test(filtered) && !/s-noanchor/.test(filtered), filtered.slice(0, 400))
+
+      // 筛选后只剩一单，入口不再有歧义：点它，指令里带 case id、不带 --apply。
+      // 用「最短文本」定位：整行卡片的 toggle 按钮也会把子节点 title 里的字带进来。
+      const btnUp = (() => {
+        const hs2 = []
+        collectHandlers(tree, hs2)
+        return hs2.filter(h => String(h.text).includes('查上游'))
+          .sort((a, b) => String(a.text).length - String(b.text).length)[0]
+      })()
+      expect('「查上游进展」动作按钮可点', !!btnUp && /查上游/.test(String(btnUp.text)))
+      if (btnUp) { btnUp.fn({}); await pumpTree(3) }
+      const upText = treeText(tree)
+      expect('查上游的指令带 --case 与具体 case id',
+        /scripts\/verify_upstream_outcomes\.py --case VLLM-ASC-10834/.test(upText), upText.slice(0, 400))
+      expect('查上游指令里没有 --apply（写回案例走 PR，不在诊断面板）',
+        !/--apply/.test(upText), upText.slice(0, 400))
 
       // 批量入口：一次查这几单，一条指令（不是每单一条）。
       const btnBatch = findByText('批量查这 1 条案例的上游')
