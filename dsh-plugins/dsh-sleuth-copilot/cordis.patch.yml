@@ -1,0 +1,13 @@
+# ascend-sleuth 诊断状态条（独立插件包）
+#
+# 形态：一条只读的状态条，注册在 conversation.input.dock（会话输入框上方），不占 tab、
+# 不占整页，也不替换任何自带组件。Host 半只注册一条 RPC 路由（/sleuth-copilot），
+# 数据面是 lib/copilot_state.py（状态判据仍只在 scripts/_trace_state.py）。
+#
+# 装：plugin_manager install_bundle(target: <本目录绝对路径>)，
+#     或 <安装目录>/runtime/cli/bin/dsh plugin --profile <profile> add "<本目录绝对路径>"
+# 卸：plugin_manager remove_bundle(target: 'dsh-sleuth-copilot')
+- insert:
+    - id: dsh-sleuth-copilot
+      name: 'dsh-sleuth-copilot'
+      config: {}

@@ -503,6 +503,12 @@ jobs:
       # 输出截断、5xx 映射、可用性三态与缓存，以及配置路由的鉴权/解析/探测/404。
       # 全部打桩（进程内假服务替代真接口），不需要 DSH，也不需要内网实例；真机那一次按插件 README 走。
       - run: node scripts/check_vllm_kb.js
+      # 诊断状态条（独立包）的两层冒烟：
+      # ① 浏览器半用最小 React 替身跑四个面、收起偏好、写入参数与台账键盘；
+      # ② Host 半走真实 shell → Python → JSON，写操作只在临时目录的 trace 副本上做，仓库不被改。
+      # CI 里没有 gh，上游能力位会报未就绪——冒烟只断言它是布尔值，不依赖本机登录态。
+      - run: node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs
+      - run: node dsh-plugins/dsh-sleuth-copilot/test/host-smoke.mjs
 
   skill-self-contained:
     needs: changes

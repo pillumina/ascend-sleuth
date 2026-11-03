@@ -40,7 +40,7 @@
 //
 // 退出码：0 = 全通；1 = 有一条判据失败（输出里点名是哪一步，含"依赖有、bundles 没有"的登记
 //        不完整）；2 = 前置缺失（找不到 DSH_HOME、profile、dsh 命令行，profile 不是 web 形态
-//        （--full 跳过这条），或 profile 里两个包都没登记）——这时转路由四/五，不要反复试。
+//        （--full 跳过这条），或 profile 里已登记的包一个都没有）——这时转路由四/五，不要反复试。
 
 'use strict'
 
@@ -271,7 +271,7 @@ async function checkPage(base, cookie, names, io) {
   const response = await fetch(base + '/', { headers: cookie === null ? {} : { cookie } })
   const text = await response.text()
   const missing = names.filter((name) => !text.includes(name + '/client.js'))
-  io.say('  页面清单 HTTP ' + response.status + '，' + (missing.length === 0 ? '两个包的 client.js 都在' : '缺 ' + missing.join('、') + ' 的 client.js'))
+  io.say('  页面清单 HTTP ' + response.status + '，' + (missing.length === 0 ? '已登记包的 client.js 都在' : '缺 ' + missing.join('、') + ' 的 client.js'))
   return { ok: response.status === 200 && missing.length === 0, missing }
 }
 
@@ -310,7 +310,7 @@ async function runVerification(options, io) {
     .map((item) => ({ name: item.name, reg: packageRegistration(read.manifest, item.name) }))
     .filter((item) => item.reg.bundle || item.reg.dependency !== null)
   if (registered.length === 0) {
-    io.warn('profile ' + active.profile + ' 里两个包都没登记（dependencies 与 dsh.profile.bundles 都空）。')
+    io.warn('profile ' + active.profile + ' 里已登记的包一个都没有（dependencies 与 dsh.profile.bundles 都空）。')
     io.warn('先按路由三/四/五装，再回来验证。')
     return 2
   }
@@ -393,7 +393,7 @@ async function runVerification(options, io) {
       io.say('RPC          ok（' + RPC_ENDPOINT + ' 回 result.ok=true）')
     }
 
-    io.say('全部通过：临时 profile 能拼出配置，host 半注册了 RPC，页面会加载两个包的浏览器半。')
+    io.say('全部通过：临时 profile 能拼出配置，host 半注册了 RPC，页面会加载已登记包的浏览器半。')
     return 0
   } catch (e) {
     io.warn('验证异常：' + String((e && e.stack) || e))
