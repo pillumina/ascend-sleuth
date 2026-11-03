@@ -37,9 +37,21 @@ const TRACE_FIXTURE = [
   '  case_id: ""',
   'active_case: ""',
   'excluded_cases: []',
+  'sediment_candidates:',
+  '  - kind: case',
+  '    summary: "夹具候选：vendor TopKV2 kernel 崩溃"',
   'trace:',
-  '  - {role: user, step: 1, content: "夹具用户事件", evidence: {inline: "夹具证据"}}',
-  '  - {role: agent, step: 2, action: triage, output: "夹具输出", reason: "夹具原因"}',
+  '  - role: user',
+  '    step: 1',
+  '    content: "夹具用户事件"',
+  '    evidence:',
+  '      inline: "夹具证据"',
+  '      files: ["traces/evidence/2026-09-08-copilot-smoke/crash.log"]',
+  '  - role: agent',
+  '    step: 2',
+  '    action: triage',
+  '    output: "夹具输出"',
+  '    reason: "夹具原因"',
   '',
 ].join('\n')
 
@@ -50,6 +62,7 @@ symlinkSync(join(REPO, 'scripts'), join(SANDBOX, 'scripts'), 'dir')
 symlinkSync(join(REPO, 'knowledge'), join(SANDBOX, 'knowledge'), 'dir')
 copyFileSync(join(REPO, 'trace-status.yaml'), join(SANDBOX, 'trace-status.yaml'))
 writeFileSync(join(SANDBOX, 'traces', TRACE_FILE), TRACE_FIXTURE, 'utf8')
+writeFileSync(join(SANDBOX, 'traces', TRACE_ID + '.report.md'), '# 诊断报告\n根因：夹具里的 vendor TopKV2 kernel。\n', 'utf8')
 const TRACES = join(SANDBOX, 'traces')
 
 function runCommand(spec) {
@@ -155,6 +168,12 @@ async function transition(harness, payload, rpcId) {
   }, '/sleuth-copilot/copilot-transition')
 }
 
+async function readReport(harness, payload, rpcId) {
+  return request(harness, {
+    type: 'client-request', rpcId: rpcId || 'report', method: 'copilot-report', payload,
+  }, '/sleuth-copilot/copilot-report')
+}
+
 async function request(harness, body, url) {
   const response = makeResponse()
   await harness.getRoute().handler(makeRequest(body, url), response)
@@ -200,7 +219,18 @@ expect('读：traces 目录指向副本', stateValue && stateValue.tracesDir ===
 const row = stateValue && stateValue.all && stateValue.all[0]
 expect('读：带内容指纹', row && /^[0-9a-f]{64}$/.test(row.contentSha256))
 expect('读：带上游查询能力位', stateValue && stateValue.upstream && typeof stateValue.upstream.ready === 'boolean', JSON.stringify(stateValue && stateValue.upstream))
+expect('读：证据文件清单', row && Array.isArray(row.extra.evidenceList) && row.extra.evidenceList.length === 1 && row.extra.evidenceList[0].includes('crash.log'), JSON.stringify(row && row.extra))
+expect('读：沉淀候选清单', row && Array.isArray(row.extra.sedimentCandidateList) && row.extra.sedimentCandidateList[0].summary.includes('TopKV2'), JSON.stringify(row && row.extra))
+expect('读：报告已识别', row && row.extra.hasReport === true && row.reportFile === 'traces/' + TRACE_ID + '.report.md')
 const originalSha = row.contentSha256
+
+// 人读报告：只读，不写回；不存在时给 E_NOT_FOUND
+const reportRead = await readReport(rw, { cwd: SANDBOX, tracesDir: TRACES, traceSessionId: TRACE_ID }, 'report-1')
+const reportValue = reportRead.envelope && reportRead.envelope.result && reportRead.envelope.result.value
+expect('报告：读到内容', reportValue && reportValue.ok === true && reportValue.text.includes('TopKV2 kernel'), JSON.stringify(reportValue))
+const reportMissing = await readReport(rw, { cwd: SANDBOX, tracesDir: TRACES, traceSessionId: '2026-01-01-no-such' }, 'report-2')
+const missingValue = reportMissing.envelope && reportMissing.envelope.result && reportMissing.envelope.result.value
+expect('报告：不存在时 E_NOT_FOUND', missingValue && missingValue.ok === false && missingValue.code === 'E_NOT_FOUND', JSON.stringify(missingValue))
 
 // 收尾：已定位
 const closeResult = await transition(rw, {

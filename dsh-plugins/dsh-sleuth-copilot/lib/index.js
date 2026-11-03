@@ -7,7 +7,7 @@
 
 import { fileURLToPath } from 'node:url'
 import { basename, dirname, join } from 'node:path'
-import { stat, writeFile, unlink } from 'node:fs/promises'
+import { readFile, stat, writeFile, unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -264,6 +264,43 @@ export function apply(ctx) {
     return /^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$/.test(String(value || ''))
   }
 
+  // traces 目录由浏览器半从状态里带回来（主检出那份）。只接受绝对路径且末级目录叫 traces，
+  // 用于两处：写状态的沙箱根、读人读报告的文件目录。
+  async function normalizeTracesDir(payload) {
+    if (typeof payload.tracesDir !== 'string' || !payload.tracesDir) return ''
+    const candidate = payload.tracesDir
+    if (!candidate.startsWith('/') && !/^[A-Za-z]:[\\/]/.test(candidate)) return ''
+    try {
+      if ((await stat(join(candidate, '.'))).isDirectory() && basename(candidate) === 'traces') return candidate
+    } catch {
+      // 目录不在就退回调用的默认解析
+    }
+    return ''
+  }
+
+  // 读人读报告：只读、限大小，路径由「检出根 + traces/<id>.report.md」拼出，单号先过白名单。
+  const MAX_REPORT_BYTES = 512 * 1024
+  async function readReport(payload) {
+    const cwd = typeof payload.cwd === 'string' ? payload.cwd : ''
+    const traceId = String(payload.traceSessionId || '')
+    if (!validTraceId(traceId)) return { ok: false, code: 'E_SCHEMA', message: '诊断单号不合法' }
+    const root = await resolveRepoRoot(cwd)
+    if (root === null) return { ok: false, code: 'E_NO_ROOT', message: '当前工作区不是 ascend-sleuth 检出' }
+    const tracesDir = (await normalizeTracesDir(payload)) || join(root, 'traces')
+    const file = join(tracesDir, traceId + '.report.md')
+    try {
+      const info = await stat(file)
+      if (!info.isFile()) return { ok: false, code: 'E_NOT_FOUND', message: '这单还没有人读报告' }
+      if (info.size > MAX_REPORT_BYTES) {
+        return { ok: false, code: 'E_TOO_LARGE', message: '报告超过 512 KiB，请在编辑器里看 traces/' + traceId + '.report.md' }
+      }
+      const text = await readFile(file, 'utf8')
+      return { ok: true, text, file: 'traces/' + traceId + '.report.md', bytes: info.size }
+    } catch {
+      return { ok: false, code: 'E_NOT_FOUND', message: '这单还没有人读报告' }
+    }
+  }
+
   // 状态写入。参数走临时 JSON 文件（summary / handed_to 常含空格、引号与中文，拼命令行会被改写），
   // 与面板同一条路径；脚本自己删除参数文件，这里再兜底清一次。
   async function applyTransition(payload) {
@@ -284,21 +321,8 @@ export function apply(ctx) {
     const python = await resolvePython(root)
     if (python === null) return transitionFailure('E_NO_PYTHON', '没找到可用的 Python 3')
 
-    // traces 目录由浏览器半从状态里带回来（主检出那份）：写调用的沙箱根取它的父目录，
-    // 这样在 worktree 里开的会话也能写到锚在主检出的 traces/。
-    let tracesDir = ''
-    if (typeof payload.tracesDir === 'string' && payload.tracesDir) {
-      const candidate = payload.tracesDir
-      if (candidate.startsWith('/') || /^[A-Za-z]:[\\/]/.test(candidate)) {
-        try {
-          if ((await stat(join(candidate, '.'))).isDirectory() && basename(candidate) === 'traces') {
-            tracesDir = candidate
-          }
-        } catch {
-          tracesDir = ''
-        }
-      }
-    }
+    // 写调用的沙箱根取 traces 的父目录（主检出），这样在 worktree 里开的会话也能写到锚在主检出的 traces/。
+    const tracesDir = await normalizeTracesDir(payload)
     const writeRoot = tracesDir ? dirname(tracesDir) : root
 
     const body = {}
@@ -432,7 +456,7 @@ export function apply(ctx) {
         const endpoint = pathEndpoint !== '' ? pathEndpoint : (typeof body?.method === 'string' ? body.method : '')
         const payload = body !== undefined && body.payload !== undefined ? body.payload : {}
         let result
-        if (endpoint !== 'copilot-state' && endpoint !== 'copilot-transition') {
+        if (endpoint !== 'copilot-state' && endpoint !== 'copilot-transition' && endpoint !== 'copilot-report') {
           result = { ok: false, error: { code: 'not-found', message: '未知的 RPC 端点: ' + endpoint, details: {} } }
         } else {
           try {
@@ -441,6 +465,8 @@ export function apply(ctx) {
               const value = await applyTransition(payload)
               cache.clear()
               result = { ok: true, value }
+            } else if (endpoint === 'copilot-report') {
+              result = { ok: true, value: await readReport(payload) }
             } else {
               result = {
                 ok: true,
