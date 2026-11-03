@@ -37,7 +37,7 @@ python3 scripts/groom_candidates.py --snapshot <snapshot.json> --all --out <work
 python3 scripts/groom_record.py --snapshot <snapshot.json> --work-orders <work-orders.json> --results-dir <results/>
 ```
 
-产物是 `postmortems/inbox/.groom/assessments/<key>.yaml` 一份本地评估状态。人用 `groom_status.py` 看一屏，用 `groom_decide.py` 写决定；提 PR 时把 `groom_record.py --pr-marker` 的输出贴进 body。
+产物是 `postmortems/inbox/.groom/assessments/<key>.yaml` 一份本地评估状态。人用 `groom_status.py` 看一屏，用 `groom_decide.py` 写决定；提 PR 时把 `groom_record.py --pr-marker` 的输出贴进 body。终态决定落盘后跑 `python3 scripts/groom_close_draft.py --all --apply`，回写来源 trace 的沉淀状态并把草稿移出队列（见 3.7）。
 
 三个概念贯穿全文：
 
@@ -241,7 +241,25 @@ approval_stale: false
 
 退出码：0 通过；2 需要重跑/复核；3 参数或 git 不可用。`--advisory` 只报告、不改变退出码，供人工试跑。
 
-### 3.7 合入后
+### 3.7 收尾：回写沉淀状态与草稿出队（本地）
+
+结论：终态决定之后还有两件事必须落地，由 `groom_close_draft.py` 一次做完；它是本地收尾动作，不进 CI。
+
+两件事以前只写在 SKILL 的一句中文指令里：把来源 trace 的 `sedimented` 从 `submitted` 改成 `knowledge` 或 `archived`，把已处理的草稿移出 inbox。漏做都不报错——面板的沉淀漏斗停在"已提交待升格"，草稿下一轮又按"没有 sidecar 先补跑比对"被评一遍。
+
+脚本先取落点证据、再写状态（不声称没发生的沉淀）：
+
+| 决定 | 落点证据（不满足就拦下） | `sedimented` | `case_id` |
+|---|---|---|---|
+| `covered`（含 agent 判 `duplicate`） | postmortem 已在 `postmortems/<季>/`（Tier 3） | `archived` | 覆盖它的 case |
+| `new_pattern` | 对应 case 已在 `knowledge/` | `knowledge` | 升格后的 case（改过 id 用 `--case-id`） |
+| `variant` | 合并后的 case 已在 `knowledge/` | `knowledge` | 被并入的 case |
+
+几条边界：写状态走 `trace_transition.py`（沉淀状态的唯一写入口）；草稿移进 `postmortems/inbox/.done/`，移动不删除、移回即复活；外部来源没有 trace 时只出队、不回写；trace 文件不存在时只出队并记 `trace-missing`；`reject` 与 `defer` 不是终态，不动 trace、不出队。`reject` 没有对应的 `sedimented` 状态——草稿确实提交过、没有转正，改回 `none` 等于抹掉事实。
+
+**为什么不做成 PR 门**：`traces/` 与 `postmortems/inbox/` 是 `.gitignore` 的运行时件，PR 与 CI 的检出里没有它们，marker 也不带 session id（指针在草稿头注释里）。塞进 `groom_recheck.py` 只能读到空目录，检查会退化成永远通过。这道检查只能落在本地，靠收尾顺序保证：先 `groom_recheck`，再本步，最后 `groom_cleanup`（清理会删 sidecar，而本步要读它）。
+
+### 3.8 合入后
 
 合入后由主干 job 重建索引（`build_index.py` 的覆盖检查必须通过）；没有该 job 的部署按既有纪律在 main 上重建。`groom_recheck.py --post-merge` 可以在本地跑同一道覆盖检查。
 
@@ -264,6 +282,8 @@ approval_stale: false
 | 两个 PR 并发 | 后合入方 base 前进 → recheck 报过期；新 case 撞字面量 → 报可能重复 | 不保证语义判重 |
 | 离线 | 非权威快照；`promotion_gate` 阻塞 `stale-snapshot` | 否 |
 | 旧状态文件损坏 | 备份成 `.corrupt-<时间>` 后重写 | 否：报告里提示 |
+| covered 的 postmortem 还没转正 | 收尾脚本拦下，不写 `archived`、不出队，退出 2 | 否 |
+| 来源 trace 文件不在本机 | 收尾脚本只出队、不写状态，记 `trace-missing` | 否：报告与日志写明 |
 
 不能保证的事：语义等价的召回率、不同措辞/缺失证据下的判断正确率、所有并发草稿都被看见、agent 结论等同于事实。`assessment_id` 是内容与来源的声明，不是签名——有写权限的人可以复制一份真实评估的 id；它防的是"内容/证据与声明不一致"，不是伪造声明。子 agent 的"只读"是提示词与流程约束，不是沙箱；真正的写权限由 Harness/平台控制，本流程只读取它返回的 JSON。合成夹具上的数字不是生产准确率。
 
@@ -271,9 +291,9 @@ approval_stale: false
 
 ### 已落地
 
-- 快照、候选、记录、决定、状态、合入前复核六个脚本。
-- 确定性测试：快照/离线/索引重建、候选有界、记录校验与聚合、幂等、损坏恢复、人决定保留、过期检测、并发 PR、两个独立 inbox、端到端 A 先合入 B 过期再重跑。
-- 验证命令：`python3 -m unittest tests.test_groom_snapshot tests.test_groom_candidates tests.test_groom_record tests.test_groom_status tests.test_groom_recheck tests.test_groom_workflow tests.test_groom_binding`。
+- 快照、候选、记录、决定、状态、合入前复核、收尾七个脚本。
+- 确定性测试：快照/离线/索引重建、候选有界、记录校验与聚合、幂等、损坏恢复、人决定保留、过期检测、并发 PR、两个独立 inbox、端到端 A 先合入 B 过期再重跑、收尾的证据前置与出队。
+- 验证命令：`python3 -m unittest tests.test_groom_snapshot tests.test_groom_candidates tests.test_groom_record tests.test_groom_status tests.test_groom_recheck tests.test_groom_workflow tests.test_groom_binding tests.test_groom_close_draft`。
 
 ### 蓝图
 
@@ -300,6 +320,7 @@ approval_stale: false
 | `scripts/groom_decide.py:30` | 写人决定 |
 | `scripts/groom_status.py:56` | 状态与新鲜度 |
 | `scripts/groom_recheck.py:449` | PR 合入前复核 |
+| `scripts/groom_close_draft.py` | 终态决定的收尾：trace 沉淀回写 + 草稿出队 |
 | `scripts/groom_common.py` | 草稿发现、状态读写、git 工具 |
 | `skills/knowledge-groom/SKILL.md` | 流程与判断规则 |
 | `skills/knowledge-groom/references/subagent-prompts.md` | 子 agent 提示词与返回格式 |

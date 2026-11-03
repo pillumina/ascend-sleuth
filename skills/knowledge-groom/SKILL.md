@@ -220,7 +220,7 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --base origin/main 
 - **前置**：marker 必须已经在 PR body 里——它才是 sidecar 被删后仍在的唯一凭证；本地只有 body 文件、还没开 PR 时不要跑。
 - **body 里只放终态 marker**：`defer` / `reject` 的 marker 会让 `groom_recheck` 整轮判红（`decision-does-not-authorize`），本轮什么都删不掉。
 - **为什么按 key 删而不是删整个 `.groom/`**：inbox 与 `.groom/` 是主检出共享的，同一克隆里可能有别的 session 正在处理别的草稿；整目录删会把它们未完成的评估一起清掉。
-- **顺序**：建快照 → 候选 → 比对 → 记录 → 决定 → marker → **复核** → 清理。`groom_record` 与 `groom_recheck --post-merge` 还要用快照目录，所以清理不能提前。
+- **顺序**：建快照 → 候选 → 比对 → 记录 → 决定 → marker → **复核** → 收尾（`groom_close_draft.py` 回写 trace 并把草稿移出队列） → 清理。`groom_record` 与 `groom_recheck --post-merge` 还要用快照目录，收尾要读 sidecar，所以清理不能提前。
 - **执行阶段持目录级清理锁**（`assessment_guard`，与 `write_assessment` 共用）：清理期间走 `write_assessment` 的写入会等锁；Windows 上等不到锁时**写侧报错、不落盘**（不再无锁写入）。
 - **失败即停、退出 2，报告照出；但可能部分完成**：单条失败只保留该项、继续处理其余；非预期异常折成 `internal-error`，报告与清理日志照写。sidecar 与快照是**先删、日志最后写**——日志写失败时删除已经发生且不可回滚（报告标 `log-write-failed`）。要「零删除」的保证只有一条：复核不通过时整轮直接返回。
 - `--dry-run` 只是**计划**：执行时某条 sidecar 删不掉（unlink 被占用）会让对应快照也保留，所以实际删的只会比计划少，不会多。
@@ -248,7 +248,7 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --base origin/main 
    - 逐条**复核预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象与候选来自 sidecar 的 `provenance.candidates`；需要复核时读候选全文核对 root_cause/fix（M5 成本预算 #3，不全文重读全库）。**draft 头注释已带 to-postmortem/issue-ingest 产出的分诊建议 → 一并核对证据是否成立**（建议与决定分离：判断在产出时做，groom 是审核者）；
    **先判后看（顺序纪律，改不了的自觉就别指望）**：复核候选前，先只读草稿与 sidecar 的 `evidence` 轴，自己写一句判断——症状签名（错误码/关键日志行/数值阈值）、根因假设、修复族方向；再打开候选全文**取证**（我这条假设能否被候选解释，还是只是"看起来像"）。先看候选再判断，判的是**像不像**而不是**对不对**：候选一旦在眼前，语义相近就会把判断拉过去（尤其是措辞相似但根因不同的 draft）。判断行写进批审清单：先写自己的判断，再写与 sidecar / 候选的对照结论；两者不一致时**以证据为准**，别用"候选里有类似的"当理由；
    - 产出**批审清单**交 owner 处理（像清 PR inbox，~30 秒/条）：
-     - `covered_by` → 建议关闭升格；postmortem 转正 `postmortems/YYYY-QN/`（Tier 3 语料，**不是丢弃**）
+     - `covered_by` → 建议关闭升格；postmortem 转正 `postmortems/YYYY-QN/`（Tier 3 语料，**不是丢弃**），再跑 `groom_close_draft.py` 把草稿移出队列
      - `variant_of` → 用草稿**整篇替换**已有 case（先把要保留的内容合并进草稿，再评估；评估后不要再合并）；若要动 `expected`/`fix_on_mismatch` 按高风险变更走双签
      - `new_pattern` → 结构化 + 语义校验 → **过升格闸门** → 升格 `knowledge/<ns>/`。校验失败标 `needs-structurer-review`，语义不明标 `needs-human-review`
      - **升格闸门（按来源分，不是一刀切）**：跑 `python3 scripts/verify_case_draft.py --gate <草稿路径>`。
@@ -256,7 +256,20 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --base origin/main 
        - **自诊断来源（带 `source_session`）→ 默认须闭环**（两轴，与 `trace-status.yaml` 一致）：**命中单**看来源 trace 的 `feedback.outcome: resolved`（fix 被应用且问题消失）；**无命中单**没有 case 可归属，看来源 trace 的 `status: resolved`。没闭环的不必进知识库，留在本地即可。
        - **例外（未闭环但已有强外部证据）**：`verification` ∈ {`upstream-fix-merged`、`upstream-maintainer-confirmed`、`upstream-official-doc`、`engineer-report`} → **需 owner 双签**方可升格。理由：新根因当天发现、修复尚未应用是知识增长的主路径，不能一律挡掉；但这档必须是**外部验证**，不接受 `investigation` 纯推断。
        - `verification: investigation` 且未闭环 → **拦下**，提示三条出路（等闭环 / 补强外部证据 / 走双签例外，草稿产出时 to-postmortem 的报告里已写闸门预判）。
-   - **转正后回写来源 trace 的沉淀状态（闭环，动作发生时写）**：每条被 accept 的草稿，若来源是诊断 trace（头注释记了 `traces/<session_id>.yaml`），转正落位后**回写该 trace 的 `sedimented.state`**——`new_pattern`/`variant_of` 升格 Tier 2 → `{state: knowledge, caseId: <case-id>}`；`covered_by` 仅 postmortem 转正 → `{state: archived, caseId: <case-id>}`。教训：曾因 groom 转正后未回写，trace 停留 `submitted`，诊断面板"沉淀漏斗"显示 4 沉淀 → 0 转正（数据滞后于实际入库）——零推断纪律同样约束转正侧：**转正是动作，发生时必须写**。
+   - **转正后回写来源 trace 的沉淀状态并让草稿出队（闭环，动作发生时写）**：转正落位后跑
+     `python3 scripts/groom_close_draft.py --draft-key <key> --apply`（批处理收尾用 `--all --apply`）。
+     它读 sidecar 的终态决定，按落点证据回写 trace 的 `sedimented.state`——`new_pattern`/`variant` 升格
+     Tier 2 → `{state: knowledge, caseId: <case-id>}`；`covered`（含 agent 判 `duplicate` 的精确重复）
+     仅 postmortem 转正 → `{state: archived, caseId: <覆盖它的 case-id>}`——再把草稿移进
+     `postmortems/inbox/.done/`（移动不删除，移回即复活），并落一行 `.groom/close-log.jsonl`。
+     **证据不在就不写状态**：covered 要求 postmortem 已在季度目录，new_pattern/variant 要求 case 已在
+     `knowledge/`；所以先落盘再跑脚本。**它必须先于第 6 步清理**——清理会删掉本步要读的 sidecar。
+     教训：曾因 groom 转正后未回写，trace 停留 `submitted`，诊断面板"沉淀漏斗"显示 4 沉淀 → 0 转正
+     （数据滞后于实际入库）——零推断纪律同样约束转正侧：**转正是动作，发生时必须写**。
+   - **`duplicate`（精确重复）落成人决定 `covered`**：agent 的分类可以比人决定更具体（`duplicate` 比
+     `covered` 强），但 `human_decision` 枚举里没有 `duplicate`，两者对 Case 的授权相同（都不许新增或
+     修改）。`groom_status.py --decision-prompt` 会把这种草稿的同意项直接写成 `covered`，不要为它
+     编一个 `duplicate` 决定。
    - inbox 停留 >2 周的条目在摘要里标红（队列不是档案）
    - **建议与决定分离**：预分诊只排序注意力，accept / adjust / reject 由人
 1.5. **case 分类校验（三分类强制，废弃 other）**：审核/升格 case 时校验 `category` ∈ {interrupt, precision, performance}——**不存在 other**。发现 other 的 case → 重新分类（按症状性质归入三分类：启动失败/崩溃/资源→interrupt，输出错误/乱码/数值异常→precision，吞吐/延迟→performance）；分不进去 → 标 `needs-human-review`，由 owner 定夺，不静默保留 other。reason：other 是分类残余，实践表明残余全部可归入三分类（曾重分类 5 条全部归入，无一条真属"其他"）；保留 other 会让路由层永远无法到达这些 case（triage-tree 无 other 分支）。

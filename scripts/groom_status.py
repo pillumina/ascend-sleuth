@@ -44,8 +44,13 @@ def _action(a, human, stale, human_valid=True):
     if human and human.get("decision") == "defer":
         return "已延后：等新证据后重跑"
     if human:
-        return f"按人决定处理：{human.get('decision')}" + (
-            f"（{human.get('candidate_case')}）" if human.get("candidate_case") else "")
+        decision = human.get("decision")
+        if decision in ("new_pattern", "variant", "covered"):
+            return ("收尾：落盘后跑 groom_close_draft（回写 trace 沉淀状态 + 草稿出队）"
+                    + f"（{decision}"
+                    + (f"，{human.get('candidate_case')}" if human.get("candidate_case") else "")
+                    + "）")
+        return f"按人决定处理：{decision}"
     if a.get("review_required"):
         return "人工复核：读候选 case 后 groom_decide"
     if a.get("proposed_novelty") == "new_pattern":
@@ -190,12 +195,18 @@ def print_decision_prompts(rows):
             print(f"理由：{r['rationale']}")
         for reason in r.get("review_reasons") or []:
             print(f"待核：{reason}")
-        merge = novelty in ("variant", "covered")
-        can_agree = novelty in ("new_pattern", "variant", "covered", "defer", "reject") \
+        # agent 判 duplicate（精确重复）时，人决定层的等价动作是 covered：human_decision 枚举里
+        # 没有 duplicate（groom_common.VALID_HUMAN_DECISIONS），两者对 Case 的授权相同（都不许
+        # 新增或修改）。不在这里换一个词，人会被提示"先重跑/补证据"，被迫多做一次改判。
+        if novelty == "duplicate":
+            print("备注：agent 判 duplicate（精确重复）；人决定落成 covered（授权相同）。")
+        agree = "covered" if novelty == "duplicate" else novelty
+        merge = agree in ("variant", "covered")
+        can_agree = agree in ("new_pattern", "variant", "covered", "defer", "reject") \
             and (not merge or candidate != "—")
         options = []
         if can_agree:
-            options.append(f"同意建议：{novelty}" + (f"（{candidate}）" if candidate != "—" else ""))
+            options.append(f"同意建议：{agree}" + (f"（{candidate}）" if candidate != "—" else ""))
         else:
             options.append(f"先重跑/补证据（当前建议 {novelty} 不是可直接执行的决定）")
         options += [
