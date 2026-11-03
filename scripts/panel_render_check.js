@@ -2178,15 +2178,29 @@ _MS._run_no_pipe = no_fallback`)
     expect('诊断 tab：旧收尾文案已从界面移除（不跟了 / 转上游 / 已解决 · fix 生效 / 没解决）',
       !dt.includes('不跟了') && !dt.includes('转上游') && !dt.includes('已解决 · fix 生效') && !dt.includes('没解决'))
     expect('诊断 tab：改状态入口与命令兜底都在（有状态投影时）',
-      ascSrc.includes('改状态') && ascSrc.includes('--payload-stdin') && ascSrc.includes('命令兜底'))
+      ascSrc.includes('改状态') && ascSrc.includes('--payload-base64') && ascSrc.includes('命令兜底'))
     const skillToPostmortem = fs.readFileSync(path.join(repo, 'skills/to-postmortem/SKILL.md'), 'utf8')
     // 改状态入口必须在卡片动作行里（行按钮之外、按普通流排），不能是卡片角上的绝对定位小按钮：
     // 那种定位压住同一右端的 token 列与展开箭头，被压住的两处点不到（实测反馈）。
     const actionSrc = ascSrc.slice(ascSrc.indexOf('const actionArea'), ascSrc.indexOf("return React.createElement('div', { className: 'sleu-card'"))
     expect('面板：改状态入口在动作行里（不绝对定位压住 token 列与箭头）',
       /'aria-label': '直接修改这一单的状态'/.test(actionSrc) && !/right: 26, top: 8/.test(ascSrc))
-    expect('面板：命令兜底支持 bash 与 PowerShell 两种写法',
-      /manualCmd\(cmdShell\)/.test(ascSrc) && /'PowerShell'/.test(ascSrc) && /payload-stdin/.test(ascSrc))
+    // 兜底命令必须与 shell 无关：旧版按 bash / PowerShell 分两套写法，要人手选，选错那套就是
+    // ParserError（Windows 上默认那套还是错的）。现在 payload 走 base64 单行，四种终端都能粘。
+    expect('面板：命令兜底不再要人挑 shell 写法（payload 走 base64 单行）',
+      /--payload-base64=/.test(ascSrc) && /function b64json/.test(ascSrc)
+      && !/cmdShell/.test(ascSrc) && !/payload-stdin/.test(ascSrc))
+    // `darwin` 里含 "win"：用子串匹配会把 macOS 判成 Windows，兜底命令写成 `python`（实测踩过）。
+    // 这里直接跑源码里那个纯函数，把三平台钉住。
+    {
+      const i = ascSrc.indexOf('function pythonFor(platform) {')
+      const j = ascSrc.indexOf('\n    }\n', i)
+      const pythonFor = new Function(ascSrc.slice(i, j + 7) + '; return pythonFor')()
+      expect('面板：解释器按精确平台名选（darwin 不是 win32）',
+        pythonFor('win32') === 'python' && pythonFor('Win32') === 'python'
+        && pythonFor('darwin') === 'python3' && pythonFor('linux') === 'python3' && pythonFor('') === 'python3',
+        'win32→' + pythonFor('win32') + ' darwin→' + pythonFor('darwin') + ' linux→' + pythonFor('linux'))
+    }
     expect('面板：命令兜底可以交给 agent 执行（同一脚本，不是旁路）',
       /const agentPrompt =/.test(ascSrc) && /'复制给 agent'/.test(ascSrc)
       && /请执行下面这条命令/.test(ascSrc))
@@ -2289,14 +2303,23 @@ _MS._run_no_pipe = no_fallback`)
           ui.clickExact('补记收尾方式'); await ui.pump(2)
           const t1 = ui.text()
           expect('命令兜底：补记收尾方式给的是同一条写入口，payload 只带 kind、不带 to',
-            /trace_transition\.py s-noend/.test(t1) && /"kind": "root_cause"/.test(t1) && !/"to":/.test(t1),
-            t1.slice(-400))
-          ui.clickExact('PowerShell'); await ui.pump(2)
-          const t2 = ui.text()
-          expect('命令兜底：切到 PowerShell 后命令真的换写法（状态接上了，不只是按钮变色）',
-            /@'/.test(t2) && /python scripts\/trace_transition\.py/.test(t2), t2.slice(-400))
-          ui.clickExact('bash'); await ui.pump(2)
-          expect('命令兜底：切回 bash 后是 here-doc 写法', /<<'JSON'/.test(ui.text()), ui.text().slice(-400))
+            /trace_transition\.py s-noend/.test(t1) && /--payload-base64=/.test(t1)
+            && !/"to":/.test(t1) && !/<<'JSON'/.test(t1) && !/cd <仓库根目录>/.test(t1), t1.slice(-500))
+          // 以前这里要人挑 bash / PowerShell，选错那套就是 ParserError（Windows 上默认那套还是错的）。
+          // 现在 payload 走 base64 单行，命令与 shell 无关，界面上不该再有写法开关。
+          expect('命令兜底：命令一行、与 shell 无关（没有要人手选的写法开关）',
+            /一行命令，PowerShell \/ cmd \/ bash 都能粘/.test(t1) && !/写法/.test(t1), t1.slice(-500))
+          // 命令里的 token 必须能解回 payload：只断文案的话，编码坏了也照样"通过"。
+          const tok = (t1.match(/--payload-base64=([A-Za-z0-9+/=]+)/) || [])[1] || ''
+          let decoded = null
+          try { decoded = JSON.parse(Buffer.from(tok, 'base64').toString('utf8')) } catch (e) { decoded = null }
+          expect('命令兜底：命令里的 base64 解回的就是这份 payload（不是拼给人看的假 token）',
+            !!decoded && decoded.kind === 'root_cause' && !decoded.to, tok.slice(0, 48))
+          // 点复制必须当场有反馈。渲染检查里没有可用剪贴板（document 桩没有 createElement），
+          // 所以断言的是失败那一支：它同样要出现在按钮旁边，而不是几步之外的提示位。
+          ui.clickExact('复制命令'); await ui.pump(3)
+          expect('命令兜底：点复制就地给反馈（失败也写在按钮旁并带目录）',
+            /复制失败：在仓库根目录手动选中下面的命令/.test(ui.text()), ui.text().slice(-300))
         }
         // 必填没填就点确认：给字段提示、不写盘（转交他人的 "转交给" 是硬必填）。
         {

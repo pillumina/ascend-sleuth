@@ -17,6 +17,9 @@ transition 事件；面板、skill、终端都调它。
   python3 scripts/trace_transition.py <sid> --reopen
   python3 scripts/trace_transition.py <sid> --field sedimented --state submitted --inbox-path …
   python3 scripts/trace_transition.py <sid> --to archived --kind withdrawn --expect-sha256 <hex> --json
+  python3 scripts/trace_transition.py <sid> --json --payload-base64 <b64>
+  （`--payload-base64` 是给「复制到任意终端」用的：base64 是纯 ASCII 单行，bash / zsh /
+    PowerShell / cmd.exe 都不用管引号与 here-doc，也就不存在选错 shell 写法的问题）
 
 写入是**默认行为**；`--dry-run` 才只校验不写盘。三个子命令语义一致，不沿用
 `sediment_batch.py` 那套「默认打印、`--apply` 才写」。
@@ -29,6 +32,7 @@ transition 事件；面板、skill、终端都调它。
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import sys
@@ -552,6 +556,24 @@ def fold_events(events: list[dict], keep: int = MAX_INLINE_TRANSITIONS) -> tuple
     return [summary] + tail, len(head)
 
 
+def _payload_from_base64(token: str):
+    """base64 → JSON 对象。返回 (payload, err)；err 是给人看的一句，三种手误分开说。"""
+    raw = str(token or "")
+    if not raw:
+        return None, "base64 参数是空的"
+    try:
+        body = base64.b64decode(raw, validate=True).decode("utf-8")
+    except Exception as exc:
+        return None, "base64 参数解不开：" + str(exc)
+    try:
+        payload = json.loads(body)
+    except Exception as exc:
+        return None, "base64 解出来不是 JSON：" + str(exc)
+    if not isinstance(payload, dict):
+        return None, "payload 必须是对象，解出来是 " + type(payload).__name__
+    return payload, None
+
+
 def verify_untouched(before: dict, after: dict) -> bool:
     for key, value in before.items():
         if key in TOUCHED:
@@ -597,6 +619,8 @@ def main(argv=None) -> int:
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--payload-file", default=None,
                     help="从 JSON 文件读参数（面板写入用：避免把所有值拼进命令行）")
+    ap.add_argument("--payload-base64", default=None,
+                    help="从命令行读 base64 编码的 JSON 参数（复制命令用：单行 ASCII，与 shell 无关）")
     ap.add_argument("--payload-stdin", action="store_true",
                     help="从标准输入读 JSON 参数（复制命令用：here-doc）")
     args = ap.parse_args(argv)
@@ -616,6 +640,16 @@ def main(argv=None) -> int:
                 Path(args.payload_file).unlink()
             except OSError:
                 pass
+    elif args.payload_base64 is not None:
+        # base64 先解成 UTF-8 字节再交给 json：不经过终端编码，中文不会被打成问号。
+        # 三段分开报错——「解不开」「解出来不是 JSON」「不是对象」是三种不同的手误，
+        # 合成一句读者只能猜。空串也走这里（`is not None`，不用真值判断：空串会被跳过，
+        # 最后报成「不允许转到该状态」，看不出是参数没带）。
+        payload, err = _payload_from_base64(args.payload_base64)
+        if err:
+            print(json.dumps({"ok": False, "code": "E_SCHEMA", "message": err}, ensure_ascii=False)
+                  if args.json else err, file=sys.stdout if args.json else sys.stderr)
+            return CODE_EXIT["E_SCHEMA"]
     elif args.payload_stdin:
         try:
             payload = json.loads(sys.stdin.read() or "{}")

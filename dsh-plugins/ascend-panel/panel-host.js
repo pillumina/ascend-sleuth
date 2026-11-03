@@ -2684,9 +2684,14 @@ return {
           r.capabilities = proj.capabilities
         } else if (proj && proj.ok === false) stateError = proj.message || proj.code
       } catch (e) { stateError = String(e && e.message || e) }
+      // `host.platform` 给客户端选兜底命令的解释器（Windows 上没有 `python3`）。Web GUI 可能
+      // 开在另一台机器上，命令却要在 host 这台机器上跑，所以平台由 host 报，不靠浏览器猜。
+      const hostPlatform = (typeof process !== 'undefined' && process && process.platform)
+        ? String(process.platform) : ''
       return { ok: true, sessions: r.sessions, inboxDrafts: r.inboxDrafts || [], elapsedMs: r.elapsedMs,
                parsed: r.parsed, cached: r.cached, skipped: r.skipped,
-               vocab: r.vocab || null, capabilities: r.capabilities || null, stateError: stateError }
+               vocab: r.vocab || null, capabilities: r.capabilities || null,
+               host: { platform: hostPlatform }, stateError: stateError }
     })
 
     const detailDisposer = harness.handle('ascend-traces-detail', async (args) => {

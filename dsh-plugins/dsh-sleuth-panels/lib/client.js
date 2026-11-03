@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:8a872661e6c7)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:5d5ef12d0abf)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:f684735469ce)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:119062e6c579)
 // 校验：`node scripts/build_panel_bundle.js --check`。
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:8a872661e6c7) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:5d5ef12d0abf) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -474,7 +474,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.8.21'
+    const PANEL_VERSION = '0.8.22'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -532,6 +532,41 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     function flashState(setter, value, ms) {
       setter(value)
       if (timer && typeof timer.timeout === 'function') timer.timeout(() => setter(null), ms)
+    }
+    // host 那台机器的平台（`ascend-traces-list` 带回来）。Web GUI 可能开在另一台机器上，
+    // 兜底命令却要在 host 那台机器上跑，所以以 host 为准；它没报才退回浏览器自己的。
+    let HOST_CACHE = null
+    function hostPlatform() {
+      if (HOST_CACHE && HOST_CACHE.platform) return String(HOST_CACHE.platform)
+      if (typeof navigator === 'undefined') return ''
+      return String(navigator.platform || navigator.userAgent || '')
+    }
+    // 兜底命令里的解释器名：Windows 上 `python3` 基本不存在，Linux/macOS 上 `python` 常常不存在。
+    // 只能按**精确平台名**判，不能用 /win/ 这种子串匹配——`darwin` 里就含 "win"（实测踩过：
+    // macOS 上被判成 Windows，命令反而写成 `python`）。选错只是「找不到命令」，不会写坏记录；
+    // 界面上给了换 `py -3` 的说明。
+    function pythonFor(platform) {
+      const p = String(platform || '').toLowerCase()
+      return (p === 'win32' || p.indexOf('windows') >= 0) ? 'python' : 'python3'
+    }
+    function pythonOf() {
+      return pythonFor(hostPlatform())
+    }
+    // 命令里带 JSON 的跨 shell 编码：base64 是纯 ASCII 单行，四种 shell 都不会拆它，也不用管
+    // 谁家的 here-doc、引号与 $ 展开。旧版按 shell 分两套写法，选错那套就是 ParserError。
+    function b64json(value) {
+      const text = JSON.stringify(value)
+      try {
+        if (typeof TextEncoder !== 'undefined' && typeof btoa === 'function') {
+          const bytes = new TextEncoder().encode(text)
+          let bin = ''
+          for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+          return btoa(bin)
+        }
+        return btoa(unescape(encodeURIComponent(text)))
+      } catch (e) {
+        return ''
+      }
     }
     // 人读时间：列表右上一行显示 MM-DD HH:mm（本地时区），完整时间放 title。
     function fmtTime(iso) {
@@ -1438,12 +1473,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         : (statusMeta[s.status] || statusMeta.unknown)
       const canResume = vocabStatus ? !!vocabStatus.resumable : (s.status === 'in_progress')
       const st = s.state || null
-      const [stEdit, setStEdit] = React.useState({ action: '', kind: '', handed: '', dup: '', msg: '', riskAck: false })
-      const [rpEdit, setRpEdit] = React.useState({ source: 'field', result: 'from_report', note: '', msg: '' })
-      // 命令兜底的写法（bash / PowerShell）。它必须是真状态：状态编辑器里兜底命令那一块按
-      // `stAct ?` 渲染、渲染期就读它，漏声明时选中任一动作都会抛 ReferenceError，整张卡片
-      // 渲染失败、宿主把那个槽位画成空白（「补记收尾方式」白屏就是这样来的）。
-      const [cmdShell, setCmdShell] = React.useState('bash')
+      const [stEdit, setStEdit] = React.useState({ action: '', kind: '', handed: '', dup: '', msg: '', riskAck: false, copied: '', copyErr: '' })
+      const [rpEdit, setRpEdit] = React.useState({ source: 'field', result: 'from_report', note: '', msg: '', copied: '', copyErr: '' })
       // 定位结论：host 标 `isConclusion`（显式 `conclusion: true`，或"人读视图可见末条是 hit"这条约定）。
       // 这里算它在**可见列表**里的位置——host 给的是原始下标，人读视图先过滤过记录维护动作，
       // 直接拿原下标会错位（这是"两个索引混用"的经典坑，故用对象身份找而不是比下标）。
@@ -2431,12 +2462,32 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         if (missing.length) return { msg: '还需要填：' + missing.map(f => ({ summary: '问题背景', severity: '严重级', fix_emitted: '是否给出了可执行的修复' }[f] || f)).join('、'), field: missing[0] }
         return null
       }
-      // 兜底命令：值全部走 JSON（stdin here-doc），不拼命令行——中文、空格、引号、$ 都不会被拆开。
-      // 任何失败（无写权限、无主检出、脚本报错、RPC 不通）都给这一段，用户复制到仓库根目录运行即可。
-      // 「交给 agent」的兜底：同一段命令包成一句可直接粘进对话的话。agent 执行的也是
-      // 同一个脚本，校验/留痕/权限判断一样，不是绕过校验的旁路。
-      const agentPrompt = (cmd) => '请执行下面这条命令，并把输出贴回给我（在仓库根目录运行；执行完点一下面板的刷新）：\n' + cmd
-      const manualCmd = (shell) => {
+      // 兜底命令：**一行、与 shell 无关**。payload 用 base64 单行传（`--payload-base64=`）：
+      // 不拼引号、不用 here-doc、不落临时文件，bash / zsh / PowerShell 5.1 / cmd.exe 都能原样粘。
+      // 旧版按 shell 分两套写法，选错那套就是 ParserError；Windows 上默认那套还是错的
+      // （`cd <仓库根目录>` 里的 `<` 在 PowerShell 是保留符，`<<'JSON'` 是 bash 专有）。
+      // 唯一与平台有关的是解释器名（见 pythonOf）。位置（仓库根目录）用一句话说明，不写进命令。
+      // `--expect-sha256` 只在拿到内容哈希时才拼进命令。以前回退成字面量 `<sha256>`，而 `<` 在
+      // PowerShell 里是保留符——「兜底命令本身又跑不起来」正是这次要修的那类错。
+      const casHead = (state, extra) => (extra ? extra + ' ' : '') + '--json'
+        + ((state && state.contentSha256) ? ' --expect-sha256 ' + String(state.contentSha256) : '')
+      const payloadCmd = (argsHead, body) => pythonOf() + ' scripts/trace_transition.py ' + s.sessionId
+        + ' ' + argsHead + ' --payload-base64=' + b64json(body)
+      // 复制结果就地反馈：按钮文字变「已复制 ✓」2 秒；失败给一行红字。走注入的 timer
+      // （动态客户端包里没有全局 setTimeout），报告面板那一组按钮共用同一套。
+      const flashCopied = (which, ok) => {
+        setStEdit(v => ({ ...v, copied: ok ? which : '', copyErr: ok ? '' : which }))
+        if (timer && typeof timer.timeout === 'function') {
+          timer.timeout(() => setStEdit(v => (v.copied === which || v.copyErr === which) ? { ...v, copied: '', copyErr: '' } : v), 2000)
+        }
+      }
+      const flashRpCopied = (which, ok) => {
+        setRpEdit(v => ({ ...v, copied: ok ? which : '', copyErr: ok ? '' : which }))
+        if (timer && typeof timer.timeout === 'function') {
+          timer.timeout(() => setRpEdit(v => (v.copied === which || v.copyErr === which) ? { ...v, copied: '', copyErr: '' } : v), 2000)
+        }
+      }
+      const manualCmd = () => {
         const p = buildPayload()
         const body = {}
         if (stAct && stAct.id === 'reopen') body.reopen = true
@@ -2450,16 +2501,13 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         if (p['ending.handed_to']) body.handed_to = p['ending.handed_to']
         if (p['ending.duplicate_of']) body.duplicate_of = p['ending.duplicate_of']
         for (const k of ['summary', 'severity', 'fix_emitted']) if (p[k] !== undefined) body[k] = p[k]
-        const sha = String((st && st.contentSha256) || '<sha256>')
-        const json = JSON.stringify(body, null, 2)
-        if (shell === 'powershell') {
-          return 'cd <仓库根目录>\n@\'\n' + json + '\n\'@ | python scripts/trace_transition.py ' + s.sessionId
-            + ' --json --expect-sha256 ' + sha + ' --payload-stdin'
-        }
-        return 'cd <仓库根目录>\npython3 scripts/trace_transition.py ' + s.sessionId
-          + ' --json --expect-sha256 ' + sha + ' --payload-stdin <<\'JSON\'\n'
-          + json + '\nJSON'
+        return payloadCmd(casHead(st), body)
       }
+      // 任何失败（无写权限、无主检出、脚本报错、RPC 不通）都给这一段，用户复制到仓库根目录运行即可。
+      // 「交给 agent」的兜底：同一段命令包成一句可直接粘进对话的话。agent 执行的也是
+      // 同一个脚本，校验/留痕/权限判断一样，不是绕过校验的旁路。
+      const agentPrompt = (cmd) => '请执行下面这条命令，并把输出贴回给我（在仓库根目录运行；执行完点一下面板的刷新）：\n' + cmd
+
       const submitState = () => {
         if (!stAct || stEdit.busy || stEdit.done) return
         const invalid = validateState()
@@ -2477,9 +2525,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             setStEdit(v => ({ ...v, msg: '解析不到主检出：请在主检出的面板里打开这一单再写' }))
             return
           }
-          const cmd = manualCmd(cmdShell)
-          copyText(cmd).then(ok => setStEdit(v => ({ ...v,
-            msg: ok ? '已复制命令：在仓库根目录运行（当前会话没有写权限）' : '复制失败：下面的命令可手动选中复制' })))
+          copyText(manualCmd()).then(ok => flashCopied('cmd', ok))
           return
         }
         setStEdit(v => ({ ...v, busy: true, msg: '写入中…' }))
@@ -2503,9 +2549,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           } else {
             const code = r && r.code
             if (code === 'E_PERM' && caps && caps.reasonCode !== 'E_NO_ROOT') {
-              const cmd = manualCmd(cmdShell)
-              copyText(cmd).then(ok => setStEdit(v => ({ ...v, busy: false,
-                msg: ok ? '没有写权限：已复制命令，在仓库根目录运行' : '没有写权限，且复制失败：下面的命令可手动选中复制' })))
+              // 写不进去就把同一行命令复制走，结果就地反馈（不再往步骤 3 塞一句人可能看不见的话）
+              copyText(manualCmd()).then(ok => { setStEdit(v => ({ ...v, busy: false })); flashCopied('cmd', ok) })
               return
             }
             setStEdit(v => ({ ...v, busy: false, msg: '失败：' + String((r && (r.message || code)) || '未知错误')
@@ -2530,9 +2575,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       const reportCmd = () => {
         const body = { report_source: rpEdit.source, report_result: rpEdit.result }
         if (rpEdit.note) body.report_note = rpEdit.note
-        return 'cd <仓库根目录>\npython3 scripts/trace_transition.py ' + s.sessionId
-          + ' --field report --json --expect-sha256 ' + String((st && st.contentSha256) || '<sha256>')
-          + ' --payload-stdin <<\'JSON\'\n' + JSON.stringify(body, null, 2) + '\nJSON'
+        return payloadCmd(casHead(st, '--field report'), body)
       }
       const reviewInstruction = () => {
         const latest = (st && Array.isArray(st.reports) && st.reports.length) ? st.reports[st.reports.length - 1] : null
@@ -2571,8 +2614,12 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             React.createElement('span', { style: { color: T.text2, fontWeight: 400, fontSize: 'var(--t-tiny)' } }, '没有写权限时，复制命令到终端执行')),
           React.createElement('div', { className: 'sleu-fold-body', style: { display: 'flex', flexDirection: 'column', gap: 6 } },
             React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
-              React.createElement('button', { type: 'button', onClick: () => copyText(agentPrompt(reportCmd())).then(ok => setRpEdit(v => ({ ...v, msg: ok ? '已复制给 agent 的指令：粘到对话里即可' : '复制失败：请手动选择下方文字' }))), style: { ...btnPrimary, padding: '1px 9px' } }, '复制给 agent'),
-              React.createElement('button', { type: 'button', onClick: () => copyText(reportCmd()).then(ok => setRpEdit(v => ({ ...v, msg: ok ? '已复制命令：在仓库根目录运行' : '复制失败：请手动选择下方命令' }))), style: { ...btnGhost, padding: '1px 9px' } }, '复制命令')),
+              React.createElement('button', { type: 'button', 'aria-live': 'polite', onClick: () => copyText(agentPrompt(reportCmd())).then(ok => flashRpCopied('agent', ok)), style: rpEdit.copied === 'agent' ? { ...btnPrimary, padding: '1px 9px', background: T.success } : { ...btnPrimary, padding: '1px 9px' } }, rpEdit.copied === 'agent' ? '已复制 ✓' : '复制给 agent'),
+              React.createElement('button', { type: 'button', 'aria-live': 'polite', onClick: () => copyText(reportCmd()).then(ok => flashRpCopied('cmd', ok)), style: rpEdit.copied === 'cmd' ? { ...btnPrimary, padding: '1px 9px', background: T.success } : { ...btnGhost, padding: '1px 9px' } }, rpEdit.copied === 'cmd' ? '已复制 ✓' : '复制命令')),
+            (rpEdit.copied || rpEdit.copyErr) ? React.createElement('span', { role: rpEdit.copyErr ? 'alert' : 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: rpEdit.copyErr ? T.error : T.text2 } },
+              rpEdit.copyErr ? '复制失败：在仓库根目录手动选中下面的命令'
+                : rpEdit.copied === 'agent' ? '已复制给 agent 的指令：粘到对话里，由它执行'
+                : '已复制：在仓库根目录粘贴执行') : null,
             React.createElement('code', { style: { display: 'block', userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '4px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', color: T.text, maxHeight: 120, overflowY: 'auto' } }, reportCmd()))),
         (st.derived && st.derived.needReportReview) ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4, borderTop: '1px solid var(--hair)', paddingTop: 6 } },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--t-tiny)', color: T.text2 } },
@@ -2748,11 +2795,11 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               type: 'button', onClick: submitState,
               disabled: stEdit.busy || stEdit.done,
               style: (stEdit.busy || stEdit.done) ? btnGhost : btnPrimary,
-            }, stEdit.done ? '已记录' : stEdit.busy ? '写入中…' : canWrite ? (stAct.id === 'reopen' ? '确认重新打开' : stAct.id === 'correct-ending' ? '确认改收尾' : stAct.id === 'backfill-ending' ? '确认补记' : '确认收尾') : '复制命令'),
+            }, stEdit.done ? '已记录' : stEdit.busy ? '写入中…' : canWrite ? (stAct.id === 'reopen' ? '确认重新打开' : stAct.id === 'correct-ending' ? '确认改收尾' : stAct.id === 'backfill-ending' ? '确认补记' : '确认收尾') : (stEdit.copied === 'cmd' ? '已复制 ✓' : '复制命令')),
             React.createElement('span', { style: stNoteStyle }, canWrite ? '经脚本校验，追加一条转移记录' : '当前会话没有写权限：点它复制命令，在终端或对话里执行'),
             stEdit.msg ? React.createElement('span', { id: 'sleu-state-msg', role: (stEdit.msg.indexOf('失败') === 0 || stEdit.msg.indexOf('复制失败') === 0) ? 'alert' : 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: (stEdit.msg.indexOf('失败') === 0 || stEdit.msg.indexOf('复制失败') === 0) ? T.error : T.text2 } }, stEdit.msg) : null) : null),
         // ④ 命令兜底：与主路径分层。默认收起，只有当前会话没有写权限时默认展开（那是最短的路）。
-        //    展开后只有一个主复制动作（复制给 agent），shell 切换降为次级，命令块只出现这一处。
+        //    展开后只有两个复制动作，命令块只出现这一处；不再有 shell 写法开关（命令与 shell 无关）。
         !stAct ? null : React.createElement('details', { key: 'cmd', className: 'sleu-fold', open: !canWrite || undefined, style: { marginBottom: 0 } },
           React.createElement('summary', null,
             React.createElement('span', null, '命令兜底'),
@@ -2760,12 +2807,17 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               canWrite ? '想自己在终端跑，或交给对话里的 agent 时用（同一个脚本）' : '当前会话没有写权限，确认时会复制下面这条命令')),
           React.createElement('div', { className: 'sleu-fold-body', style: { display: 'flex', flexDirection: 'column', gap: 8 } },
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-              React.createElement('button', { type: 'button', onClick: () => { const cmd = manualCmd(cmdShell); copyText(agentPrompt(cmd)).then(ok => setStEdit(v => ({ ...v, msg: ok ? '已复制给 agent 的指令：粘到对话里即可' : '复制失败：下面文字可手动选中' }))) }, style: btnPrimary }, '复制给 agent'),
-              React.createElement('button', { type: 'button', onClick: () => { const cmd = manualCmd(cmdShell); copyText(cmd).then(ok => setStEdit(v => ({ ...v, msg: ok ? '已复制命令：在仓库根目录运行' : '复制失败：下面命令可手动选中' }))) }, style: btnGhost }, '复制命令'),
-              React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--t-tiny)', color: T.text2, marginLeft: 'auto' } }, '写法',
-                React.createElement('button', { type: 'button', 'aria-pressed': cmdShell === 'bash' ? 'true' : 'false', onClick: () => setCmdShell('bash'), style: cmdShell === 'bash' ? { ...btnPrimary, padding: '1px 9px', borderRadius: 'var(--r-pill)' } : { ...btnGhost, padding: '1px 9px', borderRadius: 'var(--r-pill)' } }, 'bash'),
-                React.createElement('button', { type: 'button', 'aria-pressed': cmdShell === 'powershell' ? 'true' : 'false', onClick: () => setCmdShell('powershell'), style: cmdShell === 'powershell' ? { ...btnPrimary, padding: '1px 9px', borderRadius: 'var(--r-pill)' } : { ...btnGhost, padding: '1px 9px', borderRadius: 'var(--r-pill)' } }, 'PowerShell'))),
-            React.createElement('code', { style: { display: 'block', userSelect: 'all', background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '5px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', color: T.text, maxHeight: 140, overflowY: 'auto', lineHeight: 'var(--lh-base)' } }, manualCmd(cmdShell)))),
+              React.createElement('button', { type: 'button', onClick: () => copyText(agentPrompt(manualCmd())).then(ok => flashCopied('agent', ok)), style: stEdit.copied === 'agent' ? { ...btnPrimary, background: T.success } : btnPrimary }, stEdit.copied === 'agent' ? '已复制 ✓' : '复制给 agent'),
+              React.createElement('button', { type: 'button', onClick: () => copyText(manualCmd()).then(ok => flashCopied('cmd', ok)), style: stEdit.copied === 'cmd' ? { ...btnPrimary, background: T.success } : btnGhost }, stEdit.copied === 'cmd' ? '已复制 ✓' : '复制命令'),
+              // 不再给「写法」开关：命令是一行、与 shell 无关，PowerShell / cmd / bash 直接粘。
+              // 以前要人手选，选错那套就是 ParserError（Windows 上默认那套还是错的）。
+              React.createElement('span', { style: { fontSize: 'var(--t-tiny)', color: T.text2, marginLeft: 'auto' } },
+                '一行命令，PowerShell / cmd / bash 都能粘（解释器：' + pythonOf() + '，没有就换成 py -3）')),
+            (stEdit.copied || stEdit.copyErr) ? React.createElement('span', { role: stEdit.copyErr ? 'alert' : 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: stEdit.copyErr ? T.error : T.text2 } },
+              stEdit.copyErr ? '复制失败：在仓库根目录手动选中下面的命令'
+                : stEdit.copied === 'agent' ? '已复制给 agent 的指令：粘到对话里，由它执行'
+                : '已复制：在仓库根目录粘贴执行') : null,
+            React.createElement('code', { style: { display: 'block', userSelect: 'all', background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '5px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', color: T.text, maxHeight: 140, overflowY: 'auto', lineHeight: 'var(--lh-base)' } }, manualCmd()))),
         (st.provenance && st.provenance.at) ? React.createElement('div', { key: 'prov', style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
           '最近记录：' + String(st.provenance.at).slice(5, 16).replace('T', ' ')
           + (function (by) { return by ? ' · ' + by : '' }(st.provenance.source === 'import' ? (st.provenance.sourceLabel || '上一台机器') : (st.provenance.byLabel || '')))) : null,
@@ -3089,7 +3141,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           [64, 84, 74, 84, 78, 78].map((w, i) => React.createElement('span', { key: i, className: 'sleu-skel', style: { width: w, height: 26 } }))),
         [0, 1, 2, 3].map(i => React.createElement('div', { key: 'r' + i, className: 'sleu-skel', style: { height: 46, marginBottom: 8 } })))
       const r = state.data
-      if (r) { if (r.vocab) VOCAB_CACHE = r.vocab; CAPS_CACHE = r.capabilities || CAPS_CACHE; STATE_ERROR = r.stateError || null }
+      if (r) { if (r.vocab) VOCAB_CACHE = r.vocab; CAPS_CACHE = r.capabilities || CAPS_CACHE; if (r.host) HOST_CACHE = r.host; STATE_ERROR = r.stateError || null }
       if (!r || !r.ok) {
         // 与诊断记录面板同一个句式：缺什么 + 下一步。旧版只有一行裸红字（`无法读取 traces/: …`），
         // 读者既不知道"这一层只读 traces/"也不知道该跑什么命令。
