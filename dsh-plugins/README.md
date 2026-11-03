@@ -16,7 +16,7 @@
 | 面板文案 | 共用条目见 `docs/spec/writing-norms.md`（判定口径的权威）；面板特有的见下方「面板文案的定制条款」 | 同上（行文只有"无字面 Markdown 星号"一条可机械判） |
 | 可展开块 | 统一用 `.sleu-fold`（标题条 + 箭头 + 可选提示），不裸用 `<details>` 或 chip 暗示；动作组在触发按钮所在行**下方**展开，两组常驻 DOM 用 `display` 切换，不挤动兄弟元素 | 人审（渲染检查无几何断言） |
 | 响应式 | 面板跑在可变宽度的 tab 里：按**容器宽度**降级（容器查询），窄时收列、展开态单列；不假设全宽、也不让整页横向滚动 | 人审（渲染检查只断言容器查询存在） |
-| 只读边界 | 面板是可视化 + 指令生成器 + **白名单内的写**：只允许经脚本写 `traces/` 的运行时件（状态转移、沉淀进度、交接包导出、本机明细重建），禁止写 `knowledge/`、`postmortems/`。状态转移一律走 `scripts/trace_transition.py`（校验 + 事件），面板不自己拼 YAML | 人审（`skills/preload-panel/SKILL.md`） |
+| 只读边界 | 面板是可视化 + 指令生成器 + **白名单内的写**：只允许经脚本写 `traces/` 的运行时件（状态转移、沉淀进度、交接包导出、本机明细重建），以及面板自己的列表索引缓存 `<主检出>/traces/.panel-index.json`（派生物，只读会话不写），禁止写 `knowledge/`、`postmortems/`。状态转移一律走 `scripts/trace_transition.py`（校验 + 事件），面板不自己拼 YAML | 人审（`skills/preload-panel/SKILL.md`） |
 | 注册席位 | 两个 `conversation.view` tab（诊断 / 指标）+ 侧栏页脚「诊断记录」入口（`sidebar.footer.action`）+ 「诊断记录」面板（`shell.overlay`）。后两个是附加席位：新 id 落在自带项旁边，不替换任何自带组件 | `node scripts/panel_render_check.js`（钉四个注册与各自 id） |
 | 依赖缺失时的退化 | 拿不到数据时给一行说明 + 可行的下一步，不占位、不拿别处的数据冒充 | `node scripts/panel_render_check.js`（退化路径一节，含 5 个缺件用例） |
 | 面板包产物 | 面板源码（`dsh-plugins/<面板>/panel-host.js`、`panel-client.js`，以及整页的 `dsh-plugins/sleuth-console/console-client.js`）是唯一真源，`dsh-plugins/dsh-sleuth-panels/lib/` 是生成物 | `node scripts/build_panel_bundle.js --check` |

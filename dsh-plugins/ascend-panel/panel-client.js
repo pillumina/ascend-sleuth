@@ -1365,7 +1365,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         : (statusMeta[s.status] || statusMeta.unknown)
       const canResume = vocabStatus ? !!vocabStatus.resumable : (s.status === 'in_progress')
       const st = s.state || null
-      const [stEdit, setStEdit] = React.useState({ action: '', kind: '', handed: '', dup: '', msg: '' })
+      const [stEdit, setStEdit] = React.useState({ action: '', kind: '', handed: '', dup: '', msg: '', riskAck: false })
       const [rpEdit, setRpEdit] = React.useState({ source: 'field', result: 'from_report', note: '', msg: '' })
       // 命令兜底的写法（bash / PowerShell）。它必须是真状态：状态编辑器里兜底命令那一块按
       // `stAct ?` 渲染、渲染期就读它，漏声明时选中任一动作都会抛 ReferenceError，整张卡片
@@ -2153,12 +2153,19 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         key: 'rs', label: '继续诊断', style: btnPrimary, title: '生成续接指令',
         cmd: '用 /skill:resume-diagnosis 续接 ' + s.sessionId,
       })
-      // 「查上游」：已收尾却卡在等上游的单，`resolved` 不可续接，动作区原本只剩「看报告 / 沉淀」。
+      // 「查上游进展」：只要本单命中的案例带上游锚点就给入口，不再要求「等上游」那四条同时成立。
+      // 为什么放宽：入口挂在 `upstreamPending` 上的话，凡是没记 `fix_emitted` 的老单（存量 trace
+      // 基本都没记）就看不到任何查上游的入口，读者以为面板不支持查上游。
+      // 徽标与筛选的「等上游」语义不变（仍是那四条的组合），这里只放宽"生成查上游指令"这一个入口。
       // 它生成的是**指令**（粘到对话里执行），与「继续诊断 / 沉淀」同一类交互——面板不联网、
       // 也不回写 knowledge/（写回要 PR，属于周批维护者的活）。
-      if (upstreamPendingOf(s) && caseKindOf(s) === 'case' && s.activeCase) actions.push({
-        key: 'up', label: '查上游', style: btnPrimary,
-        title: '生成查上游的指令：agent 跑 dry-run 查上游 issue / PR 状态，并按结局说下一步（不回写案例）',
+      const upInfo = upstreamOf(s)
+      const upAnchors = (upInfo && Array.isArray(upInfo.anchors)) ? upInfo.anchors : []
+      if (upAnchors.length && s.activeCase) actions.push({
+        key: 'up', label: '查上游进展', style: btnOutline(T.brand),
+        title: '查这一单命中的上游 issue / PR 进展：生成一条指令，agent 跑 dry-run 读结局并说下一步（不回写案例）',
+        anchors: upAnchors,
+        lastVerified: upInfo.lastVerified || '',
         cmd: upstreamCmdOf(String(s.activeCase)),
       })
       const openedCmd = actions.filter(a => a.key === showCmd)[0] || null
@@ -2341,13 +2348,14 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       }
       const sq = (v) => "'" + String(v).replace(/'/g, "'\\''") + "'"
       const validateState = () => {
-        if (!stAct) return { msg: '先选一个动作' }
+        if (!stAct) return { msg: '先选一个结局' }
         if (stKinds.length > 1 && !stEdit.kind) return { msg: '先选收尾方式', field: 'kind' }
         if (stEdit.kind === 'handed_off' && !String(stEdit.handed || '').trim()) return { msg: '需要填「转交给」', field: 'handed' }
         if (stEdit.kind === 'duplicate' && !String(stEdit.dup || '').trim()) return { msg: '需要填「已有单」', field: 'dup' }
-        if (stMust.length) return { msg: '这一步需要先去回报（本编辑器不写反馈轴）' }
+        if (stMust.length) return { msg: '这单命中了案例：先在「回报结果」里记一条现场结果，再收尾' }
+        if (stRisky && !stEdit.riskAck) return { msg: '先勾选「我已了解后果」，再写入', field: 'riskAck' }
         const missing = editableFields.filter(f => !String(fieldVal(f)).trim())
-        if (missing.length) return { msg: '还需要填：' + missing.map(f => ({ summary: '本次诊断摘要', severity: '严重级', fix_emitted: '是否给出修复' }[f] || f)).join('、'), field: missing[0] }
+        if (missing.length) return { msg: '还需要填：' + missing.map(f => ({ summary: '问题背景', severity: '严重级', fix_emitted: '是否给出了可执行的修复' }[f] || f)).join('、'), field: missing[0] }
         return null
       }
       // 兜底命令：值全部走 JSON（stdin here-doc），不拼命令行——中文、空格、引号、$ 都不会被拆开。
@@ -2385,7 +2393,8 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         if (invalid) {
           setStEdit(v => ({ ...v, msg: invalid.msg, errField: invalid.field || '' }))
           if (invalid.field) {
-            const id = invalid.field === 'handed' ? 'sleu-f-handed' : invalid.field === 'dup' ? 'sleu-f-dup' : 'sleu-f-' + invalid.field
+            const id = invalid.field === 'handed' ? 'sleu-f-handed' : invalid.field === 'dup' ? 'sleu-f-dup'
+              : invalid.field === 'riskAck' ? 'sleu-risk-ack' : 'sleu-f-' + invalid.field
             const el = document.getElementById(id); if (el && el.focus) el.focus()
           }
           return
@@ -2395,7 +2404,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             setStEdit(v => ({ ...v, msg: '解析不到主检出：请在主检出的面板里打开这一单再写' }))
             return
           }
-          const cmd = manualCmd()
+          const cmd = manualCmd(cmdShell)
           copyText(cmd).then(ok => setStEdit(v => ({ ...v,
             msg: ok ? '已复制命令：在仓库根目录运行（当前会话没有写权限）' : '复制失败：下面的命令可手动选中复制' })))
           return
@@ -2421,7 +2430,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           } else {
             const code = r && r.code
             if (code === 'E_PERM' && caps && caps.reasonCode !== 'E_NO_ROOT') {
-              const cmd = manualCmd()
+              const cmd = manualCmd(cmdShell)
               copyText(cmd).then(ok => setStEdit(v => ({ ...v, busy: false,
                 msg: ok ? '没有写权限：已复制命令，在仓库根目录运行' : '没有写权限，且复制失败：下面的命令可手动选中复制' })))
               return
@@ -2478,84 +2487,225 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
               ((VOCAB_CACHE && VOCAB_CACHE.reportResults) || []).map(o => React.createElement('option', { key: o.value, value: o.value }, o.label || o.value)))),
           React.createElement('label', { style: { fontSize: 'var(--t-tiny)', color: T.text2, display: 'flex', flexDirection: 'column', gap: 4, flex: 1, minWidth: 220 } }, '一句现象（可选）',
             React.createElement('textarea', { 'aria-label': '一句现象', rows: 2, value: rpEdit.note, onChange: e => setRpEdit(v => ({ ...v, note: e.target.value })), style: { ...inputStyle, resize: 'vertical' } }))),
-        React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
+        React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' } },
           React.createElement('button', { type: 'button', onClick: submitReport, disabled: rpEdit.busy, style: rpEdit.busy ? btnGhost : btnPrimary }, rpEdit.busy ? '写入中…' : '记录回报'),
-          rpEdit.msg ? React.createElement('span', { role: rpEdit.msg.indexOf('失败') === 0 ? 'alert' : 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: rpEdit.msg.indexOf('失败') === 0 ? T.error : T.text2 } }, rpEdit.msg) : null,
-          React.createElement('button', { type: 'button', onClick: () => copyText(agentPrompt(reportCmd())).then(ok => setRpEdit(v => ({ ...v, msg: ok ? '已复制给 agent 的指令：粘到对话里即可' : '复制失败：请手动选择下方文字' }))), style: { ...btnPrimary, padding: '1px 8px' } }, '复制给 agent'),
-          React.createElement('button', { type: 'button', onClick: () => copyText(reportCmd()).then(ok => setRpEdit(v => ({ ...v, msg: ok ? '已复制命令：在仓库根目录运行' : '复制失败：请手动选择下方命令' }))), style: { ...btnGhost, padding: '1px 8px' } }, '复制命令')),
-        React.createElement('code', { style: { display: 'block', userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '4px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', color: T.text } }, reportCmd()),
+          rpEdit.msg ? React.createElement('span', { role: rpEdit.msg.indexOf('失败') === 0 ? 'alert' : 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: rpEdit.msg.indexOf('失败') === 0 ? T.error : T.text2 } }, rpEdit.msg) : null),
+        // 与状态编辑器同一分层：主路径（记录回报）常驻，命令兜底收进折叠块，
+        // 展开后主复制动作是「复制给 agent」，「复制命令」与命令块一起留在次级位置。
+        React.createElement('details', { className: 'sleu-fold sleu-fold-compact' },
+          React.createElement('summary', null,
+            React.createElement('span', null, '命令兜底'),
+            React.createElement('span', { style: { color: T.text2, fontWeight: 400, fontSize: 'var(--t-tiny)' } }, '没有写权限时，复制命令到终端执行')),
+          React.createElement('div', { className: 'sleu-fold-body', style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+            React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+              React.createElement('button', { type: 'button', onClick: () => copyText(agentPrompt(reportCmd())).then(ok => setRpEdit(v => ({ ...v, msg: ok ? '已复制给 agent 的指令：粘到对话里即可' : '复制失败：请手动选择下方文字' }))), style: { ...btnPrimary, padding: '1px 9px' } }, '复制给 agent'),
+              React.createElement('button', { type: 'button', onClick: () => copyText(reportCmd()).then(ok => setRpEdit(v => ({ ...v, msg: ok ? '已复制命令：在仓库根目录运行' : '复制失败：请手动选择下方命令' }))), style: { ...btnGhost, padding: '1px 9px' } }, '复制命令')),
+            React.createElement('code', { style: { display: 'block', userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '4px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', color: T.text, maxHeight: 120, overflowY: 'auto' } }, reportCmd()))),
         (st.derived && st.derived.needReportReview) ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4, borderTop: '1px solid var(--hair)', paddingTop: 6 } },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--t-tiny)', color: T.text2 } },
             React.createElement('span', null, '报告待复核：把下面这段发给诊断对话，让它读完证据后落一条复核结论'),
             React.createElement('button', { type: 'button', onClick: () => copyText(reviewInstruction()).then(ok => setRpEdit(v => ({ ...v, msg: ok ? '已复制复核指令' : '复制失败：请手动选择下面文字' }))), style: { ...btnGhost, padding: '1px 8px' } }, '复制复核指令')),
           React.createElement('code', { style: { display: 'block', userSelect: 'all', background: T.bg, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '4px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', color: T.text } }, reviewInstruction())) : null,
       ) : null
-      const fieldRow = (f) => {
-        const label = { summary: '本次诊断摘要（summary）', severity: '严重级', fix_emitted: '本次给出了可执行的修复' }[f] || f
-        if (f === 'summary') return React.createElement('label', { key: f, style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, label,
-          React.createElement('textarea', { id: 'sleu-f-' + f, 'aria-label': label, 'aria-invalid': stEdit.errField === f ? 'true' : 'false', 'aria-describedby': 'sleu-state-msg', value: fieldVal(f), rows: 2, onChange: e => setField(f, e.target.value), style: { ...inputStyle, minWidth: 320, resize: 'vertical' } }))
-        if (f === 'severity') return React.createElement('label', { key: f, style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, label,
-          React.createElement('select', { id: 'sleu-f-' + f, 'aria-label': label, 'aria-invalid': stEdit.errField === f ? 'true' : 'false', 'aria-describedby': 'sleu-state-msg', value: fieldVal(f), onChange: e => setField(f, e.target.value), style: inputStyle },
-            React.createElement('option', { value: '' }, '请选择'),
-            ((VOCAB_CACHE && VOCAB_CACHE.severities) || []).map(o => React.createElement('option', { key: o.value, value: o.value }, o.label || o.value))))
-        return React.createElement('label', { key: f, style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, label,
-          React.createElement('select', { 'aria-label': label, value: fieldVal(f), onChange: e => setField(f, e.target.value), style: inputStyle },
-            React.createElement('option', { value: '' }, '请选择'),
-            React.createElement('option', { value: 'true' }, '是'),
-            React.createElement('option', { value: 'false' }, '否')))
+      // ── 状态编辑器（2026-11 重做：当前 → 选结局 → 补信息 → 确认写入）──────────────
+      // 旧版把动作按钮、表单、主按钮、命令兜底平铺成一块：动作是一排外观相同的小按钮，
+      // 选完以后主按钮仍叫「确认收尾」；命令兜底常驻，还带两个切换与一整段 JSON，
+      // 把注意力从主路径抢走（实测编辑器高 513px，命令块占一半以上）。
+      // 现在按一条线排：每个结局一张卡（名字 + 一句什么时候选它），选中后才出现它需要的字段；
+      // 写入前给「当前 → 目标」预览；命令兜底收进折叠块，只有当前会话没有写权限时才默认展开。
+      // 判据仍全部来自 host 投影（st.actions / requires / fillable / endingChoices），面板只排版。
+      const stStatusOne = (v) => ((VOCAB_CACHE && Array.isArray(VOCAB_CACHE.statuses))
+        ? VOCAB_CACHE.statuses.filter(x => x.value === v)[0] : null)
+      const stStatusLabel = (v) => {
+        const one = stStatusOne(v)
+        const meta = statusMeta[v]
+        return (one && one.label) || (meta && meta.label) || String(v || '未记录')
       }
-      const stPanel = st ? React.createElement('div', { id: 'sleu-state-editor', tabIndex: -1, autoFocus: true, className: 'sleu-menu-panel',
-        onKeyDown: e => { if (e.key === 'Escape') { setMenuOpen(null) } }, style: { display: menuOpen === 'state' ? 'flex' : 'none', flexDirection: 'column', alignItems: 'stretch', gap: 6, marginTop: 8, padding: '8px 10px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
-        React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
-          canWrite ? '直接写入这一单的状态：经脚本校验并追加一条转移记录。'
-                   : '当前会话没有写权限：编辑器仍可收集内容，确认时给出可在终端运行的命令。'),
-        stActions.length ? React.createElement('div', { role: 'group', 'aria-label': '可执行的动作', style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
-          stActions.map(a => React.createElement('button', {
-            key: a.id, type: 'button', 'aria-pressed': stEdit.action === a.id ? 'true' : 'false',
-            onClick: () => setStEdit({ action: a.id, kind: (a.endingChoices && a.endingChoices.length === 1) ? a.endingChoices[0].value : '', to: (a.targets && a.targets[0] && a.targets[0].to) || '', handed: '', dup: '', fields: {}, msg: '', done: false, busy: false }),
-            style: stEdit.action === a.id ? btnPrimary : btnGhost,
-          }, a.label))) : React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
-            STATE_ERROR ? ('状态读不到：' + STATE_ERROR + '（可刷新重试，或点「刷新」重读 traces/）') : '这一单当前没有可执行的动作。'),
-        stAct ? React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' } },
-          (stAct.targets && stAct.targets.length) ? React.createElement('label', { style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, '换成哪种收尾',
-            React.createElement('select', { 'aria-label': '换成哪种收尾', value: stEdit.to, onChange: e => {
+      const stStatusChip = (v, prefix) => {
+        const one = stStatusOne(v)
+        const meta = statusMeta[v]
+        const color = (one && one.color) || (meta && meta.color) || T.text2
+        return React.createElement('span', {
+          style: { display: 'inline-flex', alignItems: 'center', gap: 5, border: '1px solid ' + color, borderRadius: 'var(--r-pill)', padding: '1px 9px', fontSize: 'var(--t-tiny)', fontWeight: 600, color, whiteSpace: 'nowrap' },
+        },
+          React.createElement(Dot, { color, size: 7, hollow: !!(meta && meta.hollow) || v === 'unknown' }),
+          (prefix || '') + stStatusLabel(v))
+      }
+      // 每个结局一句话：什么时候选它、写下去会发生什么。动作清单来自投影，这里只挂一句说明。
+      const stActionNote = (a) => ({
+        'close-resolved': '根因清楚、能给出 fix 或明确的下一步；收尾方式记「根因明确」。',
+        'close-escalated': '本地不再跟进，交给厂商、技术支持或同事；要填「转交给」。',
+        'close-archived': '没有人接手这单：问题消失、环境变了不复现、与已有单重复，或没走诊断就结束；要选收尾方式。',
+        'correct-ending': '把收尾方式换成另一种（例如「根因明确」改成「问题未复现」），不重开。',
+        'backfill-ending': '这单当时没记收尾方式，补一条；状态不变。',
+        'reopen': '退回「进行中」继续查；原来的收尾记录保留，之后可以再收尾。',
+      }[a.id] || ('写入后这一单变成「' + stStatusLabel((a.to && a.to[0]) || '') + '」。'))
+      const stCurStatus = String((s && s.status) || 'unknown')
+      const stHasEnding = stActions.some(a => /^close-/.test(a.id))
+      // 目标状态：改收尾方式取所选目标，补记只改收尾内容（状态不变），其余取动作的目标状态。
+      const stAfterStatus = (() => {
+        if (!stAct) return ''
+        if (stAct.id === 'correct-ending') return String(stEdit.to || '')
+        if (stAct.id === 'backfill-ending') return stCurStatus
+        return String((stAct.to && stAct.to[0]) || '')
+      })()
+      // 高危动作：状态会变成「不再跟进」或退回「进行中」的，才需要多看一眼。它们改的是这单在
+      // 列表与统计里的归属，不是一条记录的内容，所以视觉上与常规收尾分开，并要勾一下后果才写。
+      // 判据用目标状态与当前状态比（两者都来自投影），不自带动作 id 名单：词表以后新增同类
+      // 转移时这里不用跟着改；「补记收尾方式」与「改收尾方式到同一状态」都只改收尾内容，
+      // 状态不变，不算高危（它们的 `to` 是三个状态的全集，不能只看集合里有 archived）。
+      const stRisky = !!stAct && stAfterStatus !== stCurStatus
+        && (stAfterStatus === 'archived' || stAfterStatus === 'in_progress')
+      const stRiskText = !stRisky ? '' : (stAfterStatus === 'in_progress'
+        ? '这单会退回「进行中」，待跟进数 +1；已记录的收尾方式与最近记录都保留。'
+        : '这单会标成「' + stStatusLabel('archived') + '」并写一条收尾记录，不再出现在待跟进列表里；需要时仍可重新打开。')
+      const stStepNum = { width: 17, height: 17, borderRadius: 'var(--r-pill)', background: 'var(--tint-blue)', color: 'var(--d-blue)', fontSize: 'var(--t-md2)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: 'var(--font-mono)' }
+      const stNoteStyle = { color: T.text2, fontWeight: 400, fontSize: 'var(--t-tiny)', lineHeight: 'var(--lh-base)' }
+      const stFieldLabel = { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 }
+      const stSecTitle = (n, title, hint) => React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 7, fontSize: 'var(--t-sm)', fontWeight: 700 } },
+        React.createElement('span', { 'aria-hidden': 'true', style: stStepNum }, n),
+        React.createElement('span', null, title),
+        hint ? React.createElement('span', { style: stNoteStyle }, hint) : null)
+      // 结局选项：名字是按钮（可点文字正好是动作名），说明与「谨慎」标记放在按钮外——
+      // 可点区域与说明分离，点名字才选；键盘与读屏也只在按钮上。
+      const stOption = (a) => {
+        const selected = stEdit.action === a.id
+        // 「谨慎」与写入前的后果确认同源：只看这个动作会把状态带到哪，不看动作 id。
+        // 改收尾方式的目标由第 2 步选，选中后若目标状态危险，后果框会出现，这里不提前标。
+        const optTarget = String((a.to && a.to[0]) || '')
+        const risky = a.id !== 'correct-ending' && a.id !== 'backfill-ending'
+          && optTarget !== stCurStatus && (optTarget === 'archived' || optTarget === 'in_progress')
+        return React.createElement('div', {
+          key: a.id,
+          style: { border: '1px solid ' + (selected ? T.brand : 'var(--hair)'), borderRadius: 'var(--r-sm)', background: selected ? 'var(--tint-blue)' : T.bg, padding: '6px 10px', transition: 'border-color var(--m-fast) var(--e-out), background-color var(--m-fast) var(--e-out)' },
+        },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' } },
+            React.createElement('span', {
+              'aria-hidden': 'true',
+              style: { width: 12, height: 12, borderRadius: 'var(--r-pill)', border: selected ? '4px solid ' + T.brand : '1.5px solid color-mix(in srgb, ' + T.text2 + ' 60%, transparent)', boxSizing: 'border-box', flexShrink: 0, alignSelf: 'center', transition: 'border-color var(--m-fast) var(--e-out)' },
+            }),
+            React.createElement('button', {
+              type: 'button', 'aria-pressed': selected ? 'true' : 'false',
+              onClick: () => setStEdit({ action: a.id, kind: (a.endingChoices && a.endingChoices.length === 1) ? a.endingChoices[0].value : '', to: (a.targets && a.targets[0] && a.targets[0].to) || '', handed: '', dup: '', fields: {}, msg: '', done: false, busy: false, riskAck: false }),
+              style: { background: 'none', border: 'none', padding: 0, font: 'inherit', fontSize: 'var(--t-md)', fontWeight: 600, color: T.text, cursor: 'pointer', textAlign: 'left', lineHeight: 'var(--lh-tight)' },
+            }, a.label),
+            risky ? React.createElement('span', { style: tinyBadge('var(--d-amber)') }, '谨慎') : null,
+            React.createElement('span', { style: { flex: 1, minWidth: 0, fontSize: 'var(--t-sm)', color: T.text2, lineHeight: 'var(--lh-base)' } }, stActionNote(a))))
+      }
+      const fieldRow = (f) => {
+        const label = { summary: '问题背景', severity: '严重级', fix_emitted: '本次给出了可执行的修复' }[f] || f
+        const wrap = (child) => React.createElement('label', { key: f, style: stFieldLabel }, label, child)
+        if (f === 'summary') return wrap(React.createElement('textarea', { id: 'sleu-f-' + f, 'aria-label': label, 'aria-invalid': stEdit.errField === f ? 'true' : 'false', 'aria-describedby': 'sleu-state-msg', value: fieldVal(f), rows: 2, onChange: e => setField(f, e.target.value), style: { ...inputStyle, minWidth: 320, resize: 'vertical' } }))
+        if (f === 'severity') return wrap(React.createElement('select', { id: 'sleu-f-' + f, 'aria-label': label, 'aria-invalid': stEdit.errField === f ? 'true' : 'false', 'aria-describedby': 'sleu-state-msg', value: fieldVal(f), onChange: e => setField(f, e.target.value), style: inputStyle },
+          React.createElement('option', { value: '' }, '请选择'),
+          ((VOCAB_CACHE && VOCAB_CACHE.severities) || []).map(o => React.createElement('option', { key: o.value, value: o.value }, o.label || o.value))))
+        return wrap(React.createElement('select', { id: 'sleu-f-' + f, 'aria-label': label, 'aria-invalid': stEdit.errField === f ? 'true' : 'false', 'aria-describedby': 'sleu-state-msg', value: fieldVal(f), onChange: e => setField(f, e.target.value), style: inputStyle },
+          React.createElement('option', { value: '' }, '请选择'),
+          React.createElement('option', { value: 'true' }, '是'),
+          React.createElement('option', { value: 'false' }, '否')))
+      }
+      // 补信息：只渲染所选结局真正要填的字段（候选全部来自投影的 targets / endingChoices /
+      // requires / fillable）。旧版同屏铺出摘要、严重级、是否给出修复与收尾方式，读者不知道
+      // 哪些是这一步必须填的。
+      const stFormRows = (() => {
+        if (!stAct) return []
+        const rows = []
+        if (stAct.targets && stAct.targets.length) rows.push(React.createElement('label', { key: 'to', style: stFieldLabel }, '换成哪种收尾',
+          React.createElement('select', {
+            'aria-label': '换成哪种收尾', value: stEdit.to, style: inputStyle,
+            onChange: e => {
               const t = stAct.targets.filter(x => x.to === e.target.value)[0]
-              setStEdit(v => ({ ...v, to: e.target.value, fields: {}, kind: (t && t.endingChoices && t.endingChoices.length === 1) ? t.endingChoices[0].value : '' }))
-            }, style: inputStyle },
-              stAct.targets.map(t => React.createElement('option', { key: t.to, value: t.to }, t.label)))) : null,
-          stKinds.length ? React.createElement('label', { style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, '收尾方式',
-            React.createElement('select', { 'aria-label': '收尾方式', value: stEdit.kind, onChange: e => setStEdit(v => ({ ...v, kind: e.target.value })), style: inputStyle },
-              React.createElement('option', { value: '' }, '请选择'),
-              stChoices.map(c => React.createElement('option', { key: c.value, value: c.value }, c.label)))) : null,
-          (stEdit.kind === 'handed_off') ? React.createElement('label', { style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, '转交给',
-            React.createElement('input', { id: 'sleu-f-handed', 'aria-label': '转交给', 'aria-invalid': stEdit.errField === 'handed' ? 'true' : 'false', 'aria-describedby': 'sleu-state-msg', placeholder: '名字 · 团队 / issue 号', value: stEdit.handed, onChange: e => setStEdit(v => ({ ...v, handed: e.target.value })), style: { ...inputStyle, minWidth: 200 } })) : null,
-          (stEdit.kind === 'duplicate') ? React.createElement('label', { style: { display: 'flex', flexDirection: 'column', gap: 4, fontSize: 'var(--t-tiny)', color: T.text2 } }, '已有单',
-            React.createElement('input', { id: 'sleu-f-dup', 'aria-label': '已有单', 'aria-invalid': stEdit.errField === 'dup' ? 'true' : 'false', 'aria-describedby': 'sleu-state-msg', placeholder: 'VLLM-ASC-11312 或 session:<id>', value: stEdit.dup, onChange: e => setStEdit(v => ({ ...v, dup: e.target.value })), style: { ...inputStyle, minWidth: 220 } })) : null,
-          editableFields.map(fieldRow),
-          stMust.length ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
-            '这一步需要先去回报：' + stMust.join('、') + '（本编辑器不写反馈轴）') : null) : null,
-        stAct ? React.createElement('div', { style: { display: 'flex', gap: 8, alignItems: 'center' } },
-          React.createElement('button', {
-            type: 'button', onClick: submitState,
-            disabled: stEdit.busy || stEdit.done,
-            style: (stEdit.busy || stEdit.done) ? btnGhost : btnPrimary,
-          }, stEdit.done ? '已记录' : stEdit.busy ? '写入中…' : canWrite ? (stAct.id === 'reopen' ? '确认重新打开' : stAct.id === 'correct-ending' ? '确认改收尾' : stAct.id === 'backfill-ending' ? '确认补记' : '确认收尾') : '复制命令'),
-          stEdit.msg ? React.createElement('span', { id: 'sleu-state-msg', role: (stEdit.msg.indexOf('失败') === 0 || stEdit.msg.indexOf('复制失败') === 0) ? 'alert' : 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: (stEdit.msg.indexOf('失败') === 0 || stEdit.msg.indexOf('复制失败') === 0) ? T.error : T.text2 } }, stEdit.msg) : null) : null,
-        stAct ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--t-tiny)', color: T.text2 } },
-            React.createElement('span', null, '命令兜底：可以自己在终端跑，也可以复制给对话里的 agent（同一个脚本，校验与留痕一样）'),
-            React.createElement('button', { type: 'button', 'aria-pressed': cmdShell === 'bash' ? 'true' : 'false', onClick: () => setCmdShell('bash'), style: cmdShell === 'bash' ? { ...btnPrimary, padding: '1px 8px' } : { ...btnGhost, padding: '1px 8px' } }, 'bash'),
-            React.createElement('button', { type: 'button', 'aria-pressed': cmdShell === 'powershell' ? 'true' : 'false', onClick: () => setCmdShell('powershell'), style: cmdShell === 'powershell' ? { ...btnPrimary, padding: '1px 8px' } : { ...btnGhost, padding: '1px 8px' } }, 'PowerShell'),
-            React.createElement('button', { type: 'button', onClick: () => { const cmd = manualCmd(cmdShell); copyText(agentPrompt(cmd)).then(ok => setStEdit(v => ({ ...v, msg: ok ? '已复制给 agent 的指令：粘到对话里即可' : '复制失败：下面文字可手动选中' }))) }, style: { ...btnPrimary, padding: '1px 8px' } }, '复制给 agent'),
-            React.createElement('button', { type: 'button', onClick: () => { const cmd = manualCmd(cmdShell); copyText(cmd).then(ok => setStEdit(v => ({ ...v, msg: ok ? '已复制命令：在仓库根目录运行' : '复制失败：下面命令可手动选中' }))) }, style: { ...btnGhost, padding: '1px 8px' } }, '复制命令')),
-          React.createElement('code', {
-          style: { display: 'block', userSelect: 'all', background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '5px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', overflowX: 'auto', whiteSpace: 'pre-wrap', color: T.text },
-          }, manualCmd(cmdShell))) : null,
-        (st.provenance && st.provenance.at) ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
-          '最近记录：' + String(st.provenance.at).slice(5, 16).replace('T', ' ') + ' · '
-          + (st.provenance.source === 'import' ? (st.provenance.sourceLabel || '上一台机器') : (st.provenance.byLabel || ''))) : null,
+              setStEdit(v => ({ ...v, to: e.target.value, fields: {}, msg: '', riskAck: false, kind: (t && t.endingChoices && t.endingChoices.length === 1) ? t.endingChoices[0].value : '' }))
+            },
+          }, stAct.targets.map(t => React.createElement('option', { key: t.to, value: t.to }, t.label)))))
+        if (stKinds.length > 1) rows.push(React.createElement('label', { key: 'kind', style: stFieldLabel }, '收尾方式',
+          React.createElement('select', { id: 'sleu-f-kind', 'aria-label': '收尾方式', 'aria-invalid': stEdit.errField === 'kind' ? 'true' : 'false', 'aria-describedby': 'sleu-state-msg', value: stEdit.kind, style: inputStyle, onChange: e => setStEdit(v => ({ ...v, kind: e.target.value })) },
+            React.createElement('option', { value: '' }, '请选择'),
+            stChoices.map(c => React.createElement('option', { key: c.value, value: c.value }, c.label)))))
+        if (stEdit.kind === 'handed_off') rows.push(React.createElement('label', { key: 'handed', style: stFieldLabel }, '转交给',
+          React.createElement('input', { id: 'sleu-f-handed', 'aria-label': '转交给', 'aria-invalid': stEdit.errField === 'handed' ? 'true' : 'false', 'aria-describedby': 'sleu-state-msg', placeholder: '名字 · 团队 / issue 号', value: stEdit.handed, onChange: e => setStEdit(v => ({ ...v, handed: e.target.value })), style: { ...inputStyle, minWidth: 200 } })))
+        if (stEdit.kind === 'duplicate') rows.push(React.createElement('label', { key: 'dup', style: stFieldLabel }, '已有单',
+          React.createElement('input', { id: 'sleu-f-dup', 'aria-label': '已有单', 'aria-invalid': stEdit.errField === 'dup' ? 'true' : 'false', 'aria-describedby': 'sleu-state-msg', placeholder: 'VLLM-ASC-11312 或 session:<id>', value: stEdit.dup, onChange: e => setStEdit(v => ({ ...v, dup: e.target.value })), style: { ...inputStyle, minWidth: 220 } })))
+        // 短选项在前、长文本框在后：读表单是从左往右、从上往下，长段落放末位不会把上面挤成窄条。
+        const stFieldOrder = { severity: 1, fix_emitted: 2, summary: 3 }
+        return rows.concat(editableFields.slice()
+          .sort((a, b) => (stFieldOrder[a] || 9) - (stFieldOrder[b] || 9))
+          .map(fieldRow))
+      })()
+      const stPanelBody = !st ? null : [
+        // 头部：标题 + 当前状态 + 收起。当前状态在这里出现一次，预览那一次说明"会变成什么"。
+        React.createElement('div', { key: 'head', style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+          React.createElement('span', { style: { fontSize: 'var(--t-md)', fontWeight: 700 } }, '改这一单的状态'),
+          stStatusChip(stCurStatus, '当前 · '),
+          React.createElement('button', { type: 'button', onClick: () => setMenuOpen(null), title: '收起状态编辑器（Esc 同样可以）', style: { ...btnGhost, padding: '2px 10px', marginLeft: 'auto' } }, '收起')),
+        // ① 选结局
+        React.createElement('div', { key: 'step1', style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+          stSecTitle('1', '选结局', stHasEnding ? '选一个，只出现该结局要填的字段' : '这一单已经收尾：下面是维护记录的动作'),
+          stActions.length
+            ? React.createElement('div', { role: 'group', 'aria-label': '可选的结局', style: { display: 'flex', flexDirection: 'column', gap: 6 } }, stActions.map(stOption))
+            : React.createElement('div', { style: stNoteStyle }, STATE_ERROR ? ('状态读不到：' + STATE_ERROR + '（可刷新重试，或点「刷新」重读 traces/）') : '这一单当前没有可执行的动作。')),
+        // 高危动作的后果与二次确认
+        stRisky ? React.createElement('div', { key: 'risk', style: { display: 'flex', flexDirection: 'column', gap: 6, padding: '8px 10px', border: '1px solid color-mix(in srgb, var(--d-amber) 45%, transparent)', background: 'var(--tint-amber)', borderRadius: 'var(--r-sm)' } },
+          React.createElement('div', { style: { fontSize: 'var(--t-tiny)', lineHeight: 'var(--lh-base)', color: T.text } },
+            React.createElement('b', { style: { color: 'var(--d-amber)' } }, '后果'), '　', stRiskText),
+          React.createElement('label', { style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--t-tiny)', color: T.text, cursor: 'pointer' } },
+            React.createElement('input', { id: 'sleu-risk-ack', type: 'checkbox', checked: !!stEdit.riskAck, 'aria-describedby': 'sleu-state-msg', onChange: e => setStEdit(v => ({ ...v, riskAck: e.target.checked })) }),
+            '我已了解后果')) : null,
+        // ② 补信息
+        React.createElement('div', { key: 'step2', style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+          stSecTitle('2', '补信息', stFormRows.length ? '只出现这个结局要填的字段' : '这一步没有要填的内容'),
+          stFormRows.length
+            ? React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 10 } }, stFormRows)
+            : React.createElement('div', { style: stNoteStyle }, '确认后只改状态，不写其它字段。'),
+          stMust.length ? React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2, lineHeight: 'var(--lh-base)' } },
+            '这单命中了案例：收尾前先在「回报结果」里记一条现场结果。') : null),
+        // ③ 确认写入（含「当前 → 目标」预览）
+        React.createElement('div', { key: 'step3', style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+          stSecTitle('3', '确认写入'),
+          !stAct ? React.createElement('div', { style: stNoteStyle }, '先在上面选一个结局，这里会给出「当前 → 目标」预览与确认按钮。') : null,
+          stAct ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '6px 10px', border: '1px solid ' + T.border, borderRadius: 'var(--r-sm)', background: T.bg, fontSize: 'var(--t-sm)', fontWeight: 600 } },
+            stStatusChip(stCurStatus, '当前 · '),
+            React.createElement('span', { style: { color: T.text2, fontWeight: 400 } }, '→'),
+            stAfterStatus
+              ? stStatusChip(stAfterStatus, '目标 · ')
+              : React.createElement('span', { style: { color: T.text2, fontWeight: 400 } }, '目标 · 还没选结局'),
+            stAfterStatus && stAfterStatus === stCurStatus ? React.createElement('span', { style: stNoteStyle }, '（只改收尾内容，状态不变）') : null) : null,
+          stAct ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+            React.createElement('button', {
+              type: 'button', onClick: submitState,
+              disabled: stEdit.busy || stEdit.done,
+              style: (stEdit.busy || stEdit.done) ? btnGhost : btnPrimary,
+            }, stEdit.done ? '已记录' : stEdit.busy ? '写入中…' : canWrite ? (stAct.id === 'reopen' ? '确认重新打开' : stAct.id === 'correct-ending' ? '确认改收尾' : stAct.id === 'backfill-ending' ? '确认补记' : '确认收尾') : '复制命令'),
+            React.createElement('span', { style: stNoteStyle }, canWrite ? '经脚本校验，追加一条转移记录' : '当前会话没有写权限：点它复制命令，在终端或对话里执行'),
+            stEdit.msg ? React.createElement('span', { id: 'sleu-state-msg', role: (stEdit.msg.indexOf('失败') === 0 || stEdit.msg.indexOf('复制失败') === 0) ? 'alert' : 'status', 'aria-live': 'polite', style: { fontSize: 'var(--t-tiny)', color: (stEdit.msg.indexOf('失败') === 0 || stEdit.msg.indexOf('复制失败') === 0) ? T.error : T.text2 } }, stEdit.msg) : null) : null),
+        // ④ 命令兜底：与主路径分层。默认收起，只有当前会话没有写权限时默认展开（那是最短的路）。
+        //    展开后只有一个主复制动作（复制给 agent），shell 切换降为次级，命令块只出现这一处。
+        !stAct ? null : React.createElement('details', { key: 'cmd', className: 'sleu-fold', open: !canWrite || undefined, style: { marginBottom: 0 } },
+          React.createElement('summary', null,
+            React.createElement('span', null, '命令兜底'),
+            React.createElement('span', { style: { color: T.text2, fontWeight: 400, fontSize: 'var(--t-tiny)' } },
+              canWrite ? '想自己在终端跑，或交给对话里的 agent 时用（同一个脚本）' : '当前会话没有写权限，确认时会复制下面这条命令')),
+          React.createElement('div', { className: 'sleu-fold-body', style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+              React.createElement('button', { type: 'button', onClick: () => { const cmd = manualCmd(cmdShell); copyText(agentPrompt(cmd)).then(ok => setStEdit(v => ({ ...v, msg: ok ? '已复制给 agent 的指令：粘到对话里即可' : '复制失败：下面文字可手动选中' }))) }, style: btnPrimary }, '复制给 agent'),
+              React.createElement('button', { type: 'button', onClick: () => { const cmd = manualCmd(cmdShell); copyText(cmd).then(ok => setStEdit(v => ({ ...v, msg: ok ? '已复制命令：在仓库根目录运行' : '复制失败：下面命令可手动选中' }))) }, style: btnGhost }, '复制命令'),
+              React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--t-tiny)', color: T.text2, marginLeft: 'auto' } }, '写法',
+                React.createElement('button', { type: 'button', 'aria-pressed': cmdShell === 'bash' ? 'true' : 'false', onClick: () => setCmdShell('bash'), style: cmdShell === 'bash' ? { ...btnPrimary, padding: '1px 9px', borderRadius: 'var(--r-pill)' } : { ...btnGhost, padding: '1px 9px', borderRadius: 'var(--r-pill)' } }, 'bash'),
+                React.createElement('button', { type: 'button', 'aria-pressed': cmdShell === 'powershell' ? 'true' : 'false', onClick: () => setCmdShell('powershell'), style: cmdShell === 'powershell' ? { ...btnPrimary, padding: '1px 9px', borderRadius: 'var(--r-pill)' } : { ...btnGhost, padding: '1px 9px', borderRadius: 'var(--r-pill)' } }, 'PowerShell'))),
+            React.createElement('code', { style: { display: 'block', userSelect: 'all', background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '5px 8px', fontSize: 'var(--t-tiny)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', color: T.text, maxHeight: 140, overflowY: 'auto', lineHeight: 'var(--lh-base)' } }, manualCmd(cmdShell)))),
+        (st.provenance && st.provenance.at) ? React.createElement('div', { key: 'prov', style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
+          '最近记录：' + String(st.provenance.at).slice(5, 16).replace('T', ' ')
+          + (function (by) { return by ? ' · ' + by : '' }(st.provenance.source === 'import' ? (st.provenance.sourceLabel || '上一台机器') : (st.provenance.byLabel || '')))) : null,
+      ]
+      const stPanel = st ? React.createElement('div', { id: 'sleu-state-editor', tabIndex: -1, autoFocus: true, className: 'sleu-menu-panel',
+        onKeyDown: e => { if (e.key === 'Escape') { setMenuOpen(null) } }, style: { display: menuOpen === 'state' ? 'flex' : 'none', flexDirection: 'column', alignItems: 'stretch', gap: 10, marginTop: 8, padding: '8px 12px', border: '1px solid var(--hair)', borderRadius: 'var(--r-md)', background: T.bg2 } },
+        stPanelBody,
       ) : React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } },
         STATE_ERROR ? ('状态读不到：' + STATE_ERROR) : '状态投影还没加载（点刷新重试）。')
+      // 动作区：上行是这一单的主操作（打开 / 资料 / 继续查 / 查上游），下行是记录维护
+      // （改状态 / 回报 / 交接）。此前六七个按钮平铺在一行，「改状态」与「继续诊断」同权重，
+      // 读者分不清哪个是下一步；旧版「改状态」还曾是卡片右上角的绝对定位按钮，压住 token
+      // 列与展开箭头（被压住的两处点不到）。
       const actionArea = React.createElement('div', { style: { margin: '0 16px', padding: '10px 0 14px', borderTop: '1px solid var(--hair)' } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
           navBtn,
@@ -2563,9 +2713,16 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           docRow,
           resumeAction ? cmdButton(resumeAction) : null,
           upstreamAction ? cmdButton(upstreamAction) : null,
-          // 「改状态」放在动作行里，不悬在行内容上：此前它是卡片右上角的绝对定位小按钮，
-          // 压住了同一右端的 token 数与展开箭头，那两处既读不到也点不到。动作行在收起态与
-          // 展开态都常驻（展开态在右栏），同一个入口两态都在，展开的编辑器就在按钮下方。
+          // 锚点跟在入口旁边：点之前就知道要查的是哪一条上游单（title 里给上次外部验证的周）。
+          upstreamAction && upstreamAction.anchors
+            ? React.createElement('span', {
+                title: '这一单命中的案例挂在这些上游单上'
+                  + (upstreamAction.lastVerified ? '；上次外部验证 ' + upstreamAction.lastVerified : '；还没有外部验证记录'),
+                style: { fontSize: 'var(--t-tiny)', color: T.text2, fontFamily: 'var(--font-mono)' },
+              }, upstreamAction.anchors.join('、')) : null),
+        // 记录维护：与主操作分开一行，入口本身也小一号。
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8 } },
+          React.createElement('span', { style: { fontSize: 'var(--t-tiny)', color: T.text2, fontWeight: 600 } }, '记录'),
           stActions.length ? React.createElement('button', {
             type: 'button', 'aria-label': '直接修改这一单的状态', 'aria-controls': 'sleu-state-editor',
             'aria-expanded': menuOpen === 'state' ? 'true' : 'false',
@@ -2579,8 +2736,15 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             onClick: () => setMenuOpen(menuOpen === 'report' ? null : 'report'),
             style: { ...btnGhost, padding: '2px 10px' },
           }, '回报结果' + (menuOpen === 'report' ? ' ▴' : ' ▾')) : null,
-          menuBtn('handoff', '交接包', '导出交接包到 traces/exports/，或接手另一台机器上的单'),
-        ),
+          menuBtn('handoff', '交接包', '导出交接包到 traces/exports/，或接手另一台机器上的单')),
+        // 生成的指令紧贴按钮下方：点「继续诊断 / 查上游进展」的下一眼就是可复制的 prompt。
+        openedCmd ? React.createElement('div', { style: { marginTop: 8 } },
+          React.createElement('div', { style: { fontSize: 'var(--t-tiny)', color: T.text2, marginBottom: 6 } },
+            openedCmd.key === 'up' ? '查上游的指令（复制后粘到对话里执行；dry-run，不回写案例）' : '续接的指令（复制后粘到对话里执行）'),
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+            React.createElement('code', { style: { flex: 1, minWidth: 0, userSelect: 'all', background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 'var(--lh-base)', color: T.text } }, openedCmd.cmd),
+            React.createElement('button', { type: 'button', onClick: () => doCopy(openedCmd.cmd, openedCmd.key), style: copyFailKey === openedCmd.key ? btnRed : btnPrimary, title: '复制指令' },
+              copied === openedCmd.key ? '已复制' : (copyFailKey === openedCmd.key ? '失败' : '复制')))) : null,
         // 动作组的展开区：固定在按钮行**下方**，同一时刻只有一块；按钮行本身不动。
         // 两个组都常驻 DOM、用 display 切换：不参与布局（没有位置偏移），也不占 Tab 序
         // （display:none 的元素不可聚焦）。
@@ -2588,11 +2752,6 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           handoffRow),
         stPanel,
         reportPanel,
-        openedCmd ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 } },
-          React.createElement('code', { style: { flex: 1, userSelect: 'all', background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '5px 8px', fontSize: 'var(--t-sm)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: T.text } }, openedCmd.cmd),
-          React.createElement('button', { type: 'button', onClick: () => doCopy(openedCmd.cmd, openedCmd.key), style: copyFailKey === openedCmd.key ? btnRed : btnPrimary, title: '复制指令' },
-            copied === openedCmd.key ? '已复制' : (copyFailKey === openedCmd.key ? '失败' : '复制')),
-        ) : null,
       )
       return React.createElement('div', { className: 'sleu-card', style: { background: T.bg, backgroundImage: 'var(--surf)', border: '1px solid var(--hair)', borderLeft: '3px solid ' + (meta.acc || 'var(--acc-gray)'), borderRadius: 'var(--r-lg)', marginBottom: 10 } },
         // 勾选框在整行按钮**外面**：整行是一个 button，把 checkbox 嵌进去是嵌套交互元素，
