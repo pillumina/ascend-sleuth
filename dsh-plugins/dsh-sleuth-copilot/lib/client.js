@@ -1666,7 +1666,7 @@ window.__ModuleLoader__.load({
         const [menuForm, setMenuForm] = React.useState(null)
         const [pickerOpen, setPickerOpen] = React.useState(false)
         const [idle, setIdle] = React.useState(false)
-        const [flashStep, setFlashStep] = React.useState(false)
+        const [flashStep, setFlashStep] = React.useState('')
         const idleTimer = React.useRef(null)
         const flashTimer = React.useRef(null)
         const stepRef = React.useRef({ id: '', step: 0 })
@@ -1748,9 +1748,9 @@ window.__ModuleLoader__.load({
           const step = Number((picked.extra || {}).currentStep) || 0
           const previous = stepRef.current
           if (previous.id === picked.sessionId && previous.step > 0 && step > previous.step) {
-            setFlashStep(true)
+            setFlashStep(previous.step + '→' + step)
             if (flashTimer.current) clearTimeout(flashTimer.current)
-            flashTimer.current = setTimeout(() => setFlashStep(false), 1500)
+            flashTimer.current = setTimeout(() => setFlashStep(''), 1500)
           }
           stepRef.current = { id: picked.sessionId, step }
           return undefined
@@ -2012,7 +2012,7 @@ window.__ModuleLoader__.load({
             'data-live': derived.open ? 'true' : 'false',
             'data-pending': isPending(primary) ? 'true' : 'false',
             'data-flash': flashStep ? 'true' : 'false',
-          }), renderHandle(caseTitle(primary), stepsShort(extra), isPending(primary)))
+          }), renderHandle(caseTitle(primary), flashStep || stepsShort(extra), isPending(primary)))
         }
 
         return h('section', Object.assign({}, rootProps, {
@@ -2046,7 +2046,7 @@ window.__ModuleLoader__.load({
                 onClick: openOverview,
               }, caseTitle(primary)),
               h('span', { className: 'scp-status-text' }, status.label),
-              collapsed ? h('span', { className: 'scp-step' }, stepsShort(extra)) : null,
+              collapsed ? h('span', { className: 'scp-step' }, flashStep ? '第 ' + flashStep + ' 步' : stepsShort(extra)) : null,
               h('span', { className: 'scp-spacer' }),
               h('button', { type: 'button', className: 'scp-btn scp-btn--quiet', onClick: runPrimary }, action.label),
               collapsed ? null : h('button', {
