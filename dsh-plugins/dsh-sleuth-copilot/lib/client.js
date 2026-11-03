@@ -152,8 +152,7 @@ window.__ModuleLoader__.load({
       'action.hideReport': '收起报告',
       'action.copyPath': '复制路径',
       'action.undoClose': '撤销上次收尾',
-      'action.sedimentCase': '生成 case 指令',
-      'action.sedimentRef': '生成 reference 指令',
+      'action.sedimentGeneric': '生成沉淀指令',
       'upstream.anchors': '锚点',
       'upstream.lastVerified': '上次查证',
       'upstream.source': '依据',
@@ -166,11 +165,10 @@ window.__ModuleLoader__.load({
       'history.review': '复核',
       'report.loading': '正在读报告…',
       'report.none': '这单还没有人读报告。',
-      'report.tooLarge': '报告超过 512 KiB，请在编辑器里看。',
       'evidence.none': '本次没记证据文件',
       'candidates.none': '没有沉淀候选',
       'shortcut.open': '⌘⇧D 打开总览',
-      'hint.undo': '已重新打开；旧的收尾字段会被清掉。',
+      'hint.undo': '重新打开；只清掉收尾方式（ending），收尾时间与停止原因保留。',
       'hint.reopened': '已撤销上一次收尾。',
       'hint.readonly': '当前会话是只读档位，改不了状态。',
       'hint.copyPath': '路径已复制。',
@@ -355,8 +353,7 @@ window.__ModuleLoader__.load({
       'action.hideReport': 'Hide report',
       'action.copyPath': 'Copy path',
       'action.undoClose': 'Undo the last close',
-      'action.sedimentCase': 'Generate case command',
-      'action.sedimentRef': 'Generate reference command',
+      'action.sedimentGeneric': 'Generate sediment command',
       'upstream.anchors': 'Anchors',
       'upstream.lastVerified': 'Last verified',
       'upstream.source': 'Basis',
@@ -369,11 +366,10 @@ window.__ModuleLoader__.load({
       'history.review': 'review',
       'report.loading': 'Reading the report…',
       'report.none': 'No report yet.',
-      'report.tooLarge': 'Report is larger than 512 KiB; open it in an editor.',
       'evidence.none': 'No evidence files recorded',
       'candidates.none': 'No sediment candidates',
       'shortcut.open': '⌘⇧D opens the overview',
-      'hint.undo': 'Reopened; the old closing fields are cleared.',
+      'hint.undo': 'Reopened; only the closing kind (ending) is cleared; the close time and stop reason stay.',
       'hint.reopened': 'The last close was undone.',
       'hint.readonly': 'This session is read-only; state cannot be changed.',
       'hint.copyPath': 'Path copied.',
@@ -550,6 +546,8 @@ window.__ModuleLoader__.load({
       '.scp-check-dot{flex:none;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:1.5px solid var(--scp-border-strong);color:var(--scp-on-accent);font-size:9px;line-height:1;}',
       '.scp-check-item[data-done="true"] .scp-check-dot{background:var(--scp-ok);border-color:var(--scp-ok);}',
       '.scp-check-item[data-optional="true"] .scp-check-dot{border-style:dashed;}',
+      '.scp-check-item[data-na="true"] .scp-check-dot{opacity:.4;}',
+      '.scp-check-item[data-na="true"] .scp-check-label{color:var(--scp-muted);}',
       '.scp-check-label{flex:none;font-weight:550;color:var(--scp-text);}',
       '.scp-check-state{flex:none;font-size:11px;color:var(--scp-muted);}',
       '.scp-check-item .scp-spacer{flex:1 1 auto;}',
@@ -1079,14 +1077,21 @@ window.__ModuleLoader__.load({
       const feedback = row.feedback || {}
       const sedState = String((row.sedimented || {}).state || 'none')
       const hasCase = !!row.activeCase || derived.caseKind === 'case'
-      const items = [{
-        key: 'report',
-        label: tr('check.report'),
-        done: !!extra.hasReport,
-        state: extra.hasReport ? tr('state.done') : tr('state.pending'),
-        action: extra.hasReport ? '' : tr('check.actionReport'),
-        kind: 'report',
-      }]
+      const candidateList = Array.isArray(extra.sedimentCandidateList) ? extra.sedimentCandidateList : []
+      const reportEvents = Array.isArray(row.reports) ? row.reports.filter((item) => item && typeof item === 'object') : []
+      // 快路不写报告、也不写沉淀候选（skills/diagnose 的报告事件说明）。用这两个现成事实判断
+      // 「这单该不该有报告」，避免给快路单永远挂一条待办。
+      const expectsReport = !!extra.hasReport || candidateList.length > 0
+        || Number(extra.sedimentCandidates || 0) > 0 || reportEvents.length > 0
+      let reportItem
+      if (extra.hasReport) {
+        reportItem = { key: 'report', label: tr('check.report'), done: true, state: tr('state.done'), action: '', kind: 'report' }
+      } else if (expectsReport) {
+        reportItem = { key: 'report', label: tr('check.report'), done: false, state: tr('state.pending'), action: tr('check.actionReport'), kind: 'report' }
+      } else {
+        reportItem = { key: 'report', label: tr('check.report'), done: false, na: true, state: tr('state.na'), action: '', kind: 'report' }
+      }
+      const items = [reportItem]
       if (hasCase || isPending(row)) {
         const outcome = String(feedback.outcome || '')
         const done = ['resolved', 'not_resolved', 'partial'].indexOf(outcome) >= 0
@@ -1165,6 +1170,11 @@ window.__ModuleLoader__.load({
 
     function referenceDraft(row, summary) {
       return '把 ' + row.sessionId + ' 的候选沉淀成 reference 词条：' + summary + '（来源 ' + traceSource(row) + '）'
+    }
+
+    function triageDraft(row, summary) {
+      return '把 ' + row.sessionId + ' 的 triage 候选补进 triage-tree.d/<性质>.yaml 的路由词：' + summary
+        + '。先确认性质与症状组，再跑 python3 scripts/build_triage_tree.py --check-sources（来源 ' + traceSource(row) + '）'
     }
 
     function copyPathAndFlash(path, flash) {
@@ -1569,12 +1579,6 @@ window.__ModuleLoader__.load({
         stateItems.push({
           key: 'reopen', label: tr('reopen'), disabled: !canWrite,
           onSelect: () => run({ kind: 'reopen' }),
-        })
-      }
-      if (lastClose(row)) {
-        stateItems.push({
-          key: 'undo-close', label: tr('action.undoClose'), disabled: !canWrite,
-          onSelect: () => run({ kind: 'reopen' }, tr('hint.reopened')),
         })
       }
       stateItems.push({
@@ -2109,6 +2113,8 @@ window.__ModuleLoader__.load({
       const [menuForm, setMenuForm] = React.useState(null)
       const [toast, setToast] = React.useState('')
       const [reportState, setReportState] = React.useState({ open: false, loading: false, text: '', error: '' })
+      const reportToken = React.useRef(0)
+      const selectedRowRef = React.useRef('')
       const [undoBusy, setUndoBusy] = React.useState(false)
       const toastTimer = React.useRef(null)
       const panelRef = React.useRef(null)
@@ -2140,6 +2146,7 @@ window.__ModuleLoader__.load({
       }, [filtered.length, selected])
 
       React.useEffect(() => {
+        reportToken.current += 1
         setReportState({ open: false, loading: false, text: '', error: '' })
         setUndoBusy(false)
       }, [selected, filter, s.paletteOpen])
@@ -2182,6 +2189,7 @@ window.__ModuleLoader__.load({
       if (!s.paletteOpen) return null
 
       const row = filtered[selected] || null
+      selectedRowRef.current = row ? row.sessionId : ''
       const counts = data && data.counts ? data.counts : {}
       const filterCounts = {
         all: rows.length,
@@ -2225,23 +2233,32 @@ window.__ModuleLoader__.load({
       function toggleReport(target) {
         if (!target) return
         if (reportState.open) {
+          reportToken.current += 1
           setReportState({ open: false, loading: false, text: '', error: '' })
           return
+        }
+        const wanted = target.sessionId
+        const token = reportToken.current + 1
+        reportToken.current = token
+        const apply = (next) => {
+          if (reportToken.current !== token || selectedRowRef.current !== wanted) return
+          setReportState(next)
         }
         setReportState({ open: true, loading: true, text: '', error: '' })
         rpcCall('copilot-report', {
           cwd: store.cwd,
           tracesDir: data && data.tracesDir,
-          traceSessionId: target.sessionId,
+          traceSessionId: wanted,
+          reportFile: target.reportFile || (target.extra && target.extra.reportFile) || '',
         }).then((res) => {
           if (res && res.ok) {
-            setReportState({ open: true, loading: false, text: String(res.text || ''), error: '' })
-            flash(tr('hint.reportOpen'))
+            apply({ open: true, loading: false, text: String(res.text || ''), error: '' })
+            if (reportToken.current === token) flash(tr('hint.reportOpen'))
           } else {
-            setReportState({ open: true, loading: false, text: '', error: (res && res.message) || tr('report.none') })
+            apply({ open: true, loading: false, text: '', error: (res && res.message) || tr('report.none') })
           }
         }, (error) => {
-          setReportState({ open: true, loading: false, text: '', error: String((error && error.message) || error) })
+          apply({ open: true, loading: false, text: '', error: String((error && error.message) || error) })
         })
       }
 
@@ -2274,6 +2291,7 @@ window.__ModuleLoader__.load({
       function candidateAction(target, candidate) {
         const summary = String((candidate && candidate.summary) || '')
         if (candidate && candidate.kind === 'reference') fillDraft(referenceDraft(target, summary))
+        else if (candidate && candidate.kind === 'triage') fillDraft(triageDraft(target, summary))
         else fillDraft(sedimentDraft(target))
       }
 
@@ -2375,6 +2393,7 @@ window.__ModuleLoader__.load({
               key: item.key,
               className: 'scp-check-item',
               'data-done': item.done ? 'true' : 'false',
+              'data-na': item.na ? 'true' : 'false',
               'data-optional': item.optional ? 'true' : 'false',
             },
               h('span', { className: 'scp-check-dot', 'aria-hidden': 'true' }, item.done ? '✓' : ''),
@@ -2414,7 +2433,7 @@ window.__ModuleLoader__.load({
                 h('button', {
                   type: 'button', className: 'scp-check-action',
                   onClick: () => candidateAction(row, candidate),
-                }, candidate.kind === 'reference' ? tr('action.sedimentRef') : tr('action.sedimentCase'))))
+                }, tr('action.sedimentGeneric'))))
                 : h('div', { className: 'scp-mono' }, tr('candidates.none')),
               h('div', { className: 'scp-upstream-row' },
                 h('button', {

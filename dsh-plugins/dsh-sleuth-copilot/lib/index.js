@@ -287,7 +287,18 @@ export function apply(ctx) {
     const root = await resolveRepoRoot(cwd)
     if (root === null) return { ok: false, code: 'E_NO_ROOT', message: '当前工作区不是 ascend-sleuth 检出' }
     const tracesDir = (await normalizeTracesDir(payload)) || join(root, 'traces')
-    const file = join(tracesDir, traceId + '.report.md')
+    // 状态里带回的报告位置（顶层 report_file 优先）；只接受 traces/ 下的一层文件名。
+    let name = traceId + '.report.md'
+    const requested = typeof payload.reportFile === 'string' ? payload.reportFile.trim() : ''
+    if (requested) {
+      const normalized = requested.replace(/\\/g, '/').replace(/^\.\//, '')
+      const stripped = normalized.replace(/^traces\//, '')
+      if (!stripped || stripped.indexOf('..') >= 0 || /[\\/]/.test(stripped)) {
+        return { ok: false, code: 'E_SCHEMA', message: '报告文件名不合法' }
+      }
+      name = stripped
+    }
+    const file = join(tracesDir, name)
     try {
       const info = await stat(file)
       if (!info.isFile()) return { ok: false, code: 'E_NOT_FOUND', message: '这单还没有人读报告' }
@@ -295,7 +306,7 @@ export function apply(ctx) {
         return { ok: false, code: 'E_TOO_LARGE', message: '报告超过 512 KiB，请在编辑器里看 traces/' + traceId + '.report.md' }
       }
       const text = await readFile(file, 'utf8')
-      return { ok: true, text, file: 'traces/' + traceId + '.report.md', bytes: info.size }
+      return { ok: true, text, file: 'traces/' + name, bytes: info.size }
     } catch {
       return { ok: false, code: 'E_NOT_FOUND', message: '这单还没有人读报告' }
     }
