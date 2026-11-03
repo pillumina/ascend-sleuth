@@ -123,6 +123,19 @@ class StatusTest(unittest.TestCase):
         self.assertNotIn("同意建议：ambiguous", text)
         self.assertIn("reject", text)
 
+    def test_duplicate_proposal_offers_covered(self):
+        # agent 判精确重复（duplicate）时，人决定层没有这个枚举项，同意项要落到 covered。
+        rows = [{"draft": "draft-dup", "proposed_novelty": "duplicate",
+                 "candidate_case": "CASE-A", "confidence": "high", "stale": False,
+                 "human_decision": None, "rationale": "同一根因与失效机制", "review_reasons": []}]
+        out = io.StringIO()
+        with redirect_stdout(out):
+            print_decision_prompts(rows)
+        text = out.getvalue()
+        self.assertIn("1. 同意建议：covered（CASE-A）", text)
+        self.assertNotIn("先重跑/补证据", text)
+        self.assertIn("duplicate", text)
+
     def test_stale_approval_gets_reapproval_prompt(self):
         p = run_py(self.repo, "scripts/groom_decide.py", "--draft-key", "draft-a",
                    "--decision", "new_pattern", "--by", "owner-a", "--note", "initial")

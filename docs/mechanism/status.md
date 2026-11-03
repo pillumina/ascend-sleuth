@@ -17,6 +17,7 @@
 | 演进记录入口 `evolve_intake` 与信号生命周期 | 定义：[evolve-check/SKILL.md](../../skills/evolve-check/SKILL.md) 第 3 步；台账：[signals/README.md](../../proposals/signals/README.md) | 已落地 | `python3 scripts/evolve_intake.py record --help`；`python3 scripts/evolve_signals.py mark --help` |
 | 全库体检轮 | [rsi-mechanism.md](rsi-mechanism.md) 「什么时候会发生演进」 | 已落地 | `ls skills/self-evolve/SKILL.md` |
 | 每周批审 | [rsi-mechanism.md](rsi-mechanism.md) 「哪一步需要人，哪一步可以交给 agent」 | 已落地 | `ls skills/knowledge-groom/SKILL.md` |
+| groom 终态决定的收尾：trace 沉淀回写 + 草稿出队 | [agent-groom.md](agent-groom.md) 「收尾：回写沉淀状态与草稿出队（本地）」 | 已落地 | `python3 scripts/groom_close_draft.py --help` |
 | 改进项的过程档案与可复现预期 | [rsi-mechanism.md](rsi-mechanism.md) 「从触发到落地」 | 已落地 | `python3 scripts/verify_proposals.py --check` |
 | 判定三态：符合、被证伪、无法判定；声明不可度量为合法退化 | [rsi-mechanism.md](rsi-mechanism.md) 「验证怎么闭环」 | 已落地 | `python3 scripts/ev_measure.py --audit` |
 | 判定池的吸收分流与运行期重判 | [rsi-mechanism.md](rsi-mechanism.md) 「验证怎么闭环」 | 已落地 | `grep -n "absorption_rev" scripts/eval_arena.py` |
