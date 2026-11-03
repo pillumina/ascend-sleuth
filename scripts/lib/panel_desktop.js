@@ -16,7 +16,7 @@ const { spawn, spawnSync } = require('node:child_process')
 
 const REPO = path.resolve(__dirname, '..', '..')
 
-// 默认装的两个包。spec 是仓库内目录，artifacts 是必须存在的产物（缺了说明生成器没跑）。
+// 默认装的三个包。spec 是仓库内目录，artifacts 是必须存在的产物（缺了说明生成器没跑）。
 const PANEL_PACKAGES = [
   {
     name: 'dsh-sleuth-panels',

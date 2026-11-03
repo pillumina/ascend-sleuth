@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""诊断副驾的数据面：把 traces/ 读成「一条 HUD + 最多三条最近诊断」的 JSON。
+"""诊断状态条的数据面：把 traces/ 读成「一条当前诊断 + 最多三条最近诊断」的 JSON。
 
 为什么单独一个脚本、而不是在 host 半里解析 YAML：
   「这单算不算已定位 / 还欠不欠回报 / 该不该沉淀」这些判据只在 `scripts/_trace_state.py`
-  一门语言里（仓库的同一条纪律：判据不抄第二份）。HUD 只负责挑显示哪一单、按什么顺序，
+  一门语言里（仓库的同一条纪律：判据不抄第二份）。本脚本只负责挑显示哪一单、按什么顺序，
   不自己推状态。
 
 只读：本脚本不写 traces/，不写知识库。
@@ -49,7 +49,7 @@ def _as_list(value) -> list:
 
 
 def _extra(doc: dict, traces: Path) -> dict:
-    """一条轨迹里 HUD 要展示、但状态投影不负责的现成事实。
+    """一条轨迹里状态条与总览要展示、但状态投影不负责的现成事实。
 
     全部是 trace 里已经写着的内容，这里只做计数与截断，不新增判断。
     """
@@ -101,7 +101,7 @@ def _extra(doc: dict, traces: Path) -> dict:
 
 
 def _is_interesting(row: dict) -> bool:
-    """最近一单的候选：还开着、欠回报、欠沉淀，或者草稿待升格。其余（已收尾且沉淀完的）不进 HUD。"""
+    """最近一单的候选：还开着、欠回报、欠沉淀，或者草稿待升格。其余（已收尾且沉淀完的）不进列表。"""
     derived = _as_dict(row.get("derived"))
     feedback = _as_dict(row.get("feedback"))
     return bool(

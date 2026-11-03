@@ -1,6 +1,6 @@
 # ascend-sleuth 诊断状态条（独立插件包）
 #
-# 形态：一条只读的状态带，注册在 conversation.input.dock（会话输入框上方），不占 tab、
+# 形态：一条只读的状态条，注册在 conversation.input.dock（会话输入框上方），不占 tab、
 # 不占整页，也不替换任何自带组件。Host 半只注册一条 RPC 路由（/sleuth-copilot），
 # 数据面是 lib/copilot_state.py（状态判据仍只在 scripts/_trace_state.py）。
 #

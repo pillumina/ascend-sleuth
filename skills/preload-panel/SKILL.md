@@ -5,10 +5,10 @@ description: >
   自带的东西选装载路：有 cordis_define / cordis_run 在会话内热加载；有 plugin_manager 就装常驻插件
   包；DSH Desktop 用安装目录自带的 dsh 命令行把 dsh-plugins/dsh-sleuth-panels/ 装进 profile（拿不到
   地址与 token 时这是主路）；另有 scripts/panel_install.js --all 经 /api 通路一次装面板、vllm-kb
-  与诊断状态条三个包、以及在侧栏「插件」页粘贴路径两条备用路。常驻包里的界面是四块：会话里一个
+  与诊断状态条三个包、以及在侧栏「插件」页粘贴路径两条备用路。面板包的界面分三块：会话里一个
   「诊断」tab、左侧栏一个「Ascend Sleuth」整页（指标 / 自演进）、侧栏页脚一个「诊断记录」入口
-  （列出诊断会话，可按时间或按价值排序，点一行切过去），以及独立的诊断状态条（输入框上方的交互层，
-  可单独装卸）；热加载路径没有整页容器、页脚入口与状态条，仍是三个 tab（诊断 / 指标 / 自演进）。
+  （列出诊断会话，可按时间或按价值排序，点一行切过去）；另有独立的状态条包，一块：输入框上方的
+  诊断状态条（可单独装卸）。热加载路径没有整页容器、页脚入口与状态条，仍是三个 tab（诊断 / 指标 / 自演进）。
   仅 DSH 可用
   ——依赖 conversation.view / main / sidebar.panellist / sidebar.footer.action / shell.overlay /
   conversation.input.dock / conversation.input.right 插槽；
@@ -294,7 +294,7 @@ node scripts/verify_panel_desktop.js --profile <profile>
 
 它只读 `traces/`（Host 半跑 `lib/copilot_state.py`）；状态修改只在用户点开表单、确认提交后经
 `scripts/trace_transition.py` 写回，带内容指纹做并发保护。上游查证不发网络请求：菜单按
-`gh` 是否可用给出提示，再生成 prompt 让 agent 走 `scripts/verify_upstream_outcomes.py` 幂等落账。
+`gh` 是否可用给出提示，再生成 prompt 让 agent 走 `scripts/verify_upstream_outcomes.py` 幂等落账（同一结局不重复累加）。
 它没有模型侧工具，不是面板，也不依赖面板包。
 
 **热加载（逐面板）**：没有整页容器，三个视图各占一个 `conversation.view` tab。
@@ -335,7 +335,7 @@ node scripts/panel_install.js --spec "<仓库绝对路径>/dsh-plugins/dsh-sleut
   ```
 
   失败就告诉用户"自演进看板需要 PyYAML，请 `pip install pyyaml`"，再决定是否仍加载。
-- **诊断状态条**：需要 Python 3（Host 半跑 `scripts/trace_state.py` 的投影），不需要 PyYAML 以外的包；
+- **诊断状态条**：需要 Python 3（Host 半跑 `lib/copilot_state.py`，它调用 `scripts/_trace_state.py` 的投影），不需要 PyYAML 以外的包；
   `gh` 未安装或未登录只影响「查 case 上游状态」的提示，不挡状态条加载。
 - **诊断面板**：`traces/` 可能不存在（gitignored、按需生成），host 把"目录不存在"当空态处理；
   用户预期有历史诊断却显示为空时，提示运行 `/skill:diagnose` 生成 `traces/`。Ascend Sleuth 的指标子页需要 Python 3

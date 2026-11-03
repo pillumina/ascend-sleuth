@@ -59,7 +59,7 @@ DSH 会话里的一个独立交互层插件。它把诊断的状态、下一步�
 - **生成指令**：续接诊断 / 贴材料继续、**查 case 上游状态**、产出或修订人读定位报告、
   导出交接包（另一台机器接手）。查上游不靠插件发网络请求：先在菜单里显示本机 gh 是否可用（与
   `scripts/doctor.py` 的 gh 检查同一件事），再生成一份带环境预检的 prompt，让 agent 用
-  `scripts/verify_upstream_outcomes.py --case <id> --dry-run/--apply` 幂等落账。
+  `scripts/verify_upstream_outcomes.py --case <id> --dry-run/--apply` 幂等落账（同一结局不重复累加）。
 - **回报与沉淀**：**回报结果…**（表单：结果 / 来源 / 备注，带指令预览）、沉淀为 case、升格草稿、复核回报。
 - **改状态**：收尾（已定位 / 转交 / 不再跟进）、重新打开、沉淀状态。
 - **复制**：结论摘要（可直接粘进 issue 或群聊）。
@@ -77,7 +77,7 @@ DSH 会话里的一个独立交互层插件。它把诊断的状态、下一步�
   └─ copilot-transition → Host 半 → scripts/trace_transition.py（校验 + CAS + 事件）
 ```
 
-- 读：状态名、动作可用性、「在等什么」全部来自 `scripts/trace_state.py` 的投影，浏览器不判状态。
+- 读：状态名、动作可用性、「在等什么」全部来自 `scripts/_trace_state.py` 的投影（Host 半经 `lib/copilot_state.py` 调用），浏览器不判状态。
 - 写：一律经 `scripts/trace_transition.py`，带内容指纹（trace 原始字节的 sha256）做 CAS；
   并发改动会被拦下并提示刷新。
 - 能力位：Host 半按当前会话的沙箱档位判定；只读档位下写入项禁用并给出原因。
