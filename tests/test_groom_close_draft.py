@@ -20,6 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from tests.groom_fixtures import (  # noqa: E402
     init_repo, make_index, run_py, snapshot_meta, write_case, write_draft, write_json,
 )
+from groom_common import assessment_path  # noqa: E402
+from groom_close_draft import promoted_postmortem  # noqa: E402
 
 TRACE_TMPL = """session_id: "{sid}"
 status: resolved
@@ -162,6 +164,72 @@ class CloseDraftTest(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
         self.assertEqual(self.trace_doc()["sedimented"]["state"], "submitted")
         self.assertTrue((self.inbox / f"{key}.case.yaml").exists())
+
+
+    def test_ambiguous_source_session_blocks_close(self):
+        key = self.make_draft()
+        self.assess(key, "new_pattern")
+        self.decide(key, "new_pattern")
+        write_case(self.repo, "knowledge/inference/vllm-ascend/interrupt/DRAFT-A.yaml",
+                   cid="DRAFT-A", title="HCCL timeout")
+        # 头注释有两个不同来源：既不回写也不出队（出队等于放弃状态回写）
+        path = self.inbox / f"{key}.case.yaml"
+        path.write_text(path.read_text(encoding="utf-8")
+                        + "# 来源: traces/2026-10-02-another.yaml\n", encoding="utf-8")
+
+        p = self.close("--draft-key", key, "--apply")
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("多个", p.stdout)
+        self.assertEqual(self.trace_doc()["sedimented"]["state"], "submitted")
+        self.assertTrue(path.exists())
+
+    def test_approval_stale_blocks_close(self):
+        key = self.make_draft()
+        self.assess(key, "new_pattern")
+        self.decide(key, "new_pattern")
+        write_case(self.repo, "knowledge/inference/vllm-ascend/interrupt/DRAFT-A.yaml",
+                   cid="DRAFT-A", title="HCCL timeout")
+        sidecar = assessment_path(self.inbox, key)
+        doc = yaml.safe_load(sidecar.read_text(encoding="utf-8"))
+        doc["human_decision_valid"] = False
+        sidecar.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+        p = self.close("--draft-key", key, "--apply")
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("approval-stale", p.stdout)
+        self.assertEqual(self.trace_doc()["sedimented"]["state"], "submitted")
+        self.assertTrue((self.inbox / f"{key}.case.yaml").exists())
+
+    def test_gate_blocked_blocks_close(self):
+        key = self.make_draft()
+        self.assess(key, "new_pattern")
+        self.decide(key, "new_pattern")
+        write_case(self.repo, "knowledge/inference/vllm-ascend/interrupt/DRAFT-A.yaml",
+                   cid="DRAFT-A", title="HCCL timeout")
+        sidecar = assessment_path(self.inbox, key)
+        doc = yaml.safe_load(sidecar.read_text(encoding="utf-8"))
+        doc["promotion_gate"] = {"allowed": False, "blocked_reason": "stale-snapshot"}
+        sidecar.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+
+        p = self.close("--draft-key", key, "--apply")
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("stale-snapshot", p.stdout)
+        self.assertEqual(self.trace_doc()["sedimented"]["state"], "submitted")
+        self.assertTrue((self.inbox / f"{key}.case.yaml").exists())
+
+    def test_promoted_postmortem_override(self):
+        promoted = self.repo / "postmortems" / "2026-Q3" / "CASE-DIR.md"
+        promoted.parent.mkdir(parents=True, exist_ok=True)
+        promoted.write_text("# 案例\n", encoding="utf-8")
+        self.assertEqual(promoted_postmortem(self.repo, "draft-dir", str(promoted)), promoted)
+        self.assertIsNone(promoted_postmortem(self.repo, "draft-dir", str(self.inbox / "missing.md")))
+
+    def test_json_on_empty_inbox(self):
+        self.inbox.mkdir(parents=True, exist_ok=True)
+        p = self.close("--all", "--json")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        payload = json.loads(p.stdout)
+        self.assertEqual(payload["results"], [])
 
 
 if __name__ == "__main__":

@@ -15,7 +15,7 @@
 #      没有转正），不动 trace，草稿留在队列里等人处理。
 #   2. 先取落点证据，再写状态——不声称没发生的沉淀：covered 要求 postmortem 已落在
 #      `postmortems/<季>/`（Tier 3）；new_pattern / variant 要求对应 case 已在 `knowledge/` 里。
-#   3. 走 `trace_transition.py`（沉淀状态的唯一写入口）回写来源 trace 的 `sedimented`。
+#   3. 走 `trace_transition.py` 回写来源 trace 的 `sedimented`（它按 trace-status.yaml 校验状态词表）。
 #   4. 把草稿移进 `postmortems/inbox/.done/`：移动不删除，移回即复活；`.done` 是点目录，
 #      `find_drafts` 不会把它算回队列。
 #   5. 追加一行 JSON 到 `.groom/close-log.jsonl`（人决定不可再生，收尾要留痕）。
@@ -77,11 +77,12 @@ def _head_text(path: Path | None) -> str:
     return "\n".join(lines[:HEADER_LINES])
 
 
-def source_session_of(draft) -> tuple[str | None, str | None]:
+def source_session_of(draft):
     """解析草稿的来源诊断 session。
 
-    返回 (session_id, 原因)。两个来源：草稿头注释（`traces/<id>.yaml` 或 `source_session:`）
-    与 case 本体的 `source_session` 字段。出现多个不同值时不猜，交人确认。
+    返回 (session_id, 原因, 是否歧义)。两个来源：草稿头注释（`traces/<id>.yaml` 或
+    `source_session:`）与 case 本体的 `source_session` 字段。出现多个不同值时返回歧义，
+    调用方必须拦下这份草稿（不写状态、不出队），交人修草稿头注释。
     """
     found: list[str] = []
     for text in (_head_text(draft.postmortem_path), _head_text(draft.case_path)):
@@ -100,14 +101,25 @@ def source_session_of(draft) -> tuple[str | None, str | None]:
         if sid and sid not in uniq:
             uniq.append(sid)
     if not uniq:
-        return None, "无来源 trace（外部来源）"
+        return None, "无来源 trace（外部来源）", False
     if len(uniq) > 1:
-        return None, "来源 session 有多个（" + "、".join(uniq) + "），不猜"
-    return uniq[0], None
+        return None, "来源 session 有多个（" + "、".join(uniq) + "）：先修草稿头注释只留一个", True
+    return uniq[0], None, False
 
 
-def promoted_postmortem(root: Path, key: str) -> Path | None:
-    """草稿的 postmortem 是否已转正到季度目录（Tier 3）。inbox 与 .done 不算。"""
+def promoted_postmortem(root: Path, key: str, override: str | None = None) -> Path | None:
+    """草稿的 postmortem 是否已转正到季度目录（Tier 3）。inbox 与 .done 不算。
+
+    `override` 给目录形态草稿用：这类草稿的 key 是 uuid、postmortem 文件名可能已改成
+    Case ID，按 key 匹配不到，由人显式指到转正后的文件。
+    """
+    if override:
+        path = Path(override)
+        if not path.is_absolute():
+            path = root / path
+        if path.exists() and path.parent.name not in ("inbox", ".done"):
+            return path
+        return None
     for path in sorted((root / "postmortems").glob(f"*/{key}.md")):
         if path.parent.name in ("inbox", ".done"):
             continue
@@ -232,7 +244,8 @@ def append_log(inbox: Path, entry: dict) -> None:
             fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
 
-def plan_one(doc: dict, draft, root: Path, knowledge: dict, override: str | None) -> dict:
+def plan_one(doc: dict, draft, root: Path, knowledge: dict, override: str | None,
+             postmortem: str | None = None) -> dict:
     """算出一份草稿的收尾计划；未通过的项带 status=error + reason。"""
     human = doc.get("human_decision") or {}
     decision = str(human.get("decision") or "")
@@ -261,12 +274,17 @@ def plan_one(doc: dict, draft, root: Path, knowledge: dict, override: str | None
     if not case_id:
         result["reason"] = why
         return result
-    if decision == "covered" and promoted_postmortem(root, key=draft.key) is None:
+    if decision == "covered" and promoted_postmortem(root, key=draft.key, override=postmortem) is None:
         result["reason"] = ("covered 要求 postmortem 已转正到 postmortems/<季>/（Tier 3 是这条决定"
-                            "唯一落盘的知识）")
+                            "唯一落盘的知识）；目录形态草稿用 --postmortem 指到转正后的文件")
         return result
 
-    session, why = source_session_of(draft)
+    session, why, ambiguous = source_session_of(draft)
+    if ambiguous:
+        # 来源不唯一时既不回写也不出队：出队就等于放弃这条草稿的状态回写，
+        # 正是本脚本要防的静默滞后。交人先修草稿头注释。
+        result["reason"] = why
+        return result
     result.update({"case_id": case_id, "state": TARGET_STATE[decision], "session": session,
                    "status": "ready", "trace": "skipped" if not session else "pending",
                    "reason": why})
@@ -285,20 +303,28 @@ def run(args) -> int:
         if missing:
             done = inbox / ".done"
             closed = [k for k in missing if (done / k).exists()]
-            for key in missing:
-                if key in closed:
+            if not args.json:
+                for key in closed:
                     print(f"{key}: 已出队（{done / key}）")
             unresolved = [k for k in missing if k not in closed]
             if unresolved:
                 print(f"inbox 里没有：{'、'.join(unresolved)}", file=sys.stderr)
                 return 2
+            if args.json:
+                print(dump_json({"applied": bool(args.apply), "inbox": str(inbox),
+                                 "results": [{"draft": key, "status": "closed",
+                                              "reason": "已出队"} for key in closed]}))
             return 0
     selected = list(drafts.values()) if not args.draft_key else [drafts[k] for k in args.draft_key]
     if not selected:
-        print("inbox 中没有草稿。")
+        if args.json:
+            print(dump_json({"applied": bool(args.apply), "inbox": str(inbox), "results": []}))
+        else:
+            print("inbox 中没有草稿。")
         return 0
-    if args.case_id and len(selected) != 1:
-        print("--case-id 只能配一份 --draft-key（多份时各自 id 不同，不猜）", file=sys.stderr)
+    if len(selected) != 1 and (args.case_id or args.postmortem):
+        print("--case-id 与 --postmortem 只能配一份 --draft-key（多份时各自落点不同，不猜）",
+              file=sys.stderr)
         return 2
 
     knowledge = knowledge_cases(root)
@@ -313,7 +339,7 @@ def run(args) -> int:
                             "reason": f"评估状态解析失败：{exc}"})
             failed = True
             continue
-        plan = plan_one(doc, draft, root, knowledge, args.case_id)
+        plan = plan_one(doc, draft, root, knowledge, args.case_id, args.postmortem)
         if plan["status"] == "ready" and plan["session"]:
             if args.apply:
                 plan["trace"] = writeback_trace(root, traces, plan["session"],
@@ -396,6 +422,8 @@ def main(argv=None) -> int:
     ap.add_argument("--all", action="store_true", help="处理 inbox 里全部草稿")
     ap.add_argument("--case-id", default=None,
                     help="new_pattern 升格时改过 id 才需要；只配单份 --draft-key")
+    ap.add_argument("--postmortem", default=None,
+                    help="covered 的转正证据路径（目录形态草稿用）；只配单份 --draft-key")
     ap.add_argument("--repo", default=None, help="仓库根（默认当前目录）")
     ap.add_argument("--traces", default=None, help="traces 目录（默认主检出那一份）")
     ap.add_argument("--apply", action="store_true", help="真正执行；不给只打印计划")

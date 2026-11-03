@@ -256,7 +256,7 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --base origin/main 
        - **自诊断来源（带 `source_session`）→ 默认须闭环**（两轴，与 `trace-status.yaml` 一致）：**命中单**看来源 trace 的 `feedback.outcome: resolved`（fix 被应用且问题消失）；**无命中单**没有 case 可归属，看来源 trace 的 `status: resolved`。没闭环的不必进知识库，留在本地即可。
        - **例外（未闭环但已有强外部证据）**：`verification` ∈ {`upstream-fix-merged`、`upstream-maintainer-confirmed`、`upstream-official-doc`、`engineer-report`} → **需 owner 双签**方可升格。理由：新根因当天发现、修复尚未应用是知识增长的主路径，不能一律挡掉；但这档必须是**外部验证**，不接受 `investigation` 纯推断。
        - `verification: investigation` 且未闭环 → **拦下**，提示三条出路（等闭环 / 补强外部证据 / 走双签例外，草稿产出时 to-postmortem 的报告里已写闸门预判）。
-   - **转正后回写来源 trace 的沉淀状态并让草稿出队（闭环，动作发生时写）**：转正落位后跑
+   - **转正后回写来源 trace 的沉淀状态并让草稿出队（闭环，动作发生时写）**：转正落位、复核通过后跑
      `python3 scripts/groom_close_draft.py --draft-key <key> --apply`（批处理收尾用 `--all --apply`）。
      它读 sidecar 的终态决定，按落点证据回写 trace 的 `sedimented.state`——`new_pattern`/`variant` 升格
      Tier 2 → `{state: knowledge, caseId: <case-id>}`；`covered`（含 agent 判 `duplicate` 的精确重复）

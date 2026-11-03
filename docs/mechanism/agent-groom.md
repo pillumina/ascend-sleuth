@@ -245,9 +245,9 @@ approval_stale: false
 
 结论：终态决定之后还有两件事必须落地，由 `groom_close_draft.py` 一次做完；它是本地收尾动作，不进 CI。
 
-两件事以前只写在 SKILL 的一句中文指令里：把来源 trace 的 `sedimented` 从 `submitted` 改成 `knowledge` 或 `archived`，把已处理的草稿移出 inbox。漏做都不报错——面板的沉淀漏斗停在"已提交待升格"，草稿下一轮又按"没有 sidecar 先补跑比对"被评一遍。
+两件事以前只写在 SKILL 的一句中文指令里：把来源 trace 的 `sedimented` 从 `submitted` 改成 `knowledge` 或 `archived`，把已处理的草稿移出 inbox（下称出队）。漏做都不报错——面板的沉淀漏斗（诊断数 → 沉淀数 → 转正数）停在"已提交待升格"，草稿下一轮又按"没有 sidecar 先补跑比对"被评一遍。
 
-脚本先取落点证据、再写状态（不声称没发生的沉淀）：
+脚本先取落盘证据（case 或 postmortem 文件是否已就位）、再写状态（不声称没发生的沉淀）：
 
 | 决定 | 落点证据（不满足就拦下） | `sedimented` | `case_id` |
 |---|---|---|---|
@@ -255,7 +255,7 @@ approval_stale: false
 | `new_pattern` | 对应 case 已在 `knowledge/` | `knowledge` | 升格后的 case（改过 id 用 `--case-id`） |
 | `variant` | 合并后的 case 已在 `knowledge/` | `knowledge` | 被并入的 case |
 
-几条边界：写状态走 `trace_transition.py`（沉淀状态的唯一写入口）；草稿移进 `postmortems/inbox/.done/`，移动不删除、移回即复活；外部来源没有 trace 时只出队、不回写；trace 文件不存在时只出队并记 `trace-missing`；`reject` 与 `defer` 不是终态，不动 trace、不出队。`reject` 没有对应的 `sedimented` 状态——草稿确实提交过、没有转正，改回 `none` 等于抹掉事实。
+几条边界：写状态走 `trace_transition.py`（按 `trace-status.yaml` 校验状态词表；`sediment_batch.py` 另有直接写路径，收尾不用它）；草稿移进 `postmortems/inbox/.done/`，移动不删除、移回即复活；外部来源没有 trace 时只出队、不回写；trace 文件不存在时只出队并记 `trace-missing`；`reject` 与 `defer` 不是终态，不动 trace、不出队。`reject` 没有对应的 `sedimented` 状态——草稿确实提交过、没有转正，改回 `none` 等于抹掉事实。
 
 **为什么不做成 PR 门**：`traces/` 与 `postmortems/inbox/` 是 `.gitignore` 的运行时件，PR 与 CI 的检出里没有它们，marker 也不带 session id（指针在草稿头注释里）。塞进 `groom_recheck.py` 只能读到空目录，检查会退化成永远通过。这道检查只能落在本地，靠收尾顺序保证：先 `groom_recheck`，再本步，最后 `groom_cleanup`（清理会删 sidecar，而本步要读它）。
 
@@ -291,7 +291,7 @@ approval_stale: false
 
 ### 已落地
 
-- 快照、候选、记录、决定、状态、合入前复核、收尾七个脚本。
+- 快照、候选、记录、决定、状态、合入前复核、收尾、清理八个脚本。
 - 确定性测试：快照/离线/索引重建、候选有界、记录校验与聚合、幂等、损坏恢复、人决定保留、过期检测、并发 PR、两个独立 inbox、端到端 A 先合入 B 过期再重跑、收尾的证据前置与出队。
 - 验证命令：`python3 -m unittest tests.test_groom_snapshot tests.test_groom_candidates tests.test_groom_record tests.test_groom_status tests.test_groom_recheck tests.test_groom_workflow tests.test_groom_binding tests.test_groom_close_draft`。
 
