@@ -14,7 +14,7 @@
 //                                                  # 不一致就换装，并明确告诉你"要不要重启"（换装必须重启）
 //   node scripts/panel_install.js --remove         # 卸载
 //   node scripts/panel_install.js --spec <spec>    # 换包：绝对路径 / 包名 / git 地址 / tarball
-//   node scripts/panel_install.js --all            # 一次装两个包：面板包 + vllm-kb 接入插件
+//   node scripts/panel_install.js --all            # 一次装三个包：面板包 + vllm-kb 接入插件 + 诊断状态条
 //   node scripts/panel_install.js --force          # 跳过版本相等判断，强制换装（改了源码忘了 bump 版本时用）
 //   node scripts/panel_install.js --url <base> --token <token>   # 不自动找地址
 //   node scripts/panel_install.js --log <harness.log 路径>
@@ -39,6 +39,7 @@ const { resolveTarget, noTargetLines, sessionCookie, rpcCall } = require('./lib/
 const API_CHANNEL = '/api'
 const DEFAULT_SPEC = path.resolve(__dirname, '..', 'dsh-plugins', 'dsh-sleuth-panels')
 const KB_SPEC = path.resolve(__dirname, '..', 'dsh-plugins', 'dsh-sleuth-vllm-kb')
+const COPILOT_SPEC = path.resolve(__dirname, '..', 'dsh-plugins', 'dsh-sleuth-copilot')
 
 function parseArgs(argv) {
   const args = { spec: DEFAULT_SPEC, check: false, remove: false, url: null, token: null, log: null, quiet: false, all: false, force: false }
@@ -138,7 +139,7 @@ async function ensureEnabled(name, target, io) {
 async function runInstall(args, io) {
   if (args.all === true) {
     let code = 0
-    for (const spec of [DEFAULT_SPEC, KB_SPEC]) {
+    for (const spec of [DEFAULT_SPEC, KB_SPEC, COPILOT_SPEC]) {
       io.say(`\n== ${path.basename(spec)}\n`)
       const one = await runInstall(Object.assign({}, args, { spec, all: false }), io)
       if (one !== 0) code = one

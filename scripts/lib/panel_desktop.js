@@ -28,6 +28,11 @@ const PANEL_PACKAGES = [
     spec: 'dsh-plugins/dsh-sleuth-vllm-kb',
     artifacts: ['index.js', 'client.js'],
   },
+  {
+    name: 'dsh-sleuth-copilot',
+    spec: 'dsh-plugins/dsh-sleuth-copilot',
+    artifacts: ['lib/index.js', 'lib/client.js', 'lib/copilot_state.py'],
+  },
 ]
 
 function repoRoot() {

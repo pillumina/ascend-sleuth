@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "ascend-sleuth diagnosis status bar",
+    "description": "Status bar, diagnosis overview, and one-click actions above the composer: read state, copy commands, close/reopen, and set sediment state."
+  }
+}
