@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:96e6404e6893)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:f1fa8ffbec6a)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:dcef157b7468)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -105,7 +105,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:96e6404e6893) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:f1fa8ffbec6a) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -2792,9 +2792,14 @@ return {
           r.capabilities = proj.capabilities
         } else if (proj && proj.ok === false) stateError = proj.message || proj.code
       } catch (e) { stateError = String(e && e.message || e) }
+      // `host.platform` 给客户端选兜底命令的解释器（Windows 上没有 `python3`）。Web GUI 可能
+      // 开在另一台机器上，命令却要在 host 这台机器上跑，所以平台由 host 报，不靠浏览器猜。
+      const hostPlatform = (typeof process !== 'undefined' && process && process.platform)
+        ? String(process.platform) : ''
       return { ok: true, sessions: r.sessions, inboxDrafts: r.inboxDrafts || [], elapsedMs: r.elapsedMs,
                parsed: r.parsed, cached: r.cached, skipped: r.skipped,
-               vocab: r.vocab || null, capabilities: r.capabilities || null, stateError: stateError }
+               vocab: r.vocab || null, capabilities: r.capabilities || null,
+               host: { platform: hostPlatform }, stateError: stateError }
     })
 
     const detailDisposer = harness.handle('ascend-traces-detail', async (args) => {

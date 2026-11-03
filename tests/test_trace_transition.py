@@ -8,8 +8,12 @@
 """
 
 import argparse
+import base64
 import hashlib
+import io
+import json
 import sys
+import contextlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -249,6 +253,47 @@ class WriterTest(unittest.TestCase):
         path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
         tt.apply_transition(ROOT, self.traces, "s1", args(to="resolved"))
         self.assertIn(b"\r\n", path.read_bytes())
+
+    # ── 复制到任意终端的输入通道：base64 单行 ──────────────────────────────────
+    # 兜底命令要在 bash / zsh / PowerShell / cmd.exe 里原样可粘，所以 payload 只能是一个
+    # 纯 ASCII 单行参数；这里守住「值原样进去、坏 token 不写盘」两件事。
+    def run_main(self, argv):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+            rc = tt.main(argv)
+        return rc, out.getvalue()
+
+    def test_payload_base64_supplies_values(self):
+        self.make()
+        body = {"to": "resolved", "kind": "root_cause", "severity": "service-affecting",
+                "fix_emitted": True,
+                "summary": "中文摘要 $var 'single' 与 \"double\""}
+        token = base64.b64encode(json.dumps(body, ensure_ascii=False).encode("utf-8")).decode("ascii")
+        rc, out = self.run_main(["s1", "--root", str(ROOT), "--traces", str(self.traces),
+                                 "--json", "--payload-base64=" + token])
+        self.assertEqual(rc, 0, out)
+        doc = self.load()
+        self.assertEqual(doc["status"], "resolved")
+        self.assertEqual(doc["summary"], body["summary"])
+
+    def test_payload_base64_bad_tokens_write_nothing(self):
+        # 四种手误分开报：空串 / 不是 base64 / 解出来不是 JSON / 不是对象。以前空串会落到
+        # 转移校验那句「不允许转到该状态」，看不出是参数没带；混成一句读者只能猜。
+        cases = [
+            ("", "base64 参数是空的"),
+            ("这不是base64", "base64 参数解不开"),
+            (base64.b64encode(b"abc").decode("ascii"), "解出来不是 JSON"),
+            (base64.b64encode(b"[1,2]").decode("ascii"), "payload 必须是对象"),
+        ]
+        for token, want in cases:
+            path = self.make()
+            before = path.read_bytes()
+            rc, out = self.run_main(["s1", "--root", str(ROOT), "--traces", str(self.traces),
+                                     "--json", "--payload-base64=" + token])
+            self.assertEqual(rc, 2, out)
+            self.assertIn("E_SCHEMA", out, out)
+            self.assertIn(want, out, out)
+            self.assertEqual(path.read_bytes(), before, token)
 
     def test_field_sedimented_writes_only_that_block(self):
         self.make()
