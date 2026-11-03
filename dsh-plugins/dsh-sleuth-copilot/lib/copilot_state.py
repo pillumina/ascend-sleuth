@@ -58,6 +58,7 @@ def _extra(doc: dict, traces: Path) -> dict:
     agent_steps = 0
     evidence_files = 0
     evidence_missing = ""
+    evidence_list = []
     last_output = ""
     last_reason = ""
     for entry in trace:
@@ -67,6 +68,10 @@ def _extra(doc: dict, traces: Path) -> dict:
         if role == "user":
             user_steps += 1
             evidence = _as_dict(entry.get("evidence"))
+            for file_path in _as_list(evidence.get("files")):
+                text = str(file_path or "").strip()
+                if text and text not in evidence_list:
+                    evidence_list.append(text)
             evidence_files += len(_as_list(evidence.get("files")))
             if evidence.get("missing") and not evidence_missing:
                 evidence_missing = _short(evidence.get("missing"), MISSING_LIMIT)
@@ -78,7 +83,40 @@ def _extra(doc: dict, traces: Path) -> dict:
                 last_reason = _short(entry.get("reason"), TEXT_LIMIT)
 
     session_id = str(doc.get("session_id") or "")
-    report = traces / (session_id + ".report.md") if session_id else None
+    # 报告位置与面板 / 导出脚本同一口径：先顶层 report_file（或 report 事件里的），再同名兜底；
+    # 只认 traces/ 下、只写文件名的约定，不拼绝对路径。
+    report_path = None
+    if session_id:
+        report_name = str(doc.get("report_file") or "").strip()
+        if not report_name:
+            for entry in reversed(trace):
+                if isinstance(entry, dict) and entry.get("report_file"):
+                    report_name = str(entry["report_file"]).strip()
+                    break
+        if report_name:
+            normalized = report_name.replace("\\", "/")
+            match = re.search(r"(?:^|/)traces/(.+)$", normalized)
+            name = match.group(1) if match else normalized.lstrip("./")
+            candidate = traces / name if name else None
+            if candidate is not None and candidate.is_file():
+                report_path = candidate
+        fallback = traces / (session_id + ".report.md")
+        if report_path is None and fallback.is_file():
+            report_path = fallback
+    report_rel = ""
+    if report_path is not None:
+        try:
+            report_rel = str(report_path.relative_to(traces)).replace("\\", "/")
+        except ValueError:
+            report_rel = ""
+    candidates = []
+    for candidate in _as_list(doc.get("sediment_candidates")):
+        if not isinstance(candidate, dict) or len(candidates) >= 5:
+            continue
+        candidates.append({
+            "kind": str(candidate.get("kind") or ""),
+            "summary": _short(candidate.get("summary") or candidate.get("title") or candidate.get("id"), TEXT_LIMIT),
+        })
     return {
         "currentStep": int(doc.get("current_step") or 0),
         "maxSteps": MAX_STEPS,
@@ -95,8 +133,11 @@ def _extra(doc: dict, traces: Path) -> dict:
         "lastOutput": last_output,
         "lastReason": last_reason,
         "harnessSession": str(doc.get("harness_session") or ""),
-        "hasReport": bool(report and report.is_file()),
+        "hasReport": bool(report_rel),
+        "reportFile": ("traces/" + report_rel) if report_rel else "",
+        "evidenceList": evidence_list[:20],
         "sedimentCandidates": len([c for c in _as_list(doc.get("sediment_candidates")) if isinstance(c, dict)]),
+        "sedimentCandidateList": candidates,
     }
 
 
@@ -230,6 +271,10 @@ def main(argv=None) -> int:
             "displayTone": session.get("displayTone"),
             "derived": session.get("derived"),
             "harnessSession": session.get("harnessSession"),
+            "reportFile": extra.get("reportFile"),
+            "transitions": session.get("transitions"),
+            "reports": session.get("reports"),
+            "reviews": session.get("reviews"),
             "extra": {
                 "currentStep": extra.get("currentStep"),
                 "maxSteps": extra.get("maxSteps"),
@@ -238,7 +283,11 @@ def main(argv=None) -> int:
                 "framework": extra.get("framework"),
                 "excludedCases": extra.get("excludedCases"),
                 "evidenceMissing": extra.get("evidenceMissing"),
+                "evidenceFiles": extra.get("evidenceFiles"),
+                "evidenceList": extra.get("evidenceList"),
                 "hasReport": extra.get("hasReport"),
+                "reportFile": extra.get("reportFile"),
+                "sedimentCandidateList": extra.get("sedimentCandidateList"),
             },
         }
 

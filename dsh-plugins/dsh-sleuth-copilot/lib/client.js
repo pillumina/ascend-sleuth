@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.7.1'
+    const PLUGIN_VERSION = '0.8.0'
     const POLL_MS = 10000
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
@@ -132,6 +132,47 @@ window.__ModuleLoader__.load({
       'source.vendor': '厂商答复',
       'section.overview': '概览',
       'section.background': '问题背景',
+      'section.upstream': '上游查证',
+      'section.checklist': '收尾清单',
+      'section.evidence': '证据与沉淀',
+      'section.history': '写入历史',
+      'check.report': '人读报告',
+      'check.feedback': '回报结果',
+      'check.sediment': '沉淀',
+      'check.handoff': '交接包',
+      'check.actionReport': '生成报告指令',
+      'check.actionFeedback': '填回报指令',
+      'check.actionSediment': '填沉淀指令',
+      'check.actionHandoff': '填交接指令',
+      'state.done': '完成',
+      'state.pending': '待办',
+      'state.na': '不需要',
+      'state.optional': '可随时导出',
+      'action.viewReport': '看报告',
+      'action.hideReport': '收起报告',
+      'action.copyPath': '复制路径',
+      'action.undoClose': '撤销上次收尾',
+      'action.sedimentGeneric': '生成沉淀指令',
+      'upstream.anchors': '锚点',
+      'upstream.lastVerified': '上次查证',
+      'upstream.source': '依据',
+      'upstream.none': '这单没有上游锚点',
+      'upstream.ready': 'gh 已就绪',
+      'upstream.notReady': '环境未就绪',
+      'history.none': '还没有写入记录',
+      'history.transition': '状态',
+      'history.report': '回报',
+      'history.review': '复核',
+      'report.loading': '正在读报告…',
+      'report.none': '这单还没有人读报告。',
+      'evidence.none': '本次没记证据文件',
+      'candidates.none': '没有沉淀候选',
+      'shortcut.open': '⌘⇧D 打开总览',
+      'hint.undo': '重新打开；只清掉收尾方式（ending），收尾时间与停止原因保留。',
+      'hint.reopened': '已撤销上一次收尾。',
+      'hint.readonly': '当前会话是只读档位，改不了状态。',
+      'hint.copyPath': '路径已复制。',
+      'hint.reportOpen': '报告已打开。',
 
       'report.from_report': '按报告的修复解决',
       'report.other_way': '换别的方法解决',
@@ -292,6 +333,47 @@ window.__ModuleLoader__.load({
       'source.vendor': 'Vendor reply',
       'section.overview': 'Overview',
       'section.background': 'Background',
+      'section.upstream': 'Upstream',
+      'section.checklist': 'Close-out checklist',
+      'section.evidence': 'Evidence and candidates',
+      'section.history': 'Write history',
+      'check.report': 'Report',
+      'check.feedback': 'Outcome',
+      'check.sediment': 'Sediment',
+      'check.handoff': 'Handoff package',
+      'check.actionReport': 'Generate report command',
+      'check.actionFeedback': 'Fill outcome command',
+      'check.actionSediment': 'Fill sediment command',
+      'check.actionHandoff': 'Fill handoff command',
+      'state.done': 'done',
+      'state.pending': 'pending',
+      'state.na': 'not needed',
+      'state.optional': 'export anytime',
+      'action.viewReport': 'View report',
+      'action.hideReport': 'Hide report',
+      'action.copyPath': 'Copy path',
+      'action.undoClose': 'Undo the last close',
+      'action.sedimentGeneric': 'Generate sediment command',
+      'upstream.anchors': 'Anchors',
+      'upstream.lastVerified': 'Last verified',
+      'upstream.source': 'Basis',
+      'upstream.none': 'No upstream anchor',
+      'upstream.ready': 'gh ready',
+      'upstream.notReady': 'environment not ready',
+      'history.none': 'No write history yet',
+      'history.transition': 'status',
+      'history.report': 'outcome',
+      'history.review': 'review',
+      'report.loading': 'Reading the report…',
+      'report.none': 'No report yet.',
+      'evidence.none': 'No evidence files recorded',
+      'candidates.none': 'No sediment candidates',
+      'shortcut.open': '⌘⇧D opens the overview',
+      'hint.undo': 'Reopened; only the closing kind (ending) is cleared; the close time and stop reason stay.',
+      'hint.reopened': 'The last close was undone.',
+      'hint.readonly': 'This session is read-only; state cannot be changed.',
+      'hint.copyPath': 'Path copied.',
+      'hint.reportOpen': 'Report opened.',
 
       'report.from_report': 'Fixed by the report',
       'report.other_way': 'Fixed another way',
@@ -459,6 +541,32 @@ window.__ModuleLoader__.load({
       '.scp-preview-label{font-size:10.5px;letter-spacing:.04em;color:var(--scp-muted);}',
       '.scp-preview-text{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.7;color:var(--scp-text);white-space:pre-wrap;overflow-wrap:anywhere;max-height:132px;overflow:auto;}',
       '.scp-section-label{margin-top:2px;font-size:11px;line-height:1.6;letter-spacing:.04em;color:var(--scp-muted);}',
+      '.scp-check,.scp-upstream,.scp-list-block,.scp-history{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:12px;background:var(--scp-surface);border:1px solid var(--scp-border);}',
+      '.scp-check-item{display:flex;align-items:center;gap:9px;min-width:0;font-size:12px;}',
+      '.scp-check-dot{flex:none;display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;border:1.5px solid var(--scp-border-strong);color:var(--scp-on-accent);font-size:9px;line-height:1;}',
+      '.scp-check-item[data-done="true"] .scp-check-dot{background:var(--scp-ok);border-color:var(--scp-ok);}',
+      '.scp-check-item[data-optional="true"] .scp-check-dot{border-style:dashed;}',
+      '.scp-check-item[data-na="true"] .scp-check-dot{opacity:.4;}',
+      '.scp-check-item[data-na="true"] .scp-check-label{color:var(--scp-muted);}',
+      '.scp-check-label{flex:none;font-weight:550;color:var(--scp-text);}',
+      '.scp-check-state{flex:none;font-size:11px;color:var(--scp-muted);}',
+      '.scp-check-item .scp-spacer{flex:1 1 auto;}',
+      '.scp-check-action{flex:none;font:inherit;font-size:11.5px;line-height:1.6;padding:2px 9px;border-radius:7px;border:1px solid var(--scp-border);background:var(--scp-surface-2);color:var(--scp-accent);cursor:pointer;font-weight:550;white-space:nowrap;}',
+      '.scp-check-action:hover{background:var(--scp-accent-soft);border-color:var(--scp-accent-line);}',
+      '.scp-upstream-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;}',
+      '.scp-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--scp-muted);overflow-wrap:anywhere;}',
+      '.scp-evidence-row,.scp-candidate{display:flex;align-items:center;gap:8px;min-width:0;font-size:11.5px;}',
+      '.scp-evidence-path{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--scp-muted);}',
+      '.scp-candidate-text{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-text);}',
+      '.scp-report{margin:0;max-height:260px;overflow:auto;padding:12px 14px;border-radius:10px;background:var(--scp-surface-2);border:1px solid var(--scp-border);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--scp-text);}',
+      '.scp-history-row{display:flex;align-items:baseline;gap:8px;min-width:0;font-size:11.5px;}',
+      '.scp-history-when{flex:none;font-variant-numeric:tabular-nums;color:var(--scp-faint);}',
+      '.scp-history-kind{flex:none;font-size:10.5px;line-height:1.6;padding:0 5px;border-radius:4px;background:var(--scp-surface-2);color:var(--scp-muted);}',
+      '.scp-history-text{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-text);}',
+      '.scp-history-note{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-faint);}',
+      '.scp-root[data-pending="true"] .scp-ring{background:var(--scp-warn);}',
+      '.scp-root[data-flash="true"] .scp-ring{animation:scp-step 1.4s ease-out;}',
+      '@keyframes scp-step{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--scp-tone) 45%, transparent)}55%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}',
       '.scp-pal-list,.scp-pal-side,.scp-menu,.scp-picker-list{scrollbar-width:thin;scrollbar-color:var(--scp-border-strong) transparent;}',
       '.scp-pal-list::-webkit-scrollbar,.scp-pal-side::-webkit-scrollbar,.scp-menu::-webkit-scrollbar,.scp-picker-list::-webkit-scrollbar{width:10px;height:10px;}',
       '.scp-pal-list::-webkit-scrollbar-thumb,.scp-pal-side::-webkit-scrollbar-thumb,.scp-menu::-webkit-scrollbar-thumb,.scp-picker-list::-webkit-scrollbar-thumb{background:var(--scp-border-strong);border-radius:999px;border:3px solid transparent;background-clip:content-box;}',
@@ -889,10 +997,16 @@ window.__ModuleLoader__.load({
     function upstreamDraft(row, info) {
       const ready = !!(info && info.ready === true)
       const gap = !ready && info && info.reason ? '；本机当前读数：' + info.reason : ''
+      const upstream = (row.derived && row.derived.upstream) || null
+      const anchors = upstream && Array.isArray(upstream.anchors) ? upstream.anchors.filter(Boolean) : []
+      const known = anchors.length ? '；已知锚点：' + anchors.join('、') : ''
+      const verified = upstream && upstream.lastVerified
+        ? '；上次查证：' + upstream.lastVerified + (upstream.verificationSource ? '（依据 ' + upstream.verificationSource + '）' : '')
+        : ''
       return [
         '查 ' + row.activeCase + ' 的上游状态并幂等落账（只查上游，不续接诊断）。',
         '0) 先跑 python3 scripts/doctor.py --json 确认 gh 与网络可用' + gap + '；不可用就停并报缺口，不要猜。',
-        '1) 读该案例的 upstream 锚点（repo / issue / pr）与 validation_record.last_verified。',
+        '1) 读该案例的 upstream 锚点（repo / issue / pr）与 validation_record.last_verified' + known + verified + '。',
         '2) 先跑 python3 scripts/verify_upstream_outcomes.py --case ' + row.activeCase
           + ' --dry-run --json 看结论；确认要写回后再 --apply（脚本按结局签名幂等，同一结局不重复累加）。',
         '3) 只写上游结论：是否被上游确认 / 否定 / 仍未验证；不表达现场是否解决。',
@@ -937,6 +1051,134 @@ window.__ModuleLoader__.load({
           + '，note 用上一行），并把 feedback.outcome 写成 ' + meta.outcome + '。')
       }
       return lines.join('\n')
+    }
+
+    const REVIEW_LABELS = {
+      report_revision: '只修订报告描述',
+      case_error: '判知识条目错',
+      execution_error: '判执行错',
+    }
+
+    // 最近一次收尾：只有「当前已是终态、最后一条转移也是收尾」时才给撤销入口。
+    function lastClose(row) {
+      const transitions = Array.isArray(row.transitions) ? row.transitions : []
+      const last = transitions.length ? transitions[transitions.length - 1] : null
+      if (!last || typeof last !== 'object') return null
+      const to = String(last.to || '')
+      if (['resolved', 'escalated', 'archived'].indexOf(to) < 0) return null
+      if (['resolved', 'escalated', 'archived'].indexOf(String(row.status || '')) < 0) return null
+      return last
+    }
+
+    // 收尾清单：只在接近收尾时出现；每项的完成态都来自已有字段，不新增判断。
+    function checklistFor(row, data) {
+      const extra = row.extra || {}
+      const derived = row.derived || {}
+      const feedback = row.feedback || {}
+      const sedState = String((row.sedimented || {}).state || 'none')
+      const hasCase = !!row.activeCase || derived.caseKind === 'case'
+      const candidateList = Array.isArray(extra.sedimentCandidateList) ? extra.sedimentCandidateList : []
+      const reportEvents = Array.isArray(row.reports) ? row.reports.filter((item) => item && typeof item === 'object') : []
+      // 快路不写报告、也不写沉淀候选（skills/diagnose 的报告事件说明）。用这两个现成事实判断
+      // 「这单该不该有报告」，避免给快路单永远挂一条待办。
+      const expectsReport = !!extra.hasReport || candidateList.length > 0
+        || Number(extra.sedimentCandidates || 0) > 0 || reportEvents.length > 0
+      let reportItem
+      if (extra.hasReport) {
+        reportItem = { key: 'report', label: tr('check.report'), done: true, state: tr('state.done'), action: '', kind: 'report' }
+      } else if (expectsReport) {
+        reportItem = { key: 'report', label: tr('check.report'), done: false, state: tr('state.pending'), action: tr('check.actionReport'), kind: 'report' }
+      } else {
+        reportItem = { key: 'report', label: tr('check.report'), done: false, na: true, state: tr('state.na'), action: '', kind: 'report' }
+      }
+      const items = [reportItem]
+      if (hasCase || isPending(row)) {
+        const outcome = String(feedback.outcome || '')
+        const done = ['resolved', 'not_resolved', 'partial'].indexOf(outcome) >= 0
+        items.push({
+          key: 'feedback',
+          label: tr('check.feedback'),
+          done,
+          state: done ? vocabLabel((data.vocab || {}).outcomes, outcome, OUTCOME_LABEL) : tr('state.pending'),
+          action: done ? '' : tr('check.actionFeedback'),
+          kind: 'feedback',
+        })
+      } else {
+        items.push({ key: 'feedback', label: tr('check.feedback'), done: true, state: tr('state.na'), action: '', kind: '' })
+      }
+      const sedDone = sedState !== 'none'
+      items.push({
+        key: 'sediment',
+        label: tr('check.sediment'),
+        done: sedDone,
+        state: sedDone ? vocabLabel((data.vocab || {}).sedimented, sedState, SED_LABEL) : (derived.needSed ? tr('state.pending') : tr('state.na')),
+        action: sedDone ? '' : (derived.needSed ? tr('check.actionSediment') : ''),
+        kind: 'sediment',
+      })
+      items.push({
+        key: 'handoff',
+        label: tr('check.handoff'),
+        done: false,
+        optional: true,
+        state: tr('state.optional'),
+        action: tr('check.actionHandoff'),
+        kind: 'handoff',
+      })
+      return items
+    }
+
+    function shouldShowChecklist(row) {
+      const derived = row.derived || {}
+      const sedState = String((row.sedimented || {}).state || 'none')
+      return !isOpen(row) || isPending(row) || !!derived.needSed || !!derived.needPromote || !!derived.needReview || sedState !== 'none'
+    }
+
+    // 写入历史：transitions / reports / reviews 合成一条时间线，只展示最近几条。
+    function historyEntries(row, data) {
+      const entries = []
+      for (const item of Array.isArray(row.transitions) ? row.transitions : []) {
+        if (!item || typeof item !== 'object') continue
+        entries.push({
+          kind: 'transition',
+          at: String(item.at || ''),
+          text: (STATUS_LABEL[item.from] || item.from || '?') + ' → ' + (STATUS_LABEL[item.to] || item.to || '?'),
+          note: String(item.note || '') || (item.folded ? '折叠了 ' + item.folded + ' 条更早记录' : ''),
+        })
+      }
+      for (const item of Array.isArray(row.reports) ? row.reports : []) {
+        if (!item || typeof item !== 'object') continue
+        const result = REPORT_OUTCOME_TEXT[item.result] ? REPORT_OUTCOME_TEXT[item.result].label : String(item.result || '')
+        entries.push({
+          kind: 'report',
+          at: String(item.at || ''),
+          text: (item.source === 'vendor' ? tr('source.vendor') : tr('source.field')) + ' · ' + result,
+          note: String(item.note || ''),
+        })
+      }
+      for (const item of Array.isArray(row.reviews) ? row.reviews : []) {
+        if (!item || typeof item !== 'object') continue
+        entries.push({
+          kind: 'review',
+          at: String(item.at || ''),
+          text: REVIEW_LABELS[item.verdict] || String(item.verdict || ''),
+          note: String(item.note || ''),
+        })
+      }
+      entries.sort((left, right) => String(right.at).localeCompare(String(left.at)))
+      return entries.slice(0, 6)
+    }
+
+    function referenceDraft(row, summary) {
+      return '把 ' + row.sessionId + ' 的候选沉淀成 reference 词条：' + summary + '（来源 ' + traceSource(row) + '）'
+    }
+
+    function triageDraft(row, summary) {
+      return '把 ' + row.sessionId + ' 的 triage 候选补进 triage-tree.d/<性质>.yaml 的路由词：' + summary
+        + '。先确认性质与症状组，再跑 python3 scripts/build_triage_tree.py --check-sources（来源 ' + traceSource(row) + '）'
+    }
+
+    function copyPathAndFlash(path, flash) {
+      copyToClipboard(path).then((ok) => flash(ok ? tr('hint.copyPath') : tr('hint.copyFailed')))
     }
 
     function summaryText(row, data) {
@@ -1428,7 +1670,10 @@ window.__ModuleLoader__.load({
         const [menuForm, setMenuForm] = React.useState(null)
         const [pickerOpen, setPickerOpen] = React.useState(false)
         const [idle, setIdle] = React.useState(false)
+        const [flashStep, setFlashStep] = React.useState('')
         const idleTimer = React.useRef(null)
+        const flashTimer = React.useRef(null)
+        const stepRef = React.useRef({ id: '', step: 0 })
         const lastBump = React.useRef(0)
         const [query, setQuery] = React.useState('')
         const [hint, setHint] = React.useState('')
@@ -1492,6 +1737,45 @@ window.__ModuleLoader__.load({
 
         React.useEffect(() => () => {
           if (idleTimer.current) clearTimeout(idleTimer.current)
+          if (flashTimer.current) clearTimeout(flashTimer.current)
+        }, [])
+
+        // 步骤前进时让状态点轻闪一次；只在同一单上比较，首屏不闪。
+        React.useEffect(() => {
+          const current = store.data && store.data.ok !== false ? store.data : null
+          if (!current) return undefined
+          const all = current.all || []
+          const pinned = pinnedIdFor(store.sessionId)
+          const picked = (pinned && all.find((row) => row.sessionId === pinned))
+            || current.bound || (current.recent && current.recent[0]) || null
+          if (!picked) return undefined
+          const step = Number((picked.extra || {}).currentStep) || 0
+          const previous = stepRef.current
+          if (previous.id === picked.sessionId && previous.step > 0 && step > previous.step) {
+            setFlashStep(previous.step + '→' + step)
+            if (flashTimer.current) clearTimeout(flashTimer.current)
+            flashTimer.current = setTimeout(() => setFlashStep(''), 1500)
+          }
+          stepRef.current = { id: picked.sessionId, step }
+          return undefined
+        }, [s.data, s.sessionId])
+
+        // ⌘⇧D / Ctrl+Shift+D 打开诊断总览，并选中当前跟踪的那一单。
+        React.useEffect(() => {
+          const onKey = (event) => {
+            const key = String(event.key || '').toLowerCase()
+            if (key !== 'd' || !event.shiftKey || !(event.metaKey || event.ctrlKey)) return
+            event.preventDefault()
+            const current = store.data && store.data.ok !== false ? store.data : null
+            if (!current) return
+            const all = current.all || []
+            const pinned = pinnedIdFor(store.sessionId)
+            const picked = (pinned && all.find((row) => row.sessionId === pinned))
+              || current.bound || (current.recent && current.recent[0]) || null
+            setPaletteOpen(true, picked ? picked.sessionId : '')
+          }
+          window.addEventListener('keydown', onKey)
+          return () => window.removeEventListener('keydown', onKey)
         }, [])
 
         React.useEffect(() => {
@@ -1730,7 +2014,9 @@ window.__ModuleLoader__.load({
             'data-mode': pinned ? 'pinned' : (bound ? 'bound' : 'recent'),
             'data-tone': tone,
             'data-live': derived.open ? 'true' : 'false',
-          }), renderHandle(caseTitle(primary), stepsShort(extra), isPending(primary)))
+            'data-pending': isPending(primary) ? 'true' : 'false',
+            'data-flash': flashStep ? 'true' : 'false',
+          }), renderHandle(caseTitle(primary), flashStep || stepsShort(extra), isPending(primary)))
         }
 
         return h('section', Object.assign({}, rootProps, {
@@ -1739,6 +2025,8 @@ window.__ModuleLoader__.load({
           'data-mode': pinned ? 'pinned' : (bound ? 'bound' : 'recent'),
           'data-tone': tone,
           'data-live': derived.open ? 'true' : 'false',
+          'data-pending': isPending(primary) ? 'true' : 'false',
+          'data-flash': flashStep ? 'true' : 'false',
         }),
           picker,
           menu,
@@ -1762,7 +2050,7 @@ window.__ModuleLoader__.load({
                 onClick: openOverview,
               }, caseTitle(primary)),
               h('span', { className: 'scp-status-text' }, status.label),
-              collapsed ? h('span', { className: 'scp-step' }, stepsShort(extra)) : null,
+              collapsed ? h('span', { className: 'scp-step' }, flashStep ? '第 ' + flashStep + ' 步' : stepsShort(extra)) : null,
               h('span', { className: 'scp-spacer' }),
               h('button', { type: 'button', className: 'scp-btn scp-btn--quiet', onClick: runPrimary }, action.label),
               collapsed ? null : h('button', {
@@ -1824,6 +2112,10 @@ window.__ModuleLoader__.load({
       const [menuOpen, setMenuOpen] = React.useState(false)
       const [menuForm, setMenuForm] = React.useState(null)
       const [toast, setToast] = React.useState('')
+      const [reportState, setReportState] = React.useState({ open: false, loading: false, text: '', error: '' })
+      const reportToken = React.useRef(0)
+      const selectedRowRef = React.useRef('')
+      const [undoBusy, setUndoBusy] = React.useState(false)
       const toastTimer = React.useRef(null)
       const panelRef = React.useRef(null)
 
@@ -1852,6 +2144,12 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         if (selected > filtered.length - 1) setSelected(filtered.length > 0 ? filtered.length - 1 : 0)
       }, [filtered.length, selected])
+
+      React.useEffect(() => {
+        reportToken.current += 1
+        setReportState({ open: false, loading: false, text: '', error: '' })
+        setUndoBusy(false)
+      }, [selected, filter, s.paletteOpen])
 
       React.useEffect(() => {
         if (!s.paletteOpen) return undefined
@@ -1891,6 +2189,7 @@ window.__ModuleLoader__.load({
       if (!s.paletteOpen) return null
 
       const row = filtered[selected] || null
+      selectedRowRef.current = row ? row.sessionId : ''
       const counts = data && data.counts ? data.counts : {}
       const filterCounts = {
         all: rows.length,
@@ -1929,6 +2228,71 @@ window.__ModuleLoader__.load({
           setMenuForm(action.mode === 'form' ? (action.form || null) : null)
           setMenuOpen(true)
         }
+      }
+
+      function toggleReport(target) {
+        if (!target) return
+        if (reportState.open) {
+          reportToken.current += 1
+          setReportState({ open: false, loading: false, text: '', error: '' })
+          return
+        }
+        const wanted = target.sessionId
+        const token = reportToken.current + 1
+        reportToken.current = token
+        const apply = (next) => {
+          if (reportToken.current !== token || selectedRowRef.current !== wanted) return
+          setReportState(next)
+        }
+        setReportState({ open: true, loading: true, text: '', error: '' })
+        rpcCall('copilot-report', {
+          cwd: store.cwd,
+          tracesDir: data && data.tracesDir,
+          traceSessionId: wanted,
+          reportFile: target.reportFile || (target.extra && target.extra.reportFile) || '',
+        }).then((res) => {
+          if (res && res.ok) {
+            apply({ open: true, loading: false, text: String(res.text || ''), error: '' })
+            if (reportToken.current === token) flash(tr('hint.reportOpen'))
+          } else {
+            apply({ open: true, loading: false, text: '', error: (res && res.message) || tr('report.none') })
+          }
+        }, (error) => {
+          apply({ open: true, loading: false, text: '', error: String((error && error.message) || error) })
+        })
+      }
+
+      function undoClose(target) {
+        if (!target || undoBusy) return
+        setUndoBusy(true)
+        rpcCall('copilot-transition', transitionPayload(target, data, { kind: 'reopen' }))
+          .then((res) => {
+            setUndoBusy(false)
+            if (res && res.ok) {
+              flash(tr('hint.reopened'))
+              refresh(true)
+            } else {
+              flash(tr('write.failed', { message: (res && res.message) || '' }))
+            }
+          }, (error) => {
+            setUndoBusy(false)
+            flash(tr('write.failed', { message: String((error && error.message) || error) }))
+          })
+      }
+
+      function checklistAction(target, item) {
+        if (!item || !item.kind) return
+        if (item.kind === 'report') fillDraft(reportDraft(target))
+        else if (item.kind === 'feedback') { setMenuForm('feedback'); setMenuOpen(true) }
+        else if (item.kind === 'sediment') fillDraft(sedimentDraft(target))
+        else if (item.kind === 'handoff') fillDraft(handoffDraft(target))
+      }
+
+      function candidateAction(target, candidate) {
+        const summary = String((candidate && candidate.summary) || '')
+        if (candidate && candidate.kind === 'reference') fillDraft(referenceDraft(target, summary))
+        else if (candidate && candidate.kind === 'triage') fillDraft(triageDraft(target, summary))
+        else fillDraft(sedimentDraft(target))
       }
 
       function def(label, value, key) {
@@ -1994,6 +2358,12 @@ window.__ModuleLoader__.load({
       if (extra.platform) sideMeta.push(extra.platform)
       if (extra.framework) sideMeta.push(extra.framework)
       if (extra.category) sideMeta.push(CATEGORY_LABEL[extra.category] || extra.category)
+      const checklist = row && shouldShowChecklist(row) ? checklistFor(row, data) : []
+      const upstream = row && row.derived ? (row.derived.upstream || null) : null
+      const evidenceList = row ? (extra.evidenceList || []) : []
+      const candidateList = row ? (extra.sedimentCandidateList || []) : []
+      const history = row ? historyEntries(row, data) : []
+      const closeInfo = row ? lastClose(row) : null
 
       const side = row
         ? menuOpen
@@ -2018,6 +2388,64 @@ window.__ModuleLoader__.load({
             waiting ? h('div', { className: 'scp-callout' },
               h('span', { className: 'scp-callout-label' }, tr('section.waiting')),
               h('div', { className: 'scp-callout-text' }, waiting)) : null,
+            checklist.length ? h('div', { className: 'scp-section-label' }, tr('section.checklist')) : null,
+            checklist.length ? h('div', { className: 'scp-check' }, checklist.map((item) => h('div', {
+              key: item.key,
+              className: 'scp-check-item',
+              'data-done': item.done ? 'true' : 'false',
+              'data-na': item.na ? 'true' : 'false',
+              'data-optional': item.optional ? 'true' : 'false',
+            },
+              h('span', { className: 'scp-check-dot', 'aria-hidden': 'true' }, item.done ? '✓' : ''),
+              h('span', { className: 'scp-check-label' }, item.label),
+              h('span', { className: 'scp-check-state' }, item.state),
+              h('span', { className: 'scp-spacer' }),
+              item.action ? h('button', {
+                type: 'button', className: 'scp-check-action',
+                onClick: () => checklistAction(row, item),
+              }, item.action) : null))) : null,
+            row.activeCase ? h('div', {},
+              h('div', { className: 'scp-section-label' }, tr('section.upstream')),
+              h('div', { className: 'scp-upstream' },
+                h('div', { className: 'scp-upstream-row' },
+                  h('span', { className: 'scp-check-label' }, tr('upstream.anchors')),
+                  upstream && upstream.anchors && upstream.anchors.length
+                    ? upstream.anchors.map((anchor) => h('span', { key: anchor, className: 'scp-chip' }, anchor))
+                    : h('span', { className: 'scp-mono' }, tr('upstream.none'))),
+                upstream && upstream.lastVerified ? h('div', { className: 'scp-upstream-row' },
+                  h('span', { className: 'scp-check-state' }, tr('upstream.lastVerified') + '：' + upstream.lastVerified),
+                  upstream.verificationSource ? h('span', { className: 'scp-check-state' }, tr('upstream.source') + '：' + upstream.verificationSource) : null) : null,
+                h('div', { className: 'scp-upstream-row' },
+                  h('span', { className: 'scp-chip' }, data.upstream && data.upstream.ready ? tr('upstream.ready') : tr('upstream.notReady')),
+                  h('button', {
+                    type: 'button', className: 'scp-check-action',
+                    onClick: () => fillDraft(upstreamDraft(row, data.upstream)),
+                  }, tr('action.upstream'))))) : null,
+            h('div', { className: 'scp-section-label' }, tr('section.evidence')),
+            h('div', { className: 'scp-list-block' },
+              evidenceList.length ? evidenceList.map((filePath) => h('div', { key: filePath, className: 'scp-evidence-row' },
+                h('span', { className: 'scp-evidence-path', title: filePath }, filePath),
+                h('button', { type: 'button', className: 'scp-check-action', onClick: () => copyPathAndFlash(filePath, flash) }, tr('action.copyPath'))))
+                : h('div', { className: 'scp-mono' }, tr('evidence.none')),
+              candidateList.length ? candidateList.map((candidate, index) => h('div', { key: 'cand-' + index, className: 'scp-candidate' },
+                h('span', { className: 'scp-chip' }, candidate.kind || 'case'),
+                h('span', { className: 'scp-candidate-text', title: candidate.summary }, candidate.summary || tr('none')),
+                h('button', {
+                  type: 'button', className: 'scp-check-action',
+                  onClick: () => candidateAction(row, candidate),
+                }, tr('action.sedimentGeneric'))))
+                : h('div', { className: 'scp-mono' }, tr('candidates.none')),
+              h('div', { className: 'scp-upstream-row' },
+                h('button', {
+                  type: 'button', className: 'scp-check-action',
+                  onClick: () => toggleReport(row),
+                }, reportState.open ? tr('action.hideReport') : tr('action.viewReport')),
+                h('span', { className: 'scp-check-state' }, extra.hasReport ? tr('label.hasReport') : tr('report.none'))),
+              reportState.open
+                ? (reportState.loading ? h('div', { className: 'scp-mono' }, tr('report.loading'))
+                  : reportState.error ? h('div', { className: 'scp-form-error' }, reportState.error)
+                    : h('pre', { className: 'scp-report' }, reportState.text))
+                : null),
             h('div', { className: 'scp-section-label' }, tr('section.overview')),
             h('dl', { className: 'scp-grid2' },
               def(tr('label.steps'), stepsText(extra), 'steps'),
@@ -2030,6 +2458,21 @@ window.__ModuleLoader__.load({
               def(tr('label.report'), extra.hasReport ? tr('label.hasReport') : tr('label.noReport'), 'report')),
             row.summary ? h('div', { className: 'scp-section-label' }, tr('section.background')) : null,
             row.summary ? h('p', { className: 'scp-p' }, row.summary) : null,
+            h('div', { className: 'scp-section-label' }, tr('section.history')),
+            h('div', { className: 'scp-history' },
+              history.length ? history.map((item, index) => h('div', { key: 'h-' + index, className: 'scp-history-row' },
+                h('span', { className: 'scp-history-when' }, formatTime(item.at) || tr('none')),
+                h('span', { className: 'scp-history-kind' }, tr('history.' + item.kind)),
+                h('span', { className: 'scp-history-text', title: item.text }, item.text),
+                item.note ? h('span', { className: 'scp-history-note', title: item.note }, item.note) : null))
+                : h('div', { className: 'scp-mono' }, tr('history.none')),
+              closeInfo ? h('div', { className: 'scp-upstream-row' },
+                h('button', {
+                  type: 'button', className: 'scp-check-action',
+                  disabled: undoBusy || !(data.capabilities && data.capabilities.canWrite),
+                  title: data.capabilities && data.capabilities.canWrite ? tr('hint.undo') : tr('hint.readonly'),
+                  onClick: () => undoClose(row),
+                }, tr('action.undoClose'))) : null),
             h('div', { className: 'scp-actions' },
               h('button', {
                 type: 'button',

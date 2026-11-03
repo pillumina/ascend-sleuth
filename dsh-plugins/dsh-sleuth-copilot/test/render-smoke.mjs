@@ -57,9 +57,9 @@ Object.defineProperty(globalThis, 'navigator', {
 // 不让轮询计时器把测试进程挂住
 globalThis.setInterval = () => 0
 
-function pressKey(key) {
+function pressKey(key, extra) {
   for (const fn of Array.from(keyHandlers)) {
-    fn({ key, target: { tagName: 'DIV' }, preventDefault() {} })
+    fn(Object.assign({ key, target: { tagName: 'DIV' }, preventDefault() {} }, extra || {}))
   }
 }
 
@@ -297,11 +297,17 @@ function makeRow(overrides) {
       needSed: false, needPromote: false, needReview: false,
       waitingFor: '缺 device-side plog（容器未持久化 /root/ascend/log）', waitingOn: 'user_material',
     },
+    transitions: [],
+    reports: [],
+    reviews: [],
+    reportFile: '',
     extra: {
       currentStep: 5, maxSteps: 6, eventCount: 7, userSteps: 1, agentSteps: 6,
       platform: 'A3-910C', category: 'interrupt', framework: 'vllm-ascend',
       excludedCases: ['VLLM-ASC-7993', 'VLLM-ASC-9887', 'VLLM-ASC-10500'],
-      evidenceFiles: 1, evidenceMissing: '缺 device-side plog', hasReport: false,
+      evidenceFiles: 1, evidenceList: ['traces/evidence/' + ID + '/crash.log'],
+      evidenceMissing: '缺 device-side plog', hasReport: false,
+      reportFile: '', sedimentCandidateList: [{ kind: 'case', summary: 'vendor TopKV2 kernel 崩溃' }],
     },
     harnessSession: '',
   }, overrides || {})
@@ -329,16 +335,93 @@ function makeState(mode) {
       derived: {
         open: false, closed: false, caseKind: 'case', needSed: true, needPromote: false, needReview: false,
         waitingFor: '', waitingOn: null,
+        upstream: { anchors: ['vllm-ascend#15903'], lastVerified: '2026-W36', verificationSource: 'upstream-fix-merged' },
       },
       extra: {
         currentStep: 6, maxSteps: 6, eventCount: 9, userSteps: 1, agentSteps: 8,
         platform: 'A3-910C', category: 'interrupt', framework: 'vllm-ascend',
-        excludedCases: [], evidenceFiles: 1, evidenceMissing: '', hasReport: true,
+        excludedCases: [], evidenceFiles: 1, evidenceList: ['traces/evidence/x/p0.log'],
+        evidenceMissing: '', hasReport: true, reportFile: 'traces/x.report.md', sedimentCandidateList: [],
       },
     })
     return {
       ok: true, tracesDir: '/repo/traces', bound: null, recent: [row], all: [row, second],
       counts: { open: 1, pendingFeedback: 1, toSediment: 1 }, vocab: VOCAB, capabilities: CAPS,
+    }
+  }
+  if (mode === 'closed') {
+    const closedRow = makeRow({
+      status: 'resolved',
+      feedback: { outcome: 'resolved', case: 'VLLM-ASC-11312' },
+      activeCase: 'VLLM-ASC-11312',
+      transitions: [{ at: '2026-09-08T16:00:00+08:00', from: 'in_progress', to: 'resolved', note: '根因明确' }],
+      reports: [{ at: '2026-09-08T16:05:00+08:00', source: 'field', result: 'from_report', note: '改完后已生效' }],
+      reviews: [{ at: '2026-09-08T16:20:00+08:00', verdict: 'report_revision', note: '补一节证据' }],
+      reportFile: 'traces/' + ID + '.report.md',
+      derived: {
+        open: false, closed: true, caseKind: 'case', needSed: true,
+        needPromote: false, needReview: false, waitingFor: '', waitingOn: null,
+        upstream: { anchors: ['vllm-ascend#15903'], lastVerified: '2026-W36', verificationSource: 'upstream-fix-merged' },
+      },
+      extra: {
+        currentStep: 6, maxSteps: 6, eventCount: 9, userSteps: 1, agentSteps: 8,
+        platform: 'A3-910C', category: 'interrupt', framework: 'vllm-ascend',
+        excludedCases: ['VLLM-ASC-7993'], evidenceFiles: 1,
+        evidenceList: ['traces/evidence/' + ID + '/crash.log'], evidenceMissing: '',
+        hasReport: true, reportFile: 'traces/' + ID + '.report.md',
+        sedimentCandidateList: [{ kind: 'case', summary: 'vendor TopKV2 kernel 崩溃' }],
+      },
+    })
+    return {
+      ok: true, tracesDir: '/repo/traces', bound: closedRow, recent: [closedRow], all: [closedRow],
+      counts: { open: 0, pendingFeedback: 0, toSediment: 1 }, vocab: VOCAB, capabilities: CAPS,
+    }
+  }
+  if (mode === 'fast') {
+    const fastRow = makeRow({
+      status: 'resolved',
+      feedback: { outcome: 'resolved', case: 'VLLM-ASC-11312' },
+      activeCase: 'VLLM-ASC-11312',
+      transitions: [{ at: '2026-09-08T16:00:00+08:00', from: 'in_progress', to: 'resolved' }],
+      reports: [],
+      reviews: [],
+      reportFile: '',
+      derived: {
+        open: false, closed: true, caseKind: 'case', needSed: false,
+        needPromote: false, needReview: false, waitingFor: '', waitingOn: null,
+      },
+      extra: {
+        currentStep: 2, maxSteps: 6, eventCount: 3, userSteps: 1, agentSteps: 2,
+        platform: 'A3-910C', category: 'interrupt', framework: 'vllm-ascend',
+        excludedCases: [], evidenceFiles: 1, evidenceList: [], evidenceMissing: '',
+        hasReport: false, reportFile: '', sedimentCandidateList: [],
+      },
+    })
+    return {
+      ok: true, tracesDir: '/repo/traces', bound: fastRow, recent: [fastRow], all: [fastRow],
+      counts: { open: 0, pendingFeedback: 0, toSediment: 0 }, vocab: VOCAB, capabilities: CAPS,
+    }
+  }
+  if (mode === 'triage') {
+    const triageRow = makeRow({
+      status: 'resolved',
+      activeCase: 'VLLM-ASC-11312',
+      sedimented: { state: 'none', case_id: '' },
+      derived: {
+        open: false, closed: true, caseKind: 'case', needSed: true,
+        needPromote: false, needReview: false, waitingFor: '', waitingOn: null,
+      },
+      extra: {
+        currentStep: 6, maxSteps: 6, eventCount: 9, userSteps: 1, agentSteps: 8,
+        platform: 'A3-910C', category: 'interrupt', framework: 'vllm-ascend',
+        excludedCases: [], evidenceFiles: 0, evidenceList: [], evidenceMissing: '',
+        hasReport: true, reportFile: 'traces/' + ID + '.report.md',
+        sedimentCandidateList: [{ kind: 'triage', summary: 'triage 路由词候选' }],
+      },
+    })
+    return {
+      ok: true, tracesDir: '/repo/traces', bound: triageRow, recent: [triageRow], all: [triageRow],
+      counts: { open: 0, pendingFeedback: 0, toSediment: 1 }, vocab: VOCAB, capabilities: CAPS,
     }
   }
   if (mode === 'readonly') {
@@ -394,6 +477,10 @@ async function mount(mode, options) {
               if (endpoint === 'copilot-transition') {
                 if (opts.transitionResult) return { ok: true, value: opts.transitionResult }
                 return { ok: true, value: { ok: true, from: 'in_progress', to: 'resolved', changed: ['status'] } }
+              }
+              if (endpoint === 'copilot-report') {
+                if (opts.reportError) return { ok: true, value: { ok: false, code: 'E_NOT_FOUND', message: '这单还没有人读报告' } }
+                return { ok: true, value: { ok: true, text: opts.reportText || '# 诊断报告\n根因：vendor TopKV2 kernel 崩溃', file: 'traces/' + ID + '.report.md', bytes: 100 } }
               }
               throw new Error('unexpected endpoint ' + endpoint)
             },
@@ -479,7 +566,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：主按钮是回报结果', !!findButton(view, '回报结果'))
   expect('最近一单：显示身份标签（知识库未覆盖）', view.text.includes('知识库未覆盖'))
   expect('最近一单：显示已排除条数', view.text.includes('已排除 3 条'))
-  expect('最近一单：版本串 0.7.1', view.nodes.some((node) => node.props && node.props['data-version'] === '0.7.1'))
+  expect('最近一单：版本串 0.8.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.8.0'))
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
   expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
 }
@@ -546,6 +633,79 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('上游：未就绪时菜单给原因', menuView.text.includes('gh 未登录'), menuView.text.slice(-400))
   click(findButtonContains(menuView, '查 case 上游状态'))
   expect('上游：prompt 带环境预检', t.lastDraft().includes('scripts/doctor.py') && t.lastDraft().includes('gh 未登录'), t.lastDraft())
+}
+
+{
+  const t = await mount('recent')
+  const view = t.view()
+  const section = view.nodes.find((node) => node.type === 'section')
+  expect('待回报：根节点标出 pending', section && section.props['data-pending'] === 'true')
+  pressKey('d', { metaKey: true, shiftKey: true })
+  const opened = await t.settle()
+  expect('快捷键：⌘⇧D 打开总览', byClass(opened, 'scp-pal').length === 1)
+}
+
+{
+  const t = await mount('recent')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('收尾清单：出现', view.text.includes('收尾清单'))
+  expect('收尾清单：四项都在', ['人读报告', '回报结果', '沉淀', '交接包'].every((label) => view.text.includes(label)), view.text.slice(-500))
+  click(findButton(view, '填回报指令'))
+  const formView = await t.settle()
+  expect('收尾清单：回报动作打开表单', formView.text.includes('将填入输入框'))
+}
+
+{
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('上游：锚点与上次查证', view.text.includes('vllm-ascend#15903') && view.text.includes('2026-W36'))
+  expect('历史：出现状态转移', view.text.includes('进行中 → 已定位'))
+  expect('历史：出现复核条目', view.text.includes('只修订报告描述'))
+  expect('证据：路径可复制', view.text.includes('traces/evidence/' + ID + '/crash.log'))
+  click(findButton(view, '看报告'))
+  const withReport = await t.settle()
+  expect('报告：读入并展示', withReport.text.includes('根因：vendor TopKV2 kernel 崩溃'), withReport.text.slice(-400))
+  click(findButton(withReport, '撤销上次收尾'))
+  await t.settle()
+  const undo = t.lastTransition()
+  expect('撤销：发 reopen 请求', undo && undo.kind === 'reopen', JSON.stringify(undo))
+}
+
+{
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  click(findButton(view, '查 case 上游状态'))
+  await t.settle()
+  expect('上游：prompt 带已知锚点与上次查证', t.lastDraft().includes('vllm-ascend#15903') && t.lastDraft().includes('2026-W36'), t.lastDraft())
+}
+
+{
+  const t = await mount('fast')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('快路：报告标为不需要', view.text.includes('人读报告 不需要') && !view.text.includes('生成报告指令'), view.text.slice(view.text.indexOf('收尾清单'), view.text.indexOf('收尾清单') + 200))
+}
+
+{
+  const t = await mount('triage')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('候选：triage 种类可见', view.text.includes('triage'))
+  click(findButton(view, '生成沉淀指令'))
+  await t.settle()
+  expect('候选：triage 生成补路由词指令', t.lastDraft().includes('triage-tree.d') && t.lastDraft().includes('build_triage_tree.py'), t.lastDraft())
+}
+
+{
+  const t = await mount('closed', { reportError: true })
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  click(findButton(view, '看报告'))
+  const errored = await t.settle()
+  expect('报告：失败时给原因', errored.text.includes('这单还没有人读报告'))
 }
 
 {
