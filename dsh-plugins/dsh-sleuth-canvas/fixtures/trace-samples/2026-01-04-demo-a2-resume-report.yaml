@@ -1,0 +1,34 @@
+# 合成测试夹具：中断后续接的诊断 trace（resume + report + sedimented + feedback pending）。
+# 全部内容为虚构，与任何真实客户现场无关。
+session_id: "2026-01-04-demo-a2-resume-report"
+status: in_progress
+current_step: 12
+summary: "A2-910B 单机 TP8 跑 vllm-ascend 0.27.1 推理，开启 prefix cache 后同一 prompt 重复请求返回不一致答案：首次正确、第二次漂移。定位到 prefix cache 命中路径复用了错误的 block 元数据（虚构实现：block 表未按 request 维度拷贝），命中先验族 REF-CACHE-0004，confidence 0.6。用户按建议关闭 prefix cache 复测通过；诊断被会议打断后在第 12 步续接并产出报告，待沉淀为 inbox 草稿。"
+created_at: "2026-01-04T09:10:00+08:00"
+updated_at: "2026-01-05T10:35:00+08:00"
+detected_framework: vllm-ascend
+detected_platform: A2-910B
+detected_category: precision
+resolved_at: ""
+sedimented: {state: inbox, case_id: VLLM-ASC-9002}
+feedback: {case: VLLM-ASC-9002, outcome: pending}
+excluded_cases: [{id: VLLM-ASC-9201, reason: "同为重复请求答案漂移，但根因是采样随机种子未固定，与本案仅第二次漂移、关缓存即不漂移不符；软排除"}]
+active_case: ""
+last_action: "续接后产出诊断报告，结论：prefix cache block 元数据复用错误；修复验证通过，待用户确认后沉淀 VLLM-ASC-9002。"
+
+trace:
+  - {role: user, step: 1, content: "vllm-ascend 0.27.1，A2-910B 单机 TP8；开 prefix cache 后同一 prompt 第二次请求答案和第一次不一样，关掉 prefix cache 就正常。附复现脚本输出。",
+     evidence: {inline: "同一 prompt 连续请求两次：第一次输出 A，第二次输出 B（前半段相同、后半段漂移）；--enable-prefix-caching 关闭后两次一致；服务无报错。",
+        files: ["traces/evidence/2026-01-04-demo-a2-resume-report/repro.txt"],
+        missing: "缺第二次请求的完整 token 序列（只有截断输出）"}}
+  - {role: agent, step: 2, action: triage, branch: inference_precision, category: precision, routed: [inference/vllm-ascend/], output: "判定为推理精度类：同输入不同输出、与环境开关相关，路由 inference/vllm-ascend/ 的 precision 面。", reason: "不是崩溃或超时，是输出内容不一致，属 precision；'只有第二次错、关缓存正常'把范围收到 prefix cache 命中路径。"}
+  - {role: agent, step: 3, action: load_index, namespaces: [inference/vllm-ascend/], n_cases: 41, n_candidates_selected: 3, shard: "knowledge/_index/inference__vllm-ascend__precision.list"}
+  - {role: agent, step: 4, action: reference_lookup, ref_id: known-issue-family(prefix-cache-metadata), purpose: fix, layer: 2.5, reference: known-issue-family(prefix-cache-metadata), output: "先验条目第 4 节给出 cache 命中路径的核对步骤：block 元数据必须按 request 维度拷贝，共享引用会在第二批请求写坏第一批的 block 表。", reason: "症状与先验族一致（仅重复请求错、关缓存即正常），先按族条目核对 block 元数据处理。"}
+  - {role: agent, step: 5, action: quickly_check, case: VLLM-ASC-9201, primary: pass, fallback: pass, marked: version_mismatch, output: "采样种子未固定的形态相似，但本现场参数固定且关缓存即不漂移，与种子随机性不符。", reason: "9201 的复现条件里有未固定 seed；本现场命令固定 seed，且乱序只在缓存开启时出现，按 version_mismatch 软排除。"}
+  - {role: agent, step: 6, action: triage_semantic, namespace: inference/vllm-ascend/, category: precision, output: "语义分诊到 inference/vllm-ascend/ precision 面：同输入不同输出且只在缓存命中时发生。", rationale: "主症状「同 prompt 重复请求答案漂移」在 interrupt 分片无命中；缓存开关是唯一变量，语义归到 prefix cache 命中的精度面。"}
+  - {role: agent, step: 7, action: source_analysis, repo: vllm-project/vllm-ascend, ref: "v0.27.1 demo read", level: code, followup: unfixed, files_read: ["vllm_ascend/core/prefix_cache_demo.py", "vllm_ascend/core/block_table_demo.py"], tool_calls: ["read prefix_cache_demo.py:80-130 → 命中后直接复用 cached block 列表", "read block_table_demo.py:40-75 → 元数据对象跨请求共享、未深拷贝", "grep 'copy_block_table' → 只在首次分配时调用"], output: "代码核对：命中分支把 cached block 元数据对象直接挂到新请求，未按 request 深拷贝；第二批请求回写时会改到共享对象。", reason: "先验族给的核对点落在元数据对象所有权上；代码里确实只在首次分配时拷贝，与现场「第二次错、第三次又可能对」吻合。"}
+  - {role: user, step: 8, content: "按建议关了 prefix cache 复测 5 次全部正常。附复测输出。", evidence: {inline: "关闭 --enable-prefix-caching 后同一 prompt 5 次输出一致。", files: ["traces/evidence/2026-01-04-demo-a2-resume-report/repro-after-fix.txt"]}}
+  - {role: agent, step: 9, action: hit, case: REF-CACHE-0004, confidence: 0.6, output: "命中 prefix-cache-metadata 族：block 元数据跨请求共享、命中路径未深拷贝，第二批请求写坏缓存块表，只在开启 prefix cache 时出现。", reason: "先验族判定路径 + 代码核对 + 用户 A/B 复测三方对齐；KB 无同版本 case，取族条目，confidence 0.6（根因明确、版本面未完全对齐）。"}
+  - {role: agent, step: 10, action: attribution, verdict: execution_error, component: "skill:diagnose step<报告落盘>", output: "会议打断前的 trace 没有记录复测结果，违反「每步必写 trace」要求。定性为执行错：规则已存在，执行遗漏；非 case 错。", reason: "归因到执行错而非 case 错：SKILL 已写明复测结果要回填 trace；缺的是执行。component 记到报告落盘步骤。"}
+  - {role: agent, step: 11, action: resume, output: "续接 2026-01-04-demo-a2-resume-report，恢复到第 10 步。现场：结论已交付（关闭 prefix cache 规避 + 元数据深拷贝修复方向），待用户确认后沉淀。", reason: "resume 续接：重启后读 trace 恢复上下文，确认无未收敛分支，补记复测结果并置顶 updated_at。"}
+  - {role: agent, step: 12, action: report, output: "诊断报告已产出：症状、复现条件、候选排除过程、根因（block 元数据跨请求共享）、规避与修复建议、复测结果。", reason: "用户选择走报告而非直接回复；报告内容按定位报告口径整理，待确认后投 to-postmortem 沉淀为 VLLM-ASC-9002。"}

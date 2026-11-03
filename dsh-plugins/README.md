@@ -1,9 +1,11 @@
 # dsh-plugins —— 面板共通约定
 
-本目录下是 DSH 会话里加载的可视化面板（诊断 / 指标 / 自演进），以及一个独立的诊断状态条交互层
-（`dsh-sleuth-copilot`，占输入区与浮层，不占面板的 tab）。**每个包的 README 讲它自己的信息架构；
+本目录下是 DSH 会话里加载的可视化面板（诊断 / 指标 / 自演进），以及两个独立包：诊断状态条交互层
+（`dsh-sleuth-copilot`，占输入区与浮层，不占面板的 tab）与诊断画布整页（`dsh-sleuth-canvas`，左侧栏
+图标 + 主区整页，离线渲染 `traces/`）。**每个包的 README 讲它自己的信息架构；
 本文件讲面板之间必须一致的约定**——色语、排版、文案。放着不统一的后果是实测过的：同一界面里两个
-面板风格不同，读起来像两个产品。状态条只共享色语与文案规范，不参与面板 token 体系与渲染检查。
+面板风格不同，读起来像两个产品。状态条与诊断画布只共享色语与文案规范，不参与面板 token 体系与
+渲染检查。
 
 一次改一个面板时也请读这里：这些约定是**跨面板契约**，改动要走两个面板一起改 + 回归闸门。
 
@@ -29,6 +31,7 @@
 | 面板包可加载性 | 常驻插件包适配层的 host 四样（`harness.handle` → prefix 路由、信封格式、`harness.defineTool` 的 parameters 归一化、`shell.run` → `execute` + `result()`）+ client 的 `host.call` 映射（渲染三个 tab 的首屏各验一条 RPC）+ 三处名字对齐（`package.json` / `cordis.patch.yml` / 产物 export） | `node scripts/check_panel_bundle.js` |
 | 面板包外部契约 | 已安装 DSH 的五条接缝：`webServer.register(route)` 含 prefix、`connection.requestRejection`、client 沙箱的 `styles.insert`、页面产物格式 `__ModuleLoader__.load`、shell 的 `resolve` + `execute` | 同上（末段 DSH 探针；`--selftest-dsh` 自测） |
 | 诊断状态条（独立包） | `dsh-sleuth-copilot` 的源码就是 `lib/index.js` / `lib/client.js`（无生成器）；席位是 `conversation.input.dock`、`conversation.input.right`、`shell.overlay`；只读 `traces/`，状态修改仅在用户表单确认后走 `scripts/trace_transition.py`；上游查证只生成 prompt | `node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs`（浏览器半逻辑）、`node dsh-plugins/dsh-sleuth-copilot/test/host-smoke.mjs`（真实取数与临时副本写入）；真机渲染仍要人看 |
+| 诊断画布（独立包） | `dsh-sleuth-canvas`：`client-src/*.js` 由 `build.mjs` 拼成生成物 `lib/client.js`，host 半是 `host/index.js`（ESM）；注册 `main` key `sleuth-canvas` + `sidebar.panellist` 同 id（order 40）；只读 `traces/`，不联网、不写仓库 | `node dsh-plugins/dsh-sleuth-canvas/build.mjs --check`、`node dsh-plugins/dsh-sleuth-canvas/test/{host,engine,ui,artifact}.test.mjs`；真机渲染仍要人看 |
 
 **结果复用窗口**（两个面板同一条约定）：面板取数要起 Python 子进程，而切走 tab 再切回会重新挂载
 组件、重新发起同一条 RPC，所以结果按短窗口复用（切回不必等进程）。三条约束一起成立才算守住：
@@ -56,7 +59,7 @@ id 取来渲染。**动态热加载路径没有这个对象**，面板因此退�
 一行（欠几天、命中哪个 case）。数据来自一条瘦 RPC `ascend-session-marks`，侧栏所有行共用一次取数
 （30 秒窗口），不逐行发请求。
 
-## 目录里还有两个非面板包
+## 目录里还有三个非面板包
 
 ### 诊断状态条：`dsh-sleuth-copilot`
 
@@ -64,6 +67,16 @@ id 取来渲染。**动态热加载路径没有这个对象**，面板因此退�
 以及全库浮层「诊断总览」。它读 `traces/` 的状态投影，生成续接 / 查上游 / 产出报告 / 交接包 / 回报结果的
 指令填进输入框；收尾、重开、沉淀状态经确认表单写回。它是独立 bundle，单独装卸，不占
 `conversation.view` 的 tab，也不进整页外壳。装法、交互与写入边界见 `dsh-sleuth-copilot/README.md`。
+
+### 诊断画布：`dsh-sleuth-canvas`
+
+把 `traces/` 里的诊断过程渲染成一张可漫游的旅程画布：左侧栏一个「诊断画布」图标，主区一整页，
+列是阶段、卡片是事件、边是顺序与并行，点开节点看输出、理由与证据。它是独立 bundle，不占
+`conversation.view` 的 tab。源码 `client-src/*.js`（纯脚本函数体，文件之间只通过 `SC` 这个共用命名空间通信）拼成生成物
+`lib/client.js`；host 半在 `host/index.js`，读 `traces/` 并注册 `/sleuth-canvas` 的 prefix RPC 路由。
+构建与校验：`node dsh-plugins/dsh-sleuth-canvas/build.mjs`、`--check`；与 `scripts/build_panel_bundle.js`
+是两套产物。只读 `traces/`，不联网、不起子进程、不写仓库。版本串在页面右下脚注（`v<version>`）。
+装法与版本迭代见 `skills/preload-panel/SKILL.md`；接口契约见 `dsh-sleuth-canvas/docs/CONTRACT.md`。
 
 ### vllm-kb 接入插件
 
@@ -84,8 +97,8 @@ B、C、D 三条路用的是同一个插件管理器，差别只在谁去调它�
 或用户在界面上点。三条路装完落在 profile 的状态相同（`dependencies` 与 `dsh.profile.bundles`
 各一条、各一个 generation）；A 路是会话内的动态定义，不落 profile。
 
-**默认装三个包**：面板包、vllm-kb 接入插件、诊断状态条。`panel_install.js --all` 与
-`skills/preload-panel` 的三条常驻安装路都按三个包走；三个包分开登记，装面板不会带上另两个。
+**默认装四个包**：面板包、vllm-kb 接入插件、诊断状态条、诊断画布。`panel_install.js --all` 与
+`skills/preload-panel` 的常驻安装路都按四个包走；四个包分开登记，装面板不会带上另外三个。
 
 常驻包的两个产物由 `node scripts/build_panel_bundle.js` 把面板源码原文嵌进适配层生成，
 不要手改；源文件改了要重跑生成器。适配层补的是动态沙箱当年自带、常驻包没有的五项：

@@ -1,0 +1,5 @@
+# 合成测试夹具：复现输出，内容虚构。
+run1: 答案 A
+run2: 答案 B（前半段与 A 相同，后半段改写）
+run3: 答案 A
+switch: --enable-prefix-caching 关闭后连续 5 次输出一致

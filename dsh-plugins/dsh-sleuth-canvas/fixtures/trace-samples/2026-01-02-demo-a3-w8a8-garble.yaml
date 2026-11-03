@@ -1,0 +1,158 @@
+# 合成测试夹具：resolved 诊断 trace。全部内容为虚构，与任何真实客户现场无关。
+# 形状参考 ascend-sleuth 的 traces/*.yaml（手写 YAML 子集），字段含义见 docs/CONTRACT.md §2。
+session_id: "2026-01-02-demo-a3-w8a8-garble"
+status: resolved
+current_step: 6
+summary: "vllm-ascend 0.28.0 + w8a8 量化模型在 A3-910C 单机 TP8 推理服务上，长 prompt 首批回复乱码并伴随答案漂移，短 prompt 正常。定位为自定义量化算子 demo_quant_linear 的 scale 广播方向写反（仅 batch>1 触发）：权重 scale 被按行广播、激活 scale 被按列广播，两者互换导致首批 token 概率分布落错，后续解码沿用错误前缀。命中先验族 REF-QUANT-9001（quant-scale-order 已知问题族），confidence 0.62。修复：启动加 --additional-config '{\"enable_custom_quant\": false}' 回退原生线性层，复测 3 轮无乱码。案例已沉淀 VLLM-ASC-9001。"
+created_at: "2026-01-02T09:12:00+08:00"
+updated_at: "2026-01-02T11:48:00+08:00"
+detected_framework: vllm-ascend
+detected_platform: A3-910C
+detected_category: precision
+resolved_at: "2026-01-02T11:48:00+08:00"
+sedimented:
+  state: knowledge
+  case_id: VLLM-ASC-9001
+  inbox_path: ""
+feedback:
+  case: VLLM-ASC-9001
+  outcome: resolved
+  confirmed_at: "2026-01-02T11:48:00+08:00"
+excluded_cases:
+  - id: VLLM-ASC-9002
+    reason: "同为 w8a8 首轮乱码，但根因是 KV cache 量化误差累积（解码阶段逐步漂移），与本案 batch>1 首批即错不符；按 version_mismatch 软排除，保留作精度面参考"
+  - VLLM-ASC-9003
+active_case: ""
+last_action: "根因确认并给出修复（关闭自定义量化算子）；用户复测 3 轮通过，案例已沉淀 VLLM-ASC-9001，回报 resolved。"
+
+trace:
+  - role: user
+    step: 1
+    content: "vllm-ascend 0.28.0 + w8a8 量化模型，A3-910C 单机 TP8；长 prompt 首批回复乱码且答案漂移，短 prompt 正常。附启动配置与一段输出样例。"
+    evidence:
+      inline: |
+        启动配置关键项：--quantization w8a8 --max-model-len 32768
+        --additional-config '{"enable_custom_quant": true}'
+        乱码样例：首句正常，随后出现重复短语与错字；短 prompt（<512 token）3 次均正确。
+      files: ["traces/evidence/2026-01-02-demo-a3-w8a8-garble/startup.cfg", "traces/evidence/2026-01-02-demo-a3-w8a8-garble/sample-output.txt"]
+      sources: ["https://example.com/docs/quantization-config"]
+      missing: "缺首轮乱码的完整 token id 序列、模型权重 hash、CANN 版本"
+  - role: agent
+    step: 2
+    action: triage
+    branch: inference_precision
+    category: precision
+    routed: [inference/vllm-ascend/]
+    output: >-
+      判定为推理精度类：长 prompt 首批即乱码、短 prompt 正常，路由 inference/vllm-ascend/ 的 precision 面。
+    reason: >-
+      症状是输出内容错误而非崩溃或超时，属 precision；框架已确认 vllm-ascend，w8a8 量化是首要怀疑面，
+      batch 相关性与「长 prompt 才触发」把范围收到量化算子。
+  - role: agent
+    step: 3
+    action: load_index
+    namespaces: [inference/vllm-ascend/]
+    n_cases: 41
+    n_candidates_selected: 6
+    shard: "knowledge/_index/inference__vllm-ascend__precision.list"
+  - role: agent
+    step: 4
+    action: quickly_check
+    case: VLLM-ASC-9002
+    primary: pass
+    fallback: pass
+    marked: excluded
+    parallel_group: g4
+    output: "KV cache 量化误差累积：主检查 'decode 阶段逐步漂移' 与本案首批即错不符，排除。"
+    reason: "9002 是解码若干步后误差累积；本现场首批 token 概率就错，方向不同，标记 excluded。"
+  - role: agent
+    step: 4
+    action: quickly_check
+    case: VLLM-ASC-9003
+    primary: fail
+    fallback: pass
+    parallel_group: g4
+    output: "主检查 'attention mask 越界' 不命中：本现场无越界断言，mask 长度与 max-model-len 一致。"
+    reason: "9003 是长序列 attention mask 越界崩溃；本现场进程正常，只是输出错，排除。"
+  - role: agent
+    step: 4
+    action: quickly_check
+    case: VLLM-ASC-9004
+    primary: fail
+    parallel_group: g4
+    output: "主检查 'rope 频率表精度不足' 不命中：本案 FP16 前缀，rope 走 FP32 计算。"
+    reason: "9004 是 fp16 下 rope 查表截断；本现场 rope 后端为 fp32，排除。"
+  - role: agent
+    step: 4
+    action: quickly_check
+    case: VLLM-ASC-9005
+    primary: pass
+    fallback: fail
+    parallel_group: g4
+    output: "主检查 '量化 scale 方向' 命中；备检查 '权重反量化时机' 不成立。"
+    reason: "9005 的 scale 方向描述与本案一致，但它的触发条件是 batch=1，与本案 batch>1 相反，候选保留。"
+  - role: agent
+    step: 4
+    action: quickly_check
+    case: VLLM-ASC-9006
+    marked: low_confidence
+    parallel_group: g4
+    output: "签名只到 '输出乱码' 这一层，缺少算子名与 batch 条件，置信不足。"
+    reason: "9006 只记录现象没有根因，按 low_confidence 标记，不排除也不采纳。"
+  - role: agent
+    step: 4
+    action: quickly_check
+    case: VLLM-ASC-9007
+    primary: fail
+    fallback: fail
+    marked: excluded
+    parallel_group: g4
+    output: "主/备检查均不命中：本现场无 sampling 参数异常，temperature 与 top-p 为默认值。"
+    reason: "9007 是 sampling 参数被并发改写；本现场参数固定且首轮即错，排除。"
+  - role: agent
+    step: 4
+    action: quickly_check
+    case: VLLM-ASC-9008
+    primary: pass
+    fallback: pass
+    parallel_group: g4
+    output: "量化 scale 广播方向与本案一致，候选保留作对照。"
+    reason: "9008 记录的是同一 family 的另一条分支（激活 scale 行方向），与本案互为对照。"
+  - role: agent
+    step: 5
+    action: reference_lookup
+    ref_id: known-issue-family(quant-scale-order)
+    purpose: fix
+    layer: 2.5
+    reference: known-issue-family(quant-scale-order)
+    output: "先验条目第 3 节给出 scale 广播方向的核对步骤：权重 scale 按列、激活 scale 按行，互换即首批分布错误。"
+    reason: "本题是 w8a8 量化 + 自定义算子；先验族 quant-scale-order 与症状面一致，先按它核对实现再判 case。"
+  - role: agent
+    step: 5
+    action: hit
+    case: REF-QUANT-9001
+    confidence: 0.62
+    output: "命中 quant-scale-order 族：seed 检查确认自定义算子把权重 scale 按行广播、激活 scale 按列广播，与约定相反；只在 batch>1 走自定义分支，与现场条件吻合。"
+    reason: "先验族给的是判定路径，代码核对对上算子实现与触发条件；KB 无同版本 case，故取族条目并给 0.62（实现已确认，版本面未完全对齐）。"
+  - role: agent
+    step: 5
+    action: attribution
+    verdict: execution_error
+    component: "skill:diagnose step<证据落盘>"
+    output: "用户指出首轮 token id 序列没有落盘，违反「长证据落 traces/evidence/」的硬要求。定性为执行错：约束已存在但未遵守，非 case 错。"
+    reason: "归因到执行错而非 case 错：SKILL 已写明长证据落文件并写进 evidence.files；缺的是执行。component 记到 trace 写作步骤，供流程侧聚合。"
+  - role: agent
+    step: 6
+    action: output
+    output: |-
+      根因：自定义量化算子 demo_quant_linear 的 scale 广播方向写反（权重应按列、激活应按行，实现互换），
+      仅 batch>1 触发，首批 token 分布错误导致长 prompt 乱码。
+      修复：启动加 --additional-config '{"enable_custom_quant": false}' 回退原生线性层；复测 3 轮无乱码。
+      severity=service-affecting，重启服务即生效，无数据风险。
+    reason: "实现层根因已由 seed 检查确认；先验族给出修复入口。修复不涉及数据面，按 service-affecting 输出并给复测命令。"
+  - role: agent
+    step: 6
+    action: feedback
+    case: VLLM-ASC-9001
+    outcome: resolved
+    output: "用户复测 3 轮无乱码，回报 resolved。"

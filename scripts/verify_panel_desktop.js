@@ -393,7 +393,8 @@ async function runVerification(options, io) {
       io.say('RPC          ok（' + RPC_ENDPOINT + ' 回 result.ok=true）')
     }
 
-    io.say('全部通过：临时 profile 能拼出配置，host 半注册了 RPC，页面会加载已登记包的浏览器半。')
+    io.say('全部通过：临时 profile 能拼出配置，页面会加载已登记包的浏览器半'
+      + (expected.includes(PANEL_NAME) ? '，host 半注册了 RPC。' : '。'))
     return 0
   } catch (e) {
     io.warn('验证异常：' + String((e && e.stack) || e))
@@ -420,9 +421,13 @@ const FAKE_CLI = String.raw`'use strict'
 const http = require('http')
 const argv = process.argv.slice(2)
 if (argv.includes('--dump-config')) {
-  const lines = ['# == dsh-sleuth-panels', '- id: fake-panel', '# == dsh-sleuth-vllm-kb', '- id: fake-vllm']
+  const lines = ['# == dsh-sleuth-panels', '- id: fake-panel', '# == dsh-sleuth-vllm-kb', '- id: fake-vllm', '# == dsh-sleuth-copilot', '- id: fake-copilot', '# == dsh-sleuth-canvas', '- id: fake-canvas']
   if (process.env.FAKE_CLI_DUMP_MODE === 'missing-vllm') {
     console.log(lines.slice(0, 2).join('\n'))
+    process.exit(0)
+  }
+  if (process.env.FAKE_CLI_DUMP_MODE === 'canvas-only') {
+    console.log(lines.slice(6).join('\n'))
     process.exit(0)
   }
   console.log(lines.join('\n'))
@@ -438,7 +443,7 @@ const server = http.createServer((req, res) => {
   }
   if (req.method === 'GET' && url.pathname === '/') {
     res.writeHead(200, { 'content-type': 'text/html' })
-    res.end('<script src="/plugins/dsh-sleuth-panels/client.js"></script><script src="/plugins/dsh-sleuth-vllm-kb/client.js"></script>')
+    res.end('<script src="/plugins/dsh-sleuth-panels/client.js"></script><script src="/plugins/dsh-sleuth-vllm-kb/client.js"></script><script src="/plugins/dsh-sleuth-copilot/client.js"></script><script src="/plugins/dsh-sleuth-canvas/client.js"></script>')
     return
   }
   if (req.method === 'POST' && url.pathname === '/ascend-sleuth-panels/ascend-traces-list') {
@@ -466,8 +471,8 @@ function writeFakeHome(base) {
   // 故意带 BOM：自测同时验证"读入时剥 BOM、写回无 BOM"
   const manifest = {
     name: 'dsh-profile-demo',
-    dependencies: { 'dsh-sleuth-panels': 'link:/tmp/fake-panels', 'dsh-sleuth-vllm-kb': 'link:/tmp/fake-vllm' },
-    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-sleuth-panels', 'dsh-sleuth-vllm-kb'], patchReload: 'live' } },
+    dependencies: { 'dsh-sleuth-panels': 'link:/tmp/fake-panels', 'dsh-sleuth-vllm-kb': 'link:/tmp/fake-vllm', 'dsh-sleuth-copilot': 'link:/tmp/fake-copilot', 'dsh-sleuth-canvas': 'link:/tmp/fake-canvas' },
+    dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-sleuth-panels', 'dsh-sleuth-vllm-kb', 'dsh-sleuth-copilot', 'dsh-sleuth-canvas'], patchReload: 'live' } },
   }
   fs.writeFileSync(path.join(profile, 'package.json'), '\ufeff' + JSON.stringify(manifest, null, 2) + '\n', 'utf8')
   fs.writeFileSync(path.join(profile, 'cordis.patch.yml'), '[]\n', 'utf8')
@@ -489,7 +494,24 @@ async function selftest() {
     failures += okPass ? 0 : 1
     process.stdout.write('  ' + (okPass ? 'ok  ' : 'FAIL') + ' 正常路径：' + (okPass ? '退出 0' : '退出 ' + ok) + '\n')
 
-    // 坏 dump：缺 vllm-kb 的层 → 必须在 dump 这一步失败，且不能把实例起起来
+    // 只登记 canvas：不是面板包，RPC 那条判据不跑；结论不能声称 RPC 通过
+    const canvasHome = path.join(base, 'canvas-home')
+    fs.mkdirSync(path.join(canvasHome, 'profiles', 'demo'), { recursive: true })
+    fs.writeFileSync(path.join(canvasHome, 'profiles', 'demo', 'package.json'), JSON.stringify({
+      name: 'dsh-profile-demo',
+      dependencies: { 'dsh-sleuth-canvas': 'link:/tmp/fake-canvas' },
+      dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app', 'dsh-sleuth-canvas'] } },
+    }), 'utf8')
+    const canvasLines = []
+    const canvasIo = { say: (line) => canvasLines.push(line), warn: (line) => canvasLines.push(line) }
+    const canvasOnly = await runVerification({ dshHome: canvasHome, profile: 'demo', dsh: fake, timeout: 20, env: { FAKE_CLI_DUMP_MODE: 'canvas-only' } }, canvasIo)
+    const canvasClaim = canvasLines.join('\n').includes('host 半注册了 RPC')
+    const canvasOnlyPass = canvasOnly === 0 && canvasClaim === false
+    failures += canvasOnlyPass ? 0 : 1
+    process.stdout.write('  ' + (canvasOnlyPass ? 'ok  ' : 'FAIL') + ' canvas-only 路径：'
+      + (canvasOnlyPass ? '退出 0 且结论未声称 RPC' : '退出 ' + canvasOnly + (canvasClaim ? '，结论误称 RPC' : '')) + '\n')
+
+    // 坏 dump：只给面板层 → 缺 vllm-kb / 状态条 / 画布三层，必须在 dump 这一步失败，且不能把实例起起来
     const bad = await runVerification({ dshHome: home, profile: 'demo', dsh: fake, timeout: 20, env: { FAKE_CLI_DUMP_MODE: 'missing-vllm' } }, quiet)
     const badPass = bad === 1
     failures += badPass ? 0 : 1
@@ -528,7 +550,7 @@ async function selftest() {
     process.stderr.write('验证脚本自测未通过：' + failures + ' 例\n')
     return 1
   }
-  process.stdout.write('验证脚本自测通过（4 例 + 清理断言：正常 / 缺层 / 未登记 / 登记不完整）\n')
+  process.stdout.write('验证脚本自测通过（5 例 + 清理断言：正常 / canvas-only / 缺层 / 未登记 / 登记不完整）\n')
   return 0
 }
 
