@@ -98,11 +98,33 @@ DSH 会话里的一个独立交互层插件。它把诊断的状态、下一步�
 下方实时预览将填入输入框的完整指令，提交后才写回输入框。回报轴目前没有脚本写入口，所以这一步仍是
 生成指令、由 agent 按 trace 写入纪律落盘；表单会把要写的 report 事件字段与 `feedback.outcome` 取值写清。
 
+### 沉淀队列（v1）
+
+诊断总览顶部加了「诊断 / 沉淀」切换。沉淀视图把 `postmortems/inbox/` 的草稿按下一步分组（继续 groom /
+待提 PR / 待合入与收尾），顶部批次条给整批的下一步；右列是单份草稿的五步进度（草稿已交 → 已评估 →
+已决定 → 已提 PR → 已升格）、评估、人决定、落点与 PR。状态条展开态多一行沉淀摘要，收起态不变。
+
+- 数据：`copilot-sediment` → `lib/sediment_state.py`，复用 `scripts/groom_status.py` 与
+  `scripts/groom_common.py` 的判据，不复制；只读，按需读（展开状态条或打开沉淀视图时），不塞进 10 秒轮询。
+- 提 PR 目标：第一次生成提 PR 指令时选一次远端与 base 分支，存在共享 inbox 的
+  `<inbox>/.groom/pr-state.json`，之后复用；选择器只列事实（host、平台、分支、适配器/token 状态），
+  不预设远端用途。没有目标时先选，不默认猜。
+- PR 状态：台账记平台、repo、号、URL、状态与查证来源/时间；「查合入状态」生成一条按平台查的指令，
+  GitCode 走 REST API，GitHub/GitLab 可选 CLI。查不到就写「未确认」，不推成「已合入」。
+- 平台适配器：`scripts/platforms/` 下一个 YAML（标准 REST）或一个 Python（CLI/特殊认证）；新增平台
+  只加一个文件，核心与界面不改。doctor 从清单里查 token 与命令，缺项降级，不代装。
+- 指令：默认短指令（目标、批次、边界、台账写点），命令细节折叠；流程在
+  `/skill:knowledge-groom`，界面不抄第二份。
+- 写：目标选择只写本地台账（CAS），不改 `knowledge/` 与 `traces/`；提 PR、查状态、收尾仍由 agent
+  执行生成的指令。
+
 ## 数据与写入链路
 
 ```
 浏览器半（lib/client.js）
   ├─ copilot-state      → Host 半 → lib/copilot_state.py → scripts/_trace_state.py（状态判据）
+  ├─ copilot-sediment   → Host 半 → lib/sediment_state.py → scripts/groom_status.py / groom_common.py
+  ├─ copilot-pr-target  → Host 半 → scripts/pr_status.py → scripts/platforms/*
   └─ copilot-transition → Host 半 → scripts/trace_transition.py（校验 + CAS + 事件）
 ```
 
@@ -149,12 +171,12 @@ plugin_manager remove_bundle(target: 'dsh-sleuth-copilot')
 ## 验证
 
 ```
-node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs   # 浏览器半：四个面、折叠、收尾清单 / 历史 / 报告、材料 / 时间线、会话归属、搜索与命令面板
-node dsh-plugins/dsh-sleuth-copilot/test/host-smoke.mjs     # Host 半：取数、证据 / 候选 / 材料、报告与时间线、工作区门禁、会话绑定、真实写入（临时副本）、CAS、错误码
+node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs   # 浏览器半：四个面、折叠、收尾清单 / 历史 / 报告、材料 / 时间线、沉淀队列 / 指令 / 目标选择、搜索与命令面板
+node dsh-plugins/dsh-sleuth-copilot/test/host-smoke.mjs     # Host 半：取数、证据 / 候选 / 材料、报告与时间线、沉淀 / 目标端点、工作区门禁、会话绑定、真实写入（临时副本）、CAS、错误码
 ```
 
 页面上的三件事只能人工确认：状态条是否出现、排版是否贴合输入区、点按钮是否把指令写进输入框。
-装完刷新页面，在状态条展开页或控制台看版本串 `v0.10.1`。
+装完刷新页面，在状态条展开页或控制台看版本串 `v0.11.0`。
 
 ## 版本维护
 

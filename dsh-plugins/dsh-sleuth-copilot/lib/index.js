@@ -444,6 +444,96 @@ export function apply(ctx) {
     }
   }
 
+  // ── 沉淀队列与提 PR 目标：按需读取，不进 10 秒轮询 ─────────────────────
+  async function runJsonHelper(root, python, script, args, timeoutMs) {
+    let result
+    try {
+      result = await runShell(resolveSpec({
+        command: [python, shq(script), ...args].join(' '),
+        workdir: root,
+        timeoutMs,
+        stdoutMaxBytes: 2 * 1024 * 1024,
+        env: { PYTHONIOENCODING: 'utf-8' },
+      }))
+    } catch (error) {
+      return { ok: false, code: 'E_SPAWN', message: '数据脚本执行失败：' + String((error && error.message) || error) }
+    }
+    const stdout = result && result.stdout && typeof result.stdout.text === 'string' ? result.stdout.text : ''
+    const stderr = result && result.stderr && typeof result.stderr.text === 'string' ? result.stderr.text : ''
+    if (result && result.timedOut) return { ok: false, code: 'E_TIMEOUT', message: '数据脚本超时。' }
+    const trimmed = stdout.trim()
+    if (!trimmed.startsWith('{')) {
+      return {
+        ok: false,
+        code: 'E_OUTPUT',
+        message: '数据脚本没有产出 JSON（exit ' + String(result ? result.exitCode : '?') + '）',
+        detail: (stderr.trim() || trimmed).slice(-1200),
+      }
+    }
+    try {
+      const doc = JSON.parse(trimmed)
+      return doc && typeof doc === 'object' && !Array.isArray(doc) ? doc : { ok: false, code: 'E_SHAPE', message: '脚本输出不是对象' }
+    } catch (error) {
+      return { ok: false, code: 'E_JSON', message: '脚本输出不是合法 JSON：' + String((error && error.message) || error) }
+    }
+  }
+
+  async function computeSediment(cwd) {
+    const root = await resolveRepoRoot(cwd)
+    if (root === null) return { ok: false, code: 'E_NO_ROOT', message: '当前工作区不是 ascend-sleuth 检出' }
+    const python = await resolvePython(root)
+    if (python === null) return { ok: false, code: 'E_NO_PYTHON', message: '没找到可用的 Python 3' }
+    const script = join(PKG_DIR, 'lib', 'sediment_state.py')
+    if (!(await isFile(script))) return { ok: false, code: 'E_NO_HELPER', message: '装进来的包缺少 lib/sediment_state.py' }
+    const args = ['--root', shq(root), '--json']
+    const doc = await runJsonHelper(root, python, script, args, 30000)
+    doc.repoRoot = root
+    return doc
+  }
+
+  function validDraftKey(value) {
+    return /^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$/.test(String(value || ''))
+  }
+
+  async function prTarget(payload) {
+    const cwd = typeof payload.cwd === 'string' ? payload.cwd : ''
+    const root = await resolveRepoRoot(cwd)
+    if (root === null) return { ok: false, code: 'E_NO_ROOT', message: '当前工作区不是 ascend-sleuth 检出' }
+    const python = await resolvePython(root)
+    if (python === null) return { ok: false, code: 'E_NO_PYTHON', message: '没找到可用的 Python 3' }
+    const script = join(root, 'scripts', 'pr_status.py')
+    if (!(await isFile(script))) return { ok: false, code: 'E_NO_HELPER', message: '检出里缺少 scripts/pr_status.py' }
+    const action = String(payload.action || 'list')
+    const argv = ['--root', shq(root)]
+    if (action === 'list') {
+      argv.push('--list-targets', '--json')
+    } else if (action === 'check') {
+      if (!validDraftKey(payload.key)) return { ok: false, code: 'E_SCHEMA', message: '草稿 key 不合法' }
+      if (!(await canWriteIn(payload.sessionId))) return { ok: false, code: 'E_PERM', message: '当前会话是只读档位，不能更新 PR 台账' }
+      argv.push('--check', '--draft', shq(String(payload.key)), '--json')
+    } else if (action === 'mark') {
+      if (!validDraftKey(payload.key)) return { ok: false, code: 'E_SCHEMA', message: '草稿 key 不合法' }
+      if (!['open', 'merged', 'closed', 'unknown'].includes(String(payload.state || ''))) {
+        return { ok: false, code: 'E_SCHEMA', message: 'PR 状态不合法' }
+      }
+      if (!(await canWriteIn(payload.sessionId))) return { ok: false, code: 'E_PERM', message: '当前会话是只读档位，不能更新 PR 台账' }
+      argv.push('--mark', '--draft', shq(String(payload.key)), '--state', shq(String(payload.state)))
+    } else if (action === 'set-target') {
+      const remote = String(payload.remote || '')
+      const base = String(payload.base || '')
+      if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/.test(remote)) return { ok: false, code: 'E_SCHEMA', message: 'remote 名不合法' }
+      if (!/^[A-Za-z0-9][A-Za-z0-9._/-]{0,120}$/.test(base)) return { ok: false, code: 'E_SCHEMA', message: 'base 分支不合法' }
+      if (!(await canWriteIn(payload.sessionId))) return { ok: false, code: 'E_PERM', message: '当前会话是只读档位，不能保存 PR 目标' }
+      argv.push('--set-target', '--remote', shq(remote), '--base', shq(base))
+      if (typeof payload.note === 'string' && payload.note) argv.push('--note', shq(payload.note.slice(0, 200)))
+      if (payload.labels && typeof payload.labels === 'object') argv.push('--labels', shq(JSON.stringify(payload.labels)))
+      argv.push('--json')
+    } else {
+      return { ok: false, code: 'E_SCHEMA', message: '未知的 PR 目标动作：' + action }
+    }
+    return runJsonHelper(root, python, script, argv, 30000)
+  }
+
   function stateFor(sessionId, cwd, refresh) {
     const key = String(sessionId || '') + '\u0000' + String(cwd || '')
     const now = Date.now()
@@ -502,7 +592,7 @@ export function apply(ctx) {
         const payload = body !== undefined && body.payload !== undefined ? body.payload : {}
         let result
         if (endpoint !== 'copilot-state' && endpoint !== 'copilot-transition' && endpoint !== 'copilot-report'
-          && endpoint !== 'copilot-timeline') {
+          && endpoint !== 'copilot-timeline' && endpoint !== 'copilot-sediment' && endpoint !== 'copilot-pr-target') {
           result = { ok: false, error: { code: 'not-found', message: '未知的 RPC 端点: ' + endpoint, details: {} } }
         } else {
           try {
@@ -515,6 +605,13 @@ export function apply(ctx) {
               result = { ok: true, value: await readReport(payload) }
             } else if (endpoint === 'copilot-timeline') {
               result = { ok: true, value: await readTimeline(payload) }
+            } else if (endpoint === 'copilot-sediment') {
+              result = {
+                ok: true,
+                value: await computeSediment(typeof payload.cwd === 'string' ? payload.cwd : ''),
+              }
+            } else if (endpoint === 'copilot-pr-target') {
+              result = { ok: true, value: await prTarget(payload) }
             } else {
               result = {
                 ok: true,
