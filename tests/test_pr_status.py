@@ -145,6 +145,20 @@ class LedgerTest(RepoCase):
         self.assertIsNone(targets["target"])
         self.assertEqual(targets["remotes"][0]["name"], "origin")
 
+    def test_list_targets_sha256_tokens_the_ledger_bytes(self):
+        # 不存在给 null；存在给文件字节哈希（与 --status / save_ledger 同一算法）。
+        self.assertIsNone(pr.list_targets(self.repo)["sha256"])
+        digest = pr.save_ledger(self.repo, pr.empty_ledger())
+        self.assertEqual(pr.list_targets(self.repo)["sha256"], digest)
+        code, payload = run_cli("--root", str(self.repo), "--list-targets")
+        self.assertEqual(code, 0, payload)
+        self.assertEqual(payload["sha256"], digest)
+        # 另一个写者改台账后，旧令牌与新给的 sha 不一致（面板据此判断自己的队列过期）。
+        data = pr.load_ledger(self.repo)
+        data["target"] = {"remote": "origin"}
+        pr.save_ledger(self.repo, data)
+        self.assertNotEqual(pr.list_targets(self.repo)["sha256"], digest)
+
 
 # ---------------------------------------------------------------- 目标与推荐
 
@@ -445,6 +459,43 @@ class FlowTest(RepoCase):
         self.assertEqual(payload["error"]["code"], "E_NO_AUTH")
         entry = pr.load_ledger(self.repo)["prs"]["draft-a"]
         self.assertEqual(entry["state"], "unknown")
+        self.assertEqual(entry["source"], "platform")
+
+    def _add_other_writer_change(self):
+        """模拟另一个写者先改台账：加一条 PR 记录，内容与旧版必然不同。"""
+        data = pr.load_ledger(self.repo)
+        data["prs"]["draft-b"] = {"platform": "github", "repo": "o/r", "number": 2,
+                                  "url": "https://github.com/o/r/pull/2", "state": "open",
+                                  "source": "ledger",
+                                  "created_at": "2026-11-01T10:00:00+08:00"}
+        pr.save_ledger(self.repo, data)
+
+    def test_check_rejects_stale_expect_sha_before_query(self):
+        self._set_pr(url="https://gitcode.com/o/r/pulls/9", platform="gitcode")
+        stale = pr.ledger_sha256(self.repo)
+        self._add_other_writer_change()
+        current = pr.ledger_sha256(self.repo)
+        self.assertNotEqual(stale, current)
+        ledger_before = pr.ledger_path(self.repo).read_bytes()
+        # 没有 token：CAS 若没生效，查询会先报 E_NO_AUTH 并写回。断言 E_CAS 即证明查询前就拒绝了。
+        with mock.patch.dict(os.environ, clean_env(), clear=True):
+            code, payload = run_cli("--root", str(self.repo), "--check", "--draft", "draft-a",
+                                    "--expect-sha256", stale)
+        self.assertEqual(code, 0, payload)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"]["code"], "E_CAS")
+        self.assertEqual(pr.ledger_path(self.repo).read_bytes(), ledger_before)
+
+    def test_check_accepts_current_expect_sha(self):
+        self._set_pr(url="https://gitcode.com/o/r/pulls/9", platform="gitcode")
+        current = pr.ledger_sha256(self.repo)
+        with mock.patch.dict(os.environ, clean_env(), clear=True):
+            code, payload = run_cli("--root", str(self.repo), "--check", "--draft", "draft-a",
+                                    "--expect-sha256", current)
+        self.assertEqual(code, 0, payload)
+        # CAS 通过后查询确实执行：没 token 的结果留痕并写回台账。
+        self.assertEqual(payload["error"]["code"], "E_NO_AUTH")
+        entry = pr.load_ledger(self.repo)["prs"]["draft-a"]
         self.assertEqual(entry["source"], "platform")
 
     def test_check_all_isolates_failures(self):
