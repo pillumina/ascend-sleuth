@@ -399,8 +399,10 @@ def _check(body, repo: Path, base_ref: str, head_ref: str, enforce_marker: bool,
             add("error", "decision-does-not-authorize",
                 f"人的决定是 {human}，不授权任何内容提交。")
 
-    # stale：对每个有效 marker 检查 relevant knowledge 是否在评估后变化
-    for marker in valid_markers:
+    # stale：对每个有效 marker 检查 relevant knowledge 是否在评估后变化。
+    # 合入后这一步没有可执行的动作：PR 已经进 main，本 PR 的改动本身就会落在 assessed..base 里。
+    # 保留 marker、内容绑定、授权与索引检查；只跳过过期判定。
+    for marker in ([] if post_merge else valid_markers):
         assessed_resolved = marker["_assessed_resolved"]
         category = marker.get("category") or ""
         candidate = marker.get("candidate_case") or ""
@@ -435,7 +437,8 @@ def _check(body, repo: Path, base_ref: str, head_ref: str, enforce_marker: bool,
     possible = compare_new_cases(
         repo, valid_markers[0]["_assessed_resolved"] if valid_markers else base, base, head)
     for item in possible:
-        add("error", "possible-duplicate-after-merge",
+        # 合入后这条已经没有可执行的动作：它拦的是合入前复核，不是清理。
+        add("warning" if post_merge else "error", "possible-duplicate-after-merge",
             f"PR 新增 {item['pr_case']} 与 base 期间新增 {item['main_case']} 有共同字面量 "
             f"{item['token_overlap']}——人复核是否同一问题（本检查不判重）。",
             detail=item)
@@ -465,7 +468,8 @@ def main():
     ap.add_argument("--head", default="HEAD")
     ap.add_argument("--enforce", action="store_true", help="缺 marker / 未决也失败")
     ap.add_argument("--advisory", action="store_true", help="只报告，不改变退出码（CI 过渡用）")
-    ap.add_argument("--post-merge", action="store_true", help="另跑索引覆盖检查")
+    ap.add_argument("--post-merge", action="store_true",
+                    help="合入后模式：跳过过期判定，另跑索引覆盖检查")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 

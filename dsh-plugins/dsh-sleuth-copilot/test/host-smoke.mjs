@@ -468,6 +468,15 @@ if (hasGit) {
   expect('目标：check 当前指纹放行（走到查询，没有适配器）', checkCurrentValue && checkCurrentValue.ok === false
     && resultCode(checkCurrentValue) === 'E_NO_ADAPTER' && /适配器/.test(checkCurrentMessage)
     && typeof checkCurrentValue.sha256 === 'string', JSON.stringify(checkCurrentValue))
+  // 批量查合入：动作走 --check-all；没有适配器时逐条记 unknown，返回部分失败而不是抛错。
+  const checkAll = await prTarget(rw, {
+    cwd: SANDBOX, sessionId: 'smoke-session', action: 'check-all',
+  }, 'pr-check-all')
+  const checkAllValue = checkAll.envelope.result.value
+  expect('目标：check-all 走批量查询并报部分失败', checkAllValue && checkAllValue.ok === false
+    && resultCode(checkAllValue) === 'E_CHECK_PARTIAL'
+    && Array.isArray(checkAllValue.checked) && checkAllValue.checked.length === 1
+    && checkAllValue.checked[0].draft === 'demo-draft', JSON.stringify(checkAllValue))
 }
 
 const reportMissing = await readReport(rw, { cwd: SANDBOX, tracesDir: TRACES, traceSessionId: '2026-01-01-no-such' }, 'report-2')

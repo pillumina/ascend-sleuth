@@ -37,7 +37,7 @@ python3 scripts/groom_candidates.py --snapshot <snapshot.json> --all --out <work
 python3 scripts/groom_record.py --snapshot <snapshot.json> --work-orders <work-orders.json> --results-dir <results/>
 ```
 
-产物是 `postmortems/inbox/.groom/assessments/<key>.yaml` 一份本地评估状态。人用 `groom_status.py` 看一屏，用 `groom_decide.py` 写决定；提 PR 时把 `groom_record.py --pr-marker` 的输出贴进 body。终态决定落盘后跑 `python3 scripts/groom_close_draft.py --all --apply`，回写来源 trace 的沉淀状态并把草稿移出队列（见 3.7）。
+产物是 `postmortems/inbox/.groom/assessments/<key>.yaml` 一份本地评估状态。人用 `groom_status.py` 看一屏，用 `groom_decide.py` 写决定；提 PR 时把 `groom_record.py --pr-marker` 的输出贴进 body。终态决定落盘、PR 合入后跑 `python3 scripts/groom_close_draft.py --all --apply`，回写来源 trace 的沉淀状态并把草稿移出队列（见 3.7）。没有 PR 的部署仍在落盘复核后直接收尾。
 
 三个概念贯穿全文：
 
@@ -71,7 +71,15 @@ python3 scripts/groom_record.py --snapshot <snapshot.json> --work-orders <work-o
 
 meta 用 `checkout: {mode, paths, requested, missing}` 记录这次物化了什么。复用前除了比 `HEAD` 与工作区改动，还要比对检出范围：稀疏下「没检出」与「没改」在 `git status` 里长得一样，只看工作区会让范围悄悄漂移。快照因此不是「该 commit 的完整表示」，读它的人不该把缺目录当成内容缺失。
 
-**用完即删，但按草稿删**：groom 收尾先跑 `groom_recheck`，通过后跑 `groom_cleanup.py --pr-body-file <body>`（默认直接执行，`--dry-run` 只看计划；由 agent 按脚本会核的判据决定跑不跑）——它先核对 marker 与本地评估是同一次评估（`assessment_id` / 内容哈希 / 人决定），执行阶段持**目录级清理锁**（与 `write_assessment` 共用；写侧拿不到锁会报错、不落盘），对得上的 sidecar 在单文件锁内**直接删除**（拿不到锁/锁打不开就不删；锁文件保留），快照只在「没有任何现存 sidecar 再引用该 commit、且不是 30 分钟内刚建的那份」时才删；读不出评估视为引用未知、不删快照；非终态决定与 `approval_stale` 一律保留。单条失败只保留该项并继续；非预期异常折成 `internal-error`，报告照出、退出 2。顺带清两类可弃中间件：`.groom/runs/` 下超过 1 天的工作单目录（可重生成，1 天是为了避开在途 run），以及「对应 sidecar 已不存在且超过 7 天」的残锁（有 sidecar 的锁一律保留，`.guard.lock` 不清）。但要如实标明**可能部分完成**：sidecar/快照先删、日志最后写，日志写失败时删除不可回滚。`--dry-run` 是计划，执行只会比计划少删（unlink 被占用会让对应快照也保留）。清理不碰 `latest.json`（约 2 KB，记 `cleaned_at`），因为它是"上一次比的是哪个 commit"的唯一记录。清理必须放在收尾而不是开头：`groom_record` 还要用这份检出。评估的过期判定只比较 git 里的 commit（`assessed_commit` vs 目标），不读这份目录，所以清理不影响 `groom_status` / `groom_recheck`。
+**用完即删，但按草稿删**：PR 合入后收尾，先跑 `groom_close_draft.py`，再跑 `groom_cleanup.py --pr-body-file <body> --post-merge --base <merge>^1 --head <merge>`（默认直接执行，`--dry-run` 只看计划；由 agent 按脚本会核的判据决定跑不跑）——
+
+它先核对 marker 与本地评估是同一次评估（`assessment_id` / 内容哈希 / 人决定），执行阶段持**目录级清理锁**（与 `write_assessment` 共用；写侧拿不到锁会报错、不落盘），对得上的 sidecar 在单文件锁内**直接删除**（拿不到锁/锁打不开就不删；锁文件保留），快照只在「没有任何现存 sidecar 再引用该 commit、且不是 30 分钟内刚建的那份」时才删；读不出评估视为引用未知、不删快照；非终态决定与 `approval_stale` 一律保留。单条失败只保留该项并继续；非预期异常折成 `internal-error`，报告照出、退出 2。
+
+顺带清两类可弃中间件：`.groom/runs/` 下超过 1 天的工作单目录（可重生成，1 天是为了避开在途 run），以及「对应 sidecar 已不存在且超过 7 天」的残锁（有 sidecar 的锁一律保留，`.guard.lock` 不清）。
+
+但要如实标明**可能部分完成**：sidecar/快照先删、日志最后写，日志写失败时删除不可回滚。`--dry-run` 是计划，执行只会比计划少删（unlink 被占用会让对应快照也保留）。
+
+清理不碰 `latest.json`（约 2 KB，记 `cleaned_at`），因为它是"上一次比的是哪个 commit"的唯一记录。清理必须放在收尾而不是开头：`groom_record` 还要用这份检出。评估的过期判定只比较 git 里的 commit（`assessed_commit` vs 目标），不读这份目录，所以清理不影响 `groom_status` / `groom_recheck`。
 
 注意 `sedimented`（none / submitted / knowledge / archived）描述的是**知识沉淀到哪一步**，清理状态描述的是**本地产物还能不能删**；两者相关但不等同——例如 `covered` 决定之后，postmortem 转正与 case 归档是两件事，别用前者的状态直接推后者。
 
@@ -241,9 +249,11 @@ approval_stale: false
 
 退出码：0 通过；2 需要重跑/复核；3 参数或 git 不可用。`--advisory` 只报告、不改变退出码，供人工试跑。
 
-### 3.7 收尾：回写沉淀状态与草稿出队（本地）
+### 3.7 收尾：回写沉淀状态与草稿出队（PR 合入后）
 
 结论：终态决定之后还有两件事必须落地，由 `groom_close_draft.py` 一次做完；它是本地收尾动作，不进 CI。
+
+有 PR 的草稿，这两件事放在 PR 合入之后。合入前跑收尾会把「待合入」提前写成「已升格」，PR 被拒时人的决定与评估证据也已经被清理。`groom_close_draft.py` 读 PR 台账，同 key 的 PR 不是 merged（含 open / unknown / closed）时拒绝执行；确实要提前收尾时用 `--allow-open-pr`。没有 PR 的部署（本地沉淀）仍在落盘复核后直接收尾。
 
 两件事以前只写在 SKILL 的一句中文指令里：把来源 trace 的 `sedimented` 从 `submitted` 改成 `knowledge` 或 `archived`，把已处理的草稿移出 inbox（下称出队）。漏做都不报错——面板的沉淀漏斗（诊断数 → 沉淀数 → 转正数）停在"已提交待升格"，草稿下一轮又按"没有 sidecar 先补跑比对"被评一遍。
 
@@ -257,11 +267,11 @@ approval_stale: false
 
 几条边界：写状态走 `trace_transition.py`（按 `trace-status.yaml` 校验状态词表；`sediment_batch.py` 另有直接写路径，收尾不用它）；草稿移进 `postmortems/inbox/.done/`，移动不删除、移回即复活；外部来源没有 trace 时只出队、不回写；trace 文件不存在时只出队并记 `trace-missing`；`reject` 与 `defer` 不是终态，不动 trace、不出队。`reject` 没有对应的 `sedimented` 状态——草稿确实提交过、没有转正，改回 `none` 等于抹掉事实。
 
-**为什么不做成 PR 门**：`traces/` 与 `postmortems/inbox/` 是 `.gitignore` 的运行时件，PR 与 CI 的检出里没有它们，marker 也不带 session id（指针在草稿头注释里）。塞进 `groom_recheck.py` 只能读到空目录，检查会退化成永远通过。这道检查只能落在本地，靠收尾顺序保证：先 `groom_recheck`，再本步，最后 `groom_cleanup`（清理会删 sidecar，而本步要读它）。
+**为什么不做成 PR 门**：`traces/` 与 `postmortems/inbox/` 是 `.gitignore` 的运行时件，PR 与 CI 的检出里没有它们，marker 也不带 session id（指针在草稿头注释里）。塞进 `groom_recheck.py` 只能读到空目录，检查会退化成永远通过。这道检查只能落在本地，靠收尾顺序保证：先 `groom_recheck`，开 PR，合入后跑本步，最后 `groom_cleanup --post-merge`（清理会删 sidecar，而本步要读它）。`--post-merge` 跳过过期判定：合入后无法再对旧 base 重跑 groom，再过一次 stale 只会永远拦住清理；marker、内容绑定与索引检查仍照跑。
 
 ### 3.8 合入后
 
-合入后由主干 job 重建索引（`build_index.py` 的覆盖检查必须通过）；没有该 job 的部署按既有纪律在 main 上重建。`groom_recheck.py --post-merge` 可以在本地跑同一道覆盖检查。
+合入后由主干 job 重建索引（`build_index.py` 的覆盖检查必须通过）；没有该 job 的部署按既有纪律在 main 上重建。`groom_recheck.py --post-merge` 可以在本地跑同一道覆盖检查。收尾与清理也在这一步：先 `groom_close_draft.py` 出队并回写 trace，再对每份 PR 用合入提交与它的第一个父提交跑 `groom_cleanup.py --post-merge`。
 
 ## 4 边界与失败模式
 

@@ -52,12 +52,12 @@ def _marker(key, commit, decision="new_pattern", stale="false",
 
 
 def _check_ok(markers):
-    def _fn(body, repo, base, head, enforce):
+    def _fn(body, repo, base, head, enforce, **kw):
         return [], {"base": base, "head": head, "markers": markers}
     return _fn
 
 
-def _check_fail(body, repo, base, head, enforce):
+def _check_fail(body, repo, base, head, enforce, **kw):
     return ([{"severity": "error", "code": "assessment-stale", "message": "评估过期"}],
             {"base": base, "head": head, "markers": []})
 
@@ -97,6 +97,20 @@ class CleanupTest(unittest.TestCase):
         a = _sidecar(self.inbox, "draft-a", self.commit)
         self.assertFalse(self._run([])["ok"])
         self.assertTrue(a.exists())
+
+    def test_post_merge_is_forwarded_to_recheck(self):
+        seen = {}
+
+        def _fn(body, repo, base, head, enforce, **kw):
+            seen.update(kw)
+            return [], {"base": base, "head": head,
+                        "markers": [_marker("draft-a", self.commit)]}
+
+        _sidecar(self.inbox, "draft-a", self.commit)
+        report = cleanup("body", self.repo, "origin/main", "HEAD", apply=True,
+                         check_fn=_fn, post_merge=True)
+        self.assertTrue(report["ok"], report)
+        self.assertTrue(seen.get("post_merge"))
 
     # —— 按 key 隔离 ——
     def test_only_marker_keys_are_deleted(self):
