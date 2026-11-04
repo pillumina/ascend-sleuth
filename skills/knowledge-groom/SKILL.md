@@ -207,22 +207,28 @@ python3 scripts/groom_recheck.py --pr-body-file <pr-body.md> --base origin/main 
 - 升格时 final Case ID 与草稿建议 id 不同，`groom_record.py --pr-marker --submitted-case-id <final-id>`
   把最终 id 写进 marker；不要事后手改。
 
-### 6. 收尾清理：复核通过后，只删这份 PR 覆盖到的产物
+### 6. 合入后收尾清理：复核通过后，只删这份 PR 覆盖到的产物
 
-marker 已进 PR body、本轮记录与决定都落好之后，直接跑（默认执行，不向人确认）：
+marker 已进 PR body、本轮记录与决定都落好、**PR 已合入**之后，再跑（默认执行，不向人确认）：
 
 ```bash
-python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --base origin/main --head <head>
+MERGE=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid)   # GitHub
+python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge \
+  --base "$(git rev-parse "$MERGE^1")" --head "$MERGE"
 ```
+
+`<merge>` 是合入提交，base 取它的第一个父提交（`git rev-parse <merge>^1`）。不要用
+`baseRefOid`：它是 PR 头更新时的 base 分支头，合并队列前进后可能已经变过。合入后
+无法再对旧 base 重跑 groom，`--post-merge` 跳过过期判定，marker、内容绑定与索引检查仍照跑。
 
 **由 agent 决定跑不跑**，判据就是脚本自己会核的三条：复核无 error、marker 与本地评估绑定一致、快照没有别的 sidecar 引用。想先看计划加 `--dry-run`（只看不删）。
 
 它做的事：按 PR body 里的 marker 取 `draft`，**先核对 marker 与本地评估是不是同一次评估**（`assessment_id`、内容哈希、人决定三项都要对上，旧 PR 正文删不掉重评后的新记录）；对得上的 sidecar 在 `log_lock` 内**直接删除**（不留回收区；锁文件是互斥原语、不随 sidecar 删）；快照只在「没有任何 sidecar 再引用这个 commit」时才删，读不出评估就视为引用未知、不删快照。非终态决定（`pending` / `defer` / `reject`）与 `approval_stale: true` 一律保留。每次清理追加一行单行 JSON 到 `.groom/cleanup-log.jsonl`（含评估 id、内容哈希与实际结果）。
 
-- **前置**：marker 必须已经在 PR body 里——它才是 sidecar 被删后仍在的唯一凭证；本地只有 body 文件、还没开 PR 时不要跑。
+- **前置**：marker 必须已经在 PR body 里，PR 已经合入。sidecar 被删后 marker 是唯一凭证；还没合入就跑 close / cleanup，PR 被拒时人的决定与评估证据都回不来。`groom_close_draft.py` 会读 PR 台账，PR 没合入（state 不是 merged，含 open / unknown / closed）时拒绝执行；确实要提前收尾时加 `--allow-open-pr`。
 - **body 里只放终态 marker**：`defer` / `reject` 的 marker 会让 `groom_recheck` 整轮判红（`decision-does-not-authorize`），本轮什么都删不掉。
 - **为什么按 key 删而不是删整个 `.groom/`**：inbox 与 `.groom/` 是主检出共享的，同一克隆里可能有别的 session 正在处理别的草稿；整目录删会把它们未完成的评估一起清掉。
-- **顺序**：建快照 → 候选 → 比对 → 记录 → 决定 → marker → **复核** → 收尾（`groom_close_draft.py` 回写 trace 并把草稿移出队列） → 清理。`groom_record` 与 `groom_recheck --post-merge` 还要用快照目录，收尾要读 sidecar，所以清理不能提前。
+- **顺序**：建快照 → 候选 → 比对 → 记录 → 决定 → marker → **复核** → 开 PR → 合入 → 收尾（`groom_close_draft.py` 回写 trace 并把草稿移出队列） → 清理（`groom_cleanup.py --post-merge`）。`groom_record` 与 `groom_recheck --post-merge` 还要用快照目录，收尾要读 sidecar，所以清理不能提前。
 - **执行阶段持目录级清理锁**（`assessment_guard`，与 `write_assessment` 共用）：清理期间走 `write_assessment` 的写入会等锁；Windows 上等不到锁时**写侧报错、不落盘**（不再无锁写入）。
 - **失败即停、退出 2，报告照出；但可能部分完成**：单条失败只保留该项、继续处理其余；非预期异常折成 `internal-error`，报告与清理日志照写。sidecar 与快照是**先删、日志最后写**——日志写失败时删除已经发生且不可回滚（报告标 `log-write-failed`）。要「零删除」的保证只有一条：复核不通过时整轮直接返回。
 - `--dry-run` 只是**计划**：执行时某条 sidecar 删不掉（unlink 被占用）会让对应快照也保留，所以实际删的只会比计划少，不会多。
@@ -250,7 +256,7 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --base origin/main 
    - 逐条**复核预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象与候选来自 sidecar 的 `provenance.candidates`；需要复核时读候选全文核对 root_cause/fix（M5 成本预算 #3，不全文重读全库）。**draft 头注释已带 to-postmortem/issue-ingest 产出的分诊建议 → 一并核对证据是否成立**（建议与决定分离：判断在产出时做，groom 是审核者）；
    **先判后看（顺序纪律，改不了的自觉就别指望）**：复核候选前，先只读草稿与 sidecar 的 `evidence` 轴，自己写一句判断——症状签名（错误码/关键日志行/数值阈值）、根因假设、修复族方向；再打开候选全文**取证**（我这条假设能否被候选解释，还是只是"看起来像"）。先看候选再判断，判的是**像不像**而不是**对不对**：候选一旦在眼前，语义相近就会把判断拉过去（尤其是措辞相似但根因不同的 draft）。判断行写进批审清单：先写自己的判断，再写与 sidecar / 候选的对照结论；两者不一致时**以证据为准**，别用"候选里有类似的"当理由；
    - 产出**批审清单**交 owner 处理（像清 PR inbox，~30 秒/条）：
-     - `covered_by` → 建议关闭升格；postmortem 转正 `postmortems/YYYY-QN/`（Tier 3 语料，**不是丢弃**），再跑 `groom_close_draft.py` 把草稿移出队列
+     - `covered_by` → 建议关闭升格；postmortem 转正 `postmortems/YYYY-QN/`（Tier 3 语料，**不是丢弃**）；开 PR，合入后再跑 `groom_close_draft.py` 把草稿移出队列
      - `variant_of` → 用草稿**整篇替换**已有 case（先把要保留的内容合并进草稿，再评估；评估后不要再合并）；若要动 `expected`/`fix_on_mismatch` 按高风险变更走双签
      - `new_pattern` → 结构化 + 语义校验 → **过升格闸门** → 升格 `knowledge/<ns>/`。写 case 时删掉草稿专用的 `created_at`（它不是 case schema 字段）。校验失败标 `needs-structurer-review`，语义不明标 `needs-human-review`
      - **升格闸门（按来源分，不是一刀切）**：跑 `python3 scripts/verify_case_draft.py --gate <草稿路径>`。
@@ -258,14 +264,16 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --base origin/main 
        - **自诊断来源（带 `source_session`）→ 默认须闭环**（两轴，与 `trace-status.yaml` 一致）：**命中单**看来源 trace 的 `feedback.outcome: resolved`（fix 被应用且问题消失）；**无命中单**没有 case 可归属，看来源 trace 的 `status: resolved`。没闭环的不必进知识库，留在本地即可。
        - **例外（未闭环但已有强外部证据）**：`verification` ∈ {`upstream-fix-merged`、`upstream-maintainer-confirmed`、`upstream-official-doc`、`engineer-report`} → **需 owner 双签**方可升格。理由：新根因当天发现、修复尚未应用是知识增长的主路径，不能一律挡掉；但这档必须是**外部验证**，不接受 `investigation` 纯推断。
        - `verification: investigation` 且未闭环 → **拦下**，提示三条出路（等闭环 / 补强外部证据 / 走双签例外，草稿产出时 to-postmortem 的报告里已写闸门预判）。
-   - **转正后回写来源 trace 的沉淀状态并让草稿出队（闭环，动作发生时写）**：转正落位、复核通过后跑
+   - **转正后回写来源 trace 的沉淀状态并让草稿出队（有 PR 时等合入）**：转正落位、复核通过、PR 开完后就停，草稿留在 inbox；查证为 merged 后再跑
      `python3 scripts/groom_close_draft.py --draft-key <key> --apply`（批处理收尾用 `--all --apply`）。
+     没有 PR 的部署（本地沉淀）在落盘复核后直接跑。脚本会读 PR 台账：PR 没合入（state 不是 merged）时拒绝收尾，
+     避免把「待合入」提前写成「已升格」。
      它读 sidecar 的终态决定，按落点证据回写 trace 的 `sedimented.state`——`new_pattern`/`variant` 升格
      Tier 2 → `{state: knowledge, caseId: <case-id>}`；`covered`（含 agent 判 `duplicate` 的精确重复）
      仅 postmortem 转正 → `{state: archived, caseId: <覆盖它的 case-id>}`——再把草稿移进
      `postmortems/inbox/.done/`（移动不删除，移回即复活），并落一行 `.groom/close-log.jsonl`。
      **证据不在就不写状态**：covered 要求 postmortem 已在季度目录，new_pattern/variant 要求 case 已在
-     `knowledge/`；所以先落盘再跑脚本。**它必须先于第 6 步清理**——清理会删掉本步要读的 sidecar。
+     `knowledge/`；所以先落盘再跑脚本。**它必须先于第 6 步清理**——清理会删掉本步要读的 sidecar；两步都等合入后再跑。
      教训：曾因 groom 转正后未回写，trace 停留 `submitted`，诊断面板"沉淀漏斗"显示 4 沉淀 → 0 转正
      （数据滞后于实际入库）——零推断纪律同样约束转正侧：**转正是动作，发生时必须写**。
    - **`duplicate`（精确重复）落成人决定 `covered`**：agent 的分类可以比人决定更具体（`duplicate` 比

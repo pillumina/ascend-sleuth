@@ -21,6 +21,8 @@
 #
 # 用法（默认直接执行；agent 读完判据后自己决定跑不跑）：
 #   python3 scripts/groom_cleanup.py --pr-body-file <body> [--base origin/main] [--head <ref>]
+#   python3 scripts/groom_cleanup.py --pr-body-file <body> --post-merge \
+#       --base <合并前 base> --head <合入提交>      # 合入后清理：跳过过期判定
 #   python3 scripts/groom_cleanup.py --pr-body-file <body> --dry-run    # 只看计划
 #
 # 退出码：0 = 复核通过且清理完成；2 = 复核不通过 / 引用未知 / 部分失败；3 = 参数错。
@@ -327,10 +329,10 @@ def cleanup(body: str, repo: Path, base: str, head: str, apply: bool = False,
             snapshot_dir=None, check_fn=recheck_check,
             cleanup_snapshot_fn=cleanup_snapshot, branch: str = "main",
             pr_label: str = None, runs_keep_days: float = RUNS_KEEP_DAYS,
-            lock_keep_days: float = LOCK_KEEP_DAYS):
+            lock_keep_days: float = LOCK_KEEP_DAYS, post_merge: bool = False):
     repo = Path(repo).resolve()
     inbox = shared_inbox(repo)
-    findings, ctx = check_fn(body, repo, base, head, False)
+    findings, ctx = check_fn(body, repo, base, head, False, post_merge=post_merge)
     blocking = [f for f in findings if f.get("severity") == "error"]
     markers = ctx.get("markers") or []
     report = {
@@ -463,6 +465,8 @@ def main():
     ap.add_argument("--head", default="HEAD")
     ap.add_argument("--branch", default="main", help="建快照时用的分支（默认 main）")
     ap.add_argument("--pr", default=None, help="PR 标识（URL 或编号），写进清理日志")
+    ap.add_argument("--post-merge", action="store_true",
+                    help="PR 已合入后清理：跳过评估过期判定，保留 marker 与内容绑定检查")
     ap.add_argument("--dry-run", action="store_true",
                     help="只打印计划、不删（默认直接执行）")
     ap.add_argument("--snapshot-dir", default=None)
@@ -481,7 +485,8 @@ def main():
     report = cleanup(body_path.read_text(encoding="utf-8"), root, args.base, args.head,
                      apply=not args.dry_run, snapshot_dir=args.snapshot_dir,
                      branch=args.branch, pr_label=args.pr,
-                     runs_keep_days=args.keep_runs_days, lock_keep_days=args.keep_lock_days)
+                     runs_keep_days=args.keep_runs_days, lock_keep_days=args.keep_lock_days,
+                     post_merge=args.post_merge)
     if args.json:
         print(dump_json(report), end="")
     else:

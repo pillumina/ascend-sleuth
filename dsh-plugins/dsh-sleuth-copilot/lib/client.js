@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.15.1'
+    const PLUGIN_VERSION = '0.16.1'
     const POLL_MS = 10000
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
@@ -305,8 +305,16 @@ window.__ModuleLoader__.load({
       'sediment.prSource.manual': '手动确认',
       'sediment.prSource.ledger': '台账',
       'sediment.detail.lastChecked': '上次查证',
+      'sediment.detail.closedDraft': '草稿不在 inbox；这条记录来自收尾日志（close-log）或 PR 台账。',
+      'sediment.checkFailed': '查合入没有全部成功；已查到的会显示在行里，其余可稍后重试。',
+      'sediment.checkFailedWith': '查合入没有全部成功（{reason}）；旧状态保留在行里。',
+      'sediment.checkError.E_NO_ADAPTER': '没有适配器',
+      'sediment.checkError.E_NO_AUTH': '没配 token',
+      'sediment.checkError.E_FETCH': '查询失败',
+      'sediment.checkError.unknown': '未知原因',
       'sediment.history.archived': '已归档',
       'sediment.assessedUnknown': '未评估',
+      'sediment.detail.assessmentCleared': '评估记录已清理',
       'sediment.filter.all': '全部',
       'sediment.filter.decision': '待决定',
       'sediment.filter.pr': '待提 PR',
@@ -319,7 +327,7 @@ window.__ModuleLoader__.load({
       'sediment.age': '{n} 天',
       'sediment.ageUnknown': '时间未记录',
       'sediment.overdue': '超过 14 天建议线',
-      'sediment.batch.total': '{n} 份草稿',
+      'sediment.batch.total': '{n} 条事项',
       'sediment.batch.oldest': '最老 {n} 天',
       'sediment.batch.none': '没有下一步',
       'diag.batch.count': '可沉淀 {n} 单',
@@ -364,6 +372,7 @@ window.__ModuleLoader__.load({
       'sediment.detail.candidate': '候选',
       'sediment.detail.noDecision': '还没有人决定',
       'sediment.detail.noPr': '未记录',
+      'sediment.detail.landingPending': '合入后落库',
       'sediment.detail.pr': 'PR',
       'sediment.detail.case': 'case',
       'sediment.table.draft': '草稿',
@@ -674,8 +683,16 @@ window.__ModuleLoader__.load({
       'sediment.prSource.manual': 'manual',
       'sediment.prSource.ledger': 'ledger',
       'sediment.detail.lastChecked': 'last checked',
+      'sediment.detail.closedDraft': 'Draft is not in the inbox; this row comes from close-log or the PR ledger.',
+      'sediment.checkFailed': 'Merge check did not complete for every PR. Updated rows are shown; retry the rest later.',
+      'sediment.checkFailedWith': 'Merge check did not complete ({reason}); previous states are kept.',
+      'sediment.checkError.E_NO_ADAPTER': 'no adapter',
+      'sediment.checkError.E_NO_AUTH': 'no token',
+      'sediment.checkError.E_FETCH': 'fetch failed',
+      'sediment.checkError.unknown': 'unknown reason',
       'sediment.history.archived': 'archived',
       'sediment.assessedUnknown': 'not assessed',
+      'sediment.detail.assessmentCleared': 'assessment record cleared',
       'sediment.filter.all': 'All',
       'sediment.filter.decision': 'To decide',
       'sediment.filter.pr': 'To PR',
@@ -688,7 +705,7 @@ window.__ModuleLoader__.load({
       'sediment.age': '{n}d',
       'sediment.ageUnknown': 'time unknown',
       'sediment.overdue': 'past the 14-day line',
-      'sediment.batch.total': '{n} drafts',
+      'sediment.batch.total': '{n} items',
       'sediment.batch.oldest': 'oldest {n}d',
       'sediment.batch.none': 'nothing next',
       'diag.batch.count': '{n} to sediment',
@@ -733,6 +750,7 @@ window.__ModuleLoader__.load({
       'sediment.detail.candidate': 'Candidate',
       'sediment.detail.noDecision': 'No decision yet',
       'sediment.detail.noPr': 'Not recorded',
+      'sediment.detail.landingPending': 'lands on merge',
       'sediment.detail.pr': 'PR',
       'sediment.detail.case': 'case',
       'sediment.table.draft': 'Draft',
@@ -2144,7 +2162,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const decisionValid = Boolean(draft && draft.decisionValid)
       const pr = draft && draft.pr
       const rerun = state === 'need_rerun'
-      const assessed = Boolean(novelty)
+      const assessed = Boolean(draft && (draft.assessed || novelty))
       const prState = pr ? String(pr.state || 'unknown') : ''
       // 「已升格」只认 trace/队列的 done；promotion.casePath 可能只是 variant/covered 的候选 case，
       // 不能拿它当本次升格已完成。
@@ -2162,7 +2180,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
     function sedPrimaryKey(draft) {
       const next = draft && draft.next ? String(draft.next.kind || '') : ''
-      return ['groom', 'pr', 'check', 'close'].indexOf(next) >= 0 ? next : ''
+      return ['groom', 'pr', 'check', 'close', 'restore'].indexOf(next) >= 0 ? next : ''
     }
 
     function StepRail(props) {
@@ -4599,6 +4617,38 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
       }
 
+      function checkErrorText(code) {
+        const text = tr('sediment.checkError.' + String(code || 'unknown'))
+        return text === 'sediment.checkError.' + String(code || 'unknown') ? String(code || '') : text
+      }
+
+      async function checkAllPrs() {
+        if (!canWrite) { flash(tr('write.disabled')); return }
+        if (checkBusy) return
+        setCheckBusy('__all__')
+        try {
+          const result = await rpcCall('copilot-pr-target', {
+            action: 'check-all', cwd: s.cwd, sessionId: s.sessionId,
+          })
+          await refreshSediment(true)
+          if (!result || result.ok === false) {
+            const partial = result && result.code === 'E_CHECK_PARTIAL'
+            const failed = result && Array.isArray(result.checked)
+              ? result.checked.filter((item) => item && item.ok === false) : []
+            const codes = Array.from(new Set(failed.map((item) => String(item.error || 'unknown'))))
+            const reason = codes.map(checkErrorText).filter(Boolean).join('、')
+            const message = result && (result.message || (result.error && result.error.message))
+            flash(partial
+              ? (reason ? tr('sediment.checkFailedWith', { reason }) : tr('sediment.checkFailed'))
+              : (message || tr('sediment.checkFailed')))
+          }
+        } catch (error) {
+          flash(String((error && error.message) || error))
+        } finally {
+          setCheckBusy('')
+        }
+      }
+
       async function markMerged(key) {
         if (!canWrite) { flash(tr('write.disabled')); return }
         if (!key || checkBusy) return
@@ -4626,6 +4676,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       function runSedNext(draft) {
         const kind = sedPrimaryKey(draft)
         if (!kind) return
+        if (kind === 'restore') {
+          const text = String((draft && draft.restore) || '')
+          if (text) fillDraft(text)
+          else flash(tr('sediment.prompt.empty'))
+          return
+        }
+        // 单条查合入与批次一致：有写权限就地查，不弹指令层。
+        if (kind === 'check' && canWrite) {
+          checkPr(draft.key)
+          return
+        }
         openPrompt(kind)
       }
 
@@ -4654,6 +4715,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       const runSedPrimary = () => {
         if (sedPrimaryKind === 'none') return
+        if (sedPrimaryKind === 'restore') {
+          const text = String((sedDoc && sedDoc.prompts && sedDoc.prompts.restore) || '')
+          if (text) fillDraft(text)
+          else flash(tr('sediment.prompt.empty'))
+          return
+        }
+        // 查合入不再生成指令：有写权限时直接查平台并回写台账，结果回到行里。
+        if (sedPrimaryKind === 'check' && canWrite) {
+          checkAllPrs()
+          return
+        }
         openPrompt(sedPrimaryKind)
       }
 
@@ -4684,9 +4756,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         h('button', {
           type: 'button',
           className: 'scp-btn scp-btn--primary',
-          disabled: sedPrimaryKind === 'none',
+          disabled: sedPrimaryKind === 'none' || checkBusy === '__all__',
           onClick: runSedPrimary,
-        }, sedPrimaryLabel)) : null
+        }, checkBusy === '__all__' ? tr('sediment.refreshing') : sedPrimaryLabel)) : null
 
       // 诊断视图的批量沉淀：只在「可沉淀」筛选下出现，范围就是当前筛选（含搜索词）。
       // 只生成指令、不写 trace 与知识库；单条动作仍在右列详情里。
@@ -4706,7 +4778,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           onClick: openBatchSediment,
         }, tr('diag.batch.fill'))) : null
 
-      const sedHistory = sedDoc && Array.isArray(sedDoc.history) ? sedDoc.history.slice(0, 3) : []
+      const sedHistory = sedDoc && Array.isArray(sedDoc.history) ? sedDoc.history.slice(0, 5) : []
       const sedListInner = !sedDoc
         ? (sedPhase === 'error'
           ? h('div', { className: 'scp-pal-empty' },
@@ -4730,6 +4802,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 sedHistory.map((item) => h('div', { key: item.key, className: 'scp-sed-history-row' },
                   h('span', { className: 'scp-sed-history-title' }, item.title || item.key),
                   h('span', { className: 'scp-chip' }, item.state === 'knowledge' ? tr('sediment.stepper.promoted') : tr('sediment.history.archived')),
+                  item.pr && item.pr.url && /^https?:\/\//i.test(String(item.pr.url))
+                    ? h('a', {
+                      className: 'scp-link', href: String(item.pr.url), target: '_blank',
+                      rel: 'noopener noreferrer', title: String(item.pr.url),
+                    }, (item.pr.number ? '#' + item.pr.number : tr('sediment.detail.pr')) + ' ↗')
+                    : null,
                   item.at ? h('span', { className: 'scp-sed-hint' }, formatTime(item.at) || item.at) : null)))
               : null)
           : sedSorted.length === 0
@@ -4775,6 +4853,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                         h('span', { className: 'scp-sed-age', 'data-over': age !== null && age !== undefined && Number(age) > 14 ? 'true' : 'false' }, sedAgeText(draft))),
                       h('span', { className: 'scp-sed-meta' },
                         h('span', { className: 'scp-chip', 'data-tone': SED_CHIP_TONE[draft.stageTone] || 'none' }, draft.stage || draft.state),
+                        draft.pr && draft.pr.number
+                          ? h('span', { className: 'scp-chip' }, '#' + draft.pr.number)
+                          : null,
                         draft.decision
                           ? h('span', {}, draft.decision)
                           : (draft.novelty ? h('span', {}, draft.novelty + (draft.confidence ? ' · ' + draft.confidence : '')) : null),
@@ -4838,7 +4919,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           }
           assessmentRows.push(h('div', { key: 'assessed', className: 'scp-sed-kv-row' },
             h('dt', {}, tr('sediment.detail.assessed')),
-            h('dd', {}, sedPick.assessedShort || tr('sediment.assessedUnknown'))))
+            h('dd', {}, sedPick.assessedShort || (sedPick.closedDraft && sedPick.assessed && sedPick.assessmentCleared
+              ? tr('sediment.detail.assessmentCleared') : tr('sediment.assessedUnknown')))))
           blocks.push(h('div', { className: 'scp-list-block' },
             h('div', { className: 'scp-section-label' }, tr('sediment.detail.assessment')),
             h('div', { className: 'scp-sed-kv' }, assessmentRows)))
@@ -4858,11 +4940,13 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               ? h('div', { className: 'scp-sed-kv' }, decisionRows)
               : h('div', { className: 'scp-sed-hint' }, tr('sediment.detail.noDecision'))))
 
+          const prPending = sedPick.pr && (sedPick.pr.state === 'open' || sedPick.pr.state === 'unknown')
           const landed = sedPick.state === 'done' || (sedPick.pr && sedPick.pr.state === 'merged')
           const landing = landed
             ? ((sedPick.promotion && (sedPick.promotion.casePath || sedPick.promotion.postmortemPath)) || tr('sediment.detail.noPr'))
             : ((sedPick.promotion && sedPick.promotion.caseId)
-              ? tr('sediment.detail.candidate') + ' ' + sedPick.promotion.caseId + ' · ' + tr('sediment.detail.noPr')
+              ? tr('sediment.detail.candidate') + ' ' + sedPick.promotion.caseId + ' · '
+                + (prPending ? tr('sediment.detail.landingPending') : tr('sediment.detail.noPr'))
               : tr('sediment.detail.noPr'))
           const prStateLabel = tr('sediment.prState.' + ((sedPick.pr && sedPick.pr.state) || 'unknown'))
           const prSourceLabel = tr('sediment.prSource.' + ((sedPick.pr && sedPick.pr.source) || 'ledger'))
@@ -4927,6 +5011,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           if (sedPick.ageDays !== null && sedPick.ageDays !== undefined && Number(sedPick.ageDays) > 14) {
             head.push(h('div', { key: 'overdue', className: 'scp-sed-hint' },
               tr('sediment.overdue') + ' · ' + tr('sediment.batch.oldest', { n: sedPick.ageDays })))
+          }
+          if (sedPick.closedDraft) {
+            head.push(h('div', { key: 'closed', className: 'scp-sed-hint' }, tr('sediment.detail.closedDraft')))
           }
           if (sedPick.stale) {
             head.push(h('div', { key: 'stale', className: 'scp-callout', style: { background: 'var(--scp-bad-soft)', borderColor: 'color-mix(in srgb, var(--scp-bad) 26%, var(--scp-border))' } },
