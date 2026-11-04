@@ -559,6 +559,15 @@ expect('写收尾（archived 缺 kind）：E_SCHEMA 且带回 requirements', arc
   && Array.isArray(archivedNoKindValue.requirements)
   && archivedNoKindValue.requirements.indexOf('ending.kind') >= 0, JSON.stringify(archivedNoKindValue))
 
+// 坏件单：客户端把解析错误带过来时，写入口直接说文件读不出来，不要报成「缺内容指纹」。
+const brokenTrace = await transition(rw, {
+    sessionId: 'smoke-session', cwd: SANDBOX, traceSessionId: TRACE_ID,
+    tracesDir: TRACES, expectSha256: '', traceError: 'YAML 解析失败', kind: 'reopen',
+  }, 'write-broken-trace')
+const brokenTraceValue = brokenTrace.envelope.result.value
+expect('写：坏件单报 E_PARSE 而不是缺指纹', brokenTraceValue && brokenTraceValue.ok === false
+  && brokenTraceValue.code === 'E_PARSE' && /读不出来/.test(brokenTraceValue.message), JSON.stringify(brokenTraceValue))
+
 // scheme 版本错配：面板与脚本不一致时给 E_SCHEMA_VERSION，不按旧词表写。
 const schemeMismatch = await transition(rw, {
     sessionId: 'smoke-session', cwd: SANDBOX, traceSessionId: TRACE_ID,

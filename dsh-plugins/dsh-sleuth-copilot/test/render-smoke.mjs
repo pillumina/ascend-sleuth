@@ -17,6 +17,7 @@ const moduleDefs = []
 const copied = []
 const keyHandlers = new Set()
 const documentHandlers = new Map()
+const styleTags = []
 const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
 
 globalThis.window = {
@@ -40,7 +41,7 @@ globalThis.document = {
     style: {}, textContent: '', value: '',
   }),
   body: { appendChild() {}, removeChild() {} },
-  head: { appendChild() {} },
+  head: { appendChild(tag) { if (tag && typeof tag.textContent === 'string') styleTags.push(tag) } },
   addEventListener(type, fn) {
     if (!documentHandlers.has(type)) documentHandlers.set(type, new Set())
     documentHandlers.get(type).add(fn)
@@ -281,6 +282,16 @@ function findSelectWithOption(view, value) {
 
 function findNode(view, predicate) {
   return view.nodes.find(predicate)
+}
+
+// 取最近一次 mount 注入的样式里某条规则的声明块；排版契约靠它断言，不靠人看。
+function cssRule(selector) {
+  const tag = styleTags[styleTags.length - 1]
+  const css = tag && typeof tag.textContent === 'string' ? tag.textContent : ''
+  const start = css.indexOf(selector + '{')
+  if (start < 0) return ''
+  const end = css.indexOf('}', start)
+  return end < 0 ? '' : css.slice(start + selector.length + 1, end)
 }
 
 function byClass(view, className) {
@@ -1010,6 +1021,9 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findButton(view, '看报告'))
   const withReport = await t.settle()
   expect('报告：读入并展示', withReport.text.includes('根因：vendor TopKV2 kernel 崩溃'), withReport.text.slice(-400))
+  const reportCall = t.rpcCalls.filter((call) => call.endpoint === 'copilot-report').pop()
+  expect('报告：带 traceFile 兜底（session_id 与文件名不一致时按文件读）',
+    !!reportCall && reportCall.args.traceFile === ID + '.yaml', JSON.stringify(reportCall && reportCall.args))
   click(findButton(withReport, '撤销上次收尾'))
   await t.settle()
   const undo = t.lastTransition()
@@ -1137,6 +1151,8 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const timelineView = await t.settle()
   expect('时间线：出现步骤', timelineView.text.includes('第 1 步') && timelineView.text.includes('判定为推理中断类'), timelineView.text.slice(-500))
   expect('时间线：调用懒加载 RPC', t.rpcCalls.some((call) => call.endpoint === 'copilot-timeline'))
+  const timelineCall = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline').pop()
+  expect('时间线：带 sessionId（读子进程按会话档位）', !!timelineCall && timelineCall.args.sessionId === 'sess-1', JSON.stringify(timelineCall && timelineCall.args))
 }
 
 {
@@ -1724,6 +1740,21 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   view = await t.settle()
   const items = view.nodes.filter((node) => node.props && node.props.role === 'menuitem')
   expect('菜单语义：条目带 role=menuitem', items.length > 0, String(items.length))
+}
+
+{
+  // 第二行的平台 / 框架 / 性质是自由文本（trace 的 detected_platform 可以很长）。
+  // 放不下时按省略号收，不能把这一行顶出状态条：容器裁剪 + 该段可省略 + 悬停看全文。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  const view = t.view()
+  const foot = cssRule('.scp-foot')
+  const meta = cssRule('.scp-meta')
+  expect('第二行：溢出被容器裁掉', /(^|;)overflow:hidden(;|$)/.test(foot), foot)
+  expect('第二行：平台段可缩（min-width:0）', /(^|;)min-width:0(;|$)/.test(meta), meta)
+  expect('第二行：平台段按省略号收', /text-overflow:ellipsis/.test(meta) && /(^|;)overflow:hidden(;|$)/.test(meta), meta)
+  const metaNode = byClass(view, 'scp-meta')[0]
+  expect('第二行：平台段悬停看全文', !!metaNode && typeof metaNode.props.title === 'string'
+    && metaNode.props.title.includes('A3-910C') && metaNode.props.title.includes('·'), metaNode && metaNode.props.title)
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')

@@ -409,6 +409,8 @@ def main(argv=None) -> int:
             "file": session.get("file"),
             "contentSha256": session.get("contentSha256"),
             "status": session.get("status"),
+            "error": session.get("error"),
+            "errorCode": session.get("errorCode"),
             "ending": session.get("ending"),
             "feedback": session.get("feedback"),
             "sedimented": session.get("sedimented"),

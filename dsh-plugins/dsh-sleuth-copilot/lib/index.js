@@ -640,6 +640,9 @@ export function apply(ctx) {
       sid = traceFileStem(traceFile)
     }
     if (!validTraceId(sid)) return transitionFailure('E_SCHEMA', '诊断单号不合法')
+    if (typeof payload.traceError === 'string' && payload.traceError.trim()) {
+      return transitionFailure('E_PARSE', '这一单的 trace 读不出来，先修文件再改状态：' + payload.traceError.trim())
+    }
     if (!/^[0-9a-f]{64}$/.test(expectSha)) {
       return transitionFailure('E_SCHEMA', '缺内容指纹，请刷新列表后重试')
     }

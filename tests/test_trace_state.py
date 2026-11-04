@@ -230,42 +230,6 @@ class KbCaseMetaTest(unittest.TestCase):
         self.assertEqual(st._upstream_anchor_labels(case), ["b#7"])
 
 
-class KbCaseMetaCacheTest(unittest.TestCase):
-    """`kb_case_meta` 的进程内缓存：目录没变不重扫，目录有增删才刷新。"""
-
-    def setUp(self):
-        st._KB_META_CACHE.clear()
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        self.kdir = self.root / "knowledge"
-        self.kdir.mkdir()
-
-    def tearDown(self):
-        st._KB_META_CACHE.clear()
-        self.tmp.cleanup()
-
-    def write_case(self, name, case_id):
-        (self.kdir / name).write_text(f"cases:\n  - id: {case_id}\n", encoding="utf-8")
-
-    def test_repeat_call_skips_rescan_and_dir_change_invalidates(self):
-        self.write_case("C-1.yaml", "C-1")
-        calls = []
-        original = st.load_file
-
-        def counting(path):
-            calls.append(Path(path).name)
-            return original(path)
-
-        with mock.patch.object(st, "load_file", counting):
-            self.assertEqual(sorted(st.kb_case_meta(self.root)), ["C-1"])
-            self.assertEqual(len(calls), 1)
-            self.assertEqual(sorted(st.kb_case_meta(self.root)), ["C-1"])
-            self.assertEqual(len(calls), 1, "knowledge/ 没变时不该重扫")
-            self.write_case("C-2.yaml", "C-2")
-            self.assertEqual(sorted(st.kb_case_meta(self.root)), ["C-1", "C-2"])
-            self.assertEqual(len(calls), 3)
-
-
 class LoadTracesTest(unittest.TestCase):
     def test_bad_entries_leave_other_rows_readable(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -290,7 +254,6 @@ class LoadTracesTest(unittest.TestCase):
 
 class ProjectTest(unittest.TestCase):
     def setUp(self):
-        st._KB_META_CACHE.clear()
         self.tmp = tempfile.TemporaryDirectory()
         self.base = Path(self.tmp.name)
         (self.base / "trace-status.yaml").write_bytes((ROOT / "trace-status.yaml").read_bytes())
@@ -313,7 +276,6 @@ class ProjectTest(unittest.TestCase):
             encoding="utf-8")
 
     def tearDown(self):
-        st._KB_META_CACHE.clear()
         self.tmp.cleanup()
 
     def test_transitions_carry_action_note_and_folded(self):

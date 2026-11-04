@@ -564,21 +564,6 @@ def load_traces(traces_root: Path | str) -> list[dict]:
     return rows
 
 
-# `kb_case_meta` 的进程内缓存：{knowledge 目录: (目录 mtime_ns, meta)}。每次投影都 rglob
-# 一遍全部 case 文件只为拿几个附加字段，同一进程里重复投影时这层缓存省掉这次扫描。
-# 缓存键是 `knowledge/` 目录自身的 mtime：目录下增删文件（新增或退休案例）会刷新，修改已有
-# case 的文件内容不会。返回值按只读对待：调用方不改它。
-_KB_META_CACHE: dict[str, tuple[int, dict[str, dict]]] = {}
-
-
-def _knowledge_dir_stamp(root: Path) -> int | None:
-    """`knowledge/` 目录的 mtime（纳秒）；目录不存在返回 None。"""
-    try:
-        return root.stat().st_mtime_ns
-    except OSError:
-        return None
-
-
 def kb_case_meta(kb_root: Path | str) -> dict[str, dict]:
     """知识库里每条 case 的派生小事实：{id: {"anchors": [...], "lastVerified": "2026-W42"}}。
 
@@ -587,13 +572,8 @@ def kb_case_meta(kb_root: Path | str) -> dict[str, dict]:
     没有锚点的案例留一个空 `anchors`（仍然算"在库里"，只是查不了上游）。
     """
     root = Path(kb_root) / "knowledge"
-    stamp = _knowledge_dir_stamp(root)
-    if stamp is None:
+    if not root.is_dir():
         return {}
-    key = str(root)
-    cached = _KB_META_CACHE.get(key)
-    if cached is not None and cached[0] == stamp:
-        return cached[1]
     out = {}
     for path in root.rglob("*.yaml"):
         if path.name.startswith("_"):
@@ -619,7 +599,6 @@ def kb_case_meta(kb_root: Path | str) -> dict[str, dict]:
                 "lastVerified": str(record.get("last_verified") or ""),
                 "verificationSource": str(verification.get("source") or ""),
             }
-    _KB_META_CACHE[key] = (stamp, out)
     return out
 
 

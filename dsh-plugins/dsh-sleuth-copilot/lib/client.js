@@ -831,13 +831,13 @@ window.__ModuleLoader__.load({
       '.scp-season{flex:none;font-size:11px;color:var(--scp-faint);}',
       '.scp-spacer{flex:1 1 auto;min-width:6px;}',
       '.scp-step{flex:none;font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--scp-muted);}',
-      '.scp-foot{display:flex;align-items:center;gap:9px;min-width:0;padding:0 2px;}',
+      '.scp-foot{display:flex;align-items:center;gap:9px;min-width:0;padding:0 2px;overflow:hidden;}',
       '.scp-track{flex:none;display:inline-flex;align-items:center;gap:3px;}',
       '.scp-tick{width:11px;height:3px;border-radius:2px;background:var(--scp-surface-3);transition:background-color 180ms ease;}',
       '.scp-tick[data-state="done"]{background:color-mix(in srgb, var(--scp-tone) 32%, transparent);}',
       '.scp-tick[data-state="now"]{background:var(--scp-tone);}',
       '.scp-now{font-size:10.5px;line-height:1.6;color:var(--scp-faint);margin-left:3px;font-variant-numeric:tabular-nums;}',
-      '.scp-meta{flex:none;font-size:11px;line-height:1.6;color:var(--scp-muted);white-space:nowrap;}',
+      '.scp-meta{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:11px;line-height:1.6;color:var(--scp-muted);white-space:nowrap;}',
       '.scp-wait{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;line-height:1.6;color:var(--scp-muted);}',
       '.scp-wait b{font-weight:500;color:var(--scp-text);}',
       '.scp-chips{flex:none;display:inline-flex;align-items:center;gap:5px;}',
@@ -2154,6 +2154,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         tracesDir: (data && data.tracesDir) || '',
         schemeVersion: (data && data.schemeVersion) || '',
         expectSha256: row.contentSha256,
+        traceError: row.error ? String(row.error) : '',
       }, extra || {})
     }
 
@@ -3477,7 +3478,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               renderCollapse()),
             collapsed ? null : h('div', { className: 'scp-foot' },
               StepRail({ extra }),
-              metaBits.length ? h('span', { className: 'scp-meta' }, metaBits.join(' · ')) : null,
+              metaBits.length ? h('span', { className: 'scp-meta', title: metaBits.join(' · ') }, metaBits.join(' · ')) : null,
               h('span', { className: 'scp-wait', title: waiting }, waiting
                 ? h('span', {}, tr('waiting') + '：', h('b', {}, waiting))
                 : h('span', {}, tr('label.updated') + ' ' + (formatTime(primary.updatedAt) || tr('none')))),
@@ -3974,6 +3975,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           cwd: store.cwd,
           tracesDir: data && data.tracesDir,
           traceSessionId: wanted,
+          traceFile: target.file || '',
           reportFile: target.reportFile || (target.extra && target.extra.reportFile) || '',
         }).then((res) => {
           if (res && res.ok) {
@@ -4034,6 +4036,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         rpcCall('copilot-timeline', {
           cwd: store.cwd,
           tracesDir: data && data.tracesDir,
+          sessionId: store.sessionId,
           traceFile: target.file,
         }).then((res) => {
           if (timelineToken.current !== token || selectedRowRef.current !== target.sessionId) return
