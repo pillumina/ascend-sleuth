@@ -60,7 +60,7 @@ DSH 会话里的一个独立交互层插件。它把诊断的状态、下一步�
 ### 工作区门禁与会话归属
 
 - **只在 ascend-sleuth 工作区出现**：Host 半从会话工作区 cwd 往上找 `scripts/_trace_state.py`；找不到、或取不到 cwd 时返回 `E_NO_ROOT`，浏览器半不渲染。别的工作区里插件装在 profile 里但状态条不显示。
-- **会话归属**：总览详情显示「原始会话」（顶层 `harness_session`）与「续接会话」（每个 `resume` 事件里的 `harness_session`），当前会话带「当前会话」标记；可切到原始会话或最近续接会话。跨机交接的原会话不在本机时，切过去会报打不开，不会静默失败。
+- **会话归属**：总览详情显示「原始会话」（顶层 `harness_session`）与「续接会话」（每个 `resume` 事件里的 `harness_session`），当前会话带「当前会话」标记；可切到原始会话或最近续接会话。跨机交接或旧环境的会话可能切不过去，界面只提示一句原因，归属仍保留。
 - **没记会话号**：顶层 `harness_session` 为空时显示提示与可复制的补写命令
   `python3 scripts/link_harness_sessions.py --trace <文件名> --session-id "$DSH_SESSION_ID" --apply`。
 - **续接不改归属**：续接只在 `resume` 事件里写当前会话号，顶层 `harness_session` 保持原始值，继续用于成本 / 工具调用归因；状态条在续接会话里标「本会话（续接）」。
@@ -154,7 +154,7 @@ node dsh-plugins/dsh-sleuth-copilot/test/host-smoke.mjs     # Host 半：取数�
 ```
 
 页面上的三件事只能人工确认：状态条是否出现、排版是否贴合输入区、点按钮是否把指令写进输入框。
-装完刷新页面，在状态条展开页或控制台看版本串 `v0.10.0`。
+装完刷新页面，在状态条展开页或控制台看版本串 `v0.10.1`。
 
 ## 版本维护
 
