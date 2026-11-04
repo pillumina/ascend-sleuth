@@ -593,7 +593,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：主按钮是回报结果', !!findButton(view, '回报结果'))
   expect('最近一单：显示身份标签（知识库未覆盖）', view.text.includes('知识库未覆盖'))
   expect('最近一单：显示已排除条数', view.text.includes('已排除 3 条'))
-  expect('最近一单：版本串 0.10.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.10.0'))
+  expect('最近一单：版本串 0.10.1', view.nodes.some((node) => node.props && node.props['data-version'] === '0.10.1'))
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
   expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
 }
@@ -716,6 +716,15 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const view = await t.settle()
   expect('会话归属：原始与续接会话', view.text.includes('会话归属') && view.text.includes('session-origin') && view.text.includes('sess-1'))
   expect('会话归属：当前会话标记', view.text.includes('当前'))
+}
+
+{
+  const t = await mount('resumed')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  click(findButton(view, '切到原始会话'))
+  const failed = await t.settle()
+  expect('会话归属：切不过去只给一句提示', failed.text.includes('当前界面没有切会话的接口。'), failed.text.slice(-300))
 }
 
 {

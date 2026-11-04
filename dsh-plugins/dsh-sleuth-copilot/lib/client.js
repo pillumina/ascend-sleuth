@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.10.0'
+    const PLUGIN_VERSION = '0.10.1'
     const POLL_MS = 10000
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
@@ -140,12 +140,14 @@ window.__ModuleLoader__.load({
       'sessions.resumed': '续接会话',
       'sessions.current': '当前会话',
       'sessions.missing': '未记会话号（trace 的 harness_session 为空）',
-      'sessions.hint': '只有仍在本机的会话才能切过去；跨机交接的原始会话可能打不开。补写命令会把当前会话号写回 trace。',
+      'sessions.hint': '跨机或旧环境的会话可能切不过去；归属仍保留。',
       'action.copyLinkCommand': '复制补写命令',
       'action.openOrigin': '切到原始会话',
       'action.openResumed': '切到上次续接会话',
       'hint.sessionOpened': '已切到该会话。',
-      'hint.sessionUnavailable': '打不开该会话：{reason}',
+      'hint.sessionRemote': '这个会话不在本机（旧环境或交接包），只能看归属。',
+      'hint.sessionService': '当前界面没有切会话的接口。',
+      'hint.sessionNoId': '没有会话号，补写后再试。',
       'section.materials': '在等材料',
       'section.timeline': '步骤时间线',
       'materials.hint': '来自 trace 的缺失记录；拿到后贴回会话，或带着这份清单续接。',
@@ -372,12 +374,14 @@ window.__ModuleLoader__.load({
       'sessions.resumed': 'Resumed in',
       'sessions.current': 'current session',
       'sessions.missing': 'No session id (harness_session is empty)',
-      'sessions.hint': 'Only sessions still on this machine can be opened; an imported origin may not. The copy command writes the current session id back to the trace.',
+      'sessions.hint': 'A session from another machine or an old environment may not open; its attribution stays.',
       'action.copyLinkCommand': 'Copy write-back command',
       'action.openOrigin': 'Open origin session',
       'action.openResumed': 'Open the last resumed session',
       'hint.sessionOpened': 'Switched to that session.',
-      'hint.sessionUnavailable': 'Could not open that session: {reason}',
+      'hint.sessionRemote': 'That session is not on this machine (old environment or handoff package); only its attribution is available.',
+      'hint.sessionService': 'This interface has no session-switch hook.',
+      'hint.sessionNoId': 'No session id; write one back and retry.',
       'section.materials': 'Waiting for material',
       'section.timeline': 'Step timeline',
       'materials.hint': 'Recorded gaps from the trace; paste the missing pieces back, or resume with this list.',
@@ -1372,11 +1376,20 @@ window.__ModuleLoader__.load({
     }
 
     function openSessionWithFlash(id, flash) {
-      if (!id) return
-      ctxOpenSession(id).then((result) => {
-        if (result && result.ok) flash(tr('hint.sessionOpened'))
-        else flash(tr('hint.sessionUnavailable', { reason: (result && result.reason) || '' }))
-      }, (error) => flash(tr('hint.sessionUnavailable', { reason: String((error && error.message) || error) })))
+      if (!id) {
+        flash(tr('hint.sessionNoId'))
+        return
+      }
+      const report = (result) => {
+        if (result && result.ok) return flash(tr('hint.sessionOpened'))
+        const reason = String((result && result.reason) || '')
+        if (/没有会话号/.test(reason)) return flash(tr('hint.sessionNoId'))
+        if (/没有可用的打开会话接口|会话服务不可用/.test(reason)) return flash(tr('hint.sessionService'))
+        return flash(tr('hint.sessionRemote'))
+      }
+      ctxOpenSession(id).then(report, (error) => {
+        report({ ok: false, reason: String((error && error.message) || error) })
+      })
     }
 
     function summaryText(row, data) {
