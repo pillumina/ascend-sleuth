@@ -17,6 +17,7 @@ import contextlib
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import yaml
 
@@ -171,6 +172,23 @@ class WriterTest(unittest.TestCase):
         with self.assertRaises(tt.Fail) as ctx:
             tt.apply_transition(ROOT, self.traces, "s1", args(to="resolved", expect_sha256="deadbeef"))
         self.assertEqual(ctx.exception.code, "E_STATE_CHANGED")
+
+    def test_lock_unavailable_fails_without_writing(self):
+        # log_lock 的契约是 yield True/False。False = 本平台没有可用的互斥原语；
+        # 此时写状态会丢事件。写入口必须拒绝，而不是在无锁状态下写。
+        path = self.make()
+        before = path.read_bytes()
+
+        @contextlib.contextmanager
+        def unavailable(_path):
+            yield False
+
+        with mock.patch.object(tt, "log_lock", unavailable):
+            with self.assertRaises(tt.Fail) as ctx:
+                tt.apply_transition(ROOT, self.traces, "s1", args(to="resolved"))
+        self.assertEqual(ctx.exception.code, "E_IO")
+        self.assertIn("写锁不可用", ctx.exception.message)
+        self.assertEqual(path.read_bytes(), before)
 
     def test_cas_token_is_single_use(self):
         path = self.make()

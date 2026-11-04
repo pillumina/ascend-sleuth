@@ -348,7 +348,13 @@ def apply_transition(root: Path, traces: Path, sid: str, args) -> dict:
     """
     if args.dry_run:
         return _apply_locked(root, traces, sid, args)
-    with log_lock(traces / ".transition-write"):
+    with log_lock(traces / ".transition-write") as held:
+        # `log_lock` 的契约是 yield True/False：False 表示本平台连降级原语都没有。
+        # 不加锁写状态会丢事件：两次并发收尾都通过 CAS，后写覆盖前写。
+        # 这里拒绝写入，由调用方按 E_IO 报给用户。
+        if not held:
+            raise Fail("E_IO", "写锁不可用：本机既没有 fcntl 也没有 msvcrt，"
+                              "拒绝在不加锁的情况下写状态")
         return _apply_locked(root, traces, sid, args)
 
 

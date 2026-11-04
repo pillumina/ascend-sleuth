@@ -536,30 +536,47 @@ def form_fields(transition: dict, status: str, vocab: dict, kinds: list[str]) ->
 
 
 def load_traces(traces_root: Path | str) -> list[dict]:
-    """读全部 `*.yaml`。解析失败的单也返回（`doc: None` 且带 `error`），面板要能看见坏件。
+    """读全部 `*.yaml`。坏件、目录、权限错误都只落成该行的 `error`，其它行照常返回。
 
+    面板要能看见坏件（`doc: None` + `error`），而不是整张列表因为一份文件读不了就空掉。
     每份文件算 `contentSha256`：面板写回时拿它做 CAS 令牌，比 status 比较能挡住
-    「两个窗口同时收尾、后写覆盖先写」这类丢事件。
+    「两个窗口同时收尾、后写覆盖先写」这类丢事件；读不了的件该字段留空串。
     """
     root = Path(traces_root)
     rows = []
     for path in sorted(root.glob("*.yaml")):
-        raw = path.read_bytes()
         entry = {
             "sessionId": path.stem,
             "file": path.name,
-            "contentSha256": hashlib.sha256(raw).hexdigest(),
+            "contentSha256": "",
             "doc": None,
             "error": None,
         }
         try:
+            raw = path.read_bytes()
+            entry["contentSha256"] = hashlib.sha256(raw).hexdigest()
             entry["doc"] = load_text(raw.decode("utf-8")) or {}
-        except Exception as exc:  # 坏件不阻断列表，只标记
+        except Exception as exc:  # 坏件/目录/权限都只标记该行，不阻断列表
             entry["error"] = str(exc)
         doc = entry["doc"] or {}
         entry["sessionId"] = str(doc.get("session_id") or path.stem)
         rows.append(entry)
     return rows
+
+
+# `kb_case_meta` 的进程内缓存：{knowledge 目录: (目录 mtime_ns, meta)}。每次投影都 rglob
+# 一遍全部 case 文件只为拿几个附加字段，同一进程里重复投影时这层缓存省掉这次扫描。
+# 缓存键是 `knowledge/` 目录自身的 mtime：目录下增删文件（新增或退休案例）会刷新，修改已有
+# case 的文件内容不会。返回值按只读对待：调用方不改它。
+_KB_META_CACHE: dict[str, tuple[int, dict[str, dict]]] = {}
+
+
+def _knowledge_dir_stamp(root: Path) -> int | None:
+    """`knowledge/` 目录的 mtime（纳秒）；目录不存在返回 None。"""
+    try:
+        return root.stat().st_mtime_ns
+    except OSError:
+        return None
 
 
 def kb_case_meta(kb_root: Path | str) -> dict[str, dict]:
@@ -569,10 +586,15 @@ def kb_case_meta(kb_root: Path | str) -> dict[str, dict]:
     `upstream` 锚点与 `validation_record.last_verified`。分成两次遍历会把这批 case 文件读两遍。
     没有锚点的案例留一个空 `anchors`（仍然算"在库里"，只是查不了上游）。
     """
-    out = {}
     root = Path(kb_root) / "knowledge"
-    if not root.is_dir():
-        return out
+    stamp = _knowledge_dir_stamp(root)
+    if stamp is None:
+        return {}
+    key = str(root)
+    cached = _KB_META_CACHE.get(key)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    out = {}
     for path in root.rglob("*.yaml"):
         if path.name.startswith("_"):
             continue
@@ -597,6 +619,7 @@ def kb_case_meta(kb_root: Path | str) -> dict[str, dict]:
                 "lastVerified": str(record.get("last_verified") or ""),
                 "verificationSource": str(verification.get("source") or ""),
             }
+    _KB_META_CACHE[key] = (stamp, out)
     return out
 
 
@@ -647,13 +670,17 @@ def provenance_of(doc: dict) -> dict:
 
 
 def project(traces_root: Path | str, kb_root: Path | str, caps: dict | None = None,
-            only: str | None = None) -> dict:
-    """面板与 CLI 共用的投影。`state` 不进 host 的版本缓存（它依赖 KB 与能力位）。"""
+            only: str | None = None, rows: list[dict] | None = None) -> dict:
+    """面板与 CLI 共用的投影。`state` 不进 host 的版本缓存（它依赖 KB 与能力位）。
+
+    调用方已经有 `load_traces()` 的结果时把它传进 `rows`，避免同一次请求把 traces 读两遍。
+    不传时按 `traces_root` 现读，行为与没有这个参数时一致。
+    """
     vocab = load_vocab(Path(kb_root))
     kb_cases = kb_case_meta(kb_root)
     ids = set(kb_cases)
     sessions = []
-    for entry in load_traces(traces_root):
+    for entry in (rows if rows is not None else load_traces(traces_root)):
         if only and entry["sessionId"] != only:
             continue
         doc = entry["doc"] or {}
@@ -691,7 +718,10 @@ def project(traces_root: Path | str, kb_root: Path | str, caps: dict | None = No
             "transitions": [
                 {"at": e.get("at"), "from": e.get("from"), "to": e.get("to"),
                  "ending": e.get("ending") if isinstance(e.get("ending"), dict) else None,
-                 "by": e.get("by"), "source": e.get("source")}
+                 "by": e.get("by"), "source": e.get("source"),
+                 "action": e.get("action"), "note": str(e.get("note") or ""),
+                 # 折叠后的汇总事件带 `folded`（折叠条数）；普通事件为 0，面板据此区分。
+                 "folded": int(e.get("folded") or 0)}
                 for e in (doc.get("transitions") or []) if isinstance(e, dict)
             ],
             "displayTone": display_tone(str(doc.get("status") or "unknown"),
@@ -711,7 +741,8 @@ def project(traces_root: Path | str, kb_root: Path | str, caps: dict | None = No
                                   "reason": "未提供能力位"},
         "vocab": {
             "statuses": vocab["statuses"],
-            "endings": [{"value": e["value"], "label": e["label"], "requires": e["requires"]}
+            "endings": [{"value": e["value"], "label": e["label"], "requires": e["requires"],
+                         "statuses": e["statuses"]}
                         for e in vocab["endings"]],
             "severities": vocab["severities"],
             "outcomes": vocab["outcomes"],

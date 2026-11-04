@@ -8,8 +8,10 @@
 """
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -185,8 +187,6 @@ class DeriveTest(unittest.TestCase):
 
 class KbCaseMetaTest(unittest.TestCase):
     def test_reads_anchors_and_last_verified_once(self):
-        import tempfile
-
         with tempfile.TemporaryDirectory() as tmp:
             kdir = Path(tmp) / "knowledge" / "inference"
             kdir.mkdir(parents=True)
@@ -228,6 +228,122 @@ class KbCaseMetaTest(unittest.TestCase):
                              {"repo": "a/b"},
                              "not-a-mapping"]}
         self.assertEqual(st._upstream_anchor_labels(case), ["b#7"])
+
+
+class KbCaseMetaCacheTest(unittest.TestCase):
+    """`kb_case_meta` 的进程内缓存：目录没变不重扫，目录有增删才刷新。"""
+
+    def setUp(self):
+        st._KB_META_CACHE.clear()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+        self.kdir = self.root / "knowledge"
+        self.kdir.mkdir()
+
+    def tearDown(self):
+        st._KB_META_CACHE.clear()
+        self.tmp.cleanup()
+
+    def write_case(self, name, case_id):
+        (self.kdir / name).write_text(f"cases:\n  - id: {case_id}\n", encoding="utf-8")
+
+    def test_repeat_call_skips_rescan_and_dir_change_invalidates(self):
+        self.write_case("C-1.yaml", "C-1")
+        calls = []
+        original = st.load_file
+
+        def counting(path):
+            calls.append(Path(path).name)
+            return original(path)
+
+        with mock.patch.object(st, "load_file", counting):
+            self.assertEqual(sorted(st.kb_case_meta(self.root)), ["C-1"])
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(sorted(st.kb_case_meta(self.root)), ["C-1"])
+            self.assertEqual(len(calls), 1, "knowledge/ 没变时不该重扫")
+            self.write_case("C-2.yaml", "C-2")
+            self.assertEqual(sorted(st.kb_case_meta(self.root)), ["C-1", "C-2"])
+            self.assertEqual(len(calls), 3)
+
+
+class LoadTracesTest(unittest.TestCase):
+    def test_bad_entries_leave_other_rows_readable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "good.yaml").write_text('session_id: "good"\nstatus: in_progress\n',
+                                            encoding="utf-8")
+            (root / "bad.yaml").write_text("status: [unclosed\n", encoding="utf-8")
+            # 目录也能匹配 `*.yaml`；read_bytes 抛 IsADirectoryError，只该标记这一行。
+            (root / "blocked.yaml").mkdir()
+            rows = {row["file"]: row for row in st.load_traces(root)}
+            self.assertEqual(sorted(rows), ["bad.yaml", "blocked.yaml", "good.yaml"])
+            good = rows["good.yaml"]
+            self.assertIsNone(good["error"])
+            self.assertEqual(good["sessionId"], "good")
+            self.assertEqual(len(good["contentSha256"]), 64)
+            self.assertIsNone(rows["bad.yaml"]["doc"])
+            self.assertTrue(rows["bad.yaml"]["error"])
+            self.assertIsNone(rows["blocked.yaml"]["doc"])
+            self.assertTrue(rows["blocked.yaml"]["error"])
+            self.assertEqual(rows["blocked.yaml"]["contentSha256"], "")
+
+
+class ProjectTest(unittest.TestCase):
+    def setUp(self):
+        st._KB_META_CACHE.clear()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self.tmp.name)
+        (self.base / "trace-status.yaml").write_bytes((ROOT / "trace-status.yaml").read_bytes())
+        kdir = self.base / "knowledge" / "inference"
+        kdir.mkdir(parents=True)
+        (kdir / "C-1.yaml").write_text(
+            "cases:\n  - id: VLLM-ASC-1\n"
+            "    upstream:\n      - {repo: vllm-project/vllm-ascend, issue: 10834}\n",
+            encoding="utf-8")
+        self.traces = self.base / "traces"
+        self.traces.mkdir()
+        (self.traces / "s1.yaml").write_text(
+            'session_id: "s1"\nstatus: resolved\nupdated_at: "2026-10-30T09:00:00+08:00"\n'
+            "transitions:\n"
+            '  - {"at": "2026-10-29T09:00:00+08:00", "from": "in_progress", "to": "resolved",'
+            ' "folded": 3, "note": "更早的 3 次转移已折叠"}\n'
+            '  - {"action": "reopen", "at": "2026-10-30T09:00:00+08:00", "from": "resolved",'
+            ' "to": "in_progress", "ending": null, "prev_ending": null, "by": "user",'
+            ' "source": "panel", "note": ""}\n',
+            encoding="utf-8")
+
+    def tearDown(self):
+        st._KB_META_CACHE.clear()
+        self.tmp.cleanup()
+
+    def test_transitions_carry_action_note_and_folded(self):
+        row = st.project(self.traces, self.base)["sessions"][0]
+        first, second = row["transitions"]
+        self.assertEqual(first["folded"], 3)
+        self.assertEqual(first["note"], "更早的 3 次转移已折叠")
+        self.assertIsNone(first["action"])
+        self.assertEqual(second["action"], "reopen")
+        self.assertEqual(second["note"], "")
+        self.assertEqual(second["folded"], 0)
+        self.assertEqual((second["by"], second["source"]), ("user", "panel"))
+
+    def test_vocab_endings_carry_target_statuses(self):
+        endings = {e["value"]: e for e in st.project(self.traces, self.base)["vocab"]["endings"]}
+        self.assertEqual(endings["handed_off"]["statuses"], ["escalated"])
+        self.assertEqual(endings["root_cause"]["statuses"], ["resolved"])
+        # 原有三字段不动
+        self.assertEqual(endings["handed_off"]["requires"], ["ending.handed_to"])
+
+    def test_preloaded_rows_give_same_projection(self):
+        rows = st.load_traces(self.traces)
+        with_rows = st.project(self.traces, self.base, rows=rows)
+        from_disk = st.project(self.traces, self.base)
+        self.assertEqual(with_rows["sessions"], from_disk["sessions"])
+        # 传了 rows 就不再重读：文件在传入后被改，投影仍按传入的那份算
+        (self.traces / "s1.yaml").write_text('session_id: "s1"\nstatus: archived\n',
+                                             encoding="utf-8")
+        self.assertEqual(st.project(self.traces, self.base, rows=rows)["sessions"][0]["status"],
+                         "resolved")
 
 
 class ActionsTest(unittest.TestCase):
