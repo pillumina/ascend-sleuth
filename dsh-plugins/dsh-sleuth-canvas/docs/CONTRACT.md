@@ -125,6 +125,7 @@ payload：`{ sessionId?: string }` → 返回：
   "category": "interrupt" | null,
   "resolvedAt": null,
   "currentStep": 6 | null,
+  "harnessSession": "ds-…" | null,  // 产生这条 trace 的 DSH 会话号（harness_session）
   "lastAction": "……" | null,
   "activeCase": "REF-QUANT-9001" | null,
   "sedimented": { "state": "none" | null, "caseId": null },
@@ -267,6 +268,7 @@ SC.createEngine = function createEngine(opts) { ... }
   zoomBy(factor),
   resize(),                 // 容器尺寸变化时调用（内部也挂 ResizeObserver）
   nodeRect(idx),            // 节点在屏幕坐标的矩形（给 DOM tooltip 用）
+  exportImage(),            // 当前视图的 PNG dataURL（含主题底色）；画布未就绪时 null
   destroy(),
 }
 ```
@@ -316,7 +318,7 @@ SC.createEngine = function createEngine(opts) { ... }
 - 列导引：同一步内节点之间画竖向“串珠”连接（低透明）。
 - 聚光（replay / selected）：非相关节点 alpha 0.22、相关边保留；选中节点外发光脉冲两次。
 - 相机：滚轮以指针为锚缩放（0.35–2.2，平滑），拖拽平移（pointer capture），双击 fit；`fit()` 用缓动（260ms cubic-bezier(.22,.61,.36,1)）。
-- 迷你地图：引擎负责在右下角绘制 168×112 的面板（节点缩略块 + 视口框），并支持点击/拖拽移动视口；不占用 page 的 DOM。
+- 迷你地图：引擎负责在右下角绘制 168×112 的面板（节点缩略块 + 视口框），并支持点击/拖拽移动视口；不占用 page 的 DOM。画布 CSS 宽 <560 或高 <360 时不画；空闲时半透明（0.55），指针进入面板才完全显现。
 - 命中测试：节点矩形（世界坐标反变换）。hover 时调用 `onHover`，点击调用 `onSelect`；空白点击 `onSelect(null)`。
 - 渲染循环：单个 rAF；无交互且无动画时降频（30fps 上限）；页面隐藏时暂停（`document.visibilitychange`）。
 - DPR：`canvas.width = cssW * dpr`，`ctx.setTransform(dpr,0,0,dpr,0,0)`；`ResizeObserver` 监听父容器。
@@ -365,7 +367,12 @@ SC.theme.currentPalette() -> {
 - 键盘：`←/→` 上/下一个事件，`f` 适配，`+/-` 缩放，`Esc` 取消。
 - 搜索：左侧列表按 id/summary/framework 过滤。
 - 空态：无 traces 时给一条说明 + 可复制的命令 `/skill:diagnose`；加载态给骨架；错误态给错误原文 + 重试按钮。
-- `prefers-reduced-motion`：关粒子/入场/脉冲，只保留瞬时状态变化。
+- 结论卡：页头第三条网格行，显示结论动作、case、一句正文与徽标（置信 / 待回报 / 已沉淀 / 风险·先停）；可点击时定位到画布结论节点。没有结论事件时显示「结论未记录」和 `lastAction` 或一句说明。
+- 导出：页头「导出」菜单两项——`导出 PNG（当前视图）`（经 `engine.exportImage()`，含主题底色，文件名 `sleuth-canvas-<trace>.png`）与 `复制旅程摘要`（Markdown：会话元信息、结论、洞察、过程、来源）。
+- 打开会话：trace 有 `harness_session` 时按钮可用，调用 `SC.openSession(id)`（宿主 `sessions.open`）；失败或没有服务时给可见提示，不静默。
+- 列表视图：`t` 或顶部「列表」切换事件表格（步骤 / 角色 / 动作 / 摘要 / 标记），行可点选定位回画布节点；画布保持挂载，切回时重算尺寸。
+- 快捷键提示：首次进入画布左下角的可关闭提示条（localStorage 记住已关），由提示条自身的关闭按钮收起；`Esc` 先关导出菜单，再退回放/取消选中。
+- 本地偏好：上次选中的 trace 文件、画布/列表视图存 localStorage；不可用时静默退化。
 
 ### 5.3 文案
 

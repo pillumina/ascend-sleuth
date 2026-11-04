@@ -133,6 +133,14 @@ function makeSandbox(options) {
       hidden: false,
       addEventListener() {},
       removeEventListener() {},
+      createElement() {
+        return {
+          width: 0,
+          height: 0,
+          getContext: () => ({ fillStyle: '', fillRect() {}, drawImage() {} }),
+          toDataURL: () => 'data:image/png;base64,AAAA',
+        }
+      },
     },
     window: {
       devicePixelRatio: opts.dpr === undefined ? 2 : opts.dpr,
@@ -326,11 +334,26 @@ test('layout 位置按下标（node.idx）落位', () => {
 test('createEngine 返回契约 §3 的全部方法', () => {
   const canvas = makeCanvas(900, 640)
   const engine = SC.createEngine({ canvas, palette: () => makePalette() })
-  const names = ['setGraph', 'setSelected', 'setHovered', 'setReplay', 'setReplayFocus', 'flyTo', 'fit', 'zoomBy', 'resize', 'nodeRect', 'destroy']
+  const names = ['setGraph', 'setSelected', 'setHovered', 'setReplay', 'setReplayFocus', 'flyTo', 'fit', 'zoomBy', 'resize', 'nodeRect', 'exportImage', 'destroy']
   for (const name of names) equal(typeof engine[name], 'function', '缺少方法 ' + name)
   equal(engine.nodeRect(0), null, '没有图时 nodeRect 返回 null')
   engine.destroy()
   engine.destroy()
+})
+
+test('exportImage：无尺寸画布时 null；有图时返回 PNG dataURL（不引用作用域外变量）', () => {
+  const emptyCanvas = makeCanvas(0, 0)
+  const emptyEngine = SC.createEngine({ canvas: emptyCanvas, palette: () => makePalette() })
+  emptyCanvas.width = 0
+  equal(emptyEngine.exportImage(), null, '画布没有尺寸时返回 null')
+  emptyEngine.destroy()
+  const canvas = makeCanvas(800, 600)
+  const engine = SC.createEngine({ canvas, palette: () => makePalette() })
+  engine.setGraph(graphOf([{ idx: 0, step: 1, title: '现场', subtitle: 's', meta: 'step 1 · 现场' }]))
+  const url = engine.exportImage()
+  assert(typeof url === 'string' && url.startsWith('data:image/png;base64,'), '导出应返回 PNG dataURL，实际: ' + String(url))
+  engine.destroy()
+  equal(engine.exportImage(), null, 'destroy 后返回 null')
 })
 
 test('缺少 palette 时明确抛错，而不是画成默认色', () => {
@@ -494,7 +517,7 @@ test('低倍率 / 迷你地图判定常量可导出', () => {
   equal(render.INITIAL_ZOOM, 0.82)
   equal(render.INITIAL_FIT_ZOOM, 0.8)
   equal(render.LOD_ZOOM, 0.62)
-  equal(render.MINIMAP_MIN_W, 520)
+  equal(render.MINIMAP_MIN_W, 560)
   equal(render.MINIMAP_MIN_H, 360)
   equal(internals.isCompactZoom(0.5), true)
   equal(internals.isCompactZoom(0.62), false)

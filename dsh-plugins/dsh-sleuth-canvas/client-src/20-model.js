@@ -612,6 +612,7 @@ SC.model = (function () {
       eventCount: eventCount,
       currentStep: isNum(session.currentStep) ? Number(session.currentStep) : null,
       hasConclusion: !!session.hasConclusion,
+      harnessSession: text(session.harnessSession) || null,
       activeCase: text((detail && detail.activeCase) || session.activeCase) || null,
       file: text((detail && detail.file) || session.file) || null,
       summary: text((detail && detail.summary) || session.summary) || '',
@@ -637,6 +638,161 @@ SC.model = (function () {
     return parts
   }
 
+  // ── 结论卡、列表视图、导出摘要：给页面的三个派生视图，纯函数便于测试 ─────────────
+
+  // 结论动作 → 卡片文案。未命中 case 时不编造结论，只说"还没写结论"。
+  const CONCLUSION_ACTIONS = {
+    hit: { tone: 'hit', label: '命中 case' },
+    miss: { tone: 'miss', label: '知识库未覆盖' },
+    output: { tone: 'flag', label: '给出结论' },
+    attribution: { tone: 'flag', label: '归因' },
+  }
+
+  const RISK_RE = /data-loss-risk|数据风险|先停|数据丢失/g
+  const RISK_NEGATIONS = ['非', '不是', '并非', '无', '没有', '不含', '未发现', '零']
+
+  function hasRiskText(value) {
+    const raw = text(value)
+    if (!raw) return false
+    RISK_RE.lastIndex = 0
+    let matched = RISK_RE.exec(raw)
+    while (matched) {
+      const before = raw.slice(Math.max(0, matched.index - 4), matched.index)
+      if (!RISK_NEGATIONS.some(function (word) { return before.indexOf(word) >= 0 })) return true
+      matched = RISK_RE.exec(raw)
+    }
+    return false
+  }
+
+  // 结论卡：读 detail.conclusionIndex（事件 idx），返回画布节点位置与可读文案。
+  function buildConclusion(detail, graph) {
+    if (!detail) return null
+    const events = Array.isArray(detail.events) ? detail.events : []
+    const nodes = graph && Array.isArray(graph.nodes) ? graph.nodes : []
+    const pos = graph && graph.meta && graph.meta.conclusionIndex !== null && graph.meta.conclusionIndex !== undefined
+      ? Number(graph.meta.conclusionIndex)
+      : null
+    const event = pos !== null && events[pos] ? events[pos] : null
+    const node = pos !== null && nodes[pos] ? nodes[pos] : null
+    const action = text(event && event.action)
+    const spec = CONCLUSION_ACTIONS[action] || null
+    const tone = spec ? spec.tone : (node ? node.tone : 'feedback')
+    const caseId = text(event && event.case)
+    let label = spec ? spec.label : '结论未记录'
+    let title = ''
+    if (action === 'hit') title = caseId ? '命中 ' + caseId : '命中'
+    else if (action === 'miss') title = '知识库未覆盖'
+    else if (action === 'output') title = '给出结论'
+    else if (action === 'attribution') title = caseId ? '归因 · ' + caseId : '归因'
+    else title = '还没写结论'
+    const body = event
+      ? U.firstSentence(text(event.output) || text(event.reason) || text(event.content), 150)
+      : U.firstSentence(text(detail.lastAction) || '这份 trace 还没写结论事件', 120)
+    const badges = []
+    const verdict = (event && event.verdict) || {}
+    if (text(verdict.confidence)) badges.push(badge('置信 ' + text(verdict.confidence), 'neutral'))
+    const feedback = detail.feedback || {}
+    if (text(feedback.outcome) === 'pending') badges.push(badge('待回报', 'warn'))
+    else if (text(feedback.outcome) === 'resolved') badges.push(badge('已回报', 'hit'))
+    const sedimented = detail.sedimented || {}
+    const sedState = text(sedimented.state)
+    if (sedState === 'knowledge') badges.push(badge('已沉淀' + (text(sedimented.caseId) ? ' ' + text(sedimented.caseId) : ''), 'book'))
+    else if (sedState === 'inbox') badges.push(badge('已交草稿', 'book'))
+    const riskText = [event && event.output, event && event.reason, detail.lastAction].map(text).join('\n')
+    if (hasRiskText(riskText)) badges.push(badge('风险 · 先停', 'risk'))
+    return {
+      idx: node ? node.idx : null,
+      step: node ? node.step : null,
+      tone: tone,
+      label: label,
+      title: title,
+      text: body,
+      badges: badges,
+      empty: event === null || action === '',
+      action: action,
+      caseId: caseId || null,
+    }
+  }
+
+  // 列表视图：每个事件一行，与画布节点共享选中下标（数组位置）。
+  function buildTableRows(detail, graph) {
+    if (!detail || !Array.isArray(detail.events)) return []
+    const nodes = graph && Array.isArray(graph.nodes) ? graph.nodes : []
+    return detail.events.map(function (ev, i) {
+      const node = nodes[i] || null
+      const described = describeEvent(ev, detail)
+      const verdict = (ev && ev.verdict) || {}
+      const marks = []
+      if (text(ev.case)) marks.push(text(ev.case))
+      if (text(verdict.primary)) marks.push('主检查 ' + text(verdict.primary))
+      if (text(verdict.fallback)) marks.push('备检查 ' + text(verdict.fallback))
+      if (text(verdict.marked)) marks.push('marked ' + text(verdict.marked))
+      const evidence = (ev && ev.evidence) || {}
+      const inlineChars = Number(evidence.inlineChars || 0) || text(evidence.inline).length
+      if (inlineChars > 0) marks.push('证据 ' + charLabel(inlineChars))
+      if (Array.isArray(ev.toolCalls) && ev.toolCalls.length) marks.push(ev.toolCalls.length + ' 次调用')
+      if (Array.isArray(ev.sources) && ev.sources.length) marks.push(ev.sources.length + ' 来源')
+      return {
+        idx: i,
+        step: node ? node.step : (ev.step === null || ev.step === undefined ? '?' : ev.step),
+        role: text(ev.role),
+        roleLabel: roleLabel(ev),
+        action: node ? node.label : (described.label || '事件'),
+        title: node ? node.title : described.title,
+        subtitle: node ? (node.subtitle || '') : described.subtitle,
+        tone: node ? node.tone : (described.tone || 'feedback'),
+        glyph: node ? node.glyph : described.glyph,
+        emphasis: node ? node.emphasis : described.emphasis,
+        marks: marks,
+      }
+    })
+  }
+
+  // 导出摘要：一段可粘贴的 Markdown，覆盖结论、洞察与过程。
+  function buildExportText(detail, graph) {
+    if (!detail) return ''
+    const session = detail.session || {}
+    const conclusion = buildConclusion(detail, graph)
+    const rows = buildTableRows(detail, graph)
+    const lines = []
+    lines.push('# 诊断旅程 · ' + (text(session.id) || text(detail.file) || '未命名'))
+    const meta = []
+    if (text(session.status)) meta.push('状态 ' + text(session.status))
+    if (text(session.framework)) meta.push('框架 ' + text(session.framework))
+    if (text(session.platform)) meta.push('平台 ' + text(session.platform))
+    if (text(session.category)) meta.push('类别 ' + text(session.category))
+    if (isNum(session.stepCount)) meta.push(Number(session.stepCount) + ' 步')
+    if (isNum(session.eventCount)) meta.push(Number(session.eventCount) + ' 个事件')
+    if (meta.length) lines.push('- ' + meta.join(' · '))
+    const span = U.formatSpan(session.createdAt, session.updatedAt)
+    if (span) lines.push('- 跨度 ' + span + (text(session.updatedAt) ? '（更新于 ' + U.formatRelative(session.updatedAt) + '）' : ''))
+    if (conclusion) {
+      const tags = conclusion.badges.map(function (item) { return item.text }).filter(Boolean)
+      lines.push('')
+      lines.push('## 结论 · ' + conclusion.title + (tags.length ? '（' + tags.join(' · ') + '）' : ''))
+      if (conclusion.text) lines.push(conclusion.text)
+    }
+    const insights = Array.isArray(detail.insights) ? detail.insights : []
+    if (insights.length) {
+      lines.push('')
+      lines.push('## 洞察')
+      for (const insight of insights) {
+        lines.push('- ' + text(insight.title) + '：' + text(insight.text))
+      }
+    }
+    if (rows.length) {
+      lines.push('')
+      lines.push('## 过程')
+      for (const row of rows) {
+        const tail = (row.subtitle || row.title || '').slice(0, 80)
+        lines.push('- S' + row.step + ' · ' + row.action + ' · ' + row.roleLabel + (tail ? ' · ' + tail : ''))
+      }
+    }
+    lines.push('')
+    lines.push('来源：traces/' + (text(detail.file) || '') + ' · 只读')
+    return lines.join('\n')
+  }
+
   return {
     TONES: TONES,
     TONE_LABELS: TONE_LABELS,
@@ -648,6 +804,10 @@ SC.model = (function () {
     applyTones: applyTones,
     buildInspector: buildInspector,
     buildOverview: buildOverview,
+    buildConclusion: buildConclusion,
+    buildTableRows: buildTableRows,
+    buildExportText: buildExportText,
+    hasRiskText: hasRiskText,
     deriveStats: deriveStats,
     sessionMeta: sessionMeta,
     eventChars: eventChars,

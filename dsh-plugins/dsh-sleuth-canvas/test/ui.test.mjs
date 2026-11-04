@@ -381,6 +381,73 @@ test('fixtures 形状自检：buildGraph 不吃未定义字段', () => {
   assert.ok(context.SC.model === model)
 })
 
+// ── 结论卡 / 列表视图 / 导出摘要（纯函数）──────────────────────────────────────
+
+function fixtureGraph(data) {
+  return model.applyTones(model.buildGraph(data), model.TONES)
+}
+
+test('buildConclusion：output 结论 + 回报/沉淀徽标；缺结论时如实说没写', () => {
+  const graph = fixtureGraph(detail)
+  const card = model.buildConclusion(detail, graph)
+  assert.equal(card.label, '给出结论')
+  assert.equal(card.idx, graph.meta.conclusionIndex, '卡片指向画布上的结论节点')
+  assert.ok(card.text.length > 0, '结论卡应有正文')
+  const badges = card.badges.map((item) => item.text).join('|')
+  assert.match(badges, /已回报/)
+  assert.match(badges, /已沉淀 VLLM-ASC-9001/)
+  assert.equal(card.empty, false)
+
+  const hit = { events: [{ idx: 0, action: 'hit', case: 'VLLM-ASC-9999', output: '签名一致，根因相同', verdict: { confidence: '0.62' } }], conclusionIndex: 0, feedback: { outcome: 'pending' }, sedimented: { state: 'none' }, lastAction: '' }
+  const hitCard = model.buildConclusion(hit, fixtureGraph(hit))
+  assert.equal(hitCard.label, '命中 case')
+  assert.equal(hitCard.title, '命中 VLLM-ASC-9999')
+  assert.equal(hitCard.badges.map((item) => item.text).join('|'), '置信 0.62|待回报')
+
+  const miss = { events: [{ idx: 0, action: 'miss', output: '知识库未覆盖' }], conclusionIndex: 0, feedback: {}, sedimented: {}, lastAction: '' }
+  assert.equal(model.buildConclusion(miss, fixtureGraph(miss)).label, '知识库未覆盖')
+
+  const empty = { events: [{ idx: 0, action: 'triage', output: 'x' }], conclusionIndex: null, feedback: {}, sedimented: {}, lastAction: '还在定位' }
+  const emptyCard = model.buildConclusion(empty, fixtureGraph(empty))
+  assert.equal(emptyCard.empty, true)
+  assert.equal(emptyCard.label, '结论未记录')
+  assert.match(emptyCard.text, /还在定位/)
+})
+
+test('结论卡的风险词识别不把「非 data-loss」当风险', () => {
+  assert.equal(model.hasRiskText('输出：非 data-loss，可以继续'), false)
+  assert.equal(model.hasRiskText('并非数据风险'), false)
+  assert.equal(model.hasRiskText('没有 data-loss-risk，可继续'), false)
+  assert.equal(model.hasRiskText('不含数据风险'), false)
+  assert.equal(model.hasRiskText('未发现数据丢失'), false)
+  assert.equal(model.hasRiskText('零数据风险'), false)
+  assert.equal(model.hasRiskText('severity: data-loss-risk'), true)
+  assert.equal(model.hasRiskText('建议先停训练保留现场'), true)
+  const risk = { events: [{ idx: 0, action: 'miss', output: '数据风险，先停' }], conclusionIndex: 0, feedback: {}, sedimented: {}, lastAction: '' }
+  assert.ok(model.buildConclusion(risk, fixtureGraph(risk)).badges.some((item) => /风险/.test(item.text)))
+})
+
+test('buildTableRows：与事件一一对应，标记含 case / verdict / 证据', () => {
+  const graph = fixtureGraph(detail)
+  const rows = model.buildTableRows(detail, graph)
+  assert.equal(rows.length, detail.events.length)
+  assert.deepEqual(rows.map((row) => row.idx), detail.events.map((_, i) => i))
+  const checkRow = rows.find((row) => /核验/.test(row.action))
+  assert.ok(checkRow, '应有核验行')
+  assert.ok(checkRow.marks.some((mark) => /VLLM-ASC-/.test(mark)), '核验行应带 case 标记')
+  assert.equal(rows[0].roleLabel, '用户')
+})
+
+test('buildExportText：Markdown 摘要含结论 / 洞察 / 过程 / 来源', () => {
+  const text = model.buildExportText(detail, fixtureGraph(detail))
+  assert.match(text, /^# 诊断旅程 · 2026-01-02-demo-a3-w8a8-garble/)
+  assert.match(text, /## 结论 · 给出结论/)
+  assert.match(text, /## 洞察/)
+  assert.match(text, /## 过程/)
+  assert.match(text, /来源：traces\/2026-01-02-demo-a3-w8a8-garble\.yaml · 只读/)
+  assert.ok(text.split('\n').length > 15)
+})
+
 // ── 页面渲染冒烟：迷你 React（hooks + effect + ref）驱动真实组件树 ──────────────
 function createMiniHarness(SC, pageContext) {
   const cells = { states: [], refs: [], memos: [], callbacks: [], effects: [] }
@@ -537,7 +604,18 @@ function createMiniHarness(SC, pageContext) {
     for (const handler of listeners[type] || []) handler(event)
   }
 
-  return { React: React, settle: settle, findAll: findAll, textOf: textOf, dispatch: dispatch, listeners: listeners }
+  function findByProp(tree, prop, value) {
+    const out = []
+    ;(function walk(node) {
+      if (node === null || typeof node !== 'object') return
+      if (Array.isArray(node)) { node.forEach(walk); return }
+      if (node.props && node.props[prop] === value) out.push(node)
+      ;(node.children || []).forEach(walk)
+    })(tree)
+    return out
+  }
+
+  return { React: React, settle: settle, findAll: findAll, findByProp: findByProp, textOf: textOf, dispatch: dispatch, listeners: listeners }
 }
 
 test('页面渲染冒烟：list → detail → 选中 → 回放 → Esc 全流程可用', async () => {
@@ -550,6 +628,9 @@ test('页面渲染冒烟：list → detail → 选中 → 回放 → Esc 全流�
       return endpoint === 'list' ? Promise.resolve(listSample) : Promise.resolve(detail)
     },
   }
+  const openedSessions = []
+  pageSC.openSession = function (id) { openedSessions.push(id); return Promise.resolve() }
+  const downloads = []
   const engineCalls = []
   let engineOptions = null
   pageSC.createEngine = function (options) {
@@ -564,13 +645,33 @@ test('页面渲染冒烟：list → detail → 选中 → 回放 → Esc 全流�
       flyTo: function (value) { engineCalls.push(['flyTo', value]) },
       fit: function () { engineCalls.push(['fit']) },
       zoomBy: function (value) { engineCalls.push(['zoomBy', value]) },
-      resize: function () {},
+      resize: function () { engineCalls.push(['resize']) },
       nodeRect: function () { return null },
+      exportImage: function () { return 'data:image/png;base64,AAAA' },
       destroy: function () { engineCalls.push(['destroy']) },
     }
   }
 
-  const context = vm.createContext({ SC: pageSC, console: console, window: {}, document: {} })
+  const context = vm.createContext({
+    SC: pageSC,
+    console: console,
+    window: {},
+    document: {
+      createElement: function (tag) {
+        return {
+          tag: tag,
+          style: {},
+          href: '',
+          download: '',
+          click: function () { downloads.push({ tag: tag, href: this.href, download: this.download }) },
+          remove: function () {},
+        }
+      },
+      body: { appendChild: function () {} },
+      addEventListener: function () {},
+      removeEventListener: function () {},
+    },
+  })
   vm.runInContext(utilSrc, context, { filename: '05-util.js' })
   vm.runInContext(modelSrc, context, { filename: '20-model.js' })
   vm.runInContext(pageSrc, context, { filename: '30-page.js' })
@@ -589,6 +690,46 @@ test('页面渲染冒烟：list → detail → 选中 → 回放 → Esc 全流�
   assert.ok(harness.textOf(tree).includes('vllm-ascend'))
   assert.ok(harness.textOf(tree).includes('已定位'))
   assert.ok(harness.textOf(tree).includes('诊断画布'))
+  assert.equal(harness.findAll(tree, 'sc-conclusion').length, 1, '页头应有结论卡')
+  assert.ok(harness.textOf(tree).includes('给出结论'))
+  assert.ok(harness.textOf(tree).includes('已沉淀 VLLM-ASC-9001'))
+
+  // 打开会话：按钮使用 trace 的 harness_session
+  const openButton = harness.findByProp(tree, 'aria-label', '打开会话')[0]
+  assert.ok(openButton, '应有打开会话按钮')
+  openButton.props.onClick()
+  const openedTree = await harness.settle({ sessionId: 'session-1' })
+  assert.deepEqual(openedSessions, ['demo-harness-9001'])
+  assert.ok(harness.textOf(openedTree).includes('已切到会话'), '成功回跳应有可见反馈')
+
+  // 导出菜单：点导出按钮展开两项
+  const exportButton = harness.findByProp(tree, 'aria-haspopup', 'menu')[0]
+  assert.ok(exportButton, '应有导出菜单入口')
+  exportButton.props.onClick()
+  const menuTree = await harness.settle({ sessionId: 'session-1' })
+  assert.equal(harness.findAll(menuTree, 'sc-export-item').length, 2)
+  const pngItem = harness.findAll(menuTree, 'sc-export-item')[0]
+  pngItem.props.onClick()
+  const exportedTree = await harness.settle({ sessionId: 'session-1' })
+  assert.equal(downloads.length, 1, '应触发一次下载')
+  assert.equal(downloads[0].download, 'sleuth-canvas-2026-01-04-demo-a2-resume-report.png', '文件名用当前选中的 trace')
+  assert.ok(harness.textOf(exportedTree).includes('已导出 PNG'), '导出后应有可见反馈')
+
+  // 't' 切事件列表：行数 = 事件数，点行定位回画布节点
+  harness.dispatch('keydown', { key: 't', target: { tagName: 'CANVAS' }, preventDefault: function () {} })
+  const tableTree = await harness.settle({ sessionId: 'session-1' })
+  assert.equal(harness.findAll(tableTree, 'sc-table').length, 1, '应切到事件列表视图')
+  assert.equal(harness.findAll(tableTree, 'sc-trow').length, detail.events.length)
+  const firstRow = harness.findAll(tableTree, 'sc-trow')[0]
+  firstRow.props.onClick()
+  const rowTree = await harness.settle({ sessionId: 'session-1' })
+  assert.equal(harness.findAll(rowTree, 'sc-root')[0].props['data-inspector'], 'open')
+  assert.ok(engineCalls.some(function (call) { return call[0] === 'setSelected' && call[1] === 0 }))
+  // 回到画布视图
+  harness.dispatch('keydown', { key: 't', target: { tagName: 'CANVAS' }, preventDefault: function () {} })
+  const backTree = await harness.settle({ sessionId: 'session-1' })
+  assert.equal(harness.findAll(backTree, 'sc-table').length, 0)
+  assert.ok(engineCalls.some(function (call) { return call[0] === 'resize' }), '切回画布应让引擎按新尺寸重算')
 
   const graph = engineCalls.filter(function (call) { return call[0] === 'setGraph' }).pop()[1]
   assert.equal(graph.nodes.length, 15)

@@ -99,6 +99,7 @@ assert.equal(typeof plugin.apply, 'function', '插件对象必须有 apply')
 assert.ok(Array.isArray(plugin.inject), '插件对象必须声明 inject')
 assert.ok(plugin.inject.includes('slots'), 'inject 必须含 slots')
 assert.ok(plugin.inject.includes('connection'), 'inject 必须含 connection')
+assert.ok(plugin.inject.includes('sessions'), 'inject 必须含 sessions（打开会话）')
 
 const registrations = []
 const injected = []
@@ -114,10 +115,13 @@ const slots = {
   },
 }
 const connection = { rpc: { call: async () => ({ ok: true, value: {} }) } }
+const opened = []
+const sessions = { open: (id) => { opened.push(id) } }
 const ctx = {
   get(name) {
     if (name === 'slots') return slots
     if (name === 'connection') return connection
+    if (name === 'sessions') return sessions
     return undefined
   },
 }

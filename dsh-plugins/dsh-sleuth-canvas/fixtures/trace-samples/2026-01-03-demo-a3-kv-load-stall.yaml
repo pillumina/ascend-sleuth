@@ -1,5 +1,6 @@
 # 合成测试夹具：in_progress 诊断 trace（同一 step 内并行核验 + Tier 3 + 源码分析 + 未覆盖）。
 # 全部内容为虚构，与任何真实客户现场无关。
+harness_session: "demo-harness-9002"
 session_id: "2026-01-03-demo-a3-kv-load-stall"
 status: in_progress
 current_step: 5

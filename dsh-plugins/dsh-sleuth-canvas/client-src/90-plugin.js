@@ -8,6 +8,24 @@
   const PANEL_ID = 'sleuth-canvas'
   const PANEL_LABEL = '诊断画布'
 
+  // 打开 DSH 会话：sessions.open(id) 由宿主界面负责切主区；客户端列表里没有这个 id 时会抛，
+  // 页面把错误变成一条可见提示，不做静默失败。
+  function makeSessionOpener(ctx) {
+    return function openSession(id) {
+      if (!id) return Promise.reject(new Error('这条 trace 没有 harness_session，找不到对应的 DSH 会话'))
+      let sessions = null
+      try { sessions = ctx.get('sessions') } catch (error) { sessions = null }
+      if (!sessions || typeof sessions.open !== 'function') {
+        return Promise.reject(new Error('sessions 服务不可用：当前界面打不开会话'))
+      }
+      try {
+        return Promise.resolve(sessions.open(String(id)))
+      } catch (error) {
+        return Promise.reject(error)
+      }
+    }
+  }
+
   function makeHost(ctx) {
     const connection = ctx.get('connection')
     return {
@@ -56,7 +74,7 @@
 
   SC.plugin = {
     name: 'dsh-sleuth-canvas',
-    inject: ['slots', 'connection'],
+    inject: ['slots', 'connection', 'sessions'],
     apply(ctx) {
       const slots = ctx.get('slots')
       if (slots === undefined) {
@@ -64,6 +82,7 @@
         return
       }
       SC.host = makeHost(ctx)
+      SC.openSession = makeSessionOpener(ctx)
 
       const disposers = []
       try {

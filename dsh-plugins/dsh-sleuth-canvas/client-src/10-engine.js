@@ -9,7 +9,7 @@
 //      fit()/双击仍保持整图适配语义（作为显式总览入口，允许缩到低于滚轮下限）。
 //   2. zoom < LOD_ZOOM 时节点改画紧凑块（色条+图标+家族短标签+step 数字，按 1/zoom 反缩放），
 //      列头同理；0.62–0.8 仍是完整卡。
-//   3. 画布小于 520×360 时不画迷你地图，避免压住内容。
+//   3. 画布小于 560×360 时不画迷你地图，避免压住内容。
 
 const FONT_STACK = 'ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif'
 const MONO_STACK = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace'
@@ -51,7 +51,7 @@ const INITIAL_FIT_ZOOM = 0.8
 const LOD_ZOOM = 0.62
 const INITIAL_LEFT_PADDING = 56
 // 窄画布上迷你地图会盖住内容（页面底部缩放钮又在它上方），小于这个尺寸就自动隐藏。
-const MINIMAP_MIN_W = 520
+const MINIMAP_MIN_W = 560
 const MINIMAP_MIN_H = 360
 
 const GRID_SPACING = 26
@@ -59,6 +59,8 @@ const DIM_ALPHA = 0.22
 const MINIMAP_W = 168
 const MINIMAP_H = 112
 const MINIMAP_MARGIN = 16
+// 空闲时半透明，指针进入迷你地图才完全显现：减少它压住列尾卡片的观感。
+const MINIMAP_IDLE_ALPHA = 0.55
 const MINIMAP_PAD = 10
 const PARTICLE_PERIOD = 3200
 const IDLE_AFTER = 6000
@@ -462,6 +464,7 @@ SC.createEngine = function createEngine(opts) {
 
   let dragging = null
   let miniDrag = false
+  let pointerScreen = null
   let prevTouchAction = ''
   let ro = null
   let winResizeBound = false
@@ -1759,12 +1762,14 @@ SC.createEngine = function createEngine(opts) {
     const b = model.bounds
     const map = minimapMap(panel)
 
+    const pointer = pointerScreen
+    const overPanel = pointer !== null && pointer !== undefined
+      && pointInRect(pointer.x, pointer.y, panel)
     ctx.save()
-    ctx.globalAlpha = 0.96
+    ctx.globalAlpha = overPanel ? 0.98 : MINIMAP_IDLE_ALPHA
     roundRectPath(ctx, panel.x, panel.y, panel.w, panel.h, 12)
     ctx.fillStyle = p.overlay
     ctx.fill()
-    ctx.globalAlpha = 1
     ctx.strokeStyle = p.border
     ctx.lineWidth = 1
     ctx.stroke()
@@ -2041,6 +2046,7 @@ SC.createEngine = function createEngine(opts) {
   function onPointerMove(ev) {
     if (dead) return
     const point = localPoint(ev)
+    pointerScreen = point
     if (miniDrag) {
       moveViewportFromMinimap(point.x, point.y)
       return
@@ -2101,8 +2107,10 @@ SC.createEngine = function createEngine(opts) {
 
   function onPointerLeave() {
     if (dragging || miniDrag) return
+    pointerScreen = null
     if (hovered !== null) setHoveredInternal(null)
     if (canvas.style) canvas.style.cursor = 'default'
+    touch()
   }
 
   function onWheel(ev) {
@@ -2236,6 +2244,21 @@ SC.createEngine = function createEngine(opts) {
     }
   }
 
+  // 导出当前视图：把画布像素合成到带主题底色的新画布，返回 dataURL。页面只负责下载。
+  function exportImage() {
+    if (dead || !canvas || !canvas.width || !canvas.height) return null
+    const copyCanvas = document.createElement('canvas')
+    copyCanvas.width = canvas.width
+    copyCanvas.height = canvas.height
+    const context = copyCanvas.getContext('2d')
+    if (!context) return null
+    const p = palette
+    context.fillStyle = p.surface
+    context.fillRect(0, 0, copyCanvas.width, copyCanvas.height)
+    context.drawImage(canvas, 0, 0)
+    return copyCanvas.toDataURL('image/png')
+  }
+
   function destroy() {
     if (dead) return
     dead = true
@@ -2310,6 +2333,7 @@ SC.createEngine = function createEngine(opts) {
     zoomBy: zoomBy,
     resize: resize,
     nodeRect: nodeRect,
+    exportImage: exportImage,
     destroy: destroy,
   }
 }

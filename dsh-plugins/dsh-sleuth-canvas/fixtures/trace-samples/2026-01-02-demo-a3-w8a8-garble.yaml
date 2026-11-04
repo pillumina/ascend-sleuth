@@ -1,5 +1,6 @@
 # 合成测试夹具：resolved 诊断 trace。全部内容为虚构，与任何真实客户现场无关。
 # 形状参考 ascend-sleuth 的 traces/*.yaml（手写 YAML 子集），字段含义见 docs/CONTRACT.md §2。
+harness_session: "demo-harness-9001"
 session_id: "2026-01-02-demo-a3-w8a8-garble"
 status: resolved
 current_step: 6
