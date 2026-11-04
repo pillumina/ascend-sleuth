@@ -21,15 +21,21 @@
 #
 # 用法：
 #   python3 scripts/groom_snapshot.py --list-remotes          # 多个远端时让用户选；只有一个可跳过
-#   python3 scripts/groom_snapshot.py --remote origin --require-fresh  # 只有一个时可省略 --remote
+#   python3 scripts/groom_snapshot.py --require-fresh         # 默认同步源读主检出 .local/settings.json 的 sync 段
+#   python3 scripts/groom_snapshot.py --remote origin --require-fresh  # 有多个远端且未配置时由用户选
 #   python3 scripts/groom_snapshot.py --remote origin --json   # 同上，stdout 输出 meta JSON
 #   python3 scripts/groom_snapshot.py --remote origin --offline  # 用本地已有引用，显式降级
 #   python3 scripts/groom_snapshot.py --prune                 # 清理旧的 groom 快照 worktree
+#
+# 同步源：优先读主检出 `.local/settings.json` 的 `sync.remote` / `sync.branch`（未进 git，
+# 各 worktree 共用一份）。配置缺失时保持原行为：`--list-remotes` 列出远端、由 agent 问用户，
+# `--remote` 显式指定时以它为准。
 #
 # 退出码：0 = 快照可用；2 = 同步失败 / 索引不可用 / --require-fresh 不满足；3 = 用法错误。
 
 import argparse
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -38,6 +44,7 @@ import tarfile
 from pathlib import Path
 
 from _stdio import pin_utf8_stdio
+from exec_log_path import main_checkout
 from groom_common import (
     SCHEMA_SNAPSHOT, atomic_write_text, dump_json, find_drafts, load_json, now_iso,
     repo_root, run_git, shared_inbox, short_sha,
@@ -45,6 +52,9 @@ from groom_common import (
 
 INDEX_CHECK = ["scripts/build_index.py", "--check"]
 INDEX_BUILD = ["scripts/build_index.py"]
+
+SETTINGS_REL = Path(".local/settings.json")
+SETTINGS_SCHEMA_PREFIX = "ascend-sleuth-settings/"
 
 
 def _child_env():
@@ -76,6 +86,36 @@ def list_remotes(root: Path):
             seen.add(parts[0])
             names.append({"name": parts[0]})
     return names
+
+
+def load_sync_settings(root: Path):
+    """读主检出 `.local/settings.json` 的 `sync` 段 → (remote, branch, error)。
+
+    配置缺失（没有文件、或文件里没有 `sync`）返回 (None, None, None)：调用方退回
+    `--list-remotes` 那套问用户的行为。文件在但读不出或结构不对返回 error，调用方会说明一句后
+    按未配置处理——拼错的配置若被当成"没配置"而不出声，同步源会静默换成另一个远端。
+    """
+    base = main_checkout(root) or root
+    path = base / SETTINGS_REL
+    if not path.is_file():
+        return None, None, None
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as e:
+        return None, None, f"{path} 读不出：{e}"
+    if not isinstance(doc, dict):
+        return None, None, f"{path} 顶层不是对象"
+    schema = str(doc.get("schema") or "")
+    if schema and not schema.startswith(SETTINGS_SCHEMA_PREFIX):
+        return None, None, f"{path} 的 schema {schema!r} 不认（本脚本认 {SETTINGS_SCHEMA_PREFIX}*）"
+    sync = doc.get("sync")
+    if sync is None:
+        return None, None, None
+    if not isinstance(sync, dict):
+        return None, None, f"{path} 的 sync 段不是对象"
+    remote = str(sync.get("remote") or "").strip() or None
+    branch = str(sync.get("branch") or "").strip() or None
+    return remote, branch, None
 
 
 def _fetch(root: Path, remote: str, branch: str):
@@ -477,8 +517,8 @@ def main():
     ap.add_argument("--list-remotes", action="store_true",
                     help="列出已配置远端名；多个远端时由 agent 问用户")
     ap.add_argument("--remote", default=None,
-                    help="同步源远端名；只有一个远端时可省略，多个时必须先问用户")
-    ap.add_argument("--branch", default="main")
+                    help="同步源远端名；默认取配置 sync.remote，缺省按本机远端（单个自动用，多个须先问）")
+    ap.add_argument("--branch", default=None, help="分支名（默认取配置 sync.branch，再缺省 main）")
     ap.add_argument("--snapshot-dir", default=None,
                     help="快照根目录（默认：共享 inbox 的 .groom/snapshots）")
     ap.add_argument("--offline", action="store_true",
@@ -495,6 +535,13 @@ def main():
 
     root = Path(args.repo).resolve() if args.repo else Path.cwd()
     root = repo_root(root)
+    cfg_remote, cfg_branch, cfg_error = load_sync_settings(root)
+    if cfg_error:
+        # 配置损坏不报错退出：退回"没配置"的既有行为（问用户），只说明一句。
+        print(f"groom_snapshot: {cfg_error}（本次按未配置处理）", file=sys.stderr)
+        cfg_remote = cfg_branch = None
+    if not args.branch:
+        args.branch = cfg_branch or "main"
     if args.cleanup:
         result = cleanup_snapshot(root, snapshot_dir=args.snapshot_dir, branch=args.branch,
                                   commit=args.cleanup_commit)
@@ -511,15 +558,25 @@ def main():
     if args.list_remotes:
         remotes = list_remotes(root)
         if args.json:
-            print(dump_json({"schema": "groom-sync-sources/v1", "repo": str(root),
-                             "remotes": remotes}), end="")
+            payload = {"schema": "groom-sync-sources/v1", "repo": str(root), "remotes": remotes}
+            # 没有配置时不加字段：保持既有输出形状，调用方不必改。
+            if cfg_remote or cfg_branch:
+                payload["configured"] = {"remote": cfg_remote, "branch": cfg_branch}
+            print(dump_json(payload), end="")
         else:
             print("可用的同步源（把远端名给用户，由用户确认从哪个更新）：")
             for r in remotes:
                 print(f"  {r['name']}")
             if not remotes:
                 print("  （没有配置远端；由用户决定 git remote add <name> <url>）")
+            if cfg_remote:
+                suffix = f"（分支 {cfg_branch}）" if cfg_branch else ""
+                print(f"  配置里的同步源：{cfg_remote}{suffix}——有配置时直接用，不必再选。")
         return 0
+    if not args.remote and cfg_remote:
+        args.remote = cfg_remote
+        print(f"groom_snapshot: 同步源取自 .local/settings.json（sync.remote={cfg_remote}）。",
+              file=sys.stderr)
     if not args.remote:
         names = [r["name"] for r in list_remotes(root)]
         if len(names) == 1:

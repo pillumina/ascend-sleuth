@@ -10,6 +10,7 @@
 用例引用的 case id 从生成的 `knowledge/_index.yaml` 里现取（不硬编码），case 增删不会让本测试腐烂。
 """
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -75,16 +76,22 @@ class _MetricsHarness(unittest.TestCase):
             text = text.replace("  - role: agent\n    action: hit\n    case: %s\n" % case_val, "")
         (self.traces / f"{sid}.yaml").write_text(text, encoding="utf-8")
 
-    def metrics(self):
+    def run_metrics(self, *extra_args):
         # `encoding="utf-8"` 必须显式给：脚本侧把 stdout 钉成 UTF-8（scripts/_stdio.py），
         # 而 Windows 上的父进程按 locale（中文系统 = GBK）解码，读线程会抛 UnicodeDecodeError、
         # `r.stdout` 留 None——本地看到的是"空输出"，Linux CI 不暴露。
         r = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "trace_metrics.py"),
-             "--root", str(ROOT), "--traces-dir", str(self.traces), "--emit-yaml-only"],
+             "--root", str(ROOT), "--traces-dir", str(self.traces), *extra_args],
             capture_output=True, text=True, encoding="utf-8", timeout=120)
         self.assertEqual(r.returncode, 0, r.stderr)
-        return (yaml.safe_load(r.stdout) or {}).get("metrics") or {}
+        return r.stdout
+
+    def metrics(self):
+        return (yaml.safe_load(self.run_metrics("--emit-yaml-only")) or {}).get("metrics") or {}
+
+    def metrics_json(self, *extra_args):
+        return json.loads(self.run_metrics("--json", *extra_args))
 
 
 class TraceMetricsTest(_MetricsHarness):
@@ -268,6 +275,82 @@ class OfflineReplayRecordsTest(_MetricsHarness):
         m = self.metrics()
         self.assertEqual(len(m["trace_record_violations"]), 5)
         self.assertEqual(m["trace_record_violations_total"], 6)
+
+
+class KbBaselineSliceTest(_MetricsHarness):
+    """知识基线切片（RFC #432）：kb_behind 三组解决率 + kb_merge 触发率。
+
+    解决率的分母是组内 session 数，判据沿用脚本内 `status == "resolved"`——与 reference
+    引用后 resolve、Tier 3 挽救同一处，不另立一套。字段缺失（旧 trace）计入 unknown 组，
+    不回填、不猜。
+    """
+
+    def test_old_trace_without_fields_goes_to_unknown(self):
+        """旧 trace 两个字段都没有：只进 unknown 组，其余两组无样本。"""
+        self.write_session("s1-old")
+        kb = self.metrics_json("--kb-baseline")["kb_baseline"]
+        self.assertEqual(kb["resolution"]["unknown"], {"ok": 1, "total": 1})
+        self.assertEqual(kb["resolution"]["behind"], {"ok": 0, "total": 0})
+        self.assertEqual(kb["resolution"]["current"], {"ok": 0, "total": 0})
+        self.assertEqual(kb["merge"], {"ff_only": 0, "total": 0})
+
+    def test_behind_zero_and_positive_split_into_two_groups(self):
+        """kb_behind = 0 进「最新」，> 0 进「落后」；解决与否按 status 判。"""
+        self.write_session("s1-current", status="resolved", extra="kb_behind: 0\n")
+        self.write_session("s2-behind", status="not_resolved", extra="kb_behind: 7\n")
+        self.write_session("s3-behind", status="resolved", extra="kb_behind: 3\n")
+        kb = self.metrics_json("--kb-baseline")["kb_baseline"]
+        self.assertEqual(kb["resolution"]["current"], {"ok": 1, "total": 1})
+        self.assertEqual(kb["resolution"]["behind"], {"ok": 1, "total": 2})
+        self.assertEqual(kb["resolution"]["unknown"], {"ok": 0, "total": 0})
+
+    def test_unknown_literal_and_missing_share_one_group(self):
+        """`kb_behind: "unknown"` 与字段缺失同列 unknown，不与数字组混算。"""
+        self.write_session("s1-unknown", extra='kb_behind: "unknown"\n')
+        self.write_session("s2-missing")
+        self.write_session("s3-behind", status="not_resolved", extra="kb_behind: 2\n")
+        kb = self.metrics_json("--kb-baseline")["kb_baseline"]
+        self.assertEqual(kb["resolution"]["unknown"], {"ok": 2, "total": 2})
+        self.assertEqual(kb["resolution"]["behind"], {"ok": 0, "total": 1})
+        self.assertEqual(kb["resolution"]["current"], {"ok": 0, "total": 0})
+
+    def test_merge_rate_counts_only_sessions_with_the_field(self):
+        """触发率的分母 = 有 kb_merge 字段的单；ff-only 记触发，none 记未触发。"""
+        self.write_session("s1-ff", extra="kb_merge: ff-only\n")
+        self.write_session("s2-ff", extra="kb_merge: ff-only\n")
+        self.write_session("s3-none", extra="kb_merge: none\n")
+        self.write_session("s4-missing")
+        kb = self.metrics_json("--kb-baseline")["kb_baseline"]
+        self.assertEqual(kb["merge"], {"ff_only": 2, "total": 3})
+
+    def test_slice_is_opt_in_and_stays_out_of_the_snapshot(self):
+        """默认输出不含切片；--emit-yaml 即使带开关也不产出该字段（live 白名单）。"""
+        self.write_session("s1-kb", extra="kb_behind: 5\nkb_merge: ff-only\n")
+        self.assertNotIn("KB 基线切片", self.run_metrics())
+        human = self.run_metrics("--kb-baseline")
+        self.assertIn("落后 1/1 (100%)", human)
+        self.assertIn("ff-only 1/1 (100%)", human)
+        snap = yaml.safe_load(self.run_metrics("--emit-yaml-only", "--kb-baseline"))["metrics"]
+        self.assertNotIn("kb_baseline", snap)
+
+    def test_invalid_kb_fields_are_reported(self):
+        """kb_behind 非整数、kb_merge 词表外：计入 unknown / 分母，同时按字段违规报出来。"""
+        self.write_session("s1-bad", extra="kb_behind: many\nkb_merge: fast-forward\n")
+        m = self.metrics_json("--kb-baseline")
+        self.assertEqual(m["kb_baseline"]["resolution"]["unknown"]["total"], 1)
+        self.assertEqual(m["kb_baseline"]["merge"], {"ff_only": 0, "total": 1})
+        self.assertEqual(
+            m["trace_record_violations"],
+            ["s1-bad: kb_behind 应为整数或 'unknown'（'many'）",
+             "s1-bad: kb_merge 应为 'ff-only' 或 'none'（'fast-forward'）"])
+
+    def test_unhashable_kb_values_do_not_crash(self):
+        """两个字段写成列表：按违规报出，读数照常产出（字段坏了不中断整张表）。"""
+        self.write_session("s1-list", extra="kb_behind: [3]\nkb_merge: [ff-only]\n")
+        m = self.metrics_json("--kb-baseline")
+        self.assertEqual(m["kb_baseline"]["resolution"]["unknown"]["total"], 1)
+        self.assertEqual(m["kb_baseline"]["merge"], {"ff_only": 0, "total": 1})
+        self.assertEqual(len(m["trace_record_violations"]), 2)
 
 
 if __name__ == "__main__":
