@@ -126,6 +126,7 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 
 - `postmortems/inbox/<case-id>.md`（postmortem 或指针）
 - `postmortems/inbox/<case-id>.case.yaml`（YAML 草稿）
+- 草稿 case YAML 顶层加 `created_at: <ISO-8601 带时区>`。它只给沉淀队列算年龄、提醒超过 2 周；升格写进 `knowledge/` 时删掉，它不是 case schema 字段。
 - inbox 是**待审队列**（见 `postmortems/inbox/README.md`）：每周 `/skill:knowledge-groom` 批处理三分类（new_pattern / variant_of / covered_by）后人审。审完：postmortem 转正 `../YYYY-QN/`（covered 也转正——Tier 3 语料，不是丢弃）、new 的草稿升格 `knowledge/<ns>/`
 
 **同一个问题只沉淀一次**——本 skill **只有新增路径、没有更新模式**，重复调用不会改已有条目：

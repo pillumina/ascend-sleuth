@@ -1,0 +1,1115 @@
+#!/usr/bin/env python3
+# pr_status.py —— 提 PR 的目标（target）与每份草稿的 PR 台账（prs），带平台适配器派发
+#
+# 为什么需要它：队列停在「已提 PR · 合入未确认」之后，界面要回答两个问题——「提到哪」
+# 与「合入没有」——而这两件事实都有多个写侧（agent 开完 PR 写台账、人手动确认、平台查询）。
+# 让每个写侧各自手编 JSON 会漂移：字段名不一致、状态被推断、丢 checked_at。所以台账只有
+# 这一个读写入口：原子写 + 文件字节 sha256 CAS，agent 不手编 JSON（设计 5.6、5.7）。
+#
+# 它做什么：
+#   1. 台账读写（`<inbox>/.groom/pr-state.json`，共享 inbox，同一克隆的 worktree 共用）；
+#   2. 列远端并识别平台（`--list-targets`，不探测网络）；
+#   3. 写目标与 PR 记录（`--set-target` / `--set` / `--mark`）；
+#   4. 按 PR URL 的 host 查状态（`--check` / `--check-all`）。状态只由平台查询或人手确认
+#      更新，不由「分支是否存在」「commit 是否在 main」推断（设计 5.6）。
+#
+# 平台适配两层（加平台不改本文件，设计 5.8）：
+#   - 声明式：`scripts/platforms/<id>.yaml`，REST + token；本文件用 urllib 执行；
+#   - 可执行：`scripts/platforms/<id>.py`，暴露 ID/NAME/HOSTS/REQUIRES/check()/create_hint()/
+#     可选 selftest()。本文件用 importlib 加载，**import 时不跑子进程**——只有 check() 跑 CLI。
+#
+# 输出纪律：每条命令都往 stdout 写一份 UTF-8 JSON（末尾一个换行）。业务失败（无适配器、
+# 无 token、网络错、CAS 冲突）`ok:false` 且退出 0（调用方只看 ok）；参数错误退出 2。
+# **任何路径都不打印 token**：HTTP 错误信息里的 query 值一律打码。
+#
+# 用法：
+#   python3 scripts/pr_status.py --root <repo> --json
+#   python3 scripts/pr_status.py --root <repo> --list-targets
+#   python3 scripts/pr_status.py --root <repo> --set-target --remote origin --base main
+#   python3 scripts/pr_status.py --root <repo> --set --draft <key> --platform gitcode \
+#       --repo owner/repo --number 418 --url <url> [--remote origin]
+#   python3 scripts/pr_status.py --root <repo> --mark --draft <key> --state merged
+#   python3 scripts/pr_status.py --root <repo> --check --draft <key>
+#   python3 scripts/pr_status.py --root <repo> --check-all
+#   python3 scripts/pr_status.py --root <repo> --list-platforms
+#   python3 scripts/pr_status.py --root <repo> --selftest gitcode
+#
+# 退出码：0 正常（含业务失败）；2 参数错误；1 未预期异常。
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import os
+import re
+import shutil
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from pathlib import Path
+
+import yaml
+
+from _stdio import pin_utf8_stdio
+from exec_log_path import log_lock
+from groom_common import (
+    atomic_write_text, dump_json, load_json, now_iso, run_git, shared_inbox,
+)
+
+SCHEMA = "groom-pr-state/v1"
+LEDGER_REL = Path(".groom") / "pr-state.json"
+PLATFORMS_DIR = Path(__file__).resolve().parent / "platforms"
+STATES = ("open", "merged", "closed", "unknown")
+#: 只有这两个状态需要去平台查；merged/closed 是终态，不重复查。
+CHECKABLE = ("open", "unknown")
+
+DEFAULT_BASE = "main"
+HTTP_TIMEOUT_S = 10
+
+# 未预期异常统一折成 JSON，调用方不必解析 traceback。
+EXIT_OK = 0
+EXIT_ERROR = 1
+EXIT_ARGS = 2
+
+
+class LedgerError(RuntimeError):
+    """台账读不出来（坏 JSON / 不是对象）。调用方折成 E_LEDGER。"""
+
+
+class CasConflict(LedgerError):
+    """写前发现文件字节已变（别的进程写过）。调用方折成 E_CAS，不覆盖。"""
+
+    def __init__(self, expected: str, actual: str):
+        super().__init__(f"台账已被改动：expect {expected or '（文件不存在）'}，实际 {actual or '（文件不存在）'}")
+        self.expected = expected
+        self.actual = actual
+
+
+# ---------------------------------------------------------------- 台账：路径 / 读 / 原子写 + CAS
+
+def ledger_path(root) -> Path:
+    return Path(shared_inbox(Path(root))) / LEDGER_REL
+
+
+def empty_ledger() -> dict:
+    return {"schema": SCHEMA, "updated_at": "", "target": None, "prs": {}}
+
+
+def file_sha256(path: Path):
+    """文件字节的 sha256（不归一换行：CAS 比的是磁盘上的那一份）。文件不存在返回 None。"""
+    import hashlib
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise LedgerError(f"读台账失败：{exc}") from exc
+
+
+def ledger_sha256(root) -> str:
+    return file_sha256(ledger_path(root))
+
+
+def load_ledger(root) -> dict:
+    """读台账。不存在返回空台账（首次使用不是错误）；坏文件抛 LedgerError。"""
+    path = ledger_path(root)
+    if not path.exists():
+        return empty_ledger()
+    try:
+        data = load_json(path)
+    except Exception as exc:
+        raise LedgerError(f"台账不是合法 JSON（{path}）：{exc}") from exc
+    if not isinstance(data, dict):
+        raise LedgerError(f"台账顶层不是对象（{path}）")
+    data.setdefault("schema", SCHEMA)
+    data.setdefault("updated_at", "")
+    data.setdefault("target", None)
+    prs = data.get("prs")
+    if prs is None:
+        data["prs"] = {}
+    elif not isinstance(prs, dict):
+        raise LedgerError("台账 `prs` 不是对象")
+    return data
+
+
+def _load_ledger_soft(root) -> dict:
+    """只读场景（列目标）用：坏台账不阻断远端列表，退化成空台账。"""
+    try:
+        return load_ledger(root)
+    except LedgerError:
+        return empty_ledger()
+
+
+def save_ledger(root, data: dict, expect_sha=None) -> str:
+    """原子写台账，并做文件字节 sha256 CAS。
+
+    CAS 语义：`expect_sha` 给了就必须等于写前读到的那一版字节哈希，否则抛 CasConflict
+    （两个 agent 同时写台账时，后写者不能静默覆盖先写者）。写后重新读一遍字节校验，
+    确认落盘的就是本次序列化的内容。返回新文件哈希，供下一次 CAS 用。
+    """
+    import hashlib
+    path = ledger_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data["schema"] = SCHEMA
+    data["updated_at"] = now_iso()
+    text = dump_json(data)
+    with log_lock(path) as locked:
+        if not locked:
+            raise LedgerError(f"台账写锁不可用：{path}")
+        actual = file_sha256(path)
+        if expect_sha is not None and actual != expect_sha:
+            raise CasConflict(expect_sha, actual or "")
+        atomic_write_text(path, text)
+        written = hashlib.sha256(path.read_bytes()).hexdigest()
+    expected = hashlib.sha256(text.encode("utf-8")).hexdigest()
+    if written != expected:
+        raise LedgerError("台账写后校验失败（磁盘内容与本次序列化不一致）")
+    return written
+
+
+# ---------------------------------------------------------------- 远端 URL / 平台适配器
+
+def parse_remote_url(url) -> dict:
+    """远端 URL → {scheme, host, repo}。支持 https/ssh:// 与 scp 风格 `git@host:o/r.git`。
+
+    远端用 SSH 还是 HTTPS 都要能识别 host（设计 5.7 的边界）；本地路径/纯镜像返回空 host，
+    由调用方按「没有适配器」处理。
+    """
+    text = str(url or "").strip()
+    if not text:
+        return {"scheme": "", "host": "", "repo": "", "path": ""}
+    scheme, host, path = "", "", ""
+    match = re.match(r"^(?P<scheme>[A-Za-z][A-Za-z0-9+.-]*)://(?P<rest>.+)$", text)
+    if match:
+        scheme = match.group("scheme").lower()
+        rest = match.group("rest")
+        hostpart, _, raw_path = rest.partition("/")
+        host = hostpart.rsplit("@", 1)[-1]
+        if host.startswith("["):            # IPv6
+            host = host.split("]")[0].lstrip("[")
+        elif ":" in host:                    # host:port
+            host = host.rsplit(":", 1)[0]
+        path = raw_path
+    elif "@" in text and ":" in text.split("@", 1)[1]:
+        scheme = "ssh"
+        userhost, _, path = text.partition(":")
+        host = userhost.rsplit("@", 1)[-1]
+    elif re.match(r"^[^/\\]+:.+$", text) and not re.match(r"^[A-Za-z]:[\\/]", text):
+        scheme = "ssh"
+        host, _, path = text.partition(":")
+    else:
+        scheme = "local"
+        path = text
+    path = path.strip("/")
+    if path.endswith(".git"):
+        path = path[:-4]
+    parts = [p for p in path.split("/") if p]
+    return {"scheme": scheme, "host": host.strip().lower(), "repo": "/".join(parts),
+            "path": path}
+
+
+def _split_repo(repo: str):
+    """`owner/repo` → (owner, repo)；子组路径归到第一段后，避免占位符留下空串。"""
+    parts = [p for p in str(repo or "").split("/") if p]
+    if not parts:
+        return "", ""
+    if len(parts) == 1:
+        return parts[0], parts[0]
+    return parts[0], "/".join(parts[1:])
+
+
+def _subst(text, adapter: dict, repo: str, number) -> str:
+    """替换适配器清单里的占位符：{owner} {repo} {number} {env:NAME}，以及 {TOKEN_ENV}。
+
+    为什么同时支持两种 token 写法：契约规定 `{env:NAME}`，而设计稿与示例清单写的是
+    `{GITCODE_TOKEN}`。两者读起来一样，只支持一种就会让照设计稿写的新适配器拿不到值。
+    未知占位符原样保留（能看见「哪里没替换」，而不是变成空串）。
+    """
+    owner, name = _split_repo(repo)
+
+    def repl(match):
+        key = match.group(1)
+        if key == "owner":
+            return owner
+        if key == "repo":
+            return name
+        if key == "number":
+            return "" if number is None else str(number)
+        if key.startswith("env:"):
+            return os.environ.get(key[4:], "")
+        if key == (adapter.get("auth_env") or ""):
+            return os.environ.get(key, "")
+        if key in os.environ:
+            return os.environ[key]
+        return match.group(0)
+
+    return re.sub(r"\{([A-Za-z0-9_:]+)\}", repl, str(text))
+
+
+def _redact_url(url: str) -> str:
+    """错误信息里的 URL：query 值全部打码（token 常在 query 里）。"""
+    try:
+        parts = urllib.parse.urlsplit(url)
+        if parts.query:
+            pairs = [(urllib.parse.quote(k), "***")
+                     for k, _ in urllib.parse.parse_qsl(parts.query, keep_blank_values=True)]
+            query = "&".join(f"{key}={value}" for key, value in pairs)
+            return urllib.parse.urlunsplit(
+                (parts.scheme, parts.netloc, parts.path, query, parts.fragment))
+    except Exception:
+        pass
+    return url
+
+
+def _norm_state(value) -> str:
+    state = str(value or "").strip().lower()
+    return state if state in STATES else "unknown"
+
+
+def _json_path(data, expr):
+    """`$.a.b` / `a.b` 取值；路径断开返回 None（不抛）。"""
+    if not isinstance(expr, str):
+        return None
+    path = expr[2:] if expr.startswith("$.") else ("$" if expr == "$" else expr.lstrip("$."))
+    if path == "$" or path == "":
+        return data
+    current = data
+    for part in path.split("."):
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current
+
+
+def _json_set(data, expr, value) -> None:
+    """按同一种点路径写值；只给 selftest 造响应，运行时不使用。"""
+    path = expr[2:] if expr.startswith("$.") else expr.lstrip("$.")
+    current = data
+    parts = [p for p in path.split(".") if p]
+    for part in parts[:-1]:
+        if not isinstance(current.get(part), dict):
+            current[part] = {}
+        current = current[part]
+    if parts:
+        current[parts[-1]] = value
+
+
+def _when_matches(actual, expected) -> bool:
+    """normalize 的 when 比较：只支持 true / false / 字符串 / null，不实现表达式语言。"""
+    if expected is True:
+        return actual is True
+    if expected is False:
+        return actual is False
+    if expected is None:
+        return actual is None
+    return actual == expected
+
+
+def _normalize(rules, mapped: dict) -> str:
+    fallback = None
+    for rule in rules or []:
+        if not isinstance(rule, dict):
+            continue
+        state = _norm_state(rule.get("state"))
+        when = rule.get("when")
+        if not when:
+            if fallback is None:
+                fallback = state
+            continue
+        if isinstance(when, dict) and all(_when_matches(mapped.get(k), v) for k, v in when.items()):
+            return state
+    return fallback if fallback is not None else "unknown"
+
+
+def _manifest_problem(doc: dict) -> str:
+    if not isinstance(doc, dict):
+        return "清单顶层不是对象"
+    if not str(doc.get("id") or "").strip():
+        return "缺 id"
+    if not str(doc.get("name") or "").strip():
+        return "缺 name"
+    hosts = doc.get("hosts")
+    if not isinstance(hosts, list) or not [h for h in hosts if str(h or "").strip()]:
+        return "hosts 不是非空列表"
+    check = doc.get("check")
+    if not isinstance(check, dict):
+        return "缺 check 段"
+    if not str(check.get("url") or "").strip():
+        return "check 缺 url"
+    method = str(check.get("method") or "GET").upper()
+    if method not in ("GET", "POST"):
+        return f"check.method 不支持：{method}"
+    if not isinstance(check.get("map"), dict) or not check.get("map"):
+        return "check 缺 map"
+    normalize = check.get("normalize")
+    if not isinstance(normalize, list) or not normalize:
+        return "check 缺 normalize"
+    for rule in normalize:
+        if not isinstance(rule, dict) or _norm_state(rule.get("state")) == "unknown":
+            return "normalize 的 state 不在 open/merged/closed/unknown 里"
+    scheme = urllib.parse.urlsplit(str(check.get("url"))).scheme.lower()
+    if scheme not in ("http", "https"):
+        return f"check.url 只允许 http/https：{scheme or '（无 scheme）'}"
+    return ""
+
+
+def _profile(adapter: dict) -> dict:
+    """适配器的人读状态：清单是否完整、依赖与 token 在不在（不做网络探测）。"""
+    base = {
+        "id": adapter.get("id", ""),
+        "name": adapter.get("name", ""),
+        "hosts": list(adapter.get("hosts") or []),
+        "kind": adapter.get("kind", ""),
+        "auth_env": adapter.get("auth_env") or "",
+        "requires": list(adapter.get("requires") or []),
+        "install_hint": adapter.get("install_hint") or "",
+        "broken": bool(adapter.get("broken")),
+        "reason": adapter.get("reason") or "",
+        "token_ready": False,
+        "requires_ok": False,
+        "available": False,
+    }
+    if adapter.get("broken"):
+        base["reason"] = "清单损坏：" + (adapter.get("reason") or "未知原因")
+        return base
+    missing = [cmd for cmd in base["requires"] if shutil.which(cmd) is None]
+    base["requires_ok"] = not missing
+    base["token_ready"] = not base["auth_env"] or bool(os.environ.get(base["auth_env"]))
+    if not base["requires_ok"]:
+        base["reason"] = "缺少命令：" + "、".join(missing)
+    elif not base["token_ready"]:
+        base["reason"] = f"未配置 token 环境变量：{base['auth_env']}"
+    base["available"] = base["requires_ok"] and base["token_ready"]
+    return base
+
+
+def _base_adapter(path: Path) -> dict:
+    return {"id": path.stem, "name": path.stem, "hosts": [], "kind": "",
+            "auth_env": None, "requires": [], "install_hint": "",
+            "path": str(path)}
+
+
+def _load_yaml_adapter(path: Path) -> dict:
+    adapter = _base_adapter(path)
+    adapter["kind"] = "http"
+    try:
+        with open(path, encoding="utf-8-sig") as fh:
+            doc = yaml.safe_load(fh)
+    except Exception as exc:
+        adapter.update(broken=True, reason=f"YAML 解析失败：{exc}")
+        return adapter
+    problem = _manifest_problem(doc)
+    if problem:
+        adapter.update(broken=True, reason=problem)
+        if isinstance(doc, dict):
+            adapter["id"] = str(doc.get("id") or path.stem)
+            adapter["name"] = str(doc.get("name") or path.stem)
+        return adapter
+    adapter.update({
+        "id": str(doc["id"]),
+        "name": str(doc["name"]),
+        "hosts": [str(h).strip().lower() for h in doc["hosts"] if str(h).strip()],
+        "auth_env": str(doc.get("auth_env") or "") or None,
+        "requires": [str(c) for c in (doc.get("requires") or [])],
+        "install_hint": str(doc.get("install_hint") or ""),
+        "spec": doc,
+        "create_hint": str(doc.get("create_hint") or ""),
+    })
+    return adapter
+
+
+def _load_py_adapter(path: Path) -> dict:
+    adapter = _base_adapter(path)
+    adapter["kind"] = "exec"
+    module_name = f"_pr_platform_{re.sub(r'[^A-Za-z0-9_]', '_', path.stem)}"
+    try:
+        spec = importlib.util.spec_from_file_location(module_name, str(path))
+        if spec is None or spec.loader is None:
+            adapter.update(broken=True, reason="无法构造 importlib spec")
+            return adapter
+        module = importlib.util.module_from_spec(spec)
+        # 只加载模块：适配器契约要求 import 时不跑子进程（命令只在 check() 里跑）。
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        adapter.update(broken=True, reason=f"import 失败：{type(exc).__name__}: {exc}")
+        return adapter
+    hosts = getattr(module, "HOSTS", None)
+    problems = []
+    if not str(getattr(module, "ID", "") or "").strip():
+        problems.append("缺 ID")
+    if not str(getattr(module, "NAME", "") or "").strip():
+        problems.append("缺 NAME")
+    if not isinstance(hosts, list) or not hosts:
+        problems.append("HOSTS 不是非空列表")
+    if not callable(getattr(module, "check", None)):
+        problems.append("缺 check()")
+    if problems:
+        adapter.update(broken=True, reason="、".join(problems))
+        return adapter
+    adapter.update({
+        "id": str(module.ID),
+        "name": str(module.NAME),
+        "hosts": [str(h).strip().lower() for h in hosts if str(h).strip()],
+        "auth_env": str(getattr(module, "AUTH_ENV", "") or "") or None,
+        "requires": [str(c) for c in (getattr(module, "REQUIRES", None) or [])],
+        "install_hint": str(getattr(module, "INSTALL_HINT", "") or ""),
+        "module": module,
+    })
+    return adapter
+
+
+def load_adapters() -> list:
+    """读 `platforms/*.yaml` 与 `*.py`。清单坏了不抛：标 broken + reason，列表照出。"""
+    base = Path(PLATFORMS_DIR)
+    if not base.is_dir():
+        return []
+    adapters = []
+    seen = set()
+    for path in sorted(base.iterdir()):
+        if path.name.startswith((".", "_")) or not path.is_file():
+            continue
+        if path.suffix not in (".yaml", ".yml", ".py"):
+            continue
+        adapter = _load_yaml_adapter(path) if path.suffix in (".yaml", ".yml") \
+            else _load_py_adapter(path)
+        key = str(adapter.get("id") or path.stem)
+        if key in seen:
+            continue
+        seen.add(key)
+        adapters.append(adapter)
+    return adapters
+
+
+def find_adapter(adapters, platform_id):
+    for adapter in adapters:
+        if adapter.get("id") == platform_id:
+            return adapter
+    return None
+
+
+def adapter_for_host(adapters, host):
+    host = str(host or "").strip().lower()
+    if not host:
+        return None
+    for adapter in adapters:
+        if host in (adapter.get("hosts") or []):
+            return adapter
+    return None
+
+
+def adapter_for_url(adapters, url):
+    return adapter_for_host(adapters, parse_remote_url(url)["host"])
+
+
+# ---------------------------------------------------------------- 远端清单与目标推荐
+
+def _git_remotes(root) -> list:
+    proc = run_git(["remote", "-v"], cwd=root, check=False)
+    if proc.returncode != 0:
+        return []
+    pairs = []
+    seen = set()
+    for line in (proc.stdout or "").splitlines():
+        parts = line.split()
+        if len(parts) < 3 or parts[2] != "(fetch)":
+            continue
+        name, url = parts[0], parts[1]
+        if name in seen:
+            continue
+        seen.add(name)
+        pairs.append((name, url))
+    return pairs
+
+
+def _remote_base(root, name: str) -> str:
+    """远端 HEAD 指向的分支名；取不到用 main（设计 5.7：base 不写死 main，但没有信息时兜底）。"""
+    proc = run_git(["symbolic-ref", f"refs/remotes/{name}/HEAD"], cwd=root, check=False)
+    ref = (proc.stdout or "").strip()
+    if proc.returncode == 0 and ref:
+        tail = ref.rsplit("/", 1)[-1]
+        if tail and tail != "HEAD":
+            return tail
+    return DEFAULT_BASE
+
+
+def _upstream_remote(root) -> str:
+    proc = run_git(["rev-parse", "--abbrev-ref", "@{u}"], cwd=root, check=False)
+    ref = (proc.stdout or "").strip()
+    if proc.returncode != 0 or "/" not in ref:
+        return ""
+    return ref.split("/", 1)[0]
+
+
+def _normalize_target(target):
+    if not isinstance(target, dict) or not str(target.get("remote") or "").strip():
+        return None
+    out = {
+        "remote": str(target.get("remote")), "base": str(target.get("base") or DEFAULT_BASE),
+        "platform": str(target.get("platform") or ""), "url": str(target.get("url") or ""),
+        "note": str(target.get("note") or ""),
+        "labels": target.get("labels") if isinstance(target.get("labels"), dict) else {},
+        "source": str(target.get("source") or "user"),
+        "chosen_at": str(target.get("chosen_at") or ""),
+    }
+    return out
+
+
+def _last_used(ledger: dict, remote_name: str, repo: str, platform: str) -> str:
+    """该远端「上次使用」= 台账里最近一条相关 PR 的 created_at。
+
+    PR 台账没有远端字段时按 repo（owner/repo）、再按 platform 兜底；有 `remote` 字段的条目
+    只按 remote 匹配——否则同一个 platform 的两个远端会互相冒充「上次使用」。
+    """
+    prs = [p for p in (ledger.get("prs") or {}).values() if isinstance(p, dict)]
+    direct = [str(p.get("created_at") or "") for p in prs
+              if str(p.get("remote") or "") == remote_name and p.get("created_at")]
+    if direct:
+        return max(direct)
+    fallback = []
+    for pr in prs:
+        if pr.get("remote") or not pr.get("created_at"):
+            continue
+        pr_repo = str(pr.get("repo") or "")
+        if repo and pr_repo.lower() == repo.lower():
+            fallback.append(str(pr["created_at"]))
+        elif not repo and platform and str(pr.get("platform") or "") == platform:
+            fallback.append(str(pr["created_at"]))
+    return max(fallback) if fallback else ""
+
+
+def _recommend(root, target, remotes) -> dict:
+    by_name = {r["name"]: r for r in remotes}
+    if target and target.get("remote") in by_name:
+        saved = by_name[target["remote"]]
+        # 已保存的目标只在平台仍可识别时推荐（远端还在但适配器没了，等于换了平台）。
+        if saved["has_adapter"]:
+            return {"remote": saved["name"], "base": target.get("base") or saved["base"],
+                    "reason": "上次选择的目标"}
+    upstream = _upstream_remote(root)
+    if upstream and upstream in by_name:
+        return {"remote": upstream, "base": by_name[upstream]["base"],
+                "reason": "当前分支的上游"}
+    if len(remotes) == 1:
+        return {"remote": remotes[0]["name"], "base": remotes[0]["base"],
+                "reason": "只有一个远端"}
+    return None
+
+
+def list_targets(root) -> dict:
+    """远端清单 + 已保存目标 + 推荐。只读、不探测网络（设计 5.7）。"""
+    root = Path(root)
+    ledger = _load_ledger_soft(root)
+    target = _normalize_target(ledger.get("target"))
+    adapters = load_adapters()
+    remotes = []
+    for name, url in _git_remotes(root):
+        parsed = parse_remote_url(url)
+        adapter = adapter_for_host(adapters, parsed["host"])
+        profile = _profile(adapter) if adapter else {}
+        remotes.append({
+            "name": name,
+            "url": url,
+            "host": parsed["host"],
+            "platform": adapter.get("id", "") if adapter else "",
+            "platform_name": adapter.get("name", "") if adapter else "",
+            "base": _remote_base(root, name),
+            "has_adapter": bool(adapter),
+            "token_ready": bool(profile.get("token_ready")),
+            "requires_ok": bool(profile.get("requires_ok")),
+            "note": target.get("note", "") if target and target.get("remote") == name else "",
+            "last_used": _last_used(ledger, name, parsed["repo"],
+                                    adapter.get("id", "") if adapter else ""),
+        })
+    return {"target": target, "remotes": remotes,
+            "recommendation": _recommend(root, target, remotes)}
+
+
+# ---------------------------------------------------------------- 平台查询（http / exec）
+
+def _yaml_selftest(adapter: dict) -> list:
+    """用适配器自己的 map/normalize 反推样例，不联网、不新增每个平台专属 fixture。
+
+    对每条带 `when` 的规则造一份「能让它命中」的响应，再造一份「谁都不命中」的响应测兜底。
+    这样新加一个 YAML 平台时，核心脚本不需要认识它（设计 5.8 的「加平台不改核心」）。
+    """
+    spec = (adapter.get("spec") or {}).get("check") or {}
+    mapping = spec.get("map") or {}
+    rules = spec.get("normalize") or []
+    cases = []
+
+    def evaluate(response):
+        mapped = {key: _json_path(response, path) for key, path in mapping.items()}
+        return _normalize(rules, mapped)
+
+    for rule in rules:
+        when = rule.get("when") if isinstance(rule, dict) else None
+        if not isinstance(when, dict) or not when:
+            continue
+        response = {}
+        for field, value in when.items():
+            path = mapping.get(field)
+            if path:
+                _json_set(response, path, value)
+        expected = _norm_state(rule.get("state"))
+        actual = evaluate(response)
+        cases.append({"name": "when-" + "-".join(f"{k}={v}" for k, v in when.items()),
+                      "ok": actual == expected, "expected": expected, "actual": actual})
+
+    fallback = None
+    for rule in rules:
+        when = rule.get("when") if isinstance(rule, dict) else None
+        if not when:
+            fallback = _norm_state(rule.get("state"))
+            break
+    if fallback is not None:
+        response = {}
+        for rule in rules:
+            when = rule.get("when") if isinstance(rule, dict) else None
+            for field, value in (when or {}).items():
+                path = mapping.get(field)
+                if not path:
+                    continue
+                if isinstance(value, bool):
+                    _json_set(response, path, not value)
+                elif value is None:
+                    _json_set(response, path, "not-null")
+                else:
+                    _json_set(response, path, "not-" + str(value))
+        actual = evaluate(response)
+        cases.append({"name": "fallback", "ok": actual == fallback,
+                      "expected": fallback, "actual": actual})
+    return cases
+
+
+def _exec_selftest(adapter: dict) -> list:
+    module = adapter.get("module")
+    fn = getattr(module, "selftest", None)
+    if not callable(fn):
+        return [{"name": "import", "ok": True, "expected": "import", "actual": "import"}]
+    try:
+        passed, cases = fn()
+    except Exception as exc:
+        return [{"name": "selftest", "ok": False, "expected": "passed",
+                 "actual": f"{type(exc).__name__}: {exc}"}]
+    out = []
+    for case in cases or []:
+        if isinstance(case, dict):
+            item = dict(case)
+            item["ok"] = bool(item.get("ok"))
+        else:
+            item = {"name": str(case), "ok": True}
+        out.append(item)
+    return out
+
+
+def http_check(adapter: dict, pr: dict):
+    """执行 YAML 适配器的一次查询 → (state, detail, error)。error 是 {code, message} 或 None。"""
+    spec = (adapter.get("spec") or {}).get("check") or {}
+    auth_env = adapter.get("auth_env") or ""
+    if auth_env and not os.environ.get(auth_env):
+        return "unknown", "", {"code": "E_NO_AUTH",
+                               "message": f"未配置 token 环境变量 {auth_env}"}
+    repo = str(pr.get("repo") or "")
+    number = pr.get("number")
+    url = _subst(str(spec.get("url") or ""), adapter, repo, number)
+    query = spec.get("query") or {}
+    if isinstance(query, dict) and query:
+        params = urllib.parse.urlencode(
+            {str(k): _subst(str(v), adapter, repo, number) for k, v in query.items()})
+        url += ("&" if "?" in url else "?") + params
+    scheme = urllib.parse.urlsplit(url).scheme.lower()
+    if scheme not in ("http", "https"):
+        return "unknown", "", {"code": "E_PLATFORM",
+                               "message": f"适配器 URL 只允许 http/https：{scheme or '（无 scheme）'}"}
+    headers = {}
+    for key, value in (spec.get("headers") or {}).items():
+        headers[str(key)] = _subst(str(value), adapter, repo, number)
+    method = str(spec.get("method") or "GET").upper()
+    try:
+        timeout = float(spec.get("timeout_s") or HTTP_TIMEOUT_S)
+    except (TypeError, ValueError):
+        timeout = HTTP_TIMEOUT_S
+    request = urllib.request.Request(url, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            raw = response.read()
+    except urllib.error.HTTPError as exc:
+        return "unknown", "", {"code": "E_FETCH",
+                               "message": f"HTTP {exc.code}：{_redact_url(url)}"}
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        return "unknown", "", {"code": "E_FETCH",
+                               "message": f"请求失败：{exc}（{_redact_url(url)}）"}
+    try:
+        payload = json.loads(raw.decode("utf-8-sig"))
+    except (ValueError, UnicodeDecodeError) as exc:
+        return "unknown", "", {"code": "E_FETCH", "message": f"返回不是 JSON：{exc}"}
+    mapping = spec.get("map") or {}
+    mapped = {key: _json_path(payload, path) for key, path in mapping.items()}
+    state = _normalize(spec.get("normalize") or [], mapped)
+    return state, _redact_url(url), None
+
+
+def exec_check(adapter: dict, pr: dict):
+    """执行 Python 适配器的一次查询 → (state, detail)。异常归一成 unknown，不抛给调用方。"""
+    module = adapter.get("module")
+    try:
+        result = module.check({"repo": pr.get("repo"), "number": pr.get("number"),
+                               "url": pr.get("url")})
+    except Exception as exc:
+        return "unknown", f"{type(exc).__name__}: {exc}"
+    if not isinstance(result, dict):
+        return "unknown", "适配器 check() 返回的不是对象"
+    return _norm_state(result.get("state")), str(result.get("detail") or "")
+
+
+def _run_check(ledger: dict, key: str, adapters: list):
+    """查一份草稿的 PR。返回 (新条目, error, detail)。error 非空时新条目是 unknown 态。"""
+    pr = (ledger.get("prs") or {}).get(key)
+    if not isinstance(pr, dict):
+        return None, {"code": "E_NOT_FOUND", "message": f"台账里没有这份草稿的 PR 记录：{key}"}, ""
+    url = str(pr.get("url") or "")
+    adapter = adapter_for_url(adapters, url)
+    if adapter is None:
+        host = parse_remote_url(url)["host"]
+        return _unknown_entry(pr), {"code": "E_NO_ADAPTER",
+                                    "message": f"本机没有 host 为 {host or '（空）'} 的 PR 适配器"}, ""
+    profile = _profile(adapter)
+    if not profile["requires_ok"]:
+        return _unknown_entry(pr), {"code": "E_NO_ADAPTER",
+                                    "message": profile["reason"] or "适配器依赖缺失"}, ""
+    if not profile["token_ready"]:
+        return _unknown_entry(pr), {"code": "E_NO_AUTH",
+                                    "message": profile["reason"] or "未配置 token"}, ""
+    if adapter.get("kind") == "http":
+        state, detail, error = http_check(adapter, pr)
+    else:
+        state, detail = exec_check(adapter, pr)
+        error = None
+    entry = dict(pr)
+    entry["platform"] = adapter.get("id") or str(pr.get("platform") or "")
+    entry["state"] = state
+    entry["source"] = "platform"
+    entry["checked_at"] = now_iso()
+    return entry, error, detail
+
+
+def _unknown_entry(pr: dict) -> dict:
+    """查不了也要留痕：写 unknown + source=platform + checked_at，不删旧 PR（契约 §1）。"""
+    entry = dict(pr)
+    entry["state"] = "unknown"
+    entry["source"] = "platform"
+    entry["checked_at"] = now_iso()
+    return entry
+
+
+# ---------------------------------------------------------------- 命令实现
+
+def _ok(payload: dict, code: int = EXIT_OK) -> int:
+    payload["ok"] = True
+    print(dump_json(payload), end="")
+    return code
+
+
+def _fail(code_name: str, message: str, extra: dict = None,
+          exit_code: int = EXIT_OK) -> int:
+    payload = {"ok": False, "error": {"code": code_name, "message": message}}
+    if extra:
+        payload.update(extra)
+    print(dump_json(payload), end="")
+    return exit_code
+
+
+def _arg_fail(message: str) -> int:
+    return _fail("E_ARGS", message, exit_code=EXIT_ARGS)
+
+
+def _resolve_root(value) -> Path:
+    path = Path(value or ".").expanduser().resolve()
+    if not path.is_dir():
+        raise NotADirectoryError(f"目录不存在：{path}")
+    try:
+        top = run_git(["rev-parse", "--show-toplevel"], cwd=path, check=False)
+        if top.returncode == 0 and top.stdout.strip():
+            return Path(top.stdout.strip()).resolve()
+    except Exception:
+        pass
+    return path
+
+
+def cmd_status(root) -> int:
+    data = load_ledger(root)
+    return _ok({"ledger": data, "sha256": ledger_sha256(root)})
+
+
+def cmd_list_targets(root) -> int:
+    return _ok(list_targets(root))
+
+
+def cmd_set_target(root, args) -> int:
+    remote = str(args.remote or "").strip()
+    base = str(args.base or DEFAULT_BASE).strip()
+    if not remote:
+        return _arg_fail("--set-target 需要 --remote")
+    if not base:
+        return _arg_fail("--set-target 的 --base 不能为空")
+    remotes = dict(_git_remotes(root))
+    if remote not in remotes:
+        return _arg_fail(f"远端不存在：{remote}（本机远端：{'、'.join(remotes) or '无'}）")
+    labels = {}
+    if args.labels:
+        try:
+            labels = json.loads(args.labels)
+        except ValueError as exc:
+            return _arg_fail(f"--labels 不是合法 JSON：{exc}")
+        if not isinstance(labels, dict):
+            return _arg_fail("--labels 必须是 JSON 对象（映射）")
+    url = remotes[remote]
+    adapter = adapter_for_url(load_adapters(), url)
+    target = {
+        "remote": remote, "base": base,
+        # 无适配器的远端也能选：平台留空，界面显示「无适配器」（设计 5.7）。
+        "platform": adapter.get("id", "") if adapter else "",
+        "url": url, "note": str(args.note or ""), "labels": labels,
+        "source": "user", "chosen_at": now_iso(),
+    }
+    data = load_ledger(root)
+    data["target"] = target
+    try:
+        digest = save_ledger(root, data, expect_sha=args.expect_sha256)
+    except CasConflict as exc:
+        return _fail("E_CAS", str(exc))
+    except LedgerError as exc:
+        return _fail("E_LEDGER", str(exc))
+    return _ok({"target": target,
+                "platformName": adapter.get("name", "") if adapter else "",
+                "sha256": digest})
+
+
+def _validate_pr_args(args):
+    draft = str(args.draft or "").strip()
+    platform = str(args.platform or "").strip()
+    repo = str(args.repo or "").strip()
+    url = str(args.url or "").strip()
+    if not draft:
+        return None, "--set 需要 --draft"
+    if not platform:
+        return None, "--set 需要 --platform"
+    if "/" not in repo:
+        return None, "--set 的 --repo 需要 owner/repo 形式"
+    try:
+        number = int(args.number)
+    except (TypeError, ValueError):
+        return None, "--set 的 --number 必须是正整数"
+    if number <= 0:
+        return None, "--set 的 --number 必须是正整数"
+    if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
+        return None, "--set 的 --url 需要 http/https 地址"
+    state = str(args.state or "unknown").strip().lower()
+    if state not in STATES:
+        return None, f"--state 只能是 {'/'.join(STATES)}"
+    return {"draft": draft, "platform": platform, "repo": repo, "number": number,
+            "url": url, "state": state,
+            "remote": str(getattr(args, "remote", None) or "").strip()}, None
+
+
+def cmd_set(root, args) -> int:
+    values, problem = _validate_pr_args(args)
+    if problem:
+        return _arg_fail(problem)
+    entry = {
+        "platform": values["platform"], "repo": values["repo"], "number": values["number"],
+        "url": values["url"], "state": values["state"], "source": "ledger",
+        "created_at": now_iso(),
+    }
+    if values["remote"]:
+        entry["remote"] = values["remote"]
+    data = load_ledger(root)
+    data["prs"][values["draft"]] = entry
+    try:
+        digest = save_ledger(root, data, expect_sha=args.expect_sha256)
+    except CasConflict as exc:
+        return _fail("E_CAS", str(exc))
+    except LedgerError as exc:
+        return _fail("E_LEDGER", str(exc))
+    return _ok({"draft": values["draft"], "pr": entry, "sha256": digest})
+
+
+def cmd_mark(root, args) -> int:
+    draft = str(args.draft or "").strip()
+    state = str(args.state or "").strip().lower()
+    if not draft:
+        return _arg_fail("--mark 需要 --draft")
+    if state not in STATES:
+        return _arg_fail(f"--mark 的 --state 只能是 {'/'.join(STATES)}")
+    data = load_ledger(root)
+    pr = data["prs"].get(draft)
+    if not isinstance(pr, dict):
+        return _fail("E_NOT_FOUND", f"台账里没有这份草稿的 PR 记录：{draft}")
+    entry = dict(pr)
+    entry.update({"state": state, "source": "manual", "checked_at": now_iso()})
+    data["prs"][draft] = entry
+    try:
+        digest = save_ledger(root, data, expect_sha=args.expect_sha256)
+    except CasConflict as exc:
+        return _fail("E_CAS", str(exc))
+    except LedgerError as exc:
+        return _fail("E_LEDGER", str(exc))
+    return _ok({"draft": draft, "pr": entry, "sha256": digest})
+
+
+def cmd_check(root, args) -> int:
+    draft = str(args.draft or "").strip()
+    if not draft:
+        return _arg_fail("--check 需要 --draft")
+    adapters = load_adapters()
+    data = load_ledger(root)
+    before = ledger_sha256(root)
+    entry, error, detail = _run_check(data, draft, adapters)
+    if entry is None:
+        return _fail(error["code"], error["message"])
+    data["prs"][draft] = entry
+    try:
+        digest = save_ledger(root, data, expect_sha=before)
+    except CasConflict as exc:
+        return _fail("E_CAS", str(exc))
+    except LedgerError as exc:
+        return _fail("E_LEDGER", str(exc))
+    if error:
+        return _fail(error["code"], error["message"],
+                     extra={"draft": draft, "state": entry["state"],
+                            "checked_at": entry["checked_at"], "sha256": digest})
+    return _ok({"draft": draft, "platform": entry.get("platform", ""),
+                "state": entry["state"], "source": "platform",
+                "checked_at": entry["checked_at"], "detail": detail, "sha256": digest})
+
+
+def cmd_check_all(root, args) -> int:
+    adapters = load_adapters()
+    data = load_ledger(root)
+    before = ledger_sha256(root)
+    checked = []
+    all_ok = True
+    for draft in sorted((data.get("prs") or {}).keys()):
+        pr = data["prs"].get(draft)
+        if not isinstance(pr, dict) or str(pr.get("state") or "") not in CHECKABLE:
+            continue
+        entry, error, detail = _run_check(data, draft, adapters)
+        if entry is None:
+            checked.append({"draft": draft, "ok": False, "state": "unknown",
+                            "error": error["code"]})
+            all_ok = False
+            continue
+        data["prs"][draft] = entry
+        item = {"draft": draft, "ok": error is None, "state": entry["state"]}
+        if error:
+            item["error"] = error["code"]
+            all_ok = False
+        checked.append(item)
+    try:
+        digest = save_ledger(root, data, expect_sha=before)
+    except CasConflict as exc:
+        return _fail("E_CAS", str(exc), extra={"checked": checked})
+    except LedgerError as exc:
+        return _fail("E_LEDGER", str(exc), extra={"checked": checked})
+    return _ok({"checked": checked, "ledger": data, "sha256": digest}, code=EXIT_OK) \
+        if all_ok else _fail("E_CHECK_PARTIAL", "有 PR 状态没查到（见 checked）",
+                             extra={"checked": checked, "ledger": data, "sha256": digest})
+
+
+def cmd_list_platforms(root) -> int:
+    platforms = [_profile(adapter) for adapter in load_adapters()]
+    platforms.sort(key=lambda p: p.get("id", ""))
+    return _ok({"platforms": platforms})
+
+
+def cmd_selftest(root, platform_id: str) -> int:
+    adapters = load_adapters()
+    adapter = find_adapter(adapters, platform_id)
+    if adapter is None:
+        return _fail("E_NOT_FOUND", f"没有这个平台适配器：{platform_id}")
+    if adapter.get("broken"):
+        return _fail("E_PLATFORM", "清单损坏：" + (adapter.get("reason") or "未知原因"),
+                     extra={"platform": platform_id, "passed": 0, "cases": []})
+    cases = _yaml_selftest(adapter) if adapter.get("kind") == "http" else _exec_selftest(adapter)
+    cases = [case for case in cases if isinstance(case, dict)]
+    passed = sum(1 for case in cases if case.get("ok"))
+    payload = {"platform": platform_id, "passed": passed, "total": len(cases),
+               "cases": cases}
+    if not cases:
+        return _fail("E_PLATFORM", "适配器没有可执行的自检样例", extra=payload)
+    if passed != len(cases):
+        payload["ok"] = False
+        payload["error"] = {"code": "E_SELFTEST",
+                            "message": f"{len(cases) - passed} 条自检未通过"}
+        print(dump_json(payload), end="")
+        return EXIT_OK
+    return _ok(payload)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    ap = argparse.ArgumentParser(description="提 PR 目标与 PR 状态台账（只写本地台账）")
+    ap.add_argument("--root", default=None, help="ascend-sleuth 检出根；默认当前目录")
+    ap.add_argument("--json", action="store_true", help="输出 JSON（所有命令都输出 JSON，保留兼容）")
+    ap.add_argument("--expect-sha256", default=None,
+                    help="写台账前的 CAS 令牌：台账当前文件 sha256，不一致就不写")
+    group = ap.add_mutually_exclusive_group()
+    group.add_argument("--list-targets", action="store_true", help="列远端、平台与推荐目标")
+    group.add_argument("--set-target", action="store_true", help="写 target 段")
+    group.add_argument("--set", action="store_true", dest="set_pr", help="写/覆盖一份草稿的 PR 记录")
+    group.add_argument("--mark", action="store_true", help="人手确认 PR 状态")
+    group.add_argument("--check", action="store_true", help="按平台查一份 PR 的状态")
+    group.add_argument("--check-all", action="store_true", dest="check_all", help="查所有 open/unknown 的 PR")
+    group.add_argument("--list-platforms", action="store_true", dest="list_platforms",
+                       help="列平台适配器与依赖状态")
+    group.add_argument("--selftest", default=None, metavar="PLATFORM",
+                       help="适配器自检（不联网）")
+    # --set-target
+    ap.add_argument("--remote", default=None)
+    ap.add_argument("--base", default=None)
+    ap.add_argument("--note", default="")
+    ap.add_argument("--labels", default=None, help="目标标签映射，JSON 对象")
+    # --set
+    ap.add_argument("--draft", default=None)
+    ap.add_argument("--platform", default=None)
+    ap.add_argument("--repo", default=None)
+    ap.add_argument("--number", default=None)
+    ap.add_argument("--url", default=None)
+    ap.add_argument("--state", default=None)
+    return ap
+
+
+def main(argv=None) -> int:
+    pin_utf8_stdio()
+    args = build_parser().parse_args(argv)
+    try:
+        root = _resolve_root(args.root)
+    except NotADirectoryError as exc:
+        return _arg_fail(str(exc))
+    try:
+        if args.list_platforms:
+            return cmd_list_platforms(root)
+        if args.selftest:
+            return cmd_selftest(root, args.selftest)
+        if args.list_targets:
+            return cmd_list_targets(root)
+        if args.set_target:
+            return cmd_set_target(root, args)
+        if args.set_pr:
+            return cmd_set(root, args)
+        if args.mark:
+            return cmd_mark(root, args)
+        if args.check:
+            return cmd_check(root, args)
+        if args.check_all:
+            return cmd_check_all(root, args)
+        return cmd_status(root)
+    except LedgerError as exc:
+        return _fail("E_LEDGER", str(exc))
+    except Exception as exc:  # 未预期异常也走 JSON，调用方不用解析 traceback
+        return _fail("E_INTERNAL", f"{type(exc).__name__}: {exc}", exit_code=EXIT_ERROR)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

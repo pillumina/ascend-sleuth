@@ -5,8 +5,8 @@
 // 它证明不了浏览器的会话 cookie 与页面渲染；证明的是：路由注册、取数链路、能力位、
 // 状态写入的真实参数与返回（写操作全部在系统临时目录里的 trace 副本上做，仓库不被改）。
 
-import { exec } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { exec, execSync } from 'node:child_process'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -71,7 +71,20 @@ symlinkSync(join(REPO, 'knowledge'), join(SANDBOX, 'knowledge'), 'dir')
 copyFileSync(join(REPO, 'trace-status.yaml'), join(SANDBOX, 'trace-status.yaml'))
 writeFileSync(join(SANDBOX, 'traces', TRACE_FILE), TRACE_FIXTURE, 'utf8')
 writeFileSync(join(SANDBOX, 'traces', 'alt-smoke.md'), '# 诊断报告\n根因：夹具里的 vendor TopKV2 kernel。\n', 'utf8')
-const TRACES = join(SANDBOX, 'traces')
+mkdirSync(join(SANDBOX, 'postmortems', 'inbox'), { recursive: true })
+// 沉淀队列要读 git（目标 commit / 知识库新鲜度）；临时检出建一个最小 commit。
+// 没有 git 的环境跳过沉淀端点断言，不把环境缺失算成代码失败。
+let hasGit = true
+try {
+  execSync('git init -q', { cwd: SANDBOX, stdio: 'ignore' })
+  execSync('git config user.email smoke@example.com', { cwd: SANDBOX, stdio: 'ignore' })
+  execSync('git config user.name smoke', { cwd: SANDBOX, stdio: 'ignore' })
+  writeFileSync(join(SANDBOX, '.smoke-commit'), 'seed\n', 'utf8')
+  execSync('git add .smoke-commit && git commit -qm seed', { cwd: SANDBOX, stdio: 'ignore' })
+} catch {
+  hasGit = false
+}
+const TRACES = realpathSync(join(SANDBOX, 'traces'))
 
 function runCommand(spec) {
   return new Promise((resolve) => {
@@ -285,6 +298,26 @@ const timelineBad = await request(rw, {
   payload: { cwd: SANDBOX, tracesDir: TRACES, traceFile: '../x.yaml' },
 }, '/sleuth-copilot/copilot-timeline')
 expect('时间线：非法文件名被拒', timelineBad.envelope.result.value.ok === false && timelineBad.envelope.result.value.code === 'E_SCHEMA')
+if (hasGit) {
+  const sedimentRead = await request(rw, {
+    type: 'client-request', rpcId: 'sediment-1', method: 'copilot-sediment',
+    payload: { cwd: SANDBOX, sessionId: 'smoke-session' },
+  }, '/sleuth-copilot/copilot-sediment')
+  const sedimentValue = sedimentRead.envelope && sedimentRead.envelope.result && sedimentRead.envelope.result.value
+  expect('沉淀：端点返回 ok', sedimentValue && sedimentValue.ok === true, JSON.stringify(sedimentValue && sedimentValue.code))
+  expect('沉淀：空 inbox 计数为 0', sedimentValue && sedimentValue.counts && sedimentValue.counts.total === 0, JSON.stringify(sedimentValue && sedimentValue.counts))
+  expect('沉淀：目标结构存在', sedimentValue && sedimentValue.target && Array.isArray(sedimentValue.target.remotes), JSON.stringify(sedimentValue && sedimentValue.target))
+  expect('沉淀：prompts 结构存在', sedimentValue && sedimentValue.prompts && typeof sedimentValue.prompts.pr === 'string', JSON.stringify(sedimentValue && sedimentValue.prompts))
+
+  const targetRead = await request(rw, {
+    type: 'client-request', rpcId: 'target-1', method: 'copilot-pr-target',
+    payload: { cwd: SANDBOX, action: 'list' },
+  }, '/sleuth-copilot/copilot-pr-target')
+  const targetValue = targetRead.envelope && targetRead.envelope.result && targetRead.envelope.result.value
+  expect('目标：端点返回 ok', targetValue && targetValue.ok === true, JSON.stringify(targetValue))
+  expect('目标：remotes 是数组', targetValue && Array.isArray(targetValue.remotes), JSON.stringify(targetValue && targetValue.remotes))
+}
+
 const reportMissing = await readReport(rw, { cwd: SANDBOX, tracesDir: TRACES, traceSessionId: '2026-01-01-no-such' }, 'report-2')
 const missingValue = reportMissing.envelope && reportMissing.envelope.result && reportMissing.envelope.result.value
 expect('报告：不存在时 E_NOT_FOUND', missingValue && missingValue.ok === false && missingValue.code === 'E_NOT_FOUND', JSON.stringify(missingValue))

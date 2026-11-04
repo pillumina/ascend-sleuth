@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.10.1'
+    const PLUGIN_VERSION = '0.11.0'
     const POLL_MS = 10000
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
@@ -258,6 +258,112 @@ window.__ModuleLoader__.load({
       'palette.close': '关闭诊断总览',
       'tool.title': '诊断总览',
       'tool.pending': '{n} 单待回报',
+      // ── 沉淀队列（v1）──────────────────────────────────────────────
+      'palette.view.diagnosis': '诊断',
+      'palette.view.sediment': '沉淀',
+      'palette.sedimentTitle': '沉淀队列',
+      'sediment.loading': '正在读 inbox 与评估状态…',
+      'sediment.refreshing': '刷新中…',
+      'sediment.error': '读不到沉淀队列：{message}',
+      'sediment.empty': '队列已清空',
+      'sediment.emptyHint': '诊断收尾时点「沉淀为 case」，草稿会进入这里等周批。',
+      'sediment.goDiagnosis': '去诊断',
+      'sediment.history': '最近完成',
+      'sediment.target.pick': '有多个远端，先选一个',
+      'sediment.detail.openSource': '切到该诊断',
+      'sediment.primary.prBatch': '生成提 PR 指令（本批 {n} 份）',
+      'sediment.prState.open': '待合入',
+      'sediment.prState.merged': '已合入',
+      'sediment.prState.closed': '已关闭',
+      'sediment.prState.unknown': '未确认',
+      'sediment.prSource.platform': '平台查询',
+      'sediment.prSource.manual': '手动确认',
+      'sediment.prSource.ledger': '台账',
+      'sediment.detail.lastChecked': '上次查证',
+      'sediment.history.archived': '已归档',
+      'sediment.assessedUnknown': '未评估',
+      'sediment.filter.all': '全部',
+      'sediment.filter.decision': '待决定',
+      'sediment.filter.pr': '待提 PR',
+      'sediment.filter.check': '待合入',
+      'sediment.filter.rerun': '需重跑',
+      'sediment.group.groom': '待继续 groom',
+      'sediment.group.pr': '待提 PR',
+      'sediment.group.check': '待合入与收尾',
+      'sediment.group.other': '其它',
+      'sediment.age': '{n} 天',
+      'sediment.ageUnknown': '时间未记录',
+      'sediment.overdue': '超过 14 天建议线',
+      'sediment.batch.total': '{n} 份草稿',
+      'sediment.batch.oldest': '最老 {n} 天',
+      'sediment.batch.none': '没有下一步',
+      'sediment.primary.groom': '继续 groom',
+      'sediment.primary.pr': '生成提 PR 指令',
+      'sediment.primary.check': '查合入状态',
+      'sediment.primary.close': '生成收尾指令',
+      'sediment.secondary.pr': '提 PR（{n}）',
+      'sediment.target': '目标',
+      'sediment.targetChange': '换',
+      'sediment.targetNone': '还没有选目标',
+      'sediment.targetHint': '已记住上次选择；远端用途不做预设',
+      'sediment.prompt.flow': '流程：按 skill 第 5 步执行；界面只给批次与边界。',
+      'sediment.prompt.boundary': '边界：先落盘并跑升格检查；recheck 不通过就停；合入前不要跑 close / cleanup。',
+      'sediment.prompt.details': '展开命令细节（按平台）',
+      'sediment.prompt.collapse': '收起命令细节',
+      'sediment.prompt.copy': '复制',
+      'sediment.prompt.fill': '填入输入框',
+      'sediment.prompt.cancel': '取消',
+      'sediment.prompt.default': '默认短指令；命令细节可展开。',
+      'sediment.prompt.empty': '没有可生成的指令。',
+      'sediment.detail.assessment': '评估',
+      'sediment.detail.progress': '沉淀进度',
+      'sediment.detail.openQueue': '打开沉淀队列',
+      'sediment.detail.decision': '人决定',
+      'sediment.detail.decisionValue': '决定',
+      'sediment.batch.next': '下一步',
+      'sediment.dock.missingDraft': '已交草稿 · 未找到草稿',
+      'sediment.detail.promotion': '落点与 PR',
+      'sediment.detail.source': '来源诊断',
+      'sediment.detail.suggestion': '建议',
+      'sediment.detail.rationale': '依据',
+      'sediment.detail.assessed': '评估版本',
+      'sediment.detail.review': '复核项',
+      'sediment.detail.candidate': '候选',
+      'sediment.detail.noDecision': '还没有人决定',
+      'sediment.detail.noPr': '未记录',
+      'sediment.detail.pr': 'PR',
+      'sediment.detail.case': 'case',
+      'sediment.table.draft': '草稿',
+      'sediment.table.decision': '决定',
+      'sediment.detail.postmortem': 'postmortem',
+      'sediment.detail.stale': '需重跑：{reason}',
+      'sediment.detail.mismatch.stale_trace': 'trace 停在已交草稿，但知识库已有 case；生成回写指令。',
+      'sediment.detail.mismatch.missing_draft': 'trace 说已交草稿，但 inbox 与 .done 都找不到。',
+      'sediment.detail.mismatch.missing_case': 'trace 说已升格，但知识库里没有这条 case。',
+      'sediment.detail.mismatch.draft_left_behind': 'trace 说已升格，但草稿还在 inbox：升格后没有出队。',
+      'sediment.detail.writeback': '生成回写指令',
+      'sediment.detail.closeDraft': '生成收尾指令',
+      'sediment.target.title': '提 PR 到哪个远端？',
+      'sediment.target.sub': '不同部署的远端用途不同；系统只列事实，选择会记住。',
+      'sediment.target.base': 'base 分支',
+      'sediment.target.save': '保存并生成指令',
+      'sediment.target.noAdapter': '无适配器',
+      'sediment.target.token': '需配 token',
+      'sediment.target.required': '先选 PR 目标',
+      'sediment.target.empty': '没有可选的远端。',
+      'sediment.refresh': '刷新',
+      'sediment.open': '打开沉淀队列',
+      'sediment.stepper.draft': '草稿已交',
+      'sediment.stepper.assessed': '已评估',
+      'sediment.stepper.decided': '已决定',
+      'sediment.stepper.pr': '已提 PR',
+      'sediment.stepper.promoted': '已升格',
+      'sediment.stepper.unknown': '未记录',
+      'sediment.stepper.pending': '待处理',
+      'sediment.check': '查合入状态',
+      'sediment.markMerged': '标记已合入',
+      'sediment.noTarget': '还没有 PR 目标',
+      'sediment.targetNote': '远端用途不做预设',
       'none': '未记录',
     }
     const EN = {
@@ -492,6 +598,112 @@ window.__ModuleLoader__.load({
       'palette.close': 'Close the diagnosis overview',
       'tool.title': 'Diagnosis overview',
       'tool.pending': '{n} pending outcomes',
+      // ── Sediment queue (v1) ────────────────────────────────────────
+      'palette.view.diagnosis': 'Diagnosis',
+      'palette.view.sediment': 'Sediment',
+      'palette.sedimentTitle': 'Sediment queue',
+      'sediment.loading': 'Reading inbox and assessments…',
+      'sediment.refreshing': 'Refreshing…',
+      'sediment.error': 'Cannot read the sediment queue: {message}',
+      'sediment.empty': 'Queue is clear',
+      'sediment.emptyHint': 'Use "Draft a case" at diagnosis wrap-up; drafts wait here for the weekly batch.',
+      'sediment.goDiagnosis': 'Go to diagnosis',
+      'sediment.history': 'Recently completed',
+      'sediment.target.pick': 'Multiple remotes; choose one first',
+      'sediment.detail.openSource': 'Open source diagnosis',
+      'sediment.primary.prBatch': 'Generate PR prompt ({n} drafts)',
+      'sediment.prState.open': 'Awaiting merge',
+      'sediment.prState.merged': 'Merged',
+      'sediment.prState.closed': 'Closed',
+      'sediment.prState.unknown': 'Unconfirmed',
+      'sediment.prSource.platform': 'platform check',
+      'sediment.prSource.manual': 'manual',
+      'sediment.prSource.ledger': 'ledger',
+      'sediment.detail.lastChecked': 'last checked',
+      'sediment.history.archived': 'archived',
+      'sediment.assessedUnknown': 'not assessed',
+      'sediment.filter.all': 'All',
+      'sediment.filter.decision': 'To decide',
+      'sediment.filter.pr': 'To PR',
+      'sediment.filter.check': 'Awaiting merge',
+      'sediment.filter.rerun': 'Rerun',
+      'sediment.group.groom': 'Continue groom',
+      'sediment.group.pr': 'To open PR',
+      'sediment.group.check': 'Merge and close',
+      'sediment.group.other': 'Other',
+      'sediment.age': '{n}d',
+      'sediment.ageUnknown': 'time unknown',
+      'sediment.overdue': 'past the 14-day line',
+      'sediment.batch.total': '{n} drafts',
+      'sediment.batch.oldest': 'oldest {n}d',
+      'sediment.batch.none': 'nothing next',
+      'sediment.primary.groom': 'Continue groom',
+      'sediment.primary.pr': 'Generate PR prompt',
+      'sediment.primary.check': 'Check merge status',
+      'sediment.primary.close': 'Generate close prompt',
+      'sediment.secondary.pr': 'Open PR ({n})',
+      'sediment.target': 'Target',
+      'sediment.targetChange': 'Change',
+      'sediment.targetNone': 'No target yet',
+      'sediment.targetHint': 'Remembered from last time; remote roles are not assumed',
+      'sediment.prompt.flow': 'Flow: follow step 5 of the skill; the UI only supplies the batch and the boundary.',
+      'sediment.prompt.boundary': 'Boundary: land the draft and run the gate first; stop if recheck fails; do not run close / cleanup before merge.',
+      'sediment.prompt.details': 'Show command details (by platform)',
+      'sediment.prompt.collapse': 'Hide command details',
+      'sediment.prompt.copy': 'Copy',
+      'sediment.prompt.fill': 'Fill composer',
+      'sediment.prompt.cancel': 'Cancel',
+      'sediment.prompt.default': 'Short prompt by default; details can expand.',
+      'sediment.prompt.empty': 'No prompt available.',
+      'sediment.detail.assessment': 'Assessment',
+      'sediment.detail.progress': 'Sediment progress',
+      'sediment.detail.openQueue': 'Open sediment queue',
+      'sediment.detail.decision': 'Human decision',
+      'sediment.detail.decisionValue': 'Decision',
+      'sediment.batch.next': 'next',
+      'sediment.dock.missingDraft': 'draft submitted, not found',
+      'sediment.detail.promotion': 'Landing and PR',
+      'sediment.detail.source': 'Source diagnosis',
+      'sediment.detail.suggestion': 'Suggestion',
+      'sediment.detail.rationale': 'Why',
+      'sediment.detail.assessed': 'Assessed at',
+      'sediment.detail.review': 'Review flags',
+      'sediment.detail.candidate': 'Candidate',
+      'sediment.detail.noDecision': 'No decision yet',
+      'sediment.detail.noPr': 'Not recorded',
+      'sediment.detail.pr': 'PR',
+      'sediment.detail.case': 'case',
+      'sediment.table.draft': 'Draft',
+      'sediment.table.decision': 'Decision',
+      'sediment.detail.postmortem': 'postmortem',
+      'sediment.detail.stale': 'Rerun needed: {reason}',
+      'sediment.detail.mismatch.stale_trace': 'The trace still says draft submitted, but the case is in the knowledge base. Generate a writeback prompt.',
+      'sediment.detail.mismatch.missing_draft': 'The trace says a draft was submitted, but it is not in inbox or .done.',
+      'sediment.detail.mismatch.missing_case': 'The trace says promoted, but the case is not in the knowledge base.',
+      'sediment.detail.mismatch.draft_left_behind': 'The trace says promoted, but the draft is still in inbox: it was not queued out.',
+      'sediment.detail.writeback': 'Generate writeback prompt',
+      'sediment.detail.closeDraft': 'Generate close prompt',
+      'sediment.target.title': 'Which remote should the PR go to?',
+      'sediment.target.sub': 'Remotes differ by deployment; this lists facts only and remembers the choice.',
+      'sediment.target.base': 'base branch',
+      'sediment.target.save': 'Save and generate',
+      'sediment.target.noAdapter': 'No adapter',
+      'sediment.target.token': 'token needed',
+      'sediment.target.required': 'Choose a PR target first',
+      'sediment.target.empty': 'No remotes available.',
+      'sediment.refresh': 'Refresh',
+      'sediment.open': 'Open sediment queue',
+      'sediment.stepper.draft': 'Draft',
+      'sediment.stepper.assessed': 'Assessed',
+      'sediment.stepper.decided': 'Decided',
+      'sediment.stepper.pr': 'PR',
+      'sediment.stepper.promoted': 'Promoted',
+      'sediment.stepper.unknown': 'not recorded',
+      'sediment.stepper.pending': 'to do',
+      'sediment.check': 'Check merge',
+      'sediment.markMerged': 'Mark merged',
+      'sediment.noTarget': 'No PR target yet',
+      'sediment.targetNote': 'Remote roles are not assumed',
       'none': 'not recorded',
     }
     const DICTS = { zh: ZH, en: EN }
@@ -718,6 +930,102 @@ window.__ModuleLoader__.load({
       '@media (max-width: 760px){.scp-pal-main{flex-direction:column;}.scp-pal-list{flex:0 0 auto;max-width:none;min-width:0;max-height:38vh;border-right:none;border-bottom:1px solid var(--scp-border);}.scp-pal-side{flex:1 1 auto;min-height:0;}.scp-grid2{grid-template-columns:1fr;}.scp-pal-top{flex-wrap:wrap;gap:10px;}.scp-filter{order:3;flex-basis:100%;justify-content:flex-start;overflow:auto;}}',
       '@media (max-width: 520px){.scp-pal-backdrop{padding:4vh 10px 10px;}.scp-pal{max-height:88vh;}.scp-picker{width:min(330px,calc(100vw - 32px));}}',
       '@media (prefers-reduced-motion: reduce){.scp-handle{transition:none;}.scp-handle[data-idle="true"]{opacity:1;}.scp-ring{animation:none;}.scp-btn,.scp-icon,.scp-tick,.scp-pal-row,.scp-chevron{transition:none;}.scp-pal,.scp-menu,.scp-toast,.scp-picker{animation:none;}.scp-skel{animation:none;}}',
+      `/* ── 沉淀队列（v1）──────────────────────────────────────────────── */
+.scp-views{display:flex;gap:2px;padding:3px;border-radius:10px;background:var(--scp-surface-2);flex:none;}
+.scp-view-tab{border:0;background:transparent;font:inherit;font-size:12px;line-height:1.7;padding:4px 11px;border-radius:7px;color:var(--scp-muted);cursor:pointer;white-space:nowrap;}
+.scp-view-tab:hover{color:var(--scp-text);}
+.scp-view-tab[data-on="true"]{background:var(--scp-surface);color:var(--scp-text);font-weight:600;box-shadow:0 1px 2px rgba(16,24,40,.08);}
+.scp-view-tab b{font-size:10.5px;color:var(--scp-faint);font-weight:650;margin-left:4px;}
+.scp-view-tab[data-on="true"] b{color:var(--scp-accent);}
+.scp-batch{display:flex;align-items:center;gap:9px;padding:9px 18px;border-bottom:1px solid var(--scp-border);background:color-mix(in srgb,var(--scp-surface-2) 74%,var(--scp-surface));flex:none;min-width:0;}
+.scp-batch-strong{font-size:12.5px;font-weight:650;white-space:nowrap;}
+.scp-batch-chip{font-size:10.5px;line-height:1.7;padding:0 6px;border-radius:5px;font-weight:600;white-space:nowrap;}
+.scp-batch-chip[data-tone="warn"]{background:var(--scp-warn-soft);color:var(--scp-warn);}
+.scp-batch-chip[data-tone="accent"]{background:var(--scp-accent-soft);color:var(--scp-accent);}
+.scp-batch-chip[data-tone="ok"]{background:var(--scp-ok-soft);color:var(--scp-ok);}
+.scp-batch-chip[data-tone="bad"]{background:var(--scp-bad-soft);color:var(--scp-bad);}
+.scp-batch-chip[data-tone="gray"]{background:var(--scp-surface-3);color:var(--scp-muted);}
+.scp-batch-age{font-size:11px;color:var(--scp-faint);white-space:nowrap;}
+.scp-batch-age[data-over="true"]{color:var(--scp-bad);font-weight:650;}
+.scp-sed-side{gap:8px;padding:14px 22px 14px;}
+.scp-sed-side .scp-list-block{padding:10px 12px;}
+.scp-sed-filters{display:flex;flex-wrap:wrap;gap:5px;padding:1px 2px 9px;}
+.scp-sed-group{display:flex;align-items:center;justify-content:space-between;padding:11px 8px 5px;font-size:10.5px;font-weight:650;letter-spacing:.04em;color:var(--scp-faint);}
+.scp-sed-row{display:flex;gap:9px;width:100%;padding:9px 9px 10px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
+.scp-sed-row:hover{background:var(--scp-surface-2);}
+.scp-sed-row[data-on="true"]{background:var(--scp-accent-soft);}
+.scp-sed-dot{width:6px;height:6px;border-radius:50%;margin-top:7px;flex:none;}
+.scp-sed-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:4px;}
+.scp-sed-line{display:flex;align-items:baseline;gap:8px;min-width:0;}
+.scp-sed-title{flex:1 1 auto;min-width:0;font-size:12.5px;font-weight:550;line-height:1.5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-sed-age{flex:none;font-size:10.5px;color:var(--scp-faint);font-variant-numeric:tabular-nums;}
+.scp-sed-age[data-over="true"]{color:var(--scp-bad);font-weight:650;}
+.scp-sed-meta{display:flex;align-items:center;gap:6px;min-width:0;font-size:10.5px;color:var(--scp-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-stepper{display:flex;padding:3px 0 1px;}
+.scp-step{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;}
+.scp-step:not(:last-child)::after{content:"";position:absolute;top:7px;left:50%;width:100%;height:2px;background:var(--scp-border);z-index:0;}
+.scp-step[data-state="done"]:not(:last-child)::after,.scp-step[data-state="current"]:not(:last-child)::after{background:var(--scp-accent-line);}
+.scp-step-dot{width:15px;height:15px;border-radius:50%;border:2px solid var(--scp-border-strong);background:var(--scp-surface);z-index:1;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:transparent;}
+.scp-step[data-state="done"] .scp-step-dot{background:var(--scp-ok);border-color:var(--scp-ok);color:#ffffff;}
+.scp-step[data-state="current"] .scp-step-dot{border-color:var(--scp-accent);background:var(--scp-accent-soft);box-shadow:0 0 0 3px var(--scp-accent-soft);}
+.scp-step[data-state="blocked"] .scp-step-dot{border-color:var(--scp-bad);background:var(--scp-bad-soft);}
+.scp-step[data-state="unknown"] .scp-step-dot{border-style:dashed;border-color:var(--scp-border-strong);background:var(--scp-surface-2);}
+.scp-step-label{font-size:10px;line-height:1.35;color:var(--scp-muted);text-align:center;white-space:nowrap;}
+.scp-step[data-state="done"] .scp-step-label,.scp-step[data-state="current"] .scp-step-label{color:var(--scp-text);}
+.scp-step[data-state="current"] .scp-step-label{font-weight:650;}
+.scp-step-note{font-size:9.5px;line-height:1.35;color:var(--scp-faint);text-align:center;white-space:nowrap;}
+.scp-step-note[data-bad="true"]{color:var(--scp-bad);}
+.scp-target-row{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--scp-border);border-radius:10px;background:var(--scp-surface-2);font-size:11px;min-width:0;}
+.scp-target-label{color:var(--scp-faint);flex:none;}
+.scp-target-pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:6px;background:var(--scp-surface);border:1px solid var(--scp-border-strong);font-weight:600;font-size:11px;color:var(--scp-text);white-space:nowrap;}
+.scp-target-hint{color:var(--scp-muted);font-size:10.5px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.scp-veil{position:absolute;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;background:rgba(20,26,38,.38);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}
+body[data-ds-dark-theme] .scp-veil,[data-theme="dark"] .scp-veil{background:rgba(0,0,0,.55);}
+.scp-modal{width:min(680px,calc(100% - 40px));max-height:74vh;display:flex;flex-direction:column;background:var(--scp-surface);border:1px solid var(--scp-border-strong);border-radius:16px;box-shadow:var(--scp-shadow);overflow:hidden;}
+.scp-modal-top{display:flex;align-items:flex-start;gap:10px;padding:15px 18px 13px;border-bottom:1px solid var(--scp-border);}
+.scp-modal-title{font-size:14px;font-weight:650;line-height:1.5;}
+.scp-modal-sub{font-size:11px;color:var(--scp-muted);margin-top:3px;line-height:1.5;}
+.scp-modal-body{overflow:auto;padding:13px 18px;display:flex;flex-direction:column;gap:11px;}
+.scp-modal-foot{display:flex;align-items:center;gap:8px;padding:11px 18px;border-top:1px solid var(--scp-border);}
+.scp-prompt{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:10.5px;line-height:1.7;white-space:pre-wrap;background:var(--scp-surface-2);border:1px solid var(--scp-border);border-radius:9px;padding:10px 12px;color:var(--scp-text);max-height:250px;overflow:auto;-webkit-mask-image:linear-gradient(to bottom,#000 88%,transparent);mask-image:linear-gradient(to bottom,#000 88%,transparent);}
+.scp-prompt-cap{font-size:10px;color:var(--scp-faint);margin-top:-5px;}
+.scp-details-toggle{width:fit-content;border:0;background:transparent;color:var(--scp-accent);font:inherit;font-size:10.5px;padding:1px 0;cursor:pointer;}
+.scp-details-toggle:hover{text-decoration:underline;}
+.scp-warn-list{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--scp-muted);line-height:1.6;}
+.scp-warn-list b{color:var(--scp-warn);font-weight:650;}
+.scp-pick-list{display:flex;flex-direction:column;gap:7px;}
+.scp-pick{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--scp-border);border-radius:10px;background:var(--scp-surface);cursor:pointer;text-align:left;}
+.scp-pick[data-on="true"]{background:var(--scp-accent-soft);border-color:var(--scp-accent-line);}
+.scp-pick:disabled{opacity:.55;cursor:not-allowed;}
+.scp-radio{width:14px;height:14px;border-radius:50%;border:2px solid var(--scp-border-strong);flex:none;margin-top:1px;}
+.scp-pick[data-on="true"] .scp-radio{border-color:var(--scp-accent);background:var(--scp-accent);box-shadow:inset 0 0 0 3px var(--scp-accent-soft);}
+.scp-pick-title{font-size:12px;font-weight:600;display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+.scp-pick-sub{font-size:10.5px;color:var(--scp-muted);margin-top:2px;line-height:1.5;}
+.scp-sed-table{width:100%;border-collapse:collapse;font-size:11px;}
+.scp-sed-table th{text-align:left;font-weight:600;color:var(--scp-faint);font-size:10px;letter-spacing:.04em;padding:0 6px 5px;border-bottom:1px solid var(--scp-border);}
+.scp-sed-table td{padding:6px;border-bottom:1px solid color-mix(in srgb,var(--scp-border) 60%,transparent);vertical-align:top;}
+.scp-sed-table tr:last-child td{border-bottom:0;}
+.scp-sed-kv{display:flex;flex-direction:column;gap:5px;font-size:11.5px;line-height:1.6;}
+.scp-sed-kv-row{display:grid;grid-template-columns:64px 1fr;gap:8px;min-width:0;}
+.scp-sed-kv-row dt{color:var(--scp-faint);}
+.scp-sed-kv-row dd{margin:0;color:var(--scp-text);overflow-wrap:anywhere;}
+.scp-sed-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:auto;padding-top:2px;}
+.scp-sed-hint{font-size:10.5px;color:var(--scp-faint);}
+.scp-sed-history{display:flex;flex-direction:column;gap:5px;width:100%;margin-top:10px;padding-top:8px;border-top:1px solid var(--scp-border);}
+.scp-sed-history-row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--scp-muted);min-width:0;}
+.scp-sed-history-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-text);}
+.scp-dock-sed{display:flex;align-items:center;gap:7px;min-width:0;margin-top:1px;padding:5px 2px 0;border-top:1px solid var(--scp-border);font-size:11px;}
+.scp-dock-sed-dot{width:6px;height:6px;border-radius:50%;background:var(--scp-warn);flex:none;}
+.scp-dock-sed-dot[data-tone="ok"]{background:var(--scp-ok);}
+.scp-dock-sed-dot[data-tone="bad"]{background:var(--scp-bad);}
+.scp-dock-sed-dot[data-tone="accent"]{background:var(--scp-accent);}
+.scp-dock-sed-label{color:var(--scp-faint);flex:none;}
+.scp-dock-sed-stage{color:var(--scp-text);font-weight:550;white-space:nowrap;}
+.scp-dock-sed-sep{color:var(--scp-border-strong);flex:none;}
+.scp-dock-sed-days{color:var(--scp-warn);font-weight:650;flex:none;font-variant-numeric:tabular-nums;}
+.scp-dock-sed-next{color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.scp-dock-sed-open{flex:none;border:0;background:var(--scp-accent-soft);color:var(--scp-accent);font:inherit;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;cursor:pointer;}
+@media (max-width:760px){.scp-batch{flex-wrap:wrap;gap:6px 8px;}.scp-batch .scp-spacer{display:none;}.scp-step-label,.scp-step-note{font-size:9px;}.scp-target-row{flex-wrap:wrap;}}`,
     ].join('\n')
 
     // ── 兜底中文名（词表缺项时用，正常路径由 scripts/_trace_state.py 给）──────
@@ -806,6 +1114,10 @@ window.__ModuleLoader__.load({
       message: '',
       paletteOpen: false,
       paletteSelect: '',
+      paletteView: 'diagnosis',
+      sedimentSelectKey: '',
+      sediment: { phase: 'idle', data: null, message: '', at: 0 },
+      sedimentSeq: 0,
       version: 0,
       listeners: new Set(),
       timer: null,
@@ -864,6 +1176,56 @@ window.__ModuleLoader__.load({
       }
     }
 
+    // 沉淀队列：按需读取。展开状态条或打开沉淀视图时才跑（groom_status 要读 git 与 inbox，
+    // 不能塞进 10 秒轮询）。保留上一次数据，刷新时只切 phase，不闪空。
+    async function refreshSediment(force) {
+      if (!store.cwd) return
+      const now = Date.now()
+      if (!force && store.sediment.phase === 'ready' && now - store.sediment.at < 60000) return
+      const seq = store.sedimentSeq + 1
+      store.sedimentSeq = seq
+      store.sediment = Object.assign({}, store.sediment, {
+        phase: store.sediment.data ? 'refreshing' : 'loading',
+        message: '',
+      })
+      emit()
+      try {
+        const value = await rpcCall('copilot-sediment', {
+          cwd: store.cwd,
+          sessionId: store.sessionId,
+        })
+        if (seq !== store.sedimentSeq) return
+        store.sediment = {
+          phase: value && value.ok !== false ? 'ready' : 'error',
+          data: value,
+          message: value && value.ok === false ? String(value.message || '') : '',
+          at: Date.now(),
+        }
+        emit()
+      } catch (error) {
+        if (seq !== store.sedimentSeq) return
+        store.sediment = {
+          phase: 'error',
+          data: store.sediment.data,
+          message: String((error && error.message) || error),
+          at: Date.now(),
+        }
+        emit()
+      }
+    }
+
+    function setPaletteView(view) {
+      const next = view === 'sediment' ? 'sediment' : 'diagnosis'
+      if (store.paletteView === next) return
+      store.paletteView = next
+      emit()
+    }
+
+    function openSediment(key) {
+      store.sedimentSelectKey = key ? String(key) : ''
+      setPaletteOpen(true, '', 'sediment')
+    }
+
     function startTimer() {
       if (store.timer) return
       store.timer = setInterval(() => {
@@ -883,6 +1245,8 @@ window.__ModuleLoader__.load({
         store.phase = 'loading'
         store.data = null
         store.message = ''
+        store.sediment = { phase: 'idle', data: null, message: '', at: 0 }
+        store.sedimentSeq += 1
         emit()
         refresh(true)
       } else if (!store.data && store.phase !== 'loading') {
@@ -891,12 +1255,15 @@ window.__ModuleLoader__.load({
       startTimer()
     }
 
-    function setPaletteOpen(open, selectId) {
+    function setPaletteOpen(open, selectId, view) {
       const next = !!open
       const nextSelect = selectId === undefined ? store.paletteSelect : String(selectId || '')
-      if (store.paletteOpen === next && (selectId === undefined || store.paletteSelect === nextSelect)) return
+      const nextView = view === undefined ? store.paletteView : String(view || 'diagnosis')
+      if (store.paletteOpen === next && (selectId === undefined || store.paletteSelect === nextSelect)
+        && (view === undefined || store.paletteView === nextView)) return
       store.paletteOpen = next
       store.paletteSelect = nextSelect
+      store.paletteView = nextView
       emit()
     }
 
@@ -1457,6 +1824,53 @@ window.__ModuleLoader__.load({
         h('path', { d: 'M4.5 4.5l7 7M11.5 4.5l-7 7' }))
     }
 
+    // ── 沉淀队列的小工具（只排版，不判状态；状态来自 sediment_state.py）──────
+    const SED_CHIP_TONE = { warn: 'warn', bad: 'error', accent: 'brand', ok: 'success', gray: '' }
+    const SED_DOT = { warn: 'var(--scp-warn)', bad: 'var(--scp-bad)', accent: 'var(--scp-accent)', ok: 'var(--scp-ok)', gray: 'var(--scp-faint)' }
+
+    function sedGroupOf(draft) {
+      const state = String((draft && draft.state) || '')
+      if (state === 'decided') return 'pr'
+      if (state === 'pr_closed') return 'groom'
+      if (state === 'pr_open' || state === 'pr_merged') return 'check'
+      if (state === 'pr_closed' || state === 'orphan' || state === 'done' || state === 'deferred' || state === 'rejected') return 'other'
+      return 'groom'
+    }
+
+    function sedAgeText(draft) {
+      const age = draft && draft.ageDays
+      if (age === null || age === undefined || Number.isNaN(Number(age))) return tr('sediment.ageUnknown')
+      return tr('sediment.age', { n: Number(age) })
+    }
+
+    // 五步轨：每一步只回答「做到了没」，证据由 sediment_state.py 拼好。
+    function sedSteps(draft) {
+      const state = String((draft && draft.state) || '')
+      const novelty = draft && draft.novelty
+      const decisionValid = Boolean(draft && draft.decisionValid)
+      const pr = draft && draft.pr
+      const rerun = state === 'need_rerun'
+      const assessed = Boolean(novelty)
+      const prState = pr ? String(pr.state || 'unknown') : ''
+      // 「已升格」只认 trace/队列的 done；promotion.casePath 可能只是 variant/covered 的候选 case，
+      // 不能拿它当本次升格已完成。
+      const promoted = state === 'done'
+      const created = draft && draft.createdAt ? formatTime(draft.createdAt) : ''
+      const assessedNote = (draft && draft.assessedShort) ? draft.assessedShort : (assessed && draft.confidence ? String(draft.confidence) : '')
+      return [
+        { key: 'draft', label: tr('sediment.stepper.draft'), state: 'done', note: created },
+        { key: 'assessed', label: tr('sediment.stepper.assessed'), state: rerun ? 'blocked' : (assessed ? 'done' : (state === 'unassessed' ? 'current' : 'unknown')), note: assessedNote },
+        { key: 'decided', label: tr('sediment.stepper.decided'), state: decisionValid ? 'done' : (state === 'need_decision' ? 'current' : 'unknown'), note: decisionValid && draft.decision ? String(draft.decision) : '' },
+        { key: 'pr', label: tr('sediment.stepper.pr'), state: pr ? 'done' : (state === 'decided' ? 'current' : 'unknown'), note: pr && pr.number ? '#' + pr.number : '' },
+        { key: 'promoted', label: tr('sediment.stepper.promoted'), state: promoted ? 'done' : (prState === 'merged' ? 'current' : 'unknown'), note: prState === 'merged' && !promoted ? tr('sediment.stepper.pending') : '' },
+      ]
+    }
+
+    function sedPrimaryKey(draft) {
+      const next = draft && draft.next ? String(draft.next.kind || '') : ''
+      return ['groom', 'pr', 'check', 'close'].indexOf(next) >= 0 ? next : ''
+    }
+
     function StepRail(props) {
       const current = Number(props.extra && props.extra.currentStep) || 0
       const max = Number(props.extra && props.extra.maxSteps) || 6
@@ -1931,6 +2345,12 @@ window.__ModuleLoader__.load({
         }, [])
 
         React.useEffect(() => {
+          if (s.prefs.dockCollapsed) return undefined
+          if (s.sediment.phase === 'idle') refreshSediment(false)
+          return undefined
+        }, [s.prefs.dockCollapsed, s.sediment.phase])
+
+        React.useEffect(() => {
           if (!s.prefs.dockCollapsed) {
             setIdle(false)
             if (idleTimer.current) clearTimeout(idleTimer.current)
@@ -2182,6 +2602,32 @@ window.__ModuleLoader__.load({
         if (extra.framework) metaBits.push(extra.framework)
         if (extra.category) metaBits.push(CATEGORY_LABEL[extra.category] || extra.category)
 
+        const sedimentDrafts = (s.sediment.data && s.sediment.data.drafts) || []
+        const sedDraft = sedimentDrafts.find((item) => item && item.source && item.source.sessionId === primary.sessionId) || null
+        const traceSed = primary.sedimented && primary.sedimented.state ? primary.sedimented.state : 'none'
+        const sedimentRow = (!collapsed && (sedDraft || traceSed === 'submitted'))
+          ? h('div', { className: 'scp-dock-sed', role: 'group', 'aria-label': tr('palette.sedimentTitle') },
+            h('span', {
+              className: 'scp-dock-sed-dot',
+              'data-tone': sedDraft ? (sedDraft.stageTone || 'gray') : 'warn',
+              'aria-hidden': 'true',
+            }),
+            h('span', { className: 'scp-dock-sed-label' }, tr('palette.view.sediment')),
+            h('span', { className: 'scp-dock-sed-stage' }, sedDraft ? sedDraft.stage : tr('sediment.dock.missingDraft')),
+            sedDraft && sedDraft.ageDays !== null && sedDraft.ageDays !== undefined
+              ? h('span', { className: 'scp-dock-sed-days' }, tr('sediment.age', { n: sedDraft.ageDays }))
+              : null,
+            sedDraft && sedDraft.next && sedDraft.next.label
+              ? h('span', { className: 'scp-dock-sed-next' }, tr('sediment.batch.next') + '：' + sedDraft.next.label)
+              : null,
+            h('span', { className: 'scp-spacer' }),
+            h('button', {
+              type: 'button',
+              className: 'scp-dock-sed-open',
+              onClick: () => openSediment(sedDraft ? sedDraft.key : ''),
+            }, tr('sediment.open') + ' ›'))
+          : null
+
         function runPrimary() {
           if (action.mode === 'draft') fillDraft(action.text)
           else if (action.mode === 'copy') copyAndFlash(action.text)
@@ -2193,7 +2639,7 @@ window.__ModuleLoader__.load({
         }
 
         function openOverview() {
-          setPaletteOpen(true, primary.sessionId)
+          setPaletteOpen(true, primary.sessionId, 'diagnosis')
         }
 
         const pickerRows = allRows
@@ -2338,7 +2784,8 @@ window.__ModuleLoader__.load({
                 : h('span', {}, tr('label.updated') + ' ' + (formatTime(primary.updatedAt) || tr('none')))),
               chips.length ? h('span', { className: 'scp-chips' }, chips.map((chip) => h('span', {
                 key: chip.key, className: 'scp-chip', 'data-tone': chip.tone,
-              }, chip.text))) : null)),
+              }, chip.text))) : null),
+            sedimentRow),
           hint ? h('div', { className: 'scp-hint', role: 'status' }, hint) : null)
       }
     }
@@ -2386,6 +2833,18 @@ window.__ModuleLoader__.load({
       const reportToken = React.useRef(0)
       const selectedRowRef = React.useRef('')
       const [undoBusy, setUndoBusy] = React.useState(false)
+      const [sedSel, setSedSel] = React.useState(0)
+      const [sedFilter, setSedFilter] = React.useState('all')
+      const [promptKind, setPromptKind] = React.useState('')
+      const [promptDetailsOpen, setPromptDetailsOpen] = React.useState(false)
+      const [targetOpen, setTargetOpen] = React.useState(false)
+      const [targetResume, setTargetResume] = React.useState('')
+      const [targetRemote, setTargetRemote] = React.useState('')
+      const [targetBase, setTargetBase] = React.useState('')
+      const [targetBusy, setTargetBusy] = React.useState(false)
+      const [checkBusy, setCheckBusy] = React.useState('')
+      const promptRef = React.useRef(null)
+      const targetRef = React.useRef(null)
       const toastTimer = React.useRef(null)
       const panelRef = React.useRef(null)
       const searchRef = React.useRef(null)
@@ -2393,6 +2852,44 @@ window.__ModuleLoader__.load({
       const timelineToken = React.useRef(0)
       const commandsRef = React.useRef([])
       const filtered = filterRows(rows, filter).filter((item) => matchesQuery(item, searchText))
+
+      const view = s.paletteView === 'sediment' ? 'sediment' : 'diagnosis'
+      const sedDoc = s.sediment && s.sediment.data && s.sediment.data.ok !== false ? s.sediment.data : null
+      const sedPhase = s.sediment ? s.sediment.phase : 'idle'
+      const sedDrafts = sedDoc && Array.isArray(sedDoc.drafts) ? sedDoc.drafts : []
+      const sedCounts = sedDoc && sedDoc.counts ? sedDoc.counts : {}
+      const sedTargetDoc = sedDoc && sedDoc.target ? sedDoc.target : null
+      const sedTarget = sedTargetDoc && sedTargetDoc.target ? sedTargetDoc.target : sedTargetDoc
+      const sedRemotes = sedTargetDoc && Array.isArray(sedTargetDoc.remotes)
+        ? sedTargetDoc.remotes
+        : (sedTarget && Array.isArray(sedTarget.remotes) ? sedTarget.remotes : [])
+      const sedTargetLabel = sedTarget && sedTarget.remote
+        ? [sedTarget.remote, sedTarget.base,
+          sedTarget.platformName || (sedTargetDoc && sedTargetDoc.platformName) || sedTarget.platform].filter(Boolean).join(' · ')
+        : ''
+      const sedQuery = String(searchText || '').trim().toLowerCase()
+      const sedFiltered = sedDrafts.filter((draft) => {
+        if (!sedQuery) return true
+        const hay = [draft.title, draft.key, draft.caseId, draft.decision, draft.novelty, draft.stage]
+          .filter(Boolean).join(' ').toLowerCase()
+        return hay.indexOf(sedQuery) >= 0
+      }).filter((draft) => {
+        if (sedFilter === 'decision') return ['unassessed', 'need_decision'].indexOf(draft.state) >= 0
+        if (sedFilter === 'pr') return draft.state === 'decided'
+        if (sedFilter === 'check') return draft.state === 'pr_open' || draft.state === 'pr_merged'
+        if (sedFilter === 'rerun') return draft.state === 'need_rerun'
+        return true
+      })
+      const sedRank = { groom: 0, pr: 1, check: 2, other: 3 }
+      const sedSorted = sedFiltered.slice().sort((a, b) => {
+        const ga = Object.prototype.hasOwnProperty.call(sedRank, sedGroupOf(a)) ? sedRank[sedGroupOf(a)] : 9
+        const gb = Object.prototype.hasOwnProperty.call(sedRank, sedGroupOf(b)) ? sedRank[sedGroupOf(b)] : 9
+        if (ga !== gb) return ga - gb
+        const aa = a.ageDays === null || a.ageDays === undefined ? -1 : Number(a.ageDays)
+        const ab = b.ageDays === null || b.ageDays === undefined ? -1 : Number(b.ageDays)
+        return ab - aa
+      })
+      const sedPick = sedSorted[Math.max(0, Math.min(sedSel, sedSorted.length - 1))] || null
 
       const flash = React.useCallback((text) => {
         setToast(text)
@@ -2408,6 +2905,41 @@ window.__ModuleLoader__.load({
         if (!s.paletteOpen) return
         if (!data) refresh(true)
       }, [s.paletteOpen, data])
+
+      React.useEffect(() => {
+        if (!s.paletteOpen) return
+        // 诊断视图也要读一次：右列的「沉淀进度」需要当前单对应的草稿。
+        // refreshSediment 自己按 60 秒去重；这里只避免在 loading/refreshing 时重入。
+        if (sedPhase !== 'loading' && sedPhase !== 'refreshing') refreshSediment(false)
+      }, [s.paletteOpen, sedPhase])
+
+      React.useEffect(() => {
+        setSedSel(0)
+        setPromptKind('')
+        setPromptDetailsOpen(false)
+        setTargetOpen(false)
+      }, [view, sedFilter])
+
+      React.useEffect(() => {
+        setSearchText('')
+        setSedSel(0)
+      }, [view])
+
+      React.useEffect(() => {
+        if (sedSel > sedSorted.length - 1) setSedSel(sedSorted.length > 0 ? sedSorted.length - 1 : 0)
+      }, [sedSorted.length, sedSel])
+
+      React.useEffect(() => {
+        if (!s.paletteOpen || view !== 'sediment') return
+        const key = s.sedimentSelectKey
+        if (!key) return
+        const index = sedSorted.findIndex((draft) => draft.key === key)
+        if (index < 0 && sedFilter !== 'all') {
+          setSedFilter('all')
+          return
+        }
+        if (index >= 0 && index !== sedSel) setSedSel(index)
+      }, [s.paletteOpen, s.sedimentSelectKey, view, sedSorted.length, sedFilter])
 
       React.useEffect(() => {
         if (!s.paletteOpen) return
@@ -2436,7 +2968,24 @@ window.__ModuleLoader__.load({
         setCmdIndex(0)
         setSearchText('')
         setMenuOpen(false)
+        setPromptKind('')
+        setPromptDetailsOpen(false)
+        setTargetOpen(false)
+        setTargetResume('')
+        setCheckBusy('')
       }, [s.paletteOpen])
+
+      React.useEffect(() => {
+        if (!promptKind) return
+        const node = promptRef.current
+        if (node && typeof node.focus === 'function') node.focus()
+      }, [promptKind])
+
+      React.useEffect(() => {
+        if (!targetOpen) return
+        const node = targetRef.current
+        if (node && typeof node.focus === 'function') node.focus()
+      }, [targetOpen])
 
       React.useEffect(() => {
         if (!s.paletteOpen) return
@@ -2464,6 +3013,7 @@ window.__ModuleLoader__.load({
           const typing = target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || '')
           if ((event.metaKey || event.ctrlKey) && String(event.key || '').toLowerCase() === 'k') {
             event.preventDefault()
+            if (view === 'sediment') return
             setCmdOpen(true)
             setCmdQuery('')
             setCmdIndex(0)
@@ -2495,6 +3045,7 @@ window.__ModuleLoader__.load({
             }
             return
           }
+          if (view === 'sediment') return
           if (event.key === '/' && !typing && !menuOpen) {
             event.preventDefault()
             if (searchRef.current && typeof searchRef.current.focus === 'function') searchRef.current.focus()
@@ -2527,6 +3078,58 @@ window.__ModuleLoader__.load({
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
       }, [s.paletteOpen, filtered, selected, menuOpen, cmdOpen, cmdQuery, cmdIndex])
+
+      React.useEffect(() => {
+        if (!s.paletteOpen || view !== 'sediment') return undefined
+        const onKey = (event) => {
+          const target = event.target
+          const typing = target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || '')
+          if (cmdOpen) return
+          if (promptKind) {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              setPromptKind('')
+            }
+            return
+          }
+          if (targetOpen) {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              setTargetOpen(false)
+            }
+            return
+          }
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            setPaletteOpen(false)
+            return
+          }
+          if (event.key === '/' && !typing) {
+            event.preventDefault()
+            if (searchRef.current && typeof searchRef.current.focus === 'function') searchRef.current.focus()
+            return
+          }
+          if (typing) return
+          if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            if (!sedSorted.length) return
+            event.preventDefault()
+            setSedSel((current) => {
+              const next = event.key === 'ArrowDown' ? current + 1 : current - 1
+              return Math.max(0, Math.min(next, sedSorted.length - 1))
+            })
+            return
+          }
+          if (event.key === 'Enter') {
+            if (event.target && event.target.tagName === 'BUTTON') return
+            const pick = sedSorted[sedSel]
+            if (!pick) return
+            event.preventDefault()
+            runSedNext(pick)
+          }
+        }
+        window.addEventListener('keydown', onKey)
+        return () => window.removeEventListener('keydown', onKey)
+      }, [s.paletteOpen, view, sedSorted.length, sedSel, promptKind, targetOpen, cmdOpen])
 
       if (!s.paletteOpen) return null
       if (s.data && s.data.ok === false && s.data.code === 'E_NO_ROOT') return null
@@ -2775,6 +3378,56 @@ window.__ModuleLoader__.load({
       const resumedSessions = row ? (row.resumeSessions || []).filter((sid) => sid && sid !== originSession) : []
       const currentSession = store.sessionId || ''
 
+      const diagSed = row
+        ? (sedDrafts.find((draft) => draft && draft.source && draft.source.sessionId === row.sessionId) || null)
+        : null
+      const diagSedBlock = (() => {
+        if (!row) return null
+        const traceState = row.sedimented && row.sedimented.state ? String(row.sedimented.state) : 'none'
+        if (!diagSed && traceState !== 'submitted' && traceState !== 'knowledge' && traceState !== 'archived') return null
+        const children = [h('div', { key: 'label', className: 'scp-section-label' }, tr('sediment.detail.progress'))]
+        if (diagSed) {
+          const steps = sedSteps(diagSed)
+          const mismatch = diagSed.source && diagSed.source.mismatch ? String(diagSed.source.mismatch) : 'none'
+          children.push(h('div', { key: 'block', className: 'scp-list-block' },
+            h('div', { className: 'scp-stepper' }, steps.map((step) => h('div', { key: step.key, className: 'scp-step', 'data-state': step.state },
+              h('span', { className: 'scp-step-dot', 'aria-hidden': 'true' }, '✓'),
+              h('span', { className: 'scp-step-label' }, step.label),
+              step.note ? h('span', { className: 'scp-step-note', 'data-bad': step.state === 'blocked' ? 'true' : 'false' }, step.note) : null))),
+            mismatch !== 'none' ? h('div', {
+              className: 'scp-callout',
+              style: { background: 'var(--scp-warn-soft)', borderColor: 'color-mix(in srgb, var(--scp-warn) 26%, var(--scp-border))' },
+            },
+              h('span', { className: 'scp-callout-label' }, tr('sediment.detail.source')),
+              h('div', { className: 'scp-callout-text' }, tr('sediment.detail.mismatch.' + mismatch)),
+              diagSed.writeback ? h('button', {
+                type: 'button', className: 'scp-check-action', style: { alignSelf: 'flex-start' },
+                onClick: () => fillDraft(diagSed.writeback),
+              }, tr(mismatch === 'draft_left_behind' ? 'sediment.detail.closeDraft' : 'sediment.detail.writeback')) : null) : null,
+            h('div', { className: 'scp-upstream-row' },
+              h('button', {
+                type: 'button', className: 'scp-check-action',
+                onClick: () => openSediment(diagSed.key),
+              }, tr('sediment.detail.openQueue')))))
+        } else if (traceState === 'submitted') {
+          children.push(h('div', { key: 'block', className: 'scp-list-block' },
+            h('div', { className: 'scp-check-state' }, tr('sediment.dock.missingDraft')),
+            h('div', { className: 'scp-upstream-row' },
+              h('button', {
+                type: 'button', className: 'scp-check-action',
+                onClick: () => openSediment(''),
+              }, tr('sediment.detail.openQueue')))))
+        } else {
+          const vocab = (data && data.vocab && data.vocab.sedimented) || []
+          const item = vocab.find((entry) => entry.value === traceState)
+          const label = item ? item.label : traceState
+          const caseId = row.sedimented && row.sedimented.case_id ? String(row.sedimented.case_id) : ''
+          children.push(h('div', { key: 'block', className: 'scp-list-block' },
+            h('div', { className: 'scp-check-state' }, label + (caseId ? ' · ' + caseId : ''))))
+        }
+        return h('div', { key: 'sediment-progress' }, children)
+      })()
+
       const side = row
         ? menuOpen
           ? h(WritePanel, {
@@ -2798,6 +3451,7 @@ window.__ModuleLoader__.load({
             waiting ? h('div', { className: 'scp-callout' },
               h('span', { className: 'scp-callout-label' }, tr('section.waiting')),
               h('div', { className: 'scp-callout-text' }, waiting)) : null,
+            diagSedBlock,
             showMaterials ? h('div', { className: 'scp-section-label' }, tr('section.materials')) : null,
             showMaterials ? h('div', { className: 'scp-list-block' },
               h('div', { className: 'scp-check-state' }, tr('materials.hint')),
@@ -2983,6 +3637,543 @@ window.__ModuleLoader__.load({
             emptyMark,
             !data ? tr('palette.loading') : tr('palette.empty')))
 
+      // ── 沉淀视图的渲染件 ────────────────────────────────────────────────
+      function openPrompt(kind, resume) {
+        const k = String(kind || '')
+        if (k !== 'groom' && k !== 'pr' && k !== 'check' && k !== 'close') return
+        if (k === 'pr' && !sedTargetLabel) {
+          openTarget('pr')
+          return
+        }
+        setPromptKind(k)
+        setPromptDetailsOpen(false)
+        setMenuOpen(false)
+      }
+
+      function openTarget(resume) {
+        const remotes = sedRemotes
+        const savedName = sedTarget && sedTarget.remote ? String(sedTarget.remote) : ''
+        const recName = sedTargetDoc && sedTargetDoc.recommendation && sedTargetDoc.recommendation.remote
+          ? String(sedTargetDoc.recommendation.remote) : ''
+        const current = (savedName && remotes.find((item) => item.name === savedName))
+          || (recName && remotes.find((item) => item.name === recName))
+          || (remotes.length === 1 ? remotes[0] : null)
+        const base = (savedName && current && current.name === savedName && (current.base || sedTarget.base))
+          || (sedTargetDoc && sedTargetDoc.recommendation && sedTargetDoc.recommendation.base)
+          || (current && current.base) || 'main'
+        setTargetRemote(current ? current.name : '')
+        setTargetBase(String(base))
+        setTargetResume(String(resume || ''))
+        setTargetOpen(true)
+        setPromptKind('')
+      }
+
+      async function saveTarget() {
+        if (!targetRemote || targetBusy) return
+        setTargetBusy(true)
+        try {
+          const result = await rpcCall('copilot-pr-target', {
+            action: 'set-target',
+            cwd: s.cwd,
+            sessionId: s.sessionId,
+            remote: targetRemote,
+            base: targetBase,
+          })
+          if (!result || result.ok === false) {
+            const message = result && (result.message || (result.error && result.error.message))
+            flash(message || tr('sediment.target.required'))
+            return
+          }
+          setTargetOpen(false)
+          const resume = targetResume
+          setTargetResume('')
+          await refreshSediment(true)
+          if (resume) {
+            setPromptKind(resume)
+            setPromptDetailsOpen(false)
+          }
+        } catch (error) {
+          flash(String((error && error.message) || error))
+        } finally {
+          setTargetBusy(false)
+        }
+      }
+
+      function closeTarget() {
+        const resume = targetResume
+        setTargetOpen(false)
+        setTargetResume('')
+        if (resume && sedTargetLabel) {
+          setPromptKind(resume)
+          setPromptDetailsOpen(false)
+        }
+      }
+
+      async function checkPr(key) {
+        if (!key || checkBusy) return
+        setCheckBusy(key)
+        try {
+          const result = await rpcCall('copilot-pr-target', {
+            action: 'check', cwd: s.cwd, sessionId: s.sessionId, key,
+          })
+          if (!result || result.ok === false) {
+            const message = result && (result.message || (result.error && result.error.message))
+            flash(message || tr('sediment.error', { message: '' }))
+            return
+          }
+          await refreshSediment(true)
+        } catch (error) {
+          flash(String((error && error.message) || error))
+        } finally {
+          setCheckBusy('')
+        }
+      }
+
+      async function markMerged(key) {
+        if (!key || checkBusy) return
+        setCheckBusy(key)
+        try {
+          const result = await rpcCall('copilot-pr-target', {
+            action: 'mark', cwd: s.cwd, sessionId: s.sessionId, key, state: 'merged',
+          })
+          if (!result || result.ok === false) {
+            const message = result && (result.message || (result.error && result.error.message))
+            flash(message || tr('sediment.error', { message: '' }))
+            return
+          }
+          await refreshSediment(true)
+          flash(tr('sediment.markMerged'))
+        } catch (error) {
+          flash(String((error && error.message) || error))
+        } finally {
+          setCheckBusy('')
+        }
+      }
+
+      function runSedNext(draft) {
+        const kind = sedPrimaryKey(draft)
+        if (!kind) return
+        openPrompt(kind)
+      }
+
+      const sedDecidedRows = sedDrafts.filter((draft) => draft.state === 'decided')
+      const sedDecided = Number(sedCounts.decided) || 0
+      const sedOldest = Number(sedCounts.oldestDays) || sedDrafts.reduce((max, draft) => {
+        const age = draft.ageDays === null || draft.ageDays === undefined ? -1 : Number(draft.ageDays)
+        return age > max ? age : max
+      }, 0)
+      const sedPrimaryKind = sedDoc && sedDoc.primary ? String(sedDoc.primary.kind || 'none') : 'none'
+      const sedPrimaryLabel = sedDoc && sedDoc.primary && sedDoc.primary.label
+        ? String(sedDoc.primary.label)
+        : tr('sediment.batch.none')
+      const sedUnassessed = Number(sedCounts.unassessed) || 0
+      const sedNeedDecision = Number(sedCounts.needDecision) || 0
+      const sedNeedRerun = Number(sedCounts.needRerun) || 0
+      const sedPrOpen = Number(sedCounts.prOpen) || 0
+      const sedPrMerged = Number(sedCounts.prMerged) || 0
+      const sedFilterDefs = [
+        { key: 'all', label: tr('sediment.filter.all'), n: sedDrafts.length },
+        { key: 'decision', label: tr('sediment.filter.decision'), n: sedUnassessed + sedNeedDecision },
+        { key: 'pr', label: tr('sediment.filter.pr'), n: sedDecided },
+        { key: 'check', label: tr('sediment.filter.check'), n: sedPrOpen + sedPrMerged },
+        { key: 'rerun', label: tr('sediment.filter.rerun'), n: sedNeedRerun },
+      ]
+
+      const runSedPrimary = () => {
+        if (sedPrimaryKind === 'none') return
+        openPrompt(sedPrimaryKind)
+      }
+
+      const sedBatch = view === 'sediment' ? h('div', { className: 'scp-batch' },
+        h('span', { className: 'scp-batch-strong' }, tr('sediment.batch.total', { n: sedDrafts.length })),
+        sedUnassessed + sedNeedDecision > 0
+          ? h('span', { className: 'scp-batch-chip', 'data-tone': 'warn' }, String(sedUnassessed + sedNeedDecision) + ' ' + tr('sediment.filter.decision'))
+          : null,
+        sedDecided > 0
+          ? h('span', { className: 'scp-batch-chip', 'data-tone': 'accent' }, String(sedDecided) + ' ' + tr('sediment.filter.pr'))
+          : null,
+        sedPrOpen + sedPrMerged > 0
+          ? h('span', { className: 'scp-batch-chip', 'data-tone': 'ok' }, String(sedPrOpen + sedPrMerged) + ' ' + tr('sediment.filter.check'))
+          : null,
+        sedNeedRerun > 0
+          ? h('span', { className: 'scp-batch-chip', 'data-tone': 'bad' }, String(sedNeedRerun) + ' ' + tr('sediment.filter.rerun'))
+          : null,
+        sedOldest > 0
+          ? h('span', { className: 'scp-batch-age', 'data-over': sedOldest > 14 ? 'true' : 'false' }, tr('sediment.batch.oldest', { n: sedOldest }))
+          : null,
+        h('span', { className: 'scp-spacer' }),
+        sedDecided > 0 && sedPrimaryKind !== 'pr'
+          ? h('button', {
+            type: 'button', className: 'scp-btn',
+            onClick: () => openPrompt('pr'),
+          }, tr('sediment.secondary.pr', { n: sedDecided }))
+          : null,
+        h('button', {
+          type: 'button',
+          className: 'scp-btn scp-btn--primary',
+          disabled: sedPrimaryKind === 'none',
+          onClick: runSedPrimary,
+        }, sedPrimaryLabel)) : null
+
+      const sedHistory = sedDoc && Array.isArray(sedDoc.history) ? sedDoc.history.slice(0, 3) : []
+      const sedListInner = !sedDoc
+        ? (sedPhase === 'error'
+          ? h('div', { className: 'scp-pal-empty' },
+            h('span', {}, tr('sediment.error', { message: s.sediment.message || '' })),
+            h('button', { type: 'button', className: 'scp-btn', onClick: () => refreshSediment(true) }, tr('sediment.refresh')))
+          : Array.from({ length: 4 }, (_, index) => h('div', { key: 'sed-skel-' + index, className: 'scp-pal-row' },
+            h('span', { className: 'scp-ring', style: { background: 'var(--scp-surface-3)' } }),
+            h('span', { className: 'scp-pal-row-main' },
+              h('span', { className: 'scp-skel', style: { width: '70%' } }),
+              h('span', { className: 'scp-skel', style: { width: '44%', height: 9 } })))))
+        : sedDrafts.length === 0
+          ? h('div', { className: 'scp-pal-empty' },
+            h('span', {}, tr('sediment.empty')),
+            h('span', {}, tr('sediment.emptyHint')),
+            h('button', {
+              type: 'button', className: 'scp-btn', onClick: () => setPaletteView('diagnosis'),
+            }, tr('sediment.goDiagnosis')),
+            sedHistory.length
+              ? h('div', { className: 'scp-sed-history' },
+                h('div', { className: 'scp-section-label' }, tr('sediment.history')),
+                sedHistory.map((item) => h('div', { key: item.key, className: 'scp-sed-history-row' },
+                  h('span', { className: 'scp-sed-history-title' }, item.title || item.key),
+                  h('span', { className: 'scp-chip' }, item.state === 'knowledge' ? tr('sediment.stepper.promoted') : tr('sediment.history.archived')),
+                  item.at ? h('span', { className: 'scp-sed-hint' }, formatTime(item.at) || item.at) : null)))
+              : null)
+          : sedSorted.length === 0
+            ? h('div', { className: 'scp-pal-empty' }, tr('palette.empty'))
+            : (() => {
+              const order = ['groom', 'pr', 'check', 'other']
+              const labels = {
+                groom: tr('sediment.group.groom'),
+                pr: tr('sediment.group.pr'),
+                check: tr('sediment.group.check'),
+                other: tr('sediment.group.other'),
+              }
+              const grouped = {}
+              sedSorted.forEach((draft, index) => {
+                const group = sedGroupOf(draft)
+                if (!grouped[group]) grouped[group] = []
+                grouped[group].push({ draft, index })
+              })
+              return order.filter((group) => grouped[group] && grouped[group].length).map((group) => h('div', { key: 'sed-group-' + group },
+                h('div', { className: 'scp-sed-group' },
+                  h('span', {}, labels[group]),
+                  h('span', {}, String(grouped[group].length))),
+                grouped[group].map(({ draft, index }) => {
+                  const age = draft.ageDays
+                  return h('button', {
+                    key: draft.key,
+                    type: 'button',
+                    className: 'scp-sed-row',
+                    'data-on': index === sedSel ? 'true' : 'false',
+                    onClick: () => setSedSel(index),
+                    onDoubleClick: () => runSedNext(draft),
+                    onKeyDown: (event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        runSedNext(draft)
+                      }
+                    },
+                  },
+                    h('span', { className: 'scp-sed-dot', 'aria-hidden': 'true', style: { background: SED_DOT[draft.stageTone] || SED_DOT.gray } }),
+                    h('span', { className: 'scp-sed-main' },
+                      h('span', { className: 'scp-sed-line' },
+                        h('span', { className: 'scp-sed-title', title: draft.title || draft.key }, draft.title || draft.key),
+                        h('span', { className: 'scp-sed-age', 'data-over': age !== null && age !== undefined && Number(age) > 14 ? 'true' : 'false' }, sedAgeText(draft))),
+                      h('span', { className: 'scp-sed-meta' },
+                        h('span', { className: 'scp-chip', 'data-tone': SED_CHIP_TONE[draft.stageTone] || 'none' }, draft.stage || draft.state),
+                        draft.decision
+                          ? h('span', {}, draft.decision)
+                          : (draft.novelty ? h('span', {}, draft.novelty + (draft.confidence ? ' · ' + draft.confidence : '')) : null),
+                        draft.source && draft.source.sessionId
+                          ? h('span', {}, draft.source.sessionId)
+                          : null)))
+                })))
+            })()
+
+      const sedList = h('div', { className: 'scp-pal-list', role: 'region', 'aria-label': tr('palette.sedimentTitle') },
+        h('div', { className: 'scp-search' },
+          h('input', {
+            ref: searchRef, type: 'search', value: searchText,
+            placeholder: tr('search.placeholder'), 'aria-label': tr('search.placeholder'),
+            onChange: (event) => { setSearchText(event.target.value); setSedSel(0) },
+            onKeyDown: (event) => { if (event.key === 'Escape') { setSearchText(''); event.stopPropagation() } },
+          }),
+          h('span', { className: 'scp-kbd' }, '/')),
+        h('div', { className: 'scp-sed-filters' },
+          sedFilterDefs.map((item) => h('button', {
+            key: item.key,
+            type: 'button',
+            className: 'scp-filter-item',
+            'data-on': sedFilter === item.key ? 'true' : 'false',
+            onClick: () => setSedFilter(item.key),
+          }, item.label + ' ' + String(item.n)))),
+        sedListInner)
+
+      const sedStepsOf = sedPick ? sedSteps(sedPick) : []
+      const sedMismatch = sedPick && sedPick.source ? String(sedPick.source.mismatch || 'none') : 'none'
+      const sedMismatchKey = 'sediment.detail.mismatch.' + sedMismatch
+      const sedNextKind = sedPick ? sedPrimaryKey(sedPick) : ''
+      const sedNextLabel = sedPick && sedPick.next && sedPick.next.label
+        ? (sedNextKind === 'pr' && sedDecided > 1
+          ? tr('sediment.primary.prBatch', { n: sedDecided })
+          : String(sedPick.next.label))
+        : tr('sediment.batch.none')
+      const sedSideInner = !sedPick
+        ? h('div', { className: 'scp-pal-empty' },
+          h('span', {}, sedDoc ? tr('sediment.empty') : tr('palette.loading')))
+        : (() => {
+          const blocks = []
+          blocks.push(h('div', { className: 'scp-list-block' },
+            h('div', { className: 'scp-stepper' },
+              sedStepsOf.map((step) => h('div', { key: step.key, className: 'scp-step', 'data-state': step.state },
+                h('span', { className: 'scp-step-dot', 'aria-hidden': 'true' }, '✓'),
+                h('span', { className: 'scp-step-label' }, step.label),
+                step.note ? h('span', { className: 'scp-step-note', 'data-bad': step.state === 'blocked' ? 'true' : 'false' }, step.note) : null)))))
+          const assessmentRows = [
+            h('div', { key: 'suggestion', className: 'scp-sed-kv-row' },
+              h('dt', {}, tr('sediment.detail.suggestion')),
+              h('dd', {}, [sedPick.novelty || '-', sedPick.confidence || '', sedPick.candidate ? '(' + sedPick.candidate + ')' : ''].filter(Boolean).join(' '))),
+          ]
+          if (sedPick.rationale) {
+            assessmentRows.push(h('div', { key: 'rationale', className: 'scp-sed-kv-row' },
+              h('dt', {}, tr('sediment.detail.rationale')), h('dd', {}, sedPick.rationale)))
+          }
+          if (sedPick.reviewReasons && sedPick.reviewReasons.length) {
+            assessmentRows.push(h('div', { key: 'review', className: 'scp-sed-kv-row' },
+              h('dt', {}, tr('sediment.detail.review')), h('dd', {}, sedPick.reviewReasons.join('；'))))
+          }
+          assessmentRows.push(h('div', { key: 'assessed', className: 'scp-sed-kv-row' },
+            h('dt', {}, tr('sediment.detail.assessed')),
+            h('dd', {}, sedPick.assessedShort || tr('sediment.assessedUnknown'))))
+          blocks.push(h('div', { className: 'scp-list-block' },
+            h('div', { className: 'scp-section-label' }, tr('sediment.detail.assessment')),
+            h('div', { className: 'scp-sed-kv' }, assessmentRows)))
+
+          const decisionRows = []
+          if (sedPick.decisionValid) {
+            decisionRows.push(h('div', { key: 'decision', className: 'scp-sed-kv-row' },
+              h('dt', {}, tr('sediment.detail.decisionValue')), h('dd', {}, sedPick.decision || '-')))
+            if (sedPick.decisionBy) {
+              decisionRows.push(h('div', { key: 'by', className: 'scp-sed-kv-row' },
+                h('dt', {}, ''), h('dd', {}, sedPick.decisionBy + (sedPick.decisionAt ? ' · ' + sedPick.decisionAt : ''))))
+            }
+          }
+          blocks.push(h('div', { className: 'scp-list-block' },
+            h('div', { className: 'scp-section-label' }, tr('sediment.detail.decision')),
+            decisionRows.length
+              ? h('div', { className: 'scp-sed-kv' }, decisionRows)
+              : h('div', { className: 'scp-sed-hint' }, tr('sediment.detail.noDecision'))))
+
+          const landed = sedPick.state === 'done' || (sedPick.pr && sedPick.pr.state === 'merged')
+          const landing = landed
+            ? ((sedPick.promotion && (sedPick.promotion.casePath || sedPick.promotion.postmortemPath)) || tr('sediment.detail.noPr'))
+            : ((sedPick.promotion && sedPick.promotion.caseId)
+              ? tr('sediment.detail.candidate') + ' ' + sedPick.promotion.caseId + ' · ' + tr('sediment.detail.noPr')
+              : tr('sediment.detail.noPr'))
+          const prStateLabel = tr('sediment.prState.' + ((sedPick.pr && sedPick.pr.state) || 'unknown'))
+          const prSourceLabel = tr('sediment.prSource.' + ((sedPick.pr && sedPick.pr.source) || 'ledger'))
+          const prChecked = sedPick.pr && sedPick.pr.checkedAt
+            ? tr('sediment.detail.lastChecked') + ' ' + (formatTime(sedPick.pr.checkedAt) || sedPick.pr.checkedAt)
+            : ''
+          const prText = sedPick.pr
+            ? '#' + sedPick.pr.number + ' · ' + prStateLabel + ' · ' + prSourceLabel
+              + (sedPick.pr.url ? ' · ' + sedPick.pr.url : '') + (prChecked ? ' · ' + prChecked : '')
+            : tr('sediment.detail.noPr')
+          blocks.push(h('div', { className: 'scp-list-block' },
+            h('div', { className: 'scp-section-label' }, tr('sediment.detail.promotion')),
+            h('div', { className: 'scp-sed-kv' },
+              h('div', { className: 'scp-sed-kv-row' }, h('dt', {}, tr('sediment.detail.case')), h('dd', {}, landing)),
+              h('div', { className: 'scp-sed-kv-row' }, h('dt', {}, tr('sediment.detail.pr')), h('dd', {}, prText)))))
+
+          const prActionButtons = sedPick.pr ? [
+            h('button', {
+              key: 'check', type: 'button', className: 'scp-btn',
+              disabled: checkBusy === sedPick.key,
+              onClick: () => checkPr(sedPick.key),
+            }, checkBusy === sedPick.key ? tr('sediment.refreshing') : tr('sediment.check')),
+            sedPick.pr.state !== 'merged'
+              ? h('button', {
+                key: 'mark', type: 'button', className: 'scp-btn',
+                disabled: checkBusy === sedPick.key,
+                onClick: () => markMerged(sedPick.key),
+              }, tr('sediment.markMerged'))
+              : null,
+          ] : []
+          blocks.push(h('div', { className: 'scp-sed-actions' },
+            h('button', {
+              type: 'button', className: 'scp-btn', disabled: !sedNextKind,
+              onClick: () => runSedNext(sedPick),
+            }, sedNextLabel),
+            ...prActionButtons,
+            h('button', { type: 'button', className: 'scp-btn', onClick: () => refreshSediment(true) }, tr('sediment.refresh')),
+            h('span', { className: 'scp-sed-hint' }, sedTargetLabel || tr('sediment.noTarget'))))
+
+          const head = []
+          head.push(h('div', { key: 'hero', className: 'scp-hero' },
+            h('div', { className: 'scp-hero-title' }, sedPick.title || sedPick.key),
+            h('div', { className: 'scp-hero-meta' },
+              h('span', { className: 'scp-chip', 'data-tone': SED_CHIP_TONE[sedPick.stageTone] || 'none' }, sedPick.stage || sedPick.state),
+              sedPick.novelty ? h('span', { className: 'scp-chip' }, sedPick.novelty + (sedPick.confidence ? ' · ' + sedPick.confidence : '')) : null,
+              sedPick.source && sedPick.source.sessionId
+                ? h('button', {
+                  type: 'button', className: 'scp-check-action', style: { padding: '0 2px' },
+                  onClick: () => {
+                    const promise = ctxOpenSession(sedPick.source.sessionId)
+                    if (promise && typeof promise.then === 'function') {
+                      promise.then((result) => {
+                        if (!result || result.ok === false) flash((result && result.reason) || tr('sediment.detail.openSource'))
+                      })
+                    }
+                  },
+                }, sedPick.source.sessionId + ' ↗')
+                : null,
+              h('span', { className: 'scp-code' }, sedAgeText(sedPick)))))
+          if (sedPick.ageDays !== null && sedPick.ageDays !== undefined && Number(sedPick.ageDays) > 14) {
+            head.push(h('div', { key: 'overdue', className: 'scp-sed-hint' },
+              tr('sediment.overdue') + ' · ' + tr('sediment.batch.oldest', { n: sedPick.ageDays })))
+          }
+          if (sedPick.stale) {
+            head.push(h('div', { key: 'stale', className: 'scp-callout', style: { background: 'var(--scp-bad-soft)', borderColor: 'color-mix(in srgb, var(--scp-bad) 26%, var(--scp-border))' } },
+              h('span', { className: 'scp-callout-label' }, tr('sediment.stepper.assessed')),
+              h('span', { className: 'scp-callout-text' }, (sedPick.staleReasons || []).join('；'))))
+          }
+          if (sedMismatch !== 'none') {
+            head.push(h('div', { key: 'mismatch', className: 'scp-callout', style: { background: 'var(--scp-warn-soft)', borderColor: 'color-mix(in srgb, var(--scp-warn) 26%, var(--scp-border))' } },
+              h('span', { className: 'scp-callout-label' }, tr('sediment.detail.source')),
+              h('span', { className: 'scp-callout-text' }, tr(sedMismatchKey)),
+              sedPick.writeback ? h('button', {
+                type: 'button', className: 'scp-btn', style: { alignSelf: 'flex-start' },
+                onClick: () => fillDraft(sedPick.writeback),
+              }, tr('sediment.detail.writeback')) : null))
+          }
+          return h('div', { className: 'scp-pal-side scp-sed-side' }, head.concat(blocks))
+        })()
+
+      const sedSide = view === 'sediment' ? sedSideInner : side
+
+      // 提 PR / groom / 查状态 / 收尾的指令预览
+      const promptTitle = {
+        groom: tr('sediment.primary.groom'),
+        pr: tr('sediment.primary.pr'),
+        check: tr('sediment.primary.check'),
+        close: tr('sediment.primary.close'),
+      }
+      const promptText = promptKind && sedDoc && sedDoc.prompts ? String(sedDoc.prompts[promptKind] || '') : ''
+      const promptDetail = promptKind && sedDoc && sedDoc.prompts ? String(sedDoc.prompts[promptKind + 'Detail'] || '') : ''
+      const promptDecided = sedDrafts.filter((draft) => draft.state === 'decided')
+      const promptModal = promptKind ? h('div', {
+        className: 'scp-veil',
+        onMouseDown: (event) => { if (event.target === event.currentTarget) setPromptKind('') },
+      },
+        h('div', { className: 'scp-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': promptTitle[promptKind] || promptKind, tabIndex: -1, ref: promptRef },
+          h('div', { className: 'scp-modal-top' },
+            h('div', { style: { flex: '1 1 auto', minWidth: 0 } },
+              h('div', { className: 'scp-modal-title' }, promptTitle[promptKind] || promptKind),
+              h('div', { className: 'scp-modal-sub' }, promptKind === 'pr' ? (sedTargetLabel || tr('sediment.noTarget')) : tr('sediment.prompt.flow'))),
+            h('button', { type: 'button', className: 'scp-icon', 'aria-label': tr('sediment.prompt.cancel'), onClick: () => setPromptKind('') }, IconClose())),
+          h('div', { className: 'scp-modal-body' },
+            promptKind === 'pr'
+              ? h('div', { className: 'scp-target-row' },
+                h('span', { className: 'scp-target-label' }, tr('sediment.target')),
+                h('span', { className: 'scp-target-pill' }, sedTargetLabel || tr('sediment.targetNone')),
+                h('button', { type: 'button', className: 'scp-btn scp-btn--quiet', onClick: () => openTarget('pr') }, tr('sediment.targetChange')),
+                h('span', { className: 'scp-target-hint' }, tr('sediment.targetHint')))
+              : null,
+            promptKind === 'pr' && promptDecided.length
+              ? h('table', { className: 'scp-sed-table' },
+                h('thead', {}, h('tr', {}, h('th', {}, tr('sediment.table.draft')), h('th', {}, tr('sediment.table.decision')), h('th', {}, tr('sediment.detail.promotion')))),
+                h('tbody', {}, promptDecided.map((draft) => h('tr', { key: draft.key },
+                  h('td', {}, draft.key),
+                  h('td', {}, draft.decision || '-'),
+                  h('td', {}, (draft.promotion && (draft.promotion.caseId || draft.promotion.casePath)) || '-')))))
+              : null,
+            h('div', { className: 'scp-warn-list' },
+              h('div', {}, tr('sediment.prompt.flow')),
+              h('div', {}, tr('sediment.prompt.boundary'))),
+            promptText
+              ? h('div', { className: 'scp-prompt' }, promptText)
+              : h('div', { className: 'scp-sed-hint' }, tr('sediment.prompt.empty')),
+            promptText ? h('div', { className: 'scp-prompt-cap' }, tr('sediment.prompt.default')) : null,
+            promptDetail
+              ? h('button', { type: 'button', className: 'scp-details-toggle', onClick: () => setPromptDetailsOpen((value) => !value) },
+                promptDetailsOpen ? tr('sediment.prompt.collapse') : tr('sediment.prompt.details'))
+              : null,
+            promptDetail && promptDetailsOpen ? h('div', { className: 'scp-prompt' }, promptDetail) : null),
+          h('div', { className: 'scp-modal-foot' },
+            h('span', { className: 'scp-spacer' }),
+            h('button', { type: 'button', className: 'scp-btn scp-btn--ghost', onClick: () => setPromptKind('') }, tr('sediment.prompt.cancel')),
+            h('button', {
+              type: 'button', className: 'scp-btn', disabled: !promptText,
+              onClick: () => copyAndFlash(promptText),
+            }, tr('sediment.prompt.copy')),
+            h('button', {
+              type: 'button', className: 'scp-btn scp-btn--primary', disabled: !promptText,
+              onClick: () => { if (promptText) fillDraft(promptText) },
+            }, tr('sediment.prompt.fill'))))) : null
+
+      // 目标选择（第一次提 PR 时出现）
+      const remotes = sedRemotes
+      const targetModal = targetOpen ? h('div', {
+        className: 'scp-veil',
+        onMouseDown: (event) => { if (event.target === event.currentTarget) closeTarget() },
+      },
+        h('div', { className: 'scp-modal', style: { width: 'min(640px, calc(100% - 40px))' }, role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('sediment.target.title'), tabIndex: -1, ref: targetRef },
+          h('div', { className: 'scp-modal-top' },
+            h('div', { style: { flex: '1 1 auto', minWidth: 0 } },
+              h('div', { className: 'scp-modal-title' }, tr('sediment.target.title')),
+              h('div', { className: 'scp-modal-sub' }, tr('sediment.target.sub'))),
+            h('button', { type: 'button', className: 'scp-icon', 'aria-label': tr('sediment.prompt.cancel'), onClick: () => closeTarget() }, IconClose())),
+          h('div', { className: 'scp-modal-body' },
+            remotes.length === 0
+              ? h('div', { className: 'scp-pal-empty' }, tr('sediment.target.empty'))
+              : h('div', { className: 'scp-pick-list' }, remotes.map((item) => {
+                const name = String(item.name || '')
+                const platform = String(item.platform_name || item.platformName || item.platform || '')
+                const hasAdapter = item.has_adapter !== false && Boolean(item.platform || platform)
+                const tokenReady = item.token_ready !== false
+                return h('button', {
+                  key: name,
+                  type: 'button',
+                  className: 'scp-pick',
+                  'data-on': targetRemote === name ? 'true' : 'false',
+                  onClick: () => {
+                    setTargetRemote(name)
+                    if (item.base) setTargetBase(String(item.base))
+                  },
+                },
+                  h('span', { className: 'scp-radio', 'aria-hidden': 'true' }),
+                  h('span', { style: { flex: '1 1 auto', minWidth: 0 } },
+                    h('span', { className: 'scp-pick-title' },
+                      name,
+                      hasAdapter
+                        ? h('span', { className: 'scp-chip', 'data-tone': 'brand' }, platform || tr('sediment.target.noAdapter'))
+                        : h('span', { className: 'scp-chip' }, tr('sediment.target.noAdapter')),
+                      hasAdapter && !tokenReady ? h('span', { className: 'scp-chip', 'data-tone': 'warn' }, tr('sediment.target.token')) : null),
+                    h('span', { className: 'scp-pick-sub' }, [item.url, item.base, item.last_used, item.note].filter(Boolean).join(' · '))))
+              })),
+            remotes.length > 1 && !targetRemote
+              ? h('div', { className: 'scp-sed-hint' }, tr('sediment.target.pick'))
+              : null,
+            h('div', { className: 'scp-target-row' },
+              h('span', { className: 'scp-target-label' }, tr('sediment.target.base')),
+              h('input', {
+                className: 'scp-input', style: { width: '180px' }, type: 'text',
+                value: targetBase, onChange: (event) => setTargetBase(event.target.value),
+              }),
+              h('span', { className: 'scp-target-hint' }, tr('sediment.targetNote')))),
+          h('div', { className: 'scp-modal-foot' },
+            h('span', { className: 'scp-sed-hint' }, tr('sediment.targetNote')),
+            h('span', { className: 'scp-spacer' }),
+            h('button', { type: 'button', className: 'scp-btn scp-btn--ghost', onClick: () => closeTarget() }, tr('sediment.prompt.cancel')),
+            h('button', {
+              type: 'button', className: 'scp-btn scp-btn--primary',
+              disabled: !targetRemote || targetBusy,
+              onClick: saveTarget,
+            }, targetBusy ? tr('sediment.refreshing') : tr('sediment.target.save'))))) : null
+
       const subParts = [tr('palette.count', { n: rows.length })]
       if (Number(counts.pendingFeedback) > 0) subParts.push(tr('queue.pending', { n: Number(counts.pendingFeedback) }))
 
@@ -3003,15 +4194,29 @@ window.__ModuleLoader__.load({
         },
           h('div', { className: 'scp-pal-top' },
             h('div', { className: 'scp-pal-heading' },
-              h('span', { className: 'scp-pal-title' }, tr('palette.title')),
-              h('span', { className: 'scp-pal-sub' }, subParts.join(' · '))),
+              h('span', { className: 'scp-pal-title' }, view === 'sediment' ? tr('palette.sedimentTitle') : tr('palette.title')),
+              h('span', { className: 'scp-pal-sub' }, view === 'sediment'
+                ? [tr('sediment.batch.total', { n: sedDrafts.length }), sedTargetLabel || tr('sediment.noTarget')].join(' · ')
+                : subParts.join(' · '))),
+            h('div', { className: 'scp-views', role: 'tablist', 'aria-label': tr('palette.title') },
+              h('button', {
+                type: 'button', className: 'scp-view-tab',
+                'data-on': view === 'diagnosis' ? 'true' : 'false',
+                onClick: () => setPaletteView('diagnosis'),
+              }, tr('palette.view.diagnosis'), h('b', {}, String(rows.length))),
+              h('button', {
+                type: 'button', className: 'scp-view-tab',
+                'data-on': view === 'sediment' ? 'true' : 'false',
+                onClick: () => setPaletteView('sediment'),
+              }, tr('palette.view.sediment'), h('b', {}, String(sedDrafts.length)))),
             h('span', { className: 'scp-spacer' }),
-            h('div', { className: 'scp-filter', role: 'tablist', 'aria-label': tr('palette.title') }, filterButtons),
+            view === 'diagnosis' ? h('div', { className: 'scp-filter', role: 'tablist', 'aria-label': tr('palette.title') }, filterButtons) : null,
             h('button', {
               type: 'button', className: 'scp-icon', 'aria-label': tr('palette.close'), title: tr('palette.close'),
               onClick: () => setPaletteOpen(false),
             }, IconClose())),
-          h('div', { className: 'scp-pal-main' }, list, side),
+          sedBatch,
+          h('div', { className: 'scp-pal-main' }, view === 'sediment' ? sedList : list, view === 'sediment' ? sedSide : side),
           h('div', { className: 'scp-pal-foot' },
             h('span', {},
               h('span', { className: 'scp-kbd' }, '↑'),
@@ -3021,17 +4226,21 @@ window.__ModuleLoader__.load({
               ' 主操作 · ',
               h('span', { className: 'scp-kbd' }, '/'),
               ' 搜索 · ',
-              h('span', { className: 'scp-kbd' }, '⌘K'),
-              ' 命令 · ',
+              view === 'diagnosis' ? h('span', { className: 'scp-kbd' }, '⌘K') : null,
+              view === 'diagnosis' ? ' 命令 · ' : null,
               h('span', { className: 'scp-kbd' }, 'Esc'),
               ' 关闭'),
             h('span', { className: 'scp-spacer' }),
-            h('span', {}, [
-              tr('queue.open', { n: Number(counts.open) || 0 }),
-              tr('queue.pending', { n: Number(counts.pendingFeedback) || 0 }),
-              tr('queue.sediment', { n: Number(counts.toSediment) || 0 }),
-            ].join(' · ')),
+            h('span', {}, view === 'sediment'
+              ? (sedTargetLabel || tr('sediment.noTarget'))
+              : [
+                tr('queue.open', { n: Number(counts.open) || 0 }),
+                tr('queue.pending', { n: Number(counts.pendingFeedback) || 0 }),
+                tr('queue.sediment', { n: Number(counts.toSediment) || 0 }),
+              ].join(' · ')),
             h('span', { className: 'scp-version' }, 'v' + PLUGIN_VERSION)),
+          promptModal,
+          targetModal,
           cmdOpen ? h('div', {
             className: 'scp-cmd-backdrop',
             onMouseDown: (event) => { if (event.target === event.currentTarget) setCmdOpen(false) },

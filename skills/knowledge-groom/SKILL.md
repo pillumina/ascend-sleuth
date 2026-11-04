@@ -193,6 +193,8 @@ python3 scripts/groom_recheck.py --pr-body-file <pr-body.md> --base origin/main 
 
 `groom_recheck.py` 是确定性检查，不需要问用户；直接跑，失败时按原因重跑 groom、重做批准或补 marker。
 
+**PR 开完后的本地台账写点**：每份草稿开完 PR 后用 `python3 scripts/pr_status.py --root . --set --draft <key> --platform <platform> --repo <owner/repo> --number <n> --url <url> --remote <remote>` 写进共享 inbox 的 `.groom/pr-state.json`；不要手编 JSON。查合入状态用 `--check`，没有适配器时用 `--mark` 手动确认。
+
 - `assessed_commit` 必须真实存在且是 base 的祖先；评估后相关 `knowledge/` 变了 → **过期**，重跑 groom。
 - marker 还必须带 `schema: groom-pr/v2`、`assessment_id`、`assessed_content_sha256` 以及人的
   `human_decision_assessment_id` / `human_decision_content_sha256`。缺字段、枚举非法、批准与评估/内容不匹配
@@ -250,7 +252,7 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --base origin/main 
    - 产出**批审清单**交 owner 处理（像清 PR inbox，~30 秒/条）：
      - `covered_by` → 建议关闭升格；postmortem 转正 `postmortems/YYYY-QN/`（Tier 3 语料，**不是丢弃**），再跑 `groom_close_draft.py` 把草稿移出队列
      - `variant_of` → 用草稿**整篇替换**已有 case（先把要保留的内容合并进草稿，再评估；评估后不要再合并）；若要动 `expected`/`fix_on_mismatch` 按高风险变更走双签
-     - `new_pattern` → 结构化 + 语义校验 → **过升格闸门** → 升格 `knowledge/<ns>/`。校验失败标 `needs-structurer-review`，语义不明标 `needs-human-review`
+     - `new_pattern` → 结构化 + 语义校验 → **过升格闸门** → 升格 `knowledge/<ns>/`。写 case 时删掉草稿专用的 `created_at`（它不是 case schema 字段）。校验失败标 `needs-structurer-review`，语义不明标 `needs-human-review`
      - **升格闸门（按来源分，不是一刀切）**：跑 `python3 scripts/verify_case_draft.py --gate <草稿路径>`。
        - **外部来源（issue-ingest / reference-ingest 管道、无 `source_session`）→ 跳过闸门**。这类 case 的"闭环"是维护者结论 / fix PR 已经替它确认过的（其 `verification` 档位即证明），现场没有 session 可闭环；对它们要求现场闭环等于把知识注入的主通道堵死。
        - **自诊断来源（带 `source_session`）→ 默认须闭环**（两轴，与 `trace-status.yaml` 一致）：**命中单**看来源 trace 的 `feedback.outcome: resolved`（fix 被应用且问题消失）；**无命中单**没有 case 可归属，看来源 trace 的 `status: resolved`。没闭环的不必进知识库，留在本地即可。
