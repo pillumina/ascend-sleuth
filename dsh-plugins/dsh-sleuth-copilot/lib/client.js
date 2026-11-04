@@ -976,7 +976,7 @@ window.__ModuleLoader__.load({
 .scp-pal-side>*:not(.scp-pal-empty){flex:none;}
 .scp-pal-side>.scp-callout{margin-top:var(--scp-sp-3);}
 .scp-hero{display:flex;flex-direction:column;gap:var(--scp-sp-2);}
-.scp-hero-title{font-size:var(--scp-fs-hero);font-weight:var(--scp-fw-bold);line-height:1.5;letter-spacing:0;overflow-wrap:break-word;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;}
+.scp-hero-title{font-size:var(--scp-fs-hero);font-weight:var(--scp-fw-bold);line-height:1.45;letter-spacing:0;overflow-wrap:anywhere;}
 .scp-hero-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
 .scp-pal .scp-badge{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:6px;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-semi);line-height:1;color:var(--scp-tone);background:color-mix(in srgb,var(--scp-tone) 12%,transparent);}
 .scp-pal .scp-chip{display:inline-flex;align-items:center;height:22px;padding:0 9px;border:1px solid var(--scp-border);border-radius:6px;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:1;white-space:nowrap;color:var(--scp-muted);background:var(--scp-surface);}
