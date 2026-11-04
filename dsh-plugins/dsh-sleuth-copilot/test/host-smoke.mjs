@@ -22,7 +22,7 @@ const TRACE_FIXTURE = [
   'session_id: "' + TRACE_ID + '"',
   'status: in_progress',
   'current_step: 3',
-  'summary: "Copilot host smoke 夹具：验证取数、能力位与状态写入；不依赖真实 traces/。"',
+  'summary: "Copilot host smoke 夹具：A3-910C w8a8c8，验证取数、能力位与状态写入；不依赖真实 traces/。"',
   'created_at: "2026-09-08T15:29:00+08:00"',
   'updated_at: "2026-09-08T15:29:00+08:00"',
   'detected_framework: vllm-ascend',
@@ -48,7 +48,7 @@ const TRACE_FIXTURE = [
   '    evidence:',
   '      inline: "夹具证据"',
   '      files: ["traces/evidence/2026-09-08-copilot-smoke/crash.log"]',
-  '      missing: "缺 device plog；首次崩溃 16h"',
+  '      missing: "缺驱动版本；缺硬件侧 plog 与 die 温度；缺 device plog；需要提供 npu-smi 输出；未提供：具体硬件 A2/A3、量化档（w8a8c8 或 w4a8c8）、完整 --additional-config 启动脚本、P 节点日志、triage 命中进程信息；首次崩溃 16h"',
   '  - role: agent',
   '    step: 2',
   '    action: triage',
@@ -223,7 +223,14 @@ expect('读：带内容指纹', row && /^[0-9a-f]{64}$/.test(row.contentSha256))
 expect('读：带上游查询能力位', stateValue && stateValue.upstream && typeof stateValue.upstream.ready === 'boolean', JSON.stringify(stateValue && stateValue.upstream))
 expect('读：证据文件清单', row && Array.isArray(row.extra.evidenceList) && row.extra.evidenceList.length === 1 && row.extra.evidenceList[0].includes('crash.log'), JSON.stringify(row && row.extra))
 expect('读：沉淀候选清单', row && Array.isArray(row.extra.sedimentCandidateList) && row.extra.sedimentCandidateList[0].summary.includes('TopKV2'), JSON.stringify(row && row.extra))
-expect('读：缺失材料清单', row && Array.isArray(row.extra.missingMaterials) && row.extra.missingMaterials[0].includes('device plog'), JSON.stringify(row && row.extra.missingMaterials))
+expect('读：缺失材料清单（含无空格写法与末项）', row && Array.isArray(row.extra.missingMaterials)
+  && row.extra.missingMaterials.includes('驱动版本')
+  && row.extra.missingMaterials.includes('npu-smi 输出')
+  && row.extra.missingMaterials.includes('triage 命中进程信息'), JSON.stringify(row && row.extra.missingMaterials))
+expect('读：summary 已给的硬件 / 量化档不列为缺口', row
+  && !row.extra.missingMaterials.includes('具体硬件 A2/A3')
+  && !row.extra.missingMaterials.some((item) => item.startsWith('量化档')), JSON.stringify(row && row.extra.missingMaterials))
+expect('读：普通硬件缺口不被过滤', row && row.extra.missingMaterials.includes('硬件侧 plog 与 die 温度'), JSON.stringify(row && row.extra.missingMaterials))
 expect('读：按顶层 report_file 识别报告', row && row.extra.hasReport === true && row.reportFile === 'traces/alt-smoke.md')
 const originalSha = row.contentSha256
 

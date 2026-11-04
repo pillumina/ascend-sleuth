@@ -105,6 +105,7 @@ window.__ModuleLoader__.load({
       'error.reopen': '数据来自 traces/；判据在 scripts/trace_state.py。',
       'hint.draft': '已填入输入框，按 Enter 发送。',
       'hint.copied': '已复制。',
+      'hint.copiedIssue': 'issue 文本已复制。',
       'hint.copyFailed': '这个界面不允许写剪贴板，请手动选择文本。',
       'hint.noInput': '这个界面没有提供写入输入框的接口，指令已复制到剪贴板。',
       'hint.failed': '填入输入框失败：{message}',
@@ -135,7 +136,7 @@ window.__ModuleLoader__.load({
       'section.upstream': '上游查证',
       'section.materials': '在等材料',
       'section.timeline': '步骤时间线',
-      'materials.hint': '来自 trace 的缺失记录；拿到后贴回会话，或带上清单续接。',
+      'materials.hint': '来自 trace 的缺失记录；拿到后贴回会话，或带着这份清单续接。',
       'action.copyMaterials': '复制清单',
       'action.materialResume': '填入续接指令',
       'action.loadTimeline': '展开步骤',
@@ -146,7 +147,6 @@ window.__ModuleLoader__.load({
       'timeline.role.agent': '助手',
       'timeline.role.resume': '续接',
       'copy.issue': '复制为 issue 文本',
-      'hint.copiedIssue': 'issue 文本已复制。',
       'search.placeholder': '搜索单号 / case / 关键词',
       'cmd.placeholder': '输入命令…',
       'cmd.hint': '↑↓ 选择 · Enter 执行 · Esc 关闭',
@@ -241,7 +241,6 @@ window.__ModuleLoader__.load({
       'palette.loading': '正在读 traces/…',
       'palette.unavailable': '读不到 traces/：{message}',
       'palette.count': '共 {n} 单',
-      'palette.hint': '↑↓ 选择 · Enter 主操作 · / 搜索 · ⌘K 命令 · Esc 关闭',
       'palette.close': '关闭诊断总览',
       'tool.title': '诊断总览',
       'tool.pending': '{n} 单待回报',
@@ -326,6 +325,7 @@ window.__ModuleLoader__.load({
       'error.reopen': 'Data comes from traces/; rules live in scripts/trace_state.py.',
       'hint.draft': 'Inserted into the composer — press Enter to send.',
       'hint.copied': 'Copied.',
+      'hint.copiedIssue': 'Issue text copied.',
       'hint.copyFailed': 'Clipboard is unavailable here; select the text manually.',
       'hint.noInput': 'This page exposes no composer input; the instruction was copied instead.',
       'hint.failed': 'Could not write the composer: {message}',
@@ -367,7 +367,6 @@ window.__ModuleLoader__.load({
       'timeline.role.agent': 'assistant',
       'timeline.role.resume': 'resume',
       'copy.issue': 'Copy as issue text',
-      'hint.copiedIssue': 'Issue text copied.',
       'search.placeholder': 'Search id / case / keyword',
       'cmd.placeholder': 'Type a command…',
       'cmd.hint': '↑↓ select · Enter run · Esc close',
@@ -462,7 +461,6 @@ window.__ModuleLoader__.load({
       'palette.loading': 'Reading traces/…',
       'palette.unavailable': 'Cannot read traces/: {message}',
       'palette.count': '{n} total',
-      'palette.hint': '↑↓ select · Enter primary · / search · ⌘K commands · Esc close',
       'palette.close': 'Close the diagnosis overview',
       'tool.title': 'Diagnosis overview',
       'tool.pending': '{n} pending outcomes',
@@ -1304,7 +1302,7 @@ window.__ModuleLoader__.load({
         files.forEach((file) => lines.push('- ' + file))
       }
       // 只在已收尾时抄结论；进行中的助手输出常含内部待办，不往外发。
-      if (row.status === 'resolved' && extra.lastOutput) {
+      if (['resolved', 'escalated', 'archived'].indexOf(row.status) >= 0 && extra.lastOutput) {
         lines.push('')
         lines.push('结论：')
         lines.push(extra.lastOutput)
@@ -1335,9 +1333,11 @@ window.__ModuleLoader__.load({
 
     function timelineActionLabel(action) {
       const labels = {
-        triage: '路由', load_index: '读索引', quickly_check: '校验候选', tier3: '深挖候选',
-        source_analysis: '源码分析', miss: '未命中', report: '产出报告', material: '补材料',
-        resume: '续接', verify: '验证', fix: '修复建议', close: '收尾',
+        triage: '路由', triage_semantic: '语义路由', load_index: '读索引', load_full: '读候选全文',
+        quickly_check: '校验候选', tier3: '深挖候选', reference_lookup: '查先验', external_lookup: '查外部',
+        run_check: '跑检查', report: '产出报告', resume: '续接', feedback: '回报',
+        attribution: '归因', procedure_follow: '按流程', hit: '命中', miss: '未命中',
+        output: '输出', source_analysis: '源码分析',
       }
       return labels[action] || action || ''
     }
@@ -1585,7 +1585,7 @@ window.__ModuleLoader__.load({
       }
 
       function copyItem(item) {
-        copyToClipboard(item.text).then((ok) => onFlash(ok ? tr('hint.copied') : tr('hint.copyFailed')))
+        copyToClipboard(item.text).then((ok) => onFlash(ok ? (item.message || tr('hint.copied')) : tr('hint.copyFailed')))
       }
 
       function openForm(next) {
@@ -1769,7 +1769,7 @@ window.__ModuleLoader__.load({
         }, {
           key: 'issue',
           label: tr('copy.issue'),
-          onSelect: () => copyItem({ text: issueText(row) }),
+          onSelect: () => copyItem({ text: issueText(row), message: tr('hint.copiedIssue') }),
         }],
       })
 
@@ -1961,9 +1961,32 @@ window.__ModuleLoader__.load({
         const pendingCount = s.data && s.data.counts ? Number(s.data.counts.pendingFeedback) || 0 : 0
         React.useEffect(() => {
           if (typeof document === 'undefined') return undefined
-          const base = String(document.title || '')
-          if (pendingCount > 0) document.title = '[' + pendingCount + '] ' + base.replace(/^\[\d+\]\s*/, '')
-          return () => { document.title = base.replace(/^\[\d+\]\s*/, '') }
+          const apply = () => {
+            const current = String(document.title || '')
+            const plain = current.replace(/^\[\d+\]\s*/, '')
+            document.title = pendingCount > 0 ? '[' + pendingCount + '] ' + plain : plain
+          }
+          apply()
+          let observer = null
+          let selfMutated = false
+          try {
+            const node = typeof document.querySelector === 'function' ? document.querySelector('title') : null
+            if (node && typeof MutationObserver !== 'undefined') {
+              observer = new MutationObserver(() => {
+                if (selfMutated) { selfMutated = false; return }
+                selfMutated = true
+                apply()
+              })
+              observer.observe(node, { childList: true, characterData: true, subtree: true })
+            }
+          } catch {
+            observer = null
+          }
+          return () => {
+            if (observer) observer.disconnect()
+            // 只摘自己加的前缀，不写回捕获时的旧标题（期间可能已切过会话）。
+            document.title = String(document.title || '').replace(/^\[\d+\]\s*/, '')
+          }
         }, [pendingCount])
 
         React.useEffect(() => {
@@ -2351,6 +2374,16 @@ window.__ModuleLoader__.load({
       }, [selected, filter, searchText, s.paletteOpen])
 
       React.useEffect(() => {
+        if (s.paletteOpen) return
+        commandRequested = false
+        setCmdOpen(false)
+        setCmdQuery('')
+        setCmdIndex(0)
+        setSearchText('')
+        setMenuOpen(false)
+      }, [s.paletteOpen])
+
+      React.useEffect(() => {
         if (!s.paletteOpen) return
         if (commandRequested) {
           commandRequested = false
@@ -2623,7 +2656,7 @@ window.__ModuleLoader__.load({
       }, h('circle', { cx: 20, cy: 20, r: 13, strokeDasharray: '3 4' }),
         h('path', { d: 'M14 20h12M20 14v12', strokeLinecap: 'round' }))
 
-      const list = h('div', { className: 'scp-pal-list', role: 'listbox', 'aria-label': tr('palette.title') },
+      const list = h('div', { className: 'scp-pal-list', role: 'region', 'aria-label': tr('palette.title') },
         h('div', { className: 'scp-search' },
           h('input', {
             ref: searchRef, type: 'search', value: searchText,
@@ -2644,8 +2677,7 @@ window.__ModuleLoader__.load({
                 key: item.sessionId,
                 type: 'button',
                 className: 'scp-pal-row',
-                role: 'option',
-                'aria-selected': index === selected ? 'true' : 'false',
+                'aria-current': index === selected ? 'true' : 'false',
                 'data-on': index === selected ? 'true' : 'false',
                 style: { '--scp-tone': TONE_VAR[toneOf(item)] || TONE_VAR.idle },
                 onClick: () => { setSelected(index); setMenuOpen(false) },
@@ -2898,6 +2930,10 @@ window.__ModuleLoader__.load({
               ' 选择 · ',
               h('span', { className: 'scp-kbd' }, 'Enter'),
               ' 主操作 · ',
+              h('span', { className: 'scp-kbd' }, '/'),
+              ' 搜索 · ',
+              h('span', { className: 'scp-kbd' }, '⌘K'),
+              ' 命令 · ',
               h('span', { className: 'scp-kbd' }, 'Esc'),
               ' 关闭'),
             h('span', { className: 'scp-spacer' }),
@@ -2911,16 +2947,20 @@ window.__ModuleLoader__.load({
             className: 'scp-cmd-backdrop',
             onMouseDown: (event) => { if (event.target === event.currentTarget) setCmdOpen(false) },
           },
-            h('div', { className: 'scp-cmd' },
+            h('div', { className: 'scp-cmd', role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('cmd.placeholder') },
               h('input', {
                 ref: cmdInputRef, value: cmdQuery, placeholder: tr('cmd.placeholder'),
+                role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'scp-cmd-list',
+                'aria-activedescendant': 'scp-cmd-' + cmdIndex,
                 'aria-label': tr('cmd.placeholder'),
                 onChange: (event) => { setCmdQuery(event.target.value); setCmdIndex(0) },
               }),
-              h('div', { className: 'scp-cmd-list' },
+              h('div', { className: 'scp-cmd-list', role: 'listbox', id: 'scp-cmd-list' },
                 commandList.length
                   ? commandList.map((item, index) => h('button', {
                     key: 'cmd-' + index, type: 'button', className: 'scp-cmd-item',
+                    role: 'option', id: 'scp-cmd-' + index,
+                    'aria-selected': index === cmdIndex ? 'true' : 'false',
                     'data-on': index === cmdIndex ? 'true' : 'false',
                     onMouseEnter: () => setCmdIndex(index),
                     onClick: () => { setCmdOpen(false); item.run() },

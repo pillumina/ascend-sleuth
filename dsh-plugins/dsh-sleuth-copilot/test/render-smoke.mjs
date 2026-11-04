@@ -376,6 +376,7 @@ function makeState(mode) {
         hasReport: true, reportFile: 'traces/' + ID + '.report.md',
         sedimentCandidateList: [{ kind: 'case', summary: 'vendor TopKV2 kernel 崩溃' }],
         missingMaterials: ['P 节点 hang 时刻栈'],
+        lastOutput: '确认根因：c8_enable_reshape_optim 触发 P 侧 hang。',
       },
     })
     return {
@@ -749,7 +750,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const menuView = await t.settle()
   click(findButton(menuView, '复制为 issue 文本'))
   await t.settle()
-  expect('issue 文本：标题与现象', copied[copied.length - 1].includes('标题：') && copied[copied.length - 1].includes('现象：'), copied[copied.length - 1])
+  expect('issue 文本：标题、现象与结论', copied[copied.length - 1].includes('标题：') && copied[copied.length - 1].includes('现象：') && copied[copied.length - 1].includes('结论：'), copied[copied.length - 1])
 }
 
 {
@@ -773,6 +774,22 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findButton(cmdView, '复制为 issue 文本'))
   await t.settle()
   expect('命令面板：执行复制', copied[copied.length - 1].includes('标题：'))
+}
+
+{
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  await t.settle()
+  pressKey('k', { metaKey: true })
+  await t.settle()
+  pressKey('Escape')
+  await t.settle()
+  pressKey('Escape')
+  const closedView = await t.settle()
+  expect('命令面板：Esc 关闭后资源复位', byClass(closedView, 'scp-cmd').length === 0)
+  click(findToolbar(closedView))
+  const reopened = await t.settle()
+  expect('命令面板：普通重开不残留', byClass(reopened, 'scp-cmd').length === 0, String(byClass(reopened, 'scp-cmd').length))
 }
 
 {

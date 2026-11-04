@@ -54,22 +54,21 @@ def _material_items(text, summary: str = '', limit: int = 8) -> list:
         segment = segment.strip(" 。")
         if not segment:
             continue
-        match = re.match(r"^(?:未提供|缺少|缺|未贴|没提供|需要)[：:]\s*(.+)$", segment)
-        if match:
-            parts = re.split(r"[、,，]", match.group(1))
-        else:
-            match = re.match(r"^(?:未提供|缺少|缺|未贴|没提供|需要)\s+(.+)$", segment)
-            if not match:
-                continue
-            parts = [match.group(1)]
+        match = re.match(
+            r"^(?:需要提供|未提供|缺少|缺|未贴|没提供|需提供|需要|还需)[：:]?\s*(.+)$",
+            segment,
+        )
+        if not match:
+            continue
+        parts = re.split(r"[、,，]", match.group(1))
         for part in parts:
             item = part.strip(" 。")
             if not item:
                 continue
             # 后文已经给出的事实不再列为待补（例如 summary 里已写 A3-910C / w8a8c8）。
-            if "硬件" in item and re.search(r"A[2-5][- ]?9\d{2}|A[2-5]-\d", summary):
+            if item.startswith("具体硬件") and re.search(r"A[2-5][- ]?9\d{2}|A[2-5]-\d", summary):
                 continue
-            if "量化" in item and re.search(r"w[0-9]+a[0-9]+c[0-9]+", summary, re.I):
+            if item.startswith("量化档") and re.search(r"w[0-9]+a[0-9]+c[0-9]+", summary, re.I):
                 continue
             if item not in items:
                 items.append(_short(item, 180))
@@ -129,6 +128,7 @@ def _extra(doc: dict, traces: Path) -> dict:
     agent_steps = 0
     evidence_files = 0
     evidence_missing = ""
+    evidence_missing_full = ""
     evidence_list = []
     last_output = ""
     last_reason = ""
@@ -144,8 +144,8 @@ def _extra(doc: dict, traces: Path) -> dict:
                 if text and text not in evidence_list:
                     evidence_list.append(text)
             evidence_files += len(_as_list(evidence.get("files")))
-            if evidence.get("missing") and not evidence_missing:
-                evidence_missing = _short(evidence.get("missing"), MISSING_LIMIT)
+            if evidence.get("missing") and not evidence_missing_full:
+                evidence_missing_full = _one_line(evidence.get("missing"))
         elif role == "agent":
             agent_steps += 1
             if entry.get("output"):
@@ -203,7 +203,7 @@ def _extra(doc: dict, traces: Path) -> dict:
             if x
         ],
         "evidenceFiles": evidence_files,
-        "evidenceMissing": evidence_missing,
+        "evidenceMissing": _short(evidence_missing_full, MISSING_LIMIT),
         "lastAction": _short(doc.get("last_action"), TEXT_LIMIT),
         "lastOutput": last_output,
         "lastReason": last_reason,
@@ -213,7 +213,7 @@ def _extra(doc: dict, traces: Path) -> dict:
         "evidenceList": evidence_list[:20],
         "sedimentCandidates": len([c for c in _as_list(doc.get("sediment_candidates")) if isinstance(c, dict)]),
         "sedimentCandidateList": candidates,
-        "missingMaterials": _material_items(evidence_missing, _one_line(doc.get("summary"))),
+        "missingMaterials": _material_items(evidence_missing_full, _one_line(doc.get("summary"))),
     }
 
 
@@ -295,10 +295,12 @@ def main(argv=None) -> int:
         doc = None
         for row in rows:
             if row.get("file") == name:
-                doc = _as_dict(row.get("doc"))
+                parsed = _as_dict(row.get("doc"))
+                if parsed:
+                    doc = parsed
                 break
-        if doc is None:
-            return _fail("E_NOT_FOUND", "轨迹文件没有可读的事件：" + name)
+        if not doc:
+            return _fail("E_PARSE", "轨迹文件没有可读的事件：" + name)
         return _ok(_timeline(doc))
 
     caps = {
