@@ -15,9 +15,10 @@
 # 边界（必须如实读）：
 #   - 快照是**某一时刻**的远端状态。fetch 之后 main 仍可前进，所以"fresh"只表示
 #     "抓取成功且与 fetch 那一刻的 <remote>/<branch> 一致"，不是"合入时仍最新"。
-#   - fetch 失败时**默认失败退出（2）**；显式 `--offline`、settings 的 `sync.enabled: false`、
-#     `deployment.yaml` 的 `sync.mode: offline` 三种情况不联网，用本地已有引用，
-#     并标 `fresh: false, authoritative: false`。stale 数据不会被静默当成权威。
+#   - fetch 失败时**默认失败退出（2）**；显式 `--offline` 与 `deployment.yaml` 的
+#     `sync.mode: offline` 两种情况不联网，用本地已有引用，并标 `fresh: false,
+#     authoritative: false`。stale 数据不会被静默当成权威。个人配置的 `sync.enabled`
+#     只管诊断读侧，不影响本脚本。
 #   - 不修改源工作区：worktree 是另一个目录；源工作区的本地改动与未跟踪 inbox 均不变。
 #
 # 用法：
