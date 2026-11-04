@@ -372,6 +372,18 @@ const badKind = await transition(rw, {
     tracesDir: TRACES, expectSha256: reopened.current.sha256, kind: 'report',
   }, 'write-5')
 expect('写回报：显式不支持（回报轴没有脚本写入口）', badKind.envelope.result.value.ok === false && badKind.envelope.result.value.code === 'E_SCHEMA')
+// 归档收尾必须带收尾方式：host 先给明确回执，不让脚本报「需要指定收尾方式（--kind）」
+const archivedNoKind = await transition(rw, {
+    sessionId: 'smoke-session', cwd: SANDBOX, traceSessionId: TRACE_ID,
+    tracesDir: TRACES, expectSha256: reopened.current.sha256,
+    kind: 'close', to: 'archived',
+  }, 'write-7')
+const archivedValue = archivedNoKind.envelope.result.value
+expect('写归档：缺 ending.kind 被拦下并带回 requirements', archivedValue && archivedValue.ok === false
+  && archivedValue.code === 'E_SCHEMA'
+  && Array.isArray(archivedValue.requirements)
+  && archivedValue.requirements.indexOf('ending.kind') >= 0, JSON.stringify(archivedValue))
+
 const badId = await transition(rw, {
     sessionId: 'smoke-session', cwd: SANDBOX, traceSessionId: '../etc/passwd',
     tracesDir: TRACES, expectSha256: closed.current.sha256, kind: 'reopen',

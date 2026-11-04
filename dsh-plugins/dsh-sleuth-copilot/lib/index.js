@@ -250,8 +250,11 @@ export function apply(ctx) {
     return doc
   }
 
-  function transitionFailure(code, message) {
-    return { ok: false, code, message }
+  // requirements 与 trace_transition.py 的缺字段回执同形：浏览器半据此在错误后写「（缺：…）」。
+  function transitionFailure(code, message, requirements) {
+    const failure = { ok: false, code, message }
+    if (Array.isArray(requirements) && requirements.length) failure.requirements = requirements.slice()
+    return failure
   }
 
   function validTraceId(value) {
@@ -387,6 +390,10 @@ export function apply(ctx) {
       if (!/^(resolved|escalated|archived)$/.test(to)) return transitionFailure('E_SCHEMA', '目标状态不合法')
       body.to = to
       if (payload.endingKind) body.kind = String(payload.endingKind)
+      // 归档必须写收尾方式；先在这里给明确回执，别让脚本报「需要指定收尾方式（--kind）」。
+      if (to === 'archived' && !body.kind) {
+        return transitionFailure('E_SCHEMA', '需要指定收尾方式（--kind）', ['ending.kind'])
+      }
       if (payload.handedTo) body.handed_to = String(payload.handedTo)
       if (payload.duplicateOf) body.duplicate_of = String(payload.duplicateOf)
       for (const key of ['summary', 'severity', 'fix_emitted']) {

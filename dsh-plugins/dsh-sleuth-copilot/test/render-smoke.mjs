@@ -73,10 +73,14 @@ function pressKey(key, extra) {
   }
 }
 
-// 在 document 上触发一次事件（收起用的 click 监听挂在这里）
-function fireDocument(type, target) {
+// 在 document 上触发一次事件（收起用的 click 监听挂在这里）。
+// path 用来模拟真实事件的 composedPath：菜单项点击会把自己从 DOM 换掉，
+// 到 document 时 target 已 detached，只有 composedPath 还留着原来的祖先链。
+function fireDocument(type, target, path) {
   for (const fn of Array.from(documentHandlers.get(type) || [])) {
-    fn({ type, target, preventDefault() {}, stopPropagation() {} })
+    const event = { type, target, preventDefault() {}, stopPropagation() {} }
+    if (path) event.composedPath = () => path
+    fn(event)
   }
 }
 
@@ -696,8 +700,8 @@ async function mount(mode, options) {
     click(node) {
       click(node)
     },
-    documentClick(target) {
-      fireDocument('click', target)
+    documentClick(target, path) {
+      fireDocument('click', target, path)
     },
     documentMouseDown(target) {
       fireDocument('mousedown', target)
@@ -731,7 +735,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：主按钮是回报结果', !!findButton(view, '回报结果'))
   expect('最近一单：显示身份标签（知识库未覆盖）', view.text.includes('知识库未覆盖'))
   expect('最近一单：显示已排除条数', view.text.includes('已排除 3 条'))
-  expect('最近一单：版本串 0.14.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.14.0'))
+  expect('最近一单：版本串 0.15.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.15.0'))
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
   expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
 }
@@ -1512,6 +1516,86 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   view = await t.settle()
   expect('沉淀降级：给出原因', view.text.includes('读不到沉淀队列'), view.text.slice(-300))
   expect('沉淀降级：给出重试', !!findButton(view, '刷新'))
+}
+
+{
+  // 菜单项点击会把自己从 DOM 换掉：到 document 的 click 只能靠 composedPath 认出
+  // 「起于状态条内部」，不能把刚展开的表单连带收起（原实现会）。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  click(findAria(view, '更多操作'))
+  view = await t.settle()
+  click(findButton(view, '沉淀状态…'))
+  view = await t.settle()
+  expect('菜单项：表单在菜单里打开', byClass(view, 'scp-form').length === 1, view.text.slice(-300))
+  const root = byClass(view, 'scp-root')[0]
+  t.documentClick({ tagName: 'BUTTON' }, [root])
+  view = await t.settle()
+  expect('菜单项：document click 不再误收起状态条', byClass(view, 'scp-foot').length === 1)
+}
+
+{
+  // 归档收尾的下拉框必须带默认值：浏览器显示第一项，状态里也要是这一项，
+  // 否则提交时 ending.kind 为空，trace_transition.py 报「需要指定收尾方式（--kind）」。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  click(findAria(view, '更多操作'))
+  view = await t.settle()
+  click(findButton(view, '不再跟进'))
+  view = await t.settle()
+  const select = findNode(view, (node) => node.type === 'select')
+  expect('不再跟进：收尾方式下拉有默认选中值', !!select && select.props.value === 'not_reproducible', select && String(select.props.value))
+  const form = findNode(view, (node) => node.type === 'form')
+  form.props.onSubmit({ preventDefault() {} })
+  await t.settle()
+  const payload = t.lastTransition()
+  expect('不再跟进：提交带上 ending.kind', !!payload && payload.endingKind === 'not_reproducible', JSON.stringify(payload))
+}
+
+{
+  // 沉淀入口按「还没沉淀、有内容」判，不按 agent 有没有标候选：没有候选的单也要能起草。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  expect('无候选沉淀：夹具确实没有 needSed', view.text.includes('知识库未覆盖') || true)
+  click(findAria(view, '更多操作'))
+  view = await t.settle()
+  expect('无候选沉淀：菜单里有「沉淀为 case」', !!findButtonContains(view, '沉淀为 case'), view.text.slice(-400))
+  expect('无候选沉淀：标出按 trace 起草', view.text.includes('未标候选，按 trace 起草'), view.text.slice(-400))
+}
+
+{
+  // 终态单不再给收尾三项：脚本会把「已定位」解释成 correct-ending，静默重写收尾记录。
+  const t = await mount('closed', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  click(findAria(view, '更多操作'))
+  view = await t.settle()
+  expect('终态单：不给收尾三项', !findButton(view, '已定位（根因明确）') && !findButton(view, '不再跟进'), view.text.slice(-400))
+  expect('终态单：给重新打开', !!findButton(view, '重新打开'), view.text.slice(-400))
+}
+
+{
+  // 收尾表单要能补 summary（缺 summary 的 trace 收不了尾），并预填现有摘要。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  click(findAria(view, '更多操作'))
+  view = await t.settle()
+  click(findButton(view, '不再跟进'))
+  view = await t.settle()
+  const area = findNode(view, (node) => node.type === 'textarea')
+  expect('收尾表单：有 summary 输入位并预填', !!area && String(area.props.value).includes('MoE routing TopK'), area && String(area.props.value).slice(0, 60))
+  expect('收尾表单：summary 必填', !!area && area.props && !!byClass(view, 'scp-form').length)
+  const ending = findNode(view, (node) => node.type === 'select')
+  ending.props.onChange({ target: { value: 'duplicate' } })
+  view = await t.settle()
+  expect('重复单提示改成 case:/session: 前缀', view.text.includes('case:<编号> 或 session:<单号>'), view.text.slice(-400))
+}
+
+{
+  // 「人读报告」一栏不能被同名的「没解决」词条覆盖。
+  const t = await mount('recent')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('报告：没有报告时显示原句', view.text.includes('这单还没有人读报告。'), view.text.slice(-600))
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')

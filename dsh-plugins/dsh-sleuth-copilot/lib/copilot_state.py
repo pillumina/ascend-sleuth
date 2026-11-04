@@ -220,6 +220,7 @@ def _extra(doc: dict, traces: Path) -> dict:
         "sedimentCandidates": len([c for c in _as_list(doc.get("sediment_candidates")) if isinstance(c, dict)]),
         "sedimentCandidateList": candidates,
         "missingMaterials": _material_items(evidence_missing_full, _one_line(doc.get("summary"))),
+        "fixEmitted": doc.get("fix_emitted"),
     }
 
 
@@ -412,6 +413,7 @@ def main(argv=None) -> int:
                 "lastReason": extra.get("lastReason"),
                 "harnessSession": extra.get("harnessSession"),
                 "resumeSessions": extra.get("resumeSessions"),
+                "fixEmitted": extra.get("fixEmitted"),
             },
         }
 
