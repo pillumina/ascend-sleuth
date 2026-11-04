@@ -2,7 +2,7 @@
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
 //   dsh-plugins/ascend-panel/panel-client.js  (sha256:7e6593740c0c)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:f684735469ce)
-//   dsh-plugins/sleuth-console/console-client.js  (sha256:981408b74e9e)
+//   dsh-plugins/sleuth-console/console-client.js  (sha256:0b84ce5f38e9)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
 // 面板源码是动态插件方言（靠沙箱提供的 host 通信）；这里原文嵌入页面产物，并补一层适配：
@@ -6358,7 +6358,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       id: 'sleuth-console',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/sleuth-console/console-client.js (sha256:981408b74e9e) 原文开始 ----
+// ---- dsh-plugins/sleuth-console/console-client.js (sha256:0b84ce5f38e9) 原文开始 ----
 // sleuth-console/console-client.js —— 常驻包里的整页「Ascend Sleuth」（client-only）
 //
 // 为什么单有这一页：指标与自演进读的是**全库**（`metrics/`、`proposals/`、`knowledge/`），
@@ -6938,7 +6938,7 @@ return {
         }))
 
       const switches = React.createElement('div', { className: 'sleu-kb-card' },
-        switchRow('自动检查更新', '诊断开单时 fetch 一次。关闭后不再检查，doctor 会显示「已关闭」。', 'autoCheck'),
+        switchRow('自动检查更新', '诊断开单时 fetch 一次。关闭后不再检查，doctor 会显示「已关闭」；不影响 groom 周批。', 'autoCheck'),
         switchRow('自动合并', '仅当工作区干净、当前在配置分支上、且可快进时合并。不满足只提示，不 rebase。', 'autoMerge'),
       )
 

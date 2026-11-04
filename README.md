@@ -29,7 +29,7 @@ python3 scripts/enable_agent_skills.py
 
 诊断开单会自动同步知识库：`trace_begin.py` 建单时 fetch 远端，条件满足时做一次快进合并。
 
-配置与开关（`sync.remote` / `sync.branch` / `sync.enabled` / `sync.auto_merge`）在 `.local/settings.json`。没有这个文件时用默认值：`origin`、当前分支上游（取不到用 `main`）、同步开、自动合并开。
+配置与开关（`sync.remote` / `sync.branch` / `sync.enabled` / `sync.auto_merge`）在 `.local/settings.json`；这两个开关只管诊断读侧，groom 不受影响。没有这个文件时用默认值：`origin`、当前分支上游（取不到用 `main`）、同步开、自动合并开。
 
 当前状态用 `python3 scripts/kb_sync.py --show` 查看（只读，不联网）。
 

@@ -124,17 +124,15 @@ def load_sync_settings(root: Path):
 def _fetch_policy(root: Path, offline: bool):
     """本次是否联网 → (allow_fetch, skip_reason)。
 
-    `--offline`、`deployment.yaml` 声明 `sync.mode: offline`、settings 的
-    `sync.enabled: false` 三种情况都不 fetch，改用本机已有 ref 建快照：meta 仍按现有
-    `fresh` / `authoritative` 语义标 false，不联网的原因写进 `fetch_error`。
+    `--offline` 与 `deployment.yaml` 声明 `sync.mode: offline` 两种情况不 fetch，改用本机
+    已有 ref 建快照：meta 按现有 `fresh` / `authoritative` 语义标 false，不联网的原因写进
+    `fetch_error`。个人配置的 `sync.enabled` 只管诊断读侧的自动检查，不影响 groom——
+    groom 是显式动作，`--require-fresh` 要求这一版是最新的。整机离线请用 deployment 声明。
     """
     if offline:
         return False, "offline 模式：未尝试 fetch"
     if kb_sync.deployment_sync_mode(root) == "offline":
         return False, "deployment.yaml 声明 sync.mode: offline，未尝试 fetch；使用本机已有引用"
-    _remote, _branch, enabled, _error = load_sync_settings(root)
-    if not enabled:
-        return False, "settings 的 sync.enabled 为 false，未尝试 fetch；使用本机已有引用"
     return True, None
 
 

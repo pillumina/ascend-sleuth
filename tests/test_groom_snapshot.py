@@ -132,17 +132,16 @@ class SnapshotTest(unittest.TestCase):
         self.assertFalse(meta2["fresh"])
         self.assertFalse(meta2["authoritative"])
 
-    def test_sync_enabled_false_skips_fetch_and_marks_stale(self):
-        # 远端指向一个不存在的仓库：只要真的发了 fetch 就会失败退出 2。
+    def test_sync_enabled_false_does_not_block_groom_fetch(self):
+        # sync.enabled 只管诊断读侧；groom 是显式动作，仍要 fetch。
+        # 远端指向不存在的仓库：真发了 fetch 就会失败退出 2。
         git(self.repo, "remote", "set-url", "origin", str(Path(self.tmp.name) / "missing.git"))
         write_settings(self.repo, {"remote": "origin", "branch": "main",
                                    "enabled": False, "auto_merge": True})
         meta, rc = build_snapshot(self.repo, snapshot_dir=self.snaps)
-        self.assertEqual(rc, 0, meta)
-        self.assertFalse(meta["fresh"])
-        self.assertFalse(meta["authoritative"])
-        self.assertIn("sync.enabled", meta["fetch_error"])
-        self.assertTrue(Path(meta["worktree"]).is_dir())
+        self.assertEqual(rc, 2, meta)
+        self.assertFalse(meta["ok"])
+        self.assertNotIn("sync.enabled", (meta.get("fetch_error") or ""))
 
     def test_deployment_sync_offline_skips_fetch(self):
         (self.repo / "deployment.yaml").write_text('sync:\n  mode: "offline"\n',

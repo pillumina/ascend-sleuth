@@ -83,6 +83,8 @@ python3 scripts/groom_snapshot.py --list-remotes
 
 同步源与诊断读侧共用同一份配置：读主检出 `.local/settings.json` 的 `sync` 段（`remote` / `branch`）。配置在就按它同步，不再问远端；配置缺失才回到上一节走原有选源（单个远端直接用，多个才问用户）。有配置时下面的命令省略 `--remote`，脚本自己取配置。
 
+个人配置的 `sync.enabled` 只管诊断读侧的自动检查，不影响本步：groom 是显式动作，即使关掉自动检查也要 fetch。整机离线用 `deployment.yaml` 的 `sync.mode: "offline"`。
+
 有配置时，或没有配置且只有一个远端时：
 
 ```bash
