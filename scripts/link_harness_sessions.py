@@ -70,8 +70,9 @@ CREATED_RE = re.compile(r"^created_at\s*:\s*(.+)$", re.MULTILINE)
 LOG_START_RE = re.compile(r'"createdAt"\s*:\s*(?:"([^"]+)"|(\d{12,}))')
 LOG_TIME_RE = re.compile(r'"time"\s*:\s*(\d{12,})')
 LOG_SID_RE = re.compile(r'"id"\s*:\s*"(session-[^"]+)"')
-#: 时间窗两侧的容许偏差：轨迹的 `created_at` 是 agent 手写的，比会话真正开始晚几分钟很常见。
-START_SLACK_MS = 30 * 60 * 1000
+#: 时间窗两侧的容许偏差：`created_at` 是 agent 手写的，比会话真正开始晚几分钟很常见；
+#: 会话可能在轨迹创建前就已开始，但开始时间不能明显晚于 `created_at`（写 header 发生在会话内）。
+START_AFTER_MS = 5 * 60 * 1000
 END_SLACK_MS = 6 * 60 * 60 * 1000
 #: 会话开始时间与 `created_at` 之间容许的最大距离。超过这个距离的候选只能是"后来引用过它"，
 #: 不是写它的那次（实测最近的真会话差 5 分钟到 64 分钟，次近的差 15 小时以上）。
@@ -212,17 +213,19 @@ def scan_logs(sessions_dirs, slugs, min_mtime):
 def pick(cands, created):
     """候选 → (会话号, 依据)。依据两档：时间（强）/ 命中次数（退档，如实标注）。
 
-    时间判据两条件同时成立：窗口覆盖 `created_at`（±偏差），且会话开始时间离它不超过
-    `NEAR_MS`。满足者按 |开始 - created_at| 升序取第一个——最近的那次才是写它的会话。
+    时间判据三条件同时成立：会话在 `created_at` 时已经开始（允许 5 分钟时钟偏差）、
+    结束时间覆盖 `created_at`（留 6 小时偏差）、开始时间离 `created_at` 不超过 `NEAR_MS`。
+    满足者按 |开始 - created_at| 升序取第一个——最近的那次才是写它的会话。会话开始时间
+    明显晚于 `created_at` 的不算：写 header 发生在会话内，后开的会话只能是后来引用过它。
     """
     if not cands:
         return None, None
     if created is not None:
         near = [c for c in cands
                 if c[1] is not None and c[2] is not None
+                and c[1] <= created + START_AFTER_MS
                 and c[2] + END_SLACK_MS >= created
-                and c[1] - START_SLACK_MS <= created + NEAR_MS
-                and abs(c[1] - created) <= NEAR_MS]
+                and created - c[1] <= NEAR_MS]
         if near:
             best = sorted(near, key=lambda c: (abs(c[1] - created), -c[3]))[0]
             return best[0], "时间"

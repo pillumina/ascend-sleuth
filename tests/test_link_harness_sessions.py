@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import datetime
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,9 @@ import unittest
 from pathlib import Path
 
 SCRIPTS = Path(__file__).resolve().parent.parent / "scripts"
+sys.path.insert(0, str(SCRIPTS))
+
+import link_harness_sessions  # noqa: E402
 
 
 class ExplicitSessionIdTest(unittest.TestCase):
@@ -52,6 +56,29 @@ class ExplicitSessionIdTest(unittest.TestCase):
             result = self._run(Path(tmp), "2026-01-01-x.yaml")
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn('harness_session: "session-old"', path.read_text(encoding="utf-8"))
+
+
+class PickTimeTest(unittest.TestCase):
+    def test_ignores_session_started_after_trace_creation(self):
+        created = int(datetime.datetime(
+            2026, 9, 8, 15, 29, tzinfo=datetime.timezone(datetime.timedelta(hours=8)),
+        ).timestamp() * 1000)
+        candidates = [
+            # 后开的会话只能引用过这单；不能因为它离 created_at 更近就选它
+            ("session-late", created + 10 * 60 * 1000, created + 2 * 60 * 60 * 1000, 20, "late"),
+            ("session-early", created - 10 * 60 * 1000, created + 60 * 1000, 5, "early"),
+        ]
+        sid, basis = link_harness_sessions.pick(candidates, created)
+        self.assertEqual((sid, basis), ("session-early", "时间"))
+
+    def test_no_covering_window_falls_back_to_hits(self):
+        created = 1_000_000
+        candidates = [
+            ("session-old", created - 4 * 60 * 60 * 1000, created - 3 * 60 * 60 * 1000, 2, "old"),
+            ("session-missing-end", None, None, 7, "unknown"),
+        ]
+        sid, basis = link_harness_sessions.pick(candidates, created)
+        self.assertEqual((sid, basis), ("session-missing-end", "命中次数"))
 
 
 if __name__ == "__main__":
