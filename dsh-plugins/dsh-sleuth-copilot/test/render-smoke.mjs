@@ -669,7 +669,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：主按钮是回报结果', !!findButton(view, '回报结果'))
   expect('最近一单：显示身份标签（知识库未覆盖）', view.text.includes('知识库未覆盖'))
   expect('最近一单：显示已排除条数', view.text.includes('已排除 3 条'))
-  expect('最近一单：版本串 0.11.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.11.0'))
+  expect('最近一单：版本串 0.12.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.12.0'))
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
   expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
 }
@@ -998,6 +998,12 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('台账：标题在', view.text.includes('诊断总览'))
   expect('台账：列出人读案例标题', view.text.includes('vllm-ascend GLM-5.3 在 A3 跑推理时 MoE routing TopK 触发 vector core exception'))
   expect('台账：筛选按钮带计数', view.text.includes('全部 1') && view.text.includes('待回报 1'))
+  const listNodes = byClass(view, 'scp-pal-list')
+  expect('台账：筛选在左列、不在标题栏', byClass(view, 'scp-filters').length === 1
+    && !!listNodes[0] && (listNodes[0].children || []).some((node) => typeof (node.props && node.props.className) === 'string'
+      && node.props.className.split(/\s+/).includes('scp-filters')))
+  expect('台账：视图切换带 tab 语义', byClass(view, 'scp-view-tab').every((node) => node.props.role === 'tab'
+    && (node.props['aria-selected'] === 'true' || node.props['aria-selected'] === 'false')))
   // 时间按本地时区渲染：本地断言不能钉死小时（CI 跑在 UTC），只钉「日期 + 时分」的完整形状。
   expect('台账：列表时间完整显示', /09-08 \d{2}:\d{2}/.test(view.text), view.text.slice(0, 500))
   pressKey('Enter')
@@ -1021,6 +1027,22 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const transition = t.lastTransition()
   expect('台账写状态：kind=sedimented', transition && transition.kind === 'sedimented', JSON.stringify(transition))
   expect('台账写状态：state=submitted', transition && transition.state === 'submitted')
+}
+
+{
+  const t = await mount('recent')
+  click(findToolbar(t.view()))
+  await t.settle()
+  click(findButton(await t.settle(), '更多操作'))
+  const view = await t.settle()
+  expect('更多操作：复制续接与固定仍在菜单里', view.text.includes('复制续接指令') && view.text.includes('固定到状态条'))
+  click(findButton(view, '固定到状态条'))
+  const pinnedView = await t.settle()
+  const prefs = JSON.parse(storage.get(PREFS_KEY))
+  expect('更多操作：固定写进偏好', prefs && prefs.pins && prefs.pins['sess-1'] === ID, JSON.stringify(prefs && prefs.pins))
+  const pinnedChip = pinnedView.nodes.find((node) => typeof (node.props && node.props.className) === 'string'
+    && node.props.className.split(/\s+/).includes('scp-chip') && nodeText(node) === '已固定')
+  expect('更多操作：固定后在详情里有指示', !!pinnedChip, pinnedView.text.slice(0, 300))
 }
 
 {
@@ -1088,7 +1110,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('沉淀详情：五步进度', view.text.includes('草稿已交') && view.text.includes('已评估') && view.text.includes('已提 PR'))
   expect('沉淀详情：显示人决定', view.text.includes('张工'))
   expect('沉淀详情：显示提 PR 按钮', !!findButtonContains(view, '生成提 PR 指令'))
-  const steps = byClass(view, 'scp-step')
+  const steps = byClass(view, 'scp-sed-step')
   const promotedStep = steps.find((node) => nodeText(node).includes('已升格'))
   expect('已决定未提 PR：已升格不算完成', promotedStep && promotedStep.props['data-state'] !== 'done', JSON.stringify(promotedStep && promotedStep.props['data-state']))
 
@@ -1117,6 +1139,9 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
   view = await t.settle()
   view = await t.settle()
+  expect('沉淀视图：筛选同样在左列', byClass(view, 'scp-filters').length === 1
+    && (byClass(view, 'scp-pal-list')[0].children || []).some((node) => typeof (node.props && node.props.className) === 'string'
+      && node.props.className.split(/\s+/).includes('scp-filters')))
   click(findButtonContains(view, '提 PR（2）'))
   view = await t.settle()
   click(findButton(view, '换'))
