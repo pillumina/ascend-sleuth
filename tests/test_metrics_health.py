@@ -76,7 +76,7 @@ class CapacityGateTest(unittest.TestCase):
 
     def health(self):
         r = subprocess.run([sys.executable, "scripts/metrics_health.py", "--json", "--check",
-                            "--root", str(self.root)], cwd=ROOT, capture_output=True, text=True)
+                            "--root", str(self.root)], cwd=ROOT, capture_output=True, text=True, encoding="utf-8")
         return r.returncode, json.loads(r.stdout)
 
     # ---------------------------------------------------------------- 判据身份

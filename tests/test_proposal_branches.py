@@ -199,7 +199,7 @@ class BackdateTest(unittest.TestCase):
         root = Path(tmp.name)
 
         def git(*a):
-            return subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True)
+            return subprocess.run(["git", "-C", str(root), *a], capture_output=True, text=True, encoding="utf-8")
 
         git("init", "-q")
         git("config", "user.email", "t@example.com")

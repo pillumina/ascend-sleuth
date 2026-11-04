@@ -148,9 +148,17 @@ def stale_deps(root: Path, doc):
 
 
 def _outside_repo(p: str) -> bool:
-    """仓外路径：绝对路径，或指到检出之外的相对路径。"""
-    path = Path(p)
-    return path.is_absolute() or p.startswith("..")
+    """仓外路径：绝对路径（含盘符与 Windows 网络共享路径），或指到检出之外的相对路径。
+
+    `/tmp/x` 在 POSIX（Linux/macOS 的路径规范）上是绝对路径，但 Windows 上
+    `Path('/tmp/x').is_absolute()` 为 False（没有盘符）。不补这一支，命令自建的仓外
+    暂存件会被当成仓内依赖，报成「已蒸发」。
+    """
+    if p.startswith(("/", "\\")) or p.startswith(".."):
+        return True
+    if len(p) >= 2 and p[1] == ":" and p[0].isalpha():   # 盘符路径（C:……；含 C:tmp 这类盘符相对写法，一并按仓外处理）
+        return True
+    return Path(p).is_absolute()
 
 
 def clip(text: str) -> str:

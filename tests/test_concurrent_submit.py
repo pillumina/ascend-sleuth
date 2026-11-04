@@ -67,11 +67,11 @@ CASE = """cases:
 
 
 def git(repo: Path, *args, check=True):
-    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, check=check)
+    return subprocess.run(["git", *args], cwd=repo, capture_output=True, text=True, encoding="utf-8", check=check)
 
 
 def py(repo: Path, *args):
-    return subprocess.run(["python3", *args], cwd=repo, capture_output=True, text=True, check=False)
+    return subprocess.run(["python3", *args], cwd=repo, capture_output=True, text=True, encoding="utf-8", check=False)
 
 
 def append_symptom(path: Path, branch_id: str, word: str):

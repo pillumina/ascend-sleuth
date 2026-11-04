@@ -175,7 +175,7 @@ class RouteCheckTest(unittest.TestCase):
         self.write_case("inference/vllm-ascend/interrupt/X.yaml", cid="T-BAD")
         r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"),
                             "knowledge/inference/vllm-ascend/interrupt/X.yaml", "--root", str(self.root)],
-                           capture_output=True, text=True, cwd=self.root)
+                           capture_output=True, text=True, encoding="utf-8", cwd=self.root)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("不可编译", r.stdout)
         self.assertIn("未参与判定", r.stdout)
@@ -186,7 +186,7 @@ class RouteCheckTest(unittest.TestCase):
         p.mkdir(parents=True, exist_ok=True)
         for arg in (str(p), str(self.root / "nope.yaml")):
             r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"), arg,
-                                "--root", str(self.root)], capture_output=True, text=True, cwd=self.root)
+                                "--root", str(self.root)], capture_output=True, text=True, encoding="utf-8", cwd=self.root)
             self.assertEqual(r.returncode, 2, f"{arg}: {r.stdout}{r.stderr}")
 
     def test_unknown_nature_directory_exits_two(self):
@@ -194,7 +194,7 @@ class RouteCheckTest(unittest.TestCase):
         p = self.write_case("inference/vllm-ascend/nonsense/X.yaml", cid="T-NS")
         r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"),
                             str(p), "--root", str(self.root)],
-                           capture_output=True, text=True, cwd=self.root)
+                           capture_output=True, text=True, encoding="utf-8", cwd=self.root)
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
         self.assertIn("不是任何路由性质", r.stderr)
 
@@ -226,7 +226,7 @@ class RouteCheckTest(unittest.TestCase):
         r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"),
                             "knowledge/inference/vllm-ascend/interrupt/X.yaml",
                             "--root", str(self.root)],
-                           capture_output=True, text=True, cwd=self.root)
+                           capture_output=True, text=True, encoding="utf-8", cwd=self.root)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("首个命中是 performance", r.stdout)
 
@@ -236,7 +236,7 @@ class RouteCheckTest(unittest.TestCase):
         r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"),
                             "knowledge/inference/vllm-ascend/interrupt/X.yaml",
                             "--root", str(self.root)],
-                           capture_output=True, text=True, cwd=self.root)
+                           capture_output=True, text=True, encoding="utf-8", cwd=self.root)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("负载类型：inference", r.stdout)
         self.assertIn("只含本条负载类型", r.stdout)
@@ -247,7 +247,7 @@ class RouteCheckTest(unittest.TestCase):
         r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"),
                             "knowledge/inference/vllm-ascend/precision/X.yaml",
                             "--root", str(self.root)],
-                           capture_output=True, text=True, cwd=self.root)
+                           capture_output=True, text=True, encoding="utf-8", cwd=self.root)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("precision", r.stdout)
 
@@ -275,7 +275,7 @@ class RouteCheckTest(unittest.TestCase):
             '      - "请求变 slow"\n', encoding="utf-8")
         r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"),
                             "knowledge/inference/vllm-ascend/precision/M.yaml", "--root", str(self.root)],
-                           capture_output=True, text=True, cwd=self.root)
+                           capture_output=True, text=True, encoding="utf-8", cwd=self.root)
         self.assertIn("M-1", r.stdout)
         self.assertIn("M-2", r.stdout)
         self.assertIn("第 2/2 条", r.stdout)
@@ -288,26 +288,26 @@ class RouteCheckTest(unittest.TestCase):
             "branches:\n  - {id: training_interrupt, category: interrupt, symptoms: [[oom]],"
             " search_namespaces: [training/<f>/], fallback: Tier 3}\n", encoding="utf-8")
         r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"), "--wide-words",
-                            "--root", str(self.root)], capture_output=True, text=True, cwd=self.root)
+                            "--root", str(self.root)], capture_output=True, text=True, encoding="utf-8", cwd=self.root)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("natures", r.stdout)
 
     def test_unreadable_tree_is_usage_error_not_mismatch(self):
         """读不到表 → 2（读取错误），与 1（期望性质对不上）分开。"""
         r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"), "--show-workload-types",
-                            "--root", str(self.root / "nope")], capture_output=True, text=True,
+                            "--root", str(self.root / "nope")], capture_output=True, text=True, encoding="utf-8",
                            cwd=self.root)
         self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
 
     def test_cli_wide_words_mode(self):
         r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"), "--wide-words",
-                            "--root", str(self.root)], capture_output=True, text=True, cwd=self.root)
+                            "--root", str(self.root)], capture_output=True, text=True, encoding="utf-8", cwd=self.root)
         self.assertEqual(r.returncode, 0)
         self.assertIn("跨性质重复的正则", r.stdout)
 
     def test_cli_show_workload_types_mode(self):
         r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"), "--show-workload-types",
-                            "--root", str(self.root)], capture_output=True, text=True, cwd=self.root)
+                            "--root", str(self.root)], capture_output=True, text=True, encoding="utf-8", cwd=self.root)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("合法负载类型：2 个", r.stdout)
         self.assertIn("training", r.stdout)
@@ -319,7 +319,7 @@ class RouteCheckTest(unittest.TestCase):
             "natures:\n  - {id: interrupt, category: interrupt, symptoms: [[x]],"
             " search_namespaces: [common/], fallback: Tier 3}\n", encoding="utf-8")
         r = subprocess.run([sys.executable, str(ROOT / "scripts/route_check.py"), "--show-workload-types",
-                            "--root", str(self.root)], capture_output=True, text=True, cwd=self.root)
+                            "--root", str(self.root)], capture_output=True, text=True, encoding="utf-8", cwd=self.root)
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("workload_types", r.stdout)
 

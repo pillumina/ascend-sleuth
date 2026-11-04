@@ -51,7 +51,7 @@ class MarkImportedTest(unittest.TestCase):
         return subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "issue_filter.py"),
              "--state", str(state), "--source", "github/x/y", "--mark-imported", nums],
-            cwd=ROOT, capture_output=True, text=True, timeout=120,
+            cwd=ROOT, capture_output=True, text=True, encoding="utf-8", timeout=120,
         )
 
     def test_marking_the_same_batch_twice_does_not_duplicate(self):

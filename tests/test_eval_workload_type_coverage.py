@@ -72,7 +72,7 @@ class EvalSideCoverageTest(unittest.TestCase):
         return subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "eval_workload_type_coverage.py"),
              "--root", str(self.root), *args],
-            capture_output=True, text=True)
+            capture_output=True, text=True, encoding="utf-8")
 
     # ---------------------------------------------------------------- 库侧口径
     def test_library_cases_bucket_by_workload_type_and_nature(self):
@@ -209,7 +209,7 @@ class EvalSideCoverageTest(unittest.TestCase):
         r = subprocess.run(
             [sys.executable, str(ROOT / "scripts" / "eval_workload_type_coverage.py"),
              "--root", str(self.root / "nope")],
-            capture_output=True, text=True)
+            capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(r.returncode, 2)
         self.assertIn("--root", r.stderr)
 
@@ -351,7 +351,7 @@ natures:
         注意要走**本仓 root**（run_cli 默认把 --root 指向临时目录，那里没有 knowledge/）。
         """
         r = subprocess.run([sys.executable, str(ROOT / "scripts" / "eval_workload_type_coverage.py"),
-                            "--nature-evidence"], capture_output=True, text=True)
+                            "--nature-evidence"], capture_output=True, text=True, encoding="utf-8")
         self.assertEqual(r.returncode, 0)
         self.assertIn("带性质段的夹具", r.stdout)
         self.assertIn("不参与本栏的", r.stdout)

@@ -30,7 +30,7 @@ CASE = """cases:
 
 
 def sh(cwd: Path, *args):
-    return subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=False)
+    return subprocess.run(args, cwd=cwd, capture_output=True, text=True, encoding="utf-8", check=False)
 
 
 class GeneratedPlaneTest(unittest.TestCase):

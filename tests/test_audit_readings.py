@@ -218,7 +218,7 @@ decisions:
   - {{who: agent, when: 2026-09-17, type: proposal, conclusion: p}}
 """, encoding="utf-8")
         p = subprocess.run([sys.executable, str(ROOT / "scripts" / "verify_proposals.py"), "--check",
-                            "--root", str(root)], capture_output=True, text=True)
+                            "--root", str(root)], capture_output=True, text=True, encoding="utf-8")
         return p.returncode, p.stdout + p.stderr
 
     def test_card_after_cutover_requires_component(self):
@@ -469,3 +469,21 @@ decisions:
                              encoding="utf-8")
         stats = ebd.collect_stats(ebd.collect_ideas(self.root))
         self.assertEqual(stats["backlog_count"], 1)
+
+
+class WindowsPathSemanticsTest(unittest.TestCase):
+    """仓外判据在 Windows 路径语义下也要成立。
+
+    为什么值得单测：POSIX 上 `/tmp/x` 本来就是绝对路径，不换 Path 实现的话这条断言
+    恒真，抓不到「Windows 上无盘符 → 不算绝对」的回归。
+    """
+
+    def test_posix_style_absolute_path_is_outside_on_windows(self):
+        import ev_measure as em
+        from pathlib import PureWindowsPath
+        from unittest import mock
+        with mock.patch.object(em, "Path", PureWindowsPath):
+            self.assertTrue(em._outside_repo("/tmp/check.yaml"))
+            self.assertTrue(em._outside_repo("\\\\srv\\share\\x"))
+            self.assertFalse(em._outside_repo("docs/alive.md"))
+            self.assertFalse(em._outside_repo("traces/2026.yaml"))

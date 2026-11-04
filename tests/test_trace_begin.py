@@ -76,7 +76,7 @@ class CliTest(unittest.TestCase):
             full_env.update(env)
         return subprocess.run(
             [sys.executable, str(SCRIPTS / "trace_begin.py"), *args],
-            capture_output=True, text=True, env=full_env, timeout=120,
+            capture_output=True, text=True, encoding="utf-8", env=full_env, timeout=120,
         )
 
     def test_print_only_writes_nothing(self):
