@@ -24,8 +24,9 @@ window.__ModuleLoader__.load({
     const POLL_MS = 10000
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
-    // 详情抬头默认收起成四行；超过这个字数才给「展开全文」。行数由 CSS 定，这里只判
-    // 「有没有可展开的内容」——精确量溢出要读 DOM 尺寸，离线渲染拿不到。
+    // 详情抬头默认收起成四行；「展开全文」优先看实际溢出（scrollHeight > clientHeight）。
+    // 离线渲染没有布局引擎，拿不到尺寸时退回这个字数近似：四行在 400–510px 列宽下约 110–150 字，
+    // 取小值，宁可多给一个入口也不把内容藏起来。
     const LEDE_TOGGLE_MIN = 110
 
     // ── 文案 ────────────────────────────────────────────────────────────────
@@ -988,7 +989,7 @@ window.__ModuleLoader__.load({
 .scp-hero-meta>.scp-step,.scp-hero-meta>.scp-code{margin-left:auto;}
 /* 诊断详情抬头：一行识别信息 + 问题背景（可展开）。
    真机 trace 的 summary 首句常有一两百字，当标题放大加粗会占掉详情的大半屏；这里把它降到
-   正文层级，只让错误码 / 路径 / 函数调用走等宽字，靠字符宽度差异而不是字重区分。 */
+   正文层级，只让错误码、路径、函数调用走等宽字，靠字符宽度差异而不是字重区分。 */
 .scp-identity{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;}
 .scp-identity .scp-badge,.scp-identity .scp-chip{height:20px;padding:0 8px;border-radius:5px;font-size:var(--scp-fs-meta);line-height:1;}
 .scp-identity-meta{margin-left:auto;flex:none;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);font-variant-numeric:tabular-nums;color:var(--scp-faint);white-space:nowrap;}
@@ -1029,7 +1030,7 @@ window.__ModuleLoader__.load({
 .scp-report{margin:0;max-height:260px;overflow:auto;padding:var(--scp-sp-3) var(--scp-sp-4);border-radius:10px;background:var(--scp-surface-2);border:1px solid var(--scp-border);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);white-space:pre-wrap;overflow-wrap:anywhere;color:var(--scp-text);}
 .scp-grid2{display:grid;grid-template-columns:1fr 1fr;gap:var(--scp-sp-3) var(--scp-sp-5);margin:0;padding:var(--scp-sp-4);border-radius:10px;background:var(--scp-surface);border:1px solid color-mix(in srgb,var(--scp-border) 72%,transparent);}
 .scp-def{display:flex;flex-direction:column;gap:2px;min-width:0;}
-.scp-def dt{margin:0;font-size:var(--scp-fs-meta);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-base);color:var(--scp-faint);}
+.scp-def dt{margin:0;font-size:var(--scp-fs-meta);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-base);color:var(--scp-muted);}
 .scp-def dd{margin:0;font-size:var(--scp-fs-body);font-weight:var(--scp-fw-regular);line-height:var(--scp-lh-base);color:var(--scp-text);overflow-wrap:anywhere;}
 .scp-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-label);color:var(--scp-muted);overflow-wrap:anywhere;}
 .scp-tl-row{display:grid;grid-template-columns:56px 1fr;gap:2px 12px;padding:var(--scp-sp-2) 0;border-top:1px solid var(--scp-border);}
@@ -1599,9 +1600,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
     }
 
     // 摘要里混着路径、错误码与函数调用：与中文同字体时读者要自己挑。只标「看得出是机器
-    // 标识」的片段——带回括号的调用、已知扩展名的文件（可带行号）、十六进制、五位以上数字、
+    // 标识」的片段——带回括号的调用（带点号或不带点号都算）、已知扩展名的文件（可带行号，
+    // 扩展名后要求词边界，避免把 data.jsonl 拆成 data.json + l）、十六进制、五位以上数字、
     // 以 Error / Exception 结尾的类名。其余原样留作正文，不猜语义、不改文本。
-    const INLINE_CODE_RE = /([\w.$-]*[\w_]\.[\w_]+\([^()\n]*\))|([\w./-]+\.(?:py|log|yaml|yml|json|txt|md|sh)(?::\d+)?)|(0x[0-9a-fA-F]+)|(\b\d{5,}\b)|(\b[A-Z][A-Za-z0-9_]*(?:Error|Exception)\b)/g
+    const INLINE_CODE_RE = /([A-Za-z_][\w.$-]*\([^()\n]*\))|([\w./-]+\.(?:py|log|yaml|yml|json|txt|md|sh)(?![A-Za-z0-9_])(?!\.[A-Za-z0-9_])(?::\d+)?)|(0x[0-9a-fA-F]+)|(\b\d{5,}\b)|(\b[A-Z][A-Za-z0-9_]*(?:Error|Exception)\b)/g
     function inlineTokens(text) {
       const value = String(text || '')
       if (!value) return value
@@ -4253,10 +4255,22 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         return h('div', { key: 'sediment-progress' }, children)
       })()
 
-      // 详情抬头的人读背景：整段 summary，超长时收起成四行。展开状态按单号记，
-      // 切到别单再回来仍是收起，不把上一单的展开态带过去。
+      // 详情抬头的人读背景：整段 summary，超长时收起成四行。展开状态按单号记：
+      // 切到别单是收起，切回原单仍是展开；不把展开态带到别的单上。
       const ledeText = row ? (String(row.summary || '').trim() || caseTitle(row)) : ''
       const ledeOpen = Boolean(row) && ledeOpenId === row.sessionId
+      // 「展开全文」按实际溢出判断：读 scrollHeight / clientHeight。替身渲染没有布局引擎，
+      // 退回字数近似；展开后内容不再溢出，但按钮要留着才收得回去。
+      const ledeRef = React.useRef(null)
+      const [ledeOverflow, setLedeOverflow] = React.useState(false)
+      React.useEffect(() => {
+        const el = ledeRef.current
+        if (!el || typeof el.scrollHeight !== 'number' || !(el.clientHeight > 0)) {
+          setLedeOverflow(Boolean(ledeText) && ledeText.length > LEDE_TOGGLE_MIN)
+          return
+        }
+        setLedeOverflow(ledeOpen || el.scrollHeight > el.clientHeight + 1)
+      }, [row ? row.sessionId : '', ledeText, ledeOpen])
 
       const side = row
         ? menuOpen
@@ -4281,10 +4295,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('span', { className: 'scp-identity-meta' }, [stepsText(extra), formatTime(row.updatedAt)].filter(Boolean).join(' · '))),
             ledeText ? h('p', {
               className: 'scp-lede',
+              ref: ledeRef,
               'data-open': ledeOpen ? 'true' : 'false',
               title: ledeText,
             }, inlineTokens(ledeText)) : null,
-            ledeText.length > LEDE_TOGGLE_MIN ? h('button', {
+            ledeOverflow ? h('button', {
               type: 'button', className: 'scp-more',
               'aria-expanded': ledeOpen ? 'true' : 'false',
               onClick: () => setLedeOpenId(ledeOpen ? '' : row.sessionId),

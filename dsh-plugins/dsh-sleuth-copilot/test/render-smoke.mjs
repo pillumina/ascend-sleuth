@@ -416,7 +416,8 @@ function makeState(mode) {
       summary: 'vllm-ascend GLM-5.3-Flash-w8a8 在 Atlas A3 超节点（16 x Ascend910，TP16+EP）跑推理，'
         + '服务在并发长 prompt 负载下两次以同一签名崩溃：MoE token dispatch preprocess 的 '
         + 'torch.repeat_interleave(token_dispatcher.py:623) 处上抛 RuntimeError error code 507035，'
-        + '设备侧 fftsplus aivector error、vec error info 0x470000020d，指向确定性 kernel/tiling bug 而非硬件故障。',
+        + '设备侧 fftsplus aivector error、vec error info 0x470000020d，指向确定性 kernel/tiling bug 而非硬件故障；'
+        + '历史日志在 data.jsonl，编译产物是 x.pyc。',
     })
     return {
       ok: true, tracesDir: '/repo/traces', bound: longRow, recent: [longRow], all: [longRow],
@@ -1325,6 +1326,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
     && (node.props['aria-selected'] === 'true' || node.props['aria-selected'] === 'false')))
   // 时间按本地时区渲染：本地断言不能钉死小时（CI 跑在 UTC），只钉「日期 + 时分」的完整形状。
   expect('台账：列表时间完整显示', /09-08 \d{2}:\d{2}/.test(view.text), view.text.slice(0, 500))
+  expect('详情抬头：短摘要不给展开入口', !findButton(view, '展开全文'))
   pressKey('Enter')
   const afterEnter = await t.settle()
   expect('台账：Enter 打开回报表单', afterEnter.text.includes('将填入输入框'), afterEnter.text.slice(0, 400))
@@ -1345,8 +1347,11 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const codes = byClass(view, 'scp-icode').map((node) => nodeText(node))
   expect('详情抬头：行内标识走等宽', codes.includes('torch.repeat_interleave(token_dispatcher.py:623)')
     && codes.includes('RuntimeError') && codes.includes('0x470000020d') && codes.includes('507035'), codes.join(' / '))
-  expect('详情抬头：长摘要给展开入口', !!findButton(view, '展开全文'))
-  click(findButton(view, '展开全文'))
+  expect('详情抬头：已有扩展名后接更长后缀时不拆开', !codes.includes('data.json') && !codes.includes('x.py')
+    && view.text.includes('data.jsonl') && view.text.includes('x.pyc'), codes.join(' / '))
+  const expand = findButton(view, '展开全文')
+  expect('详情抬头：长摘要给展开入口', !!expand)
+  if (expand) click(expand)
   const open = await t.settle()
   expect('详情抬头：展开后给收起入口', byClass(open, 'scp-lede')[0].props['data-open'] === 'true'
     && !!findButton(open, '收起全文'))
