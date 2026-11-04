@@ -393,12 +393,19 @@ return {
       if (r === 'branch-mismatch') return { code: 'E_BRANCH', message: '当前不在配置分支上' }
       if (r === 'merge-in-progress') return { code: 'E_MERGE_IN_PROGRESS', message: '上一次合并还没结束' }
       if (r === 'auto-merge-off') return { code: 'E_AUTO_MERGE_OFF', message: '自动合并已关闭' }
+      if (r === 'same-repo') return { code: 'E_SAME_REPO', message: '配置远端与 origin 不同源' }
       if (r === 'status-failed') return { code: 'E_SCRIPT', message: 'git status 读取失败' }
       if (/^exit-\d+$/.test(r)) return { code: 'E_FETCH', message: 'fetch 退出码 ' + r.slice(5) }
       return { code: 'E_SCRIPT', message: '同步脚本报错：' + r }
     }
     // 同步状态分两种结局：读不到（ok=false），与读到了但状态是关闭 / 离线 / 失败（state）。
     // 后者仍带着本机读数（本机版本、落后数），页面不该因此整块空白。
+    //
+    // 状态以 `--show --json` 的真实字段为准：`enabled`（bool）、`offline`（bool）、
+    // `reason`（串）。关闭与离线都是**状态**（脚本回 ok=false），不是读不到：
+    //   enabled:false → ok:false, reason:"disabled"
+    //   offline:true  → ok:false, offline:true, reason:"offline"
+    // 面板不自己拼这两条输出，只读脚本给的取值；`reason` 仍用于超时 / 无远端 / 非检出等失败。
     function syncStatusOf(result) {
       if (!result || result.ok !== true) {
         return { ok: false, code: (result && result.code) || 'E_SCRIPT',
@@ -413,11 +420,15 @@ return {
       if (doc.ok === false && reason === 'not-a-repo') {
         return { ok: false, code: 'E_NOT_GIT', message: '当前目录不是 git 检出', detail: '' }
       }
-      const offlineRaw = doc.offline
-      const offline = offlineRaw === true || offlineRaw === 'true'
-        || (offlineRaw !== null && typeof offlineRaw === 'object' && offlineRaw.declared === true)
-      const offlineSource = offlineRaw && typeof offlineRaw === 'object' && offlineRaw.source
-        ? String(offlineRaw.source) : (offline ? 'deployment.yaml' : '')
+      // 脚本的真实字段；旧脚本没带这两个开关时按"开"处理，不把缺字段读成关闭。
+      const enabled = doc.enabled !== false && doc.enabled !== 'false'
+      let offline = doc.offline === true || doc.offline === 'true'
+        || (doc.offline !== null && typeof doc.offline === 'object' && doc.offline.declared === true)
+      // 兼容只给 reason 的旧脚本：两个开关字段缺席时，reason 是唯一能判断状态的来源。
+      if (reason === 'offline') offline = true
+      const offlineSource = offline ? 'deployment.yaml' : ''
+      const sameRepoRaw = doc.same_repo
+      const sameRepo = sameRepoRaw === true ? true : (sameRepoRaw === false ? false : null)
       const data = {
         remote: syncStr(doc.remote),
         branch: syncStr(doc.branch),
@@ -426,14 +437,25 @@ return {
         behind: syncNum(doc.behind),
         ahead: syncNum(doc.ahead),
         skipped: doc.skipped === true,
-        last_checked: syncStr(doc.last_ok_at) || syncStr(doc.attempted_at) || null,
+        last_checked: syncStr(doc.last_checked) || syncStr(doc.last_ok_at) || syncStr(doc.attempted_at) || null,
         last_reason: syncStr(doc.last_reason) || reason,
+        enabled: enabled,
         offline: offline,
         offline_source: offlineSource,
+        reason: reason,
+        same_repo: sameRepo,
         config: null,
       }
+      if (offline) {
+        return { ok: true, data: data, state: 'offline',
+          error: { code: 'E_OFFLINE', message: '离线部署（deployment.yaml）' } }
+      }
+      if (!enabled) {
+        return { ok: true, data: data, state: 'disabled',
+          error: { code: 'E_DISABLED', message: '同步已关闭（个人设置）' } }
+      }
       if (doc.ok !== false) {
-        return { ok: true, data: data, state: offline ? 'offline' : 'ok', error: null }
+        return { ok: true, data: data, state: 'ok', error: null }
       }
       // `--show` 在"没配远端"与"远端分支还没 fetch 过"时也回 ok=false，但 reason 是空的：
       // 这两种是状态（不是故障），页面仍要显示本机读数与下一步。
@@ -444,10 +466,14 @@ return {
       const why = syncReasonOf(reason) || { code: 'E_SCRIPT', message: '同步状态读取失败' }
       if (why.code === 'E_OFFLINE') {
         data.offline = true
-        if (!data.offline_source) data.offline_source = 'deployment.yaml'
+        data.offline_source = 'deployment.yaml'
         return { ok: true, data: data, state: 'offline', error: why }
       }
-      return { ok: true, data: data, state: why.code === 'E_DISABLED' ? 'disabled' : 'error', error: why }
+      if (why.code === 'E_DISABLED') {
+        data.enabled = false
+        return { ok: true, data: data, state: 'disabled', error: why }
+      }
+      return { ok: true, data: data, state: 'error', error: why }
     }
     // `pr_status.py --json`（无 flag 时是 status）：settings 段里的 sync 与配置来源。
     function syncSettingsOf(result) {

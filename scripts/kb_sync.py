@@ -10,26 +10,32 @@
      "sync": {"remote": "origin", "branch": "main", "enabled": true, "auto_merge": true},
      "target": {...}}
 
-配置文件缺失或读不出时用默认值（origin / main / 开），结果里 `config: "default"`。
-失败结果缓存在 `.local/kb-sync-state.json`：同一失败 10 分钟内不重试，避免每次开单都等满超时。
+配置文件缺失或读不出时用默认值（远端 origin、分支取当前分支上游（取不到则 main）、同步开），
+结果里 `config: "default"`。失败结果缓存在 `.local/kb-sync-state.json`：同一失败 10 分钟内不重试，
+避免每次开单都等满超时。
 
-自动合并只在这四条同时成立时发生：当前分支 = 配置 `branch`、HEAD 是远端分支的祖先、
+自动合并只在这些条件同时成立时发生：当前分支 = 配置 `branch`、HEAD 是远端分支的祖先、
 `git status --porcelain -uno` 为空、无进行中 merge / rebase / cherry-pick。worktree 与
 detached HEAD 不自动合并——合并会改当前检出的 HEAD，而 worktree 可能正被另一单使用。
+配置远端与 origin 不同源时同样只 fetch、不合并（reason `same-repo`）：合并会把另一个仓的
+提交带进当前检出。
 
 用法：
   python3 scripts/kb_sync.py --show          # 只读，不联网：配置、HEAD、本地远端 ref、上次核对
   python3 scripts/kb_sync.py --sync          # fetch；不合并
-  python3 scripts/kb_sync.py --merge         # fetch，四条条件满足时试 ff-only
+  python3 scripts/kb_sync.py --merge         # fetch，条件满足时试 ff-only
   python3 scripts/kb_sync.py --show --json   # 所有子命令都可加 --json
   python3 scripts/kb_sync.py --sync --timeout 3 --root <检出>
 
 结果里的稳定取值（文档与测试可直接断言）：
   ok       true / false
   reason   "" | timeout | no-remote | not-a-repo | lock | exit-<n> | offline | disabled |
-           dirty | branch-mismatch | not-ancestor | merge-in-progress | auto-merge-off | not-ff
+           dirty | branch-mismatch | not-ancestor | merge-in-progress | auto-merge-off |
+           not-ff | same-repo
   merge    ff-only | none
   config   file | default
+  enabled  true / false（settings 的 sync.enabled；--show 也照实给）
+  offline  true / false（deployment.yaml 声明 sync.mode: offline）
 
 退出码：0 = 已执行（含 fetch 失败、跳过、离线等降级）；2 = 参数不合法。
 """
@@ -394,23 +400,6 @@ def same_repo(root: Path, remote: str, timeout: float):
     return left == right
 
 
-def _is_linked_worktree(root: Path, timeout: float) -> bool:
-    """当前检出是不是 `git worktree add` 出来的链接 worktree。
-
-    合并会改当前检出的 HEAD，而链接 worktree 可能正被另一单使用；所以只 fetch，不合并。
-    """
-    git_dir = _git_text(root, ["rev-parse", "--git-dir"], timeout)
-    common_dir = _git_text(root, ["rev-parse", "--git-common-dir"], timeout)
-    if not git_dir or not common_dir:
-        return False
-
-    def absolute(text: str) -> Path:
-        path = Path(text)
-        return path.resolve() if path.is_absolute() else (root / path).resolve()
-
-    return absolute(git_dir) != absolute(common_dir)
-
-
 def _merge_in_progress(root: Path, timeout: float) -> bool:
     for name in ("MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "rebase-merge", "rebase-apply"):
         text = _git_text(root, ["rev-parse", "--git-path", name], timeout)
@@ -452,6 +441,7 @@ def _empty_base(remote: str, branch: str, config: str, config_error: str = "") -
         "merge": "none",
         "reason": "",
         "skipped": False,
+        "enabled": True,
         "offline": False,
         "config": config,
         "same_repo": None,
@@ -466,26 +456,41 @@ def _empty_base(remote: str, branch: str, config: str, config_error: str = "") -
 
 
 def local_snapshot(root: Path, remote: str, branch: str, *, timeout: float = DEFAULT_TIMEOUT,
-                   config: str = "file", config_error: str = "") -> dict:
-    """只读本机 git 状态（不联网），填 local_rev / 远端 ref / 落后数 / 改动面。"""
+                   config: str = "file", config_error: str = "", enabled: bool = True) -> dict:
+    """只读本机 git 状态（不联网），填 local_rev / 远端 ref / 落后数 / 改动面。
+
+    `enabled` 由调用方从 settings 的 sync 段带进来，`offline` 就地读 deployment.yaml；
+    两者只读本地文件，`--show` 因此能给出真实状态而不联网。关闭或离线时 `ok: false`
+    并写对应 reason，但仍照常算落后数与改动面（面板要显示"落后多少、为什么没同步"）。
+    """
     root = Path(root)
     result = _empty_base(remote, branch, config, config_error)
+    result["enabled"] = bool(enabled)
+    result["offline"] = deployment_sync_mode(root) == "offline"
+
+    def finish(res: dict) -> dict:
+        if res["offline"]:
+            res.update(ok=False, reason="offline", merge="none")
+        elif not res["enabled"]:
+            res.update(ok=False, reason="disabled", merge="none")
+        return res
+
     state = load_state(root)
     result["last_ok_at"] = str(state.get("last_ok_at") or "")
     result["attempted_at"] = str(state.get("attempted_at") or "")
     result["last_reason"] = str(state.get("reason") or "")
     if _git_text(root, ["rev-parse", "--git-dir"], timeout) is None:
         result["reason"] = "not-a-repo"
-        return result
+        return finish(result)
     result["local_rev"] = _git_text(root, ["rev-parse", "--short", "HEAD"], timeout) or "unknown"
     result["local_rev_before"] = result["local_rev"]
     result["same_repo"] = same_repo(root, remote, timeout) if remote else None
     remote_ref = f"{remote}/{branch}" if remote and branch else ""
     if not remote_ref:
-        return result
+        return finish(result)
     remote_rev = _git_text(root, ["rev-parse", "--short", remote_ref], timeout)
     if not remote_rev:
-        return result
+        return finish(result)
     result["remote_rev"] = remote_rev
     behind = _git_text(root, ["rev-list", "--count", f"HEAD..{remote_ref}"], timeout)
     ahead = _git_text(root, ["rev-list", "--count", f"{remote_ref}..HEAD"], timeout)
@@ -501,7 +506,7 @@ def local_snapshot(root: Path, remote: str, branch: str, *, timeout: float = DEF
             counts[classify_surface(line)] += 1
     result["surface"] = counts
     result["ok"] = True
-    return result
+    return finish(result)
 
 
 # ---------------------------------------------------------------- 同步主流程
@@ -514,13 +519,9 @@ def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
     sync_cfg = settings["sync"]
     remote, branch = sync_cfg["remote"], sync_cfg["branch"]
     result = local_snapshot(root, remote, branch, timeout=timeout, config=config,
-                            config_error=config_error)
+                            config_error=config_error, enabled=sync_cfg["enabled"])
 
-    if deployment_sync_mode(root) == "offline":
-        result.update(ok=False, offline=True, reason="offline", merge="none")
-        return result
-    if not sync_cfg["enabled"]:
-        result.update(ok=False, reason="disabled", merge="none")
+    if result["offline"] or not result["enabled"]:
         return result
     if do_fetch and _cooling_down(load_state(root)):
         state = load_state(root)
@@ -550,13 +551,19 @@ def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
 
     _record_fetch_ok(root, remote, branch)
     fresh = local_snapshot(root, remote, branch, timeout=timeout, config=config,
-                           config_error=config_error)
+                           config_error=config_error, enabled=sync_cfg["enabled"])
     result.update(fresh)
     result.update(ok=True, reason="", skipped=False, offline=False,
                   local_rev_before=fresh.get("local_rev_before", "unknown"),
                   behind_before=fresh.get("behind_before", "unknown"))
 
-    if not do_merge or fresh["behind"] in (0, "unknown"):
+    if not do_merge:
+        return result
+    # 配置远端与 origin 不同源时只拉不合并：合并会把另一个仓的提交带进当前检出。
+    if fresh.get("same_repo") is False:
+        result.update(merge="none", reason="same-repo")
+        return result
+    if fresh["behind"] in (0, "unknown"):
         return result
     if honor_auto_merge and not sync_cfg["auto_merge"]:
         result["reason"] = "auto-merge-off"
@@ -583,7 +590,7 @@ def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
         return result
 
     after = local_snapshot(root, remote, branch, timeout=timeout, config=config,
-                           config_error=config_error)
+                           config_error=config_error, enabled=sync_cfg["enabled"])
     before_rev, before_behind = result["local_rev_before"], result["behind_before"]
     result.update(after)
     result.update(ok=True, reason="", merge="ff-only",
@@ -663,6 +670,7 @@ MERGE_REASONS = {
     "dirty": "工作区有未提交改动",
     "merge-in-progress": "有进行中的 merge/rebase/cherry-pick",
     "auto-merge-off": "自动合并已关闭",
+    "same-repo": "配置远端与 origin 不同源，只拉不合并",
     "not-ff": "ff-only 合并失败",
     "status-failed": "读不出工作区状态",
     "timeout": "合并超时",
@@ -688,6 +696,12 @@ def render_show(result: dict) -> str:
     if result.get("config_error"):
         source += f"；{result['config_error']}"
     lines = [f"知识库同步（{source}）"]
+    if result.get("offline"):
+        lines.append("  同步状态  离线（deployment.yaml 声明 sync.mode: offline）")
+    elif not result.get("enabled", True):
+        lines.append("  同步状态  已关闭（sync.enabled = false）")
+    else:
+        lines.append("  同步状态  可同步")
     same = {True: "是", False: "否", None: "未知"}.get(result.get("same_repo"), "未知")
     lines.append(f"  远端      {result['remote']}/{result['branch']}（与 origin 同源：{same}）")
     lines.append(f"  本机 HEAD {result['local_rev']}")
@@ -760,7 +774,7 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--sync", action="store_const", const="sync", dest="mode",
                       help="fetch 远端分支")
     mode.add_argument("--merge", action="store_const", const="merge", dest="mode",
-                      help="fetch 后按四条条件试 ff-only")
+                      help="fetch 后按条件试 ff-only")
     ap.add_argument("--json", action="store_true", help="输出 JSON")
     ap.add_argument("--timeout", type=_positive_float, default=DEFAULT_TIMEOUT,
                     help=f"单条 git 命令的超时秒数（默认 {DEFAULT_TIMEOUT:g}）")
@@ -780,7 +794,7 @@ def main(argv=None) -> int:
         sync_cfg = settings["sync"]
         result = local_snapshot(root, sync_cfg["remote"], sync_cfg["branch"],
                                 timeout=args.timeout, config=config,
-                                config_error=config_error)
+                                config_error=config_error, enabled=sync_cfg["enabled"])
     else:
         result = sync(root, do_fetch=True, do_merge=(mode == "merge"), timeout=args.timeout)
     if args.json:

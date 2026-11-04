@@ -394,6 +394,8 @@ def kb_version_state(origin_rev: str, sync: dict):
     """交接单的知识库版本 vs 本机远端分支 → (state, note)。
 
     fetch 失败时给 `unknown` 而不是硬比本机 HEAD：本机可能落后，比出来的"一致"会给出错误结论。
+    同步关闭（`sync.enabled=false`）时没有可比对的远端版本，同样给 `unknown`——不能当成
+    「没有远端分支、退回本机检出」：本机检出是不是同一个版本根本没查过。
     """
     origin_rev = str(origin_rev or "unknown")
     if origin_rev in ("", "unknown"):
@@ -401,8 +403,12 @@ def kb_version_state(origin_rev: str, sync: dict):
     if not sync.get("ok"):
         reason = str(sync.get("reason") or "")
         local_rev = str(sync.get("local_rev") or "")
+        if reason == "disabled":
+            return "unknown", (
+                "同步已关闭，未比对知识库版本——以本机库为准；"
+                "发现候选集与 trace 记的对不上就如实说明")
         # 没有可比远端时退回本机检出：与本机 HEAD 比，并说明可能落后。其他失败仍给 unknown。
-        if reason in ("no-remote", "disabled") and local_rev and local_rev != "unknown":
+        if reason == "no-remote" and local_rev and local_rev != "unknown":
             if origin_rev == local_rev:
                 return "match", f"与上家一致（{origin_rev}；本机没有远端分支，比对本机检出）"
             return "mismatch", (

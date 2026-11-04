@@ -40,15 +40,29 @@ git worktree remove ../ascend-sleuth-s<session>
 
 ### 诊断读侧的同步
 
-诊断与续接在开单时同步一次知识库：`trace_begin.py` 读 `.local/settings.json` 的 `sync` 段，fetch 远端分支（超时 10 秒）。落后时按四条条件试 ff-only 合并（快进合并，不产生合并提交）：当前分支 = 配置 `branch`、HEAD 是远端祖先、`git status --porcelain -uno` 为空、无进行中 merge / rebase / cherry-pick。worktree 与 detached HEAD 不自动合并——worktree 里通常在做提 PR 的分支改动，合入 `main` 会把它带进提交。
+诊断开单时同步一次知识库：`trace_begin.py` 读 `.local/settings.json` 的 `sync` 段，fetch 远端分支（超时 10 秒）。落后时按四条条件试 ff-only 合并（快进合并，不产生合并提交）：
 
-同步只补读侧，不替代提交纪律：开工与提交前仍由提交者跑 `git fetch origin`（见「多 agent 并行」第 5 条），保证分支从最新 `main` 开、提交基于最新树。诊断侧这次 fetch 只保证候选集来自较新的知识库；它不改提交、不推送，也不处理与本地未提交改动的冲突。一次合并同时更新知识与流程：`knowledge/` 在运行时读取立即生效，`skills/` 要下一次会话才重新加载。
+- 当前分支 = 配置 `branch`；
+- HEAD 是远端祖先；
+- `git status --porcelain -uno` 为空；
+- 无进行中 merge / rebase / cherry-pick；
+- `sync.auto_merge` 开着（关掉只检查、不合并）。
 
-配置在 `.local/settings.json`（主检出那一份，`.gitignore` 已挡在 git 外），schema `ascend-sleuth-settings/1`，`sync` 段含 `remote` / `branch` / `enabled` / `auto_merge`，默认 `origin`、当前分支上游（取不到用 `main`）、`true`、`true`。查看配置与当前状态用 `python3 scripts/kb_sync.py --show`（只读，不联网）；改配置用 `python3 scripts/pr_status.py --set-sync`（`--remote` / `--branch` / `--disable` / `--auto-merge off`），不要手改 JSON。没有该文件时按默认值同步，groom 则回到原有的选源流程（单个远端直接用，多个才问）。
+worktree 与 detached HEAD 不自动合并。worktree 里通常在做提 PR 的分支改动，合入 `main` 会把它带进提交。
 
-读源会做同源校验：`git remote get-url <sync.remote>` 的 host 与 path 与 `origin` 一致才算同一个仓，`--show` 打出「与 origin 同源：是 / 否」；不同源时按提示核对 `sync.remote` 后再用。写目标（提 PR）不做这项校验。
+续接只 fetch、不合并：诊断正在进行，合并会改当前工作区，可能换掉结论所在的那一版。要看远端有没有合入这单用过的 case，用续接里的漂移检查（`kb_drift.py`，它先让 `kb_sync.py` fetch 一次）或 `python3 scripts/kb_sync.py --show`（只读，不联网）。
 
-fetch 失败时标明失败（`kb_sync: failed`），原因写进 `kb_sync_reason`：失败结果缓存在 `.local/kb-sync-state.json`，10 分钟内同一失败不重试，避免每次开单重复等满超时。离线部署在 `deployment.yaml` 声明 `sync.mode: "offline"`，`--sync` 与 `--merge` 都不联网；`--show` 仍可读本地状态。
+同源校验不一致时不自动合并：`git remote get-url <sync.remote>` 的 host 与 path 要与 `origin` 一致，`--show` 打出「与 origin 同源：是 / 否」。不同源时按提示核对 `sync.remote` 后再用，脚本会拦住合并。写目标（提 PR）不做这项校验。
+
+同步只补读侧，不替代提交纪律：开工与提交前仍由提交者跑 `git fetch origin`（见「多 agent 并行」第 5 条），保证分支从最新 `main` 开、提交基于最新树。
+
+诊断侧这次 fetch 只保证候选集来自较新的知识库；它不改提交、不推送，也不处理与本地未提交改动的冲突。一次合并同时更新知识与流程：`knowledge/` 在运行时读取立即生效，`skills/` 要下一次会话才重新加载。
+
+配置在 `.local/settings.json`（主检出那一份，`.gitignore` 已挡在 git 外），schema `ascend-sleuth-settings/1`，`sync` 段含 `remote` / `branch` / `enabled` / `auto_merge`。默认 `origin`、当前分支上游（取不到用 `main`）、同步开、自动合并开；没有该文件时按默认值同步，groom 回到原有的选源流程（单个远端直接用，多个才问）。
+
+查看配置与状态用 `python3 scripts/kb_sync.py --show`（只读，不联网）；改配置用 `python3 scripts/pr_status.py --set-sync`（`--remote` / `--branch` / `--disable` / `--auto-merge off`），不要手改 JSON。
+
+fetch 失败时标 `kb_sync: failed`，原因写进 `kb_sync_reason`。失败结果缓存在 `.local/kb-sync-state.json`，10 分钟内同一失败不重试。离线部署在 `deployment.yaml` 声明 `sync.mode: "offline"`：`--sync` 与 `--merge` 都不联网，`--show` 仍可读本地状态。
 
 ### 部署形态
 

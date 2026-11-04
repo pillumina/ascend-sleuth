@@ -45,6 +45,26 @@ class KbVersionStateTest(unittest.TestCase):
         self.assertIn("无法比对知识库版本", note)
         self.assertIn("fetch 超时", note)
 
+    def test_disabled_degrades_to_unknown(self):
+        # 同步关闭时没有去查任何远端版本：不能像「本机没有远端分支」那样退回本机 HEAD 比对。
+        state, note = import_trace.kb_version_state(
+            "deadbee", {"ok": False, "reason": "disabled", "local_rev": "deadbee"})
+        self.assertEqual(state, "unknown")
+        self.assertIn("同步已关闭，未比对知识库版本", note)
+        self.assertNotIn("本机没有远端分支", note)
+
+    def test_no_remote_falls_back_to_local_checkout(self):
+        state, note = import_trace.kb_version_state(
+            "deadbee", {"ok": False, "reason": "no-remote", "local_rev": "deadbee"})
+        self.assertEqual(state, "match")
+        self.assertIn("本机没有远端分支", note)
+
+    def test_no_remote_mismatch_against_local_checkout(self):
+        state, note = import_trace.kb_version_state(
+            "deadbee", {"ok": False, "reason": "no-remote", "local_rev": "c0ffee0"})
+        self.assertEqual(state, "mismatch")
+        self.assertIn("本机没有远端分支", note)
+
     def test_missing_remote_ref_degrades_to_unknown(self):
         state, note = import_trace.kb_version_state(
             "deadbee", {"ok": True, "remote": "origin", "branch": "main", "remote_rev": None})
@@ -127,6 +147,17 @@ class ImportDegradeTest(unittest.TestCase):
         self.assertIn("无法比对知识库版本", doc["kb_rev_note"])
         self.assertEqual(doc["kb_sync"], {"ok": False, "reason": "timeout"})
         sync_mock.assert_called_once()
+        self.assertTrue((self.traces / "h1.yaml").is_file())
+
+    def test_disabled_does_not_fall_back_to_local_checkout(self):
+        # 同步关闭时 local_rev 有值也不能拿本机 HEAD 冒充远端版本：结果必须是 unknown。
+        code, doc, _ = self.run_import(
+            {"ok": False, "reason": "disabled", "remote": "", "branch": "",
+             "remote_rev": None, "local_rev": "deadbee"})
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["kb_rev_state"], "unknown")
+        self.assertIn("同步已关闭，未比对知识库版本", doc["kb_rev_note"])
         self.assertTrue((self.traces / "h1.yaml").is_file())
 
     def test_remote_branch_match_after_successful_fetch(self):

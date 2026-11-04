@@ -14,6 +14,14 @@ from tests.groom_fixtures import git, init_repo, make_index, run_py, write_case 
 from groom_snapshot import build_snapshot, cleanup_snapshot, list_remotes  # noqa: E402
 
 
+def write_settings(repo: Path, sync: dict):
+    path = repo / ".local" / "settings.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"schema": "ascend-sleuth-settings/1", "sync": sync},
+                               ensure_ascii=False), encoding="utf-8")
+    return path
+
+
 class SnapshotTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="groom-snap-")
@@ -123,6 +131,51 @@ class SnapshotTest(unittest.TestCase):
         self.assertEqual(rc2, 0, meta2)
         self.assertFalse(meta2["fresh"])
         self.assertFalse(meta2["authoritative"])
+
+    def test_sync_enabled_false_skips_fetch_and_marks_stale(self):
+        # 远端指向一个不存在的仓库：只要真的发了 fetch 就会失败退出 2。
+        git(self.repo, "remote", "set-url", "origin", str(Path(self.tmp.name) / "missing.git"))
+        write_settings(self.repo, {"remote": "origin", "branch": "main",
+                                   "enabled": False, "auto_merge": True})
+        meta, rc = build_snapshot(self.repo, snapshot_dir=self.snaps)
+        self.assertEqual(rc, 0, meta)
+        self.assertFalse(meta["fresh"])
+        self.assertFalse(meta["authoritative"])
+        self.assertIn("sync.enabled", meta["fetch_error"])
+        self.assertTrue(Path(meta["worktree"]).is_dir())
+
+    def test_deployment_sync_offline_skips_fetch(self):
+        (self.repo / "deployment.yaml").write_text('sync:\n  mode: "offline"\n',
+                                                   encoding="utf-8")
+        git(self.repo, "remote", "set-url", "origin", str(Path(self.tmp.name) / "missing.git"))
+        meta, rc = build_snapshot(self.repo, snapshot_dir=self.snaps)
+        self.assertEqual(rc, 0, meta)
+        self.assertFalse(meta["fresh"])
+        self.assertFalse(meta["authoritative"])
+        self.assertIn("sync.mode: offline", meta["fetch_error"])
+        self.assertTrue(Path(meta["worktree"]).is_dir())
+
+    def test_cli_writes_selected_remote_when_config_missing(self):
+        settings = self.repo / ".local" / "settings.json"
+        self.assertFalse(settings.exists())
+        p = run_py(self.repo, "scripts/groom_snapshot.py", "--json", "--remote", "origin",
+                   "--snapshot-dir", str(self.snaps))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertTrue(settings.is_file())
+        doc = json.loads(settings.read_text(encoding="utf-8"))
+        self.assertEqual(doc["sync"]["remote"], "origin")
+        self.assertEqual(doc["sync"]["branch"], "main")
+        self.assertTrue(doc["sync"]["enabled"])
+        self.assertIn("写回 .local/settings.json", p.stderr)
+
+    def test_cli_writeback_failure_does_not_block_snapshot(self):
+        (self.repo / ".local").write_text("not a directory\n", encoding="utf-8")
+        p = run_py(self.repo, "scripts/groom_snapshot.py", "--json", "--remote", "origin",
+                   "--snapshot-dir", str(self.snaps))
+        self.assertEqual(p.returncode, 0, p.stderr)
+        self.assertIn("写回 .local/settings.json 失败", p.stderr)
+        self.assertIn("照常建快照", p.stderr)
+        self.assertEqual(json.loads(p.stdout)["remote"], "origin")
 
     def test_stale_index_is_rebuilt_inside_snapshot_only(self):
         new = self._push_new_commit()          # 只加了 case，没有重建索引

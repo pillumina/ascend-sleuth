@@ -2,7 +2,7 @@
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
 //   dsh-plugins/ascend-panel/panel-client.js  (sha256:7e6593740c0c)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:f684735469ce)
-//   dsh-plugins/sleuth-console/console-client.js  (sha256:4864f55ba7b9)
+//   dsh-plugins/sleuth-console/console-client.js  (sha256:981408b74e9e)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
 // 面板源码是动态插件方言（靠沙箱提供的 host 通信）；这里原文嵌入页面产物，并补一层适配：
@@ -6358,7 +6358,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       id: 'sleuth-console',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/sleuth-console/console-client.js (sha256:4864f55ba7b9) 原文开始 ----
+// ---- dsh-plugins/sleuth-console/console-client.js (sha256:981408b74e9e) 原文开始 ----
 // sleuth-console/console-client.js —— 常驻包里的整页「Ascend Sleuth」（client-only）
 //
 // 为什么单有这一页：指标与自演进读的是**全库**（`metrics/`、`proposals/`、`knowledge/`），
@@ -6527,6 +6527,7 @@ return {
       E_BRANCH: '当前不在配置分支上',
       E_MERGE_IN_PROGRESS: '上一次合并还没结束',
       E_AUTO_MERGE_OFF: '自动合并已关闭',
+      E_SAME_REPO: '配置远端与 origin 不同源',
       E_FETCH: 'fetch 失败',
       E_CAS: '设置文件刚被改过，刷新后重试',
       E_SCRIPT: '本机脚本报错',
@@ -6549,6 +6550,7 @@ return {
       if (code === 'E_DIRTY') return '先提交或 git stash，再点「立即同步」。'
       if (code === 'E_NOT_FF') return '本地提交不能快进；处理后再同步。'
       if (code === 'E_WORKTREE') return '在 worktree 里不自动合并；回主检出再试。'
+      if (code === 'E_SAME_REPO') return '核对 .local/settings.json 的 sync.remote 后再试。'
       return ''
     }
     function kbShortRev(v) {
@@ -6712,7 +6714,11 @@ return {
       const targetsPart = status && status.targets ? status.targets : null
       const targets = targetsPart && targetsPart.ok === true ? targetsPart.data : null
       const remotes = targets && Array.isArray(targets.remotes) ? targets.remotes : []
+      // 三个状态读脚本的真实字段：offline / enabled / same_repo。关闭与离线是两回事，
+      // 前者是个人设置，后者是部署声明；同源校验不一致时脚本不自动合并，页面只说这一行。
       const offline = !!(data && data.offline)
+      const disabled = !!(data && data.enabled === false)
+      const sameRepoMismatch = !!(data && data.same_repo === false)
       const config = data && data.config ? data.config : null
       const cfgSource = offline
         ? '部署声明（offline）'
@@ -6805,7 +6811,7 @@ return {
           hint: kbHintFor(sync.code), detail: sync.detail ? String(sync.detail) : '' }
       } else if (syncState === 'offline' || offline) {
         banner = { kind: 'muted', text: '离线部署（' + (data.offline_source || 'deployment.yaml') + '）：不检查更新，也不合并。诊断照常。' }
-      } else if (syncState === 'disabled') {
+      } else if (syncState === 'disabled' || disabled) {
         banner = { kind: 'muted', text: '已关闭（个人设置）：启动诊断时不检查更新，也不合并。',
           hint: '打开「自动检查更新」并保存后，才能手动同步。' }
       } else if (syncState === 'error') {
@@ -6842,7 +6848,7 @@ return {
       } else {
         banner = { kind: 'ok', text: '本机与远端一致。' }
       }
-      const canSync = !offline && syncState !== 'disabled' && remotes.length > 0
+      const canSync = !offline && !disabled && syncState !== 'disabled' && remotes.length > 0
         && sync && sync.ok === true
       if (banner && !banner.action && canSync && !busy) {
         banner.action = syncAction('quiet')
@@ -6852,6 +6858,10 @@ return {
         }, '重试')
       }
       const bannerNode = banner ? KbBanner(banner) : null
+      // 同源校验不一致：脚本会拦住自动合并，这里只把这一行说清楚，不重复「立即同步」动作。
+      const sameRepoNode = sameRepoMismatch
+        ? KbBanner({ kind: 'warn', text: '这个远端不是同一个仓，未自动合并。' })
+        : null
 
       const remoteValue = draft ? draft.remote : ''
       const remoteOptions = remotes.map(r => React.createElement('option', { key: 'r-' + r.name, value: r.name },
@@ -6958,6 +6968,7 @@ return {
             value: lastChecked ? kbAgo(lastChecked) : '从未核对',
             tone: lastChecked ? '' : 'muted' })),
         bannerNode,
+        sameRepoNode,
         sourceCard,
         switches,
         React.createElement('div', { className: 'sleu-kb-foot' },

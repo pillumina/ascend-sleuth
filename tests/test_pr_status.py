@@ -160,6 +160,126 @@ class LedgerTest(RepoCase):
         self.assertNotEqual(pr.list_targets(self.repo)["sha256"], digest)
 
 
+# ---------------------------------------------------------------- settings 写点的文件指纹 CAS
+
+def legacy_target(remote="origin", base="main"):
+    return {"remote": remote, "base": base, "platform": "github",
+            "url": "https://github.com/pillumina/ascend-sleuth.git", "note": "",
+            "labels": {}, "source": "user", "chosen_at": "2026-11-01T10:00:00+08:00"}
+
+
+class SettingsCasTest(RepoCase):
+    """settings 的四个写点（--set-sync / --set-target / --migrate / 迁移写回）同一套 CAS。"""
+
+    def test_load_target_migration_keeps_sync_section(self):
+        # settings 已有 sync 段但没有 target；旧台账里有 target → 迁移写回时 sync 不能丢。
+        pr.kb_sync.save_settings(self.repo, {"sync": {"remote": "origin", "branch": "main",
+                                                      "enabled": False, "auto_merge": False}})
+        data = pr.empty_ledger()
+        data["target"] = legacy_target()
+        pr.save_ledger(self.repo, data)
+
+        target = pr.load_target(self.repo)
+        self.assertEqual(target["remote"], "origin")
+        settings, _source, _problem = pr.kb_sync.load_settings(self.repo)
+        self.assertEqual(settings["target"]["remote"], "origin")
+        self.assertFalse(settings["sync"]["enabled"])
+        self.assertFalse(settings["sync"]["auto_merge"])
+
+    def test_migrate_cli_keeps_sync_section(self):
+        pr.kb_sync.save_settings(self.repo, {"sync": {"remote": "origin", "branch": "main",
+                                                      "enabled": True, "auto_merge": False}})
+        data = pr.empty_ledger()
+        data["target"] = legacy_target(base="develop")
+        pr.save_ledger(self.repo, data)
+
+        code, payload = run_cli("--root", str(self.repo), "--migrate")
+        self.assertEqual(code, 0, payload)
+        self.assertTrue(payload["ok"], payload)
+        self.assertTrue(payload["migrated"])
+        settings, _source, _problem = pr.kb_sync.load_settings(self.repo)
+        self.assertEqual(settings["target"]["base"], "develop")
+        self.assertTrue(settings["sync"]["enabled"])
+        self.assertFalse(settings["sync"]["auto_merge"])
+
+    def test_migrate_rejects_stale_settings_fingerprint(self):
+        pr.kb_sync.save_settings(self.repo, {"sync": {"remote": "origin", "branch": "main",
+                                                      "enabled": True, "auto_merge": True}})
+        stale = pr.kb_sync.settings_sha256(self.repo)
+        # 另一个写者（面板的 --set-sync）在读完指纹之后改了配置。
+        pr.kb_sync.save_settings(self.repo, {"sync": {"remote": "origin", "branch": "main",
+                                                      "enabled": False, "auto_merge": True}})
+        before = pr.kb_sync.settings_path(self.repo).read_bytes()
+        data = pr.empty_ledger()
+        data["target"] = legacy_target()
+        pr.save_ledger(self.repo, data)
+
+        code, payload = run_cli("--root", str(self.repo), "--migrate",
+                                "--expect-sha256", stale)
+        self.assertEqual(code, 0, payload)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"]["code"], "E_CAS")
+        # 被拒绝的写没有落盘：文件还是另一个写者那一版，target 仍为空。
+        self.assertEqual(pr.kb_sync.settings_path(self.repo).read_bytes(), before)
+        settings, _source, _problem = pr.kb_sync.load_settings(self.repo)
+        self.assertIsNone(settings["target"])
+        self.assertFalse(settings["sync"]["enabled"])
+
+    def test_set_target_rejects_stale_settings_fingerprint(self):
+        pr.kb_sync.save_settings(self.repo, {"sync": {"remote": "origin", "branch": "main",
+                                                      "enabled": True, "auto_merge": True}})
+        stale = pr.kb_sync.settings_sha256(self.repo)
+        real_save_ledger = pr.save_ledger
+        after_race = {}
+
+        def racing_save(root, data, expect_sha=None):
+            # --set-target 先写台账、再写 settings；模拟两个写点之间另一个写者改了配置。
+            digest = real_save_ledger(root, data, expect_sha=expect_sha)
+            pr.kb_sync.save_settings(self.repo, {"sync": {"remote": "origin", "branch": "main",
+                                                          "enabled": False, "auto_merge": True}})
+            after_race["bytes"] = pr.kb_sync.settings_path(self.repo).read_bytes()
+            return digest
+
+        with mock.patch.object(pr, "save_ledger", side_effect=racing_save):
+            code, payload = run_cli("--root", str(self.repo), "--set-target",
+                                    "--remote", "origin")
+        self.assertEqual(code, 0, payload)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"]["code"], "E_CAS")
+        # 写被拒绝：文件停在另一个写者那一版（sync 生效、target 仍为空）。
+        self.assertEqual(pr.kb_sync.settings_path(self.repo).read_bytes(), after_race["bytes"])
+        settings, _source, _problem = pr.kb_sync.load_settings(self.repo)
+        self.assertIsNone(settings["target"])
+        self.assertFalse(settings["sync"]["enabled"])
+        # 台账里的 target 仍在（旧读侧不丢），下次迁移写回还能补上 settings。
+        self.assertEqual(pr.load_ledger(self.repo)["target"]["remote"], "origin")
+        self.assertNotEqual(pr.kb_sync.settings_sha256(self.repo), stale)
+
+    def test_set_sync_defaults_to_fingerprint_read_at_load(self):
+        pr.kb_sync.save_settings(self.repo, {"sync": {"remote": "origin", "branch": "main",
+                                                      "enabled": True, "auto_merge": True}})
+        real_load = pr.kb_sync.load_settings
+        called = {"done": False}
+
+        def racing_load(root):
+            result = real_load(root)
+            if not called["done"]:
+                called["done"] = True
+                # 读完配置之后、写之前另一个写者改了配置。
+                pr.kb_sync.save_settings(self.repo, {
+                    "sync": {"remote": "origin", "branch": "main",
+                             "enabled": False, "auto_merge": True}})
+            return result
+
+        with mock.patch.object(pr.kb_sync, "load_settings", side_effect=racing_load):
+            code, payload = run_cli("--root", str(self.repo), "--set-sync", "--enable")
+        self.assertEqual(code, 0, payload)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"]["code"], "E_CAS")
+        settings, _source, _problem = pr.kb_sync.load_settings(self.repo)
+        self.assertFalse(settings["sync"]["enabled"])
+
+
 # ---------------------------------------------------------------- 目标与推荐
 
 class TargetTest(RepoCase):

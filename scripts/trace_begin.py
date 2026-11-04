@@ -119,21 +119,58 @@ def kb_fields(result: dict) -> dict:
     """同步结果 → build_header 的六个字段。`kb_remote` 写 `<remote>/<branch>`。
 
     `kb_remote_rev` 与 `kb_behind` 只在 fetch 成功时写实值：失败时本机 ref 可能是旧的，
-    写它会把"没确认"记成"已确认"。
+    写它会把"没确认"记成"已确认"。配置读不出时按默认值同步，`kb_sync_reason` 记
+    `config-broken`，让收尾核对能分出"同步成功但配置是坏的"。
     """
     remote = str(result.get("remote") or "")
     branch = str(result.get("branch") or "")
     confirmed = bool(result.get("ok"))
     behind = result.get("behind")
+    reason = "config-broken" if result.get("config_error") else str(result.get("reason") or "")
     return {
         "kb_remote": f"{remote}/{branch}" if remote and branch else "",
         "kb_remote_rev": str(result.get("remote_rev") or "unknown") if confirmed else "unknown",
         "kb_behind": behind if confirmed and isinstance(behind, int)
         and not isinstance(behind, bool) else "unknown",
         "kb_sync_state": kb_sync_state_of(result),
-        "kb_sync_reason": str(result.get("reason") or ""),
+        "kb_sync_reason": reason,
         "kb_merge": result.get("merge") if result.get("merge") in ("ff-only", "none") else "none",
     }
+
+
+# 落后提示只对这些面的改动有价值：docs/ 等 other 面改了不影响本次诊断读的候选与路由。
+HINT_SURFACES = ("knowledge", "routing", "reference", "methodology")
+
+
+def _surface_worth_hint(result: dict) -> bool:
+    surface = result.get("surface")
+    if not isinstance(surface, dict):
+        return True
+    return any(isinstance(surface.get(key), int) and surface[key] > 0 for key in HINT_SURFACES)
+
+
+def _merge_next_step(result: dict) -> str:
+    """合并没发生时给下一步；只对 dirty 给提交/stash，其余按原因给对应动作。"""
+    remote_ref = f"{result.get('remote')}/{result.get('branch')}"
+    branch = str(result.get("branch") or "main")
+    reason = str(result.get("reason") or "")
+    if reason == "dirty":
+        return f"要同步：先提交或 git stash，再 git merge --ff-only {remote_ref}"
+    if reason == "branch-mismatch":
+        return (f"当前不在配置分支 {branch}，未自动合并；"
+                f"切到 {branch} 后 git merge --ff-only {remote_ref}")
+    if reason == "worktree":
+        return f"当前检出是链接 worktree，未自动合并；到主检出里再 git merge --ff-only {remote_ref}"
+    if reason == "not-ancestor":
+        return (f"当前分支不是 {remote_ref} 的祖先（有本地提交或已分叉），未自动合并；"
+                f"先 rebase 或另开分支处理")
+    if reason == "merge-in-progress":
+        return "有进行中的 merge/rebase/cherry-pick，未自动合并；先结束它再试"
+    if reason == "auto-merge-off":
+        return f"自动合并已关闭（sync.auto_merge = false）；要同步：git merge --ff-only {remote_ref}"
+    if reason == "same-repo":
+        return "配置远端与 origin 不同源，未自动合并；先核对 sync.remote"
+    return f"未自动合并（{kb_sync.merge_reason_text(reason)}）"
 
 
 def sync_hint(result: dict) -> str:
@@ -148,12 +185,35 @@ def sync_hint(result: dict) -> str:
                 f"本会话的流程文件仍是旧版，下次会话生效。")
     state = kb_sync_state_of(result)
     if state == "ok" and isinstance(result.get("behind"), int) and result["behind"] > 0:
+        if not _surface_worth_hint(result):
+            return ""
         reason = kb_sync.merge_reason_text(result.get("reason"))
         return (f"知识库落后 {result['behind']} 个提交（{reason}），本单按 {local_rev} 诊断。"
-                f"要同步：先提交或 git stash，再 git merge --ff-only {remote_ref}")
+                f"{_merge_next_step(result)}")
     if state == "failed" and not result.get("skipped"):
         reason = kb_sync.fetch_reason_text(result.get("reason"))
         return f"无法确认知识库是否最新（{reason}），本单按 {local_rev} 诊断。"
+    return ""
+
+
+def ensure_traces_writable(traces: Path) -> str:
+    """建 traces 目录并验证可写；失败返回一句原因（空串表示可用）。
+
+    必须在同步之前调用：同步可能改 HEAD，写不了 trace 时白改一次检出。
+    """
+    traces = Path(traces)
+    try:
+        traces.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return f"建不了 traces 目录 {traces}：{exc}"
+    if not traces.is_dir():
+        return f"traces 路径不是目录：{traces}"
+    try:
+        fd, probe = tempfile.mkstemp(prefix=".trace-begin-", dir=str(traces))
+        os.close(fd)
+        os.unlink(probe)
+    except OSError as exc:
+        return f"traces 目录不可写 {traces}：{exc}"
     return ""
 
 
@@ -255,12 +315,18 @@ def main() -> int:
         print("--slug 不符合 <YYYY-MM-DD>-<短名>：" + args.slug, file=sys.stderr)
         return 2
 
-    # 顺序：参数校验与同名检查 → 同步（可能改 HEAD）→ 写文件。同名时不动工作区。
+    # 顺序：参数校验与同名检查 → 确认 traces 可写 → 同步（可能改 HEAD）→ 写文件。
+    # 同名时不动工作区；写不了 trace 时也不合并——同步会改 HEAD，白改一次没有意义。
     traces = resolve_traces(root)
     target = traces / (args.slug + ".yaml")
     if target.exists():
         print("已存在，不覆盖：" + str(target), file=sys.stderr)
         return 2
+    if not args.print_only:
+        problem = ensure_traces_writable(traces)
+        if problem:
+            print(problem, file=sys.stderr)
+            return 2
 
     result = sync_of(root, no_sync=args.no_sync, no_network=args.print_only)
     kb, kb_dirty = kb_rev_of(root)
@@ -275,11 +341,13 @@ def main() -> int:
             print("# 注意：" + why, file=sys.stderr)
         return 0
 
-    traces.mkdir(parents=True, exist_ok=True)
     target.write_text(text, encoding="utf-8")
     (traces / "evidence" / args.slug).mkdir(parents=True, exist_ok=True)
 
     print("已建：" + str(target))
+    config_error = " ".join(str(result.get("config_error") or "").split())
+    if config_error:
+        print(f"知识库配置读不出，按默认值同步（{config_error}）")
     hint = sync_hint(result)
     if hint:
         print(hint)

@@ -548,11 +548,39 @@ def _normalize_target(target):
     return kb_sync.normalize_target(target)
 
 
+def _settings_expect_sha(settings_sha, explicit=None):
+    """settings 写点的 CAS 令牌：显式令牌优先，否则用读配置那一刻取的文件指纹。
+
+    令牌与配置内容来自同一段窗口（先取 sha 再读配置），写时由 `save_settings` 在
+    `log_lock` 内重新读一遍比对：这段窗口里别的写者（例如面板的 `--set-sync`）改过的
+    字节会被拦下，不会用这份旧快照覆盖掉对方刚写的 `sync` 段。先取 sha 的代价是变化
+    落在「取 sha 之后、读配置之前」时会多报一次冲突——方向安全，重试即可。
+
+    `--set-target` 的 `--expect-sha256` 是**台账**令牌（面板从 `--list-targets` 的
+    `sha256` 取），不能拿来当 settings 令牌；那个写点不传 explicit。
+    """
+    return explicit if explicit is not None else settings_sha
+
+
+def _settings_sha_or_none(root):
+    """读 settings 的文件指纹；文件读不出时返回 None，让调用方走原来的错误路径。
+
+    `load_settings` 对读不出的文件会退回默认值（并给 problem），迁移写回是只读入口的
+    顺手动作，不能因为指纹读不出就把列表也弄失败。
+    """
+    try:
+        return kb_sync.settings_sha256(root)
+    except kb_sync.SettingsError:
+        return None
+
+
 def load_target(root):
     """读 target：主检出 `.local/settings.json` 优先；没有则从旧台账迁一次。
 
     迁移写回 settings，旧 `.groom/pr-state.json` 不删——两个界面版本可能同时在用。
+    写回带读配置时取的文件指纹：迁移期间配置被别的写者改过就不覆盖（下次再迁）。
     """
+    settings_sha = _settings_sha_or_none(root)
     data, _source, _problem = kb_sync.load_settings(Path(root))
     target = kb_sync.normalize_target(data.get("target"))
     if target is not None:
@@ -562,7 +590,7 @@ def load_target(root):
         return None
     data["target"] = legacy
     try:
-        kb_sync.save_settings(Path(root), data)
+        kb_sync.save_settings(Path(root), data, expect_sha=settings_sha)
     except kb_sync.SettingsError:
         pass
     return legacy
@@ -869,8 +897,13 @@ def cmd_status(root) -> int:
     })
 
 
-def cmd_migrate(root) -> int:
-    """把旧台账的 target 搬进 settings 一次；旧文件保留。"""
+def cmd_migrate(root, args) -> int:
+    """把旧台账的 target 搬进 settings 一次；旧文件保留。
+
+    令牌：显式 `--expect-sha256` 优先，否则取读配置时的文件指纹。写动作在
+    `save_settings` 的 `log_lock` 内重新读 sha 比对，读配置后被人改过就拒绝覆盖。
+    """
+    settings_sha = _settings_sha_or_none(root)
     settings, source, problem = kb_sync.load_settings(Path(root))
     current = kb_sync.normalize_target(settings.get("target"))
     legacy = _normalize_target(_load_ledger_soft(root).get("target"))
@@ -879,7 +912,7 @@ def cmd_migrate(root) -> int:
         "legacy": str(ledger_path(root)),
         "config": source,
         "config_problem": problem,
-        "sha256": kb_sync.settings_sha256(root),
+        "sha256": settings_sha,
     }
     if current is not None:
         return _ok({"migrated": False, "reason": "settings 已有 target",
@@ -889,17 +922,26 @@ def cmd_migrate(root) -> int:
                     "target": None, **base})
     settings["target"] = legacy
     try:
-        digest = kb_sync.save_settings(Path(root), settings)
+        digest = kb_sync.save_settings(
+            Path(root), settings,
+            expect_sha=_settings_expect_sha(settings_sha, args.expect_sha256))
+    except kb_sync.SettingsCasConflict as exc:
+        return _fail("E_CAS", str(exc), extra=base)
     except kb_sync.SettingsError as exc:
         return _fail("E_SETTINGS", str(exc), extra=base)
     return _ok({"migrated": True, "target": legacy, **base, "sha256": digest})
 
 
 def cmd_set_sync(root, args) -> int:
-    """写 settings 的 sync 段；CAS 令牌是 settings 文件字节 sha256。"""
+    """写 settings 的 sync 段；CAS 令牌是 settings 文件字节 sha256。
+
+    没给 `--expect-sha256` 时用读配置那一刻的指纹：面板一直显式给令牌，命令行手写
+    也走同一条「读 sha → 比对 → 写」路径，读后被别人改过就拒绝覆盖。
+    """
     if not any((args.remote is not None, args.branch is not None, args.enable,
                 args.disable, args.auto_merge is not None)):
         return _arg_fail("--set-sync 至少给一个 --remote / --branch / --enable / --disable / --auto-merge")
+    settings_sha = _settings_sha_or_none(root)
     settings, source, problem = kb_sync.load_settings(Path(root))
     sync = dict(settings.get("sync") or {})
     remotes = dict(_git_remotes(root))
@@ -923,7 +965,9 @@ def cmd_set_sync(root, args) -> int:
         sync["auto_merge"] = args.auto_merge == "on"
     settings["sync"] = sync
     try:
-        digest = kb_sync.save_settings(Path(root), settings, expect_sha=args.expect_sha256)
+        digest = kb_sync.save_settings(
+            Path(root), settings,
+            expect_sha=_settings_expect_sha(settings_sha, args.expect_sha256))
     except kb_sync.SettingsCasConflict as exc:
         return _fail("E_CAS", str(exc))
     except kb_sync.SettingsError as exc:
@@ -967,6 +1011,11 @@ def cmd_set_target(root, args) -> int:
     }
     data = load_ledger(root)
     data["target"] = target
+    # 先取文件指纹、再读 settings 内容：台账写完后才写 settings，这一段窗口里别的写者
+    # （面板 --set-sync）改过配置就必须放弃覆盖，而不是拿旧 sync 段盖回去。
+    # 这里不传 --expect-sha256：那个令牌是台账的（面板从 --list-targets 的 sha256 取）。
+    settings_sha = _settings_sha_or_none(root)
+    settings, _source, _problem = kb_sync.load_settings(Path(root))
     try:
         digest = save_ledger(root, data, expect_sha=args.expect_sha256)
     except CasConflict as exc:
@@ -974,15 +1023,17 @@ def cmd_set_target(root, args) -> int:
     except LedgerError as exc:
         return _fail("E_LEDGER", str(exc))
     # target 的读侧已迁到 settings；台账里仍写一份，旧版本面板与 --migrate 都能读到。
-    settings, _source, _problem = kb_sync.load_settings(Path(root))
     settings["target"] = target
     try:
-        kb_sync.save_settings(Path(root), settings)
+        settings_digest = kb_sync.save_settings(Path(root), settings, expect_sha=settings_sha)
+    except kb_sync.SettingsCasConflict as exc:
+        return _fail("E_CAS", str(exc), extra={"target": target, "sha256": digest})
     except kb_sync.SettingsError as exc:
         return _fail("E_SETTINGS", str(exc), extra={"target": target, "sha256": digest})
     return _ok({"target": target,
                 "platformName": adapter.get("name", "") if adapter else "",
-                "sha256": digest})
+                "sha256": digest,
+                "settings_sha256": settings_digest})
 
 
 def _validate_pr_args(args):
@@ -1156,7 +1207,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--root", default=None, help="ascend-sleuth 检出根；默认当前目录")
     ap.add_argument("--json", action="store_true", help="输出 JSON（所有命令都输出 JSON，保留兼容）")
     ap.add_argument("--expect-sha256", default=None,
-                    help="写前 CAS 令牌：--set-target 用台账 sha256，--set-sync 用 settings 的 sha256")
+                    help="写前 CAS 令牌：--set-target / --set / --mark / --check 用台账 sha256，"
+                         "--migrate / --set-sync 用 settings 的 sha256")
     group = ap.add_mutually_exclusive_group()
     group.add_argument("--list-targets", action="store_true", help="列远端、平台与推荐目标")
     group.add_argument("--set-target", action="store_true", help="写 target 段")
@@ -1209,7 +1261,7 @@ def main(argv=None) -> int:
         if args.set_target:
             return cmd_set_target(root, args)
         if args.migrate:
-            return cmd_migrate(root)
+            return cmd_migrate(root, args)
         if args.set_sync:
             return cmd_set_sync(root, args)
         if args.set_pr:

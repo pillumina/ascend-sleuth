@@ -266,6 +266,50 @@ class FetchTest(ConfiguredCase):
         self.assertEqual(doc["remote_rev"], local)
         self.assertNotEqual(doc["remote_rev"], upstream)
         self.assertFalse(any("fetch" in call for call in calls))
+        self.assertTrue(doc["enabled"])
+        self.assertFalse(doc["offline"])
+        self.assertTrue(doc["ok"])
+
+    def test_show_reports_disabled_without_fetching(self):
+        self.write_settings({"enabled": False})
+        real = kb_sync.run_git
+        calls = []
+
+        def spy(args, cwd, timeout):
+            calls.append(list(args))
+            if "fetch" in args:
+                raise AssertionError("sync.enabled=false 时 --show 不应 fetch")
+            return real(args, cwd, timeout)
+
+        with mock.patch.object(kb_sync, "run_git", side_effect=spy):
+            code, doc = self.run_cli("--show", "--json")
+        self.assertEqual(code, 0)
+        self.assertFalse(doc["enabled"])
+        self.assertFalse(doc["offline"])
+        self.assertFalse(doc["ok"])
+        self.assertEqual(doc["reason"], "disabled")
+        self.assertFalse(any("fetch" in call for call in calls))
+
+    def test_show_reports_offline_declaration_without_fetching(self):
+        (self.repo / "deployment.yaml").write_text(
+            'evolution:\n  mode: "full"\nsync:\n  mode: "offline"\n', encoding="utf-8")
+        real = kb_sync.run_git
+        calls = []
+
+        def spy(args, cwd, timeout):
+            calls.append(list(args))
+            if "fetch" in args:
+                raise AssertionError("offline 时 --show 不应 fetch")
+            return real(args, cwd, timeout)
+
+        with mock.patch.object(kb_sync, "run_git", side_effect=spy):
+            code, doc = self.run_cli("--show", "--json")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["enabled"])
+        self.assertTrue(doc["offline"])
+        self.assertFalse(doc["ok"])
+        self.assertEqual(doc["reason"], "offline")
+        self.assertFalse(any("fetch" in call for call in calls))
 
     def test_same_repo_compares_host_and_path(self):
         self.write_settings()
@@ -340,6 +384,31 @@ class MergeTest(ConfiguredCase):
         self.assertEqual(doc["reason"], "worktree")
         self.assertEqual(doc["behind"], 1)
 
+    def test_same_repo_false_blocks_merge_but_still_fetches(self):
+        # 配一个与 origin 不同源的远端（另一条裸仓），先在那里推一个提交。
+        fork = self.base / "fork.git"
+        git(self.base, "clone", "--bare", "-q", str(self.bare), str(fork))
+        fork_work = self.base / "fork-work"
+        git(self.base, "clone", "-q", "-b", "main", str(fork), str(fork_work))
+        (fork_work / "knowledge" / "fork.yaml").write_text("cases: []\n", encoding="utf-8")
+        git(fork_work, "add", "-A")
+        git(fork_work, "commit", "-qm", "fork ahead")
+        git(fork_work, "push", "-q", "origin", "main")
+        git(self.repo, "remote", "add", "fork", str(fork))
+        self.write_settings({"remote": "fork"})
+        before = git(self.repo, "rev-parse", "HEAD")
+
+        code, doc = self.run_cli("--merge", "--json")
+        after = git(self.repo, "rev-parse", "HEAD")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertFalse(doc["same_repo"])
+        self.assertEqual(doc["merge"], "none")
+        self.assertEqual(doc["reason"], "same-repo")
+        self.assertEqual(doc["behind"], 1)
+        self.assertEqual(after, before)
+        self.assertFalse((self.repo / "knowledge" / "fork.yaml").exists())
+
     def test_auto_merge_off_skips_merge(self):
         self.write_settings({"auto_merge": False})
         self.upstream({"knowledge/a.yaml": "cases: []\n"})
@@ -365,6 +434,7 @@ class CliTest(RepoCase):
         self.assertEqual(code, 0)
         text = out.getvalue()
         self.assertIn("知识库同步", text)
+        self.assertIn("同步状态  可同步", text)
         self.assertIn("origin/main", text)
         self.assertIn("本机 HEAD", text)
 

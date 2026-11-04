@@ -21,6 +21,16 @@ sys.path.insert(0, str(SCRIPTS))
 import trace_begin  # noqa: E402
 
 
+def git(cwd, *args):
+    proc = subprocess.run(
+        ["git", "-c", "user.email=test@example.com", "-c", "user.name=test", *args],
+        cwd=str(cwd), capture_output=True, text=True, encoding="utf-8", errors="replace",
+    )
+    if proc.returncode != 0:
+        raise AssertionError(f"git {' '.join(args)} 失败：{proc.stderr}")
+    return (proc.stdout or "").strip()
+
+
 class HarnessSessionTest(unittest.TestCase):
     def test_takes_the_env_value(self):
         sid, why = trace_begin.harness_session_of({"DSH_SESSION_ID": "session-abc"})
@@ -106,10 +116,6 @@ class CliTest(unittest.TestCase):
             self.assertEqual(r.returncode, 2)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 def sync_result(**overrides):
     base = {
         "ok": True, "remote": "origin", "branch": "main",
@@ -151,6 +157,16 @@ class SyncHeaderTest(unittest.TestCase):
         self.assertEqual(fields["kb_behind"], 2)
         self.assertEqual(fields["kb_sync_state"], "ok")
 
+    def test_kb_fields_marks_broken_config_without_changing_state(self):
+        fields = trace_begin.kb_fields(sync_result(
+            config_error="读不出 /repo/.local/settings.json：Expecting value"))
+        self.assertEqual(fields["kb_sync_reason"], "config-broken")
+        self.assertEqual(fields["kb_sync_state"], "ok")
+
+    def test_kb_fields_keeps_the_sync_reason_when_config_is_readable(self):
+        fields = trace_begin.kb_fields(sync_result(reason="dirty"))
+        self.assertEqual(fields["kb_sync_reason"], "dirty")
+
     def test_header_writes_integer_behind_without_quotes(self):
         text = trace_begin.build_header(
             slug="2026-11-04-demo", harness_session="session-abc",
@@ -164,6 +180,9 @@ class SyncHeaderTest(unittest.TestCase):
 
 
 class SyncHintTest(unittest.TestCase):
+    KNOWLEDGE_SURFACE = {"knowledge": 1, "routing": 0, "reference": 0,
+                         "methodology": 0, "other": 0}
+
     def test_merge_success(self):
         text = trace_begin.sync_hint(sync_result(
             merge="ff-only", local_rev="bbb2222", local_rev_before="aaa1111",
@@ -175,10 +194,41 @@ class SyncHintTest(unittest.TestCase):
 
     def test_behind_without_merge(self):
         text = trace_begin.sync_hint(sync_result(
-            behind=2, reason="dirty", local_rev="aaa1111"))
+            behind=2, reason="dirty", local_rev="aaa1111",
+            surface=self.KNOWLEDGE_SURFACE))
         self.assertIn("知识库落后 2 个提交（工作区有未提交改动）", text)
         self.assertIn("本单按 aaa1111 诊断", text)
         self.assertIn("git merge --ff-only origin/main", text)
+
+    def test_behind_hint_is_silent_when_only_other_surface_changed(self):
+        # 只改 docs/ 等 other 面：不影响本次诊断读的候选与路由，不打扰开单人。
+        result = sync_result(behind=2, reason="dirty", surface={"other": 3})
+        self.assertEqual(trace_begin.sync_hint(result), "")
+
+    def test_behind_hint_fires_for_every_knowledge_surface(self):
+        for key in trace_begin.HINT_SURFACES:
+            with self.subTest(surface=key):
+                text = trace_begin.sync_hint(sync_result(
+                    behind=1, reason="dirty", surface={key: 1}))
+                self.assertIn("知识库落后 1 个提交", text)
+
+    def test_dirty_hint_offers_commit_or_stash(self):
+        text = trace_begin.sync_hint(sync_result(
+            behind=1, reason="dirty", surface=self.KNOWLEDGE_SURFACE))
+        self.assertIn("先提交或 git stash", text)
+
+    def test_non_dirty_hints_do_not_offer_stash(self):
+        cases = {
+            "branch-mismatch": "当前不在配置分支 main",
+            "worktree": "当前检出是链接 worktree",
+            "not-ancestor": "当前分支不是 origin/main 的祖先",
+        }
+        for reason, expected in cases.items():
+            with self.subTest(reason=reason):
+                text = trace_begin.sync_hint(sync_result(
+                    behind=1, reason=reason, surface=self.KNOWLEDGE_SURFACE))
+                self.assertIn(expected, text)
+                self.assertNotIn("stash", text)
 
     def test_fetch_failure(self):
         text = trace_begin.sync_hint(sync_result(
@@ -258,3 +308,96 @@ class SyncCliTest(unittest.TestCase):
             self.assertIn(
                 "已同步知识库到 bbb2222（原 aaa1111，落后 2 个提交）。"
                 "本会话的流程文件仍是旧版，下次会话生效。", out)
+
+    def test_broken_config_prints_one_line_and_marks_the_reason(self):
+        result = sync_result(
+            config_error="读不出 /repo/.local/settings.json：Expecting value")
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(trace_begin, "sync_of", return_value=result):
+                code, out, _ = self.run_main(
+                    "--slug", "2026-11-04-cfg", "--repo", td)
+            self.assertEqual(code, 0)
+            lines = [line for line in out.splitlines() if "知识库配置读不出" in line]
+            self.assertEqual(len(lines), 1)
+            self.assertIn("按默认值同步", lines[0])
+            self.assertIn("Expecting value", lines[0])
+            text = (Path(td) / "traces" / "2026-11-04-cfg.yaml").read_text(encoding="utf-8")
+            self.assertIn('kb_sync_reason: "config-broken"', text)
+
+    def test_unwritable_traces_exits_before_sync(self):
+        with tempfile.TemporaryDirectory() as td:
+            (Path(td) / "traces").write_text("not a dir\n", encoding="utf-8")
+            with mock.patch.object(trace_begin, "sync_of") as sync_mock:
+                code, _out, err = self.run_main(
+                    "--slug", "2026-11-04-fail", "--repo", td)
+            self.assertEqual(code, 2)
+            sync_mock.assert_not_called()
+            self.assertIn("traces", err)
+
+
+class LocalRepoHintTest(unittest.TestCase):
+    """用本地裸仓跑真实 sync：不联网，验证 surface 与下一步命令来自真实结果。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="trace-begin-repo-")
+        self.addCleanup(self.tmp.cleanup)
+        self.base = Path(self.tmp.name)
+        self.repo = self.base / "repo"
+        self.repo.mkdir()
+        git(self.repo, "init", "-q", "-b", "main")
+        (self.repo / "knowledge").mkdir()
+        (self.repo / "knowledge" / "base.yaml").write_text("cases: []\n", encoding="utf-8")
+        (self.repo / "README.md").write_text("x\n", encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "init")
+        self.bare = self.base / "origin.git"
+        git(self.base, "init", "--bare", "-q", str(self.bare))
+        git(self.repo, "remote", "add", "origin", str(self.bare))
+        git(self.repo, "push", "-q", "-u", "origin", "main")
+        settings = self.repo / ".local" / "settings.json"
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text(
+            '{"schema": "ascend-sleuth-settings/1", "sync": '
+            '{"remote": "origin", "branch": "main", "enabled": true, "auto_merge": true}}',
+            encoding="utf-8")
+
+    def upstream(self, rel: str, body: str):
+        other = self.base / "other"
+        if not other.exists():
+            git(self.base, "clone", "-q", "-b", "main", str(self.bare), str(other))
+        path = other / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+        git(other, "add", "-A")
+        git(other, "commit", "-qm", "upstream")
+        git(other, "push", "-q", "origin", "main")
+
+    def run_main(self, slug: str):
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch("sys.argv", ["trace_begin.py", "--slug", slug,
+                                     "--repo", str(self.repo)]), \
+                mock.patch.object(trace_begin, "harness_session_of",
+                                  return_value=("session-abc", "")), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = trace_begin.main()
+        return code, out.getvalue(), err.getvalue()
+
+    def test_docs_only_surface_does_not_print_a_behind_hint(self):
+        self.upstream("docs/note.md", "note\n")
+        (self.repo / "README.md").write_text("dirty\n", encoding="utf-8")
+        code, out, _ = self.run_main("2026-11-04-noise")
+        self.assertEqual(code, 0)
+        self.assertNotIn("知识库落后", out)
+
+    def test_branch_mismatch_hint_names_the_branch_and_does_not_offer_stash(self):
+        git(self.repo, "checkout", "-q", "-b", "feature")
+        self.upstream("knowledge/a.yaml", "cases: []\n")
+        code, out, _ = self.run_main("2026-11-04-brhint")
+        self.assertEqual(code, 0)
+        self.assertIn("知识库落后 1 个提交", out)
+        self.assertIn("当前不在配置分支 main", out)
+        self.assertNotIn("stash", out)
+
+
+if __name__ == "__main__":
+    unittest.main()

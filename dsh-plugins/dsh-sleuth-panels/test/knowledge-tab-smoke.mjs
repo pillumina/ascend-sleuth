@@ -245,7 +245,8 @@ function showPayload(over) {
       local_rev: '1a2b3c', remote_rev: '9f8e7d',
       behind: 12, ahead: 0, skipped: false,
       last_checked: minutesAgo(3), last_reason: '',
-      offline: false, offline_source: '',
+      enabled: true, offline: false, offline_source: '', reason: '',
+      same_repo: true,
       config: { auto_check: true, auto_merge: true, source: 'personal', path: '.local/settings.json' },
     } },
     targets: { ok: true, data: {
@@ -325,6 +326,18 @@ section('[知识库 · 客户端] 已是最新 / 开关关闭')
   check(switchByLabel(tree, '自动合并').props['aria-checked'] === 'true', '另一个开关保持打开')
 }
 
+section('[知识库 · 客户端] 同源校验：不是同一个仓')
+{
+  const payload = showPayload()
+  payload.sync.data.same_repo = false
+  const { runtime, main } = await bootClient({ 'ascend-kb-sync-show': () => payload })
+  const tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  const text = textOf(tree)
+  check(text.indexOf('这个远端不是同一个仓，未自动合并') >= 0,
+    '同源校验不一致时给一行说明', text.slice(0, 240))
+  check(text.indexOf('未知错误') < 0, '同源校验不一致不写「未知错误」')
+}
+
 section('[知识库 · 客户端] 空态：没有远端')
 {
   const payload = showPayload()
@@ -373,8 +386,10 @@ section('[知识库 · 客户端] 状态：离线授权 / 已关闭 / 从未核�
 {
   const offline = showPayload()
   offline.sync.state = 'offline'
+  offline.sync.error = { code: 'E_OFFLINE', message: '离线部署（deployment.yaml）' }
   offline.sync.data.offline = true
   offline.sync.data.offline_source = 'deployment.yaml'
+  offline.sync.data.reason = 'offline'
   {
     const { runtime, main } = await bootClient({ 'ascend-kb-sync-show': () => offline })
     const tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
@@ -386,6 +401,8 @@ section('[知识库 · 客户端] 状态：离线授权 / 已关闭 / 从未核�
   const disabled = showPayload()
   disabled.sync.state = 'disabled'
   disabled.sync.error = { code: 'E_DISABLED', message: '同步已关闭（个人设置）' }
+  disabled.sync.data.enabled = false
+  disabled.sync.data.reason = 'disabled'
   disabled.sync.data.config = { auto_check: false, auto_merge: true, source: 'personal' }
   {
     const { runtime, main } = await bootClient({ 'ascend-kb-sync-show': () => disabled })
@@ -453,6 +470,18 @@ section('[知识库 · 客户端] 同步结果：成功 / 未自动合并 / 失�
   t2 = await notMerged.runtime.render(notMerged.main.component, { view: 'knowledge', sessionId: 's1' })
   check(textOf(t2).indexOf('没有自动合并：自动合并已关闭') >= 0, '未自动合并时把原因写出来',
     textOf(t2).slice(0, 240))
+
+  const sameRepoMerge = await bootClient({
+    'ascend-kb-sync-show': () => showPayload(),
+    'ascend-kb-sync-merge': () => ({
+      ok: true, merged: false, reason_code: 'E_SAME_REPO', reason_text: '配置远端与 origin 不同源',
+    }),
+  })
+  let t5 = await sameRepoMerge.runtime.render(sameRepoMerge.main.component, { view: 'knowledge', sessionId: 's1' })
+  clickButton(t5, '立即同步')
+  t5 = await sameRepoMerge.runtime.render(sameRepoMerge.main.component, { view: 'knowledge', sessionId: 's1' })
+  check(textOf(t5).indexOf('没有自动合并：配置远端与 origin 不同源') >= 0,
+    '同源校验不一致时不给合并，并写清原因', textOf(t5).slice(0, 240))
 
   const nothing = await bootClient({
     'ascend-kb-sync-show': () => showPayload(),
@@ -552,14 +581,19 @@ function valueOf(out) {
 }
 
 // 形状对齐脚本真实输出（字段名以 scripts/kb_sync.py 与 scripts/pr_status.py 为准）。
+// 三个状态字段是脚本的真实取值：enabled（开关）、offline（部署声明）、reason（本次结果）；
+// same_repo 是同源校验结果。`last_checked` 是面板从 last_ok_at / attempted_at 映射出的读数，
+// 只出现在上面 showPayload() 的 sync.data 里，不是 `--show --json` 的原始字段。
 const showDoc = {
   ok: true,
+  enabled: true,
+  offline: false,
+  reason: '',
   remote: 'origin', branch: 'main',
   local_rev: '1a2b3c', remote_rev: '9f8e7d',
   behind: 12, ahead: 0,
   surface: { knowledge: 3, references: 1 },
-  merge: 'none', reason: '',
-  skipped: false, offline: false, config: 'file',
+  merge: 'none', skipped: false, config: 'file',
   same_repo: true,
   local_rev_before: '1a2b3c', behind_before: 12,
   last_ok_at: '2026-11-04T14:30:00+08:00', attempted_at: '2026-11-04T14:30:00+08:00',
@@ -622,6 +656,10 @@ section('[知识库 · host] 正常读取')
   check(!!value && value.sync.data.local_rev === '1a2b3c' && value.sync.data.remote_rev === '9f8e7d'
     && value.sync.data.behind === 12 && value.sync.data.last_checked === showDoc.last_ok_at,
     'show：四个读数的原值都带出来', JSON.stringify(value && value.sync.data).slice(0, 260))
+  check(!!value && value.sync.data.enabled === true && value.sync.data.offline === false
+    && value.sync.data.reason === '' && value.sync.data.same_repo === true,
+    'show：enabled / offline / reason / same_repo 按脚本字段带出',
+    JSON.stringify(value && value.sync.data).slice(0, 260))
   check(!!value && value.sync.data.config && value.sync.data.config.auto_check === true
     && value.sync.data.config.auto_merge === true && value.sync.data.config.source === 'personal',
     'show：两个开关取自设置文件的 sync 段', JSON.stringify(value && value.sync.data.config))
@@ -689,14 +727,23 @@ section('[知识库 · host] 降级：缺配置 / 缺脚本 / 非 git 检出')
 
 section('[知识库 · host] 状态与失败分类')
 {
-  // `--show` 在关闭 / 未拉取 / 没有配置远端时回 ok=false，但本机读数仍在。
-  const disabled = Object.assign({}, showDoc, { ok: false, reason: 'disabled' })
+  // `--show` 在关闭 / 离线 / 未拉取 / 没有配置远端时回 ok=false，但本机读数仍在。
+  // 关闭与离线读 enabled / offline 两个真实字段，不靠 reason 猜。
+  const disabled = Object.assign({}, showDoc, { ok: false, enabled: false, reason: 'disabled' })
   {
     const host = await bootHost(defaultPlan({ 'kb_sync --show': () => okStdout(JSON.stringify(disabled)) }))
     const value = valueOf(await host.call('ascend-kb-sync-show', {}))
     check(!!value && value.sync.ok === true && value.sync.state === 'disabled'
-      && value.sync.data.local_rev === '1a2b3c',
-      '关闭：state=disabled 且保留本机读数', JSON.stringify(value && value.sync).slice(0, 200))
+      && value.sync.data.enabled === false && value.sync.data.local_rev === '1a2b3c',
+      '关闭：enabled=false → state=disabled 且保留本机读数', JSON.stringify(value && value.sync).slice(0, 200))
+  }
+  const offline = Object.assign({}, showDoc, { ok: false, enabled: true, offline: true, reason: 'offline' })
+  {
+    const host = await bootHost(defaultPlan({ 'kb_sync --show': () => okStdout(JSON.stringify(offline)) }))
+    const value = valueOf(await host.call('ascend-kb-sync-show', {}))
+    check(!!value && value.sync.ok === true && value.sync.state === 'offline'
+      && value.sync.data.offline === true && value.sync.data.enabled === true,
+      '离线：offline=true → state=offline 且保留本机读数', JSON.stringify(value && value.sync).slice(0, 200))
   }
   const unfetched = Object.assign({}, showDoc, {
     ok: false, reason: '', remote_rev: null, behind: 'unknown',
@@ -707,12 +754,19 @@ section('[知识库 · host] 状态与失败分类')
     check(!!value && value.sync.ok === true && value.sync.state === 'unfetched',
       '未拉取：state=unfetched（不是失败）', JSON.stringify(value && value.sync).slice(0, 200))
   }
-  const noRemote = Object.assign({}, showDoc, { ok: false, reason: '', remote: '', remote_rev: null })
+  const noRemote = Object.assign({}, showDoc, { ok: false, enabled: true, reason: '', remote: '', remote_rev: null })
   {
     const host = await bootHost(defaultPlan({ 'kb_sync --show': () => okStdout(JSON.stringify(noRemote)) }))
     const value = valueOf(await host.call('ascend-kb-sync-show', {}))
     check(!!value && value.sync.ok === true && value.sync.state === 'no-remote',
       '没有配置远端：state=no-remote', JSON.stringify(value && value.sync).slice(0, 200))
+  }
+  const otherRepo = Object.assign({}, showDoc, { same_repo: false })
+  {
+    const host = await bootHost(defaultPlan({ 'kb_sync --show': () => okStdout(JSON.stringify(otherRepo)) }))
+    const value = valueOf(await host.call('ascend-kb-sync-show', {}))
+    check(!!value && value.sync.ok === true && value.sync.data.same_repo === false,
+      '同源校验不一致：same_repo=false 原样带出', JSON.stringify(value && value.sync).slice(0, 200))
   }
 
   const dirtyMerge = Object.assign({}, showDoc, { ok: false, reason: 'dirty' })
@@ -722,6 +776,16 @@ section('[知识库 · host] 状态与失败分类')
   const dirtyValue = valueOf(await host.call('ascend-kb-sync-merge', {}))
   check(!!dirtyValue && dirtyValue.ok === false && dirtyValue.code === 'E_DIRTY',
     '工作区不干净：归到 E_DIRTY', JSON.stringify(dirtyValue))
+
+  const sameRepoMerge = Object.assign({}, showDoc, { ok: true, merge: 'none', reason: 'same-repo' })
+  {
+    const host = await bootHost(defaultPlan({
+      'kb_sync --merge': () => okStdout(JSON.stringify(sameRepoMerge)),
+    }))
+    const value = valueOf(await host.call('ascend-kb-sync-merge', {}))
+    check(!!value && value.ok === true && value.merged === false && value.reason_code === 'E_SAME_REPO',
+      '同源校验不一致：合并被拦下，归到 E_SAME_REPO', JSON.stringify(value))
+  }
 
   const unsupported = await bootHost(defaultPlan({
     'pr_status --set-sync': () => failStdout(2, 'error: unrecognized arguments: --set-sync'),
