@@ -38,6 +38,7 @@ from pathlib import Path
 
 import yaml
 
+import kb_sync
 from _stdio import pin_utf8_stdio
 from _yaml import load_text
 from exec_log_path import resolve_traces, main_checkout
@@ -389,6 +390,44 @@ def apply_import(base: Path, traces_root: Path, manifest: dict, doc, target_sid:
     return manifest, written
 
 
+def kb_version_state(origin_rev: str, sync: dict):
+    """交接单的知识库版本 vs 本机远端分支 → (state, note)。
+
+    fetch 失败时给 `unknown` 而不是硬比本机 HEAD：本机可能落后，比出来的"一致"会给出错误结论。
+    """
+    origin_rev = str(origin_rev or "unknown")
+    if origin_rev in ("", "unknown"):
+        return "unknown", "上家没有记录知识库版本——候选集与 case id 无法比对，遇到不一致按本机库为准"
+    if not sync.get("ok"):
+        reason = str(sync.get("reason") or "")
+        local_rev = str(sync.get("local_rev") or "")
+        # 没有可比远端时退回本机检出：与本机 HEAD 比，并说明可能落后。其他失败仍给 unknown。
+        if reason in ("no-remote", "disabled") and local_rev and local_rev != "unknown":
+            if origin_rev == local_rev:
+                return "match", f"与上家一致（{origin_rev}；本机没有远端分支，比对本机检出）"
+            return "mismatch", (
+                f"与上家不一致（上家 {origin_rev} / 本机检出 {local_rev}）——"
+                f"本机没有远端分支可查，本机可能落后；同一条 case 的 id 可能不存在、候选排序可能不同、"
+                f"甚至那条 case 当时还没沉淀。接手时以本机知识库为准，发现候选集与 trace 记的对不上就如实说明，"
+                f"别把差异当成上家写错")
+        reason_text = kb_sync.fetch_reason_text(reason)
+        return "unknown", (
+            f"无法比对知识库版本（fetch 未完成：{reason_text}）——以本机库为准；"
+            f"发现候选集与 trace 记的对不上就如实说明")
+    remote_rev = str(sync.get("remote_rev") or "")
+    if not remote_rev:
+        return "unknown", (
+            "无法比对知识库版本（本机没有可用的远端分支 ref）——以本机库为准；"
+            "发现候选集与 trace 记的对不上就如实说明")
+    ref = f"{sync.get('remote')}/{sync.get('branch')}"
+    if origin_rev == remote_rev:
+        return "match", f"与上家一致（{origin_rev}；比对本机远端分支 {ref}）"
+    return "mismatch", (
+        f"与上家不一致（上家 {origin_rev} / 本机远端分支 {ref} {remote_rev}）——"
+        f"同一条 case 的 id 可能不存在、候选排序可能不同、甚至那条 case 当时还没沉淀；"
+        f"接手时以本机知识库为准，发现候选集与 trace 记的对不上就如实说明，别把差异当成上家写错")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="在接收侧接手一份交接包（落成 traces/ 里的一单）")
     ap.add_argument("package", help="包目录 / handoff-<sid>.zip / handoff-<sid>.md")
@@ -437,18 +476,15 @@ def main() -> int:
             target = free_sid(traces_root, sid)
             replaced = True
 
-        # 版本与源码：接手方真正要判的两件事
-        cur_rev, _dirty, _s = kb_rev(traces_root.parent)
+        # 版本与源码：接手方要判的两件事。比对前先 fetch——比本机远端分支，
+        # 不拿本机 HEAD 代替远端；fetch 失败降级为「无法比对」，不阻塞落位。
+        try:
+            sync_result = kb_sync.sync(traces_root.parent, do_merge=False)
+        except Exception as exc:  # noqa: BLE001 - 版本比对是提示，不阻断导入
+            sync_result = {"ok": False, "reason": f"error-{type(exc).__name__}",
+                           "remote": "", "branch": "", "remote_rev": None}
         origin_rev = str((manifest.get("origin") or {}).get("kb_rev") or "unknown")
-        if origin_rev == "unknown":
-            kb_state, kb_note = "unknown", "上家没有记录知识库版本——候选集与 case id 无法比对，遇到不一致按本机库为准"
-        elif origin_rev == cur_rev:
-            kb_state, kb_note = "match", f"与上家一致（{cur_rev}）"
-        else:
-            kb_state, kb_note = "mismatch", (
-                f"与上家不一致（上家 {origin_rev} / 本机 {cur_rev}）——同一条 case 的 id 可能不存在、"
-                f"候选排序可能不同、甚至那条 case 当时还没沉淀；接手时以本机知识库为准，"
-                f"发现候选集与 trace 记的对不上就如实说明，别把差异当成上家写错")
+        kb_state, kb_note = kb_version_state(origin_rev, sync_result)
         src_rows = []
         cache_root = main_checkout(traces_root.parent) or traces_root.parent
         for s in manifest.get("src_refs") or []:
@@ -473,6 +509,8 @@ def main() -> int:
             "redaction": manifest.get("redaction") or {},
             "kb_rev_state": kb_state,
             "kb_rev_note": kb_note,
+            "kb_sync": {"ok": bool(sync_result.get("ok")),
+                        "reason": str(sync_result.get("reason") or "")},
             "src_refs": src_rows,
             "missing": missing,
             "truncated": truncated,

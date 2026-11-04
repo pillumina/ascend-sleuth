@@ -52,6 +52,7 @@ from pathlib import Path
 
 import yaml
 
+import kb_sync
 from _stdio import pin_utf8_stdio
 from exec_log_path import log_lock
 from groom_common import (
@@ -543,17 +544,28 @@ def _upstream_remote(root) -> str:
 
 
 def _normalize_target(target):
-    if not isinstance(target, dict) or not str(target.get("remote") or "").strip():
+    """与 `kb_sync.normalize_target` 同一份结构（target 已迁到 settings，这里保留旧入口）。"""
+    return kb_sync.normalize_target(target)
+
+
+def load_target(root):
+    """读 target：主检出 `.local/settings.json` 优先；没有则从旧台账迁一次。
+
+    迁移写回 settings，旧 `.groom/pr-state.json` 不删——两个界面版本可能同时在用。
+    """
+    data, _source, _problem = kb_sync.load_settings(Path(root))
+    target = kb_sync.normalize_target(data.get("target"))
+    if target is not None:
+        return target
+    legacy = _normalize_target(_load_ledger_soft(root).get("target"))
+    if legacy is None:
         return None
-    out = {
-        "remote": str(target.get("remote")), "base": str(target.get("base") or DEFAULT_BASE),
-        "platform": str(target.get("platform") or ""), "url": str(target.get("url") or ""),
-        "note": str(target.get("note") or ""),
-        "labels": target.get("labels") if isinstance(target.get("labels"), dict) else {},
-        "source": str(target.get("source") or "user"),
-        "chosen_at": str(target.get("chosen_at") or ""),
-    }
-    return out
+    data["target"] = legacy
+    try:
+        kb_sync.save_settings(Path(root), data)
+    except kb_sync.SettingsError:
+        pass
+    return legacy
 
 
 def _last_used(ledger: dict, remote_name: str, repo: str, platform: str) -> str:
@@ -601,7 +613,7 @@ def list_targets(root) -> dict:
     """远端清单 + 已保存目标 + 推荐。只读、不探测网络（设计 5.7）。"""
     root = Path(root)
     ledger = _load_ledger_soft(root)
-    target = _normalize_target(ledger.get("target"))
+    target = load_target(root)
     adapters = load_adapters()
     remotes = []
     for name, url in _git_remotes(root):
@@ -842,7 +854,84 @@ def _resolve_root(value) -> Path:
 
 def cmd_status(root) -> int:
     data = load_ledger(root)
-    return _ok({"ledger": data, "sha256": ledger_sha256(root)})
+    settings, source, problem = kb_sync.load_settings(Path(root))
+    return _ok({
+        "ledger": data,
+        "sha256": ledger_sha256(root),
+        "settings": {
+            "path": str(kb_sync.settings_path(root)),
+            "config": source,
+            "problem": problem,
+            "sync": settings.get("sync"),
+            "target": settings.get("target"),
+        },
+        "settings_sha256": kb_sync.settings_sha256(root),
+    })
+
+
+def cmd_migrate(root) -> int:
+    """把旧台账的 target 搬进 settings 一次；旧文件保留。"""
+    settings, source, problem = kb_sync.load_settings(Path(root))
+    current = kb_sync.normalize_target(settings.get("target"))
+    legacy = _normalize_target(_load_ledger_soft(root).get("target"))
+    base = {
+        "settings": str(kb_sync.settings_path(root)),
+        "legacy": str(ledger_path(root)),
+        "config": source,
+        "config_problem": problem,
+        "sha256": kb_sync.settings_sha256(root),
+    }
+    if current is not None:
+        return _ok({"migrated": False, "reason": "settings 已有 target",
+                    "target": current, **base})
+    if legacy is None:
+        return _ok({"migrated": False, "reason": "旧台账没有 target",
+                    "target": None, **base})
+    settings["target"] = legacy
+    try:
+        digest = kb_sync.save_settings(Path(root), settings)
+    except kb_sync.SettingsError as exc:
+        return _fail("E_SETTINGS", str(exc), extra=base)
+    return _ok({"migrated": True, "target": legacy, **base, "sha256": digest})
+
+
+def cmd_set_sync(root, args) -> int:
+    """写 settings 的 sync 段；CAS 令牌是 settings 文件字节 sha256。"""
+    if not any((args.remote is not None, args.branch is not None, args.enable,
+                args.disable, args.auto_merge is not None)):
+        return _arg_fail("--set-sync 至少给一个 --remote / --branch / --enable / --disable / --auto-merge")
+    settings, source, problem = kb_sync.load_settings(Path(root))
+    sync = dict(settings.get("sync") or {})
+    remotes = dict(_git_remotes(root))
+    if args.remote is not None:
+        remote = str(args.remote).strip()
+        if not remote:
+            return _arg_fail("--set-sync 的 --remote 不能为空")
+        if remote not in remotes:
+            return _arg_fail(f"远端不存在：{remote}（本机远端：{'、'.join(remotes) or '无'}）")
+        sync["remote"] = remote
+    if args.branch is not None:
+        branch = str(args.branch).strip()
+        if not branch:
+            return _arg_fail("--set-sync 的 --branch 不能为空")
+        sync["branch"] = branch
+    if args.enable:
+        sync["enabled"] = True
+    if args.disable:
+        sync["enabled"] = False
+    if args.auto_merge is not None:
+        sync["auto_merge"] = args.auto_merge == "on"
+    settings["sync"] = sync
+    try:
+        digest = kb_sync.save_settings(Path(root), settings, expect_sha=args.expect_sha256)
+    except kb_sync.SettingsCasConflict as exc:
+        return _fail("E_CAS", str(exc))
+    except kb_sync.SettingsError as exc:
+        return _fail("E_SETTINGS", str(exc))
+    return _ok({"sync": kb_sync.normalize_sync(sync), "config": source,
+                "config_problem": problem,
+                "settings": str(kb_sync.settings_path(root)),
+                "sha256": digest})
 
 
 def cmd_list_targets(root) -> int:
@@ -884,6 +973,13 @@ def cmd_set_target(root, args) -> int:
         return _fail("E_CAS", str(exc))
     except LedgerError as exc:
         return _fail("E_LEDGER", str(exc))
+    # target 的读侧已迁到 settings；台账里仍写一份，旧版本面板与 --migrate 都能读到。
+    settings, _source, _problem = kb_sync.load_settings(Path(root))
+    settings["target"] = target
+    try:
+        kb_sync.save_settings(Path(root), settings)
+    except kb_sync.SettingsError as exc:
+        return _fail("E_SETTINGS", str(exc), extra={"target": target, "sha256": digest})
     return _ok({"target": target,
                 "platformName": adapter.get("name", "") if adapter else "",
                 "sha256": digest})
@@ -1060,10 +1156,13 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--root", default=None, help="ascend-sleuth 检出根；默认当前目录")
     ap.add_argument("--json", action="store_true", help="输出 JSON（所有命令都输出 JSON，保留兼容）")
     ap.add_argument("--expect-sha256", default=None,
-                    help="写台账前的 CAS 令牌：台账当前文件 sha256，不一致就不写")
+                    help="写前 CAS 令牌：--set-target 用台账 sha256，--set-sync 用 settings 的 sha256")
     group = ap.add_mutually_exclusive_group()
     group.add_argument("--list-targets", action="store_true", help="列远端、平台与推荐目标")
     group.add_argument("--set-target", action="store_true", help="写 target 段")
+    group.add_argument("--migrate", action="store_true", help="把旧台账的 target 搬进 settings")
+    group.add_argument("--set-sync", action="store_true", dest="set_sync",
+                       help="写 settings 的 sync 段")
     group.add_argument("--set", action="store_true", dest="set_pr", help="写/覆盖一份草稿的 PR 记录")
     group.add_argument("--mark", action="store_true", help="人手确认 PR 状态")
     group.add_argument("--check", action="store_true", help="按平台查一份 PR 的状态")
@@ -1072,9 +1171,15 @@ def build_parser() -> argparse.ArgumentParser:
                        help="列平台适配器与依赖状态")
     group.add_argument("--selftest", default=None, metavar="PLATFORM",
                        help="适配器自检（不联网）")
-    # --set-target
+    # --set-target / --set-sync
     ap.add_argument("--remote", default=None)
+    ap.add_argument("--branch", default=None)
     ap.add_argument("--base", default=None)
+    enable_group = ap.add_mutually_exclusive_group()
+    enable_group.add_argument("--enable", action="store_true", help="sync.enabled = true")
+    enable_group.add_argument("--disable", action="store_true", help="sync.enabled = false")
+    ap.add_argument("--auto-merge", choices=("on", "off"), default=None,
+                    help="sync.auto_merge 开关")
     ap.add_argument("--note", default="")
     ap.add_argument("--labels", default=None, help="目标标签映射，JSON 对象")
     # --set
@@ -1103,6 +1208,10 @@ def main(argv=None) -> int:
             return cmd_list_targets(root)
         if args.set_target:
             return cmd_set_target(root, args)
+        if args.migrate:
+            return cmd_migrate(root)
+        if args.set_sync:
+            return cmd_set_sync(root, args)
         if args.set_pr:
             return cmd_set(root, args)
         if args.mark:

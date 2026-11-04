@@ -9,3 +9,10 @@
 # 值带引号写：YAML 会把不带引号的 off / on 读成布尔（解析侧对 False 兜成 off，True 报错）。
 evolution:
   mode: "full"
+
+# 知识库同步（scripts/kb_sync.py 读；trace_begin / kb_drift / import_trace 调用）。
+# 取值：
+#   auto     允许联网 fetch；落后时按四条条件试 ff-only 合并
+#   offline  不联网：--sync / --merge 直接返回 off，trace 记 kb_sync: off
+sync:
+  mode: "auto"

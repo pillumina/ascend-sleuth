@@ -10,6 +10,10 @@ diagnosis_state*.yaml
 # 本地抓 CI 日志时的临时落点（内容为 Actions 运行日志，不入库）
 .tmp-logs/
 
+# 本机配置与知识库同步状态（schema ascend-sleuth-settings/1）——每台机器一份，
+# 含同步源、上次 fetch 结果与提 PR 目标；锚主检出，所有 worktree 共读一份。
+.local/
+
 # ============================================================
 # 注意：knowledge/ 和 postmortems/ 的 case 现在跟踪进仓库。
 # 新 case 进 KB 前必须脱敏（to-postmortem 的 redact 步骤）。

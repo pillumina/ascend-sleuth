@@ -41,6 +41,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import kb_sync  # noqa: E402  （知识库同步；失败不阻塞建单）
 from exec_log_path import resolve_traces  # noqa: E402  （运行时件锚主检出，同 shared_dir.py）
 
 SLUG_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[A-Za-z0-9._-]+$")
@@ -89,8 +90,78 @@ def kb_rev_of(root: Path) -> tuple[str, bool | None]:
     return rev, (dirty if isinstance(dirty, bool) else None)
 
 
+def sync_of(root: Path, *, no_sync: bool = False, no_network: bool = False) -> dict:
+    """调 kb_sync；`--no-sync` 与 `--print-only` 只读本机状态，不联网。"""
+    settings, config, config_error = kb_sync.load_settings(root)
+    cfg = settings["sync"]
+    if no_sync or no_network:
+        result = kb_sync.local_snapshot(root, cfg["remote"], cfg["branch"],
+                                        config=config, config_error=config_error)
+        result.update(ok=False, merge="none",
+                      reason=("print-only" if no_network else "no-sync"))
+        return result
+    return kb_sync.sync(root, do_merge=True, honor_auto_merge=True)
+
+
+def kb_sync_state_of(result: dict) -> str:
+    """同步结果 → trace 的 `kb_sync` 三态（ok / failed / off / skipped）。"""
+    reason = str(result.get("reason") or "")
+    if result.get("offline") or reason in ("disabled", "no-sync", "print-only"):
+        return "off"
+    if result.get("skipped"):
+        return "skipped"
+    if result.get("ok"):
+        return "ok"
+    return "failed"
+
+
+def kb_fields(result: dict) -> dict:
+    """同步结果 → build_header 的六个字段。`kb_remote` 写 `<remote>/<branch>`。
+
+    `kb_remote_rev` 与 `kb_behind` 只在 fetch 成功时写实值：失败时本机 ref 可能是旧的，
+    写它会把"没确认"记成"已确认"。
+    """
+    remote = str(result.get("remote") or "")
+    branch = str(result.get("branch") or "")
+    confirmed = bool(result.get("ok"))
+    behind = result.get("behind")
+    return {
+        "kb_remote": f"{remote}/{branch}" if remote and branch else "",
+        "kb_remote_rev": str(result.get("remote_rev") or "unknown") if confirmed else "unknown",
+        "kb_behind": behind if confirmed and isinstance(behind, int)
+        and not isinstance(behind, bool) else "unknown",
+        "kb_sync_state": kb_sync_state_of(result),
+        "kb_sync_reason": str(result.get("reason") or ""),
+        "kb_merge": result.get("merge") if result.get("merge") in ("ff-only", "none") else "none",
+    }
+
+
+def sync_hint(result: dict) -> str:
+    """建单时打印的一行人读提示；不满足条件时返回空串。"""
+    remote_ref = f"{result.get('remote')}/{result.get('branch')}"
+    local_rev = str(result.get("local_rev") or "unknown")
+    if result.get("merge") == "ff-only":
+        before = str(result.get("local_rev_before") or "unknown")
+        behind = result.get("behind_before")
+        behind_text = behind if isinstance(behind, int) else 0
+        return (f"已同步知识库到 {local_rev}（原 {before}，落后 {behind_text} 个提交）。"
+                f"本会话的流程文件仍是旧版，下次会话生效。")
+    state = kb_sync_state_of(result)
+    if state == "ok" and isinstance(result.get("behind"), int) and result["behind"] > 0:
+        reason = kb_sync.merge_reason_text(result.get("reason"))
+        return (f"知识库落后 {result['behind']} 个提交（{reason}），本单按 {local_rev} 诊断。"
+                f"要同步：先提交或 git stash，再 git merge --ff-only {remote_ref}")
+    if state == "failed" and not result.get("skipped"):
+        reason = kb_sync.fetch_reason_text(result.get("reason"))
+        return f"无法确认知识库是否最新（{reason}），本单按 {local_rev} 诊断。"
+    return ""
+
+
 def build_header(*, slug: str, harness_session: str, created_at: str, kb_rev: str,
                  kb_rev_dirty: bool | None = None,
+                 kb_remote: str = "", kb_remote_rev: str = "unknown",
+                 kb_behind: int | str = "unknown", kb_sync_state: str = "off",
+                 kb_sync_reason: str = "", kb_merge: str = "none",
                  framework: str = "", platform: str = "", category: str = "",
                  summary: str = "") -> str:
     """顶层 header → YAML 文本。纯函数：给定输入就有确定输出（测试直接打它）。
@@ -111,6 +182,12 @@ def build_header(*, slug: str, harness_session: str, created_at: str, kb_rev: st
         "ended_at: \"\"            # 收尾写一次：单次成本的右边界",
         "kb_rev: " + q(kb_rev),
         "kb_rev_dirty: " + ("true" if kb_rev_dirty is True else ("false" if kb_rev_dirty is False else "\"\"")) + "   # 工作区有未提交的已跟踪改动；sha 单独指认不了当时的规则",
+        "kb_remote: " + q(kb_remote) + "   # 同步源 <remote>/<branch>；未配置留空",
+        "kb_remote_rev: " + q(kb_remote_rev) + "   # 本次 fetch 到的远端分支短 sha；没成功写 unknown",
+        "kb_behind: " + (str(kb_behind) if isinstance(kb_behind, int) and not isinstance(kb_behind, bool) else q(kb_behind)) + "   # 落后远端分支的提交数；算不出写 unknown",
+        "kb_sync: " + q(kb_sync_state) + "   # ok | failed | off | skipped",
+        "kb_sync_reason: " + q(kb_sync_reason),
+        "kb_merge: " + q(kb_merge) + "   # ff-only | none",
         "external_evidence: \"\"     # 开屏写一次：on | off（vllm_kb_* 工具在不在）",
         "detected_framework: " + q(framework),
         "detected_platform: " + q(platform),
@@ -150,17 +227,21 @@ def main() -> int:
     ap.add_argument("--summary", default="", help="问题背景一段（可后补，别留空到收尾）")
     ap.add_argument("--repo", default=str(Path(__file__).resolve().parent.parent), help="仓库根")
     ap.add_argument("--print-only", action="store_true", help="只打印 YAML，不落盘")
+    ap.add_argument("--no-sync", action="store_true", help="不联网：不 fetch、不合并，只读本机状态")
     ap.add_argument("--selftest", action="store_true", help="跑四条环境用例")
     ap.add_argument("--dry-run-env", action="store_true", help="只报这台机器能取到的派生值")
     args = ap.parse_args()
 
     root = Path(args.repo).resolve()
     session, why = harness_session_of()
-    kb, kb_dirty = kb_rev_of(root)
 
     if args.dry_run_env:
+        kb, _dirty = kb_rev_of(root)
+        settings, config, _problem = kb_sync.load_settings(root)
+        cfg = settings["sync"]
         print("harness_session: " + (session or "（取不到）" + "——" + why))
         print("kb_rev: " + kb)
+        print(f"kb_sync: {cfg['remote']}/{cfg['branch']}（配置：{config}；不联网）")
         print("traces 目录: " + str(resolve_traces(root)))
         return 0
 
@@ -174,8 +255,18 @@ def main() -> int:
         print("--slug 不符合 <YYYY-MM-DD>-<短名>：" + args.slug, file=sys.stderr)
         return 2
 
+    # 顺序：参数校验与同名检查 → 同步（可能改 HEAD）→ 写文件。同名时不动工作区。
+    traces = resolve_traces(root)
+    target = traces / (args.slug + ".yaml")
+    if target.exists():
+        print("已存在，不覆盖：" + str(target), file=sys.stderr)
+        return 2
+
+    result = sync_of(root, no_sync=args.no_sync, no_network=args.print_only)
+    kb, kb_dirty = kb_rev_of(root)
     text = build_header(slug=args.slug, harness_session=session, created_at=now_stamp(),
-                        kb_rev=kb, kb_rev_dirty=kb_dirty, framework=args.framework, platform=args.platform,
+                        kb_rev=kb, kb_rev_dirty=kb_dirty, **kb_fields(result),
+                        framework=args.framework, platform=args.platform,
                         category=args.category, summary=args.summary)
 
     if args.print_only:
@@ -184,16 +275,14 @@ def main() -> int:
             print("# 注意：" + why, file=sys.stderr)
         return 0
 
-    traces = resolve_traces(root)
-    target = traces / (args.slug + ".yaml")
-    if target.exists():
-        print("已存在，不覆盖：" + str(target), file=sys.stderr)
-        return 2
     traces.mkdir(parents=True, exist_ok=True)
     target.write_text(text, encoding="utf-8")
     (traces / "evidence" / args.slug).mkdir(parents=True, exist_ok=True)
 
     print("已建：" + str(target))
+    hint = sync_hint(result)
+    if hint:
+        print(hint)
     if why:
         print("⚠ " + why, file=sys.stderr)
     return 0
