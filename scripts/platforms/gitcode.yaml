@@ -1,0 +1,30 @@
+# GitCode 平台适配器（声明式，kind=http）
+#
+# 为什么是 YAML 而不是 Python：GitCode 的 PR 状态有标准 REST 查询，鉴权只靠一个 token。
+# 这类平台的差异全在「请求怎么拼、返回字段叫什么、怎么归一到四种状态」上，写成数据就能
+# 由 pr_status.py 统一执行——加平台不用改核心脚本，也不用在界面里加分支（设计 5.8）。
+#
+# 占位符：{owner} {repo} {number} {env:NAME}；query 里也可直接写 {GITCODE_TOKEN}
+# （等价于 {env:GITCODE_TOKEN}，两种写法都支持，后者更直观）。
+# timeout_s 是单次查询超时；query/headers 里的值同样会被占位符替换。
+# normalize 只做「字段值 → open|merged|closed|unknown」的映射，不实现表达式：
+# 按顺序取第一条 when 全部命中的规则；只有 state 没有 when 的规则是兜底。
+id: gitcode
+name: GitCode
+hosts: [gitcode.com]
+# token 只读即可：查询 PR 状态不需要写权限。变量名要出现在插件 README 的平台清单里。
+auth_env: GITCODE_TOKEN
+requires: []
+install_hint: "在 GitCode 个人设置里创建只读 token，导出为 GITCODE_TOKEN（内网机器按部署文档配置代理与 CA）"
+check:
+  method: GET
+  url: https://api.gitcode.com/api/v5/repos/{owner}/{repo}/pulls/{number}
+  query: {access_token: "{GITCODE_TOKEN}"}
+  headers: {}
+  timeout_s: 10
+  map: {state: "$.state", merged: "$.merged"}
+  normalize:
+    - {when: {merged: true}, state: merged}
+    - {when: {state: closed}, state: closed}
+    - {state: open}
+create_hint: "curl -X POST https://api.gitcode.com/api/v5/repos/{owner}/{repo}/pulls -H \"Authorization: Bearer $GITCODE_TOKEN\" -d @pr.json"

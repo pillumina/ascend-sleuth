@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>沉淀流程状态 · 交互设计稿（dsh-sleuth-copilot）</title>
+<style>
+  /* ── 基础 ───────────────────────────────────────────────────────────── */
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: #e9ebef; color: #1a1f29; -webkit-font-smoothing: antialiased;
+    display: flex; align-items: flex-start; justify-content: center; padding: 0;
+  }
+  button { font: inherit; color: inherit; }
+  .stage { position: relative; width: 1440px; height: 900px; overflow: hidden; background: #eef0f4; flex: none; }
+  .layer { position: absolute; inset: 0; display: none; }
+  .layer.is-on { display: block; }
+
+  /* 与 dsh-sleuth-copilot 的 --scp-* 同值（亮色） */
+  .scene {
+    --surface:#ffffff; --surface2:#f6f7f9; --surface3:#eceff4;
+    --border:#e5e8ee; --border-strong:#d7dce5;
+    --text:#1a1f29; --muted:#647082; --faint:#98a2b3;
+    --accent:#3b63e0; --accent-soft:#eef2fe; --accent-line:#c9d5fb; --on-accent:#ffffff;
+    --ok:#0e8a5f; --ok-soft:#e7f6ef;
+    --warn:#b25e09; --warn-soft:#fdf2e4;
+    --bad:#c42b1c; --bad-soft:#fdecea;
+    --shadow:0 1px 2px rgba(16,24,40,.04), 0 12px 30px -20px rgba(16,24,40,.22);
+    --shadow-pal:0 18px 50px rgba(20,30,50,.22);
+  }
+  body[data-theme="dark"] .scene {
+    --surface:#1c1f26; --surface2:#242832; --surface3:#2e333e;
+    --border:#2e3441; --border-strong:#3d4553;
+    --text:#eaedf3; --muted:#a6afbd; --faint:#7a8494;
+    --accent:#8aa5ff; --accent-soft:rgba(138,165,255,.14); --accent-line:rgba(138,165,255,.3); --on-accent:#10131a;
+    --ok:#45d08a; --ok-soft:rgba(69,208,138,.12);
+    --warn:#f5b34a; --warn-soft:rgba(245,179,74,.12);
+    --bad:#f0796e; --bad-soft:rgba(240,121,110,.12);
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 16px 36px -20px rgba(0,0,0,.7);
+    --shadow-pal:0 18px 50px rgba(0,0,0,.5);
+  }
+  body[data-theme="dark"] .stage { background:#111318; }
+
+  /* ── 场景切换器（截图时隐藏）──────────────────────────────────────── */
+  .switcher {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    z-index: 100; display: flex; gap: 4px; align-items: center;
+    padding: 5px; border-radius: 12px; background: rgba(255,255,255,.92);
+    border: 1px solid #d9dee7; box-shadow: 0 10px 28px -18px rgba(16,24,40,.5);
+    font-size: 12px; backdrop-filter: blur(10px);
+  }
+  .switcher button {
+    border: 0; background: transparent; padding: 5px 10px; border-radius: 8px;
+    color: #5b6676; cursor: pointer;
+  }
+  .switcher button.on { background: #eef2fe; color: #3b63e0; font-weight: 600; }
+  .switcher .sep { width: 1px; height: 16px; background: #e3e7ee; margin: 0 3px; }
+  body[data-chrome="0"] .switcher { display: none; }
+
+  /* ── 共用小件 ─────────────────────────────────────────────────────── */
+  .badge { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; line-height: 1.6;
+    padding: 1px 6px; border-radius: 5px; font-weight: 600; white-space: nowrap; }
+  .badge.warn { background: var(--warn-soft); color: var(--warn); }
+  .badge.bad { background: var(--bad-soft); color: var(--bad); }
+  .badge.accent { background: var(--accent-soft); color: var(--accent); }
+  .badge.ok { background: var(--ok-soft); color: var(--ok); }
+  .badge.gray { background: var(--surface3); color: var(--muted); }
+  .btn { display: inline-flex; align-items: center; gap: 6px; border-radius: 8px; padding: 6px 11px;
+    font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid transparent; white-space: nowrap; }
+  .btn-primary { background: var(--accent); color: var(--on-accent); }
+  .btn-primary:hover { filter: brightness(1.04); }
+  .btn-quiet { background: var(--surface); border-color: var(--border-strong); color: var(--text); font-weight: 500; }
+  .btn-quiet:hover { background: var(--surface2); }
+  .btn-ghost { background: transparent; border-color: transparent; color: var(--muted); font-weight: 500; padding: 4px 8px; }
+  .btn-ghost:hover { background: var(--surface2); color: var(--text); }
+  .icon-btn { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center;
+    border: 0; border-radius: 7px; background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; }
+  .icon-btn:hover { background: var(--surface2); color: var(--text); }
+  .kbd { font-size: 10px; padding: 1px 5px; border: 1px solid var(--border); border-radius: 4px;
+    background: var(--surface2); color: var(--muted); font-family: inherit; }
+  .muted { color: var(--muted); }
+  .faint { color: var(--faint); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* ── 状态条（会话内）───────────────────────────────────────────────── */
+  .dsh { position: absolute; inset: 0; background: #f4f5f7; display: flex; flex-direction: column; }
+  body[data-theme="dark"] .dsh { background: #14161b; }
+  .dsh-top { height: 50px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 20px;
+    border-bottom: 1px solid #e6e9ee; background: rgba(255,255,255,.75); }
+  body[data-theme="dark"] .dsh-top { background: rgba(28,31,38,.8); border-bottom-color: #2a2f39; }
+  .dsh-title { font-size: 12.5px; font-weight: 600; color: #3a4351; }
+  body[data-theme="dark"] .dsh-title { color: #cbd2de; }
+  .dsh-sub { font-size: 11px; color: #8a94a3; margin-left: 2px; }
+  .dsh-chat { flex: 1; overflow: hidden; padding: 26px 0 200px; }
+  .chat-inner { width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+  .msg-user { align-self: flex-end; max-width: 560px; background: #e8eefc; border: 1px solid #d6e0f8;
+    border-radius: 14px 14px 4px 14px; padding: 10px 13px; font-size: 12.5px; line-height: 1.7; color: #24304a; }
+  body[data-theme="dark"] .msg-user { background: #233150; border-color: #2f4066; color: #dbe4f7; }
+  .msg-agent { align-self: flex-start; max-width: 620px; background: #ffffff; border: 1px solid #e4e8ef;
+    border-radius: 14px 14px 14px 4px; padding: 12px 15px; font-size: 12.5px; line-height: 1.75; color: #26303f;
+    box-shadow: 0 1px 2px rgba(16,24,40,.03); }
+  body[data-theme="dark"] .msg-agent { background: #1c1f26; border-color: #2e3441; color: #dce2ec; }
+  .msg-agent b { font-weight: 650; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.65; }
+  .log { margin: 6px 0 0; padding: 8px 10px; border-radius: 8px; background: #f6f7f9; border: 1px solid #e8ebf0;
+    color: #46505f; overflow: hidden; }
+  body[data-theme="dark"] .log { background: #23262e; border-color: #303643; color: #b8c1cf; }
+  .composer-wrap { position: absolute; left: 0; right: 0; bottom: 0; padding: 26px 0 16px;
+    background: linear-gradient(to top, #f4f5f7 34%, rgba(244,245,247,0)); }
+  body[data-theme="dark"] .composer-wrap { background: linear-gradient(to top, #14161b 34%, rgba(20,22,27,0)); }
+  .dock { width: 760px; margin: 0 auto 6px; }
+  .composer { width: 760px; margin: 0 auto; background: #fff; border: 1px solid #e2e6ec; border-radius: 15px;
+    box-shadow: 0 12px 30px -26px rgba(16,24,40,.55); padding: 11px 12px 9px; }
+  body[data-theme="dark"] .composer { background: #1c1f26; border-color: #2e3441; }
+  .composer-input { color: #9aa3b2; font-size: 12.5px; padding: 2px 2px 16px; }
+  .composer-actions { display: flex; align-items: center; gap: 6px; }
+  .composer-actions .send { margin-left: auto; width: 26px; height: 26px; border-radius: 8px; border: 0;
+    background: #3b63e0; color: #fff; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .tool-btn { position: relative; width: 28px; height: 28px; border-radius: 8px; border: 1px solid #e2e6ec;
+    background: #fff; color: #5b6676; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; }
+  body[data-theme="dark"] .tool-btn { background: #242832; border-color: #313847; color: #a9b2c0; }
+  .tool-badge { position: absolute; top: -5px; right: -5px; min-width: 14px; height: 14px; padding: 0 3px;
+    border-radius: 999px; background: #b25e09; color: #fff; font-size: 9px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; border: 2px solid #fff; }
+  body[data-theme="dark"] .tool-badge { border-color: #1c1f26; }
+
+  .scp { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 7px 10px;
+    border: 1px solid var(--border); border-radius: 12px;
+    background: color-mix(in srgb, var(--surface) 78%, transparent);
+    box-shadow: var(--shadow); font-size: 12px; color: var(--text); }
+  .scp-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .ring { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); flex: none; }
+  .scope { display: inline-flex; align-items: center; gap: 2px; border: 0; background: transparent;
+    padding: 1px 5px; border-radius: 6px; color: var(--muted); font-size: 10.5px; cursor: pointer; flex: none; }
+  .scope:hover { background: var(--surface2); color: var(--text); }
+  .case-title { flex: 1; min-width: 0; text-align: left; border: 0; background: transparent; padding: 0;
+    font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; cursor: pointer; }
+  .case-title:hover { color: var(--accent); }
+  .status-text { flex: none; font-size: 11px; color: var(--muted); }
+  .spacer { flex: 1; }
+  .step-text { flex: none; font-size: 10.5px; color: var(--muted); }
+  .scp-foot { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 0 2px; }
+  .track { display: inline-flex; gap: 3px; flex: none; }
+  .tick { width: 11px; height: 3px; border-radius: 2px; background: var(--surface3); }
+  .tick.done { background: color-mix(in srgb, var(--ok) 38%, transparent); }
+  .tick.now { background: var(--ok); }
+  .meta { flex: none; font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .wait { flex: 1; min-width: 0; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wait b { font-weight: 500; color: var(--text); }
+  .chips { display: inline-flex; gap: 5px; flex: none; }
+  .chip-mini { display: inline-flex; align-items: center; font-size: 10.5px; padding: 1px 6px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--muted); background: var(--surface); white-space: nowrap; }
+  .chip-mini.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 26%, var(--border)); background: var(--warn-soft); }
+  /* 新增：沉淀行 */
+  .sed-row { display: flex; align-items: center; gap: 7px; min-width: 0;
+    margin-top: 1px; padding: 5px 2px 0; border-top: 1px solid var(--border); font-size: 11px; }
+  .sed-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--warn); flex: none; }
+  .sed-dot.ok { background: var(--ok); }
+  .sed-dot.bad { background: var(--bad); }
+  .sed-label { color: var(--faint); flex: none; }
+  .sed-stage { color: var(--text); font-weight: 550; white-space: nowrap; }
+  .sed-sep { color: var(--border-strong); flex: none; }
+  .sed-days { color: var(--warn); font-weight: 600; flex: none; }
+  .sed-next { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sed-open { flex: none; border: 0; background: var(--accent-soft); color: var(--accent);
+    font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 6px; cursor: pointer; }
+
+  /* ── 总览（诊断 / 沉淀）───────────────────────────────────────────── */
+  .backdrop { position: absolute; inset: 0; display: flex; align-items: flex-start; justify-content: center;
+    padding: 9vh 18px 18px; background: rgba(20,26,38,.26); backdrop-filter: blur(8px) saturate(1.04); }
+  body[data-theme="dark"] .backdrop { background: rgba(0,0,0,.5); }
+  .pal { position: relative; display: flex; flex-direction: column; width: min(900px, 94vw); max-height: 76vh;
+    overflow: hidden; border: 1px solid var(--border-strong); border-radius: 20px; background: var(--surface);
+    color: var(--text); box-shadow: var(--shadow-pal); }
+  .pal-top { display: flex; align-items: center; gap: 12px; padding: 13px 18px; border-bottom: 1px solid var(--border); flex: none; }
+  .pal-heading { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
+  .pal-title { font-size: 15px; font-weight: 650; line-height: 1.4; letter-spacing: .01em; }
+  .pal-sub { font-size: 11px; color: var(--muted); line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tabs { display: flex; gap: 2px; padding: 3px; background: var(--surface2); border-radius: 10px; flex: none; }
+  .tab { border: 0; background: transparent; padding: 4px 10px; border-radius: 7px; font-size: 12px;
+    color: var(--muted); cursor: pointer; display: inline-flex; gap: 4px; align-items: baseline; }
+  .tab b { font-size: 10.5px; color: var(--faint); font-weight: 650; font-variant-numeric: tabular-nums; }
+  .tab.on { background: var(--surface); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(16,24,40,.08); }
+  .tab.on b { color: var(--accent); }
+  .search { flex: none; display: flex; align-items: center; gap: 6px; width: 210px; padding: 5px 9px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); color: var(--faint); font-size: 11.5px; }
+  .search svg { flex: none; opacity: .7; }
+
+  .batch { display: flex; align-items: center; gap: 9px; padding: 9px 18px; flex: none;
+    background: color-mix(in srgb, var(--surface2) 74%, var(--surface)); border-bottom: 1px solid var(--border); }
+  .batch-strong { font-size: 12.5px; font-weight: 650; }
+  .batch-chip { font-size: 10.5px; padding: 1px 6px; border-radius: 5px; font-weight: 600; }
+  .batch-chip.warn { background: var(--warn-soft); color: var(--warn); }
+  .batch-chip.accent { background: var(--accent-soft); color: var(--accent); }
+  .batch-chip.bad { background: var(--bad-soft); color: var(--bad); }
+  .batch-chip.ok { background: var(--ok-soft); color: var(--ok); }
+  .batch-age { font-size: 11px; color: var(--faint); }
+  .batch-age.bad { color: var(--bad); font-weight: 650; }
+  .batch-note { font-size: 11px; color: var(--muted); }
+  .pal-main { display: flex; min-height: 0; flex: 1; }
+  .pal-list { flex: 0 0 44%; max-width: 400px; min-width: 280px; overflow: auto; padding: 10px 11px;
+    border-right: 1px solid var(--border); }
+  .pal-side { flex: 1; min-width: 0; overflow: auto; padding: 16px 22px 18px; display: flex; flex-direction: column; gap: 11px;
+    background: var(--surface2); }
+  .pal-foot { display: flex; align-items: center; gap: 10px; padding: 8px 18px; border-top: 1px solid var(--border);
+    font-size: 11px; color: var(--muted); flex: none; background: var(--surface); }
+  .pal-foot .right { margin-left: auto; font-size: 10.5px; color: var(--faint); }
+
+  .filters { display: flex; gap: 5px; flex-wrap: wrap; padding: 1px 2px 9px; }
+  .filter { border: 1px solid transparent; background: transparent; color: var(--muted); font-size: 11px;
+    padding: 3px 8px; border-radius: 999px; cursor: pointer; }
+  .filter:hover { background: var(--surface2); }
+  .filter.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .filter b { font-weight: 600; font-variant-numeric: tabular-nums; opacity: .75; margin-left: 2px; }
+  .group-head { display: flex; align-items: center; justify-content: space-between; gap: 6px;
+    padding: 11px 8px 5px; font-size: 10.5px; font-weight: 650; letter-spacing: .04em; color: var(--faint); }
+  .group-head .count { font-weight: 600; color: var(--faint); }
+  .drow { display: flex; gap: 9px; width: 100%; padding: 9px 9px 10px; border: 0; border-radius: 10px;
+    background: transparent; color: inherit; text-align: left; cursor: pointer; }
+  .drow:hover { background: var(--surface2); }
+  .drow.on { background: var(--accent-soft); }
+  .drow-dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 7px; flex: none; }
+  .drow-main { flex: 1; min-width: 0; }
+  .drow-line1 { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .drow-title { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 550; line-height: 1.5;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .drow-age { flex: none; font-size: 10.5px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .drow-age.over { color: var(--bad); font-weight: 650; }
+  .drow-line2 { display: flex; align-items: center; gap: 6px; margin-top: 4px; min-width: 0; }
+  .drow-src { font-size: 10.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .drow-note { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .hero { display: flex; flex-direction: column; gap: 5px; }
+  .hero-title { font-size: 16px; font-weight: 650; line-height: 1.45; letter-spacing: .005em; }
+  .hero-meta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+  .section-label { font-size: 10.5px; font-weight: 650; letter-spacing: .05em; color: var(--faint);
+    display: flex; align-items: center; gap: 6px; }
+  .section-label .line { flex: 1; height: 1px; background: var(--border); }
+  .block { display: flex; flex-direction: column; gap: 7px; padding: 10px 12px; border-radius: 12px;
+    background: var(--surface); border: 1px solid var(--border); }
+  .block.warn { border-color: color-mix(in srgb, var(--warn) 34%, var(--border)); background: var(--warn-soft); }
+  .block.bad { border-color: color-mix(in srgb, var(--bad) 30%, var(--border)); background: var(--bad-soft); }
+  .callout { display: flex; align-items: flex-start; gap: 8px; padding: 9px 11px; border-radius: 10px;
+    background: var(--accent-soft); border: 1px solid var(--accent-line); font-size: 11.5px; line-height: 1.65; }
+  .callout.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 26%, var(--border)); }
+  .callout .ic { flex: none; font-size: 12px; line-height: 1.3; }
+  .callout .grow { flex: 1; min-width: 0; }
+  .callout .callout-action { flex: none; align-self: center; }
+  .kv { display: grid; grid-template-columns: 76px 1fr; gap: 5px 10px; font-size: 11.5px; line-height: 1.6; }
+  .kv dt { color: var(--faint); }
+  .kv dd { margin: 0; min-width: 0; color: var(--text); overflow-wrap: anywhere; }
+  .kv dd .mono { font-size: 10.5px; color: var(--muted); }
+  .path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; color: var(--muted); }
+
+  /* 进度轨（五步） */
+  .stepper { display: flex; padding: 5px 0 1px; }
+  .step { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+  .step:not(:last-child)::after { content: ""; position: absolute; top: 7px; left: 50%; width: 100%; height: 2px;
+    background: var(--border); z-index: 0; }
+  .step.done:not(:last-child)::after, .step.current:not(:last-child)::after { background: var(--accent-line); }
+  .step-dot { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--border-strong);
+    background: var(--surface); z-index: 1; display: flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700; color: transparent; }
+  .step.done .step-dot { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .step.current .step-dot { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .step.blocked .step-dot { border-color: var(--bad); background: var(--bad-soft); }
+  .step.unknown .step-dot { border-style: dashed; border-color: var(--border-strong); background: var(--surface2); }
+  .step-label { font-size: 10px; line-height: 1.35; color: var(--muted); text-align: center; white-space: nowrap; }
+  .step.current .step-label { color: var(--text); font-weight: 650; }
+  .step.done .step-label { color: var(--text); }
+  .step-note { font-size: 9.5px; line-height: 1.35; color: var(--faint); text-align: center; white-space: nowrap; }
+  .step-note.bad { color: var(--bad); }
+
+  .actions { display: flex; align-items: center; gap: 8px; padding-top: 2px; }
+  .actions .hint { font-size: 10.5px; color: var(--faint); margin-left: auto; }
+
+  /* 备注/注释 */
+  .note-pin { position: absolute; z-index: 20; width: 19px; height: 19px; border-radius: 50%;
+    background: #3b63e0; color: #fff; font-size: 10.5px; font-weight: 700; display: none;
+    align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(59,99,224,.4); border: 2px solid #fff; }
+  .notes-on .note-pin { display: flex; }
+  .legend { position: absolute; z-index: 20; right: 22px; top: 96px; width: 232px; display: none;
+    background: #fff; border: 1px solid #dfe4ec; border-radius: 12px; padding: 12px 13px;
+    box-shadow: 0 14px 34px -22px rgba(16,24,40,.5); font-size: 10.5px; line-height: 1.5; color: #4c5666; }
+  .notes-on .legend { display: block; }
+  .legend h4 { margin: 0 0 7px; font-size: 10.5px; letter-spacing: .06em; color: #98a2b3; font-weight: 700; }
+  .legend li { list-style: none; display: flex; gap: 7px; margin: 0 0 7px; padding: 0; }
+  .legend ul { margin: 0; padding: 0; }
+  .legend .n { flex: none; width: 16px; height: 16px; border-radius: 50%; background: #3b63e0; color: #fff;
+    font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
+
+  /* ── 提 PR 指令弹层 ───────────────────────────────────────────────── */
+  .modal-veil { position: absolute; inset: 0; z-index: 30; display: none; align-items: center; justify-content: center;
+    background: rgba(20,26,38,.38); backdrop-filter: blur(3px); }
+  .scene.show-modal > .modal-veil { display: flex; }
+  .scene.show-target > .modal-veil { display: flex; }
+  .target-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--border);
+    border-radius: 10px; background: var(--surface2); font-size: 11px; }
+  .target-label { color: var(--faint); flex: none; }
+  .target-pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 6px;
+    background: var(--surface); border: 1px solid var(--border-strong); font-weight: 600; font-size: 11px; color: var(--text); }
+  .target-hint { color: var(--muted); font-size: 10.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pick-list { display: flex; flex-direction: column; gap: 7px; }
+  .pick { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border);
+    border-radius: 10px; background: var(--surface); cursor: pointer; }
+  .pick.on { background: var(--accent-soft); border-color: var(--accent-line); }
+  .pick.disabled { opacity: .55; cursor: not-allowed; }
+  .radio { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--border-strong); flex: none; margin-top: 1px; }
+  .pick.on .radio { border-color: var(--accent); background: var(--accent); box-shadow: inset 0 0 0 3px var(--accent-soft); }
+  .pick-title { font-size: 12px; font-weight: 600; display: flex; gap: 6px; align-items: center; }
+  .pick-sub { font-size: 10.5px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+  .target-base { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); padding: 2px 2px 0; }
+  .target-base .pill { padding: 2px 8px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border-strong);
+    color: var(--text); font-weight: 600; font-size: 10.5px; }
+  .modal { width: 680px; max-height: 74vh; display: flex; flex-direction: column; overflow: hidden;
+    background: var(--surface); border: 1px solid var(--border-strong); border-radius: 16px; box-shadow: var(--shadow-pal); }
+  .modal-top { display: flex; align-items: flex-start; gap: 10px; padding: 15px 18px 13px; border-bottom: 1px solid var(--border); }
+  .modal-title { font-size: 14px; font-weight: 650; }
+  .modal-sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+  .modal-body { overflow: auto; padding: 13px 18px; display: flex; flex-direction: column; gap: 11px; }
+  .modal-foot { display: flex; align-items: center; gap: 8px; padding: 11px 18px; border-top: 1px solid var(--border); }
+  .pr-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .pr-table th { text-align: left; font-weight: 600; color: var(--faint); font-size: 10px; letter-spacing: .04em;
+    padding: 0 6px 5px; border-bottom: 1px solid var(--border); }
+  .pr-table td { padding: 6px 6px; border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent); vertical-align: top; }
+  .pr-table tr:last-child td { border-bottom: 0; }
+  .prompt { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px; line-height: 1.7;
+    white-space: pre-wrap; background: var(--surface2); border: 1px solid var(--border); border-radius: 9px;
+    padding: 10px 12px; color: var(--text); max-height: 232px; overflow: auto;
+    -webkit-mask-image: linear-gradient(to bottom, #000 88%, transparent); mask-image: linear-gradient(to bottom, #000 88%, transparent); }
+  .prompt-cap { font-size: 10px; color: var(--faint); margin-top: -5px; }
+  .details-toggle { width: fit-content; border: 0; background: transparent; color: var(--accent);
+    font-size: 10.5px; padding: 1px 0; cursor: pointer; }
+  .details-toggle:hover { text-decoration: underline; }
+  .cmd-details { display: flex; flex-direction: column; gap: 4px; }
+  .cmd-details[hidden] { display: none; }
+  .warn-list { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); }
+  .warn-list b { color: var(--warn); font-weight: 650; }
+
+  /* ── 空态 / 降级展板 ─────────────────────────────────────────────── */
+  .board { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 22px;
+    background: #f1f3f6; }
+  body[data-theme="dark"] .board { background: #121419; }
+  .statecard { width: 560px; min-height: 430px; display: flex; flex-direction: column; gap: 12px; padding: 22px 24px;
+    background: var(--surface); border: 1px solid var(--border-strong); border-radius: 16px; box-shadow: var(--shadow); }
+  .statecard h3 { margin: 0; font-size: 14px; font-weight: 650; }
+  .statecard .cap { font-size: 10.5px; color: var(--faint); letter-spacing: .05em; font-weight: 650; }
+  .empty-hero { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    padding: 26px 10px 18px; text-align: center; color: var(--muted); font-size: 12px; line-height: 1.7; }
+  .empty-ic { width: 40px; height: 40px; border-radius: 12px; background: var(--surface2); border: 1px dashed var(--border-strong);
+    display: flex; align-items: center; justify-content: center; color: var(--faint); font-size: 17px; }
+  .recent { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--border); padding-top: 10px; }
+  .recent-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); }
+  .recent-row .name { flex: 1; min-width: 0; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .recent-row .when { font-size: 10px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .dead { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface2); font-size: 11px; line-height: 1.6; color: var(--muted); }
+  .dead b { color: var(--text); font-weight: 600; }
+  .dead .why { display: flex; gap: 6px; }
+  .dead .why .dot { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--faint); margin-top: 7px; }
+</style>
+</head>
+<body data-theme="light" data-chrome="1">
+
+<div class="switcher" id="switcher">
+  <span style="padding:0 4px;color:#98a2b3;font-size:11px">设计稿</span>
+  <button data-go="bar">状态条</button>
+  <button data-go="queue">沉淀队列</button>
+  <button data-go="diag">单诊断进度</button>
+  <button data-go="pr">提 PR 指令</button>
+  <button data-go="target">远端选择</button>
+  <button data-go="empty">空态与降级</button>
+  <span class="sep"></span>
+  <button id="themeBtn">深色</button>
+  <button id="notesBtn">标注</button>
+</div>
+
+<div class="stage" id="stage">
+
+  <!-- ════════════════ 场景 1：会话内状态条 ════════════════ -->
+  <div class="layer" data-layer="bar">
+    <div class="scene dsh">
+      <div class="dsh-top">
+        <span style="width:18px;height:18px;border-radius:5px;background:#3b63e0;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">A</span>
+        <span class="dsh-title">ascend-sleuth · 诊断会话</span>
+        <span class="dsh-sub">2026-10-28-pd-prefill-hang</span>
+      </div>
+      <div class="dsh-chat">
+        <div class="chat-inner">
+          <div class="msg-user">
+            PD 分离 1P1D，P 节点开了 AscendStore + load_async。压测 8 分钟后全量请求卡住，P/D 都停住，没有 ERROR。
+            <div class="log mono">pool_scheduler: KV pool load spec created ... need_to_allocate=23168 load_async=True<br>mooncake_connector: Delaying free of 181/182 blocks</div>
+          </div>
+          <div class="msg-agent">
+            已定位到根因：<b>v0.23.0 在 PD 分离的 prefill 节点禁用了抢占</b>，load 卡住的请求无法被抢占，引擎停住。
+            修复是把 <span class="mono">_disable_preemption</span> 改回 <span class="mono">False</span>。报告与证据已经写入 trace。
+            <div style="margin-top:6px;color:#647082">这单可以沉淀成新 case；inbox 里目前没有相同清单。</div>
+          </div>
+          <div class="msg-agent" style="max-width:560px">
+            已排除 6 个候选：8808、11343、10998、13356、13964、7871。它们的 quickly_check 都与证据不符，没有 timeout、没有 -704，need_to_allocate 也不是 0。
+          </div>
+        </div>
+      </div>
+      <div class="composer-wrap">
+        <div class="dock">
+          <section class="scp" aria-label="诊断状态条">
+            <div class="scp-head">
+              <span class="ring"></span>
+              <button class="scope">本会话 ⌄</button>
+              <button class="case-title">PD 分离 prefill 卡死：AscendStore 异步 load 从不完成</button>
+              <span class="status-text">已定位</span>
+              <span class="spacer"></span>
+              <span class="step-text">第 6/6 步</span>
+              <button class="icon-btn" title="更多操作">···</button>
+              <button class="icon-btn" title="收起状态条">⌃</button>
+            </div>
+            <div class="scp-foot">
+              <span class="track">
+                <span class="tick done"></span><span class="tick done"></span><span class="tick done"></span>
+                <span class="tick done"></span><span class="tick done"></span><span class="tick now"></span>
+              </span>
+              <span class="meta">6/6 · A3-910C · vllm-ascend · 中断</span>
+              <span class="wait">在等 <b>现场回报</b></span>
+              <span class="chips"><span class="chip-mini warn">待回报</span></span>
+            </div>
+            <div class="sed-row">
+              <span class="sed-dot"></span>
+              <span class="sed-label">沉淀</span>
+              <span class="sed-stage">已交草稿 · 待评估</span>
+              <span class="sed-sep">·</span>
+              <span class="sed-days">16 天</span>
+              <span class="sed-sep">·</span>
+              <span class="sed-next">下一步：继续 groom</span>
+              <span class="spacer"></span>
+              <button class="sed-open">打开沉淀队列 ›</button>
+            </div>
+          </section>
+        </div>
+        <div class="composer">
+          <div class="composer-input">继续输入，或按 ⌘⇧D 打开诊断总览…</div>
+          <div class="composer-actions">
+            <button class="tool-btn" title="诊断总览">▤<span class="tool-badge">2</span></button>
+            <button class="send">↑</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════ 场景 2/3/4：总览（诊断 / 沉淀）════════════════ -->
+  <div class="layer" data-layer="queue">
+    <div class="scene" style="position:absolute;inset:0;background:#e8ebf0">
+      <!-- 背景：会话残影，示意浮层盖在对话上 -->
+      <div style="position:absolute;inset:0;background:#f4f5f7"></div>
+      <div style="position:absolute;left:50%;top:40px;transform:translateX(-50%);width:760px;display:flex;flex-direction:column;gap:12px;opacity:.55">
+        <div style="align-self:flex-end;width:480px;height:64px;border-radius:14px;background:#e8eefc"></div>
+        <div style="width:560px;height:88px;border-radius:14px;background:#fff;border:1px solid #e7eaf0"></div>
+      </div>
+      <div class="backdrop">
+        <div class="pal">
+          <div class="pal-top">
+            <div class="pal-heading">
+              <span class="pal-title">沉淀队列</span>
+              <span class="pal-sub">目标知识版本 4823d40 · 5 份草稿待处理 · 提 PR 目标 origin · main · GitCode</span>
+            </div>
+            <div class="tabs">
+              <button class="tab">诊断 <b>12</b></button>
+              <button class="tab on">沉淀 <b>5</b></button>
+            </div>
+            <div class="search"><svg width="11" height="11" viewBox="0 0 12 12"><circle cx="5" cy="5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M7.6 7.6 10.4 10.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>搜索草稿、case id 或来源单…</div>
+            <button class="icon-btn" title="关闭">×</button>
+          </div>
+
+          <div class="batch">
+            <span class="batch-strong">5 份草稿</span>
+            <span class="batch-chip warn">1 待决定</span>
+            <span class="batch-chip accent">2 待提 PR</span>
+            <span class="batch-chip" style="background:var(--surface3);color:var(--muted)">1 待合入</span>
+            <span class="batch-chip bad">1 需重跑</span>
+            <span class="batch-age bad">最老 16 天</span>
+            <span class="spacer"></span>
+            <button class="btn btn-quiet" title="只对已决定的 2 份生成提 PR 指令">提 PR（2）</button>
+            <button class="btn btn-primary">继续 groom</button>
+          </div>
+
+          <div class="pal-main">
+            <div class="pal-list">
+              <div class="filters">
+                <button class="filter on">全部 <b>5</b></button>
+                <button class="filter">待决定 <b>1</b></button>
+                <button class="filter">待提 PR <b>2</b></button>
+                <button class="filter">待合入 <b>1</b></button>
+                <button class="filter">需重跑 <b>1</b></button>
+              </div>
+
+              <div class="group-head"><span>待继续 groom</span><span class="count">2</span></div>
+
+              <button class="drow on">
+                <span class="drow-dot" style="background:var(--warn)"></span>
+                <span class="drow-main">
+                  <span class="drow-line1"><span class="drow-title">PD 分离 prefill 卡死：AscendStore 异步 load 从不完成</span><span class="drow-age over">16 天</span></span>
+                  <span class="drow-line2"><span class="badge warn">待决定</span><span class="drow-src">new_pattern · high</span><span class="drow-note">无候选</span></span>
+                </span>
+              </button>
+
+              <button class="drow">
+                <span class="drow-dot" style="background:var(--bad)"></span>
+                <span class="drow-main">
+                  <span class="drow-line1"><span class="drow-title">Indexer dtype 不一致导致精度异常（分数偏差 1e-2）</span><span class="drow-age">7 天</span></span>
+                  <span class="drow-line2"><span class="badge bad">需重跑</span><span class="drow-src">covered · medium</span><span class="drow-note">知识库前进 3 个文件</span></span>
+                </span>
+              </button>
+
+              <div class="group-head"><span>待提 PR</span><span class="count">2</span></div>
+
+              <button class="drow">
+                <span class="drow-dot" style="background:var(--accent)"></span>
+                <span class="drow-main">
+                  <span class="drow-line1"><span class="drow-title">EPLB 开启后 103900 传输超时，个别 rank 掉队</span><span class="drow-age">9 天</span></span>
+                  <span class="drow-line2"><span class="badge accent">待提 PR</span><span class="drow-src">new_pattern · VLLM-ASC-15201</span><span class="drow-note">已落盘</span></span>
+                </span>
+              </button>
+
+              <button class="drow">
+                <span class="drow-dot" style="background:var(--accent)"></span>
+                <span class="drow-main">
+                  <span class="drow-line1"><span class="drow-title">GLM5.3 MoE token 分发不均导致单卡显存尖峰</span><span class="drow-age">11 天</span></span>
+                  <span class="drow-line2"><span class="badge accent">待提 PR</span><span class="drow-src">variant_of VLLM-ASC-10122</span><span class="drow-note">已落盘</span></span>
+                </span>
+              </button>
+
+              <div class="group-head"><span>待合入与收尾</span><span class="count">1</span></div>
+
+              <button class="drow">
+                <span class="drow-dot" style="background:var(--accent)"></span>
+                <span class="drow-main">
+                  <span class="drow-line1"><span class="drow-title">A2 多机 HCCL 建链超时，重试后偶发成功</span><span class="drow-age">13 天</span></span>
+                  <span class="drow-line2"><span class="badge ok">已提 PR</span><span class="drow-src">#417 · 合入未确认</span><span class="drow-note">上次查证 6 天前</span></span>
+                </span>
+              </button>
+            </div>
+
+            <div class="pal-side">
+              <div class="hero">
+                <div class="hero-title">PD 分离 prefill 卡死：AscendStore 异步 load 从不完成</div>
+                <div class="hero-meta">
+                  <span class="badge warn">待决定</span>
+                  <span class="badge gray">new_pattern · high</span>
+                  <span>来源 2026-10-28-pd-prefill-hang</span>
+                  <span class="faint">入队 16 天</span>
+                  <button class="btn-ghost" style="margin-left:auto;color:var(--accent);font-size:11px;padding:0">切到该诊断 ↗</button>
+                </div>
+              </div>
+
+              <div class="callout warn">
+                <span class="ic">!</span>
+                <span class="grow">队列停留 16 天，超过 14 天建议线。草稿越旧，评估依据的知识版本越可能过期。</span>
+              </div>
+
+              <div>
+                <div class="section-label">沉淀进度<span class="line"></span></div>
+                <div class="block">
+                  <div class="stepper">
+                    <div class="step done"><span class="step-dot">✓</span><span class="step-label">草稿已交</span><span class="step-note">10-28</span></div>
+                    <div class="step done"><span class="step-dot">✓</span><span class="step-label">已评估</span><span class="step-note">11-02</span></div>
+                    <div class="step current"><span class="step-dot"></span><span class="step-label">已决定</span><span class="step-note bad">待你审</span></div>
+                    <div class="step unknown"><span class="step-dot"></span><span class="step-label">已提 PR</span><span class="step-note">—</span></div>
+                    <div class="step unknown"><span class="step-dot"></span><span class="step-label">已升格</span><span class="step-note">—</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div class="section-label">评估（子 agent 比对 + 脚本校验）<span class="line"></span></div>
+                <div class="block">
+                  <dl class="kv">
+                    <dt>建议</dt><dd>new_pattern · high · 无候选 case</dd>
+                    <dt>依据</dt><dd>6 个候选的 quickly_check 都与证据不符：无 timeout、无 -704、need_to_allocate 非 0。根因在 v0.23.0 的抢占禁用，与 13964 的 decode 侧形态不同。</dd>
+                    <dt>评估版本</dt><dd><span class="mono">4823d40</span> · 11-02 02:10 · 快照权威</dd>
+                    <dt>复核项</dt><dd>无</dd>
+                  </dl>
+                </div>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted);padding:0 2px">
+                <span style="color:var(--faint)">人决定</span><span class="badge gray">还没有</span>
+                <span>继续 groom 会逐条问，agent 不替你决定</span>
+              </div>
+
+              <div class="actions">
+                <button class="btn btn-quiet">复制批审指令</button>
+                <button class="btn btn-ghost">更多操作 ›</button>
+                <span class="hint">下一步：等你的决定</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="pal-foot">
+            <span class="kbd">↑↓</span> 选择 <span class="kbd">Enter</span> 主操作 <span class="kbd">⌘K</span> 命令 <span class="kbd">Esc</span> 关闭
+            <span class="right">数据：inbox 草稿与 .groom 评估状态 · 只读</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 标注 -->
+      <span class="note-pin" style="left:892px;top:104px">1</span>
+      <span class="note-pin" style="left:272px;top:158px">2</span>
+      <span class="note-pin" style="left:272px;top:243px">3</span>
+      <span class="note-pin" style="left:670px;top:205px">4</span>
+      <span class="note-pin" style="left:670px;top:436px">5</span>
+      <div class="legend">
+        <h4>设计要点</h4>
+        <ul>
+          <li><span class="n">1</span><span>视图切换：诊断 / 沉淀。计数来自两个真实队列，不是写死的指标。</span></li>
+          <li><span class="n">2</span><span>批次条：一份草稿的下一步、整批的下一步、最老多久，一屏看完；只有一个实心主按钮。</span></li>
+          <li><span class="n">3</span><span>队列按「下一步」分组，不按状态堆列。每行给标题、阶段、评估结论、年龄。</span></li>
+          <li><span class="n">4</span><span>单份详情：来源诊断、评估证据、人决定、落点与 PR，都能追到出处。</span></li>
+          <li><span class="n">5</span><span>五步进度轨：做到哪、下一步、哪一步本机看不到，都显式标出。</span></li>
+        </ul>
+      </div>
+
+      <!-- 提 PR 指令弹层（场景 4 显示） -->
+      <div class="scene pr-scene" style="position:absolute;inset:0;pointer-events:none">
+        <div class="modal-veil" style="pointer-events:auto">
+          <div class="modal">
+            <div class="modal-top">
+              <div style="flex:1">
+                <div class="modal-title">生成提 PR 指令</div>
+                <div class="modal-sub">2 份已决定草稿 · 按 /skill:knowledge-groom 第 5 步 · 目标知识版本 4823d40</div>
+              </div>
+              <button class="icon-btn">×</button>
+            </div>
+            <div class="modal-body">
+              <div class="target-row">
+                <span class="target-label">目标</span>
+                <span class="target-pill">origin · main · GitCode</span>
+                <button class="btn-ghost" style="padding:2px 6px;font-size:10.5px;color:var(--accent)">换</button>
+                <span class="target-hint">已记住上次选择；远端用途不做预设</span>
+              </div>
+              <table class="pr-table">
+                <thead><tr><th>草稿</th><th>决定</th><th>落点</th><th>marker</th></tr></thead>
+                <tbody>
+                  <tr><td>2026-11-01-eplb-103900</td><td>new_pattern</td><td class="path">VLLM-ASC-15201</td><td><span class="badge gray">未生成</span></td></tr>
+                  <tr><td>2026-10-26-glm53-moe-shuffle</td><td>variant_of VLLM-ASC-10122</td><td class="path">整篇替换</td><td><span class="badge gray">未生成</span></td></tr>
+                </tbody>
+              </table>
+              <div class="warn-list">
+                <div><b>流程：</b>按 skill 第 5 步执行；界面只给批次与边界，不重抄快照、候选、记录这些步骤。</div>
+                <div><b>边界：</b>先落盘并跑升格检查；recheck 不通过就停；合入前不要跑 close / cleanup。</div>
+              </div>
+              <div class="prompt">对 postmortems/inbox/ 里已决定的 2 份草稿，提到 origin/main（GitCode），按 /skill:knowledge-groom 第 5 步提一个 PR。
+
+1. 2026-11-01-eplb-103900 — new_pattern；落点 knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-15201.yaml
+2. 2026-10-26-glm53-moe-shuffle — variant_of VLLM-ASC-10122；整篇替换已有 case
+
+边界：先落盘并跑升格检查；recheck 不通过就停；合入前不要跑 close / cleanup；标签按目标配置，没有配置就不加；开完 PR 把平台、repo、PR 号与 URL 写进 postmortems/inbox/.groom/pr-state.json。</div>
+              <div class="prompt-cap">默认短指令 · 填入后仍可改</div>
+              <button class="details-toggle" type="button">▸ 展开命令细节（按平台）</button>
+              <div class="cmd-details" hidden>
+                <div class="prompt">python3 scripts/verify_case_draft.py --gate &lt;草稿路径&gt;
+python3 scripts/groom_record.py --pr-marker --draft-key &lt;key&gt; --submitted-case-id &lt;final-id&gt;
+python3 scripts/groom_recheck.py --pr-body-file &lt;body&gt; --base origin/main --head &lt;head&gt;
+GitCode：curl -X POST "https://api.gitcode.com/api/v5/repos/&lt;owner&gt;/&lt;repo&gt;/pulls" -d "access_token=$GITCODE_TOKEN" -d "title=..." -d "head=&lt;branch&gt;" -d "base=main"
+GitHub：gh pr create --body-file &lt;body&gt; [--label &lt;目标配置的标签&gt;]
+GitLab：glab mr create --description &lt;body&gt; [--label &lt;目标配置的标签&gt;]</div>
+                <div class="prompt-cap">按台账里的 platform 选命令；没有适配器的平台由 agent 按平台文档开 PR。</div>
+              </div>
+            </div>
+            <div class="modal-foot">
+              <span style="font-size:10.5px;color:var(--faint)">默认短指令；命令细节可展开。agent 按 skill 执行，不再猜。</span>
+              <span class="spacer"></span>
+              <button class="btn btn-ghost">取消</button>
+              <button class="btn btn-quiet">复制</button>
+              <button class="btn btn-primary">填入输入框</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 远端选择弹层（场景 target 显示） -->
+      <div class="scene target-scene" style="position:absolute;inset:0;pointer-events:none">
+        <div class="modal-veil" style="pointer-events:auto">
+          <div class="modal" style="width:640px">
+            <div class="modal-top">
+              <div style="flex:1">
+                <div class="modal-title">提 PR 到哪个远端？</div>
+                <div class="modal-sub">不同部署的远端用途不同；系统只列事实，选择会记住</div>
+              </div>
+              <button class="icon-btn">×</button>
+            </div>
+            <div class="modal-body">
+              <div class="pick-list">
+                <div class="pick on">
+                  <span class="radio"></span>
+                  <div style="flex:1;min-width:0">
+                    <div class="pick-title">origin <span class="badge ok">推荐</span><span class="badge gray">上次使用 10-28</span></div>
+                    <div class="pick-sub">github.com/pillumina/ascend-sleuth · GitHub · main</div>
+                  </div>
+                </div>
+                <div class="pick">
+                  <span class="radio"></span>
+                  <div style="flex:1;min-width:0">
+                    <div class="pick-title">corp-git <span class="badge warn">需配 token</span></div>
+                    <div class="pick-sub">git.corp.example/ascend/kb · GitCode · main · 本机没配 GITCODE_TOKEN；可以提 PR，合入状态手动确认</div>
+                  </div>
+                </div>
+                <div class="pick">
+                  <span class="radio"></span>
+                  <div style="flex:1;min-width:0">
+                    <div class="pick-title">gitlab-mirror <span class="badge gray">无适配器</span></div>
+                    <div class="pick-sub">gitlab.com/team/ascend-sleuth · 本机没有 glab；只能准备分支与 PR body，不能查状态</div>
+                  </div>
+                </div>
+              </div>
+              <div class="target-base">base 分支 <span class="pill">main（origin 的 HEAD）</span><button class="btn-ghost" style="font-size:10.5px;color:var(--accent)">换</button></div>
+              <div style="font-size:10.5px;color:var(--faint);line-height:1.6">目标保存在共享 inbox 的 .groom/pr-state.json，同一克隆的 worktree 共用；系统不判断远端用途，要注解可写给本地 note。</div>
+            </div>
+            <div class="modal-foot">
+              <span style="font-size:10.5px;color:var(--faint)">选中的远端决定 PR 开在哪、用哪个平台适配器查状态。</span>
+              <span class="spacer"></span>
+              <button class="btn btn-ghost">取消</button>
+              <button class="btn btn-primary">保存并生成指令</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════════════ 场景 3：单诊断的沉淀进度 ════════════════ -->
+  <div class="layer" data-layer="diag">
+    <div class="scene" style="position:absolute;inset:0;background:#e8ebf0">
+      <div style="position:absolute;inset:0;background:#f4f5f7"></div>
+      <div class="backdrop">
+        <div class="pal">
+          <div class="pal-top">
+            <div class="pal-heading">
+              <span class="pal-title">诊断总览</span>
+              <span class="pal-sub">目标知识版本 4823d40 · 全库诊断 12 单</span>
+            </div>
+            <div class="tabs">
+              <button class="tab on">诊断 <b>12</b></button>
+              <button class="tab">沉淀 <b>5</b></button>
+            </div>
+            <div class="search"><svg width="11" height="11" viewBox="0 0 12 12"><circle cx="5" cy="5" r="3.4" fill="none" stroke="currentColor" stroke-width="1.3"/><path d="M7.6 7.6 10.4 10.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>搜索单号、标题或命中 case…</div>
+            <button class="icon-btn" title="关闭">×</button>
+          </div>
+
+          <div class="pal-main">
+            <div class="pal-list">
+              <div class="filters">
+                <button class="filter on">全部 <b>12</b></button>
+                <button class="filter">进行中 <b>3</b></button>
+                <button class="filter">待回报 <b>2</b></button>
+                <button class="filter">可沉淀 <b>2</b></button>
+              </div>
+
+              <button class="drow">
+                <span class="drow-dot" style="background:var(--warn)"></span>
+                <span class="drow-main">
+                  <span class="drow-line1"><span class="drow-title">PD 分离 prefill 卡死：AscendStore 异步 load 从不完成</span><span class="drow-age">7 天前</span></span>
+                  <span class="drow-line2"><span class="badge warn">待回报</span><span class="drow-src">中断 · A3-910C</span><span class="drow-note">第 6/6 步</span></span>
+                </span>
+              </button>
+
+              <button class="drow on">
+                <span class="drow-dot" style="background:var(--ok)"></span>
+                <span class="drow-main">
+                  <span class="drow-line1"><span class="drow-title">Indexer dtype 不一致导致精度异常（分数偏差 1e-2）</span><span class="drow-age">14 天前</span></span>
+                  <span class="drow-line2"><span class="badge ok">已定位</span><span class="drow-src">精度 · A2-910B</span><span class="drow-note">已升格 VLLM-ASC-14990</span></span>
+                </span>
+              </button>
+
+              <button class="drow">
+                <span class="drow-dot" style="background:var(--accent)"></span>
+                <span class="drow-main">
+                  <span class="drow-line1"><span class="drow-title">GLM5.3 MoE token 分发不均导致单卡显存尖峰</span><span class="drow-age">9 天前</span></span>
+                  <span class="drow-line2"><span class="badge accent">进行中</span><span class="drow-src">性能 · A3-910C</span><span class="drow-note">第 4/6 步</span></span>
+                </span>
+              </button>
+            </div>
+
+            <div class="pal-side">
+              <div class="hero">
+                <div class="hero-title">Indexer dtype 不一致导致精度异常（分数偏差 1e-2）</div>
+                <div class="hero-meta">
+                  <span class="badge ok">已定位</span><span class="badge gray">反馈 resolved</span>
+                  <span>第 6/6 步</span><span class="faint">更新于 10-21 16:30</span>
+                </div>
+              </div>
+
+              <div class="callout warn">
+                <span class="ic">!</span>
+                <span class="grow"><b>状态滞后：</b>trace 停在「已交草稿」，但知识库已有 <span class="mono">VLLM-ASC-14990</span>，草稿也已出队。合入后没有回写 trace。</span>
+                <button class="btn btn-quiet callout-action">生成回写指令</button>
+              </div>
+
+              <div>
+                <div class="section-label">沉淀进度<span class="line"></span></div>
+                <div class="block">
+                  <div class="stepper">
+                    <div class="step done"><span class="step-dot">✓</span><span class="step-label">草稿已交</span><span class="step-note">10-20</span></div>
+                    <div class="step done"><span class="step-dot">✓</span><span class="step-label">已评估</span><span class="step-note">10-21</span></div>
+                    <div class="step done"><span class="step-dot">✓</span><span class="step-label">已决定</span><span class="step-note">covered</span></div>
+                    <div class="step done"><span class="step-dot">✓</span><span class="step-label">已提 PR</span><span class="step-note">#418</span></div>
+                    <div class="step current"><span class="step-dot"></span><span class="step-label">已升格</span><span class="step-note bad">未回写</span></div>
+                  </div>
+                  <dl class="kv" style="margin-top:2px">
+                    <dt>落点</dt><dd class="path">knowledge/inference/vllm-ascend/precision/VLLM-ASC-14990.yaml</dd>
+                    <dt>PR</dt><dd>#418 · 已合入 · 平台查询 10-24</dd>
+                    <dt>trace</dt><dd><span class="badge gray">submitted</span> 应回写为 <span class="badge ok">knowledge</span></dd>
+                  </dl>
+                </div>
+              </div>
+
+              <div>
+                <div class="section-label">收尾清单<span class="line"></span></div>
+                <div class="block">
+                  <div style="display:flex;flex-direction:column;gap:7px;font-size:11.5px">
+                    <div style="display:flex;gap:8px;align-items:center"><span class="badge ok">✓</span><span>人读报告</span><span class="faint" style="margin-left:auto">traces/2026-10-20-indexer-dtype.report.md</span></div>
+                    <div style="display:flex;gap:8px;align-items:center"><span class="badge ok">✓</span><span>现场回报</span><span class="faint" style="margin-left:auto">resolved · 10-21</span></div>
+                    <div style="display:flex;gap:8px;align-items:center"><span class="badge ok">✓</span><span>沉淀</span><span class="faint" style="margin-left:auto">已升格 Tier 2</span></div>
+                    <div style="display:flex;gap:8px;align-items:center"><span class="badge warn">!</span><span>trace 回写</span><span class="faint" style="margin-left:auto">升格后未写</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="actions">
+                <button class="btn btn-quiet">生成回写指令</button>
+                <button class="btn btn-ghost">更多操作 ›</button>
+                <span class="hint">写入口：trace_transition.py --field sedimented</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="pal-foot">
+            <span class="kbd">↑↓</span> 选择 <span class="kbd">Enter</span> 主操作 <span class="kbd">⌘K</span> 命令 <span class="kbd">Esc</span> 关闭
+            <span class="right">本机查不到的状态标「未记录」，不用推测补齐</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════ 场景 5：空态与降级 ════════════════ -->
+  <div class="layer" data-layer="empty">
+    <div class="scene board">
+      <div class="statecard">
+        <div class="cap">空态</div>
+        <h3>沉淀队列已清空</h3>
+        <div class="empty-ic">◇</div>
+        <div class="empty-hero" style="padding-top:0">
+          本机没有待审草稿。诊断收尾时点「沉淀为 case」，草稿会进入这里等周批。
+        </div>
+        <div class="recent">
+          <div style="font-size:10.5px;color:var(--faint);font-weight:650;letter-spacing:.05em">最近完成</div>
+          <div class="recent-row"><span class="badge ok">升格</span><span class="name">Indexer dtype 不一致 → VLLM-ASC-14990</span><span class="when">10-24</span></div>
+          <div class="recent-row"><span class="badge gray">归档</span><span class="name">EPLB 103900 → covered by VLLM-ASC-8808</span><span class="when">10-18</span></div>
+        </div>
+        <div style="margin-top:auto;display:flex;gap:8px">
+          <button class="btn btn-quiet">查看已出队草稿</button>
+          <button class="btn btn-primary" style="margin-left:auto">去诊断</button>
+        </div>
+      </div>
+
+      <div class="statecard">
+        <div class="cap">降级可读</div>
+        <h3>哪些状态本机查不到，就说查不到</h3>
+        <div class="dead">
+          <div><b>PR 状态未知</b>：本机没有对应平台的命令行（如 gh / glab），台账里也没有这两份的记录。</div>
+          <div class="why"><span class="dot"></span><span>不拿「已落盘」推成「已合入」，也不把未知显示成灰色已完成。</span></div>
+          <div style="display:flex;gap:6px"><button class="btn btn-quiet" style="padding:4px 9px;font-size:11px">复制查状态指令</button><button class="btn btn-ghost" style="font-size:11px">查看适配器</button></div>
+        </div>
+        <div class="dead">
+          <div><b>草稿读不出</b>：<span class="path">postmortems/inbox/2026-11-03-xyz.case.yaml</span> 解析失败。</div>
+          <div class="why"><span class="dot"></span><span>这一行只显示路径与原因，不用别的草稿数据顶上；其余草稿照常可用。</span></div>
+          <div style="display:flex;gap:6px"><button class="btn btn-quiet" style="padding:4px 9px;font-size:11px">重试</button><button class="btn btn-ghost" style="font-size:11px">打开文件</button></div>
+        </div>
+        <div class="dead">
+          <div><b>知识版本未知</b>：本机 refs 里没有 origin/main，新鲜度无法判断。</div>
+          <div class="why"><span class="dot"></span><span>阶段照常显示；「需重跑」一列标为不可判，不默认过期、也不默认新鲜。</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  (function () {
+    const params = new URLSearchParams(location.search);
+    const stage = document.getElementById('stage');
+    const switcher = document.getElementById('switcher');
+    let scene = params.get('scene') || 'queue';
+    let theme = params.get('theme') || 'light';
+    const chrome = params.get('chrome') !== '0';
+    const notes = params.get('notes') === '1';
+
+    document.body.dataset.chrome = chrome ? '1' : '0';
+    document.body.dataset.theme = theme;
+
+    function apply() {
+      document.body.dataset.theme = theme;
+      document.querySelectorAll('.layer').forEach((layer) => {
+        const on = layer.dataset.layer === scene ||
+          ((scene === 'pr' || scene === 'target') && layer.dataset.layer === 'queue');
+        layer.classList.toggle('is-on', on);
+        layer.classList.toggle('notes-on', on && scene === 'queue' && notes);
+        const prScene = layer.querySelector('.pr-scene');
+        const targetScene = layer.querySelector('.target-scene');
+        if (prScene) prScene.classList.toggle('show-modal', scene === 'pr');
+        if (targetScene) targetScene.classList.toggle('show-target', scene === 'target');
+      });
+      document.querySelectorAll('#switcher button[data-go]').forEach((b) => {
+        b.classList.toggle('on', b.dataset.go === scene);
+      });
+      document.getElementById('themeBtn').textContent = theme === 'dark' ? '浅色' : '深色';
+      document.getElementById('notesBtn').style.color = notes ? '#3b63e0' : '';
+    }
+
+    switcher.addEventListener('click', (e) => {
+      const go = e.target.closest('button[data-go]');
+      if (go) {
+        scene = go.dataset.go;
+        const url = new URL(location.href);
+        url.searchParams.set('scene', scene);
+        history.replaceState(null, '', url);
+        apply();
+      }
+      if (e.target.id === 'themeBtn') {
+        theme = theme === 'dark' ? 'light' : 'dark';
+        const url = new URL(location.href);
+        url.searchParams.set('theme', theme);
+        history.replaceState(null, '', url);
+        apply();
+      }
+      if (e.target.id === 'notesBtn') {
+        const url = new URL(location.href);
+        const next = url.searchParams.get('notes') === '1' ? '0' : '1';
+        url.searchParams.set('notes', next);
+        location.href = url.toString();
+      }
+    });
+
+    document.querySelectorAll('.pick').forEach((pick) => {
+      pick.addEventListener('click', () => {
+        if (pick.classList.contains('disabled')) return;
+        pick.parentElement.querySelectorAll('.pick').forEach((p) => p.classList.remove('on'));
+        pick.classList.add('on');
+      });
+    });
+
+    document.querySelectorAll('.details-toggle').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const box = btn.nextElementSibling;
+        if (!box) return;
+        box.hidden = !box.hidden;
+        btn.textContent = box.hidden ? '▸ 展开命令细节（按平台）' : '▾ 收起命令细节';
+      });
+    });
+
+    apply();
+  })();
+</script>
+</body>
+</html>

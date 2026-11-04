@@ -458,6 +458,75 @@ function makeState(mode) {
   }
 }
 
+const SEDIMENT = {
+  ok: true,
+  generatedAt: '2026-11-05T10:00:00+08:00',
+  targetCommit: '7b517c8',
+  targetCommitShort: '7b517c8',
+  inbox: '/repo/postmortems/inbox',
+  counts: { total: 3, unassessed: 0, needDecision: 1, needRerun: 0, decided: 2, prOpen: 0, prMerged: 0, overdue: 1, oldestDays: 16 },
+  target: {
+    target: {
+      remote: 'origin', base: 'main', platform: 'gitcode',
+      url: 'https://gitcode.com/pillumina/ascend-sleuth.git', note: '', labels: {},
+      source: 'user', chosen_at: '2026-10-28T10:00:00+08:00',
+    },
+    remotes: [
+      { name: 'mirror', url: 'https://github.com/pillumina/ascend-sleuth.git', host: 'github.com', platform: 'github', platform_name: 'GitHub', base: 'main', has_adapter: true, token_ready: true, note: '', last_used: '' },
+      { name: 'origin', url: 'https://gitcode.com/pillumina/ascend-sleuth.git', host: 'gitcode.com', platform: 'gitcode', platform_name: 'GitCode', base: 'main', has_adapter: true, token_ready: true, note: '', last_used: '2026-10-28' },
+    ],
+    recommendation: { remote: 'origin', base: 'main', reason: '上次使用' },
+    platformName: 'GitCode',
+  },
+  primary: { kind: 'groom', label: '继续 groom', prompt: '继续 groom 的批次指令' },
+  prompts: {
+    groom: '对 postmortems/inbox/ 做本周 groom。\n按 /skill:knowledge-groom 执行，逐条问我，不替我决定。',
+    pr: '对 postmortems/inbox/ 里已决定的 2 份草稿，提到 origin/main（GitCode），按 /skill:knowledge-groom 第 5 步提一个 PR。\n\n边界：先落盘并跑升格检查；recheck 不通过就停。',
+    check: '查合入状态的指令',
+    close: '合入后收尾的指令',
+    prDetail: 'python3 scripts/verify_case_draft.py --gate <草稿路径>\npython3 scripts/groom_record.py --pr-marker --draft-key <key>',
+    checkDetail: '查合入状态的命令细节',
+    closeDetail: '收尾的命令细节',
+    groomDetail: 'groom 的命令细节',
+  },
+  drafts: [
+    {
+      key: '2026-10-28-pd-prefill-hang', title: 'PD 分离 prefill 卡死：AscendStore 异步 load 从不完成',
+      path: 'postmortems/inbox/2026-10-28-pd-prefill-hang.case.yaml', caseId: 'VLLM-ASC-15201',
+      state: 'need_decision', stage: '待决定', stageTone: 'warn', ageDays: 16, ageSource: 'created_at',
+      createdAt: '2026-10-28T09:00:00+08:00', assessedShort: '4823d40',
+      novelty: 'new_pattern', confidence: 'high', candidate: '', rationale: '6 个候选的 quickly_check 都与证据不符。', reviewReasons: [],
+      stale: false, staleReasons: [], decision: '', decisionValid: false, decisionBy: '', decisionAt: '',
+      source: { sessionId: ID, mismatch: 'none', sedimented: 'submitted' },
+      promotion: { caseId: '', casePath: '', postmortemPath: '' }, pr: null,
+      next: { kind: 'groom', label: '继续 groom', prompt: '继续 groom 的批次指令' }, writeback: '',
+    },
+    {
+      key: '2026-11-01-eplb-103900', title: 'EPLB 开启后 103900 传输超时，个别 rank 掉队',
+      path: 'postmortems/inbox/2026-11-01-eplb-103900.case.yaml', caseId: 'VLLM-ASC-15201',
+      state: 'decided', stage: '待提 PR', stageTone: 'accent', ageDays: 9, ageSource: 'created_at',
+      createdAt: '2026-11-01T09:00:00+08:00', assessedShort: '4823d40',
+      novelty: 'new_pattern', confidence: 'high', candidate: '', rationale: '', reviewReasons: [],
+      stale: false, staleReasons: [], decision: 'new_pattern', decisionValid: true, decisionBy: '张工', decisionAt: '2026-11-03',
+      source: { sessionId: '2026-11-01-eplb-103900', mismatch: 'none', sedimented: 'submitted' },
+      promotion: { caseId: 'VLLM-ASC-15201', casePath: 'knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-15201.yaml', postmortemPath: '' }, pr: null,
+      next: { kind: 'pr', label: '生成提 PR 指令', prompt: '提 PR 的批次指令' }, writeback: '',
+    },
+    {
+      key: '2026-10-26-glm53-moe-shuffle', title: 'GLM5.3 MoE token 分发不均导致单卡显存尖峰',
+      path: 'postmortems/inbox/2026-10-26-glm53-moe-shuffle.case.yaml', caseId: 'VLLM-ASC-10122',
+      state: 'decided', stage: '待提 PR', stageTone: 'accent', ageDays: 11, ageSource: 'created_at',
+      createdAt: '2026-10-26T09:00:00+08:00', assessedShort: '4823d40',
+      novelty: 'variant', confidence: 'medium', candidate: 'VLLM-ASC-10122', rationale: '', reviewReasons: [],
+      stale: false, staleReasons: [], decision: 'variant', decisionValid: true, decisionBy: '张工', decisionAt: '2026-11-03',
+      source: { sessionId: '2026-10-26-glm53-moe-shuffle', mismatch: 'none', sedimented: 'submitted' },
+      promotion: { caseId: 'VLLM-ASC-10122', casePath: 'knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10122.yaml', postmortemPath: '' }, pr: null,
+      next: { kind: 'pr', label: '生成提 PR 指令', prompt: '提 PR 的批次指令' }, writeback: '',
+    },
+  ],
+  history: [{ key: '2026-10-20-indexer-dtype', title: 'Indexer dtype 不一致导致精度异常', state: 'knowledge', at: '2026-10-24T10:00:00+08:00' }],
+}
+
 // ── 每个用例：换一份干净模块，装三个面 ─────────────────────────────────────
 async function mount(mode, options) {
   const opts = options || {}
@@ -508,6 +577,13 @@ async function mount(mode, options) {
               if (endpoint === 'copilot-report') {
                 if (opts.reportError) return { ok: true, value: { ok: false, code: 'E_NOT_FOUND', message: '这单还没有人读报告' } }
                 return { ok: true, value: { ok: true, text: opts.reportText || '# 诊断报告\n根因：vendor TopKV2 kernel 崩溃', file: 'traces/' + ID + '.report.md', bytes: 100 } }
+              }
+              if (endpoint === 'copilot-sediment') {
+                if (opts.sedimentError) return { ok: true, value: { ok: false, code: 'E_OUTPUT', message: '沉淀脚本没有产出 JSON' } }
+                return { ok: true, value: opts.sediment || SEDIMENT }
+              }
+              if (endpoint === 'copilot-pr-target') {
+                return { ok: true, value: { ok: true, target: (opts.sediment || SEDIMENT).target } }
               }
               throw new Error('unexpected endpoint ' + endpoint)
             },
@@ -593,7 +669,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：主按钮是回报结果', !!findButton(view, '回报结果'))
   expect('最近一单：显示身份标签（知识库未覆盖）', view.text.includes('知识库未覆盖'))
   expect('最近一单：显示已排除条数', view.text.includes('已排除 3 条'))
-  expect('最近一单：版本串 0.10.1', view.nodes.some((node) => node.props && node.props['data-version'] === '0.10.1'))
+  expect('最近一单：版本串 0.11.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.11.0'))
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
   expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
 }
@@ -948,6 +1024,17 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 }
 
 {
+  const t = await mount('recent', { prefs: { dockCollapsed: true, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  await t.settle()
+  await t.settle()
+  const view = await t.settle()
+  expect('诊断详情：沉淀进度块（收起态打开总览也读到）', view.text.includes('沉淀进度'), view.text.slice(-300))
+  expect('诊断详情：五步标签', view.text.includes('草稿已交') && view.text.includes('已评估') && view.text.includes('已升格'))
+  expect('诊断详情：打开沉淀队列入口', !!findButtonContains(view, '打开沉淀队列'))
+}
+
+{
   const t = await mount('recent')
   click(findToolbar(t.view()))
   const view = await t.settle()
@@ -963,6 +1050,163 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(open)
   const view = await t.settle()
   expect('标题按钮：打开台账并选中该单', view.text.includes('诊断总览') && view.text.includes('vllm-ascend GLM-5.3'))
+}
+
+{
+  const t = await mount('recent', { prefs: { dockCollapsed: true, paletteFilter: 'all', pins: {} } })
+  const collapsed = t.view()
+  expect('沉淀行：收起态不出现', byClass(collapsed, 'scp-dock-sed').length === 0)
+  click(findAria(collapsed, '展开状态条'))
+  await t.settle()
+  const expanded = await t.settle()
+  expect('沉淀行：展开后出现', byClass(expanded, 'scp-dock-sed').length === 1, expanded.text.slice(0, 240))
+  expect('沉淀行：显示阶段', expanded.text.includes('待决定'))
+  expect('沉淀行：显示年龄', expanded.text.includes('16 天'))
+  expect('沉淀行：有打开队列入口', !!findButtonContains(expanded, '打开沉淀队列'))
+}
+
+{
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  const tabs = byClass(view, 'scp-view-tab')
+  const sedTab = tabs.find((node) => nodeText(node).includes('沉淀'))
+  expect('视图切换：有沉淀 tab', !!sedTab)
+  click(sedTab)
+  view = await t.settle()
+  view = await t.settle()
+  expect('沉淀队列：批次条出现', byClass(view, 'scp-batch').length === 1)
+  expect('沉淀队列：3 行草稿', byClass(view, 'scp-sed-row').length === 3, String(byClass(view, 'scp-sed-row').length))
+  expect('沉淀队列：显示目标', view.text.includes('origin · main · GitCode'))
+  expect('沉淀队列：按下一步分组', view.text.includes('待继续 groom') && view.text.includes('待提 PR'))
+  expect('沉淀队列：显示年龄', view.text.includes('16 天'))
+
+  const rows = byClass(view, 'scp-sed-row')
+  click(rows[1])
+  view = await t.settle()
+  expect('沉淀详情：五步进度', view.text.includes('草稿已交') && view.text.includes('已评估') && view.text.includes('已提 PR'))
+  expect('沉淀详情：显示人决定', view.text.includes('张工'))
+  expect('沉淀详情：显示提 PR 按钮', !!findButtonContains(view, '生成提 PR 指令'))
+  const steps = byClass(view, 'scp-step')
+  const promotedStep = steps.find((node) => nodeText(node).includes('已升格'))
+  expect('已决定未提 PR：已升格不算完成', promotedStep && promotedStep.props['data-state'] !== 'done', JSON.stringify(promotedStep && promotedStep.props['data-state']))
+
+  click(findButtonContains(view, '生成提 PR 指令'))
+  view = await t.settle()
+  expect('提 PR 指令：弹层标题', view.text.includes('生成提 PR 指令'))
+  expect('提 PR 指令：默认短指令带 skill', view.text.includes('按 /skill:knowledge-groom'))
+  expect('提 PR 指令：有展开细节', !!findButtonContains(view, '展开命令细节'))
+  expect('提 PR 指令：有目标行', view.text.includes('origin · main · GitCode'))
+  expect('提 PR 指令：目标显示平台名而非裸 id', view.text.includes('GitCode') && !view.text.includes('origin · main · gitcode'))
+  click(findButton(view, '填入输入框'))
+  await t.settle()
+  expect('提 PR 指令：填入输入框', t.lastDraft().includes('/skill:knowledge-groom'), t.lastDraft().slice(0, 80))
+  const closed = await t.settle()
+  click(findToolbar(closed))
+  await t.settle()
+  const reopened = await t.settle()
+  expect('提 PR 指令：关闭后重开不残留弹层', byClass(reopened, 'scp-modal').length === 0, String(byClass(reopened, 'scp-modal').length))
+}
+
+{
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(findButtonContains(view, '提 PR（2）'))
+  view = await t.settle()
+  click(findButton(view, '换'))
+  view = await t.settle()
+  expect('目标选择：弹层标题', view.text.includes('提 PR 到哪个远端？'))
+  expect('目标选择：列出远端', view.text.includes('origin') && view.text.includes('mirror'))
+  const picks = byClass(view, 'scp-pick')
+  expect('目标选择：默认选推荐远端', picks.length === 2 && picks[0].props['data-on'] === 'false' && picks[1].props['data-on'] === 'true', JSON.stringify(picks.map((pick) => pick.props['data-on'])))
+  const mirror = findButtonContains(view, 'mirror')
+  click(mirror)
+  view = await t.settle()
+  click(findButton(view, '保存并生成指令'))
+  await t.settle()
+  const call = t.rpcCalls.filter((item) => item.endpoint === 'copilot-pr-target').pop()
+  expect('目标选择：保存走 pr-target', call && call.args && call.args.action === 'set-target', JSON.stringify(call && call.args))
+  expect('目标选择：保存远端', call && call.args && call.args.remote === 'mirror', JSON.stringify(call && call.args))
+}
+
+{
+  const prDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: { number: 417, url: 'https://gitcode.com/pillumina/ascend-sleuth/pulls/417', platform: 'gitcode', state: 'open', source: 'platform', checkedAt: '2026-11-04T09:00:00+08:00' },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const prOpen = Object.assign({}, SEDIMENT, {
+    drafts: [prDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 9 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const t = await mount('recent', { sediment: prOpen, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  expect('PR 详情：显示中文状态与来源', view.text.includes('待合入') && view.text.includes('平台查询'), view.text.slice(-300))
+  expect('PR 详情：有查状态按钮', !!findButton(view, '查合入状态'))
+  const mark = findButton(view, '标记已合入')
+  expect('PR 详情：有标记已合入按钮', !!mark)
+  click(mark)
+  await t.settle()
+  const call = t.rpcCalls.filter((item) => item.endpoint === 'copilot-pr-target').pop()
+  expect('PR 详情：标记已合入走 mark', call && call.args && call.args.action === 'mark' && call.args.state === 'merged', JSON.stringify(call && call.args))
+}
+
+{
+  const noRec = Object.assign({}, SEDIMENT, {
+    target: { target: null, remotes: SEDIMENT.target.remotes, recommendation: null, platformName: '' },
+  })
+  const t = await mount('recent', { sediment: noRec, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(findButtonContains(view, '提 PR（2）'))
+  view = await t.settle()
+  const picks = byClass(view, 'scp-pick')
+  expect('目标选择：多远端无推荐不预选', picks.length === 2 && picks.every((pick) => pick.props['data-on'] === 'false'), JSON.stringify(picks.map((pick) => pick.props['data-on'])))
+  const save = findButton(view, '保存并生成指令')
+  expect('目标选择：未选远端不能保存', save && save.props.disabled === true)
+}
+
+{
+  const empty = Object.assign({}, SEDIMENT, { drafts: [], counts: { total: 0, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 0, prMerged: 0, overdue: 0, oldestDays: 0 }, primary: { kind: 'none', label: '继续 groom', prompt: '' } })
+  const t = await mount('recent', { sediment: empty, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  expect('沉淀空态：队列已清空', view.text.includes('队列已清空'), view.text.slice(0, 200))
+  expect('沉淀空态：显示最近完成', view.text.includes('最近完成'), view.text.slice(0, 300))
+}
+
+{
+  const t = await mount('recent', { sedimentError: true, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  expect('沉淀降级：给出原因', view.text.includes('读不到沉淀队列'), view.text.slice(-300))
+  expect('沉淀降级：给出重试', !!findButton(view, '刷新'))
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')

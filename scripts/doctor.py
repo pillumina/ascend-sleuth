@@ -65,6 +65,7 @@ CAPABILITIES = [
     ("面板安装 / 构建 / CI 检查", ["node"]),
     ("批量导入上游 issue", ["python", "yaml", "gh"]),
     ("诊断 token 与工具记账", ["node"]),
+    ("沉淀队列与 PR 状态", ["python", "yaml", "git", "pr-platforms"]),
 ]
 
 BLOCK, DEGRADE, OK = "blocked", "degraded", "ok"
@@ -371,6 +372,77 @@ def check_evolution(root: Path):
             "detail": f"{mode} —— {meaning}（来源：{source}）", "fix": ""}
 
 
+def check_pr_platforms(root):
+    """PR 平台适配器清单：只读清单与环境变量，不联网、不装依赖。
+
+    体检器不代装（见文件头三条约束）；这里只回答「这台机器上有几个平台能查 PR 状态」。
+    清单由 scripts/pr_status.py --list-platforms 打印，doctor 不写平台特判。
+    """
+    script = Path(root) / "scripts" / "pr_status.py"
+    if not script.is_file():
+        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": DEGRADE,
+                "detail": "缺少 scripts/pr_status.py",
+                "fix": "把插件更新到带沉淀队列的版本；或先跳过 PR 状态查询，用「标记已合入」手动确认"}
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(script), "--root", str(root), "--list-platforms", "--json"],
+            cwd=str(root), capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=15,
+        )
+    except Exception as exc:  # noqa: BLE001 - 体检器把异常折成一行原因
+        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": DEGRADE,
+                "detail": "清单脚本跑不起来：" + str(exc), "fix": "python3 scripts/pr_status.py --list-platforms"}
+    try:
+        doc = json.loads(proc.stdout.strip() or "{}")
+    except Exception:  # noqa: BLE001
+        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": DEGRADE,
+                "detail": "清单脚本没有给出 JSON", "fix": "python3 scripts/pr_status.py --list-platforms"}
+    if doc.get("ok") is False:
+        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": DEGRADE,
+                "detail": str((doc.get("error") or {}).get("message") or "清单不可用"),
+                "fix": "python3 scripts/pr_status.py --list-platforms"}
+    platforms = doc.get("platforms") or []
+    # 已选目标平台优先：GitHub 可用不等于 GitCode 目标可用。
+    target_platform = ""
+    try:
+        ledger_proc = subprocess.run(
+            [sys.executable, str(script), "--root", str(root), "--json"],
+            cwd=str(root), capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=15,
+        )
+        ledger = json.loads(ledger_proc.stdout.strip() or "{}")
+        target = ((ledger.get("ledger") or {}).get("target") or {})
+        target_platform = str(target.get("platform") or "")
+    except Exception:  # noqa: BLE001 - 读台账失败不阻断清单检查
+        target_platform = ""
+    if target_platform:
+        picked = next((p for p in platforms if str(p.get("id")) == target_platform), None)
+        if picked is None:
+            return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": DEGRADE,
+                    "detail": "目标平台 " + target_platform + " 没有适配器",
+                    "fix": "在 scripts/platforms/ 加适配器，或换一个目标远端"}
+        if not picked.get("available"):
+            return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": DEGRADE,
+                    "detail": "目标平台 " + str(picked.get("name") or target_platform) + " 不可用："
+                              + str(picked.get("reason") or "缺 token/命令"),
+                    "fix": str(picked.get("install_hint") or "按适配器说明配 token/命令")}
+        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": OK,
+                "detail": "目标平台 " + str(picked.get("name") or target_platform) + " 可用",
+                "note": "清单来自 scripts/platforms/；只读，不联网"}
+    ok = [p for p in platforms if p.get("available")]
+    bad = [p for p in platforms if not p.get("available")]
+    if not ok:
+        reason = "；".join(str(p.get("reason") or p.get("id")) for p in bad[:3]) or "没有平台清单"
+        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": DEGRADE,
+                "detail": "没有可用的平台：" + reason,
+                "fix": "按适配器的 install_hint 配 token/命令；或先手动确认 PR 状态"}
+    detail = "可用 " + "、".join(str(p.get("name") or p.get("id")) for p in ok)
+    if bad:
+        detail += "；不可用 " + "、".join(str(p.get("id")) for p in bad[:3])
+    return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": OK, "detail": detail,
+            "note": "清单来自 scripts/platforms/；只读，不联网"}
+
+
 def check_capability_table(checks):
     """能力表引用的 id 必须都存在于检查项里。
 
@@ -391,7 +463,7 @@ def check_capability_table(checks):
 def build_report(root: Path):
     checks = [check_python()]
     checks += check_third_party()
-    checks += [check_git(root), check_node(), check_gh(), check_traces(root), check_index(root),
+    checks += [check_git(root), check_node(), check_gh(), check_pr_platforms(root), check_traces(root), check_index(root),
                check_evolution(root)]
     checks.append(check_capability_table(checks))
     by_id = {c["id"]: c for c in checks}

@@ -1,0 +1,522 @@
+"""sediment_state 的口径回归测试。
+
+护的是「状态合并」这一层：草稿进队列之后，评估、人决定、PR 台账、trace 沉淀状态在四个
+地方各写各的，读侧必须按固定优先级合并成一份队列。错了不会报错，只会让面板停在错的阶段。
+
+做法：真实临时 git 仓库 + 真实共享 inbox（`groom_common.shared_inbox` 解析到该仓库），
+sidecar 按 `groom_record` / `groom_decide` 写下的字段构造；新鲜度、stale、人决定有效性
+一律让 `groom_status.status_rows` 现算，不 mock 判据。不联网。
+
+覆盖：空态、无 sidecar、stale、需重批、有效决定、defer/reject、PR open/merged/closed、
+孤儿、done（trace 已升格但草稿还在队列）、trace 匹配三种键、四类批次 prompt 与明细字段、
+计数（含 oldestDays）、history、`--only`、CLI 的 ok:false 协议。
+"""
+
+import json
+import os
+import sys
+import tempfile
+import unittest
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import yaml
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(ROOT / "dsh-plugins" / "dsh-sleuth-copilot" / "lib"))
+
+import groom_common as gm  # noqa: E402
+import pr_status as pr  # noqa: E402
+import sediment_state as ss  # noqa: E402
+from tests.groom_fixtures import commit_all, git, run_py  # noqa: E402
+
+CASE_TMPL = """cases:
+  - id: {cid}
+    title: "{title}"
+{source}    category: interrupt
+    tags: [test]
+    symptoms:
+      - "测试症状"
+    root_cause: "测试根因"
+    fix: "测试修复"
+    severity: service-affecting
+    fix_type: config-change
+    quickly_check:
+      primary:
+        command_template: "echo {cid}"
+        expected: "regex:{cid}"
+"""
+
+
+# ---------------------------------------------------------------- 构造临时仓库与运行时件
+
+def init_repo(base: Path):
+    repo = base / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    git(repo, "config", "user.email", "sediment@example.com")
+    git(repo, "config", "user.name", "Sediment Test")
+    write_case(repo, "knowledge/inference/vllm-ascend/interrupt/CASE-A.yaml",
+               "CASE-A", title="HCCL timeout")
+    (repo / "README.md").write_text("test\n", encoding="utf-8")
+    commit_all(repo, "base")
+    git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    return repo
+
+
+def write_case(repo: Path, rel: str, cid: str, title: str = "测试 case",
+               source_session: str = "") -> Path:
+    path = repo / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    source = f'    source_session: "{source_session}"\n' if source_session else ""
+    path.write_text(CASE_TMPL.format(cid=cid, title=title, source=source), encoding="utf-8")
+    return path
+
+
+def inbox(repo: Path) -> Path:
+    return repo / "postmortems" / "inbox"
+
+
+def write_draft(repo: Path, key: str = "2026-10-20-draft-a", cid: str = "DRAFT-A",
+                title: str = "PD 分离 prefill 卡死：AscendStore 异步 load 从不完成",
+                created_at: str = "", source_session: str = "") -> Path:
+    path = inbox(repo) / f"{key}.case.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    head = f'created_at: "{created_at}"\n' if created_at else ""
+    source = f'    source_session: "{source_session}"\n' if source_session else ""
+    path.write_text(head + CASE_TMPL.format(cid=cid, title=title, source=source),
+                    encoding="utf-8")
+    return path
+
+
+def fresh_commit(repo: Path) -> str:
+    return git(repo, "rev-parse", "HEAD").stdout.strip()
+
+
+def write_assessment(repo: Path, key: str, commit: str, decision: str = "new_pattern",
+                     candidate=None, human_valid: bool = True, authoritative: bool = True,
+                     assessment_id: str = "assess-1", proposed: str = "") -> Path:
+    draft_path = inbox(repo) / f"{key}.case.yaml"
+    doc = yaml.safe_load(draft_path.read_text(encoding="utf-8"))
+    case = (doc.get("cases") or [{}])[0]
+    sidecar = {
+        "assessment": {
+            "proposed_novelty": proposed or decision,
+            "candidate_case": candidate,
+            "confidence": "high",
+            "rationale": "与已有 case 根因不同",
+            "review_required": False,
+        },
+        "provenance": {
+            "compared_against_commit": commit,
+            "compared_against_short": commit[:12],
+            "snapshot_authoritative": authoritative,
+        },
+        "assessment_id": assessment_id,
+        "draft_sha256": gm.case_fingerprint(case),
+        "human_decision": ({
+            "decision": decision,
+            "candidate_case": candidate,
+            "by": "测试人",
+            "decided_at": "2026-11-01T09:00:00+08:00",
+        } if decision else {}),
+        "human_decision_valid": human_valid,
+        "promotion_gate": {"allowed": True, "blocked_reason": None},
+        "review_state": "decided" if decision else "pending",
+    }
+    path = inbox(repo) / ".groom" / "assessments" / f"{gm.sanitize_key(key)}.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(sidecar, allow_unicode=True, sort_keys=False),
+                    encoding="utf-8")
+    return path
+
+
+def write_trace(repo: Path, sid: str, state: str = "none", inbox_path: str = "",
+                case_id: str = "") -> Path:
+    traces = repo / "traces"
+    traces.mkdir(exist_ok=True)
+    path = traces / f"{sid}.yaml"
+    path.write_text(
+        f'session_id: "{sid}"\n'
+        'status: resolved\n'
+        'updated_at: "2026-11-01T10:00:00+08:00"\n'
+        "sedimented:\n"
+        f"  state: {state}\n"
+        f'  case_id: "{case_id}"\n'
+        f'  inbox_path: "{inbox_path}"\n'
+        "trace:\n"
+        '  - {role: user, step: 1, content: "测试"}\n',
+        encoding="utf-8",
+    )
+    return path
+
+
+def write_ledger(repo: Path, target=None, prs=None) -> str:
+    data = pr.empty_ledger()
+    data["target"] = target
+    data["prs"] = prs or {}
+    return pr.save_ledger(repo, data)
+
+
+GITHUB_TARGET = {
+    "remote": "origin", "base": "main", "platform": "github",
+    "url": "https://github.com/pillumina/ascend-sleuth.git",
+    "note": "", "labels": {}, "source": "user",
+    "chosen_at": "2026-11-01T10:00:00+08:00",
+}
+
+
+def pr_entry(url="https://github.com/pillumina/ascend-sleuth/pull/418",
+             state="open", platform="github", repo="pillumina/ascend-sleuth",
+             number=418, source="ledger"):
+    return {"platform": platform, "repo": repo, "number": number, "url": url,
+            "state": state, "source": source,
+            "created_at": "2026-11-01T10:00:00+08:00"}
+
+
+class SedimentCase(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory(prefix="sediment-state-")
+        self.addCleanup(self.tmp.cleanup)
+        self.base = Path(self.tmp.name)
+        self.repo = init_repo(self.base)
+
+    def collect(self, only=""):
+        return ss.collect(self.repo, only=only)
+
+    def draft(self, payload, key="2026-10-20-draft-a"):
+        return next(row for row in payload["drafts"] if row["key"] == key)
+
+    def age_iso(self, days: int) -> str:
+        return (datetime.now(timezone.utc) - timedelta(days=days)).isoformat(timespec="seconds")
+
+
+# ---------------------------------------------------------------- 基础状态
+
+class StateTest(SedimentCase):
+    def test_empty_queue(self):
+        payload = self.collect()
+        self.assertEqual(payload["counts"]["total"], 0)
+        self.assertEqual(payload["counts"]["oldestDays"], 0)
+        self.assertEqual(payload["drafts"], [])
+        self.assertEqual(payload["primary"]["kind"], "none")
+        self.assertEqual(payload["history"], [])
+        self.assertEqual(payload["targetCommitShort"], fresh_commit(self.repo)[:12])
+        self.assertEqual(Path(payload["inbox"]).resolve(), inbox(self.repo).resolve())
+        for key in ("groom", "pr", "check", "close",
+                    "groomDetail", "prDetail", "checkDetail", "closeDetail"):
+            self.assertEqual(payload["prompts"][key], "", key)
+
+    def test_unassessed_draft(self):
+        write_draft(self.repo, created_at=self.age_iso(16))
+        payload = self.collect()
+        row = self.draft(payload)
+        self.assertEqual(row["state"], "unassessed")
+        self.assertEqual(row["stage"], "已交草稿 · 未评估")
+        self.assertEqual(row["stageTone"], "gray")
+        self.assertEqual(row["ageDays"], 16)
+        self.assertEqual(row["ageSource"], "created_at")
+        self.assertEqual(row["next"]["kind"], "groom")
+        self.assertEqual(row["next"]["prompt"], payload["prompts"]["groom"])
+        self.assertIn("knowledge-groom", payload["prompts"]["groom"])
+        self.assertIn("逐条问我，不替我决定", payload["prompts"]["groom"])
+        self.assertIn("groom_status.py --decision-prompt", payload["prompts"]["groomDetail"])
+        self.assertIn("shared_dir.py inbox", payload["prompts"]["groomDetail"])
+        self.assertEqual(payload["counts"]["unassessed"], 1)
+        self.assertEqual(payload["counts"]["overdue"], 1)
+        self.assertEqual(payload["counts"]["oldestDays"], 16)
+        self.assertEqual(payload["primary"]["kind"], "groom")
+        self.assertEqual(row["path"], "postmortems/inbox/2026-10-20-draft-a.case.yaml")
+        self.assertEqual(row["title"], "PD 分离 prefill 卡死：AscendStore 异步 load 从不完成")
+
+    def test_age_falls_back_to_mtime(self):
+        path = write_draft(self.repo)
+        old = (datetime.now(timezone.utc) - timedelta(days=20)).timestamp()
+        os.utime(path, (old, old))
+        row = self.draft(self.collect())
+        self.assertEqual(row["ageSource"], "mtime")
+        self.assertGreaterEqual(row["ageDays"], 19)
+
+    def test_stale_assessment_needs_rerun(self):
+        write_draft(self.repo)
+        old_commit = fresh_commit(self.repo)
+        write_assessment(self.repo, "2026-10-20-draft-a", old_commit)
+        write_case(self.repo, "knowledge/inference/vllm-ascend/interrupt/CASE-B.yaml",
+                   "CASE-B", title="新 case")
+        new_commit = commit_all(self.repo, "add B")
+        git(self.repo, "update-ref", "refs/remotes/origin/main", new_commit)
+        row = self.draft(self.collect())
+        self.assertEqual(row["state"], "need_rerun")
+        self.assertEqual(row["stage"], "需重跑")
+        self.assertEqual(row["stageTone"], "bad")
+        self.assertTrue(row["stale"])
+        self.assertTrue(any("知识库" in reason for reason in row["staleReasons"]))
+        self.assertEqual(row["next"]["kind"], "groom")
+
+    def test_human_approval_not_bound_needs_rerun(self):
+        write_draft(self.repo)
+        write_assessment(self.repo, "2026-10-20-draft-a", fresh_commit(self.repo),
+                         human_valid=False)
+        row = self.draft(self.collect())
+        self.assertEqual(row["state"], "need_rerun")
+        self.assertIn("人的批准", " ".join(row["staleReasons"]))
+
+    def test_valid_decision_is_decided(self):
+        write_draft(self.repo)
+        write_assessment(self.repo, "2026-10-20-draft-a", fresh_commit(self.repo))
+        write_ledger(self.repo, target=GITHUB_TARGET)
+        payload = self.collect()
+        row = self.draft(payload)
+        self.assertEqual(row["state"], "decided")
+        self.assertEqual(row["stage"], "待提 PR")
+        self.assertEqual(row["stageTone"], "accent")
+        self.assertEqual(row["decision"], "new_pattern")
+        self.assertTrue(row["decisionValid"])
+        self.assertEqual(row["decisionBy"], "测试人")
+        self.assertEqual(row["next"]["kind"], "pr")
+        self.assertEqual(row["next"]["prompt"], payload["prompts"]["pr"])
+        prompt = payload["prompts"]["pr"]
+        self.assertIn("origin/main（GitHub）", prompt)
+        self.assertIn("new_pattern", prompt)
+        self.assertIn("先落盘并跑升格检查", prompt)
+        self.assertIn("合入前不要跑 close / cleanup", prompt)
+        self.assertIn("postmortems/inbox/.groom/pr-state.json", prompt)
+        detail = payload["prompts"]["prDetail"]
+        self.assertIn("verify_case_draft.py --gate", detail)
+        self.assertIn("groom_record.py --pr-marker", detail)
+        self.assertIn("groom_recheck.py", detail)
+        self.assertIn("gh pr create", detail)
+        self.assertEqual(payload["prompts"]["groomDetail"], "")
+        self.assertEqual(payload["primary"]["kind"], "pr")
+        self.assertEqual(payload["counts"]["decided"], 1)
+
+    def test_deferred_and_rejected(self):
+        write_draft(self.repo, key="draft-defer", cid="DRAFT-D")
+        write_assessment(self.repo, "draft-defer", fresh_commit(self.repo), decision="defer")
+        write_draft(self.repo, key="draft-reject", cid="DRAFT-R")
+        write_assessment(self.repo, "draft-reject", fresh_commit(self.repo), decision="reject")
+        payload = self.collect()
+        self.assertEqual(self.draft(payload, "draft-defer")["state"], "deferred")
+        self.assertEqual(self.draft(payload, "draft-reject")["state"], "rejected")
+        self.assertEqual(self.draft(payload, "draft-defer")["next"]["kind"], "none")
+        self.assertEqual(payload["counts"]["decided"], 0)
+
+    def test_orphan_sidecar_without_draft(self):
+        write_draft(self.repo)
+        write_assessment(self.repo, "2026-10-20-draft-a", fresh_commit(self.repo))
+        draft_path = inbox(self.repo) / "2026-10-20-draft-a.case.yaml"
+        draft_path.unlink()
+        payload = self.collect()
+        self.assertEqual(len(payload["drafts"]), 1)
+        row = payload["drafts"][0]
+        self.assertEqual(row["state"], "orphan")
+        self.assertEqual(row["stage"], "孤儿状态")
+        self.assertEqual(row["stageTone"], "bad")
+        self.assertEqual(row["path"], "")
+        self.assertEqual(row["next"]["kind"], "none")
+        self.assertEqual(payload["counts"]["total"], 1)
+
+    def test_title_falls_back_to_postmortem_first_line(self):
+        path = write_draft(self.repo)
+        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        doc["cases"][0].pop("title")
+        path.write_text(yaml.safe_dump(doc, allow_unicode=True), encoding="utf-8")
+        (inbox(self.repo) / "2026-10-20-draft-a.md").write_text(
+            "# 从 postmortem 标题取\n正文\n", encoding="utf-8")
+        row = self.draft(self.collect())
+        self.assertEqual(row["title"], "从 postmortem 标题取")
+
+
+# ---------------------------------------------------------------- PR 覆盖与 done
+
+class PrStateTest(SedimentCase):
+    def setUp(self):
+        super().setUp()
+        write_draft(self.repo)
+        write_assessment(self.repo, "2026-10-20-draft-a", fresh_commit(self.repo))
+
+    def _with_pr(self, state: str, url="https://github.com/pillumina/ascend-sleuth/pull/418"):
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": pr_entry(url=url, state=state)})
+        return self.collect()
+
+    def test_pr_open(self):
+        payload = self._with_pr("open")
+        row = self.draft(payload)
+        self.assertEqual(row["state"], "pr_open")
+        self.assertEqual(row["stage"], "已提 PR · 合入未确认")
+        self.assertEqual(row["pr"]["state"], "open")
+        self.assertEqual(row["next"]["kind"], "check")
+        self.assertIn("pull/418", payload["prompts"]["check"])
+        self.assertIn("gh pr view 418 --repo pillumina/ascend-sleuth", payload["prompts"]["checkDetail"])
+        self.assertEqual(payload["primary"]["kind"], "check")
+        self.assertEqual(payload["counts"]["prOpen"], 1)
+
+    def test_pr_merged(self):
+        payload = self._with_pr("merged")
+        row = self.draft(payload)
+        self.assertEqual(row["state"], "pr_merged")
+        self.assertEqual(row["stage"], "已合入 · 待收尾")
+        self.assertEqual(row["next"]["kind"], "close")
+        self.assertIn("groom_close_draft --all --apply", payload["prompts"]["close"])
+        self.assertIn("groom_cleanup", payload["prompts"]["close"])
+        self.assertIn("groom_close_draft.py --all --apply", payload["prompts"]["closeDetail"])
+        self.assertIn("groom_cleanup.py --pr-body-file", payload["prompts"]["closeDetail"])
+        self.assertEqual(payload["primary"]["kind"], "close")
+        self.assertEqual(payload["counts"]["prMerged"], 1)
+
+    def test_pr_closed(self):
+        payload = self._with_pr("closed")
+        row = self.draft(payload)
+        self.assertEqual(row["state"], "pr_closed")
+        self.assertEqual(row["next"]["kind"], "groom")
+        self.assertEqual(row["stageTone"], "bad")
+
+    def test_pr_unknown_counts_as_open(self):
+        payload = self._with_pr("unknown")
+        self.assertEqual(self.draft(payload)["state"], "pr_open")
+
+    def test_done_when_trace_ahead_of_queue(self):
+        write_trace(self.repo, "2026-11-01-sediment",
+                    state="knowledge", case_id="CASE-A",
+                    inbox_path="postmortems/inbox/2026-10-20-draft-a.case.yaml")
+        payload = self.collect()
+        row = self.draft(payload)
+        self.assertEqual(row["state"], "done")
+        self.assertEqual(row["stage"], "已升格")
+        self.assertEqual(row["source"]["mismatch"], "draft_left_behind")
+        self.assertIn("groom_close_draft.py --all --apply", row["writeback"])
+        self.assertEqual(row["next"]["kind"], "none")
+        self.assertEqual(row["promotion"]["caseId"], "CASE-A")
+        self.assertEqual(row["promotion"]["casePath"],
+                         "knowledge/inference/vllm-ascend/interrupt/CASE-A.yaml")
+        self.assertEqual(payload["primary"]["kind"], "none")
+
+    def test_missing_case_mismatch(self):
+        write_trace(self.repo, "2026-11-01-sediment",
+                    state="knowledge", case_id="VLLM-ASC-99999",
+                    inbox_path="postmortems/inbox/2026-10-20-draft-a.case.yaml")
+        payload = self.collect()
+        row = self.draft(payload)
+        self.assertEqual(row["state"], "decided")
+        self.assertEqual(row["source"]["mismatch"], "missing_case")
+        self.assertEqual(row["writeback"], "")
+
+
+# ---------------------------------------------------------------- trace 匹配三种键
+
+class TraceMatchTest(SedimentCase):
+    def setUp(self):
+        super().setUp()
+        write_draft(self.repo)
+        write_assessment(self.repo, "2026-10-20-draft-a", fresh_commit(self.repo))
+        write_ledger(self.repo, target=GITHUB_TARGET)
+
+    def test_match_by_inbox_path(self):
+        write_trace(self.repo, "sid-path", state="submitted",
+                    inbox_path="postmortems/inbox/2026-10-20-draft-a.case.yaml")
+        row = self.draft(self.collect())
+        self.assertEqual(row["source"]["sessionId"], "sid-path")
+        self.assertEqual(row["source"]["sedimented"], "submitted")
+        self.assertEqual(row["source"]["mismatch"], "none")
+
+    def test_match_by_case_id(self):
+        write_trace(self.repo, "sid-case", state="submitted", case_id="DRAFT-A")
+        row = self.draft(self.collect())
+        self.assertEqual(row["source"]["sessionId"], "sid-case")
+
+    def test_match_by_source_session(self):
+        write_draft(self.repo, key="draft-src", cid="DRAFT-S", source_session="sid-src")
+        write_assessment(self.repo, "draft-src", fresh_commit(self.repo))
+        write_trace(self.repo, "sid-src", state="submitted")
+        row = self.draft(self.collect(), "draft-src")
+        self.assertEqual(row["source"]["sessionId"], "sid-src")
+        self.assertEqual(row["decision"], "new_pattern")
+
+    def test_no_trace_gives_empty_session(self):
+        row = self.draft(self.collect())
+        self.assertEqual(row["source"]["sessionId"], "")
+        self.assertEqual(row["source"]["mismatch"], "none")
+        self.assertEqual(row["source"]["sedimented"], "none")
+
+
+# ---------------------------------------------------------------- 计数 / 历史 / --only / 无适配器
+
+class AggregateTest(SedimentCase):
+    def test_counts_and_oldest_days(self):
+        write_draft(self.repo, key="old", cid="D-OLD", created_at=self.age_iso(20))
+        write_draft(self.repo, key="new", cid="D-NEW", created_at=self.age_iso(1))
+        payload = self.collect()
+        self.assertEqual(payload["counts"]["total"], 2)
+        self.assertEqual(payload["counts"]["overdue"], 1)
+        self.assertEqual(payload["counts"]["oldestDays"], 20)
+
+    def test_history_reads_last_five_close_log_lines(self):
+        log = inbox(self.repo) / ".groom" / "close-log.jsonl"
+        log.parent.mkdir(parents=True, exist_ok=True)
+        lines = []
+        for index in range(7):
+            lines.append(json.dumps({
+                "at": f"2026-10-{index + 1:02d}T10:00:00+08:00", "draft": f"draft-{index}",
+                "decision": "new_pattern", "state": "knowledge"}, ensure_ascii=False))
+        lines.insert(4, "{broken")
+        log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        payload = self.collect()
+        self.assertEqual(len(payload["history"]), 4)     # 最后 5 行里有一行坏件
+        self.assertEqual(payload["history"][0]["key"], "draft-3")
+        self.assertEqual(payload["history"][0]["title"], "")
+        self.assertEqual(payload["history"][0]["state"], "knowledge")
+
+    def test_only_filters_by_source_session(self):
+        write_draft(self.repo, key="draft-a", cid="D-A")
+        write_draft(self.repo, key="draft-b", cid="D-B")
+        write_assessment(self.repo, "draft-a", fresh_commit(self.repo))
+        write_assessment(self.repo, "draft-b", fresh_commit(self.repo))
+        write_ledger(self.repo, target=GITHUB_TARGET)
+        write_trace(self.repo, "sid-a", state="submitted",
+                    inbox_path="postmortems/inbox/draft-a.case.yaml")
+        write_trace(self.repo, "sid-b", state="submitted",
+                    inbox_path="postmortems/inbox/draft-b.case.yaml")
+        payload = self.collect(only="sid-a")
+        self.assertEqual([row["key"] for row in payload["drafts"]], ["draft-a"])
+        self.assertEqual(payload["counts"]["total"], 1)
+        self.assertEqual(payload["prompts"]["check"], "")
+
+    def test_target_without_adapter_prompts_manual_pr(self):
+        write_draft(self.repo)
+        write_assessment(self.repo, "2026-10-20-draft-a", fresh_commit(self.repo))
+        target = {"remote": "mirror", "base": "main", "platform": "",
+                  "url": "https://example.com/o/r.git", "note": "", "labels": {},
+                  "source": "user", "chosen_at": "2026-11-01T10:00:00+08:00"}
+        write_ledger(self.repo, target=target)
+        payload = self.collect()
+        self.assertIn("无适配器", payload["prompts"]["pr"])
+        self.assertIn("本机没有对应平台的适配器", payload["prompts"]["prDetail"])
+        self.assertEqual(payload["target"]["platformName"], "")
+
+
+# ---------------------------------------------------------------- CLI 协议
+
+class CliTest(SedimentCase):
+    def test_cli_json_ok(self):
+        write_draft(self.repo)
+        proc = run_py(self.repo, str(Path(ss.__file__)), "--root", str(self.repo), "--json")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["counts"]["total"], 1)
+        self.assertIn("groomDetail", payload["prompts"])
+
+    def test_cli_git_failure_is_ok_false_and_exit_zero(self):
+        empty = self.base / "not-a-repo"
+        empty.mkdir()
+        proc = run_py(self.repo, str(Path(ss.__file__)), "--root", str(empty), "--json")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        payload = json.loads(proc.stdout)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["code"], "E_GIT")
+
+
+if __name__ == "__main__":
+    unittest.main()
