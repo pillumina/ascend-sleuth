@@ -84,6 +84,16 @@ def split_decisions(text: str):
     return text[:m.start()], text[m.start():end], text[end:]
 
 
+def _link_rel(rel: str) -> str:
+    """平台相对路径 → markdown 链接里的形态（`/` 分隔）。
+
+    Windows 上 os.path.relpath 返回反斜杠（`deep\\eval.md`）。直接拼进 `[label](path)`
+    会产出反斜杠链接；markdown 链接在 Windows 上也认 `/`。这里只把反斜杠统一成 `/`：
+    POSIX（Linux/macOS 的路径规范）下正常路径不含反斜杠，输出不变。
+    """
+    return rel.replace("\\", "/")
+
+
 def rewrite_links(text: str, base_dir: Path, root: Path, old: str, new: str):
     """改写 markdown/普通链接里的相对路径。
 
@@ -109,7 +119,7 @@ def rewrite_links(text: str, base_dir: Path, root: Path, old: str, new: str):
         # 目标 = 本次移动的旧路径 → 指到新路径；否则目标没动，链接文本也不动
         if tgt != old_p.resolve():
             return m.group(0)
-        rel = os.path.relpath(new_p, base_dir)
+        rel = _link_rel(os.path.relpath(new_p, base_dir))
         n += 1
         # 标签本身**是路径形态**（含 `/`）且解到旧路径时一并对齐——否则会出现"指向 A 却写着 B"的链接
         # （实测形态：[../rsi-mechanism.md](rsi-mechanism.md)）。只当标签不含 `/` 时（如 [eval.md](…)）
@@ -153,7 +163,7 @@ def rebase_links(text: str, old_dir: Path, new_dir: Path):
             return m.group(0)
         if not tgt.exists():
             return m.group(0)          # 本来就坏，不动（本工具只修"因搬家而断"的）
-        rel = os.path.relpath(tgt, new_dir)
+        rel = _link_rel(os.path.relpath(tgt, new_dir))
         if rel == path:
             return m.group(0)
         n += 1

@@ -2944,8 +2944,17 @@ _MS._run_no_pipe = no_fallback`)
         const writes = []
         const specs = []
         const mkdir = (p) => { if (!dirs.has(p)) dirs.set(p, []); return dirs.get(p) }
-        const addDir = (p) => { mkdir(p); const e = mkdir(path.dirname(p)); const n = path.basename(p); if (!e.some(x => x.name === n)) e.push({ name: n, type: 'directory' }) }
-        const addFile = (p, c) => { files.set(p, c); const e = mkdir(path.dirname(p)); const n = path.basename(p); if (!e.some(x => x.name === n)) e.push({ name: n, type: 'file' }) }
+        // 本段的路径字面量都是 POSIX（Linux/macOS 的路径规范）形态（'/mock/repo'、'/deploy/workspace'）。Windows 上
+        // path.resolve('/mock/repo') 会补盘符（如 D:\mock\repo），under() 与 mock 的目录键就永远
+        // 对不上，写入全被沙箱判据拒掉。这里固定用 path.posix（结果跨平台一致），入参只做
+        // 分隔符归一 + 剥盘符前缀；「目标不在有效根下 → 拒绝」的判据不放宽。
+        const toPosix = (p) => String(p).replace(/\\/g, '/').replace(/^[A-Za-z]:/, '')
+        const pdir = (p) => path.posix.dirname(toPosix(p))
+        const pbase = (p) => path.posix.basename(toPosix(p))
+        const pjoin = (a, b) => path.posix.join(toPosix(a), toPosix(b))
+        const presolve = (p, opts) => path.posix.resolve(toPosix((opts && opts.cwd) || '/'), toPosix(p))
+        const addDir = (p) => { mkdir(p); const e = mkdir(pdir(p)); const n = pbase(p); if (!e.some(x => x.name === n)) e.push({ name: n, type: 'directory' }) }
+        const addFile = (p, c) => { files.set(p, c); const e = mkdir(pdir(p)); const n = pbase(p); if (!e.some(x => x.name === n)) e.push({ name: n, type: 'file' }) }
         addDir(MAIN + '/.git'); addDir(MAIN + '/metrics'); addDir(MAIN + '/traces'); addDir(MAIN + '/scripts')
         addFile(MAIN + '/scripts/metrics_health.py', '# stub\n')
         addFile(MAIN + '/traces/t.yaml', 'session_id: "t1"\nstatus: resolved\n'
@@ -2960,14 +2969,14 @@ _MS._run_no_pipe = no_fallback`)
           return t === r || t.startsWith(r + '/')
         }
         const fsMock = {
-          resolve: async (p, opts) => path.resolve((opts && opts.cwd) || '/', p),
+          resolve: async (p, opts) => presolve(p, opts),
           processPath: (t) => String(t),
           async listDir(target) {
             const p = String(target)
             if (!dirs.has(p)) throw notFound(p)
             return (dirs.get(p) || []).map(e => ({
-              name: e.name, type: e.type, target: path.join(p, e.name),
-              version: String(versions.get(path.join(p, e.name)) || 1),
+              name: e.name, type: e.type, target: pjoin(p, e.name),
+              version: String(versions.get(pjoin(p, e.name)) || 1),
             }))
           },
           async readText(target) {
@@ -2990,6 +2999,16 @@ _MS._run_no_pipe = no_fallback`)
             return { operation: 'write' }
           },
         }
+        // Windows 形态回归：这份 mock 的根是无盘符字面量，Windows 宿主会补盘符
+        // （path.resolve('/mock/repo') → D:\mock\repo）。下面用 Windows 输入字符串直接判：
+        // 反斜杠要归一成 `/` 且仍落在有效根下；归一后的仓外目标仍要被 under() 拒掉。
+        // 输入是 Windows 形态，所以在任何平台上跑都能抓到「退回 path.resolve」的回归。
+        expect('fs 写：盘符/反斜杠入参归一到有效根（解析不随平台补盘符）',
+          presolve('traces\\t.yaml', { cwd: MAIN }) === MAIN + '/traces/t.yaml',
+          String(presolve('traces\\t.yaml', { cwd: MAIN })))
+        expect('fs 写：归一后的仓外目标仍被拒（判据未放宽）',
+          under(MAIN, presolve('D:\\outside\\x', { cwd: MAIN })) === false,
+          String(presolve('D:\\outside\\x', { cwd: MAIN })))
         const hostSrcFs = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-host.js'), 'utf8')
         const boot = (ro) => {
           const regs = {}

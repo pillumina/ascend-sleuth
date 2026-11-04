@@ -17,11 +17,16 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import src_fetch  # noqa: E402
+from _stdio import pin_utf8_stdio  # noqa: E402
+
+# 脚本函数在本进程内被直接调用，print 也会写到测试进程的 stdout：Windows 上
+# 重定向成管道/文件时默认 cp936，非 GBK 字符（✓ ✗ ⚠）会直接抛 UnicodeEncodeError。
+pin_utf8_stdio()
 
 
 def run_find(*extra):
     return subprocess.run([sys.executable, str(ROOT / "scripts" / "src_fetch.py"), "--find", *extra],
-                          capture_output=True, text=True, cwd=str(ROOT))
+                          capture_output=True, text=True, encoding="utf-8", cwd=str(ROOT))
 
 
 class SignatureMatchingTest(unittest.TestCase):

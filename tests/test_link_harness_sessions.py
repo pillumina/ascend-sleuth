@@ -25,7 +25,7 @@ class ExplicitSessionIdTest(unittest.TestCase):
             [sys.executable, str(SCRIPTS / "link_harness_sessions.py"),
              "--repo", str(repo), "--trace", trace,
              "--session-id", "session-abc", "--apply"],
-            capture_output=True, text=True, timeout=20,
+            capture_output=True, text=True, encoding="utf-8", timeout=20,
         )
 
     def _trace(self, repo: Path, name: str, harness_line: str) -> Path:

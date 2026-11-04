@@ -1,4 +1,4 @@
-"""不变量：`scripts/` 下走**文本模式**的 subprocess 调用必须自己钉 `encoding="utf-8"`。
+"""不变量：`scripts/` 与 `tests/` 下走**文本模式**的 subprocess 调用必须自己钉 `encoding="utf-8"`。
 
 为什么写进结构而不是靠记性（原则二「不变量写进结构」）：`subprocess.run(..., text=True)` 不钉
 encoding 时按**本机 locale** 解码子进程输出，中文 Windows 上是 GBK；子进程只要打印 UTF-8 中文，
@@ -7,9 +7,13 @@ encoding 时按**本机 locale** 解码子进程输出，中文 Windows 上是 G
 报错里看不出真因（同仓 `exec_log_path` / `log_skill_exec` / `src_fetch` / `rehearse_evolve_loop`
 早已是"钉 utf-8 + errors=replace"的写法，纯靠各自记得）。
 
+2026-11 增补扫描面：这条不变量原来只扫 `scripts/`。Windows 检查套件的 ERROR 多数落在
+`tests/` 自己的 `subprocess(..., text=True)`——父进程按 GBK 解码子进程的 UTF-8 输出。只扫
+`scripts/` 时，测试侧这一半漏钉不报错：新测试照抄旧写法，Linux CI 全绿，Windows 上才失败。
+
 判的是**源码结构**，不是行为：AST 找 `subprocess.<run|check_output|call|check_call|Popen>` 里
-`text=True`（或 `universal_newlines=True`）而没有 `encoding=` 的调用点。这样新加的脚本自动被
-覆盖，不必往测试里补名字。
+`text=True`（或 `universal_newlines=True`）而没有 `encoding=` 的调用点。这样新加的脚本与测试
+自动被覆盖，不必往测试里补名字。
 """
 import ast
 import pathlib
@@ -17,6 +21,8 @@ import unittest
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 SCRIPTS = REPO / "scripts"
+TESTS = REPO / "tests"
+SCANNED = (("scripts", SCRIPTS), ("tests", TESTS))
 CALLS = {"run", "check_output", "call", "check_call", "Popen"}
 TEXT_KEYS = ("text", "universal_newlines")
 
@@ -59,13 +65,16 @@ def text_mode_calls_without_encoding(root: pathlib.Path):
 
 
 class SubprocessEncodingTest(unittest.TestCase):
-    def test_scripts_are_scanned_at_all(self):
-        # 前提自检：扫不到文件时这条不变量会假绿（脚本目录改名或挪位就会这样）。
-        py = list(SCRIPTS.glob("*.py"))
-        self.assertGreater(len(py), 20, f"{SCRIPTS} 下只找到 {len(py)} 个脚本，路径可能变了")
+    def test_roots_are_scanned_at_all(self):
+        # 前提自检：扫不到文件时这条不变量会假绿（目录改名或挪位就会这样）。
+        for label, root in SCANNED:
+            py = list(root.glob("*.py"))
+            self.assertGreater(len(py), 20, f"{label}/ 下只找到 {len(py)} 个文件，路径可能变了")
 
     def test_text_mode_calls_pin_utf8(self):
-        offenders = text_mode_calls_without_encoding(SCRIPTS)
+        offenders = []
+        for label, root in SCANNED:
+            offenders += [f"{label}/{x}" for x in text_mode_calls_without_encoding(root)]
         self.assertEqual(
             [], offenders,
             "这些 subprocess 调用开了文本模式却没钉 encoding=\"utf-8\"（中文 Windows 上会按 GBK 解码、"

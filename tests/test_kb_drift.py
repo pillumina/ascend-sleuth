@@ -33,7 +33,7 @@ def git(repo: Path, *args: str) -> str:
     r = subprocess.run(
         ["git", "-C", str(repo), "-c", "user.email=test@example.com",
          "-c", "user.name=test", *args],
-        capture_output=True, text=True, timeout=120,
+        capture_output=True, text=True, encoding="utf-8", timeout=120,
     )
     if r.returncode != 0:
         raise AssertionError(r.stderr)

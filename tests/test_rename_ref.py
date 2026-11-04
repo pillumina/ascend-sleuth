@@ -173,3 +173,17 @@ class FrozenArtifactGuardTest(unittest.TestCase):
         rr.main()
         body = (self.root / "eval/golden/F1.fixture.yaml").read_text(encoding="utf-8")
         self.assertIn("docs/new/eval.md", body)
+
+
+class LinkRelTest(unittest.TestCase):
+    """markdown 链接里的相对路径只认 `/`：Windows 的 relpath 返回反斜杠。
+
+    为什么值得单测：POSIX 上正常路径不含反斜杠，这条归一等于原样返回，Linux CI 跑不到
+    反斜杠输入。不直接喂 Windows 形态，`[eval.md](deep\\eval.md)` 的回归在 CI 上看不见。
+    """
+
+    def test_windows_separators_become_slashes(self):
+        self.assertEqual(rr._link_rel("deep\\eval.md"), "deep/eval.md")
+
+    def test_posix_paths_are_unchanged(self):
+        self.assertEqual(rr._link_rel("deep/eval.md"), "deep/eval.md")

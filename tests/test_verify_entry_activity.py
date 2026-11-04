@@ -23,6 +23,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import verify_entry_activity as v  # noqa: E402
+from _stdio import pin_utf8_stdio  # noqa: E402
+
+# 脚本函数在本进程内被直接调用，print 也会写到测试进程的 stdout：Windows 上
+# 重定向成管道/文件时默认 cp936，非 GBK 字符（✓ ✗ ⚠）会直接抛 UnicodeEncodeError。
+pin_utf8_stdio()
 
 HEADER = "# 测试用源文件\n"
 
