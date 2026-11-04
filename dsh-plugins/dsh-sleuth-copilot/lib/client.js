@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.12.0'
+    const PLUGIN_VERSION = '0.13.0'
     const POLL_MS = 10000
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
@@ -53,6 +53,11 @@ window.__ModuleLoader__.load({
       'action.refresh': '刷新',
       'action.expand': '展开状态条',
       'action.collapse': '收起状态条',
+      'action.collapseShort': '收起',
+      'action.keepOpen': '展开后常驻',
+      'action.keepOpenOff': '取消常驻',
+      'hint.keepOn': '状态条展开后常驻：点状态条外不再收起。',
+      'hint.keepOff': '状态条不再常驻：点状态条外收起。',
       'action.more': '更多操作',
       'action.ledger': '诊断总览',
       'action.copySummary': '复制结论摘要',
@@ -395,6 +400,11 @@ window.__ModuleLoader__.load({
       'action.refresh': 'Refresh',
       'action.expand': 'Expand status bar',
       'action.collapse': 'Collapse status bar',
+      'action.collapseShort': 'Collapse',
+      'action.keepOpen': 'Keep expanded',
+      'action.keepOpenOff': 'Stop keeping expanded',
+      'hint.keepOn': 'Status bar stays expanded: clicking outside no longer collapses it.',
+      'hint.keepOff': 'Status bar no longer stays expanded: clicking outside collapses it.',
       'action.more': 'More actions',
       'action.ledger': 'Diagnosis overview',
       'action.copySummary': 'Copy summary',
@@ -781,8 +791,12 @@ window.__ModuleLoader__.load({
       '.scp-btn--ghost:hover{background:var(--scp-surface-2);}',
       '.scp-icon{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:none;border-radius:7px;background:transparent;color:var(--scp-muted);cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
       '.scp-icon:hover{background:var(--scp-surface-2);color:var(--scp-text);}',
-      '.scp-icon:focus-visible,.scp-btn:focus-visible,.scp-tool-btn:focus-visible,.scp-case:focus-visible,.scp-scope:focus-visible,.scp-pal-row:focus-visible,.scp-filter-item:focus-visible,.scp-picker-row:focus-visible{outline:2px solid var(--scp-accent);outline-offset:2px;}',
+      '.scp-icon:focus-visible,.scp-collapse:focus-visible,.scp-btn:focus-visible,.scp-tool-btn:focus-visible,.scp-case:focus-visible,.scp-scope:focus-visible,.scp-pal-row:focus-visible,.scp-filter-item:focus-visible,.scp-picker-row:focus-visible{outline:2px solid var(--scp-accent);outline-offset:2px;}',
       '.scp-icon svg{display:block;}',
+      '.scp-pin[data-on="true"]{background:var(--scp-accent-soft);color:var(--scp-accent);}',
+      '.scp-collapse{flex:none;display:inline-flex;align-items:center;gap:2px;height:24px;padding:0 6px;border:none;border-radius:7px;background:transparent;color:var(--scp-muted);font:inherit;font-size:11px;line-height:1;cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
+      '.scp-collapse:hover{background:var(--scp-surface-2);color:var(--scp-text);}',
+      '.scp-collapse .scp-chevron{opacity:.7;}',
       '.scp-chevron{transition:transform 180ms ease;}',
       '.scp-chevron[data-open="true"]{transform:rotate(180deg);}',
       '.scp-empty-note{font-size:11px;line-height:1.6;color:var(--scp-faint);}',
@@ -993,7 +1007,7 @@ window.__ModuleLoader__.load({
 .scp-root[data-tone="idle"]{--scp-tone:var(--scp-idle);}
 .scp-pal button:focus-visible,.scp-view-tab:focus-visible,.scp-check-action:focus-visible,.scp-sed-row:focus-visible,.scp-cmd-item:focus-visible,.scp-pick:focus-visible,.scp-details-toggle:focus-visible,.scp-link:focus-visible{outline:2px solid var(--scp-accent);outline-offset:2px;}
 .scp-pal ::selection{background:var(--scp-accent-line);}
-@container (max-width: 720px){.scp-meta,.scp-chips{display:none;}.scp-case{font-size:12px;}.scp-status-text{display:none;}}
+@container (max-width: 720px){.scp-meta,.scp-chips{display:none;}.scp-case{font-size:12px;}.scp-status-text{display:none;}.scp-collapse-text{display:none;}}
 @media (max-width: 760px){
   .scp-pal{--scp-side-pad-x:16px;}
   .scp-pal-main{flex-direction:column;}
@@ -1128,8 +1142,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       none: { label: '没解决', outcome: 'not_resolved' },
     }
 
-    // ── 偏好（记住上次的展开状态与筛选）────────────────────────────────────
-    const DEFAULT_PREFS = { dockCollapsed: true, paletteFilter: 'all', pins: {} }
+    // ── 偏好（记住上次的展开状态、常驻与筛选）──────────────────────────────
+    const DEFAULT_PREFS = { dockCollapsed: true, dockKeepOpen: false, paletteFilter: 'all', pins: {} }
     function loadPrefs() {
       try {
         const raw = window.localStorage.getItem(PREFS_KEY)
@@ -1137,6 +1151,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const parsed = JSON.parse(raw)
         const prefs = Object.assign({}, DEFAULT_PREFS)
         if (parsed && typeof parsed.dockCollapsed === 'boolean') prefs.dockCollapsed = parsed.dockCollapsed
+        if (parsed && typeof parsed.dockKeepOpen === 'boolean') prefs.dockKeepOpen = parsed.dockKeepOpen
         if (parsed && FILTER_KEYS.indexOf(parsed.paletteFilter) >= 0) prefs.paletteFilter = parsed.paletteFilter
         if (parsed && parsed.pins && typeof parsed.pins === 'object' && !Array.isArray(parsed.pins)) {
           const pins = {}
@@ -1899,6 +1914,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         h('path', { d: 'M4.5 4.5l7 7M11.5 4.5l-7 7' }))
     }
 
+    function IconPin(props) {
+      return h('svg', { width: 14, height: 14, viewBox: '0 0 16 16', 'aria-hidden': 'true', fill: props && props.on ? 'currentColor' : 'none', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round', strokeLinejoin: 'round' },
+        h('path', { d: 'M6 2.2h4l-.5 3.1 2 2v1.2H4.5V7.3l2-2L6 2.2z' }),
+        h('path', { d: 'M8 8.7v5.1', fill: 'none' }))
+    }
+
     // ── 沉淀队列的小工具（只排版，不判状态；状态来自 sediment_state.py）──────
     const SED_CHIP_TONE = { warn: 'warn', bad: 'error', accent: 'brand', ok: 'success', gray: '' }
     const SED_DOT = { warn: 'var(--scp-warn)', bad: 'var(--scp-bad)', accent: 'var(--scp-accent)', ok: 'var(--scp-ok)', gray: 'var(--scp-faint)' }
@@ -2386,6 +2407,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
     // 安静的一行：状态点 + 可点的跟踪范围 + 人读案例标题 + 状态 + 进度 + 一个主操作。
     // 默认收起（偏好可改），第二行（元信息 / 在等什么 / 身份标签）按需展开。
     // 左端的范围标签同时是选择器：可以把这一栏固定到任意一单，而不是只跟「最近一单」。
+    // 输入类元素：点进这里不收起状态条，否则收起让输入区上移，正在定位光标的点击会被带偏。
+    function isEditableTarget(target) {
+      if (!target) return false
+      const tag = String(target.tagName || '').toUpperCase()
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
+      return target.isContentEditable === true
+    }
+
     function makeDock() {
       return function Dock(props) {
         const s = useStore()
@@ -2404,6 +2433,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const hintTimer = React.useRef(null)
         const inputRef = React.useRef(null)
         const rootRef = React.useRef(null)
+        const handleRef = React.useRef(null)
+        // 菜单/选择器刚被点击关闭的时刻：同一次手势不顺手收起状态条，过期自动失效
+        const menuDismissedAtRef = React.useRef(0)
+        // 键盘收起后把焦点放回收起态胶囊，别落回 body
+        const restoreFocusRef = React.useRef(false)
 
         const flash = React.useCallback((text) => {
           setHint(text)
@@ -2569,6 +2603,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               && (typeof Node === 'undefined' || event.target instanceof Node)
               && root.contains(event.target)
             if (inside) return
+            // 先关菜单/选择器；同一次手势不顺手收起状态条（click 处理器看这个时刻）
+            menuDismissedAtRef.current = Date.now()
             setMenuOpen(false)
             setPickerOpen(false)
           }
@@ -2577,12 +2613,79 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }, [menuOpen, pickerOpen])
 
         const collapsed = s.prefs.dockCollapsed
+        const keepOpen = !!s.prefs.dockKeepOpen
         const data = s.data
 
         function toggleCollapsed() {
+          // 展开是新一轮交互：上一次「关菜单」的标记不该带到现在
+          if (collapsed) menuDismissedAtRef.current = 0
           savePrefs({ dockCollapsed: !collapsed })
           setMenuOpen(false)
           setPickerOpen(false)
+        }
+
+        // 展开后点状态条外收起。点进可编辑区不收起：收起会让输入区上移，正在定位光标的点击会被带偏。
+        // 开了「展开后常驻」就不自动收起，只有点「收起」或按 Esc 才收。
+        // 状态条没渲染（取数中 / 无工作区）时不挂监听，否则点一下页面就把收起偏好写掉。
+        const hidden = s.phase === 'idle' || s.phase === 'loading'
+          || (data && data.ok === false && data.code === 'E_NO_ROOT')
+        React.useEffect(() => {
+          if (hidden || collapsed || keepOpen) return undefined
+          const onClick = (event) => {
+            // 刚被点关闭的菜单或选择器：这一次手势只关内层，不收起状态条；标记只用一次
+            const dismissedAt = menuDismissedAtRef.current
+            if (dismissedAt && Date.now() - dismissedAt < 600) {
+              menuDismissedAtRef.current = 0
+              return
+            }
+            const target = event && event.target
+            if (!target) return
+            if (typeof Node !== 'undefined' && !(target instanceof Node)) return
+            const root = rootRef.current
+            if (root && typeof root.contains === 'function' && root.contains(target)) return
+            if (isEditableTarget(target)) return
+            toggleCollapsed()
+          }
+          // 新手势一开始就清掉上一次的「关菜单」标记：右键与拖拽没有 click，标记不能留到下一次点击
+          const onDown = () => {
+            menuDismissedAtRef.current = 0
+          }
+          // 收尾点击本身不能触发收起：展开那次 click 冒泡到 document 时，监听器可能刚落上
+          const timer = setTimeout(() => document.addEventListener('click', onClick), 0)
+          document.addEventListener('mousedown', onDown, true)
+          return () => {
+            clearTimeout(timer)
+            document.removeEventListener('click', onClick)
+            document.removeEventListener('mousedown', onDown, true)
+          }
+        }, [hidden, collapsed, keepOpen])
+
+        React.useEffect(() => {
+          if (!collapsed || !restoreFocusRef.current) return
+          restoreFocusRef.current = false
+          const node = handleRef.current
+          if (node && typeof node.focus === 'function') node.focus()
+        }, [collapsed])
+
+        // 焦点在状态条内时 Esc 收起；菜单或选择器开着就先关内层。
+        function onRootKeyDown(event) {
+          if (!event || event.key !== 'Escape') return
+          const stop = typeof event.preventDefault === 'function' ? () => event.preventDefault() : () => {}
+          if (menuOpen) {
+            stop()
+            setMenuOpen(false)
+            setMenuForm(null)
+            return
+          }
+          if (pickerOpen) {
+            stop()
+            setPickerOpen(false)
+            return
+          }
+          if (collapsed) return
+          stop()
+          restoreFocusRef.current = true
+          toggleCollapsed()
         }
 
         function fillDraft(text) {
@@ -2617,6 +2720,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         function renderHandle(title, meta, pending) {
           return h('div', { className: 'scp-handle-wrap' },
             h('button', {
+              ref: handleRef,
               type: 'button',
               className: 'scp-handle',
               'data-idle': idle ? 'true' : 'false',
@@ -2631,6 +2735,34 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               IconChevron({ open: false })))
         }
 
+        // 展开态的两个控制：「展开后常驻」开关与带文字的收起按钮（窄容器只留箭头）。
+        function renderKeepOpen() {
+          return h('button', {
+            type: 'button',
+            className: 'scp-icon scp-pin',
+            'data-on': keepOpen ? 'true' : 'false',
+            'aria-pressed': keepOpen ? 'true' : 'false',
+            'aria-label': tr('action.keepOpen'),
+            title: keepOpen ? tr('action.keepOpenOff') : tr('action.keepOpen'),
+            onClick: () => {
+              savePrefs({ dockKeepOpen: !keepOpen })
+              flash(keepOpen ? tr('hint.keepOff') : tr('hint.keepOn'))
+            },
+          }, IconPin({ on: keepOpen }))
+        }
+
+        function renderCollapse() {
+          return h('button', {
+            type: 'button',
+            className: 'scp-collapse',
+            'aria-label': tr('action.collapse'),
+            title: tr('action.collapse'),
+            onClick: toggleCollapsed,
+          },
+            h('span', { className: 'scp-collapse-text' }, tr('action.collapseShort')),
+            IconChevron({ open: true }))
+        }
+
         const failed = s.phase === 'error' || (data && data.ok === false)
         if (failed) {
           const message = s.phase === 'error' ? s.message : (data && data.message ? data.message : tr('title.error'))
@@ -2638,14 +2770,16 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             return h('section', Object.assign({}, rootProps, { className: 'scp-root', 'data-mode': 'error', 'data-tone': 'error' }),
               renderHandle(tr('title.error'), null, false))
           }
-          return h('section', Object.assign({}, rootProps, { className: 'scp-root', 'data-mode': 'error', 'data-tone': 'error' }),
+          return h('section', Object.assign({}, rootProps, { ref: rootRef, className: 'scp-root', 'data-mode': 'error', 'data-tone': 'error', onKeyDown: onRootKeyDown }),
             h('div', { className: 'scp-surface' },
               h('div', { className: 'scp-head' },
                 h('span', { className: 'scp-ring', 'aria-hidden': 'true' }),
                 h('span', { className: 'scp-badge' }, tr('title.error')),
                 h('span', { className: 'scp-wait', title: message }, message),
                 h('span', { className: 'scp-spacer' }),
-                h('button', { type: 'button', className: 'scp-btn', onClick: () => refresh(true) }, tr('action.retry')))))
+                h('button', { type: 'button', className: 'scp-btn', onClick: () => refresh(true) }, tr('action.retry')),
+                renderKeepOpen(),
+                renderCollapse())))
         }
 
         const allRows = (data.all || [])
@@ -2658,7 +2792,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             return h('section', Object.assign({}, rootProps, { className: 'scp-root', 'data-mode': 'empty', 'data-tone': 'idle' }),
               renderHandle(tr('empty.collapsed'), null, false))
           }
-          return h('section', Object.assign({}, rootProps, { className: 'scp-root', 'data-mode': 'empty', 'data-tone': 'idle' }),
+          return h('section', Object.assign({}, rootProps, { ref: rootRef, className: 'scp-root', 'data-mode': 'empty', 'data-tone': 'idle', onKeyDown: onRootKeyDown }),
             h('div', { className: 'scp-surface' },
               h('div', { className: 'scp-head' },
                 h('span', { className: 'scp-ring', 'aria-hidden': 'true' }),
@@ -2669,13 +2803,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   className: 'scp-btn scp-btn--quiet',
                   onClick: () => fillDraft('/skill:diagnose '),
                 }, tr('action.start')),
-                h('button', {
-                  type: 'button',
-                  className: 'scp-icon',
-                  'aria-label': collapsed ? tr('action.expand') : tr('action.collapse'),
-                  title: collapsed ? tr('action.expand') : tr('action.collapse'),
-                  onClick: toggleCollapsed,
-                }, IconChevron({ open: !collapsed }))),
+                renderKeepOpen(),
+                renderCollapse()),
               collapsed ? null : h('div', { className: 'scp-foot' },
                 h('span', { className: 'scp-empty-note' }, tr('empty.body')))))
         }
@@ -2830,6 +2959,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           'data-live': derived.open ? 'true' : 'false',
           'data-pending': isPending(primary) ? 'true' : 'false',
           'data-flash': flashStep ? 'true' : 'false',
+          onKeyDown: onRootKeyDown,
         }),
           picker,
           menu,
@@ -2861,13 +2991,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 'aria-expanded': menuOpen ? 'true' : 'false',
                 onClick: () => { setMenuForm(null); setMenuOpen((value) => !value); setPickerOpen(false) },
               }, IconMore()),
-              h('button', {
-                type: 'button', className: 'scp-icon',
-                'aria-label': collapsed ? tr('action.expand') : tr('action.collapse'),
-                title: collapsed ? tr('action.expand') : tr('action.collapse'),
-                'aria-expanded': collapsed ? 'false' : 'true',
-                onClick: toggleCollapsed,
-              }, IconChevron({ open: !collapsed }))),
+              renderKeepOpen(),
+              renderCollapse()),
             collapsed ? null : h('div', { className: 'scp-foot' },
               StepRail({ extra }),
               metaBits.length ? h('span', { className: 'scp-meta' }, metaBits.join(' · ')) : null,

@@ -16,6 +16,7 @@ const storage = new Map()
 const moduleDefs = []
 const copied = []
 const keyHandlers = new Set()
+const documentHandlers = new Map()
 const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
 
 globalThis.window = {
@@ -40,8 +41,14 @@ globalThis.document = {
   }),
   body: { appendChild() {}, removeChild() {} },
   head: { appendChild() {} },
-  addEventListener() {},
-  removeEventListener() {},
+  addEventListener(type, fn) {
+    if (!documentHandlers.has(type)) documentHandlers.set(type, new Set())
+    documentHandlers.get(type).add(fn)
+  },
+  removeEventListener(type, fn) {
+    const set = documentHandlers.get(type)
+    if (set) set.delete(fn)
+  },
   execCommand: () => true,
 }
 Object.defineProperty(globalThis, 'navigator', {
@@ -63,7 +70,22 @@ function pressKey(key, extra) {
   }
 }
 
+// 在 document 上触发一次事件（收起用的 click 监听挂在这里）
+function fireDocument(type, target) {
+  for (const fn of Array.from(documentHandlers.get(type) || [])) {
+    fn({ type, target, preventDefault() {}, stopPropagation() {} })
+  }
+}
+
 // ── 最小 React 替身（按组件实例记录 hook，支持 deps） ──────────────────────
+function containsNode(host, target) {
+  if (host === target) return true
+  for (const child of host.children || []) {
+    if (child && typeof child === 'object' && containsNode(child, target)) return true
+  }
+  return false
+}
+
 function createRenderer() {
   const instances = new Map()
   let effects = []
@@ -140,11 +162,16 @@ function createRenderer() {
       }
       return renderNode(rendered, path + '/')
     }
-    return {
+    const rendered = {
       type: node.type,
       props: node.props,
       children: (node.children || []).map((child, index) => renderNode(child, path + ':' + index)),
     }
+    // 让根节点的 ref 与 contains 可用：判断一次点击是不是发生在状态条内部
+    rendered.contains = (target) => containsNode(rendered, target)
+    const ref = node.props && node.props.ref
+    if (ref && typeof ref === 'object') ref.current = rendered
+    return rendered
   }
 
   async function settle() {
@@ -640,6 +667,12 @@ async function mount(mode, options) {
     click(node) {
       click(node)
     },
+    documentClick(target) {
+      fireDocument('click', target)
+    },
+    documentMouseDown(target) {
+      fireDocument('mousedown', target)
+    },
     pressKey,
     lastTransition() {
       const calls = rpcCalls.filter((call) => call.endpoint === 'copilot-transition')
@@ -669,7 +702,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：主按钮是回报结果', !!findButton(view, '回报结果'))
   expect('最近一单：显示身份标签（知识库未覆盖）', view.text.includes('知识库未覆盖'))
   expect('最近一单：显示已排除条数', view.text.includes('已排除 3 条'))
-  expect('最近一单：版本串 0.12.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.12.0'))
+  expect('最近一单：版本串 0.13.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.13.0'))
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
   expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
 }
@@ -686,6 +719,112 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('展开后：foot 出现', byClass(after, 'scp-foot').length === 1)
   const prefs = JSON.parse(storage.get(PREFS_KEY))
   expect('展开后：偏好已记住', prefs && prefs.dockCollapsed === false, JSON.stringify(prefs))
+}
+
+{
+  // 收起有三条路：点外部、Esc、右上角带文字的「收起」
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  const view = t.view()
+  const collapse = findAria(view, '收起状态条')
+  expect('收起方式：展开态有「收起」按钮', !!collapse && nodeText(collapse) === '收起')
+  t.documentClick({ tagName: 'DIV' })
+  const after = await t.settle()
+  expect('收起方式：点状态条外收起', byClass(after, 'scp-handle').length === 1)
+  expect('收起方式：点外部收起写进偏好', JSON.parse(storage.get(PREFS_KEY)).dockCollapsed === true)
+}
+
+{
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  const view = t.view()
+  t.documentClick(findButton(view, '回报结果'))
+  let after = await t.settle()
+  expect('收起方式：点条内不收起', byClass(after, 'scp-foot').length === 1)
+  t.documentClick({ tagName: 'TEXTAREA' })
+  after = await t.settle()
+  expect('收起方式：点输入框不收起', byClass(after, 'scp-foot').length === 1)
+  t.documentClick({ tagName: 'DIV' })
+  after = await t.settle()
+  expect('收起方式：非输入类外部点击照常收起', byClass(after, 'scp-handle').length === 1)
+}
+
+{
+  // 常驻偏好：开了点外部不收起；按钮能关掉
+  const t = await mount('recent', { prefs: { dockCollapsed: false, dockKeepOpen: true, paletteFilter: 'all', pins: {} } })
+  t.documentClick({ tagName: 'DIV' })
+  let after = await t.settle()
+  expect('常驻：点外部不收起', byClass(after, 'scp-foot').length === 1)
+  const pin = findNode(after, (node) => node.type === 'button' && node.props && node.props['aria-pressed'] === 'true')
+  expect('常驻：按钮标出已开', !!pin && pin.props['aria-label'] === '展开后常驻')
+  click(pin)
+  after = await t.settle()
+  expect('常驻：点按钮关掉', JSON.parse(storage.get(PREFS_KEY)).dockKeepOpen === false)
+  t.documentClick({ tagName: 'DIV' })
+  after = await t.settle()
+  expect('常驻：关掉后点外部收起', byClass(after, 'scp-handle').length === 1)
+}
+
+{
+  // Esc：菜单开着先关菜单，再按一次才收起
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  click(findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] === '更多操作'))
+  view = await t.settle()
+  expect('Esc：菜单先打开', byClass(view, 'scp-menu').length === 1)
+  byClass(view, 'scp-root')[0].props.onKeyDown({ key: 'Escape', preventDefault() {} })
+  view = await t.settle()
+  expect('Esc：先关菜单', byClass(view, 'scp-menu').length === 0)
+  expect('Esc：关菜单不收起状态条', byClass(view, 'scp-foot').length === 1)
+  byClass(view, 'scp-root')[0].props.onKeyDown({ key: 'Escape', preventDefault() {} })
+  view = await t.settle()
+  expect('Esc：再按收起状态条', byClass(view, 'scp-handle').length === 1)
+}
+
+{
+  // 菜单外点一下只关菜单，不顺手把状态条也收掉
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findNode(t.view(), (node) => node.type === 'button' && node.props && node.props['aria-label'] === '更多操作'))
+  await t.settle()
+  t.documentMouseDown({ tagName: 'DIV' })
+  t.documentClick({ tagName: 'DIV' })
+  let view = await t.settle()
+  expect('菜单：同一次点击只关菜单', byClass(view, 'scp-menu').length === 0 && byClass(view, 'scp-foot').length === 1)
+  t.documentClick({ tagName: 'DIV' })
+  view = await t.settle()
+  expect('菜单：下一次点外部收起', byClass(view, 'scp-handle').length === 1)
+}
+
+{
+  // 右键 / 拖拽只产生 mousedown、没有 click：关闭标记不能留到下一次点击
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findNode(t.view(), (node) => node.type === 'button' && node.props && node.props['aria-label'] === '更多操作'))
+  await t.settle()
+  t.documentMouseDown({ tagName: 'DIV' })
+  await t.settle()
+  t.documentMouseDown({ tagName: 'DIV' })
+  t.documentClick({ tagName: 'DIV' })
+  const view = await t.settle()
+  expect('菜单：只 mousedown 的手势不吞下一次点击', byClass(view, 'scp-handle').length === 1)
+}
+
+{
+  // 错误态与空态同样有收起入口与常驻开关
+  const t = await mount('error', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  expect('错误态：有「收起」按钮', !!findAria(view, '收起状态条'))
+  expect('错误态：有「展开后常驻」按钮', !!findAria(view, '展开后常驻'))
+  click(findAria(view, '收起状态条'))
+  view = await t.settle()
+  expect('错误态：点「收起」收起成胶囊', byClass(view, 'scp-handle').length === 1)
+}
+
+{
+  const t = await mount('empty', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  expect('空态：有「收起」按钮', !!findAria(view, '收起状态条'))
+  expect('空态：有「展开后常驻」按钮', !!findAria(view, '展开后常驻'))
+  click(findAria(view, '收起状态条'))
+  view = await t.settle()
+  expect('空态：点「收起」收起成胶囊', byClass(view, 'scp-handle').length === 1)
 }
 
 {
