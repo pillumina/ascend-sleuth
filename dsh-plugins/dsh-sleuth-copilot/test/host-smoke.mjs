@@ -6,7 +6,8 @@
 // 状态写入的真实参数与返回（写操作全部在系统临时目录里的 trace 副本上做，仓库不被改）。
 
 import { exec, execSync } from 'node:child_process'
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -63,6 +64,32 @@ const TRACE_FIXTURE = [
   '',
 ].join('\n')
 
+// 老单夹具：已收尾但缺收尾方式（补记收尾方式的写通道用它），current_step 写成非数字，
+// 读侧要把它降级成 0 而不是让整行失败。updated_at 早于主夹具，保证列表里主夹具排前面。
+const TRACE2_ID = '2026-08-01-copilot-legacy'
+const TRACE2_FILE = TRACE2_ID + '.yaml'
+const TRACE2_FIXTURE = [
+  'session_id: "' + TRACE2_ID + '"',
+  'status: resolved',
+  'current_step: "第三步"',
+  'summary: "老单夹具：已定位但缺收尾方式；current_step 非数字。"',
+  'created_at: "2026-08-01T10:00:00+08:00"',
+  'updated_at: "2026-08-01T10:00:00+08:00"',
+  'detected_framework: vllm-ascend',
+  'detected_platform: A3-910C',
+  'detected_category: interrupt',
+  'feedback:',
+  '  case: ""',
+  '  outcome: pending',
+  'active_case: ""',
+  'harness_session: "legacy-session"',
+  'trace:',
+  '  - role: user',
+  '    step: 1',
+  '    content: "老单用户事件"',
+  '',
+].join('\n')
+
 // ── 临时检出：scripts / knowledge / trace-status.yaml 走符号链接，traces 用自带夹具 ──
 const SANDBOX = mkdtempSync(join(tmpdir(), 'scp-host-'))
 mkdirSync(join(SANDBOX, 'traces'))
@@ -81,6 +108,8 @@ try {
   execSync('git config user.name smoke', { cwd: SANDBOX, stdio: 'ignore' })
   writeFileSync(join(SANDBOX, '.smoke-commit'), 'seed\n', 'utf8')
   execSync('git add .smoke-commit && git commit -qm seed', { cwd: SANDBOX, stdio: 'ignore' })
+  // PR 目标要有一个能选的远端（只写 .git/config，不探测网络）。
+  execSync('git remote add origin https://github.com/pillumina/ascend-sleuth.git', { cwd: SANDBOX, stdio: 'ignore' })
 } catch {
   hasGit = false
 }
@@ -118,9 +147,33 @@ function makeShell() {
   }
 }
 
+// 只改「子进程结果」的假 shell：用来验证超时 / 中止 / 沙箱拒绝各自映射成哪个错误码。
+// 解释器探测（`--version`）照常成功——失败注入针对的是数据脚本本身。
+function makeResultShell(result) {
+  return {
+    resolve(request) {
+      return request
+    },
+    async execute(spec) {
+      if (typeof spec.command === 'string' && / --version$/.test(spec.command)) {
+        return {
+          result: () => Promise.resolve({
+            exitCode: 0, timedOut: false, aborted: false,
+            stdout: { text: 'Python 3.11.0' }, stderr: { text: '' },
+          }),
+        }
+      }
+      return { result: () => Promise.resolve(result) }
+    },
+  }
+}
+
 function makeHarness(ctxExtra) {
   let route = null
   const effects = []
+  // 默认可写档位：真机上 sandbox-policy 服务总在；这里只给一个稳定的 workspace-write，
+  // 让写断言走的是「档位可写」这条分支。传 sandboxPolicy: undefined 可以模拟解析不出的情形。
+  const defaultPolicy = { resolve: () => ({ mode: 'workspace-write', workspaceRoot: SANDBOX }) }
   const webCtx = {
     effect(fn) {
       const cleanup = fn()
@@ -145,8 +198,14 @@ function makeHarness(ctxExtra) {
       return cleanup
     },
     get(name) {
-      if (name === 'shell') return makeShell()
+      if (name === 'shell') return (ctxExtra && ctxExtra.shell) || makeShell()
       if (name === 'connection') return { rpc: {} }
+      if (name === 'sandboxPolicy') {
+        if (ctxExtra && Object.prototype.hasOwnProperty.call(ctxExtra, 'sandboxPolicy')) {
+          return ctxExtra.sandboxPolicy
+        }
+        return defaultPolicy
+      }
       if (ctxExtra && ctxExtra[name] !== undefined) return ctxExtra[name]
       return undefined
     },
@@ -195,6 +254,12 @@ async function readReport(harness, payload, rpcId) {
   }, '/sleuth-copilot/copilot-report')
 }
 
+async function prTarget(harness, payload, rpcId) {
+  return request(harness, {
+    type: 'client-request', rpcId: rpcId || 'pr', method: 'copilot-pr-target', payload,
+  }, '/sleuth-copilot/copilot-pr-target')
+}
+
 async function request(harness, body, url) {
   const response = makeResponse()
   await harness.getRoute().handler(makeRequest(body, url), response)
@@ -216,6 +281,13 @@ function expect(name, condition, detail) {
     failures += 1
     process.stdout.write('  FAIL ' + name + (detail ? ' — ' + detail : '') + '\n')
   }
+}
+
+// 脚本侧失败分两种信封：host 自己的错误是平铺的 `{ok:false, code}`，
+// pr_status.py 的 `_fail` 是嵌套的 `{ok:false, error:{code}}`。断言两种都认。
+function resultCode(value) {
+  if (!value || typeof value !== 'object') return ''
+  return String(value.code || (value.error && value.error.code) || '')
 }
 
 const mod = await import(join(ROOT, 'lib', 'index.js'))
@@ -316,6 +388,58 @@ if (hasGit) {
   const targetValue = targetRead.envelope && targetRead.envelope.result && targetRead.envelope.result.value
   expect('目标：端点返回 ok', targetValue && targetValue.ok === true, JSON.stringify(targetValue))
   expect('目标：remotes 是数组', targetValue && Array.isArray(targetValue.remotes), JSON.stringify(targetValue && targetValue.remotes))
+
+  // PR 台账写动作：list 带出台账指纹，mark / set-target 带 --expect-sha256，
+  // 指纹过期时由脚本的 CAS 拦下；check 的令牌在 host 侧先比一次（脚本内部另有一道）。
+  const ledgerPath = join(SANDBOX, 'postmortems', 'inbox', '.groom', 'pr-state.json')
+  mkdirSync(dirname(ledgerPath), { recursive: true })
+  const ledgerDoc = {
+    schema: 'groom-pr-state/v1',
+    updated_at: '',
+    target: null,
+    prs: {
+      'demo-draft': {
+        platform: 'github', repo: 'pillumina/ascend-sleuth', number: 1,
+        url: 'https://github.com/pillumina/ascend-sleuth/pull/1', state: 'open',
+        source: 'ledger', created_at: '2026-08-01T00:00:00+00:00',
+      },
+    },
+  }
+  writeFileSync(ledgerPath, JSON.stringify(ledgerDoc, null, 2) + '\n', 'utf8')
+  const ledgerSha = createHash('sha256').update(readFileSync(ledgerPath)).digest('hex')
+  const listWithLedger = await prTarget(rw, { cwd: SANDBOX, action: 'list' }, 'pr-list-2')
+  const listWithLedgerValue = listWithLedger.envelope.result.value
+  expect('目标：list 返回台账指纹', listWithLedgerValue && listWithLedgerValue.sha256 === ledgerSha, JSON.stringify(listWithLedgerValue && listWithLedgerValue.sha256))
+  const markOk = await prTarget(rw, {
+    cwd: SANDBOX, sessionId: 'smoke-session', action: 'mark',
+    key: 'demo-draft', state: 'merged', expectSha256: ledgerSha,
+  }, 'pr-mark-1')
+  const markOkValue = markOk.envelope.result.value
+  expect('目标：mark 写台账 ok', markOkValue && markOkValue.ok === true && markOkValue.pr && markOkValue.pr.state === 'merged', JSON.stringify(markOkValue))
+  const markStale = await prTarget(rw, {
+    cwd: SANDBOX, sessionId: 'smoke-session', action: 'mark',
+    key: 'demo-draft', state: 'open', expectSha256: ledgerSha,
+  }, 'pr-mark-2')
+  const markStaleValue = markStale.envelope.result.value
+  expect('目标：mark 旧指纹被 CAS 拦下', markStaleValue && markStaleValue.ok === false && resultCode(markStaleValue) === 'E_CAS', JSON.stringify(markStaleValue))
+  const setTargetOk = await prTarget(rw, {
+    cwd: SANDBOX, sessionId: 'smoke-session', action: 'set-target',
+    remote: 'origin', base: 'main', expectSha256: markOkValue && markOkValue.sha256,
+  }, 'pr-target-2')
+  const setTargetOkValue = setTargetOk.envelope.result.value
+  expect('目标：set-target 写台账 ok', setTargetOkValue && setTargetOkValue.ok === true, JSON.stringify(setTargetOkValue))
+  const setTargetStale = await prTarget(rw, {
+    cwd: SANDBOX, sessionId: 'smoke-session', action: 'set-target',
+    remote: 'origin', base: 'main', expectSha256: markOkValue && markOkValue.sha256,
+  }, 'pr-target-3')
+  const setTargetStaleValue = setTargetStale.envelope.result.value
+  expect('目标：set-target 旧指纹被 CAS 拦下', setTargetStaleValue && setTargetStaleValue.ok === false && resultCode(setTargetStaleValue) === 'E_CAS', JSON.stringify(setTargetStaleValue))
+  const checkStale = await prTarget(rw, {
+    cwd: SANDBOX, sessionId: 'smoke-session', action: 'check',
+    key: 'demo-draft', expectSha256: '0'.repeat(64),
+  }, 'pr-check-stale')
+  const checkStaleValue = checkStale.envelope.result.value
+  expect('目标：check 旧指纹在 host 侧被拦下（不花一次平台查询）', checkStaleValue && checkStaleValue.ok === false && resultCode(checkStaleValue) === 'E_CAS', JSON.stringify(checkStaleValue))
 }
 
 const reportMissing = await readReport(rw, { cwd: SANDBOX, tracesDir: TRACES, traceSessionId: '2026-01-01-no-such' }, 'report-2')
@@ -390,6 +514,203 @@ const badId = await transition(rw, {
   }, 'write-6')
 expect('写：单据号带路径被拒', badId.envelope.result.value.ok === false && badId.envelope.result.value.code === 'E_SCHEMA')
 
+// ── canonical traces、终态写入映射与子进程失败映射 ──────────────────────────
+
+// tracesDir 由客户端带回，但只有「本会话检出的 traces/」与「主检出的 traces/」两种合法；
+// 别的绝对路径不能当写沙箱根，也不能拿它读报告。
+const currentSha = sedValue && sedValue.current && sedValue.current.sha256
+const outsideTraces = await transition(rw, {
+    sessionId: 'smoke-session', cwd: SANDBOX, traceSessionId: TRACE_ID,
+    tracesDir: tmpdir(), expectSha256: currentSha, kind: 'reopen',
+  }, 'write-outside-traces')
+const outsideTracesValue = outsideTraces.envelope.result.value
+expect('写：tracesDir 越界被拒 E_SCHEMA', outsideTracesValue && outsideTracesValue.ok === false && outsideTracesValue.code === 'E_SCHEMA', JSON.stringify(outsideTracesValue))
+
+const outsideReport = await readReport(rw, {
+  cwd: SANDBOX, tracesDir: tmpdir(), traceSessionId: TRACE_ID,
+}, 'report-outside')
+const outsideReportValue = outsideReport.envelope.result.value
+expect('报告：tracesDir 越界被拒 E_SCHEMA', outsideReportValue && outsideReportValue.ok === false && outsideReportValue.code === 'E_SCHEMA', JSON.stringify(outsideReportValue))
+
+// archived 缺收尾方式：脚本要求 ending.kind，host 不替它编一个。
+const archivedNoKind = await transition(rw, {
+    sessionId: 'smoke-session', cwd: SANDBOX, traceSessionId: TRACE_ID,
+    tracesDir: TRACES, expectSha256: currentSha, kind: 'close', to: 'archived',
+  }, 'write-archived-no-kind')
+const archivedNoKindValue = archivedNoKind.envelope.result.value
+expect('写收尾（archived 缺 kind）：E_SCHEMA', archivedNoKindValue && archivedNoKindValue.ok === false && archivedNoKindValue.code === 'E_SCHEMA', JSON.stringify(archivedNoKindValue))
+
+// 终态单改收尾方式：先回到 resolved，再改成 escalated（--correct-ending）。
+const closeAgain = await transition(rw, {
+    sessionId: 'smoke-session', cwd: SANDBOX, traceSessionId: TRACE_ID,
+    tracesDir: TRACES, expectSha256: currentSha, kind: 'close', to: 'resolved', endingKind: 'root_cause',
+  }, 'write-close-again')
+const closeAgainValue = closeAgain.envelope.result.value
+expect('写收尾（再收一次）：ok', closeAgainValue && closeAgainValue.ok === true, JSON.stringify(closeAgainValue))
+const corrected = await transition(rw, {
+    sessionId: 'smoke-session', cwd: SANDBOX, traceSessionId: TRACE_ID,
+    tracesDir: TRACES, expectSha256: closeAgainValue && closeAgainValue.current && closeAgainValue.current.sha256,
+    kind: 'correct-ending', to: 'escalated', endingKind: 'handed_off', handedTo: '张工 · CANN 组',
+  }, 'write-correct-ending')
+const correctedValue = corrected.envelope.result.value
+expect('写改收尾方式：ok 且落到 escalated', correctedValue && correctedValue.ok === true && correctedValue.to === 'escalated', JSON.stringify(correctedValue))
+const afterCorrect = readFileSync(join(TRACES, TRACE_FILE), 'utf8')
+expect('写改收尾方式：文件里是 handed_off', /kind: "?handed_off"?/.test(afterCorrect) && /status: "?escalated"?/.test(afterCorrect), (afterCorrect.match(/^status:.*$/m) || [''])[0])
+
+// 报告读取支持 traces/ 下的子目录，但 realpath 后必须仍在 traces/ 里。
+mkdirSync(join(TRACES, 'exports'), { recursive: true })
+writeFileSync(join(TRACES, 'exports', 'sub.report.md'), '# 子目录报告\n', 'utf8')
+const subReport = await readReport(rw, {
+  cwd: SANDBOX, tracesDir: TRACES, traceSessionId: TRACE_ID, reportFile: 'traces/exports/sub.report.md',
+}, 'report-sub')
+const subReportValue = subReport.envelope.result.value
+expect('报告：支持 traces/ 子目录', subReportValue && subReportValue.ok === true
+  && subReportValue.text.includes('子目录报告') && subReportValue.file === 'traces/exports/sub.report.md', JSON.stringify(subReportValue))
+const secretFile = join(SANDBOX, 'outside-secret.md')
+writeFileSync(secretFile, '不该被读到\n', 'utf8')
+symlinkSync(secretFile, join(TRACES, 'escape.md'))
+const escapedReport = await readReport(rw, {
+  cwd: SANDBOX, tracesDir: TRACES, traceSessionId: TRACE_ID, reportFile: 'escape.md',
+}, 'report-escape')
+const escapedValue = escapedReport.envelope.result.value
+expect('报告：符号链接越界被拒 E_SCHEMA', escapedValue && escapedValue.ok === false && escapedValue.code === 'E_SCHEMA', JSON.stringify(escapedValue))
+
+// 老单（已收尾、缺收尾方式）加进来：验证补记收尾方式的写通道与读侧降级。
+writeFileSync(join(TRACES, TRACE2_FILE), TRACE2_FIXTURE, 'utf8')
+const stateWithLegacy = await request(rw, {
+  type: 'client-request', rpcId: 'state-legacy', method: 'copilot-state',
+  payload: { sessionId: 'smoke-session', cwd: SANDBOX, refresh: true },
+})
+const legacyStateValue = stateWithLegacy.envelope.result.value
+const legacyRow = legacyStateValue && Array.isArray(legacyStateValue.all)
+  ? legacyStateValue.all.find((item) => item.sessionId === TRACE2_ID) : null
+expect('读：薄行保留 file 并透传 actions', legacyRow && legacyRow.file === TRACE2_FILE
+  && Array.isArray(legacyRow.actions) && legacyRow.actions.some((action) => action.id === 'reopen'),
+  JSON.stringify(legacyRow && { file: legacyRow.file, actions: legacyRow.actions }))
+expect('读：非数字 current_step 降级为 0', legacyRow && legacyRow.extra
+  && legacyRow.extra.currentStep === 0 && legacyRow.extra.maxSteps > 0, JSON.stringify(legacyRow && legacyRow.extra))
+expect('读：fixEmitted 透传到薄行与 extra', legacyRow
+  && Object.prototype.hasOwnProperty.call(legacyRow, 'fixEmitted') && legacyRow.fixEmitted === null
+  && legacyRow.extra.fixEmitted === null, JSON.stringify(legacyRow && legacyRow.fixEmitted))
+const legacyTraceSha = createHash('sha256').update(readFileSync(join(TRACES, TRACE2_FILE))).digest('hex')
+const backfill = await transition(rw, {
+    sessionId: 'smoke-session', cwd: SANDBOX, traceSessionId: TRACE2_ID, traceFile: TRACE2_FILE,
+    tracesDir: TRACES, expectSha256: legacyTraceSha, kind: 'backfill-ending', endingKind: 'root_cause',
+  }, 'write-backfill')
+const backfillValue = backfill.envelope.result.value
+expect('写补记收尾方式：ok', backfillValue && backfillValue.ok === true, JSON.stringify(backfillValue))
+const afterBackfill = readFileSync(join(TRACES, TRACE2_FILE), 'utf8')
+expect('写补记收尾方式：文件里是 root_cause 且状态未变', /kind: "?root_cause"?/.test(afterBackfill)
+  && /status: "?resolved"?/.test(afterBackfill), (afterBackfill.match(/^status:.*$/m) || [''])[0])
+
+// worktree 会话：读写落到主检出的 traces/（canonical 允许这一种）。
+const WT = mkdtempSync(join(tmpdir(), 'scp-wt-'))
+const wtMeta = join(SANDBOX, '.git', 'worktrees', 'smoke-wt')
+mkdirSync(wtMeta, { recursive: true })
+writeFileSync(join(WT, '.git'), 'gitdir: ' + wtMeta + '\n')
+writeFileSync(join(wtMeta, 'commondir'), '../..\n')
+writeFileSync(join(wtMeta, 'gitdir'), join(WT, '.git') + '\n')
+writeFileSync(join(wtMeta, 'HEAD'), 'ref: refs/heads/main\n')
+symlinkSync(join(REPO, 'scripts'), join(WT, 'scripts'), 'dir')
+symlinkSync(join(REPO, 'knowledge'), join(WT, 'knowledge'), 'dir')
+copyFileSync(join(REPO, 'trace-status.yaml'), join(WT, 'trace-status.yaml'))
+const wtState = await request(rw, {
+  type: 'client-request', rpcId: 'state-worktree', method: 'copilot-state',
+  payload: { sessionId: 'smoke-session', cwd: WT },
+})
+const wtValue = wtState.envelope.result.value
+expect('worktree：检出根是自己的，traces 落到主检出', wtValue && wtValue.ok === true
+  && wtValue.repoRoot === WT && wtValue.tracesDir === TRACES,
+  JSON.stringify(wtValue && { root: wtValue.repoRoot, traces: wtValue.tracesDir }))
+const wtWrite = await transition(rw, {
+    sessionId: 'smoke-session', cwd: WT, traceSessionId: TRACE2_ID, traceFile: TRACE2_FILE,
+    tracesDir: TRACES, expectSha256: backfillValue && backfillValue.current && backfillValue.current.sha256,
+    kind: 'reopen',
+  }, 'write-worktree')
+const wtWriteValue = wtWrite.envelope.result.value
+expect('worktree：写落到主检出的 traces（reopen ok）', wtWriteValue && wtWriteValue.ok === true, JSON.stringify(wtWriteValue))
+rmSync(WT, { recursive: true, force: true })
+
+// 参数文件无论成功、失败都清掉，且只有本进程这一份命名前缀。
+const leftovers = readdirSync(tmpdir()).filter((name) => name.startsWith('sleuth-copilot-' + process.pid + '-'))
+expect('写参数文件：调用结束后不留临时文件', leftovers.length === 0, leftovers.join(','))
+
+// ── 子进程失败映射（超时 / 中止 / 沙箱拒绝）────────────────────────────────
+const timeoutHarness = makeHarness({
+  shell: makeResultShell({ exitCode: null, timedOut: true, aborted: false, stdout: { text: '' }, stderr: { text: '' } }),
+})
+mod.apply(timeoutHarness.ctx)
+const timeoutState = await request(timeoutHarness, {
+  type: 'client-request', rpcId: 'state-timeout', method: 'copilot-state',
+  payload: { sessionId: 'smoke-timeout', cwd: SANDBOX },
+})
+const timeoutValue = timeoutState.envelope.result.value
+expect('子进程超时：E_TIMEOUT', timeoutValue && timeoutValue.ok === false && timeoutValue.code === 'E_TIMEOUT', JSON.stringify(timeoutValue))
+
+const abortHarness = makeHarness({
+  shell: makeResultShell({ exitCode: null, timedOut: false, aborted: true, stdout: { text: '' }, stderr: { text: '' } }),
+})
+mod.apply(abortHarness.ctx)
+const abortState = await request(abortHarness, {
+  type: 'client-request', rpcId: 'state-abort', method: 'copilot-state',
+  payload: { sessionId: 'smoke-abort', cwd: SANDBOX },
+})
+const abortValue = abortState.envelope.result.value
+expect('子进程中止：E_ABORT', abortValue && abortValue.ok === false && abortValue.code === 'E_ABORT', JSON.stringify(abortValue))
+
+const deniedHarness = makeHarness({
+  shell: makeResultShell({
+    exitCode: 1, timedOut: false, aborted: false,
+    sandbox: { denied: true, mode: 'workspace-write' },
+    stdout: { text: '' }, stderr: { text: '' },
+  }),
+})
+mod.apply(deniedHarness.ctx)
+const deniedState = await request(deniedHarness, {
+  type: 'client-request', rpcId: 'state-denied', method: 'copilot-state',
+  payload: { sessionId: 'smoke-denied', cwd: SANDBOX },
+})
+const deniedValue = deniedState.envelope.result.value
+expect('沙箱拒绝：E_PERM 且文案点明沙箱', deniedValue && deniedValue.ok === false
+  && deniedValue.code === 'E_PERM' && /沙箱/.test(deniedValue.message), JSON.stringify(deniedValue))
+
+const truncatedHarness = makeHarness({
+  shell: makeResultShell({
+    exitCode: 0, timedOut: false, aborted: false,
+    stdout: { text: '', truncated: true }, stderr: { text: '' },
+  }),
+})
+mod.apply(truncatedHarness.ctx)
+const truncatedState = await request(truncatedHarness, {
+  type: 'client-request', rpcId: 'state-truncated', method: 'copilot-state',
+  payload: { sessionId: 'smoke-truncated', cwd: SANDBOX },
+})
+const truncatedValue = truncatedState.envelope.result.value
+expect('输出截断：E_TRUNCATED', truncatedValue && truncatedValue.ok === false
+  && truncatedValue.code === 'E_TRUNCATED', JSON.stringify(truncatedValue))
+
+// 沙箱档位解析不出：读照常，写按只读拒绝（不把「服务缺席」当「未限制」）。
+const noPolicyHarness = makeHarness({ sandboxPolicy: undefined })
+mod.apply(noPolicyHarness.ctx)
+const noPolicyState = await request(noPolicyHarness, {
+  type: 'client-request', rpcId: 'state-no-policy', method: 'copilot-state',
+  payload: { sessionId: 'smoke-no-policy', cwd: SANDBOX },
+})
+const noPolicyValue = noPolicyState.envelope.result.value
+expect('无档位：读照常但能力位不可写', noPolicyValue && noPolicyValue.ok === true
+  && noPolicyValue.capabilities && noPolicyValue.capabilities.canWrite === false
+  && noPolicyValue.capabilities.reasonCode === 'E_POLICY'
+  && /档位/.test(String(noPolicyValue.capabilities.reason)),
+  JSON.stringify(noPolicyValue && noPolicyValue.capabilities))
+const noPolicyWrite = await transition(noPolicyHarness, {
+    sessionId: 'smoke-no-policy', cwd: SANDBOX, traceSessionId: TRACE2_ID, traceFile: TRACE2_FILE,
+    tracesDir: TRACES, expectSha256: backfillValue && backfillValue.current && backfillValue.current.sha256,
+    kind: 'reopen',
+  }, 'write-no-policy')
+const noPolicyWrote = noPolicyWrite.envelope.result.value
+expect('无档位：写入被拒 E_POLICY（不当成可写）', noPolicyWrote && noPolicyWrote.ok === false
+  && noPolicyWrote.code === 'E_POLICY', JSON.stringify(noPolicyWrote))
+
 // ── 只读会话 ────────────────────────────────────────────────────────────────
 const ro = makeHarness({
   sandboxPolicy: { resolve: () => ({ mode: 'read-only' }) },
@@ -427,7 +748,7 @@ const wrongResponse = makeResponse()
 await rw.getRoute().handler(wrongMethod, wrongResponse)
 expect('非 POST：405', wrongResponse.captured.status === 405)
 
-for (const harness of [rw, ro]) {
+for (const harness of [rw, ro, timeoutHarness, abortHarness, deniedHarness, truncatedHarness, noPolicyHarness]) {
   for (const cleanup of harness.effects) {
     try {
       cleanup()
