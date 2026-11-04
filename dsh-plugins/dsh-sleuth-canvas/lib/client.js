@@ -5997,7 +5997,7 @@ html[data-mode="dark"] .sc-root{
     radial-gradient(72% 58% at 50% 42%, color-mix(in srgb, var(--sc-accent) 5%, transparent), transparent 72%),
     var(--sc-surface);
 }
-.sc-canvas-wrap{position:absolute;inset:0;overflow:hidden;container-type:inline-size;container-name:sc-canvas}
+.sc-canvas-wrap{position:absolute;inset:0;overflow:hidden;container-type:size;container-name:sc-canvas}
 .sc-canvas-wrap.is-hidden{display:none}
 .sc-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
 .sc-canvas:active{cursor:grabbing}
@@ -6056,7 +6056,7 @@ html[data-mode="dark"] .sc-root{
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* 底部停靠区：快捷键提示 / 图例 / 回放条共用一条排版，不再各自绝对定位到同一个左下角。
-   右侧留出迷你地图的宽度（168 + 16 边距），回放条不会盖住它。 */
+   右侧留出迷你地图的宽度（168 宽 + 16 右边距 + 30 空隙 = 214px），回放条不会盖住它。 */
 .sc-canvas-dock{
   position:absolute;left:0;right:0;bottom:0;z-index:5;
   display:grid;grid-template-columns:auto minmax(0,1fr);align-items:end;
@@ -6106,6 +6106,8 @@ html[data-mode="dark"] .sc-root{
   box-shadow:var(--sc-shadow-float);max-width:100%;min-width:0;
 }
 .sc-replay.is-idle{padding:5px 7px}
+/* 活动态占满主格：不拉伸时轨道只剩 min-width，刻度文字会互压。600 够「340 轨道 + 固定控件」。 */
+.sc-replay.is-active{width:100%;max-width:600px}
 .sc-replay-start{
   appearance:none;border:0;display:flex;align-items:center;gap:7px;
   padding:6px 12px 6px 10px;border-radius:var(--sc-r-pill);
@@ -6411,18 +6413,24 @@ html[data-mode="dark"] .sc-root{
   .sc-replay-count{display:none}
 }
 
-/* ── 画布底部停靠区：按画布宽度降级（容器名 sc-canvas，宽度取 .sc-canvas-wrap）── */
-@container sc-canvas (max-width:980px){
+/* ── 画布底部停靠区：按画布尺寸降级（容器名 sc-canvas，尺寸取 .sc-canvas-wrap）── */
+/* 一排要放下「图例 360 + 回放条」；画布 ≤1100 时横向装不下，改成两行（提示/图例在上、回放条贴底），
+   回放条才能拿到足够宽的进度轨道。 */
+@container sc-canvas (max-width:1100px){
   .sc-canvas-dock{grid-template-columns:minmax(0,1fr);gap:8px}
   .sc-dock-side{max-width:min(360px,100%)}
 }
 @container sc-canvas (max-width:620px){
   .sc-replay-speed{display:none}
 }
-/* 迷你地图在画布宽 <560 时不画（引擎 MINIMAP_MIN_W），右侧那 214px 留白可以收回；
-   用 559 而不是 560：CSS 宽度可能带小数，卡在 559.x 时引擎仍会画迷你地图，留白要留住。 */
+/* 迷你地图在画布宽 <560 时不画（引擎 MINIMAP_MIN_W），右侧那 214px 留白可以收回。
+   边界写 559 是保守取值：引擎按取整后的宽度判（Math.round），宁可多留白也不让回放条压到迷你地图。 */
 @container sc-canvas (max-width:559px){
   .sc-canvas-dock{padding-right:10px}
+}
+/* 画布太矮时缩放钮会顶出画布上沿（底部 132px + 108px 高），摘掉它。 */
+@container sc-canvas (max-height:240px){
+  .sc-zoom{display:none}
 }
 
 

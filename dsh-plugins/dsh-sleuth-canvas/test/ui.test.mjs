@@ -379,21 +379,38 @@ test('底部停靠区：图例 / 提示 / 回放条由同一容器排布，不�
   const cssSC = {}
   vm.runInContext(cssSrc, vm.createContext({ SC: cssSC, console }), { filename: '40-css.js' })
   const css = cssSC.css
-  function rule(selector) {
-    const start = css.indexOf(selector + '{')
+  // 按选择器取**全部**同名规则：只在第一条上做断言时，末尾再追加一条覆盖规则就能绕过。
+  function rules(selector) {
+    const out = []
+    let from = 0
+    let start = css.indexOf(selector + '{', from)
     assert.ok(start >= 0, '缺少样式: ' + selector)
-    return css.slice(start, css.indexOf('}', start) + 1)
+    while (start >= 0) {
+      out.push(css.slice(start, css.indexOf('}', start) + 1))
+      from = start + 1
+      start = css.indexOf(selector + '{', from)
+    }
+    return out
+  }
+  function rule(selector) {
+    return rules(selector)[0]
   }
 
   assert.match(rule('.sc-canvas-dock'), /position:absolute/, '停靠区是画布内唯一的底部定位容器')
-  assert.match(rule('.sc-canvas-wrap'), /container-type:inline-size/, '覆盖件按画布宽度降级，需要画布自己的容器查询')
+  assert.match(rule('.sc-canvas-wrap'), /container-type:size/, '覆盖件按画布宽高降级，需要画布自己的容器查询')
   assert.match(rule('.sc-canvas-wrap'), /container-name:sc-canvas/)
   for (const selector of ['.sc-legend', '.sc-hint', '.sc-replay']) {
-    assert.doesNotMatch(rule(selector), /position:absolute/, selector + ' 应由 .sc-canvas-dock 排布：各自绝对定位正是重叠的成因')
+    for (const body of rules(selector)) {
+      assert.doesNotMatch(body, /position:absolute/, selector + ' 应由 .sc-canvas-dock 排布：各自绝对定位正是重叠的成因')
+      assert.doesNotMatch(body, /(^|[;{])\s*(left|top|right|bottom)\s*:/, selector + ' 不应再声明定位边：改成停靠区子项后由 grid 排布')
+    }
   }
+  // 活动态必须占满停靠区主格：不拉伸时轨道会塌到 min-width，刻度文字互压。
+  assert.match(rule('.sc-replay.is-active'), /width:100%/, '回放活动态要占满主格')
   const narrow = css.slice(css.indexOf('@container sc-canvas'))
   assert.ok(narrow.length > 0, '应有按画布宽度（容器名 sc-canvas）的降级规则')
   assert.match(narrow, /sc-canvas-dock/, '窄画布下降级的是停靠区本身')
+  assert.match(narrow, /max-height:240px/, '画布太矮时要摘掉会顶出上沿的缩放钮')
 })
 
 test('fixtures 形状自检：buildGraph 不吃未定义字段', () => {

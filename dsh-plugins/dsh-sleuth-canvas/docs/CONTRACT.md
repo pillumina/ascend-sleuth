@@ -364,7 +364,7 @@ SC.theme.currentPalette() -> {
 - hover 节点 → 高亮 + DOM tooltip（标题 + 一行副文），tooltip 位置来自 `engine.nodeRect(idx)`。
 - 滚轮缩放、拖拽平移、双击适配；右下迷你地图。
 - 回放：底部停靠区主格的「▶ 回放」条 → 按事件顺序聚光 + 相机跟随 + inspector 跟随 + 进度条（每个 step 一个刻度）；空格播放/暂停，`Esc` 退出；速度 0.5×/1×/2×。
-- 底部停靠区：快捷键提示、图例、回放条同处 `.sc-canvas-dock`（左格 `.sc-dock-side` 是提示 + 图例，主格 `.sc-dock-main` 是回放条），右侧留出迷你地图宽度；三者**不得**各自 `position:absolute` 到同一个底角，那是重叠的成因。
+- 底部停靠区：快捷键提示、图例、回放条同处 `.sc-canvas-dock`（左格 `.sc-dock-side` 是提示 + 图例，主格 `.sc-dock-main` 是回放条），右侧平时留出迷你地图宽度、画布窄到不画迷你地图时收回；回放活动态占满主格，否则进度轨道会塌到最小宽度。三者**不得**各自 `position:absolute` 到同一个底角，那是重叠的成因。
 - 键盘：`←/→` 上/下一个事件，`f` 适配，`+/-` 缩放，`Esc` 取消。
 - 搜索：左侧列表按 id/summary/framework 过滤。
 - 空态：无 traces 时给一条说明 + 可复制的命令 `/skill:diagnose`；加载态给骨架；错误态给错误原文 + 重试按钮。
