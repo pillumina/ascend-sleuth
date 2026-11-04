@@ -375,6 +375,69 @@ test('40-css.js 契约：调色板 / 容器查询 / 动效三档 / 无 transitio
   }
 })
 
+test('底部停靠区：图例 / 提示 / 回放条由同一容器排布，不再各自绝对定位', () => {
+  const cssSC = {}
+  vm.runInContext(cssSrc, vm.createContext({ SC: cssSC, console }), { filename: '40-css.js' })
+  const css = cssSC.css
+  // 按花括号配平收集每条规则（嵌套在 @container 里的也算）。
+  // 只认字面量 `selector{` 会漏掉 `.sc-legend {`（花括号前有空格）与 `.sc-legend,.x{`（分组）两种写法，
+  // 末尾追加一条这样的覆盖规则就能绕过断言。
+  function collectRules(source) {
+    const text = source.replace(/\/\*[\s\S]*?\*\//g, '') // 注释不算选择器
+    const out = []
+    const stack = []
+    let pending = ''
+    for (let i = 0; i < text.length; i += 1) {
+      const ch = text[i]
+      if (ch === '{') {
+        stack.push({ prelude: pending.trim(), start: i + 1 })
+        pending = ''
+      } else if (ch === '}') {
+        const top = stack.pop()
+        if (top) out.push({ prelude: top.prelude, body: text.slice(top.start, i) })
+        pending = ''
+      } else {
+        pending += ch
+      }
+    }
+    return out
+  }
+  function hasSelector(prelude, selector) {
+    if (prelude.indexOf('@') === 0) return false
+    return prelude.split(',').map(function (item) { return item.trim() }).indexOf(selector) !== -1
+  }
+  function rules(selector) {
+    const out = collectRules(css).filter(function (item) { return hasSelector(item.prelude, selector) })
+    assert.ok(out.length > 0, '缺少样式: ' + selector)
+    return out.map(function (item) { return item.prelude + '{' + item.body + '}' })
+  }
+  function rule(selector) {
+    return rules(selector)[0]
+  }
+  // 扫描器自检：花括号前有空格也要认出来（否则这条断言本身就挡不住回归）。
+  const probe = collectRules(css + '\n.sc-legend {position:absolute;left:14px;bottom:14px}')
+  assert.ok(
+    probe.some(function (item) { return hasSelector(item.prelude, '.sc-legend') && /position:absolute/.test(item.body) }),
+    '扫描器要能识别花括号前带空格的覆盖规则',
+  )
+
+  assert.match(rule('.sc-canvas-dock'), /position:absolute/, '停靠区是画布内唯一的底部定位容器')
+  assert.match(rule('.sc-canvas-wrap'), /container-type:size/, '覆盖件按画布宽高降级，需要画布自己的容器查询')
+  assert.match(rule('.sc-canvas-wrap'), /container-name:sc-canvas/)
+  for (const selector of ['.sc-legend', '.sc-hint', '.sc-replay']) {
+    for (const body of rules(selector)) {
+      assert.doesNotMatch(body, /position:absolute/, selector + ' 应由 .sc-canvas-dock 排布：各自绝对定位正是重叠的成因')
+      assert.doesNotMatch(body, /(^|[;{])\s*(left|top|right|bottom)\s*:/, selector + ' 不应再声明定位边：改成停靠区子项后由 grid 排布')
+    }
+  }
+  // 活动态必须占满停靠区主格：不拉伸时轨道会塌到 min-width，刻度文字互压。
+  assert.match(rule('.sc-replay.is-active'), /width:100%/, '回放活动态要占满主格')
+  const narrow = css.slice(css.indexOf('@container sc-canvas'))
+  assert.ok(narrow.length > 0, '应有按画布宽度（容器名 sc-canvas）的降级规则')
+  assert.match(narrow, /sc-canvas-dock/, '窄画布下降级的是停靠区本身')
+  assert.match(narrow, /max-height:256px/, '画布太矮时要摘掉会顶出上沿的缩放钮')
+})
+
 test('fixtures 形状自检：buildGraph 不吃未定义字段', () => {
   const graph = model.buildGraph(detail)
   assert.deepEqual(plain(graph.meta), { stepCount: 6, eventCount: 15, conclusionIndex: 13 })
@@ -687,6 +750,15 @@ test('页面渲染冒烟：list → detail → 选中 → 回放 → Esc 全流�
   assert.equal(harness.findAll(tree, 'sc-insight').length, detail.insights.length)
   assert.equal(harness.findAll(tree, 'sc-legend-item').length, 8, '图例按家族去重：现场/分诊/检索/核验/先验/命中/归因/收尾')
   assert.equal(harness.findAll(tree, 'sc-replay').length, 1)
+  // 三个底部覆盖件必须挂在同一个停靠区里，各占一格；分开绝对定位就会重新叠在一起。
+  const dock = harness.findAll(tree, 'sc-canvas-dock')[0]
+  assert.ok(dock, '画布应有底部停靠区')
+  const dockSide = harness.findAll(dock, 'sc-dock-side')[0]
+  const dockMain = harness.findAll(dock, 'sc-dock-main')[0]
+  assert.ok(dockSide && dockMain, '停靠区应有左格（提示 + 图例）与主格（回放条）')
+  assert.equal(harness.findAll(dockSide, 'sc-legend').length, 1, '图例在左格')
+  assert.equal(harness.findAll(dockSide, 'sc-hint').length, 1, '快捷键提示在左格')
+  assert.equal(harness.findAll(dockMain, 'sc-replay').length, 1, '回放条在主格')
   assert.ok(harness.textOf(tree).includes('vllm-ascend'))
   assert.ok(harness.textOf(tree).includes('已定位'))
   assert.ok(harness.textOf(tree).includes('诊断画布'))

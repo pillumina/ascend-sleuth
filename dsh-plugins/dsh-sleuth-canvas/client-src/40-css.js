@@ -229,7 +229,7 @@ html[data-mode="dark"] .sc-root{
     radial-gradient(72% 58% at 50% 42%, color-mix(in srgb, var(--sc-accent) 5%, transparent), transparent 72%),
     var(--sc-surface);
 }
-.sc-canvas-wrap{position:absolute;inset:0;overflow:hidden}
+.sc-canvas-wrap{position:absolute;inset:0;overflow:hidden;container-type:size;container-name:sc-canvas}
 .sc-canvas-wrap.is-hidden{display:none}
 .sc-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
 .sc-canvas:active{cursor:grabbing}
@@ -287,10 +287,23 @@ html[data-mode="dark"] .sc-root{
 .sc-tooltip-meta{margin-top:5px;font-family:var(--sc-mono);font-size:10px;line-height:1.4;color:var(--sc-text3);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
+/* 底部停靠区：快捷键提示 / 图例 / 回放条共用一条排版，不再各自绝对定位到同一个左下角。
+   右侧留出迷你地图的宽度（168 宽 + 16 右边距 + 30 空隙 = 214px），回放条不会盖住它。 */
+.sc-canvas-dock{
+  position:absolute;left:0;right:0;bottom:0;z-index:5;
+  display:grid;grid-template-columns:auto minmax(0,1fr);align-items:end;
+  gap:10px;padding:0 214px 14px 14px;pointer-events:none;
+}
+/* 停靠区只让真正的控件接收指针事件：格子本身透明，不能挡住画布拖拽与点选。 */
+.sc-canvas-dock,.sc-dock-side,.sc-dock-main{pointer-events:none}
+.sc-canvas-dock .sc-hint,.sc-canvas-dock .sc-legend,.sc-canvas-dock .sc-replay{pointer-events:auto}
+.sc-dock-side{display:flex;flex-direction:column;align-items:flex-start;gap:6px;min-width:0;max-width:min(360px,52cqw)}
+.sc-dock-main{display:flex;justify-content:center;min-width:0}
+
 /* 图例 */
 .sc-legend{
-  position:absolute;left:14px;bottom:14px;z-index:3;display:flex;flex-direction:column;gap:5px;
-  max-width:calc(100% - 28px);padding:7px 9px;border:1px solid var(--sc-line);border-radius:var(--sc-r-md);
+  display:flex;flex-direction:column;gap:5px;max-width:100%;min-width:0;
+  padding:7px 9px;border:1px solid var(--sc-line);border-radius:var(--sc-r-md);
   background:color-mix(in srgb, var(--sc-layer1) 76%, transparent);
   -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
 }
@@ -300,7 +313,7 @@ html[data-mode="dark"] .sc-root{
   cursor:pointer;
 }
 .sc-legend-toggle:hover{color:var(--sc-text)}
-.sc-legend-items{display:flex;flex-wrap:wrap;gap:5px 11px;max-width:min(520px,60cqw)}
+.sc-legend-items{display:flex;flex-wrap:wrap;gap:5px 11px;max-width:100%}
 .sc-legend-item{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--sc-text2);white-space:nowrap}
 .sc-legend-count{font-family:var(--sc-mono);font-size:10px;color:var(--sc-text3)}
 .sc-dot{width:7px;height:7px;border-radius:50%;background:var(--dot,var(--sc-feedback));flex-shrink:0}
@@ -318,14 +331,15 @@ html[data-mode="dark"] .sc-root{
 
 /* 回放条 */
 .sc-replay{
-  position:absolute;left:50%;bottom:16px;transform:translateX(-50%);z-index:5;
   display:flex;align-items:center;gap:10px;padding:7px 9px;border-radius:var(--sc-r-pill);
   border:1px solid var(--sc-line-strong);
   background:color-mix(in srgb, var(--sc-layer1) 84%, transparent);
   -webkit-backdrop-filter:blur(16px) saturate(1.15);backdrop-filter:blur(16px) saturate(1.15);
-  box-shadow:var(--sc-shadow-float);max-width:calc(100% - 28px);
+  box-shadow:var(--sc-shadow-float);max-width:100%;min-width:0;
 }
 .sc-replay.is-idle{padding:5px 7px}
+/* 活动态占满主格：不拉伸时轨道只剩 min-width，刻度文字会互压。600 够「340 轨道 + 固定控件」。 */
+.sc-replay.is-active{width:100%;max-width:600px}
 .sc-replay-start{
   appearance:none;border:0;display:flex;align-items:center;gap:7px;
   padding:6px 12px 6px 10px;border-radius:var(--sc-r-pill);
@@ -341,7 +355,7 @@ html[data-mode="dark"] .sc-root{
 }
 .sc-replay-play:hover{filter:brightness(1.07)}
 .sc-replay-track{
-  position:relative;width:clamp(150px,26cqw,340px);height:22px;flex-shrink:0;
+  position:relative;flex:1 1 clamp(150px,26cqw,340px);min-width:76px;max-width:340px;height:22px;
   border-radius:var(--sc-r-pill);background:color-mix(in srgb, var(--sc-text) 8%, transparent);cursor:pointer;
 }
 .sc-replay-fill{
@@ -573,7 +587,6 @@ html[data-mode="dark"] .sc-root{
   .sc-top-btn.sc-insp-toggle{display:inline-flex}
   .sc-insp-headbar{padding:10px 14px 6px}
   .sc-insp-body{padding:0 14px 12px}
-  .sc-replay{bottom:14px}
 }
 @container (max-width:900px){
   .sc-body{grid-template-columns:56px minmax(0,1fr)}
@@ -607,8 +620,6 @@ html[data-mode="dark"] .sc-root{
   .sc-root[data-list="open"] .sc-list-main{display:flex}
   .sc-root[data-list="open"] .sc-list-toggle{display:flex}
   .sc-skel-chips{width:180px}
-  .sc-legend-items{max-width:44cqw}
-  .sc-replay-track{width:clamp(120px,30cqw,260px)}
 }
 @container (max-width:720px){
   .sc-header{padding:9px 12px 8px;column-gap:10px}
@@ -620,12 +631,9 @@ html[data-mode="dark"] .sc-root{
   .sc-canvas-top{left:10px;top:10px;max-width:calc(100% - 20px);padding:8px 10px}
   .sc-canvas-summary{display:none}
   .sc-zoom{right:10px;bottom:132px}
-  .sc-legend{left:10px;bottom:10px}
-  .sc-legend-items{max-width:38cqw}
+  .sc-canvas-dock{padding:0 214px 10px 10px}
   .sc-replay{gap:7px;padding:6px 8px}
-  .sc-replay-track{width:clamp(90px,26cqw,190px)}
   .sc-replay-count{min-width:44px;font-size:10px}
-  .sc-replay-speed{display:none}
   .sc-replay-tick-label{display:none}
   .sc-inspector{left:8px;right:8px;bottom:8px;max-height:62%}
   .sc-insp-foot .sc-btn{font-size:10.5px}
@@ -635,6 +643,25 @@ html[data-mode="dark"] .sc-root{
   .sc-chip:nth-child(n+3){display:none}
   .sc-summary-toggle{display:none}
   .sc-replay-count{display:none}
+}
+
+/* ── 画布底部停靠区：按画布尺寸降级（容器名 sc-canvas，尺寸取 .sc-canvas-wrap）── */
+/* 一排要放下「图例 360 + 回放条」；画布 ≤1100 时横向装不下，改成两行（提示/图例在上、回放条贴底），
+   回放条才能拿到足够宽的进度轨道。 */
+@container sc-canvas (max-width:1100px){
+  .sc-canvas-dock{grid-template-columns:minmax(0,1fr);gap:8px}
+  .sc-dock-side{max-width:min(360px,100%)}
+}
+@container sc-canvas (max-width:620px){
+  .sc-replay-speed{display:none}
+}
+/* 迷你地图在画布宽 <560 时不画（引擎 MINIMAP_MIN_W），右侧那 214px 留白可以收回。
+   边界写 559 是保守取值：引擎按取整后的宽度判（Math.round），宁可多留白也不让回放条压到迷你地图。 */
+@container sc-canvas (max-width:559px){
+  .sc-canvas-dock{padding-right:10px}
+}
+/* 画布太矮时缩放钮会顶出画布上沿：宽画布 bottom 是 148px、窄画布 132px，取大的算 148 + 108 = 256。 */
+@container sc-canvas (max-height:256px){
   .sc-zoom{display:none}
 }
 
@@ -715,13 +742,16 @@ html[data-mode="dark"] .sc-root{
 .sc-mark{font-size:10.5px;padding:1px 6px;border-radius:999px;border:1px solid var(--sc-line);color:var(--sc-text2);white-space:nowrap;background:color-mix(in srgb, var(--sc-layer1) 65%, transparent)}
 
 .sc-hint{
-  position:absolute;left:14px;bottom:14px;z-index:5;display:flex;align-items:center;gap:8px;
-  max-width:calc(100% - 230px);padding:6px 8px 6px 11px;border-radius:999px;border:1px solid var(--sc-line);
+  display:flex;align-items:flex-start;gap:8px;max-width:100%;min-width:0;
+  padding:6px 8px 6px 11px;border-radius:10px;border:1px solid var(--sc-line);
   background:color-mix(in srgb, var(--sc-layer1) 84%, transparent);
   -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
   font-size:11px;color:var(--sc-text2);animation:sc-fade-in var(--sc-m-slow) var(--sc-ease) both;
 }
-.sc-hint-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-hint-text{
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;overflow-wrap:anywhere;line-height:1.5;
+}
 .sc-hint-close{appearance:none;border:0;background:transparent;color:var(--sc-text3);width:16px;height:16px;display:flex;align-items:center;justify-content:center;border-radius:50%;cursor:pointer;flex-shrink:0}
 .sc-hint-close:hover{color:var(--sc-text);background:color-mix(in srgb, var(--sc-text) 10%, transparent)}
 
@@ -741,7 +771,6 @@ html[data-mode="dark"] .sc-root{
 }
 @container (max-width:720px){
   .sc-conclusion-badges{display:none}
-  .sc-hint{max-width:calc(100% - 32px)}
 }
 
 /* ── 动效 ─────────────────────────────────────────────────────────────── */
