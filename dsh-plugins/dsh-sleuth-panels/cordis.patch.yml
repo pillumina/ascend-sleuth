@@ -1,4 +1,4 @@
-# ascend-sleuth 面板（常驻插件包）：诊断 + 指标（ascend-panel）、自演进（ev-panel）三个 tab。
+# ascend-sleuth 面板（常驻插件包）：诊断 + 指标（ascend-panel）、自演进（ev-panel）三个 tab；整页内另有知识库子页。
 #
 # 装法：plugin_manager install_bundle(target: <本目录绝对路径>)。装进当前 profile 后
 # 每个会话都在、重启不丢。host 半一条 connection RPC 路由承载两个面板的所有端点，

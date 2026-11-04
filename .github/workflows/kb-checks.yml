@@ -507,6 +507,8 @@ jobs:
       # ① 浏览器半用最小 React 替身跑四个面、收起偏好、写入参数与台账键盘；
       # ② Host 半走真实 shell → Python → JSON，写操作只在临时目录的 trace 副本上做，仓库不被改。
       # CI 里没有 gh，上游能力位会报未就绪——冒烟只断言它是布尔值，不依赖本机登录态。
+      # 整页包的知识库子页：状态、同步源、两个开关、保存与失败降级（假 ctx，不联网）。
+      - run: node dsh-plugins/dsh-sleuth-panels/test/knowledge-tab-smoke.mjs
       - run: node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs
       - run: node dsh-plugins/dsh-sleuth-copilot/test/host-smoke.mjs
       # 独立整页包 canvas：client 半是 `build.mjs` 从 client-src 拼出的生成物，先判产物与源一致；

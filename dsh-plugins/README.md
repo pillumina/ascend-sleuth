@@ -1,6 +1,6 @@
 # dsh-plugins —— 面板共通约定
 
-本目录下是 DSH 会话里加载的可视化面板（诊断 / 指标 / 自演进），以及两个独立包：诊断状态条交互层
+本目录下是 DSH 会话里加载的可视化面板（诊断 / 指标 / 自演进 / 知识库），以及两个独立包：诊断状态条交互层
 （`dsh-sleuth-copilot`，占输入区与浮层，不占面板的 tab）与诊断画布整页（`dsh-sleuth-canvas`，左侧栏
 图标 + 主区整页，离线渲染 `traces/`）。**每个包的 README 讲它自己的信息架构；
 本文件讲面板之间必须一致的约定**——色语、排版、文案。放着不统一的后果是实测过的：同一界面里两个
@@ -48,7 +48,7 @@
 整页「Ascend Sleuth」（`sleuth-console/`）：`main` 的 keyed 条目 `ascend-sleuth-console` + 侧栏图标
 （`sidebar.panellist` 同一个 id）。没有会话也能打开；每个会话不再各记一份"停在哪个全局页"。
 
-三个源文件共用一张视图登记表 `SLEUTH_VIEWS`（生成器在包里建）：两个面板 apply 时把视图写进去，整页按
+三个源文件共用一张视图登记表 `SLEUTH_VIEWS`（生成器在包里建）：两个面板 apply 时把视图写进去，整页自己也登记知识库视图，整页按
 id 取来渲染。**动态热加载路径没有这个对象**，面板因此退回三个 `conversation.view` tab（该路径保持旧形态，
 见 `skills/preload-panel/SKILL.md`）。
 
@@ -112,8 +112,8 @@ B、C、D 三条路用的是同一个插件管理器，差别只在谁去调它�
   `owner.webServer` 就会抛（in-app 的 dsh-ppt 也把这一步包在 try/catch 里，真正干活的是它自己注册的路由）。
 - `host.call` → 调同一个 channel；失败抛错（面板各处的 `.catch` 就是照这个写的）。
   它只在组件挂载时才发生，所以靠**渲染**来验：`check_panel_bundle.js` 用 mock React（effect 同步跑、
-  `createElement` 递归调用函数组件）把三个界面的首屏各渲染一次——诊断 tab、Ascend Sleuth的指标子页（按
-  `props.view` 选）、自演进子页——断言它们分别真的发出了 `ascend-traces-list` /
+  `createElement` 递归调用函数组件）把三个界面的首屏各渲染一次——诊断 tab、Ascend Sleuth 的指标子页（按
+  `props.view` 选）、自演进子页（知识库子页由插件自带冒烟覆盖）——断言它们分别真的发出了 `ascend-traces-list` /
   `ascend-metrics-verdict` / `ev-board-load`，且渲染期无异常；真机那一次
   仍归 `panel_rpc_probe.js`（同一条线协议）。
 - `styles.insert` → 自建 style 标签（client 沙箱给每个包注入的那个）。
