@@ -987,8 +987,8 @@ window.__ModuleLoader__.load({
 .scp-pal .scp-chip[data-tone="error"]{color:var(--scp-bad);background:var(--scp-bad-soft);border-color:color-mix(in srgb,var(--scp-bad) 26%,var(--scp-border));}
 .scp-pal .scp-step{font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
 .scp-hero-meta>.scp-step,.scp-hero-meta>.scp-code{margin-left:auto;}
-/* 诊断详情抬头：一行识别信息 + 问题背景（可展开）。
-   真机 trace 的 summary 首句常有一两百字，当标题放大加粗会占掉详情的大半屏；这里把它降到
+/* 诊断详情抬头（识别行）：一行状态与身份 + 问题背景（可展开）。
+   真机 trace 的 summary 首句常见一两百到七八百字，当标题放大加粗会占掉详情的大半屏；这里把它降到
    正文层级，只让错误码、路径、函数调用走等宽字，靠字符宽度差异而不是字重区分。 */
 .scp-identity{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;}
 .scp-identity .scp-badge,.scp-identity .scp-chip{height:20px;padding:0 8px;border-radius:5px;font-size:var(--scp-fs-meta);line-height:1;}
