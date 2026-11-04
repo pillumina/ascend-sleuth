@@ -660,8 +660,8 @@ html[data-mode="dark"] .sc-root{
 @container sc-canvas (max-width:559px){
   .sc-canvas-dock{padding-right:10px}
 }
-/* 画布太矮时缩放钮会顶出画布上沿（底部 132px + 108px 高），摘掉它。 */
-@container sc-canvas (max-height:240px){
+/* 画布太矮时缩放钮会顶出画布上沿：宽画布 bottom 是 148px、窄画布 132px，取大的算 148 + 108 = 256。 */
+@container sc-canvas (max-height:256px){
   .sc-zoom{display:none}
 }
 

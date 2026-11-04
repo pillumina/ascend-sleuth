@@ -379,22 +379,47 @@ test('底部停靠区：图例 / 提示 / 回放条由同一容器排布，不�
   const cssSC = {}
   vm.runInContext(cssSrc, vm.createContext({ SC: cssSC, console }), { filename: '40-css.js' })
   const css = cssSC.css
-  // 按选择器取**全部**同名规则：只在第一条上做断言时，末尾再追加一条覆盖规则就能绕过。
-  function rules(selector) {
+  // 按花括号配平收集每条规则（嵌套在 @container 里的也算）。
+  // 只认字面量 `selector{` 会漏掉 `.sc-legend {`（花括号前有空格）与 `.sc-legend,.x{`（分组）两种写法，
+  // 末尾追加一条这样的覆盖规则就能绕过断言。
+  function collectRules(source) {
+    const text = source.replace(/\/\*[\s\S]*?\*\//g, '') // 注释不算选择器
     const out = []
-    let from = 0
-    let start = css.indexOf(selector + '{', from)
-    assert.ok(start >= 0, '缺少样式: ' + selector)
-    while (start >= 0) {
-      out.push(css.slice(start, css.indexOf('}', start) + 1))
-      from = start + 1
-      start = css.indexOf(selector + '{', from)
+    const stack = []
+    let pending = ''
+    for (let i = 0; i < text.length; i += 1) {
+      const ch = text[i]
+      if (ch === '{') {
+        stack.push({ prelude: pending.trim(), start: i + 1 })
+        pending = ''
+      } else if (ch === '}') {
+        const top = stack.pop()
+        if (top) out.push({ prelude: top.prelude, body: text.slice(top.start, i) })
+        pending = ''
+      } else {
+        pending += ch
+      }
     }
     return out
+  }
+  function hasSelector(prelude, selector) {
+    if (prelude.indexOf('@') === 0) return false
+    return prelude.split(',').map(function (item) { return item.trim() }).indexOf(selector) !== -1
+  }
+  function rules(selector) {
+    const out = collectRules(css).filter(function (item) { return hasSelector(item.prelude, selector) })
+    assert.ok(out.length > 0, '缺少样式: ' + selector)
+    return out.map(function (item) { return item.prelude + '{' + item.body + '}' })
   }
   function rule(selector) {
     return rules(selector)[0]
   }
+  // 扫描器自检：花括号前有空格也要认出来（否则这条断言本身就挡不住回归）。
+  const probe = collectRules(css + '\n.sc-legend {position:absolute;left:14px;bottom:14px}')
+  assert.ok(
+    probe.some(function (item) { return hasSelector(item.prelude, '.sc-legend') && /position:absolute/.test(item.body) }),
+    '扫描器要能识别花括号前带空格的覆盖规则',
+  )
 
   assert.match(rule('.sc-canvas-dock'), /position:absolute/, '停靠区是画布内唯一的底部定位容器')
   assert.match(rule('.sc-canvas-wrap'), /container-type:size/, '覆盖件按画布宽高降级，需要画布自己的容器查询')
@@ -410,7 +435,7 @@ test('底部停靠区：图例 / 提示 / 回放条由同一容器排布，不�
   const narrow = css.slice(css.indexOf('@container sc-canvas'))
   assert.ok(narrow.length > 0, '应有按画布宽度（容器名 sc-canvas）的降级规则')
   assert.match(narrow, /sc-canvas-dock/, '窄画布下降级的是停靠区本身')
-  assert.match(narrow, /max-height:240px/, '画布太矮时要摘掉会顶出上沿的缩放钮')
+  assert.match(narrow, /max-height:256px/, '画布太矮时要摘掉会顶出上沿的缩放钮')
 })
 
 test('fixtures 形状自检：buildGraph 不吃未定义字段', () => {
