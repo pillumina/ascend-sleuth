@@ -8,7 +8,7 @@
 - 侧栏座位：`sidebar.panellist` id `sleuth-canvas`，`order: 40`，label「诊断画布」
 - 整页座位：`main` keyed key `sleuth-canvas`
 - RPC 通道：`/sleuth-canvas`
-- 版本：`0.1.0`
+- 版本：`0.2.1`
 
 ```
 dsh-plugins/dsh-sleuth-canvas/
@@ -363,7 +363,8 @@ SC.theme.currentPalette() -> {
 - 点击列表行 → 换单（保留画布位置重置）。
 - hover 节点 → 高亮 + DOM tooltip（标题 + 一行副文），tooltip 位置来自 `engine.nodeRect(idx)`。
 - 滚轮缩放、拖拽平移、双击适配；右下迷你地图。
-- 回放：底部浮动条「▶ 回放」→ 按事件顺序聚光 + 相机跟随 + inspector 跟随 + 进度条（每个 step 一个刻度）；空格播放/暂停，`Esc` 退出；速度 0.5×/1×/2×。
+- 回放：底部停靠区主格的「▶ 回放」条 → 按事件顺序聚光 + 相机跟随 + inspector 跟随 + 进度条（每个 step 一个刻度）；空格播放/暂停，`Esc` 退出；速度 0.5×/1×/2×。
+- 底部停靠区：快捷键提示、图例、回放条同处 `.sc-canvas-dock`（左格 `.sc-dock-side` 是提示 + 图例，主格 `.sc-dock-main` 是回放条），右侧留出迷你地图宽度；三者**不得**各自 `position:absolute` 到同一个底角，那是重叠的成因。
 - 键盘：`←/→` 上/下一个事件，`f` 适配，`+/-` 缩放，`Esc` 取消。
 - 搜索：左侧列表按 id/summary/framework 过滤。
 - 空态：无 traces 时给一条说明 + 可复制的命令 `/skill:diagnose`；加载态给骨架；错误态给错误原文 + 重试按钮。
@@ -371,7 +372,7 @@ SC.theme.currentPalette() -> {
 - 导出：页头「导出」菜单两项——`导出 PNG（当前视图）`（经 `engine.exportImage()`，含主题底色，文件名 `sleuth-canvas-<trace>.png`）与 `复制旅程摘要`（Markdown：会话元信息、结论、洞察、过程、来源）。
 - 打开会话：trace 有 `harness_session` 时按钮可用，调用 `SC.openSession(id)`（宿主 `sessions.open`）；失败或没有服务时给可见提示，不静默。
 - 列表视图：`t` 或顶部「列表」切换事件表格（步骤 / 角色 / 动作 / 摘要 / 标记），行可点选定位回画布节点；画布保持挂载，切回时重算尺寸。
-- 快捷键提示：首次进入画布左下角的可关闭提示条（localStorage 记住已关），由提示条自身的关闭按钮收起；`Esc` 先关导出菜单，再退回放/取消选中。
+- 快捷键提示：首次进入画布时出现在停靠区左格、图例上方的可关闭提示条（localStorage 记住已关），由提示条自身的关闭按钮收起；`Esc` 先关导出菜单，再退回放/取消选中。
 - 本地偏好：上次选中的 trace 文件、画布/列表视图存 localStorage；不可用时静默退化。
 
 ### 5.3 文案

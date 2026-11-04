@@ -375,6 +375,27 @@ test('40-css.js 契约：调色板 / 容器查询 / 动效三档 / 无 transitio
   }
 })
 
+test('底部停靠区：图例 / 提示 / 回放条由同一容器排布，不再各自绝对定位', () => {
+  const cssSC = {}
+  vm.runInContext(cssSrc, vm.createContext({ SC: cssSC, console }), { filename: '40-css.js' })
+  const css = cssSC.css
+  function rule(selector) {
+    const start = css.indexOf(selector + '{')
+    assert.ok(start >= 0, '缺少样式: ' + selector)
+    return css.slice(start, css.indexOf('}', start) + 1)
+  }
+
+  assert.match(rule('.sc-canvas-dock'), /position:absolute/, '停靠区是画布内唯一的底部定位容器')
+  assert.match(rule('.sc-canvas-wrap'), /container-type:inline-size/, '覆盖件按画布宽度降级，需要画布自己的容器查询')
+  assert.match(rule('.sc-canvas-wrap'), /container-name:sc-canvas/)
+  for (const selector of ['.sc-legend', '.sc-hint', '.sc-replay']) {
+    assert.doesNotMatch(rule(selector), /position:absolute/, selector + ' 应由 .sc-canvas-dock 排布：各自绝对定位正是重叠的成因')
+  }
+  const narrow = css.slice(css.indexOf('@container sc-canvas'))
+  assert.ok(narrow.length > 0, '应有按画布宽度（容器名 sc-canvas）的降级规则')
+  assert.match(narrow, /sc-canvas-dock/, '窄画布下降级的是停靠区本身')
+})
+
 test('fixtures 形状自检：buildGraph 不吃未定义字段', () => {
   const graph = model.buildGraph(detail)
   assert.deepEqual(plain(graph.meta), { stepCount: 6, eventCount: 15, conclusionIndex: 13 })
@@ -687,6 +708,15 @@ test('页面渲染冒烟：list → detail → 选中 → 回放 → Esc 全流�
   assert.equal(harness.findAll(tree, 'sc-insight').length, detail.insights.length)
   assert.equal(harness.findAll(tree, 'sc-legend-item').length, 8, '图例按家族去重：现场/分诊/检索/核验/先验/命中/归因/收尾')
   assert.equal(harness.findAll(tree, 'sc-replay').length, 1)
+  // 三个底部覆盖件必须挂在同一个停靠区里，各占一格；分开绝对定位就会重新叠在一起。
+  const dock = harness.findAll(tree, 'sc-canvas-dock')[0]
+  assert.ok(dock, '画布应有底部停靠区')
+  const dockSide = harness.findAll(dock, 'sc-dock-side')[0]
+  const dockMain = harness.findAll(dock, 'sc-dock-main')[0]
+  assert.ok(dockSide && dockMain, '停靠区应有左格（提示 + 图例）与主格（回放条）')
+  assert.equal(harness.findAll(dockSide, 'sc-legend').length, 1, '图例在左格')
+  assert.equal(harness.findAll(dockSide, 'sc-hint').length, 1, '快捷键提示在左格')
+  assert.equal(harness.findAll(dockMain, 'sc-replay').length, 1, '回放条在主格')
   assert.ok(harness.textOf(tree).includes('vllm-ascend'))
   assert.ok(harness.textOf(tree).includes('已定位'))
   assert.ok(harness.textOf(tree).includes('诊断画布'))

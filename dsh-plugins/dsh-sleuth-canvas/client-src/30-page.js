@@ -1438,6 +1438,37 @@ SC.CanvasPage = (function () {
       )
     }
 
+    // 图例：与回放条、快捷键提示同处底部停靠区，由 .sc-canvas-dock 排布。
+    function renderLegend() {
+      if (!overview || !overview.legend.length) return null
+      return SC.h(
+        'div',
+        { className: 'sc-legend' + (legendOpen ? ' is-open' : '') },
+        SC.h(
+          'button',
+          { type: 'button', className: 'sc-legend-toggle', onClick: function () { setLegendOpen(function (value) { return !value }) }, title: legendOpen ? '收起图例' : '展开图例' },
+          SC.h(Icon, { name: 'list', size: 12 }),
+          SC.h('span', null, '图例'),
+          SC.h(Icon, { name: legendOpen ? 'chevron-up' : 'chevron', size: 11 }),
+        ),
+        legendOpen
+          ? SC.h(
+            'div',
+            { className: 'sc-legend-items' },
+            overview.legend.map(function (item) {
+              return SC.h(
+                'span',
+                { className: 'sc-legend-item', key: item.tone },
+                SC.h('span', { className: 'sc-dot', style: { '--dot': 'var(--sc-' + item.tone + ')' } }),
+                SC.h('span', null, item.label),
+                SC.h('span', { className: 'sc-legend-count' }, String(item.count)),
+              )
+            }),
+          )
+          : null,
+      )
+    }
+
     function renderCanvasEmpty() {
       const repo = listData && listData.repo
       const warnings = (listData && listData.warnings) || []
@@ -1658,34 +1689,6 @@ SC.CanvasPage = (function () {
               SC.h('div', { className: 'sc-tooltip-meta' }, hoveredNode.meta),
             )
             : null,
-          view === 'canvas' && overview && overview.legend.length
-            ? SC.h(
-              'div',
-              { className: 'sc-legend' + (legendOpen ? ' is-open' : '') },
-              SC.h(
-                'button',
-                { type: 'button', className: 'sc-legend-toggle', onClick: function () { setLegendOpen(function (value) { return !value }) }, title: legendOpen ? '收起图例' : '展开图例' },
-                SC.h(Icon, { name: 'list', size: 12 }),
-                SC.h('span', null, '图例'),
-                SC.h(Icon, { name: legendOpen ? 'chevron-up' : 'chevron', size: 11 }),
-              ),
-              legendOpen
-                ? SC.h(
-                  'div',
-                  { className: 'sc-legend-items' },
-                  overview.legend.map(function (item) {
-                    return SC.h(
-                      'span',
-                      { className: 'sc-legend-item', key: item.tone },
-                      SC.h('span', { className: 'sc-dot', style: { '--dot': 'var(--sc-' + item.tone + ')' } }),
-                      SC.h('span', null, item.label),
-                      SC.h('span', { className: 'sc-legend-count' }, String(item.count)),
-                    )
-                  }),
-                )
-                : null,
-            )
-            : null,
           view === 'canvas' && detail
             ? SC.h(
               'div',
@@ -1695,9 +1698,22 @@ SC.CanvasPage = (function () {
               SC.h('button', { type: 'button', className: 'sc-zoom-btn', onClick: fit, title: '适配（f）', 'aria-label': '适配视图' }, SC.h(Icon, { name: 'fit', size: 15 })),
             )
             : null,
-          view === 'canvas' ? renderReplay() : null,
+          // 底部停靠区：快捷键提示与图例是一列（提示在上、图例贴底），回放条占右侧剩余宽度。
+          // 三者由同一个 grid 排布，不再是各自绝对定位在同一个左下角。
+          view === 'canvas'
+            ? SC.h(
+              'div',
+              { className: 'sc-canvas-dock' },
+              SC.h(
+                'div',
+                { className: 'sc-dock-side' },
+                detail && !showEmpty && !replay.active ? renderHint() : null,
+                renderLegend(),
+              ),
+              SC.h('div', { className: 'sc-dock-main' }, renderReplay()),
+            )
+            : null,
           view === 'table' && detail && !showEmpty ? renderTable() : null,
-          view === 'canvas' && detail && !showEmpty && !replay.active ? renderHint() : null,
           showEmpty ? renderCanvasEmpty() : null,
           detailPhase === 'error' ? renderCanvasError() : null,
           detailPhase === 'loading' ? renderStageLoading() : null,
