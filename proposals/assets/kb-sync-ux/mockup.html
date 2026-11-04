@@ -1,0 +1,304 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>RFC-432 知识库设置 UI 设计稿</title>
+<style>
+  :root{
+    --bg:#1d1d20; --bg-side:#17171a; --bg-card:#26262a; --bg-raise:#2e2e33;
+    --line:#34343a; --line-soft:#2a2a2f;
+    --text:#e8e8ea; --text-2:#a0a0a8; --text-3:#71717a;
+    --blue:#4c9aff; --blue-soft:rgba(76,154,255,.14);
+    --green:#4ec97a; --yellow:#e0b341; --red:#e5645d;
+    --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  .app{display:flex;height:100vh;overflow:hidden}
+  /* ---------- 左栏 ---------- */
+  .side{width:232px;flex:0 0 232px;background:var(--bg-side);border-right:1px solid var(--line-soft);padding:18px 12px;display:flex;flex-direction:column;gap:6px}
+  .brand{display:flex;align-items:center;gap:9px;padding:4px 8px 16px}
+  .brand-icon{width:26px;height:26px;border-radius:7px;border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--blue)}
+  .brand-name{font-size:13.5px;font-weight:600;letter-spacing:.2px}
+  .side-label{font-size:11px;color:var(--text-3);padding:10px 10px 4px;letter-spacing:.4px}
+  .side-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;color:var(--text-2);font-size:13px}
+  .side-item.on{background:var(--blue-soft);color:var(--text);font-weight:600}
+  .side-item .dot{width:6px;height:6px;border-radius:50%;background:currentColor;opacity:.55}
+  .side-foot{margin-top:auto;padding:10px;font-size:11px;color:var(--text-3);border-top:1px solid var(--line-soft)}
+  /* ---------- 主区 ---------- */
+  .main{flex:1;overflow:auto}
+  .inner{max-width:1080px;margin:0 auto;padding:28px 32px 48px}
+  .page-title{font-size:25px;font-weight:700;letter-spacing:.2px}
+  .page-sub{margin-top:4px;font-size:12.5px;color:var(--text-2)}
+  .tabs{display:flex;gap:22px;margin-top:18px;border-bottom:1px solid var(--line-soft)}
+  .tab{padding:7px 1px 10px;font-size:14px;color:var(--text-2);border-bottom:2px solid transparent}
+  .tab.on{color:var(--text);font-weight:600;border-bottom-color:var(--blue)}
+  .hint{font-size:12px;color:var(--text-3)}
+  .note{font-size:12px;color:var(--text-2);line-height:1.65}
+  /* ---------- 状态卡 ---------- */
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:22px}
+  .stat{background:var(--bg-card);border:1px solid var(--line-soft);border-radius:11px;padding:14px 16px}
+  .stat-k{font-size:11.5px;color:var(--text-3);letter-spacing:.2px}
+  .stat-v{margin-top:6px;font-size:20px;font-weight:650;font-family:var(--mono);letter-spacing:-.2px}
+  .stat-v small{font-size:12px;font-weight:400;color:var(--text-3);font-family:var(--sans);margin-left:4px}
+  .stat-v.warn{color:var(--yellow)}
+  .stat-v.ok{color:var(--green)}
+  /* ---------- 通用卡片 ---------- */
+  .card{background:var(--bg-card);border:1px solid var(--line-soft);border-radius:12px;padding:18px 20px;margin-top:14px}
+  .card-h{display:flex;align-items:baseline;justify-content:space-between;gap:16px}
+  .card-t{font-size:14px;font-weight:650}
+  .card-sub{font-size:12px;color:var(--text-3);margin-top:3px}
+  .row{display:flex;align-items:center;gap:12px;margin-top:16px;flex-wrap:wrap}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:11.5px;color:var(--text-3)}
+  .select,.input{display:flex;align-items:center;gap:8px;background:var(--bg-raise);border:1px solid var(--line);border-radius:8px;padding:8px 11px;font-size:13px;min-width:150px;color:var(--text)}
+  .select .caret{margin-left:auto;color:var(--text-3);font-size:10px}
+  .input .mono{font-family:var(--mono);font-size:12.5px}
+  .select .sub{color:var(--text-3);font-size:11.5px}
+  .inline-hint{font-size:12px;color:var(--text-3)}
+  .btn{appearance:none;border-radius:8px;padding:8px 14px;font:inherit;font-size:13px;font-weight:600;cursor:default;border:1px solid transparent}
+  .btn-main{background:var(--blue);color:#0b1220}
+  .btn-quiet{background:transparent;border-color:var(--line);color:var(--text-2)}
+  .btn:disabled{opacity:.45}
+  /* ---------- 开关 ---------- */
+  .switch-row{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;padding:15px 0;border-top:1px solid var(--line-soft)}
+  .switch-row:first-of-type{border-top:0;padding-top:4px}
+  .switch-t{font-size:13.5px;font-weight:600}
+  .switch-d{font-size:12px;color:var(--text-2);margin-top:4px;line-height:1.6;max-width:620px}
+  .switch-src{font-size:11.5px;color:var(--text-3);margin-top:5px}
+  .switch{width:40px;height:22px;border-radius:99px;background:var(--blue);position:relative;flex:0 0 auto;margin-top:2px}
+  .switch::after{content:"";position:absolute;top:2px;left:20px;width:18px;height:18px;border-radius:50%;background:#fff}
+  .switch.off{background:#3d3d45}
+  .switch.off::after{left:2px}
+  /* ---------- 提示条 ---------- */
+  .banner{display:flex;align-items:flex-start;gap:10px;border-radius:9px;padding:11px 14px;font-size:12.5px;line-height:1.6;margin-top:14px}
+  .banner .bdot{width:7px;height:7px;border-radius:50%;margin-top:6px;flex:0 0 auto}
+  .banner.warn{background:rgba(224,179,65,.1);border:1px solid rgba(224,179,65,.28);color:#e9cf8a}
+  .banner.warn .bdot{background:var(--yellow)}
+  .banner.ok{background:rgba(78,201,122,.1);border:1px solid rgba(78,201,122,.26);color:#a9e3bd}
+  .banner.ok .bdot{background:var(--green)}
+  .banner.err{background:rgba(229,100,93,.1);border:1px solid rgba(229,100,93,.3);color:#f0b1ad}
+  .banner.err .bdot{background:var(--red)}
+  .banner .b-act{margin-left:auto;color:var(--text);font-weight:600;white-space:nowrap}
+  /* ---------- 页脚 ---------- */
+  .foot{display:flex;align-items:center;gap:10px;margin-top:16px;font-size:11.5px;color:var(--text-3)}
+  .foot code{font-family:var(--mono);background:var(--bg-raise);padding:2px 6px;border-radius:5px;color:var(--text-2)}
+  /* ---------- 展开的远端下拉 ---------- */
+  .menu{position:relative;margin-top:6px;background:var(--bg-raise);border:1px solid var(--line);border-radius:10px;padding:6px;width:360px;box-shadow:0 18px 40px rgba(0,0,0,.45)}
+  .menu-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:7px}
+  .menu-item.on{background:var(--blue-soft)}
+  .menu-name{font-size:13px;font-weight:600}
+  .menu-meta{font-size:11.5px;color:var(--text-3)}
+  .menu-tag{margin-left:auto;font-size:11px;color:var(--text-3);border:1px solid var(--line);border-radius:5px;padding:1px 6px}
+  .menu-tag.blue{color:var(--blue);border-color:rgba(76,154,255,.4)}
+  /* ---------- 状态矩阵 ---------- */
+  .matrix{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:20px}
+  .mcard{background:var(--bg-card);border:1px solid var(--line-soft);border-left:3px solid var(--line);border-radius:12px;padding:16px 18px}
+  .mcard.ok{border-left-color:var(--green)}
+  .mcard.warn{border-left-color:var(--yellow)}
+  .mcard.err{border-left-color:var(--red)}
+  .mcard.off{border-left-color:#5a5a63}
+  .mcard h4{margin:0;font-size:13px;font-weight:650}
+  .mcard .mline{margin-top:9px;font-size:12.5px;line-height:1.65;color:var(--text-2)}
+  .mcard .mline b{color:var(--text);font-weight:600}
+  /* ---------- 会话场景 ---------- */
+  .chat{max-width:820px;margin:22px auto 0;display:flex;flex-direction:column;gap:14px}
+  .msg{display:flex;gap:11px}
+  .avatar{width:28px;height:28px;border-radius:8px;background:var(--bg-raise);border:1px solid var(--line);flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text-2)}
+  .bubble{background:var(--bg-card);border:1px solid var(--line-soft);border-radius:11px;padding:13px 15px;font-size:13.5px;line-height:1.75;flex:1}
+  .bubble .muted{color:var(--text-2)}
+  .bubble code{font-family:var(--mono);font-size:12.5px;background:var(--bg-raise);padding:2px 6px;border-radius:5px}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--text-2);border:1px solid var(--line);border-radius:99px;padding:3px 9px;margin-right:6px}
+  .hidden{display:none}
+  /* 场景标题 */
+  .scene-tag{position:fixed;right:14px;top:12px;font-size:11px;color:var(--text-3);border:1px solid var(--line);border-radius:6px;padding:3px 8px;background:rgba(0,0,0,.25)}
+</style>
+</head>
+<body>
+<div class="scene-tag" id="sceneTag"></div>
+<div class="app">
+  <!-- 左栏 -->
+  <aside class="side">
+    <div class="brand">
+      <div class="brand-icon">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.6" y="3.6" width="16.8" height="16.8" rx="5"/><path d="M6.4 12h2.1l1.5-3.1 2.3 6.2 1.5-3.1h3.8"/></svg>
+      </div>
+      <div class="brand-name">Ascend Sleuth</div>
+    </div>
+    <div class="side-label">工作区</div>
+    <div class="side-item" id="sideChat"><span class="dot"></span>会话</div>
+    <div class="side-item"><span class="dot"></span>诊断记录</div>
+    <div class="side-label">面板</div>
+    <div class="side-item on" id="sidePanel"><span class="dot"></span>Ascend Sleuth</div>
+    <div class="side-foot">本地检出 · v1a2b3c</div>
+  </aside>
+
+  <!-- 主区 -->
+  <main class="main">
+    <div class="inner">
+      <div class="page-title" id="pageTitle">Ascend Sleuth</div>
+      <div class="page-sub" id="pageSub">全库读数 · 判据判决 · 自演进 · 知识库</div>
+      <div class="tabs" id="pageTabs">
+        <div class="tab">指标</div>
+        <div class="tab">自演进</div>
+        <div class="tab on">知识库</div>
+      </div>
+
+      <!-- ===== 场景 1/2：知识库页（正常 / 选择器展开） ===== -->
+      <section id="s-page">
+        <div class="grid4">
+          <div class="stat"><div class="stat-k">本机版本</div><div class="stat-v">v1a2b3c</div></div>
+          <div class="stat"><div class="stat-k">远端版本</div><div class="stat-v">v9f8e7d</div></div>
+          <div class="stat"><div class="stat-k">落后</div><div class="stat-v warn">12<small>个提交</small></div></div>
+          <div class="stat"><div class="stat-k">上次核对</div><div class="stat-v">3<small>分钟前</small></div></div>
+        </div>
+
+        <div class="banner warn">
+          <span class="bdot"></span>
+          <span>本次合并会把 <b>knowledge/</b>、<b>references/</b> 与 <b>skills/</b> 一起更新；知识立即生效，流程文件下次会话生效。</span>
+          <span class="b-act" style="background:var(--blue);color:#0b1220;border-radius:8px;padding:7px 14px;font-size:12.5px">立即同步</span>
+        </div>
+
+        <div class="card">
+          <div class="card-h">
+            <div>
+              <div class="card-t">同步源</div>
+              <div class="card-sub">这个远端会 merge 进本机检出。列事实，不预设用途。</div>
+            </div>
+            <button class="btn btn-quiet">保存</button>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label>远端</label>
+              <div class="select"><span class="sub">origin</span><span>·</span><span class="sub">github.com</span><span class="caret">▾</span></div>
+            </div>
+            <div class="field">
+              <label>分支</label>
+              <div class="select"><span class="mono">main</span><span class="caret">▾</span></div>
+            </div>
+            <div class="inline-hint">上次使用：今天 16:56</div>
+          </div>
+
+          <!-- 选择器展开（scene=picker 时显示） -->
+          <div id="s-menu" class="hidden">
+            <div class="menu">
+              <div class="menu-item on">
+                <div><div class="menu-name">origin</div><div class="menu-meta">github.com · 上次使用 16:56</div></div>
+                <span class="menu-tag blue">当前</span>
+              </div>
+              <div class="menu-item">
+                <div><div class="menu-name">gitcode</div><div class="menu-meta">gitcode.com · 内网镜像</div></div>
+                <span class="menu-tag">镜像</span>
+              </div>
+              <div class="menu-item">
+                <div><div class="menu-name">upstream</div><div class="menu-meta">github.com · 只读上游</div></div>
+                <span class="menu-tag">不作为知识源</span>
+              </div>
+              <div class="note" style="padding:9px 10px 4px;color:var(--text-3)">切到镜像后，同源校验按 host + path 判断；不是同一个仓时要确认一次。</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="switch-row">
+            <div>
+              <div class="switch-t">自动检查更新</div>
+              <div class="switch-d">诊断开单时 fetch 一次。关闭后不再检查，doctor 会显示「已关闭」。</div>
+              <div class="switch-src">来源：个人设置</div>
+            </div>
+            <div class="switch"></div>
+          </div>
+          <div class="switch-row">
+            <div>
+              <div class="switch-t">自动合并</div>
+              <div class="switch-d">仅当工作区干净、当前在配置分支上、且可快进时合并。不满足只提示，不 rebase。</div>
+              <div class="switch-src">来源：个人设置</div>
+            </div>
+            <div class="switch"></div>
+          </div>
+        </div>
+
+        <div class="foot">
+          <span>配置</span><code>.local/settings.json</code>
+          <span>·</span><span>修改下次开单生效</span>
+          <span style="margin-left:auto">打开本页不联网；「立即同步」才请求</span>
+        </div>
+      </section>
+
+      <!-- ===== 场景 3：状态矩阵 ===== -->
+      <section id="s-states" class="hidden">
+        <div class="matrix">
+          <div class="mcard ok">
+            <h4>已同步</h4>
+            <div class="mline"><b>绿色提示条</b> · 合并完成：<code style="font-family:var(--mono)">已同步到 v9f8e7d（原 v1a2b3c，落后 12 个提交）</code></div>
+            <div class="mline muted" style="color:var(--text-3)">知识立即生效；流程文件下次会话生效。可回滚：git reset --hard ORIG_HEAD</div>
+          </div>
+          <div class="mcard warn">
+            <h4>未自动合并</h4>
+            <div class="mline"><b>黄色提示条</b> · 原因写出来：工作区有未提交改动 / 本地有提交不可快进 / 在 worktree 里。</div>
+            <div class="mline" style="color:var(--text-3)">给一条命令，不替人改工作区。</div>
+          </div>
+          <div class="mcard err">
+            <h4>同步失败</h4>
+            <div class="mline"><b>红色提示条</b> · 按原因分：无远端 / 超时 / 撞 ref 锁。诊断照常。</div>
+            <div class="mline" style="color:var(--text-3)">10 分钟内不重试；失败不阻塞开单。</div>
+          </div>
+          <div class="mcard off">
+            <h4>已关闭 / 离线</h4>
+            <div class="mline"><b>灰色状态</b> · 显示「已关闭（个人设置）」或「离线部署（deployment.yaml）」。</div>
+            <div class="mline" style="color:var(--text-3)">关闭也要可见，不能静默失效。</div>
+          </div>
+        </div>
+        <div class="foot"><span>四个状态共用同一块状态区，不各开一个页面</span></div>
+      </section>
+
+      <!-- ===== 场景 4：诊断开屏 ===== -->
+      <section id="s-chat" class="hidden">
+        <div style="display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--line-soft);padding-bottom:12px">
+          <span style="font-size:14px;font-weight:650">会话 · 训练 NaN 诊断</span>
+          <span class="hint">诊断开屏只在对话里给一句，不是控件</span>
+        </div>
+        <div class="chat">
+          <div class="msg">
+            <div class="avatar">你</div>
+            <div class="bubble">训练任务在 step 1200 挂了，loss 突然 NaN，贴一下日志尾部……</div>
+          </div>
+          <div class="msg">
+            <div class="avatar">AI</div>
+            <div class="bubble">
+              <div><b>已同步知识库到 v9f8e7d</b>（原 v1a2b3c，落后 12 个提交）。本会话的流程文件仍是旧版，下次会话生效。</div>
+              <div style="margin-top:10px" class="muted">先确认一下现场：这次是训练任务还是推理服务？引擎与版本是多少？</div>
+            </div>
+          </div>
+          <div class="msg">
+            <div class="avatar">AI</div>
+            <div class="bubble">
+              <div class="muted">（落后但没合并时是这样，原因写括号里：）</div>
+              <div style="margin-top:8px">知识库落后 12 个提交（工作区有未提交改动），本单按 v1a2b3c 诊断。要同步：先提交或 <code>git stash</code>，再 <code>git merge --ff-only origin/main</code></div>
+            </div>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:center;margin-top:6px">
+            <span class="chip">开屏最多一句</span><span class="chip">不阻塞</span><span class="chip">不变成提问</span>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+<script>
+  const scene = new URLSearchParams(location.search).get('scene') || 'normal'
+  const map = {normal:'s-page', behind:'s-page', picker:'s-page', states:'s-states', chat:'s-chat'}
+  for (const id of ['s-page','s-states','s-chat']) document.getElementById(id).classList.add('hidden')
+  const target = document.getElementById(map[scene] || 's-page')
+  target.classList.remove('hidden')
+  if (scene === 'picker') document.getElementById('s-menu').classList.remove('hidden')
+  if (scene === 'chat') { for (const id of ['pageTitle','pageSub','pageTabs']) document.getElementById(id).style.display = 'none'
+    document.getElementById('sideChat').classList.add('on'); document.getElementById('sidePanel').classList.remove('on') }
+  const tags = {normal:'知识库 · 正常（落后 12）', picker:'知识库 · 切换同步源', states:'四种状态', chat:'诊断开屏提示'}
+  document.getElementById('sceneTag').textContent = tags[scene] || scene
+</script>
+</body>
+</html>
