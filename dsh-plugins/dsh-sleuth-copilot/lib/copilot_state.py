@@ -338,12 +338,6 @@ def main(argv=None) -> int:
         item["extra"] = extra
         item["harnessSession"] = extra.get("harnessSession", "")
         item["resumeSessions"] = extra.get("resumeSessions", [])
-        chain = []
-        for sid in [item.get("harnessSession")] + item.get("resumeSessions", []):
-            sid = str(sid or "").strip()
-            if sid and sid not in chain:
-                chain.append(sid)
-        item["sessionChain"] = chain
         item["summary"] = _short(item.get("summary"), SUMMARY_LIMIT)
         sessions.append(item)
 
@@ -395,7 +389,6 @@ def main(argv=None) -> int:
             "derived": session.get("derived"),
             "harnessSession": session.get("harnessSession"),
             "resumeSessions": session.get("resumeSessions"),
-            "sessionChain": session.get("sessionChain"),
             "reportFile": extra.get("reportFile"),
             "transitions": session.get("transitions"),
             "reports": session.get("reports"),

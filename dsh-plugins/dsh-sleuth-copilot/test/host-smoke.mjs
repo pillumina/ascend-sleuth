@@ -247,7 +247,7 @@ const resumedState = await request(rw, {
 })
 const resumedValue = resumedState.envelope && resumedState.envelope.result && resumedState.envelope.result.value
 expect('会话归属：接手会话绑定到这一单', resumedValue && resumedValue.bound && resumedValue.bound.sessionId === TRACE_ID && resumedValue.bound.boundBy === 'resume', JSON.stringify(resumedValue && resumedValue.bound))
-expect('会话归属：返回会话链', resumedValue && Array.isArray(resumedValue.bound.resumeSessions) && resumedValue.bound.resumeSessions.includes('resumed-session'), JSON.stringify(resumedValue && resumedValue.bound.resumeSessions))
+expect('会话归属：返回续接会话', resumedValue && Array.isArray(resumedValue.bound.resumeSessions) && resumedValue.bound.resumeSessions.includes('resumed-session'), JSON.stringify(resumedValue && resumedValue.bound.resumeSessions))
 const originState = await request(rw, {
   type: 'client-request', rpcId: 'state-origin', method: 'copilot-state',
   payload: { sessionId: 'origin-session', cwd: SANDBOX },

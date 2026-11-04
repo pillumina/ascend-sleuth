@@ -138,12 +138,12 @@ window.__ModuleLoader__.load({
       'section.sessions': '会话归属',
       'sessions.origin': '原始会话',
       'sessions.resumed': '续接会话',
-      'sessions.current': '当前',
+      'sessions.current': '当前会话',
       'sessions.missing': '未记会话号（trace 的 harness_session 为空）',
-      'sessions.hint': '跳转只对仍在本机的会话有效；跨机交接的原始会话可能打不开。',
-      'action.copyLinkCommand': '复制补录命令',
+      'sessions.hint': '只有仍在本机的会话才能切过去；跨机交接的原始会话可能打不开。补写命令会把当前会话号写回 trace。',
+      'action.copyLinkCommand': '复制补写命令',
       'action.openOrigin': '切到原始会话',
-      'action.openResumed': '切到上次接手会话',
+      'action.openResumed': '切到上次续接会话',
       'hint.sessionOpened': '已切到该会话。',
       'hint.sessionUnavailable': '打不开该会话：{reason}',
       'section.materials': '在等材料',
@@ -370,12 +370,12 @@ window.__ModuleLoader__.load({
       'section.sessions': 'Session attribution',
       'sessions.origin': 'Origin session',
       'sessions.resumed': 'Resumed in',
-      'sessions.current': 'current',
+      'sessions.current': 'current session',
       'sessions.missing': 'No session id (harness_session is empty)',
-      'sessions.hint': 'Jump works only for sessions still on this machine; an imported origin may not open.',
-      'action.copyLinkCommand': 'Copy backfill command',
+      'sessions.hint': 'Only sessions still on this machine can be opened; an imported origin may not. The copy command writes the current session id back to the trace.',
+      'action.copyLinkCommand': 'Copy write-back command',
       'action.openOrigin': 'Open origin session',
-      'action.openResumed': 'Open last resumed session',
+      'action.openResumed': 'Open the last resumed session',
       'hint.sessionOpened': 'Switched to that session.',
       'hint.sessionUnavailable': 'Could not open that session: {reason}',
       'section.materials': 'Waiting for material',
@@ -1376,7 +1376,7 @@ window.__ModuleLoader__.load({
       ctxOpenSession(id).then((result) => {
         if (result && result.ok) flash(tr('hint.sessionOpened'))
         else flash(tr('hint.sessionUnavailable', { reason: (result && result.reason) || '' }))
-      }, (error) => flash(tr('hint.sessionUnavailable', { message: String((error && error.message) || error) })))
+      }, (error) => flash(tr('hint.sessionUnavailable', { reason: String((error && error.message) || error) })))
     }
 
     function summaryText(row, data) {
@@ -2334,6 +2334,7 @@ window.__ModuleLoader__.load({
     function ToolbarButton(props) {
       const s = useStore()
       useSessionSync(props)
+      if (s.data && s.data.ok === false && s.data.code === 'E_NO_ROOT') return null
       const data = s.data && s.data.ok !== false ? s.data : null
       const bound = data ? data.bound : null
       const pending = data && data.counts ? Number(data.counts.pendingFeedback) || 0 : 0
@@ -2515,6 +2516,7 @@ window.__ModuleLoader__.load({
       }, [s.paletteOpen, filtered, selected, menuOpen, cmdOpen, cmdQuery, cmdIndex])
 
       if (!s.paletteOpen) return null
+      if (s.data && s.data.ok === false && s.data.code === 'E_NO_ROOT') return null
 
       const row = filtered[selected] || null
       selectedRowRef.current = row ? row.sessionId : ''
@@ -2847,7 +2849,7 @@ window.__ModuleLoader__.load({
                 ? h('div', { className: 'scp-upstream-row' },
                   h('span', { className: 'scp-check-label' }, tr('sessions.resumed')),
                   resumedSessions.map((sid) => h('span', {
-                    key: sid, className: 'scp-chip', 'data-tone': sid === currentSession ? 'accent' : '',
+                    key: sid, className: 'scp-chip', 'data-tone': sid === currentSession ? 'brand' : '',
                   }, sid + (sid === currentSession ? '（' + tr('sessions.current') + '）' : ''))),
                   resumedSessions[resumedSessions.length - 1] === currentSession ? null : h('button', {
                     type: 'button', className: 'scp-check-action',

@@ -61,8 +61,8 @@ from trace_entry_activity import (  # noqa: E402  （同目录复用，不复制
 )
 
 TRACES_REL = "traces"
-#: 顶层已有该字段的行（空值 `harness_session: ''` 也算"写过"，不覆盖）。
-FIELD_RE = re.compile(r"^harness_session\s*:", re.MULTILINE)
+#: 顶层该字段的行；自动扫描时"空值也算写过"不覆盖，显式给了 --session-id 时允许补空值。
+FIELD_RE = re.compile(r"^harness_session\s*:\s*(.*)$", re.MULTILINE)
 SESSION_ID_RE = re.compile(r"^session_id\s*:\s*(.+)$", re.MULTILINE)
 CREATED_RE = re.compile(r"^created_at\s*:\s*(.+)$", re.MULTILINE)
 #: 会话日志里时间的两处来源：首事件的 `createdAt`（ISO）与事件的 `time`（epoch ms）。
@@ -156,8 +156,14 @@ def created_of(text: str):
     return iso_ms(m.group(1)) if m else None
 
 
-def needs_link(text: str) -> bool:
-    return FIELD_RE.search(text) is None
+def needs_link(text: str, allow_empty: bool = False) -> bool:
+    match = FIELD_RE.search(text)
+    if match is None:
+        return True
+    if not allow_empty:
+        return False
+    value = match.group(1).strip().strip("'\"").strip()
+    return value == ""
 
 
 def session_roots(explicit):
@@ -224,14 +230,16 @@ def pick(cands, created):
     return best[0], "命中次数"
 
 
-def insert_field(text: str, value: str) -> str:
-    """把 `harness_session:` 插在 `session_id:` 那一行之后（没有就插在文件头）。"""
+def set_field(text: str, value: str) -> str:
+    """写 `harness_session:`：已有空值行就替换，没有就插在 `session_id:` 之后。"""
+    if FIELD_RE.search(text):
+        return FIELD_RE.sub("harness_session: \"" + value + "\"", text, count=1)
     lines = text.splitlines(keepends=True)
     for i, line in enumerate(lines):
         if re.match(r"^session_id\s*:", line):
-            lines.insert(i + 1, "harness_session: " + value + "\n")
+            lines.insert(i + 1, "harness_session: \"" + value + "\"\n")
             return "".join(lines)
-    return "harness_session: " + value + "\n" + text
+    return "harness_session: \"" + value + "\"\n" + text
 
 
 def main() -> int:
@@ -255,7 +263,7 @@ def main() -> int:
             text = p.read_text(encoding="utf-8")
         except OSError:
             continue
-        if needs_link(text):
+        if needs_link(text, allow_empty=bool(args.session_id)):
             targets.append((p, text))
     if not targets:
         print("没有缺 harness_session 的轨迹（已有的不覆盖）。")
@@ -270,10 +278,10 @@ def main() -> int:
         written = 0
         for p, _text in targets:
             text = p.read_text(encoding="utf-8")
-            if not needs_link(text):
+            if not needs_link(text, allow_empty=True):
                 continue
             if args.apply:
-                p.write_text(insert_field(text, sid), encoding="utf-8")
+                p.write_text(set_field(text, sid), encoding="utf-8")
                 written += 1
                 print(f"  已写 {p.name} → {sid}")
             else:
@@ -323,7 +331,7 @@ def main() -> int:
         text = p.read_text(encoding="utf-8")
         if not needs_link(text):
             continue
-        p.write_text(insert_field(text, sid), encoding="utf-8")
+        p.write_text(set_field(text, sid), encoding="utf-8")
         written += 1
     print(f"已补 {written} 单。")
     if skipped_weak:
