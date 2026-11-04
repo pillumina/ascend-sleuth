@@ -27,6 +27,9 @@
 #   - **它不是 CI 门**：`traces/` 与 `postmortems/inbox/` 是 .gitignore 的运行时件，PR 与 CI
 #     的检出里没有它们，marker 也不带 session id。这道检查只能在本地跑，不塞进
 #     `groom_recheck.py` 假硬化。
+#   - **PR 没合入不收尾**：读共享 inbox 的 PR 台账，同 key 的 PR 不是 merged（含 open /
+#     unknown / closed）时拒绝，避免把「待合入」提前写成「已升格」。确认要提前收尾时用
+#     `--allow-open-pr`。
 #
 # 用法：
 #   python3 scripts/groom_close_draft.py --draft-key VLLM-ASC-14152              # 只看计划
@@ -53,6 +56,7 @@ except ImportError:  # pragma: no cover - 环境问题，明确报错而不是�
 
 from _stdio import pin_utf8_stdio
 from exec_log_path import log_lock, resolve_traces
+import pr_status
 from groom_common import (
     draft_cases, dump_json, find_drafts, load_assessment, now_iso, repo_root, shared_inbox,
 )
@@ -291,6 +295,40 @@ def plan_one(doc: dict, draft, root: Path, knowledge: dict, override: str | None
     return result
 
 
+def blocked_reason(state: str) -> str:
+    if state == "closed":
+        return ("PR 已关闭、没有合入；从 .done 恢复草稿后重新开 PR，不要收尾。"
+                "确实要提前收尾时加 --allow-open-pr。")
+    return (f"PR 还没合入（{state}）；先查合入状态，合入后再收尾。"
+            f"确实要提前收尾时加 --allow-open-pr。")
+
+
+def unmerged_prs(root: Path, keys) -> tuple:
+    """台账里没有合入的 PR。返回 (key→state, 错误)。
+
+    closed 在平台语义里也是「没有合入」；缺 state 与未知值按 unknown 处理。
+    只有 merged 才放行。收尾会删掉本地评估证据，合入前收尾等于把「待合入」
+    提前写成「已升格」。除非显式 --allow-open-pr，否则这里拦下。
+    """
+    try:
+        ledger = pr_status.load_ledger(root)
+    except Exception as exc:
+        return {}, f"PR 台账读不出：{exc}"
+    out = {}
+    prs = ledger.get("prs") if isinstance(ledger.get("prs"), dict) else {}
+    for key in keys:
+        if key not in prs:
+            continue
+        entry = prs.get(key)
+        if not isinstance(entry, dict):
+            out[key] = "unknown"      # 台账里有条目但不是对象：按未确认拦下
+            continue
+        state = str(entry.get("state") or "").strip().lower()
+        if state != "merged":
+            out[key] = state or "unknown"
+    return out, None
+
+
 def run(args) -> int:
     root = repo_root(Path(args.repo).resolve() if args.repo else Path.cwd())
     inbox = shared_inbox(root)
@@ -310,13 +348,37 @@ def run(args) -> int:
             if unresolved:
                 print(f"inbox 里没有：{'、'.join(unresolved)}", file=sys.stderr)
                 return 2
+            # 只有整批都已出队才提前返回；混着仍在 inbox 的 key 时继续收尾后者。
+            if not [k for k in args.draft_key if k in drafts]:
+                if args.json:
+                    print(dump_json({"applied": bool(args.apply), "inbox": str(inbox),
+                                     "results": [{"draft": key, "status": "closed",
+                                                  "reason": "已出队"} for key in closed]}))
+                return 0
+    selected = list(drafts.values()) if not args.draft_key else [drafts[k] for k in args.draft_key if k in drafts]
+    blocked = {}
+    if selected and not args.allow_open_pr:
+        blocked, ledger_error = unmerged_prs(root, [d.key for d in selected])
+        if ledger_error:
+            if args.json:
+                print(dump_json({"ok": False, "code": "E_LEDGER",
+                                 "message": ledger_error, "results": []}))
+            else:
+                print(ledger_error, file=sys.stderr)
+            return 2
+        if blocked:
+            selected = [d for d in selected if d.key not in blocked]
+    if not selected:
+        if blocked:
+            results = [{"draft": key, "status": "error", "trace": "skipped",
+                        "reason": blocked_reason(state)}
+                       for key, state in blocked.items()]
+            if not args.json:
+                print_plan(results, args.apply, inbox)
             if args.json:
                 print(dump_json({"applied": bool(args.apply), "inbox": str(inbox),
-                                 "results": [{"draft": key, "status": "closed",
-                                              "reason": "已出队"} for key in closed]}))
-            return 0
-    selected = list(drafts.values()) if not args.draft_key else [drafts[k] for k in args.draft_key]
-    if not selected:
+                                 "results": results}))
+            return 2
         if args.json:
             print(dump_json({"applied": bool(args.apply), "inbox": str(inbox), "results": []}))
         else:
@@ -330,7 +392,10 @@ def run(args) -> int:
     knowledge = knowledge_cases(root)
     traces = Path(args.traces) if args.traces else resolve_traces(root)
     done_dir = inbox / ".done"
-    results, failed = [], False
+    results = [{"draft": key, "status": "error", "trace": "skipped",
+                "reason": blocked_reason(state)}
+               for key, state in blocked.items()]
+    failed = bool(blocked)
     for draft in selected:
         try:
             doc = load_assessment(inbox, draft.key)
@@ -427,6 +492,8 @@ def main(argv=None) -> int:
     ap.add_argument("--repo", default=None, help="仓库根（默认当前目录）")
     ap.add_argument("--traces", default=None, help="traces 目录（默认主检出那一份）")
     ap.add_argument("--apply", action="store_true", help="真正执行；不给只打印计划")
+    ap.add_argument("--allow-open-pr", action="store_true",
+                    help="PR 台账里不是 merged（含 open/unknown/closed）时也允许收尾（默认拦下）")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
     if not args.draft_key and not args.all:

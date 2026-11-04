@@ -791,7 +791,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：主按钮是回报结果', !!findButton(view, '回报结果'))
   expect('最近一单：显示身份标签（知识库未覆盖）', view.text.includes('知识库未覆盖'))
   expect('最近一单：显示已排除条数', view.text.includes('已排除 3 条'))
-  expect('最近一单：版本串 0.15.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.15.0'))
+  expect('最近一单：版本串 0.16.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.16.0'))
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
   expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
 }
@@ -1537,6 +1537,101 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   await t.settle()
   const call = t.rpcCalls.filter((item) => item.endpoint === 'copilot-pr-target').pop()
   expect('PR 详情：标记已合入走 mark', call && call.args && call.args.action === 'mark' && call.args.state === 'merged', JSON.stringify(call && call.args))
+}
+
+{
+  // 草稿已出队、PR 未合入：队列里要有一行，详情提示来源，主按钮就地查合入。
+  const closedDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    key: 'VLLM-ASC-13976', title: 'DSpark 可选 API 缺失', path: '', closedDraft: true,
+    assessed: true, assessedShort: '', assessmentCleared: true, state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    ageDays: 0, decisionAt: '2026-11-04T17:20:16+08:00',
+    pr: { number: 429, url: 'https://github.com/pillumina/ascend-sleuth/pull/429', platform: 'github', state: 'open', source: 'ledger', checkedAt: '' },
+    promotion: { caseId: 'VLLM-ASC-13976', casePath: '', postmortemPath: '' },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const closedQueue = Object.assign({}, SEDIMENT, {
+    drafts: [closedDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    history: [],
+  })
+  const t = await mount('recent', { sediment: closedQueue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  expect('已出队行：仍在队列里', byClass(view, 'scp-sed-row').length === 1, String(byClass(view, 'scp-sed-row').length))
+  expect('已出队行：显示 PR 号', view.text.includes('#429'), view.text.slice(-300))
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  expect('已出队行：详情提示来源', view.text.includes('草稿不在 inbox'), view.text.slice(-300))
+  expect('已出队行：显示 PR 地址', view.text.includes('github.com/pillumina/ascend-sleuth/pull/429'))
+  expect('已出队行：落点写合入后落库', view.text.includes('合入后落库'), view.text.slice(-300))
+  expect('已出队行：评估记录已清理', view.text.includes('评估记录已清理'), view.text.slice(-300))
+  const before = t.rpcCalls.length
+  click(findNode(view, (node) => node.type === 'button'
+    && String((node.props && node.props.className) || '').includes('scp-btn--primary')
+    && nodeText(node).includes('查合入状态')))
+  await t.settle()
+  await t.settle()
+  const checkCall = t.rpcCalls.slice(before).filter((call) => call.endpoint === 'copilot-pr-target').pop()
+  expect('已出队行：批量查合入走 check-all', checkCall && checkCall.args && checkCall.args.action === 'check-all', JSON.stringify(checkCall && checkCall.args))
+  expect('已出队行：查合入不弹指令层', byClass(t.view(), 'scp-modal').length === 0)
+}
+
+{
+  // PR 已关闭：主按钮是恢复草稿，点击直接把移动命令填进输入框。
+  const restoreDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    key: 'draft-restore', title: '被关闭的 PR', state: 'pr_closed', stage: 'PR 已关闭',
+    stageTone: 'bad', closedDraft: true, assessed: true, path: '',
+    pr: { number: 418, url: 'https://github.com/pillumina/ascend-sleuth/pull/418', state: 'closed', source: 'platform', checkedAt: '2026-11-04T10:00:00+08:00' },
+    next: { kind: 'restore', label: '恢复草稿', prompt: 'mv .done/x inbox/x' },
+    restore: "把已出队的草稿移回 inbox，再继续 groom：\nmv '/repo/postmortems/inbox/.done/draft-restore' '/repo/postmortems/inbox/draft-restore'",
+  })
+  const restoreQueue = Object.assign({}, SEDIMENT, {
+    prompts: Object.assign({}, SEDIMENT.prompts, { restore: restoreDraft.restore }),
+    drafts: [restoreDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 0, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'restore', label: '恢复草稿', prompt: restoreDraft.restore },
+    history: [],
+  })
+  const t = await mount('recent', { sediment: restoreQueue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  expect('PR 已关闭：主按钮文案', !!findButtonContains(view, '恢复草稿'), view.text.slice(-200))
+  click(findButtonContains(view, '恢复草稿'))
+  await t.settle()
+  expect('PR 已关闭：填入恢复命令', t.lastDraft().includes('mv ') && t.lastDraft().includes('.done'), t.lastDraft().slice(0, 120))
+}
+
+{
+  // 空队列的最近完成：带 PR 链接，能直接打开。
+  const historyOnly = Object.assign({}, SEDIMENT, {
+    drafts: [],
+    counts: { total: 0, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 0, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'none', label: '', prompt: '' },
+    history: [{
+      key: 'VLLM-ASC-13976', title: 'DSpark 可选 API 缺失', state: 'knowledge',
+      at: '2026-11-04T17:20:16+08:00',
+      pr: { number: 429, url: 'https://github.com/pillumina/ascend-sleuth/pull/429', state: 'merged' },
+    }],
+  })
+  const t = await mount('recent', { sediment: historyOnly, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  expect('最近完成：显示 PR 链接', view.text.includes('#429'), view.text.slice(-300))
+  const link = findNode(view, (node) => node.type === 'a' && node.props && node.props.href === 'https://github.com/pillumina/ascend-sleuth/pull/429')
+  expect('最近完成：链接指向 PR', !!link)
 }
 
 {

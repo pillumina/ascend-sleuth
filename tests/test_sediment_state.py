@@ -520,3 +520,213 @@ class CliTest(SedimentCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---------------------------------------------------------------- 已出队草稿与台账兜底
+
+def write_done_draft(repo: Path, key: str = "2026-10-20-draft-a", cid: str = "DRAFT-A",
+                     title: str = "已出队的草稿", directory: bool = False) -> Path:
+    base = inbox(repo) / ".done" / key
+    if directory:
+        path = base / "case.yaml"
+        postmortem = base / "postmortem.md"
+    else:
+        path = base / f"{key}.case.yaml"
+        postmortem = base / f"{key}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(CASE_TMPL.format(cid=cid, title=title, source=""), encoding="utf-8")
+    postmortem.write_text(f"# {title}\n正文\n", encoding="utf-8")
+    return path
+
+
+def append_close_log(repo: Path, key: str = "2026-10-20-draft-a",
+                     decision: str = "new_pattern", state: str = "knowledge",
+                     status: str = "closed", at: str = "2026-11-04T17:20:16+08:00") -> None:
+    path = inbox(repo) / ".groom" / "close-log.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    entry = {"at": at, "draft": key, "decision": decision, "state": state,
+             "status": status, "case_id": "DRAFT-A", "session": "sid-closed",
+             "moved": [str(inbox(repo) / ".done" / key)], "trace": "written", "reason": None}
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+class ClosedDraftQueueTest(SedimentCase):
+    """groom 之后草稿已经出队，队列仍要跟到 PR 结束。"""
+
+    def test_closed_draft_with_open_pr_stays_in_queue(self):
+        write_draft(self.repo)
+        write_assessment(self.repo, "2026-10-20-draft-a", fresh_commit(self.repo))
+        # 模拟 close_draft：草稿移进 .done，评估状态文件还在（cleanup 之前）
+        (inbox(self.repo) / "2026-10-20-draft-a.case.yaml").unlink()
+        write_done_draft(self.repo, title="已出队的草稿")
+        append_close_log(self.repo)
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": pr_entry(state="open")})
+        payload = self.collect()
+        row = self.draft(payload)
+        self.assertEqual(row["state"], "pr_open")
+        self.assertEqual(row["stage"], "已提 PR · 合入未确认")
+        self.assertTrue(row["closedDraft"])
+        self.assertEqual(row["path"], "")
+        self.assertIn("已出队的草稿", row["title"])
+        self.assertEqual(row["decision"], "new_pattern")
+        self.assertEqual(row["next"]["kind"], "check")
+        self.assertEqual(payload["counts"]["total"], 1)
+        self.assertEqual(payload["counts"]["prOpen"], 1)
+        self.assertEqual(payload["primary"]["kind"], "check")
+        self.assertEqual(payload["history"], [])
+
+    def test_cleanup_deleted_sidecar_still_renders_row(self):
+        # 本次现场：评估状态文件被 cleanup 删掉，只剩 close-log 与台账
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": pr_entry(state="open")})
+        write_done_draft(self.repo)
+        append_close_log(self.repo)
+        payload = self.collect()
+        row = self.draft(payload)
+        self.assertEqual(row["state"], "pr_open")
+        self.assertTrue(row["closedDraft"])
+        self.assertTrue(row["assessed"])
+        self.assertEqual(row["decision"], "new_pattern")
+        self.assertIn("已出队的草稿", row["title"])
+
+    def test_history_joins_pr_link(self):
+        write_done_draft(self.repo)
+        append_close_log(self.repo)
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": pr_entry(state="merged", number=420)})
+        payload = self.collect()
+        self.assertEqual(payload["drafts"], [])
+        self.assertEqual(len(payload["history"]), 1)
+        item = payload["history"][0]
+        self.assertEqual(item["key"], "2026-10-20-draft-a")
+        self.assertIn("已出队的草稿", item["title"])
+        self.assertEqual(item["pr"]["number"], 420)
+        self.assertEqual(item["pr"]["state"], "merged")
+
+    def test_closed_pr_offers_restore(self):
+        write_done_draft(self.repo)
+        append_close_log(self.repo)
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": pr_entry(state="closed")})
+        payload = self.collect()
+        row = self.draft(payload)
+        self.assertEqual(row["state"], "pr_closed")
+        self.assertEqual(row["next"]["kind"], "restore")
+        self.assertEqual(row["next"]["label"], "恢复草稿")
+        self.assertIn("mv ", row["next"]["prompt"])
+        self.assertIn(".done", row["next"]["prompt"])
+
+    def test_pending_pr_does_not_report_trace_mismatch(self):
+        write_case(self.repo, "knowledge/inference/vllm-ascend/interrupt/DRAFT-A.yaml",
+                   "DRAFT-A", title="草稿已升格")
+        write_done_draft(self.repo)
+        append_close_log(self.repo)
+        write_trace(self.repo, "sid-closed", state="submitted", case_id="DRAFT-A")
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": pr_entry(state="open")})
+        row = self.draft(self.collect())
+        self.assertEqual(row["state"], "pr_open")
+        self.assertEqual(row["source"]["mismatch"], "none")
+
+    def test_ledger_only_open_pr_gets_row(self):
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"gone-draft": pr_entry(state="open", number=419)})
+        payload = self.collect()
+        row = self.draft(payload, "gone-draft")
+        self.assertEqual(row["state"], "pr_open")
+        self.assertTrue(row["closedDraft"])
+        self.assertFalse(row["assessed"])
+        self.assertEqual(row["next"]["kind"], "check")
+        self.assertEqual(payload["counts"]["prOpen"], 1)
+
+    def test_ledger_only_terminal_is_not_queued(self):
+        # 没有草稿、没有 close-log 的终态 PR 没有本地动作可做；平台是唯一事实来源。
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"gone-draft": pr_entry(state="merged", number=419)})
+        payload = self.collect()
+        self.assertEqual(payload["drafts"], [])
+        self.assertEqual(payload["counts"]["total"], 0)
+        self.assertEqual(payload["history"], [])
+
+    def test_non_http_pr_url_is_dropped(self):
+        write_done_draft(self.repo)
+        append_close_log(self.repo)
+        entry = pr_entry(state="open")
+        entry["url"] = "javascript:alert(1)"
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": entry})
+        row = self.draft(self.collect())
+        self.assertEqual(row["pr"]["url"], "")
+
+    def test_bad_ledger_file_keeps_dequeued_row(self):
+        write_done_draft(self.repo)
+        append_close_log(self.repo)
+        path = inbox(self.repo) / ".groom" / "pr-state.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{not json", encoding="utf-8")
+        payload = self.collect()
+        self.assertEqual(len(payload["drafts"]), 1, payload["drafts"])
+        row = self.draft(payload)
+        self.assertEqual(row["state"], "pr_open")
+        self.assertEqual(row["pr"]["state"], "unknown")
+        self.assertTrue(payload["ledgerError"])
+
+    def test_bad_ledger_entry_does_not_break_collect(self):
+        write_draft(self.repo)
+        write_assessment(self.repo, "2026-10-20-draft-a", fresh_commit(self.repo))
+        (inbox(self.repo) / "2026-10-20-draft-a.case.yaml").unlink()
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": "broken"})
+        payload = self.collect()
+        self.assertEqual(len(payload["drafts"]), 1)
+        self.assertEqual(payload["drafts"][0]["state"], "orphan")
+
+    def test_orphan_with_ledger_pr_is_single_row(self):
+        write_draft(self.repo)
+        write_assessment(self.repo, "2026-10-20-draft-a", fresh_commit(self.repo))
+        (inbox(self.repo) / "2026-10-20-draft-a.case.yaml").unlink()
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": pr_entry(state="open")})
+        payload = self.collect()
+        self.assertEqual(len(payload["drafts"]), 1, payload["drafts"])
+        self.assertEqual(payload["drafts"][0]["key"], "2026-10-20-draft-a")
+        self.assertEqual(payload["drafts"][0]["state"], "pr_open")
+        self.assertEqual(payload["counts"]["total"], 1)
+
+    def test_orphan_with_merged_ledger_pr_is_single_row(self):
+        write_draft(self.repo)
+        write_assessment(self.repo, "2026-10-20-draft-a", fresh_commit(self.repo))
+        (inbox(self.repo) / "2026-10-20-draft-a.case.yaml").unlink()
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": pr_entry(state="merged")})
+        payload = self.collect()
+        self.assertEqual(len(payload["drafts"]), 1, payload["drafts"])
+        self.assertEqual(payload["drafts"][0]["state"], "pr_merged")
+
+    def test_done_directory_layout_renders_row(self):
+        write_done_draft(self.repo, directory=True)
+        append_close_log(self.repo)
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": pr_entry(state="open")})
+        payload = self.collect()
+        row = self.draft(payload)
+        self.assertEqual(row["state"], "pr_open")
+        self.assertTrue(row["closedDraft"])
+        self.assertIn("已出队的草稿", row["title"])
+
+    def test_stale_outranks_pr_open(self):
+        write_draft(self.repo)
+        old_commit = fresh_commit(self.repo)
+        write_assessment(self.repo, "2026-10-20-draft-a", old_commit)
+        write_case(self.repo, "knowledge/inference/vllm-ascend/interrupt/CASE-B.yaml",
+                   "CASE-B", title="新 case")
+        new_commit = commit_all(self.repo, "add B")
+        git(self.repo, "update-ref", "refs/remotes/origin/main", new_commit)
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": pr_entry(state="open")})
+        row = self.draft(self.collect())
+        self.assertEqual(row["state"], "need_rerun")
+        self.assertEqual(row["next"]["kind"], "groom")
+        self.assertIsNotNone(row["pr"])

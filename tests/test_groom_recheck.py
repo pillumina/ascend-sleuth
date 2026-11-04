@@ -101,6 +101,12 @@ class RecheckTest(unittest.TestCase):
         self.assertTrue(dup, findings)
         self.assertEqual(dup[0]["detail"]["pr_case"], "CASE-B")
         self.assertEqual(dup[0]["detail"]["main_case"], "CASE-C")
+        # 合入后这条没有可执行动作，降为提示，不能拦住 cleanup。
+        post, _ = check(marker(self.m0, self.b_sha), self.repo, self.m1, self.head_b,
+                        enforce_marker=True, post_merge=True)
+        post_dup = [f for f in post if f["code"] == "possible-duplicate-after-merge"]
+        self.assertTrue(post_dup)
+        self.assertEqual(post_dup[0]["severity"], "warning")
 
     def test_missing_marker_is_advisory_by_default_and_fatal_on_enforce(self):
         findings, _ = check("no marker here", self.repo, self.m0, self.head_b, enforce_marker=False)
@@ -134,6 +140,14 @@ class RecheckTest(unittest.TestCase):
         findings, _ = check(marker(self.m1, self.a_sha, submitted_case_id="CASE-A", novelty="covered", candidate="CASE-A", human="covered"), self.repo, self.m1, self.m1, enforce_marker=True,
                             post_merge=True)
         self.assertNotIn("post-merge-index-stale", [f["code"] for f in findings])
+
+    def test_post_merge_skips_stale_assessment(self):
+        body = marker(self.m0, self.b_sha)
+        before, _ = check(body, self.repo, self.m1, self.head_b, enforce_marker=True)
+        self.assertIn("assessment-stale", [f["code"] for f in before])
+        after, _ = check(body, self.repo, self.m1, self.head_b, enforce_marker=True,
+                         post_merge=True)
+        self.assertNotIn("assessment-stale", [f["code"] for f in after])
 
     def test_revalidation_after_regroom_passes(self):
         # 场景：B 对 M0 的评估过期 → 对 M1 重跑 groom（新 marker）→ 复核通过

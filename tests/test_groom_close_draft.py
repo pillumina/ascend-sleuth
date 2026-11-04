@@ -22,6 +22,7 @@ from tests.groom_fixtures import (  # noqa: E402
 )
 from groom_common import assessment_path  # noqa: E402
 from groom_close_draft import promoted_postmortem  # noqa: E402
+import pr_status  # noqa: E402
 
 TRACE_TMPL = """session_id: "{sid}"
 status: resolved
@@ -223,6 +224,86 @@ class CloseDraftTest(unittest.TestCase):
         promoted.write_text("# 案例\n", encoding="utf-8")
         self.assertEqual(promoted_postmortem(self.repo, "draft-dir", str(promoted)), promoted)
         self.assertIsNone(promoted_postmortem(self.repo, "draft-dir", str(self.inbox / "missing.md")))
+
+    def test_open_pr_blocks_close(self):
+        key = self.make_draft()
+        self.assess(key, "new_pattern")
+        self.decide(key, "new_pattern")
+        ledger = pr_status.empty_ledger()
+        ledger["prs"][key] = {"platform": "github", "repo": "owner/repo", "number": 7,
+                              "url": "https://github.com/owner/repo/pull/7", "state": "open",
+                              "source": "ledger", "created_at": "2026-11-04T10:00:00+08:00"}
+        pr_status.save_ledger(self.repo, ledger)
+
+        p = self.close("--draft-key", key, "--apply")
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("PR 还没合入", p.stdout)
+        self.assertTrue((self.inbox / f"{key}.case.yaml").exists())
+        self.assertEqual(self.trace_doc()["sedimented"]["state"], "submitted")
+
+        p = self.close("--draft-key", key, "--apply", "--json")
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        payload = json.loads(p.stdout)
+        self.assertEqual(payload["results"][0]["status"], "error")
+
+    def test_closed_pr_blocks_close(self):
+        key = self.make_draft()
+        self.assess(key, "new_pattern")
+        self.decide(key, "new_pattern")
+        ledger = pr_status.empty_ledger()
+        ledger["prs"][key] = {"platform": "github", "repo": "owner/repo", "number": 7,
+                              "url": "https://github.com/owner/repo/pull/7", "state": "closed",
+                              "source": "platform", "created_at": "2026-11-04T10:00:00+08:00"}
+        pr_status.save_ledger(self.repo, ledger)
+
+        p = self.close("--draft-key", key, "--apply")
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("PR 已关闭、没有合入", p.stdout)
+        self.assertTrue((self.inbox / f"{key}.case.yaml").exists())
+
+    def test_bad_ledger_entry_blocks_close(self):
+        key = self.make_draft()
+        self.assess(key, "new_pattern")
+        self.decide(key, "new_pattern")
+        ledger = pr_status.empty_ledger()
+        ledger["prs"][key] = "broken"
+        pr_status.save_ledger(self.repo, ledger)
+
+        p = self.close("--draft-key", key, "--apply")
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("PR 还没合入（unknown）", p.stdout)
+        self.assertTrue((self.inbox / f"{key}.case.yaml").exists())
+
+    def test_allow_open_pr_lets_close_through(self):
+        key = self.make_draft()
+        self.assess(key, "new_pattern")
+        self.decide(key, "new_pattern")
+        write_case(self.repo, "knowledge/inference/vllm-ascend/interrupt/DRAFT-A.yaml",
+                   cid="DRAFT-A", title="HCCL timeout", symptoms=("HCCL timeout",),
+                   root_cause="link failure", fix="restore link", tags=("hccl",))
+        ledger = pr_status.empty_ledger()
+        ledger["prs"][key] = {"platform": "github", "repo": "owner/repo", "number": 7,
+                              "url": "https://github.com/owner/repo/pull/7", "state": "open",
+                              "source": "ledger", "created_at": "2026-11-04T10:00:00+08:00"}
+        pr_status.save_ledger(self.repo, ledger)
+
+        p = self.close("--draft-key", key, "--apply", "--allow-open-pr")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertFalse((self.inbox / f"{key}.case.yaml").exists())
+
+    def test_mixed_closed_and_active_keys_continue(self):
+        key = self.make_draft("draft-a")
+        self.assess(key, "new_pattern")
+        self.decide(key, "new_pattern")
+        write_case(self.repo, "knowledge/inference/vllm-ascend/interrupt/DRAFT-A.yaml",
+                   cid="DRAFT-A", title="HCCL timeout", symptoms=("HCCL timeout",),
+                   root_cause="link failure", fix="restore link", tags=("hccl",))
+        (self.inbox / ".done" / "draft-b").mkdir(parents=True)
+
+        p = self.close("--draft-key", "draft-b", "--draft-key", key, "--apply")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertIn("draft-b: 已出队", p.stdout)
+        self.assertFalse((self.inbox / f"{key}.case.yaml").exists())
 
     def test_json_on_empty_inbox(self):
         self.inbox.mkdir(parents=True, exist_ok=True)

@@ -857,6 +857,9 @@ export function apply(ctx) {
         return { ok: false, code: 'E_SCHEMA', message: 'PR 状态不合法' }
       }
       argv.push('--mark', '--draft', shq(String(payload.key)), '--state', shq(String(payload.state)), ...casArgs)
+    } else if (action === 'check-all') {
+      // 一次查完所有 open/unknown；脚本自己按台账做 CAS，写回 state/checked_at/source。
+      argv.push('--check-all', '--json')
     } else if (action === 'set-target') {
       const remote = String(payload.remote || '')
       const base = String(payload.base || '')
@@ -869,7 +872,9 @@ export function apply(ctx) {
     } else {
       return { ok: false, code: 'E_SCHEMA', message: '未知的 PR 目标动作：' + action }
     }
-    return runJsonHelper(root, python, script, argv, 30000, writePolicy)
+    // 批量查最多等 180 秒：GitHub 适配器单次最多 20 秒，队列长时 120 秒会截断。
+    const timeoutMs = action === 'check-all' ? 180000 : 30000
+    return runJsonHelper(root, python, script, argv, timeoutMs, writePolicy)
   }
 
   function stateFor(sessionId, cwd, refresh) {

@@ -5,8 +5,11 @@
   「这份草稿评过没有、过期没有、人决定了没有、PR 合入没有」这些判据只在 `scripts/` 里
   各写一份（groom_status 的新鲜度、groom_common 的草稿发现、pr_status 的台账）。界面若
   自己判一次，就会出现第二份口径——skill 改了、界面没改，两边说法不一致。所以本脚本
-  只做三件事：**取**（复用那些函数）、**并**（trace 的沉淀状态与 PR 台账合并到一份队列）、
-  **投影**（状态、下一步、四类 prompt）。不新增判据。
+  只做三件事：**取**（复用那些函数）、**并**（inbox 草稿、`.done/` 出队草稿、close-log、
+  trace 与 PR 台账合并成一份队列）、**投影**（状态、下一步、五类 prompt）。不新增判据。
+
+  队列的对象是「沉淀事项」，不是 inbox 草稿：草稿进了 `.done/` 但 PR 还没合入时，
+  仍然有一行，状态由 PR 台账决定。
 
 只读边界：不写任何文件；不 fetch；git 只用只读命令（rev-parse / symbolic-ref 等）。
 所有失败（读不出 git、inbox 解析失败）都以 `{"ok": false, "code": ..., "message": ...}`
@@ -237,6 +240,92 @@ def _find_postmortem_path(root: Path, key: str) -> str:
     return ""
 
 
+def _done_draft(inbox: Path, key: str, gm):
+    """读 `.done/<key>/` 里的出队草稿。close_draft 的两种落点都认。"""
+    base = inbox / ".done" / key
+    candidates = (
+        (base / f"{key}.case.yaml", "flat", base / f"{key}.md"),
+        (base / "case.yaml", "directory", base / "postmortem.md"),
+    )
+    for case_path, layout, postmortem in candidates:
+        if case_path.is_file():
+            return gm.Draft(key=key, case_path=case_path, layout=layout,
+                            postmortem_path=postmortem if postmortem.is_file() else None)
+    return None
+
+
+def _read_close_log(inbox: Path) -> list:
+    """读全量 close-log。坏行跳过；同一 key 的先后由调用方取最后一条。"""
+    path = inbox / ".groom" / "close-log.jsonl"
+    if not path.is_file():
+        return []
+    try:
+        lines = path.read_text(encoding="utf-8-sig", errors="replace").splitlines()
+    except OSError:
+        return []
+    out = []
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(obj, dict):
+            continue
+        key = str(obj.get("draft") or obj.get("key") or "").strip()
+        at = str(obj.get("at") or "").strip()
+        state = str(obj.get("state") or "").strip()
+        if not key or not at or not state:
+            continue
+        out.append({
+            "key": key, "at": at, "state": state,
+            "status": str(obj.get("status") or ""),
+            "decision": str(obj.get("decision") or ""),
+            "case_id": str(obj.get("case_id") or ""),
+            "session": str(obj.get("session") or ""),
+        })
+    return out
+
+
+def _close_index(entries: list) -> dict:
+    """同 key 取最后一条：close-log 只追加，最后一条才是当前状态。"""
+    out = {}
+    for entry in entries:
+        out[entry["key"]] = entry
+    return out
+
+
+def _restore_prompt(inbox: Path, key: str, draft) -> str:
+    """把 `.done/<key>` 移回 inbox 的可复制命令。平铺与目录两种草稿分开处理。"""
+    base = inbox / ".done" / key
+    if draft is not None and draft.layout == "directory":
+        return ("把已出队的草稿移回 inbox，再继续 groom：\n"
+                f"mv {_q(str(base))} {_q(str(inbox / key))}")
+    files = [path for path in sorted(base.glob("*")) if path.is_file()] if base.is_dir() else []
+    lines = ["把已出队的草稿移回 inbox，再继续 groom："]
+    for path in files:
+        lines.append(f"mv {_q(str(path))} {_q(str(inbox / path.name))}")
+    if base.is_dir():
+        lines.append(f"rmdir {_q(str(base))}")
+    return "\n".join(lines)
+
+
+def _pr_view(entry):
+    if not isinstance(entry, dict):
+        return None
+    url = str(entry.get("url") or "").strip()
+    if not re.match(r"^https?://", url, re.IGNORECASE):
+        # 台账可能被手改或来自旧数据；URL 只放行 http/https，别让它进 href。
+        url = ""
+    return {"number": entry.get("number"), "url": url,
+            "repo": str(entry.get("repo") or ""),
+            "platform": str(entry.get("platform") or ""),
+            "state": _pr_state(entry), "source": str(entry.get("source") or ""),
+            "checkedAt": str(entry.get("checked_at") or "")}
+
+
 def _title_of(gm, draft, key: str) -> str:
     try:
         cases = gm.draft_cases(draft) if draft is not None else []
@@ -291,7 +380,11 @@ def _pr_state(entry: dict) -> str:
 
 
 def _classify(row: dict, pr_entry, done: bool) -> str:
-    """状态优先级（契约 §2）：orphan → unassessed → need_rerun → 人决定分支 → PR 覆盖 → done。"""
+    """状态优先级（契约 §2）：orphan → 评估/决定分支 → PR 覆盖 → done。
+
+    PR 是 open/unknown 时，过期或批准失效压过「待合入」：评估已经不能用了，
+    先去重跑 groom，PR 记录仍在详情里。
+    """
     if row.get("orphan"):
         return "orphan"
     if not row.get("assessed"):
@@ -313,7 +406,14 @@ def _classify(row: dict, pr_entry, done: bool) -> str:
             state = "need_decision"
     if pr_entry is not None:
         pr_state = _pr_state(pr_entry)
-        state = {"merged": "pr_merged", "closed": "pr_closed"}.get(pr_state, "pr_open")
+        if pr_state == "merged":
+            state = "pr_merged"
+        elif pr_state == "closed":
+            state = "pr_closed"
+        elif state == "need_rerun":
+            state = "need_rerun"
+        else:
+            state = "pr_open"
     if done:
         state = "done"
     return state
@@ -459,12 +559,18 @@ def _prompt_close(rows: list) -> str:
     for row in rows:
         pr = row["pr"] or {}
         lines.append(f"- {row['key']}：{pr.get('url') or '（台账缺 URL）'}")
-    keys = " ".join(f"--draft-key {_q(row['key'])}" for row in rows)
-    lines += ["",
-              "按 /knowledge-groom 的「收尾清理」一节：先跑",
-              f"  python3 scripts/groom_close_draft.py {keys} --apply",
-              "再对每份 PR 的 body 各跑一次",
-              "  python3 scripts/groom_cleanup.py --pr-body-file <该 PR 的 body 文件>",
+    to_close = [row for row in rows if not row.get("closedDraft")]
+    lines += ["", "先取每份 PR 的合并提交，再取它的第一个父提交：",
+              "  MERGE=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid)  # GitHub",
+              '  BASE=$(git rev-parse "$MERGE^1")',
+              "base 不要用 `baseRefOid`：它是 PR 头更新时的 base 分支头，不是合并前的 base。"]
+    if to_close:
+        keys = " ".join(f"--draft-key {_q(row['key'])}" for row in to_close)
+        lines += ["草稿还在 inbox 的，先跑：",
+                  f"  python3 scripts/groom_close_draft.py {keys} --apply"]
+    lines += ["再对每份 PR 的 body 各跑一次：",
+              "  python3 scripts/groom_cleanup.py --pr-body-file <该 PR 的 body 文件> "
+              '--post-merge --base "$BASE" --head "$MERGE"',
               "body 用已合入 PR 的原文（含 groom marker）；证据不在就停。"]
     return "\n".join(lines)
 
@@ -648,19 +754,25 @@ def _check_detail(adapters: list, rows: list) -> str:
 def _close_detail(target_info: dict, rows: list) -> str:
     if not rows:
         return ""
+    lines = []
+    if any(not row.get("closedDraft") for row in rows):
+        lines.append("python3 scripts/groom_close_draft.py --all --apply")
     target = _target_target(target_info)
     base_ref = f"{target.get('remote') or 'origin'}/{target.get('base') or 'main'}"
-    return "\n".join([
-        "python3 scripts/groom_close_draft.py --all --apply",
-        "python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --base "
-        + _q(base_ref) + " --head <head>",
-    ])
+    lines += [
+        "python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge "
+        '--base "$(git rev-parse "$MERGE^1")" --head "$MERGE"',
+        "合入提交取法：GitHub 用 `gh pr view <n> --json mergeCommit --jq .mergeCommit.oid`；"
+        "其他平台按平台文档取。base 用 `git rev-parse <merge>^1`，不要用 baseRefOid。",
+        f"合并前 base 的引用（没取到 merge 提交时用）：{base_ref}",
+    ]
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------- 主流程
 
-def _history(inbox: Path) -> list:
-    """读 `.groom/close-log.jsonl` 最近 5 行。字段缺失的行跳过（坏行不挡住整段历史）。"""
+def _history(inbox: Path, done_drafts: dict, ledger: dict, gm) -> list:
+    """最近 5 条收尾记录，带 PR 链接。坏行不挡住整段历史（行为与旧版一致）。"""
     path = inbox / ".groom" / "close-log.jsonl"
     if not path.is_file():
         return []
@@ -669,6 +781,7 @@ def _history(inbox: Path) -> list:
     except OSError:
         return []
     out = []
+    prs = ledger.get("prs") if isinstance(ledger.get("prs"), dict) else {}
     for line in lines[-5:]:
         line = line.strip()
         if not line:
@@ -684,8 +797,15 @@ def _history(inbox: Path) -> list:
         state = str(obj.get("state") or "").strip()
         if not key or not at or not state:
             continue
-        out.append({"key": key, "title": "", "decision": str(obj.get("decision") or ""),
-                    "state": state, "at": at})
+        draft = done_drafts.get(key)
+        out.append({
+            "key": key,
+            "title": _title_of(gm, draft, key) if draft is not None else "",
+            "decision": str(obj.get("decision") or ""),
+            "state": state,
+            "at": at,
+            "pr": _pr_view(prs.get(key)),
+        })
     return out
 
 
@@ -743,13 +863,7 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
 
     source = _source(trace, done, promotion, kb_ids, draft_in_inbox)
     kind = NEXT_KIND.get(state, "none")
-    pr = None
-    if pr_entry is not None:
-        pr = {"number": pr_entry.get("number"), "url": str(pr_entry.get("url") or ""),
-              "repo": str(pr_entry.get("repo") or ""),
-              "platform": str(pr_entry.get("platform") or ""),
-              "state": _pr_state(pr_entry), "source": str(pr_entry.get("source") or ""),
-              "checkedAt": str(pr_entry.get("checked_at") or "")}
+    pr = _pr_view(pr_entry)
     return {
         "key": key,
         "title": _title_of(gm, draft, key),
@@ -771,13 +885,99 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
         "decisionValid": bool(row.get("human_decision_valid")),
         "decisionBy": str(human.get("by") or ""),
         "decisionAt": str(human.get("decided_at") or ""),
+        "assessed": bool(row.get("assessed")),
         "assessedShort": str(row.get("assessed_short") or ""),
         "assessedCommit": str(row.get("assessed_commit") or ""),
         "createdAt": created_at,
+        "closedDraft": False,
+        "restore": "",
         "source": source,
         "promotion": promotion,
         "pr": pr,
         "next": {"kind": kind, "label": ("重新评估（继续 groom）" if state == "pr_closed" else ACTION_LABEL.get(kind, "")), "prompt": ""},
+        "writeback": _writeback(source["mismatch"], source["sessionId"],
+                                promotion["caseId"], key),
+    }
+
+
+def _closed_record(root: Path, gm, key: str, close_entry: dict, draft, inbox: Path,
+                   ledger: dict, trace_rows: list, kb_ids: set) -> dict:
+    """已出队草稿的队列行：标题从 `.done/` 读，决定从 close-log 读，PR 从台账读。
+
+    评估状态文件可能已经被 cleanup 删掉，所以 `assessed` 以 close-log 的 closed 记录为准。
+    """
+    cases = []
+    if draft is not None:
+        try:
+            cases = gm.draft_cases(draft)
+        except Exception:
+            cases = []
+    case_id = str(cases[0].get("id") or "") if cases else str(close_entry.get("case_id") or "")
+    source_session = (str(cases[0].get("source_session") or "") if cases
+                      else str(close_entry.get("session") or ""))
+    trace = _match_trace(trace_rows, "", case_id, source_session)
+    decision = str(close_entry.get("decision") or "")
+    assessed = str(close_entry.get("status") or "") == "closed"
+    human = {"decision": decision, "by": "", "decided_at": str(close_entry.get("at") or "")}
+    promotion = _promotion(root, gm, key, trace, human, cases, kb_ids)
+    pr_entry = ledger["prs"].get(key) if isinstance(ledger.get("prs"), dict) else None
+    if not isinstance(pr_entry, dict):
+        pr_entry = None
+    row = {
+        "draft": key, "orphan": False, "assessed": assessed,
+        "stale": False, "stale_reasons": [], "proposed_novelty": None,
+        "candidate_case": None, "confidence": None, "rationale": "",
+        "review_reasons": [], "human_decision": decision,
+        "human_decision_valid": assessed, "assessed_short": "", "assessed_commit": "",
+    }
+    state = _classify(row, pr_entry, False)
+    source = _source(trace, False, promotion, kb_ids, False)
+    if state == "pr_open":
+        # PR 还没合入：草稿本来就已出队，case 只在 PR 分支上。此时 trace 的
+        # submitted / knowledge 都可能是正常的，不报「回写」差异。
+        source = dict(source, mismatch="none")
+    kind = NEXT_KIND.get(state, "none")
+    if state == "pr_closed":
+        kind = "restore" if draft is not None else "none"
+    created_at = str(close_entry.get("at") or "")
+    age_path = draft.case_path if draft is not None else None
+    age_days, age_source = _age_days(created_at, age_path)
+    stage, tone = STATE_META.get(state, (state, "gray"))
+    return {
+        "key": key,
+        "title": _title_of(gm, draft, key),
+        "path": "",
+        "caseId": case_id,
+        "state": state,
+        "stage": stage,
+        "stageTone": tone,
+        "ageDays": age_days,
+        "ageSource": age_source,
+        "novelty": None,
+        "confidence": None,
+        "candidate": "",
+        "rationale": "",
+        "reviewReasons": [],
+        "stale": False,
+        "staleReasons": [],
+        "decision": decision if assessed else "",
+        "decisionValid": assessed,
+        "decisionBy": "",
+        "decisionAt": str(close_entry.get("at") or ""),
+        "assessed": assessed,
+        "assessedShort": "",
+        "assessedCommit": "",
+        "createdAt": created_at,
+        "closedDraft": True,
+        "assessmentCleared": not (inbox / ".groom" / "assessments"
+                                  / f"{gm.sanitize_key(key)}.yaml").is_file(),
+        "restore": _restore_prompt(inbox, key, draft) if kind == "restore" else "",
+        "source": source,
+        "promotion": promotion,
+        "pr": _pr_view(pr_entry),
+        "next": {"kind": kind,
+                 "label": ("恢复草稿" if kind == "restore" else ACTION_LABEL.get(kind, "")),
+                 "prompt": ""},
         "writeback": _writeback(source["mismatch"], source["sessionId"],
                                 promotion["caseId"], key),
     }
@@ -800,12 +1000,10 @@ def _counts(rows: list) -> dict:
 
 
 def _primary(rows: list, prompts: dict) -> dict:
-    for kind, states in (("groom", ("need_rerun", "unassessed", "need_decision", "pr_closed")),
-                         ("pr", ("decided",)),
-                         ("check", ("pr_open",)),
-                         ("close", ("pr_merged",))):
-        if any(row["state"] in states for row in rows):
-            return {"kind": kind, "label": ACTION_LABEL[kind], "prompt": prompts.get(kind, "")}
+    for kind in ("groom", "pr", "check", "close", "restore"):
+        if any(row["next"]["kind"] == kind for row in rows):
+            label = "恢复草稿" if kind == "restore" else ACTION_LABEL[kind]
+            return {"kind": kind, "label": label, "prompt": prompts.get(kind, "")}
     return {"kind": "none", "label": "", "prompt": ""}
 
 
@@ -815,11 +1013,13 @@ def _attach_prompts(root: Path, rows: list, target_info: dict, adapters: list,
     decided = [r for r in rows if r["state"] == "decided"]
     checking = [r for r in rows if r["state"] == "pr_open"]
     closing = [r for r in rows if r["state"] == "pr_merged"]
+    restoring = [r for r in rows if r["next"]["kind"] == "restore"]
     prompts = {
         "groom": _prompt_groom(_inbox_rel(root, inbox), rows) if groom_rows else "",
         "pr": _prompt_pr(root, inbox, target_info, adapters, decided),
         "check": _prompt_check(root, inbox, adapters, checking),
         "close": _prompt_close(closing),
+        "restore": "\n\n".join(r.get("restore") or "" for r in restoring).strip(),
         "groomDetail": _groom_detail() if groom_rows else "",
         "prDetail": _pr_detail(root, target_info, adapters, decided),
         "checkDetail": _check_detail(adapters, checking),
@@ -827,7 +1027,7 @@ def _attach_prompts(root: Path, rows: list, target_info: dict, adapters: list,
     }
     for row in rows:
         kind = row["next"]["kind"]
-        row["next"]["prompt"] = prompts.get(kind, "")
+        row["next"]["prompt"] = row.get("restore") or "" if kind == "restore" else prompts.get(kind, "")
     return prompts
 
 
@@ -844,11 +1044,14 @@ def collect(root, only: str = "") -> dict:
         inbox = Path(gm.shared_inbox(root))
     except Exception as exc:
         raise SedimentError("E_INBOX", f"解析共享 inbox 失败：{exc}") from exc
+    ledger_error = ""
     try:
         ledger = prs.load_ledger(root)
-    except Exception:
+    except Exception as exc:
         # 坏台账不让队列空掉：PR 列显示不了，队列其余部分照出。
+        # 已出队的条目用「未确认」占一行，避免在途事项整条消失。
         ledger = prs.empty_ledger()
+        ledger_error = str(exc)
     target_commit = _target_commit(gm, root, ledger)
     try:
         rows = gs.status_rows(root, target_commit, inbox)
@@ -861,16 +1064,76 @@ def collect(root, only: str = "") -> dict:
     except Exception:
         kb_ids = set()
     drafts = {draft.key: draft for draft in gm.find_drafts(inbox)}
+    close_index = _close_index(_read_close_log(inbox))
+    # orphan 行的 key 来自评估状态文件名（sanitize_key 加了哈希），要能对回 close-log 的原始 key。
+    close_by_sanitized = {gm.sanitize_key(key): key for key in close_index}
+    done_drafts = {key: _done_draft(inbox, key, gm) for key in close_index}
     target_info = prs.list_targets(root)
     adapters = prs.load_adapters()
     target = _target_target(target_info)
     platform_id = str(target.get("platform") or "")
     target_info["platformName"] = _platform_name(adapters, platform_id) if platform_id else ""
-    records = []
+    ledger_prs = ledger.get("prs") if isinstance(ledger.get("prs"), dict) else {}
+    if ledger_error:
+        for key, entry in close_index.items():
+            if entry.get("status") == "closed" and not isinstance(ledger_prs.get(key), dict):
+                ledger_prs[key] = {"state": "unknown", "source": "ledger", "url": "",
+                                   "platform": "", "repo": "", "number": None}
+    ledger_by_sanitized = {gm.sanitize_key(key): key for key in ledger_prs}
+    for key in ledger_prs:
+        done_drafts.setdefault(key, _done_draft(inbox, key, gm))
+    records, seen = [], set()
+    orphan_terminal = set()
     for row in rows:
         key = str(row.get("draft") or "")
+        raw = key if key in close_index else close_by_sanitized.get(
+            key, key if key in ledger_prs else ledger_by_sanitized.get(key, key))
+        closed = close_index.get(raw)
+        if row.get("orphan"):
+            # 正常出队（close-log 有 closed 记录）不算孤儿；台账里有 PR 时也交给
+            # 下面的 PR 行，避免同一个 key 出现孤儿 + PR 两行。
+            if closed and closed.get("status") == "closed":
+                continue
+            if raw in ledger_prs:
+                entry = ledger_prs[raw]
+                if isinstance(entry, dict):
+                    if _pr_state(entry) in ("merged", "closed"):
+                        # 终态 PR 没有 close-log 时，台帐行本身没有动作；但残留的
+                        # assessment 还需要按 PR body 清理一次，先留一行给它。
+                        orphan_terminal.add(raw)
+                    continue
+                # 台账里是一个坏值（不是对象）：保留孤儿行，至少让人看见评估残留。
         records.append(_draft_record(root, gm, row, drafts.get(key),
                                      inbox, ledger, trace_rows, kb_ids))
+        seen.add(key)
+    # 已出队、但 PR 还没走完的：一行不丢，状态由 PR 决定。
+    for key, close_entry in close_index.items():
+        if key in seen or close_entry.get("status") != "closed":
+            continue
+        pr_entry = ledger_prs.get(key)
+        if not isinstance(pr_entry, dict):
+            continue
+        if _pr_state(pr_entry) == "merged":
+            continue                       # 已合入且已收尾，进历史
+        records.append(_closed_record(root, gm, key, close_entry, done_drafts.get(key),
+                                      inbox, ledger, trace_rows, kb_ids))
+        seen.add(key)
+    # 台账里有 PR、本地既没有草稿也没有 close-log 的（换机器、手工出队、评估残留）：
+    # 只收未终态的 PR。merged / closed 没有本地记录，也没有可执行的本地动作，
+    # 不进队列（平台是唯一事实来源），避免留一行永远消不掉。
+    for key, pr_entry in ledger_prs.items():
+        if key in seen or key in close_index or not isinstance(pr_entry, dict):
+            continue
+        if _pr_state(pr_entry) not in ("open", "unknown") and key not in orphan_terminal:
+            continue
+        close_entry = {
+            "key": key, "at": str(pr_entry.get("created_at") or ledger.get("updated_at") or ""),
+            "state": "", "status": "", "decision": "", "case_id": "", "session": "",
+        }
+        records.append(_closed_record(root, gm, key, close_entry, done_drafts.get(key),
+                                      inbox, ledger, trace_rows, kb_ids))
+        seen.add(key)
+    row_keys = {r["key"] for r in records}
     if only:
         records = [r for r in records if r["source"]["sessionId"] == only]
     prompts = _attach_prompts(root, records, target_info, adapters, inbox)
@@ -883,19 +1146,21 @@ def collect(root, only: str = "") -> dict:
         "inbox": str(inbox),
         "counts": counts,
         "target": target_info,
+        "ledgerError": ledger_error,
         "primary": _primary(records, prompts),
         "prompts": prompts,
         "drafts": records,
-        "history": _history(inbox),
+        "history": [item for item in _history(inbox, done_drafts, ledger, gm)
+                    if item["key"] not in row_keys],
     }
 
 
 def print_human(payload: dict) -> None:
     counts = payload["counts"]
     print(f"目标知识版本 {payload['targetCommitShort']} · inbox {payload['inbox']}")
-    print(f"草稿 {counts['total']} 份：未评估 {counts['unassessed']} · 待决定 "
-          f"{counts['needDecision']} · 需重跑 {counts['needRerun']} · 待提 PR "
-          f"{counts['decided']} · 已提 PR {counts['prOpen']} · 已合入 {counts['prMerged']}")
+    print(f"事项 {counts['total']} 条：未评估 {counts['unassessed']}"
+          f" · 待决定 {counts['needDecision']} · 需重跑 {counts['needRerun']} · 待提 PR "
+          f"{counts['decided']} · PR 待合入 {counts['prOpen']} · PR 已合入 {counts['prMerged']}")
     if not payload["drafts"]:
         print("队列为空。")
         return
