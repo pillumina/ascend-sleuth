@@ -231,7 +231,6 @@ def _extra(doc: dict, traces: Path) -> dict:
         "sedimentCandidates": len([c for c in _as_list(doc.get("sediment_candidates")) if isinstance(c, dict)]),
         "sedimentCandidateList": candidates,
         "missingMaterials": _material_items(evidence_missing_full, _one_line(doc.get("summary"))),
-        "fixEmitted": doc.get("fix_emitted"),
     }
 
 
@@ -447,7 +446,6 @@ def main(argv=None) -> int:
                 "lastReason": extra.get("lastReason"),
                 "harnessSession": extra.get("harnessSession"),
                 "resumeSessions": extra.get("resumeSessions"),
-                "fixEmitted": extra.get("fixEmitted"),
             },
         }
 
@@ -461,6 +459,8 @@ def main(argv=None) -> int:
     }
     return _ok({
         "tracesDir": str(traces),
+        # 写入口的 scheme 校验用：词表与脚本同步后才能发现版本错配。
+        "schemeVersion": projection.get("schemeVersion"),
         "generatedAt": _one_line(projection.get("generatedAt")),
         "bound": bound,
         "recent": recent,
@@ -492,6 +492,13 @@ def main(argv=None) -> int:
             "reportResults": [
                 {"value": r.get("value"), "label": r.get("label"), "outcome": r.get("outcome")}
                 for r in _as_list(vocab.get("reportResults"))
+            ],
+            # 客户端按目标状态过滤收尾方式（归档的四种只在 statuses 含 archived 时给），
+            # 不再在 client.js 里另存一份词表。
+            "endings": [
+                {"value": e.get("value"), "label": e.get("label"),
+                 "requires": _as_list(e.get("requires")), "statuses": _as_list(e.get("statuses"))}
+                for e in _as_list(vocab.get("endings"))
             ],
         },
     })

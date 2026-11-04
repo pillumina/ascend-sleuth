@@ -137,11 +137,14 @@ function runCommand(spec) {
 }
 
 function makeShell() {
+  const calls = []
   return {
+    calls,
     resolve(request) {
       return request
     },
     async execute(spec) {
+      calls.push(String(spec.command || ''))
       return { result: () => runCommand(spec) }
     },
   }
@@ -296,7 +299,9 @@ if (mod.name !== 'dsh-sleuth-copilot') throw new Error('unexpected plugin name')
 process.stdout.write('诊断状态条 · Host 冒烟\n')
 
 // ── 可写会话 ────────────────────────────────────────────────────────────────
-const rw = makeHarness({})
+// shell 记下每次子进程命令：用来确认 pr-target 的 list 一次就带回台账指纹。
+const rwShell = makeShell()
+const rw = makeHarness({ shell: rwShell })
 mod.apply(rw.ctx)
 expect('路由注册成功', !!rw.getRoute())
 
@@ -388,9 +393,12 @@ if (hasGit) {
   const targetValue = targetRead.envelope && targetRead.envelope.result && targetRead.envelope.result.value
   expect('目标：端点返回 ok', targetValue && targetValue.ok === true, JSON.stringify(targetValue))
   expect('目标：remotes 是数组', targetValue && Array.isArray(targetValue.remotes), JSON.stringify(targetValue && targetValue.remotes))
+  expect('目标：台账不存在时 list 指纹为 null', targetValue
+    && Object.prototype.hasOwnProperty.call(targetValue, 'sha256') && targetValue.sha256 === null,
+  JSON.stringify(targetValue && targetValue.sha256))
 
-  // PR 台账写动作：list 带出台账指纹，mark / set-target 带 --expect-sha256，
-  // 指纹过期时由脚本的 CAS 拦下；check 的令牌在 host 侧先比一次（脚本内部另有一道）。
+  // PR 台账写动作：list 一次调用就把台账指纹带回来（pr_status.py 的 list-targets 直接给），
+  // mark / set-target / check 都带 --expect-sha256；旧令牌由脚本的 CAS 拦下且不写盘。
   const ledgerPath = join(SANDBOX, 'postmortems', 'inbox', '.groom', 'pr-state.json')
   mkdirSync(dirname(ledgerPath), { recursive: true })
   const ledgerDoc = {
@@ -399,17 +407,23 @@ if (hasGit) {
     target: null,
     prs: {
       'demo-draft': {
-        platform: 'github', repo: 'pillumina/ascend-sleuth', number: 1,
-        url: 'https://github.com/pillumina/ascend-sleuth/pull/1', state: 'open',
+        // host 故意用没有适配器的域名：--check 的 CAS 放行后会走到「没有适配器」，
+        // 不发起平台查询（冒烟不联网）。
+        platform: 'github', repo: 'example/repo', number: 1,
+        url: 'https://example.invalid/example/repo/pull/1', state: 'open',
         source: 'ledger', created_at: '2026-08-01T00:00:00+00:00',
       },
     },
   }
   writeFileSync(ledgerPath, JSON.stringify(ledgerDoc, null, 2) + '\n', 'utf8')
   const ledgerSha = createHash('sha256').update(readFileSync(ledgerPath)).digest('hex')
+  const listCallsBefore = rwShell.calls.length
   const listWithLedger = await prTarget(rw, { cwd: SANDBOX, action: 'list' }, 'pr-list-2')
   const listWithLedgerValue = listWithLedger.envelope.result.value
-  expect('目标：list 返回台账指纹', listWithLedgerValue && listWithLedgerValue.sha256 === ledgerSha, JSON.stringify(listWithLedgerValue && listWithLedgerValue.sha256))
+  const listCommands = rwShell.calls.slice(listCallsBefore)
+  expect('目标：list 一次调用就带台账指纹', listWithLedgerValue && listWithLedgerValue.sha256 === ledgerSha
+    && listCommands.length === 1 && /--list-targets/.test(listCommands[0]) && !/--status/.test(listCommands[0]),
+  JSON.stringify({ sha: listWithLedgerValue && listWithLedgerValue.sha256, calls: listCommands }))
   const markOk = await prTarget(rw, {
     cwd: SANDBOX, sessionId: 'smoke-session', action: 'mark',
     key: 'demo-draft', state: 'merged', expectSha256: ledgerSha,
@@ -434,12 +448,26 @@ if (hasGit) {
   }, 'pr-target-3')
   const setTargetStaleValue = setTargetStale.envelope.result.value
   expect('目标：set-target 旧指纹被 CAS 拦下', setTargetStaleValue && setTargetStaleValue.ok === false && resultCode(setTargetStaleValue) === 'E_CAS', JSON.stringify(setTargetStaleValue))
+  const ledgerBeforeStaleCheck = readFileSync(ledgerPath)
   const checkStale = await prTarget(rw, {
     cwd: SANDBOX, sessionId: 'smoke-session', action: 'check',
     key: 'demo-draft', expectSha256: '0'.repeat(64),
   }, 'pr-check-stale')
   const checkStaleValue = checkStale.envelope.result.value
-  expect('目标：check 旧指纹在 host 侧被拦下（不花一次平台查询）', checkStaleValue && checkStaleValue.ok === false && resultCode(checkStaleValue) === 'E_CAS', JSON.stringify(checkStaleValue))
+  expect('目标：check 旧指纹被脚本 CAS 拦下且不写盘', checkStaleValue && checkStaleValue.ok === false
+    && resultCode(checkStaleValue) === 'E_CAS'
+    && readFileSync(ledgerPath).equals(ledgerBeforeStaleCheck), JSON.stringify(checkStaleValue))
+  const listBeforeCheck = await prTarget(rw, { cwd: SANDBOX, action: 'list' }, 'pr-list-3')
+  const checkToken = listBeforeCheck.envelope.result.value.sha256
+  const checkCurrent = await prTarget(rw, {
+    cwd: SANDBOX, sessionId: 'smoke-session', action: 'check',
+    key: 'demo-draft', expectSha256: checkToken,
+  }, 'pr-check-current')
+  const checkCurrentValue = checkCurrent.envelope.result.value
+  const checkCurrentMessage = String((checkCurrentValue && checkCurrentValue.error && checkCurrentValue.error.message) || '')
+  expect('目标：check 当前指纹放行（走到查询，没有适配器）', checkCurrentValue && checkCurrentValue.ok === false
+    && resultCode(checkCurrentValue) === 'E_NO_ADAPTER' && /适配器/.test(checkCurrentMessage)
+    && typeof checkCurrentValue.sha256 === 'string', JSON.stringify(checkCurrentValue))
 }
 
 const reportMissing = await readReport(rw, { cwd: SANDBOX, tracesDir: TRACES, traceSessionId: '2026-01-01-no-such' }, 'report-2')
@@ -496,18 +524,6 @@ const badKind = await transition(rw, {
     tracesDir: TRACES, expectSha256: reopened.current.sha256, kind: 'report',
   }, 'write-5')
 expect('写回报：显式不支持（回报轴没有脚本写入口）', badKind.envelope.result.value.ok === false && badKind.envelope.result.value.code === 'E_SCHEMA')
-// 归档收尾必须带收尾方式：host 先给明确回执，不让脚本报「需要指定收尾方式（--kind）」
-const archivedNoKind = await transition(rw, {
-    sessionId: 'smoke-session', cwd: SANDBOX, traceSessionId: TRACE_ID,
-    tracesDir: TRACES, expectSha256: reopened.current.sha256,
-    kind: 'close', to: 'archived',
-  }, 'write-7')
-const archivedValue = archivedNoKind.envelope.result.value
-expect('写归档：缺 ending.kind 被拦下并带回 requirements', archivedValue && archivedValue.ok === false
-  && archivedValue.code === 'E_SCHEMA'
-  && Array.isArray(archivedValue.requirements)
-  && archivedValue.requirements.indexOf('ending.kind') >= 0, JSON.stringify(archivedValue))
-
 const badId = await transition(rw, {
     sessionId: 'smoke-session', cwd: SANDBOX, traceSessionId: '../etc/passwd',
     tracesDir: TRACES, expectSha256: closed.current.sha256, kind: 'reopen',
@@ -538,7 +554,20 @@ const archivedNoKind = await transition(rw, {
     tracesDir: TRACES, expectSha256: currentSha, kind: 'close', to: 'archived',
   }, 'write-archived-no-kind')
 const archivedNoKindValue = archivedNoKind.envelope.result.value
-expect('写收尾（archived 缺 kind）：E_SCHEMA', archivedNoKindValue && archivedNoKindValue.ok === false && archivedNoKindValue.code === 'E_SCHEMA', JSON.stringify(archivedNoKindValue))
+expect('写收尾（archived 缺 kind）：E_SCHEMA 且带回 requirements', archivedNoKindValue && archivedNoKindValue.ok === false
+  && archivedNoKindValue.code === 'E_SCHEMA'
+  && Array.isArray(archivedNoKindValue.requirements)
+  && archivedNoKindValue.requirements.indexOf('ending.kind') >= 0, JSON.stringify(archivedNoKindValue))
+
+// scheme 版本错配：面板与脚本不一致时给 E_SCHEMA_VERSION，不按旧词表写。
+const schemeMismatch = await transition(rw, {
+    sessionId: 'smoke-session', cwd: SANDBOX, traceSessionId: TRACE_ID,
+    tracesDir: TRACES, expectSha256: currentSha, kind: 'close', to: 'resolved', endingKind: 'root_cause',
+    schemeVersion: 'ascend-sleuth-trace-state/0',
+  }, 'write-scheme-mismatch')
+const schemeMismatchValue = schemeMismatch.envelope.result.value
+expect('写：scheme 版本错配回 E_SCHEMA_VERSION', schemeMismatchValue && schemeMismatchValue.ok === false
+  && schemeMismatchValue.code === 'E_SCHEMA_VERSION', JSON.stringify(schemeMismatchValue))
 
 // 终态单改收尾方式：先回到 resolved，再改成 escalated（--correct-ending）。
 const closeAgain = await transition(rw, {

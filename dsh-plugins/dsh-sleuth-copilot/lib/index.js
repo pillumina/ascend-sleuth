@@ -39,8 +39,13 @@ let pythonCmd
 let pythonProblem = ''
 let pythonProbe = { at: 0, ok: false }
 
+// 命令行参数转义。POSIX sh 用单引号最稳（`$`、反引号、反斜杠都不展开）；
+// PowerShell 5.1（DSH 在 Windows 上的 shell）同样把单引号当字面量，内部单引号写两遍。
+// 双引号写法在 PowerShell 里会被 `$` / 反引号展开，是原来的注入面。
 function shq(value) {
-  return '"' + String(value).replace(/(["\\$`])/g, '\\$1') + '"'
+  const text = String(value)
+  if (process.platform === 'win32') return "'" + text.replace(/'/g, "''") + "'"
+  return "'" + text.replace(/'/g, "'\\''") + "'"
 }
 
 function tailLines(text, limit) {
@@ -485,11 +490,8 @@ export function apply(ctx) {
     return doc
   }
 
-  // requirements 与 trace_transition.py 的缺字段回执同形：浏览器半据此在错误后写「（缺：…）」。
-  function transitionFailure(code, message, requirements) {
-    const failure = { ok: false, code, message }
-    if (Array.isArray(requirements) && requirements.length) failure.requirements = requirements.slice()
-    return failure
+  function transitionFailure(code, message) {
+    return { ok: false, code, message }
   }
 
   const TRACE_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,180}\.yaml$/
@@ -658,23 +660,25 @@ export function apply(ctx) {
     const extraArgs = []
     if (kind === 'sedimented') {
       const state = String(payload.state || '')
-      if (!/^(none|submitted|knowledge|archived)$/.test(state)) {
-        return transitionFailure('E_SCHEMA', '沉淀状态不在词表里')
+      if (!state) return transitionFailure('E_SCHEMA', '需要一个沉淀状态', ['sedimented.state'])
+      // 合法值交给 trace_transition.py 按 trace-status.yaml 判，host 不再抄一份词表。
+      extraArgs.push('--field', 'sedimented', '--state', shq(state))
+      if (payload.caseId) {
+        const caseId = String(payload.caseId)
+        if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,120}$/.test(caseId)) {
+          return transitionFailure('E_SCHEMA', 'case 编号不合法')
+        }
+        extraArgs.push('--case-id', shq(caseId))
       }
-      extraArgs.push('--field', 'sedimented', '--state', state)
-      if (payload.caseId) extraArgs.push('--case-id', shq(String(payload.caseId)))
       if (payload.inboxPath) extraArgs.push('--inbox-path', shq(String(payload.inboxPath)))
     } else if (kind === 'reopen') {
       body.reopen = true
     } else if (kind === 'close') {
       const to = String(payload.to || '')
-      if (!/^(resolved|escalated|archived)$/.test(to)) return transitionFailure('E_SCHEMA', '目标状态不合法')
+      if (!to) return transitionFailure('E_SCHEMA', '目标状态不合法')
+      // 目标状态是否在词表里由脚本校验；host 只保证参数非空。
       body.to = to
       if (payload.endingKind) body.kind = String(payload.endingKind)
-      // 归档必须写收尾方式；先在这里给明确回执，别让脚本报「需要指定收尾方式（--kind）」。
-      if (to === 'archived' && !body.kind) {
-        return transitionFailure('E_SCHEMA', '需要指定收尾方式（--kind）', ['ending.kind'])
-      }
       if (payload.handedTo) body.handed_to = String(payload.handedTo)
       if (payload.duplicateOf) body.duplicate_of = String(payload.duplicateOf)
       for (const key of ['summary', 'severity', 'fix_emitted']) {
@@ -683,7 +687,7 @@ export function apply(ctx) {
     } else if (kind === 'correct-ending') {
       // 终态单改收尾方式：`to` 是新目标状态（可与当前状态相同），脚本按 --correct-ending 走。
       const to = String(payload.to || '')
-      if (!/^(resolved|escalated|archived)$/.test(to)) return transitionFailure('E_SCHEMA', '目标状态不合法')
+      if (!to) return transitionFailure('E_SCHEMA', '目标状态不合法')
       body.to = to
       if (payload.endingKind) body.kind = String(payload.endingKind)
       if (payload.handedTo) body.handed_to = String(payload.handedTo)
@@ -721,6 +725,8 @@ export function apply(ctx) {
         '--expect-sha256', shq(expectSha), ...extraArgs,
         '--payload-file', shq(payloadFile)]
       if (tracesExplicit && traces.dir) argv.push('--traces', shq(traces.dir))
+      const schemeVersion = typeof payload.schemeVersion === 'string' ? payload.schemeVersion.trim() : ''
+      if (schemeVersion) argv.push('--scheme-version', shq(schemeVersion))
       let result
       try {
         result = await runShell(resolveSpec({
@@ -824,14 +830,9 @@ export function apply(ctx) {
     const action = String(payload.action || 'list')
     const rootArgs = ['--root', shq(root)]
     if (action === 'list') {
-      const doc = await runJsonHelper(root, python, script, [...rootArgs, '--list-targets', '--json'], 30000, policy)
-      // CAS 令牌：写动作要带上「我读到的台账版本」。`--status` 给文件字节 sha256；
-      // 台账还不存在时是 null，客户端据此不带令牌（首写没有可比的版本）。
-      const status = await runJsonHelper(root, python, script, [...rootArgs, '--json'], 30000, policy)
-      if (doc && typeof doc === 'object') {
-        doc.sha256 = status && status.ok === true && typeof status.sha256 === 'string' ? status.sha256 : null
-      }
-      return doc
+      // 一次调用就带出台账指纹（pr_status.py 的 list-targets 返回 sha256，台账不存在为 null）：
+      // 写动作的 CAS 令牌由客户端从这里取，不再单起一次 --status。
+      return runJsonHelper(root, python, script, [...rootArgs, '--list-targets', '--json'], 30000, policy)
     }
     const caps = await writeCaps(payload.sessionId)
     if (!caps.canWrite) return { ok: false, code: caps.reasonCode || 'E_PERM', message: caps.reason }
@@ -845,20 +846,7 @@ export function apply(ctx) {
     const argv = [...rootArgs]
     if (action === 'check') {
       if (!validDraftKey(payload.key)) return { ok: false, code: 'E_SCHEMA', message: '草稿 key 不合法' }
-      // `--check` 在 pr_status.py 里用自己的读侧 sha 做 CAS，命令行令牌不被它消费；
-      // 客户端令牌在这里先比一次，版本不一致就别再花一次平台查询。
-      if (expectSha) {
-        const status = await runJsonHelper(root, python, script, [...rootArgs, '--json'], 30000, policy)
-        const actual = status && status.ok === true && typeof status.sha256 === 'string' ? status.sha256 : ''
-        if (actual !== expectSha) {
-          return {
-            ok: false,
-            code: 'E_CAS',
-            message: 'PR 台账已被改动，请刷新沉淀队列后重试',
-            currentSha256: actual,
-          }
-        }
-      }
+      // pr_status.py 的 --check 在平台查询前消费 --expect-sha256：旧令牌直接回 E_CAS 且不写盘。
       argv.push('--check', '--draft', shq(String(payload.key)), '--json', ...casArgs)
     } else if (action === 'mark') {
       if (!validDraftKey(payload.key)) return { ok: false, code: 'E_SCHEMA', message: '草稿 key 不合法' }
