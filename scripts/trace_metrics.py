@@ -5,12 +5,15 @@
 # 目的（ADR-0002）：过滤率/退休率/命中率/路由准确率从"假设"变"实测"。
 # 数据源：traces/ 目录（gitignored，活跃 + 历史都归此）。
 # 输出：markdown 指标表（stdout），人复核后追加进 docs/guide/metrics.md。
+# 可选切片：`--kb-baseline` 按知识基线（kb_behind / kb_merge）分组，只进人读输出与
+# `--json`，不改默认输出、不进 `--emit-yaml` 快照。
 #
 # 依赖的 trace action（词表见 skills/diagnose/SKILL.md「每步必写 trace」）：
 #   triage / load_index / quickly_check / load_full / run_check / hit / miss
 #   / tier3（Tier 3 兜底检索）/ feedback（结果反馈：resolved|not_resolved|partial）
 # 字段缺失时降级计算，不硬崩。小样本时比例波动大——解读前先看分母。
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -109,6 +112,11 @@ KNOWN_STOP_REASONS = {
     "escalated_tier3", "abandoned", "closed_by_user", "unknown",
 }
 
+# 知识基线切片（RFC #432）的取值：顶层 `kb_behind` 记开单时本机落后远端多少提交
+# （整数或 "unknown"）；`kb_merge` 记这一单有没有自动合并过（ff-only / none）。
+# 字段缺失（旧 trace）不补、不猜，计入 unknown 组；词表外的值按字段违规报出来。
+KNOWN_KB_MERGE = {"ff-only", "none"}
+
 
 # triage miss 归类用的 token 判据见 scripts/_lexical.py（单一事实源：rank_candidates.py 共用同一组模式）
 from _lexical import has_lexical_signal  # noqa: E402
@@ -176,6 +184,13 @@ def main():
     ap.add_argument("--traces-dir", default=None,
                     help="显式指定 traces/ 目录（默认由 resolve_traces(root) 解析到主检出）。"
                          "用于单元测试的合成 trace 与「读另一份检出」的场景；不传即保持共享侧语义")
+    ap.add_argument("--kb-baseline", action="store_true",
+                    help="附加知识基线切片（RFC #432）：按 trace 顶层 kb_behind（落后 / 最新 / "
+                         "unknown）分组给解决率，并给 kb_merge: ff-only 的触发率。默认输出不变；"
+                         "切片只进人读输出与 --json，不进 --emit-yaml 快照（live 字段白名单见 "
+                         "verify_metrics.py 的 LIVE_FIELDS）")
+    ap.add_argument("--json", action="store_true",
+                    help="只输出 JSON（机器读）。与 --kb-baseline 同用时含 kb_baseline 字段")
     args = ap.parse_args()
 
     root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[1]
@@ -233,6 +248,13 @@ def main():
     # triage miss 两类（EV-2026-110）——两类同形就没法判断"该不该补词"，这里把它们分开记
     miss_lex, miss_sem, miss_unrec, miss_notriage = [], [], [], []
 
+    # 知识基线切片（RFC #432，--kb-baseline）：三组各记解决数与 session 数。
+    # 解决与否沿用本脚本既有判据 `status == "resolved"`（与 reference 引用后 resolve、
+    # Tier 3 挽救同一处），不另立一套分母。
+    kb_groups = {g: {"ok": 0, "total": 0} for g in ("behind", "current", "unknown")}
+    kb_merge_ff = 0
+    kb_merge_total = 0
+
     for st in states:
         trace = st.get("trace") or []
         sid = str(st.get("session_id") or "?")
@@ -262,6 +284,26 @@ def main():
         # 词表只约束 agent 决策事件；user 输入事件是回放/fixture 的输入源，不参与词表检查
         actions = [t.get("action") for t in trace if t.get("action")]
         resolved = st.get("status") == "resolved"
+        # 知识基线切片（RFC #432）：kb_behind 缺失或写 "unknown" → unknown 单列；
+        # 整数按 >0 / =0 分落后与最新两组。字段值越界按违规报出来，不静默吞掉。
+        behind = st.get("kb_behind")
+        if behind is None or behind == "unknown":
+            kb_group = "unknown"
+        elif isinstance(behind, int) and not isinstance(behind, bool):
+            kb_group = "behind" if behind > 0 else "current"
+        else:
+            kb_group = "unknown"
+            record_bad.append(f"{sid}: kb_behind 应为整数或 'unknown'（{behind!r}）")
+        kb_groups[kb_group]["total"] += 1
+        if resolved:
+            kb_groups[kb_group]["ok"] += 1
+        kb_merge = st.get("kb_merge")
+        if kb_merge is not None:
+            kb_merge_total += 1
+            if kb_merge == "ff-only":
+                kb_merge_ff += 1
+            elif not (isinstance(kb_merge, str) and kb_merge in KNOWN_KB_MERGE):
+                record_bad.append(f"{sid}: kb_merge 应为 'ff-only' 或 'none'（{kb_merge!r}）")
         # category 归属：首个 triage / triage_semantic 事件的 category（该 session 路由结果）
         cat = next(
             (t.get("category") for t in trace
@@ -457,6 +499,15 @@ def main():
         "external_record_violations": (capability_bad + external_outcome_bad)[:5] or None,
         "external_record_violations_total": len(capability_bad) + len(external_outcome_bad),
     }
+    # 知识基线切片（RFC #432）：只在显式 --kb-baseline 时进读数，默认输出格式不变。
+    # 它不进 `--emit-yaml` 快照——`verify_metrics.py` 的 LIVE_FIELDS 是白名单，新字段
+    # 塞进去会被下一期校验拦下；要进 timeline 需另开一张卡同时改白名单与 schema 文档。
+    kb_baseline = {
+        "resolution": {g: dict(kb_groups[g]) for g in ("behind", "current", "unknown")},
+        "merge": {"ff_only": kb_merge_ff, "total": kb_merge_total},
+    }
+    if args.kb_baseline:
+        m["kb_baseline"] = kb_baseline
 
     rows = [
         "| 指标 | 值 |",
@@ -498,6 +549,28 @@ def main():
             if record_bad else "")
          + " |"),
     ]
+    if args.kb_baseline:
+        # 两行读数：三组解决率（落后 / 最新 / unknown）与自动合并触发率。
+        # 比例都带分母；组内没有样本时写「无样本」，不拿 0 冒充。
+        def _fmt_rate(rec):
+            return (f"{rec['ok']}/{rec['total']} ({rec['ok'] / rec['total']:.0%})"
+                    if rec["total"] else "无样本")
+
+        rb, rc = kb_baseline["resolution"]["behind"], kb_baseline["resolution"]["current"]
+        diff = (f"{(rb['ok'] / rb['total'] - rc['ok'] / rc['total']) * 100:+.0f} 个百分点"
+                if rb["total"] and rc["total"] else "样本不足")
+        rows.append(
+            "| KB 基线切片·解决率（kb_behind 落后 / 最新 / unknown） | "
+            + "；".join(f"{label} {_fmt_rate(kb_baseline['resolution'][key])}"
+                        for key, label in (("behind", "落后"), ("current", "最新"),
+                                           ("unknown", "unknown")))
+            + f"；落后与最新之差 {diff} |")
+        merge = kb_baseline["merge"]
+        merge_part = (f"{merge['ff_only']}/{merge['total']} "
+                      f"({merge['ff_only'] / merge['total']:.0%})"
+                      if merge["total"] else "无样本")
+        rows.append(f"| KB 基线切片·自动合并触发率 | ff-only {merge_part}"
+                    "（有 kb_merge 字段的单） |")
     # reference 指标（ADR-0008 观测性）——无引用时如实显示为空（reference 刚建立是现状）
     if ref_hits or ref_outcomes:
         if ref_hits:
@@ -531,6 +604,10 @@ def main():
         rows.append("| reference 引用 | 0——先验知识层刚建立（ADR-0008），trace 尚未积累 reference_lookup 事件 |")
     # `--emit-yaml-only` 是机器读路径（供 metrics_snapshot.py 组合快照）：不出人读 markdown，
     # 否则调用方要在一堆 markdown 里找 YAML 块（实测会直接解析失败）。
+    if args.json:
+        print(json.dumps({k: v for k, v in m.items() if v is not None},
+                         ensure_ascii=False, indent=2))
+        return
     if not args.emit_yaml_only:
         print("\n".join(rows))
         print("\n<!-- metrics 在周批时机汇总（**任何人跑周批时都可做**，不是某个角色的专属动作）：人复核后把这一期写进 metrics/timeline.d/<期号>.yaml，再跑 python3 scripts/build_timeline.py 重建生成物 metrics/timeline.yaml（每期一个源文件，团队共享）。工程师不需要提交 metrics——他们只做诊断（本地 trace）+ 回报 fix 结果（case confidence 走 PR）。小样本比例波动大，解读先看分母。机器可读快照：python3 scripts/trace_metrics.py --emit-yaml -->")
@@ -543,7 +620,10 @@ def main():
             "title": "本期诊断指标（trace_metrics.py 自动生成，人复核）",
             "recorded_at": datetime.date.today().isoformat(),
             "source": "trace_metrics.py 从 traces/*.yaml 自动生成",
-            "metrics": {k: v for k, v in m.items() if v is not None},
+            # kb_baseline 是可选切片：不进快照（live 字段白名单见 verify_metrics.py），
+            # 否则显式跑 --kb-baseline --emit-yaml 会产出被下一期校验拦下的字段。
+            "metrics": {k: v for k, v in m.items()
+                        if v is not None and k != "kb_baseline"},
         }
         if args.emit_yaml_only:
             # 机器读路径：只吐 metrics mapping（组合快照的调用方要的就是这一块）

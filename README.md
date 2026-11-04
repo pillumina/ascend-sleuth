@@ -27,6 +27,12 @@ python3 scripts/enable_agent_skills.py
 
 脚本检测本机已安装的 agent，为它们建项目级 skills 链接（幂等，可重复执行）。Linux 与 macOS 上 DSH 不跑这个脚本也够用：`.dsh/skills` 是仓库跟踪的 symlink，clone 后即可用。`git pull` 更新 SKILL.md 即时生效。
 
+诊断开单会自动同步知识库：`trace_begin.py` 建单时 fetch 远端，条件满足时做一次快进合并。
+
+配置与开关（`sync.remote` / `sync.branch` / `sync.enabled` / `sync.auto_merge`）在 `.local/settings.json`。没有这个文件时用默认值：`origin`、当前分支上游（取不到用 `main`）、同步开、自动合并开。
+
+当前状态用 `python3 scripts/kb_sync.py --show` 查看（只读，不联网）。
+
 Windows 上 Git 默认不还原 symlink，`.dsh/skills` 会落成一个内容为 `../skills` 的文本文件，agent 发现不了 skills，而 `git status` 此时可能是干净的。脚本会把这条 symlink 建好；自动检测认不出的 agent 用 `--all`。`--check` 只读自检状态（不写盘），`--fix-copy` 把 Git Bash 建出的目录副本换成链接。自检与两条修法见 [windows-setup.md](docs/guide/windows-setup.md)。
 
 装完在 agent 中调用 `/skill:<name>`。

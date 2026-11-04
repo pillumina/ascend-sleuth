@@ -23,6 +23,7 @@ return {
     const VIEWS = [
       { id: 'metrics', label: '指标' },
       { id: 'evolve', label: '自演进' },
+      { id: 'knowledge', label: '知识库' },
     ]
 
     const styleHost = typeof styles !== 'undefined' && styles !== null ? styles : ctx.get('styles')
@@ -44,6 +45,79 @@ return {
         box-shadow:0 0 0 3px color-mix(in srgb, var(--acc-blue) 22%, transparent)}
       .sleu-console-body{padding-top:2px}
       .sleu-console-empty{padding:20px 0;font-size:var(--t-md);color:var(--dsw-alias-label-secondary)}
+
+      /* ── 知识库子页 ─────────────────────────────────────────────────────
+         四块：读数、状态提示条、同步源、两个开关。配色沿用两个面板的角色
+         （--c-* 文字 / --tint-* 大块底 / --hair 描边），不新增色值。 */
+      .sleu-kb{padding-top:14px}
+      .sleu-kb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+      .sleu-kb-stat{padding:12px 14px;border:1px solid var(--hair);border-radius:var(--r-md);
+        background:var(--dsw-alias-bg-layer-1);box-shadow:var(--elev-1)}
+      .sleu-kb-k{font-size:var(--t-tiny);color:var(--dsw-alias-label-secondary)}
+      .sleu-kb-v{margin-top:5px;font-family:var(--font-mono);font-size:var(--t-xl);font-weight:650;
+        letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+      .sleu-kb-v.is-warn{color:var(--c-amber)}
+      .sleu-kb-v.is-ok{color:var(--c-green)}
+      .sleu-kb-v.is-muted{color:var(--dsw-alias-label-secondary);font-size:var(--t-lg)}
+      .sleu-kb-v-unit{margin-left:4px;font-family:var(--font-sans);font-size:var(--t-tiny);
+        font-weight:400;color:var(--dsw-alias-label-secondary)}
+      .sleu-kb-note{margin-top:3px;font-size:var(--t-tiny);color:var(--dsw-alias-label-secondary)}
+      .sleu-kb-banner{display:flex;align-items:flex-start;gap:9px;margin-top:12px;padding:10px 12px;
+        border:1px solid var(--hair);border-radius:var(--r-sm);font-size:var(--t-sm);
+        line-height:var(--lh-base);color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-layer-2)}
+      .sleu-kb-banner.is-warn{background:var(--tint-amber);border-color:color-mix(in srgb,var(--acc-amber) 34%,transparent);color:var(--c-amber)}
+      .sleu-kb-banner.is-ok{background:var(--tint-green);border-color:color-mix(in srgb,var(--acc-green) 34%,transparent);color:var(--c-green)}
+      .sleu-kb-banner.is-err{background:var(--tint-red);border-color:color-mix(in srgb,var(--acc-red) 34%,transparent);color:var(--c-red)}
+      .sleu-kb-bmain{min-width:0;flex:1}
+      .sleu-kb-bdot{width:7px;height:7px;margin-top:5px;flex:0 0 auto;border-radius:var(--r-pill);background:currentColor}
+      .sleu-kb-bhint{margin-top:3px;font-size:var(--t-tiny);color:var(--dsw-alias-label-secondary)}
+      .sleu-kb-bdetail{margin-top:5px;font-family:var(--font-mono);font-size:var(--t-tiny);
+        color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere;white-space:pre-wrap}
+      .sleu-kb-bact{flex:0 0 auto}
+      .sleu-kb-cmd{display:inline-block;margin-top:5px;padding:2px 6px;border:1px solid var(--hair);
+        border-radius:var(--r-xs);background:var(--dsw-alias-bg-layer-1);font-family:var(--font-mono);
+        font-size:var(--t-tiny);color:var(--dsw-alias-label-primary);overflow-wrap:anywhere}
+      .sleu-kb-card{margin-top:12px;padding:14px 16px;border:1px solid var(--hair);
+        border-radius:var(--r-md);background:var(--dsw-alias-bg-layer-1);box-shadow:var(--elev-1)}
+      .sleu-kb-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+      .sleu-kb-card-t{font-size:var(--t-lg);font-weight:700;color:var(--dsw-alias-label-primary)}
+      .sleu-kb-card-sub{margin-top:2px;font-size:var(--t-sm);color:var(--dsw-alias-label-secondary)}
+      .sleu-kb-row{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-top:12px}
+      .sleu-kb-field{display:flex;flex-direction:column;gap:4px;min-width:0}
+      .sleu-kb-field>label{font-size:var(--t-tiny);color:var(--dsw-alias-label-secondary)}
+      .sleu-kb-select{appearance:none;min-width:150px;max-width:100%;padding:6px 10px;
+        border:1px solid var(--hair);border-radius:var(--r-sm);background:var(--dsw-alias-bg-layer-2);
+        color:var(--dsw-alias-label-primary);font:inherit;font-size:var(--t-md)}
+      .sleu-kb-select:disabled{opacity:.55;cursor:not-allowed}
+      .sleu-kb-hint{font-size:var(--t-tiny);color:var(--dsw-alias-label-secondary);padding-bottom:7px}
+      .sleu-kb-dirty{margin-top:10px;font-size:var(--t-tiny);color:var(--c-amber)}
+      .sleu-kb-empty{padding:12px 0 2px;font-size:var(--t-md);color:var(--dsw-alias-label-secondary);
+        line-height:var(--lh-prose)}
+      .sleu-kb-switch-row{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:12px 0;
+        border-top:1px solid var(--hair)}
+      .sleu-kb-switch-row:first-child{padding-top:0;border-top:0}
+      .sleu-kb-switch-main{min-width:0}
+      .sleu-kb-switch-t{font-size:var(--t-md);font-weight:600;color:var(--dsw-alias-label-primary)}
+      .sleu-kb-switch-d{margin-top:4px;max-width:620px;font-size:var(--t-sm);
+        color:var(--dsw-alias-label-secondary);line-height:var(--lh-base)}
+      .sleu-kb-switch-src{margin-top:5px;font-size:var(--t-tiny);color:var(--dsw-alias-label-secondary)}
+      .sleu-kb-switch{position:relative;flex:0 0 auto;width:38px;height:22px;margin-top:2px;padding:0;
+        border:1px solid var(--hair);border-radius:var(--r-pill);background:var(--dsw-alias-bg-layer-2);
+        cursor:pointer;transition:background-color var(--m-fast) var(--e-out),border-color var(--m-fast) var(--e-out)}
+      .sleu-kb-switch::after{content:'';position:absolute;top:2px;left:2px;width:16px;height:16px;
+        border-radius:var(--r-pill);background:#fff;box-shadow:var(--elev-1);
+        transition:transform var(--m-fast) var(--e-out)}
+      .sleu-kb-switch[aria-checked="true"]{background:var(--acc-blue);border-color:var(--acc-blue)}
+      .sleu-kb-switch[aria-checked="true"]::after{transform:translateX(16px)}
+      .sleu-kb-switch:disabled{opacity:.5;cursor:not-allowed}
+      .sleu-kb-foot{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;
+        font-size:var(--t-tiny);color:var(--dsw-alias-label-secondary)}
+      .sleu-kb-code{padding:1px 6px;border:1px solid var(--hair);border-radius:var(--r-xs);
+        background:var(--dsw-alias-bg-layer-2);font-family:var(--font-mono);font-size:var(--t-tiny)}
+      .sleu-kb-skel{height:52px;border-radius:var(--r-md)}
+      @media (prefers-reduced-motion: reduce){
+        .sleu-console,.sleu-console *{transition-duration:.001ms !important;animation-duration:.001ms !important;animation-delay:0ms !important}
+      }
     `
     let cssDisposer = null
     if (styleHost !== undefined && styleHost !== null && typeof styleHost.insert === 'function') {
@@ -64,8 +138,492 @@ return {
       )
     }
 
+    // ── 知识库子页 ────────────────────────────────────────────────────────────
+    //
+    // 读数全部由 host 的 `ascend-kb-sync-*` 端点给：脚本产出，面板不读文件、不碰 git。
+    // 打开本页只跑 `--show`（读本机状态，不 fetch 远端）；点「立即同步」才跑 `--merge`。
+    // 失败按原因给一句中文（无远端 / 超时 / 非检出 / 工作区不干净……），内部错误码不上屏。
+    const KB_SETTINGS_PATH = '.local/settings.json'
+    const KB_REASON = {
+      E_NO_SCRIPT: '本机检出里没有同步脚本 scripts/kb_sync.py',
+      E_NOT_GIT: '当前目录不是 git 检出',
+      E_NO_REMOTE: '本机没有这个远端',
+      E_NETWORK: '连不上远端',
+      E_TIMEOUT: '请求超时',
+      E_DIRTY: '工作区有未提交改动',
+      E_NOT_FF: '本地提交不能快进',
+      E_WORKTREE: '当前在 worktree 里',
+      E_PERM: '当前会话不能写仓库',
+      E_UNSUPPORTED: '本机脚本还不支持这个操作',
+      E_BAD_OUTPUT: '脚本输出不是 JSON',
+      E_NO_CWD: '解析不到仓库目录',
+      E_SHELL: 'shell 服务不可用',
+      E_PYTHON: '找不到 Python 3 解释器',
+      E_ARGS: '远端或分支名不完整',
+      E_LOCK: '远端的引用锁被占用',
+      E_DISABLED: '同步已关闭（个人设置）',
+      E_OFFLINE: '离线部署',
+      E_BRANCH: '当前不在配置分支上',
+      E_MERGE_IN_PROGRESS: '上一次合并还没结束',
+      E_AUTO_MERGE_OFF: '自动合并已关闭',
+      E_SAME_REPO: '配置远端与 origin 不同源',
+      E_FETCH: 'fetch 失败',
+      E_CAS: '设置文件刚被改过，刷新后重试',
+      E_SCRIPT: '本机脚本报错',
+    }
+    function kbReasonOf(r) {
+      if (!r) return '本机脚本报错'
+      const key = String(r.code || r.reason_code || '')
+      if (KB_REASON[key]) return KB_REASON[key]
+      const msg = String(r.message || r.reason || '').trim()
+      if (msg) return msg.replace(/[。！？]$/, '')
+      return '本机脚本报错'
+    }
+    // 失败后给一条能立刻做的动作。只对"读者能处理"的原因给，其余只说原因。
+    function kbHintFor(code) {
+      if (code === 'E_NO_SCRIPT') return '先更新检出；脚本到位后重开本页。'
+      if (code === 'E_NOT_GIT') return '在仓库根目录打开面板。'
+      if (code === 'E_PYTHON') return '装好 Python 3，并确保在 PATH 里。'
+      if (code === 'E_TIMEOUT' || code === 'E_NETWORK') return '检查网络与 git 凭据后重试。'
+      if (code === 'E_NO_REMOTE') return '在仓库根目录执行 git remote add <名字> <地址>，再刷新本页。'
+      if (code === 'E_DIRTY') return '先提交或 git stash，再点「立即同步」。'
+      if (code === 'E_NOT_FF') return '本地提交不能快进；处理后再同步。'
+      if (code === 'E_WORKTREE') return '在 worktree 里不自动合并；回主检出再试。'
+      if (code === 'E_SAME_REPO') return '核对 .local/settings.json 的 sync.remote 后再试。'
+      return ''
+    }
+    function kbShortRev(v) {
+      const s = String(v || '').trim()
+      if (!s) return ''
+      return s.length > 9 ? s.slice(0, 7) : s
+    }
+    function kbPad(n) { return String(n).padStart(2, '0') }
+    // 「上次核对」与「上次使用」共用：当天与昨天带时刻，更早给日期。
+    function kbStamp(value) {
+      if (!value) return ''
+      const t = new Date(value).getTime()
+      if (isNaN(t)) return ''
+      const d = new Date(t)
+      const hm = kbPad(d.getHours()) + ':' + kbPad(d.getMinutes())
+      const now = new Date()
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+      if (t >= today) return '今天 ' + hm
+      if (t >= today - 86400000) return '昨天 ' + hm
+      return d.getFullYear() + '-' + kbPad(d.getMonth() + 1) + '-' + kbPad(d.getDate())
+    }
+    // 距离上一次核对多久。超过 7 天转日期：'93 天前' 读不出是哪一天。
+    function kbAgo(value) {
+      if (!value) return ''
+      const t = new Date(value).getTime()
+      if (isNaN(t)) return ''
+      const diff = Math.max(0, Date.now() - t)
+      const m = Math.floor(diff / 60000)
+      if (m < 1) return '刚刚'
+      if (m < 60) return m + ' 分钟前'
+      const h = Math.floor(m / 60)
+      if (h < 24) return h + ' 小时前'
+      const d = Math.floor(h / 24)
+      if (d > 7) return kbStamp(value)
+      return d + ' 天前'
+    }
+    // 草稿：界面上的选择与开关。配置没读到就按"都没开"显示，不假装是默认值。
+    function kbDraftOf(payload) {
+      const sync = payload && payload.sync && payload.sync.ok === true ? payload.sync.data : null
+      const targets = payload && payload.targets && payload.targets.ok === true ? payload.targets.data : null
+      const cfg = sync && sync.config ? sync.config : null
+      const rec = targets && targets.recommendation ? targets.recommendation : null
+      const target = targets && targets.target ? targets.target : null
+      const remote = (sync && sync.remote) || (cfg && cfg.remote) || (rec && rec.remote)
+        || (target && target.remote) || ''
+      const branch = (sync && sync.branch) || (cfg && cfg.branch) || (rec && rec.base)
+        || (target && target.base) || ''
+      return {
+        remote: String(remote || ''),
+        branch: String(branch || ''),
+        autoCheck: !!(cfg && cfg.auto_check),
+        autoMerge: !!(cfg && cfg.auto_merge),
+      }
+    }
+    // 合并/保存的结果 → 一条提示。成功要给到"到了哪一版、从哪一版来、差多少"。
+    function kbMergeFlash(r) {
+      if (!r || r.ok !== true) {
+        return { kind: 'err', text: '同步失败：' + kbReasonOf(r) + '。', hint: kbHintFor(r && r.code),
+          detail: r && r.detail ? String(r.detail) : '' }
+      }
+      if (r.merged === false) {
+        const why = r.reason_text ? String(r.reason_text).replace(/[。！？]$/, '') : kbReasonOf({ code: r.reason_code })
+        if (!r.reason_code && !r.reason_text) {
+          return { kind: 'ok', text: '已经是最新，没有要合并的提交。' }
+        }
+        return { kind: 'warn', text: '没有自动合并：' + why + '。',
+          hint: '处理工作区或本地提交后，再点「立即同步」。' }
+      }
+      const to = kbShortRev(r.merged_rev)
+      const from = kbShortRev(r.previous_rev)
+      const behind = typeof r.behind === 'number' ? r.behind : null
+      let text = '已同步'
+      if (to) text += '到 v' + to
+      if (from || behind !== null) {
+        const inner = []
+        if (from) inner.push('原 v' + from)
+        if (behind !== null) inner.push('落后 ' + behind + ' 个提交')
+        text += '（' + inner.join('，') + '）'
+      }
+      text += '。知识立即生效；流程文件下次会话生效。'
+      return { kind: 'ok', text: text, hint: '回滚：git reset --hard ORIG_HEAD' }
+    }
+
+    const KB_BTN = {
+      border: '1px solid var(--hair)', borderRadius: 'var(--r-sm)', padding: '5px 12px',
+      font: 'inherit', fontSize: 'var(--t-tiny)', fontWeight: 600, cursor: 'pointer',
+      background: 'transparent', color: 'var(--dsw-alias-label-secondary)',
+      transition: 'background-color var(--m-fast) var(--e-out),border-color var(--m-fast) var(--e-out)',
+    }
+    const KB_BTN_PRIMARY = Object.assign({}, KB_BTN, {
+      border: '1px solid transparent', fontWeight: 700,
+      background: 'linear-gradient(135deg,var(--btn-blue-a),var(--btn-blue-b))',
+      color: '#fff', boxShadow: '0 1px 3px rgba(37,99,235,.3)',
+    })
+
+    function KbStat(props) {
+      return React.createElement('div', { className: 'sleu-kb-stat' },
+        React.createElement('div', { className: 'sleu-kb-k' }, props.label),
+        React.createElement('div', { className: 'sleu-kb-v' + (props.tone ? ' is-' + props.tone : '') },
+          props.value,
+          props.unit ? React.createElement('span', { className: 'sleu-kb-v-unit' }, props.unit) : null),
+        props.note ? React.createElement('div', { className: 'sleu-kb-note' }, props.note) : null,
+      )
+    }
+
+    function KbBanner(props) {
+      return React.createElement('div', { className: 'sleu-kb-banner is-' + (props.kind || 'muted'), role: 'status' },
+        React.createElement('span', { className: 'sleu-kb-bdot', 'aria-hidden': 'true' }),
+        React.createElement('div', { className: 'sleu-kb-bmain' },
+          React.createElement('div', null, props.text),
+          props.hint ? React.createElement('div', { className: 'sleu-kb-bhint' }, props.hint) : null,
+          props.cmd ? React.createElement('code', { className: 'sleu-kb-cmd' }, props.cmd) : null,
+          props.detail ? React.createElement('div', { className: 'sleu-kb-bdetail' }, props.detail) : null,
+        ),
+        props.action ? React.createElement('div', { className: 'sleu-kb-bact' }, props.action) : null,
+      )
+    }
+
+    // 开关用 button + role=switch：与上下文的按钮同一套键盘行为，不引入新的表单控件。
+    function KbSwitch(props) {
+      const checked = !!props.checked
+      return React.createElement('button', {
+        type: 'button',
+        role: 'switch',
+        'aria-checked': checked ? 'true' : 'false',
+        'aria-label': props.label,
+        disabled: !!props.disabled,
+        className: 'sleu-kb-switch',
+        onClick: () => { if (!props.disabled && typeof props.onChange === 'function') props.onChange(!checked) },
+      })
+    }
+
+    function KnowledgeView(props) {
+      const sessionId = props && props.sessionId ? String(props.sessionId) : null
+      const [status, setStatus] = React.useState(null)
+      const [loading, setLoading] = React.useState(true)
+      const [loadError, setLoadError] = React.useState(null)
+      const [draft, setDraft] = React.useState(null)
+      const [dirty, setDirty] = React.useState(false)
+      const [busy, setBusy] = React.useState('')
+      const [flash, setFlash] = React.useState(null)
+
+      const adopt = React.useCallback((payload) => {
+        setStatus(payload)
+        setDraft(kbDraftOf(payload))
+        setDirty(false)
+      }, [])
+      const load = React.useCallback(() => {
+        setLoading(true)
+        setLoadError(null)
+        host.call('ascend-kb-sync-show', { sessionId })
+          .then((payload) => { adopt(payload); setLoading(false) })
+          .catch((e) => { setLoadError(String((e && e.message) || e)); setLoading(false) })
+      }, [sessionId, adopt])
+      React.useEffect(() => { load() }, [load])
+
+      const sync = status && status.sync ? status.sync : null
+      const data = sync && sync.ok === true ? sync.data : null
+      const syncState = sync && sync.ok === true ? String(sync.state || 'ok') : ''
+      const syncError = sync && sync.ok === true && sync.error ? sync.error : null
+      const targetsPart = status && status.targets ? status.targets : null
+      const targets = targetsPart && targetsPart.ok === true ? targetsPart.data : null
+      const remotes = targets && Array.isArray(targets.remotes) ? targets.remotes : []
+      // 三个状态读脚本的真实字段：offline / enabled / same_repo。关闭与离线是两回事，
+      // 前者是个人设置，后者是部署声明；同源校验不一致时脚本不自动合并，页面只说这一行。
+      const offline = !!(data && data.offline)
+      const disabled = !!(data && data.enabled === false)
+      const sameRepoMismatch = !!(data && data.same_repo === false)
+      const config = data && data.config ? data.config : null
+      const cfgSource = offline
+        ? '部署声明（offline）'
+        : (config ? (config.source === 'default' ? '默认值（未写入 .local/settings.json）' : '个人设置') : '未读到配置')
+
+      function doMerge() {
+        if (busy) return
+        setBusy('merge')
+        setFlash(null)
+        host.call('ascend-kb-sync-merge', { sessionId })
+          .then((r) => { setBusy(''); setFlash(kbMergeFlash(r)); load() })
+          .catch((e) => {
+            setBusy('')
+            setFlash({ kind: 'err', text: '同步失败：调用不到同步端点。', detail: String((e && e.message) || e) })
+          })
+      }
+      function doSave() {
+        if (busy || !draft) return
+        setBusy('save')
+        setFlash(null)
+        host.call('ascend-kb-sync-save', {
+          sessionId: sessionId,
+          remote: draft.remote,
+          branch: draft.branch,
+          autoCheck: !!draft.autoCheck,
+          autoMerge: !!draft.autoMerge,
+          expectSha256: status && status.settings_sha256 ? String(status.settings_sha256) : '',
+        })
+          .then((r) => {
+            setBusy('')
+            if (!r || r.ok !== true) {
+              setFlash({ kind: 'err', text: '保存失败：' + kbReasonOf(r) + '。', hint: kbHintFor(r && r.code),
+                detail: r && r.detail ? String(r.detail) : '' })
+              return
+            }
+            setFlash({ kind: 'ok', text: '已保存到 ' + KB_SETTINGS_PATH + '。修改下次开单生效。' })
+            load()
+          })
+          .catch((e) => {
+            setBusy('')
+            setFlash({ kind: 'err', text: '保存失败：调用不到保存端点。', detail: String((e && e.message) || e) })
+          })
+      }
+      function setRemote(name) {
+        const picked = remotes.filter(r => r && r.name === name)[0]
+        setDraft(Object.assign({}, draft, { remote: name, branch: (picked && picked.base) || (draft && draft.branch) || '' }))
+        setDirty(true)
+      }
+      function setBranch(name) {
+        setDraft(Object.assign({}, draft, { branch: name }))
+        setDirty(true)
+      }
+      function setSwitch(key, value) {
+        setDraft(Object.assign({}, draft, { [key]: value }))
+        setDirty(true)
+      }
+
+      if (loading) {
+        return React.createElement('div', { className: 'sleu-kb' },
+          React.createElement('div', { className: 'sleu-kb-grid' },
+            React.createElement('div', { key: 's1', className: 'sleu-kb-skel sleu-skel' }),
+            React.createElement('div', { key: 's2', className: 'sleu-kb-skel sleu-skel' }),
+            React.createElement('div', { key: 's3', className: 'sleu-kb-skel sleu-skel' }),
+            React.createElement('div', { key: 's4', className: 'sleu-kb-skel sleu-skel' })),
+          React.createElement('div', { className: 'sleu-kb-hint', style: { paddingTop: 12 } }, '读取本机状态……'))
+      }
+
+      const syncAction = (kind) => React.createElement('button', {
+        type: 'button',
+        style: kind === 'primary' ? KB_BTN_PRIMARY : KB_BTN,
+        disabled: !!busy,
+        onClick: doMerge,
+      }, busy === 'merge' ? '同步中' : '立即同步')
+
+      // 一块状态区（四个状态共用）：提示条只换样式与文案，动作位放「立即同步」。
+      // 动作位单独算：同步可做时任何一条提示都带着它，做完一次动作不必先关掉提示才能再做。
+      let banner = null
+      if (flash) {
+        banner = Object.assign({}, flash)
+      } else if (loadError) {
+        banner = { kind: 'err', text: '读取失败：' + loadError + '。',
+          hint: '检查本页所在目录是不是仓库根，再刷新本页。' }
+      } else if (status && status.ok === false) {
+        banner = { kind: 'err', text: '读取失败：' + kbReasonOf(status) + '。',
+          hint: kbHintFor(status.code), detail: status.detail ? String(status.detail) : '' }
+      } else if (!sync) {
+        banner = null
+      } else if (sync.ok !== true) {
+        banner = { kind: 'err', text: '读不到同步状态：' + kbReasonOf(sync) + '。',
+          hint: kbHintFor(sync.code), detail: sync.detail ? String(sync.detail) : '' }
+      } else if (syncState === 'offline' || offline) {
+        banner = { kind: 'muted', text: '离线部署（' + (data.offline_source || 'deployment.yaml') + '）：不检查更新，也不合并。诊断照常。' }
+      } else if (syncState === 'disabled' || disabled) {
+        banner = { kind: 'muted', text: '已关闭（个人设置）：启动诊断时不检查更新，也不合并。',
+          hint: '打开「自动检查更新」并保存后，才能手动同步。' }
+      } else if (syncState === 'error') {
+        banner = { kind: 'err', text: '同步失败：' + kbReasonOf(syncError) + '。',
+          hint: kbHintFor(syncError && syncError.code) }
+      } else if (syncState === 'no-remote') {
+        banner = remotes.length
+          ? { kind: 'muted', text: '还没有配置同步源。选一个远端后点「保存」。' }
+          : { kind: 'warn', text: '本机没有配置远端。同步源无处可选。',
+            hint: '添加远端后刷新本页。', cmd: 'git remote add origin <地址>' }
+      } else if (syncState === 'unfetched') {
+        banner = { kind: 'muted', text: '远端分支还没拉取过（' + (data.remote || '?') + '/' + (data.branch || '?') + '）。',
+          hint: '点「立即同步」拉一次远端，再按配置合并。' }
+      } else if (data.skipped) {
+        banner = { kind: 'warn', text: '上次同步失败，本次按 10 分钟窗口跳过。',
+          hint: data.last_reason ? '上次失败原因：' + data.last_reason : '' }
+      } else if (!targetsPart || targetsPart.ok !== true) {
+        banner = { kind: 'err', text: '读不到远端列表：' + kbReasonOf(targets || {}) + '。',
+          hint: kbHintFor(targetsPart && targetsPart.code), detail: targetsPart && targetsPart.detail ? String(targetsPart.detail) : '' }
+      } else if (!remotes.length) {
+        banner = { kind: 'warn', text: '本机没有配置远端。同步源无处可选。',
+          hint: '添加远端后刷新本页。', cmd: 'git remote add origin <地址>' }
+      } else if (!data.last_checked) {
+        banner = { kind: 'muted', text: '还没有核对过远端。',
+          hint: '点「立即同步」拉一次远端，再按配置合并。' }
+      } else if (data.behind === null) {
+        banner = { kind: 'muted', text: '读不到落后的提交数（git rev-list 没有给出数字）。',
+          hint: '稍后再点「立即同步」重试。' }
+      } else if (typeof data.behind === 'number' && data.behind > 0) {
+        banner = {
+          kind: 'warn',
+          text: '落后 ' + data.behind + ' 个提交。本次合并会把 knowledge/、references/ 与 skills/ 一起更新；知识立即生效，流程文件下次会话生效。',
+        }
+      } else {
+        banner = { kind: 'ok', text: '本机与远端一致。' }
+      }
+      const canSync = !offline && !disabled && syncState !== 'disabled' && remotes.length > 0
+        && sync && sync.ok === true
+      if (banner && !banner.action && canSync && !busy) {
+        banner.action = syncAction('quiet')
+      } else if (banner && !banner.action && banner.kind === 'err' && !busy) {
+        banner.action = React.createElement('button', {
+          type: 'button', style: KB_BTN, onClick: () => load(),
+        }, '重试')
+      }
+      const bannerNode = banner ? KbBanner(banner) : null
+      // 同源校验不一致：脚本会拦住自动合并，这里只把这一行说清楚，不重复「立即同步」动作。
+      const sameRepoNode = sameRepoMismatch
+        ? KbBanner({ kind: 'warn', text: '这个远端不是同一个仓，未自动合并。' })
+        : null
+
+      const remoteValue = draft ? draft.remote : ''
+      const remoteOptions = remotes.map(r => React.createElement('option', { key: 'r-' + r.name, value: r.name },
+        r.name + (r.host ? ' · ' + r.host : '') + (r.last_used ? ' · 上次使用 ' + kbStamp(r.last_used) : '')))
+      if (remoteValue && !remotes.some(r => r && r.name === remoteValue)) {
+        remoteOptions.unshift(React.createElement('option', { key: 'r-stale', value: remoteValue },
+          remoteValue + ' · 本机没有这个远端'))
+      }
+      const selected = remotes.filter(r => r && r.name === remoteValue)[0] || null
+      const branches = []
+      if (selected && selected.base) branches.push(selected.base)
+      if (draft && draft.branch) branches.push(draft.branch)
+      if (targets && targets.target && targets.target.base) branches.push(targets.target.base)
+      const branchList = branches.filter((b, i) => b && branches.indexOf(b) === i)
+      const lastUsed = selected && selected.last_used ? kbStamp(selected.last_used) : ''
+      const canSave = !offline && remotes.length > 0 && !!draft && !!draft.remote && !busy
+
+      const sourceCard = React.createElement('div', { className: 'sleu-kb-card' },
+        React.createElement('div', { className: 'sleu-kb-card-head' },
+          React.createElement('div', null,
+            React.createElement('div', { className: 'sleu-kb-card-t' }, '同步源'),
+            React.createElement('div', { className: 'sleu-kb-card-sub' }, '这个远端会 merge 进本机检出。列事实，不预设用途。')),
+          React.createElement('button', {
+            type: 'button',
+            style: Object.assign({}, KB_BTN, (!canSave || !dirty) ? { opacity: 0.55, cursor: 'not-allowed' } : {}),
+            disabled: !canSave || !dirty,
+            onClick: doSave,
+          }, busy === 'save' ? '保存中' : '保存')),
+        remotes.length === 0
+          ? React.createElement('div', { className: 'sleu-kb-empty' },
+            offline
+              ? '离线部署：不读同步源。'
+              : (!targetsPart || targetsPart.ok !== true)
+                ? '读不到远端列表。先修好 scripts/pr_status.py 的调用，再刷新本页。'
+                : '本机没有配置远端。先在仓库根目录执行 git remote add <名字> <地址>，再刷新本页。')
+          : React.createElement('div', { className: 'sleu-kb-row' },
+            React.createElement('div', { className: 'sleu-kb-field' },
+              React.createElement('label', { htmlFor: 'sleu-kb-remote' }, '远端'),
+              React.createElement('select', {
+                id: 'sleu-kb-remote',
+                className: 'sleu-kb-select',
+                'aria-label': '同步源远端',
+                value: remoteValue,
+                disabled: offline || !!busy,
+                onChange: (e) => setRemote(e.target.value),
+              }, remoteOptions)),
+            React.createElement('div', { className: 'sleu-kb-field' },
+              React.createElement('label', { htmlFor: 'sleu-kb-branch' }, '分支'),
+              React.createElement('select', {
+                id: 'sleu-kb-branch',
+                className: 'sleu-kb-select',
+                'aria-label': '同步源分支',
+                value: draft ? draft.branch : '',
+                disabled: offline || !!busy || branchList.length === 0,
+                onChange: (e) => setBranch(e.target.value),
+              }, branchList.length
+                ? branchList.map(b => React.createElement('option', { key: 'b-' + b, value: b }, b))
+                : React.createElement('option', { value: '' }, '远端没给分支'))),
+            lastUsed ? React.createElement('div', { className: 'sleu-kb-hint' }, '上次使用：' + lastUsed) : null),
+        dirty ? React.createElement('div', { className: 'sleu-kb-dirty' },
+          '有未保存的改动。点「保存」写进 ' + KB_SETTINGS_PATH + '。') : null,
+      )
+
+      const switchRow = (title, desc, key) => React.createElement('div', { className: 'sleu-kb-switch-row', key: key },
+        React.createElement('div', { className: 'sleu-kb-switch-main' },
+          React.createElement('div', { className: 'sleu-kb-switch-t' }, title),
+          React.createElement('div', { className: 'sleu-kb-switch-d' }, desc),
+          React.createElement('div', { className: 'sleu-kb-switch-src' }, '来源：' + cfgSource)),
+        React.createElement(KbSwitch, {
+          label: title,
+          checked: !!(draft && draft[key]),
+          disabled: offline || !draft || !!busy,
+          onChange: (v) => setSwitch(key, v),
+        }))
+
+      const switches = React.createElement('div', { className: 'sleu-kb-card' },
+        switchRow('自动检查更新', '诊断开单时 fetch 一次。关闭后不再检查，doctor 会显示「已关闭」。', 'autoCheck'),
+        switchRow('自动合并', '仅当工作区干净、当前在配置分支上、且可快进时合并。不满足只提示，不 rebase。', 'autoMerge'),
+      )
+
+      const behindKnown = data && typeof data.behind === 'number'
+      const behindTone = !behindKnown ? 'muted' : (data.behind > 0 ? 'warn' : 'ok')
+      const behindNote = data && typeof data.skipped === 'number' && data.skipped > 0
+        ? '另有 ' + data.skipped + ' 个提交跳过'
+        : ''
+      const localRev = data && data.local_rev ? data.local_rev : ''
+      const remoteRev = data && data.remote_rev ? data.remote_rev : ''
+      const lastChecked = data && data.last_checked ? data.last_checked : ''
+
+      return React.createElement('div', { className: 'sleu-kb' },
+        React.createElement('div', { className: 'sleu-kb-grid' },
+          React.createElement(KbStat, { key: 'local', label: '本机版本',
+            value: localRev ? 'v' + kbShortRev(localRev) : '未记录',
+            tone: localRev ? '' : 'muted' }),
+          React.createElement(KbStat, { key: 'remote', label: '远端版本',
+            value: remoteRev ? 'v' + kbShortRev(remoteRev) : (offline ? '不检查' : '未核对'),
+            tone: remoteRev ? '' : 'muted' }),
+          React.createElement(KbStat, { key: 'behind', label: '落后',
+            value: behindKnown ? String(data.behind) : (lastChecked ? '读不出' : '未核对'),
+            unit: behindKnown ? '个提交' : '',
+            tone: behindTone,
+            note: behindNote }),
+          React.createElement(KbStat, { key: 'checked', label: '上次核对',
+            value: lastChecked ? kbAgo(lastChecked) : '从未核对',
+            tone: lastChecked ? '' : 'muted' })),
+        bannerNode,
+        sameRepoNode,
+        sourceCard,
+        switches,
+        React.createElement('div', { className: 'sleu-kb-foot' },
+          React.createElement('span', null, '配置'),
+          React.createElement('code', { className: 'sleu-kb-code' }, KB_SETTINGS_PATH),
+          React.createElement('span', null, '·'),
+          React.createElement('span', null, '修改下次开单生效'),
+          React.createElement('span', { style: { marginLeft: 'auto' } }, '打开本页不联网；「立即同步」才请求')),
+      )
+    }
+
+    // 视图由本页自己登记：整页是唯一持有它的地方，不像指标/自演进那样由面板登记。
+    SLEUTH_VIEWS.knowledge = (props) => React.createElement(KnowledgeView, props)
+
     function ConsolePage(props) {
-      const requested = props && (props.view === 'metrics' || props.view === 'evolve') ? props.view : 'metrics'
+      const requested = props && (props.view === 'metrics' || props.view === 'evolve' || props.view === 'knowledge') ? props.view : 'metrics'
       const [active, setActive] = React.useState(requested)
       const view = SLEUTH_VIEWS[active]
       return React.createElement('div', { className: 'sleu-console' },
@@ -73,7 +631,7 @@ return {
           React.createElement('div', { className: 'sleu-console-head' },
             React.createElement('div', null,
               React.createElement('div', { className: 'sleu-console-title' }, PANEL_LABEL),
-              React.createElement('div', { className: 'sleu-console-sub' }, '全库读数 · 判据判决 · 自演进'),
+              React.createElement('div', { className: 'sleu-console-sub' }, '全库读数 · 判据判决 · 自演进 · 知识库'),
             ),
           ),
           React.createElement('div', { className: 'sleu-console-tabs', role: 'tablist' },

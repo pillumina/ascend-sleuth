@@ -65,6 +65,8 @@ disable-model-invocation: true
 
 ### 0. 确定同步源
 
+配置优先：先看主检出 `.local/settings.json` 的 `sync.remote`，有就直接用它，下面的 `--list-remotes` 不跑。
+
 ```bash
 python3 scripts/groom_snapshot.py --list-remotes
 ```
@@ -79,13 +81,15 @@ python3 scripts/groom_snapshot.py --list-remotes
 
 ### 0.1 同步快照（失败就停，不拿旧数据往下走）
 
-只有一个远端时：
+同步源与诊断读侧共用同一份配置：读主检出 `.local/settings.json` 的 `sync` 段（`remote` / `branch`）。配置在就按它同步，不再问远端；配置缺失才回到上一节走原有选源（单个远端直接用，多个才问用户）。有配置时下面的命令省略 `--remote`，脚本自己取配置。
+
+有配置时，或没有配置且只有一个远端时：
 
 ```bash
 python3 scripts/groom_snapshot.py --require-fresh
 ```
 
-有多个远端时，用用户选定的那个：
+没有配置且有多个远端时，用用户选定的那个：
 
 ```bash
 python3 scripts/groom_snapshot.py --remote <用户选择的远端名> --require-fresh
@@ -96,7 +100,7 @@ python3 scripts/groom_snapshot.py --remote <用户选择的远端名> --require-
 `compared_against_commit`。
 
 - 退出 2：同步或索引校验失败。停下来确认网络/权限；**不要**用当前检出里的旧 `knowledge/` 继续判。
-- 确实离线：用同一个 `--remote` 加 `--offline`。快照会标 `fresh: false, authoritative: false`；本轮只能产出
+- 确实离线：在同一条命令上加 `--offline`。快照会标 `fresh: false, authoritative: false`；本轮只能产出
   `ambiguous` / 待复核，`groom_record` 会把升格标成 `stale-snapshot`，**不得据此升格**。
 - 源工作区有未提交改动是正常的：快照不碰它，报告里会如实显示。
 

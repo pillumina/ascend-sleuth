@@ -66,6 +66,7 @@ CAPABILITIES = [
     ("批量导入上游 issue", ["python", "yaml", "gh"]),
     ("诊断 token 与工具记账", ["node"]),
     ("沉淀队列与 PR 状态", ["python", "yaml", "git", "pr-platforms"]),
+    ("知识库同步", ["python", "git", "kb-sync"]),
 ]
 
 BLOCK, DEGRADE, OK = "blocked", "degraded", "ok"
@@ -443,6 +444,90 @@ def check_pr_platforms(root):
             "note": "清单来自 scripts/platforms/；只读，不联网"}
 
 
+def check_kb_sync(root: Path):
+    """知识库同步：只读本机状态，不联网。
+
+    判三件事：部署是否声明离线、配置是否可用、本机远端 ref 落后多少。上次 fetch 的失败
+    从 `.local/kb-sync-state.json` 读——它决定下一次开单会不会直接跳过联网。
+    """
+    try:
+        import kb_sync
+    except Exception as exc:  # noqa: BLE001 - 体检器把缺依赖折成一行原因
+        return {"id": "kb-sync", "label": "知识库同步", "kind": "data", "state": DEGRADE,
+                "detail": f"读不出同步配置（{type(exc).__name__}: {exc}）",
+                "fix": "python3 scripts/kb_sync.py --show"}
+    try:
+        mode = kb_sync.deployment_sync_mode(root)
+        settings, config, problem = kb_sync.load_settings(root)
+        config_sync = settings.get("sync") or {}
+        state = kb_sync.load_state(root)
+    except Exception as exc:  # noqa: BLE001
+        return {"id": "kb-sync", "label": "知识库同步", "kind": "data", "state": DEGRADE,
+                "detail": f"读不出同步配置（{type(exc).__name__}: {exc}）",
+                "fix": "python3 scripts/kb_sync.py --show"}
+
+    if mode == "offline":
+        return {"id": "kb-sync", "label": "知识库同步", "kind": "data", "state": OK,
+                "detail": "offline —— deployment.yaml 声明 sync.mode: offline，不联网",
+                "note": "trace_begin / kb_drift 不会 fetch；trace 记 kb_sync: off",
+                "fix": ""}
+    if not config_sync.get("enabled", True):
+        return {"id": "kb-sync", "label": "知识库同步", "kind": "data", "state": OK,
+                "detail": "已关闭（.local/settings.json 的 sync.enabled = false）",
+                "note": "打开：python3 scripts/pr_status.py --set-sync --enable",
+                "fix": ""}
+    remote = str(config_sync.get("remote") or "origin")
+    branch = str(config_sync.get("branch") or "main")
+    remote_ref = f"{remote}/{branch}"
+    try:
+        snap = kb_sync.local_snapshot(root, remote, branch)
+    except Exception as exc:  # noqa: BLE001
+        return {"id": "kb-sync", "label": "知识库同步", "kind": "data", "state": DEGRADE,
+                "detail": f"读不出本机 {remote_ref}（{type(exc).__name__}: {exc}）",
+                "fix": "python3 scripts/kb_sync.py --show"}
+
+    if not snap.get("ok") and snap.get("reason") == "not-a-repo":
+        return {"id": "kb-sync", "label": "知识库同步", "kind": "data", "state": DEGRADE,
+                "detail": f"{root} 不是 git 检出，无法算落后",
+                "fix": "python3 scripts/kb_sync.py --show"}
+
+    behind = snap.get("behind")
+    degraded = False
+    if behind == "unknown":
+        detail = f"本机没有 {remote_ref} ref，算不出落后"
+        degraded = True
+    elif isinstance(behind, int) and behind > 0:
+        detail = f"落后 {remote_ref} {behind} 个提交"
+        degraded = True
+    else:
+        detail = f"与 {remote_ref} 一致"
+    if snap.get("same_repo") is False:
+        detail += "；配置远端与 origin 不同源"
+        degraded = True
+
+    last_ok = str(state.get("last_ok_at") or "")
+    last_reason = str(state.get("reason") or "")
+    if last_reason:
+        attempted = str(state.get("attempted_at") or "")
+        detail += f"；上次 fetch 失败：{kb_sync.fetch_reason_text(last_reason)}"
+        if attempted:
+            detail += f"（{attempted}）"
+        degraded = True
+    detail += f"；上次核对：{last_ok or '从未'}"
+    if config == "default":
+        if problem:
+            detail += f"；配置读不出，按默认值算：{problem}"
+            degraded = True
+        else:
+            detail += "；未配置 .local/settings.json，按默认值算"
+
+    note = "只读，不联网；落后数按本机已有的远端 ref 算"
+    return {"id": "kb-sync", "label": "知识库同步", "kind": "data",
+            "state": DEGRADE if degraded else OK,
+            "detail": detail, "note": note,
+            "fix": "python3 scripts/kb_sync.py --show" if degraded else ""}
+
+
 def check_capability_table(checks):
     """能力表引用的 id 必须都存在于检查项里。
 
@@ -463,8 +548,8 @@ def check_capability_table(checks):
 def build_report(root: Path):
     checks = [check_python()]
     checks += check_third_party()
-    checks += [check_git(root), check_node(), check_gh(), check_pr_platforms(root), check_traces(root), check_index(root),
-               check_evolution(root)]
+    checks += [check_git(root), check_node(), check_gh(), check_pr_platforms(root),
+               check_kb_sync(root), check_traces(root), check_index(root), check_evolution(root)]
     checks.append(check_capability_table(checks))
     by_id = {c["id"]: c for c in checks}
     caps = []

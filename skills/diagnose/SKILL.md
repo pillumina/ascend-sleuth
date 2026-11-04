@@ -49,6 +49,22 @@ description: >
 
 > 每步只写「做什么 + 何时用」；**子步骤与判定细节**见 `references/diagnosis-procedure.md` 对应「步骤 N」。核心循环 = 收集 →（数据缺口则取采集面）→ 路由 →（键触发 + 背景：证据里的码/签名/名/平台组件词当场查）→ 两阶段加载+2.5 reference → 验证 → (未命中)深度排查 → 产出。
 
+> **开单先同步知识基线**（诊断读知识库的那一版 commit 坐标）：`trace_begin.py` 建单时读 `.local/settings.json` 的 `sync` 段，fetch 远端知识库（超时 10 秒）。
+>
+> 落后时按五条条件试 ff-only 合并：
+>
+> - 当前分支 = 配置 `branch`；
+> - HEAD 是远端祖先；
+> - `git status --porcelain -uno` 为空；
+> - 无进行中 merge / rebase / cherry-pick；
+> - `sync.auto_merge` 开着（关掉只检查、不合并）。
+>
+> worktree 与 detached HEAD 不自动合并。
+>
+> 合并成功、落后未合并、首次 fetch 失败各打印一行；已是最新、失败缓存期内（10 分钟）、同步关闭或部署声明离线时不打印。
+>
+> 失败不阻塞开单；一次合并对 `knowledge/` 立即生效，对 `skills/` 下次会话生效。
+
 > **先验 trace 相似检测**（收集症状后、路由前）：扫 `traces/*.yaml`（**全部 status**——进行中+已闭环都留在 `traces/`），按症状里的模型/框架/配置名/category 对每个 state 文件的 `summary`/`detected_framework`/`detected_category` 做**词法 grep 匹配**。
 > - **陈述，不提问**：命中就**说一句**——"本地有 `<session_id>`，停在 <哪一步 / 结论一行>"——然后**在同一条消息里继续按本次问题往下走**。工程师回"就是这个"再切 `/skill:resume-diagnosis`。**不要写成"要续接吗？"**：那是把判断推给一个手上没有上下文的人，还把新问题卡在路由之前等答复。
 > - **有判据才提**：命中单的 `summary` 为空、或 trace 只有寥寥几步（裸 stub）时不提——念一个没有内容的 session，等于让工程师替你判断哪一单。

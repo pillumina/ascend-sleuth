@@ -15,21 +15,28 @@
 # 边界（必须如实读）：
 #   - 快照是**某一时刻**的远端状态。fetch 之后 main 仍可前进，所以"fresh"只表示
 #     "抓取成功且与 fetch 那一刻的 <remote>/<branch> 一致"，不是"合入时仍最新"。
-#   - fetch 失败时**默认失败退出（2）**；只有显式 `--offline` 才用本地已有引用，
+#   - fetch 失败时**默认失败退出（2）**；显式 `--offline`、settings 的 `sync.enabled: false`、
+#     `deployment.yaml` 的 `sync.mode: offline` 三种情况不联网，用本地已有引用，
 #     并标 `fresh: false, authoritative: false`。stale 数据不会被静默当成权威。
 #   - 不修改源工作区：worktree 是另一个目录；源工作区的本地改动与未跟踪 inbox 均不变。
 #
 # 用法：
 #   python3 scripts/groom_snapshot.py --list-remotes          # 多个远端时让用户选；只有一个可跳过
-#   python3 scripts/groom_snapshot.py --remote origin --require-fresh  # 只有一个时可省略 --remote
+#   python3 scripts/groom_snapshot.py --require-fresh         # 默认同步源读主检出 .local/settings.json 的 sync 段
+#   python3 scripts/groom_snapshot.py --remote origin --require-fresh  # 有多个远端且未配置时由用户选
 #   python3 scripts/groom_snapshot.py --remote origin --json   # 同上，stdout 输出 meta JSON
 #   python3 scripts/groom_snapshot.py --remote origin --offline  # 用本地已有引用，显式降级
 #   python3 scripts/groom_snapshot.py --prune                 # 清理旧的 groom 快照 worktree
+#
+# 同步源：优先读主检出 `.local/settings.json` 的 `sync.remote` / `sync.branch`（未进 git，
+# 各 worktree 共用一份）。配置缺失时保持原行为：`--list-remotes` 列出远端、由 agent 问用户，
+# `--remote` 显式指定时以它为准。
 #
 # 退出码：0 = 快照可用；2 = 同步失败 / 索引不可用 / --require-fresh 不满足；3 = 用法错误。
 
 import argparse
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -37,7 +44,9 @@ import sys
 import tarfile
 from pathlib import Path
 
+import kb_sync
 from _stdio import pin_utf8_stdio
+from exec_log_path import main_checkout
 from groom_common import (
     SCHEMA_SNAPSHOT, atomic_write_text, dump_json, find_drafts, load_json, now_iso,
     repo_root, run_git, shared_inbox, short_sha,
@@ -45,6 +54,9 @@ from groom_common import (
 
 INDEX_CHECK = ["scripts/build_index.py", "--check"]
 INDEX_BUILD = ["scripts/build_index.py"]
+
+SETTINGS_REL = Path(".local/settings.json")
+SETTINGS_SCHEMA_PREFIX = "ascend-sleuth-settings/"
 
 
 def _child_env():
@@ -76,6 +88,74 @@ def list_remotes(root: Path):
             seen.add(parts[0])
             names.append({"name": parts[0]})
     return names
+
+
+def load_sync_settings(root: Path):
+    """读主检出 `.local/settings.json` 的 `sync` 段 → (remote, branch, enabled, error)。
+
+    配置缺失（没有文件、或文件里没有 `sync`）返回 (None, None, True, None)：调用方退回
+    `--list-remotes` 那套问用户的行为。文件在但读不出或结构不对返回 error，调用方会说明一句后
+    按未配置处理——拼错的配置若被当成"没配置"而不出声，同步源会静默换成另一个远端。
+    """
+    base = main_checkout(root) or root
+    path = base / SETTINGS_REL
+    if not path.is_file():
+        return None, None, True, None
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as e:
+        return None, None, True, f"{path} 读不出：{e}"
+    if not isinstance(doc, dict):
+        return None, None, True, f"{path} 顶层不是对象"
+    schema = str(doc.get("schema") or "")
+    if schema and not schema.startswith(SETTINGS_SCHEMA_PREFIX):
+        return None, None, True, f"{path} 的 schema {schema!r} 不认（本脚本认 {SETTINGS_SCHEMA_PREFIX}*）"
+    sync = doc.get("sync")
+    if sync is None:
+        return None, None, True, None
+    if not isinstance(sync, dict):
+        return None, None, True, f"{path} 的 sync 段不是对象"
+    remote = str(sync.get("remote") or "").strip() or None
+    branch = str(sync.get("branch") or "").strip() or None
+    enabled = kb_sync.normalize_sync(sync)["enabled"]
+    return remote, branch, enabled, None
+
+
+def _fetch_policy(root: Path, offline: bool):
+    """本次是否联网 → (allow_fetch, skip_reason)。
+
+    `--offline`、`deployment.yaml` 声明 `sync.mode: offline`、settings 的
+    `sync.enabled: false` 三种情况都不 fetch，改用本机已有 ref 建快照：meta 仍按现有
+    `fresh` / `authoritative` 语义标 false，不联网的原因写进 `fetch_error`。
+    """
+    if offline:
+        return False, "offline 模式：未尝试 fetch"
+    if kb_sync.deployment_sync_mode(root) == "offline":
+        return False, "deployment.yaml 声明 sync.mode: offline，未尝试 fetch；使用本机已有引用"
+    _remote, _branch, enabled, _error = load_sync_settings(root)
+    if not enabled:
+        return False, "settings 的 sync.enabled 为 false，未尝试 fetch；使用本机已有引用"
+    return True, None
+
+
+def persist_sync_source(root: Path, remote: str, branch: str):
+    """把本次选定的同步源写回 `.local/settings.json` 一次 → (ok, error)。
+
+    只在配置里没有可用同步源时调用（已有配置时不覆盖用户的选择）。写失败不阻塞建快照：
+    记住同步源只是省下一次选择，不是快照的前置条件。
+    """
+    try:
+        sha = kb_sync.settings_sha256(Path(root))
+        settings, _source, _problem = kb_sync.load_settings(Path(root))
+        sync = dict(settings.get("sync") or {})
+        sync["remote"] = remote
+        if branch:
+            sync["branch"] = branch
+        settings["sync"] = sync
+        kb_sync.save_settings(Path(root), settings, expect_sha=sha)
+        return True, ""
+    except Exception as exc:  # noqa: BLE001 - 写配置失败只是少一次记忆，不能拦住快照
+        return False, f"{type(exc).__name__}: {exc}"
 
 
 def _fetch(root: Path, remote: str, branch: str):
@@ -340,8 +420,13 @@ def build_snapshot(root: Path, remote="origin", branch="main", snapshot_dir=None
     inbox = shared_inbox(root)
     snapshot_dir = Path(snapshot_dir).resolve() if snapshot_dir else (inbox / ".groom" / "snapshots")
 
-    fetched, fetch_error = (False, "offline 模式：未尝试 fetch") if offline else _fetch(root, remote, branch)
-    if not fetched and not offline:
+    allow_fetch, skip_reason = _fetch_policy(root, offline)
+    if not allow_fetch:
+        # 同步关闭 / 部署声明离线：不联网，用本机已有 ref；fresh=false、authoritative=false。
+        fetched, fetch_error = False, skip_reason
+    else:
+        fetched, fetch_error = _fetch(root, remote, branch)
+    if not fetched and allow_fetch:
         meta = {
             "schema": SCHEMA_SNAPSHOT, "ok": False, "repo": str(root),
             "branch": branch, "remote": remote,
@@ -477,8 +562,8 @@ def main():
     ap.add_argument("--list-remotes", action="store_true",
                     help="列出已配置远端名；多个远端时由 agent 问用户")
     ap.add_argument("--remote", default=None,
-                    help="同步源远端名；只有一个远端时可省略，多个时必须先问用户")
-    ap.add_argument("--branch", default="main")
+                    help="同步源远端名；默认取配置 sync.remote，缺省按本机远端（单个自动用，多个须先问）")
+    ap.add_argument("--branch", default=None, help="分支名（默认取配置 sync.branch，再缺省 main）")
     ap.add_argument("--snapshot-dir", default=None,
                     help="快照根目录（默认：共享 inbox 的 .groom/snapshots）")
     ap.add_argument("--offline", action="store_true",
@@ -495,6 +580,15 @@ def main():
 
     root = Path(args.repo).resolve() if args.repo else Path.cwd()
     root = repo_root(root)
+    cfg_remote, cfg_branch, _cfg_enabled, cfg_error = load_sync_settings(root)
+    config_broken = bool(cfg_error)
+    if cfg_error:
+        # 配置损坏不报错退出：退回"没配置"的既有行为（问用户），只说明一句。
+        # 也**不写回**选定远端——覆盖一份读不出的配置会把用户原来的设置抹掉。
+        print(f"groom_snapshot: {cfg_error}（本次按未配置处理）", file=sys.stderr)
+        cfg_remote = cfg_branch = None
+    if not args.branch:
+        args.branch = cfg_branch or "main"
     if args.cleanup:
         result = cleanup_snapshot(root, snapshot_dir=args.snapshot_dir, branch=args.branch,
                                   commit=args.cleanup_commit)
@@ -511,15 +605,25 @@ def main():
     if args.list_remotes:
         remotes = list_remotes(root)
         if args.json:
-            print(dump_json({"schema": "groom-sync-sources/v1", "repo": str(root),
-                             "remotes": remotes}), end="")
+            payload = {"schema": "groom-sync-sources/v1", "repo": str(root), "remotes": remotes}
+            # 没有配置时不加字段：保持既有输出形状，调用方不必改。
+            if cfg_remote or cfg_branch:
+                payload["configured"] = {"remote": cfg_remote, "branch": cfg_branch}
+            print(dump_json(payload), end="")
         else:
             print("可用的同步源（把远端名给用户，由用户确认从哪个更新）：")
             for r in remotes:
                 print(f"  {r['name']}")
             if not remotes:
                 print("  （没有配置远端；由用户决定 git remote add <name> <url>）")
+            if cfg_remote:
+                suffix = f"（分支 {cfg_branch}）" if cfg_branch else ""
+                print(f"  配置里的同步源：{cfg_remote}{suffix}——有配置时直接用，不必再选。")
         return 0
+    if not args.remote and cfg_remote:
+        args.remote = cfg_remote
+        print(f"groom_snapshot: 同步源取自 .local/settings.json（sync.remote={cfg_remote}）。",
+              file=sys.stderr)
     if not args.remote:
         names = [r["name"] for r in list_remotes(root)]
         if len(names) == 1:
@@ -533,6 +637,16 @@ def main():
             print("groom_snapshot: 有多个远端，先跑 --list-remotes 并让用户确认，"
                   "再用 --remote <name>。", file=sys.stderr)
             return 3
+    if cfg_remote is None and not config_broken:
+        # 配置里没有可用同步源，本次的远端是用户选的（--remote 或唯一远端）：写回一次。
+        written, why = persist_sync_source(root, args.remote, args.branch)
+        if written:
+            print(f"groom_snapshot: 已把选定的同步源写回 .local/settings.json"
+                  f"（{args.remote}/{args.branch}）。", file=sys.stderr)
+        else:
+            print(f"groom_snapshot: 选定的同步源写回 .local/settings.json 失败（{why}）；"
+                  "本次照常建快照。", file=sys.stderr)
+    allow_fetch, skip_reason = _fetch_policy(root, args.offline)
     meta, rc = build_snapshot(
         root, remote=args.remote, branch=args.branch, snapshot_dir=args.snapshot_dir,
         offline=args.offline, require_fresh=args.require_fresh, prune=args.prune,
@@ -541,6 +655,9 @@ def main():
         print(dump_json(meta), end="")
     elif rc == 0:
         print_summary(meta)
+    elif not allow_fetch:
+        print(f"groom_snapshot: 未 fetch（{skip_reason}）——--require-fresh 无法满足；"
+              "去掉它可用本机已有引用建快照（结果标记为非权威）。", file=sys.stderr)
     else:
         print(f"groom_snapshot: 同步失败 —— {meta.get('fetch_error')}", file=sys.stderr)
         if not args.offline:

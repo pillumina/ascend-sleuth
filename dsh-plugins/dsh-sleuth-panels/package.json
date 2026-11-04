@@ -1,8 +1,8 @@
 {
   "name": "dsh-sleuth-panels",
-  "version": "0.8.22",
+  "version": "0.9.0",
   "private": true,
-  "description": "ascend-sleuth panels for DSH: diagnose traces, metrics verdict, self-evolution board",
+  "description": "ascend-sleuth panels for DSH: diagnose traces, metrics verdict, self-evolution board, knowledge sync",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
@@ -23,6 +23,6 @@
   },
   "meta": {
     "title": "ascend-sleuth 面板",
-    "description": "诊断会话/轨迹/证据、指标闭环判决、自演进看板"
+    "description": "诊断会话/轨迹/证据、指标闭环判决、自演进看板、知识库同步"
   }
 }

@@ -289,9 +289,9 @@ harness 侧的会话号（DSH 里是 `$DSH_SESSION_ID`）。**用途有两个**�
 
 没有它，"没有 `external_lookup` 事件"分不清是没开还是没用到——这正是 `reference_lookup` 要分 `skipped` 的理由。**开了但服务挂了仍写 `on`**：那是事件级 `skipped` 加 `reason: probe-failed` 的事，两者不要混。
 
-## 顶层 `kb_rev`（会话级，一次写定）
+## 顶层 `kb_rev`（知识基线：会话级，一次写定）
 
-建 session 时把当时那份 `knowledge/` 的版本写进去（`python3 scripts/kb_rev.py` 的末行 = 检出 HEAD 短 sha），**之后不改**。两个用途：
+建 session 时把当时那份 `knowledge/` 的版本写进去——知识基线是诊断读知识库的那一版 commit 坐标（`python3 scripts/kb_rev.py` 的末行 = 检出 HEAD 短 sha），**之后不改**。两个用途：
 
 - **跨机接手**：一单在一台机器上做到一半、换到另一台继续时（更多日志在另一台），接手方要拿这个值比对本机知识库版本。不一致意味着 `excluded_cases` 里的 id 可能不存在、同一条 case 的排序分数不同、甚至那条 case 当时还没沉淀出来——接手方会复现出一套**与上家不同的候选集而不自知**。口径与工具见 `docs/guide/handoff.md`。
 - **事后归因**：判"当时为什么没命中"要能回答"当时库里有什么"，只看今天的库会把"库里当时没有"读成"检索没找到"。
@@ -301,6 +301,22 @@ harness 侧的会话号（DSH 里是 `$DSH_SESSION_ID`）。**用途有两个**�
 工作区有未提交的已跟踪改动时，`trace_begin.py` 另写顶层 `kb_rev_dirty: true`。`kb_rev` 的 sha
 只标识提交，不能单独指认脏工作区里的规则；续接时的漂移检查会把未提交改动一并算入。
 
+远端版本与落后数不写进 `kb_rev`：下一节的同步字段记「这一单同步到哪、差多少」。
+
+## 顶层知识库同步字段（建单时由 `trace_begin.py` 写定）
+
+`trace_begin.py` 在建单时同步一次知识库，并把结果写进下表的六个字段；顺序是校验 → 同步 → 写文件，参数校验不过时不联网、也不落 trace。`kb_rev` 的语义不变：它仍是这一单**实际读的那份工作区 HEAD**，下表只记**同步动作**，两者不要互相替代。
+
+| 字段 | 记什么 |
+|---|---|
+| `kb_remote` | 同步源远端名与分支，如 `origin/main`；取不到时留空 |
+| `kb_remote_rev` | 本机 `remote/branch` 引用的短 sha；fetch 未成功或本机没有这个引用时写 `unknown` |
+| `kb_behind` | `HEAD..远端分支` 的提交数，或 `unknown`；与 `kb_rev` 一起回答「读的哪版、差多少」 |
+| `kb_sync` | 同步结果：`ok` / `failed` / `off` / `skipped`（`ok` 只表示 fetch 成功，合没合看 `kb_merge`；`off` = 同步关闭、部署声明离线或建单时显式不联网；`skipped` = 失败缓存期内） |
+| `kb_sync_reason` | 没同步、同步失败或没合并的原因，如超时 / 无远端 / 非检出 / 撞 ref 锁（git fetch 并发更新引用时的锁冲突，按失败降级、不重试）/ 工作区有改动 / 分支不符；没有原因时留空 |
+| `kb_merge` | 这一单有没有动过检出：`ff-only`（做了快进合并）/ `none`（没有合并） |
+
+一次合并同时更新知识与流程：`knowledge/` 在运行时读取立即生效，`skills/` 要下一次会话才重新加载。自动合并只在这四条同时成立时发生：当前分支 = 配置 `branch`、HEAD 是远端分支的祖先、`git status --porcelain -uno` 为空、无进行中 merge / rebase / cherry-pick；worktree 与 detached HEAD 不自动合并。
 
 ## 顶层 `last_action`（当前在等什么，提问后更新）
 
