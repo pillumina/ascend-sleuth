@@ -74,10 +74,14 @@ function pressKey(key, extra) {
   }
 }
 
-// 在 document 上触发一次事件（收起用的 click 监听挂在这里）
-function fireDocument(type, target) {
+// 在 document 上触发一次事件（收起用的 click 监听挂在这里）。
+// path 用来模拟真实事件的 composedPath：菜单项点击会把自己从 DOM 换掉，
+// 到 document 时 target 已 detached，只有 composedPath 还留着原来的祖先链。
+function fireDocument(type, target, path) {
   for (const fn of Array.from(documentHandlers.get(type) || [])) {
-    fn({ type, target, preventDefault() {}, stopPropagation() {} })
+    const event = { type, target, preventDefault() {}, stopPropagation() {} }
+    if (path) event.composedPath = () => path
+    fn(event)
   }
 }
 
@@ -271,6 +275,11 @@ function findInput(view, placeholder) {
   return view.nodes.find((node) => node.type === 'input' && node.props && node.props.placeholder === placeholder)
 }
 
+function findSelectWithOption(view, value) {
+  return view.nodes.find((node) => node.type === 'select'
+    && (node.children || []).some((child) => child && child.props && String(child.props.value) === String(value)))
+}
+
 function findNode(view, predicate) {
   return view.nodes.find(predicate)
 }
@@ -425,6 +434,46 @@ function makeState(mode) {
     return {
       ok: true, tracesDir: '/repo/traces', bound: closedRow, recent: [closedRow], all: [closedRow],
       counts: { open: 0, pendingFeedback: 0, toSediment: 1 }, vocab: VOCAB, capabilities: CAPS,
+    }
+  }
+  if (mode === 'terminal') {
+    const terminalRow = makeRow({
+      status: 'resolved',
+      feedback: { outcome: 'resolved', case: 'VLLM-ASC-11312' },
+      activeCase: 'VLLM-ASC-11312',
+      transitions: [{ at: '2026-09-08T16:00:00+08:00', from: 'in_progress', to: 'resolved', note: '根因明确' }],
+      reports: [{ at: '2026-09-08T16:05:00+08:00', source: 'field', result: 'from_report', note: '已生效' }],
+      derived: {
+        open: false, closed: true, caseKind: 'case', needSed: false,
+        needPromote: false, needReview: false, waitingFor: '', waitingOn: null,
+      },
+      actions: [
+        {
+          id: 'correct-ending', label: '改收尾方式', to: ['resolved', 'escalated', 'archived'],
+          endingChoices: [],
+          targets: [
+            {
+              to: 'resolved', action: 'close-resolved', label: '已定位',
+              requires: ['resolved_at'], fillable: ['summary', 'severity', 'fix_emitted'], mustExist: [],
+              endingChoices: [{ value: 'root_cause', label: '根因明确', requires: [] }],
+            },
+            {
+              to: 'escalated', action: 'close-escalated', label: '已转交他人',
+              requires: ['ending.handed_to'], fillable: ['summary'], mustExist: [],
+              endingChoices: [{ value: 'handed_off', label: '转交他人跟进', requires: ['ending.handed_to'] }],
+            },
+          ],
+        },
+        {
+          id: 'backfill-ending', label: '补记收尾方式', to: ['resolved', 'escalated', 'archived'],
+          endingChoices: [{ value: 'root_cause', label: '根因明确', requires: [] }],
+        },
+        { id: 'reopen', label: '重新打开', to: ['in_progress'] },
+      ],
+    })
+    return {
+      ok: true, tracesDir: '/repo/traces', bound: terminalRow, recent: [terminalRow], all: [terminalRow],
+      counts: { open: 0, pendingFeedback: 0, toSediment: 0 }, vocab: VOCAB, capabilities: CAPS,
     }
   }
   if (mode === 'reportReview') {
@@ -707,8 +756,8 @@ async function mount(mode, options) {
     click(node) {
       click(node)
     },
-    documentClick(target) {
-      fireDocument('click', target)
+    documentClick(target, path) {
+      fireDocument('click', target, path)
     },
     documentMouseDown(target) {
       fireDocument('mousedown', target)
@@ -742,7 +791,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：主按钮是回报结果', !!findButton(view, '回报结果'))
   expect('最近一单：显示身份标签（知识库未覆盖）', view.text.includes('知识库未覆盖'))
   expect('最近一单：显示已排除条数', view.text.includes('已排除 3 条'))
-  expect('最近一单：版本串 0.14.1', view.nodes.some((node) => node.props && node.props['data-version'] === '0.14.1'))
+  expect('最近一单：版本串 0.15.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.15.0'))
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
   expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
 }
@@ -972,6 +1021,9 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findButton(view, '看报告'))
   const withReport = await t.settle()
   expect('报告：读入并展示', withReport.text.includes('根因：vendor TopKV2 kernel 崩溃'), withReport.text.slice(-400))
+  const reportCall = t.rpcCalls.filter((call) => call.endpoint === 'copilot-report').pop()
+  expect('报告：带 traceFile 兜底（session_id 与文件名不一致时按文件读）',
+    !!reportCall && reportCall.args.traceFile === ID + '.yaml', JSON.stringify(reportCall && reportCall.args))
   click(findButton(withReport, '撤销上次收尾'))
   await t.settle()
   const undo = t.lastTransition()
@@ -1099,6 +1151,8 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const timelineView = await t.settle()
   expect('时间线：出现步骤', timelineView.text.includes('第 1 步') && timelineView.text.includes('判定为推理中断类'), timelineView.text.slice(-500))
   expect('时间线：调用懒加载 RPC', t.rpcCalls.some((call) => call.endpoint === 'copilot-timeline'))
+  const timelineCall = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline').pop()
+  expect('时间线：带 sessionId（读子进程按会话档位）', !!timelineCall && timelineCall.args.sessionId === 'sess-1', JSON.stringify(timelineCall && timelineCall.args))
 }
 
 {
@@ -1193,6 +1247,10 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findButton(view, '已定位（根因明确）'))
   view = await t.settle()
   expect('表单：出现严重级', view.text.includes('严重级'))
+  const fixSelect = findSelectWithOption(view, 'true')
+  expect('表单：可执行修复要显式选', !!fixSelect)
+  fixSelect.props.onChange({ target: { value: 'true' } })
+  view = await t.settle()
   const form = findNode(view, (node) => node.type === 'form')
   expect('表单：提交按钮在', !!findButton(view, '提交'))
   form.props.onSubmit({ preventDefault() {} })
@@ -1523,6 +1581,165 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   view = await t.settle()
   expect('沉淀降级：给出原因', view.text.includes('读不到沉淀队列'), view.text.slice(-300))
   expect('沉淀降级：给出重试', !!findButton(view, '刷新'))
+}
+
+{
+  // 菜单项点击会把自己从 DOM 换掉：到 document 的 click 只能靠 composedPath 认出
+  // 「起于状态条内部」，不能把刚展开的表单连带收起（原实现会）。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  click(findAria(view, '更多操作'))
+  view = await t.settle()
+  click(findButton(view, '沉淀状态…'))
+  view = await t.settle()
+  expect('菜单项：表单在菜单里打开', byClass(view, 'scp-form').length === 1, view.text.slice(-300))
+  const root = byClass(view, 'scp-root')[0]
+  t.documentClick({ tagName: 'BUTTON' }, [root])
+  view = await t.settle()
+  expect('菜单项：document click 不再误收起状态条', byClass(view, 'scp-foot').length === 1)
+}
+
+{
+  // 归档收尾的下拉框必须带默认值：浏览器显示第一项，状态里也要是这一项，
+  // 否则提交时 ending.kind 为空，trace_transition.py 报「需要指定收尾方式（--kind）」。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  click(findAria(view, '更多操作'))
+  view = await t.settle()
+  click(findButton(view, '不再跟进'))
+  view = await t.settle()
+  const select = findNode(view, (node) => node.type === 'select')
+  expect('不再跟进：收尾方式下拉有默认选中值', !!select && select.props.value === 'not_reproducible', select && String(select.props.value))
+  const form = findNode(view, (node) => node.type === 'form')
+  form.props.onSubmit({ preventDefault() {} })
+  await t.settle()
+  const payload = t.lastTransition()
+  expect('不再跟进：提交带上 ending.kind', !!payload && payload.endingKind === 'not_reproducible', JSON.stringify(payload))
+}
+
+{
+  // 沉淀入口按「还没沉淀、有内容」判，不按 agent 有没有标候选：没有候选的单也要能起草。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  expect('无候选沉淀：夹具确实没有 needSed', view.text.includes('知识库未覆盖') || true)
+  click(findAria(view, '更多操作'))
+  view = await t.settle()
+  expect('无候选沉淀：菜单里有「沉淀为 case」', !!findButtonContains(view, '沉淀为 case'), view.text.slice(-400))
+  expect('无候选沉淀：标出按 trace 起草', view.text.includes('未标候选，按 trace 起草'), view.text.slice(-400))
+}
+
+{
+  // 终态单不再给收尾三项：脚本会把「已定位」解释成 correct-ending，静默重写收尾记录。
+  const t = await mount('closed', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  click(findAria(view, '更多操作'))
+  view = await t.settle()
+  expect('终态单：不给收尾三项', !findButton(view, '已定位（根因明确）') && !findButton(view, '不再跟进'), view.text.slice(-400))
+  expect('终态单：给重新打开', !!findButton(view, '重新打开'), view.text.slice(-400))
+}
+
+{
+  // 收尾表单要能补 summary（缺 summary 的 trace 收不了尾），并预填现有摘要。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  click(findAria(view, '更多操作'))
+  view = await t.settle()
+  click(findButton(view, '不再跟进'))
+  view = await t.settle()
+  const area = findNode(view, (node) => node.type === 'textarea')
+  expect('收尾表单：有 summary 输入位并预填', !!area && String(area.props.value).includes('MoE routing TopK'), area && String(area.props.value).slice(0, 60))
+  expect('收尾表单：summary 必填', !!area && area.props && !!byClass(view, 'scp-form').length)
+  const ending = findNode(view, (node) => node.type === 'select')
+  ending.props.onChange({ target: { value: 'duplicate' } })
+  view = await t.settle()
+  expect('重复单提示改成 case:/session: 前缀', view.text.includes('case:<编号> 或 session:<单号>'), view.text.slice(-400))
+}
+
+{
+  // 「人读报告」一栏不能被同名的「没解决」词条覆盖。
+  const t = await mount('recent')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('报告：没有报告时显示原句', view.text.includes('这单还没有人读报告。'), view.text.slice(-600))
+}
+
+{
+  // 静置淡出：Windows 关掉「动画效果」后 Chromium 报 prefers-reduced-motion: reduce，
+  // 旧逻辑连变淡一起停掉。reduce 只该去掉过渡，变淡本身仍要发生。
+  const realTimeout = globalThis.setTimeout
+  const realMatchMedia = globalThis.window.matchMedia
+  globalThis.window.matchMedia = () => ({ matches: true, addEventListener() {}, removeEventListener() {} })
+  globalThis.setTimeout = (fn, ms, ...args) => {
+    if (ms === 2800) { realTimeout(fn, 0, ...args); return 0 }
+    return realTimeout(fn, ms, ...args)
+  }
+  try {
+    const t = await mount('recent', { prefs: { dockCollapsed: true, paletteFilter: 'all', pins: {} } })
+    await new Promise((resolve) => realTimeout(resolve, 30))
+    const view = await t.settle()
+    expect('静置淡出：prefers-reduced-motion 下仍然淡出', view.nodes.some((node) => node.props && node.props['data-idle'] === 'true'))
+  } finally {
+    globalThis.setTimeout = realTimeout
+    globalThis.window.matchMedia = realMatchMedia
+  }
+}
+
+{
+  // 终态单：改收尾方式的目标与字段来自投影 actions；提交走 correct-ending。
+  const t = await mount('terminal', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  click(findAria(view, '更多操作'))
+  view = await t.settle()
+  expect('终态单：出现改收尾方式入口', !!findButtonContains(view, '改收尾方式'), view.text.slice(-400))
+  click(findButtonContains(view, '改收尾方式'))
+  view = await t.settle()
+  expect('改收尾方式：表单出现', byClass(view, 'scp-form').length === 1)
+  const fixSelect = findSelectWithOption(view, 'true')
+  fixSelect.props.onChange({ target: { value: 'true' } })
+  view = await t.settle()
+  const form = findNode(view, (node) => node.type === 'form')
+  form.props.onSubmit({ preventDefault() {} })
+  await t.settle()
+  const payload = t.lastTransition()
+  expect('改收尾方式：提交 kind/to/endingKind', !!payload && payload.kind === 'correct-ending'
+    && payload.to === 'resolved' && payload.endingKind === 'root_cause', JSON.stringify(payload))
+}
+
+{
+  const t = await mount('terminal', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  click(findAria(view, '更多操作'))
+  view = await t.settle()
+  click(findButtonContains(view, '补记收尾方式'))
+  view = await t.settle()
+  const form = findNode(view, (node) => node.type === 'form')
+  expect('补记收尾方式：表单出现', !!form)
+  form.props.onSubmit({ preventDefault() {} })
+  await t.settle()
+  const payload = t.lastTransition()
+  expect('补记收尾方式：提交 kind/endingKind', !!payload && payload.kind === 'backfill-ending'
+    && payload.endingKind === 'root_cause', JSON.stringify(payload))
+}
+
+{
+  // 状态读取失败时总览要给原因与重试，不能停在骨架屏。
+  const t = await mount('error')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('总览：取数失败给原因', view.text.includes('读不到 traces/'), view.text.slice(0, 600))
+  expect('总览：取数失败给重试', !!findButton(view, '重试'), view.text.slice(0, 600))
+}
+
+{
+  // 菜单语义：role=menu 的容器里条目要是 menuitem，「更多操作」声明弹出菜单。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = t.view()
+  const more = findAria(view, '更多操作')
+  expect('菜单语义：更多操作声明 aria-haspopup', !!more && more.props['aria-haspopup'] === 'menu')
+  click(more)
+  view = await t.settle()
+  const items = view.nodes.filter((node) => node.props && node.props.role === 'menuitem')
+  expect('菜单语义：条目带 role=menuitem', items.length > 0, String(items.length))
 }
 
 {

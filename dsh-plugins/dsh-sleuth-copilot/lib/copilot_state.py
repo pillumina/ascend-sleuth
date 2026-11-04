@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import argparse
+import inspect
 import json
 import re
 import sys
@@ -38,6 +39,15 @@ def _short(text, limit: int) -> str:
     if len(value) <= limit:
         return value
     return value[: max(limit - 2, 1)] + "……"
+
+
+def _safe_int(value, default: int = 0) -> int:
+    """整数字段的安全转换。`current_step` 被写成「第三步」或 null 时只让该字段归零，
+    不让整条轨迹的其余字段一起失败。"""
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
 
 
 def _material_items(text, summary: str = '', limit: int = 8) -> list:
@@ -194,11 +204,12 @@ def _extra(doc: dict, traces: Path) -> dict:
             "summary": _short(candidate.get("summary") or candidate.get("title") or candidate.get("id"), TEXT_LIMIT),
         })
     return {
-        "currentStep": int(doc.get("current_step") or 0),
+        "currentStep": _safe_int(doc.get("current_step")),
         "maxSteps": MAX_STEPS,
         "eventCount": len([e for e in trace if isinstance(e, dict)]),
         "userSteps": user_steps,
         "agentSteps": agent_steps,
+        "fixEmitted": doc.get("fix_emitted"),
         "framework": str(doc.get("detected_framework") or ""),
         "platform": str(doc.get("detected_platform") or ""),
         "category": str(doc.get("detected_category") or ""),
@@ -257,6 +268,9 @@ def main(argv=None) -> int:
     parser.add_argument("--all-limit", type=int, default=80, help="全库薄行最多给几条")
     parser.add_argument("--can-write", action="store_true", help="本会话是否有写权限（由 host 判定后传入）")
     parser.add_argument("--write-root", default="", help="可写的主检出根")
+    parser.add_argument("--write-reason-code", default="",
+                        help="不可写时的原因码（E_PERM 只读档位；E_POLICY 档位解析不出）")
+    parser.add_argument("--write-reason", default="", help="不可写时给界面看的说明")
     parser.add_argument("--timeline", default="", help="只读单条轨迹的步骤时间线（传文件名，供总览懒加载）")
     args = parser.parse_args(argv)
 
@@ -312,12 +326,20 @@ def main(argv=None) -> int:
     caps = {
         "canWrite": bool(args.can_write),
         "writeRoot": str(args.write_root or ""),
-        "reasonCode": "" if args.can_write else "E_PERM",
-        "reason": "" if args.can_write else "当前会话没有写权限",
+        "reasonCode": "" if args.can_write else str(args.write_reason_code or "E_PERM"),
+        "reason": "" if args.can_write else str(args.write_reason or "当前会话没有写权限"),
     }
     try:
         rows = trace_state.load_traces(traces)
-        projection = trace_state.project(traces, root, caps=caps)
+        # `_trace_state.project` 若已支持可选预加载 rows，就把刚读到的这份传进去，
+        # 免得同一次取数把 traces/ 读两遍（脚本侧还没加这个参数时走旧签名）。
+        project_kwargs = {"caps": caps}
+        try:
+            if "rows" in inspect.signature(trace_state.project).parameters:
+                project_kwargs["rows"] = rows
+        except (TypeError, ValueError):
+            pass
+        projection = trace_state.project(traces, root, **project_kwargs)
     except Exception as exc:
         return _fail("E_PROJECT", "状态投影执行失败：" + str(exc))
 
@@ -326,7 +348,11 @@ def main(argv=None) -> int:
         by_id[row.get("sessionId") or row.get("file")] = row
     extras = {}
     for session_id, row in by_id.items():
-        extras[session_id] = _extra(_as_dict(row.get("doc")), traces)
+        try:
+            extras[session_id] = _extra(_as_dict(row.get("doc")), traces)
+        except Exception:
+            # 单条轨迹的派生字段失败只降级这一行：整块状态不因一条坏数据空掉。
+            extras[session_id] = {}
 
     sessions = []
     for session in projection.get("sessions") or []:
@@ -371,22 +397,31 @@ def main(argv=None) -> int:
             break
 
     def thin(session: dict) -> dict:
-        """全库列表用的薄行：只留列表与动作判断要用的字段，不带长文本与逐条证据。"""
+        """全库列表用的薄行：只留列表与动作判断要用的字段，不带长文本与逐条证据。
+
+        `actions` 原样透传 `_trace_state.actions_for` 的完整结构（动作、目标、必填、候选收尾
+        方式、表单字段）——客户端渲染动作菜单不自己再算一遍规则；`fixEmitted` 保留 trace 的
+        原值（`true` / `false` / `null` 未记），列表据此显示「给没给可执行修复」。
+        """
         extra = _as_dict(session.get("extra"))
         return {
             "sessionId": session.get("sessionId"),
             "file": session.get("file"),
             "contentSha256": session.get("contentSha256"),
             "status": session.get("status"),
+            "error": session.get("error"),
+            "errorCode": session.get("errorCode"),
             "ending": session.get("ending"),
             "feedback": session.get("feedback"),
             "sedimented": session.get("sedimented"),
             "activeCase": session.get("activeCase"),
             "severity": session.get("severity"),
+            "fixEmitted": session.get("fixEmitted"),
             "summary": session.get("summary"),
             "updatedAt": session.get("updatedAt"),
             "displayTone": session.get("displayTone"),
             "derived": session.get("derived"),
+            "actions": session.get("actions"),
             "harnessSession": session.get("harnessSession"),
             "resumeSessions": session.get("resumeSessions"),
             "reportFile": extra.get("reportFile"),
@@ -405,6 +440,7 @@ def main(argv=None) -> int:
                 "evidenceList": extra.get("evidenceList"),
                 "hasReport": extra.get("hasReport"),
                 "reportFile": extra.get("reportFile"),
+                "fixEmitted": extra.get("fixEmitted"),
                 "sedimentCandidateList": extra.get("sedimentCandidateList"),
                 "missingMaterials": extra.get("missingMaterials"),
                 "lastAction": extra.get("lastAction"),
@@ -425,6 +461,8 @@ def main(argv=None) -> int:
     }
     return _ok({
         "tracesDir": str(traces),
+        # 写入口的 scheme 校验用：词表与脚本同步后才能发现版本错配。
+        "schemeVersion": projection.get("schemeVersion"),
         "generatedAt": _one_line(projection.get("generatedAt")),
         "bound": bound,
         "recent": recent,
@@ -456,6 +494,13 @@ def main(argv=None) -> int:
             "reportResults": [
                 {"value": r.get("value"), "label": r.get("label"), "outcome": r.get("outcome")}
                 for r in _as_list(vocab.get("reportResults"))
+            ],
+            # 客户端按目标状态过滤收尾方式（归档的四种只在 statuses 含 archived 时给），
+            # 不再在 client.js 里另存一份词表。
+            "endings": [
+                {"value": e.get("value"), "label": e.get("label"),
+                 "requires": _as_list(e.get("requires")), "statuses": _as_list(e.get("statuses"))}
+                for e in _as_list(vocab.get("endings"))
             ],
         },
     })

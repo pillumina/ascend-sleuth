@@ -279,8 +279,8 @@ class StateTest(SedimentCase):
         prompt = payload["prompts"]["pr"]
         self.assertIn("origin/main（GitHub）", prompt)
         self.assertIn("new_pattern", prompt)
-        self.assertIn("先落盘并跑升格检查", prompt)
-        self.assertIn("合入前不要跑 close / cleanup", prompt)
+        self.assertIn("先落盘并过升格检查", prompt)
+        self.assertIn("不要跑 close / cleanup", prompt)
         self.assertIn("postmortems/inbox/.groom/pr-state.json", prompt)
         detail = payload["prompts"]["prDetail"]
         self.assertIn("verify_case_draft.py --gate", detail)
@@ -359,7 +359,7 @@ class PrStateTest(SedimentCase):
         self.assertEqual(row["state"], "pr_merged")
         self.assertEqual(row["stage"], "已合入 · 待收尾")
         self.assertEqual(row["next"]["kind"], "close")
-        self.assertIn("groom_close_draft --all --apply", payload["prompts"]["close"])
+        self.assertIn("groom_close_draft.py --draft-key 2026-10-20-draft-a --apply", payload["prompts"]["close"])
         self.assertIn("groom_cleanup", payload["prompts"]["close"])
         self.assertIn("groom_close_draft.py --all --apply", payload["prompts"]["closeDetail"])
         self.assertIn("groom_cleanup.py --pr-body-file", payload["prompts"]["closeDetail"])
@@ -386,7 +386,7 @@ class PrStateTest(SedimentCase):
         self.assertEqual(row["state"], "done")
         self.assertEqual(row["stage"], "已升格")
         self.assertEqual(row["source"]["mismatch"], "draft_left_behind")
-        self.assertIn("groom_close_draft.py --all --apply", row["writeback"])
+        self.assertIn("groom_close_draft.py --draft-key 2026-10-20-draft-a --apply", row["writeback"])
         self.assertEqual(row["next"]["kind"], "none")
         self.assertEqual(row["promotion"]["caseId"], "CASE-A")
         self.assertEqual(row["promotion"]["casePath"],

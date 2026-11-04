@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.14.1'
+    const PLUGIN_VERSION = '0.15.0'
     const POLL_MS = 10000
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
@@ -84,6 +84,8 @@ window.__ModuleLoader__.load({
       'chip.review': '可复核',
       'chip.reportReview': '报告待复核',
       'chip.upstream': '等上游',
+      'chip.stale': '数据可能过期',
+      'title.noSummary': '（未写摘要）',
       'chip.pinned': '已固定',
       'section.summary': '问题背景',
       'section.waiting': '现在在等',
@@ -115,6 +117,7 @@ window.__ModuleLoader__.load({
       'hint.copied': '已复制。',
       'hint.copiedIssue': 'issue 文本已复制。',
       'hint.copyFailed': '这个界面不允许写剪贴板，请手动选择文本。',
+      'hint.stale': '状态取不到最新数据，显示的是上次成功读取的内容；点「刷新」重试。',
       'hint.noInput': '这个界面没有提供写入输入框的接口，指令已复制到剪贴板。',
       'hint.failed': '填入输入框失败：{message}',
       'hint.copiedFallback': '这个界面没有提供写入输入框的接口，指令已复制。',
@@ -130,6 +133,9 @@ window.__ModuleLoader__.load({
       'action.review': '复核回报',
       'action.feedbackForm': '回报结果…',
       'action.sedimentState': '沉淀状态…',
+      'action.correctEnding': '改收尾方式',
+      'action.backfillEnding': '补记收尾方式',
+      'form.target': '改成',
       'form.result': '结果',
       'form.source': '来源',
       'form.note': '备注（现场看到什么）',
@@ -218,13 +224,14 @@ window.__ModuleLoader__.load({
       'report.from_report': '按报告的修复解决',
       'report.other_way': '换别的方法解决',
       'report.partial': '部分解决',
-      'report.none': '没解决',
+      'report.resultNone': '没解决',
       'close.resolved': '已定位（根因明确）',
       'close.escalated': '转交他人跟进',
       'close.archived': '不再跟进',
       'reopen': '重新打开',
       'sediment.none': '未沉淀',
       'sediment.submitted': '已交草稿',
+      'sediment.noteNoCandidate': '未标候选，按 trace 起草',
       'sediment.knowledge': '已升格',
       'sediment.archived': '已归档',
       'ending.not_reproducible': '问题未复现',
@@ -236,8 +243,10 @@ window.__ModuleLoader__.load({
       'form.handedTo': '转交给',
       'form.handedToHint': '名字 · 团队，或厂商 / 技术支持 / issue 号',
       'form.duplicateOf': '与哪一单重复',
-      'form.duplicateOfHint': 'case 编号或 issue 链接（case: 前缀）',
+      'form.duplicateOfHint': '写成 case:<编号> 或 session:<单号>，脚本只认这两种前缀',
       'form.ending': '收尾方式',
+      'form.summary': '问题背景（写回收尾记录）',
+      'form.summaryHint': '一句话说清问题与结论；收尾会把它写进 trace 顶层 summary',
       'form.state': '沉淀状态',
       'form.caseId': 'case 编号（可选）',
       'form.caseIdHint': '例如 VLLM-ASC-11312；升格后填',
@@ -246,6 +255,9 @@ window.__ModuleLoader__.load({
       'form.submit': '提交',
       'form.cancel': '取消',
       'form.busy': '正在写…',
+      'form.required': '请先填：{fields}',
+      'form.pick': '请选择',
+      'form.feedbackFirst': '这单命中 case 但还没有现场回报：先去「回报结果」，再回来收尾。',
       'write.disabled': '当前会话没有写权限',
       'write.done': '已记录：{from} → {to}',
       'write.doneSimple': '已记录',
@@ -440,6 +452,8 @@ window.__ModuleLoader__.load({
       'chip.review': 'to review',
       'chip.reportReview': 'report to review',
       'chip.upstream': 'waiting upstream',
+      'chip.stale': 'data may be stale',
+      'title.noSummary': '(no summary)',
       'chip.pinned': 'Pinned',
       'section.summary': 'Background',
       'section.waiting': 'Waiting for',
@@ -471,6 +485,7 @@ window.__ModuleLoader__.load({
       'hint.copied': 'Copied.',
       'hint.copiedIssue': 'Issue text copied.',
       'hint.copyFailed': 'Clipboard is unavailable here; select the text manually.',
+      'hint.stale': 'Cannot read fresh state; showing the last successful read. Use Refresh to retry.',
       'hint.noInput': 'This page exposes no composer input; the instruction was copied instead.',
       'hint.failed': 'Could not write the composer: {message}',
       'hint.copiedFallback': 'This page exposes no composer input; the instruction was copied.',
@@ -486,6 +501,9 @@ window.__ModuleLoader__.load({
       'action.review': 'Review the outcome',
       'action.feedbackForm': 'Report outcome…',
       'action.sedimentState': 'Sediment state…',
+      'action.correctEnding': 'Correct the ending',
+      'action.backfillEnding': 'Backfill the ending',
+      'form.target': 'Change to',
       'form.result': 'Result',
       'form.source': 'Source',
       'form.note': 'Note (what was observed)',
@@ -574,13 +592,14 @@ window.__ModuleLoader__.load({
       'report.from_report': 'Fixed by the report',
       'report.other_way': 'Fixed another way',
       'report.partial': 'Partially fixed',
-      'report.none': 'Not fixed',
+      'report.resultNone': 'Not fixed',
       'close.resolved': 'Resolved (root cause known)',
       'close.escalated': 'Hand off',
       'close.archived': 'Stop following',
       'reopen': 'Reopen',
       'sediment.none': 'Not sedimented',
       'sediment.submitted': 'Draft submitted',
+      'sediment.noteNoCandidate': 'No candidates recorded; draft from the trace',
       'sediment.knowledge': 'Promoted',
       'sediment.archived': 'Archived',
       'ending.not_reproducible': 'Not reproducible',
@@ -592,8 +611,10 @@ window.__ModuleLoader__.load({
       'form.handedTo': 'Handed to',
       'form.handedToHint': 'Name · team, or vendor / support / issue',
       'form.duplicateOf': 'Duplicate of',
-      'form.duplicateOfHint': 'Case id or issue link (case: prefix)',
+      'form.duplicateOfHint': 'Use case:<id> or session:<session id>; the script accepts only these prefixes',
       'form.ending': 'Ending',
+      'form.summary': 'Problem summary (written to the close record)',
+      'form.summaryHint': 'One line with the problem and conclusion; the close writes it to the top-level summary',
       'form.state': 'Sediment state',
       'form.caseId': 'Case id (optional)',
       'form.caseIdHint': 'e.g. VLLM-ASC-11312, after promotion',
@@ -602,6 +623,9 @@ window.__ModuleLoader__.load({
       'form.submit': 'Submit',
       'form.cancel': 'Cancel',
       'form.busy': 'Writing…',
+      'form.required': 'Fill first: {fields}',
+      'form.pick': 'Select…',
+      'form.feedbackFirst': 'This case is a KB hit without a field outcome yet: report the outcome first, then close.',
       'write.disabled': 'This session has no write access',
       'write.done': 'Recorded: {from} → {to}',
       'write.doneSimple': 'Recorded',
@@ -778,6 +802,8 @@ window.__ModuleLoader__.load({
       '.scp-root,.scp-pal{--scp-surface:#ffffff;--scp-surface-2:#f6f7f9;--scp-surface-3:#eceff4;--scp-border:#e5e8ee;--scp-border-strong:#d7dce5;--scp-text:#1a1f29;--scp-muted:#647082;--scp-faint:#98a2b3;--scp-accent:#3b63e0;--scp-accent-soft:#eef2fe;--scp-accent-line:#c9d5fb;--scp-on-accent:#ffffff;--scp-ok:#0e8a5f;--scp-ok-soft:#e7f6ef;--scp-warn:#b25e09;--scp-warn-soft:#fdf2e4;--scp-bad:#c42b1c;--scp-bad-soft:#fdecea;--scp-idle:#98a2b3;--scp-shadow:0 1px 2px rgba(16,24,40,.04),0 12px 30px -20px rgba(16,24,40,.22);}',
       'body[data-ds-dark-theme] .scp-root,body[data-ds-dark-theme] .scp-pal,[data-theme="dark"] .scp-root,[data-theme="dark"] .scp-pal{--scp-surface:#1c1f26;--scp-surface-2:#242832;--scp-surface-3:#2e333e;--scp-border:#2e3441;--scp-border-strong:#3d4553;--scp-text:#eaedf3;--scp-muted:#a6afbd;--scp-faint:#7a8494;--scp-accent:#8aa5ff;--scp-accent-soft:rgba(138,165,255,.14);--scp-accent-line:rgba(138,165,255,.3);--scp-on-accent:#10131a;--scp-ok:#45d08a;--scp-ok-soft:rgba(69,208,138,.12);--scp-warn:#f5b34a;--scp-warn-soft:rgba(245,179,74,.12);--scp-bad:#f0796e;--scp-bad-soft:rgba(240,121,110,.12);--scp-idle:#6f7886;--scp-shadow:0 1px 2px rgba(0,0,0,.4),0 16px 36px -20px rgba(0,0,0,.7);}',
       '.scp-root{position:relative;container-type:inline-size;width:calc(100% - 2 * var(--dsh-composer-side-clearance, 0px));max-width:var(--dsh-composer-card-max-width, 100%);margin:0 auto;box-sizing:border-box;font-family:inherit;color:var(--scp-text);--scp-tone:var(--scp-accent);}',
+      // 浮层改成向下展开时会盖到输入卡上；状态条是输入卡前面的兄弟节点，抬一层才点得到。
+      '.scp-root[data-popover-down="true"]{z-index:9;}',
       '.scp-root *,.scp-pal *{box-sizing:border-box;}',
       '.scp-handle-wrap{display:flex;justify-content:center;width:100%;}',
       '.scp-handle{display:inline-flex;align-items:center;gap:7px;max-width:min(72%,560px);height:22px;padding:0 10px;border-radius:999px;border:1px solid var(--scp-border);background:color-mix(in srgb,var(--scp-surface) 62%,transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:var(--scp-muted);font:inherit;font-size:11px;line-height:1;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease,opacity 360ms ease;}',
@@ -841,6 +867,9 @@ window.__ModuleLoader__.load({
       '.scp-chevron{transition:transform 180ms ease;}',
       '.scp-chevron[data-open="true"]{transform:rotate(180deg);}',
       '.scp-empty-note{font-size:11px;line-height:1.6;color:var(--scp-faint);}',
+      '.scp-pal-notice{margin:0 0 8px;padding:6px 9px;border-radius:8px;border:1px solid color-mix(in srgb, var(--scp-warn) 30%, var(--scp-border));background:var(--scp-warn-soft);color:var(--scp-text);font-size:11.5px;line-height:1.6;}',
+      '.scp-pal-error{display:flex;align-items:center;gap:10px;padding:18px 22px;color:var(--scp-muted);font-size:12.5px;line-height:1.7;border-top:1px solid var(--scp-border);border-bottom:1px solid var(--scp-border);}',
+      '.scp-pal-error-title{flex:1 1 auto;min-width:0;}',
       '.scp-hint{padding:2px 4px 0;font-size:11px;line-height:1.6;color:var(--scp-muted);}',
       '.scp-picker{position:absolute;left:8px;bottom:calc(100% + 8px);z-index:45;width:340px;max-height:min(52vh,380px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--scp-border-strong);border-radius:14px;background:var(--scp-surface);box-shadow:var(--scp-shadow);animation:scp-pop 150ms ease-out;}',
       '.scp-picker-head{padding:9px 10px;border-bottom:1px solid var(--scp-border);}',
@@ -1061,7 +1090,7 @@ window.__ModuleLoader__.load({
   .scp-pal-foot .scp-foot-note{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 }
 @media (max-width: 520px){.scp-pal-backdrop{padding:4vh 10px 10px;}.scp-pal{max-height:88vh;}.scp-picker{width:min(330px,calc(100vw - 32px));}}
-@media (prefers-reduced-motion: reduce){.scp-handle{transition:none;}.scp-handle[data-idle="true"]{opacity:1;}.scp-ring{animation:none;}.scp-btn,.scp-icon,.scp-tick,.scp-pal-row,.scp-sed-row,.scp-chevron,.scp-check-action,.scp-filter-item,.scp-view-tab,.scp-write-side .scp-menu-item{transition:none;}.scp-pal,.scp-menu,.scp-toast,.scp-picker{animation:none;}.scp-skel{animation:none;}}`,
+@media (prefers-reduced-motion: reduce){.scp-handle{transition:none;}.scp-ring{animation:none;}.scp-btn,.scp-icon,.scp-tick,.scp-pal-row,.scp-sed-row,.scp-chevron,.scp-check-action,.scp-filter-item,.scp-view-tab,.scp-write-side .scp-menu-item{transition:none;}.scp-pal,.scp-menu,.scp-toast,.scp-picker{animation:none;}.scp-skel{animation:none;}}`,
       `/* ── 沉淀队列（v1）──────────────────────────────────────────────── */
 .scp-batch{display:flex;align-items:center;gap:var(--scp-sp-2);padding:10px var(--scp-sp-5);border-bottom:1px solid var(--scp-border);background:var(--scp-surface);flex:none;min-width:0;}
 .scp-batch-strong{font-size:var(--scp-fs-body);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-base);white-space:nowrap;}
@@ -1243,6 +1272,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       phase: 'idle',
       data: null,
       message: '',
+      stale: false,
+      staleMessage: '',
       paletteOpen: false,
       paletteSelect: '',
       paletteView: 'diagnosis',
@@ -1297,12 +1328,21 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         store.data = value
         store.phase = 'ready'
         store.message = ''
+        store.stale = false
+        store.staleMessage = ''
         emit()
       } catch (error) {
         if (seq !== store.seq) return
-        if (store.phase === 'ready') return
+        const message = String((error && error.message) || error)
+        if (store.phase === 'ready') {
+          // 首屏成功过：保留旧数据，但标出来源已取不到，不能让界面显示成实时状态。
+          store.stale = true
+          store.staleMessage = message
+          emit()
+          return
+        }
         store.phase = 'error'
-        store.message = String((error && error.message) || error)
+        store.message = message
         emit()
       }
     }
@@ -1368,6 +1408,19 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       window.addEventListener('focus', store.onFocus)
     }
 
+    // 插件被禁用或热重载时停掉轮询与 focus 监听：apply 没有清理时，
+    // 卸载后仍每 10 秒发一次 copilot-state。
+    function stopTimer() {
+      if (store.timer) {
+        clearInterval(store.timer)
+        store.timer = 0
+      }
+      if (store.onFocus) {
+        window.removeEventListener('focus', store.onFocus)
+        store.onFocus = null
+      }
+    }
+
     function ensureSession(sessionId, cwd) {
       if (!sessionId) return
       if (store.sessionId !== sessionId || store.cwd !== cwd) {
@@ -1376,6 +1429,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         store.phase = 'loading'
         store.data = null
         store.message = ''
+        store.stale = false
+        store.staleMessage = ''
         store.sediment = { phase: 'idle', data: null, message: '', at: 0 }
         store.sedimentSeq += 1
         emit()
@@ -1521,7 +1576,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         if (first) return first
         return summary
       }
-      return String((row && row.activeCase) || (row && row.sessionId) || '')
+      if (row && row.activeCase) return String(row.activeCase)
+      return tr('title.noSummary')
     }
 
     // 身份标签：这单到底是什么——命中的 case、知识库覆盖与否、欠什么、排除了多少。
@@ -1573,6 +1629,18 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
     function sedimentDraft(row) {
       return '用 /to-postmortem 沉淀 ' + row.sessionId + '（来源 ' + traceSource(row) + '）'
+    }
+
+    // 能不能起沉淀：看「这单还没沉淀、有内容、不是已有 case 覆盖的单」，不看 agent 有没有
+    // 写 case 候选。候选是建议不是入口前提；没有候选的单一样要能起草。
+    function canStartSediment(row) {
+      if (!row) return false
+      const sedState = String((row.sedimented && row.sedimented.state) || 'none')
+      if (sedState !== 'none') return false
+      const derived = row.derived || {}
+      if (derived.skeleton) return false
+      if (derived.activeCaseInKb) return false
+      return true
     }
 
     // 批量沉淀：把当前筛选里的可沉淀单一次交给 to-postmortem。
@@ -1646,9 +1714,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
     }
 
     // 回报结果：把「来源 / 结果 / 备注」写成完整指令，并点明要写哪一条事件、哪个字段。
-    function feedbackInstruction(row, values) {
+    function feedbackInstruction(row, values, vocab) {
       const resultKey = values && values.result ? values.result : 'from_report'
-      const meta = REPORT_OUTCOME_TEXT[resultKey] || REPORT_OUTCOME_TEXT.from_report
+      const fromVocab = ((vocab && vocab.reportResults) || []).find((item) => item && item.value === resultKey)
+      const meta = fromVocab && fromVocab.outcome
+        ? { label: fromVocab.label, outcome: fromVocab.outcome }
+        : (REPORT_OUTCOME_TEXT[resultKey] || REPORT_OUTCOME_TEXT.from_report)
       const source = values && values.source === 'vendor' ? 'vendor' : 'field'
       const note = String((values && values.note) || '').trim() || tr('form.noNote')
       const lines = [
@@ -1724,12 +1795,13 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         items.push({ key: 'feedback', label: tr('check.feedback'), done: true, state: tr('state.na'), action: '', kind: '' })
       }
       const sedDone = sedState !== 'none'
+      const sedReady = !sedDone && canStartSediment(row)
       items.push({
         key: 'sediment',
         label: tr('check.sediment'),
         done: sedDone,
-        state: sedDone ? vocabLabel((data.vocab || {}).sedimented, sedState, SED_LABEL) : (derived.needSed ? tr('state.pending') : tr('state.na')),
-        action: sedDone ? '' : (derived.needSed ? tr('check.actionSediment') : ''),
+        state: sedDone ? vocabLabel((data.vocab || {}).sedimented, sedState, SED_LABEL) : (sedReady ? tr('state.pending') : tr('state.na')),
+        action: sedReady ? tr('check.actionSediment') : '',
         kind: 'sediment',
       })
       items.push({
@@ -2076,8 +2148,13 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         sessionId: store.sessionId,
         cwd: store.cwd,
         traceSessionId: row.sessionId,
+        // 文件名以轨迹自己的 file 为准：session_id 与文件名 stem 不一致时，
+        // 用 sessionId 拼名会去写/读另一个文件。
+        traceFile: row.file || (row.sessionId + '.yaml'),
         tracesDir: (data && data.tracesDir) || '',
+        schemeVersion: (data && data.schemeVersion) || '',
         expectSha256: row.contentSha256,
+        traceError: row.error ? String(row.error) : '',
       }, extra || {})
     }
 
@@ -2087,8 +2164,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const initial = {}
         for (const field of form.fields) {
           if (field.value !== undefined) initial[field.name] = field.value
-          else if (field.name === 'severity') initial[field.name] = row.severity || 'service-affecting'
-          else if (field.name === 'fixEmitted') initial[field.name] = 'true'
+          else if (field.type === 'select' && !field.emptyValue && Array.isArray(field.options) && field.options.length) {
+            // 下拉框必须落一个真值：浏览器会把空 value 显示成第一项，但状态里仍是空串，
+            // 提交时该字段就不会进 payload（归档收尾因此缺 ending.kind）。
+            initial[field.name] = String(field.options[0].value === undefined ? '' : field.options[0].value)
+          } else if (field.name === 'severity') initial[field.name] = row.severity || ''
+          else if (field.name === 'fixEmitted') {
+            // 取 trace 现有值；没有记录才回落到 true。默认值会写回收尾记录，
+            // 把 fix_emitted 从 false 翻成 true 会改变「等上游」的判定。
+            const recorded = row.extra && row.extra.fixEmitted
+            initial[field.name] = recorded === true || recorded === false ? String(recorded) : ''
+          }
           else if (field.name === 'state') initial[field.name] = (row.sedimented && row.sedimented.state) || 'none'
           else if (field.name === 'source') initial[field.name] = 'field'
           else if (field.name === 'result') initial[field.name] = 'from_report'
@@ -2096,17 +2182,30 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
         return initial
       })
+      // 必填项缺值：给一行说明，不要按了提交像没反应。
+      const [localError, setLocalError] = React.useState('')
       function change(name, value) {
+        if (localError) setLocalError('')
         setValues((prev) => Object.assign({}, prev, { [name]: value }))
       }
       function submit(event) {
         if (event) event.preventDefault()
-        const missing = form.fields.filter((field) => field.required && !String(values[field.name] || '').trim())
-        if (missing.length) return
+        const missing = form.fields.filter((field) => field.required
+          && (!field.showWhen || field.showWhen(values))
+          && !String(values[field.name] || '').trim())
+        if (missing.length) {
+          setLocalError(tr('form.required', { fields: missing.map((field) => field.label).join('、') }))
+          return
+        }
+        setLocalError('')
         onSubmit(values)
       }
       const preview = typeof form.preview === 'function' ? form.preview(values) : ''
+      // 打开表单后焦点落在第一个可见输入位：否则旧按钮被卸载、焦点回 body，
+      // 状态条上的 Esc 收不到，键盘用户要 Tab 从页首重走。
+      const firstVisible = form.fields.find((field) => !field.showWhen || field.showWhen(values)) || null
       return h('form', { className: 'scp-form', onSubmit: submit },
+        form.note ? h('div', { className: 'scp-form-hint' }, form.note) : null,
         form.fields.map((field) => {
           if (field.showWhen && !field.showWhen(values)) return null
           const label = h('span', { className: 'scp-field-label' }, field.label + (field.required ? ' *' : ''))
@@ -2114,14 +2213,20 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             return h('label', { key: field.name, className: 'scp-field' }, label,
               h('select', {
                 className: 'scp-select',
+                autoFocus: field === firstVisible,
                 value: values[field.name],
                 onChange: (event) => change(field.name, event.target.value),
-              }, field.options.map((option) => h('option', { key: String(option.value), value: option.value }, option.label))))
+              },
+                field.emptyValue && String(field.placeholder || '')
+                  ? h('option', { value: '' }, field.placeholder)
+                  : null,
+                field.options.map((option) => h('option', { key: String(option.value), value: option.value }, option.label))))
           }
           if (field.type === 'textarea') {
             return h('label', { key: field.name, className: 'scp-field' }, label,
               h('textarea', {
                 className: 'scp-textarea',
+                autoFocus: field === firstVisible,
                 value: values[field.name],
                 placeholder: field.placeholder || '',
                 onChange: (event) => change(field.name, event.target.value),
@@ -2131,6 +2236,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             h('input', {
               className: 'scp-input',
               type: 'text',
+              autoFocus: field === firstVisible,
               value: values[field.name],
               placeholder: field.placeholder || '',
               onChange: (event) => change(field.name, event.target.value),
@@ -2140,7 +2246,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         preview ? h('div', { className: 'scp-preview' },
           h('span', { className: 'scp-preview-label' }, tr('form.preview')),
           h('pre', { className: 'scp-preview-text' }, preview)) : null,
-        error ? h('div', { className: 'scp-form-error' }, error) : null,
+        error || localError ? h('div', { className: 'scp-form-error' }, error || localError) : null,
         h('div', { className: 'scp-form-actions' },
           h('button', { type: 'button', className: 'scp-btn scp-btn--ghost', onClick: onCancel }, tr('form.cancel')),
           h('button', { type: 'submit', className: 'scp-btn scp-btn--primary', disabled: busy },
@@ -2156,6 +2262,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const feedback = row.feedback || {}
       const extra = row.extra || {}
       const bound = !!(data && data.bound && data.bound.sessionId === row.sessionId)
+      // 表单打开时冻结内容指纹：菜单可能开着很久，期间 trace 被别的 agent / 面板改过。
+      // 用提交那一刻的新指纹做 CAS 会把屏幕上的旧值直接盖上去；用打开时的指纹，
+      // 冲突会返回 E_STATE_CHANGED，读者刷新后重填。
+      const expectAtOpen = React.useRef(row.contentSha256)
 
       function feedbackForm() {
         return {
@@ -2165,7 +2275,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           fields: [
             {
               name: 'result', type: 'select', label: tr('form.result'),
-              options: REPORT_RESULT_KEYS.map((key) => ({ value: key, label: tr('report.' + key) })),
+              options: reportResultOptions(),
               value: 'from_report',
             },
             {
@@ -2181,8 +2291,97 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               placeholder: tr('form.noteHint'),
             },
           ],
-          preview: (values) => feedbackInstruction(row, values),
+          preview: (values) => feedbackInstruction(row, values, vocab),
         }
+      }
+
+      // 选项都优先取投影里的词表（trace-status.yaml 是唯一来源）；没有该段时用常量兜底。
+      function sedimentStateOptions() {
+        const list = Array.isArray(vocab.sedimented) ? vocab.sedimented : []
+        if (list.length) return list.map((item) => ({ value: String(item.value), label: String(item.label || item.value) }))
+        return SEDIMENT_STATE_KEYS.map((key) => ({ value: key, label: tr('sediment.' + key) }))
+      }
+      function reportResultOptions() {
+        const list = Array.isArray(vocab.reportResults) ? vocab.reportResults : []
+        if (list.length) return list.map((item) => ({ value: String(item.value), label: String(item.label || item.value) }))
+        return REPORT_RESULT_KEYS.map((key) => ({ value: key, label: tr(key === 'none' ? 'report.resultNone' : 'report.' + key) }))
+      }
+      function archivedEndingOptions() {
+        const list = Array.isArray(vocab.endings)
+          ? vocab.endings.filter((item) => Array.isArray(item.statuses) && item.statuses.indexOf('archived') >= 0)
+          : []
+        if (list.length) return list.map((item) => ({ value: String(item.value), label: String(item.label || item.value) }))
+        return ARCHIVED_ENDING_KEYS.map((key) => ({ value: key, label: tr('ending.' + key) }))
+      }
+
+      // 收尾方式的附加必填：转交要填人，重复要填被重复的单。两个都按当前选择显示，
+      // 校验走下面的 required + showWhen。
+      function endingExtraFields() {
+        return [
+          {
+            name: 'handedTo', type: 'text', label: tr('form.handedTo'), required: true,
+            hint: tr('form.handedToHint'), showWhen: (values) => values.ending === 'handed_off',
+          },
+          {
+            name: 'duplicateOf', type: 'text', label: tr('form.duplicateOf'), required: true,
+            hint: tr('form.duplicateOfHint'), showWhen: (values) => values.ending === 'duplicate',
+          },
+        ]
+      }
+
+      function endingOptions(choices) {
+        return (Array.isArray(choices) ? choices : []).map((item) => ({
+          value: String(item.value), label: String(item.label || item.value),
+        }))
+      }
+
+      // 改收尾方式：目标状态由投影的 actions.targets 给出，字段按该目标的 fillable 拼；
+      // 换状态时脚本会先写一条「重新打开」再收尾，历史可回放。
+      function correctEndingForm(target) {
+        const fields = [
+          {
+            name: 'ending', type: 'select', label: tr('form.ending'), required: true,
+            options: endingOptions(target.endingChoices),
+          },
+          {
+            name: 'summary', type: 'textarea', label: tr('form.summary'), required: true,
+            value: row.summary || '', placeholder: tr('form.summaryHint'),
+          },
+        ]
+        const fillable = Array.isArray(target.fillable) ? target.fillable : []
+        if (fillable.indexOf('severity') >= 0) {
+          fields.push({
+            name: 'severity', type: 'select', label: tr('form.severity'), required: true,
+            emptyValue: true, placeholder: tr('form.pick'),
+            options: (vocab.severities || []).map((item) => ({ value: item.value, label: item.label })),
+          })
+        }
+        if (fillable.indexOf('fix_emitted') >= 0) {
+          fields.push({
+            name: 'fixEmitted', type: 'select', label: tr('form.fixEmitted'), required: true,
+            emptyValue: true, placeholder: tr('form.pick'),
+            options: [{ value: 'true', label: tr('form.yes') }, { value: 'false', label: tr('form.no') }],
+          })
+        }
+        fields.push(...endingExtraFields())
+        return {
+          kind: 'correct-ending',
+          to: String(target.to || ''),
+          title: tr('action.correctEnding') + '：' + String(target.label || target.to || ''),
+          fields,
+        }
+      }
+
+      // 补记收尾方式：只写当前状态的收尾方式，不动状态与收尾时间。
+      function backfillEndingForm(action) {
+        const fields = [
+          {
+            name: 'ending', type: 'select', label: tr('form.ending'), required: true,
+            options: endingOptions(action.endingChoices),
+          },
+          ...endingExtraFields(),
+        ]
+        return { kind: 'backfill-ending', title: tr('action.backfillEnding'), fields }
       }
 
       const [form, setForm] = React.useState(() => (autoForm === 'feedback' ? feedbackForm() : null))
@@ -2217,7 +2416,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       function run(extraPayload, successText) {
         setBusy(true)
         setError('')
-        const promise = rpcCall('copilot-transition', transitionPayload(row, data, extraPayload))
+        const payload = Object.assign({}, extraPayload || {})
+        if (form && expectAtOpen.current) payload.expectSha256 = expectAtOpen.current
+        const promise = rpcCall('copilot-transition', transitionPayload(row, data, payload))
         Promise.resolve(promise).then((result) => finish(result, successText), (exception) => {
           setBusy(false)
           setError(tr('write.failed', { message: String((exception && exception.message) || exception) }))
@@ -2251,7 +2452,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             onCancel: () => setForm(null),
             onSubmit: (values) => {
               if (form.kind === 'feedback') {
-                fillAndClose(feedbackInstruction(row, values))
+                fillAndClose(feedbackInstruction(row, values, vocab))
                 return
               }
               if (form.kind === 'close:resolved') {
@@ -2259,13 +2460,32 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   kind: 'close',
                   to: 'resolved',
                   endingKind: 'root_cause',
+                  summary: values.summary,
                   severity: values.severity,
                   fix_emitted: values.fixEmitted === 'true',
                 })
               } else if (form.kind === 'close:escalated') {
-                run({ kind: 'close', to: 'escalated', endingKind: 'handed_off', handedTo: values.handedTo })
+                run({ kind: 'close', to: 'escalated', endingKind: 'handed_off', handedTo: values.handedTo, summary: values.summary })
               } else if (form.kind === 'close:archived') {
-                run({ kind: 'close', to: 'archived', endingKind: values.ending, duplicateOf: values.duplicateOf })
+                run({ kind: 'close', to: 'archived', endingKind: values.ending, duplicateOf: values.duplicateOf, summary: values.summary })
+              } else if (form.kind === 'correct-ending') {
+                run({
+                  kind: 'correct-ending',
+                  to: form.to,
+                  endingKind: values.ending,
+                  handedTo: values.handedTo,
+                  duplicateOf: values.duplicateOf,
+                  summary: values.summary,
+                  severity: values.severity,
+                  fix_emitted: values.fixEmitted === undefined ? undefined : values.fixEmitted === 'true',
+                })
+              } else if (form.kind === 'backfill-ending') {
+                run({
+                  kind: 'backfill-ending',
+                  endingKind: values.ending,
+                  handedTo: values.handedTo,
+                  duplicateOf: values.duplicateOf,
+                })
               } else if (form.kind === 'sedimented') {
                 run({ kind: 'sedimented', state: values.state, caseId: values.caseId },
                   tr('write.doneSediment', { state: tr('sediment.' + values.state) }))
@@ -2313,10 +2533,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           onSelect: () => openForm(feedbackForm()),
         })
       }
-      if (derived.needSed) {
+      if (canStartSediment(row)) {
         settleItems.push({
           key: 'sediment',
           label: tr('action.sediment'),
+          note: derived.needSed ? '' : tr('sediment.noteNoCandidate'),
           onSelect: () => fillAndClose(sedimentDraft(row)),
         })
       }
@@ -2336,19 +2557,28 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }
       if (settleItems.length) groups.push({ key: 'settle', title: tr('group.settle'), items: settleItems })
 
-      const stateItems = [
+      // 收尾三项只对还开着的单出现：终态单再点会被 trace_transition.py 解释成
+      // correct-ending，静默重写收尾方式与 severity / fix_emitted。改收尾方式另有入口，
+      // 当前版本先不给，避免误写。
+      const stateItems = []
+      if (isOpen(row)) stateItems.push(
         {
           key: 'close:resolved', label: tr('close.resolved'), disabled: !canWrite,
           onSelect: () => openForm({
             kind: 'close:resolved',
             title: tr('close.resolved'),
+            note: (row.activeCase || derived.caseKind === 'case') && !String(feedback.outcome || '').trim()
+              ? tr('form.feedbackFirst') : '',
             fields: [
+              { name: 'summary', type: 'textarea', label: tr('form.summary'), required: true, value: row.summary || '', placeholder: tr('form.summaryHint') },
               {
-                name: 'severity', type: 'select', label: tr('form.severity'),
+                name: 'severity', type: 'select', label: tr('form.severity'), required: true,
+                emptyValue: true, placeholder: tr('form.pick'),
                 options: (vocab.severities || []).map((item) => ({ value: item.value, label: item.label })),
               },
               {
-                name: 'fixEmitted', type: 'select', label: tr('form.fixEmitted'),
+                name: 'fixEmitted', type: 'select', label: tr('form.fixEmitted'), required: true,
+                emptyValue: true, placeholder: tr('form.pick'),
                 options: [{ value: 'true', label: tr('form.yes') }, { value: 'false', label: tr('form.no') }],
               },
             ],
@@ -2359,7 +2589,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           onSelect: () => openForm({
             kind: 'close:escalated',
             title: tr('close.escalated'),
-            fields: [{ name: 'handedTo', type: 'text', label: tr('form.handedTo'), required: true, hint: tr('form.handedToHint') }],
+            fields: [
+              { name: 'summary', type: 'textarea', label: tr('form.summary'), required: true, value: row.summary || '', placeholder: tr('form.summaryHint') },
+              { name: 'handedTo', type: 'text', label: tr('form.handedTo'), required: true, hint: tr('form.handedToHint') },
+            ],
           }),
         },
         {
@@ -2368,34 +2601,57 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             kind: 'close:archived',
             title: tr('close.archived'),
             fields: [
+              { name: 'summary', type: 'textarea', label: tr('form.summary'), required: true, value: row.summary || '', placeholder: tr('form.summaryHint') },
               {
-                name: 'ending', type: 'select', label: tr('form.ending'),
-                options: ARCHIVED_ENDING_KEYS.map((key) => ({ value: key, label: tr('ending.' + key) })),
+                name: 'ending', type: 'select', label: tr('form.ending'), required: true,
+                options: archivedEndingOptions(),
               },
               {
-                name: 'duplicateOf', type: 'text', label: tr('form.duplicateOf'),
+                name: 'duplicateOf', type: 'text', label: tr('form.duplicateOf'), required: true,
                 hint: tr('form.duplicateOfHint'),
                 showWhen: (values) => values.ending === 'duplicate',
               },
             ],
           }),
         },
-      ]
+      )
       if (!isOpen(row)) {
         stateItems.push({
           key: 'reopen', label: tr('reopen'), disabled: !canWrite,
           onSelect: () => run({ kind: 'reopen' }),
         })
+        // 终态单的「改收尾方式 / 补记收尾方式」：动作与可选目标都来自投影的 actions，
+        // 不在界面里重算状态机；没有 actions 的旧投影就不显示。
+        const rowActions = Array.isArray(row.actions) ? row.actions : []
+        const correct = rowActions.find((item) => item && item.id === 'correct-ending')
+        if (correct && Array.isArray(correct.targets)) {
+          for (const target of correct.targets) {
+            if (!Array.isArray(target.endingChoices) || !target.endingChoices.length) continue
+            stateItems.push({
+              key: 'correct:' + String(target.to || ''),
+              label: tr('action.correctEnding') + '：' + String(target.label || target.to || ''),
+              disabled: !canWrite,
+              onSelect: () => openForm(correctEndingForm(target)),
+            })
+          }
+        }
+        const backfill = rowActions.find((item) => item && item.id === 'backfill-ending')
+        if (backfill && Array.isArray(backfill.endingChoices) && backfill.endingChoices.length) {
+          stateItems.push({
+            key: 'backfill', label: tr('action.backfillEnding'), disabled: !canWrite,
+            onSelect: () => openForm(backfillEndingForm(backfill)),
+          })
+        }
       }
       stateItems.push({
         key: 'sedimented', label: tr('action.sedimentState'), disabled: !canWrite,
         onSelect: () => openForm({
           kind: 'sedimented',
-          title: tr('sediment.knowledge'),
+          title: tr('form.state'),
           fields: [
             {
               name: 'state', type: 'select', label: tr('form.state'),
-              options: SEDIMENT_STATE_KEYS.map((key) => ({ value: key, label: tr('sediment.' + key) })),
+              options: sedimentStateOptions(),
               value: 'submitted',
             },
             { name: 'caseId', type: 'text', label: tr('form.caseId'), hint: tr('form.caseIdHint') },
@@ -2480,6 +2736,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           group.items.map((item) => h('button', {
             key: item.key,
             type: 'button',
+            role: 'menuitem',
             className: 'scp-menu-item',
             disabled: !!item.disabled,
             title: item.disabled ? disabledReason : undefined,
@@ -2498,6 +2755,29 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const tag = String(target.tagName || '').toUpperCase()
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true
       return target.isContentEditable === true
+    }
+
+    // 浮层（菜单 / 选择器）的内联尺寸与方向：默认向上；上方放不下且下方更宽裕时向下。
+    // 高度按可用空间收，避免被滚动容器裁掉或盖住状态条本身。
+    function popoverPlacement(anchor, minHeight, maxHeight) {
+      if (!anchor) return null
+      const gap = 8
+      const margin = 8
+      const clipTop = Math.max(0, Number(anchor.clipTop) || 0)
+      const spaceAbove = Math.max(0, anchor.top - clipTop - margin)
+      const spaceBelow = Math.max(0, anchor.viewHeight - anchor.bottom - margin)
+      const down = spaceAbove < minHeight && spaceBelow > spaceAbove
+      const room = down ? spaceBelow : spaceAbove
+      const height = Math.max(minHeight, Math.min(maxHeight, room))
+      const style = { maxHeight: Math.round(height) }
+      if (down) {
+        style.top = 'calc(100% + ' + gap + 'px)'
+        style.bottom = 'auto'
+      } else {
+        style.bottom = 'calc(100% + ' + gap + 'px)'
+        style.top = 'auto'
+      }
+      return style
     }
 
     function makeDock() {
@@ -2521,6 +2801,13 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const handleRef = React.useRef(null)
         // 菜单/选择器刚被点击关闭的时刻：同一次手势不顺手收起状态条，过期自动失效
         const menuDismissedAtRef = React.useRef(0)
+        // 这次手势是否起于状态条内部。必须在 mousedown（capture）时记：菜单项点击会把按钮
+        // 从 DOM 里换掉，等 click 冒到 document 时 target 已 detached，contains(target) 为假，
+        // 「点外部收起」就会把刚展开的表单一起收起——用户看到的是「点了没反应」。
+        const gestureInsideRef = React.useRef(false)
+        // 菜单/选择器按视口可用空间定位置：向上展开放不下时改向下并限高，避免被滚动容器
+        // 裁掉、被应用顶栏盖住（被盖住的部分点不到）。
+        const [anchor, setAnchor] = React.useState(null)
         // 键盘收起后把焦点放回收起态胶囊，别落回 body
         const restoreFocusRef = React.useRef(false)
 
@@ -2534,6 +2821,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           if (hintTimer.current) clearTimeout(hintTimer.current)
         }, [])
 
+        // 切会话时收起内层：旧菜单/表单纯属上一条单的状态，留着会在新单上重新弹出，
+        // 提交时写到另一单。
+        React.useEffect(() => {
+          setMenuOpen(false)
+          setMenuForm(null)
+          setPickerOpen(false)
+        }, [s.sessionId])
+
         // 收起态静置后淡出；鼠标移动、滚动、聚焦输入框时浮现。reduce-motion 下不淡出。
         const idleRef = React.useRef({ collapsed: false })
         idleRef.current.collapsed = s.prefs.dockCollapsed
@@ -2544,14 +2839,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           setIdle(false)
           if (idleTimer.current) clearTimeout(idleTimer.current)
           idleTimer.current = setTimeout(() => {
-            let reduced = false
-            try {
-              reduced = typeof window.matchMedia === 'function'
-                && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-            } catch {
-              reduced = false
-            }
-            if (!reduced && idleRef.current.collapsed) setIdle(true)
+            // 变淡只改 opacity，不属于「动效」；reduced-motion 只让 CSS 取消过渡
+            // （变淡瞬间生效），不取消这件事本身。Windows 关闭「动画效果」时
+            // Chromium 会报 prefers-reduced-motion: reduce，旧逻辑因此完全不淡出。
+            if (idleRef.current.collapsed) setIdle(true)
           }, 2800)
         }, [])
 
@@ -2683,11 +2974,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         React.useEffect(() => {
           if (!menuOpen && !pickerOpen) return undefined
           const onDown = (event) => {
-            const root = rootRef.current
-            const inside = root && event.target && typeof root.contains === 'function'
-              && (typeof Node === 'undefined' || event.target instanceof Node)
-              && root.contains(event.target)
-            if (inside) return
+            if (insideDock(event)) return
             // 先关菜单/选择器；同一次手势不顺手收起状态条（click 处理器看这个时刻）
             menuDismissedAtRef.current = Date.now()
             setMenuOpen(false)
@@ -2695,6 +2982,81 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           }
           document.addEventListener('mousedown', onDown)
           return () => document.removeEventListener('mousedown', onDown)
+        }, [menuOpen, pickerOpen])
+
+        // 菜单/选择器开合时量一次锚点，并在窗口尺寸、滚动变化时重算。
+        // 量不到的宿主（没有布局的测试替身）保持 CSS 默认位置，不影响状态逻辑。
+        React.useEffect(() => {
+          if (!menuOpen && !pickerOpen) {
+            setAnchor(null)
+            return undefined
+          }
+          function measure() {
+            const node = rootRef.current
+            if (!node || typeof node.getBoundingClientRect !== 'function') return null
+            let rect = null
+            try { rect = node.getBoundingClientRect() } catch { rect = null }
+            if (!rect) return null
+            const view = typeof window !== 'undefined' ? window : {}
+            const viewHeight = Number(view.innerHeight) || 0
+            // 最近的可裁剪祖先（滚动容器 / overflow:hidden）上边界：浮层不能越过它，
+            // 否则会被裁掉；被裁掉的部分既看不见也点不到。
+            let clipTop = 0
+            let parent = node.parentElement
+            while (parent && parent !== document.body) {
+              let style = null
+              try {
+                style = typeof view.getComputedStyle === 'function' ? view.getComputedStyle(parent) : null
+              } catch { style = null }
+              const overflowY = style ? String(style.overflowY || '') : ''
+              if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'hidden') {
+                let box = null
+                try { box = parent.getBoundingClientRect() } catch { box = null }
+                if (box && box.top > clipTop) clipTop = box.top
+              }
+              parent = parent.parentElement
+            }
+            return {
+              top: Number(rect.top) || 0,
+              bottom: Number(rect.bottom) || 0,
+              clipTop,
+              viewHeight,
+            }
+          }
+          function update() {
+            const next = measure()
+            setAnchor((prev) => {
+              if (prev === null && next === null) return prev
+              if (prev && next
+                && Math.abs(prev.top - next.top) < 1
+                && Math.abs(prev.bottom - next.bottom) < 1
+                && Math.abs(prev.clipTop - next.clipTop) < 1
+                && Math.abs(prev.viewHeight - next.viewHeight) < 1) return prev
+              return next
+            })
+          }
+          update()
+          let frame = 0
+          const schedule = () => {
+            if (frame) return
+            const view = typeof window !== 'undefined' ? window : {}
+            if (typeof view.requestAnimationFrame === 'function') {
+              frame = view.requestAnimationFrame(() => { frame = 0; update() })
+            } else {
+              frame = setTimeout(() => { frame = 0; update() }, 32)
+            }
+          }
+          const view = typeof window !== 'undefined' ? window : {}
+          if (typeof view.addEventListener === 'function') view.addEventListener('resize', schedule)
+          document.addEventListener('scroll', schedule, true)
+          return () => {
+            if (frame) {
+              if (typeof view.cancelAnimationFrame === 'function') view.cancelAnimationFrame(frame)
+              else clearTimeout(frame)
+            }
+            if (typeof view.removeEventListener === 'function') view.removeEventListener('resize', schedule)
+            document.removeEventListener('scroll', schedule, true)
+          }
         }, [menuOpen, pickerOpen])
 
         const collapsed = s.prefs.dockCollapsed
@@ -2709,6 +3071,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           setPickerOpen(false)
         }
 
+        // 一个手势（mousedown → click）是否起于状态条内部。菜单项、选择器行点击会把自身
+        // 从 DOM 里换掉，等 click 冒到 document 时 target 已 detached；只看 contains(target)
+        // 会把这种点击误判成「点外部」并把状态条收起，刚展开的表单跟着一起消失。
+        function insideDock(event) {
+          const root = rootRef.current
+          const target = event && event.target
+          if (root && target && typeof root.contains === 'function' && root.contains(target)) return true
+          const path = event && typeof event.composedPath === 'function' ? event.composedPath() : null
+          return !!(path && root && path.indexOf(root) >= 0)
+        }
+
         // 展开后点状态条外收起。点进可编辑区不收起：收起会让输入区上移，正在定位光标的点击会被带偏。
         // 开了「展开后常驻」就不自动收起，只有点「收起」或按 Esc 才收。
         // 状态条没渲染（取数中 / 无工作区）时不挂监听，否则点一下页面就把收起偏好写掉。
@@ -2717,6 +3090,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         React.useEffect(() => {
           if (hidden || collapsed || keepOpen) return undefined
           const onClick = (event) => {
+            // 本次手势起于状态条内部（含被点击后已卸载的菜单项）就不收起
+            const fromInside = gestureInsideRef.current
+            gestureInsideRef.current = false
             // 刚被点关闭的菜单或选择器：这一次手势只关内层，不收起状态条；标记只用一次
             const dismissedAt = menuDismissedAtRef.current
             if (dismissedAt && Date.now() - dismissedAt < 600) {
@@ -2726,20 +3102,22 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             const target = event && event.target
             if (!target) return
             if (typeof Node !== 'undefined' && !(target instanceof Node)) return
-            const root = rootRef.current
-            if (root && typeof root.contains === 'function' && root.contains(target)) return
+            if (fromInside || insideDock(event)) return
             if (isEditableTarget(target)) return
             toggleCollapsed()
           }
-          // 新手势一开始就清掉上一次的「关菜单」标记：右键与拖拽没有 click，标记不能留到下一次点击
-          const onDown = () => {
+          // 手势一开始就记下起点是否在状态条内，并清掉上一次的「关菜单」标记：
+          // 右键与拖拽没有 click，标记不能留到下一次点击。
+          const onDown = (event) => {
             menuDismissedAtRef.current = 0
+            gestureInsideRef.current = insideDock(event)
           }
           // 收尾点击本身不能触发收起：展开那次 click 冒泡到 document 时，监听器可能刚落上
           const timer = setTimeout(() => document.addEventListener('click', onClick), 0)
           document.addEventListener('mousedown', onDown, true)
           return () => {
             clearTimeout(timer)
+            gestureInsideRef.current = false
             document.removeEventListener('click', onClick)
             document.removeEventListener('mousedown', onDown, true)
           }
@@ -2903,6 +3281,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const waiting = derived.waitingFor || extra.evidenceMissing || ''
         const action = primaryFor(primary, bound)
         const chips = identityChips(primary).slice(0, 3)
+        if (s.stale) chips.push({ key: 'stale', tone: 'warn', text: tr('chip.stale') })
         const metaBits = []
         if (extra.platform) metaBits.push(extra.platform)
         if (extra.framework) metaBits.push(extra.framework)
@@ -2956,7 +3335,16 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           })
           .slice(0, 12)
 
-        const picker = pickerOpen ? h('div', { className: 'scp-picker', role: 'dialog', 'aria-label': tr('picker.title') },
+        const menuStyle = menuOpen ? popoverPlacement(anchor, 200, 540) : null
+        const pickerStyle = pickerOpen ? popoverPlacement(anchor, 160, 380) : null
+        const popoverDown = !!((menuStyle && menuStyle.top) || (pickerStyle && pickerStyle.top))
+
+        const picker = pickerOpen ? h('div', {
+          className: 'scp-picker',
+          role: 'dialog',
+          'aria-label': tr('picker.title'),
+          style: pickerStyle || undefined,
+        },
           h('div', { className: 'scp-picker-head' },
             h('div', { className: 'scp-picker-title' }, tr('picker.title')),
             h('input', {
@@ -3010,7 +3398,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             h('span', { className: 'scp-spacer' }),
             h('button', { type: 'button', className: 'scp-btn', onClick: () => { setPickerOpen(false); openOverview() } }, tr('picker.open')))) : null
 
-        const menu = menuOpen ? h('div', { className: 'scp-menu', role: 'menu', 'aria-label': tr('menu.title') },
+        const menu = menuOpen ? h('div', {
+          className: 'scp-menu',
+          role: 'menu',
+          'aria-label': tr('menu.title'),
+          style: menuStyle || undefined,
+        },
           h(WritePanel, {
             row: primary,
             data,
@@ -3033,7 +3426,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             'data-live': derived.open ? 'true' : 'false',
             'data-pending': isPending(primary) ? 'true' : 'false',
             'data-flash': flashStep ? 'true' : 'false',
-          }), renderHandle(caseTitle(primary), flashStep || stepsShort(extra), isPending(primary)))
+          }), renderHandle(
+            caseTitle(primary),
+            (flashStep || stepsShort(extra)) + (s.stale ? ' · ' + tr('chip.stale') : ''),
+            isPending(primary)))
         }
 
         return h('section', Object.assign({}, rootProps, {
@@ -3044,6 +3440,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           'data-live': derived.open ? 'true' : 'false',
           'data-pending': isPending(primary) ? 'true' : 'false',
           'data-flash': flashStep ? 'true' : 'false',
+          'data-popover-down': popoverDown ? 'true' : 'false',
           onKeyDown: onRootKeyDown,
         }),
           picker,
@@ -3073,6 +3470,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('button', { type: 'button', className: 'scp-btn scp-btn--quiet', onClick: runPrimary }, action.label),
               collapsed ? null : h('button', {
                 type: 'button', className: 'scp-icon', title: tr('action.more'), 'aria-label': tr('action.more'),
+                'aria-haspopup': 'menu',
                 'aria-expanded': menuOpen ? 'true' : 'false',
                 onClick: () => { setMenuForm(null); setMenuOpen((value) => !value); setPickerOpen(false) },
               }, IconMore()),
@@ -3122,8 +3520,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const s = useStore()
       const data = s.data && s.data.ok !== false ? s.data : null
       const rows = data ? (data.all || []) : []
+      const canWrite = !!((s.data && s.data.capabilities && s.data.capabilities.canWrite))
       const filter = s.prefs.paletteFilter
       const [selected, setSelected] = React.useState(0)
+      // 选中项按 sessionId 记住，10 秒刷新重排后仍停在同一条单上；只按数组下标存，
+      // 别处更新一单就会静默换到另一单，动作会落到读者没在看的那条上。
+      const selectedIdRef = React.useRef('')
+      function selectIndex(next) {
+        const row = filtered[next]
+        selectedIdRef.current = row ? row.sessionId : ''
+        setSelected(next)
+      }
       const [searchText, setSearchText] = React.useState('')
       const [menuOpen, setMenuOpen] = React.useState(false)
       const [menuForm, setMenuForm] = React.useState(null)
@@ -3153,6 +3560,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const toastTimer = React.useRef(null)
       const panelRef = React.useRef(null)
       const searchRef = React.useRef(null)
+      const listRef = React.useRef(null)
       const cmdInputRef = React.useRef(null)
       const timelineToken = React.useRef(0)
       const commandsRef = React.useRef([])
@@ -3217,8 +3625,16 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         if (!s.paletteOpen) return
         // 诊断视图也要读一次：右列的「沉淀进度」需要当前单对应的草稿。
         // refreshSediment 自己按 60 秒去重；这里只避免在 loading/refreshing 时重入。
-        if (sedPhase !== 'loading' && sedPhase !== 'refreshing') refreshSediment(false)
+        // 失败后不自动重试：否则 error → loading → error 会无限起子进程，等读者点「刷新」。
+        if (sedPhase !== 'loading' && sedPhase !== 'refreshing' && sedPhase !== 'error') refreshSediment(false)
       }, [s.paletteOpen, sedPhase])
+
+      React.useEffect(() => {
+        setMenuOpen(false)
+        setMenuForm(null)
+        setCmdOpen(false)
+        setPromptKind('')
+      }, [s.sessionId])
 
       React.useEffect(() => {
         setSedSel(0)
@@ -3252,12 +3668,30 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         if (!s.paletteOpen) return
         setMenuOpen(false)
         const position = filtered.findIndex((row) => row.sessionId === s.paletteSelect)
-        setSelected(position >= 0 ? position : 0)
+        selectIndex(position >= 0 ? position : 0)
       }, [s.paletteOpen, s.paletteSelect, filter])
 
+      // 重排后按 sessionId 找回同一条；行不在了才退回边界。
       React.useEffect(() => {
+        const id = selectedIdRef.current
+        if (id) {
+          const index = filtered.findIndex((row) => row.sessionId === id)
+          if (index >= 0) {
+            if (index !== selected) setSelected(index)
+            return
+          }
+        }
         if (selected > filtered.length - 1) setSelected(filtered.length > 0 ? filtered.length - 1 : 0)
-      }, [filtered.length, selected])
+      }, [filtered, selected])
+
+      // 键盘选中变化时把行滚进可视区：列表比一屏长，选中项在屏外时回车执行的是看不见的行。
+      React.useEffect(() => {
+        if (!s.paletteOpen) return
+        const host = listRef.current
+        if (!host || typeof host.querySelector !== 'function') return
+        const node = host.querySelector('.scp-pal-row[data-on="true"]')
+        if (node && typeof node.scrollIntoView === 'function') node.scrollIntoView({ block: 'nearest' })
+      }, [selected, s.paletteOpen])
 
       React.useEffect(() => {
         reportToken.current += 1
@@ -3312,6 +3746,15 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
       }, [cmdOpen])
 
+      // 关闭浮层后把焦点还给打开它的按钮，不要落回 body。
+      React.useEffect(() => {
+        if (!s.paletteOpen) return undefined
+        const previous = typeof document !== 'undefined' ? document.activeElement : null
+        return () => {
+          if (previous && previous.isConnected && typeof previous.focus === 'function') previous.focus()
+        }
+      }, [s.paletteOpen])
+
       React.useEffect(() => {
         if (!s.paletteOpen) return undefined
         const node = panelRef.current
@@ -3319,6 +3762,24 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const onKey = (event) => {
           const target = event.target
           const typing = target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || '')
+          // Tab 在浮层内环绕：aria-modal=true 时焦点不该跑到遮罩下面。
+          if (event.key === 'Tab' && !cmdOpen && !promptKind) {
+            const root = panelRef.current
+            if (root && typeof root.querySelectorAll === 'function') {
+              const focusables = Array.from(root.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'))
+                .filter((item) => item && item.offsetParent !== null)
+              if (focusables.length) {
+                event.preventDefault()
+                const current = focusables.indexOf(document.activeElement)
+                const next = event.shiftKey
+                  ? (current <= 0 ? focusables.length - 1 : current - 1)
+                  : (current === focusables.length - 1 ? 0 : current + 1)
+                const node = focusables[next]
+                if (node && typeof node.focus === 'function') node.focus()
+                return
+              }
+            }
+          }
           if ((event.metaKey || event.ctrlKey) && String(event.key || '').toLowerCase() === 'k') {
             event.preventDefault()
             if (view === 'sediment') return
@@ -3377,16 +3838,18 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
             if (!filtered.length) return
             event.preventDefault()
-            setSelected((current) => {
-              const next = event.key === 'ArrowDown' ? current + 1 : current - 1
-              return Math.max(0, Math.min(next, filtered.length - 1))
-            })
+            const next = event.key === 'ArrowDown' ? selected + 1 : selected - 1
+            selectIndex(Math.max(0, Math.min(next, filtered.length - 1)))
             return
           }
           if (event.key === 'Enter') {
-            if (event.target && event.target.tagName === 'BUTTON') return
             const row = filtered[selected]
             if (!row) return
+            // 焦点只在普通按钮/输入框上时不抢回车；行按钮与列表容器上按回车都执行主操作。
+            const target = event.target
+            const onRow = target && typeof target.className === 'string'
+              && target.className.split(/\s+/).indexOf('scp-pal-row') >= 0
+            if (target && target.tagName === 'BUTTON' && !onRow) return
             event.preventDefault()
             runPrimary(row)
           }
@@ -3450,6 +3913,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       if (!s.paletteOpen) return null
       if (s.data && s.data.ok === false && s.data.code === 'E_NO_ROOT') return null
 
+      const loadFailed = !data && (s.phase === 'error' || !!(s.data && s.data.ok === false))
       const row = filtered[selected] || null
       selectedRowRef.current = row ? row.sessionId : ''
       const counts = data && data.counts ? data.counts : {}
@@ -3511,6 +3975,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           cwd: store.cwd,
           tracesDir: data && data.tracesDir,
           traceSessionId: wanted,
+          traceFile: target.file || '',
           reportFile: target.reportFile || (target.extra && target.extra.reportFile) || '',
         }).then((res) => {
           if (res && res.ok) {
@@ -3571,6 +4036,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         rpcCall('copilot-timeline', {
           cwd: store.cwd,
           tracesDir: data && data.tracesDir,
+          sessionId: store.sessionId,
           traceFile: target.file,
         }).then((res) => {
           if (timelineToken.current !== token || selectedRowRef.current !== target.sessionId) return
@@ -3597,7 +4063,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         if (target.activeCase || isPending(target)) {
           items.push({ label: tr('action.feedback'), run: () => { setMenuForm('feedback'); setMenuOpen(true) } })
         }
-        if (target.derived && target.derived.needSed) {
+        if (canStartSediment(target)) {
           items.push({ label: tr('action.sediment'), run: () => fillDraft(sedimentDraft(target)) })
         }
         items.push({ label: tr('action.loadTimeline'), run: () => toggleTimeline(target) })
@@ -3632,12 +4098,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }, h('circle', { cx: 20, cy: 20, r: 13, strokeDasharray: '3 4' }),
         h('path', { d: 'M14 20h12M20 14v12', strokeLinecap: 'round' }))
 
-      const list = h('div', { className: 'scp-pal-list', role: 'region', 'aria-label': tr('palette.title') },
+      const list = h('div', { ref: listRef, className: 'scp-pal-list', role: 'region', 'aria-label': tr('palette.title') },
         h('div', { className: 'scp-search' },
           h('input', {
             ref: searchRef, type: 'search', value: searchText,
             placeholder: tr('search.placeholder'), 'aria-label': tr('search.placeholder'),
-            onChange: (event) => { setSearchText(event.target.value); setSelected(0) },
+            onChange: (event) => { setSearchText(event.target.value); selectIndex(0) },
             onKeyDown: (event) => { if (event.key === 'Escape') { setSearchText(''); event.stopPropagation() } },
           }),
           h('span', { className: 'scp-kbd' }, '/')),
@@ -3657,7 +4123,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 'aria-current': index === selected ? 'true' : 'false',
                 'data-on': index === selected ? 'true' : 'false',
                 style: { '--scp-tone': TONE_VAR[toneOf(item)] || TONE_VAR.idle },
-                onClick: () => { setSelected(index); setMenuOpen(false) },
+                onClick: () => { selectIndex(index); setMenuOpen(false) },
                 onDoubleClick: () => runPrimary(item),
               },
                 h('span', { className: 'scp-ring', 'aria-hidden': 'true' }),
@@ -3994,7 +4460,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         closePrompt()
       }
 
+      // 台账版本：list 侧返回的 sha256，写动作带上做 CAS；还没有台账时为空、不带令牌。
+      function ledgerSha() {
+        const doc = sedDoc && sedDoc.target ? sedDoc.target : null
+        return doc && typeof doc.sha256 === 'string' ? doc.sha256 : ''
+      }
+
       async function saveTarget() {
+        if (!canWrite) { flash(tr('write.disabled')); return }
         if (!targetRemote || targetBusy) return
         setTargetBusy(true)
         try {
@@ -4004,10 +4477,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             sessionId: s.sessionId,
             remote: targetRemote,
             base: targetBase,
+            expectSha256: ledgerSha(),
           })
           if (!result || result.ok === false) {
             const message = result && (result.message || (result.error && result.error.message))
             flash(message || tr('sediment.target.required'))
+            if (result && result.code === 'E_CAS') await refreshSediment(true)
             return
           }
           setTargetOpen(false)
@@ -4036,15 +4511,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }
 
       async function checkPr(key) {
+        if (!canWrite) { flash(tr('write.disabled')); return }
         if (!key || checkBusy) return
         setCheckBusy(key)
         try {
           const result = await rpcCall('copilot-pr-target', {
-            action: 'check', cwd: s.cwd, sessionId: s.sessionId, key,
+            action: 'check', cwd: s.cwd, sessionId: s.sessionId, key, expectSha256: ledgerSha(),
           })
           if (!result || result.ok === false) {
             const message = result && (result.message || (result.error && result.error.message))
             flash(message || tr('sediment.error', { message: '' }))
+            if (result && result.code === 'E_CAS') await refreshSediment(true)
             return
           }
           await refreshSediment(true)
@@ -4056,15 +4533,18 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }
 
       async function markMerged(key) {
+        if (!canWrite) { flash(tr('write.disabled')); return }
         if (!key || checkBusy) return
         setCheckBusy(key)
         try {
           const result = await rpcCall('copilot-pr-target', {
             action: 'mark', cwd: s.cwd, sessionId: s.sessionId, key, state: 'merged',
+            expectSha256: ledgerSha(),
           })
           if (!result || result.ok === false) {
             const message = result && (result.message || (result.error && result.error.message))
             flash(message || tr('sediment.error', { message: '' }))
+            if (result && result.code === 'E_CAS') await refreshSediment(true)
             return
           }
           await refreshSediment(true)
@@ -4335,13 +4815,15 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           const prActionButtons = sedPick.pr ? [
             h('button', {
               key: 'check', type: 'button', className: 'scp-btn',
-              disabled: checkBusy === sedPick.key,
+              disabled: checkBusy === sedPick.key || !canWrite,
+              title: canWrite ? undefined : writeDisabledReason(s.data),
               onClick: () => checkPr(sedPick.key),
             }, checkBusy === sedPick.key ? tr('sediment.refreshing') : tr('sediment.check')),
             sedPick.pr.state !== 'merged'
               ? h('button', {
                 key: 'mark', type: 'button', className: 'scp-btn',
-                disabled: checkBusy === sedPick.key,
+                disabled: checkBusy === sedPick.key || !canWrite,
+                title: canWrite ? undefined : writeDisabledReason(s.data),
                 onClick: () => markMerged(sedPick.key),
               }, tr('sediment.markMerged'))
               : null,
@@ -4522,7 +5004,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             h('button', { type: 'button', className: 'scp-btn scp-btn--ghost', onClick: () => closeTarget() }, tr('sediment.prompt.cancel')),
             h('button', {
               type: 'button', className: 'scp-btn scp-btn--primary',
-              disabled: !targetRemote || targetBusy,
+              disabled: !targetRemote || targetBusy || !canWrite,
+              title: canWrite ? undefined : writeDisabledReason(s.data),
               onClick: saveTarget,
             }, targetBusy ? tr('sediment.refreshing') : tr('sediment.target.save'))))) : null
 
@@ -4569,9 +5052,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               type: 'button', className: 'scp-icon', 'aria-label': tr('palette.close'), title: tr('palette.close'),
               onClick: () => setPaletteOpen(false),
             }, IconClose())),
-          sedBatch,
-          diagBatch,
-          h('div', { className: 'scp-pal-main' }, view === 'sediment' ? sedList : list, view === 'sediment' ? sedSide : side),
+          s.stale ? h('div', { className: 'scp-pal-notice', role: 'status', title: s.staleMessage || '' },
+            tr('hint.stale')) : null,
+          loadFailed ? h('div', { className: 'scp-pal-error' },
+            h('div', { className: 'scp-pal-error-title' }, tr('palette.unavailable', { message: (s.data && s.data.message) || s.message || '' })),
+            h('button', { type: 'button', className: 'scp-btn', onClick: () => refresh(true) }, tr('action.retry'))) : null,
+          loadFailed ? null : sedBatch,
+          loadFailed ? null : diagBatch,
+          loadFailed ? null : h('div', { className: 'scp-pal-main' }, view === 'sediment' ? sedList : list, view === 'sediment' ? sedSide : side),
           h('div', { className: 'scp-pal-foot' },
             h('span', { className: 'scp-foot-hints' },
               h('span', { className: 'scp-kbd' }, '↑'),
@@ -4782,6 +5270,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         rpcCall = makeRpc(ctx)
         openSessionImpl = makeOpenSession(ctx)
         ctx.effect(() => registerLocale(ctx), 'sleuth-copilot: locale')
+        ctx.effect(() => stopTimer, 'sleuth-copilot: poll timer')
         ctx.effect(() => insertStyles(), 'sleuth-copilot: styles')
 
         const Dock = withInputActions(makeDock())

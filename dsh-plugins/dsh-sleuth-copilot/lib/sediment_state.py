@@ -25,6 +25,7 @@ import importlib
 import json
 import os
 import re
+import shlex
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -84,11 +85,14 @@ def _scripts(root: Path):
 
     不把 import 提到模块顶层：本文件在插件 lib/ 下，仓库根由 --root 决定；顶层 import
     会在「root 还没解析」时失败，还会让测试导入本模块时被迫先有仓库。
+
+    顺序与本文开头一致：先 `--root` 指向的检出，它没有 scripts/ 时退回本文件所在仓库的
+    scripts/（宿主把脚本装在插件目录、root 指主检出时，两处其实是同一份源码）。sys.path
+    按先后顺序取第一个命中的模块，所以倒序插到最前面，两个候选都在时 --root 那一份仍排第一。
     """
-    # 优先用 --root 指向的检出；它没有 scripts/ 时退回本文件所在仓库的 scripts/
-    # （宿主把脚本装在插件目录、root 指主检出时，两处其实是同一份源码）。
     local_repo = Path(__file__).resolve().parents[3]
-    for candidate in (Path(root) / "scripts", local_repo / "scripts"):
+    candidates = [Path(root) / "scripts", local_repo / "scripts"]
+    for candidate in reversed(candidates):
         if candidate.is_dir() and str(candidate) not in sys.path:
             sys.path.insert(0, str(candidate))
     try:
@@ -145,6 +149,15 @@ def _relpath(root: Path, path: Path) -> str:
 
 def _posix(value) -> str:
     return str(value or "").replace("\\", "/").strip()
+
+
+def _q(value) -> str:
+    """把值安全地拼进一条可复制的 shell 命令。
+
+    草稿 key 由文件名派生、落点路径来自 knowledge/ 与 postmortems/，中间可能含空格与引号；
+    这些字符串会出现在给人复制的命令里，逐段手工加引号容易漏，统一交给 shlex.quote。
+    """
+    return shlex.quote(str(value if value is not None else ""))
 
 
 # ---------------------------------------------------------------- 目标 commit / 轨迹 / 知识库
@@ -329,15 +342,15 @@ def _source(trace, done: bool, promotion: dict, kb_ids: set, draft_in_inbox: boo
 def _writeback(mismatch: str, session: str, case_id: str, draft_key: str = "") -> str:
     """按差异给一条能真的修正的指令；missing_* 缺证据，不给必然报错的命令。"""
     if mismatch == "draft_left_behind":
-        target = f"--draft-key {draft_key} --apply" if draft_key else "--all --apply"
+        target = f"--draft-key {_q(draft_key)} --apply" if draft_key else "--all --apply"
         return ("草稿已升格但还在 inbox：按 /knowledge-groom 收尾。\n"
                 f"python3 scripts/groom_close_draft.py {target}\n"
                 "（落点证据不在时停；不要手删草稿）")
     if mismatch != "stale_trace" or not session or not case_id:
         return ""
     return ("回写来源 trace：\n"
-            f"python3 scripts/trace_transition.py {session} --field sedimented "
-            f"--state knowledge --case-id {case_id} --json")
+            f"python3 scripts/trace_transition.py {_q(session)} --field sedimented "
+            f"--state knowledge --case-id {_q(case_id)} --json")
 
 
 # ---------------------------------------------------------------- 四条批次 prompt 与明细
@@ -446,7 +459,7 @@ def _prompt_close(rows: list) -> str:
     for row in rows:
         pr = row["pr"] or {}
         lines.append(f"- {row['key']}：{pr.get('url') or '（台账缺 URL）'}")
-    keys = " ".join(f"--draft-key {row['key']}" for row in rows)
+    keys = " ".join(f"--draft-key {_q(row['key'])}" for row in rows)
     lines += ["",
               "按 /knowledge-groom 的「收尾清理」一节：先跑",
               f"  python3 scripts/groom_close_draft.py {keys} --apply",
@@ -577,10 +590,11 @@ def _http_check_command(adapter: dict, pr: dict) -> str:
     headers = spec.get("headers") or {}
     header_args = ""
     for key, value in headers.items():
-        header_args += f" -H '{key}: {_display_url(str(value), adapter, repo, number)}'"
+        header = key + ": " + _display_url(str(value), adapter, repo, number)
+        header_args += " -H " + _q(header)
     method = str(spec.get("method") or "GET").upper()
     method_arg = "" if method == "GET" else f" -X {method}"
-    return f'curl -sS{header_args}{method_arg} "{url}"'
+    return f"curl -sS{header_args}{method_arg} " + _q(url)
 
 
 def _pr_detail(root: Path, target_info: dict, adapters: list, rows: list) -> str:
@@ -588,14 +602,14 @@ def _pr_detail(root: Path, target_info: dict, adapters: list, rows: list) -> str
         return ""
     lines = []
     for row in rows:
-        lines.append(f"python3 scripts/verify_case_draft.py --gate {row['path']}")
+        lines.append("python3 scripts/verify_case_draft.py --gate " + _q(row["path"]))
         final_id = row["promotion"]["caseId"] or "<final-id>"
-        lines.append(f"python3 scripts/groom_record.py --pr-marker --draft-key {row['key']} "
-                     f"--submitted-case-id {final_id}")
+        lines.append("python3 scripts/groom_record.py --pr-marker --draft-key " + _q(row["key"])
+                     + " --submitted-case-id " + _q(final_id))
     target = _target_target(target_info)
     base_ref = f"{target.get('remote') or 'origin'}/{target.get('base') or 'main'}"
-    lines.append(f"python3 scripts/groom_recheck.py --pr-body-file <pr-body.md> "
-                 f"--base {base_ref} --head <head>")
+    lines.append("python3 scripts/groom_recheck.py --pr-body-file <pr-body.md> --base "
+                 + _q(base_ref) + " --head <head>")
     lines.append("按目标平台创建 PR：")
     lines.append("  " + _create_hint(root, target_info, adapters))
     lines.append("开完 PR 后写台账（每份一条，不要手编 JSON）：")
@@ -638,7 +652,8 @@ def _close_detail(target_info: dict, rows: list) -> str:
     base_ref = f"{target.get('remote') or 'origin'}/{target.get('base') or 'main'}"
     return "\n".join([
         "python3 scripts/groom_close_draft.py --all --apply",
-        f"python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --base {base_ref} --head <head>",
+        "python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --base "
+        + _q(base_ref) + " --head <head>",
     ])
 
 

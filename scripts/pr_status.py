@@ -623,7 +623,9 @@ def list_targets(root) -> dict:
                                     adapter.get("id", "") if adapter else ""),
         })
     return {"target": target, "remotes": remotes,
-            "recommendation": _recommend(root, target, remotes)}
+            "recommendation": _recommend(root, target, remotes),
+            # 面板写回时的 CAS 令牌：与 `--status` 的 `sha256` 同一算法。台账不存在时为 null。
+            "sha256": ledger_sha256(root)}
 
 
 # ---------------------------------------------------------------- 平台查询（http / exec）
@@ -966,6 +968,11 @@ def cmd_check(root, args) -> int:
     adapters = load_adapters()
     data = load_ledger(root)
     before = ledger_sha256(root)
+    expected = getattr(args, "expect_sha256", None)
+    if expected is not None and expected != before:
+        # 面板拿的是旧队列时，查询与写回都建立在过期快照上。查询前按 CAS 拒绝；
+        # 写回仍用函数内 read-before CAS 兜底。
+        return _fail("E_CAS", str(CasConflict(expected, before or "")))
     entry, error, detail = _run_check(data, draft, adapters)
     if entry is None:
         return _fail(error["code"], error["message"])
