@@ -61,8 +61,8 @@ from trace_entry_activity import (  # noqa: E402  （同目录复用，不复制
 )
 
 TRACES_REL = "traces"
-#: 顶层已有该字段的行（空值 `harness_session: ''` 也算"写过"，不覆盖）。
-FIELD_RE = re.compile(r"^harness_session\s*:", re.MULTILINE)
+#: 顶层该字段的行；自动扫描时"空值也算写过"不覆盖，显式给了 --session-id 时允许补空值。
+FIELD_RE = re.compile(r"^harness_session\s*:\s*(.*)$", re.MULTILINE)
 SESSION_ID_RE = re.compile(r"^session_id\s*:\s*(.+)$", re.MULTILINE)
 CREATED_RE = re.compile(r"^created_at\s*:\s*(.+)$", re.MULTILINE)
 #: 会话日志里时间的两处来源：首事件的 `createdAt`（ISO）与事件的 `time`（epoch ms）。
@@ -70,8 +70,9 @@ CREATED_RE = re.compile(r"^created_at\s*:\s*(.+)$", re.MULTILINE)
 LOG_START_RE = re.compile(r'"createdAt"\s*:\s*(?:"([^"]+)"|(\d{12,}))')
 LOG_TIME_RE = re.compile(r'"time"\s*:\s*(\d{12,})')
 LOG_SID_RE = re.compile(r'"id"\s*:\s*"(session-[^"]+)"')
-#: 时间窗两侧的容许偏差：轨迹的 `created_at` 是 agent 手写的，比会话真正开始晚几分钟很常见。
-START_SLACK_MS = 30 * 60 * 1000
+#: 时间窗两侧的容许偏差：`created_at` 是 agent 手写的，比会话真正开始晚几分钟很常见；
+#: 会话可能在轨迹创建前就已开始，但开始时间不能明显晚于 `created_at`（写 header 发生在会话内）。
+START_AFTER_MS = 5 * 60 * 1000
 END_SLACK_MS = 6 * 60 * 60 * 1000
 #: 会话开始时间与 `created_at` 之间容许的最大距离。超过这个距离的候选只能是"后来引用过它"，
 #: 不是写它的那次（实测最近的真会话差 5 分钟到 64 分钟，次近的差 15 小时以上）。
@@ -156,8 +157,14 @@ def created_of(text: str):
     return iso_ms(m.group(1)) if m else None
 
 
-def needs_link(text: str) -> bool:
-    return FIELD_RE.search(text) is None
+def needs_link(text: str, allow_empty: bool = False) -> bool:
+    match = FIELD_RE.search(text)
+    if match is None:
+        return True
+    if not allow_empty:
+        return False
+    value = match.group(1).strip().strip("'\"").strip()
+    return value == ""
 
 
 def session_roots(explicit):
@@ -206,17 +213,19 @@ def scan_logs(sessions_dirs, slugs, min_mtime):
 def pick(cands, created):
     """候选 → (会话号, 依据)。依据两档：时间（强）/ 命中次数（退档，如实标注）。
 
-    时间判据两条件同时成立：窗口覆盖 `created_at`（±偏差），且会话开始时间离它不超过
-    `NEAR_MS`。满足者按 |开始 - created_at| 升序取第一个——最近的那次才是写它的会话。
+    时间判据三条件同时成立：会话在 `created_at` 时已经开始（允许 5 分钟时钟偏差）、
+    结束时间覆盖 `created_at`（留 6 小时偏差）、开始时间离 `created_at` 不超过 `NEAR_MS`。
+    满足者按 |开始 - created_at| 升序取第一个——最近的那次才是写它的会话。会话开始时间
+    明显晚于 `created_at` 的不算：写 header 发生在会话内，后开的会话只能是后来引用过它。
     """
     if not cands:
         return None, None
     if created is not None:
         near = [c for c in cands
                 if c[1] is not None and c[2] is not None
+                and c[1] <= created + START_AFTER_MS
                 and c[2] + END_SLACK_MS >= created
-                and c[1] - START_SLACK_MS <= created + NEAR_MS
-                and abs(c[1] - created) <= NEAR_MS]
+                and created - c[1] <= NEAR_MS]
         if near:
             best = sorted(near, key=lambda c: (abs(c[1] - created), -c[3]))[0]
             return best[0], "时间"
@@ -224,14 +233,16 @@ def pick(cands, created):
     return best[0], "命中次数"
 
 
-def insert_field(text: str, value: str) -> str:
-    """把 `harness_session:` 插在 `session_id:` 那一行之后（没有就插在文件头）。"""
+def set_field(text: str, value: str) -> str:
+    """写 `harness_session:`：已有空值行就替换，没有就插在 `session_id:` 之后。"""
+    if FIELD_RE.search(text):
+        return FIELD_RE.sub("harness_session: \"" + value + "\"", text, count=1)
     lines = text.splitlines(keepends=True)
     for i, line in enumerate(lines):
         if re.match(r"^session_id\s*:", line):
-            lines.insert(i + 1, "harness_session: " + value + "\n")
+            lines.insert(i + 1, "harness_session: \"" + value + "\"\n")
             return "".join(lines)
-    return "harness_session: " + value + "\n" + text
+    return "harness_session: \"" + value + "\"\n" + text
 
 
 def main() -> int:
@@ -255,7 +266,7 @@ def main() -> int:
             text = p.read_text(encoding="utf-8")
         except OSError:
             continue
-        if needs_link(text):
+        if needs_link(text, allow_empty=bool(args.session_id)):
             targets.append((p, text))
     if not targets:
         print("没有缺 harness_session 的轨迹（已有的不覆盖）。")
@@ -270,10 +281,10 @@ def main() -> int:
         written = 0
         for p, _text in targets:
             text = p.read_text(encoding="utf-8")
-            if not needs_link(text):
+            if not needs_link(text, allow_empty=True):
                 continue
             if args.apply:
-                p.write_text(insert_field(text, sid), encoding="utf-8")
+                p.write_text(set_field(text, sid), encoding="utf-8")
                 written += 1
                 print(f"  已写 {p.name} → {sid}")
             else:
@@ -323,7 +334,7 @@ def main() -> int:
         text = p.read_text(encoding="utf-8")
         if not needs_link(text):
             continue
-        p.write_text(insert_field(text, sid), encoding="utf-8")
+        p.write_text(set_field(text, sid), encoding="utf-8")
         written += 1
     print(f"已补 {written} 单。")
     if skipped_weak:

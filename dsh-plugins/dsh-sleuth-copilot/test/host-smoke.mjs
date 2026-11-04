@@ -36,6 +36,7 @@ const TRACE_FIXTURE = [
   '  state: none',
   '  case_id: ""',
   'active_case: ""',
+  'harness_session: "origin-session"',
   'excluded_cases: []',
   'report_file: "alt-smoke.md"',
   'sediment_candidates:',
@@ -54,6 +55,11 @@ const TRACE_FIXTURE = [
   '    action: triage',
   '    output: "夹具输出"',
   '    reason: "夹具原因"',
+  '  - role: agent',
+  '    action: resume',
+  '    harness_session: "resumed-session"',
+  '    step: 3',
+  '    output: "续接夹具"',
   '',
 ].join('\n')
 
@@ -233,6 +239,33 @@ expect('读：summary 已给的硬件 / 量化档不列为缺口', row
 expect('读：普通硬件缺口不被过滤', row && row.extra.missingMaterials.includes('硬件侧 plog 与 die 温度'), JSON.stringify(row && row.extra.missingMaterials))
 expect('读：按顶层 report_file 识别报告', row && row.extra.hasReport === true && row.reportFile === 'traces/alt-smoke.md')
 const originalSha = row.contentSha256
+
+// 会话归属：顶层 harness_session 是原始会话；resume 事件带接手会话
+const resumedState = await request(rw, {
+  type: 'client-request', rpcId: 'state-resumed', method: 'copilot-state',
+  payload: { sessionId: 'resumed-session', cwd: SANDBOX },
+})
+const resumedValue = resumedState.envelope && resumedState.envelope.result && resumedState.envelope.result.value
+expect('会话归属：接手会话绑定到这一单', resumedValue && resumedValue.bound && resumedValue.bound.sessionId === TRACE_ID && resumedValue.bound.boundBy === 'resume', JSON.stringify(resumedValue && resumedValue.bound))
+expect('会话归属：返回续接会话', resumedValue && Array.isArray(resumedValue.bound.resumeSessions) && resumedValue.bound.resumeSessions.includes('resumed-session'), JSON.stringify(resumedValue && resumedValue.bound.resumeSessions))
+const originState = await request(rw, {
+  type: 'client-request', rpcId: 'state-origin', method: 'copilot-state',
+  payload: { sessionId: 'origin-session', cwd: SANDBOX },
+})
+const originValue = originState.envelope && originState.envelope.result && originState.envelope.result.value
+expect('会话归属：原始会话仍可绑定', originValue && originValue.bound && originValue.bound.boundBy === 'origin', JSON.stringify(originValue && originValue.bound))
+const noCwdState = await request(rw, {
+  type: 'client-request', rpcId: 'state-no-cwd', method: 'copilot-state',
+  payload: { sessionId: 'origin-session', cwd: '' },
+})
+const noCwdValue = noCwdState.envelope && noCwdState.envelope.result && noCwdState.envelope.result.value
+expect('工作区门禁：无 cwd 不显示', noCwdValue && noCwdValue.ok === false && noCwdValue.code === 'E_NO_ROOT', JSON.stringify(noCwdValue))
+const subdirState = await request(rw, {
+  type: 'client-request', rpcId: 'state-subdir', method: 'copilot-state',
+  payload: { sessionId: 'origin-session', cwd: join(SANDBOX, 'traces') },
+})
+const subdirValue = subdirState.envelope && subdirState.envelope.result && subdirState.envelope.result.value
+expect('工作区门禁：仓库子目录仍显示', subdirValue && subdirValue.ok === true && subdirValue.repoRoot === SANDBOX, JSON.stringify(subdirValue && subdirValue.repoRoot))
 
 // 人读报告：只读，不写回；不存在时给 E_NOT_FOUND
 const reportRead = await readReport(rw, {

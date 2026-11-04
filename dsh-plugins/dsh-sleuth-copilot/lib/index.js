@@ -155,22 +155,16 @@ export function apply(ctx) {
   }
 
   // 只在这个会话的工作区确实是 ascend-sleuth 检出时才显示状态条：别的项目的会话里不该
-  // 出现一条读全库诊断的记录带。拿不到会话工作区时才退回包所在位置（link 安装时包在仓库里）。
+  // 出现一条读全库诊断的记录带。拿不到会话工作区（cwd 为空）时也隐藏，不从包所在位置猜——
+  // link 安装时包就在仓库里，按包目录回退会让没有 cwd 的会话也显示出来。
   async function resolveRepoRoot(cwd) {
-    if (typeof cwd === 'string' && cwd) {
-      let dir = cwd
-      for (let index = 0; index < 6; index += 1) {
-        if (await isFile(join(dir, 'scripts', '_trace_state.py'))) return dir
-        const parent = dirname(dir)
-        if (parent === dir || parent === '') break
-        dir = parent
-      }
-      return null
-    }
-    let dir = PKG_DIR
-    for (let index = 0; index < 5; index += 1) {
-      dir = dirname(dir)
+    if (typeof cwd !== 'string' || !cwd) return null
+    let dir = cwd
+    for (let index = 0; index < 12; index += 1) {
       if (await isFile(join(dir, 'scripts', '_trace_state.py'))) return dir
+      const parent = dirname(dir)
+      if (parent === dir || parent === '') break
+      dir = parent
     }
     return null
   }

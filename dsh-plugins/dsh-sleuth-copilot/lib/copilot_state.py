@@ -130,6 +130,7 @@ def _extra(doc: dict, traces: Path) -> dict:
     evidence_missing = ""
     evidence_missing_full = ""
     evidence_list = []
+    resume_sessions = []
     last_output = ""
     last_reason = ""
     for entry in trace:
@@ -148,6 +149,10 @@ def _extra(doc: dict, traces: Path) -> dict:
                 evidence_missing_full = _one_line(evidence.get("missing"))
         elif role == "agent":
             agent_steps += 1
+            if str(entry.get("action") or "") == "resume":
+                resumed = str(entry.get("harness_session") or "").strip()
+                if resumed and resumed not in resume_sessions:
+                    resume_sessions.append(resumed)
             if entry.get("output"):
                 last_output = _short(entry.get("output"), TEXT_LIMIT)
             if entry.get("reason"):
@@ -208,6 +213,7 @@ def _extra(doc: dict, traces: Path) -> dict:
         "lastOutput": last_output,
         "lastReason": last_reason,
         "harnessSession": str(doc.get("harness_session") or ""),
+        "resumeSessions": resume_sessions,
         "hasReport": bool(report_rel),
         "reportFile": ("traces/" + report_rel) if report_rel else "",
         "evidenceList": evidence_list[:20],
@@ -331,15 +337,27 @@ def main(argv=None) -> int:
         extra = extras.get(session_id, {})
         item["extra"] = extra
         item["harnessSession"] = extra.get("harnessSession", "")
+        item["resumeSessions"] = extra.get("resumeSessions", [])
         item["summary"] = _short(item.get("summary"), SUMMARY_LIMIT)
         sessions.append(item)
 
     bound = None
+    bound_by = ""
     if args.session:
         for session in sessions:
             if session.get("harnessSession") == args.session:
                 bound = session
+                bound_by = "origin"
                 break
+        if bound is None:
+            for session in sessions:
+                if args.session in (session.get("resumeSessions") or []):
+                    bound = session
+                    bound_by = "resume"
+                    break
+    if bound is not None:
+        bound = dict(bound)
+        bound["boundBy"] = bound_by
 
     sessions.sort(key=lambda s: str(s.get("updatedAt") or ""), reverse=True)
     recent = []
@@ -370,6 +388,7 @@ def main(argv=None) -> int:
             "displayTone": session.get("displayTone"),
             "derived": session.get("derived"),
             "harnessSession": session.get("harnessSession"),
+            "resumeSessions": session.get("resumeSessions"),
             "reportFile": extra.get("reportFile"),
             "transitions": session.get("transitions"),
             "reports": session.get("reports"),
@@ -392,6 +411,7 @@ def main(argv=None) -> int:
                 "lastOutput": extra.get("lastOutput"),
                 "lastReason": extra.get("lastReason"),
                 "harnessSession": extra.get("harnessSession"),
+                "resumeSessions": extra.get("resumeSessions"),
             },
         }
 

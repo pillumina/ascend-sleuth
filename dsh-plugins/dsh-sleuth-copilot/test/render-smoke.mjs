@@ -315,6 +315,8 @@ function makeRow(overrides) {
       missingMaterials: ['device-side plog（容器未持久化 /root/ascend/log）'],
     },
     harnessSession: '',
+    resumeSessions: [],
+    sessionChain: [],
   }, overrides || {})
 }
 
@@ -429,6 +431,18 @@ function makeState(mode) {
     return {
       ok: true, tracesDir: '/repo/traces', bound: triageRow, recent: [triageRow], all: [triageRow],
       counts: { open: 0, pendingFeedback: 0, toSediment: 1 }, vocab: VOCAB, capabilities: CAPS,
+    }
+  }
+  if (mode === 'resumed') {
+    const resumedRow = makeRow({
+      harnessSession: 'session-origin',
+      resumeSessions: ['sess-1'],
+      sessionChain: ['session-origin', 'sess-1'],
+    })
+    const boundRow = Object.assign({}, resumedRow, { boundBy: 'resume' })
+    return {
+      ok: true, tracesDir: '/repo/traces', bound: boundRow, recent: [resumedRow], all: [resumedRow],
+      counts: { open: 1, pendingFeedback: 1, toSediment: 0 }, vocab: VOCAB, capabilities: CAPS,
     }
   }
   if (mode === 'readonly') {
@@ -579,7 +593,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：主按钮是回报结果', !!findButton(view, '回报结果'))
   expect('最近一单：显示身份标签（知识库未覆盖）', view.text.includes('知识库未覆盖'))
   expect('最近一单：显示已排除条数', view.text.includes('已排除 3 条'))
-  expect('最近一单：版本串 0.9.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.9.0'))
+  expect('最近一单：版本串 0.10.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.10.0'))
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
   expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
 }
@@ -693,6 +707,25 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findButton(view, '查 case 上游状态'))
   await t.settle()
   expect('上游：prompt 带已知锚点与上次查证', t.lastDraft().includes('vllm-ascend#15903') && t.lastDraft().includes('2026-W36'), t.lastDraft())
+}
+
+{
+  const t = await mount('resumed')
+  expect('续接：作用域标「本会话（续接）」', t.view().text.includes('本会话（续接）'), t.view().text.slice(0, 200))
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('会话归属：原始与续接会话', view.text.includes('会话归属') && view.text.includes('session-origin') && view.text.includes('sess-1'))
+  expect('会话归属：当前会话标记', view.text.includes('当前'))
+}
+
+{
+  const t = await mount('recent')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('会话归属：未记会话号可见', view.text.includes('未记会话号'))
+  click(findButton(view, '复制补写命令'))
+  await t.settle()
+  expect('会话归属：补写命令可复制', copied[copied.length - 1].includes('link_harness_sessions.py') && copied[copied.length - 1].includes('--trace'), copied[copied.length - 1])
 }
 
 {
@@ -821,6 +854,8 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const t = await mount('outside')
   const view = t.view()
   expect('非检出工作区：状态条不渲染', !view.nodes.some((node) => node.props && node.props['aria-label'] === '诊断状态条'))
+  expect('非检出工作区：工具条入口不渲染', !byClass(view, 'scp-tool-btn').length)
+  expect('非检出工作区：总览不渲染', !byClass(view, 'scp-pal').length)
 }
 
 {
