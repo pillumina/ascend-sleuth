@@ -326,11 +326,12 @@ def _source(trace, done: bool, promotion: dict, kb_ids: set, draft_in_inbox: boo
     return {"sessionId": trace["sessionId"], "mismatch": mismatch, "sedimented": sedimented}
 
 
-def _writeback(mismatch: str, session: str, case_id: str) -> str:
+def _writeback(mismatch: str, session: str, case_id: str, draft_key: str = "") -> str:
     """按差异给一条能真的修正的指令；missing_* 缺证据，不给必然报错的命令。"""
     if mismatch == "draft_left_behind":
-        return ("草稿已升格但还在 inbox：按 knowledge-groom 收尾。\n"
-                "python3 scripts/groom_close_draft.py --all --apply\n"
+        target = f"--draft-key {draft_key} --apply" if draft_key else "--all --apply"
+        return ("草稿已升格但还在 inbox：按 /knowledge-groom 收尾。\n"
+                f"python3 scripts/groom_close_draft.py {target}\n"
                 "（落点证据不在时停；不要手删草稿）")
     if mismatch != "stale_trace" or not session or not case_id:
         return ""
@@ -376,7 +377,7 @@ def _prompt_groom(inbox_rel: str, rows: list) -> str:
     overdue = len([r for r in rows if r["ageDays"] > OVERDUE_DAYS])
     return ("对 " + inbox_rel + " 里的 " + str(len(rows)) + " 份草稿做知识 groom。\n"
             + "待决定 " + str(need) + " 份；超过 " + str(OVERDUE_DAYS) + " 天 " + str(overdue) + " 份。\n"
-            + "按 /skill:knowledge-groom 执行，逐条问我，不替我决定。")
+            + "按 /knowledge-groom 执行，逐条问我，不替我决定。")
 
 
 def _prompt_pr(root: Path, inbox: Path, target_info: dict, adapters: list, rows: list) -> str:
@@ -388,11 +389,13 @@ def _prompt_pr(root: Path, inbox: Path, target_info: dict, adapters: list, rows:
         head = (f"对 {inbox_rel} 里已决定的 {len(rows)} 份草稿，"
                 f"提到 {target['remote']}/{target.get('base') or 'main'}"
                 f"（{_platform_name(adapters, str(target.get('platform') or '')) or '无适配器'}），"
-                f"按 /skill:knowledge-groom 第 5 步提一个 PR。")
+                f"按 /knowledge-groom 的「PR provenance 与合入前复核」一节提一个 PR"
+                f"（PR body 带每份草稿的 groom marker；groom_recheck.py 通过才继续）。")
     else:
-        head = (f"对 {inbox_rel} 里已决定的 {len(rows)} 份草稿，"
-                f"按 /skill:knowledge-groom 第 5 步提一个 PR。"
-                f"先在目标选择器里选远端 · base · 平台。")
+        head = (f"对 {inbox_rel} 里已决定的 {len(rows)} 份草稿提一个 PR。"
+                f"本机还没有 PR 目标：先问我远端、base、平台，别猜；确认后按 /knowledge-groom 的"
+                f"「PR provenance 与合入前复核」一节提一个 PR"
+                f"（PR body 带每份草稿的 groom marker；groom_recheck.py 通过才继续）。")
     lines = [head, ""]
     for index, row in enumerate(rows, 1):
         decision = row["decision"]
@@ -406,7 +409,7 @@ def _prompt_pr(root: Path, inbox: Path, target_info: dict, adapters: list, rows:
         lines.append(f"{index}. {row['key']} — {decision_text}；落点 {landing}")
     lines += [
         "",
-        "边界：先落盘并跑升格检查；recheck 不通过就停；合入前不要跑 close / cleanup；"
+        "边界：先落盘并过升格检查；groom_recheck.py 不通过就停；PR 开完就停，不自行合入，也不要跑 close / cleanup；"
         + _label_text(target_info) + "。",
         "开完 PR 后用 `python3 scripts/pr_status.py --set` 写台账，不要手编 JSON；",
         f"台账：{_ledger_rel(root, inbox)}。",
@@ -443,19 +446,22 @@ def _prompt_close(rows: list) -> str:
     for row in rows:
         pr = row["pr"] or {}
         lines.append(f"- {row['key']}：{pr.get('url') or '（台账缺 URL）'}")
+    keys = " ".join(f"--draft-key {row['key']}" for row in rows)
     lines += ["",
-              "按 /skill:knowledge-groom 第 6 步，先 groom_close_draft --all --apply，"
-              "再 groom_cleanup；证据不在就停。",
-              "  python3 scripts/groom_close_draft.py --all --apply",
-              "  python3 scripts/groom_cleanup.py --pr-body-file <body>"]
+              "按 /knowledge-groom 的「收尾清理」一节：先跑",
+              f"  python3 scripts/groom_close_draft.py {keys} --apply",
+              "再对每份 PR 的 body 各跑一次",
+              "  python3 scripts/groom_cleanup.py --pr-body-file <该 PR 的 body 文件>",
+              "body 用已合入 PR 的原文（含 groom marker）；证据不在就停。"]
     return "\n".join(lines)
 
 
 def _groom_detail() -> str:
     return "\n".join([
         "python3 scripts/shared_dir.py inbox",
-        "python3 scripts/groom_snapshot.py --json",
-        "python3 scripts/groom_candidates.py --snapshot <快照 meta> --all",
+        "python3 scripts/groom_snapshot.py --list-remotes",
+        "python3 scripts/groom_snapshot.py [--remote <远端>] --require-fresh --json > <快照 meta.json>",
+        "python3 scripts/groom_candidates.py --snapshot <快照 meta.json> --all",
         "python3 scripts/groom_status.py --decision-prompt",
     ])
 
@@ -758,7 +764,7 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
         "pr": pr,
         "next": {"kind": kind, "label": ("重新评估（继续 groom）" if state == "pr_closed" else ACTION_LABEL.get(kind, "")), "prompt": ""},
         "writeback": _writeback(source["mismatch"], source["sessionId"],
-                                promotion["caseId"]),
+                                promotion["caseId"], key),
     }
 
 

@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.13.0'
+    const PLUGIN_VERSION = '0.14.0'
     const POLL_MS = 10000
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
@@ -82,6 +82,7 @@ window.__ModuleLoader__.load({
       'chip.feedback': '待回报',
       'chip.promote': '草稿待升格',
       'chip.review': '可复核',
+      'chip.reportReview': '报告待复核',
       'chip.upstream': '等上游',
       'chip.pinned': '已固定',
       'section.summary': '问题背景',
@@ -106,10 +107,10 @@ window.__ModuleLoader__.load({
       'queue.open': '{n} 单进行中',
       'queue.pending': '{n} 单待回报',
       'queue.sediment': '{n} 单可沉淀',
-      'empty.body': '本会话还没有诊断轨迹。跑一次 /skill:diagnose 后，这一行会显示本会话的第几步、在等什么、下一步做什么。',
+      'empty.body': '本会话还没有诊断轨迹。跑一次 /diagnose 后，这一行会显示本会话的第几步、在等什么、下一步做什么。',
       'empty.collapsed': '本会话还没有诊断轨迹',
-      'empty.meaning': '数据来自检出里的 traces/；状态判据在 scripts/trace_state.py。',
-      'error.reopen': '数据来自 traces/；判据在 scripts/trace_state.py。',
+      'empty.meaning': '数据来自检出里的 traces/；状态判据在 scripts/_trace_state.py。',
+      'error.reopen': '数据来自 traces/；判据在 scripts/_trace_state.py。',
       'hint.draft': '已填入输入框，按 Enter 发送。',
       'hint.copied': '已复制。',
       'hint.copiedIssue': 'issue 文本已复制。',
@@ -207,7 +208,7 @@ window.__ModuleLoader__.load({
       'report.none': '这单还没有人读报告。',
       'evidence.none': '本次没记证据文件',
       'candidates.none': '没有沉淀候选',
-      'shortcut.open': '⌘⇧D 打开总览',
+      'shortcut.open': '{keys} 打开总览',
       'hint.undo': '重新打开；只清掉收尾方式（ending），收尾时间与停止原因保留。',
       'hint.reopened': '已撤销上一次收尾。',
       'hint.readonly': '当前会话是只读档位，改不了状态。',
@@ -304,6 +305,14 @@ window.__ModuleLoader__.load({
       'sediment.batch.total': '{n} 份草稿',
       'sediment.batch.oldest': '最老 {n} 天',
       'sediment.batch.none': '没有下一步',
+      'diag.batch.count': '可沉淀 {n} 单',
+      'diag.batch.scope': '范围 = 当前筛选（含搜索词）',
+      'diag.batch.fill': '生成批量沉淀指令',
+      'diag.batch.sub': '范围 = 当前筛选的 {n} 单；只生成指令，不直接写 trace',
+      'diag.batch.flow': '流程：先按 sediment_batch.py --json 分组与复核，再逐单起草、逐单回写。',
+      'diag.batch.boundary': '边界：只写 sedimented 与 updated_at，不改 status、不改 feedback.outcome，也不改知识库。',
+      'diag.batch.search': '含搜索词「{q}」',
+      'diag.batch.readonly': '只读档位：指令可复制到可写会话执行，回写会被拒绝。',
       'sediment.primary.groom': '继续 groom',
       'sediment.primary.pr': '生成提 PR 指令',
       'sediment.primary.check': '查合入状态',
@@ -429,6 +438,7 @@ window.__ModuleLoader__.load({
       'chip.feedback': 'outcome pending',
       'chip.promote': 'draft to promote',
       'chip.review': 'to review',
+      'chip.reportReview': 'report to review',
       'chip.upstream': 'waiting upstream',
       'chip.pinned': 'Pinned',
       'section.summary': 'Background',
@@ -453,10 +463,10 @@ window.__ModuleLoader__.load({
       'queue.open': '{n} open',
       'queue.pending': '{n} pending outcome',
       'queue.sediment': '{n} to sediment',
-      'empty.body': 'No diagnosis trace in this session yet. Run /skill:diagnose and this bar shows the step, what it waits for, and what comes next.',
+      'empty.body': 'No diagnosis trace in this session yet. Run /diagnose and this bar shows the step, what it waits for, and what comes next.',
       'empty.collapsed': 'No diagnosis trace in this session yet',
-      'empty.meaning': 'Data comes from traces/; status rules live in scripts/trace_state.py.',
-      'error.reopen': 'Data comes from traces/; rules live in scripts/trace_state.py.',
+      'empty.meaning': 'Data comes from traces/; status rules live in scripts/_trace_state.py.',
+      'error.reopen': 'Data comes from traces/; rules live in scripts/_trace_state.py.',
       'hint.draft': 'Inserted into the composer — press Enter to send.',
       'hint.copied': 'Copied.',
       'hint.copiedIssue': 'Issue text copied.',
@@ -473,7 +483,7 @@ window.__ModuleLoader__.load({
       'action.upstream': 'Check case upstream status',
       'action.reportDoc': 'Write / revise the report',
       'action.handoff': 'Export a handoff package',
-      'action.review': 'Review the report',
+      'action.review': 'Review the outcome',
       'action.feedbackForm': 'Report outcome…',
       'action.sedimentState': 'Sediment state…',
       'form.result': 'Result',
@@ -554,7 +564,7 @@ window.__ModuleLoader__.load({
       'report.none': 'No report yet.',
       'evidence.none': 'No evidence files recorded',
       'candidates.none': 'No sediment candidates',
-      'shortcut.open': '⌘⇧D opens the overview',
+      'shortcut.open': '{keys} opens the overview',
       'hint.undo': 'Reopened; only the closing kind (ending) is cleared; the close time and stop reason stay.',
       'hint.reopened': 'The last close was undone.',
       'hint.readonly': 'This session is read-only; state cannot be changed.',
@@ -651,6 +661,14 @@ window.__ModuleLoader__.load({
       'sediment.batch.total': '{n} drafts',
       'sediment.batch.oldest': 'oldest {n}d',
       'sediment.batch.none': 'nothing next',
+      'diag.batch.count': '{n} to sediment',
+      'diag.batch.scope': 'scope = current filter (including search)',
+      'diag.batch.fill': 'Generate batch sediment prompt',
+      'diag.batch.sub': 'Scope = {n} sessions under the current filter; generates an instruction, writes no trace',
+      'diag.batch.flow': 'Flow: group and re-check with sediment_batch.py --json, then draft and write back per session.',
+      'diag.batch.boundary': 'Boundary: only sedimented and updated_at change; status, feedback.outcome, and the knowledge base stay untouched.',
+      'diag.batch.search': 'search: {q}',
+      'diag.batch.readonly': 'Read-only: copy the instruction to a writable session; write-back is rejected here.',
       'sediment.primary.groom': 'Continue groom',
       'sediment.primary.pr': 'Generate PR prompt',
       'sediment.primary.check': 'Check merge status',
@@ -731,6 +749,29 @@ window.__ModuleLoader__.load({
     }
 
     const tr = (key, params) => translate(key, params)
+
+    // 快捷键提示跟平台走：macOS 用 ⌘ / ⇧，其他平台用 Ctrl / Shift。键盘处理本身两种都收
+    // （metaKey || ctrlKey），这里只决定显示文案，避免 Windows / Linux 上显示 ⌘。
+    function isMacPlatform() {
+      try {
+        const nav = typeof navigator !== 'undefined' ? navigator : null
+        const data = nav && nav.userAgentData && nav.userAgentData.platform
+        const text = String(data || (nav && nav.platform) || (nav && nav.userAgent) || '')
+        return /mac|iphone|ipad|ipod/i.test(text)
+      } catch (error) {
+        return false
+      }
+    }
+
+    function shortcutKeys(name) {
+      const mac = isMacPlatform()
+      if (name === 'open') return mac ? '⌘⇧D' : 'Ctrl+Shift+D'
+      return mac ? '⌘K' : 'Ctrl+K'
+    }
+
+    function shortcutOpenLabel() {
+      return tr('shortcut.open', { keys: shortcutKeys('open') })
+    }
 
     // ── 样式 ────────────────────────────────────────────────────────────────
     const CSS = [
@@ -1494,6 +1535,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       if (derived.needSed) chips.push({ key: 'sediment', tone: 'brand', text: tr('chip.sediment') })
       if (derived.needPromote) chips.push({ key: 'promote', tone: 'warn', text: tr('chip.promote') })
       if (derived.needReview) chips.push({ key: 'review', tone: 'brand', text: tr('chip.review') })
+      if (derived.needReportReview) chips.push({ key: 'reportReview', tone: 'warn', text: tr('chip.reportReview') })
       if (extra.excludedCases && extra.excludedCases.length) {
         chips.push({ key: 'excluded', tone: 'idle', text: tr('chip.excluded', { n: extra.excludedCases.length }) })
       }
@@ -1508,6 +1550,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       if (derived.needSed) chips.push({ key: 'sediment', tone: 'brand', text: tr('chip.sediment') })
       if (derived.needPromote) chips.push({ key: 'promote', tone: 'warn', text: tr('chip.promote') })
       if (derived.needReview) chips.push({ key: 'review', tone: 'brand', text: tr('chip.review') })
+      if (derived.needReportReview) chips.push({ key: 'reportReview', tone: 'warn', text: tr('chip.reportReview') })
       if (derived.upstreamPending) chips.push({ key: 'upstream', tone: 'idle', text: tr('chip.upstream') })
       if (row.activeCase) chips.push({ key: 'hit', tone: 'brand', text: tr('chip.hit', { id: row.activeCase }) })
       if (extra.excludedCases && extra.excludedCases.length) {
@@ -1521,19 +1564,39 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
     }
 
     function resumeDraft(row) {
-      return '用 /skill:resume-diagnosis 续接 ' + row.sessionId + '（' + traceSource(row) + '）'
+      return '用 /resume-diagnosis 续接 ' + row.sessionId + '（' + traceSource(row) + '）'
     }
 
     function materialDraft(row) {
-      return '继续诊断 ' + row.sessionId + '，材料如下：\n'
+      return '用 /resume-diagnosis 续接 ' + row.sessionId + '（' + traceSource(row) + '），材料如下：\n'
     }
 
     function sedimentDraft(row) {
-      return '用 /skill:to-postmortem 沉淀 ' + row.sessionId + '（来源 ' + traceSource(row) + '），先给我提取提纲，我确认后再落草稿'
+      return '用 /to-postmortem 沉淀 ' + row.sessionId + '（来源 ' + traceSource(row) + '）'
+    }
+
+    // 批量沉淀：把当前筛选里的可沉淀单一次交给 to-postmortem。
+    // 名单以界面筛选为准；分组与「还有哪些单」先问只读脚本，避免面板投影与脚本判据不一致时漏单或重复起草。
+    function sedimentBatchDraft(rows, meta) {
+      const ids = (rows || []).map((row) => row && row.sessionId).filter(Boolean)
+      if (!ids.length) return ''
+      const query = String((meta && meta.query) || '').trim()
+      const scope = query ? '（含搜索词「' + query + '」）' : ''
+      const total = Number(meta && meta.total) || ids.length
+      const totalText = query && total > ids.length ? '；该筛选全量 ' + total + ' 单' : ''
+      return '用 /to-postmortem 批量沉淀这些 session：' + ids.join('、') + '\n'
+        + '范围 = 诊断总览「可沉淀」筛选当前列出的 ' + ids.length + ' 单' + scope + totalText
+        + '；trace 在 traces/<session>.yaml。\n'
+        + '先跑 python3 scripts/sediment_batch.py --json 核对分组与证据：名单外、或名单内被判「已沉淀 / 没素材」的，'
+        + '先报原因，不一起沉淀；每个 session 各成一条草稿（不按组合并）；来源 trace 逐单回写 sedimented.state: submitted，'
+        + '只写 sedimented 与 updated_at，不改 status、不改 feedback.outcome。'
     }
 
     function promoteDraft(row) {
-      return '把 ' + row.sessionId + ' 的 case 草稿按升格流程转正（来源 ' + traceSource(row) + '）——先告诉我它属于 new_pattern 还是 variant_of，还缺哪些字段'
+      return '用 /knowledge-groom 处理 ' + row.sessionId + ' 的沉淀草稿'
+        + '（草稿在共享 inbox，用 python3 scripts/shared_dir.py inbox 定位；来源 ' + traceSource(row) + '）。'
+        + '先给我分诊复核结论（new_pattern / variant_of / covered_by）与缺字段，等我决定后再升格；'
+        + '升格前过 python3 scripts/verify_case_draft.py --gate'
     }
 
     // 生成指令：对象、动作、字段、来源一次写全，粘进输入框后 agent 不需要再猜。
@@ -1545,34 +1608,41 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const anchors = upstream && Array.isArray(upstream.anchors) ? upstream.anchors.filter(Boolean) : []
       const known = anchors.length ? '；已知锚点：' + anchors.join('、') : ''
       const verified = upstream && upstream.lastVerified
-        ? '；上次查证：' + upstream.lastVerified + (upstream.verificationSource ? '（依据 ' + upstream.verificationSource + '）' : '')
+        ? '；上次查证：' + upstream.lastVerified
+          + (upstream.verificationSource ? '；来源验证档：' + upstream.verificationSource : '')
         : ''
       return [
-        '查 ' + row.activeCase + ' 的上游状态并幂等落账（只查上游，不续接诊断）。',
-        '0) 先跑 python3 scripts/doctor.py --json 确认 gh 与网络可用' + gap + '；不可用就停并报缺口，不要猜。',
-        '1) 读该案例的 upstream 锚点（repo / issue / pr）与 validation_record.last_verified' + known + verified + '。',
-        '2) 先跑 python3 scripts/verify_upstream_outcomes.py --case ' + row.activeCase
-          + ' --dry-run --json 看结论；确认要写回后再 --apply（脚本按结局签名幂等，同一结局不重复累加）。',
-        '3) 只写上游结论：是否被上游确认 / 否定 / 仍未验证；不表达现场是否解决。',
-        '4) 输出每个锚点当前状态、是否已写入、下一步动作。',
-        '来源 ' + traceSource(row) + '。',
+        '查 ' + row.activeCase + ' 的上游状态（只查上游，不续接诊断；来源 ' + traceSource(row) + '）。',
+        '1) 先跑 python3 scripts/doctor.py --json 确认 gh 已安装并登录' + gap
+          + '；不可用就停并报缺口，不要猜。网络是否可用以第 2 步的「不可查证」结局为准。',
+        '2) 跑 python3 scripts/verify_upstream_outcomes.py --case ' + row.activeCase
+          + ' --dry-run --json 看结论' + known + verified + '。',
+        '3) 把结论给我，我确认后再 --apply；写回是知识库改动，走 PR，不要直接改 main。',
+        '4) 按四种结局各说一句：上游确认 / 上游否定 / 未验证 / 不可查证；不表达现场是否解决。',
       ].join('\n')
     }
 
     function reportDraft(row) {
-      return '为 ' + row.sessionId + ' 产出（或修订）人读定位报告 traces/' + row.sessionId
-        + '.report.md，结构按 skills/diagnose/references/report-template.md。结论只抄 trace 已记录的内容，'
-        + '缺证据的标注为推测（来源 ' + traceSource(row) + '）'
+      const reportFile = row.reportFile || (row.extra && row.extra.reportFile) || ('traces/' + row.sessionId + '.report.md')
+      return '为 ' + row.sessionId + ' 产出（或修订）人读定位报告 ' + reportFile
+        + '：结构按 skills/diagnose/references/report-template.md 的 0–10 节，读者不重读 trace 也能复述结论与依据；'
+        + '结论逐条指回 trace 的事件或证据文件，没证据的标「推测」；修订在同一份文件里追加「修订记录」。'
+        + '写完跑 python3 scripts/report_lint.py ' + reportFile
+        + '（来源 ' + traceSource(row) + '）'
     }
 
     function handoffDraft(row) {
-      return '把 ' + row.sessionId + ' 导出成交接包（python3 scripts/export_trace.py 的交接模式），供另一台机器接手；'
-        + '先核对 traces/evidence 是否齐全（来源 ' + traceSource(row) + '）'
+      return '把 ' + row.sessionId + ' 导出成交接包供另一台机器接手：python3 scripts/export_trace.py '
+        + row.sessionId + ' --intent <continue|verify|escalate>。'
+        + '导出前核对 traces/evidence 是否齐全；导出后把包路径与未纳入 / 未内联清单报给我'
+        + '（来源 ' + traceSource(row) + '）'
     }
 
     function reviewDraft(row) {
-      return '复核 ' + row.sessionId + ' 的回报：判定是报告需修订、case 错还是执行错，并把结论写成 review 事件'
-        + '（verdict: report_revision / case_error / execution_error；来源 ' + traceSource(row) + '）'
+      return '复核 ' + row.sessionId + ' 的回报：读 ' + traceSource(row) + ' 的最新一条 reports 记录与报告，'
+        + '判定是报告需修订（report_revision）、case 错（case_error）还是执行错（execution_error），'
+        + '在 trace 的 reviews 里追加一条 {at: <当前时间>, by: agent, verdict: <verdict>, note: <一句依据>}，并刷新顶层 updated_at。'
+        + 'report_revision 据此修订报告（同一份文件，追加修订记录）；case_error / execution_error 只落 verdict，改知识库或改 skill 不在这里做'
     }
 
     // 回报结果：把「来源 / 结果 / 备注」写成完整指令，并点明要写哪一条事件、哪个字段。
@@ -1588,11 +1658,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         tr('form.note') + '：' + note,
       ]
       if (source === 'vendor') {
-        lines.push('请据此在 ' + traceSource(row) + ' 里补一条 report 事件（source: vendor，result: ' + resultKey
-          + '，note 用上一行）；厂商答复不写 feedback.outcome。')
+        lines.push('请据此在 ' + traceSource(row) + ' 顶层的 reports 里追加一条 '
+          + '{at: <当前时间>, by: user, source: vendor, result: ' + resultKey + ', note: <上面「备注」那句>}，'
+          + '并刷新顶层 updated_at；厂商答复不写 feedback.outcome。不要改 status。')
       } else {
-        lines.push('请据此在 ' + traceSource(row) + ' 里补一条 report 事件（source: field，result: ' + resultKey
-          + '，note 用上一行），并把 feedback.outcome 写成 ' + meta.outcome + '。')
+        lines.push('请据此在 ' + traceSource(row) + ' 顶层的 reports 里追加一条 '
+          + '{at: <当前时间>, by: user, source: field, result: ' + resultKey + ', note: <上面「备注」那句>}，'
+          + '并把 feedback.outcome 改成 ' + meta.outcome + '（feedback.confirmed_at 写当前时间；feedback.case 保持原值），'
+          + '刷新顶层 updated_at。不要改 status。')
       }
       return lines.join('\n')
     }
@@ -1712,13 +1785,24 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       return entries.slice(0, 6)
     }
 
-    function referenceDraft(row, summary) {
-      return '把 ' + row.sessionId + ' 的候选沉淀成 reference 词条：' + summary + '（来源 ' + traceSource(row) + '）'
+    function referenceDraft(row, summary, evidence) {
+      const evidenceText = String(evidence || '').trim()
+        || ('trace 的 sediment_candidates（kind: reference）里的 evidence')
+      return '用 /to-reference 把 ' + row.sessionId + ' 的 reference 候选整理成词条：' + summary
+        + '。证据取 ' + evidenceText + '；来源类型、出处与适用边界先跟我确认'
+        + '（来源 ' + traceSource(row) + '）'
     }
 
     function triageDraft(row, summary) {
-      return '把 ' + row.sessionId + ' 的 triage 候选补进 triage-tree.d/<性质>.yaml 的路由词：' + summary
-        + '。先确认性质与症状组，再跑 python3 scripts/build_triage_tree.py --check-sources（来源 ' + traceSource(row) + '）'
+      // 性质文件固定三份；诊断分类就是性质时直接点名，免得 agent 再猜（猜错会把词写进别的性质）。
+      const natureFile = {
+        interrupt: '10-interrupt.yaml', precision: '20-precision.yaml', performance: '30-performance.yaml',
+      }[(row.extra || {}).category]
+      const target = natureFile ? 'triage-tree.d/' + natureFile : 'triage-tree.d/<interrupt|precision|performance>.yaml'
+      return '把 ' + row.sessionId + ' 的 triage 候选补进 ' + target + ' 的 symptoms：' + summary
+        + '。性质与症状组先跟我确认；新文件要在 00-protocol.md 的 sources: 登记，改完跑 '
+        + 'python3 scripts/build_triage_tree.py --check-sources，并按部署纪律重建聚合（有主干 job 就只改源文件，没有就本地重建）；'
+        + '不手改生成物 triage-tree.yaml（来源 ' + traceSource(row) + '）'
     }
 
     function copyPathAndFlash(path, flash) {
@@ -1746,7 +1830,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
     function materialResumeDraft(row) {
       const extra = row.extra || {}
       const items = Array.isArray(extra.missingMaterials) ? extra.missingMaterials : []
-      return resumeDraft(row) + '\n\n补齐材料后再继续：' + (items.length ? '\n' + items.map((item) => '- ' + item).join('\n') : extra.evidenceMissing || '')
+      return resumeDraft(row) + '\n\n这单还缺这些材料（按 trace 记录），我先补：'
+        + (items.length ? '\n' + items.map((item) => '- ' + item).join('\n') : extra.evidenceMissing || '')
     }
 
     function issueTitle(row) {
@@ -2242,7 +2327,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           onSelect: () => fillAndClose(promoteDraft(row)),
         })
       }
-      if (derived.needReview) {
+      if (derived.needReportReview) {
         settleItems.push({
           key: 'review',
           label: tr('action.review'),
@@ -2801,7 +2886,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 h('button', {
                   type: 'button',
                   className: 'scp-btn scp-btn--quiet',
-                  onClick: () => fillDraft('/skill:diagnose '),
+                  onClick: () => fillDraft('/diagnose '),
                 }, tr('action.start')),
                 renderKeepOpen(),
                 renderCollapse()),
@@ -3016,7 +3101,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const bound = data ? data.bound : null
       const pending = data && data.counts ? Number(data.counts.pendingFeedback) || 0 : 0
       const tone = bound ? toneOf(bound) : 'idle'
-      const title = pending > 0 ? tr('tool.title') + ' · ' + tr('tool.pending', { n: pending }) : tr('tool.title')
+      const title = [tr('tool.title'), pending > 0 ? tr('tool.pending', { n: pending }) : '', shortcutOpenLabel()]
+        .filter(Boolean).join(' · ')
       return h('button', {
         type: 'button',
         className: 'scp-tool-btn',
@@ -3054,6 +3140,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const [sedFilter, setSedFilter] = React.useState('all')
       const [promptKind, setPromptKind] = React.useState('')
       const [promptDetailsOpen, setPromptDetailsOpen] = React.useState(false)
+      // 批量沉淀指令在弹层打开时冻结：后台每 10 秒刷新会重算 filtered，不能让名单在读者看的时候变。
+      const [batchSed, setBatchSed] = React.useState(null)
       const [targetOpen, setTargetOpen] = React.useState(false)
       const [targetResume, setTargetResume] = React.useState('')
       const [targetRemote, setTargetRemote] = React.useState('')
@@ -3069,6 +3157,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const timelineToken = React.useRef(0)
       const commandsRef = React.useRef([])
       const filtered = filterRows(rows, filter).filter((item) => matchesQuery(item, searchText))
+      // 诊断视图批量沉淀的范围 = 当前筛选（含搜索词）；单条与批量共用这一份名单。
+      const diagSedRows = filter === 'sediment' ? filtered.filter((item) => item && item.sessionId) : []
 
       const view = s.paletteView === 'sediment' ? 'sediment' : 'diagnosis'
       const sedDoc = s.sediment && s.sediment.data && s.sediment.data.ok !== false ? s.sediment.data : null
@@ -3186,6 +3276,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setSearchText('')
         setMenuOpen(false)
         setPromptKind('')
+        setBatchSed(null)
         setPromptDetailsOpen(false)
         setTargetOpen(false)
         setTargetResume('')
@@ -3263,6 +3354,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             return
           }
           if (view === 'sediment') return
+          // 批量沉淀弹层开着时，键盘只服务弹层：Esc 关弹层，Enter 不能穿透到背后的列表主操作。
+          if (promptKind) {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              closePrompt()
+            }
+            return
+          }
           if (event.key === '/' && !typing && !menuOpen) {
             event.preventDefault()
             if (searchRef.current && typeof searchRef.current.focus === 'function') searchRef.current.focus()
@@ -3294,7 +3393,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
-      }, [s.paletteOpen, filtered, selected, menuOpen, cmdOpen, cmdQuery, cmdIndex])
+      }, [s.paletteOpen, filtered, selected, menuOpen, cmdOpen, cmdQuery, cmdIndex, promptKind])
 
       React.useEffect(() => {
         if (!s.paletteOpen || view !== 'sediment') return undefined
@@ -3305,7 +3404,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           if (promptKind) {
             if (event.key === 'Escape') {
               event.preventDefault()
-              setPromptKind('')
+              closePrompt()
             }
             return
           }
@@ -3453,7 +3552,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       function candidateAction(target, candidate) {
         const summary = String((candidate && candidate.summary) || '')
-        if (candidate && candidate.kind === 'reference') fillDraft(referenceDraft(target, summary))
+        const evidence = String((candidate && candidate.evidence) || '')
+        if (candidate && candidate.kind === 'reference') fillDraft(referenceDraft(target, summary, evidence))
         else if (candidate && candidate.kind === 'triage') fillDraft(triageDraft(target, summary))
         else fillDraft(sedimentDraft(target))
       }
@@ -3853,6 +3953,26 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
         setPromptKind(k)
         setPromptDetailsOpen(false)
+        setBatchSed(null)
+        setMenuOpen(false)
+      }
+
+      function closePrompt() {
+        setPromptKind('')
+        setBatchSed(null)
+      }
+
+      // 批量沉淀：名单在打开弹层时冻结（范围 = 当前筛选，含搜索词），预览后由读者决定填入还是复制。
+      function openBatchSediment() {
+        if (!diagSedRows.length) return
+        const query = String(searchText || '').trim()
+        setBatchSed({
+          text: sedimentBatchDraft(diagSedRows, { query, total: filterRows(rows, 'sediment').length }),
+          count: diagSedRows.length,
+          query,
+        })
+        setPromptKind('sedimentBatch')
+        setPromptDetailsOpen(false)
         setMenuOpen(false)
       }
 
@@ -3871,7 +3991,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setTargetBase(String(base))
         setTargetResume(String(resume || ''))
         setTargetOpen(true)
-        setPromptKind('')
+        closePrompt()
       }
 
       async function saveTarget() {
@@ -4020,6 +4140,24 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           disabled: sedPrimaryKind === 'none',
           onClick: runSedPrimary,
         }, sedPrimaryLabel)) : null
+
+      // 诊断视图的批量沉淀：只在「可沉淀」筛选下出现，范围就是当前筛选（含搜索词）。
+      // 只生成指令、不写 trace 与知识库；单条动作仍在右列详情里。
+      const diagBatch = view === 'diagnosis' && diagSedRows.length ? h('div', {
+        className: 'scp-batch', 'data-kind': 'sediment-batch', role: 'group', 'aria-label': tr('diag.batch.fill'),
+      },
+        h('span', { className: 'scp-batch-strong' }, tr('diag.batch.count', { n: diagSedRows.length })),
+        h('span', { className: 'scp-batch-age' }, tr('diag.batch.scope')),
+        searchText.trim() ? h('span', { className: 'scp-batch-chip', 'data-tone': 'gray' }, tr('diag.batch.search', { q: searchText.trim() })) : null,
+        data && data.capabilities && data.capabilities.canWrite === false
+          ? h('span', { className: 'scp-batch-chip', 'data-tone': 'warn' }, tr('diag.batch.readonly'))
+          : null,
+        h('span', { className: 'scp-spacer' }),
+        h('button', {
+          type: 'button',
+          className: 'scp-btn scp-btn--primary',
+          onClick: openBatchSediment,
+        }, tr('diag.batch.fill'))) : null
 
       const sedHistory = sedDoc && Array.isArray(sedDoc.history) ? sedDoc.history.slice(0, 3) : []
       const sedListInner = !sedDoc
@@ -4260,26 +4398,34 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       const sedSide = view === 'sediment' ? sedSideInner : side
 
-      // 提 PR / groom / 查状态 / 收尾的指令预览
+      // 提 PR / groom / 查状态 / 收尾的指令预览（诊断视图的批量沉淀共用这个弹层）
       const promptTitle = {
         groom: tr('sediment.primary.groom'),
         pr: tr('sediment.primary.pr'),
         check: tr('sediment.primary.check'),
         close: tr('sediment.primary.close'),
+        sedimentBatch: tr('diag.batch.fill'),
       }
-      const promptText = promptKind && sedDoc && sedDoc.prompts ? String(sedDoc.prompts[promptKind] || '') : ''
-      const promptDetail = promptKind && sedDoc && sedDoc.prompts ? String(sedDoc.prompts[promptKind + 'Detail'] || '') : ''
+      const isBatchPrompt = promptKind === 'sedimentBatch' && !!batchSed
+      const promptText = isBatchPrompt
+        ? String(batchSed.text || '')
+        : (promptKind && sedDoc && sedDoc.prompts ? String(sedDoc.prompts[promptKind] || '') : '')
+      const promptDetail = isBatchPrompt
+        ? ''
+        : (promptKind && sedDoc && sedDoc.prompts ? String(sedDoc.prompts[promptKind + 'Detail'] || '') : '')
       const promptDecided = sedDrafts.filter((draft) => draft.state === 'decided')
       const promptModal = promptKind ? h('div', {
         className: 'scp-veil',
-        onMouseDown: (event) => { if (event.target === event.currentTarget) setPromptKind('') },
+        onMouseDown: (event) => { if (event.target === event.currentTarget) closePrompt() },
       },
         h('div', { className: 'scp-modal', role: 'dialog', 'aria-modal': 'true', 'aria-label': promptTitle[promptKind] || promptKind, tabIndex: -1, ref: promptRef },
           h('div', { className: 'scp-modal-top' },
             h('div', { style: { flex: '1 1 auto', minWidth: 0 } },
               h('div', { className: 'scp-modal-title' }, promptTitle[promptKind] || promptKind),
-              h('div', { className: 'scp-modal-sub' }, promptKind === 'pr' ? (sedTargetLabel || tr('sediment.noTarget')) : tr('sediment.prompt.flow'))),
-            h('button', { type: 'button', className: 'scp-icon', 'aria-label': tr('sediment.prompt.cancel'), onClick: () => setPromptKind('') }, IconClose())),
+              h('div', { className: 'scp-modal-sub' }, isBatchPrompt
+                ? tr('diag.batch.sub', { n: batchSed.count || 0 })
+                : (promptKind === 'pr' ? (sedTargetLabel || tr('sediment.noTarget')) : tr('sediment.prompt.flow')))),
+            h('button', { type: 'button', className: 'scp-icon', 'aria-label': tr('sediment.prompt.cancel'), onClick: closePrompt }, IconClose())),
           h('div', { className: 'scp-modal-body' },
             promptKind === 'pr'
               ? h('div', { className: 'scp-target-row' },
@@ -4297,12 +4443,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   h('td', {}, (draft.promotion && (draft.promotion.caseId || draft.promotion.casePath)) || '-')))))
               : null,
             h('div', { className: 'scp-warn-list' },
-              h('div', {}, tr('sediment.prompt.flow')),
-              h('div', {}, tr('sediment.prompt.boundary'))),
+              isBatchPrompt ? h('div', {}, tr('diag.batch.flow')) : h('div', {}, tr('sediment.prompt.flow')),
+              isBatchPrompt ? h('div', {}, tr('diag.batch.boundary')) : h('div', {}, tr('sediment.prompt.boundary'))),
             promptText
               ? h('div', { className: 'scp-prompt' }, promptText)
               : h('div', { className: 'scp-sed-hint' }, tr('sediment.prompt.empty')),
-            promptText ? h('div', { className: 'scp-prompt-cap' }, tr('sediment.prompt.default')) : null,
+            promptText && !isBatchPrompt ? h('div', { className: 'scp-prompt-cap' }, tr('sediment.prompt.default')) : null,
             promptDetail
               ? h('button', { type: 'button', className: 'scp-details-toggle', onClick: () => setPromptDetailsOpen((value) => !value) },
                 promptDetailsOpen ? tr('sediment.prompt.collapse') : tr('sediment.prompt.details'))
@@ -4310,14 +4456,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             promptDetail && promptDetailsOpen ? h('div', { className: 'scp-prompt' }, promptDetail) : null),
           h('div', { className: 'scp-modal-foot' },
             h('span', { className: 'scp-spacer' }),
-            h('button', { type: 'button', className: 'scp-btn scp-btn--ghost', onClick: () => setPromptKind('') }, tr('sediment.prompt.cancel')),
+            h('button', { type: 'button', className: 'scp-btn scp-btn--ghost', onClick: closePrompt }, tr('sediment.prompt.cancel')),
             h('button', {
               type: 'button', className: 'scp-btn', disabled: !promptText,
               onClick: () => copyAndFlash(promptText),
             }, tr('sediment.prompt.copy')),
             h('button', {
               type: 'button', className: 'scp-btn scp-btn--primary', disabled: !promptText,
-              onClick: () => { if (promptText) fillDraft(promptText) },
+              onClick: () => { if (promptText) { closePrompt(); fillDraft(promptText) } },
             }, tr('sediment.prompt.fill'))))) : null
 
       // 目标选择（第一次提 PR 时出现）
@@ -4424,6 +4570,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               onClick: () => setPaletteOpen(false),
             }, IconClose())),
           sedBatch,
+          diagBatch,
           h('div', { className: 'scp-pal-main' }, view === 'sediment' ? sedList : list, view === 'sediment' ? sedSide : side),
           h('div', { className: 'scp-pal-foot' },
             h('span', { className: 'scp-foot-hints' },
@@ -4434,7 +4581,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               ' 主操作 · ',
               h('span', { className: 'scp-kbd' }, '/'),
               ' 搜索 · ',
-              view === 'diagnosis' ? h('span', { className: 'scp-kbd' }, '⌘K') : null,
+              view === 'diagnosis' ? h('span', { className: 'scp-kbd' }, shortcutKeys('command')) : null,
               view === 'diagnosis' ? ' 命令 · ' : null,
               h('span', { className: 'scp-kbd' }, 'Esc'),
               ' 关闭'),

@@ -54,6 +54,9 @@ globalThis.document = {
 Object.defineProperty(globalThis, 'navigator', {
   configurable: true,
   value: {
+    // 快捷键文案跟平台走；用例里按需改这一项（'MacIntel' / 'Win32'）。
+    platform: 'MacIntel',
+    userAgent: 'Mozilla/5.0 (Macintosh)',
     clipboard: {
       writeText: async (text) => {
         copied.push(String(text))
@@ -413,6 +416,32 @@ function makeState(mode) {
       counts: { open: 0, pendingFeedback: 0, toSediment: 1 }, vocab: VOCAB, capabilities: CAPS,
     }
   }
+  if (mode === 'reportReview') {
+    // 最新回报是「换别的方法解决」（other_way）且之后没有复核：只有这一种情形该给「复核回报」。
+    const reviewRow = makeRow({
+      status: 'resolved',
+      feedback: { outcome: 'resolved', case: 'VLLM-ASC-11312' },
+      activeCase: 'VLLM-ASC-11312',
+      reports: [{ at: '2026-09-08T16:05:00+08:00', by: 'user', source: 'field', result: 'other_way', note: '换别的方法解决了' }],
+      reviews: [],
+      derived: {
+        open: false, closed: true, caseKind: 'case', needSed: false,
+        needPromote: false, needReview: false, needReportReview: true,
+        waitingFor: '', waitingOn: null,
+      },
+      extra: {
+        currentStep: 6, maxSteps: 6, eventCount: 9, userSteps: 1, agentSteps: 8,
+        platform: 'A3-910C', category: 'interrupt', framework: 'vllm-ascend',
+        excludedCases: [], evidenceFiles: 1, evidenceList: [], evidenceMissing: '',
+        hasReport: true, reportFile: 'traces/' + ID + '.report.md',
+        sedimentCandidateList: [], missingMaterials: [],
+      },
+    })
+    return {
+      ok: true, tracesDir: '/repo/traces', bound: reviewRow, recent: [reviewRow], all: [reviewRow],
+      counts: { open: 0, pendingFeedback: 0, toSediment: 0 }, vocab: VOCAB, capabilities: CAPS,
+    }
+  }
   if (mode === 'fast') {
     const fastRow = makeRow({
       status: 'resolved',
@@ -507,8 +536,8 @@ const SEDIMENT = {
   },
   primary: { kind: 'groom', label: '继续 groom', prompt: '继续 groom 的批次指令' },
   prompts: {
-    groom: '对 postmortems/inbox/ 做本周 groom。\n按 /skill:knowledge-groom 执行，逐条问我，不替我决定。',
-    pr: '对 postmortems/inbox/ 里已决定的 2 份草稿，提到 origin/main（GitCode），按 /skill:knowledge-groom 第 5 步提一个 PR。\n\n边界：先落盘并跑升格检查；recheck 不通过就停。',
+    groom: '对 postmortems/inbox/ 做本周 groom。\n按 /knowledge-groom 执行，逐条问我，不替我决定。',
+    pr: '对 postmortems/inbox/ 里已决定的 2 份草稿，提到 origin/main（GitCode），按 /knowledge-groom 第 5 步提一个 PR。\n\n边界：先落盘并跑升格检查；recheck 不通过就停。',
     check: '查合入状态的指令',
     close: '合入后收尾的指令',
     prDetail: 'python3 scripts/verify_case_draft.py --gate <草稿路径>\npython3 scripts/groom_record.py --pr-marker --draft-key <key>',
@@ -702,7 +731,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：主按钮是回报结果', !!findButton(view, '回报结果'))
   expect('最近一单：显示身份标签（知识库未覆盖）', view.text.includes('知识库未覆盖'))
   expect('最近一单：显示已排除条数', view.text.includes('已排除 3 条'))
-  expect('最近一单：版本串 0.13.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.13.0'))
+  expect('最近一单：版本串 0.14.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.14.0'))
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
   expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
 }
@@ -888,6 +917,29 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 }
 
 {
+  // 快捷键提示按平台显示：macOS 用 ⌘，Windows / Linux 用 Ctrl。
+  const t = await mount('recent')
+  const toolbar = findToolbar(t.view())
+  expect('快捷键：macOS 工具条提示 ⌘⇧D', String(toolbar.props.title).includes('⌘⇧D 打开总览'), toolbar.props.title)
+  click(toolbar)
+  const view = await t.settle()
+  expect('快捷键：macOS 底部提示 ⌘K', view.text.includes('⌘K'), view.text.slice(-160))
+}
+
+{
+  globalThis.navigator.platform = 'Win32'
+  globalThis.navigator.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+  const t = await mount('recent')
+  const toolbar = findToolbar(t.view())
+  expect('快捷键：Windows 工具条提示 Ctrl+Shift+D', String(toolbar.props.title).includes('Ctrl+Shift+D 打开总览'), toolbar.props.title)
+  click(toolbar)
+  const view = await t.settle()
+  expect('快捷键：Windows 底部提示 Ctrl+K', view.text.includes('Ctrl+K') && !view.text.includes('⌘K'), view.text.slice(-160))
+  globalThis.navigator.platform = 'MacIntel'
+  globalThis.navigator.userAgent = 'Mozilla/5.0 (Macintosh)'
+}
+
+{
   const t = await mount('recent')
   click(findToolbar(t.view()))
   const view = await t.settle()
@@ -916,12 +968,51 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 }
 
 {
+  // 复核回报只由 needReportReview 触发：最新回报 other_way 且之后没复核；needReview 不算。
+  const t = await mount('reportReview')
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  expect('复核：命中单带「报告待复核」', view.text.includes('报告待复核'), view.text.slice(0, 300))
+  click(findButton(view, '更多操作'))
+  view = await t.settle()
+  click(findButton(view, '复核回报'))
+  const draft = t.lastDraft()
+  expect('复核：指令写 reviews 记录', draft.includes('reviews') && draft.includes('report_revision')
+    && draft.includes('case_error') && draft.includes('execution_error'), draft)
+  expect('复核：不调写不进去的脚本', !draft.includes('trace_transition.py --field review'), draft)
+}
+
+{
   const t = await mount('closed')
   click(findToolbar(t.view()))
   const view = await t.settle()
   click(findButton(view, '查 case 上游状态'))
   await t.settle()
   expect('上游：prompt 带已知锚点与上次查证', t.lastDraft().includes('vllm-ascend#15903') && t.lastDraft().includes('2026-W36'), t.lastDraft())
+  expect('上游：验证档与 PR 边界写清', t.lastDraft().includes('来源验证档：upstream-fix-merged')
+    && t.lastDraft().includes('走 PR'), t.lastDraft())
+}
+
+{
+  // 复核动作只跟 needReportReview 走：普通报告单不该出现「复核回报」。
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  click(findButton(view, '更多操作'))
+  const menu = await t.settle()
+  expect('复核：没有 other_way 回报时不出动作', !findButton(menu, '复核回报'), menu.text.slice(-400))
+  click(findButton(menu, '产出 / 修订定位报告'))
+  expect('报告指令：带模板与自检', t.lastDraft().includes('report-template.md') && t.lastDraft().includes('report_lint.py'), t.lastDraft())
+}
+
+{
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  click(findButton(view, '更多操作'))
+  view = await t.settle()
+  click(findButton(view, '导出交接包'))
+  expect('交接包指令：带 --intent', t.lastDraft().includes('export_trace.py') && t.lastDraft().includes('--intent'), t.lastDraft())
 }
 
 {
@@ -1064,7 +1155,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const start = findButton(view, '开始诊断')
   expect('空态：给出开始诊断', !!start)
   click(start)
-  expect('空态：开始诊断填入指令', t.lastDraft() === '/skill:diagnose ')
+  expect('空态：开始诊断填入指令', t.lastDraft() === '/diagnose ')
 }
 
 {
@@ -1118,7 +1209,10 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   form.props.onSubmit({ preventDefault() {} })
   await t.settle()
   const draft = t.lastDraft()
-  expect('回报表单：生成完整指令', draft.includes('回报 ' + ID) && draft.includes('feedback.outcome 写成 resolved') && draft.includes('按报告改完后继续跑 2 小时没再崩'), draft)
+  expect('回报表单：生成完整指令',
+    draft.includes('回报 ' + ID) && draft.includes('feedback.outcome 改成 resolved')
+    && draft.includes('feedback.confirmed_at') && draft.includes('顶层的 reports')
+    && draft.includes('按报告改完后继续跑 2 小时没再崩'), draft)
 }
 
 {
@@ -1148,6 +1242,53 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   pressKey('Enter')
   const afterEnter = await t.settle()
   expect('台账：Enter 打开回报表单', afterEnter.text.includes('将填入输入框'), afterEnter.text.slice(0, 400))
+}
+
+{
+  // 批量沉淀：只出现在「可沉淀」筛选下；范围 = 当前筛选，指令走 to-postmortem 并要求先跑只读清点脚本。
+  const t = await mount('multi')
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  expect('批量沉淀：未筛选时不出现', byClass(view, 'scp-batch').length === 0)
+  const sedimentFilter = byClass(view, 'scp-filter-item').find((node) => nodeText(node).includes('可沉淀'))
+  click(sedimentFilter)
+  view = await t.settle()
+  expect('批量沉淀：筛选后出现批次条', byClass(view, 'scp-batch').length === 1 && view.text.includes('可沉淀 1 单'), view.text.slice(-300))
+  click(findButton(view, '生成批量沉淀指令'))
+  const modal = await t.settle()
+  expect('批量沉淀：弹预览层', byClass(modal, 'scp-modal').length === 1 && modal.text.includes('生成批量沉淀指令'), modal.text.slice(-300))
+  expect('批量沉淀：预览带范围与 session', modal.text.includes('范围 = 当前筛选的 1 单')
+    && modal.text.includes('2026-09-07-glm53-pd-sfa-c8-hang'), modal.text.slice(-400))
+  expect('批量沉淀：预览要求先跑只读脚本', modal.text.includes('sediment_batch.py --json') && modal.text.includes('sedimented.state: submitted'), modal.text.slice(-400))
+  click(findButton(modal, '填入输入框'))
+  const draft = t.lastDraft()
+  expect('批量沉淀：指令带筛选里的 session',
+    draft.includes('用 /to-postmortem 批量沉淀这些 session：2026-09-07-glm53-pd-sfa-c8-hang'), draft)
+  expect('批量沉淀：先跑只读清点脚本',
+    draft.includes('python3 scripts/sediment_batch.py --json') && draft.includes('sedimented.state: submitted'), draft)
+  expect('批量沉淀：不改其它轴', draft.includes('不改 status') && draft.includes('feedback.outcome'), draft)
+}
+
+{
+  // 搜索缩小范围后计数与指令跟着变；弹层开着时 Esc 只关弹层，Enter 不穿透到背后列表。
+  const t = await mount('multi')
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  click(byClass(view, 'scp-filter-item').find((node) => nodeText(node).includes('可沉淀')))
+  view = await t.settle()
+  const search = findInput(view, '搜索单号 / case / 关键词')
+  search.props.onChange({ target: { value: 'PD 分离' } })
+  view = await t.settle()
+  expect('批量沉淀：搜索后带搜索词范围', view.text.includes('可沉淀 1 单') && view.text.includes('含搜索词「PD 分离」'), view.text.slice(-300))
+  click(findButton(view, '生成批量沉淀指令'))
+  const modal = await t.settle()
+  expect('批量沉淀：预览写明搜索范围', modal.text.includes('（含搜索词「PD 分离」）'), modal.text.slice(-400))
+  pressKey('Enter')
+  await t.settle()
+  expect('批量沉淀：弹层开着时 Enter 不穿透', t.drafts.length === 0 && byClass(modal, 'scp-modal').length === 1)
+  pressKey('Escape')
+  const afterEsc = await t.settle()
+  expect('批量沉淀：Esc 只关弹层', byClass(afterEsc, 'scp-modal').length === 0 && byClass(afterEsc, 'scp-pal').length === 1)
 }
 
 {
@@ -1256,13 +1397,13 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findButtonContains(view, '生成提 PR 指令'))
   view = await t.settle()
   expect('提 PR 指令：弹层标题', view.text.includes('生成提 PR 指令'))
-  expect('提 PR 指令：默认短指令带 skill', view.text.includes('按 /skill:knowledge-groom'))
+  expect('提 PR 指令：默认短指令带 skill', view.text.includes('按 /knowledge-groom'))
   expect('提 PR 指令：有展开细节', !!findButtonContains(view, '展开命令细节'))
   expect('提 PR 指令：有目标行', view.text.includes('origin · main · GitCode'))
   expect('提 PR 指令：目标显示平台名而非裸 id', view.text.includes('GitCode') && !view.text.includes('origin · main · gitcode'))
   click(findButton(view, '填入输入框'))
   await t.settle()
-  expect('提 PR 指令：填入输入框', t.lastDraft().includes('/skill:knowledge-groom'), t.lastDraft().slice(0, 80))
+  expect('提 PR 指令：填入输入框', t.lastDraft().includes('/knowledge-groom'), t.lastDraft().slice(0, 80))
   const closed = await t.settle()
   click(findToolbar(closed))
   await t.settle()
