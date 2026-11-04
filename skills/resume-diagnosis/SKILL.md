@@ -72,7 +72,7 @@ description: >
    - **复述证据清单**：每个 user 事件的 `content`（摘要）+ `evidence`（内联了什么 / 引用了哪些文件 `files` / 来源 `sources` / 已知缺口 `missing`）
    - **问用户："证据齐全吗？有遗漏吗？"**——跨 agent 时新 agent 只见过摘要，无法判断摘要是否等于原文；`missing` 字段自动列出已知缺口。用户确认齐全 → 继续；用户补充 → 更新该 user 事件的 `evidence` 后再继续
    - **文件证据可读**：`evidence.files` 是相对仓库路径（`traces/evidence/<session_id>/`），同工作区可直接读；读不到 → 问用户要
-4. **续接必写 trace（与 diagnose 同要求，闭环关键）**：确认续接开始后，往 `traces/<session_id>.yaml` 追加一条 `{role: agent, action: resume, step: <current_step+1>, output: "续接 <session_id>，恢复到 step <N>"}`，**并刷新顶层 `updated_at: <ISO 时间>`**——这是诊断面板"最新活动置顶"的依据（续接 = 该 session 又活跃了）；后续续接中的关键决策同样带 `reason`（与 diagnose 的 trace 要求一致）
+4. **续接必写 trace（与 diagnose 同要求，闭环关键）**：确认续接开始后，往 `traces/<session_id>.yaml` 追加一条 `{role: agent, action: resume, harness_session: "$DSH_SESSION_ID", step: <current_step+1>, output: "续接 <session_id>，恢复到 step <N>"}`，**并刷新顶层 `updated_at: <ISO 时间>`**——这是诊断面板"最新活动置顶"的依据（续接 = 该 session 又活跃了）；后续续接中的关键决策同样带 `reason`（与 diagnose 的 trace 要求一致）。`harness_session` 写当前会话号，**顶层 `harness_session` 保持原始值不覆盖**：前者让状态条与跳转知道这一单在哪个会话被接手，后者继续用于成本 / 工具调用归因。
 5. 等人执行上次要求的命令并贴回输出，从 current_step 继续
 
 ## 恢复后的约束（继承 diagnose，不降低）

@@ -272,7 +272,7 @@ harness 侧的会话号（DSH 里是 `$DSH_SESSION_ID`）。**用途有两个**�
 **缺了两边都停摆**：面板只能说「未记会话号」（它只看得见字段缺失，分不出是建会话时漏写还是旧单——所以文案不猜年纪）；侧栏的行首记号与「待回报」标记也挂不上。补的时候给已知会话号最快：
 `python3 scripts/link_harness_sessions.py --trace <文件名> --session-id "$DSH_SESSION_ID" --apply`（不扫日志，秒级）；历史单不给 `--session-id`，脚本去会话日志里按名字认。
 
-**它还是「从轨迹跳到那次会话」的唯一依据**：`session_id` 不是 DSH 的会话号，面板的「打开会话」与侧栏「诊断记录」都只认这个字段，没有它就只能显示「未记会话号」。历史轨迹缺这一栏时用 `python3 scripts/link_harness_sessions.py --apply` 补：按「会话时间窗覆盖 `created_at`、且会话开始时间离它最近」判定是谁写的那一单；只补空，只有弱证据（命中次数）的默认不写，`--allow-weak` 才写。**诊断会话的名字（`session_id`）与 harness 会话号是两套**：前者是这次诊断自己起的（形如 `<日期>-<issue 号>-<短名>`），后者是 harness 分配的。汇总脚本不写这个字段时按 `session_id` 试一次。
+**它还是「从轨迹跳到原始会话」的依据**：`session_id` 不是 DSH 的会话号，面板的「打开会话」与侧栏「诊断记录」都只认这个字段，没有它就只能显示「未记会话号」。**续接不覆盖这个顶层字段**；每次 `resume` 事件带 `harness_session: "$DSH_SESSION_ID"`，插件按这条链知道当前会话是接手会话，顶层字段仍只做原始会话与成本 / 工具归因。历史轨迹缺这一栏时用 `python3 scripts/link_harness_sessions.py --apply` 补：按「会话时间窗覆盖 `created_at`、且会话开始时间离它最近」判定是谁写的那一单；只补空，只有弱证据（命中次数）的默认不写，`--allow-weak` 才写。**诊断会话的名字（`session_id`）与 harness 会话号是两套**：前者是这次诊断自己起的（形如 `<日期>-<issue 号>-<短名>`），后者是 harness 分配的。汇总脚本不写这个字段时按 `session_id` 试一次。
 
 ## 顶层 `external_evidence`（会话级，一次写定）
 

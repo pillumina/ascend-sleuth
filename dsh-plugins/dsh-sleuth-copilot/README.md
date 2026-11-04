@@ -58,7 +58,15 @@ DSH 会话里的一个独立交互层插件。它把诊断的状态、下一步�
 - 更多操作里是完整动作组：复制（摘要 / 续接 / 沉淀 / 升格 / 回报）、回报结果（生成指令）、
   收尾（已定位 / 转交 / 不再跟进）、重开、沉淀状态、刷新、诊断总览、切到该诊断的会话。
 
-### 详情分块：收尾清单、上游、证据与历史
+### 工作区门禁与会话归属
+
+- **只在 ascend-sleuth 工作区出现**：Host 半从会话工作区 cwd 往上找 `scripts/_trace_state.py`；找不到、或取不到 cwd 时返回 `E_NO_ROOT`，浏览器半不渲染。别的工作区里插件装在 profile 里但状态条不显示。
+- **会话归属**：总览详情显示「原始会话」（顶层 `harness_session`）与「续接会话」（每个 `resume` 事件里的 `harness_session`），当前会话带「当前」标记；可切到原始会话或最近接手会话。跨机交接的原会话不在本机时，切过去会报打不开，不会静默失败。
+- **没记会话号**：顶层 `harness_session` 为空时显示提示与可复制的补录命令
+  `python3 scripts/link_harness_sessions.py --trace <文件名> --session-id "$DSH_SESSION_ID" --apply`。
+- **续接不改归属**：续接只在 `resume` 事件里写当前会话号，顶层 `harness_session` 保持原始值，继续用于成本 / 工具调用归因；状态条在接手会话里标「本会话（续接）」。
+
+## 详情分块：收尾清单、上游、证据与历史
 
 - **收尾清单**：诊断进入收尾（已定位 / 待回报 / 可沉淀 / 已交草稿）后出现，四项各有完成态与一键入口：
   人读报告（未产出时生成报告指令）、回报结果（待回报时打开回报表单）、沉淀（可沉淀时生成沉淀指令）、
@@ -142,12 +150,12 @@ plugin_manager remove_bundle(target: 'dsh-sleuth-copilot')
 ## 验证
 
 ```
-node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs   # 浏览器半：四个面、折叠持久化、收尾清单 / 历史 / 报告、总览键盘与 ⌘⇧D
-node dsh-plugins/dsh-sleuth-copilot/test/host-smoke.mjs     # Host 半：取数、证据 / 候选、报告只读读取、真实写入（临时副本）、CAS、错误码
+node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs   # 浏览器半：四个面、折叠、收尾清单 / 历史 / 报告、材料 / 时间线、会话归属、搜索与命令面板
+node dsh-plugins/dsh-sleuth-copilot/test/host-smoke.mjs     # Host 半：取数、证据 / 候选 / 材料、报告与时间线、工作区门禁、会话绑定、真实写入（临时副本）、CAS、错误码
 ```
 
 页面上的三件事只能人工确认：状态条是否出现、排版是否贴合输入区、点按钮是否把指令写进输入框。
-装完刷新页面，在状态条展开页或控制台看版本串 `v0.9.0`。
+装完刷新页面，在状态条展开页或控制台看版本串 `v0.10.0`。
 
 ## 版本维护
 

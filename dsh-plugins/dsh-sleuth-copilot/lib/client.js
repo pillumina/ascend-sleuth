@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.9.0'
+    const PLUGIN_VERSION = '0.10.0'
     const POLL_MS = 10000
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
@@ -29,6 +29,7 @@ window.__ModuleLoader__.load({
     const ZH = {
       'region': '诊断状态条',
       'scope.bound': '本会话',
+      'scope.boundResume': '本会话（续接）',
       'scope.recent': '最近一单',
       'scope.pinned': '已固定',
       'picker.title': '跟踪哪一单',
@@ -134,6 +135,17 @@ window.__ModuleLoader__.load({
       'section.overview': '概览',
       'section.background': '问题背景',
       'section.upstream': '上游查证',
+      'section.sessions': '会话归属',
+      'sessions.origin': '原始会话',
+      'sessions.resumed': '续接会话',
+      'sessions.current': '当前',
+      'sessions.missing': '未记会话号（trace 的 harness_session 为空）',
+      'sessions.hint': '跳转只对仍在本机的会话有效；跨机交接的原始会话可能打不开。',
+      'action.copyLinkCommand': '复制补录命令',
+      'action.openOrigin': '切到原始会话',
+      'action.openResumed': '切到上次接手会话',
+      'hint.sessionOpened': '已切到该会话。',
+      'hint.sessionUnavailable': '打不开该会话：{reason}',
       'section.materials': '在等材料',
       'section.timeline': '步骤时间线',
       'materials.hint': '来自 trace 的缺失记录；拿到后贴回会话，或带着这份清单续接。',
@@ -249,6 +261,7 @@ window.__ModuleLoader__.load({
     const EN = {
       'region': 'Diagnosis status bar',
       'scope.bound': 'this session',
+      'scope.boundResume': 'this session (resumed)',
       'scope.recent': 'latest',
       'scope.pinned': 'pinned',
       'picker.title': 'Track which diagnosis',
@@ -354,6 +367,17 @@ window.__ModuleLoader__.load({
       'section.overview': 'Overview',
       'section.background': 'Background',
       'section.upstream': 'Upstream',
+      'section.sessions': 'Session attribution',
+      'sessions.origin': 'Origin session',
+      'sessions.resumed': 'Resumed in',
+      'sessions.current': 'current',
+      'sessions.missing': 'No session id (harness_session is empty)',
+      'sessions.hint': 'Jump works only for sessions still on this machine; an imported origin may not open.',
+      'action.copyLinkCommand': 'Copy backfill command',
+      'action.openOrigin': 'Open origin session',
+      'action.openResumed': 'Open last resumed session',
+      'hint.sessionOpened': 'Switched to that session.',
+      'hint.sessionUnavailable': 'Could not open that session: {reason}',
       'section.materials': 'Waiting for material',
       'section.timeline': 'Step timeline',
       'materials.hint': 'Recorded gaps from the trace; paste the missing pieces back, or resume with this list.',
@@ -1342,6 +1366,19 @@ window.__ModuleLoader__.load({
       return labels[action] || action || ''
     }
 
+    function sessionLinkCommand(row) {
+      return 'python3 scripts/link_harness_sessions.py --trace ' + row.file
+        + ' --session-id "$DSH_SESSION_ID" --apply'
+    }
+
+    function openSessionWithFlash(id, flash) {
+      if (!id) return
+      ctxOpenSession(id).then((result) => {
+        if (result && result.ok) flash(tr('hint.sessionOpened'))
+        else flash(tr('hint.sessionUnavailable', { reason: (result && result.reason) || '' }))
+      }, (error) => flash(tr('hint.sessionUnavailable', { message: String((error && error.message) || error) })))
+    }
+
     function summaryText(row, data) {
       const extra = row.extra || {}
       const status = statusMeta(data && data.vocab, row.status)
@@ -1793,14 +1830,17 @@ window.__ModuleLoader__.load({
       ]
       if (row.harnessSession) {
         navItems.push({
-          key: 'open-session',
-          label: tr('action.openSession'),
-          onSelect: () => {
-            if (onClose) onClose()
-            ctxOpenSession(row.harnessSession).then((result) => {
-              if (!result.ok) onFlash(result.reason || '打不开这一单的会话')
-            })
-          },
+          key: 'open-origin',
+          label: tr('action.openOrigin'),
+          onSelect: () => { if (onClose) onClose(); openSessionWithFlash(row.harnessSession, onFlash) },
+        })
+      }
+      const resumedSessions = (row.resumeSessions || []).filter((sid) => sid && sid !== store.sessionId)
+      if (resumedSessions.length) {
+        navItems.push({
+          key: 'open-resumed',
+          label: tr('action.openResumed'),
+          onSelect: () => { if (onClose) onClose(); openSessionWithFlash(resumedSessions[resumedSessions.length - 1], onFlash) },
         })
       }
       groups.push({ key: 'nav', title: tr('group.nav'), items: navItems })
@@ -2216,7 +2256,8 @@ window.__ModuleLoader__.load({
             onDraft: fillDraft,
           })) : null
 
-        const scopeLabel = pinned ? tr('scope.pinned') : (bound ? tr('scope.bound') : tr('scope.recent'))
+        const scopeLabel = pinned ? tr('scope.pinned')
+          : (bound ? ((data.bound && data.bound.boundBy === 'resume') ? tr('scope.boundResume') : tr('scope.bound')) : tr('scope.recent'))
 
         if (collapsed) {
           return h('section', Object.assign({}, rootProps, {
@@ -2715,6 +2756,9 @@ window.__ModuleLoader__.load({
       const candidateList = row ? (extra.sedimentCandidateList || []) : []
       const history = row ? historyEntries(row, data) : []
       const closeInfo = row ? lastClose(row) : null
+      const originSession = row ? (row.harnessSession || '') : ''
+      const resumedSessions = row ? (row.resumeSessions || []).filter((sid) => sid && sid !== originSession) : []
+      const currentSession = store.sessionId || ''
 
       const side = row
         ? menuOpen
@@ -2787,6 +2831,36 @@ window.__ModuleLoader__.load({
                     type: 'button', className: 'scp-check-action',
                     onClick: () => fillDraft(upstreamDraft(row, data.upstream)),
                   }, tr('action.upstream'))))) : null,
+            h('div', { className: 'scp-section-label' }, tr('section.sessions')),
+            h('div', { className: 'scp-list-block' },
+              originSession
+                ? h('div', { className: 'scp-upstream-row' },
+                  h('span', { className: 'scp-check-label' }, tr('sessions.origin')),
+                  h('span', { className: 'scp-mono' }, originSession),
+                  originSession === currentSession ? h('span', { className: 'scp-chip' }, tr('sessions.current')) : null,
+                  originSession === currentSession ? null : h('button', {
+                    type: 'button', className: 'scp-check-action',
+                    onClick: () => openSessionWithFlash(originSession, flash),
+                  }, tr('action.openOrigin')))
+                : h('div', { className: 'scp-mono' }, tr('sessions.missing')),
+              resumedSessions.length
+                ? h('div', { className: 'scp-upstream-row' },
+                  h('span', { className: 'scp-check-label' }, tr('sessions.resumed')),
+                  resumedSessions.map((sid) => h('span', {
+                    key: sid, className: 'scp-chip', 'data-tone': sid === currentSession ? 'accent' : '',
+                  }, sid + (sid === currentSession ? '（' + tr('sessions.current') + '）' : ''))),
+                  resumedSessions[resumedSessions.length - 1] === currentSession ? null : h('button', {
+                    type: 'button', className: 'scp-check-action',
+                    onClick: () => openSessionWithFlash(resumedSessions[resumedSessions.length - 1], flash),
+                  }, tr('action.openResumed')))
+                : null,
+              !originSession
+                ? h('button', {
+                  type: 'button', className: 'scp-check-action',
+                  onClick: () => copyAndFlash(sessionLinkCommand(row)),
+                }, tr('action.copyLinkCommand'))
+                : null,
+              h('div', { className: 'scp-check-state' }, tr('sessions.hint'))),
             h('div', { className: 'scp-section-label' }, tr('section.evidence')),
             h('div', { className: 'scp-list-block' },
               evidenceList.length ? evidenceList.map((filePath) => h('div', { key: filePath, className: 'scp-evidence-row' },
