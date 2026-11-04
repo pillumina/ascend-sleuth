@@ -4,11 +4,15 @@
 // 它证明不了真实页面的排版与点击，只证明：状态分支不抛、文案在、按钮发出的 RPC 与指令对。
 // 每个用例用带 query 的模块 URL 重新导入一次，拿到干净的模块级 store 与偏好。
 
+import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = join(HERE, '..')
+// 版本串两处（package.json 与 client 的 PLUGIN_VERSION）必须同步；用包里的版本做期望值，
+// 免得每次 bump 都要改断言。
+const PKG_VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version
 const CLIENT_URL = pathToFileURL(join(ROOT, 'lib', 'client.js')).href
 
 // ── 最小浏览器环境 ──────────────────────────────────────────────────────────
@@ -406,6 +410,20 @@ function makeState(mode) {
       counts: { open: 1, pendingFeedback: 1, toSediment: 1 }, vocab: VOCAB, capabilities: CAPS,
     }
   }
+  if (mode === 'longsummary') {
+    // 真机 trace 的 summary 首句常有一两百字：详情抬头要按正文收成四行，不能当标题放大。
+    const longRow = makeRow({
+      summary: 'vllm-ascend GLM-5.3-Flash-w8a8 在 Atlas A3 超节点（16 x Ascend910，TP16+EP）跑推理，'
+        + '服务在并发长 prompt 负载下两次以同一签名崩溃：MoE token dispatch preprocess 的 '
+        + 'torch.repeat_interleave(token_dispatcher.py:623) 处上抛 RuntimeError error code 507035，'
+        + '设备侧 fftsplus aivector error、vec error info 0x470000020d，指向确定性 kernel/tiling bug 而非硬件故障；'
+        + '历史日志在 data.jsonl，编译产物是 x.pyc。',
+    })
+    return {
+      ok: true, tracesDir: '/repo/traces', bound: longRow, recent: [longRow], all: [longRow],
+      counts: { open: 1, pendingFeedback: 1, toSediment: 0 }, vocab: VOCAB, capabilities: CAPS,
+    }
+  }
   if (mode === 'closed') {
     const closedRow = makeRow({
       status: 'resolved',
@@ -791,7 +809,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：主按钮是回报结果', !!findButton(view, '回报结果'))
   expect('最近一单：显示身份标签（知识库未覆盖）', view.text.includes('知识库未覆盖'))
   expect('最近一单：显示已排除条数', view.text.includes('已排除 3 条'))
-  expect('最近一单：版本串 0.16.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.16.0'))
+  expect('最近一单：版本串与 package.json 一致', view.nodes.some((node) => node.props && node.props['data-version'] === PKG_VERSION), PKG_VERSION)
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
   expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
 }
@@ -1308,9 +1326,39 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
     && (node.props['aria-selected'] === 'true' || node.props['aria-selected'] === 'false')))
   // 时间按本地时区渲染：本地断言不能钉死小时（CI 跑在 UTC），只钉「日期 + 时分」的完整形状。
   expect('台账：列表时间完整显示', /09-08 \d{2}:\d{2}/.test(view.text), view.text.slice(0, 500))
+  expect('详情抬头：短摘要不给展开入口', !findButton(view, '展开全文'))
   pressKey('Enter')
   const afterEnter = await t.settle()
   expect('台账：Enter 打开回报表单', afterEnter.text.includes('将填入输入框'), afterEnter.text.slice(0, 400))
+}
+
+{
+  // 详情抬头：一行状态与身份 + 人读背景。真机摘要首句一两百到七八百字，放大加粗会占掉
+  // 详情的大半屏，所以只留正文层级；错误码、路径、调用改等宽，长文收起并可展开。
+  const t = await mount('longsummary')
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  const identity = byClass(view, 'scp-identity')
+  expect('详情抬头：一行识别信息', identity.length === 1 && nodeText(identity[0]).includes('进行中')
+    && nodeText(identity[0]).includes('第 5/6 步'), identity.length ? nodeText(identity[0]) : 'missing')
+  expect('详情抬头：不再用放大标题放摘要', byClass(view, 'scp-hero-title').length === 0)
+  const lede = byClass(view, 'scp-lede')
+  expect('详情抬头：背景按正文渲染且默认收起', lede.length === 1 && lede[0].props['data-open'] === 'false')
+  const codes = byClass(view, 'scp-icode').map((node) => nodeText(node))
+  expect('详情抬头：行内标识走等宽', codes.includes('torch.repeat_interleave(token_dispatcher.py:623)')
+    && codes.includes('RuntimeError') && codes.includes('0x470000020d') && codes.includes('507035'), codes.join(' / '))
+  expect('详情抬头：已有扩展名后接更长后缀时不拆开', !codes.includes('data.json') && !codes.includes('x.py')
+    && view.text.includes('data.jsonl') && view.text.includes('x.pyc'), codes.join(' / '))
+  const expand = findButton(view, '展开全文')
+  expect('详情抬头：长摘要给展开入口', !!expand)
+  if (expand) click(expand)
+  const open = await t.settle()
+  expect('详情抬头：展开后给收起入口', byClass(open, 'scp-lede')[0].props['data-open'] === 'true'
+    && !!findButton(open, '收起全文'))
+  expect('详情抬头：背景只出现一处', byClass(open, 'scp-p').length === 0)
+  expect('详情抬头：在等做成一条窄行', byClass(open, 'scp-waitline').length === 1
+    && nodeText(byClass(open, 'scp-waitline')[0]).includes('在等'),
+  byClass(open, 'scp-waitline').length + ' / ' + nodeText(byClass(open, 'scp-waitline')[0] || {}))
 }
 
 {
