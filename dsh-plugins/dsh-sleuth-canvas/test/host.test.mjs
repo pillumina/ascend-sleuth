@@ -248,6 +248,7 @@ test('list：三个会话与契约样例逐字段对齐（version 令牌随文�
     '2026-01-03-demo-a3-kv-load-stall',
     '2026-01-02-demo-a3-w8a8-garble',
   ], '按 updatedAt 倒序')
+  assert.equal(byId.get('2026-01-02-demo-a3-w8a8-garble').harnessSession, 'demo-harness-9001', 'harness_session 透传')
   assert.equal(byId.get('2026-01-02-demo-a3-w8a8-garble').status, 'resolved')
   assert.equal(byId.get('2026-01-02-demo-a3-w8a8-garble').feedback.outcome, 'resolved')
   assert.deepEqual(byId.get('2026-01-02-demo-a3-w8a8-garble').sedimented, { state: 'knowledge', caseId: 'VLLM-ASC-9001' })

@@ -13,7 +13,7 @@ window.__ModuleLoader__.load({
   id: "dsh-sleuth-canvas",
   factory(require) {
     const React = require('react')
-    const SC = { React, h: React.createElement, version: "0.1.0" }
+    const SC = { React, h: React.createElement, version: "0.2.0" }
 
 // ─── client-src/05-util.js ───
 ;(function (SC) {
@@ -527,7 +527,7 @@ SC.theme = (function () {
 //      fit()/双击仍保持整图适配语义（作为显式总览入口，允许缩到低于滚轮下限）。
 //   2. zoom < LOD_ZOOM 时节点改画紧凑块（色条+图标+家族短标签+step 数字，按 1/zoom 反缩放），
 //      列头同理；0.62–0.8 仍是完整卡。
-//   3. 画布小于 520×360 时不画迷你地图，避免压住内容。
+//   3. 画布小于 560×360 时不画迷你地图，避免压住内容。
 
 const FONT_STACK = 'ui-sans-serif, system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif'
 const MONO_STACK = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace'
@@ -569,7 +569,7 @@ const INITIAL_FIT_ZOOM = 0.8
 const LOD_ZOOM = 0.62
 const INITIAL_LEFT_PADDING = 56
 // 窄画布上迷你地图会盖住内容（页面底部缩放钮又在它上方），小于这个尺寸就自动隐藏。
-const MINIMAP_MIN_W = 520
+const MINIMAP_MIN_W = 560
 const MINIMAP_MIN_H = 360
 
 const GRID_SPACING = 26
@@ -577,6 +577,8 @@ const DIM_ALPHA = 0.22
 const MINIMAP_W = 168
 const MINIMAP_H = 112
 const MINIMAP_MARGIN = 16
+// 空闲时半透明，指针进入迷你地图才完全显现：减少它压住列尾卡片的观感。
+const MINIMAP_IDLE_ALPHA = 0.55
 const MINIMAP_PAD = 10
 const PARTICLE_PERIOD = 3200
 const IDLE_AFTER = 6000
@@ -980,6 +982,7 @@ SC.createEngine = function createEngine(opts) {
 
   let dragging = null
   let miniDrag = false
+  let pointerScreen = null
   let prevTouchAction = ''
   let ro = null
   let winResizeBound = false
@@ -2277,12 +2280,14 @@ SC.createEngine = function createEngine(opts) {
     const b = model.bounds
     const map = minimapMap(panel)
 
+    const pointer = pointerScreen
+    const overPanel = pointer !== null && pointer !== undefined
+      && pointInRect(pointer.x, pointer.y, panel)
     ctx.save()
-    ctx.globalAlpha = 0.96
+    ctx.globalAlpha = overPanel ? 0.98 : MINIMAP_IDLE_ALPHA
     roundRectPath(ctx, panel.x, panel.y, panel.w, panel.h, 12)
     ctx.fillStyle = p.overlay
     ctx.fill()
-    ctx.globalAlpha = 1
     ctx.strokeStyle = p.border
     ctx.lineWidth = 1
     ctx.stroke()
@@ -2559,6 +2564,7 @@ SC.createEngine = function createEngine(opts) {
   function onPointerMove(ev) {
     if (dead) return
     const point = localPoint(ev)
+    pointerScreen = point
     if (miniDrag) {
       moveViewportFromMinimap(point.x, point.y)
       return
@@ -2619,8 +2625,10 @@ SC.createEngine = function createEngine(opts) {
 
   function onPointerLeave() {
     if (dragging || miniDrag) return
+    pointerScreen = null
     if (hovered !== null) setHoveredInternal(null)
     if (canvas.style) canvas.style.cursor = 'default'
+    touch()
   }
 
   function onWheel(ev) {
@@ -2754,6 +2762,21 @@ SC.createEngine = function createEngine(opts) {
     }
   }
 
+  // 导出当前视图：把画布像素合成到带主题底色的新画布，返回 dataURL。页面只负责下载。
+  function exportImage() {
+    if (dead || !canvas || !canvas.width || !canvas.height) return null
+    const copyCanvas = document.createElement('canvas')
+    copyCanvas.width = canvas.width
+    copyCanvas.height = canvas.height
+    const context = copyCanvas.getContext('2d')
+    if (!context) return null
+    const p = palette
+    context.fillStyle = p.surface
+    context.fillRect(0, 0, copyCanvas.width, copyCanvas.height)
+    context.drawImage(canvas, 0, 0)
+    return copyCanvas.toDataURL('image/png')
+  }
+
   function destroy() {
     if (dead) return
     dead = true
@@ -2828,6 +2851,7 @@ SC.createEngine = function createEngine(opts) {
     zoomBy: zoomBy,
     resize: resize,
     nodeRect: nodeRect,
+    exportImage: exportImage,
     destroy: destroy,
   }
 }
@@ -3449,6 +3473,7 @@ SC.model = (function () {
       eventCount: eventCount,
       currentStep: isNum(session.currentStep) ? Number(session.currentStep) : null,
       hasConclusion: !!session.hasConclusion,
+      harnessSession: text(session.harnessSession) || null,
       activeCase: text((detail && detail.activeCase) || session.activeCase) || null,
       file: text((detail && detail.file) || session.file) || null,
       summary: text((detail && detail.summary) || session.summary) || '',
@@ -3474,6 +3499,161 @@ SC.model = (function () {
     return parts
   }
 
+  // ── 结论卡、列表视图、导出摘要：给页面的三个派生视图，纯函数便于测试 ─────────────
+
+  // 结论动作 → 卡片文案。未命中 case 时不编造结论，只说"还没写结论"。
+  const CONCLUSION_ACTIONS = {
+    hit: { tone: 'hit', label: '命中 case' },
+    miss: { tone: 'miss', label: '知识库未覆盖' },
+    output: { tone: 'flag', label: '给出结论' },
+    attribution: { tone: 'flag', label: '归因' },
+  }
+
+  const RISK_RE = /data-loss-risk|数据风险|先停|数据丢失/g
+  const RISK_NEGATIONS = ['非', '不是', '并非', '无', '没有', '不含', '未发现', '零']
+
+  function hasRiskText(value) {
+    const raw = text(value)
+    if (!raw) return false
+    RISK_RE.lastIndex = 0
+    let matched = RISK_RE.exec(raw)
+    while (matched) {
+      const before = raw.slice(Math.max(0, matched.index - 4), matched.index)
+      if (!RISK_NEGATIONS.some(function (word) { return before.indexOf(word) >= 0 })) return true
+      matched = RISK_RE.exec(raw)
+    }
+    return false
+  }
+
+  // 结论卡：读 detail.conclusionIndex（事件 idx），返回画布节点位置与可读文案。
+  function buildConclusion(detail, graph) {
+    if (!detail) return null
+    const events = Array.isArray(detail.events) ? detail.events : []
+    const nodes = graph && Array.isArray(graph.nodes) ? graph.nodes : []
+    const pos = graph && graph.meta && graph.meta.conclusionIndex !== null && graph.meta.conclusionIndex !== undefined
+      ? Number(graph.meta.conclusionIndex)
+      : null
+    const event = pos !== null && events[pos] ? events[pos] : null
+    const node = pos !== null && nodes[pos] ? nodes[pos] : null
+    const action = text(event && event.action)
+    const spec = CONCLUSION_ACTIONS[action] || null
+    const tone = spec ? spec.tone : (node ? node.tone : 'feedback')
+    const caseId = text(event && event.case)
+    let label = spec ? spec.label : '结论未记录'
+    let title = ''
+    if (action === 'hit') title = caseId ? '命中 ' + caseId : '命中'
+    else if (action === 'miss') title = '知识库未覆盖'
+    else if (action === 'output') title = '给出结论'
+    else if (action === 'attribution') title = caseId ? '归因 · ' + caseId : '归因'
+    else title = '还没写结论'
+    const body = event
+      ? U.firstSentence(text(event.output) || text(event.reason) || text(event.content), 150)
+      : U.firstSentence(text(detail.lastAction) || '这份 trace 还没写结论事件', 120)
+    const badges = []
+    const verdict = (event && event.verdict) || {}
+    if (text(verdict.confidence)) badges.push(badge('置信 ' + text(verdict.confidence), 'neutral'))
+    const feedback = detail.feedback || {}
+    if (text(feedback.outcome) === 'pending') badges.push(badge('待回报', 'warn'))
+    else if (text(feedback.outcome) === 'resolved') badges.push(badge('已回报', 'hit'))
+    const sedimented = detail.sedimented || {}
+    const sedState = text(sedimented.state)
+    if (sedState === 'knowledge') badges.push(badge('已沉淀' + (text(sedimented.caseId) ? ' ' + text(sedimented.caseId) : ''), 'book'))
+    else if (sedState === 'inbox') badges.push(badge('已交草稿', 'book'))
+    const riskText = [event && event.output, event && event.reason, detail.lastAction].map(text).join('\n')
+    if (hasRiskText(riskText)) badges.push(badge('风险 · 先停', 'risk'))
+    return {
+      idx: node ? node.idx : null,
+      step: node ? node.step : null,
+      tone: tone,
+      label: label,
+      title: title,
+      text: body,
+      badges: badges,
+      empty: event === null || action === '',
+      action: action,
+      caseId: caseId || null,
+    }
+  }
+
+  // 列表视图：每个事件一行，与画布节点共享选中下标（数组位置）。
+  function buildTableRows(detail, graph) {
+    if (!detail || !Array.isArray(detail.events)) return []
+    const nodes = graph && Array.isArray(graph.nodes) ? graph.nodes : []
+    return detail.events.map(function (ev, i) {
+      const node = nodes[i] || null
+      const described = describeEvent(ev, detail)
+      const verdict = (ev && ev.verdict) || {}
+      const marks = []
+      if (text(ev.case)) marks.push(text(ev.case))
+      if (text(verdict.primary)) marks.push('主检查 ' + text(verdict.primary))
+      if (text(verdict.fallback)) marks.push('备检查 ' + text(verdict.fallback))
+      if (text(verdict.marked)) marks.push('marked ' + text(verdict.marked))
+      const evidence = (ev && ev.evidence) || {}
+      const inlineChars = Number(evidence.inlineChars || 0) || text(evidence.inline).length
+      if (inlineChars > 0) marks.push('证据 ' + charLabel(inlineChars))
+      if (Array.isArray(ev.toolCalls) && ev.toolCalls.length) marks.push(ev.toolCalls.length + ' 次调用')
+      if (Array.isArray(ev.sources) && ev.sources.length) marks.push(ev.sources.length + ' 来源')
+      return {
+        idx: i,
+        step: node ? node.step : (ev.step === null || ev.step === undefined ? '?' : ev.step),
+        role: text(ev.role),
+        roleLabel: roleLabel(ev),
+        action: node ? node.label : (described.label || '事件'),
+        title: node ? node.title : described.title,
+        subtitle: node ? (node.subtitle || '') : described.subtitle,
+        tone: node ? node.tone : (described.tone || 'feedback'),
+        glyph: node ? node.glyph : described.glyph,
+        emphasis: node ? node.emphasis : described.emphasis,
+        marks: marks,
+      }
+    })
+  }
+
+  // 导出摘要：一段可粘贴的 Markdown，覆盖结论、洞察与过程。
+  function buildExportText(detail, graph) {
+    if (!detail) return ''
+    const session = detail.session || {}
+    const conclusion = buildConclusion(detail, graph)
+    const rows = buildTableRows(detail, graph)
+    const lines = []
+    lines.push('# 诊断旅程 · ' + (text(session.id) || text(detail.file) || '未命名'))
+    const meta = []
+    if (text(session.status)) meta.push('状态 ' + text(session.status))
+    if (text(session.framework)) meta.push('框架 ' + text(session.framework))
+    if (text(session.platform)) meta.push('平台 ' + text(session.platform))
+    if (text(session.category)) meta.push('类别 ' + text(session.category))
+    if (isNum(session.stepCount)) meta.push(Number(session.stepCount) + ' 步')
+    if (isNum(session.eventCount)) meta.push(Number(session.eventCount) + ' 个事件')
+    if (meta.length) lines.push('- ' + meta.join(' · '))
+    const span = U.formatSpan(session.createdAt, session.updatedAt)
+    if (span) lines.push('- 跨度 ' + span + (text(session.updatedAt) ? '（更新于 ' + U.formatRelative(session.updatedAt) + '）' : ''))
+    if (conclusion) {
+      const tags = conclusion.badges.map(function (item) { return item.text }).filter(Boolean)
+      lines.push('')
+      lines.push('## 结论 · ' + conclusion.title + (tags.length ? '（' + tags.join(' · ') + '）' : ''))
+      if (conclusion.text) lines.push(conclusion.text)
+    }
+    const insights = Array.isArray(detail.insights) ? detail.insights : []
+    if (insights.length) {
+      lines.push('')
+      lines.push('## 洞察')
+      for (const insight of insights) {
+        lines.push('- ' + text(insight.title) + '：' + text(insight.text))
+      }
+    }
+    if (rows.length) {
+      lines.push('')
+      lines.push('## 过程')
+      for (const row of rows) {
+        const tail = (row.subtitle || row.title || '').slice(0, 80)
+        lines.push('- S' + row.step + ' · ' + row.action + ' · ' + row.roleLabel + (tail ? ' · ' + tail : ''))
+      }
+    }
+    lines.push('')
+    lines.push('来源：traces/' + (text(detail.file) || '') + ' · 只读')
+    return lines.join('\n')
+  }
+
   return {
     TONES: TONES,
     TONE_LABELS: TONE_LABELS,
@@ -3485,6 +3665,10 @@ SC.model = (function () {
     applyTones: applyTones,
     buildInspector: buildInspector,
     buildOverview: buildOverview,
+    buildConclusion: buildConclusion,
+    buildTableRows: buildTableRows,
+    buildExportText: buildExportText,
+    hasRiskText: hasRiskText,
     deriveStats: deriveStats,
     sessionMeta: sessionMeta,
     eventChars: eventChars,
@@ -3523,6 +3707,10 @@ SC.CanvasPage = (function () {
       ['path', { d: 'M9 4.5H5.5V8' }], ['path', { d: 'M15 4.5h3.5V8' }],
       ['path', { d: 'M9 19.5H5.5V16' }], ['path', { d: 'M15 19.5h3.5V16' }],
     ],
+    open: [['path', { d: 'M13 5h6v6' }], ['path', { d: 'M19 5 10.5 13.5' }], ['path', { d: 'M18.4 14.2v4.2a1.8 1.8 0 0 1-1.8 1.8H5.4a1.8 1.8 0 0 1-1.8-1.8V7.2a1.8 1.8 0 0 1 1.8-1.8h4.2' }]],
+    download: [['path', { d: 'M12 4.5v10' }], ['path', { d: 'M7.5 10.5 12 15l4.5-4.5' }], ['path', { d: 'M5 19.5h14' }]],
+    table: [['rect', { x: 4, y: 5, width: 16, height: 14, rx: 2 }], ['path', { d: 'M4 10h16' }], ['path', { d: 'M4 14.5h16' }], ['path', { d: 'M9.5 5v14' }]],
+    canvas: [['rect', { x: 4, y: 5, width: 16, height: 14, rx: 2 }], ['path', { d: 'M8 15.5 11 11l2.6 3.4 2.1-2.5 2.3 3.6' }]],
     copy: [
       ['rect', { x: 8.4, y: 8.4, width: 10.6, height: 10.6, rx: 2.2 }],
       ['path', { d: 'M15.8 8.4V6.6A2.6 2.6 0 0 0 13.2 4H6.6A2.6 2.6 0 0 0 4 6.6v6.6a2.6 2.6 0 0 0 2.6 2.6h1.8' }],
@@ -3830,6 +4018,30 @@ SC.CanvasPage = (function () {
     )
   }
 
+  // 本地偏好：只存三件与界面有关的小事（上次看的那单、快捷键提示是否关过、画布/列表视图）。
+  // 都包在 try/catch 里：隐私模式或宿主禁用 localStorage 时退化为不记忆，不影响渲染。
+  const STORE = {
+    session: 'dsh-sleuth-canvas:last-session',
+    hint: 'dsh-sleuth-canvas:hint-dismissed',
+    view: 'dsh-sleuth-canvas:view',
+  }
+
+  function storeGet(key) {
+    try { return window.localStorage.getItem(key) } catch (error) { return null }
+  }
+
+  function storeSet(key, value) {
+    try {
+      if (value === null) window.localStorage.removeItem(key)
+      else window.localStorage.setItem(key, String(value))
+    } catch (error) { /* 禁用存储时不记忆 */ }
+  }
+
+  function pngName(file) {
+    const base = String(file || 'sleuth-canvas').replace(/\.yaml$/i, '').replace(/[^A-Za-z0-9._-]+/g, '-')
+    return 'sleuth-canvas-' + base + '.png'
+  }
+
   // ── 页面组件 ───────────────────────────────────────────────────────────────
   function CanvasPage(props) {
     const React = SC.React
@@ -3863,6 +4075,10 @@ SC.CanvasPage = (function () {
     const [inspectorOpen, setInspectorOpen] = useState(false)
     const [legendOpen, setLegendOpen] = useState(true)
     const [copied, setCopied] = useState('')
+    const [view, setView] = useState(function () { return storeGet(STORE.view) === 'table' ? 'table' : 'canvas' })
+    const [hintOpen, setHintOpen] = useState(function () { return storeGet(STORE.hint) !== '1' })
+    const [exportOpen, setExportOpen] = useState(false)
+    const [notice, setNotice] = useState('')
 
     const rootRef = useRef(null)
     const canvasRef = useRef(null)
@@ -3879,6 +4095,8 @@ SC.CanvasPage = (function () {
     const handlersRef = useRef({ select: null, hover: null })
     const actionsRef = useRef({})
     const copiedTimer = useRef(0)
+    const noticeTimer = useRef(0)
+    const exportRef = useRef(null)
     const tooltipLast = useRef(null)
 
     listDataRef.current = listData
@@ -3907,6 +4125,8 @@ SC.CanvasPage = (function () {
     }, [sessions, query, sortKey])
     const activeSession = sessions.find(function (session) { return session.file === activeFile }) || null
     const events = detail && Array.isArray(detail.events) ? detail.events : []
+    const conclusion = useMemo(function () { return detail ? SC.model.buildConclusion(detail, graph) : null }, [detail, graph])
+    const tableRows = useMemo(function () { return detail ? SC.model.buildTableRows(detail, graph) : [] }, [detail, graph])
 
     // ── 取数 ────────────────────────────────────────────────────────────────
     const loadList = useCallback(function (options) {
@@ -3935,8 +4155,11 @@ SC.CanvasPage = (function () {
           return
         }
         const keep = next.find(function (session) { return session.file === fileRef.current })
-        const pick = keep || sortSessions(next, 'updated')[0]
+        const remembered = storeGet(STORE.session)
+        const saved = remembered ? next.find(function (session) { return session.file === remembered }) : null
+        const pick = keep || saved || sortSessions(next, 'updated')[0]
         fileRef.current = pick.file
+        storeSet(STORE.session, pick.file)
         setActiveFile(pick.file)
         setPhase('ready')
       }).catch(function (error) {
@@ -4237,6 +4460,7 @@ SC.CanvasPage = (function () {
       setHovered(null)
       setInspectorOpen(false)
       fileRef.current = session.file
+      storeSet(STORE.session, session.file)
       setActiveFile(session.file)
     }
 
@@ -4251,11 +4475,117 @@ SC.CanvasPage = (function () {
       })
     }
 
+    function showNotice(text) {
+      const value = String(text === null || text === undefined ? '' : text)
+      if (!value) return
+      setNotice(value)
+      if (noticeTimer.current) clearTimeout(noticeTimer.current)
+      noticeTimer.current = setTimeout(function () { setNotice('') }, 2600)
+    }
+
+    function dismissHint() {
+      setHintOpen(false)
+      storeSet(STORE.hint, '1')
+    }
+
+    function toggleView() {
+      setView(function (prev) {
+        const next = prev === 'table' ? 'canvas' : 'table'
+        storeSet(STORE.view, next)
+        return next
+      })
+      setExportOpen(false)
+    }
+
+    function selectConclusion() {
+      if (!conclusion || conclusion.idx === null || conclusion.idx === undefined) return
+      setView('canvas')
+      storeSet(STORE.view, 'canvas')
+      locate(conclusion.idx)
+    }
+
+    function openConversation() {
+      const target = stats && stats.harnessSession ? String(stats.harnessSession) : ''
+      if (!target) {
+        showNotice('这条 trace 没有 harness_session，挂不到 DSH 会话上')
+        return
+      }
+      const opener = SC.openSession
+      if (typeof opener !== 'function') {
+        showNotice('当前界面没有提供打开会话的接口')
+        return
+      }
+      Promise.resolve(opener(target)).then(function () {
+        showNotice('已切到会话 ' + target.slice(0, 12))
+      }).catch(function (error) {
+        showNotice('打开会话失败：' + errorText(error))
+      })
+    }
+
+    function exportPng() {
+      const engine = engineRef.current
+      if (!engine || typeof engine.exportImage !== 'function') {
+        showNotice('画布还没渲染好，稍后再试')
+        return
+      }
+      try {
+        const url = engine.exportImage()
+        if (!url) {
+          showNotice('画布还没渲染好，稍后再试')
+          return
+        }
+        const name = pngName(activeFile)
+        const anchor = document.createElement('a')
+        anchor.href = url
+        anchor.download = name
+        anchor.style.display = 'none'
+        document.body.appendChild(anchor)
+        anchor.click()
+        anchor.remove()
+        showNotice('已导出 PNG（' + name + '）')
+      } catch (error) {
+        showNotice('导出 PNG 失败：' + errorText(error))
+      }
+      setExportOpen(false)
+    }
+
+    function copySummary() {
+      if (!detail) return
+      const text = SC.model.buildExportText(detail, graph)
+      Promise.resolve(U.copyText(text)).then(function (ok) {
+        showNotice(ok ? '已复制旅程摘要' : '复制失败：剪贴板不可用')
+      })
+      setExportOpen(false)
+    }
+
     useEffect(function () {
       return function () {
         if (copiedTimer.current) clearTimeout(copiedTimer.current)
+        if (noticeTimer.current) clearTimeout(noticeTimer.current)
       }
     }, [])
+
+    // 导出菜单：点面板外关闭；Esc 由键盘处理统一关。
+    useEffect(function () {
+      if (!exportOpen) return undefined
+      if (typeof document === 'undefined' || !document || typeof document.addEventListener !== 'function') return undefined
+      function onDown(event) {
+        const node = exportRef.current
+        if (node && event && event.target && typeof node.contains === 'function' && node.contains(event.target)) return
+        setExportOpen(false)
+      }
+      document.addEventListener('pointerdown', onDown)
+      return function () { document.removeEventListener('pointerdown', onDown) }
+    }, [exportOpen])
+
+    // 视图切回画布时容器从 display:none 恢复；effect 在 DOM 提交后跑，直接让引擎按当前尺寸重算。
+    useEffect(function () {
+      if (view !== 'canvas') return undefined
+      const engine = engineRef.current
+      if (!engine) return undefined
+      try { if (typeof engine.resize === 'function') engine.resize() } catch (error) { /* 引擎未就绪 */ }
+      return undefined
+    }, [view])
 
     actionsRef.current = {
       stopReplay: stopReplay,
@@ -4268,6 +4598,10 @@ SC.CanvasPage = (function () {
       replay: replay,
       detail: detail,
       listOpen: listOpen,
+      view: view,
+      toggleView: toggleView,
+      setExportOpen: setExportOpen,
+      dismissHint: dismissHint,
     }
 
     // 键盘：空格播放/暂停、←/→ 上/下一个事件、f 适配、+/- 缩放、Esc 取消。
@@ -4282,6 +4616,7 @@ SC.CanvasPage = (function () {
             return
           }
           const actions = actionsRef.current
+          if (actions.setExportOpen) actions.setExportOpen(false)
           if (actions.replay && actions.replay.active) { actions.stopReplay(); setInspectorOpen(false); return }
           if (actions.selected !== null && actions.selected !== undefined) { selectIndex(null); return }
           if (actions.listOpen) actions.setListOpen(false)
@@ -4315,6 +4650,7 @@ SC.CanvasPage = (function () {
         if (key === 'f') { event.preventDefault(); actions.fit(); return }
         if (key === '+' || key === '=') { event.preventDefault(); actions.zoom(1.2); return }
         if (key === '-') { event.preventDefault(); actions.zoom(1 / 1.2); return }
+        if (key === 't') { event.preventDefault(); actions.toggleView(); return }
       }
       window.addEventListener('keydown', onKeyDown)
       return function () { window.removeEventListener('keydown', onKeyDown) }
@@ -4359,16 +4695,58 @@ SC.CanvasPage = (function () {
           { className: 'sc-head-right' },
           SC.h('div', { className: 'sc-chips' }, renderChips()),
           SC.h(
-            'button',
-            {
-              type: 'button',
-              className: 'sc-btn sc-refresh' + (refreshing ? ' is-busy' : ''),
-              onClick: refresh,
-              disabled: refreshing,
-              title: '重新读取 traces/',
-            },
-            SC.h(Icon, { name: 'refresh', size: 15, className: refreshing ? 'sc-spin' : '' }),
-            SC.h('span', { className: 'sc-btn-text' }, '刷新'),
+            'div',
+            { className: 'sc-head-actions' },
+            SC.h(
+              'button',
+              {
+                type: 'button',
+                className: 'sc-btn sc-btn-icon',
+                onClick: openConversation,
+                disabled: !(stats && stats.harnessSession),
+                title: stats && stats.harnessSession ? '回到产生这条 trace 的 DSH 会话' : '这条 trace 没有 harness_session，挂不到会话上',
+                'aria-label': '打开会话',
+              },
+              SC.h(Icon, { name: 'open', size: 15 }),
+              SC.h('span', { className: 'sc-btn-text' }, '打开会话'),
+            ),
+            SC.h(
+              'div',
+              { className: 'sc-export', ref: exportRef },
+              SC.h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'sc-btn sc-btn-icon' + (exportOpen ? ' is-on' : ''),
+                  onClick: function () { setExportOpen(function (value) { return !value }) },
+                  title: '导出画布或摘要',
+                  'aria-haspopup': 'menu',
+                  'aria-expanded': exportOpen ? 'true' : 'false',
+                },
+                SC.h(Icon, { name: 'download', size: 15 }),
+                SC.h('span', { className: 'sc-btn-text' }, '导出'),
+              ),
+              exportOpen
+                ? SC.h(
+                  'div',
+                  { className: 'sc-export-menu', role: 'menu' },
+                  SC.h('button', { type: 'button', role: 'menuitem', className: 'sc-export-item', onClick: exportPng, disabled: !detail }, SC.h(Icon, { name: 'download', size: 14 }), '导出 PNG（当前视图）'),
+                  SC.h('button', { type: 'button', role: 'menuitem', className: 'sc-export-item', onClick: copySummary, disabled: !detail }, SC.h(Icon, { name: 'copy', size: 14 }), '复制旅程摘要'),
+                )
+                : null,
+            ),
+            SC.h(
+              'button',
+              {
+                type: 'button',
+                className: 'sc-btn sc-refresh' + (refreshing ? ' is-busy' : ''),
+                onClick: refresh,
+                disabled: refreshing,
+                title: '重新读取 traces/',
+              },
+              SC.h(Icon, { name: 'refresh', size: 15, className: refreshing ? 'sc-spin' : '' }),
+              SC.h('span', { className: 'sc-btn-text' }, '刷新'),
+            ),
           ),
         ),
         summary
@@ -4394,6 +4772,47 @@ SC.CanvasPage = (function () {
               : null,
           )
           : null,
+        renderConclusion(),
+      )
+    }
+
+    function renderConclusion() {
+      if (!conclusion) return null
+      const clickable = conclusion.idx !== null && conclusion.idx !== undefined
+      const tone = 'var(--sc-' + conclusion.tone + ')'
+      return SC.h(
+        'div',
+        {
+          className: 'sc-conclusion' + (clickable ? ' is-clickable' : '') + (conclusion.empty ? ' is-empty' : ''),
+          style: { '--tone': tone },
+          role: clickable ? 'button' : undefined,
+          tabIndex: clickable ? 0 : undefined,
+          onClick: clickable ? selectConclusion : undefined,
+          onKeyDown: clickable
+            ? function (event) {
+              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectConclusion() }
+            }
+            : undefined,
+          'aria-label': clickable ? '结论：' + conclusion.title + '，点击定位到结论节点' : '结论：' + conclusion.title,
+        },
+        SC.h('span', { className: 'sc-conclusion-bar' }),
+        SC.h('span', { className: 'sc-conclusion-label' }, conclusion.label),
+        SC.h(
+          'div',
+          { className: 'sc-conclusion-main' },
+          SC.h('div', { className: 'sc-conclusion-title', title: conclusion.title }, conclusion.title),
+          conclusion.text ? SC.h('div', { className: 'sc-conclusion-text', title: conclusion.text }, conclusion.text) : null,
+        ),
+        conclusion.badges.length
+          ? SC.h(
+            'div',
+            { className: 'sc-conclusion-badges' },
+            conclusion.badges.map(function (item, i) {
+              return SC.h('span', { className: 'sc-badge sc-badge-' + (item.tone || 'neutral'), key: i }, item.text)
+            }),
+          )
+          : null,
+        clickable ? SC.h('span', { className: 'sc-conclusion-go' }, '定位 →') : null,
       )
     }
 
@@ -4774,6 +5193,78 @@ SC.CanvasPage = (function () {
       )
     }
 
+    function renderTable() {
+      const stepCount = graph && graph.columns ? graph.columns.length : 0
+      return SC.h(
+        'div',
+        { className: 'sc-table-wrap' },
+        SC.h(
+          'div',
+          { className: 'sc-table-head' },
+          SC.h('div', { className: 'sc-table-title' }, '事件列表'),
+          SC.h('div', { className: 'sc-table-meta' }, tableRows.length + ' 个事件 · ' + stepCount + ' 步 · 点一行定位到画布节点'),
+          SC.h('button', { type: 'button', className: 'sc-btn sc-btn-ghost', onClick: toggleView }, SC.h(Icon, { name: 'canvas', size: 14 }), '回到画布'),
+        ),
+        SC.h(
+          'div',
+          { className: 'sc-table-scroll' },
+          SC.h(
+            'div',
+            { className: 'sc-table', role: 'table', 'aria-label': '诊断事件列表', 'aria-rowcount': String(tableRows.length) },
+            SC.h(
+              'div',
+              { className: 'sc-tr sc-thead', role: 'row' },
+              ['步骤', '角色', '动作', '摘要', '标记'].map(function (label, i) {
+                return SC.h('span', { key: i, role: 'columnheader', className: 'sc-th' }, label)
+              }),
+            ),
+            tableRows.map(function (row) {
+              const active = selected === row.idx
+              return SC.h(
+                'div',
+                {
+                  key: row.idx,
+                  role: 'row',
+                  tabIndex: 0,
+                  'aria-selected': active ? 'true' : 'false',
+                  className: 'sc-tr sc-trow' + (active ? ' is-active' : '') + (row.emphasis === 'conclusion' ? ' is-conclusion' : ''),
+                  style: { '--tone': 'var(--sc-' + row.tone + ')' },
+                  onClick: function () { locate(row.idx) },
+                  onKeyDown: function (event) {
+                    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); locate(row.idx) }
+                  },
+                },
+                SC.h('span', { role: 'cell', className: 'sc-td sc-td-step' }, 'S' + row.step),
+                SC.h('span', { role: 'cell', className: 'sc-td sc-td-role' }, row.roleLabel),
+                SC.h('span', { role: 'cell', className: 'sc-td sc-td-action' }, row.action),
+                SC.h(
+                  'div',
+                  { role: 'cell', className: 'sc-td sc-td-main' },
+                  SC.h('div', { className: 'sc-td-title', title: row.title }, row.title),
+                  row.subtitle ? SC.h('div', { className: 'sc-td-sub', title: row.subtitle }, row.subtitle) : null,
+                ),
+                SC.h(
+                  'div',
+                  { role: 'cell', className: 'sc-td sc-td-marks' },
+                  row.marks.map(function (mark, i) { return SC.h('span', { key: i, className: 'sc-mark' }, mark) }),
+                ),
+              )
+            }),
+          ),
+        ),
+      )
+    }
+
+    function renderHint() {
+      if (!hintOpen) return null
+      return SC.h(
+        'div',
+        { className: 'sc-hint', role: 'note' },
+        SC.h('span', { className: 'sc-hint-text' }, '滚轮缩放 · 拖拽平移 · f 适配 · ←/→ 逐个事件 · t 列表视图'),
+        SC.h('button', { type: 'button', className: 'sc-hint-close', onClick: dismissHint, title: '关闭提示', 'aria-label': '关闭快捷键提示' }, SC.h(Icon, { name: 'close', size: 12 })),
+      )
+    }
+
     function renderCanvas() {
       const showEmpty = phase === 'empty' || (detailPhase === 'ready' && detail && (!detail.events || !detail.events.length))
       return SC.h(
@@ -4781,7 +5272,7 @@ SC.CanvasPage = (function () {
         { className: 'sc-stage' },
         SC.h(
           'div',
-          { className: 'sc-canvas-wrap', ref: wrapRef },
+          { className: 'sc-canvas-wrap' + (view === 'table' ? ' is-hidden' : ''), ref: wrapRef },
           SC.h('canvas', { className: 'sc-canvas', ref: canvasRef, 'aria-label': '诊断旅程画布' }),
           SC.h(
             'div',
@@ -4804,10 +5295,20 @@ SC.CanvasPage = (function () {
               ),
               detail
                 ? SC.h(
-                  'button',
-                  { type: 'button', className: 'sc-top-btn sc-insp-toggle', onClick: function () { setInspectorOpen(function (value) { return !value }) }, title: '洞察检查器' },
-                  SC.h(Icon, { name: 'insight', size: 14 }),
-                  '洞察',
+                  'div',
+                  { className: 'sc-top-actions' },
+                  SC.h(
+                    'button',
+                    { type: 'button', className: 'sc-top-btn', onClick: toggleView, title: view === 'table' ? '回到画布视图（t）' : '切到事件列表视图（t）' },
+                    SC.h(Icon, { name: view === 'table' ? 'canvas' : 'table', size: 14 }),
+                    view === 'table' ? '画布' : '列表',
+                  ),
+                  SC.h(
+                    'button',
+                    { type: 'button', className: 'sc-top-btn sc-insp-toggle', onClick: function () { setInspectorOpen(function (value) { return !value }) }, title: '洞察检查器' },
+                    SC.h(Icon, { name: 'insight', size: 14 }),
+                    '洞察',
+                  ),
                 )
                 : null,
             ),
@@ -4825,7 +5326,7 @@ SC.CanvasPage = (function () {
               SC.h('span', { className: 'sc-now-text' }, nowText()),
             ),
           ),
-          hoveredNode && tooltip
+          view === 'canvas' && hoveredNode && tooltip
             ? SC.h(
               'div',
               {
@@ -4839,7 +5340,7 @@ SC.CanvasPage = (function () {
               SC.h('div', { className: 'sc-tooltip-meta' }, hoveredNode.meta),
             )
             : null,
-          overview && overview.legend.length
+          view === 'canvas' && overview && overview.legend.length
             ? SC.h(
               'div',
               { className: 'sc-legend' + (legendOpen ? ' is-open' : '') },
@@ -4867,7 +5368,7 @@ SC.CanvasPage = (function () {
                 : null,
             )
             : null,
-          detail
+          view === 'canvas' && detail
             ? SC.h(
               'div',
               { className: 'sc-zoom' },
@@ -4876,7 +5377,9 @@ SC.CanvasPage = (function () {
               SC.h('button', { type: 'button', className: 'sc-zoom-btn', onClick: fit, title: '适配（f）', 'aria-label': '适配视图' }, SC.h(Icon, { name: 'fit', size: 15 })),
             )
             : null,
-          renderReplay(),
+          view === 'canvas' ? renderReplay() : null,
+          view === 'table' && detail && !showEmpty ? renderTable() : null,
+          view === 'canvas' && detail && !showEmpty && !replay.active ? renderHint() : null,
           showEmpty ? renderCanvasEmpty() : null,
           detailPhase === 'error' ? renderCanvasError() : null,
           detailPhase === 'loading' ? renderStageLoading() : null,
@@ -5236,6 +5739,7 @@ SC.CanvasPage = (function () {
       },
       renderHeader(),
       SC.h('div', { className: 'sc-body' }, renderList(), renderCanvas(), renderInspector()),
+      SC.h('div', { className: 'sc-notice' + (notice ? ' is-on' : ''), role: 'status', 'aria-live': 'polite' }, notice),
       SC.h('div', { className: 'sc-sr-only', 'aria-live': 'polite' }, copied ? '已复制' : ''),
     )
   }
@@ -5303,7 +5807,7 @@ html[data-mode="dark"] .sc-root{
 /* ── 页头 ─────────────────────────────────────────────────────────────── */
 .sc-header{
   flex-shrink:0;display:grid;grid-template-columns:minmax(0,1fr) auto;
-  grid-template-areas:"brand right" "summary summary";
+  grid-template-areas:"brand right" "summary summary" "conclusion conclusion";
   column-gap:16px;row-gap:6px;padding:11px 16px 9px;
   border-bottom:1px solid var(--sc-line);
   background:linear-gradient(180deg, color-mix(in srgb, var(--sc-layer1) 62%, var(--sc-surface)), var(--sc-surface));
@@ -5478,6 +5982,7 @@ html[data-mode="dark"] .sc-root{
     var(--sc-surface);
 }
 .sc-canvas-wrap{position:absolute;inset:0;overflow:hidden}
+.sc-canvas-wrap.is-hidden{display:none}
 .sc-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
 .sc-canvas:active{cursor:grabbing}
 
@@ -5885,6 +6390,112 @@ html[data-mode="dark"] .sc-root{
   .sc-zoom{display:none}
 }
 
+
+/* ── 结论卡 / 导出菜单 / 列表视图 / 快捷键提示 / 操作反馈 ─────────────── */
+.sc-root{position:relative}
+.sc-head-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.sc-btn-icon{padding:0 9px}
+.sc-btn-icon.is-on{color:var(--sc-text);border-color:var(--sc-line-strong);background:color-mix(in srgb, var(--sc-layer2) 82%, transparent)}
+.sc-export{position:relative;display:flex}
+.sc-export-menu{
+  position:absolute;right:0;top:calc(100% + 8px);z-index:24;min-width:212px;padding:5px;
+  display:flex;flex-direction:column;gap:2px;border-radius:10px;border:1px solid var(--sc-line);
+  background:var(--sc-overlay);box-shadow:var(--sc-shadow-float);
+  animation:sc-fade-in var(--sc-m-base) var(--sc-ease) both;
+}
+.sc-export-item{
+  appearance:none;display:flex;align-items:center;gap:8px;width:100%;padding:7px 9px;
+  border:0;border-radius:7px;background:transparent;color:var(--sc-text);font:inherit;font-size:12px;
+  text-align:left;cursor:pointer;white-space:nowrap;
+  transition:background-color var(--sc-m-fast) var(--sc-ease),color var(--sc-m-fast) var(--sc-ease);
+}
+.sc-export-item:hover{background:color-mix(in srgb, var(--sc-layer2) 82%, transparent)}
+.sc-export-item:disabled{opacity:.45;cursor:default}
+.sc-export-item svg{color:var(--sc-text2);flex-shrink:0}
+
+.sc-conclusion{
+  grid-area:conclusion;display:flex;align-items:center;gap:10px;min-width:0;margin-top:7px;
+  padding:7px 10px 7px 0;border:1px solid color-mix(in srgb, var(--tone) 30%, var(--sc-line));
+  border-radius:10px;background:color-mix(in srgb, var(--tone) 7%, var(--sc-surface));
+  cursor:default;transition:border-color var(--sc-m-fast) var(--sc-ease),background-color var(--sc-m-fast) var(--sc-ease);
+}
+.sc-conclusion.is-clickable{cursor:pointer}
+.sc-conclusion.is-clickable:hover{background:color-mix(in srgb, var(--tone) 12%, var(--sc-surface));border-color:color-mix(in srgb, var(--tone) 48%, var(--sc-line))}
+.sc-conclusion.is-clickable:focus-visible{outline:2px solid color-mix(in srgb, var(--tone) 55%, transparent);outline-offset:2px}
+.sc-conclusion.is-empty{opacity:.88}
+.sc-conclusion-bar{width:3px;align-self:stretch;border-radius:0 3px 3px 0;background:var(--tone);flex-shrink:0}
+.sc-conclusion-label{flex-shrink:0;font-size:10.5px;font-weight:650;letter-spacing:.3px;color:var(--tone);white-space:nowrap}
+.sc-conclusion-main{flex:1;min-width:0;display:flex;align-items:baseline;gap:10px}
+.sc-conclusion-title{flex-shrink:0;font-size:12.5px;font-weight:600;color:var(--sc-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46%}
+.sc-conclusion-text{min-width:0;font-size:11.5px;color:var(--sc-text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-conclusion-badges{display:flex;align-items:center;gap:4px;flex-shrink:0}
+.sc-conclusion-go{flex-shrink:0;font-size:11px;color:var(--tone);white-space:nowrap}
+.sc-badge{
+  display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:999px;
+  border:1px solid var(--sc-line);font-size:10.5px;line-height:1;color:var(--sc-text2);white-space:nowrap;
+  background:color-mix(in srgb, var(--sc-layer1) 72%, transparent);
+}
+.sc-badge-hit{color:var(--sc-hit);border-color:color-mix(in srgb, var(--sc-hit) 34%, transparent);background:color-mix(in srgb, var(--sc-hit) 10%, transparent)}
+.sc-badge-warn{color:var(--sc-warn);border-color:color-mix(in srgb, var(--sc-warn) 34%, transparent);background:color-mix(in srgb, var(--sc-warn) 10%, transparent)}
+.sc-badge-book{color:var(--sc-book);border-color:color-mix(in srgb, var(--sc-book) 34%, transparent);background:color-mix(in srgb, var(--sc-book) 10%, transparent)}
+.sc-badge-risk{color:var(--sc-risk);border-color:color-mix(in srgb, var(--sc-risk) 40%, transparent);background:color-mix(in srgb, var(--sc-risk) 11%, transparent)}
+.sc-badge-neutral{color:var(--sc-text2)}
+
+.sc-top-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.sc-table-wrap{position:absolute;inset:0;z-index:7;display:flex;flex-direction:column;background:var(--sc-surface)}
+.sc-table-head{flex-shrink:0;display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--sc-line);background:linear-gradient(180deg,color-mix(in srgb,var(--sc-layer1) 70%,var(--sc-surface)),var(--sc-surface))}
+.sc-table-title{font-size:13px;font-weight:650;flex-shrink:0}
+.sc-table-meta{min-width:0;font-size:11.5px;color:var(--sc-text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-table-head .sc-btn{margin-left:auto;flex-shrink:0}
+.sc-table-scroll{flex:1;min-height:0;overflow:auto;overscroll-behavior:contain}
+.sc-table{min-width:660px;display:flex;flex-direction:column}
+.sc-tr{display:grid;grid-template-columns:54px 52px 104px minmax(220px,1fr) minmax(120px,220px);gap:12px;align-items:start;padding:8px 14px;border-bottom:1px solid var(--sc-line);font-size:12px}
+.sc-thead{position:sticky;top:0;z-index:2;background:color-mix(in srgb, var(--sc-layer1) 94%, transparent);font-size:10.5px;color:var(--sc-text3);letter-spacing:.3px;padding-top:7px;padding-bottom:7px}
+.sc-th{font-weight:600;white-space:nowrap}
+.sc-trow{cursor:pointer;color:var(--sc-text);transition:background-color var(--sc-m-fast) var(--sc-ease)}
+.sc-trow:hover{background:color-mix(in srgb, var(--sc-layer2) 62%, transparent)}
+.sc-trow.is-active{background:color-mix(in srgb, var(--tone) 11%, var(--sc-surface));box-shadow:inset 3px 0 0 var(--tone)}
+.sc-trow.is-conclusion .sc-td-title{font-weight:650}
+.sc-trow:focus-visible{outline:2px solid color-mix(in srgb, var(--sc-accent) 55%, transparent);outline-offset:-2px}
+.sc-td{min-width:0;color:var(--sc-text2)}
+.sc-td-step{font-family:var(--sc-mono);font-size:11px;color:var(--sc-text3)}
+.sc-td-role{font-size:11px}
+.sc-td-action{font-size:11.5px;font-weight:550;color:var(--sc-text)}
+.sc-td-title{font-size:12.5px;font-weight:600;color:var(--sc-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-td-sub{margin-top:2px;font-size:11px;color:var(--sc-text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-td-marks{display:flex;flex-wrap:wrap;gap:4px}
+.sc-mark{font-size:10.5px;padding:1px 6px;border-radius:999px;border:1px solid var(--sc-line);color:var(--sc-text2);white-space:nowrap;background:color-mix(in srgb, var(--sc-layer1) 65%, transparent)}
+
+.sc-hint{
+  position:absolute;left:14px;bottom:14px;z-index:5;display:flex;align-items:center;gap:8px;
+  max-width:calc(100% - 230px);padding:6px 8px 6px 11px;border-radius:999px;border:1px solid var(--sc-line);
+  background:color-mix(in srgb, var(--sc-layer1) 84%, transparent);
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+  font-size:11px;color:var(--sc-text2);animation:sc-fade-in var(--sc-m-slow) var(--sc-ease) both;
+}
+.sc-hint-text{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sc-hint-close{appearance:none;border:0;background:transparent;color:var(--sc-text3);width:16px;height:16px;display:flex;align-items:center;justify-content:center;border-radius:50%;cursor:pointer;flex-shrink:0}
+.sc-hint-close:hover{color:var(--sc-text);background:color-mix(in srgb, var(--sc-text) 10%, transparent)}
+
+.sc-notice{
+  position:absolute;left:50%;bottom:76px;z-index:40;max-width:min(560px,calc(100% - 32px));
+  transform:translate(-50%,8px);padding:8px 14px;border-radius:999px;border:1px solid var(--sc-line);
+  background:var(--sc-overlay);box-shadow:var(--sc-shadow-float);font-size:12px;color:var(--sc-text);
+  opacity:0;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  transition:opacity var(--sc-m-base) var(--sc-ease),transform var(--sc-m-base) var(--sc-ease);
+}
+.sc-notice.is-on{opacity:1;transform:translate(-50%,0)}
+
+@container (max-width:900px){
+  .sc-head-actions .sc-btn-text{display:none}
+  .sc-head-actions .sc-btn-icon{padding:0 8px}
+  .sc-conclusion-text{display:none}
+}
+@container (max-width:720px){
+  .sc-conclusion-badges{display:none}
+  .sc-hint{max-width:calc(100% - 32px)}
+}
+
 /* ── 动效 ─────────────────────────────────────────────────────────────── */
 @keyframes sc-fade-in{from{opacity:0}to{opacity:1}}
 @keyframes sc-shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
@@ -5912,6 +6523,24 @@ html[data-mode="dark"] .sc-root{
   const CHANNEL = '/sleuth-canvas'
   const PANEL_ID = 'sleuth-canvas'
   const PANEL_LABEL = '诊断画布'
+
+  // 打开 DSH 会话：sessions.open(id) 由宿主界面负责切主区；客户端列表里没有这个 id 时会抛，
+  // 页面把错误变成一条可见提示，不做静默失败。
+  function makeSessionOpener(ctx) {
+    return function openSession(id) {
+      if (!id) return Promise.reject(new Error('这条 trace 没有 harness_session，找不到对应的 DSH 会话'))
+      let sessions = null
+      try { sessions = ctx.get('sessions') } catch (error) { sessions = null }
+      if (!sessions || typeof sessions.open !== 'function') {
+        return Promise.reject(new Error('sessions 服务不可用：当前界面打不开会话'))
+      }
+      try {
+        return Promise.resolve(sessions.open(String(id)))
+      } catch (error) {
+        return Promise.reject(error)
+      }
+    }
+  }
 
   function makeHost(ctx) {
     const connection = ctx.get('connection')
@@ -5961,7 +6590,7 @@ html[data-mode="dark"] .sc-root{
 
   SC.plugin = {
     name: 'dsh-sleuth-canvas',
-    inject: ['slots', 'connection'],
+    inject: ['slots', 'connection', 'sessions'],
     apply(ctx) {
       const slots = ctx.get('slots')
       if (slots === undefined) {
@@ -5969,6 +6598,7 @@ html[data-mode="dark"] .sc-root{
         return
       }
       SC.host = makeHost(ctx)
+      SC.openSession = makeSessionOpener(ctx)
 
       const disposers = []
       try {

@@ -523,6 +523,8 @@ function summarize(doc, file, meta) {
     category: strOrNull(safeDoc.detected_category),
     resolvedAt: strOrNull(safeDoc.resolved_at),
     currentStep: numOrNull(safeDoc.current_step),
+    // 产生这条 trace 的 DSH 会话号：画布的「打开会话」用它跳回会话；没有就为空，前端禁用该入口。
+    harnessSession: strOrNull(safeDoc.harness_session),
     lastAction: strOrNull(safeDoc.last_action),
     activeCase: normalizeCase(safeDoc.active_case),
     sedimented: readSedimented(safeDoc),

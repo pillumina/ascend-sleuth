@@ -25,6 +25,10 @@ SC.CanvasPage = (function () {
       ['path', { d: 'M9 4.5H5.5V8' }], ['path', { d: 'M15 4.5h3.5V8' }],
       ['path', { d: 'M9 19.5H5.5V16' }], ['path', { d: 'M15 19.5h3.5V16' }],
     ],
+    open: [['path', { d: 'M13 5h6v6' }], ['path', { d: 'M19 5 10.5 13.5' }], ['path', { d: 'M18.4 14.2v4.2a1.8 1.8 0 0 1-1.8 1.8H5.4a1.8 1.8 0 0 1-1.8-1.8V7.2a1.8 1.8 0 0 1 1.8-1.8h4.2' }]],
+    download: [['path', { d: 'M12 4.5v10' }], ['path', { d: 'M7.5 10.5 12 15l4.5-4.5' }], ['path', { d: 'M5 19.5h14' }]],
+    table: [['rect', { x: 4, y: 5, width: 16, height: 14, rx: 2 }], ['path', { d: 'M4 10h16' }], ['path', { d: 'M4 14.5h16' }], ['path', { d: 'M9.5 5v14' }]],
+    canvas: [['rect', { x: 4, y: 5, width: 16, height: 14, rx: 2 }], ['path', { d: 'M8 15.5 11 11l2.6 3.4 2.1-2.5 2.3 3.6' }]],
     copy: [
       ['rect', { x: 8.4, y: 8.4, width: 10.6, height: 10.6, rx: 2.2 }],
       ['path', { d: 'M15.8 8.4V6.6A2.6 2.6 0 0 0 13.2 4H6.6A2.6 2.6 0 0 0 4 6.6v6.6a2.6 2.6 0 0 0 2.6 2.6h1.8' }],
@@ -332,6 +336,30 @@ SC.CanvasPage = (function () {
     )
   }
 
+  // 本地偏好：只存三件与界面有关的小事（上次看的那单、快捷键提示是否关过、画布/列表视图）。
+  // 都包在 try/catch 里：隐私模式或宿主禁用 localStorage 时退化为不记忆，不影响渲染。
+  const STORE = {
+    session: 'dsh-sleuth-canvas:last-session',
+    hint: 'dsh-sleuth-canvas:hint-dismissed',
+    view: 'dsh-sleuth-canvas:view',
+  }
+
+  function storeGet(key) {
+    try { return window.localStorage.getItem(key) } catch (error) { return null }
+  }
+
+  function storeSet(key, value) {
+    try {
+      if (value === null) window.localStorage.removeItem(key)
+      else window.localStorage.setItem(key, String(value))
+    } catch (error) { /* 禁用存储时不记忆 */ }
+  }
+
+  function pngName(file) {
+    const base = String(file || 'sleuth-canvas').replace(/\.yaml$/i, '').replace(/[^A-Za-z0-9._-]+/g, '-')
+    return 'sleuth-canvas-' + base + '.png'
+  }
+
   // ── 页面组件 ───────────────────────────────────────────────────────────────
   function CanvasPage(props) {
     const React = SC.React
@@ -365,6 +393,10 @@ SC.CanvasPage = (function () {
     const [inspectorOpen, setInspectorOpen] = useState(false)
     const [legendOpen, setLegendOpen] = useState(true)
     const [copied, setCopied] = useState('')
+    const [view, setView] = useState(function () { return storeGet(STORE.view) === 'table' ? 'table' : 'canvas' })
+    const [hintOpen, setHintOpen] = useState(function () { return storeGet(STORE.hint) !== '1' })
+    const [exportOpen, setExportOpen] = useState(false)
+    const [notice, setNotice] = useState('')
 
     const rootRef = useRef(null)
     const canvasRef = useRef(null)
@@ -381,6 +413,8 @@ SC.CanvasPage = (function () {
     const handlersRef = useRef({ select: null, hover: null })
     const actionsRef = useRef({})
     const copiedTimer = useRef(0)
+    const noticeTimer = useRef(0)
+    const exportRef = useRef(null)
     const tooltipLast = useRef(null)
 
     listDataRef.current = listData
@@ -409,6 +443,8 @@ SC.CanvasPage = (function () {
     }, [sessions, query, sortKey])
     const activeSession = sessions.find(function (session) { return session.file === activeFile }) || null
     const events = detail && Array.isArray(detail.events) ? detail.events : []
+    const conclusion = useMemo(function () { return detail ? SC.model.buildConclusion(detail, graph) : null }, [detail, graph])
+    const tableRows = useMemo(function () { return detail ? SC.model.buildTableRows(detail, graph) : [] }, [detail, graph])
 
     // ── 取数 ────────────────────────────────────────────────────────────────
     const loadList = useCallback(function (options) {
@@ -437,8 +473,11 @@ SC.CanvasPage = (function () {
           return
         }
         const keep = next.find(function (session) { return session.file === fileRef.current })
-        const pick = keep || sortSessions(next, 'updated')[0]
+        const remembered = storeGet(STORE.session)
+        const saved = remembered ? next.find(function (session) { return session.file === remembered }) : null
+        const pick = keep || saved || sortSessions(next, 'updated')[0]
         fileRef.current = pick.file
+        storeSet(STORE.session, pick.file)
         setActiveFile(pick.file)
         setPhase('ready')
       }).catch(function (error) {
@@ -739,6 +778,7 @@ SC.CanvasPage = (function () {
       setHovered(null)
       setInspectorOpen(false)
       fileRef.current = session.file
+      storeSet(STORE.session, session.file)
       setActiveFile(session.file)
     }
 
@@ -753,11 +793,117 @@ SC.CanvasPage = (function () {
       })
     }
 
+    function showNotice(text) {
+      const value = String(text === null || text === undefined ? '' : text)
+      if (!value) return
+      setNotice(value)
+      if (noticeTimer.current) clearTimeout(noticeTimer.current)
+      noticeTimer.current = setTimeout(function () { setNotice('') }, 2600)
+    }
+
+    function dismissHint() {
+      setHintOpen(false)
+      storeSet(STORE.hint, '1')
+    }
+
+    function toggleView() {
+      setView(function (prev) {
+        const next = prev === 'table' ? 'canvas' : 'table'
+        storeSet(STORE.view, next)
+        return next
+      })
+      setExportOpen(false)
+    }
+
+    function selectConclusion() {
+      if (!conclusion || conclusion.idx === null || conclusion.idx === undefined) return
+      setView('canvas')
+      storeSet(STORE.view, 'canvas')
+      locate(conclusion.idx)
+    }
+
+    function openConversation() {
+      const target = stats && stats.harnessSession ? String(stats.harnessSession) : ''
+      if (!target) {
+        showNotice('这条 trace 没有 harness_session，挂不到 DSH 会话上')
+        return
+      }
+      const opener = SC.openSession
+      if (typeof opener !== 'function') {
+        showNotice('当前界面没有提供打开会话的接口')
+        return
+      }
+      Promise.resolve(opener(target)).then(function () {
+        showNotice('已切到会话 ' + target.slice(0, 12))
+      }).catch(function (error) {
+        showNotice('打开会话失败：' + errorText(error))
+      })
+    }
+
+    function exportPng() {
+      const engine = engineRef.current
+      if (!engine || typeof engine.exportImage !== 'function') {
+        showNotice('画布还没渲染好，稍后再试')
+        return
+      }
+      try {
+        const url = engine.exportImage()
+        if (!url) {
+          showNotice('画布还没渲染好，稍后再试')
+          return
+        }
+        const name = pngName(activeFile)
+        const anchor = document.createElement('a')
+        anchor.href = url
+        anchor.download = name
+        anchor.style.display = 'none'
+        document.body.appendChild(anchor)
+        anchor.click()
+        anchor.remove()
+        showNotice('已导出 PNG（' + name + '）')
+      } catch (error) {
+        showNotice('导出 PNG 失败：' + errorText(error))
+      }
+      setExportOpen(false)
+    }
+
+    function copySummary() {
+      if (!detail) return
+      const text = SC.model.buildExportText(detail, graph)
+      Promise.resolve(U.copyText(text)).then(function (ok) {
+        showNotice(ok ? '已复制旅程摘要' : '复制失败：剪贴板不可用')
+      })
+      setExportOpen(false)
+    }
+
     useEffect(function () {
       return function () {
         if (copiedTimer.current) clearTimeout(copiedTimer.current)
+        if (noticeTimer.current) clearTimeout(noticeTimer.current)
       }
     }, [])
+
+    // 导出菜单：点面板外关闭；Esc 由键盘处理统一关。
+    useEffect(function () {
+      if (!exportOpen) return undefined
+      if (typeof document === 'undefined' || !document || typeof document.addEventListener !== 'function') return undefined
+      function onDown(event) {
+        const node = exportRef.current
+        if (node && event && event.target && typeof node.contains === 'function' && node.contains(event.target)) return
+        setExportOpen(false)
+      }
+      document.addEventListener('pointerdown', onDown)
+      return function () { document.removeEventListener('pointerdown', onDown) }
+    }, [exportOpen])
+
+    // 视图切回画布时容器从 display:none 恢复；effect 在 DOM 提交后跑，直接让引擎按当前尺寸重算。
+    useEffect(function () {
+      if (view !== 'canvas') return undefined
+      const engine = engineRef.current
+      if (!engine) return undefined
+      try { if (typeof engine.resize === 'function') engine.resize() } catch (error) { /* 引擎未就绪 */ }
+      return undefined
+    }, [view])
 
     actionsRef.current = {
       stopReplay: stopReplay,
@@ -770,6 +916,10 @@ SC.CanvasPage = (function () {
       replay: replay,
       detail: detail,
       listOpen: listOpen,
+      view: view,
+      toggleView: toggleView,
+      setExportOpen: setExportOpen,
+      dismissHint: dismissHint,
     }
 
     // 键盘：空格播放/暂停、←/→ 上/下一个事件、f 适配、+/- 缩放、Esc 取消。
@@ -784,6 +934,7 @@ SC.CanvasPage = (function () {
             return
           }
           const actions = actionsRef.current
+          if (actions.setExportOpen) actions.setExportOpen(false)
           if (actions.replay && actions.replay.active) { actions.stopReplay(); setInspectorOpen(false); return }
           if (actions.selected !== null && actions.selected !== undefined) { selectIndex(null); return }
           if (actions.listOpen) actions.setListOpen(false)
@@ -817,6 +968,7 @@ SC.CanvasPage = (function () {
         if (key === 'f') { event.preventDefault(); actions.fit(); return }
         if (key === '+' || key === '=') { event.preventDefault(); actions.zoom(1.2); return }
         if (key === '-') { event.preventDefault(); actions.zoom(1 / 1.2); return }
+        if (key === 't') { event.preventDefault(); actions.toggleView(); return }
       }
       window.addEventListener('keydown', onKeyDown)
       return function () { window.removeEventListener('keydown', onKeyDown) }
@@ -861,16 +1013,58 @@ SC.CanvasPage = (function () {
           { className: 'sc-head-right' },
           SC.h('div', { className: 'sc-chips' }, renderChips()),
           SC.h(
-            'button',
-            {
-              type: 'button',
-              className: 'sc-btn sc-refresh' + (refreshing ? ' is-busy' : ''),
-              onClick: refresh,
-              disabled: refreshing,
-              title: '重新读取 traces/',
-            },
-            SC.h(Icon, { name: 'refresh', size: 15, className: refreshing ? 'sc-spin' : '' }),
-            SC.h('span', { className: 'sc-btn-text' }, '刷新'),
+            'div',
+            { className: 'sc-head-actions' },
+            SC.h(
+              'button',
+              {
+                type: 'button',
+                className: 'sc-btn sc-btn-icon',
+                onClick: openConversation,
+                disabled: !(stats && stats.harnessSession),
+                title: stats && stats.harnessSession ? '回到产生这条 trace 的 DSH 会话' : '这条 trace 没有 harness_session，挂不到会话上',
+                'aria-label': '打开会话',
+              },
+              SC.h(Icon, { name: 'open', size: 15 }),
+              SC.h('span', { className: 'sc-btn-text' }, '打开会话'),
+            ),
+            SC.h(
+              'div',
+              { className: 'sc-export', ref: exportRef },
+              SC.h(
+                'button',
+                {
+                  type: 'button',
+                  className: 'sc-btn sc-btn-icon' + (exportOpen ? ' is-on' : ''),
+                  onClick: function () { setExportOpen(function (value) { return !value }) },
+                  title: '导出画布或摘要',
+                  'aria-haspopup': 'menu',
+                  'aria-expanded': exportOpen ? 'true' : 'false',
+                },
+                SC.h(Icon, { name: 'download', size: 15 }),
+                SC.h('span', { className: 'sc-btn-text' }, '导出'),
+              ),
+              exportOpen
+                ? SC.h(
+                  'div',
+                  { className: 'sc-export-menu', role: 'menu' },
+                  SC.h('button', { type: 'button', role: 'menuitem', className: 'sc-export-item', onClick: exportPng, disabled: !detail }, SC.h(Icon, { name: 'download', size: 14 }), '导出 PNG（当前视图）'),
+                  SC.h('button', { type: 'button', role: 'menuitem', className: 'sc-export-item', onClick: copySummary, disabled: !detail }, SC.h(Icon, { name: 'copy', size: 14 }), '复制旅程摘要'),
+                )
+                : null,
+            ),
+            SC.h(
+              'button',
+              {
+                type: 'button',
+                className: 'sc-btn sc-refresh' + (refreshing ? ' is-busy' : ''),
+                onClick: refresh,
+                disabled: refreshing,
+                title: '重新读取 traces/',
+              },
+              SC.h(Icon, { name: 'refresh', size: 15, className: refreshing ? 'sc-spin' : '' }),
+              SC.h('span', { className: 'sc-btn-text' }, '刷新'),
+            ),
           ),
         ),
         summary
@@ -896,6 +1090,47 @@ SC.CanvasPage = (function () {
               : null,
           )
           : null,
+        renderConclusion(),
+      )
+    }
+
+    function renderConclusion() {
+      if (!conclusion) return null
+      const clickable = conclusion.idx !== null && conclusion.idx !== undefined
+      const tone = 'var(--sc-' + conclusion.tone + ')'
+      return SC.h(
+        'div',
+        {
+          className: 'sc-conclusion' + (clickable ? ' is-clickable' : '') + (conclusion.empty ? ' is-empty' : ''),
+          style: { '--tone': tone },
+          role: clickable ? 'button' : undefined,
+          tabIndex: clickable ? 0 : undefined,
+          onClick: clickable ? selectConclusion : undefined,
+          onKeyDown: clickable
+            ? function (event) {
+              if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectConclusion() }
+            }
+            : undefined,
+          'aria-label': clickable ? '结论：' + conclusion.title + '，点击定位到结论节点' : '结论：' + conclusion.title,
+        },
+        SC.h('span', { className: 'sc-conclusion-bar' }),
+        SC.h('span', { className: 'sc-conclusion-label' }, conclusion.label),
+        SC.h(
+          'div',
+          { className: 'sc-conclusion-main' },
+          SC.h('div', { className: 'sc-conclusion-title', title: conclusion.title }, conclusion.title),
+          conclusion.text ? SC.h('div', { className: 'sc-conclusion-text', title: conclusion.text }, conclusion.text) : null,
+        ),
+        conclusion.badges.length
+          ? SC.h(
+            'div',
+            { className: 'sc-conclusion-badges' },
+            conclusion.badges.map(function (item, i) {
+              return SC.h('span', { className: 'sc-badge sc-badge-' + (item.tone || 'neutral'), key: i }, item.text)
+            }),
+          )
+          : null,
+        clickable ? SC.h('span', { className: 'sc-conclusion-go' }, '定位 →') : null,
       )
     }
 
@@ -1276,6 +1511,78 @@ SC.CanvasPage = (function () {
       )
     }
 
+    function renderTable() {
+      const stepCount = graph && graph.columns ? graph.columns.length : 0
+      return SC.h(
+        'div',
+        { className: 'sc-table-wrap' },
+        SC.h(
+          'div',
+          { className: 'sc-table-head' },
+          SC.h('div', { className: 'sc-table-title' }, '事件列表'),
+          SC.h('div', { className: 'sc-table-meta' }, tableRows.length + ' 个事件 · ' + stepCount + ' 步 · 点一行定位到画布节点'),
+          SC.h('button', { type: 'button', className: 'sc-btn sc-btn-ghost', onClick: toggleView }, SC.h(Icon, { name: 'canvas', size: 14 }), '回到画布'),
+        ),
+        SC.h(
+          'div',
+          { className: 'sc-table-scroll' },
+          SC.h(
+            'div',
+            { className: 'sc-table', role: 'table', 'aria-label': '诊断事件列表', 'aria-rowcount': String(tableRows.length) },
+            SC.h(
+              'div',
+              { className: 'sc-tr sc-thead', role: 'row' },
+              ['步骤', '角色', '动作', '摘要', '标记'].map(function (label, i) {
+                return SC.h('span', { key: i, role: 'columnheader', className: 'sc-th' }, label)
+              }),
+            ),
+            tableRows.map(function (row) {
+              const active = selected === row.idx
+              return SC.h(
+                'div',
+                {
+                  key: row.idx,
+                  role: 'row',
+                  tabIndex: 0,
+                  'aria-selected': active ? 'true' : 'false',
+                  className: 'sc-tr sc-trow' + (active ? ' is-active' : '') + (row.emphasis === 'conclusion' ? ' is-conclusion' : ''),
+                  style: { '--tone': 'var(--sc-' + row.tone + ')' },
+                  onClick: function () { locate(row.idx) },
+                  onKeyDown: function (event) {
+                    if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); locate(row.idx) }
+                  },
+                },
+                SC.h('span', { role: 'cell', className: 'sc-td sc-td-step' }, 'S' + row.step),
+                SC.h('span', { role: 'cell', className: 'sc-td sc-td-role' }, row.roleLabel),
+                SC.h('span', { role: 'cell', className: 'sc-td sc-td-action' }, row.action),
+                SC.h(
+                  'div',
+                  { role: 'cell', className: 'sc-td sc-td-main' },
+                  SC.h('div', { className: 'sc-td-title', title: row.title }, row.title),
+                  row.subtitle ? SC.h('div', { className: 'sc-td-sub', title: row.subtitle }, row.subtitle) : null,
+                ),
+                SC.h(
+                  'div',
+                  { role: 'cell', className: 'sc-td sc-td-marks' },
+                  row.marks.map(function (mark, i) { return SC.h('span', { key: i, className: 'sc-mark' }, mark) }),
+                ),
+              )
+            }),
+          ),
+        ),
+      )
+    }
+
+    function renderHint() {
+      if (!hintOpen) return null
+      return SC.h(
+        'div',
+        { className: 'sc-hint', role: 'note' },
+        SC.h('span', { className: 'sc-hint-text' }, '滚轮缩放 · 拖拽平移 · f 适配 · ←/→ 逐个事件 · t 列表视图'),
+        SC.h('button', { type: 'button', className: 'sc-hint-close', onClick: dismissHint, title: '关闭提示', 'aria-label': '关闭快捷键提示' }, SC.h(Icon, { name: 'close', size: 12 })),
+      )
+    }
+
     function renderCanvas() {
       const showEmpty = phase === 'empty' || (detailPhase === 'ready' && detail && (!detail.events || !detail.events.length))
       return SC.h(
@@ -1283,7 +1590,7 @@ SC.CanvasPage = (function () {
         { className: 'sc-stage' },
         SC.h(
           'div',
-          { className: 'sc-canvas-wrap', ref: wrapRef },
+          { className: 'sc-canvas-wrap' + (view === 'table' ? ' is-hidden' : ''), ref: wrapRef },
           SC.h('canvas', { className: 'sc-canvas', ref: canvasRef, 'aria-label': '诊断旅程画布' }),
           SC.h(
             'div',
@@ -1306,10 +1613,20 @@ SC.CanvasPage = (function () {
               ),
               detail
                 ? SC.h(
-                  'button',
-                  { type: 'button', className: 'sc-top-btn sc-insp-toggle', onClick: function () { setInspectorOpen(function (value) { return !value }) }, title: '洞察检查器' },
-                  SC.h(Icon, { name: 'insight', size: 14 }),
-                  '洞察',
+                  'div',
+                  { className: 'sc-top-actions' },
+                  SC.h(
+                    'button',
+                    { type: 'button', className: 'sc-top-btn', onClick: toggleView, title: view === 'table' ? '回到画布视图（t）' : '切到事件列表视图（t）' },
+                    SC.h(Icon, { name: view === 'table' ? 'canvas' : 'table', size: 14 }),
+                    view === 'table' ? '画布' : '列表',
+                  ),
+                  SC.h(
+                    'button',
+                    { type: 'button', className: 'sc-top-btn sc-insp-toggle', onClick: function () { setInspectorOpen(function (value) { return !value }) }, title: '洞察检查器' },
+                    SC.h(Icon, { name: 'insight', size: 14 }),
+                    '洞察',
+                  ),
                 )
                 : null,
             ),
@@ -1327,7 +1644,7 @@ SC.CanvasPage = (function () {
               SC.h('span', { className: 'sc-now-text' }, nowText()),
             ),
           ),
-          hoveredNode && tooltip
+          view === 'canvas' && hoveredNode && tooltip
             ? SC.h(
               'div',
               {
@@ -1341,7 +1658,7 @@ SC.CanvasPage = (function () {
               SC.h('div', { className: 'sc-tooltip-meta' }, hoveredNode.meta),
             )
             : null,
-          overview && overview.legend.length
+          view === 'canvas' && overview && overview.legend.length
             ? SC.h(
               'div',
               { className: 'sc-legend' + (legendOpen ? ' is-open' : '') },
@@ -1369,7 +1686,7 @@ SC.CanvasPage = (function () {
                 : null,
             )
             : null,
-          detail
+          view === 'canvas' && detail
             ? SC.h(
               'div',
               { className: 'sc-zoom' },
@@ -1378,7 +1695,9 @@ SC.CanvasPage = (function () {
               SC.h('button', { type: 'button', className: 'sc-zoom-btn', onClick: fit, title: '适配（f）', 'aria-label': '适配视图' }, SC.h(Icon, { name: 'fit', size: 15 })),
             )
             : null,
-          renderReplay(),
+          view === 'canvas' ? renderReplay() : null,
+          view === 'table' && detail && !showEmpty ? renderTable() : null,
+          view === 'canvas' && detail && !showEmpty && !replay.active ? renderHint() : null,
           showEmpty ? renderCanvasEmpty() : null,
           detailPhase === 'error' ? renderCanvasError() : null,
           detailPhase === 'loading' ? renderStageLoading() : null,
@@ -1738,6 +2057,7 @@ SC.CanvasPage = (function () {
       },
       renderHeader(),
       SC.h('div', { className: 'sc-body' }, renderList(), renderCanvas(), renderInspector()),
+      SC.h('div', { className: 'sc-notice' + (notice ? ' is-on' : ''), role: 'status', 'aria-live': 'polite' }, notice),
       SC.h('div', { className: 'sc-sr-only', 'aria-live': 'polite' }, copied ? '已复制' : ''),
     )
   }

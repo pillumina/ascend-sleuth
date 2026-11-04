@@ -1,5 +1,6 @@
 # 合成测试夹具：中断后续接的诊断 trace（resume + report + sedimented + feedback pending）。
 # 全部内容为虚构，与任何真实客户现场无关。
+harness_session: "demo-harness-9003"
 session_id: "2026-01-04-demo-a2-resume-report"
 status: in_progress
 current_step: 12
