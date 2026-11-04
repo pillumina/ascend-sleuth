@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.8.0'
+    const PLUGIN_VERSION = '0.9.0'
     const POLL_MS = 10000
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
@@ -105,6 +105,7 @@ window.__ModuleLoader__.load({
       'error.reopen': '数据来自 traces/；判据在 scripts/trace_state.py。',
       'hint.draft': '已填入输入框，按 Enter 发送。',
       'hint.copied': '已复制。',
+      'hint.copiedIssue': 'issue 文本已复制。',
       'hint.copyFailed': '这个界面不允许写剪贴板，请手动选择文本。',
       'hint.noInput': '这个界面没有提供写入输入框的接口，指令已复制到剪贴板。',
       'hint.failed': '填入输入框失败：{message}',
@@ -133,6 +134,25 @@ window.__ModuleLoader__.load({
       'section.overview': '概览',
       'section.background': '问题背景',
       'section.upstream': '上游查证',
+      'section.materials': '在等材料',
+      'section.timeline': '步骤时间线',
+      'materials.hint': '来自 trace 的缺失记录；拿到后贴回会话，或带着这份清单续接。',
+      'action.copyMaterials': '复制清单',
+      'action.materialResume': '填入续接指令',
+      'action.loadTimeline': '展开步骤',
+      'action.hideTimeline': '收起步骤',
+      'timeline.loading': '正在读步骤…',
+      'timeline.none': '这条轨迹还没有步骤记录。',
+      'timeline.role.user': '用户',
+      'timeline.role.agent': '助手',
+      'timeline.role.resume': '续接',
+      'copy.issue': '复制为 issue 文本',
+      'search.placeholder': '搜索单号 / case / 关键词',
+      'cmd.placeholder': '输入命令…',
+      'cmd.hint': '↑↓ 选择 · Enter 执行 · Esc 关闭',
+      'cmd.empty': '没有匹配的命令',
+      'command.primary': '主操作',
+      'hint.refreshed': '已刷新。',
       'section.checklist': '收尾清单',
       'section.evidence': '证据与沉淀',
       'section.history': '写入历史',
@@ -221,7 +241,6 @@ window.__ModuleLoader__.load({
       'palette.loading': '正在读 traces/…',
       'palette.unavailable': '读不到 traces/：{message}',
       'palette.count': '共 {n} 单',
-      'palette.hint': '↑↓ 选择 · Enter 主操作 · Esc 关闭',
       'palette.close': '关闭诊断总览',
       'tool.title': '诊断总览',
       'tool.pending': '{n} 单待回报',
@@ -306,6 +325,7 @@ window.__ModuleLoader__.load({
       'error.reopen': 'Data comes from traces/; rules live in scripts/trace_state.py.',
       'hint.draft': 'Inserted into the composer — press Enter to send.',
       'hint.copied': 'Copied.',
+      'hint.copiedIssue': 'Issue text copied.',
       'hint.copyFailed': 'Clipboard is unavailable here; select the text manually.',
       'hint.noInput': 'This page exposes no composer input; the instruction was copied instead.',
       'hint.failed': 'Could not write the composer: {message}',
@@ -334,6 +354,25 @@ window.__ModuleLoader__.load({
       'section.overview': 'Overview',
       'section.background': 'Background',
       'section.upstream': 'Upstream',
+      'section.materials': 'Waiting for material',
+      'section.timeline': 'Step timeline',
+      'materials.hint': 'Recorded gaps from the trace; paste the missing pieces back, or resume with this list.',
+      'action.copyMaterials': 'Copy list',
+      'action.materialResume': 'Fill resume command',
+      'action.loadTimeline': 'Show steps',
+      'action.hideTimeline': 'Hide steps',
+      'timeline.loading': 'Reading steps…',
+      'timeline.none': 'No step records yet.',
+      'timeline.role.user': 'user',
+      'timeline.role.agent': 'assistant',
+      'timeline.role.resume': 'resume',
+      'copy.issue': 'Copy as issue text',
+      'search.placeholder': 'Search id / case / keyword',
+      'cmd.placeholder': 'Type a command…',
+      'cmd.hint': '↑↓ select · Enter run · Esc close',
+      'cmd.empty': 'No matching command',
+      'command.primary': 'Primary',
+      'hint.refreshed': 'Refreshed.',
       'section.checklist': 'Close-out checklist',
       'section.evidence': 'Evidence and candidates',
       'section.history': 'Write history',
@@ -422,7 +461,6 @@ window.__ModuleLoader__.load({
       'palette.loading': 'Reading traces/…',
       'palette.unavailable': 'Cannot read traces/: {message}',
       'palette.count': '{n} total',
-      'palette.hint': '↑↓ select · Enter primary · Esc close',
       'palette.close': 'Close the diagnosis overview',
       'tool.title': 'Diagnosis overview',
       'tool.pending': '{n} pending outcomes',
@@ -559,6 +597,25 @@ window.__ModuleLoader__.load({
       '.scp-evidence-path{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--scp-muted);}',
       '.scp-candidate-text{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-text);}',
       '.scp-report{margin:0;max-height:260px;overflow:auto;padding:12px 14px;border-radius:10px;background:var(--scp-surface-2);border:1px solid var(--scp-border);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.75;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--scp-text);}',
+      '.scp-search{display:flex;align-items:center;gap:6px;margin:0 0 10px;padding:5px 8px;border:1px solid var(--scp-border);border-radius:8px;background:var(--scp-surface);}',
+      '.scp-search input{flex:1;min-width:0;border:0;outline:none;background:transparent;color:var(--scp-text);font:inherit;font-size:12px;}',
+      '.scp-search input::placeholder{color:var(--scp-faint);}',
+      '.scp-search .scp-kbd{flex:none;}',
+      '.scp-material-row{display:flex;align-items:flex-start;gap:7px;font-size:12px;line-height:1.7;color:var(--scp-text);}',
+      '.scp-material-row::before{content:"·";flex:none;color:var(--scp-accent);font-weight:700;}',
+      '.scp-tl-row{display:grid;grid-template-columns:52px 1fr;gap:4px 10px;padding:7px 0;border-top:1px solid var(--scp-border);}',
+      '.scp-tl-row:first-of-type{border-top:0;}',
+      '.scp-tl-step{font-size:11px;font-variant-numeric:tabular-nums;color:var(--scp-faint);}',
+      '.scp-tl-body{min-width:0;font-size:12px;line-height:1.7;color:var(--scp-text);}',
+      '.scp-tl-meta{font-size:10.5px;color:var(--scp-muted);}',
+      '.scp-tl-reason{margin-top:3px;font-size:11px;line-height:1.6;color:var(--scp-faint);}',
+      '.scp-cmd-backdrop{position:absolute;inset:0;z-index:4;display:flex;justify-content:center;align-items:flex-start;padding-top:11vh;background:color-mix(in srgb, var(--scp-text) 12%, transparent);}',
+      '.scp-cmd{width:min(520px,calc(100% - 32px));max-height:58vh;display:flex;flex-direction:column;border:1px solid var(--scp-border-strong);border-radius:12px;background:var(--scp-surface);box-shadow:0 18px 50px rgba(20,30,50,.22);overflow:hidden;}',
+      '.scp-cmd input{border:0;border-bottom:1px solid var(--scp-border);outline:none;padding:12px 14px;font:inherit;font-size:13px;background:transparent;color:var(--scp-text);}',
+      '.scp-cmd-list{overflow:auto;padding:6px;}',
+      '.scp-cmd-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 9px;border:0;border-radius:7px;background:transparent;color:var(--scp-text);font:inherit;font-size:12.5px;text-align:left;cursor:pointer;}',
+      '.scp-cmd-item[data-on="true"]{background:var(--scp-accent-soft);color:var(--scp-accent);}',
+      '.scp-cmd-empty{padding:14px;font-size:12px;color:var(--scp-muted);}',
       '.scp-history-row{display:flex;align-items:baseline;gap:8px;min-width:0;font-size:11.5px;}',
       '.scp-history-when{flex:none;font-variant-numeric:tabular-nums;color:var(--scp-faint);}',
       '.scp-history-kind{flex:none;font-size:10.5px;line-height:1.6;padding:0 5px;border-radius:4px;background:var(--scp-surface-2);color:var(--scp-muted);}',
@@ -710,6 +767,8 @@ window.__ModuleLoader__.load({
     }
 
     // ── 共享 store（各面同一份数据与开关）──────────────────────────────────
+    let commandRequested = false
+
     const store = {
       prefs: loadPrefs(),
       sessionId: '',
@@ -1181,6 +1240,108 @@ window.__ModuleLoader__.load({
       copyToClipboard(path).then((ok) => flash(ok ? tr('hint.copyPath') : tr('hint.copyFailed')))
     }
 
+    function materialText(row) {
+      const extra = row.extra || {}
+      const items = Array.isArray(extra.missingMaterials) ? extra.missingMaterials : []
+      const files = Array.isArray(extra.evidenceList) ? extra.evidenceList : []
+      const lines = []
+      lines.push('这单还缺以下材料（按 trace 记录）：')
+      if (items.length) items.forEach((item) => lines.push('- ' + item))
+      else lines.push('- ' + (extra.evidenceMissing || '（trace 未写具体缺什么）'))
+      if (files.length) {
+        lines.push('')
+        lines.push('已有证据：')
+        files.forEach((file) => lines.push('- ' + file))
+      }
+      lines.push('')
+      lines.push('单号：' + row.sessionId + '（' + traceSource(row) + '）')
+      return lines.join('\n')
+    }
+
+    function materialResumeDraft(row) {
+      const extra = row.extra || {}
+      const items = Array.isArray(extra.missingMaterials) ? extra.missingMaterials : []
+      return resumeDraft(row) + '\n\n补齐材料后再继续：' + (items.length ? '\n' + items.map((item) => '- ' + item).join('\n') : extra.evidenceMissing || '')
+    }
+
+    function issueTitle(row) {
+      const summary = String(row.summary || '').trim()
+      const first = summary.split(/[。；;]/)[0] || row.sessionId
+      if (first.length <= 80) return first
+      const window = first.slice(0, 80)
+      const cut = Math.max(window.lastIndexOf('，'), window.lastIndexOf('、'), window.lastIndexOf('：'), window.lastIndexOf(' '))
+      return cut >= 30 ? first.slice(0, cut) + '…' : first.slice(0, 78) + '……'
+    }
+
+    // 给 issue / 群聊的纯文本：只抄 trace 已有事实，不补写结论，不加建议段落。
+    function issueText(row) {
+      const extra = row.extra || {}
+      const lines = []
+      lines.push('标题：' + issueTitle(row))
+      lines.push('')
+      lines.push('现象：')
+      lines.push(String(row.summary || '').trim() || '（trace 未写 summary）')
+      const env = []
+      if (extra.platform) env.push('平台 ' + extra.platform)
+      if (extra.framework) env.push('框架 ' + extra.framework)
+      if (extra.category) env.push('性质 ' + (CATEGORY_LABEL[extra.category] || extra.category))
+      if (row.severity) env.push('严重级 ' + (SEVERITY_LABEL[row.severity] || row.severity))
+      if (env.length) {
+        lines.push('')
+        lines.push('环境：')
+        lines.push(env.join('；'))
+      }
+      if (row.activeCase) {
+        lines.push('')
+        lines.push('相关 case：' + row.activeCase)
+      }
+      const files = Array.isArray(extra.evidenceList) ? extra.evidenceList : []
+      if (files.length) {
+        lines.push('')
+        lines.push('证据：')
+        files.forEach((file) => lines.push('- ' + file))
+      }
+      // 只在已收尾时抄结论；进行中的助手输出常含内部待办，不往外发。
+      if (['resolved', 'escalated', 'archived'].indexOf(row.status) >= 0 && extra.lastOutput) {
+        lines.push('')
+        lines.push('结论：')
+        lines.push(extra.lastOutput)
+      }
+      lines.push('')
+      lines.push('单号：' + row.sessionId + '（' + traceSource(row) + '）')
+      return lines.join('\n')
+    }
+
+    function matchesQuery(row, query) {
+      const needle = String(query || '').trim().toLowerCase()
+      if (!needle) return true
+      const extra = row.extra || {}
+      const parts = [
+        row.sessionId, row.summary, row.activeCase, extra.platform, extra.framework,
+        extra.lastAction, extra.lastOutput,
+      ]
+      if (Array.isArray(extra.excludedCases)) parts.push(extra.excludedCases.join(' '))
+      if (Array.isArray(extra.evidenceList)) parts.push(extra.evidenceList.join(' '))
+      return parts.filter(Boolean).join('\n').toLowerCase().includes(needle)
+    }
+
+    function timelineRoleLabel(role) {
+      if (role === 'user') return tr('timeline.role.user')
+      if (role === 'resume') return tr('timeline.role.resume')
+      return tr('timeline.role.agent')
+    }
+
+    function timelineActionLabel(action) {
+      const labels = {
+        triage: '路由', triage_semantic: '语义路由', load_index: '读索引', load_full: '读候选全文',
+        quickly_check: '校验候选', tier3: '深挖候选', reference_lookup: '查先验', external_lookup: '查外部',
+        run_check: '跑检查', report: '产出报告', resume: '续接', feedback: '回报',
+        attribution: '归因', procedure_follow: '按流程', hit: '命中', miss: '未命中',
+        output: '输出', source_analysis: '源码分析',
+      }
+      return labels[action] || action || ''
+    }
+
     function summaryText(row, data) {
       const extra = row.extra || {}
       const status = statusMeta(data && data.vocab, row.status)
@@ -1424,7 +1585,7 @@ window.__ModuleLoader__.load({
       }
 
       function copyItem(item) {
-        copyToClipboard(item.text).then((ok) => onFlash(ok ? tr('hint.copied') : tr('hint.copyFailed')))
+        copyToClipboard(item.text).then((ok) => onFlash(ok ? (item.message || tr('hint.copied')) : tr('hint.copyFailed')))
       }
 
       function openForm(next) {
@@ -1605,6 +1766,10 @@ window.__ModuleLoader__.load({
           key: 'summary',
           label: tr('action.copySummary'),
           onSelect: () => copyItem({ text: summaryText(row, data) }),
+        }, {
+          key: 'issue',
+          label: tr('copy.issue'),
+          onSelect: () => copyItem({ text: issueText(row), message: tr('hint.copiedIssue') }),
         }],
       })
 
@@ -1760,11 +1925,25 @@ window.__ModuleLoader__.load({
           return undefined
         }, [s.data, s.sessionId])
 
-        // ⌘⇧D / Ctrl+Shift+D 打开诊断总览，并选中当前跟踪的那一单。
+        // ⌘⇧D / Ctrl+Shift+D 打开诊断总览；⌘K / Ctrl+K 打开总览并进入命令面板。
         React.useEffect(() => {
           const onKey = (event) => {
             const key = String(event.key || '').toLowerCase()
-            if (key !== 'd' || !event.shiftKey || !(event.metaKey || event.ctrlKey)) return
+            const mod = event.metaKey || event.ctrlKey
+            if (!mod) return
+            if (key === 'k') {
+              event.preventDefault()
+              const current = store.data && store.data.ok !== false ? store.data : null
+              if (!current) return
+              const all = current.all || []
+              const pinned = pinnedIdFor(store.sessionId)
+              const picked = (pinned && all.find((row) => row.sessionId === pinned))
+                || current.bound || (current.recent && current.recent[0]) || null
+              commandRequested = true
+              setPaletteOpen(true, picked ? picked.sessionId : '')
+              return
+            }
+            if (key !== 'd' || !event.shiftKey) return
             event.preventDefault()
             const current = store.data && store.data.ok !== false ? store.data : null
             if (!current) return
@@ -1777,6 +1956,38 @@ window.__ModuleLoader__.load({
           window.addEventListener('keydown', onKey)
           return () => window.removeEventListener('keydown', onKey)
         }, [])
+
+        // 欠回报时把数量挂到页面标题前缀，切走再回来能看见；不弹窗。
+        const pendingCount = s.data && s.data.counts ? Number(s.data.counts.pendingFeedback) || 0 : 0
+        React.useEffect(() => {
+          if (typeof document === 'undefined') return undefined
+          const apply = () => {
+            const current = String(document.title || '')
+            const plain = current.replace(/^\[\d+\]\s*/, '')
+            document.title = pendingCount > 0 ? '[' + pendingCount + '] ' + plain : plain
+          }
+          apply()
+          let observer = null
+          let selfMutated = false
+          try {
+            const node = typeof document.querySelector === 'function' ? document.querySelector('title') : null
+            if (node && typeof MutationObserver !== 'undefined') {
+              observer = new MutationObserver(() => {
+                if (selfMutated) { selfMutated = false; return }
+                selfMutated = true
+                apply()
+              })
+              observer.observe(node, { childList: true, characterData: true, subtree: true })
+            }
+          } catch {
+            observer = null
+          }
+          return () => {
+            if (observer) observer.disconnect()
+            // 只摘自己加的前缀，不写回捕获时的旧标题（期间可能已切过会话）。
+            document.title = String(document.title || '').replace(/^\[\d+\]\s*/, '')
+          }
+        }, [pendingCount])
 
         React.useEffect(() => {
           if (!pickerOpen) return undefined
@@ -2107,10 +2318,14 @@ window.__ModuleLoader__.load({
       const data = s.data && s.data.ok !== false ? s.data : null
       const rows = data ? (data.all || []) : []
       const filter = s.prefs.paletteFilter
-      const filtered = filterRows(rows, filter)
       const [selected, setSelected] = React.useState(0)
+      const [searchText, setSearchText] = React.useState('')
       const [menuOpen, setMenuOpen] = React.useState(false)
       const [menuForm, setMenuForm] = React.useState(null)
+      const [cmdOpen, setCmdOpen] = React.useState(false)
+      const [cmdQuery, setCmdQuery] = React.useState('')
+      const [cmdIndex, setCmdIndex] = React.useState(0)
+      const [timelineState, setTimelineState] = React.useState({ open: false, loading: false, items: [], error: '' })
       const [toast, setToast] = React.useState('')
       const [reportState, setReportState] = React.useState({ open: false, loading: false, text: '', error: '' })
       const reportToken = React.useRef(0)
@@ -2118,6 +2333,11 @@ window.__ModuleLoader__.load({
       const [undoBusy, setUndoBusy] = React.useState(false)
       const toastTimer = React.useRef(null)
       const panelRef = React.useRef(null)
+      const searchRef = React.useRef(null)
+      const cmdInputRef = React.useRef(null)
+      const timelineToken = React.useRef(0)
+      const commandsRef = React.useRef([])
+      const filtered = filterRows(rows, filter).filter((item) => matchesQuery(item, searchText))
 
       const flash = React.useCallback((text) => {
         setToast(text)
@@ -2147,9 +2367,38 @@ window.__ModuleLoader__.load({
 
       React.useEffect(() => {
         reportToken.current += 1
+        timelineToken.current += 1
         setReportState({ open: false, loading: false, text: '', error: '' })
+        setTimelineState({ open: false, loading: false, items: [], error: '' })
         setUndoBusy(false)
-      }, [selected, filter, s.paletteOpen])
+      }, [selected, filter, searchText, s.paletteOpen])
+
+      React.useEffect(() => {
+        if (s.paletteOpen) return
+        commandRequested = false
+        setCmdOpen(false)
+        setCmdQuery('')
+        setCmdIndex(0)
+        setSearchText('')
+        setMenuOpen(false)
+      }, [s.paletteOpen])
+
+      React.useEffect(() => {
+        if (!s.paletteOpen) return
+        if (commandRequested) {
+          commandRequested = false
+          setCmdOpen(true)
+          setCmdQuery('')
+          setCmdIndex(0)
+        }
+      }, [s.paletteOpen])
+
+      React.useEffect(() => {
+        if (cmdOpen) {
+          const node = cmdInputRef.current
+          if (node && typeof node.focus === 'function') node.focus()
+        }
+      }, [cmdOpen])
 
       React.useEffect(() => {
         if (!s.paletteOpen) return undefined
@@ -2158,6 +2407,44 @@ window.__ModuleLoader__.load({
         const onKey = (event) => {
           const target = event.target
           const typing = target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || '')
+          if ((event.metaKey || event.ctrlKey) && String(event.key || '').toLowerCase() === 'k') {
+            event.preventDefault()
+            setCmdOpen(true)
+            setCmdQuery('')
+            setCmdIndex(0)
+            return
+          }
+          if (cmdOpen) {
+            const items = commandsRef.current || []
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              setCmdOpen(false)
+              return
+            }
+            if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+              event.preventDefault()
+              if (!items.length) return
+              setCmdIndex((current) => {
+                const next = event.key === 'ArrowDown' ? current + 1 : current - 1
+                return Math.max(0, Math.min(next, items.length - 1))
+              })
+              return
+            }
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              const item = items[cmdIndex]
+              if (item && typeof item.run === 'function') {
+                setCmdOpen(false)
+                item.run()
+              }
+            }
+            return
+          }
+          if (event.key === '/' && !typing && !menuOpen) {
+            event.preventDefault()
+            if (searchRef.current && typeof searchRef.current.focus === 'function') searchRef.current.focus()
+            return
+          }
           if (event.key === 'Escape') {
             event.preventDefault()
             if (menuOpen) setMenuOpen(false)
@@ -2184,7 +2471,7 @@ window.__ModuleLoader__.load({
         }
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
-      }, [s.paletteOpen, filtered, selected, menuOpen])
+      }, [s.paletteOpen, filtered, selected, menuOpen, cmdOpen, cmdQuery, cmdIndex])
 
       if (!s.paletteOpen) return null
 
@@ -2295,6 +2582,54 @@ window.__ModuleLoader__.load({
         else fillDraft(sedimentDraft(target))
       }
 
+      function toggleTimeline(target) {
+        if (!target) return
+        if (timelineState.open) {
+          timelineToken.current += 1
+          setTimelineState({ open: false, loading: false, items: [], error: '' })
+          return
+        }
+        const token = timelineToken.current + 1
+        timelineToken.current = token
+        setTimelineState({ open: true, loading: true, items: [], error: '' })
+        rpcCall('copilot-timeline', {
+          cwd: store.cwd,
+          tracesDir: data && data.tracesDir,
+          traceFile: target.file,
+        }).then((res) => {
+          if (timelineToken.current !== token || selectedRowRef.current !== target.sessionId) return
+          if (res && res.ok) {
+            setTimelineState({ open: true, loading: false, items: Array.isArray(res.timeline) ? res.timeline : [], error: '' })
+          } else {
+            setTimelineState({ open: true, loading: false, items: [], error: (res && res.message) || tr('timeline.none') })
+          }
+        }, (error) => {
+          if (timelineToken.current !== token || selectedRowRef.current !== target.sessionId) return
+          setTimelineState({ open: true, loading: false, items: [], error: String((error && error.message) || error) })
+        })
+      }
+
+      function commandItemsFor(target) {
+        if (!target) return []
+        const items = []
+        const primary = primaryFor(target, data && data.bound && target.sessionId === data.bound.sessionId)
+        items.push({ label: tr('command.primary') + '：' + primary.label, run: () => runPrimary(target) })
+        items.push({ label: tr('action.copySummary'), run: () => copyAndFlash(summaryText(target, data)) })
+        items.push({ label: tr('copy.issue'), run: () => copyAndFlash(issueText(target)) })
+        items.push({ label: tr('action.viewReport'), run: () => toggleReport(target) })
+        if (target.activeCase) items.push({ label: tr('action.upstream'), run: () => fillDraft(upstreamDraft(target, data.upstream)) })
+        if (target.activeCase || isPending(target)) {
+          items.push({ label: tr('action.feedback'), run: () => { setMenuForm('feedback'); setMenuOpen(true) } })
+        }
+        if (target.derived && target.derived.needSed) {
+          items.push({ label: tr('action.sediment'), run: () => fillDraft(sedimentDraft(target)) })
+        }
+        items.push({ label: tr('action.loadTimeline'), run: () => toggleTimeline(target) })
+        items.push({ label: tr('action.refresh'), run: () => { refresh(true); flash(tr('hint.refreshed')) } })
+        items.push({ label: tr('palette.close'), run: () => setPaletteOpen(false) })
+        return items
+      }
+
       function def(label, value, key) {
         return h('div', { className: 'scp-def', key: key || label },
           h('dt', {}, label),
@@ -2321,7 +2656,15 @@ window.__ModuleLoader__.load({
       }, h('circle', { cx: 20, cy: 20, r: 13, strokeDasharray: '3 4' }),
         h('path', { d: 'M14 20h12M20 14v12', strokeLinecap: 'round' }))
 
-      const list = h('div', { className: 'scp-pal-list', role: 'listbox', 'aria-label': tr('palette.title') },
+      const list = h('div', { className: 'scp-pal-list', role: 'region', 'aria-label': tr('palette.title') },
+        h('div', { className: 'scp-search' },
+          h('input', {
+            ref: searchRef, type: 'search', value: searchText,
+            placeholder: tr('search.placeholder'), 'aria-label': tr('search.placeholder'),
+            onChange: (event) => { setSearchText(event.target.value); setSelected(0) },
+            onKeyDown: (event) => { if (event.key === 'Escape') { setSearchText(''); event.stopPropagation() } },
+          }),
+          h('span', { className: 'scp-kbd' }, '/')),
         !data ? skeleton
           : filtered.length === 0 ? h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.empty'))
             : filtered.map((item, index) => {
@@ -2334,8 +2677,7 @@ window.__ModuleLoader__.load({
                 key: item.sessionId,
                 type: 'button',
                 className: 'scp-pal-row',
-                role: 'option',
-                'aria-selected': index === selected ? 'true' : 'false',
+                'aria-current': index === selected ? 'true' : 'false',
                 'data-on': index === selected ? 'true' : 'false',
                 style: { '--scp-tone': TONE_VAR[toneOf(item)] || TONE_VAR.idle },
                 onClick: () => { setSelected(index); setMenuOpen(false) },
@@ -2358,6 +2700,15 @@ window.__ModuleLoader__.load({
       if (extra.platform) sideMeta.push(extra.platform)
       if (extra.framework) sideMeta.push(extra.framework)
       if (extra.category) sideMeta.push(CATEGORY_LABEL[extra.category] || extra.category)
+      const materials = row ? ((extra.missingMaterials) || []) : []
+      const showMaterials = Boolean(row) && (materials.length > 0
+        || Boolean(row && row.derived && row.derived.waitingOn === 'user_material' && waiting))
+      const commandItems = commandItemsFor(row)
+      const cmdNeedle = cmdQuery.trim().toLowerCase()
+      const commandList = cmdNeedle
+        ? commandItems.filter((item) => item.label.toLowerCase().includes(cmdNeedle))
+        : commandItems
+      commandsRef.current = commandList
       const checklist = row && shouldShowChecklist(row) ? checklistFor(row, data) : []
       const upstream = row && row.derived ? (row.derived.upstream || null) : null
       const evidenceList = row ? (extra.evidenceList || []) : []
@@ -2388,6 +2739,21 @@ window.__ModuleLoader__.load({
             waiting ? h('div', { className: 'scp-callout' },
               h('span', { className: 'scp-callout-label' }, tr('section.waiting')),
               h('div', { className: 'scp-callout-text' }, waiting)) : null,
+            showMaterials ? h('div', { className: 'scp-section-label' }, tr('section.materials')) : null,
+            showMaterials ? h('div', { className: 'scp-list-block' },
+              h('div', { className: 'scp-check-state' }, tr('materials.hint')),
+              materials.length
+                ? materials.map((item, index) => h('div', { key: 'mat-' + index, className: 'scp-material-row' }, item))
+                : h('div', { className: 'scp-mono' }, waiting),
+              h('div', { className: 'scp-upstream-row' },
+                h('button', {
+                  type: 'button', className: 'scp-check-action',
+                  onClick: () => copyAndFlash(materialText(row)),
+                }, tr('action.copyMaterials')),
+                h('button', {
+                  type: 'button', className: 'scp-check-action',
+                  onClick: () => fillDraft(materialResumeDraft(row)),
+                }, tr('action.materialResume')))) : null,
             checklist.length ? h('div', { className: 'scp-section-label' }, tr('section.checklist')) : null,
             checklist.length ? h('div', { className: 'scp-check' }, checklist.map((item) => h('div', {
               key: item.key,
@@ -2445,6 +2811,33 @@ window.__ModuleLoader__.load({
                 ? (reportState.loading ? h('div', { className: 'scp-mono' }, tr('report.loading'))
                   : reportState.error ? h('div', { className: 'scp-form-error' }, reportState.error)
                     : h('pre', { className: 'scp-report' }, reportState.text))
+                : null),
+            h('div', { className: 'scp-section-label' }, tr('section.timeline')),
+            h('div', { className: 'scp-list-block' },
+              h('div', { className: 'scp-upstream-row' },
+                h('button', {
+                  type: 'button', className: 'scp-check-action',
+                  onClick: () => toggleTimeline(row),
+                }, timelineState.open ? tr('action.hideTimeline') : tr('action.loadTimeline')),
+                timelineState.open && !timelineState.loading && !timelineState.error && timelineState.items.length
+                  ? h('span', { className: 'scp-check-state' }, String(timelineState.items.length))
+                  : null),
+              timelineState.open
+                ? (timelineState.loading ? h('div', { className: 'scp-mono' }, tr('timeline.loading'))
+                  : timelineState.error ? h('div', { className: 'scp-form-error' }, timelineState.error)
+                    : timelineState.items.length
+                      ? timelineState.items.map((entry, index) => h('div', { key: 'tl-' + index, className: 'scp-tl-row' },
+                        h('span', { className: 'scp-tl-step' }, entry.step ? '第 ' + entry.step + ' 步' : '—'),
+                        h('div', { className: 'scp-tl-body' },
+                          h('div', { className: 'scp-tl-meta' },
+                            timelineRoleLabel(entry.role),
+                            entry.action ? ' · ' + timelineActionLabel(entry.action) : ''),
+                          h('div', {}, entry.output || entry.content || ''),
+                          entry.reason ? h('div', { className: 'scp-tl-reason' }, entry.reason) : null,
+                          entry.evidenceFiles && entry.evidenceFiles.length
+                            ? h('div', { className: 'scp-tl-meta' }, entry.evidenceFiles.join('、'))
+                            : null)))
+                      : h('div', { className: 'scp-mono' }, tr('timeline.none')))
                 : null),
             h('div', { className: 'scp-section-label' }, tr('section.overview')),
             h('dl', { className: 'scp-grid2' },
@@ -2537,6 +2930,10 @@ window.__ModuleLoader__.load({
               ' 选择 · ',
               h('span', { className: 'scp-kbd' }, 'Enter'),
               ' 主操作 · ',
+              h('span', { className: 'scp-kbd' }, '/'),
+              ' 搜索 · ',
+              h('span', { className: 'scp-kbd' }, '⌘K'),
+              ' 命令 · ',
               h('span', { className: 'scp-kbd' }, 'Esc'),
               ' 关闭'),
             h('span', { className: 'scp-spacer' }),
@@ -2546,6 +2943,30 @@ window.__ModuleLoader__.load({
               tr('queue.sediment', { n: Number(counts.toSediment) || 0 }),
             ].join(' · ')),
             h('span', { className: 'scp-version' }, 'v' + PLUGIN_VERSION)),
+          cmdOpen ? h('div', {
+            className: 'scp-cmd-backdrop',
+            onMouseDown: (event) => { if (event.target === event.currentTarget) setCmdOpen(false) },
+          },
+            h('div', { className: 'scp-cmd', role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('cmd.placeholder') },
+              h('input', {
+                ref: cmdInputRef, value: cmdQuery, placeholder: tr('cmd.placeholder'),
+                role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'scp-cmd-list',
+                'aria-activedescendant': 'scp-cmd-' + cmdIndex,
+                'aria-label': tr('cmd.placeholder'),
+                onChange: (event) => { setCmdQuery(event.target.value); setCmdIndex(0) },
+              }),
+              h('div', { className: 'scp-cmd-list', role: 'listbox', id: 'scp-cmd-list' },
+                commandList.length
+                  ? commandList.map((item, index) => h('button', {
+                    key: 'cmd-' + index, type: 'button', className: 'scp-cmd-item',
+                    role: 'option', id: 'scp-cmd-' + index,
+                    'aria-selected': index === cmdIndex ? 'true' : 'false',
+                    'data-on': index === cmdIndex ? 'true' : 'false',
+                    onMouseEnter: () => setCmdIndex(index),
+                    onClick: () => { setCmdOpen(false); item.run() },
+                  }, item.label))
+                  : h('div', { className: 'scp-cmd-empty' }, tr('cmd.empty'))),
+              h('div', { className: 'scp-pal-foot' }, h('span', {}, tr('cmd.hint'))))) : null,
           toast ? h('span', { className: 'scp-toast', role: 'status' }, toast) : null))
     }
 

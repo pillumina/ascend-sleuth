@@ -40,6 +40,76 @@ def _short(text, limit: int) -> str:
     return value[: max(limit - 2, 1)] + "……"
 
 
+def _material_items(text, summary: str = '', limit: int = 8) -> list:
+    """把 trace 里「还缺什么」的现成记录拆成清单项。
+
+    只做拆分，不补猜：认 `未提供：A、B` 与 `缺 X；缺 Y` 两种写法；不是「缺 / 未提供」
+    开头的分句原样跳过（那些通常是补充事实，不是待补材料）。
+    """
+    items = []
+    value = _one_line(text)
+    if not value:
+        return items
+    for segment in re.split(r"[；;]", value):
+        segment = segment.strip(" 。")
+        if not segment:
+            continue
+        match = re.match(
+            r"^(?:需要提供|未提供|缺少|缺|未贴|没提供|需提供|需要|还需)[：:]?\s*(.+)$",
+            segment,
+        )
+        if not match:
+            continue
+        parts = re.split(r"[、,，]", match.group(1))
+        for part in parts:
+            item = part.strip(" 。")
+            if not item:
+                continue
+            # 后文已经给出的事实不再列为待补（例如 summary 里已写 A3-910C / w8a8c8）。
+            if item.startswith("具体硬件") and re.search(r"A[2-5][- ]?9\d{2}|A[2-5]-\d", summary):
+                continue
+            if item.startswith("量化档") and re.search(r"w[0-9]+a[0-9]+c[0-9]+", summary, re.I):
+                continue
+            if item not in items:
+                items.append(_short(item, 180))
+            if len(items) >= limit:
+                return items
+    return items
+
+
+def _timeline(doc: dict) -> dict:
+    """单条 trace 的步骤时间线：只摘录已有事件，不重排、不推断。"""
+    entries = []
+    for entry in _as_list(doc.get("trace")):
+        if not isinstance(entry, dict):
+            continue
+        role = str(entry.get("role") or "")
+        step = entry.get("step")
+        item = {
+            "role": role,
+            "step": int(step) if isinstance(step, int) else 0,
+            "action": str(entry.get("action") or ""),
+            "output": _short(entry.get("output"), 320),
+            "reason": _short(entry.get("reason"), 320),
+            "content": _short(entry.get("content"), 240),
+        }
+        evidence = _as_dict(entry.get("evidence"))
+        files = [str(x) for x in _as_list(evidence.get("files")) if x]
+        if files:
+            item["evidenceFiles"] = files[:10]
+        if evidence.get("missing"):
+            item["evidenceMissing"] = _short(evidence.get("missing"), 180)
+        if entry.get("report_file"):
+            item["reportFile"] = str(entry.get("report_file"))
+        entries.append(item)
+    return {
+        "sessionId": str(doc.get("session_id") or ""),
+        "summary": _short(doc.get("summary"), SUMMARY_LIMIT),
+        "updatedAt": _short(doc.get("updated_at"), 40),
+        "timeline": entries,
+    }
+
+
 def _as_dict(value) -> dict:
     return value if isinstance(value, dict) else {}
 
@@ -58,6 +128,7 @@ def _extra(doc: dict, traces: Path) -> dict:
     agent_steps = 0
     evidence_files = 0
     evidence_missing = ""
+    evidence_missing_full = ""
     evidence_list = []
     last_output = ""
     last_reason = ""
@@ -73,8 +144,8 @@ def _extra(doc: dict, traces: Path) -> dict:
                 if text and text not in evidence_list:
                     evidence_list.append(text)
             evidence_files += len(_as_list(evidence.get("files")))
-            if evidence.get("missing") and not evidence_missing:
-                evidence_missing = _short(evidence.get("missing"), MISSING_LIMIT)
+            if evidence.get("missing") and not evidence_missing_full:
+                evidence_missing_full = _one_line(evidence.get("missing"))
         elif role == "agent":
             agent_steps += 1
             if entry.get("output"):
@@ -126,9 +197,13 @@ def _extra(doc: dict, traces: Path) -> dict:
         "framework": str(doc.get("detected_framework") or ""),
         "platform": str(doc.get("detected_platform") or ""),
         "category": str(doc.get("detected_category") or ""),
-        "excludedCases": [str(x) for x in _as_list(doc.get("excluded_cases")) if x],
+        "excludedCases": [
+            str(x.get("id") or x.get("case") or "").strip() if isinstance(x, dict) else str(x).strip()
+            for x in _as_list(doc.get("excluded_cases"))
+            if x
+        ],
         "evidenceFiles": evidence_files,
-        "evidenceMissing": evidence_missing,
+        "evidenceMissing": _short(evidence_missing_full, MISSING_LIMIT),
         "lastAction": _short(doc.get("last_action"), TEXT_LIMIT),
         "lastOutput": last_output,
         "lastReason": last_reason,
@@ -138,6 +213,7 @@ def _extra(doc: dict, traces: Path) -> dict:
         "evidenceList": evidence_list[:20],
         "sedimentCandidates": len([c for c in _as_list(doc.get("sediment_candidates")) if isinstance(c, dict)]),
         "sedimentCandidateList": candidates,
+        "missingMaterials": _material_items(evidence_missing_full, _one_line(doc.get("summary"))),
     }
 
 
@@ -175,6 +251,7 @@ def main(argv=None) -> int:
     parser.add_argument("--all-limit", type=int, default=80, help="全库薄行最多给几条")
     parser.add_argument("--can-write", action="store_true", help="本会话是否有写权限（由 host 判定后传入）")
     parser.add_argument("--write-root", default="", help="可写的主检出根")
+    parser.add_argument("--timeline", default="", help="只读单条轨迹的步骤时间线（传文件名，供总览懒加载）")
     args = parser.parse_args(argv)
 
     root = Path(args.root)
@@ -203,6 +280,28 @@ def main(argv=None) -> int:
             "vocab": {},
             "note": "E_TRACES_NOT_FOUND",
         })
+
+    if args.timeline:
+        name = str(args.timeline)
+        if name != Path(name).name or not name.endswith(".yaml") or name.startswith("."):
+            return _fail("E_SCHEMA", "轨迹文件名不合法")
+        trace_file = traces / name
+        if not trace_file.is_file():
+            return _fail("E_NOT_FOUND", "轨迹文件不存在：" + name)
+        try:
+            rows = trace_state.load_traces(traces)
+        except Exception as exc:
+            return _fail("E_LOAD", "读轨迹失败：" + str(exc))
+        doc = None
+        for row in rows:
+            if row.get("file") == name:
+                parsed = _as_dict(row.get("doc"))
+                if parsed:
+                    doc = parsed
+                break
+        if not doc:
+            return _fail("E_PARSE", "轨迹文件没有可读的事件：" + name)
+        return _ok(_timeline(doc))
 
     caps = {
         "canWrite": bool(args.can_write),
@@ -288,6 +387,11 @@ def main(argv=None) -> int:
                 "hasReport": extra.get("hasReport"),
                 "reportFile": extra.get("reportFile"),
                 "sedimentCandidateList": extra.get("sedimentCandidateList"),
+                "missingMaterials": extra.get("missingMaterials"),
+                "lastAction": extra.get("lastAction"),
+                "lastOutput": extra.get("lastOutput"),
+                "lastReason": extra.get("lastReason"),
+                "harnessSession": extra.get("harnessSession"),
             },
         }
 
