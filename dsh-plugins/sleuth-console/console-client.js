@@ -577,7 +577,7 @@ return {
         }))
 
       const switches = React.createElement('div', { className: 'sleu-kb-card' },
-        switchRow('自动检查更新', '诊断开单时 fetch 一次。关闭后不再检查，doctor 会显示「已关闭」。', 'autoCheck'),
+        switchRow('自动检查更新', '诊断开单时 fetch 一次。关闭后不再检查，doctor 会显示「已关闭」；不影响 groom 周批。', 'autoCheck'),
         switchRow('自动合并', '仅当工作区干净、当前在配置分支上、且可快进时合并。不满足只提示，不 rebase。', 'autoMerge'),
       )
 
