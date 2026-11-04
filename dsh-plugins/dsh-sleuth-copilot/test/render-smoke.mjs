@@ -17,6 +17,7 @@ const moduleDefs = []
 const copied = []
 const keyHandlers = new Set()
 const documentHandlers = new Map()
+const styleTags = []
 const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
 
 globalThis.window = {
@@ -40,7 +41,7 @@ globalThis.document = {
     style: {}, textContent: '', value: '',
   }),
   body: { appendChild() {}, removeChild() {} },
-  head: { appendChild() {} },
+  head: { appendChild(tag) { if (tag && typeof tag.textContent === 'string') styleTags.push(tag) } },
   addEventListener(type, fn) {
     if (!documentHandlers.has(type)) documentHandlers.set(type, new Set())
     documentHandlers.get(type).add(fn)
@@ -272,6 +273,16 @@ function findInput(view, placeholder) {
 
 function findNode(view, predicate) {
   return view.nodes.find(predicate)
+}
+
+// 取最近一次 mount 注入的样式里某条规则的声明块；排版契约靠它断言，不靠人看。
+function cssRule(selector) {
+  const tag = styleTags[styleTags.length - 1]
+  const css = tag && typeof tag.textContent === 'string' ? tag.textContent : ''
+  const start = css.indexOf(selector + '{')
+  if (start < 0) return ''
+  const end = css.indexOf('}', start)
+  return end < 0 ? '' : css.slice(start + selector.length + 1, end)
 }
 
 function byClass(view, className) {
@@ -731,7 +742,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：主按钮是回报结果', !!findButton(view, '回报结果'))
   expect('最近一单：显示身份标签（知识库未覆盖）', view.text.includes('知识库未覆盖'))
   expect('最近一单：显示已排除条数', view.text.includes('已排除 3 条'))
-  expect('最近一单：版本串 0.14.0', view.nodes.some((node) => node.props && node.props['data-version'] === '0.14.0'))
+  expect('最近一单：版本串 0.14.1', view.nodes.some((node) => node.props && node.props['data-version'] === '0.14.1'))
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
   expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
 }
@@ -1512,6 +1523,21 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   view = await t.settle()
   expect('沉淀降级：给出原因', view.text.includes('读不到沉淀队列'), view.text.slice(-300))
   expect('沉淀降级：给出重试', !!findButton(view, '刷新'))
+}
+
+{
+  // 第二行的平台 / 框架 / 性质是自由文本（trace 的 detected_platform 可以很长）。
+  // 放不下时按省略号收，不能把这一行顶出状态条：容器裁剪 + 该段可省略 + 悬停看全文。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  const view = t.view()
+  const foot = cssRule('.scp-foot')
+  const meta = cssRule('.scp-meta')
+  expect('第二行：溢出被容器裁掉', /(^|;)overflow:hidden(;|$)/.test(foot), foot)
+  expect('第二行：平台段可缩（min-width:0）', /(^|;)min-width:0(;|$)/.test(meta), meta)
+  expect('第二行：平台段按省略号收', /text-overflow:ellipsis/.test(meta) && /(^|;)overflow:hidden(;|$)/.test(meta), meta)
+  const metaNode = byClass(view, 'scp-meta')[0]
+  expect('第二行：平台段悬停看全文', !!metaNode && typeof metaNode.props.title === 'string'
+    && metaNode.props.title.includes('A3-910C') && metaNode.props.title.includes('·'), metaNode && metaNode.props.title)
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')
