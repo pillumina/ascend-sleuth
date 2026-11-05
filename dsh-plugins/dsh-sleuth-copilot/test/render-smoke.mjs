@@ -680,6 +680,7 @@ async function mount(mode, options) {
   const registry = {}
   const rpcCalls = []
   const drafts = []
+  const openedSessions = []
   const payload = makeState(mode)
   payload.upstream = opts.upstream === false
     ? { ready: false, reason: 'gh 未登录（gh auth login）' }
@@ -750,6 +751,10 @@ async function mount(mode, options) {
         }
       }
       if (name === 'slots') return slots
+      // 只有显式给了 opts.sessionsHost 才装会话服务：默认没有它，才能继续验「没有切会话接口」的降级。
+      if (name === 'sessions' && opts.sessionsHost) {
+        return { openSession(id) { openedSessions.push(String(id)) } }
+      }
       return undefined
     },
   }
@@ -790,6 +795,7 @@ async function mount(mode, options) {
     inject: factoryResult.inject,
     rpcCalls,
     drafts,
+    openedSessions,
     async settle() {
       return inspect(await renderer.rerender())
     },
@@ -1592,13 +1598,15 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
     state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
     pr: { number: 417, url: 'https://gitcode.com/pillumina/ascend-sleuth/pulls/417', platform: 'gitcode', state: 'open', source: 'platform', checkedAt: '2026-11-04T09:00:00+08:00' },
     next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    // 生产形状：来源诊断带 trace 单号与会话号两个值，抬头显示单号、跳转用会话号。
+    source: { sessionId: '2026-11-01-eplb-103900', harnessSession: 'session-origin-abc', mismatch: 'none', sedimented: 'submitted' },
   })
   const prOpen = Object.assign({}, SEDIMENT, {
     drafts: [prDraft],
     counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 9 },
     primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
   })
-  const t = await mount('recent', { sediment: prOpen, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  const t = await mount('recent', { sediment: prOpen, sessionsHost: true, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
   click(findToolbar(t.view()))
   let view = await t.settle()
   view = await t.settle()
@@ -1610,6 +1618,17 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 
   const identity = byClass(view, 'scp-identity')
   expect('PR 详情：抬头是识别行', identity.length === 1 && nodeText(identity[0]).includes('已提 PR · 合入未确认'), identity.length ? nodeText(identity[0]) : 'missing')
+  // 来源诊断显示 trace 单号，点它跳的是该 trace 的 harness 会话号（拿单号去开会话会报 unknown session）。
+  const sourceLink = byClass(view, 'scp-link').find((node) => nodeText(node).includes('2026-11-01-eplb-103900'))
+  expect('PR 详情：来源诊断链接用 trace 单号', !!sourceLink, sourceLink ? nodeText(sourceLink) : 'missing')
+  expect('PR 详情：来源诊断悬停看会话号', !!sourceLink && sourceLink.props.title === 'session-origin-abc',
+    sourceLink ? String(sourceLink.props.title) : 'missing')
+  if (sourceLink) {
+    click(sourceLink)
+    view = await t.settle()
+    expect('PR 详情：跳转用 harness 会话号', t.openedSessions.length === 1 && t.openedSessions[0] === 'session-origin-abc',
+      JSON.stringify(t.openedSessions))
+  }
   const ledes = byClass(view, 'scp-lede')
   expect('PR 详情：标题按正文样式渲染', ledes.length === 1 && ledes[0].props['data-open'] === 'false', String(ledes.length))
   expect('PR 详情：不再用放大标题放摘要', byClass(view, 'scp-hero-title').length === 0)
@@ -1670,6 +1689,39 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   await t.settle()
   const call = t.rpcCalls.filter((item) => item.endpoint === 'copilot-pr-target').pop()
   expect('PR 详情：标记已合入走 mark', call && call.args && call.args.action === 'mark' && call.args.state === 'merged', JSON.stringify(call && call.args))
+}
+
+{
+  // trace 没记 harness_session 时，来源诊断仍显示单号，但不做成可点链接：
+  // 单号不是会话号，拿去调 sessions.open 会报 unknown session。
+  const noHarnessDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    source: { sessionId: '2026-10-30-no-harness', mismatch: 'none', sedimented: 'submitted' },
+  })
+  const noHarness = Object.assign({}, SEDIMENT, {
+    drafts: [noHarnessDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 0, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'groom', label: '继续 groom', prompt: '继续 groom 的批次指令' },
+  })
+  const t = await mount('recent', {
+    sediment: noHarness, sessionsHost: true,
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  const sourceMono = byClass(view, 'scp-mono').filter((node) => nodeText(node) === '2026-10-30-no-harness')
+  expect('沉淀来源：没记会话号仍显示单号', sourceMono.length === 1, sourceMono.map(nodeText).join(' / ') || 'missing')
+  expect('沉淀来源：没记会话号不给可点链接',
+    !byClass(view, 'scp-link').some((node) => nodeText(node).includes('2026-10-30-no-harness')))
+  expect('沉淀来源：没记会话号悬停给原因',
+    !!sourceMono[0] && String(sourceMono[0].props.title).includes('未记会话号'),
+    sourceMono[0] ? String(sourceMono[0].props.title) : 'missing')
+  expect('沉淀来源：没记会话号不调会话接口', t.openedSessions.length === 0, JSON.stringify(t.openedSessions))
 }
 
 {
