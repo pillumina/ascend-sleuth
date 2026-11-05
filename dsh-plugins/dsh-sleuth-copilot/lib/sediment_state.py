@@ -180,7 +180,7 @@ def _target_commit(gm, root: Path, ledger: dict) -> str:
 
 
 def _trace_index(ts, traces: Path) -> list:
-    """全部轨迹的沉淀三字段。读不出的单不带情绪地跳过（队列不因一条坏 trace 空掉）。"""
+    """全部轨迹的沉淀三字段 + 跳会话用的 harness 会话号。读不出的单跳过（队列不因一条坏 trace 空掉）。"""
     rows = []
     try:
         entries = ts.load_traces(traces)
@@ -192,6 +192,7 @@ def _trace_index(ts, traces: Path) -> list:
         block = sedimented if isinstance(sedimented, dict) else {}
         rows.append({
             "sessionId": str(entry.get("sessionId") or ""),
+            "harnessSession": str(doc.get("harness_session") or "").strip(),
             "state": ts.sed_state(doc),
             "case_id": str(block.get("case_id") or block.get("caseId") or ""),
             # 两种写法都读：trace_transition 写 inbox_path，sediment_batch 写 inboxPath。
@@ -424,9 +425,12 @@ def _source(trace, done: bool, promotion: dict, kb_ids: set, draft_in_inbox: boo
 
     契约的三条差异规则都在这里；`draft_left_behind` 是补充的第四种：trace 已经说升格、
     落点也在，草稿却还在 inbox——队列落后于 trace，界面要能提示（Lead 补充）。
+
+    `harnessSession` 与 `sessionId` 是两个值：前者是 DSH 会话号，后者是 trace 单号。只有前者
+    能拿去 `sessions.open`；界面显示 trace 单号，跳转用会话号，缺会话号时该项不可点。
     """
     if trace is None:
-        return {"sessionId": "", "mismatch": "none", "sedimented": "none"}
+        return {"sessionId": "", "harnessSession": "", "mismatch": "none", "sedimented": "none"}
     sedimented = trace["state"]
     case_exists = bool(promotion["casePath"] or promotion["caseId"] in kb_ids)
     mismatch = "none"
@@ -436,7 +440,8 @@ def _source(trace, done: bool, promotion: dict, kb_ids: set, draft_in_inbox: boo
         mismatch = "missing_case"
     if done:
         mismatch = "draft_left_behind"
-    return {"sessionId": trace["sessionId"], "mismatch": mismatch, "sedimented": sedimented}
+    return {"sessionId": trace["sessionId"], "harnessSession": trace.get("harnessSession", ""),
+            "mismatch": mismatch, "sedimented": sedimented}
 
 
 def _writeback(mismatch: str, session: str, case_id: str, draft_key: str = "") -> str:

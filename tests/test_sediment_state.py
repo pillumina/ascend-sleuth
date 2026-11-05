@@ -133,20 +133,24 @@ def write_assessment(repo: Path, key: str, commit: str, decision: str = "new_pat
 
 
 def write_trace(repo: Path, sid: str, state: str = "none", inbox_path: str = "",
-                case_id: str = "") -> Path:
+                case_id: str = "", harness_session=None) -> Path:
+    """harness_session=None 时整个字段不写：主检出里还有这种旧 trace，读侧要当空值。"""
     traces = repo / "traces"
     traces.mkdir(exist_ok=True)
     path = traces / f"{sid}.yaml"
+    head = f'session_id: "{sid}"\n'
+    if harness_session is not None:
+        head += f'harness_session: "{harness_session}"\n'
     path.write_text(
-        f'session_id: "{sid}"\n'
-        'status: resolved\n'
-        'updated_at: "2026-11-01T10:00:00+08:00"\n'
-        "sedimented:\n"
-        f"  state: {state}\n"
-        f'  case_id: "{case_id}"\n'
-        f'  inbox_path: "{inbox_path}"\n'
-        "trace:\n"
-        '  - {role: user, step: 1, content: "测试"}\n',
+        head
+        + 'status: resolved\n'
+        + 'updated_at: "2026-11-01T10:00:00+08:00"\n'
+        + "sedimented:\n"
+        + f"  state: {state}\n"
+        + f'  case_id: "{case_id}"\n'
+        + f'  inbox_path: "{inbox_path}"\n'
+        + "trace:\n"
+        + '  - {role: user, step: 1, content: "测试"}\n',
         encoding="utf-8",
     )
     return path
@@ -415,9 +419,12 @@ class TraceMatchTest(SedimentCase):
 
     def test_match_by_inbox_path(self):
         write_trace(self.repo, "sid-path", state="submitted",
-                    inbox_path="postmortems/inbox/2026-10-20-draft-a.case.yaml")
+                    inbox_path="postmortems/inbox/2026-10-20-draft-a.case.yaml",
+                    harness_session="session-origin-1")
         row = self.draft(self.collect())
         self.assertEqual(row["source"]["sessionId"], "sid-path")
+        # trace 单号与会话号是两个值：界面显示前者，跳转用后者。
+        self.assertEqual(row["source"]["harnessSession"], "session-origin-1")
         self.assertEqual(row["source"]["sedimented"], "submitted")
         self.assertEqual(row["source"]["mismatch"], "none")
 
@@ -425,6 +432,13 @@ class TraceMatchTest(SedimentCase):
         write_trace(self.repo, "sid-case", state="submitted", case_id="DRAFT-A")
         row = self.draft(self.collect())
         self.assertEqual(row["source"]["sessionId"], "sid-case")
+
+    def test_trace_without_harness_key(self):
+        # 旧 trace 可能没有这个字段（不是空串，是整行缺失），读侧按空值处理。
+        write_trace(self.repo, "sid-old", state="submitted", case_id="DRAFT-A")
+        row = self.draft(self.collect())
+        self.assertEqual(row["source"]["sessionId"], "sid-old")
+        self.assertEqual(row["source"]["harnessSession"], "")
 
     def test_match_by_source_session(self):
         write_draft(self.repo, key="draft-src", cid="DRAFT-S", source_session="sid-src")
@@ -437,6 +451,7 @@ class TraceMatchTest(SedimentCase):
     def test_no_trace_gives_empty_session(self):
         row = self.draft(self.collect())
         self.assertEqual(row["source"]["sessionId"], "")
+        self.assertEqual(row["source"]["harnessSession"], "")
         self.assertEqual(row["source"]["mismatch"], "none")
         self.assertEqual(row["source"]["sedimented"], "none")
 

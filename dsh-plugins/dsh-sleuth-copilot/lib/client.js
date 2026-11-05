@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.16.3'
+    const PLUGIN_VERSION = '0.16.4'
     const POLL_MS = 10000
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
@@ -297,7 +297,6 @@ window.__ModuleLoader__.load({
       'sediment.goDiagnosis': '去诊断',
       'sediment.history': '最近完成',
       'sediment.target.pick': '有多个远端，先选一个',
-      'sediment.detail.openSource': '切到该诊断',
       'sediment.primary.prBatch': '生成提 PR 指令（本批 {n} 份）',
       'sediment.prState.open': '待合入',
       'sediment.prState.merged': '已合入',
@@ -690,7 +689,6 @@ window.__ModuleLoader__.load({
       'sediment.goDiagnosis': 'Go to diagnosis',
       'sediment.history': 'Recently completed',
       'sediment.target.pick': 'Multiple remotes; choose one first',
-      'sediment.detail.openSource': 'Open source diagnosis',
       'sediment.primary.prBatch': 'Generate PR prompt ({n} drafts)',
       'sediment.prState.open': 'Awaiting merge',
       'sediment.prState.merged': 'Merged',
@@ -5096,21 +5094,20 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
           const head = []
           // 抬头与诊断详情一致：一行识别信息 + 正文层的问题背景，不把首句放大加粗。
+          // 来源诊断显示 trace 单号，跳的是它记的 harness 会话号；两个值不同，单号不在会话列表里。
+          const sedSourceTrace = sedPick.source ? String(sedPick.source.sessionId || '') : ''
+          const sedSourceSession = sedPick.source ? String(sedPick.source.harnessSession || '') : ''
           head.push(h('div', { key: 'identity', className: 'scp-identity' },
             h('span', { className: 'scp-badge', 'data-tone': SED_CHIP_TONE[sedPick.stageTone] || 'none' }, sedPick.stage || sedPick.state),
             sedPick.novelty ? h('span', { className: 'scp-chip' }, sedPick.novelty + (sedPick.confidence ? ' · ' + sedPick.confidence : '')) : null,
-            sedPick.source && sedPick.source.sessionId
-              ? h('button', {
-                type: 'button', className: 'scp-link',
-                onClick: () => {
-                  const promise = ctxOpenSession(sedPick.source.sessionId)
-                  if (promise && typeof promise.then === 'function') {
-                    promise.then((result) => {
-                      if (!result || result.ok === false) flash((result && result.reason) || tr('sediment.detail.openSource'))
-                    })
-                  }
-                },
-              }, sedPick.source.sessionId + ' ↗')
+            sedSourceTrace
+              ? (sedSourceSession
+                ? h('button', {
+                  type: 'button', className: 'scp-link',
+                  title: sedSourceSession,
+                  onClick: () => openSessionWithFlash(sedSourceSession, flash),
+                }, sedSourceTrace + ' ↗')
+                : h('span', { className: 'scp-mono', title: tr('sessions.missing') }, sedSourceTrace))
               : null,
             h('span', { className: 'scp-identity-meta' }, sedAgeText(sedPick))))
           head.push(h('p', {
