@@ -391,17 +391,20 @@ _AUTH_ERROR = re.compile(
     r"permission denied \(publickey\)|returned error: 40[13]",
     re.I)
 # 网络/代理/TLS 一类：git 与 libcurl 的常见文案都收进来，别只认前三条。
+# 刻意不写裸的 ssl / tls / proxy：主机名或路径里带这些词时，404 也会被误归到网络。
 _NETWORK_ERROR = re.compile(
     r"could not resolve|failed to connect|connection (?:refused|reset|timed out)|"
     r"operation timed out|network is unreachable|no route to host|"
-    r"ssl_connect|ssl_error|ssl routines|certificate (?:verify|problem)|"
-    r"self[- ]signed|handshake|gnutls|empty reply from server|tunnel failed|"
-    r"\bssl\b|\btls\b|rpc failed|remote end hung up|early eof|"
-    r"recv failure|send failure|returned error: 5\d\d|proxy",
+    r"ssl_connect|ssl_error|ssl routines|ssl certificate|openssl|gnutls|"
+    r"handshake|certificate (?:verification|verify|problem|has expired)|"
+    r"self[- ]signed|empty reply from server|tunnel failed|"
+    r"proxy (?:connect|connection|error|authentication)|(?:from|to|via) proxy|"
+    r"rpc failed|remote end hung up|early eof|"
+    r"recv failure|send failure|returned error: 5\d\d",
     re.I)
-# ref 锁：只认 git 的锁冲突文案，别把 "blocked" 里的 lock 字样当成锁。
+# ref 锁：只认 git 的锁冲突文案，别把 "blocked" 里的 lock 字样或临时文件创建失败当成锁。
 _LOCK_ERROR = re.compile(
-    r"cannot lock|unable to (?:create|lock)|lock(?:ed|ing)? (?:ref|file)|\.lock\b|"
+    r"cannot lock|unable to lock|lock(?:ed|ing)? (?:ref|file)|\.lock\b|"
     r"reference.*locked|ref lock",
     re.I)
 
@@ -831,7 +834,7 @@ def render_sync(result: dict) -> str:
                 f"（上次：{fetch_reason_text(result.get('reason'))}）。")
         if result.get("fetch_error"):
             text += f"\n  git 原始输出：{result['fetch_error']}"
-        return text + "\n  要立即重试加 --force（例如：python3 scripts/kb_sync.py --merge --force）"
+        return text + "\n  要立即重试：在同一条命令上加 --force"
     if result.get("reason") == "not-a-repo":
         return "不是 git 检出，未联网。"
     if not result.get("ok"):

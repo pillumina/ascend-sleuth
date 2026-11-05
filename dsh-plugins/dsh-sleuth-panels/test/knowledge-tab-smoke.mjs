@@ -916,33 +916,30 @@ section('[知识库 · host] 合并失败：网络原因 / 缓存跳过 / 旧脚
     '兼容退回只补一次不带 --force 的重试', JSON.stringify(legacyCmds))
 
   // 退回后仍然失败 / 仍被缓存挡下：结局照样要正确，不当成功。
+  // 旧脚本（b92b199）失败时只有 reason `exit-<n>`、没有 fetch_error，这里照它的真实形状构造。
   const legacyFailHost = await bootHost((command) => {
     if (/kb_sync\.py --merge/.test(command)) {
       if (command.indexOf('--force') >= 0) return failStdout(2, 'error: unrecognized arguments: --force')
-      return okStdout(JSON.stringify({
-        ok: false, reason: 'network', skipped: false,
-        fetch_error: 'fatal: could not resolve host: github.com',
-      }))
+      return okStdout(JSON.stringify({ ok: false, reason: 'exit-128', skipped: false }))
     }
     return defaultPlan()(command)
   })
   const legacyFailValue = valueOf(await legacyFailHost.call('ascend-kb-sync-merge', { sessionId: 's1' }))
-  check(!!legacyFailValue && legacyFailValue.ok === false && legacyFailValue.code === 'E_NETWORK'
-    && String(legacyFailValue.detail || '').indexOf('could not resolve host') >= 0,
-    '旧脚本退回后仍失败：按失败原因上屏', JSON.stringify(legacyFailValue))
+  check(!!legacyFailValue && legacyFailValue.ok === false && legacyFailValue.code === 'E_FETCH'
+    && !legacyFailValue.detail,
+    '旧脚本退回后仍失败：按 E_FETCH 报，不编造原文', JSON.stringify(legacyFailValue))
 
   const legacySkipHost = await bootHost((command) => {
     if (/kb_sync\.py --merge/.test(command)) {
       if (command.indexOf('--force') >= 0) return failStdout(2, 'error: unrecognized arguments: --force')
-      return okStdout(JSON.stringify({
-        ok: false, skipped: true, reason: 'network', fetch_error: 'fatal: 旧失败',
-      }))
+      return okStdout(JSON.stringify({ ok: false, skipped: true, reason: 'exit-128' }))
     }
     return defaultPlan()(command)
   })
   const legacySkipValue = valueOf(await legacySkipHost.call('ascend-kb-sync-merge', { sessionId: 's1' }))
-  check(!!legacySkipValue && legacySkipValue.ok === false && legacySkipValue.code === 'E_SKIPPED',
-    '旧脚本退回后仍被缓存挡下：归到 E_SKIPPED', JSON.stringify(legacySkipValue))
+  check(!!legacySkipValue && legacySkipValue.ok === false && legacySkipValue.code === 'E_SKIPPED'
+    && !legacySkipValue.detail,
+    '旧脚本退回后仍被缓存挡下：归到 E_SKIPPED，但不编造原文', JSON.stringify(legacySkipValue))
 }
 
 // ── 收尾 ────────────────────────────────────────────────────────────────────

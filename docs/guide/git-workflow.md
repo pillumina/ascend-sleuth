@@ -66,7 +66,7 @@ worktree 与 detached HEAD 不自动合并。worktree 里通常在做提 PR 的�
 
 fetch 失败时标 `kb_sync: failed`，原因写进 `kb_sync_reason`。
 
-失败时脚本保留 git 原始输出的末行（`fetch_error`，URL 里的账号、密码与 query 里的 token 已抹掉）。人读输出与面板都显示这一行。
+失败时脚本把 git 原始输出收成一行（`fetch_error`）。取最后一条 fatal / error 行，抹掉 URL 里的账号、密码与查询串里的 token。人读输出与面板都显示这一行。
 
 失败结果缓存在 `.local/kb-sync-state.json`：自动同步在 10 分钟内不重试，避免每次开单都等满 10 秒超时。手动同步（`--force`，面板「立即同步」走这条）跳过窗口立即重试。
 

@@ -467,14 +467,35 @@ class FetchFailureDetailTest(ConfiguredCase):
                 self.assertEqual(doc["reason"], "network", doc["fetch_error"])
 
     def test_lock_needs_lock_wording(self):
-        # "blocked" 里的 lock 字样不是 ref 锁；真锁冲突仍归 lock。
-        with self.fail_fetch("fatal: request blocked by server policy\n"):
-            _code, doc = self.run_cli("--sync", "--json", "--force")
-        self.assertEqual(doc["reason"], "exit-128")
+        # "blocked" 里的 lock 字样不是 ref 锁；临时文件创建失败也不是；真锁冲突仍归 lock。
+        samples = {
+            "blocked": "fatal: request blocked by server policy\n",
+            "no-space": "fatal: unable to create temporary file: No space left on device\n",
+        }
+        for name, stderr in samples.items():
+            with self.subTest(name=name):
+                with self.fail_fetch(stderr):
+                    _code, doc = self.run_cli("--sync", "--json", "--force")
+                self.assertEqual(doc["reason"], "exit-128", doc["fetch_error"])
         with self.fail_fetch("fatal: cannot lock ref 'refs/remotes/origin/main': "
                              "Unable to create '.../main.lock': File exists.\n"):
             _code, doc = self.run_cli("--sync", "--json", "--force")
         self.assertEqual(doc["reason"], "lock")
+
+    def test_ssl_words_in_host_or_path_are_not_network(self):
+        # 主机名 / 路径里带 ssl 字样不等于 TLS 失败：404 仍按退出码报，别把读者带去查网络。
+        stderr = "fatal: unable to access 'https://ssl-git.corp.example/org/repo.git/': " \
+                 "The requested URL returned error: 404\n"
+        with self.fail_fetch(stderr):
+            _code, doc = self.run_cli("--sync", "--json", "--force")
+        self.assertEqual(doc["reason"], "exit-128")
+
+    def test_certificate_failures_count_as_network(self):
+        stderr = "fatal: unable to access 'https://github.com/org/repo.git/': " \
+                 "server certificate verification failed. CAfile: none CRLfile: none\n"
+        with self.fail_fetch(stderr):
+            _code, doc = self.run_cli("--sync", "--json", "--force")
+        self.assertEqual(doc["reason"], "network")
 
     def test_redaction_covers_ssh_and_oauth(self):
         stderr = ("fatal: unable to access "
